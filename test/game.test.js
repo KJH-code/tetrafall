@@ -494,3 +494,40 @@ test('인원이 섞이면 로그에 인원수별 압사 비율이 따로 찍힌�
   assert.ok(lines.some((l) => l.includes('3인 판 1판: 압사 1 / 낙사 1 → 50%')), lines.join('\n'));
   assert.ok(lines.some((l) => l.includes('2인 판 1판: 압사 1 / 낙사 0 → 100%')), lines.join('\n'));
 });
+
+test('층 클리어 유도: 한 칸 모양 빈자리가 있으면 거의 항상 그 자리를 채운다', () => {
+  const g = new Game();
+  g.rng = Math.random;
+  // z=0 층을 (4..5, 4..5) 2x2 만 빼고 채운다 → O 블록이 들어가면 층 클리어
+  for (let y = 0; y < C.GRID_D; y++) for (let x = 0; x < C.GRID_W; x++) if (!(x >= 4 && y >= 4)) g.grid[g.idx(x, y, 0)] = 1;
+  let hit = 0;
+  for (let i = 0; i < 200; i++) {
+    const p = g.chooseAutoPlacement('I');
+    if (p.shape === 'O' && p.px === 4 && p.py === 4 && p.landZ === 0) hit++;
+  }
+  assert.ok(hit >= 180, `200번 중 ${hit}번`);
+});
+
+test('층 클리어 유도 끄기 (CLEAR_BIAS=0): 주어진 무작위 모양 그대로', () => {
+  const g = new Game();
+  const saved = C.CLEAR_BIAS;
+  C.CLEAR_BIAS = 0;
+  try {
+    for (let i = 0; i < 50; i++) assert.equal(g.chooseAutoPlacement('T').shape, 'T');
+  } finally {
+    C.CLEAR_BIAS = saved;
+  }
+});
+
+test('층 클리어 유도: 구멍을 만드는 자리는 거의 안 고른다', () => {
+  const g = new Game();
+  g.rng = Math.random;
+  // 바닥에 계단: x<3 은 1칸 높이. 걸치면 구멍이 생긴다
+  for (let y = 0; y < C.GRID_D; y++) for (let x = 0; x < 3; x++) g.grid[g.idx(x, y, 0)] = 1;
+  let holes = 0;
+  for (let i = 0; i < 200; i++) {
+    const p = g.chooseAutoPlacement('I');
+    for (const [dx, dy] of p.cells) if (g.columnTop(p.px + dx, p.py + dy) < p.landZ) { holes++; break; }
+  }
+  assert.ok(holes <= 10, `200번 중 구멍 ${holes}번`);
+});

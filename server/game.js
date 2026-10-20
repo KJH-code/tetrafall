@@ -416,26 +416,104 @@ export class Game {
       this.log(`  [블록] ${shape} 조종 시작: ${controller.name}`);
       return;
     }
-    for (let i = 0; i < C.SPAWN_TRIES; i++) {
-      const r = Math.floor(this.rng() * 4);
-      const { w, d } = footprint(rotatedCells(shape, r));
-      const px = Math.floor(this.rng() * (C.GRID_W - w + 1));
-      const py = Math.floor(this.rng() * (C.GRID_D - d + 1));
-      const piece = this.makePiece(shape, r, px, py, C.PIECE_SPAWN_Z);
-      if (!piece.fits) continue;
-      Object.assign(piece, {
-        phase: 'falling',
-        controller: null,
-        stepMs: C.AUTO_FALL_STEP_MS,
-        nextStepAt: this.time + C.AUTO_FALL_STEP_MS,
-        controlEndsAt: 0,
-      });
-      this.piece = piece;
-      this.refreshPieceCells();
+    const piece = this.chooseAutoPlacement(shape);
+    if (!piece) {
+      // 들어갈 자리가 없음 (필드가 꽉 참). 나중에 다시 시도
+      this.nextSpawnAt = this.time + C.AUTO_SPAWN_DELAY_MS;
       return;
     }
-    // 들어갈 자리가 없음 (필드가 꽉 참). 나중에 다시 시도
-    this.nextSpawnAt = this.time + C.AUTO_SPAWN_DELAY_MS;
+    Object.assign(piece, {
+      phase: 'falling',
+      controller: null,
+      stepMs: C.AUTO_FALL_STEP_MS,
+      nextStepAt: this.time + C.AUTO_FALL_STEP_MS,
+      controlEndsAt: 0,
+    });
+    this.piece = piece;
+    this.refreshPieceCells();
+  }
+
+  // 자동 블록 고르기: 들어갈 수 있는 모든 (모양, 회전, 위치) 중에서 가중 무작위로 하나.
+  // 가중치 = exp(CLEAR_BIAS × 점수). CLEAR_BIAS 0 이면 완전 무작위, 클수록 가장 낮은 층을 클리어하는 쪽으로 몰린다.
+  // CLEAR_PICK_SHAPE 가 false 면 모양은 무작위로 정하고 회전·위치만 고른다 (이 경우 클리어가 거의 안 일어난다).
+  chooseAutoPlacement(randomShape) {
+    const shapes = C.CLEAR_BIAS > 0 && C.CLEAR_PICK_SHAPE ? SHAPE_NAMES : [randomShape];
+    const L = this.lowestLayer();
+    const cands = [];
+    let best = -Infinity;
+    for (const shape of shapes) {
+      for (let r = 0; r < 4; r++) {
+        const { w, d } = footprint(rotatedCells(shape, r));
+        for (let px = 0; px <= C.GRID_W - w; px++) {
+          for (let py = 0; py <= C.GRID_D - d; py++) {
+            const piece = this.makePiece(shape, r, px, py, C.PIECE_SPAWN_Z);
+            if (!piece.fits) continue;
+            const score = C.CLEAR_BIAS > 0 ? this.placementScore(piece, L) : 0;
+            if (score > best) best = score;
+            cands.push({ piece, score });
+          }
+        }
+      }
+    }
+    if (!cands.length) return null;
+    let total = 0;
+    for (const c of cands) {
+      c.w = Math.exp(C.CLEAR_BIAS * (c.score - best)); // best 기준으로 빼서 overflow 방지
+      total += c.w;
+    }
+    let x = this.rng() * total;
+    for (const c of cands) {
+      x -= c.w;
+      if (x <= 0) return c.piece;
+    }
+    return cands[cands.length - 1].piece;
+  }
+
+  // 가장 낮은 기둥 높이 = 아직 안 찬 가장 낮은 층
+  lowestLayer() {
+    let L = Infinity;
+    for (let x = 0; x < C.GRID_W; x++) for (let y = 0; y < C.GRID_D; y++) L = Math.min(L, this.columnTop(x, y));
+    return L;
+  }
+
+  // 자동 블록 자리 점수. 높을수록 가장 낮은 층(L) 클리어에 가깝다.
+  // - 밑에 빈칸(구멍)을 만들면 벌점: 구멍 위층은 다시 채울 수 없다
+  // - L 층에 딱 붙으면 가점, 그걸로 L 층이 다 차면 큰 가점
+  // - L 층에 남는 빈 영역 중 칸 수가 4의 배수가 아닌 덩어리는 벌점: 평평한 4칸 블록으로 영영 못 채운다
+  // - L 보다 높은 곳에 평평하게 얹으면 높이만큼 약한 벌점
+  placementScore(piece, L) {
+    const S = C.CLEAR_SCORE;
+    const z = piece.landZ;
+    let holes = 0;
+    for (const [dx, dy] of piece.cells) holes += z - this.columnTop(piece.px + dx, piece.py + dy);
+    if (holes > 0) return -S.HOLE * holes - (z - L);
+    if (z !== L) return -(z - L);
+    const covered = new Set(piece.cells.map(([dx, dy]) => (piece.px + dx) * 100 + (piece.py + dy)));
+    const open = (x, y) => this.columnTop(x, y) === L && !covered.has(x * 100 + y);
+    let remaining = 0;
+    let bad = 0;
+    const seen = new Set();
+    for (let x = 0; x < C.GRID_W; x++) {
+      for (let y = 0; y < C.GRID_D; y++) {
+        if (!open(x, y) || seen.has(x * 100 + y)) continue;
+        let size = 0;
+        const stack = [[x, y]];
+        seen.add(x * 100 + y);
+        while (stack.length) {
+          const [cx, cy] = stack.pop();
+          size++;
+          for (const [nx, ny] of [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]]) {
+            if (nx < 0 || ny < 0 || nx >= C.GRID_W || ny >= C.GRID_D) continue;
+            if (!open(nx, ny) || seen.has(nx * 100 + ny)) continue;
+            seen.add(nx * 100 + ny);
+            stack.push([nx, ny]);
+          }
+        }
+        remaining += size;
+        if (size % 4 !== 0) bad++;
+      }
+    }
+    return S.FILL + (remaining === 0 ? S.CLEAR : 0) - S.BAD_GAP * bad;
   }
 
   movePiece(dx, dy) {

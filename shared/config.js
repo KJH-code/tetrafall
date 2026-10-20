@@ -23,7 +23,14 @@ export const CONFIG = {
   FIRST_SPAWN_DELAY_MS: 1000, // 판 시작 후 첫 블록까지 (첫 착지 = 이 값 + 12칸 × AUTO_FALL_STEP_MS). 2026-10-20 3000→1000
   SHADOW_LEAD_MS: 3000, // 착지 몇 ms 전부터 그림자 표시
   PIECE_SPAWN_Z: 12, // 블록이 나타나는 높이 (= GRID_H 권장: 필드 바로 위)
-  SPAWN_TRIES: 50, // 들어갈 자리를 찾는 시도 횟수
+  SPAWN_TRIES: 50, // 아이템 자리를 찾는 시도 횟수
+  // 자동 블록(조종 안 된 블록)이 가장 낮은 층을 클리어하는 쪽으로 떨어지게 하는 유도. 2026-10-20 도입
+  // 점수가 1 높을 때마다 뽑힐 확률이 exp(CLEAR_BIAS) 배. 0 = 완전 무작위 (예전 방식)
+  // 시뮬레이션 (블록만 떨어뜨림, 300회): 20블록 안에 층 클리어가 한 번이라도 난 비율
+  //   0 → 0%, 0.6 → 28%, 1 → 71% (첫 클리어 중앙값 10블록 ≈ 52초), 2 → 76%
+  CLEAR_BIAS: 1,
+  CLEAR_PICK_SHAPE: true, // true: 모양도 유도로 고름. false: 모양은 무작위 (이러면 bias 2 여도 22%)
+  CLEAR_SCORE: { FILL: 4, CLEAR: 6, BAD_GAP: 3, HOLE: 3 }, // 점수 항목 (server/game.js placementScore 설명 참고)
 
   // ---- 조종권 ----
   CONTROL_TIME_MS: 8000, // 이 안에 안 떨구면 자동 낙하
