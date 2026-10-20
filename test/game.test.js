@@ -1237,3 +1237,42 @@ test('승수: 이긴 사람 승수가 쌓이고 스냅샷·로그에 나온다, 
   assert.equal(g.phase, 'over');
   assert.equal(p1.wins + p2.wins, 1, '무승부는 안 셈');
 });
+
+test('카운트다운: 시작하면 3초 동안 시작 위치에서 대기 (블록·아이템·이동 없음), 그 뒤 판 시계가 0 부터', () => {
+  const lines = [];
+  const g = new Game((x) => lines.push(x), { countdownMs: 3000 });
+  g.addPlayer(1);
+  g.addPlayer(2);
+  const p1 = g.players.get(1);
+  assert.equal(g.startRound(), true);
+  assert.equal(g.phase, 'countdown');
+  assert.equal(g.canStart(), false, '카운트다운 중엔 다시 시작 못 함');
+  assert.equal(g.addBot(), null, '카운트다운 중엔 봇 추가 못 함');
+  const x0 = p1.x;
+  g.handleInput(1, { fwd: 1, strafe: 0, jump: true, yaw: 0, pitch: 0 });
+  g.handleAction(1, { name: 'dash' });
+  run(g, 2900);
+  assert.equal(g.phase, 'countdown');
+  assert.equal(p1.x, x0, '안 움직임');
+  assert.equal(g.pieces.length, 0);
+  assert.equal(g.items.length, 0);
+  assert.ok(g.snapshot().round.countdownLeft > 0);
+  assert.ok(!lines.some((l) => l.includes('시작 (')), '판 시작 로그는 카운트다운 뒤');
+  run(g, 200);
+  assert.equal(g.phase, 'playing');
+  assert.ok(g.elapsed() < 200, `판 시계 ${g.elapsed()}`);
+  assert.ok(lines.some((l) => l.includes('ROUND 1 시작')), lines.join('\n'));
+  g.addPlayer(3);
+  assert.equal(g.players.get(3).alive, false, '진행 중 난입은 관전');
+});
+
+test('카운트다운 중에 나가서 혼자 남으면 카운트다운이 끝나는 순간 판이 끝난다', () => {
+  const g = new Game(() => {}, { countdownMs: 3000 });
+  g.addPlayer(1);
+  g.addPlayer(2);
+  g.startRound();
+  g.removePlayer(2);
+  run(g, 3100);
+  assert.equal(g.phase, 'over');
+  assert.equal(g.winnerId, 1);
+});

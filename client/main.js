@@ -34,7 +34,7 @@ document.addEventListener('keydown', () => sound.unlock());
 // 내 밀치기는 서버 응답을 기다리지 않고 바로 팔을 휘두르고 소리를 낸다 (조작감)
 function onLocalAction(action) {
   const p = me();
-  if (action.name === 'push' && p && p.alive && !p.controlling && !p.stunned) {
+  if (action.name === 'push' && state && state.phase === 'playing' && p && p.alive && !p.controlling && !p.stunned) {
     fx.startPunch(myId);
     sound.play('swing');
   }
@@ -278,6 +278,13 @@ function connect() {
 }
 
 startBtn.addEventListener('click', () => send({ type: 'start' }));
+// Enter 로도 시작·재시작 (호스트만, 판 사이에만. 판 중 Enter 는 블록 하드드롭)
+document.addEventListener('keydown', (e) => {
+  if (e.code !== 'Enter' || !state || state.hostId !== myId || !state.canStart) return;
+  if (state.phase !== 'lobby' && state.phase !== 'over') return;
+  e.preventDefault();
+  send({ type: 'start' });
+});
 $('add-bot').addEventListener('click', () => send({ type: 'addBot' }));
 $('remove-bot').addEventListener('click', () => send({ type: 'removeBot' }));
 $('map-select').addEventListener('change', (e) => send({ type: 'setMap', map: e.target.value }));
@@ -287,9 +294,48 @@ function me() {
   return state ? state.players.find((p) => p.id === myId) : null;
 }
 
+// ---------- 큰 글씨: 카운트다운 3·2·1·시작!, 판 끝 "P2 승리!" ----------
+const bigmsg = $('bigmsg');
+let bigUntil = 0; // 이 시각까지는 카운트다운이 덮어쓰지 않음 (시작!·승리 표시)
+let lastCount = null;
+function showBig(text, color = '#fff', ms = 800, small = false) {
+  bigmsg.textContent = text;
+  bigmsg.style.color = color;
+  bigmsg.classList.toggle('small', small);
+  bigmsg.classList.remove('hidden');
+  bigUntil = performance.now() + ms;
+}
+function updateBig() {
+  const now = performance.now();
+  if (state && state.phase === 'countdown') {
+    const n = Math.max(1, Math.ceil(state.round.countdownLeft / 1000));
+    if (n !== lastCount) {
+      sound.play('tick');
+      lastCount = n;
+    }
+    showBig(String(n), '#fff', 0);
+    return;
+  }
+  if (now > bigUntil) bigmsg.classList.add('hidden');
+}
+function colorOf(p) {
+  return `#${PLAYER_COLORS[p.slot % PLAYER_COLORS.length].toString(16).padStart(6, '0')}`;
+}
+
 function onState() {
   const p = me();
   if (!p) return;
+  if (lastState && lastState.phase === 'countdown' && state.phase === 'playing') {
+    lastCount = null;
+    sound.play('go');
+    showBig('시작!', '#ffe14a', 700);
+  }
+  if (lastState && lastState.phase === 'playing' && state.phase === 'over') {
+    const w = state.players.find((x) => x.id === state.round.winnerId);
+    sound.play('win');
+    if (w) showBig(`${w.name} 승리!`, colorOf(w), C.WIN_BANNER_MS, true);
+    else showBig('무승부', '#ddd', C.WIN_BANNER_MS, true);
+  }
   if (state.phase === 'playing' && !p.alive && wasAlive) flashScreen('rgba(255,0,0,.45)');
   wasAlive = p.alive;
   // 판이 새로 시작되면 시점을 스폰 방향으로
@@ -314,8 +360,7 @@ function updateScore() {
   if (key === scoreKey) return;
   scoreKey = key;
   scoreEl.classList.toggle('hidden', ps.length < 2);
-  const color = (p) => `#${PLAYER_COLORS[p.slot % PLAYER_COLORS.length].toString(16).padStart(6, '0')}`;
-  const name = (p) => `<span style="color:${color(p)}" class="${p.id === myId ? 'me' : ''}">${p.name}</span>`;
+  const name = (p) => `<span style="color:${colorOf(p)}" class="${p.id === myId ? 'me' : ''}">${p.name}</span>`;
   if (ps.length === 2) {
     const [a, b] = ps;
     scoreEl.innerHTML = `${name(a)} ${a.wins}<span class="sep">:</span>${b.wins} ${name(b)}`;
@@ -355,6 +400,7 @@ function updateHud() {
   statusEl.textContent = lines.join('\n');
 
   updateScore();
+  updateBig();
 
   // 상단 배너: 조종권 상태 (예고 → 조종 중)
   let bannerText = null;
@@ -394,30 +440,34 @@ function updateHud() {
     showKeys = true;
   } else if (p && !p.alive) {
     center = `사망: ${CAUSE_KO[p.cause] || p.cause}\n관전 중`;
+  } else if (state.phase === 'countdown') {
+    center = null; // 3·2·1 큰 글씨만 (화면 클릭으로 조작 잡기는 그대로 됨)
   } else if (!input.locked) {
     center = '화면을 클릭하면 조작 시작';
     showKeys = true;
   }
+  if (state.phase === 'over' && performance.now() < bigUntil) center = null; // "P2 승리!" 가 떠 있는 동안은 안내판을 감춤
   centerEl.classList.toggle('hidden', center === null);
   centerText.textContent = center || '';
   startBtn.classList.toggle('hidden', !showStart);
-  startBtn.textContent = state.phase === 'over' ? '재시작' : '시작';
+  startBtn.textContent = state.phase === 'over' ? '재시작 (Enter)' : '시작 (Enter)';
   keysEl.classList.toggle('hidden', !showKeys);
   // 봇 버튼: 호스트만, 판 사이에만
-  const showBots = isHost && state.phase !== 'playing';
+  const between = state.phase === 'lobby' || state.phase === 'over';
+  const showBots = isHost && between;
   $('bot-btns').classList.toggle('hidden', !showBots);
   // 맵: 호스트는 고르고, 다른 사람은 보기만
   const mapSel = $('map-select');
   if (state.map && document.activeElement !== mapSel) mapSel.value = state.map.choice;
   const mapInfo = $('map-info');
-  mapInfo.classList.toggle('hidden', !(state.map && !isHost && state.phase !== 'playing'));
+  mapInfo.classList.toggle('hidden', !(state.map && !isHost && between));
   if (state.map) mapInfo.textContent = `맵: ${MAP_KO[state.map.choice] || state.map.choice}`;
   if (showBots) {
     $('add-bot').disabled = state.players.length >= Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length);
     $('remove-bot').disabled = !state.players.some((x) => x.isBot);
   }
 
-  input.enabled = state.phase === 'playing' && !!p && p.alive;
+  input.enabled = (state.phase === 'playing' || state.phase === 'countdown') && !!p && p.alive; // 카운트다운 중엔 시선만 (서버가 이동·행동을 막음)
   // 조준점: 투사체가 있으면 빨갛고 크게 + 탄 수, 설치 블록이 있으면 노랗게 + 개수
   const armed = !!p && p.ammo > 0;
   const brick = !!p && p.bricks > 0;
@@ -433,7 +483,7 @@ function updateHud() {
 
 // 입력 전송
 setInterval(() => {
-  if (!state || state.phase !== 'playing') return;
+  if (!state || (state.phase !== 'playing' && state.phase !== 'countdown')) return;
   send(debug.inputOverride || input.sample());
 }, 1000 / C.INPUT_SEND_RATE);
 

@@ -109,6 +109,16 @@ export class Sound {
         this.noise({ dur: 1.6, vol: 0.6, freq: 260, freqEnd: 120 });
         this.tone({ freq: 55, freqEnd: 42, dur: 1.5, type: 'sawtooth', vol: 0.25 });
         break;
+      case 'tick': // 카운트다운 3·2·1
+        this.tone({ freq: 660, dur: 0.12, type: 'square', vol: 0.22 });
+        break;
+      case 'go': // 시작!
+        this.tone({ freq: 990, dur: 0.35, type: 'square', vol: 0.25 });
+        this.tone({ freq: 1320, dur: 0.3, type: 'triangle', vol: 0.2, delay: 0.02 });
+        break;
+      case 'win': // 판 끝, 승자 발표
+        [392, 523, 659, 784, 1047].forEach((f, i) => this.tone({ freq: f, dur: 0.22, type: 'triangle', vol: 0.32, delay: i * 0.09 }));
+        break;
       case 'clear':
         [523, 659, 784, 1047].forEach((f, i) => this.tone({ freq: f, dur: 0.15, type: 'triangle', vol: 0.3, delay: i * 0.07 }));
         break;

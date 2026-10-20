@@ -68,7 +68,7 @@ function stamp() {
 }
 const log = (msg) => console.log(`[${stamp()}] ${msg}`);
 
-const game = new Game(log);
+const game = new Game(log, { countdownMs: C.ROUND_COUNTDOWN_MS });
 game.setMap(C.MAP_DEFAULT);
 const wss = new WebSocketServer({ server });
 const sockets = new Map(); // id -> ws

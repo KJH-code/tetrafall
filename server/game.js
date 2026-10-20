@@ -33,11 +33,13 @@ function fmtTime(ms) {
 }
 
 export class Game {
-  constructor(log = () => {}) {
+  // countdownMs: 판 시작 전 카운트다운. 서버는 C.ROUND_COUNTDOWN_MS, 테스트는 기본 0 (바로 시작)
+  constructor(log = () => {}, { countdownMs = 0 } = {}) {
     this.log = log;
+    this.countdownMs = countdownMs;
     this.rng = Math.random;
     this.time = 0; // 게임 시간 (ms). tick 마다 dt 만큼 증가
-    this.phase = 'lobby'; // 'lobby' | 'playing' | 'over'
+    this.phase = 'lobby'; // 'lobby' | 'countdown' | 'playing' | 'over'
     this.players = new Map(); // id -> player
     this.hostId = null;
     this.grid = new Uint8Array(C.GRID_W * C.GRID_D * C.GRID_H);
@@ -130,7 +132,7 @@ export class Game {
       kbx: 0,
       kby: 0,
       grounded: true,
-      alive: this.phase !== 'playing', // 진행 중 난입은 관전 (죽은 상태)
+      alive: !this.inRound(), // 진행 중(카운트다운 포함) 난입은 관전 (죽은 상태)
       stunUntil: 0,
       freezeUntil: 0, // 히트스톱: 이 시각까지 움직임 정지 (속도는 보존)
       weaponUses: 0, // 망치 남은 횟수
@@ -156,7 +158,7 @@ export class Game {
 
   // 봇 추가 (판 진행 중에는 안 됨). 성공하면 플레이어, 자리가 없으면 null
   addBot() {
-    if (this.phase === 'playing') return null;
+    if (this.inRound()) return null;
     const id = -++this.botCounter;
     const p = this.addPlayer(id, true);
     if (p) this.bots.set(id, new BotBrain(() => this.rng()));
@@ -165,7 +167,7 @@ export class Game {
 
   // 가장 나중에 넣은 봇 하나 빼기
   removeBot() {
-    if (this.phase === 'playing' || !this.bots.size) return false;
+    if (this.inRound() || !this.bots.size) return false;
     const id = Math.min(...this.bots.keys()); // 음수라 가장 작은 게 가장 최근
     this.removePlayer(id);
     return true;
@@ -197,7 +199,7 @@ export class Game {
   }
 
   setMap(choice) {
-    if (this.phase === 'playing') return false;
+    if (this.inRound()) return false;
     if (choice !== 'random' && !MAP_IDS.includes(choice)) return false;
     this.mapChoice = choice;
     return true;
@@ -221,7 +223,12 @@ export class Game {
   }
 
   canStart() {
-    return this.players.size >= C.MIN_PLAYERS && this.phase !== 'playing';
+    return this.players.size >= C.MIN_PLAYERS && !this.inRound();
+  }
+
+  // 판 진행 중 (카운트다운 포함): 봇·맵을 못 바꾸고, 들어온 사람은 관전
+  inRound() {
+    return this.phase === 'playing' || this.phase === 'countdown';
   }
 
   // ---------- 판 흐름 ----------
@@ -244,10 +251,6 @@ export class Game {
     this.events = [];
     this.winnerId = null;
     this.roundNumber++;
-    this.roundStartTime = this.time;
-    this.nextSpawnAt = this.time + C.FIRST_SPAWN_DELAY_MS;
-    this.controlItemNextAt = this.time + C.CONTROL_ITEM_RESPAWN_MS;
-    this.powerItemNextAt = this.time + C.ITEM_FIRST_SPAWN_MS;
     for (const p of this.players.values()) {
       const sp = C.SPAWN_POINTS[p.slot % C.SPAWN_POINTS.length];
       Object.assign(p, {
@@ -277,11 +280,26 @@ export class Game {
         deathCause: null,
       });
     }
-    this.phase = 'playing';
     this.roundPlayerCount = this.players.size;
     this.roundBotCount = this.bots.size;
-    this.log(`===== ROUND ${this.roundNumber} 시작 (${this.players.size}명, 맵 ${MAPS[this.mapId].name}) =====`);
+    if (this.countdownMs > 0) {
+      this.phase = 'countdown';
+      this.countdownEndsAt = this.time + this.countdownMs;
+    } else {
+      this.beginPlay();
+    }
     return true;
+  }
+
+  // 카운트다운이 끝나면 (또는 바로) 판 시작. 판 시간·블록·아이템 시계는 여기서부터
+  beginPlay() {
+    this.phase = 'playing';
+    this.roundStartTime = this.time;
+    this.nextSpawnAt = this.time + C.FIRST_SPAWN_DELAY_MS;
+    this.controlItemNextAt = this.time + C.CONTROL_ITEM_RESPAWN_MS;
+    this.powerItemNextAt = this.time + C.ITEM_FIRST_SPAWN_MS;
+    this.log(`===== ROUND ${this.roundNumber} 시작 (${this.players.size}명, 맵 ${MAPS[this.mapId].name}) =====`);
+    this.checkRoundEnd(); // 카운트다운 중에 나가서 혼자 남았으면 바로 끝
   }
 
   endRound(winner) {
@@ -1262,6 +1280,7 @@ export class Game {
   // ---------- 틱 ----------
   tick(dtMs) {
     this.time += dtMs;
+    if (this.phase === 'countdown' && this.time >= this.countdownEndsAt) this.beginPlay();
     if (this.phase !== 'playing') return;
     const dt = dtMs / 1000;
     for (const [id, brain] of this.bots) {
@@ -1320,7 +1339,8 @@ export class Game {
       canStart: this.canStart(),
       round: {
         n: this.roundNumber,
-        elapsed: this.phase === 'playing' ? this.time - this.roundStartTime : this.roundEndTime - this.roundStartTime,
+        elapsed: this.phase === 'playing' ? this.time - this.roundStartTime : this.phase === 'countdown' ? 0 : this.roundEndTime - this.roundStartTime,
+        countdownLeft: this.phase === 'countdown' ? Math.max(0, this.countdownEndsAt - this.time) : 0,
         winnerId: this.winnerId,
         deaths: this.deaths,
         totals: this.totals,

@@ -37,6 +37,8 @@
     #hitmarker::before { transform: rotate(45deg); }
     #hitmarker::after { transform: rotate(-45deg); }
     #flash { position: absolute; inset: 0; background: rgba(255,0,0,.35); opacity: 0; transition: opacity .3s; }
+    #bigmsg { position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); font-size: 110px; font-weight: 900; white-space: nowrap; text-shadow: 0 0 12px #000, 0 0 4px #000; z-index: 3; }
+    #bigmsg.small { font-size: 72px; }
     .hidden { display: none !important; }
   </style>
   <script type="importmap">
@@ -52,6 +54,7 @@
       <div id="toasts"></div>
     </div>
     <div id="status">연결 중...</div>
+    <div id="bigmsg" class="hidden"></div>
     <div id="crosshair"></div>
     <div id="hitmarker"></div>
     <div id="center"><span id="center-text">연결 중...</span><br /><button id="start-btn" class="hidden">시작</button>
