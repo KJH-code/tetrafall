@@ -18,7 +18,7 @@ export const CONFIG = {
   AUTO_FALL_STEP_MS: 500, // 자동 낙하: 1칸 내려오는 간격
   HARD_DROP_STEP_MS: 80, // 하드드롭 후 1칸 내려오는 간격
   AUTO_SPAWN_DELAY_MS: 2000, // 착지 후 다음 자동 블록이 나오기까지
-  FIRST_SPAWN_DELAY_MS: 3000, // 판 시작 후 첫 블록까지
+  FIRST_SPAWN_DELAY_MS: 1000, // 판 시작 후 첫 블록까지 (첫 착지 = 이 값 + 12칸 × AUTO_FALL_STEP_MS). 2026-10-20 3000→1000
   SHADOW_LEAD_MS: 3000, // 착지 몇 ms 전부터 그림자 표시
   PIECE_SPAWN_Z: 12, // 블록이 나타나는 높이 (= GRID_H 권장: 필드 바로 위)
   SPAWN_TRIES: 50, // 들어갈 자리를 찾는 시도 횟수
@@ -41,7 +41,7 @@ export const CONFIG = {
   PUSH_RANGE: 1.8, // 사거리 (중심 거리)
   PUSH_HALF_ANGLE_DEG: 60, // 바라보는 방향 기준 반각
   PUSH_COOLDOWN_MS: 600,
-  PUSH_KB_SPEED: 7,
+  PUSH_KB_SPEED: 3.5, // 2026-10-20 7→3.5. 밀려나는 거리 약 1.3칸 (7일 때 약 2.6칸)
   PUSH_KB_UP: 3,
 
   // ---- 경직 ----
@@ -66,13 +66,16 @@ export const CONFIG = {
 
   // ---- 판 ----
   ROUND_TIME_LIMIT_MS: 0, // 0 = 제한 없음. 양수면 시간 초과 시 무승부
+  // 2026-10-20 모서리 칸 → 한 칸 안쪽. 가장자리에서 1.5칸이라 밀치기 한 번으로는 안 떨어진다
   SPAWN_POINTS: [
-    { x: 0.5, y: 0.5, yaw: Math.PI / 4 }, // 플레이어 1: (0,0) 모서리, 중앙을 바라봄
-    { x: 5.5, y: 5.5, yaw: Math.PI / 4 + Math.PI }, // 플레이어 2: (5,5) 모서리
+    { x: 1.5, y: 1.5, yaw: Math.PI / 4 }, // 플레이어 1: (1,1) 칸, 중앙을 바라봄
+    { x: 4.5, y: 4.5, yaw: Math.PI / 4 + Math.PI }, // 플레이어 2: (4,4) 칸
   ],
 
   // ---- 클라이언트 ----
   MOUSE_SENSITIVITY: 0.0022,
   SKY_CAMERA_HEIGHT: 22, // 하늘 시점 카메라 높이 (필드 중심 위)
+  SKY_TRANSITION_MS: 700, // 1인칭 ↔ 하늘 시점 전환 애니메이션 길이
+  TOAST_MS: 2200, // 화면 알림이 떠 있는 시간
   INPUT_SEND_RATE: 30, // 입력 전송 Hz
 };

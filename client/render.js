@@ -86,6 +86,7 @@ export class Renderer {
     this.itemMeshes = [];
     this.projMeshes = [];
     this.smooth = new Map(); // id -> {x,y,z}
+    this.skyBlend = 0; // 0 = 1인칭, 1 = 하늘 시점. 사이 값은 전환 중
 
     window.addEventListener('resize', () => {
       this.camera.aspect = window.innerWidth / window.innerHeight;
@@ -152,6 +153,30 @@ export class Renderer {
       nose.position.set(C.PLAYER_HALF + 0.1, 0, C.EYE_HEIGHT);
       g.add(nose);
       g.userData.body = body;
+      g.userData.color = PLAYER_COLORS[p.slot % PLAYER_COLORS.length];
+      // 하늘 시점 전용 표시: 바라보는 방향 화살표 (+ 내 캐릭터는 흰 고리)
+      const tri = new THREE.Shape();
+      tri.moveTo(0.75, 0);
+      tri.lineTo(-0.35, 0.38);
+      tri.lineTo(-0.15, 0);
+      tri.lineTo(-0.35, -0.38);
+      tri.closePath();
+      const arrow = new THREE.Mesh(
+        new THREE.ShapeGeometry(tri),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, depthTest: false }),
+      );
+      arrow.position.z = C.PLAYER_HEIGHT + 0.05;
+      arrow.renderOrder = 10;
+      g.add(arrow);
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.6, 0.78, 32),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, depthTest: false }),
+      );
+      ring.position.z = C.PLAYER_HEIGHT + 0.04;
+      ring.renderOrder = 10;
+      g.add(ring);
+      g.userData.arrow = arrow;
+      g.userData.ring = ring;
       this.scene.add(g);
       this.playerMeshes.set(p.id, g);
     }
@@ -161,6 +186,7 @@ export class Renderer {
   // state: 최신 서버 스냅샷, myId: 내 플레이어 id, dt: 프레임 시간(초), view: 'fps' | 'sky'
   render(state, myId, dt, view, cam) {
     if (!state) return;
+    this.stepView(view, dt);
     if (state.grid && state.gridVersion !== this.gridVersion) {
       this.updateGrid(state.grid);
       this.gridVersion = state.gridVersion;
@@ -183,9 +209,16 @@ export class Renderer {
       s.z += (p.z - s.z) * k;
       g.position.set(s.x, s.y, s.z);
       g.rotation.z = p.yaw;
-      g.visible = p.alive && !(p.id === myId && view === 'fps');
+      g.visible = p.alive && !(p.id === myId && view === 'fps' && this.skyBlend === 0);
       const body = g.userData.body;
-      body.material.emissive.setHex(p.stunned ? 0x553300 : p.hasControl ? 0x004455 : 0x000000);
+      // 경직 중엔 흰색으로 빠르게 깜빡임
+      const blinkOn = p.stunned && Math.floor(performance.now() / 70) % 2 === 0;
+      body.material.color.setHex(blinkOn ? 0xffffff : g.userData.color);
+      body.material.emissive.setHex(p.stunned ? 0x664400 : p.hasControl ? 0x005566 : 0x000000);
+      const skyMarks = this.skyBlend > 0.5;
+      g.userData.arrow.visible = skyMarks;
+      g.userData.arrow.material.color.setHex(p.id === myId ? 0xffffff : g.userData.color);
+      g.userData.ring.visible = skyMarks && p.id === myId;
     }
     for (const [id, g] of this.playerMeshes) {
       if (!seen.has(id)) {
@@ -253,22 +286,55 @@ export class Renderer {
 
     // 카메라
     const me = state.players.find((p) => p.id === myId);
-    this.pieceMat.opacity = view === 'sky' ? 0.55 : 1; // 하늘 시점에선 블록 너머로 착지 미리보기가 보이게
-    if (view === 'sky') {
+    this.pieceMat.opacity = this.skyBlend > 0.5 ? 0.55 : 1; // 하늘 시점에선 블록 너머로 착지 미리보기가 보이게
+
+    // 1인칭(또는 관전) 자세
+    const eye = new THREE.Vector3();
+    const look = new THREE.Vector3();
+    if (me && me.alive) {
+      const s = this.smooth.get(me.id);
+      eye.set(s.x, s.y, s.z + C.EYE_HEIGHT);
+      const cp = Math.cos(cam.pitch);
+      look.set(eye.x + cp * Math.cos(cam.yaw), eye.y + cp * Math.sin(cam.yaw), eye.z + Math.sin(cam.pitch));
+    } else {
+      // 죽었거나 아직 없음: 필드 밖 관전 시점 (마우스로 돌릴 수 있음)
+      eye.set(C.GRID_W / 2 - Math.cos(cam.yaw) * 10, C.GRID_D / 2 - Math.sin(cam.yaw) * 10, 7);
+      look.set(C.GRID_W / 2, C.GRID_D / 2, 2);
+    }
+
+    const b = this.skyBlend;
+    if (b >= 1) {
       this.renderer.render(this.scene, this.skyCamera);
       return;
     }
-    if (me && me.alive) {
-      const s = this.smooth.get(me.id);
-      const pos = new THREE.Vector3(s.x, s.y, s.z + C.EYE_HEIGHT);
-      this.camera.position.copy(pos);
-      const cp = Math.cos(cam.pitch);
-      this.camera.lookAt(pos.x + cp * Math.cos(cam.yaw), pos.y + cp * Math.sin(cam.yaw), pos.z + Math.sin(cam.pitch));
-    } else {
-      // 죽었거나 아직 없음: 필드 밖 관전 시점 (마우스로 돌릴 수 있음)
-      this.camera.position.set(C.GRID_W / 2 - Math.cos(cam.yaw) * 10, C.GRID_D / 2 - Math.sin(cam.yaw) * 10, 7);
-      this.camera.lookAt(C.GRID_W / 2, C.GRID_D / 2, 2);
+    if (b <= 0) {
+      this.camera.fov = 75;
+      this.camera.updateProjectionMatrix();
+      this.camera.up.set(0, 0, 1);
+      this.camera.position.copy(eye);
+      this.camera.lookAt(look);
+      this.renderer.render(this.scene, this.camera);
+      return;
     }
+    // 전환 중: 1인칭 자세 → 필드 위 높은 곳에서 내려다보는 자세로 날아오르며 줌인 (끝에서 직교 카메라로 교체)
+    const t = b * b * (3 - 2 * b); // smoothstep
+    const top = new THREE.Vector3(C.GRID_W / 2, C.GRID_D / 2, C.SKY_CAMERA_HEIGHT);
+    const center = new THREE.Vector3(C.GRID_W / 2, C.GRID_D / 2, 0);
+    const half = Math.max(C.GRID_W, C.GRID_D) / 2 + 1;
+    const skyFov = (2 * Math.atan(half / C.SKY_CAMERA_HEIGHT) * 180) / Math.PI;
+    this.camera.fov = 75 + (skyFov - 75) * t;
+    this.camera.updateProjectionMatrix();
+    this.camera.position.lerpVectors(eye, top, t);
+    this.camera.up.set(0, t, 1 - t).normalize();
+    this.camera.lookAt(new THREE.Vector3().lerpVectors(look, center, t));
     this.renderer.render(this.scene, this.camera);
+  }
+
+  // view 목표로 skyBlend 를 SKY_TRANSITION_MS 동안 옮긴다. 0 = 1인칭, 1 = 하늘 시점
+  stepView(view, dt) {
+    const target = view === 'sky' ? 1 : 0;
+    const step = (dt * 1000) / C.SKY_TRANSITION_MS;
+    if (this.skyBlend < target) this.skyBlend = Math.min(target, this.skyBlend + step);
+    else if (this.skyBlend > target) this.skyBlend = Math.max(target, this.skyBlend - step);
   }
 }

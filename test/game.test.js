@@ -215,6 +215,8 @@ test('넉백 아이템 + 투사체: 맞으면 넉백, 탄 소모', () => {
 
 test('아이템 스폰·획득', () => {
   const { g, p1 } = setup();
+  p1.x = 5.5; // 시작 위치 (1.5,1.5) 가 아이템 칸과 겹치지 않게 비켜둔다
+  p1.y = 0.5;
   g.controlItemNextAt = g.time;
   g.knockbackItemNextAt = g.time;
   const seq = [0.3, 0.3, 0.5, 0.5]; // 조종권 (1,1), 넉백 (3,3)
@@ -249,4 +251,72 @@ test('디버그 로그: 판 종료 시 압사/낙사 횟수와 누적이 찍힌�
   assert.equal(g.phase, 'playing');
   assert.ok(p1.alive && p2.alive);
   assert.equal(g.grid.reduce((a, b) => a + b, 0), 0);
+});
+
+test('밀치기 거리: 평지에서 약 1.3칸 (PUSH_KB_SPEED 3.5)', () => {
+  const { g, p1, p2 } = setup();
+  p1.x = 1.5;
+  p1.y = 3;
+  p1.yaw = 0;
+  p2.x = 2.5;
+  p2.y = 3;
+  g.handleAction(1, { name: 'push' });
+  run(g, 2000);
+  const d = p2.x - 2.5;
+  assert.ok(d > 1.1 && d < 1.5, `밀린 거리 ${d.toFixed(2)}`);
+  assert.equal(p2.alive, true);
+});
+
+test('시작 위치: 가장자리에서 1.5칸 안쪽이라 밀치기 한 번으로 안 떨어진다', () => {
+  const { g, p1, p2 } = setup();
+  assert.deepEqual([p1.x, p1.y, p2.x, p2.y], [1.5, 1.5, 4.5, 4.5]);
+  // p2 를 시작 위치 (1.5,1.5) 에 두고 바깥쪽(-x)으로 밀어도 산다
+  p2.x = 1.5;
+  p2.y = 1.5;
+  p1.x = 2.5;
+  p1.y = 1.5;
+  p1.yaw = Math.PI;
+  g.handleAction(1, { name: 'push' });
+  run(g, 2000);
+  assert.equal(p2.alive, true, `p2.x=${p2.x.toFixed(2)}`);
+});
+
+test('이벤트: 밀치기 명중/경직 무효, 아이템 획득, 조종 시작이 이벤트로 나온다', () => {
+  const { g, p1, p2 } = setup();
+  p1.x = 2.5;
+  p1.y = 2.5;
+  p1.yaw = 0;
+  p2.x = 3.5;
+  p2.y = 2.5;
+  g.drainEvents();
+  g.handleAction(1, { name: 'push' });
+  p1.pushReadyAt = 0;
+  g.handleAction(1, { name: 'push' });
+  const ev = g.drainEvents();
+  assert.deepEqual(
+    ev.map((e) => [e.type, e.kind, e.by, e.target, e.ok]),
+    [
+      ['hit', 'push', 1, 2, true],
+      ['hit', 'push', 1, 2, false],
+    ],
+  );
+  assert.equal(g.drainEvents().length, 0, 'drain 후엔 비어 있어야 함');
+  p1.hasControl = true;
+  g.nextSpawnAt = g.time;
+  g.tick(TICK);
+  assert.ok(g.drainEvents().some((e) => e.type === 'controlStart' && e.who === 1));
+});
+
+test('nextSpawnIn: 블록 없음 → 남은 대기, 낙하 중 → 착지까지 + 대기, 조종 중 → null', () => {
+  const { g, p1 } = setup();
+  g.nextSpawnAt = g.time + 1500;
+  assert.equal(g.snapshot().nextSpawnIn, 1500);
+  fallingPiece(g, 'O', 0, 4, 4, 2, 100); // 2칸 → 200ms 후 착지
+  const n = g.snapshot().nextSpawnIn;
+  assert.ok(Math.abs(n - (200 + C.AUTO_SPAWN_DELAY_MS)) < 1e-6, `nextSpawnIn=${n}`);
+  g.piece = null;
+  p1.hasControl = true;
+  g.nextSpawnAt = g.time;
+  g.tick(TICK);
+  assert.equal(g.snapshot().nextSpawnIn, null);
 });

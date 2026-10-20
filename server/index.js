@@ -135,7 +135,9 @@ setInterval(() => {
   }
   if (acc > TICK_MS * 5) acc = 0; // 너무 밀리면 버린다
   if (steps > 0 && sockets.size) {
-    const payload = JSON.stringify(game.snapshot(false));
+    const snap = game.snapshot(false);
+    snap.events = game.drainEvents();
+    const payload = JSON.stringify(snap);
     for (const ws of sockets.values()) if (ws.readyState === ws.OPEN) ws.send(payload);
   }
 }, TICK_MS);

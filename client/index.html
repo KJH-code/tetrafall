@@ -9,9 +9,20 @@
     canvas { display: block; }
     #hud { position: fixed; inset: 0; pointer-events: none; }
     #status { position: absolute; top: 10px; left: 10px; font-size: 14px; line-height: 1.5; background: rgba(0,0,0,.45); padding: 8px 10px; border-radius: 6px; white-space: pre; }
-    #center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; font-size: 20px; background: rgba(0,0,0,.55); padding: 14px 20px; border-radius: 8px; pointer-events: auto; white-space: pre; }
+    #center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; font-size: 20px; background: rgba(0,0,0,.55); padding: 14px 20px; border-radius: 8px; pointer-events: auto; }
+    #center-text { white-space: pre; }
     #center button { font-size: 18px; padding: 8px 18px; margin-top: 10px; cursor: pointer; }
-    #crosshair { position: absolute; top: 50%; left: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border: 2px solid rgba(255,255,255,.8); border-radius: 50%; }
+    #crosshair { position: absolute; top: 50%; left: 50%; width: 10px; height: 10px; margin: -7px 0 0 -7px; border: 2px solid rgba(255,255,255,.8); border-radius: 50%; }
+    /* 투사체 보유: 빨간 큰 조준점 + 탄 수 */
+    #crosshair.armed { width: 26px; height: 26px; margin: -15px 0 0 -15px; border: 3px solid #ff3030; box-shadow: 0 0 6px #ff3030; }
+    #crosshair.armed::after { content: attr(data-ammo); position: absolute; left: 34px; top: 2px; color: #ff5050; font-weight: bold; font-size: 15px; white-space: nowrap; text-shadow: 0 0 3px #000; }
+    #top { position: absolute; z-index: 2; top: 12px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    #banner { font-size: 20px; font-weight: bold; padding: 8px 16px; border-radius: 8px; background: rgba(0,140,160,.85); white-space: pre; text-align: center; }
+    #toasts { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .toast { font-size: 18px; padding: 6px 14px; border-radius: 6px; background: rgba(0,0,0,.7); white-space: pre; transition: opacity .4s; }
+    .toast.me { background: rgba(200,60,20,.9); font-weight: bold; }
+    .toast.good { background: rgba(20,140,60,.9); }
+    #center .keys { white-space: normal; font-size: 15px; text-align: left; margin-top: 12px; line-height: 1.7; color: #ddd; }
     #help { position: absolute; bottom: 10px; left: 10px; font-size: 12px; color: #aaa; white-space: pre; background: rgba(0,0,0,.35); padding: 6px 8px; border-radius: 6px; }
     #flash { position: absolute; inset: 0; background: rgba(255,0,0,.35); opacity: 0; transition: opacity .3s; }
     .hidden { display: none !important; }
@@ -23,9 +34,23 @@
 <body>
   <div id="hud">
     <div id="flash"></div>
+    <div id="top">
+      <div id="banner" class="hidden"></div>
+      <div id="toasts"></div>
+    </div>
     <div id="status">연결 중...</div>
     <div id="crosshair"></div>
-    <div id="center"><span id="center-text">연결 중...</span><br /><button id="start-btn" class="hidden">시작</button></div>
+    <div id="center"><span id="center-text">연결 중...</span><br /><button id="start-btn" class="hidden">시작</button>
+      <div id="keys" class="keys hidden">
+        <b>조작법</b><br />
+        WASD 이동 · Space 점프 · Shift 대시<br />
+        <b>좌클릭</b> 밀치기 (가까운 상대를 바라보는 쪽으로 밀어냄)<br />
+        <b>우클릭</b> 투사체 (빨간 아이템을 먹으면 조준점이 빨개짐)<br />
+        하늘색 아이템 = 조종권 → 다음 블록을 하늘에서 조종<br />
+        &nbsp;&nbsp;방향키 이동 · Q/E 회전 · <b>Enter 낙하</b> (8초 안에)<br />
+        상대를 블록에 깔리게(압사) 하거나 밖으로 떨어뜨리면(낙사) 승리
+      </div>
+    </div>
     <div id="help">WASD 이동 · Space 점프 · Shift 대시 · 좌클릭 밀치기 · 우클릭 투사체(넉백 아이템 필요)
 조종 중: 방향키 블록 이동 · Q/E 회전 · Enter 하드드롭 (8초 안에)</div>
   </div>

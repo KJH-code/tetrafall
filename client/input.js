@@ -10,6 +10,7 @@ export class Input {
     this.pitch = 0;
     this.locked = false;
     this.enabled = false; // 판 진행 중 + 살아있을 때만 true
+    this.sky = false; // 하늘 시점: WASD 가 화면 기준(W=화면 위), 마우스 회전 무시
 
     canvas.addEventListener('click', () => {
       if (!this.locked) canvas.requestPointerLock();
@@ -19,7 +20,7 @@ export class Input {
       if (!this.locked) this.keys.clear();
     });
     document.addEventListener('mousemove', (e) => {
-      if (!this.locked) return;
+      if (!this.locked || this.sky) return;
       this.yaw -= e.movementX * C.MOUSE_SENSITIVITY;
       this.pitch -= e.movementY * C.MOUSE_SENSITIVITY;
       const lim = Math.PI / 2 - 0.05;
@@ -81,8 +82,16 @@ export class Input {
   // 서버에 보낼 연속 입력
   sample() {
     const k = this.keys;
-    const fwd = (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0);
-    const strafe = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
+    let fwd = (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0);
+    let strafe = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
+    if (this.sky) {
+      // 하늘 시점 화면: 위 = +y, 오른쪽 = +x. 화면 기준 이동을 바라보는 방향 기준 fwd/strafe 로 바꾼다
+      const len = Math.hypot(strafe, fwd) || 1; // 대각선도 서버 clamp(-1..1) 안에 들도록 정규화
+      const mx = strafe / len;
+      const my = fwd / len;
+      fwd = mx * Math.cos(this.yaw) + my * Math.sin(this.yaw);
+      strafe = mx * Math.sin(this.yaw) - my * Math.cos(this.yaw);
+    }
     return {
       type: 'input',
       fwd: this.locked ? fwd : 0,

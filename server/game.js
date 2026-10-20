@@ -42,6 +42,17 @@ export class Game {
     this.controlItemNextAt = 0;
     this.knockbackItemNextAt = 0;
     this.gridDirty = true;
+    this.events = []; // 클라이언트 알림용 이벤트. 브로드캐스트 때 drainEvents() 로 비운다
+  }
+
+  emit(e) {
+    this.events.push(e);
+  }
+
+  drainEvents() {
+    const out = this.events;
+    this.events = [];
+    return out;
   }
 
   // ---------- 격자 ----------
@@ -143,6 +154,7 @@ export class Game {
     this.items = [];
     this.projectiles = [];
     this.deaths = [];
+    this.events = [];
     this.winnerId = null;
     this.roundNumber++;
     this.roundStartTime = this.time;
@@ -210,6 +222,7 @@ export class Game {
     p.hasControl = false;
     const t = this.time - this.roundStartTime;
     this.deaths.push({ name: p.name, cause, t });
+    this.emit({ type: 'death', who: p.id, cause });
     this.log(`  [사망] ${p.name} ${causeKo(cause)} @ ${fmtTime(t)} (위치 ${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)})`);
   }
 
@@ -291,6 +304,7 @@ export class Game {
       if (Math.abs(t.z - p.z) > C.PLAYER_HEIGHT) continue;
       if (dist > EPS && (dx * fx + dy * fy) / dist < cosHalf) continue;
       const hit = this.applyKnockback(t, fx, fy, C.PUSH_KB_SPEED, C.PUSH_KB_UP);
+      this.emit({ type: 'hit', kind: 'push', by: p.id, target: t.id, ok: hit });
       this.log(`  [밀치기] ${p.name} → ${t.name} ${hit ? '넉백' : '경직 중이라 무시'}`);
     }
   }
@@ -311,6 +325,7 @@ export class Game {
       owner: p.id,
       dieAt: this.time + C.PROJECTILE_LIFE_MS,
     });
+    this.emit({ type: 'fire', who: p.id });
     this.log(`  [발사] ${p.name} (남은 탄 ${p.ammo})`);
   }
 
@@ -382,6 +397,7 @@ export class Game {
       controller.hasControl = false;
       this.piece = piece;
       this.refreshPieceCells();
+      this.emit({ type: 'controlStart', who: controller.id });
       this.log(`  [블록] ${shape} 조종 시작: ${controller.name}`);
       return;
     }
@@ -553,6 +569,7 @@ export class Game {
       for (const z of full) if (p.z >= z + 1 - 1e-3) shift++;
       p.z -= shift;
     }
+    this.emit({ type: 'clear', n: full.length });
     this.log(`  [층 클리어] z=${full.join(',')} 제거 → 위 블록·플레이어 ${full.length}칸 내려앉음`);
   }
 
@@ -593,10 +610,12 @@ export class Game {
         this.items.splice(i, 1);
         if (it.type === 'control') {
           p.hasControl = true;
+          this.emit({ type: 'pickup', who: p.id, item: 'control' });
           this.log(`  [아이템] ${p.name} 조종권 획득`);
         } else {
           p.ammo += C.KNOCKBACK_AMMO;
           this.knockbackItemNextAt = this.time + C.KNOCKBACK_ITEM_RESPAWN_MS;
+          this.emit({ type: 'pickup', who: p.id, item: 'knockback' });
           this.log(`  [아이템] ${p.name} 넉백 아이템 획득 (탄 ${p.ammo})`);
         }
         break;
@@ -632,6 +651,7 @@ export class Game {
           ) {
             const shooter = this.players.get(pr.owner);
             const hit = this.applyKnockback(t, pr.dx, pr.dy, C.PROJECTILE_KB_SPEED, C.PROJECTILE_KB_UP);
+            this.emit({ type: 'hit', kind: 'projectile', by: pr.owner, target: t.id, ok: hit });
             this.log(`  [투사체] ${shooter ? shooter.name : '?'} → ${t.name} ${hit ? '넉백' : '경직 중이라 무시'}`);
             dead = true;
             break;
@@ -776,10 +796,15 @@ export class Game {
   snapshot(includeGrid = false) {
     const piece = this.piece;
     let pieceOut = null;
+    // 다음 블록이 나오기까지 남은 시간 (조종권 보유자에게 "N초 후 조종 시작" 표시용). 조종 중이면 null
+    let nextSpawnIn = Math.max(0, this.nextSpawnAt - this.time);
     if (piece) {
       let eta = Infinity;
       if (piece.phase === 'falling') {
         eta = Math.max(0, (piece.pz - piece.landZ - 1) * piece.stepMs + (piece.nextStepAt - this.time));
+        nextSpawnIn = eta + C.AUTO_SPAWN_DELAY_MS;
+      } else {
+        nextSpawnIn = null;
       }
       pieceOut = {
         shape: piece.shape,
@@ -824,6 +849,7 @@ export class Game {
         cause: p.deathCause,
       })),
       piece: pieceOut,
+      nextSpawnIn,
       items: this.items,
       projectiles: this.projectiles.map((pr) => ({ x: pr.x, y: pr.y, z: pr.z })),
       gridVersion: this.gridVersion,
