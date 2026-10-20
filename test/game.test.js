@@ -258,7 +258,7 @@ test('디버그 로그: 판 종료 시 압사/낙사 횟수와 누적이 찍힌�
   assert.equal(g.grid.reduce((a, b) => a + b, 0), 0);
 });
 
-test('밀치기 거리: 평지에서 약 1.3칸 (PUSH_KB_SPEED 3.5)', () => {
+test('밀치기 거리: 평지에서 약 1.5칸 (PUSH_KB_SPEED 4.2)', () => {
   const { g, p1, p2 } = setup();
   p1.x = 1.5;
   p1.y = 3;
@@ -268,7 +268,7 @@ test('밀치기 거리: 평지에서 약 1.3칸 (PUSH_KB_SPEED 3.5)', () => {
   g.handleAction(1, { name: 'push' });
   run(g, 2000);
   const d = p2.x - 2.5;
-  assert.ok(d > 1.1 && d < 1.5, `밀린 거리 ${d.toFixed(2)}`);
+  assert.ok(d > 1.35 && d < 1.6, `밀린 거리 ${d.toFixed(2)}`);
   assert.equal(p2.alive, true);
 });
 
