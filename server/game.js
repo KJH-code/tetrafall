@@ -15,6 +15,18 @@ function cellKey(cx, cy, cz) {
   return `${cx},${cy},${cz}`;
 }
 
+// 플레이어 AABB 가 칸 (cx, cy, cz) 와 겹치는가 (경계에 닿기만 하면 아님)
+function overlapsCell(p, cx, cy, cz) {
+  return (
+    cx < p.x + C.PLAYER_HALF - EPS &&
+    cx + 1 > p.x - C.PLAYER_HALF + EPS &&
+    cy < p.y + C.PLAYER_HALF - EPS &&
+    cy + 1 > p.y - C.PLAYER_HALF + EPS &&
+    cz < p.z + C.PLAYER_HEIGHT - EPS &&
+    cz + 1 > p.z + EPS
+  );
+}
+
 function fmtTime(ms) {
   const s = Math.floor(ms / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -124,6 +136,9 @@ export class Game {
       weaponUses: 0, // 망치 남은 횟수
       jumpUntil: 0, // 점프력 상승 끝나는 시각
       ghostUntil: 0, // 유령화 끝나는 시각
+      bricks: 0, // 설치 블록 남은 개수
+      brickLen: 1, // 설치 블록 길이 (1×1 또는 1×2)
+      brickSide: false, // 1×2 방향. false = 바라보는 쪽으로 뻗는 다리, true = 옆으로 막는 벽
       dashReadyAt: 0,
       pushReadyAt: 0,
       hasControl: false,
@@ -249,6 +264,9 @@ export class Game {
         weaponUses: 0,
         jumpUntil: 0,
         ghostUntil: 0,
+        bricks: 0,
+        brickLen: 1,
+        brickSide: false,
         dashReadyAt: 0,
         pushReadyAt: 0,
         hasControl: false,
@@ -349,16 +367,20 @@ export class Game {
         if (stunned || controlling || this.time < p.pushReadyAt) return; // 조종 중 공격 불가
         this.push(p);
         return;
-      case 'fire':
-        if (stunned || controlling || p.ammo <= 0) return;
-        this.fire(p);
+      case 'fire': // 우클릭: 설치 블록이 있으면 설치, 아니면 투사체
+        if (stunned || controlling) return;
+        if (p.bricks > 0) this.placeBrick(p);
+        else if (p.ammo > 0) this.fire(p);
         return;
       case 'pieceMove':
         if (!controlling) return;
         this.movePiece(this.controlledPiece(p), action.dx | 0, action.dy | 0);
         return;
       case 'rotate':
-        if (!controlling) return;
+        if (!controlling) {
+          if (p.bricks > 0 && p.brickLen === 2) p.brickSide = !p.brickSide; // 조종 중이 아니면 Q/E 는 1×2 방향 바꾸기
+          return;
+        }
         this.rotatePiece(this.controlledPiece(p), action.dir > 0 ? 1 : -1);
         return;
       case 'drop':
@@ -429,6 +451,55 @@ export class Game {
     });
     this.emit({ type: 'fire', who: p.id });
     this.log(`  [발사] ${p.name} (남은 탄 ${p.ammo})`);
+  }
+
+  // 설치 블록이 들어갈 칸들과 높이. 바라보는 방향 BRICK_REACH 앞 점이 든 칸이 기준,
+  // 1×2 는 바라보는 방향을 가로·세로 중 가까운 쪽으로 맞춰 앞(다리) 또는 옆(벽)으로 한 칸 더.
+  // 높이 = 그 칸들 기둥 맨 위 중 가장 높은 곳. ok 가 false 면 못 놓음 (소모 안 함)
+  brickPlan(p, yaw = p.yaw) {
+    const fx = Math.cos(yaw);
+    const fy = Math.sin(yaw);
+    const ax = Math.floor(p.x + fx * C.BRICK_REACH);
+    const ay = Math.floor(p.y + fy * C.BRICK_REACH);
+    const cells = [[ax, ay]];
+    if (p.brickLen === 2) {
+      const along = Math.abs(fx) >= Math.abs(fy) ? [Math.sign(fx), 0] : [0, Math.sign(fy)];
+      const [dx, dy] = p.brickSide ? [-along[1], along[0]] : along;
+      cells.push([ax + dx, ay + dy]);
+    }
+    const inField = cells.every(([x, y]) => x >= 0 && x < C.GRID_W && y >= 0 && y < C.GRID_D);
+    if (!inField) return { cells: cells.map(([x, y]) => [x, y, 0]), z: 0, ok: false };
+    const z = Math.max(...cells.map(([x, y]) => this.columnTop(x, y)));
+    const ok =
+      z < C.GRID_H &&
+      !cells.some(([x, y]) => this.pieceCells.has(cellKey(x, y, z))) && // 떨어지는 블록이 지금 그 칸에 있음
+      !cells.some(([x, y]) => overlapsCell(p, x, y, z)); // 내 몸과 겹침
+    return { cells: cells.map(([x, y]) => [x, y, z]), z, ok };
+  }
+
+  placeBrick(p) {
+    const plan = this.brickPlan(p);
+    if (!plan.ok) return false;
+    p.bricks--;
+    for (const [x, y, z] of plan.cells) this.grid[this.idx(x, y, z)] = 1;
+    this.gridVersion++;
+    this.gridDirty = true;
+    const [ax, ay] = plan.cells[0];
+    this.emit({ type: 'place', who: p.id, cells: plan.cells });
+    this.log(`  [설치] ${p.name} 1×${p.brickLen} → (${ax},${ay}) z=${plan.z} (남은 ${p.bricks}개)`);
+    // 그 칸에 서 있던 사람은 블록 위로 올라가고 설치한 사람 반대쪽으로 밀린다
+    for (const t of this.players.values()) {
+      if (t === p || !t.alive || !plan.cells.some(([x, y, z]) => overlapsCell(t, x, y, z))) continue;
+      this.ejectFromBlocks(t);
+      const hit = this.applyKnockback(t, t.x - p.x, t.y - p.y, C.BRICK_KB_SPEED, C.BRICK_KB_UP);
+      this.emit({ type: 'hit', kind: 'brick', by: p.id, target: t.id, ok: hit });
+      this.log(`  [설치] ${p.name} → ${t.name} 블록 위로 밀어 올림${hit ? ' + 넉백' : ' (경직 중이라 넉백 무시)'}`);
+    }
+    if (p.bricks === 0) p.brickSide = false;
+    this.clearLayers();
+    for (const pc of this.pieces) this.updateLanding(pc);
+    for (const it of this.items) it.z = this.columnTop(it.x, it.y);
+    return true;
   }
 
   // 경직 중이면 무시 (연속 넉백 불가). 성공 시 true
@@ -939,8 +1010,10 @@ export class Game {
 
   givePower(p, type) {
     if (type === 'knockback') {
+      const dropped = p.bricks;
+      p.bricks = 0; // 우클릭 칸 공유: 나중에 먹은 쪽만 남는다
       p.ammo += C.KNOCKBACK_AMMO;
-      this.log(`  [아이템] ${p.name} 넉백 아이템 획득 (탄 ${p.ammo})`);
+      this.log(`  [아이템] ${p.name} 넉백 아이템 획득 (탄 ${p.ammo})${dropped ? ' — 설치 블록 버림' : ''}`);
     } else if (type === 'weapon') {
       p.weaponUses = C.WEAPON_USES;
       this.log(`  [아이템] ${p.name} 망치 획득 (${p.weaponUses}회)`);
@@ -950,6 +1023,13 @@ export class Game {
     } else if (type === 'ghost') {
       p.ghostUntil = this.time + C.GHOST_MS;
       this.log(`  [아이템] ${p.name} 유령화 획득`);
+    } else if (type === 'brick') {
+      const dropped = p.ammo;
+      p.ammo = 0;
+      p.bricks = C.BRICK_USES;
+      p.brickLen = this.rng() < C.BRICK_LONG_CHANCE ? 2 : 1;
+      p.brickSide = false;
+      this.log(`  [아이템] ${p.name} 설치 블록 1×${p.brickLen} 획득 (${p.bricks}개)${dropped ? ' — 투사체 버림' : ''}`);
     }
   }
 
@@ -1207,6 +1287,10 @@ export class Game {
         weaponUses: p.weaponUses,
         jumpLeft: Math.max(0, p.jumpUntil - this.time),
         ghostLeft: Math.max(0, p.ghostUntil - this.time),
+        bricks: p.bricks,
+        brickLen: p.brickLen,
+        brickSide: p.brickSide,
+        brickPlan: p.alive && p.bricks > 0 ? this.brickPlan(p) : null, // 설치 미리보기
         controlling: this.isControlling(p),
         cause: p.deathCause,
       })),

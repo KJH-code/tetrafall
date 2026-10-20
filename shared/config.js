@@ -69,7 +69,7 @@ export const CONFIG = {
 
   // ---- 아이템 (조종권 제외) — 2단계 ----
   // 필드에 동시에 ITEM_MAX_ON_FIELD 개까지. 종류는 ITEM_POOL 에서 무작위
-  ITEM_POOL: ['knockback', 'weapon', 'jump', 'ghost'],
+  ITEM_POOL: ['knockback', 'weapon', 'jump', 'ghost', 'brick'],
   ITEM_MAX_ON_FIELD: 2,
   ITEM_FIRST_SPAWN_MS: 4000, // 판 시작 후 첫 아이템
   ITEM_RESPAWN_MS: 6000, // 다음 아이템까지
@@ -84,6 +84,13 @@ export const CONFIG = {
   // 유령화: 블록을 옆으로 통과, 점프하면 머리 위 블록을 뚫고 올라가 그 위에 섬, 아래로는 안 빠짐 (한쪽 통과 발판).
   // 압사는 그대로 당함. 끝날 때 블록 안이면 그 기둥 꼭대기로 밀려 올라감
   GHOST_MS: 6000,
+  // 설치 블록: 우클릭으로 바라보는 방향 바로 앞 칸의 기둥 맨 위에 1×1 또는 1×2 블록을 놓는다.
+  // 투사체와 우클릭을 같이 써서, 둘 중 나중에 먹은 쪽만 남는다. 1×2 는 Q/E 로 다리(앞으로) ↔ 벽(옆으로)
+  BRICK_USES: 2, // 아이템 하나당 설치 횟수
+  BRICK_LONG_CHANCE: 0.5, // 먹을 때 1×2 가 될 확률 (나머지는 1×1)
+  BRICK_REACH: 1.3, // 내 중심에서 바라보는 방향으로 이 거리의 점이 든 칸 = 설치 칸 (반폭 0.3 + 1: 내 몸과 안 겹침)
+  BRICK_KB_SPEED: 4.2, // 설치 칸에 서 있던 사람: 블록 위로 올린 뒤 설치한 사람 반대쪽으로 (밀치기와 같은 세기)
+  BRICK_KB_UP: 3,
 
   // ---- 투사체 (넉백 아이템) ----
   KNOCKBACK_AMMO: 1, // 아이템 하나당 발사 횟수

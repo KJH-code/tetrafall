@@ -19,6 +19,8 @@
     /* 투사체 보유: 빨간 큰 조준점 + 탄 수 */
     #crosshair.armed { width: 26px; height: 26px; margin: -15px 0 0 -15px; border: 3px solid #ff3030; box-shadow: 0 0 6px #ff3030; }
     #crosshair.armed::after { content: attr(data-ammo); position: absolute; left: 34px; top: 2px; color: #ff5050; font-weight: bold; font-size: 15px; white-space: nowrap; text-shadow: 0 0 3px #000; }
+    #crosshair.brick { border-color: #f0d060; box-shadow: 0 0 6px #f0d060; border-radius: 3px; }
+    #crosshair.brick::after { color: #f0d060; }
     #top { position: absolute; z-index: 2; top: 12px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
     #banner { font-size: 20px; font-weight: bold; padding: 8px 16px; border-radius: 8px; background: rgba(0,140,160,.85); white-space: pre; text-align: center; }
     #toasts { display: flex; flex-direction: column; align-items: center; gap: 6px; }
@@ -58,14 +60,14 @@
         <b>조작법</b><br />
         WASD 이동 · Space 점프 · Shift 대시<br />
         <b>좌클릭</b> 밀치기 (가까운 상대를 바라보는 쪽으로 밀어냄)<br />
-        <b>우클릭</b> 투사체 (빨간 공을 먹으면 조준점이 빨개짐)<br />
+        <b>우클릭</b> 투사체 (빨간 공) 또는 설치 블록 (노란 상자, 바로 앞에 1×1·1×2 를 놓음, Q/E 로 1×2 방향)<br />
         하늘색 = 조종권: 먹는 즉시 블록을 하늘에서 조종<br />
         &nbsp;&nbsp;방향키 이동 · Q/E 회전 · <b>Enter 낙하</b> (8초 안에)<br />
         아이템: 주황 = 망치 (3번 세게 밀기) · 초록 = 점프력 상승 (2칸 벽) · 흰 고리 = 유령화 (블록 통과)<br />
         상대를 블록에 깔리게(압사) 하거나 밖으로 떨어뜨리면(낙사) 승리. 블록이 쌓이면 용암이 올라온다 — 위로!
       </div>
     </div>
-    <div id="help">WASD 이동 · Space 점프 · Shift 대시 · 좌클릭 밀치기 · 우클릭 투사체(넉백 아이템 필요)
+    <div id="help">WASD 이동 · Space 점프 · Shift 대시 · 좌클릭 밀치기 · 우클릭 투사체·설치 블록 (아이템 필요) · Q/E 1×2 방향
 조종 중: 방향키 블록 이동 · Q/E 회전 · Enter 하드드롭 (8초 안에)</div>
   </div>
   <script type="module" src="/main.js"></script>

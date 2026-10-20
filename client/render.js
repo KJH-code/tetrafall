@@ -14,6 +14,7 @@ const ITEM_LOOK = {
   weapon: { color: 0xff8a10, geo: () => new THREE.BoxGeometry(0.42, 0.24, 0.24) }, // 주황 망치 머리
   jump: { color: 0x40e040, geo: () => new THREE.ConeGeometry(0.24, 0.45, 12) }, // 초록 원뿔(위로)
   ghost: { color: 0xe8e8ff, geo: () => new THREE.TorusGeometry(0.2, 0.07, 8, 18) }, // 흰 고리
+  brick: { color: 0xf0d060, geo: () => new THREE.BoxGeometry(0.32, 0.32, 0.32) }, // 노란 작은 블록
 };
 
 const PLAYER_COLORS = [0xe05050, 0x50c050, 0xb060e0, 0xe0c050, 0xf0f0f0, 0x40d0c0, 0xff80b0, 0x8a5a30];
@@ -46,6 +47,11 @@ export class Renderer {
     this.viewHammer.position.set(0, -0.24, 0); // 캡슐 먼 끝 (x축 +90도 회전이라 로컬 -y 가 화면 안쪽)
     this.viewHammer.visible = false;
     this.viewArm.add(this.viewHammer);
+    // 1인칭 손에 든 설치 블록 (설치 블록 있을 때만)
+    this.viewBrick = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.13), new THREE.MeshLambertMaterial({ color: ITEM_LOOK.brick.color }));
+    this.viewBrick.position.set(0, -0.24, 0);
+    this.viewBrick.visible = false;
+    this.viewArm.add(this.viewBrick);
     // 하늘 시점: 필드가 화면에 꽉 차는 직교 카메라 (블록과 그림자가 같은 크기로 보인다)
     this.skyCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
     this.skyCamera.up.set(0, 1, 0);
@@ -113,6 +119,16 @@ export class Renderer {
     this.effects = new Effects(this.scene);
     // 조종 중 하늘에서 본 블록의 착지 미리보기 (조종자에게만)
     this.previewMat = new THREE.MeshBasicMaterial({ color: 0xf0a030, transparent: true, opacity: 0.35 });
+    // 설치 블록 미리보기: 놓일 칸에 반투명 상자 + 윤곽 (1×2 라 2개). 못 놓으면 빨강
+    this.brickPreviewMat = new THREE.MeshBasicMaterial({ color: 0xf0d060, transparent: true, opacity: 0.3, depthWrite: false });
+    this.brickEdgeMat = new THREE.LineBasicMaterial({ color: 0xf0d060 });
+    this.brickPreview = [0, 1].map(() => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), this.brickPreviewMat);
+      m.add(new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1.002, 1.002, 1.002)), this.brickEdgeMat));
+      m.visible = false;
+      this.scene.add(m);
+      return m;
+    });
 
     this.playerMeshes = new Map();
     this.itemMeshes = [];
@@ -353,11 +369,24 @@ export class Renderer {
 
     // 카메라
     const me = state.players.find((p) => p.id === myId);
+    // 설치 블록 미리보기 (내 것만, 1인칭에서)
+    const plan = me && me.alive && view === 'fps' ? me.brickPlan : null;
+    if (plan) {
+      const color = plan.ok ? 0xf0d060 : 0xff3030;
+      this.brickPreviewMat.color.setHex(color);
+      this.brickEdgeMat.color.setHex(color);
+    }
+    this.brickPreview.forEach((m, i) => {
+      const c = plan && plan.cells[i];
+      m.visible = !!c;
+      if (c) m.position.set(c[0] + 0.5, c[1] + 0.5, c[2] + 0.5);
+    });
     if (me) this.viewArm.material.color.setHex(PLAYER_COLORS[me.slot % PLAYER_COLORS.length]);
     const vp = this.effects.punchAmount(myId);
     this.viewArm.position.set(this.viewArmBase.x - 0.12 * vp, this.viewArmBase.y + 0.08 * vp, this.viewArmBase.z - 0.3 * vp);
     this.viewArm.visible = !!(me && me.alive) && this.skyBlend === 0;
     this.viewHammer.visible = !!(me && me.weaponUses > 0);
+    this.viewBrick.visible = !!(me && me.bricks > 0) && !this.viewHammer.visible;
     this.effects.update(dt, this.skyBlend >= 1 ? this.skyCamera : this.camera);
     this.pieceMat.opacity = this.skyBlend > 0.5 ? 0.55 : 1; // 하늘 시점에선 블록 너머로 착지 미리보기가 보이게
     this.controlledMat.opacity = this.pieceMat.opacity;
