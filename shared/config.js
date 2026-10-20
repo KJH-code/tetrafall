@@ -67,8 +67,25 @@ export const CONFIG = {
   CONTROL_ITEM_RESPAWN_MS: 6000, // 조종권 아이템 재스폰 대기
   CONTROL_HOVER_Z: GRID_H, // 조종 중 블록이 떠 있는 높이
 
-  // ---- 넉백 아이템 / 투사체 ----
-  KNOCKBACK_ITEM_RESPAWN_MS: 8000,
+  // ---- 아이템 (조종권 제외) — 2단계 ----
+  // 필드에 동시에 ITEM_MAX_ON_FIELD 개까지. 종류는 ITEM_POOL 에서 무작위
+  ITEM_POOL: ['knockback', 'weapon', 'jump', 'ghost'],
+  ITEM_MAX_ON_FIELD: 2,
+  ITEM_FIRST_SPAWN_MS: 4000, // 판 시작 후 첫 아이템
+  ITEM_RESPAWN_MS: 6000, // 다음 아이템까지
+  // 망치(근접 무기): WEAPON_USES 번 휘두르는 동안 밀치기 대신. 넉백 2배 + 경직 길게. 빗나가도 1회 소모
+  WEAPON_USES: 3,
+  WEAPON_KB_SPEED: 8.4, // 밀치기(4.2)의 2배 → 약 3칸
+  WEAPON_KB_UP: 4,
+  WEAPON_STUN_MS: 1200,
+  // 점프력 상승: 최고 높이 약 2.33칸 (2칸 벽은 넘고 3칸은 못 넘음, 30Hz 실측)
+  JUMP_BOOST_MS: 8000,
+  JUMP_BOOST_SPEED: 10,
+  // 유령화: 블록을 옆으로 통과, 점프하면 머리 위 블록을 뚫고 올라가 그 위에 섬, 아래로는 안 빠짐 (한쪽 통과 발판).
+  // 압사는 그대로 당함. 끝날 때 블록 안이면 그 기둥 꼭대기로 밀려 올라감
+  GHOST_MS: 6000,
+
+  // ---- 투사체 (넉백 아이템) ----
   KNOCKBACK_AMMO: 1, // 아이템 하나당 발사 횟수
   PROJECTILE_SPEED: 18, // 단위/초
   PROJECTILE_RADIUS: 0.2,

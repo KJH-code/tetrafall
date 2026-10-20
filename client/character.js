@@ -47,6 +47,12 @@ export function buildCharacter(color) {
     arms.push(arm);
   }
 
+  // 망치 머리: 오른팔 끝에 붙임 (망치 아이템 있을 때만 보임)
+  const hammer = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.2, 0.2), new THREE.MeshLambertMaterial({ color: 0xff8a10 }));
+  hammer.position.set(0, -0.2, 0); // 오른팔 바깥 끝 (팔은 로컬 y 축 방향 캡슐)
+  hammer.visible = false;
+  arms[0].add(hammer);
+
   // 발 두 개: 바닥에 납작하게. 몸통 아래 안쪽에 둔다
   const footMat = new THREE.MeshLambertMaterial({ color: 0x333333 });
   for (const side of [-1, 1]) {
@@ -56,5 +62,5 @@ export function buildCharacter(color) {
     group.add(foot);
   }
 
-  return { group, bodyMaterial, arms };
+  return { group, bodyMaterial, arms, hammer };
 }

@@ -7,6 +7,15 @@ import { Effects } from '/effects.js';
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
 // P1~P8 색. 블록(파랑 계열)·떨어지는 블록(주황)과 헷갈리지 않는 색 위주
+// 아이템 모양·색: 멀리서도 종류를 구분하게
+const ITEM_LOOK = {
+  control: { color: 0x20e0e0, geo: () => new THREE.OctahedronGeometry(0.3) }, // 하늘색 팔면체
+  knockback: { color: 0xe02020, geo: () => new THREE.SphereGeometry(0.24, 14, 10) }, // 빨간 공
+  weapon: { color: 0xff8a10, geo: () => new THREE.BoxGeometry(0.42, 0.24, 0.24) }, // 주황 망치 머리
+  jump: { color: 0x40e040, geo: () => new THREE.ConeGeometry(0.24, 0.45, 12) }, // 초록 원뿔(위로)
+  ghost: { color: 0xe8e8ff, geo: () => new THREE.TorusGeometry(0.2, 0.07, 8, 18) }, // 흰 고리
+};
+
 const PLAYER_COLORS = [0xe05050, 0x50c050, 0xb060e0, 0xe0c050, 0xf0f0f0, 0x40d0c0, 0xff80b0, 0x8a5a30];
 const MAX_CELLS = C.GRID_W * C.GRID_D * C.GRID_H;
 
@@ -32,6 +41,11 @@ export class Renderer {
     this.viewArm.position.copy(this.viewArmBase);
     this.viewArm.visible = false;
     this.camera.add(this.viewArm);
+    // 1인칭 망치 머리 (망치 있을 때만)
+    this.viewHammer = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.12, 0.12), new THREE.MeshLambertMaterial({ color: 0xff8a10 }));
+    this.viewHammer.position.set(0, -0.24, 0); // 캡슐 먼 끝 (x축 +90도 회전이라 로컬 -y 가 화면 안쪽)
+    this.viewHammer.visible = false;
+    this.viewArm.add(this.viewHammer);
     // 하늘 시점: 필드가 화면에 꽉 차는 직교 카메라 (블록과 그림자가 같은 크기로 보인다)
     this.skyCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
     this.skyCamera.up.set(0, 1, 0);
@@ -162,6 +176,7 @@ export class Renderer {
       g = ch.group;
       g.userData.bodyMat = ch.bodyMaterial;
       g.userData.arms = ch.arms;
+      g.userData.hammer = ch.hammer;
       g.userData.color = color;
       // 하늘 시점 전용 표시: 바라보는 방향 화살표 (+ 내 캐릭터는 흰 고리)
       const tri = new THREE.Shape();
@@ -229,14 +244,20 @@ export class Renderer {
       g.userData.arrow.material.color.setHex(p.id === myId ? 0xffffff : g.userData.color);
       g.userData.ring.visible = skyMarks && p.id === myId;
       // 맞으면 찌그러졌다 펴짐
+      // 유령화: 반투명, 점프력 상승: 초록 빛, 망치: 오른팔에 망치 머리
+      bodyMat.transparent = true;
+      bodyMat.opacity = p.ghostLeft > 0 ? 0.35 + 0.1 * Math.sin(performance.now() / 120) : 1;
+      if (p.jumpLeft > 0 && !p.stunned) bodyMat.emissive.setHex(0x1a5a1a);
+      g.userData.hammer.visible = p.weaponUses > 0;
       const sq = this.effects.squashAmount(p.id);
       g.scale.set(1 + 0.28 * sq, 1 + 0.28 * sq, 1 - 0.32 * sq);
       // 밀치기: 오른팔을 앞으로 뻗음
       const pu = this.effects.punchAmount(p.id);
       const arm = g.userData.arms[0];
-      arm.position.x = arm.userData.base.x + 0.38 * pu;
-      arm.position.z = arm.userData.base.z + 0.25 * pu;
-      arm.rotation.y = -1.35 * pu;
+      // 옆으로 뻗은 오른팔(-y 쪽)을 z축으로 돌려 앞(+x)을 향하게
+      arm.position.x = arm.userData.base.x + 0.3 * pu;
+      arm.position.z = arm.userData.base.z + 0.2 * pu;
+      arm.rotation.z = (Math.PI / 2) * pu;
     }
     for (const [id, g] of this.playerMeshes) {
       if (!seen.has(id)) {
@@ -293,7 +314,8 @@ export class Renderer {
 
     // 아이템
     while (this.itemMeshes.length < state.items.length) {
-      const m = new THREE.Mesh(new THREE.OctahedronGeometry(0.3), new THREE.MeshLambertMaterial({ color: 0xffffff }));
+      const m = new THREE.Mesh(ITEM_LOOK.control.geo(), new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x222222 }));
+      m.userData.type = 'control';
       this.scene.add(m);
       this.itemMeshes.push(m);
     }
@@ -304,10 +326,16 @@ export class Renderer {
         m.visible = false;
         continue;
       }
+      const look = ITEM_LOOK[it.type] || ITEM_LOOK.control;
+      if (m.userData.type !== it.type) {
+        m.geometry.dispose();
+        m.geometry = look.geo();
+        m.userData.type = it.type;
+      }
       m.visible = true;
-      m.position.set(it.x + 0.5, it.y + 0.5, it.z + 0.45);
+      m.position.set(it.x + 0.5, it.y + 0.5, it.z + 0.45 + Math.sin(performance.now() / 300 + i) * 0.06);
       m.rotation.z += dt * 2;
-      m.material.color.setHex(it.type === 'control' ? 0x20e0e0 : 0xe02020);
+      m.material.color.setHex(look.color);
     }
 
     // 투사체
@@ -329,6 +357,7 @@ export class Renderer {
     const vp = this.effects.punchAmount(myId);
     this.viewArm.position.set(this.viewArmBase.x - 0.12 * vp, this.viewArmBase.y + 0.08 * vp, this.viewArmBase.z - 0.3 * vp);
     this.viewArm.visible = !!(me && me.alive) && this.skyBlend === 0;
+    this.viewHammer.visible = !!(me && me.weaponUses > 0);
     this.effects.update(dt, this.skyBlend >= 1 ? this.skyCamera : this.camera);
     this.pieceMat.opacity = this.skyBlend > 0.5 ? 0.55 : 1; // 하늘 시점에선 블록 너머로 착지 미리보기가 보이게
     this.controlledMat.opacity = this.pieceMat.opacity;

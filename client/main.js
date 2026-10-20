@@ -92,7 +92,15 @@ function nameOf(id) {
   return p ? p.name : '?';
 }
 
-const KIND_KO = { push: '밀치기', projectile: '투사체' };
+const KIND_KO = { push: '밀치기', projectile: '투사체', weapon: '망치' };
+const ITEM_KO = { control: '조종권', knockback: '투사체', weapon: '망치', jump: '점프력 상승', ghost: '유령화' };
+const ITEM_HELP = {
+  control: '조종권 획득! 블록을 하늘에서 조종합니다',
+  knockback: '투사체 획득! 우클릭으로 발사',
+  weapon: `망치 획득! ${C.WEAPON_USES}번 동안 좌클릭이 2배로 밀고 오래 기절시킴`,
+  jump: `점프력 상승! ${C.JUMP_BOOST_MS / 1000}초 동안 2칸 벽도 넘음`,
+  ghost: `유령화! ${C.GHOST_MS / 1000}초 동안 블록 통과 (떨어지는 블록엔 깔림)`,
+};
 const CAUSE_KO = { crush: '압사', fall: '낙사', lava: '용암' };
 
 function handleEvent(e) {
@@ -110,9 +118,9 @@ function handleEvent(e) {
       break;
     case 'pickup':
       if (e.who === myId) {
-        toast(e.item === 'control' ? '조종권 획득! 다음 블록을 하늘에서 조종합니다' : '투사체 획득! 우클릭으로 발사', 'good');
+        toast(ITEM_HELP[e.item] || `${ITEM_KO[e.item] || e.item} 획득`, 'good');
       } else {
-        toast(`${nameOf(e.who)} ${e.item === 'control' ? '조종권' : '투사체'} 획득`);
+        toast(`${nameOf(e.who)} ${ITEM_KO[e.item] || e.item} 획득`);
       }
       break;
     case 'controlStart':
@@ -155,15 +163,17 @@ function feelEvent(e) {
         const len = Math.hypot(dx, dy) || 1;
         dir = { x: dx / len, y: dy / len };
       }
-      fx.burst(chest, dir, e.kind === 'projectile' ? 0xffee40 : 0xfff2c0);
-      fx.ring(chest, e.kind === 'projectile' ? 0xffee40 : 0xffffff, 2.4);
+      const heavy = e.kind === 'weapon';
+      fx.burst(chest, dir, e.kind === 'projectile' ? 0xffee40 : heavy ? 0xffa040 : 0xfff2c0, heavy ? C.FX_PARTICLES * 2 : C.FX_PARTICLES, heavy ? 7 : 5);
+      fx.ring(chest, e.kind === 'projectile' ? 0xffee40 : heavy ? 0xff8a10 : 0xffffff, heavy ? 3.4 : 2.4);
       fx.hitSquash(e.target);
       if (e.target === myId) {
         sound.play('hurt');
-        fx.shake(C.FX_SHAKE_HURT);
+        fx.shake(C.FX_SHAKE_HURT * (heavy ? 1.6 : 1));
       } else if (e.by === myId) {
         sound.play('hit', { strong: true });
-        fx.shake(C.FX_SHAKE_HIT, 150);
+        if (heavy) sound.play('hurt'); // 망치는 묵직한 저음을 한 겹 더
+        fx.shake(C.FX_SHAKE_HIT * (heavy ? 2 : 1), 150);
         showHitmarker();
       } else {
         sound.play('hit', { dist: distToMe(t.x, t.y, t.z) });
@@ -294,6 +304,9 @@ function updateHud() {
     const flags = [];
     if (p.stunned) flags.push('경직!');
     if (p.dashCd > 0) flags.push(`대시 ${(p.dashCd / 1000).toFixed(1)}s`);
+    if (p.weaponUses > 0) flags.push(`망치 ${p.weaponUses}회`);
+    if (p.jumpLeft > 0) flags.push(`점프↑ ${(p.jumpLeft / 1000).toFixed(1)}s`);
+    if (p.ghostLeft > 0) flags.push(`유령 ${(p.ghostLeft / 1000).toFixed(1)}s`);
     if (!p.alive) flags.push(`사망 (${CAUSE_KO[p.cause] || p.cause})`);
     if (flags.length) lines.push(flags.join(' · '));
     if (state.lava && state.lava.active) {

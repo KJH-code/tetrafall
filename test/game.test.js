@@ -227,10 +227,13 @@ test('아이템 스폰·획득', () => {
   p1.x = C.GRID_W - 0.5; // 시작 위치가 아이템 칸과 겹치지 않게 구석으로 비켜둔다
   p1.y = 0.5;
   g.controlItemNextAt = g.time;
-  g.knockbackItemNextAt = g.time;
+  g.powerItemNextAt = g.time;
   const seq = [0.3, 0.3, 0.5, 0.5]; // 조종권 (0.3W, 0.3D), 넉백 (0.5W, 0.5D)
   g.rng = () => (seq.length ? seq.shift() : 0.5);
+  const savedPool = C.ITEM_POOL;
+  C.ITEM_POOL = ['knockback'];
   g.tick(TICK);
+  C.ITEM_POOL = savedPool;
   assert.equal(g.items.length, 2);
   const ctl = g.items.find((it) => it.type === 'control');
   const kb = g.items.find((it) => it.type === 'knockback');
@@ -445,7 +448,7 @@ function setupN(n, log = () => {}) {
   g.piece = null;
   g.nextSpawnAt = Infinity;
   g.controlItemNextAt = Infinity;
-  g.knockbackItemNextAt = Infinity;
+  g.powerItemNextAt = Infinity;
   return { g, lines, ps: [...g.players.values()] };
 }
 
@@ -585,7 +588,7 @@ test('봇: 떨어지는 블록 그림자를 보고 피한다', () => {
   g.startRound();
   g.nextSpawnAt = Infinity;
   g.controlItemNextAt = Infinity;
-  g.knockbackItemNextAt = Infinity;
+  g.powerItemNextAt = Infinity;
   human.x = 5.5;
   human.y = 0.5;
   bot.x = 2.5;
@@ -602,7 +605,7 @@ test('봇: 조종권으로 가만히 선 상대 위에 블록을 떨어뜨려 �
     g.startRound();
     g.nextSpawnAt = Infinity;
     g.controlItemNextAt = Infinity;
-    g.knockbackItemNextAt = Infinity;
+    g.powerItemNextAt = Infinity;
     human.x = 4.5;
     human.y = 3.5;
     bot.x = 1.5;
@@ -622,7 +625,7 @@ test('봇: 가까이 있는 상대를 민다', () => {
   g.startRound();
   g.nextSpawnAt = Infinity;
   g.controlItemNextAt = Infinity;
-  g.knockbackItemNextAt = Infinity;
+  g.powerItemNextAt = Infinity;
   human.x = 2.5;
   human.y = 3;
   bot.x = 3.5;
@@ -679,7 +682,7 @@ test('블록 가속: 처음엔 자동 블록 1개, 시간이 지나면 동시에
   p2.x = 0.5;
   g.nextSpawnAt = g.time;
   g.controlItemNextAt = Infinity;
-  g.knockbackItemNextAt = Infinity;
+  g.powerItemNextAt = Infinity;
   let max0 = 0;
   for (let t = 0; t < 15000; t += TICK) {
     g.tick(TICK);
@@ -803,4 +806,125 @@ test('블록이 착지하면 land 이벤트(셀 위치)가 나온다', () => {
   run(g, 300);
   const land = g.drainEvents().find((e) => e.type === 'land');
   assert.ok(land && land.cells.length === 4 && land.cells.every((c) => c[2] === 0));
+});
+
+// ---------- 2단계 C: 아이템 ----------
+test('아이템 생성: 조종권 말고는 필드에 ITEM_MAX_ON_FIELD 개까지, 종류는 ITEM_POOL 에서', () => {
+  const { g, p1, p2 } = setup();
+  g.rng = Math.random;
+  p1.x = 0.5;
+  p2.x = 0.5;
+  g.controlItemNextAt = Infinity;
+  g.powerItemNextAt = g.time;
+  const seen = new Set();
+  for (let t = 0; t < 120000; t += TICK) {
+    g.tick(TICK);
+    const power = g.items.filter((it) => it.type !== 'control');
+    assert.ok(power.length <= C.ITEM_MAX_ON_FIELD);
+    for (const it of power) seen.add(it.type);
+    if (power.length === C.ITEM_MAX_ON_FIELD) g.items = []; // 계속 새로 나오게 비움
+    g.powerItemNextAt = Math.min(g.powerItemNextAt, g.time + 200);
+  }
+  for (const type of C.ITEM_POOL) assert.ok(seen.has(type), `${type} 안 나옴`);
+});
+
+test('망치: WEAPON_USES 번 동안 밀치기 대신 — 넉백 약 2배, 경직 WEAPON_STUN_MS, 빗나가도 소모', () => {
+  const { g, p1, p2 } = setup();
+  g.givePower(p1, 'weapon');
+  assert.equal(p1.weaponUses, C.WEAPON_USES);
+  p1.x = 2.5;
+  p1.y = 5;
+  p1.yaw = 0;
+  p2.x = 3.5;
+  p2.y = 5;
+  g.handleAction(1, { name: 'push' });
+  assert.equal(p1.weaponUses, C.WEAPON_USES - 1);
+  assert.equal(p2.stunUntil, g.time + C.WEAPON_STUN_MS);
+  assert.ok(g.drainEvents().some((e) => e.type === 'hit' && e.kind === 'weapon' && e.ok));
+  run(g, 2000);
+  const d = p2.x - 3.5;
+  assert.ok(d > 2.5, `망치 넉백 거리 ${d.toFixed(2)} (밀치기 약 1.5)`);
+  // 빗나가도 소모 → 다 쓰면 다시 밀치기
+  p1.pushReadyAt = 0;
+  g.handleAction(1, { name: 'push' });
+  p1.pushReadyAt = 0;
+  g.handleAction(1, { name: 'push' });
+  assert.equal(p1.weaponUses, 0);
+  p1.pushReadyAt = 0;
+  g.handleAction(1, { name: 'push' });
+  assert.ok(g.drainEvents().some((e) => e.type === 'swing' && e.kind === 'push'));
+});
+
+test('점프력 상승: 2칸 벽은 넘고 3칸 벽은 못 넘는다, 시간이 지나면 원래대로', () => {
+  const { g, p1 } = setup();
+  for (let y = 0; y < C.GRID_D; y++) {
+    for (let z = 0; z < 2; z++) g.grid[g.idx(4, y, z)] = 1; // x=4 에 2칸 벽
+    for (let z = 0; z < 3; z++) g.grid[g.idx(7, y, z)] = 1; // x=7 에 3칸 벽 (2칸 벽 위에서 보면 1칸 더)
+  }
+  for (let y = 0; y < C.GRID_D; y++) for (let x = 5; x < 7; x++) for (let z = 0; z < 2; z++) g.grid[g.idx(x, y, z)] = 1; // 2칸 벽 뒤는 2칸 높이 고원
+  p1.x = 3.5;
+  p1.y = 5;
+  let landedOnPlateau = false;
+  const jumpInto = (ms) => {
+    let maxX = 0;
+    for (let t = 0; t < ms; t += TICK) {
+      g.handleInput(1, { fwd: 1, strafe: 0, jump: true, yaw: 0, pitch: 0 });
+      g.tick(TICK);
+      maxX = Math.max(maxX, p1.x);
+      if (p1.grounded && Math.abs(p1.z - 2) < 1e-6 && p1.x > 4) landedOnPlateau = true;
+    }
+    return maxX;
+  };
+  assert.ok(jumpInto(1500) < 4, '부스트 없으면 2칸 벽 못 넘음');
+  g.givePower(p1, 'jump');
+  jumpInto(1500);
+  assert.ok(landedOnPlateau, '부스트면 2칸 벽 위에 착지');
+  // 고원(z=2)에서 3칸 벽(꼭대기 z=3)은 1칸 차이라 넘어감 — 바닥(z=0)에서 3칸은 못 넘는지 따로 확인
+  p1.x = 8.5;
+  p1.z = 0;
+  for (let y = 0; y < C.GRID_D; y++) for (let x = 8; x < C.GRID_W; x++) for (let z = 0; z < 3; z++) g.grid[g.idx(x, y, z)] = 0;
+  p1.x = 9.5;
+  p1.yaw = Math.PI;
+  let minX = 99;
+  for (let t = 0; t < 1500; t += TICK) {
+    g.handleInput(1, { fwd: 1, strafe: 0, jump: true, yaw: Math.PI, pitch: 0 });
+    g.tick(TICK);
+    minX = Math.min(minX, p1.x);
+  }
+  assert.ok(minX > 8 - 0.01 + C.PLAYER_HALF - 0.02, `바닥에서 3칸 벽은 못 넘음 (minX=${minX.toFixed(2)})`);
+  run(g, C.JUMP_BOOST_MS);
+  assert.equal(g.snapshot().players.find((p) => p.id === 1).jumpLeft, 0);
+});
+
+test('유령화: 옆으로 블록 통과, 점프하면 위 블록을 뚫고 올라가 그 위에 섬, 아래로는 안 빠짐, 끝나면 블록 밖으로', () => {
+  const { g, p1 } = setup();
+  for (let y = 0; y < C.GRID_D; y++) for (let z = 0; z < 3; z++) g.grid[g.idx(4, y, z)] = 1; // x=4 에 3칸 벽
+  p1.x = 3.5;
+  p1.y = 5;
+  g.givePower(p1, 'ghost');
+  // 옆으로 통과
+  for (let t = 0; t < 800; t += TICK) {
+    g.handleInput(1, { fwd: 1, strafe: 0, jump: false, yaw: 0, pitch: 0 });
+    g.tick(TICK);
+  }
+  assert.ok(p1.x > 5, `벽 통과 (x=${p1.x.toFixed(2)})`);
+  assert.ok(Math.abs(p1.z) < 1e-6, '바닥에 그대로');
+  // 1칸 높이 블록 안으로 걸어 들어가 (유령이라 통과) 그 안에서 점프 → 위로 뚫고 나와 그 블록 위에 섬
+  g.handleInput(1, { fwd: 0, strafe: 0, jump: false, yaw: 0, pitch: 0 });
+  run(g, 300);
+  const cx = Math.floor(p1.x);
+  const cy = Math.floor(p1.y);
+  for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) g.grid[g.idx(cx + dx, cy + dy, 0)] = 1;
+  run(g, 200);
+  assert.ok(Math.abs(p1.z) < 1e-6, '블록 안 바닥에 서 있음 (아래로 안 빠짐)');
+  g.handleInput(1, { fwd: 0, strafe: 0, jump: true, yaw: 0, pitch: 0 });
+  run(g, 200);
+  g.handleInput(1, { fwd: 0, strafe: 0, jump: false, yaw: 0, pitch: 0 });
+  run(g, 800);
+  assert.ok(Math.abs(p1.z - 1) < 1e-6, `블록 위에 섬 (z=${p1.z.toFixed(2)})`);
+  // 다시 벽 안으로 걸어 들어간 채로 유령이 끝나면 꼭대기로
+  p1.x = 4.5;
+  p1.z = 0;
+  run(g, C.GHOST_MS);
+  assert.ok(p1.alive && p1.z >= 3 - 1e-6, `끝나면 벽 꼭대기 (z=${p1.z.toFixed(2)})`);
 });

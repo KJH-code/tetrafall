@@ -184,8 +184,12 @@ export class BotBrain {
     let best = null;
     let bd = Infinity;
     for (const it of g.items) {
+      // 이미 가진·켜진 효과는 또 먹으러 가지 않는다
       if (it.type === 'knockback' && p.ammo > 0) continue;
-      if (Math.abs(it.z - p.z) > 1.2) continue; // 2칸 이상 높으면 못 감
+      if (it.type === 'weapon' && p.weaponUses > 0) continue;
+      if (it.type === 'jump' && g.time < p.jumpUntil) continue;
+      if (it.type === 'ghost' && g.time < p.ghostUntil) continue;
+      if (it.z - p.z > this.jumpReach(g, p) + 0.15 || p.z - it.z > 6) continue; // 못 올라가는 높이·너무 아래면 안 감
       const d = Math.hypot(it.x + 0.5 - p.x, it.y + 0.5 - p.y);
       const de = target ? Math.hypot(it.x + 0.5 - target.x, it.y + 0.5 - target.y) : Infinity;
       if (d > de + 1) continue;
@@ -404,7 +408,7 @@ export class BotBrain {
 
   // 지금 한 번 점프로 올라갈 수 있는 높이 (칸)
   jumpReach(g, p) {
-    return 1.05;
+    return g.time < p.jumpUntil ? 2.25 : 1.05; // 점프력 상승 중이면 2칸까지
   }
 
   // 용암이 2.5칸 안으로 다가오면 더 높은 칸으로 한 단계씩 올라간다. 움직였으면 true

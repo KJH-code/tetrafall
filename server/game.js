@@ -48,7 +48,7 @@ export class Game {
     this.botCounter = 0;
     this.nextSpawnAt = 0;
     this.controlItemNextAt = 0;
-    this.knockbackItemNextAt = 0;
+    this.powerItemNextAt = 0; // 조종권 외 아이템 다음 생성 시각
     this.gridDirty = true;
     this.events = []; // 클라이언트 알림용 이벤트. 브로드캐스트 때 drainEvents() 로 비운다
   }
@@ -117,6 +117,9 @@ export class Game {
       alive: this.phase !== 'playing', // 진행 중 난입은 관전 (죽은 상태)
       stunUntil: 0,
       freezeUntil: 0, // 히트스톱: 이 시각까지 움직임 정지 (속도는 보존)
+      weaponUses: 0, // 망치 남은 횟수
+      jumpUntil: 0, // 점프력 상승 끝나는 시각
+      ghostUntil: 0, // 유령화 끝나는 시각
       dashReadyAt: 0,
       pushReadyAt: 0,
       hasControl: false,
@@ -198,7 +201,7 @@ export class Game {
     this.roundStartTime = this.time;
     this.nextSpawnAt = this.time + C.FIRST_SPAWN_DELAY_MS;
     this.controlItemNextAt = this.time + C.CONTROL_ITEM_RESPAWN_MS;
-    this.knockbackItemNextAt = this.time + C.KNOCKBACK_ITEM_RESPAWN_MS;
+    this.powerItemNextAt = this.time + C.ITEM_FIRST_SPAWN_MS;
     for (const p of this.players.values()) {
       const sp = C.SPAWN_POINTS[p.slot % C.SPAWN_POINTS.length];
       Object.assign(p, {
@@ -214,6 +217,9 @@ export class Game {
         alive: true,
         stunUntil: 0,
         freezeUntil: 0,
+        weaponUses: 0,
+        jumpUntil: 0,
+        ghostUntil: 0,
         dashReadyAt: 0,
         pushReadyAt: 0,
         hasControl: false,
@@ -350,7 +356,14 @@ export class Game {
 
   push(p) {
     p.pushReadyAt = this.time + C.PUSH_COOLDOWN_MS;
-    this.emit({ type: 'swing', who: p.id });
+    // 망치가 있으면 밀치기 대신 망치 (빗나가도 1회 소모)
+    const weapon = p.weaponUses > 0;
+    if (weapon) p.weaponUses--;
+    const kind = weapon ? 'weapon' : 'push';
+    const speed = weapon ? C.WEAPON_KB_SPEED : C.PUSH_KB_SPEED;
+    const up = weapon ? C.WEAPON_KB_UP : C.PUSH_KB_UP;
+    const stun = weapon ? C.WEAPON_STUN_MS : C.STUN_MS;
+    this.emit({ type: 'swing', who: p.id, kind });
     const fx = Math.cos(p.yaw);
     const fy = Math.sin(p.yaw);
     const cosHalf = Math.cos((C.PUSH_HALF_ANGLE_DEG * Math.PI) / 180);
@@ -362,10 +375,10 @@ export class Game {
       if (dist > C.PUSH_RANGE) continue;
       if (Math.abs(t.z - p.z) > C.PLAYER_HEIGHT) continue;
       if (dist > EPS && (dx * fx + dy * fy) / dist < cosHalf) continue;
-      const hit = this.applyKnockback(t, fx, fy, C.PUSH_KB_SPEED, C.PUSH_KB_UP);
+      const hit = this.applyKnockback(t, fx, fy, speed, up, stun);
       if (hit) p.freezeUntil = this.time + C.HITSTOP_MS; // 때린 쪽도 같이 멈칫
-      this.emit({ type: 'hit', kind: 'push', by: p.id, target: t.id, ok: hit });
-      this.log(`  [밀치기] ${p.name} → ${t.name} ${hit ? '넉백' : '경직 중이라 무시'}`);
+      this.emit({ type: 'hit', kind, by: p.id, target: t.id, ok: hit });
+      this.log(`  [${weapon ? '망치' : '밀치기'}] ${p.name} → ${t.name} ${hit ? '넉백' : '경직 중이라 무시'}${weapon ? ` (남은 ${p.weaponUses}회)` : ''}`);
     }
   }
 
@@ -390,14 +403,14 @@ export class Game {
   }
 
   // 경직 중이면 무시 (연속 넉백 불가). 성공 시 true
-  applyKnockback(t, dx, dy, speed, up) {
+  applyKnockback(t, dx, dy, speed, up, stunMs = C.STUN_MS) {
     if (this.time < t.stunUntil) return false;
     const len = Math.hypot(dx, dy) || 1;
     t.kbx = (dx / len) * speed;
     t.kby = (dy / len) * speed;
     t.vz = up;
     t.grounded = false;
-    t.stunUntil = this.time + C.STUN_MS;
+    t.stunUntil = this.time + stunMs;
     t.freezeUntil = this.time + C.HITSTOP_MS; // 멈칫 뒤에 날아간다 (날아가는 거리는 그대로)
     return true;
   }
@@ -860,8 +873,10 @@ export class Game {
     if (!anyControl && this.time >= this.controlItemNextAt) {
       if (!this.spawnItem('control')) this.controlItemNextAt = this.time + 1000;
     }
-    if (!this.items.some((it) => it.type === 'knockback') && this.time >= this.knockbackItemNextAt) {
-      if (!this.spawnItem('knockback')) this.knockbackItemNextAt = this.time + 1000;
+    const powerCount = this.items.filter((it) => it.type !== 'control').length;
+    if (powerCount < C.ITEM_MAX_ON_FIELD && this.time >= this.powerItemNextAt) {
+      const type = C.ITEM_POOL[Math.floor(this.rng() * C.ITEM_POOL.length)];
+      this.powerItemNextAt = this.time + (this.spawnItem(type) ? C.ITEM_RESPAWN_MS : 1000);
     }
     for (let i = this.items.length - 1; i >= 0; i--) {
       const it = this.items[i];
@@ -879,13 +894,44 @@ export class Game {
           this.log(`  [아이템] ${p.name} 조종권 획득`);
           this.startControlNow(p);
         } else {
-          p.ammo += C.KNOCKBACK_AMMO;
-          this.knockbackItemNextAt = this.time + C.KNOCKBACK_ITEM_RESPAWN_MS;
-          this.emit({ type: 'pickup', who: p.id, item: 'knockback' });
-          this.log(`  [아이템] ${p.name} 넉백 아이템 획득 (탄 ${p.ammo})`);
+          this.givePower(p, it.type);
+          this.powerItemNextAt = Math.max(this.powerItemNextAt, this.time + C.ITEM_RESPAWN_MS);
+          this.emit({ type: 'pickup', who: p.id, item: it.type });
         }
         break;
       }
+    }
+  }
+
+  givePower(p, type) {
+    if (type === 'knockback') {
+      p.ammo += C.KNOCKBACK_AMMO;
+      this.log(`  [아이템] ${p.name} 넉백 아이템 획득 (탄 ${p.ammo})`);
+    } else if (type === 'weapon') {
+      p.weaponUses = C.WEAPON_USES;
+      this.log(`  [아이템] ${p.name} 망치 획득 (${p.weaponUses}회)`);
+    } else if (type === 'jump') {
+      p.jumpUntil = this.time + C.JUMP_BOOST_MS;
+      this.log(`  [아이템] ${p.name} 점프력 상승 획득`);
+    } else if (type === 'ghost') {
+      p.ghostUntil = this.time + C.GHOST_MS;
+      this.log(`  [아이템] ${p.name} 유령화 획득`);
+    }
+  }
+
+  isGhost(p) {
+    return this.time < p.ghostUntil;
+  }
+
+  // 유령화가 끝났는데 블록 안이면 그 기둥 꼭대기로 밀어 올린다
+  ejectFromBlocks(p) {
+    for (let i = 0; i < C.GRID_H + 2; i++) {
+      const hits = this.overlappingSolid(this.aabb(p));
+      if (!hits.length) return;
+      let top = -Infinity;
+      for (const h of hits) if (h[2] + 1 > top) top = h[2] + 1;
+      p.z = top;
+      p.vz = 0;
     }
   }
 
@@ -944,6 +990,10 @@ export class Game {
   }
 
   integratePlayer(p, dt) {
+    if (p.ghostUntil && this.time >= p.ghostUntil) {
+      p.ghostUntil = 0;
+      this.ejectFromBlocks(p);
+    }
     if (this.time < p.freezeUntil) return; // 히트스톱
     const stunned = this.time < p.stunUntil;
     let ix = 0;
@@ -955,7 +1005,7 @@ export class Game {
         iy = mv.y * C.MOVE_SPEED;
       }
       if (p.input.jump && p.grounded) {
-        p.vz = C.JUMP_SPEED;
+        p.vz = this.time < p.jumpUntil ? C.JUMP_BOOST_SPEED : C.JUMP_SPEED;
         p.grounded = false;
       }
     }
@@ -1002,8 +1052,14 @@ export class Game {
 
   moveAxis(p, axis, delta) {
     if (delta === 0) return;
+    const prevZ = p.z;
     p[axis] += delta;
-    const hits = this.overlappingSolid(this.aabb(p));
+    let hits = this.overlappingSolid(this.aabb(p));
+    if (hits.length && this.isGhost(p)) {
+      // 유령: 옆·위로는 통과. 아래로는 "원래 그 위에 있던" 칸에만 착지 (한쪽 통과 발판)
+      if (axis !== 'z' || delta > 0) return;
+      hits = hits.filter((h) => h[2] + 1 <= prevZ + 1e-6);
+    }
     if (!hits.length) return;
     const ai = axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
     if (axis === 'z') {
@@ -1114,6 +1170,9 @@ export class Game {
         hasControl: p.hasControl,
         ammo: p.ammo,
         dashCd: Math.max(0, p.dashReadyAt - this.time),
+        weaponUses: p.weaponUses,
+        jumpLeft: Math.max(0, p.jumpUntil - this.time),
+        ghostLeft: Math.max(0, p.ghostUntil - this.time),
         controlling: this.isControlling(p),
         cause: p.deathCause,
       })),
