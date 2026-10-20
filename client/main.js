@@ -54,6 +54,7 @@ function nameOf(id) {
 }
 
 const KIND_KO = { push: '밀치기', projectile: '투사체' };
+const CAUSE_KO = { crush: '압사', fall: '낙사', lava: '용암' };
 
 function handleEvent(e) {
   switch (e.type) {
@@ -76,6 +77,9 @@ function handleEvent(e) {
       break;
     case 'controlStart':
       if (e.who !== myId) toast(`${nameOf(e.who)} 블록 조종 시작. 그림자를 조심!`);
+      break;
+    case 'lava':
+      toast('용암이 올라온다! 높은 곳으로 올라가세요', 'me');
       break;
     case 'clear':
       toast(`층 클리어! 위에 있던 것들이 ${e.n}칸 내려앉음`);
@@ -155,21 +159,25 @@ function updateHud() {
     const flags = [];
     if (p.stunned) flags.push('경직!');
     if (p.dashCd > 0) flags.push(`대시 ${(p.dashCd / 1000).toFixed(1)}s`);
-    if (!p.alive) flags.push(`사망 (${p.cause === 'crush' ? '압사' : '낙사'})`);
+    if (!p.alive) flags.push(`사망 (${CAUSE_KO[p.cause] || p.cause})`);
     if (flags.length) lines.push(flags.join(' · '));
+    if (state.lava && state.lava.active) {
+      const above = p.alive ? (p.z - state.lava.z).toFixed(1) : '-';
+      lines.push(`용암 높이 ${Math.max(0, state.lava.z).toFixed(1)} · 내 발 위로 ${above}칸`);
+    }
   }
   const t = state.round.totals;
-  const share = t.crush + t.fall > 0 ? ` · 압사 비율 ${Math.round((t.crush / (t.crush + t.fall)) * 100)}% (합격 ${Math.round(C.PASS_CRUSH_SHARE * 100)}%)` : '';
-  lines.push(`누적 ${t.rounds}판 · 압사 ${t.crush} · 낙사 ${t.fall}${share}`);
+  lines.push(`누적 ${t.rounds}판 · 압사 ${t.crush} · 낙사 ${t.fall} · 용암 ${t.lava || 0}`);
   statusEl.textContent = lines.join('\n');
 
   // 상단 배너: 조종권 상태 (예고 → 조종 중)
   let bannerText = null;
   let bannerColor = 'rgba(0,140,160,.85)';
   if (p && p.alive && state.phase === 'playing') {
-    if (p.controlling && state.piece) {
-      const left = state.piece.timeLeft / 1000;
-      bannerText = `블록 조종 중 ${left.toFixed(1)}초\n방향키 이동 · Q/E 회전 · Enter 낙하${state.piece.fits ? '' : '\n여기엔 못 놓음 (빨간 미리보기)'}`;
+    const myPiece = (state.pieces || []).find((pc) => pc.phase === 'control' && pc.controller === myId);
+    if (p.controlling && myPiece) {
+      const left = myPiece.timeLeft / 1000;
+      bannerText = `블록 조종 중 ${left.toFixed(1)}초\n방향키 이동 · Q/E 회전 · Enter 낙하${myPiece.fits ? '' : '\n여기엔 못 놓음 (빨간 미리보기)'}`;
       if (left < 3) bannerColor = 'rgba(200,60,20,.9)';
     } else if (p.hasControl) {
       const n = state.nextSpawnIn;
@@ -199,7 +207,7 @@ function updateHud() {
     showStart = isHost && state.canStart;
     showKeys = true;
   } else if (p && !p.alive) {
-    center = `사망: ${p.cause === 'crush' ? '압사' : '낙사'}\n관전 중`;
+    center = `사망: ${CAUSE_KO[p.cause] || p.cause}\n관전 중`;
   } else if (!input.locked) {
     center = '화면을 클릭하면 조작 시작';
     showKeys = true;

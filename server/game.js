@@ -29,8 +29,10 @@ export class Game {
     this.hostId = null;
     this.grid = new Uint8Array(C.GRID_W * C.GRID_D * C.GRID_H);
     this.gridVersion = 0;
-    this.piece = null;
-    this.pieceCells = new Set(); // 현재 블록이 차지한 셀 키 (충돌용)
+    this.pieces = []; // 떨어지는·조종 중인 블록들
+    this.pieceCounter = 0;
+    this.pieceCells = new Map(); // 셀 키 -> 블록 id (충돌용)
+    this.lava = { active: false, z: C.LAVA_START_Z, startedAt: 0 };
     this.items = [];
     this.projectiles = [];
     this.roundNumber = 0;
@@ -38,7 +40,7 @@ export class Game {
     this.roundEndTime = 0;
     this.winnerId = null;
     this.deaths = []; // 이번 판 사망 기록
-    this.totals = { rounds: 0, crush: 0, fall: 0 }; // 누적 (합격선 측정용)
+    this.totals = { rounds: 0, crush: 0, fall: 0, lava: 0 }; // 누적 (합격선 측정용)
     this.totalsByCount = {}; // 인원수별 누적 { [n]: { rounds, crush, fall } }. 인원이 다르면 압사 비율을 따로 본다
     this.roundPlayerCount = 0;
     this.roundBotCount = 0;
@@ -162,7 +164,7 @@ export class Game {
       const next = [...this.players.values()].find((o) => !o.isBot);
       this.hostId = next ? next.id : null;
     }
-    if (this.piece && this.piece.controller === id) this.piece.controller = null;
+    for (const pc of this.pieces) if (pc.controller === id) pc.controller = null;
     if (this.phase === 'playing' && p.alive) {
       this.deaths.push({ name: p.name, cause: 'disconnect', t: this.time - this.roundStartTime });
       this.checkRoundEnd();
@@ -183,8 +185,9 @@ export class Game {
     this.grid.fill(0);
     this.gridVersion++;
     this.gridDirty = true;
-    this.piece = null;
+    this.pieces = [];
     this.pieceCells.clear();
+    this.lava = { active: false, z: C.LAVA_START_Z, startedAt: 0 };
     this.items = [];
     this.projectiles = [];
     this.deaths = [];
@@ -230,29 +233,32 @@ export class Game {
     const dur = this.time - this.roundStartTime;
     const crush = this.deaths.filter((d) => d.cause === 'crush').length;
     const fall = this.deaths.filter((d) => d.cause === 'fall').length;
+    const lava = this.deaths.filter((d) => d.cause === 'lava').length;
     this.totals.rounds++;
     this.totals.crush += crush;
     this.totals.fall += fall;
+    this.totals.lava += lava;
     const deathStr = this.deaths.length
       ? this.deaths.map((d) => `${d.name} ${causeKo(d.cause)}@${fmtTime(d.t)}`).join(', ')
       : '없음';
     this.log(`===== ROUND ${this.roundNumber} 종료 | 길이 ${fmtTime(dur)} | 승자: ${winner ? winner.name : '무승부'} =====`);
     this.log(`  사망: ${deathStr}`);
-    this.log(`  이번 판: 압사 ${crush} / 낙사 ${fall}`);
+    this.log(`  이번 판: 압사 ${crush} / 낙사 ${fall} / 용암 ${lava}${this.lava.active ? ` (용암 시작 @ ${fmtTime(this.lava.startedAt - this.roundStartTime)})` : ''}`);
     const per = (this.totals.crush / this.totals.rounds).toFixed(2);
-    this.log(`  누적 ${this.totals.rounds}판: 압사 ${this.totals.crush} (판당 ${per}) / 낙사 ${this.totals.fall}`);
+    this.log(`  누적 ${this.totals.rounds}판: 압사 ${this.totals.crush} (판당 ${per}) / 낙사 ${this.totals.fall} / 용암 ${this.totals.lava}`);
     const n = this.roundPlayerCount;
     // 봇이 낀 판은 따로 센다 (봇의 회피 실력이 압사 비율을 좌우하므로 사람끼리 판과 섞지 않는다)
     const label = this.roundBotCount ? `${n}인(봇 ${this.roundBotCount})` : `${n}인`;
-    const t = (this.totalsByCount[label] = this.totalsByCount[label] || { rounds: 0, crush: 0, fall: 0 });
+    const t = (this.totalsByCount[label] = this.totalsByCount[label] || { rounds: 0, crush: 0, fall: 0, lava: 0 });
     t.rounds++;
     t.crush += crush;
     t.fall += fall;
+    t.lava += lava;
     this.log(`  누적 사망 중 압사 비율: ${shareText(this.totals)}`);
     if (Object.keys(this.totalsByCount).length > 1 || label !== '2인') {
       // 인원이 섞이면 인원수별로도 찍는다 (합격 판정은 같은 인원끼리 비교)
       for (const [k, v] of Object.entries(this.totalsByCount)) {
-        this.log(`    ${k} 판 ${v.rounds}판: 압사 ${v.crush} / 낙사 ${v.fall} → ${shareText(v)}`);
+        this.log(`    ${k} 판 ${v.rounds}판: 압사 ${v.crush} / 낙사 ${v.fall} / 용암 ${v.lava} → ${shareText(v)}`);
       }
     }
   }
@@ -289,7 +295,7 @@ export class Game {
   }
 
   isControlling(p) {
-    return !!(this.piece && this.piece.phase === 'control' && this.piece.controller === p.id);
+    return !!this.controlledPiece(p);
   }
 
   handleAction(id, action) {
@@ -312,15 +318,15 @@ export class Game {
         return;
       case 'pieceMove':
         if (!controlling) return;
-        this.movePiece(action.dx | 0, action.dy | 0);
+        this.movePiece(this.controlledPiece(p), action.dx | 0, action.dy | 0);
         return;
       case 'rotate':
         if (!controlling) return;
-        this.rotatePiece(action.dir > 0 ? 1 : -1);
+        this.rotatePiece(this.controlledPiece(p), action.dir > 0 ? 1 : -1);
         return;
       case 'drop':
         if (!controlling) return;
-        this.dropPiece();
+        this.dropPiece(this.controlledPiece(p));
         return;
       default:
     }
@@ -392,14 +398,33 @@ export class Game {
   }
 
   // ---------- 블록 ----------
+  // 떨어지는 블록은 여러 개 (this.pieces). 조종 블록은 한 번에 하나 (조종권 아이템이 하나뿐이라).
+  // 블록끼리는 공중에서 겹치지 않는다: 한 칸 아래를 다른 블록이 차지하고 있으면 그 칸이 빌 때까지 기다린다.
+
+  // 예전 코드·테스트 호환: "대표 블록" = 조종 중인 블록, 없으면 첫 블록
+  get piece() {
+    return this.pieces.find((pc) => pc.phase === 'control') || this.pieces[0] || null;
+  }
+
+  set piece(v) {
+    this.pieces = v ? [v] : [];
+    if (v && !v.id) v.id = ++this.pieceCounter;
+    this.refreshPieceCells();
+  }
+
   pieceWorldCells(piece = this.piece) {
     return piece.cells.map(([dx, dy]) => [piece.px + dx, piece.py + dy, piece.pz]);
   }
 
   refreshPieceCells() {
     this.pieceCells.clear();
-    if (!this.piece) return;
-    for (const [x, y, z] of this.pieceWorldCells()) this.pieceCells.add(cellKey(x, y, z));
+    for (const piece of this.pieces) {
+      for (const [x, y, z] of this.pieceWorldCells(piece)) this.pieceCells.set(cellKey(x, y, z), piece.id);
+    }
+  }
+
+  controlledPiece(p) {
+    return this.pieces.find((pc) => pc.phase === 'control' && pc.controller === p.id) || null;
   }
 
   // 현재 xy 에서 착지 z (착지 가능한 가장 낮은 z). 격자만 본다 (플레이어는 압사 대상이지 장애물이 아님)
@@ -423,49 +448,87 @@ export class Game {
 
   makePiece(shape, rot, px, py, pz) {
     const cells = rotatedCells(shape, rot);
-    const piece = { shape, rot, cells, px, py, pz, landZ: 0, fits: false };
+    const piece = { id: 0, shape, rot, cells, px, py, pz, landZ: 0, fits: false };
     this.updateLanding(piece);
     return piece;
   }
 
-  spawnPiece() {
-    const controller = [...this.players.values()].find((p) => p.alive && p.hasControl) || null;
+  // ---- 판이 길어질수록 빨라지고 많아진다 ----
+  elapsed() {
+    return this.time - this.roundStartTime;
+  }
+
+  rampT() {
+    return Math.min(1, Math.max(0, this.elapsed() / C.RAMP_FULL_MS));
+  }
+
+  autoFallStepMs() {
+    return C.AUTO_FALL_STEP_MS + (C.AUTO_FALL_STEP_MIN_MS - C.AUTO_FALL_STEP_MS) * this.rampT();
+  }
+
+  autoSpawnDelayMs() {
+    return C.AUTO_SPAWN_DELAY_MS + (C.AUTO_SPAWN_DELAY_MIN_MS - C.AUTO_SPAWN_DELAY_MS) * this.rampT();
+  }
+
+  targetConcurrent() {
+    return Math.min(C.CONCURRENT_MAX, 1 + Math.floor(this.elapsed() / C.CONCURRENT_RAMP_MS));
+  }
+
+  addPiece(piece, fields) {
+    piece.id = ++this.pieceCounter;
+    Object.assign(piece, fields);
+    this.pieces.push(piece);
+    this.refreshPieceCells();
+    return piece;
+  }
+
+  spawnControlled(controller) {
     const shape = SHAPE_NAMES[Math.floor(this.rng() * SHAPE_NAMES.length)];
     const rot = Math.floor(this.rng() * 4);
-    if (controller) {
-      const { w, d } = footprint(rotatedCells(shape, rot));
-      const px = Math.floor((C.GRID_W - w) / 2);
-      const py = Math.floor((C.GRID_D - d) / 2);
-      const piece = this.makePiece(shape, rot, px, py, C.CONTROL_HOVER_Z);
-      Object.assign(piece, {
-        phase: 'control',
-        controller: controller.id,
-        stepMs: C.HARD_DROP_STEP_MS,
-        nextStepAt: 0,
-        controlEndsAt: this.time + C.CONTROL_TIME_MS,
-      });
-      controller.hasControl = false;
-      this.piece = piece;
-      this.refreshPieceCells();
-      this.emit({ type: 'controlStart', who: controller.id });
-      this.log(`  [블록] ${shape} 조종 시작: ${controller.name}`);
-      return;
-    }
-    const piece = this.chooseAutoPlacement(shape);
-    if (!piece) {
-      // 들어갈 자리가 없음 (필드가 꽉 참). 나중에 다시 시도
-      this.nextSpawnAt = this.time + C.AUTO_SPAWN_DELAY_MS;
-      return;
-    }
-    Object.assign(piece, {
-      phase: 'falling',
-      controller: null,
-      stepMs: C.AUTO_FALL_STEP_MS,
-      nextStepAt: this.time + C.AUTO_FALL_STEP_MS,
-      controlEndsAt: 0,
+    const { w, d } = footprint(rotatedCells(shape, rot));
+    const px = Math.floor((C.GRID_W - w) / 2);
+    const py = Math.floor((C.GRID_D - d) / 2);
+    const piece = this.makePiece(shape, rot, px, py, C.CONTROL_HOVER_Z);
+    this.addPiece(piece, {
+      phase: 'control',
+      controller: controller.id,
+      stepMs: C.HARD_DROP_STEP_MS,
+      nextStepAt: 0,
+      controlEndsAt: this.time + C.CONTROL_TIME_MS,
     });
-    this.piece = piece;
-    this.refreshPieceCells();
+    controller.hasControl = false;
+    this.emit({ type: 'controlStart', who: controller.id });
+    this.log(`  [블록] ${shape} 조종 시작: ${controller.name}`);
+    return piece;
+  }
+
+  spawnAuto() {
+    const shape = SHAPE_NAMES[Math.floor(this.rng() * SHAPE_NAMES.length)];
+    const piece = this.chooseAutoPlacement(shape);
+    if (!piece) return null;
+    const stepMs = this.autoFallStepMs();
+    return this.addPiece(piece, { phase: 'falling', controller: null, stepMs, nextStepAt: this.time + stepMs, controlEndsAt: 0 });
+  }
+
+  // 예전 호환: 조종권 보유자가 있으면 조종 블록, 없으면 자동 블록 하나
+  spawnPiece() {
+    const holder = [...this.players.values()].find((p) => p.alive && p.hasControl) || null;
+    if (holder && !this.pieces.some((pc) => pc.controller !== null)) return this.spawnControlled(holder);
+    return this.spawnAuto();
+  }
+
+  updateSpawning() {
+    if (this.time < this.nextSpawnAt) return;
+    const holder = [...this.players.values()].find((p) => p.alive && p.hasControl) || null;
+    if (holder && !this.pieces.some((pc) => pc.controller !== null)) {
+      this.spawnControlled(holder);
+      this.nextSpawnAt = this.time + this.autoSpawnDelayMs();
+      return;
+    }
+    const autos = this.pieces.filter((pc) => pc.controller === null).length;
+    if (autos >= this.targetConcurrent()) return;
+    this.spawnAuto(); // 자리가 없으면 다음 간격에 다시
+    this.nextSpawnAt = this.time + this.autoSpawnDelayMs();
   }
 
   // 자동 블록 고르기: 들어갈 수 있는 모든 (모양, 회전, 위치) 중에서 가중 무작위로 하나.
@@ -474,6 +537,9 @@ export class Game {
   chooseAutoPlacement(randomShape) {
     const shapes = C.CLEAR_BIAS > 0 && C.CLEAR_PICK_SHAPE ? SHAPE_NAMES : [randomShape];
     const L = this.lowestLayer();
+    // 다른 블록(떨어지는 중·조종 중)과 같은 기둥에는 안 떨어뜨린다: 그림자가 겹치지 않게
+    const busy = new Set();
+    for (const pc of this.pieces) for (const [dx, dy] of pc.cells) busy.add((pc.px + dx) * 100 + (pc.py + dy));
     const cands = [];
     let best = -Infinity;
     for (const shape of shapes) {
@@ -483,6 +549,7 @@ export class Game {
           for (let py = 0; py <= C.GRID_D - d; py++) {
             const piece = this.makePiece(shape, r, px, py, C.PIECE_SPAWN_Z);
             if (!piece.fits) continue;
+            if (busy.size && piece.cells.some(([dx, dy]) => busy.has((px + dx) * 100 + (py + dy)))) continue;
             const score = C.CLEAR_BIAS > 0 ? this.placementScore(piece, L) : 0;
             if (score > best) best = score;
             cands.push({ piece, score });
@@ -551,8 +618,7 @@ export class Game {
     return S.FILL + (remaining === 0 ? S.CLEAR : 0) - S.BAD_GAP * bad;
   }
 
-  movePiece(dx, dy) {
-    const piece = this.piece;
+  movePiece(piece, dx, dy) {
     const { w, d } = footprint(piece.cells);
     const nx = Math.max(0, Math.min(C.GRID_W - w, piece.px + dx));
     const ny = Math.max(0, Math.min(C.GRID_D - d, piece.py + dy));
@@ -563,8 +629,7 @@ export class Game {
     this.refreshPieceCells();
   }
 
-  rotatePiece(dir) {
-    const piece = this.piece;
+  rotatePiece(piece, dir) {
     const rot = (piece.rot + dir + 4) % 4;
     const cells = rotatedCells(piece.shape, rot);
     const { w, d } = footprint(cells);
@@ -577,9 +642,8 @@ export class Game {
   }
 
   // reason: 'hard' = 조종자가 Enter, 'timeout' = 8초 초과, 'left' = 조종자 사망·이탈
-  dropPiece(reason = 'hard') {
-    const piece = this.piece;
-    if (!piece.fits) return; // 그 자리엔 못 넣는다 (기둥이 꽉 참)
+  dropPiece(piece = this.piece, reason = 'hard') {
+    if (!piece || !piece.fits) return; // 그 자리엔 못 넣는다 (기둥이 꽉 참)
     const who = this.players.get(piece.controller);
     piece.phase = 'falling';
     piece.stepMs = C.HARD_DROP_STEP_MS;
@@ -590,16 +654,17 @@ export class Game {
   }
 
   // 조종권을 먹은 순간 바로 조종을 시작한다 (CONTROL_TAKEOVER).
-  // 블록이 없으면 새 블록을 하늘에, 자동 블록이 떨어지는 중이면 그 블록을 하늘로 올려 넘겨받는다.
-  // 다른 사람이 조종했던 블록이 떨어지는 중이면 그 블록이 착지한 뒤 다음 블록을 조종한다.
+  // 자동 블록이 떨어지는 중이면 가장 높이 있는 것을 하늘로 올려 넘겨받고, 없으면 새 블록을 하늘에.
+  // 다른 사람이 조종한 블록이 아직 있으면 그 블록이 착지한 뒤 다음 블록을 조종한다.
   startControlNow(p) {
     if (!C.CONTROL_TAKEOVER || !p.hasControl) return;
-    const piece = this.piece;
+    if (this.pieces.some((pc) => pc.controller !== null)) return;
+    let piece = null;
+    for (const pc of this.pieces) if (pc.phase === 'falling' && (!piece || pc.pz > piece.pz)) piece = pc;
     if (!piece) {
-      this.spawnPiece();
+      this.spawnControlled(p);
       return;
     }
-    if (piece.phase !== 'falling' || piece.controller !== null) return;
     Object.assign(piece, {
       pz: C.CONTROL_HOVER_Z,
       phase: 'control',
@@ -615,57 +680,65 @@ export class Game {
     this.log(`  [블록] ${piece.shape} 조종 시작: ${p.name} (떨어지던 블록 넘겨받음)`);
   }
 
-  discardPiece(reason) {
-    this.log(`  [블록] ${this.piece.shape} 폐기 (${reason})`);
-    this.piece = null;
-    this.pieceCells.clear();
-    this.nextSpawnAt = this.time + C.AUTO_SPAWN_DELAY_MS;
-    this.controlItemNextAt = this.time + C.CONTROL_ITEM_RESPAWN_MS;
+  removePiece(piece) {
+    const i = this.pieces.indexOf(piece);
+    if (i >= 0) this.pieces.splice(i, 1);
+    this.refreshPieceCells();
   }
 
-  updatePiece() {
-    const piece = this.piece;
-    if (!piece) {
-      if (this.time >= this.nextSpawnAt) this.spawnPiece();
-      return;
+  discardPiece(piece, reason) {
+    this.log(`  [블록] ${piece.shape} 폐기 (${reason})`);
+    this.removePiece(piece);
+    this.nextSpawnAt = Math.max(this.nextSpawnAt, this.time + this.autoSpawnDelayMs());
+    if (piece.controller !== null) this.controlItemNextAt = this.time + C.CONTROL_ITEM_RESPAWN_MS;
+  }
+
+  // 한 칸 아래에 다른 블록이 있으면 true (그 블록이 비킬 때까지 기다린다)
+  blockedByPiece(piece) {
+    for (const [x, y, z] of this.pieceWorldCells(piece)) {
+      const other = this.pieceCells.get(cellKey(x, y, z - 1));
+      if (other !== undefined && other !== piece.id) return true;
     }
-    if (piece.phase === 'control') {
-      const ctl = this.players.get(piece.controller);
-      if (!ctl || !ctl.alive) {
-        // 조종자가 죽거나 나가면 그 자리에서 자동 낙하 (안 맞으면 폐기)
-        if (piece.fits) this.dropPiece('left');
-        else this.discardPiece('조종자 이탈, 자리 없음');
-        return;
-      }
-      if (this.time >= piece.controlEndsAt) {
-        if (piece.fits) {
-          this.dropPiece('timeout');
-        } else {
-          this.discardPiece('시간 초과, 자리 없음');
+    return false;
+  }
+
+  updatePieces() {
+    this.updateSpawning();
+    for (const piece of [...this.pieces]) {
+      if (piece.phase === 'control') {
+        const ctl = this.players.get(piece.controller);
+        if (!ctl || !ctl.alive) {
+          // 조종자가 죽거나 나가면 그 자리에서 자동 낙하 (안 맞으면 폐기)
+          if (piece.fits) this.dropPiece(piece, 'left');
+          else this.discardPiece(piece, '조종자 이탈, 자리 없음');
+        } else if (this.time >= piece.controlEndsAt) {
+          if (piece.fits) this.dropPiece(piece, 'timeout');
+          else this.discardPiece(piece, '시간 초과, 자리 없음');
         }
+        continue;
       }
-      return;
-    }
-    // falling
-    while (this.piece === piece && this.time >= piece.nextStepAt) {
-      if (piece.pz <= piece.landZ) {
-        this.landPiece();
-        return;
-      }
-      piece.pz--;
-      piece.nextStepAt += piece.stepMs;
-      this.refreshPieceCells();
-      this.crushCheck();
-      if (piece.pz <= piece.landZ) {
-        this.landPiece();
-        return;
+      // falling
+      while (this.pieces.includes(piece) && this.time >= piece.nextStepAt) {
+        if (piece.pz <= piece.landZ) {
+          this.landPiece(piece);
+          break;
+        }
+        piece.nextStepAt += piece.stepMs;
+        if (this.blockedByPiece(piece)) continue;
+        piece.pz--;
+        this.refreshPieceCells();
+        this.crushCheck(piece);
+        if (piece.pz <= piece.landZ) {
+          this.landPiece(piece);
+          break;
+        }
       }
     }
   }
 
   // 블록 셀이 플레이어 AABB 와 겹치면 압사
-  crushCheck() {
-    const cells = this.pieceWorldCells();
+  crushCheck(piece = this.piece) {
+    const cells = this.pieceWorldCells(piece);
     for (const p of this.players.values()) {
       if (!p.alive) continue;
       for (const [cx, cy, cz] of cells) {
@@ -684,23 +757,27 @@ export class Game {
     }
   }
 
-  landPiece() {
-    const piece = this.piece;
-    for (const [x, y, z] of this.pieceWorldCells()) {
+  landPiece(piece = this.piece) {
+    for (const [x, y, z] of this.pieceWorldCells(piece)) {
       if (z >= 0 && z < C.GRID_H) this.grid[this.idx(x, y, z)] = 1;
     }
     const wasControlled = piece.controller !== null;
-    this.piece = null;
-    this.pieceCells.clear();
+    this.removePiece(piece);
     this.gridVersion++;
     this.gridDirty = true;
     this.clearLayers();
-    this.nextSpawnAt = this.time + C.AUTO_SPAWN_DELAY_MS;
-    if (wasControlled) this.controlItemNextAt = this.time + C.CONTROL_ITEM_RESPAWN_MS;
+    for (const pc of this.pieces) this.updateLanding(pc);
+    this.nextSpawnAt = Math.max(this.nextSpawnAt, this.time + this.autoSpawnDelayMs());
+    if (wasControlled) {
+      this.controlItemNextAt = this.time + C.CONTROL_ITEM_RESPAWN_MS;
+      // 남의 조종 블록이 끝나길 기다리던 조종권 보유자는 바로 조종 시작
+      const holder = [...this.players.values()].find((p) => p.alive && p.hasControl);
+      if (holder) this.startControlNow(holder);
+    }
     for (const it of this.items) it.z = this.columnTop(it.x, it.y);
   }
 
-  // 6×6 한 층이 꽉 차면 제거하고 위의 블록·플레이어·아이템을 내린다
+  // 한 층이 꽉 차면 제거하고 위의 블록·플레이어·아이템을 내린다 (용암도 같이 내려간다)
   clearLayers() {
     const layerSize = C.GRID_W * C.GRID_D;
     const full = [];
@@ -725,8 +802,32 @@ export class Game {
       for (const z of full) if (p.z >= z + 1 - 1e-3) shift++;
       p.z -= shift;
     }
+    if (this.lava.active) this.lava.z -= full.filter((z) => z < this.lava.z).length;
     this.emit({ type: 'clear', n: full.length });
     this.log(`  [층 클리어] z=${full.join(',')} 제거 → 위 블록·플레이어 ${full.length}칸 내려앉음`);
+  }
+
+  // ---------- 용암 ----------
+  avgHeight() {
+    let sum = 0;
+    for (let x = 0; x < C.GRID_W; x++) for (let y = 0; y < C.GRID_D; y++) sum += this.columnTop(x, y);
+    return sum / (C.GRID_W * C.GRID_D);
+  }
+
+  updateLava(dtMs) {
+    const lava = this.lava;
+    if (!lava.active) {
+      if (this.avgHeight() < C.LAVA_TRIGGER_AVG_HEIGHT) return;
+      lava.active = true;
+      lava.z = C.LAVA_START_Z;
+      lava.startedAt = this.time;
+      this.emit({ type: 'lava' });
+      this.log(`  [용암] 평균 높이 ${this.avgHeight().toFixed(2)} → 용암 상승 시작 @ ${fmtTime(this.elapsed())}`);
+      return;
+    }
+    lava.z = Math.min(C.GRID_H + 1, lava.z + dtMs / C.LAVA_RISE_MS_PER_CELL);
+    for (const p of this.players.values()) if (p.alive && p.z < lava.z - 0.05) this.kill(p, 'lava');
+    this.items = this.items.filter((it) => it.z >= lava.z);
   }
 
   // ---------- 아이템 ----------
@@ -736,6 +837,7 @@ export class Game {
       const y = Math.floor(this.rng() * C.GRID_D);
       const z = this.columnTop(x, y);
       if (z >= C.GRID_H) continue;
+      if (this.lava.active && z < this.lava.z + 1) continue; // 용암에 잠길 자리는 피함
       if (this.items.some((it) => it.x === x && it.y === y)) continue;
       this.items.push({ type, x, y, z });
       return true;
@@ -747,7 +849,7 @@ export class Game {
     const anyControl =
       this.items.some((it) => it.type === 'control') ||
       [...this.players.values()].some((p) => p.hasControl) ||
-      (this.piece && this.piece.controller !== null);
+      this.pieces.some((pc) => pc.controller !== null);
     if (!anyControl && this.time >= this.controlItemNextAt) {
       if (!this.spawnItem('control')) this.controlItemNextAt = this.time + 1000;
     }
@@ -933,7 +1035,7 @@ export class Game {
       const p = this.players.get(id);
       if (p && p.alive) brain.update(this, p);
     }
-    this.updatePiece();
+    this.updatePieces();
     let remaining = dt;
     while (remaining > 0) {
       const h = Math.min(remaining, C.MAX_STEP_DT);
@@ -943,6 +1045,7 @@ export class Game {
     for (const p of this.players.values()) {
       if (p.alive && p.z < C.FALL_DEATH_Z) this.kill(p, 'fall');
     }
+    this.updateLava(dtMs);
     this.updateItems();
     this.updateProjectiles(dt);
     if (C.ROUND_TIME_LIMIT_MS > 0 && this.time - this.roundStartTime >= C.ROUND_TIME_LIMIT_MS) {
@@ -955,30 +1058,26 @@ export class Game {
 
   // ---------- 스냅샷 ----------
   snapshot(includeGrid = false) {
-    const piece = this.piece;
-    let pieceOut = null;
-    // 다음 블록이 나오기까지 남은 시간 (조종권 보유자에게 "N초 후 조종 시작" 표시용). 조종 중이면 null
-    let nextSpawnIn = Math.max(0, this.nextSpawnAt - this.time);
-    if (piece) {
-      let eta = Infinity;
-      if (piece.phase === 'falling') {
-        eta = Math.max(0, (piece.pz - piece.landZ - 1) * piece.stepMs + (piece.nextStepAt - this.time));
-        nextSpawnIn = eta + C.AUTO_SPAWN_DELAY_MS;
-      } else {
-        nextSpawnIn = null;
-      }
-      pieceOut = {
+    const piecesOut = this.pieces.map((piece) => {
+      const eta = piece.phase === 'falling' ? Math.max(0, (piece.pz - piece.landZ - 1) * piece.stepMs + (piece.nextStepAt - this.time)) : Infinity;
+      return {
+        id: piece.id,
         shape: piece.shape,
-        cells: this.pieceWorldCells(),
+        cells: this.pieceWorldCells(piece),
         phase: piece.phase,
         controller: piece.controller,
         landZ: piece.landZ,
         fits: piece.fits,
         shadow: piece.cells.map(([dx, dy]) => [piece.px + dx, piece.py + dy]),
         shadowVisible: piece.phase === 'falling' && eta <= C.SHADOW_LEAD_MS,
+        eta,
         timeLeft: piece.phase === 'control' ? Math.max(0, piece.controlEndsAt - this.time) : 0,
       };
-    }
+    });
+    // 조종권 보유자에게 "N초 후 조종 시작" 표시용: 남이 조종한 블록이 있으면 그게 착지할 때까지, 아니면 다음 생성까지
+    let nextSpawnIn = Math.max(0, this.nextSpawnAt - this.time);
+    const ctl = piecesOut.find((pc) => pc.controller !== null);
+    if (ctl) nextSpawnIn = ctl.phase === 'control' ? null : ctl.eta;
     const out = {
       type: 'state',
       time: this.time,
@@ -1010,8 +1109,9 @@ export class Game {
         controlling: this.isControlling(p),
         cause: p.deathCause,
       })),
-      piece: pieceOut,
+      pieces: piecesOut,
       nextSpawnIn,
+      lava: { active: this.lava.active, z: this.lava.z },
       items: this.items,
       projectiles: this.projectiles.map((pr) => ({ x: pr.x, y: pr.y, z: pr.z })),
       gridVersion: this.gridVersion,
@@ -1029,7 +1129,7 @@ function maxPlayers() {
 }
 
 function shareText(t) {
-  const deaths = t.crush + t.fall;
+  const deaths = t.crush + t.fall + (t.lava || 0);
   if (!deaths) return '사망 없음';
   const share = t.crush / deaths;
   const pass = share >= C.PASS_CRUSH_SHARE ? '합격선 이상' : '합격선 미만';
@@ -1039,6 +1139,7 @@ function shareText(t) {
 function causeKo(cause) {
   if (cause === 'crush') return '압사';
   if (cause === 'fall') return '낙사';
+  if (cause === 'lava') return '용암';
   if (cause === 'disconnect') return '접속 끊김';
   return cause;
 }

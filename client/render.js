@@ -64,28 +64,28 @@ export class Renderer {
     this.blockMesh.count = 0;
     // three.js 는 InstancedMesh 의 경계 구를 처음 한 번만 계산하고 갱신하지 않는다.
     // 블록이 0개일 때 계산된 빈 구가 남으면 원점 모서리가 시야 밖일 때 쌓인 블록 전체가 안 그려진다.
-    // 최대 432개 한 번의 draw call 이라 시야 판정을 끈다.
+    // 최대 W×D×H 개 한 번의 draw call 이라 시야 판정을 끈다.
     this.blockMesh.frustumCulled = false;
     this.scene.add(this.blockMesh);
     this.gridVersion = -1;
 
-    // 떨어지는 블록 셀 4개 + 그림자 4개
+    // 떨어지는 블록 셀 + 그림자 (블록 여러 개 → 필요한 만큼 늘어나는 풀)
     this.pieceMeshes = [];
     this.shadowMeshes = [];
-    const pieceMat = new THREE.MeshLambertMaterial({ color: 0xf0a030, transparent: true, opacity: 1 });
-    this.pieceMat = pieceMat;
-    const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45 });
-    this.shadowMat = shadowMat;
-    for (let i = 0; i < 4; i++) {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), pieceMat);
-      m.visible = false;
-      this.scene.add(m);
-      this.pieceMeshes.push(m);
-      const s = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.96, 0.06), shadowMat);
-      s.visible = false;
-      this.scene.add(s);
-      this.shadowMeshes.push(s);
-    }
+    this.pieceMat = new THREE.MeshLambertMaterial({ color: 0xf0a030, transparent: true, opacity: 1 }); // 자동 블록
+    this.controlledMat = new THREE.MeshLambertMaterial({ color: 0xd040d0, transparent: true, opacity: 1 }); // 누가 조종 중인 블록
+    this.shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45 });
+    this.pieceBox = new THREE.BoxGeometry(1, 1, 1);
+    this.shadowBox = new THREE.BoxGeometry(0.96, 0.96, 0.06);
+
+    // 용암: 필드보다 넓은 판. 표면 높이 = state.lava.z
+    this.lavaBottom = -6;
+    this.lava = new THREE.Mesh(
+      new THREE.BoxGeometry(C.GRID_W + 12, C.GRID_D + 12, 1),
+      new THREE.MeshBasicMaterial({ color: 0xff5010, transparent: true, opacity: 0.85 }),
+    );
+    this.lava.visible = false;
+    this.scene.add(this.lava);
     // 조종 중 하늘에서 본 블록의 착지 미리보기 (조종자에게만)
     this.previewMat = new THREE.MeshBasicMaterial({ color: 0xf0a030, transparent: true, opacity: 0.35 });
 
@@ -225,19 +225,31 @@ export class Renderer {
       }
     }
 
-    // 블록 + 그림자
-    const piece = state.piece;
-    for (let i = 0; i < 4; i++) {
-      const pm = this.pieceMeshes[i];
-      const sm = this.shadowMeshes[i];
+    // 블록 + 그림자 (여러 개)
+    const pieces = state.pieces || [];
+    const need = pieces.length * 4;
+    while (this.pieceMeshes.length < need) {
+      const m = new THREE.Mesh(this.pieceBox, this.pieceMat);
+      this.scene.add(m);
+      this.pieceMeshes.push(m);
+      const s = new THREE.Mesh(this.shadowBox, this.shadowMat);
+      this.scene.add(s);
+      this.shadowMeshes.push(s);
+    }
+    for (let k = 0; k < this.pieceMeshes.length; k++) {
+      const pm = this.pieceMeshes[k];
+      const sm = this.shadowMeshes[k];
+      const piece = pieces[Math.floor(k / 4)];
       if (!piece) {
         pm.visible = false;
         sm.visible = false;
         continue;
       }
+      const i = k % 4;
       const [x, y, z] = piece.cells[i];
       pm.position.set(x + 0.5, y + 0.5, z + 0.5);
       pm.visible = true;
+      pm.material = piece.controller !== null ? this.controlledMat : this.pieceMat;
       const mine = piece.phase === 'control' && piece.controller === myId;
       const showShadow = piece.shadowVisible || mine;
       sm.visible = showShadow;
@@ -247,6 +259,15 @@ export class Renderer {
         sm.material = mine ? this.previewMat : this.shadowMat;
         if (mine) this.previewMat.color.setHex(piece.fits ? 0xf0a030 : 0xff2020);
       }
+    }
+
+    // 용암
+    const lava = state.lava;
+    this.lava.visible = !!(lava && lava.active);
+    if (this.lava.visible) {
+      const h = Math.max(0.01, lava.z - this.lavaBottom);
+      this.lava.scale.z = h;
+      this.lava.position.set(C.GRID_W / 2, C.GRID_D / 2, this.lavaBottom + h / 2);
     }
 
     // 아이템
@@ -284,6 +305,7 @@ export class Renderer {
     // 카메라
     const me = state.players.find((p) => p.id === myId);
     this.pieceMat.opacity = this.skyBlend > 0.5 ? 0.55 : 1; // 하늘 시점에선 블록 너머로 착지 미리보기가 보이게
+    this.controlledMat.opacity = this.pieceMat.opacity;
 
     // 1인칭(또는 관전) 자세
     const eye = new THREE.Vector3();

@@ -7,6 +7,10 @@ import { rotatedCells, footprint } from '../shared/pieces.js';
 const W = C.GRID_W;
 const D = C.GRID_D;
 
+function pieceKey(piece) {
+  return `${piece.id}:${piece.px},${piece.py},${piece.rot},${piece.stepMs}`;
+}
+
 function edgeDist(x, y) {
   return Math.min(x, W - x, y, D - y);
 }
@@ -29,8 +33,7 @@ export class BotBrain {
     this.rng = rng;
     this.nextThinkAt = 0;
     this.input = { fwd: 0, strafe: 0, jump: false, yaw: 0, pitch: 0 };
-    this.dangerKey = null;
-    this.dangerSeenAt = 0;
+    this.dangerSeen = new Map(); // 블록 위치 키 -> 그림자를 처음 본 시각 (반응 시간 계산용)
     this.aimedAt = null; // 조종 중: 목표 위에 맞춘 시각
     this.lastPos = null;
     this.stuckMs = 0;
@@ -75,13 +78,16 @@ export class BotBrain {
     return [...g.players.values()].filter((o) => o !== p && o.alive);
   }
 
-  // 그림자가 보이는 떨어지는 블록 → 그 발자국 칸들. 없으면 null
-  visibleDanger(g) {
-    const piece = g.piece;
-    if (!piece || piece.phase !== 'falling') return null;
-    const eta = Math.max(0, (piece.pz - piece.landZ - 1) * piece.stepMs + (piece.nextStepAt - g.time));
-    if (eta > C.SHADOW_LEAD_MS) return null;
-    return { cells: piece.cells.map(([dx, dy]) => [piece.px + dx, piece.py + dy]), eta, key: `${piece.shape}${piece.px},${piece.py},${piece.rot},${piece.stepMs}` };
+  // 그림자가 보이는 떨어지는 블록들 → 각각의 발자국 칸·남은 시간·위치 키
+  visibleDangers(g) {
+    const out = [];
+    for (const piece of g.pieces) {
+      if (piece.phase !== 'falling') continue;
+      const eta = Math.max(0, (piece.pz - piece.landZ - 1) * piece.stepMs + (piece.nextStepAt - g.time));
+      if (eta > C.SHADOW_LEAD_MS) continue;
+      out.push({ cells: piece.cells.map(([dx, dy]) => [piece.px + dx, piece.py + dy]), eta, key: pieceKey(piece) });
+    }
+    return out;
   }
 
   // ---------- 판단 ----------
@@ -92,36 +98,41 @@ export class BotBrain {
       this.targetBias.clear();
     }
     const enemies = this.enemies(g, p);
-    const danger = this.visibleDanger(g);
+    const dangers = this.visibleDangers(g);
 
     // 그림자를 처음 본 순간부터 반응 시간이 지나야 "안다"
-    if (danger) {
-      if (danger.key !== this.dangerKey) {
-        this.dangerKey = danger.key;
-        this.dangerSeenAt = g.time;
-      }
-    } else {
-      this.dangerKey = null;
+    const live = new Set();
+    for (const d of dangers) {
+      live.add(d.key);
+      if (!this.dangerSeen.has(d.key)) this.dangerSeen.set(d.key, g.time);
     }
-    const knownDanger = danger && g.time - this.dangerSeenAt >= C.BOT_REACTION_MS ? danger : null;
+    for (const k of [...this.dangerSeen.keys()]) if (!live.has(k)) this.dangerSeen.delete(k);
+    const known = dangers.filter((d) => g.time - this.dangerSeen.get(d.key) >= C.BOT_REACTION_MS);
+    const avoid = known.flatMap((d) => d.cells);
+    const danger = dangers.length ? dangers[0] : null;
 
-    if (g.isControlling(p)) {
-      this.controlPiece(g, p, enemies);
-      // 캐릭터는 내 블록 밑과 가장자리를 피해 가만히
-      const hover = g.pieceWorldCells().map(([x, y]) => [x, y]);
-      this.moveTo(g, p, this.safeSpot(g, p, hover, null));
+    const mine = g.controlledPiece(p);
+    if (mine) {
+      this.controlPiece(g, p, enemies, mine);
+      // 캐릭터는 내 블록 밑·가장자리·아는 그림자를 피해 가만히 (용암이 오면 올라간다)
+      const hover = g.pieceWorldCells(mine).map(([x, y]) => [x, y]);
+      if (!this.climbFromLava(g, p, avoid)) this.moveTo(g, p, this.safeSpot(g, p, hover.concat(avoid), null), avoid);
       return;
     }
 
     // 1) 피하기
-    if (knownDanger && overlapsCells(p, knownDanger.cells)) {
-      const spot = this.safeSpot(g, p, knownDanger.cells, null);
+    const hit = known.filter((d) => overlapsCells(p, d.cells));
+    if (hit.length) {
+      const spot = this.safeSpot(g, p, avoid, null);
       this.moveTo(g, p, spot);
       const dist = Math.hypot(spot.x - p.x, spot.y - p.y);
-      if (dist > 0.8 && knownDanger.eta < 900 && g.time >= p.dashReadyAt) g.handleAction(p.id, { name: 'dash' });
+      const eta = Math.min(...hit.map((d) => d.eta));
+      if (dist > 0.8 && eta < 900 && g.time >= p.dashReadyAt) g.handleAction(p.id, { name: 'dash' });
       return;
     }
-    const avoid = knownDanger ? knownDanger.cells : [];
+
+    // 1.5) 용암이 다가오면 높은 곳으로
+    if (this.climbFromLava(g, p, avoid)) return;
 
     // 2) 가장자리에 너무 붙었으면 안쪽으로
     if (edgeDist(p.x, p.y) < 0.75) {
@@ -186,10 +197,24 @@ export class BotBrain {
     return best;
   }
 
-  attack(g, p, t, danger, avoid) {
+  attack(g, p, t, dangerIn, avoid) {
+    let danger = dangerIn;
     // 상대를 밀 방향: 그림자가 상대 근처면 그림자 쪽, 아니면 상대에게 가장 가까운 가장자리 쪽
     let dir = null;
     if (danger) {
+      // 그림자 여러 개 중 상대에게 가장 가까운 것
+      let best = null;
+      let bd = Infinity;
+      for (const d of g.pieces.length ? this.visibleDangers(g) : []) {
+        const cx0 = d.cells.reduce((a, c) => a + c[0] + 0.5, 0) / d.cells.length;
+        const cy0 = d.cells.reduce((a, c) => a + c[1] + 0.5, 0) / d.cells.length;
+        const dd = Math.hypot(cx0 - t.x, cy0 - t.y);
+        if (dd < bd) {
+          bd = dd;
+          best = d;
+        }
+      }
+      danger = best || danger;
       const cx = danger.cells.reduce((a, c) => a + c[0] + 0.5, 0) / danger.cells.length;
       const cy = danger.cells.reduce((a, c) => a + c[1] + 0.5, 0) / danger.cells.length;
       const d = Math.hypot(cx - t.x, cy - t.y);
@@ -262,7 +287,8 @@ export class BotBrain {
       for (let y = 0; y < D; y++) {
         if (badSet.has(x * 100 + y)) continue;
         const top = g.columnTop(x, y);
-        if (top > p.z + 1.05) continue; // 점프로 못 올라감
+        if (top > p.z + this.jumpReach(g, p)) continue; // 점프로 못 올라감
+        if (g.lava.active && top < g.lava.z + 0.6) continue; // 용암에 잠겼거나 곧 잠김
         const cx = x + 0.5;
         const cy = y + 0.5;
         // 위험 칸에서 한 칸 떨어진 곳을 선호 (경계에 걸치면 AABB 가 겹친다)
@@ -332,17 +358,16 @@ export class BotBrain {
     const ax = Math.floor(p.x + ux * 0.55);
     const ay = Math.floor(p.y + uy * 0.55);
     const top = g.columnTop(ax, ay);
-    if (top > p.z + 0.05 && top <= p.z + 1.05) this.input.jump = true;
+    if (top > p.z + 0.05 && top <= p.z + this.jumpReach(g, p)) this.input.jump = true;
   }
 
   // ---------- 조종 ----------
-  controlPiece(g, p, enemies) {
-    const piece = g.piece;
+  controlPiece(g, p, enemies, piece) {
     const t = this.nearest(p, enemies);
     const timeLeft = piece.controlEndsAt - g.time;
     const plan = t ? this.bestDrop(g, p, t, piece) : null;
     if (!plan) {
-      if (timeLeft < 1500 && piece.fits) this.drop(g, p);
+      if (timeLeft < 1500 && piece.fits) this.drop(g, p, piece);
       else if (!piece.fits) g.handleAction(p.id, { name: 'pieceMove', dx: piece.px > W / 2 ? -1 : 1, dy: 0 });
       return;
     }
@@ -365,20 +390,44 @@ export class BotBrain {
     }
     if (this.aimedAt === null) this.aimedAt = g.time;
     if (g.time - this.aimedAt >= C.BOT_DROP_DELAY_MS || timeLeft < 1000) {
-      this.drop(g, p);
+      this.drop(g, p, piece);
       this.aimedAt = null;
     }
   }
 
   // 내가 떨어뜨린 블록은 어디로 떨어지는지 이미 안다 → 반응 시간 없이 바로 피할 대상으로 등록
   // (안 그러면 반응 시간 동안 상대를 쫓아 내 블록 밑으로 걸어 들어간다)
-  drop(g, p) {
+  drop(g, p, piece) {
     g.handleAction(p.id, { name: 'drop' });
-    const piece = g.piece;
-    if (piece && piece.phase === 'falling') {
-      this.dangerKey = `${piece.shape}${piece.px},${piece.py},${piece.rot},${piece.stepMs}`;
-      this.dangerSeenAt = g.time - C.BOT_REACTION_MS;
+    if (piece.phase === 'falling') this.dangerSeen.set(pieceKey(piece), g.time - C.BOT_REACTION_MS);
+  }
+
+  // 지금 한 번 점프로 올라갈 수 있는 높이 (칸)
+  jumpReach(g, p) {
+    return 1.05;
+  }
+
+  // 용암이 2.5칸 안으로 다가오면 더 높은 칸으로 한 단계씩 올라간다. 움직였으면 true
+  climbFromLava(g, p, avoid) {
+    if (!g.lava.active || p.z - g.lava.z > 2.5) return false;
+    const bad = new Set(avoid.map(([x, y]) => x * 100 + y));
+    let best = null;
+    let bs = -Infinity;
+    for (let x = 0; x < W; x++) {
+      for (let y = 0; y < D; y++) {
+        if (bad.has(x * 100 + y)) continue;
+        const top = g.columnTop(x, y);
+        if (top > p.z + this.jumpReach(g, p) || top < g.lava.z + 0.6) continue;
+        const score = top * 3 - Math.hypot(x + 0.5 - p.x, y + 0.5 - p.y);
+        if (score > bs) {
+          bs = score;
+          best = { x: x + 0.5, y: y + 0.5, top };
+        }
+      }
     }
+    if (!best || best.top <= p.z + 0.5) return false; // 더 높은 곳이 없으면 평소대로
+    this.moveTo(g, p, best, avoid);
+    return true;
   }
 
   // 상대가 서 있는 칸들을 덮고, 나는 안 덮고, 들어가는 배치 중 이동 키 수가 가장 적은 것

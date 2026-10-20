@@ -60,10 +60,10 @@ test('그림자: 착지 SHADOW_LEAD_MS 전부터만 보인다', () => {
   const { g } = setup();
   fallingPiece(g, 'O', 0, 0, 0);
   g.tick(TICK);
-  assert.equal(g.snapshot().piece.shadowVisible, false);
+  assert.equal(g.snapshot().pieces[0].shadowVisible, false);
   // 12칸 × 500ms = 6초 낙하. 3.5초 후엔 보여야 한다
   run(g, 3500);
-  assert.equal(g.snapshot().piece.shadowVisible, true);
+  assert.equal(g.snapshot().pieces[0].shadowVisible, true);
 });
 
 test('압사: 블록 아래 서 있던 플레이어는 crush 로 죽는다', () => {
@@ -111,18 +111,20 @@ test('층 클리어: 꽉 찬 층이 사라지고 위 블록·플레이어가 한
   p2.x = 2.5;
   p2.y = 2.5;
   p2.z = 1;
-  // z=0 층을 O 자리 (4..5, 4..5) 빼고 채운다
-  for (let y = 0; y < C.GRID_D; y++) for (let x = 0; x < C.GRID_W; x++) if (!(x >= 4 && y >= 4)) g.grid[g.idx(x, y, 0)] = 1;
+  // z=0 층을 구석 O 자리 (W-2..W-1, D-2..D-1) 빼고 채운다
+  const gx = C.GRID_W - 2;
+  const gy = C.GRID_D - 2;
+  for (let y = 0; y < C.GRID_D; y++) for (let x = 0; x < C.GRID_W; x++) if (!(x >= gx && y >= gy)) g.grid[g.idx(x, y, 0)] = 1;
   g.grid[g.idx(0, 0, 1)] = 1; // 위에 블록 하나
   p1.x = 0.5;
   p1.y = 0.5;
   p1.z = 2; // 그 블록 위에 서 있음
-  fallingPiece(g, 'O', 0, 4, 4, 3, 50);
+  fallingPiece(g, 'O', 0, gx, gy, 3, 50);
   run(g, 50 * 5);
   assert.equal(g.piece, null);
   assert.equal(g.gridAt(0, 0, 0), 1, '위에 있던 블록이 z=0 으로 내려와야 함');
   assert.equal(g.gridAt(0, 0, 1), 0);
-  assert.equal(g.gridAt(4, 4, 0), 0, '착지한 O 는 층과 함께 사라져야 함');
+  assert.equal(g.gridAt(gx, gy, 0), 0, '착지한 O 는 층과 함께 사라져야 함');
   assert.ok(Math.abs(p1.z - 1) < 1e-6, `플레이어 z=${p1.z}, 1 이어야 함`);
 });
 
@@ -155,8 +157,10 @@ test('조종권: 아이템 획득 → 다음 블록 조종, 조종 중 대시·�
   g.handleAction(1, { name: 'drop' });
   assert.equal(g.piece.phase, 'falling');
   assert.equal(g.isControlling(p1), false);
-  run(g, C.HARD_DROP_STEP_MS * 14);
-  assert.equal(g.piece, null);
+  run(g, C.HARD_DROP_STEP_MS * (C.GRID_H + 3));
+  // 조종 블록은 착지해서 사라짐 (그 사이 자동 블록은 따로 떨어질 수 있다)
+  assert.ok(!g.pieces.some((pc) => pc.controller === 1), '조종 블록이 착지해야 함');
+  assert.ok(g.grid.reduce((a, b) => a + b, 0) >= 4);
 });
 
 test('조종권: 8초 안에 안 떨구면 자동 낙하', () => {
@@ -220,21 +224,23 @@ test('넉백 아이템 + 투사체: 맞으면 넉백, 탄 소모', () => {
 
 test('아이템 스폰·획득', () => {
   const { g, p1 } = setup();
-  p1.x = 5.5; // 시작 위치 (1.5,1.5) 가 아이템 칸과 겹치지 않게 비켜둔다
+  p1.x = C.GRID_W - 0.5; // 시작 위치가 아이템 칸과 겹치지 않게 구석으로 비켜둔다
   p1.y = 0.5;
   g.controlItemNextAt = g.time;
   g.knockbackItemNextAt = g.time;
-  const seq = [0.3, 0.3, 0.5, 0.5]; // 조종권 (1,1), 넉백 (3,3)
+  const seq = [0.3, 0.3, 0.5, 0.5]; // 조종권 (0.3W, 0.3D), 넉백 (0.5W, 0.5D)
   g.rng = () => (seq.length ? seq.shift() : 0.5);
   g.tick(TICK);
   assert.equal(g.items.length, 2);
-  p1.x = 1.5;
-  p1.y = 1.5;
+  const ctl = g.items.find((it) => it.type === 'control');
+  const kb = g.items.find((it) => it.type === 'knockback');
+  p1.x = ctl.x + 0.5;
+  p1.y = ctl.y + 0.5;
   g.tick(TICK);
   // CONTROL_TAKEOVER: 블록이 없으면 먹는 즉시 새 블록 조종 시작
   assert.ok(g.isControlling(p1), '조종권을 먹으면 바로 조종 시작');
-  p1.x = 3.5;
-  p1.y = 3.5;
+  p1.x = kb.x + 0.5;
+  p1.y = kb.y + 0.5;
   run(g, 100);
   assert.equal(p1.ammo, C.KNOCKBACK_AMMO);
   assert.equal(g.items.length, 0);
@@ -272,10 +278,12 @@ test('밀치기 거리: 평지에서 약 1.5칸 (PUSH_KB_SPEED 4.2)', () => {
   assert.equal(p2.alive, true);
 });
 
-test('시작 위치: 가장자리에서 1.5칸 안쪽이라 밀치기 한 번으로 안 떨어진다', () => {
+test('시작 위치: 가장자리에서 1.5칸 이상 안쪽이라 밀치기 한 번으로 안 떨어진다', () => {
   const { g, p1, p2 } = setup();
-  assert.deepEqual([p1.x, p1.y, p2.x, p2.y], [1.5, 1.5, 4.5, 4.5]);
-  // p2 를 시작 위치 (1.5,1.5) 에 두고 바깥쪽(-x)으로 밀어도 산다
+  const sp = C.SPAWN_POINTS;
+  assert.deepEqual([p1.x, p1.y, p2.x, p2.y], [sp[0].x, sp[0].y, sp[1].x, sp[1].y]);
+  assert.ok(sp[0].x >= 1.5 && sp[0].y >= 1.5);
+  // p2 를 가장자리에서 1.5칸 (x=1.5) 에 두고 바깥쪽(-x)으로 밀어도 산다
   p2.x = 1.5;
   p2.y = 1.5;
   p1.x = 2.5;
@@ -312,13 +320,15 @@ test('이벤트: 밀치기 명중/경직 무효, 아이템 획득, 조종 시작
   assert.ok(g.drainEvents().some((e) => e.type === 'controlStart' && e.who === 1));
 });
 
-test('nextSpawnIn: 블록 없음 → 남은 대기, 낙하 중 → 착지까지 + 대기, 조종 중 → null', () => {
+test('nextSpawnIn: 조종 블록 없음 → 다음 생성까지, 남의 조종 블록 낙하 중 → 그 착지까지, 조종 중 → null', () => {
   const { g, p1 } = setup();
   g.nextSpawnAt = g.time + 1500;
   assert.equal(g.snapshot().nextSpawnIn, 1500);
-  fallingPiece(g, 'O', 0, 4, 4, 2, 100); // 2칸 → 200ms 후 착지
+  fallingPiece(g, 'O', 0, 4, 4, 2, 100); // 자동 블록은 영향 없음
+  assert.equal(g.snapshot().nextSpawnIn, 1500);
+  g.piece.controller = 2; // 남이 조종해서 떨어뜨린 블록: 2칸 → 200ms 후 착지
   const n = g.snapshot().nextSpawnIn;
-  assert.ok(Math.abs(n - (200 + C.AUTO_SPAWN_DELAY_MS)) < 1e-6, `nextSpawnIn=${n}`);
+  assert.ok(Math.abs(n - 200) < 1e-6, `nextSpawnIn=${n}`);
   g.piece = null;
   p1.hasControl = true;
   g.nextSpawnAt = g.time;
@@ -467,7 +477,7 @@ test('3인: 한 명 죽어도 판이 계속되고, 마지막 생존자가 이긴
   g.checkRoundEnd();
   assert.equal(g.phase, 'over');
   assert.equal(g.winnerId, ps[1].id);
-  assert.deepEqual(g.totalsByCount['3인'], { rounds: 1, crush: 1, fall: 1 });
+  assert.deepEqual(g.totalsByCount['3인'], { rounds: 1, crush: 1, fall: 1, lava: 0 });
 });
 
 test('3인: 진행 중 한 명이 나가도 나머지 둘로 계속', () => {
@@ -491,21 +501,29 @@ test('인원이 섞이면 로그에 인원수별 압사 비율이 따로 찍힌�
   const [a] = [...g.players.values()].filter((p) => p.alive);
   g.kill(a, 'crush');
   g.checkRoundEnd();
-  assert.ok(lines.some((l) => l.includes('3인 판 1판: 압사 1 / 낙사 1 → 50%')), lines.join('\n'));
-  assert.ok(lines.some((l) => l.includes('2인 판 1판: 압사 1 / 낙사 0 → 100%')), lines.join('\n'));
+  assert.ok(lines.some((l) => l.includes('3인 판 1판: 압사 1 / 낙사 1 / 용암 0 → 50%')), lines.join('\n'));
+  assert.ok(lines.some((l) => l.includes('2인 판 1판: 압사 1 / 낙사 0 / 용암 0 → 100%')), lines.join('\n'));
 });
 
-test('층 클리어 유도: 한 칸 모양 빈자리가 있으면 거의 항상 그 자리를 채운다', () => {
+test('층 클리어 유도: 유도를 세게 하면 한 칸 모양 빈자리를 거의 항상 채운다 (기본값은 약하게)', () => {
   const g = new Game();
   g.rng = Math.random;
-  // z=0 층을 (4..5, 4..5) 2x2 만 빼고 채운다 → O 블록이 들어가면 층 클리어
-  for (let y = 0; y < C.GRID_D; y++) for (let x = 0; x < C.GRID_W; x++) if (!(x >= 4 && y >= 4)) g.grid[g.idx(x, y, 0)] = 1;
-  let hit = 0;
-  for (let i = 0; i < 200; i++) {
-    const p = g.chooseAutoPlacement('I');
-    if (p.shape === 'O' && p.px === 4 && p.py === 4 && p.landZ === 0) hit++;
+  const saved = C.CLEAR_BIAS;
+  C.CLEAR_BIAS = 2;
+  try {
+    // z=0 층을 구석 2x2 만 빼고 채운다 → O 블록이 들어가면 층 클리어
+    const gx = C.GRID_W - 2;
+    const gy = C.GRID_D - 2;
+    for (let y = 0; y < C.GRID_D; y++) for (let x = 0; x < C.GRID_W; x++) if (!(x >= gx && y >= gy)) g.grid[g.idx(x, y, 0)] = 1;
+    let hit = 0;
+    for (let i = 0; i < 200; i++) {
+      const p = g.chooseAutoPlacement('I');
+      if (p.shape === 'O' && p.px === gx && p.py === gy && p.landZ === 0) hit++;
+    }
+    assert.ok(hit >= 180, `200번 중 ${hit}번`);
+  } finally {
+    C.CLEAR_BIAS = saved;
   }
-  assert.ok(hit >= 180, `200번 중 ${hit}번`);
 });
 
 test('층 클리어 유도 끄기 (CLEAR_BIAS=0): 주어진 무작위 모양 그대로', () => {
@@ -646,4 +664,103 @@ test('봇: 거리가 같은 상대가 여럿이면 늘 사람만 노리지 않�
   }
   // 수정 전에는 200판 중 200판이 사람. 지금은 대략 절반
   assert.ok(p3Pushed >= 20 && p3HitsHumanFirst / p3Pushed < 0.85, `P3 첫 밀치기 ${p3Pushed}번 중 사람 ${p3HitsHumanFirst}번`);
+});
+
+// ---------- 2단계 A: 여러 블록·가속·용암 ----------
+test('블록 가속: 처음엔 자동 블록 1개, 시간이 지나면 동시에 여러 개 (최대 CONCURRENT_MAX)', () => {
+  const { g, p1, p2 } = setup();
+  p1.x = 0.5; // 블록에 안 깔리게 구석에 둔다 (판정은 블록 수만 본다)
+  p2.x = 0.5;
+  g.nextSpawnAt = g.time;
+  g.controlItemNextAt = Infinity;
+  g.knockbackItemNextAt = Infinity;
+  let max0 = 0;
+  for (let t = 0; t < 15000; t += TICK) {
+    g.tick(TICK);
+    if (g.phase !== 'playing') break;
+    max0 = Math.max(max0, g.pieces.length);
+  }
+  assert.equal(max0, 1, '첫 20초는 1개');
+  g.roundStartTime = g.time - C.CONCURRENT_RAMP_MS * 10; // 판 후반으로
+  assert.equal(g.targetConcurrent(), C.CONCURRENT_MAX);
+  assert.equal(g.autoFallStepMs(), C.AUTO_FALL_STEP_MIN_MS);
+  let maxLate = 0;
+  for (let t = 0; t < 8000; t += TICK) {
+    g.tick(TICK);
+    maxLate = Math.max(maxLate, g.pieces.length);
+  }
+  assert.ok(maxLate >= 3, `후반 동시 블록 최대 ${maxLate}`);
+});
+
+test('자동 블록은 다른 블록과 같은 기둥에 안 떨어진다', () => {
+  const { g } = setup();
+  g.rng = Math.random;
+  for (let i = 0; i < 30; i++) {
+    g.pieces = [];
+    g.refreshPieceCells();
+    for (let k = 0; k < 4; k++) g.spawnAuto();
+    const cols = new Set();
+    for (const pc of g.pieces) {
+      for (const [dx, dy] of pc.cells) {
+        const key = (pc.px + dx) * 100 + (pc.py + dy);
+        assert.ok(!cols.has(key), '기둥 겹침');
+        cols.add(key);
+      }
+    }
+  }
+});
+
+test('하드드롭한 블록은 아래에서 떨어지는 블록을 뚫지 않고 그 위에 쌓인다', () => {
+  const { g, p1, p2 } = setup();
+  p1.x = C.GRID_W - 0.5;
+  p2.x = C.GRID_W - 0.5;
+  p2.y = C.GRID_D - 0.5;
+  const low = g.makePiece('O', 0, 0, 0, 6);
+  g.addPiece(low, { phase: 'falling', controller: null, stepMs: 500, nextStepAt: g.time + 500, controlEndsAt: 0 });
+  const high = g.makePiece('O', 0, 0, 0, 12);
+  g.addPiece(high, { phase: 'falling', controller: null, stepMs: C.HARD_DROP_STEP_MS, nextStepAt: g.time + C.HARD_DROP_STEP_MS, controlEndsAt: 0 });
+  for (let t = 0; t < 6000; t += TICK) {
+    g.tick(TICK);
+    // 공중에서 두 블록의 셀이 겹치면 안 된다
+    const a = new Set(g.pieces.flatMap((pc) => g.pieceWorldCells(pc).map((c) => c.join())));
+    assert.equal(a.size, g.pieces.length * 4);
+  }
+  assert.equal(g.pieces.length, 0);
+  assert.equal(g.gridAt(0, 0, 0), 1);
+  assert.equal(g.gridAt(0, 0, 1), 1, '위 블록은 아래 블록 위에 쌓임');
+});
+
+function fillAvgHeight(g, h) {
+  // (0,0) 기둥만 통째로 비운 1칸 구덩이
+  for (let x = 0; x < C.GRID_W; x++) for (let y = 0; y < C.GRID_D; y++) for (let z = 0; z < h; z++) if (!(x === 0 && y === 0)) g.grid[g.idx(x, y, z)] = 1;
+}
+
+test('용암: 평균 높이가 기준에 닿으면 올라오고, 닿은 사람은 용암사', () => {
+  const { g, p1, p2, lines } = setup();
+  assert.equal(g.lava.active, false);
+  // 평균 높이를 기준 위로 (구덩이 하나만 남기고 채움)
+  fillAvgHeight(g, Math.ceil(C.LAVA_TRIGGER_AVG_HEIGHT) + 1);
+  g.gridVersion++;
+  p1.x = 5.5;
+  p1.y = 5.5;
+  p1.z = 20; // 공중에서 떨어져 꼭대기에 선다
+  p2.x = 0.5;
+  p2.y = 0.5;
+  p2.z = 0; // 구덩이 (0,0) 바닥에 갇힌 사람 (점프 1.28칸으로 못 나옴)
+  g.tick(TICK);
+  assert.equal(g.lava.active, true);
+  assert.ok(g.drainEvents().some((e) => e.type === 'lava'));
+  run(g, C.LAVA_RISE_MS_PER_CELL * 1.5);
+  assert.equal(p2.alive, false);
+  assert.equal(p2.deathCause, 'lava');
+  assert.equal(p1.alive, true);
+  assert.ok(lines.some((l) => l.includes('용암 1')), lines.join('\n'));
+});
+
+test('용암: 층 클리어로 지형이 내려앉으면 용암도 같이 내려간다', () => {
+  const { g } = setup();
+  g.lava = { active: true, z: 1.5, startedAt: g.time };
+  for (let x = 0; x < C.GRID_W; x++) for (let y = 0; y < C.GRID_D; y++) g.grid[g.idx(x, y, 0)] = 1;
+  g.clearLayers();
+  assert.ok(Math.abs(g.lava.z - 0.5) < 1e-9, `lava.z=${g.lava.z}`);
 });
