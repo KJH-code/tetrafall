@@ -140,6 +140,7 @@ export class Game {
       brickBig: false, // 설치 블록 모양. true = 2×2, false = 1×2
       brickSide: false, // 1×2 방향. false = 바라보는 쪽으로 뻗음, true = 옆으로
       damage: 0, // 피해 % (대난투식). 높을수록 멀리 날아감
+      wins: 0, // 이긴 판 수 (서버가 켜져 있는 동안, 나가면 사라짐)
       dashReadyAt: 0,
       pushReadyAt: 0,
       hasControl: false,
@@ -287,6 +288,7 @@ export class Game {
     this.phase = 'over';
     this.roundEndTime = this.time;
     this.winnerId = winner ? winner.id : null;
+    if (winner) winner.wins++;
     const dur = this.time - this.roundStartTime;
     const crush = this.deaths.filter((d) => d.cause === 'crush').length;
     const fall = this.deaths.filter((d) => d.cause === 'fall').length;
@@ -300,6 +302,7 @@ export class Game {
       : '없음';
     this.log(`===== ROUND ${this.roundNumber} 종료 | 길이 ${fmtTime(dur)} | 승자: ${winner ? winner.name : '무승부'} =====`);
     this.log(`  사망: ${deathStr}`);
+    this.log(`  승수: ${[...this.players.values()].sort((a, b) => a.slot - b.slot).map((p) => `${p.name} ${p.wins}`).join(' / ')}`);
     this.log(`  이번 판: 압사 ${crush} / 낙사 ${fall} / 용암 ${lava}${this.lava.active ? ` (용암 시작 @ ${fmtTime(this.lava.startedAt - this.roundStartTime)})` : ''}`);
     const per = (this.totals.crush / this.totals.rounds).toFixed(2);
     this.log(`  누적 ${this.totals.rounds}판: 압사 ${this.totals.crush} (판당 ${per}) / 낙사 ${this.totals.fall} / 용암 ${this.totals.lava}`);
@@ -409,9 +412,9 @@ export class Game {
 
   push(p) {
     p.pushReadyAt = this.time + C.PUSH_COOLDOWN_MS;
-    // 망치가 있으면 밀치기 대신 망치 (빗나가도 1회 소모)
+    // 망치가 있으면 밀치기 대신 망치. 누군가를 실제로 날렸을 때만 1회 소모 (2026-10-20 재혁: 적중 시만)
     const weapon = p.weaponUses > 0;
-    if (weapon) p.weaponUses--;
+    let landed = false;
     const kind = weapon ? 'weapon' : 'push';
     const speed = weapon ? C.WEAPON_KB_SPEED : C.PUSH_KB_SPEED;
     const up = weapon ? C.WEAPON_KB_UP : C.PUSH_KB_UP;
@@ -430,6 +433,10 @@ export class Game {
       if (dist > EPS && (dx * fx + dy * fy) / dist < cosHalf) continue;
       const hit = this.applyKnockback(t, fx, fy, speed, up, stun, C.DAMAGE_GAIN[kind]);
       if (hit) p.freezeUntil = this.time + C.HITSTOP_MS; // 때린 쪽도 같이 멈칫
+      if (hit && weapon && !landed) {
+        landed = true;
+        p.weaponUses--; // 한 번 휘둘러 여럿 맞혀도 1회
+      }
       this.emit({ type: 'hit', kind, by: p.id, target: t.id, ok: hit });
       this.log(`  [${weapon ? '망치' : '밀치기'}] ${p.name} → ${t.name} ${hit ? `넉백 (${t.name} ${t.damage}%)` : '경직 중이라 무시'}${weapon ? ` (남은 ${p.weaponUses}회)` : ''}`);
     }
@@ -1341,6 +1348,7 @@ export class Game {
         brickSide: p.brickSide,
         brickPlan: p.alive && p.bricks > 0 ? this.brickPlan(p) : null, // 떨어질 칸 미리보기
         damage: p.damage,
+        wins: p.wins,
         controlling: this.isControlling(p),
         cause: p.deathCause,
       })),

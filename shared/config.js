@@ -73,7 +73,7 @@ export const CONFIG = {
   ITEM_MAX_ON_FIELD: 2,
   ITEM_FIRST_SPAWN_MS: 4000, // 판 시작 후 첫 아이템
   ITEM_RESPAWN_MS: 6000, // 다음 아이템까지
-  // 망치(근접 무기): WEAPON_USES 번 휘두르는 동안 밀치기 대신. 넉백 2배 + 경직 길게. 빗나가도 1회 소모
+  // 망치(근접 무기): WEAPON_USES 번 맞힐 동안 밀치기 대신. 넉백 2배 + 경직 길게. 빗나가면 소모 안 함 (2026-10-20 재혁)
   WEAPON_USES: 3,
   WEAPON_KB_SPEED: 8.4, // 밀치기(4.2)의 2배 → 약 3칸
   WEAPON_KB_UP: 4,

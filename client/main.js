@@ -1,6 +1,6 @@
 // 클라이언트 진입점: WebSocket 연결, 상태 수신, 입력 전송, 렌더 루프, HUD.
 import { CONFIG as C } from '/shared/config.js';
-import { Renderer } from '/render.js';
+import { Renderer, PLAYER_COLORS } from '/render.js';
 import { Input } from '/input.js';
 import { Sound } from '/sound.js';
 
@@ -304,6 +304,26 @@ function fmt(ms) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
+// ---------- 승수 (맨 위) ----------
+// 2명이면 "P1 3 : 1 P2", 3명 이상이면 "P1 3 · P2 1 · P3 0". 바뀔 때만 다시 그림
+const scoreEl = $('score');
+let scoreKey = '';
+function updateScore() {
+  const ps = [...state.players].sort((a, b) => a.slot - b.slot);
+  const key = ps.map((p) => `${p.id}:${p.wins}`).join(',') + `|${myId}`;
+  if (key === scoreKey) return;
+  scoreKey = key;
+  scoreEl.classList.toggle('hidden', ps.length < 2);
+  const color = (p) => `#${PLAYER_COLORS[p.slot % PLAYER_COLORS.length].toString(16).padStart(6, '0')}`;
+  const name = (p) => `<span style="color:${color(p)}" class="${p.id === myId ? 'me' : ''}">${p.name}</span>`;
+  if (ps.length === 2) {
+    const [a, b] = ps;
+    scoreEl.innerHTML = `${name(a)} ${a.wins}<span class="sep">:</span>${b.wins} ${name(b)}`;
+  } else {
+    scoreEl.innerHTML = ps.map((p) => `${name(p)} ${p.wins}`).join('<span class="sep">·</span>');
+  }
+}
+
 // ---------- HUD ----------
 function updateHud() {
   if (!state) return;
@@ -333,6 +353,8 @@ function updateHud() {
   const t = state.round.totals;
   lines.push(`누적 ${t.rounds}판 · 압사 ${t.crush} · 낙사 ${t.fall} · 용암 ${t.lava || 0}`);
   statusEl.textContent = lines.join('\n');
+
+  updateScore();
 
   // 상단 배너: 조종권 상태 (예고 → 조종 중)
   let bannerText = null;

@@ -895,7 +895,7 @@ test('아이템 생성: 조종권 말고는 필드에 ITEM_MAX_ON_FIELD 개까�
   for (const type of C.ITEM_POOL) assert.ok(seen.has(type), `${type} 안 나옴`);
 });
 
-test('망치: WEAPON_USES 번 동안 밀치기 대신 — 넉백 약 2배, 경직 WEAPON_STUN_MS, 빗나가도 소모', () => {
+test('망치: WEAPON_USES 번 동안 밀치기 대신 — 넉백 약 2배, 경직 WEAPON_STUN_MS, 맞혔을 때만 소모', () => {
   const { g, p1, p2 } = setup();
   g.givePower(p1, 'weapon');
   assert.equal(p1.weaponUses, C.WEAPON_USES);
@@ -911,11 +911,22 @@ test('망치: WEAPON_USES 번 동안 밀치기 대신 — 넉백 약 2배, 경�
   run(g, 2000);
   const d = p2.x - 3.5;
   assert.ok(d > 2.5 * C.DAMAGE_KB_BASE, `망치 넉백 거리 ${d.toFixed(2)} (피해 0% 밀치기 약 ${(1.5 * C.DAMAGE_KB_BASE).toFixed(2)})`);
-  // 빗나가도 소모 → 다 쓰면 다시 밀치기
+  // 빗나가면 소모 안 함
   p1.pushReadyAt = 0;
   g.handleAction(1, { name: 'push' });
+  assert.equal(p1.weaponUses, C.WEAPON_USES - 1, '빗나감');
+  // 경직 중이라 무시돼도 소모 안 함
+  Object.assign(p2, { x: 3.5, y: 5, z: 0, stunUntil: g.time + 1000 });
   p1.pushReadyAt = 0;
   g.handleAction(1, { name: 'push' });
+  assert.equal(p1.weaponUses, C.WEAPON_USES - 1, '경직 중 무시');
+  // 맞히면 소모 → 다 쓰면 다시 밀치기
+  for (let k = 0; k < C.WEAPON_USES - 1; k++) {
+    p2.stunUntil = 0;
+    Object.assign(p2, { x: 3.5, y: 5, z: 0, kbx: 0, kby: 0 });
+    p1.pushReadyAt = 0;
+    g.handleAction(1, { name: 'push' });
+  }
   assert.equal(p1.weaponUses, 0);
   p1.pushReadyAt = 0;
   g.handleAction(1, { name: 'push' });
@@ -1210,4 +1221,19 @@ test('봇: 용암 전에는 가만히 선 상대 발밑에 설치 블록을 던�
   run(g, 2500);
   assert.ok(lines.some((l) => l.includes('[투척] P2(봇)')), lines.join('\n'));
   assert.equal(human.deathCause, 'crush');
+});
+
+test('승수: 이긴 사람 승수가 쌓이고 스냅샷·로그에 나온다, 무승부는 안 셈', () => {
+  const { g, p1, p2, lines } = setup();
+  g.kill(p2, 'fall');
+  g.tick(TICK);
+  assert.equal(p1.wins, 1);
+  assert.ok(lines.some((l) => l.includes('승수: P1 1 / P2 0')), lines.join('\n'));
+  assert.equal(g.snapshot().players.find((p) => p.id === 1).wins, 1);
+  g.startRound();
+  g.kill(p1, 'fall');
+  g.kill(p2, 'fall');
+  g.tick(TICK);
+  assert.equal(g.phase, 'over');
+  assert.equal(p1.wins + p2.wins, 1, '무승부는 안 셈');
 });

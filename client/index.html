@@ -22,6 +22,9 @@
     #crosshair.brick { border-color: #f0d060; box-shadow: 0 0 6px #f0d060; border-radius: 3px; }
     #crosshair.brick::after { color: #f0d060; }
     #top { position: absolute; z-index: 2; top: 12px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    #score { font-size: 22px; font-weight: bold; padding: 5px 14px; border-radius: 8px; background: rgba(0,0,0,.55); white-space: nowrap; text-shadow: 0 0 3px #000; }
+    #score .me { text-decoration: underline; }
+    #score .sep { color: #aaa; margin: 0 8px; }
     #banner { font-size: 20px; font-weight: bold; padding: 8px 16px; border-radius: 8px; background: rgba(0,140,160,.85); white-space: pre; text-align: center; }
     #toasts { display: flex; flex-direction: column; align-items: center; gap: 6px; }
     .toast { font-size: 18px; padding: 6px 14px; border-radius: 6px; background: rgba(0,0,0,.7); white-space: pre; transition: opacity .4s; }
@@ -44,6 +47,7 @@
   <div id="hud">
     <div id="flash"></div>
     <div id="top">
+      <div id="score" class="hidden"></div>
       <div id="banner" class="hidden"></div>
       <div id="toasts"></div>
     </div>
