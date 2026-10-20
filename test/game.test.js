@@ -1209,7 +1209,7 @@ test('봇: 용암이 오는데 구덩이에 갇히면 설치 블록을 던져 �
   }
 });
 
-test('봇: 용암 전에는 가만히 선 상대 발밑에 설치 블록을 던져 깔아 죽인다', () => {
+function brickDuel() {
   const { g, human, bot, lines } = setupBot();
   g.startRound();
   g.nextSpawnAt = Infinity;
@@ -1219,8 +1219,26 @@ test('봇: 용암 전에는 가만히 선 상대 발밑에 설치 블록을 던�
   Object.assign(bot, { x: 3.5, y: 5.5, z: 0 });
   g.givePower(bot, 'brick');
   run(g, 2500);
-  assert.ok(lines.some((l) => l.includes('[투척] P2(봇)')), lines.join('\n'));
-  assert.equal(human.deathCause, 'crush');
+  return { human, lines };
+}
+
+test('봇: 용암 전에는 가만히 선 상대 발밑에 설치 블록을 던져 깔아 죽인다 (조준 오차 0 으로 고정)', () => {
+  const saved = C.BOT_BRICK_AIM_ERROR;
+  C.BOT_BRICK_AIM_ERROR = 0;
+  try {
+    const { human, lines } = brickDuel();
+    assert.ok(lines.some((l) => l.includes('[투척] P2(봇)')), lines.join('\n'));
+    assert.equal(human.deathCause, 'crush');
+  } finally {
+    C.BOT_BRICK_AIM_ERROR = saved;
+  }
+});
+
+test('봇: 설치 블록 조준 오차 때문에 가끔 빗나간다 (30번 중 한 번 이상 빗나가고 10번 이상은 맞힘)', () => {
+  // 실측 (BOT_BRICK_AIM_ERROR 1.2, 200번): 오차 0 이면 200/200, 1.2 면 136/200 압사
+  let hit = 0;
+  for (let k = 0; k < 30; k++) if (brickDuel().human.deathCause === 'crush') hit++;
+  assert.ok(hit < 30 && hit >= 10, `30번 중 ${hit}번 압사`);
 });
 
 test('승수: 이긴 사람 승수가 쌓이고 스냅샷·로그에 나온다, 무승부는 안 셈', () => {
