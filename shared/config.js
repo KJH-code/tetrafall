@@ -52,7 +52,7 @@ export const CONFIG = {
   PLAYER_HEIGHT: 1.6,
   EYE_HEIGHT: 1.45,
   MOVE_SPEED: 4.5, // 단위/초
-  JUMP_SPEED: 6.5,
+  JUMP_SPEED: 7.5, // 최고 높이 약 1.28칸 → 1칸 블록은 올라가고 2칸 벽은 못 넘음. 2026-10-20 6.5→7.5 (6.5는 0.95칸이라 1칸도 못 올라감)
   GRAVITY: 20,
   DASH_SPEED: 10, // 대시 순간 속도
   DASH_COOLDOWN_MS: 1500,

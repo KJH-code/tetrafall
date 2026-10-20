@@ -320,3 +320,25 @@ test('nextSpawnIn: 블록 없음 → 남은 대기, 낙하 중 → 착지까지 
   g.tick(TICK);
   assert.equal(g.snapshot().nextSpawnIn, null);
 });
+
+test('점프: 1칸 블록 위로는 올라가고 2칸 벽은 못 넘는다', () => {
+  const { g, p1 } = setup();
+  // x>=3 에 1칸 턱, x=5 에는 턱보다 2칸 높은 벽
+  for (let y = 0; y < C.GRID_D; y++) {
+    for (let x = 3; x < C.GRID_W; x++) g.grid[g.idx(x, y, 0)] = 1;
+    g.grid[g.idx(5, y, 1)] = 1;
+    g.grid[g.idx(5, y, 2)] = 1;
+  }
+  p1.x = 2.5;
+  p1.y = 2.5;
+  let landedOnStep = false;
+  let maxX = 0;
+  for (let i = 0; i < 120; i++) {
+    g.handleInput(1, { fwd: 1, strafe: 0, jump: true, yaw: 0, pitch: 0 });
+    g.tick(TICK);
+    if (p1.grounded && Math.abs(p1.z - 1) < 1e-6 && p1.x > 3) landedOnStep = true;
+    maxX = Math.max(maxX, p1.x);
+  }
+  assert.ok(landedOnStep, '1칸 턱 위에 착지해야 함');
+  assert.ok(maxX <= 5 - C.PLAYER_HALF + 1e-6 && p1.alive, `2칸 벽에 막혀야 함: maxX=${maxX.toFixed(2)}`);
+});
