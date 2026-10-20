@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { CONFIG as C } from '/shared/config.js';
 import { buildCharacter } from '/character.js';
+import { Effects } from '/effects.js';
 
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
@@ -23,6 +24,14 @@ export class Renderer {
 
     this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 200);
     this.camera.up.set(0, 0, 1);
+    this.scene.add(this.camera); // 1인칭 팔(뷰모델)을 카메라에 붙이려고
+    // 1인칭 팔: 화면 오른쪽 아래에 보이는 내 팔. 밀치기 때 앞으로 뻗는다
+    this.viewArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.32, 4, 10), new THREE.MeshLambertMaterial({ color: 0xffffff }));
+    this.viewArm.rotation.x = Math.PI / 2; // 캡슐을 화면 안쪽(-z) 방향으로 눕힘
+    this.viewArmBase = new THREE.Vector3(0.26, -0.24, -0.42);
+    this.viewArm.position.copy(this.viewArmBase);
+    this.viewArm.visible = false;
+    this.camera.add(this.viewArm);
     // 하늘 시점: 필드가 화면에 꽉 차는 직교 카메라 (블록과 그림자가 같은 크기로 보인다)
     this.skyCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
     this.skyCamera.up.set(0, 1, 0);
@@ -86,6 +95,8 @@ export class Renderer {
     );
     this.lava.visible = false;
     this.scene.add(this.lava);
+
+    this.effects = new Effects(this.scene);
     // 조종 중 하늘에서 본 블록의 착지 미리보기 (조종자에게만)
     this.previewMat = new THREE.MeshBasicMaterial({ color: 0xf0a030, transparent: true, opacity: 0.35 });
 
@@ -150,6 +161,7 @@ export class Renderer {
       const ch = buildCharacter(color);
       g = ch.group;
       g.userData.bodyMat = ch.bodyMaterial;
+      g.userData.arms = ch.arms;
       g.userData.color = color;
       // 하늘 시점 전용 표시: 바라보는 방향 화살표 (+ 내 캐릭터는 흰 고리)
       const tri = new THREE.Shape();
@@ -216,6 +228,15 @@ export class Renderer {
       g.userData.arrow.visible = skyMarks;
       g.userData.arrow.material.color.setHex(p.id === myId ? 0xffffff : g.userData.color);
       g.userData.ring.visible = skyMarks && p.id === myId;
+      // 맞으면 찌그러졌다 펴짐
+      const sq = this.effects.squashAmount(p.id);
+      g.scale.set(1 + 0.28 * sq, 1 + 0.28 * sq, 1 - 0.32 * sq);
+      // 밀치기: 오른팔을 앞으로 뻗음
+      const pu = this.effects.punchAmount(p.id);
+      const arm = g.userData.arms[0];
+      arm.position.x = arm.userData.base.x + 0.38 * pu;
+      arm.position.z = arm.userData.base.z + 0.25 * pu;
+      arm.rotation.y = -1.35 * pu;
     }
     for (const [id, g] of this.playerMeshes) {
       if (!seen.has(id)) {
@@ -304,6 +325,11 @@ export class Renderer {
 
     // 카메라
     const me = state.players.find((p) => p.id === myId);
+    if (me) this.viewArm.material.color.setHex(PLAYER_COLORS[me.slot % PLAYER_COLORS.length]);
+    const vp = this.effects.punchAmount(myId);
+    this.viewArm.position.set(this.viewArmBase.x - 0.12 * vp, this.viewArmBase.y + 0.08 * vp, this.viewArmBase.z - 0.3 * vp);
+    this.viewArm.visible = !!(me && me.alive) && this.skyBlend === 0;
+    this.effects.update(dt, this.skyBlend >= 1 ? this.skyCamera : this.camera);
     this.pieceMat.opacity = this.skyBlend > 0.5 ? 0.55 : 1; // 하늘 시점에선 블록 너머로 착지 미리보기가 보이게
     this.controlledMat.opacity = this.pieceMat.opacity;
 
@@ -332,6 +358,8 @@ export class Renderer {
       this.camera.up.set(0, 0, 1);
       this.camera.position.copy(eye);
       this.camera.lookAt(look);
+      const sh = this.effects.shakeOffset();
+      if (sh) this.camera.position.add(new THREE.Vector3(sh.x, sh.y, sh.z));
       this.renderer.render(this.scene, this.camera);
       return;
     }

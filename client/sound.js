@@ -1,0 +1,118 @@
+// 효과음: 파일 없이 WebAudio 로 합성한다. 브라우저 정책상 첫 클릭(Pointer Lock) 뒤에야 소리가 난다.
+import { CONFIG as C } from '/shared/config.js';
+
+export class Sound {
+  constructor() {
+    this.ctx = null;
+  }
+
+  // 사용자 입력 이벤트 안에서 한 번 불러 오디오를 깨운다
+  unlock() {
+    if (!this.ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      this.ctx = new AC();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = C.SFX_VOLUME;
+      this.master.connect(this.ctx.destination);
+      const len = this.ctx.sampleRate;
+      this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      const d = this.noiseBuf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    }
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+  }
+
+  ready() {
+    return this.ctx && this.ctx.state === 'running';
+  }
+
+  // 주파수가 미끄러지는 단순 음
+  tone({ freq, freqEnd = freq, dur, type = 'sine', vol = 0.5, delay = 0 }) {
+    const t = this.ctx.currentTime + delay;
+    const o = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    o.frequency.exponentialRampToValueAtTime(Math.max(20, freqEnd), t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  }
+
+  // 걸러낸 잡음 (타격·바람·부서짐)
+  noise({ dur, vol = 0.5, filter = 'lowpass', freq = 1000, freqEnd = freq, q = 1, delay = 0 }) {
+    const t = this.ctx.currentTime + delay;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuf;
+    const f = this.ctx.createBiquadFilter();
+    f.type = filter;
+    f.Q.value = q;
+    f.frequency.setValueAtTime(freq, t);
+    f.frequency.exponentialRampToValueAtTime(Math.max(20, freqEnd), t + dur);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f).connect(g).connect(this.master);
+    src.start(t, Math.random() * 0.5);
+    src.stop(t + dur + 0.02);
+  }
+
+  // 거리(칸)에 따라 작아지는 크기
+  static falloff(dist) {
+    if (dist === undefined) return 1;
+    return Math.max(0.2, 1 - dist / C.SFX_HEAR_RANGE);
+  }
+
+  play(name, { dist, strong = false } = {}) {
+    if (!this.ready()) return;
+    const v = Sound.falloff(dist);
+    switch (name) {
+      case 'swing': // 휘두르는 바람 소리
+        this.noise({ dur: 0.13, vol: 0.3 * v, filter: 'bandpass', freq: 1600, freqEnd: 500, q: 1.5 });
+        break;
+      case 'hit': // 내가 때림 / 누가 맞음: 퍽 + 짧은 딱
+        this.tone({ freq: 190, freqEnd: 55, dur: 0.14, type: 'square', vol: (strong ? 0.5 : 0.3) * v });
+        this.noise({ dur: 0.16, vol: (strong ? 0.6 : 0.35) * v, freq: 2600, freqEnd: 300 });
+        this.tone({ freq: 1100, freqEnd: 300, dur: 0.05, type: 'triangle', vol: 0.25 * v });
+        break;
+      case 'hurt': // 내가 맞음: 낮고 묵직하게
+        this.tone({ freq: 140, freqEnd: 40, dur: 0.28, type: 'sine', vol: 0.8 });
+        this.noise({ dur: 0.22, vol: 0.5, freq: 900, freqEnd: 150 });
+        break;
+      case 'fire':
+        this.tone({ freq: 600, freqEnd: 1500, dur: 0.12, type: 'square', vol: 0.18 * v });
+        this.noise({ dur: 0.1, vol: 0.2 * v, filter: 'highpass', freq: 2000 });
+        break;
+      case 'land': // 블록 착지: 쿵
+        this.tone({ freq: 95, freqEnd: 38, dur: 0.18, type: 'sine', vol: 0.55 * v });
+        this.noise({ dur: 0.14, vol: 0.3 * v, freq: 600, freqEnd: 120 });
+        break;
+      case 'crush': // 압사: 으깨짐
+        this.noise({ dur: 0.45, vol: 0.8 * v, freq: 1800, freqEnd: 90 });
+        this.tone({ freq: 80, freqEnd: 28, dur: 0.4, type: 'square', vol: 0.5 * v });
+        break;
+      case 'fall': // 낙사: 휘익 떨어짐
+        this.tone({ freq: 900, freqEnd: 140, dur: 0.75, type: 'sine', vol: 0.35 * v });
+        break;
+      case 'lavaDeath':
+        this.noise({ dur: 0.6, vol: 0.6 * v, filter: 'bandpass', freq: 1200, freqEnd: 300, q: 0.7 });
+        this.tone({ freq: 220, freqEnd: 60, dur: 0.5, type: 'sawtooth', vol: 0.2 * v });
+        break;
+      case 'pickup':
+        this.tone({ freq: 660, dur: 0.09, type: 'triangle', vol: 0.35 });
+        this.tone({ freq: 990, dur: 0.14, type: 'triangle', vol: 0.35, delay: 0.08 });
+        break;
+      case 'lava': // 용암 시작: 우르릉
+        this.noise({ dur: 1.6, vol: 0.6, freq: 260, freqEnd: 120 });
+        this.tone({ freq: 55, freqEnd: 42, dur: 1.5, type: 'sawtooth', vol: 0.25 });
+        break;
+      case 'clear':
+        [523, 659, 784, 1047].forEach((f, i) => this.tone({ freq: f, dur: 0.15, type: 'triangle', vol: 0.3, delay: i * 0.07 }));
+        break;
+      default:
+    }
+  }
+}

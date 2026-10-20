@@ -10,7 +10,8 @@ const H = C.PLAYER_HEIGHT;
 const eyeWhiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff }); // 조명 영향 없이 항상 밝게: 어디를 보는지 멀리서도 보이게
 const pupilMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
 
-// 반환: { group, bodyMaterial }. bodyMaterial 의 color/emissive 를 바꾸면 몸통·팔이 같이 바뀐다 (색, 경직 깜빡임)
+// 반환: { group, bodyMaterial, arms }. bodyMaterial 의 color/emissive 를 바꾸면 몸통·팔이 같이 바뀐다 (색, 경직 깜빡임)
+// arms[0] = 오른팔 (밀치기 휘두르기 애니메이션용). 각 팔의 userData.base = 기본 위치
 export function buildCharacter(color) {
   const group = new THREE.Group();
   const bodyMaterial = new THREE.MeshLambertMaterial({ color });
@@ -35,11 +36,15 @@ export function buildCharacter(color) {
   }
 
   // 짧은 팔 두 개: 몸통 옆에 반쯤 묻힌 작은 캡슐 (판정 상자 밖으로 1~2cm 만 나온다)
+  const arms = [];
   for (const side of [-1, 1]) {
     const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.065, 0.22, 4, 10), bodyMaterial);
     arm.position.set(0.04, side * (R - 0.05), H * 0.45);
     arm.rotation.x = side * 0.35; // 살짝 벌어지게
+    arm.userData.base = arm.position.clone();
+    arm.userData.baseRot = arm.rotation.clone();
     group.add(arm);
+    arms.push(arm);
   }
 
   // 발 두 개: 바닥에 납작하게. 몸통 아래 안쪽에 둔다
@@ -51,5 +56,5 @@ export function buildCharacter(color) {
     group.add(foot);
   }
 
-  return { group, bodyMaterial };
+  return { group, bodyMaterial, arms };
 }

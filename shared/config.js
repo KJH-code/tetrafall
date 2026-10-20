@@ -85,6 +85,7 @@ export const CONFIG = {
 
   // ---- 경직 ----
   STUN_MS: 500, // 넉백 맞으면 이 동안 조작 불가 + 추가 넉백 무시
+  HITSTOP_MS: 90, // 2단계 타격감: 명중 순간 때린 쪽·맞은 쪽이 멈칫하는 시간 (그 뒤 날아감)
 
   // ---- 플레이어 물리 ----
   PLAYER_HALF: 0.3, // AABB 반폭 (x,y)
@@ -124,6 +125,15 @@ export const CONFIG = {
   BOT_DROP_DELAY_MS: 250, // 조종 중 상대 위에 맞춘 뒤 떨어뜨리기까지
   BOT_TARGET_JITTER: 1, // 상대 고를 때 판마다 상대별로 0~이 값(칸)을 거리에 더함. 동점일 때 늘 같은 상대(사람)만 노리지 않게
   BOT_PUSH_INTERVAL_MS: 1500, // 봇이 밀치기 사이에 두는 간격 (×0.7~1.3 무작위). 낮을수록 공격적
+
+  // ---- 타격감 (클라이언트, 2단계) ----
+  SFX_VOLUME: 0.5, // 전체 효과음 크기 0~1
+  SFX_HEAR_RANGE: 14, // 이 거리(칸) 밖 소리는 작게 (최소 20%)
+  FX_SHAKE_HURT: 0.18, // 맞았을 때 화면 흔들림 세기 (칸)
+  FX_SHAKE_HIT: 0.05, // 때렸을 때
+  FX_SHAKE_MS: 280,
+  FX_SQUASH_MS: 320, // 맞은 캐릭터 찌그러졌다 펴지는 시간
+  FX_PARTICLES: 14, // 명중 파편 개수
 
   // ---- 클라이언트 ----
   MOUSE_SENSITIVITY: 0.0022,

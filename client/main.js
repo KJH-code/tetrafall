@@ -2,6 +2,7 @@
 import { CONFIG as C } from '/shared/config.js';
 import { Renderer } from '/render.js';
 import { Input } from '/input.js';
+import { Sound } from '/sound.js';
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $('status');
@@ -25,7 +26,45 @@ let rejected = false; // 방이 꽉 차서 거부됨. 이어지는 연결 끊김
 function send(obj) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
 }
-const input = new Input(renderer.canvas, (action) => send({ type: 'action', ...action }));
+const sound = new Sound();
+const fx = renderer.effects;
+document.addEventListener('pointerdown', () => sound.unlock());
+document.addEventListener('keydown', () => sound.unlock());
+
+// 내 밀치기는 서버 응답을 기다리지 않고 바로 팔을 휘두르고 소리를 낸다 (조작감)
+function onLocalAction(action) {
+  const p = me();
+  if (action.name === 'push' && p && p.alive && !p.controlling && !p.stunned) {
+    fx.startPunch(myId);
+    sound.play('swing');
+  }
+}
+const input = new Input(renderer.canvas, (action) => {
+  onLocalAction(action);
+  send({ type: 'action', ...action });
+});
+
+const hitmarker = $('hitmarker');
+let hitmarkerTimer = 0;
+function showHitmarker() {
+  hitmarker.style.transition = 'none';
+  hitmarker.style.opacity = 1;
+  clearTimeout(hitmarkerTimer);
+  hitmarkerTimer = setTimeout(() => {
+    hitmarker.style.transition = 'opacity .15s';
+    hitmarker.style.opacity = 0;
+  }, 120);
+}
+
+function playerById(id) {
+  return state && state.players.find((x) => x.id === id);
+}
+
+function distToMe(x, y, z) {
+  const p = me();
+  if (!p) return undefined;
+  return Math.hypot(x - p.x, y - p.y, (z || 0) - p.z);
+}
 
 // ---------- 알림 ----------
 function toast(text, kind = '') {
@@ -57,6 +96,7 @@ const KIND_KO = { push: '밀치기', projectile: '투사체' };
 const CAUSE_KO = { crush: '압사', fall: '낙사', lava: '용암' };
 
 function handleEvent(e) {
+  feelEvent(e);
   switch (e.type) {
     case 'hit':
       if (e.target === myId) {
@@ -84,6 +124,101 @@ function handleEvent(e) {
     case 'clear':
       toast(`층 클리어! 위에 있던 것들이 ${e.n}칸 내려앉음`);
       break;
+    default:
+  }
+}
+
+// 타격감: 소리·이펙트·흔들림
+function feelEvent(e) {
+  switch (e.type) {
+    case 'swing': {
+      if (e.who === myId) return; // 내 건 클릭할 때 이미 냄
+      const a = playerById(e.who);
+      if (!a) return;
+      fx.startPunch(e.who);
+      sound.play('swing', { dist: distToMe(a.x, a.y, a.z) });
+      return;
+    }
+    case 'hit': {
+      const t = playerById(e.target);
+      const a = playerById(e.by);
+      if (!t) return;
+      const chest = { x: t.x, y: t.y, z: t.z + 1.0 };
+      if (!e.ok) {
+        fx.burst(chest, null, 0xaaaaaa, 4, 2, 0.06, 0.25); // 경직 중이라 무시: 작은 회색 먼지만
+        return;
+      }
+      let dir = null;
+      if (a) {
+        const dx = t.x - a.x;
+        const dy = t.y - a.y;
+        const len = Math.hypot(dx, dy) || 1;
+        dir = { x: dx / len, y: dy / len };
+      }
+      fx.burst(chest, dir, e.kind === 'projectile' ? 0xffee40 : 0xfff2c0);
+      fx.ring(chest, e.kind === 'projectile' ? 0xffee40 : 0xffffff, 2.4);
+      fx.hitSquash(e.target);
+      if (e.target === myId) {
+        sound.play('hurt');
+        fx.shake(C.FX_SHAKE_HURT);
+      } else if (e.by === myId) {
+        sound.play('hit', { strong: true });
+        fx.shake(C.FX_SHAKE_HIT, 150);
+        showHitmarker();
+      } else {
+        sound.play('hit', { dist: distToMe(t.x, t.y, t.z) });
+      }
+      return;
+    }
+    case 'fire': {
+      const a = playerById(e.who);
+      if (a) sound.play('fire', { dist: e.who === myId ? 0 : distToMe(a.x, a.y, a.z) });
+      return;
+    }
+    case 'land': {
+      let cx = 0;
+      let cy = 0;
+      let cz = Infinity;
+      for (const [x, y, z] of e.cells) {
+        cx += x + 0.5;
+        cy += y + 0.5;
+        cz = Math.min(cz, z);
+        fx.burst({ x: x + 0.5, y: y + 0.5, z }, null, 0x9a9a9a, 3, 2.2, 0.08, 0.35);
+      }
+      cx /= e.cells.length;
+      cy /= e.cells.length;
+      const d = distToMe(cx, cy, cz);
+      sound.play('land', { dist: d });
+      if (d !== undefined && d < 2.5) fx.shake(0.06, 160);
+      return;
+    }
+    case 'death': {
+      const t = playerById(e.who);
+      if (!t) return;
+      const d = e.who === myId ? 0 : distToMe(t.x, t.y, t.z);
+      const pos = { x: t.x, y: t.y, z: t.z + 0.8 };
+      if (e.cause === 'crush') {
+        fx.burst(pos, null, 0xff3030, 22, 6, 0.12, 0.6);
+        sound.play('crush', { dist: d });
+        if (e.who === myId) fx.shake(0.3, 400);
+      } else if (e.cause === 'lava') {
+        fx.burst(pos, null, 0xffa020, 18, 4, 0.1, 0.6);
+        sound.play('lavaDeath', { dist: d });
+      } else if (e.cause === 'fall') {
+        sound.play('fall', { dist: d });
+      }
+      return;
+    }
+    case 'pickup':
+      if (e.who === myId) sound.play('pickup');
+      return;
+    case 'lava':
+      sound.play('lava');
+      fx.shake(0.12, 900);
+      return;
+    case 'clear':
+      sound.play('clear');
+      return;
     default:
   }
 }
@@ -255,5 +390,18 @@ connect();
 
 // 디버그용 (자동 테스트·콘솔에서 입력 주입).
 // window.__tf.send({type:'action', name:'push'}) / window.__tf.inputOverride = {type:'input', fwd:1, ...}
-const debug = { send, getState: () => state, getMyId: () => myId, input, inputOverride: null, renderer };
+const debug = {
+  send,
+  getState: () => state,
+  getMyId: () => myId,
+  input,
+  inputOverride: null,
+  renderer,
+  sound,
+  // 클릭과 같은 경로로 행동 보내기 (로컬 팔 휘두르기·소리 포함)
+  act: (action) => {
+    onLocalAction(action);
+    send({ type: 'action', ...action });
+  },
+};
 window.__tf = debug;

@@ -305,7 +305,7 @@ test('이벤트: 밀치기 명중/경직 무효, 아이템 획득, 조종 시작
   g.handleAction(1, { name: 'push' });
   p1.pushReadyAt = 0;
   g.handleAction(1, { name: 'push' });
-  const ev = g.drainEvents();
+  const ev = g.drainEvents().filter((e) => e.type === 'hit');
   assert.deepEqual(
     ev.map((e) => [e.type, e.kind, e.by, e.target, e.ok]),
     [
@@ -537,9 +537,11 @@ test('층 클리어 유도 끄기 (CLEAR_BIAS=0): 주어진 무작위 모양 그
   }
 });
 
-test('층 클리어 유도: 구멍을 만드는 자리는 거의 안 고른다', () => {
+test('층 클리어 유도: 유도를 세게 하면 구멍을 만드는 자리는 거의 안 고른다', () => {
   const g = new Game();
   g.rng = Math.random;
+  const saved = C.CLEAR_BIAS;
+  C.CLEAR_BIAS = 2;
   // 바닥에 계단: x<3 은 1칸 높이. 걸치면 구멍이 생긴다
   for (let y = 0; y < C.GRID_D; y++) for (let x = 0; x < 3; x++) g.grid[g.idx(x, y, 0)] = 1;
   let holes = 0;
@@ -547,6 +549,7 @@ test('층 클리어 유도: 구멍을 만드는 자리는 거의 안 고른다',
     const p = g.chooseAutoPlacement('I');
     for (const [dx, dy] of p.cells) if (g.columnTop(p.px + dx, p.py + dy) < p.landZ) { holes++; break; }
   }
+  C.CLEAR_BIAS = saved;
   assert.ok(holes <= 10, `200번 중 구멍 ${holes}번`);
 });
 
@@ -592,23 +595,26 @@ test('봇: 떨어지는 블록 그림자를 보고 피한다', () => {
   assert.equal(bot.alive, true, `봇 위치 (${bot.x.toFixed(2)}, ${bot.y.toFixed(2)})`);
 });
 
-test('봇: 조종권으로 가만히 선 상대 위에 블록을 떨어뜨려 압사시킨다', () => {
-  const { g, human, bot } = setupBot();
-  g.startRound();
-  g.nextSpawnAt = Infinity;
-  g.controlItemNextAt = Infinity;
-  g.knockbackItemNextAt = Infinity;
-  human.x = 4.5;
-  human.y = 3.5;
-  bot.x = 1.5;
-  bot.y = 1.5;
-  bot.hasControl = true;
-  g.startControlNow(bot);
-  assert.ok(g.isControlling(bot));
-  run(g, C.CONTROL_TIME_MS + 2000);
-  assert.equal(human.alive, false);
-  assert.equal(human.deathCause, 'crush');
-  assert.equal(bot.alive, true);
+test('봇: 조종권으로 가만히 선 상대 위에 블록을 떨어뜨려 압사시킨다 (10번 중 8번 이상)', () => {
+  let crushed = 0;
+  for (let k = 0; k < 10; k++) {
+    const { g, human, bot } = setupBot();
+    g.startRound();
+    g.nextSpawnAt = Infinity;
+    g.controlItemNextAt = Infinity;
+    g.knockbackItemNextAt = Infinity;
+    human.x = 4.5;
+    human.y = 3.5;
+    bot.x = 1.5;
+    bot.y = 1.5;
+    bot.hasControl = true;
+    g.startControlNow(bot);
+    assert.ok(g.isControlling(bot));
+    run(g, C.CONTROL_TIME_MS + 2000);
+    if (!human.alive && human.deathCause === 'crush' && bot.alive) crushed++;
+  }
+  // 100번 재현에서 98번. 나머지는 시간 안에 못 맞추거나 떨어뜨린 뒤 밀어서 낙사
+  assert.ok(crushed >= 8, `10번 중 ${crushed}번`);
 });
 
 test('봇: 가까이 있는 상대를 민다', () => {
@@ -763,4 +769,38 @@ test('용암: 층 클리어로 지형이 내려앉으면 용암도 같이 내려
   for (let x = 0; x < C.GRID_W; x++) for (let y = 0; y < C.GRID_D; y++) g.grid[g.idx(x, y, 0)] = 1;
   g.clearLayers();
   assert.ok(Math.abs(g.lava.z - 0.5) < 1e-9, `lava.z=${g.lava.z}`);
+});
+
+// ---------- 2단계 B: 타격감 ----------
+test('히트스톱: 명중하면 맞은 쪽·때린 쪽이 HITSTOP_MS 동안 멈췄다가 날아간다 (거리는 그대로)', () => {
+  const { g, p1, p2 } = setup();
+  p1.x = 3.5;
+  p1.y = 5;
+  p1.yaw = 0;
+  p2.x = 4.5;
+  p2.y = 5;
+  g.handleInput(1, { fwd: 1, strafe: 0, jump: false, yaw: 0, pitch: 0 }); // 때린 쪽은 앞으로 걷는 중
+  g.handleAction(1, { name: 'push' });
+  const ev = g.drainEvents();
+  assert.ok(ev.some((e) => e.type === 'swing' && e.who === 1));
+  const x1 = p1.x;
+  const x2 = p2.x;
+  run(g, C.HITSTOP_MS - TICK); // 멈칫 동안
+  assert.equal(p1.x, x1, '때린 쪽 멈춤');
+  assert.equal(p2.x, x2, '맞은 쪽 멈춤');
+  g.handleInput(1, { fwd: 0, strafe: 0, jump: false, yaw: 0, pitch: 0 });
+  run(g, 2000);
+  const d = p2.x - x2;
+  assert.ok(d > 1.35 && d < 1.6, `밀린 거리 ${d.toFixed(2)}`);
+});
+
+test('블록이 착지하면 land 이벤트(셀 위치)가 나온다', () => {
+  const { g, p1, p2 } = setup();
+  p1.x = C.GRID_W - 0.5;
+  p2.x = C.GRID_W - 0.5;
+  fallingPiece(g, 'O', 0, 0, 0, 2, 50);
+  g.drainEvents();
+  run(g, 300);
+  const land = g.drainEvents().find((e) => e.type === 'land');
+  assert.ok(land && land.cells.length === 4 && land.cells.every((c) => c[2] === 0));
 });

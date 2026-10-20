@@ -116,6 +116,7 @@ export class Game {
       grounded: true,
       alive: this.phase !== 'playing', // 진행 중 난입은 관전 (죽은 상태)
       stunUntil: 0,
+      freezeUntil: 0, // 히트스톱: 이 시각까지 움직임 정지 (속도는 보존)
       dashReadyAt: 0,
       pushReadyAt: 0,
       hasControl: false,
@@ -212,6 +213,7 @@ export class Game {
         grounded: true,
         alive: true,
         stunUntil: 0,
+        freezeUntil: 0,
         dashReadyAt: 0,
         pushReadyAt: 0,
         hasControl: false,
@@ -348,6 +350,7 @@ export class Game {
 
   push(p) {
     p.pushReadyAt = this.time + C.PUSH_COOLDOWN_MS;
+    this.emit({ type: 'swing', who: p.id });
     const fx = Math.cos(p.yaw);
     const fy = Math.sin(p.yaw);
     const cosHalf = Math.cos((C.PUSH_HALF_ANGLE_DEG * Math.PI) / 180);
@@ -360,6 +363,7 @@ export class Game {
       if (Math.abs(t.z - p.z) > C.PLAYER_HEIGHT) continue;
       if (dist > EPS && (dx * fx + dy * fy) / dist < cosHalf) continue;
       const hit = this.applyKnockback(t, fx, fy, C.PUSH_KB_SPEED, C.PUSH_KB_UP);
+      if (hit) p.freezeUntil = this.time + C.HITSTOP_MS; // 때린 쪽도 같이 멈칫
       this.emit({ type: 'hit', kind: 'push', by: p.id, target: t.id, ok: hit });
       this.log(`  [밀치기] ${p.name} → ${t.name} ${hit ? '넉백' : '경직 중이라 무시'}`);
     }
@@ -394,6 +398,7 @@ export class Game {
     t.vz = up;
     t.grounded = false;
     t.stunUntil = this.time + C.STUN_MS;
+    t.freezeUntil = this.time + C.HITSTOP_MS; // 멈칫 뒤에 날아간다 (날아가는 거리는 그대로)
     return true;
   }
 
@@ -761,6 +766,8 @@ export class Game {
     for (const [x, y, z] of this.pieceWorldCells(piece)) {
       if (z >= 0 && z < C.GRID_H) this.grid[this.idx(x, y, z)] = 1;
     }
+    const cells = this.pieceWorldCells(piece);
+    this.emit({ type: 'land', cells: cells.map(([x, y, z]) => [x, y, z]), controlled: piece.controller !== null });
     const wasControlled = piece.controller !== null;
     this.removePiece(piece);
     this.gridVersion++;
@@ -937,6 +944,7 @@ export class Game {
   }
 
   integratePlayer(p, dt) {
+    if (this.time < p.freezeUntil) return; // 히트스톱
     const stunned = this.time < p.stunUntil;
     let ix = 0;
     let iy = 0;
