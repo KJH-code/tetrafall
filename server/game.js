@@ -543,10 +543,10 @@ export class Game {
 
   // 경직 중이면 무시 (연속 넉백 불가). 성공 시 true
   // gain: 이번 공격으로 쌓이는 피해 %. 맞기 전까지 쌓인 % 로 수평 넉백을 키우고 그다음에 쌓는다
-  // (0% 인 첫 대는 예전과 같은 거리. 위로 튀는 속도는 그대로)
+  // (위로 튀는 속도는 그대로)
   applyKnockback(t, dx, dy, speed, up, stunMs = C.STUN_MS, gain = 0) {
     if (this.time < t.stunUntil) return false;
-    const mult = 1 + t.damage * C.DAMAGE_KB_PER_PERCENT;
+    const mult = C.DAMAGE_KB_BASE + t.damage * C.DAMAGE_KB_PER_PERCENT;
     t.damage += gain;
     const len = Math.hypot(dx, dy) || 1;
     t.kbx = (dx / len) * speed * mult;

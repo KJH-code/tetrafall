@@ -267,7 +267,7 @@ test('디버그 로그: 판 종료 시 압사/낙사 횟수와 누적이 찍힌�
   assert.equal(g.grid.reduce((a, b) => a + b, 0), 0);
 });
 
-test('밀치기 거리: 평지에서 약 1.5칸 (PUSH_KB_SPEED 4.2)', () => {
+test('밀치기 거리: 피해 0% 면 약 1.5칸 × DAMAGE_KB_BASE (PUSH_KB_SPEED 4.2)', () => {
   const { g, p1, p2 } = setup();
   p1.x = 1.5;
   p1.y = 3;
@@ -277,7 +277,8 @@ test('밀치기 거리: 평지에서 약 1.5칸 (PUSH_KB_SPEED 4.2)', () => {
   g.handleAction(1, { name: 'push' });
   run(g, 2000);
   const d = p2.x - 2.5;
-  assert.ok(d > 1.35 && d < 1.6, `밀린 거리 ${d.toFixed(2)}`);
+  const k = C.DAMAGE_KB_BASE;
+  assert.ok(d > 1.35 * k && d < 1.6 * k, `밀린 거리 ${d.toFixed(2)}`);
   assert.equal(p2.alive, true);
 });
 
@@ -859,7 +860,8 @@ test('히트스톱: 명중하면 맞은 쪽·때린 쪽이 HITSTOP_MS 동안 멈
   g.handleInput(1, { fwd: 0, strafe: 0, jump: false, yaw: 0, pitch: 0 });
   run(g, 2000);
   const d = p2.x - x2;
-  assert.ok(d > 1.35 && d < 1.6, `밀린 거리 ${d.toFixed(2)}`);
+  const k = C.DAMAGE_KB_BASE;
+  assert.ok(d > 1.35 * k && d < 1.6 * k, `밀린 거리 ${d.toFixed(2)}`);
 });
 
 test('블록이 착지하면 land 이벤트(셀 위치)가 나온다', () => {
@@ -908,7 +910,7 @@ test('망치: WEAPON_USES 번 동안 밀치기 대신 — 넉백 약 2배, 경�
   assert.ok(g.drainEvents().some((e) => e.type === 'hit' && e.kind === 'weapon' && e.ok));
   run(g, 2000);
   const d = p2.x - 3.5;
-  assert.ok(d > 2.5, `망치 넉백 거리 ${d.toFixed(2)} (밀치기 약 1.5)`);
+  assert.ok(d > 2.5 * C.DAMAGE_KB_BASE, `망치 넉백 거리 ${d.toFixed(2)} (피해 0% 밀치기 약 ${(1.5 * C.DAMAGE_KB_BASE).toFixed(2)})`);
   // 빗나가도 소모 → 다 쓰면 다시 밀치기
   p1.pushReadyAt = 0;
   g.handleAction(1, { name: 'push' });
@@ -1135,7 +1137,7 @@ test('설치 블록: 밑에 있으면 압사, 착지한 칸 바로 옆이면 충
 });
 
 // ---------- 피해 % ----------
-test('피해 %: 맞을 때마다 종류별로 쌓이고, 쌓인 만큼 멀리 날아간다 (0% 는 예전 거리, 100% 면 2배)', () => {
+test('피해 %: 맞을 때마다 종류별로 쌓이고, 쌓인 만큼 멀리 날아간다 (거리 ∝ DAMAGE_KB_BASE + % × DAMAGE_KB_PER_PERCENT)', () => {
   const pushDist = (dmg) => {
     const { g, p1, p2 } = setup();
     Object.assign(p1, { x: 3.5, y: 5, yaw: 0 });
@@ -1148,7 +1150,8 @@ test('피해 %: 맞을 때마다 종류별로 쌓이고, 쌓인 만큼 멀리 �
   const a = pushDist(0);
   assert.equal(a.p2.damage, C.DAMAGE_GAIN.push);
   const b = pushDist(100);
-  assert.ok(Math.abs(b.d / a.d - 2) < 0.15, `0%: ${a.d.toFixed(2)}칸, 100%: ${b.d.toFixed(2)}칸`);
+  const want = (C.DAMAGE_KB_BASE + 100 * C.DAMAGE_KB_PER_PERCENT) / C.DAMAGE_KB_BASE;
+  assert.ok(Math.abs(b.d / a.d - want) < 0.15 * want, `0%: ${a.d.toFixed(2)}칸, 100%: ${b.d.toFixed(2)}칸 (기대 비 ${want.toFixed(2)})`);
 });
 
 test('피해 %: 경직 중이라 무시된 공격은 안 쌓이고, 새 판이면 0, 로그에 남는다', () => {

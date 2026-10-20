@@ -99,10 +99,13 @@ export const CONFIG = {
   BRICK_SHOCK_STUN_MS: 1200,
 
   // ---- 피해 % (대난투식, 2026-10-20) ----
-  // 맞을 때마다 공격 종류별로 쌓이고 판 내내 안 줄어든다. 수평 넉백 = 기본 × (1 + 피해% × DAMAGE_KB_PER_PERCENT).
+  // 맞을 때마다 공격 종류별로 쌓이고 판 내내 안 줄어든다. 수평 넉백 = 기본 × (DAMAGE_KB_BASE + 피해% × DAMAGE_KB_PER_PERCENT).
   // 경직 중이라 무시된 공격은 안 쌓인다. 압사·용암은 % 와 상관없이 즉사
   DAMAGE_GAIN: { push: 10, weapon: 25, projectile: 20, shock: 40 },
-  DAMAGE_KB_PER_PERCENT: 0.01, // 100% 면 2배 거리
+  // 0% 에선 예전의 0.7배로 약하게 시작, 30% 에서 예전과 같고 그 뒤로 더 세짐 (2026-10-20 재혁 결정 c:
+  // 예전 세기에서 시작하니 봇 판 중앙값이 43 → 20초로 줄어서)
+  DAMAGE_KB_BASE: 0.7,
+  DAMAGE_KB_PER_PERCENT: 0.01,
 
   // ---- 투사체 (넉백 아이템) ----
   KNOCKBACK_AMMO: 1, // 아이템 하나당 발사 횟수
@@ -164,6 +167,7 @@ export const CONFIG = {
   BOT_DROP_DELAY_MS: 250, // 조종 중 상대 위에 맞춘 뒤 떨어뜨리기까지
   BOT_TARGET_JITTER: 1, // 상대 고를 때 판마다 상대별로 0~이 값(칸)을 거리에 더함. 동점일 때 늘 같은 상대(사람)만 노리지 않게
   BOT_PUSH_INTERVAL_MS: 1500, // 봇이 밀치기 사이에 두는 간격 (×0.7~1.3 무작위). 낮을수록 공격적
+  BOT_BRICK_AIM_ERROR: 1.2, // 설치 블록 던질 때 조준점을 상대 발밑에서 이 반경(칸) 안 무작위로 빗나감 (없으면 거의 다 맞힘)
   BOT_LAVA_MARGIN: 1.5, // 용암이 켜지면 표면에서 이 높이(칸) 안의 낮은 칸으로는 내려가지 않음 (1.5칸 = 24초)
 
   // ---- 타격감 (클라이언트, 2단계) ----

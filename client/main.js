@@ -416,14 +416,21 @@ setInterval(() => {
 }, 1000 / C.INPUT_SEND_RATE);
 
 let last = performance.now();
+let frameErrorShown = false;
 function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   const p = me();
   const view = p && p.alive && p.controlling ? 'sky' : 'fps';
   input.sky = view === 'sky';
-  renderer.render(state, myId, dt, view, { yaw: input.yaw, pitch: input.pitch });
-  updateHud();
+  // 한 프레임에서 에러가 나도 다음 프레임은 계속 그린다 (안 그러면 서버는 도는데 화면만 멈춤)
+  try {
+    renderer.render(state, myId, dt, view, { yaw: input.yaw, pitch: input.pitch });
+    updateHud();
+  } catch (err) {
+    if (!frameErrorShown) console.error('프레임 에러 (계속 그림):', err);
+    frameErrorShown = true;
+  }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

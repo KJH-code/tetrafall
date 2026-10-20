@@ -325,9 +325,11 @@ export class Renderer {
       }
     }
 
-    // 블록 + 그림자 (여러 개)
+    // 블록 + 그림자 (여러 개). 칸 수는 블록마다 다르다 (테트리미노 4칸, 설치 블록 1×2 는 2칸)
     const pieces = state.pieces || [];
-    const need = pieces.length * 4;
+    const slots = [];
+    for (const piece of pieces) for (let i = 0; i < piece.cells.length; i++) slots.push([piece, i]);
+    const need = slots.length;
     while (this.pieceMeshes.length < need) {
       const m = new THREE.Mesh(this.pieceBox, this.pieceMat);
       this.scene.add(m);
@@ -339,13 +341,12 @@ export class Renderer {
     for (let k = 0; k < this.pieceMeshes.length; k++) {
       const pm = this.pieceMeshes[k];
       const sm = this.shadowMeshes[k];
-      const piece = pieces[Math.floor(k / 4)];
-      if (!piece) {
+      if (k >= slots.length) {
         pm.visible = false;
         sm.visible = false;
         continue;
       }
-      const i = k % 4;
+      const [piece, i] = slots[k];
       const [x, y, z] = piece.cells[i];
       pm.position.set(x + 0.5, y + 0.5, z + 0.5);
       pm.visible = true;

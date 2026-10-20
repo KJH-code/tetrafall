@@ -451,15 +451,22 @@ export class BotBrain {
     return true;
   }
 
-  // 상대 발밑을 조준해서, 떨어질 칸이 상대를 덮으면 던진다. 던졌으면 true
+  // 상대 발밑을 조준했을 때 떨어질 칸이 상대를 덮으면 던진다. 던졌으면 true
+  // 던질 때는 조준점을 BOT_BRICK_AIM_ERROR 반경 안에서 빗나가게 한다 (사람처럼 가끔 빗나감)
   brickOnTarget(g, p, t) {
-    const dist = Math.hypot(t.x - p.x, t.y - p.y);
-    if (dist > C.BRICK_RANGE || g.pieces.some((pc) => pc.thrownBy === p.id)) return false;
-    const yaw = Math.atan2(t.y - p.y, t.x - p.x);
-    const pitch = Math.atan2(t.z - (p.z + C.EYE_HEIGHT), dist);
-    const plan = g.brickPlan(p, yaw, pitch);
+    const aim = (tx, ty) => {
+      const d = Math.hypot(tx - p.x, ty - p.y);
+      return { yaw: Math.atan2(ty - p.y, tx - p.x), pitch: Math.atan2(t.z - (p.z + C.EYE_HEIGHT), d), d };
+    };
+    const exact = aim(t.x, t.y);
+    if (exact.d > C.BRICK_RANGE || g.pieces.some((pc) => pc.thrownBy === p.id)) return false;
+    const plan = g.brickPlan(p, exact.yaw, exact.pitch);
     if (!plan.ok || !overlapsCells(t, plan.cells)) return false;
-    this.throwAt(g, p, yaw, pitch);
+    const r = C.BOT_BRICK_AIM_ERROR * Math.sqrt(this.rng());
+    const a = this.rng() * Math.PI * 2;
+    const off = aim(t.x + r * Math.cos(a), t.y + r * Math.sin(a));
+    const shot = g.brickPlan(p, off.yaw, off.pitch).ok ? off : exact; // 빗나간 조준이 못 던지는 자리면 정조준
+    this.throwAt(g, p, shot.yaw, shot.pitch);
     return true;
   }
 
