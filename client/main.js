@@ -117,6 +117,8 @@ function connect() {
 }
 
 startBtn.addEventListener('click', () => send({ type: 'start' }));
+$('add-bot').addEventListener('click', () => send({ type: 'addBot' }));
+$('remove-bot').addEventListener('click', () => send({ type: 'removeBot' }));
 
 function me() {
   return state ? state.players.find((p) => p.id === myId) : null;
@@ -186,7 +188,7 @@ function updateHud() {
   let showKeys = false;
   if (state.phase === 'lobby') {
     const n = state.players.length;
-    if (!state.canStart) center = `플레이어 대기 중 (${n}명, 최소 ${C.MIN_PLAYERS}명)`;
+    if (!state.canStart) center = `플레이어 대기 중 (${n}명, 최소 ${C.MIN_PLAYERS}명)${isHost ? "\n혼자면 '봇 추가'를 누르세요" : ''}`;
     else if (isHost) center = `${n}명 접속 (최대 ${maxP}명)\n더 기다리거나 시작하세요`;
     else center = `${n}명 접속. 호스트가 시작하길 기다리는 중`;
     showStart = isHost && state.canStart;
@@ -207,6 +209,13 @@ function updateHud() {
   startBtn.classList.toggle('hidden', !showStart);
   startBtn.textContent = state.phase === 'over' ? '재시작' : '시작';
   keysEl.classList.toggle('hidden', !showKeys);
+  // 봇 버튼: 호스트만, 판 사이에만
+  const showBots = isHost && state.phase !== 'playing';
+  $('bot-btns').classList.toggle('hidden', !showBots);
+  if (showBots) {
+    $('add-bot').disabled = state.players.length >= Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length);
+    $('remove-bot').disabled = !state.players.some((x) => x.isBot);
+  }
 
   input.enabled = state.phase === 'playing' && !!p && p.alive;
   // 조준점: 투사체가 있으면 빨갛고 크게 + 탄 수

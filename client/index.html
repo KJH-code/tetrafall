@@ -12,6 +12,8 @@
     #center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; font-size: 20px; background: rgba(0,0,0,.55); padding: 14px 20px; border-radius: 8px; pointer-events: auto; }
     #center-text { white-space: pre; }
     #center button { font-size: 18px; padding: 8px 18px; margin-top: 10px; cursor: pointer; }
+    #bot-btns button { font-size: 15px; padding: 5px 12px; }
+    #bot-btns button:disabled { opacity: .4; cursor: default; }
     #crosshair { position: absolute; top: 50%; left: 50%; width: 10px; height: 10px; margin: -7px 0 0 -7px; border: 2px solid rgba(255,255,255,.8); border-radius: 50%; }
     /* 투사체 보유: 빨간 큰 조준점 + 탄 수 */
     #crosshair.armed { width: 26px; height: 26px; margin: -15px 0 0 -15px; border: 3px solid #ff3030; box-shadow: 0 0 6px #ff3030; }
@@ -41,12 +43,13 @@
     <div id="status">연결 중...</div>
     <div id="crosshair"></div>
     <div id="center"><span id="center-text">연결 중...</span><br /><button id="start-btn" class="hidden">시작</button>
+      <div id="bot-btns" class="hidden"><button id="add-bot">봇 추가</button> <button id="remove-bot">봇 빼기</button></div>
       <div id="keys" class="keys hidden">
         <b>조작법</b><br />
         WASD 이동 · Space 점프 · Shift 대시<br />
         <b>좌클릭</b> 밀치기 (가까운 상대를 바라보는 쪽으로 밀어냄)<br />
         <b>우클릭</b> 투사체 (빨간 아이템을 먹으면 조준점이 빨개짐)<br />
-        하늘색 아이템 = 조종권 → 다음 블록을 하늘에서 조종<br />
+        하늘색 아이템 = 조종권 → 먹는 즉시 블록을 하늘에서 조종<br />
         &nbsp;&nbsp;방향키 이동 · Q/E 회전 · <b>Enter 낙하</b> (8초 안에)<br />
         상대를 블록에 깔리게(압사) 하거나 밖으로 떨어뜨리면(낙사) 승리
       </div>

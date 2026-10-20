@@ -91,6 +91,13 @@ export const CONFIG = {
     { x: 4.5, y: 3, yaw: Math.PI }, // P8
   ],
 
+  // ---- AI 봇 (서버에서 돎, 사람과 같은 입력만 씀) ----
+  BOT_THINK_MS: 100, // 판단 주기
+  BOT_REACTION_MS: 450, // 그림자가 보이고 나서 피하기 시작할 때까지 (사람 반응 흉내)
+  BOT_AIM_ERROR_RAD: 0.3, // 투사체 조준 오차 (라디안, ± 이 안에서 무작위)
+  BOT_DROP_DELAY_MS: 250, // 조종 중 상대 위에 맞춘 뒤 떨어뜨리기까지
+  BOT_PUSH_INTERVAL_MS: 1500, // 봇이 밀치기 사이에 두는 간격 (×0.7~1.3 무작위). 낮을수록 공격적
+
   // ---- 클라이언트 ----
   MOUSE_SENSITIVITY: 0.0022,
   SKY_CAMERA_HEIGHT: 22, // 하늘 시점 카메라 높이 (필드 중심 위)

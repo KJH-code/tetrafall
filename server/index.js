@@ -104,6 +104,12 @@ wss.on('connection', (ws) => {
       case 'action':
         game.handleAction(id, msg);
         break;
+      case 'addBot':
+        if (game.isHost(id) && !game.addBot()) log('봇 추가 거부: 방이 꽉 찼거나 판 진행 중');
+        break;
+      case 'removeBot':
+        if (game.isHost(id)) game.removeBot();
+        break;
       case 'start':
         if (game.isHost(id)) {
           if (!game.startRound()) log(`시작 거부: 플레이어 ${game.players.size}명 (최소 ${C.MIN_PLAYERS}명)`);
@@ -116,6 +122,7 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     sockets.delete(id);
     game.removePlayer(id);
+    if (game.humanCount() === 0) game.removeAllBots(); // 사람이 다 나가면 봇도 정리
   });
 });
 

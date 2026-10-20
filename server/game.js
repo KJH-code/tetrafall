@@ -2,6 +2,7 @@
 // 격자는 3D 정수 배열, 플레이어는 AABB + 넉백. 물리엔진 없음.
 import { CONFIG as C } from '../shared/config.js';
 import { SHAPE_NAMES, rotatedCells, footprint } from '../shared/pieces.js';
+import { BotBrain } from './bot.js';
 
 const EPS = 1e-6;
 
@@ -40,6 +41,9 @@ export class Game {
     this.totals = { rounds: 0, crush: 0, fall: 0 }; // 누적 (합격선 측정용)
     this.totalsByCount = {}; // 인원수별 누적 { [n]: { rounds, crush, fall } }. 인원이 다르면 압사 비율을 따로 본다
     this.roundPlayerCount = 0;
+    this.roundBotCount = 0;
+    this.bots = new Map(); // 봇 플레이어 id -> BotBrain. 봇 id 는 음수
+    this.botCounter = 0;
     this.nextSpawnAt = 0;
     this.controlItemNextAt = 0;
     this.knockbackItemNextAt = 0;
@@ -83,7 +87,7 @@ export class Game {
   }
 
   // ---------- 플레이어 관리 ----------
-  addPlayer(id) {
+  addPlayer(id, isBot = false) {
     const used = new Set([...this.players.values()].map((p) => p.slot));
     let slot = -1;
     for (let s = 0; s < maxPlayers(); s++) {
@@ -97,7 +101,8 @@ export class Game {
     const p = {
       id,
       slot,
-      name: `P${slot + 1}`,
+      name: `P${slot + 1}${isBot ? '(봇)' : ''}`,
+      isBot,
       x: sp.x,
       y: sp.y,
       z: 0,
@@ -117,18 +122,45 @@ export class Game {
       input: { fwd: 0, strafe: 0, jump: false },
     };
     this.players.set(id, p);
-    if (this.hostId === null) this.hostId = id;
+    if (this.hostId === null && !isBot) this.hostId = id;
     this.log(`${p.name} 접속 (slot ${slot})${this.hostId === id ? ' — 호스트' : ''}`);
     return p;
+  }
+
+  // 봇 추가 (판 진행 중에는 안 됨). 성공하면 플레이어, 자리가 없으면 null
+  addBot() {
+    if (this.phase === 'playing') return null;
+    const id = -++this.botCounter;
+    const p = this.addPlayer(id, true);
+    if (p) this.bots.set(id, new BotBrain(() => this.rng()));
+    return p;
+  }
+
+  // 가장 나중에 넣은 봇 하나 빼기
+  removeBot() {
+    if (this.phase === 'playing' || !this.bots.size) return false;
+    const id = Math.min(...this.bots.keys()); // 음수라 가장 작은 게 가장 최근
+    this.removePlayer(id);
+    return true;
+  }
+
+  removeAllBots() {
+    for (const id of [...this.bots.keys()]) this.removePlayer(id);
+  }
+
+  humanCount() {
+    return [...this.players.values()].filter((p) => !p.isBot).length;
   }
 
   removePlayer(id) {
     const p = this.players.get(id);
     if (!p) return;
     this.players.delete(id);
-    this.log(`${p.name} 접속 종료`);
+    this.bots.delete(id);
+    this.log(`${p.name} ${p.isBot ? '빠짐' : '접속 종료'}`);
     if (this.hostId === id) {
-      this.hostId = this.players.size ? this.players.keys().next().value : null;
+      const next = [...this.players.values()].find((o) => !o.isBot);
+      this.hostId = next ? next.id : null;
     }
     if (this.piece && this.piece.controller === id) this.piece.controller = null;
     if (this.phase === 'playing' && p.alive) {
@@ -186,6 +218,7 @@ export class Game {
     }
     this.phase = 'playing';
     this.roundPlayerCount = this.players.size;
+    this.roundBotCount = this.bots.size;
     this.log(`===== ROUND ${this.roundNumber} 시작 (${this.players.size}명) =====`);
     return true;
   }
@@ -209,15 +242,17 @@ export class Game {
     const per = (this.totals.crush / this.totals.rounds).toFixed(2);
     this.log(`  누적 ${this.totals.rounds}판: 압사 ${this.totals.crush} (판당 ${per}) / 낙사 ${this.totals.fall}`);
     const n = this.roundPlayerCount;
-    const t = (this.totalsByCount[n] = this.totalsByCount[n] || { rounds: 0, crush: 0, fall: 0 });
+    // 봇이 낀 판은 따로 센다 (봇의 회피 실력이 압사 비율을 좌우하므로 사람끼리 판과 섞지 않는다)
+    const label = this.roundBotCount ? `${n}인(봇 ${this.roundBotCount})` : `${n}인`;
+    const t = (this.totalsByCount[label] = this.totalsByCount[label] || { rounds: 0, crush: 0, fall: 0 });
     t.rounds++;
     t.crush += crush;
     t.fall += fall;
     this.log(`  누적 사망 중 압사 비율: ${shareText(this.totals)}`);
-    if (Object.keys(this.totalsByCount).length > 1 || n !== 2) {
+    if (Object.keys(this.totalsByCount).length > 1 || label !== '2인') {
       // 인원이 섞이면 인원수별로도 찍는다 (합격 판정은 같은 인원끼리 비교)
       for (const [k, v] of Object.entries(this.totalsByCount)) {
-        this.log(`    ${k}인 판 ${v.rounds}판: 압사 ${v.crush} / 낙사 ${v.fall} → ${shareText(v)}`);
+        this.log(`    ${k} 판 ${v.rounds}판: 압사 ${v.crush} / 낙사 ${v.fall} → ${shareText(v)}`);
       }
     }
   }
@@ -894,6 +929,10 @@ export class Game {
     this.time += dtMs;
     if (this.phase !== 'playing') return;
     const dt = dtMs / 1000;
+    for (const [id, brain] of this.bots) {
+      const p = this.players.get(id);
+      if (p && p.alive) brain.update(this, p);
+    }
     this.updatePiece();
     let remaining = dt;
     while (remaining > 0) {
@@ -957,6 +996,7 @@ export class Game {
         id: p.id,
         slot: p.slot,
         name: p.name,
+        isBot: !!p.isBot,
         x: p.x,
         y: p.y,
         z: p.z,

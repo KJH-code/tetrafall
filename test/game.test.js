@@ -467,7 +467,7 @@ test('3인: 한 명 죽어도 판이 계속되고, 마지막 생존자가 이긴
   g.checkRoundEnd();
   assert.equal(g.phase, 'over');
   assert.equal(g.winnerId, ps[1].id);
-  assert.deepEqual(g.totalsByCount[3], { rounds: 1, crush: 1, fall: 1 });
+  assert.deepEqual(g.totalsByCount['3인'], { rounds: 1, crush: 1, fall: 1 });
 });
 
 test('3인: 진행 중 한 명이 나가도 나머지 둘로 계속', () => {
@@ -530,4 +530,94 @@ test('층 클리어 유도: 구멍을 만드는 자리는 거의 안 고른다',
     for (const [dx, dy] of p.cells) if (g.columnTop(p.px + dx, p.py + dy) < p.landZ) { holes++; break; }
   }
   assert.ok(holes <= 10, `200번 중 구멍 ${holes}번`);
+});
+
+// ---------- 봇 ----------
+function setupBot() {
+  const lines = [];
+  const g = new Game((x) => lines.push(x));
+  g.rng = Math.random;
+  const human = g.addPlayer(1);
+  const bot = g.addBot();
+  return { g, lines, human, bot };
+}
+
+test('봇: 호스트는 사람, 사람 1 + 봇 1 이면 시작 가능, 판 중엔 추가·제거 불가, 마지막 봇부터 빠짐', () => {
+  const { g, human, bot } = setupBot();
+  assert.equal(g.hostId, human.id);
+  assert.equal(bot.isBot, true);
+  assert.equal(bot.name, 'P2(봇)');
+  assert.equal(g.canStart(), true);
+  const bot2 = g.addBot();
+  g.startRound();
+  assert.equal(g.addBot(), null);
+  assert.equal(g.removeBot(), false);
+  g.phase = 'over';
+  assert.equal(g.removeBot(), true);
+  assert.ok(!g.players.has(bot2.id) && g.players.has(bot.id), '나중에 넣은 봇이 먼저 빠짐');
+  g.removePlayer(human.id);
+  assert.equal(g.hostId, null, '봇은 호스트가 안 됨');
+});
+
+test('봇: 떨어지는 블록 그림자를 보고 피한다', () => {
+  const { g, human, bot } = setupBot();
+  g.startRound();
+  g.nextSpawnAt = Infinity;
+  g.controlItemNextAt = Infinity;
+  g.knockbackItemNextAt = Infinity;
+  human.x = 5.5;
+  human.y = 0.5;
+  bot.x = 2.5;
+  bot.y = 3.5;
+  fallingPiece(g, 'O', 0, 2, 3, 8, 350); // 2.8초 뒤 착지, 바로 그림자가 보임
+  run(g, 3500);
+  assert.equal(bot.alive, true, `봇 위치 (${bot.x.toFixed(2)}, ${bot.y.toFixed(2)})`);
+});
+
+test('봇: 조종권으로 가만히 선 상대 위에 블록을 떨어뜨려 압사시킨다', () => {
+  const { g, human, bot } = setupBot();
+  g.startRound();
+  g.nextSpawnAt = Infinity;
+  g.controlItemNextAt = Infinity;
+  g.knockbackItemNextAt = Infinity;
+  human.x = 4.5;
+  human.y = 3.5;
+  bot.x = 1.5;
+  bot.y = 1.5;
+  bot.hasControl = true;
+  g.startControlNow(bot);
+  assert.ok(g.isControlling(bot));
+  run(g, C.CONTROL_TIME_MS + 2000);
+  assert.equal(human.alive, false);
+  assert.equal(human.deathCause, 'crush');
+  assert.equal(bot.alive, true);
+});
+
+test('봇: 가까이 있는 상대를 민다', () => {
+  const { g, human, bot } = setupBot();
+  g.startRound();
+  g.nextSpawnAt = Infinity;
+  g.controlItemNextAt = Infinity;
+  g.knockbackItemNextAt = Infinity;
+  human.x = 2.5;
+  human.y = 3;
+  bot.x = 3.5;
+  bot.y = 3;
+  run(g, 3000);
+  assert.ok(g.drainEvents().some((e) => e.type === 'hit' && e.kind === 'push' && e.by === bot.id && e.ok));
+});
+
+test('봇끼리 20판: 예외 없이 판이 끝나고, 봇 판은 로그에 따로 센다', () => {
+  const lines = [];
+  const g = new Game((x) => lines.push(x));
+  g.rng = Math.random;
+  g.addBot();
+  g.addBot();
+  for (let r = 0; r < 20; r++) {
+    g.startRound();
+    const t0 = g.time;
+    while (g.phase === 'playing' && g.time - t0 < 180000) g.tick(TICK);
+    assert.equal(g.phase, 'over', `${r + 1}판이 3분 안에 안 끝남`);
+  }
+  assert.ok(lines.some((l) => l.includes('2인(봇 2) 판 20판')), lines.slice(-3).join('\n'));
 });
