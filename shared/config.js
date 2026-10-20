@@ -15,9 +15,9 @@ export const CONFIG = {
   FALL_DEATH_Z: -4, // 발 높이가 이 아래로 내려가면 낙사
 
   // ---- 블록 낙하 ----
-  AUTO_FALL_STEP_MS: 500, // 자동 낙하: 1칸 내려오는 간격
+  AUTO_FALL_STEP_MS: 350, // 자동 낙하: 1칸 내려오는 간격. 2026-10-20 500→350 (12칸 낙하 6초 → 4.2초)
   HARD_DROP_STEP_MS: 80, // 하드드롭 후 1칸 내려오는 간격
-  AUTO_SPAWN_DELAY_MS: 2000, // 착지 후 다음 자동 블록이 나오기까지
+  AUTO_SPAWN_DELAY_MS: 1000, // 착지 후 다음 자동 블록이 나오기까지. 2026-10-20 2000→1000 (블록 주기 8초 → 약 5.2초)
   FIRST_SPAWN_DELAY_MS: 1000, // 판 시작 후 첫 블록까지 (첫 착지 = 이 값 + 12칸 × AUTO_FALL_STEP_MS). 2026-10-20 3000→1000
   SHADOW_LEAD_MS: 3000, // 착지 몇 ms 전부터 그림자 표시
   PIECE_SPAWN_Z: 12, // 블록이 나타나는 높이 (= GRID_H 권장: 필드 바로 위)
@@ -25,6 +25,8 @@ export const CONFIG = {
 
   // ---- 조종권 ----
   CONTROL_TIME_MS: 8000, // 이 안에 안 떨구면 자동 낙하
+  // true: 조종권을 먹는 즉시 조종 시작 (떨어지던 자동 블록을 넘겨받거나 새 블록). false: 다음 블록부터 조종. 2026-10-20 도입
+  CONTROL_TAKEOVER: true,
   CONTROL_ITEM_RESPAWN_MS: 6000, // 조종권 아이템 재스폰 대기
   CONTROL_HOVER_Z: 12, // 조종 중 블록이 떠 있는 높이
 
@@ -54,7 +56,7 @@ export const CONFIG = {
   MOVE_SPEED: 4.5, // 단위/초
   JUMP_SPEED: 7.5, // 최고 높이 약 1.28칸 → 1칸 블록은 올라가고 2칸 벽은 못 넘음. 2026-10-20 6.5→7.5 (6.5는 0.95칸이라 1칸도 못 올라감)
   GRAVITY: 20,
-  DASH_SPEED: 10, // 대시 순간 속도
+  DASH_SPEED: 6, // 대시 순간 속도. 2026-10-20 10→6 (땅에서 약 1.7칸 → 약 1칸)
   DASH_COOLDOWN_MS: 1500,
   KB_DAMPING_GROUND: 6, // 외부 속도(넉백·대시) 감쇠율 /초, 땅
   KB_DAMPING_AIR: 1.2, // 외부 속도 감쇠율 /초, 공중
@@ -65,6 +67,7 @@ export const CONFIG = {
   ITEM_HEIGHT_TOL: 1.2, // 발 높이와 아이템 바닥 높이 차 허용
 
   // ---- 판 ----
+  PASS_CRUSH_SHARE: 0.5, // 1단계 합격선: 누적 사망 중 압사 비율. 판 종료 로그에 표시. 2026-10-20 재정의
   ROUND_TIME_LIMIT_MS: 0, // 0 = 제한 없음. 양수면 시간 초과 시 무승부
   // 2026-10-20 모서리 칸 → 한 칸 안쪽. 가장자리에서 1.5칸이라 밀치기 한 번으로는 안 떨어진다
   SPAWN_POINTS: [

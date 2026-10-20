@@ -226,11 +226,11 @@ test('아이템 스폰·획득', () => {
   p1.x = 1.5;
   p1.y = 1.5;
   g.tick(TICK);
-  assert.equal(p1.hasControl, true);
+  // CONTROL_TAKEOVER: 블록이 없으면 먹는 즉시 새 블록 조종 시작
+  assert.ok(g.isControlling(p1), '조종권을 먹으면 바로 조종 시작');
   p1.x = 3.5;
   p1.y = 3.5;
   run(g, 100);
-  assert.equal(p1.hasControl, true);
   assert.equal(p1.ammo, C.KNOCKBACK_AMMO);
   assert.equal(g.items.length, 0);
 });
@@ -341,4 +341,79 @@ test('점프: 1칸 블록 위로는 올라가고 2칸 벽은 못 넘는다', () 
   }
   assert.ok(landedOnStep, '1칸 턱 위에 착지해야 함');
   assert.ok(maxX <= 5 - C.PLAYER_HALF + 1e-6 && p1.alive, `2칸 벽에 막혀야 함: maxX=${maxX.toFixed(2)}`);
+});
+
+test('조종권 넘겨받기: 자동 블록이 떨어지는 중에 먹으면 그 블록을 하늘로 올려 바로 조종', () => {
+  const { g, p1 } = setup();
+  const piece = fallingPiece(g, 'T', 0, 0, 0, 5);
+  g.items.push({ type: 'control', x: 4, y: 4, z: 0 });
+  p1.x = 4.5;
+  p1.y = 4.5;
+  g.tick(TICK);
+  assert.equal(g.piece, piece, '같은 블록이어야 함');
+  assert.equal(piece.phase, 'control');
+  assert.equal(piece.controller, 1);
+  assert.equal(piece.pz, C.CONTROL_HOVER_Z);
+  assert.equal(p1.hasControl, false);
+  const ev = g.drainEvents();
+  assert.ok(ev.some((e) => e.type === 'controlStart' && e.who === 1));
+});
+
+test('조종권 넘겨받기: 남이 조종해서 떨어지는 블록은 못 뺏고, 착지 후 다음 블록을 조종', () => {
+  const { g, p1, p2 } = setup();
+  const piece = fallingPiece(g, 'O', 0, 0, 0, 3, 50);
+  piece.controller = 2;
+  g.nextSpawnAt = Infinity;
+  g.items.push({ type: 'control', x: 4, y: 4, z: 0 });
+  p1.x = 4.5;
+  p1.y = 4.5;
+  p2.x = 2.5;
+  p2.y = 4.5;
+  g.tick(TICK);
+  assert.equal(piece.controller, 2);
+  assert.equal(p1.hasControl, true);
+  run(g, 400 + C.AUTO_SPAWN_DELAY_MS); // 착지 후 다음 블록 대기시간까지
+  assert.ok(g.isControlling(p1), '착지 후 다음 블록은 p1 조종');
+});
+
+test('조종권 넘겨받기 끄기 (CONTROL_TAKEOVER=false): 먹어도 떨어지던 블록은 그대로', () => {
+  const { g, p1 } = setup();
+  const saved = C.CONTROL_TAKEOVER;
+  C.CONTROL_TAKEOVER = false;
+  try {
+    const piece = fallingPiece(g, 'T', 0, 0, 0, 5);
+    g.items.push({ type: 'control', x: 4, y: 4, z: 0 });
+    p1.x = 4.5;
+    p1.y = 4.5;
+    g.tick(TICK);
+    assert.equal(piece.phase, 'falling');
+    assert.equal(p1.hasControl, true);
+  } finally {
+    C.CONTROL_TAKEOVER = saved;
+  }
+});
+
+test('대시 거리: 평지에서 약 1칸 (DASH_SPEED 6)', () => {
+  const { g, p1 } = setup();
+  p1.x = 1.5;
+  p1.y = 3;
+  p1.yaw = 0;
+  g.handleAction(1, { name: 'dash' });
+  run(g, 2000);
+  const d = p1.x - 1.5;
+  assert.ok(d > 0.85 && d < 1.15, `대시 거리 ${d.toFixed(2)}`);
+});
+
+test('로그: 8초 초과 낙하는 하드드롭과 구분되고, 누적 압사 비율과 합격선이 찍힌다', () => {
+  const { g, p1, p2, lines } = setup();
+  p1.hasControl = true;
+  g.nextSpawnAt = g.time;
+  g.tick(TICK);
+  run(g, C.CONTROL_TIME_MS + 200);
+  assert.ok(lines.some((l) => l.includes('자동 낙하 (8초 초과, 조종자 P1)')), lines.join('\n'));
+  assert.ok(!lines.some((l) => l.includes('하드드롭 by')), '자동 낙하가 하드드롭으로 찍히면 안 됨');
+  g.kill(p2, 'crush');
+  g.checkRoundEnd();
+  assert.ok(lines.some((l) => l.includes('누적 사망 중 압사 비율: 100% (합격선 50% → 합격선 이상)')), lines.join('\n'));
+  assert.ok(p1.alive);
 });

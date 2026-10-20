@@ -205,6 +205,12 @@ export class Game {
     this.log(`  이번 판: 압사 ${crush} / 낙사 ${fall}`);
     const per = (this.totals.crush / this.totals.rounds).toFixed(2);
     this.log(`  누적 ${this.totals.rounds}판: 압사 ${this.totals.crush} (판당 ${per}) / 낙사 ${this.totals.fall}`);
+    const deathsTotal = this.totals.crush + this.totals.fall;
+    if (deathsTotal > 0) {
+      const share = this.totals.crush / deathsTotal;
+      const pass = share >= C.PASS_CRUSH_SHARE ? '합격선 이상' : '합격선 미만';
+      this.log(`  누적 사망 중 압사 비율: ${(share * 100).toFixed(0)}% (합격선 ${(C.PASS_CRUSH_SHARE * 100).toFixed(0)}% → ${pass})`);
+    }
   }
 
   checkRoundEnd() {
@@ -448,14 +454,43 @@ export class Game {
     this.refreshPieceCells();
   }
 
-  dropPiece() {
+  // reason: 'hard' = 조종자가 Enter, 'timeout' = 8초 초과, 'left' = 조종자 사망·이탈
+  dropPiece(reason = 'hard') {
     const piece = this.piece;
     if (!piece.fits) return; // 그 자리엔 못 넣는다 (기둥이 꽉 참)
     const who = this.players.get(piece.controller);
     piece.phase = 'falling';
     piece.stepMs = C.HARD_DROP_STEP_MS;
     piece.nextStepAt = this.time + C.HARD_DROP_STEP_MS;
-    this.log(`  [블록] ${piece.shape} 하드드롭 by ${who ? who.name : '?'} → (${piece.px},${piece.py}) 착지 z=${piece.landZ}`);
+    const name = who ? who.name : '?';
+    const what = reason === 'hard' ? `하드드롭 by ${name}` : reason === 'timeout' ? `자동 낙하 (8초 초과, 조종자 ${name})` : `자동 낙하 (조종자 ${name} 사망·이탈)`;
+    this.log(`  [블록] ${piece.shape} ${what} → (${piece.px},${piece.py}) 착지 z=${piece.landZ}`);
+  }
+
+  // 조종권을 먹은 순간 바로 조종을 시작한다 (CONTROL_TAKEOVER).
+  // 블록이 없으면 새 블록을 하늘에, 자동 블록이 떨어지는 중이면 그 블록을 하늘로 올려 넘겨받는다.
+  // 다른 사람이 조종했던 블록이 떨어지는 중이면 그 블록이 착지한 뒤 다음 블록을 조종한다.
+  startControlNow(p) {
+    if (!C.CONTROL_TAKEOVER || !p.hasControl) return;
+    const piece = this.piece;
+    if (!piece) {
+      this.spawnPiece();
+      return;
+    }
+    if (piece.phase !== 'falling' || piece.controller !== null) return;
+    Object.assign(piece, {
+      pz: C.CONTROL_HOVER_Z,
+      phase: 'control',
+      controller: p.id,
+      stepMs: C.HARD_DROP_STEP_MS,
+      nextStepAt: 0,
+      controlEndsAt: this.time + C.CONTROL_TIME_MS,
+    });
+    p.hasControl = false;
+    this.updateLanding(piece);
+    this.refreshPieceCells();
+    this.emit({ type: 'controlStart', who: p.id });
+    this.log(`  [블록] ${piece.shape} 조종 시작: ${p.name} (떨어지던 블록 넘겨받음)`);
   }
 
   discardPiece(reason) {
@@ -476,14 +511,13 @@ export class Game {
       const ctl = this.players.get(piece.controller);
       if (!ctl || !ctl.alive) {
         // 조종자가 죽거나 나가면 그 자리에서 자동 낙하 (안 맞으면 폐기)
-        if (piece.fits) this.dropPiece();
+        if (piece.fits) this.dropPiece('left');
         else this.discardPiece('조종자 이탈, 자리 없음');
         return;
       }
       if (this.time >= piece.controlEndsAt) {
         if (piece.fits) {
-          this.log(`  [블록] 8초 초과 → 자동 낙하`);
-          this.dropPiece();
+          this.dropPiece('timeout');
         } else {
           this.discardPiece('시간 초과, 자리 없음');
         }
@@ -612,6 +646,7 @@ export class Game {
           p.hasControl = true;
           this.emit({ type: 'pickup', who: p.id, item: 'control' });
           this.log(`  [아이템] ${p.name} 조종권 획득`);
+          this.startControlNow(p);
         } else {
           p.ammo += C.KNOCKBACK_AMMO;
           this.knockbackItemNextAt = this.time + C.KNOCKBACK_ITEM_RESPAWN_MS;

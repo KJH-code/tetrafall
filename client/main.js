@@ -154,7 +154,8 @@ function updateHud() {
     if (flags.length) lines.push(flags.join(' · '));
   }
   const t = state.round.totals;
-  lines.push(`누적 ${t.rounds}판 · 압사 ${t.crush} · 낙사 ${t.fall}`);
+  const share = t.crush + t.fall > 0 ? ` · 압사 비율 ${Math.round((t.crush / (t.crush + t.fall)) * 100)}% (합격 ${Math.round(C.PASS_CRUSH_SHARE * 100)}%)` : '';
+  lines.push(`누적 ${t.rounds}판 · 압사 ${t.crush} · 낙사 ${t.fall}${share}`);
   statusEl.textContent = lines.join('\n');
 
   // 상단 배너: 조종권 상태 (예고 → 조종 중)
