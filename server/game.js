@@ -38,6 +38,8 @@ export class Game {
     this.winnerId = null;
     this.deaths = []; // 이번 판 사망 기록
     this.totals = { rounds: 0, crush: 0, fall: 0 }; // 누적 (합격선 측정용)
+    this.totalsByCount = {}; // 인원수별 누적 { [n]: { rounds, crush, fall } }. 인원이 다르면 압사 비율을 따로 본다
+    this.roundPlayerCount = 0;
     this.nextSpawnAt = 0;
     this.controlItemNextAt = 0;
     this.knockbackItemNextAt = 0;
@@ -84,7 +86,7 @@ export class Game {
   addPlayer(id) {
     const used = new Set([...this.players.values()].map((p) => p.slot));
     let slot = -1;
-    for (let s = 0; s < C.PLAYER_COUNT; s++) {
+    for (let s = 0; s < maxPlayers(); s++) {
       if (!used.has(s)) {
         slot = s;
         break;
@@ -140,7 +142,7 @@ export class Game {
   }
 
   canStart() {
-    return this.players.size >= C.PLAYER_COUNT && this.phase !== 'playing';
+    return this.players.size >= C.MIN_PLAYERS && this.phase !== 'playing';
   }
 
   // ---------- 판 흐름 ----------
@@ -183,6 +185,7 @@ export class Game {
       });
     }
     this.phase = 'playing';
+    this.roundPlayerCount = this.players.size;
     this.log(`===== ROUND ${this.roundNumber} 시작 (${this.players.size}명) =====`);
     return true;
   }
@@ -205,11 +208,17 @@ export class Game {
     this.log(`  이번 판: 압사 ${crush} / 낙사 ${fall}`);
     const per = (this.totals.crush / this.totals.rounds).toFixed(2);
     this.log(`  누적 ${this.totals.rounds}판: 압사 ${this.totals.crush} (판당 ${per}) / 낙사 ${this.totals.fall}`);
-    const deathsTotal = this.totals.crush + this.totals.fall;
-    if (deathsTotal > 0) {
-      const share = this.totals.crush / deathsTotal;
-      const pass = share >= C.PASS_CRUSH_SHARE ? '합격선 이상' : '합격선 미만';
-      this.log(`  누적 사망 중 압사 비율: ${(share * 100).toFixed(0)}% (합격선 ${(C.PASS_CRUSH_SHARE * 100).toFixed(0)}% → ${pass})`);
+    const n = this.roundPlayerCount;
+    const t = (this.totalsByCount[n] = this.totalsByCount[n] || { rounds: 0, crush: 0, fall: 0 });
+    t.rounds++;
+    t.crush += crush;
+    t.fall += fall;
+    this.log(`  누적 사망 중 압사 비율: ${shareText(this.totals)}`);
+    if (Object.keys(this.totalsByCount).length > 1 || n !== 2) {
+      // 인원이 섞이면 인원수별로도 찍는다 (합격 판정은 같은 인원끼리 비교)
+      for (const [k, v] of Object.entries(this.totalsByCount)) {
+        this.log(`    ${k}인 판 ${v.rounds}판: 압사 ${v.crush} / 낙사 ${v.fall} → ${shareText(v)}`);
+      }
     }
   }
 
@@ -895,6 +904,18 @@ export class Game {
     }
     return out;
   }
+}
+
+function maxPlayers() {
+  return Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length);
+}
+
+function shareText(t) {
+  const deaths = t.crush + t.fall;
+  if (!deaths) return '사망 없음';
+  const share = t.crush / deaths;
+  const pass = share >= C.PASS_CRUSH_SHARE ? '합격선 이상' : '합격선 미만';
+  return `${(share * 100).toFixed(0)}% (합격선 ${(C.PASS_CRUSH_SHARE * 100).toFixed(0)}% → ${pass})`;
 }
 
 function causeKo(cause) {

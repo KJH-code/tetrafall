@@ -20,6 +20,7 @@ let myId = null;
 let state = null;
 let lastState = null;
 let wasAlive = true;
+let rejected = false; // 방이 꽉 차서 거부됨. 이어지는 연결 끊김 메시지로 덮어쓰지 않는다
 
 function send(obj) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
@@ -103,13 +104,14 @@ function connect() {
       onState();
       for (const e of msg.events || []) handleEvent(e);
     } else if (msg.type === 'reject') {
+      rejected = true;
       centerText.textContent = msg.reason;
       statusEl.textContent = '';
     }
   };
   ws.onclose = () => {
     centerEl.classList.remove('hidden');
-    centerText.textContent = '서버 연결 끊김. 새로고침하세요.';
+    if (!rejected) centerText.textContent = '서버 연결 끊김. 새로고침하세요.';
     startBtn.classList.add('hidden');
   };
 }
@@ -145,7 +147,8 @@ function updateHud() {
   const alive = state.players.filter((x) => x.alive).length;
   const lines = [];
   lines.push(`${p ? p.name : '?'}${isHost ? ' (호스트)' : ''} · 라운드 ${state.round.n} · ${fmt(state.round.elapsed)}`);
-  lines.push(`플레이어 ${state.players.length}/${C.PLAYER_COUNT} · 생존 ${alive}`);
+  const maxP = Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length);
+  lines.push(`플레이어 ${state.players.length}/${maxP} · 생존 ${alive}`);
   if (p && state.phase === 'playing') {
     const flags = [];
     if (p.stunned) flags.push('경직!');
@@ -182,7 +185,10 @@ function updateHud() {
   let showStart = false;
   let showKeys = false;
   if (state.phase === 'lobby') {
-    center = state.canStart ? (isHost ? '모두 모였습니다' : '호스트가 시작하길 기다리는 중') : `플레이어 대기 중 (${state.players.length}/${C.PLAYER_COUNT})`;
+    const n = state.players.length;
+    if (!state.canStart) center = `플레이어 대기 중 (${n}명, 최소 ${C.MIN_PLAYERS}명)`;
+    else if (isHost) center = `${n}명 접속 (최대 ${maxP}명)\n더 기다리거나 시작하세요`;
+    else center = `${n}명 접속. 호스트가 시작하길 기다리는 중`;
     showStart = isHost && state.canStart;
     showKeys = true;
   } else if (state.phase === 'over') {

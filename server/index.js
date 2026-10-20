@@ -81,7 +81,7 @@ wss.on('connection', (ws) => {
   const id = nextId++;
   const player = game.addPlayer(id);
   if (!player) {
-    send(ws, { type: 'reject', reason: `방이 꽉 찼습니다 (${C.PLAYER_COUNT}명)` });
+    send(ws, { type: 'reject', reason: `방이 꽉 찼습니다 (최대 ${Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length)}명)` });
     ws.close();
     return;
   }
@@ -106,7 +106,7 @@ wss.on('connection', (ws) => {
         break;
       case 'start':
         if (game.isHost(id)) {
-          if (!game.startRound()) log(`시작 거부: 플레이어 ${game.players.size}/${C.PLAYER_COUNT}명`);
+          if (!game.startRound()) log(`시작 거부: 플레이어 ${game.players.size}명 (최소 ${C.MIN_PLAYERS}명)`);
         }
         break;
       default:
@@ -143,7 +143,7 @@ setInterval(() => {
 }, TICK_MS);
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Tetrafall 호스트 서버 실행 중 (포트 ${PORT}, 틱 ${C.TICK_RATE}Hz, 인원 ${C.PLAYER_COUNT})`);
+  console.log(`Tetrafall 호스트 서버 실행 중 (포트 ${PORT}, 틱 ${C.TICK_RATE}Hz, 인원 ${C.MIN_PLAYERS}~${Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length)}명)`);
   console.log('이 PC에서:        http://localhost:' + PORT);
   for (const [name, addrs] of Object.entries(os.networkInterfaces())) {
     for (const a of addrs || []) {

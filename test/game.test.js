@@ -33,9 +33,14 @@ function fallingPiece(g, shape, rot, px, py, pz = C.PIECE_SPAWN_Z, stepMs = C.AU
   return piece;
 }
 
-test('플레이어 접속 제한: PLAYER_COUNT 초과는 거부', () => {
+test('플레이어 접속 제한: MAX_PLAYERS 초과는 거부, MIN_PLAYERS 부터 시작 가능', () => {
   const g = new Game();
-  for (let i = 0; i < C.PLAYER_COUNT; i++) assert.ok(g.addPlayer(i + 1));
+  g.addPlayer(1);
+  assert.equal(g.canStart(), C.MIN_PLAYERS <= 1);
+  for (let i = 1; i < C.MAX_PLAYERS; i++) {
+    assert.ok(g.addPlayer(i + 1));
+    if (g.players.size >= C.MIN_PLAYERS) assert.equal(g.canStart(), true);
+  }
   assert.equal(g.addPlayer(99), null);
 });
 
@@ -416,4 +421,76 @@ test('로그: 8초 초과 낙하는 하드드롭과 구분되고, 누적 압사 
   g.checkRoundEnd();
   assert.ok(lines.some((l) => l.includes('누적 사망 중 압사 비율: 100% (합격선 50% → 합격선 이상)')), lines.join('\n'));
   assert.ok(p1.alive);
+});
+
+function setupN(n, log = () => {}) {
+  const lines = [];
+  const g = new Game((x) => {
+    lines.push(x);
+    log(x);
+  });
+  g.rng = () => 0.5;
+  for (let i = 1; i <= n; i++) g.addPlayer(i);
+  g.startRound();
+  g.piece = null;
+  g.nextSpawnAt = Infinity;
+  g.controlItemNextAt = Infinity;
+  g.knockbackItemNextAt = Infinity;
+  return { g, lines, ps: [...g.players.values()] };
+}
+
+test('4인: 시작 위치가 모두 다르고 가장자리에서 1.5칸 이상 안쪽', () => {
+  const saved = C.MAX_PLAYERS;
+  C.MAX_PLAYERS = 8;
+  try {
+    const { ps } = setupN(8);
+    const keys = new Set(ps.map((p) => `${p.x},${p.y}`));
+    assert.equal(keys.size, 8);
+    for (const p of ps) {
+      assert.ok(p.x >= 1.5 && p.x <= C.GRID_W - 1.5 && p.y >= 1.5 && p.y <= C.GRID_D - 1.5, `${p.name} (${p.x},${p.y})`);
+      // 중앙을 바라봄
+      const toCenter = Math.atan2(C.GRID_D / 2 - p.y, C.GRID_W / 2 - p.x);
+      const diff = Math.atan2(Math.sin(p.yaw - toCenter), Math.cos(p.yaw - toCenter));
+      assert.ok(Math.abs(diff) < 1e-9, `${p.name} yaw`);
+    }
+  } finally {
+    C.MAX_PLAYERS = saved;
+  }
+});
+
+test('3인: 한 명 죽어도 판이 계속되고, 마지막 생존자가 이긴다', () => {
+  const { g, ps } = setupN(3);
+  g.kill(ps[0], 'fall');
+  g.checkRoundEnd();
+  assert.equal(g.phase, 'playing');
+  g.kill(ps[2], 'crush');
+  g.checkRoundEnd();
+  assert.equal(g.phase, 'over');
+  assert.equal(g.winnerId, ps[1].id);
+  assert.deepEqual(g.totalsByCount[3], { rounds: 1, crush: 1, fall: 1 });
+});
+
+test('3인: 진행 중 한 명이 나가도 나머지 둘로 계속', () => {
+  const { g, ps } = setupN(3);
+  g.removePlayer(ps[0].id);
+  assert.equal(g.phase, 'playing');
+  g.kill(ps[1], 'fall');
+  g.checkRoundEnd();
+  assert.equal(g.winnerId, ps[2].id);
+});
+
+test('인원이 섞이면 로그에 인원수별 압사 비율이 따로 찍힌다', () => {
+  const { g, ps, lines } = setupN(3);
+  g.kill(ps[0], 'crush');
+  g.kill(ps[1], 'fall');
+  g.checkRoundEnd();
+  for (const p of ps) g.removePlayer(p.id); // 3명 다 나가고 2명이 새로 들어옴
+  g.addPlayer(10);
+  g.addPlayer(11);
+  g.startRound();
+  const [a] = [...g.players.values()].filter((p) => p.alive);
+  g.kill(a, 'crush');
+  g.checkRoundEnd();
+  assert.ok(lines.some((l) => l.includes('3인 판 1판: 압사 1 / 낙사 1 → 50%')), lines.join('\n'));
+  assert.ok(lines.some((l) => l.includes('2인 판 1판: 압사 1 / 낙사 0 → 100%')), lines.join('\n'));
 });

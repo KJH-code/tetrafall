@@ -4,7 +4,8 @@ import { CONFIG as C } from '/shared/config.js';
 
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
-const PLAYER_COLORS = [0xe05050, 0x50c050, 0x5080e0, 0xe0c050];
+// P1~P8 색. 블록(파랑 계열)·떨어지는 블록(주황)과 헷갈리지 않는 색 위주
+const PLAYER_COLORS = [0xe05050, 0x50c050, 0xb060e0, 0xe0c050, 0xf0f0f0, 0x40d0c0, 0xff80b0, 0x8a5a30];
 const MAX_CELLS = C.GRID_W * C.GRID_D * C.GRID_H;
 
 export class Renderer {
