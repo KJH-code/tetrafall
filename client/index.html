@@ -31,7 +31,7 @@
     .toast.me { background: rgba(200,60,20,.9); font-weight: bold; }
     .toast.good { background: rgba(20,140,60,.9); }
     #center .keys { white-space: normal; font-size: 15px; text-align: left; margin-top: 12px; line-height: 1.7; color: #ddd; }
-    #help { position: absolute; bottom: 10px; left: 10px; font-size: 12px; color: #aaa; white-space: pre; background: rgba(0,0,0,.35); padding: 6px 8px; border-radius: 6px; }
+    #help { position: absolute; top: 10px; right: 10px; text-align: right; font-size: 12px; color: #aaa; white-space: pre; background: rgba(0,0,0,.35); padding: 6px 8px; border-radius: 6px; }
     #hitmarker { position: absolute; top: 50%; left: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; opacity: 0; transition: opacity .15s; }
     #hitmarker::before, #hitmarker::after { content: ''; position: absolute; left: 13px; top: 0; width: 4px; height: 30px; background: #fff; box-shadow: 0 0 4px #000; }
     #hitmarker::before { transform: rotate(45deg); }
@@ -39,6 +39,21 @@
     #flash { position: absolute; inset: 0; background: rgba(255,0,0,.35); opacity: 0; transition: opacity .3s; }
     #bigmsg { position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); font-size: 110px; font-weight: 900; white-space: nowrap; text-shadow: 0 0 12px #000, 0 0 4px #000; z-index: 3; }
     #bigmsg.small { font-size: 72px; }
+    #crosshair.bomb { border-color: #ff7a20; box-shadow: 0 0 6px #ff7a20; }
+    /* 화면 아래 가운데: 버프 · 피해 % · 핫바 */
+    #bottom { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    #buffs { display: flex; gap: 6px; font-size: 16px; min-height: 22px; }
+    .buff { background: rgba(0,0,0,.6); padding: 2px 9px; border-radius: 6px; font-weight: bold; }
+    #damage { font-size: 60px; font-weight: 900; line-height: 1; text-shadow: 0 0 8px #000, 0 0 3px #000; transition: transform .12s; }
+    #damage.pop { transform: scale(1.4); }
+    #hotbar { display: flex; gap: 6px; }
+    .slot { min-width: 120px; padding: 6px 10px; background: rgba(0,0,0,.6); border: 3px solid rgba(255,255,255,.2); border-radius: 8px; font-size: 16px; text-align: center; white-space: nowrap; }
+    .slot.sel { border-color: #fff; background: rgba(60,60,60,.85); }
+    .slot.empty { opacity: .55; }
+    .slot .key { color: #bbb; margin-right: 6px; font-weight: bold; }
+    #stun { position: absolute; top: calc(50% + 30px); left: 50%; transform: translateX(-50%); font-size: 44px; font-weight: 900; color: #ff3030; text-shadow: 0 0 8px #000; }
+    #vignette { position: absolute; inset: 0; box-shadow: inset 0 0 140px 50px rgba(255,0,0,.55); opacity: 0; transition: opacity .15s; }
+    #vignette.on { opacity: 1; }
     .hidden { display: none !important; }
   </style>
   <script type="importmap">
@@ -48,6 +63,7 @@
 <body>
   <div id="hud">
     <div id="flash"></div>
+    <div id="vignette"></div>
     <div id="top">
       <div id="score" class="hidden"></div>
       <div id="banner" class="hidden"></div>
@@ -57,6 +73,16 @@
     <div id="bigmsg" class="hidden"></div>
     <div id="crosshair"></div>
     <div id="hitmarker"></div>
+    <div id="stun" class="hidden">경직!</div>
+    <div id="bottom" class="hidden">
+      <div id="buffs"></div>
+      <div id="damage">0%</div>
+      <div id="hotbar">
+        <div class="slot" data-n="1"><span class="key">1</span><span class="name">쌓기</span></div>
+        <div class="slot" data-n="2"><span class="key">2</span><span class="name">아이템</span></div>
+        <div class="slot" data-n="3"><span class="key">3</span><span class="name">폭탄</span></div>
+      </div>
+    </div>
     <div id="center"><span id="center-text">연결 중...</span><br /><button id="start-btn" class="hidden">시작</button>
       <div id="bot-btns" class="hidden"><button id="add-bot">봇 추가</button> <button id="remove-bot">봇 빼기</button>
         <label style="font-size:15px;margin-left:8px">맵 <select id="map-select">
@@ -67,7 +93,8 @@
         <b>조작법</b><br />
         WASD 이동 · Space 점프 · Shift 대시<br />
         <b>좌클릭</b> 밀치기 (가까운 상대를 바라보는 쪽으로 밀어냄)<br />
-        <b>우클릭</b> 투사체 (빨간 공) 또는 설치 블록 (노란 상자: 조준한 곳에 1×2·2×2 를 떨어뜨림, 깔리면 압사, 옆은 충격파, Q/E 로 1×2 방향)<br />
+        <b>1·2·3 / 휠</b> 핫바 칸 고르기 · <b>우클릭</b> 고른 칸 쓰기<br />
+        &nbsp;&nbsp;1 쌓기 블록 (판마다 <span id="build-n"></span>개, 조준한 면에 붙음) · 2 투사체(빨간 공) 또는 설치 블록(노란 상자, 조준한 곳에 1×2 를 떨어뜨림, Q/E 방향) · 3 폭탄(검은 공, 블록을 부숨)<br />
         맞을수록 머리 위 <b>피해 %</b> 가 쌓이고 더 멀리 날아감 (대난투식)<br />
         하늘색 = 조종권: 먹는 즉시 블록을 하늘에서 조종<br />
         &nbsp;&nbsp;방향키 이동 · Q/E 회전 · <b>Enter 낙하</b> (8초 안에)<br />
@@ -75,7 +102,8 @@
         상대를 블록에 깔리게(압사) 하거나 밖으로 떨어뜨리면(낙사) 승리. 블록이 쌓이면 용암이 올라온다 — 위로!
       </div>
     </div>
-    <div id="help">WASD 이동 · Space 점프 · Shift 대시 · 좌클릭 밀치기 · 우클릭 투사체·설치 블록 (아이템 필요) · Q/E 1×2 방향
+    <div id="help">WASD 이동 · Space 점프 · Shift 대시 · 좌클릭 밀치기
+1·2·3 / 휠 핫바 칸 · 우클릭 고른 칸 쓰기 · Q/E 1×2 방향
 조종 중: 방향키 블록 이동 · Q/E 회전 · Enter 하드드롭 (8초 안에)</div>
   </div>
   <script type="module" src="/main.js"></script>

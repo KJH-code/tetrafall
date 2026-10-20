@@ -1,6 +1,6 @@
 // 클라이언트 진입점: WebSocket 연결, 상태 수신, 입력 전송, 렌더 루프, HUD.
 import { CONFIG as C } from '/shared/config.js';
-import { Renderer, PLAYER_COLORS } from '/render.js';
+import { Renderer, PLAYER_COLORS, damageColor } from '/render.js';
 import { Input } from '/input.js';
 import { Sound } from '/sound.js';
 
@@ -92,19 +92,16 @@ function nameOf(id) {
   return p ? p.name : '?';
 }
 
-const KIND_KO = { push: '밀치기', projectile: '투사체', weapon: '망치', shock: '설치 블록 충격파' };
-const ITEM_KO = { control: '조종권', knockback: '투사체', weapon: '망치', jump: '점프력 상승', ghost: '유령화', brick: '설치 블록' };
+const KIND_KO = { push: '밀치기', projectile: '투사체', weapon: '망치', shock: '설치 블록 충격파', bomb: '폭탄' };
+const ITEM_KO = { control: '조종권', knockback: '투사체', weapon: '망치', jump: '점프력 상승', ghost: '유령화', brick: '설치 블록', bomb: '폭탄' };
 const ITEM_HELP = {
   control: '조종권 획득! 블록을 하늘에서 조종합니다',
-  knockback: '투사체 획득! 우클릭으로 발사',
+  knockback: '투사체 획득! (2번 칸) 우클릭으로 발사',
   weapon: `망치 획득! ${C.WEAPON_USES}번 동안 좌클릭이 2배로 밀고 오래 기절시킴`,
   jump: `점프력 상승! ${C.JUMP_BOOST_MS / 1000}초 동안 2칸 벽도 넘음`,
   ghost: `유령화! ${C.GHOST_MS / 1000}초 동안 블록 통과 (떨어지는 블록엔 깔림)`,
-  brick: () => {
-    const p = me();
-    const big = p && p.brickBig;
-    return `설치 블록 ${big ? '2×2' : '1×2'} ${C.BRICK_USES}개! 우클릭으로 조준한 곳(최대 ${C.BRICK_RANGE}칸)에 떨어뜨림 · 깔리면 압사, 옆은 충격파${big ? '' : ' · Q/E 로 앞↔옆'}`;
-  },
+  brick: `설치 블록 1×2 ${C.BRICK_USES}개! (2번 칸) 우클릭으로 조준한 곳(최대 ${C.BRICK_RANGE}칸)에 떨어뜨림 · 깔리면 압사, 옆은 충격파 · Q/E 로 앞↔옆`,
+  bomb: `폭탄! (3번 칸) 우클릭으로 던지면 ${C.BOMB_FUSE_MS / 1000}초 뒤 터져 블록을 부수고 근처 사람을 날림`,
 };
 const CAUSE_KO = { crush: '압사', fall: '낙사', lava: '용암' };
 
@@ -228,6 +225,24 @@ function feelEvent(e) {
     case 'pickup':
       if (e.who === myId) sound.play('pickup');
       return;
+    case 'build': {
+      const [x, y, z] = e.cells[0];
+      fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.5 }, null, 0x9ab0e0, 5, 1.8, 0.07, 0.3);
+      sound.play('land', { dist: e.who === myId ? 0 : distToMe(x + 0.5, y + 0.5, z) });
+      return;
+    }
+    case 'bombPlace':
+      sound.play('tick', { dist: e.who === myId ? 0 : distToMe(e.x + 0.5, e.y + 0.5, e.z) });
+      return;
+    case 'boom': {
+      const d = distToMe(e.x, e.y, e.z);
+      fx.burst({ x: e.x, y: e.y, z: e.z }, null, 0xff7020, 40, 9, 0.16, 0.7);
+      fx.burst({ x: e.x, y: e.y, z: e.z }, null, 0x555555, 24, 5, 0.12, 0.9);
+      fx.ring({ x: e.x, y: e.y, z: e.z }, 0xffa040, 4.5);
+      sound.play('boom', { dist: d });
+      if (d !== undefined && d < 6) fx.shake(0.35 * (1 - d / 6), 450);
+      return;
+    }
     case 'throw': {
       const a = playerById(e.who);
       if (e.who === myId) fx.startPunch(myId);
@@ -380,16 +395,8 @@ function updateHud() {
   const maxP = Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length);
   lines.push(`플레이어 ${state.players.length}/${maxP} · 생존 ${alive}`);
   if (p && state.phase === 'playing') {
-    const flags = [];
-    if (p.stunned) flags.push('경직!');
-    if (p.dashCd > 0) flags.push(`대시 ${(p.dashCd / 1000).toFixed(1)}s`);
-    if (p.weaponUses > 0) flags.push(`망치 ${p.weaponUses}회`);
-    if (p.jumpLeft > 0) flags.push(`점프↑ ${(p.jumpLeft / 1000).toFixed(1)}s`);
-    if (p.ghostLeft > 0) flags.push(`유령 ${(p.ghostLeft / 1000).toFixed(1)}s`);
-    if (p.bricks > 0) flags.push(`블록 ${p.brickBig ? '2×2' : '1×2'} ×${p.bricks}${p.brickBig ? '' : p.brickSide ? ' 옆' : ' 앞'}`);
-    if (p.alive) flags.unshift(`피해 ${p.damage}%`);
-    if (!p.alive) flags.push(`사망 (${CAUSE_KO[p.cause] || p.cause})`);
-    if (flags.length) lines.push(flags.join(' · '));
+    // 피해 %·경직·버프·핫바는 화면 아래 가운데 (updateBottom). 여기엔 사망과 용암만
+    if (!p.alive) lines.push(`사망 (${CAUSE_KO[p.cause] || p.cause})`);
     if (state.lava && state.lava.active) {
       const above = p.alive ? (p.z - state.lava.z).toFixed(1) : '-';
       lines.push(`용암 높이 ${Math.max(0, state.lava.z).toFixed(1)} · 내 발 위로 ${above}칸`);
@@ -401,6 +408,7 @@ function updateHud() {
 
   updateScore();
   updateBig();
+  updateBottom(p);
 
   // 상단 배너: 조종권 상태 (예고 → 조종 중)
   let bannerText = null;
@@ -468,17 +476,62 @@ function updateHud() {
   }
 
   input.enabled = (state.phase === 'playing' || state.phase === 'countdown') && !!p && p.alive; // 카운트다운 중엔 시선만 (서버가 이동·행동을 막음)
-  // 조준점: 투사체가 있으면 빨갛고 크게 + 탄 수, 설치 블록이 있으면 노랗게 + 개수
-  const armed = !!p && p.ammo > 0;
-  const brick = !!p && p.bricks > 0;
+  // 조준점: 고른 핫바 칸에 따라 색. 2번 투사체 = 빨강, 2번 설치 블록 = 노랑, 3번 폭탄 = 주황 (자세한 건 아래 핫바)
+  const armed = !!p && p.hand === 2 && p.ammo > 0;
+  const brick = !!p && p.hand === 2 && p.bricks > 0;
+  const bomb = !!p && p.hand === 3 && p.bombs > 0;
   crosshair.classList.toggle('hidden', !(input.enabled && !p.controlling));
-  crosshair.classList.toggle('armed', armed || brick);
+  crosshair.classList.toggle('armed', armed || brick || bomb);
   crosshair.classList.toggle('brick', brick);
-  if (armed) crosshair.dataset.ammo = `투사체 ×${p.ammo} (우클릭)`;
-  else if (brick) {
-    const dir = p.brickBig ? '' : ` · ${p.brickSide ? '옆' : '앞'} (Q/E)`;
-    crosshair.dataset.ammo = `블록 ${p.brickBig ? '2×2' : '1×2'} ×${p.bricks} (우클릭)${dir}`;
-  } else crosshair.dataset.ammo = '';
+  crosshair.classList.toggle('bomb', bomb);
+  crosshair.dataset.ammo = '';
+}
+
+// ---------- 화면 아래: 피해 % · 경직 · 버프 · 핫바 ----------
+$('build-n').textContent = C.BUILD_BLOCKS_PER_ROUND; // 조작법 패널 숫자는 config 에서
+const bottomEl = $('bottom');
+const damageEl = $('damage');
+const buffsEl = $('buffs');
+const stunEl = $('stun');
+const vignetteEl = $('vignette');
+const slotEls = [1, 2, 3].map((n) => document.querySelector(`#hotbar .slot[data-n="${n}"]`));
+let shownDamage = null;
+let bottomKey = '';
+function updateBottom(p) {
+  const show = !!p && p.alive && (state.phase === 'playing' || state.phase === 'countdown');
+  bottomEl.classList.toggle('hidden', !show);
+  const stunned = show && p.stunned;
+  stunEl.classList.toggle('hidden', !stunned);
+  vignetteEl.classList.toggle('on', stunned);
+  if (!show) return;
+  if (shownDamage !== p.damage) {
+    if (shownDamage !== null && p.damage > shownDamage) {
+      damageEl.classList.add('pop'); // 맞으면 잠깐 커졌다 줄어듦
+      setTimeout(() => damageEl.classList.remove('pop'), 140);
+    }
+    shownDamage = p.damage;
+    damageEl.textContent = `${p.damage}%`;
+    damageEl.style.color = damageColor(p.damage);
+  }
+  const buffs = [];
+  if (p.weaponUses > 0) buffs.push(`망치 ${p.weaponUses}회`);
+  if (p.jumpLeft > 0) buffs.push(`점프↑ ${(p.jumpLeft / 1000).toFixed(1)}s`);
+  if (p.ghostLeft > 0) buffs.push(`유령 ${(p.ghostLeft / 1000).toFixed(1)}s`);
+  if (p.dashCd > 0) buffs.push(`대시 ${(p.dashCd / 1000).toFixed(1)}s`);
+  const slots = [
+    p.blocks > 0 ? `쌓기 ×${p.blocks}` : '쌓기 —',
+    p.ammo > 0 ? `투사체 ×${p.ammo}` : p.bricks > 0 ? `설치 1×2 ×${p.bricks} ${p.brickSide ? '옆' : '앞'}` : '아이템 —',
+    p.bombs > 0 ? `폭탄 ×${p.bombs}` : '폭탄 —',
+  ];
+  const key = `${buffs.join('|')}#${slots.join('|')}#${p.hand}`;
+  if (key === bottomKey) return;
+  bottomKey = key;
+  buffsEl.innerHTML = buffs.map((b) => `<span class="buff">${b}</span>`).join('');
+  slotEls.forEach((el, i) => {
+    el.querySelector('.name').textContent = slots[i];
+    el.classList.toggle('sel', p.hand === i + 1);
+    el.classList.toggle('empty', slots[i].endsWith('—'));
+  });
 }
 
 // 입력 전송

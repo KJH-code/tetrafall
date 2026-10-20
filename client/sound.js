@@ -109,8 +109,12 @@ export class Sound {
         this.noise({ dur: 1.6, vol: 0.6, freq: 260, freqEnd: 120 });
         this.tone({ freq: 55, freqEnd: 42, dur: 1.5, type: 'sawtooth', vol: 0.25 });
         break;
+      case 'boom': // 폭탄
+        this.noise({ dur: 0.9, vol: 0.9 * v, freq: 1400, freqEnd: 60 });
+        this.tone({ freq: 70, freqEnd: 25, dur: 0.7, type: 'sine', vol: 0.9 * v });
+        break;
       case 'tick': // 카운트다운 3·2·1
-        this.tone({ freq: 660, dur: 0.12, type: 'square', vol: 0.22 });
+        this.tone({ freq: 660, dur: 0.12, type: 'square', vol: 0.22 * v });
         break;
       case 'go': // 시작!
         this.tone({ freq: 990, dur: 0.35, type: 'square', vol: 0.25 });

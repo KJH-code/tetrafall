@@ -12,6 +12,7 @@ function pieceKey(piece) {
 }
 
 const BRICK_STEP_PITCH = -1.3; // 발판 던질 때: 거의 발밑을 보면 시선이 BRICK_MIN_DIST 앞 칸에 바로 닿는다
+const BUILD_STEP_PITCH = -1.0; // 쌓기 발판: 눈높이에서 이 각도면 시선이 바로 앞 칸 바닥(발 높이)에 닿는다
 
 function edgeDist(x, y) {
   return Math.min(x, W - x, y, D - y);
@@ -149,6 +150,7 @@ export class BotBrain {
     if (target && p.ammo > 0 && this.canShoot(g, p, target)) {
       this.aimAt(p, target);
       g.handleInput(p.id, this.input);
+      g.handleAction(p.id, { name: 'hand', n: 2 });
       g.handleAction(p.id, { name: 'fire' });
       this.input.fwd = 0;
       return;
@@ -156,6 +158,8 @@ export class BotBrain {
 
     // 3.5) 설치 블록: 용암 전에는 앞 칸에 선 상대 위에 놓아 밀어낸다 (용암이 켜지면 발판용으로 아낌)
     if (target && p.bricks > 0 && !g.lava.active && this.brickOnTarget(g, p, target)) return;
+    // 3.6) 폭탄: 상대가 터지는 범위에 들면 던진다
+    if (target && p.bombs > 0 && this.bombOnTarget(g, p, target)) return;
 
     // 4) 아이템: 내가 상대보다 가깝거나 비슷하면 먹으러 간다
     const item = this.pickItem(g, p, target);
@@ -191,7 +195,8 @@ export class BotBrain {
     let bd = Infinity;
     for (const it of g.items) {
       // 이미 가진·켜진 효과는 또 먹으러 가지 않는다
-      if ((it.type === 'knockback' || it.type === 'brick') && (p.ammo > 0 || p.bricks > 0)) continue; // 우클릭 칸이 차 있음
+      if ((it.type === 'knockback' || it.type === 'brick') && (p.ammo > 0 || p.bricks > 0)) continue; // 핫바 2번 칸이 차 있음
+      if (it.type === 'bomb' && p.bombs > 0) continue;
       if (it.type === 'weapon' && p.weaponUses > 0) continue;
       if (it.type === 'jump' && g.time < p.jumpUntil) continue;
       if (it.type === 'ghost' && g.time < p.ghostUntil) continue;
@@ -428,13 +433,23 @@ export class BotBrain {
     return p.grounded || under > p.z ? Math.floor(p.z + 0.05) : under;
   }
 
-  // 용암이 2.5칸 안인데 걸어서 갈 더 높은 곳이 없을 때: 바로 앞 칸에 블록을 던져 한 칸 높은 발판을 만든다. 던졌으면 true
-  // (떨어지는 동안은 내 블록이라 피하고, 착지하면 다음 판단에서 climbFromLava 가 그 발판으로 올라간다)
+  // 용암이 2.5칸 안인데 걸어서 갈 더 높은 곳이 없을 때: 바로 앞 칸에 한 칸 높은 발판을 만든다. 만들었으면 true
+  // 쌓기 블록이 있으면 그걸로 바로 놓고, 없으면 설치 블록을 던진다
+  // (던진 건 떨어지는 동안 내 블록이라 피하고, 착지하면 다음 판단에서 climbFromLava 가 그 발판으로 올라간다)
   brickStep(g, p) {
-    if (p.bricks <= 0 || !p.grounded || !g.lava.active || p.z - g.lava.z > 2.5) return false;
-    if (g.pieces.some((pc) => pc.thrownBy === p.id)) return false; // 던진 게 아직 떨어지는 중
+    if (!p.grounded || !g.lava.active || p.z - g.lava.z > 2.5) return false;
     const h0 = this.standHeight(g, p);
-    const sides = p.brickBig ? [p.brickSide] : [p.brickSide, !p.brickSide];
+    if (p.blocks > 0) {
+      for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+        const plan = g.buildPlan(p, yaw, BUILD_STEP_PITCH);
+        if (!plan.ok || plan.cells[0][2] !== h0) continue; // 발 높이 칸에 놓아야 한 칸 높은 발판
+        this.throwAt(g, p, yaw, BUILD_STEP_PITCH, 1);
+        return true;
+      }
+    }
+    if (p.bricks <= 0) return false;
+    if (g.pieces.some((pc) => pc.thrownBy === p.id)) return false; // 던진 게 아직 떨어지는 중
+    const sides = [p.brickSide, !p.brickSide];
     const side0 = p.brickSide;
     let pick = null;
     for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
@@ -447,7 +462,7 @@ export class BotBrain {
     p.brickSide = side0;
     if (!pick) return false;
     if (pick.side !== p.brickSide) g.handleAction(p.id, { name: 'rotate', dir: 1 }); // Q/E 로 1×2 방향 바꾸기
-    this.throwAt(g, p, pick.yaw, BRICK_STEP_PITCH);
+    this.throwAt(g, p, pick.yaw, BRICK_STEP_PITCH, 2);
     return true;
   }
 
@@ -466,16 +481,36 @@ export class BotBrain {
     const a = this.rng() * Math.PI * 2;
     const off = aim(t.x + r * Math.cos(a), t.y + r * Math.sin(a));
     const shot = g.brickPlan(p, off.yaw, off.pitch).ok ? off : exact; // 빗나간 조준이 못 던지는 자리면 정조준
-    this.throwAt(g, p, shot.yaw, shot.pitch);
+    this.throwAt(g, p, shot.yaw, shot.pitch, 2);
     return true;
   }
 
-  throwAt(g, p, yaw, pitch) {
+  // 상대 발밑 칸이 폭발 범위(가로세로 ±BOMB_RADIUS)에 들면 던진다. 조준 오차는 설치 블록과 같음. 던졌으면 true
+  bombOnTarget(g, p, t) {
+    const d = Math.hypot(t.x - p.x, t.y - p.y);
+    if (d > C.BRICK_RANGE || d < C.BOMB_BLAST_RANGE) return false; // 너무 가까우면 나도 발판을 잃는다
+    const aim = (tx, ty) => ({ yaw: Math.atan2(ty - p.y, tx - p.x), pitch: Math.atan2(t.z - (p.z + C.EYE_HEIGHT), Math.hypot(tx - p.x, ty - p.y)) });
+    const exact = aim(t.x, t.y);
+    const plan = g.bombPlan(p, exact.yaw, exact.pitch);
+    if (!plan.ok) return false;
+    const [bx, by] = plan.cells[0];
+    if (Math.abs(Math.floor(t.x) - bx) > C.BOMB_RADIUS || Math.abs(Math.floor(t.y) - by) > C.BOMB_RADIUS) return false;
+    const r = C.BOT_BRICK_AIM_ERROR * Math.sqrt(this.rng());
+    const a = this.rng() * Math.PI * 2;
+    const off = aim(t.x + r * Math.cos(a), t.y + r * Math.sin(a));
+    const shot = g.bombPlan(p, off.yaw, off.pitch).ok ? off : exact;
+    this.throwAt(g, p, shot.yaw, shot.pitch, 3);
+    return true;
+  }
+
+  // hand: 쓸 핫바 칸 (1 쌓기 · 2 던지는 아이템 · 3 폭탄). 사람처럼 칸을 고른 뒤 우클릭
+  throwAt(g, p, yaw, pitch, hand) {
     this.input.yaw = yaw;
     this.input.pitch = pitch;
     this.input.fwd = 0;
     this.input.strafe = 0;
     g.handleInput(p.id, this.input);
+    g.handleAction(p.id, { name: 'hand', n: hand });
     g.handleAction(p.id, { name: 'fire' });
     // 내가 던진 블록은 어디로 떨어지는지 안다 → 반응 시간 없이 피할 대상
     const mine = g.pieces.find((pc) => pc.thrownBy === p.id);

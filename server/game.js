@@ -53,6 +53,8 @@ export class Game {
     this.baseAvgHeight = 0; // 판 시작 때 지형 평균 높이 (용암은 여기서 더 쌓인 만큼으로 판단)
     this.items = [];
     this.projectiles = [];
+    this.bombs = []; // 놓여서 터지길 기다리는 폭탄
+    this.bombCounter = 0;
     this.roundNumber = 0;
     this.roundStartTime = 0;
     this.roundEndTime = 0;
@@ -138,8 +140,10 @@ export class Game {
       weaponUses: 0, // 망치 남은 횟수
       jumpUntil: 0, // 점프력 상승 끝나는 시각
       ghostUntil: 0, // 유령화 끝나는 시각
-      bricks: 0, // 설치 블록 남은 개수
-      brickBig: false, // 설치 블록 모양. true = 2×2, false = 1×2
+      hand: 1, // 핫바에서 고른 칸. 1 쌓기 블록 · 2 던지는 아이템 · 3 폭탄
+      blocks: 0, // 쌓기 블록 남은 개수 (판마다 BUILD_BLOCKS_PER_ROUND)
+      bombs: 0, // 폭탄 남은 개수
+      bricks: 0, // 설치 블록(1×2) 남은 개수
       brickSide: false, // 1×2 방향. false = 바라보는 쪽으로 뻗음, true = 옆으로
       damage: 0, // 피해 % (대난투식). 높을수록 멀리 날아감
       wins: 0, // 이긴 판 수 (서버가 켜져 있는 동안, 나가면 사라짐)
@@ -247,6 +251,8 @@ export class Game {
     this.lava = { active: false, z: C.LAVA_START_Z, startedAt: 0 };
     this.items = [];
     this.projectiles = [];
+    this.bombs = []; // 놓여서 터지길 기다리는 폭탄
+    this.bombCounter = 0;
     this.deaths = [];
     this.events = [];
     this.winnerId = null;
@@ -269,8 +275,10 @@ export class Game {
         weaponUses: 0,
         jumpUntil: 0,
         ghostUntil: 0,
+        hand: 1,
+        blocks: C.BUILD_BLOCKS_PER_ROUND,
+        bombs: 0,
         bricks: 0,
-        brickBig: false,
         brickSide: false,
         damage: 0,
         dashReadyAt: 0,
@@ -390,10 +398,19 @@ export class Game {
         if (stunned || controlling || this.time < p.pushReadyAt) return; // 조종 중 공격 불가
         this.push(p);
         return;
-      case 'fire': // 우클릭: 설치 블록이 있으면 설치, 아니면 투사체
+      case 'fire': // 우클릭: 고른 핫바 칸을 씀
         if (stunned || controlling) return;
-        if (p.bricks > 0) this.throwBrick(p);
-        else if (p.ammo > 0) this.fire(p);
+        if (p.hand === 1) this.placeBlock(p);
+        else if (p.hand === 2) {
+          if (p.bricks > 0) this.throwBrick(p);
+          else if (p.ammo > 0) this.fire(p);
+        } else if (p.hand === 3) this.throwBomb(p);
+        return;
+      case 'hand': // 숫자키 1·2·3
+        if ([1, 2, 3].includes(action.n)) p.hand = action.n;
+        return;
+      case 'handNext': // 마우스 휠
+        p.hand = ((p.hand - 1 + (action.dir > 0 ? 1 : 2)) % 3) + 1;
         return;
       case 'pieceMove':
         if (!controlling) return;
@@ -401,7 +418,7 @@ export class Game {
         return;
       case 'rotate':
         if (!controlling) {
-          if (p.bricks > 0 && !p.brickBig) p.brickSide = !p.brickSide; // 조종 중이 아니면 Q/E 는 1×2 방향 바꾸기
+          if (p.bricks > 0) p.brickSide = !p.brickSide; // 조종 중이 아니면 Q/E 는 1×2 방향 바꾸기
           return;
         }
         this.rotatePiece(this.controlledPiece(p), action.dir > 0 ? 1 : -1);
@@ -484,7 +501,8 @@ export class Game {
   // 지형(기둥 꼭대기·바닥)에 처음 닿는 칸이 기준. 안 닿으면 BRICK_RANGE 끝 칸 (필드를 벗어나면 마지막 필드 안 칸).
   // 1×2 는 바라보는 방향을 가로·세로 중 가까운 쪽으로 맞춰 앞(또는 Q/E 로 옆)으로 한 칸 더, 2×2 는 앞·왼쪽으로.
   // ok 가 false 면 못 던짐 (소모 안 함)
-  brickPlan(p, yaw = p.yaw, pitch = p.pitch) {
+  // 던지는 것(설치 블록·폭탄)의 기준 칸 [x, y] 또는 null
+  aimAnchor(p, yaw = p.yaw, pitch = p.pitch) {
     const cp = Math.cos(pitch);
     const dx = cp * Math.cos(yaw);
     const dy = cp * Math.sin(yaw);
@@ -501,13 +519,18 @@ export class Game {
       anchor = [cx, cy];
       if (ez + dz * t <= this.columnTop(cx, cy)) break; // 시선이 지형에 닿음
     }
+    return anchor;
+  }
+
+  brickPlan(p, yaw = p.yaw, pitch = p.pitch) {
+    const anchor = this.aimAnchor(p, yaw, pitch);
     if (!anchor) return { cells: [], z: 0, ok: false };
     const fx = Math.cos(yaw);
     const fy = Math.sin(yaw);
     const along = Math.abs(fx) >= Math.abs(fy) ? [Math.sign(fx), 0] : [0, Math.sign(fy)];
     const left = [-along[1], along[0]];
     const [ax, ay] = anchor;
-    const offs = p.brickBig ? [[0, 0], along, left, [along[0] + left[0], along[1] + left[1]]] : [[0, 0], p.brickSide ? left : along];
+    const offs = [[0, 0], p.brickSide ? left : along];
     const cells = offs.map(([ox, oy]) => [ax + ox, ay + oy]);
     if (!cells.every(([x, y]) => inXY(x, y))) return { cells: cells.map(([x, y]) => [x, y, 0]), z: 0, ok: false };
     const z = Math.max(...cells.map(([x, y]) => this.columnTop(x, y)));
@@ -527,7 +550,7 @@ export class Game {
     const [ax, ay] = plan.cells[0];
     const piece = {
       id: 0,
-      shape: p.brickBig ? '2×2' : '1×2',
+      shape: '1×2',
       rot: 0,
       cells: plan.cells.map(([x, y]) => [x - ax, y - ay]),
       px: ax,
@@ -542,6 +565,132 @@ export class Game {
     this.log(`  [투척] ${p.name} ${piece.shape} → (${ax},${ay}) z=${plan.z} (남은 ${p.bricks}개)`);
     if (p.bricks === 0) p.brickSide = false;
     return true;
+  }
+
+  // ---- 쌓기 블록 (핫바 1번) ----
+  // 시선이 처음 닿는 블록 면(바닥 포함) 바로 앞 칸. 칸 단위로 시선을 따라간다 (DDA). 사거리 BUILD_RANGE
+  buildPlan(p, yaw = p.yaw, pitch = p.pitch) {
+    const cp = Math.cos(pitch);
+    const d = [cp * Math.cos(yaw), cp * Math.sin(yaw), Math.sin(pitch)];
+    const o = [p.x, p.y, p.z + C.EYE_HEIGHT];
+    const cell = o.map(Math.floor);
+    const step = d.map((v) => (v > 0 ? 1 : v < 0 ? -1 : 0));
+    const tMax = d.map((v, i) => (v === 0 ? Infinity : ((v > 0 ? cell[i] + 1 : cell[i]) - o[i]) / v));
+    const tDelta = d.map((v) => (v === 0 ? Infinity : Math.abs(1 / v)));
+    const solid = ([x, y, z]) => (z < 0 ? inXY(x, y) : inXY(x, y) && z < C.GRID_H && !!this.grid[this.idx(x, y, z)]);
+    let prev = cell.slice();
+    for (let n = 0; n < 64; n++) {
+      const a = tMax[0] < tMax[1] ? (tMax[0] < tMax[2] ? 0 : 2) : tMax[1] < tMax[2] ? 1 : 2;
+      if (tMax[a] > C.BUILD_RANGE) break;
+      prev = cell.slice();
+      cell[a] += step[a];
+      tMax[a] += tDelta[a];
+      if (!solid(cell)) continue;
+      const [x, y, z] = prev;
+      const free = inXY(x, y) && z >= 0 && z < C.GRID_H && !this.grid[this.idx(x, y, z)] && !this.pieceCells.has(cellKey(x, y, z));
+      const nobody = ![...this.players.values()].some((t) => t.alive && overlapsCell(t, x, y, z));
+      return { cells: [[x, y, z]], ok: free && nobody };
+    }
+    return { cells: [], ok: false };
+  }
+
+  placeBlock(p) {
+    if (p.blocks <= 0) return false;
+    const plan = this.buildPlan(p);
+    if (!plan.ok) return false;
+    const [x, y, z] = plan.cells[0];
+    p.blocks--;
+    this.grid[this.idx(x, y, z)] = 1;
+    this.gridChanged();
+    this.emit({ type: 'build', who: p.id, cells: plan.cells });
+    this.log(`  [쌓기] ${p.name} → (${x},${y},${z}) (남은 ${p.blocks}개)`);
+    this.clearLayers();
+    return true;
+  }
+
+  // 격자가 바뀐 뒤: 떨어지는 블록 착지점, 아이템·폭탄 높이 다시 계산
+  gridChanged() {
+    this.gridVersion++;
+    this.gridDirty = true;
+    for (const pc of this.pieces) this.updateLanding(pc);
+    for (const it of this.items) it.z = this.columnTop(it.x, it.y);
+    for (const b of this.bombs) b.z = this.columnTop(b.x, b.y);
+  }
+
+  // ---- 폭탄 (핫바 3번) ----
+  // 설치 블록과 같은 조준. cells 는 미리보기용 부서질 범위 (가로세로 ±BOMB_RADIUS), 첫 칸이 폭탄 자리
+  bombPlan(p, yaw = p.yaw, pitch = p.pitch) {
+    const anchor = this.aimAnchor(p, yaw, pitch);
+    if (!anchor) return { cells: [], ok: false };
+    const [ax, ay] = anchor;
+    const z = this.columnTop(ax, ay);
+    const cells = [[ax, ay, z]];
+    const R = C.BOMB_RADIUS;
+    for (let dx = -R; dx <= R; dx++) for (let dy = -R; dy <= R; dy++) if ((dx || dy) && inXY(ax + dx, ay + dy)) cells.push([ax + dx, ay + dy, z]);
+    return { cells, ok: z < C.GRID_H };
+  }
+
+  throwBomb(p) {
+    if (p.bombs <= 0) return false;
+    const plan = this.bombPlan(p);
+    if (!plan.ok) return false;
+    p.bombs--;
+    const [x, y, z] = plan.cells[0];
+    this.bombs.push({ id: ++this.bombCounter, x, y, z, by: p.id, explodeAt: this.time + C.BOMB_FUSE_MS });
+    this.emit({ type: 'bombPlace', who: p.id, x, y, z });
+    this.log(`  [폭탄] ${p.name} → (${x},${y}) z=${z} 설치, ${C.BOMB_FUSE_MS / 1000}초 뒤 폭발`);
+    return true;
+  }
+
+  updateBombs() {
+    for (const b of [...this.bombs]) {
+      b.z = this.columnTop(b.x, b.y);
+      if (this.time < b.explodeAt) continue;
+      this.bombs.splice(this.bombs.indexOf(b), 1);
+      this.explodeBomb(b);
+    }
+  }
+
+  // 폭탄 칸 중심 ±BOMB_RADIUS 정육면체 블록을 부수고 BOMB_BLAST_RANGE 안의 사람을 날린다 (던진 사람 면제)
+  explodeBomb(b) {
+    const R = C.BOMB_RADIUS;
+    let removed = 0;
+    for (let x = b.x - R; x <= b.x + R; x++) {
+      for (let y = b.y - R; y <= b.y + R; y++) {
+        for (let z = b.z - R; z <= b.z + R; z++) {
+          if (!inXY(x, y) || z < 0 || z >= C.GRID_H || !this.grid[this.idx(x, y, z)]) continue;
+          this.grid[this.idx(x, y, z)] = 0;
+          removed++;
+        }
+      }
+    }
+    const by = this.players.get(b.by);
+    const cx = b.x + 0.5;
+    const cy = b.y + 0.5;
+    const cz = b.z + 0.5;
+    this.emit({ type: 'boom', who: b.by, x: cx, y: cy, z: cz });
+    this.log(`  [폭탄] ${by ? by.name : '?'} 의 폭탄 폭발 (${b.x},${b.y}) z=${b.z}, 블록 ${removed}칸 파괴`);
+    for (const t of this.players.values()) {
+      if (!t.alive || t.id === b.by) continue;
+      const dx = t.x - cx;
+      const dy = t.y - cy;
+      if (Math.hypot(dx, dy) > C.BOMB_BLAST_RANGE || Math.abs(t.z + C.PLAYER_HEIGHT / 2 - cz) > C.BOMB_BLAST_RANGE) continue;
+      const a = this.rng() * Math.PI * 2; // 바로 위에 서 있으면 방향이 없어서 무작위
+      const hit = Math.hypot(dx, dy) > 0.05
+        ? this.applyKnockback(t, dx, dy, C.BOMB_KB_SPEED, C.BOMB_KB_UP, C.BOMB_STUN_MS, C.DAMAGE_GAIN.bomb)
+        : this.applyKnockback(t, Math.cos(a), Math.sin(a), C.BOMB_KB_SPEED, C.BOMB_KB_UP, C.BOMB_STUN_MS, C.DAMAGE_GAIN.bomb);
+      this.emit({ type: 'hit', kind: 'bomb', by: b.by, target: t.id, ok: hit });
+      this.log(`  [폭탄] ${by ? by.name : '?'} → ${t.name} ${hit ? `넉백 (${t.name} ${t.damage}%)` : '경직 중이라 무시'}`);
+    }
+    if (removed) this.gridChanged();
+  }
+
+  // 지금 고른 핫바 칸으로 우클릭하면 생길 것 (클라이언트 미리보기)
+  aimPreview(p) {
+    if (p.hand === 1 && p.blocks > 0) return { kind: 'build', ...this.buildPlan(p) };
+    if (p.hand === 2 && p.bricks > 0) return { kind: 'brick', ...this.brickPlan(p) };
+    if (p.hand === 3 && p.bombs > 0) return { kind: 'bomb', ...this.bombPlan(p) };
+    return null;
   }
 
   // 던진 블록이 착지하면 바로 옆(BRICK_SHOCK_RANGE 안)에 있던 사람을 바깥쪽으로 날린다
@@ -1084,8 +1233,9 @@ export class Game {
   givePower(p, type) {
     if (type === 'knockback') {
       const dropped = p.bricks;
-      p.bricks = 0; // 우클릭 칸 공유: 나중에 먹은 쪽만 남는다
+      p.bricks = 0; // 핫바 2번 칸 공유: 나중에 먹은 쪽만 남는다
       p.ammo += C.KNOCKBACK_AMMO;
+      p.hand = 2;
       this.log(`  [아이템] ${p.name} 넉백 아이템 획득 (탄 ${p.ammo})${dropped ? ' — 설치 블록 버림' : ''}`);
     } else if (type === 'weapon') {
       p.weaponUses = C.WEAPON_USES;
@@ -1100,9 +1250,13 @@ export class Game {
       const dropped = p.ammo;
       p.ammo = 0;
       p.bricks = C.BRICK_USES;
-      p.brickBig = this.rng() < C.BRICK_BIG_CHANCE;
       p.brickSide = false;
-      this.log(`  [아이템] ${p.name} 설치 블록 ${p.brickBig ? '2×2' : '1×2'} 획득 (${p.bricks}개)${dropped ? ' — 투사체 버림' : ''}`);
+      p.hand = 2;
+      this.log(`  [아이템] ${p.name} 설치 블록 1×2 획득 (${p.bricks}개)${dropped ? ' — 투사체 버림' : ''}`);
+    } else if (type === 'bomb') {
+      p.bombs = C.BOMB_USES;
+      p.hand = 3;
+      this.log(`  [아이템] ${p.name} 폭탄 획득`);
     }
   }
 
@@ -1300,6 +1454,7 @@ export class Game {
     this.updateLava(dtMs);
     this.updateItems();
     this.updateProjectiles(dt);
+    this.updateBombs();
     if (C.ROUND_TIME_LIMIT_MS > 0 && this.time - this.roundStartTime >= C.ROUND_TIME_LIMIT_MS) {
       this.log('  시간 초과 → 무승부');
       this.endRound(null);
@@ -1363,10 +1518,12 @@ export class Game {
         weaponUses: p.weaponUses,
         jumpLeft: Math.max(0, p.jumpUntil - this.time),
         ghostLeft: Math.max(0, p.ghostUntil - this.time),
+        hand: p.hand,
+        blocks: p.blocks,
+        bombs: p.bombs,
         bricks: p.bricks,
-        brickBig: p.brickBig,
         brickSide: p.brickSide,
-        brickPlan: p.alive && p.bricks > 0 ? this.brickPlan(p) : null, // 떨어질 칸 미리보기
+        aim: p.alive ? this.aimPreview(p) : null, // 고른 칸으로 우클릭하면 어디에 무엇이 생기는지
         damage: p.damage,
         wins: p.wins,
         controlling: this.isControlling(p),
@@ -1378,6 +1535,7 @@ export class Game {
       map: { choice: this.mapChoice, id: this.mapId, name: MAPS[this.mapId].name },
       items: this.items,
       projectiles: this.projectiles.map((pr) => ({ x: pr.x, y: pr.y, z: pr.z })),
+      bombs: this.bombs.map((b) => ({ id: b.id, x: b.x, y: b.y, z: b.z, left: Math.max(0, b.explodeAt - this.time) })),
       gridVersion: this.gridVersion,
     };
     if (includeGrid || this.gridDirty) {

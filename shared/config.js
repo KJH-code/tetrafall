@@ -69,7 +69,7 @@ export const CONFIG = {
 
   // ---- 아이템 (조종권 제외) — 2단계 ----
   // 필드에 동시에 ITEM_MAX_ON_FIELD 개까지. 종류는 ITEM_POOL 에서 무작위
-  ITEM_POOL: ['knockback', 'weapon', 'jump', 'ghost', 'brick'],
+  ITEM_POOL: ['knockback', 'weapon', 'jump', 'ghost', 'brick', 'bomb'],
   ITEM_MAX_ON_FIELD: 2,
   ITEM_FIRST_SPAWN_MS: 4000, // 판 시작 후 첫 아이템
   ITEM_RESPAWN_MS: 6000, // 다음 아이템까지
@@ -84,11 +84,24 @@ export const CONFIG = {
   // 유령화: 블록을 옆으로 통과, 점프하면 머리 위 블록을 뚫고 올라가 그 위에 섬, 아래로는 안 빠짐 (한쪽 통과 발판).
   // 압사는 그대로 당함. 끝날 때 블록 안이면 그 기둥 꼭대기로 밀려 올라감
   GHOST_MS: 6000,
+  // 핫바 (2026-10-20): 1 쌓기 블록 · 2 던지는 아이템(투사체 또는 설치 블록) · 3 폭탄. 숫자키·마우스 휠로 고르고 우클릭으로 씀.
+  // 아이템을 먹으면 그 칸으로 자동 전환. 좌클릭은 칸과 상관없이 밀치기(망치)
+  // 쌓기 블록 (마크식): 조준한 블록 면(옆면 포함)에 1×1 을 바로 붙임. 사람이 있는 칸엔 못 놓음
+  BUILD_BLOCKS_PER_ROUND: 5,
+  BUILD_RANGE: 3, // 눈에서 시선 거리 (칸)
+  // 폭탄: 설치 블록과 같은 조준으로 던지면 그 칸 위에 놓여 BOMB_FUSE_MS 깜빡이다 터짐.
+  // 폭탄 칸 중심 가로세로 ±BOMB_RADIUS, 위아래 ±BOMB_RADIUS 블록을 부숨 (시작 지형 포함). 던진 사람은 폭발 면제
+  BOMB_USES: 1,
+  BOMB_FUSE_MS: 1500,
+  BOMB_RADIUS: 1, // 3×3×3
+  BOMB_BLAST_RANGE: 2, // 폭탄 중심에서 이 수평 거리·높이 차 안의 사람을 날림
+  BOMB_KB_SPEED: 8.4,
+  BOMB_KB_UP: 5,
+  BOMB_STUN_MS: 1200,
   // 설치 블록 (2026-10-20 개편): 우클릭으로 조준점이 가리키는 칸(최대 BRICK_RANGE 칸 앞) 위 공중에 블록을 만들어 떨어뜨린다.
   // 그림자가 보이고, 밑에 있으면 압사, 착지한 칸 바로 옆에 있으면 충격파로 망치급 넉백 + 피해 %.
   // 투사체와 우클릭을 같이 써서, 둘 중 나중에 먹은 쪽만 남는다. 1×2 는 Q/E 로 앞으로 ↔ 옆으로
   BRICK_USES: 2, // 아이템 하나당 던지는 횟수
-  BRICK_BIG_CHANCE: 0.5, // 먹을 때 2×2 가 될 확률 (나머지는 1×2)
   BRICK_RANGE: 4, // 조준점 방향 수평 최대 거리 (칸). 그 안에서 시선이 지형에 닿는 칸, 안 닿으면 끝 칸
   BRICK_MIN_DIST: 1.3, // 이보다 가까운 칸은 안 고름 (반폭 0.3 + 1: 내 몸 위로는 안 떨어짐)
   BRICK_DROP_HEIGHT: 3, // 착지 높이보다 이만큼 위에서 생겨 떨어짐
@@ -101,7 +114,7 @@ export const CONFIG = {
   // ---- 피해 % (대난투식, 2026-10-20) ----
   // 맞을 때마다 공격 종류별로 쌓이고 판 내내 안 줄어든다. 수평 넉백 = 기본 × (DAMAGE_KB_BASE + 피해% × DAMAGE_KB_PER_PERCENT).
   // 경직 중이라 무시된 공격은 안 쌓인다. 압사·용암은 % 와 상관없이 즉사
-  DAMAGE_GAIN: { push: 10, weapon: 25, projectile: 20, shock: 40 },
+  DAMAGE_GAIN: { push: 10, weapon: 25, projectile: 20, shock: 40, bomb: 40 },
   // 0% 에선 예전의 0.7배로 약하게 시작, 30% 에서 예전과 같고 그 뒤로 더 세짐 (2026-10-20 재혁 결정 c:
   // 예전 세기에서 시작하니 봇 판 중앙값이 43 → 20초로 줄어서)
   DAMAGE_KB_BASE: 0.7,

@@ -32,6 +32,15 @@ export class Input {
       if (e.button === 2) this.sendAction({ name: 'fire' });
     });
     document.addEventListener('contextmenu', (e) => e.preventDefault());
+    // 마우스 휠로 핫바 칸 돌리기 (터치패드가 한 번에 여러 번 보내서 0.12초에 한 칸)
+    let lastWheel = 0;
+    document.addEventListener('wheel', (e) => {
+      if (!this.locked || !this.enabled || !e.deltaY) return;
+      const now = performance.now();
+      if (now - lastWheel < 120) return;
+      lastWheel = now;
+      this.sendAction({ name: 'handNext', dir: e.deltaY > 0 ? 1 : -1 });
+    });
 
     document.addEventListener('keydown', (e) => {
       if (e.repeat) return;
@@ -66,6 +75,11 @@ export class Input {
           break;
         case 'Enter':
           this.sendAction({ name: 'drop' });
+          break;
+        case 'Digit1':
+        case 'Digit2':
+        case 'Digit3':
+          this.sendAction({ name: 'hand', n: Number(e.code.slice(5)) }); // 핫바 칸 고르기
           break;
         default:
       }

@@ -15,10 +15,11 @@ const ITEM_LOOK = {
   jump: { color: 0x40e040, geo: () => new THREE.ConeGeometry(0.24, 0.45, 12) }, // 초록 원뿔(위로)
   ghost: { color: 0xe8e8ff, geo: () => new THREE.TorusGeometry(0.2, 0.07, 8, 18) }, // 흰 고리
   brick: { color: 0xf0d060, geo: () => new THREE.BoxGeometry(0.32, 0.32, 0.32) }, // 노란 작은 블록
+  bomb: { color: 0x222222, geo: () => new THREE.SphereGeometry(0.22, 14, 10) }, // 검은 공
 };
 
 // 피해 % 글자색: 0% 흰색 → 50% 노랑 → 100% 이상 빨강
-function damageColor(d) {
+export function damageColor(d) {
   const t = Math.min(1, d / 100);
   const g = t < 0.5 ? 255 : Math.round(255 - (t - 0.5) * 2 * 215);
   const b = t < 0.5 ? Math.round(255 - t * 2 * 255) : 0;
@@ -141,16 +142,12 @@ export class Renderer {
     this.effects = new Effects(this.scene);
     // 조종 중 하늘에서 본 블록의 착지 미리보기 (조종자에게만)
     this.previewMat = new THREE.MeshBasicMaterial({ color: 0xf0a030, transparent: true, opacity: 0.35 });
-    // 설치 블록 미리보기: 놓일 칸에 반투명 상자 + 윤곽 (1×2 라 2개). 못 놓으면 빨강
-    this.brickPreviewMat = new THREE.MeshBasicMaterial({ color: 0xf0d060, transparent: true, opacity: 0.3, depthWrite: false });
-    this.brickEdgeMat = new THREE.LineBasicMaterial({ color: 0xf0d060 });
-    this.brickPreview = [0, 1].map(() => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), this.brickPreviewMat);
-      m.add(new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1.002, 1.002, 1.002)), this.brickEdgeMat));
-      m.visible = false;
-      this.scene.add(m);
-      return m;
-    });
+    // 조준 미리보기 (고른 핫바 칸): 쌓기 = 흰 상자 1칸, 설치 블록 = 노란 상자 2칸, 폭탄 = 부서질 3×3 범위 빨간 판. 못 쓰면 빨강
+    this.aimMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3, depthWrite: false });
+    this.aimEdgeMat = new THREE.LineBasicMaterial({ color: 0xffffff });
+    this.aimBoxes = [];
+    // 놓인 폭탄: 검은 공, 터질 때가 가까울수록 빨갛게 빨리 깜빡임
+    this.bombMeshes = [];
 
     this.playerMeshes = new Map();
     this.itemMeshes = [];
@@ -242,8 +239,9 @@ export class Renderer {
       canvas.width = 128;
       canvas.height = 64;
       const tex = new THREE.CanvasTexture(canvas);
-      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
-      sprite.scale.set(0.9, 0.45, 1);
+      // 거리와 상관없이 화면에서 같은 크기 (가까이 붙은 상대의 숫자가 화면을 덮지 않게)
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true, sizeAttenuation: false }));
+      sprite.scale.set(0.09, 0.045, 1);
       sprite.position.z = C.PLAYER_HEIGHT + 0.45;
       sprite.renderOrder = 11;
       g.add(sprite);
@@ -254,6 +252,47 @@ export class Renderer {
       this.playerMeshes.set(p.id, g);
     }
     return g;
+  }
+
+  updateAim(aim) {
+    const cells = aim ? aim.cells : [];
+    while (this.aimBoxes.length < cells.length) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), this.aimMat);
+      m.add(new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1.002, 1.002, 1.002)), this.aimEdgeMat));
+      this.scene.add(m);
+      this.aimBoxes.push(m);
+    }
+    if (aim) {
+      const base = aim.kind === 'build' ? 0xffffff : aim.kind === 'brick' ? 0xf0d060 : 0xff5030;
+      const color = aim.ok ? base : 0xff2020;
+      this.aimMat.color.setHex(color);
+      this.aimEdgeMat.color.setHex(color);
+    }
+    this.aimBoxes.forEach((m, i) => {
+      const c = cells[i];
+      m.visible = !!c;
+      if (!c) return;
+      const flat = aim.kind === 'bomb'; // 폭탄은 범위를 바닥에 얇은 판으로
+      m.scale.set(1, 1, flat ? 0.12 : 1);
+      m.position.set(c[0] + 0.5, c[1] + 0.5, flat ? c[2] + 0.06 : c[2] + 0.5);
+    });
+  }
+
+  updateBombs(bombs) {
+    while (this.bombMeshes.length < bombs.length) {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), new THREE.MeshLambertMaterial({ color: 0x222222, emissive: 0x000000 }));
+      this.scene.add(m);
+      this.bombMeshes.push(m);
+    }
+    this.bombMeshes.forEach((m, i) => {
+      const b = bombs[i];
+      m.visible = !!b;
+      if (!b) return;
+      m.position.set(b.x + 0.5, b.y + 0.5, b.z + 0.3);
+      const period = 80 + Math.min(1, b.left / C.BOMB_FUSE_MS) * 320; // 남은 시간이 짧을수록 빨리
+      const on = Math.floor(performance.now() / period) % 2 === 0;
+      m.material.emissive.setHex(on ? 0xff2000 : 0x000000);
+    });
   }
 
   // state: 최신 서버 스냅샷, myId: 내 플레이어 id, dt: 프레임 시간(초), view: 'fps' | 'sky'
@@ -412,24 +451,17 @@ export class Renderer {
 
     // 카메라
     const me = state.players.find((p) => p.id === myId);
-    // 설치 블록 미리보기 (내 것만, 1인칭에서)
-    const plan = me && me.alive && view === 'fps' ? me.brickPlan : null;
-    if (plan) {
-      const color = plan.ok ? 0xf0d060 : 0xff3030;
-      this.brickPreviewMat.color.setHex(color);
-      this.brickEdgeMat.color.setHex(color);
-    }
-    this.brickPreview.forEach((m, i) => {
-      const c = plan && plan.cells[i];
-      m.visible = !!c;
-      if (c) m.position.set(c[0] + 0.5, c[1] + 0.5, c[2] + 0.5);
-    });
+    this.updateAim(me && me.alive && view === 'fps' ? me.aim : null);
+    this.updateBombs(state.bombs || []);
     if (me) this.viewArm.material.color.setHex(PLAYER_COLORS[me.slot % PLAYER_COLORS.length]);
     const vp = this.effects.punchAmount(myId);
     this.viewArm.position.set(this.viewArmBase.x - 0.12 * vp, this.viewArmBase.y + 0.08 * vp, this.viewArmBase.z - 0.3 * vp);
     this.viewArm.visible = !!(me && me.alive) && this.skyBlend === 0;
     this.viewHammer.visible = !!(me && me.weaponUses > 0);
-    this.viewBrick.visible = !!(me && me.bricks > 0) && !this.viewHammer.visible;
+    // 손에 든 것: 고른 핫바 칸에 뭐가 있으면 그 색 상자 (망치가 있으면 망치가 우선)
+    const held = !me ? null : me.hand === 1 ? (me.blocks > 0 ? 0x6f8fc8 : null) : me.hand === 2 ? (me.bricks > 0 ? ITEM_LOOK.brick.color : me.ammo > 0 ? ITEM_LOOK.knockback.color : null) : me.bombs > 0 ? 0x222222 : null;
+    this.viewBrick.visible = held !== null && !this.viewHammer.visible;
+    if (held !== null) this.viewBrick.material.color.setHex(held);
     this.effects.update(dt, this.skyBlend >= 1 ? this.skyCamera : this.camera);
     this.pieceMat.opacity = this.skyBlend > 0.5 ? 0.55 : 1; // 하늘 시점에선 블록 너머로 착지 미리보기가 보이게
     this.controlledMat.opacity = this.pieceMat.opacity;
