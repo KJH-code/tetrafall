@@ -1,6 +1,7 @@
 // three.js 렌더링. 단색 블록, 최소한의 비주얼. 좌표계는 게임과 같은 z-up.
 import * as THREE from 'three';
 import { CONFIG as C } from '/shared/config.js';
+import { buildCharacter } from '/character.js';
 
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
@@ -145,21 +146,11 @@ export class Renderer {
   getPlayerMesh(p) {
     let g = this.playerMeshes.get(p.id);
     if (!g) {
-      g = new THREE.Group();
-      const body = new THREE.Mesh(
-        new THREE.BoxGeometry(C.PLAYER_HALF * 2, C.PLAYER_HALF * 2, C.PLAYER_HEIGHT),
-        new THREE.MeshLambertMaterial({ color: PLAYER_COLORS[p.slot % PLAYER_COLORS.length] }),
-      );
-      body.position.z = C.PLAYER_HEIGHT / 2;
-      g.add(body);
-      const nose = new THREE.Mesh(
-        new THREE.BoxGeometry(0.25, 0.15, 0.15),
-        new THREE.MeshLambertMaterial({ color: 0x222222 }),
-      );
-      nose.position.set(C.PLAYER_HALF + 0.1, 0, C.EYE_HEIGHT);
-      g.add(nose);
-      g.userData.body = body;
-      g.userData.color = PLAYER_COLORS[p.slot % PLAYER_COLORS.length];
+      const color = PLAYER_COLORS[p.slot % PLAYER_COLORS.length];
+      const ch = buildCharacter(color);
+      g = ch.group;
+      g.userData.bodyMat = ch.bodyMaterial;
+      g.userData.color = color;
       // 하늘 시점 전용 표시: 바라보는 방향 화살표 (+ 내 캐릭터는 흰 고리)
       const tri = new THREE.Shape();
       tri.moveTo(0.75, 0);
@@ -216,11 +207,11 @@ export class Renderer {
       g.position.set(s.x, s.y, s.z);
       g.rotation.z = p.yaw;
       g.visible = p.alive && !(p.id === myId && view === 'fps' && this.skyBlend === 0);
-      const body = g.userData.body;
+      const bodyMat = g.userData.bodyMat;
       // 경직 중엔 흰색으로 빠르게 깜빡임
       const blinkOn = p.stunned && Math.floor(performance.now() / 70) % 2 === 0;
-      body.material.color.setHex(blinkOn ? 0xffffff : g.userData.color);
-      body.material.emissive.setHex(p.stunned ? 0x664400 : p.hasControl ? 0x005566 : 0x000000);
+      bodyMat.color.setHex(blinkOn ? 0xffffff : g.userData.color);
+      bodyMat.emissive.setHex(p.stunned ? 0x664400 : p.hasControl ? 0x005566 : 0x000000);
       const skyMarks = this.skyBlend > 0.5;
       g.userData.arrow.visible = skyMarks;
       g.userData.arrow.material.color.setHex(p.id === myId ? 0xffffff : g.userData.color);
