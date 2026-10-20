@@ -92,7 +92,7 @@ function nameOf(id) {
   return p ? p.name : '?';
 }
 
-const KIND_KO = { push: '밀치기', projectile: '투사체', weapon: '망치', brick: '설치 블록' };
+const KIND_KO = { push: '밀치기', projectile: '투사체', weapon: '망치', shock: '설치 블록 충격파' };
 const ITEM_KO = { control: '조종권', knockback: '투사체', weapon: '망치', jump: '점프력 상승', ghost: '유령화', brick: '설치 블록' };
 const ITEM_HELP = {
   control: '조종권 획득! 블록을 하늘에서 조종합니다',
@@ -102,8 +102,8 @@ const ITEM_HELP = {
   ghost: `유령화! ${C.GHOST_MS / 1000}초 동안 블록 통과 (떨어지는 블록엔 깔림)`,
   brick: () => {
     const p = me();
-    const len = p ? p.brickLen : 1;
-    return `설치 블록 1×${len} ${C.BRICK_USES}개! 우클릭으로 바로 앞에 설치${len === 2 ? ' · Q/E 로 다리↔벽' : ''}`;
+    const big = p && p.brickBig;
+    return `설치 블록 ${big ? '2×2' : '1×2'} ${C.BRICK_USES}개! 우클릭으로 조준한 곳(최대 ${C.BRICK_RANGE}칸)에 떨어뜨림 · 깔리면 압사, 옆은 충격파${big ? '' : ' · Q/E 로 앞↔옆'}`;
   },
 };
 const CAUSE_KO = { crush: '압사', fall: '낙사', lava: '용암' };
@@ -228,13 +228,10 @@ function feelEvent(e) {
     case 'pickup':
       if (e.who === myId) sound.play('pickup');
       return;
-    case 'place': {
-      let d;
-      for (const [x, y, z] of e.cells) {
-        fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.5 }, null, 0xf0d060, 6, 2.5, 0.08, 0.35);
-        d = distToMe(x + 0.5, y + 0.5, z);
-      }
-      sound.play('land', { dist: e.who === myId ? 0 : d });
+    case 'throw': {
+      const a = playerById(e.who);
+      if (e.who === myId) fx.startPunch(myId);
+      if (a) sound.play('swing', { dist: e.who === myId ? 0 : distToMe(a.x, a.y, a.z) });
       return;
     }
     case 'lava':
@@ -324,7 +321,8 @@ function updateHud() {
     if (p.weaponUses > 0) flags.push(`망치 ${p.weaponUses}회`);
     if (p.jumpLeft > 0) flags.push(`점프↑ ${(p.jumpLeft / 1000).toFixed(1)}s`);
     if (p.ghostLeft > 0) flags.push(`유령 ${(p.ghostLeft / 1000).toFixed(1)}s`);
-    if (p.bricks > 0) flags.push(`블록 1×${p.brickLen} ×${p.bricks}${p.brickLen === 2 ? (p.brickSide ? ' 벽' : ' 다리') : ''}`);
+    if (p.bricks > 0) flags.push(`블록 ${p.brickBig ? '2×2' : '1×2'} ×${p.bricks}${p.brickBig ? '' : p.brickSide ? ' 옆' : ' 앞'}`);
+    if (p.alive) flags.unshift(`피해 ${p.damage}%`);
     if (!p.alive) flags.push(`사망 (${CAUSE_KO[p.cause] || p.cause})`);
     if (flags.length) lines.push(flags.join(' · '));
     if (state.lava && state.lava.active) {
@@ -406,8 +404,8 @@ function updateHud() {
   crosshair.classList.toggle('brick', brick);
   if (armed) crosshair.dataset.ammo = `투사체 ×${p.ammo} (우클릭)`;
   else if (brick) {
-    const dir = p.brickLen === 2 ? ` · ${p.brickSide ? '벽' : '다리'} (Q/E)` : '';
-    crosshair.dataset.ammo = `블록 1×${p.brickLen} ×${p.bricks} (우클릭)${dir}`;
+    const dir = p.brickBig ? '' : ` · ${p.brickSide ? '옆' : '앞'} (Q/E)`;
+    crosshair.dataset.ammo = `블록 ${p.brickBig ? '2×2' : '1×2'} ×${p.bricks} (우클릭)${dir}`;
   } else crosshair.dataset.ammo = '';
 }
 

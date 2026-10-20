@@ -17,6 +17,27 @@ const ITEM_LOOK = {
   brick: { color: 0xf0d060, geo: () => new THREE.BoxGeometry(0.32, 0.32, 0.32) }, // 노란 작은 블록
 };
 
+// 피해 % 글자색: 0% 흰색 → 50% 노랑 → 100% 이상 빨강
+function damageColor(d) {
+  const t = Math.min(1, d / 100);
+  const g = t < 0.5 ? 255 : Math.round(255 - (t - 0.5) * 2 * 215);
+  const b = t < 0.5 ? Math.round(255 - t * 2 * 255) : 0;
+  return `rgb(255,${g},${b})`;
+}
+
+function drawDamage(canvas, d) {
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.font = 'bold 44px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = 7;
+  ctx.strokeStyle = 'rgba(0,0,0,.85)';
+  ctx.strokeText(`${d}%`, 64, 34);
+  ctx.fillStyle = damageColor(d);
+  ctx.fillText(`${d}%`, 64, 34);
+}
+
 const PLAYER_COLORS = [0xe05050, 0x50c050, 0xb060e0, 0xe0c050, 0xf0f0f0, 0x40d0c0, 0xff80b0, 0x8a5a30];
 const MAX_CELLS = C.GRID_W * C.GRID_D * C.GRID_H;
 
@@ -103,6 +124,7 @@ export class Renderer {
     this.shadowMeshes = [];
     this.pieceMat = new THREE.MeshLambertMaterial({ color: 0xf0a030, transparent: true, opacity: 1 }); // 자동 블록
     this.controlledMat = new THREE.MeshLambertMaterial({ color: 0xd040d0, transparent: true, opacity: 1 }); // 누가 조종 중인 블록
+    this.thrownMat = new THREE.MeshLambertMaterial({ color: 0xf0d060, transparent: true, opacity: 1 }); // 던진 설치 블록
     this.shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45 });
     this.pieceBox = new THREE.BoxGeometry(1, 1, 1);
     this.shadowBox = new THREE.BoxGeometry(0.96, 0.96, 0.06);
@@ -215,6 +237,17 @@ export class Renderer {
       ring.position.z = C.PLAYER_HEIGHT + 0.04;
       ring.renderOrder = 10;
       g.add(ring);
+      // 머리 위 피해 % (대난투식)
+      const canvas = document.createElement('canvas');
+      canvas.width = 128;
+      canvas.height = 64;
+      const tex = new THREE.CanvasTexture(canvas);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+      sprite.scale.set(0.9, 0.45, 1);
+      sprite.position.z = C.PLAYER_HEIGHT + 0.45;
+      sprite.renderOrder = 11;
+      g.add(sprite);
+      g.userData.label = { sprite, canvas, tex, shown: null };
       g.userData.arrow = arrow;
       g.userData.ring = ring;
       this.scene.add(g);
@@ -274,6 +307,15 @@ export class Renderer {
       arm.position.x = arm.userData.base.x + 0.3 * pu;
       arm.position.z = arm.userData.base.z + 0.2 * pu;
       arm.rotation.z = (Math.PI / 2) * pu;
+      // 피해 % 표시: 바뀔 때만 다시 그림
+      const label = g.userData.label;
+      const dmg = p.damage || 0;
+      if (label.shown !== dmg) {
+        drawDamage(label.canvas, dmg);
+        label.tex.needsUpdate = true;
+        label.shown = dmg;
+      }
+      label.sprite.visible = p.alive;
     }
     for (const [id, g] of this.playerMeshes) {
       if (!seen.has(id)) {
@@ -307,7 +349,7 @@ export class Renderer {
       const [x, y, z] = piece.cells[i];
       pm.position.set(x + 0.5, y + 0.5, z + 0.5);
       pm.visible = true;
-      pm.material = piece.controller !== null ? this.controlledMat : this.pieceMat;
+      pm.material = piece.thrown ? this.thrownMat : piece.controller !== null ? this.controlledMat : this.pieceMat;
       const mine = piece.phase === 'control' && piece.controller === myId;
       const showShadow = piece.shadowVisible || mine;
       sm.visible = showShadow;
@@ -390,6 +432,7 @@ export class Renderer {
     this.effects.update(dt, this.skyBlend >= 1 ? this.skyCamera : this.camera);
     this.pieceMat.opacity = this.skyBlend > 0.5 ? 0.55 : 1; // 하늘 시점에선 블록 너머로 착지 미리보기가 보이게
     this.controlledMat.opacity = this.pieceMat.opacity;
+    this.thrownMat.opacity = this.pieceMat.opacity;
 
     // 1인칭(또는 관전) 자세
     const eye = new THREE.Vector3();

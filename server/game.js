@@ -137,8 +137,9 @@ export class Game {
       jumpUntil: 0, // 점프력 상승 끝나는 시각
       ghostUntil: 0, // 유령화 끝나는 시각
       bricks: 0, // 설치 블록 남은 개수
-      brickLen: 1, // 설치 블록 길이 (1×1 또는 1×2)
-      brickSide: false, // 1×2 방향. false = 바라보는 쪽으로 뻗는 다리, true = 옆으로 막는 벽
+      brickBig: false, // 설치 블록 모양. true = 2×2, false = 1×2
+      brickSide: false, // 1×2 방향. false = 바라보는 쪽으로 뻗음, true = 옆으로
+      damage: 0, // 피해 % (대난투식). 높을수록 멀리 날아감
       dashReadyAt: 0,
       pushReadyAt: 0,
       hasControl: false,
@@ -265,8 +266,9 @@ export class Game {
         jumpUntil: 0,
         ghostUntil: 0,
         bricks: 0,
-        brickLen: 1,
+        brickBig: false,
         brickSide: false,
+        damage: 0,
         dashReadyAt: 0,
         pushReadyAt: 0,
         hasControl: false,
@@ -334,7 +336,7 @@ export class Game {
     const t = this.time - this.roundStartTime;
     this.deaths.push({ name: p.name, cause, t });
     this.emit({ type: 'death', who: p.id, cause });
-    this.log(`  [사망] ${p.name} ${causeKo(cause)} @ ${fmtTime(t)} (위치 ${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)})`);
+    this.log(`  [사망] ${p.name} ${causeKo(cause)} @ ${fmtTime(t)} (위치 ${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}, 피해 ${p.damage}%)`);
   }
 
   // ---------- 입력 ----------
@@ -369,7 +371,7 @@ export class Game {
         return;
       case 'fire': // 우클릭: 설치 블록이 있으면 설치, 아니면 투사체
         if (stunned || controlling) return;
-        if (p.bricks > 0) this.placeBrick(p);
+        if (p.bricks > 0) this.throwBrick(p);
         else if (p.ammo > 0) this.fire(p);
         return;
       case 'pieceMove':
@@ -378,7 +380,7 @@ export class Game {
         return;
       case 'rotate':
         if (!controlling) {
-          if (p.bricks > 0 && p.brickLen === 2) p.brickSide = !p.brickSide; // 조종 중이 아니면 Q/E 는 1×2 방향 바꾸기
+          if (p.bricks > 0 && !p.brickBig) p.brickSide = !p.brickSide; // 조종 중이 아니면 Q/E 는 1×2 방향 바꾸기
           return;
         }
         this.rotatePiece(this.controlledPiece(p), action.dir > 0 ? 1 : -1);
@@ -426,10 +428,10 @@ export class Game {
       if (dist > C.PUSH_RANGE) continue;
       if (Math.abs(t.z - p.z) > C.PLAYER_HEIGHT) continue;
       if (dist > EPS && (dx * fx + dy * fy) / dist < cosHalf) continue;
-      const hit = this.applyKnockback(t, fx, fy, speed, up, stun);
+      const hit = this.applyKnockback(t, fx, fy, speed, up, stun, C.DAMAGE_GAIN[kind]);
       if (hit) p.freezeUntil = this.time + C.HITSTOP_MS; // 때린 쪽도 같이 멈칫
       this.emit({ type: 'hit', kind, by: p.id, target: t.id, ok: hit });
-      this.log(`  [${weapon ? '망치' : '밀치기'}] ${p.name} → ${t.name} ${hit ? '넉백' : '경직 중이라 무시'}${weapon ? ` (남은 ${p.weaponUses}회)` : ''}`);
+      this.log(`  [${weapon ? '망치' : '밀치기'}] ${p.name} → ${t.name} ${hit ? `넉백 (${t.name} ${t.damage}%)` : '경직 중이라 무시'}${weapon ? ` (남은 ${p.weaponUses}회)` : ''}`);
     }
   }
 
@@ -453,61 +455,102 @@ export class Game {
     this.log(`  [발사] ${p.name} (남은 탄 ${p.ammo})`);
   }
 
-  // 설치 블록이 들어갈 칸들과 높이. 바라보는 방향 BRICK_REACH 앞 점이 든 칸이 기준,
-  // 1×2 는 바라보는 방향을 가로·세로 중 가까운 쪽으로 맞춰 앞(다리) 또는 옆(벽)으로 한 칸 더.
-  // 높이 = 그 칸들 기둥 맨 위 중 가장 높은 곳. ok 가 false 면 못 놓음 (소모 안 함)
-  brickPlan(p, yaw = p.yaw) {
+  // 설치 블록이 떨어질 칸들과 착지 높이. 눈에서 조준 방향으로 시선을 따라가다 BRICK_MIN_DIST~BRICK_RANGE 사이에서
+  // 지형(기둥 꼭대기·바닥)에 처음 닿는 칸이 기준. 안 닿으면 BRICK_RANGE 끝 칸 (필드를 벗어나면 마지막 필드 안 칸).
+  // 1×2 는 바라보는 방향을 가로·세로 중 가까운 쪽으로 맞춰 앞(또는 Q/E 로 옆)으로 한 칸 더, 2×2 는 앞·왼쪽으로.
+  // ok 가 false 면 못 던짐 (소모 안 함)
+  brickPlan(p, yaw = p.yaw, pitch = p.pitch) {
+    const cp = Math.cos(pitch);
+    const dx = cp * Math.cos(yaw);
+    const dy = cp * Math.sin(yaw);
+    const dz = Math.sin(pitch);
+    const hlen = Math.hypot(dx, dy);
+    const ez = p.z + C.EYE_HEIGHT;
+    let anchor = null;
+    // 수평 거리로 0.05칸씩 (거의 수직으로 보면 hlen ≈ 0 이라 시선 길이로 세면 안 끝난다)
+    for (let h = C.BRICK_MIN_DIST; hlen > 1e-6 && h <= C.BRICK_RANGE; h += 0.05) {
+      const t = h / hlen;
+      const cx = Math.floor(p.x + dx * t);
+      const cy = Math.floor(p.y + dy * t);
+      if (!inXY(cx, cy)) break;
+      anchor = [cx, cy];
+      if (ez + dz * t <= this.columnTop(cx, cy)) break; // 시선이 지형에 닿음
+    }
+    if (!anchor) return { cells: [], z: 0, ok: false };
     const fx = Math.cos(yaw);
     const fy = Math.sin(yaw);
-    const ax = Math.floor(p.x + fx * C.BRICK_REACH);
-    const ay = Math.floor(p.y + fy * C.BRICK_REACH);
-    const cells = [[ax, ay]];
-    if (p.brickLen === 2) {
-      const along = Math.abs(fx) >= Math.abs(fy) ? [Math.sign(fx), 0] : [0, Math.sign(fy)];
-      const [dx, dy] = p.brickSide ? [-along[1], along[0]] : along;
-      cells.push([ax + dx, ay + dy]);
-    }
-    const inField = cells.every(([x, y]) => x >= 0 && x < C.GRID_W && y >= 0 && y < C.GRID_D);
-    if (!inField) return { cells: cells.map(([x, y]) => [x, y, 0]), z: 0, ok: false };
+    const along = Math.abs(fx) >= Math.abs(fy) ? [Math.sign(fx), 0] : [0, Math.sign(fy)];
+    const left = [-along[1], along[0]];
+    const [ax, ay] = anchor;
+    const offs = p.brickBig ? [[0, 0], along, left, [along[0] + left[0], along[1] + left[1]]] : [[0, 0], p.brickSide ? left : along];
+    const cells = offs.map(([ox, oy]) => [ax + ox, ay + oy]);
+    if (!cells.every(([x, y]) => inXY(x, y))) return { cells: cells.map(([x, y]) => [x, y, 0]), z: 0, ok: false };
     const z = Math.max(...cells.map(([x, y]) => this.columnTop(x, y)));
+    const spawnZ = Math.min(z + C.BRICK_DROP_HEIGHT, C.GRID_H - 1);
     const ok =
-      z < C.GRID_H &&
-      !cells.some(([x, y]) => this.pieceCells.has(cellKey(x, y, z))) && // 떨어지는 블록이 지금 그 칸에 있음
-      !cells.some(([x, y]) => overlapsCell(p, x, y, z)); // 내 몸과 겹침
-    return { cells: cells.map(([x, y]) => [x, y, z]), z, ok };
+      z < C.GRID_H - 1 &&
+      !cells.some(([x, y]) => this.pieceCells.has(cellKey(x, y, spawnZ))) && // 생길 자리에 떨어지는 블록이 있음
+      !cells.some(([x, y]) => overlapsCell(p, x, y, p.z)); // 내 머리 위 (xy 가 내 몸과 겹침)
+    return { cells: cells.map(([x, y]) => [x, y, z]), z, spawnZ, ok };
   }
 
-  placeBrick(p) {
+  // 조준한 칸 위 공중에 블록을 만들어 떨어뜨린다. 떨어지는 동안은 보통 블록과 같다 (그림자·압사·공중에서 서로 막힘)
+  throwBrick(p) {
     const plan = this.brickPlan(p);
     if (!plan.ok) return false;
     p.bricks--;
-    for (const [x, y, z] of plan.cells) this.grid[this.idx(x, y, z)] = 1;
-    this.gridVersion++;
-    this.gridDirty = true;
     const [ax, ay] = plan.cells[0];
-    this.emit({ type: 'place', who: p.id, cells: plan.cells });
-    this.log(`  [설치] ${p.name} 1×${p.brickLen} → (${ax},${ay}) z=${plan.z} (남은 ${p.bricks}개)`);
-    // 그 칸에 서 있던 사람은 블록 위로 올라가고 설치한 사람 반대쪽으로 밀린다
-    for (const t of this.players.values()) {
-      if (t === p || !t.alive || !plan.cells.some(([x, y, z]) => overlapsCell(t, x, y, z))) continue;
-      this.ejectFromBlocks(t);
-      const hit = this.applyKnockback(t, t.x - p.x, t.y - p.y, C.BRICK_KB_SPEED, C.BRICK_KB_UP);
-      this.emit({ type: 'hit', kind: 'brick', by: p.id, target: t.id, ok: hit });
-      this.log(`  [설치] ${p.name} → ${t.name} 블록 위로 밀어 올림${hit ? ' + 넉백' : ' (경직 중이라 넉백 무시)'}`);
-    }
+    const piece = {
+      id: 0,
+      shape: p.brickBig ? '2×2' : '1×2',
+      rot: 0,
+      cells: plan.cells.map(([x, y]) => [x - ax, y - ay]),
+      px: ax,
+      py: ay,
+      pz: plan.spawnZ,
+      landZ: 0,
+      fits: false,
+    };
+    this.updateLanding(piece);
+    this.addPiece(piece, { phase: 'falling', controller: null, thrownBy: p.id, stepMs: C.BRICK_FALL_STEP_MS, nextStepAt: this.time + C.BRICK_FALL_STEP_MS, controlEndsAt: 0 });
+    this.emit({ type: 'throw', who: p.id, cells: plan.cells });
+    this.log(`  [투척] ${p.name} ${piece.shape} → (${ax},${ay}) z=${plan.z} (남은 ${p.bricks}개)`);
     if (p.bricks === 0) p.brickSide = false;
-    this.clearLayers();
-    for (const pc of this.pieces) this.updateLanding(pc);
-    for (const it of this.items) it.z = this.columnTop(it.x, it.y);
     return true;
   }
 
+  // 던진 블록이 착지하면 바로 옆(BRICK_SHOCK_RANGE 안)에 있던 사람을 바깥쪽으로 날린다
+  brickShock(piece) {
+    const by = this.players.get(piece.thrownBy);
+    const cells = this.pieceWorldCells(piece);
+    const x0 = Math.min(...cells.map((c) => c[0]));
+    const x1 = Math.max(...cells.map((c) => c[0])) + 1;
+    const y0 = Math.min(...cells.map((c) => c[1]));
+    const y1 = Math.max(...cells.map((c) => c[1])) + 1;
+    const z = cells[0][2];
+    const cx = (x0 + x1) / 2;
+    const cy = (y0 + y1) / 2;
+    for (const t of this.players.values()) {
+      if (!t.alive || t.id === piece.thrownBy) continue; // 던진 사람은 자기 충격파를 안 맞음
+      const gx = Math.max(x0 - (t.x + C.PLAYER_HALF), t.x - C.PLAYER_HALF - x1, 0);
+      const gy = Math.max(y0 - (t.y + C.PLAYER_HALF), t.y - C.PLAYER_HALF - y1, 0);
+      if (Math.hypot(gx, gy) > C.BRICK_SHOCK_RANGE || Math.abs(t.z - z) > 1.5) continue;
+      const hit = this.applyKnockback(t, t.x - cx, t.y - cy, C.BRICK_SHOCK_KB_SPEED, C.BRICK_SHOCK_KB_UP, C.BRICK_SHOCK_STUN_MS, C.DAMAGE_GAIN.shock);
+      this.emit({ type: 'hit', kind: 'shock', by: piece.thrownBy, target: t.id, ok: hit });
+      this.log(`  [충격파] ${by ? by.name : '?'} → ${t.name} ${hit ? `넉백 (${t.name} ${t.damage}%)` : '경직 중이라 무시'}`);
+    }
+  }
+
   // 경직 중이면 무시 (연속 넉백 불가). 성공 시 true
-  applyKnockback(t, dx, dy, speed, up, stunMs = C.STUN_MS) {
+  // gain: 이번 공격으로 쌓이는 피해 %. 맞기 전까지 쌓인 % 로 수평 넉백을 키우고 그다음에 쌓는다
+  // (0% 인 첫 대는 예전과 같은 거리. 위로 튀는 속도는 그대로)
+  applyKnockback(t, dx, dy, speed, up, stunMs = C.STUN_MS, gain = 0) {
     if (this.time < t.stunUntil) return false;
+    const mult = 1 + t.damage * C.DAMAGE_KB_PER_PERCENT;
+    t.damage += gain;
     const len = Math.hypot(dx, dy) || 1;
-    t.kbx = (dx / len) * speed;
-    t.kby = (dy / len) * speed;
+    t.kbx = (dx / len) * speed * mult;
+    t.kby = (dy / len) * speed * mult;
     t.vz = up;
     t.grounded = false;
     t.stunUntil = this.time + stunMs;
@@ -643,7 +686,7 @@ export class Game {
       this.nextSpawnAt = this.time + this.autoSpawnDelayMs();
       return;
     }
-    const autos = this.pieces.filter((pc) => pc.controller === null).length;
+    const autos = this.pieces.filter((pc) => pc.controller === null && !pc.thrownBy).length; // 던진 블록은 안 셈
     if (autos >= this.targetConcurrent()) return;
     this.spawnAuto(); // 자리가 없으면 다음 간격에 다시
     this.nextSpawnAt = this.time + this.autoSpawnDelayMs();
@@ -778,7 +821,7 @@ export class Game {
     if (!C.CONTROL_TAKEOVER || !p.hasControl) return;
     if (this.pieces.some((pc) => pc.controller !== null)) return;
     let piece = null;
-    for (const pc of this.pieces) if (pc.phase === 'falling' && (!piece || pc.pz > piece.pz)) piece = pc;
+    for (const pc of this.pieces) if (pc.phase === 'falling' && !pc.thrownBy && (!piece || pc.pz > piece.pz)) piece = pc; // 던진 블록은 못 뺏음
     if (!piece) {
       this.spawnControlled(p);
       return;
@@ -868,6 +911,10 @@ export class Game {
           cz < p.z + C.PLAYER_HEIGHT - EPS &&
           cz + 1 > p.z + EPS
         ) {
+          if (piece.thrownBy) {
+            const by = this.players.get(piece.thrownBy);
+            this.log(`  [투척] ${by ? by.name : '?'} 의 ${piece.shape} 에 ${p.name} 깔림`);
+          }
           this.kill(p, 'crush');
           break;
         }
@@ -882,12 +929,13 @@ export class Game {
     const cells = this.pieceWorldCells(piece);
     this.emit({ type: 'land', cells: cells.map(([x, y, z]) => [x, y, z]), controlled: piece.controller !== null });
     const wasControlled = piece.controller !== null;
+    if (piece.thrownBy) this.brickShock(piece);
     this.removePiece(piece);
     this.gridVersion++;
     this.gridDirty = true;
     this.clearLayers();
     for (const pc of this.pieces) this.updateLanding(pc);
-    this.nextSpawnAt = Math.max(this.nextSpawnAt, this.time + this.autoSpawnDelayMs());
+    if (!piece.thrownBy) this.nextSpawnAt = Math.max(this.nextSpawnAt, this.time + this.autoSpawnDelayMs()); // 던진 블록은 자동 블록 간격에 안 끼어듦
     if (wasControlled) {
       this.controlItemNextAt = this.time + C.CONTROL_ITEM_RESPAWN_MS;
       // 남의 조종 블록이 끝나길 기다리던 조종권 보유자는 바로 조종 시작
@@ -1027,9 +1075,9 @@ export class Game {
       const dropped = p.ammo;
       p.ammo = 0;
       p.bricks = C.BRICK_USES;
-      p.brickLen = this.rng() < C.BRICK_LONG_CHANCE ? 2 : 1;
+      p.brickBig = this.rng() < C.BRICK_BIG_CHANCE;
       p.brickSide = false;
-      this.log(`  [아이템] ${p.name} 설치 블록 1×${p.brickLen} 획득 (${p.bricks}개)${dropped ? ' — 투사체 버림' : ''}`);
+      this.log(`  [아이템] ${p.name} 설치 블록 ${p.brickBig ? '2×2' : '1×2'} 획득 (${p.bricks}개)${dropped ? ' — 투사체 버림' : ''}`);
     }
   }
 
@@ -1076,7 +1124,7 @@ export class Game {
             pr.z < t.z + C.PLAYER_HEIGHT + r
           ) {
             const shooter = this.players.get(pr.owner);
-            const hit = this.applyKnockback(t, pr.dx, pr.dy, C.PROJECTILE_KB_SPEED, C.PROJECTILE_KB_UP);
+            const hit = this.applyKnockback(t, pr.dx, pr.dy, C.PROJECTILE_KB_SPEED, C.PROJECTILE_KB_UP, C.STUN_MS, C.DAMAGE_GAIN.projectile);
             this.emit({ type: 'hit', kind: 'projectile', by: pr.owner, target: t.id, ok: hit });
             this.log(`  [투사체] ${shooter ? shooter.name : '?'} → ${t.name} ${hit ? '넉백' : '경직 중이라 무시'}`);
             dead = true;
@@ -1244,6 +1292,7 @@ export class Game {
         cells: this.pieceWorldCells(piece),
         phase: piece.phase,
         controller: piece.controller,
+        thrown: !!piece.thrownBy, // 설치 블록 (노랑)
         landZ: piece.landZ,
         fits: piece.fits,
         shadow: piece.cells.map(([dx, dy]) => [piece.px + dx, piece.py + dy]),
@@ -1288,9 +1337,10 @@ export class Game {
         jumpLeft: Math.max(0, p.jumpUntil - this.time),
         ghostLeft: Math.max(0, p.ghostUntil - this.time),
         bricks: p.bricks,
-        brickLen: p.brickLen,
+        brickBig: p.brickBig,
         brickSide: p.brickSide,
-        brickPlan: p.alive && p.bricks > 0 ? this.brickPlan(p) : null, // 설치 미리보기
+        brickPlan: p.alive && p.bricks > 0 ? this.brickPlan(p) : null, // 떨어질 칸 미리보기
+        damage: p.damage,
         controlling: this.isControlling(p),
         cause: p.deathCause,
       })),

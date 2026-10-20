@@ -11,6 +11,8 @@ function pieceKey(piece) {
   return `${piece.id}:${piece.px},${piece.py},${piece.rot},${piece.stepMs}`;
 }
 
+const BRICK_STEP_PITCH = -1.3; // 발판 던질 때: 거의 발밑을 보면 시선이 BRICK_MIN_DIST 앞 칸에 바로 닿는다
+
 function edgeDist(x, y) {
   return Math.min(x, W - x, y, D - y);
 }
@@ -426,44 +428,51 @@ export class BotBrain {
     return p.grounded || under > p.z ? Math.floor(p.z + 0.05) : under;
   }
 
-  // 용암이 2.5칸 안인데 걸어서 갈 더 높은 곳이 없을 때: 한 칸 높은 발판을 앞에 놓는다. 놓았으면 true
-  // (다음 판단에서 climbFromLava 가 그 발판으로 올라간다)
+  // 용암이 2.5칸 안인데 걸어서 갈 더 높은 곳이 없을 때: 바로 앞 칸에 블록을 던져 한 칸 높은 발판을 만든다. 던졌으면 true
+  // (떨어지는 동안은 내 블록이라 피하고, 착지하면 다음 판단에서 climbFromLava 가 그 발판으로 올라간다)
   brickStep(g, p) {
     if (p.bricks <= 0 || !p.grounded || !g.lava.active || p.z - g.lava.z > 2.5) return false;
+    if (g.pieces.some((pc) => pc.thrownBy === p.id)) return false; // 던진 게 아직 떨어지는 중
     const h0 = this.standHeight(g, p);
-    const sides = p.brickLen === 2 ? [p.brickSide, !p.brickSide] : [p.brickSide];
+    const sides = p.brickBig ? [p.brickSide] : [p.brickSide, !p.brickSide];
     const side0 = p.brickSide;
     let pick = null;
     for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
       for (const side of sides) {
         p.brickSide = side; // 계획만 본다 (실제로 바꾸는 건 아래 rotate 입력)
-        const plan = g.brickPlan(p, yaw);
+        const plan = g.brickPlan(p, yaw, BRICK_STEP_PITCH);
         if (plan.ok && plan.z + 1 > h0 + 0.5 && plan.z + 1 <= h0 + this.jumpReach(g, p)) pick = pick || { yaw, side };
       }
     }
     p.brickSide = side0;
     if (!pick) return false;
     if (pick.side !== p.brickSide) g.handleAction(p.id, { name: 'rotate', dir: 1 }); // Q/E 로 1×2 방향 바꾸기
-    this.placeAt(g, p, pick.yaw);
+    this.throwAt(g, p, pick.yaw, BRICK_STEP_PITCH);
     return true;
   }
 
-  // 상대가 내 앞 설치 칸에 서 있으면 그 위에 놓는다. 놓았으면 true
+  // 상대 발밑을 조준해서, 떨어질 칸이 상대를 덮으면 던진다. 던졌으면 true
   brickOnTarget(g, p, t) {
-    if (Math.hypot(t.x - p.x, t.y - p.y) > C.BRICK_REACH + 1) return false;
+    const dist = Math.hypot(t.x - p.x, t.y - p.y);
+    if (dist > C.BRICK_RANGE || g.pieces.some((pc) => pc.thrownBy === p.id)) return false;
     const yaw = Math.atan2(t.y - p.y, t.x - p.x);
-    const plan = g.brickPlan(p, yaw);
-    if (!plan.ok || !plan.cells.some(([x, y, z]) => overlapsCells(t, [[x, y]]) && Math.abs(t.z - z) < 0.5)) return false;
-    this.placeAt(g, p, yaw);
+    const pitch = Math.atan2(t.z - (p.z + C.EYE_HEIGHT), dist);
+    const plan = g.brickPlan(p, yaw, pitch);
+    if (!plan.ok || !overlapsCells(t, plan.cells)) return false;
+    this.throwAt(g, p, yaw, pitch);
     return true;
   }
 
-  placeAt(g, p, yaw) {
+  throwAt(g, p, yaw, pitch) {
     this.input.yaw = yaw;
+    this.input.pitch = pitch;
     this.input.fwd = 0;
     this.input.strafe = 0;
     g.handleInput(p.id, this.input);
     g.handleAction(p.id, { name: 'fire' });
+    // 내가 던진 블록은 어디로 떨어지는지 안다 → 반응 시간 없이 피할 대상
+    const mine = g.pieces.find((pc) => pc.thrownBy === p.id);
+    if (mine) this.dangerSeen.set(pieceKey(mine), g.time - C.BOT_REACTION_MS);
   }
 
   // 지금 한 번 점프로 올라갈 수 있는 높이 (칸)

@@ -1035,127 +1035,176 @@ test('맵: 무작위는 판마다 바뀌고, 이상한 값·판 진행 중 변�
   assert.ok(seen.size >= 2, `무작위로 ${[...seen].join(',')}`);
 });
 
-// ---------- 설치 블록 ----------
-function brickSetup(len = 1) {
+// ---------- 설치 블록 (던져서 떨어뜨림) ----------
+function brickSetup(big = false) {
   const s = setup();
   const { g, p1, p2 } = s;
   g.controlItemNextAt = Infinity;
   g.powerItemNextAt = Infinity;
-  Object.assign(p1, { x: 2.5, y: 5.5, z: 0, yaw: 0 }); // +x 를 바라봄 → 설치 칸 (3,5)
+  // +x 를 보고 앞 2칸 바닥을 내려다봄 → 기준 칸 (4,5)
+  Object.assign(p1, { x: 2.5, y: 5.5, z: 0, yaw: 0, pitch: -Math.atan2(C.EYE_HEIGHT, 2) });
   Object.assign(p2, { x: 8.5, y: 8.5, z: 0 });
-  g.rng = () => (len === 2 ? 0 : 0.99); // BRICK_LONG_CHANCE 0.5 기준
+  g.rng = () => (big ? 0 : 0.99); // BRICK_BIG_CHANCE 0.5 기준
   g.givePower(p1, 'brick');
   return s;
 }
 
-test('설치 블록: 먹으면 1×1 또는 1×2 를 BRICK_USES 개, 투사체와 우클릭을 같이 써서 나중에 먹은 쪽만 남는다', () => {
-  const { g, p1 } = brickSetup(2);
+test('설치 블록: 먹으면 1×2 또는 2×2 를 BRICK_USES 개, 투사체와 우클릭을 같이 써서 나중에 먹은 쪽만 남는다', () => {
+  const { g, p1 } = brickSetup(true);
   assert.equal(p1.bricks, C.BRICK_USES);
-  assert.equal(p1.brickLen, 2);
+  assert.equal(p1.brickBig, true);
   g.givePower(p1, 'knockback');
   assert.equal(p1.bricks, 0, '투사체를 먹으면 설치 블록은 버림');
-  assert.equal(p1.ammo, C.KNOCKBACK_AMMO);
   g.rng = () => 0.99;
   g.givePower(p1, 'brick');
   assert.equal(p1.ammo, 0, '설치 블록을 먹으면 투사체는 버림');
-  assert.equal(p1.brickLen, 1);
+  assert.equal(p1.brickBig, false);
 });
 
-test('설치 블록: 우클릭하면 바로 앞 칸 기둥 맨 위에 놓이고, 다 쓰면 우클릭은 아무것도 안 한다', () => {
-  const { g, p1, lines } = brickSetup(1);
-  g.grid[g.idx(3, 5, 0)] = 1; // 앞 칸에 이미 1층
+test('설치 블록: 조준한 칸 위 BRICK_DROP_HEIGHT 칸에서 떨어져 그 기둥 위에 쌓이고, 다 쓰면 우클릭은 아무것도 안 한다', () => {
+  const { g, p1, lines } = brickSetup(false);
+  const plan = g.brickPlan(p1);
+  assert.deepEqual(plan.cells, [[4, 5, 0], [5, 5, 0]], '1×2 는 바라보는 쪽으로');
+  assert.equal(plan.spawnZ, C.BRICK_DROP_HEIGHT);
   g.handleAction(1, { name: 'fire' });
-  assert.equal(g.gridAt(3, 5, 1), 1, '기둥 맨 위 (z=1) 에 설치');
   assert.equal(p1.bricks, C.BRICK_USES - 1);
   assert.equal(g.projectiles.length, 0, '투사체는 안 나감');
-  assert.ok(g.drainEvents().some((e) => e.type === 'place' && e.who === 1));
-  assert.ok(lines.some((l) => l.includes('[설치] P1 1×1 → (3,5) z=1')), lines.join('\n'));
+  const piece = g.pieces.find((pc) => pc.thrownBy === 1);
+  assert.ok(piece && piece.phase === 'falling', '떨어지는 블록이 생김');
+  assert.ok(lines.some((l) => l.includes('[투척] P1 1×2 → (4,5) z=0')), lines.join('\n'));
+  run(g, C.BRICK_FALL_STEP_MS * (C.BRICK_DROP_HEIGHT + 1));
+  assert.equal(g.gridAt(4, 5, 0), 1);
+  assert.equal(g.gridAt(5, 5, 0), 1);
+  assert.equal(g.pieces.length, 0);
   g.handleAction(1, { name: 'fire' });
-  assert.equal(g.gridAt(3, 5, 2), 1, '두 번째는 그 위에');
+  run(g, C.BRICK_FALL_STEP_MS * (C.BRICK_DROP_HEIGHT + 1));
+  assert.equal(g.gridAt(4, 5, 1), 1, '두 번째는 그 위에');
   assert.equal(p1.bricks, 0);
-  const v = g.gridVersion;
   g.handleAction(1, { name: 'fire' });
-  assert.equal(g.gridVersion, v, '다 쓰면 설치 안 됨');
+  assert.equal(g.pieces.length, 0, '다 쓰면 안 던짐');
 });
 
-test('설치 블록 1×2: 기본은 앞으로 뻗는 다리, Q/E 로 옆으로 막는 벽. 높이는 두 기둥 중 높은 쪽 위', () => {
-  const { g, p1 } = brickSetup(2);
-  g.grid[g.idx(4, 5, 0)] = 1; // 다리 둘째 칸만 1층
-  assert.deepEqual(g.brickPlan(p1).cells, [[3, 5, 1], [4, 5, 1]]);
-  g.handleAction(1, { name: 'fire' });
-  assert.equal(g.gridAt(3, 5, 1), 1);
-  assert.equal(g.gridAt(4, 5, 1), 1);
-  assert.equal(g.gridAt(3, 5, 0), 0, '낮은 쪽 아래는 빈칸');
+test('설치 블록 조준: 시선이 안 닿으면 BRICK_RANGE 끝 칸, 벽에 닿으면 그 칸 위. 2×2 는 앞·왼쪽, 1×2 는 Q/E 로 옆', () => {
+  const { g, p1 } = brickSetup(true);
+  p1.pitch = 0; // 수평: 평지라 끝까지 안 닿음 → 4칸 앞 (6,5)
+  assert.deepEqual(g.brickPlan(p1).cells, [[6, 5, 0], [7, 5, 0], [6, 6, 0], [7, 6, 0]]);
+  for (let z = 0; z < 3; z++) g.grid[g.idx(4, 5, z)] = 1; // 2칸 앞 3층 벽
+  const plan = g.brickPlan(p1);
+  assert.deepEqual(plan.cells[0], [4, 5, 3], '벽에 닿은 칸 위');
+  p1.brickBig = false;
   g.handleAction(1, { name: 'rotate', dir: 1 });
   assert.equal(p1.brickSide, true);
-  p1.yaw = Math.PI / 2; // +y 를 바라봄 → 앞 칸 (2,6), 옆 칸은 x 쪽
-  assert.deepEqual(g.brickPlan(p1).cells, [[2, 6, 0], [1, 6, 0]]);
+  assert.deepEqual(g.brickPlan(p1).cells.map(([x, y]) => [x, y]), [[4, 5], [4, 6]]);
 });
 
-test('설치 블록: 필드 밖·내 몸과 겹침·떨어지는 블록이 있는 칸이면 못 놓고 소모도 안 한다', () => {
-  const { g, p1 } = brickSetup(1);
+test('설치 블록: 필드 밖·떨어지는 블록이 있는 자리면 못 던지고 소모도 안 한다', () => {
+  const { g, p1 } = brickSetup(false);
   Object.assign(p1, { x: 9.5, y: 5.5, yaw: 0 }); // 앞이 필드 밖
   g.handleAction(1, { name: 'fire' });
   assert.equal(p1.bricks, C.BRICK_USES);
-  Object.assign(p1, { x: 2.5, y: 5.5, yaw: Math.PI / 4 }); // 대각선: 앞 칸 (3,6) 이 내 몸과 안 겹침
-  assert.equal(g.brickPlan(p1).ok, true);
-  Object.assign(p1, { x: 2.95, y: 5.95, yaw: Math.PI / 4 }); // 칸 모서리에 붙어 대각선 → 앞 칸 (3,6) 과 몸이 겹침
-  assert.equal(g.brickPlan(p1).ok, false);
   Object.assign(p1, { x: 2.5, y: 5.5, yaw: 0 });
-  fallingPiece(g, 'O', 0, 3, 5, 0); // 떨어지는 블록이 바로 그 칸 (z=0) 에
+  fallingPiece(g, 'O', 0, 4, 4, C.BRICK_DROP_HEIGHT); // 생길 자리에 떨어지는 블록
+  assert.equal(g.brickPlan(p1).ok, false);
   g.handleAction(1, { name: 'fire' });
   assert.equal(p1.bricks, C.BRICK_USES);
-  assert.equal(g.gridAt(3, 5, 0), 0);
 });
 
-test('설치 블록: 그 칸에 서 있던 사람은 블록 위로 올라가고 설치한 사람 반대쪽으로 밀린다', () => {
-  const { g, p1, p2, lines } = brickSetup(1);
-  Object.assign(p2, { x: 3.5, y: 5.5, z: 0 });
+test('설치 블록: 밑에 있으면 압사, 착지한 칸 바로 옆이면 충격파로 망치급 넉백 + 피해 %, 멀면 무사', () => {
+  const { g, p1, p2, lines } = brickSetup(false);
+  g.addPlayer(3);
+  const p3 = g.players.get(3);
+  g.phase = 'playing';
+  p3.alive = true;
+  Object.assign(p2, { x: 4.5, y: 5.5, z: 0 }); // 떨어질 칸 (4,5) 밑
+  Object.assign(p3, { x: 6.5, y: 5.5, z: 0 }); // (5,5) 바로 옆
   g.handleAction(1, { name: 'fire' });
-  assert.equal(g.gridAt(3, 5, 0), 1);
-  assert.equal(p2.z, 1, '블록 위로');
-  assert.ok(p2.kbx > 0, '설치한 사람 반대쪽 (+x)');
-  assert.ok(g.time < p2.stunUntil, '경직');
-  assert.ok(lines.some((l) => l.includes('P1 → P2 블록 위로 밀어 올림 + 넉백')), lines.join('\n'));
-  run(g, 1500);
-  assert.equal(p2.alive, true, '압사 아님');
+  run(g, C.BRICK_FALL_STEP_MS * (C.BRICK_DROP_HEIGHT + 1));
+  assert.equal(p2.deathCause, 'crush');
+  assert.ok(lines.some((l) => l.includes('[투척] P1 의 1×2 에 P2 깔림')), lines.join('\n'));
+  assert.equal(p3.alive, true);
+  assert.equal(p3.damage, C.DAMAGE_GAIN.shock);
+  assert.ok(p3.kbx > C.PUSH_KB_SPEED, `바깥쪽(+x)으로 세게: kbx ${p3.kbx}`);
+  assert.equal(p1.damage, 0, '먼 곳은 무사');
+  // 던진 사람은 바로 옆이어도 자기 충격파를 안 맞음
+  g.phase = 'playing';
+  Object.assign(p1, { x: 3.5, y: 5.5, z: 0, pitch: -Math.atan2(C.EYE_HEIGHT, 1.5), alive: true });
+  g.handleAction(1, { name: 'fire' });
+  run(g, C.BRICK_FALL_STEP_MS * (C.BRICK_DROP_HEIGHT + 1));
+  assert.equal(p1.damage, 0, '던진 사람은 자기 충격파 X');
+  assert.ok(lines.some((l) => l.includes(`[충격파] P1 → P3 넉백 (P3 ${C.DAMAGE_GAIN.shock}%)`)), lines.join('\n'));
 });
 
-test('봇: 용암이 오는데 구덩이에 갇히면 설치 블록으로 발판을 놓고 올라간다 (10번 모두)', () => {
-  let long = 0;
+// ---------- 피해 % ----------
+test('피해 %: 맞을 때마다 종류별로 쌓이고, 쌓인 만큼 멀리 날아간다 (0% 는 예전 거리, 100% 면 2배)', () => {
+  const pushDist = (dmg) => {
+    const { g, p1, p2 } = setup();
+    Object.assign(p1, { x: 3.5, y: 5, yaw: 0 });
+    Object.assign(p2, { x: 4.5, y: 5, damage: dmg });
+    g.handleAction(1, { name: 'push' });
+    const x2 = p2.x;
+    run(g, 2500);
+    return { d: p2.x - x2, p2 };
+  };
+  const a = pushDist(0);
+  assert.equal(a.p2.damage, C.DAMAGE_GAIN.push);
+  const b = pushDist(100);
+  assert.ok(Math.abs(b.d / a.d - 2) < 0.15, `0%: ${a.d.toFixed(2)}칸, 100%: ${b.d.toFixed(2)}칸`);
+});
+
+test('피해 %: 경직 중이라 무시된 공격은 안 쌓이고, 새 판이면 0, 로그에 남는다', () => {
+  const { g, p1, p2, lines } = setup();
+  Object.assign(p1, { x: 3.5, y: 5, yaw: 0 });
+  Object.assign(p2, { x: 4.5, y: 5 });
+  g.handleAction(1, { name: 'push' });
+  assert.equal(p2.damage, 10);
+  p1.pushReadyAt = 0;
+  Object.assign(p2, { x: 4.5, y: 5 });
+  g.handleAction(1, { name: 'push' }); // 경직 중
+  assert.equal(p2.damage, 10);
+  assert.ok(lines.some((l) => l.includes('[밀치기] P1 → P2 넉백 (P2 10%)')), lines.join('\n'));
+  g.kill(p2, 'fall');
+  assert.ok(lines.some((l) => l.includes('피해 10%)')), lines.join('\n'));
+  g.phase = 'over';
+  g.startRound();
+  assert.equal(p2.damage, 0);
+});
+
+test('봇: 용암이 오는데 구덩이에 갇히면 설치 블록을 던져 발판을 만들고 올라간다 (10번 모두)', () => {
+  let big = 0;
   for (let k = 0; k < 10; k++) {
     const { g, human, bot } = setupBot();
     g.startRound();
     g.nextSpawnAt = Infinity;
     g.controlItemNextAt = Infinity;
     g.powerItemNextAt = Infinity;
-    // 필드 전체 2층, 가운데 2×2 만 바닥까지 파인 구덩이 (점프 1.28칸으로는 못 나옴)
-    const pit = (x, y) => (x === 5 || x === 6) && (y === 5 || y === 6);
+    // 필드 전체 2층, 가운데 3×3 만 바닥까지 파인 구덩이 (점프 1.28칸으로는 못 나옴)
+    const pit = (x, y) => x >= 5 && x <= 7 && y >= 5 && y <= 7;
     for (let x = 0; x < C.GRID_W; x++) for (let y = 0; y < C.GRID_D; y++) if (!pit(x, y)) for (let z = 0; z < 2; z++) g.grid[g.idx(x, y, z)] = 1;
     g.gridVersion++;
     Object.assign(human, { x: 0.5, y: 0.5, z: 2 });
     Object.assign(bot, { x: 5.5, y: 5.5, z: 0 });
     g.givePower(bot, 'brick');
-    if (bot.brickLen === 2) long++;
+    if (bot.brickBig) big++;
     g.lava = { active: true, z: -0.9, startedAt: g.time };
     let out = false;
     for (let t = 0; t < 8000 && !out; t += TICK) {
       g.tick(TICK);
       if (bot.grounded && bot.z > 1.99) out = true;
     }
-    assert.ok(out, `${k}번째 (1×${bot.brickLen}, 남은 ${bot.bricks}): 봇 위치 (${bot.x.toFixed(2)}, ${bot.y.toFixed(2)}, ${bot.z.toFixed(2)})`);
+    assert.ok(out, `${k}번째 (${bot.brickBig ? '2×2' : '1×2'}, 남은 ${bot.bricks}, ${bot.alive ? '' : bot.deathCause}): 봇 위치 (${bot.x.toFixed(2)}, ${bot.y.toFixed(2)}, ${bot.z.toFixed(2)})`);
   }
 });
 
-test('봇: 용암 전에는 앞 칸에 선 상대 위에 설치 블록을 놓아 밀어낸다', () => {
+test('봇: 용암 전에는 가만히 선 상대 발밑에 설치 블록을 던져 깔아 죽인다', () => {
   const { g, human, bot, lines } = setupBot();
   g.startRound();
   g.nextSpawnAt = Infinity;
   g.controlItemNextAt = Infinity;
   g.powerItemNextAt = Infinity;
-  Object.assign(human, { x: 5.5, y: 5.5, z: 0 });
-  Object.assign(bot, { x: 4.2, y: 5.5, z: 0 });
+  Object.assign(human, { x: 6.5, y: 5.5, z: 0 });
+  Object.assign(bot, { x: 3.5, y: 5.5, z: 0 });
   g.givePower(bot, 'brick');
-  run(g, 1500);
-  assert.ok(lines.some((l) => l.includes('P2(봇) → P1 블록 위로 밀어 올림')), lines.join('\n'));
+  run(g, 2500);
+  assert.ok(lines.some((l) => l.includes('[투척] P2(봇)')), lines.join('\n'));
+  assert.equal(human.deathCause, 'crush');
 });
