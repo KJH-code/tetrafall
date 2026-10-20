@@ -621,3 +621,29 @@ test('봇끼리 20판: 예외 없이 판이 끝나고, 봇 판은 로그에 따�
   }
   assert.ok(lines.some((l) => l.includes('2인(봇 2) 판 20판')), lines.slice(-3).join('\n'));
 });
+
+test('봇: 거리가 같은 상대가 여럿이면 늘 사람만 노리지 않는다 (사람 1 + 봇 3)', () => {
+  let p3HitsHumanFirst = 0;
+  let p3Pushed = 0;
+  for (let r = 0; r < 40; r++) {
+    const g = new Game();
+    g.rng = Math.random;
+    g.addPlayer(1);
+    g.addBot();
+    const p3 = g.addBot();
+    g.addBot();
+    g.startRound();
+    const t0 = g.time;
+    let first = null;
+    while (g.phase === 'playing' && g.time - t0 < 3000 && first === null) {
+      g.tick(TICK);
+      for (const e of g.drainEvents()) if (first === null && e.type === 'hit' && e.kind === 'push' && e.by === p3.id) first = e.target;
+    }
+    if (first !== null) {
+      p3Pushed++;
+      if (first === 1) p3HitsHumanFirst++;
+    }
+  }
+  // 수정 전에는 200판 중 200판이 사람. 지금은 대략 절반
+  assert.ok(p3Pushed >= 20 && p3HitsHumanFirst / p3Pushed < 0.85, `P3 첫 밀치기 ${p3Pushed}번 중 사람 ${p3HitsHumanFirst}번`);
+});

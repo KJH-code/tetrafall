@@ -37,6 +37,10 @@ export class BotBrain {
     this.unstickUntil = 0;
     this.unstickDir = 1;
     this.nextPushAt = 0; // 봇 자신의 밀치기 간격 (사람처럼 연타하지 않게)
+    // 상대 고를 때 판마다 다시 뽑는 무작위 가산 거리. 거리가 같으면 늘 목록 맨 앞(사람)을 고르던 버그 수정:
+    // 4인 판에서 봇 둘이 시작하자마자 사람을 협공했다 (2026-10-20 로그 3·16·17판, 재현 200판 중 200판)
+    this.targetBias = new Map();
+    this.biasRound = -1;
   }
 
   update(g, p) {
@@ -83,6 +87,10 @@ export class BotBrain {
   // ---------- 판단 ----------
   think(g, p) {
     this.input.jump = false;
+    if (this.biasRound !== g.roundNumber) {
+      this.biasRound = g.roundNumber;
+      this.targetBias.clear();
+    }
     const enemies = this.enemies(g, p);
     const danger = this.visibleDanger(g);
 
@@ -151,7 +159,8 @@ export class BotBrain {
     let best = null;
     let bd = Infinity;
     for (const o of list) {
-      const d = Math.hypot(o.x - p.x, o.y - p.y);
+      if (!this.targetBias.has(o.id)) this.targetBias.set(o.id, this.rng() * C.BOT_TARGET_JITTER);
+      const d = Math.hypot(o.x - p.x, o.y - p.y) + this.targetBias.get(o.id);
       if (d < bd) {
         bd = d;
         best = o;
