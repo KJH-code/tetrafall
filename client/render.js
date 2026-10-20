@@ -60,6 +60,10 @@ export class Renderer {
       MAX_CELLS,
     );
     this.blockMesh.count = 0;
+    // three.js 는 InstancedMesh 의 경계 구를 처음 한 번만 계산하고 갱신하지 않는다.
+    // 블록이 0개일 때 계산된 빈 구가 남으면 원점 모서리가 시야 밖일 때 쌓인 블록 전체가 안 그려진다.
+    // 최대 432개 한 번의 draw call 이라 시야 판정을 끈다.
+    this.blockMesh.frustumCulled = false;
     this.scene.add(this.blockMesh);
     this.gridVersion = -1;
 
@@ -69,6 +73,7 @@ export class Renderer {
     const pieceMat = new THREE.MeshLambertMaterial({ color: 0xf0a030, transparent: true, opacity: 1 });
     this.pieceMat = pieceMat;
     const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45 });
+    this.shadowMat = shadowMat;
     for (let i = 0; i < 4; i++) {
       const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), pieceMat);
       m.visible = false;
@@ -247,7 +252,7 @@ export class Renderer {
       if (showShadow) {
         const [sx, sy] = piece.shadow[i];
         sm.position.set(sx + 0.5, sy + 0.5, piece.landZ + 0.03);
-        sm.material = mine ? this.previewMat : this.shadowMeshes[0].material;
+        sm.material = mine ? this.previewMat : this.shadowMat;
         if (mine) this.previewMat.color.setHex(piece.fits ? 0xf0a030 : 0xff2020);
       }
     }
