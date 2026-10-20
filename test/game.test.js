@@ -766,6 +766,71 @@ test('용암: 평균 높이가 기준에 닿으면 올라오고, 닿은 사람�
   assert.ok(lines.some((l) => l.includes('용암 1')), lines.join('\n'));
 });
 
+test('용암: 필드 밖으로 밀려 떨어지다 용암 높이 아래로 가면 낙사, 필드 안은 용암사', () => {
+  const { g, p1, p2 } = setup();
+  g.lava = { active: true, z: 1, startedAt: g.time };
+  p1.x = 5.5;
+  p1.y = 5.5;
+  p1.z = 0;
+  p2.x = -0.8; // 가장자리 밖
+  p2.y = 5;
+  p2.z = 0.5;
+  g.tick(TICK);
+  assert.equal(p1.deathCause, 'lava');
+  assert.equal(p2.deathCause, 'fall');
+});
+
+test('봇: 용암이 오면 막힌 가까운 칸 대신 길이 이어진 높은 칸으로 올라간다 (10번 모두)', () => {
+  for (let k = 0; k < 10; k++) {
+    const { g, human, bot } = setupBot();
+    g.startRound();
+    g.nextSpawnAt = Infinity;
+    g.controlItemNextAt = Infinity;
+    g.powerItemNextAt = Infinity;
+    // x=6 줄 전체가 3칸 벽. 벽 너머 (7,5) 는 1칸이라 가장 가깝지만 못 감. (1,5) 1칸은 걸어서 감
+    for (let y = 0; y < C.GRID_D; y++) for (let z = 0; z < 3; z++) g.grid[g.idx(6, y, z)] = 1;
+    g.grid[g.idx(7, 5, 0)] = 1;
+    g.grid[g.idx(1, 5, 0)] = 1;
+    for (let z = 0; z < 3; z++) g.grid[g.idx(9, 9, z)] = 1; // 사람은 벽 너머 3칸 기둥 위 (못 밀러 감)
+    g.gridVersion++;
+    human.x = 9.5;
+    human.y = 9.5;
+    human.z = 3;
+    bot.x = 5.5;
+    bot.y = 5.5;
+    bot.z = 0;
+    g.lava = { active: true, z: -0.95, startedAt: g.time };
+    let climbed = false;
+    for (let t = 0; t < 6000 && !climbed; t += TICK) {
+      g.tick(TICK);
+      if (bot.grounded && bot.z > 0.99) climbed = true;
+    }
+    assert.ok(climbed, `${k}번째: 봇 위치 (${bot.x.toFixed(2)}, ${bot.y.toFixed(2)}, ${bot.z.toFixed(2)})`);
+  }
+});
+
+test('봇: 용암이 켜졌으면 높은 곳에서 바닥의 상대를 쫓아 내려오지 않는다 (10번 모두)', () => {
+  for (let k = 0; k < 10; k++) {
+    const { g, human, bot } = setupBot();
+    g.startRound();
+    g.nextSpawnAt = Infinity;
+    g.controlItemNextAt = Infinity;
+    g.powerItemNextAt = Infinity;
+    // 가운데 3×3 이 3칸 높이 언덕, 사람은 바닥
+    for (let x = 4; x <= 6; x++) for (let y = 4; y <= 6; y++) for (let z = 0; z < 3; z++) g.grid[g.idx(x, y, z)] = 1;
+    g.gridVersion++;
+    human.x = 1.5;
+    human.y = 5.5;
+    human.z = 0;
+    bot.x = 5.5;
+    bot.y = 5.5;
+    bot.z = 3;
+    g.lava = { active: true, z: -0.5, startedAt: g.time };
+    run(g, 4000);
+    assert.ok(bot.z > 2.99, `${k}번째: 봇 위치 (${bot.x.toFixed(2)}, ${bot.y.toFixed(2)}, ${bot.z.toFixed(2)})`);
+  }
+});
+
 test('용암: 층 클리어로 지형이 내려앉으면 용암도 같이 내려간다', () => {
   const { g } = setup();
   g.lava = { active: true, z: 1.5, startedAt: g.time };

@@ -354,14 +354,21 @@ export class BotBrain {
         }
       }
     }
+    const ax = Math.floor(p.x + ux * 0.55);
+    const ay = Math.floor(p.y + uy * 0.55);
+    const top = g.columnTop(ax, ay);
+    // 용암이 켜졌으면 용암 가까운 낮은 칸으로 내려가지 않는다
+    // (안 그러면 높은 곳에 올라갔다가 바닥의 상대·아이템을 쫓아 내려와 용암을 맞는다)
+    if (g.lava.active && top < this.standHeight(g, p) - 0.5 && top < g.lava.z + C.BOT_LAVA_MARGIN) {
+      this.input.fwd = 0;
+      this.input.strafe = 0;
+      return;
+    }
     this.input.yaw = Math.atan2(uy, ux);
     this.input.pitch = 0;
     this.input.fwd = 1;
     this.input.strafe = 0;
     // 앞 칸이 1칸 높으면 점프
-    const ax = Math.floor(p.x + ux * 0.55);
-    const ay = Math.floor(p.y + uy * 0.55);
-    const top = g.columnTop(ax, ay);
     if (top > p.z + 0.05 && top <= p.z + this.jumpReach(g, p)) this.input.jump = true;
   }
 
@@ -406,31 +413,64 @@ export class BotBrain {
     if (piece.phase === 'falling') this.dangerSeen.set(pieceKey(piece), g.time - C.BOT_REACTION_MS);
   }
 
+  // 서 있는 높이 (칸). 점프 중이면 발밑 기둥 높이
+  // (안 그러면 뛰어오른 순간 "이미 높다"며 오르기 계획을 버리거나, 바닥에서 뛰다 "내려간다"며 멈춘다)
+  standHeight(g, p) {
+    const x = Math.max(0, Math.min(W - 1, Math.floor(p.x)));
+    const y = Math.max(0, Math.min(D - 1, Math.floor(p.y)));
+    const under = g.columnTop(x, y);
+    return p.grounded || under > p.z ? Math.floor(p.z + 0.05) : under;
+  }
+
   // 지금 한 번 점프로 올라갈 수 있는 높이 (칸)
   jumpReach(g, p) {
     return g.time < p.jumpUntil ? 2.25 : 1.05; // 점프력 상승 중이면 2칸까지
   }
 
-  // 용암이 2.5칸 안으로 다가오면 더 높은 칸으로 한 단계씩 올라간다. 움직였으면 true
+  // 용암이 2.5칸 안으로 다가오면 걸어서 이어진 가장 높은 칸으로 간다. 움직였으면 true
+  // 기둥 높이로 길찾기(BFS): 한 걸음에 점프 높이까지 오르고, 내려가기는 자유, 잠긴 칸은 못 감.
+  // (예전엔 가장 가까운 높은 칸으로 직진만 해서 사이에 벽이 있으면 바닥에서 용암을 맞았다)
   climbFromLava(g, p, avoid) {
     if (!g.lava.active || p.z - g.lava.z > 2.5) return false;
+    const reach = this.jumpReach(g, p);
+    // 지나갈 칸은 아직 안 잠겼으면 된다 (한 칸 걷는 0.2초 동안 용암은 0.02칸 오름)
+    const floorZ = g.lava.z + 0.15;
     const bad = new Set(avoid.map(([x, y]) => x * 100 + y));
+    const sx = Math.max(0, Math.min(W - 1, Math.floor(p.x)));
+    const sy = Math.max(0, Math.min(D - 1, Math.floor(p.y)));
+    const h0 = this.standHeight(g, p);
+    const start = sx * 100 + sy;
+    const height = new Map([[start, h0]]);
+    const first = new Map([[start, null]]); // 그 칸으로 가는 길의 첫 걸음
+    const steps = new Map([[start, 0]]);
+    const queue = [[sx, sy]];
     let best = null;
     let bs = -Infinity;
-    for (let x = 0; x < W; x++) {
-      for (let y = 0; y < D; y++) {
-        if (bad.has(x * 100 + y)) continue;
-        const top = g.columnTop(x, y);
-        if (top > p.z + this.jumpReach(g, p) || top < g.lava.z + 0.6) continue;
-        const score = top * 3 - Math.hypot(x + 0.5 - p.x, y + 0.5 - p.y);
-        if (score > bs) {
-          bs = score;
-          best = { x: x + 0.5, y: y + 0.5, top };
-        }
+    while (queue.length) {
+      const [x, y] = queue.shift();
+      const k = x * 100 + y;
+      const h = height.get(k);
+      const score = h * 20 - steps.get(k); // 높이가 먼저, 같은 높이면 가까운 곳
+      if (score > bs) {
+        bs = score;
+        best = k;
+      }
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx;
+        const ny = y + dy;
+        const nk = nx * 100 + ny;
+        if (nx < 0 || nx >= W || ny < 0 || ny >= D || height.has(nk) || bad.has(nk)) continue;
+        const top = g.columnTop(nx, ny);
+        if (top > h + reach || top < floorZ) continue;
+        height.set(nk, top);
+        steps.set(nk, steps.get(k) + 1);
+        first.set(nk, first.get(k) ?? [nx, ny]);
+        queue.push([nx, ny]);
       }
     }
-    if (!best || best.top <= p.z + 0.5) return false; // 더 높은 곳이 없으면 평소대로
-    this.moveTo(g, p, best, avoid);
+    if (best === start || height.get(best) <= h0 + 0.5) return false; // 더 높은 곳으로 가는 길이 없으면 평소대로
+    const [fx, fy] = first.get(best);
+    this.moveTo(g, p, { x: fx + 0.5, y: fy + 0.5 }, avoid);
     return true;
   }
 

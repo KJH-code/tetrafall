@@ -875,7 +875,12 @@ export class Game {
       return;
     }
     lava.z = Math.min(C.GRID_H + 1, lava.z + dtMs / C.LAVA_RISE_MS_PER_CELL);
-    for (const p of this.players.values()) if (p.alive && p.z < lava.z - 0.05) this.kill(p, 'lava');
+    // 필드 밖에서 용암 높이 아래로 가면 밀려 떨어진 것이라 낙사로 센다 (용암판은 필드보다 넓게 그려짐)
+    for (const p of this.players.values()) {
+      if (!p.alive || p.z >= lava.z - 0.05) continue;
+      const inField = p.x >= 0 && p.x < C.GRID_W && p.y >= 0 && p.y < C.GRID_D;
+      this.kill(p, inField ? 'lava' : 'fall');
+    }
     this.items = this.items.filter((it) => it.z >= lava.z);
   }
 
