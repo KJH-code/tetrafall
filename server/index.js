@@ -69,6 +69,7 @@ function stamp() {
 const log = (msg) => console.log(`[${stamp()}] ${msg}`);
 
 const game = new Game(log);
+game.setMap(C.MAP_DEFAULT);
 const wss = new WebSocketServer({ server });
 const sockets = new Map(); // id -> ws
 let nextId = 1;
@@ -109,6 +110,9 @@ wss.on('connection', (ws) => {
         break;
       case 'removeBot':
         if (game.isHost(id)) game.removeBot();
+        break;
+      case 'setMap':
+        if (game.isHost(id)) game.setMap(String(msg.map));
         break;
       case 'start':
         if (game.isHost(id)) {

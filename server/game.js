@@ -3,6 +3,7 @@
 import { CONFIG as C } from '../shared/config.js';
 import { SHAPE_NAMES, rotatedCells, footprint } from '../shared/pieces.js';
 import { BotBrain } from './bot.js';
+import { MAPS, MAP_IDS, mapColumns } from './maps.js';
 
 const EPS = 1e-6;
 
@@ -33,6 +34,9 @@ export class Game {
     this.pieceCounter = 0;
     this.pieceCells = new Map(); // 셀 키 -> 블록 id (충돌용)
     this.lava = { active: false, z: C.LAVA_START_Z, startedAt: 0 };
+    this.mapChoice = 'flat'; // 호스트가 고른 맵 ('random' 또는 MAP_IDS 중 하나). 서버는 시작 때 C.MAP_DEFAULT 로 바꾼다
+    this.mapId = 'flat'; // 이번 판 맵
+    this.baseAvgHeight = 0; // 판 시작 때 지형 평균 높이 (용암은 여기서 더 쌓인 만큼으로 판단)
     this.items = [];
     this.projectiles = [];
     this.roundNumber = 0;
@@ -175,6 +179,26 @@ export class Game {
     }
   }
 
+  setMap(choice) {
+    if (this.phase === 'playing') return false;
+    if (choice !== 'random' && !MAP_IDS.includes(choice)) return false;
+    this.mapChoice = choice;
+    return true;
+  }
+
+  // 시작 위치에서 발이 놓일 높이: 플레이어가 걸치는 칸들 중 가장 높은 기둥 위
+  spawnZ(x, y) {
+    let top = 0;
+    for (const ox of [-C.PLAYER_HALF, C.PLAYER_HALF]) {
+      for (const oy of [-C.PLAYER_HALF, C.PLAYER_HALF]) {
+        const cx = Math.floor(x + ox);
+        const cy = Math.floor(y + oy);
+        if (inXY(cx, cy)) top = Math.max(top, this.columnTop(cx, cy));
+      }
+    }
+    return top;
+  }
+
   isHost(id) {
     return this.hostId === id;
   }
@@ -187,6 +211,11 @@ export class Game {
   startRound() {
     if (!this.canStart()) return false;
     this.grid.fill(0);
+    this.mapId = this.mapChoice === 'random' ? MAP_IDS[Math.floor(this.rng() * MAP_IDS.length)] : this.mapChoice;
+    for (const [x, y, h] of mapColumns(this.mapId, C.GRID_W, C.GRID_D)) {
+      for (let z = 0; z < h && z < C.GRID_H; z++) this.grid[this.idx(x, y, z)] = 1;
+    }
+    this.baseAvgHeight = this.avgHeight();
     this.gridVersion++;
     this.gridDirty = true;
     this.pieces = [];
@@ -207,7 +236,7 @@ export class Game {
       Object.assign(p, {
         x: sp.x,
         y: sp.y,
-        z: 0,
+        z: this.spawnZ(sp.x, sp.y),
         yaw: sp.yaw,
         pitch: 0,
         vz: 0,
@@ -230,7 +259,7 @@ export class Game {
     this.phase = 'playing';
     this.roundPlayerCount = this.players.size;
     this.roundBotCount = this.bots.size;
-    this.log(`===== ROUND ${this.roundNumber} 시작 (${this.players.size}명) =====`);
+    this.log(`===== ROUND ${this.roundNumber} 시작 (${this.players.size}명, 맵 ${MAPS[this.mapId].name}) =====`);
     return true;
   }
 
@@ -837,12 +866,12 @@ export class Game {
   updateLava(dtMs) {
     const lava = this.lava;
     if (!lava.active) {
-      if (this.avgHeight() < C.LAVA_TRIGGER_AVG_HEIGHT) return;
+      if (this.avgHeight() - this.baseAvgHeight < C.LAVA_TRIGGER_AVG_HEIGHT) return; // 시작 지형 빼고 쌓인 만큼
       lava.active = true;
       lava.z = C.LAVA_START_Z;
       lava.startedAt = this.time;
       this.emit({ type: 'lava' });
-      this.log(`  [용암] 평균 높이 ${this.avgHeight().toFixed(2)} → 용암 상승 시작 @ ${fmtTime(this.elapsed())}`);
+      this.log(`  [용암] 쌓인 평균 높이 ${(this.avgHeight() - this.baseAvgHeight).toFixed(2)} → 용암 상승 시작 @ ${fmtTime(this.elapsed())}`);
       return;
     }
     lava.z = Math.min(C.GRID_H + 1, lava.z + dtMs / C.LAVA_RISE_MS_PER_CELL);
@@ -1179,6 +1208,7 @@ export class Game {
       pieces: piecesOut,
       nextSpawnIn,
       lava: { active: this.lava.active, z: this.lava.z },
+      map: { choice: this.mapChoice, id: this.mapId, name: MAPS[this.mapId].name },
       items: this.items,
       projectiles: this.projectiles.map((pr) => ({ x: pr.x, y: pr.y, z: pr.z })),
       gridVersion: this.gridVersion,

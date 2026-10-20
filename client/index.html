@@ -13,6 +13,7 @@
     #center-text { white-space: pre; }
     #center button { font-size: 18px; padding: 8px 18px; margin-top: 10px; cursor: pointer; }
     #bot-btns button { font-size: 15px; padding: 5px 12px; }
+    #map-select { font-size: 15px; padding: 3px; }
     #bot-btns button:disabled { opacity: .4; cursor: default; }
     #crosshair { position: absolute; top: 50%; left: 50%; width: 10px; height: 10px; margin: -7px 0 0 -7px; border: 2px solid rgba(255,255,255,.8); border-radius: 50%; }
     /* 투사체 보유: 빨간 큰 조준점 + 탄 수 */
@@ -48,15 +49,19 @@
     <div id="crosshair"></div>
     <div id="hitmarker"></div>
     <div id="center"><span id="center-text">연결 중...</span><br /><button id="start-btn" class="hidden">시작</button>
-      <div id="bot-btns" class="hidden"><button id="add-bot">봇 추가</button> <button id="remove-bot">봇 빼기</button></div>
+      <div id="bot-btns" class="hidden"><button id="add-bot">봇 추가</button> <button id="remove-bot">봇 빼기</button>
+        <label style="font-size:15px;margin-left:8px">맵 <select id="map-select">
+          <option value="random">무작위</option><option value="flat">평지</option><option value="pyramid">피라미드</option><option value="stairs">계단</option>
+        </select></label></div>
+      <div id="map-info" class="hidden" style="font-size:15px;margin-top:6px"></div>
       <div id="keys" class="keys hidden">
         <b>조작법</b><br />
         WASD 이동 · Space 점프 · Shift 대시<br />
         <b>좌클릭</b> 밀치기 (가까운 상대를 바라보는 쪽으로 밀어냄)<br />
         <b>우클릭</b> 투사체 (빨간 공을 먹으면 조준점이 빨개짐)<br />
-        아이템: 하늘색 = 조종권 (먹는 즉시 블록을 하늘에서 조종) · 주황 = 망치 (3번 세게 밀기)<br />
-        &nbsp;&nbsp;초록 = 점프력 상승 (2칸 벽) · 흰 고리 = 유령화 (블록 통과)<br />
+        하늘색 = 조종권: 먹는 즉시 블록을 하늘에서 조종<br />
         &nbsp;&nbsp;방향키 이동 · Q/E 회전 · <b>Enter 낙하</b> (8초 안에)<br />
+        아이템: 주황 = 망치 (3번 세게 밀기) · 초록 = 점프력 상승 (2칸 벽) · 흰 고리 = 유령화 (블록 통과)<br />
         상대를 블록에 깔리게(압사) 하거나 밖으로 떨어뜨리면(낙사) 승리. 블록이 쌓이면 용암이 올라온다 — 위로!
       </div>
     </div>

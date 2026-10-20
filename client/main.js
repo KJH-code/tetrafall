@@ -268,6 +268,8 @@ function connect() {
 startBtn.addEventListener('click', () => send({ type: 'start' }));
 $('add-bot').addEventListener('click', () => send({ type: 'addBot' }));
 $('remove-bot').addEventListener('click', () => send({ type: 'removeBot' }));
+$('map-select').addEventListener('change', (e) => send({ type: 'setMap', map: e.target.value }));
+const MAP_KO = { random: '무작위', flat: '평지', pyramid: '피라미드', stairs: '계단' };
 
 function me() {
   return state ? state.players.find((p) => p.id === myId) : null;
@@ -297,7 +299,7 @@ function updateHud() {
   const isHost = state.hostId === myId;
   const alive = state.players.filter((x) => x.alive).length;
   const lines = [];
-  lines.push(`${p ? p.name : '?'}${isHost ? ' (호스트)' : ''} · 라운드 ${state.round.n} · ${fmt(state.round.elapsed)}`);
+  lines.push(`${p ? p.name : '?'}${isHost ? ' (호스트)' : ''} · 라운드 ${state.round.n} · ${fmt(state.round.elapsed)}${state.map && state.round.n ? ` · ${state.map.name}` : ''}`);
   const maxP = Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length);
   lines.push(`플레이어 ${state.players.length}/${maxP} · 생존 ${alive}`);
   if (p && state.phase === 'playing') {
@@ -368,6 +370,12 @@ function updateHud() {
   // 봇 버튼: 호스트만, 판 사이에만
   const showBots = isHost && state.phase !== 'playing';
   $('bot-btns').classList.toggle('hidden', !showBots);
+  // 맵: 호스트는 고르고, 다른 사람은 보기만
+  const mapSel = $('map-select');
+  if (state.map && document.activeElement !== mapSel) mapSel.value = state.map.choice;
+  const mapInfo = $('map-info');
+  mapInfo.classList.toggle('hidden', !(state.map && !isHost && state.phase !== 'playing'));
+  if (state.map) mapInfo.textContent = `맵: ${MAP_KO[state.map.choice] || state.map.choice}`;
   if (showBots) {
     $('add-bot').disabled = state.players.length >= Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length);
     $('remove-bot').disabled = !state.players.some((x) => x.isBot);

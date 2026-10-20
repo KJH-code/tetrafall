@@ -928,3 +928,44 @@ test('유령화: 옆으로 블록 통과, 점프하면 위 블록을 뚫고 올�
   run(g, C.GHOST_MS);
   assert.ok(p1.alive && p1.z >= 3 - 1e-6, `끝나면 벽 꼭대기 (z=${p1.z.toFixed(2)})`);
 });
+
+// ---------- 2단계 D: 맵 ----------
+test('맵: 피라미드·계단 지형이 깔리고, 시작 위치는 지형 위, 용암은 시작 지형을 빼고 잰다', () => {
+  for (const id of ['pyramid', 'stairs']) {
+    const g = new Game();
+    g.addPlayer(1);
+    g.addPlayer(2);
+    assert.ok(g.setMap(id));
+    g.startRound();
+    assert.equal(g.mapId, id);
+    assert.ok(g.grid.reduce((a, b) => a + b, 0) > 0, `${id} 지형 있음`);
+    for (const p of g.players.values()) assert.equal(p.z, g.spawnZ(p.x, p.y), `${id} ${p.name} 지형 위에서 시작`);
+    g.nextSpawnAt = Infinity;
+    g.tick(TICK);
+    assert.equal(g.lava.active, false, `${id} 시작하자마자 용암 X (평균 ${g.avgHeight().toFixed(2)})`);
+    // 올라가는 방향의 단차는 1칸 (기본 점프로 올라감): 피라미드는 모든 이웃, 계단은 계단 따라(x 방향)
+    for (let x = 0; x < C.GRID_W; x++) {
+      for (let y = 0; y < C.GRID_D; y++) {
+        if (x + 1 < C.GRID_W) assert.ok(Math.abs(g.columnTop(x, y) - g.columnTop(x + 1, y)) <= 1, `${id} (${x},${y})→x+1`);
+        if (id === 'pyramid' && y + 1 < C.GRID_D) assert.ok(Math.abs(g.columnTop(x, y) - g.columnTop(x, y + 1)) <= 1, `${id} (${x},${y})→y+1`);
+      }
+    }
+  }
+});
+
+test('맵: 무작위는 판마다 바뀌고, 이상한 값·판 진행 중 변경은 거부', () => {
+  const g = new Game();
+  g.rng = Math.random;
+  g.addPlayer(1);
+  g.addPlayer(2);
+  assert.equal(g.setMap('nope'), false);
+  assert.ok(g.setMap('random'));
+  const seen = new Set();
+  for (let i = 0; i < 30; i++) {
+    g.startRound();
+    seen.add(g.mapId);
+    assert.equal(g.setMap('flat'), false, '판 중엔 못 바꿈');
+    g.phase = 'over';
+  }
+  assert.ok(seen.size >= 2, `무작위로 ${[...seen].join(',')}`);
+});
