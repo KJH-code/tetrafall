@@ -66,7 +66,31 @@ const server = http.createServer((req, res) => {
 function stamp() {
   return new Date().toLocaleTimeString('ko-KR', { hour12: false });
 }
-const log = (msg) => console.log(`[${stamp()}] ${msg}`);
+// 콘솔과 같은 줄을 logs/<서버를 켠 시각>.txt 에도 남긴다 (플레이테스트 분석: npm run stats)
+const LOG_DIR = path.join(ROOT, 'logs');
+const startedAt = new Date();
+const pad = (n) => String(n).padStart(2, '0');
+const logPath = path.join(
+  LOG_DIR,
+  `${startedAt.getFullYear()}-${pad(startedAt.getMonth() + 1)}-${pad(startedAt.getDate())}_${pad(startedAt.getHours())}-${pad(startedAt.getMinutes())}-${pad(startedAt.getSeconds())}.txt`,
+);
+let logFd = null;
+try {
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+  logFd = fs.openSync(logPath, 'a');
+} catch (err) {
+  console.error(`로그 파일을 못 엶 (콘솔에만 남김): ${err.message}`);
+}
+const log = (msg) => {
+  const line = `[${stamp()}] ${msg}`;
+  console.log(line);
+  if (logFd === null) return;
+  try {
+    fs.writeSync(logFd, line + '\n'); // 바로 씀: 서버를 Ctrl+C 로 꺼도 마지막 줄까지 남게
+  } catch {
+    logFd = null;
+  }
+};
 
 const game = new Game(log, { countdownMs: C.ROUND_COUNTDOWN_MS });
 game.setMap(C.MAP_DEFAULT);
@@ -182,4 +206,5 @@ server.listen(PORT, '0.0.0.0', () => {
     }
   }
   console.log('튜닝 상수: shared/config.js');
+  if (logFd !== null) console.log(`로그 파일: ${path.relative(ROOT, logPath)} (요약: npm run stats)`);
 });

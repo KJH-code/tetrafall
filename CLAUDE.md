@@ -16,6 +16,7 @@ DevVault: Projects/Tetrafall
 npm install
 npm start        # 호스트 서버 (포트 3000)
 npm test         # 서버 규칙 단위 테스트 (node --test)
+npm run stats    # 플레이테스트 로그 요약 (logs/ 최신 파일, 또는 -- 파일 경로)
 ```
 
 Windows PowerShell 에서 npm 이 막히면 `npm.cmd`.
@@ -28,7 +29,8 @@ Windows PowerShell 에서 npm 이 막히면 `npm.cmd`.
 - `server/bot.js` — AI 봇 (handleInput / handleAction 만 씀, 판정 특혜 없음)
 - `server/index.js` — 정적 서빙 + WebSocket + 틱 루프
 - `client/` — 렌더(`render.js`), 캐릭터(`character.js`), 입력(`input.js`), HUD·네트워크(`main.js`)
-- `test/game.test.js` — 단위 테스트
+- `tools/stats.js` — 서버 로그 요약 (판 길이·압사 비율·구성별·맵별·플레이어별·아이템). 로그 형식을 바꾸면 여기도
+- `test/game.test.js` — 단위 테스트, `test/stats.test.js` — 로그 요약이 실제 게임 로그를 읽는지
 
 ## 규칙
 

@@ -341,7 +341,7 @@ export class Game {
     this.nextSpawnAt = this.time + C.FIRST_SPAWN_DELAY_MS;
     this.controlItemNextAt = this.time + C.CONTROL_ITEM_RESPAWN_MS;
     this.powerItemNextAt = this.time + C.ITEM_FIRST_SPAWN_MS;
-    this.log(`===== ROUND ${this.roundNumber} 시작 (${ps.length}명, 맵 ${MAPS[this.mapId].name}) =====`);
+    this.log(`===== ROUND ${this.roundNumber} 시작 (${ps.length}명: ${ps.sort((a, b) => a.slot - b.slot).map((p) => p.name).join(' ')}, 맵 ${MAPS[this.mapId].name}) =====`); // 참가자 목록은 npm run stats 가 구성별로 셀 때 씀
     this.checkRoundEnd(); // 카운트다운 중에 나가서 혼자 남았으면 바로 끝
   }
 
