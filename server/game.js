@@ -154,6 +154,7 @@ export class Game {
       hasControl: false,
       ammo: 0,
       deathCause: null,
+      lastHit: null, // 판 안에서 마지막으로 나를 날린 사람 { by, name, kind } — 킬 판정
       input: { fwd: 0, strafe: 0, jump: false },
     };
     this.players.set(id, p);
@@ -319,6 +320,7 @@ export class Game {
         hasControl: false,
         ammo: 0,
         deathCause: null,
+        lastHit: null,
       });
     }
     if (this.countdownMs > 0) {
@@ -392,15 +394,20 @@ export class Game {
     }
   }
 
-  kill(p, cause) {
+  // 킬: src(그 블록을 조종·투척한 사람)가 있으면 그 사람, 없으면 판 안에서 마지막으로 나를 날린 사람 (시간 제한 없음).
+  // 내 블록에 내가 깔리면 킬 없음
+  kill(p, cause, src = null) {
     if (!p.alive) return;
     p.alive = false;
     p.deathCause = cause;
     p.hasControl = false;
     const t = this.time - this.roundStartTime;
-    this.deaths.push({ name: p.name, cause, t });
-    this.emit({ type: 'death', who: p.id, cause });
-    this.log(`  [사망] ${p.name} ${causeKo(cause)} @ ${fmtTime(t)} (위치 ${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}, 피해 ${p.damage}%)`);
+    let credit = src ? { by: src.by, kind: src.kind, name: this.players.get(src.by)?.name } : p.lastHit;
+    if (credit && (credit.by === p.id || !credit.name)) credit = null;
+    this.deaths.push({ name: p.name, cause, t, killer: credit ? credit.name : null, weapon: credit ? credit.kind : null });
+    this.emit({ type: 'death', who: p.id, cause, by: credit ? credit.by : null, weapon: credit ? credit.kind : null, byName: credit ? credit.name : null });
+    const killText = credit ? `, 킬 ${credit.name} ${WEAPON_LOG[credit.kind]}` : ', 킬 없음'; // "킬 없음" 을 적어야 킬 기록이 없던 옛 로그와 구분됨
+    this.log(`  [사망] ${p.name} ${causeKo(cause)} @ ${fmtTime(t)} (위치 ${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}, 피해 ${p.damage}%${killText})`);
   }
 
   // ---------- 입력 ----------
@@ -501,7 +508,7 @@ export class Game {
       if (dist > C.PUSH_RANGE) continue;
       if (Math.abs(t.z - p.z) > C.PLAYER_HEIGHT) continue;
       if (dist > EPS && (dx * fx + dy * fy) / dist < cosHalf) continue;
-      const hit = this.applyKnockback(t, fx, fy, speed, up, stun, C.DAMAGE_GAIN[kind]);
+      const hit = this.applyKnockback(t, fx, fy, speed, up, stun, C.DAMAGE_GAIN[kind], { by: p.id, kind });
       if (hit) p.freezeUntil = this.time + C.HITSTOP_MS; // 때린 쪽도 같이 멈칫
       if (hit && weapon && !landed) {
         landed = true;
@@ -712,8 +719,8 @@ export class Game {
       if (Math.hypot(dx, dy) > C.BOMB_BLAST_RANGE || Math.abs(t.z + C.PLAYER_HEIGHT / 2 - cz) > C.BOMB_BLAST_RANGE) continue;
       const a = this.rng() * Math.PI * 2; // 바로 위에 서 있으면 방향이 없어서 무작위
       const hit = Math.hypot(dx, dy) > 0.05
-        ? this.applyKnockback(t, dx, dy, C.BOMB_KB_SPEED, C.BOMB_KB_UP, C.BOMB_STUN_MS, C.DAMAGE_GAIN.bomb)
-        : this.applyKnockback(t, Math.cos(a), Math.sin(a), C.BOMB_KB_SPEED, C.BOMB_KB_UP, C.BOMB_STUN_MS, C.DAMAGE_GAIN.bomb);
+        ? this.applyKnockback(t, dx, dy, C.BOMB_KB_SPEED, C.BOMB_KB_UP, C.BOMB_STUN_MS, C.DAMAGE_GAIN.bomb, { by: b.by, kind: 'bomb' })
+        : this.applyKnockback(t, Math.cos(a), Math.sin(a), C.BOMB_KB_SPEED, C.BOMB_KB_UP, C.BOMB_STUN_MS, C.DAMAGE_GAIN.bomb, { by: b.by, kind: 'bomb' });
       this.emit({ type: 'hit', kind: 'bomb', by: b.by, target: t.id, ok: hit });
       this.log(`  [폭탄] ${by ? by.name : '?'} → ${t.name} ${hit ? `넉백 (${t.name} ${t.damage}%)` : '경직 중이라 무시'}`);
     }
@@ -744,7 +751,7 @@ export class Game {
       const gx = Math.max(x0 - (t.x + C.PLAYER_HALF), t.x - C.PLAYER_HALF - x1, 0);
       const gy = Math.max(y0 - (t.y + C.PLAYER_HALF), t.y - C.PLAYER_HALF - y1, 0);
       if (Math.hypot(gx, gy) > C.BRICK_SHOCK_RANGE || Math.abs(t.z - z) > C.BRICK_SHOCK_HEIGHT) continue;
-      const hit = this.applyKnockback(t, t.x - cx, t.y - cy, C.BRICK_SHOCK_KB_SPEED, C.BRICK_SHOCK_KB_UP, C.BRICK_SHOCK_STUN_MS, C.DAMAGE_GAIN.shock);
+      const hit = this.applyKnockback(t, t.x - cx, t.y - cy, C.BRICK_SHOCK_KB_SPEED, C.BRICK_SHOCK_KB_UP, C.BRICK_SHOCK_STUN_MS, C.DAMAGE_GAIN.shock, { by: piece.thrownBy, kind: 'shock' });
       this.emit({ type: 'hit', kind: 'shock', by: piece.thrownBy, target: t.id, ok: hit });
       this.log(`  [충격파] ${by ? by.name : '?'} → ${t.name} ${hit ? `넉백 (${t.name} ${t.damage}%)` : '경직 중이라 무시'}`);
     }
@@ -753,8 +760,10 @@ export class Game {
   // 경직 중이면 무시 (연속 넉백 불가). 성공 시 true
   // gain: 이번 공격으로 쌓이는 피해 %. 맞기 전까지 쌓인 % 로 수평 넉백을 키우고 그다음에 쌓는다
   // (위로 튀는 속도는 그대로)
-  applyKnockback(t, dx, dy, speed, up, stunMs = C.STUN_MS, gain = 0) {
+  // src: { by, kind } — 누가 무엇으로 날렸는지 (킬 판정용 lastHit)
+  applyKnockback(t, dx, dy, speed, up, stunMs = C.STUN_MS, gain = 0, src = null) {
     if (this.time < t.stunUntil) return false;
+    if (src && src.by !== t.id) t.lastHit = { by: src.by, kind: src.kind, name: this.players.get(src.by)?.name };
     const mult = C.DAMAGE_KB_BASE + t.damage * C.DAMAGE_KB_PER_PERCENT;
     t.damage += gain;
     const len = Math.hypot(dx, dy) || 1;
@@ -1124,7 +1133,9 @@ export class Game {
             const by = this.players.get(piece.thrownBy);
             this.log(`  [투척] ${by ? by.name : '?'} 의 ${piece.shape} 에 ${p.name} 깔림`);
           }
-          this.kill(p, 'crush');
+          // 조종한 블록·던진 블록이면 그 사람의 킬, 자동 블록이면 마지막으로 날린 사람
+          const src = piece.controller !== null ? { by: piece.controller, kind: 'control' } : piece.thrownBy ? { by: piece.thrownBy, kind: 'thrown' } : null;
+          this.kill(p, 'crush', src);
           break;
         }
       }
@@ -1353,7 +1364,7 @@ export class Game {
             pr.z < t.z + C.PLAYER_HEIGHT + r
           ) {
             const shooter = this.players.get(pr.owner);
-            const hit = this.applyKnockback(t, pr.dx, pr.dy, C.PROJECTILE_KB_SPEED, C.PROJECTILE_KB_UP, C.STUN_MS, C.DAMAGE_GAIN.projectile);
+            const hit = this.applyKnockback(t, pr.dx, pr.dy, C.PROJECTILE_KB_SPEED, C.PROJECTILE_KB_UP, C.STUN_MS, C.DAMAGE_GAIN.projectile, { by: pr.owner, kind: 'projectile' });
             this.emit({ type: 'hit', kind: 'projectile', by: pr.owner, target: t.id, ok: hit });
             this.log(`  [투사체] ${shooter ? shooter.name : '?'} → ${t.name} ${hit ? '넉백' : '경직 중이라 무시'}`);
             dead = true;
@@ -1611,6 +1622,9 @@ function shareText(t) {
   const pass = share >= C.PASS_CRUSH_SHARE ? '합격선 이상' : '합격선 미만';
   return `${(share * 100).toFixed(0)}% (합격선 ${(C.PASS_CRUSH_SHARE * 100).toFixed(0)}% → ${pass})`;
 }
+
+// 킬 로그의 공격 이름 (npm run stats 가 한 단어로 읽음)
+const WEAPON_LOG = { push: '밀치기', weapon: '망치', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록' };
 
 function causeKo(cause) {
   if (cause === 'crush') return '압사';

@@ -455,6 +455,61 @@ function setupN(n, log = () => {}) {
   return { g, lines, ps: [...g.players.values()] };
 }
 
+// ---------- 킬 ----------
+const deathEvent = (g, id) => g.drainEvents().find((e) => e.type === 'death' && e.who === id);
+
+test('킬: 낙사·용암사는 판 안에서 마지막으로 날린 사람 (시간 제한 없음), 안 맞고 죽으면 킬 없음', () => {
+  const { g, lines, ps } = setupN(4);
+  const [a, b, c, d] = ps;
+  Object.assign(a, { x: 2.5, y: 5, yaw: 0 });
+  Object.assign(b, { x: 3.5, y: 5 });
+  g.handleAction(a.id, { name: 'push' });
+  assert.equal(b.lastHit.by, a.id);
+  Object.assign(c, { x: 7.5, y: 2 });
+  run(g, 30000); // 한참 뒤에 떨어져도 킬
+  assert.ok(b.alive);
+  g.drainEvents();
+  g.kill(b, 'fall');
+  assert.deepEqual(g.deaths.at(-1), { name: b.name, cause: 'fall', t: g.deaths.at(-1).t, killer: a.name, weapon: 'push' });
+  const e = deathEvent(g, b.id);
+  assert.equal(e.by, a.id);
+  assert.equal(e.weapon, 'push');
+  assert.ok(lines.some((l) => l.includes(`[사망] ${b.name} 낙사`) && l.includes(`킬 ${a.name} 밀치기`)), lines.join('\n'));
+  g.kill(c, 'lava');
+  assert.equal(g.deaths.at(-1).killer, null, '안 맞았으면 킬 없음');
+  // 마지막 타격이 덮어씀
+  Object.assign(d, { x: 6.5, y: 5, lastHit: { by: a.id, kind: 'push', name: a.name } });
+  d.stunUntil = 0;
+  g.applyKnockback(d, 1, 0, 1, 0, 0, 0, { by: c.id, kind: 'bomb' });
+  assert.equal(d.lastHit.kind, 'bomb');
+});
+
+test('킬: 조종·투척 블록 압사는 그 블록 주인, 자동 블록은 마지막으로 날린 사람, 내 블록에 깔리면 없음, 새 판이면 초기화', () => {
+  const { g, ps } = setupN(4);
+  const [a, b, c, d] = ps;
+  Object.assign(b, { x: 0.5, y: 0.5 });
+  const pc = fallingPiece(g, 'O', 0, 0, 0, 2, 50);
+  pc.controller = a.id;
+  run(g, 600);
+  assert.equal(b.alive, false);
+  assert.deepEqual([g.deaths.at(-1).killer, g.deaths.at(-1).weapon], [a.name, 'control']);
+  g.pieces = [];
+  Object.assign(c, { x: 4.5, y: 4.5, lastHit: { by: d.id, kind: 'weapon', name: d.name } });
+  fallingPiece(g, 'O', 0, 4, 4, 2, 50);
+  run(g, 600);
+  assert.deepEqual([g.deaths.at(-1).killer, g.deaths.at(-1).weapon], [d.name, 'weapon'], '자동 블록: 마지막으로 날린 사람');
+  g.pieces = [];
+  Object.assign(d, { x: 7.5, y: 7.5 });
+  const own = fallingPiece(g, 'O', 0, 7, 7, 2, 50);
+  own.thrownBy = d.id;
+  run(g, 600);
+  assert.equal(d.alive, false);
+  assert.equal(g.deaths.at(-1).killer, null, '내 블록에 내가 깔림');
+  g.phase = 'over';
+  g.startRound();
+  assert.ok([...g.players.values()].every((p) => p.lastHit === null));
+});
+
 test('4인: 시작 위치가 모두 다르고 가장자리에서 1.5칸 이상 안쪽', () => {
   const saved = C.MAX_PLAYERS;
   C.MAX_PLAYERS = 8;
@@ -1236,7 +1291,7 @@ test('피해 %: 경직 중이라 무시된 공격은 안 쌓이고, 새 판이�
   assert.equal(p2.damage, 10);
   assert.ok(lines.some((l) => l.includes('[밀치기] P1 → P2 넉백 (P2 10%)')), lines.join('\n'));
   g.kill(p2, 'fall');
-  assert.ok(lines.some((l) => l.includes('피해 10%)')), lines.join('\n'));
+  assert.ok(lines.some((l) => l.includes('피해 10%')), lines.join('\n'));
   g.phase = 'over';
   g.startRound();
   assert.equal(p2.damage, 0);

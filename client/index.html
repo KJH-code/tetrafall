@@ -31,6 +31,10 @@
     .toast.me { background: rgba(200,60,20,.9); font-weight: bold; }
     .toast.good { background: rgba(20,140,60,.9); }
     #center .keys { white-space: normal; font-size: 14px; text-align: left; margin-top: 10px; line-height: 1.5; color: #ddd; }
+    #killfeed { position: absolute; top: 74px; right: 10px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; pointer-events: none; }
+    #killfeed .kill { font-size: 15px; font-weight: bold; padding: 3px 10px; border-radius: 5px; background: rgba(0,0,0,.6); white-space: nowrap; transition: opacity .5s; }
+    #killfeed .kill.mine { outline: 2px solid #ffe060; }
+    #killfeed .how { color: #ddd; font-weight: normal; }
     #help { position: absolute; top: 10px; right: 10px; text-align: right; font-size: 12px; color: #aaa; white-space: pre; background: rgba(0,0,0,.35); padding: 6px 8px; border-radius: 6px; }
     #hitmarker { position: absolute; top: 50%; left: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; opacity: 0; transition: opacity .15s; }
     #hitmarker::before, #hitmarker::after { content: ''; position: absolute; left: 13px; top: 0; width: 4px; height: 30px; background: #fff; box-shadow: 0 0 4px #000; }
@@ -84,6 +88,7 @@
     </div>
     <div id="status">연결 중...</div>
     <div id="bigmsg" class="hidden"></div>
+    <div id="killfeed"></div>
     <div id="crosshair"></div>
     <!-- 조준점 둘레 쿨: 바깥 하늘색 = 대시, 안쪽 흰색 = 밀치기. 도는 동안만 보이고 다 차면 번쩍 -->
     <svg id="cd-ring" class="hidden" viewBox="0 0 64 64"><circle class="track dash-track" cx="32" cy="32" r="27" stroke-width="4" /><circle class="dash" cx="32" cy="32" r="27" /><circle class="track push-track" cx="32" cy="32" r="21" stroke-width="3" /><circle class="push" cx="32" cy="32" r="21" /></svg>

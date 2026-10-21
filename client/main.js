@@ -115,6 +115,31 @@ const ITEM_HELP = {
   bomb: `폭탄! (3번 칸) 우클릭으로 던지면 ${C.BOMB_FUSE_MS / 1000}초 뒤 터져 블록을 부수고 근처 사람을 날림`,
 };
 const CAUSE_KO = { crush: '압사', fall: '낙사', lava: '용암' };
+const WEAPON_KO = { push: '밀치기', weapon: '망치', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종 블록', thrown: '설치 블록' };
+
+// 오른쪽 위 킬 피드: "죽인 사람 → 죽은 사람 낙사 (망치)". 내가 낀 줄은 노란 테두리
+const killfeedEl = $('killfeed');
+function killFeed(e) {
+  const victim = playerById(e.who);
+  const killer = e.by !== null ? playerById(e.by) : null;
+  const row = document.createElement('div');
+  row.className = `kill${e.who === myId || e.by === myId ? ' mine' : ''}`;
+  const name = (p, fallback) => {
+    const span = document.createElement('span');
+    span.textContent = p ? shownName(p) : fallback || '?';
+    if (p) span.style.color = colorOf(p);
+    return span;
+  };
+  const how = document.createElement('span');
+  how.className = 'how';
+  how.textContent = ` ${CAUSE_KO[e.cause] || e.cause}${e.weapon ? ` (${WEAPON_KO[e.weapon] || e.weapon})` : ''}`;
+  if (e.by !== null) row.append(name(killer, e.byName), ' → ');
+  row.append(name(victim), how);
+  killfeedEl.appendChild(row);
+  while (killfeedEl.children.length > C.KILLFEED_MAX) killfeedEl.firstChild.remove();
+  setTimeout(() => (row.style.opacity = 0), C.KILLFEED_MS);
+  setTimeout(() => row.remove(), C.KILLFEED_MS + 600);
+}
 
 function handleEvent(e) {
   feelEvent(e);
@@ -139,6 +164,9 @@ function handleEvent(e) {
       break;
     case 'controlStart':
       if (e.who !== myId) toast(`${nameOf(e.who)} 블록 조종 시작. 그림자를 조심!`);
+      break;
+    case 'death':
+      if (e.cause !== 'disconnect') killFeed(e);
       break;
     case 'lava':
       toast('용암이 올라온다! 높은 곳으로 올라가세요', 'me');

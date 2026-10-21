@@ -79,8 +79,17 @@ export function parseLog(text) {
       last = null;
     } else if (!cur) {
       continue;
-    } else if ((m = line.match(/^ {2}\[사망\] (\S+) (압사|낙사|용암|접속 끊김) @ (\d+:\d+)(?:.*피해 (\d+)%)?/))) {
-      cur.deaths.push({ name: m[1], cause: CAUSES[m[2]], t: toSec(m[3]), damage: m[4] === undefined ? null : Number(m[4]) });
+    } else if ((m = line.match(/^ {2}\[사망\] (\S+) (압사|낙사|용암|접속 끊김) @ (\d+:\d+)(?:.*피해 (\d+)%)?(?:, 킬 (?:없음|(\S+) (\S+)))?/))) {
+      // 킬: 이름 = 그 사람, null = 킬 없음, undefined = 킬 기록이 없던 옛 로그
+      const killed = /, 킬 /.test(line);
+      cur.deaths.push({
+        name: m[1],
+        cause: CAUSES[m[2]],
+        t: toSec(m[3]),
+        damage: m[4] === undefined ? null : Number(m[4]),
+        killer: killed ? m[5] || null : undefined,
+        weapon: killed ? m[6] || null : undefined,
+      });
     } else if ((m = line.match(/^===== ROUND (\d+) 종료 \| 길이 (\d+:\d+) \| 승자: (.+) =====$/))) {
       if (Number(m[1]) === cur.n) {
         cur.len = toSec(m[2]);
@@ -102,7 +111,10 @@ export function parseLog(text) {
     const who = (name) => (isBot(name) ? name : r.conns.get(name)?.key || name);
     r.players = r.names.map((name) => ({ name, key: who(name), bot: isBot(name), aliases: [...(r.conns.get(name)?.aliases || [])] }));
     r.winnerKey = r.winner ? who(r.winner) : null;
-    for (const d of r.deaths) d.key = who(d.name);
+    for (const d of r.deaths) {
+      d.key = who(d.name);
+      d.killerKey = d.killer ? who(d.killer) : d.killer;
+    }
     r.useByKey = new Map([...r.use].map(([name, u]) => [who(name), u]));
   }
   return rounds;
@@ -161,7 +173,7 @@ export function summarize(rounds) {
   for (const r of rounds) {
     for (const p of r.players) {
       if (!players.has(p.key)) {
-        players.set(p.key, { key: p.key, bot: p.bot, aliases: new Set(), rounds: 0, wins: 0, crush: 0, fall: 0, lava: 0, disconnect: 0, survive: [], deathDamage: [] });
+        players.set(p.key, { key: p.key, bot: p.bot, aliases: new Set(), rounds: 0, wins: 0, kills: 0, crush: 0, fall: 0, lava: 0, disconnect: 0, survive: [], deathDamage: [] });
       }
       const s = players.get(p.key);
       for (const a of p.aliases) if (a !== p.key) s.aliases.add(a);
@@ -176,7 +188,17 @@ export function summarize(rounds) {
         s.survive.push(r.len);
       }
     }
+    for (const d of r.deaths) if (d.killerKey && players.has(d.killerKey)) players.get(d.killerKey).kills++;
   }
+
+  // 무엇이 판을 끝내나: 킬을 낸 공격 종류 (킬 기록이 있는 사망만)
+  const withKill = deaths.filter((d) => d.killer !== undefined && d.cause !== 'disconnect');
+  const byWeapon = new Map();
+  for (const d of withKill) {
+    const k = d.weapon || '(킬 없음)';
+    byWeapon.set(k, (byWeapon.get(k) || 0) + 1);
+  }
+  const weapons = { total: withKill.length, rows: [...byWeapon].sort((a, b) => b[1] - a[1]) };
 
   // 낙사 때 피해 % 분포: 몇 % 에서 날아가 죽나 (넉백 세기 조정 근거)
   const buckets = [0, 50, 100, 150, 200];
@@ -210,6 +232,7 @@ export function summarize(rounds) {
     byMap: group((r) => r.map),
     players: [...players.values()].sort((a, b) => a.bot - b.bot || b.wins - a.wins),
     fallDamage,
+    weapons,
     items,
   };
 }
@@ -238,12 +261,13 @@ export function formatReport(s) {
     '',
     '== 플레이어별 ==',
     table(
-      ['이름', '판', '승', '승률', '압사', '낙사', '용암', '버틴 시간 중앙값', '죽을 때 피해 % 중앙값'],
+      ['이름', '판', '승', '승률', '킬', '압사', '낙사', '용암', '버틴 시간 중앙값', '죽을 때 피해 % 중앙값'],
       s.players.map((p) => [
         p.aliases.size ? `${p.key} (=${[...p.aliases].join(', ')})` : p.key,
         p.rounds,
         p.wins,
         pct(p.wins, p.rounds),
+        p.kills,
         p.crush,
         p.fall,
         p.lava,
@@ -252,6 +276,9 @@ export function formatReport(s) {
       ]),
     ),
   );
+  out.push('', '== 킬을 낸 공격 ==');
+  if (s.weapons.total) out.push(table(['공격', '사망', '비율'], s.weapons.rows.map(([k, n]) => [k, n, pct(n, s.weapons.total)])));
+  else out.push('기록 없음 (킬 기록이 없던 옛 로그)');
   out.push('', '== 낙사할 때 피해 % ==');
   if (s.fallDamage.some((b) => b.n)) out.push(table(s.fallDamage.map((b) => b.label), [s.fallDamage.map((b) => b.n)]));
   else out.push('기록 없음 (피해 % 가 없던 옛 로그거나 낙사가 없음)');

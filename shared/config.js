@@ -206,5 +206,7 @@ export const CONFIG = {
   COOLDOWN_FLASH_MS: 250, // 조준점 둘레 쿨 원이 다 차면 번쩍이는 시간
   WIN_BANNER_MS: 2500, // 판이 끝나면 "P2 승리!" 큰 글씨 표시 시간
   TOAST_MS: 2200, // 화면 알림이 떠 있는 시간
+  KILLFEED_MS: 6000, // 오른쪽 위 킬 알림이 떠 있는 시간
+  KILLFEED_MAX: 5, // 킬 알림 최대 줄 수
   INPUT_SEND_RATE: 30, // 입력 전송 Hz
 };

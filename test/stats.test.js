@@ -17,17 +17,21 @@ function botGames(rounds) {
   g.addBot();
   g.addBot();
   g.setSpectator(human.id, true); // 사람은 관전 (봇끼리만 싸움). 참가자 목록에서 빠지는지도 봄
+  let kills = 0;
+  let deaths = 0;
   for (let r = 0; r < rounds; r++) {
     g.startRound();
     const t0 = g.time;
     while (g.phase === 'playing' && g.time - t0 < 180000) g.tick(TICK);
     if (g.phase === 'playing') g.endRound(null);
+    kills += g.deaths.filter((d) => d.killer).length; // g.deaths 는 판마다 비워짐
+    deaths += g.deaths.length;
   }
-  return { g, text: lines.join('\n') };
+  return { g, text: lines.join('\n'), kills, deaths };
 }
 
 test('통계: 실제 게임 로그에서 판 수·승수·사망 원인이 서버 집계와 같다', () => {
-  const { g, text } = botGames(6);
+  const { g, text, kills: serverKills, deaths: serverDeaths } = botGames(6);
   const rounds = parseLog(text);
   assert.equal(rounds.length, 6);
   const s = summarize(rounds);
@@ -41,6 +45,11 @@ test('통계: 실제 게임 로그에서 판 수·승수·사망 원인이 서�
     assert.equal(row.rounds, 6);
   }
   assert.ok(!s.players.some((x) => x.key === '재혁'), '관전자는 참가자가 아님');
+  // 킬: 서버가 기록한 킬과 같다
+  const kills = s.players.reduce((n, p) => n + p.kills, 0);
+  assert.equal(kills, serverKills);
+  assert.equal(s.weapons.total, serverDeaths);
+  assert.ok(serverKills > 0, '봇끼리 6판이면 킬이 나옴');
   assert.deepEqual(s.byComp.map((x) => x.key), ['봇 2']);
   assert.ok(formatReport(s).includes('== 플레이어별 =='));
 });
