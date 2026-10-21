@@ -45,6 +45,32 @@ test('통계: 실제 게임 로그에서 판 수·승수·사망 원인이 서�
   assert.ok(formatReport(s).includes('== 플레이어별 =='));
 });
 
+test('통계: 자리 번호를 물려받은 다른 사람은 따로, 접속 중에 이름을 바꾼 사람은 하나로 센다', () => {
+  const text = [
+    'P1 접속 (slot 0) — 호스트',
+    'P1 이름: 재혁',
+    'P2 접속 (slot 1)',
+    '===== ROUND 1 시작 (2명: P1 P2, 맵 평지) =====',
+    '  [사망] P2 낙사 @ 0:20 (위치 1.0, 2.0, -4.0, 피해 30%)',
+    '===== ROUND 1 종료 | 길이 0:20 | 승자: P1 =====',
+    '[호스트] P2 내보냄',
+    'P2 접속 종료',
+    'P2 접속 (slot 1)', // 다른 사람이 같은 자리로
+    'P2 이름: 민수',
+    'P1 이름: 장난',
+    '===== ROUND 2 시작 (2명: P1 P2, 맵 평지) =====',
+    '  [사망] P1 압사 @ 0:10 (위치 1.0, 2.0, 0.0, 피해 0%)',
+    '===== ROUND 2 종료 | 길이 0:10 | 승자: P2 =====',
+  ].join('\n');
+  const s = summarize(parseLog(text));
+  const row = (k) => s.players.find((p) => p.key === k);
+  assert.equal(row('재혁').rounds, 2, '이름을 바꿔도 같은 접속이면 한 사람');
+  assert.deepEqual([...row('재혁').aliases], ['장난']);
+  assert.equal(row('민수').rounds, 1);
+  assert.equal(row('민수').wins, 1);
+  assert.equal(row('P2').rounds, 1, '나가기 전 P2 는 이름 없는 다른 사람');
+});
+
 test('통계: 이름으로 묶고, 접속 끊김은 요약 줄에서 받고, 옛 형식·끝나지 않은 판·CRLF 도 읽는다', () => {
   const text = [
     '[1시] P1 접속 (slot 0) — 호스트',

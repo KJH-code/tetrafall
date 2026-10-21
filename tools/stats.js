@@ -31,25 +31,34 @@ function median(xs) {
 const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : '-');
 
 // 로그 텍스트 → 끝난 판 목록. 서버가 판 중간에 꺼져 종료 줄이 없는 판은 버린다.
-// 사람은 P1·P2 대신 입력한 이름으로 묶는다 (이름이 없으면 P 번호. 파일이 여럿이면 P 번호는 서버 실행마다 다른 사람일 수 있음)
+// 사람은 P1·P2 대신 입력한 이름으로 묶는다. P 번호는 자리 번호라 나갔다 들어온 다른 사람도 같은 번호를 받으므로,
+// "접속" 줄마다 새 접속으로 보고 그 접속에서 처음 넣은 이름으로 묶는다 (판 중간에 이름을 바꿔도 한 사람).
+// 이름을 안 넣은 접속은 P 번호 (파일이 여럿이면 P 번호는 서버 실행마다 다른 사람일 수 있음)
 export function parseLog(text) {
   const rounds = [];
-  const nick = new Map(); // P1 → 재혁
+  const conns = new Map(); // P1 → { key: 처음 넣은 이름, aliases: 그 뒤에 바꾼 이름 }
+  const conn = (name) => {
+    if (!conns.has(name)) conns.set(name, { key: null, aliases: new Set() });
+    return conns.get(name);
+  };
   let cur = null;
   let last = null; // 방금 끝난 판: 종료 줄 다음의 "  사망:" 요약 줄을 받음
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.replace(/^\[[^\]]*\]\s?/, ''); // 앞의 [시각] 떼기
     let m;
-    if ((m = line.match(/^(P\d+) 이름: (.*)$/))) {
-      if (m[2] === '(없음)') nick.delete(m[1]);
-      else nick.set(m[1], m[2]);
+    if ((m = line.match(/^(P\d+(?:\(봇\))?) 접속 \(slot/))) {
+      conns.set(m[1], { key: null, aliases: new Set() });
+    } else if ((m = line.match(/^(P\d+) 이름: (.*)$/))) {
+      const c = conn(m[1]);
+      if (m[2] !== '(없음)' && !c.key) c.key = m[2];
+      else if (m[2] !== '(없음)' && m[2] !== c.key) c.aliases.add(m[2]);
     } else if ((m = line.match(/^===== ROUND (\d+) 시작 \((\d+)명(?:: (.*?))?, 맵 (.+)\) =====$/))) {
       last = null;
       cur = {
         n: Number(m[1]),
         size: Number(m[2]),
         map: m[4],
-        names: m[3] ? m[3].split(' ') : null, // 옛 로그엔 참가자 목록이 없음 → 사망자 + 승자로 채움
+        names: m[3] ? m[3].split(' ') : null, // 옛 로그엔 참가자 목록이 없음 → 끝날 때 사망자 + 승자로 채움
         deaths: [],
         winner: null,
         len: null,
@@ -60,7 +69,12 @@ export function parseLog(text) {
       // 접속 끊김은 [사망] 줄 없이 여기에만 나옴
       for (const part of m[1].split(', ')) {
         const d = part.match(/^(\S+) (압사|낙사|용암|접속 끊김)@(\d+:\d+)$/);
-        if (d && !last.deaths.some((x) => x.name === d[1])) last.deaths.push({ name: d[1], cause: CAUSES[d[2]], t: toSec(d[3]), damage: null });
+        if (!d || last.deaths.some((x) => x.name === d[1])) continue;
+        last.deaths.push({ name: d[1], cause: CAUSES[d[2]], t: toSec(d[3]), damage: null });
+        if (!last.conns.has(d[1])) {
+          last.names.push(d[1]);
+          last.conns.set(d[1], conn(d[1]));
+        }
       }
       last = null;
     } else if (!cur) {
@@ -71,7 +85,8 @@ export function parseLog(text) {
       if (Number(m[1]) === cur.n) {
         cur.len = toSec(m[2]);
         cur.winner = m[3] === '무승부' ? null : m[3];
-        cur.nicks = new Map(nick); // 이름은 판 사이에만 바뀌니 이 판의 이름
+        if (!cur.names) cur.names = [...new Set([...cur.deaths.map((d) => d.name), ...(cur.winner ? [cur.winner] : [])])];
+        cur.conns = new Map(cur.names.map((n) => [n, conn(n)])); // 이 판에 있던 접속 (이름은 나중에 넣어도 반영)
         rounds.push(cur);
         last = cur;
       }
@@ -82,11 +97,10 @@ export function parseLog(text) {
       countUse(cur, line);
     }
   }
-  // P 번호 → 이름 (사람만). 이름이 없으면 P 번호. 파일이 여럿이면 P 번호는 서버 실행마다 다른 사람일 수 있음
+  // P 번호 → 이름 (사람만)
   for (const r of rounds) {
-    const who = (name) => (isBot(name) ? name : r.nicks.get(name) || name);
-    if (!r.names) r.names = [...new Set([...r.deaths.map((d) => d.name), ...(r.winner ? [r.winner] : [])])];
-    r.players = r.names.map((name) => ({ name, key: who(name), bot: isBot(name) }));
+    const who = (name) => (isBot(name) ? name : r.conns.get(name)?.key || name);
+    r.players = r.names.map((name) => ({ name, key: who(name), bot: isBot(name), aliases: [...(r.conns.get(name)?.aliases || [])] }));
     r.winnerKey = r.winner ? who(r.winner) : null;
     for (const d of r.deaths) d.key = who(d.name);
     r.useByKey = new Map([...r.use].map(([name, u]) => [who(name), u]));
@@ -147,9 +161,10 @@ export function summarize(rounds) {
   for (const r of rounds) {
     for (const p of r.players) {
       if (!players.has(p.key)) {
-        players.set(p.key, { key: p.key, bot: p.bot, rounds: 0, wins: 0, crush: 0, fall: 0, lava: 0, disconnect: 0, survive: [], deathDamage: [] });
+        players.set(p.key, { key: p.key, bot: p.bot, aliases: new Set(), rounds: 0, wins: 0, crush: 0, fall: 0, lava: 0, disconnect: 0, survive: [], deathDamage: [] });
       }
       const s = players.get(p.key);
+      for (const a of p.aliases) if (a !== p.key) s.aliases.add(a);
       s.rounds++;
       if (r.winnerKey === p.key) s.wins++;
       const d = r.deaths.find((x) => x.key === p.key);
@@ -225,7 +240,7 @@ export function formatReport(s) {
     table(
       ['이름', '판', '승', '승률', '압사', '낙사', '용암', '버틴 시간 중앙값', '죽을 때 피해 % 중앙값'],
       s.players.map((p) => [
-        p.key,
+        p.aliases.size ? `${p.key} (=${[...p.aliases].join(', ')})` : p.key,
         p.rounds,
         p.wins,
         pct(p.wins, p.rounds),
