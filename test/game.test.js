@@ -1029,6 +1029,67 @@ test('망치: WEAPON_USES 번 동안 밀치기 대신 — 넉백 약 2배, 경�
   assert.ok(g.drainEvents().some((e) => e.type === 'swing' && e.kind === 'push'));
 });
 
+test('유령화: 압사 면역 — 떨어지는 블록이 통과하고, 끝나면 블록 위로 밀려 올라가 산다', () => {
+  const { g, p1, p2 } = setup();
+  Object.assign(p1, { x: 0.5, y: 0.5 });
+  Object.assign(p2, { x: 5.5, y: 5.5 });
+  g.givePower(p1, 'ghost');
+  fallingPiece(g, 'O', 0, 0, 0, 3, 50);
+  run(g, 1000);
+  assert.equal(p1.alive, true, '유령은 안 깔림');
+  assert.ok(g.columnTop(0, 0) >= 1, '블록은 그 자리에 착지');
+  run(g, C.GHOST_MS);
+  assert.equal(p1.alive, true);
+  assert.ok(p1.z >= g.columnTop(0, 0) - 1e-6, `끝나면 블록 위로 (z ${p1.z})`);
+});
+
+test('이속 증가: SPEED_MS 동안 걷는 속도 × SPEED_MULT, 끝나면 원래대로', () => {
+  const walk = (boost) => {
+    const { g, p1, p2 } = setup();
+    Object.assign(p1, { x: 1.5, y: 5.5 });
+    Object.assign(p2, { x: 8.5, y: 1.5 });
+    if (boost) g.givePower(p1, 'speed');
+    g.handleInput(1, { fwd: 1, strafe: 0, jump: false, yaw: 0, pitch: 0 });
+    run(g, 1000);
+    return { d: p1.x - 1.5, g, p1 };
+  };
+  const base = walk(false).d;
+  const { d, g, p1 } = walk(true);
+  assert.ok(Math.abs(d / base - C.SPEED_MULT) < 0.05, `${d.toFixed(2)} / ${base.toFixed(2)}`);
+  assert.ok(g.snapshot().players.find((p) => p.id === 1).speedLeft > 0);
+  g.handleInput(1, { fwd: 0, strafe: 0, jump: false, yaw: 0, pitch: 0 }); // 멈춰서 기다림 (계속 걸으면 필드 밖)
+  run(g, C.SPEED_MS);
+  Object.assign(p1, { x: 1.5, y: 5.5 });
+  g.handleInput(1, { fwd: 1, strafe: 0, jump: false, yaw: 0, pitch: 0 });
+  const x0 = p1.x;
+  run(g, 500);
+  assert.ok(Math.abs((p1.x - x0) / (base / 2) - 1) < 0.1, '끝나면 원래 속도');
+  assert.ok(C.ITEM_POOL.includes('speed'));
+});
+
+test('치명타: 떨어지면서 위에서 밀치기·망치를 맞히면 피해 % × CRIT_DAMAGE_MULT, 넉백 × CRIT_KB_MULT, 로그·이벤트에 표시', () => {
+  const hit = (z, vz, grounded, weapon = false) => {
+    const { g, p1, p2, lines } = setup();
+    if (weapon) g.givePower(p1, 'weapon');
+    Object.assign(p1, { x: 4.5, y: 5, z, vz, grounded, yaw: 0 });
+    Object.assign(p2, { x: 5.3, y: 5, z: 0 });
+    g.drainEvents();
+    g.handleAction(1, { name: 'push' });
+    const e = g.drainEvents().find((x) => x.type === 'hit');
+    return { dmg: p2.damage, kb: Math.hypot(p2.kbx, p2.kby), crit: e.crit, lines };
+  };
+  const normal = hit(0, 0, true);
+  const crit = hit(0.8, -3, false);
+  assert.equal(normal.crit, false);
+  assert.equal(crit.crit, true);
+  assert.equal(crit.dmg, Math.round(C.DAMAGE_GAIN.push * C.CRIT_DAMAGE_MULT));
+  assert.ok(Math.abs(crit.kb / normal.kb - C.CRIT_KB_MULT) < 1e-9);
+  assert.ok(crit.lines.some((l) => l.includes('넉백 치명타')), crit.lines.join('\n'));
+  assert.equal(hit(0.8, 3, false).crit, false, '올라가는 중엔 아님');
+  assert.equal(hit(0.1, -3, false).crit, false, '높이 차가 CRIT_MIN_HEIGHT 보다 작으면 아님');
+  assert.equal(hit(0.8, -3, false, true).dmg, Math.round(C.DAMAGE_GAIN.weapon * C.CRIT_DAMAGE_MULT), '망치도');
+});
+
 test('점프력 상승: 2칸 벽은 넘고 3칸 벽은 못 넘는다, 시간이 지나면 원래대로', () => {
   const { g, p1 } = setup();
   for (let y = 0; y < C.GRID_D; y++) {
@@ -1366,11 +1427,12 @@ test('봇: 용암 전에는 가만히 선 상대 발밑에 설치 블록을 던�
   }
 });
 
-test('봇: 설치 블록 조준 오차 때문에 가끔 빗나간다 (30번 중 한 번 이상 빗나가고 10번 이상은 맞힘)', () => {
-  // 실측 (BOT_BRICK_AIM_ERROR 1.2, 200번): 오차 0 이면 200/200, 1.2 면 136/200 압사
+test('봇: 설치 블록 조준 오차 때문에 가끔 빗나간다 (30번 중 한 번 이상 빗나가고 5번 이상은 맞힘)', () => {
+  // 실측 (BOT_BRICK_AIM_ERROR 1.2): 처음 136/200 (68%) → 2026-10-21 600번 재측정 55% (4306b79 때 이미 57%).
+  // 55% 에서 30번 중 10번 미만은 약 0.5% 로 가끔 실패해서 기준을 5번으로 (우연히 실패 약 5e-6, 30/30 은 약 2e-8)
   let hit = 0;
   for (let k = 0; k < 30; k++) if (brickDuel().human.deathCause === 'crush') hit++;
-  assert.ok(hit < 30 && hit >= 10, `30번 중 ${hit}번 압사`);
+  assert.ok(hit < 30 && hit >= 5, `30번 중 ${hit}번 압사`);
 });
 
 test('승수: 이긴 사람 승수가 쌓이고 스냅샷·로그에 나온다, 무승부는 안 셈', () => {

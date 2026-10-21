@@ -30,6 +30,7 @@
     .toast { font-size: 18px; padding: 6px 14px; border-radius: 6px; background: rgba(0,0,0,.7); white-space: pre; transition: opacity .4s; }
     .toast.me { background: rgba(200,60,20,.9); font-weight: bold; }
     .toast.good { background: rgba(20,140,60,.9); }
+    .toast.crit { background: rgba(230,170,0,.95); color: #000; font-weight: 900; font-size: 22px; }
     #center .keys { white-space: normal; font-size: 14px; text-align: left; margin-top: 10px; line-height: 1.5; color: #ddd; }
     #spec { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); text-align: center; font-size: 17px; background: rgba(0,0,0,.6); padding: 8px 16px; border-radius: 8px; white-space: pre; pointer-events: none; }
     #killfeed { position: absolute; top: 74px; right: 10px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; pointer-events: none; }
@@ -124,7 +125,8 @@
         맞을수록 머리 위 <b>피해 %</b> 가 쌓이고 더 멀리 날아감 (대난투식)<br />
         하늘색 = 조종권: 먹는 즉시 블록을 하늘에서 조종<br />
         &nbsp;&nbsp;방향키 이동 · Q/E 회전 · <b>Enter 낙하</b> (8초 안에)<br />
-        아이템: 주황 = 망치 (3번 세게 밀기) · 초록 = 점프력 상승 (2칸 벽) · 흰 고리 = 유령화 (블록 통과)<br />
+        아이템: 주황 = 망치 (3번 세게 밀기) · 초록 = 점프력 상승 (2칸 벽) · 흰 고리 = 유령화 (블록 통과, 안 깔림) · 노랑 번개 = 이속 증가<br />
+        공중에서 떨어지면서 위에서 밀치기·망치를 맞히면 <b>치명타</b> (피해 ×<span id="crit-dmg"></span>, 더 멀리)<br />
         상대를 블록에 깔리게(압사) 하거나 밖으로 떨어뜨리면(낙사) 승리. 블록이 쌓이면 용암이 올라온다 — 위로!
       </div>
     </div>

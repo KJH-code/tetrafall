@@ -104,13 +104,14 @@ function escapeHtml(s) {
 }
 
 const KIND_KO = { push: '밀치기', projectile: '투사체', weapon: '망치', shock: '설치 블록 충격파', bomb: '폭탄' };
-const ITEM_KO = { control: '조종권', knockback: '투사체', weapon: '망치', jump: '점프력 상승', ghost: '유령화', brick: '설치 블록', bomb: '폭탄' };
+const ITEM_KO = { control: '조종권', knockback: '투사체', weapon: '망치', jump: '점프력 상승', ghost: '유령화', brick: '설치 블록', bomb: '폭탄', speed: '이속 증가' };
 const ITEM_HELP = {
   control: '조종권 획득! 블록을 하늘에서 조종합니다',
   knockback: '투사체 획득! (2번 칸) 우클릭으로 발사',
   weapon: `망치 획득! ${C.WEAPON_USES}번 동안 좌클릭이 2배로 밀고 오래 기절시킴`,
   jump: `점프력 상승! ${C.JUMP_BOOST_MS / 1000}초 동안 2칸 벽도 넘음`,
-  ghost: `유령화! ${C.GHOST_MS / 1000}초 동안 블록 통과 (떨어지는 블록엔 깔림)`,
+  ghost: `유령화! ${C.GHOST_MS / 1000}초 동안 블록 통과, 떨어지는 블록에도 안 깔림`,
+  speed: `이속 증가! ${C.SPEED_MS / 1000}초 동안 ${C.SPEED_MULT}배 빠르게`,
   brick: `설치 블록 1×2 ${C.BRICK_USES}개! (2번 칸) 우클릭으로 조준한 곳(최대 ${C.BRICK_RANGE}칸)에 떨어뜨림 · 깔리면 압사, 옆은 충격파 · Q/E 로 앞↔옆`,
   bomb: `폭탄! (3번 칸) 우클릭으로 던지면 ${C.BOMB_FUSE_MS / 1000}초 뒤 터져 블록을 부수고 근처 사람을 날림`,
 };
@@ -148,10 +149,11 @@ function handleEvent(e) {
       if (e.target === myId) {
         if (e.ok) {
           flashScreen('rgba(255,210,0,.45)');
-          toast(`${nameOf(e.by)}의 ${KIND_KO[e.kind]}에 맞음!`, 'me');
+          toast(`${nameOf(e.by)}의 ${KIND_KO[e.kind]}에 맞음!${e.crit ? ' (치명타)' : ''}`, 'me');
         }
       } else if (e.by === myId) {
-        toast(e.ok ? `${KIND_KO[e.kind]} 명중!` : `${KIND_KO[e.kind]} 명중했지만 상대가 경직 중이라 무효`, e.ok ? 'good' : '');
+        if (e.crit) toast(`치명타! ${KIND_KO[e.kind]}`, 'crit');
+        else toast(e.ok ? `${KIND_KO[e.kind]} 명중!` : `${KIND_KO[e.kind]} 명중했지만 상대가 경직 중이라 무효`, e.ok ? 'good' : '');
       }
       break;
     case 'pickup':
@@ -211,7 +213,13 @@ function feelEvent(e) {
         const len = Math.hypot(dx, dy) || 1;
         dir = { x: dx / len, y: dy / len };
       }
-      const heavy = e.kind === 'weapon';
+      const heavy = e.kind === 'weapon' || e.crit;
+      if (e.crit) {
+        // 치명타: 금색 파편 한 겹 + 큰 고리 + 전용 소리
+        fx.burst(chest, dir, 0xffd030, C.FX_PARTICLES * 2, 8, 0.12, 0.6);
+        fx.ring(chest, 0xffd030, 4.2);
+        sound.play('crit', { dist: e.by === myId || e.target === myId ? 0 : distToMe(t.x, t.y, t.z) });
+      }
       fx.burst(chest, dir, e.kind === 'projectile' ? 0xffee40 : heavy ? 0xffa040 : 0xfff2c0, heavy ? C.FX_PARTICLES * 2 : C.FX_PARTICLES, heavy ? 7 : 5);
       fx.ring(chest, e.kind === 'projectile' ? 0xffee40 : heavy ? 0xff8a10 : 0xffffff, heavy ? 3.4 : 2.4);
       fx.hitSquash(e.target);
@@ -708,6 +716,7 @@ function updateHostPlayers(show) {
 
 // ---------- 화면 아래: 피해 % · 경직 · 버프 · 핫바 ----------
 $('build-n').textContent = C.BUILD_BLOCKS_PER_ROUND; // 조작법 패널 숫자는 config 에서
+$('crit-dmg').textContent = C.CRIT_DAMAGE_MULT;
 const bottomEl = $('bottom');
 const damageEl = $('damage');
 const buffsEl = $('buffs');
@@ -735,6 +744,7 @@ function updateBottom(p) {
   const buffs = [];
   if (p.weaponUses > 0) buffs.push(`망치 ${p.weaponUses}회`);
   if (p.jumpLeft > 0) buffs.push(`점프↑ ${(p.jumpLeft / 1000).toFixed(1)}s`);
+  if (p.speedLeft > 0) buffs.push(`이속↑ ${(p.speedLeft / 1000).toFixed(1)}s`);
   if (p.ghostLeft > 0) buffs.push(`유령 ${(p.ghostLeft / 1000).toFixed(1)}s`);
   const slots = [
     p.blocks > 0 ? `쌓기 ×${p.blocks}` : '쌓기 —',

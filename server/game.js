@@ -141,6 +141,7 @@ export class Game {
       weaponUses: 0, // 망치 남은 횟수
       jumpUntil: 0, // 점프력 상승 끝나는 시각
       ghostUntil: 0, // 유령화 끝나는 시각
+      speedUntil: 0, // 이속 증가 끝나는 시각
       spectator: false, // 호스트가 관전으로 돌린 사람: 판에 안 들어가고 통계·승수 표시에서 빠짐
       nick: '', // 대기 화면에서 넣은 이름 (머리 위 표시용. 로그·승수는 name = P1 그대로)
       hand: 1, // 핫바에서 고른 칸. 1 쌓기 블록 · 2 던지는 아이템 · 3 폭탄
@@ -318,6 +319,7 @@ export class Game {
         weaponUses: 0,
         jumpUntil: 0,
         ghostUntil: 0,
+        speedUntil: 0,
         hand: 1,
         blocks: C.BUILD_BLOCKS_PER_ROUND,
         bombs: 0,
@@ -507,6 +509,7 @@ export class Game {
     const up = weapon ? C.WEAPON_KB_UP : C.PUSH_KB_UP;
     const stun = weapon ? C.WEAPON_STUN_MS : C.STUN_MS;
     this.emit({ type: 'swing', who: p.id, kind });
+    const falling = !p.grounded && p.vz < 0; // 치명타: 떨어지면서 때림 (높이 조건은 상대마다)
     const fx = Math.cos(p.yaw);
     const fy = Math.sin(p.yaw);
     const cosHalf = Math.cos((C.PUSH_HALF_ANGLE_DEG * Math.PI) / 180);
@@ -518,14 +521,20 @@ export class Game {
       if (dist > C.PUSH_RANGE) continue;
       if (Math.abs(t.z - p.z) > C.PLAYER_HEIGHT) continue;
       if (dist > EPS && (dx * fx + dy * fy) / dist < cosHalf) continue;
-      const hit = this.applyKnockback(t, fx, fy, speed, up, stun, C.DAMAGE_GAIN[kind], { by: p.id, kind });
-      if (hit) p.freezeUntil = this.time + C.HITSTOP_MS; // 때린 쪽도 같이 멈칫
+      const crit = falling && p.z - t.z >= C.CRIT_MIN_HEIGHT;
+      const gain = crit ? Math.round(C.DAMAGE_GAIN[kind] * C.CRIT_DAMAGE_MULT) : C.DAMAGE_GAIN[kind];
+      const hit = this.applyKnockback(t, fx, fy, crit ? speed * C.CRIT_KB_MULT : speed, up, stun, gain, { by: p.id, kind });
+      const stop = crit ? C.HITSTOP_MS * C.CRIT_HITSTOP_MULT : C.HITSTOP_MS;
+      if (hit) {
+        p.freezeUntil = this.time + stop; // 때린 쪽도 같이 멈칫
+        t.freezeUntil = this.time + stop;
+      }
       if (hit && weapon && !landed) {
         landed = true;
         p.weaponUses--; // 한 번 휘둘러 여럿 맞혀도 1회
       }
-      this.emit({ type: 'hit', kind, by: p.id, target: t.id, ok: hit });
-      this.log(`  [${weapon ? '망치' : '밀치기'}] ${p.name} → ${t.name} ${hit ? `넉백 (${t.name} ${t.damage}%)` : '경직 중이라 무시'}${weapon ? ` (남은 ${p.weaponUses}회)` : ''}`);
+      this.emit({ type: 'hit', kind, by: p.id, target: t.id, ok: hit, crit: hit && crit });
+      this.log(`  [${weapon ? '망치' : '밀치기'}] ${p.name} → ${t.name} ${hit ? `넉백${crit ? ' 치명타' : ''} (${t.name} ${t.damage}%)` : '경직 중이라 무시'}${weapon ? ` (남은 ${p.weaponUses}회)` : ''}`);
     }
   }
 
@@ -1129,7 +1138,7 @@ export class Game {
   crushCheck(piece = this.piece) {
     const cells = this.pieceWorldCells(piece);
     for (const p of this.players.values()) {
-      if (!p.alive) continue;
+      if (!p.alive || this.isGhost(p)) continue; // 유령은 블록이 통과 (압사 면역)
       for (const [cx, cy, cz] of cells) {
         if (
           cx < p.x + C.PLAYER_HALF - EPS &&
@@ -1328,6 +1337,9 @@ export class Game {
       p.bombs = C.BOMB_USES;
       p.hand = 3;
       this.log(`  [아이템] ${p.name} 폭탄 획득`);
+    } else if (type === 'speed') {
+      p.speedUntil = this.time + C.SPEED_MS;
+      this.log(`  [아이템] ${p.name} 이속 증가 획득`);
     }
   }
 
@@ -1413,8 +1425,9 @@ export class Game {
     if (!stunned) {
       const mv = this.moveDir(p);
       if (mv) {
-        ix = mv.x * C.MOVE_SPEED;
-        iy = mv.y * C.MOVE_SPEED;
+        const speed = C.MOVE_SPEED * (this.time < p.speedUntil ? C.SPEED_MULT : 1);
+        ix = mv.x * speed;
+        iy = mv.y * speed;
       }
       if (p.input.jump && p.grounded) {
         p.vz = this.time < p.jumpUntil ? C.JUMP_BOOST_SPEED : C.JUMP_SPEED;
@@ -1592,6 +1605,7 @@ export class Game {
         weaponUses: p.weaponUses,
         jumpLeft: Math.max(0, p.jumpUntil - this.time),
         ghostLeft: Math.max(0, p.ghostUntil - this.time),
+        speedLeft: Math.max(0, p.speedUntil - this.time),
         hand: p.hand,
         blocks: p.blocks,
         bombs: p.bombs,

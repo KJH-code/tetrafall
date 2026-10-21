@@ -78,6 +78,11 @@ export class Sound {
         this.noise({ dur: 0.16, vol: (strong ? 0.6 : 0.35) * v, freq: 2600, freqEnd: 300 });
         this.tone({ freq: 1100, freqEnd: 300, dur: 0.05, type: 'triangle', vol: 0.25 * v });
         break;
+      case 'crit': // 치명타: 높은 금속성 딩 두 번 + 쩍
+        this.tone({ freq: 1500, freqEnd: 900, dur: 0.12, type: 'square', vol: 0.3 * v });
+        this.tone({ freq: 2200, freqEnd: 1600, dur: 0.18, type: 'triangle', vol: 0.3 * v, delay: 0.06 });
+        this.noise({ dur: 0.12, vol: 0.5 * v, filter: 'highpass', freq: 3000 });
+        break;
       case 'hurt': // 내가 맞음: 낮고 묵직하게
         this.tone({ freq: 140, freqEnd: 40, dur: 0.28, type: 'sine', vol: 0.8 });
         this.noise({ dur: 0.22, vol: 0.5, freq: 900, freqEnd: 150 });

@@ -124,11 +124,12 @@ export function parseLog(text) {
 function countUse(r, line) {
   const u = (name) => {
     if (!r.use.has(name)) {
-      r.use.set(name, { build: 0, bombs: 0, bombHits: 0, bricks: 0, crushes: 0, shocks: 0, shots: 0, shotHits: 0, hammerHits: 0 });
+      r.use.set(name, { build: 0, bombs: 0, bombHits: 0, bricks: 0, crushes: 0, shocks: 0, shots: 0, shotHits: 0, hammerHits: 0, crits: 0 });
     }
     return r.use.get(name);
   };
   let m;
+  if ((m = line.match(/^ {2}\[(?:밀치기|망치)\] (\S+) → \S+ 넉백 치명타/))) u(m[1]).crits++; // 아래 망치 명중으로도 셈
   if ((m = line.match(/^ {2}\[쌓기\] (\S+) →/))) u(m[1]).build++;
   else if ((m = line.match(/^ {2}\[폭탄\] (\S+) → \(/))) u(m[1]).bombs++;
   else if ((m = line.match(/^ {2}\[폭탄\] (\S+) → \S+ 넉백/))) u(m[1]).bombHits++;
@@ -210,14 +211,14 @@ export function summarize(rounds) {
   }));
 
   // 아이템: 사람만 (봇은 쓰는 규칙이 코드에 정해져 있어 의미가 다름)
-  const items = { humanRounds: 0, build: 0, buildAll: 0, bombs: 0, bombHits: 0, bricks: 0, crushes: 0, shocks: 0, shots: 0, shotHits: 0, hammerHits: 0 };
+  const items = { humanRounds: 0, build: 0, buildAll: 0, bombs: 0, bombHits: 0, bricks: 0, crushes: 0, shocks: 0, shots: 0, shotHits: 0, hammerHits: 0, crits: 0 };
   for (const r of rounds) {
     for (const p of r.players) {
       if (p.bot) continue;
       items.humanRounds++;
       const u = r.useByKey.get(p.key);
       if (!u) continue;
-      for (const k of ['build', 'bombs', 'bombHits', 'bricks', 'crushes', 'shocks', 'shots', 'shotHits', 'hammerHits']) items[k] += u[k];
+      for (const k of ['build', 'bombs', 'bombHits', 'bricks', 'crushes', 'shocks', 'shots', 'shotHits', 'hammerHits', 'crits']) items[k] += u[k] || 0;
       if (u.build >= C.BUILD_BLOCKS_PER_ROUND) items.buildAll++;
     }
   }
@@ -297,6 +298,7 @@ export function formatReport(s) {
         ['설치 블록 1×2', it.bricks, per(it.bricks), `깔림 ${it.crushes} · 충격파 ${it.shocks}`],
         ['투사체', it.shots, per(it.shots), `${it.shotHits}번`],
         ['망치', '-', '-', `${it.hammerHits}번`],
+        ['치명타 (밀치기·망치)', it.crits, per(it.crits), '-'],
       ],
     ),
   );

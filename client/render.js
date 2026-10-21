@@ -16,7 +16,19 @@ const ITEM_LOOK = {
   ghost: { color: 0xe8e8ff, geo: () => new THREE.TorusGeometry(0.2, 0.07, 8, 18) }, // 흰 고리
   brick: { color: 0xf0d060, geo: () => new THREE.BoxGeometry(0.32, 0.32, 0.32) }, // 노란 작은 블록
   bomb: { color: 0x222222, geo: () => new THREE.SphereGeometry(0.22, 14, 10) }, // 검은 공
+  speed: { color: 0xffe020, geo: () => boltGeometry() }, // 노란 번개
 };
+
+// 번개 모양 (이속 증가 아이템): 지그재그 판을 조금 두껍게
+function boltGeometry() {
+  const sh = new THREE.Shape();
+  [[0.06, 0.3], [-0.12, 0.02], [0.02, 0.02], [-0.06, -0.3], [0.14, -0.02], [0.0, -0.02]].forEach(([x, y], i) => (i ? sh.lineTo(x, y) : sh.moveTo(x, y)));
+  sh.closePath();
+  const g = new THREE.ExtrudeGeometry(sh, { depth: 0.08, bevelEnabled: false });
+  g.translate(0, 0, -0.04);
+  g.rotateX(Math.PI / 2); // 세워서 (z 가 위)
+  return g;
+}
 
 // 고른 핫바 칸에 든 것: 'block' | 'brick' | 'ball'(투사체) | 'bomb' | null
 export function heldKind(p) {
@@ -410,6 +422,10 @@ export class Renderer {
       g.position.set(s.x, s.y, s.z);
       g.rotation.z = p.yaw;
       this.animate(g, s, p, dt);
+      // 이속 증가 중 달리면 발밑에 노란 잔상
+      if (p.speedLeft > 0 && g.userData.anim.hs > 1 && Math.random() < dt * C.SPEED_TRAIL_RATE) {
+        this.effects.burst({ x: s.x, y: s.y, z: s.z + 0.15 }, null, 0xffe020, 3, 1.2, 0.07, 0.35);
+      }
       g.visible = p.alive && !(p.id === myId && view === 'fps' && this.skyBlend === 0);
       const bodyMat = g.userData.bodyMat;
       // 경직 중엔 흰색으로 빠르게 깜빡임

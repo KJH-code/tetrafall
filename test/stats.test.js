@@ -90,6 +90,7 @@ test('통계: 이름으로 묶고, 접속 끊김은 요약 줄에서 받고, 옛
     '[1시]   [쌓기] P1 → (1,2,1) (남은 4개)',
     '[1시]   [폭탄] P1 → (3,3) z=1 설치, 1.5초 뒤 폭발',
     '[1시]   [폭탄] P1 → P2 넉백 (P2 40%)',
+    '[1시]   [밀치기] P1 → P2 넉백 치명타 (P2 55%)',
     '[1시]   [사망] P3(봇) 낙사 @ 0:10 (위치 1.0, 2.0, -4.0, 피해 120%, 킬 P1 조종블록)',
     '[1시] P2 접속 종료',
     '[1시] ===== ROUND 1 종료 | 길이 0:12 | 승자: P1 =====',
@@ -117,6 +118,7 @@ test('통계: 이름으로 묶고, 접속 끊김은 요약 줄에서 받고, 옛
   assert.equal(s.items.build, 1);
   assert.equal(s.items.bombs, 1);
   assert.equal(s.items.bombHits, 1);
+  assert.equal(s.items.crits, 1);
   assert.equal(s.byComp.find((c) => c.key === '사람 2 + 봇 1').rounds, 1);
   assert.deepEqual(s.weapons.rows, [['조종블록', 1]], '공격 이름에 괄호가 안 붙음 (옛 형식·접속 끊김 사망은 표에서 빠짐)');
   assert.equal(s.players.find((p) => p.key === '재혁').kills, 1);

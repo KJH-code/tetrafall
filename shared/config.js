@@ -69,7 +69,7 @@ export const CONFIG = {
 
   // ---- 아이템 (조종권 제외) — 2단계 ----
   // 필드에 동시에 ITEM_MAX_ON_FIELD 개까지. 종류는 ITEM_POOL 에서 무작위
-  ITEM_POOL: ['knockback', 'weapon', 'jump', 'ghost', 'brick', 'bomb'],
+  ITEM_POOL: ['knockback', 'weapon', 'jump', 'ghost', 'brick', 'bomb', 'speed'],
   ITEM_MAX_ON_FIELD: 2,
   ITEM_FIRST_SPAWN_MS: 4000, // 판 시작 후 첫 아이템
   ITEM_RESPAWN_MS: 6000, // 다음 아이템까지
@@ -82,8 +82,13 @@ export const CONFIG = {
   JUMP_BOOST_MS: 8000,
   JUMP_BOOST_SPEED: 10,
   // 유령화: 블록을 옆으로 통과, 점프하면 머리 위 블록을 뚫고 올라가 그 위에 섬, 아래로는 안 빠짐 (한쪽 통과 발판).
-  // 압사는 그대로 당함. 끝날 때 블록 안이면 그 기둥 꼭대기로 밀려 올라감
+  // 압사도 면역 (2026-10-21 재혁: 떨어지는 블록이 그냥 통과). 끝날 때 블록 안이면 그 기둥 꼭대기로 밀려 올라감.
+  // 낙사·용암은 그대로 죽음
   GHOST_MS: 6000,
+  // 이속 증가 (노란 번개): SPEED_MS 동안 걷는 속도 × SPEED_MULT (대시는 그대로)
+  SPEED_MS: 6000,
+  SPEED_MULT: 1.4,
+  SPEED_TRAIL_RATE: 14, // 이속 증가 중 달릴 때 발밑 잔상이 생기는 빈도 (초당)
   // 핫바 (2026-10-20): 1 쌓기 블록 · 2 던지는 아이템(투사체 또는 설치 블록) · 3 폭탄. 숫자키·마우스 휠로 고르고 우클릭으로 씀.
   // 아이템을 먹으면 그 칸으로 자동 전환. 좌클릭은 칸과 상관없이 밀치기(망치)
   // 쌓기 블록 (마크식): 조준한 블록 면(옆면 포함)에 1×1 을 바로 붙임. 사람이 있는 칸엔 못 놓음
@@ -138,6 +143,12 @@ export const CONFIG = {
 
   // ---- 경직 ----
   STUN_MS: 500, // 넉백 맞으면 이 동안 조작 불가 + 추가 넉백 무시
+  // 치명타 (2026-10-21 재혁): 밀치기·망치를 공중에서 떨어지는 중에, 발이 상대보다 CRIT_MIN_HEIGHT 이상 높을 때 맞히면
+  // 피해 % × CRIT_DAMAGE_MULT, 수평 넉백 × CRIT_KB_MULT, 멈칫 × CRIT_HITSTOP_MULT (마리오 밟기 느낌, 타이밍 실력)
+  CRIT_MIN_HEIGHT: 0.3,
+  CRIT_DAMAGE_MULT: 1.5,
+  CRIT_KB_MULT: 1.25,
+  CRIT_HITSTOP_MULT: 2,
   HITSTOP_MS: 90, // 2단계 타격감: 명중 순간 때린 쪽·맞은 쪽이 멈칫하는 시간 (그 뒤 날아감)
 
   // ---- 플레이어 물리 ----
