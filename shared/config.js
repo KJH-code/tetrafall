@@ -110,6 +110,7 @@ export const CONFIG = {
   BRICK_SHOCK_KB_SPEED: 8.4, // 망치와 같은 세기
   BRICK_SHOCK_KB_UP: 4,
   BRICK_SHOCK_STUN_MS: 1200,
+  BRICK_SHOCK_HEIGHT: 1.5, // 충격파가 닿는 높이 차 (착지 높이와 발 높이 차, 칸)
 
   // ---- 피해 % (대난투식, 2026-10-20) ----
   // 맞을 때마다 공격 종류별로 쌓이고 판 내내 안 줄어든다. 수평 넉백 = 기본 × (DAMAGE_KB_BASE + 피해% × DAMAGE_KB_PER_PERCENT).
@@ -165,7 +166,7 @@ export const CONFIG = {
   LAVA_RISE_MS_PER_CELL: 16000,
 
   // ---- 맵 (2단계 D) ----
-  MAP_DEFAULT: 'random', // 서버 켤 때 맵 선택: 'random' | 'flat' | 'pyramid' | 'stairs'. 호스트가 대기 화면에서 바꿀 수 있음
+  MAP_DEFAULT: 'random', // 서버 켤 때 맵 선택: 'random' 또는 server/maps.js 의 MAP_IDS (flat·pyramid·stairs·bowl·spiral·pillars·fortress). 호스트가 대기 화면에서 바꿀 수 있음
 
   // ---- 판 ----
   PASS_CRUSH_SHARE: 0.5, // 1단계 합격선: 누적 사망 중 압사 비율. 판 종료 로그에 표시. 2026-10-20 재정의
@@ -181,6 +182,9 @@ export const CONFIG = {
   BOT_TARGET_JITTER: 1, // 상대 고를 때 판마다 상대별로 0~이 값(칸)을 거리에 더함. 동점일 때 늘 같은 상대(사람)만 노리지 않게
   BOT_PUSH_INTERVAL_MS: 1500, // 봇이 밀치기 사이에 두는 간격 (×0.7~1.3 무작위). 낮을수록 공격적
   BOT_BRICK_AIM_ERROR: 1.2, // 설치 블록 던질 때 조준점을 상대 발밑에서 이 반경(칸) 안 무작위로 빗나감 (없으면 거의 다 맞힘)
+  BOT_BOMB_DANGER_PAD: 0.5, // 봇이 피하는 폭탄 범위 = BOMB_BLAST_RANGE + 이만큼 (칸 중심 거리 기준이라 여유)
+  BOT_BRICK_STEP_PITCH: -1.3, // 발판 던질 때 시선 각도: 거의 발밑을 보면 BRICK_MIN_DIST 앞 칸에 바로 닿음
+  BOT_BUILD_STEP_PITCH: -1.0, // 쌓기 발판 놓을 때 시선 각도: 눈높이에서 바로 앞 칸 바닥(발 높이)에 닿음
   BOT_LAVA_MARGIN: 1.5, // 용암이 켜지면 표면에서 이 높이(칸) 안의 낮은 칸으로는 내려가지 않음 (1.5칸 = 24초)
 
   // ---- 타격감 (클라이언트, 2단계) ----
@@ -194,6 +198,7 @@ export const CONFIG = {
 
   // ---- 클라이언트 ----
   MOUSE_SENSITIVITY: 0.0022,
+  WHEEL_STEP_MS: 120, // 마우스 휠로 핫바 한 칸 넘기는 최소 간격 (터치패드가 한 번에 여러 번 보내서)
   SKY_CAMERA_HEIGHT: GRID_H + 14, // 하늘 시점 카메라 높이 (필드 중심 위)
   SKY_TRANSITION_MS: 700, // 1인칭 ↔ 하늘 시점 전환 애니메이션 길이
   NAME_MAX_LEN: 8, // 대기 화면에서 넣는 이름 (머리 위 표시)

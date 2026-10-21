@@ -221,6 +221,7 @@ test('넉백 아이템 + 투사체: 맞으면 넉백, 탄 소모', () => {
   run(g, 500);
   assert.equal(g.projectiles.length, 0);
   assert.ok(p2.kbx > 0 && p2.stunUntil > 0, '투사체 맞고 넉백');
+  assert.equal(p2.damage, C.DAMAGE_GAIN.projectile, '투사체 피해 %');
 });
 
 test('아이템 스폰·획득', () => {
@@ -908,6 +909,7 @@ test('망치: WEAPON_USES 번 동안 밀치기 대신 — 넉백 약 2배, 경�
   g.handleAction(1, { name: 'push' });
   assert.equal(p1.weaponUses, C.WEAPON_USES - 1);
   assert.equal(p2.stunUntil, g.time + C.WEAPON_STUN_MS);
+  assert.equal(p2.damage, C.DAMAGE_GAIN.weapon, '망치 피해 %');
   assert.ok(g.drainEvents().some((e) => e.type === 'hit' && e.kind === 'weapon' && e.ok));
   run(g, 2000);
   const d = p2.x - 3.5;
@@ -1164,6 +1166,9 @@ test('설치 블록: 밑에 있으면 압사, 착지한 칸 바로 옆이면 충
   p3.alive = true;
   Object.assign(p2, { x: 4.5, y: 5.5, z: 0 }); // 떨어질 칸 (4,5) 밑
   Object.assign(p3, { x: 6.5, y: 5.5, z: 0 }); // (5,5) 바로 옆
+  g.addPlayer(4);
+  const p4 = g.players.get(4);
+  Object.assign(p4, { x: 7.6, y: 5.5, z: 0, alive: true }); // 블록 가장자리(x=6)에서 1.3칸: BRICK_SHOCK_RANGE 밖
   g.handleAction(1, { name: 'fire' });
   run(g, C.BRICK_FALL_STEP_MS * (C.BRICK_DROP_HEIGHT + 1));
   assert.equal(p2.deathCause, 'crush');
@@ -1171,7 +1176,8 @@ test('설치 블록: 밑에 있으면 압사, 착지한 칸 바로 옆이면 충
   assert.equal(p3.alive, true);
   assert.equal(p3.damage, C.DAMAGE_GAIN.shock);
   assert.ok(p3.kbx > C.PUSH_KB_SPEED, `바깥쪽(+x)으로 세게: kbx ${p3.kbx}`);
-  assert.equal(p1.damage, 0, '먼 곳은 무사');
+  assert.equal(p4.damage, 0, '충격파 범위 밖은 무사');
+  assert.equal(p4.kbx, 0);
   // 던진 사람은 바로 옆이어도 자기 충격파를 안 맞음
   g.phase = 'playing';
   Object.assign(p1, { x: 3.5, y: 5.5, z: 0, pitch: -Math.atan2(C.EYE_HEIGHT, 1.5), alive: true });
@@ -1400,6 +1406,9 @@ test('폭탄: 조준한 칸 위에 놓여 BOMB_FUSE_MS 뒤 3×3×3 블록을 부
   run(g, C.BOMB_FUSE_MS - 100);
   assert.equal(g.gridAt(3, 5, 2), 1, '터지기 전');
   Object.assign(p2, { x: 3.5, y: 6.5, z: 2, vz: 0 }); // 폭탄 바로 옆 기둥 위
+  g.addPlayer(3);
+  const p3 = g.players.get(3);
+  Object.assign(p3, { x: 6.5, y: 5.5, z: 3, vz: 0, alive: true }); // 같은 높이 벽 위, 수평 3칸: BOMB_BLAST_RANGE 밖
   run(g, 200);
   assert.equal(g.bombs.length, 0);
   assert.equal(g.gridAt(3, 5, 2), 0, '폭탄 밑 칸 부서짐');
@@ -1409,6 +1418,7 @@ test('폭탄: 조준한 칸 위에 놓여 BOMB_FUSE_MS 뒤 3×3×3 블록을 부
   assert.equal(p2.damage, C.DAMAGE_GAIN.bomb);
   assert.ok(g.time < p2.stunUntil, '맞은 사람 경직');
   assert.equal(p1.damage, 0, '던진 사람 면제');
+  assert.equal(p3.damage, 0, '폭발 범위 밖은 무사');
   assert.equal(g.gridAt(3, 6, 1), 1, '옆 기둥은 범위(z 2~4) 밖이라 남음');
   assert.ok(lines.some((l) => l.includes('블록 2칸 파괴')), lines.join('\n'));
 });
@@ -1477,4 +1487,22 @@ test('이름: 제어 문자 빼고 NAME_MAX_LEN 글자까지 (한글도 한 글�
   assert.ok(lines.some((l) => l.startsWith('P1 이름: ')), lines.join('\n'));
   g.setNick(1, null);
   assert.equal(p1.nick, '');
+});
+
+test('카운트다운 중에 나간 사람: 사망 목록에 남고, 인원수 통계는 실제로 시작한 인원으로 센다', () => {
+  const lines = [];
+  const g = new Game((x) => lines.push(x), { countdownMs: 3000 });
+  for (let i = 1; i <= 3; i++) g.addPlayer(i);
+  g.startRound();
+  g.removePlayer(3);
+  run(g, 3100);
+  assert.equal(g.phase, 'playing');
+  assert.equal(g.roundPlayerCount, 2);
+  assert.ok(lines.some((l) => l.includes('ROUND 1 시작 (2명')), lines.join('\n'));
+  assert.ok(g.deaths.some((d) => d.name === 'P3' && d.cause === 'disconnect' && d.t === 0));
+  g.kill(g.players.get(2), 'fall');
+  g.tick(TICK);
+  assert.equal(g.phase, 'over');
+  assert.ok(g.totalsByCount['2인'], `인원수 통계 ${Object.keys(g.totalsByCount)}`);
+  assert.equal(g.totalsByCount['3인'], undefined);
 });

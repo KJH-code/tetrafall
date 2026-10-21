@@ -197,8 +197,9 @@ export class Game {
       this.hostId = next ? next.id : null;
     }
     for (const pc of this.pieces) if (pc.controller === id) pc.controller = null;
-    if (this.phase === 'playing' && p.alive) {
-      this.deaths.push({ name: p.name, cause: 'disconnect', t: this.time - this.roundStartTime });
+    if (this.inRound() && p.alive) {
+      // 카운트다운 중에 나가도 사망 목록에 남긴다 (판 시계는 아직 0)
+      this.deaths.push({ name: p.name, cause: 'disconnect', t: this.phase === 'playing' ? this.time - this.roundStartTime : 0 });
       this.checkRoundEnd();
     }
   }
@@ -304,8 +305,6 @@ export class Game {
         deathCause: null,
       });
     }
-    this.roundPlayerCount = this.players.size;
-    this.roundBotCount = this.bots.size;
     if (this.countdownMs > 0) {
       this.phase = 'countdown';
       this.countdownEndsAt = this.time + this.countdownMs;
@@ -318,6 +317,9 @@ export class Game {
   // 카운트다운이 끝나면 (또는 바로) 판 시작. 판 시간·블록·아이템 시계는 여기서부터
   beginPlay() {
     this.phase = 'playing';
+    // 인원수별 통계는 실제로 판을 시작한 인원으로 (카운트다운 중에 나간 사람은 빼고)
+    this.roundPlayerCount = this.players.size;
+    this.roundBotCount = this.bots.size;
     this.roundStartTime = this.time;
     this.nextSpawnAt = this.time + C.FIRST_SPAWN_DELAY_MS;
     this.controlItemNextAt = this.time + C.CONTROL_ITEM_RESPAWN_MS;
@@ -724,7 +726,7 @@ export class Game {
       if (!t.alive || t.id === piece.thrownBy) continue; // 던진 사람은 자기 충격파를 안 맞음
       const gx = Math.max(x0 - (t.x + C.PLAYER_HALF), t.x - C.PLAYER_HALF - x1, 0);
       const gy = Math.max(y0 - (t.y + C.PLAYER_HALF), t.y - C.PLAYER_HALF - y1, 0);
-      if (Math.hypot(gx, gy) > C.BRICK_SHOCK_RANGE || Math.abs(t.z - z) > 1.5) continue;
+      if (Math.hypot(gx, gy) > C.BRICK_SHOCK_RANGE || Math.abs(t.z - z) > C.BRICK_SHOCK_HEIGHT) continue;
       const hit = this.applyKnockback(t, t.x - cx, t.y - cy, C.BRICK_SHOCK_KB_SPEED, C.BRICK_SHOCK_KB_UP, C.BRICK_SHOCK_STUN_MS, C.DAMAGE_GAIN.shock);
       this.emit({ type: 'hit', kind: 'shock', by: piece.thrownBy, target: t.id, ok: hit });
       this.log(`  [충격파] ${by ? by.name : '?'} → ${t.name} ${hit ? `넉백 (${t.name} ${t.damage}%)` : '경직 중이라 무시'}`);

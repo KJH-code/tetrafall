@@ -11,8 +11,6 @@ function pieceKey(piece) {
   return `${piece.id}:${piece.px},${piece.py},${piece.rot},${piece.stepMs}`;
 }
 
-const BRICK_STEP_PITCH = -1.3; // 발판 던질 때: 거의 발밑을 보면 시선이 BRICK_MIN_DIST 앞 칸에 바로 닿는다
-const BUILD_STEP_PITCH = -1.0; // 쌓기 발판: 눈높이에서 이 각도면 시선이 바로 앞 칸 바닥(발 높이)에 닿는다
 
 function edgeDist(x, y) {
   return Math.min(x, W - x, y, D - y);
@@ -94,7 +92,7 @@ export class BotBrain {
     const R = Math.ceil(C.BOMB_BLAST_RANGE);
     for (const b of g.bombs) {
       const cells = [];
-      for (let dx = -R; dx <= R; dx++) for (let dy = -R; dy <= R; dy++) if (Math.hypot(dx, dy) <= C.BOMB_BLAST_RANGE + 0.5) cells.push([b.x + dx, b.y + dy]);
+      for (let dx = -R; dx <= R; dx++) for (let dy = -R; dy <= R; dy++) if (Math.hypot(dx, dy) <= C.BOMB_BLAST_RANGE + C.BOT_BOMB_DANGER_PAD) cells.push([b.x + dx, b.y + dy]);
       out.push({ cells, eta: Math.max(0, b.explodeAt - g.time), key: `bomb:${b.id}` });
     }
     return out;
@@ -448,9 +446,9 @@ export class BotBrain {
     const h0 = this.standHeight(g, p);
     if (p.blocks > 0) {
       for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
-        const plan = g.buildPlan(p, yaw, BUILD_STEP_PITCH);
+        const plan = g.buildPlan(p, yaw, C.BOT_BUILD_STEP_PITCH);
         if (!plan.ok || plan.cells[0][2] !== h0) continue; // 발 높이 칸에 놓아야 한 칸 높은 발판
-        this.throwAt(g, p, yaw, BUILD_STEP_PITCH, 1);
+        this.throwAt(g, p, yaw, C.BOT_BUILD_STEP_PITCH, 1);
         return true;
       }
     }
@@ -462,14 +460,14 @@ export class BotBrain {
     for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
       for (const side of sides) {
         p.brickSide = side; // 계획만 본다 (실제로 바꾸는 건 아래 rotate 입력)
-        const plan = g.brickPlan(p, yaw, BRICK_STEP_PITCH);
+        const plan = g.brickPlan(p, yaw, C.BOT_BRICK_STEP_PITCH);
         if (plan.ok && plan.z + 1 > h0 + 0.5 && plan.z + 1 <= h0 + this.jumpReach(g, p)) pick = pick || { yaw, side };
       }
     }
     p.brickSide = side0;
     if (!pick) return false;
     if (pick.side !== p.brickSide) g.handleAction(p.id, { name: 'rotate', dir: 1 }); // Q/E 로 1×2 방향 바꾸기
-    this.throwAt(g, p, pick.yaw, BRICK_STEP_PITCH, 2);
+    this.throwAt(g, p, pick.yaw, C.BOT_BRICK_STEP_PITCH, 2);
     return true;
   }
 

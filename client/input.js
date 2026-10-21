@@ -32,12 +32,12 @@ export class Input {
       if (e.button === 2) this.sendAction({ name: 'fire' });
     });
     document.addEventListener('contextmenu', (e) => e.preventDefault());
-    // 마우스 휠로 핫바 칸 돌리기 (터치패드가 한 번에 여러 번 보내서 0.12초에 한 칸)
+    // 마우스 휠로 핫바 칸 돌리기 (터치패드가 한 번에 여러 번 보내서 WHEEL_STEP_MS 에 한 칸)
     let lastWheel = 0;
     document.addEventListener('wheel', (e) => {
       if (!this.locked || !this.enabled || !e.deltaY) return;
       const now = performance.now();
-      if (now - lastWheel < 120) return;
+      if (now - lastWheel < C.WHEEL_STEP_MS) return;
       lastWheel = now;
       this.sendAction({ name: 'handNext', dir: e.deltaY > 0 ? 1 : -1 });
     });

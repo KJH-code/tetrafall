@@ -87,9 +87,19 @@ function flashScreen(color) {
   });
 }
 
+// 화면에 보이는 이름: 입력한 이름이 있으면 그것, 없으면 P1 같은 기본 이름 (서버 로그는 늘 P1)
+function shownName(p) {
+  return p.nick || p.name;
+}
+
 function nameOf(id) {
   const p = state && state.players.find((x) => x.id === id);
-  return p ? p.name : '?';
+  return p ? shownName(p) : '?';
+}
+
+// 사람이 입력한 이름을 innerHTML 에 넣을 때 (맨 위 승수)
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
 const KIND_KO = { push: '밀치기', projectile: '투사체', weapon: '망치', shock: '설치 블록 충격파', bomb: '폭탄' };
@@ -378,7 +388,7 @@ function onState() {
   if (lastState && lastState.phase === 'playing' && state.phase === 'over') {
     const w = state.players.find((x) => x.id === state.round.winnerId);
     sound.play('win');
-    if (w) showBig(`${w.name} 승리!`, colorOf(w), C.WIN_BANNER_MS, true);
+    if (w) showBig(`${shownName(w)} 승리!`, colorOf(w), C.WIN_BANNER_MS, true);
     else showBig('무승부', '#ddd', C.WIN_BANNER_MS, true);
   }
   if (state.phase === 'playing' && !p.alive && wasAlive) flashScreen('rgba(255,0,0,.45)');
@@ -401,11 +411,11 @@ const scoreEl = $('score');
 let scoreKey = '';
 function updateScore() {
   const ps = [...state.players].sort((a, b) => a.slot - b.slot);
-  const key = ps.map((p) => `${p.id}:${p.wins}`).join(',') + `|${myId}`;
+  const key = ps.map((p) => `${p.id}:${p.wins}:${p.nick}`).join(',') + `|${myId}`;
   if (key === scoreKey) return;
   scoreKey = key;
   scoreEl.classList.toggle('hidden', ps.length < 2);
-  const name = (p) => `<span style="color:${colorOf(p)}" class="${p.id === myId ? 'me' : ''}">${p.name}</span>`;
+  const name = (p) => `<span style="color:${colorOf(p)}" class="${p.id === myId ? 'me' : ''}">${escapeHtml(shownName(p))}</span>`;
   if (ps.length === 2) {
     const [a, b] = ps;
     scoreEl.innerHTML = `${name(a)} ${a.wins}<span class="sep">:</span>${b.wins} ${name(b)}`;
@@ -421,7 +431,7 @@ function updateHud() {
   const isHost = state.hostId === myId;
   const alive = state.players.filter((x) => x.alive).length;
   const lines = [];
-  lines.push(`${p ? p.name : '?'}${isHost ? ' (호스트)' : ''} · 라운드 ${state.round.n} · ${fmt(state.round.elapsed)}${state.map && state.round.n ? ` · ${state.map.name}` : ''}`);
+  lines.push(`${p ? (p.nick ? `${p.nick} (${p.name})` : p.name) : '?'}${isHost ? ' (호스트)' : ''} · 라운드 ${state.round.n} · ${fmt(state.round.elapsed)}${state.map && state.round.n ? ` · ${state.map.name}` : ''}`);
   const maxP = Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length);
   lines.push(`플레이어 ${state.players.length}/${maxP} · 생존 ${alive}`);
   if (p && state.phase === 'playing') {
@@ -473,7 +483,7 @@ function updateHud() {
     showKeys = true;
   } else if (state.phase === 'over') {
     const w = state.players.find((x) => x.id === state.round.winnerId);
-    center = `라운드 ${state.round.n} 종료\n승자: ${w ? w.name : '무승부'}`;
+    center = `라운드 ${state.round.n} 종료\n승자: ${w ? shownName(w) : '무승부'}`;
     showStart = isHost && state.canStart;
     showKeys = true;
   } else if (p && !p.alive) {
