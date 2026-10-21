@@ -214,6 +214,15 @@ export const CONFIG = {
   COOLDOWN_FLASH_MS: 250, // 조준점 둘레 쿨 원이 다 차면 번쩍이는 시간
   WIN_BANNER_MS: 2500, // 판이 끝나면 "P2 승리!" 큰 글씨 표시 시간
   TOAST_MS: 2200, // 화면 알림이 떠 있는 시간
+  // 콩 애니메이션 (화면만)
+  ANIM_WALK_FREQ: 3.2, // 걸음 위상이 도는 빠르기 (속도 1칸/초당 라디안)
+  ANIM_BOB: 0.07, // 걸을 때 통통 튀는 높이 (칸)
+  ANIM_LEAN: 0.14, // 최고 속도로 걸을 때 앞으로 기울기 (라디안)
+  ANIM_AIR_VZ: 0.8, // 위아래 속도가 이보다 크면 공중으로 봄 (칸/초)
+  ANIM_TUMBLE_MIN_SPEED: 3, // 경직 중 이 속도(칸/초)보다 빠르게 날아가면 구름
+  ANIM_TUMBLE_SPEED: 11, // 구르는 빠르기 (라디안/초)
+  SPECTATE_BACK: 3.2, // 관전 3인칭 카메라: 따라가는 사람 뒤로 (칸)
+  SPECTATE_UP: 2.2, // 관전 3인칭 카메라: 발 위로 (칸)
   KILLFEED_MS: 6000, // 오른쪽 위 킬 알림이 떠 있는 시간
   KILLFEED_MAX: 5, // 킬 알림 최대 줄 수
   INPUT_SEND_RATE: 30, // 입력 전송 Hz

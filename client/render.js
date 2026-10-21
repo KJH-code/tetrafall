@@ -229,6 +229,10 @@ export class Renderer {
       g.userData.arms = ch.arms;
       g.userData.hammer = ch.hammer;
       g.userData.held = ch.held;
+      g.userData.rig = ch.rig;
+      g.userData.parts = ch.parts;
+      g.userData.feet = ch.feet;
+      g.userData.anim = { px: null, py: null, pz: null, hs: 0, vz: 0, walk: 0, spin: 0, land: 0 };
       g.userData.waitMark = ch.waitMark;
       g.userData.color = color;
       // 하늘 시점 전용 표시: 바라보는 방향 화살표 (+ 내 캐릭터는 흰 고리)
@@ -295,6 +299,40 @@ export class Renderer {
       m.scale.set(1, 1, flat ? 0.12 : 1);
       m.position.set(c[0] + 0.5, c[1] + 0.5, flat ? c[2] + 0.06 : c[2] + 0.5);
     });
+  }
+
+  // 콩 애니메이션: 걸으면 통통 튀며 발을 번갈아 내밀고 앞으로 기울임, 뜨면 위로 늘어남, 내려앉으면 찌그러짐,
+  // 경직된 채 날아가면 뒤로 구름. 서버 상태엔 속도가 없어서 부드럽게 따라간 위치의 변화로 속도를 잰다
+  animate(g, s, p, dt) {
+    const a = g.userData.anim;
+    const rig = g.userData.rig;
+    const parts = g.userData.parts;
+    if (a.px === null || dt <= 0) Object.assign(a, { px: s.x, py: s.y, pz: s.z });
+    const vx = (s.x - a.px) / Math.max(dt, 1e-3);
+    const vy = (s.y - a.py) / Math.max(dt, 1e-3);
+    const vz = (s.z - a.pz) / Math.max(dt, 1e-3);
+    Object.assign(a, { px: s.x, py: s.y, pz: s.z });
+    const k = 1 - Math.exp(-12 * dt);
+    a.hs += (Math.hypot(vx, vy) - a.hs) * k;
+    const wasFalling = a.vz < -C.ANIM_AIR_VZ;
+    a.vz += (vz - a.vz) * k;
+    const air = Math.abs(a.vz) > C.ANIM_AIR_VZ;
+    if (wasFalling && !air) a.land = 1; // 내려앉음
+    a.land = Math.max(0, a.land - dt * 5);
+    // 걷기: 발이 땅에 있을 때만 걸음 위상이 돎
+    const walking = !air && a.hs > 0.6;
+    if (walking) a.walk += dt * a.hs * C.ANIM_WALK_FREQ;
+    const step = walking ? Math.sin(a.walk) : 0;
+    parts.position.z = -C.PLAYER_HEIGHT / 2 + (walking ? Math.abs(step) * C.ANIM_BOB : 0);
+    g.userData.feet.forEach((f, i) => (f.position.x = f.userData.baseX + (i ? -step : step) * 0.09));
+    // 경직된 채 빠르게 날아가면 뒤로 구름. 끝나면 가장 가까운 바로 선 자세로 돌아옴
+    if (p.stunned && a.hs > C.ANIM_TUMBLE_MIN_SPEED) a.spin -= dt * C.ANIM_TUMBLE_SPEED;
+    else a.spin += (Math.round(a.spin / (Math.PI * 2)) * Math.PI * 2 - a.spin) * (1 - Math.exp(-10 * dt));
+    const lean = Math.min(1, a.hs / C.MOVE_SPEED) * C.ANIM_LEAN;
+    rig.rotation.y = lean + a.spin;
+    rig.rotation.x = step * 0.06; // 걸을 때 좌우로 살짝 흔들
+    const stretch = a.vz > C.ANIM_AIR_VZ ? 0.12 : 0;
+    rig.scale.set(1 - stretch * 0.5 + a.land * 0.12, 1 - stretch * 0.5 + a.land * 0.12, 1 + stretch - a.land * 0.2);
   }
 
   // 조종 중인 블록 ↔ 조종하는 사람 머리를 잇는 보라색 빛줄기 (누가 어느 블록을 모는지)
@@ -370,6 +408,7 @@ export class Renderer {
       s.z += (p.z - s.z) * k;
       g.position.set(s.x, s.y, s.z);
       g.rotation.z = p.yaw;
+      this.animate(g, s, p, dt);
       g.visible = p.alive && !(p.id === myId && view === 'fps' && this.skyBlend === 0);
       const bodyMat = g.userData.bodyMat;
       // 경직 중엔 흰색으로 빠르게 깜빡임
@@ -533,8 +572,22 @@ export class Renderer {
       eye.set(s.x, s.y, s.z + C.EYE_HEIGHT);
       const cp = Math.cos(cam.pitch);
       look.set(eye.x + cp * Math.cos(cam.yaw), eye.y + cp * Math.sin(cam.yaw), eye.z + Math.sin(cam.pitch));
+    } else if (cam.follow !== null && cam.follow !== undefined && this.smooth.has(cam.follow)) {
+      // 관전: 따라가는 사람 뒤 위에서 (그 사람이 보는 방향으로). 방향은 부드럽게 따라 돎
+      const s = this.smooth.get(cam.follow);
+      const target = state.players.find((p) => p.id === cam.follow);
+      const want = target ? target.yaw : 0;
+      if (this.followId !== cam.follow) {
+        this.followId = cam.follow;
+        this.followYaw = want;
+      }
+      const d = Math.atan2(Math.sin(want - this.followYaw), Math.cos(want - this.followYaw));
+      this.followYaw += d * (1 - Math.exp(-6 * dt));
+      eye.set(s.x - Math.cos(this.followYaw) * C.SPECTATE_BACK, s.y - Math.sin(this.followYaw) * C.SPECTATE_BACK, s.z + C.SPECTATE_UP);
+      look.set(s.x, s.y, s.z + C.PLAYER_HEIGHT * 0.6);
     } else {
       // 죽었거나 아직 없음: 필드 밖 관전 시점 (마우스로 돌릴 수 있음)
+      this.followId = null;
       eye.set(C.GRID_W / 2 - Math.cos(cam.yaw) * 10, C.GRID_D / 2 - Math.sin(cam.yaw) * 10, 7);
       look.set(C.GRID_W / 2, C.GRID_D / 2, 2);
     }

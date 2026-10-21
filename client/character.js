@@ -10,17 +10,25 @@ const H = C.PLAYER_HEIGHT;
 const eyeWhiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff }); // 조명 영향 없이 항상 밝게: 어디를 보는지 멀리서도 보이게
 const pupilMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
 
-// 반환: { group, bodyMaterial, arms, hammer, held, waitMark }. bodyMaterial 의 color/emissive 를 바꾸면 몸통·팔이 같이 바뀐다 (색, 경직 깜빡임)
+// 반환: { group, bodyMaterial, arms, hammer, held, waitMark, rig, parts, feet }.
+// 몸 부분은 rig(몸 가운데가 축) > parts 안에 있어서 애니메이션은 rig 를 기울이고·돌리고·늘리고, parts 를 위아래로 흔든다.
+// 이름표·화살표·조종 대기 표시는 group 에 바로 붙어 같이 돌지 않는다. bodyMaterial 의 color/emissive 를 바꾸면 몸통·팔이 같이 바뀐다 (색, 경직 깜빡임)
 // arms[0] = 오른팔 (밀치기 휘두르기 애니메이션용). 각 팔의 userData.base = 기본 위치
 export function buildCharacter(color) {
   const group = new THREE.Group();
   const bodyMaterial = new THREE.MeshLambertMaterial({ color });
+  const rig = new THREE.Group();
+  rig.position.z = H / 2;
+  group.add(rig);
+  const parts = new THREE.Group();
+  parts.position.z = -H / 2;
+  rig.add(parts);
 
   // 몸통: 캡슐. 전체 높이 = 원통 길이 + 2R = H
   const body = new THREE.Mesh(new THREE.CapsuleGeometry(R, H - 2 * R, 8, 20), bodyMaterial);
   body.rotation.x = Math.PI / 2; // 캡슐 축을 y → z 로
   body.position.z = H / 2;
-  group.add(body);
+  parts.add(body);
 
   // 눈 두 개: 앞쪽 표면에 납작한 흰자 + 검은 눈동자. 바라보는 방향이 바로 보인다
   const eyeZ = H * 0.74;
@@ -28,11 +36,11 @@ export function buildCharacter(color) {
     const white = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 12), eyeWhiteMat);
     white.scale.set(0.45, 1, 1.25);
     white.position.set(R * 0.86, side * 0.11, eyeZ);
-    group.add(white);
+    parts.add(white);
     const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 10), pupilMat);
     pupil.scale.set(0.4, 1, 1.2);
     pupil.position.set(R * 0.86 + 0.035, side * 0.11, eyeZ - 0.01);
-    group.add(pupil);
+    parts.add(pupil);
   }
 
   // 짧은 팔 두 개: 몸통 옆에 반쯤 묻힌 작은 캡슐 (판정 상자 밖으로 1~2cm 만 나온다)
@@ -43,7 +51,7 @@ export function buildCharacter(color) {
     arm.rotation.x = side * 0.35; // 살짝 벌어지게
     arm.userData.base = arm.position.clone();
     arm.userData.baseRot = arm.rotation.clone();
-    group.add(arm);
+    parts.add(arm);
     arms.push(arm);
   }
 
@@ -74,12 +82,15 @@ export function buildCharacter(color) {
 
   // 발 두 개: 바닥에 납작하게. 몸통 아래 안쪽에 둔다
   const footMat = new THREE.MeshLambertMaterial({ color: 0x333333 });
+  const feet = [];
   for (const side of [-1, 1]) {
     const foot = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 8), footMat);
     foot.scale.set(1.4, 1, 0.5);
     foot.position.set(0.05, side * 0.12, 0.045);
-    group.add(foot);
+    foot.userData.baseX = foot.position.x;
+    parts.add(foot);
+    feet.push(foot);
   }
 
-  return { group, bodyMaterial, arms, hammer, held, waitMark };
+  return { group, bodyMaterial, arms, hammer, held, waitMark, rig, parts, feet };
 }

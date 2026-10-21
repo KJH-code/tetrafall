@@ -167,6 +167,12 @@ function handleEvent(e) {
       break;
     case 'death':
       if (e.cause !== 'disconnect') killFeed(e);
+      if (e.who === myId) {
+        // 나를 죽인 사람부터 따라감 (없거나 이미 죽었으면 다음 사람)
+        spec.killed = { cause: e.cause, by: e.by, byName: e.byName, weapon: e.weapon };
+        spec.target = e.by;
+        spec.overview = false;
+      }
       break;
     case 'lava':
       toast('용암이 올라온다! 높은 곳으로 올라가세요', 'me');
@@ -518,10 +524,8 @@ function updateHud() {
     center = `라운드 ${state.round.n} 종료\n승자: ${w ? shownName(w) : '무승부'}`;
     showStart = isHost && state.canStart;
     showKeys = true;
-  } else if (p && p.spectator) {
-    center = '관전 중 (호스트가 관전으로 바꿈)';
-  } else if (p && !p.alive) {
-    center = `사망: ${CAUSE_KO[p.cause] || p.cause}\n관전 중`;
+  } else if (spectating()) {
+    center = null; // 관전 안내는 화면 아래 (#spec) — 가운데 판이 따라가는 사람을 가리지 않게
   } else if (state.phase === 'countdown') {
     center = null; // 3·2·1 큰 글씨만 (화면 클릭으로 조작 잡기는 그대로 됨)
   } else if (!input.locked) {
@@ -566,6 +570,55 @@ function updateHud() {
   crosshair.classList.toggle('bomb', bomb);
   crosshair.dataset.ammo = '';
 }
+
+// ---------- 관전: 죽었거나 관전자면 살아 있는 사람을 3인칭으로 따라감 ----------
+// 클릭·스페이스 = 다음 사람, 우클릭 = 전체 보기 ↔ 따라가기
+const spec = { target: null, overview: false, killed: null, round: null };
+const specEl = $('spec');
+function spectating() {
+  const p = me();
+  return !!state && (state.phase === 'playing' || state.phase === 'countdown') && !!p && !p.alive;
+}
+function aliveOthers() {
+  return state.players.filter((x) => x.alive && x.id !== myId).sort((a, b) => a.slot - b.slot);
+}
+function nextTarget(dir = 1) {
+  const list = aliveOthers();
+  if (!list.length) {
+    spec.target = null;
+    return;
+  }
+  const i = list.findIndex((x) => x.id === spec.target);
+  spec.target = list[(i + dir + list.length) % list.length].id;
+  spec.overview = false;
+}
+function updateSpectate() {
+  if (state && spec.round !== state.round.n) Object.assign(spec, { target: null, overview: false, killed: null, round: state.round.n }); // 새 판
+  const on = spectating();
+  specEl.classList.toggle('hidden', !on);
+  if (!on) return;
+  const t = playerById(spec.target);
+  if (!spec.overview && (!t || !t.alive)) nextTarget();
+  const p = me();
+  const k = spec.killed;
+  let head;
+  if (p.spectator) head = '관전 중 (호스트가 관전으로 바꿈)';
+  else if (!p.cause) head = '이번 판은 관전 (다음 판부터 참가)';
+  else head = `사망: ${CAUSE_KO[p.cause] || p.cause}${k && k.by !== null ? ` — ${nameOf(k.by) !== '?' ? nameOf(k.by) : k.byName}의 ${WEAPON_KO[k.weapon] || k.weapon}` : ''}`;
+  const now = playerById(spec.target);
+  const watching = spec.overview || !now ? '전체 보기' : `${shownName(now)} 따라가는 중`;
+  specEl.textContent = `${head}\n${watching} · 클릭/스페이스 다음 사람 · 우클릭 ${spec.overview ? '따라가기' : '전체 보기'}`;
+}
+document.addEventListener('mousedown', (e) => {
+  if (!spectating()) return;
+  if (e.button === 0) nextTarget(1);
+  if (e.button === 2) spec.overview = !spec.overview;
+});
+document.addEventListener('keydown', (e) => {
+  if (e.code !== 'Space' || e.repeat || !spectating() || document.activeElement === nameInput) return;
+  nextTarget(1);
+  e.preventDefault();
+});
 
 // ---------- 조준점 둘레 쿨 원 (대시·밀치기) ----------
 const cdRing = $('cd-ring');
@@ -708,7 +761,8 @@ function frame(now) {
   input.sky = view === 'sky';
   // 한 프레임에서 에러가 나도 다음 프레임은 계속 그린다 (안 그러면 서버는 도는데 화면만 멈춤)
   try {
-    renderer.render(state, myId, dt, view, { yaw: input.yaw, pitch: input.pitch });
+    updateSpectate();
+    renderer.render(state, myId, dt, view, { yaw: input.yaw, pitch: input.pitch, follow: spectating() && !spec.overview ? spec.target : null });
     updateHud();
   } catch (err) {
     if (!frameErrorShown) console.error('프레임 에러 (계속 그림):', err);
