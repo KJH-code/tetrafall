@@ -26,17 +26,23 @@ export function damageColor(d) {
   return `rgb(255,${g},${b})`;
 }
 
-function drawDamage(canvas, d) {
+// 머리 위 표시: 위에 이름(플레이어 색), 아래에 피해 %
+function drawLabel(canvas, name, color, d) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.font = 'bold 44px system-ui, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.lineWidth = 7;
   ctx.strokeStyle = 'rgba(0,0,0,.85)';
-  ctx.strokeText(`${d}%`, 64, 34);
+  ctx.font = 'bold 30px system-ui, sans-serif';
+  ctx.lineWidth = 6;
+  ctx.strokeText(name, 128, 26);
+  ctx.fillStyle = color;
+  ctx.fillText(name, 128, 26);
+  ctx.font = 'bold 44px system-ui, sans-serif';
+  ctx.lineWidth = 7;
+  ctx.strokeText(`${d}%`, 128, 80);
   ctx.fillStyle = damageColor(d);
-  ctx.fillText(`${d}%`, 64, 34);
+  ctx.fillText(`${d}%`, 128, 80);
 }
 
 export const PLAYER_COLORS = [0xe05050, 0x50c050, 0xb060e0, 0xe0c050, 0xf0f0f0, 0x40d0c0, 0xff80b0, 0x8a5a30];
@@ -236,12 +242,13 @@ export class Renderer {
       g.add(ring);
       // 머리 위 피해 % (대난투식)
       const canvas = document.createElement('canvas');
-      canvas.width = 128;
-      canvas.height = 64;
+      canvas.width = 256;
+      canvas.height = 112;
       const tex = new THREE.CanvasTexture(canvas);
-      // 거리와 상관없이 화면에서 같은 크기 (가까이 붙은 상대의 숫자가 화면을 덮지 않게)
-      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true, sizeAttenuation: false }));
-      sprite.scale.set(0.09, 0.045, 1);
+      // 거리와 상관없이 화면에서 같은 크기 (가까이 붙은 상대의 숫자가 화면을 덮지 않게).
+      // 블록 뒤에 숨으면 이름표도 가려진다 (기둥 숲에서 숨는 의미가 있게)
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: true, depthWrite: false, transparent: true, sizeAttenuation: false }));
+      sprite.scale.set(0.3, 0.13, 1);
       sprite.position.z = C.PLAYER_HEIGHT + 0.45;
       sprite.renderOrder = 11;
       g.add(sprite);
@@ -346,13 +353,15 @@ export class Renderer {
       arm.position.x = arm.userData.base.x + 0.3 * pu;
       arm.position.z = arm.userData.base.z + 0.2 * pu;
       arm.rotation.z = (Math.PI / 2) * pu;
-      // 피해 % 표시: 바뀔 때만 다시 그림
+      // 이름 + 피해 % 표시: 바뀔 때만 다시 그림
       const label = g.userData.label;
       const dmg = p.damage || 0;
-      if (label.shown !== dmg) {
-        drawDamage(label.canvas, dmg);
+      const name = p.nick || p.name;
+      const key = `${name}|${dmg}`;
+      if (label.shown !== key) {
+        drawLabel(label.canvas, name, `#${g.userData.color.toString(16).padStart(6, '0')}`, dmg);
         label.tex.needsUpdate = true;
-        label.shown = dmg;
+        label.shown = key;
       }
       label.sprite.visible = p.alive;
     }

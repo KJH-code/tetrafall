@@ -90,6 +90,13 @@ export class BotBrain {
       if (eta > C.SHADOW_LEAD_MS) continue;
       out.push({ cells: piece.cells.map(([dx, dy]) => [piece.px + dx, piece.py + dy]), eta, key: pieceKey(piece) });
     }
+    // 놓인 폭탄: 폭발 범위(중심에서 BOMB_BLAST_RANGE 칸)를 위험 칸으로. 떨어지는 블록처럼 반응 시간 뒤에 피한다
+    const R = Math.ceil(C.BOMB_BLAST_RANGE);
+    for (const b of g.bombs) {
+      const cells = [];
+      for (let dx = -R; dx <= R; dx++) for (let dy = -R; dy <= R; dy++) if (Math.hypot(dx, dy) <= C.BOMB_BLAST_RANGE + 0.5) cells.push([b.x + dx, b.y + dy]);
+      out.push({ cells, eta: Math.max(0, b.explodeAt - g.time), key: `bomb:${b.id}` });
+    }
     return out;
   }
 

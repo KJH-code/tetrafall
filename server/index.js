@@ -111,6 +111,9 @@ wss.on('connection', (ws) => {
       case 'removeBot':
         if (game.isHost(id)) game.removeBot();
         break;
+      case 'setName':
+        game.setNick(id, msg.name);
+        break;
       case 'setMap':
         if (game.isHost(id)) game.setMap(String(msg.map));
         break;

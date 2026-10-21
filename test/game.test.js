@@ -1032,6 +1032,43 @@ test('맵: 피라미드·계단 지형이 깔리고, 시작 위치는 지형 위
   }
 });
 
+test('맵: 모든 맵에서 시작 위치마다 걸어서(한 걸음 1칸까지) 그 맵의 맨 위까지 갈 수 있다', () => {
+  for (const id of ['flat', 'pyramid', 'stairs', 'bowl', 'spiral', 'pillars', 'fortress']) {
+    const g = new Game();
+    for (let i = 1; i <= 4; i++) g.addPlayer(i);
+    assert.ok(g.setMap(id), id);
+    g.startRound();
+    let max = 0;
+    for (let x = 0; x < C.GRID_W; x++) for (let y = 0; y < C.GRID_D; y++) max = Math.max(max, g.columnTop(x, y));
+    if (id !== 'flat') assert.ok(max >= 2, `${id} 최고 ${max}층`);
+    g.nextSpawnAt = Infinity;
+    g.tick(TICK);
+    assert.equal(g.lava.active, false, `${id} 시작하자마자 용암 X`);
+    for (const p of g.players.values()) {
+      assert.equal(p.z, g.spawnZ(p.x, p.y), `${id} ${p.name} 지형 위에서 시작`);
+      const sx = Math.floor(p.x);
+      const sy = Math.floor(p.y);
+      const seen = new Set([sx * 100 + sy]);
+      const q = [[sx, sy]];
+      let best = 0;
+      while (q.length) {
+        const [x, y] = q.shift();
+        const h = g.columnTop(x, y);
+        best = Math.max(best, h);
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= C.GRID_W || ny >= C.GRID_D || seen.has(nx * 100 + ny)) continue;
+          if (g.columnTop(nx, ny) > h + 1) continue;
+          seen.add(nx * 100 + ny);
+          q.push([nx, ny]);
+        }
+      }
+      assert.equal(best, max, `${id} ${p.name} 시작 위치에서 최고 ${best}층 (맵 최고 ${max})`);
+    }
+  }
+});
+
 test('맵: 무작위는 판마다 바뀌고, 이상한 값·판 진행 중 변경은 거부', () => {
   const g = new Game();
   g.rng = Math.random;
@@ -1410,4 +1447,34 @@ test('봇: 상대가 폭발 범위에 들면 폭탄을 던진다', () => {
   g.givePower(bot, 'bomb');
   run(g, 1000);
   assert.ok(lines.some((l) => l.includes('[폭탄] P2(봇) →')), lines.join('\n'));
+});
+
+test('봇: 놓인 폭탄의 폭발 범위를 보고 피한다 (옆에 때릴 상대가 있어도, 10번 모두)', () => {
+  for (let k = 0; k < 10; k++) {
+    const { g, human, bot } = setupBot();
+    g.startRound();
+    g.nextSpawnAt = Infinity;
+    g.controlItemNextAt = Infinity;
+    g.powerItemNextAt = Infinity;
+    Object.assign(human, { x: 6.5, y: 5.5, z: 0, stunUntil: 1e12 }); // 계속 경직이라 밀려나지 않는 상대
+    Object.assign(bot, { x: 5.5, y: 5.5, z: 0 });
+    g.bombs.push({ id: 99, x: 5, y: 5, z: 0, by: human.id, explodeAt: g.time + C.BOMB_FUSE_MS });
+    run(g, C.BOMB_FUSE_MS + 100);
+    assert.equal(bot.damage, 0, `${k}번째: 봇 위치 (${bot.x.toFixed(2)}, ${bot.y.toFixed(2)})`);
+  }
+});
+
+test('이름: 제어 문자 빼고 NAME_MAX_LEN 글자까지 (한글도 한 글자), 판 사이에만, 스냅샷에 nick', () => {
+  const { g, p1, lines } = setup();
+  assert.equal(g.setNick(1, '재혁'), false, '판 진행 중엔 못 바꿈');
+  g.phase = 'over';
+  assert.equal(g.setNick(1, '  재혁\u0007  최고   '), true);
+  assert.equal(p1.nick, '재혁 최고');
+  g.setNick(1, '가나다라마바사아자차카');
+  assert.equal(Array.from(p1.nick).length, C.NAME_MAX_LEN);
+  assert.equal(p1.name, 'P1', '로그·승수용 이름은 그대로');
+  assert.equal(g.snapshot().players.find((p) => p.id === 1).nick, p1.nick);
+  assert.ok(lines.some((l) => l.startsWith('P1 이름: ')), lines.join('\n'));
+  g.setNick(1, null);
+  assert.equal(p1.nick, '');
 });

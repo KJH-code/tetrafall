@@ -273,6 +273,7 @@ function connect() {
       myId = msg.id;
       const sp = C.SPAWN_POINTS[msg.slot % C.SPAWN_POINTS.length];
       input.setYawPitch(sp.yaw, 0);
+      if (nameInput.value) submitName();
     } else if (msg.type === 'state') {
       lastState = state;
       if (!msg.grid && state && state.grid) msg.grid = state.grid; // 격자는 바뀔 때만 온다
@@ -303,7 +304,36 @@ document.addEventListener('keydown', (e) => {
 $('add-bot').addEventListener('click', () => send({ type: 'addBot' }));
 $('remove-bot').addEventListener('click', () => send({ type: 'removeBot' }));
 $('map-select').addEventListener('change', (e) => send({ type: 'setMap', map: e.target.value }));
-const MAP_KO = { random: '무작위', flat: '평지', pyramid: '피라미드', stairs: '계단' };
+const MAP_KO = { random: '무작위', flat: '평지', pyramid: '피라미드', stairs: '계단', bowl: '그릇', spiral: '나선 계단', pillars: '기둥 숲', fortress: '요새' };
+
+// 이름: 대기 화면 입력칸. 브라우저에 기억해 두고 접속할 때마다 보낸다 (판 사이에만 바뀜)
+const nameInput = $('name-input');
+nameInput.maxLength = C.NAME_MAX_LEN;
+function savedName() {
+  try {
+    return localStorage.getItem('tf-name') || '';
+  } catch {
+    return '';
+  }
+}
+function submitName() {
+  const name = nameInput.value;
+  try {
+    localStorage.setItem('tf-name', name);
+  } catch {
+    // 저장이 막혀 있어도 이번 접속에는 보낸다
+  }
+  send({ type: 'setName', name });
+}
+nameInput.value = savedName();
+nameInput.addEventListener('change', submitName);
+nameInput.addEventListener('keydown', (e) => {
+  e.stopPropagation(); // 이름 칠 때는 게임 키(Enter 시작, 숫자 칸)가 안 먹게
+  if (e.code === 'Enter') {
+    submitName();
+    nameInput.blur();
+  }
+});
 
 function me() {
   return state ? state.players.find((p) => p.id === myId) : null;
@@ -462,6 +492,7 @@ function updateHud() {
   keysEl.classList.toggle('hidden', !showKeys);
   // 봇 버튼: 호스트만, 판 사이에만
   const between = state.phase === 'lobby' || state.phase === 'over';
+  $('name-row').classList.toggle('hidden', !between);
   const showBots = isHost && between;
   $('bot-btns').classList.toggle('hidden', !showBots);
   // 맵: 호스트는 고르고, 다른 사람은 보기만

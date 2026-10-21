@@ -140,6 +140,7 @@ export class Game {
       weaponUses: 0, // 망치 남은 횟수
       jumpUntil: 0, // 점프력 상승 끝나는 시각
       ghostUntil: 0, // 유령화 끝나는 시각
+      nick: '', // 대기 화면에서 넣은 이름 (머리 위 표시용. 로그·승수는 name = P1 그대로)
       hand: 1, // 핫바에서 고른 칸. 1 쌓기 블록 · 2 던지는 아이템 · 3 폭탄
       blocks: 0, // 쌓기 블록 남은 개수 (판마다 BUILD_BLOCKS_PER_ROUND)
       bombs: 0, // 폭탄 남은 개수
@@ -228,6 +229,21 @@ export class Game {
 
   canStart() {
     return this.players.size >= C.MIN_PLAYERS && !this.inRound();
+  }
+
+  // 이름 바꾸기: 판 사이에만. 제어 문자 빼고 공백 하나로, NAME_MAX_LEN 글자까지 (한글도 한 글자)
+  setNick(id, raw) {
+    const p = this.players.get(id);
+    if (!p || this.inRound()) return false;
+    const clean = String(raw ?? '')
+      .replace(/[\u0000-\u001f\u007f]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const nick = Array.from(clean).slice(0, C.NAME_MAX_LEN).join('');
+    if (nick === p.nick) return true;
+    p.nick = nick;
+    this.log(`${p.name} 이름: ${nick || '(없음)'}`);
+    return true;
   }
 
   // 판 진행 중 (카운트다운 포함): 봇·맵을 못 바꾸고, 들어온 사람은 관전
@@ -1504,6 +1520,7 @@ export class Game {
         id: p.id,
         slot: p.slot,
         name: p.name,
+        nick: p.nick,
         isBot: !!p.isBot,
         x: p.x,
         y: p.y,
