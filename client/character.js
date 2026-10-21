@@ -10,7 +10,7 @@ const H = C.PLAYER_HEIGHT;
 const eyeWhiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff }); // 조명 영향 없이 항상 밝게: 어디를 보는지 멀리서도 보이게
 const pupilMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
 
-// 반환: { group, bodyMaterial, arms }. bodyMaterial 의 color/emissive 를 바꾸면 몸통·팔이 같이 바뀐다 (색, 경직 깜빡임)
+// 반환: { group, bodyMaterial, arms, hammer, held, waitMark }. bodyMaterial 의 color/emissive 를 바꾸면 몸통·팔이 같이 바뀐다 (색, 경직 깜빡임)
 // arms[0] = 오른팔 (밀치기 휘두르기 애니메이션용). 각 팔의 userData.base = 기본 위치
 export function buildCharacter(color) {
   const group = new THREE.Group();
@@ -53,6 +53,25 @@ export function buildCharacter(color) {
   hammer.visible = false;
   arms[0].add(hammer);
 
+  // 왼손에 든 것: 고른 핫바 칸의 물건 하나만 보임 (held[종류].visible). 망치는 오른손이라 같이 보여도 안 겹친다
+  const held = {
+    block: new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.22), new THREE.MeshLambertMaterial({ color: 0x6f8fc8 })),
+    brick: new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.17, 0.17), new THREE.MeshLambertMaterial({ color: 0xf0d060 })),
+    ball: new THREE.Mesh(new THREE.SphereGeometry(0.14, 14, 10), new THREE.MeshLambertMaterial({ color: 0xe02020 })),
+    bomb: new THREE.Mesh(new THREE.SphereGeometry(0.17, 14, 10), new THREE.MeshLambertMaterial({ color: 0x222222 })),
+  };
+  for (const m of Object.values(held)) {
+    m.position.set(0, 0.24, 0); // 왼팔 바깥 끝 (+y)
+    m.visible = false;
+    arms[1].add(m);
+  }
+
+  // 조종권을 먹고 차례를 기다리는 중: 머리 위 하늘색 팔면체 (필드의 조종권 아이템과 같은 모양)
+  const waitMark = new THREE.Mesh(new THREE.OctahedronGeometry(0.12), new THREE.MeshBasicMaterial({ color: 0x20e0e0 }));
+  waitMark.position.z = H + 0.2;
+  waitMark.visible = false;
+  group.add(waitMark);
+
   // 발 두 개: 바닥에 납작하게. 몸통 아래 안쪽에 둔다
   const footMat = new THREE.MeshLambertMaterial({ color: 0x333333 });
   for (const side of [-1, 1]) {
@@ -62,5 +81,5 @@ export function buildCharacter(color) {
     group.add(foot);
   }
 
-  return { group, bodyMaterial, arms, hammer };
+  return { group, bodyMaterial, arms, hammer, held, waitMark };
 }

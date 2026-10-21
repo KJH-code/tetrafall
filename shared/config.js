@@ -203,6 +203,7 @@ export const CONFIG = {
   SKY_TRANSITION_MS: 700, // 1인칭 ↔ 하늘 시점 전환 애니메이션 길이
   NAME_MAX_LEN: 8, // 대기 화면에서 넣는 이름 (머리 위 표시)
   ROUND_COUNTDOWN_MS: 3000, // 판 시작 전 3·2·1 (그동안 시작 위치에 서서 시선만 돌릴 수 있음). 서버만 켬, 테스트는 0
+  COOLDOWN_FLASH_MS: 250, // 조준점 둘레 쿨 원이 다 차면 번쩍이는 시간
   WIN_BANNER_MS: 2500, // 판이 끝나면 "P2 승리!" 큰 글씨 표시 시간
   TOAST_MS: 2200, // 화면 알림이 떠 있는 시간
   INPUT_SEND_RATE: 30, // 입력 전송 Hz

@@ -528,10 +528,59 @@ function updateHud() {
   const brick = !!p && p.hand === 2 && p.bricks > 0;
   const bomb = !!p && p.hand === 3 && p.bombs > 0;
   crosshair.classList.toggle('hidden', !(input.enabled && !p.controlling));
+  updateCooldowns(p, state.phase === 'playing' && input.enabled && !p.controlling);
+  updateItemTimers();
   crosshair.classList.toggle('armed', armed || brick || bomb);
   crosshair.classList.toggle('brick', brick);
   crosshair.classList.toggle('bomb', bomb);
   crosshair.dataset.ammo = '';
+}
+
+// ---------- 조준점 둘레 쿨 원 (대시·밀치기) ----------
+const cdRing = $('cd-ring');
+const cdArcs = {
+  dash: { el: cdRing.querySelector('.dash'), track: cdRing.querySelector('.dash-track'), total: C.DASH_COOLDOWN_MS, flashUntil: 0, was: 0 },
+  push: { el: cdRing.querySelector('.push'), track: cdRing.querySelector('.push-track'), total: C.PUSH_COOLDOWN_MS, flashUntil: 0, was: 0 },
+};
+for (const a of Object.values(cdArcs)) a.len = 2 * Math.PI * a.el.r.baseVal.value;
+function updateCooldowns(p, show) {
+  cdRing.classList.toggle('hidden', !show);
+  if (!show) return;
+  const now = performance.now();
+  for (const [k, a] of Object.entries(cdArcs)) {
+    const cd = k === 'dash' ? p.dashCd : p.pushCd;
+    if (a.was > 0 && cd === 0) a.flashUntil = now + C.COOLDOWN_FLASH_MS; // 다 찼을 때 번쩍
+    a.was = cd;
+    const flashing = now < a.flashUntil;
+    const fill = cd > 0 ? 1 - cd / a.total : 1;
+    const on = cd > 0 || flashing;
+    a.el.style.display = on ? '' : 'none';
+    a.track.style.display = cd > 0 ? '' : 'none';
+    a.el.setAttribute('stroke-dasharray', `${a.len * fill} ${a.len}`);
+    a.el.classList.toggle('flash', flashing);
+  }
+}
+
+// ---------- 맨 위 승수 밑: 다음 조종권·아이템까지 (시계가 도는 동안만) ----------
+const timerEls = { control: $('t-control'), power: $('t-power') };
+const TIMER_LOOK = { control: { color: '#20e0e0', label: '조종권' }, power: { color: '#ffb040', label: '아이템' } };
+const timerFull = { control: null, power: null }; // 시계가 새로 시작될 때의 남은 시간 = 원이 다 찬 기준 (첫 아이템·재시도는 길이가 다름)
+const timerPrev = { control: null, power: null };
+function updateItemTimers() {
+  const t = state.itemTimers || { control: null, power: null };
+  for (const [k, el] of Object.entries(timerEls)) {
+    const left = t[k] ?? null;
+    if (left !== null && (timerPrev[k] === null || left > timerPrev[k])) timerFull[k] = Math.max(left, 1);
+    timerPrev[k] = left;
+    el.classList.toggle('hidden', left === null);
+    if (left === null) continue;
+    const look = TIMER_LOOK[k];
+    const deg = 360 * (1 - Math.min(1, left / timerFull[k]));
+    el.querySelector('.pie').style.background = `conic-gradient(${look.color} ${deg}deg, rgba(255,255,255,.2) 0)`;
+    const txt = el.querySelector('.txt');
+    txt.textContent = `${look.label} ${Math.ceil(left / 1000)}s`;
+    txt.style.color = look.color;
+  }
 }
 
 // ---------- 호스트: 플레이어마다 관전 ↔ 참가, 내보내기 (판 사이에만 보임) ----------
@@ -596,7 +645,6 @@ function updateBottom(p) {
   if (p.weaponUses > 0) buffs.push(`망치 ${p.weaponUses}회`);
   if (p.jumpLeft > 0) buffs.push(`점프↑ ${(p.jumpLeft / 1000).toFixed(1)}s`);
   if (p.ghostLeft > 0) buffs.push(`유령 ${(p.ghostLeft / 1000).toFixed(1)}s`);
-  if (p.dashCd > 0) buffs.push(`대시 ${(p.dashCd / 1000).toFixed(1)}s`);
   const slots = [
     p.blocks > 0 ? `쌓기 ×${p.blocks}` : '쌓기 —',
     p.ammo > 0 ? `투사체 ×${p.ammo}` : p.bricks > 0 ? `설치 1×2 ×${p.bricks} ${p.brickSide ? '옆' : '앞'}` : '아이템 —',

@@ -18,6 +18,14 @@ const ITEM_LOOK = {
   bomb: { color: 0x222222, geo: () => new THREE.SphereGeometry(0.22, 14, 10) }, // 검은 공
 };
 
+// 고른 핫바 칸에 든 것: 'block' | 'brick' | 'ball'(투사체) | 'bomb' | null
+export function heldKind(p) {
+  if (p.hand === 1) return p.blocks > 0 ? 'block' : null;
+  if (p.hand === 2) return p.bricks > 0 ? 'brick' : p.ammo > 0 ? 'ball' : null;
+  return p.bombs > 0 ? 'bomb' : null;
+}
+const HELD_COLOR = { block: 0x6f8fc8, brick: ITEM_LOOK.brick.color, ball: ITEM_LOOK.knockback.color, bomb: 0x222222 };
+
 // 피해 % 글자색: 0% 흰색 → 50% 노랑 → 100% 이상 빨강
 export function damageColor(d) {
   const t = Math.min(1, d / 100);
@@ -154,6 +162,8 @@ export class Renderer {
     this.aimBoxes = [];
     // 놓인 폭탄: 검은 공, 터질 때가 가까울수록 빨갛게 빨리 깜빡임
     this.bombMeshes = [];
+    this.beams = [];
+    this.beamMat = new THREE.MeshBasicMaterial({ color: 0xd040d0, transparent: true, opacity: 0.5, depthWrite: false });
 
     this.playerMeshes = new Map();
     this.itemMeshes = [];
@@ -218,6 +228,8 @@ export class Renderer {
       g.userData.bodyMat = ch.bodyMaterial;
       g.userData.arms = ch.arms;
       g.userData.hammer = ch.hammer;
+      g.userData.held = ch.held;
+      g.userData.waitMark = ch.waitMark;
       g.userData.color = color;
       // 하늘 시점 전용 표시: 바라보는 방향 화살표 (+ 내 캐릭터는 흰 고리)
       const tri = new THREE.Shape();
@@ -285,6 +297,36 @@ export class Renderer {
     });
   }
 
+  // 조종 중인 블록 ↔ 조종하는 사람 머리를 잇는 보라색 빛줄기 (누가 어느 블록을 모는지)
+  updateBeams(state) {
+    const pairs = [];
+    for (const pc of state.pieces || []) {
+      if (pc.phase !== 'control' || pc.controller === null) continue;
+      const s = this.smooth.get(pc.controller);
+      const owner = state.players.find((p) => p.id === pc.controller);
+      if (!s || !owner || !owner.alive || !pc.cells.length) continue;
+      const c = pc.cells.reduce((a, [x, y, z]) => [a[0] + x, a[1] + y, a[2] + z], [0, 0, 0]).map((v) => v / pc.cells.length + 0.5);
+      pairs.push([new THREE.Vector3(s.x, s.y, s.z + C.PLAYER_HEIGHT), new THREE.Vector3(...c)]);
+    }
+    while (this.beams.length < pairs.length) {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1, 8, 1, true), this.beamMat);
+      this.scene.add(m);
+      this.beams.push(m);
+    }
+    const up = new THREE.Vector3(0, 1, 0);
+    this.beams.forEach((m, i) => {
+      const pr = pairs[i];
+      m.visible = !!pr;
+      if (!pr) return;
+      const [a, b] = pr;
+      const dir = b.clone().sub(a);
+      m.position.copy(a).addScaledVector(dir, 0.5);
+      m.scale.set(1, dir.length(), 1);
+      m.quaternion.setFromUnitVectors(up, dir.normalize());
+    });
+    this.beamMat.opacity = 0.35 + 0.2 * Math.sin(performance.now() / 150);
+  }
+
   updateBombs(bombs) {
     while (this.bombMeshes.length < bombs.length) {
       const m = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), new THREE.MeshLambertMaterial({ color: 0x222222, emissive: 0x000000 }));
@@ -344,6 +386,12 @@ export class Renderer {
       bodyMat.opacity = p.ghostLeft > 0 ? 0.35 + 0.1 * Math.sin(performance.now() / 120) : 1;
       if (p.jumpLeft > 0 && !p.stunned) bodyMat.emissive.setHex(0x1a5a1a);
       g.userData.hammer.visible = p.weaponUses > 0;
+      // 왼손에 고른 칸의 물건, 조종권 대기 중이면 머리 위 하늘색 팔면체
+      const kind = heldKind(p);
+      for (const [k, m] of Object.entries(g.userData.held)) m.visible = k === kind;
+      const wait = g.userData.waitMark;
+      wait.visible = p.hasControl && !p.controlling;
+      if (wait.visible) wait.rotation.z = performance.now() / 400;
       const sq = this.effects.squashAmount(p.id);
       g.scale.set(1 + 0.28 * sq, 1 + 0.28 * sq, 1 - 0.32 * sq);
       // 밀치기: 오른팔을 앞으로 뻗음
@@ -462,13 +510,14 @@ export class Renderer {
     const me = state.players.find((p) => p.id === myId);
     this.updateAim(me && me.alive && view === 'fps' ? me.aim : null);
     this.updateBombs(state.bombs || []);
+    this.updateBeams(state);
     if (me) this.viewArm.material.color.setHex(PLAYER_COLORS[me.slot % PLAYER_COLORS.length]);
     const vp = this.effects.punchAmount(myId);
     this.viewArm.position.set(this.viewArmBase.x - 0.12 * vp, this.viewArmBase.y + 0.08 * vp, this.viewArmBase.z - 0.3 * vp);
     this.viewArm.visible = !!(me && me.alive) && this.skyBlend === 0;
     this.viewHammer.visible = !!(me && me.weaponUses > 0);
     // 손에 든 것: 고른 핫바 칸에 뭐가 있으면 그 색 상자 (망치가 있으면 망치가 우선)
-    const held = !me ? null : me.hand === 1 ? (me.blocks > 0 ? 0x6f8fc8 : null) : me.hand === 2 ? (me.bricks > 0 ? ITEM_LOOK.brick.color : me.ammo > 0 ? ITEM_LOOK.knockback.color : null) : me.bombs > 0 ? 0x222222 : null;
+    const held = me && heldKind(me) ? HELD_COLOR[heldKind(me)] : null;
     this.viewBrick.visible = held !== null && !this.viewHammer.visible;
     if (held !== null) this.viewBrick.material.color.setHex(held);
     this.effects.update(dt, this.skyBlend >= 1 ? this.skyCamera : this.camera);

@@ -39,6 +39,15 @@
     #flash { position: absolute; inset: 0; background: rgba(255,0,0,.35); opacity: 0; transition: opacity .3s; }
     #bigmsg { position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); font-size: 110px; font-weight: 900; white-space: nowrap; text-shadow: 0 0 12px #000, 0 0 4px #000; z-index: 3; }
     #bigmsg.small { font-size: 72px; }
+    #cd-ring { position: absolute; top: 50%; left: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; pointer-events: none; transform: rotate(-90deg); }
+    #cd-ring circle { fill: none; stroke-linecap: round; }
+    #cd-ring .track { stroke: rgba(0,0,0,.25); }
+    #cd-ring .dash { stroke: #5ad0ff; stroke-width: 4; }
+    #cd-ring .push { stroke: #fff; stroke-width: 3; opacity: .85; }
+    #cd-ring .flash { stroke-width: 6; filter: drop-shadow(0 0 4px #fff); }
+    #timers { display: flex; gap: 8px; justify-content: center; margin-top: 4px; font-size: 15px; font-weight: bold; }
+    #timers .t { display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,.55); padding: 3px 10px; border-radius: 6px; }
+    #timers .pie { width: 14px; height: 14px; border-radius: 50%; }
     #crosshair.bomb { border-color: #ff7a20; box-shadow: 0 0 6px #ff7a20; }
     /* 화면 아래 가운데: 버프 · 피해 % · 핫바 */
     #bottom { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
@@ -69,12 +78,15 @@
     <div id="vignette"></div>
     <div id="top">
       <div id="score" class="hidden"></div>
+      <div id="timers"><span id="t-control" class="t hidden"><span class="pie"></span><span class="txt"></span></span><span id="t-power" class="t hidden"><span class="pie"></span><span class="txt"></span></span></div>
       <div id="banner" class="hidden"></div>
       <div id="toasts"></div>
     </div>
     <div id="status">연결 중...</div>
     <div id="bigmsg" class="hidden"></div>
     <div id="crosshair"></div>
+    <!-- 조준점 둘레 쿨: 바깥 하늘색 = 대시, 안쪽 흰색 = 밀치기. 도는 동안만 보이고 다 차면 번쩍 -->
+    <svg id="cd-ring" class="hidden" viewBox="0 0 64 64"><circle class="track dash-track" cx="32" cy="32" r="27" stroke-width="4" /><circle class="dash" cx="32" cy="32" r="27" /><circle class="track push-track" cx="32" cy="32" r="21" stroke-width="3" /><circle class="push" cx="32" cy="32" r="21" /></svg>
     <div id="hitmarker"></div>
     <div id="stun" class="hidden">경직!</div>
     <div id="bottom" class="hidden">

@@ -1227,12 +1227,27 @@ export class Game {
     return false;
   }
 
-  updateItems() {
-    const anyControl =
+  // 조종권이 필드·누군가의 손·조종 중인 블록 어딘가에 있음 → 다음 조종권 시계가 안 돎
+  controlInPlay() {
+    return (
       this.items.some((it) => it.type === 'control') ||
       [...this.players.values()].some((p) => p.hasControl) ||
-      this.pieces.some((pc) => pc.controller !== null);
-    if (!anyControl && this.time >= this.controlItemNextAt) {
+      this.pieces.some((pc) => pc.controller !== null)
+    );
+  }
+
+  // 다음 조종권·아이템까지 남은 ms. 시계가 안 도는 동안(조종권이 돌고 있음, 필드에 아이템이 꽉 참, 판 밖)은 null
+  itemTimers() {
+    if (this.phase !== 'playing') return { control: null, power: null };
+    const powerCount = this.items.filter((it) => it.type !== 'control').length;
+    return {
+      control: this.controlInPlay() ? null : Math.max(0, this.controlItemNextAt - this.time),
+      power: powerCount >= C.ITEM_MAX_ON_FIELD ? null : Math.max(0, this.powerItemNextAt - this.time),
+    };
+  }
+
+  updateItems() {
+    if (!this.controlInPlay() && this.time >= this.controlItemNextAt) {
       if (!this.spawnItem('control')) this.controlItemNextAt = this.time + 1000;
     }
     const powerCount = this.items.filter((it) => it.type !== 'control').length;
@@ -1552,6 +1567,7 @@ export class Game {
         hasControl: p.hasControl,
         ammo: p.ammo,
         dashCd: Math.max(0, p.dashReadyAt - this.time),
+        pushCd: Math.max(0, p.pushReadyAt - this.time),
         weaponUses: p.weaponUses,
         jumpLeft: Math.max(0, p.jumpUntil - this.time),
         ghostLeft: Math.max(0, p.ghostUntil - this.time),
@@ -1569,6 +1585,7 @@ export class Game {
       pieces: piecesOut,
       nextSpawnIn,
       lava: { active: this.lava.active, z: this.lava.z },
+      itemTimers: this.itemTimers(),
       map: { choice: this.mapChoice, id: this.mapId, name: MAPS[this.mapId].name },
       items: this.items,
       projectiles: this.projectiles.map((pr) => ({ x: pr.x, y: pr.y, z: pr.z })),

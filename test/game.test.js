@@ -897,6 +897,25 @@ test('아이템 생성: 조종권 말고는 필드에 ITEM_MAX_ON_FIELD 개까�
   for (const type of C.ITEM_POOL) assert.ok(seen.has(type), `${type} 안 나옴`);
 });
 
+test('스냅샷 쿨·재등장 시계: 밀치기 쿨, 조종권은 돌고 있으면 null, 아이템은 꽉 차면 null', () => {
+  const { g, p1 } = setup();
+  const timers = () => g.snapshot().itemTimers;
+  g.controlItemNextAt = g.time + 3000;
+  g.powerItemNextAt = g.time + 5000;
+  assert.deepEqual(timers(), { control: 3000, power: 5000 });
+  p1.hasControl = true; // 조종권을 먹고 차례 대기
+  assert.equal(timers().control, null);
+  p1.hasControl = false;
+  g.items = Array.from({ length: C.ITEM_MAX_ON_FIELD }, (_, i) => ({ type: 'jump', x: i, y: 0, z: 0 }));
+  assert.equal(timers().power, null);
+  g.phase = 'over';
+  assert.deepEqual(timers(), { control: null, power: null });
+  g.phase = 'playing';
+  g.handleAction(1, { name: 'push' });
+  const me = g.snapshot().players.find((p) => p.id === 1);
+  assert.equal(me.pushCd, C.PUSH_COOLDOWN_MS);
+});
+
 test('망치: WEAPON_USES 번 동안 밀치기 대신 — 넉백 약 2배, 경직 WEAPON_STUN_MS, 맞혔을 때만 소모', () => {
   const { g, p1, p2 } = setup();
   g.givePower(p1, 'weapon');
