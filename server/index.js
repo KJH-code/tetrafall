@@ -111,6 +111,23 @@ wss.on('connection', (ws) => {
       case 'removeBot':
         if (game.isHost(id)) game.removeBot();
         break;
+      case 'spectate': // 호스트: 관전 ↔ 참가 (판 사이에만)
+        if (game.isHost(id)) game.setSpectator(Number(msg.target), msg.on);
+        break;
+      case 'kick': {
+        // 호스트: 내보내기 (자기 자신은 안 됨). 사람은 연결을 끊고, 봇은 바로 뺀다
+        const target = Number(msg.target);
+        if (!game.isHost(id) || target === id || !game.players.has(target)) break;
+        log(`[호스트] ${game.players.get(target).name} 내보냄`);
+        const tws = sockets.get(target);
+        if (tws) {
+          send(tws, { type: 'reject', reason: '호스트가 내보냈습니다.\n새로고침하면 다시 들어올 수 있습니다' });
+          tws.close();
+        } else {
+          game.removePlayer(target);
+        }
+        break;
+      }
       case 'setName':
         game.setNick(id, msg.name);
         break;

@@ -140,6 +140,7 @@ export class Game {
       weaponUses: 0, // 망치 남은 횟수
       jumpUntil: 0, // 점프력 상승 끝나는 시각
       ghostUntil: 0, // 유령화 끝나는 시각
+      spectator: false, // 호스트가 관전으로 돌린 사람: 판에 안 들어가고 통계·승수 표시에서 빠짐
       nick: '', // 대기 화면에서 넣은 이름 (머리 위 표시용. 로그·승수는 name = P1 그대로)
       hand: 1, // 핫바에서 고른 칸. 1 쌓기 블록 · 2 던지는 아이템 · 3 폭탄
       blocks: 0, // 쌓기 블록 남은 개수 (판마다 BUILD_BLOCKS_PER_ROUND)
@@ -229,7 +230,22 @@ export class Game {
   }
 
   canStart() {
-    return this.players.size >= C.MIN_PLAYERS && !this.inRound();
+    return this.participants().length >= C.MIN_PLAYERS && !this.inRound();
+  }
+
+  // 판에 참가하는 사람 (관전자 빼고)
+  participants() {
+    return [...this.players.values()].filter((p) => !p.spectator);
+  }
+
+  // 호스트가 관전 ↔ 참가 전환 (판 사이에만)
+  setSpectator(id, on) {
+    const p = this.players.get(id);
+    if (!p || this.inRound()) return false;
+    p.spectator = !!on;
+    p.alive = false;
+    this.log(`[호스트] ${p.name} ${p.spectator ? '관전으로' : '참가로'}`);
+    return true;
   }
 
   // 이름 바꾸기: 판 사이에만. 제어 문자 빼고 공백 하나로, NAME_MAX_LEN 글자까지 (한글도 한 글자)
@@ -286,7 +302,7 @@ export class Game {
         kbx: 0,
         kby: 0,
         grounded: true,
-        alive: true,
+        alive: !p.spectator,
         stunUntil: 0,
         freezeUntil: 0,
         weaponUses: 0,
@@ -318,13 +334,14 @@ export class Game {
   beginPlay() {
     this.phase = 'playing';
     // 인원수별 통계는 실제로 판을 시작한 인원으로 (카운트다운 중에 나간 사람은 빼고)
-    this.roundPlayerCount = this.players.size;
-    this.roundBotCount = this.bots.size;
+    const ps = this.participants();
+    this.roundPlayerCount = ps.length;
+    this.roundBotCount = ps.filter((p) => p.isBot).length;
     this.roundStartTime = this.time;
     this.nextSpawnAt = this.time + C.FIRST_SPAWN_DELAY_MS;
     this.controlItemNextAt = this.time + C.CONTROL_ITEM_RESPAWN_MS;
     this.powerItemNextAt = this.time + C.ITEM_FIRST_SPAWN_MS;
-    this.log(`===== ROUND ${this.roundNumber} 시작 (${this.players.size}명, 맵 ${MAPS[this.mapId].name}) =====`);
+    this.log(`===== ROUND ${this.roundNumber} 시작 (${ps.length}명, 맵 ${MAPS[this.mapId].name}) =====`);
     this.checkRoundEnd(); // 카운트다운 중에 나가서 혼자 남았으면 바로 끝
   }
 
@@ -346,7 +363,7 @@ export class Game {
       : '없음';
     this.log(`===== ROUND ${this.roundNumber} 종료 | 길이 ${fmtTime(dur)} | 승자: ${winner ? winner.name : '무승부'} =====`);
     this.log(`  사망: ${deathStr}`);
-    this.log(`  승수: ${[...this.players.values()].sort((a, b) => a.slot - b.slot).map((p) => `${p.name} ${p.wins}`).join(' / ')}`);
+    this.log(`  승수: ${this.participants().sort((a, b) => a.slot - b.slot).map((p) => `${p.name} ${p.wins}`).join(' / ')}`);
     this.log(`  이번 판: 압사 ${crush} / 낙사 ${fall} / 용암 ${lava}${this.lava.active ? ` (용암 시작 @ ${fmtTime(this.lava.startedAt - this.roundStartTime)})` : ''}`);
     const per = (this.totals.crush / this.totals.rounds).toFixed(2);
     this.log(`  누적 ${this.totals.rounds}판: 압사 ${this.totals.crush} (판당 ${per}) / 낙사 ${this.totals.fall} / 용암 ${this.totals.lava}`);
@@ -1523,6 +1540,7 @@ export class Game {
         slot: p.slot,
         name: p.name,
         nick: p.nick,
+        spectator: p.spectator,
         isBot: !!p.isBot,
         x: p.x,
         y: p.y,

@@ -1506,3 +1506,25 @@ test('카운트다운 중에 나간 사람: 사망 목록에 남고, 인원수 �
   assert.ok(g.totalsByCount['2인'], `인원수 통계 ${Object.keys(g.totalsByCount)}`);
   assert.equal(g.totalsByCount['3인'], undefined);
 });
+
+test('관전 전환: 판 사이에만, 관전자는 판에 안 들어가고 시작 인원·인원수 통계에서 빠진다', () => {
+  const g = new Game(() => {});
+  for (let i = 1; i <= 3; i++) g.addPlayer(i);
+  const p3 = g.players.get(3);
+  assert.equal(g.setSpectator(3, true), true);
+  g.setSpectator(2, true);
+  assert.equal(g.canStart(), false, '참가자 1명이면 시작 못 함');
+  g.setSpectator(2, false);
+  g.startRound();
+  assert.equal(p3.alive, false, '관전자는 판에 안 들어감');
+  assert.equal(g.roundPlayerCount, 2);
+  assert.equal(g.setSpectator(3, false), false, '판 중엔 못 바꿈');
+  g.kill(g.players.get(2), 'fall');
+  g.tick(TICK);
+  assert.equal(g.phase, 'over');
+  assert.ok(g.totalsByCount['2인'] && !g.totalsByCount['3인'], Object.keys(g.totalsByCount).join());
+  assert.equal(g.snapshot().players.find((p) => p.id === 3).spectator, true);
+  g.setSpectator(3, false);
+  g.startRound();
+  assert.equal(p3.alive, true, '참가로 돌리면 다음 판에 들어감');
+});

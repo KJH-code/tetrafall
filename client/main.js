@@ -21,7 +21,8 @@ let myId = null;
 let state = null;
 let lastState = null;
 let wasAlive = true;
-let rejected = false; // 방이 꽉 차서 거부됨. 이어지는 연결 끊김 메시지로 덮어쓰지 않는다
+let rejected = false; // 방이 꽉 찼거나 내보내져 거부됨. 이어지는 연결 끊김 메시지로 덮어쓰지 않는다
+let closed = false; // 연결이 끊기면 HUD 갱신을 멈춰 거부·끊김 메시지가 덮이지 않게
 
 function send(obj) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
@@ -297,9 +298,10 @@ function connect() {
     }
   };
   ws.onclose = () => {
+    closed = true;
     centerEl.classList.remove('hidden');
     if (!rejected) centerText.textContent = '서버 연결 끊김. 새로고침하세요.';
-    startBtn.classList.add('hidden');
+    for (const el of [startBtn, $('bot-btns'), $('map-info'), $('name-row'), $('host-players'), $('keys')]) el.classList.add('hidden');
   };
 }
 
@@ -410,7 +412,7 @@ function fmt(ms) {
 const scoreEl = $('score');
 let scoreKey = '';
 function updateScore() {
-  const ps = [...state.players].sort((a, b) => a.slot - b.slot);
+  const ps = state.players.filter((p) => !p.spectator).sort((a, b) => a.slot - b.slot); // 관전자는 승수에서 뺌
   const key = ps.map((p) => `${p.id}:${p.wins}:${p.nick}`).join(',') + `|${myId}`;
   if (key === scoreKey) return;
   scoreKey = key;
@@ -426,7 +428,7 @@ function updateScore() {
 
 // ---------- HUD ----------
 function updateHud() {
-  if (!state) return;
+  if (!state || closed) return;
   const p = me();
   const isHost = state.hostId === myId;
   const alive = state.players.filter((x) => x.alive).length;
@@ -436,7 +438,8 @@ function updateHud() {
   lines.push(`플레이어 ${state.players.length}/${maxP} · 생존 ${alive}`);
   if (p && state.phase === 'playing') {
     // 피해 %·경직·버프·핫바는 화면 아래 가운데 (updateBottom). 여기엔 사망과 용암만
-    if (!p.alive) lines.push(`사망 (${CAUSE_KO[p.cause] || p.cause})`);
+    if (p.spectator) lines.push('관전');
+    else if (!p.alive) lines.push(`사망 (${CAUSE_KO[p.cause] || p.cause})`);
     if (state.lava && state.lava.active) {
       const above = p.alive ? (p.z - state.lava.z).toFixed(1) : '-';
       lines.push(`용암 높이 ${Math.max(0, state.lava.z).toFixed(1)} · 내 발 위로 ${above}칸`);
@@ -486,6 +489,8 @@ function updateHud() {
     center = `라운드 ${state.round.n} 종료\n승자: ${w ? shownName(w) : '무승부'}`;
     showStart = isHost && state.canStart;
     showKeys = true;
+  } else if (p && p.spectator) {
+    center = '관전 중 (호스트가 관전으로 바꿈)';
   } else if (p && !p.alive) {
     center = `사망: ${CAUSE_KO[p.cause] || p.cause}\n관전 중`;
   } else if (state.phase === 'countdown') {
@@ -503,6 +508,7 @@ function updateHud() {
   // 봇 버튼: 호스트만, 판 사이에만
   const between = state.phase === 'lobby' || state.phase === 'over';
   $('name-row').classList.toggle('hidden', !between);
+  updateHostPlayers(isHost && between);
   const showBots = isHost && between;
   $('bot-btns').classList.toggle('hidden', !showBots);
   // 맵: 호스트는 고르고, 다른 사람은 보기만
@@ -526,6 +532,38 @@ function updateHud() {
   crosshair.classList.toggle('brick', brick);
   crosshair.classList.toggle('bomb', bomb);
   crosshair.dataset.ammo = '';
+}
+
+// ---------- 호스트: 플레이어마다 관전 ↔ 참가, 내보내기 (판 사이에만 보임) ----------
+const hostPlayersEl = $('host-players');
+let hostPlayersKey = '';
+function updateHostPlayers(show) {
+  hostPlayersEl.classList.toggle('hidden', !show);
+  if (!show) return;
+  const ps = [...state.players].sort((a, b) => a.slot - b.slot);
+  const key = ps.map((p) => `${p.id}:${p.spectator}:${p.nick}`).join(',');
+  if (key === hostPlayersKey) return;
+  hostPlayersKey = key;
+  const title = document.createElement('div');
+  title.className = 'title';
+  title.textContent = '플레이어 관리 (호스트)';
+  const cells = [title];
+  for (const p of ps) {
+    const who = document.createElement('span');
+    who.textContent = `${shownName(p)}${p.id === myId ? ' (나)' : ''}${p.spectator ? ' · 관전' : ''}`; // 이름은 textContent 로
+    who.style.color = colorOf(p);
+    const spec = document.createElement('button');
+    spec.textContent = p.spectator ? '참가로' : '관전으로';
+    spec.addEventListener('click', () => send({ type: 'spectate', target: p.id, on: !p.spectator }));
+    let kick = document.createElement('span'); // 자기 자신은 못 내보냄: 빈 칸으로 열 맞춤
+    if (p.id !== myId) {
+      kick = document.createElement('button');
+      kick.textContent = '내보내기';
+      kick.addEventListener('click', () => send({ type: 'kick', target: p.id }));
+    }
+    cells.push(who, spec, kick);
+  }
+  hostPlayersEl.replaceChildren(...cells);
 }
 
 // ---------- 화면 아래: 피해 % · 경직 · 버프 · 핫바 ----------
