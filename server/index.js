@@ -141,7 +141,7 @@ wss.on('connection', (ws) => {
       case 'kick': {
         // 호스트: 내보내기 (자기 자신은 안 됨). 사람은 연결을 끊고, 봇은 바로 뺀다
         const target = Number(msg.target);
-        if (!game.isHost(id) || target === id || !game.players.has(target)) break;
+        if (!game.isHost(id) || target === id || !game.players.has(target) || game.inRound()) break; // 판 사이에만 (UI 도 판 사이에만 보임)
         log(`[호스트] ${game.players.get(target).name} 내보냄`);
         const tws = sockets.get(target);
         if (tws) {
@@ -163,7 +163,7 @@ wss.on('connection', (ws) => {
         break;
       case 'start':
         if (game.isHost(id)) {
-          if (!game.startRound()) log(`시작 거부: 플레이어 ${game.players.size}명 (최소 ${C.MIN_PLAYERS}명)`);
+          if (!game.startRound()) log(`시작 거부: 참가자 ${game.participants().length}명 (최소 ${C.MIN_PLAYERS}명, 관전자 제외)`);
         }
         break;
       default:

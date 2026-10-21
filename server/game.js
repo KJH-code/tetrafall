@@ -253,7 +253,7 @@ export class Game {
     const p = this.players.get(id);
     if (!p || this.inRound()) return false;
     p.spectator = !!on;
-    p.alive = false;
+    p.alive = !p.spectator; // 판 사이라 참가로 되돌리면 새로 들어온 사람처럼 살아 있는 상태 (리뷰 지적: 죽은 채 남았음)
     this.log(`[호스트] ${p.name} ${p.spectator ? '관전으로' : '참가로'}`);
     return true;
   }

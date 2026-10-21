@@ -50,6 +50,8 @@ test('통계: 실제 게임 로그에서 판 수·승수·사망 원인이 서�
   assert.equal(kills, serverKills);
   assert.equal(s.weapons.total, serverDeaths);
   assert.ok(serverKills > 0, '봇끼리 6판이면 킬이 나옴');
+  const known = ['밀치기', '망치', '투사체', '충격파', '폭탄', '조종블록', '설치블록', '(킬 없음)'];
+  for (const [k] of s.weapons.rows) assert.ok(known.includes(k), `공격 이름 ${k}`);
   assert.deepEqual(s.byComp.map((x) => x.key), ['봇 2 (보통)'], '봇 난이도가 구성에 붙음');
   assert.ok(formatReport(s).includes('== 플레이어별 =='));
 });
@@ -88,7 +90,7 @@ test('통계: 이름으로 묶고, 접속 끊김은 요약 줄에서 받고, 옛
     '[1시]   [쌓기] P1 → (1,2,1) (남은 4개)',
     '[1시]   [폭탄] P1 → (3,3) z=1 설치, 1.5초 뒤 폭발',
     '[1시]   [폭탄] P1 → P2 넉백 (P2 40%)',
-    '[1시]   [사망] P3(봇) 낙사 @ 0:10 (위치 1.0, 2.0, -4.0, 피해 120%)',
+    '[1시]   [사망] P3(봇) 낙사 @ 0:10 (위치 1.0, 2.0, -4.0, 피해 120%, 킬 P1 조종블록)',
     '[1시] P2 접속 종료',
     '[1시] ===== ROUND 1 종료 | 길이 0:12 | 승자: P1 =====',
     '[1시]   사망: P3(봇) 낙사@0:10, P2 접속 끊김@0:12',
@@ -116,5 +118,7 @@ test('통계: 이름으로 묶고, 접속 끊김은 요약 줄에서 받고, 옛
   assert.equal(s.items.bombs, 1);
   assert.equal(s.items.bombHits, 1);
   assert.equal(s.byComp.find((c) => c.key === '사람 2 + 봇 1').rounds, 1);
+  assert.deepEqual(s.weapons.rows, [['조종블록', 1]], '공격 이름에 괄호가 안 붙음 (옛 형식·접속 끊김 사망은 표에서 빠짐)');
+  assert.equal(s.players.find((p) => p.key === '재혁').kills, 1);
   assert.equal(s.byComp.find((c) => c.key === '사람 1 + 봇 1').rounds, 1);
 });

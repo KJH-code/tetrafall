@@ -312,27 +312,28 @@ export class Renderer {
     const vy = (s.y - a.py) / Math.max(dt, 1e-3);
     const vz = (s.z - a.pz) / Math.max(dt, 1e-3);
     Object.assign(a, { px: s.x, py: s.y, pz: s.z });
-    const k = 1 - Math.exp(-12 * dt);
+    const k = 1 - Math.exp(-C.ANIM_SMOOTH * dt);
     a.hs += (Math.hypot(vx, vy) - a.hs) * k;
     const wasFalling = a.vz < -C.ANIM_AIR_VZ;
     a.vz += (vz - a.vz) * k;
     const air = Math.abs(a.vz) > C.ANIM_AIR_VZ;
     if (wasFalling && !air) a.land = 1; // 내려앉음
-    a.land = Math.max(0, a.land - dt * 5);
+    a.land = Math.max(0, a.land - dt / C.ANIM_LAND_S);
     // 걷기: 발이 땅에 있을 때만 걸음 위상이 돎
-    const walking = !air && a.hs > 0.6;
+    const walking = !air && a.hs > C.ANIM_WALK_MIN_SPEED;
     if (walking) a.walk += dt * a.hs * C.ANIM_WALK_FREQ;
     const step = walking ? Math.sin(a.walk) : 0;
     parts.position.z = -C.PLAYER_HEIGHT / 2 + (walking ? Math.abs(step) * C.ANIM_BOB : 0);
-    g.userData.feet.forEach((f, i) => (f.position.x = f.userData.baseX + (i ? -step : step) * 0.09));
+    g.userData.feet.forEach((f, i) => (f.position.x = f.userData.baseX + (i ? -step : step) * C.ANIM_STEP));
     // 경직된 채 빠르게 날아가면 뒤로 구름. 끝나면 가장 가까운 바로 선 자세로 돌아옴
     if (p.stunned && a.hs > C.ANIM_TUMBLE_MIN_SPEED) a.spin -= dt * C.ANIM_TUMBLE_SPEED;
-    else a.spin += (Math.round(a.spin / (Math.PI * 2)) * Math.PI * 2 - a.spin) * (1 - Math.exp(-10 * dt));
+    else a.spin += (Math.round(a.spin / (Math.PI * 2)) * Math.PI * 2 - a.spin) * (1 - Math.exp(-C.ANIM_SMOOTH * dt));
     const lean = Math.min(1, a.hs / C.MOVE_SPEED) * C.ANIM_LEAN;
     rig.rotation.y = lean + a.spin;
-    rig.rotation.x = step * 0.06; // 걸을 때 좌우로 살짝 흔들
-    const stretch = a.vz > C.ANIM_AIR_VZ ? 0.12 : 0;
-    rig.scale.set(1 - stretch * 0.5 + a.land * 0.12, 1 - stretch * 0.5 + a.land * 0.12, 1 + stretch - a.land * 0.2);
+    rig.rotation.x = step * C.ANIM_SWAY; // 걸을 때 좌우로 살짝 흔들
+    const stretch = a.vz > C.ANIM_AIR_VZ ? C.ANIM_STRETCH : 0; // 올라가는 중: 위로 늘어나고 옆은 가늘게
+    const wide = 1 - stretch / 2 + a.land * C.ANIM_LAND_SQUASH * 0.6; // 착지: 납작해지며 옆으로 퍼짐
+    rig.scale.set(wide, wide, 1 + stretch - a.land * C.ANIM_LAND_SQUASH);
   }
 
   // 조종 중인 블록 ↔ 조종하는 사람 머리를 잇는 보라색 빛줄기 (누가 어느 블록을 모는지)
@@ -347,7 +348,7 @@ export class Renderer {
       pairs.push([new THREE.Vector3(s.x, s.y, s.z + C.PLAYER_HEIGHT), new THREE.Vector3(...c)]);
     }
     while (this.beams.length < pairs.length) {
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1, 8, 1, true), this.beamMat);
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(C.BEAM_RADIUS, C.BEAM_RADIUS, 1, 8, 1, true), this.beamMat);
       this.scene.add(m);
       this.beams.push(m);
     }
@@ -362,7 +363,7 @@ export class Renderer {
       m.scale.set(1, dir.length(), 1);
       m.quaternion.setFromUnitVectors(up, dir.normalize());
     });
-    this.beamMat.opacity = 0.35 + 0.2 * Math.sin(performance.now() / 150);
+    this.beamMat.opacity = C.BEAM_OPACITY + C.BEAM_PULSE * Math.sin(performance.now() / 150); // 살짝 깜빡임
   }
 
   updateBombs(bombs) {
@@ -582,7 +583,7 @@ export class Renderer {
         this.followYaw = want;
       }
       const d = Math.atan2(Math.sin(want - this.followYaw), Math.cos(want - this.followYaw));
-      this.followYaw += d * (1 - Math.exp(-6 * dt));
+      this.followYaw += d * (1 - Math.exp(-C.SPECTATE_TURN * dt));
       eye.set(s.x - Math.cos(this.followYaw) * C.SPECTATE_BACK, s.y - Math.sin(this.followYaw) * C.SPECTATE_BACK, s.z + C.SPECTATE_UP);
       look.set(s.x, s.y, s.z + C.PLAYER_HEIGHT * 0.6);
     } else {

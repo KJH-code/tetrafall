@@ -306,6 +306,13 @@ function feelEvent(e) {
 }
 
 // ---------- 연결 ----------
+// 거부·연결 끊김: HUD 갱신을 멈추고 대기 화면 버튼들을 숨김 (안내 문구만 남김)
+function stopHud() {
+  closed = true;
+  centerEl.classList.remove('hidden');
+  for (const el of [startBtn, $('bot-btns'), $('map-info'), $('name-row'), $('host-players'), $('keys'), $('spec')]) el.classList.add('hidden');
+}
+
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}`);
@@ -326,16 +333,16 @@ function connect() {
       onState();
       for (const e of msg.events || []) handleEvent(e);
     } else if (msg.type === 'reject') {
+      // 내보내기는 상태를 받은 뒤에 오므로, 소켓이 실제로 닫히기 전에도 HUD 가 문구를 덮지 않게 바로 멈춤 (리뷰 지적)
       rejected = true;
+      stopHud();
       centerText.textContent = msg.reason;
       statusEl.textContent = '';
     }
   };
   ws.onclose = () => {
-    closed = true;
-    centerEl.classList.remove('hidden');
+    stopHud();
     if (!rejected) centerText.textContent = '서버 연결 끊김. 새로고침하세요.';
-    for (const el of [startBtn, $('bot-btns'), $('map-info'), $('name-row'), $('host-players'), $('keys')]) el.classList.add('hidden');
   };
 }
 

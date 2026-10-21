@@ -80,7 +80,7 @@ export function parseLog(text) {
       last = null;
     } else if (!cur) {
       continue;
-    } else if ((m = line.match(/^ {2}\[사망\] (\S+) (압사|낙사|용암|접속 끊김) @ (\d+:\d+)(?:.*피해 (\d+)%)?(?:, 킬 (?:없음|(\S+) (\S+)))?/))) {
+    } else if ((m = line.match(/^ {2}\[사망\] (\S+) (압사|낙사|용암|접속 끊김) @ (\d+:\d+)(?:.*피해 (\d+)%)?(?:, 킬 (?:없음|(\S+) ([^\s)]+)))?/))) {
       // 킬: 이름 = 그 사람, null = 킬 없음, undefined = 킬 기록이 없던 옛 로그
       const killed = /, 킬 /.test(line);
       cur.deaths.push({

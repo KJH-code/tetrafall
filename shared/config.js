@@ -221,7 +221,18 @@ export const CONFIG = {
   ANIM_AIR_VZ: 0.8, // 위아래 속도가 이보다 크면 공중으로 봄 (칸/초)
   ANIM_TUMBLE_MIN_SPEED: 3, // 경직 중 이 속도(칸/초)보다 빠르게 날아가면 구름
   ANIM_TUMBLE_SPEED: 11, // 구르는 빠르기 (라디안/초)
+  ANIM_SMOOTH: 12, // 속도·구르기 복귀를 따라가는 빠르기 (클수록 즉각)
+  ANIM_WALK_MIN_SPEED: 0.6, // 이 속도(칸/초)보다 빨라야 걷는 동작
+  ANIM_STEP: 0.09, // 걸을 때 발을 앞뒤로 내미는 거리 (칸)
+  ANIM_SWAY: 0.06, // 걸을 때 좌우로 흔들리는 각도 (라디안)
+  ANIM_STRETCH: 0.12, // 위로 뛰어오를 때 늘어나는 비율
+  ANIM_LAND_SQUASH: 0.2, // 착지 순간 납작해지는 비율
+  ANIM_LAND_S: 0.2, // 착지 찌그러짐이 풀리는 시간 (초)
   SPECTATE_BACK: 3.2, // 관전 3인칭 카메라: 따라가는 사람 뒤로 (칸)
+  SPECTATE_TURN: 6, // 관전 카메라가 따라가는 사람의 방향으로 도는 빠르기
+  BEAM_RADIUS: 0.05, // 조종 빛줄기 굵기 (칸)
+  BEAM_OPACITY: 0.35, // 조종 빛줄기 기본 불투명도
+  BEAM_PULSE: 0.2, // 조종 빛줄기 깜빡임 폭
   SPECTATE_UP: 2.2, // 관전 3인칭 카메라: 발 위로 (칸)
   KILLFEED_MS: 6000, // 오른쪽 위 킬 알림이 떠 있는 시간
   KILLFEED_MAX: 5, // 킬 알림 최대 줄 수

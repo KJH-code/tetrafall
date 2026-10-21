@@ -1608,6 +1608,7 @@ test('관전 전환: 판 사이에만, 관전자는 판에 안 들어가고 시�
   g.setSpectator(2, true);
   assert.equal(g.canStart(), false, '참가자 1명이면 시작 못 함');
   g.setSpectator(2, false);
+  assert.equal(g.players.get(2).alive, true, '판 사이에 참가로 되돌리면 살아 있는 상태 (생존 수·캐릭터 표시)');
   g.startRound();
   assert.equal(p3.alive, false, '관전자는 판에 안 들어감');
   assert.equal(g.roundPlayerCount, 2);
