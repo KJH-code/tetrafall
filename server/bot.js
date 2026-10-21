@@ -30,12 +30,15 @@ function overlapsCells(p, cells) {
 }
 
 export class BotBrain {
-  constructor(rng = Math.random) {
+  // level(): 지금 봇 난이도 ('easy' | 'normal' | 'hard'). 게임이 바꾸면 다음 판단부터 바로 반영
+  constructor(rng = Math.random, level = () => C.BOT_LEVEL_DEFAULT) {
     this.rng = rng;
+    this.level = level;
     this.nextThinkAt = 0;
     this.input = { fwd: 0, strafe: 0, jump: false, yaw: 0, pitch: 0 };
     this.dangerSeen = new Map(); // 블록 위치 키 -> 그림자를 처음 본 시각 (반응 시간 계산용)
     this.aimedAt = null; // 조종 중: 목표 위에 맞춘 시각
+    this.dropOffset = null; // 조종 중: 이 블록에서 겨냥을 빗나가게 할 만큼 { piece, x, y }
     this.lastPos = null;
     this.stuckMs = 0;
     this.unstickUntil = 0;
@@ -45,6 +48,11 @@ export class BotBrain {
     // 4인 판에서 봇 둘이 시작하자마자 사람을 협공했다 (2026-10-20 로그 3·16·17판, 재현 200판 중 200판)
     this.targetBias = new Map();
     this.biasRound = -1;
+  }
+
+  // 난이도가 걸린 수치: BOT_<name> × 난이도 배수
+  k(name) {
+    return C[`BOT_${name}`] * (C.BOT_LEVELS[this.level()]?.[name] ?? 1);
   }
 
   update(g, p) {
@@ -115,7 +123,7 @@ export class BotBrain {
       if (!this.dangerSeen.has(d.key)) this.dangerSeen.set(d.key, g.time);
     }
     for (const k of [...this.dangerSeen.keys()]) if (!live.has(k)) this.dangerSeen.delete(k);
-    const known = dangers.filter((d) => g.time - this.dangerSeen.get(d.key) >= C.BOT_REACTION_MS);
+    const known = dangers.filter((d) => g.time - this.dangerSeen.get(d.key) >= this.k('REACTION_MS'));
     const avoid = known.flatMap((d) => d.cells);
     const danger = dangers.length ? dangers[0] : null;
 
@@ -259,7 +267,7 @@ export class BotBrain {
       if (g.time >= p.pushReadyAt && g.time >= t.stunUntil && g.time >= this.nextPushAt) {
         g.handleInput(p.id, this.input);
         g.handleAction(p.id, { name: 'push' });
-        this.nextPushAt = g.time + C.BOT_PUSH_INTERVAL_MS * (0.7 + 0.6 * this.rng());
+        this.nextPushAt = g.time + this.k('PUSH_INTERVAL_MS') * (0.7 + 0.6 * this.rng());
         return;
       }
       if (g.time < this.nextPushAt) {
@@ -290,7 +298,7 @@ export class BotBrain {
   }
 
   aimAt(p, t) {
-    const err = () => (this.rng() * 2 - 1) * C.BOT_AIM_ERROR_RAD;
+    const err = () => (this.rng() * 2 - 1) * this.k('AIM_ERROR_RAD');
     const dx = t.x - p.x;
     const dy = t.y - p.y;
     const dz = t.z + C.PLAYER_HEIGHT * 0.6 - (p.z + C.EYE_HEIGHT);
@@ -392,7 +400,15 @@ export class BotBrain {
   controlPiece(g, p, enemies, piece) {
     const t = this.nearest(p, enemies);
     const timeLeft = piece.controlEndsAt - g.time;
-    const plan = t ? this.bestDrop(g, p, t, piece) : null;
+    // 난이도가 낮으면 블록마다 한 번 정한 만큼 상대 옆을 겨냥 (CONTROL_AIM_ERROR 반경 안 무작위)
+    if (!this.dropOffset || this.dropOffset.piece !== piece.id) {
+      const R = this.k('CONTROL_AIM_ERROR');
+      const r = R > 0 ? R * Math.sqrt(this.rng()) : 0; // 0 이면 난수를 안 써서 보통 봇의 난수 순서가 그대로
+      const a = r > 0 ? this.rng() * Math.PI * 2 : 0;
+      this.dropOffset = { piece: piece.id, x: r * Math.cos(a), y: r * Math.sin(a) };
+    }
+    const aim = t ? { ...t, x: t.x + this.dropOffset.x, y: t.y + this.dropOffset.y } : null;
+    const plan = aim ? this.bestDrop(g, p, aim, piece) : null;
     if (!plan) {
       if (timeLeft < 1500 && piece.fits) this.drop(g, p, piece);
       else if (!piece.fits) g.handleAction(p.id, { name: 'pieceMove', dx: piece.px > W / 2 ? -1 : 1, dy: 0 });
@@ -416,7 +432,7 @@ export class BotBrain {
       return;
     }
     if (this.aimedAt === null) this.aimedAt = g.time;
-    if (g.time - this.aimedAt >= C.BOT_DROP_DELAY_MS || timeLeft < 1000) {
+    if (g.time - this.aimedAt >= this.k('DROP_DELAY_MS') || timeLeft < 1000) {
       this.drop(g, p, piece);
       this.aimedAt = null;
     }
@@ -426,7 +442,7 @@ export class BotBrain {
   // (안 그러면 반응 시간 동안 상대를 쫓아 내 블록 밑으로 걸어 들어간다)
   drop(g, p, piece) {
     g.handleAction(p.id, { name: 'drop' });
-    if (piece.phase === 'falling') this.dangerSeen.set(pieceKey(piece), g.time - C.BOT_REACTION_MS);
+    if (piece.phase === 'falling') this.dangerSeen.set(pieceKey(piece), g.time - this.k('REACTION_MS'));
   }
 
   // 서 있는 높이 (칸). 점프 중이면 발밑 기둥 높이
@@ -482,7 +498,7 @@ export class BotBrain {
     if (exact.d > C.BRICK_RANGE || g.pieces.some((pc) => pc.thrownBy === p.id)) return false;
     const plan = g.brickPlan(p, exact.yaw, exact.pitch);
     if (!plan.ok || !overlapsCells(t, plan.cells)) return false;
-    const r = C.BOT_BRICK_AIM_ERROR * Math.sqrt(this.rng());
+    const r = this.k('BRICK_AIM_ERROR') * Math.sqrt(this.rng());
     const a = this.rng() * Math.PI * 2;
     const off = aim(t.x + r * Math.cos(a), t.y + r * Math.sin(a));
     const shot = g.brickPlan(p, off.yaw, off.pitch).ok ? off : exact; // 빗나간 조준이 못 던지는 자리면 정조준
@@ -500,7 +516,7 @@ export class BotBrain {
     if (!plan.ok) return false;
     const [bx, by] = plan.cells[0];
     if (Math.abs(Math.floor(t.x) - bx) > C.BOMB_RADIUS || Math.abs(Math.floor(t.y) - by) > C.BOMB_RADIUS) return false;
-    const r = C.BOT_BRICK_AIM_ERROR * Math.sqrt(this.rng());
+    const r = this.k('BRICK_AIM_ERROR') * Math.sqrt(this.rng());
     const a = this.rng() * Math.PI * 2;
     const off = aim(t.x + r * Math.cos(a), t.y + r * Math.sin(a));
     const shot = g.bombPlan(p, off.yaw, off.pitch).ok ? off : exact;
@@ -519,7 +535,7 @@ export class BotBrain {
     g.handleAction(p.id, { name: 'fire' });
     // 내가 던진 블록은 어디로 떨어지는지 안다 → 반응 시간 없이 피할 대상
     const mine = g.pieces.find((pc) => pc.thrownBy === p.id);
-    if (mine) this.dangerSeen.set(pieceKey(mine), g.time - C.BOT_REACTION_MS);
+    if (mine) this.dangerSeen.set(pieceKey(mine), g.time - this.k('REACTION_MS'));
   }
 
   // 지금 한 번 점프로 올라갈 수 있는 높이 (칸)

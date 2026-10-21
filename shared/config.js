@@ -186,6 +186,14 @@ export const CONFIG = {
   BOT_BRICK_STEP_PITCH: -1.3, // 발판 던질 때 시선 각도: 거의 발밑을 보면 BRICK_MIN_DIST 앞 칸에 바로 닿음
   BOT_BUILD_STEP_PITCH: -1.0, // 쌓기 발판 놓을 때 시선 각도: 눈높이에서 바로 앞 칸 바닥(발 높이)에 닿음
   BOT_LAVA_MARGIN: 1.5, // 용암이 켜지면 표면에서 이 높이(칸) 안의 낮은 칸으로는 내려가지 않음 (1.5칸 = 24초)
+  BOT_CONTROL_AIM_ERROR: 1, // 조종 블록 겨냥이 빗나가는 반경(칸) 기준. 아래 난이도 배수를 곱함 (보통·어려움 0 = 정확히 겨냥)
+  // 봇 난이도 (호스트가 대기 화면에서 고름, 모든 봇에 같이). 위 BOT_* 값에 곱하는 배수. 보통 = 위 값 그대로 (조종 겨냥 오차만 0)
+  BOT_LEVELS: {
+    easy: { REACTION_MS: 1.7, AIM_ERROR_RAD: 2, DROP_DELAY_MS: 3, PUSH_INTERVAL_MS: 1.8, BRICK_AIM_ERROR: 1.6, CONTROL_AIM_ERROR: 1.5 },
+    normal: { CONTROL_AIM_ERROR: 0 },
+    hard: { REACTION_MS: 0.6, AIM_ERROR_RAD: 0.5, DROP_DELAY_MS: 0.6, PUSH_INTERVAL_MS: 0.65, BRICK_AIM_ERROR: 0.6, CONTROL_AIM_ERROR: 0 },
+  },
+  BOT_LEVEL_DEFAULT: 'normal',
 
   // ---- 타격감 (클라이언트, 2단계) ----
   SFX_VOLUME: 0.5, // 전체 효과음 크기 0~1

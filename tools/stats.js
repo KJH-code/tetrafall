@@ -52,12 +52,13 @@ export function parseLog(text) {
       const c = conn(m[1]);
       if (m[2] !== '(없음)' && !c.key) c.key = m[2];
       else if (m[2] !== '(없음)' && m[2] !== c.key) c.aliases.add(m[2]);
-    } else if ((m = line.match(/^===== ROUND (\d+) 시작 \((\d+)명(?:: (.*?))?, 맵 (.+)\) =====$/))) {
+    } else if ((m = line.match(/^===== ROUND (\d+) 시작 \((\d+)명(?:: (.*?))?, 맵 ([^,]+?)(?:, 봇 (\S+))?\) =====$/))) {
       last = null;
       cur = {
         n: Number(m[1]),
         size: Number(m[2]),
         map: m[4],
+        botLevel: m[5] || null, // 봇 난이도 (넣기 전 로그엔 없음)
         names: m[3] ? m[3].split(' ') : null, // 옛 로그엔 참가자 목록이 없음 → 끝날 때 사망자 + 승자로 채움
         deaths: [],
         winner: null,
@@ -166,7 +167,8 @@ export function summarize(rounds) {
     const bots = r.players.filter((p) => p.bot).length;
     const humans = r.players.length - bots;
     if (!bots) return `사람 ${humans}`;
-    return humans ? `사람 ${humans} + 봇 ${bots}` : `봇 ${bots}`;
+    const lv = r.botLevel ? ` (${r.botLevel})` : '';
+    return humans ? `사람 ${humans} + 봇 ${bots}${lv}` : `봇 ${bots}${lv}`;
   };
 
   const players = new Map();

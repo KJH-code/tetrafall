@@ -344,6 +344,7 @@ document.addEventListener('keydown', (e) => {
 $('add-bot').addEventListener('click', () => send({ type: 'addBot' }));
 $('remove-bot').addEventListener('click', () => send({ type: 'removeBot' }));
 $('map-select').addEventListener('change', (e) => send({ type: 'setMap', map: e.target.value }));
+$('bot-level').addEventListener('change', (e) => send({ type: 'botLevel', level: e.target.value }));
 const MAP_KO = { random: '무작위', flat: '평지', pyramid: '피라미드', stairs: '계단', bowl: '그릇', spiral: '나선 계단', pillars: '기둥 숲', fortress: '요새' };
 
 // 이름: 대기 화면 입력칸. 브라우저에 기억해 두고 접속할 때마다 보낸다 (판 사이에만 바뀜)
@@ -542,6 +543,8 @@ function updateHud() {
   // 맵: 호스트는 고르고, 다른 사람은 보기만
   const mapSel = $('map-select');
   if (state.map && document.activeElement !== mapSel) mapSel.value = state.map.choice;
+  const lvSel = $('bot-level');
+  if (state.botLevel && document.activeElement !== lvSel) lvSel.value = state.botLevel;
   const mapInfo = $('map-info');
   mapInfo.classList.toggle('hidden', !(state.map && !isHost && between));
   if (state.map) mapInfo.textContent = `맵: ${MAP_KO[state.map.choice] || state.map.choice}`;

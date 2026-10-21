@@ -48,6 +48,7 @@ export class Game {
     this.pieceCounter = 0;
     this.pieceCells = new Map(); // 셀 키 -> 블록 id (충돌용)
     this.lava = { active: false, z: C.LAVA_START_Z, startedAt: 0 };
+    this.botLevel = C.BOT_LEVEL_DEFAULT; // 봇 난이도 (모든 봇 공통)
     this.mapChoice = 'flat'; // 호스트가 고른 맵 ('random' 또는 MAP_IDS 중 하나). 서버는 시작 때 C.MAP_DEFAULT 로 바꾼다
     this.mapId = 'flat'; // 이번 판 맵
     this.baseAvgHeight = 0; // 판 시작 때 지형 평균 높이 (용암은 여기서 더 쌓인 만큼으로 판단)
@@ -168,7 +169,7 @@ export class Game {
     if (this.inRound()) return null;
     const id = -++this.botCounter;
     const p = this.addPlayer(id, true);
-    if (p) this.bots.set(id, new BotBrain(() => this.rng()));
+    if (p) this.bots.set(id, new BotBrain(() => this.rng(), () => this.botLevel));
     return p;
   }
 
@@ -204,6 +205,14 @@ export class Game {
       this.deaths.push({ name: p.name, cause: 'disconnect', t: this.phase === 'playing' ? this.time - this.roundStartTime : 0 });
       this.checkRoundEnd();
     }
+  }
+
+  // 봇 난이도: 판 사이에만. 바꾸면 이미 있는 봇에도 바로 적용
+  setBotLevel(level) {
+    if (this.inRound() || !Object.hasOwn(C.BOT_LEVELS, level) || level === this.botLevel) return false;
+    this.botLevel = level;
+    this.log(`[호스트] 봇 난이도: ${BOT_LEVEL_KO[level]}`);
+    return true;
   }
 
   setMap(choice) {
@@ -343,7 +352,8 @@ export class Game {
     this.nextSpawnAt = this.time + C.FIRST_SPAWN_DELAY_MS;
     this.controlItemNextAt = this.time + C.CONTROL_ITEM_RESPAWN_MS;
     this.powerItemNextAt = this.time + C.ITEM_FIRST_SPAWN_MS;
-    this.log(`===== ROUND ${this.roundNumber} 시작 (${ps.length}명: ${ps.sort((a, b) => a.slot - b.slot).map((p) => p.name).join(' ')}, 맵 ${MAPS[this.mapId].name}) =====`); // 참가자 목록은 npm run stats 가 구성별로 셀 때 씀
+    const lv = ps.some((p) => p.isBot) ? `, 봇 ${BOT_LEVEL_KO[this.botLevel]}` : '';
+    this.log(`===== ROUND ${this.roundNumber} 시작 (${ps.length}명: ${ps.sort((a, b) => a.slot - b.slot).map((p) => p.name).join(' ')}, 맵 ${MAPS[this.mapId].name}${lv}) =====`); // 참가자 목록은 npm run stats 가 구성별로 셀 때 씀
     this.checkRoundEnd(); // 카운트다운 중에 나가서 혼자 남았으면 바로 끝
   }
 
@@ -1597,6 +1607,7 @@ export class Game {
       nextSpawnIn,
       lava: { active: this.lava.active, z: this.lava.z },
       itemTimers: this.itemTimers(),
+      botLevel: this.botLevel,
       map: { choice: this.mapChoice, id: this.mapId, name: MAPS[this.mapId].name },
       items: this.items,
       projectiles: this.projectiles.map((pr) => ({ x: pr.x, y: pr.y, z: pr.z })),
@@ -1622,6 +1633,8 @@ function shareText(t) {
   const pass = share >= C.PASS_CRUSH_SHARE ? '합격선 이상' : '합격선 미만';
   return `${(share * 100).toFixed(0)}% (합격선 ${(C.PASS_CRUSH_SHARE * 100).toFixed(0)}% → ${pass})`;
 }
+
+const BOT_LEVEL_KO = { easy: '쉬움', normal: '보통', hard: '어려움' };
 
 // 킬 로그의 공격 이름 (npm run stats 가 한 단어로 읽음)
 const WEAPON_LOG = { push: '밀치기', weapon: '망치', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록' };

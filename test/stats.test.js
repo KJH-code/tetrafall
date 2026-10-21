@@ -50,7 +50,7 @@ test('통계: 실제 게임 로그에서 판 수·승수·사망 원인이 서�
   assert.equal(kills, serverKills);
   assert.equal(s.weapons.total, serverDeaths);
   assert.ok(serverKills > 0, '봇끼리 6판이면 킬이 나옴');
-  assert.deepEqual(s.byComp.map((x) => x.key), ['봇 2']);
+  assert.deepEqual(s.byComp.map((x) => x.key), ['봇 2 (보통)'], '봇 난이도가 구성에 붙음');
   assert.ok(formatReport(s).includes('== 플레이어별 =='));
 });
 

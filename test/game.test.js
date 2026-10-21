@@ -641,6 +641,25 @@ test('봇: 호스트는 사람, 사람 1 + 봇 1 이면 시작 가능, 판 중�
   assert.equal(g.hostId, null, '봇은 호스트가 안 됨');
 });
 
+test('봇 난이도: 판 사이에만 바뀌고, 이미 있는 봇에도 배수가 바로 적용, 판 시작 로그에 남는다', () => {
+  const { g, lines, bot } = setupBot();
+  const brain = g.bots.get(bot.id);
+  assert.equal(g.botLevel, 'normal');
+  assert.equal(brain.k('REACTION_MS'), C.BOT_REACTION_MS, '보통 = 지금 값 그대로');
+  assert.equal(g.setBotLevel('easy'), true);
+  assert.equal(brain.k('REACTION_MS'), C.BOT_REACTION_MS * C.BOT_LEVELS.easy.REACTION_MS);
+  assert.ok(brain.k('PUSH_INTERVAL_MS') > C.BOT_PUSH_INTERVAL_MS, '쉬움은 덜 자주 밈');
+  assert.equal(g.setBotLevel('nope'), false);
+  g.startRound();
+  assert.equal(g.setBotLevel('hard'), false, '판 중엔 못 바꿈');
+  assert.ok(brain.k('AIM_ERROR_RAD') > C.BOT_AIM_ERROR_RAD);
+  assert.ok(lines.some((l) => l.includes('시작 (2명: P1 P2(봇), 맵 평지, 봇 쉬움)')), lines.join('\n'));
+  g.phase = 'over';
+  assert.equal(g.setBotLevel('hard'), true);
+  assert.ok(brain.k('REACTION_MS') < C.BOT_REACTION_MS);
+  assert.equal(g.snapshot().botLevel, 'hard');
+});
+
 test('봇: 떨어지는 블록 그림자를 보고 피한다', () => {
   const { g, human, bot } = setupBot();
   g.startRound();
