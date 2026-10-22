@@ -932,6 +932,12 @@ function frame(now) {
   last = now;
   const p = me();
   const view = p && p.alive && p.controlling ? 'sky' : 'fps';
+  if (view === 'sky' && !input.sky) {
+    // 조종 시작: 보던 방향을 90도 단위로 맞추고 그 방향을 하늘 화면 위쪽으로 (W 가 계속 앞, 끝나고 돌아와도 같은 방향)
+    const snapped = Math.round(input.yaw / (Math.PI / 2)) * (Math.PI / 2);
+    input.setYawPitch(snapped, input.pitch);
+    renderer.skyYaw = snapped;
+  }
   input.sky = view === 'sky';
   // 한 프레임에서 에러가 나도 다음 프레임은 계속 그린다 (안 그러면 서버는 도는데 화면만 멈춤)
   try {

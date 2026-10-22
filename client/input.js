@@ -10,7 +10,7 @@ export class Input {
     this.pitch = 0;
     this.locked = false;
     this.enabled = false; // 판 진행 중 + 살아있을 때만 true
-    this.sky = false; // 하늘 시점: WASD 가 화면 기준(W=화면 위), 마우스 회전 무시
+    this.sky = false; // 하늘 시점: 마우스 회전 무시. 화면 위쪽 = 조종을 시작할 때 보던 방향(90도로 맞춤)이라 WASD·방향키 모두 화면 기준
     this.sensitivity = 1; // 설정의 감도 배수
     this.wheel = null; // 이모트 바퀴: G 를 누르고 있는 동안 마우스 이동량 {x, y} (그동안 시점은 안 돎)
     this.onWheel = () => {}; // 바퀴 메뉴 표시 갱신 (main 이 넣음): (null | 고른 번호 -1~3)
@@ -67,19 +67,19 @@ export class Input {
           this.sendAction({ name: 'dash' });
           break;
         case 'ArrowUp':
-          this.sendAction({ name: 'pieceMove', dx: 0, dy: 1 });
+          this.pieceMove(0, 1);
           e.preventDefault();
           break;
         case 'ArrowDown':
-          this.sendAction({ name: 'pieceMove', dx: 0, dy: -1 });
+          this.pieceMove(0, -1);
           e.preventDefault();
           break;
         case 'ArrowLeft':
-          this.sendAction({ name: 'pieceMove', dx: -1, dy: 0 });
+          this.pieceMove(-1, 0);
           e.preventDefault();
           break;
         case 'ArrowRight':
-          this.sendAction({ name: 'pieceMove', dx: 1, dy: 0 });
+          this.pieceMove(1, 0);
           e.preventDefault();
           break;
         case 'KeyQ':
@@ -125,6 +125,13 @@ export class Input {
     return w.y < 0 ? 0 : 2;
   }
 
+  // 방향키 (블록 조종): 하늘 화면 기준 (sx 오른쪽, sy 위) → 격자 방향. 화면 위쪽이 보던 방향(90도 단위)이라 돌려서 보낸다
+  pieceMove(sx, sy) {
+    const c = Math.cos(this.yaw);
+    const s = Math.sin(this.yaw);
+    this.sendAction({ name: 'pieceMove', dx: Math.round(sx * s + sy * c), dy: Math.round(-sx * c + sy * s) });
+  }
+
   setYawPitch(yaw, pitch) {
     this.yaw = yaw;
     this.pitch = pitch;
@@ -133,16 +140,9 @@ export class Input {
   // 서버에 보낼 연속 입력
   sample() {
     const k = this.keys;
-    let fwd = (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0);
-    let strafe = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
-    if (this.sky) {
-      // 하늘 시점 화면: 위 = +y, 오른쪽 = +x. 화면 기준 이동을 바라보는 방향 기준 fwd/strafe 로 바꾼다
-      const len = Math.hypot(strafe, fwd) || 1; // 대각선도 서버 clamp(-1..1) 안에 들도록 정규화
-      const mx = strafe / len;
-      const my = fwd / len;
-      fwd = mx * Math.cos(this.yaw) + my * Math.sin(this.yaw);
-      strafe = mx * Math.sin(this.yaw) - my * Math.cos(this.yaw);
-    }
+    const fwd = (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0);
+    const strafe = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
+    // 하늘 시점도 화면 위쪽 = 보던 방향이라 W·A·S·D 를 그대로 앞·왼·뒤·오른쪽으로 보낸다 (조종 전후로 방향이 안 바뀜)
     return {
       type: 'input',
       fwd: this.locked ? fwd : 0,

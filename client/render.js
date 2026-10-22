@@ -281,6 +281,7 @@ export class Renderer {
     this.smooth = new Map(); // id -> {x,y,z}
     this.skyBlend = 0; // 0 = 1인칭, 1 = 하늘 시점. 사이 값은 전환 중
     this.fov = C.FOV_DEFAULT; // 설정의 시야각
+    this.skyYaw = Math.PI / 2; // 하늘 시점 화면 위쪽이 가리키는 방향 (조종 시작 때 보던 방향)
 
     window.addEventListener('resize', () => {
       this.camera.aspect = window.innerWidth / window.innerHeight;
@@ -816,7 +817,10 @@ export class Renderer {
     this.victoryCamera(state, cam, dt, eye, look);
 
     const b = this.skyBlend;
+    const skyUp = new THREE.Vector3(Math.cos(this.skyYaw), Math.sin(this.skyYaw), 0);
     if (b >= 1) {
+      this.skyCamera.up.copy(skyUp);
+      this.skyCamera.lookAt(C.GRID_W / 2, C.GRID_D / 2, 0);
       this.renderer.render(this.scene, this.skyCamera);
       return;
     }
@@ -840,7 +844,7 @@ export class Renderer {
     this.camera.fov = this.fov + (skyFov - this.fov) * t;
     this.camera.updateProjectionMatrix();
     this.camera.position.lerpVectors(eye, top, t);
-    this.camera.up.set(0, t, 1 - t).normalize();
+    this.camera.up.set(skyUp.x * t, skyUp.y * t, 1 - t).normalize();
     this.camera.lookAt(new THREE.Vector3().lerpVectors(look, center, t));
     this.renderer.render(this.scene, this.camera);
   }
