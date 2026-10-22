@@ -4,6 +4,7 @@ import { CONFIG as C } from '/shared/config.js';
 import { buildCharacter } from '/character.js';
 import { Effects } from '/effects.js';
 import { CELL, SHAPE_NAMES } from '/shared/pieces.js';
+import { itemModel } from '/models.js';
 
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
@@ -38,6 +39,7 @@ export function heldKind(p) {
   return p.bombs > 0 ? 'bomb' : null;
 }
 const HELD_COLOR = { block: 0x6f8fc8, brick: ITEM_LOOK.brick.color, ball: ITEM_LOOK.knockback.color, bomb: 0x222222 };
+const HELD_ITEM = { block: null, brick: 'brick', ball: 'knockback', bomb: 'bomb' }; // 손에 든 것 → 아이템 모델
 
 // 피해 % 글자색: 0% 흰색 → 50% 노랑 → 100% 이상 빨강
 export function damageColor(d) {
@@ -143,7 +145,9 @@ export function playerColor(p, state) {
 const MAX_CELLS = C.GRID_W * C.GRID_D * C.GRID_H;
 
 export class Renderer {
-  constructor(canvasParent) {
+  // models: loadModels() 결과 (없으면 예전 도형으로 그림)
+  constructor(canvasParent, models = null) {
+    this.models = models;
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -168,15 +172,20 @@ export class Renderer {
     this.viewArm.visible = false;
     this.camera.add(this.viewArm);
     // 1인칭 망치 머리 (망치 있을 때만)
-    this.viewHammer = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.12, 0.12), new THREE.MeshLambertMaterial({ color: 0xff8a10 }));
-    this.viewHammer.position.set(0, -0.24, 0); // 캡슐 먼 끝 (x축 +90도 회전이라 로컬 -y 가 화면 안쪽)
+    this.viewHammer = itemModel(models, 'weapon', 0.26) || new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.12, 0.12), new THREE.MeshLambertMaterial({ color: 0xff8a10 }));
+    this.viewHammer.position.set(0, -0.26, 0); // 캡슐 먼 끝 (x축 +90도 회전이라 로컬 -y 가 화면 안쪽)
     this.viewHammer.visible = false;
     this.viewArm.add(this.viewHammer);
     // 1인칭 손에 든 설치 블록 (설치 블록 있을 때만)
-    this.viewBrick = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.13), new THREE.MeshLambertMaterial({ color: ITEM_LOOK.brick.color }));
-    this.viewBrick.position.set(0, -0.24, 0);
-    this.viewBrick.visible = false;
-    this.viewArm.add(this.viewBrick);
+    // 손에 든 것 (고른 핫바 칸): 쌓기 블록은 파란 상자, 나머지는 아이템 모델
+    this.viewHeld = {};
+    for (const [kind, type] of Object.entries(HELD_ITEM)) {
+      const o = (type && itemModel(models, type, 0.15)) || new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.13), new THREE.MeshLambertMaterial({ color: HELD_COLOR[kind] }));
+      o.position.set(0, -0.26, 0);
+      o.visible = false;
+      this.viewArm.add(o);
+      this.viewHeld[kind] = o;
+    }
     // 하늘 시점: 필드가 화면에 꽉 차는 직교 카메라 (블록과 그림자가 같은 크기로 보인다)
     this.skyCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
     this.skyCamera.up.set(0, 1, 0);
@@ -330,6 +339,17 @@ export class Renderer {
     this.blockMesh.count = n;
     this.blockMesh.instanceMatrix.needsUpdate = true;
     if (this.blockMesh.instanceColor) this.blockMesh.instanceColor.needsUpdate = true;
+  }
+
+  // 필드에 놓인 아이템 모양: 모델이 있으면 모델, 없으면 예전 도형 (이속 증가는 늘 번개 도형)
+  itemShape(type) {
+    const model = itemModel(this.models, type, C.ITEM_MODEL_SIZE);
+    const look = ITEM_LOOK[type] || ITEM_LOOK.control;
+    const o = model || new THREE.Mesh(look.geo(), new THREE.MeshLambertMaterial({ color: look.color, emissive: 0x222222 }));
+    o.traverse((c) => {
+      if (c.isMesh) c.castShadow = true;
+    });
+    return o;
   }
 
   shapeMat(shape) {
@@ -565,7 +585,15 @@ export class Renderer {
 
   updateBombs(bombs) {
     while (this.bombMeshes.length < bombs.length) {
-      const m = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), new THREE.MeshLambertMaterial({ color: 0x222222, emissive: 0x000000 }));
+      // 재질을 복사해 폭탄마다 따로 깜빡이게
+      const m = itemModel(this.models, 'bomb', C.BOMB_MODEL_SIZE, true) || new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), new THREE.MeshLambertMaterial({ color: 0x222222 }));
+      m.userData.mats = [];
+      m.traverse((o) => {
+        if (o.isMesh) {
+          o.castShadow = true;
+          m.userData.mats.push(o.material);
+        }
+      });
       this.scene.add(m);
       this.bombMeshes.push(m);
     }
@@ -573,10 +601,10 @@ export class Renderer {
       const b = bombs[i];
       m.visible = !!b;
       if (!b) return;
-      m.position.set(b.x + 0.5, b.y + 0.5, b.z + 0.3);
+      m.position.set(b.x + 0.5, b.y + 0.5, b.z + C.BOMB_MODEL_SIZE / 2);
       const period = 80 + Math.min(1, b.left / C.BOMB_FUSE_MS) * 320; // 남은 시간이 짧을수록 빨리
       const on = Math.floor(performance.now() / period) % 2 === 0;
-      m.material.emissive.setHex(on ? 0xff2000 : 0x000000);
+      for (const mat of m.userData.mats) if (mat.emissive) mat.emissive.setHex(on ? 0xff2000 : 0x000000);
     });
   }
 
@@ -729,8 +757,8 @@ export class Renderer {
 
     // 아이템
     while (this.itemMeshes.length < state.items.length) {
-      const m = new THREE.Mesh(ITEM_LOOK.control.geo(), new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x222222 }));
-      m.userData.type = 'control';
+      const m = new THREE.Group(); // 종류가 바뀌면 안의 모델을 갈아 끼움
+      m.userData.type = null;
       this.scene.add(m);
       this.itemMeshes.push(m);
     }
@@ -741,16 +769,14 @@ export class Renderer {
         m.visible = false;
         continue;
       }
-      const look = ITEM_LOOK[it.type] || ITEM_LOOK.control;
       if (m.userData.type !== it.type) {
-        m.geometry.dispose();
-        m.geometry = look.geo();
+        m.clear();
+        m.add(this.itemShape(it.type));
         m.userData.type = it.type;
       }
       m.visible = true;
       m.position.set(it.x + 0.5, it.y + 0.5, it.z + 0.45 + Math.sin(performance.now() / 300 + i) * 0.06);
       m.rotation.z += dt * 2;
-      m.material.color.setHex(look.color);
     }
 
     // 투사체
@@ -777,9 +803,8 @@ export class Renderer {
     this.viewArm.visible = !!(me && me.alive) && this.skyBlend === 0 && !cam.victory && !cam.selfie;
     this.viewHammer.visible = !!(me && me.weaponUses > 0);
     // 손에 든 것: 고른 핫바 칸에 뭐가 있으면 그 색 상자 (망치가 있으면 망치가 우선)
-    const held = me && heldKind(me) ? HELD_COLOR[heldKind(me)] : null;
-    this.viewBrick.visible = held !== null && !this.viewHammer.visible;
-    if (held !== null) this.viewBrick.material.color.setHex(held);
+    const kind = me ? heldKind(me) : null;
+    for (const [k, o] of Object.entries(this.viewHeld)) o.visible = k === kind && !this.viewHammer.visible; // 망치가 있으면 망치가 우선
     this.effects.update(dt, this.skyBlend >= 1 ? this.skyCamera : this.camera);
     this.pieceMat.opacity = this.skyBlend > 0.5 ? 0.55 : 1; // 하늘 시점에선 블록 너머로 착지 미리보기가 보이게
     this.controlledMat.opacity = this.pieceMat.opacity;

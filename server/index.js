@@ -18,6 +18,7 @@ const MIME = {
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json',
   '.png': 'image/png',
+  '.glb': 'model/gltf-binary',
   '.ico': 'image/x-icon',
 };
 
@@ -29,7 +30,11 @@ function resolveFile(urlPath) {
   }
   let base;
   let rel;
-  if (urlPath.startsWith('/shared/')) {
+  if (urlPath.startsWith('/vendor/jsm/')) {
+    // three.js 확장 (GLTFLoader·SkeletonUtils·OutlineEffect 등). import 'three/addons/…' 가 여기로
+    base = path.join(ROOT, 'node_modules', 'three', 'examples', 'jsm');
+    rel = urlPath.slice('/vendor/jsm/'.length);
+  } else if (urlPath.startsWith('/shared/')) {
     base = path.join(ROOT, 'shared');
     rel = urlPath.slice('/shared/'.length);
   } else {

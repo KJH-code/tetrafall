@@ -4,6 +4,7 @@ import { Renderer, TEAM_MAIN, playerColor, damageColor } from '/render.js';
 import { Input } from '/input.js';
 import { Sound } from '/sound.js';
 import { Music } from '/music.js';
+import { loadModels } from '/models.js';
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $('status');
@@ -16,7 +17,12 @@ const flash = $('flash');
 const banner = $('banner');
 const toasts = $('toasts');
 
-const renderer = new Renderer(document.body);
+// 모델은 먼저 불러온다 (실패하면 예전 도형으로)
+const models = await loadModels().catch((err) => {
+  console.warn('모델을 못 불러와 기본 도형으로 그림:', err);
+  return null;
+});
+const renderer = new Renderer(document.body, models);
 let ws = null;
 let myId = null;
 let state = null;

@@ -252,6 +252,8 @@ export const CONFIG = {
   SUN_COLOR: 0xffc890,
   FOG_NEAR: 28,
   FOG_FAR: 75,
+  ITEM_MODEL_SIZE: 0.55, // 필드 아이템 모델 크기 (가장 긴 변, 칸)
+  BOMB_MODEL_SIZE: 0.55, // 놓인 폭탄 모델 크기
   THROWN_BLINK_MS: 120, // 떨어지는 설치 블록 깜빡임 간격
   // 승리 연출: 판이 끝나고 WIN_BANNER_MS 동안 모두의 카메라가 승자 정면으로
   VICTORY_FLY_S: 0.7, // 카메라가 날아가는 시간 (초)
