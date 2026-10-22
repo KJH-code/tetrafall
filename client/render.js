@@ -15,7 +15,7 @@ const ITEM_LOOK = {
   weapon: { color: 0xff8a10, geo: () => new THREE.BoxGeometry(0.42, 0.24, 0.24) }, // 주황 망치 머리
   jump: { color: 0x40e040, geo: () => new THREE.ConeGeometry(0.24, 0.45, 12) }, // 초록 원뿔(위로)
   ghost: { color: 0xe8e8ff, geo: () => new THREE.TorusGeometry(0.2, 0.07, 8, 18) }, // 흰 고리
-  brick: { color: 0xf0d060, geo: () => new THREE.BoxGeometry(0.32, 0.32, 0.32) }, // 노란 작은 블록
+  brick: { color: 0xfff2c0, geo: () => new THREE.BoxGeometry(0.32, 0.32, 0.32) }, // 흰빛 작은 블록 (설치 블록)
   bomb: { color: 0x222222, geo: () => new THREE.SphereGeometry(0.22, 14, 10) }, // 검은 공
   speed: { color: 0xffe020, geo: () => boltGeometry() }, // 노란 번개
 };
@@ -73,6 +73,28 @@ function cellColor(v) {
   const shape = SHAPE_NAMES[v - CELL.SHAPE_BASE];
   if (shape) return new THREE.Color(C.SHAPE_COLORS[shape]).multiplyScalar(C.BLOCK_LANDED_SHADE).getHex();
   return C.TERRAIN_COLOR;
+}
+
+// 용암 표면: 꼭짓점을 천천히 출렁이고, 겹친 사인 무늬로 어두운 빨강 ~ 밝은 노랑이 흐름 (빛 계산 없이 스스로 빛남)
+function lavaSurfaceMaterial() {
+  return new THREE.ShaderMaterial({
+    uniforms: { time: { value: 0 } },
+    vertexShader: `uniform float time; varying vec2 vXY;
+      void main() {
+        vec3 p = position;
+        p.z += sin(p.x * 1.3 + time * 1.1) * 0.06 + sin(p.y * 1.7 - time * 0.9) * 0.05;
+        vXY = p.xy;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+      }`,
+    fragmentShader: `uniform float time; varying vec2 vXY;
+      void main() {
+        float n = sin(vXY.x * 0.9 + time * 0.5) + sin(vXY.y * 1.1 - time * 0.4) + sin((vXY.x + vXY.y) * 0.7 + time * 0.3) + sin(length(vXY) * 1.6 - time * 0.8);
+        float b = smoothstep(0.6, 2.4, n);
+        vec3 c = mix(vec3(0.55, 0.08, 0.02), vec3(1.0, 0.38, 0.05), smoothstep(-1.5, 1.2, n));
+        c = mix(c, vec3(1.0, 0.85, 0.35), b);
+        gl_FragColor = vec4(c, 1.0);
+      }`,
+  });
 }
 
 // 노을 하늘: 안쪽을 그리는 큰 구. 높이에 따라 위·가운데·지평선 색을 섞고, 해 쪽은 밝게 + 해 원반
@@ -208,7 +230,7 @@ export class Renderer {
     this.pieceMat = new THREE.MeshLambertMaterial({ color: 0xf0a030, transparent: true, opacity: 1 }); // 자동 블록
     this.controlledMat = new THREE.MeshLambertMaterial({ color: 0xd040d0, emissive: 0x501050, transparent: true, opacity: 1 }); // 누가 조종 중인 블록 (빛나서 T 모양 보라와 구분)
     this.shapeMats = {}; // 자동 블록: 모양마다 색
-    this.thrownMat = new THREE.MeshLambertMaterial({ color: 0xf0d060, transparent: true, opacity: 1 }); // 던진 설치 블록
+    this.thrownMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x000000, transparent: true, opacity: 1 }); // 던진 설치 블록: 흰색 + 노랗게 깜빡임 (O 블록 노랑과 구분)
     this.shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45 });
     this.pieceBox = new THREE.BoxGeometry(1, 1, 1);
     this.shadowBox = new THREE.BoxGeometry(0.96, 0.96, 0.06);
@@ -217,10 +239,18 @@ export class Renderer {
     this.lavaBottom = -6;
     this.lava = new THREE.Mesh(
       new THREE.BoxGeometry(C.GRID_W + 12, C.GRID_D + 12, 1),
-      new THREE.MeshBasicMaterial({ color: 0xff5010, transparent: true, opacity: 0.85 }),
+      new THREE.MeshBasicMaterial({ color: 0x9a2408 }),
     );
     this.lava.visible = false;
     this.scene.add(this.lava);
+    // 표면: 천천히 출렁이고 밝은 무늬가 흐르는 판 (몸통 위에 얹음)
+    this.lavaTop = new THREE.Mesh(new THREE.PlaneGeometry(C.GRID_W + 12, C.GRID_D + 12, 48, 48), lavaSurfaceMaterial());
+    this.lavaTop.visible = false;
+    this.scene.add(this.lavaTop);
+    // 용암 빛: 가까운 블록 옆면을 주황으로 비춤 (늘 씬에 두고 세기만 바꿈 — 빛 개수가 바뀌면 셰이더를 다시 만듦)
+    this.lavaLight = new THREE.PointLight(0xff6a20, 0, C.LAVA_LIGHT_RANGE, 1.4);
+    this.scene.add(this.lavaLight);
+    this.emberAcc = 0;
 
     this.effects = new Effects(this.scene);
     // 조종 중 하늘에서 본 블록의 착지 미리보기 (조종자에게만)
@@ -371,10 +401,11 @@ export class Renderer {
       this.aimBoxes.push(m);
     }
     if (aim) {
-      const base = aim.kind === 'build' ? 0xffffff : aim.kind === 'brick' ? 0xf0d060 : 0xff5030;
-      const color = aim.ok ? base : 0xff2020;
-      this.aimMat.color.setHex(color);
-      this.aimEdgeMat.color.setHex(color);
+      // 쌓기 = 흰 상자, 설치 블록 = 흰 상자 + 노란 테두리 (떨어지는 설치 블록과 같은 모양), 폭탄 = 빨간 판. 못 쓰면 빨강
+      const base = aim.kind === 'bomb' ? 0xff5030 : 0xffffff;
+      const edge = aim.kind === 'brick' ? 0xf0d060 : base;
+      this.aimMat.color.setHex(aim.ok ? base : 0xff2020);
+      this.aimEdgeMat.color.setHex(aim.ok ? edge : 0xff2020);
     }
     this.aimBoxes.forEach((m, i) => {
       const c = cells[i];
@@ -416,9 +447,37 @@ export class Renderer {
     const lean = Math.min(1, a.hs / C.MOVE_SPEED) * C.ANIM_LEAN;
     rig.rotation.y = lean + a.spin;
     rig.rotation.x = step * C.ANIM_SWAY; // 걸을 때 좌우로 살짝 흔들
+    // 승자 춤: 깡충 뛰며 제자리에서 빙글
+    const dancing = this.victoryId === p.id;
+    a.dance = dancing ? (a.dance || 0) + dt : 0;
+    rig.rotation.z = dancing ? a.dance * C.VICTORY_SPIN : 0;
+    if (dancing) parts.position.z += Math.abs(Math.sin(a.dance * C.VICTORY_HOP_FREQ)) * C.VICTORY_HOP;
     const stretch = a.vz > C.ANIM_AIR_VZ ? C.ANIM_STRETCH : 0; // 올라가는 중: 위로 늘어나고 옆은 가늘게
     const wide = 1 - stretch / 2 + a.land * C.ANIM_LAND_SQUASH * 0.6; // 착지: 납작해지며 옆으로 퍼짐
     rig.scale.set(wide, wide, 1 + stretch - a.land * C.ANIM_LAND_SQUASH);
+  }
+
+  // 승리 연출: 판이 끝나면 모두의 카메라가 승자 정면으로 날아가고, 승자는 춤, 승자 색 색종이
+  victoryCamera(state, cam, dt, eye, look) {
+    const s = cam.victory ? this.smooth.get(cam.victory) : null;
+    const winner = s && state.players.find((p) => p.id === cam.victory);
+    if (!winner) {
+      this.victoryT = 0;
+      return;
+    }
+    this.victoryT += dt;
+    const k = Math.min(1, this.victoryT / C.VICTORY_FLY_S);
+    const t = k * k * (3 - 2 * k); // smoothstep
+    const yaw = winner.yaw;
+    const front = new THREE.Vector3(s.x + Math.cos(yaw) * C.VICTORY_DIST, s.y + Math.sin(yaw) * C.VICTORY_DIST, s.z + C.VICTORY_UP);
+    eye.lerp(front, t);
+    look.lerp(new THREE.Vector3(s.x, s.y, s.z + C.PLAYER_HEIGHT * 0.55), t);
+    // 색종이: 승자 위에서 몇 번 터짐
+    this.confettiAcc = (this.confettiAcc || 0) + dt * C.CONFETTI_RATE;
+    const colors = [PLAYER_COLORS[winner.slot % PLAYER_COLORS.length], 0xffe040, 0x40d0ff, 0xff60c0, 0xffffff];
+    for (; this.confettiAcc >= 1; this.confettiAcc--) {
+      this.effects.burst({ x: s.x, y: s.y, z: s.z + C.PLAYER_HEIGHT + 0.6 }, null, colors[Math.floor(Math.random() * colors.length)], 6, 6, 0.09, 1.2);
+    }
   }
 
   // 조종 중인 블록 ↔ 조종하는 사람 머리를 잇는 보라색 빛줄기 (누가 어느 블록을 모는지)
@@ -478,6 +537,7 @@ export class Renderer {
     }
 
     // 플레이어
+    this.victoryId = cam.victory || null;
     const seen = new Set();
     const k = 1 - Math.exp(-25 * dt);
     for (const p of state.players) {
@@ -499,7 +559,7 @@ export class Renderer {
       if (p.speedLeft > 0 && g.userData.anim.hs > 1 && Math.random() < dt * C.SPEED_TRAIL_RATE) {
         this.effects.burst({ x: s.x, y: s.y, z: s.z + 0.15 }, null, 0xffe020, 3, 1.2, 0.07, 0.35);
       }
-      g.visible = p.alive && !(p.id === myId && view === 'fps' && this.skyBlend === 0);
+      g.visible = p.alive && !(p.id === myId && view === 'fps' && this.skyBlend === 0 && !cam.victory);
       const bodyMat = g.userData.bodyMat;
       // 경직 중엔 흰색으로 빠르게 깜빡임
       const blinkOn = p.stunned && Math.floor(performance.now() / 70) % 2 === 0;
@@ -591,10 +651,25 @@ export class Renderer {
     // 용암
     const lava = state.lava;
     this.lava.visible = !!(lava && lava.active);
+    this.lavaTop.visible = this.lava.visible;
     if (this.lava.visible) {
-      const h = Math.max(0.01, lava.z - this.lavaBottom);
+      const h = Math.max(0.01, lava.z - this.lavaBottom - 0.02);
       this.lava.scale.z = h;
       this.lava.position.set(C.GRID_W / 2, C.GRID_D / 2, this.lavaBottom + h / 2);
+      this.lavaTop.position.set(C.GRID_W / 2, C.GRID_D / 2, lava.z);
+      const now = performance.now() / 1000;
+      this.lavaTop.material.uniforms.time.value = now;
+      // 빛은 살짝 일렁임
+      this.lavaLight.intensity = C.LAVA_LIGHT_INTENSITY * (0.85 + 0.15 * Math.sin(now * 7) * Math.sin(now * 2.3));
+      this.lavaLight.position.set(C.GRID_W / 2, C.GRID_D / 2, lava.z + 1.2);
+      // 불똥: 표면 아무 데서나 튀어 오름
+      this.emberAcc += dt * C.LAVA_EMBER_RATE;
+      for (; this.emberAcc >= 1; this.emberAcc--) {
+        const pos = { x: -1 + Math.random() * (C.GRID_W + 2), y: -1 + Math.random() * (C.GRID_D + 2), z: lava.z + 0.05 };
+        this.effects.burst(pos, null, Math.random() < 0.5 ? 0xffb030 : 0xff5010, 1, 4, 0.06, 0.8);
+      }
+    } else {
+      this.lavaLight.intensity = 0;
     }
 
     // 아이템
@@ -644,7 +719,7 @@ export class Renderer {
     if (me) this.viewArm.material.color.setHex(PLAYER_COLORS[me.slot % PLAYER_COLORS.length]);
     const vp = this.effects.punchAmount(myId);
     this.viewArm.position.set(this.viewArmBase.x - 0.12 * vp, this.viewArmBase.y + 0.08 * vp, this.viewArmBase.z - 0.3 * vp);
-    this.viewArm.visible = !!(me && me.alive) && this.skyBlend === 0;
+    this.viewArm.visible = !!(me && me.alive) && this.skyBlend === 0 && !cam.victory;
     this.viewHammer.visible = !!(me && me.weaponUses > 0);
     // 손에 든 것: 고른 핫바 칸에 뭐가 있으면 그 색 상자 (망치가 있으면 망치가 우선)
     const held = me && heldKind(me) ? HELD_COLOR[heldKind(me)] : null;
@@ -654,6 +729,7 @@ export class Renderer {
     this.pieceMat.opacity = this.skyBlend > 0.5 ? 0.55 : 1; // 하늘 시점에선 블록 너머로 착지 미리보기가 보이게
     this.controlledMat.opacity = this.pieceMat.opacity;
     this.thrownMat.opacity = this.pieceMat.opacity;
+    this.thrownMat.emissive.setHex(Math.floor(performance.now() / C.THROWN_BLINK_MS) % 2 ? 0x806000 : 0x000000);
     for (const m of Object.values(this.shapeMats)) m.opacity = this.pieceMat.opacity;
 
     // 1인칭(또는 관전) 자세
@@ -683,6 +759,7 @@ export class Renderer {
       eye.set(C.GRID_W / 2 - Math.cos(cam.yaw) * 10, C.GRID_D / 2 - Math.sin(cam.yaw) * 10, 7);
       look.set(C.GRID_W / 2, C.GRID_D / 2, 2);
     }
+    this.victoryCamera(state, cam, dt, eye, look);
 
     const b = this.skyBlend;
     if (b >= 1) {

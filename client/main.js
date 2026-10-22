@@ -3,6 +3,7 @@ import { CONFIG as C } from '/shared/config.js';
 import { Renderer, PLAYER_COLORS, damageColor } from '/render.js';
 import { Input } from '/input.js';
 import { Sound } from '/sound.js';
+import { Music } from '/music.js';
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $('status');
@@ -28,6 +29,7 @@ function send(obj) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
 }
 const sound = new Sound();
+const music = new Music(sound);
 const fx = renderer.effects;
 document.addEventListener('pointerdown', () => sound.unlock());
 document.addEventListener('keydown', () => sound.unlock());
@@ -405,6 +407,23 @@ shadowCheck.addEventListener('change', () => {
     // 저장이 막혀 있어도 이번엔 적용
   }
 });
+
+// 배경음악: 기본 켬. 이 브라우저에 기억
+const musicCheck = $('music-check');
+try {
+  musicCheck.checked = localStorage.getItem('tf-music') !== 'off';
+} catch {
+  musicCheck.checked = true;
+}
+music.setOn(musicCheck.checked);
+musicCheck.addEventListener('change', () => {
+  music.setOn(musicCheck.checked);
+  try {
+    localStorage.setItem('tf-music', musicCheck.checked ? 'on' : 'off');
+  } catch {
+    // 저장이 막혀 있어도 이번엔 적용
+  }
+});
 nameInput.addEventListener('change', submitName);
 nameInput.addEventListener('keydown', (e) => {
   e.stopPropagation(); // 이름 칠 때는 게임 키(Enter 시작, 숫자 칸)가 안 먹게
@@ -420,6 +439,7 @@ function me() {
 
 // ---------- 큰 글씨: 카운트다운 3·2·1·시작!, 판 끝 "P2 승리!" ----------
 const bigmsg = $('bigmsg');
+let victory = { id: null, until: 0 }; // 판 끝 승리 연출: 승자 id 와 끝나는 시각
 let bigUntil = 0; // 이 시각까지는 카운트다운이 덮어쓰지 않음 (시작!·승리 표시)
 let lastCount = null;
 function showBig(text, color = '#fff', ms = 800, small = false) {
@@ -457,6 +477,7 @@ function onState() {
   if (lastState && lastState.phase === 'playing' && state.phase === 'over') {
     const w = state.players.find((x) => x.id === state.round.winnerId);
     sound.play('win');
+    if (w) victory = { id: w.id, until: performance.now() + C.WIN_BANNER_MS }; // 승리 연출 (모두의 카메라가 승자에게)
     if (w) showBig(`${shownName(w)} 승리!`, colorOf(w), C.WIN_BANNER_MS, true);
     else showBig('무승부', '#ddd', C.WIN_BANNER_MS, true);
   }
@@ -796,7 +817,10 @@ function frame(now) {
   // 한 프레임에서 에러가 나도 다음 프레임은 계속 그린다 (안 그러면 서버는 도는데 화면만 멈춤)
   try {
     updateSpectate();
-    renderer.render(state, myId, dt, view, { yaw: input.yaw, pitch: input.pitch, follow: spectating() && !spec.overview ? spec.target : null });
+    if (state) music.setMood(state.phase === 'playing' || state.phase === 'countdown' ? (state.lava && state.lava.active ? 'lava' : 'battle') : 'calm');
+    music.update();
+    const vic = state && state.phase === 'over' && performance.now() < victory.until ? victory.id : null;
+    renderer.render(state, myId, dt, view, { yaw: input.yaw, pitch: input.pitch, follow: spectating() && !spec.overview ? spec.target : null, victory: vic });
     updateHud();
   } catch (err) {
     if (!frameErrorShown) console.error('프레임 에러 (계속 그림):', err);
@@ -817,6 +841,7 @@ const debug = {
   inputOverride: null,
   renderer,
   sound,
+  music,
   // 클릭과 같은 경로로 행동 보내기 (로컬 팔 휘두르기·소리 포함)
   act: (action) => {
     onLocalAction(action);

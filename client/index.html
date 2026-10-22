@@ -45,6 +45,7 @@
     #flash { position: absolute; inset: 0; background: rgba(255,0,0,.35); opacity: 0; transition: opacity .3s; }
     #bigmsg { position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); font-size: 110px; font-weight: 900; white-space: nowrap; text-shadow: 0 0 12px #000, 0 0 4px #000; z-index: 3; }
     #bigmsg.small { font-size: 72px; }
+    #bigmsg.small { top: 16%; } /* 승리·무승부: 화면 가운데 승자(카메라가 비춤)를 가리지 않게 위로 */
     #cd-ring { position: absolute; top: 50%; left: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; pointer-events: none; transform: rotate(-90deg); }
     #cd-ring circle { fill: none; stroke-linecap: round; }
     #cd-ring .track { stroke: rgba(0,0,0,.25); }
@@ -115,7 +116,7 @@
           <option value="bowl">그릇</option><option value="spiral">나선 계단</option><option value="pillars">기둥 숲</option><option value="fortress">요새</option>
         </select></label></div>
       <div id="map-info" class="hidden" style="font-size:15px;margin-top:6px"></div>
-      <div id="name-row" class="hidden" style="font-size:15px;margin-top:8px"><label>이름 <input id="name-input" style="font-size:15px;width:9em" placeholder="머리 위에 보임" /></label> <label style="margin-left:10px"><input id="shadow-check" type="checkbox" /> 그림자 (느리면 끄기)</label></div>
+      <div id="name-row" class="hidden" style="font-size:15px;margin-top:8px"><label>이름 <input id="name-input" style="font-size:15px;width:9em" placeholder="머리 위에 보임" /></label> <label style="margin-left:10px"><input id="shadow-check" type="checkbox" /> 그림자 (느리면 끄기)</label> <label style="margin-left:10px"><input id="music-check" type="checkbox" /> 음악</label></div>
       <div id="keys" class="keys hidden">
         <b>조작법</b><br />
         WASD 이동 · Space 점프 · Shift 대시<br />

@@ -175,6 +175,10 @@ export const CONFIG = {
   LAVA_START_Z: -1, // 처음 표면 높이 (바닥 아래). 바닥에 선 사람이 올라갈 시간
   // 1칸 올라오는 데 걸리는 시간. 봇 4명 시뮬레이션 40판: 4초면 용암이 판을 끝내기만 하고(최고 높이 3), 16초면 판 중앙 58초·최대 102초·최고 높이 4로 올라가는 플레이가 생김
   LAVA_RISE_MS_PER_CELL: 16000,
+  // 용암 연출 (화면만)
+  LAVA_LIGHT_INTENSITY: 3, // 용암 빛 세기
+  LAVA_LIGHT_RANGE: 9, // 용암 빛이 닿는 거리 (칸)
+  LAVA_EMBER_RATE: 12, // 초당 불똥 수
 
   // ---- 맵 (2단계 D) ----
   MAP_DEFAULT: 'random', // 서버 켤 때 맵 선택: 'random' 또는 server/maps.js 의 MAP_IDS (flat·pyramid·stairs·bowl·spiral·pillars·fortress). 호스트가 대기 화면에서 바꿀 수 있음
@@ -208,6 +212,8 @@ export const CONFIG = {
 
   // ---- 타격감 (클라이언트, 2단계) ----
   SFX_VOLUME: 0.5, // 전체 효과음 크기 0~1
+  MUSIC_VOLUME: 0.07, // 배경음악 크기 (효과음보다 작게)
+  MUSIC_BPM: { calm: 92, battle: 138, lava: 166 }, // 대기·판 중·용암 때 빠르기
   SFX_HEAR_RANGE: 14, // 이 거리(칸) 밖 소리는 작게 (최소 20%)
   FX_SHAKE_HURT: 0.18, // 맞았을 때 화면 흔들림 세기 (칸)
   FX_SHAKE_HIT: 0.05, // 때렸을 때
@@ -239,6 +245,15 @@ export const CONFIG = {
   SUN_COLOR: 0xffc890,
   FOG_NEAR: 28,
   FOG_FAR: 75,
+  THROWN_BLINK_MS: 120, // 떨어지는 설치 블록 깜빡임 간격
+  // 승리 연출: 판이 끝나고 WIN_BANNER_MS 동안 모두의 카메라가 승자 정면으로
+  VICTORY_FLY_S: 0.7, // 카메라가 날아가는 시간 (초)
+  VICTORY_DIST: 2.8, // 승자 앞 거리 (칸)
+  VICTORY_UP: 1.4, // 발 위 높이 (칸)
+  VICTORY_SPIN: 5, // 춤: 빙글 도는 빠르기 (라디안/초)
+  VICTORY_HOP: 0.35, // 춤: 깡충 높이 (칸)
+  VICTORY_HOP_FREQ: 7, // 춤: 깡충 빠르기
+  CONFETTI_RATE: 8, // 색종이 터지는 횟수 (초당)
   SHADOW_MAP_SIZE: 1024, // 그림자 해상도 (설정에서 끌 수 있음)
   // 콩 애니메이션 (화면만)
   ANIM_WALK_FREQ: 3.2, // 걸음 위상이 도는 빠르기 (속도 1칸/초당 라디안)
