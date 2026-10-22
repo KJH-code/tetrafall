@@ -6,6 +6,7 @@ import { buildCharacter } from '/character.js';
 import { Effects } from '/effects.js';
 import { CELL, SHAPE_NAMES } from '/shared/pieces.js';
 import { itemModel } from '/models.js';
+import { makeTextures } from '/textures.js';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
 
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
@@ -213,10 +214,11 @@ export class Renderer {
     sun.shadow.normalBias = 0.03;
     this.sun = sun;
 
-    // 바닥
+    this.tex = makeTextures([C.GRID_W, C.GRID_D]);
+    // 바닥: 칸마다 타일 한 장
     const floor = new THREE.Mesh(
       new THREE.BoxGeometry(C.GRID_W, C.GRID_D, 0.3),
-      toon({ color: 0xa49aa0 }),
+      toon({ color: 0xa49aa0, map: this.tex.floor }),
     );
     floor.position.set(C.GRID_W / 2, C.GRID_D / 2, -0.15);
     floor.receiveShadow = true;
@@ -233,31 +235,32 @@ export class Renderer {
     edges.position.set(C.GRID_W / 2, C.GRID_D / 2, C.GRID_H / 2);
     this.scene.add(edges);
 
-    // 쌓인 블록 (인스턴스)
-    this.blockMesh = new THREE.InstancedMesh(
-      new THREE.BoxGeometry(1, 1, 1),
-      toon({ color: 0xffffff }),
-      MAX_CELLS,
-    );
-    this.blockMesh.count = 0;
-    // three.js 는 InstancedMesh 의 경계 구를 처음 한 번만 계산하고 갱신하지 않는다.
-    // 블록이 0개일 때 계산된 빈 구가 남으면 원점 모서리가 시야 밖일 때 쌓인 블록 전체가 안 그려진다.
-    // 최대 W×D×H 개 한 번의 draw call 이라 시야 판정을 끈다.
-    this.blockMesh.frustumCulled = false;
-    // OutlineEffect 는 인스턴스 위치를 모르고 테두리를 밀어내서 쌓인 블록엔 안 씀 (블록 테두리는 텍스처로)
-    noOutline(this.blockMesh.material);
-    this.blockMesh.castShadow = true;
-    this.blockMesh.receiveShadow = true;
-    this.scene.add(this.blockMesh);
+    // 쌓인 블록 (인스턴스). 텍스처가 종류마다 달라 종류별로 하나씩: 지형 돌 · 쌓기 나무 · 설치 블록 모래 · 테트리미노
+    const blockGeo = new THREE.BoxGeometry(1, 1, 1);
+    this.blockMeshes = {};
+    for (const [kind, map] of Object.entries({ terrain: this.tex.stone, build: this.tex.wood, thrown: this.tex.sand, shape: this.tex.tetris })) {
+      const mesh = new THREE.InstancedMesh(blockGeo, toon({ color: 0xffffff, map }), MAX_CELLS);
+      mesh.count = 0;
+      // three.js 는 InstancedMesh 의 경계 구를 처음 한 번만 계산하고 갱신하지 않는다.
+      // 블록이 0개일 때 계산된 빈 구가 남으면 원점 모서리가 시야 밖일 때 쌓인 블록 전체가 안 그려진다.
+      // 최대 W×D×H 개 한 번의 draw call 이라 시야 판정을 끈다.
+      mesh.frustumCulled = false;
+      // OutlineEffect 는 인스턴스 위치를 모르고 테두리를 밀어내서 쌓인 블록엔 안 씀 (블록 테두리는 텍스처로)
+      noOutline(mesh.material);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      this.scene.add(mesh);
+      this.blockMeshes[kind] = mesh;
+    }
     this.gridVersion = -1;
 
     // 떨어지는 블록 셀 + 그림자 (블록 여러 개 → 필요한 만큼 늘어나는 풀)
     this.pieceMeshes = [];
     this.shadowMeshes = [];
-    this.pieceMat = toon({ color: 0xf0a030, transparent: true, opacity: 1 }); // 자동 블록
-    this.controlledMat = toon({ color: 0xd040d0, emissive: 0x501050, transparent: true, opacity: 1 }); // 누가 조종 중인 블록 (빛나서 T 모양 보라와 구분)
+    this.pieceMat = toon({ color: 0xf0a030, map: this.tex.tetris, transparent: true, opacity: 1 }); // 자동 블록
+    this.controlledMat = toon({ color: 0xd040d0, emissive: 0x501050, map: this.tex.tetris, transparent: true, opacity: 1 }); // 누가 조종 중인 블록 (빛나서 T 모양 보라와 구분)
     this.shapeMats = {}; // 자동 블록: 모양마다 색
-    this.thrownMat = toon({ color: 0xffffff, emissive: 0x000000, transparent: true, opacity: 1 }); // 던진 설치 블록: 흰색 + 노랗게 깜빡임 (O 블록 노랑과 구분)
+    this.thrownMat = toon({ color: 0xffffff, emissive: 0x000000, map: this.tex.sand, transparent: true, opacity: 1 }); // 던진 설치 블록: 흰색 + 노랗게 깜빡임 (O 블록 노랑과 구분)
     this.shadowMat = noOutline(new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45 }));
     this.pieceBox = new THREE.BoxGeometry(1, 1, 1);
     this.shadowBox = new THREE.BoxGeometry(0.96, 0.96, 0.06);
@@ -328,24 +331,29 @@ export class Renderer {
   updateGrid(grid) {
     const m = new THREE.Matrix4();
     const color = new THREE.Color();
-    let n = 0;
+    const count = { terrain: 0, build: 0, thrown: 0, shape: 0 };
     for (let z = 0; z < C.GRID_H; z++) {
       for (let y = 0; y < C.GRID_D; y++) {
         for (let x = 0; x < C.GRID_W; x++) {
-          if (!grid[(z * C.GRID_D + y) * C.GRID_W + x]) continue;
+          const v = grid[(z * C.GRID_D + y) * C.GRID_W + x];
+          if (!v) continue;
+          const kind = v === CELL.TERRAIN ? 'terrain' : v === CELL.BUILD ? 'build' : v === CELL.THROWN ? 'thrown' : 'shape';
+          const mesh = this.blockMeshes[kind];
+          const n = count[kind]++;
           m.makeTranslation(x + 0.5, y + 0.5, z + 0.5);
-          this.blockMesh.setMatrixAt(n, m);
+          mesh.setMatrixAt(n, m);
           // 무엇이 남긴 칸인지에 따라 색 (지형 돌·쌓기 나무·설치 블록 모래·테트리미노 모양 색), 인접 칸은 체커보드로 살짝 명암
-          color.setHex(cellColor(grid[(z * C.GRID_D + y) * C.GRID_W + x]));
+          color.setHex(cellColor(v));
           if ((x + y + z) % 2) color.multiplyScalar(0.94);
-          this.blockMesh.setColorAt(n, color);
-          n++;
+          mesh.setColorAt(n, color);
         }
       }
     }
-    this.blockMesh.count = n;
-    this.blockMesh.instanceMatrix.needsUpdate = true;
-    if (this.blockMesh.instanceColor) this.blockMesh.instanceColor.needsUpdate = true;
+    for (const [kind, mesh] of Object.entries(this.blockMeshes)) {
+      mesh.count = count[kind];
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    }
   }
 
   // 필드에 놓인 아이템 모양: 모델이 있으면 모델, 없으면 예전 도형 (이속 증가는 늘 번개 도형)
@@ -361,7 +369,7 @@ export class Renderer {
 
   shapeMat(shape) {
     if (!this.shapeMats[shape]) {
-      this.shapeMats[shape] = toon({ color: C.SHAPE_COLORS[shape] ?? 0xf0a030, transparent: true, opacity: 1 });
+      this.shapeMats[shape] = toon({ color: C.SHAPE_COLORS[shape] ?? 0xf0a030, map: this.tex.tetris, transparent: true, opacity: 1 });
     }
     return this.shapeMats[shape];
   }
