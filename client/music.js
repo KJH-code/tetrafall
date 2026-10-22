@@ -18,6 +18,7 @@ export class Music {
   constructor(sound) {
     this.sound = sound;
     this.on = true;
+    this.volume = 1;
     this.mood = 'calm';
     this.step = 0;
     this.nextAt = 0;
@@ -26,9 +27,11 @@ export class Music {
     this.notes = 0; // 예약한 음 수 (헤드리스 확인용)
   }
 
-  setOn(on) {
-    this.on = !!on;
-    if (this.gain) this.gain.gain.setTargetAtTime(this.on ? C.MUSIC_VOLUME : 0, this.sound.ctx.currentTime, 0.15);
+  // 설정의 음악 크기 (0~1, MUSIC_VOLUME 에 곱함). 0 이면 꺼서 예약도 안 함
+  setVolume(v) {
+    this.volume = v;
+    this.on = v > 0;
+    if (this.gain) this.gain.gain.setTargetAtTime(C.MUSIC_VOLUME * v, this.sound.ctx.currentTime, 0.15);
   }
 
   setMood(mood) {
@@ -40,7 +43,7 @@ export class Music {
     if (this.timer || !this.sound.ready()) return;
     const ctx = this.sound.ctx;
     this.gain = ctx.createGain();
-    this.gain.gain.value = this.on ? C.MUSIC_VOLUME : 0;
+    this.gain.gain.value = C.MUSIC_VOLUME * this.volume;
     this.gain.connect(ctx.destination);
     this.nextAt = ctx.currentTime + 0.1;
     this.timer = setInterval(() => this.schedule(), 50);

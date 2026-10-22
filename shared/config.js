@@ -229,6 +229,7 @@ export const CONFIG = {
 
   // ---- 클라이언트 ----
   MOUSE_SENSITIVITY: 0.0022,
+  FOV_DEFAULT: 75, // 1인칭 시야각 기본 (설정에서 60~100)
   WHEEL_STEP_MS: 120, // 마우스 휠로 핫바 한 칸 넘기는 최소 간격 (터치패드가 한 번에 여러 번 보내서)
   SKY_CAMERA_HEIGHT: GRID_H + 14, // 하늘 시점 카메라 높이 (필드 중심 위)
   SKY_TRANSITION_MS: 700, // 1인칭 ↔ 하늘 시점 전환 애니메이션 길이

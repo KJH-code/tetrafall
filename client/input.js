@@ -11,6 +11,7 @@ export class Input {
     this.locked = false;
     this.enabled = false; // 판 진행 중 + 살아있을 때만 true
     this.sky = false; // 하늘 시점: WASD 가 화면 기준(W=화면 위), 마우스 회전 무시
+    this.sensitivity = 1; // 설정의 감도 배수
     this.wheel = null; // 이모트 바퀴: G 를 누르고 있는 동안 마우스 이동량 {x, y} (그동안 시점은 안 돎)
     this.onWheel = () => {}; // 바퀴 메뉴 표시 갱신 (main 이 넣음): (null | 고른 번호 -1~3)
 
@@ -29,8 +30,8 @@ export class Input {
         return;
       }
       if (!this.locked || this.sky) return;
-      this.yaw -= e.movementX * C.MOUSE_SENSITIVITY;
-      this.pitch -= e.movementY * C.MOUSE_SENSITIVITY;
+      this.yaw -= e.movementX * C.MOUSE_SENSITIVITY * this.sensitivity;
+      this.pitch -= e.movementY * C.MOUSE_SENSITIVITY * this.sensitivity;
       const lim = Math.PI / 2 - 0.05;
       this.pitch = Math.max(-lim, Math.min(lim, this.pitch));
     });

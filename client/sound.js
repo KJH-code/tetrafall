@@ -4,6 +4,12 @@ import { CONFIG as C } from '/shared/config.js';
 export class Sound {
   constructor() {
     this.ctx = null;
+    this.volume = 1; // 설정의 효과음 크기 (0~1, SFX_VOLUME 에 곱함)
+  }
+
+  setVolume(v) {
+    this.volume = v;
+    if (this.master) this.master.gain.value = C.SFX_VOLUME * v;
   }
 
   // 사용자 입력 이벤트 안에서 한 번 불러 오디오를 깨운다
@@ -13,7 +19,7 @@ export class Sound {
       if (!AC) return;
       this.ctx = new AC();
       this.master = this.ctx.createGain();
-      this.master.gain.value = C.SFX_VOLUME;
+      this.master.gain.value = C.SFX_VOLUME * this.volume;
       this.master.connect(this.ctx.destination);
       const len = this.ctx.sampleRate;
       this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);

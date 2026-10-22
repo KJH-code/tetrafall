@@ -391,39 +391,111 @@ function submitName() {
 }
 nameInput.value = savedName();
 
-// 그림자: 기본 켬, 느린 PC 는 끔. 이 브라우저에 기억
-const shadowCheck = $('shadow-check');
-try {
-  shadowCheck.checked = localStorage.getItem('tf-shadows') !== 'off';
-} catch {
-  shadowCheck.checked = true;
-}
-renderer.setShadows(shadowCheck.checked);
-shadowCheck.addEventListener('change', () => {
-  renderer.setShadows(shadowCheck.checked);
+// ---------- 설정 (감도·효과음·음악·시야각·그림자). 이 브라우저에 기억 ----------
+// 대기 화면과 "화면을 클릭하면 조작 시작" 판(ESC 로 마우스를 풀었을 때)의 '설정' 버튼으로 연다
+const SETTINGS_DEFAULT = { sens: 1, sfx: 1, music: 1, fov: C.FOV_DEFAULT, shadows: true };
+function loadSettings() {
+  let saved = {};
   try {
-    localStorage.setItem('tf-shadows', shadowCheck.checked ? 'on' : 'off');
+    saved = JSON.parse(localStorage.getItem('tf-settings') || '{}') || {};
+    // 예전 체크박스 값 이어받기
+    if (localStorage.getItem('tf-shadows') === 'off' && saved.shadows === undefined) saved.shadows = false;
+    if (localStorage.getItem('tf-music') === 'off' && saved.music === undefined) saved.music = 0;
+  } catch {
+    saved = {};
+  }
+  return { ...SETTINGS_DEFAULT, ...saved };
+}
+const settings = loadSettings();
+function applySettings() {
+  input.sensitivity = settings.sens;
+  sound.setVolume(settings.sfx);
+  music.setVolume(settings.music);
+  renderer.fov = settings.fov;
+  renderer.setShadows(settings.shadows);
+}
+function saveSettings() {
+  try {
+    localStorage.setItem('tf-settings', JSON.stringify(settings));
   } catch {
     // 저장이 막혀 있어도 이번엔 적용
   }
+}
+applySettings();
+const settingsEl = $('settings');
+const fields = [
+  ['set-sens', 'sens', (v) => `${v.toFixed(1)}배`],
+  ['set-sfx', 'sfx', (v) => `${Math.round(v * 100)}%`],
+  ['set-music', 'music', (v) => (v > 0 ? `${Math.round(v * 100)}%` : '끔')],
+  ['set-fov', 'fov', (v) => `${Math.round(v)}°`],
+];
+for (const [id, key, fmt] of fields) {
+  const el = $(id);
+  const out = $(`${id}-v`);
+  el.value = settings[key];
+  out.textContent = fmt(settings[key]);
+  el.addEventListener('input', () => {
+    settings[key] = Number(el.value);
+    out.textContent = fmt(settings[key]);
+    applySettings();
+    saveSettings();
+  });
+}
+const shadowCheck = $('set-shadows');
+shadowCheck.checked = settings.shadows;
+shadowCheck.addEventListener('change', () => {
+  settings.shadows = shadowCheck.checked;
+  applySettings();
+  saveSettings();
+});
+function openSettings(on) {
+  settingsEl.classList.toggle('hidden', !on);
+}
+document.querySelectorAll('.settings-btn').forEach((b) => b.addEventListener('click', () => openSettings(true)));
+$('settings-close').addEventListener('click', () => openSettings(false));
+$('settings-reset').addEventListener('click', () => {
+  Object.assign(settings, SETTINGS_DEFAULT);
+  for (const [id, key, fmt] of fields) {
+    $(id).value = settings[key];
+    $(`${id}-v`).textContent = fmt(settings[key]);
+  }
+  shadowCheck.checked = settings.shadows;
+  applySettings();
+  saveSettings();
 });
 
-// 배경음악: 기본 켬. 이 브라우저에 기억
-const musicCheck = $('music-check');
-try {
-  musicCheck.checked = localStorage.getItem('tf-music') !== 'off';
-} catch {
-  musicCheck.checked = true;
+// ---------- 처음 하는 사람 안내: 이 브라우저가 처음이면 카드 3장 (설정에서 다시 보기) ----------
+const tutorialEl = $('tutorial');
+const cards = [...tutorialEl.querySelectorAll('.card')];
+let cardIdx = 0;
+function showCard(i) {
+  cardIdx = i;
+  cards.forEach((c, k) => c.classList.toggle('hidden', k !== i));
+  $('tut-next').textContent = i === cards.length - 1 ? '시작하기' : '다음';
+  $('tut-page').textContent = `${i + 1} / ${cards.length}`;
 }
-music.setOn(musicCheck.checked);
-musicCheck.addEventListener('change', () => {
-  music.setOn(musicCheck.checked);
-  try {
-    localStorage.setItem('tf-music', musicCheck.checked ? 'on' : 'off');
-  } catch {
-    // 저장이 막혀 있어도 이번엔 적용
+function openTutorial(on) {
+  tutorialEl.classList.toggle('hidden', !on);
+  if (on) showCard(0);
+  else {
+    try {
+      localStorage.setItem('tf-tutorial', 'done');
+    } catch {
+      // 저장이 막혀 있으면 다음에 또 보임
+    }
   }
+}
+$('tut-next').addEventListener('click', () => (cardIdx < cards.length - 1 ? showCard(cardIdx + 1) : openTutorial(false)));
+$('tut-skip').addEventListener('click', () => openTutorial(false));
+$('settings-tutorial').addEventListener('click', () => {
+  openSettings(false);
+  openTutorial(true);
 });
+try {
+  if (localStorage.getItem('tf-tutorial') !== 'done') openTutorial(true);
+} catch {
+  openTutorial(true);
+}
 nameInput.addEventListener('change', submitName);
 nameInput.addEventListener('keydown', (e) => {
   e.stopPropagation(); // 이름 칠 때는 게임 키(Enter 시작, 숫자 칸)가 안 먹게
