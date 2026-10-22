@@ -111,6 +111,55 @@ function heldItems(models) {
   return out;
 }
 
+// 로봇 눈알: 원래 눈은 검은 공뿐이라, 그 위에 흰자(조금 작은 흰 공)를 씌우고 앞쪽에 검은 눈동자를 붙인다.
+// 검은 재질 부품(Head_4)의 정점을 넷으로 나누면 눈 둘·눈썹 둘 → 아래쪽 둘이 눈. 계산은 모델마다 한 번 (src.userData 에 저장)
+function addRobotEyes(model, src, turn) {
+  const head = model.getObjectByName('Head_4');
+  if (!head) return;
+  turn.updateMatrixWorld(true);
+  if (!src.userData.eyes) {
+    const pos = head.geometry.attributes.position;
+    const pts = [];
+    for (let i = 0; i < pos.count; i++) pts.push(new THREE.Vector3().fromBufferAttribute(pos, i));
+    const box = new THREE.Box3().setFromPoints(pts);
+    let centers = [
+      [box.min.x, box.min.y],
+      [box.max.x, box.min.y],
+      [box.min.x, box.max.y],
+      [box.max.x, box.max.y],
+    ].map(([x, y]) => new THREE.Vector3(x, y, (box.min.z + box.max.z) / 2));
+    let groups = [];
+    for (let it = 0; it < 20; it++) {
+      groups = centers.map(() => []);
+      for (const p of pts) {
+        let best = 0;
+        centers.forEach((c, k) => {
+          if (p.distanceToSquared(c) < p.distanceToSquared(centers[best])) best = k;
+        });
+        groups[best].push(p);
+      }
+      centers = groups.map((g, k) => (g.length ? g.reduce((a, p) => a.add(p), new THREE.Vector3()).divideScalar(g.length) : centers[k]));
+    }
+    // 이 게임은 z 가 위, +x 가 앞 (세워 둔 모델 기준)
+    const up = (c) => c.clone().applyMatrix4(head.matrixWorld).z;
+    const eyes = centers
+      .map((c, k) => ({ c, r: Math.max(...groups[k].map((p) => p.distanceTo(c))) }))
+      .sort((a, b) => up(a.c) - up(b.c))
+      .slice(0, 2);
+    const fwd = new THREE.Vector3(1, 0, 0).transformDirection(new THREE.Matrix4().copy(head.matrixWorld).invert()).normalize();
+    src.userData.eyes = { eyes, fwd };
+  }
+  const { eyes, fwd } = src.userData.eyes;
+  for (const e of eyes) {
+    const white = new THREE.Mesh(new THREE.SphereGeometry(e.r * C.ROBOT_EYE_WHITE, 20, 14), eyeWhiteMat);
+    white.position.copy(e.c);
+    head.add(white);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(e.r * C.ROBOT_EYE_PUPIL, 16, 10), pupilMat);
+    pupil.position.copy(e.c).addScaledVector(fwd, e.r * (C.ROBOT_EYE_WHITE - C.ROBOT_EYE_PUPIL + 0.1));
+    head.add(pupil);
+  }
+}
+
 // 로봇 (RobotExpressive, CC0). 뼈대가 있어 사람마다 SkeletonUtils 로 복제하고 AnimationMixer 로 동작을 섞는다.
 // 반환 형태는 콩과 같고, robot = { mixer, actions, face } 가 더 있다. arms·feet 는 콩 전용 손짓이라 빈 자리만 둔다
 function buildRobot(color, models) {
@@ -150,6 +199,8 @@ function buildRobot(color, models) {
   const mats = [...copies.values()];
   const bodyMaterial = mats.find((m) => m.name === 'Main') || mats[0];
   bodyMaterial.color.setHex(color);
+
+  addRobotEyes(model, models.robot, turn);
 
   const mixer = new THREE.AnimationMixer(model);
   const actions = {};

@@ -254,6 +254,8 @@ export const CONFIG = {
   FOG_NEAR: 28,
   FOG_FAR: 75,
   HELD_MODEL_SIZE: 0.28,
+  ROBOT_EYE_WHITE: 0.62, // 로봇 흰자 반지름 (원래 검은 눈 무리 크기에 대한 비율)
+  ROBOT_EYE_PUPIL: 0.3, // 로봇 눈동자 반지름 (같은 비율)
   ROBOT_RUN_SPEED: 3.2, // 이 속도(칸/초)보다 빠르면 로봇이 달리기 동작
   ROBOT_FADE_S: 0.15, // 로봇 동작이 바뀔 때 섞는 시간
   ROBOT_PUNCH_MS: 450, // 밀치기 때 펀치 동작을 보여주는 시간 // 캐릭터 손에 든 아이템 모델 크기
