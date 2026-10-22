@@ -33,6 +33,10 @@
     .toast.crit { background: rgba(230,170,0,.95); color: #000; font-weight: 900; font-size: 22px; }
     #center .keys { white-space: normal; font-size: 14px; text-align: left; margin-top: 10px; line-height: 1.5; color: #ddd; }
     #spec { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); text-align: center; font-size: 17px; background: rgba(0,0,0,.6); padding: 8px 16px; border-radius: 8px; white-space: pre; pointer-events: none; }
+    #emote-wheel { position: absolute; top: 50%; left: 50%; width: 300px; height: 300px; margin: -150px 0 0 -150px; border-radius: 50%; background: rgba(0,0,0,.45); pointer-events: none; }
+    #emote-wheel .em { position: absolute; transform: translate(-50%, -50%); font-size: 18px; font-weight: bold; padding: 6px 12px; border-radius: 8px; background: rgba(0,0,0,.6); white-space: nowrap; }
+    #emote-wheel .em.on { background: #ffd23a; color: #000; }
+    #emote-wheel .hint { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 13px; color: #ccc; text-align: center; }
     #killfeed { position: absolute; top: 74px; right: 10px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; pointer-events: none; }
     #killfeed .kill { font-size: 15px; font-weight: bold; padding: 3px 10px; border-radius: 5px; background: rgba(0,0,0,.6); white-space: nowrap; transition: opacity .5s; }
     #killfeed .kill.mine { outline: 2px solid #ffe060; }
@@ -92,6 +96,7 @@
     <div id="status">연결 중...</div>
     <div id="bigmsg" class="hidden"></div>
     <div id="killfeed"></div>
+    <div id="emote-wheel" class="hidden"><span class="em" data-n="0" style="left:50%;top:14%"></span><span class="em" data-n="1" style="left:84%;top:50%"></span><span class="em" data-n="2" style="left:50%;top:86%"></span><span class="em" data-n="3" style="left:16%;top:50%"></span><span class="hint">마우스로 고르고<br />G 를 놓기</span></div>
     <div id="spec" class="hidden"></div>
     <div id="crosshair"></div>
     <!-- 조준점 둘레 쿨: 바깥 하늘색 = 대시, 안쪽 흰색 = 밀치기. 도는 동안만 보이고 다 차면 번쩍 -->

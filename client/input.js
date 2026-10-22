@@ -11,6 +11,8 @@ export class Input {
     this.locked = false;
     this.enabled = false; // 판 진행 중 + 살아있을 때만 true
     this.sky = false; // 하늘 시점: WASD 가 화면 기준(W=화면 위), 마우스 회전 무시
+    this.wheel = null; // 이모트 바퀴: G 를 누르고 있는 동안 마우스 이동량 {x, y} (그동안 시점은 안 돎)
+    this.onWheel = () => {}; // 바퀴 메뉴 표시 갱신 (main 이 넣음): (null | 고른 번호 -1~3)
 
     canvas.addEventListener('click', () => {
       if (!this.locked) canvas.requestPointerLock();
@@ -20,6 +22,12 @@ export class Input {
       if (!this.locked) this.keys.clear();
     });
     document.addEventListener('mousemove', (e) => {
+      if (this.wheel) {
+        this.wheel.x += e.movementX;
+        this.wheel.y += e.movementY;
+        this.onWheel(this.wheelPick());
+        return;
+      }
       if (!this.locked || this.sky) return;
       this.yaw -= e.movementX * C.MOUSE_SENSITIVITY;
       this.pitch -= e.movementY * C.MOUSE_SENSITIVITY;
@@ -45,6 +53,12 @@ export class Input {
     document.addEventListener('keydown', (e) => {
       if (e.repeat) return;
       this.keys.add(e.code);
+      if (e.code === 'KeyG' && this.locked && !this.wheel) {
+        // 이모트 바퀴 열기 (판이 끝난 뒤에도 됨)
+        this.wheel = { x: 0, y: 0 };
+        this.onWheel(-1);
+        return;
+      }
       if (!this.enabled) return;
       switch (e.code) {
         case 'ShiftLeft':
@@ -84,8 +98,30 @@ export class Input {
         default:
       }
     });
-    document.addEventListener('keyup', (e) => this.keys.delete(e.code));
-    window.addEventListener('blur', () => this.keys.clear());
+    document.addEventListener('keyup', (e) => {
+      this.keys.delete(e.code);
+      if (e.code === 'KeyG' && this.wheel) {
+        const n = this.wheelPick();
+        this.wheel = null;
+        this.onWheel(null);
+        if (n >= 0) this.sendAction({ name: 'emote', n });
+      }
+    });
+    window.addEventListener('blur', () => {
+      this.keys.clear();
+      if (this.wheel) {
+        this.wheel = null;
+        this.onWheel(null);
+      }
+    });
+  }
+
+  // 바퀴에서 고른 것: 위 0 · 오른쪽 1 · 아래 2 · 왼쪽 3, 덜 움직였으면 -1
+  wheelPick() {
+    const w = this.wheel;
+    if (!w || Math.hypot(w.x, w.y) < C.EMOTE_PICK_PX) return -1;
+    if (Math.abs(w.x) > Math.abs(w.y)) return w.x > 0 ? 1 : 3;
+    return w.y < 0 ? 0 : 2;
   }
 
   setYawPitch(yaw, pitch) {

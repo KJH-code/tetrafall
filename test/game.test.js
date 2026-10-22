@@ -536,6 +536,37 @@ test('킬: 조종·투척 블록 압사는 그 블록 주인, 자동 블록은 �
   assert.ok([...g.players.values()].every((p) => p.lastHit === null));
 });
 
+// ---------- 이모트 ----------
+test('이모트: 하는 동안 못 움직이고, 쿨 동안 다시 못 함, 맞거나 공격하면 끊김, 판 끝난 뒤에도 됨', () => {
+  const { g, p1, p2 } = setup();
+  g.controlItemNextAt = Infinity; // 기다리는 동안 조종권을 먹으면 조종 중이라 이모트가 안 됨
+  g.powerItemNextAt = Infinity;
+  Object.assign(p1, { x: 2.5, y: 5.5 });
+  Object.assign(p2, { x: 8.5, y: 1.5 });
+  g.handleAction(1, { name: 'emote', n: 1 });
+  assert.equal(g.snapshot().players.find((p) => p.id === 1).emote, 1);
+  g.handleInput(1, { fwd: 1, strafe: 0, jump: false, yaw: 0, pitch: 0 });
+  run(g, 500);
+  assert.ok(Math.abs(p1.x - 2.5) < 1e-6, '이모트 중엔 안 움직임');
+  run(g, C.EMOTE_MS);
+  assert.ok(p1.x > 3, '끝나면 다시 움직임');
+  g.handleInput(1, { fwd: 0, strafe: 0, jump: false, yaw: 0, pitch: 0 });
+  assert.equal(g.startEmote(p1, 0), false, '쿨');
+  run(g, C.EMOTE_COOLDOWN_MS);
+  assert.equal(g.startEmote(p1, 0), true);
+  g.handleAction(1, { name: 'push' });
+  assert.equal(g.isEmoting(p1), false, '공격하면 끊김');
+  run(g, C.EMOTE_COOLDOWN_MS);
+  g.startEmote(p2, 2);
+  g.applyKnockback(p2, 1, 0, 1, 0, 0, 0, null);
+  assert.equal(g.isEmoting(p2), false, '맞으면 끊김');
+  assert.equal(g.startEmote(p1, 9), false, '없는 번호');
+  g.kill(p2, 'fall');
+  g.tick(TICK);
+  assert.equal(g.phase, 'over');
+  assert.equal(g.startEmote(p1, 1), true, '판 끝난 뒤에도 (GG)');
+});
+
 // ---------- 팀전 ----------
 test('팀전: 같은 팀은 밀리지만 피해 % 없음·킬 아님, 다른 팀은 그대로. 한 팀만 남으면 그 팀 승리 (팀원 모두 승수 +1)', () => {
   const { g, lines, ps } = setupN(4);

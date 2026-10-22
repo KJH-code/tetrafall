@@ -458,8 +458,9 @@ export class Renderer {
     const lean = Math.min(1, a.hs / C.MOVE_SPEED) * C.ANIM_LEAN;
     rig.rotation.y = lean + a.spin;
     rig.rotation.x = step * C.ANIM_SWAY; // 걸을 때 좌우로 살짝 흔들
-    // 승자 춤: 깡충 뛰며 제자리에서 빙글
-    const dancing = this.victoryId === p.id;
+    // 승자 춤·이모트 '춤': 깡충 뛰며 제자리에서 빙글
+    const emote = p.emote ?? -1;
+    const dancing = this.victoryId === p.id || emote === 1;
     a.dance = dancing ? (a.dance || 0) + dt : 0;
     rig.rotation.z = dancing ? a.dance * C.VICTORY_SPIN : 0;
     if (dancing) parts.position.z += Math.abs(Math.sin(a.dance * C.VICTORY_HOP_FREQ)) * C.VICTORY_HOP;
@@ -469,9 +470,11 @@ export class Renderer {
   }
 
   // 승리 연출: 판이 끝나면 모두의 카메라가 승자 정면으로 날아가고, 승자는 춤, 승자 색 색종이
+  // 내 이모트(cam.selfie)도 같은 카메라로 내 앞에서 보여줌 (색종이는 승리 때만)
   victoryCamera(state, cam, dt, eye, look) {
-    const s = cam.victory ? this.smooth.get(cam.victory) : null;
-    const winner = s && state.players.find((p) => p.id === cam.victory);
+    const id = cam.victory || cam.selfie || null;
+    const s = id ? this.smooth.get(id) : null;
+    const winner = s && state.players.find((p) => p.id === id);
     if (!winner) {
       this.victoryT = 0;
       return;
@@ -483,11 +486,48 @@ export class Renderer {
     const front = new THREE.Vector3(s.x + Math.cos(yaw) * C.VICTORY_DIST, s.y + Math.sin(yaw) * C.VICTORY_DIST, s.z + C.VICTORY_UP);
     eye.lerp(front, t);
     look.lerp(new THREE.Vector3(s.x, s.y, s.z + C.PLAYER_HEIGHT * 0.55), t);
+    if (!cam.victory) return;
     // 색종이: 승자 위에서 몇 번 터짐
     this.confettiAcc = (this.confettiAcc || 0) + dt * C.CONFETTI_RATE;
     const colors = [playerColor(winner, state), 0xffe040, 0x40d0ff, 0xff60c0, 0xffffff];
     for (; this.confettiAcc >= 1; this.confettiAcc--) {
       this.effects.burst({ x: s.x, y: s.y, z: s.z + C.PLAYER_HEIGHT + 0.6 }, null, colors[Math.floor(Math.random() * colors.length)], 6, 6, 0.09, 1.2);
+    }
+  }
+
+  // 이모트 동작 (춤은 위 animate 에서): 0 손 흔들기 · 2 웃기 · 3 도발. 팔은 밀치기 애니메이션 뒤에 덮어씀
+  emoteAnim(g, emote, a, dt) {
+    const [right, left] = g.userData.arms;
+    const rig = g.userData.rig;
+    // 매 프레임 기본 자세로 되돌린 뒤 덮어씀 (이모트가 끝나면 팔이 제자리로). 팔이 짧아서 손 흔들기 땐 오른팔을 키움
+    right.rotation.x = right.userData.baseRot.x;
+    left.position.copy(left.userData.base);
+    left.rotation.copy(left.userData.baseRot);
+    right.scale.setScalar(1);
+    left.scale.setScalar(1);
+    a.emoteT = emote >= 0 && emote !== 1 ? (a.emoteT || 0) + dt : 0;
+    if (!a.emoteT) return;
+    const t = a.emoteT;
+    const big = C.EMOTE_ARM_SCALE;
+    if (emote === 0) {
+      // 손 흔들기: 오른팔을 머리 옆으로 번쩍 들고 크게 좌우로
+      right.scale.setScalar(big);
+      right.position.z = right.userData.base.z + 0.42;
+      right.rotation.x = -Math.PI / 2 + Math.sin(t * 12) * 0.6;
+      rig.rotation.x += Math.sin(t * 12) * 0.08;
+    } else if (emote === 2) {
+      // 웃기: 배를 잡고(양팔 앞으로) 좌우로 크게 흔들며 들썩들썩
+      rig.rotation.y += -0.25;
+      rig.rotation.x += Math.sin(t * 22) * 0.22;
+      g.userData.parts.position.z += Math.abs(Math.sin(t * 11)) * 0.12;
+      right.rotation.z = Math.PI / 3;
+      left.rotation.z = -Math.PI / 3;
+    } else if (emote === 3) {
+      // 도발: 몸을 앞뒤로 까딱이며 왼팔을 크게 앞으로 뻗어 손짓
+      rig.rotation.y += 0.15 + Math.sin(t * 8) * 0.2;
+      left.rotation.z = -Math.PI / 2 + Math.sin(t * 10) * 0.5; // 왼손엔 든 물건이 있어서 팔은 안 키움
+      left.position.x = left.userData.base.x + 0.22;
+      left.position.z = left.userData.base.z + 0.15;
     }
   }
 
@@ -570,7 +610,7 @@ export class Renderer {
       if (p.speedLeft > 0 && g.userData.anim.hs > 1 && Math.random() < dt * C.SPEED_TRAIL_RATE) {
         this.effects.burst({ x: s.x, y: s.y, z: s.z + 0.15 }, null, 0xffe020, 3, 1.2, 0.07, 0.35);
       }
-      g.visible = p.alive && !(p.id === myId && view === 'fps' && this.skyBlend === 0 && !cam.victory);
+      g.visible = p.alive && !(p.id === myId && view === 'fps' && this.skyBlend === 0 && !cam.victory && !cam.selfie);
       const bodyMat = g.userData.bodyMat;
       // 경직 중엔 흰색으로 빠르게 깜빡임
       g.userData.color = playerColor(p, state); // 팀전이면 팀 색 (판 사이에 팀이 바뀔 수 있어 매 프레임)
@@ -602,6 +642,7 @@ export class Renderer {
       arm.position.x = arm.userData.base.x + 0.3 * pu;
       arm.position.z = arm.userData.base.z + 0.2 * pu;
       arm.rotation.z = (Math.PI / 2) * pu;
+      this.emoteAnim(g, p.emote ?? -1, g.userData.anim, dt); // 밀치기 뒤에 (팔을 덮어씀)
       // 이름 + 피해 % 표시: 바뀔 때만 다시 그림
       const label = g.userData.label;
       const dmg = p.damage || 0;
@@ -731,7 +772,7 @@ export class Renderer {
     if (me) this.viewArm.material.color.setHex(playerColor(me, state));
     const vp = this.effects.punchAmount(myId);
     this.viewArm.position.set(this.viewArmBase.x - 0.12 * vp, this.viewArmBase.y + 0.08 * vp, this.viewArmBase.z - 0.3 * vp);
-    this.viewArm.visible = !!(me && me.alive) && this.skyBlend === 0 && !cam.victory;
+    this.viewArm.visible = !!(me && me.alive) && this.skyBlend === 0 && !cam.victory && !cam.selfie;
     this.viewHammer.visible = !!(me && me.weaponUses > 0);
     // 손에 든 것: 고른 핫바 칸에 뭐가 있으면 그 색 상자 (망치가 있으면 망치가 우선)
     const held = me && heldKind(me) ? HELD_COLOR[heldKind(me)] : null;

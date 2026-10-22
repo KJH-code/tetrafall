@@ -161,6 +161,9 @@ export class Game {
       deathCause: null,
       lastHit: null, // 판 안에서 마지막으로 나를 날린 사람 { by, name, kind } — 킬 판정
       team: this.smallerTeam(), // 팀전용. 들어올 때 사람이 적은 팀으로
+      emote: -1, // 이모트 번호 (EMOTE_NAMES), -1 = 안 함
+      emoteUntil: 0,
+      emoteReadyAt: 0,
       input: { fwd: 0, strafe: 0, jump: false },
     };
     this.players.set(id, p);
@@ -383,6 +386,8 @@ export class Game {
         ammo: 0,
         deathCause: null,
         lastHit: null,
+        emoteUntil: 0,
+        emoteReadyAt: 0,
       });
     }
     if (this.countdownMs > 0) {
@@ -506,9 +511,12 @@ export class Game {
 
   handleAction(id, action) {
     const p = this.players.get(id);
+    // 이모트는 판이 끝난 뒤에도 됨 (GG). 하는 동안 못 움직이고, 맞거나 공격하면 끊김
+    if (action.name === 'emote') return void this.startEmote(p, action.n);
     if (!p || this.phase !== 'playing' || !p.alive) return;
     const stunned = this.time < p.stunUntil;
     const controlling = this.isControlling(p);
+    if (['dash', 'push', 'fire'].includes(action.name)) p.emoteUntil = 0;
     switch (action.name) {
       case 'dash':
         if (stunned || controlling || this.time < p.dashReadyAt) return; // 조종 중 대시 불가
@@ -845,9 +853,24 @@ export class Game {
   // 경직 중이면 무시 (연속 넉백 불가). 성공 시 true
   // gain: 이번 공격으로 쌓이는 피해 %. 맞기 전까지 쌓인 % 로 수평 넉백을 키우고 그다음에 쌓는다
   // (위로 튀는 속도는 그대로)
+  startEmote(p, n) {
+    if (!p || !p.alive || (this.phase !== 'playing' && this.phase !== 'over')) return false;
+    if (!Number.isInteger(n) || n < 0 || n >= C.EMOTE_NAMES.length) return false;
+    if (this.time < p.emoteReadyAt || this.time < p.stunUntil || this.isControlling(p)) return false;
+    p.emote = n;
+    p.emoteUntil = this.time + C.EMOTE_MS;
+    p.emoteReadyAt = this.time + C.EMOTE_COOLDOWN_MS;
+    return true;
+  }
+
+  isEmoting(p) {
+    return this.time < p.emoteUntil;
+  }
+
   // src: { by, kind } — 누가 무엇으로 날렸는지 (킬 판정용 lastHit)
   applyKnockback(t, dx, dy, speed, up, stunMs = C.STUN_MS, gain = 0, src = null) {
     if (this.time < t.stunUntil) return false;
+    t.emoteUntil = 0; // 맞으면 이모트 끊김
     const teammate = src && this.sameTeam(this.players.get(src.by), t);
     if (teammate) gain = 0; // 팀전: 같은 팀은 밀리기만 (피해 % 없음, 킬로도 안 침)
     else if (src && src.by !== t.id) t.lastHit = { by: src.by, kind: src.kind, name: this.players.get(src.by)?.name };
@@ -1491,7 +1514,7 @@ export class Game {
     const stunned = this.time < p.stunUntil;
     let ix = 0;
     let iy = 0;
-    if (!stunned) {
+    if (!stunned && !this.isEmoting(p)) {
       const mv = this.moveDir(p);
       if (mv) {
         const speed = C.MOVE_SPEED * (this.time < p.speedUntil ? C.SPEED_MULT : 1);
@@ -1677,6 +1700,8 @@ export class Game {
         jumpLeft: Math.max(0, p.jumpUntil - this.time),
         ghostLeft: Math.max(0, p.ghostUntil - this.time),
         speedLeft: Math.max(0, p.speedUntil - this.time),
+        emote: this.isEmoting(p) ? p.emote : -1,
+        emoteLeft: Math.max(0, p.emoteUntil - this.time),
         hand: p.hand,
         blocks: p.blocks,
         bombs: p.bombs,

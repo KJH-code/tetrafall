@@ -686,6 +686,15 @@ document.addEventListener('keydown', (e) => {
   e.preventDefault();
 });
 
+// ---------- 이모트 바퀴 (G) ----------
+const wheelEl = $('emote-wheel');
+const wheelItems = [...wheelEl.querySelectorAll('.em')];
+wheelItems.forEach((el, i) => (el.textContent = C.EMOTE_NAMES[i]));
+input.onWheel = (pick) => {
+  wheelEl.classList.toggle('hidden', pick === null);
+  wheelItems.forEach((el, i) => el.classList.toggle('on', i === pick));
+};
+
 // ---------- 조준점 둘레 쿨 원 (대시·밀치기) ----------
 const cdRing = $('cd-ring');
 const cdArcs = {
@@ -858,7 +867,8 @@ function frame(now) {
     if (state) music.setMood(state.phase === 'playing' || state.phase === 'countdown' ? (state.lava && state.lava.active ? 'lava' : 'battle') : 'calm');
     music.update();
     const vic = state && state.phase === 'over' && performance.now() < victory.until ? victory.id : null;
-    renderer.render(state, myId, dt, view, { yaw: input.yaw, pitch: input.pitch, follow: spectating() && !spec.overview ? spec.target : null, victory: vic });
+    const selfie = p && p.alive && p.emote >= 0 && !vic ? myId : null; // 내 이모트는 앞에서 보이게
+    renderer.render(state, myId, dt, view, { yaw: input.yaw, pitch: input.pitch, follow: spectating() && !spec.overview ? spec.target : null, victory: vic, selfie });
     updateHud();
   } catch (err) {
     if (!frameErrorShown) console.error('프레임 에러 (계속 그림):', err);
