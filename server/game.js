@@ -49,6 +49,9 @@ export class Game {
     this.pieceCells = new Map(); // 셀 키 -> 블록 id (충돌용)
     this.lava = { active: false, z: C.LAVA_START_Z, startedAt: 0 };
     this.botLevel = C.BOT_LEVEL_DEFAULT; // 봇 난이도 (모든 봇 공통)
+    this.teamMode = false; // 팀전 (호스트가 대기 화면에서 켬). 사람마다 team = 'red' | 'blue'
+    this.teamWins = { red: 0, blue: 0 };
+    this.winnerTeam = null;
     this.mapChoice = 'flat'; // 호스트가 고른 맵 ('random' 또는 MAP_IDS 중 하나). 서버는 시작 때 C.MAP_DEFAULT 로 바꾼다
     this.mapId = 'flat'; // 이번 판 맵
     this.baseAvgHeight = 0; // 판 시작 때 지형 평균 높이 (용암은 여기서 더 쌓인 만큼으로 판단)
@@ -157,6 +160,7 @@ export class Game {
       ammo: 0,
       deathCause: null,
       lastHit: null, // 판 안에서 마지막으로 나를 날린 사람 { by, name, kind } — 킬 판정
+      team: this.smallerTeam(), // 팀전용. 들어올 때 사람이 적은 팀으로
       input: { fwd: 0, strafe: 0, jump: false },
     };
     this.players.set(id, p);
@@ -241,7 +245,53 @@ export class Game {
   }
 
   canStart() {
-    return this.participants().length >= C.MIN_PLAYERS && !this.inRound();
+    const ps = this.participants();
+    if (this.teamMode && !(ps.some((p) => p.team === 'red') && ps.some((p) => p.team === 'blue'))) return false; // 팀마다 한 명 이상
+    return ps.length >= C.MIN_PLAYERS && !this.inRound();
+  }
+
+  // ---------- 팀전 ----------
+  // 같은 팀이면 밀리기는 하지만 피해 % 는 안 쌓이고, 킬로도 안 친다 (2026-10-22 재혁)
+  sameTeam(a, b) {
+    return this.teamMode && !!a && !!b && a !== b && a.team === b.team;
+  }
+
+  smallerTeam() {
+    const ps = [...this.players.values()];
+    return ps.filter((p) => p.team === 'red').length <= ps.filter((p) => p.team === 'blue').length ? 'red' : 'blue';
+  }
+
+  setTeamMode(on) {
+    if (this.inRound() || this.teamMode === !!on) return false;
+    this.teamMode = !!on;
+    this.log(`[호스트] 팀전 ${this.teamMode ? '켬' : '끔'}`);
+    return true;
+  }
+
+  setTeam(id, team) {
+    const p = this.players.get(id);
+    if (!p || this.inRound() || (team !== 'red' && team !== 'blue')) return false;
+    p.team = team;
+    this.log(`[호스트] ${p.name} ${TEAM_KO[team]}팀으로`);
+    return true;
+  }
+
+  // 참가자를 무작위로 섞어 반씩 (홀수면 빨강이 한 명 더)
+  shuffleTeams() {
+    if (this.inRound()) return false;
+    const ps = this.participants();
+    for (let i = ps.length - 1; i > 0; i--) {
+      const j = Math.floor(this.rng() * (i + 1));
+      [ps[i], ps[j]] = [ps[j], ps[i]];
+    }
+    ps.forEach((p, i) => (p.team = i < Math.ceil(ps.length / 2) ? 'red' : 'blue'));
+    this.log(`[호스트] 팀 섞기: ${this.teamLine()}`);
+    return true;
+  }
+
+  teamLine() {
+    const ps = this.participants().sort((a, b) => a.slot - b.slot);
+    return ['red', 'blue'].map((t) => `${TEAM_KO[t]} ${ps.filter((p) => p.team === t).map((p) => p.name).join(' ')}`).join(' / ');
   }
 
   // 판에 참가하는 사람 (관전자 빼고)
@@ -300,6 +350,7 @@ export class Game {
     this.deaths = [];
     this.events = [];
     this.winnerId = null;
+    this.winnerTeam = null;
     this.roundNumber++;
     for (const p of this.players.values()) {
       const sp = C.SPAWN_POINTS[p.slot % C.SPAWN_POINTS.length];
@@ -356,14 +407,21 @@ export class Game {
     this.powerItemNextAt = this.time + C.ITEM_FIRST_SPAWN_MS;
     const lv = ps.some((p) => p.isBot) ? `, 봇 ${BOT_LEVEL_KO[this.botLevel]}` : '';
     this.log(`===== ROUND ${this.roundNumber} 시작 (${ps.length}명: ${ps.sort((a, b) => a.slot - b.slot).map((p) => p.name).join(' ')}, 맵 ${MAPS[this.mapId].name}${lv}) =====`); // 참가자 목록은 npm run stats 가 구성별로 셀 때 씀
+    if (this.teamMode) this.log(`  팀: ${this.teamLine()}`); // npm run stats 가 팀 승리를 사람별로 나눌 때 씀
     this.checkRoundEnd(); // 카운트다운 중에 나가서 혼자 남았으면 바로 끝
   }
 
-  endRound(winner) {
+  // 팀전이면 winner 대신 winnerTeam: 그 팀 참가자 모두 승수 +1, 팀 승수 +1
+  endRound(winner, winnerTeam = null) {
     this.phase = 'over';
     this.roundEndTime = this.time;
     this.winnerId = winner ? winner.id : null;
+    this.winnerTeam = winnerTeam;
     if (winner) winner.wins++;
+    if (winnerTeam) {
+      this.teamWins[winnerTeam]++;
+      for (const p of this.participants()) if (p.team === winnerTeam) p.wins++;
+    }
     const dur = this.time - this.roundStartTime;
     const crush = this.deaths.filter((d) => d.cause === 'crush').length;
     const fall = this.deaths.filter((d) => d.cause === 'fall').length;
@@ -375,9 +433,11 @@ export class Game {
     const deathStr = this.deaths.length
       ? this.deaths.map((d) => `${d.name} ${causeKo(d.cause)}@${fmtTime(d.t)}`).join(', ')
       : '없음';
-    this.log(`===== ROUND ${this.roundNumber} 종료 | 길이 ${fmtTime(dur)} | 승자: ${winner ? winner.name : '무승부'} =====`);
+    const winText = winnerTeam ? `${TEAM_KO[winnerTeam]}팀` : winner ? winner.name : '무승부';
+    this.log(`===== ROUND ${this.roundNumber} 종료 | 길이 ${fmtTime(dur)} | 승자: ${winText} =====`);
     this.log(`  사망: ${deathStr}`);
     this.log(`  승수: ${this.participants().sort((a, b) => a.slot - b.slot).map((p) => `${p.name} ${p.wins}`).join(' / ')}`);
+    if (this.teamMode) this.log(`  팀 승수: 빨강 ${this.teamWins.red} : ${this.teamWins.blue} 파랑`);
     this.log(`  이번 판: 압사 ${crush} / 낙사 ${fall} / 용암 ${lava}${this.lava.active ? ` (용암 시작 @ ${fmtTime(this.lava.startedAt - this.roundStartTime)})` : ''}`);
     const per = (this.totals.crush / this.totals.rounds).toFixed(2);
     this.log(`  누적 ${this.totals.rounds}판: 압사 ${this.totals.crush} (판당 ${per}) / 낙사 ${this.totals.fall} / 용암 ${this.totals.lava}`);
@@ -401,6 +461,12 @@ export class Game {
   checkRoundEnd() {
     if (this.phase !== 'playing') return;
     const alive = [...this.players.values()].filter((p) => p.alive);
+    if (this.teamMode) {
+      // 살아 있는 사람이 한 팀뿐이면 그 팀 승리 (둘 다 없으면 무승부)
+      const teams = new Set(alive.map((p) => p.team));
+      if (teams.size <= 1) this.endRound(null, alive.length ? alive[0].team : null);
+      return;
+    }
     if (alive.length <= 1 && this.players.size >= 1) {
       this.endRound(alive[0] || null);
     }
@@ -415,7 +481,7 @@ export class Game {
     p.hasControl = false;
     const t = this.time - this.roundStartTime;
     let credit = src ? { by: src.by, kind: src.kind, name: this.players.get(src.by)?.name } : p.lastHit;
-    if (credit && (credit.by === p.id || !credit.name)) credit = null;
+    if (credit && (credit.by === p.id || !credit.name || this.sameTeam(this.players.get(credit.by), p))) credit = null; // 팀 블록에 깔려도 킬 아님
     this.deaths.push({ name: p.name, cause, t, killer: credit ? credit.name : null, weapon: credit ? credit.kind : null });
     this.emit({ type: 'death', who: p.id, cause, by: credit ? credit.by : null, weapon: credit ? credit.kind : null, byName: credit ? credit.name : null });
     const killText = credit ? `, 킬 ${credit.name} ${WEAPON_LOG[credit.kind]}` : ', 킬 없음'; // "킬 없음" 을 적어야 킬 기록이 없던 옛 로그와 구분됨
@@ -782,7 +848,9 @@ export class Game {
   // src: { by, kind } — 누가 무엇으로 날렸는지 (킬 판정용 lastHit)
   applyKnockback(t, dx, dy, speed, up, stunMs = C.STUN_MS, gain = 0, src = null) {
     if (this.time < t.stunUntil) return false;
-    if (src && src.by !== t.id) t.lastHit = { by: src.by, kind: src.kind, name: this.players.get(src.by)?.name };
+    const teammate = src && this.sameTeam(this.players.get(src.by), t);
+    if (teammate) gain = 0; // 팀전: 같은 팀은 밀리기만 (피해 % 없음, 킬로도 안 침)
+    else if (src && src.by !== t.id) t.lastHit = { by: src.by, kind: src.kind, name: this.players.get(src.by)?.name };
     const mult = C.DAMAGE_KB_BASE + t.damage * C.DAMAGE_KB_PER_PERCENT;
     t.damage += gain;
     const len = Math.hypot(dx, dy) || 1;
@@ -1582,6 +1650,7 @@ export class Game {
         elapsed: this.phase === 'playing' ? this.time - this.roundStartTime : this.phase === 'countdown' ? 0 : this.roundEndTime - this.roundStartTime,
         countdownLeft: this.phase === 'countdown' ? Math.max(0, this.countdownEndsAt - this.time) : 0,
         winnerId: this.winnerId,
+        winnerTeam: this.winnerTeam,
         deaths: this.deaths,
         totals: this.totals,
       },
@@ -1591,6 +1660,7 @@ export class Game {
         name: p.name,
         nick: p.nick,
         spectator: p.spectator,
+        team: p.team,
         isBot: !!p.isBot,
         x: p.x,
         y: p.y,
@@ -1623,6 +1693,8 @@ export class Game {
       lava: { active: this.lava.active, z: this.lava.z },
       itemTimers: this.itemTimers(),
       botLevel: this.botLevel,
+      teamMode: this.teamMode,
+      teamWins: this.teamWins,
       map: { choice: this.mapChoice, id: this.mapId, name: MAPS[this.mapId].name },
       items: this.items,
       projectiles: this.projectiles.map((pr) => ({ x: pr.x, y: pr.y, z: pr.z })),
@@ -1650,6 +1722,7 @@ function shareText(t) {
 }
 
 const BOT_LEVEL_KO = { easy: '쉬움', normal: '보통', hard: '어려움' };
+const TEAM_KO = { red: '빨강', blue: '파랑' };
 
 // 킬 로그의 공격 이름 (npm run stats 가 한 단어로 읽음)
 const WEAPON_LOG = { push: '밀치기', weapon: '망치', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록' };

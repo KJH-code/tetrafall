@@ -82,6 +82,20 @@ test('통계: 자리 번호를 물려받은 다른 사람은 따로, 접속 중�
   assert.equal(row('P2').rounds, 1, '나가기 전 P2 는 이름 없는 다른 사람');
 });
 
+test('통계: 팀전이면 이긴 팀 전원에게 승, 구성에 팀전 표시', () => {
+  const text = [
+    '===== ROUND 1 시작 (4명: P1 P2 P3 P4(봇), 맵 평지, 봇 보통) =====',
+    '  팀: 빨강 P1 P3 / 파랑 P2 P4(봇)',
+    '  [사망] P2 낙사 @ 0:20 (위치 1.0, 2.0, -4.0, 피해 30%, 킬 P1 밀치기)',
+    '  [사망] P4(봇) 낙사 @ 0:25 (위치 1.0, 2.0, -4.0, 피해 30%, 킬 P3 망치)',
+    '===== ROUND 1 종료 | 길이 0:25 | 승자: 빨강팀 =====',
+  ].join('\n');
+  const s = summarize(parseLog(text));
+  const wins = Object.fromEntries(s.players.map((p) => [p.key, p.wins]));
+  assert.deepEqual(wins, { P1: 1, P3: 1, P2: 0, 'P4(봇)': 0 });
+  assert.equal(s.byComp[0].key, '사람 3 + 봇 1 팀전');
+});
+
 test('통계: 이름으로 묶고, 접속 끊김은 요약 줄에서 받고, 옛 형식·끝나지 않은 판·CRLF 도 읽는다', () => {
   const text = [
     '[1시] P1 접속 (slot 0) — 호스트',

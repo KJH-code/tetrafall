@@ -1,6 +1,6 @@
 // 클라이언트 진입점: WebSocket 연결, 상태 수신, 입력 전송, 렌더 루프, HUD.
 import { CONFIG as C } from '/shared/config.js';
-import { Renderer, PLAYER_COLORS, damageColor } from '/render.js';
+import { Renderer, TEAM_MAIN, playerColor, damageColor } from '/render.js';
 import { Input } from '/input.js';
 import { Sound } from '/sound.js';
 import { Music } from '/music.js';
@@ -462,9 +462,11 @@ function updateBig() {
   }
   if (now > bigUntil) bigmsg.classList.add('hidden');
 }
+const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
 function colorOf(p) {
-  return `#${PLAYER_COLORS[p.slot % PLAYER_COLORS.length].toString(16).padStart(6, '0')}`;
+  return hex(playerColor(p, state));
 }
+const TEAM_KO = { red: '빨강', blue: '파랑' };
 
 function onState() {
   const p = me();
@@ -477,8 +479,12 @@ function onState() {
   if (lastState && lastState.phase === 'playing' && state.phase === 'over') {
     const w = state.players.find((x) => x.id === state.round.winnerId);
     sound.play('win');
-    if (w) victory = { id: w.id, until: performance.now() + C.WIN_BANNER_MS }; // 승리 연출 (모두의 카메라가 승자에게)
-    if (w) showBig(`${shownName(w)} 승리!`, colorOf(w), C.WIN_BANNER_MS, true);
+    const wt = state.round.winnerTeam;
+    // 승리 연출 (모두의 카메라가 승자에게). 팀전이면 이긴 팀에서 살아 있는 사람 (없으면 아무 팀원)
+    const star = wt ? state.players.find((x) => x.team === wt && x.alive) || state.players.find((x) => x.team === wt) : w;
+    if (star) victory = { id: star.id, until: performance.now() + C.WIN_BANNER_MS };
+    if (wt) showBig(`${TEAM_KO[wt]}팀 승리!`, hex(TEAM_MAIN[wt]), C.WIN_BANNER_MS, true);
+    else if (w) showBig(`${shownName(w)} 승리!`, colorOf(w), C.WIN_BANNER_MS, true);
     else showBig('무승부', '#ddd', C.WIN_BANNER_MS, true);
   }
   if (state.phase === 'playing' && !p.alive && wasAlive) flashScreen('rgba(255,0,0,.45)');
@@ -501,12 +507,18 @@ const scoreEl = $('score');
 let scoreKey = '';
 function updateScore() {
   const ps = state.players.filter((p) => !p.spectator).sort((a, b) => a.slot - b.slot); // 관전자는 승수에서 뺌
-  const key = ps.map((p) => `${p.id}:${p.wins}:${p.nick}`).join(',') + `|${myId}`;
+  const tw = state.teamWins || { red: 0, blue: 0 };
+  const key = ps.map((p) => `${p.id}:${p.wins}:${p.nick}:${p.team}`).join(',') + `|${myId}|${state.teamMode}|${tw.red}:${tw.blue}`;
   if (key === scoreKey) return;
   scoreKey = key;
   scoreEl.classList.toggle('hidden', ps.length < 2);
   const name = (p) => `<span style="color:${colorOf(p)}" class="${p.id === myId ? 'me' : ''}">${escapeHtml(shownName(p))}</span>`;
-  if (ps.length === 2) {
+  if (state.teamMode) {
+    // 팀전: 팀 승수 (내 팀에 밑줄)
+    const mine = me() && me().team;
+    const team = (t) => `<span style="color:${hex(TEAM_MAIN[t])}" class="${mine === t ? 'me' : ''}">${TEAM_KO[t]}</span>`;
+    scoreEl.innerHTML = `${team('red')} ${tw.red}<span class="sep">:</span>${tw.blue} ${team('blue')}`;
+  } else if (ps.length === 2) {
     const [a, b] = ps;
     scoreEl.innerHTML = `${name(a)} ${a.wins}<span class="sep">:</span>${b.wins} ${name(b)}`;
   } else {
@@ -574,7 +586,8 @@ function updateHud() {
     showKeys = true;
   } else if (state.phase === 'over') {
     const w = state.players.find((x) => x.id === state.round.winnerId);
-    center = `라운드 ${state.round.n} 종료\n승자: ${w ? shownName(w) : '무승부'}`;
+    const wt = state.round.winnerTeam;
+    center = `라운드 ${state.round.n} 종료\n승자: ${wt ? `${TEAM_KO[wt]}팀` : w ? shownName(w) : '무승부'}`;
     showStart = isHost && state.canStart;
     showKeys = true;
   } else if (spectating()) {
@@ -727,13 +740,30 @@ function updateHostPlayers(show) {
   hostPlayersEl.classList.toggle('hidden', !show);
   if (!show) return;
   const ps = [...state.players].sort((a, b) => a.slot - b.slot);
-  const key = ps.map((p) => `${p.id}:${p.spectator}:${p.nick}`).join(',');
+  const key = ps.map((p) => `${p.id}:${p.spectator}:${p.nick}:${p.team}`).join(',') + `|${state.teamMode}`;
   if (key === hostPlayersKey) return;
   hostPlayersKey = key;
   const title = document.createElement('div');
   title.className = 'title';
   title.textContent = '플레이어 관리 (호스트)';
-  const cells = [title];
+  // 팀전 켜기 + 팀 섞기
+  const teamRow = document.createElement('div');
+  teamRow.className = 'title';
+  const teamLabel = document.createElement('label');
+  const teamCheck = document.createElement('input');
+  teamCheck.type = 'checkbox';
+  teamCheck.checked = !!state.teamMode;
+  teamCheck.addEventListener('change', () => send({ type: 'teamMode', on: teamCheck.checked }));
+  teamLabel.append(teamCheck, ' 팀전 (빨강 vs 파랑)');
+  teamRow.append(teamLabel);
+  if (state.teamMode) {
+    const shuffle = document.createElement('button');
+    shuffle.textContent = '팀 섞기';
+    shuffle.style.marginLeft = '8px';
+    shuffle.addEventListener('click', () => send({ type: 'shuffleTeams' }));
+    teamRow.append(shuffle);
+  }
+  const cells = [title, teamRow];
   for (const p of ps) {
     const who = document.createElement('span');
     who.textContent = `${shownName(p)}${p.id === myId ? ' (나)' : ''}${p.spectator ? ' · 관전' : ''}`; // 이름은 textContent 로
@@ -741,13 +771,21 @@ function updateHostPlayers(show) {
     const spec = document.createElement('button');
     spec.textContent = p.spectator ? '참가로' : '관전으로';
     spec.addEventListener('click', () => send({ type: 'spectate', target: p.id, on: !p.spectator }));
+    let team = document.createElement('span'); // 팀전이 아니면 빈 칸
+    if (state.teamMode) {
+      team = document.createElement('button');
+      team.textContent = TEAM_KO[p.team];
+      team.style.color = hex(TEAM_MAIN[p.team]);
+      team.title = '눌러서 팀 바꾸기';
+      team.addEventListener('click', () => send({ type: 'setTeam', target: p.id, team: p.team === 'red' ? 'blue' : 'red' }));
+    }
     let kick = document.createElement('span'); // 자기 자신은 못 내보냄: 빈 칸으로 열 맞춤
     if (p.id !== myId) {
       kick = document.createElement('button');
       kick.textContent = '내보내기';
       kick.addEventListener('click', () => send({ type: 'kick', target: p.id }));
     }
-    cells.push(who, spec, kick);
+    cells.push(who, team, spec, kick);
   }
   hostPlayersEl.replaceChildren(...cells);
 }

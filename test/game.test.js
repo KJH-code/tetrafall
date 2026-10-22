@@ -536,6 +536,70 @@ test('킬: 조종·투척 블록 압사는 그 블록 주인, 자동 블록은 �
   assert.ok([...g.players.values()].every((p) => p.lastHit === null));
 });
 
+// ---------- 팀전 ----------
+test('팀전: 같은 팀은 밀리지만 피해 % 없음·킬 아님, 다른 팀은 그대로. 한 팀만 남으면 그 팀 승리 (팀원 모두 승수 +1)', () => {
+  const { g, lines, ps } = setupN(4);
+  const [a, b, c, d] = ps;
+  g.phase = 'over';
+  assert.equal(g.setTeamMode(true), true);
+  g.setTeam(a.id, 'red');
+  g.setTeam(b.id, 'red');
+  g.setTeam(c.id, 'blue');
+  g.setTeam(d.id, 'blue');
+  g.startRound();
+  g.nextSpawnAt = Infinity;
+  g.controlItemNextAt = Infinity;
+  g.powerItemNextAt = Infinity;
+  assert.ok(lines.some((l) => l.includes('  팀: 빨강 P1 P2 / 파랑 P3 P4')), lines.join('\n'));
+  Object.assign(a, { x: 2.5, y: 5, yaw: 0 });
+  Object.assign(b, { x: 3.5, y: 5 });
+  Object.assign(c, { x: 7.5, y: 2 });
+  Object.assign(d, { x: 7.5, y: 8 });
+  g.handleAction(a.id, { name: 'push' });
+  assert.equal(b.damage, 0, '팀원은 피해 % 없음');
+  assert.ok(b.kbx > 0, '그래도 밀림');
+  assert.equal(b.lastHit, null, '팀원이 민 건 킬로 안 침');
+  g.kill(b, 'fall');
+  assert.equal(g.deaths.at(-1).killer, null);
+  Object.assign(a, { x: 6.5, y: 2, yaw: 0, pushReadyAt: 0, freezeUntil: 0 });
+  g.handleAction(a.id, { name: 'push' });
+  assert.equal(c.damage, C.DAMAGE_GAIN.push, '상대 팀은 그대로');
+  g.kill(c, 'fall');
+  assert.equal(g.phase, 'playing', '파랑이 한 명 남음');
+  g.kill(d, 'lava');
+  g.tick(TICK);
+  assert.equal(g.phase, 'over');
+  assert.equal(g.winnerTeam, 'red');
+  assert.deepEqual([a.wins, b.wins, c.wins, d.wins], [1, 1, 0, 0], '죽은 팀원도 승수');
+  assert.deepEqual(g.teamWins, { red: 1, blue: 0 });
+  assert.ok(lines.some((l) => l.includes('승자: 빨강팀')), lines.join('\n'));
+  assert.equal(g.snapshot().round.winnerTeam, 'red');
+});
+
+test('팀전: 판 사이에만 켜고 바꿈, 팀마다 한 명 이상이어야 시작, 섞기는 반반, 봇은 같은 팀을 노리지 않음', () => {
+  const g = new Game(() => {});
+  g.rng = () => 0.3;
+  for (let i = 1; i <= 3; i++) g.addPlayer(i);
+  assert.deepEqual([...g.players.values()].map((p) => p.team), ['red', 'blue', 'red'], '들어올 때 적은 팀으로');
+  g.setTeamMode(true);
+  for (const p of g.players.values()) g.setTeam(p.id, 'red');
+  assert.equal(g.canStart(), false, '한 팀뿐이면 시작 못 함');
+  g.shuffleTeams();
+  const reds = [...g.players.values()].filter((p) => p.team === 'red').length;
+  assert.equal(reds, 2);
+  assert.equal(g.canStart(), true);
+  g.startRound();
+  assert.equal(g.setTeam(1, 'blue'), false, '판 중엔 못 바꿈');
+  assert.equal(g.setTeamMode(false), false);
+  g.phase = 'over';
+  const b = g.addBot();
+  const mate = [...g.players.values()].find((p) => p !== b && p.team === b.team);
+  const brain = g.bots.get(b.id);
+  g.startRound();
+  assert.ok(!brain.enemies(g, b).includes(mate), '봇의 상대 목록에 팀원 없음');
+  assert.ok(brain.enemies(g, b).length > 0);
+});
+
 test('4인: 시작 위치가 모두 다르고 가장자리에서 1.5칸 이상 안쪽', () => {
   const saved = C.MAX_PLAYERS;
   C.MAX_PLAYERS = 8;

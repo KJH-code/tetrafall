@@ -155,6 +155,15 @@ wss.on('connection', (ws) => {
       case 'setName':
         game.setNick(id, msg.name);
         break;
+      case 'teamMode':
+        if (game.isHost(id)) game.setTeamMode(!!msg.on);
+        break;
+      case 'setTeam':
+        if (game.isHost(id)) game.setTeam(Number(msg.target), String(msg.team));
+        break;
+      case 'shuffleTeams':
+        if (game.isHost(id)) game.shuffleTeams();
+        break;
       case 'botLevel':
         if (game.isHost(id)) game.setBotLevel(String(msg.level));
         break;

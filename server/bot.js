@@ -84,7 +84,7 @@ export class BotBrain {
 
   // ---------- 상황 읽기 ----------
   enemies(g, p) {
-    return [...g.players.values()].filter((o) => o !== p && o.alive);
+    return [...g.players.values()].filter((o) => o !== p && o.alive && !g.sameTeam(o, p)); // 팀전이면 같은 팀은 상대가 아님
   }
 
   // 그림자가 보이는 떨어지는 블록들 → 각각의 발자국 칸·남은 시간·위치 키

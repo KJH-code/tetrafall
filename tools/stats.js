@@ -101,6 +101,9 @@ export function parseLog(text) {
         last = cur;
       }
       cur = null;
+    } else if ((m = line.match(/^ {2}팀: 빨강 ?(.*?) \/ 파랑 ?(.*)$/))) {
+      // 팀전: 팀 승리를 사람별 승으로 나눔
+      cur.teams = { 빨강: m[1] ? m[1].split(' ') : [], 파랑: m[2] ? m[2].split(' ') : [] };
     } else if (/^ {2}\[용암\] .*용암 상승 시작/.test(line)) {
       cur.lava = true;
     } else {
@@ -111,7 +114,8 @@ export function parseLog(text) {
   for (const r of rounds) {
     const who = (name) => (isBot(name) ? name : r.conns.get(name)?.key || name);
     r.players = r.names.map((name) => ({ name, key: who(name), bot: isBot(name), aliases: [...(r.conns.get(name)?.aliases || [])] }));
-    r.winnerKey = r.winner ? who(r.winner) : null;
+    const team = r.winner && r.teams ? r.teams[r.winner.replace(/팀$/, '')] : null;
+    r.winnerKeys = team ? team.map(who) : r.winner ? [who(r.winner)] : []; // 팀전이면 그 팀 전원
     for (const d of r.deaths) {
       d.key = who(d.name);
       d.killerKey = d.killer ? who(d.killer) : d.killer;
@@ -167,6 +171,7 @@ export function summarize(rounds) {
   const comp = (r) => {
     const bots = r.players.filter((p) => p.bot).length;
     const humans = r.players.length - bots;
+    if (r.teams) return `${bots ? `사람 ${humans} + 봇 ${bots}` : `사람 ${humans}`} 팀전`;
     if (!bots) return `사람 ${humans}`;
     const lv = r.botLevel ? ` (${r.botLevel})` : '';
     return humans ? `사람 ${humans} + 봇 ${bots}${lv}` : `봇 ${bots}${lv}`;
@@ -181,7 +186,7 @@ export function summarize(rounds) {
       const s = players.get(p.key);
       for (const a of p.aliases) if (a !== p.key) s.aliases.add(a);
       s.rounds++;
-      if (r.winnerKey === p.key) s.wins++;
+      if (r.winnerKeys.includes(p.key)) s.wins++;
       const d = r.deaths.find((x) => x.key === p.key);
       if (d) {
         s[d.cause]++;

@@ -129,6 +129,17 @@ function skyDome() {
 }
 
 export const PLAYER_COLORS = [0xe05050, 0x50c050, 0xb060e0, 0xe0c050, 0xf0f0f0, 0x40d0c0, 0xff80b0, 0x8a5a30];
+// 팀전 몸 색: 팀마다 계열 색, 팀 안에서는 자리 순으로 명암을 달리해 구분
+export const TEAM_COLORS = { red: [0xe04040, 0xff8c50, 0xc02868, 0xff6090], blue: [0x3a6ee8, 0x30c0e8, 0x6a50e0, 0x40d8b0] };
+export const TEAM_MAIN = { red: 0xe04040, blue: 0x3a6ee8 };
+export function playerColor(p, state) {
+  if (state && state.teamMode && TEAM_COLORS[p.team]) {
+    const mates = state.players.filter((o) => o.team === p.team).sort((a, b) => a.slot - b.slot);
+    const list = TEAM_COLORS[p.team];
+    return list[Math.max(0, mates.findIndex((o) => o.id === p.id)) % list.length];
+  }
+  return PLAYER_COLORS[p.slot % PLAYER_COLORS.length];
+}
 const MAX_CELLS = C.GRID_W * C.GRID_D * C.GRID_H;
 
 export class Renderer {
@@ -474,7 +485,7 @@ export class Renderer {
     look.lerp(new THREE.Vector3(s.x, s.y, s.z + C.PLAYER_HEIGHT * 0.55), t);
     // 색종이: 승자 위에서 몇 번 터짐
     this.confettiAcc = (this.confettiAcc || 0) + dt * C.CONFETTI_RATE;
-    const colors = [PLAYER_COLORS[winner.slot % PLAYER_COLORS.length], 0xffe040, 0x40d0ff, 0xff60c0, 0xffffff];
+    const colors = [playerColor(winner, state), 0xffe040, 0x40d0ff, 0xff60c0, 0xffffff];
     for (; this.confettiAcc >= 1; this.confettiAcc--) {
       this.effects.burst({ x: s.x, y: s.y, z: s.z + C.PLAYER_HEIGHT + 0.6 }, null, colors[Math.floor(Math.random() * colors.length)], 6, 6, 0.09, 1.2);
     }
@@ -562,6 +573,7 @@ export class Renderer {
       g.visible = p.alive && !(p.id === myId && view === 'fps' && this.skyBlend === 0 && !cam.victory);
       const bodyMat = g.userData.bodyMat;
       // 경직 중엔 흰색으로 빠르게 깜빡임
+      g.userData.color = playerColor(p, state); // 팀전이면 팀 색 (판 사이에 팀이 바뀔 수 있어 매 프레임)
       const blinkOn = p.stunned && Math.floor(performance.now() / 70) % 2 === 0;
       bodyMat.color.setHex(blinkOn ? 0xffffff : g.userData.color);
       bodyMat.emissive.setHex(p.stunned ? 0x664400 : p.hasControl ? 0x005566 : 0x000000);
@@ -594,7 +606,7 @@ export class Renderer {
       const label = g.userData.label;
       const dmg = p.damage || 0;
       const name = p.nick || p.name;
-      const key = `${name}|${dmg}`;
+      const key = `${name}|${dmg}|${g.userData.color}`;
       if (label.shown !== key) {
         drawLabel(label.canvas, name, `#${g.userData.color.toString(16).padStart(6, '0')}`, dmg);
         label.tex.needsUpdate = true;
@@ -716,7 +728,7 @@ export class Renderer {
     this.updateAim(me && me.alive && view === 'fps' ? me.aim : null);
     this.updateBombs(state.bombs || []);
     this.updateBeams(state);
-    if (me) this.viewArm.material.color.setHex(PLAYER_COLORS[me.slot % PLAYER_COLORS.length]);
+    if (me) this.viewArm.material.color.setHex(playerColor(me, state));
     const vp = this.effects.punchAmount(myId);
     this.viewArm.position.set(this.viewArmBase.x - 0.12 * vp, this.viewArmBase.y + 0.08 * vp, this.viewArmBase.z - 0.3 * vp);
     this.viewArm.visible = !!(me && me.alive) && this.skyBlend === 0 && !cam.victory;
