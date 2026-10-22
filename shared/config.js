@@ -94,7 +94,8 @@ export const CONFIG = {
   EMOTE_MS: 1600,
   EMOTE_COOLDOWN_MS: 2500,
   EMOTE_ARM_SCALE: 1.9, // 이모트 땐 팔을 키워서 멀리서도 동작이 보이게
-  EMOTE_PICK_PX: 30, // 바퀴 메뉴: 마우스를 이만큼(px) 움직여야 고른 것으로 침
+  EMOTE_PICK_PX: 30,
+  EMOTE_CLIPS: ['Wave', 'Dance', 'Yes', 'No'], // 로봇 모델에서 이모트마다 쓰는 동작 (손 흔들기·춤·웃기(끄덕끄덕)·도발(고개 젓기)) // 바퀴 메뉴: 마우스를 이만큼(px) 움직여야 고른 것으로 침
   // 핫바 (2026-10-20): 1 쌓기 블록 · 2 던지는 아이템(투사체 또는 설치 블록) · 3 폭탄. 숫자키·마우스 휠로 고르고 우클릭으로 씀.
   // 아이템을 먹으면 그 칸으로 자동 전환. 좌클릭은 칸과 상관없이 밀치기(망치)
   // 쌓기 블록 (마크식): 조준한 블록 면(옆면 포함)에 1×1 을 바로 붙임. 사람이 있는 칸엔 못 놓음
@@ -252,6 +253,10 @@ export const CONFIG = {
   SUN_COLOR: 0xffc890,
   FOG_NEAR: 28,
   FOG_FAR: 75,
+  HELD_MODEL_SIZE: 0.28,
+  ROBOT_RUN_SPEED: 3.2, // 이 속도(칸/초)보다 빠르면 로봇이 달리기 동작
+  ROBOT_FADE_S: 0.15, // 로봇 동작이 바뀔 때 섞는 시간
+  ROBOT_PUNCH_MS: 450, // 밀치기 때 펀치 동작을 보여주는 시간 // 캐릭터 손에 든 아이템 모델 크기
   ITEM_MODEL_SIZE: 0.55, // 필드 아이템 모델 크기 (가장 긴 변, 칸)
   BOMB_MODEL_SIZE: 0.55, // 놓인 폭탄 모델 크기
   THROWN_BLINK_MS: 120, // 떨어지는 설치 블록 깜빡임 간격
