@@ -1,10 +1,12 @@
 // three.js 렌더링. 단색 블록, 최소한의 비주얼. 좌표계는 게임과 같은 z-up.
 import * as THREE from 'three';
 import { CONFIG as C } from '/shared/config.js';
+import { toon, noOutline } from '/toon.js';
 import { buildCharacter } from '/character.js';
 import { Effects } from '/effects.js';
 import { CELL, SHAPE_NAMES } from '/shared/pieces.js';
 import { itemModel } from '/models.js';
+import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
 
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
@@ -79,7 +81,7 @@ function cellColor(v) {
 
 // 용암 표면: 꼭짓점을 천천히 출렁이고, 겹친 사인 무늬로 어두운 빨강 ~ 밝은 노랑이 흐름 (빛 계산 없이 스스로 빛남)
 function lavaSurfaceMaterial() {
-  return new THREE.ShaderMaterial({
+  return noOutline(new THREE.ShaderMaterial({
     uniforms: { time: { value: 0 } },
     vertexShader: `uniform float time; varying vec2 vXY;
       void main() {
@@ -96,7 +98,7 @@ function lavaSurfaceMaterial() {
         c = mix(c, vec3(1.0, 0.85, 0.35), b);
         gl_FragColor = vec4(c, 1.0);
       }`,
-  });
+  }));
 }
 
 // 노을 하늘: 안쪽을 그리는 큰 구. 높이에 따라 위·가운데·지평선 색을 섞고, 해 쪽은 밝게 + 해 원반
@@ -127,6 +129,7 @@ function skyDome() {
   const dome = new THREE.Mesh(new THREE.SphereGeometry(150, 32, 16), mat);
   dome.position.set(C.GRID_W / 2, C.GRID_D / 2, 0);
   dome.renderOrder = -1;
+  noOutline(mat);
   return dome;
 }
 
@@ -154,6 +157,8 @@ export class Renderer {
     this.renderer.shadowMap.enabled = true; // 실제로 그릴지는 setShadows (해가 그림자를 드리울 때만 그림자 패스를 돎)
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     canvasParent.appendChild(this.renderer.domElement);
+    this.outline = new OutlineEffect(this.renderer, { defaultThickness: C.OUTLINE_THICKNESS, defaultColor: [0.08, 0.05, 0.1], defaultAlpha: 1 });
+    this.outlineOn = true;
     this.canvas = this.renderer.domElement;
 
     this.scene = new THREE.Scene();
@@ -165,14 +170,14 @@ export class Renderer {
     this.camera.up.set(0, 0, 1);
     this.scene.add(this.camera); // 1인칭 팔(뷰모델)을 카메라에 붙이려고
     // 1인칭 팔: 화면 오른쪽 아래에 보이는 내 팔. 밀치기 때 앞으로 뻗는다
-    this.viewArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.32, 4, 10), new THREE.MeshLambertMaterial({ color: 0xffffff }));
+    this.viewArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.32, 4, 10), toon({ color: 0xffffff }));
     this.viewArm.rotation.x = Math.PI / 2; // 캡슐을 화면 안쪽(-z) 방향으로 눕힘
     this.viewArmBase = new THREE.Vector3(0.26, -0.24, -0.42);
     this.viewArm.position.copy(this.viewArmBase);
     this.viewArm.visible = false;
     this.camera.add(this.viewArm);
     // 1인칭 망치 머리 (망치 있을 때만)
-    this.viewHammer = itemModel(models, 'weapon', 0.26) || new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.12, 0.12), new THREE.MeshLambertMaterial({ color: 0xff8a10 }));
+    this.viewHammer = itemModel(models, 'weapon', 0.26) || new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.12, 0.12), toon({ color: 0xff8a10 }));
     this.viewHammer.position.set(0, -0.26, 0); // 캡슐 먼 끝 (x축 +90도 회전이라 로컬 -y 가 화면 안쪽)
     this.viewHammer.visible = false;
     this.viewArm.add(this.viewHammer);
@@ -180,7 +185,7 @@ export class Renderer {
     // 손에 든 것 (고른 핫바 칸): 쌓기 블록은 파란 상자, 나머지는 아이템 모델
     this.viewHeld = {};
     for (const [kind, type] of Object.entries(HELD_ITEM)) {
-      const o = (type && itemModel(models, type, 0.15)) || new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.13), new THREE.MeshLambertMaterial({ color: HELD_COLOR[kind] }));
+      const o = (type && itemModel(models, type, 0.15)) || new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.13), toon({ color: HELD_COLOR[kind] }));
       o.position.set(0, -0.26, 0);
       o.visible = false;
       this.viewArm.add(o);
@@ -211,7 +216,7 @@ export class Renderer {
     // 바닥
     const floor = new THREE.Mesh(
       new THREE.BoxGeometry(C.GRID_W, C.GRID_D, 0.3),
-      new THREE.MeshLambertMaterial({ color: 0xa49aa0 }),
+      toon({ color: 0xa49aa0 }),
     );
     floor.position.set(C.GRID_W / 2, C.GRID_D / 2, -0.15);
     floor.receiveShadow = true;
@@ -231,7 +236,7 @@ export class Renderer {
     // 쌓인 블록 (인스턴스)
     this.blockMesh = new THREE.InstancedMesh(
       new THREE.BoxGeometry(1, 1, 1),
-      new THREE.MeshLambertMaterial({ color: 0xffffff }),
+      toon({ color: 0xffffff }),
       MAX_CELLS,
     );
     this.blockMesh.count = 0;
@@ -239,6 +244,8 @@ export class Renderer {
     // 블록이 0개일 때 계산된 빈 구가 남으면 원점 모서리가 시야 밖일 때 쌓인 블록 전체가 안 그려진다.
     // 최대 W×D×H 개 한 번의 draw call 이라 시야 판정을 끈다.
     this.blockMesh.frustumCulled = false;
+    // OutlineEffect 는 인스턴스 위치를 모르고 테두리를 밀어내서 쌓인 블록엔 안 씀 (블록 테두리는 텍스처로)
+    noOutline(this.blockMesh.material);
     this.blockMesh.castShadow = true;
     this.blockMesh.receiveShadow = true;
     this.scene.add(this.blockMesh);
@@ -247,11 +254,11 @@ export class Renderer {
     // 떨어지는 블록 셀 + 그림자 (블록 여러 개 → 필요한 만큼 늘어나는 풀)
     this.pieceMeshes = [];
     this.shadowMeshes = [];
-    this.pieceMat = new THREE.MeshLambertMaterial({ color: 0xf0a030, transparent: true, opacity: 1 }); // 자동 블록
-    this.controlledMat = new THREE.MeshLambertMaterial({ color: 0xd040d0, emissive: 0x501050, transparent: true, opacity: 1 }); // 누가 조종 중인 블록 (빛나서 T 모양 보라와 구분)
+    this.pieceMat = toon({ color: 0xf0a030, transparent: true, opacity: 1 }); // 자동 블록
+    this.controlledMat = toon({ color: 0xd040d0, emissive: 0x501050, transparent: true, opacity: 1 }); // 누가 조종 중인 블록 (빛나서 T 모양 보라와 구분)
     this.shapeMats = {}; // 자동 블록: 모양마다 색
-    this.thrownMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x000000, transparent: true, opacity: 1 }); // 던진 설치 블록: 흰색 + 노랗게 깜빡임 (O 블록 노랑과 구분)
-    this.shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45 });
+    this.thrownMat = toon({ color: 0xffffff, emissive: 0x000000, transparent: true, opacity: 1 }); // 던진 설치 블록: 흰색 + 노랗게 깜빡임 (O 블록 노랑과 구분)
+    this.shadowMat = noOutline(new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45 }));
     this.pieceBox = new THREE.BoxGeometry(1, 1, 1);
     this.shadowBox = new THREE.BoxGeometry(0.96, 0.96, 0.06);
 
@@ -259,7 +266,7 @@ export class Renderer {
     this.lavaBottom = -6;
     this.lava = new THREE.Mesh(
       new THREE.BoxGeometry(C.GRID_W + 12, C.GRID_D + 12, 1),
-      new THREE.MeshBasicMaterial({ color: 0x9a2408 }),
+      noOutline(new THREE.MeshBasicMaterial({ color: 0x9a2408 })),
     );
     this.lava.visible = false;
     this.scene.add(this.lava);
@@ -274,15 +281,15 @@ export class Renderer {
 
     this.effects = new Effects(this.scene);
     // 조종 중 하늘에서 본 블록의 착지 미리보기 (조종자에게만)
-    this.previewMat = new THREE.MeshBasicMaterial({ color: 0xf0a030, transparent: true, opacity: 0.35 });
+    this.previewMat = noOutline(new THREE.MeshBasicMaterial({ color: 0xf0a030, transparent: true, opacity: 0.35 }));
     // 조준 미리보기 (고른 핫바 칸): 쌓기 = 흰 상자 1칸, 설치 블록 = 노란 상자 2칸, 폭탄 = 부서질 3×3 범위 빨간 판. 못 쓰면 빨강
-    this.aimMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3, depthWrite: false });
+    this.aimMat = noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3, depthWrite: false }));
     this.aimEdgeMat = new THREE.LineBasicMaterial({ color: 0xffffff });
     this.aimBoxes = [];
     // 놓인 폭탄: 검은 공, 터질 때가 가까울수록 빨갛게 빨리 깜빡임
     this.bombMeshes = [];
     this.beams = [];
-    this.beamMat = new THREE.MeshBasicMaterial({ color: 0xd040d0, transparent: true, opacity: 0.5, depthWrite: false });
+    this.beamMat = noOutline(new THREE.MeshBasicMaterial({ color: 0xd040d0, transparent: true, opacity: 0.5, depthWrite: false }));
 
     this.playerMeshes = new Map();
     this.itemMeshes = [];
@@ -345,7 +352,7 @@ export class Renderer {
   itemShape(type) {
     const model = itemModel(this.models, type, C.ITEM_MODEL_SIZE);
     const look = ITEM_LOOK[type] || ITEM_LOOK.control;
-    const o = model || new THREE.Mesh(look.geo(), new THREE.MeshLambertMaterial({ color: look.color, emissive: 0x222222 }));
+    const o = model || new THREE.Mesh(look.geo(), toon({ color: look.color, emissive: 0x222222 }));
     o.traverse((c) => {
       if (c.isMesh) c.castShadow = true;
     });
@@ -354,9 +361,19 @@ export class Renderer {
 
   shapeMat(shape) {
     if (!this.shapeMats[shape]) {
-      this.shapeMats[shape] = new THREE.MeshLambertMaterial({ color: C.SHAPE_COLORS[shape] ?? 0xf0a030, transparent: true, opacity: 1 });
+      this.shapeMats[shape] = toon({ color: C.SHAPE_COLORS[shape] ?? 0xf0a030, transparent: true, opacity: 1 });
     }
     return this.shapeMats[shape];
+  }
+
+  // 외곽선 켜기·끄기 (설정). 켜면 OutlineEffect 가 장면을 한 번 더 (뒤집힌 테두리로) 그린다
+  setOutline(on) {
+    this.outlineOn = !!on;
+  }
+
+  draw(camera) {
+    if (this.outlineOn) this.outline.render(this.scene, camera);
+    else this.renderer.render(this.scene, camera);
   }
 
   // 그림자 켜기·끄기 (대기 화면 설정). 꺼지면 그림자 패스 자체를 안 돌아 느린 PC 에서 가벼움
@@ -394,14 +411,14 @@ export class Renderer {
       tri.closePath();
       const arrow = new THREE.Mesh(
         new THREE.ShapeGeometry(tri),
-        new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, depthTest: false }),
+        noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, depthTest: false })),
       );
       arrow.position.z = C.PLAYER_HEIGHT + 0.05;
       arrow.renderOrder = 10;
       g.add(arrow);
       const ring = new THREE.Mesh(
         new THREE.RingGeometry(0.6, 0.78, 32),
-        new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, depthTest: false }),
+        noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, depthTest: false })),
       );
       ring.position.z = C.PLAYER_HEIGHT + 0.04;
       ring.renderOrder = 10;
@@ -618,7 +635,7 @@ export class Renderer {
   updateBombs(bombs) {
     while (this.bombMeshes.length < bombs.length) {
       // 재질을 복사해 폭탄마다 따로 깜빡이게
-      const m = itemModel(this.models, 'bomb', C.BOMB_MODEL_SIZE, true) || new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), new THREE.MeshLambertMaterial({ color: 0x222222 }));
+      const m = itemModel(this.models, 'bomb', C.BOMB_MODEL_SIZE, true) || new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), toon({ color: 0x222222 }));
       m.userData.mats = [];
       m.traverse((o) => {
         if (o.isMesh) {
@@ -881,7 +898,7 @@ export class Renderer {
     if (b >= 1) {
       this.skyCamera.up.copy(skyUp);
       this.skyCamera.lookAt(C.GRID_W / 2, C.GRID_D / 2, 0);
-      this.renderer.render(this.scene, this.skyCamera);
+      this.draw(this.skyCamera);
       return;
     }
     if (b <= 0) {
@@ -892,7 +909,7 @@ export class Renderer {
       this.camera.lookAt(look);
       const sh = this.effects.shakeOffset();
       if (sh) this.camera.position.add(new THREE.Vector3(sh.x, sh.y, sh.z));
-      this.renderer.render(this.scene, this.camera);
+      this.draw(this.camera);
       return;
     }
     // 전환 중: 1인칭 자세 → 필드 위 높은 곳에서 내려다보는 자세로 날아오르며 줌인 (끝에서 직교 카메라로 교체)
@@ -906,7 +923,7 @@ export class Renderer {
     this.camera.position.lerpVectors(eye, top, t);
     this.camera.up.set(skyUp.x * t, skyUp.y * t, 1 - t).normalize();
     this.camera.lookAt(new THREE.Vector3().lerpVectors(look, center, t));
-    this.renderer.render(this.scene, this.camera);
+    this.draw(this.camera);
   }
 
   // view 목표로 skyBlend 를 SKY_TRANSITION_MS 동안 옮긴다. 0 = 1인칭, 1 = 하늘 시점

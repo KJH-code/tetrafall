@@ -268,6 +268,7 @@ export const CONFIG = {
   VICTORY_HOP: 0.35, // 춤: 깡충 높이 (칸)
   VICTORY_HOP_FREQ: 7, // 춤: 깡충 빠르기
   CONFETTI_RATE: 8, // 색종이 터지는 횟수 (초당)
+  OUTLINE_THICKNESS: 0.0065, // 툰 외곽선 굵기 (화면 비율). 설정에서 끌 수 있음
   SHADOW_MAP_SIZE: 1024, // 그림자 해상도 (설정에서 끌 수 있음)
   // 콩 애니메이션 (화면만)
   ANIM_WALK_FREQ: 3.2, // 걸음 위상이 도는 빠르기 (속도 1칸/초당 라디안)

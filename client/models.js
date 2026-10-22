@@ -2,6 +2,7 @@
 // 불러오지 못하면 null 을 돌려주고, 그리는 쪽은 예전 도형(콩·단색 아이템)으로 그린다.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { toonifyObject } from '/toon.js';
 
 // 아이템 종류 → 모델 파일 (이속 증가는 모델 없이 번개 도형)
 const ITEM_FILES = {
@@ -24,6 +25,9 @@ export async function loadModels() {
       items[type] = (await loader.loadAsync(`/assets/${file}`)).scene;
     }),
   ]);
+  // 툰 셰이딩으로 (복제본은 이 재질을 공유하거나 복사해 씀)
+  for (const scene of Object.values(items)) toonifyObject(scene);
+  toonifyObject(robot.scene);
   return { items, robot };
 }
 

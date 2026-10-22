@@ -399,7 +399,7 @@ nameInput.value = savedName();
 
 // ---------- 설정 (감도·효과음·음악·시야각·그림자). 이 브라우저에 기억 ----------
 // 대기 화면과 "화면을 클릭하면 조작 시작" 판(ESC 로 마우스를 풀었을 때)의 '설정' 버튼으로 연다
-const SETTINGS_DEFAULT = { sens: 1, sfx: 1, music: 1, fov: C.FOV_DEFAULT, shadows: true };
+const SETTINGS_DEFAULT = { sens: 1, sfx: 1, music: 1, fov: C.FOV_DEFAULT, shadows: true, outline: true };
 function loadSettings() {
   let saved = {};
   try {
@@ -419,6 +419,7 @@ function applySettings() {
   music.setVolume(settings.music);
   renderer.fov = settings.fov;
   renderer.setShadows(settings.shadows);
+  renderer.setOutline(settings.outline);
 }
 function saveSettings() {
   try {
@@ -447,13 +448,19 @@ for (const [id, key, fmt] of fields) {
     saveSettings();
   });
 }
-const shadowCheck = $('set-shadows');
-shadowCheck.checked = settings.shadows;
-shadowCheck.addEventListener('change', () => {
-  settings.shadows = shadowCheck.checked;
-  applySettings();
-  saveSettings();
-});
+const checks = [
+  ['set-shadows', 'shadows'],
+  ['set-outline', 'outline'],
+];
+for (const [id, key] of checks) {
+  const el = $(id);
+  el.checked = settings[key];
+  el.addEventListener('change', () => {
+    settings[key] = el.checked;
+    applySettings();
+    saveSettings();
+  });
+}
 function openSettings(on) {
   settingsEl.classList.toggle('hidden', !on);
 }
@@ -465,7 +472,7 @@ $('settings-reset').addEventListener('click', () => {
     $(id).value = settings[key];
     $(`${id}-v`).textContent = fmt(settings[key]);
   }
-  shadowCheck.checked = settings.shadows;
+  for (const [id, key] of checks) $(id).checked = settings[key];
   applySettings();
   saveSettings();
 });

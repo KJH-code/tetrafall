@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { CONFIG as C } from '/shared/config.js';
+import { toon, noOutline } from '/toon.js';
 import { itemModel } from '/models.js';
 
 const R = C.PLAYER_HALF; // 몸통 반지름 = 판정 반폭
@@ -22,7 +23,7 @@ export function buildCharacter(color, models = null) {
 
 function buildBean(color, models) {
   const group = new THREE.Group();
-  const bodyMaterial = new THREE.MeshLambertMaterial({ color });
+  const bodyMaterial = toon({ color });
   const rig = new THREE.Group();
   rig.position.z = H / 2;
   group.add(rig);
@@ -62,7 +63,7 @@ function buildBean(color, models) {
   }
 
   // 망치 머리: 오른팔 끝에 붙임 (망치 아이템 있을 때만 보임)
-  const hammer = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.2, 0.2), new THREE.MeshLambertMaterial({ color: 0xff8a10 }));
+  const hammer = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.2, 0.2), toon({ color: 0xff8a10 }));
   hammer.position.set(0, -0.2, 0); // 오른팔 바깥 끝 (팔은 로컬 y 축 방향 캡슐)
   hammer.visible = false;
   arms[0].add(hammer);
@@ -82,7 +83,7 @@ function buildBean(color, models) {
   group.add(waitMark);
 
   // 발 두 개: 바닥에 납작하게. 몸통 아래 안쪽에 둔다
-  const footMat = new THREE.MeshLambertMaterial({ color: 0x333333 });
+  const footMat = toon({ color: 0x333333 });
   const feet = [];
   for (const side of [-1, 1]) {
     const foot = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 8), footMat);
@@ -99,10 +100,10 @@ function buildBean(color, models) {
 // 손에 든 것: 쌓기 블록은 파란 상자, 나머지는 아이템 모델 (없으면 단색 도형)
 function heldItems(models) {
   const fallback = {
-    block: () => new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.22), new THREE.MeshLambertMaterial({ color: 0x6f8fc8 })),
-    brick: () => new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.17, 0.17), new THREE.MeshLambertMaterial({ color: 0xf0d060 })),
-    ball: () => new THREE.Mesh(new THREE.SphereGeometry(0.14, 14, 10), new THREE.MeshLambertMaterial({ color: 0xe02020 })),
-    bomb: () => new THREE.Mesh(new THREE.SphereGeometry(0.17, 14, 10), new THREE.MeshLambertMaterial({ color: 0x222222 })),
+    block: () => new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.22), toon({ color: 0x6f8fc8 })),
+    brick: () => new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.17, 0.17), toon({ color: 0xf0d060 })),
+    ball: () => new THREE.Mesh(new THREE.SphereGeometry(0.14, 14, 10), toon({ color: 0xe02020 })),
+    bomb: () => new THREE.Mesh(new THREE.SphereGeometry(0.17, 14, 10), toon({ color: 0x222222 })),
   };
   const type = { block: null, brick: 'brick', ball: 'knockback', bomb: 'bomb' };
   const out = {};
@@ -174,7 +175,7 @@ function buildRobot(color, models) {
   // GLTFLoader 가 이름에서 '.' 을 빼서 Palm2.R → Palm2R
   const handR = bone('Palm2R') || bone('LowerArmR');
   const handL = bone('Palm2L') || bone('LowerArmL');
-  const hammer = attach(handR, itemModel(models, 'weapon', C.HELD_MODEL_SIZE * 1.4) || new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.2, 0.2), new THREE.MeshLambertMaterial({ color: 0xff8a10 })));
+  const hammer = attach(handR, itemModel(models, 'weapon', C.HELD_MODEL_SIZE * 1.4) || new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.2, 0.2), toon({ color: 0xff8a10 })));
   const held = heldItems(models);
   for (const m of Object.values(held)) attach(handL, m);
 

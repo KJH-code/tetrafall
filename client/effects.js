@@ -1,6 +1,7 @@
 // 타격감 이펙트: 파편, 충격파 고리, 화면 흔들림, 캐릭터 찌그러짐·팔 휘두르기 타이머.
 import * as THREE from 'three';
 import { CONFIG as C } from '/shared/config.js';
+import { noOutline } from '/toon.js';
 
 const MAX_PARTICLES = 160;
 const MAX_RINGS = 12;
@@ -11,7 +12,7 @@ export class Effects {
     const box = new THREE.BoxGeometry(1, 1, 1);
     this.particles = [];
     for (let i = 0; i < MAX_PARTICLES; i++) {
-      const m = new THREE.Mesh(box, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true }));
+      const m = new THREE.Mesh(box, noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true })));
       m.visible = false;
       m.userData = { vx: 0, vy: 0, vz: 0, life: 0, max: 1, size: 0.1 };
       scene.add(m);
@@ -20,7 +21,7 @@ export class Effects {
     const ringGeo = new THREE.RingGeometry(0.8, 1, 40);
     this.rings = [];
     for (let i = 0; i < MAX_RINGS; i++) {
-      const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, side: THREE.DoubleSide, depthWrite: false }));
+      const m = new THREE.Mesh(ringGeo, noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, side: THREE.DoubleSide, depthWrite: false })));
       m.visible = false;
       m.userData = { life: 0, max: 1, grow: 1 };
       scene.add(m);
