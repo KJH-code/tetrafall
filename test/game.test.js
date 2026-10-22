@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Game } from '../server/game.js';
 import { CONFIG as C } from '../shared/config.js';
+import { CELL, cellOfShape } from '../shared/pieces.js';
 
 const TICK = 1000 / C.TICK_RATE;
 
@@ -51,8 +52,8 @@ test('자동 낙하: O 블록이 바닥에 착지해 격자에 기록된다', ()
   fallingPiece(g, 'O', 0, 0, 0);
   run(g, C.AUTO_FALL_STEP_MS * (C.PIECE_SPAWN_Z + 1));
   assert.equal(g.piece, null);
-  assert.equal(g.gridAt(0, 0, 0), 1);
-  assert.equal(g.gridAt(1, 1, 0), 1);
+  assert.ok(g.gridAt(0, 0, 0));
+  assert.ok(g.gridAt(1, 1, 0));
   assert.equal(g.gridAt(0, 0, 1), 0);
 });
 
@@ -64,6 +65,31 @@ test('그림자: 착지 SHADOW_LEAD_MS 전부터만 보인다', () => {
   // 12칸 × 500ms = 6초 낙하. 3.5초 후엔 보여야 한다
   run(g, 3500);
   assert.equal(g.snapshot().pieces[0].shadowVisible, true);
+});
+
+test('격자 칸 값: 지형·쌓기·설치 블록·테트리미노 모양을 구분해 남기고 (색용), 층 클리어 뒤에도 그대로', () => {
+  const { g, p1, p2 } = setup();
+  Object.assign(p1, { x: 8.5, y: 8.5 });
+  Object.assign(p2, { x: 8.5, y: 6.5 });
+  fallingPiece(g, 'T', 0, 0, 0, 2, 50);
+  run(g, 600);
+  assert.equal(g.gridAt(1, 0, 0), cellOfShape('T'));
+  assert.equal(g.gridAt(1, 1, 0), cellOfShape('T'));
+  const brick = fallingPiece(g, 'O', 0, 4, 4, 2, 50);
+  brick.thrownBy = 1;
+  run(g, 600);
+  assert.equal(g.gridAt(4, 4, 0), CELL.THROWN);
+  g.phase = 'over';
+  g.setMap('pyramid');
+  g.startRound();
+  assert.ok(g.grid.some((v) => v === CELL.TERRAIN) && g.grid.every((v) => v === 0 || v === CELL.TERRAIN), '시작 지형은 TERRAIN');
+  // 층 클리어: 맨 아래 층을 채우면 그 위 칸 값이 한 칸 내려와도 그대로
+  g.grid.fill(0);
+  for (let y = 0; y < C.GRID_D; y++) for (let x = 0; x < C.GRID_W; x++) if (!(x === 9 && y === 9)) g.grid[g.idx(x, y, 0)] = CELL.TERRAIN;
+  g.grid[g.idx(3, 3, 1)] = cellOfShape('S');
+  g.grid[g.idx(9, 9, 0)] = cellOfShape('Z');
+  g.clearLayers();
+  assert.equal(g.gridAt(3, 3, 0), cellOfShape('S'));
 });
 
 test('압사: 블록 아래 서 있던 플레이어는 crush 로 죽는다', () => {
@@ -122,7 +148,7 @@ test('층 클리어: 꽉 찬 층이 사라지고 위 블록·플레이어가 한
   fallingPiece(g, 'O', 0, gx, gy, 3, 50);
   run(g, 50 * 5);
   assert.equal(g.piece, null);
-  assert.equal(g.gridAt(0, 0, 0), 1, '위에 있던 블록이 z=0 으로 내려와야 함');
+  assert.ok(g.gridAt(0, 0, 0), '위에 있던 블록이 z=0 으로 내려와야 함');
   assert.equal(g.gridAt(0, 0, 1), 0);
   assert.equal(g.gridAt(gx, gy, 0), 0, '착지한 O 는 층과 함께 사라져야 함');
   assert.ok(Math.abs(p1.z - 1) < 1e-6, `플레이어 z=${p1.z}, 1 이어야 함`);
@@ -812,8 +838,8 @@ test('하드드롭한 블록은 아래에서 떨어지는 블록을 뚫지 않�
     assert.equal(a.size, g.pieces.length * 4);
   }
   assert.equal(g.pieces.length, 0);
-  assert.equal(g.gridAt(0, 0, 0), 1);
-  assert.equal(g.gridAt(0, 0, 1), 1, '위 블록은 아래 블록 위에 쌓임');
+  assert.ok(g.gridAt(0, 0, 0));
+  assert.ok(g.gridAt(0, 0, 1), '위 블록은 아래 블록 위에 쌓임');
 });
 
 function fillAvgHeight(g, h) {
@@ -1277,12 +1303,12 @@ test('설치 블록: 조준한 칸 위 BRICK_DROP_HEIGHT 칸에서 떨어져 그
   assert.ok(piece && piece.phase === 'falling', '떨어지는 블록이 생김');
   assert.ok(lines.some((l) => l.includes('[투척] P1 1×2 → (4,5) z=0')), lines.join('\n'));
   run(g, C.BRICK_FALL_STEP_MS * (C.BRICK_DROP_HEIGHT + 1));
-  assert.equal(g.gridAt(4, 5, 0), 1);
-  assert.equal(g.gridAt(5, 5, 0), 1);
+  assert.ok(g.gridAt(4, 5, 0));
+  assert.ok(g.gridAt(5, 5, 0));
   assert.equal(g.pieces.length, 0);
   g.handleAction(1, { name: 'fire' });
   run(g, C.BRICK_FALL_STEP_MS * (C.BRICK_DROP_HEIGHT + 1));
-  assert.equal(g.gridAt(4, 5, 1), 1, '두 번째는 그 위에');
+  assert.ok(g.gridAt(4, 5, 1), '두 번째는 그 위에');
   assert.equal(p1.bricks, 0);
   g.handleAction(1, { name: 'fire' });
   assert.equal(g.pieces.length, 0, '다 쓰면 안 던짐');
@@ -1523,7 +1549,7 @@ test('쌓기 블록: 조준한 면에 바로 붙는다 (바닥 위·옆면·꼭�
   p1.pitch = -Math.atan2(C.EYE_HEIGHT, 1.8); // 1.8칸 앞(x=4.3) 바닥 → (4,5) 바닥 위
   assert.deepEqual(g.buildPlan(p1).cells, [[4, 5, 0]]);
   g.handleAction(1, { name: 'fire' });
-  assert.equal(g.gridAt(4, 5, 0), 1);
+  assert.ok(g.gridAt(4, 5, 0));
   assert.equal(p1.blocks, C.BUILD_BLOCKS_PER_ROUND - 1);
   assert.ok(lines.some((l) => l.includes('[쌓기] P1 → (4,5,0)')), lines.join('\n'));
   // 옆면: 2칸 앞 3층 기둥을 수평으로 보면 눈높이 칸의 옆면 → 그 앞 칸 (3,5) 공중
@@ -1559,7 +1585,7 @@ test('폭탄: 조준한 칸 위에 놓여 BOMB_FUSE_MS 뒤 3×3×3 블록을 부
   assert.equal(p1.bombs, 0);
   assert.equal(g.bombs.length, 1);
   run(g, C.BOMB_FUSE_MS - 100);
-  assert.equal(g.gridAt(3, 5, 2), 1, '터지기 전');
+  assert.ok(g.gridAt(3, 5, 2), '터지기 전');
   Object.assign(p2, { x: 3.5, y: 6.5, z: 2, vz: 0 }); // 폭탄 바로 옆 기둥 위
   g.addPlayer(3);
   const p3 = g.players.get(3);
@@ -1568,13 +1594,13 @@ test('폭탄: 조준한 칸 위에 놓여 BOMB_FUSE_MS 뒤 3×3×3 블록을 부
   assert.equal(g.bombs.length, 0);
   assert.equal(g.gridAt(3, 5, 2), 0, '폭탄 밑 칸 부서짐');
   assert.equal(g.gridAt(4, 5, 2), 0, '옆 칸 부서짐');
-  assert.equal(g.gridAt(3, 5, 1), 1, 'z-2 는 남음');
-  assert.equal(g.gridAt(5, 5, 2), 1, '범위 밖 남음');
+  assert.ok(g.gridAt(3, 5, 1), 'z-2 는 남음');
+  assert.ok(g.gridAt(5, 5, 2), '범위 밖 남음');
   assert.equal(p2.damage, C.DAMAGE_GAIN.bomb);
   assert.ok(g.time < p2.stunUntil, '맞은 사람 경직');
   assert.equal(p1.damage, 0, '던진 사람 면제');
   assert.equal(p3.damage, 0, '폭발 범위 밖은 무사');
-  assert.equal(g.gridAt(3, 6, 1), 1, '옆 기둥은 범위(z 2~4) 밖이라 남음');
+  assert.ok(g.gridAt(3, 6, 1), '옆 기둥은 범위(z 2~4) 밖이라 남음');
   assert.ok(lines.some((l) => l.includes('블록 2칸 파괴')), lines.join('\n'));
 });
 

@@ -225,6 +225,21 @@ export const CONFIG = {
   COOLDOWN_FLASH_MS: 250, // 조준점 둘레 쿨 원이 다 차면 번쩍이는 시간
   WIN_BANNER_MS: 2500, // 판이 끝나면 "P2 승리!" 큰 글씨 표시 시간
   TOAST_MS: 2200, // 화면 알림이 떠 있는 시간
+  // 화면 색·조명 (2026-10-22 4단계, 화면만). 테트리미노는 모양마다 색, 쌓이면 BLOCK_LANDED_SHADE 만큼 어둡게
+  SHAPE_COLORS: { I: 0x38c8e8, O: 0xf8e030, T: 0xa050e0, S: 0x50c850, Z: 0xe85050, J: 0x4070e8, L: 0xf08a30 },
+  BLOCK_LANDED_SHADE: 0.88,
+  TERRAIN_COLOR: 0x8c8a96, // 시작 지형 (돌)
+  BUILD_COLOR: 0xa87448, // 쌓기 블록 (나무)
+  THROWN_COLOR: 0xd8c890, // 착지한 설치 블록 (모래)
+  // 노을 하늘: 위 → 가운데 → 지평선 그라데이션, 해는 지평선 가까이 (그림자가 길게)
+  SKY_TOP: 0x2c2f6e,
+  SKY_MID: 0xc8607a,
+  SKY_HORIZON: 0xffae5c,
+  SUN_DIR: [-0.55, 0.62, 0.32], // 해가 있는 방향 (필드 가운데 기준, 정규화 전)
+  SUN_COLOR: 0xffc890,
+  FOG_NEAR: 28,
+  FOG_FAR: 75,
+  SHADOW_MAP_SIZE: 1024, // 그림자 해상도 (설정에서 끌 수 있음)
   // 콩 애니메이션 (화면만)
   ANIM_WALK_FREQ: 3.2, // 걸음 위상이 도는 빠르기 (속도 1칸/초당 라디안)
   ANIM_BOB: 0.07, // 걸을 때 통통 튀는 높이 (칸)

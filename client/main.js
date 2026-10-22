@@ -388,6 +388,23 @@ function submitName() {
   send({ type: 'setName', name });
 }
 nameInput.value = savedName();
+
+// 그림자: 기본 켬, 느린 PC 는 끔. 이 브라우저에 기억
+const shadowCheck = $('shadow-check');
+try {
+  shadowCheck.checked = localStorage.getItem('tf-shadows') !== 'off';
+} catch {
+  shadowCheck.checked = true;
+}
+renderer.setShadows(shadowCheck.checked);
+shadowCheck.addEventListener('change', () => {
+  renderer.setShadows(shadowCheck.checked);
+  try {
+    localStorage.setItem('tf-shadows', shadowCheck.checked ? 'on' : 'off');
+  } catch {
+    // 저장이 막혀 있어도 이번엔 적용
+  }
+});
 nameInput.addEventListener('change', submitName);
 nameInput.addEventListener('keydown', (e) => {
   e.stopPropagation(); // 이름 칠 때는 게임 키(Enter 시작, 숫자 칸)가 안 먹게

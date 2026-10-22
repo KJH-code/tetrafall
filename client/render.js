@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { CONFIG as C } from '/shared/config.js';
 import { buildCharacter } from '/character.js';
 import { Effects } from '/effects.js';
+import { CELL, SHAPE_NAMES } from '/shared/pieces.js';
 
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
@@ -65,6 +66,46 @@ function drawLabel(canvas, name, color, d) {
   ctx.fillText(`${d}%`, 128, 80);
 }
 
+// 격자 칸 값 → 쌓인 블록 색
+function cellColor(v) {
+  if (v === CELL.BUILD) return C.BUILD_COLOR;
+  if (v === CELL.THROWN) return C.THROWN_COLOR;
+  const shape = SHAPE_NAMES[v - CELL.SHAPE_BASE];
+  if (shape) return new THREE.Color(C.SHAPE_COLORS[shape]).multiplyScalar(C.BLOCK_LANDED_SHADE).getHex();
+  return C.TERRAIN_COLOR;
+}
+
+// 노을 하늘: 안쪽을 그리는 큰 구. 높이에 따라 위·가운데·지평선 색을 섞고, 해 쪽은 밝게 + 해 원반
+function skyDome() {
+  const mat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    fog: false,
+    uniforms: {
+      top: { value: new THREE.Color(C.SKY_TOP) },
+      mid: { value: new THREE.Color(C.SKY_MID) },
+      horizon: { value: new THREE.Color(C.SKY_HORIZON) },
+      sunDir: { value: new THREE.Vector3(...C.SUN_DIR).normalize() },
+    },
+    vertexShader: `varying vec3 vDir;
+      void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `uniform vec3 top; uniform vec3 mid; uniform vec3 horizon; uniform vec3 sunDir; varying vec3 vDir;
+      void main() {
+        float h = clamp(vDir.z, -1.0, 1.0);
+        vec3 c = h < 0.25 ? mix(horizon, mid, smoothstep(0.0, 0.25, h)) : mix(mid, top, smoothstep(0.25, 0.85, h));
+        if (h < 0.0) c = mix(horizon, horizon * 0.55, smoothstep(0.0, -0.4, h));
+        float s = max(dot(normalize(vDir), sunDir), 0.0);
+        c += vec3(1.0, 0.65, 0.35) * pow(s, 8.0) * 0.45;
+        c = mix(c, vec3(1.0, 0.93, 0.75), smoothstep(0.9985, 0.9995, s));
+        gl_FragColor = vec4(c, 1.0);
+      }`,
+  });
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(150, 32, 16), mat);
+  dome.position.set(C.GRID_W / 2, C.GRID_D / 2, 0);
+  dome.renderOrder = -1;
+  return dome;
+}
+
 export const PLAYER_COLORS = [0xe05050, 0x50c050, 0xb060e0, 0xe0c050, 0xf0f0f0, 0x40d0c0, 0xff80b0, 0x8a5a30];
 const MAX_CELLS = C.GRID_W * C.GRID_D * C.GRID_H;
 
@@ -73,12 +114,15 @@ export class Renderer {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.shadowMap.enabled = true; // 실제로 그릴지는 setShadows (해가 그림자를 드리울 때만 그림자 패스를 돎)
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     canvasParent.appendChild(this.renderer.domElement);
     this.canvas = this.renderer.domElement;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x87a8c8);
-    this.scene.fog = new THREE.Fog(0x87a8c8, 30, 80);
+    this.scene.background = new THREE.Color(C.SKY_HORIZON);
+    this.scene.fog = new THREE.Fog(C.SKY_HORIZON, C.FOG_NEAR, C.FOG_FAR);
+    this.scene.add(skyDome());
 
     this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 200);
     this.camera.up.set(0, 0, 1);
@@ -107,18 +151,28 @@ export class Renderer {
     this.skyCamera.lookAt(C.GRID_W / 2, C.GRID_D / 2, 0);
     this.fitSkyCamera();
 
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x556677, 0.9);
+    // 노을: 하늘은 따뜻하게, 땅 반사는 푸르스름하게. 해는 낮게 떠서 그림자가 길다
+    const hemi = new THREE.HemisphereLight(0xffe2d2, 0x8a90b8, 1.15);
     this.scene.add(hemi);
-    const sun = new THREE.DirectionalLight(0xffffff, 1.0);
-    sun.position.set(4, -6, 12);
-    this.scene.add(sun);
+    const sun = new THREE.DirectionalLight(C.SUN_COLOR, 1.25);
+    const center = new THREE.Vector3(C.GRID_W / 2, C.GRID_D / 2, 0);
+    sun.position.copy(center).addScaledVector(new THREE.Vector3(...C.SUN_DIR).normalize(), 30);
+    sun.target.position.copy(center);
+    this.scene.add(sun, sun.target);
+    const reach = Math.hypot(C.GRID_W, C.GRID_D) / 2 + 4; // 필드 + 여백을 덮는 그림자 상자
+    Object.assign(sun.shadow.camera, { left: -reach, right: reach, top: reach + 4, bottom: -reach, near: 5, far: 60 });
+    sun.shadow.mapSize.set(C.SHADOW_MAP_SIZE, C.SHADOW_MAP_SIZE);
+    sun.shadow.bias = -0.0008;
+    sun.shadow.normalBias = 0.03;
+    this.sun = sun;
 
     // 바닥
     const floor = new THREE.Mesh(
       new THREE.BoxGeometry(C.GRID_W, C.GRID_D, 0.3),
-      new THREE.MeshLambertMaterial({ color: 0x777777 }),
+      new THREE.MeshLambertMaterial({ color: 0xa49aa0 }),
     );
     floor.position.set(C.GRID_W / 2, C.GRID_D / 2, -0.15);
+    floor.receiveShadow = true;
     this.scene.add(floor);
     const gridHelper = new THREE.GridHelper(C.GRID_W, C.GRID_W, 0x222222, 0x444444);
     gridHelper.rotation.x = Math.PI / 2;
@@ -143,6 +197,8 @@ export class Renderer {
     // 블록이 0개일 때 계산된 빈 구가 남으면 원점 모서리가 시야 밖일 때 쌓인 블록 전체가 안 그려진다.
     // 최대 W×D×H 개 한 번의 draw call 이라 시야 판정을 끈다.
     this.blockMesh.frustumCulled = false;
+    this.blockMesh.castShadow = true;
+    this.blockMesh.receiveShadow = true;
     this.scene.add(this.blockMesh);
     this.gridVersion = -1;
 
@@ -150,7 +206,8 @@ export class Renderer {
     this.pieceMeshes = [];
     this.shadowMeshes = [];
     this.pieceMat = new THREE.MeshLambertMaterial({ color: 0xf0a030, transparent: true, opacity: 1 }); // 자동 블록
-    this.controlledMat = new THREE.MeshLambertMaterial({ color: 0xd040d0, transparent: true, opacity: 1 }); // 누가 조종 중인 블록
+    this.controlledMat = new THREE.MeshLambertMaterial({ color: 0xd040d0, emissive: 0x501050, transparent: true, opacity: 1 }); // 누가 조종 중인 블록 (빛나서 T 모양 보라와 구분)
+    this.shapeMats = {}; // 자동 블록: 모양마다 색
     this.thrownMat = new THREE.MeshLambertMaterial({ color: 0xf0d060, transparent: true, opacity: 1 }); // 던진 설치 블록
     this.shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45 });
     this.pieceBox = new THREE.BoxGeometry(1, 1, 1);
@@ -219,8 +276,9 @@ export class Renderer {
           if (!grid[(z * C.GRID_D + y) * C.GRID_W + x]) continue;
           m.makeTranslation(x + 0.5, y + 0.5, z + 0.5);
           this.blockMesh.setMatrixAt(n, m);
-          // 단색이되 인접 셀이 구분되게 체커보드로 살짝 명암만 준다
-          color.setHex((x + y + z) % 2 ? 0x6a8fc8 : 0x5c7fb5);
+          // 무엇이 남긴 칸인지에 따라 색 (지형 돌·쌓기 나무·설치 블록 모래·테트리미노 모양 색), 인접 칸은 체커보드로 살짝 명암
+          color.setHex(cellColor(grid[(z * C.GRID_D + y) * C.GRID_W + x]));
+          if ((x + y + z) % 2) color.multiplyScalar(0.94);
           this.blockMesh.setColorAt(n, color);
           n++;
         }
@@ -229,6 +287,18 @@ export class Renderer {
     this.blockMesh.count = n;
     this.blockMesh.instanceMatrix.needsUpdate = true;
     if (this.blockMesh.instanceColor) this.blockMesh.instanceColor.needsUpdate = true;
+  }
+
+  shapeMat(shape) {
+    if (!this.shapeMats[shape]) {
+      this.shapeMats[shape] = new THREE.MeshLambertMaterial({ color: C.SHAPE_COLORS[shape] ?? 0xf0a030, transparent: true, opacity: 1 });
+    }
+    return this.shapeMats[shape];
+  }
+
+  // 그림자 켜기·끄기 (대기 화면 설정). 꺼지면 그림자 패스 자체를 안 돌아 느린 PC 에서 가벼움
+  setShadows(on) {
+    this.sun.castShadow = !!on;
   }
 
   getPlayerMesh(p) {
@@ -247,6 +317,9 @@ export class Renderer {
       g.userData.anim = { px: null, py: null, pz: null, hs: 0, vz: 0, walk: 0, spin: 0, land: 0 };
       g.userData.waitMark = ch.waitMark;
       g.userData.color = color;
+      g.traverse((o) => {
+        if (o.isMesh) o.castShadow = true;
+      });
       // 하늘 시점 전용 표시: 바라보는 방향 화살표 (+ 내 캐릭터는 흰 고리)
       const tri = new THREE.Shape();
       tri.moveTo(0.75, 0);
@@ -484,6 +557,7 @@ export class Renderer {
     const need = slots.length;
     while (this.pieceMeshes.length < need) {
       const m = new THREE.Mesh(this.pieceBox, this.pieceMat);
+      m.castShadow = true;
       this.scene.add(m);
       this.pieceMeshes.push(m);
       const s = new THREE.Mesh(this.shadowBox, this.shadowMat);
@@ -502,7 +576,7 @@ export class Renderer {
       const [x, y, z] = piece.cells[i];
       pm.position.set(x + 0.5, y + 0.5, z + 0.5);
       pm.visible = true;
-      pm.material = piece.thrown ? this.thrownMat : piece.controller !== null ? this.controlledMat : this.pieceMat;
+      pm.material = piece.thrown ? this.thrownMat : piece.controller !== null ? this.controlledMat : this.shapeMat(piece.shape);
       const mine = piece.phase === 'control' && piece.controller === myId;
       const showShadow = piece.shadowVisible || mine;
       sm.visible = showShadow;
@@ -580,6 +654,7 @@ export class Renderer {
     this.pieceMat.opacity = this.skyBlend > 0.5 ? 0.55 : 1; // 하늘 시점에선 블록 너머로 착지 미리보기가 보이게
     this.controlledMat.opacity = this.pieceMat.opacity;
     this.thrownMat.opacity = this.pieceMat.opacity;
+    for (const m of Object.values(this.shapeMats)) m.opacity = this.pieceMat.opacity;
 
     // 1인칭(또는 관전) 자세
     const eye = new THREE.Vector3();

@@ -1,7 +1,7 @@
 // Tetrafall 서버 게임 상태. 권위는 전부 여기에 있다.
 // 격자는 3D 정수 배열, 플레이어는 AABB + 넉백. 물리엔진 없음.
 import { CONFIG as C } from '../shared/config.js';
-import { SHAPE_NAMES, rotatedCells, footprint } from '../shared/pieces.js';
+import { SHAPE_NAMES, CELL, cellOfShape, rotatedCells, footprint } from '../shared/pieces.js';
 import { BotBrain } from './bot.js';
 import { MAPS, MAP_IDS, mapColumns } from './maps.js';
 
@@ -285,7 +285,7 @@ export class Game {
     this.grid.fill(0);
     this.mapId = this.mapChoice === 'random' ? MAP_IDS[Math.floor(this.rng() * MAP_IDS.length)] : this.mapChoice;
     for (const [x, y, h] of mapColumns(this.mapId, C.GRID_W, C.GRID_D)) {
-      for (let z = 0; z < h && z < C.GRID_H; z++) this.grid[this.idx(x, y, z)] = 1;
+      for (let z = 0; z < h && z < C.GRID_H; z++) this.grid[this.idx(x, y, z)] = CELL.TERRAIN;
     }
     this.baseAvgHeight = this.avgHeight();
     this.gridVersion++;
@@ -661,7 +661,7 @@ export class Game {
     if (!plan.ok) return false;
     const [x, y, z] = plan.cells[0];
     p.blocks--;
-    this.grid[this.idx(x, y, z)] = 1;
+    this.grid[this.idx(x, y, z)] = CELL.BUILD;
     this.gridChanged();
     this.emit({ type: 'build', who: p.id, cells: plan.cells });
     this.log(`  [쌓기] ${p.name} → (${x},${y},${z}) (남은 ${p.blocks}개)`);
@@ -1162,8 +1162,9 @@ export class Game {
   }
 
   landPiece(piece = this.piece) {
+    const cell = piece.thrownBy ? CELL.THROWN : cellOfShape(piece.shape); // 색 구분용
     for (const [x, y, z] of this.pieceWorldCells(piece)) {
-      if (z >= 0 && z < C.GRID_H) this.grid[this.idx(x, y, z)] = 1;
+      if (z >= 0 && z < C.GRID_H) this.grid[this.idx(x, y, z)] = cell;
     }
     const cells = this.pieceWorldCells(piece);
     this.emit({ type: 'land', cells: cells.map(([x, y, z]) => [x, y, z]), controlled: piece.controller !== null });

@@ -13,6 +13,13 @@ export const SHAPES = {
 
 export const SHAPE_NAMES = Object.keys(SHAPES);
 
+// 격자 칸 값: 0 = 빈칸, 0 이 아니면 단단함. 값은 그 칸을 남긴 블록 종류 (화면에서 색으로 구분)
+export const CELL = { TERRAIN: 1, BUILD: 2, THROWN: 3, SHAPE_BASE: 10 };
+export function cellOfShape(shape) {
+  const i = SHAPE_NAMES.indexOf(shape);
+  return i < 0 ? CELL.THROWN : CELL.SHAPE_BASE + i;
+}
+
 function normalize(cells) {
   let minX = Infinity;
   let minY = Infinity;
