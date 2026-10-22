@@ -3,7 +3,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Game } from '../server/game.js';
 import { CONFIG as C } from '../shared/config.js';
-import { parseLog, summarize, formatReport } from '../tools/stats.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { Rooms } from '../server/rooms.js';
+import { parseLog, summarize, formatReport, latestRun } from '../tools/stats.js';
 
 const TICK = 1000 / C.TICK_RATE;
 
@@ -137,4 +141,47 @@ test('통계: 이름으로 묶고, 접속 끊김은 요약 줄에서 받고, 옛
   assert.deepEqual(s.weapons.rows, [['조종블록', 1]], '공격 이름에 괄호가 안 붙음 (옛 형식·접속 끊김 사망은 표에서 빠짐)');
   assert.equal(s.players.find((p) => p.key === '재혁').kills, 1);
   assert.equal(s.byComp.find((c) => c.key === '사람 1 + 봇 1').rounds, 1);
+});
+
+test('통계: 방마다 따로 남긴 로그를 방별로 읽어 합친다', () => {
+  const logs = {};
+  const rooms = new Rooms({
+    openLog: (code) => {
+      logs[code] = [];
+      return { log: (m) => logs[code].push(`[12시 0분 0초] ${m}`), close() {} };
+    },
+  });
+  const ws = () => ({ OPEN: 1, readyState: 1, send() {} });
+  const a = rooms.connect(ws());
+  const b = rooms.connect(ws());
+  rooms.message(a, { type: 'create', nick: '재혁' });
+  rooms.message(b, { type: 'create', nick: '민수' });
+  for (const c of [a, b]) {
+    rooms.message(c, { type: 'setName', name: c === a ? '재혁' : '민수' });
+    rooms.message(c, { type: 'addBot' });
+    rooms.message(c, { type: 'start' });
+  }
+  for (let t = 0; t < 30 * 300 && [...rooms.rooms.values()].some((r) => r.game.phase === 'playing'); t++) rooms.tick(TICK);
+  const codes = Object.keys(logs);
+  assert.equal(codes.length, 2);
+  const perRoom = codes.map((c) => parseLog(logs[c].join('\n')));
+  assert.deepEqual(perRoom.map((r) => r.length), [1, 1], '방마다 한 판');
+  const s = summarize(perRoom.flat());
+  assert.equal(s.players.find((p) => p.key === '재혁').rounds, 1);
+  assert.equal(s.players.find((p) => p.key === '민수').rounds, 1, '두 방 모두 P1 이지만 이름으로 따로 셈');
+});
+
+test('통계: 기본은 가장 최근 서버 실행 (폴더면 안의 방 파일 전부, 빈 폴더는 건너뜀, 예전 파일 하나도 됨)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tf-logs-'));
+  try {
+    assert.equal(latestRun(dir), null);
+    fs.writeFileSync(path.join(dir, '2026-10-21_10-00-00.txt'), 'x');
+    assert.equal(latestRun(dir), path.join(dir, '2026-10-21_10-00-00.txt'), '예전 형식 파일');
+    fs.mkdirSync(path.join(dir, '2026-10-22_09-00-00'));
+    fs.writeFileSync(path.join(dir, '2026-10-22_09-00-00', '2026-10-22_09-01-00_ABCD.txt'), 'x');
+    fs.mkdirSync(path.join(dir, '2026-10-22_11-00-00')); // 방을 안 연 서버 실행
+    assert.equal(latestRun(dir), path.join(dir, '2026-10-22_09-00-00'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

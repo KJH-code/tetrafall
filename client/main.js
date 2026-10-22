@@ -28,8 +28,7 @@ let myId = null;
 let state = null;
 let lastState = null;
 let wasAlive = true;
-let rejected = false; // 방이 꽉 찼거나 내보내져 거부됨. 이어지는 연결 끊김 메시지로 덮어쓰지 않는다
-let closed = false; // 연결이 끊기면 HUD 갱신을 멈춰 거부·끊김 메시지가 덮이지 않게
+let closed = false; // 연결이 끊기면 HUD 갱신을 멈춰 끊김 메시지가 덮이지 않게
 
 function send(obj) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
@@ -322,11 +321,11 @@ function feelEvent(e) {
 }
 
 // ---------- 연결 ----------
-// 거부·연결 끊김: HUD 갱신을 멈추고 대기 화면 버튼들을 숨김 (안내 문구만 남김)
+// 연결 끊김: HUD 갱신을 멈추고 대기 화면 버튼들을 숨김 (안내 문구만 남김)
 function stopHud() {
   closed = true;
   centerEl.classList.remove('hidden');
-  for (const el of [startBtn, $('bot-btns'), $('map-info'), $('name-row'), $('host-players'), $('keys'), $('spec')]) el.classList.add('hidden');
+  for (const el of [startBtn, $('bot-btns'), $('map-info'), $('name-row'), $('room-row'), $('host-players'), $('keys'), $('spec')]) el.classList.add('hidden');
 }
 
 function connect() {
@@ -334,33 +333,183 @@ function connect() {
   ws = new WebSocket(`${proto}://${location.host}`);
   ws.onopen = () => {
     statusEl.textContent = '연결됨. 서버 응답 대기...';
+    // 링크(?room=ABCD)로 왔으면 바로 그 방으로
+    const code = new URLSearchParams(location.search).get('room');
+    if (code) {
+      pendingJoin = true; // 먼저 오는 목록으로 방 밖 화면을 띄우지 않게
+      send({ type: 'join', code });
+    }
   };
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
-    if (msg.type === 'welcome') {
+    if (msg.type === 'rooms') {
+      roomList = msg;
+      if (!myId && !pendingJoin) showRooms();
+    } else if (msg.type === 'joinError') {
+      pendingJoin = false;
+      setUrlRoom(null);
+      showRooms(msg.reason);
+    } else if (msg.type === 'welcome') {
       myId = msg.id;
+      room = msg.room;
+      pendingJoin = false;
+      setUrlRoom(room.code); // 새로고침해도 같은 방으로
+      roomsEl.classList.add('hidden');
+      statusEl.classList.remove('hidden');
       const sp = C.SPAWN_POINTS[msg.slot % C.SPAWN_POINTS.length];
       input.setYawPitch(sp.yaw, 0);
       if (nameInput.value) submitName();
+    } else if (msg.type === 'left') {
+      leftRoom(msg.reason);
     } else if (msg.type === 'state') {
+      if (!myId) return; // 방을 나간 직후 남은 스냅샷
       lastState = state;
       if (!msg.grid && state && state.grid) msg.grid = state.grid; // 격자는 바뀔 때만 온다
       state = msg;
+      if (msg.room) room = msg.room;
       onState();
       for (const e of msg.events || []) handleEvent(e);
-    } else if (msg.type === 'reject') {
-      // 내보내기는 상태를 받은 뒤에 오므로, 소켓이 실제로 닫히기 전에도 HUD 가 문구를 덮지 않게 바로 멈춤 (리뷰 지적)
-      rejected = true;
-      stopHud();
-      centerText.textContent = msg.reason;
-      statusEl.textContent = '';
     }
   };
   ws.onclose = () => {
     stopHud();
-    if (!rejected) centerText.textContent = '서버 연결 끊김. 새로고침하세요.';
+    centerText.textContent = '서버 연결 끊김. 새로고침하세요.';
+    if (!roomsEl.classList.contains('hidden')) {
+      roomsMsg.textContent = '서버 연결 끊김. 새로고침하세요.';
+      for (const b of roomsEl.querySelectorAll('button:not(.settings-btn)')) b.disabled = true;
+    }
   };
 }
+
+// ---------- 방 밖: 방 만들기 · 코드로 들어가기 · 공개 방 목록 ----------
+const roomsEl = $('rooms');
+const roomsMsg = $('rooms-msg');
+const roomsNick = $('rooms-nick');
+const roomCodeInput = $('room-code');
+let room = null; // 들어가 있는 방 { code, name, public }
+let roomList = null; // 서버가 보낸 공개 방 목록
+let roomListKey = '';
+let pendingJoin = false;
+roomCodeInput.maxLength = C.ROOM_CODE_LEN;
+$('room-name').maxLength = C.ROOM_NAME_MAX_LEN;
+
+function setUrlRoom(code) {
+  const url = code ? `${location.pathname}?room=${code}` : location.pathname;
+  try {
+    history.replaceState(null, '', url);
+  } catch {
+    // 주소창을 못 바꿔도 게임엔 지장 없음
+  }
+}
+const roomLink = (code) => `${location.origin}${location.pathname}?room=${code}`;
+
+function showRooms(message) {
+  roomsEl.classList.remove('hidden');
+  statusEl.classList.add('hidden');
+  if (message !== undefined) roomsMsg.textContent = message;
+  if (document.activeElement !== roomsNick) roomsNick.value = nameInput.value;
+  renderRoomList();
+}
+
+function renderRoomList() {
+  if (!roomList) return;
+  const full = roomList.count >= roomList.max;
+  $('room-create').disabled = full;
+  $('rooms-count').textContent = `(지금 열린 방 ${roomList.count}/${roomList.max}개${full ? ', 가득 참' : ''})`;
+  const key = JSON.stringify(roomList.rooms);
+  if (key === roomListKey) return;
+  roomListKey = key;
+  const listEl = $('room-list');
+  listEl.textContent = '';
+  if (!roomList.rooms.length) {
+    const none = document.createElement('div');
+    none.className = 'none';
+    none.textContent = '공개된 방 없음. 친구에게 코드나 링크를 받거나 방을 만드세요';
+    listEl.append(none);
+    return;
+  }
+  for (const r of roomList.rooms) {
+    const row = document.createElement('div');
+    row.className = 'room';
+    const name = document.createElement('div');
+    name.textContent = r.name;
+    const info = document.createElement('div');
+    info.className = 'info';
+    const bots = r.bots ? ` + 봇 ${r.bots} (${BOT_LEVEL_KO[r.botLevel] || r.botLevel})` : '';
+    info.textContent = `사람 ${r.humans}${bots} / ${r.max}명 · 맵 ${MAP_KO[r.map] || r.map} · ${r.teamMode ? '팀전' : '개인전'}`;
+    const btn = document.createElement('button');
+    btn.textContent = r.humans + r.bots >= r.max ? '꽉 참' : '들어가기';
+    btn.disabled = r.humans + r.bots >= r.max;
+    btn.addEventListener('click', () => joinRoom(r.code));
+    row.append(name, btn, info);
+    listEl.append(row);
+  }
+}
+
+function syncNick() {
+  nameInput.value = roomsNick.value;
+  try {
+    localStorage.setItem('tf-name', roomsNick.value);
+  } catch {
+    // 저장이 막혀 있어도 이번 접속에는 보낸다
+  }
+}
+function joinRoom(code) {
+  syncNick();
+  roomsMsg.textContent = '';
+  send({ type: 'join', code });
+}
+roomsNick.maxLength = C.NAME_MAX_LEN;
+roomsNick.addEventListener('change', syncNick);
+$('room-create').addEventListener('click', () => {
+  syncNick();
+  roomsMsg.textContent = '';
+  send({ type: 'create', name: $('room-name').value, nick: roomsNick.value });
+});
+$('room-join').addEventListener('click', () => joinRoom(roomCodeInput.value));
+roomCodeInput.addEventListener('keydown', (e) => {
+  if (e.code === 'Enter') joinRoom(roomCodeInput.value);
+});
+
+// 방에서 나옴 (나가기 버튼·내보내짐): 방 화면 상태를 비우고 목록으로
+function leftRoom(reason) {
+  myId = null;
+  room = null;
+  state = null;
+  lastState = null;
+  wasAlive = true;
+  input.enabled = false;
+  renderer.gridVersion = -1; // 격자 버전은 방마다 0부터라, 다음 방 버전이 우연히 같으면 지형을 안 바꿈
+  roomRowKey = '';
+  if (document.pointerLockElement) document.exitPointerLock();
+  setUrlRoom(null);
+  showRooms(reason || '');
+}
+
+$('room-leave').addEventListener('click', () => send({ type: 'leave' }));
+$('room-public').addEventListener('click', () => room && send({ type: 'setPublic', on: !room.public }));
+$('room-copy').addEventListener('click', async () => {
+  if (!room) return;
+  const link = roomLink(room.code);
+  let ok = false;
+  try {
+    await navigator.clipboard.writeText(link); // https(터널)에서만 됨
+    ok = true;
+  } catch {
+    // http(LAN) 에선 클립보드가 막힘 → 옛 방식
+    const ta = document.createElement('textarea');
+    ta.value = link;
+    document.body.append(ta);
+    ta.select();
+    try {
+      ok = document.execCommand('copy');
+    } catch {
+      ok = false;
+    }
+    ta.remove();
+  }
+  toast(ok ? '링크 복사됨' : '복사가 막힘: 아래 주소를 직접 복사하세요');
+});
 
 startBtn.addEventListener('click', () => send({ type: 'start' }));
 // Enter 로도 시작·재시작 (호스트만, 판 사이에만. 판 중 Enter 는 블록 하드드롭)
@@ -374,6 +523,7 @@ $('add-bot').addEventListener('click', () => send({ type: 'addBot' }));
 $('remove-bot').addEventListener('click', () => send({ type: 'removeBot' }));
 $('map-select').addEventListener('change', (e) => send({ type: 'setMap', map: e.target.value }));
 $('bot-level').addEventListener('change', (e) => send({ type: 'botLevel', level: e.target.value }));
+const BOT_LEVEL_KO = { easy: '쉬움', normal: '보통', hard: '어려움' };
 const MAP_KO = { random: '무작위', flat: '평지', pyramid: '피라미드', stairs: '계단', bowl: '그릇', spiral: '나선 계단', pillars: '기둥 숲', fortress: '요새' };
 
 // 이름: 대기 화면 입력칸. 브라우저에 기억해 두고 접속할 때마다 보낸다 (판 사이에만 바뀜)
@@ -692,6 +842,7 @@ function updateHud() {
   // 봇 버튼: 호스트만, 판 사이에만
   const between = state.phase === 'lobby' || state.phase === 'over';
   $('name-row').classList.toggle('hidden', !between);
+  updateRoomRow(between, isHost);
   updateHostPlayers(isHost && between);
   const showBots = isHost && between;
   $('bot-btns').classList.toggle('hidden', !showBots);
@@ -830,6 +981,22 @@ function updateItemTimers() {
 // ---------- 호스트: 플레이어마다 관전 ↔ 참가, 내보내기 (판 사이에만 보임) ----------
 const hostPlayersEl = $('host-players');
 let hostPlayersKey = '';
+// 대기 화면의 방 줄: 코드·이름·공개 여부 + (호스트) 공개 토글 · 링크 복사 · 방 나가기
+let roomRowKey = '';
+function updateRoomRow(show, isHost) {
+  $('room-row').classList.toggle('hidden', !(show && room));
+  if (!show || !room) return;
+  const key = `${room.code}|${room.name}|${room.public}|${isHost}|${state.phase}`;
+  if (key === roomRowKey) return;
+  roomRowKey = key;
+  $('room-code-text').textContent = room.code;
+  $('room-name-text').textContent = room.name;
+  $('room-public-text').textContent = room.public ? '공개 (목록에 보임)' : '비공개 (코드·링크로만)';
+  $('room-public').classList.toggle('hidden', !isHost);
+  $('room-public').textContent = room.public ? '비공개로' : '공개로';
+  $('room-link').textContent = roomLink(room.code);
+}
+
 function updateHostPlayers(show) {
   hostPlayersEl.classList.toggle('hidden', !show);
   if (!show) return;

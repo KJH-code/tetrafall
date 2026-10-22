@@ -1,6 +1,6 @@
 # Tetrafall
 
-3D 폴가이즈식 PC 웹 대전. 격자 필드에 테트리미노가 떨어지고 플레이어끼리 밀어 떨어뜨리거나(낙사) 블록에 깔리게(압사) 한다. LAN 2~4인 + AI 봇.
+3D 폴가이즈식 PC 웹 대전. 격자 필드에 테트리미노가 떨어지고 플레이어끼리 밀어 떨어뜨리거나(낙사) 블록에 깔리게(압사) 한다. LAN 또는 인터넷(Cloudflare 터널), 서버 하나에 방 여러 개, 방마다 2~4인 + AI 봇.
 
 DevVault: Projects/Tetrafall
 
@@ -15,8 +15,9 @@ DevVault: Projects/Tetrafall
 ```
 npm install
 npm start        # 호스트 서버 (포트 3000)
+npm run online   # 서버 + Cloudflare 터널 (cloudflared 필요) → 친구에게 줄 https 주소
 npm test         # 서버 규칙 단위 테스트 (node --test)
-npm run stats    # 플레이테스트 로그 요약 (logs/ 최신 파일, 또는 -- 파일 경로)
+npm run stats    # 플레이테스트 로그 요약 (logs/ 최신 서버 실행 폴더, 또는 -- 파일·폴더 경로)
 ```
 
 Windows PowerShell 에서 npm 이 막히면 `npm.cmd`.
@@ -27,10 +28,12 @@ Windows PowerShell 에서 npm 이 막히면 `npm.cmd`.
 - `shared/pieces.js` — 테트리미노 모양·회전
 - `server/game.js` — 게임 상태: 격자, 블록 낙하, 플레이어 물리, 넉백, 사망 판정, 용암, 아이템, 로그
 - `server/bot.js` — AI 봇 (handleInput / handleAction 만 씀, 판정 특혜 없음)
-- `server/index.js` — 정적 서빙 + WebSocket + 틱 루프
+- `server/index.js` — 정적 서빙 + WebSocket + 틱 루프 + 방마다 로그 파일 (`logs/<서버 시각>/<방 시각>_<코드>.txt`)
+- `server/rooms.js` — 방 (게임 + 접속 + 로그). 방 밖 메시지(create·join)와 방 안 메시지 처리, 사람 0명이면 삭제. 테스트는 가짜 소켓
 - `client/` — 렌더(`render.js`), 캐릭터(`character.js`), 입력(`input.js`), HUD·네트워크(`main.js`), 효과음(`sound.js`), 배경음악(`music.js`), 모델 불러오기(`models.js`, 파일은 `client/assets/` 출처 `CREDITS.md`), 툰 재질·외곽선(`toon.js`), 코드 텍스처(`textures.js`)
+- `tools/online.js` — `npm run online` (서버 자식 프로세스 + cloudflared, 출력에서 터널 주소 찾기)
 - `tools/stats.js` — 서버 로그 요약 (판 길이·압사 비율·구성별·맵별·플레이어별·아이템). 로그 형식을 바꾸면 여기도
-- `test/game.test.js` — 단위 테스트, `test/stats.test.js` — 로그 요약이 실제 게임 로그를 읽는지
+- `test/game.test.js` — 단위 테스트, `test/rooms.test.js` — 방, `test/stats.test.js` — 로그 요약이 실제 게임 로그를 읽는지, `test/online.test.js` — 터널 주소 찾기
 
 ## 규칙
 

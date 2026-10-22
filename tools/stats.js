@@ -1,6 +1,7 @@
 // 서버 로그 요약: 판 길이·사망 원인·인원 구성별·맵별·플레이어별·아이템 사용.
-// 실행: npm run stats              → logs/ 의 가장 최근 파일
-//       npm run stats -- a.txt b.txt → 여러 파일 (붙여 넣은 콘솔 로그도 됨)
+// 실행: npm run stats              → logs/ 에서 가장 최근 서버 실행 (폴더면 그 안의 방 파일 전부)
+//       npm run stats -- a.txt b.txt → 여러 파일 (붙여 넣은 콘솔 로그도 됨), 폴더를 주면 그 안의 .txt 전부
+// 로그는 방마다 파일: logs/<서버를 켠 시각>/<방을 연 시각>_<코드>.txt (예전 서버는 logs/<시각>.txt 하나)
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -317,24 +318,44 @@ function readText(file) {
   return buf.toString('utf8').replace(/^\uFEFF/, '');
 }
 
-function latestLog(dir) {
+// 폴더 → 그 안의 .txt (이름순), 파일 → 그대로
+function expand(p) {
+  if (!fs.statSync(p).isDirectory()) return [p];
+  return fs
+    .readdirSync(p)
+    .filter((f) => f.endsWith('.txt'))
+    .sort()
+    .map((f) => path.join(p, f));
+}
+
+// logs/ 에서 가장 최근 것 (시각 이름이라 이름순 마지막). 새 서버는 폴더, 예전 서버는 파일 하나
+export function latestRun(dir) {
   if (!fs.existsSync(dir)) return null;
-  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.txt')).sort();
-  return files.length ? path.join(dir, files[files.length - 1]) : null;
+  const entries = fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith('.txt') || fs.statSync(path.join(dir, f)).isDirectory())
+    .sort();
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const full = path.join(dir, entries[i]);
+    if (expand(full).length) return full; // 방을 하나도 안 연 빈 폴더는 건너뜀
+  }
+  return null;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-  let files = process.argv.slice(2);
-  if (!files.length) {
-    const f = latestLog(path.join(root, 'logs'));
-    if (!f) {
+  let args = process.argv.slice(2);
+  if (!args.length) {
+    const run = latestRun(path.join(root, 'logs'));
+    if (!run) {
       console.log('logs/ 에 로그가 없음. 서버(npm start)를 한 번 돌리거나 파일을 지정: npm run stats -- 파일.txt');
       process.exit(1);
     }
-    files = [path.relative(process.cwd(), f)];
+    args = [path.relative(process.cwd(), run)];
   }
+  const files = args.flatMap(expand);
+  // 파일마다 따로 읽음 (P 번호는 방·서버 실행마다 다른 사람)
   const rounds = files.flatMap((f) => parseLog(readText(f)));
-  console.log(`로그: ${files.join(', ')}\n`);
+  console.log(`로그: ${args.join(', ')}${files.length > args.length ? ` (파일 ${files.length}개)` : ''}\n`);
   console.log(formatReport(summarize(rounds)));
 }

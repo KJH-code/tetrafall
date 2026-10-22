@@ -1,11 +1,12 @@
 {
   "name": "tetrafall",
   "version": "0.1.0",
-  "description": "3D Fall Guys-style LAN battle game on a grid where tetrominoes fall from the sky. Stage 1 prototype.",
+  "description": "3D Fall Guys-style web battle game on a grid where tetrominoes fall from the sky. LAN or internet (rooms + Cloudflare tunnel).",
   "type": "module",
   "private": true,
   "scripts": {
     "start": "node server/index.js",
+    "online": "node tools/online.js",
     "test": "node --test test/*.test.js",
     "stats": "node tools/stats.js"
   },

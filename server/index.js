@@ -1,5 +1,6 @@
 // Tetrafall 호스트 서버: 정적 파일 서빙 + WebSocket + 고정 틱 게임 루프.
-// 실행: npm start  → 다른 PC는 브라우저에서 http://<호스트IP>:3000
+// 실행: npm start  → 다른 PC는 브라우저에서 http://<호스트IP>:3000 (인터넷: npm run online)
+// 서버 하나에 방 여러 개 (server/rooms.js)
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -7,7 +8,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { CONFIG as C } from '../shared/config.js';
-import { Game } from './game.js';
+import { Rooms } from './rooms.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || C.PORT;
@@ -71,54 +72,48 @@ const server = http.createServer((req, res) => {
 function stamp() {
   return new Date().toLocaleTimeString('ko-KR', { hour12: false });
 }
-// 콘솔과 같은 줄을 logs/<서버를 켠 시각>.txt 에도 남긴다 (플레이테스트 분석: npm run stats)
+// 방마다 로그 파일: logs/<서버를 켠 시각>/<방을 연 시각>_<코드>.txt (플레이테스트 분석: npm run stats)
+// 콘솔에는 같은 줄을 [코드] 를 붙여 찍는다
 const LOG_DIR = path.join(ROOT, 'logs');
-const startedAt = new Date();
 const pad = (n) => String(n).padStart(2, '0');
-const logPath = path.join(
-  LOG_DIR,
-  `${startedAt.getFullYear()}-${pad(startedAt.getMonth() + 1)}-${pad(startedAt.getDate())}_${pad(startedAt.getHours())}-${pad(startedAt.getMinutes())}-${pad(startedAt.getSeconds())}.txt`,
-);
-let logFd = null;
-try {
-  fs.mkdirSync(LOG_DIR, { recursive: true });
-  logFd = fs.openSync(logPath, 'a');
-} catch (err) {
-  console.error(`로그 파일을 못 엶 (콘솔에만 남김): ${err.message}`);
-}
-const log = (msg) => {
-  const line = `[${stamp()}] ${msg}`;
-  console.log(line);
-  if (logFd === null) return;
+const fileStamp = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+const RUN_DIR = path.join(LOG_DIR, fileStamp(new Date()));
+
+function openLog(code) {
+  let fd = null;
   try {
-    fs.writeSync(logFd, line + '\n'); // 바로 씀: 서버를 Ctrl+C 로 꺼도 마지막 줄까지 남게
-  } catch {
-    logFd = null;
+    fs.mkdirSync(RUN_DIR, { recursive: true });
+    fd = fs.openSync(path.join(RUN_DIR, `${fileStamp(new Date())}_${code}.txt`), 'a');
+  } catch (err) {
+    console.error(`[${code}] 로그 파일을 못 엶 (콘솔에만 남김): ${err.message}`);
   }
-};
-
-const game = new Game(log, { countdownMs: C.ROUND_COUNTDOWN_MS });
-game.setMap(C.MAP_DEFAULT);
-const wss = new WebSocketServer({ server });
-const sockets = new Map(); // id -> ws
-let nextId = 1;
-
-function send(ws, obj) {
-  if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(obj));
+  return {
+    log(msg) {
+      const st = stamp();
+      console.log(`[${st}] [${code}] ${msg}`);
+      if (fd === null) return;
+      try {
+        fs.writeSync(fd, `[${st}] ${msg}\n`); // 바로 씀: 서버를 Ctrl+C 로 꺼도 마지막 줄까지 남게
+      } catch {
+        fd = null;
+      }
+    },
+    close() {
+      if (fd !== null) fs.closeSync(fd);
+      fd = null;
+    },
+  };
 }
+
+const rooms = new Rooms({
+  openLog,
+  serverLog: (msg) => console.log(`[${stamp()}] ${msg}`),
+  countdownMs: C.ROUND_COUNTDOWN_MS,
+});
+const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws) => {
-  const id = nextId++;
-  const player = game.addPlayer(id);
-  if (!player) {
-    send(ws, { type: 'reject', reason: `방이 꽉 찼습니다 (최대 ${Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length)}명)` });
-    ws.close();
-    return;
-  }
-  sockets.set(id, ws);
-  send(ws, { type: 'welcome', id, slot: player.slot, name: player.name });
-  send(ws, game.snapshot(true));
-
+  const conn = rooms.connect(ws);
   ws.on('message', (raw) => {
     let msg;
     try {
@@ -126,72 +121,12 @@ wss.on('connection', (ws) => {
     } catch {
       return;
     }
-    if (!msg || typeof msg !== 'object') return;
-    switch (msg.type) {
-      case 'input':
-        game.handleInput(id, msg);
-        break;
-      case 'action':
-        game.handleAction(id, msg);
-        break;
-      case 'addBot':
-        if (game.isHost(id) && !game.addBot()) log('봇 추가 거부: 방이 꽉 찼거나 판 진행 중');
-        break;
-      case 'removeBot':
-        if (game.isHost(id)) game.removeBot();
-        break;
-      case 'spectate': // 호스트: 관전 ↔ 참가 (판 사이에만)
-        if (game.isHost(id)) game.setSpectator(Number(msg.target), msg.on);
-        break;
-      case 'kick': {
-        // 호스트: 내보내기 (자기 자신은 안 됨). 사람은 연결을 끊고, 봇은 바로 뺀다
-        const target = Number(msg.target);
-        if (!game.isHost(id) || target === id || !game.players.has(target) || game.inRound()) break; // 판 사이에만 (UI 도 판 사이에만 보임)
-        log(`[호스트] ${game.players.get(target).name} 내보냄`);
-        const tws = sockets.get(target);
-        if (tws) {
-          send(tws, { type: 'reject', reason: '호스트가 내보냈습니다.\n새로고침하면 다시 들어올 수 있습니다' });
-          tws.close();
-        } else {
-          game.removePlayer(target);
-        }
-        break;
-      }
-      case 'setName':
-        game.setNick(id, msg.name);
-        break;
-      case 'teamMode':
-        if (game.isHost(id)) game.setTeamMode(!!msg.on);
-        break;
-      case 'setTeam':
-        if (game.isHost(id)) game.setTeam(Number(msg.target), String(msg.team));
-        break;
-      case 'shuffleTeams':
-        if (game.isHost(id)) game.shuffleTeams();
-        break;
-      case 'botLevel':
-        if (game.isHost(id)) game.setBotLevel(String(msg.level));
-        break;
-      case 'setMap':
-        if (game.isHost(id)) game.setMap(String(msg.map));
-        break;
-      case 'start':
-        if (game.isHost(id)) {
-          if (!game.startRound()) log(`시작 거부: 참가자 ${game.participants().length}명 (최소 ${C.MIN_PLAYERS}명, 관전자 제외)`);
-        }
-        break;
-      default:
-    }
+    rooms.message(conn, msg);
   });
-
-  ws.on('close', () => {
-    sockets.delete(id);
-    game.removePlayer(id);
-    if (game.humanCount() === 0) game.removeAllBots(); // 사람이 다 나가면 봇도 정리
-  });
+  ws.on('close', () => rooms.disconnect(conn));
 });
 
-// 고정 틱 루프. setInterval 의 드리프트를 누적 시간으로 보정한다.
+// 고정 틱 루프. setInterval 의 드리프트를 누적 시간으로 보정한다. 모든 방이 같은 틱
 const TICK_MS = 1000 / C.TICK_RATE;
 let last = performance.now();
 let acc = 0;
@@ -201,21 +136,17 @@ setInterval(() => {
   last = now;
   let steps = 0;
   while (acc >= TICK_MS && steps < 5) {
-    game.tick(TICK_MS);
+    rooms.tick(TICK_MS);
     acc -= TICK_MS;
     steps++;
   }
   if (acc > TICK_MS * 5) acc = 0; // 너무 밀리면 버린다
-  if (steps > 0 && sockets.size) {
-    const snap = game.snapshot(false);
-    snap.events = game.drainEvents();
-    const payload = JSON.stringify(snap);
-    for (const ws of sockets.values()) if (ws.readyState === ws.OPEN) ws.send(payload);
-  }
+  if (steps > 0) rooms.broadcast();
 }, TICK_MS);
+setInterval(() => rooms.broadcastList(), C.ROOM_LIST_MS);
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Tetrafall 호스트 서버 실행 중 (포트 ${PORT}, 틱 ${C.TICK_RATE}Hz, 인원 ${C.MIN_PLAYERS}~${Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length)}명)`);
+  console.log(`Tetrafall 호스트 서버 실행 중 (포트 ${PORT}, 틱 ${C.TICK_RATE}Hz, 방 최대 ${C.ROOM_MAX}개, 방마다 ${C.MIN_PLAYERS}~${Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length)}명)`);
   console.log('이 PC에서:        http://localhost:' + PORT);
   for (const [name, addrs] of Object.entries(os.networkInterfaces())) {
     for (const a of addrs || []) {
@@ -223,5 +154,5 @@ server.listen(PORT, '0.0.0.0', () => {
     }
   }
   console.log('튜닝 상수: shared/config.js');
-  if (logFd !== null) console.log(`로그 파일: ${path.relative(ROOT, logPath)} (요약: npm run stats)`);
+  console.log(`로그: ${path.relative(ROOT, RUN_DIR)}/ 에 방마다 파일 (요약: npm run stats)`);
 });
