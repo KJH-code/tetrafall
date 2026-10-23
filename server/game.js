@@ -170,7 +170,9 @@ export class Game {
       emote: -1, // 이모트 번호 (EMOTE_NAMES), -1 = 안 함
       emoteUntil: 0,
       emoteReadyAt: 0,
-      master: false, // 블록 마스터 판의 마스터: 살아 있지만 필드에 없음 (하늘에서 블록만 조종)
+      master: false, // 블록 마스터 판의 마스터 편: 살아 있지만 필드에 없음 (하늘에서 블록만 조종)
+      zombie: false, // 블록 마스터: 죽어서 마스터 편이 된 생존자 (처음 마스터는 false)
+      nextPieceAt: 0, // 블록 마스터: 마스터 편 각자의 다음 블록 시각
       respawnAt: 0, // 킬 점수전: 죽은 뒤 부활하는 시각 (0 = 부활 안 함)
       shieldUntil: 0, // 킬 점수전: 부활 직후 무적 (안 밀리고 안 깔림)
       input: { fwd: 0, strafe: 0, jump: false },
@@ -217,7 +219,7 @@ export class Game {
       this.hostId = next ? next.id : null;
     }
     for (const pc of this.pieces) if (pc.controller === id) pc.controller = null;
-    if (this.inRound() && p.alive) {
+    if (this.inRound() && p.alive && !p.zombie) {
       // 카운트다운 중에 나가도 사망 목록에 남긴다 (판 시계는 아직 0)
       this.deaths.push({ name: p.name, cause: 'disconnect', t: this.phase === 'playing' ? this.time - this.roundStartTime : 0 });
       this.checkRoundEnd();
@@ -256,9 +258,47 @@ export class Game {
     return p.alive && !p.master;
   }
 
-  // 블록 마스터 판의 마스터 (없으면 null)
+  // 블록 마스터 판의 처음 마스터 (없으면 null). 죽어서 넘어간 마스터 편(zombie)은 빼고
   master() {
-    return [...this.players.values()].find((p) => p.master) || null;
+    return [...this.players.values()].find((p) => p.master && !p.zombie) || null;
+  }
+
+  // 블록 마스터: 죽은 생존자는 하늘로 올라가 마스터 편이 됨 (자기 블록을 따로 떨어뜨림, 이겨도 승수는 처음 마스터만)
+  joinMasterSide(p) {
+    Object.assign(p, {
+      alive: true,
+      master: true,
+      zombie: true,
+      x: C.GRID_W / 2,
+      y: C.GRID_D / 2,
+      z: C.GRID_H + 4,
+      vz: 0,
+      kbx: 0,
+      kby: 0,
+      stunUntil: 0,
+      ghostUntil: 0,
+      hasControl: false,
+      nextPieceAt: this.time + C.MASTER_NEXT_PIECE_MS,
+    });
+    this.emit({ type: 'zombie', who: p.id });
+    this.log(`  [마스터 편] ${p.name} → 하늘에서 블록`);
+  }
+
+  // 블록 마스터 탑 방지: 놓인 뒤 높이(landZ+1)가 둘레(8방향, 필드 밖은 0) 가장 높은 기둥보다 MASTER_MAX_RISE 넘게 높으면 true
+  tooTall(cellsXY, landZ) {
+    const own = new Set(cellsXY.map(([x, y]) => x * 100 + y));
+    let ring = 0;
+    for (const [x, y] of cellsXY) {
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (own.has(nx * 100 + ny) || !inXY(nx, ny)) continue;
+          ring = Math.max(ring, this.columnTop(nx, ny));
+        }
+      }
+    }
+    return landZ + 1 - ring > C.MASTER_MAX_RISE;
   }
 
   // 시작 위치에서 발이 놓일 높이: 플레이어가 걸치는 칸들 중 가장 높은 기둥 위
@@ -424,6 +464,8 @@ export class Game {
         emoteUntil: 0,
         emoteReadyAt: 0,
         master: false,
+        zombie: false,
+        nextPieceAt: 0,
         respawnAt: 0,
         shieldUntil: 0,
       });
@@ -502,13 +544,15 @@ export class Game {
     if (this.mode === 'master') {
       const m = this.master();
       this.log(`  결과: ${list.some((p) => p.master) ? `마스터 ${m.name} 승 (생존자 전멸)` : list.length ? `생존자 ${list.length}명 승` : '무승부'}`);
+      // 마스터 편으로 넘어갔던 사람은 원래대로 (죽은 상태), 하늘에 떠 있던 다음 블록들은 치움
+      for (const z of this.players.values()) if (z.zombie) Object.assign(z, { master: false, zombie: false, alive: false });
+      this.pieces = this.pieces.filter((pc) => pc.phase !== 'control');
+      this.refreshPieceCells();
       if (m) {
         // 판이 끝나면 마스터도 필드 가운데 꼭대기로 내려와 보통 사람처럼 (승리 연출·이모트)
         const cx = Math.floor(C.GRID_W / 2);
         const cy = Math.floor(C.GRID_D / 2);
         Object.assign(m, { master: false, x: cx + 0.5, y: cy + 0.5, z: this.columnTop(cx, cy), vz: 0 });
-        this.pieces = this.pieces.filter((pc) => !(pc.phase === 'control' && pc.controller === m.id)); // 하늘에 떠 있던 다음 블록은 치움
-        this.refreshPieceCells();
       }
     } else if (this.mode === 'kills') {
       this.log(`  점수: ${this.participants().sort((a, b) => a.slot - b.slot).map((p) => `${p.name} ${this.scores.get(p.id) || 0}`).join(' / ')}`);
@@ -672,6 +716,7 @@ export class Game {
     const killText = credit ? `, 킬 ${credit.name} ${WEAPON_LOG[credit.kind]}` : ', 킬 없음'; // "킬 없음" 을 적어야 킬 기록이 없던 옛 로그와 구분됨
     this.log(`  [사망] ${p.name} ${causeKo(cause)} @ ${fmtTime(t)} (위치 ${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}, 피해 ${p.damage}%${killText})`);
     if (this.mode === 'kills' && this.phase === 'playing') this.scoreDeath(p, credit);
+    if (this.mode === 'master' && this.phase === 'playing' && !p.master && this.master()) this.joinMasterSide(p);
   }
 
   // ---------- 입력 ----------
@@ -1109,7 +1154,10 @@ export class Game {
   }
 
   pieceFits(piece) {
-    return piece.landZ + 1 <= C.GRID_H && piece.landZ <= piece.pz;
+    if (piece.landZ + 1 > C.GRID_H || piece.landZ > piece.pz) return false;
+    // 블록 마스터: 조종 중인 블록은 주변보다 너무 높게 못 놓음 (빨간 미리보기)
+    if (this.mode === 'master' && piece.phase === 'control' && this.tooTall(piece.cells.map(([dx, dy]) => [piece.px + dx, piece.py + dy]), piece.landZ)) return false;
+    return true;
   }
 
   updateLanding(piece) {
@@ -1153,12 +1201,13 @@ export class Game {
     return piece;
   }
 
-  spawnControlled(controller) {
+  // randomSpot: 블록 마스터는 무작위 자리에서 시작 (바로 Enter 를 눌러도 한 곳에 탑이 안 쌓이게)
+  spawnControlled(controller, randomSpot = false) {
     const shape = SHAPE_NAMES[Math.floor(this.rng() * SHAPE_NAMES.length)];
     const rot = Math.floor(this.rng() * 4);
     const { w, d } = footprint(rotatedCells(shape, rot));
-    const px = Math.floor((C.GRID_W - w) / 2);
-    const py = Math.floor((C.GRID_D - d) / 2);
+    const px = randomSpot ? Math.floor(this.rng() * (C.GRID_W - w + 1)) : Math.floor((C.GRID_W - w) / 2);
+    const py = randomSpot ? Math.floor(this.rng() * (C.GRID_D - d + 1)) : Math.floor((C.GRID_D - d) / 2);
     const piece = this.makePiece(shape, rot, px, py, C.CONTROL_HOVER_Z);
     this.addPiece(piece, {
       phase: 'control',
@@ -1167,6 +1216,7 @@ export class Game {
       nextStepAt: 0,
       controlEndsAt: this.time + C.CONTROL_TIME_MS,
     });
+    this.updateLanding(piece); // 조종 블록이 된 뒤 다시 (블록 마스터 높이 제한)
     controller.hasControl = false;
     this.emit({ type: 'controlStart', who: controller.id });
     this.log(`  [블록] ${shape} 조종 시작: ${controller.name}`);
@@ -1191,9 +1241,10 @@ export class Game {
   updateSpawning() {
     if (this.time < this.nextSpawnAt) return;
     if (this.mode === 'master') {
-      // 블록 마스터: 자동 블록 없이 마스터의 블록만. 떨어뜨리면 MASTER_NEXT_PIECE_MS 뒤 다음 블록 (dropPiece 가 시계를 맞춤)
-      const m = this.master();
-      if (m && !this.controlledPiece(m)) this.spawnControlled(m);
+      // 블록 마스터: 자동 블록 없이 마스터 편 각자의 블록만. 떨어뜨리면 MASTER_NEXT_PIECE_MS 뒤 다음 블록 (dropPiece 가 시계를 맞춤)
+      for (const p of this.players.values()) {
+        if (p.master && p.alive && this.time >= p.nextPieceAt && !this.controlledPiece(p)) this.spawnControlled(p, true);
+      }
       return;
     }
     const holder = [...this.players.values()].find((p) => p.alive && p.hasControl) || null;
@@ -1326,7 +1377,7 @@ export class Game {
     piece.stepMs = C.HARD_DROP_STEP_MS;
     piece.nextStepAt = this.time + C.HARD_DROP_STEP_MS;
     const name = who ? who.name : '?';
-    if (this.mode === 'master' && who && who.master) this.nextSpawnAt = this.time + C.MASTER_NEXT_PIECE_MS;
+    if (this.mode === 'master' && who && who.master) who.nextPieceAt = this.time + C.MASTER_NEXT_PIECE_MS;
     const what = reason === 'hard' ? `하드드롭 by ${name}` : reason === 'timeout' ? `자동 낙하 (8초 초과, 조종자 ${name})` : `자동 낙하 (조종자 ${name} 사망·이탈)`;
     this.log(`  [블록] ${piece.shape} ${what} → (${piece.px},${piece.py}) 착지 z=${piece.landZ}`);
   }
@@ -1936,6 +1987,7 @@ export class Game {
         controlling: this.isControlling(p),
         cause: p.deathCause,
         master: p.master,
+        zombie: p.zombie,
         respawnIn: !p.alive && p.respawnAt ? Math.max(0, p.respawnAt - this.time) : null,
         shieldLeft: Math.max(0, p.shieldUntil - this.time),
         score: this.scores.get(p.id) || 0,

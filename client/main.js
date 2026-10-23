@@ -152,6 +152,10 @@ function killFeed(e) {
 function handleEvent(e) {
   feelEvent(e);
   switch (e.type) {
+    case 'zombie': // 블록 마스터: 죽어서 마스터 편
+      if (e.who === myId) toast('마스터 편이 됐다! 하늘에서 블록으로 남은 사람을 깔아라', 'good');
+      else toast(`${nameOf(e.who)} 마스터 편으로`);
+      break;
     case 'respawn': // 킬 점수전 부활
       if (e.who === myId) {
         toast(`부활! ${C.KILLS_SHIELD_MS / 1000}초 무적`, 'good');
@@ -533,7 +537,7 @@ $('mode-select').addEventListener('change', (e) => send({ type: 'setMode', mode:
 const BOT_LEVEL_KO = { easy: '쉬움', normal: '보통', hard: '어려움' };
 const MODE_DESC = {
   survival: '생존: 마지막까지 살아남은 사람이 승',
-  master: `블록 마스터: 한 명이 하늘에서 블록만 떨어뜨리고, 나머지는 ${C.MASTER_TIME_MS / 1000}초 버티기 (각자 도생, 마스터는 판마다 돌아감)`,
+  master: `블록 마스터: 한 명이 하늘에서 블록만 떨어뜨리고, 나머지는 ${C.MASTER_TIME_MS / 1000}초 버티기 (각자 도생, 죽으면 마스터 편, 마스터는 판마다 돌아감)`,
   kills: `킬 점수전: 죽어도 ${C.KILLS_RESPAWN_MS / 1000}초 뒤 부활. 킬 +1 · 자멸 -1, ${C.KILLS_TIME_MS / 60000}분 또는 ${C.KILLS_TARGET}킬 (팀 ${C.KILLS_TARGET_TEAM}킬)`,
 };
 const MAP_KO = { random: '무작위', flat: '평지', pyramid: '피라미드', stairs: '계단', bowl: '그릇', spiral: '나선 계단', pillars: '기둥 숲', fortress: '요새' };
@@ -731,7 +735,7 @@ function onState() {
     const ws = (state.round.winnerIds || []).map(playerById).filter(Boolean); // 승자가 여럿일 수 있음 (블록 마스터 생존자, 킬 점수전 동점)
     const star = wt ? state.players.find((x) => x.team === wt && x.alive) || state.players.find((x) => x.team === wt) : ws.find((x) => x.alive) || ws[0];
     if (star) victory = { id: star.id, until: performance.now() + C.WIN_BANNER_MS };
-    const wasMaster = lastState.players.find((x) => x.master);
+    const wasMaster = lastState.players.find((x) => x.master && !x.zombie);
     if (wt) showBig(`${TEAM_KO[wt]}팀 승리!`, hex(TEAM_MAIN[wt]), C.WIN_BANNER_MS, true);
     else if (ws.length > 1) showBig(state.mode === 'master' ? '생존자 승리!' : '공동 승리!', '#ffe14a', C.WIN_BANNER_MS, true);
     else if (w && wasMaster && wasMaster.id === w.id) showBig(`마스터 ${shownName(w)} 승리!`, colorOf(w), C.WIN_BANNER_MS, true);
@@ -835,12 +839,12 @@ function updateHud() {
   }
   // 블록 마스터: 마스터는 할 일·남은 시간, 생존자는 누구 블록인지·남은 시간
   if (p && state.mode === 'master' && state.phase === 'playing' && state.round.left !== null) {
-    const m = state.players.find((x) => x.master);
+    const m = state.players.find((x) => x.master && !x.zombie); // 처음 마스터
     const survivors = state.players.filter((x) => x.alive && !x.master && !x.spectator).length;
     const left = fmt(state.round.left);
     if (p.master) {
       const myPiece = (state.pieces || []).find((pc) => pc.phase === 'control' && pc.controller === myId);
-      bannerText = `블록 마스터: 생존자를 다 깔아라! 남은 ${left} · 생존 ${survivors}명${myPiece ? `\n방향키 이동 · Q/E 회전 · Enter 낙하 (${(myPiece.timeLeft / 1000).toFixed(1)}초)${myPiece.fits ? '' : ' · 여기엔 못 놓음'}` : '\n다음 블록 준비 중'}`;
+      bannerText = `${p.zombie ? '마스터 편' : '블록 마스터'}: 생존자를 다 깔아라! 남은 ${left} · 생존 ${survivors}명${myPiece ? `\n방향키 이동 · Q/E 회전 · Enter 낙하 (${(myPiece.timeLeft / 1000).toFixed(1)}초)${myPiece.fits ? '' : ` · 여기엔 못 놓음 (꽉 찼거나 주변보다 ${C.MASTER_MAX_RISE}칸 넘게 높아짐)`}` : '\n다음 블록 준비 중'}`;
       bannerColor = 'rgba(120,40,160,.9)';
     } else if (p.alive) {
       bannerText = `${m ? shownName(m) : '마스터'}의 블록을 피해 버티기 · 남은 ${left} · 생존 ${survivors}명`;

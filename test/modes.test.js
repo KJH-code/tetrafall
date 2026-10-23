@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Game } from '../server/game.js';
 import { CONFIG as C } from '../shared/config.js';
+import { footprint } from '../shared/pieces.js';
 
 const TICK = 1000 / C.TICK_RATE;
 
@@ -242,4 +243,75 @@ test('킬 점수전: 용암 없음, 가장 높은 기둥이 KILLS_SINK_HEIGHT �
   assert.equal(g.columnTop(2, 2), 1);
   assert.equal(p(1).z, 1, '서 있던 사람도 같이 내려감');
   assert.ok(lines.some((l) => l.startsWith('  [가라앉음]')));
+});
+
+test('블록 마스터: 죽은 생존자는 마스터 편 — 하늘에서 자기 블록을 따로, 그 블록 킬은 그 사람, 이겨도 승수는 처음 마스터만', () => {
+  const { g, lines, p } = setupMode('master');
+  run(g, C.FIRST_SPAWN_DELAY_MS + 100);
+  // P2 를 마스터 블록 밑에, P3 는 멀리
+  const cells = g.pieceWorldCells(g.controlledPiece(p(1)));
+  place(p(2), cells[0][0] + 0.5, cells[0][1] + 0.5);
+  place(p(3), 0.5, 9.5);
+  g.handleAction(1, { name: 'drop' });
+  run(g, 2000); // 하드드롭이 바닥까지 약 1.3초 + 마스터 편 첫 블록 MASTER_NEXT_PIECE_MS
+  assert.equal(g.phase, 'playing');
+  assert.ok(p(2).alive && p(2).master && p(2).zombie, 'P2 는 마스터 편');
+  assert.ok(lines.includes('  [마스터 편] P2 → 하늘에서 블록'));
+  assert.equal(g.master().id, 1, '처음 마스터는 그대로');
+  const mine = g.controlledPiece(p(2));
+  assert.ok(mine && g.controlledPiece(p(1)), '마스터 편 각자 블록 (동시에)');
+  // P2 블록으로 P3 를 깔면 P2 의 킬, 생존자 전멸 → 처음 마스터 승
+  g.movePiece(mine, -10, 10); // 왼쪽 위 구석으로
+  place(p(3), g.pieceWorldCells(mine)[0][0] + 0.5, g.pieceWorldCells(mine)[0][1] + 0.5);
+  g.handleAction(2, { name: 'drop' });
+  run(g, 1500);
+  assert.equal(g.phase, 'over');
+  assert.ok(lines.some((l) => /\[사망\] P3 압사 .*킬 P2 조종블록/.test(l)));
+  assert.deepEqual(g.winnerIds, [1]);
+  assert.deepEqual([p(1).wins, p(2).wins, p(3).wins], [1, 0, 0]);
+  assert.ok(!p(2).master && !p(2).zombie && !p(2).alive, '판이 끝나면 마스터 편은 원래대로 (죽은 상태)');
+  assert.equal(g.pieces.filter((pc) => pc.phase === 'control').length, 0, '하늘의 다음 블록은 치움');
+});
+
+test(`블록 마스터: 둘레보다 ${C.MASTER_MAX_RISE}칸 넘게 튀어나오는 자리엔 못 놓음 (탑 방지)`, () => {
+  const { g, p } = setupMode('master');
+  run(g, C.FIRST_SPAWN_DELAY_MS + 100);
+  const piece = g.controlledPiece(p(1));
+  const foot = piece.cells.map(([dx, dy]) => [piece.px + dx, piece.py + dy]);
+  // 블록 발밑만 MASTER_MAX_RISE 높이 → 놓이면 둘레(0)보다 MASTER_MAX_RISE + 1 높음
+  for (const [x, y] of foot) for (let z = 0; z < C.MASTER_MAX_RISE; z++) g.grid[g.idx(x, y, z)] = 1;
+  g.gridChanged();
+  g.updateLanding(piece);
+  assert.equal(piece.fits, false, '너무 높음');
+  g.handleAction(1, { name: 'drop' });
+  assert.equal(piece.phase, 'control', 'Enter 를 눌러도 안 떨어짐');
+  // 발밑을 한 칸 낮추면 됨
+  for (const [x, y] of foot) g.grid[g.idx(x, y, C.MASTER_MAX_RISE - 1)] = 0;
+  g.gridChanged();
+  g.updateLanding(piece);
+  assert.equal(piece.fits, true);
+  // 생존 모드엔 이 제한이 없음
+  const s = new Game();
+  s.addPlayer(1);
+  s.addPlayer(2);
+  s.startRound();
+  for (let z = 0; z < 8; z++) s.grid[s.idx(5, 5, z)] = 1;
+  const pc = s.makePiece('O', 0, 4, 4, C.CONTROL_HOVER_Z);
+  s.addPiece(pc, { phase: 'control', controller: 1, stepMs: 80, nextStepAt: 0, controlEndsAt: 1e9 });
+  s.updateLanding(pc);
+  assert.equal(pc.fits, true);
+});
+
+test('블록 마스터: 마스터 편 블록은 무작위 자리에서 시작', () => {
+  const { g, p } = setupMode('master');
+  const at = (r) => {
+    g.rng = () => r;
+    const pc = g.spawnControlled(p(2), true);
+    g.removePiece(pc);
+    return [pc.px, pc.py, footprint(pc.cells)];
+  };
+  const [x0, y0] = at(0);
+  const [x1, y1, f] = at(0.999);
+  assert.deepEqual([x0, y0], [0, 0]);
+  assert.deepEqual([x1, y1], [C.GRID_W - f.w, C.GRID_D - f.d]);
 });

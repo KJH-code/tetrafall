@@ -615,6 +615,7 @@ export class BotBrain {
           if (overlapsCells(p, world)) continue;
           const landZ = Math.max(...world.map(([x, y]) => g.columnTop(x, y)));
           if (landZ + 1 > C.GRID_H) continue;
+          if (g.mode === 'master' && g.tooTall(world, landZ)) continue; // 블록 마스터 높이 제한: 못 놓는 자리
           if (landZ > t.z + 0.5) continue; // 상대보다 높은 곳에 걸려서 안 닿음
           const keys = ((r - piece.rot + 4) % 4 === 3 ? 1 : (r - piece.rot + 4) % 4) + Math.abs(px - piece.px) + Math.abs(py - piece.py);
           const score = keys - cover * 2;
