@@ -50,6 +50,12 @@ export class Game {
     this.lava = { active: false, z: C.LAVA_START_Z, startedAt: 0 };
     this.botLevel = C.BOT_LEVEL_DEFAULT; // 봇 난이도 (모든 봇 공통)
     this.teamMode = false; // 팀전 (호스트가 대기 화면에서 켬). 사람마다 team = 'red' | 'blue'
+    this.mode = C.MODE_DEFAULT; // 게임 모드: 'survival' | 'master' | 'kills' (MODES)
+    this.masterTurn = 0; // 블록 마스터: 다음 판 마스터 차례 (자리 순서)
+    this.roundEndsAt = 0; // 블록 마스터·킬 점수전: 판이 시간으로 끝나는 시각
+    this.scores = new Map(); // 킬 점수전: 플레이어 id → 점수 (판마다 초기화)
+    this.teamScores = { red: 0, blue: 0 }; // 킬 점수전 팀전: 팀 점수
+    this.winnerIds = []; // 이번 판 승자들 (블록 마스터에서 생존자가 이기면 여럿)
     this.teamWins = { red: 0, blue: 0 };
     this.winnerTeam = null;
     this.mapChoice = 'flat'; // 호스트가 고른 맵 ('random' 또는 MAP_IDS 중 하나). 서버는 시작 때 C.MAP_DEFAULT 로 바꾼다
@@ -164,6 +170,9 @@ export class Game {
       emote: -1, // 이모트 번호 (EMOTE_NAMES), -1 = 안 함
       emoteUntil: 0,
       emoteReadyAt: 0,
+      master: false, // 블록 마스터 판의 마스터: 살아 있지만 필드에 없음 (하늘에서 블록만 조종)
+      respawnAt: 0, // 킬 점수전: 죽은 뒤 부활하는 시각 (0 = 부활 안 함)
+      shieldUntil: 0, // 킬 점수전: 부활 직후 무적 (안 밀리고 안 깔림)
       input: { fwd: 0, strafe: 0, jump: false },
     };
     this.players.set(id, p);
@@ -230,6 +239,28 @@ export class Game {
     return true;
   }
 
+  // 게임 모드 (판 사이에만). 블록 마스터는 1 대 다라 팀전을 끈다
+  setMode(mode) {
+    if (this.inRound() || !Object.hasOwn(C.MODE_NAMES, mode) || this.mode === mode) return false;
+    this.mode = mode;
+    this.log(`[호스트] 모드: ${C.MODE_NAMES[mode]}`);
+    if (mode === 'master' && this.teamMode) {
+      this.teamMode = false;
+      this.log('[호스트] 팀전 끔 (블록 마스터는 1 대 다)');
+    }
+    return true;
+  }
+
+  // 필드 위에 있는 사람: 살아 있고 블록 마스터의 마스터가 아님. 밀치기·폭탄·압사·용암·아이템·물리의 대상
+  onField(p) {
+    return p.alive && !p.master;
+  }
+
+  // 블록 마스터 판의 마스터 (없으면 null)
+  master() {
+    return [...this.players.values()].find((p) => p.master) || null;
+  }
+
   // 시작 위치에서 발이 놓일 높이: 플레이어가 걸치는 칸들 중 가장 높은 기둥 위
   spawnZ(x, y) {
     let top = 0;
@@ -266,6 +297,7 @@ export class Game {
 
   setTeamMode(on) {
     if (this.inRound() || this.teamMode === !!on) return false;
+    if (on && this.mode === 'master') return false; // 블록 마스터는 팀전 없음
     this.teamMode = !!on;
     this.log(`[호스트] 팀전 ${this.teamMode ? '켬' : '끔'}`);
     return true;
@@ -354,6 +386,9 @@ export class Game {
     this.events = [];
     this.winnerId = null;
     this.winnerTeam = null;
+    this.winnerIds = [];
+    this.scores = new Map();
+    this.teamScores = { red: 0, blue: 0 };
     this.roundNumber++;
     for (const p of this.players.values()) {
       const sp = C.SPAWN_POINTS[p.slot % C.SPAWN_POINTS.length];
@@ -388,7 +423,17 @@ export class Game {
         lastHit: null,
         emoteUntil: 0,
         emoteReadyAt: 0,
+        master: false,
+        respawnAt: 0,
+        shieldUntil: 0,
       });
+    }
+    if (this.mode === 'master') {
+      // 마스터는 자리 순서로 돌아감. 필드 위 하늘에 둠 (물리·판정에서 빠지고 화면엔 안 그림)
+      const ps = this.participants().sort((a, b) => a.slot - b.slot);
+      const m = ps[this.masterTurn % ps.length];
+      this.masterTurn++;
+      Object.assign(m, { master: true, x: C.GRID_W / 2, y: C.GRID_D / 2, z: C.GRID_H + 4 });
     }
     if (this.countdownMs > 0) {
       this.phase = 'countdown';
@@ -413,16 +458,29 @@ export class Game {
     const lv = ps.some((p) => p.isBot) ? `, 봇 ${BOT_LEVEL_KO[this.botLevel]}` : '';
     this.log(`===== ROUND ${this.roundNumber} 시작 (${ps.length}명: ${ps.sort((a, b) => a.slot - b.slot).map((p) => p.name).join(' ')}, 맵 ${MAPS[this.mapId].name}${lv}) =====`); // 참가자 목록은 npm run stats 가 구성별로 셀 때 씀
     if (this.teamMode) this.log(`  팀: ${this.teamLine()}`); // npm run stats 가 팀 승리를 사람별로 나눌 때 씀
+    // 모드 줄 (생존은 예전 로그와 같게 안 찍음). npm run stats 가 모드별로 셈
+    if (this.mode === 'master') {
+      this.roundEndsAt = this.time + C.MASTER_TIME_MS;
+      this.log(`  모드: ${C.MODE_NAMES.master} (마스터 ${this.master().name}, ${fmtTime(C.MASTER_TIME_MS)} 버티기)`);
+    } else if (this.mode === 'kills') {
+      this.roundEndsAt = this.time + C.KILLS_TIME_MS;
+      this.log(`  모드: ${C.MODE_NAMES.kills} (${fmtTime(C.KILLS_TIME_MS)} 또는 ${this.teamMode ? `팀 ${C.KILLS_TARGET_TEAM}` : C.KILLS_TARGET}킬)`);
+    } else {
+      this.roundEndsAt = 0;
+    }
     this.checkRoundEnd(); // 카운트다운 중에 나가서 혼자 남았으면 바로 끝
   }
 
   // 팀전이면 winner 대신 winnerTeam: 그 팀 참가자 모두 승수 +1, 팀 승수 +1
-  endRound(winner, winnerTeam = null) {
+  // winners: 승자가 여럿일 때 (블록 마스터에서 살아남은 생존자들, 킬 점수전 동점) 모두 승수 +1
+  endRound(winner, winnerTeam = null, winners = null) {
     this.phase = 'over';
     this.roundEndTime = this.time;
-    this.winnerId = winner ? winner.id : null;
+    const list = winners || (winner ? [winner] : []);
+    this.winnerIds = list.map((p) => p.id);
+    this.winnerId = list.length === 1 ? list[0].id : null;
     this.winnerTeam = winnerTeam;
-    if (winner) winner.wins++;
+    for (const w of list) w.wins++;
     if (winnerTeam) {
       this.teamWins[winnerTeam]++;
       for (const p of this.participants()) if (p.team === winnerTeam) p.wins++;
@@ -438,9 +496,24 @@ export class Game {
     const deathStr = this.deaths.length
       ? this.deaths.map((d) => `${d.name} ${causeKo(d.cause)}@${fmtTime(d.t)}`).join(', ')
       : '없음';
-    const winText = winnerTeam ? `${TEAM_KO[winnerTeam]}팀` : winner ? winner.name : '무승부';
+    const winText = winnerTeam ? `${TEAM_KO[winnerTeam]}팀` : list.length ? list.map((p) => p.name).join(' ') : '무승부'; // 여럿이면 공백으로 (npm run stats)
     this.log(`===== ROUND ${this.roundNumber} 종료 | 길이 ${fmtTime(dur)} | 승자: ${winText} =====`);
     this.log(`  사망: ${deathStr}`);
+    if (this.mode === 'master') {
+      const m = this.master();
+      this.log(`  결과: ${list.some((p) => p.master) ? `마스터 ${m.name} 승 (생존자 전멸)` : list.length ? `생존자 ${list.length}명 승` : '무승부'}`);
+      if (m) {
+        // 판이 끝나면 마스터도 필드 가운데 꼭대기로 내려와 보통 사람처럼 (승리 연출·이모트)
+        const cx = Math.floor(C.GRID_W / 2);
+        const cy = Math.floor(C.GRID_D / 2);
+        Object.assign(m, { master: false, x: cx + 0.5, y: cy + 0.5, z: this.columnTop(cx, cy), vz: 0 });
+        this.pieces = this.pieces.filter((pc) => !(pc.phase === 'control' && pc.controller === m.id)); // 하늘에 떠 있던 다음 블록은 치움
+        this.refreshPieceCells();
+      }
+    } else if (this.mode === 'kills') {
+      this.log(`  점수: ${this.participants().sort((a, b) => a.slot - b.slot).map((p) => `${p.name} ${this.scores.get(p.id) || 0}`).join(' / ')}`);
+      if (this.teamMode) this.log(`  팀 점수: 빨강 ${this.teamScores.red} : ${this.teamScores.blue} 파랑`);
+    }
     this.log(`  승수: ${this.participants().sort((a, b) => a.slot - b.slot).map((p) => `${p.name} ${p.wins}`).join(' / ')}`);
     if (this.teamMode) this.log(`  팀 승수: 빨강 ${this.teamWins.red} : ${this.teamWins.blue} 파랑`);
     this.log(`  이번 판: 압사 ${crush} / 낙사 ${fall} / 용암 ${lava}${this.lava.active ? ` (용암 시작 @ ${fmtTime(this.lava.startedAt - this.roundStartTime)})` : ''}`);
@@ -465,6 +538,8 @@ export class Game {
 
   checkRoundEnd() {
     if (this.phase !== 'playing') return;
+    if (this.mode === 'master') return void this.checkMasterEnd();
+    if (this.mode === 'kills') return void this.checkKillsEnd();
     const alive = [...this.players.values()].filter((p) => p.alive);
     if (this.teamMode) {
       // 살아 있는 사람이 한 팀뿐이면 그 팀 승리 (둘 다 없으면 무승부)
@@ -475,6 +550,111 @@ export class Game {
     if (alive.length <= 1 && this.players.size >= 1) {
       this.endRound(alive[0] || null);
     }
+  }
+
+  // 블록 마스터: 생존자가 다 죽으면 마스터 승, 시간이 끝나면 살아 있는 생존자 모두 승. 마스터가 나가면 생존자 승
+  checkMasterEnd() {
+    const m = this.master();
+    const survivors = this.participants().filter((p) => !p.master && p.alive);
+    if (!m) this.endRound(null, null, survivors);
+    else if (!survivors.length) this.endRound(m);
+    else if (this.time >= this.roundEndsAt) {
+      this.log(`  시간 끝 (${fmtTime(C.MASTER_TIME_MS)}) → 생존자 승`);
+      this.endRound(null, null, survivors);
+    }
+  }
+
+  // 킬 점수전: 시간이 끝나거나 목표 점수에 닿거나 상대가 다 나가면 끝. 점수가 가장 높은 사람(동점이면 모두)·팀 승
+  checkKillsEnd() {
+    const ps = this.participants();
+    let reason = null;
+    if (this.time >= this.roundEndsAt) reason = `시간 끝 (${fmtTime(C.KILLS_TIME_MS)})`;
+    if (this.teamMode) {
+      const { red, blue } = this.teamScores;
+      if (Math.max(red, blue) >= C.KILLS_TARGET_TEAM) reason = `팀 ${C.KILLS_TARGET_TEAM}킬`;
+      if (!ps.some((p) => p.team === 'red') || !ps.some((p) => p.team === 'blue')) reason = '한 팀이 다 나감';
+      if (!reason) return;
+      this.log(`  ${reason} → 판 끝`);
+      this.endRound(null, red > blue ? 'red' : blue > red ? 'blue' : null);
+      return;
+    }
+    const top = Math.max(-Infinity, ...ps.map((p) => this.scores.get(p.id) || 0));
+    if (top >= C.KILLS_TARGET) reason = `${C.KILLS_TARGET}킬`;
+    if (ps.length < C.MIN_PLAYERS) reason = '상대가 다 나감';
+    if (!reason) return;
+    this.log(`  ${reason} → 판 끝`);
+    this.endRound(null, null, ps.filter((p) => (this.scores.get(p.id) || 0) === top));
+  }
+
+  // 킬 점수전 점수: 킬 낸 사람 +1, 킬 없이 죽으면(자멸) 죽은 사람 -1. 킬 낸 사람이 이미 나갔으면 점수 없음
+  scoreDeath(p, credit) {
+    const by = credit ? this.players.get(credit.by) : null;
+    p.respawnAt = this.time + C.KILLS_RESPAWN_MS;
+    if (credit && !by) return;
+    const who = by || p;
+    const d = by ? 1 : -1;
+    this.scores.set(who.id, (this.scores.get(who.id) || 0) + d);
+    if (this.teamMode) this.teamScores[who.team] += d;
+    this.log(`  [점수] ${who.name} ${d > 0 ? '+1' : '자멸 -1'} → ${this.scores.get(who.id)}${this.teamMode ? ` (팀 빨강 ${this.teamScores.red} : ${this.teamScores.blue} 파랑)` : ''}`);
+  }
+
+  // 킬 점수전 부활 자리: 가장 높은 기둥들(가장 높은 것 -1칸까지) 중 살아 있는 상대에게서 가장 먼 곳. 떨어지는 블록 밑은 피함
+  respawnSpot(p) {
+    const busy = new Set();
+    for (const pc of this.pieces) for (const [dx, dy] of pc.cells) busy.add((pc.px + dx) * 100 + (pc.py + dy));
+    const others = [...this.players.values()].filter((o) => o !== p && this.onField(o));
+    const cols = [];
+    for (let x = 0; x < C.GRID_W; x++) {
+      for (let y = 0; y < C.GRID_D; y++) {
+        const top = this.columnTop(x, y);
+        if (top <= C.GRID_H - 3 && !busy.has(x * 100 + y)) cols.push({ x, y, top });
+      }
+    }
+    if (!cols.length) return { x: C.GRID_W / 2, y: C.GRID_D / 2, z: this.columnTop(Math.floor(C.GRID_W / 2), Math.floor(C.GRID_D / 2)) };
+    const maxTop = Math.max(...cols.map((c) => c.top));
+    let best = null;
+    let bestD = -1;
+    for (const c of cols) {
+      if (c.top < maxTop - 1) continue;
+      const d = Math.min(Infinity, ...others.map((o) => Math.hypot(o.x - (c.x + 0.5), o.y - (c.y + 0.5))));
+      if (d > bestD) {
+        bestD = d;
+        best = c;
+      }
+    }
+    return { x: best.x + 0.5, y: best.y + 0.5, z: best.top };
+  }
+
+  respawn(p) {
+    const s = this.respawnSpot(p);
+    Object.assign(p, {
+      ...s,
+      vz: 0,
+      kbx: 0,
+      kby: 0,
+      grounded: true,
+      alive: true,
+      stunUntil: 0,
+      freezeUntil: 0,
+      weaponUses: 0,
+      jumpUntil: 0,
+      ghostUntil: 0,
+      speedUntil: 0,
+      hand: 1,
+      blocks: C.BUILD_BLOCKS_PER_ROUND,
+      bombs: 0,
+      bricks: 0,
+      ammo: 0,
+      damage: 0,
+      hasControl: false,
+      deathCause: null,
+      lastHit: null,
+      emoteUntil: 0,
+      respawnAt: 0,
+      shieldUntil: this.time + C.KILLS_SHIELD_MS,
+    });
+    this.emit({ type: 'respawn', who: p.id });
+    this.log(`  [부활] ${p.name} → (${Math.floor(s.x)},${Math.floor(s.y)}) z=${s.z}`);
   }
 
   // 킬: src(그 블록을 조종·투척한 사람)가 있으면 그 사람, 없으면 판 안에서 마지막으로 나를 날린 사람 (시간 제한 없음).
@@ -491,6 +671,7 @@ export class Game {
     this.emit({ type: 'death', who: p.id, cause, by: credit ? credit.by : null, weapon: credit ? credit.kind : null, byName: credit ? credit.name : null });
     const killText = credit ? `, 킬 ${credit.name} ${WEAPON_LOG[credit.kind]}` : ', 킬 없음'; // "킬 없음" 을 적어야 킬 기록이 없던 옛 로그와 구분됨
     this.log(`  [사망] ${p.name} ${causeKo(cause)} @ ${fmtTime(t)} (위치 ${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}, 피해 ${p.damage}%${killText})`);
+    if (this.mode === 'kills' && this.phase === 'playing') this.scoreDeath(p, credit);
   }
 
   // ---------- 입력 ----------
@@ -514,6 +695,7 @@ export class Game {
     // 이모트는 판이 끝난 뒤에도 됨 (GG). 하는 동안 못 움직이고, 맞거나 공격하면 끊김
     if (action.name === 'emote') return void this.startEmote(p, action.n);
     if (!p || this.phase !== 'playing' || !p.alive) return;
+    if (p.master && !['pieceMove', 'rotate', 'drop'].includes(action.name)) return; // 마스터는 블록 조종만
     const stunned = this.time < p.stunUntil;
     const controlling = this.isControlling(p);
     if (['dash', 'push', 'fire'].includes(action.name)) p.emoteUntil = 0;
@@ -588,7 +770,7 @@ export class Game {
     const fy = Math.sin(p.yaw);
     const cosHalf = Math.cos((C.PUSH_HALF_ANGLE_DEG * Math.PI) / 180);
     for (const t of this.players.values()) {
-      if (t === p || !t.alive) continue;
+      if (t === p || !this.onField(t)) continue;
       const dx = t.x - p.x;
       const dy = t.y - p.y;
       const dist = Math.hypot(dx, dy);
@@ -723,7 +905,7 @@ export class Game {
       if (!solid(cell)) continue;
       const [x, y, z] = prev;
       const free = inXY(x, y) && z >= 0 && z < C.GRID_H && !this.grid[this.idx(x, y, z)] && !this.pieceCells.has(cellKey(x, y, z));
-      const nobody = ![...this.players.values()].some((t) => t.alive && overlapsCell(t, x, y, z));
+      const nobody = ![...this.players.values()].some((t) => this.onField(t) && overlapsCell(t, x, y, z));
       return { cells: [[x, y, z]], ok: free && nobody };
     }
     return { cells: [], ok: false };
@@ -806,7 +988,7 @@ export class Game {
     this.emit({ type: 'boom', who: b.by, x: cx, y: cy, z: cz });
     this.log(`  [폭탄] ${by ? by.name : '?'} 의 폭탄 폭발 (${b.x},${b.y}) z=${b.z}, 블록 ${removed}칸 파괴`);
     for (const t of this.players.values()) {
-      if (!t.alive || t.id === b.by) continue;
+      if (!this.onField(t) || t.id === b.by) continue;
       const dx = t.x - cx;
       const dy = t.y - cy;
       if (Math.hypot(dx, dy) > C.BOMB_BLAST_RANGE || Math.abs(t.z + C.PLAYER_HEIGHT / 2 - cz) > C.BOMB_BLAST_RANGE) continue;
@@ -840,7 +1022,7 @@ export class Game {
     const cx = (x0 + x1) / 2;
     const cy = (y0 + y1) / 2;
     for (const t of this.players.values()) {
-      if (!t.alive || t.id === piece.thrownBy) continue; // 던진 사람은 자기 충격파를 안 맞음
+      if (!this.onField(t) || t.id === piece.thrownBy) continue; // 던진 사람은 자기 충격파를 안 맞음
       const gx = Math.max(x0 - (t.x + C.PLAYER_HALF), t.x - C.PLAYER_HALF - x1, 0);
       const gy = Math.max(y0 - (t.y + C.PLAYER_HALF), t.y - C.PLAYER_HALF - y1, 0);
       if (Math.hypot(gx, gy) > C.BRICK_SHOCK_RANGE || Math.abs(t.z - z) > C.BRICK_SHOCK_HEIGHT) continue;
@@ -854,7 +1036,7 @@ export class Game {
   // gain: 이번 공격으로 쌓이는 피해 %. 맞기 전까지 쌓인 % 로 수평 넉백을 키우고 그다음에 쌓는다
   // (위로 튀는 속도는 그대로)
   startEmote(p, n) {
-    if (!p || !p.alive || (this.phase !== 'playing' && this.phase !== 'over')) return false;
+    if (!p || !this.onField(p) || (this.phase !== 'playing' && this.phase !== 'over')) return false;
     if (!Number.isInteger(n) || n < 0 || n >= C.EMOTE_NAMES.length) return false;
     if (this.time < p.emoteReadyAt || this.time < p.stunUntil || this.isControlling(p)) return false;
     p.emote = n;
@@ -869,7 +1051,7 @@ export class Game {
 
   // src: { by, kind } — 누가 무엇으로 날렸는지 (킬 판정용 lastHit)
   applyKnockback(t, dx, dy, speed, up, stunMs = C.STUN_MS, gain = 0, src = null) {
-    if (this.time < t.stunUntil) return false;
+    if (this.time < t.stunUntil || this.time < t.shieldUntil) return false; // 경직 중·부활 무적이면 무시
     t.emoteUntil = 0; // 맞으면 이모트 끊김
     const teammate = src && this.sameTeam(this.players.get(src.by), t);
     if (teammate) gain = 0; // 팀전: 같은 팀은 밀리기만 (피해 % 없음, 킬로도 안 침)
@@ -1008,6 +1190,12 @@ export class Game {
 
   updateSpawning() {
     if (this.time < this.nextSpawnAt) return;
+    if (this.mode === 'master') {
+      // 블록 마스터: 자동 블록 없이 마스터의 블록만. 떨어뜨리면 MASTER_NEXT_PIECE_MS 뒤 다음 블록 (dropPiece 가 시계를 맞춤)
+      const m = this.master();
+      if (m && !this.controlledPiece(m)) this.spawnControlled(m);
+      return;
+    }
     const holder = [...this.players.values()].find((p) => p.alive && p.hasControl) || null;
     if (holder && !this.pieces.some((pc) => pc.controller !== null)) {
       this.spawnControlled(holder);
@@ -1138,6 +1326,7 @@ export class Game {
     piece.stepMs = C.HARD_DROP_STEP_MS;
     piece.nextStepAt = this.time + C.HARD_DROP_STEP_MS;
     const name = who ? who.name : '?';
+    if (this.mode === 'master' && who && who.master) this.nextSpawnAt = this.time + C.MASTER_NEXT_PIECE_MS;
     const what = reason === 'hard' ? `하드드롭 by ${name}` : reason === 'timeout' ? `자동 낙하 (8초 초과, 조종자 ${name})` : `자동 낙하 (조종자 ${name} 사망·이탈)`;
     this.log(`  [블록] ${piece.shape} ${what} → (${piece.px},${piece.py}) 착지 z=${piece.landZ}`);
   }
@@ -1178,7 +1367,7 @@ export class Game {
   discardPiece(piece, reason) {
     this.log(`  [블록] ${piece.shape} 폐기 (${reason})`);
     this.removePiece(piece);
-    this.nextSpawnAt = Math.max(this.nextSpawnAt, this.time + this.autoSpawnDelayMs());
+    this.nextSpawnAt = Math.max(this.nextSpawnAt, this.time + (this.mode === 'master' ? C.MASTER_NEXT_PIECE_MS : this.autoSpawnDelayMs()));
     if (piece.controller !== null) this.controlItemNextAt = this.time + C.CONTROL_ITEM_RESPAWN_MS;
   }
 
@@ -1229,7 +1418,7 @@ export class Game {
   crushCheck(piece = this.piece) {
     const cells = this.pieceWorldCells(piece);
     for (const p of this.players.values()) {
-      if (!p.alive || this.isGhost(p)) continue; // 유령은 블록이 통과 (압사 면역)
+      if (!this.onField(p) || this.isGhost(p) || this.time < p.shieldUntil) continue; // 유령·부활 무적은 블록이 통과 (압사 면역)
       for (const [cx, cy, cz] of cells) {
         if (
           cx < p.x + C.PLAYER_HALF - EPS &&
@@ -1265,8 +1454,9 @@ export class Game {
     this.gridVersion++;
     this.gridDirty = true;
     this.clearLayers();
+    if (this.mode === 'kills') this.sinkIfTall();
     for (const pc of this.pieces) this.updateLanding(pc);
-    if (!piece.thrownBy) this.nextSpawnAt = Math.max(this.nextSpawnAt, this.time + this.autoSpawnDelayMs()); // 던진 블록은 자동 블록 간격에 안 끼어듦
+    if (!piece.thrownBy && this.mode !== 'master') this.nextSpawnAt = Math.max(this.nextSpawnAt, this.time + this.autoSpawnDelayMs()); // 던진 블록은 자동 블록 간격에 안 끼어듦 (마스터 블록은 dropPiece 가 정함)
     if (wasControlled) {
       this.controlItemNextAt = this.time + C.CONTROL_ITEM_RESPAWN_MS;
       // 남의 조종 블록이 끝나길 기다리던 조종권 보유자는 바로 조종 시작
@@ -1286,6 +1476,30 @@ export class Game {
       if (ok) full.push(z);
     }
     if (!full.length) return;
+    this.dropLayers(full);
+    this.emit({ type: 'clear', n: full.length });
+    this.log(`  [층 클리어] z=${full.join(',')} 제거 → 위 블록·플레이어 ${full.length}칸 내려앉음`);
+  }
+
+  // 킬 점수전: 가장 높은 기둥이 KILLS_SINK_HEIGHT 에 닿으면 맨 아래 층을 지워 전체를 한 칸씩 내림 (필드가 안 막히게)
+  sinkIfTall() {
+    let n = 0;
+    while (this.maxColumnTop() >= C.KILLS_SINK_HEIGHT) {
+      this.dropLayers([0]);
+      n++;
+    }
+    if (n) this.log(`  [가라앉음] 가장 높은 기둥 ${C.KILLS_SINK_HEIGHT}칸 → 맨 아래 ${n}층 지움, 전체가 ${n}칸 내려앉음`);
+  }
+
+  maxColumnTop() {
+    let top = 0;
+    for (let x = 0; x < C.GRID_W; x++) for (let y = 0; y < C.GRID_D; y++) top = Math.max(top, this.columnTop(x, y));
+    return top;
+  }
+
+  // 층들을 지우고 위의 블록·플레이어·용암을 그만큼 내린다
+  dropLayers(full) {
+    const layerSize = C.GRID_W * C.GRID_D;
     const next = new Uint8Array(this.grid.length);
     let dst = 0;
     for (let z = 0; z < C.GRID_H; z++) {
@@ -1297,13 +1511,12 @@ export class Game {
     this.gridVersion++;
     this.gridDirty = true;
     for (const p of this.players.values()) {
+      if (p.master) continue; // 마스터는 필드 위 하늘에 둔 채로
       let shift = 0;
       for (const z of full) if (p.z >= z + 1 - 1e-3) shift++;
       p.z -= shift;
     }
     if (this.lava.active) this.lava.z -= full.filter((z) => z < this.lava.z).length;
-    this.emit({ type: 'clear', n: full.length });
-    this.log(`  [층 클리어] z=${full.join(',')} 제거 → 위 블록·플레이어 ${full.length}칸 내려앉음`);
   }
 
   // ---------- 용암 ----------
@@ -1314,6 +1527,7 @@ export class Game {
   }
 
   updateLava(dtMs) {
+    if (this.mode === 'kills') return; // 킬 점수전은 용암 대신 아래층을 지움 (sinkIfTall)
     const lava = this.lava;
     if (!lava.active) {
       if (this.avgHeight() - this.baseAvgHeight < C.LAVA_TRIGGER_AVG_HEIGHT) return; // 시작 지형 빼고 쌓인 만큼
@@ -1327,7 +1541,7 @@ export class Game {
     lava.z = Math.min(C.GRID_H + 1, lava.z + dtMs / C.LAVA_RISE_MS_PER_CELL);
     // 필드 밖에서 용암 높이 아래로 가면 밀려 떨어진 것이라 낙사로 센다 (용암판은 필드보다 넓게 그려짐)
     for (const p of this.players.values()) {
-      if (!p.alive || p.z >= lava.z - 0.05) continue;
+      if (!this.onField(p) || p.z >= lava.z - 0.05) continue;
       const inField = p.x >= 0 && p.x < C.GRID_W && p.y >= 0 && p.y < C.GRID_D;
       this.kill(p, inField ? 'lava' : 'fall');
     }
@@ -1363,13 +1577,13 @@ export class Game {
     if (this.phase !== 'playing') return { control: null, power: null };
     const powerCount = this.items.filter((it) => it.type !== 'control').length;
     return {
-      control: this.controlInPlay() ? null : Math.max(0, this.controlItemNextAt - this.time),
+      control: this.mode === 'master' || this.controlInPlay() ? null : Math.max(0, this.controlItemNextAt - this.time),
       power: powerCount >= C.ITEM_MAX_ON_FIELD ? null : Math.max(0, this.powerItemNextAt - this.time),
     };
   }
 
   updateItems() {
-    if (!this.controlInPlay() && this.time >= this.controlItemNextAt) {
+    if (this.mode !== 'master' && !this.controlInPlay() && this.time >= this.controlItemNextAt) { // 블록 마스터는 조종권 없음
       if (!this.spawnItem('control')) this.controlItemNextAt = this.time + 1000;
     }
     const powerCount = this.items.filter((it) => it.type !== 'control').length;
@@ -1381,7 +1595,7 @@ export class Game {
       const it = this.items[i];
       it.z = this.columnTop(it.x, it.y);
       for (const p of this.players.values()) {
-        if (!p.alive) continue;
+        if (!this.onField(p)) continue;
         const dx = p.x - (it.x + 0.5);
         const dy = p.y - (it.y + 0.5);
         if (Math.hypot(dx, dy) > C.ITEM_PICK_RADIUS) continue;
@@ -1467,7 +1681,7 @@ export class Game {
           break;
         }
         for (const t of this.players.values()) {
-          if (!t.alive || t.id === pr.owner) continue;
+          if (!this.onField(t) || t.id === pr.owner) continue;
           const r = C.PROJECTILE_RADIUS;
           if (
             pr.x > t.x - C.PLAYER_HALF - r &&
@@ -1508,6 +1722,10 @@ export class Game {
   integratePlayer(p, dt) {
     if (p.ghostUntil && this.time >= p.ghostUntil) {
       p.ghostUntil = 0;
+      this.ejectFromBlocks(p);
+    }
+    if (p.shieldUntil && this.time >= p.shieldUntil) {
+      p.shieldUntil = 0; // 무적 동안 블록이 통과했으면 꼭대기로
       this.ejectFromBlocks(p);
     }
     if (this.time < p.freezeUntil) return; // 히트스톱
@@ -1621,11 +1839,14 @@ export class Game {
     let remaining = dt;
     while (remaining > 0) {
       const h = Math.min(remaining, C.MAX_STEP_DT);
-      for (const p of this.players.values()) if (p.alive) this.integratePlayer(p, h);
+      for (const p of this.players.values()) if (this.onField(p)) this.integratePlayer(p, h);
       remaining -= h;
     }
     for (const p of this.players.values()) {
-      if (p.alive && p.z < C.FALL_DEATH_Z) this.kill(p, 'fall');
+      if (this.onField(p) && p.z < C.FALL_DEATH_Z) this.kill(p, 'fall');
+    }
+    if (this.mode === 'kills') {
+      for (const p of this.participants()) if (!p.alive && p.respawnAt && this.time >= p.respawnAt) this.respawn(p);
     }
     this.updateLava(dtMs);
     this.updateItems();
@@ -1674,6 +1895,8 @@ export class Game {
         countdownLeft: this.phase === 'countdown' ? Math.max(0, this.countdownEndsAt - this.time) : 0,
         winnerId: this.winnerId,
         winnerTeam: this.winnerTeam,
+        winnerIds: this.winnerIds,
+        left: this.phase === 'playing' && this.roundEndsAt ? Math.max(0, this.roundEndsAt - this.time) : null, // 블록 마스터·킬 점수전 남은 시간
         deaths: this.deaths,
         totals: this.totals,
       },
@@ -1712,6 +1935,10 @@ export class Game {
         wins: p.wins,
         controlling: this.isControlling(p),
         cause: p.deathCause,
+        master: p.master,
+        respawnIn: !p.alive && p.respawnAt ? Math.max(0, p.respawnAt - this.time) : null,
+        shieldLeft: Math.max(0, p.shieldUntil - this.time),
+        score: this.scores.get(p.id) || 0,
       })),
       pieces: piecesOut,
       nextSpawnIn,
@@ -1720,6 +1947,8 @@ export class Game {
       botLevel: this.botLevel,
       teamMode: this.teamMode,
       teamWins: this.teamWins,
+      mode: this.mode,
+      teamScores: this.teamScores,
       map: { choice: this.mapChoice, id: this.mapId, name: MAPS[this.mapId].name },
       items: this.items,
       projectiles: this.projectiles.map((pr) => ({ x: pr.x, y: pr.y, z: pr.z })),

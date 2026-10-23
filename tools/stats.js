@@ -1,4 +1,4 @@
-// 서버 로그 요약: 판 길이·사망 원인·인원 구성별·맵별·플레이어별·아이템 사용.
+// 서버 로그 요약: 판 길이·사망 원인·인원 구성별·맵별·모드별·플레이어별·아이템 사용.
 // 실행: npm run stats              → logs/ 에서 가장 최근 서버 실행 (폴더면 그 안의 방 파일 전부)
 //       npm run stats -- a.txt b.txt → 여러 파일 (붙여 넣은 콘솔 로그도 됨), 폴더를 주면 그 안의 .txt 전부
 // 로그는 방마다 파일: logs/<서버를 켠 시각>/<방을 연 시각>_<코드>.txt (예전 서버는 logs/<시각>.txt 하나)
@@ -60,6 +60,8 @@ export function parseLog(text) {
         size: Number(m[2]),
         map: m[4],
         botLevel: m[5] || null, // 봇 난이도 (넣기 전 로그엔 없음)
+        mode: '생존', // 모드 줄이 없으면 생존 (예전 로그·생존 모드)
+        master: null, // 블록 마스터 판의 마스터
         names: m[3] ? m[3].split(' ') : null, // 옛 로그엔 참가자 목록이 없음 → 끝날 때 사망자 + 승자로 채움
         deaths: [],
         winner: null,
@@ -105,6 +107,9 @@ export function parseLog(text) {
     } else if ((m = line.match(/^ {2}팀: 빨강 ?(.*?) \/ 파랑 ?(.*)$/))) {
       // 팀전: 팀 승리를 사람별 승으로 나눔
       cur.teams = { 빨강: m[1] ? m[1].split(' ') : [], 파랑: m[2] ? m[2].split(' ') : [] };
+    } else if ((m = line.match(/^ {2}모드: (블록 마스터|킬 점수전)(?: \(마스터 (\S+?),)?/))) {
+      cur.mode = m[1];
+      cur.master = m[2] || null;
     } else if (/^ {2}\[용암\] .*용암 상승 시작/.test(line)) {
       cur.lava = true;
     } else {
@@ -116,7 +121,8 @@ export function parseLog(text) {
     const who = (name) => (isBot(name) ? name : r.conns.get(name)?.key || name);
     r.players = r.names.map((name) => ({ name, key: who(name), bot: isBot(name), aliases: [...(r.conns.get(name)?.aliases || [])] }));
     const team = r.winner && r.teams ? r.teams[r.winner.replace(/팀$/, '')] : null;
-    r.winnerKeys = team ? team.map(who) : r.winner ? [who(r.winner)] : []; // 팀전이면 그 팀 전원
+    r.winnerKeys = team ? team.map(who) : r.winner ? r.winner.split(' ').map(who) : []; // 팀전이면 그 팀 전원, 블록 마스터 생존자·킬 점수전 동점은 공백으로 여럿
+    r.masterKey = r.master ? who(r.master) : null;
     for (const d of r.deaths) {
       d.key = who(d.name);
       d.killerKey = d.killer ? who(d.killer) : d.killer;
@@ -188,13 +194,16 @@ export function summarize(rounds) {
       for (const a of p.aliases) if (a !== p.key) s.aliases.add(a);
       s.rounds++;
       if (r.winnerKeys.includes(p.key)) s.wins++;
-      const d = r.deaths.find((x) => x.key === p.key);
-      if (d) {
+      // 킬 점수전은 한 판에 여러 번 죽음 → 원인은 전부 세고, 버틴 시간은 안 셈 (부활하니까). 블록 마스터의 마스터도 버틴 시간 없음
+      const ds = r.deaths.filter((x) => x.key === p.key);
+      for (const d of ds) {
         s[d.cause]++;
-        if (d.cause !== 'disconnect') s.survive.push(d.t);
         if (d.damage !== null && d.cause !== 'disconnect') s.deathDamage.push(d.damage);
-      } else {
-        s.survive.push(r.len);
+      }
+      if (r.mode !== '킬 점수전' && p.key !== r.masterKey) {
+        const d = ds[0];
+        if (!d) s.survive.push(r.len);
+        else if (d.cause !== 'disconnect') s.survive.push(d.t);
       }
     }
     for (const d of r.deaths) if (d.killerKey && players.has(d.killerKey)) players.get(d.killerKey).kills++;
@@ -239,6 +248,12 @@ export function summarize(rounds) {
     byCause,
     byComp: group(comp),
     byMap: group((r) => r.map),
+    byMode: group((r) => r.mode).map((g) => {
+      const rs = rounds.filter((r) => r.mode === g.key);
+      const masterWins = rs.filter((r) => r.masterKey && r.winnerKeys.includes(r.masterKey)).length;
+      const note = g.key === '블록 마스터' ? `마스터 승 ${masterWins}/${rs.length}` : g.key === '킬 점수전' ? `판당 사망 ${(g.deaths / rs.length).toFixed(1)}` : '';
+      return { ...g, note };
+    }),
     players: [...players.values()].sort((a, b) => a.bot - b.bot || b.wins - a.wins),
     fallDamage,
     weapons,
@@ -266,6 +281,7 @@ export function formatReport(s) {
   const groupRows = (g) => g.map((x) => [x.key, x.rounds, fmtSec(x.lenMedian), `${pct(x.crush, x.deaths)} (${x.crush}/${x.deaths})`]);
   out.push('', '== 인원 구성별 ==', table(['구성', '판', '길이 중앙값', '압사 비율'], groupRows(s.byComp)));
   out.push('', '== 맵별 ==', table(['맵', '판', '길이 중앙값', '압사 비율'], groupRows(s.byMap)));
+  out.push('', '== 모드별 ==', table(['모드', '판', '길이 중앙값', '압사 비율', ''], groupRows(s.byMode).map((row, i) => [...row, s.byMode[i].note])));
   out.push(
     '',
     '== 플레이어별 ==',

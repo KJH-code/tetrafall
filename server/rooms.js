@@ -184,6 +184,9 @@ export class Rooms {
       case 'setMap':
         if (host) game.setMap(String(msg.map));
         break;
+      case 'setMode':
+        if (host) game.setMode(String(msg.mode));
+        break;
       case 'start':
         if (host && !game.startRound()) {
           room.out.log(`시작 거부: 참가자 ${game.participants().length}명 (최소 ${C.MIN_PLAYERS}명, 관전자 제외)`);
@@ -213,7 +216,7 @@ export class Rooms {
     return { code: room.code, name: room.name, public: room.public };
   }
 
-  // 공개 방 목록 (방 밖 화면). 판 중인지는 안 보여줌 (재혁 결정: 이름·인원·맵·팀전·봇 난이도)
+  // 공개 방 목록 (방 밖 화면). 판 중인지는 안 보여줌 (재혁 결정: 이름·인원·맵·팀전·봇 난이도, 모드)
   publicList() {
     const rooms = [];
     for (const r of this.rooms.values()) {
@@ -226,6 +229,7 @@ export class Rooms {
         bots: ps.filter((p) => p.isBot).length,
         max: maxPlayers(),
         map: r.game.mapChoice,
+        mode: r.game.mode,
         teamMode: r.game.teamMode,
         botLevel: r.game.botLevel,
       });

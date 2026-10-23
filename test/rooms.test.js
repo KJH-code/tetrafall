@@ -89,7 +89,7 @@ test('방: 없는 코드·꽉 찬 방은 거절하고 방 밖에 남김', () => 
   assert.equal(late.conn.room, null);
 });
 
-test('방: 공개는 호스트만, 판 사이에만. 목록엔 이름·사람/봇 인원·맵·팀전·봇 난이도', () => {
+test('방: 공개는 호스트만, 판 사이에만. 목록엔 이름·사람/봇 인원·맵·모드·팀전·봇 난이도', () => {
   const { rooms, logs, join } = setup();
   const a = join();
   rooms.message(a.conn, { type: 'create', name: '같이 해요' });
@@ -102,9 +102,11 @@ test('방: 공개는 호스트만, 판 사이에만. 목록엔 이름·사람/�
   rooms.message(a.conn, { type: 'teamMode', on: true });
   rooms.message(a.conn, { type: 'botLevel', level: 'hard' });
   rooms.message(a.conn, { type: 'setMap', map: 'stairs' });
+  rooms.message(a.conn, { type: 'setMode', mode: 'kills' });
+  rooms.message(b.conn, { type: 'setMode', mode: 'master' }); // 호스트 아님 → 무시
   rooms.message(a.conn, { type: 'setPublic', on: true });
   assert.deepEqual(rooms.publicList().rooms, [
-    { code, name: '같이 해요', humans: 2, bots: 1, max: Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length), map: 'stairs', teamMode: true, botLevel: 'hard' },
+    { code, name: '같이 해요', humans: 2, bots: 1, max: Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length), map: 'stairs', mode: 'kills', teamMode: true, botLevel: 'hard' },
   ]);
   assert.ok(logs[code].includes('[호스트] 방 공개'));
   // 판 중에는 못 바꿈

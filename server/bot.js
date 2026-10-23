@@ -84,7 +84,7 @@ export class BotBrain {
 
   // ---------- 상황 읽기 ----------
   enemies(g, p) {
-    return [...g.players.values()].filter((o) => o !== p && o.alive && !g.sameTeam(o, p)); // 팀전이면 같은 팀은 상대가 아님
+    return [...g.players.values()].filter((o) => o !== p && g.onField(o) && !g.sameTeam(o, p)); // 팀전이면 같은 팀은 상대가 아님, 블록 마스터의 마스터는 필드에 없음
   }
 
   // 그림자가 보이는 떨어지는 블록들 → 각각의 발자국 칸·남은 시간·위치 키
@@ -128,6 +128,13 @@ export class BotBrain {
     const danger = dangers.length ? dangers[0] : null;
 
     const mine = g.controlledPiece(p);
+    if (p.master) {
+      // 블록 마스터: 몸은 필드에 없음. 블록만 상대 위로 몬다 (다음 블록을 기다리는 동안은 아무것도 안 함)
+      this.input.fwd = 0;
+      this.input.strafe = 0;
+      if (mine) this.controlPiece(g, p, enemies, mine);
+      return;
+    }
     if (mine) {
       this.controlPiece(g, p, enemies, mine);
       // 캐릭터는 내 블록 밑·가장자리·아는 그림자를 피해 가만히 (용암이 오면 올라간다)

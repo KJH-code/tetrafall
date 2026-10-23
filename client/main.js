@@ -152,6 +152,12 @@ function killFeed(e) {
 function handleEvent(e) {
   feelEvent(e);
   switch (e.type) {
+    case 'respawn': // 킬 점수전 부활
+      if (e.who === myId) {
+        toast(`부활! ${C.KILLS_SHIELD_MS / 1000}초 무적`, 'good');
+        sound.play('go');
+      }
+      break;
     case 'hit':
       if (e.target === myId) {
         if (e.ok) {
@@ -436,7 +442,7 @@ function renderRoomList() {
     const info = document.createElement('div');
     info.className = 'info';
     const bots = r.bots ? ` + 봇 ${r.bots} (${BOT_LEVEL_KO[r.botLevel] || r.botLevel})` : '';
-    info.textContent = `사람 ${r.humans}${bots} / ${r.max}명 · 맵 ${MAP_KO[r.map] || r.map} · ${r.teamMode ? '팀전' : '개인전'}`;
+    info.textContent = `사람 ${r.humans}${bots} / ${r.max}명 · ${C.MODE_NAMES[r.mode] || '생존'} · 맵 ${MAP_KO[r.map] || r.map} · ${r.teamMode ? '팀전' : '개인전'}`;
     const btn = document.createElement('button');
     btn.textContent = r.humans + r.bots >= r.max ? '꽉 참' : '들어가기';
     btn.disabled = r.humans + r.bots >= r.max;
@@ -523,7 +529,13 @@ $('add-bot').addEventListener('click', () => send({ type: 'addBot' }));
 $('remove-bot').addEventListener('click', () => send({ type: 'removeBot' }));
 $('map-select').addEventListener('change', (e) => send({ type: 'setMap', map: e.target.value }));
 $('bot-level').addEventListener('change', (e) => send({ type: 'botLevel', level: e.target.value }));
+$('mode-select').addEventListener('change', (e) => send({ type: 'setMode', mode: e.target.value }));
 const BOT_LEVEL_KO = { easy: '쉬움', normal: '보통', hard: '어려움' };
+const MODE_DESC = {
+  survival: '생존: 마지막까지 살아남은 사람이 승',
+  master: `블록 마스터: 한 명이 하늘에서 블록만 떨어뜨리고, 나머지는 ${C.MASTER_TIME_MS / 1000}초 버티기 (각자 도생, 마스터는 판마다 돌아감)`,
+  kills: `킬 점수전: 죽어도 ${C.KILLS_RESPAWN_MS / 1000}초 뒤 부활. 킬 +1 · 자멸 -1, ${C.KILLS_TIME_MS / 60000}분 또는 ${C.KILLS_TARGET}킬 (팀 ${C.KILLS_TARGET_TEAM}킬)`,
+};
 const MAP_KO = { random: '무작위', flat: '평지', pyramid: '피라미드', stairs: '계단', bowl: '그릇', spiral: '나선 계단', pillars: '기둥 숲', fortress: '요새' };
 
 // 이름: 대기 화면 입력칸. 브라우저에 기억해 두고 접속할 때마다 보낸다 (판 사이에만 바뀜)
@@ -716,9 +728,14 @@ function onState() {
     sound.play('win');
     const wt = state.round.winnerTeam;
     // 승리 연출 (모두의 카메라가 승자에게). 팀전이면 이긴 팀에서 살아 있는 사람 (없으면 아무 팀원)
-    const star = wt ? state.players.find((x) => x.team === wt && x.alive) || state.players.find((x) => x.team === wt) : w;
+    const ws = (state.round.winnerIds || []).map(playerById).filter(Boolean); // 승자가 여럿일 수 있음 (블록 마스터 생존자, 킬 점수전 동점)
+    const star = wt ? state.players.find((x) => x.team === wt && x.alive) || state.players.find((x) => x.team === wt) : ws.find((x) => x.alive) || ws[0];
     if (star) victory = { id: star.id, until: performance.now() + C.WIN_BANNER_MS };
+    const wasMaster = lastState.players.find((x) => x.master);
     if (wt) showBig(`${TEAM_KO[wt]}팀 승리!`, hex(TEAM_MAIN[wt]), C.WIN_BANNER_MS, true);
+    else if (ws.length > 1) showBig(state.mode === 'master' ? '생존자 승리!' : '공동 승리!', '#ffe14a', C.WIN_BANNER_MS, true);
+    else if (w && wasMaster && wasMaster.id === w.id) showBig(`마스터 ${shownName(w)} 승리!`, colorOf(w), C.WIN_BANNER_MS, true);
+    else if (w && state.mode === 'master') showBig(`${shownName(w)} 혼자 버팀!`, colorOf(w), C.WIN_BANNER_MS, true);
     else if (w) showBig(`${shownName(w)} 승리!`, colorOf(w), C.WIN_BANNER_MS, true);
     else showBig('무승부', '#ddd', C.WIN_BANNER_MS, true);
   }
@@ -729,6 +746,12 @@ function onState() {
     const sp = C.SPAWN_POINTS[p.slot % C.SPAWN_POINTS.length];
     input.setYawPitch(sp.yaw, 0);
   }
+}
+
+// 승자 이름들 (블록 마스터 생존자·킬 점수전 동점이면 여럿)
+function winnersText() {
+  const ws = (state.round.winnerIds || []).map(playerById).filter(Boolean);
+  return ws.length ? ws.map(shownName).join(', ') : '무승부';
 }
 
 function fmt(ms) {
@@ -743,15 +766,23 @@ let scoreKey = '';
 function updateScore() {
   const ps = state.players.filter((p) => !p.spectator).sort((a, b) => a.slot - b.slot); // 관전자는 승수에서 뺌
   const tw = state.teamWins || { red: 0, blue: 0 };
-  const key = ps.map((p) => `${p.id}:${p.wins}:${p.nick}:${p.team}`).join(',') + `|${myId}|${state.teamMode}|${tw.red}:${tw.blue}`;
+  const kills = state.mode === 'kills' && state.phase !== 'lobby'; // 킬 점수전: 판 중·판 끝엔 승수 대신 이번 판 점수 + 남은 시간
+  const ts = state.teamScores || { red: 0, blue: 0 };
+  const left = kills && state.round.left !== null ? fmt(state.round.left) : '';
+  const key = `${kills}|${left}|` + ps.map((p) => `${p.id}:${p.wins}:${p.score}:${p.nick}:${p.team}`).join(',') + `|${myId}|${state.teamMode}|${tw.red}:${tw.blue}|${ts.red}:${ts.blue}`;
   if (key === scoreKey) return;
   scoreKey = key;
   scoreEl.classList.toggle('hidden', ps.length < 2);
   const name = (p) => `<span style="color:${colorOf(p)}" class="${p.id === myId ? 'me' : ''}">${escapeHtml(shownName(p))}</span>`;
+  const team = (t) => `<span style="color:${hex(TEAM_MAIN[t])}" class="${me() && me().team === t ? 'me' : ''}">${TEAM_KO[t]}</span>`;
+  if (kills) {
+    const tail = left ? `<span class="sep">·</span>${left}` : '';
+    if (state.teamMode) scoreEl.innerHTML = `킬 ${team('red')} ${ts.red}<span class="sep">:</span>${ts.blue} ${team('blue')}${tail}`;
+    else scoreEl.innerHTML = `킬 ${[...ps].sort((a, b) => b.score - a.score).map((p) => `${name(p)} ${p.score}`).join('<span class="sep">·</span>')}${tail}`;
+    return;
+  }
   if (state.teamMode) {
     // 팀전: 팀 승수 (내 팀에 밑줄)
-    const mine = me() && me().team;
-    const team = (t) => `<span style="color:${hex(TEAM_MAIN[t])}" class="${mine === t ? 'me' : ''}">${TEAM_KO[t]}</span>`;
     scoreEl.innerHTML = `${team('red')} ${tw.red}<span class="sep">:</span>${tw.blue} ${team('blue')}`;
   } else if (ps.length === 2) {
     const [a, b] = ps;
@@ -766,9 +797,9 @@ function updateHud() {
   if (!state || closed) return;
   const p = me();
   const isHost = state.hostId === myId;
-  const alive = state.players.filter((x) => x.alive).length;
+  const alive = state.players.filter((x) => x.alive && !x.master).length;
   const lines = [];
-  lines.push(`${p ? (p.nick ? `${p.nick} (${p.name})` : p.name) : '?'}${isHost ? ' (호스트)' : ''} · 라운드 ${state.round.n} · ${fmt(state.round.elapsed)}${state.map && state.round.n ? ` · ${state.map.name}` : ''}`);
+  lines.push(`${p ? (p.nick ? `${p.nick} (${p.name})` : p.name) : '?'}${isHost ? ' (호스트)' : ''} · 라운드 ${state.round.n} · ${fmt(state.round.elapsed)}${state.map && state.round.n ? ` · ${state.map.name}` : ''}${state.mode !== 'survival' ? ` · ${C.MODE_NAMES[state.mode]}` : ''}`);
   const maxP = Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length);
   lines.push(`플레이어 ${state.players.length}/${maxP} · 생존 ${alive}`);
   if (p && state.phase === 'playing') {
@@ -802,6 +833,20 @@ function updateHud() {
       bannerText = n === null || n === undefined ? '조종권 보유: 곧 하늘 시점으로 전환' : `조종권 보유: ${(n / 1000).toFixed(1)}초 후 하늘 시점으로 전환`;
     }
   }
+  // 블록 마스터: 마스터는 할 일·남은 시간, 생존자는 누구 블록인지·남은 시간
+  if (p && state.mode === 'master' && state.phase === 'playing' && state.round.left !== null) {
+    const m = state.players.find((x) => x.master);
+    const survivors = state.players.filter((x) => x.alive && !x.master && !x.spectator).length;
+    const left = fmt(state.round.left);
+    if (p.master) {
+      const myPiece = (state.pieces || []).find((pc) => pc.phase === 'control' && pc.controller === myId);
+      bannerText = `블록 마스터: 생존자를 다 깔아라! 남은 ${left} · 생존 ${survivors}명${myPiece ? `\n방향키 이동 · Q/E 회전 · Enter 낙하 (${(myPiece.timeLeft / 1000).toFixed(1)}초)${myPiece.fits ? '' : ' · 여기엔 못 놓음'}` : '\n다음 블록 준비 중'}`;
+      bannerColor = 'rgba(120,40,160,.9)';
+    } else if (p.alive) {
+      bannerText = `${m ? shownName(m) : '마스터'}의 블록을 피해 버티기 · 남은 ${left} · 생존 ${survivors}명`;
+      bannerColor = state.round.left < 10000 ? 'rgba(20,140,60,.9)' : 'rgba(120,40,160,.85)';
+    }
+  }
   banner.classList.toggle('hidden', bannerText === null);
   if (bannerText !== null) {
     banner.textContent = bannerText;
@@ -822,7 +867,7 @@ function updateHud() {
   } else if (state.phase === 'over') {
     const w = state.players.find((x) => x.id === state.round.winnerId);
     const wt = state.round.winnerTeam;
-    center = `라운드 ${state.round.n} 종료\n승자: ${wt ? `${TEAM_KO[wt]}팀` : w ? shownName(w) : '무승부'}`;
+    center = `라운드 ${state.round.n} 종료\n승자: ${wt ? `${TEAM_KO[wt]}팀` : winnersText()}`;
     showStart = isHost && state.canStart;
     showKeys = true;
   } else if (spectating()) {
@@ -851,9 +896,14 @@ function updateHud() {
   if (state.map && document.activeElement !== mapSel) mapSel.value = state.map.choice;
   const lvSel = $('bot-level');
   if (state.botLevel && document.activeElement !== lvSel) lvSel.value = state.botLevel;
+  const modeSel = $('mode-select');
+  if (state.mode && document.activeElement !== modeSel) modeSel.value = state.mode;
+  const modeInfo = $('mode-info');
+  modeInfo.classList.toggle('hidden', !between);
+  modeInfo.textContent = MODE_DESC[state.mode] || '';
   const mapInfo = $('map-info');
   mapInfo.classList.toggle('hidden', !(state.map && !isHost && between));
-  if (state.map) mapInfo.textContent = `맵: ${MAP_KO[state.map.choice] || state.map.choice}`;
+  if (state.map) mapInfo.textContent = `맵: ${MAP_KO[state.map.choice] || state.map.choice} · 모드: ${C.MODE_NAMES[state.mode] || state.mode}`;
   if (showBots) {
     $('add-bot').disabled = state.players.length >= Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length);
     $('remove-bot').disabled = !state.players.some((x) => x.isBot);
@@ -864,8 +914,8 @@ function updateHud() {
   const armed = !!p && p.hand === 2 && p.ammo > 0;
   const brick = !!p && p.hand === 2 && p.bricks > 0;
   const bomb = !!p && p.hand === 3 && p.bombs > 0;
-  crosshair.classList.toggle('hidden', !(input.enabled && !p.controlling));
-  updateCooldowns(p, state.phase === 'playing' && input.enabled && !p.controlling);
+  crosshair.classList.toggle('hidden', !(input.enabled && !p.controlling && !p.master));
+  updateCooldowns(p, state.phase === 'playing' && input.enabled && !p.controlling && !p.master);
   updateItemTimers();
   crosshair.classList.toggle('armed', armed || brick || bomb);
   crosshair.classList.toggle('brick', brick);
@@ -882,7 +932,7 @@ function spectating() {
   return !!state && (state.phase === 'playing' || state.phase === 'countdown') && !!p && !p.alive;
 }
 function aliveOthers() {
-  return state.players.filter((x) => x.alive && x.id !== myId).sort((a, b) => a.slot - b.slot);
+  return state.players.filter((x) => x.alive && !x.master && x.id !== myId).sort((a, b) => a.slot - b.slot); // 마스터는 필드에 없음
 }
 function nextTarget(dir = 1) {
   const list = aliveOthers();
@@ -907,6 +957,7 @@ function updateSpectate() {
   if (p.spectator) head = '관전 중 (호스트가 관전으로 바꿈)';
   else if (!p.cause) head = '이번 판은 관전 (다음 판부터 참가)';
   else head = `사망: ${CAUSE_KO[p.cause] || p.cause}${k && k.by !== null ? ` — ${nameOf(k.by) !== '?' ? nameOf(k.by) : k.byName}의 ${WEAPON_KO[k.weapon] || k.weapon}` : ''}`;
+  if (p.respawnIn !== null && p.respawnIn !== undefined) head += ` · 부활까지 ${Math.ceil(p.respawnIn / 1000)}초`;
   const now = playerById(spec.target);
   const watching = spec.overview || !now ? '전체 보기' : `${shownName(now)} 따라가는 중`;
   // 살아 있는 사람 목록 (지금 보는 사람은 ▶)
@@ -1012,7 +1063,7 @@ function updateHostPlayers(show) {
   hostPlayersEl.classList.toggle('hidden', !show);
   if (!show) return;
   const ps = [...state.players].sort((a, b) => a.slot - b.slot);
-  const key = ps.map((p) => `${p.id}:${p.spectator}:${p.nick}:${p.team}`).join(',') + `|${state.teamMode}`;
+  const key = ps.map((p) => `${p.id}:${p.spectator}:${p.nick}:${p.team}`).join(',') + `|${state.teamMode}|${state.mode}`;
   if (key === hostPlayersKey) return;
   hostPlayersKey = key;
   const title = document.createElement('div');
@@ -1025,6 +1076,7 @@ function updateHostPlayers(show) {
   const teamCheck = document.createElement('input');
   teamCheck.type = 'checkbox';
   teamCheck.checked = !!state.teamMode;
+  teamCheck.disabled = state.mode === 'master'; // 블록 마스터는 1 대 다
   teamCheck.addEventListener('change', () => send({ type: 'teamMode', on: teamCheck.checked }));
   teamLabel.append(teamCheck, ' 팀전 (빨강 vs 파랑)');
   teamRow.append(teamLabel);
@@ -1074,7 +1126,7 @@ const slotEls = [1, 2, 3].map((n) => document.querySelector(`#hotbar .slot[data-
 let shownDamage = null;
 let bottomKey = '';
 function updateBottom(p) {
-  const show = !!p && p.alive && (state.phase === 'playing' || state.phase === 'countdown');
+  const show = !!p && p.alive && !p.master && (state.phase === 'playing' || state.phase === 'countdown'); // 마스터는 몸이 없어 핫바·피해 % 없음
   bottomEl.classList.toggle('hidden', !show);
   const stunned = show && p.stunned;
   stunEl.classList.toggle('hidden', !stunned);
@@ -1094,6 +1146,7 @@ function updateBottom(p) {
   if (p.jumpLeft > 0) buffs.push(`점프↑ ${(p.jumpLeft / 1000).toFixed(1)}s`);
   if (p.speedLeft > 0) buffs.push(`이속↑ ${(p.speedLeft / 1000).toFixed(1)}s`);
   if (p.ghostLeft > 0) buffs.push(`유령 ${(p.ghostLeft / 1000).toFixed(1)}s`);
+  if (p.shieldLeft > 0) buffs.push(`부활 무적 ${(p.shieldLeft / 1000).toFixed(1)}s`);
   const slots = [
     p.blocks > 0 ? `쌓기 ×${p.blocks}` : '쌓기 —',
     p.ammo > 0 ? `투사체 ×${p.ammo}` : p.bricks > 0 ? `설치 1×2 ×${p.bricks} ${p.brickSide ? '옆' : '앞'}` : '아이템 —',
@@ -1122,7 +1175,7 @@ function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   const p = me();
-  const view = p && p.alive && p.controlling ? 'sky' : 'fps';
+  const view = p && p.alive && (p.controlling || p.master) ? 'sky' : 'fps'; // 블록 마스터는 다음 블록을 기다리는 동안에도 하늘
   if (view === 'sky' && !input.sky) {
     // 조종 시작: 보던 방향을 90도 단위로 맞추고 그 방향을 하늘 화면 위쪽으로 (W 가 계속 앞, 끝나고 돌아와도 같은 방향)
     const snapped = Math.round(input.yaw / (Math.PI / 2)) * (Math.PI / 2);

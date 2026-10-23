@@ -709,7 +709,7 @@ export class Renderer {
       if (p.speedLeft > 0 && g.userData.anim.hs > 1 && Math.random() < dt * C.SPEED_TRAIL_RATE) {
         this.effects.burst({ x: s.x, y: s.y, z: s.z + 0.15 }, null, 0xffe020, 3, 1.2, 0.07, 0.35);
       }
-      g.visible = p.alive && !(p.id === myId && view === 'fps' && this.skyBlend === 0 && !cam.victory && !cam.selfie);
+      g.visible = p.alive && !p.master && !(p.id === myId && view === 'fps' && this.skyBlend === 0 && !cam.victory && !cam.selfie); // 블록 마스터의 마스터는 필드에 없음
       const bodyMat = g.userData.bodyMat;
       // 경직 중엔 흰색으로 빠르게 깜빡임
       g.userData.color = playerColor(p, state); // 팀전이면 팀 색 (판 사이에 팀이 바뀔 수 있어 매 프레임)
@@ -722,7 +722,8 @@ export class Renderer {
       g.userData.ring.visible = skyMarks && p.id === myId;
       // 맞으면 찌그러졌다 펴짐
       // 유령화: 반투명, 점프력 상승: 초록 빛, 망치: 오른팔에 망치 머리
-      const opacity = p.ghostLeft > 0 ? 0.35 + 0.1 * Math.sin(performance.now() / 120) : 1;
+      // 킬 점수전 부활 무적도 반투명 (빠르게 깜빡)
+      const opacity = p.ghostLeft > 0 ? 0.35 + 0.1 * Math.sin(performance.now() / 120) : p.shieldLeft > 0 ? 0.45 + 0.25 * Math.sin(performance.now() / 60) : 1;
       for (const m of g.userData.mats) {
         m.transparent = opacity < 1;
         m.opacity = opacity;

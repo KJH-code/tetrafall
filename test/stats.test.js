@@ -185,3 +185,45 @@ test('통계: 기본은 가장 최근 서버 실행 (폴더면 안의 방 파일
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('통계: 모드별 — 블록 마스터 생존자 여럿 승·마스터 승, 킬 점수전은 한 판에 여러 번 죽음', () => {
+  const text = [
+    'P1 이름: 재혁',
+    '===== ROUND 1 시작 (3명: P1 P2 P3(봇), 맵 평지) =====',
+    '  모드: 블록 마스터 (마스터 P1, 1:00 버티기)',
+    '  [사망] P3(봇) 압사 @ 0:20 (위치 1.0, 2.0, 0.0, 피해 0%, 킬 P1 조종블록)',
+    '  시간 끝 (1:00) → 생존자 승',
+    '===== ROUND 1 종료 | 길이 1:00 | 승자: P2 =====',
+    '===== ROUND 2 시작 (3명: P1 P2 P3(봇), 맵 평지) =====',
+    '  모드: 블록 마스터 (마스터 P2, 1:00 버티기)',
+    '  [사망] P1 압사 @ 0:10 (위치 1.0, 2.0, 0.0, 피해 0%, 킬 P2 조종블록)',
+    '  [사망] P3(봇) 압사 @ 0:30 (위치 1.0, 2.0, 0.0, 피해 0%, 킬 P2 조종블록)',
+    '===== ROUND 2 종료 | 길이 0:30 | 승자: P2 =====',
+    '===== ROUND 3 시작 (3명: P1 P2 P3(봇), 맵 평지) =====',
+    '  모드: 블록 마스터 (마스터 P3(봇), 1:00 버티기)',
+    '===== ROUND 3 종료 | 길이 1:00 | 승자: P1 P2 =====',
+    '===== ROUND 4 시작 (2명: P1 P2, 맵 평지) =====',
+    '  모드: 킬 점수전 (3:00 또는 7킬)',
+    '  [사망] P2 낙사 @ 0:10 (위치 1.0, 2.0, -4.0, 피해 50%, 킬 P1 밀치기)',
+    '  [점수] P1 +1 → 1',
+    '  [사망] P2 낙사 @ 0:40 (위치 1.0, 2.0, -4.0, 피해 70%, 킬 P1 밀치기)',
+    '  [사망] P1 낙사 @ 0:50 (위치 1.0, 2.0, -4.0, 피해 20%, 킬 없음)',
+    '===== ROUND 4 종료 | 길이 3:00 | 승자: P1 =====',
+    '  사망: P2 낙사@0:10, P2 낙사@0:40, P1 낙사@0:50',
+  ].join('\n');
+  const rounds = parseLog(text);
+  assert.deepEqual(rounds.map((r) => r.mode), ['블록 마스터', '블록 마스터', '블록 마스터', '킬 점수전']);
+  assert.deepEqual(rounds[2].winnerKeys, ['재혁', 'P2'], '생존자 여럿 승');
+  const s = summarize(rounds);
+  const row = (k) => s.players.find((p) => p.key === k);
+  assert.equal(row('재혁').wins, 2);
+  assert.equal(row('P2').wins, 3);
+  assert.equal(row('P2').fall, 2, '킬 점수전에서 두 번 죽음');
+  assert.equal(row('P2').deathDamage.length, 2);
+  assert.equal(row('재혁').kills, 3, '마스터 킬 1 + 킬 점수전 2');
+  const mode = Object.fromEntries(s.byMode.map((g) => [g.key, g]));
+  assert.equal(mode['블록 마스터'].rounds, 3);
+  assert.equal(mode['블록 마스터'].note, '마스터 승 1/3');
+  assert.equal(mode['킬 점수전'].note, '판당 사망 3.0');
+  assert.ok(formatReport(s).includes('== 모드별 =='));
+});
