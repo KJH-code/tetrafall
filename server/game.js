@@ -175,6 +175,7 @@ export class Game {
       nextPieceAt: 0, // 블록 마스터: 마스터 편 각자의 다음 블록 시각
       respawnAt: 0, // 킬 점수전: 죽은 뒤 부활하는 시각 (0 = 부활 안 함)
       shieldUntil: 0, // 킬 점수전: 부활 직후 무적 (안 밀리고 안 깔림)
+      wallBounced: false, // 이번 넉백에서 벽 튕김을 이미 했나
       input: { fwd: 0, strafe: 0, jump: false },
     };
     this.players.set(id, p);
@@ -1108,6 +1109,7 @@ export class Game {
     t.kby = (dy / len) * speed * mult;
     t.vz = up;
     t.grounded = false;
+    t.wallBounced = false; // 벽 튕김은 맞을 때마다 한 번
     t.stunUntil = this.time + stunMs;
     t.freezeUntil = this.time + C.HITSTOP_MS; // 멈칫 뒤에 날아간다 (날아가는 거리는 그대로)
     return true;
@@ -1872,8 +1874,18 @@ export class Game {
       for (const h of hits) if (h[ai] + 1 > edge) edge = h[ai] + 1;
       p[axis] = edge + C.PLAYER_HALF;
     }
-    if (axis === 'x') p.kbx = 0;
-    else p.kby = 0;
+    // 넉백으로 날아가다 벽에 박히면 그 속도를 위로 바꿔 넘김 (맞을 때마다 한 번). 오르는 동안은 수평 넉백을 살려 둬서 넘으면 계속 날아감
+    const kb = axis === 'x' ? 'kbx' : 'kby';
+    const speed = Math.abs(p[kb]);
+    if (this.time < p.stunUntil && speed >= C.WALL_BOUNCE_MIN_SPEED) {
+      if (!p.wallBounced) {
+        p.wallBounced = true;
+        p.vz = Math.max(p.vz, Math.min(C.WALL_BOUNCE_MAX_UP, speed * C.WALL_BOUNCE_RATIO));
+        p.grounded = false;
+      }
+      if (p.vz > 0) return;
+    }
+    p[kb] = 0;
   }
 
   // ---------- 틱 ----------

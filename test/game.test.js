@@ -1805,3 +1805,42 @@ test('관전 전환: 판 사이에만, 관전자는 판에 안 들어가고 시�
   g.startRound();
   assert.equal(p3.alive, true, '참가로 돌리면 다음 판에 들어감');
 });
+
+// 벽 튕김: x=6 에 높이 2 벽, 그 앞에서 +x 로 날림
+function wallSetup(damage) {
+  const { g, p1, p2 } = setup();
+  g.controlItemNextAt = Infinity;
+  g.powerItemNextAt = Infinity;
+  for (let y = 0; y < C.GRID_D; y++) for (let z = 0; z < 2; z++) g.grid[g.idx(6, y, z)] = 1;
+  g.gridChanged();
+  Object.assign(p1, { x: 1.5, y: 1.5, z: 0 });
+  Object.assign(p2, { x: 5.5, y: 4.5, z: 0, damage, vz: 0, kbx: 0, kby: 0, grounded: true });
+  return { g, p2 };
+}
+
+test('벽 튕김: 높은 % 로 날아가다 벽에 박히면 위로 튕겨 벽을 넘어감, 낮은 % 는 벽에 막힘', () => {
+  const hi = wallSetup(200);
+  hi.g.applyKnockback(hi.p2, 1, 0, C.PUSH_KB_SPEED, C.PUSH_KB_UP, C.STUN_MS, 0, { by: 1, kind: 'push' });
+  run(hi.g, 1500);
+  assert.ok(hi.p2.x > 7 || !hi.p2.alive, `200% 는 2칸 벽을 넘음 (x=${hi.p2.x.toFixed(2)})`);
+  const lo = wallSetup(0);
+  lo.g.applyKnockback(lo.p2, 1, 0, C.PUSH_KB_SPEED, C.PUSH_KB_UP, C.STUN_MS, 0, { by: 1, kind: 'push' });
+  run(lo.g, 1500);
+  assert.ok(lo.p2.x < 6 && lo.p2.alive, `0% 는 벽 앞에서 멈춤 (x=${lo.p2.x.toFixed(2)})`);
+});
+
+test('벽 튕김: 맞을 때만 (대시로 벽에 부딪히면 안 뜸), 한 번 맞으면 한 번만', () => {
+  const { g, p2 } = wallSetup(0);
+  p2.kbx = C.DASH_SPEED; // 대시 (경직 아님)
+  run(g, 300);
+  assert.ok(p2.z < 0.01 && p2.x < 6, '대시는 그냥 멈춤');
+  p2.damage = 150;
+  g.applyKnockback(p2, 1, 0, C.PUSH_KB_SPEED, C.PUSH_KB_UP, C.STUN_MS, 0, { by: 1, kind: 'push' });
+  let bounces = 0;
+  for (let t = 0; t < 1500; t += TICK) {
+    const before = p2.vz;
+    g.tick(TICK);
+    if (p2.vz > 1 && p2.vz > before + 1) bounces++; // 위로 뜨는 속도가 새로 생김 (착지해서 0 이 되는 건 안 셈)
+  }
+  assert.equal(bounces, 1, '한 번 맞으면 한 번만 튕김');
+});
