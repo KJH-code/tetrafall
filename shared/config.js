@@ -293,12 +293,20 @@ export const CONFIG = {
   ANIM_STRETCH: 0.12, // 위로 뛰어오를 때 늘어나는 비율
   ANIM_LAND_SQUASH: 0.2, // 착지 순간 납작해지는 비율
   ANIM_LAND_S: 0.2, // 착지 찌그러짐이 풀리는 시간 (초)
-  SPECTATE_BACK: 3.2, // 관전 3인칭 카메라: 따라가는 사람 뒤로 (칸)
-  SPECTATE_TURN: 6, // 관전 카메라가 따라가는 사람의 방향으로 도는 빠르기
+  // 관전 카메라 (2026-10-23 재혁: 마우스로 둘레를 돌리고 휠로 거리, 블록이 가리면 앞으로 당김)
+  SPECTATE_DIST: 4.5, // 따라가기: 처음 거리 (칸)
+  SPECTATE_DIST_MIN: 2, // 휠로 당길 수 있는 가장 가까운 거리
+  SPECTATE_DIST_MAX: 12, // 휠로 멀어질 수 있는 가장 먼 거리
+  SPECTATE_LOOK_UP: 1, // 따라가기: 발 위로 이만큼 높은 점을 바라봄 (칸)
+  SPECTATE_CAM_MARGIN: 0.3, // 블록이 가리면 막힌 칸에서 이만큼 앞에 카메라
+  SPECTATE_OVERVIEW_DIST: 14, // 전체 보기: 처음 거리 (필드 가운데에서)
+  SPECTATE_OVERVIEW_MIN: 6,
+  SPECTATE_OVERVIEW_MAX: 24,
+  SPECTATE_OVERVIEW_FOLLOW: 2, // 전체 보기가 살아 있는 사람들 높이로 따라 올라가는 빠르기 (1/초)
+  SPECTATE_ZOOM_STEP: 1.15, // 휠 한 칸에 거리를 이만큼 곱하거나 나눔
   BEAM_RADIUS: 0.05, // 조종 빛줄기 굵기 (칸)
   BEAM_OPACITY: 0.35, // 조종 빛줄기 기본 불투명도
   BEAM_PULSE: 0.2, // 조종 빛줄기 깜빡임 폭
-  SPECTATE_UP: 2.2, // 관전 3인칭 카메라: 발 위로 (칸)
   KILLFEED_MS: 6000, // 오른쪽 위 킬 알림이 떠 있는 시간
   KILLFEED_MAX: 5, // 킬 알림 최대 줄 수
   INPUT_SEND_RATE: 30, // 입력 전송 Hz

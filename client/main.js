@@ -875,7 +875,7 @@ function updateHud() {
 
 // ---------- 관전: 죽었거나 관전자면 살아 있는 사람을 3인칭으로 따라감 ----------
 // 클릭·스페이스 = 다음 사람, 우클릭 = 전체 보기 ↔ 따라가기
-const spec = { target: null, overview: false, killed: null, round: null };
+const spec = { target: null, overview: false, killed: null, round: null, dist: C.SPECTATE_DIST, overviewDist: C.SPECTATE_OVERVIEW_DIST };
 const specEl = $('spec');
 function spectating() {
   const p = me();
@@ -909,12 +909,23 @@ function updateSpectate() {
   else head = `사망: ${CAUSE_KO[p.cause] || p.cause}${k && k.by !== null ? ` — ${nameOf(k.by) !== '?' ? nameOf(k.by) : k.byName}의 ${WEAPON_KO[k.weapon] || k.weapon}` : ''}`;
   const now = playerById(spec.target);
   const watching = spec.overview || !now ? '전체 보기' : `${shownName(now)} 따라가는 중`;
-  specEl.textContent = `${head}\n${watching} · 클릭/스페이스 다음 사람 · 우클릭 ${spec.overview ? '따라가기' : '전체 보기'}`;
+  // 살아 있는 사람 목록 (지금 보는 사람은 ▶)
+  const alive = aliveOthers();
+  const list = alive.map((x) => `${!spec.overview && x.id === spec.target ? '▶ ' : ''}${shownName(x)} ${x.damage}%`).join('   ');
+  const text = `${head}\n${watching} · 마우스 돌리기 · 휠 거리 · 클릭/스페이스 다음 사람 · 우클릭 ${spec.overview ? '따라가기' : '전체 보기'}${list ? `\n살아 있음: ${list}` : ''}`;
+  if (specEl.textContent !== text) specEl.textContent = text;
 }
 document.addEventListener('mousedown', (e) => {
   if (!spectating()) return;
   if (e.button === 0) nextTarget(1);
   if (e.button === 2) spec.overview = !spec.overview;
+});
+// 휠: 관전 카메라 거리 (따라가기·전체 보기 따로)
+document.addEventListener('wheel', (e) => {
+  if (!spectating() || !e.deltaY) return;
+  const k = e.deltaY > 0 ? C.SPECTATE_ZOOM_STEP : 1 / C.SPECTATE_ZOOM_STEP;
+  if (spec.overview || !playerById(spec.target)) spec.overviewDist = Math.min(C.SPECTATE_OVERVIEW_MAX, Math.max(C.SPECTATE_OVERVIEW_MIN, spec.overviewDist * k));
+  else spec.dist = Math.min(C.SPECTATE_DIST_MAX, Math.max(C.SPECTATE_DIST_MIN, spec.dist * k));
 });
 document.addEventListener('keydown', (e) => {
   if (e.code !== 'Space' || e.repeat || !spectating() || document.activeElement === nameInput) return;
@@ -1126,7 +1137,7 @@ function frame(now) {
     music.update();
     const vic = state && state.phase === 'over' && performance.now() < victory.until ? victory.id : null;
     const selfie = p && p.alive && p.emote >= 0 && !vic ? myId : null; // 내 이모트는 앞에서 보이게
-    renderer.render(state, myId, dt, view, { yaw: input.yaw, pitch: input.pitch, follow: spectating() && !spec.overview ? spec.target : null, victory: vic, selfie });
+    renderer.render(state, myId, dt, view, { yaw: input.yaw, pitch: input.pitch, follow: spectating() && !spec.overview ? spec.target : null, dist: spec.dist, overviewDist: spec.overviewDist, victory: vic, selfie });
     updateHud();
   } catch (err) {
     if (!frameErrorShown) console.error('프레임 에러 (계속 그림):', err);

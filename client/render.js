@@ -5,6 +5,7 @@ import { toon, noOutline } from '/toon.js';
 import { buildCharacter } from '/character.js';
 import { Effects } from '/effects.js';
 import { CELL, SHAPE_NAMES } from '/shared/pieces.js';
+import { orbitEye } from '/shared/camera.js';
 import { itemModel } from '/models.js';
 import { makeTextures } from '/textures.js';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
@@ -666,6 +667,17 @@ export class Renderer {
   }
 
   // state: 최신 서버 스냅샷, myId: 내 플레이어 id, dt: 프레임 시간(초), view: 'fps' | 'sky'
+  // 관전 카메라 가림 검사: 격자 칸이 차 있거나, 필드 안쪽 바닥(z<0) 아래
+  solidAt(state, x, y, z) {
+    const gx = Math.floor(x);
+    const gy = Math.floor(y);
+    const gz = Math.floor(z);
+    if (gx < 0 || gy < 0 || gx >= C.GRID_W || gy >= C.GRID_D) return false;
+    if (gz < 0) return true;
+    if (gz >= C.GRID_H || !state.grid) return false;
+    return state.grid[(gz * C.GRID_D + gy) * C.GRID_W + gx] !== 0;
+  }
+
   render(state, myId, dt, view, cam) {
     if (!state) return;
     this.stepView(view, dt);
@@ -881,23 +893,20 @@ export class Renderer {
       const cp = Math.cos(cam.pitch);
       look.set(eye.x + cp * Math.cos(cam.yaw), eye.y + cp * Math.sin(cam.yaw), eye.z + Math.sin(cam.pitch));
     } else if (cam.follow !== null && cam.follow !== undefined && this.smooth.has(cam.follow)) {
-      // 관전: 따라가는 사람 뒤 위에서 (그 사람이 보는 방향으로). 방향은 부드럽게 따라 돎
+      // 관전: 따라가는 사람 둘레를 마우스(yaw·pitch)로 돌고 휠로 거리. 블록이 가리면 앞으로 당김
       const s = this.smooth.get(cam.follow);
-      const target = state.players.find((p) => p.id === cam.follow);
-      const want = target ? target.yaw : 0;
-      if (this.followId !== cam.follow) {
-        this.followId = cam.follow;
-        this.followYaw = want;
-      }
-      const d = Math.atan2(Math.sin(want - this.followYaw), Math.cos(want - this.followYaw));
-      this.followYaw += d * (1 - Math.exp(-C.SPECTATE_TURN * dt));
-      eye.set(s.x - Math.cos(this.followYaw) * C.SPECTATE_BACK, s.y - Math.sin(this.followYaw) * C.SPECTATE_BACK, s.z + C.SPECTATE_UP);
-      look.set(s.x, s.y, s.z + C.PLAYER_HEIGHT * 0.6);
+      look.set(s.x, s.y, s.z + C.SPECTATE_LOOK_UP);
+      const e = orbitEye(look, cam.yaw, cam.pitch, cam.dist ?? C.SPECTATE_DIST, (x, y, z) => this.solidAt(state, x, y, z), { margin: C.SPECTATE_CAM_MARGIN });
+      eye.set(e.x, e.y, e.z);
     } else {
-      // 죽었거나 아직 없음: 필드 밖 관전 시점 (마우스로 돌릴 수 있음)
-      this.followId = null;
-      eye.set(C.GRID_W / 2 - Math.cos(cam.yaw) * 10, C.GRID_D / 2 - Math.sin(cam.yaw) * 10, 7);
-      look.set(C.GRID_W / 2, C.GRID_D / 2, 2);
+      // 죽었거나 아직 없음: 전체 보기. 필드 가운데를 살아 있는 사람들 높이에서 바라보며 마우스로 돌고 휠로 거리
+      const alive = state.players.filter((p) => p.alive && this.smooth.has(p.id));
+      const want = alive.length ? alive.reduce((a, p) => a + this.smooth.get(p.id).z, 0) / alive.length + C.SPECTATE_LOOK_UP : 2;
+      if (this.overviewZ === undefined) this.overviewZ = want;
+      this.overviewZ += (want - this.overviewZ) * (1 - Math.exp(-C.SPECTATE_OVERVIEW_FOLLOW * dt));
+      look.set(C.GRID_W / 2, C.GRID_D / 2, this.overviewZ);
+      const e = orbitEye(look, cam.yaw, cam.pitch, cam.overviewDist ?? C.SPECTATE_OVERVIEW_DIST);
+      eye.set(e.x, e.y, Math.max(0.5, e.z));
     }
     this.victoryCamera(state, cam, dt, eye, look);
 
