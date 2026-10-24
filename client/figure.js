@@ -11,7 +11,7 @@ import { itemModel } from '/models.js';
 const eyeWhiteMat = noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff }));
 const pupilMat = noOutline(new THREE.MeshBasicMaterial({ color: 0x111111 }));
 
-const flat = (color) => toon({ color, flatShading: true });
+const flat = (color) => toon({ color }); // (MeshToonMaterial 엔 flatShading 이 없음. 각진 느낌은 저폴리 도형으로)
 
 // 체형 (칸). foot 발 두께, shin·thigh 다리 마디, torso 몸통 높이, chestR·waistR 가슴·허리 반지름, depth 앞뒤 납작함,
 // barrel 이면 몸통이 둥근 통, head·headW 머리 높이·폭, sink 머리가 어깨에 묻히는 깊이, upper·lower 팔 마디, armR·foreR 팔 굵기,

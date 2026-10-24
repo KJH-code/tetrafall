@@ -114,16 +114,6 @@ function escapeHtml(s) {
 
 const KIND_KO = { push: '밀치기', projectile: '투사체', weapon: '망치', shock: '설치 블록 충격파', bomb: '폭탄', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', whirl: '회오리' };
 const ITEM_KO = { control: '조종권', knockback: '투사체', weapon: '망치', jump: '점프력 상승', ghost: '유령화', brick: '설치 블록', bomb: '폭탄', speed: '이속 증가' };
-const ITEM_HELP = {
-  control: '조종권 획득! 블록을 하늘에서 조종합니다',
-  knockback: '투사체 획득! 우클릭으로 발사',
-  weapon: `망치 획득! ${C.WEAPON_USES}번 동안 좌클릭이 2배로 밀고 오래 기절시킴`,
-  jump: `점프력 상승! ${C.JUMP_BOOST_MS / 1000}초 동안 2칸 벽도 넘음`,
-  ghost: `유령화! ${C.GHOST_MS / 1000}초 동안 블록 통과, 떨어지는 블록에도 안 깔림`,
-  speed: `이속 증가! ${C.SPEED_MS / 1000}초 동안 ${C.SPEED_MULT}배 빠르게`,
-  brick: `설치 블록 1×2 ${C.BRICK_USES}개! 우클릭으로 조준한 곳(최대 ${C.BRICK_RANGE}칸)에 떨어뜨림 · 깔리면 압사, 옆은 충격파 · Q/E 로 앞↔옆`,
-  bomb: `폭탄! (3번 칸) 우클릭으로 던지면 ${C.BOMB_FUSE_MS / 1000}초 뒤 터져 블록을 부수고 근처 사람을 날림`,
-};
 const CAUSE_KO = { crush: '압사', fall: '낙사', lava: '용암' };
 const WEAPON_KO = { push: '밀치기', weapon: '망치', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종 블록', thrown: '설치 블록', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', whirl: '회오리' };
 
@@ -150,6 +140,17 @@ function killFeed(e) {
   setTimeout(() => (row.style.opacity = 0), C.KILLFEED_MS);
   setTimeout(() => row.remove(), C.KILLFEED_MS + 600);
 }
+
+// 대기 화면 '조작법' 버튼: 긴 설명은 눌렀을 때만
+$('keys-btn').addEventListener('click', () => $('keys-text').classList.toggle('hidden'));
+// 판 중 조작법: H 를 누르고 있는 동안만 (글이 화면을 덮지 않게)
+const helpEl = $('help');
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyH' && !e.repeat && document.activeElement?.tagName !== 'INPUT') helpEl.classList.remove('hidden');
+});
+document.addEventListener('keyup', (e) => {
+  if (e.code === 'KeyH') helpEl.classList.add('hidden');
+});
 
 // 필살기: 모두의 화면 가운데 큰 글자
 const ultEl = $('ultmsg');
@@ -241,24 +242,11 @@ function handleEvent(e) {
         sound.play('go');
       }
       break;
-    case 'hit':
-      if (e.target === myId) {
-        if (e.ok) {
-          flashScreen('rgba(255,210,0,.45)');
-          toast(`${nameOf(e.by)}의 ${KIND_KO[e.kind]}에 맞음!${e.crit ? ' (치명타)' : ''}`, 'me');
-        }
-      } else if (e.by === myId) {
-        if (e.crit) toast(`치명타! ${KIND_KO[e.kind]}`, 'crit');
-        else toast(e.ok ? `${KIND_KO[e.kind]} 명중!` : `${KIND_KO[e.kind]} 명중했지만 상대가 무적이라 무효`, e.ok ? 'good' : '');
-      }
+    case 'hit': // 글자 알림 없이 화면 번쩍·소리·이펙트·콤보 숫자로 (2026-10-24 재혁: 글이 너무 많음)
+      if (e.target === myId && e.ok) flashScreen('rgba(255,210,0,.45)');
       break;
-    case 'pickup':
-      if (e.who === myId) {
-        const help = ITEM_HELP[e.item];
-        toast((typeof help === 'function' ? help() : help) || `${ITEM_KO[e.item] || e.item} 획득`, 'good');
-      } else {
-        toast(`${nameOf(e.who)} ${ITEM_KO[e.item] || e.item} 획득`);
-      }
+    case 'pickup': // 내가 먹은 것만 짧게 (쓰는 법은 아래 아이템 칸)
+      if (e.who === myId) toast(`${ITEM_KO[e.item] || e.item}!`, 'good');
       break;
     case 'controlStart':
       if (e.who !== myId) toast(`${nameOf(e.who)} 블록 조종 시작. 그림자를 조심!`);
@@ -273,10 +261,10 @@ function handleEvent(e) {
       }
       break;
     case 'lava':
-      toast('용암이 올라온다! 높은 곳으로 올라가세요', 'me');
+      toast('용암! 위로', 'me');
       break;
     case 'clear':
-      toast(`층 클리어! 위에 있던 것들이 ${e.n}칸 내려앉음`);
+      toast('층 클리어!');
       break;
     default:
   }
@@ -619,12 +607,7 @@ $('bot-level').addEventListener('change', (e) => send({ type: 'botLevel', level:
 $('mode-select').addEventListener('change', (e) => send({ type: 'setMode', mode: e.target.value }));
 const BOT_LEVEL_KO = { easy: '쉬움', normal: '보통', hard: '어려움' };
 // 캐릭터 설명 (대기 화면). 수치는 config
-const CHAR_DESC = {
-  tank: `패시브: 맞을 때 피해 % 가 덜 쌓임 (×${C.TANK_DAMAGE_TAKEN}) · F 돌진: 앞으로 들이받아 피해 ${C.TANK_CHARGE_DAMAGE}% (쿨 ${C.SKILL_CD_MS.tank / 1000}초) · R 내려찍기: 떠올랐다 쾅, 주변 ${C.TANK_SLAM_RANGE}칸을 위로 띄움 (피해 ${C.TANK_SLAM_DAMAGE}%)`,
-  ninja: `콤보 캐릭터 · 패시브: 이동 ×${C.NINJA_SPEED_MULT} · F 순간 베기: ${C.NINJA_BLINK_DIST}칸 앞으로 지나가며 벰 (피해 ${C.NINJA_SLASH_DAMAGE}%, 쿨 ${C.SKILL_CD_MS.ninja / 1000}초) · R 그림자 일격: ${C.NINJA_STRIKE_RANGE}칸 안 상대 등 뒤로 → 치명타, 맞히면 F 초기화`,
-  builder: `패시브: 설치 블록 아이템 +${C.BUILDER_BRICK_BONUS} · F 솟는 벽: 앞에 가로 ${C.BUILDER_WALL_WIDTH} × ${C.BUILDER_WALL_HEIGHT}층이 솟으며 위의 상대를 띄움 (쿨 ${C.SKILL_CD_MS.builder / 1000}초) · R 블록 비: 조준한 곳에 블록 ${C.BUILDER_RAIN_CELLS.length}개`,
-  hook: `패시브: 밀치기 사거리 ×${C.HOOK_PUSH_RANGE_MULT} · F 갈고리: ${C.HOOK_RANGE}칸 안 상대를 당김 + 피해 ${C.HOOK_DAMAGE}% (쿨 ${C.SKILL_CD_MS.hook / 1000}초, 평타 → 갈고리 → 평타) · R 회오리: 주변 ${C.HOOK_ULT_RANGE}칸을 모아 튕김`,
-};
+const CHAR_DESC = Object.fromEntries(C.CHARACTERS.map((c) => [c, `F ${C.SKILL_NAMES[c]} · R ${C.ULT_NAMES[c]}`])); // 짧게 (2026-10-24 재혁: 글이 너무 많음)
 
 const MODE_DESC = {
   survival: '생존: 마지막까지 살아남은 사람이 승',
@@ -892,23 +875,11 @@ function updateHud() {
   if (!state || closed) return;
   const p = me();
   const isHost = state.hostId === myId;
-  const alive = state.players.filter((x) => x.alive && !x.master).length;
-  const lines = [];
-  lines.push(`${p ? (p.nick ? `${p.nick} (${p.name})` : p.name) : '?'}${isHost ? ' (호스트)' : ''} · 라운드 ${state.round.n} · ${fmt(state.round.elapsed)}${state.map && state.round.n ? ` · ${state.map.name}` : ''}${state.mode !== 'survival' ? ` · ${C.MODE_NAMES[state.mode]}` : ''}`);
   const maxP = Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length);
-  lines.push(`플레이어 ${state.players.length}/${maxP} · 생존 ${alive}`);
-  if (p && state.phase === 'playing') {
-    // 피해 %·경직·버프·핫바는 화면 아래 가운데 (updateBottom). 여기엔 사망과 용암만
-    if (p.spectator) lines.push('관전');
-    else if (!p.alive) lines.push(`사망 (${CAUSE_KO[p.cause] || p.cause})`);
-    if (state.lava && state.lava.active) {
-      const above = p.alive ? (p.z - state.lava.z).toFixed(1) : '-';
-      lines.push(`용암 높이 ${Math.max(0, state.lava.z).toFixed(1)} · 내 발 위로 ${above}칸`);
-    }
-  }
-  const t = state.round.totals;
-  lines.push(`누적 ${t.rounds}판 · 압사 ${t.crush} · 낙사 ${t.fall} · 용암 ${t.lava || 0}`);
-  statusEl.textContent = lines.join('\n');
+  // 왼쪽 위: 판 중에만 시간 하나 (남은 시간이 있는 모드는 남은 시간)
+  const timeShown = state.phase === 'playing' ? fmt(state.round.left ?? state.round.elapsed) : null;
+  statusEl.classList.toggle('hidden', timeShown === null);
+  statusEl.textContent = timeShown || '';
 
   updateScore();
   updateBig();

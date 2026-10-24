@@ -8,7 +8,7 @@
     html, body { margin: 0; height: 100%; background: #111; color: #eee; font-family: system-ui, sans-serif; overflow: hidden; }
     canvas { display: block; }
     #hud { position: fixed; inset: 0; pointer-events: none; }
-    #status { position: absolute; top: 10px; left: 10px; font-size: 14px; line-height: 1.5; background: rgba(0,0,0,.45); padding: 8px 10px; border-radius: 6px; white-space: pre; }
+    #status { position: absolute; top: 10px; left: 10px; font-size: 16px; font-weight: bold; line-height: 1.5; background: rgba(0,0,0,.45); padding: 4px 10px; border-radius: 6px; white-space: pre; }
     #center { position: absolute; top: calc(50% + 26px); left: 50%; transform: translate(-50%, -50%); text-align: center; font-size: 20px; background: rgba(0,0,0,.55); padding: 14px 20px; border-radius: 8px; pointer-events: auto; max-height: calc(100vh - 80px); overflow-y: auto; box-sizing: border-box; } /* 대기 화면 줄이 늘어도 창 안에 (넘치면 스크롤) */
     #center-text { white-space: pre; }
     #center button { font-size: 18px; padding: 8px 18px; margin-top: 10px; cursor: pointer; }
@@ -205,8 +205,9 @@
         <label id="char-label" style="margin-left:8px">캐릭터 <select id="char-select" style="font-size:15px"></select></label>
         <div id="char-info"></div></div>
       <div id="keys" class="keys hidden">
-        <button class="settings-btn" style="float:right;font-size:14px;padding:3px 12px;margin:0">설정 (감도·소리·시야각·그림자)</button>
-        <b>조작법</b><br />
+        <button class="settings-btn" style="font-size:14px;padding:3px 12px;margin:0">설정</button>
+        <button id="keys-btn" style="font-size:14px;padding:3px 12px;margin:0 0 0 6px">조작법</button>
+        <div id="keys-text" class="hidden" style="margin-top:8px">
         WASD 이동 · Space 점프 (공중에서 한 번 더) · Shift 대시 · <b>F</b> 캐릭터 스킬 · <b>R</b> 필살기 (때리거나 맞으면 게이지가 참)<br />
         <b>좌클릭</b> 밀치기 (가까운 상대를 바라보는 쪽으로 밀어냄)<br />
         <b>우클릭</b> 든 아이템 쓰기 — 아이템은 <b>하나만</b> 들 수 있음 (들고 있으면 다른 걸 못 주움)<br />
@@ -216,9 +217,10 @@
         블록 마스터의 마스터: 방향키 이동 · Q/E 회전 · <b>Enter 낙하</b><br />
         공중에서 떨어지면서 위에서 밀치기·망치를 맞히면 <b>치명타</b> (피해 ×<span id="crit-dmg"></span>, 더 멀리)<br />
         상대를 블록에 깔리게(압사) 하거나 밖으로 떨어뜨리면(낙사) 승리. 블록이 쌓이면 용암이 올라온다 — 위로!
-      </div>
+        <br />판 중에는 <b>H</b> 를 누르고 있으면 조작법이 보임
+      </div></div>
     </div>
-    <div id="help">WASD 이동 · Space 점프·2단 점프 · Shift 대시 · 좌클릭 밀치기 · F 스킬 · R 필살기
+    <div id="help" class="hidden">WASD 이동 · Space 점프·2단 점프 · Shift 대시 · 좌클릭 밀치기 · F 스킬 · R 필살기
 우클릭 든 아이템 쓰기 (하나만) · Q/E 1×2 방향
 블록 마스터: 방향키 블록 이동 · Q/E 회전 · Enter 하드드롭</div>
   </div>
