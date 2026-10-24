@@ -336,6 +336,7 @@ export const CONFIG = {
   ROBOT_RUN_SPEED: 3.2, // 이 속도(칸/초)보다 빠르면 로봇이 달리기 동작
   ROBOT_FADE_S: 0.15, // 로봇 동작이 바뀔 때 섞는 시간
   FIGURE_CHARS: ['tank'], // TABS 식 몸(client/figure.js)으로 그리는 캐릭터. 2026-10-24 시안: 탱크만, 나머지는 로봇 + 머리 장식
+  FIGURE_BODY: { tank: 'brute' }, // 캐릭터별 체형 (client/figure.js BODIES: lean 보통 · brute 거대 상체 · drum 드럼통)
   FIGURE_FOLLOW: 14, // 관절이 목표 자세를 따라가는 빠르기 (/초). 낮을수록 늦게 따라와 흐느적
   FIGURE_ARM_SPREAD: 0.22, // 가만히 있을 때 팔을 옆으로 벌린 각 (라디안)
   FIGURE_WALK_LEG: 0.7, // 걸을 때 허벅지를 앞뒤로 드는 최대 각
