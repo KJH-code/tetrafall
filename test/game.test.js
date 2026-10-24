@@ -59,11 +59,11 @@ test('자동 낙하: O 블록이 바닥에 착지해 격자에 기록된다', ()
 
 test('그림자: 착지 SHADOW_LEAD_MS 전부터만 보인다', () => {
   const { g } = setup();
-  fallingPiece(g, 'O', 0, 0, 0);
-  g.tick(TICK);
+  const piece = fallingPiece(g, 'O', 0, 0, 0);
+  const fallMs = (piece.pz - piece.landZ) * C.AUTO_FALL_STEP_MS; // 바닥까지 떨어지는 시간
+  run(g, fallMs - C.SHADOW_LEAD_MS - 300);
   assert.equal(g.snapshot().pieces[0].shadowVisible, false);
-  // 12칸 × 500ms = 6초 낙하. 3.5초 후엔 보여야 한다
-  run(g, 3500);
+  run(g, 600);
   assert.equal(g.snapshot().pieces[0].shadowVisible, true);
 });
 

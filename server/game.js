@@ -163,6 +163,8 @@ export class Game {
       freezeUntil: 0, // 히트스톱: 이 시각까지 움직임 정지 (속도는 보존)
       weaponUses: 0, // 망치 남은 횟수
       jumpUntil: 0, // 점프력 상승 끝나는 시각
+      airJumps: C.AIR_JUMPS, // 남은 2단 점프 (땅에 닿으면 다시 채움)
+      jumpHeld: false, // 지난 틱에 점프를 누르고 있었나 (2단 점프는 새로 눌러야)
       ghostUntil: 0, // 유령화 끝나는 시각
       speedUntil: 0, // 이속 증가 끝나는 시각
       spectator: false, // 호스트가 관전으로 돌린 사람: 판에 안 들어가고 통계·승수 표시에서 빠짐
@@ -488,6 +490,7 @@ export class Game {
         freezeUntil: 0,
         weaponUses: 0,
         jumpUntil: 0,
+        airJumps: C.AIR_JUMPS,
         ghostUntil: 0,
         speedUntil: 0,
         hand: 1,
@@ -729,6 +732,7 @@ export class Game {
       freezeUntil: 0,
       weaponUses: 0,
       jumpUntil: 0,
+      airJumps: C.AIR_JUMPS,
       ghostUntil: 0,
       speedUntil: 0,
       hand: 1,
@@ -1372,6 +1376,28 @@ export class Game {
     this.pieces = v ? [v] : [];
     if (v && !v.id) v.id = ++this.pieceCounter;
     this.refreshPieceCells();
+  }
+
+  // 떨어지는 블록이 이 사람을 깔기까지 남은 시간 (ms). CRUSH_WARN_MS 안에 깔 블록이 없으면 null.
+  // 블록 칸이 몸(가로 판정 상자)과 겹치고, 지금 몸 위에 있으며, 착지 높이가 머리보다 낮으면 깔림
+  crushDanger(p) {
+    let best = null;
+    const b = this.aabb(p);
+    for (const piece of this.pieces) {
+      if (piece.phase !== 'falling') continue;
+      if (!(piece.pz + 1 > p.z && piece.landZ < p.z + C.PLAYER_HEIGHT)) continue;
+      const over = piece.cells.some(([dx, dy]) => {
+        const x = piece.px + dx;
+        const y = piece.py + dy;
+        return x < b.x1 && x + 1 > b.x0 && y < b.y1 && y + 1 > b.y0;
+      });
+      if (!over) continue;
+      // 몸 꼭대기(머리)에 닿을 때까지: 지금 높이에서 머리 위 칸까지 내려오는 칸 수 × 한 칸 간격
+      const steps = Math.max(0, Math.ceil(piece.pz - (p.z + C.PLAYER_HEIGHT)));
+      const eta = Math.max(0, steps * piece.stepMs + (piece.nextStepAt - this.time) - piece.stepMs);
+      if (eta <= C.CRUSH_WARN_MS && (best === null || eta < best)) best = eta;
+    }
+    return best;
   }
 
   pieceWorldCells(piece = this.piece) {
@@ -2041,8 +2067,15 @@ export class Game {
       if (p.input.jump && p.grounded) {
         p.vz = this.time < p.jumpUntil ? C.JUMP_BOOST_SPEED : C.JUMP_SPEED;
         p.grounded = false;
+      } else if (p.input.jump && !p.jumpHeld && !p.grounded && p.airJumps > 0) {
+        // 2단 점프: 공중에서 점프를 새로 누르면 한 번 더 (꾹 누르고 있으면 안 됨). 땅에 닿으면 다시 생김
+        p.vz = C.AIR_JUMP_SPEED;
+        p.airJumps--;
+        this.emit({ type: 'airJump', who: p.id });
       }
     }
+    p.jumpHeld = !!p.input.jump;
+    if (p.grounded) p.airJumps = C.AIR_JUMPS;
     const damp = Math.exp(-(p.grounded ? C.KB_DAMPING_GROUND : C.KB_DAMPING_AIR) * dt);
     p.kbx *= damp;
     p.kby *= damp;
@@ -2318,6 +2351,7 @@ export class Game {
         pushCd: Math.max(0, p.pushReadyAt - this.time),
         weaponUses: p.weaponUses,
         jumpLeft: Math.max(0, p.jumpUntil - this.time),
+        danger: p.alive ? this.crushDanger(p) : null, // 머리 위로 떨어지는 블록이 깔기까지 남은 ms (없으면 null)
         ghostLeft: Math.max(0, p.ghostUntil - this.time),
         speedLeft: Math.max(0, p.speedUntil - this.time),
         emote: this.isEmoting(p) ? p.emote : -1,

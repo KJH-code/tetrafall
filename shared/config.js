@@ -47,8 +47,8 @@ export const CONFIG = {
   // 2단계: 판이 길어질수록 블록이 빨라지고 많아진다 ("처음에 1개, 갈수록 더 짧게, 많이")
   //   동시에 떨어지는 자동 블록 수 = min(MAX, 1 + 경과 / RAMP_MS)
   //   다음 블록까지 간격·1칸 낙하 간격 = 시작값에서 끝값으로 RAMP_FULL_MS 동안 선형으로 줄어듦
-  AUTO_FALL_STEP_MS: 350, // 자동 낙하: 1칸 내려오는 간격 (판 시작 때)
-  AUTO_FALL_STEP_MIN_MS: 200, // 판 후반 (RAMP_FULL_MS 이후)
+  AUTO_FALL_STEP_MS: 500, // 자동 낙하: 1칸 내려오는 간격 (판 시작 때). 2026-10-24 350→500 (재혁: 억까 → 떨어지는 속도 감속)
+  AUTO_FALL_STEP_MIN_MS: 300, // 판 후반 (RAMP_FULL_MS 이후). 2026-10-24 200→300
   AUTO_SPAWN_DELAY_MS: 1000, // 자동 블록끼리 나오는 간격 (판 시작 때)
   AUTO_SPAWN_DELAY_MIN_MS: 400, // 판 후반
   CONCURRENT_RAMP_MS: 20000, // 이 시간마다 동시 블록 +1
@@ -170,6 +170,9 @@ export const CONFIG = {
   PLAYER_HEIGHT: 1.6,
   EYE_HEIGHT: 1.45,
   MOVE_SPEED: 4.5, // 단위/초
+  AIR_JUMPS: 1, // 공중에서 더 뛸 수 있는 횟수 (2단 점프). 2026-10-24 재혁: 이동성 (쌓인 지형에 갇힘)
+  AIR_JUMP_SPEED: 7.5, // 2단 점프 위 속도 → 두 번 합쳐 약 2.5칸 (2칸 벽을 넘음)
+  CRUSH_WARN_MS: 2000, // 내 머리 위로 떨어지는 블록이 이 시간 안에 깔면 경고 (발밑 빨간 표시·경고음·화면 글자)
   JUMP_SPEED: 7.5, // 최고 높이 약 1.28칸 → 1칸 블록은 올라가고 2칸 벽은 못 넘음. 2026-10-20 6.5→7.5 (6.5는 0.95칸이라 1칸도 못 올라감)
   GRAVITY: 20,
   DASH_SPEED: 6, // 대시 순간 속도. 2026-10-20 10→6 (땅에서 약 1.7칸 → 약 1칸)
