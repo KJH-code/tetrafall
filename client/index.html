@@ -26,6 +26,8 @@
     #score .me { text-decoration: underline; }
     #score .sep { color: #aaa; margin: 0 8px; }
     #banner { font-size: 20px; font-weight: bold; padding: 8px 16px; border-radius: 8px; background: rgba(0,140,160,.85); white-space: pre; text-align: center; }
+    #danger { font-size: 24px; font-weight: 900; padding: 6px 18px; border-radius: 8px; background: rgba(220,20,20,.92); white-space: pre; animation: danger-pulse .25s infinite alternate; }
+    @keyframes danger-pulse { from { transform: scale(1); } to { transform: scale(1.08); } }
     #toasts { display: flex; flex-direction: column; align-items: center; gap: 6px; }
     .toast { font-size: 18px; padding: 6px 14px; border-radius: 6px; background: rgba(0,0,0,.7); white-space: pre; transition: opacity .4s; }
     .toast.me { background: rgba(200,60,20,.9); font-weight: bold; }
@@ -124,6 +126,7 @@
       <div id="score" class="hidden"></div>
       <div id="timers"><span id="t-control" class="t hidden"><span class="pie"></span><span class="txt"></span></span><span id="t-power" class="t hidden"><span class="pie"></span><span class="txt"></span></span></div>
       <div id="banner" class="hidden"></div>
+      <div id="danger" class="hidden"></div>
       <div id="toasts"></div>
     </div>
     <div id="status">연결 중...</div>
@@ -203,7 +206,7 @@
       <div id="keys" class="keys hidden">
         <button class="settings-btn" style="float:right;font-size:14px;padding:3px 12px;margin:0">설정 (감도·소리·시야각·그림자)</button>
         <b>조작법</b><br />
-        WASD 이동 · Space 점프 · Shift 대시 · <b>F</b> 캐릭터 스킬 · <b>R</b> 필살기 (때리거나 맞으면 게이지가 참)<br />
+        WASD 이동 · Space 점프 (공중에서 한 번 더) · Shift 대시 · <b>F</b> 캐릭터 스킬 · <b>R</b> 필살기 (때리거나 맞으면 게이지가 참)<br />
         <b>좌클릭</b> 밀치기 (가까운 상대를 바라보는 쪽으로 밀어냄)<br />
         <b>1·2·3 / 휠</b> 핫바 칸 고르기 · <b>우클릭</b> 고른 칸 쓰기<br />
         &nbsp;&nbsp;1 쌓기 블록 (판마다 <span id="build-n"></span>개, 조준한 면에 붙음) · 2 투사체(빨간 공) 또는 설치 블록(노란 상자, 조준한 곳에 1×2 를 떨어뜨림, Q/E 방향) · 3 폭탄(검은 공, 블록을 부숨)<br />
@@ -215,7 +218,7 @@
         상대를 블록에 깔리게(압사) 하거나 밖으로 떨어뜨리면(낙사) 승리. 블록이 쌓이면 용암이 올라온다 — 위로!
       </div>
     </div>
-    <div id="help">WASD 이동 · Space 점프 · Shift 대시 · 좌클릭 밀치기 · F 스킬 · R 필살기
+    <div id="help">WASD 이동 · Space 점프·2단 점프 · Shift 대시 · 좌클릭 밀치기 · F 스킬 · R 필살기
 1·2·3 / 휠 핫바 칸 · 우클릭 고른 칸 쓰기 · Q/E 1×2 방향
 조종 중: 방향키 블록 이동 · Q/E 회전 · Enter 하드드롭 (8초 안에)</div>
   </div>

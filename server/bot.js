@@ -458,8 +458,12 @@ export class BotBrain {
     this.input.pitch = 0;
     this.input.fwd = 1;
     this.input.strafe = 0;
-    // 앞 칸이 1칸 높으면 점프
-    if (top > p.z + 0.05 && top <= p.z + this.jumpReach(g, p)) this.input.jump = true;
+    // 앞 칸이 높으면 점프. 공중에서 아직 모자라면 꼭대기 근처에서 2단 점프
+    if (p.grounded) {
+      if (top > p.z + 0.05 && top <= p.z + this.jumpReach(g, p)) this.input.jump = true;
+    } else if (top > p.z + 0.05 && p.airJumps > 0 && p.vz < C.BOT_AIR_JUMP_VZ) {
+      g.handleAction(p.id, { name: 'jump' }); // 2단 점프
+    }
   }
 
   // ---------- 조종 ----------
@@ -606,7 +610,7 @@ export class BotBrain {
 
   // 지금 한 번 점프로 올라갈 수 있는 높이 (칸)
   jumpReach(g, p) {
-    return g.time < p.jumpUntil ? 2.25 : 1.05; // 점프력 상승 중이면 2칸까지
+    return (g.time < p.jumpUntil ? 2.25 : 1.05) + (C.AIR_JUMPS > 0 ? 1 : 0); // 점프력 상승 중이면 2칸, 2단 점프로 1칸 더
   }
 
   // 용암이 2.5칸 안으로 다가오면 걸어서 이어진 가장 높은 칸으로 간다. 움직였으면 true

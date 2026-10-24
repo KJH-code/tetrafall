@@ -97,6 +97,13 @@ export class Sound {
         this.tone({ freq: 600, freqEnd: 1500, dur: 0.12, type: 'square', vol: 0.18 * v });
         this.noise({ dur: 0.1, vol: 0.2 * v, filter: 'highpass', freq: 2000 });
         break;
+      case 'danger': // 압사 경고: 높은 삑삑
+        this.tone({ freq: 1250, dur: 0.07, type: 'square', vol: 0.22 });
+        this.tone({ freq: 1250, dur: 0.07, type: 'square', vol: 0.22, delay: 0.11 });
+        break;
+      case 'airJump': // 2단 점프: 짧은 휙
+        this.noise({ dur: 0.12, vol: 0.25 * v, filter: 'bandpass', freq: 900, freqEnd: 2400, q: 1.2 });
+        break;
       case 'land': // 블록 착지: 쿵
         this.tone({ freq: 95, freqEnd: 38, dur: 0.18, type: 'sine', vol: 0.55 * v });
         this.noise({ dur: 0.14, vol: 0.3 * v, freq: 600, freqEnd: 120 });

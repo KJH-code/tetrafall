@@ -62,6 +62,9 @@ export class Input {
       }
       if (!this.enabled) return;
       switch (e.code) {
+        case 'Space':
+          if (this.locked) this.sendAction({ name: 'jump' }); // 누른 순간 (공중이면 2단 점프)
+          break;
         case 'ShiftLeft':
         case 'ShiftRight':
           this.sendAction({ name: 'dash' });

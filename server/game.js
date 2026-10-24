@@ -152,7 +152,7 @@ export class Game {
       weaponUses: 0, // 망치 남은 횟수
       jumpUntil: 0, // 점프력 상승 끝나는 시각
       airJumps: C.AIR_JUMPS, // 남은 2단 점프 (땅에 닿으면 다시 채움)
-      jumpHeld: false, // 지난 틱에 점프를 누르고 있었나 (2단 점프는 새로 눌러야)
+      airJumpQueued: false, // 공중에서 점프 키를 새로 눌렀음 (다음 틱에 2단 점프)
       ghostUntil: 0, // 유령화 끝나는 시각
       speedUntil: 0, // 이속 증가 끝나는 시각
       spectator: false, // 호스트가 관전으로 돌린 사람: 판에 안 들어가고 통계·승수 표시에서 빠짐
@@ -779,6 +779,11 @@ export class Game {
     const controlling = this.isControlling(p);
     if (['dash', 'push', 'fire', 'skill', 'ult'].includes(action.name)) p.emoteUntil = 0;
     switch (action.name) {
+      case 'jump':
+        // 점프 키를 누른 순간 (연속 입력의 jump 는 '누르고 있음'이라 빨리 떼었다 누르면 서버가 놓침).
+        // 땅에서는 연속 입력이 뛰고, 공중이면 다음 틱에 2단 점프
+        if (!p.grounded) p.airJumpQueued = true;
+        return;
       case 'dash':
         if (stunned || controlling || this.time < p.dashReadyAt) return; // 조종 중 대시 불가
         this.dash(p);
@@ -2046,14 +2051,14 @@ export class Game {
       if (p.input.jump && p.grounded) {
         p.vz = this.time < p.jumpUntil ? C.JUMP_BOOST_SPEED : C.JUMP_SPEED;
         p.grounded = false;
-      } else if (p.input.jump && !p.jumpHeld && !p.grounded && p.airJumps > 0) {
-        // 2단 점프: 공중에서 점프를 새로 누르면 한 번 더 (꾹 누르고 있으면 안 됨). 땅에 닿으면 다시 생김
+      } else if (p.airJumpQueued && !p.grounded && p.airJumps > 0) {
+        // 2단 점프: 공중에서 점프를 새로 누르면('jump' 행동) 한 번 더. 땅에 닿으면 다시 생김
         p.vz = C.AIR_JUMP_SPEED;
         p.airJumps--;
         this.emit({ type: 'airJump', who: p.id });
       }
     }
-    p.jumpHeld = !!p.input.jump;
+    p.airJumpQueued = false;
     if (p.grounded) p.airJumps = C.AIR_JUMPS;
     const damp = Math.exp(-(p.grounded ? C.KB_DAMPING_GROUND : C.KB_DAMPING_AIR) * dt);
     p.kbx *= damp;

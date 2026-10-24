@@ -270,6 +270,7 @@ export const CONFIG = {
 
   // ---- AI 봇 (서버에서 돎, 사람과 같은 입력만 씀) ----
   BOT_THINK_MS: 100, // 판단 주기
+  BOT_AIR_JUMP_VZ: 2, // 봇은 위로 가는 속도가 이보다 느려지면 (꼭대기 근처) 2단 점프
   BOT_REACTION_MS: 450, // 그림자가 보이고 나서 피하기 시작할 때까지 (사람 반응 흉내)
   BOT_AIM_ERROR_RAD: 0.3, // 투사체 조준 오차 (라디안, ± 이 안에서 무작위)
   BOT_DROP_DELAY_MS: 250, // 조종 중 상대 위에 맞춘 뒤 떨어뜨리기까지

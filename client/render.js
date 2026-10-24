@@ -266,6 +266,12 @@ export class Renderer {
     this.shadowMat = noOutline(new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45 }));
     this.pieceBox = new THREE.BoxGeometry(1, 1, 1);
     this.shadowBox = new THREE.BoxGeometry(0.96, 0.96, 0.06);
+    // 압사 경고: 나를 깔 블록의 그림자는 빨갛게 + 내 발밑에 빨간 고리
+    this.dangerShadowMat = noOutline(new THREE.MeshBasicMaterial({ color: 0xff1010, transparent: true, opacity: 0.6 }));
+    this.dangerRing = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.58, 24), noOutline(new THREE.MeshBasicMaterial({ color: 0xff2020, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthTest: false })));
+    this.dangerRing.renderOrder = 9;
+    this.dangerRing.visible = false;
+    this.scene.add(this.dangerRing);
 
     // 용암: 필드보다 넓은 판. 표면 높이 = state.lava.z
     this.lavaBottom = -6;
@@ -824,6 +830,16 @@ export class Renderer {
       this.scene.add(s);
       this.shadowMeshes.push(s);
     }
+    // 압사 경고 중이면 내 몸과 겹치는 그림자 칸을 빨갛게, 발밑에 빨간 고리 (깜빡)
+    const meNow = state.players.find((p) => p.id === myId);
+    const warned = !!(meNow && meNow.alive && meNow.danger !== null && meNow.danger !== undefined);
+    const dangerAt = (x, y) => warned && x < meNow.x + C.PLAYER_HALF && x + 1 > meNow.x - C.PLAYER_HALF && y < meNow.y + C.PLAYER_HALF && y + 1 > meNow.y - C.PLAYER_HALF;
+    const ms = warned && this.smooth.get(myId);
+    this.dangerRing.visible = !!ms;
+    if (ms) {
+      this.dangerRing.position.set(ms.x, ms.y, ms.z + 0.04);
+      this.dangerRing.scale.setScalar(1 + 0.25 * Math.sin(performance.now() / 60));
+    }
     for (let k = 0; k < this.pieceMeshes.length; k++) {
       const pm = this.pieceMeshes[k];
       const sm = this.shadowMeshes[k];
@@ -843,7 +859,7 @@ export class Renderer {
       if (showShadow) {
         const [sx, sy] = piece.shadow[i];
         sm.position.set(sx + 0.5, sy + 0.5, piece.landZ + 0.03);
-        sm.material = mine ? this.previewMat : this.shadowMat;
+        sm.material = mine ? this.previewMat : dangerAt(sx, sy) ? this.dangerShadowMat : this.shadowMat;
         if (mine) this.previewMat.color.setHex(piece.fits ? 0xf0a030 : 0xff2020);
       }
     }

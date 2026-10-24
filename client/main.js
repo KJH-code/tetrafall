@@ -15,6 +15,8 @@ const keysEl = $('keys');
 const crosshair = $('crosshair');
 const flash = $('flash');
 const banner = $('banner');
+const dangerEl = $('danger');
+let lastDanger = null; // 지난 프레임의 압사 경고 (처음 뜰 때만 경고음)
 const toasts = $('toasts');
 
 // 모델은 먼저 불러온다 (실패하면 예전 도형으로)
@@ -306,6 +308,14 @@ function feelEvent(e) {
       } else if (e.cause === 'fall') {
         sound.play('fall', { dist: d });
       }
+      return;
+    }
+    case 'airJump': {
+      // 2단 점프: 발밑에 흰 김 + 휙
+      const a = playerById(e.who);
+      if (!a) return;
+      fx.burst({ x: a.x, y: a.y, z: a.z + 0.05 }, null, 0xffffff, 8, 2.5, 0.08, 0.35);
+      sound.play('airJump', { dist: e.who === myId ? 0 : distToMe(a.x, a.y, a.z) });
       return;
     }
     case 'pickup':
@@ -848,6 +858,15 @@ function updateHud() {
   updateScore();
   updateBig();
   updateBottom(p);
+
+  // 압사 경고: 내 머리 위로 떨어지는 블록이 곧 깔 때 (서버가 계산한 남은 시간)
+  const danger = p && p.alive && state.phase === 'playing' ? p.danger : null;
+  dangerEl.classList.toggle('hidden', danger === null || danger === undefined);
+  if (danger !== null && danger !== undefined) {
+    dangerEl.textContent = `⚠ 머리 위 블록! ${(danger / 1000).toFixed(1)}초`;
+    if (lastDanger === null) sound.play('danger');
+  }
+  lastDanger = danger ?? null;
 
   // 상단 배너: 조종권 상태 (예고 → 조종 중)
   let bannerText = null;

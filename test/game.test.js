@@ -1211,6 +1211,75 @@ test('치명타: 떨어지면서 위에서 밀치기·망치를 맞히면 피해
   assert.equal(hit(0.8, -3, false, true).dmg, Math.round(C.DAMAGE_GAIN.weapon * C.CRIT_DAMAGE_MULT), '망치도');
 });
 
+// 2단 점프 (2026-10-24 재혁: 이동성). 공중에서 점프 키를 새로 누르면('jump' 행동) 한 번 더
+function wallJumpRun(height, pulses) {
+  const { g, p1 } = setup();
+  for (let y = 0; y < C.GRID_D; y++) for (let z = 0; z < height; z++) g.grid[g.idx(5, y, z)] = 1; // x=5 에 벽
+  Object.assign(p1, { x: 3.5, y: 2.5 });
+  let maxX = 0;
+  let airJumps = 0;
+  g.events = [];
+  for (let t = 0; t < 1500; t += TICK) {
+    g.handleInput(1, { fwd: 1, strafe: 0, jump: true, yaw: 0, pitch: 0 });
+    if (pulses && Math.abs(t - 250) < TICK / 2) g.handleAction(1, { name: 'jump' }); // 공중에서 다시 누름
+    g.tick(TICK);
+    maxX = Math.max(maxX, p1.x);
+    airJumps += g.drainEvents().filter((e) => e.type === 'airJump').length;
+  }
+  return { maxX, airJumps, p1 };
+}
+
+test('2단 점프: 공중에서 다시 누르면 2칸 벽을 넘고, 꾹 누르기만 하면 못 넘음, 3칸 벽은 못 넘음', () => {
+  const twice = wallJumpRun(2, true);
+  assert.ok(twice.maxX > 6, `2단 점프로 2칸 벽을 넘어야 함: maxX=${twice.maxX.toFixed(2)}`);
+  assert.equal(twice.airJumps, 1);
+  const held = wallJumpRun(2, false);
+  assert.ok(held.maxX <= 5 - C.PLAYER_HALF + 1e-6, `꾹 누르면 2단 점프 안 됨: maxX=${held.maxX.toFixed(2)}`);
+  assert.equal(held.airJumps, 0);
+  const tall = wallJumpRun(3, true);
+  assert.ok(tall.maxX <= 5 - C.PLAYER_HALF + 1e-6, `3칸 벽은 못 넘음: maxX=${tall.maxX.toFixed(2)}`);
+});
+
+test('2단 점프: 공중에서 한 번만, 땅에 닿으면 다시 생김', () => {
+  const { g, p1 } = setup();
+  const press = () => {
+    g.handleAction(1, { name: 'jump' });
+    g.tick(TICK);
+  };
+  g.handleInput(1, { fwd: 0, strafe: 0, jump: true, yaw: 0, pitch: 0 });
+  g.tick(TICK); // 땅에서 뜀
+  g.handleInput(1, { fwd: 0, strafe: 0, jump: false, yaw: 0, pitch: 0 });
+  press(); // 2단
+  assert.equal(p1.airJumps, 0);
+  const vz = p1.vz;
+  press(); // 3번째는 안 됨
+  assert.ok(p1.vz < vz, '세 번째 점프는 안 됨 (중력으로 느려지기만)');
+  run(g, 1500);
+  assert.ok(p1.grounded);
+  assert.equal(p1.airJumps, C.AIR_JUMPS);
+});
+
+test('압사 경고: 머리 위 블록이 CRUSH_WARN_MS 안에 깔 때만 danger, 옆 블록·먼 블록은 없음', () => {
+  const { g, p1 } = setup();
+  Object.assign(p1, { x: 2.5, y: 2.5 });
+  const me = () => g.snapshot().players.find((q) => q.id === 1);
+  const side = fallingPiece(g, 'O', 0, 6, 6, 12); // 옆 (경고 대상 아님)
+  fallingPiece(g, 'O', 0, 2, 2, 12); // 머리 위
+  g.pieces.push(side);
+  g.refreshPieceCells();
+  g.tick(TICK);
+  assert.equal(me().danger, null, '아직 멀면 경고 없음');
+  let first = null;
+  for (let t = 0; t < 8000 && p1.alive; t += TICK) {
+    g.tick(TICK);
+    const d = me().danger;
+    if (d !== null && first === null) first = d;
+  }
+  assert.ok(first !== null && first <= C.CRUSH_WARN_MS && first > C.CRUSH_WARN_MS - 600, `경고가 CRUSH_WARN_MS 쯤 시작: ${first}`);
+  assert.equal(p1.alive, false, '피하지 않으면 깔림');
+  assert.equal(p1.deathCause, 'crush');
+});
+
 test('점프력 상승: 2칸 벽은 넘고 3칸 벽은 못 넘는다, 시간이 지나면 원래대로', () => {
   const { g, p1 } = setup();
   for (let y = 0; y < C.GRID_D; y++) {
@@ -1520,6 +1589,31 @@ test('봇: 용암이 오는데 구덩이에 갇히면 설치 블록을 던져 �
       if (bot.grounded && bot.z > 1.99) out = true;
     }
     assert.ok(out, `${k}번째 (남은 ${bot.bricks}, ${bot.alive ? '' : bot.deathCause}): 봇 위치 (${bot.x.toFixed(2)}, ${bot.y.toFixed(2)}, ${bot.z.toFixed(2)})`);
+  }
+});
+
+test('봇: 용암이 오는데 2칸 구덩이에 갇히면 2단 점프로 나온다 (블록 없이, 10번 모두)', () => {
+  for (let k = 0; k < 10; k++) {
+    const { g, human, bot } = setupBot();
+    g.startRound();
+    g.nextSpawnAt = Infinity;
+    g.controlItemNextAt = Infinity;
+    g.powerItemNextAt = Infinity;
+    const pit = (x, y) => x >= 5 && x <= 7 && y >= 5 && y <= 7;
+    for (let x = 0; x < C.GRID_W; x++) for (let y = 0; y < C.GRID_D; y++) if (!pit(x, y)) for (let z = 0; z < 2; z++) g.grid[g.idx(x, y, z)] = 1;
+    g.gridVersion++;
+    Object.assign(human, { x: 0.5, y: 0.5, z: 2 });
+    Object.assign(bot, { x: 6.5, y: 6.5, z: 0 });
+    bot.blocks = 0;
+    g.lava = { active: true, z: -0.9, startedAt: g.time };
+    let out = false;
+    let airJumps = 0;
+    for (let t = 0; t < 6000 && !out; t += TICK) {
+      g.tick(TICK);
+      airJumps += g.drainEvents().filter((e) => e.type === 'airJump' && e.who === bot.id).length;
+      if (bot.grounded && bot.z > 1.99) out = true;
+    }
+    assert.ok(out && airJumps > 0, `${k}번째 (2단 점프 ${airJumps}번): 봇 위치 (${bot.x.toFixed(2)}, ${bot.y.toFixed(2)}, ${bot.z.toFixed(2)})`);
   }
 });
 
