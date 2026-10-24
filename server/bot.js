@@ -124,7 +124,13 @@ export class BotBrain {
     }
     for (const k of [...this.dangerSeen.keys()]) if (!live.has(k)) this.dangerSeen.delete(k);
     const known = dangers.filter((d) => g.time - this.dangerSeen.get(d.key) >= this.k('REACTION_MS'));
-    const avoid = known.flatMap((d) => d.cells);
+    const hazards = g.hazardCells(); // 구멍·무너지는 칸 (반응 시간 없이 늘 앎)
+    if (!g.hasFloor()) {
+      // 바닥 없는 맵: 지금 층보다 2칸 넘게 낮은 칸도 피함 (무너진 윗층 구멍으로 아래층에 떨어지지 않게)
+      const sh = this.standHeight(g, p);
+      for (let x = 0; x < W; x++) for (let y = 0; y < D; y++) if (g.columnTop(x, y) < sh - 1.5) hazards.push([x, y]);
+    }
+    const avoid = known.flatMap((d) => d.cells).concat(hazards);
     const danger = dangers.length ? dangers[0] : null;
 
     const mine = g.controlledPiece(p);
@@ -143,11 +149,17 @@ export class BotBrain {
       return;
     }
 
+    // 0.5) 무너지는 칸 위에 서 있으면 옆 칸으로
+    if (hazards.length && overlapsCells(p, hazards)) {
+      this.moveTo(g, p, this.safeSpot(g, p, avoid, null), avoid);
+      return;
+    }
+
     // 1) 피하기
     const hit = known.filter((d) => overlapsCells(p, d.cells));
     if (hit.length) {
       const spot = this.safeSpot(g, p, avoid, null);
-      this.moveTo(g, p, spot);
+      this.moveTo(g, p, spot, hazards); // 블록을 피하다 구멍에 빠지지 않게 (블록 그림자는 이미 벗어나는 중이라 넣지 않음)
       const dist = Math.hypot(spot.x - p.x, spot.y - p.y);
       const eta = Math.min(...hit.map((d) => d.eta));
       if (dist > 0.8 && eta < 900 && g.time >= p.dashReadyAt) g.handleAction(p.id, { name: 'dash' });
@@ -185,7 +197,8 @@ export class BotBrain {
     const item = this.pickItem(g, p, target);
     if (item) {
       this.moveTo(g, p, { x: item.x + 0.5, y: item.y + 0.5 }, avoid);
-      return;
+      // 구멍·낭떠러지에 막혀 한 발도 못 가면 아이템은 포기하고 공격으로 (안 그러면 못 가는 아이템 앞에 영원히 서 있음)
+      if (this.input.fwd || Math.hypot(item.x + 0.5 - p.x, item.y + 0.5 - p.y) < 0.5) return;
     }
 
     // 5) 밀치기: 상대를 가장자리(또는 그림자) 쪽으로 밀 수 있는 자리로 돌아가서 민다
@@ -266,11 +279,14 @@ export class BotBrain {
     }
     const dist = Math.hypot(t.x - p.x, t.y - p.y);
     const toT = { x: (t.x - p.x) / (dist || 1), y: (t.y - p.y) / (dist || 1) };
-    const lined = toT.x * dir.x + toT.y * dir.y > 0.5; // 내가 상대 "뒤"에 있다
+    // 겹쳐 서 있으면 (사람끼리는 안 부딪힘) 상대 쪽 방향이 없음 → 밀 방향으로 바로 민다
+    // (안 그러면 "뒤로 돌아가기" 자리가 낭떠러지일 때 둘 다 겹친 채 영원히 멈춤. 무너지는 바닥 맵 봇 2명 판에서 실제로 남)
+    const overlap = dist < 0.3;
+    const lined = overlap || toT.x * dir.x + toT.y * dir.y > 0.5; // 내가 상대 "뒤"에 있다
     if (dist < C.PUSH_RANGE * 0.85 && (lined || edgeDist(p.x, p.y) < 1.2)) {
       this.input.fwd = 0;
       this.input.strafe = 0;
-      this.input.yaw = Math.atan2(t.y - p.y, t.x - p.x);
+      this.input.yaw = overlap ? Math.atan2(dir.y, dir.x) : Math.atan2(t.y - p.y, t.x - p.x);
       if (g.time >= p.pushReadyAt && g.time >= t.stunUntil && g.time >= this.nextPushAt) {
         g.handleInput(p.id, this.input);
         g.handleAction(p.id, { name: 'push' });

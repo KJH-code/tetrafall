@@ -202,6 +202,10 @@ export const CONFIG = {
   // ---- 맵 (2단계 D) ----
   MAP_DEFAULT: 'random', // 서버 켤 때 맵 선택: 'random' 또는 server/maps.js 의 MAP_IDS (flat·pyramid·stairs·bowl·spiral·pillars·fortress). 호스트가 대기 화면에서 바꿀 수 있음
 
+  // ---- 지형 장치 (2026-10-24 재혁: 지형 묶음, 새 맵 2개) ----
+  CRUMBLE_MS: 1000, // 무너지는 바닥: 밟고 나서 흔들리다 사라지기까지 (안 돌아옴)
+  PLATFORM_SPEED: 1, // 움직이는 발판 속도 (칸/초). 걸어서 올라탈 수 있게 천천히
+
   // ---- 판 ----
   PASS_CRUSH_SHARE: 0.5, // 1단계 합격선: 누적 사망 중 압사 비율. 판 종료 로그에 표시. 2026-10-20 재정의
   ROUND_TIME_LIMIT_MS: 0, // 0 = 제한 없음. 양수면 시간 초과 시 무승부
@@ -275,6 +279,9 @@ export const CONFIG = {
   BLOCK_LANDED_SHADE: 0.88,
   TERRAIN_COLOR: 0x8c8a96, // 시작 지형 (돌)
   BUILD_COLOR: 0xa87448, // 쌓기 블록 (나무)
+  CRUMBLE_COLOR: 0x7fc8d8, // 무너지는 바닥 칸 (하늘빛 돌)
+  CRUMBLE_SHAKE: 0.06, // 무너지기 직전 칸이 흔들리는 폭 (칸)
+  PLATFORM_COLOR: 0xd8c070, // 움직이는 발판
   THROWN_COLOR: 0xd8c890, // 착지한 설치 블록 (모래)
   // 노을 하늘: 위 → 가운데 → 지평선 그라데이션, 해는 지평선 가까이 (그림자가 길게)
   SKY_TOP: 0x2c2f6e,
