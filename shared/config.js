@@ -202,6 +202,44 @@ export const CONFIG = {
   // ---- 맵 (2단계 D) ----
   MAP_DEFAULT: 'random', // 서버 켤 때 맵 선택: 'random' 또는 server/maps.js 의 MAP_IDS (flat·pyramid·stairs·bowl·spiral·pillars·fortress). 호스트가 대기 화면에서 바꿀 수 있음
 
+  // ---- 캐릭터 (2026-10-24 7단계 재혁: 친구들이 '스킬/고유기 넣어서'. 캐릭터마다 패시브 + 스킬 F(쿨) + 필살기 R(게이지)) ----
+  CHARACTERS: ['tank', 'ninja', 'builder', 'hook'],
+  CHAR_NAMES: { tank: '탱크', ninja: '닌자', builder: '건축가', hook: '갈고리' },
+  SKILL_NAMES: { tank: '버티기', ninja: '순간이동', builder: '벽 세우기', hook: '갈고리' },
+  ULT_NAMES: { tank: '지면 강타', ninja: '그림자', builder: '블록 비', hook: '회오리' },
+  CHAR_DEFAULT: 'tank',
+  ULT_MAX: 100, // 필살기 게이지 (다 차면 R)
+  ULT_PER_DAMAGE: 1, // 피해 % 를 주거나 받을 때 1% 당 게이지
+  // 탱크
+  TANK_DAMAGE_TAKEN: 0.85, // 패시브: 맞을 때 쌓이는 피해 % 배율. 2026-10-24 '넉백 ×0.85' 에서 바꿈 (봇 120판 탱크 51승 / 기대 30, 재혁: 패시브 바꿈)
+  TANK_HOLD_MS: 2000, // 스킬 버티기: 이동안 안 밀림
+  TANK_HOLD_CD_MS: 10000,
+  TANK_SLAM_RANGE: 2.5, // 필살 지면 강타: 이 거리 안 (수평, 높이 차 2칸 안)
+  TANK_SLAM_KB_SPEED: 8,
+  TANK_SLAM_KB_UP: 6,
+  TANK_SLAM_STUN_MS: 1000,
+  TANK_SLAM_DAMAGE: 20,
+  // 닌자
+  NINJA_SPEED_MULT: 1.1, // 패시브: 이동 속도
+  NINJA_BLINK_DIST: 3, // 스킬 순간이동: 보는 방향으로 (벽 앞까지)
+  NINJA_BLINK_CD_MS: 6000,
+  NINJA_SHADOW_MS: 3000, // 필살 그림자: 유령화(반투명·블록 통과·압사 면역) + 다음 밀치기 치명타
+  // 건축가
+  BUILDER_EXTRA_BLOCKS: 3, // 패시브: 쌓기 블록 추가
+  BUILDER_WALL_CD_MS: 12000, // 스킬 벽 세우기: 바로 앞 가로 3칸 × 2층
+  BUILDER_WALL_WIDTH: 3,
+  BUILDER_WALL_HEIGHT: 2,
+  BUILDER_RAIN_CELLS: [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]], // 필살 블록 비: 조준한 칸 기준 1×1 블록 자리
+  // 갈고리
+  HOOK_PUSH_RANGE_MULT: 1.2, // 패시브: 밀치기 사거리
+  HOOK_RANGE: 5, // 스킬 갈고리: 보는 방향 이 거리 안 첫 상대를 끌어옴
+  HOOK_HALF_ANGLE_DEG: 15, // 갈고리가 닿는 시야 반각
+  HOOK_CD_MS: 8000,
+  HOOK_PULL_TO: 1, // 끌어와서 내 앞 이 거리에 놓음
+  HOOK_STUN_MS: 300,
+  HOOK_ULT_RANGE: 4, // 필살 회오리: 주변 이 거리 안 모두 끌어옴
+  HOOK_ULT_STUN_MS: 500,
+
   // ---- 지형 장치 (2026-10-24 재혁: 지형 묶음, 새 맵 2개) ----
   CRUMBLE_MS: 1000, // 무너지는 바닥: 밟고 나서 흔들리다 사라지기까지 (안 돌아옴)
   PLATFORM_SPEED: 1, // 움직이는 발판 속도 (칸/초). 걸어서 올라탈 수 있게 천천히
@@ -237,6 +275,7 @@ export const CONFIG = {
   BOT_AIM_ERROR_RAD: 0.3, // 투사체 조준 오차 (라디안, ± 이 안에서 무작위)
   BOT_DROP_DELAY_MS: 250, // 조종 중 상대 위에 맞춘 뒤 떨어뜨리기까지
   BOT_TARGET_JITTER: 1, // 상대 고를 때 판마다 상대별로 0~이 값(칸)을 거리에 더함. 동점일 때 늘 같은 상대(사람)만 노리지 않게
+  BOT_SKILL_INTERVAL_MS: 2000, // 봇이 캐릭터 스킬·필살기를 써 보는 간격 (×0.7~1.3 무작위)
   BOT_PUSH_INTERVAL_MS: 1500, // 봇이 밀치기 사이에 두는 간격 (×0.7~1.3 무작위). 낮을수록 공격적
   BOT_BRICK_AIM_ERROR: 1.2, // 설치 블록 던질 때 조준점을 상대 발밑에서 이 반경(칸) 안 무작위로 빗나감 (없으면 거의 다 맞힘)
   BOT_BOMB_DANGER_PAD: 0.5, // 봇이 피하는 폭탄 범위 = BOMB_BLAST_RANGE + 이만큼 (칸 중심 거리 기준이라 여유)

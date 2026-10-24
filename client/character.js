@@ -244,3 +244,35 @@ function buildRobot(color, models) {
   };
   return { group, bodyMaterial, mats, arms: [dummyArm(), dummyArm()], hammer, held, waitMark, rig, parts, feet: [], robot: { mixer, actions, face, current: 'Idle' } };
 }
+
+// 캐릭터 표시: 머리 장식 (탱크 투구 · 닌자 머리띠 · 건축가 안전모 · 갈고리 두건 + 옆구리 갈고리). rig 에 붙임 (rig 원점 = 몸 가운데)
+export function charAccessory(char) {
+  const g = new THREE.Group();
+  const top = H / 2; // rig 기준 머리 꼭대기 근처
+  const add = (geo, color, x, y, z, rot = null) => {
+    const m = new THREE.Mesh(geo, toon({ color }));
+    m.position.set(x, y, z);
+    if (rot) m.rotation.set(...rot);
+    m.castShadow = true;
+    g.add(m);
+    return m;
+  };
+  if (char === 'tank') {
+    add(new THREE.SphereGeometry(0.27, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), 0x6a6e78, 0, 0, top - 0.12, [Math.PI / 2, 0, 0]);
+    add(new THREE.BoxGeometry(0.06, 0.36, 0.08), 0x4a4e58, 0.22, 0, top - 0.12); // 얼굴 앞 가리개
+  } else if (char === 'ninja') {
+    add(new THREE.TorusGeometry(0.24, 0.04, 6, 20), 0xc02020, 0, 0, top - 0.2);
+    add(new THREE.BoxGeometry(0.04, 0.06, 0.22), 0xc02020, -0.27, 0.06, top - 0.3, [0.4, 0, 0]); // 뒤로 늘어진 끈
+    add(new THREE.BoxGeometry(0.04, 0.06, 0.22), 0xc02020, -0.27, -0.06, top - 0.3, [-0.4, 0, 0]);
+  } else if (char === 'builder') {
+    add(new THREE.SphereGeometry(0.26, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), 0xf2c418, 0, 0, top - 0.1, [Math.PI / 2, 0, 0]);
+    add(new THREE.CylinderGeometry(0.33, 0.33, 0.03, 20), 0xf2c418, 0.04, 0, top - 0.1, [Math.PI / 2, 0, 0]); // 챙
+  } else if (char === 'hook') {
+    add(new THREE.SphereGeometry(0.25, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), 0x30305a, 0, 0, top - 0.14, [Math.PI / 2, 0, 0]);
+    add(new THREE.TorusGeometry(0.11, 0.03, 6, 14, Math.PI * 1.3), 0xb0b4c0, 0.05, -0.36, 0.05, [Math.PI / 2, 0, 0]); // 옆구리 갈고리
+  }
+  g.traverse((o) => {
+    if (o.isMesh) o.userData.charAcc = true;
+  });
+  return g;
+}

@@ -75,7 +75,7 @@ export class Rooms {
     const nick = cleanText(rawNick, C.NAME_MAX_LEN);
     const name = cleanText(rawName, C.ROOM_NAME_MAX_LEN) || (nick ? `${nick}의 방` : `방 ${code}`);
     const out = this.openLog(code);
-    const game = new Game((m) => out.log(m), { countdownMs: this.countdownMs });
+    const game = new Game((m) => out.log(m), { countdownMs: this.countdownMs, characters: true });
     game.setMap(C.MAP_DEFAULT);
     const room = { code, name, public: false, game, conns: new Map(), out };
     this.rooms.set(code, room);
@@ -168,6 +168,9 @@ export class Rooms {
       }
       case 'setName':
         game.setNick(id, msg.name);
+        break;
+      case 'setChar':
+        game.setChar(id, String(msg.char));
         break;
       case 'teamMode':
         if (host) game.setTeamMode(!!msg.on);

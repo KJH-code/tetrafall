@@ -67,6 +67,12 @@
     #damage { font-size: 60px; font-weight: 900; line-height: 1; text-shadow: 0 0 8px #000, 0 0 3px #000; transition: transform .12s; }
     #damage.pop { transform: scale(1.4); }
     #hotbar { display: flex; gap: 6px; }
+    #skills { display: flex; gap: 6px; }
+    #skills .slot { position: relative; overflow: hidden; }
+    #skills .fill { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(255,200,40,.35); z-index: 0; }
+    #skills .slot span { position: relative; z-index: 1; }
+    #skills .slot.ready { border-color: #ffd23a; box-shadow: 0 0 8px #ffd23a; }
+    #char-info { font-size: 13px; color: #ddd; margin-top: 4px; white-space: normal; max-width: 560px; margin-left: auto; margin-right: auto; }
     .slot { min-width: 120px; padding: 6px 10px; background: rgba(0,0,0,.6); border: 3px solid rgba(255,255,255,.2); border-radius: 8px; font-size: 16px; text-align: center; white-space: nowrap; }
     .slot.sel { border-color: #fff; background: rgba(60,60,60,.85); }
     .slot.empty { opacity: .55; }
@@ -167,6 +173,10 @@
     <div id="bottom" class="hidden">
       <div id="buffs"></div>
       <div id="damage">0%</div>
+      <div id="skills" class="hidden">
+        <div class="slot" id="skill-f"><div class="fill"></div><span class="key">F</span><span class="name"></span></div>
+        <div class="slot" id="skill-r"><div class="fill"></div><span class="key">R</span><span class="name"></span></div>
+      </div>
       <div id="hotbar">
         <div class="slot" data-n="1"><span class="key">1</span><span class="name">쌓기</span></div>
         <div class="slot" data-n="2"><span class="key">2</span><span class="name">아이템</span></div>
@@ -188,11 +198,13 @@
       <div id="room-row" class="hidden"><span>방 <span class="code" id="room-code-text"></span> · <span id="room-name-text"></span> · <span id="room-public-text"></span></span>
         <button id="room-public">공개로</button><button id="room-copy">링크 복사</button><button id="room-leave">방 나가기</button>
         <div style="flex-basis:100%"><span id="room-link"></span></div></div>
-      <div id="name-row" class="hidden" style="font-size:15px;margin-top:8px"><label>이름 <input id="name-input" style="font-size:15px;width:9em" placeholder="머리 위에 보임" /></label></div>
+      <div id="name-row" class="hidden" style="font-size:15px;margin-top:8px"><label>이름 <input id="name-input" style="font-size:15px;width:9em" placeholder="머리 위에 보임" /></label>
+        <label id="char-label" style="margin-left:8px">캐릭터 <select id="char-select" style="font-size:15px"></select></label>
+        <div id="char-info"></div></div>
       <div id="keys" class="keys hidden">
         <button class="settings-btn" style="float:right;font-size:14px;padding:3px 12px;margin:0">설정 (감도·소리·시야각·그림자)</button>
         <b>조작법</b><br />
-        WASD 이동 · Space 점프 · Shift 대시<br />
+        WASD 이동 · Space 점프 · Shift 대시 · <b>F</b> 캐릭터 스킬 · <b>R</b> 필살기 (때리거나 맞으면 게이지가 참)<br />
         <b>좌클릭</b> 밀치기 (가까운 상대를 바라보는 쪽으로 밀어냄)<br />
         <b>1·2·3 / 휠</b> 핫바 칸 고르기 · <b>우클릭</b> 고른 칸 쓰기<br />
         &nbsp;&nbsp;1 쌓기 블록 (판마다 <span id="build-n"></span>개, 조준한 면에 붙음) · 2 투사체(빨간 공) 또는 설치 블록(노란 상자, 조준한 곳에 1×2 를 떨어뜨림, Q/E 방향) · 3 폭탄(검은 공, 블록을 부숨)<br />
@@ -204,7 +216,7 @@
         상대를 블록에 깔리게(압사) 하거나 밖으로 떨어뜨리면(낙사) 승리. 블록이 쌓이면 용암이 올라온다 — 위로!
       </div>
     </div>
-    <div id="help">WASD 이동 · Space 점프 · Shift 대시 · 좌클릭 밀치기
+    <div id="help">WASD 이동 · Space 점프 · Shift 대시 · 좌클릭 밀치기 · F 스킬 · R 필살기
 1·2·3 / 휠 핫바 칸 · 우클릭 고른 칸 쓰기 · Q/E 1×2 방향
 조종 중: 방향키 블록 이동 · Q/E 회전 · Enter 하드드롭 (8초 안에)</div>
   </div>

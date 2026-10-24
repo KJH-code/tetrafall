@@ -44,6 +44,7 @@ export class BotBrain {
     this.unstickUntil = 0;
     this.unstickDir = 1;
     this.nextPushAt = 0; // 봇 자신의 밀치기 간격 (사람처럼 연타하지 않게)
+    this.nextSkillAt = 0; // 캐릭터 스킬·필살기를 다시 써 볼 시각
     // 상대 고를 때 판마다 다시 뽑는 무작위 가산 거리. 거리가 같으면 늘 목록 맨 앞(사람)을 고르던 버그 수정:
     // 4인 판에서 봇 둘이 시작하자마자 사람을 협공했다 (2026-10-20 로그 3·16·17판, 재현 200판 중 200판)
     this.targetBias = new Map();
@@ -178,6 +179,12 @@ export class BotBrain {
 
     const target = this.nearest(p, enemies);
 
+    // 2.5) 캐릭터 스킬·필살기 (캐릭터가 없는 게임은 건너뜀 → 난수 순서도 그대로)
+    if (target && p.char && g.time >= this.nextSkillAt && this.useSkills(g, p, target, enemies, hazards)) {
+      this.nextSkillAt = g.time + this.k('SKILL_INTERVAL_MS') * (0.7 + 0.6 * this.rng());
+      return;
+    }
+
     // 3) 투사체: 보이면 쏜다
     if (target && p.ammo > 0 && this.canShoot(g, p, target)) {
       this.aimAt(p, target);
@@ -302,6 +309,54 @@ export class BotBrain {
     }
     const spot = { x: clampIn(t.x - dir.x * 1.0, W), y: clampIn(t.y - dir.y * 1.0, D) };
     this.moveTo(g, p, spot, avoid);
+  }
+
+  // 캐릭터마다 간단한 규칙. 썼으면 true
+  useSkills(g, p, t, enemies, hazards) {
+    const dist = Math.hypot(t.x - p.x, t.y - p.y);
+    const ultReady = p.ult >= C.ULT_MAX;
+    const skillReady = g.time >= p.skillReadyAt;
+    const near = (r) => enemies.filter((o) => Math.hypot(o.x - p.x, o.y - p.y) <= r && Math.abs(o.z - p.z) <= 2);
+    const face = () => {
+      this.input.yaw = Math.atan2(t.y - p.y, t.x - p.x);
+      this.input.pitch = 0;
+    };
+    const act = (name) => {
+      g.handleInput(p.id, this.input);
+      const before = name === 'ult' ? p.ult : p.skillReadyAt;
+      g.handleAction(p.id, { name });
+      return (name === 'ult' ? p.ult : p.skillReadyAt) !== before; // 실제로 쓰였나 (자리 없음 등으로 안 쓰일 수 있음)
+    };
+    if (p.char === 'tank') {
+      if (ultReady && near(C.TANK_SLAM_RANGE * 0.9).length) return act('ult');
+      if (skillReady && p.damage >= 60 && near(C.PUSH_RANGE * 1.2).length) return act('skill'); // 맞으면 위험할 때 버티기
+    } else if (p.char === 'ninja') {
+      if (ultReady && dist < 3) return act('ult');
+      if (skillReady && dist > C.NINJA_BLINK_DIST + 0.5) {
+        const yaw = Math.atan2(t.y - p.y, t.x - p.x);
+        const lx = p.x + Math.cos(yaw) * C.NINJA_BLINK_DIST;
+        const ly = p.y + Math.sin(yaw) * C.NINJA_BLINK_DIST;
+        if (edgeDist(lx, ly) < 1 || overlapsCells({ x: lx, y: ly }, hazards)) return false; // 떨어질 자리로는 안 감
+        face();
+        return act('skill');
+      }
+    } else if (p.char === 'builder') {
+      if (ultReady && dist < 6 && dist > 1.5) {
+        this.aimAt(p, t);
+        return act('ult');
+      }
+      if (skillReady && p.damage >= 80 && dist < 2.5) {
+        face(); // 상대 쪽에 벽
+        return act('skill');
+      }
+    } else if (p.char === 'hook') {
+      if (ultReady && dist > 1.5 && near(C.HOOK_ULT_RANGE).length) return act('ult');
+      if (skillReady && dist >= 2 && dist <= C.HOOK_RANGE * 0.9 && Math.abs(t.z - p.z) < 1.5) {
+        face();
+        return act('skill');
+      }
+    }
+    return false;
   }
 
   canShoot(g, p, t) {

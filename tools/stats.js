@@ -107,6 +107,9 @@ export function parseLog(text) {
     } else if ((m = line.match(/^ {2}팀: 빨강 ?(.*?) \/ 파랑 ?(.*)$/))) {
       // 팀전: 팀 승리를 사람별 승으로 나눔
       cur.teams = { 빨강: m[1] ? m[1].split(' ') : [], 파랑: m[2] ? m[2].split(' ') : [] };
+    } else if ((m = line.match(/^ {2}캐릭터: (.*)$/))) {
+      // "P1 탱크 / P2(봇) 닌자" → 이름 → 캐릭터
+      cur.chars = new Map(m[1].split(' / ').map((x) => x.split(' ')));
     } else if ((m = line.match(/^ {2}모드: (블록 마스터|킬 점수전)(?: \(마스터 (\S+?),)?/))) {
       cur.mode = m[1];
       cur.master = m[2] || null;
@@ -248,6 +251,22 @@ export function summarize(rounds) {
     byCause,
     byComp: group(comp),
     byMap: group((r) => r.map),
+    byChar: (() => {
+      // 캐릭터별 판·승 (사람·봇 따로). 캐릭터 줄이 있는 판만
+      const t = new Map();
+      for (const r of rounds) {
+        if (!r.chars) continue;
+        for (const p of r.players) {
+          const c = r.chars.get(p.name);
+          if (!c) continue;
+          const k = `${c}${p.bot ? ' (봇)' : ''}`;
+          if (!t.has(k)) t.set(k, { key: k, rounds: 0, wins: 0 });
+          t.get(k).rounds++;
+          if (r.winnerKeys.includes(p.key)) t.get(k).wins++;
+        }
+      }
+      return [...t.values()].sort((a, b) => a.key.localeCompare(b.key));
+    })(),
     byMode: group((r) => r.mode).map((g) => {
       const rs = rounds.filter((r) => r.mode === g.key);
       const masterWins = rs.filter((r) => r.masterKey && r.winnerKeys.includes(r.masterKey)).length;
@@ -281,6 +300,7 @@ export function formatReport(s) {
   const groupRows = (g) => g.map((x) => [x.key, x.rounds, fmtSec(x.lenMedian), `${pct(x.crush, x.deaths)} (${x.crush}/${x.deaths})`]);
   out.push('', '== 인원 구성별 ==', table(['구성', '판', '길이 중앙값', '압사 비율'], groupRows(s.byComp)));
   out.push('', '== 맵별 ==', table(['맵', '판', '길이 중앙값', '압사 비율'], groupRows(s.byMap)));
+  if (s.byChar.length) out.push('', '== 캐릭터별 ==', table(['캐릭터', '판', '승', '승률'], s.byChar.map((c) => [c.key, c.rounds, c.wins, pct(c.wins, c.rounds)])));
   out.push('', '== 모드별 ==', table(['모드', '판', '길이 중앙값', '압사 비율', ''], groupRows(s.byMode).map((row, i) => [...row, s.byMode[i].note])));
   out.push(
     '',

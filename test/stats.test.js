@@ -227,3 +227,21 @@ test('통계: 모드별 — 블록 마스터 생존자 여럿 승·마스터 승
   assert.equal(mode['킬 점수전'].note, '판당 사망 3.0');
   assert.ok(formatReport(s).includes('== 모드별 =='));
 });
+
+test('통계: 캐릭터별 판·승 (사람·봇 따로)', () => {
+  const text = [
+    'P1 이름: 재혁',
+    '===== ROUND 1 시작 (3명: P1 P2 P3(봇), 맵 평지) =====',
+    '  캐릭터: P1 탱크 / P2 닌자 / P3(봇) 탱크',
+    '===== ROUND 1 종료 | 길이 0:20 | 승자: P1 =====',
+    '===== ROUND 2 시작 (2명: P1 P2, 맵 평지) =====',
+    '  캐릭터: P1 갈고리 / P2 닌자',
+    '===== ROUND 2 종료 | 길이 0:20 | 승자: P2 =====',
+  ].join('\n');
+  const s = summarize(parseLog(text));
+  const row = (k) => s.byChar.find((c) => c.key === k);
+  assert.deepEqual([row('탱크').rounds, row('탱크').wins], [1, 1]);
+  assert.deepEqual([row('닌자').rounds, row('닌자').wins], [2, 1]);
+  assert.deepEqual([row('탱크 (봇)').rounds, row('탱크 (봇)').wins], [1, 0]);
+  assert.ok(formatReport(s).includes('== 캐릭터별 =='));
+});

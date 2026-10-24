@@ -152,6 +152,22 @@ function killFeed(e) {
 function handleEvent(e) {
   feelEvent(e);
   switch (e.type) {
+    case 'skill':
+    case 'ult': {
+      const a = playerById(e.who);
+      if (!a) break;
+      if (e.type === 'ult') toast(`${shownName(a)} ${C.ULT_NAMES[e.char]}!`, e.who === myId ? 'good' : '');
+      sound.play(e.type === 'ult' && e.char === 'tank' ? 'boom' : 'swing', { dist: e.who === myId ? 0 : distToMe(a.x, a.y, a.z) });
+      if (e.type === 'ult' && e.char === 'tank') fx.burst({ x: a.x, y: a.y, z: a.z + 0.2 }, null, 0xc0b090, 24, 6, 0.14, 0.6);
+      break;
+    }
+    case 'blink':
+      fx.burst({ x: e.from.x, y: e.from.y, z: e.to.z + 0.8 }, null, 0x404060, 10, 2, 0.1, 0.4);
+      fx.burst({ x: e.to.x, y: e.to.y, z: e.to.z + 0.8 }, null, 0x404060, 10, 2, 0.1, 0.4);
+      break;
+    case 'hook':
+      renderer.showHook(e.who, e.target, e.yaw);
+      break;
     case 'crumble': // 무너지는 바닥 칸이 사라짐
       fx.burst({ x: e.x + 0.5, y: e.y + 0.5, z: e.z + 0.5 }, null, C.CRUMBLE_COLOR, 6, 3, 0.12, 0.6);
       break;
@@ -372,6 +388,8 @@ function connect() {
       const sp = C.SPAWN_POINTS[msg.slot % C.SPAWN_POINTS.length];
       input.setYawPitch(sp.yaw, 0);
       if (nameInput.value) submitName();
+      const savedChar = loadPref('tf-char');
+      if (savedChar) send({ type: 'setChar', char: savedChar });
     } else if (msg.type === 'left') {
       leftRoom(msg.reason);
     } else if (msg.type === 'state') {
@@ -538,6 +556,14 @@ $('map-select').addEventListener('change', (e) => send({ type: 'setMap', map: e.
 $('bot-level').addEventListener('change', (e) => send({ type: 'botLevel', level: e.target.value }));
 $('mode-select').addEventListener('change', (e) => send({ type: 'setMode', mode: e.target.value }));
 const BOT_LEVEL_KO = { easy: '쉬움', normal: '보통', hard: '어려움' };
+// 캐릭터 설명 (대기 화면). 수치는 config
+const CHAR_DESC = {
+  tank: `패시브: 맞을 때 피해 % 가 덜 쌓임 (×${C.TANK_DAMAGE_TAKEN}) · F 버티기: ${C.TANK_HOLD_MS / 1000}초 안 밀림 (쿨 ${C.TANK_HOLD_CD_MS / 1000}초) · R 지면 강타: 주변 ${C.TANK_SLAM_RANGE}칸을 크게 날림`,
+  ninja: `패시브: 이동 ×${C.NINJA_SPEED_MULT} · F 순간이동: 보는 방향 ${C.NINJA_BLINK_DIST}칸 (쿨 ${C.NINJA_BLINK_CD_MS / 1000}초) · R 그림자: ${C.NINJA_SHADOW_MS / 1000}초 유령화 + 다음 밀치기 치명타`,
+  builder: `패시브: 쌓기 블록 +${C.BUILDER_EXTRA_BLOCKS} · F 벽 세우기: 앞에 가로 ${C.BUILDER_WALL_WIDTH} × ${C.BUILDER_WALL_HEIGHT}층 (쿨 ${C.BUILDER_WALL_CD_MS / 1000}초) · R 블록 비: 조준한 곳에 블록 ${C.BUILDER_RAIN_CELLS.length}개`,
+  hook: `패시브: 밀치기 사거리 ×${C.HOOK_PUSH_RANGE_MULT} · F 갈고리: 보는 방향 ${C.HOOK_RANGE}칸 안 상대를 끌어옴 (쿨 ${C.HOOK_CD_MS / 1000}초) · R 회오리: 주변 ${C.HOOK_ULT_RANGE}칸을 모두 끌어옴`,
+};
+
 const MODE_DESC = {
   survival: '생존: 마지막까지 살아남은 사람이 승',
   master: `블록 마스터: 한 명이 하늘에서 블록만 떨어뜨리고, 나머지는 ${C.MASTER_TIME_MS / 1000}초 버티기 (각자 도생, 죽으면 마스터 편, 마스터는 판마다 돌아감)`,
@@ -894,6 +920,7 @@ function updateHud() {
   // 봇 버튼: 호스트만, 판 사이에만
   const between = state.phase === 'lobby' || state.phase === 'over';
   $('name-row').classList.toggle('hidden', !between);
+  if (between) updateCharRow(p);
   updateRoomRow(between, isHost);
   updateHostPlayers(isHost && between);
   const showBots = isHost && between;
@@ -1159,6 +1186,9 @@ function updateBottom(p) {
     p.ammo > 0 ? `투사체 ×${p.ammo}` : p.bricks > 0 ? `설치 1×2 ×${p.bricks} ${p.brickSide ? '옆' : '앞'}` : '아이템 —',
     p.bombs > 0 ? `폭탄 ×${p.bombs}` : '폭탄 —',
   ];
+  if (p.critNext) buffs.push('다음 밀치기 치명타');
+  if (p.holding) buffs.push('버티는 중');
+  updateSkills(p);
   const key = `${buffs.join('|')}#${slots.join('|')}#${p.hand}`;
   if (key === bottomKey) return;
   bottomKey = key;
@@ -1168,6 +1198,55 @@ function updateBottom(p) {
     el.classList.toggle('sel', p.hand === i + 1);
     el.classList.toggle('empty', slots[i].endsWith('—'));
   });
+}
+
+// 캐릭터 스킬 F (쿨타임) · 필살기 R (게이지) 칸
+const skillsEl = $('skills');
+function updateSkills(p) {
+  skillsEl.classList.toggle('hidden', !p.char);
+  if (!p.char) return;
+  const f = $('skill-f');
+  const r = $('skill-r');
+  const cdTotal = { tank: C.TANK_HOLD_CD_MS, ninja: C.NINJA_BLINK_CD_MS, builder: C.BUILDER_WALL_CD_MS, hook: C.HOOK_CD_MS }[p.char];
+  f.querySelector('.name').textContent = `${C.SKILL_NAMES[p.char]} ${p.skillCd > 0 ? `${(p.skillCd / 1000).toFixed(1)}s` : ''}`;
+  f.querySelector('.fill').style.width = `${p.skillCd > 0 ? (1 - p.skillCd / cdTotal) * 100 : 100}%`;
+  f.classList.toggle('ready', p.skillCd <= 0);
+  r.querySelector('.name').textContent = `${C.ULT_NAMES[p.char]} ${p.ult >= C.ULT_MAX ? '준비!' : `${p.ult}%`}`;
+  r.querySelector('.fill').style.width = `${(p.ult / C.ULT_MAX) * 100}%`;
+  r.classList.toggle('ready', p.ult >= C.ULT_MAX);
+}
+
+// 대기 화면 캐릭터 고르기 (이 브라우저에 기억, 접속할 때 보냄)
+const charSel = $('char-select');
+for (const c of C.CHARACTERS) {
+  const o = document.createElement('option');
+  o.value = c;
+  o.textContent = C.CHAR_NAMES[c];
+  charSel.append(o);
+}
+function loadPref(k) {
+  try {
+    return localStorage.getItem(k);
+  } catch {
+    return null;
+  }
+}
+charSel.addEventListener('change', () => {
+  try {
+    localStorage.setItem('tf-char', charSel.value);
+  } catch {
+    // 저장이 막혀도 이번 접속에는 보냄
+  }
+  send({ type: 'setChar', char: charSel.value });
+  charSel.blur();
+});
+function updateCharRow(p) {
+  const on = !!p && !!p.char;
+  $('char-label').classList.toggle('hidden', !on);
+  $('char-info').classList.toggle('hidden', !on);
+  if (!on) return;
+  if (document.activeElement !== charSel) charSel.value = p.char;
+  $('char-info').textContent = CHAR_DESC[p.char];
 }
 
 // 입력 전송

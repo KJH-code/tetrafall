@@ -91,6 +91,12 @@ export class Input {
         case 'Enter':
           this.sendAction({ name: 'drop' });
           break;
+        case 'KeyF':
+          this.sendAction({ name: 'skill' }); // 캐릭터 스킬 (쿨타임)
+          break;
+        case 'KeyR':
+          this.sendAction({ name: 'ult' }); // 필살기 (게이지)
+          break;
         case 'Digit1':
         case 'Digit2':
         case 'Digit3':

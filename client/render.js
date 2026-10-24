@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { CONFIG as C } from '/shared/config.js';
 import { toon, noOutline } from '/toon.js';
-import { buildCharacter } from '/character.js';
+import { buildCharacter, charAccessory } from '/character.js';
 import { Effects } from '/effects.js';
 import { CELL, SHAPE_NAMES } from '/shared/pieces.js';
 import { orbitEye } from '/shared/camera.js';
@@ -622,6 +622,22 @@ export class Renderer {
   }
 
   // 조종 중인 블록 ↔ 조종하는 사람 머리를 잇는 보라색 빛줄기 (누가 어느 블록을 모는지)
+  // 갈고리 줄: 던진 사람에서 끌려온 사람(빗나가면 보는 방향 끝)까지 잠깐
+  showHook(whoId, targetId, yaw) {
+    const a = this.smooth.get(whoId);
+    if (!a) return;
+    const b = targetId !== null && targetId !== undefined ? this.smooth.get(targetId) : null;
+    const to = b ? new THREE.Vector3(b.x, b.y, b.z + 0.9) : new THREE.Vector3(a.x + Math.cos(yaw) * C.HOOK_RANGE, a.y + Math.sin(yaw) * C.HOOK_RANGE, a.z + 0.9);
+    const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(a.x, a.y, a.z + 0.9), to]);
+    const line = new THREE.Line(geo, noOutline(new THREE.LineBasicMaterial({ color: 0xd8dce8, transparent: true, opacity: 0.9 })));
+    this.scene.add(line);
+    setTimeout(() => {
+      this.scene.remove(line);
+      geo.dispose();
+      line.material.dispose();
+    }, 260);
+  }
+
   // 바닥 없는 맵이면 바닥판을 숨기고, 무너지는 칸을 흔들고, 발판을 옮긴다
   updateTerrain(state, dt) {
     const floorOn = !state.map || state.map.floor !== false;
@@ -786,6 +802,15 @@ export class Renderer {
         m.opacity = opacity;
       }
       if (p.jumpLeft > 0 && !p.stunned) bodyMat.emissive.setHex(0x1a5a1a);
+      if (p.holding) bodyMat.emissive.setHex(0x2040a0); // 탱크 버티기: 파랗게
+      if (p.critNext && Math.floor(performance.now() / 150) % 2) bodyMat.emissive.setHex(0x801010); // 닌자 그림자: 다음 밀치기 치명타
+      // 캐릭터 머리 장식 (판 사이에 바뀔 수 있어 바뀔 때만 다시 붙임)
+      if (g.userData.char !== p.char) {
+        if (g.userData.acc) g.userData.rig.remove(g.userData.acc);
+        g.userData.acc = p.char ? charAccessory(p.char) : null;
+        if (g.userData.acc) g.userData.rig.add(g.userData.acc);
+        g.userData.char = p.char;
+      }
       g.userData.hammer.visible = p.weaponUses > 0;
       // 왼손에 고른 칸의 물건, 조종권 대기 중이면 머리 위 하늘색 팔면체
       const kind = heldKind(p);
