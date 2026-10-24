@@ -112,7 +112,7 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
-const KIND_KO = { push: '밀치기', projectile: '투사체', weapon: '망치', shock: '설치 블록 충격파', bomb: '폭탄' };
+const KIND_KO = { push: '밀치기', projectile: '투사체', weapon: '망치', shock: '설치 블록 충격파', bomb: '폭탄', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', whirl: '회오리' };
 const ITEM_KO = { control: '조종권', knockback: '투사체', weapon: '망치', jump: '점프력 상승', ghost: '유령화', brick: '설치 블록', bomb: '폭탄', speed: '이속 증가' };
 const ITEM_HELP = {
   control: '조종권 획득! 블록을 하늘에서 조종합니다',
@@ -125,7 +125,7 @@ const ITEM_HELP = {
   bomb: `폭탄! (3번 칸) 우클릭으로 던지면 ${C.BOMB_FUSE_MS / 1000}초 뒤 터져 블록을 부수고 근처 사람을 날림`,
 };
 const CAUSE_KO = { crush: '압사', fall: '낙사', lava: '용암' };
-const WEAPON_KO = { push: '밀치기', weapon: '망치', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종 블록', thrown: '설치 블록' };
+const WEAPON_KO = { push: '밀치기', weapon: '망치', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종 블록', thrown: '설치 블록', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', whirl: '회오리' };
 
 // 오른쪽 위 킬 피드: "죽인 사람 → 죽은 사람 낙사 (망치)". 내가 낀 줄은 노란 테두리
 const killfeedEl = $('killfeed');
@@ -151,21 +151,82 @@ function killFeed(e) {
   setTimeout(() => row.remove(), C.KILLFEED_MS + 600);
 }
 
+// 필살기: 모두의 화면 가운데 큰 글자
+const ultEl = $('ultmsg');
+let ultTimer = null;
+function showUltBanner(text, color) {
+  ultEl.textContent = text;
+  ultEl.style.color = `#${color.toString(16).padStart(6, '0')}`;
+  ultEl.classList.remove('hidden');
+  ultEl.style.animation = 'none';
+  void ultEl.offsetWidth; // 애니메이션 다시
+  ultEl.style.animation = '';
+  clearTimeout(ultTimer);
+  ultTimer = setTimeout(() => ultEl.classList.add('hidden'), C.ULT_BANNER_MS);
+}
+
+// 콤보 'N HIT' (때린 쪽 노랑, 맞은 쪽 빨강)
+const comboEl = $('combo');
+let comboTimer = null;
+function showCombo(n, taken) {
+  comboEl.textContent = `${n} HIT${n >= C.COMBO_MAX_HITS ? '!!' : '!'}`;
+  comboEl.classList.toggle('taken', taken);
+  comboEl.classList.remove('hidden');
+  clearTimeout(comboTimer);
+  comboTimer = setTimeout(() => comboEl.classList.add('hidden'), C.COMBO_TEXT_MS);
+}
+
 function handleEvent(e) {
   feelEvent(e);
   switch (e.type) {
     case 'skill':
     case 'ult': {
+      // 쓰는 순간 캐릭터 색으로 번쩍 (남에게도). 필살기는 모두의 화면 가운데 큰 글자
       const a = playerById(e.who);
       if (!a) break;
-      if (e.type === 'ult') toast(`${shownName(a)} ${C.ULT_NAMES[e.char]}!`, e.who === myId ? 'good' : '');
-      sound.play(e.type === 'ult' && e.char === 'tank' ? 'boom' : 'swing', { dist: e.who === myId ? 0 : distToMe(a.x, a.y, a.z) });
-      if (e.type === 'ult' && e.char === 'tank') fx.burst({ x: a.x, y: a.y, z: a.z + 0.2 }, null, 0xc0b090, 24, 6, 0.14, 0.6);
+      const color = C.CHAR_COLORS[e.char];
+      const pos = { x: e.x ?? a.x, y: e.y ?? a.y, z: (e.z ?? a.z) + 0.9 };
+      fx.ring(pos, color, e.type === 'ult' ? 3.2 : 2.2, 0.35);
+      fx.burst(pos, null, color, e.type === 'ult' ? 22 : 10, 4, 0.1, 0.45);
+      sound.play(e.type === 'ult' ? 'boom' : 'swing', { dist: e.who === myId ? 0 : distToMe(a.x, a.y, a.z) });
+      if (e.type === 'ult') showUltBanner(`${shownName(a)} ${C.ULT_NAMES[e.char]}!`, color);
       break;
     }
-    case 'blink':
+    case 'blink': // 순간 베기·그림자 일격: 지나간 길에 베기 잔상
       fx.burst({ x: e.from.x, y: e.from.y, z: e.to.z + 0.8 }, null, 0x404060, 10, 2, 0.1, 0.4);
       fx.burst({ x: e.to.x, y: e.to.y, z: e.to.z + 0.8 }, null, 0x404060, 10, 2, 0.1, 0.4);
+      renderer.trail({ x: e.from.x, y: e.from.y, z: e.to.z + 0.9 }, { x: e.to.x, y: e.to.y, z: e.to.z + 0.9 }, 0xffffff, 280);
+      break;
+    case 'charge': // 탱크 돌진: 가는 길에 흙먼지 줄
+      renderer.trail({ x: e.x, y: e.y, z: e.z + 0.15 }, { x: e.x + Math.cos(e.yaw) * 3, y: e.y + Math.sin(e.yaw) * 3, z: e.z + 0.15 }, 0xc0a070, 400);
+      fx.burst({ x: e.x, y: e.y, z: e.z + 0.2 }, null, 0xc0a070, 14, 3, 0.12, 0.5);
+      break;
+    case 'slamWarn': // 탱크 내려찍기: 떨어질 범위를 바닥에
+      renderer.markCircle(e.x, e.y, e.z, e.r, 0xff3020, e.ms);
+      break;
+    case 'slam': {
+      fx.ring({ x: e.x, y: e.y, z: e.z + 0.1 }, 0xc0b090, e.r * 2, 0.4, true);
+      fx.burst({ x: e.x, y: e.y, z: e.z + 0.2 }, null, 0xc0b090, 28, 7, 0.14, 0.6);
+      const me = playerById(myId);
+      if (me && Math.hypot(me.x - e.x, me.y - e.y) < e.r * 2) fx.shake(0.25, 350);
+      break;
+    }
+    case 'wallWarn': // 건축가 솟는 벽: 솟을 자리를 노랗게
+      renderer.markCells(e.cells, 0xffd23a, e.ms);
+      break;
+    case 'wallRise':
+      for (const [x, y, z] of e.cells) if (z === Math.min(...e.cells.map((c) => c[2]))) fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.1 }, null, 0xa87448, 6, 3, 0.1, 0.4);
+      sound.play('land', { dist: e.who === myId ? 0 : distToMe(e.cells[0][0], e.cells[0][1], e.cells[0][2]) });
+      break;
+    case 'rainWarn': // 블록 비: 떨어질 자리를 빨갛게
+      renderer.markCells(e.cells, 0xff2020, 900);
+      break;
+    case 'whirl':
+      fx.ring({ x: e.x, y: e.y, z: e.z + 0.3 }, 0x40d0c0, e.r * 2, 0.45, true);
+      renderer.markCircle(e.x, e.y, e.z, e.r, 0x40d0c0, 350);
+      break;
+    case 'combo': // 내가 때리거나 맞은 콤보만
+      if (e.by === myId || e.target === myId) showCombo(e.n, e.target === myId);
       break;
     case 'hook':
       renderer.showHook(e.who, e.target, e.yaw);
@@ -188,7 +249,7 @@ function handleEvent(e) {
         }
       } else if (e.by === myId) {
         if (e.crit) toast(`치명타! ${KIND_KO[e.kind]}`, 'crit');
-        else toast(e.ok ? `${KIND_KO[e.kind]} 명중!` : `${KIND_KO[e.kind]} 명중했지만 상대가 경직 중이라 무효`, e.ok ? 'good' : '');
+        else toast(e.ok ? `${KIND_KO[e.kind]} 명중!` : `${KIND_KO[e.kind]} 명중했지만 상대가 무적이라 무효`, e.ok ? 'good' : '');
       }
       break;
     case 'pickup':
@@ -238,7 +299,7 @@ function feelEvent(e) {
       if (!t) return;
       const chest = { x: t.x, y: t.y, z: t.z + 1.0 };
       if (!e.ok) {
-        fx.burst(chest, null, 0xaaaaaa, 4, 2, 0.06, 0.25); // 경직 중이라 무시: 작은 회색 먼지만
+        fx.burst(chest, null, 0xaaaaaa, 4, 2, 0.06, 0.25); // 무적이라 무시: 작은 회색 먼지만
         return;
       }
       let dir = null;
@@ -559,10 +620,10 @@ $('mode-select').addEventListener('change', (e) => send({ type: 'setMode', mode:
 const BOT_LEVEL_KO = { easy: '쉬움', normal: '보통', hard: '어려움' };
 // 캐릭터 설명 (대기 화면). 수치는 config
 const CHAR_DESC = {
-  tank: `패시브: 맞을 때 피해 % 가 덜 쌓임 (×${C.TANK_DAMAGE_TAKEN}) · F 버티기: ${C.TANK_HOLD_MS / 1000}초 안 밀림 (쿨 ${C.TANK_HOLD_CD_MS / 1000}초) · R 지면 강타: 주변 ${C.TANK_SLAM_RANGE}칸을 크게 날림`,
-  ninja: `패시브: 이동 ×${C.NINJA_SPEED_MULT} · F 순간이동: 보는 방향 ${C.NINJA_BLINK_DIST}칸 (쿨 ${C.NINJA_BLINK_CD_MS / 1000}초) · R 그림자: ${C.NINJA_SHADOW_MS / 1000}초 유령화 + 다음 밀치기 치명타`,
-  builder: `패시브: 벽 세우기 쿨타임 짧음 · F 벽 세우기: 앞에 가로 ${C.BUILDER_WALL_WIDTH} × ${C.BUILDER_WALL_HEIGHT}층 (쿨 ${C.BUILDER_WALL_CD_MS / 1000}초) · R 블록 비: 조준한 곳에 블록 ${C.BUILDER_RAIN_CELLS.length}개`,
-  hook: `패시브: 밀치기 사거리 ×${C.HOOK_PUSH_RANGE_MULT} · F 갈고리: 보는 방향 ${C.HOOK_RANGE}칸 안 상대를 끌어옴 (쿨 ${C.HOOK_CD_MS / 1000}초) · R 회오리: 주변 ${C.HOOK_ULT_RANGE}칸을 모두 끌어옴`,
+  tank: `패시브: 맞을 때 피해 % 가 덜 쌓임 (×${C.TANK_DAMAGE_TAKEN}) · F 돌진: 앞으로 들이받아 피해 ${C.TANK_CHARGE_DAMAGE}% (쿨 ${C.SKILL_CD_MS.tank / 1000}초) · R 내려찍기: 떠올랐다 쾅, 주변 ${C.TANK_SLAM_RANGE}칸을 위로 띄움 (피해 ${C.TANK_SLAM_DAMAGE}%)`,
+  ninja: `콤보 캐릭터 · 패시브: 이동 ×${C.NINJA_SPEED_MULT} · F 순간 베기: ${C.NINJA_BLINK_DIST}칸 앞으로 지나가며 벰 (피해 ${C.NINJA_SLASH_DAMAGE}%, 쿨 ${C.SKILL_CD_MS.ninja / 1000}초) · R 그림자 일격: ${C.NINJA_STRIKE_RANGE}칸 안 상대 등 뒤로 → 치명타, 맞히면 F 초기화`,
+  builder: `패시브: 설치 블록 아이템 +${C.BUILDER_BRICK_BONUS} · F 솟는 벽: 앞에 가로 ${C.BUILDER_WALL_WIDTH} × ${C.BUILDER_WALL_HEIGHT}층이 솟으며 위의 상대를 띄움 (쿨 ${C.SKILL_CD_MS.builder / 1000}초) · R 블록 비: 조준한 곳에 블록 ${C.BUILDER_RAIN_CELLS.length}개`,
+  hook: `패시브: 밀치기 사거리 ×${C.HOOK_PUSH_RANGE_MULT} · F 갈고리: ${C.HOOK_RANGE}칸 안 상대를 당김 + 피해 ${C.HOOK_DAMAGE}% (쿨 ${C.SKILL_CD_MS.hook / 1000}초, 평타 → 갈고리 → 평타) · R 회오리: 주변 ${C.HOOK_ULT_RANGE}칸을 모아 튕김`,
 };
 
 const MODE_DESC = {
@@ -1193,8 +1254,7 @@ function updateBottom(p) {
   // 든 아이템 (하나만). 망치는 위 버프 줄에도 횟수가 나옴
   const item =
     p.ammo > 0 ? `투사체 ×${p.ammo}` : p.bricks > 0 ? `설치 1×2 ×${p.bricks} ${p.brickSide ? '옆' : '앞'}` : p.bombs > 0 ? `폭탄 ×${p.bombs}` : p.weaponUses > 0 ? `망치 (좌클릭) ×${p.weaponUses}` : '아이템 —';
-  if (p.critNext) buffs.push('다음 밀치기 치명타');
-  if (p.holding) buffs.push('버티는 중');
+  if (p.iframeLeft > 0) buffs.push(`무적 ${(p.iframeLeft / 1000).toFixed(1)}s`);
   updateSkills(p);
   const key = `${buffs.join('|')}#${item}`;
   if (key === bottomKey) return;
@@ -1212,7 +1272,7 @@ function updateSkills(p) {
   if (!p.char) return;
   const f = $('skill-f');
   const r = $('skill-r');
-  const cdTotal = { tank: C.TANK_HOLD_CD_MS, ninja: C.NINJA_BLINK_CD_MS, builder: C.BUILDER_WALL_CD_MS, hook: C.HOOK_CD_MS }[p.char];
+  const cdTotal = C.SKILL_CD_MS[p.char];
   f.querySelector('.name').textContent = `${C.SKILL_NAMES[p.char]} ${p.skillCd > 0 ? `${(p.skillCd / 1000).toFixed(1)}s` : ''}`;
   f.querySelector('.fill').style.width = `${p.skillCd > 0 ? (1 - p.skillCd / cdTotal) * 100 : 100}%`;
   f.classList.toggle('ready', p.skillCd <= 0);

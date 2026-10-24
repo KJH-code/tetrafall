@@ -49,6 +49,10 @@
     #hitmarker::before { transform: rotate(45deg); }
     #hitmarker::after { transform: rotate(-45deg); }
     #flash { position: absolute; inset: 0; background: rgba(255,0,0,.35); opacity: 0; transition: opacity .3s; }
+    #ultmsg { position: absolute; top: 22%; left: 50%; transform: translate(-50%, -50%); font-size: 46px; font-weight: 900; white-space: nowrap; text-shadow: 0 0 10px #000, 0 0 3px #000; z-index: 3; pointer-events: none; animation: ult-pop .25s ease-out; }
+    @keyframes ult-pop { from { transform: translate(-50%, -50%) scale(1.6); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+    #combo { position: absolute; top: 44%; left: 62%; font-size: 40px; font-weight: 900; font-style: italic; color: #ffd23a; text-shadow: 0 0 8px #000, 0 0 3px #000; z-index: 3; pointer-events: none; }
+    #combo.taken { color: #ff5a3a; }
     #bigmsg { position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); font-size: 110px; font-weight: 900; white-space: nowrap; text-shadow: 0 0 12px #000, 0 0 4px #000; z-index: 3; }
     #bigmsg.small { font-size: 72px; }
     #bigmsg.small { top: 16%; } /* 승리·무승부: 화면 가운데 승자(카메라가 비춤)를 가리지 않게 위로 */
@@ -130,6 +134,8 @@
     </div>
     <div id="status">연결 중...</div>
     <div id="bigmsg" class="hidden"></div>
+    <div id="ultmsg" class="hidden"></div>
+    <div id="combo" class="hidden"></div>
     <div id="killfeed"></div>
     <div id="settings" class="hidden"><div class="box">
       <h3>설정</h3>

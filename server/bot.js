@@ -312,16 +312,20 @@ export class BotBrain {
       g.handleAction(p.id, { name });
       return (name === 'ult' ? p.ult : p.skillReadyAt) !== before; // 실제로 쓰였나 (자리 없음 등으로 안 쓰일 수 있음)
     };
+    const comboing = g.time < t.stunUntil && t.comboHits > 0; // 상대가 내 콤보에 걸려 있음 → 스킬로 이어 감
+    const level = Math.abs(t.z - p.z) < 1;
     if (p.char === 'tank') {
       if (ultReady && near(C.TANK_SLAM_RANGE * 0.9).length) return act('ult');
-      if (skillReady && p.damage >= 60 && near(C.PUSH_RANGE * 1.2).length) return act('skill'); // 맞으면 위험할 때 버티기
+      if (skillReady && level && dist >= 1 && dist <= C.TANK_CHARGE_SPEED * (C.TANK_CHARGE_MS / 1000)) {
+        face(); // 돌진
+        return act('skill');
+      }
     } else if (p.char === 'ninja') {
-      if (ultReady && dist < 3) return act('ult');
-      if (skillReady && dist > C.NINJA_BLINK_DIST + 0.5) {
+      if (ultReady && dist <= C.NINJA_STRIKE_RANGE) return act('ult');
+      if (skillReady && level && dist <= C.NINJA_BLINK_DIST && (comboing || dist > 1.5)) {
         const yaw = Math.atan2(t.y - p.y, t.x - p.x);
-        const lx = p.x + Math.cos(yaw) * C.NINJA_BLINK_DIST;
-        const ly = p.y + Math.sin(yaw) * C.NINJA_BLINK_DIST;
-        if (edgeDist(lx, ly) < 1) return false; // 떨어질 자리로는 안 감
+        const land = Math.min(C.NINJA_BLINK_DIST, dist + C.NINJA_STRIKE_BEHIND); // 상대 바로 뒤에서 멈춤
+        if (edgeDist(p.x + Math.cos(yaw) * land, p.y + Math.sin(yaw) * land) < 0.8) return false; // 떨어질 자리로는 안 감
         face();
         return act('skill');
       }
@@ -330,14 +334,14 @@ export class BotBrain {
         this.aimAt(p, t);
         return act('ult');
       }
-      if (skillReady && p.damage >= 80 && dist < 2.5) {
-        face(); // 상대 쪽에 벽
+      if (skillReady && level && dist >= 0.8 && dist < 2.2) {
+        face(); // 상대 발밑에 벽을 솟게 해 띄움
         return act('skill');
       }
     } else if (p.char === 'hook') {
-      if (ultReady && dist > 1.5 && near(C.HOOK_ULT_RANGE).length) return act('ult');
-      if (skillReady && dist >= 2 && dist <= C.HOOK_RANGE * 0.9 && Math.abs(t.z - p.z) < 1.5) {
-        face();
+      if (ultReady && near(C.HOOK_ULT_RANGE).length) return act('ult');
+      if (skillReady && dist >= 1.6 && dist <= C.HOOK_RANGE * 0.9 && Math.abs(t.z - p.z) < 1.5 && (comboing || dist >= 2.5)) {
+        face(); // 밀어낸 상대를 다시 당김
         return act('skill');
       }
     }

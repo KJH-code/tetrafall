@@ -155,7 +155,14 @@ export const CONFIG = {
   PUSH_KB_UP: 3,
 
   // ---- 경직 ----
-  STUN_MS: 500, // 넉백 맞으면 이 동안 조작 불가 + 추가 넉백 무시
+  STUN_MS: 500, // 밀치기 히트 경직: 이 동안 조작 불가. 경직 중에 또 맞으면 콤보 (밀치기 쿨 600 보다 짧아 평타만으로는 안 이어짐)
+  // 콤보 (2026-10-24 재혁): 경직 중에 또 맞히면 콤보가 이어짐. 경직이 풀리면(끊김) 또는 COMBO_MAX_HITS 타째에 콤보가 끝나고
+  // COMBO_IFRAME_MS 무적 (공격만 막음, 압사·낙사·용암은 못 막음). 여럿이 때려도 맞는 사람 기준으로 셈.
+  // 콤보 중 가벼운 공격(밀치기·베기·돌진·갈고리)은 수평 넉백 ×COMBO_LIGHT_KB, 마지막 타는 ×COMBO_FINISH_KB 로 크게 날림
+  COMBO_MAX_HITS: 5,
+  COMBO_IFRAME_MS: 1000,
+  COMBO_LIGHT_KB: 0.6,
+  COMBO_FINISH_KB: 1.3,
   // 치명타 (2026-10-21 재혁): 밀치기·망치를 공중에서 떨어지는 중에, 발이 상대보다 CRIT_MIN_HEIGHT 이상 높을 때 맞히면
   // 피해 % × CRIT_DAMAGE_MULT, 수평 넉백 × CRIT_KB_MULT, 멈칫 × CRIT_HITSTOP_MULT (마리오 밟기 느낌, 타이밍 실력)
   CRIT_MIN_HEIGHT: 0.3,
@@ -207,39 +214,65 @@ export const CONFIG = {
   // ---- 캐릭터 (2026-10-24 7단계 재혁: 친구들이 '스킬/고유기 넣어서'. 캐릭터마다 패시브 + 스킬 F(쿨) + 필살기 R(게이지)) ----
   CHARACTERS: ['tank', 'ninja', 'builder', 'hook'],
   CHAR_NAMES: { tank: '탱크', ninja: '닌자', builder: '건축가', hook: '갈고리' },
-  SKILL_NAMES: { tank: '버티기', ninja: '순간이동', builder: '벽 세우기', hook: '갈고리' },
-  ULT_NAMES: { tank: '지면 강타', ninja: '그림자', builder: '블록 비', hook: '회오리' },
+  // 2026-10-24 재혁: 스킬이 직접 피해·넉백을 주고 콤보로 이어지게 (닌자 = 콤보 캐릭터). 남이 쓰는 것도 보이게 예고·효과
+  SKILL_NAMES: { tank: '돌진', ninja: '순간 베기', builder: '솟는 벽', hook: '갈고리' },
+  ULT_NAMES: { tank: '내려찍기', ninja: '그림자 일격', builder: '블록 비', hook: '회오리' },
+  SKILL_CD_MS: { tank: 8000, ninja: 6000, builder: 11000, hook: 8000 }, // 봇 160판으로 맞춤 (2026-10-24)
   CHAR_DEFAULT: 'tank',
+  CHAR_COLORS: { tank: 0xa3adb8, ninja: 0xd02030, builder: 0xf2c418, hook: 0x40d0c0 }, // 스킬 쓸 때 번쩍이는 색 (남에게도 보임)
+  ULT_BANNER_MS: 1300, // 필살기를 쓰면 모두의 화면 가운데 '누구 기술!' 글자
+  COMBO_TEXT_MS: 900, // 내가 때리거나 맞은 콤보 'N HIT' 글자
   ULT_MAX: 100, // 필살기 게이지 (다 차면 R)
   ULT_PER_DAMAGE: 1, // 피해 % 를 주거나 받을 때 1% 당 게이지
   // 탱크
   TANK_DAMAGE_TAKEN: 0.85, // 패시브: 맞을 때 쌓이는 피해 % 배율. 2026-10-24 '넉백 ×0.85' 에서 바꿈 (봇 120판 탱크 51승 / 기대 30, 재혁: 패시브 바꿈)
-  TANK_HOLD_MS: 2000, // 스킬 버티기: 이동안 안 밀림
-  TANK_HOLD_CD_MS: 10000,
-  TANK_SLAM_RANGE: 2.5, // 필살 지면 강타: 이 거리 안 (수평, 높이 차 2칸 안)
-  TANK_SLAM_KB_SPEED: 8,
-  TANK_SLAM_KB_UP: 6,
-  TANK_SLAM_STUN_MS: 1000,
-  TANK_SLAM_DAMAGE: 20,
-  // 닌자
+  TANK_CHARGE_SPEED: 12, // 스킬 돌진: 이 속도(칸/초)로 TANK_CHARGE_MS 동안 앞으로 (약 3칸). 처음 부딪힌 상대를 치고 멈춤
+  TANK_CHARGE_MS: 250,
+  TANK_CHARGE_HIT_RANGE: 0.9, // 몸 가운데끼리 이 거리 안이면 부딪힘
+  TANK_CHARGE_KB_SPEED: 4.2,
+  TANK_CHARGE_KB_UP: 3,
+  TANK_CHARGE_STUN_MS: 600,
+  TANK_CHARGE_DAMAGE: 15,
+  TANK_SLAM_WINDUP_MS: 500, // 필살 내려찍기: 떠올랐다가 이 뒤에 쾅 (바닥에 범위 예고)
+  TANK_SLAM_JUMP: 6, // 떠오르는 속도
+  TANK_SLAM_RANGE: 2.5, // 쾅 범위 (수평, 높이 차 2칸 안)
+  TANK_SLAM_KB_SPEED: 5, // 옆으로는 조금, 위로 크게 띄움 → 공중 치명타 연계
+  TANK_SLAM_KB_UP: 9,
+  TANK_SLAM_STUN_MS: 900,
+  TANK_SLAM_DAMAGE: 25,
+  // 닌자 (콤보: 평타 → F 순간 베기 → 평타 → R 일격 → F 초기화 → F → 평타)
   NINJA_SPEED_MULT: 1.1, // 패시브: 이동 속도
-  NINJA_BLINK_DIST: 3, // 스킬 순간이동: 보는 방향으로 (벽 앞까지)
-  NINJA_BLINK_CD_MS: 6000,
-  NINJA_SHADOW_MS: 3000, // 필살 그림자: 유령화(반투명·블록 통과·압사 면역) + 다음 밀치기 치명타
+  NINJA_BLINK_DIST: 3, // 스킬 순간 베기: 보는 방향으로 (벽 앞까지) 이동하며 지나간 길의 상대를 벰 (한 번 쓸 때 한 사람 한 번). 상대를 만나면 그 바로 뒤(NINJA_STRIKE_BEHIND)에서 멈춤
+  NINJA_SLASH_WIDTH: 0.8, // 지나간 선에서 이 거리 안이면 베임
+  NINJA_SLASH_KB_SPEED: 2.5,
+  NINJA_SLASH_KB_UP: 2,
+  NINJA_SLASH_STUN_MS: 600,
+  NINJA_SLASH_DAMAGE: 15,
+  NINJA_STRIKE_RANGE: 6, // 필살 그림자 일격: 이 거리 안 가장 가까운 상대 등 뒤로 순간이동해 치명타 밀치기. 맞히면 F 쿨 초기화. 없으면 안 쓰임
+  NINJA_STRIKE_BEHIND: 0.8, // 상대 뒤 이 거리에 섬
   // 건축가
-  BUILDER_WALL_CD_MS: 8000, // 스킬 벽 세우기: 바로 앞 가로 3칸 × 2층. 패시브 = 쿨타임 짧음 (2026-10-24 쌓기 블록 +3 대신, 12→8초)
-  BUILDER_WALL_WIDTH: 3,
+  BUILDER_WALL_WIDTH: 3, // 스킬 솟는 벽: 바로 앞 가로 3칸 × 2층. 예고 뒤 솟으며 그 칸 위 사람을 띄움
   BUILDER_WALL_HEIGHT: 2,
-  BUILDER_RAIN_CELLS: [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]], // 필살 블록 비: 조준한 칸 기준 1×1 블록 자리
-  // 갈고리
+  BUILDER_WALL_WARN_MS: 400,
+  BUILDER_WALL_KB_UP: 9,
+  BUILDER_WALL_STUN_MS: 700,
+  BUILDER_WALL_DAMAGE: 10,
+  BUILDER_RAIN_CELLS: [[0, 0], [1, 0], [-1, 0]], // 필살 블록 비: 조준한 칸 기준 1×1 블록 자리 (깔리면 압사, 옆은 충격파). 5개는 봇 판 건축가 50/160 → 3개
+  BUILDER_BRICK_BONUS: 1, // 패시브: 설치 블록 아이템을 주우면 이만큼 더 (2026-10-24, '벽 쿨 짧음' 대신)
+  // 갈고리 (연계: 평타로 밀고 → 갈고리로 다시 당겨 → 평타)
   HOOK_PUSH_RANGE_MULT: 1.2, // 패시브: 밀치기 사거리
   HOOK_RANGE: 5, // 스킬 갈고리: 보는 방향 이 거리 안 첫 상대를 끌어옴
   HOOK_HALF_ANGLE_DEG: 15, // 갈고리가 닿는 시야 반각
-  HOOK_CD_MS: 8000,
   HOOK_PULL_TO: 1, // 끌어와서 내 앞 이 거리에 놓음
-  HOOK_STUN_MS: 300,
-  HOOK_ULT_RANGE: 4, // 필살 회오리: 주변 이 거리 안 모두 끌어옴
-  HOOK_ULT_STUN_MS: 500,
+  HOOK_STUN_MS: 600,
+  HOOK_DAMAGE: 10,
+  HOOK_ULT_RANGE: 3.5, // 필살 회오리: 주변 이 거리 안 모두 끌어모은 뒤 HOOK_WHIRL_FLING_MS 뒤 바깥으로 한꺼번에 튕김
+  HOOK_ULT_STUN_MS: 600,
+  HOOK_ULT_DAMAGE: 15,
+  HOOK_WHIRL_FLING_MS: 300,
+  HOOK_WHIRL_KB_SPEED: 5, // 8.4 는 봇 120판 갈고리 56승 (회오리 킬 138)
+  HOOK_WHIRL_KB_UP: 5,
+  HOOK_WHIRL_STUN_MS: 900,
 
   // ---- 판 ----
   PASS_CRUSH_SHARE: 0.5, // 1단계 합격선: 누적 사망 중 압사 비율. 판 종료 로그에 표시. 2026-10-20 재정의

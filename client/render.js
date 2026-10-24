@@ -264,6 +264,8 @@ export class Renderer {
     this.shadowMat = noOutline(new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45 }));
     this.pieceBox = new THREE.BoxGeometry(1, 1, 1);
     this.shadowBox = new THREE.BoxGeometry(0.96, 0.96, 0.06);
+    this.markBox = new THREE.BoxGeometry(0.94, 0.94, 0.04); // 스킬 예고 칸
+    this.marks = [];
     // 압사 경고: 나를 깔 블록의 그림자는 빨갛게 + 내 발밑에 빨간 고리
     this.dangerShadowMat = noOutline(new THREE.MeshBasicMaterial({ color: 0xff1010, transparent: true, opacity: 0.6 }));
     this.dangerRing = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.58, 24), noOutline(new THREE.MeshBasicMaterial({ color: 0xff2020, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthTest: false })));
@@ -635,6 +637,66 @@ export class Renderer {
   }
 
   // 조종 중인 블록 ↔ 조종하는 사람 머리를 잇는 보라색 빛줄기 (누가 어느 블록을 모는지)
+  // ---- 스킬 예고·잔상 (남에게도 보임). ms 동안 깜빡이다 사라짐 ----
+  addMark(mesh, ms, pulse = true) {
+    mesh.renderOrder = 8;
+    this.scene.add(mesh);
+    this.marks.push({ mesh, until: performance.now() + ms, ms, pulse });
+  }
+
+  // 칸들 바닥(맨 아래 높이)에 색 판
+  markCells(cells, color, ms) {
+    const low = new Map();
+    for (const [x, y, z] of cells) if (!low.has(x * 100 + y) || z < low.get(x * 100 + y)[2]) low.set(x * 100 + y, [x, y, z]);
+    for (const [x, y, z] of low.values()) {
+      const m = new THREE.Mesh(this.markBox, noOutline(new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6, depthWrite: false })));
+      m.position.set(x + 0.5, y + 0.5, z + 0.05);
+      this.addMark(m, ms);
+    }
+  }
+
+  // 바닥에 둥근 범위 (테두리 + 옅은 속)
+  markCircle(x, y, z, r, color, ms) {
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(new THREE.RingGeometry(r - 0.12, r, 40), noOutline(new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }))));
+    g.add(new THREE.Mesh(new THREE.CircleGeometry(r, 40), noOutline(new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }))));
+    g.position.set(x, y, z + 0.06);
+    this.addMark(g, ms);
+  }
+
+  // 두 점 사이 잔상 (베기·돌진)
+  trail(a, b, color, ms) {
+    const len = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z) || 0.01;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(len, 0.08, 0.08), noOutline(new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, depthWrite: false })));
+    m.position.set((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+    m.rotation.z = Math.atan2(b.y - a.y, b.x - a.x);
+    this.addMark(m, ms, false);
+  }
+
+  updateMarks() {
+    const now = performance.now();
+    for (let i = this.marks.length - 1; i >= 0; i--) {
+      const mk = this.marks[i];
+      const left = mk.until - now;
+      if (left <= 0) {
+        this.scene.remove(mk.mesh);
+        mk.mesh.traverse((o) => {
+          if (o.isMesh) {
+            if (o.geometry !== this.markBox) o.geometry.dispose();
+            o.material.dispose();
+          }
+        });
+        this.marks.splice(i, 1);
+        continue;
+      }
+      // 예고는 끝이 가까울수록 빨리 깜빡, 잔상은 서서히 사라짐
+      const k = mk.pulse ? 0.55 + 0.45 * Math.sin(now / Math.max(40, left / 6)) : left / mk.ms;
+      mk.mesh.traverse((o) => {
+        if (o.isMesh) o.material.opacity = (o.material.userData.base ??= o.material.opacity) * k;
+      });
+    }
+  }
+
   // 갈고리 줄: 던진 사람에서 끌려온 사람(빗나가면 보는 방향 끝)까지 잠깐
   showHook(whoId, targetId, yaw) {
     const a = this.smooth.get(whoId);
@@ -762,13 +824,12 @@ export class Renderer {
       // 맞으면 찌그러졌다 펴짐
       // 유령화: 반투명, 점프력 상승: 초록 빛, 망치: 오른팔에 망치 머리
       // 킬 점수전 부활 무적도 반투명 (빠르게 깜빡)
-      const opacity = p.ghostLeft > 0 ? 0.35 + 0.1 * Math.sin(performance.now() / 120) : p.shieldLeft > 0 ? 0.45 + 0.25 * Math.sin(performance.now() / 60) : 1;
+      const opacity = p.ghostLeft > 0 ? 0.35 + 0.1 * Math.sin(performance.now() / 120) : p.shieldLeft > 0 || p.iframeLeft > 0 ? 0.45 + 0.25 * Math.sin(performance.now() / 60) : 1; // 부활·콤보 뒤 무적은 빠르게 깜빡
       for (const m of g.userData.mats) {
         m.transparent = opacity < 1;
         m.opacity = opacity;
       }
       if (p.jumpLeft > 0 && !p.stunned) bodyMat.emissive.setHex(0x1a5a1a);
-      if (p.holding) bodyMat.emissive.setHex(0x2040a0); // 탱크 버티기: 파랗게
       if (p.critNext && Math.floor(performance.now() / 150) % 2) bodyMat.emissive.setHex(0x801010); // 닌자 그림자: 다음 밀치기 치명타
       // 캐릭터 머리 장식 (판 사이에 바뀔 수 있어 바뀔 때만 다시 붙임)
       if (g.userData.char !== p.char) {
@@ -937,6 +998,7 @@ export class Renderer {
     const kind = me ? heldKind(me) : null;
     for (const [k, o] of Object.entries(this.viewHeld)) o.visible = k === kind && !this.viewHammer.visible; // 망치가 있으면 망치가 우선
     this.effects.update(dt, this.skyBlend >= 1 ? this.skyCamera : this.camera);
+    this.updateMarks();
     this.pieceMat.opacity = this.skyBlend > 0.5 ? 0.55 : 1; // 하늘 시점에선 블록 너머로 착지 미리보기가 보이게
     this.controlledMat.opacity = this.pieceMat.opacity;
     this.thrownMat.opacity = this.pieceMat.opacity;

@@ -199,34 +199,62 @@ test('조종권: 8초 안에 안 떨구면 자동 낙하', () => {
   assert.ok(!g.piece || g.piece.phase === 'falling');
 });
 
-test('넉백 + 경직: 경직 중 두 번째 넉백은 안 들어간다', () => {
+test('콤보 (2026-10-24): 경직 중에 또 맞으면 이어지고, 경직이 풀리면 끝나고 COMBO_IFRAME_MS 무적, 무적이 끝나면 새 콤보', () => {
   const { g, p1, p2 } = setup();
-  p1.x = 2.5;
-  p1.y = 2.5;
-  p1.yaw = 0;
-  p2.x = 3.5;
-  p2.y = 2.5;
+  Object.assign(p1, { x: 2.5, y: 2.5, yaw: 0 });
+  Object.assign(p2, { x: 3.5, y: 2.5 });
   g.handleAction(1, { name: 'push' });
-  assert.ok(p2.kbx > 0, '첫 밀치기는 넉백');
-  assert.ok(p2.stunUntil > g.time);
-  const stun1 = p2.stunUntil;
-  p2.kbx = 0;
-  p1.pushReadyAt = 0; // 쿨다운 무시하고 바로 다시
-  g.handleAction(1, { name: 'push' });
-  assert.equal(p2.kbx, 0, '경직 중엔 넉백 없음');
-  assert.equal(p2.stunUntil, stun1);
-  // 경직 중엔 이동 입력도 무시
+  assert.ok(p2.kbx > 0 && p2.stunUntil > g.time);
+  assert.equal(p2.comboHits, 1);
+  // 경직 중엔 이동 입력 무시
   g.handleInput(2, { fwd: 1, strafe: 0, jump: false, yaw: 0, pitch: 0 });
   const x0 = p2.x;
   g.tick(TICK);
   assert.ok(p2.x - x0 < C.MOVE_SPEED * (TICK / 1000) * 0.5 + p2.kbx * (TICK / 1000) + 1e-9);
-  // 경직 끝난 뒤엔 다시 넉백 가능
-  run(g, C.STUN_MS + 100);
-  p2.x = 3.5;
-  p2.y = 2.5;
-  p2.z = 0;
+  // 경직 중 두 번째 → 콤보 2
+  Object.assign(p2, { x: 3.5, y: 2.5, kbx: 0 });
+  p1.pushReadyAt = 0;
+  g.drainEvents();
   g.handleAction(1, { name: 'push' });
-  assert.ok(p2.kbx > 0, '경직 후엔 다시 넉백');
+  assert.ok(p2.kbx > 0, '경직 중에도 맞음');
+  assert.equal(p2.comboHits, 2);
+  assert.ok(g.drainEvents().some((e) => e.type === 'combo' && e.n === 2 && e.target === 2));
+  // 경직이 풀리면 콤보 끝 → 무적
+  run(g, C.STUN_MS + 100);
+  assert.equal(p2.comboHits, 0);
+  assert.ok(p2.iframeUntil > g.time, '무적');
+  Object.assign(p2, { x: 3.5, y: 2.5, z: 0, kbx: 0 });
+  p1.pushReadyAt = 0;
+  g.handleAction(1, { name: 'push' });
+  assert.equal(p2.kbx, 0, '무적 중엔 안 맞음');
+  run(g, C.COMBO_IFRAME_MS);
+  Object.assign(p2, { x: 3.5, y: 2.5, z: 0, kbx: 0 });
+  p1.pushReadyAt = 0;
+  g.handleAction(1, { name: 'push' });
+  assert.ok(p2.kbx > 0 && p2.comboHits === 1, '무적 뒤엔 새 콤보');
+});
+
+test('콤보: COMBO_MAX_HITS 타째가 마지막 타 — 넉백 ×COMBO_FINISH_KB 로 크게, 바로 무적. 여럿이 때려도 맞는 사람 기준', () => {
+  const { g, ps } = setupN(3);
+  const p2 = ps[1];
+  const kb = [];
+  for (let k = 0; k < C.COMBO_MAX_HITS; k++) {
+    Object.assign(p2, { x: 5.5, y: 5.5, z: 0, kbx: 0 });
+    g.applyKnockback(p2, 1, 0, C.PUSH_KB_SPEED, C.PUSH_KB_UP, C.STUN_MS, 0, { by: k % 2 ? 1 : 3, kind: 'push' }); // 둘이 번갈아
+    kb.push(p2.kbx);
+  }
+  assert.ok(kb[4] > kb[3] * (C.COMBO_FINISH_KB / C.COMBO_LIGHT_KB) * 0.99, `마지막 타가 크게: ${kb.map((v) => v.toFixed(2))}`);
+  assert.equal(p2.comboHits, 0);
+  assert.ok(p2.iframeUntil >= p2.stunUntil + C.COMBO_IFRAME_MS - 1, '마지막 타 경직 + 무적');
+  assert.equal(g.applyKnockback(p2, 1, 0, C.PUSH_KB_SPEED, 3, C.STUN_MS, 10, { by: 1, kind: 'push' }), false, '6타째는 안 들어감');
+});
+
+test('콤보: 무거운 공격(망치·투사체·폭탄·충격파·필살기)은 넉백을 안 줄이고, 가벼운 공격은 ×COMBO_LIGHT_KB', () => {
+  const a = setup();
+  a.g.applyKnockback(a.p2, 1, 0, 5, 0, C.STUN_MS, 0, { by: 1, kind: 'push' });
+  const b = setup();
+  b.g.applyKnockback(b.p2, 1, 0, 5, 0, C.STUN_MS, 0, { by: 1, kind: 'weapon' }, true);
+  assert.ok(Math.abs(a.p2.kbx / b.p2.kbx - C.COMBO_LIGHT_KB) < 1e-9);
 });
 
 test('넉백 아이템 + 투사체: 맞으면 넉백, 탄 소모', () => {
@@ -305,7 +333,7 @@ test('디버그 로그: 판 종료 시 압사/낙사 횟수와 누적이 찍힌�
   assert.equal(g.grid.reduce((a, b) => a + b, 0), 0);
 });
 
-test('밀치기 거리: 피해 0% 면 약 1.5칸 × DAMAGE_KB_BASE (PUSH_KB_SPEED 4.2)', () => {
+test('밀치기 거리: 피해 0% 면 약 1.5칸 × DAMAGE_KB_BASE × COMBO_LIGHT_KB (가벼운 공격)', () => {
   const { g, p1, p2 } = setup();
   p1.x = 1.5;
   p1.y = 3;
@@ -315,7 +343,7 @@ test('밀치기 거리: 피해 0% 면 약 1.5칸 × DAMAGE_KB_BASE (PUSH_KB_SPEE
   g.handleAction(1, { name: 'push' });
   run(g, 2000);
   const d = p2.x - 2.5;
-  const k = C.DAMAGE_KB_BASE;
+  const k = C.DAMAGE_KB_BASE * C.COMBO_LIGHT_KB;
   assert.ok(d > 1.35 * k && d < 1.6 * k, `밀린 거리 ${d.toFixed(2)}`);
   assert.equal(p2.alive, true);
 });
@@ -336,7 +364,7 @@ test('시작 위치: 가장자리에서 1.5칸 이상 안쪽이라 밀치기 한
   assert.equal(p2.alive, true, `p2.x=${p2.x.toFixed(2)}`);
 });
 
-test('이벤트: 밀치기 명중/경직 무효, 아이템 획득, 조종 시작이 이벤트로 나온다', () => {
+test('이벤트: 밀치기 명중/무적 무효, 아이템 획득, 조종 시작이 이벤트로 나온다', () => {
   const { g, p1, p2 } = setup();
   p1.x = 2.5;
   p1.y = 2.5;
@@ -346,6 +374,7 @@ test('이벤트: 밀치기 명중/경직 무효, 아이템 획득, 조종 시작
   g.drainEvents();
   g.handleAction(1, { name: 'push' });
   p1.pushReadyAt = 0;
+  p2.iframeUntil = g.time + 500; // 무적
   g.handleAction(1, { name: 'push' });
   const ev = g.drainEvents().filter((e) => e.type === 'hit');
   assert.deepEqual(
@@ -1067,7 +1096,7 @@ test('히트스톱: 명중하면 맞은 쪽·때린 쪽이 HITSTOP_MS 동안 멈
   g.handleInput(1, { fwd: 0, strafe: 0, jump: false, yaw: 0, pitch: 0 });
   run(g, 2000);
   const d = p2.x - x2;
-  const k = C.DAMAGE_KB_BASE;
+  const k = C.DAMAGE_KB_BASE * C.COMBO_LIGHT_KB;
   assert.ok(d > 1.35 * k && d < 1.6 * k, `밀린 거리 ${d.toFixed(2)}`);
 });
 
@@ -1144,14 +1173,14 @@ test('망치: WEAPON_USES 번 동안 밀치기 대신 — 넉백 약 2배, 경�
   p1.pushReadyAt = 0;
   g.handleAction(1, { name: 'push' });
   assert.equal(p1.weaponUses, C.WEAPON_USES - 1, '빗나감');
-  // 경직 중이라 무시돼도 소모 안 함
-  Object.assign(p2, { x: 3.5, y: 5, z: 0, stunUntil: g.time + 1000 });
+  // 무적이라 무시돼도 소모 안 함
+  Object.assign(p2, { x: 3.5, y: 5, z: 0, iframeUntil: g.time + 1000 });
   p1.pushReadyAt = 0;
   g.handleAction(1, { name: 'push' });
-  assert.equal(p1.weaponUses, C.WEAPON_USES - 1, '경직 중 무시');
+  assert.equal(p1.weaponUses, C.WEAPON_USES - 1, '무적 중 무시');
   // 맞히면 소모 → 다 쓰면 다시 밀치기
   for (let k = 0; k < C.WEAPON_USES - 1; k++) {
-    p2.stunUntil = 0;
+    Object.assign(p2, { stunUntil: 0, iframeUntil: 0, comboHits: 0 });
     Object.assign(p2, { x: 3.5, y: 5, z: 0, kbx: 0, kby: 0 });
     p1.pushReadyAt = 0;
     g.handleAction(1, { name: 'push' });
@@ -1585,15 +1614,15 @@ test('피해 %: 맞을 때마다 종류별로 쌓이고, 쌓인 만큼 멀리 �
   assert.ok(Math.abs(b.d / a.d - want) < 0.15 * want, `0%: ${a.d.toFixed(2)}칸, 100%: ${b.d.toFixed(2)}칸 (기대 비 ${want.toFixed(2)})`);
 });
 
-test('피해 %: 경직 중이라 무시된 공격은 안 쌓이고, 새 판이면 0, 로그에 남는다', () => {
+test('피해 %: 무적이라 무시된 공격은 안 쌓이고, 새 판이면 0, 로그에 남는다', () => {
   const { g, p1, p2, lines } = setup();
   Object.assign(p1, { x: 3.5, y: 5, yaw: 0 });
   Object.assign(p2, { x: 4.5, y: 5 });
   g.handleAction(1, { name: 'push' });
   assert.equal(p2.damage, 10);
   p1.pushReadyAt = 0;
-  Object.assign(p2, { x: 4.5, y: 5 });
-  g.handleAction(1, { name: 'push' }); // 경직 중
+  Object.assign(p2, { x: 4.5, y: 5, iframeUntil: g.time + 500 });
+  g.handleAction(1, { name: 'push' }); // 무적 중
   assert.equal(p2.damage, 10);
   assert.ok(lines.some((l) => l.includes('[밀치기] P1 → P2 넉백 (P2 10%)')), lines.join('\n'));
   g.kill(p2, 'fall');
@@ -1878,11 +1907,11 @@ function wallSetup(damage) {
 
 test('벽 튕김: 높은 % 로 날아가다 벽에 박히면 위로 튕겨 벽을 넘어감, 낮은 % 는 벽에 막힘', () => {
   const hi = wallSetup(200);
-  hi.g.applyKnockback(hi.p2, 1, 0, C.PUSH_KB_SPEED, C.PUSH_KB_UP, C.STUN_MS, 0, { by: 1, kind: 'push' });
+  hi.g.applyKnockback(hi.p2, 1, 0, C.PUSH_KB_SPEED, C.PUSH_KB_UP, C.STUN_MS, 0, { by: 1, kind: 'push' }, true); // 콤보 감쇠 없이
   run(hi.g, 1500);
   assert.ok(hi.p2.x > 7 || !hi.p2.alive, `200% 는 2칸 벽을 넘음 (x=${hi.p2.x.toFixed(2)})`);
   const lo = wallSetup(0);
-  lo.g.applyKnockback(lo.p2, 1, 0, C.PUSH_KB_SPEED, C.PUSH_KB_UP, C.STUN_MS, 0, { by: 1, kind: 'push' });
+  lo.g.applyKnockback(lo.p2, 1, 0, C.PUSH_KB_SPEED, C.PUSH_KB_UP, C.STUN_MS, 0, { by: 1, kind: 'push' }, true);
   run(lo.g, 1500);
   assert.ok(lo.p2.x < 6 && lo.p2.alive, `0% 는 벽 앞에서 멈춤 (x=${lo.p2.x.toFixed(2)})`);
 });

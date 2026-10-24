@@ -63,7 +63,7 @@ test('필살기 게이지: 피해 % 를 주거나 받은 만큼 참, 다 차야 
   assert.equal(p(1).ult, 0);
 });
 
-test('탱크: 피해 % 덜 쌓임, 버티기 동안 안 밀림 (쿨타임), 지면 강타는 주변 상대를 날림', () => {
+test('탱크: 피해 % 덜 쌓임, 돌진은 처음 부딪힌 상대를 치고 멈춤 (쿨타임), 빗나가면 약 3칸', () => {
   const { g, lines, p } = setupChars(['tank', 'ninja', 'ninja']);
   // 같은 공격: 탱크는 피해 % 가 덜 쌓이고, 이번 넉백은 같음
   g.applyKnockback(p(1), 1, 0, 5, 0, C.STUN_MS, 20, null);
@@ -71,39 +71,55 @@ test('탱크: 피해 % 덜 쌓임, 버티기 동안 안 밀림 (쿨타임), 지�
   assert.equal(p(1).damage, Math.round(20 * C.TANK_DAMAGE_TAKEN));
   assert.equal(p(2).damage, 20);
   assert.equal(p(1).kbx, p(2).kbx);
+  run(g, C.STUN_MS + C.COMBO_IFRAME_MS + 100);
   p(1).damage = 0;
   p(2).damage = 0;
-  // 버티기
-  place(p(1), 4.5, 4.5);
-  place(p(2), 3.5, 4.5, 0);
+  // 돌진
+  place(p(1), 1.5, 4.5, 0);
+  place(p(2), 3.5, 4.5);
+  place(p(3), 8.5, 8.5);
+  g.drainEvents();
   g.handleAction(1, { name: 'skill' });
-  assert.ok(lines.includes('  [스킬] P1 버티기'));
-  g.handleAction(2, { name: 'push' });
-  assert.equal(p(1).damage, 0, '버티는 동안 안 밀림');
+  assert.ok(g.drainEvents().some((e) => e.type === 'charge' && e.who === 1), '돌진 이벤트 (남에게 보이게)');
+  run(g, C.TANK_CHARGE_MS + 100);
+  assert.equal(p(2).damage, C.TANK_CHARGE_DAMAGE);
+  assert.ok(p(1).x < 3.5, `부딪히고 멈춤 x=${p(1).x.toFixed(2)}`);
+  assert.ok(lines.some((l) => l.startsWith('  [돌진] P1 → P2')));
+  const ready = p(1).skillReadyAt;
   g.handleAction(1, { name: 'skill' });
-  assert.equal(p(1).skillReadyAt, g.time + C.TANK_HOLD_CD_MS, '쿨타임 중엔 다시 안 씀 (시각 그대로)');
-  run(g, C.TANK_HOLD_MS + 100);
-  place(p(2), 3.5, 4.5, 0);
-  g.handleAction(2, { name: 'push' });
-  assert.ok(p(1).damage > 0, '버티기 끝나면 밀림');
-  // 지면 강타
-  run(g, C.STUN_MS + 100);
-  place(p(1), 5, 5);
-  place(p(2), 6, 5);
-  place(p(3), 5, 9.5); // 멀리
-  p(1).ult = C.ULT_MAX;
-  g.handleAction(1, { name: 'ult' });
-  assert.equal(p(2).damage, C.TANK_SLAM_DAMAGE);
-  assert.ok(p(2).kbx > 0 && p(2).vz > 0, '바깥으로 날아감');
-  assert.equal(p(3).damage, 0, '멀면 안 맞음');
-  assert.ok(lines.includes('  [필살] P1 지면 강타 (1명)'));
+  assert.equal(p(1).skillReadyAt, ready, '쿨타임 중엔 안 씀');
+  // 빗나가면 약 3칸
+  run(g, C.SKILL_CD_MS.tank);
+  place(p(1), 1.5, 1.5, 0);
+  g.handleAction(1, { name: 'skill' });
+  run(g, 1000);
+  const d = p(1).x - 1.5;
+  assert.ok(d > 2.5 && d < 4, `빗나간 돌진 거리 ${d.toFixed(2)}`);
 });
 
-test('닌자: 이동 빠름, 순간이동은 벽 앞까지, 그림자는 유령화 + 다음 밀치기 치명타', () => {
-  const { g, lines, p } = setupChars(['ninja', 'tank']);
+test('탱크: 내려찍기는 떠올랐다가 예고 시간 뒤 쾅, 주변 상대를 위로 띄움 (먼 상대는 무사)', () => {
+  const { g, lines, p } = setupChars(['tank', 'ninja', 'ninja']);
+  place(p(1), 5, 5);
+  place(p(2), 6.5, 5);
+  place(p(3), 9.5, 9.5);
+  p(1).ult = C.ULT_MAX;
+  g.drainEvents();
+  g.handleAction(1, { name: 'ult' });
+  assert.ok(g.drainEvents().some((e) => e.type === 'slamWarn' && e.r === C.TANK_SLAM_RANGE), '바닥 예고');
+  assert.equal(p(2).damage, 0, '바로는 안 맞음');
+  run(g, C.TANK_SLAM_WINDUP_MS + TICK);
+  assert.equal(p(2).damage, C.TANK_SLAM_DAMAGE);
+  assert.ok(p(2).vz > 0 || p(2).z > 0.5, '위로 뜸');
+  assert.equal(p(3).damage, 0);
+  assert.ok(lines.includes('  [필살] P1 내려찍기 (1명)'));
+});
+
+test('닌자: 이동 빠름, 순간 베기는 벽 앞까지 + 지나간 길의 상대를 한 번 베고 그 바로 뒤에서 멈춤', () => {
+  const { g, lines, p } = setupChars(['ninja', 'tank', 'tank']);
   // 이동 속도
   place(p(1), 1.5, 1.5, 0);
   place(p(2), 1.5, 8.5, 0);
+  place(p(3), 8.5, 8.5);
   p(1).input = { fwd: 1, strafe: 0, jump: false };
   p(2).input = { fwd: 1, strafe: 0, jump: false };
   run(g, 500);
@@ -111,87 +127,141 @@ test('닌자: 이동 빠름, 순간이동은 벽 앞까지, 그림자는 유령�
   assert.ok(Math.abs(r - C.NINJA_SPEED_MULT) < 0.02, `속도 비 ${r.toFixed(3)}`);
   p(1).input = { fwd: 0, strafe: 0, jump: false };
   p(2).input = { fwd: 0, strafe: 0, jump: false };
-  // 순간이동: 빈 땅이면 3칸
+  // 순간 베기: 길 위의 상대(p2)는 베이고, 길 밖(p3)은 무사
   place(p(1), 1.5, 4.5, 0);
+  place(p(2), 3, 4.6);
+  place(p(3), 3, 7.5);
+  g.handleAction(1, { name: 'skill' });
+  assert.ok(Math.abs(p(1).x - (3 + C.NINJA_STRIKE_BEHIND)) < 0.11, `상대 바로 뒤에서 멈춤 x=${p(1).x}`);
+  assert.equal(p(2).damage, Math.round(C.NINJA_SLASH_DAMAGE * C.TANK_DAMAGE_TAKEN));
+  assert.equal(p(3).damage, 0);
+  assert.ok(lines.some((l) => l.includes('[스킬] P1 순간 베기 2.3칸 (1명)')), lines.join('\n'));
+  // 아무도 없으면 3칸
+  run(g, C.SKILL_CD_MS.ninja + C.COMBO_IFRAME_MS);
+  place(p(1), 1.5, 1.5, 0);
   g.handleAction(1, { name: 'skill' });
   assert.ok(Math.abs(p(1).x - (1.5 + C.NINJA_BLINK_DIST)) < 0.11, `x=${p(1).x}`);
   // 벽 앞까지
-  run(g, C.NINJA_BLINK_CD_MS);
+  run(g, C.SKILL_CD_MS.ninja);
   for (let y = 0; y < C.GRID_D; y++) g.grid[g.idx(3, y, 0)] = CELL.BUILD;
   g.gridChanged();
   place(p(1), 1.5, 4.5, 0);
   g.handleAction(1, { name: 'skill' });
   assert.ok(p(1).x <= 3 - C.PLAYER_HALF + 1e-9 && p(1).x > 2.4, `벽 앞 x=${p(1).x}`);
-  // 그림자
-  p(1).ult = C.ULT_MAX;
-  g.handleAction(1, { name: 'ult' });
-  assert.ok(g.isGhost(p(1)) && p(1).critNext);
-  for (let y = 0; y < C.GRID_D; y++) g.grid[g.idx(3, y, 0)] = 0;
-  g.gridChanged();
-  place(p(1), 5, 5, 0);
-  place(p(2), 6, 5);
-  g.handleAction(1, { name: 'push' });
-  assert.ok(lines.some((l) => l.includes('[밀치기] P1 → P2 넉백 치명타')), '땅에서 때려도 치명타');
-  assert.equal(p(1).critNext, false, '한 번만');
 });
 
-test('건축가: 벽 세우기 = 앞 가로 3 × 2층 (빈 칸만), 블록 비 = 조준한 곳에 1×1 블록 5개', () => {
-  const { g, lines, p } = setupChars(['builder', 'tank']);
+test('닌자 콤보: 평타 → 순간 베기 → 평타가 한 콤보로 이어지고, 그림자 일격은 등 뒤 치명타 + 맞히면 순간 베기 초기화', () => {
+  const { g, lines, p } = setupChars(['ninja', 'builder']);
+  place(p(1), 2, 5, 0);
+  place(p(2), 3, 5);
+  g.handleAction(1, { name: 'push' });
+  assert.equal(p(2).comboHits, 1);
+  run(g, C.HITSTOP_MS + TICK);
+  p(1).yaw = Math.atan2(p(2).y - p(1).y, p(2).x - p(1).x);
+  g.handleAction(1, { name: 'skill' }); // 상대를 지나가며 벰
+  assert.equal(p(2).comboHits, 2, '평타 → 베기');
+  run(g, C.HITSTOP_MS + TICK);
+  p(1).yaw = Math.atan2(p(2).y - p(1).y, p(2).x - p(1).x);
+  p(1).pushReadyAt = 0;
+  g.handleAction(1, { name: 'push' });
+  assert.equal(p(2).comboHits, 3, '→ 평타');
+  // 그림자 일격: 등 뒤로 + 치명타 + 순간 베기 초기화
+  assert.ok(p(1).skillReadyAt > g.time, '순간 베기 쿨 중');
+  p(1).ult = C.ULT_MAX;
+  run(g, C.HITSTOP_MS + TICK);
+  const before = p(2).damage;
+  g.handleAction(1, { name: 'ult' });
+  assert.ok(p(2).damage > before, '맞음');
+  assert.ok(lines.some((l) => l.includes('넉백 치명타')), '치명타');
+  assert.ok(p(1).skillReadyAt <= g.time, '순간 베기 초기화');
+  assert.equal(p(1).ult, 0);
+  // 6칸 안에 아무도 없으면 안 쓰이고 게이지 그대로
+  run(g, 3000);
+  place(p(2), 9.5, 9.5);
+  place(p(1), 0.5, 0.5);
+  p(1).ult = C.ULT_MAX;
+  g.handleAction(1, { name: 'ult' });
+  assert.equal(p(1).ult, C.ULT_MAX);
+});
+
+test('건축가: 솟는 벽은 예고 뒤 앞 가로 3 × 2층으로 솟고 그 칸의 상대를 위로 띄움, 블록 비 = 조준한 곳에 1×1 블록 5개 + 예고', () => {
+  const { g, lines, p } = setupChars(['builder', 'ninja']);
   place(p(1), 4.5, 4.5, 0); // +x 를 봄
-  place(p(2), 8.5, 8.5);
+  place(p(2), 5.5, 4.5); // 벽 칸 위
+  g.drainEvents();
   g.handleAction(1, { name: 'skill' });
+  assert.ok(g.drainEvents().some((e) => e.type === 'wallWarn' && e.cells.length === 6), '바닥 예고');
+  assert.equal(g.gridAt(5, 4, 0), 0, '바로는 안 솟음');
+  run(g, C.BUILDER_WALL_WARN_MS + TICK);
   for (const y of [3, 4, 5]) for (const z of [0, 1]) assert.equal(g.gridAt(5, y, z), CELL.BUILD, `(5,${y},${z})`);
-  assert.ok(lines.includes('  [스킬] P1 벽 세우기 (6칸)'));
+  assert.equal(p(2).damage, C.BUILDER_WALL_DAMAGE);
+  assert.ok(p(2).z >= 2 - 1e-6, `벽 위로 올라감 z=${p(2).z.toFixed(2)}`);
+  assert.ok(lines.includes('  [스킬] P1 솟는 벽 (6칸, 1명 띄움)'), lines.join('\n'));
   // 블록 비
+  run(g, 2000);
   p(1).ult = C.ULT_MAX;
   Object.assign(p(1), { x: 1.5, y: 1.5, yaw: Math.PI / 4, pitch: -0.4 });
   g.handleAction(1, { name: 'ult' });
   const rain = g.pieces.filter((pc) => pc.thrownBy === 1);
   assert.equal(rain.length, C.BUILDER_RAIN_CELLS.length);
   assert.ok(rain.every((pc) => pc.cells.length === 1));
+  assert.ok(g.drainEvents().some((e) => e.type === 'rainWarn' && e.cells.length === rain.length));
   assert.equal(p(1).ult, 0);
 });
 
-test('갈고리: 밀치기 사거리 +, 갈고리는 보는 방향 상대를 내 앞으로 (빗나가도 쿨타임), 회오리는 주변 모두. 끌려간 뒤 떨어지면 갈고리 킬', () => {
-  const { g, lines, p } = setupChars(['hook', 'tank', 'tank']);
+test('갈고리: 밀치기 사거리 +, 갈고리는 보는 방향 상대를 내 앞으로 + 피해 (빗나가도 쿨타임), 평타 → 갈고리 → 평타 콤보, 끌려간 뒤 떨어지면 갈고리 킬', () => {
+  const { g, lines, p } = setupChars(['hook', 'ninja', 'ninja']);
   // 사거리: 보통 사거리 밖, 늘어난 사거리 안
   place(p(1), 4, 4.5, 0);
   place(p(2), 4 + C.PUSH_RANGE * 1.1, 4.5);
   place(p(3), 9.5, 9.5);
   g.handleAction(1, { name: 'push' });
   assert.ok(p(2).damage > 0);
-  run(g, C.STUN_MS + 100);
-  // 갈고리
+  run(g, C.STUN_MS + C.COMBO_IFRAME_MS + 100);
+  // 평타로 밀고 → 갈고리로 당겨 → 평타
   place(p(1), 1.5, 4.5, 0);
-  place(p(2), 5.5, 4.5);
+  place(p(2), 2.5, 4.5);
+  p(1).pushReadyAt = 0;
+  g.handleAction(1, { name: 'push' });
+  run(g, 300);
+  const d0 = p(2).damage;
   g.handleAction(1, { name: 'skill' });
-  assert.ok(Math.abs(p(2).x - (1.5 + C.HOOK_PULL_TO)) < 0.05, `끌려옴 x=${p(2).x}`);
-  assert.ok(lines.includes('  [스킬] P1 갈고리 → P2'));
+  assert.ok(Math.abs(p(2).x - (p(1).x + C.HOOK_PULL_TO)) < 0.05, `끌려옴 x=${p(2).x}`);
+  assert.equal(p(2).damage, d0 + C.HOOK_DAMAGE);
+  assert.equal(p(2).comboHits, 2, '평타 → 갈고리');
+  assert.ok(lines.some((l) => l.startsWith('  [스킬] P1 갈고리 → P2')));
   assert.equal(p(2).lastHit.kind, 'hook');
-  // 끌려온 뒤 (다른 공격 없이) 떨어지면 갈고리 킬
+  run(g, C.HITSTOP_MS + TICK);
+  p(1).pushReadyAt = 0;
+  g.handleAction(1, { name: 'push' });
+  assert.equal(p(2).comboHits, 3, '→ 평타');
+  // 끌려온 뒤 떨어지면 갈고리 킬 (마지막 공격 기록)
+  p(2).lastHit = { by: 1, kind: 'hook', name: 'P1' };
   Object.assign(p(2), { x: -3, z: C.FALL_DEATH_Z - 1 });
   g.tick(TICK);
   assert.ok(lines.some((l) => /\[사망\] P2 낙사 .*킬 P1 갈고리/.test(l)));
   // 빗나감도 쿨타임
-  run(g, C.HOOK_CD_MS);
+  run(g, C.SKILL_CD_MS.hook);
   place(p(1), 1.5, 4.5, Math.PI);
   g.handleAction(1, { name: 'skill' });
   assert.ok(lines.includes('  [스킬] P1 갈고리 빗나감'));
   assert.ok(p(1).skillReadyAt > g.time);
-  // 회오리
-  place(p(1), 5, 5);
-  place(p(3), 8, 5);
-  p(1).ult = C.ULT_MAX;
-  g.handleAction(1, { name: 'ult' });
-  assert.ok(Math.abs(p(3).x - (5 + C.HOOK_PULL_TO)) < 0.05, `회오리 x=${p(3).x}`);
-  assert.ok(p(3).freezeUntil > g.time, '잠깐 못 움직임');
-  // 끌어온 바로 다음 밀치기가 먹힘 (넉백 무시가 아님)
-  p(1).yaw = 0;
-  g.handleAction(1, { name: 'push' });
-  assert.ok(p(3).damage > 0, '갈고리 → 밀치기 연계');
 });
 
-test('캐릭터: 팀전이면 같은 팀은 갈고리·회오리·지면 강타 대상이 아님', () => {
+test('갈고리: 회오리는 주변 모두 끌어모아 피해, 잠깐 뒤 바깥으로 한꺼번에 튕김 (한 콤보)', () => {
+  const { g, p } = setupChars(['hook', 'ninja']);
+  place(p(1), 5, 5);
+  place(p(2), 8, 5);
+  p(1).ult = C.ULT_MAX;
+  g.handleAction(1, { name: 'ult' });
+  assert.ok(Math.abs(p(2).x - (5 + C.HOOK_PULL_TO)) < 0.05, `회오리 x=${p(2).x}`);
+  assert.equal(p(2).damage, C.HOOK_ULT_DAMAGE);
+  run(g, C.HOOK_WHIRL_FLING_MS + TICK);
+  assert.ok(p(2).kbx > 0, '바깥(+x)으로 튕김');
+  assert.equal(p(2).comboHits, 2);
+});
+
+test('캐릭터: 팀전이면 같은 팀은 갈고리·회오리·내려찍기 대상이 아님', () => {
   const lines = [];
   const g = new Game((s) => lines.push(s), { characters: true });
   g.rng = () => 0.5;
@@ -210,6 +280,15 @@ test('캐릭터: 팀전이면 같은 팀은 갈고리·회오리·지면 강타 
   place(p(3), 4, 5);
   p(1).ult = C.ULT_MAX;
   g.handleAction(1, { name: 'ult' });
+  run(g, C.TANK_SLAM_WINDUP_MS + TICK);
   assert.equal(p(2).damage, 0, '같은 팀');
   assert.equal(p(3).damage, C.TANK_SLAM_DAMAGE);
+});
+
+test('건축가 패시브: 설치 블록 아이템을 주우면 BUILDER_BRICK_BONUS 개 더', () => {
+  const { g, p } = setupChars(['builder', 'tank']);
+  g.givePower(p(1), 'brick');
+  g.givePower(p(2), 'brick');
+  assert.equal(p(1).bricks, C.BRICK_USES + C.BUILDER_BRICK_BONUS);
+  assert.equal(p(2).bricks, C.BRICK_USES);
 });

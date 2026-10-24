@@ -181,7 +181,14 @@ export class Game {
       char: this.characters ? (isBot ? C.CHARACTERS[Math.floor(this.rng() * C.CHARACTERS.length)] : C.CHAR_DEFAULT) : null, // 캐릭터 (봇은 무작위)
       skillReadyAt: 0, // 스킬 F 다시 쓸 수 있는 시각
       ult: 0, // 필살기 게이지 (ULT_MAX 면 R)
-      holdUntil: 0, // 탱크 버티기: 이 시각까지 안 밀림
+      comboHits: 0, // 지금 이어지는 콤보에서 맞은 횟수 (경직 중에 또 맞으면 +1)
+      iframeUntil: 0, // 콤보가 끝난 뒤 무적 (공격만 막음)
+      chargeUntil: 0, // 탱크 돌진 중
+      slamAt: 0, // 탱크 내려찍기: 이 시각에 쾅
+      wallAt: 0, // 건축가 솟는 벽: 이 시각에 솟음 (wallCells)
+      wallCells: null,
+      whirlAt: 0, // 갈고리 회오리: 이 시각에 끌어모은 사람들(whirlTargets)을 튕김
+      whirlTargets: null,
       critNext: false, // 닌자 그림자: 다음 밀치기 치명타
       input: { fwd: 0, strafe: 0, jump: false },
     };
@@ -491,7 +498,14 @@ export class Game {
         shieldUntil: 0,
         skillReadyAt: 0,
         ult: 0,
-        holdUntil: 0,
+        comboHits: 0,
+        iframeUntil: 0,
+        chargeUntil: 0,
+        slamAt: 0,
+        wallAt: 0,
+        wallCells: null,
+        whirlAt: 0,
+        whirlTargets: null,
         critNext: false,
       });
     }
@@ -715,7 +729,14 @@ export class Game {
       bricks: 0,
       ammo: 0,
       damage: 0,
-      holdUntil: 0,
+      comboHits: 0,
+      iframeUntil: 0,
+      chargeUntil: 0,
+      slamAt: 0,
+      wallAt: 0,
+      wallCells: null,
+      whirlAt: 0,
+      whirlTargets: null,
       critNext: false,
       hasControl: false,
       deathCause: null,
@@ -856,7 +877,7 @@ export class Game {
       if (dist > EPS && (dx * fx + dy * fy) / dist < cosHalf) continue;
       const crit = (falling && p.z - t.z >= C.CRIT_MIN_HEIGHT) || p.critNext; // 닌자 그림자: 다음 밀치기 치명타
       const gain = crit ? Math.round(C.DAMAGE_GAIN[kind] * C.CRIT_DAMAGE_MULT) : C.DAMAGE_GAIN[kind];
-      const hit = this.applyKnockback(t, fx, fy, crit ? speed * C.CRIT_KB_MULT : speed, up, stun, gain, { by: p.id, kind });
+      const hit = this.applyKnockback(t, fx, fy, crit ? speed * C.CRIT_KB_MULT : speed, up, stun, gain, { by: p.id, kind }, weapon); // 망치는 무거운 공격
       const stop = crit ? C.HITSTOP_MS * C.CRIT_HITSTOP_MULT : C.HITSTOP_MS;
       if (hit) {
         p.freezeUntil = this.time + stop; // 때린 쪽도 같이 멈칫
@@ -868,39 +889,95 @@ export class Game {
         p.weaponUses--; // 한 번 휘둘러 여럿 맞혀도 1회
       }
       this.emit({ type: 'hit', kind, by: p.id, target: t.id, ok: hit, crit: hit && crit });
-      this.log(`  [${weapon ? '망치' : '밀치기'}] ${p.name} → ${t.name} ${hit ? `넉백${crit ? ' 치명타' : ''} (${t.name} ${t.damage}%)` : '경직 중이라 무시'}${weapon ? ` (남은 ${p.weaponUses}회)` : ''}`);
+      this.log(`  [${weapon ? '망치' : '밀치기'}] ${p.name} → ${t.name} ${hit ? `넉백${crit ? ' 치명타' : ''} (${t.name} ${t.damage}%)` : '무적이라 무시'}${weapon ? ` (남은 ${p.weaponUses}회)` : ''}`);
     }
   }
 
   // ---------- 캐릭터 스킬·필살기 ----------
   useSkill(p) {
+    if (p.slamAt || p.wallAt || this.time < p.chargeUntil) return false; // 다른 기술 발동 중
+    p.skillReadyAt = this.time + C.SKILL_CD_MS[p.char]; // 먼저 걸어 둠 (그림자 일격이 순간 베기 쿨을 초기화하는 것과 순서가 안 꼬이게)
     const ok =
-      p.char === 'tank' ? this.tankHold(p) : p.char === 'ninja' ? this.ninjaBlink(p) : p.char === 'builder' ? this.builderWall(p) : this.hookPull(p);
-    if (!ok) return false; // 못 쓰는 상황(벽 세울 자리 없음, 갈고리 빗나감 등)이면 쿨타임 안 돎 — 갈고리는 빗나가도 돎 (hookPull 이 정함)
-    const cd = { tank: C.TANK_HOLD_CD_MS, ninja: C.NINJA_BLINK_CD_MS, builder: C.BUILDER_WALL_CD_MS, hook: C.HOOK_CD_MS }[p.char];
-    p.skillReadyAt = this.time + cd;
-    this.emit({ type: 'skill', who: p.id, char: p.char });
+      p.char === 'tank' ? this.tankCharge(p) : p.char === 'ninja' ? this.ninjaBlink(p) : p.char === 'builder' ? this.builderWall(p) : this.hookPull(p);
+    if (!ok) {
+      p.skillReadyAt = this.time; // 못 쓰는 상황(벽 세울 자리 없음 등)이면 쿨타임 안 돎 — 갈고리는 빗나가도 돎 (hookPull 이 정함)
+      return false;
+    }
+    this.emit({ type: 'skill', who: p.id, char: p.char, x: p.x, y: p.y, z: p.z });
     return true;
   }
 
   useUlt(p) {
-    if (p.char === 'tank') this.tankSlam(p);
-    else if (p.char === 'ninja') this.ninjaShadow(p);
-    else if (p.char === 'builder') {
+    if (p.slamAt || p.wallAt || this.time < p.chargeUntil) return false;
+    if (p.char === 'tank') this.tankSlamStart(p);
+    else if (p.char === 'ninja') {
+      if (!this.ninjaStrike(p)) return false; // 근처에 상대가 없으면 게이지 그대로
+    } else if (p.char === 'builder') {
       if (!this.builderRain(p)) return false; // 조준한 곳이 없으면 게이지 그대로
     } else this.hookWhirl(p);
     p.ult = 0;
-    this.emit({ type: 'ult', who: p.id, char: p.char });
+    this.emit({ type: 'ult', who: p.id, char: p.char, x: p.x, y: p.y, z: p.z });
     return true;
   }
 
-  tankHold(p) {
-    p.holdUntil = this.time + C.TANK_HOLD_MS;
-    this.log(`  [스킬] ${p.name} 버티기`);
+  // 남에게 맞힐 수 있는 상대인가 (필드 위·다른 팀·나 아님)
+  foe(p, t) {
+    return t !== p && this.onField(t) && !this.sameTeam(p, t);
+  }
+
+  // ---- 탱크 ----
+  // 돌진: TANK_CHARGE_MS 동안 보는 방향으로 빠르게. 처음 부딪힌 상대를 치고 멈춤 (updateCombat)
+  tankCharge(p) {
+    p.chargeUntil = this.time + C.TANK_CHARGE_MS;
+    p.chargeDir = { x: Math.cos(p.yaw), y: Math.sin(p.yaw) };
+    this.emit({ type: 'charge', who: p.id, x: p.x, y: p.y, z: p.z, yaw: p.yaw });
+    this.log(`  [스킬] ${p.name} 돌진`);
     return true;
   }
 
-  // 보는 방향으로 NINJA_BLINK_DIST 만큼, 벽(블록)에 닿기 전까지 순간이동. 높이는 그대로 (구멍 위면 떨어짐)
+  chargeHit(p) {
+    for (const t of this.players.values()) {
+      if (!this.foe(p, t) || Math.hypot(t.x - p.x, t.y - p.y) > C.TANK_CHARGE_HIT_RANGE || Math.abs(t.z - p.z) > C.PLAYER_HEIGHT) continue;
+      p.chargeUntil = 0;
+      p.kbx = 0;
+      p.kby = 0;
+      const hit = this.applyKnockback(t, p.chargeDir.x, p.chargeDir.y, C.TANK_CHARGE_KB_SPEED, C.TANK_CHARGE_KB_UP, C.TANK_CHARGE_STUN_MS, C.TANK_CHARGE_DAMAGE, { by: p.id, kind: 'charge' });
+      this.emit({ type: 'hit', kind: 'charge', by: p.id, target: t.id, ok: hit });
+      this.log(`  [돌진] ${p.name} → ${t.name} ${hit ? `(${t.name} ${t.damage}%)` : '무적이라 무시'}`);
+      return;
+    }
+  }
+
+  // 내려찍기: 떠올랐다가 TANK_SLAM_WINDUP_MS 뒤 쾅 (바닥에 범위 예고). 주변을 위로 띄움
+  tankSlamStart(p) {
+    p.slamAt = this.time + C.TANK_SLAM_WINDUP_MS;
+    p.vz = C.TANK_SLAM_JUMP;
+    p.grounded = false;
+    this.emit({ type: 'slamWarn', who: p.id, x: p.x, y: p.y, z: p.z, r: C.TANK_SLAM_RANGE, ms: C.TANK_SLAM_WINDUP_MS });
+    this.log(`  [필살] ${p.name} 내려찍기 준비`);
+  }
+
+  tankSlam(p) {
+    p.slamAt = 0;
+    p.vz = Math.min(p.vz, -C.TANK_SLAM_JUMP); // 쾅 내려옴
+    let n = 0;
+    for (const t of this.players.values()) {
+      if (!this.foe(p, t)) continue;
+      const dx = t.x - p.x;
+      const dy = t.y - p.y;
+      if (Math.hypot(dx, dy) > C.TANK_SLAM_RANGE || Math.abs(t.z - p.z) > 2.5) continue;
+      const a = this.rng() * Math.PI * 2; // 겹쳐 서 있으면 방향이 없어서 무작위
+      const len = Math.hypot(dx, dy);
+      const hit = this.applyKnockback(t, len > 0.05 ? dx : Math.cos(a), len > 0.05 ? dy : Math.sin(a), C.TANK_SLAM_KB_SPEED, C.TANK_SLAM_KB_UP, C.TANK_SLAM_STUN_MS, C.TANK_SLAM_DAMAGE, { by: p.id, kind: 'slam' }, true);
+      if (hit) n++;
+      this.emit({ type: 'hit', kind: 'slam', by: p.id, target: t.id, ok: hit });
+    }
+    this.emit({ type: 'slam', who: p.id, x: p.x, y: p.y, z: p.z, r: C.TANK_SLAM_RANGE });
+    this.log(`  [필살] ${p.name} 내려찍기 (${n}명)`);
+  }
+
+  // ---- 닌자 ----
+  // 순간 베기: 보는 방향으로 NINJA_BLINK_DIST 만큼 (벽 앞까지, 상대가 있으면 그 바로 뒤까지) 순간이동하며 지나간 길의 상대를 벰 (한 사람 한 번)
   ninjaBlink(p) {
     const fx = Math.cos(p.yaw);
     const fy = Math.sin(p.yaw);
@@ -912,14 +989,66 @@ export class Game {
       best = d;
     }
     if (best < 0.3) return false;
+    // 길 위의 상대: 지나갈 선분에서 NINJA_SLASH_WIDTH 안. 처음 만나는 상대 바로 뒤(NINJA_STRIKE_BEHIND)에서 멈춤 → 바로 평타로 이어짐
+    const onPath = (t, len) => {
+      const along = (t.x - from.x) * fx + (t.y - from.y) * fy;
+      return along >= 0 && along <= len && Math.hypot(from.x + fx * along - t.x, from.y + fy * along - t.y) <= C.NINJA_SLASH_WIDTH ? along : null;
+    };
+    for (const t of this.players.values()) {
+      if (!this.foe(p, t) || Math.abs(t.z - p.z) > C.PLAYER_HEIGHT) continue;
+      const along = onPath(t, best);
+      if (along !== null) best = Math.min(best, along + C.NINJA_STRIKE_BEHIND);
+    }
     p.x += fx * best;
     p.y += fy * best;
     this.emit({ type: 'blink', who: p.id, from, to: { x: p.x, y: p.y, z: p.z } });
-    this.log(`  [스킬] ${p.name} 순간이동 ${best.toFixed(1)}칸`);
+    let n = 0;
+    for (const t of this.players.values()) {
+      if (!this.foe(p, t) || Math.abs(t.z - p.z) > C.PLAYER_HEIGHT) continue;
+      if (onPath(t, best) === null) continue;
+      const hit = this.applyKnockback(t, fx, fy, C.NINJA_SLASH_KB_SPEED, C.NINJA_SLASH_KB_UP, C.NINJA_SLASH_STUN_MS, C.NINJA_SLASH_DAMAGE, { by: p.id, kind: 'slash' });
+      if (hit) n++;
+      this.emit({ type: 'hit', kind: 'slash', by: p.id, target: t.id, ok: hit });
+    }
+    this.log(`  [스킬] ${p.name} 순간 베기 ${best.toFixed(1)}칸${n ? ` (${n}명)` : ''}`);
     return true;
   }
 
-  // 바로 앞(보는 방향을 네 방향으로 맞춤) 한 칸 띄운 줄에 가로 BUILDER_WALL_WIDTH × 높이 BUILDER_WALL_HEIGHT 벽. 빈 칸만, 사람과 겹치는 칸은 건너뜀
+  // 그림자 일격: NINJA_STRIKE_RANGE 안 가장 가까운 상대 등 뒤로 순간이동해 치명타 밀치기. 맞히면 순간 베기 쿨 초기화.
+  // 상대가 없거나 뒤에 설 자리가 없으면 안 쓰임 (게이지 그대로)
+  ninjaStrike(p) {
+    let t = null;
+    let bd = Infinity;
+    for (const o of this.players.values()) {
+      if (!this.foe(p, o) || Math.abs(o.z - p.z) > 2.5) continue;
+      const d = Math.hypot(o.x - p.x, o.y - p.y);
+      if (d <= C.NINJA_STRIKE_RANGE && d < bd) {
+        bd = d;
+        t = o;
+      }
+    }
+    if (!t) return false;
+    const a = Math.atan2(t.y - p.y, t.x - p.x); // 나 → 상대 방향의 반대편(등 뒤)에 선다
+    const spot = { x: t.x + Math.cos(a) * C.NINJA_STRIKE_BEHIND, y: t.y + Math.sin(a) * C.NINJA_STRIKE_BEHIND, z: t.z };
+    if (!inXY(Math.floor(spot.x), Math.floor(spot.y)) || this.overlappingSolid(this.aabb({ ...spot, z: spot.z + 0.05 })).length) return false;
+    const from = { x: p.x, y: p.y };
+    Object.assign(p, spot);
+    p.yaw = a + Math.PI; // 상대를 봄
+    p.kbx = 0;
+    p.kby = 0;
+    this.emit({ type: 'blink', who: p.id, from, to: { x: p.x, y: p.y, z: p.z } });
+    p.critNext = true;
+    const before = t.damage;
+    this.push(p);
+    p.critNext = false;
+    const hit = t.damage > before || this.time < t.iframeUntil; // 맞힘 (마지막 타로 무적이 붙었어도)
+    if (hit) p.skillReadyAt = this.time; // 순간 베기 쿨 초기화
+    this.log(`  [필살] ${p.name} 그림자 일격 → ${t.name}${hit ? ' (순간 베기 초기화)' : ''}`);
+    return true;
+  }
+
+  // ---- 건축가 ----
+  // 솟는 벽: 바로 앞(네 방향으로 맞춤) 한 칸 띄운 줄에 가로 BUILDER_WALL_WIDTH × BUILDER_WALL_HEIGHT. 바닥에 예고 → BUILDER_WALL_WARN_MS 뒤 솟음
   builderWall(p) {
     const fx = Math.cos(p.yaw);
     const fy = Math.sin(p.yaw);
@@ -929,24 +1058,72 @@ export class Game {
     const cy = Math.floor(p.y) + along[1];
     const z0 = Math.max(0, Math.round(p.z));
     const half = Math.floor(C.BUILDER_WALL_WIDTH / 2);
-    let placed = 0;
+    const cells = [];
     for (let i = -half; i <= half; i++) {
-      for (let h = 0; h < C.BUILDER_WALL_HEIGHT; h++) {
-        const x = cx + side[0] * i;
-        const y = cy + side[1] * i;
-        const z = z0 + h;
-        if (!inXY(x, y) || z >= C.GRID_H || this.grid[this.idx(x, y, z)] || this.pieceCells.has(cellKey(x, y, z))) continue;
-        if ([...this.players.values()].some((t) => this.onField(t) && overlapsCell(t, x, y, z))) continue;
-        this.grid[this.idx(x, y, z)] = CELL.BUILD;
-        placed++;
-      }
+      const x = cx + side[0] * i;
+      const y = cy + side[1] * i;
+      if (!inXY(x, y) || this.grid[this.idx(x, y, z0)]) continue;
+      for (let h = 0; h < C.BUILDER_WALL_HEIGHT; h++) if (z0 + h < C.GRID_H) cells.push([x, y, z0 + h]);
     }
-    if (!placed) return false;
-    this.gridChanged();
-    this.log(`  [스킬] ${p.name} 벽 세우기 (${placed}칸)`);
+    if (!cells.length) return false;
+    p.wallAt = this.time + C.BUILDER_WALL_WARN_MS;
+    p.wallCells = cells;
+    this.emit({ type: 'wallWarn', who: p.id, cells, ms: C.BUILDER_WALL_WARN_MS });
+    this.log(`  [스킬] ${p.name} 솟는 벽 준비`);
     return true;
   }
 
+  builderWallRise(p) {
+    const cells = p.wallCells;
+    p.wallAt = 0;
+    p.wallCells = null;
+    let placed = 0;
+    const launched = new Set();
+    for (const [x, y, z] of cells) {
+      if (this.grid[this.idx(x, y, z)] || this.pieceCells.has(cellKey(x, y, z))) continue;
+      this.grid[this.idx(x, y, z)] = CELL.BUILD;
+      placed++;
+    }
+    if (!placed) return;
+    this.gridChanged();
+    // 벽 칸에 있던 사람은 벽 위로 올리고 띄움 (건축가 자신은 밀려남만)
+    for (const t of this.players.values()) {
+      if (!this.onField(t) || !cells.some(([x, y, z]) => overlapsCell(t, x, y, z))) continue;
+      this.ejectFromBlocks(t);
+      if (!this.foe(p, t) || launched.has(t.id)) continue;
+      launched.add(t.id);
+      const hit = this.applyKnockback(t, Math.cos(p.yaw), Math.sin(p.yaw), 0, C.BUILDER_WALL_KB_UP, C.BUILDER_WALL_STUN_MS, C.BUILDER_WALL_DAMAGE, { by: p.id, kind: 'wall' });
+      this.emit({ type: 'hit', kind: 'wall', by: p.id, target: t.id, ok: hit });
+    }
+    this.emit({ type: 'wallRise', who: p.id, cells });
+    this.log(`  [스킬] ${p.name} 솟는 벽 (${placed}칸${launched.size ? `, ${launched.size}명 띄움` : ''})`);
+    this.clearLayers();
+  }
+
+  // 블록 비: 조준한 칸 둘레에 1×1 블록들을 떨어뜨림 (설치 블록처럼: 깔리면 압사, 착지 충격파, 킬은 건축가)
+  builderRain(p) {
+    const anchor = this.aimAnchor(p);
+    if (!anchor) return false;
+    const cells = [];
+    for (const [ox, oy] of C.BUILDER_RAIN_CELLS) {
+      const x = anchor[0] + ox;
+      const y = anchor[1] + oy;
+      if (!inXY(x, y)) continue;
+      const top = this.columnTop(x, y);
+      const pz = Math.min(top + C.BRICK_DROP_HEIGHT, C.GRID_H - 1);
+      if (top >= C.GRID_H - 1 || this.pieceCells.has(cellKey(x, y, pz))) continue;
+      const piece = { id: 0, shape: '1×1', rot: 0, cells: [[0, 0]], px: x, py: y, pz, landZ: 0, fits: false };
+      this.updateLanding(piece);
+      this.addPiece(piece, { phase: 'falling', controller: null, thrownBy: p.id, stepMs: C.BRICK_FALL_STEP_MS, nextStepAt: this.time + C.BRICK_FALL_STEP_MS, controlEndsAt: 0 });
+      cells.push([x, y, piece.landZ]);
+    }
+    if (!cells.length) return false;
+    this.emit({ type: 'rainWarn', who: p.id, cells });
+    this.log(`  [필살] ${p.name} 블록 비 → (${anchor[0]},${anchor[1]}) ${cells.length}개`);
+    return true;
+  }
+
+  // ---- 갈고리 ----
   // 보는 방향 HOOK_RANGE 안 (반각 HOOK_HALF_ANGLE_DEG, 높이 차 2칸 안) 가장 가까운 상대
   hookTarget(p) {
     const fx = Math.cos(p.yaw);
@@ -955,7 +1132,7 @@ export class Game {
     let best = null;
     let bd = Infinity;
     for (const t of this.players.values()) {
-      if (t === p || !this.onField(t) || this.sameTeam(p, t)) continue;
+      if (!this.foe(p, t)) continue;
       const dx = t.x - p.x;
       const dy = t.y - p.y;
       const d = Math.hypot(dx, dy);
@@ -968,20 +1145,19 @@ export class Game {
     return best;
   }
 
-  // 상대를 내 앞 HOOK_PULL_TO 거리까지 끌어옴 (블록에 막히면 거기까지), 잠깐 못 움직임. 킬 판정용으로 맞은 기록도 남김
-  pullTo(p, t, stunMs) {
+  // 상대를 내 앞 HOOK_PULL_TO 거리까지 끌어옴 (블록에 막히면 거기까지). 콤보 한 타 (넉백 없이 경직 + 피해)
+  pullTo(p, t, stunMs, gain, kind) {
+    if (this.time < t.iframeUntil || this.time < t.shieldUntil) return false;
     const dx = p.x - t.x;
     const dy = p.y - t.y;
     const d = Math.hypot(dx, dy) || 1;
     const go = Math.max(0, d - C.HOOK_PULL_TO);
     this.moveAxis(t, 'x', (dx / d) * go);
     this.moveAxis(t, 'y', (dy / d) * go);
+    const hit = this.applyKnockback(t, dx, dy, 0, 0, stunMs, gain, { by: p.id, kind });
     t.kbx = 0;
     t.kby = 0;
-    // 못 움직이게만 (freezeUntil). stunUntil 은 '넉백 무시'까지 겹쳐서 끌어온 뒤 바로 밀면 "경직 중이라 무시" 가 됐음 (봇 40판 갈고리 2승)
-    t.freezeUntil = Math.max(t.freezeUntil, this.time + stunMs);
-    t.emoteUntil = 0;
-    t.lastHit = { by: p.id, kind: 'hook', name: p.name };
+    return hit;
   }
 
   hookPull(p) {
@@ -991,65 +1167,55 @@ export class Game {
       this.log(`  [스킬] ${p.name} 갈고리 빗나감`);
       return true; // 빗나가도 쿨타임
     }
-    this.pullTo(p, t, C.HOOK_STUN_MS);
-    this.log(`  [스킬] ${p.name} 갈고리 → ${t.name}`);
+    const hit = this.pullTo(p, t, C.HOOK_STUN_MS, C.HOOK_DAMAGE, 'hook');
+    this.log(`  [스킬] ${p.name} 갈고리 → ${t.name}${hit ? ` (${t.name} ${t.damage}%)` : ' 무적이라 무시'}`);
     return true;
   }
 
-  tankSlam(p) {
-    let n = 0;
+  // 회오리: 주변을 다 끌어모으고 (피해) HOOK_WHIRL_FLING_MS 뒤 바깥으로 한꺼번에 튕김 (updateCombat)
+  hookWhirl(p) {
+    const ids = [];
     for (const t of this.players.values()) {
-      if (t === p || !this.onField(t) || this.sameTeam(p, t)) continue;
+      if (!this.foe(p, t)) continue;
+      if (Math.hypot(t.x - p.x, t.y - p.y) > C.HOOK_ULT_RANGE || Math.abs(t.z - p.z) > 2) continue;
+      if (this.pullTo(p, t, C.HOOK_ULT_STUN_MS, C.HOOK_ULT_DAMAGE, 'whirl')) ids.push(t.id);
+      this.emit({ type: 'hook', who: p.id, target: t.id, yaw: Math.atan2(t.y - p.y, t.x - p.x) });
+    }
+    p.whirlAt = this.time + C.HOOK_WHIRL_FLING_MS;
+    p.whirlTargets = ids;
+    this.emit({ type: 'whirl', who: p.id, x: p.x, y: p.y, z: p.z, r: C.HOOK_ULT_RANGE });
+    this.log(`  [필살] ${p.name} 회오리 (${ids.length}명)`);
+  }
+
+  hookWhirlFling(p) {
+    const ids = p.whirlTargets || [];
+    p.whirlAt = 0;
+    p.whirlTargets = null;
+    for (const id of ids) {
+      const t = this.players.get(id);
+      if (!t || !this.foe(p, t)) continue;
+      const a = this.rng() * Math.PI * 2;
       const dx = t.x - p.x;
       const dy = t.y - p.y;
-      if (Math.hypot(dx, dy) > C.TANK_SLAM_RANGE || Math.abs(t.z - p.z) > 2) continue;
-      const a = this.rng() * Math.PI * 2; // 겹쳐 서 있으면 방향이 없어서 무작위
       const len = Math.hypot(dx, dy);
-      const hit = this.applyKnockback(t, len > 0.05 ? dx : Math.cos(a), len > 0.05 ? dy : Math.sin(a), C.TANK_SLAM_KB_SPEED, C.TANK_SLAM_KB_UP, C.TANK_SLAM_STUN_MS, C.TANK_SLAM_DAMAGE, { by: p.id, kind: 'slam' });
-      if (hit) n++;
-      this.emit({ type: 'hit', kind: 'slam', by: p.id, target: t.id, ok: hit });
+      const hit = this.applyKnockback(t, len > 0.05 ? dx : Math.cos(a), len > 0.05 ? dy : Math.sin(a), C.HOOK_WHIRL_KB_SPEED, C.HOOK_WHIRL_KB_UP, C.HOOK_WHIRL_STUN_MS, 0, { by: p.id, kind: 'whirl' }, true);
+      this.emit({ type: 'hit', kind: 'whirl', by: p.id, target: t.id, ok: hit });
     }
-    this.log(`  [필살] ${p.name} 지면 강타 (${n}명)`);
   }
 
-  ninjaShadow(p) {
-    p.ghostUntil = this.time + C.NINJA_SHADOW_MS;
-    p.critNext = true;
-    this.log(`  [필살] ${p.name} 그림자`);
-  }
-
-  // 조준한 칸 둘레에 1×1 블록들을 떨어뜨림 (설치 블록처럼: 깔리면 압사, 착지 충격파, 킬은 건축가)
-  builderRain(p) {
-    const anchor = this.aimAnchor(p);
-    if (!anchor) return false;
-    let n = 0;
-    for (const [ox, oy] of C.BUILDER_RAIN_CELLS) {
-      const x = anchor[0] + ox;
-      const y = anchor[1] + oy;
-      if (!inXY(x, y)) continue;
-      const top = this.columnTop(x, y);
-      const pz = Math.min(top + C.BRICK_DROP_HEIGHT, C.GRID_H - 1);
-      if (top >= C.GRID_H - 1 || this.pieceCells.has(cellKey(x, y, pz))) continue;
-      const piece = { id: 0, shape: '1×1', rot: 0, cells: [[0, 0]], px: x, py: y, pz, landZ: 0, fits: false };
-      this.updateLanding(piece);
-      this.addPiece(piece, { phase: 'falling', controller: null, thrownBy: p.id, stepMs: C.BRICK_FALL_STEP_MS, nextStepAt: this.time + C.BRICK_FALL_STEP_MS, controlEndsAt: 0 });
-      n++;
+  // 틱마다: 콤보가 끊긴 사람 무적, 돌진 부딪힘, 내려찍기·솟는 벽·회오리 발동
+  updateCombat() {
+    for (const p of this.players.values()) {
+      if (p.comboHits > 0 && this.time >= p.stunUntil) this.endCombo(p);
+      if (!this.onField(p)) {
+        p.chargeUntil = p.slamAt = p.wallAt = p.whirlAt = 0;
+        continue;
+      }
+      if (this.time < p.chargeUntil) this.chargeHit(p);
+      if (p.slamAt && this.time >= p.slamAt) this.tankSlam(p);
+      if (p.wallAt && this.time >= p.wallAt) this.builderWallRise(p);
+      if (p.whirlAt && this.time >= p.whirlAt) this.hookWhirlFling(p);
     }
-    if (!n) return false;
-    this.log(`  [필살] ${p.name} 블록 비 → (${anchor[0]},${anchor[1]}) ${n}개`);
-    return true;
-  }
-
-  hookWhirl(p) {
-    let n = 0;
-    for (const t of this.players.values()) {
-      if (t === p || !this.onField(t) || this.sameTeam(p, t)) continue;
-      if (Math.hypot(t.x - p.x, t.y - p.y) > C.HOOK_ULT_RANGE || Math.abs(t.z - p.z) > 2) continue;
-      this.pullTo(p, t, C.HOOK_ULT_STUN_MS);
-      this.emit({ type: 'hook', who: p.id, target: t.id, yaw: Math.atan2(t.y - p.y, t.x - p.x) });
-      n++;
-    }
-    this.log(`  [필살] ${p.name} 회오리 (${n}명)`);
   }
 
   fire(p) {
@@ -1211,10 +1377,10 @@ export class Game {
       if (Math.hypot(dx, dy) > C.BOMB_BLAST_RANGE || Math.abs(t.z + C.PLAYER_HEIGHT / 2 - cz) > C.BOMB_BLAST_RANGE) continue;
       const a = this.rng() * Math.PI * 2; // 바로 위에 서 있으면 방향이 없어서 무작위
       const hit = Math.hypot(dx, dy) > 0.05
-        ? this.applyKnockback(t, dx, dy, C.BOMB_KB_SPEED, C.BOMB_KB_UP, C.BOMB_STUN_MS, C.DAMAGE_GAIN.bomb, { by: b.by, kind: 'bomb' })
-        : this.applyKnockback(t, Math.cos(a), Math.sin(a), C.BOMB_KB_SPEED, C.BOMB_KB_UP, C.BOMB_STUN_MS, C.DAMAGE_GAIN.bomb, { by: b.by, kind: 'bomb' });
+        ? this.applyKnockback(t, dx, dy, C.BOMB_KB_SPEED, C.BOMB_KB_UP, C.BOMB_STUN_MS, C.DAMAGE_GAIN.bomb, { by: b.by, kind: 'bomb' }, true)
+        : this.applyKnockback(t, Math.cos(a), Math.sin(a), C.BOMB_KB_SPEED, C.BOMB_KB_UP, C.BOMB_STUN_MS, C.DAMAGE_GAIN.bomb, { by: b.by, kind: 'bomb' }, true);
       this.emit({ type: 'hit', kind: 'bomb', by: b.by, target: t.id, ok: hit });
-      this.log(`  [폭탄] ${by ? by.name : '?'} → ${t.name} ${hit ? `넉백 (${t.name} ${t.damage}%)` : '경직 중이라 무시'}`);
+      this.log(`  [폭탄] ${by ? by.name : '?'} → ${t.name} ${hit ? `넉백 (${t.name} ${t.damage}%)` : '무적이라 무시'}`);
     }
     if (removed) this.gridChanged();
   }
@@ -1242,9 +1408,9 @@ export class Game {
       const gx = Math.max(x0 - (t.x + C.PLAYER_HALF), t.x - C.PLAYER_HALF - x1, 0);
       const gy = Math.max(y0 - (t.y + C.PLAYER_HALF), t.y - C.PLAYER_HALF - y1, 0);
       if (Math.hypot(gx, gy) > C.BRICK_SHOCK_RANGE || Math.abs(t.z - z) > C.BRICK_SHOCK_HEIGHT) continue;
-      const hit = this.applyKnockback(t, t.x - cx, t.y - cy, C.BRICK_SHOCK_KB_SPEED, C.BRICK_SHOCK_KB_UP, C.BRICK_SHOCK_STUN_MS, C.DAMAGE_GAIN.shock, { by: piece.thrownBy, kind: 'shock' });
+      const hit = this.applyKnockback(t, t.x - cx, t.y - cy, C.BRICK_SHOCK_KB_SPEED, C.BRICK_SHOCK_KB_UP, C.BRICK_SHOCK_STUN_MS, C.DAMAGE_GAIN.shock, { by: piece.thrownBy, kind: 'shock' }, true);
       this.emit({ type: 'hit', kind: 'shock', by: piece.thrownBy, target: t.id, ok: hit });
-      this.log(`  [충격파] ${by ? by.name : '?'} → ${t.name} ${hit ? `넉백 (${t.name} ${t.damage}%)` : '경직 중이라 무시'}`);
+      this.log(`  [충격파] ${by ? by.name : '?'} → ${t.name} ${hit ? `넉백 (${t.name} ${t.damage}%)` : '무적이라 무시'}`);
     }
   }
 
@@ -1266,9 +1432,17 @@ export class Game {
   }
 
   // src: { by, kind } — 누가 무엇으로 날렸는지 (킬 판정용 lastHit)
-  applyKnockback(t, dx, dy, speed, up, stunMs = C.STUN_MS, gain = 0, src = null) {
-    if (this.time < t.stunUntil || this.time < t.shieldUntil || this.time < t.holdUntil) return false; // 경직 중·부활 무적·탱크 버티기면 무시
+  // heavy: 무거운 공격 (망치·투사체·폭탄·충격파·필살기) 은 콤보 중에도 넉백을 안 줄임
+  applyKnockback(t, dx, dy, speed, up, stunMs = C.STUN_MS, gain = 0, src = null, heavy = false) {
+    if (this.time < t.iframeUntil || this.time < t.shieldUntil) return false; // 콤보 뒤 무적·부활 무적
+    // 콤보: 경직이 안 풀렸는데 또 맞으면 이어짐. COMBO_MAX_HITS 타째가 마지막 타 (크게 날리고 무적)
+    t.comboHits = this.time < t.stunUntil && t.comboHits > 0 ? t.comboHits + 1 : 1;
+    const finisher = t.comboHits >= C.COMBO_MAX_HITS;
+    speed *= finisher ? C.COMBO_FINISH_KB : heavy ? 1 : C.COMBO_LIGHT_KB;
+    if (t.comboHits >= 2 && src) this.emit({ type: 'combo', by: src.by, target: t.id, n: t.comboHits });
     t.emoteUntil = 0; // 맞으면 이모트 끊김
+    t.chargeUntil = 0; // 맞으면 돌진·내려찍기 끊김
+    t.slamAt = 0;
     const teammate = src && this.sameTeam(this.players.get(src.by), t);
     if (teammate) gain = 0; // 팀전: 같은 팀은 밀리기만 (피해 % 없음, 킬로도 안 침)
     else if (src && src.by !== t.id) t.lastHit = { by: src.by, kind: src.kind, name: this.players.get(src.by)?.name };
@@ -1289,7 +1463,15 @@ export class Game {
     t.wallBounced = false; // 벽 튕김은 맞을 때마다 한 번
     t.stunUntil = this.time + stunMs;
     t.freezeUntil = this.time + C.HITSTOP_MS; // 멈칫 뒤에 날아간다 (날아가는 거리는 그대로)
+    if (finisher) this.endCombo(t, t.stunUntil);
     return true;
+  }
+
+  // 콤보 끝: 그때부터 COMBO_IFRAME_MS 무적 (마지막 타는 경직이 끝날 때까지 + 무적)
+  endCombo(t, from = this.time) {
+    if (t.comboHits >= 2) this.log(`  [콤보] ${t.name} ${t.comboHits}타`);
+    t.comboHits = 0;
+    t.iframeUntil = from + C.COMBO_IFRAME_MS;
   }
 
   // ---------- 블록 ----------
@@ -1883,7 +2065,7 @@ export class Game {
       p.ghostUntil = this.time + C.GHOST_MS;
       this.log(`  [아이템] ${p.name} 유령화 획득`);
     } else if (type === 'brick') {
-      p.bricks = C.BRICK_USES;
+      p.bricks = C.BRICK_USES + (p.char === 'builder' ? C.BUILDER_BRICK_BONUS : 0); // 건축가 패시브
       p.brickSide = false;
       this.log(`  [아이템] ${p.name} 설치 블록 1×2 획득 (${p.bricks}개)`);
     } else if (type === 'bomb') {
@@ -1938,9 +2120,9 @@ export class Game {
             pr.z < t.z + C.PLAYER_HEIGHT + r
           ) {
             const shooter = this.players.get(pr.owner);
-            const hit = this.applyKnockback(t, pr.dx, pr.dy, C.PROJECTILE_KB_SPEED, C.PROJECTILE_KB_UP, C.STUN_MS, C.DAMAGE_GAIN.projectile, { by: pr.owner, kind: 'projectile' });
+            const hit = this.applyKnockback(t, pr.dx, pr.dy, C.PROJECTILE_KB_SPEED, C.PROJECTILE_KB_UP, C.STUN_MS, C.DAMAGE_GAIN.projectile, { by: pr.owner, kind: 'projectile' }, true);
             this.emit({ type: 'hit', kind: 'projectile', by: pr.owner, target: t.id, ok: hit });
-            this.log(`  [투사체] ${shooter ? shooter.name : '?'} → ${t.name} ${hit ? '넉백' : '경직 중이라 무시'}`);
+            this.log(`  [투사체] ${shooter ? shooter.name : '?'} → ${t.name} ${hit ? '넉백' : '무적이라 무시'}`);
             dead = true;
             break;
           }
@@ -1978,7 +2160,10 @@ export class Game {
     const stunned = this.time < p.stunUntil;
     let ix = 0;
     let iy = 0;
-    if (!stunned && !this.isEmoting(p)) {
+    if (this.time < p.chargeUntil) {
+      ix = p.chargeDir.x * C.TANK_CHARGE_SPEED; // 탱크 돌진: 입력 대신 앞으로
+      iy = p.chargeDir.y * C.TANK_CHARGE_SPEED;
+    } else if (!stunned && !this.isEmoting(p)) {
       const mv = this.moveDir(p);
       if (mv) {
         const speed = C.MOVE_SPEED * (this.time < p.speedUntil ? C.SPEED_MULT : 1) * (p.char === 'ninja' ? C.NINJA_SPEED_MULT : 1); // 닌자 패시브
@@ -2105,6 +2290,7 @@ export class Game {
       for (const p of this.players.values()) if (this.onField(p)) this.integratePlayer(p, h);
       remaining -= h;
     }
+    this.updateCombat();
     for (const p of this.players.values()) {
       if (this.onField(p) && p.z < C.FALL_DEATH_Z) this.kill(p, 'fall');
     }
@@ -2203,7 +2389,8 @@ export class Game {
         char: p.char,
         skillCd: Math.max(0, p.skillReadyAt - this.time),
         ult: Math.floor(p.ult),
-        holding: this.time < p.holdUntil,
+        iframeLeft: Math.max(0, p.iframeUntil - this.time), // 콤보 뒤 무적 (깜빡임)
+        combo: this.time < p.stunUntil ? p.comboHits : 0,
         critNext: p.critNext,
         respawnIn: !p.alive && p.respawnAt ? Math.max(0, p.respawnAt - this.time) : null,
         shieldLeft: Math.max(0, p.shieldUntil - this.time),
@@ -2248,7 +2435,7 @@ const BOT_LEVEL_KO = { easy: '쉬움', normal: '보통', hard: '어려움' };
 const TEAM_KO = { red: '빨강', blue: '파랑' };
 
 // 킬 로그의 공격 이름 (npm run stats 가 한 단어로 읽음)
-const WEAPON_LOG = { push: '밀치기', weapon: '망치', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '지면강타', hook: '갈고리' };
+const WEAPON_LOG = { push: '밀치기', weapon: '망치', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', whirl: '회오리' };
 
 function causeKo(cause) {
   if (cause === 'crush') return '압사';
