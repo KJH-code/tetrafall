@@ -168,9 +168,6 @@ function handleEvent(e) {
     case 'hook':
       renderer.showHook(e.who, e.target, e.yaw);
       break;
-    case 'crumble': // 무너지는 바닥 칸이 사라짐
-      fx.burst({ x: e.x + 0.5, y: e.y + 0.5, z: e.z + 0.5 }, null, C.CRUMBLE_COLOR, 6, 3, 0.12, 0.6);
-      break;
     case 'zombie': // 블록 마스터: 죽어서 마스터 편
       if (e.who === myId) toast('마스터 편이 됐다! 하늘에서 블록으로 남은 사람을 깔아라', 'good');
       else toast(`${nameOf(e.who)} 마스터 편으로`);
@@ -569,7 +566,7 @@ const MODE_DESC = {
   master: `블록 마스터: 한 명이 하늘에서 블록만 떨어뜨리고, 나머지는 ${C.MASTER_TIME_MS / 1000}초 버티기 (각자 도생, 죽으면 마스터 편, 마스터는 판마다 돌아감)`,
   kills: `킬 점수전: 죽어도 ${C.KILLS_RESPAWN_MS / 1000}초 뒤 부활. 킬 +1 · 자멸 -1, ${C.KILLS_TIME_MS / 60000}분 또는 ${C.KILLS_TARGET}킬 (팀 ${C.KILLS_TARGET_TEAM}킬)`,
 };
-const MAP_KO = { random: '무작위', flat: '평지', pyramid: '피라미드', stairs: '계단', bowl: '그릇', spiral: '나선 계단', pillars: '기둥 숲', fortress: '요새', crumble: '무너지는 바닥', platforms: '움직이는 발판' };
+const MAP_KO = { random: '무작위', flat: '평지', pyramid: '피라미드', stairs: '계단', bowl: '그릇', spiral: '나선 계단', pillars: '기둥 숲', fortress: '요새' };
 
 // 이름: 대기 화면 입력칸. 브라우저에 기억해 두고 접속할 때마다 보낸다 (판 사이에만 바뀜)
 const nameInput = $('name-input');

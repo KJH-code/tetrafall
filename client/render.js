@@ -77,7 +77,6 @@ function drawLabel(canvas, name, color, d) {
 function cellColor(v) {
   if (v === CELL.BUILD) return C.BUILD_COLOR;
   if (v === CELL.THROWN) return C.THROWN_COLOR;
-  if (v === CELL.CRUMBLE) return C.CRUMBLE_COLOR;
   const shape = SHAPE_NAMES[v - CELL.SHAPE_BASE];
   if (shape) return new THREE.Color(C.SHAPE_COLORS[shape]).multiplyScalar(C.BLOCK_LANDED_SHADE).getHex();
   return C.TERRAIN_COLOR;
@@ -226,9 +225,7 @@ export class Renderer {
     floor.position.set(C.GRID_W / 2, C.GRID_D / 2, -0.15);
     floor.receiveShadow = true;
     this.scene.add(floor);
-    this.floor = floor;
     const gridHelper = new THREE.GridHelper(C.GRID_W, C.GRID_W, 0x222222, 0x444444);
-    this.gridHelper = gridHelper;
     gridHelper.rotation.x = Math.PI / 2;
     gridHelper.position.set(C.GRID_W / 2, C.GRID_D / 2, 0.002);
     this.scene.add(gridHelper);
@@ -243,7 +240,7 @@ export class Renderer {
     // 쌓인 블록 (인스턴스). 텍스처가 종류마다 달라 종류별로 하나씩: 지형 돌 · 쌓기 나무 · 설치 블록 모래 · 테트리미노
     const blockGeo = new THREE.BoxGeometry(1, 1, 1);
     this.blockMeshes = {};
-    for (const [kind, map] of Object.entries({ terrain: this.tex.stone, build: this.tex.wood, thrown: this.tex.sand, shape: this.tex.tetris, crumble: this.tex.stone })) {
+    for (const [kind, map] of Object.entries({ terrain: this.tex.stone, build: this.tex.wood, thrown: this.tex.sand, shape: this.tex.tetris })) {
       const mesh = new THREE.InstancedMesh(blockGeo, toon({ color: 0xffffff, map }), MAX_CELLS);
       mesh.count = 0;
       // three.js 는 InstancedMesh 의 경계 구를 처음 한 번만 계산하고 갱신하지 않는다.
@@ -258,13 +255,6 @@ export class Renderer {
       this.blockMeshes[kind] = mesh;
     }
     this.gridVersion = -1;
-
-    // 지형 장치: 무너지기 직전 칸 (빨갛게 흔들리는 상자를 덮어씌움) · 움직이는 발판. 필요한 만큼 늘어나는 풀
-    this.crumbleGeo = new THREE.BoxGeometry(1.04, 1.04, 1.04);
-    this.crumbleMat = noOutline(toon({ color: 0xff7040, emissive: 0x501000, map: this.tex.stone, transparent: true, opacity: 0.85 }));
-    this.crumbleMeshes = [];
-    this.platformMat = toon({ color: C.PLATFORM_COLOR, map: this.tex.wood });
-    this.platformMeshes = [];
 
     // 떨어지는 블록 셀 + 그림자 (블록 여러 개 → 필요한 만큼 늘어나는 풀)
     this.pieceMeshes = [];
@@ -343,13 +333,13 @@ export class Renderer {
   updateGrid(grid) {
     const m = new THREE.Matrix4();
     const color = new THREE.Color();
-    const count = { terrain: 0, build: 0, thrown: 0, shape: 0, crumble: 0 };
+    const count = { terrain: 0, build: 0, thrown: 0, shape: 0 };
     for (let z = 0; z < C.GRID_H; z++) {
       for (let y = 0; y < C.GRID_D; y++) {
         for (let x = 0; x < C.GRID_W; x++) {
           const v = grid[(z * C.GRID_D + y) * C.GRID_W + x];
           if (!v) continue;
-          const kind = v === CELL.TERRAIN ? 'terrain' : v === CELL.BUILD ? 'build' : v === CELL.THROWN ? 'thrown' : v === CELL.CRUMBLE ? 'crumble' : 'shape';
+          const kind = v === CELL.TERRAIN ? 'terrain' : v === CELL.BUILD ? 'build' : v === CELL.THROWN ? 'thrown' : 'shape';
           const mesh = this.blockMeshes[kind];
           const n = count[kind]++;
           m.makeTranslation(x + 0.5, y + 0.5, z + 0.5);
@@ -657,53 +647,6 @@ export class Renderer {
     }, 260);
   }
 
-  // 바닥 없는 맵이면 바닥판을 숨기고, 무너지는 칸을 흔들고, 발판을 옮긴다
-  updateTerrain(state, dt) {
-    const floorOn = !state.map || state.map.floor !== false;
-    this.floor.visible = floorOn;
-    this.gridHelper.visible = floorOn;
-    const crumbling = state.crumbling || [];
-    while (this.crumbleMeshes.length < crumbling.length) {
-      const m = new THREE.Mesh(this.crumbleGeo, this.crumbleMat);
-      this.scene.add(m);
-      this.crumbleMeshes.push(m);
-    }
-    this.crumbleMeshes.forEach((m, i) => {
-      const c = crumbling[i];
-      m.visible = !!c;
-      if (!c) return;
-      const [x, y, z, left] = c;
-      const amp = C.CRUMBLE_SHAKE * (1 - left / C.CRUMBLE_MS); // 사라질 때가 가까울수록 크게
-      m.position.set(x + 0.5 + (Math.random() - 0.5) * amp * 2, y + 0.5 + (Math.random() - 0.5) * amp * 2, z + 0.5 - amp);
-    });
-    const pfs = state.platforms || [];
-    while (this.platformMeshes.length < pfs.length) {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), this.platformMat);
-      m.castShadow = true;
-      m.receiveShadow = true;
-      m.userData.smooth = null;
-      this.scene.add(m);
-      this.platformMeshes.push(m);
-    }
-    const k = 1 - Math.exp(-25 * dt); // 플레이어와 같은 부드럽게 따라가기 (위에 탄 사람과 같이 움직이게)
-    this.platformMeshes.forEach((m, i) => {
-      const pf = pfs[i];
-      m.visible = !!pf;
-      if (!pf) {
-        m.userData.smooth = null;
-        return;
-      }
-      const want = { x: pf.x + pf.w / 2, y: pf.y + pf.d / 2, z: pf.z - 0.5 };
-      const s = m.userData.smooth || (m.userData.smooth = { ...want });
-      if (Math.hypot(want.x - s.x, want.y - s.y, want.z - s.z) > 3) Object.assign(s, want);
-      s.x += (want.x - s.x) * k;
-      s.y += (want.y - s.y) * k;
-      s.z += (want.z - s.z) * k;
-      m.scale.set(pf.w, pf.d, 1);
-      m.position.set(s.x, s.y, s.z);
-    });
-  }
-
   updateBeams(state) {
     const pairs = [];
     for (const pc of state.pieces || []) {
@@ -765,7 +708,7 @@ export class Renderer {
     const gy = Math.floor(y);
     const gz = Math.floor(z);
     if (gx < 0 || gy < 0 || gx >= C.GRID_W || gy >= C.GRID_D) return false;
-    if (gz < 0) return !state.map || state.map.floor !== false; // 바닥 없는 맵은 아래가 허공
+    if (gz < 0) return true;
     if (gz >= C.GRID_H || !state.grid) return false;
     return state.grid[(gz * C.GRID_D + gy) * C.GRID_W + gx] !== 0;
   }
@@ -971,7 +914,6 @@ export class Renderer {
     this.updateAim(me && me.alive && view === 'fps' ? me.aim : null);
     this.updateBombs(state.bombs || []);
     this.updateBeams(state);
-    this.updateTerrain(state, dt);
     if (me) this.viewArm.material.color.setHex(playerColor(me, state));
     const vp = this.effects.punchAmount(myId);
     this.viewArm.position.set(this.viewArmBase.x - 0.12 * vp, this.viewArmBase.y + 0.08 * vp, this.viewArmBase.z - 0.3 * vp);

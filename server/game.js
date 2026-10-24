@@ -3,7 +3,7 @@
 import { CONFIG as C } from '../shared/config.js';
 import { SHAPE_NAMES, CELL, cellOfShape, rotatedCells, footprint } from '../shared/pieces.js';
 import { BotBrain } from './bot.js';
-import { MAPS, MAP_IDS, mapColumns, mapCells, mapPlatforms } from './maps.js';
+import { MAPS, MAP_IDS, mapColumns } from './maps.js';
 
 const EPS = 1e-6;
 
@@ -82,8 +82,6 @@ export class Game {
     this.controlItemNextAt = 0;
     this.powerItemNextAt = 0; // 조종권 외 아이템 다음 생성 시각
     this.gridDirty = true;
-    this.crumbling = new Map(); // 무너지는 바닥: 칸 키 → { x, y, z, at(사라지는 시각) }
-    this.platforms = []; // 움직이는 발판 (맵 정의 + 지금 위치 pos·방향 dir)
     this.events = []; // 클라이언트 알림용 이벤트. 브로드캐스트 때 drainEvents() 로 비운다
   }
 
@@ -109,19 +107,9 @@ export class Game {
 
   // 플레이어 충돌용: 바닥, 쌓인 블록, 떨어지는 블록
   solidAt(cx, cy, cz) {
-    if (cz < 0) return inXY(cx, cy) && this.hasFloor(); // 필드 안은 바닥, 밖은 허공 (바닥 없는 맵은 다 허공)
+    if (cz < 0) return inXY(cx, cy); // 필드 안은 바닥, 밖은 허공
     if (inXY(cx, cy) && cz < C.GRID_H && this.grid[this.idx(cx, cy, cz)]) return true;
     return this.pieceCells.has(cellKey(cx, cy, cz));
-  }
-
-  // 필드 바닥이 있는 맵인가 (무너지는 바닥·움직이는 발판 맵은 없음 → 빈 기둥은 구멍)
-  hasFloor() {
-    return MAPS[this.mapId]?.floor !== false;
-  }
-
-  // 구멍: 바닥 없는 맵에서 블록이 하나도 없는 기둥 (밟으면 떨어짐)
-  holeAt(cx, cy) {
-    return !this.hasFloor() && this.columnTop(cx, cy) === 0;
   }
 
   // 그 기둥에서 가장 높은 블록 바로 위 z (블록 없으면 0)
@@ -445,16 +433,9 @@ export class Game {
     if (!this.canStart()) return false;
     this.grid.fill(0);
     this.mapId = this.mapChoice === 'random' ? MAP_IDS[Math.floor(this.rng() * MAP_IDS.length)] : this.mapChoice;
-    const cells = mapCells(this.mapId, C.GRID_W, C.GRID_D, CELL);
-    if (cells) for (const [x, y, z, v] of cells) this.grid[this.idx(x, y, z)] = v;
-    else {
-      for (const [x, y, h] of mapColumns(this.mapId, C.GRID_W, C.GRID_D)) {
-        for (let z = 0; z < h && z < C.GRID_H; z++) this.grid[this.idx(x, y, z)] = CELL.TERRAIN;
-      }
+    for (const [x, y, h] of mapColumns(this.mapId, C.GRID_W, C.GRID_D)) {
+      for (let z = 0; z < h && z < C.GRID_H; z++) this.grid[this.idx(x, y, z)] = CELL.TERRAIN;
     }
-    this.crumbling = new Map();
-    this.platforms = mapPlatforms(this.mapId).map((d) => ({ ...d, pos: d.from, dir: d.to > d.from ? 1 : -1 }));
-    for (const pf of this.platforms) this.placePlatform(pf, pf.from);
     this.baseAvgHeight = this.avgHeight();
     this.gridVersion++;
     this.gridDirty = true;
@@ -701,7 +682,7 @@ export class Game {
     for (let x = 0; x < C.GRID_W; x++) {
       for (let y = 0; y < C.GRID_D; y++) {
         const top = this.columnTop(x, y);
-        if (top <= C.GRID_H - 3 && !busy.has(x * 100 + y) && !this.holeAt(x, y)) cols.push({ x, y, top });
+        if (top <= C.GRID_H - 3 && !busy.has(x * 100 + y)) cols.push({ x, y, top });
       }
     }
     if (!cols.length) return { x: C.GRID_W / 2, y: C.GRID_D / 2, z: this.columnTop(Math.floor(C.GRID_W / 2), Math.floor(C.GRID_D / 2)) };
@@ -1795,8 +1776,7 @@ export class Game {
     const full = [];
     for (let z = 0; z < C.GRID_H; z++) {
       let ok = true;
-      // 무너지는 바닥 칸이 낀 층은 안 지움 (그 맵은 처음부터 층이 꽉 차 있음)
-      for (let i = 0; i < layerSize && ok; i++) if (!this.grid[z * layerSize + i] || this.grid[z * layerSize + i] === CELL.CRUMBLE) ok = false;
+      for (let i = 0; i < layerSize && ok; i++) if (!this.grid[z * layerSize + i]) ok = false;
       if (ok) full.push(z);
     }
     if (!full.length) return;
@@ -1853,14 +1833,13 @@ export class Game {
   updateLava(dtMs) {
     if (this.mode === 'kills') return; // 킬 점수전은 용암 대신 아래층을 지움 (sinkIfTall)
     const lava = this.lava;
-    const after = MAPS[this.mapId]?.lavaAfterMs; // 무너지는 바닥 맵: 쌓인 높이 대신 시간으로 (처음엔 바닥이 줄어드는 게 압박)
     if (!lava.active) {
-      if (after ? this.elapsed() < after : this.avgHeight() - this.baseAvgHeight < C.LAVA_TRIGGER_AVG_HEIGHT) return; // 시작 지형 빼고 쌓인 만큼
+      if (this.avgHeight() - this.baseAvgHeight < C.LAVA_TRIGGER_AVG_HEIGHT) return; // 시작 지형 빼고 쌓인 만큼
       lava.active = true;
       lava.z = C.LAVA_START_Z;
       lava.startedAt = this.time;
       this.emit({ type: 'lava' });
-      this.log(`  [용암] ${after ? `${fmtTime(after)} 지남` : `쌓인 평균 높이 ${(this.avgHeight() - this.baseAvgHeight).toFixed(2)}`} → 용암 상승 시작 @ ${fmtTime(this.elapsed())}`);
+      this.log(`  [용암] 쌓인 평균 높이 ${(this.avgHeight() - this.baseAvgHeight).toFixed(2)} → 용암 상승 시작 @ ${fmtTime(this.elapsed())}`);
       return;
     }
     lava.z = Math.min(C.GRID_H + 1, lava.z + dtMs / C.LAVA_RISE_MS_PER_CELL);
@@ -1879,7 +1858,7 @@ export class Game {
       const x = Math.floor(this.rng() * C.GRID_W);
       const y = Math.floor(this.rng() * C.GRID_D);
       const z = this.columnTop(x, y);
-      if (z >= C.GRID_H || this.holeAt(x, y)) continue; // 구멍 위엔 안 둠
+      if (z >= C.GRID_H) continue;
       if (this.lava.active && z < this.lava.z + 1) continue; // 용암에 잠길 자리는 피함
       if (this.items.some((it) => it.x === x && it.y === y)) continue;
       this.items.push({ type, x, y, z });
@@ -2114,93 +2093,7 @@ export class Game {
         }
       }
     }
-    // 움직이는 발판: 1×1×1 조각들로 (moveAxis 가 조각마다 [x, y, z] ~ +1 로 경계를 잼)
-    for (const pf of this.platforms) {
-      for (let i = 0; i < pf.w; i++) {
-        for (let j = 0; j < pf.d; j++) {
-          const x = pf.x + i;
-          const y = pf.y + j;
-          const z = pf.top - 1;
-          if (x < b.x1 - EPS && x + 1 > b.x0 + EPS && y < b.y1 - EPS && y + 1 > b.y0 + EPS && z < b.z1 - EPS && z + 1 > b.z0 + EPS) out.push([x, y, z]);
-        }
-      }
-    }
     return out;
-  }
-
-  // ---------- 지형 장치 ----------
-  // 봇이 피할 칸 [x, y]: 구멍(바닥 없는 맵의 빈 기둥) + 무너지는 중인 칸
-  hazardCells() {
-    const out = [];
-    if (!this.hasFloor()) {
-      for (let x = 0; x < C.GRID_W; x++) for (let y = 0; y < C.GRID_D; y++) if (this.columnTop(x, y) === 0) out.push([x, y]);
-    }
-    for (const c of this.crumbling.values()) out.push([c.x, c.y]);
-    return out;
-  }
-
-  // 무너지는 바닥: 서 있는 사람 발밑의 CRUMBLE 칸은 CRUMBLE_MS 뒤 사라짐 (안 돌아옴)
-  updateCrumble() {
-    for (const p of this.players.values()) {
-      if (!this.onField(p) || !p.grounded) continue;
-      const cz = Math.round(p.z) - 1;
-      if (Math.abs(p.z - (cz + 1)) > 0.05 || cz < 0) continue;
-      // 몸 가운데 아래 한 칸만 (몸통 네 모서리로 재면 칸 경계에서 4칸씩 무너져 판이 8초 만에 끝남, 봇 4명 기준)
-      const cx = Math.floor(p.x);
-      const cy = Math.floor(p.y);
-      if (this.gridAt(cx, cy, cz) !== CELL.CRUMBLE) continue;
-      const key = cellKey(cx, cy, cz);
-      if (!this.crumbling.has(key)) this.crumbling.set(key, { x: cx, y: cy, z: cz, at: this.time + C.CRUMBLE_MS });
-    }
-    let gone = 0;
-    for (const [key, c] of this.crumbling) {
-      if (this.time < c.at) continue;
-      this.crumbling.delete(key);
-      if (this.gridAt(c.x, c.y, c.z) !== CELL.CRUMBLE) continue;
-      this.grid[this.idx(c.x, c.y, c.z)] = 0;
-      this.emit({ type: 'crumble', x: c.x, y: c.y, z: c.z });
-      gone++;
-    }
-    if (gone) this.gridChanged();
-  }
-
-  // 움직이는 발판: 정한 축으로 from ↔ to 를 오가고, 위에 서 있던 사람을 같이 옮긴다
-  placePlatform(pf, pos) {
-    pf.pos = pos;
-    if (pf.axis === 'z') pf.top = pos;
-    else pf[pf.axis] = pos;
-  }
-
-  updatePlatforms(dt) {
-    for (const pf of this.platforms) {
-      const lo = Math.min(pf.from, pf.to);
-      const hi = Math.max(pf.from, pf.to);
-      let next = pf.pos + pf.dir * C.PLATFORM_SPEED * dt;
-      if (next >= hi) {
-        next = hi;
-        pf.dir = -1;
-      } else if (next <= lo) {
-        next = lo;
-        pf.dir = 1;
-      }
-      const delta = next - pf.pos;
-      // 위에 서 있는 사람: 발이 윗면 높이 + xy 가 겹침
-      const riders = [...this.players.values()].filter(
-        (p) =>
-          this.onField(p) &&
-          p.vz <= 0.01 &&
-          Math.abs(p.z - pf.top) < 0.05 &&
-          p.x + C.PLAYER_HALF > pf.x + EPS &&
-          p.x - C.PLAYER_HALF < pf.x + pf.w - EPS &&
-          p.y + C.PLAYER_HALF > pf.y + EPS &&
-          p.y - C.PLAYER_HALF < pf.y + pf.d - EPS,
-      );
-      this.placePlatform(pf, next);
-      for (const p of riders) {
-        if (pf.axis === 'z') p.z = pf.top;
-        else this.moveAxis(p, pf.axis, delta); // 벽에 막히면 거기서 멈춤 (발판은 계속 감)
-      }
-    }
   }
 
   moveAxis(p, axis, delta) {
@@ -2264,7 +2157,6 @@ export class Game {
       if (p && p.alive) brain.update(this, p);
     }
     this.updatePieces();
-    this.updatePlatforms(dt);
     let remaining = dt;
     while (remaining > 0) {
       const h = Math.min(remaining, C.MAX_STEP_DT);
@@ -2277,7 +2169,6 @@ export class Game {
     if (this.mode === 'kills') {
       for (const p of this.participants()) if (!p.alive && p.respawnAt && this.time >= p.respawnAt) this.respawn(p);
     }
-    this.updateCrumble();
     this.updateLava(dtMs);
     this.updateItems();
     this.updateProjectiles(dt);
@@ -2386,9 +2277,7 @@ export class Game {
       teamWins: this.teamWins,
       mode: this.mode,
       teamScores: this.teamScores,
-      map: { choice: this.mapChoice, id: this.mapId, name: MAPS[this.mapId].name, floor: this.hasFloor() },
-      crumbling: [...this.crumbling.values()].map((c) => [c.x, c.y, c.z, Math.max(0, c.at - this.time)]),
-      platforms: this.platforms.map((pf) => ({ x: pf.x, y: pf.y, z: pf.top, w: pf.w, d: pf.d })),
+      map: { choice: this.mapChoice, id: this.mapId, name: MAPS[this.mapId].name },
       items: this.items,
       projectiles: this.projectiles.map((pr) => ({ x: pr.x, y: pr.y, z: pr.z })),
       bombs: this.bombs.map((b) => ({ id: b.id, x: b.x, y: b.y, z: b.z, left: Math.max(0, b.explodeAt - this.time) })),

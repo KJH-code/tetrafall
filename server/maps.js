@@ -9,34 +9,9 @@ export const MAPS = {
   spiral: { name: '나선 계단' }, // 바깥 두 줄을 따라 한 바퀴 돌며 0→5층
   pillars: { name: '기둥 숲' }, // 2층 기둥 9개(가운데만 3층), 기둥마다 1층 발판
   fortress: { name: '요새' }, // 네 모서리 3층 탑, 탑을 잇는 2층 성벽, 성벽 가운데 안쪽에 1층 발판
-  // 2026-10-24 지형 묶음. floor: false = 필드 바닥 없음 (빈 기둥은 구멍, 빠지면 낙사)
-  // lavaAfterMs: 쌓인 높이와 상관없이 판 시작 이만큼 뒤에 용암 (2026-10-24 재혁: 처음엔 용암 끔 → 서로 다른 블록 더미에 버티면 판이 안 끝나서 '늦은 용암')
-  crumble: { name: '무너지는 바닥', floor: false, lavaAfterMs: 60000 }, // 3층 바닥 (사이 2칸), 밟으면 1초 뒤 사라짐. 시작 지형만 무너지고 떨어진 블록은 안 무너짐
-  platforms: { name: '움직이는 발판', floor: false }, // 네 구석 섬 + 가운데 높은 섬, 사이를 발판이 오감. 테트리미노는 발판을 통과
 };
 
 export const MAP_IDS = Object.keys(MAPS);
-
-// 칸 목록 [x, y, z, 칸 종류] — 층이 떨어져 있는 맵 (기둥으로 못 나타냄). 없으면 null → mapColumns
-export function mapCells(id, W, D, CELL) {
-  if (id !== 'crumble') return null;
-  const out = [];
-  for (const z of [0, 3, 6]) for (let x = 0; x < W; x++) for (let y = 0; y < D; y++) out.push([x, y, z, CELL.CRUMBLE]);
-  return out;
-}
-
-// 움직이는 발판: 왼쪽 아래 모서리 (x, y), 크기 w×d, 윗면 높이 top, axis 축으로 from ↔ to 를 오감 (z 면 윗면 높이가 오감)
-export function mapPlatforms(id) {
-  if (id !== 'platforms') return [];
-  return [
-    { x: 3, y: 0.5, w: 2, d: 2, top: 2, axis: 'x', from: 3, to: 5 }, // 아래 두 섬 사이
-    { x: 3, y: 7.5, w: 2, d: 2, top: 2, axis: 'x', from: 5, to: 3 }, // 위 (반대 방향에서 시작)
-    { x: 0.5, y: 3, w: 2, d: 2, top: 2, axis: 'y', from: 5, to: 3 }, // 왼쪽
-    { x: 7.5, y: 3, w: 2, d: 2, top: 2, axis: 'y', from: 3, to: 5 }, // 오른쪽
-    { x: 3, y: 4, w: 1, d: 2, top: 2, axis: 'z', from: 2, to: 5 }, // 가운데 섬 왼쪽 승강기 (섬 높이 2 ↔ 가운데 섬 높이 5)
-    { x: 6, y: 4, w: 1, d: 2, top: 5, axis: 'z', from: 5, to: 2 }, // 오른쪽 승강기
-  ];
-}
 
 // 기둥 높이 목록 [x, y, h] 를 돌려준다 (h 칸만큼 z=0 부터 쌓음)
 export function mapColumns(id, W, D) {
@@ -95,16 +70,6 @@ export function mapColumns(id, W, D) {
         if (tower(x, y)) out.push([x, y, 3]);
         else if (edge) out.push([x, y, 2]);
         else if ((midX.includes(x) && (y === 1 || y === D - 2)) || (midY.includes(y) && (x === 1 || x === W - 2))) out.push([x, y, 1]);
-      }
-    }
-  } else if (id === 'platforms') {
-    // 네 구석 3×3 섬 (2층), 가운데 2×2 섬 (5층). 나머지는 구멍
-    for (let x = 0; x < W; x++) {
-      for (let y = 0; y < D; y++) {
-        const corner = (x < 3 || x >= W - 3) && (y < 3 || y >= D - 3);
-        const mid = x >= W / 2 - 1 && x < W / 2 + 1 && y >= D / 2 - 1 && y < D / 2 + 1;
-        if (corner) out.push([x, y, 2]);
-        else if (mid) out.push([x, y, 5]);
       }
     }
   } else if (id === 'stairs') {

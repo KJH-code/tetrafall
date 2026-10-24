@@ -125,13 +125,7 @@ export class BotBrain {
     }
     for (const k of [...this.dangerSeen.keys()]) if (!live.has(k)) this.dangerSeen.delete(k);
     const known = dangers.filter((d) => g.time - this.dangerSeen.get(d.key) >= this.k('REACTION_MS'));
-    const hazards = g.hazardCells(); // 구멍·무너지는 칸 (반응 시간 없이 늘 앎)
-    if (!g.hasFloor()) {
-      // 바닥 없는 맵: 지금 층보다 2칸 넘게 낮은 칸도 피함 (무너진 윗층 구멍으로 아래층에 떨어지지 않게)
-      const sh = this.standHeight(g, p);
-      for (let x = 0; x < W; x++) for (let y = 0; y < D; y++) if (g.columnTop(x, y) < sh - 1.5) hazards.push([x, y]);
-    }
-    const avoid = known.flatMap((d) => d.cells).concat(hazards);
+    const avoid = known.flatMap((d) => d.cells);
     const danger = dangers.length ? dangers[0] : null;
 
     const mine = g.controlledPiece(p);
@@ -150,17 +144,11 @@ export class BotBrain {
       return;
     }
 
-    // 0.5) 무너지는 칸 위에 서 있으면 옆 칸으로
-    if (hazards.length && overlapsCells(p, hazards)) {
-      this.moveTo(g, p, this.safeSpot(g, p, avoid, null), avoid);
-      return;
-    }
-
     // 1) 피하기
     const hit = known.filter((d) => overlapsCells(p, d.cells));
     if (hit.length) {
       const spot = this.safeSpot(g, p, avoid, null);
-      this.moveTo(g, p, spot, hazards); // 블록을 피하다 구멍에 빠지지 않게 (블록 그림자는 이미 벗어나는 중이라 넣지 않음)
+      this.moveTo(g, p, spot);
       const dist = Math.hypot(spot.x - p.x, spot.y - p.y);
       const eta = Math.min(...hit.map((d) => d.eta));
       if (dist > 0.8 && eta < 900 && g.time >= p.dashReadyAt) g.handleAction(p.id, { name: 'dash' });
@@ -180,7 +168,7 @@ export class BotBrain {
     const target = this.nearest(p, enemies);
 
     // 2.5) 캐릭터 스킬·필살기 (캐릭터가 없는 게임은 건너뜀 → 난수 순서도 그대로)
-    if (target && p.char && g.time >= this.nextSkillAt && this.useSkills(g, p, target, enemies, hazards)) {
+    if (target && p.char && g.time >= this.nextSkillAt && this.useSkills(g, p, target, enemies)) {
       this.nextSkillAt = g.time + this.k('SKILL_INTERVAL_MS') * (0.7 + 0.6 * this.rng());
       return;
     }
@@ -204,7 +192,7 @@ export class BotBrain {
     const item = this.pickItem(g, p, target);
     if (item) {
       this.moveTo(g, p, { x: item.x + 0.5, y: item.y + 0.5 }, avoid);
-      // 구멍·낭떠러지에 막혀 한 발도 못 가면 아이템은 포기하고 공격으로 (안 그러면 못 가는 아이템 앞에 영원히 서 있음)
+      // 낭떠러지에 막혀 한 발도 못 가면 아이템은 포기하고 공격으로 (안 그러면 못 가는 아이템 앞에 영원히 서 있음)
       if (this.input.fwd || Math.hypot(item.x + 0.5 - p.x, item.y + 0.5 - p.y) < 0.5) return;
     }
 
@@ -287,7 +275,7 @@ export class BotBrain {
     const dist = Math.hypot(t.x - p.x, t.y - p.y);
     const toT = { x: (t.x - p.x) / (dist || 1), y: (t.y - p.y) / (dist || 1) };
     // 겹쳐 서 있으면 (사람끼리는 안 부딪힘) 상대 쪽 방향이 없음 → 밀 방향으로 바로 민다
-    // (안 그러면 "뒤로 돌아가기" 자리가 낭떠러지일 때 둘 다 겹친 채 영원히 멈춤. 무너지는 바닥 맵 봇 2명 판에서 실제로 남)
+    // (안 그러면 "뒤로 돌아가기" 자리가 낭떠러지일 때 둘 다 겹친 채 영원히 멈춤)
     const overlap = dist < 0.3;
     const lined = overlap || toT.x * dir.x + toT.y * dir.y > 0.5; // 내가 상대 "뒤"에 있다
     if (dist < C.PUSH_RANGE * 0.85 && (lined || edgeDist(p.x, p.y) < 1.2)) {
@@ -312,7 +300,7 @@ export class BotBrain {
   }
 
   // 캐릭터마다 간단한 규칙. 썼으면 true
-  useSkills(g, p, t, enemies, hazards) {
+  useSkills(g, p, t, enemies) {
     const dist = Math.hypot(t.x - p.x, t.y - p.y);
     const ultReady = p.ult >= C.ULT_MAX;
     const skillReady = g.time >= p.skillReadyAt;
@@ -336,7 +324,7 @@ export class BotBrain {
         const yaw = Math.atan2(t.y - p.y, t.x - p.x);
         const lx = p.x + Math.cos(yaw) * C.NINJA_BLINK_DIST;
         const ly = p.y + Math.sin(yaw) * C.NINJA_BLINK_DIST;
-        if (edgeDist(lx, ly) < 1 || overlapsCells({ x: lx, y: ly }, hazards)) return false; // 떨어질 자리로는 안 감
+        if (edgeDist(lx, ly) < 1) return false; // 떨어질 자리로는 안 감
         face();
         return act('skill');
       }
