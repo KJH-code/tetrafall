@@ -100,15 +100,14 @@ function buildBean(color, models) {
   return { group, bodyMaterial, mats: [bodyMaterial], arms, hammer, held, waitMark, rig, parts, feet, robot: null };
 }
 
-// 손에 든 것: 쌓기 블록은 파란 상자, 나머지는 아이템 모델 (없으면 단색 도형)
+// 손에 든 것: 아이템 모델 (없으면 단색 도형)
 export function heldItems(models) {
   const fallback = {
-    block: () => new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.22), toon({ color: 0x6f8fc8 })),
     brick: () => new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.17, 0.17), toon({ color: 0xf0d060 })),
     ball: () => new THREE.Mesh(new THREE.SphereGeometry(0.14, 14, 10), toon({ color: 0xe02020 })),
     bomb: () => new THREE.Mesh(new THREE.SphereGeometry(0.17, 14, 10), toon({ color: 0x222222 })),
   };
-  const type = { block: null, brick: 'brick', ball: 'knockback', bomb: 'bomb' };
+  const type = { brick: 'brick', ball: 'knockback', bomb: 'bomb' };
   const out = {};
   for (const k of Object.keys(fallback)) out[k] = (type[k] && itemModel(models, type[k], C.HELD_MODEL_SIZE)) || fallback[k]();
   return out;

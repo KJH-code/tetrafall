@@ -116,12 +116,12 @@ const KIND_KO = { push: '밀치기', projectile: '투사체', weapon: '망치', 
 const ITEM_KO = { control: '조종권', knockback: '투사체', weapon: '망치', jump: '점프력 상승', ghost: '유령화', brick: '설치 블록', bomb: '폭탄', speed: '이속 증가' };
 const ITEM_HELP = {
   control: '조종권 획득! 블록을 하늘에서 조종합니다',
-  knockback: '투사체 획득! (2번 칸) 우클릭으로 발사',
+  knockback: '투사체 획득! 우클릭으로 발사',
   weapon: `망치 획득! ${C.WEAPON_USES}번 동안 좌클릭이 2배로 밀고 오래 기절시킴`,
   jump: `점프력 상승! ${C.JUMP_BOOST_MS / 1000}초 동안 2칸 벽도 넘음`,
   ghost: `유령화! ${C.GHOST_MS / 1000}초 동안 블록 통과, 떨어지는 블록에도 안 깔림`,
   speed: `이속 증가! ${C.SPEED_MS / 1000}초 동안 ${C.SPEED_MULT}배 빠르게`,
-  brick: `설치 블록 1×2 ${C.BRICK_USES}개! (2번 칸) 우클릭으로 조준한 곳(최대 ${C.BRICK_RANGE}칸)에 떨어뜨림 · 깔리면 압사, 옆은 충격파 · Q/E 로 앞↔옆`,
+  brick: `설치 블록 1×2 ${C.BRICK_USES}개! 우클릭으로 조준한 곳(최대 ${C.BRICK_RANGE}칸)에 떨어뜨림 · 깔리면 압사, 옆은 충격파 · Q/E 로 앞↔옆`,
   bomb: `폭탄! (3번 칸) 우클릭으로 던지면 ${C.BOMB_FUSE_MS / 1000}초 뒤 터져 블록을 부수고 근처 사람을 날림`,
 };
 const CAUSE_KO = { crush: '압사', fall: '낙사', lava: '용암' };
@@ -321,12 +321,6 @@ function feelEvent(e) {
     case 'pickup':
       if (e.who === myId) sound.play('pickup');
       return;
-    case 'build': {
-      const [x, y, z] = e.cells[0];
-      fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.5 }, null, 0x9ab0e0, 5, 1.8, 0.07, 0.3);
-      sound.play('land', { dist: e.who === myId ? 0 : distToMe(x + 0.5, y + 0.5, z) });
-      return;
-    }
     case 'bombPlace':
       sound.play('tick', { dist: e.who === myId ? 0 : distToMe(e.x + 0.5, e.y + 0.5, e.z) });
       return;
@@ -567,7 +561,7 @@ const BOT_LEVEL_KO = { easy: '쉬움', normal: '보통', hard: '어려움' };
 const CHAR_DESC = {
   tank: `패시브: 맞을 때 피해 % 가 덜 쌓임 (×${C.TANK_DAMAGE_TAKEN}) · F 버티기: ${C.TANK_HOLD_MS / 1000}초 안 밀림 (쿨 ${C.TANK_HOLD_CD_MS / 1000}초) · R 지면 강타: 주변 ${C.TANK_SLAM_RANGE}칸을 크게 날림`,
   ninja: `패시브: 이동 ×${C.NINJA_SPEED_MULT} · F 순간이동: 보는 방향 ${C.NINJA_BLINK_DIST}칸 (쿨 ${C.NINJA_BLINK_CD_MS / 1000}초) · R 그림자: ${C.NINJA_SHADOW_MS / 1000}초 유령화 + 다음 밀치기 치명타`,
-  builder: `패시브: 쌓기 블록 +${C.BUILDER_EXTRA_BLOCKS} · F 벽 세우기: 앞에 가로 ${C.BUILDER_WALL_WIDTH} × ${C.BUILDER_WALL_HEIGHT}층 (쿨 ${C.BUILDER_WALL_CD_MS / 1000}초) · R 블록 비: 조준한 곳에 블록 ${C.BUILDER_RAIN_CELLS.length}개`,
+  builder: `패시브: 벽 세우기 쿨타임 짧음 · F 벽 세우기: 앞에 가로 ${C.BUILDER_WALL_WIDTH} × ${C.BUILDER_WALL_HEIGHT}층 (쿨 ${C.BUILDER_WALL_CD_MS / 1000}초) · R 블록 비: 조준한 곳에 블록 ${C.BUILDER_RAIN_CELLS.length}개`,
   hook: `패시브: 밀치기 사거리 ×${C.HOOK_PUSH_RANGE_MULT} · F 갈고리: 보는 방향 ${C.HOOK_RANGE}칸 안 상대를 끌어옴 (쿨 ${C.HOOK_CD_MS / 1000}초) · R 회오리: 주변 ${C.HOOK_ULT_RANGE}칸을 모두 끌어옴`,
 };
 
@@ -960,10 +954,10 @@ function updateHud() {
   }
 
   input.enabled = (state.phase === 'playing' || state.phase === 'countdown') && !!p && p.alive; // 카운트다운 중엔 시선만 (서버가 이동·행동을 막음)
-  // 조준점: 고른 핫바 칸에 따라 색. 2번 투사체 = 빨강, 2번 설치 블록 = 노랑, 3번 폭탄 = 주황 (자세한 건 아래 핫바)
-  const armed = !!p && p.hand === 2 && p.ammo > 0;
-  const brick = !!p && p.hand === 2 && p.bricks > 0;
-  const bomb = !!p && p.hand === 3 && p.bombs > 0;
+  // 조준점: 든 아이템에 따라 색. 투사체 = 빨강, 설치 블록 = 노랑, 폭탄 = 주황
+  const armed = !!p && p.held === 'knockback';
+  const brick = !!p && p.held === 'brick';
+  const bomb = !!p && p.held === 'bomb';
   crosshair.classList.toggle('hidden', !(input.enabled && !p.controlling && !p.master));
   updateCooldowns(p, state.phase === 'playing' && input.enabled && !p.controlling && !p.master);
   updateItemTimers();
@@ -1164,19 +1158,18 @@ function updateHostPlayers(show) {
   hostPlayersEl.replaceChildren(...cells);
 }
 
-// ---------- 화면 아래: 피해 % · 경직 · 버프 · 핫바 ----------
-$('build-n').textContent = C.BUILD_BLOCKS_PER_ROUND; // 조작법 패널 숫자는 config 에서
+// ---------- 화면 아래: 피해 % · 경직 · 버프 · 든 아이템 ----------
 $('crit-dmg').textContent = C.CRIT_DAMAGE_MULT;
 const bottomEl = $('bottom');
 const damageEl = $('damage');
 const buffsEl = $('buffs');
 const stunEl = $('stun');
 const vignetteEl = $('vignette');
-const slotEls = [1, 2, 3].map((n) => document.querySelector(`#hotbar .slot[data-n="${n}"]`));
+const itemSlotEl = $('item-slot');
 let shownDamage = null;
 let bottomKey = '';
 function updateBottom(p) {
-  const show = !!p && p.alive && !p.master && (state.phase === 'playing' || state.phase === 'countdown'); // 마스터는 몸이 없어 핫바·피해 % 없음
+  const show = !!p && p.alive && !p.master && (state.phase === 'playing' || state.phase === 'countdown'); // 마스터는 몸이 없어 아이템·피해 % 없음
   bottomEl.classList.toggle('hidden', !show);
   const stunned = show && p.stunned;
   stunEl.classList.toggle('hidden', !stunned);
@@ -1197,23 +1190,19 @@ function updateBottom(p) {
   if (p.speedLeft > 0) buffs.push(`이속↑ ${(p.speedLeft / 1000).toFixed(1)}s`);
   if (p.ghostLeft > 0) buffs.push(`유령 ${(p.ghostLeft / 1000).toFixed(1)}s`);
   if (p.shieldLeft > 0) buffs.push(`부활 무적 ${(p.shieldLeft / 1000).toFixed(1)}s`);
-  const slots = [
-    p.blocks > 0 ? `쌓기 ×${p.blocks}` : '쌓기 —',
-    p.ammo > 0 ? `투사체 ×${p.ammo}` : p.bricks > 0 ? `설치 1×2 ×${p.bricks} ${p.brickSide ? '옆' : '앞'}` : '아이템 —',
-    p.bombs > 0 ? `폭탄 ×${p.bombs}` : '폭탄 —',
-  ];
+  // 든 아이템 (하나만). 망치는 위 버프 줄에도 횟수가 나옴
+  const item =
+    p.ammo > 0 ? `투사체 ×${p.ammo}` : p.bricks > 0 ? `설치 1×2 ×${p.bricks} ${p.brickSide ? '옆' : '앞'}` : p.bombs > 0 ? `폭탄 ×${p.bombs}` : p.weaponUses > 0 ? `망치 (좌클릭) ×${p.weaponUses}` : '아이템 —';
   if (p.critNext) buffs.push('다음 밀치기 치명타');
   if (p.holding) buffs.push('버티는 중');
   updateSkills(p);
-  const key = `${buffs.join('|')}#${slots.join('|')}#${p.hand}`;
+  const key = `${buffs.join('|')}#${item}`;
   if (key === bottomKey) return;
   bottomKey = key;
   buffsEl.innerHTML = buffs.map((b) => `<span class="buff">${b}</span>`).join('');
-  slotEls.forEach((el, i) => {
-    el.querySelector('.name').textContent = slots[i];
-    el.classList.toggle('sel', p.hand === i + 1);
-    el.classList.toggle('empty', slots[i].endsWith('—'));
-  });
+  itemSlotEl.querySelector('.name').textContent = item;
+  itemSlotEl.classList.toggle('empty', item.endsWith('—'));
+  itemSlotEl.querySelector('.key').classList.toggle('hidden', p.weaponUses > 0 && !p.ammo && !p.bricks && !p.bombs);
 }
 
 // 캐릭터 스킬 F (쿨타임) · 필살기 R (게이지) 칸

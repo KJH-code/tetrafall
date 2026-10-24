@@ -37,14 +37,12 @@ function boltGeometry() {
   return g;
 }
 
-// 고른 핫바 칸에 든 것: 'block' | 'brick' | 'ball'(투사체) | 'bomb' | null
+// 왼손에 든 것: 'brick' | 'ball'(투사체) | 'bomb' | null (망치는 오른손에 따로)
 export function heldKind(p) {
-  if (p.hand === 1) return p.blocks > 0 ? 'block' : null;
-  if (p.hand === 2) return p.bricks > 0 ? 'brick' : p.ammo > 0 ? 'ball' : null;
-  return p.bombs > 0 ? 'bomb' : null;
+  return { brick: 'brick', knockback: 'ball', bomb: 'bomb' }[p.held] || null;
 }
-const HELD_COLOR = { block: 0x6f8fc8, brick: ITEM_LOOK.brick.color, ball: ITEM_LOOK.knockback.color, bomb: 0x222222 };
-const HELD_ITEM = { block: null, brick: 'brick', ball: 'knockback', bomb: 'bomb' }; // 손에 든 것 → 아이템 모델
+const HELD_COLOR = { brick: ITEM_LOOK.brick.color, ball: ITEM_LOOK.knockback.color, bomb: 0x222222 };
+const HELD_ITEM = { brick: 'brick', ball: 'knockback', bomb: 'bomb' }; // 손에 든 것 → 아이템 모델
 
 // 피해 % 글자색: 0% 흰색 → 50% 노랑 → 100% 이상 빨강
 export function damageColor(d) {

@@ -135,10 +135,8 @@ test('닌자: 이동 빠름, 순간이동은 벽 앞까지, 그림자는 유령�
   assert.equal(p(1).critNext, false, '한 번만');
 });
 
-test('건축가: 쌓기 블록 +3, 벽 세우기 = 앞 가로 3 × 2층 (빈 칸만), 블록 비 = 조준한 곳에 1×1 블록 5개', () => {
+test('건축가: 벽 세우기 = 앞 가로 3 × 2층 (빈 칸만), 블록 비 = 조준한 곳에 1×1 블록 5개', () => {
   const { g, lines, p } = setupChars(['builder', 'tank']);
-  assert.equal(p(1).blocks, C.BUILD_BLOCKS_PER_ROUND + C.BUILDER_EXTRA_BLOCKS);
-  assert.equal(p(2).blocks, C.BUILD_BLOCKS_PER_ROUND);
   place(p(1), 4.5, 4.5, 0); // +x 를 봄
   place(p(2), 8.5, 8.5);
   g.handleAction(1, { name: 'skill' });

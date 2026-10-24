@@ -157,8 +157,6 @@ export class Game {
       speedUntil: 0, // 이속 증가 끝나는 시각
       spectator: false, // 호스트가 관전으로 돌린 사람: 판에 안 들어가고 통계·승수 표시에서 빠짐
       nick: '', // 대기 화면에서 넣은 이름 (머리 위 표시용. 로그·승수는 name = P1 그대로)
-      hand: 1, // 핫바에서 고른 칸. 1 쌓기 블록 · 2 던지는 아이템 · 3 폭탄
-      blocks: 0, // 쌓기 블록 남은 개수 (판마다 BUILD_BLOCKS_PER_ROUND)
       bombs: 0, // 폭탄 남은 개수
       bricks: 0, // 설치 블록(1×2) 남은 개수
       brickSide: false, // 1×2 방향. false = 바라보는 쪽으로 뻗음, true = 옆으로
@@ -272,9 +270,9 @@ export class Game {
     return true;
   }
 
-  // 판마다 쌓기 블록 개수 (건축가 패시브 +)
-  blocksFor(p) {
-    return C.BUILD_BLOCKS_PER_ROUND + (p.char === 'builder' ? C.BUILDER_EXTRA_BLOCKS : 0);
+  // 손에 든 아이템 (하나만): 'knockback' | 'brick' | 'bomb' | 'weapon' | null
+  heldItem(p) {
+    return p.ammo > 0 ? 'knockback' : p.bricks > 0 ? 'brick' : p.bombs > 0 ? 'bomb' : p.weaponUses > 0 ? 'weapon' : null;
   }
 
   // 필드 위에 있는 사람: 살아 있고 블록 마스터의 마스터가 아님. 밀치기·폭탄·압사·용암·아이템·물리의 대상
@@ -474,8 +472,6 @@ export class Game {
         airJumps: C.AIR_JUMPS,
         ghostUntil: 0,
         speedUntil: 0,
-        hand: 1,
-        blocks: C.BUILD_BLOCKS_PER_ROUND,
         bombs: 0,
         bricks: 0,
         brickSide: false,
@@ -498,7 +494,6 @@ export class Game {
         holdUntil: 0,
         critNext: false,
       });
-      p.blocks = this.blocksFor(p);
     }
     if (this.mode === 'master') {
       // 마스터는 자리 순서로 돌아감. 필드 위 하늘에 둠 (물리·판정에서 빠지고 화면엔 안 그림)
@@ -716,8 +711,6 @@ export class Game {
       airJumps: C.AIR_JUMPS,
       ghostUntil: 0,
       speedUntil: 0,
-      hand: 1,
-      blocks: this.blocksFor(p),
       bombs: 0,
       bricks: 0,
       ammo: 0,
@@ -792,13 +785,11 @@ export class Game {
         if (stunned || controlling || this.time < p.pushReadyAt) return; // 조종 중 공격 불가
         this.push(p);
         return;
-      case 'fire': // 우클릭: 고른 핫바 칸을 씀
+      case 'fire': // 우클릭: 손에 든 아이템을 씀
         if (stunned || controlling) return;
-        if (p.hand === 1) this.placeBlock(p);
-        else if (p.hand === 2) {
-          if (p.bricks > 0) this.throwBrick(p);
-          else if (p.ammo > 0) this.fire(p);
-        } else if (p.hand === 3) this.throwBomb(p);
+        if (p.bricks > 0) this.throwBrick(p);
+        else if (p.ammo > 0) this.fire(p);
+        else if (p.bombs > 0) this.throwBomb(p);
         return;
       case 'skill': // F: 캐릭터 스킬 (쿨타임)
         if (stunned || controlling || !p.char || this.time < p.skillReadyAt) return;
@@ -807,12 +798,6 @@ export class Game {
       case 'ult': // R: 필살기 (게이지가 다 차면)
         if (stunned || controlling || !p.char || p.ult < C.ULT_MAX) return;
         this.useUlt(p);
-        return;
-      case 'hand': // 숫자키 1·2·3
-        if ([1, 2, 3].includes(action.n)) p.hand = action.n;
-        return;
-      case 'handNext': // 마우스 휠
-        p.hand = ((p.hand - 1 + (action.dir > 0 ? 1 : 2)) % 3) + 1;
         return;
       case 'pieceMove':
         if (!controlling) return;
@@ -1157,47 +1142,6 @@ export class Game {
     return true;
   }
 
-  // ---- 쌓기 블록 (핫바 1번) ----
-  // 시선이 처음 닿는 블록 면(바닥 포함) 바로 앞 칸. 칸 단위로 시선을 따라간다 (DDA). 사거리 BUILD_RANGE
-  buildPlan(p, yaw = p.yaw, pitch = p.pitch) {
-    const cp = Math.cos(pitch);
-    const d = [cp * Math.cos(yaw), cp * Math.sin(yaw), Math.sin(pitch)];
-    const o = [p.x, p.y, p.z + C.EYE_HEIGHT];
-    const cell = o.map(Math.floor);
-    const step = d.map((v) => (v > 0 ? 1 : v < 0 ? -1 : 0));
-    const tMax = d.map((v, i) => (v === 0 ? Infinity : ((v > 0 ? cell[i] + 1 : cell[i]) - o[i]) / v));
-    const tDelta = d.map((v) => (v === 0 ? Infinity : Math.abs(1 / v)));
-    const solid = ([x, y, z]) => (z < 0 ? inXY(x, y) : inXY(x, y) && z < C.GRID_H && !!this.grid[this.idx(x, y, z)]);
-    let prev = cell.slice();
-    for (let n = 0; n < 64; n++) {
-      const a = tMax[0] < tMax[1] ? (tMax[0] < tMax[2] ? 0 : 2) : tMax[1] < tMax[2] ? 1 : 2;
-      if (tMax[a] > C.BUILD_RANGE) break;
-      prev = cell.slice();
-      cell[a] += step[a];
-      tMax[a] += tDelta[a];
-      if (!solid(cell)) continue;
-      const [x, y, z] = prev;
-      const free = inXY(x, y) && z >= 0 && z < C.GRID_H && !this.grid[this.idx(x, y, z)] && !this.pieceCells.has(cellKey(x, y, z));
-      const nobody = ![...this.players.values()].some((t) => this.onField(t) && overlapsCell(t, x, y, z));
-      return { cells: [[x, y, z]], ok: free && nobody };
-    }
-    return { cells: [], ok: false };
-  }
-
-  placeBlock(p) {
-    if (p.blocks <= 0) return false;
-    const plan = this.buildPlan(p);
-    if (!plan.ok) return false;
-    const [x, y, z] = plan.cells[0];
-    p.blocks--;
-    this.grid[this.idx(x, y, z)] = CELL.BUILD;
-    this.gridChanged();
-    this.emit({ type: 'build', who: p.id, cells: plan.cells });
-    this.log(`  [쌓기] ${p.name} → (${x},${y},${z}) (남은 ${p.blocks}개)`);
-    this.clearLayers();
-    return true;
-  }
-
   // 격자가 바뀐 뒤: 떨어지는 블록 착지점, 아이템·폭탄 높이 다시 계산
   gridChanged() {
     this.gridVersion++;
@@ -1275,11 +1219,10 @@ export class Game {
     if (removed) this.gridChanged();
   }
 
-  // 지금 고른 핫바 칸으로 우클릭하면 생길 것 (클라이언트 미리보기)
+  // 손에 든 것으로 우클릭하면 생길 것 (클라이언트 미리보기)
   aimPreview(p) {
-    if (p.hand === 1 && p.blocks > 0) return { kind: 'build', ...this.buildPlan(p) };
-    if (p.hand === 2 && p.bricks > 0) return { kind: 'brick', ...this.brickPlan(p) };
-    if (p.hand === 3 && p.bombs > 0) return { kind: 'bomb', ...this.bombPlan(p) };
+    if (p.bricks > 0) return { kind: 'brick', ...this.brickPlan(p) };
+    if (p.bombs > 0) return { kind: 'bomb', ...this.bombPlan(p) };
     return null;
   }
 
@@ -1886,13 +1829,13 @@ export class Game {
     if (this.phase !== 'playing') return { control: null, power: null };
     const powerCount = this.items.filter((it) => it.type !== 'control').length;
     return {
-      control: this.mode === 'master' || this.controlInPlay() ? null : Math.max(0, this.controlItemNextAt - this.time),
+      control: !C.CONTROL_ITEM || this.mode === 'master' || this.controlInPlay() ? null : Math.max(0, this.controlItemNextAt - this.time),
       power: powerCount >= C.ITEM_MAX_ON_FIELD ? null : Math.max(0, this.powerItemNextAt - this.time),
     };
   }
 
   updateItems() {
-    if (this.mode !== 'master' && !this.controlInPlay() && this.time >= this.controlItemNextAt) { // 블록 마스터는 조종권 없음
+    if (C.CONTROL_ITEM && this.mode !== 'master' && !this.controlInPlay() && this.time >= this.controlItemNextAt) { // 블록 마스터는 조종권 없음
       if (!this.spawnItem('control')) this.controlItemNextAt = this.time + 1000;
     }
     const powerCount = this.items.filter((it) => it.type !== 'control').length;
@@ -1909,6 +1852,7 @@ export class Game {
         const dy = p.y - (it.y + 0.5);
         if (Math.hypot(dx, dy) > C.ITEM_PICK_RADIUS) continue;
         if (Math.abs(p.z - it.z) > C.ITEM_HEIGHT_TOL) continue;
+        if (C.HELD_ITEMS.includes(it.type) && this.heldItem(p)) continue; // 손 아이템은 하나만: 들고 있으면 못 주움
         this.items.splice(i, 1);
         if (it.type === 'control') {
           p.hasControl = true;
@@ -1927,11 +1871,8 @@ export class Game {
 
   givePower(p, type) {
     if (type === 'knockback') {
-      const dropped = p.bricks;
-      p.bricks = 0; // 핫바 2번 칸 공유: 나중에 먹은 쪽만 남는다
       p.ammo += C.KNOCKBACK_AMMO;
-      p.hand = 2;
-      this.log(`  [아이템] ${p.name} 넉백 아이템 획득 (탄 ${p.ammo})${dropped ? ' — 설치 블록 버림' : ''}`);
+      this.log(`  [아이템] ${p.name} 넉백 아이템 획득 (탄 ${p.ammo})`);
     } else if (type === 'weapon') {
       p.weaponUses = C.WEAPON_USES;
       this.log(`  [아이템] ${p.name} 망치 획득 (${p.weaponUses}회)`);
@@ -1942,15 +1883,11 @@ export class Game {
       p.ghostUntil = this.time + C.GHOST_MS;
       this.log(`  [아이템] ${p.name} 유령화 획득`);
     } else if (type === 'brick') {
-      const dropped = p.ammo;
-      p.ammo = 0;
       p.bricks = C.BRICK_USES;
       p.brickSide = false;
-      p.hand = 2;
-      this.log(`  [아이템] ${p.name} 설치 블록 1×2 획득 (${p.bricks}개)${dropped ? ' — 투사체 버림' : ''}`);
+      this.log(`  [아이템] ${p.name} 설치 블록 1×2 획득 (${p.bricks}개)`);
     } else if (type === 'bomb') {
       p.bombs = C.BOMB_USES;
-      p.hand = 3;
       this.log(`  [아이템] ${p.name} 폭탄 획득`);
     } else if (type === 'speed') {
       p.speedUntil = this.time + C.SPEED_MS;
@@ -2252,8 +2189,7 @@ export class Game {
         speedLeft: Math.max(0, p.speedUntil - this.time),
         emote: this.isEmoting(p) ? p.emote : -1,
         emoteLeft: Math.max(0, p.emoteUntil - this.time),
-        hand: p.hand,
-        blocks: p.blocks,
+        held: this.heldItem(p),
         bombs: p.bombs,
         bricks: p.bricks,
         brickSide: p.brickSide,

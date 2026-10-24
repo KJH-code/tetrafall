@@ -71,6 +71,7 @@ export const CONFIG = {
   CONTROL_TIME_MS: 8000, // 이 안에 안 떨구면 자동 낙하
   // true: 조종권을 먹는 즉시 조종 시작 (떨어지던 자동 블록을 넘겨받거나 새 블록). false: 다음 블록부터 조종. 2026-10-20 도입
   CONTROL_TAKEOVER: true,
+  CONTROL_ITEM: false, // 조종권 아이템을 필드에 내놓을지. 2026-10-24 재혁: 뺌 (블록 마스터의 마스터 조종은 그대로)
   CONTROL_ITEM_RESPAWN_MS: 6000, // 조종권 아이템 재스폰 대기
   CONTROL_HOVER_Z: GRID_H, // 조종 중 블록이 떠 있는 높이
 
@@ -103,11 +104,9 @@ export const CONFIG = {
   EMOTE_ARM_SCALE: 1.9, // 이모트 땐 팔을 키워서 멀리서도 동작이 보이게
   EMOTE_PICK_PX: 30,
   EMOTE_CLIPS: ['Wave', 'Dance', 'Yes', 'No'], // 로봇 모델에서 이모트마다 쓰는 동작 (손 흔들기·춤·웃기(끄덕끄덕)·도발(고개 젓기)) // 바퀴 메뉴: 마우스를 이만큼(px) 움직여야 고른 것으로 침
-  // 핫바 (2026-10-20): 1 쌓기 블록 · 2 던지는 아이템(투사체 또는 설치 블록) · 3 폭탄. 숫자키·마우스 휠로 고르고 우클릭으로 씀.
-  // 아이템을 먹으면 그 칸으로 자동 전환. 좌클릭은 칸과 상관없이 밀치기(망치)
-  // 쌓기 블록 (마크식): 조준한 블록 면(옆면 포함)에 1×1 을 바로 붙임. 사람이 있는 칸엔 못 놓음
-  BUILD_BLOCKS_PER_ROUND: 5,
-  BUILD_RANGE: 3, // 눈에서 시선 거리 (칸)
+  // 손에 드는 아이템은 하나만 (2026-10-24 재혁: 핫바·쌓기 블록 없앰). 들고 있으면 다른 손 아이템은 못 주움 (필드에 남음).
+  // 우클릭으로 씀 (투사체·설치 블록·폭탄), 망치는 좌클릭 밀치기 대신. 버프(점프·유령·이속)는 먹자마자 효과라 따로
+  HELD_ITEMS: ['knockback', 'brick', 'bomb', 'weapon'],
   // 폭탄: 설치 블록과 같은 조준으로 던지면 그 칸 위에 놓여 BOMB_FUSE_MS 깜빡이다 터짐.
   // 폭탄 칸 중심 가로세로 ±BOMB_RADIUS, 위아래 ±BOMB_RADIUS 블록을 부숨 (시작 지형 포함). 던진 사람은 폭발 면제
   BOMB_USES: 1,
@@ -228,8 +227,7 @@ export const CONFIG = {
   NINJA_BLINK_CD_MS: 6000,
   NINJA_SHADOW_MS: 3000, // 필살 그림자: 유령화(반투명·블록 통과·압사 면역) + 다음 밀치기 치명타
   // 건축가
-  BUILDER_EXTRA_BLOCKS: 3, // 패시브: 쌓기 블록 추가
-  BUILDER_WALL_CD_MS: 12000, // 스킬 벽 세우기: 바로 앞 가로 3칸 × 2층
+  BUILDER_WALL_CD_MS: 8000, // 스킬 벽 세우기: 바로 앞 가로 3칸 × 2층. 패시브 = 쿨타임 짧음 (2026-10-24 쌓기 블록 +3 대신, 12→8초)
   BUILDER_WALL_WIDTH: 3,
   BUILDER_WALL_HEIGHT: 2,
   BUILDER_RAIN_CELLS: [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]], // 필살 블록 비: 조준한 칸 기준 1×1 블록 자리
@@ -280,7 +278,6 @@ export const CONFIG = {
   BOT_BRICK_AIM_ERROR: 1.2, // 설치 블록 던질 때 조준점을 상대 발밑에서 이 반경(칸) 안 무작위로 빗나감 (없으면 거의 다 맞힘)
   BOT_BOMB_DANGER_PAD: 0.5, // 봇이 피하는 폭탄 범위 = BOMB_BLAST_RANGE + 이만큼 (칸 중심 거리 기준이라 여유)
   BOT_BRICK_STEP_PITCH: -1.3, // 발판 던질 때 시선 각도: 거의 발밑을 보면 BRICK_MIN_DIST 앞 칸에 바로 닿음
-  BOT_BUILD_STEP_PITCH: -1.0, // 쌓기 발판 놓을 때 시선 각도: 눈높이에서 바로 앞 칸 바닥(발 높이)에 닿음
   BOT_LAVA_MARGIN: 1.5, // 용암이 켜지면 표면에서 이 높이(칸) 안의 낮은 칸으로는 내려가지 않음 (1.5칸 = 24초)
   BOT_CONTROL_AIM_ERROR: 1, // 조종 블록 겨냥이 빗나가는 반경(칸) 기준. 아래 난이도 배수를 곱함 (보통·어려움 0 = 정확히 겨냥)
   // 봇 난이도 (호스트가 대기 화면에서 고름, 모든 봇에 같이). 위 BOT_* 값에 곱하는 배수. 보통 = 위 값 그대로 (조종 겨냥 오차만 0)
@@ -305,7 +302,6 @@ export const CONFIG = {
   // ---- 클라이언트 ----
   MOUSE_SENSITIVITY: 0.0022,
   FOV_DEFAULT: 75, // 1인칭 시야각 기본 (설정에서 60~100)
-  WHEEL_STEP_MS: 120, // 마우스 휠로 핫바 한 칸 넘기는 최소 간격 (터치패드가 한 번에 여러 번 보내서)
   SKY_CAMERA_HEIGHT: GRID_H + 14, // 하늘 시점 카메라 높이 (필드 중심 위)
   SKY_TRANSITION_MS: 700, // 1인칭 ↔ 하늘 시점 전환 애니메이션 길이
   NAME_MAX_LEN: 8, // 대기 화면에서 넣는 이름 (머리 위 표시)

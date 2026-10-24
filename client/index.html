@@ -62,13 +62,12 @@
     #timers .t { display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,.55); padding: 3px 10px; border-radius: 6px; }
     #timers .pie { width: 14px; height: 14px; border-radius: 50%; }
     #crosshair.bomb { border-color: #ff7a20; box-shadow: 0 0 6px #ff7a20; }
-    /* 화면 아래 가운데: 버프 · 피해 % · 핫바 */
+    /* 화면 아래 가운데: 버프 · 피해 % · 스킬 · 든 아이템 */
     #bottom { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
     #buffs { display: flex; gap: 6px; font-size: 16px; min-height: 22px; }
     .buff { background: rgba(0,0,0,.6); padding: 2px 9px; border-radius: 6px; font-weight: bold; }
     #damage { font-size: 60px; font-weight: 900; line-height: 1; text-shadow: 0 0 8px #000, 0 0 3px #000; transition: transform .12s; }
     #damage.pop { transform: scale(1.4); }
-    #hotbar { display: flex; gap: 6px; }
     #skills { display: flex; gap: 6px; }
     #skills .slot { position: relative; overflow: hidden; }
     #skills .fill { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(255,200,40,.35); z-index: 0; }
@@ -148,9 +147,9 @@
         <p>맞을수록 머리 위 <b>피해 %</b> 가 쌓여 더 멀리 날아간다. 떨어지면서 위에서 때리면 <b>치명타</b>.</p></div>
       <div class="card"><h3>2. 블록을 피하고, 떨어뜨리기</h3>
         <p>하늘에서 테트리스 블록이 떨어진다. 바닥의 <b>그림자</b>가 떨어질 자리 — 밑에 있으면 깔린다 (<b>압사</b>).</p>
-        <p>하늘색 <b>조종권</b>을 먹으면 블록을 직접 몰아 상대 위에 떨어뜨린다 (방향키·Q/E·Enter). 아이템은 <b>1·2·3</b> 으로 고르고 <b>우클릭</b>.</p></div>
+        <p>머리 위에 블록이 오면 화면에 <b>빨간 경고</b>. 아이템은 <b>하나만</b> 들 수 있고 <b>우클릭</b>으로 쓴다.</p></div>
       <div class="card"><h3>3. 용암이 오면 위로</h3>
-        <p>블록이 쌓이면 바닥에서 <b>용암</b>이 올라온다. 쌓인 블록을 타고, 1번 칸 <b>쌓기 블록</b>으로 계단을 만들어 위로.</p>
+        <p>블록이 쌓이면 바닥에서 <b>용암</b>이 올라온다. 쌓인 블록을 타고 위로 — 공중에서 Space 를 한 번 더 누르면 <b>2단 점프</b> (2칸 벽).</p>
         <p>마지막까지 살아남으면 승리. <b>G</b> 를 누른 채 마우스로 이모트, 대기 화면 <b>설정</b>에서 감도·소리.</p></div>
       <div class="btns"><span id="tut-page" class="page"></span><button id="tut-skip">넘기기</button><button id="tut-next">다음</button></div>
     </div></div>
@@ -180,11 +179,7 @@
         <div class="slot" id="skill-f"><div class="fill"></div><span class="key">F</span><span class="name"></span></div>
         <div class="slot" id="skill-r"><div class="fill"></div><span class="key">R</span><span class="name"></span></div>
       </div>
-      <div id="hotbar">
-        <div class="slot" data-n="1"><span class="key">1</span><span class="name">쌓기</span></div>
-        <div class="slot" data-n="2"><span class="key">2</span><span class="name">아이템</span></div>
-        <div class="slot" data-n="3"><span class="key">3</span><span class="name">폭탄</span></div>
-      </div>
+      <div id="item-slot" class="slot empty"><span class="key">우클릭</span><span class="name">아이템 —</span></div>
     </div>
     <div id="host-players" class="hidden"></div>
     <div id="center"><span id="center-text">연결 중...</span><br /><button id="start-btn" class="hidden">시작</button>
@@ -208,19 +203,18 @@
         <b>조작법</b><br />
         WASD 이동 · Space 점프 (공중에서 한 번 더) · Shift 대시 · <b>F</b> 캐릭터 스킬 · <b>R</b> 필살기 (때리거나 맞으면 게이지가 참)<br />
         <b>좌클릭</b> 밀치기 (가까운 상대를 바라보는 쪽으로 밀어냄)<br />
-        <b>1·2·3 / 휠</b> 핫바 칸 고르기 · <b>우클릭</b> 고른 칸 쓰기<br />
-        &nbsp;&nbsp;1 쌓기 블록 (판마다 <span id="build-n"></span>개, 조준한 면에 붙음) · 2 투사체(빨간 공) 또는 설치 블록(노란 상자, 조준한 곳에 1×2 를 떨어뜨림, Q/E 방향) · 3 폭탄(검은 공, 블록을 부숨)<br />
+        <b>우클릭</b> 든 아이템 쓰기 — 아이템은 <b>하나만</b> 들 수 있음 (들고 있으면 다른 걸 못 주움)<br />
+        &nbsp;&nbsp;투사체(빨간 공) · 설치 블록(노란 상자, 조준한 곳에 1×2 를 떨어뜨림, Q/E 방향) · 폭탄(검은 공, 블록을 부숨) · 망치(주황, 좌클릭이 세게 밀기)<br />
         맞을수록 머리 위 <b>피해 %</b> 가 쌓이고 더 멀리 날아감 (대난투식)<br />
-        하늘색 = 조종권: 먹는 즉시 블록을 하늘에서 조종<br />
-        &nbsp;&nbsp;방향키 이동 · Q/E 회전 · <b>Enter 낙하</b> (8초 안에)<br />
-        아이템: 주황 = 망치 (3번 세게 밀기) · 초록 = 점프력 상승 (2칸 벽) · 흰 고리 = 유령화 (블록 통과, 안 깔림) · 노랑 번개 = 이속 증가<br />
+        먹자마자 효과: 초록 = 점프력 상승 · 흰 고리 = 유령화 (블록 통과, 안 깔림) · 노랑 번개 = 이속 증가<br />
+        블록 마스터의 마스터: 방향키 이동 · Q/E 회전 · <b>Enter 낙하</b><br />
         공중에서 떨어지면서 위에서 밀치기·망치를 맞히면 <b>치명타</b> (피해 ×<span id="crit-dmg"></span>, 더 멀리)<br />
         상대를 블록에 깔리게(압사) 하거나 밖으로 떨어뜨리면(낙사) 승리. 블록이 쌓이면 용암이 올라온다 — 위로!
       </div>
     </div>
     <div id="help">WASD 이동 · Space 점프·2단 점프 · Shift 대시 · 좌클릭 밀치기 · F 스킬 · R 필살기
-1·2·3 / 휠 핫바 칸 · 우클릭 고른 칸 쓰기 · Q/E 1×2 방향
-조종 중: 방향키 블록 이동 · Q/E 회전 · Enter 하드드롭 (8초 안에)</div>
+우클릭 든 아이템 쓰기 (하나만) · Q/E 1×2 방향
+블록 마스터: 방향키 블록 이동 · Q/E 회전 · Enter 하드드롭</div>
   </div>
   <script type="module" src="/main.js"></script>
 </body>

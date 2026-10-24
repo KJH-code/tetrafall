@@ -171,7 +171,6 @@ test('킬 점수전: 킬 +1, 자멸 -1, 5초 뒤 피해 0% 로 부활, 부활 �
   run(g, 4 * TICK);
   assert.equal(p(2).alive, true, '부활');
   assert.equal(p(2).damage, 0);
-  assert.equal(p(2).blocks, C.BUILD_BLOCKS_PER_ROUND);
   assert.ok(lines.some((l) => l.startsWith('  [부활] P2 →')));
   // 무적: 넉백 무시, 블록이 통과
   assert.equal(g.applyKnockback(p(2), 1, 0, 5, 3, C.STUN_MS, 10, { by: 1, kind: 'push' }), false);

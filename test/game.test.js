@@ -237,7 +237,6 @@ test('넉백 아이템 + 투사체: 맞으면 넉백, 탄 소모', () => {
   p1.pitch = 0;
   p2.x = 4.5;
   p2.y = 2.5;
-  p1.hand = 2; // 핫바 2번 칸 (투사체·설치 블록)
   g.handleAction(1, { name: 'fire' });
   assert.equal(g.projectiles.length, 0, '탄 없으면 발사 안 됨');
   p1.ammo = 1;
@@ -250,7 +249,18 @@ test('넉백 아이템 + 투사체: 맞으면 넉백, 탄 소모', () => {
   assert.equal(p2.damage, C.DAMAGE_GAIN.projectile, '투사체 피해 %');
 });
 
-test('아이템 스폰·획득', () => {
+test('조종권 아이템 끔 (기본, 2026-10-24): 생존 판에 조종권이 안 나오고 시계도 null', () => {
+  assert.equal(C.CONTROL_ITEM, false);
+  const { g } = setup();
+  g.controlItemNextAt = g.time;
+  run(g, 3000);
+  assert.ok(!g.items.some((it) => it.type === 'control'));
+  assert.equal(g.snapshot().itemTimers.control, null);
+});
+
+test('아이템 스폰·획득 (조종권 아이템을 켰을 때)', (t) => {
+  C.CONTROL_ITEM = true;
+  t.after(() => (C.CONTROL_ITEM = false));
   const { g, p1 } = setup();
   p1.x = C.GRID_W - 0.5; // 시작 위치가 아이템 칸과 겹치지 않게 구석으로 비켜둔다
   p1.y = 0.5;
@@ -1092,7 +1102,9 @@ test('아이템 생성: 조종권 말고는 필드에 ITEM_MAX_ON_FIELD 개까�
   for (const type of C.ITEM_POOL) assert.ok(seen.has(type), `${type} 안 나옴`);
 });
 
-test('스냅샷 쿨·재등장 시계: 밀치기 쿨, 조종권은 돌고 있으면 null, 아이템은 꽉 차면 null', () => {
+test('스냅샷 쿨·재등장 시계: 밀치기 쿨, 조종권은 돌고 있으면 null, 아이템은 꽉 차면 null', (t) => {
+  C.CONTROL_ITEM = true;
+  t.after(() => (C.CONTROL_ITEM = false));
   const { g, p1 } = setup();
   const timers = () => g.snapshot().itemTimers;
   g.controlItemNextAt = g.time + 3000;
@@ -1445,14 +1457,38 @@ function brickSetup() {
   return s;
 }
 
-test('설치 블록: 먹으면 1×2 를 BRICK_USES 개, 2번 칸으로 바뀌고, 투사체와 2번 칸을 같이 써서 나중에 먹은 쪽만 남는다', () => {
-  const { g, p1 } = brickSetup();
-  assert.equal(p1.bricks, C.BRICK_USES);
-  assert.equal(p1.hand, 2);
-  g.givePower(p1, 'knockback');
-  assert.equal(p1.bricks, 0, '투사체를 먹으면 설치 블록은 버림');
+test('손 아이템은 하나만 (2026-10-24): 들고 있으면 다른 손 아이템은 못 주워 필드에 남고, 버프는 주움, 다 쓰면 다시 주움', () => {
+  const { g, p1 } = setup();
+  Object.assign(p1, { x: 2.5, y: 2.5 });
+  g.powerItemNextAt = Infinity;
   g.givePower(p1, 'brick');
-  assert.equal(p1.ammo, 0, '설치 블록을 먹으면 투사체는 버림');
+  assert.equal(g.heldItem(p1), 'brick');
+  g.items = [{ type: 'bomb', x: 2, y: 2, z: 0 }];
+  run(g, 100);
+  assert.equal(p1.bombs, 0, '설치 블록을 들고 있으면 폭탄 못 주움');
+  assert.equal(g.items.length, 1, '아이템은 필드에 남음');
+  g.items = [{ type: 'speed', x: 2, y: 2, z: 0 }];
+  run(g, 100);
+  assert.ok(p1.speedUntil > g.time, '버프는 주움');
+  p1.bricks = 0; // 다 씀
+  assert.equal(g.heldItem(p1), null);
+  g.items = [{ type: 'bomb', x: 2, y: 2, z: 0 }];
+  run(g, 100);
+  assert.equal(p1.bombs, C.BOMB_USES, '빈손이면 주움');
+  assert.equal(g.snapshot().players.find((q) => q.id === 1).held, 'bomb');
+});
+
+test('우클릭: 손에 든 것을 씀 (투사체·설치 블록·폭탄), 빈손이면 아무것도 안 함', () => {
+  const { g, p1 } = setup();
+  Object.assign(p1, { x: 2.5, y: 5.5, yaw: 0, pitch: -0.3 });
+  g.handleAction(1, { name: 'fire' });
+  assert.equal(g.projectiles.length + g.pieces.filter((pc) => pc.thrownBy).length + g.bombs.length, 0, '빈손');
+  g.givePower(p1, 'knockback');
+  g.handleAction(1, { name: 'fire' });
+  assert.equal(g.projectiles.length, 1, '투사체');
+  g.givePower(p1, 'bomb');
+  g.handleAction(1, { name: 'fire' });
+  assert.equal(g.bombs.length, 1, '폭탄');
 });
 
 test('설치 블록: 조준한 칸 위 BRICK_DROP_HEIGHT 칸에서 떨어져 그 기둥 위에 쌓이고, 다 쓰면 우클릭은 아무것도 안 한다', () => {
@@ -1581,7 +1617,6 @@ test('봇: 용암이 오는데 구덩이에 갇히면 설치 블록을 던져 �
     Object.assign(human, { x: 0.5, y: 0.5, z: 2 });
     Object.assign(bot, { x: 5.5, y: 5.5, z: 0 });
     g.givePower(bot, 'brick');
-    bot.blocks = 0; // 쌓기 블록 없이 설치 블록만으로
     g.lava = { active: true, z: -0.9, startedAt: g.time };
     let out = false;
     for (let t = 0; t < 8000 && !out; t += TICK) {
@@ -1604,7 +1639,6 @@ test('봇: 용암이 오는데 2칸 구덩이에 갇히면 2단 점프로 나온
     g.gridVersion++;
     Object.assign(human, { x: 0.5, y: 0.5, z: 2 });
     Object.assign(bot, { x: 6.5, y: 6.5, z: 0 });
-    bot.blocks = 0;
     g.lava = { active: true, z: -0.9, startedAt: g.time };
     let out = false;
     let airJumps = 0;
@@ -1704,61 +1738,14 @@ test('카운트다운 중에 나가서 혼자 남으면 카운트다운이 끝�
   assert.equal(g.winnerId, 1);
 });
 
-// ---------- 핫바 · 쌓기 블록 · 폭탄 ----------
-test('핫바: 판마다 쌓기 블록 BUILD_BLOCKS_PER_ROUND 개, 숫자키·휠로 칸을 고르고 우클릭은 고른 칸을 쓴다', () => {
-  const { g, p1 } = setup();
-  assert.equal(p1.blocks, C.BUILD_BLOCKS_PER_ROUND);
-  assert.equal(p1.hand, 1);
-  g.handleAction(1, { name: 'hand', n: 3 });
-  assert.equal(p1.hand, 3);
-  g.handleAction(1, { name: 'handNext', dir: 1 });
-  assert.equal(p1.hand, 1, '3 다음은 1');
-  g.handleAction(1, { name: 'handNext', dir: -1 });
-  assert.equal(p1.hand, 3, '1 이전은 3');
-  g.handleAction(1, { name: 'hand', n: 7 });
-  assert.equal(p1.hand, 3, '없는 칸은 무시');
-  g.givePower(p1, 'bomb');
-  assert.equal(p1.hand, 3);
-  assert.equal(p1.bombs, C.BOMB_USES);
-  g.givePower(p1, 'knockback');
-  assert.equal(p1.hand, 2, '먹으면 그 칸으로');
-  assert.equal(p1.bombs, C.BOMB_USES, '폭탄은 다른 칸이라 그대로');
-});
-
+// ---------- 폭탄 ----------
 function buildSetup() {
   const s = setup();
   const { p1, p2 } = s;
-  Object.assign(p1, { x: 2.5, y: 5.5, z: 0, yaw: 0, hand: 1 });
+  Object.assign(p1, { x: 2.5, y: 5.5, z: 0, yaw: 0 });
   Object.assign(p2, { x: 8.5, y: 8.5, z: 0 });
   return s;
 }
-
-test('쌓기 블록: 조준한 면에 바로 붙는다 (바닥 위·옆면·꼭대기), 사거리 밖이나 사람 자리면 안 됨, 다 쓰면 끝', () => {
-  const { g, p1, p2, lines } = buildSetup();
-  p1.pitch = -Math.atan2(C.EYE_HEIGHT, 1.8); // 1.8칸 앞(x=4.3) 바닥 → (4,5) 바닥 위
-  assert.deepEqual(g.buildPlan(p1).cells, [[4, 5, 0]]);
-  g.handleAction(1, { name: 'fire' });
-  assert.ok(g.gridAt(4, 5, 0));
-  assert.equal(p1.blocks, C.BUILD_BLOCKS_PER_ROUND - 1);
-  assert.ok(lines.some((l) => l.includes('[쌓기] P1 → (4,5,0)')), lines.join('\n'));
-  // 옆면: 2칸 앞 3층 기둥을 수평으로 보면 눈높이 칸의 옆면 → 그 앞 칸 (3,5) 공중
-  for (let z = 0; z < 3; z++) g.grid[g.idx(5, 5, z)] = 1;
-  Object.assign(p1, { x: 3.5, pitch: 0 });
-  const side = g.buildPlan(p1).cells[0];
-  assert.deepEqual(side, [4, 5, Math.floor(C.EYE_HEIGHT)], `옆면 앞 칸 ${side}`);
-  // 수평으로 평지를 보면 사거리 안에 닿는 게 없음
-  Object.assign(p1, { x: 2.5, y: 1.5, pitch: 0 });
-  assert.equal(g.buildPlan(p1).ok, false);
-  // 사람이 서 있는 칸엔 못 놓음
-  Object.assign(p1, { x: 2.5, y: 5.5, pitch: -Math.atan2(C.EYE_HEIGHT, 1.8) });
-  g.grid[g.idx(4, 5, 0)] = 0;
-  Object.assign(p2, { x: 4.5, y: 5.5, z: 0 });
-  assert.equal(g.buildPlan(p1).ok, false);
-  p2.x = 8.5;
-  p1.blocks = 0;
-  g.handleAction(1, { name: 'fire' });
-  assert.equal(g.gridAt(4, 5, 0), 0, '다 쓰면 안 놓임');
-});
 
 test('폭탄: 조준한 칸 위에 놓여 BOMB_FUSE_MS 뒤 3×3×3 블록을 부수고 근처 사람을 날린다 (던진 사람·먼 블록은 무사)', () => {
   const { g, p1, p2, lines } = buildSetup();
@@ -1791,29 +1778,6 @@ test('폭탄: 조준한 칸 위에 놓여 BOMB_FUSE_MS 뒤 3×3×3 블록을 부
   assert.equal(p3.damage, 0, '폭발 범위 밖은 무사');
   assert.ok(g.gridAt(3, 6, 1), '옆 기둥은 범위(z 2~4) 밖이라 남음');
   assert.ok(lines.some((l) => l.includes('블록 2칸 파괴')), lines.join('\n'));
-});
-
-test('봇: 용암이 오는데 구덩이에 갇히면 쌓기 블록으로 발판을 놓고 올라간다 (10번 모두)', () => {
-  for (let k = 0; k < 10; k++) {
-    const { g, human, bot } = setupBot();
-    g.startRound();
-    g.nextSpawnAt = Infinity;
-    g.controlItemNextAt = Infinity;
-    g.powerItemNextAt = Infinity;
-    const pit = (x, y) => x >= 5 && x <= 7 && y >= 5 && y <= 7;
-    for (let x = 0; x < C.GRID_W; x++) for (let y = 0; y < C.GRID_D; y++) if (!pit(x, y)) for (let z = 0; z < 2; z++) g.grid[g.idx(x, y, z)] = 1;
-    g.gridVersion++;
-    Object.assign(human, { x: 0.5, y: 0.5, z: 2 });
-    Object.assign(bot, { x: 5.5, y: 5.5, z: 0 });
-    assert.equal(bot.blocks, C.BUILD_BLOCKS_PER_ROUND);
-    g.lava = { active: true, z: -0.9, startedAt: g.time };
-    let out = false;
-    for (let t = 0; t < 8000 && !out; t += TICK) {
-      g.tick(TICK);
-      if (bot.grounded && bot.z > 1.99) out = true;
-    }
-    assert.ok(out, `${k}번째 (블록 ${bot.blocks}): 봇 위치 (${bot.x.toFixed(2)}, ${bot.y.toFixed(2)}, ${bot.z.toFixed(2)})`);
-  }
 });
 
 test('봇: 상대가 폭발 범위에 들면 폭탄을 던진다', () => {

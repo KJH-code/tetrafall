@@ -229,7 +229,7 @@ export function summarize(rounds) {
   }));
 
   // 아이템: 사람만 (봇은 쓰는 규칙이 코드에 정해져 있어 의미가 다름)
-  const items = { humanRounds: 0, build: 0, buildAll: 0, bombs: 0, bombHits: 0, bricks: 0, crushes: 0, shocks: 0, shots: 0, shotHits: 0, hammerHits: 0, crits: 0 };
+  const items = { humanRounds: 0, build: 0, bombs: 0, bombHits: 0, bricks: 0, crushes: 0, shocks: 0, shots: 0, shotHits: 0, hammerHits: 0, crits: 0 };
   for (const r of rounds) {
     for (const p of r.players) {
       if (p.bot) continue;
@@ -237,7 +237,6 @@ export function summarize(rounds) {
       const u = r.useByKey.get(p.key);
       if (!u) continue;
       for (const k of ['build', 'bombs', 'bombHits', 'bricks', 'crushes', 'shocks', 'shots', 'shotHits', 'hammerHits', 'crits']) items[k] += u[k] || 0;
-      if (u.build >= C.BUILD_BLOCKS_PER_ROUND) items.buildAll++;
     }
   }
 
@@ -335,7 +334,7 @@ export function formatReport(s) {
     table(
       ['종류', '쓴 횟수', '1명·1판당', '맞힘'],
       [
-        ['쌓기 블록', it.build, per(it.build), `${C.BUILD_BLOCKS_PER_ROUND}개 다 씀 ${it.buildAll}번 (${pct(it.buildAll, it.humanRounds)})`],
+        ...(it.build ? [['쌓기 블록 (2026-10-24 전 로그)', it.build, per(it.build), '-']] : []),
         ['폭탄', it.bombs, per(it.bombs), `${it.bombHits}명`],
         ['설치 블록 1×2', it.bricks, per(it.bricks), `깔림 ${it.crushes} · 충격파 ${it.shocks}`],
         ['투사체', it.shots, per(it.shots), `${it.shotHits}번`],
