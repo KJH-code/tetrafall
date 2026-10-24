@@ -6,6 +6,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { CONFIG as C } from '/shared/config.js';
 import { toon, noOutline } from '/toon.js';
 import { itemModel } from '/models.js';
+import { buildFigure } from '/figure.js';
 
 const R = C.PLAYER_HALF; // 몸통 반지름 = 판정 반폭
 const H = C.PLAYER_HEIGHT;
@@ -17,7 +18,9 @@ const pupilMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
 // 몸 부분은 rig(몸 가운데가 축) > parts 안에 있어서 애니메이션은 rig 를 기울이고·돌리고·늘리고, parts 를 위아래로 흔든다.
 // 이름표·화살표·조종 대기 표시는 group 에 바로 붙어 같이 돌지 않는다. bodyMaterial 의 color/emissive 를 바꾸면 몸통·팔이 같이 바뀐다 (색, 경직 깜빡임)
 // arms[0] = 오른팔 (밀치기 휘두르기 애니메이션용). 각 팔의 userData.base = 기본 위치
-export function buildCharacter(color, models = null) {
+// char 가 FIGURE_CHARS 에 있으면 TABS 식 몸 (figure: 관절이 더 있음)
+export function buildCharacter(color, models = null, char = null) {
+  if (C.FIGURE_CHARS.includes(char)) return buildFigure(color, char, models);
   return models && models.robot ? buildRobot(color, models) : buildBean(color, models);
 }
 
@@ -98,7 +101,7 @@ function buildBean(color, models) {
 }
 
 // 손에 든 것: 쌓기 블록은 파란 상자, 나머지는 아이템 모델 (없으면 단색 도형)
-function heldItems(models) {
+export function heldItems(models) {
   const fallback = {
     block: () => new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.22), toon({ color: 0x6f8fc8 })),
     brick: () => new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.17, 0.17), toon({ color: 0xf0d060 })),

@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { CONFIG as C } from '/shared/config.js';
 import { toon, noOutline } from '/toon.js';
 import { buildCharacter, charAccessory } from '/character.js';
+import { figureAnim } from '/figure.js';
 import { Effects } from '/effects.js';
 import { CELL, SHAPE_NAMES } from '/shared/pieces.js';
 import { orbitEye } from '/shared/camera.js';
@@ -402,10 +403,19 @@ export class Renderer {
 
   getPlayerMesh(p) {
     let g = this.playerMeshes.get(p.id);
+    // 캐릭터마다 몸이 다르면(TABS 식) 캐릭터를 바꿨을 때 다시 만든다
+    const look = C.FIGURE_CHARS.includes(p.char) ? p.char : 'robot';
+    if (g && g.userData.look !== look) {
+      this.scene.remove(g);
+      this.playerMeshes.delete(p.id);
+      g = null;
+    }
     if (!g) {
       const color = PLAYER_COLORS[p.slot % PLAYER_COLORS.length];
-      const ch = buildCharacter(color, this.models);
+      const ch = buildCharacter(color, this.models, look === 'robot' ? null : look);
       g = ch.group;
+      g.userData.look = look;
+      g.userData.figure = ch.figure || null;
       g.userData.bodyMat = ch.bodyMaterial;
       g.userData.arms = ch.arms;
       g.userData.hammer = ch.hammer;
@@ -511,14 +521,16 @@ export class Renderer {
     if (walking) a.walk += dt * a.hs * C.ANIM_WALK_FREQ;
     const step = walking ? Math.sin(a.walk) : 0;
     const robot = g.userData.robot; // 로봇은 걷기·춤을 모델 동작이 하므로 통통 튀기·흔들기·빙글은 안 함
-    parts.position.z = -C.PLAYER_HEIGHT / 2 + (walking && !robot ? Math.abs(step) * C.ANIM_BOB : 0);
+    const fig = g.userData.figure; // TABS 식 몸은 관절로 걸음 (통통 튀기·흔들기·늘어나기 안 함, 춤 빙글은 함)
+    const jointed = robot || fig;
+    parts.position.z = -C.PLAYER_HEIGHT / 2 + (walking && !jointed ? Math.abs(step) * C.ANIM_BOB : 0);
     g.userData.feet.forEach((f, i) => (f.position.x = f.userData.baseX + (i ? -step : step) * C.ANIM_STEP));
     // 경직된 채 빠르게 날아가면 뒤로 구름. 끝나면 가장 가까운 바로 선 자세로 돌아옴
     if (p.stunned && a.hs > C.ANIM_TUMBLE_MIN_SPEED) a.spin -= dt * C.ANIM_TUMBLE_SPEED;
     else a.spin += (Math.round(a.spin / (Math.PI * 2)) * Math.PI * 2 - a.spin) * (1 - Math.exp(-C.ANIM_SMOOTH * dt));
     const lean = Math.min(1, a.hs / C.MOVE_SPEED) * C.ANIM_LEAN;
     rig.rotation.y = lean + a.spin;
-    rig.rotation.x = robot ? 0 : step * C.ANIM_SWAY; // 걸을 때 좌우로 살짝 흔들
+    rig.rotation.x = jointed ? 0 : step * C.ANIM_SWAY; // 걸을 때 좌우로 살짝 흔들
     // 승자 춤·이모트 '춤': 깡충 뛰며 제자리에서 빙글
     const emote = p.emote ?? -1;
     const dancing = this.victoryId === p.id || emote === 1;
@@ -526,9 +538,16 @@ export class Renderer {
     rig.rotation.z = dancing && !robot ? a.dance * C.VICTORY_SPIN : 0;
     if (dancing && !robot) parts.position.z += Math.abs(Math.sin(a.dance * C.VICTORY_HOP_FREQ)) * C.VICTORY_HOP;
     if (robot) this.robotAnim(robot, p, a, air, walking, dancing, emote, dt);
-    const stretch = a.vz > C.ANIM_AIR_VZ ? C.ANIM_STRETCH : 0; // 올라가는 중: 위로 늘어나고 옆은 가늘게
-    const wide = 1 - stretch / 2 + a.land * C.ANIM_LAND_SQUASH * 0.6; // 착지: 납작해지며 옆으로 퍼짐
-    rig.scale.set(wide, wide, 1 + stretch - a.land * C.ANIM_LAND_SQUASH);
+    if (fig) {
+      a.emoteT = emote >= 0 && emote !== 1 ? (a.emoteT || 0) + dt : 0;
+      a.t = (a.t || 0) + dt;
+      const punch = this.effects.punchAmount(p.id);
+      figureAnim(fig, { air, walking, hs: a.hs, walk: a.walk, stunned: p.stunned, dancing, emote, emoteT: a.emoteT, punch, holding: !!heldKind(p), t: a.t }, dt);
+    }
+    const stretch = a.vz > C.ANIM_AIR_VZ && !fig ? C.ANIM_STRETCH : 0; // 올라가는 중: 위로 늘어나고 옆은 가늘게
+    const land = fig ? 0 : a.land; // TABS 식 몸은 찌그러지지 않음
+    const wide = 1 - stretch / 2 + land * C.ANIM_LAND_SQUASH * 0.6; // 착지: 납작해지며 옆으로 퍼짐
+    rig.scale.set(wide, wide, 1 + stretch - land * C.ANIM_LAND_SQUASH);
   }
 
   // 승리 연출: 판이 끝나면 모두의 카메라가 승자 정면으로 날아가고, 승자는 춤, 승자 색 색종이
@@ -586,7 +605,7 @@ export class Renderer {
 
   // 이모트 동작 (춤은 위 animate 에서): 0 손 흔들기 · 2 웃기 · 3 도발. 팔은 밀치기 애니메이션 뒤에 덮어씀
   emoteAnim(g, emote, a, dt) {
-    if (g.userData.robot) return; // 로봇은 모델 동작으로 (robotAnim)
+    if (g.userData.robot || g.userData.figure) return; // 로봇은 모델 동작으로 (robotAnim), TABS 식 몸은 figureAnim
     const [right, left] = g.userData.arms;
     const rig = g.userData.rig;
     // 매 프레임 기본 자세로 되돌린 뒤 덮어씀 (이모트가 끝나면 팔이 제자리로). 팔이 짧아서 손 흔들기 땐 오른팔을 키움
@@ -807,7 +826,7 @@ export class Renderer {
       // 캐릭터 머리 장식 (판 사이에 바뀔 수 있어 바뀔 때만 다시 붙임)
       if (g.userData.char !== p.char) {
         if (g.userData.acc) g.userData.rig.remove(g.userData.acc);
-        g.userData.acc = p.char ? charAccessory(p.char) : null;
+        g.userData.acc = p.char && !g.userData.figure ? charAccessory(p.char) : null; // TABS 식 몸은 옷을 입고 있음
         if (g.userData.acc) g.userData.rig.add(g.userData.acc);
         g.userData.char = p.char;
       }
