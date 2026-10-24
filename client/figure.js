@@ -21,8 +21,8 @@ const BODIES = {
   lean: { foot: 0.06, shin: 0.36, thigh: 0.36, torso: 0.48, chestR: 0.15, waistR: 0.12, depth: 0.72, head: 0.28, headW: 0.17, sink: -0.05, upper: 0.3, lower: 0.27, armR: 0.045, foreR: 0.04, legR: 0.065, hand: 0.048, shoulderY: 0.18, hipY: 0.075, hunch: 0, spread: 0.22 },
   // 마른 몸 (닌자): 가늘고 다리 김
   slim: { foot: 0.06, shin: 0.37, thigh: 0.37, torso: 0.47, chestR: 0.14, waistR: 0.11, depth: 0.72, head: 0.27, headW: 0.165, sink: -0.05, upper: 0.3, lower: 0.27, armR: 0.042, foreR: 0.038, legR: 0.058, hand: 0.045, shoulderY: 0.17, hipY: 0.07, hunch: 0.05, spread: 0.24 },
-  // 배 나온 보통 몸 (건축가)
-  belly: { foot: 0.065, shin: 0.3, thigh: 0.3, torso: 0.55, chestR: 0.19, waistR: 0.19, depth: 0.8, head: 0.28, headW: 0.19, sink: 0, upper: 0.28, lower: 0.26, armR: 0.055, foreR: 0.052, legR: 0.075, hand: 0.055, shoulderY: 0.22, hipY: 0.085, hunch: 0, spread: 0.3 },
+  // 다부진 보통 몸 (건축가)
+  sturdy: { foot: 0.065, shin: 0.3, thigh: 0.3, torso: 0.55, chestR: 0.19, waistR: 0.15, depth: 0.8, head: 0.28, headW: 0.19, sink: 0, upper: 0.28, lower: 0.26, armR: 0.055, foreR: 0.052, legR: 0.075, hand: 0.055, shoulderY: 0.22, hipY: 0.085, hunch: 0, spread: 0.3 },
   // 팔 긴 보통 몸 (갈고리)
   reach: { foot: 0.06, shin: 0.34, thigh: 0.34, torso: 0.5, chestR: 0.16, waistR: 0.13, depth: 0.74, head: 0.28, headW: 0.175, sink: -0.04, upper: 0.34, lower: 0.32, armR: 0.05, foreR: 0.046, legR: 0.066, hand: 0.05, shoulderY: 0.19, hipY: 0.075, hunch: 0.06, spread: 0.26 },
   // 드럼통 (탱크): 둥근 통 몸통, 팔다리 짧고 뭉툭
@@ -370,7 +370,7 @@ function dressNinja(fig, costume, cloth) {
   fig.waist.add(sword);
 }
 
-// 건축가: 배 나온 보통 몸 + 노란 안전모 + 주황 작업 조끼(반사 띠, 앞이 열려 배가 보임) + 공구 벨트 + 장갑·작업화 + 등에 테트리미노 가방
+// 건축가: 다부진 보통 몸 + 노란 안전모 + 주황 작업 조끼(반사 띠, 앞이 열려 셔츠(피부)가 보임) + 공구 벨트 + 장갑·작업화 + 등에 테트리미노 가방
 function dressBuilder(fig, costume, cloth) {
   const d = fig.d;
   const yellow = costume(0xf2c418);
@@ -380,10 +380,6 @@ function dressBuilder(fig, costume, cloth) {
   const tan = costume(0xc9a06a);
   const steel = costume(0xa3adb8);
   const piece = costume(0x30c8e8); // 테트리미노 (하늘색: 조끼 주황·모자 노랑과 안 겹침)
-  // 배: 앞쪽 아래가 둥글게 나옴 (피부)
-  const belly = new THREE.IcosahedronGeometry(1, 1);
-  belly.scale(d.waistR * 0.9, d.waistR * 1.05, d.torso * 0.32);
-  fig.waist.add(mesh(belly, cloth, d.waistR * 0.35, 0, d.torso * 0.33));
   // 안전모: 돔 + 앞으로 긴 챙 + 가운데 능선
   const browZ = d.head * 0.7;
   const hat = mesh(domeGeo(d.headW * 0.66), yellow, 0, 0, browZ);
