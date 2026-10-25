@@ -284,6 +284,8 @@ test('통계: 캐릭터 평타 — 타 번호별 명중 수 (공중 평타 따�
     '[1시]   [폭발] P1 벽 3칸 → P2(봇) 24%',
     '[1시]   [폭발] P1 3타 블록 1칸',
     '[1시]   [필살] P1 대폭발 (1명, 같이 터진 블록 1칸)',
+    '[1시]   [아머] P1 ← P2(봇) 버팀 (P1 12%)',
+    '[1시]   [아머] P1 ← P2(봇) 깨짐',
     '[1시]   [평타] P2(봇) → P1 넉백 치명타 (P1 8%) 공중 공중 베기',
     '[1시]   [평타] P2(봇) → P1 넉백 (P1 13%) 공중 2타 내려 차기',
     '[1시]   [사망] P2(봇) 낙사 @ 0:10 (위치 1.0, 2.0, -4.0, 피해 120%, 킬 P1 밀치기)',
@@ -298,6 +300,7 @@ test('통계: 캐릭터 평타 — 타 번호별 명중 수 (공중 평타 따�
     ],
   );
   assert.ok(formatReport(s).includes('== 평타 명중 (타 번호별) =='));
-  assert.deepEqual(s.builder, { blasts: 2, wall: 1, third: 1, pad: 0, cells: 4, big: 1 });
+  assert.deepEqual(s.builder, { armor: { held: 1, broken: 1 }, blasts: 2, wall: 1, third: 1, pad: 0, cells: 4, big: 1 });
+  assert.ok(formatReport(s).includes('버팀 1번 · 깨짐 1번'));
   assert.ok(formatReport(s).includes('폭발 2번 (벽 1 · 3타 블록 1 · 발판 0, 평균 2.0칸) · 대폭발 1번'));
 });

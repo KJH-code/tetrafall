@@ -172,14 +172,15 @@ export const CONFIG = {
   COUNTER_STUN_MULT: 1.5,
   COUNTER_HITSTOP_MULT: 1.5,
   BASIC_ATTACKS: {
-    // 탱크: 딜은 낮고 안정적. 2타는 띄우지 않고 경직을 길게 (3타 확정). 카운터히트 넣은 뒤 봇 480판 28% → 1·2타 딜 6/7 → 5/6, 방패 밀기 넉백 4.2 → 3.8
+    // 탱크 (2026-10-25 재혁 확정, docs/characters.md 3.3 버티기(반격)형·초보 추천): 평평평(방패 올려치기로 띄움) → 점프 → 공중 방패 내려치기(마무리).
+    // 3타는 마무리 아님 (예전 방패 밀기는 마무리라 멀리 날아가 공중 평타가 못 따라감). 2타는 띄우지 않고 경직을 길게 (3타 확정)
     tank: {
       chain: [
         { name: '주먹', windup: 120, rec: 300, stun: 550, dmg: 5, kb: 1.5, up: 2, step: 0.4 },
         { name: '어깨 박치기', windup: 150, rec: 350, stun: 750, dmg: 6, kb: 2, up: 1, step: 0.8 },
-        { name: '방패 밀기', windup: 300, rec: 450, stun: 600, dmg: 10, kb: 3.8, up: 3, step: 0.3, finish: true },
+        { name: '방패 올려치기', windup: 300, rec: 500, stun: 900, dmg: 8, kb: 0.5, up: 8, step: 0.3 },
       ],
-      air: [{ name: '방패 내려치기', windup: 150, rec: 400, stun: 500, dmg: 8, kb: 3, up: 2, step: 0 }],
+      air: [{ name: '방패 내려치기', windup: 150, rec: 400, stun: 600, dmg: 10, kb: 3.8, up: 1, step: 0, finish: true }],
     },
     // 닌자 (2026-10-25 재혁 확정, docs/characters.md 3.2 연계형): 지상 4타 + 공중 2타. 콤보 사이 후딜은 짧고 연타 마지막 타 뒤 후딜은 김 (허공 이어 치기 스팸 방지).
     // 4타 올려 차기는 마무리 아님 — 띄워서 공중 평타로 이어 감. 공중 2타 내려 차기가 마무리. 수치는 초안 (stun·kb 는 문서에 없어 A 가 정함)
@@ -296,7 +297,10 @@ export const CONFIG = {
   // 2026-10-25 재혁 승인: '피해 % ×0.85' 대신 (딜이 낮은 대신 안정성). 0.85~0.92 사이에서 봇 판으로 맞춤.
   // (2026-10-24 예전 '넉백 ×0.85' 는 탱크 딜이 평타급일 때 봇 120판 51승 / 기대 30)
   TANK_KB_TAKEN: 0.92, // 0.88 → 0.92 (봇 320판 탱크 91승 / 기대 80)
-  TANK_CHARGE_SPEED: 12, // 스킬 돌진: 이 속도(칸/초)로 TANK_CHARGE_MS 동안 앞으로 (약 3칸). 처음 부딪힌 상대를 치고 멈춤
+  TANK_ULT_TAKEN_MULT: 2, // 패시브 (2026-10-25): 맞아서 받은 피해 % 로 얻는 필살기 게이지 × 이 값 → 실컷 맞고 역관광
+  // 아머 (2026-10-25): F 돌진 중·R 떠오르는 동안. 넉백·경직만 막고 피해 % 는 받음. 마무리 타·필살기에 맞으면 깨지고 보통처럼 맞음.
+  // 아머 중엔 카운터 안 당함 (카운터 규칙 예외). 경직 중엔 F·R 못 씀 (그대로) → 상대 공격 전에 켜야 함
+  TANK_CHARGE_SPEED: 12, // F 방패 돌진: 이 속도(칸/초)로 TANK_CHARGE_MS 동안 앞으로 (약 3칸). 아머라 맞아도 안 멈춤, 처음 부딪힌 상대를 치고 멈춤
   TANK_CHARGE_MS: 250,
   TANK_CHARGE_HIT_RANGE: 0.9, // 몸 가운데끼리 이 거리 안이면 부딪힘
   TANK_CHARGE_KB_SPEED: 4.2,
@@ -309,6 +313,11 @@ export const CONFIG = {
   TANK_SLAM_KB_SPEED: 4.5, // 옆으로는 조금, 위로 크게 띄움 → 공중 치명타 연계
   TANK_SLAM_KB_UP: 9,
   TANK_SLAM_STUN_MS: 900,
+  // R 바깥 고리: 충격파(TANK_SLAM_RANGE) 바깥 TANK_RING_WIDTH 칸 고리의 바닥이 1층 솟아 위 사람을 띄움 → TANK_RING_MS 뒤 가라앉음 (남지 않음, 안 터짐, 압사 없음)
+  TANK_RING_WIDTH: 1,
+  TANK_RING_MS: 1000,
+  TANK_RING_UP: 7,
+  TANK_RING_STUN_MS: 600,
   TANK_SLAM_DAMAGE: 20, // 2026-10-25 맵 7개 섞은 봇 504판 탱크 29% (킬 대부분 내려찍기) → 25 → 20, 넉백 5 → 4.5
   // 닌자 (2026-10-25 재혁 확정, docs/characters.md 3.2 — 연계형 "이어지는 공격의 연속". 수치는 초안)
   // 갈아타기: 이어 치기 타 번호·창은 맞은 상대와 상관없이 닌자에게 남음 (모든 캐릭터 공통 구조). 맞는 쪽 COMBO_MS 는 그대로

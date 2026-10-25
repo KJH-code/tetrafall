@@ -73,6 +73,7 @@ export function parseLog(text) {
         counters: [], // 카운터히트를 넣은 이름 (2026-10-25~)
         blasts: [], // 건축가 블록 폭발 { kind: '벽'|'3타 블록'|'발판', n: 칸 수 } (2026-10-25~)
         bigBombs: 0, // 건축가 대폭발
+        armor: { held: 0, broken: 0 }, // 탱크 아머 버팀·깨짐 (2026-10-25~)
       };
     } else if ((m = line.match(/^ {2}사망: (.*)$/)) && last) {
       // 접속 끊김은 [사망] 줄 없이 여기에만 나옴
@@ -127,6 +128,8 @@ export function parseLog(text) {
       countUse(cur, line);
     } else if ((m = line.match(/^ {2}\[폭발\] \S+ (벽|3타 블록|발판) (\d+)칸/))) {
       cur.blasts.push({ kind: m[1], n: Number(m[2]) });
+    } else if ((m = line.match(/^ {2}\[아머\] \S+ ← \S+ (버팀|깨짐)/))) {
+      cur.armor[m[1] === '버팀' ? 'held' : 'broken']++;
     } else if (/^ {2}\[필살\] \S+ 대폭발 \(/.test(line)) {
       cur.bigBombs++;
     } else if ((m = line.match(/^ {2}\[카운터\] (\S+) → \S+$/))) {
@@ -309,7 +312,8 @@ export function summarize(rounds) {
       const all = rounds.flatMap((r) => r.blasts);
       const by = (k) => all.filter((b) => b.kind === k);
       const cells = all.reduce((a, b) => a + b.n, 0);
-      return { blasts: all.length, wall: by('벽').length, third: by('3타 블록').length, pad: by('발판').length, cells, big: rounds.reduce((a, r) => a + r.bigBombs, 0) };
+      const armor = { held: rounds.reduce((a, r) => a + r.armor.held, 0), broken: rounds.reduce((a, r) => a + r.armor.broken, 0) };
+      return { armor, blasts: all.length, wall: by('벽').length, third: by('3타 블록').length, pad: by('발판').length, cells, big: rounds.reduce((a, r) => a + r.bigBombs, 0) };
     })(),
     combos: (() => {
       // 콤보 (2타 이상): 길이별 횟수 + 넣은 캐릭터별 (사람·봇 따로, 여럿이 같이 넣은 건 따로)
@@ -403,6 +407,7 @@ export function formatReport(s) {
     const b = s.builder;
     out.push('', '== 건축가 블록 ==', `폭발 ${b.blasts}번 (벽 ${b.wall} · 3타 블록 ${b.third} · 발판 ${b.pad}, 평균 ${b.blasts ? (b.cells / b.blasts).toFixed(1) : 0}칸) · 대폭발 ${b.big}번`);
   }
+  if (s.builder.armor.held || s.builder.armor.broken) out.push('', '== 탱크 아머 ==', `버팀 ${s.builder.armor.held}번 · 깨짐 ${s.builder.armor.broken}번`);
   out.push('', '== 모드별 ==', table(['모드', '판', '길이 중앙값', '압사 비율', ''], groupRows(s.byMode).map((row, i) => [...row, s.byMode[i].note])));
   out.push(
     '',

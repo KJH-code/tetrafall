@@ -244,7 +244,7 @@ for (const char of C.CHARACTERS.filter((c) => C.BASIC_ATTACKS[c].chain.at(-1).fi
 test('평타: 경직은 후딜 + 다음 타 준비 + 0.1초 이상 (바로 누르면 확정), 마무리 타만 finish (닌자는 지상 4타가 아니라 공중 2타), 풀 콤보 최단 시간 ≤ COMBO_MS', () => {
   for (const char of C.CHARACTERS) {
     const { chain, air } = C.BASIC_ATTACKS[char];
-    const ninja = char === 'ninja';
+    const ninja = char === 'ninja' || char === 'tank'; // 지상 마지막 타가 띄우고 공중 마지막 타가 마무리
     let t = 0;
     chain.forEach((d, i) => {
       assert.equal(!!d.finish, !ninja && i === chain.length - 1, `${char} ${i + 1}타`);
@@ -254,7 +254,7 @@ test('평타: 경직은 후딜 + 다음 타 준비 + 0.1초 이상 (바로 누�
     });
     assert.ok(t <= C.COMBO_MS, `${char} 최단 ${t}`);
     air.forEach((d, i) => {
-      assert.equal(!!d.finish, air.length > 1 && i === air.length - 1, `${char} 공중 ${i + 1}타`);
+      assert.equal(!!d.finish, ninja && i === air.length - 1, `${char} 공중 ${i + 1}타`);
       if (i < air.length - 1) assert.ok(d.stun >= d.rec + air[i + 1].windup + 100, `${char} 공중 ${i + 1}타 경직`);
     });
   }
@@ -346,7 +346,7 @@ test('평타 건축가: 내려찍기(마무리) 가 맞으면 그 사람 발밑 
 test('평타: 마무리 타 준비 중에는 이동 속도 × BASIC_FINISH_MOVE_MULT. 아이템 망치는 없음 (2026-10-25)', () => {
   const { g, p } = setupChars(['tank', 'ninja']);
   place(p(1), 3, 1.5, 0);
-  p(1).atk = { n: 3, def: C.BASIC_ATTACKS.tank.chain[2], at: g.time + 10000 };
+  p(1).atk = { n: 3, def: C.BASIC_ATTACKS.builder.chain[2], at: g.time + 10000 };
   p(1).input = { fwd: 1, strafe: 0, jump: false };
   run(g, 200);
   const slow = p(1).x - 3;
@@ -419,8 +419,8 @@ test('캔슬: 평타 준비 중에 누른 F 는 판정을 기다림 (평타는 �
 });
 
 // p3(갈고리)가 p1(탱크) 뒤에서 평타 1타. prep 으로 p1 의 상태를 만든 뒤
-function hitBy3(prep) {
-  const { g, lines, p } = setupChars(['tank', 'ninja', 'hook']);
+function hitBy3(prep, first = 'tank') {
+  const { g, lines, p } = setupChars([first, 'ninja', 'hook']);
   place(p(1), 3, 4.5, 0);
   place(p(2), 8.5, 8.5);
   place(p(3), 2, 4.5, 0); // p1 뒤
@@ -444,18 +444,24 @@ test('카운터히트 (2026-10-25 재혁 결정): 빗나간 평타의 후딜·�
   assert.ok(rec.lines.includes('  [카운터] P3 → P1'), rec.lines.join('\n'));
   assert.ok(Math.abs(rec.p(1).stunUntil - rec.p(1).counterAt - hookDef.stun * C.COUNTER_STUN_MULT) < 1e-6, '경직 길게');
   assert.equal(rec.p(3).freezeUntil - rec.p(1).counterAt, C.BASIC_HITSTOP_MS * C.COUNTER_HITSTOP_MULT, '멈칫 길게');
-  // 필살기 준비 (내려찍기), 스킬 중 (돌진)
-  assert.ok(countered(hitBy3((g, p) => {
-    p(1).ult = C.ULT_MAX;
-    g.handleAction(1, { name: 'ult' });
-    p(1).slamAt = g.time + 10000;
-  })), '내려찍기 준비');
+  // 스킬 준비 (건축가 솟는 벽 예고)
   assert.ok(countered(hitBy3((g, p) => {
     p(1).yaw = Math.PI / 2;
     g.handleAction(1, { name: 'skill' });
+    p(1).wallAt = g.time + 10000;
+  }, 'builder')), '솟는 벽 준비');
+  // 탱크 돌진·내려찍기 준비는 아머라 카운터 안 당함 (2026-10-25 예외)
+  assert.ok(!countered(hitBy3((g, p) => {
+    p(1).ult = C.ULT_MAX;
+    g.handleAction(1, { name: 'ult' });
+    p(1).slamAt = g.time + 10000;
+  })), '탱크 내려찍기 준비 = 아머');
+  assert.ok(!countered(hitBy3((g, p) => {
+    p(1).yaw = Math.PI / 2;
+    g.handleAction(1, { name: 'skill' });
     p(1).chargeUntil = g.time + 10000;
-    p(1).chargeDir = { x: 0, y: 0 }; // 제자리 (판정 전에 멀어지지 않게)
-  })), '돌진 중');
+    p(1).chargeDir = { x: 0, y: 0 };
+  })), '탱크 돌진 = 아머');
 });
 
 test('카운터히트 아님: 평타 준비 중, 맞힌 평타의 후딜, 동시에 누른 평타끼리, 이미 경직 중(콤보)', () => {
@@ -499,8 +505,8 @@ test('카운터히트 아님: 평타 준비 중, 맞힌 평타의 후딜, 동시
 
 test('끊긴 공격은 소모 없음: 맞아서 끊긴 평타는 후딜 없음, 돌진은 쿨타임, 내려찍기 준비는 게이지를 돌려줌 (interrupt 이벤트). 경직 중 F·R 은 안 나가고 소모도 없음, 기억한 F 가 맞아서 지워져도 소모 없음', () => {
   const { g, p } = setupChars(['tank', 'ninja']);
-  const hit = () => {
-    g.applyKnockback(p(1), -1, 0, 1, 0, 300, 5, { by: 2, kind: 'push' });
+  const hit = (finish = false) => {
+    g.applyKnockback(p(1), -1, 0, 1, 0, 300, 5, { by: 2, kind: 'push' }, finish, { finish }); // 탱크 아머는 마무리 타에만 깨짐
     return g.drainEvents().filter((e) => e.type === 'interrupt' && e.who === 1);
   };
   place(p(1), 3, 4.5, 0);
@@ -518,12 +524,12 @@ test('끊긴 공격은 소모 없음: 맞아서 끊긴 평타는 후딜 없음, 
   assert.equal(p(1).ult, C.ULT_MAX);
   assert.equal(p(1).castQueued, null, '경직 중 입력은 기억 안 함');
   run(g, 1000); // 경직(카운터면 ×1.5) + 무적이 끝나게
-  // 돌진 중에 맞음 → 쿨타임 돌려받음
+  // 돌진 중에 맞음 (아머를 깨는 마무리 타) → 쿨타임 돌려받음
   place(p(1), 3, 4.5, Math.PI / 2);
   g.handleAction(1, { name: 'skill' });
   assert.ok(p(1).skillReadyAt > g.time);
   g.drainEvents();
-  assert.deepEqual(hit().map((e) => e.kind), ['skill']);
+  assert.deepEqual(hit(true).map((e) => e.kind), ['skill']);
   assert.ok(p(1).skillReadyAt <= g.time, '쿨 돌려받음');
   run(g, 1000); // 경직(카운터면 ×1.5) + 무적이 끝나게
   // 내려찍기 준비 중에 맞음 → 게이지 돌려받음
@@ -531,7 +537,7 @@ test('끊긴 공격은 소모 없음: 맞아서 끊긴 평타는 후딜 없음, 
   g.handleAction(1, { name: 'ult' });
   assert.equal(p(1).ult, 0);
   g.drainEvents();
-  assert.deepEqual(hit().map((e) => e.kind), ['ult']);
+  assert.deepEqual(hit(true).map((e) => e.kind), ['ult']);
   assert.equal(p(1).ult, C.ULT_MAX, '게이지 돌려받음');
   run(g, 1000); // 경직(카운터면 ×1.5) + 무적이 끝나게
   // 평타 준비 중 기억한 F 가 맞아서 지워짐 → 소모 없음
@@ -548,9 +554,9 @@ test('끊긴 공격은 소모 없음: 맞아서 끊긴 평타는 후딜 없음, 
 });
 
 test('로그: 마무리 타의 [콤보] 줄은 그 [평타] 줄 다음에', () => {
-  const { lines } = fullChain('tank', 0);
+  const { lines } = fullChain('builder', 0);
   const i = lines.findIndex((l) => l.includes('[콤보] P1 → P2 3타 마무리'));
-  assert.ok(i > 0 && lines[i - 1].includes('[평타] P1 → P2') && lines[i - 1].endsWith('3타 방패 밀기'), lines.join('\n'));
+  assert.ok(i > 0 && lines[i - 1].includes('[평타] P1 → P2') && lines[i - 1].endsWith('3타 내려찍기'), lines.join('\n'));
 });
 
 test('봇: 돌진·순간 베기 길에 피할 칸(내가 던진 블록 그림자 등)이 있으면 안 씀 (2026-10-25 재혁 로그: 자기 블록에 돌진해 깔림)', () => {
@@ -993,4 +999,90 @@ test('봇 닌자: 필드 밖으로 떨어지면 안쪽으로 공중 F (바닥 �
   b.ult = C.ULT_MAX;
   assert.equal(brain.useSkills(g, b, t, [t], []), true);
   assert.ok(b.empowerUntil > g.time);
+});
+
+// ---------- 탱크 (2026-10-25, docs/characters.md 3.3) ----------
+
+test('탱크 평타: 평평평(방패 올려치기는 마무리 아님, 띄움) → 점프 → 공중 방패 내려치기(마무리)가 한 콤보', () => {
+  const { chain, air } = C.BASIC_ATTACKS.tank;
+  const { g, lines, p } = setupChars(['tank', 'builder']);
+  place(p(1), 3, 4.5, 0);
+  place(p(2), 4.2, 4.5);
+  const ev = [];
+  for (let t = 0; t < 4000 && !lines.some((l) => l.includes(' 마무리')); t += TICK) {
+    const last = ev.filter((e) => e.type === 'hit' && e.by === 1).at(-1);
+    p(1).input = { fwd: 0, strafe: 0, jump: !!(last && last.n === 3 && !last.air) };
+    p(1).yaw = Math.atan2(p(2).y - p(1).y, p(2).x - p(1).x);
+    g.handleAction(1, { name: 'push' });
+    g.tick(TICK);
+    ev.push(...g.drainEvents());
+  }
+  const atk = ev.filter((e) => e.type === 'attack' && e.who === 1).map((e) => `${e.air ? '공중' : '지상'}${e.n}`);
+  assert.deepEqual(atk, ['지상1', '지상2', '지상3', '공중1']);
+  assert.ok(lines.includes('  [콤보] P1 → P2 4타 마무리'), lines.join('\n'));
+  assert.equal(p(2).damage, chain.reduce((a, d) => a + d.dmg, 0) + air[0].dmg);
+});
+
+test('탱크 아머: F 돌진 중 맞으면 넉백·경직 없이 피해 % 만, 돌진은 안 멈춤, 카운터 없음. 마무리 타·필살기면 깨지고 보통처럼 맞음', () => {
+  const { g, lines, p } = setupChars(['tank', 'ninja', 'builder']);
+  place(p(1), 1.5, 4.5, 0);
+  place(p(2), 1.5, 3.5);
+  place(p(3), 9.5, 9.5);
+  g.handleAction(1, { name: 'skill' });
+  g.drainEvents();
+  const x0 = p(1).x;
+  assert.equal(g.applyKnockback(p(1), 0, 1, 5, 3, 500, 7, { by: 2, kind: 'push' }), true);
+  assert.equal(p(1).damage, 7, '피해는 받음');
+  assert.ok(p(1).stunUntil <= g.time && p(1).kby === 0, '넉백·경직 없음');
+  assert.ok(g.time < p(1).chargeUntil, '돌진 계속');
+  const ev = g.drainEvents();
+  assert.ok(ev.some((e) => e.type === 'armor' && e.who === 1 && e.by === 2));
+  assert.ok(!ev.some((e) => e.type === 'counter'));
+  assert.ok(lines.includes('  [아머] P1 ← P2 버팀 (P1 7%)'), lines.join('\n'));
+  run(g, C.TANK_CHARGE_MS);
+  assert.ok(p(1).x - x0 > 2, `끝까지 돌진 ${(p(1).x - x0).toFixed(2)}`);
+  // 마무리 타면 깨짐
+  run(g, C.SKILL_CD_MS.tank);
+  place(p(1), 1.5, 4.5, 0);
+  g.handleAction(1, { name: 'skill' });
+  g.drainEvents();
+  g.applyKnockback(p(1), 0, 1, 5, 3, 500, 7, { by: 2, kind: 'push' }, true, { finish: true });
+  const ev2 = g.drainEvents();
+  assert.ok(ev2.some((e) => e.type === 'armorBreak' && e.who === 1));
+  assert.ok(ev2.some((e) => e.type === 'interrupt' && e.who === 1 && e.kind === 'skill'));
+  assert.ok(p(1).stunUntil > g.time && p(1).kby > 0, '보통처럼 맞음');
+  assert.ok(!ev2.some((e) => e.type === 'counter'), '깨질 때도 카운터 없음');
+});
+
+test('탱크 R: 떠오르는 동안 아머 (필살기에는 깨짐). 쾅 → 가운데 충격파 + 바깥 고리 바닥이 1층 솟아 위 사람을 띄우고 TANK_RING_MS 뒤 가라앉음 (압사 없음)', () => {
+  const { g, lines, p } = setupChars(['tank', 'ninja', 'builder']);
+  place(p(1), 5, 5);
+  place(p(2), 5 + C.TANK_SLAM_RANGE + 0.6, 5); // 바깥 고리 위
+  place(p(3), 9.5, 0.5);
+  p(1).ult = C.ULT_MAX;
+  g.handleAction(1, { name: 'ult' });
+  g.drainEvents();
+  g.applyKnockback(p(1), 1, 0, 5, 3, 500, 4, { by: 3, kind: 'push' });
+  assert.ok(g.drainEvents().some((e) => e.type === 'armor'), '떠오르는 동안 아머');
+  assert.ok(p(1).slamAt > 0, '내려찍기 계속');
+  run(g, C.TANK_SLAM_WINDUP_MS + TICK);
+  const rise = g.drainEvents().find((e) => e.type === 'quakeRise');
+  assert.ok(rise && rise.cells.length > 0 && rise.ms === C.TANK_RING_MS);
+  const [cx, cy, cz] = rise.cells.find(([x, y]) => x === Math.floor(p(2).x - 0.01) || Math.hypot(x + 0.5 - 5, y + 0.5 - 5) > C.TANK_SLAM_RANGE);
+  assert.equal(g.gridAt(cx, cy, cz), CELL.BUILD, '솟음');
+  assert.ok(rise.cells.every(([x, y]) => Math.hypot(x + 0.5 - 5, y + 0.5 - 5) > C.TANK_SLAM_RANGE), '바깥 고리만');
+  assert.ok(p(2).z >= 1 - 1e-6 || p(2).vz > 0, `띄움 z=${p(2).z.toFixed(2)}`);
+  assert.ok(p(2).alive, '압사 없음');
+  assert.ok(lines.some((l) => l.includes('솟는 땅 1명')), lines.join('\n'));
+  run(g, C.TANK_RING_MS + TICK);
+  assert.ok(rise.cells.every(([x, y, z]) => g.gridAt(x, y, z) === 0), '가라앉음');
+  assert.ok(g.drainEvents().some((e) => e.type === 'quakeFall'));
+});
+
+test('탱크 패시브: 맞아서 받은 피해 % 로 얻는 게이지 × TANK_ULT_TAKEN_MULT (주는 쪽은 그대로), 덜 밀림 그대로', () => {
+  const { g, p } = setupChars(['tank', 'builder']);
+  g.applyKnockback(p(1), 1, 0, 1, 0, 300, 10, { by: 2, kind: 'push' });
+  assert.equal(p(1).ult, 10 * C.ULT_PER_DAMAGE * C.TANK_ULT_TAKEN_MULT);
+  assert.equal(p(2).ult, 10 * C.ULT_PER_DAMAGE);
+  assert.equal(C.TANK_KB_TAKEN, 0.92);
 });
