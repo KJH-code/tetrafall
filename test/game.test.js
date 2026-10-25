@@ -686,13 +686,13 @@ test('4인: 시작 위치가 모두 다르고 가장자리에서 1.5칸 이상 �
   const saved = C.MAX_PLAYERS;
   C.MAX_PLAYERS = 8;
   try {
-    const { ps } = setupN(8);
+    const { g, ps } = setupN(8);
     const keys = new Set(ps.map((p) => `${p.x},${p.y}`));
     assert.equal(keys.size, 8);
     for (const p of ps) {
-      assert.ok(p.x >= 1.5 && p.x <= C.GRID_W - 1.5 && p.y >= 1.5 && p.y <= C.GRID_D - 1.5, `${p.name} (${p.x},${p.y})`);
+      assert.ok(p.x >= 1.5 && p.x <= g.W - 1.5 && p.y >= 1.5 && p.y <= g.D - 1.5, `${p.name} (${p.x},${p.y})`);
       // 중앙을 바라봄
-      const toCenter = Math.atan2(C.GRID_D / 2 - p.y, C.GRID_W / 2 - p.x);
+      const toCenter = Math.atan2(g.D / 2 - p.y, g.W / 2 - p.x);
       const diff = Math.atan2(Math.sin(p.yaw - toCenter), Math.cos(p.yaw - toCenter));
       assert.ok(Math.abs(diff) < 1e-9, `${p.name} yaw`);
     }
@@ -1390,14 +1390,16 @@ test('맵: 피라미드·계단 지형이 깔리고, 시작 위치는 지형 위
   }
 });
 
-test('맵: 모든 맵에서 시작 위치마다 걸어서(한 걸음 1칸까지) 그 맵의 맨 위까지 갈 수 있다', () => {
+test('맵: 모든 맵·모든 판 크기(2·3·4인)에서 시작 위치마다 걸어서(한 걸음 1칸까지) 그 맵의 맨 위까지 갈 수 있다', () => {
+  for (const n of [2, 3, 4])
   for (const id of ['flat', 'pyramid', 'stairs', 'bowl', 'spiral', 'pillars', 'fortress']) {
     const g = new Game();
-    for (let i = 1; i <= 4; i++) g.addPlayer(i);
+    for (let i = 1; i <= n; i++) g.addPlayer(i);
     assert.ok(g.setMap(id), id);
     g.startRound();
     let max = 0;
-    for (let x = 0; x < C.GRID_W; x++) for (let y = 0; y < C.GRID_D; y++) max = Math.max(max, g.columnTop(x, y));
+    assert.equal(g.W, C.FIELD_SIZES[n], `${n}인 판 크기`);
+    for (let x = 0; x < g.W; x++) for (let y = 0; y < g.D; y++) max = Math.max(max, g.columnTop(x, y));
     if (id !== 'flat') assert.ok(max >= 2, `${id} 최고 ${max}층`);
     g.nextSpawnAt = Infinity;
     g.tick(TICK);
@@ -1416,13 +1418,13 @@ test('맵: 모든 맵에서 시작 위치마다 걸어서(한 걸음 1칸까지)
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
           const nx = x + dx;
           const ny = y + dy;
-          if (nx < 0 || ny < 0 || nx >= C.GRID_W || ny >= C.GRID_D || seen.has(nx * 100 + ny)) continue;
+          if (nx < 0 || ny < 0 || nx >= g.W || ny >= g.D || seen.has(nx * 100 + ny)) continue;
           if (g.columnTop(nx, ny) > h + 1) continue;
           seen.add(nx * 100 + ny);
           q.push([nx, ny]);
         }
       }
-      assert.equal(best, max, `${id} ${p.name} 시작 위치에서 최고 ${best}층 (맵 최고 ${max})`);
+      assert.equal(best, max, `${n}인 ${id} ${p.name} 시작 위치에서 최고 ${best}층 (맵 최고 ${max})`);
     }
   }
 });
@@ -1965,4 +1967,55 @@ test('판이 끝날 때 이어지던 콤보도 로그에 남음 (통계)', () =>
   Object.assign(p2, { comboHits: 3, comboBy: new Set(['P1']), stunUntil: g.time + 500 });
   g.endRound(null);
   assert.ok(lines.includes('  [콤보] P1 → P2 3타'));
+});
+
+// ---------- 인원별 필드 크기 (2026-10-26 재혁) ----------
+
+test('필드 크기: 판 시작 때 필드에 나가는 인원으로 2명 10×10, 3명 12×12, 4명 14×14 (높이 그대로). snapshot field, 격자 배열 크기', () => {
+  for (const [n, size] of [[2, 10], [3, 12], [4, 14]]) {
+    const { g, ps } = setupN(n);
+    assert.equal(g.W, size);
+    assert.equal(g.D, size);
+    assert.equal(g.grid.length, size * size * C.GRID_H);
+    const snap = g.snapshot(true);
+    assert.deepEqual(snap.field, { w: size, d: size, h: C.GRID_H });
+    assert.equal(snap.grid.length, size * size * C.GRID_H);
+    for (const p of ps) assert.ok(p.x > 1.5 && p.x < size - 1.5 && p.y > 1.5 && p.y < size - 1.5, `${n}인 ${p.name} 시작 (${p.x},${p.y})`);
+  }
+  assert.equal(C.FIELD_SIZES[2], C.GRID_W, '2인은 예전 그대로');
+});
+
+test('필드 크기: 경계 판정 (14×14 면 x=13 은 안, 14 는 밖), 밖으로 나가면 낙사, 블록이 필드 안에서만 생김', () => {
+  const { g, ps } = setupN(4);
+  assert.ok(g.inXY(13, 13) && !g.inXY(14, 0) && !g.inXY(0, 14) && !g.inXY(-1, 5));
+  assert.equal(g.columnTop(13, 13), 0);
+  const p = ps[0];
+  Object.assign(p, { x: 14.5, y: 7, z: 0, vz: 0, grounded: false });
+  run(g, 1500);
+  assert.equal(p.alive, false, '필드 밖 낙사');
+  g.nextSpawnAt = 0;
+  for (let k = 0; k < 30; k++) {
+    g.spawnPiece();
+    for (const pc of g.pieces) for (const [x, y] of g.pieceWorldCells(pc)) assert.ok(g.inXY(x, y), `블록 (${x},${y})`);
+  }
+});
+
+test('필드 크기: 블록 마스터는 마스터를 뺀 필드 인원으로, 떨어지는 블록 동시 개수·필드 아이템 수는 넓이 배율 (2인은 그대로)', () => {
+  const g = new Game();
+  g.rng = () => 0.5;
+  for (let i = 1; i <= 4; i++) g.addPlayer(i);
+  g.setMode('master');
+  g.startRound();
+  assert.equal(g.W, C.FIELD_SIZES[3], '마스터 빼고 3명');
+  const two = setupN(2).g;
+  const four = setupN(4).g;
+  assert.equal(two.itemMax(), C.ITEM_MAX_ON_FIELD);
+  assert.equal(four.itemMax(), Math.round(C.ITEM_MAX_ON_FIELD * 1.96));
+  for (const t of [0, C.CONCURRENT_RAMP_MS * 3, 1e9]) {
+    two.roundStartTime = four.roundStartTime = two.time - t;
+    four.time = two.time;
+    const base = Math.min(C.CONCURRENT_MAX, 1 + Math.floor(t / C.CONCURRENT_RAMP_MS));
+    assert.equal(two.targetConcurrent(), base, '2인 그대로');
+    assert.equal(four.targetConcurrent(), Math.round(base * 1.96));
+  }
 });

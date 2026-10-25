@@ -7,9 +7,6 @@ import { MAPS, MAP_IDS, mapColumns } from './maps.js';
 
 const EPS = 1e-6;
 
-function inXY(cx, cy) {
-  return cx >= 0 && cx < C.GRID_W && cy >= 0 && cy < C.GRID_D;
-}
 
 function cellKey(cx, cy, cz) {
   return `${cx},${cy},${cz}`;
@@ -52,7 +49,10 @@ export class Game {
     this.phase = 'lobby'; // 'lobby' | 'countdown' | 'playing' | 'over'
     this.players = new Map(); // id -> player
     this.hostId = null;
-    this.grid = new Uint8Array(C.GRID_W * C.GRID_D * C.GRID_H);
+    this.W = C.GRID_W; // 판 크기 (판 시작 때 인원으로 정함, FIELD_SIZES)
+    this.D = C.GRID_D;
+    this.spawnPoints = C.SPAWN_POINTS;
+    this.grid = new Uint8Array(this.W * this.D * C.GRID_H);
     this.gridVersion = 0;
     this.pieces = []; // 떨어지는·조종 중인 블록들
     this.pieceCounter = 0;
@@ -109,19 +109,46 @@ export class Game {
   }
 
   // ---------- 격자 ----------
+  inXY(cx, cy) {
+    return cx >= 0 && cx < this.W && cy >= 0 && cy < this.D;
+  }
+
+  // 판 크기: 필드에 나가는 사람·봇 수 → FIELD_SIZES (블록 마스터는 마스터 빼고)
+  fieldSizeFor(n) {
+    const keys = Object.keys(C.FIELD_SIZES).map(Number).sort((a, b) => a - b);
+    const k = keys.filter((x) => x <= n).pop() ?? keys[0];
+    return C.FIELD_SIZES[k];
+  }
+
+  setFieldSize(size) {
+    this.W = size;
+    this.D = size;
+    this.spawnPoints = C.spawnPointsFor(size, size);
+    this.grid = new Uint8Array(this.W * this.D * C.GRID_H);
+  }
+
+  // 넓이 배율 (10×10 = 1): 떨어지는 블록 동시 개수·필드 아이템 수에 곱함
+  areaScale() {
+    return (this.W * this.D) / (C.GRID_W * C.GRID_D);
+  }
+
+  itemMax() {
+    return Math.round(C.ITEM_MAX_ON_FIELD * this.areaScale());
+  }
+
   idx(cx, cy, cz) {
-    return (cz * C.GRID_D + cy) * C.GRID_W + cx;
+    return (cz * this.D + cy) * this.W + cx;
   }
 
   gridAt(cx, cy, cz) {
-    if (!inXY(cx, cy) || cz < 0 || cz >= C.GRID_H) return 0;
+    if (!this.inXY(cx, cy) || cz < 0 || cz >= C.GRID_H) return 0;
     return this.grid[this.idx(cx, cy, cz)];
   }
 
   // 플레이어 충돌용: 바닥, 쌓인 블록, 떨어지는 블록
   solidAt(cx, cy, cz) {
-    if (cz < 0) return inXY(cx, cy); // 필드 안은 바닥, 밖은 허공
-    if (inXY(cx, cy) && cz < C.GRID_H && this.grid[this.idx(cx, cy, cz)]) return true;
+    if (cz < 0) return this.inXY(cx, cy); // 필드 안은 바닥, 밖은 허공
+    if (this.inXY(cx, cy) && cz < C.GRID_H && this.grid[this.idx(cx, cy, cz)]) return true;
     return this.pieceCells.has(cellKey(cx, cy, cz));
   }
 
@@ -144,7 +171,7 @@ export class Game {
       }
     }
     if (slot < 0) return null;
-    const sp = C.SPAWN_POINTS[slot % C.SPAWN_POINTS.length];
+    const sp = this.spawnPoints[slot % this.spawnPoints.length];
     const p = {
       id,
       slot,
@@ -327,8 +354,8 @@ export class Game {
       alive: true,
       master: true,
       zombie: true,
-      x: C.GRID_W / 2,
-      y: C.GRID_D / 2,
+      x: this.W / 2,
+      y: this.D / 2,
       z: C.GRID_H + 4,
       vz: 0,
       kbx: 0,
@@ -351,7 +378,7 @@ export class Game {
         for (let dy = -1; dy <= 1; dy++) {
           const nx = x + dx;
           const ny = y + dy;
-          if (own.has(nx * 100 + ny) || !inXY(nx, ny)) continue;
+          if (own.has(nx * 100 + ny) || !this.inXY(nx, ny)) continue;
           ring = Math.max(ring, this.columnTop(nx, ny));
         }
       }
@@ -366,7 +393,7 @@ export class Game {
       for (const oy of [-C.PLAYER_HALF, C.PLAYER_HALF]) {
         const cx = Math.floor(x + ox);
         const cy = Math.floor(y + oy);
-        if (inXY(cx, cy)) top = Math.max(top, this.columnTop(cx, cy));
+        if (this.inXY(cx, cy)) top = Math.max(top, this.columnTop(cx, cy));
       }
     }
     return top;
@@ -465,9 +492,10 @@ export class Game {
   // ---------- 판 흐름 ----------
   startRound() {
     if (!this.canStart()) return false;
-    this.grid.fill(0);
+    const fielded = this.participants().length - (this.mode === 'master' ? 1 : 0);
+    this.setFieldSize(this.fieldSizeFor(fielded));
     this.mapId = this.mapChoice === 'random' ? MAP_IDS[Math.floor(this.rng() * MAP_IDS.length)] : this.mapChoice;
-    for (const [x, y, h] of mapColumns(this.mapId, C.GRID_W, C.GRID_D)) {
+    for (const [x, y, h] of mapColumns(this.mapId, this.W, this.D)) {
       for (let z = 0; z < h && z < C.GRID_H; z++) this.grid[this.idx(x, y, z)] = CELL.TERRAIN;
     }
     this.baseAvgHeight = this.avgHeight();
@@ -494,7 +522,7 @@ export class Game {
     this.teamScores = { red: 0, blue: 0 };
     this.roundNumber++;
     for (const p of this.players.values()) {
-      const sp = C.SPAWN_POINTS[p.slot % C.SPAWN_POINTS.length];
+      const sp = this.spawnPoints[p.slot % this.spawnPoints.length];
       Object.assign(p, {
         x: sp.x,
         y: sp.y,
@@ -563,7 +591,7 @@ export class Game {
       const ps = this.participants().sort((a, b) => a.slot - b.slot);
       const m = ps[this.masterTurn % ps.length];
       this.masterTurn++;
-      Object.assign(m, { master: true, x: C.GRID_W / 2, y: C.GRID_D / 2, z: C.GRID_H + 4 });
+      Object.assign(m, { master: true, x: this.W / 2, y: this.D / 2, z: C.GRID_H + 4 });
     }
     if (this.countdownMs > 0) {
       this.phase = 'countdown';
@@ -640,8 +668,8 @@ export class Game {
       this.refreshPieceCells();
       if (m) {
         // 판이 끝나면 마스터도 필드 가운데 꼭대기로 내려와 보통 사람처럼 (승리 연출·이모트)
-        const cx = Math.floor(C.GRID_W / 2);
-        const cy = Math.floor(C.GRID_D / 2);
+        const cx = Math.floor(this.W / 2);
+        const cy = Math.floor(this.D / 2);
         Object.assign(m, { master: false, x: cx + 0.5, y: cy + 0.5, z: this.columnTop(cx, cy), vz: 0 });
       }
     } else if (this.mode === 'kills') {
@@ -738,13 +766,13 @@ export class Game {
     for (const pc of this.pieces) for (const [dx, dy] of pc.cells) busy.add((pc.px + dx) * 100 + (pc.py + dy));
     const others = [...this.players.values()].filter((o) => o !== p && this.onField(o));
     const cols = [];
-    for (let x = 0; x < C.GRID_W; x++) {
-      for (let y = 0; y < C.GRID_D; y++) {
+    for (let x = 0; x < this.W; x++) {
+      for (let y = 0; y < this.D; y++) {
         const top = this.columnTop(x, y);
         if (top <= C.GRID_H - 3 && !busy.has(x * 100 + y)) cols.push({ x, y, top });
       }
     }
-    if (!cols.length) return { x: C.GRID_W / 2, y: C.GRID_D / 2, z: this.columnTop(Math.floor(C.GRID_W / 2), Math.floor(C.GRID_D / 2)) };
+    if (!cols.length) return { x: this.W / 2, y: this.D / 2, z: this.columnTop(Math.floor(this.W / 2), Math.floor(this.D / 2)) };
     const maxTop = Math.max(...cols.map((c) => c.top));
     let best = null;
     let bestD = -1;
@@ -1145,13 +1173,13 @@ export class Game {
     let bx = t ? t.x : p.x + fx * 1.5;
     let by = t ? t.y : p.y + fy * 1.5;
     const mine = (x, y) => overlapsCell(p, Math.floor(x), Math.floor(y), this.columnTop(Math.floor(x), Math.floor(y))) || (Math.floor(x) === Math.floor(p.x) && Math.floor(y) === Math.floor(p.y));
-    for (let i = 0; i < 3 && inXY(Math.floor(bx), Math.floor(by)) && mine(bx, by); i++) {
+    for (let i = 0; i < 3 && this.inXY(Math.floor(bx), Math.floor(by)) && mine(bx, by); i++) {
       bx += fx * 0.5;
       by += fy * 0.5;
     }
     const cx = Math.floor(bx);
     const cy = Math.floor(by);
-    if (!inXY(cx, cy) || mine(bx, by)) return;
+    if (!this.inXY(cx, cy) || mine(bx, by)) return;
     const z = this.columnTop(cx, cy);
     const g = ++this.bgroup;
     if (!this.placeBBlock(p, cx, cy, z, 'third', g)) return;
@@ -1258,7 +1286,7 @@ export class Game {
     for (let x = Math.floor(p.x - r1); x <= Math.floor(p.x + r1); x++) {
       for (let y = Math.floor(p.y - r1); y <= Math.floor(p.y + r1); y++) {
         const d = Math.hypot(x + 0.5 - p.x, y + 0.5 - p.y);
-        if (d <= r0 || d > r1 || !inXY(x, y)) continue;
+        if (d <= r0 || d > r1 || !this.inXY(x, y)) continue;
         const z = this.columnTop(x, y);
         if (z >= C.GRID_H || Math.abs(z - p.z) > 2.5 || this.pieceCells.has(cellKey(x, y, z))) continue;
         this.grid[this.idx(x, y, z)] = CELL.BUILD;
@@ -1412,7 +1440,7 @@ export class Game {
     for (let i = -half; i <= half; i++) {
       const x = cx + side[0] * i;
       const y = cy + side[1] * i;
-      if (!inXY(x, y) || this.grid[this.idx(x, y, z0)]) continue;
+      if (!this.inXY(x, y) || this.grid[this.idx(x, y, z0)]) continue;
       for (let h = 0; h < C.BUILDER_WALL_HEIGHT; h++) if (z0 + h < C.GRID_H) cells.push([x, y, z0 + h]);
     }
     if (!cells.length) return false;
@@ -1453,7 +1481,7 @@ export class Game {
     const y = Math.floor(p.y);
     const z = Math.floor(p.z) - 1;
     const g = ++this.bgroup;
-    const ok = inXY(x, y) && z >= 0 && ![...this.players.values()].some((o) => this.onField(o) && overlapsCell(o, x, y, z)) && this.placeBBlock(p, x, y, z, 'pad', g);
+    const ok = this.inXY(x, y) && z >= 0 && ![...this.players.values()].some((o) => this.onField(o) && overlapsCell(o, x, y, z)) && this.placeBBlock(p, x, y, z, 'pad', g);
     if (ok) {
       this.gridChanged();
       this.emit({ type: 'bblock', who: p.id, kind: 'pad', group: g, cells: [[x, y, z]], ms: C.BUILDER_BLOCK_MS });
@@ -1467,7 +1495,7 @@ export class Game {
 
   // 건축가 블록 놓기 (빈 칸일 때만). 놓았으면 true
   placeBBlock(p, x, y, z, kind, group) {
-    if (!inXY(x, y) || z < 0 || z >= C.GRID_H || this.grid[this.idx(x, y, z)] || this.pieceCells.has(cellKey(x, y, z))) return false;
+    if (!this.inXY(x, y) || z < 0 || z >= C.GRID_H || this.grid[this.idx(x, y, z)] || this.pieceCells.has(cellKey(x, y, z))) return false;
     this.grid[this.idx(x, y, z)] = CELL.BUILD;
     this.bblocks.set(cellKey(x, y, z), { x, y, z, owner: p.id, kind, group, expiresAt: this.time + C.BUILDER_BLOCK_MS, born: this.time });
     return true;
@@ -1494,7 +1522,7 @@ export class Game {
       for (let i = -half; i <= half; i++) {
         const x = Math.floor(p.x) + along[0] * (C.BUILDER_BIG_GAP + 1 + a) + side[0] * i;
         const y = Math.floor(p.y) + along[1] * (C.BUILDER_BIG_GAP + 1 + a) + side[1] * i;
-        if (!inXY(x, y)) continue;
+        if (!this.inXY(x, y)) continue;
         const z = this.columnTop(x, y);
         if (this.placeBBlock(p, x, y, z, 'big', g)) placed.push([x, y, z]);
       }
@@ -1669,7 +1697,7 @@ export class Game {
   // 조준 방향(yaw + pitch) 3D 직선을 눈 높이에서 HOOK_RANGE 만큼. 놓치면 보조로 발 층·한 칸 위 층을 수평으로
   // (2026-10-25 버그: 수평 한 층만 봐서 땅 위 1칸 높이 블록이 안 잡혀 R 이 거의 안 써졌음)
   hookRayBlock(p, yaw = p.yaw, pitch = p.pitch || 0) {
-    const solid = (x, y, z) => z >= 0 && z < C.GRID_H && ((inXY(x, y) && this.grid[this.idx(x, y, z)]) || this.pieceCells.has(cellKey(x, y, z)));
+    const solid = (x, y, z) => z >= 0 && z < C.GRID_H && ((this.inXY(x, y) && this.grid[this.idx(x, y, z)]) || this.pieceCells.has(cellKey(x, y, z)));
     const cp = Math.cos(pitch);
     const dir = { x: Math.cos(yaw) * cp, y: Math.sin(yaw) * cp, z: Math.sin(pitch) };
     const eye = { x: p.x, y: p.y, z: p.z + C.EYE_HEIGHT };
@@ -1677,7 +1705,7 @@ export class Game {
       const px = eye.x + dir.x * d;
       const py = eye.y + dir.y * d;
       const pz = eye.z + dir.z * d;
-      if (pz < 0 && inXY(Math.floor(px), Math.floor(py))) break; // 필드 바닥에 닿음
+      if (pz < 0 && this.inXY(Math.floor(px), Math.floor(py))) break; // 필드 바닥에 닿음
       const x = Math.floor(px);
       const y = Math.floor(py);
       const z = Math.floor(pz);
@@ -1785,7 +1813,7 @@ export class Game {
     const x = Math.floor(p.x + dir.x * C.HOOK_SLAM_LEN);
     const y = Math.floor(p.y + dir.y * C.HOOK_SLAM_LEN);
     let cell = null;
-    if (inXY(x, y)) {
+    if (this.inXY(x, y)) {
       const z = this.columnTop(x, y);
       if (z < C.GRID_H && !this.pieceCells.has(cellKey(x, y, z))) {
         this.grid[this.idx(x, y, z)] = g.v;
@@ -1895,7 +1923,7 @@ export class Game {
       const t = h / hlen;
       const cx = Math.floor(p.x + dx * t);
       const cy = Math.floor(p.y + dy * t);
-      if (!inXY(cx, cy)) break;
+      if (!this.inXY(cx, cy)) break;
       anchor = [cx, cy];
       if (ez + dz * t <= this.columnTop(cx, cy)) break; // 시선이 지형에 닿음
     }
@@ -1912,7 +1940,7 @@ export class Game {
     const [ax, ay] = anchor;
     const offs = [[0, 0], p.brickSide ? left : along];
     const cells = offs.map(([ox, oy]) => [ax + ox, ay + oy]);
-    if (!cells.every(([x, y]) => inXY(x, y))) return { cells: cells.map(([x, y]) => [x, y, 0]), z: 0, ok: false };
+    if (!cells.every(([x, y]) => this.inXY(x, y))) return { cells: cells.map(([x, y]) => [x, y, 0]), z: 0, ok: false };
     const z = Math.max(...cells.map(([x, y]) => this.columnTop(x, y)));
     const spawnZ = Math.min(z + C.BRICK_DROP_HEIGHT, C.GRID_H - 1);
     const ok =
@@ -1965,7 +1993,7 @@ export class Game {
     const z = this.columnTop(ax, ay);
     const cells = [[ax, ay, z]];
     const R = C.BOMB_RADIUS;
-    for (let dx = -R; dx <= R; dx++) for (let dy = -R; dy <= R; dy++) if ((dx || dy) && inXY(ax + dx, ay + dy)) cells.push([ax + dx, ay + dy, z]);
+    for (let dx = -R; dx <= R; dx++) for (let dy = -R; dy <= R; dy++) if ((dx || dy) && this.inXY(ax + dx, ay + dy)) cells.push([ax + dx, ay + dy, z]);
     return { cells, ok: z < C.GRID_H };
   }
 
@@ -1997,7 +2025,7 @@ export class Game {
     for (let x = b.x - R; x <= b.x + R; x++) {
       for (let y = b.y - R; y <= b.y + R; y++) {
         for (let z = b.z - R; z <= b.z + R; z++) {
-          if (!inXY(x, y) || z < 0 || z >= C.GRID_H || !this.grid[this.idx(x, y, z)]) continue;
+          if (!this.inXY(x, y) || z < 0 || z >= C.GRID_H || !this.grid[this.idx(x, y, z)]) continue;
           this.grid[this.idx(x, y, z)] = 0;
           removed++;
         }
@@ -2303,7 +2331,7 @@ export class Game {
   }
 
   targetConcurrent() {
-    return Math.min(C.CONCURRENT_MAX, 1 + Math.floor(this.elapsed() / C.CONCURRENT_RAMP_MS));
+    return Math.max(1, Math.round(Math.min(C.CONCURRENT_MAX, 1 + Math.floor(this.elapsed() / C.CONCURRENT_RAMP_MS)) * this.areaScale())); // 넓은 판은 넓이만큼 더
   }
 
   addPiece(piece, fields) {
@@ -2319,8 +2347,8 @@ export class Game {
     const shape = SHAPE_NAMES[Math.floor(this.rng() * SHAPE_NAMES.length)];
     const rot = Math.floor(this.rng() * 4);
     const { w, d } = footprint(rotatedCells(shape, rot));
-    const px = randomSpot ? Math.floor(this.rng() * (C.GRID_W - w + 1)) : Math.floor((C.GRID_W - w) / 2);
-    const py = randomSpot ? Math.floor(this.rng() * (C.GRID_D - d + 1)) : Math.floor((C.GRID_D - d) / 2);
+    const px = randomSpot ? Math.floor(this.rng() * (this.W - w + 1)) : Math.floor((this.W - w) / 2);
+    const py = randomSpot ? Math.floor(this.rng() * (this.D - d + 1)) : Math.floor((this.D - d) / 2);
     const piece = this.makePiece(shape, rot, px, py, C.CONTROL_HOVER_Z);
     this.addPiece(piece, {
       phase: 'control',
@@ -2386,8 +2414,8 @@ export class Game {
     for (const shape of shapes) {
       for (let r = 0; r < 4; r++) {
         const { w, d } = footprint(rotatedCells(shape, r));
-        for (let px = 0; px <= C.GRID_W - w; px++) {
-          for (let py = 0; py <= C.GRID_D - d; py++) {
+        for (let px = 0; px <= this.W - w; px++) {
+          for (let py = 0; py <= this.D - d; py++) {
             const piece = this.makePiece(shape, r, px, py, C.PIECE_SPAWN_Z);
             if (!piece.fits) continue;
             if (busy.size && piece.cells.some(([dx, dy]) => busy.has((px + dx) * 100 + (py + dy)))) continue;
@@ -2415,7 +2443,7 @@ export class Game {
   // 가장 낮은 기둥 높이 = 아직 안 찬 가장 낮은 층
   lowestLayer() {
     let L = Infinity;
-    for (let x = 0; x < C.GRID_W; x++) for (let y = 0; y < C.GRID_D; y++) L = Math.min(L, this.columnTop(x, y));
+    for (let x = 0; x < this.W; x++) for (let y = 0; y < this.D; y++) L = Math.min(L, this.columnTop(x, y));
     return L;
   }
 
@@ -2436,8 +2464,8 @@ export class Game {
     let remaining = 0;
     let bad = 0;
     const seen = new Set();
-    for (let x = 0; x < C.GRID_W; x++) {
-      for (let y = 0; y < C.GRID_D; y++) {
+    for (let x = 0; x < this.W; x++) {
+      for (let y = 0; y < this.D; y++) {
         if (!open(x, y) || seen.has(x * 100 + y)) continue;
         let size = 0;
         const stack = [[x, y]];
@@ -2446,7 +2474,7 @@ export class Game {
           const [cx, cy] = stack.pop();
           size++;
           for (const [nx, ny] of [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]]) {
-            if (nx < 0 || ny < 0 || nx >= C.GRID_W || ny >= C.GRID_D) continue;
+            if (nx < 0 || ny < 0 || nx >= this.W || ny >= this.D) continue;
             if (!open(nx, ny) || seen.has(nx * 100 + ny)) continue;
             seen.add(nx * 100 + ny);
             stack.push([nx, ny]);
@@ -2461,8 +2489,8 @@ export class Game {
 
   movePiece(piece, dx, dy) {
     const { w, d } = footprint(piece.cells);
-    const nx = Math.max(0, Math.min(C.GRID_W - w, piece.px + dx));
-    const ny = Math.max(0, Math.min(C.GRID_D - d, piece.py + dy));
+    const nx = Math.max(0, Math.min(this.W - w, piece.px + dx));
+    const ny = Math.max(0, Math.min(this.D - d, piece.py + dy));
     if (nx === piece.px && ny === piece.py) return;
     piece.px = nx;
     piece.py = ny;
@@ -2476,8 +2504,8 @@ export class Game {
     const { w, d } = footprint(cells);
     piece.rot = rot;
     piece.cells = cells;
-    piece.px = Math.max(0, Math.min(C.GRID_W - w, piece.px));
-    piece.py = Math.max(0, Math.min(C.GRID_D - d, piece.py));
+    piece.px = Math.max(0, Math.min(this.W - w, piece.px));
+    piece.py = Math.max(0, Math.min(this.D - d, piece.py));
     this.updateLanding(piece);
     this.refreshPieceCells();
   }
@@ -2632,7 +2660,7 @@ export class Game {
 
   // 한 층이 꽉 차면 제거하고 위의 블록·플레이어·아이템을 내린다 (용암도 같이 내려간다)
   clearLayers() {
-    const layerSize = C.GRID_W * C.GRID_D;
+    const layerSize = this.W * this.D;
     const full = [];
     for (let z = 0; z < C.GRID_H; z++) {
       let ok = true;
@@ -2657,13 +2685,13 @@ export class Game {
 
   maxColumnTop() {
     let top = 0;
-    for (let x = 0; x < C.GRID_W; x++) for (let y = 0; y < C.GRID_D; y++) top = Math.max(top, this.columnTop(x, y));
+    for (let x = 0; x < this.W; x++) for (let y = 0; y < this.D; y++) top = Math.max(top, this.columnTop(x, y));
     return top;
   }
 
   // 층들을 지우고 위의 블록·플레이어·용암을 그만큼 내린다
   dropLayers(full) {
-    const layerSize = C.GRID_W * C.GRID_D;
+    const layerSize = this.W * this.D;
     const next = new Uint8Array(this.grid.length);
     let dst = 0;
     for (let z = 0; z < C.GRID_H; z++) {
@@ -2697,8 +2725,8 @@ export class Game {
   // ---------- 용암 ----------
   avgHeight() {
     let sum = 0;
-    for (let x = 0; x < C.GRID_W; x++) for (let y = 0; y < C.GRID_D; y++) sum += this.columnTop(x, y);
-    return sum / (C.GRID_W * C.GRID_D);
+    for (let x = 0; x < this.W; x++) for (let y = 0; y < this.D; y++) sum += this.columnTop(x, y);
+    return sum / (this.W * this.D);
   }
 
   updateLava(dtMs) {
@@ -2717,7 +2745,7 @@ export class Game {
     // 필드 밖에서 용암 높이 아래로 가면 밀려 떨어진 것이라 낙사로 센다 (용암판은 필드보다 넓게 그려짐)
     for (const p of this.players.values()) {
       if (!this.onField(p) || p.z >= lava.z - 0.05) continue;
-      const inField = p.x >= 0 && p.x < C.GRID_W && p.y >= 0 && p.y < C.GRID_D;
+      const inField = p.x >= 0 && p.x < this.W && p.y >= 0 && p.y < this.D;
       this.kill(p, inField ? 'lava' : 'fall');
     }
     this.items = this.items.filter((it) => it.z >= lava.z);
@@ -2726,8 +2754,8 @@ export class Game {
   // ---------- 아이템 ----------
   spawnItem(type) {
     for (let i = 0; i < C.SPAWN_TRIES; i++) {
-      const x = Math.floor(this.rng() * C.GRID_W);
-      const y = Math.floor(this.rng() * C.GRID_D);
+      const x = Math.floor(this.rng() * this.W);
+      const y = Math.floor(this.rng() * this.D);
       const z = this.columnTop(x, y);
       if (z >= C.GRID_H) continue;
       if (this.lava.active && z < this.lava.z + 1) continue; // 용암에 잠길 자리는 피함
@@ -2753,7 +2781,7 @@ export class Game {
     const powerCount = this.items.filter((it) => it.type !== 'control').length;
     return {
       control: !C.CONTROL_ITEM || this.mode === 'master' || this.controlInPlay() ? null : Math.max(0, this.controlItemNextAt - this.time),
-      power: powerCount >= C.ITEM_MAX_ON_FIELD ? null : Math.max(0, this.powerItemNextAt - this.time),
+      power: powerCount >= this.itemMax() ? null : Math.max(0, this.powerItemNextAt - this.time),
     };
   }
 
@@ -2762,7 +2790,7 @@ export class Game {
       if (!this.spawnItem('control')) this.controlItemNextAt = this.time + 1000;
     }
     const powerCount = this.items.filter((it) => it.type !== 'control').length;
-    if (powerCount < C.ITEM_MAX_ON_FIELD && this.time >= this.powerItemNextAt) {
+    if (powerCount < this.itemMax() && this.time >= this.powerItemNextAt) {
       const type = C.ITEM_POOL[Math.floor(this.rng() * C.ITEM_POOL.length)];
       this.powerItemNextAt = this.time + (this.spawnItem(type) ? C.ITEM_RESPAWN_MS : 1000);
     }
@@ -3157,6 +3185,7 @@ export class Game {
       bombs: this.bombs.map((b) => ({ id: b.id, x: b.x, y: b.y, z: b.z, left: Math.max(0, b.explodeAt - this.time) })),
       bblocks: [...this.bblocks.values()].map((b) => ({ x: b.x, y: b.y, z: b.z, owner: b.owner, kind: b.kind, group: b.group, left: b.kind === 'big' ? Math.max(0, (this.bigBombs.find((x) => x.group === b.group)?.at ?? this.time) - this.time) : Math.max(0, b.expiresAt - this.time) })), // 건축가 블록 (B: 색·깜빡임·묶음)
       gridVersion: this.gridVersion,
+      field: { w: this.W, d: this.D, h: C.GRID_H }, // 판 크기 (인원별, FIELD_SIZES). grid 배열은 (z * d + y) * w + x
     };
     if (includeGrid || this.gridDirty) {
       out.grid = Array.from(this.grid);

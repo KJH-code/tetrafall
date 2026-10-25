@@ -13,7 +13,7 @@ export const MAPS = {
 
 export const MAP_IDS = Object.keys(MAPS);
 
-// 기둥 높이 목록 [x, y, h] 를 돌려준다 (h 칸만큼 z=0 부터 쌓음)
+// 기둥 높이 목록 [x, y, h] 를 돌려준다 (h 칸만큼 z=0 부터 쌓음). W·D 는 판 크기 (인원별 10·12·14, 가운데 기준으로 늘어남)
 export function mapColumns(id, W, D) {
   const out = [];
   if (id === 'pyramid') {
@@ -43,15 +43,16 @@ export function mapColumns(id, W, D) {
     const cy = D / 2;
     for (let x = 0; x < W; x++) {
       for (let y = 0; y < D; y++) {
-        if (Math.max(Math.abs(x + 0.5 - cx), Math.abs(y + 0.5 - cy)) < 3.5) continue;
+        if (Math.max(Math.abs(x + 0.5 - cx), Math.abs(y + 0.5 - cy)) < W / 2 - 1.5) continue; // 바깥 두 줄 (10×10 이면 3.5)
         const a = (Math.atan2(y + 0.5 - cy, x + 0.5 - cx) + 2 * Math.PI) % (2 * Math.PI);
         const h = Math.floor((a / (2 * Math.PI)) * 6);
         if (h > 0) out.push([x, y, h]);
       }
     }
   } else if (id === 'pillars') {
-    // x, y 가 3 으로 나눠 1 남는 칸에 2층 기둥 (가운데 (4,4) 는 3층), 오른쪽 옆에 한 칸 낮은 발판
-    const mid = [Math.floor(W / 2) - 1, Math.floor(D / 2) - 1];
+    // x, y 가 3 으로 나눠 1 남는 칸에 2층 기둥 (가운데에 가장 가까운 기둥은 3층), 오른쪽 옆에 한 칸 낮은 발판
+    const near = (n) => 1 + 3 * Math.round((n / 2 - 1 - 1) / 3); // 10 이면 4
+    const mid = [near(W), near(D)];
     for (let x = 1; x < W; x += 3) {
       for (let y = 1; y < D; y += 3) {
         const top = x === mid[0] && y === mid[1] ? 3 : 2;
