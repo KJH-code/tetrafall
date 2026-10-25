@@ -147,7 +147,8 @@ export function playerColor(p, state) {
 }
 const _q = new THREE.Quaternion();
 const HEAVY_HITS = new Set(['bomb', 'shock', 'projectile', 'slam', 'wall', 'blast', 'bigbomb', 'quake', 'blockslam']); // 몸이 크게 휘청하는 공격
-const MAX_CELLS = C.GRID_W * C.GRID_D * C.GRID_H;
+const MAX_SIDE = Math.max(C.GRID_W, C.GRID_D, ...Object.values(C.FIELD_SIZES));
+const MAX_CELLS = MAX_SIDE * MAX_SIDE * C.GRID_H; // 가장 큰 판 (인원별 필드 크기)
 
 export class Renderer {
   // models: loadModels() 결과 (없으면 예전 도형으로 그림)
@@ -166,7 +167,8 @@ export class Renderer {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(C.SKY_HORIZON);
     this.scene.fog = new THREE.Fog(C.SKY_HORIZON, C.FOG_NEAR, C.FOG_FAR);
-    this.scene.add(skyDome());
+    this.dome = skyDome();
+    this.scene.add(this.dome);
 
     this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 200);
     this.camera.up.set(0, 0, 1);
@@ -196,22 +198,24 @@ export class Renderer {
       this.viewArm.add(o);
       this.viewHeld[kind] = o;
     }
+    this.W = C.GRID_W; // 지금 판 크기 (snapshot field, 대기실은 기본)
+    this.D = C.GRID_D;
     // 하늘 시점: 필드가 화면에 꽉 차는 직교 카메라 (블록과 그림자가 같은 크기로 보인다)
     this.skyCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
     this.skyCamera.up.set(0, 1, 0);
-    this.skyCamera.position.set(C.GRID_W / 2, C.GRID_D / 2, C.SKY_CAMERA_HEIGHT);
-    this.skyCamera.lookAt(C.GRID_W / 2, C.GRID_D / 2, 0);
+    this.skyCamera.position.set(this.W / 2, this.D / 2, C.SKY_CAMERA_HEIGHT);
+    this.skyCamera.lookAt(this.W / 2, this.D / 2, 0);
     this.fitSkyCamera();
 
     // 노을: 하늘은 따뜻하게, 땅 반사는 푸르스름하게. 해는 낮게 떠서 그림자가 길다
     const hemi = new THREE.HemisphereLight(0xffe2d2, 0x8a90b8, 1.15);
     this.scene.add(hemi);
     const sun = new THREE.DirectionalLight(C.SUN_COLOR, 1.25);
-    const center = new THREE.Vector3(C.GRID_W / 2, C.GRID_D / 2, 0);
+    const center = new THREE.Vector3(this.W / 2, this.D / 2, 0);
     sun.position.copy(center).addScaledVector(new THREE.Vector3(...C.SUN_DIR).normalize(), 30);
     sun.target.position.copy(center);
     this.scene.add(sun, sun.target);
-    const reach = Math.hypot(C.GRID_W, C.GRID_D) / 2 + 4; // 필드 + 여백을 덮는 그림자 상자
+    const reach = Math.hypot(this.W, this.D) / 2 + 4; // 필드 + 여백을 덮는 그림자 상자
     Object.assign(sun.shadow.camera, { left: -reach, right: reach, top: reach + 4, bottom: -reach, near: 5, far: 60 });
     sun.shadow.mapSize.set(C.SHADOW_MAP_SIZE, C.SHADOW_MAP_SIZE);
     sun.shadow.bias = -0.0008;
@@ -219,25 +223,16 @@ export class Renderer {
     this.sun = sun;
 
     this.tex = makeTextures([C.GRID_W, C.GRID_D]);
-    // 바닥: 칸마다 타일 한 장
-    const floor = new THREE.Mesh(
-      new THREE.BoxGeometry(C.GRID_W, C.GRID_D, 0.3),
-      toon({ color: 0xa49aa0, map: this.tex.floor }),
-    );
-    floor.position.set(C.GRID_W / 2, C.GRID_D / 2, -0.15);
-    floor.receiveShadow = true;
-    this.scene.add(floor);
-    const gridHelper = new THREE.GridHelper(C.GRID_W, C.GRID_W, 0x222222, 0x444444);
-    gridHelper.rotation.x = Math.PI / 2;
-    gridHelper.position.set(C.GRID_W / 2, C.GRID_D / 2, 0.002);
-    this.scene.add(gridHelper);
+    // 바닥: 칸마다 타일 한 장. 판 크기(인원별)가 바뀌면 setField 가 늘이고 격자선을 다시 만든다
+    this.floor = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 0.3), toon({ color: 0xa49aa0, map: this.tex.floor }));
+    this.floor.receiveShadow = true;
+    this.scene.add(this.floor);
     // 필드 경계 (높이 표시용 세로선)
-    const edges = new THREE.LineSegments(
-      new THREE.EdgesGeometry(new THREE.BoxGeometry(C.GRID_W, C.GRID_D, C.GRID_H)),
+    this.edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, C.GRID_H)),
       new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 }),
     );
-    edges.position.set(C.GRID_W / 2, C.GRID_D / 2, C.GRID_H / 2);
-    this.scene.add(edges);
+    this.scene.add(this.edges);
 
     // 쌓인 블록 (인스턴스). 텍스처가 종류마다 달라 종류별로 하나씩: 지형 돌 · 쌓기 나무 · 설치 블록 모래 · 테트리미노
     const blockGeo = new THREE.BoxGeometry(1, 1, 1);
@@ -280,19 +275,20 @@ export class Renderer {
     // 용암: 필드보다 넓은 판. 표면 높이 = state.lava.z
     this.lavaBottom = -6;
     this.lava = new THREE.Mesh(
-      new THREE.BoxGeometry(C.GRID_W + 12, C.GRID_D + 12, 1),
+      new THREE.BoxGeometry(1, 1, 1), // 판 + 여백 6칸씩 (setField 가 늘임)
       noOutline(new THREE.MeshBasicMaterial({ color: 0x9a2408 })),
     );
     this.lava.visible = false;
     this.scene.add(this.lava);
     // 표면: 천천히 출렁이고 밝은 무늬가 흐르는 판 (몸통 위에 얹음)
-    this.lavaTop = new THREE.Mesh(new THREE.PlaneGeometry(C.GRID_W + 12, C.GRID_D + 12, 48, 48), lavaSurfaceMaterial());
+    this.lavaTop = new THREE.Mesh(new THREE.PlaneGeometry(1, 1, 48, 48), lavaSurfaceMaterial());
     this.lavaTop.visible = false;
     this.scene.add(this.lavaTop);
     // 용암 빛: 가까운 블록 옆면을 주황으로 비춤 (늘 씬에 두고 세기만 바꿈 — 빛 개수가 바뀌면 셰이더를 다시 만듦)
     this.lavaLight = new THREE.PointLight(0xff6a20, 0, C.LAVA_LIGHT_RANGE, 1.4);
     this.scene.add(this.lavaLight);
     this.emberAcc = 0;
+    this.setField(C.GRID_W, C.GRID_D, true);
 
     this.effects = new Effects(this.scene);
     // 조종 중 하늘에서 본 블록의 착지 미리보기 (조종자에게만)
@@ -344,9 +340,49 @@ export class Renderer {
     });
   }
 
+  // 판 크기 (snapshot field: 인원별 10·12·14, 대기실 10). 바뀔 때만 바닥·격자선·경계·용암·해 그림자·하늘 시점을 맞춘다
+  setField(w, d, force = false) {
+    if (!(w > 0 && d > 0) || (!force && w === this.W && d === this.D)) return;
+    this.W = w;
+    this.D = d;
+    const cx = w / 2;
+    const cy = d / 2;
+    this.floor.scale.set(w, d, 1);
+    this.floor.position.set(cx, cy, -0.15);
+    this.tex.floor.repeat.set(w, d);
+    if (this.gridLines) {
+      this.scene.remove(this.gridLines);
+      this.gridLines.geometry.dispose();
+      this.gridLines.material.dispose();
+    }
+    // GridHelper 는 정사각형만 → 긴 변으로 만들고 늘임 (판은 늘 정사각형이지만 혹시 몰라)
+    const n = Math.max(w, d);
+    this.gridLines = new THREE.GridHelper(n, n, 0x222222, 0x444444);
+    this.gridLines.rotation.x = Math.PI / 2;
+    this.gridLines.scale.set(w / n, 1, d / n);
+    this.gridLines.position.set(cx, cy, 0.002);
+    this.scene.add(this.gridLines);
+    this.edges.scale.set(w, d, 1);
+    this.edges.position.set(cx, cy, C.GRID_H / 2);
+    this.lava.scale.set(w + 12, d + 12, 1);
+    this.lavaTop.scale.set(w + 12, d + 12, 1);
+    this.dome.position.set(cx, cy, 0);
+    const center = new THREE.Vector3(cx, cy, 0);
+    this.sun.position.copy(center).addScaledVector(new THREE.Vector3(...C.SUN_DIR).normalize(), 30);
+    this.sun.target.position.copy(center);
+    const reach = Math.hypot(w, d) / 2 + 4; // 필드 + 여백을 덮는 그림자 상자
+    Object.assign(this.sun.shadow.camera, { left: -reach, right: reach, top: reach + 4, bottom: -reach });
+    this.sun.shadow.camera.updateProjectionMatrix();
+    this.skyCamera.position.set(cx, cy, C.SKY_CAMERA_HEIGHT);
+    this.skyCamera.lookAt(cx, cy, 0);
+    this.fitSkyCamera();
+    this.gridVersion = -1; // 격자 배열 길이가 바뀜 → 다시 그림
+    this.overviewZ = undefined;
+  }
+
   fitSkyCamera() {
     const aspect = window.innerWidth / window.innerHeight;
-    const half = Math.max(C.GRID_W, C.GRID_D) / 2 + 1; // 필드 + 여백 1칸
+    const half = Math.max(this.W, this.D) / 2 + 1; // 필드 + 여백 1칸
     const cam = this.skyCamera;
     if (aspect >= 1) {
       cam.left = -half * aspect;
@@ -368,10 +404,10 @@ export class Renderer {
     const color = new THREE.Color();
     const count = { terrain: 0, build: 0, thrown: 0, shape: 0 };
     for (let z = 0; z < C.GRID_H; z++) {
-      for (let y = 0; y < C.GRID_D; y++) {
-        for (let x = 0; x < C.GRID_W; x++) {
-          const v = grid[(z * C.GRID_D + y) * C.GRID_W + x];
-          if (!v || (skip && skip.has((z * C.GRID_D + y) * C.GRID_W + x))) continue;
+      for (let y = 0; y < this.D; y++) {
+        for (let x = 0; x < this.W; x++) {
+          const v = grid[(z * this.D + y) * this.W + x];
+          if (!v || (skip && skip.has((z * this.D + y) * this.W + x))) continue;
           const kind = v === CELL.TERRAIN ? 'terrain' : v === CELL.BUILD ? 'build' : v === CELL.THROWN ? 'thrown' : 'shape';
           const mesh = this.blockMeshes[kind];
           const n = count[kind]++;
@@ -1472,8 +1508,8 @@ export class Renderer {
     if (sig !== this.bbSig) {
       this.bbSig = sig;
       // 건축가 블록·탱크 솟는 땅은 격자에선 빼고 따로 그림
-      this.bbSkip = new Set([...list.map((b) => [b.x, b.y, b.z]), ...quakeCells].map(([x, y, z]) => (z * C.GRID_D + y) * C.GRID_W + x));
-      if (state.grid) this.updateGrid(state.grid);
+      this.bbSkip = new Set([...list.map((b) => [b.x, b.y, b.z]), ...quakeCells].map(([x, y, z]) => (z * this.D + y) * this.W + x));
+      if (state.grid && state.grid.length === this.W * this.D * C.GRID_H) this.updateGrid(state.grid);
     }
     const now = performance.now();
     const owners = new Map(state.players.map((p) => [p.id, p]));
@@ -1612,10 +1648,10 @@ export class Renderer {
     const gx = Math.floor(x);
     const gy = Math.floor(y);
     const gz = Math.floor(z);
-    if (gx < 0 || gy < 0 || gx >= C.GRID_W || gy >= C.GRID_D) return false;
+    if (gx < 0 || gy < 0 || gx >= this.W || gy >= this.D) return false;
     if (gz < 0) return true;
     if (gz >= C.GRID_H || !state.grid) return false;
-    return state.grid[(gz * C.GRID_D + gy) * C.GRID_W + gx] !== 0;
+    return !!state.grid[(gz * this.D + gy) * this.W + gx]; // 판 크기가 막 바뀌어 배열이 짧아도 빈칸
   }
 
   // 발이 땅에 닿았나: 바닥(z 0) 또는 발 네 모서리 바로 아래 칸이 단단함
@@ -1629,8 +1665,9 @@ export class Renderer {
   render(state, myId, dt, view, cam) {
     if (!state) return;
     this.curState = state;
+    if (state.field) this.setField(state.field.w, state.field.d);
     this.stepView(view, dt);
-    if (state.grid && state.gridVersion !== this.gridVersion) {
+    if (state.grid && state.grid.length === this.W * this.D * C.GRID_H && state.gridVersion !== this.gridVersion) {
       this.updateGrid(state.grid);
       this.gridVersion = state.gridVersion;
     }
@@ -1825,17 +1862,17 @@ export class Renderer {
     if (this.lava.visible) {
       const h = Math.max(0.01, lava.z - this.lavaBottom - 0.02);
       this.lava.scale.z = h;
-      this.lava.position.set(C.GRID_W / 2, C.GRID_D / 2, this.lavaBottom + h / 2);
-      this.lavaTop.position.set(C.GRID_W / 2, C.GRID_D / 2, lava.z);
+      this.lava.position.set(this.W / 2, this.D / 2, this.lavaBottom + h / 2);
+      this.lavaTop.position.set(this.W / 2, this.D / 2, lava.z);
       const now = performance.now() / 1000;
       this.lavaTop.material.uniforms.time.value = now;
       // 빛은 살짝 일렁임
       this.lavaLight.intensity = C.LAVA_LIGHT_INTENSITY * (0.85 + 0.15 * Math.sin(now * 7) * Math.sin(now * 2.3));
-      this.lavaLight.position.set(C.GRID_W / 2, C.GRID_D / 2, lava.z + 1.2);
+      this.lavaLight.position.set(this.W / 2, this.D / 2, lava.z + 1.2);
       // 불똥: 표면 아무 데서나 튀어 오름
       this.emberAcc += dt * C.LAVA_EMBER_RATE;
       for (; this.emberAcc >= 1; this.emberAcc--) {
-        const pos = { x: -1 + Math.random() * (C.GRID_W + 2), y: -1 + Math.random() * (C.GRID_D + 2), z: lava.z + 0.05 };
+        const pos = { x: -1 + Math.random() * (this.W + 2), y: -1 + Math.random() * (this.D + 2), z: lava.z + 0.05 };
         this.effects.burst(pos, null, Math.random() < 0.5 ? 0xffb030 : 0xff5010, 1, 4, 0.06, 0.8);
       }
     } else {
@@ -1940,7 +1977,7 @@ export class Renderer {
       const want = alive.length ? alive.reduce((a, p) => a + this.smooth.get(p.id).z, 0) / alive.length + C.SPECTATE_LOOK_UP : 2;
       if (this.overviewZ === undefined) this.overviewZ = want;
       this.overviewZ += (want - this.overviewZ) * (1 - Math.exp(-C.SPECTATE_OVERVIEW_FOLLOW * dt));
-      look.set(C.GRID_W / 2, C.GRID_D / 2, this.overviewZ);
+      look.set(this.W / 2, this.D / 2, this.overviewZ);
       const e = orbitEye(look, cam.yaw, cam.pitch, cam.overviewDist ?? C.SPECTATE_OVERVIEW_DIST);
       eye.set(e.x, e.y, Math.max(0.5, e.z));
     }
@@ -1951,7 +1988,7 @@ export class Renderer {
     const skyUp = new THREE.Vector3(Math.cos(this.skyYaw), Math.sin(this.skyYaw), 0);
     if (b >= 1) {
       this.skyCamera.up.copy(skyUp);
-      this.skyCamera.lookAt(C.GRID_W / 2, C.GRID_D / 2, 0);
+      this.skyCamera.lookAt(this.W / 2, this.D / 2, 0);
       this.draw(this.skyCamera);
       return;
     }
@@ -1968,9 +2005,9 @@ export class Renderer {
     }
     // 전환 중: 1인칭 자세 → 필드 위 높은 곳에서 내려다보는 자세로 날아오르며 줌인 (끝에서 직교 카메라로 교체)
     const t = b * b * (3 - 2 * b); // smoothstep
-    const top = new THREE.Vector3(C.GRID_W / 2, C.GRID_D / 2, C.SKY_CAMERA_HEIGHT);
-    const center = new THREE.Vector3(C.GRID_W / 2, C.GRID_D / 2, 0);
-    const half = Math.max(C.GRID_W, C.GRID_D) / 2 + 1;
+    const top = new THREE.Vector3(this.W / 2, this.D / 2, C.SKY_CAMERA_HEIGHT);
+    const center = new THREE.Vector3(this.W / 2, this.D / 2, 0);
+    const half = Math.max(this.W, this.D) / 2 + 1;
     const skyFov = (2 * Math.atan(half / C.SKY_CAMERA_HEIGHT) * 180) / Math.PI;
     this.camera.fov = this.fov + (skyFov - this.fov) * t;
     this.camera.updateProjectionMatrix();

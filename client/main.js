@@ -1132,7 +1132,8 @@ function onState() {
   wasAlive = p.alive;
   // 판이 새로 시작되면 시점을 스폰 방향으로
   if (lastState && lastState.round.n !== state.round.n) {
-    const sp = C.SPAWN_POINTS[p.slot % C.SPAWN_POINTS.length];
+    const pts = state.field ? C.spawnPointsFor(state.field.w, state.field.d) : C.SPAWN_POINTS;
+    const sp = pts[p.slot % pts.length];
     input.setYawPitch(sp.yaw, 0);
   }
 }
