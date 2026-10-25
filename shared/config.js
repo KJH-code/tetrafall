@@ -534,6 +534,7 @@ export const CONFIG = {
   FIGURE_HIT_ARMOR_BREAK: 2.4, // 아머가 깨진 타: 휘청 세기 (크게)
   QUAKE_RISE_MS: 160, // 탱크 R 고리 땅이 솟는 시간 (넘쳤다 돌아옴)
   QUAKE_SINK_MS: 280, // 가라앉는 시간
+  QUAKE_SINK_SHAKE: 0.07, // 가라앉는 동안 떨림 (칸)
   QUAKE_COLOR: 0x9c8468, // 솟는 땅 색 (흙)
   // 갈고리 화면
   HOOK_FLY_MS: 110, // 갈고리 머리가 날아가 닿는 시간 (판정은 즉시, 애니만)
@@ -543,6 +544,8 @@ export const CONFIG = {
   HOOK_PULL_SLIDE_MS: 200, // 끌려오는 쪽: 갈고리가 닿을 때까지 제자리, 그 뒤 이 시간 동안 질질 끌려옴 (판정·위치는 서버가 즉시)
   BLOCK_PULSE_MS: 260, // 블록이 움직이거나 바뀌는 순간 그 칸이 번쩍 부풀었다 사라지는 시간 (render.js blockPulse)
   SPIN_ARC_MS: 380, // 갈고리 공중 스핀: 갈고리 끝이 그리는 원이 남는 시간
+  BLOCK_JOLT: 0.1, // 옆 블록이 터지거나 뽑히거나 박힐 때 들썩이는 높이 (칸)
+  LAND_JOLT: 0.06, // 테트리미노가 내려앉을 때 눌리는 깊이
   ROPE_RADIUS: 0.045, // 갈고리 밧줄 굵기 (칸)
   ROPE_COLOR: 0xc8a36a, // 밧줄 색 (삼베)
   ROPE_TWISTS: 6, // 1칸당 꼰 무늬 반복

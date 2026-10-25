@@ -775,6 +775,7 @@ export class Renderer {
       return m;
     });
     this.quakes.push({ cells, t0: performance.now(), sinkAt: 0, meshes });
+    this.blockPulse(cells, 0xffe8c0, { ms: C.QUAKE_RISE_MS + 120, opacity: 0.5 });
   }
 
   quakeFall(cells) {
@@ -799,7 +800,7 @@ export class Renderer {
         const u = Math.min(1, (now - q.t0) / C.QUAKE_RISE_MS);
         h = u < 1 ? 1 + 0.3 * Math.sin(Math.PI * u) - (1 - u) ** 2 : 1;
       }
-      const shake = q.sinkAt ? 0.03 : 0;
+      const shake = q.sinkAt ? C.QUAKE_SINK_SHAKE : 0;
       for (const m of q.meshes) {
         const [x, y, z] = m.userData.cell;
         m.position.set(x + 0.5 + (Math.random() - 0.5) * shake, y + 0.5 + (Math.random() - 0.5) * shake, z - 0.5 + h);
@@ -1067,7 +1068,6 @@ export class Renderer {
     }
   }
 
-  // 갈고리 줄: 던진 사람에서 끌려온 사람(빗나가면 보는 방향 끝)까지 잠깐
   // ---------- 블록이 주인공: 블록이 움직이거나 바뀌는 순간 ----------
   // 칸마다 살짝 큰 반투명 상자가 번쩍 → 부풀며 사라짐 (블록 위에 겹쳐서, 바닥 그림자는 안 가림). jolt 면 블록이 들썩하듯 위로 튐
   blockPulse(cells, color = 0xffffff, { ms = C.BLOCK_PULSE_MS, jolt = 0, opacity = 0.75 } = {}) {
@@ -1082,6 +1082,21 @@ export class Renderer {
       this.scene.add(m);
       (this.pulses ||= []).push({ m, mat, t0: performance.now(), ms, jolt, base: z + 0.5, opacity });
     }
+  }
+
+  // cells 바로 옆(6방향)에 붙은 격자 블록: 터지거나 뽑히거나 박힐 때 옆 블록도 들썩이게
+  blockNeighbors(cells) {
+    const st = this.curState;
+    if (!st?.grid) return [];
+    const own = new Set(cells.map((c) => c.join(',')));
+    const out = new Map();
+    for (const [x, y, z] of cells)
+      for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
+        const c = [x + dx, y + dy, z + dz];
+        const k = c.join(',');
+        if (c[2] >= 0 && !own.has(k) && this.solidAt(st, c[0] + 0.5, c[1] + 0.5, c[2] + 0.5)) out.set(k, c);
+      }
+    return [...out.values()];
   }
 
   updatePulses() {
@@ -1337,7 +1352,12 @@ export class Renderer {
     this.scene.add(mesh);
     (this.grabs ||= new Map()).get(e.who)?.mesh && this.endGrab(e.who);
     this.grabs.set(e.who, { mesh, from, t0: now, ms: e.ms || 300, slam: null, chain: this.makeChain() });
-    this.effects.burst(from, null, 0x8a7a68, 12, 3, 0.1, 0.5);
+    // 뽑히는 순간: 빈 자리가 번쩍 + 돌 조각 + 옆 블록 들썩
+    this.effects.burst(from, null, 0x8a7a68, 20, 4, 0.12, 0.55);
+    this.effects.burst(from, { x: 0, y: 0 }, 0x6a5e52, 8, 5, 0.18, 0.6);
+    const cell = e.from.map(Math.floor);
+    this.blockPulse([cell], 0xffffff, { opacity: 0.8 });
+    this.blockPulse(this.blockNeighbors([cell]), 0xffffff, { jolt: C.BLOCK_JOLT, opacity: 0.4 });
   }
 
   // R 2단계 (blockSlam): 머리 위에서 앞으로 크게 내려찍음 → 박힐 칸(없으면 필드 밖으로 떨어져 사라짐)
@@ -1390,6 +1410,9 @@ export class Renderer {
             this.effects.burst(g.slam.to, null, 0x8a7a68, 26, 6, 0.13, 0.7);
             this.effects.ring({ x: g.slam.to.x, y: g.slam.to.y, z: g.slam.to.z - 0.45 }, 0xc0a880, 3.5, 0.35, true);
             for (let k = 1; k <= C.HOOK_SLAM_LEN; k++) this.effects.burst({ x: g.slam.line.x + g.slam.dir.x * k, y: g.slam.line.y + g.slam.dir.y * k, z: g.slam.line.z + 0.1 }, null, 0x9a8a78, 4, 2.5, 0.1, 0.5);
+            const cell = [g.slam.to.x, g.slam.to.y, g.slam.to.z].map(Math.floor);
+            this.blockPulse([cell], 0xffffff, { jolt: -C.BLOCK_JOLT, opacity: 0.85 });
+            this.blockPulse(this.blockNeighbors([cell]), 0xffffff, { jolt: C.BLOCK_JOLT * 1.5, opacity: 0.4 });
             if (this.onBlast) this.onBlast(g.slam.to, true);
             this.endGrab(who); // 이제 격자에 박힌 블록이 그 자리
             continue;
@@ -1552,6 +1575,9 @@ export class Renderer {
     this.effects.burst(pos, null, 0x777777, big ? 18 : 8, 4, 0.12, 0.7);
     this.effects.burst(pos, dir, 0xffc040, 8, 8, 0.1, 0.3);
     this.effects.ring(pos, 0xffd080, big ? 5 : 2.6, 0.3);
+    // 터진 칸이 번쩍 + 붙어 있던 블록이 들썩
+    this.blockPulse([[gh.x, gh.y, gh.z]], 0xffe0a0, { ms: C.BLOCK_PULSE_MS * 0.8, opacity: 0.9 });
+    this.blockPulse(this.blockNeighbors([[gh.x, gh.y, gh.z]]), 0xffd080, { jolt: big ? C.BLOCK_JOLT * 1.5 : C.BLOCK_JOLT, opacity: 0.45 });
     if (this.onBlast) this.onBlast(pos, big);
   }
 

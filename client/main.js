@@ -287,16 +287,22 @@ function handleEvent(e) {
     case 'quakeRise': {
       // 탱크 R 바깥 고리: 땅이 솟음 (흙먼지, 가까우면 흔들림)
       renderer.quakeRise(e.cells);
-      for (const [x, y, z] of e.cells) fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.1 }, null, C.QUAKE_COLOR, 4, 3, 0.1, 0.45);
-      const [x, y, z] = e.cells[0];
+      for (const [x, y, z] of e.cells) {
+        fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.1 }, null, C.QUAKE_COLOR, 6, 4, 0.12, 0.5);
+        fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.6 }, { x: 0, y: 0 }, 0x6a5e52, 2, 5, 0.16, 0.5); // 튀는 흙덩이
+      }
+      const [x, y, z] = e.cells.reduce((a, c) => a.map((v, i) => v + c[i] / e.cells.length), [0, 0, 0]);
+      fx.ring({ x: x + 0.5, y: y + 0.5, z: z + 0.05 }, C.QUAKE_COLOR, 6, 0.35, true);
       const d = distToMe(x + 0.5, y + 0.5, z);
       sound.play('land', { dist: d });
-      if (d !== undefined && d < 6) fx.shake(0.2, 300);
+      sound.play('boom', { dist: (d ?? 0) + 3 });
+      if (d !== undefined && d < 8) fx.shake(0.28, 350);
       break;
     }
     case 'quakeFall': // 솟은 땅이 가라앉음
       renderer.quakeFall(e.cells);
-      for (const [x, y, z] of e.cells) fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.1 }, null, C.QUAKE_COLOR, 3, 1.5, 0.08, 0.4);
+      for (const [x, y, z] of e.cells) fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.1 }, null, C.QUAKE_COLOR, 4, 2, 0.1, 0.45);
+      if (e.cells.length) sound.play('land', { dist: distToMe(e.cells[0][0] + 0.5, e.cells[0][1] + 0.5, e.cells[0][2]) });
       break;
     case 'ninjaTouch': {
       // 닌자가 떨어지는 블록을 밟아 공중 점프 회복: 발밑에 흰 김 + 작은 고리
@@ -304,7 +310,11 @@ function handleEvent(e) {
       if (a) {
         fx.burst({ x: a.x, y: a.y, z: a.z }, null, 0xffffff, 8, 2.5, 0.08, 0.35);
         fx.ring({ x: a.x, y: a.y, z: a.z + 0.05 }, 0xffffff, 1.4, 0.25, true);
+        sound.play('land', { dist: e.who === myId ? 0 : distToMe(a.x, a.y, a.z) });
       }
+      // 밟힌 블록이 번쩍하며 꾹 눌림
+      const pc = state?.pieces?.find((q) => q.id === e.piece);
+      if (pc) renderer.blockPulse(pc.cells, 0xffffff, { ms: C.BLOCK_PULSE_MS * 0.8, jolt: -C.BLOCK_JOLT * 1.5, opacity: 0.6 });
       break;
     }
     case 'charge': // 탱크 방패 돌진: 가는 길에 흙먼지 줄 + 돌진 동안 아머 (몸이 금속처럼 번쩍)
@@ -543,13 +553,16 @@ function feelEvent(e) {
         cx += x + 0.5;
         cy += y + 0.5;
         cz = Math.min(cz, z);
-        fx.burst({ x: x + 0.5, y: y + 0.5, z }, null, 0x9a9a9a, 3, 2.2, 0.08, 0.35);
+        fx.burst({ x: x + 0.5, y: y + 0.5, z }, null, 0x9a9a9a, 5, 2.8, 0.09, 0.4);
       }
+      // 내려앉은 블록이 꾹 눌렸다 돌아옴 + 받친 블록도 살짝 (옅게: 그림자·시야 안 가림)
+      renderer.blockPulse(e.cells, 0xffffff, { jolt: -C.LAND_JOLT, opacity: 0.35 });
+      renderer.blockPulse(renderer.blockNeighbors(e.cells).filter((c) => c[2] < cz), 0xffffff, { jolt: -C.LAND_JOLT, opacity: 0.2 });
       cx /= e.cells.length;
       cy /= e.cells.length;
       const d = distToMe(cx, cy, cz);
       sound.play('land', { dist: d });
-      if (d !== undefined && d < 2.5) fx.shake(0.06, 160);
+      if (d !== undefined && d < 3.5) fx.shake(0.08, 180);
       return;
     }
     case 'death': {
