@@ -182,31 +182,31 @@ export const CONFIG = {
       ],
       air: { name: '방패 내려치기', windup: 150, rec: 400, stun: 500, dmg: 8, kb: 3, up: 2, step: 0 },
     },
-    // 닌자: 단검 짤딜 4타 + 마지막에 표창 (사거리 4칸, 좁은 각). 봇 판으로 초안에서 3·4·5타 딜 +1, 표창 넉백 3.6 → 5.6. 카운터히트 넣은 뒤 20% → 1·2타 딜 3 → 4
+    // 닌자: 단검 짤딜 4타 + 마지막에 표창 (사거리 4칸, 좁은 각). 봇 판으로 초안에서 3·4·5타 딜 +1, 표창 넉백 3.6 → 5.6. 카운터히트 넣은 뒤 20% → 1·2타 딜 3 → 4. 맵 섞은 판 → 회전 베기 딜 5 → 6
     ninja: {
       chain: [
         { name: '찌르기', windup: 60, rec: 180, stun: 350, dmg: 4, kb: 0.8, up: 1, step: 0.3 },
         { name: '반대 찌르기', windup: 60, rec: 180, stun: 350, dmg: 4, kb: 0.8, up: 1, step: 0.3 },
         { name: '베어 올리기', windup: 60, rec: 200, stun: 380, dmg: 4, kb: 0.8, up: 2, step: 0.3 },
-        { name: '회전 베기', windup: 80, rec: 220, stun: 520, dmg: 5, kb: 1, up: 1, step: 0.3 },
+        { name: '회전 베기', windup: 80, rec: 220, stun: 520, dmg: 6, kb: 1, up: 1, step: 0.3 },
         { name: '표창', windup: 200, rec: 400, stun: 500, dmg: 8, kb: 5.6, up: 3, step: 0, range: 4, angle: 20, finish: true },
       ],
       air: { name: '공중 베기', windup: 60, rec: 300, stun: 400, dmg: 5, kb: 2.5, up: 2, step: 0 },
     },
-    // 건축가: 옆치기 → 반대로 치기 → 내려찍기 + 바닥 블록 1칸 솟음 (맞으면 그 사람 발밑, 빗나가면 앞 칸). 카운터히트 뒤 28% → 내려찍기 딜 11 → 10
+    // 건축가: 옆치기 → 반대로 치기 → 내려찍기 + 바닥 블록 1칸 솟음 (맞으면 그 사람 발밑, 빗나가면 앞 칸). 카운터히트 뒤 28% → 내려찍기 딜 11 → 10. 맵 섞은 판 28% → 1·2타 딜 7 → 6
     builder: {
       chain: [
-        { name: '옆치기', windup: 120, rec: 300, stun: 550, dmg: 7, kb: 1.2, up: 2, step: 0.4 },
-        { name: '반대 치기', windup: 120, rec: 350, stun: 800, dmg: 7, kb: 1.2, up: 2, step: 0.4 },
+        { name: '옆치기', windup: 120, rec: 300, stun: 550, dmg: 6, kb: 1.2, up: 2, step: 0.4 },
+        { name: '반대 치기', windup: 120, rec: 350, stun: 800, dmg: 6, kb: 1.2, up: 2, step: 0.4 },
         { name: '내려찍기', windup: 350, rec: 450, stun: 700, dmg: 10, kb: 2.5, up: 8, step: 0.3, finish: true, raise: true },
       ],
       air: { name: '망치 내려찍기', windup: 200, rec: 450, stun: 500, dmg: 9, kb: 3, up: 2, step: 0 },
     },
-    // 갈고리: 평타에는 당김 없음. 주먹 넉백 초안 4.6 → 4.2 (봇 판). 휘두르기 → (F 갈고리 당김) → 주먹. 사거리는 패시브 HOOK_PUSH_RANGE_MULT
+    // 갈고리: 평타에는 당김 없음. 주먹 넉백 초안 4.6 → 4.2 (봇 판). 맵 섞은 판 19% (벽·높은 지형에서 약함) → 휘두르기 딜 8 → 9, 주먹 넉백 4.2 → 4.4 휘두르기 → (F 갈고리 당김) → 주먹. 사거리는 패시브 HOOK_PUSH_RANGE_MULT
     hook: {
       chain: [
-        { name: '갈고리 휘두르기', windup: 150, rec: 350, stun: 650, dmg: 8, kb: 2.5, up: 3, step: 0 },
-        { name: '주먹', windup: 200, rec: 400, stun: 600, dmg: 9, kb: 4.2, up: 3, step: 0.4, finish: true },
+        { name: '갈고리 휘두르기', windup: 150, rec: 350, stun: 650, dmg: 9, kb: 2.5, up: 3, step: 0 },
+        { name: '주먹', windup: 200, rec: 400, stun: 600, dmg: 9, kb: 4.4, up: 3, step: 0.4, finish: true },
       ],
       air: { name: '공중 휘두르기', windup: 150, rec: 400, stun: 500, dmg: 7, kb: 3, up: 2, step: 0 },
     },
@@ -304,10 +304,10 @@ export const CONFIG = {
   TANK_SLAM_WINDUP_MS: 500, // 필살 내려찍기: 떠올랐다가 이 뒤에 쾅 (바닥에 범위 예고)
   TANK_SLAM_JUMP: 6, // 떠오르는 속도
   TANK_SLAM_RANGE: 2.5, // 쾅 범위 (수평, 높이 차 2칸 안)
-  TANK_SLAM_KB_SPEED: 5, // 옆으로는 조금, 위로 크게 띄움 → 공중 치명타 연계
+  TANK_SLAM_KB_SPEED: 4.5, // 옆으로는 조금, 위로 크게 띄움 → 공중 치명타 연계
   TANK_SLAM_KB_UP: 9,
   TANK_SLAM_STUN_MS: 900,
-  TANK_SLAM_DAMAGE: 25,
+  TANK_SLAM_DAMAGE: 20, // 2026-10-25 맵 7개 섞은 봇 504판 탱크 29% (킬 대부분 내려찍기) → 25 → 20, 넉백 5 → 4.5
   // 닌자 (콤보: 평타 → F 순간 베기 → 평타 → R 일격 → F 초기화 → F → 평타)
   NINJA_SPEED_MULT: 1.2, // 패시브: 이동 속도. 2026-10-25 평타 개편 뒤 1.1 → 1.2 (봇 480판 닌자 82승 / 기대 120, 가장 많이 죽음 → 117승)
   NINJA_BLINK_DIST: 3, // 스킬 순간 베기: 보는 방향으로 (벽 앞까지) 이동하며 지나간 길의 상대를 벰 (한 번 쓸 때 한 사람 한 번). 상대를 만나면 그 바로 뒤(NINJA_STRIKE_BEHIND)에서 멈춤
