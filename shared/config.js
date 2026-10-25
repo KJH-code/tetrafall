@@ -539,7 +539,16 @@ export const CONFIG = {
   HOOK_FLY_MS: 110, // 갈고리 머리가 날아가 닿는 시간 (판정은 즉시, 애니만)
   HOOK_HOLD_MS: 380, // 닿은 뒤 사슬이 걸려 있는 시간 (끌려오는 동안)
   HOOK_GRAB_SWING_R: 0.9, // R: 뽑은 블록을 머리 위에서 돌리는 반지름 (칸)
-  HOOK_SLAM_FLY_MS: 150, // R: 머리 위에서 박힐 자리까지 내려찍는 시간
+  HOOK_SLAM_FLY_MS: 150,
+  HOOK_PULL_SLIDE_MS: 200, // 끌려오는 쪽: 갈고리가 닿을 때까지 제자리, 그 뒤 이 시간 동안 질질 끌려옴 (판정·위치는 서버가 즉시)
+  ROPE_RADIUS: 0.045, // 갈고리 밧줄 굵기 (칸)
+  ROPE_COLOR: 0xc8a36a, // 밧줄 색 (삼베)
+  ROPE_TWISTS: 6, // 1칸당 꼰 무늬 반복
+  ROPE_SAG: 0.18, // 날아가는 동안 늘어지는 정도 (길이 비율)
+  ROPE_WOBBLE: 0.16, // 감길 때 출렁이는 폭 (칸) // R: 머리 위에서 박힐 자리까지 내려찍는 시간
+  BLINK_SLIDE_MS: 120, // 닌자 순간 베기: 판정은 즉시지만 화면에선 몸이 from → to 로 이 시간 동안 미끄러져 감 (카메라도 따라감)
+  BLINK_GHOST_MS: 30, // 미끄러지는 동안 이 간격으로 잔상
+  BLINK_GHOST_FADE_MS: 240, // 잔상이 사라지는 시간
   FIGURE_ACT_MAX_S: 4, // 공격 동작이 이보다 오래 남으면 버림 (안전장치: 끝나지 않는 동작)
   FIGURE_STRIKE_S: 0.07, // 공격 타격 자세로 튀는 시간 (아주 짧게). 그 뒤 회복은 평타 표의 rec
   FIGURE_SWING_WAIT_S: 0.4, // 준비가 끝나고 이만큼 더 기다려도 판정(swing)이 안 오면 동작을 접음 (캔슬·끊김)

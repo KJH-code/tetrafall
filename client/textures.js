@@ -166,6 +166,28 @@ function cracked(ctx, n) {
   ctx.strokeRect(2, 2, n - 4, n - 4);
 }
 
+// 꼰 밧줄: 비스듬한 가닥 줄무늬 (밝은 삼베 + 어두운 홈). 길이 방향으로 반복해서 씀
+function rope(ctx, n) {
+  ctx.fillStyle = gray(225);
+  ctx.fillRect(0, 0, n, n);
+  ctx.strokeStyle = gray(120);
+  ctx.lineWidth = n / 9;
+  for (let i = -2; i < 6; i++) {
+    ctx.beginPath();
+    ctx.moveTo(i * (n / 3), n);
+    ctx.lineTo(i * (n / 3) + n, 0);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = gray(250);
+  ctx.lineWidth = n / 30;
+  for (let i = -2; i < 6; i++) {
+    ctx.beginPath();
+    ctx.moveTo(i * (n / 3) + n / 9, n);
+    ctx.lineTo(i * (n / 3) + n / 9 + n, 0);
+    ctx.stroke();
+  }
+}
+
 // 바닥 타일 한 칸 (필드 크기만큼 반복)
 function tile(ctx, n) {
   const r = rng(31);
@@ -188,6 +210,7 @@ export function makeTextures(floorRepeat) {
     wood: canvasTexture(wood),
     sand: canvasTexture(sand),
     cracked: canvasTexture(cracked),
+    rope: canvasTexture(rope, 32, [1, 1]),
     floor: canvasTexture(tile, SIZE, floorRepeat),
   };
 }

@@ -224,8 +224,9 @@ function handleEvent(e) {
     case 'interrupt': // 내 공격이 맞아서 끊김: 글자 없이 몸 동작만
       renderer.interrupt(e.who);
       break;
-    case 'blink': // 닌자 순간 베기: 손발 다 뻗고 돌진 + 지나간 길에 베기 잔상 (공중에서도)
+    case 'blink': // 닌자 순간 베기: 손발 다 뻗고 돌진 + 몸이 빠르게 미끄러져 감 (잔상·바람 줄) (공중에서도)
       renderer.skillMove(e.who, 'ninjaDash');
+      renderer.blinkSlide(e);
       fx.burst({ x: e.from.x, y: e.from.y, z: e.to.z + 0.8 }, null, 0x404060, 10, 2, 0.1, 0.4);
       fx.burst({ x: e.to.x, y: e.to.y, z: e.to.z + 0.8 }, null, 0x404060, 10, 2, 0.1, 0.4);
       renderer.trail({ x: e.from.x, y: e.from.y, z: e.to.z + 0.9 }, { x: e.to.x, y: e.to.y, z: e.to.z + 0.9 }, 0xffffff, 280);
@@ -385,11 +386,17 @@ function handleEvent(e) {
       sound.play('swing', { dist: e.who === myId ? 0 : a ? distToMe(a.x, a.y, a.z) : undefined });
       if (e.target !== null && e.target !== undefined) {
         const t = playerById(e.target);
-        if (a && t) {
-          const len = Math.hypot(a.x - t.x, a.y - t.y) || 1;
-          renderer.hitReact(e.target, { x: (a.x - t.x) / len, y: (a.y - t.y) / len }, {}); // 갈고리 쪽으로 휘청
+        const dir = a && t ? { x: a.x - t.x, y: a.y - t.y } : null;
+        if (dir) {
+          const len = Math.hypot(dir.x, dir.y) || 1;
+          dir.x /= len;
+          dir.y /= len;
         }
-        setTimeout(() => renderer.skillMove(e.target, 'hookDragged'), C.HOOK_FLY_MS); // 갈고리가 닿을 때부터 질질
+        // 갈고리가 날아가 닿을 때: 갈고리 쪽으로 휘청 + 질질 끌려오는 자세
+        setTimeout(() => {
+          if (dir) renderer.hitReact(e.target, dir, {});
+          renderer.skillMove(e.target, 'hookDragged');
+        }, C.HOOK_FLY_MS);
       } else if (e.block) setTimeout(() => renderer.skillMove(e.who, 'hookZip'), C.HOOK_FLY_MS);
       break;
     }

@@ -629,10 +629,20 @@ export const MOVES = {
   '표창': { W: { shFwd: R(2.6), shOut: R(0.4), elbow: R(1.7), waistRoll: -0.6, waistPitch: -0.25, thFwd: [-0.3, 0.4] }, S: { shFwd: R(1.2), shOut: R(0.1), elbow: R(0), waistRoll: 0.5, waistPitch: 0.35 } },
   // 표창 둘째 발: 왼손
   '표창2': { S: { shFwd: L(1.2), shOut: L(0.1), elbow: L(0), waistRoll: -0.5, waistPitch: 0.35 }, rec: 0.25 },
-  '공중 베기': { W: { shFwd: [2.7, 0.5], elbow: [0.4, 0.8] }, S: { shFwd: [0.4, 0.2], elbow: [0.1, 0.8], waistPitch: 0.6 } },
+  // 공중 베기: 웅크린 채 오른손 단검을 머리 위로 → 몸을 비틀며 앞아래로 사선 베기
+  '공중 베기': {
+    W: { shFwd: [2.8, 0.3], shOut: [0.5, 1.0], elbow: [0.6, 0.6], waistRoll: -0.45, waistPitch: -0.15, thFwd: [1.1, 0.6], knee: [1.7, 1.2] },
+    S: { shFwd: [0.5, 0.6], shOut: [0.7, 1.1], elbow: [0, 0.6], waistRoll: 0.55, waistPitch: 0.35, thFwd: [0.7, 1.1], knee: [1.3, 1.6] },
+  },
+  // 내려 차기 (마무리, 도끼 차기): 오른다리를 머리 위까지 번쩍 + 두 팔 위로 → 다리를 앞아래로 내리찍으며 몸을 접음, 왼무릎은 접은 채
   '내려 차기': {
-    W: { thFwd: [2.3, -0.2], knee: [0.3, 0.6], waistPitch: -0.45, shFwd: [2.2, 2.2], shOut: [0.6, 0.6], elbow: [0.3, 0.3] },
-    S: { thFwd: [0.2, -0.3], knee: [0, 0.6], waistPitch: 0.65, shFwd: [-0.4, -0.4], shOut: [0.9, 0.9], elbow: [0.2, 0.2] },
+    W: { thFwd: [2.7, 0.3], knee: [0, 1.4], waistPitch: -0.5, neckPitch: -0.2, shFwd: [2.4, 2.4], shOut: [0.8, 0.8], elbow: [0.3, 0.3] },
+    S: { thFwd: [0.5, 0.6], knee: [0, 1.5], waistPitch: 0.55, neckPitch: 0.25, shFwd: [-0.5, -0.5], shOut: [1.1, 1.1], elbow: [0.2, 0.2] },
+  },
+  // 공중 표창 (R 강화): 두 손을 반대 어깨로 모아 웅크렸다가 앞아래로 뿌림 (둘째 발은 표창2 왼손)
+  '공중 표창': {
+    W: { shFwd: [1.0, 1.0], shOut: [-0.25, -0.25], elbow: [2.2, 2.2], waistPitch: 0.2, thFwd: [1.2, 0.8], knee: [1.8, 1.4] },
+    S: { shFwd: R(1.0), shOut: R(0.5), elbow: R(0), waistRoll: 0.45, waistPitch: 0.35, thFwd: [0.8, 1.1], knee: [1.2, 1.6] },
   },
 
   // 건축가: 오른손 망치질. 옆치기 → 반대로 치기 → 두 팔 내려찍기
@@ -779,12 +789,14 @@ export function figureAnim(fig, st, dt, retry = false) {
     T.shOut = T.shOut.map((o, i) => o + Math.sin(t * 1.7 + i) * 0.03);
   }
   if (st.air) {
-    // 공중: 팔을 벌려 허우적, 한쪽 무릎을 올림
-    T.shOut = [1.1 + Math.sin(t * 14) * 0.25, 1.1 + Math.sin(t * 14 + 1) * 0.25];
+    // 공중: 두 무릎을 접고 (한쪽 더), 공격 중이 아니면 팔을 벌려 허우적. 공격 중엔 팔을 가만히 둬서 공격 자세만 읽히게
+    const attacking = !!st.act && st.act.phase !== 'broken';
+    T.shOut = attacking ? [0.5, 0.5] : [1.1 + Math.sin(t * 14) * 0.25, 1.1 + Math.sin(t * 14 + 1) * 0.25];
     T.shFwd = [0.2, 0.2];
     T.elbow = [0.4, 0.4];
-    T.thFwd = [0.7, -0.15];
-    T.knee = [1.0, 0.3];
+    T.thFwd = [0.9, 0.35];
+    T.knee = [1.3, 0.9];
+    T.waistPitch = d.hunch + 0.1;
     T.waistRoll = 0;
     T.waistSide = 0;
   }
@@ -901,7 +913,8 @@ export function figureAnim(fig, st, dt, retry = false) {
       overlay(P, T, m.W, 1 - act.u);
       overlay(P, T, m.S, ease(act.u * 2));
     } else if (act.phase === 'rec') {
-      overlay(P, T, m.S, 1 - ease(act.u));
+      // 공중 공격은 타격 자세를 빨리 풀어 떨어지는 동안 굳은 자세로 남지 않게 (지상은 느리게)
+      overlay(P, T, m.S, 1 - ease(act.air ? act.u * 2.2 : act.u));
       if (m.pull) overlay(P, T, { shFwd: L(0.4), elbow: L(2.0), waistPitch: -0.3 }, Math.sin(Math.PI * Math.min(1, act.u * 1.5))); // 갈고리 당김
     } else if (act.phase === 'broken') {
       if (sw.brokenId !== act.id) {
