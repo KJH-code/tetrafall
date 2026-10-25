@@ -70,6 +70,7 @@ export function parseLog(text) {
         use: new Map(), // P1 → 아이템 사용 횟수
         combos: [], // { by: [때린 이름…] (옛 로그는 null), target, n }
         basics: [], // 캐릭터 평타 명중 { by, n } (n 0 = 공중 평타), 2026-10-25~
+        counters: [], // 카운터히트를 넣은 이름 (2026-10-25~)
       };
     } else if ((m = line.match(/^ {2}사망: (.*)$/)) && last) {
       // 접속 끊김은 [사망] 줄 없이 여기에만 나옴
@@ -122,6 +123,8 @@ export function parseLog(text) {
       // "  [평타] P1 → P2 넉백 (P2 7%) 1타 옆치기" / "… 공중 망치 내려찍기" (무적이라 무시는 안 셈)
       cur.basics.push({ by: m[1], n: m[2] ? Number(m[2]) : 0 });
       countUse(cur, line);
+    } else if ((m = line.match(/^ {2}\[카운터\] (\S+) → \S+$/))) {
+      cur.counters.push(m[1]);
     } else if (/^ {2}\[용암\] .*용암 상승 시작/.test(line)) {
       cur.lava = true;
     } else {
@@ -286,6 +289,13 @@ export function summarize(rounds) {
           if (!t.has(k)) t.set(k, { key: k, byN: {} });
           t.get(k).byN[b.n] = (t.get(k).byN[b.n] || 0) + 1;
         }
+        for (const by of r.counters) {
+          const c = r.chars && r.chars.get(by);
+          if (!c) continue;
+          const k = `${c}${isBot(by) ? ' (봇)' : ''}`;
+          if (!t.has(k)) t.set(k, { key: k, byN: {} });
+          t.get(k).counters = (t.get(k).counters || 0) + 1;
+        }
       }
       return [...t.values()].sort((a, b) => a.key.localeCompare(b.key));
     })(),
@@ -374,7 +384,7 @@ export function formatReport(s) {
     out.push(
       '',
       '== 평타 명중 (타 번호별) ==',
-      table(['캐릭터', ...ns.map((n) => `${n}타`), '공중'], s.basics.map((x) => [x.key, ...ns.map((n) => x.byN[n] || '-'), x.byN[0] || 0])),
+      table(['캐릭터', ...ns.map((n) => `${n}타`), '공중', '카운터'], s.basics.map((x) => [x.key, ...ns.map((n) => x.byN[n] || '-'), x.byN[0] || 0, x.counters || 0])),
     );
   }
   out.push('', '== 모드별 ==', table(['모드', '판', '길이 중앙값', '압사 비율', ''], groupRows(s.byMode).map((row, i) => [...row, s.byMode[i].note])));

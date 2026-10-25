@@ -462,3 +462,126 @@ test('평타: 마무리 타 준비 중에는 이동 속도 × BASIC_FINISH_MOVE_
   assert.equal(p(2).damage, C.DAMAGE_GAIN.weapon, '망치는 바로');
   assert.equal(p(1).atk, null);
 });
+
+// ---------- F·R 캔슬, 카운터히트 (2026-10-25) ----------
+
+test('캔슬: 평타가 맞은 뒤 후딜에 F 를 누르면 후딜을 끊고 바로 스킬, 이어 치기 창은 다시 열림', () => {
+  const { g, p } = setupChars(['tank', 'ninja']);
+  place(p(1), 3, 4.5, 0);
+  place(p(2), 4.2, 4.5);
+  basic(g, 1);
+  assert.ok(p(1).atkLanded && g.time < p(1).pushReadyAt, '맞힌 뒤 후딜 중');
+  g.drainEvents();
+  g.handleAction(1, { name: 'skill' });
+  assert.ok(g.drainEvents().some((e) => e.type === 'charge'), '바로 돌진');
+  assert.ok(p(1).pushReadyAt <= g.time, '후딜 끊김');
+  assert.ok(p(1).chainUntil > g.time && p(1).chainN === 1, '이어 치기 창');
+});
+
+test('캔슬: 평타가 빗나간 뒤 후딜에 누른 F 는 기억했다가 후딜이 끝나면 나감', () => {
+  const { g, p } = setupChars(['tank', 'ninja']);
+  place(p(1), 3, 4.5, Math.PI);
+  place(p(2), 4.2, 4.5);
+  basic(g, 1);
+  assert.equal(p(1).atkLanded, false);
+  const ready = p(1).pushReadyAt;
+  g.drainEvents();
+  g.handleAction(1, { name: 'skill' });
+  assert.ok(!g.drainEvents().some((e) => e.type === 'charge'), '후딜 중엔 안 나감');
+  assert.equal(p(1).castQueued, 'skill');
+  run(g, ready - g.time - TICK);
+  assert.ok(!g.drainEvents().some((e) => e.type === 'charge'));
+  run(g, 2 * TICK);
+  assert.ok(g.drainEvents().some((e) => e.type === 'charge'), '후딜 끝나고 나감');
+});
+
+test('캔슬: 평타 준비 중에 누른 F 는 판정을 기다림 (평타는 그대로 나감) — 맞으면 판정 직후, 빗나가면 후딜 뒤. R 도 같음', () => {
+  for (const hit of [true, false]) {
+    const { g, p } = setupChars(['tank', 'ninja']);
+    place(p(1), 3, 4.5, hit ? 0 : Math.PI);
+    place(p(2), 4.2, 4.5);
+    g.handleAction(1, { name: 'push' });
+    const { at } = p(1).atk;
+    g.drainEvents();
+    g.handleAction(1, { name: 'skill' });
+    assert.ok(p(1).atk, '준비 중인 평타는 안 취소');
+    run(g, at - g.time + TICK / 2);
+    const ev = g.drainEvents();
+    assert.ok(ev.some((e) => e.type === 'swing'), '평타 나감');
+    assert.equal(ev.some((e) => e.type === 'charge'), hit, hit ? '맞았으면 바로 스킬' : '빗나가면 아직');
+    if (!hit) {
+      run(g, p(1).pushReadyAt - g.time + TICK);
+      assert.ok(g.drainEvents().some((e) => e.type === 'charge'), '후딜 뒤 스킬');
+    }
+  }
+  // R: 준비 중에 누르면 맞힌 직후 내려찍기
+  const { g, p } = setupChars(['tank', 'ninja']);
+  place(p(1), 3, 4.5, 0);
+  place(p(2), 4.2, 4.5);
+  p(1).ult = C.ULT_MAX;
+  g.handleAction(1, { name: 'push' });
+  g.handleAction(1, { name: 'ult' });
+  assert.equal(p(1).ult, C.ULT_MAX, '준비 중엔 안 씀');
+  run(g, p(1).atk.at - g.time + TICK / 2);
+  assert.equal(p(1).ult, 0, '맞힌 직후 필살기');
+  assert.ok(p(1).slamAt > 0);
+});
+
+test('카운터히트: 평타 준비·후딜이나 스킬 준비 중에 맞으면 경직 × COUNTER_STUN_MULT, 멈칫 × COUNTER_HITSTOP_MULT, 로그·이벤트. 걷기만은 아님, 콤보 중(경직 중)도 아님', () => {
+  const d = C.BASIC_ATTACKS.tank.chain[0];
+  const hitBy3 = (prep) => {
+    const { g, lines, p } = setupChars(['tank', 'ninja', 'hook']);
+    place(p(1), 3, 4.5, 0);
+    place(p(2), 8.5, 8.5);
+    place(p(3), 2, 4.5, 0); // p1 뒤
+    prep(g, p);
+    g.drainEvents();
+    const t0 = g.time;
+    basic(g, 3);
+    return { stun: p(1).stunUntil - g.time + (g.time - t0), lines, ev: g.drainEvents(), p, g };
+  };
+  const hookDef = C.BASIC_ATTACKS.hook.chain[0];
+  // 걷기만: 보통
+  const walk = hitBy3((g, p) => (p(1).input = { fwd: 1, strafe: 0, jump: false }));
+  assert.ok(!walk.ev.some((e) => e.type === 'counter'));
+  assert.ok(!walk.lines.some((l) => l.includes('[카운터]')));
+  // 평타 준비 중
+  const prep = hitBy3((g, p) => {
+    g.handleAction(1, { name: 'push' });
+    p(1).atk.at = g.time + 10000; // 준비가 길다고 침
+  });
+  assert.ok(prep.ev.some((e) => e.type === 'counter' && e.by === 3 && e.target === 1), '이벤트');
+  assert.ok(prep.lines.includes('  [카운터] P3 → P1'), prep.lines.join('\n'));
+  assert.ok(Math.abs(prep.p(1).stunUntil - walk.p(1).stunUntil - hookDef.stun * (C.COUNTER_STUN_MULT - 1)) < 1e-6, '경직 길게');
+  assert.equal(prep.p(1).atk, null, '맞아서 평타 끊김');
+  // 평타 후딜 중 (빗나감)
+  const rec = hitBy3((g, p) => {
+    p(1).yaw = Math.PI / 2;
+    basic(g, 1);
+  });
+  assert.ok(rec.ev.some((e) => e.type === 'counter'), '후딜');
+  // 스킬 준비 (내려찍기)
+  const slam = hitBy3((g, p) => {
+    p(1).ult = C.ULT_MAX;
+    g.handleAction(1, { name: 'ult' });
+    p(1).slamAt = g.time + 10000;
+  });
+  assert.ok(slam.ev.some((e) => e.type === 'counter'), '내려찍기 준비');
+  // 멈칫: 카운터면 더 길게 (평타 중간 타)
+  const { g, p } = setupChars(['tank', 'ninja']);
+  place(p(1), 3, 4.5, 0);
+  place(p(2), 4.2, 4.5);
+  g.handleAction(2, { name: 'push' });
+  p(2).atk.at = g.time + 10000;
+  basic(g, 1);
+  assert.equal(p(2).counterAt, p(1).freezeUntil - C.BASIC_HITSTOP_MS * C.COUNTER_HITSTOP_MULT, '멈칫 ×');
+  assert.ok(Math.abs(p(2).stunUntil - p(2).counterAt - d.stun * C.COUNTER_STUN_MULT) < 1e-6);
+  // 경직 중(콤보)에 또 맞으면 카운터 아님
+  run(g, C.BASIC_HITSTOP_MS * C.COUNTER_HITSTOP_MULT);
+  const before = p(2).counterAt;
+  p(2).pushReadyAt = g.time + 10000; // 후딜이 남아 있어도
+  p(1).pushReadyAt = 0;
+  basic(g, 1);
+  assert.equal(p(2).counterAt, before);
+  assert.equal(p(2).comboHits, 2);
+});

@@ -167,33 +167,38 @@ export const CONFIG = {
   BASIC_FINISH_HITSTOP_MS: 110, // 마무리 타 멈칫
   BASIC_STEP_GAP: 0.6, // step 으로 나갈 때 앞 상대와 이 거리 앞에서 멈춤 (지나쳐서 등 뒤로 가지 않게)
   BASIC_FINISH_MOVE_MULT: 0.5, // 마무리 타 준비 중 이동 속도 (예고 모션 동안 묶임)
+  // F·R 캔슬 (2026-10-25 재혁 승인): 평타가 맞은 뒤 후딜이면 후딜을 끊고 바로, 빗나간 뒤 후딜이면 후딜이 끝나고, 준비 중이면 판정을 기다림 (수치 없음, game.js cast)
+  // 카운터히트 (2026-10-25 재혁 승인): 맞는 쪽이 평타 준비·후딜, 스킬·필살기 준비(돌진 중 포함) 중이면 경직 ×, 멈칫 × (걷기·점프만은 아님, 이미 경직 중이면 아님).
+  // 봇 480판: 한 판에 약 10번 (넣음·당함 캐릭터별 고름)
+  COUNTER_STUN_MULT: 1.5,
+  COUNTER_HITSTOP_MULT: 1.5,
   BASIC_ATTACKS: {
-    // 탱크: 딜은 낮고 안정적. 2타는 띄우지 않고 경직을 길게 (3타 확정)
+    // 탱크: 딜은 낮고 안정적. 2타는 띄우지 않고 경직을 길게 (3타 확정). 카운터히트 넣은 뒤 봇 480판 28% → 1·2타 딜 6/7 → 5/6, 방패 밀기 넉백 4.2 → 3.8
     tank: {
       chain: [
-        { name: '주먹', windup: 120, rec: 300, stun: 550, dmg: 6, kb: 1.5, up: 2, step: 0.4 },
-        { name: '어깨 박치기', windup: 150, rec: 350, stun: 750, dmg: 7, kb: 2, up: 1, step: 0.8 },
-        { name: '방패 밀기', windup: 300, rec: 450, stun: 600, dmg: 10, kb: 4.2, up: 3, step: 0.3, finish: true },
+        { name: '주먹', windup: 120, rec: 300, stun: 550, dmg: 5, kb: 1.5, up: 2, step: 0.4 },
+        { name: '어깨 박치기', windup: 150, rec: 350, stun: 750, dmg: 6, kb: 2, up: 1, step: 0.8 },
+        { name: '방패 밀기', windup: 300, rec: 450, stun: 600, dmg: 10, kb: 3.8, up: 3, step: 0.3, finish: true },
       ],
       air: { name: '방패 내려치기', windup: 150, rec: 400, stun: 500, dmg: 8, kb: 3, up: 2, step: 0 },
     },
-    // 닌자: 단검 짤딜 4타 + 마지막에 표창 (사거리 4칸, 좁은 각). 봇 판으로 초안에서 3·4·5타 딜 +1, 표창 넉백 3.6 → 5.6
+    // 닌자: 단검 짤딜 4타 + 마지막에 표창 (사거리 4칸, 좁은 각). 봇 판으로 초안에서 3·4·5타 딜 +1, 표창 넉백 3.6 → 5.6. 카운터히트 넣은 뒤 20% → 1·2타 딜 3 → 4
     ninja: {
       chain: [
-        { name: '찌르기', windup: 60, rec: 180, stun: 350, dmg: 3, kb: 0.8, up: 1, step: 0.3 },
-        { name: '반대 찌르기', windup: 60, rec: 180, stun: 350, dmg: 3, kb: 0.8, up: 1, step: 0.3 },
+        { name: '찌르기', windup: 60, rec: 180, stun: 350, dmg: 4, kb: 0.8, up: 1, step: 0.3 },
+        { name: '반대 찌르기', windup: 60, rec: 180, stun: 350, dmg: 4, kb: 0.8, up: 1, step: 0.3 },
         { name: '베어 올리기', windup: 60, rec: 200, stun: 380, dmg: 4, kb: 0.8, up: 2, step: 0.3 },
         { name: '회전 베기', windup: 80, rec: 220, stun: 520, dmg: 5, kb: 1, up: 1, step: 0.3 },
         { name: '표창', windup: 200, rec: 400, stun: 500, dmg: 8, kb: 5.6, up: 3, step: 0, range: 4, angle: 20, finish: true },
       ],
       air: { name: '공중 베기', windup: 60, rec: 300, stun: 400, dmg: 5, kb: 2.5, up: 2, step: 0 },
     },
-    // 건축가: 옆치기 → 반대로 치기 → 내려찍기 + 바닥 블록 1칸 솟음 (맞으면 그 사람 발밑, 빗나가면 앞 칸)
+    // 건축가: 옆치기 → 반대로 치기 → 내려찍기 + 바닥 블록 1칸 솟음 (맞으면 그 사람 발밑, 빗나가면 앞 칸). 카운터히트 뒤 28% → 내려찍기 딜 11 → 10
     builder: {
       chain: [
         { name: '옆치기', windup: 120, rec: 300, stun: 550, dmg: 7, kb: 1.2, up: 2, step: 0.4 },
         { name: '반대 치기', windup: 120, rec: 350, stun: 800, dmg: 7, kb: 1.2, up: 2, step: 0.4 },
-        { name: '내려찍기', windup: 350, rec: 450, stun: 700, dmg: 11, kb: 2.5, up: 8, step: 0.3, finish: true, raise: true },
+        { name: '내려찍기', windup: 350, rec: 450, stun: 700, dmg: 10, kb: 2.5, up: 8, step: 0.3, finish: true, raise: true },
       ],
       air: { name: '망치 내려찍기', windup: 200, rec: 450, stun: 500, dmg: 9, kb: 3, up: 2, step: 0 },
     },

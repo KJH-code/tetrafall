@@ -193,6 +193,8 @@ export class Game {
       critNext: false, // 닌자 그림자: 다음 밀치기 치명타
       atk: null, // 캐릭터 평타 준비 중: { n(몇 번째 타, 공중 0), def, at(판정 시각) }
       atkQueued: false, // 후딜·준비 중에 누른 평타 (끝나면 나감)
+      atkLanded: false, // 마지막 평타가 상대를 맞혔나 (맞았으면 후딜을 스킬로 캔슬)
+      castQueued: null, // 평타 준비·빗나간 후딜 중에 누른 'skill' 또는 'ult' (판정·후딜이 끝나면 나감)
       chainN: 0, // 마지막으로 맞힌 평타 타 번호 (0 = 다음은 1타)
       chainUntil: 0, // 이 시각까지 누르면 다음 타
       input: { fwd: 0, strafe: 0, jump: false },
@@ -515,6 +517,8 @@ export class Game {
         critNext: false,
         atk: null,
         atkQueued: false,
+        atkLanded: false,
+        castQueued: null,
         chainN: 0,
         chainUntil: 0,
       });
@@ -752,6 +756,8 @@ export class Game {
       critNext: false,
       atk: null,
       atkQueued: false,
+      atkLanded: false,
+      castQueued: null,
       chainN: 0,
       chainUntil: 0,
       hasControl: false,
@@ -832,11 +838,11 @@ export class Game {
         return;
       case 'skill': // F: 캐릭터 스킬 (쿨타임)
         if (stunned || controlling || !p.char || this.time < p.skillReadyAt) return;
-        this.useSkill(p);
+        this.cast(p, 'skill');
         return;
       case 'ult': // R: 필살기 (게이지가 다 차면)
         if (stunned || controlling || !p.char || p.ult < C.ULT_MAX) return;
-        this.useUlt(p);
+        this.cast(p, 'ult');
         return;
       case 'pieceMove':
         if (!controlling) return;
@@ -873,6 +879,7 @@ export class Game {
 
   push(p) {
     p.pushReadyAt = this.time + C.PUSH_COOLDOWN_MS;
+    p.atkLanded = false;
     // 망치가 있으면 밀치기 대신 망치. 누군가를 실제로 날렸을 때만 1회 소모 (2026-10-20 재혁: 적중 시만)
     const weapon = p.weaponUses > 0;
     let landed = false;
@@ -902,6 +909,7 @@ export class Game {
         t.freezeUntil = this.time + stop;
         if (crit) p.critNext = false;
       }
+      if (hit && !this.sameTeam(p, t)) p.atkLanded = true; // 맞혔으면 F·R 로 쿨 캔슬 (그림자 일격 → 순간 베기)
       if (hit && weapon && !landed) {
         landed = true;
         p.weaponUses--; // 한 번 휘둘러 여럿 맞혀도 1회
@@ -909,6 +917,28 @@ export class Game {
       this.emit({ type: 'hit', kind, by: p.id, target: t.id, ok: hit, crit: hit && crit });
       this.log(`  [${weapon ? '망치' : '밀치기'}] ${p.name} → ${t.name} ${hit ? `넉백${crit ? ' 치명타' : ''} (${t.name} ${t.damage}%)` : '무적이라 무시'}${weapon ? ` (남은 ${p.weaponUses}회)` : ''}`);
     }
+  }
+
+  // F·R 캔슬 (2026-10-25 재혁 승인): 평타가 맞은 뒤 후딜이면 후딜을 끊고 바로. 빗나간 뒤 후딜이면 후딜이 끝나고.
+  // 평타 준비 중이면 기억했다가 판정 결과에 따라 (준비 중인 평타는 안 취소). 핑 때문에 미리 눌러 두는 것을 서버가 판정
+  cast(p, kind) {
+    if (p.atk || (this.time < p.pushReadyAt && !p.atkLanded)) {
+      p.castQueued = kind;
+      p.atkQueued = false; // 나중에 누른 스킬이 먼저 누른 평타 선입력보다 우선
+      return;
+    }
+    if (this.time < p.pushReadyAt) p.pushReadyAt = this.time; // 맞힌 평타의 후딜 캔슬
+    if (kind === 'skill') this.useSkill(p);
+    else this.useUlt(p);
+  }
+
+  // 기억한 F·R 을 지금 쓸 수 있으면 씀 (맞힌 평타 판정 직후 또는 후딜 끝)
+  castQueuedNow(p) {
+    const kind = p.castQueued;
+    p.castQueued = null;
+    if (this.time < p.stunUntil || this.isControlling(p)) return;
+    if (kind === 'skill' ? this.time < p.skillReadyAt : p.ult < C.ULT_MAX) return;
+    this.cast(p, kind);
   }
 
   // ---------- 캐릭터 평타 (BASIC_ATTACKS) ----------
@@ -928,6 +958,7 @@ export class Game {
     const n = air ? 0 : p.chainN > 0 && this.time < p.chainUntil && p.chainN < set.chain.length ? p.chainN + 1 : 1;
     const def = air ? set.air : set.chain[n - 1];
     p.atk = { n, def, at: this.time + def.windup };
+    p.atkLanded = false;
     p.pushReadyAt = this.time + def.windup + def.rec;
     this.emit({ type: 'attack', who: p.id, char: p.char, n, air, name: def.name, windup: def.windup, finish: !!def.finish });
     if (def.windup <= 0) this.basicHit(p);
@@ -971,7 +1002,10 @@ export class Game {
       const speed = crit ? def.kb * C.CRIT_KB_MULT : def.kb;
       const hit = this.applyKnockback(t, fx, fy, speed, def.up, def.stun, gain, { by: p.id, kind: 'push' }, finish, { fixed: n > 0 && !finish, finish });
       if (hit) {
-        const stop = (n === 0 ? C.HITSTOP_MS : finish ? C.BASIC_FINISH_HITSTOP_MS : C.BASIC_HITSTOP_MS) * (crit ? C.CRIT_HITSTOP_MULT : 1);
+        const stop =
+          (n === 0 ? C.HITSTOP_MS : finish ? C.BASIC_FINISH_HITSTOP_MS : C.BASIC_HITSTOP_MS) *
+          (crit ? C.CRIT_HITSTOP_MULT : 1) *
+          (t.counterAt === this.time ? C.COUNTER_HITSTOP_MULT : 1);
         p.freezeUntil = this.time + stop;
         t.freezeUntil = this.time + stop;
         if (!landed && !this.sameTeam(p, t)) landed = t;
@@ -986,6 +1020,7 @@ export class Game {
       p.chainN = n;
       p.chainUntil = this.time + C.BASIC_CHAIN_WINDOW_MS;
     } else p.chainN = 0;
+    p.atkLanded = !!landed;
     if (def.raise) this.basicRaise(p, landed);
   }
 
@@ -1332,9 +1367,11 @@ export class Game {
         p.chargeUntil = p.slamAt = p.wallAt = p.whirlAt = 0;
         p.atk = null;
         p.atkQueued = false;
+        p.castQueued = null;
         continue;
       }
       if (p.atk && this.time >= p.atk.at) this.basicHit(p);
+      if (p.castQueued && !p.atk && (p.atkLanded || this.time >= p.pushReadyAt)) this.castQueuedNow(p);
       else if (p.atkQueued && !p.atk && this.time >= p.pushReadyAt) {
         p.atkQueued = false;
         if (this.time >= p.stunUntil && !this.isControlling(p) && p.weaponUses <= 0) this.basicStart(p);
@@ -1575,6 +1612,14 @@ export class Game {
       const hitter = src && src.by !== t.id ? this.players.get(src.by) : null;
       if (hitter) t.comboBy.add(hitter.name);
     }
+    // 카운터히트: 맞는 쪽이 평타 준비·후딜, 스킬·필살기 준비(돌진 중 포함) 중이었음 → 경직·멈칫 길게
+    const counter = !teammate && !!src && !!t.char && this.time >= t.stunUntil && this.busy(t); // 이미 경직 중(콤보)이면 아님
+    if (counter) {
+      stunMs *= C.COUNTER_STUN_MULT;
+      t.counterAt = this.time;
+      this.emit({ type: 'counter', by: src.by, target: t.id });
+      this.log(`  [카운터] ${this.players.get(src.by)?.name} → ${t.name}`);
+    }
     const finisher = !teammate && t.comboHits >= 2 && (opts.finish || this.time - t.comboStartAt >= C.COMBO_MS);
     const fixed = opts.fixed && !finisher;
     if (!fixed) speed *= finisher ? C.COMBO_FINISH_KB : heavy ? 1 : C.COMBO_LIGHT_KB;
@@ -1584,6 +1629,7 @@ export class Game {
     t.slamAt = 0;
     t.atk = null; // 맞으면 평타 준비·이어 치기 끊김
     t.atkQueued = false;
+    t.castQueued = null;
     t.chainN = 0;
     if (teammate) gain = 0; // 팀전: 같은 팀은 밀리기만 (피해 % 없음, 킬로도 안 침)
     else if (src && src.by !== t.id) t.lastHit = { by: src.by, kind: src.kind, name: this.players.get(src.by)?.name };
@@ -1602,9 +1648,14 @@ export class Game {
     t.grounded = false;
     t.wallBounced = false; // 벽 튕김은 맞을 때마다 한 번
     t.stunUntil = this.time + stunMs;
-    t.freezeUntil = this.time + C.HITSTOP_MS; // 멈칫 뒤에 날아간다 (날아가는 거리는 그대로)
+    t.freezeUntil = this.time + C.HITSTOP_MS * (counter ? C.COUNTER_HITSTOP_MULT : 1); // 멈칫 뒤에 날아간다 (날아가는 거리는 그대로)
     if (finisher) this.endCombo(t, t.stunUntil, true);
     return true;
+  }
+
+  // 공격 동작 중 (카운터히트 대상): 평타 준비·후딜 (망치 쿨 포함), 돌진 중, 내려찍기·솟는 벽·회오리 준비. 걷기·점프만은 아님
+  busy(t) {
+    return !!(t.atk || this.time < t.pushReadyAt || this.time < t.chargeUntil || t.slamAt || t.wallAt || t.whirlAt);
   }
 
   // 공격이 안 들어가는 상태: 콤보 뒤 무적·부활 무적. 경직이 이미 풀린 콤보는 여기서 먼저 끝냄
