@@ -2171,10 +2171,10 @@ export class Game {
     return true;
   }
 
-  // 필살기 게이지: 피해 % 를 주거나 받은 만큼 (탱크 패시브: 받은 피해로는 × TANK_ULT_TAKEN_MULT)
+  // 필살기 게이지: 피해 % 를 주거나 받은 만큼
   gainUlt(t, src, gain) {
     if (gain <= 0) return;
-    t.ult = Math.min(C.ULT_MAX, t.ult + gain * C.ULT_PER_DAMAGE * (t.char === 'tank' ? C.TANK_ULT_TAKEN_MULT : 1));
+    t.ult = Math.min(C.ULT_MAX, t.ult + gain * C.ULT_PER_DAMAGE);
     const by = src && src.by !== t.id ? this.players.get(src.by) : null;
     if (by) by.ult = Math.min(C.ULT_MAX, by.ult + gain * C.ULT_PER_DAMAGE);
   }

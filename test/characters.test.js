@@ -1027,10 +1027,11 @@ test('탱크 R: 떠오르는 동안 아머 (필살기에는 깨짐). 쾅 → 가
   assert.ok(g.drainEvents().some((e) => e.type === 'quakeFall'));
 });
 
-test('탱크 패시브: 맞아서 받은 피해 % 로 얻는 게이지 × TANK_ULT_TAKEN_MULT (주는 쪽은 그대로), 덜 밀림 그대로', () => {
+test('탱크 패시브: 덜 밀림 ×0.92 하나 — 받은 피해 게이지는 다른 캐릭터와 같음 (2026-10-25 재혁: 배율 삭제)', () => {
   const { g, p } = setupChars(['tank', 'builder']);
   g.applyKnockback(p(1), 1, 0, 1, 0, 300, 10, { by: 2, kind: 'push' });
-  assert.equal(p(1).ult, 10 * C.ULT_PER_DAMAGE * C.TANK_ULT_TAKEN_MULT);
+  assert.equal(p(1).ult, 10 * C.ULT_PER_DAMAGE);
+  assert.equal(C.TANK_ULT_TAKEN_MULT, undefined);
   assert.equal(p(2).ult, 10 * C.ULT_PER_DAMAGE);
   assert.equal(C.TANK_KB_TAKEN, 0.92);
 });

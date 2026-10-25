@@ -215,7 +215,7 @@ export const CONFIG = {
         { name: '주먹', windup: 150, rec: 300, stun: 600, dmg: 6, kb: 1.5, up: 2, step: 0.4 },
         {
           name: '갈고리 내려치기', windup: 200, rec: 450, stun: 500, dmg: 6, kb: 3, up: 2, step: 0.3, finish: true,
-          loaded: { name: '탕', windup: 200, rec: 500, stun: 600, dmg: 12, kb: 6, up: 3, step: 0, range: 2, angle: 75, finish: true, shot: true }, // 장전돼 있으면
+          loaded: { name: '탕', windup: 200, rec: 500, stun: 600, dmg: 12, kb: 7, up: 3, step: 0, range: 2, angle: 75, finish: true, shot: true }, // 장전돼 있으면. kb 6 → 7 (2026-10-25 재혁, 봇 504판 갈고리 12% → 18%)
         },
       ],
       air: [{ name: '갈고리 스핀', windup: 150, rec: 400, stun: 500, dmg: 6, kb: 3, up: 2, step: 0, angle: 180 }],
@@ -304,7 +304,7 @@ export const CONFIG = {
   // 2026-10-25 재혁 승인: '피해 % ×0.85' 대신 (딜이 낮은 대신 안정성). 0.85~0.92 사이에서 봇 판으로 맞춤.
   // (2026-10-24 예전 '넉백 ×0.85' 는 탱크 딜이 평타급일 때 봇 120판 51승 / 기대 30)
   TANK_KB_TAKEN: 0.92, // 0.88 → 0.92 (봇 320판 탱크 91승 / 기대 80)
-  TANK_ULT_TAKEN_MULT: 1.5, // 패시브 (2026-10-25): 맞아서 받은 피해 % 로 얻는 필살기 게이지 × 이 값 → 실컷 맞고 역관광. 2 → 1.5 (재혁 결정, 봇 504판 탱크 44%)
+  // (받은 피해 게이지 배율 TANK_ULT_TAKEN_MULT 는 없앰: ×2 → ×1.5 → 삭제. 2026-10-25 재혁 "R 이 5초마다 참". 탱크 패시브는 덜 밀림 하나)
   // 아머 (2026-10-25): F 돌진 중·R 떠오르는 동안. 넉백·경직만 막고 피해 % 는 받음. 마무리 타·필살기에 맞으면 깨지고 보통처럼 맞음.
   // 아머 중엔 카운터 안 당함 (카운터 규칙 예외). 경직 중엔 F·R 못 씀 (그대로) → 상대 공격 전에 켜야 함
   TANK_CHARGE_SPEED: 12, // F 방패 돌진: 이 속도(칸/초)로 TANK_CHARGE_MS 동안 앞으로 (약 3칸). 아머라 맞아도 안 멈춤, 처음 부딪힌 상대를 치고 멈춤
