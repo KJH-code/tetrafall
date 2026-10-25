@@ -535,6 +535,11 @@ export const CONFIG = {
   QUAKE_RISE_MS: 160, // 탱크 R 고리 땅이 솟는 시간 (넘쳤다 돌아옴)
   QUAKE_SINK_MS: 280, // 가라앉는 시간
   QUAKE_COLOR: 0x9c8468, // 솟는 땅 색 (흙)
+  // 갈고리 화면
+  HOOK_FLY_MS: 110, // 갈고리 머리가 날아가 닿는 시간 (판정은 즉시, 애니만)
+  HOOK_HOLD_MS: 380, // 닿은 뒤 사슬이 걸려 있는 시간 (끌려오는 동안)
+  HOOK_GRAB_SWING_R: 0.9, // R: 뽑은 블록을 머리 위에서 돌리는 반지름 (칸)
+  HOOK_SLAM_FLY_MS: 150, // R: 머리 위에서 박힐 자리까지 내려찍는 시간
   FIGURE_ACT_MAX_S: 4, // 공격 동작이 이보다 오래 남으면 버림 (안전장치: 끝나지 않는 동작)
   FIGURE_STRIKE_S: 0.07, // 공격 타격 자세로 튀는 시간 (아주 짧게). 그 뒤 회복은 평타 표의 rec
   FIGURE_SWING_WAIT_S: 0.4, // 준비가 끝나고 이만큼 더 기다려도 판정(swing)이 안 오면 동작을 접음 (캔슬·끊김)
