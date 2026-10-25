@@ -201,8 +201,10 @@ export class Game {
       slamAt: 0, // 탱크 내려찍기: 이 시각에 쾅
       wallAt: 0, // 건축가 솟는 벽: 이 시각에 솟음 (wallCells)
       wallCells: null,
-      whirlAt: 0, // 갈고리 회오리: 이 시각에 끌어모은 사람들(whirlTargets)을 튕김
-      whirlTargets: null,
+      loaded: true, // 갈고리 플린트록 장전 (판 시작·부활 때 장전, F 로 상대를 끌어오면 장전, 탕 쏘면 빈 총)
+      zipUntil: 0, // 갈고리 F 블록 걸기: 이 시각까지 zipDir 로 끌려감
+      zipDir: null,
+      grab: null, // 갈고리 R: 뽑은 블록 { at, v, meta, from } (at 에 내려찍기)
       atk: null, // 캐릭터 평타 준비 중: { n(몇 번째 타, 공중 0), def, at(판정 시각) }
       atkQueued: false, // 후딜·준비 중에 누른 평타 (끝나면 나감)
       atkLanded: false, // 마지막 평타가 상대를 맞혔나 (맞았으면 후딜을 스킬로 캔슬)
@@ -536,8 +538,10 @@ export class Game {
         slamAt: 0,
         wallAt: 0,
         wallCells: null,
-        whirlAt: 0,
-        whirlTargets: null,
+        loaded: true,
+        zipUntil: 0,
+        zipDir: null,
+        grab: null,
         atk: null,
         atkQueued: false,
         atkLanded: false,
@@ -781,8 +785,10 @@ export class Game {
       slamAt: 0,
       wallAt: 0,
       wallCells: null,
-      whirlAt: 0,
-      whirlTargets: null,
+      loaded: true,
+      zipUntil: 0,
+      zipDir: null,
+      grab: null,
       atk: null,
       atkQueued: false,
       atkLanded: false,
@@ -933,7 +939,7 @@ export class Game {
       const dx = t.x - p.x;
       const dy = t.y - p.y;
       const dist = Math.hypot(dx, dy);
-      if (dist > C.PUSH_RANGE * (p.char === 'hook' ? C.HOOK_PUSH_RANGE_MULT : 1)) continue; // 갈고리 패시브: 사거리
+      if (dist > C.PUSH_RANGE) continue;
       if (Math.abs(t.z - p.z) > C.PLAYER_HEIGHT) continue;
       if (dist > EPS && (dx * fx + dy * fy) / dist < cosHalf) continue;
       const crit = falling && p.z - t.z >= C.CRIT_MIN_HEIGHT;
@@ -989,6 +995,7 @@ export class Game {
     const live = this.time < p.chainUntil;
     const n = air ? (p.airN > 0 && live && p.airN < set.air.length ? p.airN + 1 : 1) : p.chainN > 0 && live && p.chainN < set.chain.length ? p.chainN + 1 : 1;
     let def = air ? set.air[n - 1] : set.chain[n - 1];
+    if (def.loaded && p.loaded) def = def.loaded; // 갈고리 3타: 장전돼 있으면 탕
     // 닌자 R 강화: 지상 1~3타와 공중 평타가 표창 2연발 (4타 올려 차기는 그대로)
     if (p.char === 'ninja' && this.time < p.empowerUntil && (air || n <= 3)) def = { ...def, name: '표창', windup: C.NINJA_STAR.windup, step: 0, star: true };
     // 연타를 이어 가는 중인 타 (지상 2타~, 공중 2타~, 띄우는 마지막 지상 타 뒤 공중 1타): 시간 마무리가 되지 않음
@@ -1021,7 +1028,11 @@ export class Game {
       this.moveAxis(p, 'y', fy * step);
     }
     this.emit({ type: 'swing', who: p.id, kind: 'push', char: p.char, n });
-    const range = (def.range || C.PUSH_RANGE) * (p.char === 'hook' ? C.HOOK_PUSH_RANGE_MULT : 1); // 갈고리 패시브: 사거리
+    if (def.shot) {
+      p.loaded = false; // 탕: 쏘면 빈 총 (맞든 안 맞든)
+      this.emit({ type: 'bang', who: p.id, x: p.x, y: p.y, z: p.z, yaw: p.yaw });
+    }
+    const range = def.range || C.PUSH_RANGE;
     const cosHalf = Math.cos(((def.angle ?? C.PUSH_HALF_ANGLE_DEG) * Math.PI) / 180);
     const falling = !p.grounded && p.vz < 0;
     const finish = !!def.finish;
@@ -1157,7 +1168,7 @@ export class Game {
 
   // ---------- 캐릭터 스킬·필살기 ----------
   useSkill(p) {
-    if (p.slamAt || p.wallAt || this.time < p.chargeUntil) return false; // 다른 기술 발동 중
+    if (p.slamAt || p.wallAt || p.grab || this.time < p.chargeUntil) return false; // 다른 기술 발동 중
     p.skillReadyAt = this.time + C.SKILL_CD_MS[p.char]; // 먼저 걸어 둠 (그림자 일격이 순간 베기 쿨을 초기화하는 것과 순서가 안 꼬이게)
     const ok =
       p.char === 'tank' ? this.tankCharge(p) : p.char === 'ninja' ? this.ninjaBlink(p) : p.char === 'builder' ? this.builderWall(p) : this.hookPull(p);
@@ -1171,11 +1182,11 @@ export class Game {
   }
 
   useUlt(p) {
-    if (p.slamAt || p.wallAt || this.time < p.chargeUntil) return false;
+    if (p.slamAt || p.wallAt || p.grab || this.time < p.chargeUntil) return false;
     if (p.char === 'tank') this.tankSlamStart(p);
     else if (p.char === 'ninja') this.ninjaEmpower(p); else if (p.char === 'builder') {
       if (!this.builderBigBomb(p)) return false; // 솟을 자리가 없으면 게이지 그대로
-    } else this.hookWhirl(p);
+    } else if (!this.hookGrab(p)) return false; // 갈고리: 닿는 블록이 없으면 게이지 그대로
     p.ult = 0;
     this.emit({ type: 'ult', who: p.id, char: p.char, x: p.x, y: p.y, z: p.z });
     return true;
@@ -1654,6 +1665,20 @@ export class Game {
     return best;
   }
 
+  // 보는 방향 수평으로 HOOK_RANGE 안 첫 블록 (격자 칸 또는 떨어지는 블록, 바닥은 아님). { x, y, z, d } 또는 null
+  hookRayBlock(p, yaw = p.yaw) {
+    const fx = Math.cos(yaw);
+    const fy = Math.sin(yaw);
+    const z = Math.floor(p.z + C.HOOK_RAY_HEIGHT);
+    for (let d = C.PLAYER_HALF; d <= C.HOOK_RANGE + 1e-9; d += 0.1) {
+      const x = Math.floor(p.x + fx * d);
+      const y = Math.floor(p.y + fy * d);
+      if (z < 0 || z >= C.GRID_H) return null;
+      if ((inXY(x, y) && this.grid[this.idx(x, y, z)]) || this.pieceCells.has(cellKey(x, y, z))) return { x, y, z, d };
+    }
+    return null;
+  }
+
   // 상대를 내 앞 HOOK_PULL_TO 거리까지 끌어옴 (블록에 막히면 거기까지). 콤보 한 타 (넉백 없이 경직 + 피해)
   pullTo(p, t, stunMs, gain, kind) {
     if (this.invulnerable(t)) return false;
@@ -1669,57 +1694,127 @@ export class Game {
     return hit;
   }
 
+  // F 갈고리 (판정 즉시): 보는 방향에서 상대·블록 중 먼저 닿는 것. 상대면 끌어옴 + 장전, 블록이면 내가 끌려감 (공중 가능). 빗나가도 쿨타임
   hookPull(p) {
     const t = this.hookTarget(p);
-    this.emit({ type: 'hook', who: p.id, target: t ? t.id : null, yaw: p.yaw });
+    const block = this.hookRayBlock(p);
+    const td = t ? Math.hypot(t.x - p.x, t.y - p.y) : Infinity;
+    if (block && block.d < td) {
+      const go = Math.max(0, block.d - C.PLAYER_HALF - 0.05);
+      p.zipDir = { x: Math.cos(p.yaw), y: Math.sin(p.yaw) };
+      p.zipUntil = this.time + (go / C.HOOK_ZIP_SPEED) * 1000;
+      p.vz = Math.max(p.vz, C.HOOK_ZIP_UP);
+      p.grounded = false;
+      p.kbx = 0;
+      p.kby = 0;
+      this.emit({ type: 'hook', who: p.id, target: null, block: [block.x, block.y, block.z], yaw: p.yaw });
+      this.log(`  [스킬] ${p.name} 갈고리 → 블록 (${block.x},${block.y},${block.z}) ${go.toFixed(1)}칸 끌려감`);
+      return true;
+    }
+    this.emit({ type: 'hook', who: p.id, target: t ? t.id : null, block: null, yaw: p.yaw });
     if (!t) {
       this.log(`  [스킬] ${p.name} 갈고리 빗나감`);
       return true; // 빗나가도 쿨타임
     }
     const hit = this.pullTo(p, t, C.HOOK_STUN_MS, C.HOOK_DAMAGE, 'hook');
-    this.log(`  [스킬] ${p.name} 갈고리 → ${t.name}${hit ? ` (${t.name} ${t.damage}%)` : ' 무적이라 무시'}`);
+    if (hit && !p.loaded) {
+      p.loaded = true; // 끌어오면 장전
+      this.emit({ type: 'reload', who: p.id });
+    }
+    this.log(`  [스킬] ${p.name} 갈고리 → ${t.name}${hit ? ` (${t.name} ${t.damage}%) 장전` : ' 무적이라 무시'}`);
     return true;
   }
 
-  // 회오리: 주변을 다 끌어모으고 (피해) HOOK_WHIRL_FLING_MS 뒤 바깥으로 한꺼번에 튕김 (updateCombat)
-  hookWhirl(p) {
-    const ids = [];
+  // R 블록 내려찍기 1단계: 보는 방향 첫 블록 1칸을 뽑음 (격자에서 빠짐). 없으면 false (게이지 그대로)
+  hookGrab(p) {
+    const b = this.hookRayBlock(p);
+    if (!b) return false;
+    const key = cellKey(b.x, b.y, b.z);
+    let v = CELL.THROWN;
+    if (this.pieceCells.has(key)) {
+      const pc = this.pieces.find((x) => x.id === this.pieceCells.get(key));
+      v = cellOfShape(pc.shape);
+      pc.cells = pc.cells.filter(([dx, dy]) => !(pc.px + dx === b.x && pc.py + dy === b.y));
+      if (!pc.cells.length) this.removePiece(pc);
+      else {
+        this.refreshPieceCells();
+        this.updateLanding(pc);
+      }
+    } else {
+      v = this.grid[this.idx(b.x, b.y, b.z)];
+      this.grid[this.idx(b.x, b.y, b.z)] = 0;
+      this.gridChanged();
+    }
+    const meta = this.bblocks.get(key) || null; // 건축가 블록은 속성 그대로 옮김
+    if (meta) this.bblocks.delete(key);
+    p.grab = { at: this.time + C.HOOK_GRAB_MS, v, meta, from: [b.x, b.y, b.z], dir: { x: Math.cos(p.yaw), y: Math.sin(p.yaw) } };
+    this.emit({ type: 'blockGrab', who: p.id, from: [b.x, b.y, b.z], ms: C.HOOK_GRAB_MS, builder: !!meta });
+    this.log(`  [필살] ${p.name} 블록 뽑기 (${b.x},${b.y},${b.z})`);
+    return true;
+  }
+
+  // R 2단계: 앞 직선 HOOK_SLAM_LEN 칸을 내려찍음 (넉백 + 띄움) → 끝 칸 기둥 꼭대기에 박힘 (사람은 밀쳐냄, 필드 밖이면 사라짐)
+  hookSlam(p) {
+    const g = p.grab;
+    p.grab = null;
+    const { dir } = g;
+    let n = 0;
     for (const t of this.players.values()) {
-      if (!this.foe(p, t)) continue;
-      if (Math.hypot(t.x - p.x, t.y - p.y) > C.HOOK_ULT_RANGE || Math.abs(t.z - p.z) > 2) continue;
-      if (this.pullTo(p, t, C.HOOK_ULT_STUN_MS, C.HOOK_ULT_DAMAGE, 'whirl')) ids.push(t.id);
-      this.emit({ type: 'hook', who: p.id, target: t.id, yaw: Math.atan2(t.y - p.y, t.x - p.x) });
+      if (!this.foe(p, t) || Math.abs(t.z - p.z) > 2) continue;
+      const along = (t.x - p.x) * dir.x + (t.y - p.y) * dir.y;
+      const side = Math.abs((t.x - p.x) * dir.y - (t.y - p.y) * dir.x);
+      if (along < 0.3 || along > C.HOOK_SLAM_LEN + 0.5 || side > C.HOOK_SLAM_WIDTH) continue;
+      const hit = this.applyKnockback(t, dir.x, dir.y, C.HOOK_SLAM_KB_SPEED, C.HOOK_SLAM_KB_UP, C.HOOK_SLAM_STUN_MS, C.HOOK_SLAM_DAMAGE, { by: p.id, kind: 'blockslam' }, true);
+      if (hit) n++;
+      this.emit({ type: 'hit', kind: 'blockslam', by: p.id, target: t.id, ok: hit });
     }
-    p.whirlAt = this.time + C.HOOK_WHIRL_FLING_MS;
-    p.whirlTargets = ids;
-    this.emit({ type: 'whirl', who: p.id, x: p.x, y: p.y, z: p.z, r: C.HOOK_ULT_RANGE });
-    this.log(`  [필살] ${p.name} 회오리 (${ids.length}명)`);
+    const x = Math.floor(p.x + dir.x * C.HOOK_SLAM_LEN);
+    const y = Math.floor(p.y + dir.y * C.HOOK_SLAM_LEN);
+    let cell = null;
+    if (inXY(x, y)) {
+      const z = this.columnTop(x, y);
+      if (z < C.GRID_H && !this.pieceCells.has(cellKey(x, y, z))) {
+        this.grid[this.idx(x, y, z)] = g.v;
+        if (g.meta) this.bblocks.set(cellKey(x, y, z), { ...g.meta, x, y, z });
+        cell = [x, y, z];
+        this.gridChanged();
+        // 그 칸 사람은 압사 대신 밀쳐냄 (내려찍은 방향으로 칸 밖, 막히면 블록 위로)
+        for (const t of this.players.values()) {
+          if (!this.onField(t) || !overlapsCell(t, x, y, z)) continue;
+          const nx = dir.x > 0.5 ? x + 1 + C.PLAYER_HALF + 0.01 : dir.x < -0.5 ? x - C.PLAYER_HALF - 0.01 : t.x;
+          const ny = dir.y > 0.5 ? y + 1 + C.PLAYER_HALF + 0.01 : dir.y < -0.5 ? y - C.PLAYER_HALF - 0.01 : t.y;
+          const moved = { ...t, x: nx, y: ny };
+          if ((nx !== t.x || ny !== t.y) && !this.overlappingSolid(this.aabb(moved)).length) Object.assign(t, { x: nx, y: ny });
+          else this.ejectFromBlocks(t);
+        }
+      }
+    }
+    this.emit({ type: 'blockSlam', who: p.id, dir, len: C.HOOK_SLAM_LEN, cell, builder: !!g.meta });
+    this.log(`  [필살] ${p.name} 블록 내려찍기 (${n}명)${cell ? ` → (${cell.join(',')}) 박힘` : ' → 필드 밖으로 사라짐'}`);
+    this.clearLayers();
   }
 
-  hookWhirlFling(p) {
-    const ids = p.whirlTargets || [];
-    p.whirlAt = 0;
-    p.whirlTargets = null;
-    for (const id of ids) {
-      const t = this.players.get(id);
-      if (!t || !this.foe(p, t)) continue;
-      const a = this.rng() * Math.PI * 2;
-      const dx = t.x - p.x;
-      const dy = t.y - p.y;
-      const len = Math.hypot(dx, dy);
-      const hit = this.applyKnockback(t, len > 0.05 ? dx : Math.cos(a), len > 0.05 ? dy : Math.sin(a), C.HOOK_WHIRL_KB_SPEED, C.HOOK_WHIRL_KB_UP, C.HOOK_WHIRL_STUN_MS, 0, { by: p.id, kind: 'whirl' }, true);
-      this.emit({ type: 'hit', kind: 'whirl', by: p.id, target: t.id, ok: hit });
+  // R 뽑는 중에 맞아서 끊김: 블록은 원래 자리로 (비었으면), 아니면 사라짐
+  hookGrabDrop(p) {
+    const g = p.grab;
+    p.grab = null;
+    const [x, y, z] = g.from;
+    if (!this.grid[this.idx(x, y, z)] && !this.pieceCells.has(cellKey(x, y, z))) {
+      this.grid[this.idx(x, y, z)] = g.v;
+      if (g.meta) this.bblocks.set(cellKey(x, y, z), { ...g.meta, x, y, z });
+      this.gridChanged();
     }
   }
 
-  // 틱마다: 콤보가 끊긴 사람 무적, 돌진 부딪힘, 내려찍기·솟는 벽·회오리 발동
+  // 틱마다: 콤보가 끊긴 사람 무적, 돌진 부딪힘, 내려찍기·솟는 벽·블록 내려찍기 발동
   updateCombat() {
     if (this.bblocks.size || this.bigBombs.length || this.holes.length) this.updateBBlocks();
     if (this.quakes.length) this.updateQuakes();
     for (const p of this.players.values()) {
       if (p.comboHits > 0 && this.time >= p.stunUntil) this.endCombo(p);
       if (!this.onField(p)) {
-        p.chargeUntil = p.slamAt = p.wallAt = p.whirlAt = 0;
+        p.chargeUntil = p.slamAt = p.wallAt = p.zipUntil = 0;
+        if (p.grab) this.hookGrabDrop(p);
         p.atk = null;
         p.atkQueued = false;
         p.castQueued = null;
@@ -1744,7 +1839,7 @@ export class Game {
       if (this.time < p.chargeUntil) this.chargeHit(p);
       if (p.slamAt && this.time >= p.slamAt) this.tankSlam(p);
       if (p.wallAt && this.time >= p.wallAt) this.builderWallRise(p);
-      if (p.whirlAt && this.time >= p.whirlAt) this.hookWhirlFling(p);
+      if (p.grab && this.time >= p.grab.at) this.hookSlam(p);
     }
   }
 
@@ -2020,6 +2115,12 @@ export class Game {
       this.emit({ type: 'interrupt', who: t.id, kind: 'ult' });
       t.ult = C.ULT_MAX; // 준비 중에 끊긴 내려찍기는 게이지 돌려줌
     }
+    if (t.grab) {
+      this.emit({ type: 'interrupt', who: t.id, kind: 'ult' });
+      this.hookGrabDrop(t); // 뽑던 블록은 제자리로
+      t.ult = C.ULT_MAX; // 게이지 돌려줌
+    }
+    t.zipUntil = 0; // 끌려가다 맞으면 멈춤
     t.emoteUntil = 0; // 맞으면 이모트 끊김
     t.chargeUntil = 0; // 맞으면 돌진·내려찍기 끊김
     t.slamAt = 0;
@@ -2065,9 +2166,9 @@ export class Game {
   }
 
   // 카운터히트 대상 (2026-10-25 재혁 결정, 첫 사람 플레이테스트: 1:1 에서 동시에 누르면 거의 다 카운터였음):
-  // 빗나간 평타(망치 포함)의 후딜, 돌진 중, 내려찍기·솟는 벽·회오리 준비. 평타 준비 중·맞힌 평타의 후딜·걷기·점프는 아님
+  // 빗나간 평타의 후딜, 돌진 중, 내려찍기·솟는 벽 준비·갈고리 블록 뽑는 중. 평타 준비 중·맞힌 평타의 후딜·걷기·점프는 아님
   busy(t) {
-    return !!((this.time < t.pushReadyAt && !t.atk && !t.atkLanded) || this.time < t.chargeUntil || t.slamAt || t.wallAt || t.whirlAt);
+    return !!((this.time < t.pushReadyAt && !t.atk && !t.atkLanded) || this.time < t.chargeUntil || t.slamAt || t.wallAt || t.grab);
   }
 
   // 공격이 안 들어가는 상태: 콤보 뒤 무적·부활 무적. 경직이 이미 풀린 콤보는 여기서 먼저 끝냄
@@ -2787,6 +2888,9 @@ export class Game {
     if (this.time < p.chargeUntil) {
       ix = p.chargeDir.x * C.TANK_CHARGE_SPEED; // 탱크 돌진: 입력 대신 앞으로
       iy = p.chargeDir.y * C.TANK_CHARGE_SPEED;
+    } else if (this.time < p.zipUntil) {
+      ix = p.zipDir.x * C.HOOK_ZIP_SPEED; // 갈고리 블록 걸기: 블록 쪽으로 끌려감
+      iy = p.zipDir.y * C.HOOK_ZIP_SPEED;
     } else if (!stunned && !this.isEmoting(p)) {
       const mv = this.moveDir(p);
       if (mv) {
@@ -3019,6 +3123,7 @@ export class Game {
         iframeLeft: Math.max(0, p.iframeUntil - this.time), // 콤보 뒤 무적 (깜빡임)
         combo: this.time < p.stunUntil ? p.comboHits : 0,
         empower: Math.max(0, p.empowerUntil - this.time), // 닌자 R 강화 남은 시간
+        loaded: p.char === 'hook' ? p.loaded : undefined, // 갈고리 장전
         respawnIn: !p.alive && p.respawnAt ? Math.max(0, p.respawnAt - this.time) : null,
         shieldLeft: Math.max(0, p.shieldUntil - this.time),
         score: this.scores.get(p.id) || 0,
@@ -3069,10 +3174,10 @@ function basicLabel(set, n, air, def) {
 }
 
 // 필살기 공격 종류 (탱크 아머를 깸)
-const ULT_KINDS = new Set(['slam', 'bigbomb', 'whirl']);
+const ULT_KINDS = new Set(['slam', 'bigbomb', 'blockslam']);
 
 const BBLOCK_LOG = { wall: '벽', third: '3타 블록', pad: '발판' };
-const WEAPON_LOG = { push: '밀치기', wallkick: '벽차기', blast: '블록폭발', bigbomb: '대폭발', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', whirl: '회오리' };
+const WEAPON_LOG = { push: '밀치기', wallkick: '벽차기', blast: '블록폭발', bigbomb: '대폭발', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', blockslam: '블록내려찍기' };
 
 function causeKo(cause) {
   if (cause === 'crush') return '압사';

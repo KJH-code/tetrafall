@@ -207,13 +207,18 @@ export const CONFIG = {
       ],
       air: [{ name: '망치 내려찍기', windup: 200, rec: 450, stun: 500, dmg: 9, kb: 3, up: 2, step: 0 }],
     },
-    // 갈고리: 평타에는 당김 없음. 주먹 넉백 초안 4.6 → 4.2 (봇 판). 맵 섞은 판 19% (벽·높은 지형에서 약함) → 휘두르기 딜 8 → 9, 주먹 넉백 4.2 → 4.4 휘두르기 → (F 갈고리 당김) → 주먹. 사거리는 패시브 HOOK_PUSH_RANGE_MULT
+    // 갈고리 (2026-10-25 재혁 확정, docs/characters.md 3.4 그래플러): 휘두르기 → 주먹 → 장전이면 탕(빈 총이 됨) / 빈 총이면 갈고리 내려치기.
+    // 공중은 갈고리 수평 한 바퀴 (주변 전부). 패시브 사거리 ×1.2 삭제. 수치는 초안 (stun·kb 는 문서에 없어 A 가 정함)
     hook: {
       chain: [
-        { name: '갈고리 휘두르기', windup: 150, rec: 350, stun: 650, dmg: 9, kb: 2.5, up: 3, step: 0 },
-        { name: '주먹', windup: 200, rec: 400, stun: 600, dmg: 9, kb: 4.4, up: 3, step: 0.4, finish: true },
+        { name: '갈고리 휘두르기', windup: 150, rec: 300, stun: 550, dmg: 6, kb: 2, up: 3, step: 0 },
+        { name: '주먹', windup: 150, rec: 300, stun: 600, dmg: 6, kb: 1.5, up: 2, step: 0.4 },
+        {
+          name: '갈고리 내려치기', windup: 200, rec: 450, stun: 500, dmg: 6, kb: 3, up: 2, step: 0.3, finish: true,
+          loaded: { name: '탕', windup: 200, rec: 500, stun: 600, dmg: 12, kb: 6, up: 3, step: 0, range: 2, angle: 75, finish: true, shot: true }, // 장전돼 있으면
+        },
       ],
-      air: [{ name: '공중 휘두르기', windup: 150, rec: 400, stun: 500, dmg: 7, kb: 3, up: 2, step: 0 }],
+      air: [{ name: '갈고리 스핀', windup: 150, rec: 400, stun: 500, dmg: 6, kb: 3, up: 2, step: 0, angle: 180 }],
     },
   },
 
@@ -281,7 +286,7 @@ export const CONFIG = {
   CHAR_NAMES: { tank: '탱크', ninja: '닌자', builder: '건축가', hook: '갈고리' },
   // 2026-10-24 재혁: 스킬이 직접 피해·넉백을 주고 콤보로 이어지게 (닌자 = 콤보 캐릭터). 남이 쓰는 것도 보이게 예고·효과
   SKILL_NAMES: { tank: '돌진', ninja: '순간 베기', builder: '솟는 벽', hook: '갈고리' },
-  ULT_NAMES: { tank: '내려찍기', ninja: '그림자 일격', builder: '대폭발', hook: '회오리' },
+  ULT_NAMES: { tank: '내려찍기', ninja: '강화', builder: '대폭발', hook: '블록 내려찍기' },
   SKILL_CD_MS: { tank: 8000, ninja: 6000, builder: 8000, hook: 8000 }, // 봇 160판으로 맞춤 (2026-10-24). 건축가 11 → 8초 (2026-10-25: F 가 콤보 부품·복귀기, 지상·공중 같이 씀)
   CHAR_DEFAULT: 'tank',
   // 스킬·필살기를 쓰면 그 캐릭터에 빛 (글자 대신, 남에게도 보임. 누가 무엇인지는 캐릭터 모양으로). 2026-10-25 재혁:
@@ -378,19 +383,24 @@ export const CONFIG = {
   BUILDER_BLAST_HOLE: false, // 테스트 옵션: 터진 칸 아래 바닥 1칸을 BUILDER_HOLE_MS 동안 구멍으로 (사람 테스트로 비교)
   BUILDER_HOLE_MS: 8000,
   // 갈고리 (연계: 평타로 밀고 → 갈고리로 다시 당겨 → 평타)
-  HOOK_PUSH_RANGE_MULT: 1.2, // 패시브: 평타(밀치기) 사거리
-  HOOK_RANGE: 5, // 스킬 갈고리: 보는 방향 이 거리 안 첫 상대를 끌어옴
-  HOOK_HALF_ANGLE_DEG: 15, // 갈고리가 닿는 시야 반각
-  HOOK_PULL_TO: 1, // 끌어와서 내 앞 이 거리에 놓음
+  // 장전 (플린트록): F 갈고리로 상대를 끌어오면 장전 (시간으로는 안 참), 판 시작·부활 때 장전. 평타 3타가 탕이면 빈 총
+  HOOK_RANGE: 5, // F 갈고리: 보는 방향 이 거리 안에서 상대·블록 중 먼저 닿는 것. 판정은 즉시
+  HOOK_HALF_ANGLE_DEG: 15, // 상대에 닿는 시야 반각
+  HOOK_PULL_TO: 1, // 상대를 끌어와서 내 앞 이 거리에 놓음
   HOOK_STUN_MS: 600,
   HOOK_DAMAGE: 10,
-  HOOK_ULT_RANGE: 3.5, // 필살 회오리: 주변 이 거리 안 모두 끌어모은 뒤 HOOK_WHIRL_FLING_MS 뒤 바깥으로 한꺼번에 튕김
-  HOOK_ULT_STUN_MS: 600,
-  HOOK_ULT_DAMAGE: 15,
-  HOOK_WHIRL_FLING_MS: 300,
-  HOOK_WHIRL_KB_SPEED: 5, // 8.4 는 봇 120판 갈고리 56승 (회오리 킬 138)
-  HOOK_WHIRL_KB_UP: 5,
-  HOOK_WHIRL_STUN_MS: 900,
+  HOOK_ZIP_SPEED: 16, // 블록에 걸리면 내가 그쪽으로 이 속도(칸/초)로 끌려감 (이동·복귀, 공중 가능)
+  HOOK_ZIP_UP: 5, // 끌려갈 때 살짝 위로 (블록 위로 올라서기 쉽게)
+  HOOK_RAY_HEIGHT: 1, // 블록을 찾는 갈고리 높이 (발에서)
+  // R 블록 내려찍기 (회오리 삭제): 보는 방향 HOOK_RANGE 안 첫 블록 1칸을 뽑아 (HOOK_GRAB_MS) → 앞 직선 HOOK_SLAM_LEN 칸에 수직으로 내려찍음 (넉백 + 띄움)
+  // → 끝 칸 기둥 꼭대기에 박혀 지형으로 남음 (그 칸 사람은 압사 대신 밀쳐냄, 필드 밖이면 사라짐). 바닥은 못 뽑음, 블록이 없으면 안 쓰임. 건축가 블록은 속성 그대로
+  HOOK_GRAB_MS: 300,
+  HOOK_SLAM_LEN: 5,
+  HOOK_SLAM_WIDTH: 0.8, // 직선에서 이 거리 안이면 맞음
+  HOOK_SLAM_DAMAGE: 12,
+  HOOK_SLAM_KB_SPEED: 5,
+  HOOK_SLAM_KB_UP: 7,
+  HOOK_SLAM_STUN_MS: 800,
 
   // ---- 판 ----
   PASS_CRUSH_SHARE: 0.5, // 1단계 합격선: 누적 사망 중 압사 비율. 판 종료 로그에 표시. 2026-10-20 재정의
