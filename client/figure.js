@@ -550,9 +550,107 @@ function stepSway(sw, dt) {
   }
 }
 
+// ---------- 공격 동작 (평타·스킬·필살기) ----------
+// 동작마다 준비 자세 W 와 타격 자세 S. 준비(크게, 상대가 읽는 예고) → 타격(아주 짧게 S 로 튐) → 회복(S 에서 천천히 풀림).
+// 공격 자세는 FIGURE_FOLLOW 를 건너뛰고 바로 그 자세 (속은 격투), 끝나면 평소처럼 흐물흐물 돌아옴 (겉은 병맛).
+// 자세 칸: 허리 waistPitch(앞 숙임)·waistRoll(왼쪽으로 비틂 = 오른 어깨 앞)·waistSide, 고개 neckPitch,
+// 팔다리 [오른쪽, 왼쪽] (null = 그대로): shFwd(앞으로 듦)·shOut(옆으로 벌림)·elbow·thFwd·knee, crouch(0~1 두 무릎 굽힘)
+// spin: 타격~회복 동안 몸 전체를 도는 각 (라디안, +면 왼쪽으로). rec: 스킬처럼 서버 표에 회복 시간이 없을 때 (초)
+const R = (v) => [v, null]; // 오른팔(다리)만
+const L = (v) => [null, v]; // 왼팔(다리)만
+export const MOVES = {
+  // 아무 표에도 없을 때 (예전 밀치기·망치)
+  punch: { W: { shFwd: R(-0.4), elbow: R(1.6), waistRoll: -0.3 }, S: { shFwd: R(1.55), shOut: R(0.1), elbow: R(0.05), waistRoll: 0.3 } },
+  hammer: { W: { shFwd: R(2.8), shOut: R(0.2), elbow: R(0.9), waistPitch: -0.25 }, S: { shFwd: R(0.9), shOut: R(0.1), elbow: R(0.1), waistPitch: 0.45, crouch: 0.4 } },
+
+  // 탱크: 묵직하게. 주먹 → 어깨 박치기 → 방패 밀기(두 팔)
+  '주먹': { W: { shFwd: R(-0.3), elbow: R(2.1), shOut: R(1.0), waistRoll: -0.6, waistSide: 0.15, crouch: 0.3 }, S: { shFwd: R(1.55), elbow: R(0.05), shOut: R(0.05), waistRoll: 0.4, waistPitch: 0.2 } },
+  '어깨 박치기': {
+    W: { waistRoll: -0.9, waistPitch: 0.1, shFwd: [0.3, -0.4], elbow: [1.6, 1.4], crouch: 0.5 },
+    S: { waistRoll: 0.5, waistPitch: 0.55, waistSide: -0.2, shFwd: [-0.3, 0.6], elbow: [1.3, 1.5], thFwd: [0.5, -0.4] },
+  },
+  '방패 밀기': {
+    W: { waistPitch: -0.3, shFwd: [0.5, 0.5], shOut: [0.1, 0.1], elbow: [2.2, 2.2], crouch: 0.7 },
+    S: { waistPitch: 0.45, shFwd: [1.5, 1.5], shOut: [0.05, 0.05], elbow: [0.05, 0.05], thFwd: [0.6, -0.5] },
+  },
+  '방패 내려치기': { W: { shFwd: [2.9, 2.9], elbow: [0.5, 0.5], waistPitch: -0.3 }, S: { shFwd: [0.7, 0.7], elbow: [0.1, 0.1], waistPitch: 0.7 } },
+
+  // 닌자: 짧고 빠르게. 오른손 찌르기 → 왼손 찌르기 → 베어 올리기 → 한 바퀴 베기 → 표창
+  '찌르기': { W: { shFwd: R(0.0), shOut: R(0.8), elbow: R(2.1), waistRoll: -0.45, waistSide: 0.12, crouch: 0.35 }, S: { shFwd: R(1.6), elbow: R(0), waistRoll: 0.35, waistPitch: 0.25 } },
+  '반대 찌르기': { W: { shFwd: L(0.0), shOut: L(0.8), elbow: L(2.1), waistRoll: 0.45, waistSide: -0.12, crouch: 0.35 }, S: { shFwd: L(1.6), elbow: L(0), waistRoll: -0.35, waistPitch: 0.25 } },
+  '베어 올리기': { W: { shFwd: R(-0.7), shOut: R(0.4), elbow: R(0.3), waistPitch: 0.35, crouch: 0.6 }, S: { shFwd: R(2.9), shOut: R(0.2), elbow: R(0.1), waistPitch: -0.3, thFwd: [0.3, -0.2] } },
+  '회전 베기': { W: { shOut: [0.6, 0.6], shFwd: [0.9, -0.4], elbow: [1.2, 1.2], waistRoll: 0.6, crouch: 0.5 }, S: { shOut: [1.5, 1.5], shFwd: [0.2, 0.2], elbow: [0, 0], waistRoll: 0 }, spin: -Math.PI * 2 },
+  '표창': { W: { shFwd: R(2.6), shOut: R(0.4), elbow: R(1.7), waistRoll: -0.6, waistPitch: -0.25, thFwd: [-0.3, 0.4] }, S: { shFwd: R(1.2), shOut: R(0.1), elbow: R(0), waistRoll: 0.5, waistPitch: 0.35 } },
+  '공중 베기': { W: { shFwd: [2.7, 0.5], elbow: [0.4, 0.8] }, S: { shFwd: [0.4, 0.2], elbow: [0.1, 0.8], waistPitch: 0.6 } },
+
+  // 건축가: 오른손 망치질. 옆치기 → 반대로 치기 → 두 팔 내려찍기
+  '옆치기': { W: { shOut: R(1.5), shFwd: R(-0.5), elbow: R(0.4), waistRoll: -0.8, crouch: 0.3 }, S: { shOut: R(0.3), shFwd: R(1.4), elbow: R(0.1), waistRoll: 0.6 } },
+  '반대 치기': { W: { shOut: R(-0.4), shFwd: R(1.2), elbow: R(1.4), waistRoll: 0.8, crouch: 0.3 }, S: { shOut: R(1.4), shFwd: R(0.5), elbow: R(0.1), waistRoll: -0.6 } },
+  '내려찍기': {
+    W: { shFwd: [3.0, 3.0], shOut: [0.15, 0.15], elbow: [0.6, 0.6], waistPitch: -0.4, neckPitch: -0.3 },
+    S: { shFwd: [0.6, 0.6], shOut: [0.1, 0.1], elbow: [0.05, 0.05], waistPitch: 0.8, neckPitch: 0.2, crouch: 0.8 },
+  },
+  '망치 내려찍기': { W: { shFwd: [3.0, 3.0], elbow: [0.6, 0.6], waistPitch: -0.4, crouch: 0.5 }, S: { shFwd: [0.5, 0.5], elbow: [0.05, 0.05], waistPitch: 0.8 } },
+
+  // 갈고리: 왼손 갈고리를 크게 휘두르고 → 오른 주먹 한 방
+  '갈고리 휘두르기': { W: { shOut: L(2.0), shFwd: L(-0.2), elbow: L(0.9), waistRoll: 0.5, waistSide: -0.15, crouch: 0.3 }, S: { shOut: L(0.3), shFwd: L(1.4), elbow: L(0.2), waistRoll: -0.6, waistPitch: 0.2 } },
+  // 큰 주먹: 갈고리 주먹은 탱크 주먹보다 더 크게 뒤로 젖힘 (같은 이름이라 캐릭터로 구분: hook:주먹)
+  'hook:주먹': { W: { shFwd: R(-0.6), shOut: R(1.2), elbow: R(2.0), waistRoll: -0.8, waistPitch: -0.25, crouch: 0.4 }, S: { shFwd: R(1.6), shOut: R(0.05), elbow: R(0), waistRoll: 0.55, waistPitch: 0.4, thFwd: [0.5, -0.4] } },
+  '공중 휘두르기': { W: { shFwd: L(2.8), shOut: L(0.4), elbow: L(0.4) }, S: { shFwd: L(0.4), elbow: L(0.2), waistPitch: 0.5, waistRoll: -0.4 } },
+
+  // ---- 스킬·필살기 ----
+  // 탱크 돌진: 어깨를 앞으로 숙이고 돌진 (판정이 바로라 준비 없음)
+  tankCharge: { S: { waistPitch: 0.6, waistRoll: 0.6, shFwd: [-0.2, 0.7], elbow: [1.4, 1.6], thFwd: [0.7, -0.5], knee: [0.6, 0.3] }, rec: 0.5 },
+  // 탱크 내려찍기: 두 팔 번쩍 들고 떠올랐다가 (slamWarn) → 쾅 (slam)
+  tankSlam: {
+    W: { shFwd: [3.0, 3.0], shOut: [0.3, 0.3], elbow: [0.4, 0.4], waistPitch: -0.35, thFwd: [0.9, 0.9], knee: [1.4, 1.4] },
+    S: { shFwd: [0.5, 0.5], shOut: [0.6, 0.6], elbow: [0, 0], waistPitch: 0.9, crouch: 1 },
+    rec: 0.6,
+  },
+  // 닌자 순간 베기·그림자 일격: 지나간 뒤 칼을 휘두른 끝 자세 (낮게 웅크림, 오른팔 쭉 뒤로)
+  ninjaSlash: { S: { shFwd: R(-0.6), shOut: R(1.4), elbow: R(0), waistRoll: -0.7, waistPitch: 0.45, crouch: 0.8, thFwd: [0.9, -0.6] }, rec: 0.45 },
+  // 건축가 솟는 벽: 두 손을 바닥 쪽으로 모았다가 (wallWarn) → 위로 확 올림 (wallRise)
+  builderWall: { W: { shFwd: [0.7, 0.7], shOut: [0.3, 0.3], elbow: [0.3, 0.3], waistPitch: 0.6, crouch: 0.8 }, S: { shFwd: [2.9, 2.9], shOut: [0.4, 0.4], elbow: [0.1, 0.1], waistPitch: -0.3 }, rec: 0.5 },
+  // 건축가 블록 비: 두 팔을 하늘로 들고 흔듦
+  builderRain: { S: { shFwd: [2.9, 2.9], shOut: [0.6, 0.6], elbow: [0.3, 0.3], waistPitch: -0.35, neckPitch: -0.5 }, rec: 0.9 },
+  // 갈고리 던지기: 왼팔 쭉 → 당기며 몸을 뒤로
+  hookThrow: { S: { shFwd: L(1.6), shOut: L(0.05), elbow: L(0), waistRoll: -0.5, waistPitch: 0.25 }, rec: 0.5, pull: true },
+  // 갈고리 회오리: 두 팔 벌리고 두 바퀴
+  hookWhirl: { S: { shOut: [1.6, 1.6], shFwd: [0, 0], elbow: [0, 0], crouch: 0.4 }, rec: 0.6, spin: Math.PI * 4 },
+};
+// 끊긴 공격: 팔이 튕겨 나가며 자세가 무너짐 (뒤로 젖히고 무릎이 꺾임)
+const BROKEN = { shFwd: [2.3, 1.9], shOut: [1.3, 1.5], elbow: [0.2, 0.5], waistPitch: -0.25, neckPitch: -0.45, waistRoll: 0.3, crouch: 0.6 };
+
+// 공격 자세를 P 에 바로 덮어씀 (w = 0~1 섞는 정도). 값은 절대 각 (매 프레임 쌓이지 않게).
+// crouch 는 이번 프레임 목표 자세 T 의 다리에서 두 무릎을 더 굽힌 각 (다리 각을 직접 준 동작은 그쪽이 이김)
+function overlay(P, T, pose, w) {
+  if (!pose || w <= 0) return;
+  if (pose.crouch) {
+    for (let i = 0; i < 2; i++) {
+      P.thFwd[i] += (T.thFwd[i] + 0.9 * pose.crouch - P.thFwd[i]) * w;
+      P.knee[i] += (T.knee[i] + 1.6 * pose.crouch - P.knee[i]) * w;
+    }
+  }
+  for (const [key, val] of Object.entries(pose)) {
+    if (val === null || val === undefined || !(key in P)) continue;
+    if (Array.isArray(val)) {
+      val.forEach((v, i) => {
+        if (v !== null) P[key][i] += (v - P[key][i]) * w;
+      });
+    } else P[key] += (val - P[key]) * w;
+  }
+}
+
+// 0~1 → 부드럽게
+const ease = (u) => {
+  const x = Math.max(0, Math.min(1, u));
+  return x * x * (3 - 2 * x);
+};
+
 // st: { air, walking, hs, walk(위상), stunned, dancing, emote, emoteT, punch(0~1), holding(왼손에 든 것 있음), t,
 //       hit(맞은 것: { id, age 초, stop 히트스톱 초, dx, dy 밀린 방향(몸 기준), pow 세기 } 또는 null),
-//       tumble(0~1 구르는 중), recover(0~1 일어나는 중), land(0~1 착지 무릎), flip(0~1 2단 점프 공중제비 중, 아니면 -1) }
+//       tumble(0~1 구르는 중), recover(0~1 일어나는 중), land(0~1 착지 무릎), flip(0~1 2단 점프 공중제비 중, 아니면 -1),
+//       act(공격 동작: { id, move(MOVES 이름), phase 'wind'|'strike'|'rec'|'broken', u 0~1 } 또는 null) }
 export function figureAnim(fig, st, dt) {
   const d = fig.d;
   const T = restPose(d);
@@ -696,12 +794,34 @@ export function figureAnim(fig, st, dt) {
     if (Array.isArray(T[key])) P[key] = P[key].map((v, i) => lerp(v, T[key][i]));
     else P[key] = lerp(P[key], T[key]);
   }
-  if (st.punch > 0 && !frozen) {
+  if (st.punch > 0 && !frozen && !st.act) {
     // 밀치기 팔은 늦게 따라오면 안 보임 (0.22초짜리) → 바로 그 자세
     P.shFwd[0] = T.shFwd[0];
     P.shOut[0] = T.shOut[0];
     P.elbow[0] = T.elbow[0];
   }
+  // 공격 동작: 따라가기를 건너뛰고 바로 덮어씀. 끝나면 덮어쓴 자세에서 평소처럼 흐물흐물 돌아옴
+  let spin = 0;
+  const act = st.act && (st.act.phase === 'broken' || (!frozen && !st.stunned)) ? st.act : null; // 끊김은 맞은 휘청 위에 겹침
+  if (act) {
+    const m = MOVES[act.move] || MOVES.punch;
+    if (act.phase === 'wind') overlay(P, T, m.W, ease(act.u * 1.4)); // 준비 시간의 앞쪽에서 이미 크게
+    else if (act.phase === 'strike') {
+      overlay(P, T, m.W, 1 - act.u);
+      overlay(P, T, m.S, ease(act.u * 2));
+    } else if (act.phase === 'rec') {
+      overlay(P, T, m.S, 1 - ease(act.u));
+      if (m.pull) overlay(P, T, { shFwd: L(0.4), elbow: L(2.0), waistPitch: -0.3 }, Math.sin(Math.PI * Math.min(1, act.u * 1.5))); // 갈고리 당김
+    } else if (act.phase === 'broken') {
+      if (sw.brokenId !== act.id) {
+        sw.brokenId = act.id;
+        sw.vx -= C.FIGURE_HIT_KICK * 0.3; // 뒤로 조금 더 휘청 (맞은 휘청에 얹힘)
+      }
+      overlay(P, T, BROKEN, act.u < 0.25 ? 1 : 1 - ease((act.u - 0.25) / 0.75));
+    }
+    if (m.spin && (act.phase === 'strike' || act.phase === 'rec')) spin = m.spin * ease(act.phase === 'strike' ? act.u * 0.2 : 0.2 + act.u * 0.8);
+  }
+  fig.hips.rotation.z = spin;
 
   // 땅에 있으면 더 뻗은 다리의 발이 바닥에 닿게 엉덩이를 내림 (무릎 굽히면 주저앉음, 걸으면 자연히 오르내림)
   let drop = 0;

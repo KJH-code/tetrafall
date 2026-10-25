@@ -2,6 +2,7 @@
 import { CONFIG as C } from '/shared/config.js';
 import { Renderer, TEAM_MAIN, playerColor, damageColor } from '/render.js';
 import { Input } from '/input.js';
+import { ACTIONS, DEFAULT_BINDS, keyLabel, groupLabel, normCode, saveBinds, conflicts } from '/keys.js';
 import { Sound } from '/sound.js';
 import { Music } from '/music.js';
 import { loadModels } from '/models.js';
@@ -143,22 +144,26 @@ function killFeed(e) {
 
 // 대기 화면 '조작법' 버튼: 긴 설명은 눌렀을 때만
 $('keys-btn').addEventListener('click', () => $('keys-text').classList.toggle('hidden'));
-// 판 중 조작법: H 를 누르고 있는 동안만 (글이 화면을 덮지 않게)
+// 판 중 조작법: 도움말 키(기본 H)를 누르고 있는 동안만 (글이 화면을 덮지 않게)
+// 시점 키(기본 V): 1인칭 ↔ 3인칭 (설정에도 같은 칸, 이 브라우저에 기억)
 const helpEl = $('help');
-document.addEventListener('keydown', (e) => {
-  if (e.code === 'KeyH' && !e.repeat && document.activeElement?.tagName !== 'INPUT') helpEl.classList.remove('hidden');
-});
-// V: 1인칭 ↔ 3인칭 (설정에도 같은 칸, 이 브라우저에 기억)
-document.addEventListener('keydown', (e) => {
-  if (e.code !== 'KeyV' || e.repeat || document.activeElement?.tagName === 'INPUT') return;
-  settings.third = !settings.third;
-  $('set-third').checked = settings.third;
-  applySettings();
-  saveSettings();
-});
-document.addEventListener('keyup', (e) => {
-  if (e.code === 'KeyH') helpEl.classList.add('hidden');
-});
+input.onUi = (id, down) => {
+  if (id === 'help') helpEl.classList.toggle('hidden', !down);
+  if (id === 'view' && down) {
+    settings.third = !settings.third;
+    $('set-third').checked = settings.third;
+    applySettings();
+    saveSettings();
+  }
+};
+
+// 화면에 보이는 키 글자: [data-key="skill"] → 그 행동의 키, [data-keys="fwd,left,back,right"] → 묶어서 (WASD)
+const keyText = (id) => keyLabel(input.binds[id]);
+const pieceKeysText = () => `${groupLabel(input.binds, ['pieceUp', 'pieceDown', 'pieceLeft', 'pieceRight'])} 이동 · ${groupLabel(input.binds, ['rotL', 'rotR'])} 회전 · ${keyText('drop')} 낙하`;
+function refreshKeyLabels() {
+  for (const el of document.querySelectorAll('[data-key]')) el.textContent = keyText(el.dataset.key);
+  for (const el of document.querySelectorAll('[data-keys]')) el.textContent = groupLabel(input.binds, el.dataset.keys.split(','));
+}
 
 // 콤보 'N HIT' (때린 쪽 노랑, 맞은 쪽 빨강)
 const comboEl = $('combo');
@@ -198,19 +203,32 @@ function handleEvent(e) {
       sound.play(ult ? 'boom' : 'swing', { dist: e.who === myId ? 0 : distToMe(a.x, a.y, a.z) });
       break;
     }
+    case 'attack': // 평타 준비 시작 → 몸 동작 (준비 자세가 상대가 읽는 예고)
+      renderer.attackStart(e);
+      break;
+    case 'swing': // 판정 순간 → 타격 자세 (나 포함)
+      renderer.attackSwing(e);
+      break;
+    case 'interrupt': // 내 공격이 맞아서 끊김: 글자 없이 몸 동작만
+      renderer.interrupt(e.who);
+      break;
     case 'blink': // 순간 베기·그림자 일격: 지나간 길에 베기 잔상
+      renderer.skillMove(e.who, 'ninjaSlash');
       fx.burst({ x: e.from.x, y: e.from.y, z: e.to.z + 0.8 }, null, 0x404060, 10, 2, 0.1, 0.4);
       fx.burst({ x: e.to.x, y: e.to.y, z: e.to.z + 0.8 }, null, 0x404060, 10, 2, 0.1, 0.4);
       renderer.trail({ x: e.from.x, y: e.from.y, z: e.to.z + 0.9 }, { x: e.to.x, y: e.to.y, z: e.to.z + 0.9 }, 0xffffff, 280);
       break;
     case 'charge': // 탱크 돌진: 가는 길에 흙먼지 줄
+      renderer.skillMove(e.who, 'tankCharge');
       renderer.trail({ x: e.x, y: e.y, z: e.z + 0.15 }, { x: e.x + Math.cos(e.yaw) * 3, y: e.y + Math.sin(e.yaw) * 3, z: e.z + 0.15 }, 0xc0a070, 400);
       fx.burst({ x: e.x, y: e.y, z: e.z + 0.2 }, null, 0xc0a070, 14, 3, 0.12, 0.5);
       break;
     case 'slamWarn': // 탱크 내려찍기: 떨어질 범위를 바닥에
+      renderer.skillMove(e.who, 'tankSlam', e.ms);
       renderer.markCircle(e.x, e.y, e.z, e.r, 0xff3020, e.ms);
       break;
     case 'slam': {
+      renderer.skillStrike(e.who, 'tankSlam');
       fx.ring({ x: e.x, y: e.y, z: e.z + 0.1 }, 0xc0b090, e.r * 2, 0.4, true);
       fx.burst({ x: e.x, y: e.y, z: e.z + 0.2 }, null, 0xc0b090, 28, 7, 0.14, 0.6);
       const me = playerById(myId);
@@ -218,16 +236,20 @@ function handleEvent(e) {
       break;
     }
     case 'wallWarn': // 건축가 솟는 벽: 솟을 자리를 노랗게
+      renderer.skillMove(e.who, 'builderWall', e.ms);
       renderer.markCells(e.cells, 0xffd23a, e.ms);
       break;
     case 'wallRise':
+      renderer.skillStrike(e.who, 'builderWall');
       for (const [x, y, z] of e.cells) if (z === Math.min(...e.cells.map((c) => c[2]))) fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.1 }, null, 0xa87448, 6, 3, 0.1, 0.4);
       sound.play('land', { dist: e.who === myId ? 0 : distToMe(e.cells[0][0], e.cells[0][1], e.cells[0][2]) });
       break;
     case 'rainWarn': // 블록 비: 떨어질 자리를 빨갛게
+      renderer.skillMove(e.who, 'builderRain');
       renderer.markCells(e.cells, 0xff2020, 900);
       break;
     case 'whirl':
+      renderer.skillMove(e.who, 'hookWhirl');
       fx.ring({ x: e.x, y: e.y, z: e.z + 0.3 }, 0x40d0c0, e.r * 2, 0.45, true);
       renderer.markCircle(e.x, e.y, e.z, e.r, 0x40d0c0, 350);
       break;
@@ -240,6 +262,7 @@ function handleEvent(e) {
       if (e.by === myId || e.target === myId) showCombo(e.n, e.target === myId, e.finish);
       break;
     case 'hook':
+      renderer.skillStrike(e.who, 'hookThrow');
       renderer.showHook(e.who, e.target, e.yaw);
       break;
     case 'zombie': // 블록 마스터: 죽어서 마스터 편
@@ -721,7 +744,86 @@ for (const [id, key] of checks) {
     saveSettings();
   });
 }
+// ---------- 조작 키 (설정 창): 칸을 누르고 키나 마우스 버튼을 누르면 바뀜, Esc 취소. 겹치면 빨갛게 ----------
+const keybindsEl = $('keybinds');
+const keyDupEl = $('key-dup');
+const keyBtns = {};
+let listening = null; // 키를 기다리는 행동 id
+let swallowClickUntil = 0; // 마우스 버튼으로 정한 직후의 클릭은 무시 (그 클릭이 다시 칸을 누르지 않게)
+let lastGroup = null;
+for (const a of ACTIONS) {
+  if (a.group !== lastGroup) {
+    const h = document.createElement('div');
+    h.className = 'kb-group';
+    h.textContent = a.group;
+    keybindsEl.append(h);
+    lastGroup = a.group;
+  }
+  const name = document.createElement('span');
+  name.textContent = a.label;
+  const btn = document.createElement('button');
+  btn.className = 'kb-btn';
+  btn.addEventListener('click', () => {
+    if (performance.now() < swallowClickUntil) return;
+    listening = listening === a.id ? null : a.id;
+    showBinds();
+  });
+  keyBtns[a.id] = btn;
+  keybindsEl.append(name, btn);
+}
+function showBinds() {
+  const dup = conflicts(input.binds);
+  for (const a of ACTIONS) {
+    const btn = keyBtns[a.id];
+    btn.textContent = listening === a.id ? '키를 누르세요 (Esc 취소)' : keyText(a.id);
+    btn.classList.toggle('wait', listening === a.id);
+    btn.classList.toggle('dup', !!dup[input.binds[a.id]]);
+  }
+  const lines = Object.entries(dup).map(([code, ids]) => `${keyLabel(code)}: ${ids.map((id) => ACTIONS.find((a) => a.id === id).label).join(' · ')}`);
+  keyDupEl.textContent = lines.length ? `겹치는 키 (둘 다 실행됨) — ${lines.join(' / ')}` : '';
+  refreshKeyLabels();
+}
+function setBind(id, code) {
+  input.setBinds({ ...input.binds, [id]: code });
+  saveBinds(input.binds);
+  listening = null;
+  showBinds();
+}
+// 기다리는 중이면 키·마우스를 게임보다 먼저 가로챔
+window.addEventListener(
+  'keydown',
+  (e) => {
+    if (!listening) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (e.code === 'Escape') {
+      listening = null;
+      showBinds();
+    } else setBind(listening, normCode(e.code));
+  },
+  true,
+);
+window.addEventListener(
+  'mousedown',
+  (e) => {
+    if (!listening) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    swallowClickUntil = performance.now() + 400;
+    setBind(listening, `Mouse${e.button}`);
+  },
+  true,
+);
+$('keys-reset').addEventListener('click', () => {
+  input.setBinds(DEFAULT_BINDS);
+  saveBinds(input.binds);
+  listening = null;
+  showBinds();
+});
+showBinds();
+
 function openSettings(on) {
+  if (!on) listening = null;
   settingsEl.classList.toggle('hidden', !on);
 }
 document.querySelectorAll('.settings-btn').forEach((b) => b.addEventListener('click', () => openSettings(true)));
@@ -921,7 +1023,7 @@ function updateHud() {
     const myPiece = (state.pieces || []).find((pc) => pc.phase === 'control' && pc.controller === myId);
     if (p.controlling && myPiece) {
       const left = myPiece.timeLeft / 1000;
-      bannerText = `블록 조종 중 ${left.toFixed(1)}초\n방향키 이동 · Q/E 회전 · Enter 낙하${myPiece.fits ? '' : '\n여기엔 못 놓음 (빨간 미리보기)'}`;
+      bannerText = `블록 조종 중 ${left.toFixed(1)}초\n${pieceKeysText()}${myPiece.fits ? '' : '\n여기엔 못 놓음 (빨간 미리보기)'}`;
       if (left < 3) bannerColor = 'rgba(200,60,20,.9)';
     } else if (p.hasControl) {
       const n = state.nextSpawnIn;
@@ -935,7 +1037,7 @@ function updateHud() {
     const left = fmt(state.round.left);
     if (p.master) {
       const myPiece = (state.pieces || []).find((pc) => pc.phase === 'control' && pc.controller === myId);
-      bannerText = `${p.zombie ? '마스터 편' : '블록 마스터'}: 생존자를 다 깔아라! 남은 ${left} · 생존 ${survivors}명${myPiece ? `\n방향키 이동 · Q/E 회전 · Enter 낙하 (${(myPiece.timeLeft / 1000).toFixed(1)}초)${myPiece.fits ? '' : ` · 여기엔 못 놓음 (꽉 찼거나 주변보다 ${C.MASTER_MAX_RISE}칸 넘게 높아짐)`}` : '\n다음 블록 준비 중'}`;
+      bannerText = `${p.zombie ? '마스터 편' : '블록 마스터'}: 생존자를 다 깔아라! 남은 ${left} · 생존 ${survivors}명${myPiece ? `\n${pieceKeysText()} (${(myPiece.timeLeft / 1000).toFixed(1)}초)${myPiece.fits ? '' : ` · 여기엔 못 놓음 (꽉 찼거나 주변보다 ${C.MASTER_MAX_RISE}칸 넘게 높아짐)`}` : '\n다음 블록 준비 중'}`;
       bannerColor = 'rgba(120,40,160,.9)';
     } else if (p.alive) {
       bannerText = `${m ? shownName(m) : '마스터'}의 블록을 피해 버티기 · 남은 ${left} · 생존 ${survivors}명`;
@@ -1059,7 +1161,7 @@ function updateSpectate() {
   // 살아 있는 사람 목록 (지금 보는 사람은 ▶)
   const alive = aliveOthers();
   const list = alive.map((x) => `${!spec.overview && x.id === spec.target ? '▶ ' : ''}${shownName(x)} ${x.damage}%`).join('   ');
-  const text = `${head}\n${watching} · 마우스 돌리기 · 휠 거리 · 클릭/스페이스 다음 사람 · 우클릭 ${spec.overview ? '따라가기' : '전체 보기'}${list ? `\n살아 있음: ${list}` : ''}`;
+  const text = `${head}\n${watching} · 마우스 돌리기 · 휠 거리 · 클릭/${keyText('jump')} 다음 사람 · 우클릭 ${spec.overview ? '따라가기' : '전체 보기'}${list ? `\n살아 있음: ${list}` : ''}`;
   if (specEl.textContent !== text) specEl.textContent = text;
 }
 document.addEventListener('mousedown', (e) => {
@@ -1075,7 +1177,7 @@ document.addEventListener('wheel', (e) => {
   else spec.dist = Math.min(C.SPECTATE_DIST_MAX, Math.max(C.SPECTATE_DIST_MIN, spec.dist * k));
 });
 document.addEventListener('keydown', (e) => {
-  if (e.code !== 'Space' || e.repeat || !spectating() || document.activeElement === nameInput) return;
+  if (normCode(e.code) !== input.binds.jump || e.repeat || !spectating() || document.activeElement === nameInput) return; // 점프 키 = 다음 사람
   nextTarget(1);
   e.preventDefault();
 });
@@ -1245,7 +1347,7 @@ function updateBottom(p) {
   if (p.shieldLeft > 0) buffs.push(`부활 무적 ${(p.shieldLeft / 1000).toFixed(1)}s`);
   // 든 아이템 (하나만). 망치는 위 버프 줄에도 횟수가 나옴
   const item =
-    p.ammo > 0 ? `투사체 ×${p.ammo}` : p.bricks > 0 ? `설치 1×2 ×${p.bricks} ${p.brickSide ? '옆' : '앞'}` : p.bombs > 0 ? `폭탄 ×${p.bombs}` : p.weaponUses > 0 ? `망치 (좌클릭) ×${p.weaponUses}` : '아이템 —';
+    p.ammo > 0 ? `투사체 ×${p.ammo}` : p.bricks > 0 ? `설치 1×2 ×${p.bricks} ${p.brickSide ? '옆' : '앞'}` : p.bombs > 0 ? `폭탄 ×${p.bombs}` : p.weaponUses > 0 ? `망치 (${keyText('attack')}) ×${p.weaponUses}` : '아이템 —';
   if (p.iframeLeft > 0) buffs.push(`무적 ${(p.iframeLeft / 1000).toFixed(1)}s`);
   updateSkills(p);
   const key = `${buffs.join('|')}#${item}`;

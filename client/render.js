@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { CONFIG as C } from '/shared/config.js';
 import { toon, noOutline } from '/toon.js';
 import { buildCharacter, charAccessory } from '/character.js';
-import { figureAnim } from '/figure.js';
+import { figureAnim, MOVES } from '/figure.js';
 import { Effects } from '/effects.js';
 import { CELL, SHAPE_NAMES } from '/shared/pieces.js';
 import { orbitEye, followDist } from '/shared/camera.js';
@@ -308,6 +308,7 @@ export class Renderer {
     this.hits = new Map(); // 맞은 몸 반응 (id → { id, t0, stop, dir, pow }, hitReact)
     this.finishAt = new Map(); // 콤보 마무리 타를 받은 시각 (comboFinish)
     this.counterAt = new Map(); // 카운터히트를 받은 시각 (counterHit)
+    this.acts = new Map(); // 공격 동작 (id → { id, move, t0, windup 초, struck 판정 시각, rec 초, broken 끊긴 시각 })
     this.hitSeq = 0;
     this.itemMeshes = [];
     this.projMeshes = [];
@@ -551,7 +552,7 @@ export class Renderer {
       const hit = this.hitFor(p);
       figureAnim(fig, {
         air, walking, hs: a.hs, walk: a.walk, stunned: p.stunned, dancing, emote, emoteT: a.emoteT, punch, holding: !!heldKind(p), t: a.t,
-        hit, tumble: a.tumbleAmt, recover: a.recover * a.recoverPow, land: a.figLand * a.landPow, flip: a.flip >= 0 ? a.flip / C.FIGURE_FLIP_S : -1,
+        hit, act: this.actFor(p.id), tumble: a.tumbleAmt, recover: a.recover * a.recoverPow, land: a.figLand * a.landPow, flip: a.flip >= 0 ? a.flip / C.FIGURE_FLIP_S : -1,
       }, dt);
     }
     const stretch = a.vz > C.ANIM_AIR_VZ && !fig ? C.ANIM_STRETCH : 0; // 올라가는 중: 위로 늘어나고 옆은 가늘게
@@ -625,11 +626,80 @@ export class Renderer {
     const pow = Math.min(3, (finish ? C.FIGURE_HIT_FINISH : heavy || crit || HEAVY_HITS.has(kind) ? C.FIGURE_HIT_HEAVY : 1) * (counter ? C.FIGURE_HIT_COUNTER : 1)); // 마무리 + 카운터가 겹쳐도 몸이 뒤집히지 않게
     const stop = (C.HITSTOP_MS * (crit ? C.CRIT_HITSTOP_MULT : 1)) / 1000;
     this.hits.set(id, { id: ++this.hitSeq, t0: now, stop, dir, pow });
+    const a = this.acts.get(id);
+    if (a && !a.broken) this.acts.delete(id); // 맞으면 하던 공격 동작은 접음 (끊김은 interrupt 가 따로)
   }
 
   // 콤보 마무리 타 (combo 이벤트가 같은 타의 hit 보다 먼저 옴)
   comboFinish(id) {
     this.finishAt.set(id, performance.now());
+  }
+
+  // ---------- 공격 동작 (figure.js MOVES) ----------
+  // attack 이벤트: 준비 시작. 동작 이름은 평타 표의 name (갈고리 주먹만 'hook:주먹'), 회복 시간은 평타 표의 rec
+  attackStart(e) {
+    const set = C.BASIC_ATTACKS?.[e.char];
+    const def = set ? (e.air ? set.air : set.chain[e.n - 1]) : null;
+    const move = e.char === 'hook' && e.name === '주먹' ? 'hook:주먹' : MOVES[e.name] ? e.name : 'punch';
+    this.acts.set(e.who, { id: ++this.hitSeq, move, t0: performance.now(), windup: (e.windup || 0) / 1000, struck: null, rec: (def ? def.rec : 300) / 1000, broken: 0 });
+  }
+
+  // swing 이벤트: 판정 순간 → 타격 자세. 준비 없이 온 것(망치·예전 밀치기)은 바로 타격
+  attackSwing(e) {
+    const a = this.acts.get(e.who);
+    if (a && !a.struck && !a.broken) {
+      a.struck = performance.now();
+      return;
+    }
+    const move = e.kind === 'weapon' ? 'hammer' : 'punch';
+    this.acts.set(e.who, { id: ++this.hitSeq, move, t0: performance.now(), windup: 0, struck: performance.now(), rec: 0.3, broken: 0 });
+  }
+
+  // 스킬·필살기 동작: windupMs 가 있으면 준비 자세로 기다렸다 skillStrike 에서 타격, 없으면 바로 타격
+  skillMove(who, move, windupMs = 0) {
+    const now = performance.now();
+    this.acts.set(who, { id: ++this.hitSeq, move, t0: now, windup: windupMs / 1000, struck: windupMs > 0 ? null : now, rec: MOVES[move].rec || 0.4, broken: 0 });
+  }
+
+  skillStrike(who, move) {
+    const a = this.acts.get(who);
+    if (a && a.move === move && !a.broken) {
+      if (!a.struck) a.struck = performance.now();
+      return; // 이미 치는 중 (갈고리가 당길 때 한 번 더 오는 것 등)
+    }
+    this.skillMove(who, move);
+  }
+
+  // 끊긴 공격 (interrupt 이벤트): 하던 동작에서 팔이 튕기며 무너짐. 맞은 휘청과 겹쳐 보임
+  interrupt(who) {
+    const a = this.acts.get(who) || { id: ++this.hitSeq, move: 'punch', t0: performance.now(), windup: 0, struck: null, rec: 0.3 };
+    a.id = ++this.hitSeq;
+    a.broken = performance.now();
+    this.acts.set(who, a);
+  }
+
+  // figureAnim 에 넘길 지금 공격 단계. 끝났으면 지움
+  actFor(id) {
+    const a = this.acts.get(id);
+    if (!a) return null;
+    const now = performance.now();
+    const done = () => {
+      this.acts.delete(id);
+      return null;
+    };
+    if (a.broken) {
+      const u = (now - a.broken) / 1000 / C.FIGURE_BROKEN_S;
+      return u >= 1 ? done() : { id: a.id, move: a.move, phase: 'broken', u };
+    }
+    if (!a.struck) {
+      const age = (now - a.t0) / 1000;
+      if (age > a.windup + C.FIGURE_SWING_WAIT_S) return done(); // 판정이 안 옴 (캔슬)
+      return { id: a.id, move: a.move, phase: 'wind', u: a.windup > 0 ? Math.min(1, age / a.windup) : 1 };
+    }
+    const s = (now - a.struck) / 1000;
+    if (s < C.FIGURE_STRIKE_S) return { id: a.id, move: a.move, phase: 'strike', u: s / C.FIGURE_STRIKE_S };
+    const r = (s - C.FIGURE_STRIKE_S) / a.rec;
+    return r >= 1 ? done() : { id: a.id, move: a.move, phase: 'rec', u: r };
   }
 
   // 카운터히트 (counter 이벤트가 같은 타의 hit 보다 먼저 옴)
