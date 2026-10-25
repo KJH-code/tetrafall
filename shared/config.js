@@ -161,6 +161,7 @@ export const CONFIG = {
   // 공중: air 배열 순서대로 (지상 타 번호와 따로 셈, 같은 이어 치기 창). 떨어지며 위에서 치면 치명타. 이어 치기 창 유지
   BASIC_CHAIN_WINDOW_MS: 500,
   BASIC_HITSTOP_MS: 60, // 중간 타 멈칫 (공중 한 타짜리는 HITSTOP_MS)
+  JUMP_BUFFER_MS: 200, // 땅에서 누른 점프를 이만큼 기억 (멈칫·후딜 중 짧게 눌러도 씹히지 않게)
   STREAK_MS: 1000, // 때린 쪽 이어 넣은 타 수: 이 시간 안에 또 맞히면 상대가 바뀌어도 이어짐 (닌자 갈아타기 'N HIT', streak 이벤트)
   BASIC_FINISH_HITSTOP_MS: 110, // 마무리 타 멈칫
   BASIC_STEP_GAP: 0.6, // step 으로 나갈 때 앞 상대와 이 거리 앞에서 멈춤 (지나쳐서 등 뒤로 가지 않게)
@@ -183,13 +184,14 @@ export const CONFIG = {
       air: [{ name: '방패 내려치기', windup: 150, rec: 400, stun: 600, dmg: 10, kb: 3.8, up: 1, step: 0, finish: true }],
     },
     // 닌자 (2026-10-25 재혁 확정, docs/characters.md 3.2 연계형): 지상 4타 + 공중 2타. 콤보 사이 후딜은 짧고 연타 마지막 타 뒤 후딜은 김 (허공 이어 치기 스팸 방지).
-    // 4타 올려 차기는 마무리 아님 — 띄워서 공중 평타로 이어 감. 공중 2타 내려 차기가 마무리. 수치는 초안 (stun·kb 는 문서에 없어 A 가 정함)
+    // 4타 올려 차기는 마무리 아님 — 띄워서 공중 평타로 이어 감. 공중 2타 내려 차기가 마무리. 수치는 초안 (stun·kb 는 문서에 없어 A 가 정함).
+    // 2026-10-25 재혁: 올려 차기 후딜 500 → 350 (사람 손으로 풀 콤보가 들어가게)
     ninja: {
       chain: [
         { name: '찌르기', windup: 60, rec: 150, stun: 330, dmg: 3, kb: 0.8, up: 1, step: 0.3 },
         { name: '반대 찌르기', windup: 60, rec: 150, stun: 340, dmg: 3, kb: 0.8, up: 1, step: 0.3 },
         { name: '앞차기', windup: 70, rec: 170, stun: 400, dmg: 3, kb: 0.8, up: 1, step: 0.3 },
-        { name: '올려 차기', windup: 120, rec: 500, stun: 900, dmg: 5, kb: 0.5, up: 8, step: 0.2 },
+        { name: '올려 차기', windup: 120, rec: 350, stun: 900, dmg: 5, kb: 0.5, up: 8, step: 0.2 },
       ],
       air: [
         { name: '공중 베기', windup: 60, rec: 150, stun: 400, dmg: 3, kb: 0.8, up: 3, step: 0 },
@@ -222,7 +224,7 @@ export const CONFIG = {
   // 2026-10-25 재혁: 타 수(5타) 대신 시간으로 끊음 (다타 캐릭터도 스킬까지 이어지게. 3초 제안 → 재혁 1초), 무적 1초는 "개사기 + 흐름이 끊김" → 0.3초
   // 콤보 중 가벼운 공격(밀치기·베기·돌진·갈고리)은 수평 넉백 ×COMBO_LIGHT_KB, 마지막 타는 ×COMBO_FINISH_KB 로 크게 날림
   // 2026-10-25 재혁 승인: 1.0 → 1.4초 (닌자 평타 5타 최단 1.18초 + 입력 여유). 캐릭터 평타의 마무리 타(finish)는 시간과 상관없이 마무리
-  COMBO_MS: 1400,
+  COMBO_MS: 1400, // 2026-10-25 재혁: 때린 쪽이 연타를 이어 가는 중인 타는 이 시간이 지나도 시간 마무리가 아님 (연타 마무리·끊김·경직 풀림으로 끝)
   COMBO_IFRAME_MS: 300,
   COMBO_LIGHT_KB: 0.6,
   COMBO_FINISH_KB: 1.3,
