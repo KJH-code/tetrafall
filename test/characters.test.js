@@ -1296,3 +1296,32 @@ test('봇 갈고리: 상대 쪽으로 블록이 닿으면 R 블록 내려찍기,
   g2.bots.get(b2.id).update(g2, b2);
   assert.ok(b2.zipUntil > g2.time, '블록에 걸어 끌려감');
 });
+
+test('갈고리 블록 찾기 (2026-10-25 버그): 땅에 서서 평지의 1칸 높이 블록을 보면 (살짝 아래로) R 이 그 블록을 뽑고 F 도 걸림. 바닥을 보면 안 잡힘', () => {
+  const { g, p } = setupChars(['hook', 'ninja']);
+  place(p(2), 9.5, 9.5);
+  g.grid[g.idx(5, 4, 0)] = CELL.THROWN; // 떨어져 쌓인 1칸 높이 블록
+  g.gridChanged();
+  place(p(1), 2.5, 4.5, 0);
+  p(1).pitch = -Math.atan2(C.EYE_HEIGHT - 0.5, 3); // 블록 가운데를 봄
+  assert.deepEqual(g.hookRayBlock(p(1)), { ...g.hookRayBlock(p(1)), x: 5, y: 4, z: 0 });
+  p(1).ult = C.ULT_MAX;
+  g.handleAction(1, { name: 'ult' });
+  assert.equal(p(1).ult, 0, 'R 쓰임');
+  assert.equal(g.gridAt(5, 4, 0), 0, '뽑힘');
+  run(g, C.HOOK_GRAB_MS + TICK);
+  // F 도 걸림 (수평으로 봐도 발 층 보조로 잡힘)
+  g.grid[g.idx(5, 2, 0)] = CELL.THROWN;
+  g.gridChanged();
+  place(p(1), 2.5, 2.5, 0);
+  p(1).pitch = 0;
+  g.drainEvents();
+  g.handleAction(1, { name: 'skill' });
+  assert.ok(g.drainEvents().some((e) => e.type === 'hook' && e.block && e.block[2] === 0));
+  // 바닥만 보면 없음
+  const q = setupChars(['hook', 'ninja']);
+  place(q.p(2), 9.5, 9.5);
+  place(q.p(1), 2.5, 4.5, 0);
+  q.p(1).pitch = -1.2;
+  assert.equal(q.g.hookRayBlock(q.p(1)), null);
+});
