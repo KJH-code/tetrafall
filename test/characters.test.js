@@ -1326,3 +1326,75 @@ test('갈고리 블록 찾기 (2026-10-25 버그): 땅에 서서 평지의 1칸 
   q.p(1).pitch = -1.2;
   assert.equal(q.g.hookRayBlock(q.p(1)), null);
 });
+
+// ---------- 사람 테스트 수정 (2026-10-26) ----------
+
+test('건축가 F 벽: 예고 동안 건축가가 벽 칸으로 걸어 들어가면 그 칸은 안 솟고 건축가는 안 뜸', () => {
+  const { g, p } = setupChars(['builder', 'ninja']);
+  place(p(2), 9.5, 9.5);
+  place(p(1), 4.5, 4.5, 0);
+  g.handleAction(1, { name: 'skill' }); // x=5, y 3~5
+  place(p(1), 5.5, 4.5, 0); // 가운데 벽 칸 위로
+  run(g, C.BUILDER_WALL_WARN_MS + TICK);
+  assert.equal(g.gridAt(5, 4, 0), 0, '내가 선 칸은 안 솟음');
+  assert.equal(g.gridAt(5, 3, 0), CELL.BUILD);
+  assert.equal(g.gridAt(5, 5, 0), CELL.BUILD);
+  assert.ok(p(1).z < 0.05, `안 뜸 z=${p(1).z}`);
+});
+
+test('탱크 R: 예고 0.7초 (TANK_SLAM_WINDUP_MS), 바깥 고리 up 5. blink 이벤트 from 에 z', () => {
+  assert.equal(C.TANK_SLAM_WINDUP_MS, 700);
+  assert.equal(C.TANK_RING_UP, 5);
+  const { g, p } = setupChars(['ninja', 'builder']);
+  place(p(2), 9.5, 9.5);
+  place(p(1), 1.5, 4.5, 0, 0.5);
+  Object.assign(p(1), { grounded: false });
+  g.drainEvents();
+  g.handleAction(1, { name: 'skill' });
+  const e = g.drainEvents().find((x) => x.type === 'blink');
+  assert.equal(e.from.z, 0.5);
+});
+
+test('갈고리 R 한 번 누르면 나감 (2026-10-26 재혁: 두 번 눌러야 했음): 정면·살짝 아래·살짝 위, 조준이 블록 옆으로 조금 빗나가도 뽑힘. 평타 후딜 중 R 은 후딜 끝나고 나감. 블록이 없으면 ultFail', () => {
+  for (const pitch of [0, -0.3, 0.25]) {
+    for (const off of [0, 0.7]) {
+      const { g, p } = setupChars(['hook', 'ninja']);
+      place(p(2), 9.5, 9.5);
+      g.grid[g.idx(5, 4, 0)] = CELL.THROWN;
+      g.gridChanged();
+      place(p(1), 2.5, 4.5, Math.atan2(off, 3));
+      p(1).pitch = pitch;
+      p(1).ult = C.ULT_MAX;
+      g.handleAction(1, { name: 'ult' });
+      assert.equal(p(1).ult, 0, `pitch ${pitch} off ${off}: 한 번에`);
+      assert.equal(g.gridAt(5, 4, 0), 0);
+    }
+  }
+  // 평타 후딜 중 R
+  const { g, p } = setupChars(['hook', 'ninja']);
+  place(p(2), 9.5, 9.5);
+  g.grid[g.idx(5, 4, 0)] = CELL.THROWN;
+  g.gridChanged();
+  place(p(1), 2.5, 4.5, 0);
+  p(1).ult = C.ULT_MAX;
+  basic(g, 1); // 빗나감 → 후딜
+  g.handleAction(1, { name: 'ult' });
+  assert.equal(p(1).ult, C.ULT_MAX, '후딜 중엔 기억');
+  run(g, p(1).pushReadyAt - g.time + TICK);
+  assert.equal(p(1).ult, 0, '후딜 끝나고 나감');
+  // 블록 없음 → ultFail
+  const q = setupChars(['hook', 'ninja']);
+  place(q.p(2), 9.5, 9.5);
+  place(q.p(1), 2.5, 4.5, 0);
+  q.p(1).ult = C.ULT_MAX;
+  q.g.drainEvents();
+  q.g.handleAction(1, { name: 'ult' });
+  assert.ok(q.g.drainEvents().some((e) => e.type === 'ultFail' && e.who === 1 && e.reason === 'noBlock'));
+  assert.equal(q.p(1).ult, C.ULT_MAX);
+  // 기억한 R 이 맞아서 버려지면 castDrop
+  q.g.handleAction(1, { name: 'push' });
+  q.g.handleAction(1, { name: 'ult' });
+  q.g.drainEvents();
+  q.g.applyKnockback(q.p(1), 1, 0, 1, 0, 300, 1, { by: 2, kind: 'push' });
+  assert.ok(q.g.drainEvents().some((e) => e.type === 'castDrop' && e.who === 1 && e.kind === 'ult'));
+});

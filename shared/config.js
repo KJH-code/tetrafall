@@ -317,7 +317,7 @@ export const CONFIG = {
   TANK_CHARGE_KB_UP: 3,
   TANK_CHARGE_STUN_MS: 600,
   TANK_CHARGE_DAMAGE: 15,
-  TANK_SLAM_WINDUP_MS: 500, // 필살 내려찍기: 떠올랐다가 이 뒤에 쾅 (바닥에 범위 예고)
+  TANK_SLAM_WINDUP_MS: 700, // 필살 내려찍기: 떠올랐다가 이 뒤에 쾅 (바닥에 범위 예고). 500 → 700 (2026-10-26 재혁: 광역 킬 1순위, 피하기 어려움)
   TANK_SLAM_JUMP: 6, // 떠오르는 속도
   TANK_SLAM_RANGE: 2.5, // 쾅 범위 (수평, 높이 차 2칸 안)
   TANK_SLAM_KB_SPEED: 4.5, // 옆으로는 조금, 위로 크게 띄움 → 공중 치명타 연계
@@ -326,7 +326,7 @@ export const CONFIG = {
   // R 바깥 고리: 충격파(TANK_SLAM_RANGE) 바깥 TANK_RING_WIDTH 칸 고리의 바닥이 1층 솟아 위 사람을 띄움 → TANK_RING_MS 뒤 가라앉음 (남지 않음, 안 터짐, 압사 없음)
   TANK_RING_WIDTH: 1,
   TANK_RING_MS: 1000,
-  TANK_RING_UP: 7,
+  TANK_RING_UP: 5, // 7 → 5 (2026-10-26 재혁, 예고 0.7초와 같이)
   TANK_RING_STUN_MS: 600,
   TANK_SLAM_DAMAGE: 15, // 2026-10-25 맵 7개 섞은 봇 504판 탱크 29% (킬 대부분 내려찍기) → 25 → 20, 넉백 5 → 4.5.
   // 탱크 개편 뒤 20 → 15 (재혁 결정 '나': 피해 15 / 고리 up 5 / 둘 다 실험 → 피해 15 가 가장 내려감, 고리 up 은 공중 마무리 연계를 위해 7 유지)
@@ -399,6 +399,7 @@ export const CONFIG = {
   // R 블록 내려찍기 (회오리 삭제): 보는 방향 HOOK_RANGE 안 첫 블록 1칸을 뽑아 (HOOK_GRAB_MS) → 앞 직선 HOOK_SLAM_LEN 칸에 수직으로 내려찍음 (넉백 + 띄움)
   // → 끝 칸 기둥 꼭대기에 박혀 지형으로 남음 (그 칸 사람은 압사 대신 밀쳐냄, 필드 밖이면 사라짐). 바닥은 못 뽑음, 블록이 없으면 안 쓰임. 건축가 블록은 속성 그대로
   HOOK_GRAB_MS: 300,
+  HOOK_GRAB_CONE_DEG: 25, // R 보조 판정: 조준 직선이 블록을 놓치면 이 반각 원뿔 안 가장 가까운 블록 (한 번 누르면 나가게)
   HOOK_SLAM_LEN: 5,
   HOOK_SLAM_WIDTH: 0.8, // 직선에서 이 거리 안이면 맞음
   HOOK_SLAM_DAMAGE: 12,
