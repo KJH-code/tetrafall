@@ -149,7 +149,7 @@ test('닌자: 이동 빠름, 순간 베기는 벽 앞까지 + 지나간 길의 �
   assert.equal(p(2).damage, C.NINJA_SLASH_DAMAGE);
   assert.equal(p(3).damage, 0);
   assert.ok(lines.some((l) => l.includes('[스킬] P1 순간 베기 2.3칸 (1명)')), lines.join('\n'));
-  // 아무도 없으면 3칸
+  // 아무도 없으면 NINJA_BLINK_DIST 칸
   run(g, C.SKILL_CD_MS.ninja + C.COMBO_IFRAME_MS);
   place(p(1), 1.5, 1.5, 0);
   g.handleAction(1, { name: 'skill' });
