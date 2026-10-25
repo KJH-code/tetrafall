@@ -145,7 +145,7 @@ export function buildFigure(color, char, models) {
   const fig = { d, hips, waist, neck, shoulders, elbows, hands, thighs, knees, feet, flaps: [], pose: null };
   dressUp(char, fig, costume, skin);
 
-  // 망치는 오른손: 손잡이를 쥐고 머리가 주먹 앞쪽으로 (모델은 손잡이가 z 축, 머리가 +z 끝)
+  // 망치는 오른손 (건축가 무기, render.js 가 건축가만 보임): 손잡이를 쥐고 머리가 주먹 앞쪽으로 (모델은 손잡이가 z 축, 머리가 +z 끝)
   const hammer = itemModel(models, 'weapon', C.HELD_MODEL_SIZE * 1.4);
   if (hammer) {
     hammer.rotation.y = Math.PI / 2; // 머리(+z) → 앞(+x)
@@ -559,9 +559,8 @@ function stepSway(sw, dt) {
 const R = (v) => [v, null]; // 오른팔(다리)만
 const L = (v) => [null, v]; // 왼팔(다리)만
 export const MOVES = {
-  // 아무 표에도 없을 때 (예전 밀치기·망치)
+  // 아무 표에도 없을 때 (캐릭터 없는 밀치기)
   punch: { W: { shFwd: R(-0.4), elbow: R(1.6), waistRoll: -0.3 }, S: { shFwd: R(1.55), shOut: R(0.1), elbow: R(0.05), waistRoll: 0.3 } },
-  hammer: { W: { shFwd: R(2.8), shOut: R(0.2), elbow: R(0.9), waistPitch: -0.25 }, S: { shFwd: R(0.9), shOut: R(0.1), elbow: R(0.1), waistPitch: 0.45, crouch: 0.4 } },
 
   // 탱크: 묵직하게. 주먹 → 어깨 박치기 → 방패 밀기(두 팔)
   '주먹': { W: { shFwd: R(-0.3), elbow: R(2.1), shOut: R(1.0), waistRoll: -0.6, waistSide: 0.15, crouch: 0.3 }, S: { shFwd: R(1.55), elbow: R(0.05), shOut: R(0.05), waistRoll: 0.4, waistPitch: 0.2 } },
@@ -611,8 +610,10 @@ export const MOVES = {
   ninjaSlash: { S: { shFwd: R(-0.6), shOut: R(1.4), elbow: R(0), waistRoll: -0.7, waistPitch: 0.45, crouch: 0.8, thFwd: [0.9, -0.6] }, rec: 0.45 },
   // 건축가 솟는 벽: 두 손을 바닥 쪽으로 모았다가 (wallWarn) → 위로 확 올림 (wallRise)
   builderWall: { W: { shFwd: [0.7, 0.7], shOut: [0.3, 0.3], elbow: [0.3, 0.3], waistPitch: 0.6, crouch: 0.8 }, S: { shFwd: [2.9, 2.9], shOut: [0.4, 0.4], elbow: [0.1, 0.1], waistPitch: -0.3 }, rec: 0.5 },
-  // 건축가 블록 비: 두 팔을 하늘로 들고 흔듦
-  builderRain: { S: { shFwd: [2.9, 2.9], shOut: [0.6, 0.6], elbow: [0.3, 0.3], waistPitch: -0.35, neckPitch: -0.5 }, rec: 0.9 },
+  // 건축가 대폭발: 망치를 두 손으로 머리 위로 → 바닥을 쾅 (그 앞에 3×3 이 솟음)
+  builderBig: { S: { shFwd: [0.5, 0.5], shOut: [0.1, 0.1], elbow: [0.05, 0.05], waistPitch: 0.85, neckPitch: 0.2, crouch: 0.9 }, rec: 0.6 },
+  // 건축가 공중 F 발판: 발밑 블록이 엉덩이를 차올림 → 놀라서 팔다리 쫙, 엉덩이부터 튀어 오름 (병맛)
+  builderPad: { S: { shFwd: [2.4, 2.4], shOut: [1.4, 1.4], elbow: [0.2, 0.2], thFwd: [1.4, 1.4], knee: [0.3, 0.3], waistPitch: -0.6, neckPitch: -0.5 }, rec: 0.55 },
   // 갈고리 던지기: 왼팔 쭉 → 당기며 몸을 뒤로
   hookThrow: { S: { shFwd: L(1.6), shOut: L(0.05), elbow: L(0), waistRoll: -0.5, waistPitch: 0.25 }, rec: 0.5, pull: true },
   // 갈고리 회오리: 두 팔 벌리고 두 바퀴

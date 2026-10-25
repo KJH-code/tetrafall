@@ -18,7 +18,6 @@ THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 const ITEM_LOOK = {
   control: { color: 0x20e0e0, geo: () => new THREE.OctahedronGeometry(0.3) }, // 하늘색 팔면체
   knockback: { color: 0xe02020, geo: () => new THREE.SphereGeometry(0.24, 14, 10) }, // 빨간 공
-  weapon: { color: 0xff8a10, geo: () => new THREE.BoxGeometry(0.42, 0.24, 0.24) }, // 주황 망치 머리
   jump: { color: 0x40e040, geo: () => new THREE.ConeGeometry(0.24, 0.45, 12) }, // 초록 원뿔(위로)
   ghost: { color: 0xe8e8ff, geo: () => new THREE.TorusGeometry(0.2, 0.07, 8, 18) }, // 흰 고리
   brick: { color: 0xfff2c0, geo: () => new THREE.BoxGeometry(0.32, 0.32, 0.32) }, // 흰빛 작은 블록 (설치 블록)
@@ -147,7 +146,7 @@ export function playerColor(p, state) {
   return PLAYER_COLORS[p.slot % PLAYER_COLORS.length];
 }
 const _q = new THREE.Quaternion();
-const HEAVY_HITS = new Set(['weapon', 'bomb', 'shock', 'projectile', 'slam', 'whirl', 'wall']); // 몸이 크게 휘청하는 공격
+const HEAVY_HITS = new Set(['bomb', 'shock', 'projectile', 'slam', 'whirl', 'wall', 'blast', 'bigbomb']); // 몸이 크게 휘청하는 공격
 const MAX_CELLS = C.GRID_W * C.GRID_D * C.GRID_H;
 
 export class Renderer {
@@ -308,6 +307,15 @@ export class Renderer {
     this.hits = new Map(); // 맞은 몸 반응 (id → { id, t0, stop, dir, pow }, hitReact)
     this.finishAt = new Map(); // 콤보 마무리 타를 받은 시각 (comboFinish)
     this.counterAt = new Map(); // 카운터히트를 받은 시각 (counterHit)
+    // 건축가 블록: 칸마다 메시 (주인 색·금 간 무늬·깜빡임·솟기), 같은 묶음 이음 띠, 연쇄 폭발 대기 칸
+    this.bbMeshes = [];
+    this.bbStraps = [];
+    this.bbSig = '';
+    this.bbSkip = null;
+    this.bbBorn = new Map(); // 칸 → 생긴 시각 (솟는 연출)
+    this.bbGhosts = []; // 연쇄로 아직 안 터진 칸 { x, y, z, color, at }
+    this.bbGeo = new THREE.BoxGeometry(1, 1, 1);
+    this.bbStrapMat = toon({ color: 0x3a3a44 });
     this.acts = new Map(); // 공격 동작 (id → { id, move, t0, windup 초, struck 판정 시각, rec 초, broken 끊긴 시각 })
     this.hitSeq = 0;
     this.itemMeshes = [];
@@ -345,7 +353,8 @@ export class Renderer {
     cam.updateProjectionMatrix();
   }
 
-  updateGrid(grid) {
+  // skip: 그리지 않을 칸 번호 (건축가 블록은 updateBBlocks 가 따로 그림)
+  updateGrid(grid, skip = this.bbSkip) {
     const m = new THREE.Matrix4();
     const color = new THREE.Color();
     const count = { terrain: 0, build: 0, thrown: 0, shape: 0 };
@@ -353,7 +362,7 @@ export class Renderer {
       for (let y = 0; y < C.GRID_D; y++) {
         for (let x = 0; x < C.GRID_W; x++) {
           const v = grid[(z * C.GRID_D + y) * C.GRID_W + x];
-          if (!v) continue;
+          if (!v || (skip && skip.has((z * C.GRID_D + y) * C.GRID_W + x))) continue;
           const kind = v === CELL.TERRAIN ? 'terrain' : v === CELL.BUILD ? 'build' : v === CELL.THROWN ? 'thrown' : 'shape';
           const mesh = this.blockMeshes[kind];
           const n = count[kind]++;
@@ -644,15 +653,14 @@ export class Renderer {
     this.acts.set(e.who, { id: ++this.hitSeq, move, t0: performance.now(), windup: (e.windup || 0) / 1000, struck: null, rec: (def ? def.rec : 300) / 1000, broken: 0 });
   }
 
-  // swing 이벤트: 판정 순간 → 타격 자세. 준비 없이 온 것(망치·예전 밀치기)은 바로 타격
+  // swing 이벤트: 판정 순간 → 타격 자세. 준비 없이 온 것(캐릭터 없는 밀치기)은 바로 타격
   attackSwing(e) {
     const a = this.acts.get(e.who);
     if (a && !a.struck && !a.broken) {
       a.struck = performance.now();
       return;
     }
-    const move = e.kind === 'weapon' ? 'hammer' : 'punch';
-    this.acts.set(e.who, { id: ++this.hitSeq, move, t0: performance.now(), windup: 0, struck: performance.now(), rec: 0.3, broken: 0 });
+    this.acts.set(e.who, { id: ++this.hitSeq, move: 'punch', t0: performance.now(), windup: 0, struck: performance.now(), rec: 0.3, broken: 0 });
   }
 
   // 스킬·필살기 동작: windupMs 가 있으면 준비 자세로 기다렸다 skillStrike 에서 타격, 없으면 바로 타격
@@ -661,13 +669,14 @@ export class Renderer {
     this.acts.set(who, { id: ++this.hitSeq, move, t0: now, windup: windupMs / 1000, struck: windupMs > 0 ? null : now, rec: MOVES[move].rec || 0.4, broken: 0 });
   }
 
-  skillStrike(who, move) {
+  // onlyPending: 준비 중인 그 동작이 있을 때만 (wallRise 는 3타 블록에도 와서 평타 회복을 덮으면 안 됨)
+  skillStrike(who, move, onlyPending = false) {
     const a = this.acts.get(who);
     if (a && a.move === move && !a.broken) {
       if (!a.struck) a.struck = performance.now();
       return; // 이미 치는 중 (갈고리가 당길 때 한 번 더 오는 것 등)
     }
-    this.skillMove(who, move);
+    if (!onlyPending) this.skillMove(who, move);
   }
 
   // 끊긴 공격 (interrupt 이벤트): 하던 동작에서 팔이 튕기며 무너짐. 맞은 휘청과 겹쳐 보임
@@ -953,6 +962,120 @@ export class Renderer {
     this.beamMat.opacity = C.BEAM_OPACITY + C.BEAM_PULSE * Math.sin(performance.now() / 150); // 살짝 깜빡임
   }
 
+  // ---------- 건축가 블록 ----------
+  // 격자엔 CELL.BUILD 로 있지만 여기서 따로 그림: 주인 색 + 금 간 무늬, 생길 때 솟음, 사라지기 전 깜빡임,
+  // 같은 묶음(같은 F 의 벽 등) 이웃 칸은 위를 쇠 띠로 이음 (연쇄가 어디까지 번지는지 보이게), 대폭발 블록은 빨갛게 부풀며 째깍
+  updateBBlocks(state) {
+    const list = state.bblocks || [];
+    const sig = list.map((b) => `${b.x},${b.y},${b.z},${b.kind}`).join('|');
+    if (sig !== this.bbSig) {
+      this.bbSig = sig;
+      this.bbSkip = new Set(list.map((b) => (b.z * C.GRID_D + b.y) * C.GRID_W + b.x));
+      if (state.grid) this.updateGrid(state.grid);
+    }
+    const now = performance.now();
+    const owners = new Map(state.players.map((p) => [p.id, p]));
+    const tint = (id) => {
+      const o = owners.get(id);
+      return new THREE.Color(o ? playerColor(o, state) : 0xc08040).lerp(new THREE.Color(0xffffff), C.BB_TINT);
+    };
+    // 연쇄 대기 칸: 차례가 오면 터짐
+    const ghosts = [];
+    for (const gh of this.bbGhosts) {
+      if (now >= gh.at) this.bbPop(gh);
+      else ghosts.push(gh);
+    }
+    this.bbGhosts = ghosts;
+    const draw = [...list.map((b) => ({ ...b, color: tint(b.owner) })), ...ghosts.map((g) => ({ ...g, kind: 'ghost', left: Infinity }))];
+    while (this.bbMeshes.length < draw.length) {
+      const m = new THREE.Mesh(this.bbGeo, toon({ color: 0xffffff, map: this.tex.cracked, transparent: true }));
+      m.castShadow = m.receiveShadow = true;
+      this.scene.add(m);
+      this.bbMeshes.push(m);
+    }
+    this.bbMeshes.forEach((m, i) => {
+      const b = draw[i];
+      m.visible = !!b;
+      if (!b) return;
+      const mat = m.material;
+      let sx = 1;
+      let sz = 1;
+      let emissive = 0x000000;
+      let opacity = 1;
+      // 솟기: 바닥에서 위로 자라며 살짝 넘쳤다 돌아옴
+      const born = this.bbBorn.get(`${b.x},${b.y},${b.z}`);
+      if (born !== undefined) {
+        const u = (now - born) / C.BB_POP_MS;
+        if (u >= 1) this.bbBorn.delete(`${b.x},${b.y},${b.z}`);
+        else sz = Math.max(0.05, 1 + 0.25 * Math.sin(Math.PI * u) - (1 - u) ** 3);
+      }
+      if (b.kind === 'big') {
+        // 대폭발: 터질 때가 가까울수록 크게 부풀고 빨리 깜빡
+        const k = 1 - Math.min(1, b.left / C.BUILDER_BIG_FUSE_MS);
+        sx = 1 + C.BB_BIG_SWELL * k + 0.04 * Math.sin(now / 35);
+        sz *= sx;
+        mat.color.setHex(0xff4030);
+        emissive = Math.floor(now / (50 + b.left / 5)) % 2 ? 0xa01000 : 0x300000;
+      } else if (b.kind === 'ghost') {
+        mat.color.copy(b.color);
+        emissive = 0xffffff; // 곧 터짐: 하얗게
+      } else {
+        mat.color.copy(b.color);
+        if (b.left < C.BB_BLINK_MS && Math.floor(now / (b.left < C.BB_BLINK_MS / 3 ? 70 : 140)) % 2) opacity = 0.35; // 사라지기 직전 깜빡임
+      }
+      mat.emissive.setHex(emissive);
+      mat.opacity = opacity;
+      m.scale.set(sx, sx, sz);
+      m.position.set(b.x + 0.5, b.y + 0.5, b.z + sz / 2);
+    });
+    // 같은 묶음 이웃 칸: 윗면 이음매에 쇠 띠
+    const at = new Map(list.map((b) => [`${b.x},${b.y},${b.z}`, b]));
+    const pairs = [];
+    for (const b of list) {
+      for (const [dx, dy] of [[1, 0], [0, 1]]) {
+        const n = at.get(`${b.x + dx},${b.y + dy},${b.z}`);
+        if (n && n.group === b.group) pairs.push([b, dx, dy]);
+      }
+    }
+    while (this.bbStraps.length < pairs.length) {
+      const s = new THREE.Mesh(this.bbGeo, this.bbStrapMat);
+      this.scene.add(s);
+      this.bbStraps.push(s);
+    }
+    this.bbStraps.forEach((s, i) => {
+      const pr = pairs[i];
+      s.visible = !!pr;
+      if (!pr) return;
+      const [b, dx, dy] = pr;
+      s.scale.set(dx ? 0.55 : 0.16, dy ? 0.55 : 0.16, 0.06);
+      s.position.set(b.x + 0.5 + dx * 0.5, b.y + 0.5 + dy * 0.5, b.z + 1.01);
+    });
+  }
+
+  // bblock 이벤트: 솟는 연출 시작
+  bblockBorn(cells) {
+    const now = performance.now();
+    for (const [x, y, z] of cells) this.bbBorn.set(`${x},${y},${z}`, now);
+  }
+
+  // blast 이벤트: 서버는 한 번에 지웠지만 화면에선 cells 순서대로 차례로 터짐 (치는 방향 dir 로 파편)
+  blastChain(e, color) {
+    const now = performance.now();
+    const c = new THREE.Color(color).lerp(new THREE.Color(0xffffff), C.BB_TINT);
+    e.cells.forEach(([x, y, z], i) => this.bbGhosts.push({ x, y, z, color: c, at: now + i * C.BB_CHAIN_STEP_MS, dir: e.dir, hex: color }));
+  }
+
+  // 한 칸 터짐: 치는 방향으로 파편 + 회색 먼지 + 작은 고리
+  bbPop(gh, big = false) {
+    const pos = { x: gh.x + 0.5, y: gh.y + 0.5, z: gh.z + 0.5 };
+    const dir = gh.dir ? { x: gh.dir.x * 1.2, y: gh.dir.y * 1.2 } : null;
+    this.effects.burst(pos, dir, gh.hex ?? 0xc08040, big ? 30 : 16, big ? 9 : 7, 0.14, 0.55);
+    this.effects.burst(pos, null, 0x777777, big ? 18 : 8, 4, 0.12, 0.7);
+    this.effects.burst(pos, dir, 0xffc040, 8, 8, 0.1, 0.3);
+    this.effects.ring(pos, 0xffd080, big ? 5 : 2.6, 0.3);
+    if (this.onBlast) this.onBlast(pos, big);
+  }
+
   updateBombs(bombs) {
     while (this.bombMeshes.length < bombs.length) {
       // 재질을 복사해 폭탄마다 따로 깜빡이게
@@ -1059,7 +1182,7 @@ export class Renderer {
         if (g.userData.acc) g.userData.rig.add(g.userData.acc);
         g.userData.char = p.char;
       }
-      g.userData.hammer.visible = p.weaponUses > 0;
+      g.userData.hammer.visible = p.char === 'builder'; // 건축가 무기 (예전 아이템 망치 모델)
       // 왼손에 고른 칸의 물건, 조종권 대기 중이면 머리 위 하늘색 팔면체
       const kind = heldKind(p);
       for (const [k, m] of Object.entries(g.userData.held)) m.visible = k === kind;
@@ -1209,15 +1332,16 @@ export class Renderer {
     const me = state.players.find((p) => p.id === myId);
     this.updateAim(me && me.alive && view === 'fps' ? me.aim : null);
     this.updateBombs(state.bombs || []);
+    this.updateBBlocks(state);
     this.updateBeams(state);
     if (me) this.viewArm.material.color.setHex(playerColor(me, state));
     const vp = this.effects.punchAmount(myId);
     this.viewArm.position.set(this.viewArmBase.x - 0.12 * vp, this.viewArmBase.y + 0.08 * vp, this.viewArmBase.z - 0.3 * vp);
     this.viewArm.visible = !!(me && me.alive) && this.skyBlend === 0 && !cam.victory && !cam.selfie && !this.third; // 3인칭은 팔 대신 내 몸
-    this.viewHammer.visible = !!(me && me.weaponUses > 0);
+    this.viewHammer.visible = !!(me && me.char === 'builder') && !heldKind(me); // 1인칭 건축가 망치 (아이템을 들면 아이템)
     // 손에 든 것: 고른 핫바 칸에 뭐가 있으면 그 색 상자 (망치가 있으면 망치가 우선)
     const kind = me ? heldKind(me) : null;
-    for (const [k, o] of Object.entries(this.viewHeld)) o.visible = k === kind && !this.viewHammer.visible; // 망치가 있으면 망치가 우선
+    for (const [k, o] of Object.entries(this.viewHeld)) o.visible = k === kind; // 든 아이템 (건축가는 아이템을 들면 망치 대신)
     this.effects.update(dt, this.skyBlend >= 1 ? this.skyCamera : this.camera);
     this.updateMarks();
     this.pieceMat.opacity = this.skyBlend > 0.5 ? 0.55 : 1; // 하늘 시점에선 블록 너머로 착지 미리보기가 보이게
