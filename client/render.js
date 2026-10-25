@@ -645,23 +645,24 @@ export class Renderer {
     this.marks.push({ mesh, until: performance.now() + ms, ms, pulse, grow });
   }
 
-  // 스킬·필살기 빛: 발밑 고리가 퍼지고 몸 둘레가 빛남 (필살기는 노란 빛기둥, 더 크고 길게). 캐릭터를 따라다님
+  // 스킬·필살기 빛: 발밑 고리가 퍼지고 몸이 빛남 (스킬은 하얗게 순간, 필살기는 하늘색으로 길게 + 반짝이). 캐릭터를 따라다님
   aura(id, ult) {
     const g = this.playerMeshes.get(id);
     if (!g) return;
     const color = ult ? C.ULT_AURA_COLOR : C.SKILL_AURA_COLOR;
     const ms = ult ? C.ULT_AURA_MS : C.SKILL_AURA_MS;
-    const mat = (opacity) => noOutline(new THREE.MeshBasicMaterial({ color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0.45, 0.62, 32), mat(0.9));
-    ring.position.z = 0.05;
-    this.addMark(ring, ms, false, ult ? 3 : 1.6, g);
-    const h = ult ? C.PLAYER_HEIGHT * 1.6 : C.PLAYER_HEIGHT * 1.1;
-    const geo = new THREE.CylinderGeometry(0.5, 0.62, h, 20, 1, true);
-    geo.rotateX(Math.PI / 2); // 원기둥 축 y → z (퍼질 때 옆으로만 커지게 모양에서 돌림)
-    const pillar = new THREE.Mesh(geo, mat(ult ? 0.45 : 0.3));
-    pillar.position.z = h / 2;
-    this.addMark(pillar, ms, false, ult ? 0.3 : 0.15, g);
+    const ring = (r0, r1, delay) => {
+      const m = new THREE.Mesh(new THREE.RingGeometry(r0, r1, 40), noOutline(new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false })));
+      m.position.z = 0.04;
+      setTimeout(() => this.addMark(m, ms * 0.6, false, ult ? 2.6 : 1.8, g), delay);
+    };
+    ring(0.5, 0.58, 0);
+    if (ult) ring(0.5, 0.58, ms * 0.25); // 두 겹
+    g.userData.glowUntil = performance.now() + (ult ? ms : C.SKILL_GLOW_MS);
+    g.userData.glowColor = color;
+    g.userData.sparkUntil = ult ? performance.now() + ms : 0;
   }
+
 
   // 칸들 바닥(맨 아래 높이)에 색 판
   markCells(cells, color, ms) {
@@ -854,6 +855,15 @@ export class Renderer {
       }
       if (p.jumpLeft > 0 && !p.stunned) bodyMat.emissive.setHex(0x1a5a1a);
       if (p.critNext && Math.floor(performance.now() / 150) % 2) bodyMat.emissive.setHex(0x801010); // 닌자 그림자: 다음 밀치기 치명타
+      // 스킬·필살기 빛 (aura): 몸 전체(옷 포함)가 잠깐 빛남. 필살기는 반짝이가 위로
+      const now = performance.now();
+      const glowing = now < (g.userData.glowUntil || 0);
+      for (const m of g.userData.mats) if (m.emissive && m !== bodyMat) m.emissive.setHex(glowing ? g.userData.glowColor : 0x000000);
+      if (glowing) bodyMat.emissive.setHex(g.userData.glowColor);
+      if (now < (g.userData.sparkUntil || 0) && Math.random() < dt * 40) {
+        const a = Math.random() * Math.PI * 2;
+        this.effects.burst({ x: s.x + Math.cos(a) * 0.45, y: s.y + Math.sin(a) * 0.45, z: s.z + Math.random() * 1.2 }, { x: 0, y: 0, z: 1 }, g.userData.glowColor, 1, 1.5, 0.06, 0.5);
+      }
       // 캐릭터 머리 장식 (판 사이에 바뀔 수 있어 바뀔 때만 다시 붙임)
       if (g.userData.char !== p.char) {
         if (g.userData.acc) g.userData.rig.remove(g.userData.acc);

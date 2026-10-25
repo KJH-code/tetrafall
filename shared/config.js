@@ -219,10 +219,12 @@ export const CONFIG = {
   ULT_NAMES: { tank: '내려찍기', ninja: '그림자 일격', builder: '블록 비', hook: '회오리' },
   SKILL_CD_MS: { tank: 8000, ninja: 6000, builder: 11000, hook: 8000 }, // 봇 160판으로 맞춤 (2026-10-24)
   CHAR_DEFAULT: 'tank',
-  // 스킬·필살기를 쓰면 그 캐릭터 둘레에 빛 (글자 대신, 남에게도 보임. 누가 무엇인지는 캐릭터 모양으로). 2026-10-25 재혁
-  SKILL_AURA_COLOR: 0xff3030, // F: 발밑 빨간 고리 + 몸 둘레 빨간 빛
-  SKILL_AURA_MS: 400,
-  ULT_AURA_COLOR: 0xffd23a, // R: 노란 빛기둥 + 큰 고리
+  // 스킬·필살기를 쓰면 그 캐릭터에 빛 (글자 대신, 남에게도 보임. 누가 무엇인지는 캐릭터 모양으로). 2026-10-25 재혁:
+  // 전체 느낌을 방해하지 않지만 잘 보이게 → 노을(주황·빨강)과 대비되는 차가운 색, 압사 경고(빨강)·치명타(노랑)와 안 겹치게
+  SKILL_AURA_COLOR: 0xffffff, // F: 발밑에 얇은 고리가 짧게 퍼지고 몸이 순간 하얗게 번쩍
+  SKILL_AURA_MS: 300,
+  SKILL_GLOW_MS: 140,
+  ULT_AURA_COLOR: 0x8fe6ff, // R: 몸이 하늘색으로 빛나는 동안 반짝이가 위로 올라감 + 고리 두 겹
   ULT_AURA_MS: 900,
   COMBO_TEXT_MS: 900, // 내가 때리거나 맞은 콤보 'N HIT' 글자
   ULT_MAX: 100, // 필살기 게이지 (다 차면 R)
