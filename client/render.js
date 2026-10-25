@@ -146,7 +146,7 @@ export function playerColor(p, state) {
   return PLAYER_COLORS[p.slot % PLAYER_COLORS.length];
 }
 const _q = new THREE.Quaternion();
-const HEAVY_HITS = new Set(['bomb', 'shock', 'projectile', 'slam', 'whirl', 'wall', 'blast', 'bigbomb', 'quake']); // 몸이 크게 휘청하는 공격
+const HEAVY_HITS = new Set(['bomb', 'shock', 'projectile', 'slam', 'wall', 'blast', 'bigbomb', 'quake', 'blockslam']); // 몸이 크게 휘청하는 공격
 const MAX_CELLS = C.GRID_W * C.GRID_D * C.GRID_H;
 
 export class Renderer {
@@ -1061,19 +1061,159 @@ export class Renderer {
   }
 
   // 갈고리 줄: 던진 사람에서 끌려온 사람(빗나가면 보는 방향 끝)까지 잠깐
-  showHook(whoId, targetId, yaw) {
-    const a = this.smooth.get(whoId);
-    if (!a) return;
-    const b = targetId !== null && targetId !== undefined ? this.smooth.get(targetId) : null;
-    const to = b ? new THREE.Vector3(b.x, b.y, b.z + 0.9) : new THREE.Vector3(a.x + Math.cos(yaw) * C.HOOK_RANGE, a.y + Math.sin(yaw) * C.HOOK_RANGE, a.z + 0.9);
-    const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(a.x, a.y, a.z + 0.9), to]);
-    const line = new THREE.Line(geo, noOutline(new THREE.LineBasicMaterial({ color: 0xd8dce8, transparent: true, opacity: 0.9 })));
-    this.scene.add(line);
-    setTimeout(() => {
-      this.scene.remove(line);
-      geo.dispose();
-      line.material.dispose();
-    }, 260);
+  // ---------- 갈고리 ----------
+  // 왼손(갈고리 손) 위치 (TABS 식 몸이면 손 관절, 아니면 가슴 높이)
+  hookHand(id, out) {
+    const g = this.playerMeshes.get(id);
+    const fig = g && g.userData.figure;
+    if (fig && g.visible) return fig.hands[1].getWorldPosition(out);
+    const s = this.smooth.get(id);
+    return s ? out.set(s.x, s.y, s.z + 1) : null;
+  }
+
+  // 사슬 하나 (손 → 머리) + 갈고리 머리
+  makeChain() {
+    if (!this.chainMat) {
+      this.chainMat = noOutline(new THREE.LineBasicMaterial({ color: 0xc8ccd8 }));
+      const geo = new THREE.TorusGeometry(0.09, 0.025, 4, 8, Math.PI * 1.3);
+      this.hookHeadGeo = geo;
+      this.hookHeadMat = toon({ color: 0xa3adb8 });
+    }
+    const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+    const line = new THREE.Line(geo, this.chainMat);
+    line.frustumCulled = false;
+    const head = new THREE.Mesh(this.hookHeadGeo, this.hookHeadMat);
+    this.scene.add(line, head);
+    return { line, head };
+  }
+
+  dropChain(c) {
+    this.scene.remove(c.line, c.head);
+    c.line.geometry.dispose();
+  }
+
+  setChain(c, a, b, t) {
+    const pos = c.line.geometry.attributes.position;
+    pos.setXYZ(0, a.x, a.y, a.z);
+    pos.setXYZ(1, b.x, b.y, b.z);
+    pos.needsUpdate = true;
+    c.head.position.copy(b);
+    c.head.rotation.set(0, 0, t / 60);
+  }
+
+  // F 갈고리 (hook 이벤트): 갈고리 머리가 HOOK_FLY_MS 동안 날아가 닿고 (상대·블록·빗나가면 사거리 끝), 걸리면 잠깐 사슬이 붙어 있다 감김
+  hookRope(e) {
+    const now = performance.now();
+    const s = this.smooth.get(e.who);
+    if (!s) return;
+    const miss = new THREE.Vector3(s.x + Math.cos(e.yaw) * C.HOOK_RANGE, s.y + Math.sin(e.yaw) * C.HOOK_RANGE, s.z + C.HOOK_RAY_HEIGHT);
+    const block = e.block ? new THREE.Vector3(e.block[0] + 0.5, e.block[1] + 0.5, e.block[2] + 0.5) : null;
+    (this.ropes ||= []).push({ who: e.who, target: e.target ?? null, block, miss, t0: now, chain: this.makeChain(), caught: !!(block || (e.target !== null && e.target !== undefined)) });
+  }
+
+  updateRopes() {
+    if (!this.ropes?.length) return;
+    const now = performance.now();
+    const a = new THREE.Vector3();
+    this.ropes = this.ropes.filter((r) => {
+      const age = now - r.t0;
+      const life = C.HOOK_FLY_MS + (r.caught ? C.HOOK_HOLD_MS : 0) + C.HOOK_FLY_MS; // 날아감 → (걸림) → 감김
+      if (age > life || !this.hookHand(r.who, a)) {
+        this.dropChain(r.chain);
+        return false;
+      }
+      const ts = r.target !== null ? this.smooth.get(r.target) : null;
+      const end = ts ? new THREE.Vector3(ts.x, ts.y, ts.z + 1) : r.block || r.miss;
+      let u;
+      if (age < C.HOOK_FLY_MS) u = age / C.HOOK_FLY_MS; // 날아감
+      else if (age < C.HOOK_FLY_MS + (r.caught ? C.HOOK_HOLD_MS : 0)) u = 1; // 걸려 있음 (상대가 끌려오면 따라옴)
+      else u = 1 - (age - C.HOOK_FLY_MS - (r.caught ? C.HOOK_HOLD_MS : 0)) / C.HOOK_FLY_MS; // 감김
+      this.setChain(r.chain, a, a.clone().lerp(end, Math.max(0, u)), now);
+      return true;
+    });
+  }
+
+  // R 1단계 (blockGrab): 블록이 지형에서 뽑혀 사슬에 끌려와 머리 위에서 돎. 건축가 블록이면 금 간 무늬
+  blockGrab(e) {
+    const now = performance.now();
+    const mat = e.builder ? toon({ color: 0xffb070, map: this.tex.cracked }) : toon({ color: 0xb0a8a0, map: this.tex.stone });
+    const mesh = new THREE.Mesh(this.bbGeo, mat);
+    mesh.castShadow = true;
+    const from = new THREE.Vector3(e.from[0] + 0.5, e.from[1] + 0.5, e.from[2] + 0.5);
+    mesh.position.copy(from);
+    this.scene.add(mesh);
+    (this.grabs ||= new Map()).get(e.who)?.mesh && this.endGrab(e.who);
+    this.grabs.set(e.who, { mesh, from, t0: now, ms: e.ms || 300, slam: null, chain: this.makeChain() });
+    this.effects.burst(from, null, 0x8a7a68, 12, 3, 0.1, 0.5);
+  }
+
+  // R 2단계 (blockSlam): 머리 위에서 앞으로 크게 내려찍음 → 박힐 칸(없으면 필드 밖으로 떨어져 사라짐)
+  blockSlam(e) {
+    const g = this.grabs?.get(e.who);
+    const s = this.smooth.get(e.who);
+    if (!g || !s) return;
+    const to = e.cell ? new THREE.Vector3(e.cell[0] + 0.5, e.cell[1] + 0.5, e.cell[2] + 0.5) : new THREE.Vector3(s.x + e.dir.x * (e.len + 1.5), s.y + e.dir.y * (e.len + 1.5), s.z - 3);
+    g.slam = { t0: performance.now(), from: g.mesh.position.clone(), to, cell: !!e.cell, dir: e.dir, line: { x: s.x, y: s.y, z: s.z } };
+  }
+
+  endGrab(who) {
+    const g = this.grabs.get(who);
+    if (!g) return;
+    this.scene.remove(g.mesh);
+    g.mesh.material.dispose();
+    this.dropChain(g.chain);
+    this.grabs.delete(who);
+  }
+
+  updateGrabs() {
+    if (!this.grabs?.size) return;
+    const now = performance.now();
+    const hand = new THREE.Vector3();
+    for (const [who, g] of this.grabs) {
+      const s = this.smooth.get(who);
+      if (!s || !this.hookHand(who, hand) || now - g.t0 > 3000) {
+        this.endGrab(who);
+        continue;
+      }
+      const over = new THREE.Vector3(s.x, s.y, s.z + C.PLAYER_HEIGHT + 0.9);
+      if (!g.slam) {
+        // 뽑혀서 끌려옴 → 머리 위에서 빙빙
+        const u = Math.min(1, (now - g.t0) / g.ms);
+        const ang = now / 90;
+        const circle = over.clone().add(new THREE.Vector3(Math.cos(ang) * C.HOOK_GRAB_SWING_R, Math.sin(ang) * C.HOOK_GRAB_SWING_R, 0));
+        g.mesh.position.copy(g.from.clone().lerp(circle, u * u * (3 - 2 * u)));
+        g.mesh.rotation.set(ang, ang * 0.7, 0);
+      } else {
+        // 내려찍음: 위로 솟았다 앞으로 떨어지는 호
+        const u = Math.min(1, (now - g.slam.t0) / C.HOOK_SLAM_FLY_MS);
+        const p = g.slam.from.clone().lerp(g.slam.to, u);
+        p.z += Math.sin(Math.PI * u) * 1.2;
+        g.mesh.position.copy(p);
+        g.mesh.rotation.set(0, u * 3, 0);
+        if (u >= 1 && !g.slam.done) {
+          g.slam.done = true;
+          if (g.slam.cell) {
+            // 박힘: 흙먼지 + 쾅 + 내려찍은 줄을 따라 먼지
+            this.effects.burst(g.slam.to, null, 0x8a7a68, 26, 6, 0.13, 0.7);
+            this.effects.ring({ x: g.slam.to.x, y: g.slam.to.y, z: g.slam.to.z - 0.45 }, 0xc0a880, 3.5, 0.35, true);
+            for (let k = 1; k <= C.HOOK_SLAM_LEN; k++) this.effects.burst({ x: g.slam.line.x + g.slam.dir.x * k, y: g.slam.line.y + g.slam.dir.y * k, z: g.slam.line.z + 0.1 }, null, 0x9a8a78, 4, 2.5, 0.1, 0.5);
+            if (this.onBlast) this.onBlast(g.slam.to, true);
+            this.endGrab(who); // 이제 격자에 박힌 블록이 그 자리
+            continue;
+          }
+          g.slam.fallAt = now;
+        }
+        if (g.slam.fallAt) {
+          // 필드 밖: 계속 떨어지며 사라짐
+          g.mesh.position.z -= (now - g.slam.fallAt) / 60;
+          if (now - g.slam.fallAt > 500) {
+            this.endGrab(who);
+            continue;
+          }
+        }
+      }
+      this.setChain(g.chain, hand, g.mesh.position, now);
+    }
   }
 
   updateBeams(state) {
@@ -1338,6 +1478,15 @@ export class Renderer {
         g.userData.char = p.char;
       }
       g.userData.hammer.visible = p.char === 'builder'; // 건축가 무기 (예전 아이템 망치 모델)
+      const gun = g.userData.figure && g.userData.figure.gun;
+      if (gun) {
+        // 갈고리 장전: 허리 권총 부싯돌 자리에 불꽃이 깜빡 / 빈 총이면 가끔 연기
+        gun.spark.visible = !!p.loaded && Math.floor(performance.now() / 90) % 3 !== 0;
+        if (!p.loaded && p.alive && gun.holster.visible && Math.random() < dt * 4) {
+          const w = gun.holster.getWorldPosition(new THREE.Vector3());
+          this.effects.burst({ x: w.x, y: w.y, z: w.z + 0.05 }, { x: 0, y: 0 }, 0x9a9a9a, 1, 0.6, 0.07, 0.7);
+        }
+      }
       // 왼손에 고른 칸의 물건, 조종권 대기 중이면 머리 위 하늘색 팔면체
       const kind = heldKind(p);
       for (const [k, m] of Object.entries(g.userData.held)) m.visible = k === kind;
@@ -1490,6 +1639,8 @@ export class Renderer {
     this.updateBBlocks(state);
     this.updateStars();
     this.updateQuakes();
+    this.updateRopes();
+    this.updateGrabs();
     this.updateBeams(state);
     if (me) this.viewArm.material.color.setHex(playerColor(me, state));
     const vp = this.effects.punchAmount(myId);

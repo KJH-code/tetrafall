@@ -517,6 +517,28 @@ function dressHook(fig, costume, cloth) {
     fig.knees[i].add(mesh(ringGeo(d.legR * 1.4, d.legR * 1.25, 0.05, 8), black, 0, 0, -d.shin * 0.22));
     fig.feet[i].add(mesh(new THREE.BoxGeometry(d.legR * 3.2, d.legR * 1.7, d.foot * 1.2), black, d.legR * 0.6, 0, -d.foot / 2));
   }
+  // 플린트록 권총: 평소엔 오른쪽 허리에 꽂힘 (장전이면 부싯돌 자리에 불꽃, render.js 가 켬), 탕 동작 동안만 오른손에
+  const wood = costume(0x6a3e22);
+  const pistol = () => {
+    const g = new THREE.Group(); // 총열이 -z, 손잡이가 +z 쪽 (손 기준: 팔이 뻗는 쪽으로 총열)
+    g.add(mesh(new THREE.BoxGeometry(0.035, 0.035, 0.26), steel, 0, 0, -0.13)); // 총열
+    g.add(mesh(new THREE.BoxGeometry(0.05, 0.045, 0.12), wood, 0, 0, -0.03)); // 몸통 (나무)
+    g.add(mesh(new THREE.BoxGeometry(0.06, 0.04, 0.03), gold, 0, 0, -0.27)); // 총구 테
+    g.add(mesh(new THREE.BoxGeometry(0.03, 0.04, 0.03), black, 0.03, 0, 0.0)); // 부싯돌 공이
+    return g;
+  };
+  const holster = pistol();
+  holster.position.set(d.waistR * 0.3 * d.depth, -d.waistR * 1.25, 0.05);
+  holster.rotation.y = -0.4; // 총열이 아래·조금 뒤로
+  fig.waist.add(holster);
+  const spark = new THREE.Mesh(new THREE.IcosahedronGeometry(0.03, 0), noOutline(new THREE.MeshBasicMaterial({ color: 0xffd040 })));
+  spark.position.set(0.05, 0, 0.0);
+  holster.add(spark);
+  const inHand = pistol();
+  inHand.position.set(0, 0, -d.hand * 0.6);
+  inHand.visible = false;
+  fig.hands[0].add(inHand);
+  fig.gun = { holster, inHand, spark };
 }
 
 // ---------- 동작 ----------
@@ -626,7 +648,16 @@ export const MOVES = {
   '갈고리 휘두르기': { W: { shOut: L(2.0), shFwd: L(-0.2), elbow: L(0.9), waistRoll: 0.5, waistSide: -0.15, crouch: 0.3 }, S: { shOut: L(0.3), shFwd: L(1.4), elbow: L(0.2), waistRoll: -0.6, waistPitch: 0.2 } },
   // 큰 주먹: 갈고리 주먹은 탱크 주먹보다 더 크게 뒤로 젖힘 (같은 이름이라 캐릭터로 구분: hook:주먹)
   'hook:주먹': { W: { shFwd: R(-0.6), shOut: R(1.2), elbow: R(2.0), waistRoll: -0.8, waistPitch: -0.25, crouch: 0.4 }, S: { shFwd: R(1.6), shOut: R(0.05), elbow: R(0), waistRoll: 0.55, waistPitch: 0.4, thFwd: [0.5, -0.4] } },
-  '공중 휘두르기': { W: { shFwd: L(2.8), shOut: L(0.4), elbow: L(0.4) }, S: { shFwd: L(0.4), elbow: L(0.2), waistPitch: 0.5, waistRoll: -0.4 } },
+  // 3타 (장전): 탕 — 오른손 권총을 앞으로 겨눴다가 반동으로 팔이 휙 올라감 (gun: 그동안 권총이 손에)
+  '탕': {
+    W: { shFwd: R(1.5), shOut: R(0.1), elbow: R(0.1), waistRoll: 0.35, neckPitch: 0.05 },
+    S: { shFwd: R(2.5), shOut: R(0.3), elbow: R(0.7), waistRoll: 0.2, waistPitch: -0.3, neckPitch: -0.25, thFwd: [-0.2, 0.3] },
+    gun: true,
+  },
+  // 3타 (빈 총): 갈고리 내려치기 — 약한 마무리
+  '갈고리 내려치기': { W: { shFwd: L(2.8), shOut: L(0.3), elbow: L(0.6), waistPitch: -0.25 }, S: { shFwd: L(0.6), elbow: L(0.1), waistPitch: 0.5, crouch: 0.3 } },
+  // 공중 갈고리 스핀: 갈고리 팔을 쭉 뻗어 채찍처럼 수평으로 한 바퀴
+  '갈고리 스핀': { W: { shOut: L(1.5), shFwd: L(-0.3), elbow: L(0.8), waistRoll: 0.6, crouch: 0.3 }, S: { shOut: L(1.6), shFwd: L(0.1), elbow: L(0), waistRoll: 0 }, spin: -Math.PI * 2 },
 
   // ---- 스킬·필살기 ----
   // 탱크 돌진: 어깨를 앞으로 숙이고 돌진 (판정이 바로라 준비 없음)
@@ -650,8 +681,16 @@ export const MOVES = {
   builderPad: { S: { shFwd: [2.4, 2.4], shOut: [1.4, 1.4], elbow: [0.2, 0.2], thFwd: [1.4, 1.4], knee: [0.3, 0.3], waistPitch: -0.6, neckPitch: -0.5 }, rec: 0.55 },
   // 갈고리 던지기: 왼팔 쭉 → 당기며 몸을 뒤로
   hookThrow: { S: { shFwd: L(1.6), shOut: L(0.05), elbow: L(0), waistRoll: -0.5, waistPitch: 0.25 }, rec: 0.5, pull: true },
-  // 갈고리 회오리: 두 팔 벌리고 두 바퀴
-  hookWhirl: { S: { shOut: [1.6, 1.6], shFwd: [0, 0], elbow: [0, 0], crouch: 0.4 }, rec: 0.6, spin: Math.PI * 4 },
+  // 갈고리에 끌려오는 쪽: TABS 처럼 몸이 질질 (힘 빠진 팔다리가 뒤로 처지고 고개가 젖혀짐). 경직 중에도 보임 (stunOk)
+  hookDragged: { S: { shFwd: [-0.7, -0.5], shOut: [0.9, 1.1], elbow: [0.4, 0.6], thFwd: [-0.6, -0.3], knee: [1.1, 0.6], waistPitch: 0.45, neckPitch: -0.6 }, rec: 0.45, stunOk: true },
+  // 갈고리로 블록에 걸어 내가 끌려감: 갈고리 팔을 앞으로 쭉, 다리는 뒤로 날림
+  hookZip: { S: { shFwd: [-0.4, 2.0], shOut: [0.8, 0.1], elbow: [0.6, 0], thFwd: [-0.5, -0.2], knee: [0.9, 0.5], waistPitch: 0.35, neckPitch: -0.3 }, rec: 0.45, float: true },
+  // R 블록 내려찍기: 뽑은 블록을 사슬로 머리 위에서 돌림 (blockGrab ~ blockSlam) → 앞으로 쾅
+  hookSlam: {
+    W: { shFwd: [2.9, 2.9], shOut: [0.3, 0.3], elbow: [0.5, 0.5], waistPitch: -0.3, neckPitch: -0.4 },
+    S: { shFwd: [0.8, 0.8], shOut: [0.1, 0.1], elbow: [0.05, 0.05], waistPitch: 0.8, neckPitch: 0.2, crouch: 0.6 },
+    rec: 0.5,
+  },
 };
 // 끊긴 공격: 팔이 튕겨 나가며 자세가 무너짐 (뒤로 젖히고 무릎이 꺾임)
 const BROKEN = { shFwd: [2.3, 1.9], shOut: [1.3, 1.5], elbow: [0.2, 0.5], waistPitch: -0.25, neckPitch: -0.45, waistRoll: 0.3, crouch: 0.6 };
@@ -854,7 +893,7 @@ export function figureAnim(fig, st, dt, retry = false) {
   }
   // 공격 동작: 따라가기를 건너뛰고 바로 덮어씀. 끝나면 덮어쓴 자세에서 평소처럼 흐물흐물 돌아옴
   let spin = 0;
-  const act = st.act && (st.act.phase === 'broken' || (!frozen && !st.stunned)) ? st.act : null; // 끊김은 맞은 휘청 위에 겹침
+  const act = st.act && (st.act.phase === 'broken' || (!frozen && (!st.stunned || MOVES[st.act.move].stunOk))) ? st.act : null; // 끊김·끌려옴은 맞은 휘청 위에 겹침
   if (act) {
     const m = MOVES[act.move] || MOVES.punch;
     if (act.phase === 'wind') overlay(P, T, m.W, ease(act.u * 1.4)); // 준비 시간의 앞쪽에서 이미 크게
@@ -875,6 +914,11 @@ export function figureAnim(fig, st, dt, retry = false) {
     if (m.turn && (act.phase === 'strike' || act.phase === 'rec')) spin = m.turn * (act.phase === 'strike' ? ease(act.u) : 1 - ease((act.u - 0.6) / 0.4)); // 옆으로 돌았다가 회복 끝에 돌아옴
   }
   fig.hips.rotation.z = spin;
+  if (fig.gun) {
+    const inHand = !!act && !!MOVES[act.move].gun && act.phase !== 'broken';
+    fig.gun.inHand.visible = inHand;
+    fig.gun.holster.visible = !inHand;
+  }
   if (fig.shields) {
     const front = !!act && !!MOVES[act.move].shield && act.phase !== 'broken';
     fig.shields.front.visible = front;

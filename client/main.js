@@ -119,10 +119,10 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
-const KIND_KO = { push: '밀치기', projectile: '투사체', shock: '설치 블록 충격파', bomb: '폭탄', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', whirl: '회오리', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기', quake: '솟는 땅' };
+const KIND_KO = { push: '밀치기', projectile: '투사체', shock: '설치 블록 충격파', bomb: '폭탄', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', blockslam: '블록내려찍기', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기', quake: '솟는 땅' };
 const ITEM_KO = { control: '조종권', knockback: '투사체', jump: '점프력 상승', ghost: '유령화', brick: '설치 블록', bomb: '폭탄', speed: '이속 증가' };
 const CAUSE_KO = { crush: '압사', fall: '낙사', lava: '용암' };
-const WEAPON_KO = { push: '밀치기', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종 블록', thrown: '설치 블록', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', whirl: '회오리', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기', quake: '솟는 땅' };
+const WEAPON_KO = { push: '밀치기', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종 블록', thrown: '설치 블록', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', blockslam: '블록내려찍기', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기', quake: '솟는 땅' };
 
 // 오른쪽 위 킬 피드: "죽인 사람 → 죽은 사람 낙사 (망치)". 내가 낀 줄은 노란 테두리
 const killfeedEl = $('killfeed');
@@ -367,11 +367,6 @@ function handleEvent(e) {
       renderer.skillMove(e.who, 'builderPad');
       if (e.cell) fx.burst({ x: e.cell[0] + 0.5, y: e.cell[1] + 0.5, z: e.cell[2] + 1 }, { x: 0, y: 0 }, 0xffffff, 10, 3, 0.1, 0.4);
       break;
-    case 'whirl':
-      renderer.skillMove(e.who, 'hookWhirl');
-      fx.ring({ x: e.x, y: e.y, z: e.z + 0.3 }, 0x40d0c0, e.r * 2, 0.45, true);
-      renderer.markCircle(e.x, e.y, e.z, e.r, 0x40d0c0, 350);
-      break;
     case 'counter': // 카운터히트: 같은 틱의 hit 보다 먼저 옴 → 맞은 몸이 더 크게 휘청
       renderer.counterHit(e.target);
       if (e.by === myId || e.target === myId) showCounter(e.target === myId);
@@ -382,9 +377,51 @@ function handleEvent(e) {
       if (e.target === myId) showCombo(e.n, true, e.finish);
       else if (e.by === myId && e.finish) showCombo(Math.max(myStreak, e.n), false, true);
       break;
-    case 'hook':
+    case 'hook': {
+      // 갈고리: 머리가 날아가 닿음 (판정은 즉시). 상대면 그 상대가 질질 끌려옴, 블록이면 내가 끌려감
       renderer.skillStrike(e.who, 'hookThrow');
-      renderer.showHook(e.who, e.target, e.yaw);
+      renderer.hookRope(e);
+      const a = playerById(e.who);
+      sound.play('swing', { dist: e.who === myId ? 0 : a ? distToMe(a.x, a.y, a.z) : undefined });
+      if (e.target !== null && e.target !== undefined) {
+        const t = playerById(e.target);
+        if (a && t) {
+          const len = Math.hypot(a.x - t.x, a.y - t.y) || 1;
+          renderer.hitReact(e.target, { x: (a.x - t.x) / len, y: (a.y - t.y) / len }, {}); // 갈고리 쪽으로 휘청
+        }
+        setTimeout(() => renderer.skillMove(e.target, 'hookDragged'), C.HOOK_FLY_MS); // 갈고리가 닿을 때부터 질질
+      } else if (e.block) setTimeout(() => renderer.skillMove(e.who, 'hookZip'), C.HOOK_FLY_MS);
+      break;
+    }
+    case 'bang': {
+      // 탕: 총구에서 큰 불꽃 + 흰 섬광 + 오래 남는 연기, 소리 두 겹, 가까우면 흔들림 (팔 반동은 '탕' 동작)
+      const fx0 = Math.cos(e.yaw);
+      const fy0 = Math.sin(e.yaw);
+      const muzzle = { x: e.x + fx0 * 0.75, y: e.y + fy0 * 0.75, z: e.z + 1.15 };
+      fx.burst(muzzle, { x: fx0 * 1.5, y: fy0 * 1.5 }, 0xffb030, 22, 9, 0.12, 0.25);
+      fx.burst(muzzle, { x: fx0, y: fy0 }, 0xffffe0, 10, 6, 0.16, 0.12);
+      fx.burst(muzzle, { x: fx0 * 0.3, y: fy0 * 0.3 }, 0x8a8a8a, 16, 1.5, 0.16, 1.4);
+      fx.ring(muzzle, 0xffd080, 2.4, 0.18);
+      const d = e.who === myId ? 0 : distToMe(e.x, e.y, e.z);
+      sound.play('fire', { dist: d });
+      sound.play('boom', { dist: d });
+      if (d !== undefined && d < 4) fx.shake(e.who === myId ? 0.18 : 0.1, 200);
+      break;
+    }
+    case 'reload': {
+      // 장전 (상대를 끌어옴): 허리 권총에서 불꽃이 확 + 찰칵
+      const a = playerById(e.who);
+      if (a) fx.burst({ x: a.x, y: a.y, z: a.z + 0.75 }, null, 0xffd040, 12, 3, 0.07, 0.35);
+      sound.play('pickup', { dist: e.who === myId ? 0 : a ? distToMe(a.x, a.y, a.z) : undefined });
+      break;
+    }
+    case 'blockGrab': // R 1단계: 블록이 뽑혀 끌려와 머리 위에서 돎
+      renderer.blockGrab(e);
+      renderer.skillMove(e.who, 'hookSlam', e.ms);
+      break;
+    case 'blockSlam': // R 2단계: 앞으로 쾅 → 박힘 (필드 밖이면 떨어져 사라짐)
+      renderer.blockSlam(e);
+      renderer.skillStrike(e.who, 'hookSlam');
       break;
     case 'zombie': // 블록 마스터: 죽어서 마스터 편
       if (e.who === myId) toast('마스터 편이 됐다! 하늘에서 블록으로 남은 사람을 깔아라', 'good');
@@ -1492,6 +1529,10 @@ function updateSkills(p) {
   r.querySelector('.name').textContent = `${C.ULT_NAMES[p.char]} ${p.ult >= C.ULT_MAX ? '준비!' : `${p.ult}%`}`;
   r.querySelector('.fill').style.width = `${(p.ult / C.ULT_MAX) * 100}%`;
   r.classList.toggle('ready', p.ult >= C.ULT_MAX);
+  // 갈고리 장전: R 칸 옆 작은 탄 (금색 = 장전, 빈 고리 = 빈 총)
+  const ammo = $('ammo');
+  ammo.classList.toggle('hidden', p.char !== 'hook');
+  ammo.classList.toggle('loaded', !!p.loaded);
   // 탱크 패시브: 맞아서 필살기 게이지가 크게 찼을 때 칸이 반짝
   if (p.char === 'tank' && lastSelf && p.ult > lastSelf.ult && p.damage > lastSelf.damage) {
     r.classList.remove('glint');
