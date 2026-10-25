@@ -292,3 +292,16 @@ test('건축가 패시브: 설치 블록 아이템을 주우면 BUILDER_BRICK_BO
   assert.equal(p(1).bricks, C.BRICK_USES + C.BUILDER_BRICK_BONUS);
   assert.equal(p(2).bricks, C.BRICK_USES);
 });
+
+test('닌자 그림자 일격: 무적인 상대는 안 고르고, 근처에 무적인 상대뿐이면 안 쓰여 게이지 그대로 (순간 베기 초기화도 없음)', () => {
+  const { g, p } = setupChars(['ninja', 'tank']);
+  place(p(1), 3, 5, 0);
+  place(p(2), 5, 5);
+  p(2).iframeUntil = g.time + 1000;
+  p(1).ult = C.ULT_MAX;
+  p(1).skillReadyAt = g.time + 5000;
+  g.handleAction(1, { name: 'ult' });
+  assert.equal(p(1).ult, C.ULT_MAX, '안 쓰임');
+  assert.ok(p(1).skillReadyAt > g.time, '초기화 없음');
+  assert.equal(p(2).damage, 0);
+});

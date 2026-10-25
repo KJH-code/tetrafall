@@ -310,7 +310,7 @@ export class BotBrain {
       g.handleInput(p.id, this.input);
       const before = name === 'ult' ? p.ult : p.skillReadyAt;
       g.handleAction(p.id, { name });
-      return (name === 'ult' ? p.ult : p.skillReadyAt) !== before; // 실제로 쓰였나 (자리 없음 등으로 안 쓰일 수 있음)
+      return name === 'ult' ? p.ult !== before : p.skillReadyAt > g.time; // 실제로 쓰였나 (자리 없음 등으로 안 쓰이면 쿨이 안 걸림)
     };
     const comboing = g.time < t.stunUntil && t.comboHits > 0; // 상대가 내 콤보에 걸려 있음 → 스킬로 이어 감
     const level = Math.abs(t.z - p.z) < 1;

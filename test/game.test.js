@@ -1932,3 +1932,67 @@ test('벽 튕김: 맞을 때만 (대시로 벽에 부딪히면 안 뜸), 한 번
   }
   assert.equal(bounces, 1, '한 번 맞으면 한 번만 튕김');
 });
+
+// ---------- 리뷰에서 나온 경계 (2026-10-25) ----------
+test('2단 점프: 꾹 누른 채 착지해 바로 다시 뛰어도 2단 점프가 다시 생김', () => {
+  const { g, p1 } = setup();
+  g.handleInput(1, { fwd: 0, strafe: 0, jump: true, yaw: 0, pitch: 0 });
+  g.tick(TICK);
+  g.handleAction(1, { name: 'jump' });
+  g.tick(TICK);
+  assert.equal(p1.airJumps, 0);
+  for (let t = 0; t < 3000 && !(p1.grounded && p1.vz === 0); t += TICK) g.tick(TICK); // 꾹 누른 채
+  for (let t = 0; t < 1500; t += TICK) {
+    g.tick(TICK); // 땅에 닿는 틱에 바로 다시 뜀 (토끼뜀)
+    if (!p1.grounded && p1.vz > 0) break;
+  }
+  assert.ok(!p1.grounded && p1.vz > 0, '땅에서 다시 뜸');
+  assert.equal(p1.airJumps, C.AIR_JUMPS, '토끼뜀 뒤에도 2단 점프가 다시 생김');
+  g.handleAction(1, { name: 'jump' });
+  g.tick(TICK);
+  assert.equal(p1.airJumps, C.AIR_JUMPS - 1, '그리고 쓸 수 있음');
+});
+
+test('콤보: 경직이 풀린 틱에 (updateCombat 전) 맞아도 새 콤보가 아니라 무적 — 끝난 콤보는 로그에', () => {
+  const { g, p1, p2, lines } = setup();
+  Object.assign(p2, { comboHits: 3, comboBy: new Set(['P1']), stunUntil: g.time });
+  assert.equal(g.applyKnockback(p2, 1, 0, 4, 3, C.STUN_MS, 10, { by: 1, kind: 'shock' }, true), false);
+  assert.ok(p2.iframeUntil > g.time);
+  assert.ok(lines.includes('  [콤보] P1 → P2 3타'));
+  void p1;
+});
+
+test('팀전: 같은 팀 넉백은 콤보로 안 세고 무적도 안 붙음 (상대 팀은 바로 때릴 수 있음)', () => {
+  const g = new Game();
+  g.rng = () => 0.5;
+  for (let i = 1; i <= 3; i++) g.addPlayer(i);
+  g.setTeamMode(true);
+  g.setTeam(1, 'red');
+  g.setTeam(2, 'red');
+  g.setTeam(3, 'blue');
+  g.startRound();
+  g.nextSpawnAt = Infinity;
+  const [p1, p2] = [g.players.get(1), g.players.get(2)];
+  g.applyKnockback(p2, 1, 0, 4, 3, C.STUN_MS, 10, { by: 1, kind: 'push' });
+  assert.equal(p2.comboHits, 0);
+  run(g, C.STUN_MS + 100);
+  assert.ok(!(p2.iframeUntil > g.time), '같은 팀 밀치기 뒤 무적 없음');
+  assert.ok(g.applyKnockback(p2, 1, 0, 4, 3, C.STUN_MS, 10, { by: 3, kind: 'push' }), '상대 팀은 바로 맞힘');
+  void p1;
+});
+
+test('압사 경고: 유령·부활 무적이면 블록이 통과하니 경고 없음', () => {
+  const { g, p1 } = setup();
+  Object.assign(p1, { x: 2.5, y: 2.5 });
+  fallingPiece(g, 'O', 0, 2, 2, 4);
+  assert.ok(g.crushDanger(p1) !== null);
+  p1.ghostUntil = g.time + 5000;
+  assert.equal(g.crushDanger(p1), null);
+});
+
+test('판이 끝날 때 이어지던 콤보도 로그에 남음 (통계)', () => {
+  const { g, p2, lines } = setup();
+  Object.assign(p2, { comboHits: 3, comboBy: new Set(['P1']), stunUntil: g.time + 500 });
+  g.endRound(null);
+  assert.ok(lines.includes('  [콤보] P1 → P2 3타'));
+});

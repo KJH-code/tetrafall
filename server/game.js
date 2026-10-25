@@ -556,6 +556,7 @@ export class Game {
   // 팀전이면 winner 대신 winnerTeam: 그 팀 참가자 모두 승수 +1, 팀 승수 +1
   // winners: 승자가 여럿일 때 (블록 마스터에서 살아남은 생존자들, 킬 점수전 동점) 모두 승수 +1
   endRound(winner, winnerTeam = null, winners = null) {
+    for (const p of this.players.values()) if (p.comboHits >= 2) this.endCombo(p); // 판이 끝날 때 이어지던 콤보도 로그에 (통계)
     this.phase = 'over';
     this.roundEndTime = this.time;
     const list = winners || (winner ? [winner] : []);
@@ -1020,7 +1021,7 @@ export class Game {
     let t = null;
     let bd = Infinity;
     for (const o of this.players.values()) {
-      if (!this.foe(p, o) || Math.abs(o.z - p.z) > 2.5) continue;
+      if (!this.foe(p, o) || Math.abs(o.z - p.z) > 2.5 || this.invulnerable(o)) continue; // 무적인 상대는 안 고름
       const d = Math.hypot(o.x - p.x, o.y - p.y);
       if (d <= C.NINJA_STRIKE_RANGE && d < bd) {
         bd = d;
@@ -1041,7 +1042,7 @@ export class Game {
     const before = t.damage;
     this.push(p);
     p.critNext = false;
-    const hit = t.damage > before || this.time < t.iframeUntil; // 맞힘 (마지막 타로 무적이 붙었어도)
+    const hit = t.damage > before; // 맞힘 (마지막 타로 무적이 붙어도 피해는 쌓임)
     if (hit) p.skillReadyAt = this.time; // 순간 베기 쿨 초기화
     this.log(`  [필살] ${p.name} 그림자 일격 → ${t.name}${hit ? ' (순간 베기 초기화)' : ''}`);
     return true;
@@ -1147,7 +1148,7 @@ export class Game {
 
   // 상대를 내 앞 HOOK_PULL_TO 거리까지 끌어옴 (블록에 막히면 거기까지). 콤보 한 타 (넉백 없이 경직 + 피해)
   pullTo(p, t, stunMs, gain, kind) {
-    if (this.time < t.iframeUntil || this.time < t.shieldUntil) return false;
+    if (this.invulnerable(t)) return false;
     const dx = p.x - t.x;
     const dy = p.y - t.y;
     const d = Math.hypot(dx, dy) || 1;
@@ -1434,19 +1435,21 @@ export class Game {
   // src: { by, kind } — 누가 무엇으로 날렸는지 (킬 판정용 lastHit)
   // heavy: 무거운 공격 (망치·투사체·폭탄·충격파·필살기) 은 콤보 중에도 넉백을 안 줄임
   applyKnockback(t, dx, dy, speed, up, stunMs = C.STUN_MS, gain = 0, src = null, heavy = false) {
-    if (this.time < t.iframeUntil || this.time < t.shieldUntil) return false; // 콤보 뒤 무적·부활 무적
-    // 콤보: 경직이 안 풀렸는데 또 맞으면 이어짐. COMBO_MAX_HITS 타째가 마지막 타 (크게 날리고 무적)
-    t.comboHits = this.time < t.stunUntil && t.comboHits > 0 ? t.comboHits + 1 : 1;
-    if (t.comboHits === 1) t.comboBy = new Set(); // 이 콤보를 넣은 사람들 (로그·통계용)
-    const hitter = src && src.by !== t.id ? this.players.get(src.by) : null;
-    if (hitter) t.comboBy.add(hitter.name);
-    const finisher = t.comboHits >= C.COMBO_MAX_HITS;
+    if (this.invulnerable(t)) return false; // 콤보 뒤 무적·부활 무적
+    const teammate = src && this.sameTeam(this.players.get(src.by), t);
+    // 콤보: 경직이 안 풀렸는데 또 맞으면 이어짐. COMBO_MAX_HITS 타째가 마지막 타 (크게 날리고 무적). 같은 팀은 콤보로 안 셈 (무적도 안 붙음)
+    if (!teammate) {
+      t.comboHits = this.time < t.stunUntil && t.comboHits > 0 ? t.comboHits + 1 : 1;
+      if (t.comboHits === 1) t.comboBy = new Set(); // 이 콤보를 넣은 사람들 (로그·통계용)
+      const hitter = src && src.by !== t.id ? this.players.get(src.by) : null;
+      if (hitter) t.comboBy.add(hitter.name);
+    }
+    const finisher = !teammate && t.comboHits >= C.COMBO_MAX_HITS;
     speed *= finisher ? C.COMBO_FINISH_KB : heavy ? 1 : C.COMBO_LIGHT_KB;
-    if (t.comboHits >= 2 && src) this.emit({ type: 'combo', by: src.by, target: t.id, n: t.comboHits });
+    if (!teammate && t.comboHits >= 2 && src) this.emit({ type: 'combo', by: src.by, target: t.id, n: t.comboHits });
     t.emoteUntil = 0; // 맞으면 이모트 끊김
     t.chargeUntil = 0; // 맞으면 돌진·내려찍기 끊김
     t.slamAt = 0;
-    const teammate = src && this.sameTeam(this.players.get(src.by), t);
     if (teammate) gain = 0; // 팀전: 같은 팀은 밀리기만 (피해 % 없음, 킬로도 안 침)
     else if (src && src.by !== t.id) t.lastHit = { by: src.by, kind: src.kind, name: this.players.get(src.by)?.name };
     if (t.char === 'tank') gain = Math.round(gain * C.TANK_DAMAGE_TAKEN); // 탱크 패시브: 피해 % 가 덜 쌓임 (이번 한 방의 넉백은 그대로)
@@ -1468,6 +1471,13 @@ export class Game {
     t.freezeUntil = this.time + C.HITSTOP_MS; // 멈칫 뒤에 날아간다 (날아가는 거리는 그대로)
     if (finisher) this.endCombo(t, t.stunUntil);
     return true;
+  }
+
+  // 공격이 안 들어가는 상태: 콤보 뒤 무적·부활 무적. 경직이 이미 풀린 콤보는 여기서 먼저 끝냄
+  // (봇 행동·블록 충격파는 틱 안에서 updateCombat 보다 먼저 돌아서, 끝난 콤보에 새 콤보가 붙어 무적을 건너뛰던 것)
+  invulnerable(t) {
+    if (t.comboHits > 0 && this.time >= t.stunUntil) this.endCombo(t);
+    return this.time < t.iframeUntil || this.time < t.shieldUntil;
   }
 
   // 콤보 끝: 그때부터 COMBO_IFRAME_MS 무적 (마지막 타는 경직이 끝날 때까지 + 무적)
@@ -1495,6 +1505,7 @@ export class Game {
   // 떨어지는 블록이 이 사람을 깔기까지 남은 시간 (ms). CRUSH_WARN_MS 안에 깔 블록이 없으면 null.
   // 블록 칸이 몸(가로 판정 상자)과 겹치고, 지금 몸 위에 있으며, 착지 높이가 머리보다 낮으면 깔림
   crushDanger(p) {
+    if (this.isGhost(p) || this.time < p.shieldUntil) return null; // 블록이 통과하는 사람 (유령·부활 무적)
     let best = null;
     const b = this.aabb(p);
     for (const piece of this.pieces) {
@@ -2163,6 +2174,7 @@ export class Game {
     const stunned = this.time < p.stunUntil;
     let ix = 0;
     let iy = 0;
+    if (p.grounded) p.airJumps = C.AIR_JUMPS; // 땅에 닿아 있으면 2단 점프 다시 (같은 틱에 땅에서 뛰어도 채운 뒤)
     if (this.time < p.chargeUntil) {
       ix = p.chargeDir.x * C.TANK_CHARGE_SPEED; // 탱크 돌진: 입력 대신 앞으로
       iy = p.chargeDir.y * C.TANK_CHARGE_SPEED;
@@ -2184,7 +2196,6 @@ export class Game {
       }
     }
     p.airJumpQueued = false;
-    if (p.grounded) p.airJumps = C.AIR_JUMPS;
     const damp = Math.exp(-(p.grounded ? C.KB_DAMPING_GROUND : C.KB_DAMPING_AIR) * dt);
     p.kbx *= damp;
     p.kby *= damp;
