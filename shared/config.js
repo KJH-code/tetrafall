@@ -151,15 +151,17 @@ export const CONFIG = {
 
   // ---- 캐릭터 평타 (2026-10-25 재혁 승인, 스매시 레전드식) ----
   // 캐릭터가 있는 게임에서만 (캐릭터 없는 예전 규칙은 위 밀치기 그대로). 망치를 들면 망치가 우선.
+  // 2026-10-25 재혁: 공중 평타도 캐릭터마다 타 수가 다름 (air 를 배열로. 건축가·탱크·갈고리 1타, 닌자 2타). 공중 연타 중간 타는 지상처럼 고정 넉백
   // 지상: 앞 타가 끝나고 BASIC_CHAIN_WINDOW_MS 안에 다시 누르면 다음 타 (후딜 중에 누르면 기다렸다 나감), 놓치면 1타부터.
   // 2026-10-25 재혁: 허공 이어 치기 — 빗나가도 다음 타로 이어짐 (빗나간 타도 후딜은 다 받음. 예전엔 빗나가면 1타부터)
   // 스킬(F)을 쓰면 이어 치기 창이 다시 열림 (타 번호 그대로) → 평타 → 스킬 → 평타.
   // 한 타 = windup(준비, 이 뒤에 판정) → rec(후딜, 이 뒤에 다음 타). 중간 타 넉백 kb 는 고정 (피해 % 와 상관없음, 콤보 감쇠 없음) → 몇 % 든 이어짐.
   // 마무리 타(finish)와 공중 평타의 kb 는 밀치기처럼 피해 % 배율. 마무리 타가 맞으면 콤보 마무리 (×COMBO_FINISH_KB, 무적).
   // step: 판정 순간 때리는 쪽이 앞으로 나가는 거리 (칸). 경직 stun ≥ rec + 다음 타 windup + 약 0.1초 → 바로 누르면 확정.
-  // 공중: 캐릭터마다 한 타 (치명타 규칙 그대로). 타 번호에 안 셈 — 이어 치기 창 유지
+  // 공중: air 배열 순서대로 (지상 타 번호와 따로 셈, 같은 이어 치기 창). 떨어지며 위에서 치면 치명타. 이어 치기 창 유지
   BASIC_CHAIN_WINDOW_MS: 500,
-  BASIC_HITSTOP_MS: 60, // 중간 타 멈칫 (공중 평타는 HITSTOP_MS)
+  BASIC_HITSTOP_MS: 60, // 중간 타 멈칫 (공중 한 타짜리는 HITSTOP_MS)
+  STREAK_MS: 1000, // 때린 쪽 이어 넣은 타 수: 이 시간 안에 또 맞히면 상대가 바뀌어도 이어짐 (닌자 갈아타기 'N HIT', streak 이벤트)
   BASIC_FINISH_HITSTOP_MS: 110, // 마무리 타 멈칫
   BASIC_STEP_GAP: 0.6, // step 으로 나갈 때 앞 상대와 이 거리 앞에서 멈춤 (지나쳐서 등 뒤로 가지 않게)
   BASIC_FINISH_MOVE_MULT: 0.5, // 마무리 타 준비 중 이동 속도 (예고 모션 동안 묶임)
@@ -177,18 +179,21 @@ export const CONFIG = {
         { name: '어깨 박치기', windup: 150, rec: 350, stun: 750, dmg: 6, kb: 2, up: 1, step: 0.8 },
         { name: '방패 밀기', windup: 300, rec: 450, stun: 600, dmg: 10, kb: 3.8, up: 3, step: 0.3, finish: true },
       ],
-      air: { name: '방패 내려치기', windup: 150, rec: 400, stun: 500, dmg: 8, kb: 3, up: 2, step: 0 },
+      air: [{ name: '방패 내려치기', windup: 150, rec: 400, stun: 500, dmg: 8, kb: 3, up: 2, step: 0 }],
     },
-    // 닌자: 단검 짤딜 4타 + 마지막에 표창 (사거리 4칸, 좁은 각). 봇 판으로 초안에서 3·4·5타 딜 +1, 표창 넉백 3.6 → 5.6. 카운터히트 넣은 뒤 20% → 1·2타 딜 3 → 4. 맵 섞은 판 → 회전 베기 딜 5 → 6
+    // 닌자 (2026-10-25 재혁 확정, docs/characters.md 3.2 연계형): 지상 4타 + 공중 2타. 콤보 사이 후딜은 짧고 연타 마지막 타 뒤 후딜은 김 (허공 이어 치기 스팸 방지).
+    // 4타 올려 차기는 마무리 아님 — 띄워서 공중 평타로 이어 감. 공중 2타 내려 차기가 마무리. 수치는 초안 (stun·kb 는 문서에 없어 A 가 정함)
     ninja: {
       chain: [
-        { name: '찌르기', windup: 60, rec: 180, stun: 350, dmg: 4, kb: 0.8, up: 1, step: 0.3 },
-        { name: '반대 찌르기', windup: 60, rec: 180, stun: 350, dmg: 4, kb: 0.8, up: 1, step: 0.3 },
-        { name: '베어 올리기', windup: 60, rec: 200, stun: 380, dmg: 4, kb: 0.8, up: 2, step: 0.3 },
-        { name: '회전 베기', windup: 80, rec: 220, stun: 520, dmg: 6, kb: 1, up: 1, step: 0.3 },
-        { name: '표창', windup: 200, rec: 400, stun: 500, dmg: 8, kb: 5.6, up: 3, step: 0, range: 4, angle: 20, finish: true },
+        { name: '찌르기', windup: 60, rec: 150, stun: 330, dmg: 3, kb: 0.8, up: 1, step: 0.3 },
+        { name: '반대 찌르기', windup: 60, rec: 150, stun: 340, dmg: 3, kb: 0.8, up: 1, step: 0.3 },
+        { name: '앞차기', windup: 70, rec: 170, stun: 400, dmg: 3, kb: 0.8, up: 1, step: 0.3 },
+        { name: '올려 차기', windup: 120, rec: 500, stun: 900, dmg: 5, kb: 0.5, up: 8, step: 0.2 },
       ],
-      air: { name: '공중 베기', windup: 60, rec: 300, stun: 400, dmg: 5, kb: 2.5, up: 2, step: 0 },
+      air: [
+        { name: '공중 베기', windup: 60, rec: 150, stun: 400, dmg: 3, kb: 0.8, up: 3, step: 0 },
+        { name: '내려 차기', windup: 100, rec: 450, stun: 500, dmg: 5, kb: 4.6, up: 1, step: 0, finish: true },
+      ],
     },
     // 건축가: 옆치기 → 반대로 치기 → 내려찍기 + 바닥 블록 1칸 솟음 (맞으면 그 사람 발밑, 빗나가면 앞 칸). 카운터히트 뒤 28% → 내려찍기 딜 11 → 10. 맵 섞은 판 28% → 1·2타 딜 7 → 6
     builder: {
@@ -197,7 +202,7 @@ export const CONFIG = {
         { name: '반대 치기', windup: 120, rec: 350, stun: 800, dmg: 6, kb: 1.2, up: 2, step: 0.4 },
         { name: '내려찍기', windup: 350, rec: 450, stun: 700, dmg: 10, kb: 2.5, up: 8, step: 0.3, finish: true, raise: true },
       ],
-      air: { name: '망치 내려찍기', windup: 200, rec: 450, stun: 500, dmg: 9, kb: 3, up: 2, step: 0 },
+      air: [{ name: '망치 내려찍기', windup: 200, rec: 450, stun: 500, dmg: 9, kb: 3, up: 2, step: 0 }],
     },
     // 갈고리: 평타에는 당김 없음. 주먹 넉백 초안 4.6 → 4.2 (봇 판). 맵 섞은 판 19% (벽·높은 지형에서 약함) → 휘두르기 딜 8 → 9, 주먹 넉백 4.2 → 4.4 휘두르기 → (F 갈고리 당김) → 주먹. 사거리는 패시브 HOOK_PUSH_RANGE_MULT
     hook: {
@@ -205,7 +210,7 @@ export const CONFIG = {
         { name: '갈고리 휘두르기', windup: 150, rec: 350, stun: 650, dmg: 9, kb: 2.5, up: 3, step: 0 },
         { name: '주먹', windup: 200, rec: 400, stun: 600, dmg: 9, kb: 4.4, up: 3, step: 0.4, finish: true },
       ],
-      air: { name: '공중 휘두르기', windup: 150, rec: 400, stun: 500, dmg: 7, kb: 3, up: 2, step: 0 },
+      air: [{ name: '공중 휘두르기', windup: 150, rec: 400, stun: 500, dmg: 7, kb: 3, up: 2, step: 0 }],
     },
   },
 
@@ -305,17 +310,29 @@ export const CONFIG = {
   TANK_SLAM_KB_UP: 9,
   TANK_SLAM_STUN_MS: 900,
   TANK_SLAM_DAMAGE: 20, // 2026-10-25 맵 7개 섞은 봇 504판 탱크 29% (킬 대부분 내려찍기) → 25 → 20, 넉백 5 → 4.5
-  // 닌자 (콤보: 평타 → F 순간 베기 → 평타 → R 일격 → F 초기화 → F → 평타)
-  NINJA_SPEED_MULT: 1.2, // 패시브: 이동 속도. 2026-10-25 평타 개편 뒤 1.1 → 1.2 (봇 480판 닌자 82승 / 기대 120, 가장 많이 죽음 → 117승)
-  // 2026-10-25 재혁 결정: 3 → 4칸. 생존기·이동기 강화 (F → R 맞히면 F 쿨 초기화 → F → 2단 점프 → 대시로 멀리 빠짐). 경직 중 사용(탈출기)은 안 넣음
-  NINJA_BLINK_DIST: 4, // 스킬 순간 베기: 보는 방향으로 (벽 앞까지) 이동하며 지나간 길의 상대를 벰 (한 번 쓸 때 한 사람 한 번). 상대를 만나면 그 바로 뒤(NINJA_STRIKE_BEHIND)에서 멈춤
+  // 닌자 (2026-10-25 재혁 확정, docs/characters.md 3.2 — 연계형 "이어지는 공격의 연속". 수치는 초안)
+  // 갈아타기: 이어 치기 타 번호·창은 맞은 상대와 상관없이 닌자에게 남음 (모든 캐릭터 공통 구조). 맞는 쪽 COMBO_MS 는 그대로
+  // 패시브: 이속 ×1.2 삭제 → 떨어지는 블록에 닿으면(밟거나 옆면) 공중 점프 회복 + 받는 넉백 × NINJA_KB_TAKEN
+  NINJA_KB_TAKEN: 1.1, // 가벼워서 잘 밀림 (탱크 TANK_KB_TAKEN 반대). 피해 % 배율이 붙는 넉백에만
+  NINJA_HIT_CD_CUT_MS: 500, // 적중 보상: 평타가 맞을 때마다 F 쿨 이만큼 줄어듦
+  // 2026-10-25 재혁 결정: 3 → 4칸. 생존기·이동기 강화. 경직 중 사용(탈출기)은 안 넣음. 공중에서도 됨 (복귀)
+  NINJA_BLINK_DIST: 4, // F 순간 베기: 보는 방향으로 (블록 앞까지) 이동하며 지나간 길의 상대를 벰 (한 번 쓸 때 한 사람 한 번). 상대를 만나면 그 바로 뒤(NINJA_BLINK_BEHIND)에서 멈춤
+  NINJA_BLINK_BEHIND: 0.8,
   NINJA_SLASH_WIDTH: 0.8, // 지나간 선에서 이 거리 안이면 베임
   NINJA_SLASH_KB_SPEED: 2.5,
   NINJA_SLASH_KB_UP: 2,
   NINJA_SLASH_STUN_MS: 600,
-  NINJA_SLASH_DAMAGE: 15,
-  NINJA_STRIKE_RANGE: 6, // 필살 그림자 일격: 이 거리 안 가장 가까운 상대 등 뒤로 순간이동해 치명타 밀치기. 맞히면 F 쿨 초기화. 없으면 안 쓰임
-  NINJA_STRIKE_BEHIND: 0.8, // 상대 뒤 이 거리에 섬
+  NINJA_SLASH_DAMAGE: 8, // 15 → 8 (2026-10-25: 한 방 약한 캐릭)
+  // 블록에 막히면 벽 차기: 블록을 차고 위로 튀어 오름 + 작은 충격파 (피해 작게, 넉백만). 벽 통과는 없음
+  NINJA_WALLKICK_UP: 8,
+  NINJA_WALLKICK_RANGE: 1.5, // 닌자 둘레 이 거리 안 상대
+  NINJA_WALLKICK_KB_SPEED: 4,
+  NINJA_WALLKICK_KB_UP: 2,
+  NINJA_WALLKICK_STUN_MS: 250,
+  NINJA_WALLKICK_DAMAGE: 2,
+  // R 강화 (그림자 일격 삭제): NINJA_EMPOWER_MS 동안 지상 1~3타와 공중 평타가 표창 2연발 (즉시 판정, 4타 올려 차기는 그대로)
+  NINJA_EMPOWER_MS: 6000,
+  NINJA_STAR: { windup: 60, gap: 80, range: 3, angle: 15, dmg: 2, stun: 250, kb: 0.6, up: 1 }, // 한 발. 2발 합쳐 딜 4 (근접 3 보다 조금 더), 경직은 근접보다 짧게. 마무리 타 자리면 둘째 발이 그 타의 마무리 넉백
   // 건축가 (2026-10-25 재혁 확정, docs/characters.md 3.1 — 지형·설치형 "깔고, 쳐서 터뜨린다". 수치는 초안, 밸런스는 나머지 캐릭터 뒤)
   // 건축가 블록: 벽(지상 F)·3타 블록(평타 3타)·발판(공중 F)·대폭발(R). BUILDER_BLOCK_MS 뒤 사라짐.
   // 건축가 망치(평타)로 치면 폭발: 치는 방향 앞쪽 사람만 그쪽으로 날림, 건축가 자신은 안 맞음. 같은 F 벽 칸끼리만 연쇄. 상대는 못 터뜨림
