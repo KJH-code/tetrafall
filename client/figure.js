@@ -368,6 +368,14 @@ function dressNinja(fig, costume, cloth) {
   sword.position.set(-d.chestR * d.depth - 0.03, 0, d.torso * 0.55);
   sword.rotation.x = 0.7; // 손잡이가 오른 어깨 쪽(-y)으로
   fig.waist.add(sword);
+  // 두 손에 단검: 주먹 끝에서 팔이 뻗는 쪽(-z)으로 짧은 날 + 검은 손잡이 → 찌르면 날이 앞으로
+  for (const hand of fig.hands) {
+    hand.add(mesh(new THREE.BoxGeometry(0.022, 0.05, 0.05), black, 0, 0, -d.hand * 0.6));
+    const blade = new THREE.ConeGeometry(0.028, 0.2, 4);
+    blade.rotateX(-Math.PI / 2); // 끝이 -z
+    blade.scale(1, 0.35, 1); // 납작한 날
+    hand.add(mesh(blade, steel, 0, 0, -d.hand * 0.6 - 0.12));
+  }
 }
 
 // 건축가: 다부진 보통 몸 + 노란 안전모 + 주황 작업 조끼(반사 띠, 앞이 열려 셔츠(피부)가 보임) + 공구 벨트 + 장갑·작업화 + 등에 테트리미노 가방
@@ -556,6 +564,7 @@ function stepSway(sw, dt) {
 // 자세 칸: 허리 waistPitch(앞 숙임)·waistRoll(왼쪽으로 비틂 = 오른 어깨 앞)·waistSide, 고개 neckPitch,
 // 팔다리 [오른쪽, 왼쪽] (null = 그대로): shFwd(앞으로 듦)·shOut(옆으로 벌림)·elbow·thFwd·knee, crouch(0~1 두 무릎 굽힘)
 // spin: 타격~회복 동안 몸 전체를 도는 각 (라디안, +면 왼쪽으로). rec: 스킬처럼 서버 표에 회복 시간이 없을 때 (초)
+// turn: 타격 동안 몸을 그 각만큼 돌렸다가 회복 끝에 돌아옴. float: 다리를 앞으로 뻗어도 엉덩이를 바닥으로 안 내림 (날아가는 자세)
 const R = (v) => [v, null]; // 오른팔(다리)만
 const L = (v) => [null, v]; // 왼팔(다리)만
 export const MOVES = {
@@ -574,13 +583,25 @@ export const MOVES = {
   },
   '방패 내려치기': { W: { shFwd: [2.9, 2.9], elbow: [0.5, 0.5], waistPitch: -0.3 }, S: { shFwd: [0.7, 0.7], elbow: [0.1, 0.1], waistPitch: 0.7 } },
 
-  // 닌자: 짧고 빠르게. 오른손 찌르기 → 왼손 찌르기 → 베어 올리기 → 한 바퀴 베기 → 표창
+  // 닌자: 단검·발 섞인 빠른 연타. 찌르기 → 반대 찌르기 → 앞차기 → 올려 차기(크게, 띄움) / 공중 베기 → 내려 차기
   '찌르기': { W: { shFwd: R(0.0), shOut: R(0.8), elbow: R(2.1), waistRoll: -0.45, waistSide: 0.12, crouch: 0.35 }, S: { shFwd: R(1.6), elbow: R(0), waistRoll: 0.35, waistPitch: 0.25 } },
   '반대 찌르기': { W: { shFwd: L(0.0), shOut: L(0.8), elbow: L(2.1), waistRoll: 0.45, waistSide: -0.12, crouch: 0.35 }, S: { shFwd: L(1.6), elbow: L(0), waistRoll: -0.35, waistPitch: 0.25 } },
-  '베어 올리기': { W: { shFwd: R(-0.7), shOut: R(0.4), elbow: R(0.3), waistPitch: 0.35, crouch: 0.6 }, S: { shFwd: R(2.9), shOut: R(0.2), elbow: R(0.1), waistPitch: -0.3, thFwd: [0.3, -0.2] } },
-  '회전 베기': { W: { shOut: [0.6, 0.6], shFwd: [0.9, -0.4], elbow: [1.2, 1.2], waistRoll: 0.6, crouch: 0.5 }, S: { shOut: [1.5, 1.5], shFwd: [0.2, 0.2], elbow: [0, 0], waistRoll: 0 }, spin: -Math.PI * 2 },
+  '앞차기': {
+    W: { thFwd: [1.3, -0.1], knee: [1.8, 0.2], waistPitch: -0.15, shFwd: [0.6, 0.6], shOut: [0.5, 0.5], elbow: [1.6, 1.6] },
+    S: { thFwd: [1.6, -0.2], knee: [0.05, 0.1], waistPitch: -0.35, shFwd: [-0.3, -0.3], shOut: [0.7, 0.7], elbow: [0.6, 0.6] },
+  },
+  '올려 차기': {
+    W: { crouch: 0.7, waistPitch: 0.45, shFwd: [-0.6, -0.6], shOut: [0.4, 0.4], elbow: [0.4, 0.4], neckPitch: -0.3 },
+    S: { thFwd: [2.7, -0.3], knee: [0, 0.2], waistPitch: -0.6, shOut: [1.5, 1.5], shFwd: [0, 0], elbow: [0.2, 0.2], neckPitch: 0.2 },
+  },
   '표창': { W: { shFwd: R(2.6), shOut: R(0.4), elbow: R(1.7), waistRoll: -0.6, waistPitch: -0.25, thFwd: [-0.3, 0.4] }, S: { shFwd: R(1.2), shOut: R(0.1), elbow: R(0), waistRoll: 0.5, waistPitch: 0.35 } },
+  // 표창 둘째 발: 왼손
+  '표창2': { S: { shFwd: L(1.2), shOut: L(0.1), elbow: L(0), waistRoll: -0.5, waistPitch: 0.35 }, rec: 0.25 },
   '공중 베기': { W: { shFwd: [2.7, 0.5], elbow: [0.4, 0.8] }, S: { shFwd: [0.4, 0.2], elbow: [0.1, 0.8], waistPitch: 0.6 } },
+  '내려 차기': {
+    W: { thFwd: [2.3, -0.2], knee: [0.3, 0.6], waistPitch: -0.45, shFwd: [2.2, 2.2], shOut: [0.6, 0.6], elbow: [0.3, 0.3] },
+    S: { thFwd: [0.2, -0.3], knee: [0, 0.6], waistPitch: 0.65, shFwd: [-0.4, -0.4], shOut: [0.9, 0.9], elbow: [0.2, 0.2] },
+  },
 
   // 건축가: 오른손 망치질. 옆치기 → 반대로 치기 → 두 팔 내려찍기
   '옆치기': { W: { shOut: R(1.5), shFwd: R(-0.5), elbow: R(0.4), waistRoll: -0.8, crouch: 0.3 }, S: { shOut: R(0.3), shFwd: R(1.4), elbow: R(0.1), waistRoll: 0.6 } },
@@ -606,8 +627,10 @@ export const MOVES = {
     S: { shFwd: [0.5, 0.5], shOut: [0.6, 0.6], elbow: [0, 0], waistPitch: 0.9, crouch: 1 },
     rec: 0.6,
   },
-  // 닌자 순간 베기·그림자 일격: 지나간 뒤 칼을 휘두른 끝 자세 (낮게 웅크림, 오른팔 쭉 뒤로)
-  ninjaSlash: { S: { shFwd: R(-0.6), shOut: R(1.4), elbow: R(0), waistRoll: -0.7, waistPitch: 0.45, crouch: 0.8, thFwd: [0.9, -0.6] }, rec: 0.45 },
+  // 닌자 순간 베기: 손발 싹 다 앞으로 쭉 뻗고 날아가는 자세 (TABS 병맛, 순간이동이라 원래 모션이 없음)
+  ninjaDash: { S: { shFwd: [1.6, 1.6], shOut: [0.15, 0.15], elbow: [0, 0], thFwd: [1.5, 1.5], knee: [0, 0], waistPitch: -0.15, neckPitch: -0.3 }, rec: 0.45, float: true },
+  // 닌자 벽 차기: 몸을 오른쪽으로 90도 돌려 (블록이 왼쪽 옆) 왼다리로 옆차기, 몸은 반대로 젖히고 팔 벌려 균형 → 튀어 오름
+  ninjaWallKick: { S: { thOut: [0.1, 1.5], thFwd: [0.2, 0.1], knee: [0.5, 0], waistSide: -0.45, shOut: [1.4, 1.2], shFwd: [0.2, -0.2], elbow: [0.3, 0.3], neckPitch: -0.2 }, rec: 0.45, turn: -Math.PI / 2 },
   // 건축가 솟는 벽: 두 손을 바닥 쪽으로 모았다가 (wallWarn) → 위로 확 올림 (wallRise)
   builderWall: { W: { shFwd: [0.7, 0.7], shOut: [0.3, 0.3], elbow: [0.3, 0.3], waistPitch: 0.6, crouch: 0.8 }, S: { shFwd: [2.9, 2.9], shOut: [0.4, 0.4], elbow: [0.1, 0.1], waistPitch: -0.3 }, rec: 0.5 },
   // 건축가 대폭발: 망치를 두 손으로 머리 위로 → 바닥을 쾅 (그 앞에 3×3 이 솟음)
@@ -821,12 +844,14 @@ export function figureAnim(fig, st, dt) {
       overlay(P, T, BROKEN, act.u < 0.25 ? 1 : 1 - ease((act.u - 0.25) / 0.75));
     }
     if (m.spin && (act.phase === 'strike' || act.phase === 'rec')) spin = m.spin * ease(act.phase === 'strike' ? act.u * 0.2 : 0.2 + act.u * 0.8);
+    if (m.turn && (act.phase === 'strike' || act.phase === 'rec')) spin = m.turn * (act.phase === 'strike' ? ease(act.u) : 1 - ease((act.u - 0.6) / 0.4)); // 옆으로 돌았다가 회복 끝에 돌아옴
   }
   fig.hips.rotation.z = spin;
 
   // 땅에 있으면 더 뻗은 다리의 발이 바닥에 닿게 엉덩이를 내림 (무릎 굽히면 주저앉음, 걸으면 자연히 오르내림)
   let drop = 0;
-  if (!st.air && st.flip < 0 && !(st.tumble > 0)) {
+  const floating = act && MOVES[act.move]?.float && act.phase !== 'wind';
+  if (!st.air && st.flip < 0 && !(st.tumble > 0) && !floating) {
     let reach = 0;
     for (let i = 0; i < 2; i++) {
       reach = Math.max(reach, (d.thigh * Math.cos(P.thFwd[i]) + d.shin * Math.cos(P.thFwd[i] - P.knee[i])) * Math.cos(P.thOut[i]));

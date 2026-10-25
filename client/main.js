@@ -119,10 +119,10 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
-const KIND_KO = { push: '밀치기', projectile: '투사체', shock: '설치 블록 충격파', bomb: '폭탄', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', whirl: '회오리', blast: '블록 폭발', bigbomb: '대폭발' };
+const KIND_KO = { push: '밀치기', projectile: '투사체', shock: '설치 블록 충격파', bomb: '폭탄', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', whirl: '회오리', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기' };
 const ITEM_KO = { control: '조종권', knockback: '투사체', jump: '점프력 상승', ghost: '유령화', brick: '설치 블록', bomb: '폭탄', speed: '이속 증가' };
 const CAUSE_KO = { crush: '압사', fall: '낙사', lava: '용암' };
-const WEAPON_KO = { push: '밀치기', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종 블록', thrown: '설치 블록', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', whirl: '회오리', blast: '블록 폭발', bigbomb: '대폭발' };
+const WEAPON_KO = { push: '밀치기', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종 블록', thrown: '설치 블록', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', whirl: '회오리', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기' };
 
 // 오른쪽 위 킬 피드: "죽인 사람 → 죽은 사람 낙사 (망치)". 내가 낀 줄은 노란 테두리
 const killfeedEl = $('killfeed');
@@ -195,7 +195,13 @@ function showCounter(taken) {
   counterTimer = setTimeout(() => counterEl.classList.add('hidden'), C.COUNTER_TEXT_MS);
 }
 
+let myStreak = 0; // 내가 이어 넣은 타 수 (streak 이벤트, 상대가 바뀌어도 이어짐)
 function handleEvent(e) {
+  // 닌자 표창에 맞음: 판정은 즉시지만 맞는 효과는 표창이 날아가 닿을 때 (STAR_FLY_MS 뒤)
+  if (e.type === 'hit' && e.star && !e.late) {
+    setTimeout(() => handleEvent({ ...e, late: true }), C.STAR_FLY_MS);
+    return;
+  }
   feelEvent(e);
   switch (e.type) {
     case 'skill':
@@ -218,12 +224,51 @@ function handleEvent(e) {
     case 'interrupt': // 내 공격이 맞아서 끊김: 글자 없이 몸 동작만
       renderer.interrupt(e.who);
       break;
-    case 'blink': // 순간 베기·그림자 일격: 지나간 길에 베기 잔상
-      renderer.skillMove(e.who, 'ninjaSlash');
+    case 'blink': // 닌자 순간 베기: 손발 다 뻗고 돌진 + 지나간 길에 베기 잔상 (공중에서도)
+      renderer.skillMove(e.who, 'ninjaDash');
       fx.burst({ x: e.from.x, y: e.from.y, z: e.to.z + 0.8 }, null, 0x404060, 10, 2, 0.1, 0.4);
       fx.burst({ x: e.to.x, y: e.to.y, z: e.to.z + 0.8 }, null, 0x404060, 10, 2, 0.1, 0.4);
       renderer.trail({ x: e.from.x, y: e.from.y, z: e.to.z + 0.9 }, { x: e.to.x, y: e.to.y, z: e.to.z + 0.9 }, 0xffffff, 280);
       break;
+    case 'wallKick': {
+      // 닌자 벽 차기: 몸을 돌려 블록을 차고 '슈우욱' 위로 + 찬 자리에 '쾅' 충격파
+      renderer.skillMove(e.who, 'ninjaWallKick');
+      const wall = { x: e.x + e.dir.x * 0.5, y: e.y + e.dir.y * 0.5, z: e.z + 0.6 };
+      fx.ring(wall, 0xffffff, 3, 0.3);
+      fx.ring({ x: e.x, y: e.y, z: e.z + 0.1 }, 0xffffff, C.NINJA_WALLKICK_RANGE * 2, 0.35, true);
+      fx.burst(wall, { x: -e.dir.x, y: -e.dir.y }, 0xb0a090, 14, 4, 0.1, 0.45);
+      renderer.streakUp({ x: e.x, y: e.y, z: e.z + 0.2 }, 2.4, 0xffffff, 300);
+      const d = e.who === myId ? 0 : distToMe(e.x, e.y, e.z);
+      sound.play('airJump', { dist: d });
+      sound.play('land', { dist: d });
+      if (d !== undefined && d < 3) fx.shake(0.12, 180);
+      break;
+    }
+    case 'empower': {
+      // 닌자 R 강화 시작: 보라 불티가 확 (강화 중 깜빡임은 render.js 가 snapshot empower 로)
+      const a = playerById(e.who);
+      if (a) fx.burst({ x: a.x, y: a.y, z: a.z + 1 }, null, C.EMPOWER_GLOW, 24, 5, 0.1, 0.6);
+      break;
+    }
+    case 'star': // 닌자 표창 한 발: 던지는 팔 + 빠르게 직진하는 표창
+      renderer.starShot(e);
+      sound.play('swing', { dist: e.who === myId ? 0 : distToMe(e.from.x, e.from.y, e.from.z) });
+      break;
+    case 'streak': // 때린 쪽이 이어 넣은 타 수 (닌자 갈아타기): 내 'N HIT' 는 이걸로 셈
+      if (e.who === myId) {
+        myStreak = e.n;
+        showCombo(e.n, false, false);
+      }
+      break;
+    case 'ninjaTouch': {
+      // 닌자가 떨어지는 블록을 밟아 공중 점프 회복: 발밑에 흰 김 + 작은 고리
+      const a = playerById(e.who);
+      if (a) {
+        fx.burst({ x: a.x, y: a.y, z: a.z }, null, 0xffffff, 8, 2.5, 0.08, 0.35);
+        fx.ring({ x: a.x, y: a.y, z: a.z + 0.05 }, 0xffffff, 1.4, 0.25, true);
+      }
+      break;
+    }
     case 'charge': // 탱크 돌진: 가는 길에 흙먼지 줄
       renderer.skillMove(e.who, 'tankCharge');
       renderer.trail({ x: e.x, y: e.y, z: e.z + 0.15 }, { x: e.x + Math.cos(e.yaw) * 3, y: e.y + Math.sin(e.yaw) * 3, z: e.z + 0.15 }, 0xc0a070, 400);
@@ -293,7 +338,9 @@ function handleEvent(e) {
       break;
     case 'combo': // 내가 때리거나 맞은 콤보만
       if (e.finish) renderer.comboFinish(e.target); // 마무리 타는 몸이 더 크게 휘청 (모두)
-      if (e.by === myId || e.target === myId) showCombo(e.n, e.target === myId, e.finish);
+      // 맞은 쪽은 맞은 타 수, 때린 쪽은 streak 로 이어 셈 (마무리 '!!' 만 여기서)
+      if (e.target === myId) showCombo(e.n, true, e.finish);
+      else if (e.by === myId && e.finish) showCombo(Math.max(myStreak, e.n), false, true);
       break;
     case 'hook':
       renderer.skillStrike(e.who, 'hookThrow');

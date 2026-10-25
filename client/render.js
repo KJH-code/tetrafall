@@ -648,7 +648,7 @@ export class Renderer {
   // attack 이벤트: 준비 시작. 동작 이름은 평타 표의 name (갈고리 주먹만 'hook:주먹'), 회복 시간은 평타 표의 rec
   attackStart(e) {
     const set = C.BASIC_ATTACKS?.[e.char];
-    const def = set ? (e.air ? set.air : set.chain[e.n - 1]) : null;
+    const def = set ? (e.air ? set.air : set.chain)[e.n - 1] : null; // 공중 평타도 1타부터 (air 는 배열)
     const move = e.char === 'hook' && e.name === '주먹' ? 'hook:주먹' : MOVES[e.name] ? e.name : 'punch';
     this.acts.set(e.who, { id: ++this.hitSeq, move, t0: performance.now(), windup: (e.windup || 0) / 1000, struck: null, rec: (def ? def.rec : 300) / 1000, broken: 0 });
   }
@@ -709,6 +709,55 @@ export class Renderer {
     if (s < C.FIGURE_STRIKE_S) return { id: a.id, move: a.move, phase: 'strike', u: s / C.FIGURE_STRIKE_S };
     const r = (s - C.FIGURE_STRIKE_S) / a.rec;
     return r >= 1 ? done() : { id: a.id, move: a.move, phase: 'rec', u: r };
+  }
+
+  // 닌자 표창 (star 이벤트, 한 발마다): 첫 발은 오른손·둘째 발은 왼손으로 던지는 자세 + 아주 빠르게 직진하는 표창 (판정은 즉시)
+  starShot(e) {
+    const now = performance.now();
+    const a = this.acts.get(e.who);
+    if (e.shot === 1 && a && a.move === '표창' && !a.struck && !a.broken) a.struck = now;
+    else {
+      const move = e.shot === 1 ? '표창' : '표창2';
+      this.acts.set(e.who, { id: ++this.hitSeq, move, t0: now, windup: 0, struck: now, rec: MOVES[move].rec || 0.25, broken: 0 });
+    }
+    if (!this.starGeo) {
+      const sh = new THREE.Shape();
+      for (let i = 0; i < 8; i++) {
+        const r = i % 2 ? 0.05 : 0.17;
+        const ang = (i / 8) * Math.PI * 2;
+        if (i) sh.lineTo(Math.cos(ang) * r, Math.sin(ang) * r);
+        else sh.moveTo(r, 0);
+      }
+      this.starGeo = new THREE.ShapeGeometry(sh);
+      this.starMat = noOutline(new THREE.MeshBasicMaterial({ color: 0xd8e0ea, side: THREE.DoubleSide }));
+    }
+    const m = new THREE.Mesh(this.starGeo, this.starMat);
+    m.position.set(e.from.x, e.from.y, e.from.z);
+    this.scene.add(m);
+    (this.stars ||= []).push({ m, from: e.from, to: e.to, t0: now });
+  }
+
+  // 날아가는 표창: STAR_FLY_MS 동안 직진하며 빙글, 닿으면 사라짐 (빗나간 것은 사거리 끝에서)
+  updateStars() {
+    if (!this.stars?.length) return;
+    const now = performance.now();
+    this.stars = this.stars.filter((st) => {
+      const u = (now - st.t0) / C.STAR_FLY_MS;
+      if (u >= 1) {
+        this.scene.remove(st.m);
+        return false;
+      }
+      st.m.position.set(st.from.x + (st.to.x - st.from.x) * u, st.from.y + (st.to.y - st.from.y) * u, st.from.z + (st.to.z - st.from.z) * u);
+      st.m.rotation.set(Math.PI / 2, 0, now / 25); // 세워서 빙글
+      return true;
+    });
+  }
+
+  // 세로 잔상 (벽 차기 '슈우욱'): a 에서 위로 len 칸
+  streakUp(a, len, color, ms) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, len), noOutline(new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, depthWrite: false })));
+    m.position.set(a.x, a.y, a.z + len / 2);
+    this.addMark(m, ms, false);
   }
 
   // 카운터히트 (counter 이벤트가 같은 타의 hit 보다 먼저 옴)
@@ -1165,7 +1214,11 @@ export class Renderer {
         m.opacity = opacity;
       }
       if (p.jumpLeft > 0 && !p.stunned) bodyMat.emissive.setHex(0x1a5a1a);
-      if (p.critNext && Math.floor(performance.now() / 150) % 2) bodyMat.emissive.setHex(0x801010); // 닌자 그림자: 다음 밀치기 치명타
+      if (p.empower > 0) {
+        // 닌자 R 강화: 몸이 보라로 깜빡 + 손에서 보라 불티 (끝 1.5초는 빠르게)
+        if (Math.floor(performance.now() / (p.empower < 1500 ? 70 : 160)) % 2) bodyMat.emissive.setHex(C.EMPOWER_GLOW);
+        if (Math.random() < dt * 25) this.effects.burst({ x: s.x, y: s.y, z: s.z + 0.9 + Math.random() * 0.6 }, { x: 0, y: 0, z: 1 }, C.EMPOWER_GLOW, 1, 1.2, 0.06, 0.4);
+      }
       // 스킬·필살기 빛 (aura): 몸 전체(옷 포함)가 잠깐 빛남. 필살기는 반짝이가 위로
       const now = performance.now();
       const glowing = now < (g.userData.glowUntil || 0);
@@ -1333,6 +1386,7 @@ export class Renderer {
     this.updateAim(me && me.alive && view === 'fps' ? me.aim : null);
     this.updateBombs(state.bombs || []);
     this.updateBBlocks(state);
+    this.updateStars();
     this.updateBeams(state);
     if (me) this.viewArm.material.color.setHex(playerColor(me, state));
     const vp = this.effects.punchAmount(myId);
