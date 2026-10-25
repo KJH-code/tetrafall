@@ -31,7 +31,7 @@ Windows PowerShell 에서 npm 이 막히면 `npm.cmd`.
 - `server/bot.js` — AI 봇 (handleInput / handleAction 만 씀, 판정 특혜 없음)
 - `server/index.js` — 정적 서빙 + WebSocket + 틱 루프 + 방마다 로그 파일 (`logs/<서버 시각>/<방 시각>_<코드>.txt`)
 - `server/rooms.js` — 방 (게임 + 접속 + 로그). 방 밖 메시지(create·join)와 방 안 메시지 처리, 사람 0명이면 삭제. 테스트는 가짜 소켓
-- `client/` — 렌더(`render.js`), 캐릭터(`character.js`), 입력(`input.js`), HUD·네트워크(`main.js`), 효과음(`sound.js`), 배경음악(`music.js`), 모델 불러오기(`models.js`, 파일은 `client/assets/` 출처 `CREDITS.md`), 툰 재질·외곽선(`toon.js`), 코드 텍스처(`textures.js`)
+- `client/` — 렌더(`render.js`), 캐릭터(`character.js`), 입력(`input.js`), HUD·네트워크(`main.js`), 효과음(`sound.js`), 배경음악(`music.js`), 캐릭터 몸·동작(`figure.js`, 1인칭·3인칭은 `render.js`), 모델 불러오기(`models.js`, 파일은 `client/assets/` 출처 `CREDITS.md`), 툰 재질·외곽선(`toon.js`), 코드 텍스처(`textures.js`)
 - `tools/online.js` — `npm run online` (서버 자식 프로세스 + cloudflared, 출력에서 터널 주소 찾기)
 - `tools/stats.js` — 서버 로그 요약 (판 길이·압사 비율·구성별·맵별·캐릭터별·콤보·플레이어별·아이템). 로그 형식을 바꾸면 여기도
 - `test/game.test.js` — 단위 테스트, `test/rooms.test.js` — 방, `test/stats.test.js` — 로그 요약이 실제 게임 로그를 읽는지, `test/online.test.js` — 터널 주소 찾기, `test/camera.test.js` — 관전 카메라, `test/modes.test.js` — 게임 모드, `test/characters.test.js` — 캐릭터
