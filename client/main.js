@@ -119,10 +119,10 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
-const KIND_KO = { push: '밀치기', projectile: '투사체', shock: '설치 블록 충격파', bomb: '폭탄', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', whirl: '회오리', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기' };
+const KIND_KO = { push: '밀치기', projectile: '투사체', shock: '설치 블록 충격파', bomb: '폭탄', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', whirl: '회오리', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기', quake: '솟는 땅' };
 const ITEM_KO = { control: '조종권', knockback: '투사체', jump: '점프력 상승', ghost: '유령화', brick: '설치 블록', bomb: '폭탄', speed: '이속 증가' };
 const CAUSE_KO = { crush: '압사', fall: '낙사', lava: '용암' };
-const WEAPON_KO = { push: '밀치기', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종 블록', thrown: '설치 블록', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', whirl: '회오리', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기' };
+const WEAPON_KO = { push: '밀치기', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종 블록', thrown: '설치 블록', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', whirl: '회오리', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기', quake: '솟는 땅' };
 
 // 오른쪽 위 킬 피드: "죽인 사람 → 죽은 사람 낙사 (망치)". 내가 낀 줄은 노란 테두리
 const killfeedEl = $('killfeed');
@@ -260,6 +260,43 @@ function handleEvent(e) {
         showCombo(e.n, false, false);
       }
       break;
+    case 'armor': {
+      // 탱크 아머로 버팀: 몸이 하얗게 번쩍 + 쇠 불꽃 + 쨍 (안 휘청, 얼굴만 찡그림)
+      renderer.armorHit(e.who);
+      const a = playerById(e.who);
+      if (a) {
+        fx.burst({ x: a.x, y: a.y, z: a.z + 1 }, null, 0xfff0a0, 14, 6, 0.06, 0.3);
+        sound.play('crit', { dist: e.who === myId ? 0 : distToMe(a.x, a.y, a.z) });
+      }
+      break;
+    }
+    case 'armorBreak': {
+      // 아머 깨짐: 유리 깨지듯 하늘빛 파편이 사방으로 + 고리 (그 타에 크게 휘청)
+      renderer.armorBreak(e.who);
+      const a = playerById(e.who);
+      if (a) {
+        const pos = { x: a.x, y: a.y, z: a.z + 1 };
+        fx.burst(pos, null, 0xd8f0ff, 30, 9, 0.11, 0.6);
+        fx.burst(pos, null, 0x9ab8d0, 16, 6, 0.08, 0.5);
+        fx.ring(pos, 0xd8f0ff, 3.4, 0.3);
+        sound.play('crush', { dist: e.who === myId ? 0 : distToMe(a.x, a.y, a.z) });
+      }
+      break;
+    }
+    case 'quakeRise': {
+      // 탱크 R 바깥 고리: 땅이 솟음 (흙먼지, 가까우면 흔들림)
+      renderer.quakeRise(e.cells);
+      for (const [x, y, z] of e.cells) fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.1 }, null, C.QUAKE_COLOR, 4, 3, 0.1, 0.45);
+      const [x, y, z] = e.cells[0];
+      const d = distToMe(x + 0.5, y + 0.5, z);
+      sound.play('land', { dist: d });
+      if (d !== undefined && d < 6) fx.shake(0.2, 300);
+      break;
+    }
+    case 'quakeFall': // 솟은 땅이 가라앉음
+      renderer.quakeFall(e.cells);
+      for (const [x, y, z] of e.cells) fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.1 }, null, C.QUAKE_COLOR, 3, 1.5, 0.08, 0.4);
+      break;
     case 'ninjaTouch': {
       // 닌자가 떨어지는 블록을 밟아 공중 점프 회복: 발밑에 흰 김 + 작은 고리
       const a = playerById(e.who);
@@ -269,16 +306,19 @@ function handleEvent(e) {
       }
       break;
     }
-    case 'charge': // 탱크 돌진: 가는 길에 흙먼지 줄
+    case 'charge': // 탱크 방패 돌진: 가는 길에 흙먼지 줄 + 돌진 동안 아머 (몸이 금속처럼 번쩍)
+      renderer.armorOn(e.who, C.TANK_CHARGE_MS + 120);
       renderer.skillMove(e.who, 'tankCharge');
       renderer.trail({ x: e.x, y: e.y, z: e.z + 0.15 }, { x: e.x + Math.cos(e.yaw) * 3, y: e.y + Math.sin(e.yaw) * 3, z: e.z + 0.15 }, 0xc0a070, 400);
       fx.burst({ x: e.x, y: e.y, z: e.z + 0.2 }, null, 0xc0a070, 14, 3, 0.12, 0.5);
       break;
-    case 'slamWarn': // 탱크 내려찍기: 떨어질 범위를 바닥에
+    case 'slamWarn': // 탱크 내려찍기: 떨어질 범위를 바닥에 + 떠오르는 동안 아머
+      renderer.armorOn(e.who, e.ms + 150);
       renderer.skillMove(e.who, 'tankSlam', e.ms);
       renderer.markCircle(e.x, e.y, e.z, e.r, 0xff3020, e.ms);
       break;
     case 'slam': {
+      renderer.armorOff(e.who);
       renderer.skillStrike(e.who, 'tankSlam');
       fx.ring({ x: e.x, y: e.y, z: e.z + 0.1 }, 0xc0b090, e.r * 2, 0.4, true);
       fx.burst({ x: e.x, y: e.y, z: e.z + 0.2 }, null, 0xc0b090, 28, 7, 0.14, 0.6);
@@ -1452,7 +1492,15 @@ function updateSkills(p) {
   r.querySelector('.name').textContent = `${C.ULT_NAMES[p.char]} ${p.ult >= C.ULT_MAX ? '준비!' : `${p.ult}%`}`;
   r.querySelector('.fill').style.width = `${(p.ult / C.ULT_MAX) * 100}%`;
   r.classList.toggle('ready', p.ult >= C.ULT_MAX);
+  // 탱크 패시브: 맞아서 필살기 게이지가 크게 찼을 때 칸이 반짝
+  if (p.char === 'tank' && lastSelf && p.ult > lastSelf.ult && p.damage > lastSelf.damage) {
+    r.classList.remove('glint');
+    void r.offsetWidth; // 연달아 맞아도 다시 반짝
+    r.classList.add('glint');
+  }
+  lastSelf = { ult: p.ult, damage: p.damage };
 }
+let lastSelf = null;
 
 // 대기 화면 캐릭터 고르기 (이 브라우저에 기억, 접속할 때 보냄)
 const charSel = $('char-select');

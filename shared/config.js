@@ -515,6 +515,13 @@ export const CONFIG = {
   BB_TINT: 0.3, // 주인 색에 흰색을 섞는 비율 (금 간 무늬가 보이게)
   STAR_FLY_MS: 100, // 닌자 표창이 날아가 보이는 시간 (판정은 즉시, 맞는 효과는 표창이 닿을 때)
   EMPOWER_GLOW: 0x6a2ad0, // 닌자 R 강화 중 몸이 깜빡이는 빛 (보라)
+  // 탱크 화면
+  ARMOR_SHINE: 0x8a96a8, // 아머 중 몸이 금속처럼 번쩍이는 빛
+  FIGURE_HIT_ARMOR: 0.15, // 아머로 버틴 타: 휘청 세기 (얼굴만 찡그리는 정도)
+  FIGURE_HIT_ARMOR_BREAK: 2.4, // 아머가 깨진 타: 휘청 세기 (크게)
+  QUAKE_RISE_MS: 160, // 탱크 R 고리 땅이 솟는 시간 (넘쳤다 돌아옴)
+  QUAKE_SINK_MS: 280, // 가라앉는 시간
+  QUAKE_COLOR: 0x9c8468, // 솟는 땅 색 (흙)
   FIGURE_ACT_MAX_S: 4, // 공격 동작이 이보다 오래 남으면 버림 (안전장치: 끝나지 않는 동작)
   FIGURE_STRIKE_S: 0.07, // 공격 타격 자세로 튀는 시간 (아주 짧게). 그 뒤 회복은 평타 표의 rec
   FIGURE_SWING_WAIT_S: 0.4, // 준비가 끝나고 이만큼 더 기다려도 판정(swing)이 안 오면 동작을 접음 (캔슬·끊김)
