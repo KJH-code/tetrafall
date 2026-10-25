@@ -4,8 +4,9 @@
 import { CONFIG as C } from '../shared/config.js';
 import { rotatedCells, footprint } from '../shared/pieces.js';
 
-const W = C.GRID_W;
-const D = C.GRID_D;
+// 판 크기 (인원마다 다름): 봇이 판단할 때마다 그 게임의 크기로 맞춤 (update·useSkills 첫머리). 한 프로세스의 방들이 차례로 돌아서 안전
+let W = C.GRID_W;
+let D = C.GRID_D;
 
 function pieceKey(piece) {
   return `${piece.id}:${piece.px},${piece.py},${piece.rot},${piece.stepMs}`;
@@ -58,6 +59,8 @@ export class BotBrain {
   }
 
   update(g, p) {
+    W = g.W;
+    D = g.D;
     if (!p.alive || g.phase !== 'playing') return;
     if (g.time < this.nextThinkAt) {
       g.handleInput(p.id, this.input);
@@ -354,6 +357,8 @@ export class BotBrain {
   }
 
   useSkills(g, p, t, enemies, avoid = []) {
+    W = g.W;
+    D = g.D;
     const dist = Math.hypot(t.x - p.x, t.y - p.y);
     const ultReady = p.ult >= C.ULT_MAX;
     const skillReady = g.time >= p.skillReadyAt;
