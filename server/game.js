@@ -77,6 +77,7 @@ export class Game {
     this.bblocks = new Map(); // 건축가 블록: 셀 키 -> { x, y, z, owner, kind: 'wall'|'third'|'pad'|'big', group, expiresAt, born }
     this.bigBombs = []; // 건축가 대폭발 대기: { owner, group, at, dir }
     this.holes = []; // 폭발 구멍 (테스트 옵션 BUILDER_BLAST_HOLE): { x, y, z, v, at }
+    this.quakes = []; // 탱크 R 솟는 땅 (잠깐 솟았다 가라앉음): { cells: [[x,y,z]], at }
     this.bgroup = 0;
     this.bombCounter = 0;
     this.roundNumber = 0;
@@ -477,6 +478,7 @@ export class Game {
     this.bblocks = new Map(); // 건축가 블록: 셀 키 -> { x, y, z, owner, kind: 'wall'|'third'|'pad'|'big', group, expiresAt, born }
     this.bigBombs = []; // 건축가 대폭발 대기: { owner, group, at, dir }
     this.holes = []; // 폭발 구멍 (테스트 옵션 BUILDER_BLAST_HOLE): { x, y, z, v, at }
+    this.quakes = []; // 탱크 R 솟는 땅 (잠깐 솟았다 가라앉음): { cells: [[x,y,z]], at }
     this.bgroup = 0;
     this.bombCounter = 0;
     this.deaths = [];
@@ -1031,7 +1033,7 @@ export class Game {
       const hit = this.applyKnockback(t, fx, fy, speed, def.up, def.stun, gain, { by: p.id, kind: 'push' }, finish, { fixed: !single && !finish, finish });
       if (hit) {
         const stop =
-          (single ? C.HITSTOP_MS : finish ? C.BASIC_FINISH_HITSTOP_MS : C.BASIC_HITSTOP_MS) *
+          (finish ? C.BASIC_FINISH_HITSTOP_MS : single ? C.HITSTOP_MS : C.BASIC_HITSTOP_MS) *
           (crit ? C.CRIT_HITSTOP_MULT : 1) *
           (t.counterAt === this.time ? C.COUNTER_HITSTOP_MULT : 1);
         p.freezeUntil = this.time + stop;
@@ -1222,7 +1224,52 @@ export class Game {
       this.emit({ type: 'hit', kind: 'slam', by: p.id, target: t.id, ok: hit });
     }
     this.emit({ type: 'slam', who: p.id, x: p.x, y: p.y, z: p.z, r: C.TANK_SLAM_RANGE });
-    this.log(`  [필살] ${p.name} 내려찍기 (${n}명)`);
+    const lifted = this.tankRing(p);
+    this.log(`  [필살] ${p.name} 내려찍기 (${n}명${lifted ? `, 솟는 땅 ${lifted}명` : ''})`);
+  }
+
+  // R 바깥 고리: 충격파 바깥 TANK_RING_WIDTH 칸 고리의 기둥 꼭대기에 블록 1층이 솟아 위 사람을 띄움 → TANK_RING_MS 뒤 가라앉음.
+  // 블록이 아래에서 솟으니 압사 없음, 층 클리어로도 안 셈. 띄운 사람 수를 돌려줌
+  tankRing(p) {
+    const r0 = C.TANK_SLAM_RANGE;
+    const r1 = r0 + C.TANK_RING_WIDTH;
+    const cells = [];
+    for (let x = Math.floor(p.x - r1); x <= Math.floor(p.x + r1); x++) {
+      for (let y = Math.floor(p.y - r1); y <= Math.floor(p.y + r1); y++) {
+        const d = Math.hypot(x + 0.5 - p.x, y + 0.5 - p.y);
+        if (d <= r0 || d > r1 || !inXY(x, y)) continue;
+        const z = this.columnTop(x, y);
+        if (z >= C.GRID_H || Math.abs(z - p.z) > 2.5 || this.pieceCells.has(cellKey(x, y, z))) continue;
+        this.grid[this.idx(x, y, z)] = CELL.BUILD;
+        cells.push([x, y, z]);
+      }
+    }
+    if (!cells.length) return 0;
+    this.gridChanged();
+    this.quakes.push({ cells, at: this.time + C.TANK_RING_MS });
+    let n = 0;
+    for (const t of this.players.values()) {
+      if (!this.onField(t) || !cells.some(([x, y, z]) => overlapsCell(t, x, y, z))) continue;
+      this.ejectFromBlocks(t);
+      if (!this.foe(p, t)) continue;
+      const hit = this.applyKnockback(t, t.x - p.x, t.y - p.y, 0, C.TANK_RING_UP, C.TANK_RING_STUN_MS, 0, { by: p.id, kind: 'slam' }, true);
+      if (hit) n++;
+      this.emit({ type: 'hit', kind: 'quake', by: p.id, target: t.id, ok: hit });
+    }
+    this.emit({ type: 'quakeRise', who: p.id, cells, ms: C.TANK_RING_MS });
+    return n;
+  }
+
+  // 솟은 땅이 가라앉음 (그 사이 다른 블록이 덮어쓴 칸은 그대로)
+  updateQuakes() {
+    for (const q of [...this.quakes]) {
+      if (this.time < q.at) continue;
+      this.quakes = this.quakes.filter((x) => x !== q);
+      const gone = q.cells.filter(([x, y, z]) => this.grid[this.idx(x, y, z)] === CELL.BUILD && !this.bblocks.has(cellKey(x, y, z)));
+      for (const [x, y, z] of gone) this.grid[this.idx(x, y, z)] = 0;
+      if (gone.length) this.gridChanged();
+      this.emit({ type: 'quakeFall', cells: gone });
+    }
   }
 
   // ---- 닌자 ----
@@ -1658,6 +1705,7 @@ export class Game {
   // 틱마다: 콤보가 끊긴 사람 무적, 돌진 부딪힘, 내려찍기·솟는 벽·회오리 발동
   updateCombat() {
     if (this.bblocks.size || this.bigBombs.length || this.holes.length) this.updateBBlocks();
+    if (this.quakes.length) this.updateQuakes();
     for (const p of this.players.values()) {
       if (p.comboHits > 0 && this.time >= p.stunUntil) this.endCombo(p);
       if (!this.onField(p)) {
@@ -1909,6 +1957,22 @@ export class Game {
   applyKnockback(t, dx, dy, speed, up, stunMs = C.STUN_MS, gain = 0, src = null, heavy = false, opts = {}) {
     if (this.invulnerable(t)) return false; // 콤보 뒤 무적·부활 무적
     const teammate = src && this.sameTeam(this.players.get(src.by), t);
+    // 탱크 아머 (F 돌진 중·R 떠오르는 동안): 넉백·경직 없이 피해 % 만. 마무리 타·필살기면 깨지고 보통처럼 (카운터는 안 당함)
+    let armorBroken = false;
+    if (!teammate && t.char === 'tank' && (this.time < t.chargeUntil || t.slamAt)) {
+      const name = this.players.get(src?.by)?.name || '?';
+      if (!opts.finish && !ULT_KINDS.has(src?.kind)) {
+        if (src && src.by !== t.id) t.lastHit = { by: src.by, kind: src.kind, name };
+        t.damage += gain;
+        this.gainUlt(t, src, gain);
+        this.emit({ type: 'armor', who: t.id, by: src ? src.by : null });
+        this.log(`  [아머] ${t.name} ← ${name} 버팀 (${t.name} ${t.damage}%)`);
+        return true;
+      }
+      armorBroken = true;
+      this.emit({ type: 'armorBreak', who: t.id, by: src ? src.by : null });
+      this.log(`  [아머] ${t.name} ← ${name} 깨짐`);
+    }
     // 콤보: 경직이 안 풀렸는데 또 맞으면 이어짐. 첫 타에서 COMBO_MS 가 지난 뒤 들어간 타가 마지막 타 (크게 날리고 무적). 같은 팀은 콤보로 안 셈 (무적도 안 붙음)
     if (!teammate) {
       t.comboHits = this.time < t.stunUntil && t.comboHits > 0 ? t.comboHits + 1 : 1;
@@ -1920,7 +1984,7 @@ export class Game {
       if (hitter) t.comboBy.add(hitter.name);
     }
     // 카운터히트: 맞는 쪽이 평타 준비·후딜, 스킬·필살기 준비(돌진 중 포함) 중이었음 → 경직·멈칫 길게
-    const counter = !teammate && !!src && !!t.char && this.time >= t.stunUntil && this.busy(t); // 이미 경직 중(콤보)이면 아님
+    const counter = !teammate && !armorBroken && !!src && !!t.char && this.time >= t.stunUntil && this.busy(t); // 이미 경직 중(콤보)이면 아님, 탱크 아머 중이면 아님
     if (counter) {
       stunMs *= C.COUNTER_STUN_MULT;
       t.counterAt = this.time;
@@ -1967,12 +2031,7 @@ export class Game {
     const taken = t.char === 'tank' ? C.TANK_KB_TAKEN : t.char === 'ninja' ? C.NINJA_KB_TAKEN : 1; // 탱크 패시브: 덜 밀림, 닌자 약점: 잘 밀림
     const mult = fixed ? 1 : (C.DAMAGE_KB_BASE + t.damage * C.DAMAGE_KB_PER_PERCENT) * taken;
     t.damage += gain;
-    // 필살기 게이지: 피해 % 를 주거나 받은 만큼
-    if (gain > 0) {
-      t.ult = Math.min(C.ULT_MAX, t.ult + gain * C.ULT_PER_DAMAGE);
-      const by = src && src.by !== t.id ? this.players.get(src.by) : null;
-      if (by) by.ult = Math.min(C.ULT_MAX, by.ult + gain * C.ULT_PER_DAMAGE);
-    }
+    this.gainUlt(t, src, gain);
     const len = Math.hypot(dx, dy) || 1;
     t.kbx = (dx / len) * speed * mult;
     t.kby = (dy / len) * speed * mult;
@@ -1983,6 +2042,14 @@ export class Game {
     t.freezeUntil = this.time + C.HITSTOP_MS * (counter ? C.COUNTER_HITSTOP_MULT : 1); // 멈칫 뒤에 날아간다 (날아가는 거리는 그대로)
     if (finisher) this.endCombo(t, t.stunUntil, true);
     return true;
+  }
+
+  // 필살기 게이지: 피해 % 를 주거나 받은 만큼 (탱크 패시브: 받은 피해로는 × TANK_ULT_TAKEN_MULT)
+  gainUlt(t, src, gain) {
+    if (gain <= 0) return;
+    t.ult = Math.min(C.ULT_MAX, t.ult + gain * C.ULT_PER_DAMAGE * (t.char === 'tank' ? C.TANK_ULT_TAKEN_MULT : 1));
+    const by = src && src.by !== t.id ? this.players.get(src.by) : null;
+    if (by) by.ult = Math.min(C.ULT_MAX, by.ult + gain * C.ULT_PER_DAMAGE);
   }
 
   // 카운터히트 대상 (2026-10-25 재혁 결정, 첫 사람 플레이테스트: 1:1 에서 동시에 누르면 거의 다 카운터였음):
@@ -2495,6 +2562,7 @@ export class Game {
       moved.set(cellKey(b.x, b.y, b.z), b);
     }
     this.bblocks = moved;
+    for (const q of this.quakes) q.cells = q.cells.filter(([, , z]) => !full.includes(z)).map(([x, y, z]) => [x, y, z - full.filter((f) => f < z).length]);
     this.holes = this.holes.filter((h) => !full.includes(h.z));
     for (const h of this.holes) h.z -= full.filter((z) => z < h.z).length;
   }
@@ -2986,6 +3054,9 @@ const TEAM_KO = { red: '빨강', blue: '파랑' };
 function basicLabel(set, n, air, def) {
   return air ? `공중 ${set.air.length > 1 ? `${n}타 ` : ''}${def.name}` : `${n}타 ${def.name}`;
 }
+
+// 필살기 공격 종류 (탱크 아머를 깸)
+const ULT_KINDS = new Set(['slam', 'bigbomb', 'whirl']);
 
 const BBLOCK_LOG = { wall: '벽', third: '3타 블록', pad: '발판' };
 const WEAPON_LOG = { push: '밀치기', wallkick: '벽차기', blast: '블록폭발', bigbomb: '대폭발', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', whirl: '회오리' };

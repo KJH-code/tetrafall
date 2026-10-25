@@ -289,16 +289,17 @@ export class BotBrain {
     }
     const dist = Math.hypot(t.x - p.x, t.y - p.y);
     const toT = { x: (t.x - p.x) / (dist || 1), y: (t.y - p.y) / (dist || 1) };
-    // 닌자: 올려 차기(4타)로 띄운 상대를 점프해 따라가 공중 평타
+    // 닌자·탱크: 지상 마지막 타(올려 차기·방패 올려치기)로 띄운 상대를 점프해 따라가 공중 평타
     const lb = p.lastBasic;
-    if (p.char === 'ninja' && lb && !lb.air && lb.n === C.BASIC_ATTACKS.ninja.chain.length && g.time - lb.at < 900 && t.z > p.z + 0.4 && g.time < t.stunUntil && dist < 2) {
+    const launcher = p.char && !C.BASIC_ATTACKS[p.char].chain.at(-1).finish;
+    if (launcher && lb && !lb.air && lb.n === C.BASIC_ATTACKS[p.char].chain.length && g.time - lb.at < 900 && t.z > p.z + 0.4 && g.time < t.stunUntil && dist < 2) {
       this.input.fwd = dist > 0.8 ? 1 : 0;
       this.input.strafe = 0;
       this.input.yaw = Math.atan2(t.y - p.y, t.x - p.x);
       this.input.jump = p.grounded;
       g.handleInput(p.id, this.input);
       if (!p.grounded && p.vz < 2 && p.airJumps > 0 && t.z > p.z + 1) g.handleAction(p.id, { name: 'jump' });
-      if (!p.grounded && Math.abs(t.z - p.z) < 1.4 && !p.atk) g.handleAction(p.id, { name: 'push' }); // 공중 1타 → (창 안에) 공중 2타
+      if (!p.grounded && Math.abs(t.z - p.z) < 1.4 && !p.atk) g.handleAction(p.id, { name: 'push' }); // 공중 1타 → (창 안에) 공중 2타 (탱크는 공중 1타가 마무리)
       return;
     }
     // 캐릭터 평타: 앞 타가 끝나고 창 안이면 상대를 보고 다음 타 (난이도별로 조금 늦게 누름). 준비 중에는 계속 상대를 봄
@@ -368,7 +369,13 @@ export class BotBrain {
     const comboing = g.time < t.stunUntil && t.comboHits > 0; // 상대가 내 콤보에 걸려 있음 → 스킬로 이어 감
     const level = Math.abs(t.z - p.z) < 1;
     if (p.char === 'tank') {
-      if (ultReady && near(C.TANK_SLAM_RANGE * 0.9).length) return act('ult');
+      if (ultReady && near(C.TANK_SLAM_RANGE + C.TANK_RING_WIDTH * 0.5).length) return act('ult'); // 바깥 고리까지
+      // 상대가 공격을 준비하면 아머 돌진으로 뚫고 들어감
+      const reachNow = C.TANK_CHARGE_SPEED * (C.TANK_CHARGE_MS / 1000);
+      if (skillReady && level && t.atk && dist <= reachNow && !this.pathHits(p, Math.atan2(t.y - p.y, t.x - p.x), dist, avoid)) {
+        face();
+        return act('skill');
+      }
       const reach = C.TANK_CHARGE_SPEED * (C.TANK_CHARGE_MS / 1000);
       if (skillReady && level && dist >= 1 && dist <= reach && !this.pathHits(p, Math.atan2(t.y - p.y, t.x - p.x), Math.min(reach, dist + 0.5), avoid)) {
         face(); // 돌진
