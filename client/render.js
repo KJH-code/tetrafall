@@ -146,6 +146,8 @@ export function playerColor(p, state) {
   }
   return PLAYER_COLORS[p.slot % PLAYER_COLORS.length];
 }
+const _q = new THREE.Quaternion();
+const HEAVY_HITS = new Set(['weapon', 'bomb', 'shock', 'projectile', 'slam', 'whirl', 'wall']); // 몸이 크게 휘청하는 공격
 const MAX_CELLS = C.GRID_W * C.GRID_D * C.GRID_H;
 
 export class Renderer {
@@ -303,6 +305,9 @@ export class Renderer {
     this.beamMat = noOutline(new THREE.MeshBasicMaterial({ color: 0xd040d0, transparent: true, opacity: 0.5, depthWrite: false }));
 
     this.playerMeshes = new Map();
+    this.hits = new Map(); // 맞은 몸 반응 (id → { id, t0, stop, dir, pow }, hitReact)
+    this.finishAt = new Map(); // 콤보 마무리 타를 받은 시각 (comboFinish)
+    this.hitSeq = 0;
     this.itemMeshes = [];
     this.projMeshes = [];
     this.smooth = new Map(); // id -> {x,y,z}
@@ -522,28 +527,131 @@ export class Renderer {
     parts.position.z = -C.PLAYER_HEIGHT / 2 + (walking && !jointed ? Math.abs(step) * C.ANIM_BOB : 0);
     g.userData.feet.forEach((f, i) => (f.position.x = f.userData.baseX + (i ? -step : step) * C.ANIM_STEP));
     // 경직된 채 빠르게 날아가면 뒤로 구름. 끝나면 가장 가까운 바로 선 자세로 돌아옴
-    if (p.stunned && a.hs > C.ANIM_TUMBLE_MIN_SPEED) a.spin -= dt * C.ANIM_TUMBLE_SPEED;
+    if (fig) this.figureFlight(a, s, p, air, vx, vy, dt);
+    else if (p.stunned && a.hs > C.ANIM_TUMBLE_MIN_SPEED) a.spin -= dt * C.ANIM_TUMBLE_SPEED;
     else a.spin += (Math.round(a.spin / (Math.PI * 2)) * Math.PI * 2 - a.spin) * (1 - Math.exp(-C.ANIM_SMOOTH * dt));
     const lean = Math.min(1, a.hs / C.MOVE_SPEED) * C.ANIM_LEAN;
-    rig.rotation.y = lean + a.spin;
+    rig.rotation.y = lean + (fig ? a.flipAngle : a.spin);
     rig.rotation.x = jointed ? 0 : step * C.ANIM_SWAY; // 걸을 때 좌우로 살짝 흔들
     // 승자 춤·이모트 '춤': 깡충 뛰며 제자리에서 빙글
     const emote = p.emote ?? -1;
     const dancing = this.victoryId === p.id || emote === 1;
     a.dance = dancing ? (a.dance || 0) + dt : 0;
     rig.rotation.z = dancing && !robot ? a.dance * C.VICTORY_SPIN : 0;
+    if (fig && a.spin) rig.quaternion.premultiply(_q.setFromAxisAngle(a.tumbleAxis, a.spin)); // 날아가는 쪽으로 구름
     if (dancing && !robot) parts.position.z += Math.abs(Math.sin(a.dance * C.VICTORY_HOP_FREQ)) * C.VICTORY_HOP;
     if (robot) this.robotAnim(robot, p, a, air, walking, dancing, emote, dt);
     if (fig) {
       a.emoteT = emote >= 0 && emote !== 1 ? (a.emoteT || 0) + dt : 0;
       a.t = (a.t || 0) + dt;
       const punch = this.effects.punchAmount(p.id);
-      figureAnim(fig, { air, walking, hs: a.hs, walk: a.walk, stunned: p.stunned, dancing, emote, emoteT: a.emoteT, punch, holding: !!heldKind(p), t: a.t }, dt);
+      const hit = this.hitFor(p);
+      figureAnim(fig, {
+        air, walking, hs: a.hs, walk: a.walk, stunned: p.stunned, dancing, emote, emoteT: a.emoteT, punch, holding: !!heldKind(p), t: a.t,
+        hit, tumble: a.tumbleAmt, recover: a.recover * a.recoverPow, land: a.figLand * a.landPow, flip: a.flip >= 0 ? a.flip / C.FIGURE_FLIP_S : -1,
+      }, dt);
     }
     const stretch = a.vz > C.ANIM_AIR_VZ && !fig ? C.ANIM_STRETCH : 0; // 올라가는 중: 위로 늘어나고 옆은 가늘게
     const land = fig ? 0 : a.land; // TABS 식 몸은 찌그러지지 않음
     const wide = 1 - stretch / 2 + land * C.ANIM_LAND_SQUASH * 0.6; // 착지: 납작해지며 옆으로 퍼짐
     rig.scale.set(wide, wide, 1 + stretch - land * C.ANIM_LAND_SQUASH);
+  }
+
+  // TABS 식 몸의 날아가기·구르기·일어나기·착지·2단 점프 공중제비 상태 (a 에 쌓음, figureAnim 과 rig 회전이 씀)
+  figureFlight(a, s, p, air, vx, vy, dt) {
+    const k = 1 - Math.exp(-C.ANIM_SMOOTH * dt);
+    a.vxs = (a.vxs || 0) + (vx - (a.vxs || 0)) * k;
+    a.vys = (a.vys || 0) + (vy - (a.vys || 0)) * k;
+    if (!a.tumbleAxis) Object.assign(a, { tumbleAxis: new THREE.Vector3(0, 1, 0), tumbleAmt: 0, recover: 0, recoverPow: 0, figLand: 0, landPow: 0, fallVz: 0, flip: -1, flipAngle: 0, wasStunned: false, tumbled: false });
+    // 구르기: 경직 중 빠르게 날아가면 날아가는 쪽으로 머리부터 구름 (한 번 구르기 시작하면 느려져도 경직 끝까지)
+    const fast = a.hs > C.FIGURE_TUMBLE_MIN_SPEED;
+    a.tumbling = p.stunned && (fast || (a.tumbling && a.hs > C.FIGURE_TUMBLE_MIN_SPEED * 0.4));
+    if (a.tumbling) {
+      a.tumbled = true;
+      // 몸 기준 날아가는 방향 → 그 방향으로 위가 넘어가는 회전축 (위 × 속도)
+      const c = Math.cos(p.yaw);
+      const sn = Math.sin(p.yaw);
+      const lx = c * a.vxs + sn * a.vys;
+      const ly = -sn * a.vxs + c * a.vys;
+      const len = Math.hypot(lx, ly);
+      if (len > 0.5) a.tumbleAxis.set(-ly / len, lx / len, 0);
+      a.spin += dt * C.FIGURE_TUMBLE_SPEED;
+      a.spinTo = null;
+    } else if (a.spin) {
+      // 다 구르면 가던 쪽으로 마저 돌아 바로 섬 (조금만 돌았으면 되돌아옴)
+      if (a.spinTo == null) a.spinTo = Math.PI * 2 * Math.ceil(a.spin / (Math.PI * 2) - 0.25);
+      a.spin += (a.spinTo - a.spin) * (1 - Math.exp(-C.ANIM_SMOOTH * dt));
+      if (Math.abs(a.spinTo - a.spin) < 0.01) a.spin = 0;
+    }
+    a.tumbleAmt += ((a.tumbling ? 1 : 0) - a.tumbleAmt) * k;
+    // 경직이 풀리면 (땅에 닿은 뒤) 쪼그렸다 일어남. 굴렀으면 깊게
+    if (a.wasStunned && !p.stunned) a.recoverPending = performance.now();
+    if (p.stunned) a.recoverPending = 0;
+    a.wasStunned = p.stunned;
+    if (a.recoverPending && !air) {
+      if (performance.now() - a.recoverPending < 1500) {
+        a.recover = 1;
+        a.recoverPow = a.tumbled ? 1 : 0.5;
+      }
+      a.recoverPending = 0;
+      a.tumbled = false;
+    }
+    a.recover = Math.max(0, a.recover - dt / C.FIGURE_RECOVER_S);
+    // 착지: 떨어진 속도만큼 무릎을 굽힘
+    if (air) a.fallVz = Math.min(a.fallVz, a.vz);
+    else if (a.fallVz < -C.ANIM_AIR_VZ) {
+      a.figLand = 1;
+      a.landPow = Math.min(1, -a.fallVz / C.FIGURE_LAND_FALL_VZ);
+      a.fallVz = 0;
+    } else a.fallVz = 0;
+    a.figLand = Math.max(0, a.figLand - dt / C.FIGURE_LAND_S);
+    // 2단 점프 공중제비 (airJump 이벤트가 a.flip = 0 으로 시작). 맞으면 끊김
+    if (a.flip >= 0) {
+      a.flip += dt;
+      if (p.stunned || a.flip >= C.FIGURE_FLIP_S) a.flip = -1;
+    }
+    const f = a.flip >= 0 ? a.flip / C.FIGURE_FLIP_S : 1;
+    a.flipAngle = a.flip >= 0 ? Math.PI * 2 * f * f * (3 - 2 * f) : 0; // 웅크리는 동안 천천히 → 가운데서 빨리 → 끝에서 느려짐
+  }
+
+  // 맞은 순간 (main.js 의 hit 이벤트). dir = 밀린 방향 (월드, 없으면 null). 콤보 마무리 타면 더 크게
+  hitReact(id, dir, { heavy = false, crit = false, kind = null } = {}) {
+    const now = performance.now();
+    const finish = now - (this.finishAt.get(id) || -1e9) < 200;
+    const pow = finish ? C.FIGURE_HIT_FINISH : heavy || crit || HEAVY_HITS.has(kind) ? C.FIGURE_HIT_HEAVY : 1;
+    const stop = (C.HITSTOP_MS * (crit ? C.CRIT_HITSTOP_MULT : 1)) / 1000;
+    this.hits.set(id, { id: ++this.hitSeq, t0: now, stop, dir, pow });
+  }
+
+  // 콤보 마무리 타 (combo 이벤트가 같은 타의 hit 보다 먼저 옴)
+  comboFinish(id) {
+    this.finishAt.set(id, performance.now());
+  }
+
+  // 2단 점프 (airJump 이벤트): 앞 공중제비
+  airJump(id) {
+    const g = this.playerMeshes.get(id);
+    if (g && g.userData.figure) g.userData.anim.flip = 0;
+  }
+
+  // figureAnim 에 넘길 맞은 것 (몸 기준 밀린 방향). 오래되면 버림
+  hitFor(p) {
+    const h = this.hits.get(p.id);
+    if (!h) return null;
+    const age = (performance.now() - h.t0) / 1000;
+    if (age > 2) {
+      this.hits.delete(p.id);
+      return null;
+    }
+    let dx = -1;
+    let dy = 0;
+    if (h.dir) {
+      const c = Math.cos(p.yaw);
+      const sn = Math.sin(p.yaw);
+      dx = c * h.dir.x + sn * h.dir.y;
+      dy = -sn * h.dir.x + c * h.dir.y;
+    }
+    return { id: h.id, age, stop: h.stop, dx, dy, pow: h.pow };
   }
 
   // 승리 연출: 판이 끝나면 모두의 카메라가 승자 정면으로 날아가고, 승자는 춤, 승자 색 색종이

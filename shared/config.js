@@ -378,6 +378,21 @@ export const CONFIG = {
   FIGURE_WALK_ARM: 0.6, // 걸을 때 팔을 앞뒤로 흔드는 최대 각
   FIGURE_RUN_LEAN: 0.18, // 최고 속도로 걸을 때 허리를 앞으로 숙이는 각
   FIGURE_HELD_SCALE: 0.7, // 손에 든 것 크기 배율 (팔이 가늘어서)
+  FIGURE_RUN_TWIST: 0.2, // 달릴 때 어깨를 다리 반대로 비트는 각
+  FIGURE_RUN_ELBOW: 0.9, // 최고 속도로 달릴 때 팔꿈치를 더 굽히는 각 (팔 펌프)
+  FIGURE_HIT_LEAN: 0.35, // 맞은 순간 허리가 밀린 쪽으로 꺾이는 각 (세기 1 기준)
+  FIGURE_HIT_KICK: 6, // 히트스톱이 끝나고 밀린 쪽으로 더 튕기는 빠르기 (라디안/초, 세기 1 기준)
+  FIGURE_HIT_SPRING_K: 70, // 휘청 스프링 세기 (클수록 빨리 흔들림)
+  FIGURE_HIT_SPRING_DAMP: 7, // 휘청 스프링 감쇠 (클수록 빨리 멈춤)
+  FIGURE_HIT_HEAVY: 1.5, // 무거운 공격 (망치·치명타·폭탄 등) 휘청 세기
+  FIGURE_HIT_FINISH: 2.2, // 콤보 마무리 타 휘청 세기
+  FIGURE_TUMBLE_MIN_SPEED: 5.5, // 경직 중 이 속도(칸/초)보다 빠르게 날아가면 몸을 말고 구름 (밀치기 한 방은 안 구름)
+  FIGURE_TUMBLE_SPEED: 13, // 구르는 빠르기 (라디안/초)
+  FIGURE_RECOVER_S: 0.45, // 경직이 풀리고 쪼그렸다 일어나는 시간 (초)
+  FIGURE_LAND_S: 0.3, // 착지 무릎 굽힘이 풀리는 시간 (초)
+  FIGURE_LAND_KNEE: 1, // 착지 무릎 굽힘 세기 (가장 세게 떨어졌을 때)
+  FIGURE_LAND_FALL_VZ: 9, // 이 속도(칸/초)로 떨어지면 착지 무릎을 가장 크게 굽힘
+  FIGURE_FLIP_S: 0.5, // 2단 점프 앞 공중제비 한 바퀴 시간 (초)
   ROBOT_PUNCH_MS: 450, // 밀치기 때 펀치 동작을 보여주는 시간 // 캐릭터 손에 든 아이템 모델 크기
   ITEM_MODEL_SIZE: 0.55, // 필드 아이템 모델 크기 (가장 긴 변, 칸)
   BOMB_MODEL_SIZE: 0.55, // 놓인 폭탄 모델 크기

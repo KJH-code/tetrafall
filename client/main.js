@@ -211,6 +211,7 @@ function handleEvent(e) {
       renderer.markCircle(e.x, e.y, e.z, e.r, 0x40d0c0, 350);
       break;
     case 'combo': // 내가 때리거나 맞은 콤보만
+      if (e.finish) renderer.comboFinish(e.target); // 마무리 타는 몸이 더 크게 휘청 (모두)
       if (e.by === myId || e.target === myId) showCombo(e.n, e.target === myId, e.finish);
       break;
     case 'hook':
@@ -291,6 +292,7 @@ function feelEvent(e) {
       fx.burst(chest, dir, e.kind === 'projectile' ? 0xffee40 : heavy ? 0xffa040 : 0xfff2c0, heavy ? C.FX_PARTICLES * 2 : C.FX_PARTICLES, heavy ? 7 : 5);
       fx.ring(chest, e.kind === 'projectile' ? 0xffee40 : heavy ? 0xff8a10 : 0xffffff, heavy ? 3.4 : 2.4);
       fx.hitSquash(e.target);
+      renderer.hitReact(e.target, dir, { heavy, crit: e.crit, kind: e.kind }); // TABS 식 몸: 맞은 방향으로 휘청
       if (e.target === myId) {
         sound.play('hurt');
         fx.shake(C.FX_SHAKE_HURT * (heavy ? 1.6 : 1));
@@ -348,6 +350,7 @@ function feelEvent(e) {
       const a = playerById(e.who);
       if (!a) return;
       fx.burst({ x: a.x, y: a.y, z: a.z + 0.05 }, null, 0xffffff, 8, 2.5, 0.08, 0.35);
+      renderer.airJump(e.who); // 앞 공중제비
       sound.play('airJump', { dist: e.who === myId ? 0 : distToMe(a.x, a.y, a.z) });
       return;
     }

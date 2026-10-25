@@ -507,10 +507,12 @@ function dressHook(fig, costume, cloth) {
 // ---------- 동작 ----------
 // 관절마다 목표 각도를 정하고 FIGURE_FOLLOW 빠르기로 따라감 → 살짝 늦게 따라와 흐느적거림 (TABS 느낌)
 // 각도 이름: fwd = 앞으로 드는 각 (어깨·허벅지), out = 옆으로 벌리는 각 (어깨), bend = 굽힘 (팔꿈치 앞, 무릎 뒤)
+// waistSide = 허리를 왼쪽(+y)으로 기울인 각, waistRoll = 허리 비틂 (위에서 봐서 왼쪽으로 돎)
 function restPose(d) {
   return {
     waistPitch: d.hunch,
     waistRoll: 0,
+    waistSide: 0,
     neckPitch: -d.hunch,
     hipsZ: 0,
     shFwd: [0, 0],
@@ -522,22 +524,67 @@ function restPose(d) {
   };
 }
 
-// st: { air, walking, hs, walk(위상), stunned, dancing, emote, emoteT, punch(0~1), holding(왼손에 든 것 있음), t }
+// 맞은 순간 자세 (히트스톱 동안 이대로 멈칫): 팔다리가 맞은 쪽 반대로 남고 (몸통만 먼저 밀림), 무릎이 꺾임.
+// dx·dy = 밀려나는 방향 (몸 기준, 앞 +x 왼쪽 +y), pow = 세기
+function hitPose(T, dx, dy, pow) {
+  const fling = Math.min(1.6, 0.9 * pow);
+  T.shFwd = [-dx * fling + 0.3, -dx * fling + 0.3];
+  T.shOut = [0.9 + 0.4 * pow + dy * 0.5, 0.9 + 0.4 * pow - dy * 0.5];
+  T.elbow = [0.5, 0.5];
+  T.thFwd = [-dx * 0.4 * pow + 0.2, -dx * 0.2 * pow];
+  T.thOut = [Math.max(0, -dy) * 0.4, Math.max(0, dy) * 0.4];
+  T.knee = [0.6, 0.3];
+  T.neckPitch = -dx * 0.35 * pow;
+  T.waistRoll = dy * 0.3;
+}
+
+// 휘청 스프링 (허리 앞뒤·좌우 각). 맞으면 밀린 방향으로 꺾인 채 시작해 그 방향으로 한 번 더 튕긴 뒤 흔들리며 섬
+function stepSway(sw, dt) {
+  const n = Math.max(1, Math.ceil(dt / 0.01));
+  const h = dt / n;
+  for (let i = 0; i < n; i++) {
+    for (const [x, v] of [['x', 'vx'], ['y', 'vy']]) {
+      sw[v] += (-C.FIGURE_HIT_SPRING_K * sw[x] - C.FIGURE_HIT_SPRING_DAMP * sw[v]) * h;
+      sw[x] += sw[v] * h;
+    }
+  }
+}
+
+// st: { air, walking, hs, walk(위상), stunned, dancing, emote, emoteT, punch(0~1), holding(왼손에 든 것 있음), t,
+//       hit(맞은 것: { id, age 초, stop 히트스톱 초, dx, dy 밀린 방향(몸 기준), pow 세기 } 또는 null),
+//       tumble(0~1 구르는 중), recover(0~1 일어나는 중), land(0~1 착지 무릎), flip(0~1 2단 점프 공중제비 중, 아니면 -1) }
 export function figureAnim(fig, st, dt) {
   const d = fig.d;
   const T = restPose(d);
   const t = st.t;
+  const hit = st.hit;
+  const sw = fig.sway || (fig.sway = { x: 0, y: 0, vx: 0, vy: 0, id: null });
+  if (hit && hit.id !== sw.id) {
+    // 새로 맞음: 밀린 쪽으로 꺾인 채 시작 (멈칫 뒤 그쪽으로 튕김)
+    sw.id = hit.id;
+    sw.x = hit.dx * C.FIGURE_HIT_LEAN * hit.pow;
+    sw.y = hit.dy * C.FIGURE_HIT_LEAN * hit.pow;
+    sw.vx = hit.dx * C.FIGURE_HIT_KICK * hit.pow;
+    sw.vy = hit.dy * C.FIGURE_HIT_KICK * hit.pow;
+  }
+  const frozen = !!hit && hit.age < hit.stop; // 히트스톱: 맞은 자세로 멈춤
+  if (!frozen) stepSway(sw, dt);
+
   if (st.walking) {
     const amp = Math.min(1, st.hs / C.MOVE_SPEED);
     for (let i = 0; i < 2; i++) {
       const ph = st.walk + (i ? Math.PI : 0);
       T.thFwd[i] = Math.sin(ph) * C.FIGURE_WALK_LEG * amp;
-      T.knee[i] = Math.max(0, -Math.cos(ph)) * C.FIGURE_WALK_KNEE * amp;
-      T.shFwd[i] = -Math.sin(ph) * C.FIGURE_WALK_ARM * amp;
-      T.elbow[i] = 0.3 + 0.4 * amp;
+      // 뒤로 차 올리는 무릎 (빠를수록 높이)
+      T.knee[i] = Math.max(0, -Math.cos(ph)) * C.FIGURE_WALK_KNEE * amp + Math.max(0, -Math.sin(ph)) * 0.4 * amp;
+      T.shFwd[i] = -Math.sin(ph) * C.FIGURE_WALK_ARM * amp + 0.15 * amp;
+      T.elbow[i] = 0.3 + C.FIGURE_RUN_ELBOW * amp + Math.max(0, -Math.sin(ph)) * 0.3 * amp; // 앞으로 올 때 더 굽혀 펌프
+      T.shOut[i] = d.spread * (1 - 0.5 * amp);
     }
     T.waistPitch = d.hunch + C.FIGURE_RUN_LEAN * amp;
-    T.hipsZ = Math.abs(Math.sin(st.walk)) * 0.04 * amp;
+    T.waistRoll = -Math.sin(st.walk) * C.FIGURE_RUN_TWIST * amp; // 어깨가 다리 반대로 비틂
+    T.waistSide = Math.sin(st.walk) * 0.05 * amp; // 디딘 다리 쪽으로 살짝
+    T.neckPitch = -d.hunch - C.FIGURE_RUN_LEAN * amp * 0.6 + Math.cos(st.walk * 2) * 0.05 * amp; // 고개는 앞을 봄
   } else {
     T.waistPitch = d.hunch + Math.sin(t * 2) * 0.02; // 숨쉬기
     T.shOut = T.shOut.map((o, i) => o + Math.sin(t * 1.7 + i) * 0.03);
@@ -549,6 +596,19 @@ export function figureAnim(fig, st, dt) {
     T.elbow = [0.4, 0.4];
     T.thFwd = [0.7, -0.15];
     T.knee = [1.0, 0.3];
+    T.waistRoll = 0;
+    T.waistSide = 0;
+  }
+  if (st.flip >= 0) {
+    // 2단 점프 공중제비: 무릎을 가슴으로 당겨 웅크림 (돌기는 render.js 가 몸 전체를)
+    const tuck = Math.min(1, st.flip * 5, (1 - st.flip) * 3); // 시작하자마자 웅크리고 끝에서 폄
+    T.thFwd = [1.9 * tuck, 1.9 * tuck];
+    T.knee = [2.2 * tuck, 2.2 * tuck];
+    T.shFwd = [1.2 * tuck, 1.2 * tuck];
+    T.shOut = [0.3, 0.3];
+    T.elbow = [1.6 * tuck, 1.6 * tuck];
+    T.waistPitch = 0.5 * tuck;
+    T.neckPitch = 0.3 * tuck;
   }
   if (st.stunned) {
     // 맞고 날아가는 중: 팔다리를 크게 벌리고 버둥
@@ -558,6 +618,38 @@ export function figureAnim(fig, st, dt) {
     T.thFwd = [Math.sin(t * 17) * 0.5, -Math.sin(t * 17) * 0.5];
     T.knee = [0.5, 0.5];
     T.neckPitch = -0.3;
+    T.waistRoll = 0;
+    T.waistSide = 0;
+    if (st.tumble > 0) {
+      // 크게 날아가며 구르는 중: 몸을 공처럼 말아 굴러가는 게 보이게
+      const c = st.tumble;
+      T.thFwd = T.thFwd.map((v) => v * (1 - c) + 1.6 * c);
+      T.knee = T.knee.map((v) => v * (1 - c) + 2.0 * c);
+      T.shFwd = T.shFwd.map((v) => v * (1 - c) + 1.0 * c);
+      T.shOut = T.shOut.map((v) => v * (1 - c) + 0.6 * c);
+      T.elbow = [1.2, 1.2];
+      T.waistPitch = 0.6 * c;
+      T.neckPitch = 0.4 * c;
+    }
+  } else if (st.recover > 0) {
+    // 경직이 풀림: 쪼그려 앉았다가 손으로 균형 잡으며 일어남
+    const r = st.recover * st.recover * (3 - 2 * st.recover);
+    T.thFwd = T.thFwd.map((v) => v + 1.1 * r);
+    T.knee = T.knee.map((v) => v + 1.9 * r);
+    T.waistPitch += 0.55 * r;
+    T.neckPitch -= 0.45 * r;
+    T.shFwd = T.shFwd.map((v) => v + 0.7 * r);
+    T.shOut = T.shOut.map((v) => v + 0.6 * r);
+    T.elbow = T.elbow.map((v) => v + 0.3 * r);
+  }
+  if (st.land > 0 && !st.air && !st.stunned) {
+    // 착지: 무릎을 굽혀 받음 (떨어진 속도만큼)
+    const l = st.land;
+    T.thFwd = T.thFwd.map((v) => v + 0.6 * C.FIGURE_LAND_KNEE * l);
+    T.knee = T.knee.map((v) => v + 1.1 * C.FIGURE_LAND_KNEE * l);
+    T.waistPitch += 0.3 * C.FIGURE_LAND_KNEE * l;
+    T.neckPitch -= 0.2 * C.FIGURE_LAND_KNEE * l;
+    T.shOut = T.shOut.map((v) => v + 0.5 * l);
   }
   if (st.holding && !st.stunned && st.emote < 0) {
     // 왼손에 든 것을 앞으로 내밀어 보이게
@@ -594,26 +686,38 @@ export function figureAnim(fig, st, dt) {
     T.elbow[0] = 0.05;
     T.waistRoll = 0.25 * st.punch;
   }
+  if (frozen) hitPose(T, hit.dx, hit.dy, hit.pow);
 
-  // 따라가기 (처음엔 바로 그 자세)
-  const k = fig.pose ? 1 - Math.exp(-C.FIGURE_FOLLOW * dt) : 1;
+  // 따라가기 (처음엔 바로 그 자세, 히트스톱도 바로 그 자세로 멈칫)
+  const k = fig.pose && !frozen ? 1 - Math.exp(-C.FIGURE_FOLLOW * (st.flip >= 0 ? 2.5 : 1) * dt) : 1; // 공중제비는 빨리 웅크려야 보임
   const P = fig.pose || (fig.pose = restPose(d));
   const lerp = (a, b) => a + (b - a) * k;
   for (const key of Object.keys(T)) {
     if (Array.isArray(T[key])) P[key] = P[key].map((v, i) => lerp(v, T[key][i]));
     else P[key] = lerp(P[key], T[key]);
   }
-  if (st.punch > 0) {
+  if (st.punch > 0 && !frozen) {
     // 밀치기 팔은 늦게 따라오면 안 보임 (0.22초짜리) → 바로 그 자세
     P.shFwd[0] = T.shFwd[0];
     P.shOut[0] = T.shOut[0];
     P.elbow[0] = T.elbow[0];
   }
 
-  fig.hips.position.z = d.foot + d.shin + d.thigh + P.hipsZ;
-  fig.waist.rotation.y = P.waistPitch;
+  // 땅에 있으면 더 뻗은 다리의 발이 바닥에 닿게 엉덩이를 내림 (무릎 굽히면 주저앉음, 걸으면 자연히 오르내림)
+  let drop = 0;
+  if (!st.air && st.flip < 0 && !(st.tumble > 0)) {
+    let reach = 0;
+    for (let i = 0; i < 2; i++) {
+      reach = Math.max(reach, (d.thigh * Math.cos(P.thFwd[i]) + d.shin * Math.cos(P.thFwd[i] - P.knee[i])) * Math.cos(P.thOut[i]));
+    }
+    drop = Math.max(0, d.thigh + d.shin - reach);
+  }
+  fig.hips.position.z = d.foot + d.shin + d.thigh + P.hipsZ - drop;
+  fig.waist.rotation.y = P.waistPitch + sw.x;
+  fig.waist.rotation.x = -(P.waistSide + sw.y);
   fig.waist.rotation.z = P.waistRoll;
-  fig.neck.rotation.y = P.neckPitch;
+  fig.neck.rotation.y = P.neckPitch - sw.x * 0.5; // 머리는 늦게 따라옴
+  fig.neck.rotation.x = sw.y * 0.5;
   for (let i = 0; i < 2; i++) {
     const side = i ? 1 : -1; // 0 = 오른쪽(-y)
     // 어깨: x 축으로 벌리고(out), y 축으로 앞으로(fwd). 아래(-z)를 보던 팔이 앞(+x)으로 가려면 y 축 음의 회전
@@ -624,7 +728,8 @@ export function figureAnim(fig, st, dt) {
     fig.thighs[i].rotation.y = -P.thFwd[i];
     fig.knees[i].rotation.y = P.knee[i];
   }
-  // 천 자락: 빨리 움직이거나 날아가면 뒤로 날리고 살랑임
+  // 천 자락: 빨리 움직이거나 날아가면 뒤로 날리고 살랑임 (히트스톱 동안은 멈춤)
+  if (frozen) return;
   const sp = st.stunned ? 1 : st.walking || st.air ? Math.min(1, st.hs / C.MOVE_SPEED) : 0;
   fig.flaps.forEach((f, i) => {
     f.obj.rotation.y = f.base + sp * f.lift + Math.sin(t * 9 + i * 1.7) * f.flutter * (0.3 + sp);
