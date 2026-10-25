@@ -127,60 +127,7 @@ test('탱크: 내려찍기는 떠올랐다가 예고 시간 뒤 쾅, 주변 상�
   assert.ok(lines.includes('  [필살] P1 내려찍기 (1명)'));
 });
 
-test('갈고리: 밀치기 사거리 +, 갈고리는 보는 방향 상대를 내 앞으로 + 피해 (빗나가도 쿨타임), 평타 → 갈고리 → 평타 콤보, 끌려간 뒤 떨어지면 갈고리 킬', () => {
-  const { g, lines, p } = setupChars(['hook', 'ninja', 'ninja']);
-  // 사거리: 보통 사거리 밖, 늘어난 사거리 안
-  place(p(1), 4, 4.5, 0);
-  place(p(2), 4 + C.PUSH_RANGE * 1.1, 4.5);
-  place(p(3), 9.5, 9.5);
-  basic(g, 1);
-  assert.ok(p(2).damage > 0);
-  run(g, 1000 + C.COMBO_IFRAME_MS);
-  // 평타로 밀고 → 갈고리로 당겨 → 평타
-  place(p(1), 1.5, 4.5, 0);
-  place(p(2), 2.5, 4.5);
-  p(1).pushReadyAt = 0;
-  p(1).chainN = 0;
-  g.handleAction(1, { name: 'push' });
-  run(g, 300);
-  const d0 = p(2).damage;
-  g.handleAction(1, { name: 'skill' });
-  assert.ok(Math.abs(p(2).x - (p(1).x + C.HOOK_PULL_TO)) < 0.05, `끌려옴 x=${p(2).x}`);
-  assert.equal(p(2).damage, d0 + C.HOOK_DAMAGE);
-  assert.equal(p(2).comboHits, 2, '평타 → 갈고리');
-  assert.ok(lines.some((l) => l.startsWith('  [스킬] P1 갈고리 → P2')));
-  assert.equal(p(2).lastHit.kind, 'hook');
-  run(g, C.HITSTOP_MS + TICK);
-  p(1).pushReadyAt = 0;
-  basic(g, 1);
-  assert.ok(lines.includes('  [콤보] P1 → P2 3타 마무리'), '→ 평타 2타 주먹 = 마무리');
-  // 끌려온 뒤 떨어지면 갈고리 킬 (마지막 공격 기록)
-  p(2).lastHit = { by: 1, kind: 'hook', name: 'P1' };
-  Object.assign(p(2), { x: -3, z: C.FALL_DEATH_Z - 1 });
-  g.tick(TICK);
-  assert.ok(lines.some((l) => /\[사망\] P2 낙사 .*킬 P1 갈고리/.test(l)));
-  // 빗나감도 쿨타임
-  run(g, C.SKILL_CD_MS.hook);
-  place(p(1), 1.5, 4.5, Math.PI);
-  g.handleAction(1, { name: 'skill' });
-  assert.ok(lines.includes('  [스킬] P1 갈고리 빗나감'));
-  assert.ok(p(1).skillReadyAt > g.time);
-});
-
-test('갈고리: 회오리는 주변 모두 끌어모아 피해, 잠깐 뒤 바깥으로 한꺼번에 튕김 (한 콤보)', () => {
-  const { g, p } = setupChars(['hook', 'ninja']);
-  place(p(1), 5, 5);
-  place(p(2), 8, 5);
-  p(1).ult = C.ULT_MAX;
-  g.handleAction(1, { name: 'ult' });
-  assert.ok(Math.abs(p(2).x - (5 + C.HOOK_PULL_TO)) < 0.05, `회오리 x=${p(2).x}`);
-  assert.equal(p(2).damage, C.HOOK_ULT_DAMAGE);
-  run(g, C.HOOK_WHIRL_FLING_MS + TICK);
-  assert.ok(p(2).kbx > 0, '바깥(+x)으로 튕김');
-  assert.equal(p(2).comboHits, 2);
-});
-
-test('캐릭터: 팀전이면 같은 팀은 갈고리·회오리·내려찍기 대상이 아님', () => {
+test('캐릭터: 팀전이면 같은 팀은 내려찍기 대상이 아님', () => {
   const lines = [];
   const g = new Game((s) => lines.push(s), { characters: true });
   g.rng = () => 0.5;
@@ -229,10 +176,11 @@ for (const char of C.CHARACTERS.filter((c) => C.BASIC_ATTACKS[c].chain.at(-1).fi
       const { lines, p, events } = fullChain(char, dmg0);
       const n = chain.length;
       assert.ok(lines.includes(`  [콤보] P1 → P2 ${n}타 마무리`), `${dmg0}%:\n${lines.join('\n')}`);
-      assert.equal(p(2).damage - dmg0, chain.reduce((a, d) => a + d.dmg, 0));
+      const eff = chain.map((d) => d.loaded || d); // 갈고리는 판 시작에 장전 → 3타 탕
+      assert.equal(p(2).damage - dmg0, eff.reduce((a, d) => a + d.dmg, 0));
       const atk = events.filter((e) => e.type === 'attack' && e.who === 1);
       assert.deepEqual(atk.map((e) => e.n), chain.map((_, i) => i + 1), '타 번호');
-      assert.deepEqual(atk.map((e) => e.windup), chain.map((d) => d.windup), '준비 시간');
+      assert.deepEqual(atk.map((e) => e.windup), eff.map((d) => d.windup), '준비 시간');
       assert.ok(atk.every((e) => e.char === char && e.air === false));
       assert.equal(atk.at(-1).finish, true, '마지막 타 예고');
       const hits = events.filter((e) => e.type === 'hit' && e.by === 1);
@@ -1176,4 +1124,175 @@ test('점프 선입력: 땅에서 누른 점프(action)는 JUMP_BUFFER_MS 동안
   g.handleAction(1, { name: 'jump' });
   run(g, C.JUMP_BUFFER_MS + 200);
   assert.ok(p(1).z < 0.05, '버퍼 지나면 안 뜀');
+});
+
+// ---------- 갈고리 (2026-10-25, docs/characters.md 3.4) ----------
+
+test('갈고리 평타: 휘두르기 → 주먹 → 장전이면 탕 (사거리 2, 넉백 큼, 빈 총이 됨) / 빈 총이면 갈고리 내려치기 (약함). 패시브 사거리 없음', () => {
+  const { g, lines, p } = setupChars(['hook', 'builder']);
+  assert.equal(p(1).loaded, true, '판 시작에 장전');
+  place(p(1), 3, 4.5, 0);
+  place(p(2), 4.2, 4.5);
+  const ev = [];
+  for (let t = 0; t < 3000 && !lines.some((l) => l.includes(' 마무리')); t += TICK) {
+    g.handleAction(1, { name: 'push' });
+    g.tick(TICK);
+    ev.push(...g.drainEvents());
+  }
+  assert.deepEqual(ev.filter((e) => e.type === 'attack' && e.who === 1).map((e) => e.name), ['갈고리 휘두르기', '주먹', '탕']);
+  assert.ok(ev.some((e) => e.type === 'bang' && e.who === 1));
+  assert.equal(p(1).loaded, false, '쏘면 빈 총');
+  assert.equal(g.snapshot().players.find((x) => x.id === 1).loaded, false);
+  // 빈 총: 내려치기
+  run(g, 2000);
+  place(p(1), 3, 4.5, 0);
+  place(p(2), 4.2, 4.5);
+  p(1).chainN = 2;
+  p(1).chainUntil = Infinity;
+  p(1).pushReadyAt = 0;
+  g.drainEvents();
+  g.handleAction(1, { name: 'push' });
+  assert.equal(g.drainEvents().find((e) => e.type === 'attack').name, '갈고리 내려치기');
+  assert.ok(C.BASIC_ATTACKS.hook.chain[2].loaded.dmg > C.BASIC_ATTACKS.hook.chain[2].dmg, '탕이 더 셈');
+  assert.equal(C.HOOK_PUSH_RANGE_MULT, undefined, '패시브 없음');
+  // 탕 사거리 2: 1.8 밖도 맞음
+  const q = setupChars(['hook', 'builder']);
+  place(q.p(1), 3, 4.5, 0);
+  place(q.p(2), 4.95, 4.5);
+  Object.assign(q.p(1), { chainN: 2, chainUntil: Infinity });
+  basic(q.g, 1);
+  assert.equal(q.p(2).damage, C.BASIC_ATTACKS.hook.chain[2].loaded.dmg);
+});
+
+test('갈고리 공중 평타: 갈고리 스핀 — 수평 한 바퀴로 주변 전부 (뒤도)', () => {
+  const { g, p } = setupChars(['hook', 'builder', 'tank']);
+  place(p(1), 4.5, 4.5, 0, 0.5);
+  Object.assign(p(1), { grounded: false, vz: 2 });
+  place(p(2), 5.5, 4.5);
+  place(p(3), 3.5, 4.5); // 뒤
+  g.handleAction(1, { name: 'push' });
+  run(g, C.BASIC_ATTACKS.hook.air[0].windup + TICK / 2);
+  assert.ok(p(2).damage > 0 && p(3).damage > 0, `앞 ${p(2).damage} 뒤 ${p(3).damage}`);
+});
+
+test('갈고리 F: 상대가 먼저 닿으면 끌어옴 + 장전, 블록이 먼저 닿으면 내가 끌려감 (공중 가능), 빗나가도 쿨타임. 끌려간 뒤 떨어지면 갈고리 킬', () => {
+  const { g, lines, p } = setupChars(['hook', 'ninja', 'ninja']);
+  place(p(1), 1.5, 4.5, 0);
+  place(p(2), 4.5, 4.5);
+  place(p(3), 9.5, 9.5);
+  p(1).loaded = false;
+  g.handleAction(1, { name: 'skill' });
+  assert.ok(Math.abs(p(2).x - (p(1).x + C.HOOK_PULL_TO)) < 0.05, `끌려옴 x=${p(2).x}`);
+  assert.equal(p(2).damage, C.HOOK_DAMAGE);
+  assert.equal(p(1).loaded, true, '끌어오면 장전');
+  assert.ok(lines.some((l) => l.startsWith('  [스킬] P1 갈고리 → P2') && l.endsWith('장전')));
+  assert.equal(p(2).lastHit.kind, 'hook');
+  // 끌려온 뒤 떨어지면 갈고리 킬
+  Object.assign(p(2), { x: -3, z: C.FALL_DEATH_Z - 1 });
+  g.tick(TICK);
+  assert.ok(lines.some((l) => /\[사망\] P2 낙사 .*킬 P1 갈고리/.test(l)));
+  // 블록이 먼저 닿음: 내가 끌려감 (공중에서도)
+  run(g, C.SKILL_CD_MS.hook);
+  g.grid[g.idx(5, 2, 1)] = CELL.TERRAIN;
+  g.gridChanged();
+  place(p(3), 7.5, 2.5); // 블록 뒤 상대
+  place(p(1), 1.5, 2.5, 0, 0.3);
+  Object.assign(p(1), { grounded: false, vz: -1 });
+  g.drainEvents();
+  g.handleAction(1, { name: 'skill' });
+  assert.ok(g.drainEvents().some((e) => e.type === 'hook' && e.block && e.target === null));
+  assert.equal(p(3).damage, 0, '블록 뒤 상대는 안 끌려옴');
+  run(g, 400);
+  assert.ok(p(1).x > 4, `블록 쪽으로 끌려감 x=${p(1).x.toFixed(2)}`);
+  // 빗나감도 쿨타임
+  run(g, C.SKILL_CD_MS.hook);
+  place(p(1), 1.5, 7.5, Math.PI);
+  g.handleAction(1, { name: 'skill' });
+  assert.ok(lines.includes('  [스킬] P1 갈고리 빗나감'));
+  assert.ok(p(1).skillReadyAt > g.time);
+});
+
+test('갈고리 R 블록 내려찍기: 보는 방향 첫 블록을 뽑아 → 앞 직선을 내려찍고 (넉백 + 띄움) → 끝 칸에 박힘 (사람은 밀쳐냄, 압사 없음). 블록 없으면 안 쓰임, 건축가 블록은 속성 그대로, 필드 밖이면 사라짐', () => {
+  const { g, lines, p } = setupChars(['hook', 'ninja', 'builder']);
+  place(p(1), 4.5, 4.5, 0); // +x
+  place(p(2), 6.5, 4.5); // 직선 위
+  place(p(3), 9.5, 0.5, Math.PI); // 끝 칸 (x=9) 에 서 있음
+  p(1).ult = C.ULT_MAX;
+  g.handleAction(1, { name: 'ult' });
+  assert.equal(p(1).ult, C.ULT_MAX, '블록 없으면 안 쓰임');
+  g.placeBBlock(p(3), 7, 4, 1, 'wall', 55); // 앞에 건축가 블록 (가슴 높이)
+  g.drainEvents();
+  g.handleAction(1, { name: 'ult' });
+  assert.equal(p(1).ult, 0);
+  assert.equal(g.gridAt(7, 4, 1), 0, '뽑힘');
+  assert.ok(g.drainEvents().some((e) => e.type === 'blockGrab' && e.builder));
+  run(g, C.HOOK_GRAB_MS + TICK);
+  assert.equal(p(2).damage, C.HOOK_SLAM_DAMAGE);
+  assert.ok(p(2).kbx > 0 && (p(2).vz > 0 || p(2).z > 0.1), '넉백 + 띄움');
+  assert.equal(p(2).lastHit.kind, 'blockslam');
+  const x = Math.floor(4.5 + C.HOOK_SLAM_LEN);
+  assert.equal(g.gridAt(x, 4, 0), CELL.BUILD, `끝 칸 (${x},4,0) 박힘`);
+  const b = g.bblocks.get(`${x},4,0`);
+  assert.ok(b && b.owner === 3 && b.kind === 'wall', '건축가 블록 그대로');
+  assert.ok(lines.some((l) => l.includes(`[필살] P1 블록 내려찍기 (1명) → (${x},4,0) 박힘`)), lines.join('\n'));
+  // 박히는 칸 사람은 밀쳐냄
+  const q = setupChars(['hook', 'ninja']);
+  place(q.p(1), 1.5, 2.5, 0);
+  q.g.grid[q.g.idx(3, 2, 1)] = CELL.TERRAIN;
+  q.g.gridChanged();
+  place(q.p(2), 1.5 + C.HOOK_SLAM_LEN, 2.5); // 끝 칸
+  q.p(1).ult = C.ULT_MAX;
+  q.g.handleAction(1, { name: 'ult' });
+  run(q.g, C.HOOK_GRAB_MS + TICK);
+  assert.ok(q.p(2).alive, '압사 없음');
+  assert.equal(q.g.gridAt(Math.floor(1.5 + C.HOOK_SLAM_LEN), 2, 0), CELL.TERRAIN);
+  // 필드 밖이면 사라짐
+  const r = setupChars(['hook', 'ninja']);
+  place(r.p(2), 9.5, 9.5);
+  place(r.p(1), 7.5, 2.5, 0);
+  r.g.grid[r.g.idx(8, 2, 1)] = CELL.TERRAIN;
+  r.g.gridChanged();
+  r.p(1).ult = C.ULT_MAX;
+  r.g.handleAction(1, { name: 'ult' });
+  run(r.g, C.HOOK_GRAB_MS + TICK);
+  let left = 0;
+  for (let i = 0; i < r.g.grid.length; i++) if (r.g.grid[i] === CELL.TERRAIN) left++;
+  assert.equal(left, 0, '필드 밖으로 사라짐');
+});
+
+test('봇 갈고리: 상대 쪽으로 블록이 닿으면 R 블록 내려찍기, 없으면 안 씀. 떨어질 때 안쪽에 블록이 있으면 F 로 걸어 복귀', () => {
+  const g = new Game(() => {}, { characters: true });
+  g.rng = () => 0.5;
+  const b = g.addBot();
+  g.setChar(b.id, 'hook');
+  g.addPlayer(1);
+  g.startRound();
+  g.nextSpawnAt = Infinity;
+  g.controlItemNextAt = Infinity;
+  g.powerItemNextAt = Infinity;
+  const t = g.players.get(1);
+  const brain = g.bots.get(b.id);
+  place(b, 2.5, 4.5, 0);
+  place(t, 6.5, 4.5);
+  b.ult = C.ULT_MAX;
+  brain.useSkills(g, b, t, [t], []);
+  assert.equal(b.ult, C.ULT_MAX, '블록 없으면 안 씀');
+  g.grid[g.idx(4, 4, 1)] = CELL.TERRAIN;
+  g.gridChanged();
+  assert.equal(brain.useSkills(g, b, t, [t], []), true);
+  assert.ok(b.grab, '블록 뽑음');
+  // 복귀
+  const g2 = new Game(() => {}, { characters: true });
+  g2.rng = () => 0.5;
+  const b2 = g2.addBot();
+  g2.setChar(b2.id, 'hook');
+  g2.addPlayer(1);
+  g2.startRound();
+  place(g2.players.get(1), 8.5, 8.5);
+  g2.grid[g2.idx(1, 4, 0)] = CELL.TERRAIN;
+  g2.gridChanged();
+  place(b2, -0.6, 4.5, 0, -0.5);
+  Object.assign(b2, { grounded: false, vz: -4 });
+  g2.bots.get(b2.id).update(g2, b2);
+  assert.ok(b2.zipUntil > g2.time, '블록에 걸어 끌려감');
 });

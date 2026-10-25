@@ -145,8 +145,10 @@ export class BotBrain {
       return;
     }
 
-    // 0.5) 복귀: 필드 밖으로 떨어지는 중이면 공중 F 를 쓰고 안쪽으로 (건축가 발판 + 부스트, 닌자 순간 베기 → 막히면 벽 차기)
-    if ((p.char === 'builder' || p.char === 'ninja') && !p.grounded && p.vz < 0 && p.z < -0.3 && g.time >= p.skillReadyAt && g.time >= p.stunUntil) {
+    // 0.5) 복귀: 필드 밖으로 떨어지는 중이면 공중 F 를 쓰고 안쪽으로 (건축가 발판 + 부스트, 닌자 순간 베기 → 막히면 벽 차기,
+    // 갈고리는 안쪽 방향에 걸 블록이 있을 때만)
+    const toCenter = Math.atan2(D / 2 - p.y, W / 2 - p.x);
+    if ((p.char === 'builder' || p.char === 'ninja' || (p.char === 'hook' && g.hookRayBlock(p, toCenter))) && !p.grounded && p.vz < 0 && p.z < -0.3 && g.time >= p.skillReadyAt && g.time >= p.stunUntil) {
       this.moveTo(g, p, { x: W / 2, y: D / 2 });
       g.handleInput(p.id, this.input);
       g.handleAction(p.id, { name: 'skill' });
@@ -252,7 +254,7 @@ export class BotBrain {
     const n = Math.min(p.chainN, set.chain.length - 1); // 다음 지상 타 (0부터)
     if (p.char === 'ninja' && g && g.time < p.empowerUntil && n < 3) return C.NINJA_STAR.range; // R 강화 표창
     const d = set.chain[n];
-    return (d.range || C.PUSH_RANGE) * (p.char === 'hook' ? C.HOOK_PUSH_RANGE_MULT : 1);
+    return d.range || C.PUSH_RANGE;
   }
 
   attack(g, p, t, dangerIn, avoid) {
@@ -417,7 +419,12 @@ export class BotBrain {
         return act('skill');
       }
     } else if (p.char === 'hook') {
-      if (ultReady && near(C.HOOK_ULT_RANGE).length) return act('ult');
+      // R 블록 내려찍기: 상대 쪽으로 블록이 닿고 상대가 내려찍는 직선 안이면
+      const yawT = Math.atan2(t.y - p.y, t.x - p.x);
+      if (ultReady && dist <= C.HOOK_SLAM_LEN && Math.abs(t.z - p.z) < 1.5 && g.hookRayBlock(p, yawT)) {
+        face();
+        return act('ult');
+      }
       if (skillReady && dist >= 1.6 && dist <= C.HOOK_RANGE * 0.9 && Math.abs(t.z - p.z) < 1.5 && (comboing || dist >= 2.5)) {
         face(); // 밀어낸 상대를 다시 당김
         return act('skill');
