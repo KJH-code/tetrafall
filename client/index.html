@@ -97,6 +97,12 @@
     #settings .row { display: grid; grid-template-columns: 7em 1fr 4em; gap: 8px; align-items: center; margin: 6px 0; }
     #settings .btns, #tutorial .btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
     #settings button, #tutorial button { font-size: 15px; padding: 5px 14px; cursor: pointer; }
+    #keybinds { display: grid; grid-template-columns: 1fr 9.5em; gap: 3px 10px; align-items: center; max-height: 34vh; overflow-y: auto; font-size: 14px; padding-right: 4px; }
+    #keybinds .kb-group { grid-column: 1 / 3; color: #ffd23a; font-size: 13px; margin-top: 4px; }
+    #settings .kb-btn { font-size: 14px; padding: 2px 8px; }
+    #settings .kb-btn.wait { background: #ffd23a; }
+    #settings .kb-btn.dup { outline: 2px solid #ff4040; color: #c00; }
+    #key-dup { color: #ff7060; font-size: 13px; min-height: 1em; }
     #tutorial .card p { margin: 6px 0; }
     #tutorial .page { color: #aaa; font-size: 13px; margin-right: auto; align-self: center; }
     /* 방 밖: 방 만들기 · 코드로 들어가기 · 공개 방 목록 */
@@ -148,18 +154,22 @@
       <div class="row"><span>시야각</span><input id="set-fov" type="range" min="60" max="100" step="1" /><span id="set-fov-v"></span></div>
       <div class="row"><span>그림자</span><label><input id="set-shadows" type="checkbox" /> 켜기 (느리면 끄기)</label><span></span></div>
       <div class="row"><span>외곽선</span><label><input id="set-outline" type="checkbox" /> 켜기 (느리면 끄기)</label><span></span></div>
-      <div class="row"><span>시점</span><label><input id="set-third" type="checkbox" /> 3인칭 (V 로 바꿈)</label><span></span></div>
+      <div class="row"><span>시점</span><label><input id="set-third" type="checkbox" /> 3인칭 (<span data-key="view">V</span> 로 바꿈)</label><span></span></div>
+      <h4 style="margin:12px 0 4px">조작 키 <button id="keys-reset" style="font-size:13px;padding:2px 10px;margin-left:8px">키 기본값</button></h4>
+      <div style="font-size:13px;color:#bbb">칸을 누르고 바꿀 키나 마우스 버튼(옆 버튼도)을 누름 · Esc 취소</div>
+      <div id="keybinds"></div>
+      <div id="key-dup"></div>
       <div class="btns"><button id="settings-tutorial">처음 안내 다시 보기</button><button id="settings-reset">기본값</button><button id="settings-close">닫기</button></div>
     </div></div>
     <div id="tutorial" class="hidden"><div class="box">
       <div class="card"><h3>1. 밀어서 떨어뜨리기</h3>
-        <p><b>좌클릭</b>으로 앞의 상대를 밀고, <b>Shift</b> 로 대시. 필드 밖으로 떨어지면 탈락 (<b>낙사</b>).</p>
+        <p><b data-key="attack">좌클릭</b>으로 앞의 상대를 밀고, <b data-key="dash">Shift</b> 로 대시. 필드 밖으로 떨어지면 탈락 (<b>낙사</b>).</p>
         <p>맞을수록 머리 위 <b>피해 %</b> 가 쌓여 더 멀리 날아간다. 떨어지면서 위에서 때리면 <b>치명타</b>.</p></div>
       <div class="card"><h3>2. 블록을 피하고, 떨어뜨리기</h3>
         <p>하늘에서 테트리스 블록이 떨어진다. 바닥의 <b>그림자</b>가 떨어질 자리 — 밑에 있으면 깔린다 (<b>압사</b>).</p>
-        <p>머리 위에 블록이 오면 화면에 <b>빨간 경고</b>. 아이템은 <b>하나만</b> 들 수 있고 <b>우클릭</b>으로 쓴다.</p></div>
+        <p>머리 위에 블록이 오면 화면에 <b>빨간 경고</b>. 아이템은 <b>하나만</b> 들 수 있고 <b data-key="item">우클릭</b>으로 쓴다.</p></div>
       <div class="card"><h3>3. 용암이 오면 위로</h3>
-        <p>블록이 쌓이면 바닥에서 <b>용암</b>이 올라온다. 쌓인 블록을 타고 위로 — 공중에서 Space 를 한 번 더 누르면 <b>2단 점프</b> (2칸 벽).</p>
+        <p>블록이 쌓이면 바닥에서 <b>용암</b>이 올라온다. 쌓인 블록을 타고 위로 — 공중에서 <span data-key="jump">Space</span> 를 한 번 더 누르면 <b>2단 점프</b> (2칸 벽).</p>
         <p>마지막까지 살아남으면 승리. <b>G</b> 를 누른 채 마우스로 이모트, 대기 화면 <b>설정</b>에서 감도·소리.</p></div>
       <div class="btns"><span id="tut-page" class="page"></span><button id="tut-skip">넘기기</button><button id="tut-next">다음</button></div>
     </div></div>
@@ -175,7 +185,7 @@
       <h3>공개 방 <span id="rooms-count" style="font-weight:normal;font-size:13px"></span></h3>
       <div id="room-list"></div>
     </div></div>
-    <div id="emote-wheel" class="hidden"><span class="em" data-n="0" style="left:50%;top:14%"></span><span class="em" data-n="1" style="left:84%;top:50%"></span><span class="em" data-n="2" style="left:50%;top:86%"></span><span class="em" data-n="3" style="left:16%;top:50%"></span><span class="hint">마우스로 고르고<br />G 를 놓기</span></div>
+    <div id="emote-wheel" class="hidden"><span class="em" data-n="0" style="left:50%;top:14%"></span><span class="em" data-n="1" style="left:84%;top:50%"></span><span class="em" data-n="2" style="left:50%;top:86%"></span><span class="em" data-n="3" style="left:16%;top:50%"></span><span class="hint">마우스로 고르고<br /><span data-key="emote">G</span> 를 놓기</span></div>
     <div id="spec" class="hidden"></div>
     <div id="crosshair"></div>
     <!-- 조준점 둘레 쿨: 바깥 하늘색 = 대시, 안쪽 흰색 = 밀치기. 도는 동안만 보이고 다 차면 번쩍 -->
@@ -186,10 +196,10 @@
       <div id="buffs"></div>
       <div id="damage">0%</div>
       <div id="skills" class="hidden">
-        <div class="slot" id="skill-f"><div class="fill"></div><span class="key">F</span><span class="name"></span></div>
-        <div class="slot" id="skill-r"><div class="fill"></div><span class="key">R</span><span class="name"></span></div>
+        <div class="slot" id="skill-f"><div class="fill"></div><span class="key" data-key="skill">F</span><span class="name"></span></div>
+        <div class="slot" id="skill-r"><div class="fill"></div><span class="key" data-key="ult">R</span><span class="name"></span></div>
       </div>
-      <div id="item-slot" class="slot empty"><span class="key">우클릭</span><span class="name">아이템 —</span></div>
+      <div id="item-slot" class="slot empty"><span class="key" data-key="item">우클릭</span><span class="name">아이템 —</span></div>
     </div>
     <div id="host-players" class="hidden"></div>
     <div id="center"><span id="center-text">연결 중...</span><br /><button id="start-btn" class="hidden">시작</button>
@@ -212,21 +222,21 @@
         <button class="settings-btn" style="font-size:14px;padding:3px 12px;margin:0">설정</button>
         <button id="keys-btn" style="font-size:14px;padding:3px 12px;margin:0 0 0 6px">조작법</button>
         <div id="keys-text" class="hidden" style="margin-top:8px">
-        WASD 이동 · Space 점프 (공중에서 한 번 더) · Shift 대시 · <b>F</b> 캐릭터 스킬 · <b>R</b> 필살기 (때리거나 맞으면 게이지가 참)<br />
-        <b>좌클릭</b> 밀치기 (가까운 상대를 바라보는 쪽으로 밀어냄)<br />
-        <b>우클릭</b> 든 아이템 쓰기 — 아이템은 <b>하나만</b> 들 수 있음 (들고 있으면 다른 걸 못 주움)<br />
-        &nbsp;&nbsp;투사체(빨간 공) · 설치 블록(노란 상자, 조준한 곳에 1×2 를 떨어뜨림, Q/E 방향) · 폭탄(검은 공, 블록을 부숨) · 망치(주황, 좌클릭이 세게 밀기)<br />
+        <span data-keys="fwd,left,back,right">WASD</span> 이동 · <span data-key="jump">Space</span> 점프 (공중에서 한 번 더) · <span data-key="dash">Shift</span> 대시 · <b data-key="skill">F</b> 캐릭터 스킬 · <b data-key="ult">R</b> 필살기 (때리거나 맞으면 게이지가 참)<br />
+        <b data-key="attack">좌클릭</b> 평타 (가까운 상대를 바라보는 쪽으로 밀어냄)<br />
+        <b data-key="item">우클릭</b> 든 아이템 쓰기 — 아이템은 <b>하나만</b> 들 수 있음 (들고 있으면 다른 걸 못 주움)<br />
+        &nbsp;&nbsp;투사체(빨간 공) · 설치 블록(노란 상자, 조준한 곳에 1×2 를 떨어뜨림, <span data-keys="rotL,rotR">Q/E</span> 방향) · 폭탄(검은 공, 블록을 부숨) · 망치(주황, <span data-key="attack">좌클릭</span>이 세게 밀기)<br />
         맞을수록 머리 위 <b>피해 %</b> 가 쌓이고 더 멀리 날아감 (대난투식)<br />
         먹자마자 효과: 초록 = 점프력 상승 · 흰 고리 = 유령화 (블록 통과, 안 깔림) · 노랑 번개 = 이속 증가<br />
-        블록 마스터의 마스터: 방향키 이동 · Q/E 회전 · <b>Enter 낙하</b><br />
+        블록 마스터의 마스터: <span data-keys="pieceUp,pieceDown,pieceLeft,pieceRight">↑/↓/←/→</span> 이동 · <span data-keys="rotL,rotR">Q/E</span> 회전 · <b><span data-key="drop">Enter</span> 낙하</b><br />
         공중에서 떨어지면서 위에서 밀치기·망치를 맞히면 <b>치명타</b> (피해 ×<span id="crit-dmg"></span>, 더 멀리)<br />
         상대를 블록에 깔리게(압사) 하거나 밖으로 떨어뜨리면(낙사) 승리. 블록이 쌓이면 용암이 올라온다 — 위로!
-        <br />판 중에는 <b>H</b> 를 누르고 있으면 조작법이 보임 · <b>V</b> 1인칭 ↔ 3인칭
+        <br />판 중에는 <b data-key="help">H</b> 를 누르고 있으면 조작법이 보임 · <b data-key="view">V</b> 1인칭 ↔ 3인칭 · 키는 설정에서 바꿈
       </div></div>
     </div>
-    <div id="help" class="hidden">WASD 이동 · Space 점프·2단 점프 · Shift 대시 · 좌클릭 밀치기 · F 스킬 · R 필살기 · V 1인칭↔3인칭
-우클릭 든 아이템 쓰기 (하나만) · Q/E 1×2 방향
-블록 마스터: 방향키 블록 이동 · Q/E 회전 · Enter 하드드롭</div>
+    <div id="help" class="hidden"><span data-keys="fwd,left,back,right">WASD</span> 이동 · <span data-key="jump">Space</span> 점프·2단 점프 · <span data-key="dash">Shift</span> 대시 · <span data-key="attack">좌클릭</span> 평타 · <span data-key="skill">F</span> 스킬 · <span data-key="ult">R</span> 필살기 · <span data-key="view">V</span> 1인칭↔3인칭
+<span data-key="item">우클릭</span> 든 아이템 쓰기 (하나만) · <span data-keys="rotL,rotR">Q/E</span> 1×2 방향 · <span data-key="emote">G</span> 이모트
+블록 마스터: <span data-keys="pieceUp,pieceDown,pieceLeft,pieceRight">↑/↓/←/→</span> 블록 이동 · <span data-keys="rotL,rotR">Q/E</span> 회전 · <span data-key="drop">Enter</span> 하드드롭 · 키는 설정에서 바꿈</div>
   </div>
   <script type="module" src="/main.js"></script>
 </body>
