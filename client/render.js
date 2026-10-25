@@ -180,7 +180,10 @@ export class Renderer {
     this.camera.add(this.viewArm);
     // 1인칭 망치 머리 (망치 있을 때만)
     this.viewHammer = itemModel(models, 'weapon', 0.26) || new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.12, 0.12), toon({ color: 0xff8a10 }));
-    this.viewHammer.position.set(0, -0.26, 0); // 캡슐 먼 끝 (x축 +90도 회전이라 로컬 -y 가 화면 안쪽)
+    // 캡슐 먼 끝에서 손잡이를 쥐고 머리가 위로 (x축 +90도 회전이라 로컬 -y 가 화면 안쪽, 로컬 -z 가 화면 위).
+    // 세운 모델은 머리가 +z 끝 → x 축 180도로 뒤집어 머리를 위로, 손잡이 끝이 캡슐 끝에 오게 위로 올림
+    this.viewHammer.rotation.x = Math.PI;
+    this.viewHammer.position.set(0, -0.26, -0.26 * 0.35);
     this.viewHammer.visible = false;
     this.viewArm.add(this.viewHammer);
     // 1인칭 손에 든 설치 블록 (설치 블록 있을 때만)
