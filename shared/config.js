@@ -541,6 +541,8 @@ export const CONFIG = {
   HOOK_GRAB_SWING_R: 0.9, // R: 뽑은 블록을 머리 위에서 돌리는 반지름 (칸)
   HOOK_SLAM_FLY_MS: 150,
   HOOK_PULL_SLIDE_MS: 200, // 끌려오는 쪽: 갈고리가 닿을 때까지 제자리, 그 뒤 이 시간 동안 질질 끌려옴 (판정·위치는 서버가 즉시)
+  BLOCK_PULSE_MS: 260, // 블록이 움직이거나 바뀌는 순간 그 칸이 번쩍 부풀었다 사라지는 시간 (render.js blockPulse)
+  SPIN_ARC_MS: 380, // 갈고리 공중 스핀: 갈고리 끝이 그리는 원이 남는 시간
   ROPE_RADIUS: 0.045, // 갈고리 밧줄 굵기 (칸)
   ROPE_COLOR: 0xc8a36a, // 밧줄 색 (삼베)
   ROPE_TWISTS: 6, // 1칸당 꼰 무늬 반복

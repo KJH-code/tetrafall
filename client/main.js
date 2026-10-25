@@ -397,7 +397,18 @@ function handleEvent(e) {
           if (dir) renderer.hitReact(e.target, dir, {});
           renderer.skillMove(e.target, 'hookDragged');
         }, C.HOOK_FLY_MS);
-      } else if (e.block) setTimeout(() => renderer.skillMove(e.who, 'hookZip'), C.HOOK_FLY_MS);
+      } else if (e.block) {
+        // 블록에 걸림: 밧줄이 닿는 순간 그 블록이 번쩍 들썩 + 돌가루, 끌려가는 길에 바람 줄
+        setTimeout(() => {
+          renderer.skillMove(e.who, 'hookZip');
+          renderer.blockPulse([e.block], 0xffffff, { jolt: 0.08 });
+          const c = { x: e.block[0] + 0.5, y: e.block[1] + 0.5, z: e.block[2] + 0.5 };
+          fx.burst(c, null, 0x9a8a78, 8, 2.5, 0.08, 0.4);
+          const me = playerById(e.who);
+          if (me) for (const dz of [0.4, 0.9, 1.4]) renderer.trail({ x: me.x, y: me.y, z: me.z + dz }, { x: c.x, y: c.y, z: me.z + dz }, 0xffffff, 300);
+          sound.play('land', { dist: e.who === myId ? 0 : distToMe(c.x, c.y, c.z) });
+        }, C.HOOK_FLY_MS);
+      }
       break;
     }
     case 'bang': {

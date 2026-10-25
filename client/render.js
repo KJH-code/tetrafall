@@ -687,6 +687,7 @@ export class Renderer {
     const a = this.acts.get(e.who);
     if (a && !a.struck && !a.broken) {
       a.struck = performance.now();
+      if (a.move === '갈고리 스핀') this.spinArc(e.who); // 갈고리 끝이 그리는 원
       return;
     }
     this.acts.set(e.who, { id: ++this.hitSeq, move: 'punch', t0: performance.now(), windup: 0, struck: performance.now(), rec: 0.3, broken: 0 });
@@ -1067,6 +1068,41 @@ export class Renderer {
   }
 
   // 갈고리 줄: 던진 사람에서 끌려온 사람(빗나가면 보는 방향 끝)까지 잠깐
+  // ---------- 블록이 주인공: 블록이 움직이거나 바뀌는 순간 ----------
+  // 칸마다 살짝 큰 반투명 상자가 번쩍 → 부풀며 사라짐 (블록 위에 겹쳐서, 바닥 그림자는 안 가림). jolt 면 블록이 들썩하듯 위로 튐
+  blockPulse(cells, color = 0xffffff, { ms = C.BLOCK_PULSE_MS, jolt = 0, opacity = 0.75 } = {}) {
+    if (!cells?.length) return;
+    if (!this.pulseGeo) this.pulseGeo = new THREE.BoxGeometry(1.04, 1.04, 1.04);
+    const mat = noOutline(new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false }));
+    for (const [x, y, z] of cells) {
+      if (![x, y, z].every(Number.isFinite)) continue;
+      const m = new THREE.Mesh(this.pulseGeo, mat);
+      m.position.set(x + 0.5, y + 0.5, z + 0.5);
+      m.renderOrder = 5;
+      this.scene.add(m);
+      (this.pulses ||= []).push({ m, mat, t0: performance.now(), ms, jolt, base: z + 0.5, opacity });
+    }
+  }
+
+  updatePulses() {
+    if (!this.pulses?.length) return;
+    const now = performance.now();
+    const gone = new Set();
+    this.pulses = this.pulses.filter((p) => {
+      const u = (now - p.t0) / p.ms;
+      if (u >= 1) {
+        this.scene.remove(p.m);
+        gone.add(p.mat);
+        return false;
+      }
+      p.m.scale.setScalar(1 + 0.25 * u);
+      p.m.position.z = p.base + p.jolt * Math.sin(Math.PI * Math.min(1, u * 2));
+      p.mat.opacity = p.opacity * (1 - u) * (1 - u);
+      return true;
+    });
+    for (const mat of gone) if (!this.pulses.some((p) => p.mat === mat)) mat.dispose();
+  }
+
   // ---------- 닌자 순간 베기 ----------
   // blink 이벤트: 몸이 from → to 로 미끄러져 가게 (render 루프가 위치를 덮어씀) + 지나간 길에 바람 줄
   blinkSlide(e) {
@@ -1121,6 +1157,55 @@ export class Renderer {
     });
   }
 
+  // 갈고리 공중 스핀: 갈고리 끝이 그리는 원 (몸 둘레 수평 원호가 도는 만큼 자라며 사라짐) + 끝에 갈고리 머리
+  spinArc(who) {
+    const s = this.smooth.get(who);
+    if (!s) return;
+    const geo = new THREE.BufferGeometry();
+    const mat = noOutline(new THREE.MeshBasicMaterial({ color: 0xe8ecf4, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false }));
+    const arc = new THREE.Mesh(geo, mat);
+    arc.renderOrder = 6;
+    this.hookHeadParts();
+    const head = new THREE.Mesh(this.hookHeadGeo, this.hookHeadMat);
+    this.scene.add(arc, head);
+    (this.spins ||= []).push({ who, arc, head, mat, t0: performance.now(), start: null });
+  }
+
+  updateSpinArcs() {
+    if (!this.spins?.length) return;
+    const now = performance.now();
+    const hand = new THREE.Vector3();
+    this.spins = this.spins.filter((sp) => {
+      const u = (now - sp.t0) / C.SPIN_ARC_MS;
+      const s = this.smooth.get(sp.who);
+      if (u >= 1 || !s || !this.hookHand(sp.who, hand)) {
+        this.scene.remove(sp.arc, sp.head);
+        sp.arc.geometry.dispose();
+        sp.mat.dispose();
+        return false;
+      }
+      // 손이 가리키는 방향으로 팔 길이보다 멀리 = 갈고리 끝. 처음 각에서 지금 각까지 원호
+      const R = C.PUSH_RANGE * 0.9;
+      const z = s.z + 1.0;
+      const ang = Math.atan2(hand.y - s.y, hand.x - s.x);
+      if (sp.start === null) sp.start = ang;
+      let sweep = ang - sp.start;
+      if (sp.last !== undefined && sweep < sp.lastSweep - Math.PI) sweep += Math.PI * 2; // 한 바퀴 넘어가면 이어서
+      if (sp.last !== undefined && sweep > sp.lastSweep + Math.PI) sweep -= Math.PI * 2;
+      sp.last = ang;
+      sp.lastSweep = sweep;
+      const a0 = Math.min(sp.start, sp.start + sweep);
+      const len = Math.max(0.05, Math.min(Math.PI * 2, Math.abs(sweep)));
+      sp.arc.geometry.dispose();
+      sp.arc.geometry = new THREE.RingGeometry(R - 0.06, R + 0.06, 40, 1, a0, len);
+      sp.arc.position.set(s.x, s.y, z);
+      sp.mat.opacity = 0.85 * (1 - u);
+      sp.head.position.set(s.x + Math.cos(ang) * R, s.y + Math.sin(ang) * R, z);
+      sp.head.rotation.set(0, 0, ang);
+      return true;
+    });
+  }
+
   // ---------- 갈고리 ----------
   // 왼손(갈고리 손) 위치 (TABS 식 몸이면 손 관절, 아니면 가슴 높이)
   hookHand(id, out) {
@@ -1132,11 +1217,16 @@ export class Renderer {
   }
 
   // 밧줄 하나 (손 → 머리, 꼰 무늬 튜브) + 갈고리 머리. 모양은 매 프레임 setChain 이 다시 만듦
-  makeChain() {
+  // 갈고리 머리 모양·재질 (밧줄·스핀이 같이 씀)
+  hookHeadParts() {
     if (!this.hookHeadGeo) {
       this.hookHeadGeo = new THREE.TorusGeometry(0.09, 0.025, 4, 8, Math.PI * 1.3);
       this.hookHeadMat = toon({ color: 0xa3adb8 });
     }
+  }
+
+  makeChain() {
+    this.hookHeadParts();
     const map = this.tex.rope.clone(); // 밧줄마다 길이에 맞춰 무늬 반복
     map.needsUpdate = true;
     const mat = toon({ color: C.ROPE_COLOR, map });
@@ -1772,6 +1862,8 @@ export class Renderer {
     this.updateQuakes();
     this.updateRopes();
     this.updateGhosts();
+    this.updatePulses();
+    this.updateSpinArcs();
     this.updateGrabs();
     this.updateBeams(state);
     if (me) this.viewArm.material.color.setHex(playerColor(me, state));
