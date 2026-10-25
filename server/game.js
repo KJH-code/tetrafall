@@ -994,15 +994,22 @@ export class Game {
     }
     if (this.time < p.pushReadyAt) p.pushReadyAt = this.time; // 맞힌 평타의 후딜 캔슬
     if (kind === 'skill') this.useSkill(p);
-    else this.useUlt(p);
+    else if (!this.useUlt(p)) {
+      // 못 씀 (게이지 그대로): 화면이 알 수 있게 (갈고리 블록 없음, 건축가 솟을 자리 없음, 다른 기술 중)
+      const reason = p.slamAt || p.wallAt || p.grab || this.time < p.chargeUntil ? 'busy' : p.char === 'hook' ? 'noBlock' : 'noSpace';
+      this.emit({ type: 'ultFail', who: p.id, reason });
+      this.log(`  [필살] ${p.name} 못 씀 (${reason})`);
+    }
   }
 
   // 기억한 F·R 을 지금 쓸 수 있으면 씀 (맞힌 평타 판정 직후 또는 후딜 끝)
   castQueuedNow(p) {
     const kind = p.castQueued;
     p.castQueued = null;
-    if (this.time < p.stunUntil || this.isControlling(p)) return;
-    if (kind === 'skill' ? this.time < p.skillReadyAt : p.ult < C.ULT_MAX) return;
+    if (this.time < p.stunUntil || this.isControlling(p) || (kind === 'skill' ? this.time < p.skillReadyAt : p.ult < C.ULT_MAX)) {
+      this.emit({ type: 'castDrop', who: p.id, kind }); // 기억했던 F·R 이 버려짐 (소모 없음)
+      return;
+    }
     this.cast(p, kind);
   }
 
@@ -1327,7 +1334,7 @@ export class Game {
   ninjaBlink(p) {
     const fx = Math.cos(p.yaw);
     const fy = Math.sin(p.yaw);
-    const from = { x: p.x, y: p.y };
+    const from = { x: p.x, y: p.y, z: p.z };
     let best = 0;
     let blocked = false;
     for (let d = 0.1; d <= C.NINJA_BLINK_DIST + 1e-9; d += 0.1) {
@@ -1456,7 +1463,8 @@ export class Game {
     p.wallAt = 0;
     p.wallCells = null;
     const g = ++this.bgroup;
-    const placed = cells.filter(([x, y, z]) => this.placeBBlock(p, x, y, z, 'wall', g));
+    // 예고 동안 건축가가 벽 칸으로 걸어 들어갔으면 그 칸은 안 솟음 (2026-10-26 재혁: 자기 벽에 같이 떠올랐음)
+    const placed = cells.filter(([x, y, z]) => !overlapsCell(p, x, y, z) && this.placeBBlock(p, x, y, z, 'wall', g));
     if (!placed.length) return;
     this.gridChanged();
     const launched = new Set();
@@ -1721,6 +1729,29 @@ export class Game {
     return null;
   }
 
+  // R 보조 판정: 보는 방향 반각 HOOK_GRAB_CONE_DEG, 수평 HOOK_RANGE 안, 발 층 -1 ~ +2 층의 블록 중 가장 가까운 것 (같으면 높은 칸)
+  hookConeBlock(p) {
+    const fx = Math.cos(p.yaw);
+    const fy = Math.sin(p.yaw);
+    const cosHalf = Math.cos((C.HOOK_GRAB_CONE_DEG * Math.PI) / 180);
+    const z0 = Math.floor(p.z + 0.05);
+    let best = null;
+    const R = Math.ceil(C.HOOK_RANGE) + 1;
+    for (let x = Math.floor(p.x) - R; x <= Math.floor(p.x) + R; x++) {
+      for (let y = Math.floor(p.y) - R; y <= Math.floor(p.y) + R; y++) {
+        const dx = x + 0.5 - p.x;
+        const dy = y + 0.5 - p.y;
+        const d = Math.hypot(dx, dy);
+        if (d > C.HOOK_RANGE + 0.5 || d < 0.5 || (dx * fx + dy * fy) / d < cosHalf) continue;
+        for (let z = Math.max(0, z0 - 1); z <= Math.min(C.GRID_H - 1, z0 + 2); z++) {
+          if (!((this.inXY(x, y) && this.grid[this.idx(x, y, z)]) || this.pieceCells.has(cellKey(x, y, z)))) continue;
+          if (!best || d < best.d - 1e-9 || (Math.abs(d - best.d) < 1e-9 && z > best.z)) best = { x, y, z, d };
+        }
+      }
+    }
+    return best;
+  }
+
   // 상대를 내 앞 HOOK_PULL_TO 거리까지 끌어옴 (블록에 막히면 거기까지). 콤보 한 타 (넉백 없이 경직 + 피해)
   pullTo(p, t, stunMs, gain, kind) {
     if (this.invulnerable(t)) return false;
@@ -1769,7 +1800,7 @@ export class Game {
 
   // R 블록 내려찍기 1단계: 보는 방향 첫 블록 1칸을 뽑음 (격자에서 빠짐). 없으면 false (게이지 그대로)
   hookGrab(p) {
-    const b = this.hookRayBlock(p);
+    const b = this.hookRayBlock(p) || this.hookConeBlock(p); // 조준이 살짝 빗나가도 원뿔로 너그럽게 (2026-10-26 재혁: R 을 두 번 눌러야 했음)
     if (!b) return false;
     const key = cellKey(b.x, b.y, b.z);
     let v = CELL.THROWN;
@@ -2170,6 +2201,7 @@ export class Game {
     t.star2 = null;
     t.streak = 0;
     t.atkQueued = false;
+    if (t.castQueued) this.emit({ type: 'castDrop', who: t.id, kind: t.castQueued }); // 맞아서 기억했던 F·R 이 버려짐 (소모 없음)
     t.castQueued = null;
     t.chainN = 0;
     if (teammate) gain = 0; // 팀전: 같은 팀은 밀리기만 (피해 % 없음, 킬로도 안 침)
