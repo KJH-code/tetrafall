@@ -154,13 +154,67 @@ export const CONFIG = {
   PUSH_KB_SPEED: 4.2, // 밀려나는 거리 약 1.5칸. 2026-10-20 7→3.5(1.2칸)→4.2. 시작 위치(가장자리에서 1.5칸)에서 한 번 밀려도 안 떨어지는 상한 근처
   PUSH_KB_UP: 3,
 
+  // ---- 캐릭터 평타 (2026-10-25 재혁 승인, 스매시 레전드식) ----
+  // 캐릭터가 있는 게임에서만 (캐릭터 없는 예전 규칙은 위 밀치기 그대로). 망치를 들면 망치가 우선.
+  // 지상: 앞 타가 맞고 BASIC_CHAIN_WINDOW_MS 안에 다시 누르면 다음 타 (후딜 중에 누르면 기다렸다 나감), 빗나가거나 놓치면 1타부터.
+  // 스킬(F)을 쓰면 이어 치기 창이 다시 열림 (타 번호 그대로) → 평타 → 스킬 → 평타.
+  // 한 타 = windup(준비, 이 뒤에 판정) → rec(후딜, 이 뒤에 다음 타). 중간 타 넉백 kb 는 고정 (피해 % 와 상관없음, 콤보 감쇠 없음) → 몇 % 든 이어짐.
+  // 마무리 타(finish)와 공중 평타의 kb 는 밀치기처럼 피해 % 배율. 마무리 타가 맞으면 콤보 마무리 (×COMBO_FINISH_KB, 무적).
+  // step: 판정 순간 때리는 쪽이 앞으로 나가는 거리 (칸). 경직 stun ≥ rec + 다음 타 windup + 약 0.1초 → 바로 누르면 확정.
+  // 공중: 캐릭터마다 한 타 (치명타 규칙 그대로). 타 번호에 안 셈 — 맞으면 이어 치기 창 유지, 빗나가면 1타부터
+  BASIC_CHAIN_WINDOW_MS: 500,
+  BASIC_HITSTOP_MS: 60, // 중간 타 멈칫 (공중 평타는 HITSTOP_MS)
+  BASIC_FINISH_HITSTOP_MS: 110, // 마무리 타 멈칫
+  BASIC_STEP_GAP: 0.6, // step 으로 나갈 때 앞 상대와 이 거리 앞에서 멈춤 (지나쳐서 등 뒤로 가지 않게)
+  BASIC_FINISH_MOVE_MULT: 0.5, // 마무리 타 준비 중 이동 속도 (예고 모션 동안 묶임)
+  BASIC_ATTACKS: {
+    // 탱크: 딜은 낮고 안정적. 2타는 띄우지 않고 경직을 길게 (3타 확정)
+    tank: {
+      chain: [
+        { name: '주먹', windup: 120, rec: 300, stun: 550, dmg: 6, kb: 1.5, up: 2, step: 0.4 },
+        { name: '어깨 박치기', windup: 150, rec: 350, stun: 750, dmg: 7, kb: 2, up: 1, step: 0.8 },
+        { name: '방패 밀기', windup: 300, rec: 450, stun: 600, dmg: 10, kb: 4.2, up: 3, step: 0.3, finish: true },
+      ],
+      air: { name: '방패 내려치기', windup: 150, rec: 400, stun: 500, dmg: 8, kb: 3, up: 2, step: 0 },
+    },
+    // 닌자: 단검 짤딜 4타 + 마지막에 표창 (사거리 4칸, 좁은 각). 봇 판으로 초안에서 3·4·5타 딜 +1, 표창 넉백 3.6 → 5.6
+    ninja: {
+      chain: [
+        { name: '찌르기', windup: 60, rec: 180, stun: 350, dmg: 3, kb: 0.8, up: 1, step: 0.3 },
+        { name: '반대 찌르기', windup: 60, rec: 180, stun: 350, dmg: 3, kb: 0.8, up: 1, step: 0.3 },
+        { name: '베어 올리기', windup: 60, rec: 200, stun: 380, dmg: 4, kb: 0.8, up: 2, step: 0.3 },
+        { name: '회전 베기', windup: 80, rec: 220, stun: 520, dmg: 5, kb: 1, up: 1, step: 0.3 },
+        { name: '표창', windup: 200, rec: 400, stun: 500, dmg: 8, kb: 5.6, up: 3, step: 0, range: 4, angle: 20, finish: true },
+      ],
+      air: { name: '공중 베기', windup: 60, rec: 300, stun: 400, dmg: 5, kb: 2.5, up: 2, step: 0 },
+    },
+    // 건축가: 옆치기 → 반대로 치기 → 내려찍기 + 바닥 블록 1칸 솟음 (맞으면 그 사람 발밑, 빗나가면 앞 칸)
+    builder: {
+      chain: [
+        { name: '옆치기', windup: 120, rec: 300, stun: 550, dmg: 7, kb: 1.2, up: 2, step: 0.4 },
+        { name: '반대 치기', windup: 120, rec: 350, stun: 800, dmg: 7, kb: 1.2, up: 2, step: 0.4 },
+        { name: '내려찍기', windup: 350, rec: 450, stun: 700, dmg: 11, kb: 2.5, up: 8, step: 0.3, finish: true, raise: true },
+      ],
+      air: { name: '망치 내려찍기', windup: 200, rec: 450, stun: 500, dmg: 9, kb: 3, up: 2, step: 0 },
+    },
+    // 갈고리: 평타에는 당김 없음. 주먹 넉백 초안 4.6 → 4.2 (봇 판). 휘두르기 → (F 갈고리 당김) → 주먹. 사거리는 패시브 HOOK_PUSH_RANGE_MULT
+    hook: {
+      chain: [
+        { name: '갈고리 휘두르기', windup: 150, rec: 350, stun: 650, dmg: 8, kb: 2.5, up: 3, step: 0 },
+        { name: '주먹', windup: 200, rec: 400, stun: 600, dmg: 9, kb: 4.2, up: 3, step: 0.4, finish: true },
+      ],
+      air: { name: '공중 휘두르기', windup: 150, rec: 400, stun: 500, dmg: 7, kb: 3, up: 2, step: 0 },
+    },
+  },
+
   // ---- 경직 ----
   STUN_MS: 500, // 밀치기 히트 경직: 이 동안 조작 불가. 경직 중에 또 맞으면 콤보 (밀치기 쿨 600 보다 짧아 평타만으로는 안 이어짐)
   // 콤보 (2026-10-24 재혁): 경직 중에 또 맞히면 콤보가 이어짐. 경직이 풀리면(끊김) 또는 첫 타에서 COMBO_MS 가 지난 뒤 들어간 타(마무리)에
   // 콤보가 끝나고 COMBO_IFRAME_MS 무적 (공격만 막음, 압사·낙사·용암은 못 막음). 여럿이 때려도 맞는 사람 기준으로 셈.
   // 2026-10-25 재혁: 타 수(5타) 대신 시간으로 끊음 (다타 캐릭터도 스킬까지 이어지게. 3초 제안 → 재혁 1초), 무적 1초는 "개사기 + 흐름이 끊김" → 0.3초
   // 콤보 중 가벼운 공격(밀치기·베기·돌진·갈고리)은 수평 넉백 ×COMBO_LIGHT_KB, 마지막 타는 ×COMBO_FINISH_KB 로 크게 날림
-  COMBO_MS: 1000,
+  // 2026-10-25 재혁 승인: 1.0 → 1.4초 (닌자 평타 5타 최단 1.18초 + 입력 여유). 캐릭터 평타의 마무리 타(finish)는 시간과 상관없이 마무리
+  COMBO_MS: 1400,
   COMBO_IFRAME_MS: 300,
   COMBO_LIGHT_KB: 0.6,
   COMBO_FINISH_KB: 1.3,
@@ -231,7 +285,10 @@ export const CONFIG = {
   ULT_MAX: 100, // 필살기 게이지 (다 차면 R)
   ULT_PER_DAMAGE: 1, // 피해 % 를 주거나 받을 때 1% 당 게이지
   // 탱크
-  TANK_DAMAGE_TAKEN: 0.85, // 패시브: 맞을 때 쌓이는 피해 % 배율. 2026-10-24 '넉백 ×0.85' 에서 바꿈 (봇 120판 탱크 51승 / 기대 30, 재혁: 패시브 바꿈)
+  // 패시브 덜 밀림: 받는 넉백(% 배율이 붙는 것: 마무리 타·공중 평타·스킬·아이템) × 이 값. 평타 중간 타의 고정 넉백은 그대로.
+  // 2026-10-25 재혁 승인: '피해 % ×0.85' 대신 (딜이 낮은 대신 안정성). 0.85~0.92 사이에서 봇 판으로 맞춤.
+  // (2026-10-24 예전 '넉백 ×0.85' 는 탱크 딜이 평타급일 때 봇 120판 51승 / 기대 30)
+  TANK_KB_TAKEN: 0.92, // 0.88 → 0.92 (봇 320판 탱크 91승 / 기대 80)
   TANK_CHARGE_SPEED: 12, // 스킬 돌진: 이 속도(칸/초)로 TANK_CHARGE_MS 동안 앞으로 (약 3칸). 처음 부딪힌 상대를 치고 멈춤
   TANK_CHARGE_MS: 250,
   TANK_CHARGE_HIT_RANGE: 0.9, // 몸 가운데끼리 이 거리 안이면 부딪힘
@@ -247,7 +304,7 @@ export const CONFIG = {
   TANK_SLAM_STUN_MS: 900,
   TANK_SLAM_DAMAGE: 25,
   // 닌자 (콤보: 평타 → F 순간 베기 → 평타 → R 일격 → F 초기화 → F → 평타)
-  NINJA_SPEED_MULT: 1.1, // 패시브: 이동 속도
+  NINJA_SPEED_MULT: 1.2, // 패시브: 이동 속도. 2026-10-25 평타 개편 뒤 1.1 → 1.2 (봇 480판 닌자 82승 / 기대 120, 가장 많이 죽음 → 117승)
   NINJA_BLINK_DIST: 3, // 스킬 순간 베기: 보는 방향으로 (벽 앞까지) 이동하며 지나간 길의 상대를 벰 (한 번 쓸 때 한 사람 한 번). 상대를 만나면 그 바로 뒤(NINJA_STRIKE_BEHIND)에서 멈춤
   NINJA_SLASH_WIDTH: 0.8, // 지나간 선에서 이 거리 안이면 베임
   NINJA_SLASH_KB_SPEED: 2.5,
@@ -266,7 +323,7 @@ export const CONFIG = {
   BUILDER_RAIN_CELLS: [[0, 0], [1, 0], [-1, 0]], // 필살 블록 비: 조준한 칸 기준 1×1 블록 자리 (깔리면 압사, 옆은 충격파). 5개는 봇 판 건축가 50/160 → 3개
   BUILDER_BRICK_BONUS: 1, // 패시브: 설치 블록 아이템을 주우면 이만큼 더 (2026-10-24, '벽 쿨 짧음' 대신)
   // 갈고리 (연계: 평타로 밀고 → 갈고리로 다시 당겨 → 평타)
-  HOOK_PUSH_RANGE_MULT: 1.2, // 패시브: 밀치기 사거리
+  HOOK_PUSH_RANGE_MULT: 1.2, // 패시브: 평타(밀치기) 사거리
   HOOK_RANGE: 5, // 스킬 갈고리: 보는 방향 이 거리 안 첫 상대를 끌어옴
   HOOK_HALF_ANGLE_DEG: 15, // 갈고리가 닿는 시야 반각
   HOOK_PULL_TO: 1, // 끌어와서 내 앞 이 거리에 놓음
@@ -313,6 +370,7 @@ export const CONFIG = {
   BOT_DROP_DELAY_MS: 250, // 조종 중 상대 위에 맞춘 뒤 떨어뜨리기까지
   BOT_TARGET_JITTER: 1, // 상대 고를 때 판마다 상대별로 0~이 값(칸)을 거리에 더함. 동점일 때 늘 같은 상대(사람)만 노리지 않게
   BOT_SKILL_INTERVAL_MS: 2000, // 봇이 캐릭터 스킬·필살기를 써 보는 간격 (×0.7~1.3 무작위)
+  BOT_CHAIN_DELAY_MS: 80, // 캐릭터 평타 이어 치기: 다음 타를 누를 수 있게 된 뒤 봇이 누르기까지 (×0.7~1.3 무작위)
   BOT_PUSH_INTERVAL_MS: 1500, // 봇이 밀치기 사이에 두는 간격 (×0.7~1.3 무작위). 낮을수록 공격적
   BOT_BRICK_AIM_ERROR: 1.2, // 설치 블록 던질 때 조준점을 상대 발밑에서 이 반경(칸) 안 무작위로 빗나감 (없으면 거의 다 맞힘)
   BOT_BOMB_DANGER_PAD: 0.5, // 봇이 피하는 폭탄 범위 = BOMB_BLAST_RANGE + 이만큼 (칸 중심 거리 기준이라 여유)
@@ -321,9 +379,9 @@ export const CONFIG = {
   BOT_CONTROL_AIM_ERROR: 1, // 조종 블록 겨냥이 빗나가는 반경(칸) 기준. 아래 난이도 배수를 곱함 (보통·어려움 0 = 정확히 겨냥)
   // 봇 난이도 (호스트가 대기 화면에서 고름, 모든 봇에 같이). 위 BOT_* 값에 곱하는 배수. 보통 = 위 값 그대로 (조종 겨냥 오차만 0)
   BOT_LEVELS: {
-    easy: { REACTION_MS: 1.7, AIM_ERROR_RAD: 2, DROP_DELAY_MS: 3, PUSH_INTERVAL_MS: 1.8, BRICK_AIM_ERROR: 1.6, CONTROL_AIM_ERROR: 1.5 },
+    easy: { CHAIN_DELAY_MS: 2.5, REACTION_MS: 1.7, AIM_ERROR_RAD: 2, DROP_DELAY_MS: 3, PUSH_INTERVAL_MS: 1.8, BRICK_AIM_ERROR: 1.6, CONTROL_AIM_ERROR: 1.5 },
     normal: { CONTROL_AIM_ERROR: 0 },
-    hard: { REACTION_MS: 0.6, AIM_ERROR_RAD: 0.5, DROP_DELAY_MS: 0.6, PUSH_INTERVAL_MS: 0.65, BRICK_AIM_ERROR: 0.6, CONTROL_AIM_ERROR: 0 },
+    hard: { CHAIN_DELAY_MS: 0.5, REACTION_MS: 0.6, AIM_ERROR_RAD: 0.5, DROP_DELAY_MS: 0.6, PUSH_INTERVAL_MS: 0.65, BRICK_AIM_ERROR: 0.6, CONTROL_AIM_ERROR: 0 },
   },
   BOT_LEVEL_DEFAULT: 'normal',
 

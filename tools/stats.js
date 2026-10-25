@@ -69,6 +69,7 @@ export function parseLog(text) {
         lava: false,
         use: new Map(), // P1 → 아이템 사용 횟수
         combos: [], // { by: [때린 이름…] (옛 로그는 null), target, n }
+        basics: [], // 캐릭터 평타 명중 { by, n } (n 0 = 공중 평타), 2026-10-25~
       };
     } else if ((m = line.match(/^ {2}사망: (.*)$/)) && last) {
       // 접속 끊김은 [사망] 줄 없이 여기에만 나옴
@@ -117,6 +118,10 @@ export function parseLog(text) {
     } else if ((m = line.match(/^ {2}\[콤보\] (?:(\S+) → )?(\S+) (\d+)타( 마무리)?$/))) {
       // "P1 → P2 3타" (때린 사람 여럿이면 P1+P3), 마무리 타로 끝나면 "… 6타 마무리" (2026-10-25~). 2026-10-24 처음 형식은 "P2 3타" (때린 사람 없음)
       cur.combos.push({ by: m[1] ? m[1].split('+') : null, target: m[2], n: Number(m[3]), finish: !!m[4] });
+    } else if ((m = line.match(/^ {2}\[평타\] (\S+) → \S+ 넉백.* (?:(\d+)타|공중) \S/))) {
+      // "  [평타] P1 → P2 넉백 (P2 7%) 1타 옆치기" / "… 공중 망치 내려찍기" (무적이라 무시는 안 셈)
+      cur.basics.push({ by: m[1], n: m[2] ? Number(m[2]) : 0 });
+      countUse(cur, line);
     } else if (/^ {2}\[용암\] .*용암 상승 시작/.test(line)) {
       cur.lava = true;
     } else {
@@ -147,7 +152,7 @@ function countUse(r, line) {
     return r.use.get(name);
   };
   let m;
-  if ((m = line.match(/^ {2}\[(?:밀치기|망치)\] (\S+) → \S+ 넉백 치명타/))) u(m[1]).crits++; // 아래 망치 명중으로도 셈
+  if ((m = line.match(/^ {2}\[(?:밀치기|망치|평타)\] (\S+) → \S+ 넉백 치명타/))) u(m[1]).crits++; // 아래 망치 명중으로도 셈
   if ((m = line.match(/^ {2}\[쌓기\] (\S+) →/))) u(m[1]).build++;
   else if ((m = line.match(/^ {2}\[폭탄\] (\S+) → \(/))) u(m[1]).bombs++;
   else if ((m = line.match(/^ {2}\[폭탄\] (\S+) → \S+ 넉백/))) u(m[1]).bombHits++;
@@ -270,6 +275,20 @@ export function summarize(rounds) {
       }
       return [...t.values()].sort((a, b) => a.key.localeCompare(b.key));
     })(),
+    basics: (() => {
+      // 캐릭터 평타: 타 번호별 명중 수 (몇 타까지 이어지는지)
+      const t = new Map();
+      for (const r of rounds) {
+        for (const b of r.basics) {
+          const c = r.chars && r.chars.get(b.by);
+          if (!c) continue;
+          const k = `${c}${isBot(b.by) ? ' (봇)' : ''}`;
+          if (!t.has(k)) t.set(k, { key: k, byN: {} });
+          t.get(k).byN[b.n] = (t.get(k).byN[b.n] || 0) + 1;
+        }
+      }
+      return [...t.values()].sort((a, b) => a.key.localeCompare(b.key));
+    })(),
     combos: (() => {
       // 콤보 (2타 이상): 길이별 횟수 + 넣은 캐릭터별 (사람·봇 따로, 여럿이 같이 넣은 건 따로)
       const len = {};
@@ -339,7 +358,7 @@ export function formatReport(s) {
   if (s.byChar.length) out.push('', '== 캐릭터별 ==', table(['캐릭터', '판', '승', '승률'], s.byChar.map((c) => [c.key, c.rounds, c.wins, pct(c.wins, c.rounds)])));
   if (s.combos.total) {
     const lens = Object.keys(s.combos.len).map(Number).sort((a, b) => a - b);
-    out.push('', `== 콤보 (2타 이상, ${C.COMBO_MS / 1000}초 넘으면 다음 타가 마무리) ==`, `${s.combos.total}번 · 길이별 ${lens.map((n) => `${n}타 ${s.combos.len[n]}`).join(' · ')}`);
+    out.push('', `== 콤보 (2타 이상, 평타 마무리 타 또는 ${C.COMBO_MS / 1000}초 넘은 다음 타가 마무리) ==`, `${s.combos.total}번 · 길이별 ${lens.map((n) => `${n}타 ${s.combos.len[n]}`).join(' · ')}`);
     if (s.combos.byChar.length) {
       out.push(
         table(
@@ -348,6 +367,15 @@ export function formatReport(s) {
         ),
       );
     }
+  }
+  if (s.basics.length) {
+    const maxN = Math.max(...s.basics.flatMap((x) => Object.keys(x.byN).map(Number)));
+    const ns = Array.from({ length: maxN }, (_, i) => i + 1);
+    out.push(
+      '',
+      '== 평타 명중 (타 번호별) ==',
+      table(['캐릭터', ...ns.map((n) => `${n}타`), '공중'], s.basics.map((x) => [x.key, ...ns.map((n) => x.byN[n] || '-'), x.byN[0] || 0])),
+    );
   }
   out.push('', '== 모드별 ==', table(['모드', '판', '길이 중앙값', '압사 비율', ''], groupRows(s.byMode).map((row, i) => [...row, s.byMode[i].note])));
   out.push(
@@ -388,7 +416,7 @@ export function formatReport(s) {
         ['설치 블록 1×2', it.bricks, per(it.bricks), `깔림 ${it.crushes} · 충격파 ${it.shocks}`],
         ['투사체', it.shots, per(it.shots), `${it.shotHits}번`],
         ['망치', '-', '-', `${it.hammerHits}번`],
-        ['치명타 (밀치기·망치)', it.crits, per(it.crits), '-'],
+        ['치명타 (밀치기·망치·공중 평타)', it.crits, per(it.crits), '-'],
       ],
     ),
   );

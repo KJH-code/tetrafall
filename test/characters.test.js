@@ -26,6 +26,13 @@ function setupChars(chars) {
   return { g, lines, p: (id) => g.players.get(id) };
 }
 
+// 평타 한 번: 누르고 준비 시간 뒤 판정까지
+function basic(g, id) {
+  g.handleAction(id, { name: 'push' });
+  const atk = g.players.get(id).atk;
+  if (atk) run(g, atk.at - g.time + TICK / 2);
+}
+
 function place(p, x, y, yaw = 0, z = 0) {
   Object.assign(p, { x, y, z, yaw, vz: 0, kbx: 0, kby: 0, grounded: true, stunUntil: 0, freezeUntil: 0 });
 }
@@ -52,9 +59,10 @@ test('필살기 게이지: 피해 % 를 주거나 받은 만큼 참, 다 차야 
   const { g, p } = setupChars(['tank', 'ninja']);
   place(p(1), 4, 4, 0);
   place(p(2), 5, 4);
-  g.handleAction(1, { name: 'push' });
-  assert.equal(p(1).ult, C.DAMAGE_GAIN.push * C.ULT_PER_DAMAGE, '때린 쪽');
-  assert.equal(p(2).ult, C.DAMAGE_GAIN.push * C.ULT_PER_DAMAGE, '맞은 쪽');
+  basic(g, 1);
+  const dmg = C.BASIC_ATTACKS.tank.chain[0].dmg;
+  assert.equal(p(1).ult, dmg * C.ULT_PER_DAMAGE, '때린 쪽');
+  assert.equal(p(2).ult, dmg * C.ULT_PER_DAMAGE, '맞은 쪽');
   g.handleAction(1, { name: 'ult' });
   assert.ok(p(1).ult > 0, '안 찼으면 안 씀');
   p(1).ult = C.ULT_MAX;
@@ -63,14 +71,19 @@ test('필살기 게이지: 피해 % 를 주거나 받은 만큼 참, 다 차야 
   assert.equal(p(1).ult, 0);
 });
 
-test('탱크: 피해 % 덜 쌓임, 돌진은 처음 부딪힌 상대를 치고 멈춤 (쿨타임), 빗나가면 약 3칸', () => {
+test('탱크: 덜 밀림 (피해 % 배율 넉백 × TANK_KB_TAKEN, 평타 중간 타 고정 넉백은 그대로), 돌진은 처음 부딪힌 상대를 치고 멈춤 (쿨타임), 빗나가면 약 3칸', () => {
   const { g, lines, p } = setupChars(['tank', 'ninja', 'ninja']);
-  // 같은 공격: 탱크는 피해 % 가 덜 쌓이고, 이번 넉백은 같음
-  g.applyKnockback(p(1), 1, 0, 5, 0, C.STUN_MS, 20, null);
-  g.applyKnockback(p(2), 1, 0, 5, 0, C.STUN_MS, 20, null);
-  assert.equal(p(1).damage, Math.round(20 * C.TANK_DAMAGE_TAKEN));
+  // 같은 공격: 탱크는 덜 밀리고, 피해 % 는 같음
+  g.applyKnockback(p(1), 1, 0, 5, 0, C.STUN_MS, 20, null, true);
+  g.applyKnockback(p(2), 1, 0, 5, 0, C.STUN_MS, 20, null, true);
+  assert.equal(p(1).damage, 20);
   assert.equal(p(2).damage, 20);
-  assert.equal(p(1).kbx, p(2).kbx);
+  assert.ok(Math.abs(p(1).kbx / p(2).kbx - C.TANK_KB_TAKEN) < 1e-9);
+  run(g, C.STUN_MS + C.COMBO_IFRAME_MS + 100);
+  g.applyKnockback(p(1), 1, 0, 2, 0, C.STUN_MS, 5, null, false, { fixed: true });
+  g.applyKnockback(p(2), 1, 0, 2, 0, C.STUN_MS, 5, null, false, { fixed: true });
+  assert.equal(p(1).kbx, 2, '고정 넉백은 탱크도 그대로');
+  assert.equal(p(2).kbx, 2);
   run(g, C.STUN_MS + C.COMBO_IFRAME_MS + 100);
   p(1).damage = 0;
   p(2).damage = 0;
@@ -133,7 +146,7 @@ test('닌자: 이동 빠름, 순간 베기는 벽 앞까지 + 지나간 길의 �
   place(p(3), 3, 7.5);
   g.handleAction(1, { name: 'skill' });
   assert.ok(Math.abs(p(1).x - (3 + C.NINJA_STRIKE_BEHIND)) < 0.11, `상대 바로 뒤에서 멈춤 x=${p(1).x}`);
-  assert.equal(p(2).damage, Math.round(C.NINJA_SLASH_DAMAGE * C.TANK_DAMAGE_TAKEN));
+  assert.equal(p(2).damage, C.NINJA_SLASH_DAMAGE);
   assert.equal(p(3).damage, 0);
   assert.ok(lines.some((l) => l.includes('[스킬] P1 순간 베기 2.3칸 (1명)')), lines.join('\n'));
   // 아무도 없으면 3칸
@@ -154,17 +167,18 @@ test('닌자 콤보: 평타 → 순간 베기 → 평타가 한 콤보로 이어
   const { g, lines, p } = setupChars(['ninja', 'builder']);
   place(p(1), 2, 5, 0);
   place(p(2), 3, 5);
-  g.handleAction(1, { name: 'push' });
+  basic(g, 1);
   assert.equal(p(2).comboHits, 1);
-  run(g, C.HITSTOP_MS + TICK);
+  run(g, C.BASIC_HITSTOP_MS);
   p(1).yaw = Math.atan2(p(2).y - p(1).y, p(2).x - p(1).x);
   g.handleAction(1, { name: 'skill' }); // 상대를 지나가며 벰
   assert.equal(p(2).comboHits, 2, '평타 → 베기');
   run(g, C.HITSTOP_MS + TICK);
   p(1).yaw = Math.atan2(p(2).y - p(1).y, p(2).x - p(1).x);
   p(1).pushReadyAt = 0;
-  g.handleAction(1, { name: 'push' });
+  basic(g, 1);
   assert.equal(p(2).comboHits, 3, '→ 평타');
+  assert.ok(lines.some((l) => l.includes('[평타] P1 → P2') && l.endsWith('2타 반대 찌르기')), '스킬을 끼워도 이어 치기 (2타)');
   // 그림자 일격: 등 뒤로 + 치명타 + 순간 베기 초기화
   assert.ok(p(1).skillReadyAt > g.time, '순간 베기 쿨 중');
   p(1).ult = C.ULT_MAX;
@@ -215,13 +229,14 @@ test('갈고리: 밀치기 사거리 +, 갈고리는 보는 방향 상대를 내
   place(p(1), 4, 4.5, 0);
   place(p(2), 4 + C.PUSH_RANGE * 1.1, 4.5);
   place(p(3), 9.5, 9.5);
-  g.handleAction(1, { name: 'push' });
+  basic(g, 1);
   assert.ok(p(2).damage > 0);
-  run(g, C.STUN_MS + C.COMBO_IFRAME_MS + 100);
+  run(g, 1000 + C.COMBO_IFRAME_MS);
   // 평타로 밀고 → 갈고리로 당겨 → 평타
   place(p(1), 1.5, 4.5, 0);
   place(p(2), 2.5, 4.5);
   p(1).pushReadyAt = 0;
+  p(1).chainN = 0;
   g.handleAction(1, { name: 'push' });
   run(g, 300);
   const d0 = p(2).damage;
@@ -233,8 +248,8 @@ test('갈고리: 밀치기 사거리 +, 갈고리는 보는 방향 상대를 내
   assert.equal(p(2).lastHit.kind, 'hook');
   run(g, C.HITSTOP_MS + TICK);
   p(1).pushReadyAt = 0;
-  g.handleAction(1, { name: 'push' });
-  assert.equal(p(2).comboHits, 3, '→ 평타');
+  basic(g, 1);
+  assert.ok(lines.includes('  [콤보] P1 → P2 3타 마무리'), '→ 평타 2타 주먹 = 마무리');
   // 끌려온 뒤 떨어지면 갈고리 킬 (마지막 공격 기록)
   p(2).lastHit = { by: 1, kind: 'hook', name: 'P1' };
   Object.assign(p(2), { x: -3, z: C.FALL_DEATH_Z - 1 });
@@ -304,4 +319,146 @@ test('닌자 그림자 일격: 무적인 상대는 안 고르고, 근처에 무�
   assert.equal(p(1).ult, C.ULT_MAX, '안 쓰임');
   assert.ok(p(1).skillReadyAt > g.time, '초기화 없음');
   assert.equal(p(2).damage, 0);
+});
+
+// ---------- 캐릭터 평타 (2026-10-25) ----------
+
+// 매 틱 누르고 있으면 (후딜 중 누른 것은 기다렸다 나감) 지상 평타가 끝까지 이어져 한 콤보 마무리
+function fullChain(char, damage) {
+  const { g, lines, p } = setupChars([char, 'ninja']);
+  place(p(1), 3, 4.5, 0);
+  place(p(2), 4.2, 4.5);
+  p(2).damage = damage;
+  g.drainEvents();
+  const events = [];
+  for (let t = 0; t < 3000 && !lines.some((l) => l.includes(' 마무리')); t += TICK) {
+    g.handleAction(1, { name: 'push' });
+    g.tick(TICK);
+    events.push(...g.drainEvents());
+  }
+  return { g, lines, p, events };
+}
+
+for (const char of C.CHARACTERS) {
+  test(`평타 ${char}: 바로바로 누르면 0% 에서도 150% 에서도 1타부터 마지막 타까지 한 콤보 → 마무리, 피해 합 = 타별 딜 합`, () => {
+    const chain = C.BASIC_ATTACKS[char].chain;
+    for (const dmg0 of [0, 150]) {
+      const { lines, p, events } = fullChain(char, dmg0);
+      const n = chain.length;
+      assert.ok(lines.includes(`  [콤보] P1 → P2 ${n}타 마무리`), `${dmg0}%:\n${lines.join('\n')}`);
+      assert.equal(p(2).damage - dmg0, chain.reduce((a, d) => a + d.dmg, 0));
+      const atk = events.filter((e) => e.type === 'attack' && e.who === 1);
+      assert.deepEqual(atk.map((e) => e.n), chain.map((_, i) => i + 1), '타 번호');
+      assert.deepEqual(atk.map((e) => e.windup), chain.map((d) => d.windup), '준비 시간');
+      assert.ok(atk.every((e) => e.char === char && e.air === false));
+      assert.equal(atk.at(-1).finish, true, '마지막 타 예고');
+      const hits = events.filter((e) => e.type === 'hit' && e.by === 1);
+      assert.ok(hits.every((e) => e.ok) && hits.at(-1).finish);
+    }
+  });
+}
+
+test('평타: 경직은 후딜 + 다음 타 준비 + 0.1초 이상 (바로 누르면 확정), 마무리 타만 finish, 풀 콤보 최단 시간 ≤ COMBO_MS', () => {
+  for (const char of C.CHARACTERS) {
+    const chain = C.BASIC_ATTACKS[char].chain;
+    let t = 0;
+    chain.forEach((d, i) => {
+      assert.equal(!!d.finish, i === chain.length - 1, `${char} ${i + 1}타`);
+      if (i === chain.length - 1) return;
+      assert.ok(d.stun >= d.rec + chain[i + 1].windup + 100, `${char} ${i + 1}타 경직 ${d.stun}`);
+      t += d.rec + chain[i + 1].windup;
+    });
+    assert.ok(t <= C.COMBO_MS, `${char} 최단 ${t}`);
+  }
+});
+
+test('평타: 중간 타 넉백은 피해 % 와 상관없이 같음, 마무리 타는 % 가 높을수록 멀리', () => {
+  const kb = (dmg, finish) => {
+    const { g, p } = setupChars(['tank', 'ninja']);
+    place(p(2), 5, 5);
+    p(2).damage = dmg;
+    const d = C.BASIC_ATTACKS.tank.chain[finish ? 2 : 0];
+    if (finish) g.applyKnockback(p(2), 1, 0, 1, 0, 500, 0, null); // 콤보 1타를 먼저
+    g.applyKnockback(p(2), 1, 0, d.kb, d.up, d.stun, d.dmg, null, finish, { fixed: !finish, finish });
+    return p(2).kbx;
+  };
+  assert.equal(kb(0, false), kb(150, false));
+  assert.equal(kb(0, false), C.BASIC_ATTACKS.tank.chain[0].kb);
+  assert.ok(kb(150, true) > kb(0, true) * 2);
+});
+
+test('평타: 이어 치기 창을 놓치면 1타부터, 빗나가도 1타부터, 맞으면 준비 중인 평타가 끊김', () => {
+  const { g, p } = setupChars(['tank', 'ninja', 'ninja']);
+  const chain = C.BASIC_ATTACKS.tank.chain;
+  place(p(1), 3, 4.5, 0);
+  place(p(2), 4.2, 4.5);
+  place(p(3), 9.5, 9.5);
+  basic(g, 1);
+  assert.equal(p(1).chainN, 1);
+  run(g, chain[0].rec + C.BASIC_CHAIN_WINDOW_MS + C.COMBO_IFRAME_MS + 100); // 늦게 누름
+  place(p(2), 4.2, 4.5);
+  g.drainEvents();
+  basic(g, 1);
+  assert.equal(g.drainEvents().find((e) => e.type === 'attack').n, 1, '놓치면 1타');
+  // 빗나감
+  run(g, chain[0].rec);
+  p(1).yaw = Math.PI;
+  basic(g, 1);
+  assert.equal(p(1).chainN, 0, '빗나가면 1타부터');
+  // 준비 중에 맞으면 끊김
+  run(g, 1000);
+  p(1).yaw = 0;
+  g.handleAction(1, { name: 'push' });
+  assert.ok(p(1).atk);
+  g.applyKnockback(p(1), -1, 0, 1, 0, 300, 5, { by: 3, kind: 'push' });
+  assert.equal(p(1).atk, null);
+});
+
+test('평타: 공중 평타는 캐릭터마다 한 타 (타 번호 0), 떨어지며 위에서 치면 치명타. 빗나가면 이어 치기도 1타부터', () => {
+  const { g, lines, p } = setupChars(['builder', 'ninja']);
+  place(p(1), 3, 4.5, 0, 1);
+  Object.assign(p(1), { grounded: false, vz: -1 });
+  place(p(2), 4, 4.5);
+  g.drainEvents();
+  g.handleAction(1, { name: 'push' });
+  const e = g.drainEvents().find((x) => x.type === 'attack');
+  assert.equal(e.n, 0);
+  assert.equal(e.air, true);
+  assert.equal(e.name, C.BASIC_ATTACKS.builder.air.name);
+  p(1).vz = -1; // 준비 시간 동안 떨어지는 중으로 둠
+  p(1).z = 1;
+  run(g, C.BASIC_ATTACKS.builder.air.windup + TICK / 2);
+  assert.ok(lines.some((l) => l.includes('넉백 치명타') && l.endsWith(`공중 ${C.BASIC_ATTACKS.builder.air.name}`)), lines.join('\n'));
+  assert.equal(p(2).damage, Math.round(C.BASIC_ATTACKS.builder.air.dmg * C.CRIT_DAMAGE_MULT));
+});
+
+test('평타 건축가: 내려찍기(마무리) 가 맞으면 그 사람 발밑 기둥 위에 블록 1칸 솟고, 그 사람은 블록 위로', () => {
+  const { g, p, events } = fullChain('builder', 0);
+  const cx = Math.floor(p(2).x);
+  const cy = Math.floor(p(2).y);
+  const rise = events.find((e) => e.type === 'wallRise' && e.who === 1);
+  assert.ok(rise, '블록 솟음 이벤트');
+  const [x, y, z] = rise.cells[0];
+  assert.equal(g.gridAt(x, y, z), CELL.BUILD);
+  assert.equal(z, 0);
+  assert.ok(Math.abs(x - cx) <= 1 && Math.abs(y - cy) <= 1);
+  assert.ok(p(2).z >= 1 - 1e-6 || p(2).vz > 0, `위로 z=${p(2).z}`);
+});
+
+test('평타: 마무리 타 준비 중에는 이동 속도 × BASIC_FINISH_MOVE_MULT, 망치를 들면 평타 대신 망치', () => {
+  const { g, p } = setupChars(['tank', 'ninja']);
+  place(p(1), 3, 1.5, 0);
+  p(1).atk = { n: 3, def: C.BASIC_ATTACKS.tank.chain[2], at: g.time + 10000 };
+  p(1).input = { fwd: 1, strafe: 0, jump: false };
+  run(g, 200);
+  const slow = p(1).x - 3;
+  assert.ok(Math.abs(slow - C.MOVE_SPEED * 0.2 * C.BASIC_FINISH_MOVE_MULT) < 0.1, `${slow}`);
+  p(1).atk = null;
+  p(1).input = { fwd: 0, strafe: 0, jump: false };
+  place(p(1), 3, 4.5, 0);
+  place(p(2), 4, 4.5);
+  p(1).weaponUses = 1;
+  g.handleAction(1, { name: 'push' });
+  assert.equal(p(2).damage, C.DAMAGE_GAIN.weapon, '망치는 바로');
+  assert.equal(p(1).atk, null);
 });

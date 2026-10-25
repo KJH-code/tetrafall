@@ -44,6 +44,7 @@ export class BotBrain {
     this.unstickUntil = 0;
     this.unstickDir = 1;
     this.nextPushAt = 0; // 봇 자신의 밀치기 간격 (사람처럼 연타하지 않게)
+    this.chainDelay = 0; // 평타 이어 치기 누르는 지연
     this.nextSkillAt = 0; // 캐릭터 스킬·필살기를 다시 써 볼 시각
     // 상대 고를 때 판마다 다시 뽑는 무작위 가산 거리. 거리가 같으면 늘 목록 맨 앞(사람)을 고르던 버그 수정:
     // 4인 판에서 봇 둘이 시작하자마자 사람을 협공했다 (2026-10-20 로그 3·16·17판, 재현 200판 중 200판)
@@ -237,6 +238,13 @@ export class BotBrain {
     return best;
   }
 
+  // 다음 평타 타의 사거리
+  basicRange(p) {
+    const set = C.BASIC_ATTACKS[p.char];
+    const d = set.chain[Math.min(p.chainN, set.chain.length - 1)];
+    return (d.range || C.PUSH_RANGE) * (p.char === 'hook' ? C.HOOK_PUSH_RANGE_MULT : 1);
+  }
+
   attack(g, p, t, dangerIn, avoid) {
     let danger = dangerIn;
     // 상대를 밀 방향: 그림자가 상대 근처면 그림자 쪽, 아니면 상대에게 가장 가까운 가장자리 쪽
@@ -271,6 +279,19 @@ export class BotBrain {
     }
     const dist = Math.hypot(t.x - p.x, t.y - p.y);
     const toT = { x: (t.x - p.x) / (dist || 1), y: (t.y - p.y) / (dist || 1) };
+    // 캐릭터 평타: 앞 타가 맞았으면 상대를 보고 다음 타 (난이도별로 조금 늦게 누름). 준비 중에는 계속 상대를 봄
+    if (p.char && (p.atk || (p.chainN > 0 && g.time < p.chainUntil && dist < this.basicRange(p) * 0.95))) {
+      this.input.fwd = 0;
+      this.input.strafe = 0;
+      this.input.yaw = Math.atan2(t.y - p.y, t.x - p.x);
+      g.handleInput(p.id, this.input);
+      if (!p.atk && g.time >= p.pushReadyAt + this.chainDelay - C.BOT_THINK_MS) {
+        // 한 판단 주기 먼저 눌러 둠 (후딜 중 누르면 기다렸다 나감) → 실제 지연은 0 ~ chainDelay 쯤
+        g.handleAction(p.id, { name: 'push' });
+        this.chainDelay = this.k('CHAIN_DELAY_MS') * (0.7 + 0.6 * this.rng());
+      }
+      return;
+    }
     // 겹쳐 서 있으면 (사람끼리는 안 부딪힘) 상대 쪽 방향이 없음 → 밀 방향으로 바로 민다
     // (안 그러면 "뒤로 돌아가기" 자리가 낭떠러지일 때 둘 다 겹친 채 영원히 멈춤)
     const overlap = dist < 0.3;
@@ -279,7 +300,10 @@ export class BotBrain {
       this.input.fwd = 0;
       this.input.strafe = 0;
       this.input.yaw = overlap ? Math.atan2(dir.y, dir.x) : Math.atan2(t.y - p.y, t.x - p.x);
-      if (g.time >= p.pushReadyAt && g.time >= t.stunUntil && g.time >= this.nextPushAt) {
+      // 상대가 경직이 풀리고 무적도 아닐 때, 또는 내가 넣은 콤보(스킬 등)가 이어지는 중이면 평타로 잇기
+      const free = g.time >= t.stunUntil && g.time >= t.iframeUntil;
+      const myCombo = p.char && t.comboHits > 0 && g.time < t.stunUntil && t.lastHit?.by === p.id;
+      if (g.time >= p.pushReadyAt && (free || myCombo) && (myCombo || g.time >= this.nextPushAt)) {
         g.handleInput(p.id, this.input);
         g.handleAction(p.id, { name: 'push' });
         this.nextPushAt = g.time + this.k('PUSH_INTERVAL_MS') * (0.7 + 0.6 * this.rng());
