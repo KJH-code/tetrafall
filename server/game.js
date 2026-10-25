@@ -165,6 +165,7 @@ export class Game {
       jumpUntil: 0, // 점프력 상승 끝나는 시각
       airJumps: C.AIR_JUMPS, // 남은 2단 점프 (땅에 닿으면 다시 채움)
       airJumpQueued: false, // 공중에서 점프 키를 새로 눌렀음 (다음 틱에 2단 점프)
+      jumpQueuedUntil: 0, // 땅에서 누른 점프 기억 (JUMP_BUFFER_MS)
       ghostUntil: 0, // 유령화 끝나는 시각
       speedUntil: 0, // 이속 증가 끝나는 시각
       spectator: false, // 호스트가 관전으로 돌린 사람: 판에 안 들어가고 통계·승수 표시에서 빠짐
@@ -208,6 +209,7 @@ export class Game {
       castQueued: null, // 평타 준비·빗나간 후딜 중에 누른 'skill' 또는 'ult' (판정·후딜이 끝나면 나감)
       chainN: 0, // 마지막으로 맞힌 평타 타 번호 (0 = 다음은 1타)
       chainUntil: 0, // 이 시각까지 누르면 다음 타
+      launchUntil: 0, // 띄우는 마지막 지상 타 뒤 공중 1타가 연타로 이어지는 시각
       airN: 0, // 마지막으로 친 공중 평타 번호 (0 = 다음은 공중 1타)
       lastBasic: null, // 마지막 평타 { n, air, at } (봇)
       streak: 0, // 내가 이어 넣은 타 수 (상대가 바뀌어도 이어짐: 닌자 갈아타기 'N HIT')
@@ -542,6 +544,7 @@ export class Game {
         castQueued: null,
         chainN: 0,
         chainUntil: 0,
+        launchUntil: 0,
         airN: 0,
         lastBasic: null,
         streak: 0,
@@ -786,6 +789,7 @@ export class Game {
       castQueued: null,
       chainN: 0,
       chainUntil: 0,
+      launchUntil: 0,
       airN: 0,
       lastBasic: null,
       streak: 0,
@@ -851,7 +855,9 @@ export class Game {
       case 'jump':
         // 점프 키를 누른 순간 (연속 입력의 jump 는 '누르고 있음'이라 빨리 떼었다 누르면 서버가 놓침).
         // 땅에서는 연속 입력이 뛰고, 공중이면 다음 틱에 2단 점프
+        // 땅에서 누른 것도 JUMP_BUFFER_MS 동안 기억 (멈칫·짧게 누름에 안 씹히게: 닌자 올려 차기 → 점프 → 공중 평타)
         if (!p.grounded) p.airJumpQueued = true;
+        else p.jumpQueuedUntil = this.time + C.JUMP_BUFFER_MS;
         return;
       case 'dash':
         if (stunned || controlling || this.time < p.dashReadyAt) return; // 조종 중 대시 불가
@@ -985,7 +991,9 @@ export class Game {
     let def = air ? set.air[n - 1] : set.chain[n - 1];
     // 닌자 R 강화: 지상 1~3타와 공중 평타가 표창 2연발 (4타 올려 차기는 그대로)
     if (p.char === 'ninja' && this.time < p.empowerUntil && (air || n <= 3)) def = { ...def, name: '표창', windup: C.NINJA_STAR.windup, step: 0, star: true };
-    p.atk = { n, def, air, at: this.time + def.windup };
+    // 연타를 이어 가는 중인 타 (지상 2타~, 공중 2타~, 띄우는 마지막 지상 타 뒤 공중 1타): 시간 마무리가 되지 않음
+    const chained = air ? (p.airN > 0 && live) || this.time < p.launchUntil : n > 1;
+    p.atk = { n, def, air, chained, at: this.time + def.windup };
     p.atkLanded = false;
     p.pushReadyAt = this.time + def.windup + def.rec;
     this.emit({ type: 'attack', who: p.id, char: p.char, n, air, name: def.name, windup: def.windup, finish: !!def.finish, star: !!def.star });
@@ -994,10 +1002,10 @@ export class Game {
 
   // 판정: 앞으로 step 만큼 나가며 부채꼴 안을 침. 중간 타는 고정 넉백, 마무리 타·공중 평타는 % 배율
   basicHit(p) {
-    const { n, def, air } = p.atk;
+    const { n, def, air, chained } = p.atk;
     p.atk = null;
     const set = C.BASIC_ATTACKS[p.char];
-    if (def.star) return this.starVolley(p, n, air, def);
+    if (def.star) return this.starVolley(p, n, air, def, chained);
     const fx = Math.cos(p.yaw);
     const fy = Math.sin(p.yaw);
     if (def.step) {
@@ -1030,7 +1038,7 @@ export class Game {
       const crit = air && falling && p.z - t.z >= C.CRIT_MIN_HEIGHT; // 치명타는 공중 평타만
       const gain = crit ? Math.round(def.dmg * C.CRIT_DAMAGE_MULT) : def.dmg;
       const speed = crit ? def.kb * C.CRIT_KB_MULT : def.kb;
-      const hit = this.applyKnockback(t, fx, fy, speed, def.up, def.stun, gain, { by: p.id, kind: 'push' }, finish, { fixed: !single && !finish, finish });
+      const hit = this.applyKnockback(t, fx, fy, speed, def.up, def.stun, gain, { by: p.id, kind: 'push' }, finish, { fixed: !single && !finish, finish, chained });
       if (hit) {
         const stop =
           (finish ? C.BASIC_FINISH_HITSTOP_MS : single ? C.HITSTOP_MS : C.BASIC_HITSTOP_MS) *
@@ -1043,7 +1051,7 @@ export class Game {
       this.emit({ type: 'hit', kind: 'push', by: p.id, target: t.id, ok: hit, crit: hit && crit, n, air, finish, streak: hit ? p.streak : 0 });
       this.log(`  [평타] ${p.name} → ${t.name} ${hit ? `넉백${crit ? ' 치명타' : ''} (${t.name} ${t.damage}%)` : '무적이라 무시'} ${label}`);
     }
-    this.basicChain(p, n, air, !!landed);
+    this.basicChain(p, n, air, !!landed, def);
     if (p.char === 'builder' && this.hammerBlocks(p, range, cosHalf)) p.atkLanded = true; // 망치로 내 블록을 치면 폭발 (맞힌 것으로 침: F·R 캔슬)
     if (def.raise) this.basicRaise(p, landed);
   }
@@ -1051,8 +1059,10 @@ export class Game {
   // 평타 한 타가 끝난 뒤: 이어 치기 번호·창, 맞혔는지, 닌자 F 쿨 감소
   // 허공 이어 치기 (2026-10-25 재혁): 빗나가도 다음 타로 (후딜은 다 받음). BASIC_CHAIN_WINDOW_MS 안에 안 치면 1타로.
   // 타 번호는 때린 쪽에 남음 → 상대를 바꿔도 이어짐 (닌자 갈아타기)
-  basicChain(p, n, air, landed) {
+  basicChain(p, n, air, landed, def) {
     const set = C.BASIC_ATTACKS[p.char];
+    // 띄우는 마지막 지상 타(마무리 아님) 뒤에는 후딜 + 이어 치기 창 동안 공중 1타가 연타로 이어짐
+    if (!air && n === set.chain.length && !def.finish) p.launchUntil = this.time + def.rec + C.BASIC_CHAIN_WINDOW_MS;
     if (air) {
       p.airN = n < set.air.length ? n : 0;
       if (p.airN > 0 || p.chainN > 0) p.chainUntil = this.time + C.BASIC_CHAIN_WINDOW_MS; // 지상 타 번호도 그대로
@@ -1071,14 +1081,14 @@ export class Game {
   }
 
   // 닌자 R 강화 표창 2연발: 첫 발은 지금, 둘째 발은 NINJA_STAR.gap 뒤 (updateCombat). 즉시 판정 (날아가는 물체 아님)
-  starVolley(p, n, air, def) {
-    const landed = this.starShot(p, n, air, def, 1);
-    this.basicChain(p, n, air, landed);
-    p.star2 = { at: this.time + C.NINJA_STAR.gap, n, air, def };
+  starVolley(p, n, air, def, chained) {
+    const landed = this.starShot(p, n, air, def, 1, chained);
+    this.basicChain(p, n, air, landed, def);
+    p.star2 = { at: this.time + C.NINJA_STAR.gap, n, air, def, chained };
   }
 
   // 표창 한 발: 보는 방향 좁은 각 NINJA_STAR.range 안 가장 가까운 상대 하나. 마무리 타 자리면 둘째 발이 그 타의 마무리
-  starShot(p, n, air, def, shot) {
+  starShot(p, n, air, def, shot, chained = false) {
     const S = C.NINJA_STAR;
     const set = C.BASIC_ATTACKS[p.char];
     const fx = Math.cos(p.yaw);
@@ -1105,7 +1115,7 @@ export class Game {
     const crit = air && falling && p.z - best.z >= C.CRIT_MIN_HEIGHT;
     const dmg = fin ? def.dmg : S.dmg;
     const gain = crit ? Math.round(dmg * C.CRIT_DAMAGE_MULT) : dmg;
-    const hit = this.applyKnockback(best, fx, fy, (fin ? def.kb : S.kb) * (crit ? C.CRIT_KB_MULT : 1), fin ? def.up : S.up, fin ? def.stun : S.stun, gain, { by: p.id, kind: 'push' }, fin, { fixed: !fin, finish: fin });
+    const hit = this.applyKnockback(best, fx, fy, (fin ? def.kb : S.kb) * (crit ? C.CRIT_KB_MULT : 1), fin ? def.up : S.up, fin ? def.stun : S.stun, gain, { by: p.id, kind: 'push' }, fin, { fixed: !fin, finish: fin, chained: chained || shot === 2 });
     if (hit) {
       const stop = (fin ? C.BASIC_FINISH_HITSTOP_MS : C.BASIC_HITSTOP_MS) * (crit ? C.CRIT_HITSTOP_MULT : 1) * (best.counterAt === this.time ? C.COUNTER_HITSTOP_MULT : 1);
       best.freezeUntil = this.time + stop;
@@ -1720,7 +1730,7 @@ export class Game {
       if (p.star2 && this.time >= p.star2.at) {
         const s2 = p.star2;
         p.star2 = null;
-        if (this.starShot(p, s2.n, s2.air, s2.def, 2)) {
+        if (this.starShot(p, s2.n, s2.air, s2.def, 2, s2.chained)) {
           p.atkLanded = true;
           this.ninjaCdCut(p);
         }
@@ -1991,7 +2001,9 @@ export class Game {
       this.emit({ type: 'counter', by: src.by, target: t.id });
       this.log(`  [카운터] ${this.players.get(src.by)?.name} → ${t.name}`);
     }
-    const finisher = !teammate && t.comboHits >= 2 && (opts.finish || this.time - t.comboStartAt >= C.COMBO_MS);
+    // 2026-10-25 재혁: 때린 쪽이 연타를 이어 가는 중인 타(opts.chained)는 COMBO_MS 가 지나도 시간 마무리가 아님.
+    // 연타는 길이가 정해져 있어서 (지상 마지막 타 → 공중 마무리) 무한히 안 늘어남. 스킬·다른 사람 타는 예전처럼 시간 마무리
+    const finisher = !teammate && t.comboHits >= 2 && (opts.finish || (this.time - t.comboStartAt >= C.COMBO_MS && !opts.chained));
     const fixed = opts.fixed && !finisher;
     if (!fixed) speed *= finisher ? C.COMBO_FINISH_KB : heavy ? 1 : C.COMBO_LIGHT_KB;
     if (!teammate && t.comboHits >= 2 && src) this.emit({ type: 'combo', by: src.by, target: t.id, n: t.comboHits, finish: finisher });
@@ -2785,9 +2797,10 @@ export class Game {
         ix = mv.x * speed;
         iy = mv.y * speed;
       }
-      if (p.input.jump && p.grounded) {
+      if ((p.input.jump || this.time < p.jumpQueuedUntil) && p.grounded) {
         p.vz = this.time < p.jumpUntil ? C.JUMP_BOOST_SPEED : C.JUMP_SPEED;
         p.grounded = false;
+        p.jumpQueuedUntil = 0;
       } else if (p.airJumpQueued && !p.grounded && p.airJumps > 0) {
         // 2단 점프: 공중에서 점프를 새로 누르면('jump' 행동) 한 번 더. 땅에 닿으면 다시 생김
         p.vz = C.AIR_JUMP_SPEED;

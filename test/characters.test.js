@@ -1086,3 +1086,94 @@ test('탱크 패시브: 맞아서 받은 피해 % 로 얻는 게이지 × TANK_U
   assert.equal(p(2).ult, 10 * C.ULT_PER_DAMAGE);
   assert.equal(C.TANK_KB_TAKEN, 0.92);
 });
+
+// ---------- 연타 중엔 시간 마무리 없음 (2026-10-25 재혁) ----------
+
+// 매 타를 누를 수 있게 된 뒤 delay ms 늦게 누름 (사람 손). 띄우는 마지막 지상 타 뒤엔 점프
+function lateCombo(char, delay) {
+  const { g, lines, p } = setupChars([char, 'builder']);
+  place(p(1), 3, 4.5, 0);
+  place(p(2), 4.2, 4.5);
+  const launchN = C.BASIC_ATTACKS[char].chain.length;
+  const ev = [];
+  let first = null;
+  for (let t = 0; t < 5000 && !lines.some((l) => l.includes(' 마무리')); t += TICK) {
+    const last = ev.filter((e) => e.type === 'hit' && e.by === 1).at(-1);
+    p(1).input = { fwd: 0, strafe: 0, jump: false };
+    if (last && last.n === launchN && !last.air && p(1).grounded) g.handleAction(1, { name: 'jump' }); // 짧게 누른 점프
+    p(1).yaw = Math.atan2(p(2).y - p(1).y, p(2).x - p(1).x);
+    if (!p(1).atk && g.time >= p(1).pushReadyAt + delay) g.handleAction(1, { name: 'push' });
+    g.tick(TICK);
+    for (const e of g.drainEvents()) {
+      ev.push(e);
+      if (e.type === 'hit' && e.by === 1 && first === null) first = g.time;
+    }
+  }
+  return { lines, ev, ms: g.time - first };
+}
+
+test('연타 중엔 시간 마무리 없음: 매 타 60ms 늦게 눌러 COMBO_MS 를 넘겨도 닌자 6타·탱크 4타가 연타 마무리까지 이어짐 (점프는 짧게 눌러도 기억)', () => {
+  for (const [char, n] of [['ninja', 6], ['tank', 4]]) {
+    const { lines, ms } = lateCombo(char, 60);
+    assert.ok(lines.includes(`  [콤보] P1 → P2 ${n}타 마무리`), `${char}:\n${lines.join('\n')}`);
+    assert.ok(ms > C.COMBO_MS, `${char} 콤보 ${ms}ms > COMBO_MS`);
+  }
+});
+
+test('연타 중엔 시간 마무리 없음 — 무한 콤보는 안 됨: 평타를 계속 누르고 F 로 캔슬해도 한 콤보 길이에 끝이 있고, 스킬 타는 COMBO_MS 뒤 시간 마무리', () => {
+  for (const char of C.CHARACTERS) {
+    const { g, lines, p } = setupChars([char, 'builder']);
+    place(p(1), 3, 4.5, 0);
+    place(p(2), 4.2, 4.5);
+    const launchN = C.BASIC_ATTACKS[char].chain.length;
+    let lastHit = null;
+    for (let t = 0; t < 8000; t += TICK) {
+      Object.assign(p(1), { x: 3, y: 4.5 }); // 순간 베기로 필드 밖으로 나가지 않게 제자리
+      Object.assign(p(2), { x: p(1).x + 1.1, y: p(1).y }); // 상대가 계속 붙어 있다고 침 (최악)
+      p(2).z = Math.max(p(2).z, 0);
+      p(1).yaw = 0;
+      p(1).input = { fwd: 0, strafe: 0, jump: !!(lastHit && lastHit.n === launchN && !lastHit.air) };
+      g.handleAction(1, { name: 'push' });
+      g.handleAction(1, { name: 'skill' });
+      p(1).skillReadyAt = Math.min(p(1).skillReadyAt, g.time + 1000); // 쿨도 짧다고 침
+      g.tick(TICK);
+      for (const e of g.drainEvents()) if (e.type === 'hit' && e.by === 1 && e.n) lastHit = e;
+    }
+    const lens = lines.filter((l) => l.includes('[콤보] P1 → P2')).map((l) => Number(l.match(/(\d+)타/)[1]));
+    assert.ok(lens.length > 1, `${char}: 콤보가 끝나고 다시 시작`);
+    const set = C.BASIC_ATTACKS[char];
+    const bound = set.chain.length + set.air.length + 4; // 연타 전부 + 캔슬로 끼운 스킬 몇 번
+    assert.ok(Math.max(...lens) <= bound, `${char}: 최대 ${Math.max(...lens)}타 (상한 ${bound}) ${lens.join(',')}`);
+  }
+  // 스킬 타는 COMBO_MS 뒤 시간 마무리
+  const { g, p } = setupChars(['ninja', 'builder']);
+  place(p(2), 5, 5);
+  g.applyKnockback(p(2), 1, 0, 1, 0, 2000, 1, { by: 1, kind: 'push' });
+  run(g, C.COMBO_MS + TICK);
+  g.applyKnockback(p(2), 1, 0, 1, 0, 600, 1, { by: 1, kind: 'slash' });
+  assert.equal(p(2).comboHits, 0, '스킬은 시간 마무리');
+  // 연타 중인 평타는 아님
+  const q = setupChars(['ninja', 'builder']);
+  place(q.p(2), 5, 5);
+  q.g.applyKnockback(q.p(2), 1, 0, 1, 0, 2000, 1, { by: 1, kind: 'push' });
+  run(q.g, C.COMBO_MS + TICK);
+  q.g.applyKnockback(q.p(2), 1, 0, 1, 0, 600, 1, { by: 1, kind: 'push' }, false, { fixed: true, chained: true });
+  assert.equal(q.p(2).comboHits, 2, '연타 중 평타는 이어짐');
+});
+
+test('점프 선입력: 땅에서 누른 점프(action)는 JUMP_BUFFER_MS 동안 기억 — 멈칫 중에 짧게 눌러도 풀리면 뜀', () => {
+  const { g, p } = setupChars(['ninja', 'builder']);
+  place(p(1), 3, 4.5, 0);
+  place(p(2), 8.5, 8.5);
+  p(1).freezeUntil = g.time + 100; // 멈칫 중
+  p(1).input = { fwd: 0, strafe: 0, jump: false };
+  g.handleAction(1, { name: 'jump' });
+  run(g, 150);
+  assert.ok(p(1).z > 0.1 || p(1).vz > 0, `뜀 z=${p(1).z.toFixed(2)}`);
+  // 오래된 선입력은 버림
+  run(g, 1500);
+  p(1).freezeUntil = g.time + C.JUMP_BUFFER_MS + 100;
+  g.handleAction(1, { name: 'jump' });
+  run(g, C.JUMP_BUFFER_MS + 200);
+  assert.ok(p(1).z < 0.05, '버퍼 지나면 안 뜀');
+});
