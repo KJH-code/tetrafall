@@ -203,19 +203,32 @@ function handleEvent(e) {
       sound.play(ult ? 'boom' : 'swing', { dist: e.who === myId ? 0 : distToMe(a.x, a.y, a.z) });
       break;
     }
+    case 'attack': // 평타 준비 시작 → 몸 동작 (준비 자세가 상대가 읽는 예고)
+      renderer.attackStart(e);
+      break;
+    case 'swing': // 판정 순간 → 타격 자세 (나 포함)
+      renderer.attackSwing(e);
+      break;
+    case 'interrupt': // 내 공격이 맞아서 끊김: 글자 없이 몸 동작만
+      renderer.interrupt(e.who);
+      break;
     case 'blink': // 순간 베기·그림자 일격: 지나간 길에 베기 잔상
+      renderer.skillMove(e.who, 'ninjaSlash');
       fx.burst({ x: e.from.x, y: e.from.y, z: e.to.z + 0.8 }, null, 0x404060, 10, 2, 0.1, 0.4);
       fx.burst({ x: e.to.x, y: e.to.y, z: e.to.z + 0.8 }, null, 0x404060, 10, 2, 0.1, 0.4);
       renderer.trail({ x: e.from.x, y: e.from.y, z: e.to.z + 0.9 }, { x: e.to.x, y: e.to.y, z: e.to.z + 0.9 }, 0xffffff, 280);
       break;
     case 'charge': // 탱크 돌진: 가는 길에 흙먼지 줄
+      renderer.skillMove(e.who, 'tankCharge');
       renderer.trail({ x: e.x, y: e.y, z: e.z + 0.15 }, { x: e.x + Math.cos(e.yaw) * 3, y: e.y + Math.sin(e.yaw) * 3, z: e.z + 0.15 }, 0xc0a070, 400);
       fx.burst({ x: e.x, y: e.y, z: e.z + 0.2 }, null, 0xc0a070, 14, 3, 0.12, 0.5);
       break;
     case 'slamWarn': // 탱크 내려찍기: 떨어질 범위를 바닥에
+      renderer.skillMove(e.who, 'tankSlam', e.ms);
       renderer.markCircle(e.x, e.y, e.z, e.r, 0xff3020, e.ms);
       break;
     case 'slam': {
+      renderer.skillStrike(e.who, 'tankSlam');
       fx.ring({ x: e.x, y: e.y, z: e.z + 0.1 }, 0xc0b090, e.r * 2, 0.4, true);
       fx.burst({ x: e.x, y: e.y, z: e.z + 0.2 }, null, 0xc0b090, 28, 7, 0.14, 0.6);
       const me = playerById(myId);
@@ -223,16 +236,20 @@ function handleEvent(e) {
       break;
     }
     case 'wallWarn': // 건축가 솟는 벽: 솟을 자리를 노랗게
+      renderer.skillMove(e.who, 'builderWall', e.ms);
       renderer.markCells(e.cells, 0xffd23a, e.ms);
       break;
     case 'wallRise':
+      renderer.skillStrike(e.who, 'builderWall');
       for (const [x, y, z] of e.cells) if (z === Math.min(...e.cells.map((c) => c[2]))) fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.1 }, null, 0xa87448, 6, 3, 0.1, 0.4);
       sound.play('land', { dist: e.who === myId ? 0 : distToMe(e.cells[0][0], e.cells[0][1], e.cells[0][2]) });
       break;
     case 'rainWarn': // 블록 비: 떨어질 자리를 빨갛게
+      renderer.skillMove(e.who, 'builderRain');
       renderer.markCells(e.cells, 0xff2020, 900);
       break;
     case 'whirl':
+      renderer.skillMove(e.who, 'hookWhirl');
       fx.ring({ x: e.x, y: e.y, z: e.z + 0.3 }, 0x40d0c0, e.r * 2, 0.45, true);
       renderer.markCircle(e.x, e.y, e.z, e.r, 0x40d0c0, 350);
       break;
@@ -245,6 +262,7 @@ function handleEvent(e) {
       if (e.by === myId || e.target === myId) showCombo(e.n, e.target === myId, e.finish);
       break;
     case 'hook':
+      renderer.skillStrike(e.who, 'hookThrow');
       renderer.showHook(e.who, e.target, e.yaw);
       break;
     case 'zombie': // 블록 마스터: 죽어서 마스터 편
