@@ -312,6 +312,13 @@ function dressTank(fig, costume, cloth) {
   shield.position.set(-cR * d.depth - 0.04, 0, d.torso * 0.58);
   shield.rotation.y = 0.15; // 위가 살짝 뒤로
   fig.waist.add(shield);
+  // 앞 방패: 방패 동작(돌진·올려치기·내려치기) 동안만 등 대신 가슴 앞에 (figureAnim 이 바꿔 보임)
+  const front = shield.clone();
+  front.position.set(cR * d.depth + 0.12, 0, d.torso * 0.5);
+  front.rotation.y = -0.1;
+  front.visible = false;
+  fig.waist.add(front);
+  fig.shields = { back: shield, front };
 }
 
 // 천 자락 (목도리 끝·머리띠 끝·코트 자락): 붙는 점이 축, -z 로 매달림. 움직이면 뒤로 날리고 살랑임 (figureAnim)
@@ -564,7 +571,7 @@ function stepSway(sw, dt) {
 // 자세 칸: 허리 waistPitch(앞 숙임)·waistRoll(왼쪽으로 비틂 = 오른 어깨 앞)·waistSide, 고개 neckPitch,
 // 팔다리 [오른쪽, 왼쪽] (null = 그대로): shFwd(앞으로 듦)·shOut(옆으로 벌림)·elbow·thFwd·knee, crouch(0~1 두 무릎 굽힘)
 // spin: 타격~회복 동안 몸 전체를 도는 각 (라디안, +면 왼쪽으로). rec: 스킬처럼 서버 표에 회복 시간이 없을 때 (초)
-// turn: 타격 동안 몸을 그 각만큼 돌렸다가 회복 끝에 돌아옴. float: 다리를 앞으로 뻗어도 엉덩이를 바닥으로 안 내림 (날아가는 자세)
+// shield: 그 동작 동안 탱크 방패를 등에서 몸 앞으로. turn: 타격 동안 몸을 그 각만큼 돌렸다가 회복 끝에 돌아옴. float: 다리를 앞으로 뻗어도 엉덩이를 바닥으로 안 내림 (날아가는 자세)
 const R = (v) => [v, null]; // 오른팔(다리)만
 const L = (v) => [null, v]; // 왼팔(다리)만
 export const MOVES = {
@@ -577,11 +584,14 @@ export const MOVES = {
     W: { waistRoll: -0.9, waistPitch: 0.1, shFwd: [0.3, -0.4], elbow: [1.6, 1.4], crouch: 0.5 },
     S: { waistRoll: 0.5, waistPitch: 0.55, waistSide: -0.2, shFwd: [-0.3, 0.6], elbow: [1.3, 1.5], thFwd: [0.5, -0.4] },
   },
-  '방패 밀기': {
-    W: { waistPitch: -0.3, shFwd: [0.5, 0.5], shOut: [0.1, 0.1], elbow: [2.2, 2.2], crouch: 0.7 },
-    S: { waistPitch: 0.45, shFwd: [1.5, 1.5], shOut: [0.05, 0.05], elbow: [0.05, 0.05], thFwd: [0.6, -0.5] },
+  // 3타 방패 올려치기: 방패를 앞에 들고 웅크렸다가 위로 퍼 올림 (띄움, 마무리 아님)
+  '방패 올려치기': {
+    W: { crouch: 0.8, waistPitch: 0.55, shFwd: [0.8, 0.8], shOut: [0.15, 0.15], elbow: [1.7, 1.7], neckPitch: -0.3 },
+    S: { waistPitch: -0.55, shFwd: [2.5, 2.5], shOut: [0.2, 0.2], elbow: [0.5, 0.5], thFwd: [0.5, -0.3], neckPitch: -0.2 },
+    shield: true,
   },
-  '방패 내려치기': { W: { shFwd: [2.9, 2.9], elbow: [0.5, 0.5], waistPitch: -0.3 }, S: { shFwd: [0.7, 0.7], elbow: [0.1, 0.1], waistPitch: 0.7 } },
+  // 공중 방패 내려치기 (마무리): 방패를 머리 위로 → 아래로 쾅
+  '방패 내려치기': { W: { shFwd: [2.9, 2.9], elbow: [0.5, 0.5], waistPitch: -0.3 }, S: { shFwd: [0.7, 0.7], elbow: [0.1, 0.1], waistPitch: 0.7 }, shield: true },
 
   // 닌자: 단검·발 섞인 빠른 연타. 찌르기 → 반대 찌르기 → 앞차기 → 올려 차기(크게, 띄움) / 공중 베기 → 내려 차기
   '찌르기': { W: { shFwd: R(0.0), shOut: R(0.8), elbow: R(2.1), waistRoll: -0.45, waistSide: 0.12, crouch: 0.35 }, S: { shFwd: R(1.6), elbow: R(0), waistRoll: 0.35, waistPitch: 0.25 } },
@@ -620,7 +630,8 @@ export const MOVES = {
 
   // ---- 스킬·필살기 ----
   // 탱크 돌진: 어깨를 앞으로 숙이고 돌진 (판정이 바로라 준비 없음)
-  tankCharge: { S: { waistPitch: 0.6, waistRoll: 0.6, shFwd: [-0.2, 0.7], elbow: [1.4, 1.6], thFwd: [0.7, -0.5], knee: [0.6, 0.3] }, rec: 0.5 },
+  // 탱크 F 방패 돌진: 방패를 앞세우고 몸을 숙여 돌진 (두 팔로 방패를 받침)
+  tankCharge: { S: { waistPitch: 0.55, shFwd: [1.1, 1.1], shOut: [0.1, 0.1], elbow: [1.6, 1.6], thFwd: [0.8, -0.5], knee: [0.7, 0.3], neckPitch: -0.4 }, rec: 0.5, shield: true },
   // 탱크 내려찍기: 두 팔 번쩍 들고 떠올랐다가 (slamWarn) → 쾅 (slam)
   tankSlam: {
     W: { shFwd: [3.0, 3.0], shOut: [0.3, 0.3], elbow: [0.4, 0.4], waistPitch: -0.35, thFwd: [0.9, 0.9], knee: [1.4, 1.4] },
@@ -665,6 +676,14 @@ function overlay(P, T, pose, w) {
   }
 }
 
+// 자세 값이 다 정상인지 (NaN·무한대 없음)
+function poseOk(P) {
+  for (const v of Object.values(P)) {
+    if (Array.isArray(v) ? !v.every(Number.isFinite) : !Number.isFinite(v)) return false;
+  }
+  return true;
+}
+
 // 0~1 → 부드럽게
 const ease = (u) => {
   const x = Math.max(0, Math.min(1, u));
@@ -675,12 +694,21 @@ const ease = (u) => {
 //       hit(맞은 것: { id, age 초, stop 히트스톱 초, dx, dy 밀린 방향(몸 기준), pow 세기 } 또는 null),
 //       tumble(0~1 구르는 중), recover(0~1 일어나는 중), land(0~1 착지 무릎), flip(0~1 2단 점프 공중제비 중, 아니면 -1),
 //       act(공격 동작: { id, move(MOVES 이름), phase 'wind'|'strike'|'rec'|'broken', u 0~1 } 또는 null) }
-export function figureAnim(fig, st, dt) {
+export function figureAnim(fig, st, dt, retry = false) {
   const d = fig.d;
   const T = restPose(d);
+  // 안전장치: 이상한 값(NaN·무한대)이 들어온 맞음·공격은 버림 (한 번 들어가면 자세에 영영 남아 몸이 무너짐)
+  const finite = (...v) => v.every(Number.isFinite);
+  st = { ...st };
+  for (const k of ['hs', 'walk', 't', 'tumble', 'recover', 'land', 'punch', 'emoteT']) if (!finite(st[k] ?? 0)) st[k] = 0;
+  if (!finite(st.flip ?? -1)) st.flip = -1;
   const t = st.t;
-  const hit = st.hit;
+  const hit = st.hit && finite(st.hit.dx, st.hit.dy, st.hit.pow, st.hit.age, st.hit.stop) ? st.hit : null;
+  if (st.act && !(finite(st.act.u) && MOVES[st.act.move] !== undefined)) st.act = null;
+  if (!finite(dt) || dt < 0) dt = 0;
   const sw = fig.sway || (fig.sway = { x: 0, y: 0, vx: 0, vy: 0, id: null });
+  if (!finite(sw.x, sw.y, sw.vx, sw.vy)) Object.assign(sw, { x: 0, y: 0, vx: 0, vy: 0 });
+  if (fig.pose && !poseOk(fig.pose)) fig.pose = null; // 깨진 자세는 버리고 기본 자세부터
   if (hit && hit.id !== sw.id) {
     // 새로 맞음: 밀린 쪽으로 꺾인 채 시작 (멈칫 뒤 그쪽으로 튕김)
     sw.id = hit.id;
@@ -847,6 +875,11 @@ export function figureAnim(fig, st, dt) {
     if (m.turn && (act.phase === 'strike' || act.phase === 'rec')) spin = m.turn * (act.phase === 'strike' ? ease(act.u) : 1 - ease((act.u - 0.6) / 0.4)); // 옆으로 돌았다가 회복 끝에 돌아옴
   }
   fig.hips.rotation.z = spin;
+  if (fig.shields) {
+    const front = !!act && !!MOVES[act.move].shield && act.phase !== 'broken';
+    fig.shields.front.visible = front;
+    fig.shields.back.visible = !front;
+  }
 
   // 땅에 있으면 더 뻗은 다리의 발이 바닥에 닿게 엉덩이를 내림 (무릎 굽히면 주저앉음, 걸으면 자연히 오르내림)
   let drop = 0;
@@ -857,6 +890,13 @@ export function figureAnim(fig, st, dt) {
       reach = Math.max(reach, (d.thigh * Math.cos(P.thFwd[i]) + d.shin * Math.cos(P.thFwd[i] - P.knee[i])) * Math.cos(P.thOut[i]));
     }
     drop = Math.max(0, d.thigh + d.shin - reach);
+  }
+  if (!poseOk(P) || !Number.isFinite(drop) || !Number.isFinite(spin)) {
+    // 그래도 깨졌으면 이번 프레임은 기본 자세로 (다음 프레임은 깨끗한 자세부터)
+    fig.pose = restPose(d);
+    Object.assign(sw, { x: 0, y: 0, vx: 0, vy: 0 });
+    if (!retry) return figureAnim(fig, { ...st, act: null, hit: null, walking: false, air: false }, 0, true);
+    return;
   }
   fig.hips.position.z = d.foot + d.shin + d.thigh + P.hipsZ - drop;
   fig.waist.rotation.y = P.waistPitch + sw.x;

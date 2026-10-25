@@ -146,7 +146,7 @@ export function playerColor(p, state) {
   return PLAYER_COLORS[p.slot % PLAYER_COLORS.length];
 }
 const _q = new THREE.Quaternion();
-const HEAVY_HITS = new Set(['bomb', 'shock', 'projectile', 'slam', 'whirl', 'wall', 'blast', 'bigbomb']); // 몸이 크게 휘청하는 공격
+const HEAVY_HITS = new Set(['bomb', 'shock', 'projectile', 'slam', 'whirl', 'wall', 'blast', 'bigbomb', 'quake']); // 몸이 크게 휘청하는 공격
 const MAX_CELLS = C.GRID_W * C.GRID_D * C.GRID_H;
 
 export class Renderer {
@@ -316,6 +316,10 @@ export class Renderer {
     this.bbGhosts = []; // 연쇄로 아직 안 터진 칸 { x, y, z, color, at }
     this.bbGeo = new THREE.BoxGeometry(1, 1, 1);
     this.bbStrapMat = toon({ color: 0x3a3a44 });
+    this.quakes = []; // 탱크 R 솟는 땅: { cells, t0, sinkAt, meshes }
+    this.armorUntil = new Map(); // 탱크 아머 중 (id → 끝 시각): 몸이 금속처럼 번쩍
+    this.armorHitAt = new Map(); // 아머로 버틴 시각 (그 타는 안 휘청)
+    this.armorBreakAt = new Map(); // 아머가 깨진 시각 (그 타는 크게 휘청)
     this.acts = new Map(); // 공격 동작 (id → { id, move, t0, windup 초, struck 판정 시각, rec 초, broken 끊긴 시각 })
     this.hitSeq = 0;
     this.itemMeshes = [];
@@ -540,7 +544,13 @@ export class Renderer {
     parts.position.z = -C.PLAYER_HEIGHT / 2 + (walking && !jointed ? Math.abs(step) * C.ANIM_BOB : 0);
     g.userData.feet.forEach((f, i) => (f.position.x = f.userData.baseX + (i ? -step : step) * C.ANIM_STEP));
     // 경직된 채 빠르게 날아가면 뒤로 구름. 끝나면 가장 가까운 바로 선 자세로 돌아옴
-    if (fig) this.figureFlight(a, s, p, air, vx, vy, dt);
+    if (fig) {
+      this.figureFlight(a, s, p, air, vx, vy, dt);
+      // 안전장치: 구르기·공중제비 각이 깨지면 바로 선 자세로
+      if (!Number.isFinite(a.spin)) a.spin = 0;
+      if (!Number.isFinite(a.flipAngle)) a.flipAngle = 0;
+      if (a.tumbleAxis && ![a.tumbleAxis.x, a.tumbleAxis.y, a.tumbleAxis.z].every(Number.isFinite)) a.tumbleAxis.set(0, 1, 0);
+    }
     else if (p.stunned && a.hs > C.ANIM_TUMBLE_MIN_SPEED) a.spin -= dt * C.ANIM_TUMBLE_SPEED;
     else a.spin += (Math.round(a.spin / (Math.PI * 2)) * Math.PI * 2 - a.spin) * (1 - Math.exp(-C.ANIM_SMOOTH * dt));
     const lean = Math.min(1, a.hs / C.MOVE_SPEED) * C.ANIM_LEAN;
@@ -632,6 +642,17 @@ export class Renderer {
     const now = performance.now();
     const finish = now - (this.finishAt.get(id) || -1e9) < 200;
     const counter = now - (this.counterAt.get(id) || -1e9) < 200;
+    // 탱크 아머: 버틴 타는 얼굴만 찡그리는 정도, 깨진 타는 크게 (같은 틱에 armor·armorBreak 가 hit 보다 먼저 옴)
+    if (now - (this.armorHitAt.get(id) || -1e9) < 200) {
+      this.hits.set(id, { id: ++this.hitSeq, t0: now, stop: 0, dir, pow: C.FIGURE_HIT_ARMOR });
+      return;
+    }
+    if (now - (this.armorBreakAt.get(id) || -1e9) < 200) {
+      this.hits.set(id, { id: ++this.hitSeq, t0: now, stop: (C.HITSTOP_MS * 1.5) / 1000, dir, pow: C.FIGURE_HIT_ARMOR_BREAK });
+      const a = this.acts.get(id);
+      if (a && !a.broken) this.acts.delete(id);
+      return;
+    }
     const pow = Math.min(3, (finish ? C.FIGURE_HIT_FINISH : heavy || crit || HEAVY_HITS.has(kind) ? C.FIGURE_HIT_HEAVY : 1) * (counter ? C.FIGURE_HIT_COUNTER : 1)); // 마무리 + 카운터가 겹쳐도 몸이 뒤집히지 않게
     const stop = (C.HITSTOP_MS * (crit ? C.CRIT_HITSTOP_MULT : 1)) / 1000;
     this.hits.set(id, { id: ++this.hitSeq, t0: now, stop, dir, pow });
@@ -650,7 +671,9 @@ export class Renderer {
     const set = C.BASIC_ATTACKS?.[e.char];
     const def = set ? (e.air ? set.air : set.chain)[e.n - 1] : null; // 공중 평타도 1타부터 (air 는 배열)
     const move = e.char === 'hook' && e.name === '주먹' ? 'hook:주먹' : MOVES[e.name] ? e.name : 'punch';
-    this.acts.set(e.who, { id: ++this.hitSeq, move, t0: performance.now(), windup: (e.windup || 0) / 1000, struck: null, rec: (def ? def.rec : 300) / 1000, broken: 0 });
+    // 표에서 못 찾거나 이상한 값이면 기본값 (NaN 이 동작에 들어가면 몸이 무너짐)
+    const ms = (v, dflt) => (Number.isFinite(v) && v >= 0 ? v : dflt) / 1000;
+    this.acts.set(e.who, { id: ++this.hitSeq, move, t0: performance.now(), windup: ms(e.windup, 0), struck: null, rec: ms(def?.rec, 300), broken: 0 });
   }
 
   // swing 이벤트: 판정 순간 → 타격 자세. 준비 없이 온 것(캐릭터 없는 밀치기)은 바로 타격
@@ -696,6 +719,8 @@ export class Renderer {
       this.acts.delete(id);
       return null;
     };
+    // 안전장치: 시간 값이 이상하거나 너무 오래 남은 동작은 버림 (끝나지 않는 동작이 자세를 붙잡지 않게)
+    if (![a.windup, a.rec].every((v) => Number.isFinite(v) && v >= 0) || a.rec <= 0 || now - a.t0 > C.FIGURE_ACT_MAX_S * 1000) return done();
     if (a.broken) {
       const u = (now - a.broken) / 1000 / C.FIGURE_BROKEN_S;
       return u >= 1 ? done() : { id: a.id, move: a.move, phase: 'broken', u };
@@ -709,6 +734,71 @@ export class Renderer {
     if (s < C.FIGURE_STRIKE_S) return { id: a.id, move: a.move, phase: 'strike', u: s / C.FIGURE_STRIKE_S };
     const r = (s - C.FIGURE_STRIKE_S) / a.rec;
     return r >= 1 ? done() : { id: a.id, move: a.move, phase: 'rec', u: r };
+  }
+
+  // ---------- 탱크 ----------
+  // 아머 구간 (charge: 돌진 동안, slamWarn ~ slam: 떠오르는 동안)
+  armorOn(id, ms) {
+    this.armorUntil.set(id, performance.now() + ms);
+  }
+
+  armorOff(id) {
+    this.armorUntil.delete(id);
+  }
+
+  // armor 이벤트: 아머로 버팀 → 이 타는 안 휘청, 몸이 순간 하얗게
+  armorHit(id) {
+    this.armorHitAt.set(id, performance.now());
+  }
+
+  // armorBreak 이벤트: 아머 깨짐 → 이 타는 크게 휘청, 금속 빛 끝
+  armorBreak(id) {
+    this.armorBreakAt.set(id, performance.now());
+    this.armorUntil.delete(id);
+  }
+
+  // quakeRise: 고리 모양 땅이 솟음 (격자에선 빼고 흙 블록으로 솟는 연출), quakeFall: 가라앉음
+  quakeRise(cells) {
+    if (!this.quakeMat) this.quakeMat = toon({ color: C.QUAKE_COLOR, map: this.tex.stone });
+    const meshes = cells.map(([x, y, z]) => {
+      const m = new THREE.Mesh(this.bbGeo, this.quakeMat);
+      m.castShadow = m.receiveShadow = true;
+      m.userData.cell = [x, y, z];
+      this.scene.add(m);
+      return m;
+    });
+    this.quakes.push({ cells, t0: performance.now(), sinkAt: 0, meshes });
+  }
+
+  quakeFall(cells) {
+    const key = (c) => c.join(',');
+    const gone = new Set(cells.map(key));
+    for (const q of this.quakes) if (!q.sinkAt && q.cells.some((c) => gone.has(key(c)))) q.sinkAt = performance.now();
+  }
+
+  updateQuakes() {
+    if (!this.quakes.length) return;
+    const now = performance.now();
+    this.quakes = this.quakes.filter((q) => {
+      let h; // 땅 위로 나온 높이 비율 (0~1)
+      if (q.sinkAt) {
+        const u = (now - q.sinkAt) / C.QUAKE_SINK_MS;
+        if (u >= 1) {
+          for (const m of q.meshes) this.scene.remove(m);
+          return false;
+        }
+        h = 1 - u * u;
+      } else {
+        const u = Math.min(1, (now - q.t0) / C.QUAKE_RISE_MS);
+        h = u < 1 ? 1 + 0.3 * Math.sin(Math.PI * u) - (1 - u) ** 2 : 1;
+      }
+      const shake = q.sinkAt ? 0.03 : 0;
+      for (const m of q.meshes) {
+        const [x, y, z] = m.userData.cell;
+        m.position.set(x + 0.5 + (Math.random() - 0.5) * shake, y + 0.5 + (Math.random() - 0.5) * shake, z - 0.5 + h);
+      }
+      return true;
+    });
   }
 
   // 닌자 표창 (star 이벤트, 한 발마다): 첫 발은 오른손·둘째 발은 왼손으로 던지는 자세 + 아주 빠르게 직진하는 표창 (판정은 즉시)
@@ -787,6 +877,10 @@ export class Renderer {
       const sn = Math.sin(p.yaw);
       dx = c * h.dir.x + sn * h.dir.y;
       dy = -sn * h.dir.x + c * h.dir.y;
+    }
+    if (![dx, dy, h.pow, h.stop].every(Number.isFinite)) {
+      this.hits.delete(p.id); // 이상한 방향·세기는 버림
+      return null;
     }
     return { id: h.id, age, stop: h.stop, dx, dy, pow: h.pow };
   }
@@ -1016,10 +1110,12 @@ export class Renderer {
   // 같은 묶음(같은 F 의 벽 등) 이웃 칸은 위를 쇠 띠로 이음 (연쇄가 어디까지 번지는지 보이게), 대폭발 블록은 빨갛게 부풀며 째깍
   updateBBlocks(state) {
     const list = state.bblocks || [];
-    const sig = list.map((b) => `${b.x},${b.y},${b.z},${b.kind}`).join('|');
+    const quakeCells = this.quakes.filter((q) => !q.sinkAt).flatMap((q) => q.cells);
+    const sig = list.map((b) => `${b.x},${b.y},${b.z},${b.kind}`).join('|') + '#' + quakeCells.join('|');
     if (sig !== this.bbSig) {
       this.bbSig = sig;
-      this.bbSkip = new Set(list.map((b) => (b.z * C.GRID_D + b.y) * C.GRID_W + b.x));
+      // 건축가 블록·탱크 솟는 땅은 격자에선 빼고 따로 그림
+      this.bbSkip = new Set([...list.map((b) => [b.x, b.y, b.z]), ...quakeCells].map(([x, y, z]) => (z * C.GRID_D + y) * C.GRID_W + x));
       if (state.grid) this.updateGrid(state.grid);
     }
     const now = performance.now();
@@ -1224,6 +1320,12 @@ export class Renderer {
       const glowing = now < (g.userData.glowUntil || 0);
       for (const m of g.userData.mats) if (m.emissive && m !== bodyMat) m.emissive.setHex(glowing ? g.userData.glowColor : 0x000000);
       if (glowing) bodyMat.emissive.setHex(g.userData.glowColor);
+      if (now < (this.armorUntil.get(p.id) || 0)) {
+        // 탱크 아머: 온몸(옷 포함)이 금속처럼 번쩍 (빛이 훑고 지나가듯 밝기가 출렁), 버틴 순간엔 하얗게
+        const hitFlash = now - (this.armorHitAt.get(p.id) || -1e9) < 90;
+        const c = new THREE.Color(C.ARMOR_SHINE).multiplyScalar(0.5 + 0.5 * Math.abs(Math.sin(now / 70)));
+        for (const m of g.userData.mats) if (m.emissive) m.emissive.copy(hitFlash ? new THREE.Color(0xffffff) : c);
+      }
       if (now < (g.userData.sparkUntil || 0) && Math.random() < dt * 40) {
         const a = Math.random() * Math.PI * 2;
         this.effects.burst({ x: s.x + Math.cos(a) * 0.45, y: s.y + Math.sin(a) * 0.45, z: s.z + Math.random() * 1.2 }, { x: 0, y: 0, z: 1 }, g.userData.glowColor, 1, 1.5, 0.06, 0.5);
@@ -1387,6 +1489,7 @@ export class Renderer {
     this.updateBombs(state.bombs || []);
     this.updateBBlocks(state);
     this.updateStars();
+    this.updateQuakes();
     this.updateBeams(state);
     if (me) this.viewArm.material.color.setHex(playerColor(me, state));
     const vp = this.effects.punchAmount(myId);
