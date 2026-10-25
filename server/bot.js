@@ -169,7 +169,7 @@ export class BotBrain {
     const target = this.nearest(p, enemies);
 
     // 2.5) 캐릭터 스킬·필살기 (캐릭터가 없는 게임은 건너뜀 → 난수 순서도 그대로)
-    if (target && p.char && g.time >= this.nextSkillAt && this.useSkills(g, p, target, enemies)) {
+    if (target && p.char && g.time >= this.nextSkillAt && this.useSkills(g, p, target, enemies, avoid)) {
       this.nextSkillAt = g.time + this.k('SKILL_INTERVAL_MS') * (0.7 + 0.6 * this.rng());
       return;
     }
@@ -321,7 +321,14 @@ export class BotBrain {
   }
 
   // 캐릭터마다 간단한 규칙. 썼으면 true
-  useSkills(g, p, t, enemies) {
+  // 돌진·순간 베기 길(보는 방향 len 칸)이 피할 칸(떨어지는 블록 그림자·폭탄)을 지나가나.
+  // 2026-10-25 재혁 로그 4판: 봇이 설치 블록을 던지고 그 착지 자리로 돌진해 자기 블록에 깔림
+  pathHits(p, yaw, len, cells) {
+    for (let d = 0; d <= len + 1e-9; d += 0.25) if (overlapsCells({ x: p.x + Math.cos(yaw) * d, y: p.y + Math.sin(yaw) * d }, cells)) return true;
+    return false;
+  }
+
+  useSkills(g, p, t, enemies, avoid = []) {
     const dist = Math.hypot(t.x - p.x, t.y - p.y);
     const ultReady = p.ult >= C.ULT_MAX;
     const skillReady = g.time >= p.skillReadyAt;
@@ -340,7 +347,8 @@ export class BotBrain {
     const level = Math.abs(t.z - p.z) < 1;
     if (p.char === 'tank') {
       if (ultReady && near(C.TANK_SLAM_RANGE * 0.9).length) return act('ult');
-      if (skillReady && level && dist >= 1 && dist <= C.TANK_CHARGE_SPEED * (C.TANK_CHARGE_MS / 1000)) {
+      const reach = C.TANK_CHARGE_SPEED * (C.TANK_CHARGE_MS / 1000);
+      if (skillReady && level && dist >= 1 && dist <= reach && !this.pathHits(p, Math.atan2(t.y - p.y, t.x - p.x), Math.min(reach, dist + 0.5), avoid)) {
         face(); // 돌진
         return act('skill');
       }
@@ -350,6 +358,7 @@ export class BotBrain {
         const yaw = Math.atan2(t.y - p.y, t.x - p.x);
         const land = Math.min(C.NINJA_BLINK_DIST, dist + C.NINJA_STRIKE_BEHIND); // 상대 바로 뒤에서 멈춤
         if (edgeDist(p.x + Math.cos(yaw) * land, p.y + Math.sin(yaw) * land) < 0.8) return false; // 떨어질 자리로는 안 감
+        if (this.pathHits(p, yaw, land, avoid)) return false; // 블록 그림자로는 안 감
         face();
         return act('skill');
       }

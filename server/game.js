@@ -36,7 +36,15 @@ export class Game {
   // countdownMs: 판 시작 전 카운트다운. 서버는 C.ROUND_COUNTDOWN_MS, 테스트는 기본 0 (바로 시작)
   // characters: 캐릭터(패시브·스킬·필살기)를 쓸지. 서버(방)는 켬, 예전 규칙 테스트는 끔 (모두 캐릭터 없음 = 예전 그대로)
   constructor(log = () => {}, { countdownMs = 0, characters = false } = {}) {
-    this.log = log;
+    // 콤보 마무리 줄은 그 타의 [평타]·[돌진] 줄 다음에 찍히게 미뤄 둠 (다음 로그 줄 뒤, 또는 틱 시작에)
+    this.pendingLogs = [];
+    this.log = (m) => {
+      log(m);
+      this.flushLogs();
+    };
+    this.flushLogs = () => {
+      while (this.pendingLogs.length) log(this.pendingLogs.shift());
+    };
     this.countdownMs = countdownMs;
     this.characters = characters;
     this.rng = Math.random;
@@ -1624,6 +1632,19 @@ export class Game {
     const fixed = opts.fixed && !finisher;
     if (!fixed) speed *= finisher ? C.COMBO_FINISH_KB : heavy ? 1 : C.COMBO_LIGHT_KB;
     if (!teammate && t.comboHits >= 2 && src) this.emit({ type: 'combo', by: src.by, target: t.id, n: t.comboHits, finish: finisher });
+    // 맞아서 끊긴 공격: 쿨타임·게이지를 돌려주고 interrupt 이벤트 (화면에서 끊긴 모션)
+    if (t.atk) {
+      this.emit({ type: 'interrupt', who: t.id, kind: 'basic', n: t.atk.n });
+      t.pushReadyAt = this.time; // 안 나간 평타는 후딜 없음
+    }
+    if (this.time < t.chargeUntil) {
+      this.emit({ type: 'interrupt', who: t.id, kind: 'skill' });
+      t.skillReadyAt = this.time; // 아무도 못 친 돌진은 쿨타임 안 씀
+    }
+    if (t.slamAt) {
+      this.emit({ type: 'interrupt', who: t.id, kind: 'ult' });
+      t.ult = C.ULT_MAX; // 준비 중에 끊긴 내려찍기는 게이지 돌려줌
+    }
     t.emoteUntil = 0; // 맞으면 이모트 끊김
     t.chargeUntil = 0; // 맞으면 돌진·내려찍기 끊김
     t.slamAt = 0;
@@ -1653,9 +1674,10 @@ export class Game {
     return true;
   }
 
-  // 공격 동작 중 (카운터히트 대상): 평타 준비·후딜 (망치 쿨 포함), 돌진 중, 내려찍기·솟는 벽·회오리 준비. 걷기·점프만은 아님
+  // 카운터히트 대상 (2026-10-25 재혁 결정, 첫 사람 플레이테스트: 1:1 에서 동시에 누르면 거의 다 카운터였음):
+  // 빗나간 평타(망치 포함)의 후딜, 돌진 중, 내려찍기·솟는 벽·회오리 준비. 평타 준비 중·맞힌 평타의 후딜·걷기·점프는 아님
   busy(t) {
-    return !!(t.atk || this.time < t.pushReadyAt || this.time < t.chargeUntil || t.slamAt || t.wallAt || t.whirlAt);
+    return !!((this.time < t.pushReadyAt && !t.atk && !t.atkLanded) || this.time < t.chargeUntil || t.slamAt || t.wallAt || t.whirlAt);
   }
 
   // 공격이 안 들어가는 상태: 콤보 뒤 무적·부활 무적. 경직이 이미 풀린 콤보는 여기서 먼저 끝냄
@@ -1667,7 +1689,11 @@ export class Game {
 
   // 콤보 끝: 그때부터 COMBO_IFRAME_MS 무적 (마지막 타는 경직이 끝날 때까지 + 무적)
   endCombo(t, from = this.time, finished = false) {
-    if (t.comboHits >= 2) this.log(`  [콤보] ${[...(t.comboBy || [])].join('+') || '?'} → ${t.name} ${t.comboHits}타${finished ? ' 마무리' : ''}`); // 때린 사람 여럿이면 P1+P3
+    if (t.comboHits >= 2) {
+      const line = `  [콤보] ${[...(t.comboBy || [])].join('+') || '?'} → ${t.name} ${t.comboHits}타${finished ? ' 마무리' : ''}`; // 때린 사람 여럿이면 P1+P3
+      if (finished) this.pendingLogs.push(line); // 마무리 타는 그 공격 줄 뒤에
+      else this.log(line);
+    }
     t.comboHits = 0;
     t.iframeUntil = from + C.COMBO_IFRAME_MS;
   }
@@ -2478,6 +2504,7 @@ export class Game {
 
   // ---------- 틱 ----------
   tick(dtMs) {
+    this.flushLogs();
     this.time += dtMs;
     if (this.phase === 'countdown' && this.time >= this.countdownEndsAt) this.beginPlay();
     if (this.phase !== 'playing') return;

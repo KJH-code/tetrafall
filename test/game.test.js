@@ -254,6 +254,7 @@ test('콤보 (2026-10-25): 타 수 상한 없이, 첫 타에서 COMBO_MS 가 지
   assert.ok(at[n - 2] < C.COMBO_MS && at[n - 1] >= C.COMBO_MS, `COMBO_MS 가 지난 첫 타가 마무리: ${at.map(Math.round)}`);
   assert.ok(kb[n - 1] > kb[n - 2] * (C.COMBO_FINISH_KB / C.COMBO_LIGHT_KB) * 0.99, `마지막 타가 크게: ${kb.map((v) => v.toFixed(2))}`);
   assert.ok(p2.iframeUntil >= p2.stunUntil + C.COMBO_IFRAME_MS - 1, '마지막 타 경직 + 무적');
+  g.flushLogs(); // 마무리 줄은 그 공격 줄 다음(또는 다음 틱)에 찍힘
   assert.ok(lines.includes(`  [콤보] P1+P3 → P2 ${n}타 마무리`) || lines.includes(`  [콤보] P3+P1 → P2 ${n}타 마무리`), lines.join('\n'));
   assert.equal(g.applyKnockback(p2, 1, 0, C.PUSH_KB_SPEED, 3, C.STUN_MS, 10, { by: 1, kind: 'push' }), false, '마무리 뒤엔 무적이라 안 들어감');
   run(g, p2.iframeUntil - g.time + 1);
