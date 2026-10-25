@@ -1665,16 +1665,30 @@ export class Game {
     return best;
   }
 
-  // 보는 방향 수평으로 HOOK_RANGE 안 첫 블록 (격자 칸 또는 떨어지는 블록, 바닥은 아님). { x, y, z, d } 또는 null
-  hookRayBlock(p, yaw = p.yaw) {
+  // 갈고리가 닿는 첫 블록 (격자 칸 또는 떨어지는 블록, 필드 바닥은 아님). { x, y, z, d(수평 거리) } 또는 null.
+  // 조준 방향(yaw + pitch) 3D 직선을 눈 높이에서 HOOK_RANGE 만큼. 놓치면 보조로 발 층·한 칸 위 층을 수평으로
+  // (2026-10-25 버그: 수평 한 층만 봐서 땅 위 1칸 높이 블록이 안 잡혀 R 이 거의 안 써졌음)
+  hookRayBlock(p, yaw = p.yaw, pitch = p.pitch || 0) {
+    const solid = (x, y, z) => z >= 0 && z < C.GRID_H && ((inXY(x, y) && this.grid[this.idx(x, y, z)]) || this.pieceCells.has(cellKey(x, y, z)));
+    const cp = Math.cos(pitch);
+    const dir = { x: Math.cos(yaw) * cp, y: Math.sin(yaw) * cp, z: Math.sin(pitch) };
+    const eye = { x: p.x, y: p.y, z: p.z + C.EYE_HEIGHT };
+    for (let d = 0; d <= C.HOOK_RANGE + 1e-9; d += 0.05) {
+      const px = eye.x + dir.x * d;
+      const py = eye.y + dir.y * d;
+      const pz = eye.z + dir.z * d;
+      if (pz < 0 && inXY(Math.floor(px), Math.floor(py))) break; // 필드 바닥에 닿음
+      const x = Math.floor(px);
+      const y = Math.floor(py);
+      const z = Math.floor(pz);
+      if (solid(x, y, z)) return { x, y, z, d: Math.hypot(px - p.x, py - p.y) };
+    }
     const fx = Math.cos(yaw);
     const fy = Math.sin(yaw);
-    const z = Math.floor(p.z + C.HOOK_RAY_HEIGHT);
     for (let d = C.PLAYER_HALF; d <= C.HOOK_RANGE + 1e-9; d += 0.1) {
       const x = Math.floor(p.x + fx * d);
       const y = Math.floor(p.y + fy * d);
-      if (z < 0 || z >= C.GRID_H) return null;
-      if ((inXY(x, y) && this.grid[this.idx(x, y, z)]) || this.pieceCells.has(cellKey(x, y, z))) return { x, y, z, d };
+      for (const z of [Math.floor(p.z + 0.05), Math.floor(p.z + 0.05) + 1]) if (solid(x, y, z)) return { x, y, z, d };
     }
     return null;
   }

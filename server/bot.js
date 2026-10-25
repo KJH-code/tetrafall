@@ -148,7 +148,7 @@ export class BotBrain {
     // 0.5) 복귀: 필드 밖으로 떨어지는 중이면 공중 F 를 쓰고 안쪽으로 (건축가 발판 + 부스트, 닌자 순간 베기 → 막히면 벽 차기,
     // 갈고리는 안쪽 방향에 걸 블록이 있을 때만)
     const toCenter = Math.atan2(D / 2 - p.y, W / 2 - p.x);
-    if ((p.char === 'builder' || p.char === 'ninja' || (p.char === 'hook' && g.hookRayBlock(p, toCenter))) && !p.grounded && p.vz < 0 && p.z < -0.3 && g.time >= p.skillReadyAt && g.time >= p.stunUntil) {
+    if ((p.char === 'builder' || p.char === 'ninja' || (p.char === 'hook' && g.hookRayBlock(p, toCenter, 0))) && !p.grounded && p.vz < 0 && p.z < -0.3 && g.time >= p.skillReadyAt && g.time >= p.stunUntil) {
       this.moveTo(g, p, { x: W / 2, y: D / 2 });
       g.handleInput(p.id, this.input);
       g.handleAction(p.id, { name: 'skill' });
@@ -421,7 +421,7 @@ export class BotBrain {
     } else if (p.char === 'hook') {
       // R 블록 내려찍기: 상대 쪽으로 블록이 닿고 상대가 내려찍는 직선 안이면
       const yawT = Math.atan2(t.y - p.y, t.x - p.x);
-      if (ultReady && dist <= C.HOOK_SLAM_LEN && Math.abs(t.z - p.z) < 1.5 && g.hookRayBlock(p, yawT)) {
+      if (ultReady && dist <= C.HOOK_SLAM_LEN && Math.abs(t.z - p.z) < 1.5 && g.hookRayBlock(p, yawT, 0)) {
         face();
         return act('ult');
       }
