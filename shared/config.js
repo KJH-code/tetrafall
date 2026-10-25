@@ -77,15 +77,10 @@ export const CONFIG = {
 
   // ---- 아이템 (조종권 제외) — 2단계 ----
   // 필드에 동시에 ITEM_MAX_ON_FIELD 개까지. 종류는 ITEM_POOL 에서 무작위
-  ITEM_POOL: ['knockback', 'weapon', 'jump', 'ghost', 'brick', 'bomb', 'speed'],
+  ITEM_POOL: ['knockback', 'jump', 'ghost', 'brick', 'bomb', 'speed'], // 2026-10-25 재혁: 망치 아이템 뺌 ("개사기", 망치 모양은 건축가 무기로)
   ITEM_MAX_ON_FIELD: 2,
   ITEM_FIRST_SPAWN_MS: 4000, // 판 시작 후 첫 아이템
   ITEM_RESPAWN_MS: 6000, // 다음 아이템까지
-  // 망치(근접 무기): WEAPON_USES 번 맞힐 동안 밀치기 대신. 넉백 2배 + 경직 길게. 빗나가면 소모 안 함 (2026-10-20 재혁)
-  WEAPON_USES: 3,
-  WEAPON_KB_SPEED: 8.4, // 밀치기(4.2)의 2배 → 약 3칸
-  WEAPON_KB_UP: 4,
-  WEAPON_STUN_MS: 1200,
   // 점프력 상승: 최고 높이 약 2.33칸 (2칸 벽은 넘고 3칸은 못 넘음, 30Hz 실측)
   JUMP_BOOST_MS: 8000,
   JUMP_BOOST_SPEED: 10,
@@ -105,8 +100,8 @@ export const CONFIG = {
   EMOTE_PICK_PX: 30,
   EMOTE_CLIPS: ['Wave', 'Dance', 'Yes', 'No'], // 로봇 모델에서 이모트마다 쓰는 동작 (손 흔들기·춤·웃기(끄덕끄덕)·도발(고개 젓기)) // 바퀴 메뉴: 마우스를 이만큼(px) 움직여야 고른 것으로 침
   // 손에 드는 아이템은 하나만 (2026-10-24 재혁: 핫바·쌓기 블록 없앰). 들고 있으면 다른 손 아이템은 못 주움 (필드에 남음).
-  // 우클릭으로 씀 (투사체·설치 블록·폭탄), 망치는 좌클릭 밀치기 대신. 버프(점프·유령·이속)는 먹자마자 효과라 따로
-  HELD_ITEMS: ['knockback', 'brick', 'bomb', 'weapon'],
+  // 우클릭으로 씀 (투사체·설치 블록·폭탄). 버프(점프·유령·이속)는 먹자마자 효과라 따로
+  HELD_ITEMS: ['knockback', 'brick', 'bomb'],
   // 폭탄: 설치 블록과 같은 조준으로 던지면 그 칸 위에 놓여 BOMB_FUSE_MS 깜빡이다 터짐.
   // 폭탄 칸 중심 가로세로 ±BOMB_RADIUS, 위아래 ±BOMB_RADIUS 블록을 부숨 (시작 지형 포함). 던진 사람은 폭발 면제
   BOMB_USES: 1,
@@ -125,7 +120,7 @@ export const CONFIG = {
   BRICK_DROP_HEIGHT: 3, // 착지 높이보다 이만큼 위에서 생겨 떨어짐
   BRICK_FALL_STEP_MS: 300, // 한 칸 내려오는 간격 → 3칸 약 0.9초
   BRICK_SHOCK_RANGE: 1, // 착지한 블록 가장자리에서 이 거리(칸) 안 = 충격파
-  BRICK_SHOCK_KB_SPEED: 8.4, // 망치와 같은 세기
+  BRICK_SHOCK_KB_SPEED: 8.4, // 예전 아이템 망치와 같은 세기
   BRICK_SHOCK_KB_UP: 4,
   BRICK_SHOCK_STUN_MS: 1200,
   BRICK_SHOCK_HEIGHT: 1.5, // 충격파가 닿는 높이 차 (착지 높이와 발 높이 차, 칸)
@@ -133,7 +128,7 @@ export const CONFIG = {
   // ---- 피해 % (대난투식, 2026-10-20) ----
   // 맞을 때마다 공격 종류별로 쌓이고 판 내내 안 줄어든다. 수평 넉백 = 기본 × (DAMAGE_KB_BASE + 피해% × DAMAGE_KB_PER_PERCENT).
   // 경직 중이라 무시된 공격은 안 쌓인다. 압사·용암은 % 와 상관없이 즉사
-  DAMAGE_GAIN: { push: 10, weapon: 25, projectile: 20, shock: 40, bomb: 40 },
+  DAMAGE_GAIN: { push: 10, projectile: 20, shock: 40, bomb: 40 },
   // 0% 에선 예전의 0.7배로 약하게 시작, 30% 에서 예전과 같고 그 뒤로 더 세짐 (2026-10-20 재혁 결정 c:
   // 예전 세기에서 시작하니 봇 판 중앙값이 43 → 20초로 줄어서)
   DAMAGE_KB_BASE: 0.7,
@@ -156,12 +151,13 @@ export const CONFIG = {
 
   // ---- 캐릭터 평타 (2026-10-25 재혁 승인, 스매시 레전드식) ----
   // 캐릭터가 있는 게임에서만 (캐릭터 없는 예전 규칙은 위 밀치기 그대로). 망치를 들면 망치가 우선.
-  // 지상: 앞 타가 맞고 BASIC_CHAIN_WINDOW_MS 안에 다시 누르면 다음 타 (후딜 중에 누르면 기다렸다 나감), 빗나가거나 놓치면 1타부터.
+  // 지상: 앞 타가 끝나고 BASIC_CHAIN_WINDOW_MS 안에 다시 누르면 다음 타 (후딜 중에 누르면 기다렸다 나감), 놓치면 1타부터.
+  // 2026-10-25 재혁: 허공 이어 치기 — 빗나가도 다음 타로 이어짐 (빗나간 타도 후딜은 다 받음. 예전엔 빗나가면 1타부터)
   // 스킬(F)을 쓰면 이어 치기 창이 다시 열림 (타 번호 그대로) → 평타 → 스킬 → 평타.
   // 한 타 = windup(준비, 이 뒤에 판정) → rec(후딜, 이 뒤에 다음 타). 중간 타 넉백 kb 는 고정 (피해 % 와 상관없음, 콤보 감쇠 없음) → 몇 % 든 이어짐.
   // 마무리 타(finish)와 공중 평타의 kb 는 밀치기처럼 피해 % 배율. 마무리 타가 맞으면 콤보 마무리 (×COMBO_FINISH_KB, 무적).
   // step: 판정 순간 때리는 쪽이 앞으로 나가는 거리 (칸). 경직 stun ≥ rec + 다음 타 windup + 약 0.1초 → 바로 누르면 확정.
-  // 공중: 캐릭터마다 한 타 (치명타 규칙 그대로). 타 번호에 안 셈 — 맞으면 이어 치기 창 유지, 빗나가면 1타부터
+  // 공중: 캐릭터마다 한 타 (치명타 규칙 그대로). 타 번호에 안 셈 — 이어 치기 창 유지
   BASIC_CHAIN_WINDOW_MS: 500,
   BASIC_HITSTOP_MS: 60, // 중간 타 멈칫 (공중 평타는 HITSTOP_MS)
   BASIC_FINISH_HITSTOP_MS: 110, // 마무리 타 멈칫
@@ -277,8 +273,8 @@ export const CONFIG = {
   CHAR_NAMES: { tank: '탱크', ninja: '닌자', builder: '건축가', hook: '갈고리' },
   // 2026-10-24 재혁: 스킬이 직접 피해·넉백을 주고 콤보로 이어지게 (닌자 = 콤보 캐릭터). 남이 쓰는 것도 보이게 예고·효과
   SKILL_NAMES: { tank: '돌진', ninja: '순간 베기', builder: '솟는 벽', hook: '갈고리' },
-  ULT_NAMES: { tank: '내려찍기', ninja: '그림자 일격', builder: '블록 비', hook: '회오리' },
-  SKILL_CD_MS: { tank: 8000, ninja: 6000, builder: 11000, hook: 8000 }, // 봇 160판으로 맞춤 (2026-10-24)
+  ULT_NAMES: { tank: '내려찍기', ninja: '그림자 일격', builder: '대폭발', hook: '회오리' },
+  SKILL_CD_MS: { tank: 8000, ninja: 6000, builder: 8000, hook: 8000 }, // 봇 160판으로 맞춤 (2026-10-24). 건축가 11 → 8초 (2026-10-25: F 가 콤보 부품·복귀기, 지상·공중 같이 씀)
   CHAR_DEFAULT: 'tank',
   // 스킬·필살기를 쓰면 그 캐릭터에 빛 (글자 대신, 남에게도 보임. 누가 무엇인지는 캐릭터 모양으로). 2026-10-25 재혁:
   // 전체 느낌을 방해하지 않지만 잘 보이게 → 노을(주황·빨강)과 대비되는 차가운 색, 압사 경고(빨강)·치명타(노랑)와 안 겹치게
@@ -320,16 +316,39 @@ export const CONFIG = {
   NINJA_SLASH_DAMAGE: 15,
   NINJA_STRIKE_RANGE: 6, // 필살 그림자 일격: 이 거리 안 가장 가까운 상대 등 뒤로 순간이동해 치명타 밀치기. 맞히면 F 쿨 초기화. 없으면 안 쓰임
   NINJA_STRIKE_BEHIND: 0.8, // 상대 뒤 이 거리에 섬
-  // 건축가
-  BUILDER_WALL_WIDTH: 3, // 스킬 솟는 벽: 바로 앞 가로 3칸 × 2층. 예고 뒤 솟으며 그 칸 위 사람을 띄움
-  BUILDER_WALL_HEIGHT: 2,
+  // 건축가 (2026-10-25 재혁 확정, docs/characters.md 3.1 — 지형·설치형 "깔고, 쳐서 터뜨린다". 수치는 초안, 밸런스는 나머지 캐릭터 뒤)
+  // 건축가 블록: 벽(지상 F)·3타 블록(평타 3타)·발판(공중 F)·대폭발(R). BUILDER_BLOCK_MS 뒤 사라짐.
+  // 건축가 망치(평타)로 치면 폭발: 치는 방향 앞쪽 사람만 그쪽으로 날림, 건축가 자신은 안 맞음. 같은 F 벽 칸끼리만 연쇄. 상대는 못 터뜨림
+  BUILDER_WALL_WIDTH: 3, // 지상 F 솟는 벽: 바로 앞 가로 3칸 × 1층. 예고 뒤 솟으며 그 칸 위 사람을 띄움
+  BUILDER_WALL_HEIGHT: 1, // 2 → 1 (2026-10-25: 1층이라 점프로 넘음)
   BUILDER_WALL_WARN_MS: 400,
   BUILDER_WALL_KB_UP: 9,
   BUILDER_WALL_STUN_MS: 700,
   BUILDER_WALL_DAMAGE: 10,
-  BUILDER_RAIN_CELLS: [[0, 0], [1, 0]], // 필살 블록 비: 조준한 칸 기준 1×1 블록 자리 (깔리면 압사, 옆은 충격파). 5개는 봇 판 건축가 50/160 → 3개.
-  // 2026-10-25 재혁 승인: 3 → 2개 (맵 7개 섞은 봇 504판 건축가 149승 / 기대 126, 킬 약 80% 가 블록 비)
-  BUILDER_BRICK_BONUS: 1, // 패시브: 설치 블록 아이템을 주우면 이만큼 더 (2026-10-24, '벽 쿨 짧음' 대신)
+  BUILDER_BLOCK_MS: 8000, // 건축가 블록 수명
+  BUILDER_THIRD_MAX: 3, // 3타 블록 동시 최대 (넘으면 제일 오래된 것부터 사라짐)
+  BUILDER_PAD_BOOST: 8, // 공중 F 발판: 위로 부스트 속도 (3타 띄움과 같은 세기, 약 1.6칸)
+  BUILDER_BLAST_RANGE: 1, // 블록 폭발: 터지는 칸 가장자리에서 이 거리(칸) 안
+  BUILDER_BLAST_HEIGHT: 1.5, // 블록 폭발이 닿는 높이 차
+  BUILDER_BLAST_DAMAGE: 8, // 가까이 터진 칸 1칸당 피해 %
+  BUILDER_BLAST_KB_SPEED: 6, // 넉백 중간 (밀치기 4.2 ~ 충격파 8.4 사이)
+  BUILDER_BLAST_KB_UP: 4,
+  BUILDER_BLAST_STUN_MS: 800,
+  BUILDER_BLAST_ULT: 5, // 패시브: 내 블록이 1칸 터질 때마다 필살기 게이지 (대폭발 블록은 안 셈). 설치 블록 +1 패시브 대신
+  // R 대폭발: 앞 BUILDER_BIG_GAP 칸 띄우고 SIZE×SIZE 가 바닥에서 솟음 (위 사람 띄움) → FUSE 뒤 자동 폭발, 망치로 치면 바로.
+  // 범위 안 내 블록도 같이 터짐. 블록 비(위에서 떨어뜨림)는 버림 — 킬 80% 가 조준 압사
+  BUILDER_BIG_SIZE: 3,
+  BUILDER_BIG_GAP: 1,
+  BUILDER_BIG_FUSE_MS: 800,
+  BUILDER_BIG_RISE_UP: 6, // 솟을 때 위 사람 띄우는 속도
+  BUILDER_BIG_RISE_STUN_MS: 0, // 띄우기만 (경직 없음) → 0.8초 안에 벗어날 수 있음 (문서 대응법). 경직을 주면 콤보 끝 무적이 폭발과 겹쳐 안 맞기도 함
+  BUILDER_BIG_RANGE: 1, // 대폭발이 닿는 거리 (칸 가장자리에서)
+  BUILDER_BIG_DAMAGE: 25,
+  BUILDER_BIG_KB_SPEED: 7,
+  BUILDER_BIG_KB_UP: 6,
+  BUILDER_BIG_STUN_MS: 900,
+  BUILDER_BLAST_HOLE: false, // 테스트 옵션: 터진 칸 아래 바닥 1칸을 BUILDER_HOLE_MS 동안 구멍으로 (사람 테스트로 비교)
+  BUILDER_HOLE_MS: 8000,
   // 갈고리 (연계: 평타로 밀고 → 갈고리로 다시 당겨 → 평타)
   HOOK_PUSH_RANGE_MULT: 1.2, // 패시브: 평타(밀치기) 사거리
   HOOK_RANGE: 5, // 스킬 갈고리: 보는 방향 이 거리 안 첫 상대를 끌어옴

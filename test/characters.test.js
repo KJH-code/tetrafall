@@ -198,31 +198,6 @@ test('닌자 콤보: 평타 → 순간 베기 → 평타가 한 콤보로 이어
   assert.equal(p(1).ult, C.ULT_MAX);
 });
 
-test('건축가: 솟는 벽은 예고 뒤 앞 가로 3 × 2층으로 솟고 그 칸의 상대를 위로 띄움, 블록 비 = 조준한 곳에 1×1 블록 5개 + 예고', () => {
-  const { g, lines, p } = setupChars(['builder', 'ninja']);
-  place(p(1), 4.5, 4.5, 0); // +x 를 봄
-  place(p(2), 5.5, 4.5); // 벽 칸 위
-  g.drainEvents();
-  g.handleAction(1, { name: 'skill' });
-  assert.ok(g.drainEvents().some((e) => e.type === 'wallWarn' && e.cells.length === 6), '바닥 예고');
-  assert.equal(g.gridAt(5, 4, 0), 0, '바로는 안 솟음');
-  run(g, C.BUILDER_WALL_WARN_MS + TICK);
-  for (const y of [3, 4, 5]) for (const z of [0, 1]) assert.equal(g.gridAt(5, y, z), CELL.BUILD, `(5,${y},${z})`);
-  assert.equal(p(2).damage, C.BUILDER_WALL_DAMAGE);
-  assert.ok(p(2).z >= 2 - 1e-6, `벽 위로 올라감 z=${p(2).z.toFixed(2)}`);
-  assert.ok(lines.includes('  [스킬] P1 솟는 벽 (6칸, 1명 띄움)'), lines.join('\n'));
-  // 블록 비
-  run(g, 2000);
-  p(1).ult = C.ULT_MAX;
-  Object.assign(p(1), { x: 1.5, y: 1.5, yaw: Math.PI / 4, pitch: -0.4 });
-  g.handleAction(1, { name: 'ult' });
-  const rain = g.pieces.filter((pc) => pc.thrownBy === 1);
-  assert.equal(rain.length, C.BUILDER_RAIN_CELLS.length);
-  assert.ok(rain.every((pc) => pc.cells.length === 1));
-  assert.ok(g.drainEvents().some((e) => e.type === 'rainWarn' && e.cells.length === rain.length));
-  assert.equal(p(1).ult, 0);
-});
-
 test('갈고리: 밀치기 사거리 +, 갈고리는 보는 방향 상대를 내 앞으로 + 피해 (빗나가도 쿨타임), 평타 → 갈고리 → 평타 콤보, 끌려간 뒤 떨어지면 갈고리 킬', () => {
   const { g, lines, p } = setupChars(['hook', 'ninja', 'ninja']);
   // 사거리: 보통 사거리 밖, 늘어난 사거리 안
@@ -298,14 +273,6 @@ test('캐릭터: 팀전이면 같은 팀은 갈고리·회오리·내려찍기 �
   run(g, C.TANK_SLAM_WINDUP_MS + TICK);
   assert.equal(p(2).damage, 0, '같은 팀');
   assert.equal(p(3).damage, C.TANK_SLAM_DAMAGE);
-});
-
-test('건축가 패시브: 설치 블록 아이템을 주우면 BUILDER_BRICK_BONUS 개 더', () => {
-  const { g, p } = setupChars(['builder', 'tank']);
-  g.givePower(p(1), 'brick');
-  g.givePower(p(2), 'brick');
-  assert.equal(p(1).bricks, C.BRICK_USES + C.BUILDER_BRICK_BONUS);
-  assert.equal(p(2).bricks, C.BRICK_USES);
 });
 
 test('닌자 그림자 일격: 무적인 상대는 안 고르고, 근처에 무적인 상대뿐이면 안 쓰여 게이지 그대로 (순간 베기 초기화도 없음)', () => {
@@ -387,7 +354,7 @@ test('평타: 중간 타 넉백은 피해 % 와 상관없이 같음, 마무리 �
   assert.ok(kb(150, true) > kb(0, true) * 2);
 });
 
-test('평타: 이어 치기 창을 놓치면 1타부터, 빗나가도 1타부터, 맞으면 준비 중인 평타가 끊김', () => {
+test('평타: 이어 치기 창을 놓치면 1타부터, 허공 이어 치기 (빗나가도 다음 타, 후딜은 다 받음), 맞으면 준비 중인 평타가 끊김', () => {
   const { g, p } = setupChars(['tank', 'ninja', 'ninja']);
   const chain = C.BASIC_ATTACKS.tank.chain;
   place(p(1), 3, 4.5, 0);
@@ -400,11 +367,18 @@ test('평타: 이어 치기 창을 놓치면 1타부터, 빗나가도 1타부터
   g.drainEvents();
   basic(g, 1);
   assert.equal(g.drainEvents().find((e) => e.type === 'attack').n, 1, '놓치면 1타');
-  // 빗나감
-  run(g, chain[0].rec);
+  // 허공 이어 치기: 빗나가도 2타 → 3타로, 후딜은 다 받음
+  run(g, 1000);
   p(1).yaw = Math.PI;
+  p(1).chainN = 0;
   basic(g, 1);
-  assert.equal(p(1).chainN, 0, '빗나가면 1타부터');
+  assert.equal(p(1).atkLanded, false);
+  assert.equal(p(1).chainN, 1, '빗나가도 다음은 2타');
+  assert.ok(p(1).pushReadyAt - g.time > chain[0].rec - 2 * TICK, '후딜은 다 받음');
+  run(g, p(1).pushReadyAt - g.time + TICK);
+  g.drainEvents();
+  basic(g, 1);
+  assert.equal(g.drainEvents().find((e) => e.type === 'attack').n, 2);
   // 준비 중에 맞으면 끊김
   run(g, 1000);
   p(1).yaw = 0;
@@ -414,7 +388,7 @@ test('평타: 이어 치기 창을 놓치면 1타부터, 빗나가도 1타부터
   assert.equal(p(1).atk, null);
 });
 
-test('평타: 공중 평타는 캐릭터마다 한 타 (타 번호 0), 떨어지며 위에서 치면 치명타. 빗나가면 이어 치기도 1타부터', () => {
+test('평타: 공중 평타는 캐릭터마다 한 타 (타 번호 0), 떨어지며 위에서 치면 치명타', () => {
   const { g, lines, p } = setupChars(['builder', 'ninja']);
   place(p(1), 3, 4.5, 0, 1);
   Object.assign(p(1), { grounded: false, vz: -1 });
@@ -445,7 +419,7 @@ test('평타 건축가: 내려찍기(마무리) 가 맞으면 그 사람 발밑 
   assert.ok(p(2).z >= 1 - 1e-6 || p(2).vz > 0, `위로 z=${p(2).z}`);
 });
 
-test('평타: 마무리 타 준비 중에는 이동 속도 × BASIC_FINISH_MOVE_MULT, 망치를 들면 평타 대신 망치', () => {
+test('평타: 마무리 타 준비 중에는 이동 속도 × BASIC_FINISH_MOVE_MULT. 아이템 망치는 없음 (2026-10-25)', () => {
   const { g, p } = setupChars(['tank', 'ninja']);
   place(p(1), 3, 1.5, 0);
   p(1).atk = { n: 3, def: C.BASIC_ATTACKS.tank.chain[2], at: g.time + 10000 };
@@ -453,14 +427,7 @@ test('평타: 마무리 타 준비 중에는 이동 속도 × BASIC_FINISH_MOVE_
   run(g, 200);
   const slow = p(1).x - 3;
   assert.ok(Math.abs(slow - C.MOVE_SPEED * 0.2 * C.BASIC_FINISH_MOVE_MULT) < 0.1, `${slow}`);
-  p(1).atk = null;
-  p(1).input = { fwd: 0, strafe: 0, jump: false };
-  place(p(1), 3, 4.5, 0);
-  place(p(2), 4, 4.5);
-  p(1).weaponUses = 1;
-  g.handleAction(1, { name: 'push' });
-  assert.equal(p(2).damage, C.DAMAGE_GAIN.weapon, '망치는 바로');
-  assert.equal(p(1).atk, null);
+  assert.ok(!C.ITEM_POOL.includes('weapon') && !C.HELD_ITEMS.includes('weapon'), '망치 아이템 없음');
 });
 
 // ---------- F·R 캔슬, 카운터히트 (2026-10-25) ----------
@@ -677,5 +644,235 @@ test('봇: 돌진·순간 베기 길에 피할 칸(내가 던진 블록 그림�
     const shadow = [[3, 4]]; // 둘 사이 칸
     assert.equal(brain.useSkills(g, b, t, [t], shadow), false, `${char}: 그림자를 지나가면 안 씀`);
     assert.equal(brain.useSkills(g, b, t, [t], []), true, `${char}: 없으면 씀`);
+  }
+});
+
+// ---------- 건축가 (2026-10-25, docs/characters.md 3.1) ----------
+
+const bb = (g, kind, owner = 1) => [...g.bblocks.values()].filter((b) => b.kind === kind && b.owner === owner);
+
+test('건축가 F 지상: 예고 뒤 앞 가로 3 × 1층 벽이 솟고 그 칸의 상대를 띄움. 건축가 블록(벽, 한 묶음)이 되고 BUILDER_BLOCK_MS 뒤 사라짐', () => {
+  const { g, lines, p } = setupChars(['builder', 'ninja']);
+  place(p(1), 4.5, 4.5, 0); // +x 를 봄
+  place(p(2), 5.5, 4.5); // 벽 칸 위
+  g.drainEvents();
+  g.handleAction(1, { name: 'skill' });
+  assert.ok(g.drainEvents().some((e) => e.type === 'wallWarn' && e.cells.length === 3), '바닥 예고');
+  assert.equal(g.gridAt(5, 4, 0), 0, '바로는 안 솟음');
+  run(g, C.BUILDER_WALL_WARN_MS + TICK);
+  for (const y of [3, 4, 5]) assert.equal(g.gridAt(5, y, 0), CELL.BUILD, `(5,${y},0)`);
+  assert.equal(g.gridAt(5, 4, 1), 0, '1층');
+  assert.equal(p(2).damage, C.BUILDER_WALL_DAMAGE);
+  assert.ok(p(2).z >= 1 - 1e-6, `벽 위로 올라감 z=${p(2).z.toFixed(2)}`);
+  assert.ok(lines.includes('  [스킬] P1 솟는 벽 (3칸, 1명 띄움)'), lines.join('\n'));
+  const walls = bb(g, 'wall');
+  assert.equal(walls.length, 3);
+  assert.equal(new Set(walls.map((b) => b.group)).size, 1, '한 묶음');
+  assert.ok(g.drainEvents().some((e) => e.type === 'bblock' && e.kind === 'wall' && e.cells.length === 3 && e.ms === C.BUILDER_BLOCK_MS));
+  assert.equal(g.snapshot().bblocks.length, 3, '화면에 보냄');
+  assert.ok(p(1).skillReadyAt > g.time + C.SKILL_CD_MS.builder - C.BUILDER_WALL_WARN_MS - 3 * TICK, `쿨 ${p(1).skillReadyAt - g.time}`);
+  run(g, C.BUILDER_BLOCK_MS);
+  assert.equal(g.gridAt(5, 4, 0), 0, '수명 끝');
+  assert.equal(bb(g, 'wall').length, 0);
+  assert.ok(g.drainEvents().some((e) => e.type === 'bblockGone' && e.why === 'expire'));
+});
+
+test('건축가 망치: 평타가 내 벽에 닿으면 폭발 — 같은 F 벽 묶음만 연쇄, 치는 방향 앞쪽 사람만 앞으로, 가까운 칸 수 × 피해, 나는 안 맞음, 1칸당 게이지. 상대 평타로는 안 터짐', () => {
+  const { g, lines, p } = setupChars(['builder', 'ninja', 'tank']);
+  place(p(1), 2.5, 4.5, 0);
+  place(p(2), 4.6, 4.5); // 벽 앞 (평타 사거리 밖)
+  place(p(3), 1.9, 4.5); // 벽 뒤 (내 뒤)
+  g.handleAction(1, { name: 'skill' });
+  run(g, C.BUILDER_WALL_WARN_MS + TICK); // x=3, y 3~5 벽
+  g.placeBBlock(p(1), 3, 6, 0, 'wall', 999); // 붙어 있는 다른 F 벽
+  g.placeBBlock(p(1), 3, 2, 0, 'third', 998); // 붙어 있는 3타 블록
+  // 상대 평타로는 안 터짐
+  place(p(3), 1.9, 4.5, 0);
+  p(3).pushReadyAt = 0;
+  basic(g, 3);
+  assert.equal(g.gridAt(3, 4, 0), CELL.BUILD, '상대는 못 터뜨림');
+  run(g, 1000);
+  Object.assign(p(2), { damage: 0, ult: 0 });
+  Object.assign(p(3), { damage: 0 });
+  p(1).damage = 0; // 위에서 p3 평타에 맞은 것
+  place(p(1), 2.5, 4.5, 0);
+  place(p(2), 4.6, 4.5);
+  place(p(3), 1.9, 4.5);
+  p(1).ult = 0;
+  p(1).pushReadyAt = 0;
+  p(1).chainN = 0;
+  g.drainEvents();
+  basic(g, 1);
+  for (const y of [3, 4, 5]) assert.equal(g.gridAt(3, y, 0), 0, `벽 (3,${y}) 터짐`);
+  assert.equal(g.gridAt(3, 6, 0), CELL.BUILD, '다른 F 벽은 안 번짐');
+  assert.equal(g.gridAt(3, 2, 0), CELL.BUILD, '3타 블록으로도 안 번짐');
+  assert.equal(p(2).damage, 3 * C.BUILDER_BLAST_DAMAGE, '가까운 칸 3개');
+  assert.ok(p(2).kbx > 0 && Math.abs(p(2).kby) < 1e-9, '치는 방향 앞으로');
+  assert.equal(p(3).damage, 0, '벽 뒤(내 쪽)는 안 맞음');
+  assert.equal(p(1).damage, 0, '나는 안 맞음');
+  assert.equal(p(1).ult, 3 * C.BUILDER_BLAST_ULT + 3 * C.BUILDER_BLAST_DAMAGE * C.ULT_PER_DAMAGE, '패시브 1칸당 + 준 피해');
+  const ev = g.drainEvents().find((e) => e.type === 'blast');
+  assert.equal(ev.cells.length, 3);
+  assert.deepEqual(ev.dir, { x: 1, y: 0 });
+  assert.ok(lines.some((l) => l.startsWith('  [폭발] P1 벽 3칸 → P2')), lines.join('\n'));
+  assert.equal(p(2).lastHit.kind, 'blast');
+});
+
+test('건축가 3타: 맞으면 상대 발밑, 빗나가면 앞 칸에 블록 (최대 3개, 오래된 것부터 사라짐). 버그: 몸이 옆 칸에 걸쳐 있어도 내 밑에서 솟지 않음', () => {
+  // 버그 재현 자리: 내 몸(3.5~4.1)이 상대 칸(4)에 걸쳐 있음
+  const { g, p } = setupChars(['builder', 'ninja']);
+  place(p(1), 3.8, 4.5, 0);
+  place(p(2), 4.6, 4.5);
+  Object.assign(p(1), { chainN: 2, chainUntil: Infinity });
+  basic(g, 1);
+  run(g, 300);
+  assert.ok(p(1).z < 0.5, `나는 안 뜸 z=${p(1).z.toFixed(2)}`);
+  const [b] = bb(g, 'third');
+  assert.ok(b && b.x >= 5, `블록은 내 몸과 안 겹치는 앞 칸 x=${b && b.x}`);
+  // 빗나가면 앞 1.5칸, 최대 3개
+  const { g: g2, p: p2 } = setupChars(['builder', 'ninja']);
+  place(p2(2), 9.5, 9.5);
+  const spots = [1.5, 3.5, 5.5, 7.5];
+  for (const y of spots) {
+    place(p2(1), 1.5, y, 0);
+    g2.basicRaise(p2(1), null);
+    run(g2, 10);
+  }
+  const thirds = bb(g2, 'third');
+  assert.equal(thirds.length, C.BUILDER_THIRD_MAX);
+  assert.deepEqual(thirds.map((t) => [t.x, t.y]).sort(), [[3, 3], [3, 5], [3, 7]], '제일 오래된 (3,1) 이 사라짐');
+  assert.equal(g2.gridAt(3, 1, 0), 0);
+});
+
+test('건축가 F 공중: 발밑에 발판 + 위로 부스트, 지상 F 와 쿨 같이 씀. 필드 밖이면 칸 없이 부스트만', () => {
+  const { g, lines, p } = setupChars(['builder', 'ninja']);
+  place(p(2), 9.5, 9.5);
+  place(p(1), 4.5, 4.5, 0, 2.5);
+  Object.assign(p(1), { grounded: false, vz: -3 });
+  g.drainEvents();
+  g.handleAction(1, { name: 'skill' });
+  assert.equal(g.gridAt(4, 4, 1), CELL.BUILD, '발밑 칸');
+  assert.equal(bb(g, 'pad').length, 1);
+  assert.equal(p(1).vz, C.BUILDER_PAD_BOOST);
+  assert.ok(g.drainEvents().some((e) => e.type === 'padBoost' && e.who === 1));
+  assert.ok(p(1).skillReadyAt > g.time);
+  run(g, 1000);
+  place(p(1), 2.5, 2.5, 0);
+  g.handleAction(1, { name: 'skill' });
+  assert.equal(p(1).wallAt, 0, '쿨 같이 씀');
+  // 필드 밖에서 떨어지는 중
+  run(g, C.SKILL_CD_MS.builder);
+  place(p(1), -0.8, 4.5, 0, -0.5);
+  Object.assign(p(1), { grounded: false, vz: -5 });
+  g.handleAction(1, { name: 'skill' });
+  assert.equal(p(1).vz, C.BUILDER_PAD_BOOST, '부스트만');
+  assert.ok(lines.includes('  [스킬] P1 발판 (칸 없이 부스트)'));
+});
+
+test('건축가 R 대폭발: 앞 1칸 띄우고 3×3 이 바닥에서 솟아 위 사람을 띄움 → BUILDER_BIG_FUSE_MS 뒤 폭발. 범위 안 내 블록도 같이, R 블록은 패시브 게이지 없음. 망치로 치면 바로', () => {
+  const { g, lines, p } = setupChars(['builder', 'ninja']);
+  place(p(1), 1.5, 4.5, 0);
+  place(p(2), 4.5, 4.5); // 3×3 (x 3~5, y 3~5) 가운데
+  g.placeBBlock(p(1), 6, 4, 0, 'wall', 900); // 범위 안 내 벽
+  g.placeBBlock(p(1), 9, 9, 0, 'third', 901); // 범위 밖
+  p(1).ult = C.ULT_MAX;
+  g.drainEvents();
+  g.handleAction(1, { name: 'ult' });
+  assert.equal(p(1).ult, 0);
+  const big = bb(g, 'big');
+  assert.equal(big.length, 9);
+  assert.deepEqual([...new Set(big.map((b) => b.x))].sort(), [3, 4, 5], '앞 1칸(x=2) 띄움');
+  assert.ok(p(2).z >= 1 - 1e-6, `위로 z=${p(2).z.toFixed(2)}`);
+  assert.ok(g.drainEvents().some((e) => e.type === 'bigBombWarn' && e.cells.length === 9 && e.ms === C.BUILDER_BIG_FUSE_MS));
+  p(2).damage = 0;
+  run(g, C.BUILDER_BIG_FUSE_MS - 2 * TICK);
+  assert.equal(bb(g, 'big').length, 9, '아직');
+  run(g, 3 * TICK);
+  assert.equal(bb(g, 'big').length, 0, '터짐');
+  assert.equal(p(2).damage, C.BUILDER_BIG_DAMAGE);
+  assert.equal(p(2).lastHit.kind, 'bigbomb');
+  assert.equal(g.gridAt(6, 4, 0), 0, '범위 안 내 벽도 같이');
+  assert.equal(g.gridAt(9, 9, 0), CELL.BUILD, '범위 밖은 그대로');
+  assert.equal(p(1).ult, C.BUILDER_BLAST_ULT + C.BUILDER_BIG_DAMAGE * C.ULT_PER_DAMAGE, 'R 블록 9칸은 게이지 없음, 같이 터진 벽 1칸만');
+  assert.ok(lines.some((l) => l.includes('[필살] P1 대폭발 (1명, 같이 터진 블록 1칸)')), lines.join('\n'));
+  // 망치로 일찍
+  const { g: g2, p: q } = setupChars(['builder', 'ninja']);
+  place(q(1), 1.5, 4.5, 0);
+  place(q(2), 9.5, 9.5);
+  q(1).ult = C.ULT_MAX;
+  g2.handleAction(1, { name: 'ult' });
+  place(q(1), 2.4, 4.5, 0);
+  basic(g2, 1);
+  assert.equal(bb(g2, 'big').length, 0, '망치로 치면 바로 터짐');
+  assert.equal(g2.bigBombs.length, 0);
+});
+
+test('건축가 블록: 폭탄 등으로 없어진 칸은 기록에서 지움, 층이 지워지면 같이 내려감. 테스트 옵션 BUILDER_BLAST_HOLE: 터진 자리 바닥 1칸이 BUILDER_HOLE_MS 동안 구멍', () => {
+  const { g, p } = setupChars(['builder', 'ninja']);
+  place(p(2), 9.5, 9.5);
+  g.placeBBlock(p(1), 5, 5, 0, 'third', 1);
+  g.grid[g.idx(5, 5, 0)] = 0; // 폭탄 등
+  run(g, TICK);
+  assert.equal(g.bblocks.size, 0);
+  g.placeBBlock(p(1), 5, 5, 1, 'third', 2);
+  g.dropLayers([0]);
+  assert.ok(g.bblocks.has('5,5,0'), '한 층 내려감');
+  // 구멍 옵션
+  const was = C.BUILDER_BLAST_HOLE;
+  C.BUILDER_BLAST_HOLE = true;
+  try {
+    g.grid[g.idx(6, 6, 0)] = CELL.TERRAIN;
+    g.placeBBlock(p(1), 6, 6, 1, 'third', 3);
+    g.blast(g.bblocks.get('6,6,1'), { x: 1, y: 0 });
+    assert.equal(g.gridAt(6, 6, 0), 0, '구멍');
+    run(g, C.BUILDER_HOLE_MS + TICK);
+    assert.equal(g.gridAt(6, 6, 0), CELL.TERRAIN, '메워짐');
+  } finally {
+    C.BUILDER_BLAST_HOLE = was;
+  }
+});
+
+test('봇 건축가: 떨어지면 공중 F 로 복귀, 내 블록 너머에 상대가 있으면 블록을 쳐서 터뜨림, 상대가 앞 3×3 쯤이면 대폭발', () => {
+  const mk = () => {
+    const g = new Game(() => {}, { characters: true });
+    g.rng = () => 0.5;
+    const b = g.addBot();
+    g.setChar(b.id, 'builder');
+    g.addPlayer(1);
+    g.startRound();
+    g.nextSpawnAt = Infinity;
+    g.controlItemNextAt = Infinity;
+    g.powerItemNextAt = Infinity;
+    return { g, b, t: g.players.get(1), brain: g.bots.get(b.id) };
+  };
+  // 복귀
+  {
+    const { g, b, t, brain } = mk();
+    place(t, 5.5, 5.5);
+    place(b, -0.6, 4.5, 0, -0.5);
+    Object.assign(b, { grounded: false, vz: -4 });
+    brain.update(g, b);
+    assert.equal(b.vz, C.BUILDER_PAD_BOOST, '공중 F');
+  }
+  // 블록 치기
+  {
+    const { g, b, t, brain } = mk();
+    place(b, 2.5, 4.5, 0);
+    place(t, 4.6, 4.5);
+    g.placeBBlock(b, 3, 4, 0, 'wall', 77);
+    assert.equal(brain.useSkills(g, b, t, [t], []), true);
+    assert.ok(b.atk, '평타 준비');
+    run(g, b.atk.at - g.time + TICK);
+    assert.equal(g.gridAt(3, 4, 0), 0, '블록 터짐');
+    assert.ok(t.damage > 0);
+  }
+  // 대폭발
+  {
+    const { g, b, t, brain } = mk();
+    place(b, 1.5, 4.5, 0);
+    place(t, 4.5, 4.5);
+    b.ult = C.ULT_MAX;
+    assert.equal(brain.useSkills(g, b, t, [t], []), true);
+    assert.equal(g.bigBombs.length, 1);
   }
 });

@@ -74,6 +74,10 @@ export class Game {
     this.items = [];
     this.projectiles = [];
     this.bombs = []; // 놓여서 터지길 기다리는 폭탄
+    this.bblocks = new Map(); // 건축가 블록: 셀 키 -> { x, y, z, owner, kind: 'wall'|'third'|'pad'|'big', group, expiresAt, born }
+    this.bigBombs = []; // 건축가 대폭발 대기: { owner, group, at, dir }
+    this.holes = []; // 폭발 구멍 (테스트 옵션 BUILDER_BLAST_HOLE): { x, y, z, v, at }
+    this.bgroup = 0;
     this.bombCounter = 0;
     this.roundNumber = 0;
     this.roundStartTime = 0;
@@ -157,7 +161,6 @@ export class Game {
       alive: !this.inRound(), // 진행 중(카운트다운 포함) 난입은 관전 (죽은 상태)
       stunUntil: 0,
       freezeUntil: 0, // 히트스톱: 이 시각까지 움직임 정지 (속도는 보존)
-      weaponUses: 0, // 망치 남은 횟수
       jumpUntil: 0, // 점프력 상승 끝나는 시각
       airJumps: C.AIR_JUMPS, // 남은 2단 점프 (땅에 닿으면 다시 채움)
       airJumpQueued: false, // 공중에서 점프 키를 새로 눌렀음 (다음 틱에 2단 점프)
@@ -292,9 +295,9 @@ export class Game {
     return true;
   }
 
-  // 손에 든 아이템 (하나만): 'knockback' | 'brick' | 'bomb' | 'weapon' | null
+  // 손에 든 아이템 (하나만): 'knockback' | 'brick' | 'bomb' | null
   heldItem(p) {
-    return p.ammo > 0 ? 'knockback' : p.bricks > 0 ? 'brick' : p.bombs > 0 ? 'bomb' : p.weaponUses > 0 ? 'weapon' : null;
+    return p.ammo > 0 ? 'knockback' : p.bricks > 0 ? 'brick' : p.bombs > 0 ? 'bomb' : null;
   }
 
   // 필드 위에 있는 사람: 살아 있고 블록 마스터의 마스터가 아님. 밀치기·폭탄·압사·용암·아이템·물리의 대상
@@ -465,6 +468,10 @@ export class Game {
     this.items = [];
     this.projectiles = [];
     this.bombs = []; // 놓여서 터지길 기다리는 폭탄
+    this.bblocks = new Map(); // 건축가 블록: 셀 키 -> { x, y, z, owner, kind: 'wall'|'third'|'pad'|'big', group, expiresAt, born }
+    this.bigBombs = []; // 건축가 대폭발 대기: { owner, group, at, dir }
+    this.holes = []; // 폭발 구멍 (테스트 옵션 BUILDER_BLAST_HOLE): { x, y, z, v, at }
+    this.bgroup = 0;
     this.bombCounter = 0;
     this.deaths = [];
     this.events = [];
@@ -489,7 +496,6 @@ export class Game {
         alive: !p.spectator,
         stunUntil: 0,
         freezeUntil: 0,
-        weaponUses: 0,
         jumpUntil: 0,
         airJumps: C.AIR_JUMPS,
         ghostUntil: 0,
@@ -743,7 +749,6 @@ export class Game {
       alive: true,
       stunUntil: 0,
       freezeUntil: 0,
-      weaponUses: 0,
       jumpUntil: 0,
       airJumps: C.AIR_JUMPS,
       ghostUntil: 0,
@@ -834,7 +839,7 @@ export class Game {
         return;
       case 'push':
         if (stunned || controlling) return; // 조종 중 공격 불가
-        if (p.char && p.weaponUses <= 0) return void this.basicPress(p); // 캐릭터 평타 (망치를 들면 망치)
+        if (p.char) return void this.basicPress(p); // 캐릭터 평타
         if (this.time < p.pushReadyAt) return;
         this.push(p);
         return;
@@ -888,13 +893,10 @@ export class Game {
   push(p) {
     p.pushReadyAt = this.time + C.PUSH_COOLDOWN_MS;
     p.atkLanded = false;
-    // 망치가 있으면 밀치기 대신 망치. 누군가를 실제로 날렸을 때만 1회 소모 (2026-10-20 재혁: 적중 시만)
-    const weapon = p.weaponUses > 0;
-    let landed = false;
-    const kind = weapon ? 'weapon' : 'push';
-    const speed = weapon ? C.WEAPON_KB_SPEED : C.PUSH_KB_SPEED;
-    const up = weapon ? C.WEAPON_KB_UP : C.PUSH_KB_UP;
-    const stun = weapon ? C.WEAPON_STUN_MS : C.STUN_MS;
+    const kind = 'push';
+    const speed = C.PUSH_KB_SPEED;
+    const up = C.PUSH_KB_UP;
+    const stun = C.STUN_MS;
     this.emit({ type: 'swing', who: p.id, kind });
     const falling = !p.grounded && p.vz < 0; // 치명타: 떨어지면서 때림 (높이 조건은 상대마다)
     const fx = Math.cos(p.yaw);
@@ -910,7 +912,7 @@ export class Game {
       if (dist > EPS && (dx * fx + dy * fy) / dist < cosHalf) continue;
       const crit = (falling && p.z - t.z >= C.CRIT_MIN_HEIGHT) || p.critNext; // 닌자 그림자: 다음 밀치기 치명타
       const gain = crit ? Math.round(C.DAMAGE_GAIN[kind] * C.CRIT_DAMAGE_MULT) : C.DAMAGE_GAIN[kind];
-      const hit = this.applyKnockback(t, fx, fy, crit ? speed * C.CRIT_KB_MULT : speed, up, stun, gain, { by: p.id, kind }, weapon); // 망치는 무거운 공격
+      const hit = this.applyKnockback(t, fx, fy, crit ? speed * C.CRIT_KB_MULT : speed, up, stun, gain, { by: p.id, kind });
       const stop = crit ? C.HITSTOP_MS * C.CRIT_HITSTOP_MULT : C.HITSTOP_MS;
       if (hit) {
         p.freezeUntil = this.time + stop; // 때린 쪽도 같이 멈칫
@@ -918,12 +920,8 @@ export class Game {
         if (crit) p.critNext = false;
       }
       if (hit && !this.sameTeam(p, t)) p.atkLanded = true; // 맞혔으면 F·R 로 쿨 캔슬 (그림자 일격 → 순간 베기)
-      if (hit && weapon && !landed) {
-        landed = true;
-        p.weaponUses--; // 한 번 휘둘러 여럿 맞혀도 1회
-      }
       this.emit({ type: 'hit', kind, by: p.id, target: t.id, ok: hit, crit: hit && crit });
-      this.log(`  [${weapon ? '망치' : '밀치기'}] ${p.name} → ${t.name} ${hit ? `넉백${crit ? ' 치명타' : ''} (${t.name} ${t.damage}%)` : '무적이라 무시'}${weapon ? ` (남은 ${p.weaponUses}회)` : ''}`);
+      this.log(`  [밀치기] ${p.name} → ${t.name} ${hit ? `넉백${crit ? ' 치명타' : ''} (${t.name} ${t.damage}%)` : '무적이라 무시'}`);
     }
   }
 
@@ -1021,37 +1019,43 @@ export class Game {
       this.emit({ type: 'hit', kind: 'push', by: p.id, target: t.id, ok: hit, crit: hit && crit, n, finish });
       this.log(`  [평타] ${p.name} → ${t.name} ${hit ? `넉백${crit ? ' 치명타' : ''} (${t.name} ${t.damage}%)` : '무적이라 무시'} ${label}`);
     }
+    // 허공 이어 치기 (2026-10-25 재혁): 빗나가도 다음 타로 (후딜은 다 받음). BASIC_CHAIN_WINDOW_MS 안에 안 치면 1타로
     if (n === 0) {
-      if (landed) p.chainUntil = this.time + C.BASIC_CHAIN_WINDOW_MS; // 공중 평타는 타 번호 그대로
-      else p.chainN = 0;
-    } else if (landed && n < set.chain.length) {
+      if (p.chainN > 0) p.chainUntil = this.time + C.BASIC_CHAIN_WINDOW_MS; // 공중 평타는 타 번호 그대로
+    } else if (n < set.chain.length) {
       p.chainN = n;
       p.chainUntil = this.time + C.BASIC_CHAIN_WINDOW_MS;
     } else p.chainN = 0;
     p.atkLanded = !!landed;
+    if (p.char === 'builder' && this.hammerBlocks(p, range, cosHalf)) p.atkLanded = true; // 망치로 내 블록을 치면 폭발 (맞힌 것으로 침: F·R 캔슬)
     if (def.raise) this.basicRaise(p, landed);
   }
 
-  // 건축가 내려찍기: 맞힌 사람 발밑 (빗나가면 앞 1.5칸) 기둥 꼭대기에 블록 1칸. 그 칸 위 사람은 블록 위로 올라감.
-  // 내가 선 칸과 같으면 앞으로 한 칸씩 (상대가 날아가는 쪽)
+  // 건축가 내려찍기: 맞힌 사람 발밑 (빗나가면 앞 1.5칸) 기둥 꼭대기에 건축가 블록 1칸 ('third', 최대 BUILDER_THIRD_MAX 개).
+  // 내 몸과 겹치는 칸이면 앞으로 0.5칸씩 (2026-10-25 버그: 몸이 옆 칸에 걸쳐 있으면 내 밑에서 솟아 나를 띄웠음)
   basicRaise(p, t) {
     const fx = Math.cos(p.yaw);
     const fy = Math.sin(p.yaw);
     let bx = t ? t.x : p.x + fx * 1.5;
     let by = t ? t.y : p.y + fy * 1.5;
-    for (let i = 0; i < 3 && Math.floor(bx) === Math.floor(p.x) && Math.floor(by) === Math.floor(p.y); i++) {
+    const mine = (x, y) => overlapsCell(p, Math.floor(x), Math.floor(y), this.columnTop(Math.floor(x), Math.floor(y))) || (Math.floor(x) === Math.floor(p.x) && Math.floor(y) === Math.floor(p.y));
+    for (let i = 0; i < 3 && inXY(Math.floor(bx), Math.floor(by)) && mine(bx, by); i++) {
       bx += fx * 0.5;
       by += fy * 0.5;
     }
     const cx = Math.floor(bx);
     const cy = Math.floor(by);
-    if (!inXY(cx, cy) || (cx === Math.floor(p.x) && cy === Math.floor(p.y))) return;
+    if (!inXY(cx, cy) || mine(bx, by)) return;
     const z = this.columnTop(cx, cy);
-    if (z >= C.GRID_H || this.pieceCells.has(cellKey(cx, cy, z))) return;
-    this.grid[this.idx(cx, cy, z)] = CELL.BUILD;
+    const g = ++this.bgroup;
+    if (!this.placeBBlock(p, cx, cy, z, 'third', g)) return;
+    // 3타 블록은 동시에 BUILDER_THIRD_MAX 개까지: 넘으면 제일 오래된 것부터 사라짐
+    const thirds = [...this.bblocks.values()].filter((b) => b.owner === p.id && b.kind === 'third').sort((a, b) => a.born - b.born);
+    for (const b of thirds.slice(0, Math.max(0, thirds.length - C.BUILDER_THIRD_MAX))) this.removeBBlock(b, 'old');
     this.gridChanged();
     for (const o of this.players.values()) if (this.onField(o) && overlapsCell(o, cx, cy, z)) this.ejectFromBlocks(o);
     this.emit({ type: 'wallRise', who: p.id, cells: [[cx, cy, z]] });
+    this.emit({ type: 'bblock', who: p.id, kind: 'third', group: g, cells: [[cx, cy, z]], ms: C.BUILDER_BLOCK_MS });
     this.log(`  [평타] ${p.name} 블록 솟음 (${cx},${cy},${z})`);
     this.clearLayers();
   }
@@ -1077,7 +1081,7 @@ export class Game {
     else if (p.char === 'ninja') {
       if (!this.ninjaStrike(p)) return false; // 근처에 상대가 없으면 게이지 그대로
     } else if (p.char === 'builder') {
-      if (!this.builderRain(p)) return false; // 조준한 곳이 없으면 게이지 그대로
+      if (!this.builderBigBomb(p)) return false; // 솟을 자리가 없으면 게이지 그대로
     } else this.hookWhirl(p);
     p.ult = 0;
     this.emit({ type: 'ult', who: p.id, char: p.char, x: p.x, y: p.y, z: p.z });
@@ -1211,9 +1215,14 @@ export class Game {
     return true;
   }
 
-  // ---- 건축가 ----
-  // 솟는 벽: 바로 앞(네 방향으로 맞춤) 한 칸 띄운 줄에 가로 BUILDER_WALL_WIDTH × BUILDER_WALL_HEIGHT. 바닥에 예고 → BUILDER_WALL_WARN_MS 뒤 솟음
+  // ---- 건축가 (2026-10-25 재혁 확정, docs/characters.md 3.1) ----
+  // 건축가 블록: 격자에는 CELL.BUILD 로 두고 주인·종류·묶음·수명은 this.bblocks 에. 건축가 망치로 치면 폭발 (치는 방향 앞만, 자신 제외),
+  // 같은 F 벽 묶음끼리만 연쇄. BUILDER_BLOCK_MS 뒤 사라짐. 패시브: 내 블록이 터지면 1칸당 게이지 (대폭발 블록 제외)
+
+  // 지상 F: 솟는 벽 — 바로 앞(네 방향으로 맞춤) 줄에 가로 BUILDER_WALL_WIDTH × BUILDER_WALL_HEIGHT. 바닥에 예고 → BUILDER_WALL_WARN_MS 뒤 솟음
+  // 공중 F: 발판 — 발밑에 블록 1칸 + 위로 부스트 (쿨 같이 씀)
   builderWall(p) {
+    if (!p.grounded) return this.builderPad(p);
     const fx = Math.cos(p.yaw);
     const fy = Math.sin(p.yaw);
     const along = Math.abs(fx) >= Math.abs(fy) ? [Math.sign(fx), 0] : [0, Math.sign(fy)];
@@ -1241,50 +1250,220 @@ export class Game {
     const cells = p.wallCells;
     p.wallAt = 0;
     p.wallCells = null;
-    let placed = 0;
-    const launched = new Set();
-    for (const [x, y, z] of cells) {
-      if (this.grid[this.idx(x, y, z)] || this.pieceCells.has(cellKey(x, y, z))) continue;
-      this.grid[this.idx(x, y, z)] = CELL.BUILD;
-      placed++;
-    }
-    if (!placed) return;
+    const g = ++this.bgroup;
+    const placed = cells.filter(([x, y, z]) => this.placeBBlock(p, x, y, z, 'wall', g));
+    if (!placed.length) return;
     this.gridChanged();
+    const launched = new Set();
     // 벽 칸에 있던 사람은 벽 위로 올리고 띄움 (건축가 자신은 밀려남만)
     for (const t of this.players.values()) {
-      if (!this.onField(t) || !cells.some(([x, y, z]) => overlapsCell(t, x, y, z))) continue;
+      if (!this.onField(t) || !placed.some(([x, y, z]) => overlapsCell(t, x, y, z))) continue;
       this.ejectFromBlocks(t);
       if (!this.foe(p, t) || launched.has(t.id)) continue;
       launched.add(t.id);
       const hit = this.applyKnockback(t, Math.cos(p.yaw), Math.sin(p.yaw), 0, C.BUILDER_WALL_KB_UP, C.BUILDER_WALL_STUN_MS, C.BUILDER_WALL_DAMAGE, { by: p.id, kind: 'wall' });
       this.emit({ type: 'hit', kind: 'wall', by: p.id, target: t.id, ok: hit });
     }
-    this.emit({ type: 'wallRise', who: p.id, cells });
-    this.log(`  [스킬] ${p.name} 솟는 벽 (${placed}칸${launched.size ? `, ${launched.size}명 띄움` : ''})`);
+    this.emit({ type: 'wallRise', who: p.id, cells: placed });
+    this.emit({ type: 'bblock', who: p.id, kind: 'wall', group: g, cells: placed, ms: C.BUILDER_BLOCK_MS });
+    this.log(`  [스킬] ${p.name} 솟는 벽 (${placed.length}칸${launched.size ? `, ${launched.size}명 띄움` : ''})`);
     this.clearLayers();
   }
 
-  // 블록 비: 조준한 칸 둘레에 1×1 블록들을 떨어뜨림 (설치 블록처럼: 깔리면 압사, 착지 충격파, 킬은 건축가)
-  builderRain(p) {
-    const anchor = this.aimAnchor(p);
-    if (!anchor) return false;
-    const cells = [];
-    for (const [ox, oy] of C.BUILDER_RAIN_CELLS) {
-      const x = anchor[0] + ox;
-      const y = anchor[1] + oy;
-      if (!inXY(x, y)) continue;
-      const top = this.columnTop(x, y);
-      const pz = Math.min(top + C.BRICK_DROP_HEIGHT, C.GRID_H - 1);
-      if (top >= C.GRID_H - 1 || this.pieceCells.has(cellKey(x, y, pz))) continue;
-      const piece = { id: 0, shape: '1×1', rot: 0, cells: [[0, 0]], px: x, py: y, pz, landZ: 0, fits: false };
-      this.updateLanding(piece);
-      this.addPiece(piece, { phase: 'falling', controller: null, thrownBy: p.id, stepMs: C.BRICK_FALL_STEP_MS, nextStepAt: this.time + C.BRICK_FALL_STEP_MS, controlEndsAt: 0 });
-      cells.push([x, y, piece.landZ]);
+  // 공중 F: 발밑 칸에 발판 + 위로 BUILDER_PAD_BOOST. 칸을 못 놓아도(필드 밖·막힘) 부스트는 함 (복귀기)
+  builderPad(p) {
+    const x = Math.floor(p.x);
+    const y = Math.floor(p.y);
+    const z = Math.floor(p.z) - 1;
+    const g = ++this.bgroup;
+    const ok = inXY(x, y) && z >= 0 && ![...this.players.values()].some((o) => this.onField(o) && overlapsCell(o, x, y, z)) && this.placeBBlock(p, x, y, z, 'pad', g);
+    if (ok) {
+      this.gridChanged();
+      this.emit({ type: 'bblock', who: p.id, kind: 'pad', group: g, cells: [[x, y, z]], ms: C.BUILDER_BLOCK_MS });
     }
-    if (!cells.length) return false;
-    this.emit({ type: 'rainWarn', who: p.id, cells });
-    this.log(`  [필살] ${p.name} 블록 비 → (${anchor[0]},${anchor[1]}) ${cells.length}개`);
+    p.vz = C.BUILDER_PAD_BOOST;
+    p.grounded = false;
+    this.emit({ type: 'padBoost', who: p.id, cell: ok ? [x, y, z] : null });
+    this.log(`  [스킬] ${p.name} 발판${ok ? ` (${x},${y},${z})` : ' (칸 없이 부스트)'}`);
     return true;
+  }
+
+  // 건축가 블록 놓기 (빈 칸일 때만). 놓았으면 true
+  placeBBlock(p, x, y, z, kind, group) {
+    if (!inXY(x, y) || z < 0 || z >= C.GRID_H || this.grid[this.idx(x, y, z)] || this.pieceCells.has(cellKey(x, y, z))) return false;
+    this.grid[this.idx(x, y, z)] = CELL.BUILD;
+    this.bblocks.set(cellKey(x, y, z), { x, y, z, owner: p.id, kind, group, expiresAt: this.time + C.BUILDER_BLOCK_MS, born: this.time });
+    return true;
+  }
+
+  removeBBlock(b, why) {
+    this.bblocks.delete(cellKey(b.x, b.y, b.z));
+    if (this.grid[this.idx(b.x, b.y, b.z)] === CELL.BUILD) this.grid[this.idx(b.x, b.y, b.z)] = 0;
+    this.gridChanged();
+    if (why !== 'blast') this.emit({ type: 'bblockGone', cells: [[b.x, b.y, b.z]], why });
+  }
+
+  // R 대폭발: 앞(네 방향으로 맞춤) BUILDER_BIG_GAP 칸 띄우고 BUILDER_BIG_SIZE × BUILDER_BIG_SIZE 기둥 꼭대기에서 블록이 솟음 (위 사람 띄움)
+  // → BUILDER_BIG_FUSE_MS 뒤 자동 대폭발. 망치로 치면 바로. 블록이 위에서 떨어지지 않음 (압사 억까 금지)
+  builderBigBomb(p) {
+    const fx = Math.cos(p.yaw);
+    const fy = Math.sin(p.yaw);
+    const along = Math.abs(fx) >= Math.abs(fy) ? [Math.sign(fx), 0] : [0, Math.sign(fy)];
+    const side = [-along[1], along[0]];
+    const half = Math.floor(C.BUILDER_BIG_SIZE / 2);
+    const g = ++this.bgroup;
+    const placed = [];
+    for (let a = 0; a < C.BUILDER_BIG_SIZE; a++) {
+      for (let i = -half; i <= half; i++) {
+        const x = Math.floor(p.x) + along[0] * (C.BUILDER_BIG_GAP + 1 + a) + side[0] * i;
+        const y = Math.floor(p.y) + along[1] * (C.BUILDER_BIG_GAP + 1 + a) + side[1] * i;
+        if (!inXY(x, y)) continue;
+        const z = this.columnTop(x, y);
+        if (this.placeBBlock(p, x, y, z, 'big', g)) placed.push([x, y, z]);
+      }
+    }
+    if (!placed.length) return false;
+    this.gridChanged();
+    const launched = new Set();
+    for (const t of this.players.values()) {
+      if (!this.onField(t) || !placed.some(([x, y, z]) => overlapsCell(t, x, y, z))) continue;
+      this.ejectFromBlocks(t);
+      if (!this.foe(p, t) || launched.has(t.id)) continue;
+      launched.add(t.id);
+      const hit = this.applyKnockback(t, along[0], along[1], 0, C.BUILDER_BIG_RISE_UP, C.BUILDER_BIG_RISE_STUN_MS, 0, { by: p.id, kind: 'bigbomb' });
+      this.emit({ type: 'hit', kind: 'bigbomb', by: p.id, target: t.id, ok: hit });
+    }
+    this.bigBombs.push({ owner: p.id, group: g, at: this.time + C.BUILDER_BIG_FUSE_MS, dir: { x: along[0], y: along[1] } });
+    this.emit({ type: 'bigBombWarn', who: p.id, cells: placed, ms: C.BUILDER_BIG_FUSE_MS, group: g });
+    this.log(`  [필살] ${p.name} 대폭발 준비 (${placed.length}칸${launched.size ? `, ${launched.size}명 띄움` : ''})`);
+    this.clearLayers();
+    return true;
+  }
+
+  // 대폭발 터짐 (자동 또는 망치). 범위 안 사람 한 번씩 dir 쪽으로 날림, 범위 안 내 블록(벽·3타)도 같이 터짐
+  explodeBig(bomb, dir) {
+    this.bigBombs = this.bigBombs.filter((b) => b !== bomb);
+    const p = this.players.get(bomb.owner);
+    const cells = [...this.bblocks.values()].filter((b) => b.group === bomb.group);
+    for (const b of cells) this.removeBBlock(b, 'blast');
+    if (!cells.length) return;
+    this.holeUnder(cells);
+    let n = 0;
+    for (const t of this.players.values()) {
+      if (!p || !this.foe(p, t) || !cells.some((b) => this.nearCell(t, b, C.BUILDER_BIG_RANGE))) continue;
+      const hit = this.applyKnockback(t, dir.x, dir.y, C.BUILDER_BIG_KB_SPEED, C.BUILDER_BIG_KB_UP, C.BUILDER_BIG_STUN_MS, C.BUILDER_BIG_DAMAGE, { by: bomb.owner, kind: 'bigbomb' }, true);
+      if (hit) n++;
+      this.emit({ type: 'hit', kind: 'bigbomb', by: bomb.owner, target: t.id, ok: hit });
+    }
+    this.emit({ type: 'bigBomb', who: bomb.owner, cells: cells.map((b) => [b.x, b.y, b.z]), dir });
+    // 범위 안 내 블록도 같이 (묶음째)
+    const near = [...this.bblocks.values()].filter((b) => b.owner === bomb.owner && b.kind !== 'pad' && b.kind !== 'big' && cells.some((c) => Math.abs(c.x - b.x) <= 1 && Math.abs(c.y - b.y) <= 1 && Math.abs(c.z - b.z) <= 1));
+    let also = 0;
+    const done = new Set();
+    for (const b of near) {
+      if (!this.bblocks.has(cellKey(b.x, b.y, b.z)) || done.has(b.group)) continue;
+      done.add(b.group);
+      also += this.blast(b, dir);
+    }
+    this.log(`  [필살] ${p ? p.name : '?'} 대폭발 (${n}명${also ? `, 같이 터진 블록 ${also}칸` : ''})`);
+  }
+
+  // 사람 몸(가로 상자)이 칸 가장자리에서 r 안, 높이 차 BUILDER_BLAST_HEIGHT 안
+  nearCell(t, b, r) {
+    const gx = Math.max(b.x - (t.x + C.PLAYER_HALF), t.x - C.PLAYER_HALF - (b.x + 1), 0);
+    const gy = Math.max(b.y - (t.y + C.PLAYER_HALF), t.y - C.PLAYER_HALF - (b.y + 1), 0);
+    return Math.hypot(gx, gy) <= r && Math.abs(t.z - b.z) <= C.BUILDER_BLAST_HEIGHT;
+  }
+
+  // 망치(평타) 판정이 닿은 내 블록을 터뜨림. 터뜨렸으면 true
+  hammerBlocks(p, range, cosHalf) {
+    const fx = Math.cos(p.yaw);
+    const fy = Math.sin(p.yaw);
+    const hitGroups = new Set();
+    const targets = [];
+    for (const b of this.bblocks.values()) {
+      if (b.owner !== p.id || b.kind === 'pad' || hitGroups.has(b.group)) continue;
+      const dx = b.x + 0.5 - p.x;
+      const dy = b.y + 0.5 - p.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > range + 0.5 || b.z + 1 < p.z - 0.1 || b.z > p.z + C.PLAYER_HEIGHT) continue;
+      if (dist > C.BASIC_STEP_GAP + 0.5 && (dx * fx + dy * fy) / dist < cosHalf) continue;
+      hitGroups.add(b.group);
+      targets.push(b);
+    }
+    for (const b of targets) {
+      if (b.kind === 'big') {
+        const bomb = this.bigBombs.find((x) => x.group === b.group);
+        if (bomb) this.explodeBig(bomb, { x: fx, y: fy });
+      } else if (this.bblocks.has(cellKey(b.x, b.y, b.z))) this.blast(b, { x: fx, y: fy });
+    }
+    return targets.length > 0;
+  }
+
+  // 벽·3타 블록 폭발. 벽은 같은 묶음끼리 이어진 칸으로 연쇄. 사람은 한 번씩, 가까운 터진 칸 수 × BUILDER_BLAST_DAMAGE.
+  // 치는 방향(dir) 앞쪽 사람만 dir 쪽으로 날림, 건축가 자신은 안 맞음. 터진 칸 수를 돌려줌
+  blast(start, dir) {
+    const p = this.players.get(start.owner);
+    const order = [start];
+    const seen = new Set([cellKey(start.x, start.y, start.z)]);
+    if (start.kind === 'wall') {
+      for (let i = 0; i < order.length; i++) {
+        const c = order[i];
+        for (const [ox, oy, oz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
+          const k = cellKey(c.x + ox, c.y + oy, c.z + oz);
+          const nb = this.bblocks.get(k);
+          if (nb && !seen.has(k) && nb.group === start.group) {
+            seen.add(k);
+            order.push(nb);
+          }
+        }
+      }
+    }
+    for (const b of order) this.removeBBlock(b, 'blast');
+    this.holeUnder(order);
+    if (p) p.ult = Math.min(C.ULT_MAX, p.ult + order.length * C.BUILDER_BLAST_ULT); // 패시브: 내 블록 폭발 1칸당 게이지
+    const hits = [];
+    for (const t of this.players.values()) {
+      if (!p || !this.foe(p, t)) continue;
+      const near = order.filter((b) => this.nearCell(t, b, C.BUILDER_BLAST_RANGE) && (t.x - (b.x + 0.5)) * dir.x + (t.y - (b.y + 0.5)) * dir.y > -0.5);
+      if (!near.length) continue;
+      const hit = this.applyKnockback(t, dir.x, dir.y, C.BUILDER_BLAST_KB_SPEED, C.BUILDER_BLAST_KB_UP, C.BUILDER_BLAST_STUN_MS, near.length * C.BUILDER_BLAST_DAMAGE, { by: start.owner, kind: 'blast' }, true);
+      this.emit({ type: 'hit', kind: 'blast', by: start.owner, target: t.id, ok: hit });
+      hits.push(`${t.name}${hit ? ` ${t.damage}%` : ' 무적'}`);
+    }
+    this.emit({ type: 'blast', who: start.owner, kind: start.kind, group: start.group, cells: order.map((b) => [b.x, b.y, b.z]), dir });
+    this.log(`  [폭발] ${p ? p.name : '?'} ${start.kind === 'wall' ? '벽' : '3타 블록'} ${order.length}칸${hits.length ? ` → ${hits.join(', ')}` : ''}`);
+    return order.length;
+  }
+
+  // 테스트 옵션: 터진 칸 바로 아래 바닥 1칸을 BUILDER_HOLE_MS 동안 구멍으로 (건축가 블록·떨어지는 블록은 빼고)
+  holeUnder(cells) {
+    if (!C.BUILDER_BLAST_HOLE) return;
+    for (const b of cells) {
+      const z = b.z - 1;
+      if (z < 0 || this.bblocks.has(cellKey(b.x, b.y, z)) || this.pieceCells.has(cellKey(b.x, b.y, z))) continue;
+      const v = this.grid[this.idx(b.x, b.y, z)];
+      if (!v) continue;
+      this.grid[this.idx(b.x, b.y, z)] = 0;
+      this.holes.push({ x: b.x, y: b.y, z, v, at: this.time + C.BUILDER_HOLE_MS });
+    }
+    this.gridChanged();
+  }
+
+  // 틱마다: 수명 끝난 건축가 블록 사라짐, 다른 이유로 없어진 칸(폭탄 등)은 기록에서 지움, 대폭발 시간, 구멍 메우기
+  updateBBlocks() {
+    for (const b of [...this.bblocks.values()]) {
+      if (this.grid[this.idx(b.x, b.y, b.z)] !== CELL.BUILD) this.bblocks.delete(cellKey(b.x, b.y, b.z));
+      else if (this.time >= b.expiresAt && b.kind !== 'big') this.removeBBlock(b, 'expire');
+    }
+    for (const bomb of [...this.bigBombs]) if (this.time >= bomb.at) this.explodeBig(bomb, bomb.dir);
+    for (const h of [...this.holes]) {
+      if (this.time < h.at) continue;
+      if (this.grid[this.idx(h.x, h.y, h.z)] || [...this.players.values()].some((o) => this.onField(o) && overlapsCell(o, h.x, h.y, h.z))) continue; // 사람이 있으면 다음 틱
+      this.grid[this.idx(h.x, h.y, h.z)] = h.v;
+      this.holes = this.holes.filter((x) => x !== h);
+      this.gridChanged();
+    }
   }
 
   // ---- 갈고리 ----
@@ -1369,6 +1548,7 @@ export class Game {
 
   // 틱마다: 콤보가 끊긴 사람 무적, 돌진 부딪힘, 내려찍기·솟는 벽·회오리 발동
   updateCombat() {
+    if (this.bblocks.size || this.bigBombs.length || this.holes.length) this.updateBBlocks();
     for (const p of this.players.values()) {
       if (p.comboHits > 0 && this.time >= p.stunUntil) this.endCombo(p);
       if (!this.onField(p)) {
@@ -1382,7 +1562,7 @@ export class Game {
       if (p.castQueued && !p.atk && (p.atkLanded || this.time >= p.pushReadyAt)) this.castQueuedNow(p);
       else if (p.atkQueued && !p.atk && this.time >= p.pushReadyAt) {
         p.atkQueued = false;
-        if (this.time >= p.stunUntil && !this.isControlling(p) && p.weaponUses <= 0) this.basicStart(p);
+        if (this.time >= p.stunUntil && !this.isControlling(p)) this.basicStart(p);
       }
       if (this.time < p.chargeUntil) this.chargeHit(p);
       if (p.slamAt && this.time >= p.slamAt) this.tankSlam(p);
@@ -2176,6 +2356,16 @@ export class Game {
       p.z -= shift;
     }
     if (this.lava.active) this.lava.z -= full.filter((z) => z < this.lava.z).length;
+    // 건축가 블록·구멍 기록도 같이 내림 (지워진 층에 있던 것은 버림)
+    const moved = new Map();
+    for (const b of this.bblocks.values()) {
+      if (full.includes(b.z)) continue;
+      b.z -= full.filter((z) => z < b.z).length;
+      moved.set(cellKey(b.x, b.y, b.z), b);
+    }
+    this.bblocks = moved;
+    this.holes = this.holes.filter((h) => !full.includes(h.z));
+    for (const h of this.holes) h.z -= full.filter((z) => z < h.z).length;
   }
 
   // ---------- 용암 ----------
@@ -2280,9 +2470,6 @@ export class Game {
     if (type === 'knockback') {
       p.ammo += C.KNOCKBACK_AMMO;
       this.log(`  [아이템] ${p.name} 넉백 아이템 획득 (탄 ${p.ammo})`);
-    } else if (type === 'weapon') {
-      p.weaponUses = C.WEAPON_USES;
-      this.log(`  [아이템] ${p.name} 망치 획득 (${p.weaponUses}회)`);
     } else if (type === 'jump') {
       p.jumpUntil = this.time + C.JUMP_BOOST_MS;
       this.log(`  [아이템] ${p.name} 점프력 상승 획득`);
@@ -2290,7 +2477,7 @@ export class Game {
       p.ghostUntil = this.time + C.GHOST_MS;
       this.log(`  [아이템] ${p.name} 유령화 획득`);
     } else if (type === 'brick') {
-      p.bricks = C.BRICK_USES + (p.char === 'builder' ? C.BUILDER_BRICK_BONUS : 0); // 건축가 패시브
+      p.bricks = C.BRICK_USES;
       p.brickSide = false;
       this.log(`  [아이템] ${p.name} 설치 블록 1×2 획득 (${p.bricks}개)`);
     } else if (type === 'bomb') {
@@ -2598,7 +2785,6 @@ export class Game {
         ammo: p.ammo,
         dashCd: Math.max(0, p.dashReadyAt - this.time),
         pushCd: Math.max(0, p.pushReadyAt - this.time),
-        weaponUses: p.weaponUses,
         jumpLeft: Math.max(0, p.jumpUntil - this.time),
         danger: p.alive ? this.crushDanger(p) : null, // 머리 위로 떨어지는 블록이 깔기까지 남은 ms (없으면 null)
         ghostLeft: Math.max(0, p.ghostUntil - this.time),
@@ -2639,6 +2825,7 @@ export class Game {
       items: this.items,
       projectiles: this.projectiles.map((pr) => ({ x: pr.x, y: pr.y, z: pr.z })),
       bombs: this.bombs.map((b) => ({ id: b.id, x: b.x, y: b.y, z: b.z, left: Math.max(0, b.explodeAt - this.time) })),
+      bblocks: [...this.bblocks.values()].map((b) => ({ x: b.x, y: b.y, z: b.z, owner: b.owner, kind: b.kind, group: b.group, left: b.kind === 'big' ? Math.max(0, (this.bigBombs.find((x) => x.group === b.group)?.at ?? this.time) - this.time) : Math.max(0, b.expiresAt - this.time) })), // 건축가 블록 (B: 색·깜빡임·묶음)
       gridVersion: this.gridVersion,
     };
     if (includeGrid || this.gridDirty) {
@@ -2665,7 +2852,7 @@ const BOT_LEVEL_KO = { easy: '쉬움', normal: '보통', hard: '어려움' };
 const TEAM_KO = { red: '빨강', blue: '파랑' };
 
 // 킬 로그의 공격 이름 (npm run stats 가 한 단어로 읽음)
-const WEAPON_LOG = { push: '밀치기', weapon: '망치', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', whirl: '회오리' };
+const WEAPON_LOG = { push: '밀치기', blast: '블록폭발', bigbomb: '대폭발', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', whirl: '회오리' };
 
 function causeKo(cause) {
   if (cause === 'crush') return '압사';

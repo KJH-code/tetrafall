@@ -261,11 +261,11 @@ test('콤보 (2026-10-25): 타 수 상한 없이, 첫 타에서 COMBO_MS 가 지
   assert.equal(g.applyKnockback(p2, 1, 0, C.PUSH_KB_SPEED, 3, C.STUN_MS, 10, { by: 1, kind: 'push' }), true, '무적이 짧아서 바로 다시 때릴 수 있음');
 });
 
-test('콤보: 무거운 공격(망치·투사체·폭탄·충격파·필살기)은 넉백을 안 줄이고, 가벼운 공격은 ×COMBO_LIGHT_KB', () => {
+test('콤보: 무거운 공격(투사체·폭탄·충격파·필살기)은 넉백을 안 줄이고, 가벼운 공격은 ×COMBO_LIGHT_KB', () => {
   const a = setup();
   a.g.applyKnockback(a.p2, 1, 0, 5, 0, C.STUN_MS, 0, { by: 1, kind: 'push' });
   const b = setup();
-  b.g.applyKnockback(b.p2, 1, 0, 5, 0, C.STUN_MS, 0, { by: 1, kind: 'weapon' }, true);
+  b.g.applyKnockback(b.p2, 1, 0, 5, 0, C.STUN_MS, 0, { by: 1, kind: 'bomb' }, true);
   assert.ok(Math.abs(a.p2.kbx / b.p2.kbx - C.COMBO_LIGHT_KB) < 1e-9);
 });
 
@@ -571,10 +571,10 @@ test('킬: 조종·투척 블록 압사는 그 블록 주인, 자동 블록은 �
   assert.equal(b.alive, false);
   assert.deepEqual([g.deaths.at(-1).killer, g.deaths.at(-1).weapon], [a.name, 'control']);
   g.pieces = [];
-  Object.assign(c, { x: 4.5, y: 4.5, lastHit: { by: d.id, kind: 'weapon', name: d.name } });
+  Object.assign(c, { x: 4.5, y: 4.5, lastHit: { by: d.id, kind: 'bomb', name: d.name } });
   fallingPiece(g, 'O', 0, 4, 4, 2, 50);
   run(g, 600);
-  assert.deepEqual([g.deaths.at(-1).killer, g.deaths.at(-1).weapon], [d.name, 'weapon'], '자동 블록: 마지막으로 날린 사람');
+  assert.deepEqual([g.deaths.at(-1).killer, g.deaths.at(-1).weapon], [d.name, 'bomb'], '자동 블록: 마지막으로 날린 사람');
   g.pieces = [];
   Object.assign(d, { x: 7.5, y: 7.5 });
   const own = fallingPiece(g, 'O', 0, 7, 7, 2, 50);
@@ -1164,45 +1164,6 @@ test('스냅샷 쿨·재등장 시계: 밀치기 쿨, 조종권은 돌고 있으
   assert.equal(me.pushCd, C.PUSH_COOLDOWN_MS);
 });
 
-test('망치: WEAPON_USES 번 동안 밀치기 대신 — 넉백 약 2배, 경직 WEAPON_STUN_MS, 맞혔을 때만 소모', () => {
-  const { g, p1, p2 } = setup();
-  g.givePower(p1, 'weapon');
-  assert.equal(p1.weaponUses, C.WEAPON_USES);
-  p1.x = 2.5;
-  p1.y = 5;
-  p1.yaw = 0;
-  p2.x = 3.5;
-  p2.y = 5;
-  g.handleAction(1, { name: 'push' });
-  assert.equal(p1.weaponUses, C.WEAPON_USES - 1);
-  assert.equal(p2.stunUntil, g.time + C.WEAPON_STUN_MS);
-  assert.equal(p2.damage, C.DAMAGE_GAIN.weapon, '망치 피해 %');
-  assert.ok(g.drainEvents().some((e) => e.type === 'hit' && e.kind === 'weapon' && e.ok));
-  run(g, 2000);
-  const d = p2.x - 3.5;
-  assert.ok(d > 2.5 * C.DAMAGE_KB_BASE, `망치 넉백 거리 ${d.toFixed(2)} (피해 0% 밀치기 약 ${(1.5 * C.DAMAGE_KB_BASE).toFixed(2)})`);
-  // 빗나가면 소모 안 함
-  p1.pushReadyAt = 0;
-  g.handleAction(1, { name: 'push' });
-  assert.equal(p1.weaponUses, C.WEAPON_USES - 1, '빗나감');
-  // 무적이라 무시돼도 소모 안 함
-  Object.assign(p2, { x: 3.5, y: 5, z: 0, iframeUntil: g.time + 1000 });
-  p1.pushReadyAt = 0;
-  g.handleAction(1, { name: 'push' });
-  assert.equal(p1.weaponUses, C.WEAPON_USES - 1, '무적 중 무시');
-  // 맞히면 소모 → 다 쓰면 다시 밀치기
-  for (let k = 0; k < C.WEAPON_USES - 1; k++) {
-    Object.assign(p2, { stunUntil: 0, iframeUntil: 0, comboHits: 0 });
-    Object.assign(p2, { x: 3.5, y: 5, z: 0, kbx: 0, kby: 0 });
-    p1.pushReadyAt = 0;
-    g.handleAction(1, { name: 'push' });
-  }
-  assert.equal(p1.weaponUses, 0);
-  p1.pushReadyAt = 0;
-  g.handleAction(1, { name: 'push' });
-  assert.ok(g.drainEvents().some((e) => e.type === 'swing' && e.kind === 'push'));
-});
-
 test('유령화: 압사 면역 — 떨어지는 블록이 통과하고, 끝나면 블록 위로 밀려 올라가 산다', () => {
   const { g, p1, p2 } = setup();
   Object.assign(p1, { x: 0.5, y: 0.5 });
@@ -1241,10 +1202,9 @@ test('이속 증가: SPEED_MS 동안 걷는 속도 × SPEED_MULT, 끝나면 원�
   assert.ok(C.ITEM_POOL.includes('speed'));
 });
 
-test('치명타: 떨어지면서 위에서 밀치기·망치를 맞히면 피해 % × CRIT_DAMAGE_MULT, 넉백 × CRIT_KB_MULT, 로그·이벤트에 표시', () => {
-  const hit = (z, vz, grounded, weapon = false) => {
+test('치명타: 떨어지면서 위에서 밀치기를 맞히면 피해 % × CRIT_DAMAGE_MULT, 넉백 × CRIT_KB_MULT, 로그·이벤트에 표시', () => {
+  const hit = (z, vz, grounded) => {
     const { g, p1, p2, lines } = setup();
-    if (weapon) g.givePower(p1, 'weapon');
     Object.assign(p1, { x: 4.5, y: 5, z, vz, grounded, yaw: 0 });
     Object.assign(p2, { x: 5.3, y: 5, z: 0 });
     g.drainEvents();
@@ -1261,7 +1221,6 @@ test('치명타: 떨어지면서 위에서 밀치기·망치를 맞히면 피해
   assert.ok(crit.lines.some((l) => l.includes('넉백 치명타')), crit.lines.join('\n'));
   assert.equal(hit(0.8, 3, false).crit, false, '올라가는 중엔 아님');
   assert.equal(hit(0.1, -3, false).crit, false, '높이 차가 CRIT_MIN_HEIGHT 보다 작으면 아님');
-  assert.equal(hit(0.8, -3, false, true).dmg, Math.round(C.DAMAGE_GAIN.weapon * C.CRIT_DAMAGE_MULT), '망치도');
 });
 
 // 2단 점프 (2026-10-24 재혁: 이동성). 공중에서 점프 키를 새로 누르면('jump' 행동) 한 번 더

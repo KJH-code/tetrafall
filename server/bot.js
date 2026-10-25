@@ -145,6 +145,14 @@ export class BotBrain {
       return;
     }
 
+    // 0.5) 건축가 복귀: 필드 밖으로 떨어지는 중이면 공중 F (발판 + 위로 부스트) 를 쓰고 안쪽으로
+    if (p.char === 'builder' && !p.grounded && p.vz < 0 && p.z < -0.3 && g.time >= p.skillReadyAt && g.time >= p.stunUntil) {
+      this.moveTo(g, p, { x: W / 2, y: D / 2 });
+      g.handleInput(p.id, this.input);
+      g.handleAction(p.id, { name: 'skill' });
+      return;
+    }
+
     // 1) 피하기
     const hit = known.filter((d) => overlapsCells(p, d.cells));
     if (hit.length) {
@@ -363,11 +371,27 @@ export class BotBrain {
         return act('skill');
       }
     } else if (p.char === 'builder') {
-      if (ultReady && dist < 6 && dist > 1.5) {
-        this.aimAt(p, t);
+      // 내 블록 옆에 상대가 있으면 블록을 쳐서 터뜨림 (블록 너머 상대 쪽으로 날아감)
+      for (const b of g.bblocks.values()) {
+        if (b.owner !== p.id || b.kind === 'pad' || g.time < p.pushReadyAt || p.atk) continue;
+        const bx = b.x + 0.5;
+        const by = b.y + 0.5;
+        const db = Math.hypot(bx - p.x, by - p.y);
+        if (db > C.PUSH_RANGE || Math.abs(b.z - p.z) > 1) continue;
+        const ahead = ((t.x - bx) * (bx - p.x) + (t.y - by) * (by - p.y)) / (db || 1); // 블록 너머 쪽
+        if (Math.hypot(t.x - bx, t.y - by) > C.BUILDER_BLAST_RANGE + 0.8 || ahead < -0.3) continue;
+        this.input.yaw = Math.atan2(by - p.y, bx - p.x);
+        g.handleInput(p.id, this.input);
+        g.handleAction(p.id, { name: 'push' });
+        return true;
+      }
+      // 대폭발: 상대가 앞 3×3 (1칸 띄우고) 쯤에 있으면
+      const bigFrom = C.BUILDER_BIG_GAP + 1;
+      if (ultReady && level && dist >= bigFrom && dist <= bigFrom + C.BUILDER_BIG_SIZE) {
+        face();
         return act('ult');
       }
-      if (skillReady && level && dist >= 0.8 && dist < 2.2) {
+      if (skillReady && level && p.grounded && dist >= 0.8 && dist < 2.2) {
         face(); // 상대 발밑에 벽을 솟게 해 띄움
         return act('skill');
       }

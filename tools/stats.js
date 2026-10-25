@@ -71,6 +71,8 @@ export function parseLog(text) {
         combos: [], // { by: [때린 이름…] (옛 로그는 null), target, n }
         basics: [], // 캐릭터 평타 명중 { by, n } (n 0 = 공중 평타), 2026-10-25~
         counters: [], // 카운터히트를 넣은 이름 (2026-10-25~)
+        blasts: [], // 건축가 블록 폭발 { kind: '벽'|'3타 블록', n: 칸 수 } (2026-10-25~)
+        bigBombs: 0, // 건축가 대폭발
       };
     } else if ((m = line.match(/^ {2}사망: (.*)$/)) && last) {
       // 접속 끊김은 [사망] 줄 없이 여기에만 나옴
@@ -123,6 +125,10 @@ export function parseLog(text) {
       // "  [평타] P1 → P2 넉백 (P2 7%) 1타 옆치기" / "… 공중 망치 내려찍기" (무적이라 무시는 안 셈)
       cur.basics.push({ by: m[1], n: m[2] ? Number(m[2]) : 0 });
       countUse(cur, line);
+    } else if ((m = line.match(/^ {2}\[폭발\] \S+ (벽|3타 블록) (\d+)칸/))) {
+      cur.blasts.push({ kind: m[1], n: Number(m[2]) });
+    } else if (/^ {2}\[필살\] \S+ 대폭발 \(/.test(line)) {
+      cur.bigBombs++;
     } else if ((m = line.match(/^ {2}\[카운터\] (\S+) → \S+$/))) {
       cur.counters.push(m[1]);
     } else if (/^ {2}\[용암\] .*용암 상승 시작/.test(line)) {
@@ -150,12 +156,12 @@ export function parseLog(text) {
 function countUse(r, line) {
   const u = (name) => {
     if (!r.use.has(name)) {
-      r.use.set(name, { build: 0, bombs: 0, bombHits: 0, bricks: 0, crushes: 0, shocks: 0, shots: 0, shotHits: 0, hammerHits: 0, crits: 0 });
+      r.use.set(name, { build: 0, bombs: 0, bombHits: 0, bricks: 0, crushes: 0, shocks: 0, shots: 0, shotHits: 0, crits: 0 });
     }
     return r.use.get(name);
   };
   let m;
-  if ((m = line.match(/^ {2}\[(?:밀치기|망치|평타)\] (\S+) → \S+ 넉백 치명타/))) u(m[1]).crits++; // 아래 망치 명중으로도 셈
+  if ((m = line.match(/^ {2}\[(?:밀치기|망치|평타)\] (\S+) → \S+ 넉백 치명타/))) u(m[1]).crits++; // [망치] 는 2026-10-25 에 없앤 아이템 (옛 로그)
   if ((m = line.match(/^ {2}\[쌓기\] (\S+) →/))) u(m[1]).build++;
   else if ((m = line.match(/^ {2}\[폭탄\] (\S+) → \(/))) u(m[1]).bombs++;
   else if ((m = line.match(/^ {2}\[폭탄\] (\S+) → \S+ 넉백/))) u(m[1]).bombHits++;
@@ -164,7 +170,6 @@ function countUse(r, line) {
   else if ((m = line.match(/^ {2}\[충격파\] (\S+) → \S+ 넉백/))) u(m[1]).shocks++;
   else if ((m = line.match(/^ {2}\[발사\] (\S+) /))) u(m[1]).shots++;
   else if ((m = line.match(/^ {2}\[투사체\] (\S+) → \S+ 넉백/))) u(m[1]).shotHits++;
-  else if ((m = line.match(/^ {2}\[망치\] (\S+) → \S+ 넉백/))) u(m[1]).hammerHits++;
 }
 
 const shareOf = (deaths) => {
@@ -241,14 +246,14 @@ export function summarize(rounds) {
   }));
 
   // 아이템: 사람만 (봇은 쓰는 규칙이 코드에 정해져 있어 의미가 다름)
-  const items = { humanRounds: 0, build: 0, bombs: 0, bombHits: 0, bricks: 0, crushes: 0, shocks: 0, shots: 0, shotHits: 0, hammerHits: 0, crits: 0 };
+  const items = { humanRounds: 0, build: 0, bombs: 0, bombHits: 0, bricks: 0, crushes: 0, shocks: 0, shots: 0, shotHits: 0, crits: 0 };
   for (const r of rounds) {
     for (const p of r.players) {
       if (p.bot) continue;
       items.humanRounds++;
       const u = r.useByKey.get(p.key);
       if (!u) continue;
-      for (const k of ['build', 'bombs', 'bombHits', 'bricks', 'crushes', 'shocks', 'shots', 'shotHits', 'hammerHits', 'crits']) items[k] += u[k] || 0;
+      for (const k of ['build', 'bombs', 'bombHits', 'bricks', 'crushes', 'shocks', 'shots', 'shotHits', 'crits']) items[k] += u[k] || 0;
     }
   }
 
@@ -298,6 +303,13 @@ export function summarize(rounds) {
         }
       }
       return [...t.values()].sort((a, b) => a.key.localeCompare(b.key));
+    })(),
+    builder: (() => {
+      // 건축가 블록 폭발 (벽·3타 블록) 과 대폭발 횟수
+      const all = rounds.flatMap((r) => r.blasts);
+      const by = (k) => all.filter((b) => b.kind === k);
+      const cells = all.reduce((a, b) => a + b.n, 0);
+      return { blasts: all.length, wall: by('벽').length, third: by('3타 블록').length, cells, big: rounds.reduce((a, r) => a + r.bigBombs, 0) };
     })(),
     combos: (() => {
       // 콤보 (2타 이상): 길이별 횟수 + 넣은 캐릭터별 (사람·봇 따로, 여럿이 같이 넣은 건 따로)
@@ -387,6 +399,10 @@ export function formatReport(s) {
       table(['캐릭터', ...ns.map((n) => `${n}타`), '공중', '카운터'], s.basics.map((x) => [x.key, ...ns.map((n) => x.byN[n] || '-'), x.byN[0] || 0, x.counters || 0])),
     );
   }
+  if (s.builder.blasts || s.builder.big) {
+    const b = s.builder;
+    out.push('', '== 건축가 블록 ==', `폭발 ${b.blasts}번 (벽 ${b.wall} · 3타 블록 ${b.third}, 평균 ${b.blasts ? (b.cells / b.blasts).toFixed(1) : 0}칸) · 대폭발 ${b.big}번`);
+  }
   out.push('', '== 모드별 ==', table(['모드', '판', '길이 중앙값', '압사 비율', ''], groupRows(s.byMode).map((row, i) => [...row, s.byMode[i].note])));
   out.push(
     '',
@@ -425,8 +441,7 @@ export function formatReport(s) {
         ['폭탄', it.bombs, per(it.bombs), `${it.bombHits}명`],
         ['설치 블록 1×2', it.bricks, per(it.bricks), `깔림 ${it.crushes} · 충격파 ${it.shocks}`],
         ['투사체', it.shots, per(it.shots), `${it.shotHits}번`],
-        ['망치', '-', '-', `${it.hammerHits}번`],
-        ['치명타 (밀치기·망치·공중 평타)', it.crits, per(it.crits), '-'],
+        ['치명타 (밀치기·공중 평타)', it.crits, per(it.crits), '-'],
       ],
     ),
   );
