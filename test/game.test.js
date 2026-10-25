@@ -200,7 +200,7 @@ test('조종권: 8초 안에 안 떨구면 자동 낙하', () => {
 });
 
 test('콤보 (2026-10-24): 경직 중에 또 맞으면 이어지고, 경직이 풀리면 끝나고 COMBO_IFRAME_MS 무적, 무적이 끝나면 새 콤보', () => {
-  const { g, p1, p2 } = setup();
+  const { g, p1, p2, lines } = setup();
   Object.assign(p1, { x: 2.5, y: 2.5, yaw: 0 });
   Object.assign(p2, { x: 3.5, y: 2.5 });
   g.handleAction(1, { name: 'push' });
@@ -222,6 +222,7 @@ test('콤보 (2026-10-24): 경직 중에 또 맞으면 이어지고, 경직이 �
   // 경직이 풀리면 콤보 끝 → 무적
   run(g, C.STUN_MS + 100);
   assert.equal(p2.comboHits, 0);
+  assert.ok(lines.includes('  [콤보] P1 → P2 2타'), '로그: 때린 사람 → 맞은 사람 N타 (통계가 읽음)');
   assert.ok(p2.iframeUntil > g.time, '무적');
   Object.assign(p2, { x: 3.5, y: 2.5, z: 0, kbx: 0 });
   p1.pushReadyAt = 0;

@@ -68,6 +68,7 @@ export function parseLog(text) {
         len: null,
         lava: false,
         use: new Map(), // P1 → 아이템 사용 횟수
+        combos: [], // { by: [때린 이름…] (옛 로그는 null), target, n }
       };
     } else if ((m = line.match(/^ {2}사망: (.*)$/)) && last) {
       // 접속 끊김은 [사망] 줄 없이 여기에만 나옴
@@ -113,6 +114,9 @@ export function parseLog(text) {
     } else if ((m = line.match(/^ {2}모드: (블록 마스터|킬 점수전)(?: \(마스터 (\S+?),)?/))) {
       cur.mode = m[1];
       cur.master = m[2] || null;
+    } else if ((m = line.match(/^ {2}\[콤보\] (?:(\S+) → )?(\S+) (\d+)타$/))) {
+      // "P1 → P2 3타" (때린 사람 여럿이면 P1+P3). 2026-10-24 처음 형식은 "P2 3타" (때린 사람 없음)
+      cur.combos.push({ by: m[1] ? m[1].split('+') : null, target: m[2], n: Number(m[3]) });
     } else if (/^ {2}\[용암\] .*용암 상승 시작/.test(line)) {
       cur.lava = true;
     } else {
@@ -266,6 +270,39 @@ export function summarize(rounds) {
       }
       return [...t.values()].sort((a, b) => a.key.localeCompare(b.key));
     })(),
+    combos: (() => {
+      // 콤보 (2타 이상): 길이별 횟수 + 넣은 캐릭터별 (사람·봇 따로, 여럿이 같이 넣은 건 따로)
+      const len = {};
+      const t = new Map();
+      const charRounds = new Map(); // 캐릭터 키 → 판 수 (1명·1판당 계산)
+      const row = (k) => {
+        if (!t.has(k)) t.set(k, { key: k, combos: 0, hits: 0, max: 0, full: 0 });
+        return t.get(k);
+      };
+      for (const r of rounds) {
+        const charKey = (name) => {
+          const c = r.chars && r.chars.get(name);
+          return c ? `${c}${isBot(name) ? ' (봇)' : ''}` : null;
+        };
+        for (const p of r.players) {
+          const k = charKey(p.name);
+          if (k) charRounds.set(k, (charRounds.get(k) || 0) + 1);
+        }
+        for (const cb of r.combos) {
+          len[cb.n] = (len[cb.n] || 0) + 1;
+          if (!cb.by) continue;
+          const k = cb.by.length > 1 ? '여럿이 같이' : charKey(cb.by[0]) || '캐릭터 없음';
+          const x = row(k);
+          x.combos++;
+          x.hits += cb.n;
+          x.max = Math.max(x.max, cb.n);
+          if (cb.n >= C.COMBO_MAX_HITS) x.full++;
+        }
+      }
+      const total = Object.values(len).reduce((a, b) => a + b, 0);
+      const byChar = [...t.values()].map((x) => ({ ...x, rounds: charRounds.get(x.key) || 0 })).sort((a, b) => b.combos - a.combos);
+      return { total, len, byChar };
+    })(),
     byMode: group((r) => r.mode).map((g) => {
       const rs = rounds.filter((r) => r.mode === g.key);
       const masterWins = rs.filter((r) => r.masterKey && r.winnerKeys.includes(r.masterKey)).length;
@@ -300,6 +337,18 @@ export function formatReport(s) {
   out.push('', '== 인원 구성별 ==', table(['구성', '판', '길이 중앙값', '압사 비율'], groupRows(s.byComp)));
   out.push('', '== 맵별 ==', table(['맵', '판', '길이 중앙값', '압사 비율'], groupRows(s.byMap)));
   if (s.byChar.length) out.push('', '== 캐릭터별 ==', table(['캐릭터', '판', '승', '승률'], s.byChar.map((c) => [c.key, c.rounds, c.wins, pct(c.wins, c.rounds)])));
+  if (s.combos.total) {
+    const lens = Object.keys(s.combos.len).map(Number).sort((a, b) => a - b);
+    out.push('', `== 콤보 (2타 이상, ${C.COMBO_MAX_HITS}타가 최대) ==`, `${s.combos.total}번 · 길이별 ${lens.map((n) => `${n}타 ${s.combos.len[n]}`).join(' · ')}`);
+    if (s.combos.byChar.length) {
+      out.push(
+        table(
+          ['넣은 캐릭터', '콤보', '1명·1판당', '평균 타수', '최대', `${C.COMBO_MAX_HITS}타`],
+          s.combos.byChar.map((x) => [x.key, x.combos, x.rounds ? (x.combos / x.rounds).toFixed(1) : '-', (x.hits / x.combos).toFixed(1), x.max, x.full]),
+        ),
+      );
+    }
+  }
   out.push('', '== 모드별 ==', table(['모드', '판', '길이 중앙값', '압사 비율', ''], groupRows(s.byMode).map((row, i) => [...row, s.byMode[i].note])));
   out.push(
     '',

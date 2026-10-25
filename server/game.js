@@ -1437,6 +1437,9 @@ export class Game {
     if (this.time < t.iframeUntil || this.time < t.shieldUntil) return false; // 콤보 뒤 무적·부활 무적
     // 콤보: 경직이 안 풀렸는데 또 맞으면 이어짐. COMBO_MAX_HITS 타째가 마지막 타 (크게 날리고 무적)
     t.comboHits = this.time < t.stunUntil && t.comboHits > 0 ? t.comboHits + 1 : 1;
+    if (t.comboHits === 1) t.comboBy = new Set(); // 이 콤보를 넣은 사람들 (로그·통계용)
+    const hitter = src && src.by !== t.id ? this.players.get(src.by) : null;
+    if (hitter) t.comboBy.add(hitter.name);
     const finisher = t.comboHits >= C.COMBO_MAX_HITS;
     speed *= finisher ? C.COMBO_FINISH_KB : heavy ? 1 : C.COMBO_LIGHT_KB;
     if (t.comboHits >= 2 && src) this.emit({ type: 'combo', by: src.by, target: t.id, n: t.comboHits });
@@ -1469,7 +1472,7 @@ export class Game {
 
   // 콤보 끝: 그때부터 COMBO_IFRAME_MS 무적 (마지막 타는 경직이 끝날 때까지 + 무적)
   endCombo(t, from = this.time) {
-    if (t.comboHits >= 2) this.log(`  [콤보] ${t.name} ${t.comboHits}타`);
+    if (t.comboHits >= 2) this.log(`  [콤보] ${[...(t.comboBy || [])].join('+') || '?'} → ${t.name} ${t.comboHits}타`); // 때린 사람 여럿이면 P1+P3
     t.comboHits = 0;
     t.iframeUntil = from + C.COMBO_IFRAME_MS;
   }

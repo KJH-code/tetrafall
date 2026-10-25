@@ -245,3 +245,27 @@ test('통계: 캐릭터별 판·승 (사람·봇 따로)', () => {
   assert.deepEqual([row('탱크 (봇)').rounds, row('탱크 (봇)').wins], [1, 0]);
   assert.ok(formatReport(s).includes('== 캐릭터별 =='));
 });
+
+test('통계: 콤보 — 길이별 횟수, 넣은 캐릭터별 (여럿이 같이는 따로, 옛 형식은 길이만)', () => {
+  const text = [
+    '===== ROUND 1 시작 (3명: P1 P2 P3(봇), 맵 평지) =====',
+    '  캐릭터: P1 닌자 / P2 탱크 / P3(봇) 갈고리',
+    '  [콤보] P1 → P2 3타',
+    `  [콤보] P1 → P2 ${C.COMBO_MAX_HITS}타`,
+    '  [콤보] P3(봇) → P1 2타',
+    '  [콤보] P1+P3(봇) → P2 4타',
+    '  [콤보] P2 2타',
+    '===== ROUND 1 종료 | 길이 0:30 | 승자: P1 =====',
+  ].join('\n');
+  const s = summarize(parseLog(text));
+  assert.equal(s.combos.total, 5);
+  assert.deepEqual(s.combos.len, { 2: 2, 3: 1, 4: 1, [C.COMBO_MAX_HITS]: 1 });
+  const row = (k) => s.combos.byChar.find((x) => x.key === k);
+  assert.deepEqual([row('닌자').combos, row('닌자').hits, row('닌자').max, row('닌자').full, row('닌자').rounds], [2, 3 + C.COMBO_MAX_HITS, C.COMBO_MAX_HITS, 1, 1]);
+  assert.equal(row('갈고리 (봇)').combos, 1);
+  assert.equal(row('여럿이 같이').combos, 1);
+  const report = formatReport(s);
+  assert.ok(report.includes('== 콤보'), report);
+  assert.ok(report.includes('2타 2'), report);
+});
+
