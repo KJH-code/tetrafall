@@ -235,19 +235,29 @@ test('콤보 (2026-10-24): 경직 중에 또 맞으면 이어지고, 경직이 �
   assert.ok(p2.kbx > 0 && p2.comboHits === 1, '무적 뒤엔 새 콤보');
 });
 
-test('콤보: COMBO_MAX_HITS 타째가 마지막 타 — 넉백 ×COMBO_FINISH_KB 로 크게, 바로 무적. 여럿이 때려도 맞는 사람 기준', () => {
-  const { g, ps } = setupN(3);
+test('콤보 (2026-10-25): 타 수 상한 없이, 첫 타에서 COMBO_MS 가 지난 뒤 들어간 타가 마지막 타 — 넉백 ×COMBO_FINISH_KB 로 크게, 경직 뒤 COMBO_IFRAME_MS 무적. 여럿이 때려도 맞는 사람 기준', () => {
+  const { g, ps, lines } = setupN(3);
   const p2 = ps[1];
+  const start = g.time;
   const kb = [];
-  for (let k = 0; k < C.COMBO_MAX_HITS; k++) {
-    Object.assign(p2, { x: 5.5, y: 5.5, z: 0, kbx: 0 });
+  const at = [];
+  for (let k = 0; k < 20; k++) {
+    Object.assign(p2, { x: 5.5, y: 5.5, z: 0, kbx: 0, kby: 0 });
+    at.push(g.time - start);
     g.applyKnockback(p2, 1, 0, C.PUSH_KB_SPEED, C.PUSH_KB_UP, C.STUN_MS, 0, { by: k % 2 ? 1 : 3, kind: 'push' }); // 둘이 번갈아
     kb.push(p2.kbx);
+    if (p2.comboHits === 0) break;
+    run(g, 200); // 경직(STUN_MS) 안에 다음 타
   }
-  assert.ok(kb[4] > kb[3] * (C.COMBO_FINISH_KB / C.COMBO_LIGHT_KB) * 0.99, `마지막 타가 크게: ${kb.map((v) => v.toFixed(2))}`);
-  assert.equal(p2.comboHits, 0);
+  const n = kb.length;
+  assert.ok(n >= 6, `예전 상한 5타보다 길게 이어짐 (${n}타)`);
+  assert.ok(at[n - 2] < C.COMBO_MS && at[n - 1] >= C.COMBO_MS, `COMBO_MS 가 지난 첫 타가 마무리: ${at.map(Math.round)}`);
+  assert.ok(kb[n - 1] > kb[n - 2] * (C.COMBO_FINISH_KB / C.COMBO_LIGHT_KB) * 0.99, `마지막 타가 크게: ${kb.map((v) => v.toFixed(2))}`);
   assert.ok(p2.iframeUntil >= p2.stunUntil + C.COMBO_IFRAME_MS - 1, '마지막 타 경직 + 무적');
-  assert.equal(g.applyKnockback(p2, 1, 0, C.PUSH_KB_SPEED, 3, C.STUN_MS, 10, { by: 1, kind: 'push' }), false, '6타째는 안 들어감');
+  assert.ok(lines.includes(`  [콤보] P1+P3 → P2 ${n}타 마무리`) || lines.includes(`  [콤보] P3+P1 → P2 ${n}타 마무리`), lines.join('\n'));
+  assert.equal(g.applyKnockback(p2, 1, 0, C.PUSH_KB_SPEED, 3, C.STUN_MS, 10, { by: 1, kind: 'push' }), false, '마무리 뒤엔 무적이라 안 들어감');
+  run(g, p2.iframeUntil - g.time + 1);
+  assert.equal(g.applyKnockback(p2, 1, 0, C.PUSH_KB_SPEED, 3, C.STUN_MS, 10, { by: 1, kind: 'push' }), true, '무적이 짧아서 바로 다시 때릴 수 있음');
 });
 
 test('콤보: 무거운 공격(망치·투사체·폭탄·충격파·필살기)은 넉백을 안 줄이고, 가벼운 공격은 ×COMBO_LIGHT_KB', () => {

@@ -182,6 +182,7 @@ export class Game {
       skillReadyAt: 0, // 스킬 F 다시 쓸 수 있는 시각
       ult: 0, // 필살기 게이지 (ULT_MAX 면 R)
       comboHits: 0, // 지금 이어지는 콤보에서 맞은 횟수 (경직 중에 또 맞으면 +1)
+      comboStartAt: 0, // 이 콤보 첫 타 시각 (COMBO_MS 가 지나면 다음 타가 마무리)
       iframeUntil: 0, // 콤보가 끝난 뒤 무적 (공격만 막음)
       chargeUntil: 0, // 탱크 돌진 중
       slamAt: 0, // 탱크 내려찍기: 이 시각에 쾅
@@ -499,6 +500,7 @@ export class Game {
         skillReadyAt: 0,
         ult: 0,
         comboHits: 0,
+        comboStartAt: 0,
         iframeUntil: 0,
         chargeUntil: 0,
         slamAt: 0,
@@ -731,6 +733,7 @@ export class Game {
       ammo: 0,
       damage: 0,
       comboHits: 0,
+      comboStartAt: 0,
       iframeUntil: 0,
       chargeUntil: 0,
       slamAt: 0,
@@ -1437,16 +1440,19 @@ export class Game {
   applyKnockback(t, dx, dy, speed, up, stunMs = C.STUN_MS, gain = 0, src = null, heavy = false) {
     if (this.invulnerable(t)) return false; // 콤보 뒤 무적·부활 무적
     const teammate = src && this.sameTeam(this.players.get(src.by), t);
-    // 콤보: 경직이 안 풀렸는데 또 맞으면 이어짐. COMBO_MAX_HITS 타째가 마지막 타 (크게 날리고 무적). 같은 팀은 콤보로 안 셈 (무적도 안 붙음)
+    // 콤보: 경직이 안 풀렸는데 또 맞으면 이어짐. 첫 타에서 COMBO_MS 가 지난 뒤 들어간 타가 마지막 타 (크게 날리고 무적). 같은 팀은 콤보로 안 셈 (무적도 안 붙음)
     if (!teammate) {
       t.comboHits = this.time < t.stunUntil && t.comboHits > 0 ? t.comboHits + 1 : 1;
-      if (t.comboHits === 1) t.comboBy = new Set(); // 이 콤보를 넣은 사람들 (로그·통계용)
+      if (t.comboHits === 1) {
+        t.comboBy = new Set(); // 이 콤보를 넣은 사람들 (로그·통계용)
+        t.comboStartAt = this.time;
+      }
       const hitter = src && src.by !== t.id ? this.players.get(src.by) : null;
       if (hitter) t.comboBy.add(hitter.name);
     }
-    const finisher = !teammate && t.comboHits >= C.COMBO_MAX_HITS;
+    const finisher = !teammate && t.comboHits >= 2 && this.time - t.comboStartAt >= C.COMBO_MS;
     speed *= finisher ? C.COMBO_FINISH_KB : heavy ? 1 : C.COMBO_LIGHT_KB;
-    if (!teammate && t.comboHits >= 2 && src) this.emit({ type: 'combo', by: src.by, target: t.id, n: t.comboHits });
+    if (!teammate && t.comboHits >= 2 && src) this.emit({ type: 'combo', by: src.by, target: t.id, n: t.comboHits, finish: finisher });
     t.emoteUntil = 0; // 맞으면 이모트 끊김
     t.chargeUntil = 0; // 맞으면 돌진·내려찍기 끊김
     t.slamAt = 0;
@@ -1469,7 +1475,7 @@ export class Game {
     t.wallBounced = false; // 벽 튕김은 맞을 때마다 한 번
     t.stunUntil = this.time + stunMs;
     t.freezeUntil = this.time + C.HITSTOP_MS; // 멈칫 뒤에 날아간다 (날아가는 거리는 그대로)
-    if (finisher) this.endCombo(t, t.stunUntil);
+    if (finisher) this.endCombo(t, t.stunUntil, true);
     return true;
   }
 
@@ -1481,8 +1487,8 @@ export class Game {
   }
 
   // 콤보 끝: 그때부터 COMBO_IFRAME_MS 무적 (마지막 타는 경직이 끝날 때까지 + 무적)
-  endCombo(t, from = this.time) {
-    if (t.comboHits >= 2) this.log(`  [콤보] ${[...(t.comboBy || [])].join('+') || '?'} → ${t.name} ${t.comboHits}타`); // 때린 사람 여럿이면 P1+P3
+  endCombo(t, from = this.time, finished = false) {
+    if (t.comboHits >= 2) this.log(`  [콤보] ${[...(t.comboBy || [])].join('+') || '?'} → ${t.name} ${t.comboHits}타${finished ? ' 마무리' : ''}`); // 때린 사람 여럿이면 P1+P3
     t.comboHits = 0;
     t.iframeUntil = from + C.COMBO_IFRAME_MS;
   }

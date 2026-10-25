@@ -114,9 +114,9 @@ export function parseLog(text) {
     } else if ((m = line.match(/^ {2}모드: (블록 마스터|킬 점수전)(?: \(마스터 (\S+?),)?/))) {
       cur.mode = m[1];
       cur.master = m[2] || null;
-    } else if ((m = line.match(/^ {2}\[콤보\] (?:(\S+) → )?(\S+) (\d+)타$/))) {
-      // "P1 → P2 3타" (때린 사람 여럿이면 P1+P3). 2026-10-24 처음 형식은 "P2 3타" (때린 사람 없음)
-      cur.combos.push({ by: m[1] ? m[1].split('+') : null, target: m[2], n: Number(m[3]) });
+    } else if ((m = line.match(/^ {2}\[콤보\] (?:(\S+) → )?(\S+) (\d+)타( 마무리)?$/))) {
+      // "P1 → P2 3타" (때린 사람 여럿이면 P1+P3), 마무리 타로 끝나면 "… 6타 마무리" (2026-10-25~). 2026-10-24 처음 형식은 "P2 3타" (때린 사람 없음)
+      cur.combos.push({ by: m[1] ? m[1].split('+') : null, target: m[2], n: Number(m[3]), finish: !!m[4] });
     } else if (/^ {2}\[용암\] .*용암 상승 시작/.test(line)) {
       cur.lava = true;
     } else {
@@ -296,7 +296,7 @@ export function summarize(rounds) {
           x.combos++;
           x.hits += cb.n;
           x.max = Math.max(x.max, cb.n);
-          if (cb.n >= C.COMBO_MAX_HITS) x.full++;
+          if (cb.finish) x.full++;
         }
       }
       const total = Object.values(len).reduce((a, b) => a + b, 0);
@@ -339,11 +339,11 @@ export function formatReport(s) {
   if (s.byChar.length) out.push('', '== 캐릭터별 ==', table(['캐릭터', '판', '승', '승률'], s.byChar.map((c) => [c.key, c.rounds, c.wins, pct(c.wins, c.rounds)])));
   if (s.combos.total) {
     const lens = Object.keys(s.combos.len).map(Number).sort((a, b) => a - b);
-    out.push('', `== 콤보 (2타 이상, ${C.COMBO_MAX_HITS}타가 최대) ==`, `${s.combos.total}번 · 길이별 ${lens.map((n) => `${n}타 ${s.combos.len[n]}`).join(' · ')}`);
+    out.push('', `== 콤보 (2타 이상, ${C.COMBO_MS / 1000}초 넘으면 다음 타가 마무리) ==`, `${s.combos.total}번 · 길이별 ${lens.map((n) => `${n}타 ${s.combos.len[n]}`).join(' · ')}`);
     if (s.combos.byChar.length) {
       out.push(
         table(
-          ['넣은 캐릭터', '콤보', '1명·1판당', '평균 타수', '최대', `${C.COMBO_MAX_HITS}타`],
+          ['넣은 캐릭터', '콤보', '1명·1판당', '평균 타수', '최대', '마무리'],
           s.combos.byChar.map((x) => [x.key, x.combos, x.rounds ? (x.combos / x.rounds).toFixed(1) : '-', (x.hits / x.combos).toFixed(1), x.max, x.full]),
         ),
       );

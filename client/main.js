@@ -155,8 +155,8 @@ document.addEventListener('keyup', (e) => {
 // 콤보 'N HIT' (때린 쪽 노랑, 맞은 쪽 빨강)
 const comboEl = $('combo');
 let comboTimer = null;
-function showCombo(n, taken) {
-  comboEl.textContent = `${n} HIT${n >= C.COMBO_MAX_HITS ? '!!' : '!'}`;
+function showCombo(n, taken, finish) {
+  comboEl.textContent = `${n} HIT${finish ? '!!' : '!'}`;
   comboEl.classList.toggle('taken', taken);
   comboEl.classList.remove('hidden');
   clearTimeout(comboTimer);
@@ -211,7 +211,7 @@ function handleEvent(e) {
       renderer.markCircle(e.x, e.y, e.z, e.r, 0x40d0c0, 350);
       break;
     case 'combo': // 내가 때리거나 맞은 콤보만
-      if (e.by === myId || e.target === myId) showCombo(e.n, e.target === myId);
+      if (e.by === myId || e.target === myId) showCombo(e.n, e.target === myId, e.finish);
       break;
     case 'hook':
       renderer.showHook(e.who, e.target, e.yaw);
