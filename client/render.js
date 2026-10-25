@@ -540,7 +540,13 @@ export class Renderer {
     parts.position.z = -C.PLAYER_HEIGHT / 2 + (walking && !jointed ? Math.abs(step) * C.ANIM_BOB : 0);
     g.userData.feet.forEach((f, i) => (f.position.x = f.userData.baseX + (i ? -step : step) * C.ANIM_STEP));
     // 경직된 채 빠르게 날아가면 뒤로 구름. 끝나면 가장 가까운 바로 선 자세로 돌아옴
-    if (fig) this.figureFlight(a, s, p, air, vx, vy, dt);
+    if (fig) {
+      this.figureFlight(a, s, p, air, vx, vy, dt);
+      // 안전장치: 구르기·공중제비 각이 깨지면 바로 선 자세로
+      if (!Number.isFinite(a.spin)) a.spin = 0;
+      if (!Number.isFinite(a.flipAngle)) a.flipAngle = 0;
+      if (a.tumbleAxis && ![a.tumbleAxis.x, a.tumbleAxis.y, a.tumbleAxis.z].every(Number.isFinite)) a.tumbleAxis.set(0, 1, 0);
+    }
     else if (p.stunned && a.hs > C.ANIM_TUMBLE_MIN_SPEED) a.spin -= dt * C.ANIM_TUMBLE_SPEED;
     else a.spin += (Math.round(a.spin / (Math.PI * 2)) * Math.PI * 2 - a.spin) * (1 - Math.exp(-C.ANIM_SMOOTH * dt));
     const lean = Math.min(1, a.hs / C.MOVE_SPEED) * C.ANIM_LEAN;
@@ -650,7 +656,9 @@ export class Renderer {
     const set = C.BASIC_ATTACKS?.[e.char];
     const def = set ? (e.air ? set.air : set.chain)[e.n - 1] : null; // 공중 평타도 1타부터 (air 는 배열)
     const move = e.char === 'hook' && e.name === '주먹' ? 'hook:주먹' : MOVES[e.name] ? e.name : 'punch';
-    this.acts.set(e.who, { id: ++this.hitSeq, move, t0: performance.now(), windup: (e.windup || 0) / 1000, struck: null, rec: (def ? def.rec : 300) / 1000, broken: 0 });
+    // 표에서 못 찾거나 이상한 값이면 기본값 (NaN 이 동작에 들어가면 몸이 무너짐)
+    const ms = (v, dflt) => (Number.isFinite(v) && v >= 0 ? v : dflt) / 1000;
+    this.acts.set(e.who, { id: ++this.hitSeq, move, t0: performance.now(), windup: ms(e.windup, 0), struck: null, rec: ms(def?.rec, 300), broken: 0 });
   }
 
   // swing 이벤트: 판정 순간 → 타격 자세. 준비 없이 온 것(캐릭터 없는 밀치기)은 바로 타격
@@ -696,6 +704,8 @@ export class Renderer {
       this.acts.delete(id);
       return null;
     };
+    // 안전장치: 시간 값이 이상하거나 너무 오래 남은 동작은 버림 (끝나지 않는 동작이 자세를 붙잡지 않게)
+    if (![a.windup, a.rec].every((v) => Number.isFinite(v) && v >= 0) || a.rec <= 0 || now - a.t0 > C.FIGURE_ACT_MAX_S * 1000) return done();
     if (a.broken) {
       const u = (now - a.broken) / 1000 / C.FIGURE_BROKEN_S;
       return u >= 1 ? done() : { id: a.id, move: a.move, phase: 'broken', u };
@@ -787,6 +797,10 @@ export class Renderer {
       const sn = Math.sin(p.yaw);
       dx = c * h.dir.x + sn * h.dir.y;
       dy = -sn * h.dir.x + c * h.dir.y;
+    }
+    if (![dx, dy, h.pow, h.stop].every(Number.isFinite)) {
+      this.hits.delete(p.id); // 이상한 방향·세기는 버림
+      return null;
     }
     return { id: h.id, age, stop: h.stop, dx, dy, pow: h.pow };
   }

@@ -665,6 +665,14 @@ function overlay(P, T, pose, w) {
   }
 }
 
+// 자세 값이 다 정상인지 (NaN·무한대 없음)
+function poseOk(P) {
+  for (const v of Object.values(P)) {
+    if (Array.isArray(v) ? !v.every(Number.isFinite) : !Number.isFinite(v)) return false;
+  }
+  return true;
+}
+
 // 0~1 → 부드럽게
 const ease = (u) => {
   const x = Math.max(0, Math.min(1, u));
@@ -675,12 +683,21 @@ const ease = (u) => {
 //       hit(맞은 것: { id, age 초, stop 히트스톱 초, dx, dy 밀린 방향(몸 기준), pow 세기 } 또는 null),
 //       tumble(0~1 구르는 중), recover(0~1 일어나는 중), land(0~1 착지 무릎), flip(0~1 2단 점프 공중제비 중, 아니면 -1),
 //       act(공격 동작: { id, move(MOVES 이름), phase 'wind'|'strike'|'rec'|'broken', u 0~1 } 또는 null) }
-export function figureAnim(fig, st, dt) {
+export function figureAnim(fig, st, dt, retry = false) {
   const d = fig.d;
   const T = restPose(d);
+  // 안전장치: 이상한 값(NaN·무한대)이 들어온 맞음·공격은 버림 (한 번 들어가면 자세에 영영 남아 몸이 무너짐)
+  const finite = (...v) => v.every(Number.isFinite);
+  st = { ...st };
+  for (const k of ['hs', 'walk', 't', 'tumble', 'recover', 'land', 'punch', 'emoteT']) if (!finite(st[k] ?? 0)) st[k] = 0;
+  if (!finite(st.flip ?? -1)) st.flip = -1;
   const t = st.t;
-  const hit = st.hit;
+  const hit = st.hit && finite(st.hit.dx, st.hit.dy, st.hit.pow, st.hit.age, st.hit.stop) ? st.hit : null;
+  if (st.act && !(finite(st.act.u) && MOVES[st.act.move] !== undefined)) st.act = null;
+  if (!finite(dt) || dt < 0) dt = 0;
   const sw = fig.sway || (fig.sway = { x: 0, y: 0, vx: 0, vy: 0, id: null });
+  if (!finite(sw.x, sw.y, sw.vx, sw.vy)) Object.assign(sw, { x: 0, y: 0, vx: 0, vy: 0 });
+  if (fig.pose && !poseOk(fig.pose)) fig.pose = null; // 깨진 자세는 버리고 기본 자세부터
   if (hit && hit.id !== sw.id) {
     // 새로 맞음: 밀린 쪽으로 꺾인 채 시작 (멈칫 뒤 그쪽으로 튕김)
     sw.id = hit.id;
@@ -857,6 +874,13 @@ export function figureAnim(fig, st, dt) {
       reach = Math.max(reach, (d.thigh * Math.cos(P.thFwd[i]) + d.shin * Math.cos(P.thFwd[i] - P.knee[i])) * Math.cos(P.thOut[i]));
     }
     drop = Math.max(0, d.thigh + d.shin - reach);
+  }
+  if (!poseOk(P) || !Number.isFinite(drop) || !Number.isFinite(spin)) {
+    // 그래도 깨졌으면 이번 프레임은 기본 자세로 (다음 프레임은 깨끗한 자세부터)
+    fig.pose = restPose(d);
+    Object.assign(sw, { x: 0, y: 0, vx: 0, vy: 0 });
+    if (!retry) return figureAnim(fig, { ...st, act: null, hit: null, walking: false, air: false }, 0, true);
+    return;
   }
   fig.hips.position.z = d.foot + d.shin + d.thigh + P.hipsZ - drop;
   fig.waist.rotation.y = P.waistPitch + sw.x;
