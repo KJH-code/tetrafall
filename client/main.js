@@ -148,6 +148,14 @@ const helpEl = $('help');
 document.addEventListener('keydown', (e) => {
   if (e.code === 'KeyH' && !e.repeat && document.activeElement?.tagName !== 'INPUT') helpEl.classList.remove('hidden');
 });
+// V: 1인칭 ↔ 3인칭 (설정에도 같은 칸, 이 브라우저에 기억)
+document.addEventListener('keydown', (e) => {
+  if (e.code !== 'KeyV' || e.repeat || document.activeElement?.tagName === 'INPUT') return;
+  settings.third = !settings.third;
+  $('set-third').checked = settings.third;
+  applySettings();
+  saveSettings();
+});
 document.addEventListener('keyup', (e) => {
   if (e.code === 'KeyH') helpEl.classList.add('hidden');
 });
@@ -161,6 +169,19 @@ function showCombo(n, taken, finish) {
   comboEl.classList.remove('hidden');
   clearTimeout(comboTimer);
   comboTimer = setTimeout(() => comboEl.classList.add('hidden'), C.COMBO_TEXT_MS);
+}
+
+// 카운터히트 'COUNTER!' (넣은 쪽 하늘색, 당한 쪽 빨강). 콤보 글자 바로 위에 짧게
+const counterEl = $('counter');
+let counterTimer = null;
+function showCounter(taken) {
+  counterEl.classList.toggle('taken', taken);
+  counterEl.classList.remove('hidden');
+  counterEl.style.animation = 'none'; // 연달아 와도 다시 튀어나오게
+  void counterEl.offsetWidth;
+  counterEl.style.animation = '';
+  clearTimeout(counterTimer);
+  counterTimer = setTimeout(() => counterEl.classList.add('hidden'), C.COUNTER_TEXT_MS);
 }
 
 function handleEvent(e) {
@@ -210,7 +231,12 @@ function handleEvent(e) {
       fx.ring({ x: e.x, y: e.y, z: e.z + 0.3 }, 0x40d0c0, e.r * 2, 0.45, true);
       renderer.markCircle(e.x, e.y, e.z, e.r, 0x40d0c0, 350);
       break;
+    case 'counter': // 카운터히트: 같은 틱의 hit 보다 먼저 옴 → 맞은 몸이 더 크게 휘청
+      renderer.counterHit(e.target);
+      if (e.by === myId || e.target === myId) showCounter(e.target === myId);
+      break;
     case 'combo': // 내가 때리거나 맞은 콤보만
+      if (e.finish) renderer.comboFinish(e.target); // 마무리 타는 몸이 더 크게 휘청 (모두)
       if (e.by === myId || e.target === myId) showCombo(e.n, e.target === myId, e.finish);
       break;
     case 'hook':
@@ -291,6 +317,7 @@ function feelEvent(e) {
       fx.burst(chest, dir, e.kind === 'projectile' ? 0xffee40 : heavy ? 0xffa040 : 0xfff2c0, heavy ? C.FX_PARTICLES * 2 : C.FX_PARTICLES, heavy ? 7 : 5);
       fx.ring(chest, e.kind === 'projectile' ? 0xffee40 : heavy ? 0xff8a10 : 0xffffff, heavy ? 3.4 : 2.4);
       fx.hitSquash(e.target);
+      renderer.hitReact(e.target, dir, { heavy, crit: e.crit, kind: e.kind }); // TABS 식 몸: 맞은 방향으로 휘청
       if (e.target === myId) {
         sound.play('hurt');
         fx.shake(C.FX_SHAKE_HURT * (heavy ? 1.6 : 1));
@@ -348,6 +375,7 @@ function feelEvent(e) {
       const a = playerById(e.who);
       if (!a) return;
       fx.burst({ x: a.x, y: a.y, z: a.z + 0.05 }, null, 0xffffff, 8, 2.5, 0.08, 0.35);
+      renderer.airJump(e.who); // 앞 공중제비
       sound.play('airJump', { dist: e.who === myId ? 0 : distToMe(a.x, a.y, a.z) });
       return;
     }
@@ -623,7 +651,7 @@ nameInput.value = savedName();
 
 // ---------- 설정 (감도·효과음·음악·시야각·그림자). 이 브라우저에 기억 ----------
 // 대기 화면과 "화면을 클릭하면 조작 시작" 판(ESC 로 마우스를 풀었을 때)의 '설정' 버튼으로 연다
-const SETTINGS_DEFAULT = { sens: 1, sfx: 1, music: 1, fov: C.FOV_DEFAULT, shadows: true, outline: true };
+const SETTINGS_DEFAULT = { sens: 1, sfx: 1, music: 1, fov: C.FOV_DEFAULT, shadows: true, outline: true, third: false };
 function loadSettings() {
   let saved = {};
   try {
@@ -644,6 +672,13 @@ function applySettings() {
   renderer.fov = settings.fov;
   renderer.setShadows(settings.shadows);
   renderer.setOutline(settings.outline);
+  renderer.third = !!settings.third;
+  // 3인칭: 내 캐릭터가 화면 가운데 아래에 서므로 큰 피해 % 는 왼쪽 아래 구석으로 (가운데 상대를 안 가리게).
+  // #bottom 은 transform 이 있어 그 안에선 구석에 못 붙임 → #hud 로 옮김
+  const dmg = $('damage');
+  if (settings.third && !dmg.classList.contains('corner')) $('hud').appendChild(dmg);
+  else if (!settings.third && dmg.classList.contains('corner')) $('bottom').insertBefore(dmg, $('skills'));
+  dmg.classList.toggle('corner', !!settings.third);
 }
 function saveSettings() {
   try {
@@ -675,6 +710,7 @@ for (const [id, key, fmt] of fields) {
 const checks = [
   ['set-shadows', 'shadows'],
   ['set-outline', 'outline'],
+  ['set-third', 'third'],
 ];
 for (const [id, key] of checks) {
   const el = $(id);
@@ -1187,6 +1223,7 @@ let bottomKey = '';
 function updateBottom(p) {
   const show = !!p && p.alive && !p.master && (state.phase === 'playing' || state.phase === 'countdown'); // 마스터는 몸이 없어 아이템·피해 % 없음
   bottomEl.classList.toggle('hidden', !show);
+  damageEl.classList.toggle('hidden', !show); // 3인칭에선 #bottom 밖 (구석)
   const stunned = show && p.stunned;
   stunEl.classList.toggle('hidden', !stunned);
   vignetteEl.classList.toggle('on', stunned);
@@ -1311,6 +1348,7 @@ connect();
 // window.__tf.send({type:'action', name:'push'}) / window.__tf.inputOverride = {type:'input', fwd:1, ...}
 const debug = {
   send,
+  event: handleEvent, // 서버 이벤트를 손으로 넣어 화면 확인 (예: {type:'counter', by, target})
   getState: () => state,
   getMyId: () => myId,
   input,

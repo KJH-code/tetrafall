@@ -51,6 +51,9 @@
     #flash { position: absolute; inset: 0; background: rgba(255,0,0,.35); opacity: 0; transition: opacity .3s; }
     #combo { position: absolute; top: 44%; left: 62%; font-size: 40px; font-weight: 900; font-style: italic; color: #ffd23a; text-shadow: 0 0 8px #000, 0 0 3px #000; z-index: 3; pointer-events: none; }
     #combo.taken { color: #ff5a3a; }
+    #counter { position: absolute; top: 37%; left: 62%; font-size: 30px; font-weight: 900; font-style: italic; color: #5ae0ff; text-shadow: 0 0 8px #000, 0 0 3px #000; z-index: 3; pointer-events: none; animation: counter-pop .18s ease-out; }
+    #counter.taken { color: #ff5a3a; }
+    @keyframes counter-pop { from { transform: scale(1.7); } to { transform: scale(1); } }
     #bigmsg { position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); font-size: 110px; font-weight: 900; white-space: nowrap; text-shadow: 0 0 12px #000, 0 0 4px #000; z-index: 3; }
     #bigmsg.small { font-size: 72px; }
     #bigmsg.small { top: 16%; } /* 승리·무승부: 화면 가운데 승자(카메라가 비춤)를 가리지 않게 위로 */
@@ -70,6 +73,8 @@
     .buff { background: rgba(0,0,0,.6); padding: 2px 9px; border-radius: 6px; font-weight: bold; }
     #damage { font-size: 60px; font-weight: 900; line-height: 1; text-shadow: 0 0 8px #000, 0 0 3px #000; transition: transform .12s; }
     #damage.pop { transform: scale(1.4); }
+    /* 3인칭: 내 몸이 화면 가운데 아래에 있어 큰 % 를 왼쪽 아래 구석으로 */
+    #damage.corner { position: absolute; left: 22px; bottom: 18px; font-size: 48px; }
     #skills { display: flex; gap: 6px; }
     #skills .slot { position: relative; overflow: hidden; }
     #skills .fill { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(255,200,40,.35); z-index: 0; }
@@ -133,6 +138,7 @@
     <div id="status">연결 중...</div>
     <div id="bigmsg" class="hidden"></div>
     <div id="combo" class="hidden"></div>
+    <div id="counter" class="hidden">COUNTER!</div>
     <div id="killfeed"></div>
     <div id="settings" class="hidden"><div class="box">
       <h3>설정</h3>
@@ -142,6 +148,7 @@
       <div class="row"><span>시야각</span><input id="set-fov" type="range" min="60" max="100" step="1" /><span id="set-fov-v"></span></div>
       <div class="row"><span>그림자</span><label><input id="set-shadows" type="checkbox" /> 켜기 (느리면 끄기)</label><span></span></div>
       <div class="row"><span>외곽선</span><label><input id="set-outline" type="checkbox" /> 켜기 (느리면 끄기)</label><span></span></div>
+      <div class="row"><span>시점</span><label><input id="set-third" type="checkbox" /> 3인칭 (V 로 바꿈)</label><span></span></div>
       <div class="btns"><button id="settings-tutorial">처음 안내 다시 보기</button><button id="settings-reset">기본값</button><button id="settings-close">닫기</button></div>
     </div></div>
     <div id="tutorial" class="hidden"><div class="box">
@@ -214,10 +221,10 @@
         블록 마스터의 마스터: 방향키 이동 · Q/E 회전 · <b>Enter 낙하</b><br />
         공중에서 떨어지면서 위에서 밀치기·망치를 맞히면 <b>치명타</b> (피해 ×<span id="crit-dmg"></span>, 더 멀리)<br />
         상대를 블록에 깔리게(압사) 하거나 밖으로 떨어뜨리면(낙사) 승리. 블록이 쌓이면 용암이 올라온다 — 위로!
-        <br />판 중에는 <b>H</b> 를 누르고 있으면 조작법이 보임
+        <br />판 중에는 <b>H</b> 를 누르고 있으면 조작법이 보임 · <b>V</b> 1인칭 ↔ 3인칭
       </div></div>
     </div>
-    <div id="help" class="hidden">WASD 이동 · Space 점프·2단 점프 · Shift 대시 · 좌클릭 밀치기 · F 스킬 · R 필살기
+    <div id="help" class="hidden">WASD 이동 · Space 점프·2단 점프 · Shift 대시 · 좌클릭 밀치기 · F 스킬 · R 필살기 · V 1인칭↔3인칭
 우클릭 든 아이템 쓰기 (하나만) · Q/E 1×2 방향
 블록 마스터: 방향키 블록 이동 · Q/E 회전 · Enter 하드드롭</div>
   </div>
