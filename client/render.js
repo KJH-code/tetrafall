@@ -307,6 +307,7 @@ export class Renderer {
     this.playerMeshes = new Map();
     this.hits = new Map(); // 맞은 몸 반응 (id → { id, t0, stop, dir, pow }, hitReact)
     this.finishAt = new Map(); // 콤보 마무리 타를 받은 시각 (comboFinish)
+    this.counterAt = new Map(); // 카운터히트를 받은 시각 (counterHit)
     this.hitSeq = 0;
     this.itemMeshes = [];
     this.projMeshes = [];
@@ -620,7 +621,8 @@ export class Renderer {
   hitReact(id, dir, { heavy = false, crit = false, kind = null } = {}) {
     const now = performance.now();
     const finish = now - (this.finishAt.get(id) || -1e9) < 200;
-    const pow = finish ? C.FIGURE_HIT_FINISH : heavy || crit || HEAVY_HITS.has(kind) ? C.FIGURE_HIT_HEAVY : 1;
+    const counter = now - (this.counterAt.get(id) || -1e9) < 200;
+    const pow = Math.min(3, (finish ? C.FIGURE_HIT_FINISH : heavy || crit || HEAVY_HITS.has(kind) ? C.FIGURE_HIT_HEAVY : 1) * (counter ? C.FIGURE_HIT_COUNTER : 1)); // 마무리 + 카운터가 겹쳐도 몸이 뒤집히지 않게
     const stop = (C.HITSTOP_MS * (crit ? C.CRIT_HITSTOP_MULT : 1)) / 1000;
     this.hits.set(id, { id: ++this.hitSeq, t0: now, stop, dir, pow });
   }
@@ -628,6 +630,11 @@ export class Renderer {
   // 콤보 마무리 타 (combo 이벤트가 같은 타의 hit 보다 먼저 옴)
   comboFinish(id) {
     this.finishAt.set(id, performance.now());
+  }
+
+  // 카운터히트 (counter 이벤트가 같은 타의 hit 보다 먼저 옴)
+  counterHit(id) {
+    this.counterAt.set(id, performance.now());
   }
 
   // 2단 점프 (airJump 이벤트): 앞 공중제비

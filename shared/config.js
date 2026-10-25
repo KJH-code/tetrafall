@@ -396,6 +396,8 @@ export const CONFIG = {
   FIGURE_HIT_SPRING_DAMP: 7, // 휘청 스프링 감쇠 (클수록 빨리 멈춤)
   FIGURE_HIT_HEAVY: 1.5, // 무거운 공격 (망치·치명타·폭탄 등) 휘청 세기
   FIGURE_HIT_FINISH: 2.2, // 콤보 마무리 타 휘청 세기
+  FIGURE_HIT_COUNTER: 1.6, // 카운터히트(counter 이벤트)로 맞으면 휘청 세기에 곱함
+  COUNTER_TEXT_MS: 700, // 내가 넣거나 당한 카운터 'COUNTER' 글자 (콤보 글자 위)
   FIGURE_TUMBLE_MIN_SPEED: 5.5, // 경직 중 이 속도(칸/초)보다 빠르게 날아가면 몸을 말고 구름 (밀치기 한 방은 안 구름)
   FIGURE_TUMBLE_SPEED: 13, // 구르는 빠르기 (라디안/초)
   FIGURE_RECOVER_S: 0.45, // 경직이 풀리고 쪼그렸다 일어나는 시간 (초)

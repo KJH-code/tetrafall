@@ -171,6 +171,19 @@ function showCombo(n, taken, finish) {
   comboTimer = setTimeout(() => comboEl.classList.add('hidden'), C.COMBO_TEXT_MS);
 }
 
+// 카운터히트 'COUNTER!' (넣은 쪽 하늘색, 당한 쪽 빨강). 콤보 글자 바로 위에 짧게
+const counterEl = $('counter');
+let counterTimer = null;
+function showCounter(taken) {
+  counterEl.classList.toggle('taken', taken);
+  counterEl.classList.remove('hidden');
+  counterEl.style.animation = 'none'; // 연달아 와도 다시 튀어나오게
+  void counterEl.offsetWidth;
+  counterEl.style.animation = '';
+  clearTimeout(counterTimer);
+  counterTimer = setTimeout(() => counterEl.classList.add('hidden'), C.COUNTER_TEXT_MS);
+}
+
 function handleEvent(e) {
   feelEvent(e);
   switch (e.type) {
@@ -217,6 +230,10 @@ function handleEvent(e) {
     case 'whirl':
       fx.ring({ x: e.x, y: e.y, z: e.z + 0.3 }, 0x40d0c0, e.r * 2, 0.45, true);
       renderer.markCircle(e.x, e.y, e.z, e.r, 0x40d0c0, 350);
+      break;
+    case 'counter': // 카운터히트: 같은 틱의 hit 보다 먼저 옴 → 맞은 몸이 더 크게 휘청
+      renderer.counterHit(e.target);
+      if (e.by === myId || e.target === myId) showCounter(e.target === myId);
       break;
     case 'combo': // 내가 때리거나 맞은 콤보만
       if (e.finish) renderer.comboFinish(e.target); // 마무리 타는 몸이 더 크게 휘청 (모두)
@@ -1331,6 +1348,7 @@ connect();
 // window.__tf.send({type:'action', name:'push'}) / window.__tf.inputOverride = {type:'input', fwd:1, ...}
 const debug = {
   send,
+  event: handleEvent, // 서버 이벤트를 손으로 넣어 화면 확인 (예: {type:'counter', by, target})
   getState: () => state,
   getMyId: () => myId,
   input,
