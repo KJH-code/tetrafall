@@ -152,20 +152,6 @@ document.addEventListener('keyup', (e) => {
   if (e.code === 'KeyH') helpEl.classList.add('hidden');
 });
 
-// 필살기: 모두의 화면 가운데 큰 글자
-const ultEl = $('ultmsg');
-let ultTimer = null;
-function showUltBanner(text, color) {
-  ultEl.textContent = text;
-  ultEl.style.color = `#${color.toString(16).padStart(6, '0')}`;
-  ultEl.classList.remove('hidden');
-  ultEl.style.animation = 'none';
-  void ultEl.offsetWidth; // 애니메이션 다시
-  ultEl.style.animation = '';
-  clearTimeout(ultTimer);
-  ultTimer = setTimeout(() => ultEl.classList.add('hidden'), C.ULT_BANNER_MS);
-}
-
 // 콤보 'N HIT' (때린 쪽 노랑, 맞은 쪽 빨강)
 const comboEl = $('combo');
 let comboTimer = null;
@@ -182,15 +168,13 @@ function handleEvent(e) {
   switch (e.type) {
     case 'skill':
     case 'ult': {
-      // 쓰는 순간 캐릭터 색으로 번쩍 (남에게도). 필살기는 모두의 화면 가운데 큰 글자
+      // 쓰는 순간 그 캐릭터 둘레에 빛 (스킬 빨강, 필살기 노란 빛기둥). 글자 없이, 누가 무엇인지는 캐릭터 모양으로
       const a = playerById(e.who);
       if (!a) break;
-      const color = C.CHAR_COLORS[e.char];
-      const pos = { x: e.x ?? a.x, y: e.y ?? a.y, z: (e.z ?? a.z) + 0.9 };
-      fx.ring(pos, color, e.type === 'ult' ? 3.2 : 2.2, 0.35);
-      fx.burst(pos, null, color, e.type === 'ult' ? 22 : 10, 4, 0.1, 0.45);
-      sound.play(e.type === 'ult' ? 'boom' : 'swing', { dist: e.who === myId ? 0 : distToMe(a.x, a.y, a.z) });
-      if (e.type === 'ult') showUltBanner(`${shownName(a)} ${C.ULT_NAMES[e.char]}!`, color);
+      const ult = e.type === 'ult';
+      renderer.aura(e.who, ult);
+      fx.burst({ x: a.x, y: a.y, z: a.z + 0.9 }, null, ult ? C.ULT_AURA_COLOR : C.SKILL_AURA_COLOR, ult ? 22 : 10, 4, 0.1, 0.45);
+      sound.play(ult ? 'boom' : 'swing', { dist: e.who === myId ? 0 : distToMe(a.x, a.y, a.z) });
       break;
     }
     case 'blink': // 순간 베기·그림자 일격: 지나간 길에 베기 잔상

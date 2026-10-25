@@ -219,8 +219,11 @@ export const CONFIG = {
   ULT_NAMES: { tank: '내려찍기', ninja: '그림자 일격', builder: '블록 비', hook: '회오리' },
   SKILL_CD_MS: { tank: 8000, ninja: 6000, builder: 11000, hook: 8000 }, // 봇 160판으로 맞춤 (2026-10-24)
   CHAR_DEFAULT: 'tank',
-  CHAR_COLORS: { tank: 0xa3adb8, ninja: 0xd02030, builder: 0xf2c418, hook: 0x40d0c0 }, // 스킬 쓸 때 번쩍이는 색 (남에게도 보임)
-  ULT_BANNER_MS: 1300, // 필살기를 쓰면 모두의 화면 가운데 '누구 기술!' 글자
+  // 스킬·필살기를 쓰면 그 캐릭터 둘레에 빛 (글자 대신, 남에게도 보임. 누가 무엇인지는 캐릭터 모양으로). 2026-10-25 재혁
+  SKILL_AURA_COLOR: 0xff3030, // F: 발밑 빨간 고리 + 몸 둘레 빨간 빛
+  SKILL_AURA_MS: 400,
+  ULT_AURA_COLOR: 0xffd23a, // R: 노란 빛기둥 + 큰 고리
+  ULT_AURA_MS: 900,
   COMBO_TEXT_MS: 900, // 내가 때리거나 맞은 콤보 'N HIT' 글자
   ULT_MAX: 100, // 필살기 게이지 (다 차면 R)
   ULT_PER_DAMAGE: 1, // 피해 % 를 주거나 받을 때 1% 당 게이지

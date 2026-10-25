@@ -638,10 +638,29 @@ export class Renderer {
 
   // 조종 중인 블록 ↔ 조종하는 사람 머리를 잇는 보라색 빛줄기 (누가 어느 블록을 모는지)
   // ---- 스킬 예고·잔상 (남에게도 보임). ms 동안 깜빡이다 사라짐 ----
-  addMark(mesh, ms, pulse = true) {
+  // grow: 사라지는 동안 커지는 배율 (고리가 퍼짐). parent: 붙일 곳 (캐릭터를 따라다니게)
+  addMark(mesh, ms, pulse = true, grow = 0, parent = this.scene) {
     mesh.renderOrder = 8;
-    this.scene.add(mesh);
-    this.marks.push({ mesh, until: performance.now() + ms, ms, pulse });
+    parent.add(mesh);
+    this.marks.push({ mesh, until: performance.now() + ms, ms, pulse, grow });
+  }
+
+  // 스킬·필살기 빛: 발밑 고리가 퍼지고 몸 둘레가 빛남 (필살기는 노란 빛기둥, 더 크고 길게). 캐릭터를 따라다님
+  aura(id, ult) {
+    const g = this.playerMeshes.get(id);
+    if (!g) return;
+    const color = ult ? C.ULT_AURA_COLOR : C.SKILL_AURA_COLOR;
+    const ms = ult ? C.ULT_AURA_MS : C.SKILL_AURA_MS;
+    const mat = (opacity) => noOutline(new THREE.MeshBasicMaterial({ color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.45, 0.62, 32), mat(0.9));
+    ring.position.z = 0.05;
+    this.addMark(ring, ms, false, ult ? 3 : 1.6, g);
+    const h = ult ? C.PLAYER_HEIGHT * 1.6 : C.PLAYER_HEIGHT * 1.1;
+    const geo = new THREE.CylinderGeometry(0.5, 0.62, h, 20, 1, true);
+    geo.rotateX(Math.PI / 2); // 원기둥 축 y → z (퍼질 때 옆으로만 커지게 모양에서 돌림)
+    const pillar = new THREE.Mesh(geo, mat(ult ? 0.45 : 0.3));
+    pillar.position.z = h / 2;
+    this.addMark(pillar, ms, false, ult ? 0.3 : 0.15, g);
   }
 
   // 칸들 바닥(맨 아래 높이)에 색 판
@@ -679,7 +698,7 @@ export class Renderer {
       const mk = this.marks[i];
       const left = mk.until - now;
       if (left <= 0) {
-        this.scene.remove(mk.mesh);
+        mk.mesh.parent?.remove(mk.mesh);
         mk.mesh.traverse((o) => {
           if (o.isMesh) {
             if (o.geometry !== this.markBox) o.geometry.dispose();
@@ -691,6 +710,10 @@ export class Renderer {
       }
       // 예고는 끝이 가까울수록 빨리 깜빡, 잔상은 서서히 사라짐
       const k = mk.pulse ? 0.55 + 0.45 * Math.sin(now / Math.max(40, left / 6)) : left / mk.ms;
+      if (mk.grow) {
+        const sc = 1 + mk.grow * (1 - left / mk.ms);
+        mk.mesh.scale.set(sc, sc, mk.mesh.scale.z);
+      }
       mk.mesh.traverse((o) => {
         if (o.isMesh) o.material.opacity = (o.material.userData.base ??= o.material.opacity) * k;
       });
