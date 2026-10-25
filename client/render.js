@@ -6,7 +6,7 @@ import { buildCharacter, charAccessory } from '/character.js';
 import { figureAnim } from '/figure.js';
 import { Effects } from '/effects.js';
 import { CELL, SHAPE_NAMES } from '/shared/pieces.js';
-import { orbitEye } from '/shared/camera.js';
+import { orbitEye, followDist } from '/shared/camera.js';
 import { itemModel } from '/models.js';
 import { makeTextures } from '/textures.js';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
@@ -312,6 +312,8 @@ export class Renderer {
     this.projMeshes = [];
     this.smooth = new Map(); // id -> {x,y,z}
     this.skyBlend = 0; // 0 = 1인칭, 1 = 하늘 시점. 사이 값은 전환 중
+    this.third = false; // 3인칭 (설정·V 키). 살아 있을 때 내 캐릭터 뒤·위에서 봄
+    this.tpDist = null; // 3인칭 카메라 실제 거리 (막히면 줄어듦, followDist)
     this.fov = C.FOV_DEFAULT; // 설정의 시야각
     this.skyYaw = Math.PI / 2; // 하늘 시점 화면 위쪽이 가리키는 방향 (조종 시작 때 보던 방향)
 
@@ -942,7 +944,8 @@ export class Renderer {
       if (p.speedLeft > 0 && g.userData.anim.hs > 1 && Math.random() < dt * C.SPEED_TRAIL_RATE) {
         this.effects.burst({ x: s.x, y: s.y, z: s.z + 0.15 }, null, 0xffe020, 3, 1.2, 0.07, 0.35);
       }
-      g.visible = p.alive && !p.master && !(p.id === myId && view === 'fps' && this.skyBlend === 0 && !cam.victory && !cam.selfie); // 블록 마스터의 마스터는 필드에 없음
+      const firstPerson = view === 'fps' && this.skyBlend === 0 && !cam.victory && !cam.selfie && (!this.third || (this.tpDist ?? C.TP_DIST) < C.TP_HIDE_DIST); // 3인칭은 카메라가 머리 속으로 당겨졌을 때만 숨김
+      g.visible = p.alive && !p.master && !(p.id === myId && firstPerson); // 블록 마스터의 마스터는 필드에 없음
       const bodyMat = g.userData.bodyMat;
       // 경직 중엔 흰색으로 빠르게 깜빡임
       g.userData.color = playerColor(p, state); // 팀전이면 팀 색 (판 사이에 팀이 바뀔 수 있어 매 프레임)
@@ -1006,7 +1009,7 @@ export class Renderer {
         label.tex.needsUpdate = true;
         label.shown = key;
       }
-      label.sprite.visible = p.alive;
+      label.sprite.visible = p.alive && !(p.id === myId && this.third); // 3인칭에서 내 % 는 화면 아래에 (머리 위와 둘 다 있으면 겹침)
     }
     for (const [id, g] of this.playerMeshes) {
       if (!seen.has(id)) {
@@ -1133,7 +1136,7 @@ export class Renderer {
     if (me) this.viewArm.material.color.setHex(playerColor(me, state));
     const vp = this.effects.punchAmount(myId);
     this.viewArm.position.set(this.viewArmBase.x - 0.12 * vp, this.viewArmBase.y + 0.08 * vp, this.viewArmBase.z - 0.3 * vp);
-    this.viewArm.visible = !!(me && me.alive) && this.skyBlend === 0 && !cam.victory && !cam.selfie;
+    this.viewArm.visible = !!(me && me.alive) && this.skyBlend === 0 && !cam.victory && !cam.selfie && !this.third; // 3인칭은 팔 대신 내 몸
     this.viewHammer.visible = !!(me && me.weaponUses > 0);
     // 손에 든 것: 고른 핫바 칸에 뭐가 있으면 그 색 상자 (망치가 있으면 망치가 우선)
     const kind = me ? heldKind(me) : null;
@@ -1149,7 +1152,19 @@ export class Renderer {
     // 1인칭(또는 관전) 자세
     const eye = new THREE.Vector3();
     const look = new THREE.Vector3();
-    if (me && me.alive) {
+    if (me && me.alive && this.third) {
+      // 3인칭: 머리 위 점을 중심으로 시선 뒤·위에 카메라. 블록이 가리면 바로 앞으로 당겼다가 천천히 돌아감
+      const s = this.smooth.get(me.id);
+      // 중심은 머리 위에서 오른쪽(시선 기준)으로 조금 비킴 → 내 몸이 화면 가운데 왼쪽 아래, 바로 앞 상대가 안 가림
+      const pivot = { x: s.x + Math.sin(cam.yaw) * C.TP_SIDE, y: s.y - Math.cos(cam.yaw) * C.TP_SIDE, z: s.z + C.TP_PIVOT_UP };
+      const orbit = Math.max(-Math.PI / 2 + 0.05, cam.pitch - C.TP_TILT);
+      const want = orbitEye(pivot, cam.yaw, orbit, C.TP_DIST, (x, y, z) => this.solidAt(state, x, y, z), { margin: C.TP_CAM_MARGIN }).dist;
+      this.tpDist = followDist(this.tpDist, want, dt, C.TP_EASE_OUT);
+      const e = orbitEye(pivot, cam.yaw, orbit, this.tpDist);
+      eye.set(e.x, e.y, Math.max(s.z + C.TP_MIN_Z, e.z));
+      const cp = Math.cos(cam.pitch);
+      look.set(pivot.x + cp * Math.cos(cam.yaw) * C.TP_LOOK_AHEAD, pivot.y + cp * Math.sin(cam.yaw) * C.TP_LOOK_AHEAD, pivot.z + Math.sin(cam.pitch) * C.TP_LOOK_AHEAD);
+    } else if (me && me.alive) {
       const s = this.smooth.get(me.id);
       eye.set(s.x, s.y, s.z + C.EYE_HEIGHT);
       const cp = Math.cos(cam.pitch);
@@ -1170,6 +1185,7 @@ export class Renderer {
       const e = orbitEye(look, cam.yaw, cam.pitch, cam.overviewDist ?? C.SPECTATE_OVERVIEW_DIST);
       eye.set(e.x, e.y, Math.max(0.5, e.z));
     }
+    if (!(me && me.alive && this.third)) this.tpDist = null; // 다음 3인칭은 처음 거리부터
     this.victoryCamera(state, cam, dt, eye, look);
 
     const b = this.skyBlend;

@@ -22,3 +22,10 @@ export function orbitEye(center, yaw, pitch, dist, solidAt = null, { step = 0.1,
   }
   return { x: center.x + dx * d, y: center.y + dy * d, z: center.z + dz * d, dist: d };
 }
+
+// 3인칭 카메라 거리 따라가기: 막혀서 가까워져야 하면 바로 (벽 속이 안 보이게), 멀어질 때는 천천히 (덜컥거리지 않게)
+// cur: 지금 거리 (없으면 want), want: 이번 프레임 거리, rate: 멀어지는 빠르기 (/초)
+export function followDist(cur, want, dt, rate) {
+  if (cur == null || want <= cur) return want;
+  return cur + (want - cur) * (1 - Math.exp(-rate * dt));
+}

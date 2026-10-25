@@ -148,6 +148,14 @@ const helpEl = $('help');
 document.addEventListener('keydown', (e) => {
   if (e.code === 'KeyH' && !e.repeat && document.activeElement?.tagName !== 'INPUT') helpEl.classList.remove('hidden');
 });
+// V: 1인칭 ↔ 3인칭 (설정에도 같은 칸, 이 브라우저에 기억)
+document.addEventListener('keydown', (e) => {
+  if (e.code !== 'KeyV' || e.repeat || document.activeElement?.tagName === 'INPUT') return;
+  settings.third = !settings.third;
+  $('set-third').checked = settings.third;
+  applySettings();
+  saveSettings();
+});
 document.addEventListener('keyup', (e) => {
   if (e.code === 'KeyH') helpEl.classList.add('hidden');
 });
@@ -626,7 +634,7 @@ nameInput.value = savedName();
 
 // ---------- 설정 (감도·효과음·음악·시야각·그림자). 이 브라우저에 기억 ----------
 // 대기 화면과 "화면을 클릭하면 조작 시작" 판(ESC 로 마우스를 풀었을 때)의 '설정' 버튼으로 연다
-const SETTINGS_DEFAULT = { sens: 1, sfx: 1, music: 1, fov: C.FOV_DEFAULT, shadows: true, outline: true };
+const SETTINGS_DEFAULT = { sens: 1, sfx: 1, music: 1, fov: C.FOV_DEFAULT, shadows: true, outline: true, third: false };
 function loadSettings() {
   let saved = {};
   try {
@@ -647,6 +655,13 @@ function applySettings() {
   renderer.fov = settings.fov;
   renderer.setShadows(settings.shadows);
   renderer.setOutline(settings.outline);
+  renderer.third = !!settings.third;
+  // 3인칭: 내 캐릭터가 화면 가운데 아래에 서므로 큰 피해 % 는 왼쪽 아래 구석으로 (가운데 상대를 안 가리게).
+  // #bottom 은 transform 이 있어 그 안에선 구석에 못 붙임 → #hud 로 옮김
+  const dmg = $('damage');
+  if (settings.third && !dmg.classList.contains('corner')) $('hud').appendChild(dmg);
+  else if (!settings.third && dmg.classList.contains('corner')) $('bottom').insertBefore(dmg, $('skills'));
+  dmg.classList.toggle('corner', !!settings.third);
 }
 function saveSettings() {
   try {
@@ -678,6 +693,7 @@ for (const [id, key, fmt] of fields) {
 const checks = [
   ['set-shadows', 'shadows'],
   ['set-outline', 'outline'],
+  ['set-third', 'third'],
 ];
 for (const [id, key] of checks) {
   const el = $(id);
@@ -1190,6 +1206,7 @@ let bottomKey = '';
 function updateBottom(p) {
   const show = !!p && p.alive && !p.master && (state.phase === 'playing' || state.phase === 'countdown'); // 마스터는 몸이 없어 아이템·피해 % 없음
   bottomEl.classList.toggle('hidden', !show);
+  damageEl.classList.toggle('hidden', !show); // 3인칭에선 #bottom 밖 (구석)
   const stunned = show && p.stunned;
   stunEl.classList.toggle('hidden', !stunned);
   vignetteEl.classList.toggle('on', stunned);
