@@ -481,6 +481,12 @@ export const CONFIG = {
   FIGURE_HIT_SPRING_DAMP: 7, // 휘청 스프링 감쇠 (클수록 빨리 멈춤)
   FIGURE_HIT_HEAVY: 1.5, // 무거운 공격 (망치·치명타·폭탄 등) 휘청 세기
   FIGURE_HIT_FINISH: 2.2, // 콤보 마무리 타 휘청 세기
+  // 건축가 블록 화면 (render.js updateBBlocks)
+  BB_BLINK_MS: 1500, // 사라지기 이만큼 전부터 깜빡임
+  BB_POP_MS: 260, // 생길 때 바닥에서 솟아오르는 시간 (살짝 넘쳤다 돌아옴)
+  BB_CHAIN_STEP_MS: 70, // 연쇄 폭발: 칸마다 이 간격으로 차례로 터짐
+  BB_BIG_SWELL: 0.18, // 대폭발 블록이 터지기 직전까지 부푸는 비율
+  BB_TINT: 0.3, // 주인 색에 흰색을 섞는 비율 (금 간 무늬가 보이게)
   FIGURE_STRIKE_S: 0.07, // 공격 타격 자세로 튀는 시간 (아주 짧게). 그 뒤 회복은 평타 표의 rec
   FIGURE_SWING_WAIT_S: 0.4, // 준비가 끝나고 이만큼 더 기다려도 판정(swing)이 안 오면 동작을 접음 (캔슬·끊김)
   FIGURE_BROKEN_S: 0.55, // 끊긴 공격(interrupt): 팔이 튕기고 자세가 무너졌다 돌아오는 시간

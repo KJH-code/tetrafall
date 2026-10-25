@@ -133,6 +133,39 @@ function sand(ctx, n) {
   ctx.strokeRect(1.5, 1.5, n - 3, n - 3);
 }
 
+// 건축가 블록: 금 간 벽돌 (주인 색이 곱해짐). 한가운데서 갈라진 굵은 금 + 모서리 쇠 리벳 → 쳐서 터뜨리는 블록이 보이게
+function cracked(ctx, n) {
+  const r = rng(47);
+  ctx.fillStyle = gray(240);
+  ctx.fillRect(0, 0, n, n);
+  for (let i = 0; i < 90; i++) {
+    ctx.fillStyle = gray(215 + Math.floor(r() * 35));
+    ctx.fillRect(r() * n, r() * n, 2, 2);
+  }
+  // 갈라진 금: 가운데에서 네 방향으로 지그재그
+  ctx.strokeStyle = gray(70);
+  ctx.lineWidth = 2.5;
+  ctx.lineJoin = 'bevel';
+  for (const [ex, ey] of [[0.05, 0.2], [0.95, 0.1], [0.85, 0.95], [0.1, 0.85]]) {
+    ctx.beginPath();
+    ctx.moveTo(n / 2, n / 2);
+    for (let k = 1; k <= 3; k++) {
+      const t = k / 3;
+      ctx.lineTo(n * (0.5 + (ex - 0.5) * t) + (r() - 0.5) * 7, n * (0.5 + (ey - 0.5) * t) + (r() - 0.5) * 7);
+    }
+    ctx.stroke();
+  }
+  ctx.fillStyle = gray(60);
+  for (const [x, y] of [[0.14, 0.14], [0.86, 0.14], [0.14, 0.86], [0.86, 0.86]]) {
+    ctx.beginPath();
+    ctx.arc(n * x, n * y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.strokeStyle = gray(50);
+  ctx.lineWidth = 4;
+  ctx.strokeRect(2, 2, n - 4, n - 4);
+}
+
 // 바닥 타일 한 칸 (필드 크기만큼 반복)
 function tile(ctx, n) {
   const r = rng(31);
@@ -154,6 +187,7 @@ export function makeTextures(floorRepeat) {
     stone: canvasTexture(stone),
     wood: canvasTexture(wood),
     sand: canvasTexture(sand),
+    cracked: canvasTexture(cracked),
     floor: canvasTexture(tile, SIZE, floorRepeat),
   };
 }

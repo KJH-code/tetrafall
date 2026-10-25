@@ -39,6 +39,12 @@ function send(obj) {
 const sound = new Sound();
 const music = new Music(sound);
 const fx = renderer.effects;
+// 건축가 블록이 한 칸 터질 때 (연쇄는 칸마다 차례로): 소리 + 가까우면 흔들림
+renderer.onBlast = (pos, big) => {
+  const d = distToMe(pos.x, pos.y, pos.z);
+  sound.play('boom', { dist: d });
+  if (d !== undefined && d < (big ? 7 : 4)) fx.shake(big ? 0.4 : 0.15, big ? 450 : 200);
+};
 document.addEventListener('pointerdown', () => sound.unlock());
 document.addEventListener('keydown', () => sound.unlock());
 
@@ -113,10 +119,10 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
-const KIND_KO = { push: '밀치기', projectile: '투사체', weapon: '망치', shock: '설치 블록 충격파', bomb: '폭탄', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', whirl: '회오리' };
-const ITEM_KO = { control: '조종권', knockback: '투사체', weapon: '망치', jump: '점프력 상승', ghost: '유령화', brick: '설치 블록', bomb: '폭탄', speed: '이속 증가' };
+const KIND_KO = { push: '밀치기', projectile: '투사체', shock: '설치 블록 충격파', bomb: '폭탄', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', whirl: '회오리', blast: '블록 폭발', bigbomb: '대폭발' };
+const ITEM_KO = { control: '조종권', knockback: '투사체', jump: '점프력 상승', ghost: '유령화', brick: '설치 블록', bomb: '폭탄', speed: '이속 증가' };
 const CAUSE_KO = { crush: '압사', fall: '낙사', lava: '용암' };
-const WEAPON_KO = { push: '밀치기', weapon: '망치', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종 블록', thrown: '설치 블록', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', whirl: '회오리' };
+const WEAPON_KO = { push: '밀치기', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종 블록', thrown: '설치 블록', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', whirl: '회오리', blast: '블록 폭발', bigbomb: '대폭발' };
 
 // 오른쪽 위 킬 피드: "죽인 사람 → 죽은 사람 낙사 (망치)". 내가 낀 줄은 노란 테두리
 const killfeedEl = $('killfeed');
@@ -240,13 +246,41 @@ function handleEvent(e) {
       renderer.markCells(e.cells, 0xffd23a, e.ms);
       break;
     case 'wallRise':
-      renderer.skillStrike(e.who, 'builderWall');
+      renderer.skillStrike(e.who, 'builderWall', true); // 3타 블록도 wallRise 가 옴 → 벽 준비 중일 때만
       for (const [x, y, z] of e.cells) if (z === Math.min(...e.cells.map((c) => c[2]))) fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.1 }, null, 0xa87448, 6, 3, 0.1, 0.4);
       sound.play('land', { dist: e.who === myId ? 0 : distToMe(e.cells[0][0], e.cells[0][1], e.cells[0][2]) });
       break;
-    case 'rainWarn': // 블록 비: 떨어질 자리를 빨갛게
-      renderer.skillMove(e.who, 'builderRain');
-      renderer.markCells(e.cells, 0xff2020, 900);
+    // ---- 건축가 블록 (색·깜빡임은 render.js updateBBlocks 가 snapshot bblocks 로) ----
+    case 'bblock': // 생김: 바닥에서 솟음
+      renderer.bblockBorn(e.cells);
+      break;
+    case 'bblockGone': // 수명 끝·오래된 3타 블록: 회색 먼지
+      for (const [x, y, z] of e.cells) fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.5 }, null, 0x999999, 8, 2, 0.1, 0.5);
+      break;
+    case 'blast': {
+      // 망치로 쳐서 폭발: cells 순서대로 차례로 펑 (치는 방향으로 파편)
+      const o = playerById(e.who);
+      renderer.blastChain(e, o ? playerColor(o, state) : 0xc08040);
+      break;
+    }
+    case 'bigBombWarn': {
+      // 대폭발 예고: 3×3 이 솟고 빨갛게 부풀며 째깍 (점점 빠르게)
+      renderer.bblockBorn(e.cells);
+      renderer.skillMove(e.who, 'builderBig');
+      const [cx, cy, cz] = e.cells[Math.floor(e.cells.length / 2)];
+      for (const t of [0, 0.35, 0.6, 0.78, 0.9]) setTimeout(() => sound.play('tick', { dist: distToMe(cx + 0.5, cy + 0.5, cz) }), t * e.ms);
+      break;
+    }
+    case 'bigBomb': {
+      // 대폭발: 가운데 칸에서 크게 + 칸마다 파편 (치는 방향 dir)
+      const o = playerById(e.who);
+      const color = o ? playerColor(o, state) : 0xff4030;
+      e.cells.forEach(([x, y, z], i) => renderer.bbPop({ x, y, z, dir: e.dir, hex: i % 2 ? color : 0xff5020 }, i === Math.floor(e.cells.length / 2)));
+      break;
+    }
+    case 'padBoost': // 공중 F: 발판이 생기며 엉덩이를 차올림
+      renderer.skillMove(e.who, 'builderPad');
+      if (e.cell) fx.burst({ x: e.cell[0] + 0.5, y: e.cell[1] + 0.5, z: e.cell[2] + 1 }, { x: 0, y: 0 }, 0xffffff, 10, 3, 0.1, 0.4);
       break;
     case 'whirl':
       renderer.skillMove(e.who, 'hookWhirl');
@@ -330,7 +364,7 @@ function feelEvent(e) {
         const len = Math.hypot(dx, dy) || 1;
         dir = { x: dx / len, y: dy / len };
       }
-      const heavy = e.kind === 'weapon' || e.crit;
+      const heavy = e.crit || e.kind === 'blast' || e.kind === 'bigbomb';
       if (e.crit) {
         // 치명타: 금색 파편 한 겹 + 큰 고리 + 전용 소리
         fx.burst(chest, dir, 0xffd030, C.FX_PARTICLES * 2, 8, 0.12, 0.6);
@@ -642,7 +676,7 @@ $('bot-level').addEventListener('change', (e) => send({ type: 'botLevel', level:
 $('mode-select').addEventListener('change', (e) => send({ type: 'setMode', mode: e.target.value }));
 const BOT_LEVEL_KO = { easy: '쉬움', normal: '보통', hard: '어려움' };
 // 캐릭터 설명 (대기 화면). 수치는 config
-const CHAR_DESC = Object.fromEntries(C.CHARACTERS.map((c) => [c, `F ${C.SKILL_NAMES[c]} · R ${C.ULT_NAMES[c]}`])); // 짧게 (2026-10-24 재혁: 글이 너무 많음)
+const charDesc = (c) => `${keyText('skill')} ${C.SKILL_NAMES[c]} · ${keyText('ult')} ${C.ULT_NAMES[c]}`; // 짧게 (2026-10-24 재혁: 글이 너무 많음), 키는 설정 따라
 
 const MODE_DESC = {
   survival: '생존: 마지막까지 살아남은 사람이 승',
@@ -1340,14 +1374,13 @@ function updateBottom(p) {
     damageEl.style.color = damageColor(p.damage);
   }
   const buffs = [];
-  if (p.weaponUses > 0) buffs.push(`망치 ${p.weaponUses}회`);
   if (p.jumpLeft > 0) buffs.push(`점프↑ ${(p.jumpLeft / 1000).toFixed(1)}s`);
   if (p.speedLeft > 0) buffs.push(`이속↑ ${(p.speedLeft / 1000).toFixed(1)}s`);
   if (p.ghostLeft > 0) buffs.push(`유령 ${(p.ghostLeft / 1000).toFixed(1)}s`);
   if (p.shieldLeft > 0) buffs.push(`부활 무적 ${(p.shieldLeft / 1000).toFixed(1)}s`);
   // 든 아이템 (하나만). 망치는 위 버프 줄에도 횟수가 나옴
   const item =
-    p.ammo > 0 ? `투사체 ×${p.ammo}` : p.bricks > 0 ? `설치 1×2 ×${p.bricks} ${p.brickSide ? '옆' : '앞'}` : p.bombs > 0 ? `폭탄 ×${p.bombs}` : p.weaponUses > 0 ? `망치 (${keyText('attack')}) ×${p.weaponUses}` : '아이템 —';
+    p.ammo > 0 ? `투사체 ×${p.ammo}` : p.bricks > 0 ? `설치 1×2 ×${p.bricks} ${p.brickSide ? '옆' : '앞'}` : p.bombs > 0 ? `폭탄 ×${p.bombs}` : '아이템 —';
   if (p.iframeLeft > 0) buffs.push(`무적 ${(p.iframeLeft / 1000).toFixed(1)}s`);
   updateSkills(p);
   const key = `${buffs.join('|')}#${item}`;
@@ -1356,7 +1389,6 @@ function updateBottom(p) {
   buffsEl.innerHTML = buffs.map((b) => `<span class="buff">${b}</span>`).join('');
   itemSlotEl.querySelector('.name').textContent = item;
   itemSlotEl.classList.toggle('empty', item.endsWith('—'));
-  itemSlotEl.querySelector('.key').classList.toggle('hidden', p.weaponUses > 0 && !p.ammo && !p.bricks && !p.bombs);
 }
 
 // 캐릭터 스킬 F (쿨타임) · 필살기 R (게이지) 칸
@@ -1405,7 +1437,7 @@ function updateCharRow(p) {
   $('char-info').classList.toggle('hidden', !on);
   if (!on) return;
   if (document.activeElement !== charSel) charSel.value = p.char;
-  $('char-info').textContent = CHAR_DESC[p.char];
+  $('char-info').textContent = charDesc(p.char);
 }
 
 // 입력 전송
