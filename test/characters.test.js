@@ -876,3 +876,22 @@ test('봇 건축가: 떨어지면 공중 F 로 복귀, 내 블록 너머에 상�
     assert.equal(g.bigBombs.length, 1);
   }
 });
+
+test('건축가 발판도 망치로 치면 터짐 (2026-10-25 재혁): 밟고 있던 발판을 쳐서 떨어짐, 패시브 게이지도 참', () => {
+  const { g, lines, p } = setupChars(['builder', 'ninja']);
+  place(p(2), 9.5, 9.5);
+  place(p(1), 4.5, 4.5, 0, 2.5);
+  Object.assign(p(1), { grounded: false, vz: -3 });
+  g.handleAction(1, { name: 'skill' }); // 발판 (4,4,1)
+  run(g, 1500); // 부스트 뒤 발판 위에 내려섬
+  assert.ok(p(1).grounded && Math.abs(p(1).z - 2) < 1e-6, `발판 위 z=${p(1).z}`);
+  p(1).ult = 0;
+  p(1).chainN = 0;
+  basic(g, 1);
+  assert.equal(g.gridAt(4, 4, 1), 0, '발판 터짐');
+  assert.equal(bb(g, 'pad').length, 0);
+  assert.equal(p(1).ult, C.BUILDER_BLAST_ULT, '패시브 게이지');
+  assert.ok(lines.some((l) => l.startsWith('  [폭발] P1 발판 1칸')), lines.join('\n'));
+  run(g, 600);
+  assert.ok(p(1).z < 2 - 0.5, `떨어짐 z=${p(1).z.toFixed(2)}`);
+});

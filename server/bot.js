@@ -373,7 +373,7 @@ export class BotBrain {
     } else if (p.char === 'builder') {
       // 내 블록 옆에 상대가 있으면 블록을 쳐서 터뜨림 (블록 너머 상대 쪽으로 날아감)
       for (const b of g.bblocks.values()) {
-        if (b.owner !== p.id || b.kind === 'pad' || g.time < p.pushReadyAt || p.atk) continue;
+        if (b.owner !== p.id || b.kind === 'pad' || g.time < p.pushReadyAt || p.atk) continue; // 봇은 발판을 일부러 치지 않음 (밟고 있다 떨어질 수 있어서)
         const bx = b.x + 0.5;
         const by = b.y + 0.5;
         const db = Math.hypot(bx - p.x, by - p.y);

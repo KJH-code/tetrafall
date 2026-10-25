@@ -71,7 +71,7 @@ export function parseLog(text) {
         combos: [], // { by: [때린 이름…] (옛 로그는 null), target, n }
         basics: [], // 캐릭터 평타 명중 { by, n } (n 0 = 공중 평타), 2026-10-25~
         counters: [], // 카운터히트를 넣은 이름 (2026-10-25~)
-        blasts: [], // 건축가 블록 폭발 { kind: '벽'|'3타 블록', n: 칸 수 } (2026-10-25~)
+        blasts: [], // 건축가 블록 폭발 { kind: '벽'|'3타 블록'|'발판', n: 칸 수 } (2026-10-25~)
         bigBombs: 0, // 건축가 대폭발
       };
     } else if ((m = line.match(/^ {2}사망: (.*)$/)) && last) {
@@ -125,7 +125,7 @@ export function parseLog(text) {
       // "  [평타] P1 → P2 넉백 (P2 7%) 1타 옆치기" / "… 공중 망치 내려찍기" (무적이라 무시는 안 셈)
       cur.basics.push({ by: m[1], n: m[2] ? Number(m[2]) : 0 });
       countUse(cur, line);
-    } else if ((m = line.match(/^ {2}\[폭발\] \S+ (벽|3타 블록) (\d+)칸/))) {
+    } else if ((m = line.match(/^ {2}\[폭발\] \S+ (벽|3타 블록|발판) (\d+)칸/))) {
       cur.blasts.push({ kind: m[1], n: Number(m[2]) });
     } else if (/^ {2}\[필살\] \S+ 대폭발 \(/.test(line)) {
       cur.bigBombs++;
@@ -309,7 +309,7 @@ export function summarize(rounds) {
       const all = rounds.flatMap((r) => r.blasts);
       const by = (k) => all.filter((b) => b.kind === k);
       const cells = all.reduce((a, b) => a + b.n, 0);
-      return { blasts: all.length, wall: by('벽').length, third: by('3타 블록').length, cells, big: rounds.reduce((a, r) => a + r.bigBombs, 0) };
+      return { blasts: all.length, wall: by('벽').length, third: by('3타 블록').length, pad: by('발판').length, cells, big: rounds.reduce((a, r) => a + r.bigBombs, 0) };
     })(),
     combos: (() => {
       // 콤보 (2타 이상): 길이별 횟수 + 넣은 캐릭터별 (사람·봇 따로, 여럿이 같이 넣은 건 따로)
@@ -401,7 +401,7 @@ export function formatReport(s) {
   }
   if (s.builder.blasts || s.builder.big) {
     const b = s.builder;
-    out.push('', '== 건축가 블록 ==', `폭발 ${b.blasts}번 (벽 ${b.wall} · 3타 블록 ${b.third}, 평균 ${b.blasts ? (b.cells / b.blasts).toFixed(1) : 0}칸) · 대폭발 ${b.big}번`);
+    out.push('', '== 건축가 블록 ==', `폭발 ${b.blasts}번 (벽 ${b.wall} · 3타 블록 ${b.third} · 발판 ${b.pad}, 평균 ${b.blasts ? (b.cells / b.blasts).toFixed(1) : 0}칸) · 대폭발 ${b.big}번`);
   }
   out.push('', '== 모드별 ==', table(['모드', '판', '길이 중앙값', '압사 비율', ''], groupRows(s.byMode).map((row, i) => [...row, s.byMode[i].note])));
   out.push(

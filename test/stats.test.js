@@ -297,6 +297,6 @@ test('통계: 캐릭터 평타 — 타 번호별 명중 수 (공중 평타 따�
     ],
   );
   assert.ok(formatReport(s).includes('== 평타 명중 (타 번호별) =='));
-  assert.deepEqual(s.builder, { blasts: 2, wall: 1, third: 1, cells: 4, big: 1 });
-  assert.ok(formatReport(s).includes('폭발 2번 (벽 1 · 3타 블록 1, 평균 2.0칸) · 대폭발 1번'));
+  assert.deepEqual(s.builder, { blasts: 2, wall: 1, third: 1, pad: 0, cells: 4, big: 1 });
+  assert.ok(formatReport(s).includes('폭발 2번 (벽 1 · 3타 블록 1 · 발판 0, 평균 2.0칸) · 대폭발 1번'));
 });

@@ -1357,7 +1357,7 @@ export class Game {
     }
     this.emit({ type: 'bigBomb', who: bomb.owner, cells: cells.map((b) => [b.x, b.y, b.z]), dir });
     // 범위 안 내 블록도 같이 (묶음째)
-    const near = [...this.bblocks.values()].filter((b) => b.owner === bomb.owner && b.kind !== 'pad' && b.kind !== 'big' && cells.some((c) => Math.abs(c.x - b.x) <= 1 && Math.abs(c.y - b.y) <= 1 && Math.abs(c.z - b.z) <= 1));
+    const near = [...this.bblocks.values()].filter((b) => b.owner === bomb.owner && b.kind !== 'big' && cells.some((c) => Math.abs(c.x - b.x) <= 1 && Math.abs(c.y - b.y) <= 1 && Math.abs(c.z - b.z) <= 1));
     let also = 0;
     const done = new Set();
     for (const b of near) {
@@ -1382,7 +1382,7 @@ export class Game {
     const hitGroups = new Set();
     const targets = [];
     for (const b of this.bblocks.values()) {
-      if (b.owner !== p.id || b.kind === 'pad' || hitGroups.has(b.group)) continue;
+      if (b.owner !== p.id || hitGroups.has(b.group)) continue; // 발판도 터짐 (2026-10-25 재혁: 밟고 있는 발판을 쳐서 떨어지는 건 플레이어가 고름)
       const dx = b.x + 0.5 - p.x;
       const dy = b.y + 0.5 - p.y;
       const dist = Math.hypot(dx, dy);
@@ -1400,7 +1400,7 @@ export class Game {
     return targets.length > 0;
   }
 
-  // 벽·3타 블록 폭발. 벽은 같은 묶음끼리 이어진 칸으로 연쇄. 사람은 한 번씩, 가까운 터진 칸 수 × BUILDER_BLAST_DAMAGE.
+  // 벽·3타 블록·발판 폭발. 벽은 같은 묶음끼리 이어진 칸으로 연쇄. 사람은 한 번씩, 가까운 터진 칸 수 × BUILDER_BLAST_DAMAGE.
   // 치는 방향(dir) 앞쪽 사람만 dir 쪽으로 날림, 건축가 자신은 안 맞음. 터진 칸 수를 돌려줌
   blast(start, dir) {
     const p = this.players.get(start.owner);
@@ -1432,7 +1432,7 @@ export class Game {
       hits.push(`${t.name}${hit ? ` ${t.damage}%` : ' 무적'}`);
     }
     this.emit({ type: 'blast', who: start.owner, kind: start.kind, group: start.group, cells: order.map((b) => [b.x, b.y, b.z]), dir });
-    this.log(`  [폭발] ${p ? p.name : '?'} ${start.kind === 'wall' ? '벽' : '3타 블록'} ${order.length}칸${hits.length ? ` → ${hits.join(', ')}` : ''}`);
+    this.log(`  [폭발] ${p ? p.name : '?'} ${BBLOCK_LOG[start.kind]} ${order.length}칸${hits.length ? ` → ${hits.join(', ')}` : ''}`);
     return order.length;
   }
 
@@ -2852,6 +2852,7 @@ const BOT_LEVEL_KO = { easy: '쉬움', normal: '보통', hard: '어려움' };
 const TEAM_KO = { red: '빨강', blue: '파랑' };
 
 // 킬 로그의 공격 이름 (npm run stats 가 한 단어로 읽음)
+const BBLOCK_LOG = { wall: '벽', third: '3타 블록', pad: '발판' };
 const WEAPON_LOG = { push: '밀치기', blast: '블록폭발', bigbomb: '대폭발', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', whirl: '회오리' };
 
 function causeKo(cause) {
