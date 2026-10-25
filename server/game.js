@@ -201,13 +201,19 @@ export class Game {
       wallCells: null,
       whirlAt: 0, // 갈고리 회오리: 이 시각에 끌어모은 사람들(whirlTargets)을 튕김
       whirlTargets: null,
-      critNext: false, // 닌자 그림자: 다음 밀치기 치명타
       atk: null, // 캐릭터 평타 준비 중: { n(몇 번째 타, 공중 0), def, at(판정 시각) }
       atkQueued: false, // 후딜·준비 중에 누른 평타 (끝나면 나감)
       atkLanded: false, // 마지막 평타가 상대를 맞혔나 (맞았으면 후딜을 스킬로 캔슬)
       castQueued: null, // 평타 준비·빗나간 후딜 중에 누른 'skill' 또는 'ult' (판정·후딜이 끝나면 나감)
       chainN: 0, // 마지막으로 맞힌 평타 타 번호 (0 = 다음은 1타)
       chainUntil: 0, // 이 시각까지 누르면 다음 타
+      airN: 0, // 마지막으로 친 공중 평타 번호 (0 = 다음은 공중 1타)
+      lastBasic: null, // 마지막 평타 { n, air, at } (봇)
+      streak: 0, // 내가 이어 넣은 타 수 (상대가 바뀌어도 이어짐: 닌자 갈아타기 'N HIT')
+      streakUntil: 0,
+      empowerUntil: 0, // 닌자 R 강화 (표창 2연)
+      star2: null, // 표창 둘째 발 { at, n, air, def }
+      touchPiece: 0, // 닌자 패시브: 마지막으로 닿은 떨어지는 블록 id (한 블록에 한 번)
       input: { fwd: 0, strafe: 0, jump: false },
     };
     this.players.set(id, p);
@@ -528,13 +534,19 @@ export class Game {
         wallCells: null,
         whirlAt: 0,
         whirlTargets: null,
-        critNext: false,
         atk: null,
         atkQueued: false,
         atkLanded: false,
         castQueued: null,
         chainN: 0,
         chainUntil: 0,
+        airN: 0,
+        lastBasic: null,
+        streak: 0,
+        streakUntil: 0,
+        empowerUntil: 0,
+        star2: null,
+        touchPiece: 0,
       });
     }
     if (this.mode === 'master') {
@@ -766,13 +778,19 @@ export class Game {
       wallCells: null,
       whirlAt: 0,
       whirlTargets: null,
-      critNext: false,
       atk: null,
       atkQueued: false,
       atkLanded: false,
       castQueued: null,
       chainN: 0,
       chainUntil: 0,
+      airN: 0,
+      lastBasic: null,
+      streak: 0,
+      streakUntil: 0,
+      empowerUntil: 0,
+      star2: null,
+      touchPiece: 0,
       hasControl: false,
       deathCause: null,
       lastHit: null,
@@ -910,14 +928,13 @@ export class Game {
       if (dist > C.PUSH_RANGE * (p.char === 'hook' ? C.HOOK_PUSH_RANGE_MULT : 1)) continue; // 갈고리 패시브: 사거리
       if (Math.abs(t.z - p.z) > C.PLAYER_HEIGHT) continue;
       if (dist > EPS && (dx * fx + dy * fy) / dist < cosHalf) continue;
-      const crit = (falling && p.z - t.z >= C.CRIT_MIN_HEIGHT) || p.critNext; // 닌자 그림자: 다음 밀치기 치명타
+      const crit = falling && p.z - t.z >= C.CRIT_MIN_HEIGHT;
       const gain = crit ? Math.round(C.DAMAGE_GAIN[kind] * C.CRIT_DAMAGE_MULT) : C.DAMAGE_GAIN[kind];
       const hit = this.applyKnockback(t, fx, fy, crit ? speed * C.CRIT_KB_MULT : speed, up, stun, gain, { by: p.id, kind });
       const stop = crit ? C.HITSTOP_MS * C.CRIT_HITSTOP_MULT : C.HITSTOP_MS;
       if (hit) {
         p.freezeUntil = this.time + stop; // 때린 쪽도 같이 멈칫
         t.freezeUntil = this.time + stop;
-        if (crit) p.critNext = false;
       }
       if (hit && !this.sameTeam(p, t)) p.atkLanded = true; // 맞혔으면 F·R 로 쿨 캔슬 (그림자 일격 → 순간 베기)
       this.emit({ type: 'hit', kind, by: p.id, target: t.id, ok: hit, crit: hit && crit });
@@ -957,24 +974,28 @@ export class Game {
     this.basicStart(p);
   }
 
-  // 몇 번째 타인지 정하고 준비 시작. 지상: 앞 타가 맞고 이어 치기 창 안이면 다음 타, 아니면 1타. 공중: 공중 평타 (n 0)
+  // 몇 번째 타인지 정하고 준비 시작. 지상·공중 각각 이어 치기 창 안이면 다음 타, 아니면 1타 (공중은 air 배열 순서)
   basicStart(p) {
     const set = C.BASIC_ATTACKS[p.char];
     const air = !p.grounded;
-    const n = air ? 0 : p.chainN > 0 && this.time < p.chainUntil && p.chainN < set.chain.length ? p.chainN + 1 : 1;
-    const def = air ? set.air : set.chain[n - 1];
-    p.atk = { n, def, at: this.time + def.windup };
+    const live = this.time < p.chainUntil;
+    const n = air ? (p.airN > 0 && live && p.airN < set.air.length ? p.airN + 1 : 1) : p.chainN > 0 && live && p.chainN < set.chain.length ? p.chainN + 1 : 1;
+    let def = air ? set.air[n - 1] : set.chain[n - 1];
+    // 닌자 R 강화: 지상 1~3타와 공중 평타가 표창 2연발 (4타 올려 차기는 그대로)
+    if (p.char === 'ninja' && this.time < p.empowerUntil && (air || n <= 3)) def = { ...def, name: '표창', windup: C.NINJA_STAR.windup, step: 0, star: true };
+    p.atk = { n, def, air, at: this.time + def.windup };
     p.atkLanded = false;
     p.pushReadyAt = this.time + def.windup + def.rec;
-    this.emit({ type: 'attack', who: p.id, char: p.char, n, air, name: def.name, windup: def.windup, finish: !!def.finish });
+    this.emit({ type: 'attack', who: p.id, char: p.char, n, air, name: def.name, windup: def.windup, finish: !!def.finish, star: !!def.star });
     if (def.windup <= 0) this.basicHit(p);
   }
 
   // 판정: 앞으로 step 만큼 나가며 부채꼴 안을 침. 중간 타는 고정 넉백, 마무리 타·공중 평타는 % 배율
   basicHit(p) {
-    const { n, def } = p.atk;
+    const { n, def, air } = p.atk;
     p.atk = null;
     const set = C.BASIC_ATTACKS[p.char];
+    if (def.star) return this.starVolley(p, n, air, def);
     const fx = Math.cos(p.yaw);
     const fy = Math.sin(p.yaw);
     if (def.step) {
@@ -994,7 +1015,8 @@ export class Game {
     const cosHalf = Math.cos(((def.angle ?? C.PUSH_HALF_ANGLE_DEG) * Math.PI) / 180);
     const falling = !p.grounded && p.vz < 0;
     const finish = !!def.finish;
-    const label = n ? `${n}타 ${def.name}` : `공중 ${def.name}`;
+    const single = air && set.air.length === 1; // 공중 한 타짜리: 예전처럼 % 배율 넉백·보통 멈칫
+    const label = basicLabel(set, n, air, def);
     let landed = null; // 처음 맞힌 상대 (같은 팀 빼고)
     for (const t of this.players.values()) {
       if (t === p || !this.onField(t)) continue;
@@ -1003,32 +1025,93 @@ export class Game {
       const dist = Math.hypot(dx, dy);
       if (dist > range || Math.abs(t.z - p.z) > C.PLAYER_HEIGHT) continue;
       if (dist > C.BASIC_STEP_GAP && (dx * fx + dy * fy) / dist < cosHalf) continue; // 몸이 붙어 있으면 방향 상관없이
-      const crit = n === 0 && falling && p.z - t.z >= C.CRIT_MIN_HEIGHT; // 치명타는 공중 평타만
+      const crit = air && falling && p.z - t.z >= C.CRIT_MIN_HEIGHT; // 치명타는 공중 평타만
       const gain = crit ? Math.round(def.dmg * C.CRIT_DAMAGE_MULT) : def.dmg;
       const speed = crit ? def.kb * C.CRIT_KB_MULT : def.kb;
-      const hit = this.applyKnockback(t, fx, fy, speed, def.up, def.stun, gain, { by: p.id, kind: 'push' }, finish, { fixed: n > 0 && !finish, finish });
+      const hit = this.applyKnockback(t, fx, fy, speed, def.up, def.stun, gain, { by: p.id, kind: 'push' }, finish, { fixed: !single && !finish, finish });
       if (hit) {
         const stop =
-          (n === 0 ? C.HITSTOP_MS : finish ? C.BASIC_FINISH_HITSTOP_MS : C.BASIC_HITSTOP_MS) *
+          (single ? C.HITSTOP_MS : finish ? C.BASIC_FINISH_HITSTOP_MS : C.BASIC_HITSTOP_MS) *
           (crit ? C.CRIT_HITSTOP_MULT : 1) *
           (t.counterAt === this.time ? C.COUNTER_HITSTOP_MULT : 1);
         p.freezeUntil = this.time + stop;
         t.freezeUntil = this.time + stop;
         if (!landed && !this.sameTeam(p, t)) landed = t;
       }
-      this.emit({ type: 'hit', kind: 'push', by: p.id, target: t.id, ok: hit, crit: hit && crit, n, finish });
+      this.emit({ type: 'hit', kind: 'push', by: p.id, target: t.id, ok: hit, crit: hit && crit, n, air, finish, streak: hit ? p.streak : 0 });
       this.log(`  [평타] ${p.name} → ${t.name} ${hit ? `넉백${crit ? ' 치명타' : ''} (${t.name} ${t.damage}%)` : '무적이라 무시'} ${label}`);
     }
-    // 허공 이어 치기 (2026-10-25 재혁): 빗나가도 다음 타로 (후딜은 다 받음). BASIC_CHAIN_WINDOW_MS 안에 안 치면 1타로
-    if (n === 0) {
-      if (p.chainN > 0) p.chainUntil = this.time + C.BASIC_CHAIN_WINDOW_MS; // 공중 평타는 타 번호 그대로
+    this.basicChain(p, n, air, !!landed);
+    if (p.char === 'builder' && this.hammerBlocks(p, range, cosHalf)) p.atkLanded = true; // 망치로 내 블록을 치면 폭발 (맞힌 것으로 침: F·R 캔슬)
+    if (def.raise) this.basicRaise(p, landed);
+  }
+
+  // 평타 한 타가 끝난 뒤: 이어 치기 번호·창, 맞혔는지, 닌자 F 쿨 감소
+  // 허공 이어 치기 (2026-10-25 재혁): 빗나가도 다음 타로 (후딜은 다 받음). BASIC_CHAIN_WINDOW_MS 안에 안 치면 1타로.
+  // 타 번호는 때린 쪽에 남음 → 상대를 바꿔도 이어짐 (닌자 갈아타기)
+  basicChain(p, n, air, landed) {
+    const set = C.BASIC_ATTACKS[p.char];
+    if (air) {
+      p.airN = n < set.air.length ? n : 0;
+      if (p.airN > 0 || p.chainN > 0) p.chainUntil = this.time + C.BASIC_CHAIN_WINDOW_MS; // 지상 타 번호도 그대로
     } else if (n < set.chain.length) {
       p.chainN = n;
       p.chainUntil = this.time + C.BASIC_CHAIN_WINDOW_MS;
     } else p.chainN = 0;
-    p.atkLanded = !!landed;
-    if (p.char === 'builder' && this.hammerBlocks(p, range, cosHalf)) p.atkLanded = true; // 망치로 내 블록을 치면 폭발 (맞힌 것으로 침: F·R 캔슬)
-    if (def.raise) this.basicRaise(p, landed);
+    p.atkLanded = landed;
+    p.lastBasic = { n, air, at: this.time };
+    if (landed) this.ninjaCdCut(p);
+  }
+
+  // 닌자 적중 보상: 평타가 맞을 때마다 F 쿨 NINJA_HIT_CD_CUT_MS 줄어듦
+  ninjaCdCut(p) {
+    if (p.char === 'ninja') p.skillReadyAt = Math.max(this.time, p.skillReadyAt - C.NINJA_HIT_CD_CUT_MS);
+  }
+
+  // 닌자 R 강화 표창 2연발: 첫 발은 지금, 둘째 발은 NINJA_STAR.gap 뒤 (updateCombat). 즉시 판정 (날아가는 물체 아님)
+  starVolley(p, n, air, def) {
+    const landed = this.starShot(p, n, air, def, 1);
+    this.basicChain(p, n, air, landed);
+    p.star2 = { at: this.time + C.NINJA_STAR.gap, n, air, def };
+  }
+
+  // 표창 한 발: 보는 방향 좁은 각 NINJA_STAR.range 안 가장 가까운 상대 하나. 마무리 타 자리면 둘째 발이 그 타의 마무리
+  starShot(p, n, air, def, shot) {
+    const S = C.NINJA_STAR;
+    const set = C.BASIC_ATTACKS[p.char];
+    const fx = Math.cos(p.yaw);
+    const fy = Math.sin(p.yaw);
+    const cosHalf = Math.cos((S.angle * Math.PI) / 180);
+    let best = null;
+    let bd = Infinity;
+    for (const t of this.players.values()) {
+      if (t === p || !this.onField(t)) continue;
+      const dx = t.x - p.x;
+      const dy = t.y - p.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > S.range || Math.abs(t.z - p.z) > S.range || dist < EPS || (dx * fx + dy * fy) / dist < cosHalf) continue;
+      if (dist < bd) {
+        bd = dist;
+        best = t;
+      }
+    }
+    const fin = shot === 2 && !!def.finish;
+    const from = { x: p.x, y: p.y, z: p.z + C.EYE_HEIGHT - 0.3 };
+    this.emit({ type: 'star', who: p.id, shot, target: best ? best.id : null, from, to: best ? { x: best.x, y: best.y, z: best.z + 0.8 } : { x: p.x + fx * S.range, y: p.y + fy * S.range, z: from.z } });
+    if (!best) return false;
+    const falling = !p.grounded && p.vz < 0;
+    const crit = air && falling && p.z - best.z >= C.CRIT_MIN_HEIGHT;
+    const dmg = fin ? def.dmg : S.dmg;
+    const gain = crit ? Math.round(dmg * C.CRIT_DAMAGE_MULT) : dmg;
+    const hit = this.applyKnockback(best, fx, fy, (fin ? def.kb : S.kb) * (crit ? C.CRIT_KB_MULT : 1), fin ? def.up : S.up, fin ? def.stun : S.stun, gain, { by: p.id, kind: 'push' }, fin, { fixed: !fin, finish: fin });
+    if (hit) {
+      const stop = (fin ? C.BASIC_FINISH_HITSTOP_MS : C.BASIC_HITSTOP_MS) * (crit ? C.CRIT_HITSTOP_MULT : 1) * (best.counterAt === this.time ? C.COUNTER_HITSTOP_MULT : 1);
+      best.freezeUntil = this.time + stop;
+    }
+    const ok = hit && !this.sameTeam(p, best);
+    this.emit({ type: 'hit', kind: 'push', by: p.id, target: best.id, ok: hit, crit: hit && crit, n, air, finish: fin, star: true, streak: hit ? p.streak : 0 });
+    this.log(`  [평타] ${p.name} → ${best.name} ${hit ? `넉백${crit ? ' 치명타' : ''} (${best.name} ${best.damage}%)` : '무적이라 무시'} ${basicLabel(set, n, air, def)}`);
+    return ok;
   }
 
   // 건축가 내려찍기: 맞힌 사람 발밑 (빗나가면 앞 1.5칸) 기둥 꼭대기에 건축가 블록 1칸 ('third', 최대 BUILDER_THIRD_MAX 개).
@@ -1078,9 +1161,7 @@ export class Game {
   useUlt(p) {
     if (p.slamAt || p.wallAt || this.time < p.chargeUntil) return false;
     if (p.char === 'tank') this.tankSlamStart(p);
-    else if (p.char === 'ninja') {
-      if (!this.ninjaStrike(p)) return false; // 근처에 상대가 없으면 게이지 그대로
-    } else if (p.char === 'builder') {
+    else if (p.char === 'ninja') this.ninjaEmpower(p); else if (p.char === 'builder') {
       if (!this.builderBigBomb(p)) return false; // 솟을 자리가 없으면 게이지 그대로
     } else this.hookWhirl(p);
     p.ult = 0;
@@ -1145,27 +1226,33 @@ export class Game {
   }
 
   // ---- 닌자 ----
-  // 순간 베기: 보는 방향으로 NINJA_BLINK_DIST 만큼 (벽 앞까지, 상대가 있으면 그 바로 뒤까지) 순간이동하며 지나간 길의 상대를 벰 (한 사람 한 번)
+  // 순간 베기: 보는 방향으로 NINJA_BLINK_DIST 만큼 (블록 앞까지, 상대가 있으면 그 바로 뒤까지) 순간이동하며 지나간 길의 상대를 벰 (한 사람 한 번).
+  // 공중에서도 됨 (복귀). 블록에 막히면 벽 차기: 위로 튀어 오름 + 작은 충격파 (벽 통과 없음)
   ninjaBlink(p) {
     const fx = Math.cos(p.yaw);
     const fy = Math.sin(p.yaw);
     const from = { x: p.x, y: p.y };
     let best = 0;
+    let blocked = false;
     for (let d = 0.1; d <= C.NINJA_BLINK_DIST + 1e-9; d += 0.1) {
       const b = this.aabb({ x: p.x + fx * d, y: p.y + fy * d, z: p.z + 0.05 }); // 발이 바닥에 살짝 안 걸리게
-      if (this.overlappingSolid(b).length) break;
+      if (this.overlappingSolid(b).length) {
+        blocked = true;
+        break;
+      }
       best = d;
     }
-    if (best < 0.3) return false;
-    // 길 위의 상대: 지나갈 선분에서 NINJA_SLASH_WIDTH 안. 처음 만나는 상대 바로 뒤(NINJA_STRIKE_BEHIND)에서 멈춤 → 바로 평타로 이어짐
+    if (best < 0.3 && !blocked) return false;
+    // 길 위의 상대: 지나갈 선분에서 NINJA_SLASH_WIDTH 안. 처음 만나는 상대 바로 뒤(NINJA_BLINK_BEHIND)에서 멈춤 → 바로 평타로 이어짐
     const onPath = (t, len) => {
       const along = (t.x - from.x) * fx + (t.y - from.y) * fy;
       return along >= 0 && along <= len && Math.hypot(from.x + fx * along - t.x, from.y + fy * along - t.y) <= C.NINJA_SLASH_WIDTH ? along : null;
     };
+    const wall = best;
     for (const t of this.players.values()) {
       if (!this.foe(p, t) || Math.abs(t.z - p.z) > C.PLAYER_HEIGHT) continue;
       const along = onPath(t, best);
-      if (along !== null) best = Math.min(best, along + C.NINJA_STRIKE_BEHIND);
+      if (along !== null) best = Math.min(best, along + C.NINJA_BLINK_BEHIND);
     }
     p.x += fx * best;
     p.y += fy * best;
@@ -1176,43 +1263,65 @@ export class Game {
       if (onPath(t, best) === null) continue;
       const hit = this.applyKnockback(t, fx, fy, C.NINJA_SLASH_KB_SPEED, C.NINJA_SLASH_KB_UP, C.NINJA_SLASH_STUN_MS, C.NINJA_SLASH_DAMAGE, { by: p.id, kind: 'slash' });
       if (hit) n++;
-      this.emit({ type: 'hit', kind: 'slash', by: p.id, target: t.id, ok: hit });
+      this.emit({ type: 'hit', kind: 'slash', by: p.id, target: t.id, ok: hit, streak: hit ? p.streak : 0 });
     }
-    this.log(`  [스킬] ${p.name} 순간 베기 ${best.toFixed(1)}칸${n ? ` (${n}명)` : ''}`);
+    const kicked = blocked && best >= wall - 1e-9; // 상대 뒤에서 먼저 멈췄으면 벽 차기 아님
+    this.log(`  [스킬] ${p.name} 순간 베기 ${best.toFixed(1)}칸${n ? ` (${n}명)` : ''}${kicked ? ' 벽 차기' : ''}`);
+    if (kicked) this.ninjaWallKick(p, fx, fy);
     return true;
   }
 
-  // 그림자 일격: NINJA_STRIKE_RANGE 안 가장 가까운 상대 등 뒤로 순간이동해 치명타 밀치기. 맞히면 순간 베기 쿨 초기화.
-  // 상대가 없거나 뒤에 설 자리가 없으면 안 쓰임 (게이지 그대로)
-  ninjaStrike(p) {
-    let t = null;
-    let bd = Infinity;
-    for (const o of this.players.values()) {
-      if (!this.foe(p, o) || Math.abs(o.z - p.z) > 2.5 || this.invulnerable(o)) continue; // 무적인 상대는 안 고름
-      const d = Math.hypot(o.x - p.x, o.y - p.y);
-      if (d <= C.NINJA_STRIKE_RANGE && d < bd) {
-        bd = d;
-        t = o;
-      }
-    }
-    if (!t) return false;
-    const a = Math.atan2(t.y - p.y, t.x - p.x); // 나 → 상대 방향의 반대편(등 뒤)에 선다
-    const spot = { x: t.x + Math.cos(a) * C.NINJA_STRIKE_BEHIND, y: t.y + Math.sin(a) * C.NINJA_STRIKE_BEHIND, z: t.z };
-    if (!inXY(Math.floor(spot.x), Math.floor(spot.y)) || this.overlappingSolid(this.aabb({ ...spot, z: spot.z + 0.05 })).length) return false;
-    const from = { x: p.x, y: p.y };
-    Object.assign(p, spot);
-    p.yaw = a + Math.PI; // 상대를 봄
+  // 벽 차기: 블록을 차고 위로 + 둘레 상대를 바깥으로 (피해 작게, 넉백만)
+  ninjaWallKick(p, fx, fy) {
+    p.vz = C.NINJA_WALLKICK_UP;
+    p.grounded = false;
     p.kbx = 0;
     p.kby = 0;
-    this.emit({ type: 'blink', who: p.id, from, to: { x: p.x, y: p.y, z: p.z } });
-    p.critNext = true;
-    const before = t.damage;
-    this.push(p);
-    p.critNext = false;
-    const hit = t.damage > before; // 맞힘 (마지막 타로 무적이 붙어도 피해는 쌓임)
-    if (hit) p.skillReadyAt = this.time; // 순간 베기 쿨 초기화
-    this.log(`  [필살] ${p.name} 그림자 일격 → ${t.name}${hit ? ' (순간 베기 초기화)' : ''}`);
-    return true;
+    const hits = [];
+    for (const t of this.players.values()) {
+      if (!this.foe(p, t)) continue;
+      const dx = t.x - p.x;
+      const dy = t.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d > C.NINJA_WALLKICK_RANGE || Math.abs(t.z - p.z) > C.PLAYER_HEIGHT) continue;
+      const hit = this.applyKnockback(t, d > 0.05 ? dx : -fx, d > 0.05 ? dy : -fy, C.NINJA_WALLKICK_KB_SPEED, C.NINJA_WALLKICK_KB_UP, C.NINJA_WALLKICK_STUN_MS, C.NINJA_WALLKICK_DAMAGE, { by: p.id, kind: 'wallkick' });
+      this.emit({ type: 'hit', kind: 'wallkick', by: p.id, target: t.id, ok: hit });
+      if (hit) hits.push(t.name);
+    }
+    this.emit({ type: 'wallKick', who: p.id, x: p.x, y: p.y, z: p.z, dir: { x: fx, y: fy } });
+    this.log(`  [스킬] ${p.name} 벽 차기${hits.length ? ` → ${hits.join(', ')}` : ''}`);
+  }
+
+  // R 강화: NINJA_EMPOWER_MS 동안 지상 1~3타·공중 평타가 표창 2연발
+  ninjaEmpower(p) {
+    p.empowerUntil = this.time + C.NINJA_EMPOWER_MS;
+    this.emit({ type: 'empower', who: p.id, ms: C.NINJA_EMPOWER_MS });
+    this.log(`  [필살] ${p.name} 강화 (${C.NINJA_EMPOWER_MS / 1000}초 표창)`);
+  }
+
+  // 패시브: 공중에서 떨어지는 블록에 닿으면 (밟거나 옆면) 공중 점프 회복. 한 블록에 한 번
+  ninjaTouch(p) {
+    if (p.grounded && !this.standingOnPiece(p)) {
+      p.touchPiece = 0;
+      return;
+    }
+    const box = this.aabb(p);
+    const pad = 0.06;
+    for (const pc of this.pieces) {
+      if (pc.phase !== 'falling' || pc.id === p.touchPiece) continue;
+      const touch = this.pieceWorldCells(pc).some(([x, y, z]) => x < box.x1 + pad && x + 1 > box.x0 - pad && y < box.y1 + pad && y + 1 > box.y0 - pad && z < box.z1 + pad && z + 1 > box.z0 - pad);
+      if (!touch) continue;
+      p.touchPiece = pc.id;
+      p.airJumps = C.AIR_JUMPS;
+      this.emit({ type: 'ninjaTouch', who: p.id, piece: pc.id });
+      return;
+    }
+  }
+
+  standingOnPiece(p) {
+    const z = Math.round(p.z) - 1;
+    for (let x = Math.floor(p.x - C.PLAYER_HALF); x <= Math.floor(p.x + C.PLAYER_HALF); x++) for (let y = Math.floor(p.y - C.PLAYER_HALF); y <= Math.floor(p.y + C.PLAYER_HALF); y++) if (this.pieceCells.has(cellKey(x, y, z))) return true;
+    return false;
   }
 
   // ---- 건축가 (2026-10-25 재혁 확정, docs/characters.md 3.1) ----
@@ -1556,9 +1665,19 @@ export class Game {
         p.atk = null;
         p.atkQueued = false;
         p.castQueued = null;
+        p.star2 = null;
         continue;
       }
       if (p.atk && this.time >= p.atk.at) this.basicHit(p);
+      if (p.star2 && this.time >= p.star2.at) {
+        const s2 = p.star2;
+        p.star2 = null;
+        if (this.starShot(p, s2.n, s2.air, s2.def, 2)) {
+          p.atkLanded = true;
+          this.ninjaCdCut(p);
+        }
+      }
+      if (p.char === 'ninja') this.ninjaTouch(p);
       if (p.castQueued && !p.atk && (p.atkLanded || this.time >= p.pushReadyAt)) this.castQueuedNow(p);
       else if (p.atkQueued && !p.atk && this.time >= p.pushReadyAt) {
         p.atkQueued = false;
@@ -1829,12 +1948,24 @@ export class Game {
     t.chargeUntil = 0; // 맞으면 돌진·내려찍기 끊김
     t.slamAt = 0;
     t.atk = null; // 맞으면 평타 준비·이어 치기 끊김
+    t.star2 = null;
+    t.streak = 0;
     t.atkQueued = false;
     t.castQueued = null;
     t.chainN = 0;
     if (teammate) gain = 0; // 팀전: 같은 팀은 밀리기만 (피해 % 없음, 킬로도 안 침)
-    else if (src && src.by !== t.id) t.lastHit = { by: src.by, kind: src.kind, name: this.players.get(src.by)?.name };
-    const mult = fixed ? 1 : (C.DAMAGE_KB_BASE + t.damage * C.DAMAGE_KB_PER_PERCENT) * (t.char === 'tank' ? C.TANK_KB_TAKEN : 1); // 탱크 패시브: 덜 밀림
+    else if (src && src.by !== t.id) {
+      t.lastHit = { by: src.by, kind: src.kind, name: this.players.get(src.by)?.name };
+      // 때린 쪽의 이어 넣은 타 수 (상대가 바뀌어도 STREAK_MS 안이면 이어짐 → 닌자 갈아타기 'N HIT')
+      const by = this.players.get(src.by);
+      if (by) {
+        by.streak = this.time < by.streakUntil ? by.streak + 1 : 1;
+        by.streakUntil = this.time + C.STREAK_MS;
+        if (by.streak >= 2) this.emit({ type: 'streak', who: by.id, n: by.streak, target: t.id });
+      }
+    }
+    const taken = t.char === 'tank' ? C.TANK_KB_TAKEN : t.char === 'ninja' ? C.NINJA_KB_TAKEN : 1; // 탱크 패시브: 덜 밀림, 닌자 약점: 잘 밀림
+    const mult = fixed ? 1 : (C.DAMAGE_KB_BASE + t.damage * C.DAMAGE_KB_PER_PERCENT) * taken;
     t.damage += gain;
     // 필살기 게이지: 피해 % 를 주거나 받은 만큼
     if (gain > 0) {
@@ -2582,7 +2713,6 @@ export class Game {
         const speed =
           C.MOVE_SPEED *
           (this.time < p.speedUntil ? C.SPEED_MULT : 1) *
-          (p.char === 'ninja' ? C.NINJA_SPEED_MULT : 1) * // 닌자 패시브
           (p.atk && p.atk.def.finish ? C.BASIC_FINISH_MOVE_MULT : 1); // 평타 마무리 준비 중
         ix = mv.x * speed;
         iy = mv.y * speed;
@@ -2807,7 +2937,7 @@ export class Game {
         ult: Math.floor(p.ult),
         iframeLeft: Math.max(0, p.iframeUntil - this.time), // 콤보 뒤 무적 (깜빡임)
         combo: this.time < p.stunUntil ? p.comboHits : 0,
-        critNext: p.critNext,
+        empower: Math.max(0, p.empowerUntil - this.time), // 닌자 R 강화 남은 시간
         respawnIn: !p.alive && p.respawnAt ? Math.max(0, p.respawnAt - this.time) : null,
         shieldLeft: Math.max(0, p.shieldUntil - this.time),
         score: this.scores.get(p.id) || 0,
@@ -2852,8 +2982,13 @@ const BOT_LEVEL_KO = { easy: '쉬움', normal: '보통', hard: '어려움' };
 const TEAM_KO = { red: '빨강', blue: '파랑' };
 
 // 킬 로그의 공격 이름 (npm run stats 가 한 단어로 읽음)
+// 평타 로그 이름: "2타 반대 찌르기", 공중이면 "공중 망치 내려찍기" (공중 연타가 있는 캐릭터는 "공중 2타 내려 차기")
+function basicLabel(set, n, air, def) {
+  return air ? `공중 ${set.air.length > 1 ? `${n}타 ` : ''}${def.name}` : `${n}타 ${def.name}`;
+}
+
 const BBLOCK_LOG = { wall: '벽', third: '3타 블록', pad: '발판' };
-const WEAPON_LOG = { push: '밀치기', blast: '블록폭발', bigbomb: '대폭발', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', whirl: '회오리' };
+const WEAPON_LOG = { push: '밀치기', wallkick: '벽차기', blast: '블록폭발', bigbomb: '대폭발', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', whirl: '회오리' };
 
 function causeKo(cause) {
   if (cause === 'crush') return '압사';

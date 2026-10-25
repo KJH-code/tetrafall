@@ -145,8 +145,8 @@ export class BotBrain {
       return;
     }
 
-    // 0.5) 건축가 복귀: 필드 밖으로 떨어지는 중이면 공중 F (발판 + 위로 부스트) 를 쓰고 안쪽으로
-    if (p.char === 'builder' && !p.grounded && p.vz < 0 && p.z < -0.3 && g.time >= p.skillReadyAt && g.time >= p.stunUntil) {
+    // 0.5) 복귀: 필드 밖으로 떨어지는 중이면 공중 F 를 쓰고 안쪽으로 (건축가 발판 + 부스트, 닌자 순간 베기 → 막히면 벽 차기)
+    if ((p.char === 'builder' || p.char === 'ninja') && !p.grounded && p.vz < 0 && p.z < -0.3 && g.time >= p.skillReadyAt && g.time >= p.stunUntil) {
       this.moveTo(g, p, { x: W / 2, y: D / 2 });
       g.handleInput(p.id, this.input);
       g.handleAction(p.id, { name: 'skill' });
@@ -247,9 +247,11 @@ export class BotBrain {
   }
 
   // 다음 평타 타의 사거리
-  basicRange(p) {
+  basicRange(p, g) {
     const set = C.BASIC_ATTACKS[p.char];
-    const d = set.chain[Math.min(p.chainN, set.chain.length - 1)];
+    const n = Math.min(p.chainN, set.chain.length - 1); // 다음 지상 타 (0부터)
+    if (p.char === 'ninja' && g && g.time < p.empowerUntil && n < 3) return C.NINJA_STAR.range; // R 강화 표창
+    const d = set.chain[n];
     return (d.range || C.PUSH_RANGE) * (p.char === 'hook' ? C.HOOK_PUSH_RANGE_MULT : 1);
   }
 
@@ -287,8 +289,20 @@ export class BotBrain {
     }
     const dist = Math.hypot(t.x - p.x, t.y - p.y);
     const toT = { x: (t.x - p.x) / (dist || 1), y: (t.y - p.y) / (dist || 1) };
-    // 캐릭터 평타: 앞 타가 맞았으면 상대를 보고 다음 타 (난이도별로 조금 늦게 누름). 준비 중에는 계속 상대를 봄
-    if (p.char && (p.atk || (p.chainN > 0 && g.time < p.chainUntil && dist < this.basicRange(p) * 0.95))) {
+    // 닌자: 올려 차기(4타)로 띄운 상대를 점프해 따라가 공중 평타
+    const lb = p.lastBasic;
+    if (p.char === 'ninja' && lb && !lb.air && lb.n === C.BASIC_ATTACKS.ninja.chain.length && g.time - lb.at < 900 && t.z > p.z + 0.4 && g.time < t.stunUntil && dist < 2) {
+      this.input.fwd = dist > 0.8 ? 1 : 0;
+      this.input.strafe = 0;
+      this.input.yaw = Math.atan2(t.y - p.y, t.x - p.x);
+      this.input.jump = p.grounded;
+      g.handleInput(p.id, this.input);
+      if (!p.grounded && p.vz < 2 && p.airJumps > 0 && t.z > p.z + 1) g.handleAction(p.id, { name: 'jump' });
+      if (!p.grounded && Math.abs(t.z - p.z) < 1.4 && !p.atk) g.handleAction(p.id, { name: 'push' }); // 공중 1타 → (창 안에) 공중 2타
+      return;
+    }
+    // 캐릭터 평타: 앞 타가 끝나고 창 안이면 상대를 보고 다음 타 (난이도별로 조금 늦게 누름). 준비 중에는 계속 상대를 봄
+    if (p.char && (p.atk || ((p.chainN > 0 || p.airN > 0) && g.time < p.chainUntil && dist < this.basicRange(p, g) * 0.95))) {
       this.input.fwd = 0;
       this.input.strafe = 0;
       this.input.yaw = Math.atan2(t.y - p.y, t.x - p.x);
@@ -304,7 +318,7 @@ export class BotBrain {
     // (안 그러면 "뒤로 돌아가기" 자리가 낭떠러지일 때 둘 다 겹친 채 영원히 멈춤)
     const overlap = dist < 0.3;
     const lined = overlap || toT.x * dir.x + toT.y * dir.y > 0.5; // 내가 상대 "뒤"에 있다
-    if (dist < C.PUSH_RANGE * 0.85 && (lined || edgeDist(p.x, p.y) < 1.2)) {
+    if (dist < (p.char === 'ninja' ? this.basicRange(p, g) : C.PUSH_RANGE) * 0.85 && (lined || edgeDist(p.x, p.y) < 1.2)) { // 닌자 R 강화 중엔 표창 사거리
       this.input.fwd = 0;
       this.input.strafe = 0;
       this.input.yaw = overlap ? Math.atan2(dir.y, dir.x) : Math.atan2(t.y - p.y, t.x - p.x);
@@ -361,10 +375,10 @@ export class BotBrain {
         return act('skill');
       }
     } else if (p.char === 'ninja') {
-      if (ultReady && dist <= C.NINJA_STRIKE_RANGE) return act('ult');
+      if (ultReady && dist <= C.NINJA_STAR.range + 1) return act('ult'); // 강화 (표창 2연)
       if (skillReady && level && dist <= C.NINJA_BLINK_DIST && (comboing || dist > 1.5)) {
         const yaw = Math.atan2(t.y - p.y, t.x - p.x);
-        const land = Math.min(C.NINJA_BLINK_DIST, dist + C.NINJA_STRIKE_BEHIND); // 상대 바로 뒤에서 멈춤
+        const land = Math.min(C.NINJA_BLINK_DIST, dist + C.NINJA_BLINK_BEHIND); // 상대 바로 뒤에서 멈춤
         if (edgeDist(p.x + Math.cos(yaw) * land, p.y + Math.sin(yaw) * land) < 0.8) return false; // 떨어질 자리로는 안 감
         if (this.pathHits(p, yaw, land, avoid)) return false; // 블록 그림자로는 안 감
         face();
