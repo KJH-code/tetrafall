@@ -868,6 +868,18 @@ export class BotBrain {
     return (g.time < p.jumpUntil ? 2.25 : 1.05) + (C.AIR_JUMPS > 0 ? 1 : 0); // 점프력 상승 중이면 2칸, 2단 점프로 1칸 더
   }
 
+  // 유령 투하 (죽은 봇, GHOST_DROP_BOTS 일 때만): 살아 있는 상대 중 가장 가까운 사람 발밑 칸에, 설치 블록 조준 오차만큼 빗나가게
+  ghostDrop(g, p) {
+    W = g.W;
+    D = g.D;
+    const live = [...g.players.values()].filter((o) => o !== p && o.alive && g.onField(o) && !g.sameTeam(o, p));
+    if (!live.length) return;
+    const t = this.nearest(p, live);
+    const r = this.k('BRICK_AIM_ERROR') * Math.sqrt(this.rng());
+    const a = this.rng() * Math.PI * 2;
+    g.ghostDrop(p.id, Math.max(0, Math.min(W - 1, t.x + r * Math.cos(a))), Math.max(0, Math.min(D - 1, t.y + r * Math.sin(a))));
+  }
+
   // 하늘 계단: 용암이 BOT_SKY_HOP_LAVA 안이면 점프로 닿는 더 높은 하늘 블록으로 건너뛴다. 움직였거나 블록 위에서 버티면 true
   // (건널 블록 = 윗면이 지금보다 0.5칸 넘게 높고 점프 높이 안, 가장 가까운 칸까지 BOT_SKY_HOP_DIST 안. 높을수록·가까울수록 먼저)
   skyHop(g, p) {

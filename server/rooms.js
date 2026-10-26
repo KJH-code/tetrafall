@@ -220,6 +220,9 @@ export class Rooms {
       case 'skyStairs':
         if (host) game.setSkyStairs(!!msg.on);
         break;
+      case 'ghostDrop': // 유령 투하: 죽은 사람이 고른 칸에 1칸 블록 (생존 모드)
+        game.ghostDrop(id, msg.x, msg.y);
+        break;
       case 'practiceSet': // 연습: 토글 (방 전체) · 내 피해 %
         if (room.practice) game.practiceSet(id, String(msg.key), msg.value);
         break;

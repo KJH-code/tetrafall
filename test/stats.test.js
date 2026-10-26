@@ -376,11 +376,11 @@ test('통계: 판마다 놓인 블록 수(종류별)·지형 변화·사망 때 
   g.tick(TICK); // 판 끝 (블록·지형 변화 줄)
   assert.equal(g.phase, 'over');
   const text = lines.map((l) => `[12시 0분 0초] ${l}`).join('\n');
-  assert.ok(lines.some((l) => l.startsWith('  블록: 자동 0 / 하늘 1 / 조종 0 / 설치 0 / 건축가 0 / 갈고리 0')), lines.filter((l) => l.includes('블록:')).join('\n'));
+  assert.ok(lines.some((l) => l.startsWith('  블록: 자동 0 / 하늘 1 / 조종 0 / 설치 0 / 건축가 0 / 갈고리 0 / 유령 0')), lines.filter((l) => l.includes('블록:')).join('\n'));
   const rise = (4 / (g.W * g.D)).toFixed(2); // 블록 하나 4칸이 판 넓이에 퍼진 평균
   assert.ok(lines.includes(`  지형 변화: 남은 칸 4 / 평균 높이 +${rise}`), lines.filter((l) => l.includes('지형 변화')).join('\n'));
   const [r] = parseLog(text);
-  assert.deepEqual(r.landed, { 자동: 0, 하늘: 1, 조종: 0, 설치: 0, 건축가: 0, 갈고리: 0 });
+  assert.deepEqual(r.landed, { 자동: 0, 하늘: 1, 조종: 0, 설치: 0, 건축가: 0, 갈고리: 0, 유령: 0 });
   assert.equal(r.leftCells, 4);
   assert.equal(r.rise, Number(rise));
   assert.deepEqual(r.deaths.map((d) => [d.name, d.ground, d.killer]), [['P2', '블록', null], ['P3', '바닥', null]]);
