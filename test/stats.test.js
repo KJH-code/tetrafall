@@ -299,6 +299,12 @@ test('통계: 캐릭터 평타 — 타 번호별 명중 수 (공중 평타 따�
     '[1시]   [필살] P1 소용돌이 끝 → P2(봇) 50%',
     '[1시]   [필살] P1 분노 소용돌이 (분노 ×1.00, 피해 0% → 0%)',
     '[1시]   [필살] P1 분노 소용돌이 끊김',
+    '[1시]   [음파] P1 → P2(봇) 둔화 (P2(봇) 3%)',
+    '[1시]   [스킬] P1 메탈 폼 (기타 리프 → P2(봇) 8%)',
+    '[1시]   [스킬] P1 음유시인 폼 (치유 P1 25% → 15%)',
+    '[1시]   [필살] P1 취약의 노래 → P2(봇)',
+    '[1시]   [필살] P1 앰프 음파',
+    '[1시]   [필살] P1 앰프 음파 끊김',
     '[1시]   [평타] P2(봇) → P1 넉백 치명타 (P1 8%) 공중 공중 베기',
     '[1시]   [평타] P2(봇) → P1 넉백 (P1 13%) 공중 2타 내려 차기',
     '[1시]   [사망] P2(봇) 낙사 @ 0:10 (위치 1.0, 2.0, -4.0, 피해 120%, 킬 P1 밀치기)',
@@ -315,9 +321,10 @@ test('통계: 캐릭터 평타 — 타 번호별 명중 수 (공중 평타 따�
   assert.ok(formatReport(s).includes('== 평타 명중 (타 번호별) =='));
   assert.ok(formatReport(s).includes('표식 1번 · 처형 사격 1번 (게이지 회수 1번)'));
   assert.ok(formatReport(s).includes('포탄 1발 · 명중 1 · 블록 부숨 4칸 · 대형 포탄 1번'));
-  assert.deepEqual(s.builder, { armor: { held: 1, broken: 1 }, hunter: { marks: 1, shots: 1, refunds: 1 }, cannon: { fired: 1, hits: 1, broke: 4, big: 1 }, berserker: { leaps: 1, spins: 2, rage: 2.6, cut: 40, endHits: 1, broken: 1 }, blasts: 2, wall: 1, third: 1, pad: 0, cells: 4, big: 1 });
+  assert.deepEqual(s.builder, { armor: { held: 1, broken: 1 }, hunter: { marks: 1, shots: 1, refunds: 1 }, cannon: { fired: 1, hits: 1, broke: 4, big: 1 }, berserker: { leaps: 1, spins: 2, rage: 2.6, cut: 40, endHits: 1, broken: 1 }, bard: { notes: 1, toMetal: 1, toBard: 1, healed: 10, songs: 1, vuln: 1, amps: 1, ampBroken: 1 }, blasts: 2, wall: 1, third: 1, pad: 0, cells: 4, big: 1 });
   assert.ok(formatReport(s).includes('버팀 1번 · 깨짐 1번'));
   assert.ok(formatReport(s).includes('폭발 2번 (벽 1 · 3타 블록 1 · 발판 0, 평균 2.0칸) · 대폭발 1번'));
+  assert.ok(formatReport(s).includes('음파 명중 1 · 메탈 전환 1 · 음유 전환 1 (치유 10%) · 취약의 노래 1번 (1명) · 앰프 음파 1번 (끊김 1)'));
   assert.ok(formatReport(s).includes('광폭 도약 1번 · 소용돌이 2번 (평균 분노 ×1.30 · 깎은 피해 평균 20% · 끝 날림 1명 · 끊김 1번)'));
 });
 

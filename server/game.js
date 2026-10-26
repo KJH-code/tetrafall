@@ -1,6 +1,6 @@
 // Tetrafall 서버 게임 상태. 권위는 전부 여기에 있다.
 // 격자는 3D 정수 배열, 플레이어는 AABB + 넉백. 물리엔진 없음.
-import { CONFIG as C } from '../shared/config.js';
+import { CONFIG as C, basicSet } from '../shared/config.js';
 import { SHAPE_NAMES, CELL, cellOfShape, rotatedCells, footprint } from '../shared/pieces.js';
 import { BotBrain } from './bot.js';
 import { MAPS, MAP_IDS, mapColumns } from './maps.js';
@@ -84,6 +84,7 @@ export class Game {
     this.holes = []; // 폭발 구멍 (테스트 옵션 BUILDER_BLAST_HOLE): { x, y, z, v, at }
     this.quakes = []; // 탱크 R 솟는 땅 (잠깐 솟았다 가라앉음): { cells: [[x,y,z]], at }
     this.shells = []; // 대포수 포탄 (보통·대형)
+    this.notes = []; // 바드 류트 음파
     this.shellCounter = this.shellCounter || 0;
     this.bgroup = 0;
     this.bombCounter = 0;
@@ -247,6 +248,11 @@ export class Game {
       huntAim: null, // 사냥꾼 R 조준: { at(쏘는 시각) }
       rush: null, // 광전사 F 도약: { endAt(도약 끝), vx, vy, landBy(이때까지 안 닿으면 충격파 없음) }
       spin: null, // 광전사 R 회전: { endAt, nextTick, rage(R 시작 때 피해 %) }
+      form: 'bard', // 바드 폼: 'bard'(음유시인) / 'metal'
+      glideUntil: 0, // 바드 음유 공중 평타 천천히 낙하 끝 시각
+      amp: null, // 바드 메탈 R 앰프: { endAt, nextTick }
+      slowUntil: 0, // 둔화 (바드 음파) 끝 시각
+      vulnUntil: 0, // 넉백 취약 (바드 취약의 노래) 끝 시각
       cannonAmmo: C.CANNON_AMMO_MAX, // 대포수 탄 (판 시작·부활 때 가득)
       reloadAt: 0, // 대포수 다음 한 발 장전 시각 (0 = 가득)
       atk: null, // 캐릭터 평타 준비 중: { n(몇 번째 타, 공중 0), def, at(판정 시각) }
@@ -539,6 +545,7 @@ export class Game {
     this.holes = []; // 폭발 구멍 (테스트 옵션 BUILDER_BLAST_HOLE): { x, y, z, v, at }
     this.quakes = []; // 탱크 R 솟는 땅 (잠깐 솟았다 가라앉음): { cells: [[x,y,z]], at }
     this.shells = []; // 대포수 포탄 (보통·대형)
+    this.notes = []; // 바드 류트 음파
     this.shellCounter = this.shellCounter || 0;
     this.bgroup = 0;
     this.bombCounter = 0;
@@ -606,6 +613,11 @@ export class Game {
         huntAim: null,
         rush: null,
         spin: null,
+        form: 'bard',
+        glideUntil: 0,
+        amp: null,
+        slowUntil: 0,
+        vulnUntil: 0,
         cannonAmmo: C.CANNON_AMMO_MAX,
         reloadAt: 0,
         atk: null,
@@ -863,6 +875,11 @@ export class Game {
       huntAim: null,
       rush: null,
       spin: null,
+      form: 'bard',
+      glideUntil: 0,
+      amp: null,
+      slowUntil: 0,
+      vulnUntil: 0,
       cannonAmmo: C.CANNON_AMMO_MAX,
       reloadAt: 0,
       atk: null,
@@ -946,7 +963,7 @@ export class Game {
         this.dash(p);
         return;
       case 'push':
-        if (stunned || controlling || p.spin) return; // 조종 중 공격 불가, 광전사 회전 중 불가
+        if (stunned || controlling || p.spin || p.amp) return; // 조종 중 공격 불가, 광전사 회전·바드 앰프 중 불가
         if (p.char) return void this.basicPress(p); // 캐릭터 평타
         if (this.time < p.pushReadyAt) return;
         this.push(p);
@@ -1044,7 +1061,7 @@ export class Game {
     if (kind === 'skill') this.useSkill(p);
     else if (!this.useUlt(p)) {
       // 못 씀 (게이지 그대로): 화면이 알 수 있게 (갈고리 블록 없음, 건축가 솟을 자리 없음, 다른 기술 중)
-      const reason = p.slamAt || p.wallAt || p.grab || p.huntAim || p.rush || p.spin || this.time < p.chargeUntil ? 'busy' : p.char === 'hook' ? 'noBlock' : p.char === 'hunter' ? 'noTarget' : 'noSpace';
+      const reason = p.slamAt || p.wallAt || p.grab || p.huntAim || p.rush || p.spin || p.amp || this.time < p.chargeUntil ? 'busy' : p.char === 'hook' ? 'noBlock' : p.char === 'hunter' ? 'noTarget' : 'noSpace';
       this.emit({ type: 'ultFail', who: p.id, reason });
       this.log(`  [필살] ${p.name} 못 씀 (${reason})`);
     }
@@ -1073,7 +1090,7 @@ export class Game {
 
   // 몇 번째 타인지 정하고 준비 시작. 지상·공중 각각 이어 치기 창 안이면 다음 타, 아니면 1타 (공중은 air 배열 순서)
   basicStart(p) {
-    const set = C.BASIC_ATTACKS[p.char];
+    const set = basicSet(p.char, p.form);
     const air = !p.grounded;
     const live = this.time < p.chainUntil;
     const n = air ? (p.airN > 0 && live && p.airN < set.air.length ? p.airN + 1 : 1) : p.chainN > 0 && live && p.chainN < set.chain.length ? p.chainN + 1 : 1;
@@ -1095,10 +1112,15 @@ export class Game {
   basicHit(p) {
     const { n, def, air, chained } = p.atk;
     p.atk = null;
-    const set = C.BASIC_ATTACKS[p.char];
+    const set = basicSet(p.char, p.form);
     if (def.star) return this.starVolley(p, n, air, def, chained);
     if (def.shell) {
       this.cannonShot(p);
+      return this.basicChain(p, n, air, false, def);
+    }
+    if (def.note || def.glide) {
+      if (def.note) this.bardNote(p);
+      else this.bardGlide(p);
       return this.basicChain(p, n, air, false, def);
     }
     const fx = Math.cos(p.yaw);
@@ -1161,7 +1183,7 @@ export class Game {
   // 허공 이어 치기 (2026-10-25 재혁): 빗나가도 다음 타로 (후딜은 다 받음). BASIC_CHAIN_WINDOW_MS 안에 안 치면 1타로.
   // 타 번호는 때린 쪽에 남음 → 상대를 바꿔도 이어짐 (닌자 갈아타기)
   basicChain(p, n, air, landed, def) {
-    const set = C.BASIC_ATTACKS[p.char];
+    const set = basicSet(p.char, p.form);
     // 띄우는 마지막 지상 타(마무리 아님) 뒤에는 후딜 + 이어 치기 창 동안 공중 1타가 연타로 이어짐
     if (!air && n === set.chain.length && !def.finish) p.launchUntil = this.time + def.rec + C.BASIC_CHAIN_WINDOW_MS;
     if (air) {
@@ -1191,7 +1213,7 @@ export class Game {
   // 표창 한 발: 보는 방향 좁은 각 NINJA_STAR.range 안 가장 가까운 상대 하나. 마무리 타 자리면 둘째 발이 그 타의 마무리
   starShot(p, n, air, def, shot, chained = false) {
     const S = C.NINJA_STAR;
-    const set = C.BASIC_ATTACKS[p.char];
+    const set = basicSet(p.char, p.form);
     const fx = Math.cos(p.yaw);
     const fy = Math.sin(p.yaw);
     const cosHalf = Math.cos((S.angle * Math.PI) / 180);
@@ -1258,7 +1280,7 @@ export class Game {
 
   // ---------- 캐릭터 스킬·필살기 ----------
   useSkill(p) {
-    if (p.slamAt || p.wallAt || p.grab || p.leap || p.windup || p.hookFly || p.huntAim || p.rush || p.spin || this.time < p.chargeUntil) return false; // 다른 기술 발동 중
+    if (p.slamAt || p.wallAt || p.grab || p.leap || p.windup || p.hookFly || p.huntAim || p.rush || p.spin || p.amp || this.time < p.chargeUntil) return false; // 다른 기술 발동 중
     p.skillReadyAt = this.time + C.SKILL_CD_MS[p.char]; // 먼저 걸어 둠 (그림자 일격이 순간 베기 쿨을 초기화하는 것과 순서가 안 꼬이게)
     if (p.grounded && C.SKILL_WINDUP_CHARS.includes(p.char)) {
       // 이동 스킬 지상 예고: SKILL_WINDUP_MS 뒤 누른 순간 방향으로 나감 (updateCombat → fireWindup)
@@ -1294,7 +1316,9 @@ export class Game {
                 ? this.cannonJump(p)
                 : p.char === 'berserker'
                   ? this.berserkerLeap(p)
-                  : this.hookPull(p);
+                  : p.char === 'bard'
+                    ? this.bardSwitch(p)
+                    : this.hookPull(p);
     if (!ok) {
       p.skillReadyAt = this.time; // 못 쓰는 상황(벽 세울 자리 없음 등)이면 쿨타임 안 돎 — 갈고리는 빗나가도 돎 (hookPull 이 정함)
       return false;
@@ -1305,12 +1329,16 @@ export class Game {
   }
 
   useUlt(p) {
-    if (p.slamAt || p.wallAt || p.grab || p.leap || p.windup || p.hookFly || p.huntAim || p.rush || p.spin || this.time < p.chargeUntil) return false;
+    if (p.slamAt || p.wallAt || p.grab || p.leap || p.windup || p.hookFly || p.huntAim || p.rush || p.spin || p.amp || this.time < p.chargeUntil) return false;
     if (p.char === 'tank') this.tankSlamStart(p);
     else if (p.char === 'ninja') this.ninjaEmpower(p); else if (p.char === 'builder') {
       if (!this.builderBigBomb(p)) return false; // 솟을 자리가 없으면 게이지 그대로
     } else if (p.char === 'cannon') this.cannonBig(p);
     else if (p.char === 'berserker') this.berserkerSpin(p);
+    else if (p.char === 'bard') {
+      if (p.form === 'metal') this.bardAmp(p);
+      else this.bardSong(p);
+    }
     else if (p.char === 'hunter') {
       if (!this.hunterAim(p)) return false; // 사냥꾼: 쏠 표식 대상이 없으면 게이지 그대로
     } else if (!this.hookGrab(p)) return false; // 갈고리: 닿는 블록이 없으면 게이지 그대로
@@ -1693,6 +1721,161 @@ export class Game {
     }
     const txt = shots.map((x) => `${this.players.get(x.target).name} ${x.marks}개${x.blocked ? ' 막힘' : ''}`).join(', ');
     this.log(`  [필살] ${p.name} 처형 사격 (${txt || '대상 없음'})${refund ? ' 게이지 회수' : ''}`);
+  }
+
+  // ---- 바드 (2026-10-26, docs/characters.md 3.8) ----
+  // 류트 음파: 조준 방향으로 느린 음파를 날림 (updateNotes)
+  bardNote(p) {
+    const cp = Math.cos(p.pitch || 0);
+    const dir = { x: cp * Math.cos(p.yaw), y: cp * Math.sin(p.yaw), z: Math.sin(p.pitch || 0) };
+    const nt = {
+      id: ++this.shellCounter,
+      owner: p.id,
+      x: p.x + dir.x * 0.5,
+      y: p.y + dir.y * 0.5,
+      z: p.z + C.EYE_HEIGHT - 0.3 + dir.z * 0.5,
+      dir,
+      dieAt: this.time + (C.BARD_NOTE_RANGE / C.BARD_NOTE_SPEED) * 1000,
+    };
+    this.notes.push(nt);
+    this.emit({ type: 'noteFire', who: p.id, id: nt.id, x: nt.x, y: nt.y, z: nt.z, dir, speed: C.BARD_NOTE_SPEED });
+  }
+
+  // 음파 이동: 처음 닿는 사람 (약한 넉백 + 둔화) 또는 블록·바닥에서 사라짐
+  updateNotes(dt) {
+    const def = C.BASIC_ATTACKS.bard.chain[0];
+    for (const nt of [...this.notes]) {
+      const sub = Math.max(1, Math.ceil((C.BARD_NOTE_SPEED * dt) / 0.15));
+      const h = dt / sub;
+      const r = C.BARD_NOTE_RADIUS;
+      let end = null;
+      for (let s = 0; s < sub && !end; s++) {
+        nt.x += nt.dir.x * C.BARD_NOTE_SPEED * h;
+        nt.y += nt.dir.y * C.BARD_NOTE_SPEED * h;
+        nt.z += nt.dir.z * C.BARD_NOTE_SPEED * h;
+        const owner = this.players.get(nt.owner);
+        for (const t of this.players.values()) {
+          if (!this.onField(t) || t.id === nt.owner || !owner || this.sameTeam(owner, t)) continue;
+          if (!(nt.x > t.x - C.PLAYER_HALF - r && nt.x < t.x + C.PLAYER_HALF + r && nt.y > t.y - C.PLAYER_HALF - r && nt.y < t.y + C.PLAYER_HALF + r && nt.z > t.z - r && nt.z < t.z + C.PLAYER_HEIGHT + r)) continue;
+          const hit = this.applyKnockback(t, nt.dir.x, nt.dir.y, def.kb, def.up, def.stun, def.dmg, { by: nt.owner, kind: 'note' }, false, { fixed: true });
+          if (hit) t.slowUntil = this.time + C.BARD_SLOW_MS; // 둔화: 갱신만
+          this.emit({ type: 'hit', kind: 'note', by: nt.owner, target: t.id, ok: hit, streak: hit && owner ? owner.streak : 0 });
+          this.log(`  [음파] ${owner.name} → ${t.name} ${hit ? `둔화 (${t.name} ${t.damage}%)` : '무적이라 무시'}`);
+          end = 'player';
+          break;
+        }
+        if (!end && this.solidAt(Math.floor(nt.x), Math.floor(nt.y), Math.floor(nt.z))) end = 'block';
+      }
+      if (!end && this.time >= nt.dieAt) end = 'expire';
+      if (!end) continue;
+      this.notes = this.notes.filter((x) => x !== nt);
+      this.emit({ type: 'noteEnd', id: nt.id, who: nt.owner, what: end, x: nt.x, y: nt.y, z: nt.z });
+    }
+  }
+
+  // 음유 공중 평타: 천천히 낙하 (integratePlayer 가 중력을 줄임)
+  bardGlide(p) {
+    p.glideUntil = this.time + C.BARD_GLIDE_MS;
+    if (p.vz < -C.BARD_GLIDE_FALL) p.vz = -C.BARD_GLIDE_FALL;
+    this.emit({ type: 'glide', who: p.id, ms: C.BARD_GLIDE_MS });
+  }
+
+  // F 폼 전환: 음유 → 메탈 = 충격파 + 기타 리프, 메탈 → 음유 = 치유파
+  bardSwitch(p) {
+    p.glideUntil = 0;
+    if (p.form !== 'metal') {
+      p.form = 'metal';
+      const hits = [];
+      for (const t of this.players.values()) {
+        if (!this.foe(p, t)) continue;
+        const dx = t.x - p.x;
+        const dy = t.y - p.y;
+        const d = Math.hypot(dx, dy);
+        if (d > C.BARD_RIFF_RANGE || Math.abs(t.z - p.z) > C.PLAYER_HEIGHT) continue;
+        const hit = this.applyKnockback(t, d > 0.05 ? dx : Math.cos(p.yaw), d > 0.05 ? dy : Math.sin(p.yaw), C.BARD_RIFF_KB_SPEED, C.BARD_RIFF_KB_UP, C.BARD_RIFF_STUN_MS, C.BARD_RIFF_DAMAGE, { by: p.id, kind: 'riff' }, true);
+        this.emit({ type: 'hit', kind: 'riff', by: p.id, target: t.id, ok: hit, streak: hit ? p.streak : 0 });
+        if (hit) hits.push(`${t.name} ${t.damage}%`);
+      }
+      this.emit({ type: 'form', who: p.id, form: 'metal', x: p.x, y: p.y, z: p.z, r: C.BARD_RIFF_RANGE });
+      this.log(`  [스킬] ${p.name} 메탈 폼 (기타 리프${hits.length ? ` → ${hits.join(', ')}` : ''})`);
+    } else {
+      p.form = 'bard';
+      const healed = [];
+      for (const t of this.players.values()) {
+        if (!this.onField(t) || (t !== p && (!this.teamMode || !this.sameTeam(p, t) || Math.hypot(t.x - p.x, t.y - p.y) > C.BARD_HEAL_RANGE))) continue;
+        const before = t.damage;
+        t.damage = Math.max(0, t.damage - C.BARD_HEAL);
+        healed.push({ id: t.id, from: before, to: t.damage });
+      }
+      this.emit({ type: 'form', who: p.id, form: 'bard', x: p.x, y: p.y, z: p.z, healed });
+      this.log(`  [스킬] ${p.name} 음유시인 폼 (치유 ${healed.map((h) => `${this.players.get(h.id).name} ${h.from}% → ${h.to}%`).join(', ')})`);
+    }
+    p.chainN = 0; // 평타 세트가 바뀜
+    p.airN = 0;
+    return true;
+  }
+
+  // 음유 R 취약의 노래: 앞 넓은 범위 상대가 BARD_VULN_MS 동안 받는 넉백 ×BARD_VULN_MULT
+  bardSong(p) {
+    const fx = Math.cos(p.yaw);
+    const fy = Math.sin(p.yaw);
+    const cosHalf = Math.cos(((C.BARD_SONG_ANGLE_DEG / 2) * Math.PI) / 180);
+    const hit = [];
+    for (const t of this.players.values()) {
+      if (!this.foe(p, t)) continue;
+      const dx = t.x - p.x;
+      const dy = t.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d > C.BARD_SONG_RANGE || Math.abs(t.z - p.z) > 2 || (d > 0.3 && (dx * fx + dy * fy) / d < cosHalf)) continue;
+      t.vulnUntil = this.time + C.BARD_VULN_MS;
+      hit.push(t);
+    }
+    this.emit({ type: 'song', who: p.id, x: p.x, y: p.y, z: p.z, yaw: p.yaw, targets: hit.map((t) => t.id), ms: C.BARD_VULN_MS });
+    this.log(`  [필살] ${p.name} 취약의 노래${hit.length ? ` → ${hit.map((t) => t.name).join(', ')}` : ''}`);
+  }
+
+  // 메탈 R 앰프 음파 시작
+  bardAmp(p) {
+    p.amp = { endAt: this.time + C.BARD_AMP_MS, nextTick: this.time };
+    this.emit({ type: 'amp', who: p.id, ms: C.BARD_AMP_MS });
+    this.log(`  [필살] ${p.name} 앰프 음파`);
+  }
+
+  // 앞 원뿔 안 상대 (앰프)
+  ampTargets(p) {
+    const fx = Math.cos(p.yaw);
+    const fy = Math.sin(p.yaw);
+    const cosHalf = Math.cos(((C.BARD_AMP_ANGLE_DEG / 2) * Math.PI) / 180);
+    return [...this.players.values()].filter((t) => {
+      if (!this.foe(p, t)) return false;
+      const dx = t.x - p.x;
+      const dy = t.y - p.y;
+      const d = Math.hypot(dx, dy);
+      return d <= C.BARD_AMP_RANGE && Math.abs(t.z - p.z) <= C.PLAYER_HEIGHT && (d < 0.3 || (dx * fx + dy * fy) / d >= cosHalf);
+    });
+  }
+
+  bardAmpUpdate(p) {
+    const A = p.amp;
+    const fx = Math.cos(p.yaw);
+    const fy = Math.sin(p.yaw);
+    if (this.time >= A.nextTick && this.time < A.endAt) {
+      A.nextTick += C.BARD_AMP_TICK_MS;
+      for (const t of this.ampTargets(p)) {
+        const hit = this.applyKnockback(t, fx, fy, C.BARD_AMP_TICK_KB, C.BARD_AMP_TICK_UP, C.BARD_AMP_TICK_STUN_MS, C.BARD_AMP_TICK_DAMAGE, { by: p.id, kind: 'amp' }, false, { fixed: true, chained: true });
+        this.emit({ type: 'hit', kind: 'amp', by: p.id, target: t.id, ok: hit, streak: hit ? p.streak : 0 });
+      }
+    }
+    if (this.time < A.endAt) return;
+    p.amp = null;
+    const hits = [];
+    for (const t of this.ampTargets(p)) {
+      const hit = this.applyKnockback(t, fx, fy, C.BARD_AMP_END_KB_SPEED, C.BARD_AMP_END_KB_UP, C.BARD_AMP_END_STUN_MS, C.BARD_AMP_END_DAMAGE, { by: p.id, kind: 'ampend' }, true, { finish: true });
+      this.emit({ type: 'hit', kind: 'ampend', by: p.id, target: t.id, ok: hit, streak: hit ? p.streak : 0 });
+      if (hit) hits.push(`${t.name} ${t.damage}%`);
+    }
+    this.emit({ type: 'ampEnd', who: p.id, x: p.x, y: p.y, z: p.z, yaw: p.yaw });
+    this.log(`  [필살] ${p.name} 앰프 끝${hits.length ? ` → ${hits.join(', ')}` : ''}`);
   }
 
   // ---- 광전사 (2026-10-26, docs/characters.md 3.7) ----
@@ -2433,7 +2616,8 @@ export class Game {
       if (p.comboHits > 0 && this.time >= p.stunUntil) this.endCombo(p);
       if (!this.onField(p)) {
         p.chargeUntil = p.slamAt = p.wallAt = p.zipUntil = 0;
-        p.leap = p.huntAim = p.rush = p.spin = p.windup = p.hookFly = null;
+        p.leap = p.huntAim = p.rush = p.spin = p.amp = p.windup = p.hookFly = null;
+        p.glideUntil = 0;
         p.marks.clear();
         if (p.grab) this.hookGrabDrop(p);
         p.atk = null;
@@ -2459,6 +2643,7 @@ export class Game {
       if (p.leap) this.hunterLeapUpdate(p);
       if (p.rush) this.berserkerLeapUpdate(p);
       if (p.spin) this.berserkerSpinUpdate(p);
+      if (p.amp) this.bardAmpUpdate(p);
       if (p.huntAim && this.time >= p.huntAim.at) this.hunterShoot(p);
       if (p.castQueued && !p.atk && (p.atkLanded || this.time >= p.pushReadyAt)) this.castQueuedNow(p);
       else if (p.atkQueued && !p.atk && this.time >= p.pushReadyAt) {
@@ -2771,6 +2956,12 @@ export class Game {
       t.ult = this.ultMax(t); // 조준 중에 끊긴 처형 사격은 게이지 돌려줌
     }
     t.rush = null; // 광전사 도약 중에 맞으면 충격파 없음 (쿨타임은 씀)
+    t.glideUntil = 0; // 바드 천천히 낙하: 맞으면 풀림
+    if (t.amp) {
+      this.emit({ type: 'interrupt', who: t.id, kind: 'ult' });
+      this.log(`  [필살] ${t.name} 앰프 음파 끊김`);
+      t.amp = null; // 연주 중에 맞으면 끝 (게이지 안 돌려줌)
+    }
     if (t.spin) {
       this.emit({ type: 'interrupt', who: t.id, kind: 'ult' });
       this.log(`  [필살] ${t.name} 분노 소용돌이 끊김`);
@@ -2798,7 +2989,8 @@ export class Game {
       }
     }
     const taken = t.char === 'tank' ? C.TANK_KB_TAKEN : t.char === 'ninja' ? C.NINJA_KB_TAKEN : 1; // 탱크 패시브: 덜 밀림, 닌자 약점: 잘 밀림
-    const mult = fixed ? 1 : (C.DAMAGE_KB_BASE + t.damage * C.DAMAGE_KB_PER_PERCENT) * taken;
+    const vuln = !teammate && this.time < t.vulnUntil ? C.BARD_VULN_MULT : 1; // 바드 취약의 노래 (% 배율 넉백에만)
+    const mult = fixed ? 1 : (C.DAMAGE_KB_BASE + t.damage * C.DAMAGE_KB_PER_PERCENT) * taken * vuln;
     t.damage += gain;
     this.gainUlt(t, src, gain);
     const len = Math.hypot(dx, dy) || 1;
@@ -2824,7 +3016,7 @@ export class Game {
   // 카운터히트 대상 (2026-10-25 재혁 결정, 첫 사람 플레이테스트: 1:1 에서 동시에 누르면 거의 다 카운터였음):
   // 빗나간 평타의 후딜, 돌진 중, 내려찍기·솟는 벽 준비·갈고리 블록 뽑는 중. 평타 준비 중·맞힌 평타의 후딜·걷기·점프는 아님
   busy(t) {
-    return !!((this.time < t.pushReadyAt && !t.atk && !t.atkLanded) || this.time < t.chargeUntil || t.slamAt || t.wallAt || t.grab || t.leap || t.windup || t.huntAim || t.rush || t.spin);
+    return !!((this.time < t.pushReadyAt && !t.atk && !t.atkLanded) || this.time < t.chargeUntil || t.slamAt || t.wallAt || t.grab || t.leap || t.windup || t.huntAim || t.rush || t.spin || t.amp);
   }
 
   // 공격이 안 들어가는 상태: 콤보 뒤 무적·부활 무적. 경직이 이미 풀린 콤보는 여기서 먼저 끝냄
@@ -3668,7 +3860,9 @@ export class Game {
           C.MOVE_SPEED *
           (this.time < p.speedUntil ? C.SPEED_MULT : 1) *
           (p.atk && p.atk.def.finish ? C.BASIC_FINISH_MOVE_MULT : 1) * // 평타 마무리 준비 중
-          (p.spin ? C.BERSERKER_SPIN_MOVE_MULT : 1); // 광전사 회전 중 (천천히 쫓아감)
+          (p.spin ? C.BERSERKER_SPIN_MOVE_MULT : 1) * // 광전사 회전 중 (천천히 쫓아감)
+          (p.amp ? C.BARD_AMP_MOVE_MULT : 1) * // 바드 앰프 연주 중
+          (this.time < p.slowUntil ? 1 - C.BARD_SLOW : 1); // 둔화
         ix = mv.x * speed;
         iy = mv.y * speed;
       }
@@ -3689,7 +3883,9 @@ export class Game {
     p.kby *= damp;
     if (Math.abs(p.kbx) < 0.01) p.kbx = 0;
     if (Math.abs(p.kby) < 0.01) p.kby = 0;
-    p.vz -= C.GRAVITY * dt;
+    if (p.glideUntil && (p.grounded || this.time >= p.glideUntil)) p.glideUntil = 0;
+    p.vz -= C.GRAVITY * (p.glideUntil ? C.BARD_GLIDE_GRAVITY : 1) * dt; // 바드 천천히 낙하: 중력 줄임
+    if (p.glideUntil && p.vz < -C.BARD_GLIDE_FALL) p.vz = -C.BARD_GLIDE_FALL;
     this.moveAxis(p, 'x', (ix + p.kbx) * dt);
     this.moveAxis(p, 'y', (iy + p.kby) * dt);
     p.grounded = false;
@@ -3804,6 +4000,7 @@ export class Game {
     this.updateItems();
     this.updateProjectiles(dt);
     if (this.shells.length) this.updateShells(dt);
+    if (this.notes.length) this.updateNotes(dt);
     this.updateBombs();
     if (C.ROUND_TIME_LIMIT_MS > 0 && this.time - this.roundStartTime >= C.ROUND_TIME_LIMIT_MS) {
       this.log('  시간 초과 → 무승부');
@@ -3899,6 +4096,9 @@ export class Game {
         loaded: p.char === 'hook' ? p.loaded : undefined, // 갈고리 장전
         ultMax: this.ultMax(p), // 필살기 게이지 필요량 (사냥꾼 2배)
         cannon: p.char === 'cannon' ? { ammo: p.cannonAmmo, max: C.CANNON_AMMO_MAX, reloadLeft: p.reloadAt ? Math.max(0, p.reloadAt - this.time) : 0, reloadMs: C.CANNON_RELOAD_MS } : undefined, // 대포수 탄·장전
+        bard: p.char === 'bard' ? { form: p.form, glideLeft: p.glideUntil ? Math.max(0, p.glideUntil - this.time) : 0, ampLeft: p.amp ? Math.max(0, p.amp.endAt - this.time) : 0, ampMs: C.BARD_AMP_MS } : undefined, // 바드 폼·천천히 낙하·앰프
+        slowLeft: Math.max(0, p.slowUntil - this.time), // 둔화 남은 ms (바드 음파)
+        vulnLeft: Math.max(0, p.vulnUntil - this.time), // 넉백 취약 남은 ms (바드 취약의 노래, 머리 위 음표)
         berserker: p.char === 'berserker' ? { rage: this.rageMult(p.damage), spinLeft: p.spin ? Math.max(0, p.spin.endAt - this.time) : 0, spinMs: C.BERSERKER_SPIN_MS, spinRage: p.spin ? this.rageMult(p.spin.rage) : 0 } : undefined, // 광전사 분노 배율·회전
         ultTarget: p.char === 'hunter' ? this.onField(p) && this.shotTargets(p).some((t) => !this.lineBlocked(p, t)) : undefined, // 사냥꾼: 지금 R 쏠 대상이 있나 (R 버튼 회색)
         marks: [...p.marks].map(([by, m]) => ({ by, n: m.n, left: Math.max(0, C.HUNTER_MARK_MS - (this.time - m.at)) })), // 이 사람에게 붙은 사냥꾼 표식
@@ -3920,6 +4120,7 @@ export class Game {
       items: this.items,
       projectiles: this.projectiles.map((pr) => ({ x: pr.x, y: pr.y, z: pr.z })),
       shells: this.shells.map((sh) => ({ id: sh.id, owner: sh.owner, big: sh.big, x: sh.x, y: sh.y, z: sh.z, dir: sh.dir })), // 대포수 포탄 (보통·대형)
+      notes: this.notes.map((nt) => ({ id: nt.id, owner: nt.owner, x: nt.x, y: nt.y, z: nt.z, dir: nt.dir })), // 바드 류트 음파
       bombs: this.bombs.map((b) => ({ id: b.id, x: b.x, y: b.y, z: b.z, left: Math.max(0, b.explodeAt - this.time) })),
       bblocks: [...this.bblocks.values()].map((b) => ({ x: b.x, y: b.y, z: b.z, owner: b.owner, kind: b.kind, group: b.group, left: b.kind === 'big' ? Math.max(0, (this.bigBombs.find((x) => x.group === b.group)?.at ?? this.time) - this.time) : Math.max(0, b.expiresAt - this.time) })), // 건축가 블록 (B: 색·깜빡임·묶음)
       gridVersion: this.gridVersion,
@@ -3981,10 +4182,10 @@ function basicLabel(set, n, air, def) {
 }
 
 // 필살기 공격 종류 (탱크 아머를 깸)
-const ULT_KINDS = new Set(['slam', 'bigbomb', 'blockslam', 'execute', 'bigshell', 'spin', 'spinend']);
+const ULT_KINDS = new Set(['slam', 'bigbomb', 'blockslam', 'execute', 'bigshell', 'spin', 'spinend', 'amp', 'ampend']);
 
 const BBLOCK_LOG = { wall: '벽', third: '3타 블록', pad: '발판' };
-const WEAPON_LOG = { push: '밀치기', shell: '포탄', bigshell: '대형포탄', groundshot: '발밑포격', leapwave: '광폭도약', spin: '소용돌이회전', spinend: '소용돌이', pounce: '덮치기', execute: '처형사격', wallkick: '벽차기', blast: '블록폭발', bigbomb: '대폭발', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', blockslam: '블록내려찍기' };
+const WEAPON_LOG = { push: '밀치기', shell: '포탄', bigshell: '대형포탄', groundshot: '발밑포격', leapwave: '광폭도약', spin: '소용돌이회전', spinend: '소용돌이', note: '음파', riff: '기타리프', amp: '앰프', ampend: '앰프마무리', pounce: '덮치기', execute: '처형사격', wallkick: '벽차기', blast: '블록폭발', bigbomb: '대폭발', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', blockslam: '블록내려찍기' };
 
 function causeKo(cause) {
   if (cause === 'crush') return '압사';

@@ -273,6 +273,19 @@ export const CONFIG = {
       ],
       air: [{ name: '회전 베기', windup: 150, rec: 400, stun: 550, dmg: 8, kb: 3.5, up: 2, step: 0, angle: 180, radial: true }], // angle 180 = 사방, radial = 바깥으로 밀침
     },
+    // 바드 (2026-10-26 재혁 확정, docs/characters.md 3.8 폼 체인지): 음유시인 폼 = 류트 음파(약한 원거리, 둔화) + 공중 천천히 낙하, 메탈 폼(metal) = 기타 근접 2타 + 공중 기타 꽂기.
+    // 압사 원칙: 점프 봉인·입력 무시 없음, 둔화 약하게. 수치는 초안 (A 가 정함)
+    bard: {
+      chain: [{ name: '류트 음파', windup: 150, rec: 350, stun: 300, dmg: 3, kb: 1, up: 0.5, step: 0, note: true }],
+      air: [{ name: '천천히 낙하', windup: 100, rec: 300, stun: 0, dmg: 0, kb: 0, up: 0, step: 0, glide: true }],
+      metal: {
+        chain: [
+          { name: '기타 후려치기', windup: 150, rec: 300, stun: 650, dmg: 6, kb: 1.5, up: 1, step: 0.3 },
+          { name: '기타 내려치기', windup: 250, rec: 450, stun: 700, dmg: 10, kb: 4.6, up: 3, step: 0.3, finish: true },
+        ],
+        air: [{ name: '기타 꽂기', windup: 150, rec: 400, stun: 600, dmg: 9, kb: 2, up: -4, step: 0, angle: 180, finish: true }], // 아래로 꽂음 (up 음수)
+      },
+    },
   },
 
   // ---- 경직 ----
@@ -335,16 +348,16 @@ export const CONFIG = {
   MAP_DEFAULT: 'random', // 서버 켤 때 맵 선택: 'random' 또는 server/maps.js 의 MAP_IDS (flat·pyramid·stairs·bowl·spiral·pillars·fortress). 호스트가 대기 화면에서 바꿀 수 있음
 
   // ---- 캐릭터 (2026-10-24 7단계 재혁: 친구들이 '스킬/고유기 넣어서'. 캐릭터마다 패시브 + 스킬 F(쿨) + 필살기 R(게이지)) ----
-  CHARACTERS: ['tank', 'ninja', 'builder', 'hook', 'hunter', 'cannon', 'berserker'], // 사냥꾼·대포수·광전사 2026-10-26 (docs/characters.md 3.5·3.6·3.7)
-  CHAR_NAMES: { tank: '탱크', ninja: '닌자', builder: '건축가', hook: '갈고리', hunter: '사냥꾼', cannon: '대포수', berserker: '광전사' },
+  CHARACTERS: ['tank', 'ninja', 'builder', 'hook', 'hunter', 'cannon', 'berserker', 'bard'], // 사냥꾼·대포수·광전사·바드 2026-10-26 (docs/characters.md 3.5~3.8)
+  CHAR_NAMES: { tank: '탱크', ninja: '닌자', builder: '건축가', hook: '갈고리', hunter: '사냥꾼', cannon: '대포수', berserker: '광전사', bard: '바드' },
   // 2026-10-24 재혁: 스킬이 직접 피해·넉백을 주고 콤보로 이어지게 (닌자 = 콤보 캐릭터). 남이 쓰는 것도 보이게 예고·효과
-  SKILL_NAMES: { tank: '돌진', ninja: '순간 베기', builder: '솟는 벽', hook: '갈고리', hunter: '추적 도약', cannon: '발밑 포격', berserker: '광폭 도약' },
-  ULT_NAMES: { tank: '내려찍기', ninja: '강화', builder: '대폭발', hook: '블록 내려찍기', hunter: '처형 사격', cannon: '대형 포탄', berserker: '분노 소용돌이' },
+  SKILL_NAMES: { tank: '돌진', ninja: '순간 베기', builder: '솟는 벽', hook: '갈고리', hunter: '추적 도약', cannon: '발밑 포격', berserker: '광폭 도약', bard: '폼 전환' },
+  ULT_NAMES: { tank: '내려찍기', ninja: '강화', builder: '대폭발', hook: '블록 내려찍기', hunter: '처형 사격', cannon: '대형 포탄', berserker: '분노 소용돌이', bard: '취약의 노래' },
   // 이동 스킬 예고 (2026-10-26 재혁, docs/characters.md 2절): 닌자 F·탱크 F·갈고리 F 는 지상에서 쓰면 SKILL_WINDUP_MS 준비 (방향은 누른 순간 고정, 이벤트 skillWindup → 화면 번쩍·소리)
   // 뒤에 나감, 공중에서 쓰면 바로 (복귀가 안 늦게). 준비 중에 맞으면 끊기고 쿨타임 돌려줌 (카운터 대상)
   SKILL_WINDUP_MS: 150,
   SKILL_WINDUP_CHARS: ['ninja', 'tank', 'hook'],
-  SKILL_CD_MS: { tank: 8000, ninja: 6000, builder: 8000, hook: 8000, hunter: 7000, cannon: 8000, berserker: 7000 }, // 봇 160판으로 맞춤 (2026-10-24). 건축가 11 → 8초 (2026-10-25: F 가 콤보 부품·복귀기, 지상·공중 같이 씀)
+  SKILL_CD_MS: { tank: 8000, ninja: 6000, builder: 8000, hook: 8000, hunter: 7000, cannon: 8000, berserker: 7000, bard: 6000 }, // 봇 160판으로 맞춤 (2026-10-24). 건축가 11 → 8초 (2026-10-25: F 가 콤보 부품·복귀기, 지상·공중 같이 씀)
   CHAR_DEFAULT: 'tank',
   // 스킬·필살기를 쓰면 그 캐릭터에 빛 (글자 대신, 남에게도 보임. 누가 무엇인지는 캐릭터 모양으로). 2026-10-25 재혁:
   // 전체 느낌을 방해하지 않지만 잘 보이게 → 노을(주황·빨강)과 대비되는 차가운 색, 압사 경고(빨강)·치명타(노랑)와 안 겹치게
@@ -505,6 +518,50 @@ export const CONFIG = {
   BERSERKER_SPIN_END_KB_UP: 5,
   BERSERKER_SPIN_END_STUN_MS: 800,
   BERSERKER_RAGE_CUT: 40,
+  // 바드 (2026-10-26 재혁 확정, docs/characters.md 3.8). 폼 form: 'bard'(음유시인, 판 시작·부활) / 'metal'. F = 폼 전환 (쿨 SKILL_CD_MS.bard), R = 지금 폼의 R
+  BARD_FORM_NAMES: { bard: '음유시인', metal: '메탈' },
+  BARD_METAL_ULT_NAME: '앰프 음파',
+  // 류트 음파 (음유 평타): 보이는 느린 투사체, 사람에 닿으면 약한 넉백 + 둔화, 블록에 닿으면 사라짐
+  BARD_NOTE_SPEED: 10,
+  BARD_NOTE_RANGE: 6,
+  BARD_NOTE_RADIUS: 0.35,
+  // 둔화: 이동 속도 × (1 - BARD_SLOW), BARD_SLOW_MS (안 쌓이고 갱신만). 압사 원칙: 약하게
+  BARD_SLOW: 0.2,
+  BARD_SLOW_MS: 2000,
+  // 음유 공중 평타 천천히 낙하: 중력 × BARD_GLIDE_GRAVITY, 떨어지는 속도 최대 BARD_GLIDE_FALL. 땅에 닿거나 맞거나 BARD_GLIDE_MS 지나면 풀림
+  BARD_GLIDE_GRAVITY: 0.25,
+  BARD_GLIDE_FALL: 2,
+  BARD_GLIDE_MS: 3000,
+  // F 음유 → 메탈: 충격파 + 기타 리프 (주변 밀침)
+  BARD_RIFF_RANGE: 1.8,
+  BARD_RIFF_DAMAGE: 5,
+  BARD_RIFF_KB_SPEED: 4,
+  BARD_RIFF_KB_UP: 3,
+  BARD_RIFF_STUN_MS: 500,
+  // F 메탈 → 음유: 치유파, 나 (+ 팀전이면 BARD_HEAL_RANGE 안 팀원) 피해 % BARD_HEAL 깎음 (0 아래로 안 감)
+  BARD_HEAL: 10,
+  BARD_HEAL_RANGE: 4,
+  // 음유 R 취약의 노래: 앞 BARD_SONG_ANGLE_DEG(전체 각)·BARD_SONG_RANGE 안 상대가 BARD_VULN_MS 동안 받는 넉백 ×BARD_VULN_MULT
+  // (피해 % 배율 넉백에만 — 평타 중간 타 같은 고정 넉백은 그대로)
+  BARD_SONG_ANGLE_DEG: 120,
+  BARD_SONG_RANGE: 5,
+  BARD_VULN_MS: 4000,
+  BARD_VULN_MULT: 1.3,
+  // 메탈 R 앰프 음파: BARD_AMP_MS 동안 앞 원뿔(BARD_AMP_ANGLE_DEG 전체 각, BARD_AMP_RANGE)에 BARD_AMP_TICK_MS 마다 작게 밀침, 끝에 크게.
+  // 연주 중 이동 ×BARD_AMP_MOVE_MULT, 평타 안 나감, 맞으면 끊김
+  BARD_AMP_MS: 3000,
+  BARD_AMP_MOVE_MULT: 0.5,
+  BARD_AMP_ANGLE_DEG: 70,
+  BARD_AMP_RANGE: 4,
+  BARD_AMP_TICK_MS: 300,
+  BARD_AMP_TICK_DAMAGE: 2,
+  BARD_AMP_TICK_KB: 1.5,
+  BARD_AMP_TICK_UP: 1,
+  BARD_AMP_TICK_STUN_MS: 450,
+  BARD_AMP_END_DAMAGE: 10,
+  BARD_AMP_END_KB_SPEED: 5,
+  BARD_AMP_END_KB_UP: 4,
+  BARD_AMP_END_STUN_MS: 800,
   // 건축가 (2026-10-25 재혁 확정, docs/characters.md 3.1 — 지형·설치형 "깔고, 쳐서 터뜨린다". 수치는 초안, 밸런스는 나머지 캐릭터 뒤)
   // 건축가 블록: 벽(지상 F)·3타 블록(평타 3타)·발판(공중 F)·대폭발(R). BUILDER_BLOCK_MS 뒤 사라짐.
   // 건축가 망치(평타)로 치면 폭발: 치는 방향 앞쪽 사람만 그쪽으로 날림, 건축가 자신은 안 맞음. 같은 F 벽 칸끼리만 연쇄. 상대는 못 터뜨림
@@ -802,3 +859,9 @@ export const CONFIG = {
   KILLFEED_MAX: 5, // 킬 알림 최대 줄 수
   INPUT_SEND_RATE: 30, // 입력 전송 Hz
 };
+
+// 캐릭터의 평타 세트 (바드는 메탈 폼이면 metal 세트)
+export function basicSet(char, form) {
+  const set = CONFIG.BASIC_ATTACKS[char];
+  return set && set.metal && form === 'metal' ? set.metal : set;
+}
