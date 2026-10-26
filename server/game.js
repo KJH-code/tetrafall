@@ -4132,7 +4132,7 @@ export class Game {
     const powerCount = this.items.filter((it) => it.type !== 'control').length;
     return {
       control: !this.controlItemOn() || this.controlInPlay() ? null : Math.max(0, this.controlItemNextAt - this.time),
-      power: powerCount >= this.itemMax() ? null : Math.max(0, this.powerItemNextAt - this.time),
+      power: !C.ITEMS_ENABLED || powerCount >= this.itemMax() ? null : Math.max(0, this.powerItemNextAt - this.time),
     };
   }
 
@@ -4141,7 +4141,7 @@ export class Game {
       if (!this.spawnItem('control')) this.controlItemNextAt = this.time + 1000;
     }
     const powerCount = this.items.filter((it) => it.type !== 'control').length;
-    if (powerCount < this.itemMax() && this.time >= this.powerItemNextAt) {
+    if (C.ITEMS_ENABLED && powerCount < this.itemMax() && this.time >= this.powerItemNextAt) { // 아이템 꺼 두면 안 나옴
       const type = C.ITEM_POOL[Math.floor(this.rng() * C.ITEM_POOL.length)];
       this.powerItemNextAt = this.time + (this.spawnItem(type) ? C.ITEM_RESPAWN_MS : 1000);
     }
@@ -4728,6 +4728,7 @@ export class Game {
       nextSpawnIn,
       lava: { active: this.lava.active, z: this.lava.z },
       itemTimers: this.itemTimers(),
+      itemsEnabled: C.ITEMS_ENABLED || this.controlItemOn(), // 필드에 아이템이 나오는 판인지 (false 면 화면의 우클릭 아이템 칸·다음 아이템 타이머 숨김)
       botLevel: this.botLevel,
       teamMode: this.teamMode,
       practice: this.mode === 'practice' ? this.practiceSnapshot() : null, // 연습 모드 토글·허수아비 콤보 기록

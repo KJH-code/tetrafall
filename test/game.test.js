@@ -5,6 +5,8 @@ import { Game } from '../server/game.js';
 import { CONFIG as C } from '../shared/config.js';
 import { CELL, cellOfShape } from '../shared/pieces.js';
 
+C.ITEMS_ENABLED = true; // 이 파일의 아이템 테스트는 켠 상태로 (기본은 꺼 둠 → 아래 '아이템 꺼 둠' 테스트가 확인). 테스트 파일마다 따로 돌아서 다른 파일엔 안 번짐
+
 const TICK = 1000 / C.TICK_RATE;
 
 function setup({ log = () => {} } = {}) {
@@ -2155,3 +2157,25 @@ test('머리 박음: 땅에 서 있는데 블록이 내려오면 지금처럼 �
   assert.ok(p.alive, '던진 블록도 머리 박음');
 });
 
+
+test('아이템 꺼 둠 (기본, ITEMS_ENABLED false): 파워 아이템·조종권 둘 다 안 나오고 시계는 null, snapshot itemsEnabled false', async () => {
+  const { CONFIG: fresh } = await import('../shared/config.js?default'); // 이 파일이 바꾸기 전 기본값
+  assert.equal(fresh.ITEMS_ENABLED, false);
+  assert.equal(fresh.CONTROL_ITEM, false);
+  C.ITEMS_ENABLED = false;
+  try {
+    const { g } = setup();
+    g.powerItemNextAt = g.time;
+    g.controlItemNextAt = g.time;
+    run(g, 20000);
+    assert.equal(g.items.length, 0);
+    const snap = g.snapshot();
+    assert.deepEqual(snap.items, []);
+    assert.deepEqual(snap.itemTimers, { control: null, power: null });
+    assert.equal(snap.itemsEnabled, false);
+  } finally {
+    C.ITEMS_ENABLED = true;
+  }
+  const { g } = setup();
+  assert.equal(g.snapshot().itemsEnabled, true, '켜면 true');
+});
