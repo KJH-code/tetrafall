@@ -33,6 +33,16 @@ function basic(g, id) {
   if (atk) run(g, atk.at - g.time + TICK / 2);
 }
 
+// F 한 번: 누르고, 지상 이동 스킬 준비(SKILL_WINDUP_MS)·갈고리가 날아가 닿는 시간(HOOK_FLY_MS)까지
+function skill(g, id) {
+  const p = g.players.get(id);
+  g.handleAction(id, { name: 'skill' });
+  while (p.windup || p.hookFly) g.tick(TICK);
+}
+
+// F 가 시작됨 (지상 이동 스킬은 준비부터, 2026-10-26)
+const fStarted = (ev, type = 'charge') => ev.some((e) => e.type === type || e.type === 'skillWindup');
+
 function place(p, x, y, yaw = 0, z = 0) {
   Object.assign(p, { x, y, z, yaw, vz: 0, kbx: 0, kby: 0, grounded: true, stunUntil: 0, freezeUntil: 0 });
 }
@@ -92,7 +102,7 @@ test('탱크: 덜 밀림 (피해 % 배율 넉백 × TANK_KB_TAKEN, 평타 중간
   place(p(2), 3.5, 4.5);
   place(p(3), 8.5, 8.5);
   g.drainEvents();
-  g.handleAction(1, { name: 'skill' });
+  skill(g, 1);
   assert.ok(g.drainEvents().some((e) => e.type === 'charge' && e.who === 1), '돌진 이벤트 (남에게 보이게)');
   run(g, C.TANK_CHARGE_MS + 100);
   assert.equal(p(2).damage, C.TANK_CHARGE_DAMAGE);
@@ -104,7 +114,7 @@ test('탱크: 덜 밀림 (피해 % 배율 넉백 × TANK_KB_TAKEN, 평타 중간
   // 빗나가면 약 3칸
   run(g, C.SKILL_CD_MS.tank);
   place(p(1), 1.5, 1.5, 0);
-  g.handleAction(1, { name: 'skill' });
+  skill(g, 1);
   run(g, 1000);
   const d = p(1).x - 1.5;
   assert.ok(d > 2.5 && d < 4, `빗나간 돌진 거리 ${d.toFixed(2)}`);
@@ -312,7 +322,7 @@ test('캔슬: 평타가 맞은 뒤 후딜에 F 를 누르면 후딜을 끊고 �
   assert.ok(p(1).atkLanded && g.time < p(1).pushReadyAt, '맞힌 뒤 후딜 중');
   g.drainEvents();
   g.handleAction(1, { name: 'skill' });
-  assert.ok(g.drainEvents().some((e) => e.type === 'charge'), '바로 돌진');
+  assert.ok(fStarted(g.drainEvents()), '바로 돌진 (지상이라 준비부터)');
   assert.ok(p(1).pushReadyAt <= g.time, '후딜 끊김');
   assert.ok(p(1).chainUntil > g.time && p(1).chainN === 1, '이어 치기 창');
 });
@@ -326,12 +336,12 @@ test('캔슬: 평타가 빗나간 뒤 후딜에 누른 F 는 기억했다가 후
   const ready = p(1).pushReadyAt;
   g.drainEvents();
   g.handleAction(1, { name: 'skill' });
-  assert.ok(!g.drainEvents().some((e) => e.type === 'charge'), '후딜 중엔 안 나감');
+  assert.ok(!fStarted(g.drainEvents()), '후딜 중엔 안 나감');
   assert.equal(p(1).castQueued, 'skill');
   run(g, ready - g.time - TICK);
-  assert.ok(!g.drainEvents().some((e) => e.type === 'charge'));
+  assert.ok(!fStarted(g.drainEvents()));
   run(g, 2 * TICK);
-  assert.ok(g.drainEvents().some((e) => e.type === 'charge'), '후딜 끝나고 나감');
+  assert.ok(fStarted(g.drainEvents()), '후딜 끝나고 나감');
 });
 
 test('캔슬: 평타 준비 중에 누른 F 는 판정을 기다림 (평타는 그대로 나감) — 맞으면 판정 직후, 빗나가면 후딜 뒤. R 도 같음', () => {
@@ -347,10 +357,10 @@ test('캔슬: 평타 준비 중에 누른 F 는 판정을 기다림 (평타는 �
     run(g, at - g.time + TICK / 2);
     const ev = g.drainEvents();
     assert.ok(ev.some((e) => e.type === 'swing'), '평타 나감');
-    assert.equal(ev.some((e) => e.type === 'charge'), hit, hit ? '맞았으면 바로 스킬' : '빗나가면 아직');
+    assert.equal(fStarted(ev), hit, hit ? '맞았으면 바로 스킬' : '빗나가면 아직');
     if (!hit) {
       run(g, p(1).pushReadyAt - g.time + TICK);
-      assert.ok(g.drainEvents().some((e) => e.type === 'charge'), '후딜 뒤 스킬');
+      assert.ok(fStarted(g.drainEvents()), '후딜 뒤 스킬');
     }
   }
   // R: 준비 중에 누르면 맞힌 직후 내려찍기
@@ -823,7 +833,7 @@ test('닌자 F: 피해 8, 평타가 맞을 때마다 F 쿨 -0.5초, 공중에서
   place(p(1), 1.5, 4.5, 0);
   place(p(2), 3, 4.6);
   place(p(3), 9.5, 9.5);
-  g.handleAction(1, { name: 'skill' });
+  skill(g, 1);
   assert.ok(Math.abs(p(1).x - (3 + C.NINJA_BLINK_BEHIND)) < 0.11, `상대 바로 뒤 x=${p(1).x}`);
   assert.equal(p(2).damage, C.NINJA_SLASH_DAMAGE);
   assert.equal(C.NINJA_SLASH_DAMAGE, 8);
@@ -856,7 +866,7 @@ test('닌자 F: 피해 8, 평타가 맞을 때마다 F 쿨 -0.5초, 공중에서
   g.gridChanged();
   place(p(1), 1.5, 8.5, 0);
   g.drainEvents();
-  g.handleAction(1, { name: 'skill' });
+  skill(g, 1);
   assert.ok(!g.drainEvents().some((e) => e.type === 'wallKick'));
 });
 
@@ -976,7 +986,7 @@ test('탱크 아머: F 돌진 중 맞으면 넉백·경직 없이 피해 % 만, 
   place(p(1), 1.5, 4.5, 0);
   place(p(2), 1.5, 3.5);
   place(p(3), 9.5, 9.5);
-  g.handleAction(1, { name: 'skill' });
+  skill(g, 1);
   g.drainEvents();
   const x0 = p(1).x;
   assert.equal(g.applyKnockback(p(1), 0, 1, 5, 3, 500, 7, { by: 2, kind: 'push' }), true);
@@ -992,7 +1002,7 @@ test('탱크 아머: F 돌진 중 맞으면 넉백·경직 없이 피해 % 만, 
   // 마무리 타면 깨짐
   run(g, C.SKILL_CD_MS.tank);
   place(p(1), 1.5, 4.5, 0);
-  g.handleAction(1, { name: 'skill' });
+  skill(g, 1);
   g.drainEvents();
   g.applyKnockback(p(1), 0, 1, 5, 3, 500, 7, { by: 2, kind: 'push' }, true, { finish: true });
   const ev2 = g.drainEvents();
@@ -1183,7 +1193,7 @@ test('갈고리 F: 상대가 먼저 닿으면 끌어옴 + 장전, 블록이 먼�
   place(p(2), 4.5, 4.5);
   place(p(3), 9.5, 9.5);
   p(1).loaded = false;
-  g.handleAction(1, { name: 'skill' });
+  skill(g, 1);
   assert.ok(Math.abs(p(2).x - (p(1).x + C.HOOK_PULL_TO)) < 0.05, `끌려옴 x=${p(2).x}`);
   assert.equal(p(2).damage, C.HOOK_DAMAGE);
   assert.equal(p(1).loaded, true, '끌어오면 장전');
@@ -1201,7 +1211,7 @@ test('갈고리 F: 상대가 먼저 닿으면 끌어옴 + 장전, 블록이 먼�
   place(p(1), 1.5, 2.5, 0, 0.3);
   Object.assign(p(1), { grounded: false, vz: -1 });
   g.drainEvents();
-  g.handleAction(1, { name: 'skill' });
+  skill(g, 1);
   assert.ok(g.drainEvents().some((e) => e.type === 'hook' && e.block && e.target === null));
   assert.equal(p(3).damage, 0, '블록 뒤 상대는 안 끌려옴');
   run(g, 400);
@@ -1209,7 +1219,7 @@ test('갈고리 F: 상대가 먼저 닿으면 끌어옴 + 장전, 블록이 먼�
   // 빗나감도 쿨타임
   run(g, C.SKILL_CD_MS.hook);
   place(p(1), 1.5, 7.5, Math.PI);
-  g.handleAction(1, { name: 'skill' });
+  skill(g, 1);
   assert.ok(lines.includes('  [스킬] P1 갈고리 빗나감'));
   assert.ok(p(1).skillReadyAt > g.time);
 });
@@ -1279,6 +1289,7 @@ test('봇 갈고리: 상대 쪽으로 블록이 닿으면 R 블록 내려찍기,
   b.ult = C.ULT_MAX;
   brain.useSkills(g, b, t, [t], []);
   assert.equal(b.ult, C.ULT_MAX, '블록 없으면 안 씀');
+  b.windup = b.hookFly = null; // 대신 쓴 F (지상 준비 중) 는 치움 → R 판단만 봄
   g.grid[g.idx(4, 4, 1)] = CELL.TERRAIN;
   g.gridChanged();
   assert.equal(brain.useSkills(g, b, t, [t], []), true);
@@ -1296,6 +1307,8 @@ test('봇 갈고리: 상대 쪽으로 블록이 닿으면 R 블록 내려찍기,
   place(b2, -0.6, 4.5, 0, -0.5);
   Object.assign(b2, { grounded: false, vz: -4 });
   g2.bots.get(b2.id).update(g2, b2);
+  assert.ok(b2.hookFly, '공중이라 준비 없이 바로 던짐');
+  while (b2.hookFly) g2.tick(TICK);
   assert.ok(b2.zipUntil > g2.time, '블록에 걸어 끌려감');
 });
 
@@ -1318,7 +1331,7 @@ test('갈고리 블록 찾기 (2026-10-25 버그): 땅에 서서 평지의 1칸 
   place(p(1), 2.5, 2.5, 0);
   p(1).pitch = 0;
   g.drainEvents();
-  g.handleAction(1, { name: 'skill' });
+  skill(g, 1);
   assert.ok(g.drainEvents().some((e) => e.type === 'hook' && e.block && e.block[2] === 0));
   // 바닥만 보면 없음
   const q = setupChars(['hook', 'ninja']);

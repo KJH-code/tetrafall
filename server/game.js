@@ -242,6 +242,8 @@ export class Game {
       grab: null, // 갈고리 R: 뽑은 블록 { at, v, meta, from } (at 에 내려찍기)
       marks: new Map(), // 사냥꾼 표식 (이 사람에게 붙은): 사냥꾼 id -> { n, at }
       leap: null, // 사냥꾼 F: { at(도약 시작), target, endAt, vx, vy }
+      windup: null, // 이동 스킬 지상 준비 (닌자·탱크·갈고리 F): { at(나가는 시각), yaw(누른 순간 방향) }
+      hookFly: null, // 갈고리 F 날아가는 중: { at(닿는 시각), yaw }
       huntAim: null, // 사냥꾼 R 조준: { at(쏘는 시각) }
       rush: null, // 광전사 F 도약: { endAt(도약 끝), vx, vy, landBy(이때까지 안 닿으면 충격파 없음) }
       spin: null, // 광전사 R 회전: { endAt, nextTick, rage(R 시작 때 피해 %) }
@@ -599,6 +601,8 @@ export class Game {
         grab: null,
         marks: new Map(),
         leap: null,
+        windup: null,
+        hookFly: null,
         huntAim: null,
         rush: null,
         spin: null,
@@ -854,6 +858,8 @@ export class Game {
       grab: null,
       marks: new Map(),
       leap: null,
+      windup: null,
+      hookFly: null,
       huntAim: null,
       rush: null,
       spin: null,
@@ -1252,8 +1258,29 @@ export class Game {
 
   // ---------- 캐릭터 스킬·필살기 ----------
   useSkill(p) {
-    if (p.slamAt || p.wallAt || p.grab || p.leap || p.huntAim || p.rush || p.spin || this.time < p.chargeUntil) return false; // 다른 기술 발동 중
+    if (p.slamAt || p.wallAt || p.grab || p.leap || p.windup || p.hookFly || p.huntAim || p.rush || p.spin || this.time < p.chargeUntil) return false; // 다른 기술 발동 중
     p.skillReadyAt = this.time + C.SKILL_CD_MS[p.char]; // 먼저 걸어 둠 (그림자 일격이 순간 베기 쿨을 초기화하는 것과 순서가 안 꼬이게)
+    if (p.grounded && C.SKILL_WINDUP_CHARS.includes(p.char)) {
+      // 이동 스킬 지상 예고: SKILL_WINDUP_MS 뒤 누른 순간 방향으로 나감 (updateCombat → fireWindup)
+      p.windup = { at: this.time + C.SKILL_WINDUP_MS, yaw: p.yaw };
+      this.emit({ type: 'skillWindup', who: p.id, kind: p.char, ms: C.SKILL_WINDUP_MS });
+      this.log(`  [스킬] ${p.name} ${C.CHAR_NAMES[p.char]} F 준비`);
+      return true;
+    }
+    return this.fireSkill(p);
+  }
+
+  // 이동 스킬 예고가 끝남: 누른 순간 방향으로 나감 (지금 보는 방향은 나간 뒤 돌려 둠)
+  fireWindup(p) {
+    const yaw = p.yaw;
+    p.yaw = p.windup.yaw;
+    p.windup = null;
+    if (!this.fireSkill(p)) this.log(`  [스킬] ${p.name} ${C.CHAR_NAMES[p.char]} F 못 나감 (자리 없음, 쿨타임 안 씀)`);
+    p.yaw = yaw; // 방향은 나갈 때 정해짐 (돌진 chargeDir·갈고리 hookFly·순간 베기 위치) → 보는 방향만 원래대로
+  }
+
+  // F 를 실제로 냄 (쿨타임은 useSkill 이 걸어 둠)
+  fireSkill(p) {
     const ok =
       p.char === 'tank'
         ? this.tankCharge(p)
@@ -1278,7 +1305,7 @@ export class Game {
   }
 
   useUlt(p) {
-    if (p.slamAt || p.wallAt || p.grab || p.leap || p.huntAim || p.rush || p.spin || this.time < p.chargeUntil) return false;
+    if (p.slamAt || p.wallAt || p.grab || p.leap || p.windup || p.hookFly || p.huntAim || p.rush || p.spin || this.time < p.chargeUntil) return false;
     if (p.char === 'tank') this.tankSlamStart(p);
     else if (p.char === 'ninja') this.ninjaEmpower(p); else if (p.char === 'builder') {
       if (!this.builderBigBomb(p)) return false; // 솟을 자리가 없으면 게이지 그대로
@@ -2239,13 +2266,29 @@ export class Game {
   }
 
   // F 갈고리 (판정 즉시): 보는 방향에서 상대·블록 중 먼저 닿는 것. 상대면 끌어옴 + 장전, 블록이면 내가 끌려감 (공중 가능). 빗나가도 쿨타임
+  // 갈고리를 던짐: 판정은 HOOK_FLY_MS 뒤 갈고리가 닿는 순간 (hookLand). 빗나가도 쿨타임
   hookPull(p) {
+    p.hookFly = { at: this.time + C.HOOK_FLY_MS, yaw: p.yaw };
+    this.emit({ type: 'hookThrow', who: p.id, yaw: p.yaw, ms: C.HOOK_FLY_MS });
+    return true;
+  }
+
+  // 갈고리가 닿는 순간: 던진 방향, 지금 내 위치에서 상대·블록 판정 (예전 즉시 판정과 같은 규칙)
+  hookLand(p) {
+    const yaw = p.yaw;
+    p.yaw = p.hookFly.yaw;
+    p.hookFly = null;
+    this.hookResolve(p);
+    p.yaw = yaw;
+  }
+
+  hookResolve(p) {
     const t = this.hookTarget(p);
     const block = this.hookRayBlock(p);
     const td = t ? Math.hypot(t.x - p.x, t.y - p.y) : Infinity;
     if (block && block.d < td) {
       const go = Math.max(0, block.d - C.PLAYER_HALF - 0.05);
-      p.zipDir = { x: Math.cos(p.yaw), y: Math.sin(p.yaw) };
+      p.zipDir = { x: Math.cos(p.yaw), y: Math.sin(p.yaw) }; // 던진 방향 (hookLand 가 yaw 를 잠깐 바꿔 둠)
       p.zipUntil = this.time + (go / C.HOOK_ZIP_SPEED) * 1000;
       p.vz = Math.max(p.vz, C.HOOK_ZIP_UP);
       p.grounded = false;
@@ -2358,7 +2401,7 @@ export class Game {
       if (p.comboHits > 0 && this.time >= p.stunUntil) this.endCombo(p);
       if (!this.onField(p)) {
         p.chargeUntil = p.slamAt = p.wallAt = p.zipUntil = 0;
-        p.leap = p.huntAim = p.rush = p.spin = null;
+        p.leap = p.huntAim = p.rush = p.spin = p.windup = p.hookFly = null;
         p.marks.clear();
         if (p.grab) this.hookGrabDrop(p);
         p.atk = null;
@@ -2379,6 +2422,8 @@ export class Game {
       if (p.char === 'ninja') this.ninjaTouch(p);
       if (p.marks.size) this.expireMarks(p);
       if (p.char === 'cannon') this.cannonReload(p);
+      if (p.windup && this.time >= p.windup.at) this.fireWindup(p);
+      if (p.hookFly && this.time >= p.hookFly.at) this.hookLand(p);
       if (p.leap) this.hunterLeapUpdate(p);
       if (p.rush) this.berserkerLeapUpdate(p);
       if (p.spin) this.berserkerSpinUpdate(p);
@@ -2675,6 +2720,11 @@ export class Game {
       this.hookGrabDrop(t); // 뽑던 블록은 제자리로
       t.ult = this.ultMax(t); // 게이지 돌려줌
     }
+    if (t.windup || t.hookFly) {
+      this.emit({ type: 'interrupt', who: t.id, kind: 'skill' });
+      t.skillReadyAt = this.time; // 준비 중·갈고리가 닿기 전에 끊긴 F 는 쿨타임 안 씀
+      t.windup = t.hookFly = null;
+    }
     t.zipUntil = 0; // 끌려가다 맞으면 멈춤
     if (t.leap) {
       if (!t.leap.endAt) {
@@ -2742,7 +2792,7 @@ export class Game {
   // 카운터히트 대상 (2026-10-25 재혁 결정, 첫 사람 플레이테스트: 1:1 에서 동시에 누르면 거의 다 카운터였음):
   // 빗나간 평타의 후딜, 돌진 중, 내려찍기·솟는 벽 준비·갈고리 블록 뽑는 중. 평타 준비 중·맞힌 평타의 후딜·걷기·점프는 아님
   busy(t) {
-    return !!((this.time < t.pushReadyAt && !t.atk && !t.atkLanded) || this.time < t.chargeUntil || t.slamAt || t.wallAt || t.grab || t.leap || t.huntAim || t.rush || t.spin);
+    return !!((this.time < t.pushReadyAt && !t.atk && !t.atkLanded) || this.time < t.chargeUntil || t.slamAt || t.wallAt || t.grab || t.leap || t.windup || t.huntAim || t.rush || t.spin);
   }
 
   // 공격이 안 들어가는 상태: 콤보 뒤 무적·부활 무적. 경직이 이미 풀린 콤보는 여기서 먼저 끝냄
@@ -3366,12 +3416,14 @@ export class Game {
     if (this.mode === 'kills') return; // 킬 점수전은 용암 대신 아래층을 지움 (sinkIfTall)
     const lava = this.lava;
     if (!lava.active) {
-      if (this.avgHeight() - this.baseAvgHeight < C.LAVA_TRIGGER_AVG_HEIGHT) return; // 시작 지형 빼고 쌓인 만큼
+      const piled = this.avgHeight() - this.baseAvgHeight >= C.LAVA_TRIGGER_AVG_HEIGHT; // 시작 지형 빼고 쌓인 만큼
+      const late = this.sky && this.elapsed() >= C.SKY_LAVA_TRIGGER_MS; // 하늘 계단: 시간이 지나도 시작
+      if (!piled && !late) return;
       lava.active = true;
       lava.z = C.LAVA_START_Z;
       lava.startedAt = this.time;
       this.emit({ type: 'lava' });
-      this.log(`  [용암] 쌓인 평균 높이 ${(this.avgHeight() - this.baseAvgHeight).toFixed(2)} → 용암 상승 시작 @ ${fmtTime(this.elapsed())}`);
+      this.log(`  [용암] ${piled ? '' : `${fmtTime(C.SKY_LAVA_TRIGGER_MS)} 지남 (하늘 계단), `}쌓인 평균 높이 ${(this.avgHeight() - this.baseAvgHeight).toFixed(2)} → 용암 상승 시작 @ ${fmtTime(this.elapsed())}`);
       return;
     }
     lava.z = Math.min(this.H + 1, lava.z + dtMs / C.LAVA_RISE_MS_PER_CELL);
