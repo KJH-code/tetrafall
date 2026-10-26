@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Rooms } from '../server/rooms.js';
+import { CELL } from '../shared/pieces.js';
 import { parseLog, summarize, formatReport, latestRun } from '../tools/stats.js';
 
 const TICK = 1000 / C.TICK_RATE;
@@ -343,4 +344,64 @@ test('통계: 하늘 계단 켬/끔을 나눠 보고 녹은 하늘 블록을 셈
   assert.deepEqual(s.bySky.map((g) => [g.key, g.rounds]).sort(), [['끔', 1], ['켬', 1]]);
   assert.equal(s.melts, 1);
   assert.match(formatReport(s), /하늘 계단별/);
+});
+
+test('통계: 판마다 놓인 블록 수(종류별)·지형 변화·사망 때 밟은 칸을 실제 게임 로그에서 읽음', () => {
+  const lines = [];
+  const g = new Game((s) => lines.push(s), { skyStairs: true });
+  g.rng = () => 0.5;
+  g.addPlayer(1);
+  g.addPlayer(2);
+  g.addPlayer(3);
+  g.startRound();
+  g.powerItemNextAt = Infinity;
+  // 하늘 블록 하나가 바닥에 착지하도록 시간을 보냄 (사람들은 블록 밑에서 비킴)
+  for (const p of g.players.values()) Object.assign(p, { x: 0.5, y: 0.5 + p.slot });
+  const sky = () => g.pieces.filter((pc) => pc.sky);
+  g.updateLava = () => {}; // 용암 없이
+  for (const p of g.players.values()) p.shieldUntil = Infinity; // 안 깔리게 (부활 무적 = 블록이 통과)
+  while (!g.landed.sky && g.time < 120000) g.tick(TICK);
+  assert.equal(g.landed.sky, 1);
+  assert.ok(sky().length > 0);
+  // 2번은 쌓인 블록 위에 세웠다가 떨어뜨림, 3번은 바닥에서 떨어뜨림
+  const [cx, cy] = [g.grid.findIndex((v, i) => v && v !== CELL.TERRAIN)].map((i) => [i % g.W, Math.floor(i / g.W) % g.D])[0];
+  const p2 = g.players.get(2);
+  const p3 = g.players.get(3);
+  Object.assign(p2, { x: cx + 0.5, y: cy + 0.5, z: g.columnTop(cx, cy), vz: 0, grounded: true, shieldUntil: 0 });
+  Object.assign(p3, { shieldUntil: 0 });
+  g.tick(TICK);
+  assert.equal(p2.lastGround, 'stack');
+  g.kill(p2, 'fall');
+  g.kill(p3, 'fall');
+  g.tick(TICK); // 판 끝 (블록·지형 변화 줄)
+  assert.equal(g.phase, 'over');
+  const text = lines.map((l) => `[12시 0분 0초] ${l}`).join('\n');
+  assert.ok(lines.some((l) => l.startsWith('  블록: 자동 0 / 하늘 1 / 조종 0 / 설치 0 / 건축가 0 / 갈고리 0')), lines.filter((l) => l.includes('블록:')).join('\n'));
+  const rise = (4 / (g.W * g.D)).toFixed(2); // 블록 하나 4칸이 판 넓이에 퍼진 평균
+  assert.ok(lines.includes(`  지형 변화: 남은 칸 4 / 평균 높이 +${rise}`), lines.filter((l) => l.includes('지형 변화')).join('\n'));
+  const [r] = parseLog(text);
+  assert.deepEqual(r.landed, { 자동: 0, 하늘: 1, 조종: 0, 설치: 0, 건축가: 0, 갈고리: 0 });
+  assert.equal(r.leftCells, 4);
+  assert.equal(r.rise, Number(rise));
+  assert.deepEqual(r.deaths.map((d) => [d.name, d.ground, d.killer]), [['P2', '블록', null], ['P3', '바닥', null]]);
+  const s = summarize([r]);
+  assert.equal(s.blocks.all.blocksMedian, 1);
+  assert.equal(s.blocks.all.grounds['블록'], 1);
+  assert.equal(s.blocks.all.grounds['바닥'], 1);
+  assert.match(formatReport(s), /블록·사망 때 밟은 칸/);
+});
+
+test('통계: 밟은 칸이 붙은 사망 줄도 킬·무기를 그대로 읽음 (옛 로그는 밟은 칸 null)', () => {
+  const text = [
+    '===== ROUND 1 시작 (2명: P1 P2, 맵 평지) =====',
+    '  [사망] P2 낙사 @ 0:30 (위치 1.0, 2.0, -4.1, 피해 40%, 킬 P1 밀치기, 밟은 칸 지형)',
+    '===== ROUND 1 종료 | 길이 0:30 | 승자: P1 =====',
+    '===== ROUND 2 시작 (2명: P1 P2, 맵 평지) =====',
+    '  [사망] P1 낙사 @ 0:20 (위치 1.0, 2.0, -4.1, 피해 40%, 킬 P2 밀치기)',
+    '===== ROUND 2 종료 | 길이 0:20 | 승자: P2 =====',
+  ].join('\n');
+  const [a, b] = parseLog(text);
+  assert.deepEqual([a.deaths[0].killer, a.deaths[0].weapon, a.deaths[0].ground], ['P1', '밀치기', '지형']);
+  assert.deepEqual([b.deaths[0].killer, b.deaths[0].weapon, b.deaths[0].ground], ['P2', '밀치기', null]);
+  assert.equal(summarize([a, b]).blocks, null, '블록 줄이 없는 옛 로그는 표 없음');
 });
