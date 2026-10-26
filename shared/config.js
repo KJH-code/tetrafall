@@ -542,8 +542,8 @@ export const CONFIG = {
   ROBOT_EYE_PUPIL: 0.3, // 로봇 눈동자 반지름 (같은 비율)
   ROBOT_RUN_SPEED: 3.2, // 이 속도(칸/초)보다 빠르면 로봇이 달리기 동작
   ROBOT_FADE_S: 0.15, // 로봇 동작이 바뀔 때 섞는 시간
-  FIGURE_CHARS: ['tank', 'ninja', 'builder', 'hook', 'hunter'], // TABS 식 몸(client/figure.js)으로 그리는 캐릭터 (2026-10-24). 캐릭터 없으면 로봇
-  FIGURE_BODY: { tank: 'drum', ninja: 'slim', builder: 'sturdy', hook: 'reach', hunter: 'stalk' }, // 캐릭터별 체형 (client/figure.js BODIES). 2026-10-24 재혁: 탱크는 통통한 쪽
+  FIGURE_CHARS: ['tank', 'ninja', 'builder', 'hook', 'hunter', 'cannon'], // TABS 식 몸(client/figure.js)으로 그리는 캐릭터 (2026-10-24). 캐릭터 없으면 로봇
+  FIGURE_BODY: { tank: 'drum', ninja: 'slim', builder: 'sturdy', hook: 'reach', hunter: 'stalk', cannon: 'stout' }, // 캐릭터별 체형 (client/figure.js BODIES). 2026-10-24 재혁: 탱크는 통통한 쪽
   FIGURE_SCALE: 1.15, // 몸 전체 크기 배율 (1 이면 로봇과 키가 같아도 가늘어서 작아 보임). 판정 상자는 그대로
   FIGURE_SNIFF_EVERY: 3.2, // 사냥꾼이 가만히 있을 때 킁킁하는 간격 (초)
   FIGURE_SNIFF_LEN: 0.7, // 킁킁 한 번 길이 (초)
