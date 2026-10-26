@@ -545,6 +545,7 @@ export const CONFIG = {
   // 땅에 닿거나 맞으면 바로 풀림 (2026-10-26 재혁: 3초 계속 이어지던 것 → 공격하는 동안만)
   BARD_GLIDE_GRAVITY: 0.25,
   BARD_GLIDE_FALL: 2,
+  BARD_GLIDE_MAX_PER_AIR: 3, // 2026-10-26 재혁: 착지 전 천천히 낙하는 이 횟수까지 (땅·블록·하늘 블록에 서면 다시). 0.4초마다 눌러 계속 떠 있는 "니가와" 막기
   // F 음유 → 메탈: 충격파 + 기타 리프 (주변 밀침)
   BARD_RIFF_RANGE: 1.8,
   BARD_RIFF_DAMAGE: 5,
