@@ -2957,11 +2957,7 @@ export class Game {
     }
     t.rush = null; // 광전사 도약 중에 맞으면 충격파 없음 (쿨타임은 씀)
     t.glideUntil = 0; // 바드 천천히 낙하: 맞으면 풀림
-    if (t.amp) {
-      this.emit({ type: 'interrupt', who: t.id, kind: 'ult' });
-      this.log(`  [필살] ${t.name} 앰프 음파 끊김`);
-      t.amp = null; // 연주 중에 맞으면 끝 (게이지 안 돌려줌)
-    }
+    // 바드 앰프 음파: 맞아도 안 끊김 — 넉백은 받고 연주는 끝까지 (2026-10-26 재혁 가: 봇 판 끊김 56~65%)
     if (t.spin) {
       this.emit({ type: 'interrupt', who: t.id, kind: 'ult' });
       this.log(`  [필살] ${t.name} 분노 소용돌이 끊김`);

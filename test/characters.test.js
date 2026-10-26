@@ -2097,7 +2097,7 @@ test('바드 음유 공중 평타: 천천히 낙하 (떨어지는 속도 제한)
   assert.equal(p(1).glideUntil, 0, '맞으면 풀림');
 });
 
-test('바드 메탈 R 앰프 음파: 3초 동안 앞 원뿔에 작게 계속 밀침 (옆·뒤는 안 맞음), 끝에 크게, 연주 중 느리게·평타 안 나감, 맞으면 끊김', () => {
+test('바드 메탈 R 앰프 음파: 3초 동안 앞 원뿔에 작게 계속 밀침 (옆·뒤는 안 맞음), 끝에 크게, 연주 중 느리게·평타 안 나감, 맞아도 안 끊김 (재혁 가: 넉백은 받고 경직 중에도 연주 계속)', () => {
   const { g, p, lines } = setupChars(['bard', 'tank', 'builder']);
   place(p(1), 3, 5, 0);
   place(p(2), 5, 5); // 앞
@@ -2122,16 +2122,33 @@ test('바드 메탈 R 앰프 음파: 3초 동안 앞 원뿔에 작게 계속 밀
   assert.ok(ticks >= 8, `작은 밀침 ${ticks}번`);
   assert.ok(end, lines.join('\n'));
   assert.equal(p(3).damage, 0, '옆은 안 맞음');
-  // 맞으면 끊김
-  const q = setupChars(['bard', 'tank']);
+  // 맞아도 안 끊김: 넉백은 받고, 경직 중에도 반복 판정·끝 날림이 나감
+  const q = setupChars(['bard', 'tank', 'builder']);
   place(q.p(1), 3, 5, 0);
   place(q.p(2), 8, 8);
+  place(q.p(3), 4.5, 5); // 앞
   q.p(1).form = 'metal';
   q.p(1).ult = C.ULT_MAX;
   q.g.handleAction(1, { name: 'ult' });
   run(q.g, 500);
-  q.g.applyKnockback(q.p(1), -1, 0, 1, 0, 300, 1, { by: 2, kind: 'push' });
-  assert.equal(q.p(1).amp, null);
+  q.g.drainEvents();
+  q.g.applyKnockback(q.p(1), -1, 0, 3, 0, 1000, 5, { by: 2, kind: 'push' }, true);
+  assert.ok(q.p(1).amp, '안 끊김');
+  assert.ok(q.p(1).kbx < 0, '넉백은 받음');
+  assert.ok(!q.g.drainEvents().some((e) => e.type === 'interrupt' && e.who === 1));
+  let stunTicks = 0;
+  let ended = false;
+  for (let t = 0; t < C.BARD_AMP_MS; t += TICK) {
+    Object.assign(q.p(3), { x: q.p(1).x + 1.5, y: q.p(1).y, z: q.p(1).z });
+    q.p(1).yaw = 0;
+    q.g.tick(TICK);
+    for (const e of q.g.drainEvents()) {
+      if (e.type === 'hit' && e.kind === 'amp' && e.ok && q.g.time < q.p(1).stunUntil) stunTicks++;
+      if (e.type === 'ampEnd') ended = true;
+    }
+  }
+  assert.ok(stunTicks >= 1, `경직 중에도 연주 ${stunTicks}`);
+  assert.ok(ended, '끝까지');
 });
 
 test('봇 바드: 음유시인이면 거리 두고 음파, 앞에 상대가 있으면 취약의 노래, 붙으면 메탈로 전환, 메탈이면 앞 상대에게 앰프', () => {
