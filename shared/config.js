@@ -85,6 +85,7 @@ export const CONFIG = {
   SKY_REACH_SAFETY: 0.5, // 틈은 R(높이차) × 이 값까지 → 높이차 1 이면 약 2.6칸, 2 면 약 2.3칸
   SKY_FALL_STEP_MS: 2500, // 하늘 블록 1칸 내려오는 간격, 판 내내 고정 (예전 AUTO_FALL 500→300)
   // 그림자(경고)는 착지까지 남은 칸 수로: 예전 SHADOW_LEAD_MS(착지 3초 전)는 한 칸 2.5초면 깔리기 0.5초 전이라 못 피함 (봇 판 압사 28% → 55%)
+  SKY_LAVA_TRIGGER_MS: 60000, // 켬 판은 판 시작 후 이 시간이 지나면 평균 높이와 상관없이 용암 시작 (2026-10-26 재혁: 착지가 느려 용암이 거의 안 옴, 봇 504판 중 2판)
   SKY_SHADOW_CELLS: 3, // 착지 높이 + 이 칸 안으로 내려오면 그림자 (머리 위 약 1.4칸, 깔리기 약 5초 전)
   SKY_BASE_UP: 6, // 사슬 첫 블록 높이: 그 아래 기둥(착지 높이)보다 이만큼 위
   BOT_SKY_HOP_LAVA: 4, // 봇은 용암 표면이 발에서 이 높이(칸) 안이면 하늘 계단으로 올라탐
@@ -337,6 +338,10 @@ export const CONFIG = {
   // 2026-10-24 재혁: 스킬이 직접 피해·넉백을 주고 콤보로 이어지게 (닌자 = 콤보 캐릭터). 남이 쓰는 것도 보이게 예고·효과
   SKILL_NAMES: { tank: '돌진', ninja: '순간 베기', builder: '솟는 벽', hook: '갈고리', hunter: '추적 도약', cannon: '발밑 포격', berserker: '광폭 도약' },
   ULT_NAMES: { tank: '내려찍기', ninja: '강화', builder: '대폭발', hook: '블록 내려찍기', hunter: '처형 사격', cannon: '대형 포탄', berserker: '분노 소용돌이' },
+  // 이동 스킬 예고 (2026-10-26 재혁, docs/characters.md 2절): 닌자 F·탱크 F·갈고리 F 는 지상에서 쓰면 SKILL_WINDUP_MS 준비 (방향은 누른 순간 고정, 이벤트 skillWindup → 화면 번쩍·소리)
+  // 뒤에 나감, 공중에서 쓰면 바로 (복귀가 안 늦게). 준비 중에 맞으면 끊기고 쿨타임 돌려줌 (카운터 대상)
+  SKILL_WINDUP_MS: 150,
+  SKILL_WINDUP_CHARS: ['ninja', 'tank', 'hook'],
   SKILL_CD_MS: { tank: 8000, ninja: 6000, builder: 8000, hook: 8000, hunter: 7000, cannon: 8000, berserker: 7000 }, // 봇 160판으로 맞춤 (2026-10-24). 건축가 11 → 8초 (2026-10-25: F 가 콤보 부품·복귀기, 지상·공중 같이 씀)
   CHAR_DEFAULT: 'tank',
   // 스킬·필살기를 쓰면 그 캐릭터에 빛 (글자 대신, 남에게도 보임. 누가 무엇인지는 캐릭터 모양으로). 2026-10-25 재혁:
@@ -529,7 +534,7 @@ export const CONFIG = {
   BUILDER_HOLE_MS: 8000,
   // 갈고리 (연계: 평타로 밀고 → 갈고리로 다시 당겨 → 평타)
   // 장전 (플린트록): F 갈고리로 상대를 끌어오면 장전 (시간으로는 안 참), 판 시작·부활 때 장전. 평타 3타가 탕이면 빈 총
-  HOOK_RANGE: 5, // F 갈고리: 보는 방향 이 거리 안에서 상대·블록 중 먼저 닿는 것. 판정은 즉시
+  HOOK_RANGE: 5, // F 갈고리: 보는 방향 이 거리 안에서 상대·블록 중 먼저 닿는 것. 판정은 HOOK_FLY_MS 뒤 (갈고리가 닿는 순간)
   HOOK_HALF_ANGLE_DEG: 15, // 상대에 닿는 시야 반각
   HOOK_PULL_TO: 1, // 상대를 끌어와서 내 앞 이 거리에 놓음
   HOOK_STUN_MS: 600,
@@ -704,7 +709,7 @@ export const CONFIG = {
   QUAKE_SINK_SHAKE: 0.07, // 가라앉는 동안 떨림 (칸)
   QUAKE_COLOR: 0x9c8468, // 솟는 땅 색 (흙)
   // 갈고리 화면
-  HOOK_FLY_MS: 110, // 갈고리 머리가 날아가 닿는 시간 (판정은 즉시, 애니만)
+  HOOK_FLY_MS: 110, // 갈고리 머리가 날아가 닿는 시간. 판정도 이때 (2026-10-26: 던진 방향·닿는 순간 위치로, 그 사이 옆으로 피하면 빗나감)
   HOOK_HOLD_MS: 380, // 닿은 뒤 사슬이 걸려 있는 시간 (끌려오는 동안)
   HOOK_GRAB_SWING_R: 0.9, // R: 뽑은 블록을 머리 위에서 돌리는 반지름 (칸)
   HOOK_SLAM_FLY_MS: 150,

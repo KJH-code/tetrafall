@@ -237,3 +237,17 @@ test('하늘 계단: 봇은 용암이 다가오면 점프로 닿는 하늘 블�
     assert.ok(onIt, `seed ${seed}: 봇이 하늘 블록 위에 올라섬`);
   }
 });
+
+test('하늘 계단: 켬 판은 SKY_LAVA_TRIGGER_MS 가 지나면 쌓인 높이와 상관없이 용암 시작, 끔 판은 예전 그대로 (높이만)', () => {
+  assert.equal(C.SKY_LAVA_TRIGGER_MS, 60000);
+  for (const sky of [true, false]) {
+    const { g, lines } = setup({ sky, n: 3 });
+    g.updateSpawning = () => {}; // 블록 없이 (쌓인 높이 0) 시간만 보냄
+    for (const p of g.players.values()) p.shieldUntil = Infinity;
+    run(g, C.SKY_LAVA_TRIGGER_MS - 500);
+    assert.equal(g.lava.active, false, `${sky}: 아직`);
+    run(g, 1000);
+    assert.equal(g.lava.active, sky, sky ? '켬: 시간이 지나 시작' : '끔: 쌓인 게 없으면 안 옴');
+    if (sky) assert.ok(lines.some((l) => l.startsWith('  [용암] 1:00 지남 (하늘 계단)') && l.includes('용암 상승 시작')), lines.filter((l) => l.includes('[용암]')).join('\n'));
+  }
+});
