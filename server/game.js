@@ -237,6 +237,8 @@ export class Game {
       marks: new Map(), // 사냥꾼 표식 (이 사람에게 붙은): 사냥꾼 id -> { n, at }
       leap: null, // 사냥꾼 F: { at(도약 시작), target, endAt, vx, vy }
       huntAim: null, // 사냥꾼 R 조준: { at(쏘는 시각) }
+      rush: null, // 광전사 F 도약: { endAt(도약 끝), vx, vy, landBy(이때까지 안 닿으면 충격파 없음) }
+      spin: null, // 광전사 R 회전: { endAt, nextTick, rage(R 시작 때 피해 %) }
       cannonAmmo: C.CANNON_AMMO_MAX, // 대포수 탄 (판 시작·부활 때 가득)
       reloadAt: 0, // 대포수 다음 한 발 장전 시각 (0 = 가득)
       atk: null, // 캐릭터 평타 준비 중: { n(몇 번째 타, 공중 0), def, at(판정 시각) }
@@ -582,6 +584,8 @@ export class Game {
         marks: new Map(),
         leap: null,
         huntAim: null,
+        rush: null,
+        spin: null,
         cannonAmmo: C.CANNON_AMMO_MAX,
         reloadAt: 0,
         atk: null,
@@ -834,6 +838,8 @@ export class Game {
       marks: new Map(),
       leap: null,
       huntAim: null,
+      rush: null,
+      spin: null,
       cannonAmmo: C.CANNON_AMMO_MAX,
       reloadAt: 0,
       atk: null,
@@ -917,7 +923,7 @@ export class Game {
         this.dash(p);
         return;
       case 'push':
-        if (stunned || controlling) return; // 조종 중 공격 불가
+        if (stunned || controlling || p.spin) return; // 조종 중 공격 불가, 광전사 회전 중 불가
         if (p.char) return void this.basicPress(p); // 캐릭터 평타
         if (this.time < p.pushReadyAt) return;
         this.push(p);
@@ -1015,7 +1021,7 @@ export class Game {
     if (kind === 'skill') this.useSkill(p);
     else if (!this.useUlt(p)) {
       // 못 씀 (게이지 그대로): 화면이 알 수 있게 (갈고리 블록 없음, 건축가 솟을 자리 없음, 다른 기술 중)
-      const reason = p.slamAt || p.wallAt || p.grab || p.huntAim || this.time < p.chargeUntil ? 'busy' : p.char === 'hook' ? 'noBlock' : p.char === 'hunter' ? 'noTarget' : 'noSpace';
+      const reason = p.slamAt || p.wallAt || p.grab || p.huntAim || p.rush || p.spin || this.time < p.chargeUntil ? 'busy' : p.char === 'hook' ? 'noBlock' : p.char === 'hunter' ? 'noTarget' : 'noSpace';
       this.emit({ type: 'ultFail', who: p.id, reason });
       this.log(`  [필살] ${p.name} 못 씀 (${reason})`);
     }
@@ -1108,7 +1114,8 @@ export class Game {
       const crit = air && falling && p.z - t.z >= C.CRIT_MIN_HEIGHT; // 치명타는 공중 평타만
       const gain = crit ? Math.round(def.dmg * C.CRIT_DAMAGE_MULT) : def.dmg;
       const speed = crit ? def.kb * C.CRIT_KB_MULT : def.kb;
-      const hit = this.applyKnockback(t, fx, fy, speed, def.up, def.stun, gain, { by: p.id, kind: 'push' }, finish, { fixed: !single && !finish, finish, chained });
+      const radial = def.radial && dist > 0.05; // 사방 치는 타 (광전사 회전 베기): 바깥으로
+      const hit = this.applyKnockback(t, radial ? dx : fx, radial ? dy : fy, speed, def.up, def.stun, gain, { by: p.id, kind: 'push' }, finish, { fixed: !single && !finish, finish, chained });
       if (hit) {
         const stop =
           (finish ? C.BASIC_FINISH_HITSTOP_MS : single ? C.HITSTOP_MS : C.BASIC_HITSTOP_MS) *
@@ -1228,7 +1235,7 @@ export class Game {
 
   // ---------- 캐릭터 스킬·필살기 ----------
   useSkill(p) {
-    if (p.slamAt || p.wallAt || p.grab || p.leap || p.huntAim || this.time < p.chargeUntil) return false; // 다른 기술 발동 중
+    if (p.slamAt || p.wallAt || p.grab || p.leap || p.huntAim || p.rush || p.spin || this.time < p.chargeUntil) return false; // 다른 기술 발동 중
     p.skillReadyAt = this.time + C.SKILL_CD_MS[p.char]; // 먼저 걸어 둠 (그림자 일격이 순간 베기 쿨을 초기화하는 것과 순서가 안 꼬이게)
     const ok =
       p.char === 'tank'
@@ -1241,7 +1248,9 @@ export class Game {
               ? this.hunterLeap(p)
               : p.char === 'cannon'
                 ? this.cannonJump(p)
-                : this.hookPull(p);
+                : p.char === 'berserker'
+                  ? this.berserkerLeap(p)
+                  : this.hookPull(p);
     if (!ok) {
       p.skillReadyAt = this.time; // 못 쓰는 상황(벽 세울 자리 없음 등)이면 쿨타임 안 돎 — 갈고리는 빗나가도 돎 (hookPull 이 정함)
       return false;
@@ -1252,11 +1261,12 @@ export class Game {
   }
 
   useUlt(p) {
-    if (p.slamAt || p.wallAt || p.grab || p.leap || p.huntAim || this.time < p.chargeUntil) return false;
+    if (p.slamAt || p.wallAt || p.grab || p.leap || p.huntAim || p.rush || p.spin || this.time < p.chargeUntil) return false;
     if (p.char === 'tank') this.tankSlamStart(p);
     else if (p.char === 'ninja') this.ninjaEmpower(p); else if (p.char === 'builder') {
       if (!this.builderBigBomb(p)) return false; // 솟을 자리가 없으면 게이지 그대로
     } else if (p.char === 'cannon') this.cannonBig(p);
+    else if (p.char === 'berserker') this.berserkerSpin(p);
     else if (p.char === 'hunter') {
       if (!this.hunterAim(p)) return false; // 사냥꾼: 쏠 표식 대상이 없으면 게이지 그대로
     } else if (!this.hookGrab(p)) return false; // 갈고리: 닿는 블록이 없으면 게이지 그대로
@@ -1608,6 +1618,92 @@ export class Game {
     }
     const txt = shots.map((x) => `${this.players.get(x.target).name} ${x.marks}개${x.blocked ? ' 막힘' : ''}`).join(', ');
     this.log(`  [필살] ${p.name} 처형 사격 (${txt || '대상 없음'})${refund ? ' 게이지 회수' : ''}`);
+  }
+
+  // ---- 광전사 (2026-10-26, docs/characters.md 3.7) ----
+  // 분노 배율: 피해 % 에 비례, 상한 없음
+  rageMult(damage) {
+    return 1 + damage * C.BERSERKER_RAGE_PER_PERCENT;
+  }
+
+  // F 광폭 도약: 보는 방향으로 크게 뜀 → 땅에 닿으면 착지 충격파 (berserkerLeapUpdate)
+  berserkerLeap(p) {
+    const sec = C.BERSERKER_LEAP_MS / 1000;
+    const v = C.BERSERKER_LEAP_DIST / sec;
+    p.rush = { endAt: this.time + C.BERSERKER_LEAP_MS, vx: Math.cos(p.yaw) * v, vy: Math.sin(p.yaw) * v, landBy: this.time + C.BERSERKER_LEAP_MS + C.BERSERKER_LEAP_LAND_MS };
+    p.vz = C.BERSERKER_LEAP_UP;
+    p.grounded = false;
+    p.kbx = 0;
+    p.kby = 0;
+    const to = { x: p.x + Math.cos(p.yaw) * C.BERSERKER_LEAP_DIST, y: p.y + Math.sin(p.yaw) * C.BERSERKER_LEAP_DIST, z: p.z };
+    this.emit({ type: 'rush', who: p.id, from: { x: p.x, y: p.y, z: p.z }, to, ms: C.BERSERKER_LEAP_MS });
+    this.log(`  [스킬] ${p.name} 광폭 도약`);
+    return true;
+  }
+
+  berserkerLeapUpdate(p) {
+    if (this.time < p.rush.endAt) return;
+    if (!p.grounded) {
+      if (this.time >= p.rush.landBy) p.rush = null; // 너무 오래 떨어짐 (낭떠러지): 충격파 없음
+      return;
+    }
+    p.rush = null;
+    const hits = [];
+    for (const t of this.players.values()) {
+      if (!this.foe(p, t)) continue;
+      const dx = t.x - p.x;
+      const dy = t.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d > C.BERSERKER_WAVE_RANGE || Math.abs(t.z - p.z) > C.PLAYER_HEIGHT) continue;
+      const hit = this.applyKnockback(t, d > 0.05 ? dx : Math.cos(p.yaw), d > 0.05 ? dy : Math.sin(p.yaw), C.BERSERKER_WAVE_KB_SPEED, C.BERSERKER_WAVE_KB_UP, C.BERSERKER_WAVE_STUN_MS, C.BERSERKER_WAVE_DAMAGE, { by: p.id, kind: 'leapwave' }, true);
+      this.emit({ type: 'hit', kind: 'leapwave', by: p.id, target: t.id, ok: hit, streak: hit ? p.streak : 0 });
+      if (hit) hits.push(`${t.name} ${t.damage}%`);
+    }
+    if (hits.length && p.chainN > 0) p.chainUntil = this.time + C.BASIC_CHAIN_WINDOW_MS; // F → 평 평
+    this.emit({ type: 'rushLand', who: p.id, x: p.x, y: p.y, z: p.z, r: C.BERSERKER_WAVE_RANGE });
+    this.log(`  [스킬] ${p.name} 착지 충격파${hits.length ? ` → ${hits.join(', ')}` : ''}`);
+  }
+
+  // R 분노 소용돌이: 피해 % 를 깎고 (최대 BERSERKER_RAGE_CUT), 깎기 전 피해 % 를 마지막 날림 분노로 기억
+  berserkerSpin(p) {
+    const rage = p.damage;
+    const cut = Math.min(C.BERSERKER_RAGE_CUT, p.damage);
+    p.damage -= cut;
+    p.spin = { endAt: this.time + C.BERSERKER_SPIN_MS, nextTick: this.time, rage };
+    this.emit({ type: 'spin', who: p.id, ms: C.BERSERKER_SPIN_MS, rage: this.rageMult(rage), cut, damage: p.damage });
+    this.log(`  [필살] ${p.name} 분노 소용돌이 (분노 ×${this.rageMult(rage).toFixed(2)}, 피해 ${rage}% → ${p.damage}%)`);
+  }
+
+  berserkerSpinUpdate(p) {
+    const S = p.spin;
+    if (this.time >= S.nextTick && this.time < S.endAt) {
+      S.nextTick += C.BERSERKER_SPIN_TICK_MS;
+      for (const t of this.players.values()) {
+        if (!this.foe(p, t)) continue;
+        const dx = t.x - p.x;
+        const dy = t.y - p.y;
+        const d = Math.hypot(dx, dy);
+        if (d > C.BERSERKER_SPIN_RANGE || Math.abs(t.z - p.z) > C.PLAYER_HEIGHT) continue;
+        // 작은 밀침: 바깥으로 (빨아들이지 않음), 고정 넉백, 연타로 침 (시간 마무리 안 됨)
+        const hit = this.applyKnockback(t, d > 0.05 ? dx : Math.cos(p.yaw), d > 0.05 ? dy : Math.sin(p.yaw), C.BERSERKER_SPIN_TICK_KB, C.BERSERKER_SPIN_TICK_UP, C.BERSERKER_SPIN_TICK_STUN_MS, C.BERSERKER_SPIN_TICK_DAMAGE, { by: p.id, kind: 'spin' }, false, { fixed: true, chained: true });
+        this.emit({ type: 'hit', kind: 'spin', by: p.id, target: t.id, ok: hit, streak: hit ? p.streak : 0 });
+      }
+    }
+    if (this.time < S.endAt) return;
+    p.spin = null;
+    const hits = [];
+    for (const t of this.players.values()) {
+      if (!this.foe(p, t)) continue;
+      const dx = t.x - p.x;
+      const dy = t.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d > C.BERSERKER_SPIN_END_RANGE || Math.abs(t.z - p.z) > C.PLAYER_HEIGHT) continue;
+      const hit = this.applyKnockback(t, d > 0.05 ? dx : Math.cos(p.yaw), d > 0.05 ? dy : Math.sin(p.yaw), C.BERSERKER_SPIN_END_KB_SPEED, C.BERSERKER_SPIN_END_KB_UP, C.BERSERKER_SPIN_END_STUN_MS, C.BERSERKER_SPIN_END_DAMAGE, { by: p.id, kind: 'spinend', rage: S.rage }, true, { finish: true });
+      this.emit({ type: 'hit', kind: 'spinend', by: p.id, target: t.id, ok: hit, streak: hit ? p.streak : 0 });
+      if (hit) hits.push(`${t.name} ${t.damage}%`);
+    }
+    this.emit({ type: 'spinEnd', who: p.id, x: p.x, y: p.y, z: p.z, r: C.BERSERKER_SPIN_END_RANGE, rage: this.rageMult(S.rage) });
+    this.log(`  [필살] ${p.name} 소용돌이 끝${hits.length ? ` → ${hits.join(', ')}` : ''}`);
   }
 
   // ---- 대포수 (2026-10-26, docs/characters.md 3.6) ----
@@ -2245,7 +2341,7 @@ export class Game {
       if (p.comboHits > 0 && this.time >= p.stunUntil) this.endCombo(p);
       if (!this.onField(p)) {
         p.chargeUntil = p.slamAt = p.wallAt = p.zipUntil = 0;
-        p.leap = p.huntAim = null;
+        p.leap = p.huntAim = p.rush = p.spin = null;
         p.marks.clear();
         if (p.grab) this.hookGrabDrop(p);
         p.atk = null;
@@ -2267,6 +2363,8 @@ export class Game {
       if (p.marks.size) this.expireMarks(p);
       if (p.char === 'cannon') this.cannonReload(p);
       if (p.leap) this.hunterLeapUpdate(p);
+      if (p.rush) this.berserkerLeapUpdate(p);
+      if (p.spin) this.berserkerSpinUpdate(p);
       if (p.huntAim && this.time >= p.huntAim.at) this.hunterShoot(p);
       if (p.castQueued && !p.atk && (p.atkLanded || this.time >= p.pushReadyAt)) this.castQueuedNow(p);
       else if (p.atkQueued && !p.atk && this.time >= p.pushReadyAt) {
@@ -2538,6 +2636,9 @@ export class Game {
     const finisher = !teammate && t.comboHits >= 2 && (opts.finish || (this.time - t.comboStartAt >= C.COMBO_MS && !opts.chained));
     const fixed = opts.fixed && !finisher;
     if (!fixed) speed *= finisher ? C.COMBO_FINISH_KB : heavy ? 1 : C.COMBO_LIGHT_KB;
+    // 광전사 분노: 주는 넉백 × (1 + 자기 피해 % × 계수), 상한 없음. 고정 넉백 중간 타는 빼고. R 마지막 날림은 R 시작 때 피해 % (src.rage)
+    const rager = !teammate && src && src.by !== t.id ? this.players.get(src.by) : null;
+    if (!fixed && rager && rager.char === 'berserker') speed *= this.rageMult(src.rage ?? rager.damage);
     if (!teammate && t.comboHits >= 2 && src) this.emit({ type: 'combo', by: src.by, target: t.id, n: t.comboHits, finish: finisher });
     // 맞아서 끊긴 공격: 쿨타임·게이지를 돌려주고 interrupt 이벤트 (화면에서 끊긴 모션)
     if (t.atk) {
@@ -2569,6 +2670,12 @@ export class Game {
       this.emit({ type: 'interrupt', who: t.id, kind: 'ult' });
       t.huntAim = null;
       t.ult = this.ultMax(t); // 조준 중에 끊긴 처형 사격은 게이지 돌려줌
+    }
+    t.rush = null; // 광전사 도약 중에 맞으면 충격파 없음 (쿨타임은 씀)
+    if (t.spin) {
+      this.emit({ type: 'interrupt', who: t.id, kind: 'ult' });
+      this.log(`  [필살] ${t.name} 분노 소용돌이 끊김`);
+      t.spin = null; // 회전 중에 맞으면 끝 (게이지·깎은 피해 % 안 돌려줌)
     }
     t.emoteUntil = 0; // 맞으면 이모트 끊김
     t.chargeUntil = 0; // 맞으면 돌진·내려찍기 끊김
@@ -2618,7 +2725,7 @@ export class Game {
   // 카운터히트 대상 (2026-10-25 재혁 결정, 첫 사람 플레이테스트: 1:1 에서 동시에 누르면 거의 다 카운터였음):
   // 빗나간 평타의 후딜, 돌진 중, 내려찍기·솟는 벽 준비·갈고리 블록 뽑는 중. 평타 준비 중·맞힌 평타의 후딜·걷기·점프는 아님
   busy(t) {
-    return !!((this.time < t.pushReadyAt && !t.atk && !t.atkLanded) || this.time < t.chargeUntil || t.slamAt || t.wallAt || t.grab || t.leap || t.huntAim);
+    return !!((this.time < t.pushReadyAt && !t.atk && !t.atkLanded) || this.time < t.chargeUntil || t.slamAt || t.wallAt || t.grab || t.leap || t.huntAim || t.rush || t.spin);
   }
 
   // 공격이 안 들어가는 상태: 콤보 뒤 무적·부활 무적. 경직이 이미 풀린 콤보는 여기서 먼저 끝냄
@@ -3341,6 +3448,9 @@ export class Game {
     } else if (p.leap && p.leap.endAt && this.time < p.leap.endAt) {
       ix = p.leap.vx; // 사냥꾼 도약 중: 입력 대신 덮칠 자리로
       iy = p.leap.vy;
+    } else if (p.rush && this.time < p.rush.endAt) {
+      ix = p.rush.vx; // 광전사 도약 중: 입력 대신 앞으로
+      iy = p.rush.vy;
     } else if (this.time < p.zipUntil) {
       ix = p.zipDir.x * C.HOOK_ZIP_SPEED; // 갈고리 블록 걸기: 블록 쪽으로 끌려감
       iy = p.zipDir.y * C.HOOK_ZIP_SPEED;
@@ -3350,7 +3460,8 @@ export class Game {
         const speed =
           C.MOVE_SPEED *
           (this.time < p.speedUntil ? C.SPEED_MULT : 1) *
-          (p.atk && p.atk.def.finish ? C.BASIC_FINISH_MOVE_MULT : 1); // 평타 마무리 준비 중
+          (p.atk && p.atk.def.finish ? C.BASIC_FINISH_MOVE_MULT : 1) * // 평타 마무리 준비 중
+          (p.spin ? C.BERSERKER_SPIN_MOVE_MULT : 1); // 광전사 회전 중 (천천히 쫓아감)
         ix = mv.x * speed;
         iy = mv.y * speed;
       }
@@ -3580,6 +3691,7 @@ export class Game {
         loaded: p.char === 'hook' ? p.loaded : undefined, // 갈고리 장전
         ultMax: this.ultMax(p), // 필살기 게이지 필요량 (사냥꾼 2배)
         cannon: p.char === 'cannon' ? { ammo: p.cannonAmmo, max: C.CANNON_AMMO_MAX, reloadLeft: p.reloadAt ? Math.max(0, p.reloadAt - this.time) : 0, reloadMs: C.CANNON_RELOAD_MS } : undefined, // 대포수 탄·장전
+        berserker: p.char === 'berserker' ? { rage: this.rageMult(p.damage), spinLeft: p.spin ? Math.max(0, p.spin.endAt - this.time) : 0, spinMs: C.BERSERKER_SPIN_MS, spinRage: p.spin ? this.rageMult(p.spin.rage) : 0 } : undefined, // 광전사 분노 배율·회전
         ultTarget: p.char === 'hunter' ? this.onField(p) && this.shotTargets(p).some((t) => !this.lineBlocked(p, t)) : undefined, // 사냥꾼: 지금 R 쏠 대상이 있나 (R 버튼 회색)
         marks: [...p.marks].map(([by, m]) => ({ by, n: m.n, left: Math.max(0, C.HUNTER_MARK_MS - (this.time - m.at)) })), // 이 사람에게 붙은 사냥꾼 표식
         respawnIn: !p.alive && p.respawnAt ? Math.max(0, p.respawnAt - this.time) : null,
@@ -3634,10 +3746,10 @@ function basicLabel(set, n, air, def) {
 }
 
 // 필살기 공격 종류 (탱크 아머를 깸)
-const ULT_KINDS = new Set(['slam', 'bigbomb', 'blockslam', 'execute', 'bigshell']);
+const ULT_KINDS = new Set(['slam', 'bigbomb', 'blockslam', 'execute', 'bigshell', 'spin', 'spinend']);
 
 const BBLOCK_LOG = { wall: '벽', third: '3타 블록', pad: '발판' };
-const WEAPON_LOG = { push: '밀치기', shell: '포탄', bigshell: '대형포탄', groundshot: '발밑포격', pounce: '덮치기', execute: '처형사격', wallkick: '벽차기', blast: '블록폭발', bigbomb: '대폭발', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', blockslam: '블록내려찍기' };
+const WEAPON_LOG = { push: '밀치기', shell: '포탄', bigshell: '대형포탄', groundshot: '발밑포격', leapwave: '광폭도약', spin: '소용돌이회전', spinend: '소용돌이', pounce: '덮치기', execute: '처형사격', wallkick: '벽차기', blast: '블록폭발', bigbomb: '대폭발', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', blockslam: '블록내려찍기' };
 
 function causeKo(cause) {
   if (cause === 'crush') return '압사';

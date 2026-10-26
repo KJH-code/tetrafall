@@ -1089,7 +1089,8 @@ test('연타 중엔 시간 마무리 없음 — 무한 콤보는 안 됨: 평타
       for (const e of g.drainEvents()) if (e.type === 'hit' && e.by === 1 && e.n) lastHit = e;
     }
     const lens = lines.filter((l) => l.includes('[콤보] P1 → P2')).map((l) => Number(l.match(/(\d+)타/)[1]));
-    assert.ok(lens.length > 1, `${char}: 콤보가 끝나고 다시 시작`);
+    // 광전사: F 광폭 도약이 매번 4칸 뛰어 떨어져서 첫 콤보 뒤로는 한 타씩만 맞음 (콤보로 안 셈) → 첫 콤보만 끝이 있으면 됨
+    assert.ok(lens.length > (char === 'berserker' ? 0 : 1), `${char}: 콤보가 끝나고 다시 시작`);
     const set = C.BASIC_ATTACKS[char];
     const bound = set.chain.length + set.air.length + 4; // 연타 전부 + 캔슬로 끼운 스킬 몇 번
     assert.ok(Math.max(...lens) <= bound, `${char}: 최대 ${Math.max(...lens)}타 (상한 ${bound}) ${lens.join(',')}`);
@@ -1698,4 +1699,154 @@ test('봇 대포수: 탄이 있으면 거리를 두고 조준해 포탄을 쏨, 
   place(t, b.x + 5, b.y);
   assert.equal(g.bots.get(b.id).useSkills(g, b, t, [t], []), true);
   assert.equal(b.ult, 0, 'R');
+});
+
+test('광전사 분노: 주는 넉백 × (1 + 자기 피해 % × 계수), 상한 없음. 고정 넉백 중간 타(가로 베기)는 그대로. 다른 캐릭터는 분노 없음', () => {
+  const kb = (char, dmg, opts = {}) => {
+    const { g, p } = setupChars([char, 'tank']);
+    place(p(2), 5, 5);
+    p(1).damage = dmg;
+    g.applyKnockback(p(2), 1, 0, 4, 0, 600, 0, { by: 1, kind: 'push' }, true, opts);
+    return p(2).kbx;
+  };
+  const base = kb('berserker', 0);
+  for (const d of [100, 200, 300, 500]) assert.ok(Math.abs(kb('berserker', d) / base - (1 + d * C.BERSERKER_RAGE_PER_PERCENT)) < 1e-9, `${d}%`);
+  assert.equal(kb('berserker', 300, { fixed: true }), kb('berserker', 0, { fixed: true }), '고정 넉백은 분노 없음');
+  assert.equal(kb('hunter', 300), kb('hunter', 0), '다른 캐릭터는 분노 없음');
+  // 실제 평타: 1타 가로 베기(고정) 는 같고, 공중 회전 베기(배율) 는 셈
+  const swing = (dmg, air) => {
+    const { g, p } = setupChars(['berserker', 'tank']);
+    place(p(1), 4, 5, 0, air ? 1 : 0);
+    if (air) p(1).grounded = false;
+    place(p(2), 5.2, 5, 0, air ? 1 : 0);
+    p(1).damage = dmg;
+    basic(g, 1);
+    return p(2).kbx;
+  };
+  assert.ok(swing(0, false) > 0);
+  assert.equal(swing(200, false), swing(0, false), '가로 베기는 분노 없음');
+  assert.ok(Math.abs(swing(200, true) / swing(0, true) - 1.6) < 1e-6, '공중 회전 베기는 분노 ×1.6');
+});
+
+test('광전사 평타: 가로 베기 (넓은 사거리) → 내려찍기 (마무리), 공중 회전 베기는 사방', () => {
+  const { g, p } = setupChars(['berserker', 'tank', 'builder']);
+  place(p(1), 4, 5, 0);
+  place(p(2), 4 + 2.0, 5); // 보통 사거리(1.8) 밖, 가로 베기 사거리 안
+  place(p(3), 1, 1);
+  basic(g, 1);
+  assert.equal(p(2).damage, 7, '가로 베기');
+  run(g, 350);
+  basic(g, 1);
+  assert.equal(p(2).damage, 17, '내려찍기');
+  // 공중 회전 베기: 등 뒤도
+  const q = setupChars(['berserker', 'tank']);
+  place(q.p(1), 4, 5, 0, 1);
+  q.p(1).grounded = false;
+  place(q.p(2), 3, 5, 0, 1);
+  basic(q.g, 1);
+  assert.equal(q.p(2).damage, 8, '등 뒤도 맞음');
+  assert.ok(q.p(2).kbx < 0, '바깥(뒤)으로');
+});
+
+test('광전사 F 광폭 도약: 앞으로 약 4칸 뛰고 땅에 닿으면 착지 충격파, 도약 중 맞으면 충격파 없음', () => {
+  const { g, p, lines } = setupChars(['berserker', 'tank']);
+  place(p(1), 2, 5, 0);
+  place(p(2), 6.8, 5);
+  g.handleAction(1, { name: 'skill' });
+  assert.ok(p(1).rush);
+  assert.ok(p(1).skillReadyAt >= g.time + C.SKILL_CD_MS.berserker - 1);
+  g.drainEvents();
+  run(g, 1200);
+  assert.ok(Math.abs(p(1).x - (2 + C.BERSERKER_LEAP_DIST)) < 0.4, `x ${p(1).x}`);
+  assert.equal(p(1).rush, null);
+  assert.equal(p(2).damage, C.BERSERKER_WAVE_DAMAGE, lines.join('\n'));
+  assert.ok(p(2).kbx > 0);
+  // 도약 중에 맞으면 끊김
+  const q = setupChars(['berserker', 'tank']);
+  place(q.p(1), 2, 5, 0);
+  place(q.p(2), 6.8, 5);
+  q.g.handleAction(1, { name: 'skill' });
+  run(q.g, 200);
+  q.g.applyKnockback(q.p(1), -1, 0, 1, 0, 300, 1, { by: 2, kind: 'push' });
+  run(q.g, 1500);
+  assert.equal(q.p(2).damage, 0, '충격파 없음');
+});
+
+test('광전사 R 분노 소용돌이: 피해 % 최대 40 깎음, 회전 중 작게 바깥으로 계속 밀침, 끝에 크게 날림 (R 시작 때 피해 % 만큼), 맞으면 끊김', () => {
+  // 깎기
+  const a = setupChars(['berserker', 'tank']);
+  a.p(1).damage = 25;
+  a.p(1).ult = C.ULT_MAX;
+  a.g.handleAction(1, { name: 'ult' });
+  assert.equal(a.p(1).damage, 0, '0 아래로는 안 감');
+  assert.ok(a.p(1).spin);
+  // 회전 + 끝 날림: 상대를 붙여 둠
+  const spinKb = (startDmg) => {
+    const { g, p, lines } = setupChars(['berserker', 'tank']);
+    place(p(1), 4, 5, 0);
+    place(p(2), 5, 5);
+    p(1).damage = startDmg;
+    p(1).ult = C.ULT_MAX;
+    g.handleAction(1, { name: 'ult' });
+    assert.equal(p(1).damage, startDmg - Math.min(C.BERSERKER_RAGE_CUT, startDmg));
+    let ticks = 0;
+    let out = true;
+    let endKb = 0;
+    for (let t = 0; t < C.BERSERKER_SPIN_MS + 200; t += TICK) {
+      g.tick(TICK);
+      for (const e of g.drainEvents()) {
+        if (e.type === 'hit' && e.kind === 'spin' && e.ok) {
+          ticks++;
+          if (p(2).kbx <= 0) out = false;
+        }
+        if (e.type === 'hit' && e.kind === 'spinend' && e.ok) endKb = p(2).kbx;
+      }
+      if (p(1).spin) Object.assign(p(2), { x: 5, y: 5, z: 0 }); // 붙어 있다고 침
+    }
+    assert.ok(ticks >= 5, `작은 밀침 ${ticks}번`);
+    assert.ok(out, '바깥으로만 (빨아들이지 않음)');
+    assert.ok(endKb > 0, lines.join('\n'));
+    return endKb;
+  };
+  const k200 = spinKb(200);
+  const k40 = spinKb(40);
+  assert.ok(Math.abs(k200 / k40 - (1 + 200 * C.BERSERKER_RAGE_PER_PERCENT) / (1 + 40 * C.BERSERKER_RAGE_PER_PERCENT)) < 1e-6, '끝 날림 = R 시작 때 분노');
+  // 회전 중 맞으면 끊김
+  const b = setupChars(['berserker', 'tank']);
+  place(b.p(1), 4, 5, 0);
+  place(b.p(2), 8, 5);
+  b.p(1).ult = C.ULT_MAX;
+  b.g.handleAction(1, { name: 'ult' });
+  run(b.g, 300);
+  b.g.drainEvents();
+  b.g.applyKnockback(b.p(1), -1, 0, 1, 0, 300, 1, { by: 2, kind: 'push' });
+  assert.equal(b.p(1).spin, null);
+  assert.ok(b.g.drainEvents().some((e) => e.type === 'interrupt' && e.who === 1 && e.kind === 'ult'));
+  assert.equal(b.g.snapshot().players.find((x) => x.id === 1).berserker.spinLeft, 0);
+});
+
+test('봇 광전사: 피해 % 높고 붙어 있으면 R, 조금 떨어진 상대에게 F 로 붙음', () => {
+  const g = new Game(() => {}, { characters: true });
+  g.rng = () => 0.5;
+  const b = g.addBot();
+  g.setChar(b.id, 'berserker');
+  g.addPlayer(1);
+  g.startRound();
+  g.nextSpawnAt = Infinity;
+  g.controlItemNextAt = Infinity;
+  g.powerItemNextAt = Infinity;
+  const t = g.players.get(1);
+  const brain = g.bots.get(b.id);
+  place(b, 3, 5, 0);
+  place(t, 4.2, 5);
+  b.ult = C.ULT_MAX;
+  b.damage = 20;
+  assert.equal(brain.useSkills(g, b, t, [t], []), false, '피해 % 낮으면 R 아낌');
+  b.damage = 120;
+  assert.equal(brain.useSkills(g, b, t, [t], []), true);
+  assert.ok(b.spin, 'R');
+  b.spin = null;
+  place(t, 6.5, 5);
+  assert.equal(brain.useSkills(g, b, t, [t], []), true);
+  assert.ok(b.rush, 'F 도약');
 });

@@ -151,7 +151,7 @@ export class BotBrain {
     // 0.5) 복귀: 필드 밖으로 떨어지는 중이면 공중 F 를 쓰고 안쪽으로 (건축가 발판 + 부스트, 닌자 순간 베기 → 막히면 벽 차기,
     // 갈고리는 안쪽 방향에 걸 블록이 있을 때만)
     const toCenter = Math.atan2(D / 2 - p.y, W / 2 - p.x);
-    if ((p.char === 'builder' || p.char === 'ninja' || p.char === 'hunter' || p.char === 'cannon' || (p.char === 'hook' && g.hookRayBlock(p, toCenter, 0))) && !p.grounded && p.vz < 0 && p.z < -0.3 && g.time >= p.skillReadyAt && g.time >= p.stunUntil) {
+    if ((p.char === 'builder' || p.char === 'ninja' || p.char === 'hunter' || p.char === 'cannon' || p.char === 'berserker' || (p.char === 'hook' && g.hookRayBlock(p, toCenter, 0))) && !p.grounded && p.vz < 0 && p.z < -0.3 && g.time >= p.skillReadyAt && g.time >= p.stunUntil) {
       this.moveTo(g, p, { x: W / 2, y: D / 2 });
       g.handleInput(p.id, this.input);
       g.handleAction(p.id, { name: 'skill' });
@@ -447,6 +447,19 @@ export class BotBrain {
       }
       // F: 붙은 상대가 공격을 준비하면 발밑 포격으로 띄워 내고 피함
       if (skillReady && dist < 1.6 && t.atk) return act('skill');
+    } else if (p.char === 'berserker') {
+      // R: 피해 % 가 높을 때 (분노 큼, 피해 % 도 깎음) 또는 둘 이상 붙어 있으면 소용돌이
+      const around = near(C.BERSERKER_SPIN_END_RANGE).length;
+      if (ultReady && around && (p.damage >= 80 || around >= 2)) return act('ult');
+      // F: 조금 떨어진 상대에게 광폭 도약으로 붙음 (떨어질 자리·블록 그림자로는 안 감)
+      if (skillReady && level && p.grounded && dist >= 2.5 && dist <= C.BERSERKER_LEAP_DIST + 1) {
+        const yaw = Math.atan2(t.y - p.y, t.x - p.x);
+        const land = C.BERSERKER_LEAP_DIST;
+        if (edgeDist(p.x + Math.cos(yaw) * land, p.y + Math.sin(yaw) * land) < 1) return false;
+        if (this.pathHits(p, yaw, land, avoid)) return false;
+        face();
+        return act('skill');
+      }
     } else if (p.char === 'hunter') {
       // R: 보는 방향 안에 쏠 표식 대상이 있으면 (표식 많은 상대 쪽을 봄)
       const marked = enemies.filter((o) => g.markOf(p, o) > 0 && Math.hypot(o.x - p.x, o.y - p.y) <= C.HUNTER_SHOT_RANGE && !g.lineBlocked(p, o));
