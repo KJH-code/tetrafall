@@ -229,8 +229,8 @@ export const CONFIG = {
     hunter: {
       chain: [
         { name: '베기', windup: 100, rec: 250, stun: 450, dmg: 5, kb: 1.2, up: 2, step: 0.3 },
-        { name: '반대 베기', windup: 100, rec: 250, stun: 550, dmg: 5, kb: 1.2, up: 2, step: 0.3 },
-        { name: '찔러 넣기', windup: 200, rec: 450, stun: 850, dmg: 8, kb: 1.5, up: 2, step: 0.4, mark: true }, // stun ≥ F 준비 200 + 도약 300 + 여유
+        { name: '반대 베기', windup: 100, rec: 250, stun: 550, dmg: 5, kb: 1.2, up: 2, step: 0.3, mark: true }, // 2026-10-26 재혁 2차: 표식은 이 타 (가+다 봇 판 18%)
+        { name: '찔러 넣기', windup: 200, rec: 450, stun: 850, dmg: 8, kb: 1.5, up: 2, step: 0.4 }, // stun ≥ F 준비 200 + 도약 300 + 여유
       ],
       air: [{ name: '내려 베기', windup: 150, rec: 400, stun: 500, dmg: 7, kb: 3, up: 2, step: 0 }],
     },
@@ -385,6 +385,8 @@ export const CONFIG = {
   // 표식: 상대에게 붙음 (사냥꾼마다 따로). 지상 평타 마무리 타(찔러 넣기)가 맞으면 +1, 최대 HUNTER_MARK_MAX, 마지막으로 쌓인 뒤 HUNTER_MARK_MS 면 사라짐
   HUNTER_MARK_MAX: 3,
   HUNTER_MARK_MS: 5000,
+  // 2026-10-26 재혁 2차: 대상에 쌓인 내 표식 1개당 사냥꾼이 그 대상에게 주는 피해 % +HUNTER_MARK_DAMAGE_BONUS (반올림, 처형 사격은 이미 표식 비례라 뺌)
+  HUNTER_MARK_DAMAGE_BONUS: 0.1,
   // F 추적 도약: HUNTER_LEAP_RANGE 안 표식 있는 가장 가까운 상대에게 (예고 HUNTER_LEAP_WINDUP_MS) 도약해 덮침, 없으면 보는 방향 HUNTER_LEAP_DIST 칸. 덮치면 이어 치기 창 → 평평평
   HUNTER_LEAP_RANGE: 6,
   HUNTER_LEAP_DIST: 3,

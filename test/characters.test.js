@@ -1403,17 +1403,17 @@ test('갈고리 R 한 번 누르면 나감 (2026-10-26 재혁: 두 번 눌러야
 
 // ---------- 사냥꾼 (2026-10-26, docs/characters.md 3.5) ----------
 
-test('사냥꾼 표식: 지상 평타 마무리(찔러 넣기)가 맞을 때만 +1 (최대 3, 사냥꾼마다 따로), 공중 평타로는 안 쌓임, 마지막으로 쌓인 뒤 5초면 사라짐. snapshot marks', () => {
+test('사냥꾼 표식: 지상 평타 표식 타(2차부터 반대 베기)가 맞을 때만 +1 (최대 3, 사냥꾼마다 따로), 공중 평타로는 안 쌓임, 마지막으로 쌓인 뒤 5초면 사라짐. snapshot marks', () => {
   const { g, lines, p } = setupChars(['hunter', 'tank', 'hunter']);
   place(p(3), 9.5, 9.5);
   const chain = () => {
     place(p(1), 3, 4.5, 0);
     place(p(2), 4.2, 4.5);
-    Object.assign(p(1), { chainN: 2, chainUntil: Infinity, pushReadyAt: 0 });
+    Object.assign(p(1), { chainN: C.BASIC_ATTACKS.hunter.chain.findIndex((d) => d.mark), chainUntil: Infinity, pushReadyAt: 0 });
     basic(g, 1);
     run(g, 1000); // 경직·무적 풀림
   };
-  // 1·2타는 표식 없음
+  // 1타는 표식 없음
   place(p(1), 3, 4.5, 0);
   place(p(2), 4.2, 4.5);
   basic(g, 1);
@@ -1512,6 +1512,20 @@ test('사냥꾼 F 유도 (재혁 "다"): 도약 중 표식 대상이 움직이�
   const b = leapTo(5); // 너무 멀리 가면 최대 보정까지만
   assert.ok(b.p(1).y <= 5 + C.HUNTER_LEAP_HOMING_MAX + 0.1, `최대 보정 y ${b.p(1).y.toFixed(2)}`);
   assert.ok(b.p(1).y >= 5 + C.HUNTER_LEAP_HOMING_MAX - 0.4, `보정은 함 y ${b.p(1).y.toFixed(2)}`);
+});
+
+test('사냥꾼 표식 피해 (재혁 2차): 대상에 쌓인 내 표식 1개당 내가 주는 피해 % +10% (반올림), 다른 사냥꾼 표식·다른 캐릭터·처형 사격은 아님', () => {
+  const dealt = (marks, kind = 'push', char = 'hunter', by = 1) => {
+    const { g, p } = setupChars([char, 'tank', 'hunter']);
+    place(p(2), 5, 5);
+    if (marks) p(2).marks.set(by, { n: marks, at: g.time });
+    g.applyKnockback(p(2), 1, 0, 1, 0, 300, 5, { by: 1, kind });
+    return p(2).damage;
+  };
+  assert.deepEqual([0, 1, 2, 3].map((n) => dealt(n)), [0, 1, 2, 3].map((n) => Math.round(5 * (1 + n * C.HUNTER_MARK_DAMAGE_BONUS))));
+  assert.equal(dealt(3, 'push', 'hunter', 3), 5, '다른 사냥꾼 표식은 아님');
+  assert.equal(dealt(3, 'push', 'tank'), 5, '다른 캐릭터는 아님');
+  assert.equal(dealt(3, 'execute'), 5, '처형 사격은 이미 표식 비례');
 });
 
 test('사냥꾼 R 처형 사격: 게이지 2배, 각 90°·사거리 8 안 표식 대상 전부를 0.5초 조준 뒤 맞힘 (표식 1개당 피해), 표식 소모, 블록이 가리면 막힘, 표식 3개를 맞히면 게이지를 돌려받음, 대상이 없으면 안 쓰임', () => {
