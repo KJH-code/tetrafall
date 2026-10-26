@@ -119,6 +119,23 @@
     #rooms button { font-size: 15px; padding: 4px 14px; cursor: pointer; }
     #rooms button:disabled { opacity: .4; cursor: default; }
     #rooms-msg { color: #ffb050; white-space: pre-line; min-height: 1.6em; }
+    /* 연습 방: 왼쪽 작은 패널 (연습 키로 열고 닫음, 가운데·허수아비를 안 가림) + 오른쪽 콤보 기록 */
+    #practice { position: absolute; left: 12px; top: 70px; z-index: 18; pointer-events: auto; background: rgba(20,22,40,.92); padding: 10px 14px; border-radius: 10px; font-size: 14px; line-height: 1.7; width: 250px; }
+    #practice h4 { margin: 0 0 4px; font-size: 15px; display: flex; justify-content: space-between; align-items: center; }
+    #practice h4 button { font-size: 12px; padding: 1px 8px; }
+    #practice label { display: block; }
+    #practice input[type=number] { width: 4.2em; font-size: 14px; }
+    #practice .sub { margin-top: 6px; color: #ccc; font-size: 13px; }
+    #practice .dummy { display: flex; gap: 6px; align-items: center; }
+    #practice .dummy span { flex: 1; }
+    #practice button { cursor: pointer; }
+    #practice select { font-size: 14px; }
+    #practice-hint { position: absolute; left: 12px; top: 70px; font-size: 12px; color: #bbb; background: rgba(0,0,0,.3); padding: 2px 8px; border-radius: 6px; pointer-events: none; }
+    #pcombo { position: absolute; right: 14px; top: 34%; text-align: right; pointer-events: none; font-size: 14px; line-height: 1.5; }
+    #pcombo .c { background: rgba(0,0,0,.4); padding: 3px 10px; border-radius: 6px; margin-bottom: 4px; transition: opacity .4s; }
+    #pcombo .c b { color: #ffd23a; font-size: 18px; }
+    #pcombo .c.done { color: #ddd; }
+    #pcombo .c.done b { color: #fff; }
     #room-code { width: 5em; text-transform: uppercase; letter-spacing: 2px; }
     #room-list { display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow-y: auto; }
     #room-list .room { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; background: rgba(255,255,255,.07); padding: 6px 10px; border-radius: 8px; }
@@ -149,6 +166,19 @@
     <div id="status">연결 중...</div>
     <div id="bigmsg" class="hidden"></div>
     <div id="combo" class="hidden"></div>
+    <div id="practice" class="hidden">
+      <h4>연습 <button id="pr-close">닫기 (<span data-key="practice">Tab</span>)</button></h4>
+      <label><input type="checkbox" data-pr="noCooldown" /> F 쿨 없음</label>
+      <label><input type="checkbox" data-pr="fullUlt" /> R 항상 가득</label>
+      <label><input type="checkbox" data-pr="noBlocks" /> 블록·용암 없음</label>
+      <label><input type="checkbox" data-pr="noDeath" /> 안 죽음</label>
+      <label>내 피해 <input type="number" id="pr-mydmg" min="0" max="999" step="10" /> %</label>
+      <label>캐릭터 <select id="pr-char"></select></label>
+      <div class="sub">허수아비 <button id="pr-add">추가</button></div>
+      <div id="pr-dummies"></div>
+    </div>
+    <div id="practice-hint" class="hidden">연습 창 <span data-key="practice">Tab</span></div>
+    <div id="pcombo"></div>
     <div id="counter" class="hidden">COUNTER!</div>
     <div id="killfeed"></div>
     <div id="settings" class="hidden"><div class="box">
@@ -187,6 +217,8 @@
       <div><input id="room-name" style="width:16em" placeholder="방 이름 (비우면 '내 이름의 방')" /> <button id="room-create">만들기</button></div>
       <h3>코드로 들어가기</h3>
       <div><input id="room-code" placeholder="ABCD" /> <button id="room-join">들어가기</button></div>
+      <h3>연습 (혼자, 허수아비 · 친구도 코드로 들어옴)</h3>
+      <div><button id="practice-btn">연습</button></div>
       <h3>공개 방 <span id="rooms-count" style="font-weight:normal;font-size:13px"></span></h3>
       <div id="room-list"></div>
     </div></div>
