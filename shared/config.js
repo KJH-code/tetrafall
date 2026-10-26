@@ -241,6 +241,15 @@ export const CONFIG = {
       ],
       air: [{ name: '후려치기', windup: 150, rec: 400, stun: 500, dmg: 5, kb: 3.5, up: 2, step: 0, ammo: { name: '포탄', windup: 150, rec: 350, shell: true } }],
     },
+    // 광전사 (2026-10-26 재혁 확정, docs/characters.md 3.7 돌파·쉬움): 판정 넓은 2타 (가로 베기 → 내려찍기 마무리) + 공중 회전 베기 (사방).
+    // windup·rec·dmg 는 문서 초안, stun·kb·사거리는 A 가 정함
+    berserker: {
+      chain: [
+        { name: '가로 베기', windup: 150, rec: 300, stun: 650, dmg: 7, kb: 1.5, up: 1, step: 0.3, range: 2.1 },
+        { name: '내려찍기', windup: 250, rec: 450, stun: 700, dmg: 10, kb: 4.4, up: 3, step: 0.3, finish: true },
+      ],
+      air: [{ name: '회전 베기', windup: 150, rec: 400, stun: 550, dmg: 8, kb: 3.5, up: 2, step: 0, angle: 180, radial: true }], // angle 180 = 사방, radial = 바깥으로 밀침
+    },
   },
 
   // ---- 경직 ----
@@ -303,12 +312,12 @@ export const CONFIG = {
   MAP_DEFAULT: 'random', // 서버 켤 때 맵 선택: 'random' 또는 server/maps.js 의 MAP_IDS (flat·pyramid·stairs·bowl·spiral·pillars·fortress). 호스트가 대기 화면에서 바꿀 수 있음
 
   // ---- 캐릭터 (2026-10-24 7단계 재혁: 친구들이 '스킬/고유기 넣어서'. 캐릭터마다 패시브 + 스킬 F(쿨) + 필살기 R(게이지)) ----
-  CHARACTERS: ['tank', 'ninja', 'builder', 'hook', 'hunter', 'cannon'], // 사냥꾼·대포수 2026-10-26 (docs/characters.md 3.5·3.6)
-  CHAR_NAMES: { tank: '탱크', ninja: '닌자', builder: '건축가', hook: '갈고리', hunter: '사냥꾼', cannon: '대포수' },
+  CHARACTERS: ['tank', 'ninja', 'builder', 'hook', 'hunter', 'cannon', 'berserker'], // 사냥꾼·대포수·광전사 2026-10-26 (docs/characters.md 3.5·3.6·3.7)
+  CHAR_NAMES: { tank: '탱크', ninja: '닌자', builder: '건축가', hook: '갈고리', hunter: '사냥꾼', cannon: '대포수', berserker: '광전사' },
   // 2026-10-24 재혁: 스킬이 직접 피해·넉백을 주고 콤보로 이어지게 (닌자 = 콤보 캐릭터). 남이 쓰는 것도 보이게 예고·효과
-  SKILL_NAMES: { tank: '돌진', ninja: '순간 베기', builder: '솟는 벽', hook: '갈고리', hunter: '추적 도약', cannon: '발밑 포격' },
-  ULT_NAMES: { tank: '내려찍기', ninja: '강화', builder: '대폭발', hook: '블록 내려찍기', hunter: '처형 사격', cannon: '대형 포탄' },
-  SKILL_CD_MS: { tank: 8000, ninja: 6000, builder: 8000, hook: 8000, hunter: 7000, cannon: 8000 }, // 봇 160판으로 맞춤 (2026-10-24). 건축가 11 → 8초 (2026-10-25: F 가 콤보 부품·복귀기, 지상·공중 같이 씀)
+  SKILL_NAMES: { tank: '돌진', ninja: '순간 베기', builder: '솟는 벽', hook: '갈고리', hunter: '추적 도약', cannon: '발밑 포격', berserker: '광폭 도약' },
+  ULT_NAMES: { tank: '내려찍기', ninja: '강화', builder: '대폭발', hook: '블록 내려찍기', hunter: '처형 사격', cannon: '대형 포탄', berserker: '분노 소용돌이' },
+  SKILL_CD_MS: { tank: 8000, ninja: 6000, builder: 8000, hook: 8000, hunter: 7000, cannon: 8000, berserker: 7000 }, // 봇 160판으로 맞춤 (2026-10-24). 건축가 11 → 8초 (2026-10-25: F 가 콤보 부품·복귀기, 지상·공중 같이 씀)
   CHAR_DEFAULT: 'tank',
   // 스킬·필살기를 쓰면 그 캐릭터에 빛 (글자 대신, 남에게도 보임. 누가 무엇인지는 캐릭터 모양으로). 2026-10-25 재혁:
   // 전체 느낌을 방해하지 않지만 잘 보이게 → 노을(주황·빨강)과 대비되는 차가운 색, 압사 경고(빨강)·치명타(노랑)와 안 겹치게
@@ -431,6 +440,36 @@ export const CONFIG = {
   CANNON_R_BLAST_KB_UP: 6,
   CANNON_R_BLAST_STUN_MS: 800,
   CANNON_R_RECOIL: 8,
+  // 광전사 (2026-10-26 재혁 확정, docs/characters.md 3.7 — "밀릴수록 세진다". 수치는 초안)
+  // 패시브 분노: 광전사가 주는 넉백(수평) × (1 + 자기 피해 % × BERSERKER_RAGE_PER_PERCENT), 상한 없음 (재혁).
+  // 고정 넉백인 평타 중간 타(가로 베기)는 빼고 (세지면 2타가 안 닿음) — 마무리·공중 평타·F·R 에
+  BERSERKER_RAGE_PER_PERCENT: 0.003,
+  // F 광폭 도약: 보는 방향으로 BERSERKER_LEAP_DIST 칸을 BERSERKER_LEAP_MS 동안 뛰고, 땅에 닿으면 착지 충격파 (낭떠러지 밖으로 뛰면 복귀기)
+  BERSERKER_LEAP_DIST: 4,
+  BERSERKER_LEAP_MS: 500,
+  BERSERKER_LEAP_UP: 7,
+  BERSERKER_LEAP_LAND_MS: 1500, // 도약 끝나고 이 안에 땅에 안 닿으면 충격파 없음
+  BERSERKER_WAVE_RANGE: 1.5,
+  BERSERKER_WAVE_DAMAGE: 6,
+  BERSERKER_WAVE_KB_SPEED: 4,
+  BERSERKER_WAVE_KB_UP: 4,
+  BERSERKER_WAVE_STUN_MS: 600,
+  // R 분노 소용돌이: BERSERKER_SPIN_MS 동안 회전 (이동 ×BERSERKER_SPIN_MOVE_MULT), BERSERKER_SPIN_TICK_MS 마다 닿는 상대를 작게 밀침 (빨아들이지 않음),
+  // 끝날 때 한 번 크게 날림 (분노는 R 시작 때 피해 % 로). 시작할 때 자기 피해 % 를 BERSERKER_RAGE_CUT 만큼 깎음 (0 아래로는 안 감)
+  BERSERKER_SPIN_MS: 1500,
+  BERSERKER_SPIN_MOVE_MULT: 0.6,
+  BERSERKER_SPIN_RANGE: 1.6,
+  BERSERKER_SPIN_TICK_MS: 250,
+  BERSERKER_SPIN_TICK_DAMAGE: 2,
+  BERSERKER_SPIN_TICK_KB: 1.2,
+  BERSERKER_SPIN_TICK_UP: 1,
+  BERSERKER_SPIN_TICK_STUN_MS: 400,
+  BERSERKER_SPIN_END_RANGE: 2.0,
+  BERSERKER_SPIN_END_DAMAGE: 10,
+  BERSERKER_SPIN_END_KB_SPEED: 5,
+  BERSERKER_SPIN_END_KB_UP: 5,
+  BERSERKER_SPIN_END_STUN_MS: 800,
+  BERSERKER_RAGE_CUT: 40,
   // 건축가 (2026-10-25 재혁 확정, docs/characters.md 3.1 — 지형·설치형 "깔고, 쳐서 터뜨린다". 수치는 초안, 밸런스는 나머지 캐릭터 뒤)
   // 건축가 블록: 벽(지상 F)·3타 블록(평타 3타)·발판(공중 F)·대폭발(R). BUILDER_BLOCK_MS 뒤 사라짐.
   // 건축가 망치(평타)로 치면 폭발: 치는 방향 앞쪽 사람만 그쪽으로 날림, 건축가 자신은 안 맞음. 같은 F 벽 칸끼리만 연쇄. 상대는 못 터뜨림
