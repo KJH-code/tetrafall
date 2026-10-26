@@ -745,20 +745,34 @@ function dressBerserker(fig, costume, cloth) {
   fig.neck.add(mesh(ringGeo(d.headW * 0.64, d.headW * 0.64, 0.05, 10), iron, 0, 0, browZ));
   fig.neck.add(mesh(new THREE.BoxGeometry(0.02, 0.035, 0.12), iron, d.headW * 0.62, 0, browZ - 0.05)); // 코 가리개
   fig.neck.add(mesh(new THREE.BoxGeometry(d.headW * 1.2, 0.02, 0.03), iron, 0, 0, browZ + d.headW * 0.6));
-  // 뿔: 투구 양옆에서 두 마디로 휘어 오르는데 마디마다 흐물흐물 (figureAnim 이 흔듦)
+  // 뿔: 바이킹 소뿔. 마디 HORN_SEGS 개를 이어 붙인 휜 호 (투구 옆에서 바깥으로 나갔다 위로 C 자로 휨), 끝으로 갈수록 가늘고 뾰족.
+  // 색은 뿌리 상아색 → 끝 짙은 갈색 (마디마다 조금씩), 뿌리에 쇠 고리. 마디마다 관절이라 끝으로 갈수록 처지고 늦게 출렁 (figureAnim)
+  const N = C.FIGURE_HORN_SEGS;
+  const ivory = new THREE.Color(0xf2e8cc);
+  const brown = new THREE.Color(0x4e3018);
   fig.horns = [];
   for (const side of [-1, 1]) {
-    const root = joint(fig.neck, 0, side * d.headW * 0.58, browZ + 0.05);
-    const g1 = new THREE.ConeGeometry(0.06, 0.19, 7);
-    if (side < 0) g1.rotateZ(Math.PI); // 원뿔 끝이 바깥(±y)
-    g1.translate(0, side * 0.095, 0);
-    root.add(mesh(g1, bone));
-    const tip = joint(root, 0, side * 0.17, 0);
-    const g2 = new THREE.ConeGeometry(0.042, 0.17, 7);
-    if (side < 0) g2.rotateZ(Math.PI);
-    g2.translate(0, side * 0.085, 0);
-    tip.add(mesh(g2, bone));
-    fig.horns.push({ root, tip, side });
+    const root = joint(fig.neck, 0, side * d.headW * 0.6, browZ + 0.04);
+    const ring = new THREE.TorusGeometry(0.058, 0.014, 5, 10);
+    ring.rotateX(Math.PI / 2); // 고리 면이 뿔 축(±y)에 수직
+    root.add(mesh(ring, iron, 0, side * 0.012, 0));
+    const segs = [];
+    let parent = root;
+    for (let k = 0; k < N; k++) {
+      const u0 = k / N;
+      const u1 = (k + 1) / N;
+      const r0 = 0.058 * (1 - u0 * 0.9);
+      const r1 = k === N - 1 ? 0.002 : 0.058 * (1 - u1 * 0.9); // 끝 마디는 뾰족
+      const len = C.FIGURE_HORN_LEN / N;
+      const geo = new THREE.CylinderGeometry(r1, r0 * 1.04, len * 1.12, 8); // 조금 길게 → 이음새가 겹쳐 안 보임
+      geo.translate(0, len / 2, 0); // 뿌리가 원점, +y 로 뻗음
+      if (side < 0) geo.rotateZ(Math.PI); // -y 로
+      const j2 = k === 0 ? root : joint(parent, 0, side * len, 0);
+      j2.add(mesh(geo, costume(ivory.clone().lerp(brown, (u0 + u1) / 2).getHex())));
+      segs.push(j2);
+      parent = j2;
+    }
+    fig.horns.push({ segs, side });
   }
   // 분노 (render.js 가 피해 % 로 움직임): 충혈되는 흰자 (따로 재질) · 찌푸리는 굵은 눈썹 · 팔·이마에 솟는 핏줄. 피부(플레이어 색)는 그대로 둠
   const eyeMat = noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff }));
@@ -1367,13 +1381,18 @@ export function figureAnim(fig, st, dt, retry = false) {
     fig.rage.anger.visible = k > 0.5;
     fig.rage.anger.scale.setScalar(0.8 + 0.5 * Math.max(0, Math.sin(t * 9)));
   }
-  // 광전사 뿔: 위로 휘었다가 축 처지며 흐물흐물 (움직이거나 맞으면 더 크게 출렁, 끝 마디는 한 박자 늦게)
+  // 광전사 뿔: 마디마다 위로 꺾여 C 자 (뿌리는 바깥으로, 끝은 위로). 끝 마디로 갈수록 축 처지고 늦게 크게 출렁 (가만히 있어도 끝이 처짐)
   if (fig.horns) {
+    const n = C.FIGURE_HORN_SEGS;
     const wob = C.FIGURE_HORN_WOBBLE * (0.4 + sp * 1.2);
     for (const h of fig.horns) {
-      const a = Math.sin(t * 7 + h.side) * wob;
-      h.root.rotation.x = h.side * (0.75 + a); // 바깥에서 위로 휨 (흔들림)
-      h.tip.rotation.x = -h.side * (C.FIGURE_HORN_DROOP + Math.sin(t * 7 - 1.2 + h.side) * wob * 1.6); // 끝은 축 처짐
+      h.segs.forEach((j, k) => {
+        const u = k / (n - 1); // 0 뿌리 ~ 1 끝
+        const curl = k === 0 ? 0.15 : C.FIGURE_HORN_CURL / (n - 1); // 마디마다 위로 꺾임 → 다 합쳐 C 자
+        const droop = C.FIGURE_HORN_DROOP * u * u; // 끝일수록 처짐
+        const sway = Math.sin(t * 6.5 - k * 0.55 + h.side) * wob * u; // 끝일수록 늦게·크게
+        j.rotation.x = h.side * (curl - droop / (n - 1) * 2 + sway);
+      });
     }
   }
 }
