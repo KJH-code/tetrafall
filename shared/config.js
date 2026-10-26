@@ -635,6 +635,12 @@ export const CONFIG = {
   PASS_CRUSH_SHARE: 0.5, // 1단계 합격선: 누적 사망 중 압사 비율. 판 종료 로그에 표시. 2026-10-20 재정의
   ROUND_TIME_LIMIT_MS: 0, // 0 = 제한 없음. 양수면 시간 초과 시 무승부
 
+  // ---- 연습 모드 (2026-10-26 재혁: 혼자 쓰는 방, 판이 안 끝남, 허수아비) ----
+  PRACTICE_DUMMY_MAX: 3, // 허수아비 최대 (사람 + 허수아비 ≤ MAX_PLAYERS 자리)
+  PRACTICE_DUMMY_DIST: 2, // 허수아비를 내 앞 이 거리(칸)에 놓음
+  PRACTICE_DAMAGE_MAX: 999, // 피해 % 설정 상한 (허수아비·내 피해 %)
+  PRACTICE_RESPAWN_MS: 1500, // "안 죽음" 을 끄고 죽으면 이만큼 뒤 처음 자리에서
+
   // ---- 게임 모드 (2026-10-23 재혁: 호스트가 대기 화면에서 고름) ----
   // survival = 마지막 생존자 (예전 그대로), master = 블록 마스터 (1 대 다), kills = 부활 킬 점수전
   MODE_DEFAULT: 'survival',
