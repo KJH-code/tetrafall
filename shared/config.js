@@ -233,6 +233,14 @@ export const CONFIG = {
       ],
       air: [{ name: '내려 베기', windup: 150, rec: 400, stun: 500, dmg: 7, kb: 3, up: 2, step: 0 }],
     },
+    // 대포수 (2026-10-26 재혁 확정, docs/characters.md 3.6 견제): 탄이 있으면 평타 = 포탄 (서버가 날리는 보이는 투사체, 지상·공중), 없으면 대포 후려치기.
+    // 한 타짜리 (이어 치기 없음). 수치는 초안 (준비·후딜·경직·넉백은 A 가 정함)
+    cannon: {
+      chain: [
+        { name: '후려치기', windup: 150, rec: 400, stun: 500, dmg: 5, kb: 3.5, up: 2, step: 0.2, finish: true, ammo: { name: '포탄', windup: 150, rec: 350, shell: true } },
+      ],
+      air: [{ name: '후려치기', windup: 150, rec: 400, stun: 500, dmg: 5, kb: 3.5, up: 2, step: 0, ammo: { name: '포탄', windup: 150, rec: 350, shell: true } }],
+    },
   },
 
   // ---- 경직 ----
@@ -295,12 +303,12 @@ export const CONFIG = {
   MAP_DEFAULT: 'random', // 서버 켤 때 맵 선택: 'random' 또는 server/maps.js 의 MAP_IDS (flat·pyramid·stairs·bowl·spiral·pillars·fortress). 호스트가 대기 화면에서 바꿀 수 있음
 
   // ---- 캐릭터 (2026-10-24 7단계 재혁: 친구들이 '스킬/고유기 넣어서'. 캐릭터마다 패시브 + 스킬 F(쿨) + 필살기 R(게이지)) ----
-  CHARACTERS: ['tank', 'ninja', 'builder', 'hook', 'hunter'], // 사냥꾼 2026-10-26 (docs/characters.md 3.5)
-  CHAR_NAMES: { tank: '탱크', ninja: '닌자', builder: '건축가', hook: '갈고리', hunter: '사냥꾼' },
+  CHARACTERS: ['tank', 'ninja', 'builder', 'hook', 'hunter', 'cannon'], // 사냥꾼·대포수 2026-10-26 (docs/characters.md 3.5·3.6)
+  CHAR_NAMES: { tank: '탱크', ninja: '닌자', builder: '건축가', hook: '갈고리', hunter: '사냥꾼', cannon: '대포수' },
   // 2026-10-24 재혁: 스킬이 직접 피해·넉백을 주고 콤보로 이어지게 (닌자 = 콤보 캐릭터). 남이 쓰는 것도 보이게 예고·효과
-  SKILL_NAMES: { tank: '돌진', ninja: '순간 베기', builder: '솟는 벽', hook: '갈고리', hunter: '추적 도약' },
-  ULT_NAMES: { tank: '내려찍기', ninja: '강화', builder: '대폭발', hook: '블록 내려찍기', hunter: '처형 사격' },
-  SKILL_CD_MS: { tank: 8000, ninja: 6000, builder: 8000, hook: 8000, hunter: 7000 }, // 봇 160판으로 맞춤 (2026-10-24). 건축가 11 → 8초 (2026-10-25: F 가 콤보 부품·복귀기, 지상·공중 같이 씀)
+  SKILL_NAMES: { tank: '돌진', ninja: '순간 베기', builder: '솟는 벽', hook: '갈고리', hunter: '추적 도약', cannon: '발밑 포격' },
+  ULT_NAMES: { tank: '내려찍기', ninja: '강화', builder: '대폭발', hook: '블록 내려찍기', hunter: '처형 사격', cannon: '대형 포탄' },
+  SKILL_CD_MS: { tank: 8000, ninja: 6000, builder: 8000, hook: 8000, hunter: 7000, cannon: 8000 }, // 봇 160판으로 맞춤 (2026-10-24). 건축가 11 → 8초 (2026-10-25: F 가 콤보 부품·복귀기, 지상·공중 같이 씀)
   CHAR_DEFAULT: 'tank',
   // 스킬·필살기를 쓰면 그 캐릭터에 빛 (글자 대신, 남에게도 보임. 누가 무엇인지는 캐릭터 모양으로). 2026-10-25 재혁:
   // 전체 느낌을 방해하지 않지만 잘 보이게 → 노을(주황·빨강)과 대비되는 차가운 색, 압사 경고(빨강)·치명타(노랑)와 안 겹치게
@@ -388,6 +396,41 @@ export const CONFIG = {
   HUNTER_SHOT_UP: 3,
   HUNTER_SHOT_STUN_MS: 700,
   HUNTER_ULT_MULT: 2, // R 게이지 필요량 × 이 값 (대가)
+  // 대포수 (2026-10-26 재혁 확정, docs/characters.md 3.6 — "피하면서 공중 저격". 수치는 초안)
+  // 장전: 최대 CANNON_AMMO_MAX 발, CANNON_RELOAD_MS 마다 한 발씩 (판 시작·부활 때 가득). F·R 은 탄 안 씀
+  CANNON_AMMO_MAX: 3,
+  CANNON_RELOAD_MS: 2500,
+  // 포탄: 느리고 보이는 서버 투사체 (조준 방향 3D, 즉시 판정 아님). 맞으면 넉백 큼. 쌓인 블록에 맞으면 1칸 부숨 (바닥·시작 지형은 안 부숨). 쏘면 반동으로 뒤로
+  CANNON_SHELL_SPEED: 12,
+  CANNON_SHELL_RANGE: 12, // 이만큼 날아가면 사라짐
+  CANNON_SHELL_RADIUS: 0.3,
+  CANNON_SHELL_DAMAGE: 10,
+  CANNON_SHELL_KB_SPEED: 6,
+  CANNON_SHELL_KB_UP: 4,
+  CANNON_SHELL_STUN_MS: 600,
+  CANNON_RECOIL: 3, // 반동 (땅, 뒤로 수평 속도)
+  CANNON_RECOIL_AIR: 5, // 반동 (공중, 매 발)
+  // F 발밑 포격: 위로 크게 + 발밑 범위 넉백 (공중에서도)
+  CANNON_JUMP_UP: 11,
+  CANNON_FBLAST_RANGE: 1.8,
+  CANNON_FBLAST_DAMAGE: 6,
+  CANNON_FBLAST_KB_SPEED: 5,
+  CANNON_FBLAST_KB_UP: 5,
+  CANNON_FBLAST_STUN_MS: 600,
+  // R 대형 포탄: 조준 방향 직선으로 관통하며 지나간 쌓인 블록 전부 부숨 (바닥·시작 지형은 안 부숨, 통과). 사람은 밀치고 계속 날아감, 끝(사거리·필드 밖·바닥)에서 폭발
+  CANNON_R_SPEED: 20,
+  CANNON_R_RANGE: 14,
+  CANNON_R_RADIUS: 0.6,
+  CANNON_R_DAMAGE: 10,
+  CANNON_R_KB_SPEED: 5,
+  CANNON_R_KB_UP: 3,
+  CANNON_R_STUN_MS: 600,
+  CANNON_R_BLAST_RANGE: 2.2,
+  CANNON_R_BLAST_DAMAGE: 15,
+  CANNON_R_BLAST_KB_SPEED: 7,
+  CANNON_R_BLAST_KB_UP: 6,
+  CANNON_R_BLAST_STUN_MS: 800,
+  CANNON_R_RECOIL: 8,
   // 건축가 (2026-10-25 재혁 확정, docs/characters.md 3.1 — 지형·설치형 "깔고, 쳐서 터뜨린다". 수치는 초안, 밸런스는 나머지 캐릭터 뒤)
   // 건축가 블록: 벽(지상 F)·3타 블록(평타 3타)·발판(공중 F)·대폭발(R). BUILDER_BLOCK_MS 뒤 사라짐.
   // 건축가 망치(평타)로 치면 폭발: 치는 방향 앞쪽 사람만 그쪽으로 날림, 건축가 자신은 안 맞음. 같은 F 벽 칸끼리만 연쇄. 상대는 못 터뜨림
