@@ -78,6 +78,8 @@ export class Game {
     this.bigBombs = []; // 건축가 대폭발 대기: { owner, group, at, dir }
     this.holes = []; // 폭발 구멍 (테스트 옵션 BUILDER_BLAST_HOLE): { x, y, z, v, at }
     this.quakes = []; // 탱크 R 솟는 땅 (잠깐 솟았다 가라앉음): { cells: [[x,y,z]], at }
+    this.shells = []; // 대포수 포탄 (보통·대형)
+    this.shellCounter = this.shellCounter || 0;
     this.bgroup = 0;
     this.bombCounter = 0;
     this.roundNumber = 0;
@@ -235,6 +237,8 @@ export class Game {
       marks: new Map(), // 사냥꾼 표식 (이 사람에게 붙은): 사냥꾼 id -> { n, at }
       leap: null, // 사냥꾼 F: { at(도약 시작), target, endAt, vx, vy }
       huntAim: null, // 사냥꾼 R 조준: { at(쏘는 시각) }
+      cannonAmmo: C.CANNON_AMMO_MAX, // 대포수 탄 (판 시작·부활 때 가득)
+      reloadAt: 0, // 대포수 다음 한 발 장전 시각 (0 = 가득)
       atk: null, // 캐릭터 평타 준비 중: { n(몇 번째 타, 공중 0), def, at(판정 시각) }
       atkQueued: false, // 후딜·준비 중에 누른 평타 (끝나면 나감)
       atkLanded: false, // 마지막 평타가 상대를 맞혔나 (맞았으면 후딜을 스킬로 캔슬)
@@ -514,6 +518,8 @@ export class Game {
     this.bigBombs = []; // 건축가 대폭발 대기: { owner, group, at, dir }
     this.holes = []; // 폭발 구멍 (테스트 옵션 BUILDER_BLAST_HOLE): { x, y, z, v, at }
     this.quakes = []; // 탱크 R 솟는 땅 (잠깐 솟았다 가라앉음): { cells: [[x,y,z]], at }
+    this.shells = []; // 대포수 포탄 (보통·대형)
+    this.shellCounter = this.shellCounter || 0;
     this.bgroup = 0;
     this.bombCounter = 0;
     this.deaths = [];
@@ -576,6 +582,8 @@ export class Game {
         marks: new Map(),
         leap: null,
         huntAim: null,
+        cannonAmmo: C.CANNON_AMMO_MAX,
+        reloadAt: 0,
         atk: null,
         atkQueued: false,
         atkLanded: false,
@@ -826,6 +834,8 @@ export class Game {
       marks: new Map(),
       leap: null,
       huntAim: null,
+      cannonAmmo: C.CANNON_AMMO_MAX,
+      reloadAt: 0,
       atk: null,
       atkQueued: false,
       atkLanded: false,
@@ -1040,6 +1050,7 @@ export class Game {
     const n = air ? (p.airN > 0 && live && p.airN < set.air.length ? p.airN + 1 : 1) : p.chainN > 0 && live && p.chainN < set.chain.length ? p.chainN + 1 : 1;
     let def = air ? set.air[n - 1] : set.chain[n - 1];
     if (def.loaded && p.loaded) def = def.loaded; // 갈고리 3타: 장전돼 있으면 탕
+    if (def.ammo && p.cannonAmmo > 0) def = def.ammo; // 대포수: 탄이 있으면 포탄
     // 닌자 R 강화: 지상 1~3타와 공중 평타가 표창 2연발 (4타 올려 차기는 그대로)
     if (p.char === 'ninja' && this.time < p.empowerUntil && (air || n <= 3)) def = { ...def, name: '표창', windup: C.NINJA_STAR.windup, step: 0, star: true };
     // 연타를 이어 가는 중인 타 (지상 2타~, 공중 2타~, 띄우는 마지막 지상 타 뒤 공중 1타): 시간 마무리가 되지 않음
@@ -1057,6 +1068,10 @@ export class Game {
     p.atk = null;
     const set = C.BASIC_ATTACKS[p.char];
     if (def.star) return this.starVolley(p, n, air, def, chained);
+    if (def.shell) {
+      this.cannonShot(p);
+      return this.basicChain(p, n, air, false, def);
+    }
     const fx = Math.cos(p.yaw);
     const fy = Math.sin(p.yaw);
     if (def.step) {
@@ -1224,7 +1239,9 @@ export class Game {
             ? this.builderWall(p)
             : p.char === 'hunter'
               ? this.hunterLeap(p)
-              : this.hookPull(p);
+              : p.char === 'cannon'
+                ? this.cannonJump(p)
+                : this.hookPull(p);
     if (!ok) {
       p.skillReadyAt = this.time; // 못 쓰는 상황(벽 세울 자리 없음 등)이면 쿨타임 안 돎 — 갈고리는 빗나가도 돎 (hookPull 이 정함)
       return false;
@@ -1239,7 +1256,8 @@ export class Game {
     if (p.char === 'tank') this.tankSlamStart(p);
     else if (p.char === 'ninja') this.ninjaEmpower(p); else if (p.char === 'builder') {
       if (!this.builderBigBomb(p)) return false; // 솟을 자리가 없으면 게이지 그대로
-    } else if (p.char === 'hunter') {
+    } else if (p.char === 'cannon') this.cannonBig(p);
+    else if (p.char === 'hunter') {
       if (!this.hunterAim(p)) return false; // 사냥꾼: 쏠 표식 대상이 없으면 게이지 그대로
     } else if (!this.hookGrab(p)) return false; // 갈고리: 닿는 블록이 없으면 게이지 그대로
     p.ult = 0;
@@ -1590,6 +1608,181 @@ export class Game {
     }
     const txt = shots.map((x) => `${this.players.get(x.target).name} ${x.marks}개${x.blocked ? ' 막힘' : ''}`).join(', ');
     this.log(`  [필살] ${p.name} 처형 사격 (${txt || '대상 없음'})${refund ? ' 게이지 회수' : ''}`);
+  }
+
+  // ---- 대포수 (2026-10-26, docs/characters.md 3.6) ----
+  // 쌓인 블록 1칸 부숨 (격자 칸 또는 떨어지는 블록의 한 칸). 시작 지형·바닥은 안 부숨. 부쉈으면 true
+  breakCell(x, y, z) {
+    const key = cellKey(x, y, z);
+    if (this.pieceCells.has(key)) {
+      const pc = this.pieces.find((q) => q.id === this.pieceCells.get(key));
+      pc.cells = pc.cells.filter(([dx, dy]) => !(pc.px + dx === x && pc.py + dy === y));
+      if (!pc.cells.length) this.removePiece(pc);
+      else {
+        this.refreshPieceCells();
+        this.updateLanding(pc);
+      }
+      return true;
+    }
+    if (!this.inXY(x, y) || z < 0 || z >= C.GRID_H) return false;
+    const v = this.grid[this.idx(x, y, z)];
+    if (!v || v === CELL.TERRAIN) return false;
+    this.grid[this.idx(x, y, z)] = 0;
+    this.gridChanged();
+    return true;
+  }
+
+  // 시간 장전: 탄이 덜 찼으면 CANNON_RELOAD_MS 마다 한 발
+  cannonReload(p) {
+    if (p.cannonAmmo >= C.CANNON_AMMO_MAX) {
+      p.reloadAt = 0;
+      return;
+    }
+    if (!p.reloadAt) p.reloadAt = this.time + C.CANNON_RELOAD_MS;
+    else if (this.time >= p.reloadAt) {
+      p.cannonAmmo++;
+      p.reloadAt = p.cannonAmmo < C.CANNON_AMMO_MAX ? this.time + C.CANNON_RELOAD_MS : 0;
+      this.emit({ type: 'reload', who: p.id, ammo: p.cannonAmmo });
+    }
+  }
+
+  // 포탄 (big = R 대형 포탄) 을 조준 방향으로 쏨 + 반동
+  fireShell(p, big) {
+    const cp = Math.cos(p.pitch || 0);
+    const dir = { x: cp * Math.cos(p.yaw), y: cp * Math.sin(p.yaw), z: Math.sin(p.pitch || 0) };
+    const speed = big ? C.CANNON_R_SPEED : C.CANNON_SHELL_SPEED;
+    const range = big ? C.CANNON_R_RANGE : C.CANNON_SHELL_RANGE;
+    const sh = {
+      id: ++this.shellCounter,
+      big,
+      owner: p.id,
+      x: p.x + dir.x * 0.5,
+      y: p.y + dir.y * 0.5,
+      z: p.z + C.EYE_HEIGHT - 0.2 + dir.z * 0.5,
+      dir,
+      speed,
+      dieAt: this.time + (range / speed) * 1000,
+      hit: new Set(),
+    };
+    this.shells.push(sh);
+    const recoil = big ? C.CANNON_R_RECOIL : p.grounded ? C.CANNON_RECOIL : C.CANNON_RECOIL_AIR;
+    const hl = Math.hypot(dir.x, dir.y) || 1;
+    p.kbx -= (dir.x / hl) * recoil;
+    p.kby -= (dir.y / hl) * recoil;
+    this.emit({ type: 'shellFire', who: p.id, id: sh.id, big, x: sh.x, y: sh.y, z: sh.z, dir, speed, recoil });
+    return sh;
+  }
+
+  // 평타 포탄: 탄 1발 쓰고 쏨
+  cannonShot(p) {
+    p.cannonAmmo--;
+    if (!p.reloadAt) p.reloadAt = this.time + C.CANNON_RELOAD_MS;
+    this.fireShell(p, false);
+    this.log(`  [포탄] ${p.name} 발사 (남은 ${p.cannonAmmo}발)`);
+  }
+
+  // F 발밑 포격: 위로 크게 + 발밑 범위 넉백
+  cannonJump(p) {
+    p.vz = C.CANNON_JUMP_UP;
+    p.grounded = false;
+    const hits = [];
+    for (const t of this.players.values()) {
+      if (!this.foe(p, t)) continue;
+      const dx = t.x - p.x;
+      const dy = t.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d > C.CANNON_FBLAST_RANGE || Math.abs(t.z - p.z) > 1.5) continue;
+      const a = this.rng() * Math.PI * 2;
+      const hit = this.applyKnockback(t, d > 0.05 ? dx : Math.cos(a), d > 0.05 ? dy : Math.sin(a), C.CANNON_FBLAST_KB_SPEED, C.CANNON_FBLAST_KB_UP, C.CANNON_FBLAST_STUN_MS, C.CANNON_FBLAST_DAMAGE, { by: p.id, kind: 'groundshot' }, true);
+      this.emit({ type: 'hit', kind: 'groundshot', by: p.id, target: t.id, ok: hit });
+      if (hit) hits.push(t.name);
+    }
+    this.emit({ type: 'groundShot', who: p.id, x: p.x, y: p.y, z: p.z, r: C.CANNON_FBLAST_RANGE });
+    this.log(`  [스킬] ${p.name} 발밑 포격${hits.length ? ` → ${hits.join(', ')}` : ''}`);
+    return true;
+  }
+
+  // R 대형 포탄
+  cannonBig(p) {
+    this.fireShell(p, true);
+    this.log(`  [필살] ${p.name} 대형 포탄 발사`);
+    return true;
+  }
+
+  // 포탄 이동: 보통 포탄은 처음 닿는 것에서 멈춤 (사람 넉백 / 쌓인 블록 1칸 부숨). 대형 포탄은 관통하며 쌓인 블록 부수고 사람 밀침, 끝에서 폭발
+  updateShells(dt) {
+    for (const sh of [...this.shells]) {
+      const sub = Math.max(1, Math.ceil((sh.speed * dt) / 0.15));
+      const h = dt / sub;
+      let end = null;
+      for (let s = 0; s < sub && !end; s++) {
+        sh.x += sh.dir.x * sh.speed * h;
+        sh.y += sh.dir.y * sh.speed * h;
+        sh.z += sh.dir.z * sh.speed * h;
+        const r = sh.big ? C.CANNON_R_RADIUS : C.CANNON_SHELL_RADIUS;
+        const owner = this.players.get(sh.owner);
+        // 사람
+        for (const t of this.players.values()) {
+          if (!this.onField(t) || t.id === sh.owner || sh.hit.has(t.id)) continue;
+          if (!(sh.x > t.x - C.PLAYER_HALF - r && sh.x < t.x + C.PLAYER_HALF + r && sh.y > t.y - C.PLAYER_HALF - r && sh.y < t.y + C.PLAYER_HALF + r && sh.z > t.z - r && sh.z < t.z + C.PLAYER_HEIGHT + r)) continue;
+          sh.hit.add(t.id);
+          const big = sh.big;
+          const hit = this.applyKnockback(t, sh.dir.x, sh.dir.y, big ? C.CANNON_R_KB_SPEED : C.CANNON_SHELL_KB_SPEED, big ? C.CANNON_R_KB_UP : C.CANNON_SHELL_KB_UP, big ? C.CANNON_R_STUN_MS : C.CANNON_SHELL_STUN_MS, big ? C.CANNON_R_DAMAGE : C.CANNON_SHELL_DAMAGE, { by: sh.owner, kind: big ? 'bigshell' : 'shell' }, true);
+          this.emit({ type: 'hit', kind: big ? 'bigshell' : 'shell', by: sh.owner, target: t.id, ok: hit });
+          this.log(`  [포탄] ${owner ? owner.name : '?'} → ${t.name} ${hit ? `넉백 (${t.name} ${t.damage}%)` : '무적이라 무시'}${big ? ' 대형' : ''}`);
+          if (!big) {
+            end = { what: 'player' };
+            break;
+          }
+        }
+        if (end) break;
+        // 블록·바닥
+        if (sh.big) {
+          const broke = [];
+          for (let x = Math.floor(sh.x - r); x <= Math.floor(sh.x + r); x++) for (let y = Math.floor(sh.y - r); y <= Math.floor(sh.y + r); y++) for (let z = Math.floor(sh.z - r); z <= Math.floor(sh.z + r); z++) if (this.breakCell(x, y, z)) broke.push([x, y, z]);
+          if (broke.length) {
+            this.emit({ type: 'blockBreak', who: sh.owner, cells: broke, big: true });
+            this.log(`  [포탄] ${owner ? owner.name : '?'} 대형 포탄 블록 ${broke.length}칸 부숨`);
+          }
+          if (sh.z < 0 && this.inXY(Math.floor(sh.x), Math.floor(sh.y))) end = { what: 'floor' };
+        } else {
+          const cx = Math.floor(sh.x);
+          const cy = Math.floor(sh.y);
+          const cz = Math.floor(sh.z);
+          if (this.solidAt(cx, cy, cz)) {
+            const broke = this.breakCell(cx, cy, cz);
+            if (broke) {
+              this.emit({ type: 'blockBreak', who: sh.owner, cells: [[cx, cy, cz]], big: false });
+              this.log(`  [포탄] ${owner ? owner.name : '?'} 블록 부숨 (${cx},${cy},${cz})`);
+            }
+            end = { what: broke ? 'block' : 'terrain' };
+          }
+        }
+      }
+      if (!end && this.time >= sh.dieAt) end = { what: 'expire' };
+      if (!end) continue;
+      this.shells = this.shells.filter((x) => x !== sh);
+      this.emit({ type: 'shellEnd', id: sh.id, who: sh.owner, big: sh.big, what: end.what, x: sh.x, y: sh.y, z: sh.z });
+      if (sh.big) this.bigShellBlast(sh);
+    }
+  }
+
+  // 대형 포탄 끝 폭발: 둘레 사람을 바깥으로
+  bigShellBlast(sh) {
+    const owner = this.players.get(sh.owner);
+    let n = 0;
+    for (const t of this.players.values()) {
+      if (!owner || !this.foe(owner, t)) continue;
+      const dx = t.x - sh.x;
+      const dy = t.y - sh.y;
+      const d = Math.hypot(dx, dy);
+      if (d > C.CANNON_R_BLAST_RANGE || Math.abs(t.z + 0.8 - sh.z) > C.CANNON_R_BLAST_RANGE) continue;
+      const hit = this.applyKnockback(t, d > 0.05 ? dx : sh.dir.x, d > 0.05 ? dy : sh.dir.y, C.CANNON_R_BLAST_KB_SPEED, C.CANNON_R_BLAST_KB_UP, C.CANNON_R_BLAST_STUN_MS, C.CANNON_R_BLAST_DAMAGE, { by: sh.owner, kind: 'bigshell' }, true);
+      if (hit) n++;
+      this.emit({ type: 'hit', kind: 'bigshell', by: sh.owner, target: t.id, ok: hit });
+    }
+    this.emit({ type: 'bigShellBlast', who: sh.owner, x: sh.x, y: sh.y, z: sh.z, r: C.CANNON_R_BLAST_RANGE });
+    this.log(`  [필살] ${owner ? owner.name : '?'} 대형 포탄 폭발 (${n}명)`);
   }
 
   // ---- 건축가 (2026-10-25 재혁 확정, docs/characters.md 3.1) ----
@@ -2072,6 +2265,7 @@ export class Game {
       }
       if (p.char === 'ninja') this.ninjaTouch(p);
       if (p.marks.size) this.expireMarks(p);
+      if (p.char === 'cannon') this.cannonReload(p);
       if (p.leap) this.hunterLeapUpdate(p);
       if (p.huntAim && this.time >= p.huntAim.at) this.hunterShoot(p);
       if (p.castQueued && !p.atk && (p.atkLanded || this.time >= p.pushReadyAt)) this.castQueuedNow(p);
@@ -3291,6 +3485,7 @@ export class Game {
     this.updateLava(dtMs);
     this.updateItems();
     this.updateProjectiles(dt);
+    if (this.shells.length) this.updateShells(dt);
     this.updateBombs();
     if (C.ROUND_TIME_LIMIT_MS > 0 && this.time - this.roundStartTime >= C.ROUND_TIME_LIMIT_MS) {
       this.log('  시간 초과 → 무승부');
@@ -3384,6 +3579,7 @@ export class Game {
         empower: Math.max(0, p.empowerUntil - this.time), // 닌자 R 강화 남은 시간
         loaded: p.char === 'hook' ? p.loaded : undefined, // 갈고리 장전
         ultMax: this.ultMax(p), // 필살기 게이지 필요량 (사냥꾼 2배)
+        cannon: p.char === 'cannon' ? { ammo: p.cannonAmmo, max: C.CANNON_AMMO_MAX, reloadLeft: p.reloadAt ? Math.max(0, p.reloadAt - this.time) : 0, reloadMs: C.CANNON_RELOAD_MS } : undefined, // 대포수 탄·장전
         ultTarget: p.char === 'hunter' ? this.onField(p) && this.shotTargets(p).some((t) => !this.lineBlocked(p, t)) : undefined, // 사냥꾼: 지금 R 쏠 대상이 있나 (R 버튼 회색)
         marks: [...p.marks].map(([by, m]) => ({ by, n: m.n, left: Math.max(0, C.HUNTER_MARK_MS - (this.time - m.at)) })), // 이 사람에게 붙은 사냥꾼 표식
         respawnIn: !p.alive && p.respawnAt ? Math.max(0, p.respawnAt - this.time) : null,
@@ -3402,6 +3598,7 @@ export class Game {
       map: { choice: this.mapChoice, id: this.mapId, name: MAPS[this.mapId].name },
       items: this.items,
       projectiles: this.projectiles.map((pr) => ({ x: pr.x, y: pr.y, z: pr.z })),
+      shells: this.shells.map((sh) => ({ id: sh.id, owner: sh.owner, big: sh.big, x: sh.x, y: sh.y, z: sh.z, dir: sh.dir })), // 대포수 포탄 (보통·대형)
       bombs: this.bombs.map((b) => ({ id: b.id, x: b.x, y: b.y, z: b.z, left: Math.max(0, b.explodeAt - this.time) })),
       bblocks: [...this.bblocks.values()].map((b) => ({ x: b.x, y: b.y, z: b.z, owner: b.owner, kind: b.kind, group: b.group, left: b.kind === 'big' ? Math.max(0, (this.bigBombs.find((x) => x.group === b.group)?.at ?? this.time) - this.time) : Math.max(0, b.expiresAt - this.time) })), // 건축가 블록 (B: 색·깜빡임·묶음)
       gridVersion: this.gridVersion,
@@ -3437,10 +3634,10 @@ function basicLabel(set, n, air, def) {
 }
 
 // 필살기 공격 종류 (탱크 아머를 깸)
-const ULT_KINDS = new Set(['slam', 'bigbomb', 'blockslam', 'execute']);
+const ULT_KINDS = new Set(['slam', 'bigbomb', 'blockslam', 'execute', 'bigshell']);
 
 const BBLOCK_LOG = { wall: '벽', third: '3타 블록', pad: '발판' };
-const WEAPON_LOG = { push: '밀치기', pounce: '덮치기', execute: '처형사격', wallkick: '벽차기', blast: '블록폭발', bigbomb: '대폭발', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', blockslam: '블록내려찍기' };
+const WEAPON_LOG = { push: '밀치기', shell: '포탄', bigshell: '대형포탄', groundshot: '발밑포격', pounce: '덮치기', execute: '처형사격', wallkick: '벽차기', blast: '블록폭발', bigbomb: '대폭발', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', blockslam: '블록내려찍기' };
 
 function causeKo(cause) {
   if (cause === 'crush') return '압사';
