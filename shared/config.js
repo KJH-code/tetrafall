@@ -550,6 +550,10 @@ export const CONFIG = {
   HOOK_PULL_SLIDE_MS: 200, // 끌려오는 쪽: 갈고리가 닿을 때까지 제자리, 그 뒤 이 시간 동안 질질 끌려옴 (판정·위치는 서버가 즉시)
   BLOCK_PULSE_MS: 260, // 블록이 움직이거나 바뀌는 순간 그 칸이 번쩍 부풀었다 사라지는 시간 (render.js blockPulse)
   SPIN_ARC_MS: 380, // 갈고리 공중 스핀: 갈고리 끝이 그리는 원이 남는 시간
+  WARN_TAIL_MS: 80, // 바닥 예고를 서버 예고 시간보다 조금 더 (쾅 이벤트가 오는 지연만큼, 예고가 먼저 꺼지지 않게)
+  ULT_FAIL_MS: 900, // R 을 못 썼을 때 R 칸에 짧은 이유가 보이는 시간
+  ULT_FAIL_SHAKE_MS: 350, // R 칸이 빨갛게 흔들리는 시간
+  CAST_DROP_BLINK_MS: 400, // 기억해 둔 F·R 이 버려졌을 때 칸이 깜빡이는 시간
   BLOCK_JOLT: 0.1, // 옆 블록이 터지거나 뽑히거나 박힐 때 들썩이는 높이 (칸)
   LAND_JOLT: 0.06, // 테트리미노가 내려앉을 때 눌리는 깊이
   ROPE_RADIUS: 0.045, // 갈고리 밧줄 굵기 (칸)

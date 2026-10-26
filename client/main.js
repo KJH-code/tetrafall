@@ -204,6 +204,12 @@ function handleEvent(e) {
   }
   feelEvent(e);
   switch (e.type) {
+    case 'ultFail': // 내 R 을 못 씀: R 칸이 빨갛게 흔들림 + 아주 짧은 글자
+      if (e.who === myId) slotFail(e.reason);
+      return;
+    case 'castDrop': // 기억해 둔 F·R 이 버려짐: 그 칸이 살짝 깜빡 (글자 없음)
+      if (e.who === myId) slotBlink(e.kind === 'ult' ? 'skill-r' : 'skill-f');
+      return;
     case 'skill':
     case 'ult': {
       // 쓰는 순간 그 캐릭터 둘레에 빛 (스킬 빨강, 필살기 노란 빛기둥). 글자 없이, 누가 무엇인지는 캐릭터 모양으로
@@ -326,7 +332,7 @@ function handleEvent(e) {
     case 'slamWarn': // 탱크 내려찍기: 떨어질 범위를 바닥에 + 떠오르는 동안 아머
       renderer.armorOn(e.who, e.ms + 150);
       renderer.skillMove(e.who, 'tankSlam', e.ms);
-      renderer.markCircle(e.x, e.y, e.z, e.r, 0xff3020, e.ms);
+      renderer.markCircle(e.x, e.y, e.z, e.r, 0xff3020, e.ms + C.WARN_TAIL_MS); // 쾅 이벤트가 닿을 때까지 끊기지 않게
       break;
     case 'slam': {
       renderer.armorOff(e.who);
@@ -1558,7 +1564,7 @@ function updateSkills(p) {
   f.querySelector('.name').textContent = `${C.SKILL_NAMES[p.char]} ${p.skillCd > 0 ? `${(p.skillCd / 1000).toFixed(1)}s` : ''}`;
   f.querySelector('.fill').style.width = `${p.skillCd > 0 ? (1 - p.skillCd / cdTotal) * 100 : 100}%`;
   f.classList.toggle('ready', p.skillCd <= 0);
-  r.querySelector('.name').textContent = `${C.ULT_NAMES[p.char]} ${p.ult >= C.ULT_MAX ? '준비!' : `${p.ult}%`}`;
+  r.querySelector('.name').textContent = performance.now() < ultFailUntil ? ultFailText : `${C.ULT_NAMES[p.char]} ${p.ult >= C.ULT_MAX ? '준비!' : `${p.ult}%`}`;
   r.querySelector('.fill').style.width = `${(p.ult / C.ULT_MAX) * 100}%`;
   r.classList.toggle('ready', p.ult >= C.ULT_MAX);
   // 갈고리 장전: R 칸 옆 작은 탄 (금색 = 장전, 빈 고리 = 빈 총)
@@ -1574,6 +1580,24 @@ function updateSkills(p) {
   lastSelf = { ult: p.ult, damage: p.damage };
 }
 let lastSelf = null;
+// R 을 못 씀 (ultFail): 칸이 빨갛게 좌우로 흔들리고 이름 자리에 짧은 이유
+const ULT_FAIL_TEXT = { noBlock: '블록 없음', noSpace: '자리 없음', busy: '사용 중' };
+let ultFailUntil = 0;
+let ultFailText = '';
+function slotFail(reason) {
+  ultFailText = ULT_FAIL_TEXT[reason] || '못 씀';
+  ultFailUntil = performance.now() + C.ULT_FAIL_MS;
+  const r = $('skill-r');
+  r.animate(
+    [0, -7, 6, -4, 2, 0].map((x) => ({ transform: `translateX(${x}px)`, borderColor: '#ff3030', boxShadow: '0 0 10px #ff3030' })),
+    { duration: C.ULT_FAIL_SHAKE_MS, easing: 'ease-out' },
+  );
+  r.querySelector('.name').animate([{ color: '#ff5050' }, { color: '#ff5050' }], { duration: C.ULT_FAIL_MS });
+}
+// 기억해 둔 F·R 이 버려짐 (castDrop): 칸이 살짝 어두워졌다 돌아옴
+function slotBlink(id) {
+  $(id).animate([{ opacity: 1 }, { opacity: 0.35 }, { opacity: 1 }, { opacity: 0.35 }, { opacity: 1 }], { duration: C.CAST_DROP_BLINK_MS });
+}
 
 // 대기 화면 캐릭터 고르기 (이 브라우저에 기억, 접속할 때 보냄)
 const charSel = $('char-select');

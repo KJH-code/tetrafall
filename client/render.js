@@ -1093,7 +1093,7 @@ export class Renderer {
         continue;
       }
       // 예고는 끝이 가까울수록 빨리 깜빡, 잔상은 서서히 사라짐
-      const k = mk.pulse ? 0.55 + 0.45 * Math.sin(now / Math.max(40, left / 6)) : left / mk.ms;
+      const k = mk.pulse ? 0.7 + 0.3 * Math.sin(now / Math.max(40, left / 6)) : left / mk.ms; // 예고는 가장 옅을 때도 40% (끝까지 분명히)
       if (mk.grow) {
         const sc = 1 + mk.grow * (1 - left / mk.ms);
         mk.mesh.scale.set(sc, sc, mk.mesh.scale.z);
