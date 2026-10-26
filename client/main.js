@@ -555,6 +555,14 @@ function handleEvent(e) {
       if (e.what !== 'expire') fx.burst({ x: e.x, y: e.y, z: e.z }, null, C.BARD_NOTE_COLOR, 10, 3, 0.07, 0.4);
       else fx.burst({ x: e.x, y: e.y, z: e.z }, null, C.BARD_NOTE_COLOR, 4, 1, 0.05, 0.3);
       break;
+    case 'headBonk': { // 떨어지는 블록에 머리를 박았지만 살았음: 쿵 + 별 + 끄덕 (압사 납작과 다르게)
+      renderer.headBonk(e);
+      const d = e.who === myId ? 0 : distToMe(e.x, e.y, e.z);
+      sound.play('tap', { dist: d });
+      sound.play('land', { dist: d });
+      if (e.who === myId) fx.shake(C.HEAD_BONK_SHAKE, 160);
+      break;
+    }
     case 'dive': // 메탈 공중 기타 꽂기: 거꾸로 뒤집혀 아래로 빠르게 (속도선은 render)
       renderer.diveStart(e);
       sound.play('swing', { dist: e.who === myId ? 0 : distToMe(e.x, e.y, e.z) });

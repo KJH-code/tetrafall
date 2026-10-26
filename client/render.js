@@ -732,6 +732,13 @@ export class Renderer {
         glide: !!(p.bard && p.bard.glideLeft > 0 && air), amp: !!(p.bard && p.bard.ampLeft > 0),
       }, dt);
       if (a.dizzy > 0) a.dizzy -= dt;
+      // 머리 박음: 머리가 확 숙여지고 몸이 살짝 눌렸다 돌아옴 (압사 납작과 다르게 금방 펴짐)
+      const bonk = 1 - (performance.now() - (this.bonkAt?.get(p.id) ?? -1e9)) / C.HEAD_BONK_FX_MS;
+      if (bonk > 0) {
+        const k = Math.sin(Math.PI * Math.min(1, (1 - bonk) * 3)) * bonk; // 확 눌렸다 → 천천히 풀림
+        fig.neck.rotation.y += C.HEAD_BONK_NOD * k;
+        parts.position.z -= C.HEAD_BONK_SQUASH * k;
+      }
     }
     const stretch = a.vz > C.ANIM_AIR_VZ && !fig ? C.ANIM_STRETCH : 0; // 올라가는 중: 위로 늘어나고 옆은 가늘게
     const land = fig ? 0 : a.land; // TABS 식 몸은 찌그러지지 않음
@@ -1013,6 +1020,56 @@ export class Renderer {
     if (s < C.FIGURE_STRIKE_S) return { id: a.id, move: a.move, phase: 'strike', u: s / C.FIGURE_STRIKE_S, air: !!a.air };
     const r = (s - C.FIGURE_STRIKE_S) / a.rec;
     return r >= 1 ? done() : { id: a.id, move: a.move, phase: 'rec', u: r, air: !!a.air };
+  }
+
+  // ---------- 머리 박음 (headBonk): 떨어지는 블록에 머리를 박고 살아서 아래로 밀려남 ----------
+  // 블록 아랫면이 번쩍 들썩 + 흙먼지 + 머리 위로 노란 별이 빙글 (경직 동안) + 머리 끄덕 (animate)
+  headBonk(e) {
+    const now = performance.now();
+    (this.bonkAt ||= new Map()).set(e.who, now);
+    const top = e.z + C.PLAYER_HEIGHT;
+    const cell = [Math.floor(e.x), Math.floor(e.y), Math.floor(top + 0.05)];
+    this.blockPulse([cell], 0xffffff, { jolt: C.BLOCK_JOLT, opacity: 0.6 });
+    this.effects.burst({ x: e.x, y: e.y, z: top }, null, 0x9a8a78, 8, 2.5, 0.08, 0.35);
+    const mine = this.vm.on && this.playerMeshes.get(e.who) === this.vm.src; // 내 1인칭이면 머리 위 고리는 화면을 덮어서 뺌 (흔들림·소리로)
+    if (!mine) this.effects.ring({ x: e.x, y: e.y, z: top + 0.02 }, 0xffe040, 0.45, 0.2, true);
+    if (!this.bonkStarMat) {
+      this.bonkStarMat = noOutline(new THREE.MeshBasicMaterial({ color: 0xffe040 }));
+      this.bonkStarGeo = new THREE.OctahedronGeometry(0.06);
+    }
+    (this.bonks ||= []).push({
+      who: e.who,
+      t0: now,
+      stars: [0, 1, 2, 3].map(() => {
+        const m = new THREE.Mesh(this.bonkStarGeo, this.bonkStarMat);
+        this.scene.add(m);
+        return m;
+      }),
+    });
+  }
+
+  updateBonks() {
+    if (!this.bonks?.length) return;
+    const now = performance.now();
+    this.bonks = this.bonks.filter((b) => {
+      const s = this.smooth.get(b.who);
+      const u = (now - b.t0) / C.HEAD_BONK_FX_MS;
+      if (!s || u >= 1) {
+        for (const m of b.stars) this.scene.remove(m);
+        return false;
+      }
+      const g = this.playerMeshes.get(b.who);
+      const z = s.z + (g?.userData.labelZ ? g.userData.labelZ - C.LABEL_ABOVE_HEAD : C.PLAYER_HEIGHT) + 0.05;
+      b.stars.forEach((m, i) => {
+        const ang = now / 110 + (i * Math.PI) / 2;
+        const r = 0.22 + 0.1 * u;
+        m.position.set(s.x + Math.cos(ang) * r, s.y + Math.sin(ang) * r, z + Math.sin(ang * 2) * 0.03);
+        m.rotation.z = ang * 2;
+        m.scale.setScalar(u < 0.7 ? 1 : (1 - u) / 0.3);
+        m.visible = g ? g.visible : true;
+      });
+      return true;
+    });
   }
 
   // ---------- 바드 메탈 공중 기타 꽂기 (dive ~ diveEnd) ----------
@@ -2977,6 +3034,7 @@ export class Renderer {
     this.updateAmpWaves();
     this.updateFlats();
     this.updateDives(dt);
+    this.updateBonks();
     this.updateGrabs();
     this.updateBeams(state);
     if (me) this.viewArm.material.color.setHex(playerColor(me, state));
