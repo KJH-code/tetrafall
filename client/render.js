@@ -148,7 +148,7 @@ export function playerColor(p, state) {
 const _q = new THREE.Quaternion();
 const HEAVY_HITS = new Set(['bomb', 'shock', 'projectile', 'slam', 'wall', 'blast', 'bigbomb', 'quake', 'blockslam', 'execute', 'pounce', 'shell', 'bigshell', 'groundshot', 'leapwave', 'spinend']); // 몸이 크게 휘청하는 공격
 const MAX_SIDE = Math.max(C.GRID_W, C.GRID_D, ...Object.values(C.FIELD_SIZES));
-const MAX_CELLS = MAX_SIDE * MAX_SIDE * C.GRID_H; // 가장 큰 판 (인원별 필드 크기)
+const MAX_CELLS = MAX_SIDE * MAX_SIDE * Math.max(C.GRID_H, C.SKY_GRID_H || 0); // 가장 큰 판 (인원별 필드 크기 · 하늘 계단 높이)
 
 export class Renderer {
   // models: loadModels() 결과 (없으면 예전 도형으로 그림)
@@ -203,7 +203,8 @@ export class Renderer {
     // 하늘 시점: 필드가 화면에 꽉 차는 직교 카메라 (블록과 그림자가 같은 크기로 보인다)
     this.skyCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
     this.skyCamera.up.set(0, 1, 0);
-    this.skyCamera.position.set(this.W / 2, this.D / 2, C.SKY_CAMERA_HEIGHT);
+    this.H = C.GRID_H; // 지금 판 높이 (snapshot field.h: 하늘 계단이면 SKY_GRID_H)
+    this.skyCamera.position.set(this.W / 2, this.D / 2, this.skyCamH());
     this.skyCamera.lookAt(this.W / 2, this.D / 2, 0);
     this.fitSkyCamera();
 
@@ -229,7 +230,7 @@ export class Renderer {
     this.scene.add(this.floor);
     // 필드 경계 (높이 표시용 세로선)
     this.edges = new THREE.LineSegments(
-      new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, C.GRID_H)),
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), // setField 가 판 크기로 늘임
       new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 }),
     );
     this.scene.add(this.edges);
@@ -341,10 +342,17 @@ export class Renderer {
   }
 
   // 판 크기 (snapshot field: 인원별 10·12·14, 대기실 10). 바뀔 때만 바닥·격자선·경계·용암·해 그림자·하늘 시점을 맞춘다
-  setField(w, d, force = false) {
-    if (!(w > 0 && d > 0) || (!force && w === this.W && d === this.D)) return;
+  // 하늘 시점 카메라 높이: 판 높이 + (SKY_CAMERA_HEIGHT - GRID_H) 여백
+  skyCamH() {
+    return C.SKY_CAMERA_HEIGHT - C.GRID_H + (this.H || C.GRID_H);
+  }
+
+  setField(w, d, force = false, h = this.H || C.GRID_H) {
+    if (!(w > 0 && d > 0 && h > 0) || (!force && w === this.W && d === this.D && h === this.H)) return;
     this.W = w;
     this.D = d;
+    this.H = h;
+    this.skyCamera.far = Math.max(100, this.skyCamH() + 20);
     const cx = w / 2;
     const cy = d / 2;
     this.floor.scale.set(w, d, 1);
@@ -362,8 +370,8 @@ export class Renderer {
     this.gridLines.scale.set(w / n, 1, d / n);
     this.gridLines.position.set(cx, cy, 0.002);
     this.scene.add(this.gridLines);
-    this.edges.scale.set(w, d, 1);
-    this.edges.position.set(cx, cy, C.GRID_H / 2);
+    this.edges.scale.set(w, d, this.H);
+    this.edges.position.set(cx, cy, this.H / 2);
     this.lava.scale.set(w + 12, d + 12, 1);
     this.lavaTop.scale.set(w + 12, d + 12, 1);
     this.dome.position.set(cx, cy, 0);
@@ -371,9 +379,9 @@ export class Renderer {
     this.sun.position.copy(center).addScaledVector(new THREE.Vector3(...C.SUN_DIR).normalize(), 30);
     this.sun.target.position.copy(center);
     const reach = Math.hypot(w, d) / 2 + 4; // 필드 + 여백을 덮는 그림자 상자
-    Object.assign(this.sun.shadow.camera, { left: -reach, right: reach, top: reach + 4, bottom: -reach });
+    Object.assign(this.sun.shadow.camera, { left: -reach, right: reach, top: reach + 4 + (h - C.GRID_H), bottom: -reach, far: 60 + (h - C.GRID_H) * 1.5 }); // 하늘 계단이면 위로 더 (높은 블록도 그림자)
     this.sun.shadow.camera.updateProjectionMatrix();
-    this.skyCamera.position.set(cx, cy, C.SKY_CAMERA_HEIGHT);
+    this.skyCamera.position.set(cx, cy, this.skyCamH());
     this.skyCamera.lookAt(cx, cy, 0);
     this.fitSkyCamera();
     this.gridVersion = -1; // 격자 배열 길이가 바뀜 → 다시 그림
@@ -403,7 +411,7 @@ export class Renderer {
     const m = new THREE.Matrix4();
     const color = new THREE.Color();
     const count = { terrain: 0, build: 0, thrown: 0, shape: 0 };
-    for (let z = 0; z < C.GRID_H; z++) {
+    for (let z = 0; z < this.H; z++) {
       for (let y = 0; y < this.D; y++) {
         for (let x = 0; x < this.W; x++) {
           const v = grid[(z * this.D + y) * this.W + x];
@@ -443,6 +451,16 @@ export class Renderer {
       this.shapeMats[shape] = toon({ color: C.SHAPE_COLORS[shape] ?? 0xf0a030, map: this.tex.tetris, transparent: true, opacity: 1 });
     }
     return this.shapeMats[shape];
+  }
+
+  // 하늘 계단 블록 재질 (모양 색을 하얗게 섞어 밝게 + 하늘색 빛, 살짝 비침)
+  skyPieceMat(shape) {
+    this.skyMats ||= {};
+    if (!this.skyMats[shape]) {
+      const col = new THREE.Color(C.SHAPE_COLORS[shape] ?? 0xf0a030).lerp(new THREE.Color(0xffffff), C.SKY_PIECE_WHITEN);
+      this.skyMats[shape] = toon({ color: col.getHex(), emissive: 0x000000, map: this.tex.tetris, transparent: true, opacity: C.SKY_PIECE_OPACITY });
+    }
+    return this.skyMats[shape];
   }
 
   // 외곽선 켜기·끄기 (설정). 켜면 OutlineEffect 가 장면을 한 번 더 (뒤집힌 테두리로) 그린다
@@ -1562,6 +1580,18 @@ export class Renderer {
     });
   }
 
+  // melt 이벤트: 용암에 닿은 블록이 녹음 — 칸마다 주황 번쩍 + 지글 불티 + 검은·회색 연기 기둥
+  melt(e) {
+    const cells = (e.cells || []).filter((c) => c.every(Number.isFinite));
+    if (!cells.length) return;
+    this.blockPulse(cells, 0xff7020, { opacity: 0.8, ms: C.BLOCK_PULSE_MS * 1.6 });
+    for (const [x, y, z] of cells) {
+      const c = { x: x + 0.5, y: y + 0.5, z: z + 0.3 };
+      this.effects.burst(c, null, 0xffa030, 6, 3, 0.08, 0.4);
+      this.effects.burst({ x: c.x, y: c.y, z: c.z + 0.4 }, { x: 0, y: 0 }, 0x555555, 5, 1.2, 0.18, 1.1);
+    }
+  }
+
   // ---------- 대포수 ----------
   // 포탄 (snapshot shells): 보통 = 쇠공 + 회색 연기 꼬리, 대형 = 큰 쇠공 + 빨갛게 달아오른 테 + 불·연기 꼬리.
   // 30Hz 사이는 받은 위치에서 날아가는 방향으로 이어서 (끊김 없이). 끝나면 shellEnd 가 효과
@@ -2030,7 +2060,7 @@ export class Renderer {
       this.bbSig = sig;
       // 건축가 블록·탱크 솟는 땅은 격자에선 빼고 따로 그림
       this.bbSkip = new Set([...list.map((b) => [b.x, b.y, b.z]), ...quakeCells].map(([x, y, z]) => (z * this.D + y) * this.W + x));
-      if (state.grid && state.grid.length === this.W * this.D * C.GRID_H) this.updateGrid(state.grid);
+      if (state.grid && state.grid.length === this.W * this.D * this.H) this.updateGrid(state.grid);
     }
     const now = performance.now();
     const owners = new Map(state.players.map((p) => [p.id, p]));
@@ -2171,7 +2201,7 @@ export class Renderer {
     const gz = Math.floor(z);
     if (gx < 0 || gy < 0 || gx >= this.W || gy >= this.D) return false;
     if (gz < 0) return true;
-    if (gz >= C.GRID_H || !state.grid) return false;
+    if (gz >= this.H || !state.grid) return false;
     return !!state.grid[(gz * this.D + gy) * this.W + gx]; // 판 크기가 막 바뀌어 배열이 짧아도 빈칸
   }
 
@@ -2186,9 +2216,9 @@ export class Renderer {
   render(state, myId, dt, view, cam) {
     if (!state) return;
     this.curState = state;
-    if (state.field) this.setField(state.field.w, state.field.d);
+    if (state.field) this.setField(state.field.w, state.field.d, false, state.field.h || C.GRID_H);
     this.stepView(view, dt);
-    if (state.grid && state.grid.length === this.W * this.D * C.GRID_H && state.gridVersion !== this.gridVersion) {
+    if (state.grid && state.grid.length === this.W * this.D * this.H && state.gridVersion !== this.gridVersion) {
       this.updateGrid(state.grid);
       this.gridVersion = state.gridVersion;
     }
@@ -2387,7 +2417,7 @@ export class Renderer {
       const [x, y, z] = piece.cells[i];
       pm.position.set(x + 0.5, y + 0.5, z + 0.5);
       pm.visible = true;
-      pm.material = piece.thrown ? this.thrownMat : piece.controller !== null ? this.controlledMat : this.shapeMat(piece.shape);
+      pm.material = piece.thrown ? this.thrownMat : piece.controller !== null ? this.controlledMat : piece.sky ? this.skyPieceMat(piece.shape) : this.shapeMat(piece.shape);
       const mine = piece.phase === 'control' && piece.controller === myId;
       const showShadow = piece.shadowVisible || mine;
       sm.visible = showShadow;
@@ -2491,6 +2521,12 @@ export class Renderer {
     this.thrownMat.opacity = this.pieceMat.opacity;
     this.thrownMat.emissive.setHex(Math.floor(performance.now() / C.THROWN_BLINK_MS) % 2 ? 0x806000 : 0x000000);
     for (const m of Object.values(this.shapeMats)) m.opacity = this.pieceMat.opacity;
+    // 하늘 계단 블록: 모양 색보다 밝고 하늘색으로 은은히 빛나며 살짝 비침 (떠 있는 느낌). 하늘 시점이면 더 비침
+    const skyGlow = 0.55 + 0.45 * Math.sin(performance.now() / 500);
+    for (const m of Object.values(this.skyMats || {})) {
+      m.opacity = this.pieceMat.opacity < 1 ? 0.45 : C.SKY_PIECE_OPACITY;
+      m.emissive.setRGB(0.12 * skyGlow, 0.22 * skyGlow, 0.3 * skyGlow);
+    }
 
     // 1인칭(또는 관전) 자세
     const eye = new THREE.Vector3();
@@ -2552,10 +2588,10 @@ export class Renderer {
     }
     // 전환 중: 1인칭 자세 → 필드 위 높은 곳에서 내려다보는 자세로 날아오르며 줌인 (끝에서 직교 카메라로 교체)
     const t = b * b * (3 - 2 * b); // smoothstep
-    const top = new THREE.Vector3(this.W / 2, this.D / 2, C.SKY_CAMERA_HEIGHT);
+    const top = new THREE.Vector3(this.W / 2, this.D / 2, this.skyCamH());
     const center = new THREE.Vector3(this.W / 2, this.D / 2, 0);
     const half = Math.max(this.W, this.D) / 2 + 1;
-    const skyFov = (2 * Math.atan(half / C.SKY_CAMERA_HEIGHT) * 180) / Math.PI;
+    const skyFov = (2 * Math.atan(half / this.skyCamH()) * 180) / Math.PI;
     this.camera.fov = this.fov + (skyFov - this.fov) * t;
     this.camera.updateProjectionMatrix();
     this.camera.position.lerpVectors(eye, top, t);

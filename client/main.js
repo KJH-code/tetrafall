@@ -665,6 +665,13 @@ function feelEvent(e) {
       if (a) sound.play('fire', { dist: e.who === myId ? 0 : distToMe(a.x, a.y, a.z) });
       return;
     }
+    case 'melt': {
+      // 하늘 계단 블록이 용암에 녹음: 칸마다 주황 번쩍 + 지글 불티 + 연기
+      renderer.melt(e);
+      const c = e.cells?.[0];
+      if (c) sound.play('lava', { dist: distToMe(c[0] + 0.5, c[1] + 0.5, c[2]) });
+      return;
+    }
     case 'land': {
       let cx = 0;
       let cy = 0;
@@ -861,7 +868,7 @@ function renderRoomList() {
     const info = document.createElement('div');
     info.className = 'info';
     const bots = r.bots ? ` + 봇 ${r.bots} (${BOT_LEVEL_KO[r.botLevel] || r.botLevel})` : '';
-    info.textContent = `사람 ${r.humans}${bots} / ${r.max}명 · ${C.MODE_NAMES[r.mode] || '생존'} · 맵 ${MAP_KO[r.map] || r.map} · ${r.teamMode ? '팀전' : '개인전'}`;
+    info.textContent = `사람 ${r.humans}${bots} / ${r.max}명 · ${C.MODE_NAMES[r.mode] || '생존'} · 맵 ${MAP_KO[r.map] || r.map}${r.skyStairs ? ' · 하늘 계단' : ''} · ${r.teamMode ? '팀전' : '개인전'}`;
     const btn = document.createElement('button');
     btn.textContent = r.humans + r.bots >= r.max ? '꽉 참' : '들어가기';
     btn.disabled = r.humans + r.bots >= r.max;
@@ -947,6 +954,16 @@ document.addEventListener('keydown', (e) => {
 $('add-bot').addEventListener('click', () => send({ type: 'addBot' }));
 $('remove-bot').addEventListener('click', () => send({ type: 'removeBot' }));
 $('map-select').addEventListener('change', (e) => send({ type: 'setMap', map: e.target.value }));
+// 하늘 계단 (호스트, 판 사이): 맵 고르기 옆 체크 상자
+const skyLabel = document.createElement('label');
+skyLabel.style.cssText = 'font-size:15px;margin-left:8px';
+const skyBox = document.createElement('input');
+skyBox.type = 'checkbox';
+skyBox.id = 'sky-stairs';
+skyLabel.append(skyBox, ' 하늘 계단');
+skyLabel.title = '떨어지는 블록이 하늘까지 쌓여 위로 올라갈 수 있음 (높이 2배)';
+$('bot-btns').append(skyLabel);
+skyBox.addEventListener('change', () => send({ type: 'skyStairs', on: skyBox.checked }));
 $('bot-level').addEventListener('change', (e) => send({ type: 'botLevel', level: e.target.value }));
 $('mode-select').addEventListener('change', (e) => send({ type: 'setMode', mode: e.target.value }));
 const BOT_LEVEL_KO = { easy: '쉬움', normal: '보통', hard: '어려움' };
@@ -1402,6 +1419,7 @@ function updateHud() {
   // 맵: 호스트는 고르고, 다른 사람은 보기만
   const mapSel = $('map-select');
   if (state.map && document.activeElement !== mapSel) mapSel.value = state.map.choice;
+  if (state.skyStairs !== undefined) skyBox.checked = !!state.skyStairs;
   const lvSel = $('bot-level');
   if (state.botLevel && document.activeElement !== lvSel) lvSel.value = state.botLevel;
   const modeSel = $('mode-select');
@@ -1411,7 +1429,7 @@ function updateHud() {
   modeInfo.textContent = MODE_DESC[state.mode] || '';
   const mapInfo = $('map-info');
   mapInfo.classList.toggle('hidden', !(state.map && !isHost && between));
-  if (state.map) mapInfo.textContent = `맵: ${MAP_KO[state.map.choice] || state.map.choice} · 모드: ${C.MODE_NAMES[state.mode] || state.mode}`;
+  if (state.map) mapInfo.textContent = `맵: ${MAP_KO[state.map.choice] || state.map.choice} · 모드: ${C.MODE_NAMES[state.mode] || state.mode}${state.skyStairs ? ' · 하늘 계단' : ''}`;
   if (showBots) {
     $('add-bot').disabled = state.players.length >= Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length);
     $('remove-bot').disabled = !state.players.some((x) => x.isBot);
