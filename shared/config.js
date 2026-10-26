@@ -244,15 +244,17 @@ export const CONFIG = {
       ],
       air: [{ name: '갈고리 스핀', windup: 150, rec: 400, stun: 500, dmg: 6, kb: 3, up: 2, step: 0, angle: 180 }],
     },
-    // 사냥꾼 (2026-10-26 재혁 확정, docs/characters.md 3.5 사냥꾼형): 베기 → 반대 베기 → 찔러 넣기 (마무리, 맞으면 표식 +1). 속도는 탱크와 닌자 사이.
+    // 사냥꾼 (2026-10-26 재혁 확정, docs/characters.md 3.5 사냥꾼형): 베기 → 반대 베기 → 찔러 넣기 (맞으면 표식 +1). 속도는 탱크와 닌자 사이.
     // 공중 내려 베기 1타는 표식 없음. 수치는 초안 (stun·kb 는 문서에 없어 A 가 정함)
+    // 2026-10-26 재혁 ㄱ: 공중 내려 베기 = 마무리 (가+다 뒤 킬 낼 타가 없었음). 평평평(표식) → F 덮침 → 평평평 → 점프 → 공중 마무리. kb 는 탱크 공중 마무리 수준
+    // 2026-10-26 재혁 결정 "가": 찔러 넣기는 마무리 아님 (봇 판: 마무리 → 무적이라 F 덮침·R 이 거의 다 빗나감). 이어지는 타 수준 kb + 긴 경직 → F 덮침·평타로 이어 감
     hunter: {
       chain: [
         { name: '베기', windup: 100, rec: 250, stun: 450, dmg: 5, kb: 1.2, up: 2, step: 0.3 },
         { name: '반대 베기', windup: 100, rec: 250, stun: 550, dmg: 5, kb: 1.2, up: 2, step: 0.3 },
-        { name: '찔러 넣기', windup: 200, rec: 450, stun: 600, dmg: 8, kb: 4.4, up: 3, step: 0.4, finish: true, mark: true },
+        { name: '찔러 넣기', windup: 200, rec: 450, stun: 850, dmg: 8, kb: 1.5, up: 2, step: 0.4, mark: true }, // stun ≥ F 준비 200 + 도약 300 + 여유
       ],
-      air: [{ name: '내려 베기', windup: 150, rec: 400, stun: 500, dmg: 7, kb: 3, up: 2, step: 0 }],
+      air: [{ name: '내려 베기', windup: 150, rec: 400, stun: 600, dmg: 7, kb: 3.8, up: 1, step: 0, finish: true }],
     },
     // 대포수 (2026-10-26 재혁 확정, docs/characters.md 3.6 견제): 탄이 있으면 평타 = 포탄 (서버가 날리는 보이는 투사체, 지상·공중), 없으면 대포 후려치기.
     // 한 타짜리 (이어 치기 없음). 수치는 초안 (준비·후딜·경직·넉백은 A 가 정함)
@@ -412,7 +414,7 @@ export const CONFIG = {
   // 사냥꾼 (2026-10-26 재혁 확정, docs/characters.md 3.5 — "표식을 남기면 끝까지 사냥한다". 수치는 초안)
   // 표식: 상대에게 붙음 (사냥꾼마다 따로). 지상 평타 마무리 타(찔러 넣기)가 맞으면 +1, 최대 HUNTER_MARK_MAX, 마지막으로 쌓인 뒤 HUNTER_MARK_MS 면 사라짐
   HUNTER_MARK_MAX: 3,
-  HUNTER_MARK_MS: 5000,
+  HUNTER_MARK_MS: 10000, // 2026-10-26 재혁 5 → 10초 (콤보를 다 못 맞히면 표식이 금방 사라져 R 을 못 씀)
   // F 추적 도약: HUNTER_LEAP_RANGE 안 표식 있는 가장 가까운 상대에게 (예고 HUNTER_LEAP_WINDUP_MS) 도약해 덮침, 없으면 보는 방향 HUNTER_LEAP_DIST 칸. 덮치면 이어 치기 창 → 평평평
   HUNTER_LEAP_RANGE: 6,
   HUNTER_LEAP_DIST: 3,
@@ -420,6 +422,10 @@ export const CONFIG = {
   HUNTER_LEAP_MS: 300, // 도약에 걸리는 시간
   HUNTER_LEAP_UP: 6,
   HUNTER_LEAP_BEHIND: 0.8, // 덮칠 때 상대 앞 이 거리에 내림
+  // 2026-10-26 재혁 결정 "다": 도약 중 착지 직전까지 표식 대상을 따라감 (유도). 틱마다 내릴 자리를 대상 쪽으로 HUNTER_LEAP_HOMING 비율만큼,
+  // 처음 정한 자리에서 최대 HUNTER_LEAP_HOMING_MAX 칸까지. 남은 시간에 맞춰 속도를 다시 정함
+  HUNTER_LEAP_HOMING: 0.8,
+  HUNTER_LEAP_HOMING_MAX: 2,
   HUNTER_POUNCE_RANGE: 1.4, // 내렸을 때 이 거리 안이면 덮침 (피해 작게, 경직으로 평타 연결)
   HUNTER_POUNCE_DAMAGE: 4,
   HUNTER_POUNCE_STUN_MS: 500,
@@ -430,7 +436,7 @@ export const CONFIG = {
   HUNTER_SHOT_WINDUP_MS: 500,
   HUNTER_SHOT_DAMAGE_PER_MARK: 8,
   HUNTER_SHOT_KB_BASE: 2,
-  HUNTER_SHOT_KB_PER_MARK: 1.5,
+  HUNTER_SHOT_KB_PER_MARK: 2.5, // 2026-10-26 재혁 ㄴ 1.5 → 2.5 (킬 낼 기술)
   HUNTER_SHOT_UP: 3,
   HUNTER_SHOT_STUN_MS: 700,
   HUNTER_ULT_MULT: 2, // R 게이지 필요량 × 이 값 (대가)
@@ -472,7 +478,7 @@ export const CONFIG = {
   // 광전사 (2026-10-26 재혁 확정, docs/characters.md 3.7 — "밀릴수록 세진다". 수치는 초안)
   // 패시브 분노: 광전사가 주는 넉백(수평) × (1 + 자기 피해 % × BERSERKER_RAGE_PER_PERCENT), 상한 없음 (재혁).
   // 고정 넉백인 평타 중간 타(가로 베기)는 빼고 (세지면 2타가 안 닿음) — 마무리·공중 평타·F·R 에
-  BERSERKER_RAGE_PER_PERCENT: 0.003,
+  BERSERKER_RAGE_PER_PERCENT: 0.0025, // 2026-10-26 재혁 다 0.003 → 0.0025 (가·나 뒤에도 45%·소용돌이 필살기 킬 1위)
   // F 광폭 도약: 보는 방향으로 BERSERKER_LEAP_DIST 칸을 BERSERKER_LEAP_MS 동안 뛰고, 땅에 닿으면 착지 충격파 (낭떠러지 밖으로 뛰면 복귀기)
   BERSERKER_LEAP_DIST: 4,
   BERSERKER_LEAP_MS: 500,
@@ -484,7 +490,7 @@ export const CONFIG = {
   BERSERKER_WAVE_KB_UP: 4,
   BERSERKER_WAVE_STUN_MS: 600,
   // R 분노 소용돌이: BERSERKER_SPIN_MS 동안 회전 (이동 ×BERSERKER_SPIN_MOVE_MULT), BERSERKER_SPIN_TICK_MS 마다 닿는 상대를 작게 밀침 (빨아들이지 않음),
-  // 끝날 때 한 번 크게 날림 (분노는 R 시작 때 피해 % 로). 시작할 때 자기 피해 % 를 BERSERKER_RAGE_CUT 만큼 깎음 (0 아래로는 안 감)
+  // 끝날 때 한 번 크게 날림 (분노는 R 시작 때 깎은 뒤 피해 % 로 — 2026-10-26 재혁 가, 봇 504판 광전사 50%·소용돌이 필살기 킬 1위). 시작할 때 자기 피해 % 를 BERSERKER_RAGE_CUT 만큼 깎음 (0 아래로는 안 감)
   BERSERKER_SPIN_MS: 1500,
   BERSERKER_SPIN_MOVE_MULT: 0.6,
   BERSERKER_SPIN_RANGE: 1.6,
@@ -495,7 +501,7 @@ export const CONFIG = {
   BERSERKER_SPIN_TICK_STUN_MS: 400,
   BERSERKER_SPIN_END_RANGE: 2.0,
   BERSERKER_SPIN_END_DAMAGE: 10,
-  BERSERKER_SPIN_END_KB_SPEED: 5,
+  BERSERKER_SPIN_END_KB_SPEED: 4, // 2026-10-26 재혁 나 5 → 4 (가 뒤에도 47%·소용돌이 필살기 킬 1위)
   BERSERKER_SPIN_END_KB_UP: 5,
   BERSERKER_SPIN_END_STUN_MS: 800,
   BERSERKER_RAGE_CUT: 40,
@@ -585,6 +591,7 @@ export const CONFIG = {
   BOT_AIR_JUMP_VZ: 2, // 봇은 위로 가는 속도가 이보다 느려지면 (꼭대기 근처) 2단 점프
   BOT_REACTION_MS: 450, // 그림자가 보이고 나서 피하기 시작할 때까지 (사람 반응 흉내)
   BOT_AIM_ERROR_RAD: 0.3, // 투사체 조준 오차 (라디안, ± 이 안에서 무작위)
+  BOT_SHELL_AIM_ERROR_RAD: 0.3, // 대포수 포탄·대형 포탄 조준 오차 (좌우·위아래 각각 ±, 쏠 때마다 새로). 2026-10-26 총괄 승인: 오차 0 명중 77%·승률 58% → 0.15 명중 73%·44% → 0.3 명중 61%·40% (투사체 BOT_AIM_ERROR_RAD 와 같게)
   BOT_DROP_DELAY_MS: 250, // 조종 중 상대 위에 맞춘 뒤 떨어뜨리기까지
   BOT_TARGET_JITTER: 1, // 상대 고를 때 판마다 상대별로 0~이 값(칸)을 거리에 더함. 동점일 때 늘 같은 상대(사람)만 노리지 않게
   BOT_SKILL_INTERVAL_MS: 2000, // 봇이 캐릭터 스킬·필살기를 써 보는 간격 (×0.7~1.3 무작위)
@@ -597,9 +604,9 @@ export const CONFIG = {
   BOT_CONTROL_AIM_ERROR: 1, // 조종 블록 겨냥이 빗나가는 반경(칸) 기준. 아래 난이도 배수를 곱함 (보통·어려움 0 = 정확히 겨냥)
   // 봇 난이도 (호스트가 대기 화면에서 고름, 모든 봇에 같이). 위 BOT_* 값에 곱하는 배수. 보통 = 위 값 그대로 (조종 겨냥 오차만 0)
   BOT_LEVELS: {
-    easy: { CHAIN_DELAY_MS: 2.5, REACTION_MS: 1.7, AIM_ERROR_RAD: 2, DROP_DELAY_MS: 3, PUSH_INTERVAL_MS: 1.8, BRICK_AIM_ERROR: 1.6, CONTROL_AIM_ERROR: 1.5 },
+    easy: { CHAIN_DELAY_MS: 2.5, REACTION_MS: 1.7, AIM_ERROR_RAD: 2, SHELL_AIM_ERROR_RAD: 2, DROP_DELAY_MS: 3, PUSH_INTERVAL_MS: 1.8, BRICK_AIM_ERROR: 1.6, CONTROL_AIM_ERROR: 1.5 },
     normal: { CONTROL_AIM_ERROR: 0 },
-    hard: { CHAIN_DELAY_MS: 0.5, REACTION_MS: 0.6, AIM_ERROR_RAD: 0.5, DROP_DELAY_MS: 0.6, PUSH_INTERVAL_MS: 0.65, BRICK_AIM_ERROR: 0.6, CONTROL_AIM_ERROR: 0 },
+    hard: { CHAIN_DELAY_MS: 0.5, REACTION_MS: 0.6, AIM_ERROR_RAD: 0.5, SHELL_AIM_ERROR_RAD: 0.5, DROP_DELAY_MS: 0.6, PUSH_INTERVAL_MS: 0.65, BRICK_AIM_ERROR: 0.6, CONTROL_AIM_ERROR: 0 },
   },
   BOT_LEVEL_DEFAULT: 'normal',
 
