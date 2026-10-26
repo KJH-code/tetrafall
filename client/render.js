@@ -146,6 +146,7 @@ export function playerColor(p, state) {
   return PLAYER_COLORS[p.slot % PLAYER_COLORS.length];
 }
 const _q = new THREE.Quaternion();
+const _rage = new THREE.Color(0xff1a0a); // 광전사 분노 색
 const HEAVY_HITS = new Set(['bomb', 'shock', 'projectile', 'slam', 'wall', 'blast', 'bigbomb', 'quake', 'blockslam', 'execute', 'pounce']); // 몸이 크게 휘청하는 공격
 const MAX_SIDE = Math.max(C.GRID_W, C.GRID_D, ...Object.values(C.FIELD_SIZES));
 const MAX_CELLS = MAX_SIDE * MAX_SIDE * C.GRID_H; // 가장 큰 판 (인원별 필드 크기)
@@ -1961,6 +1962,20 @@ export class Renderer {
         m.opacity = opacity;
       }
       if (p.jumpLeft > 0 && !p.stunned) bodyMat.emissive.setHex(0x1a5a1a);
+      if (p.char === 'berserker' && p.alive) {
+        // 광전사 분노: 피해 % 따라 몸이 빨갛게 빛나고 (높으면 맥박처럼 출렁) 머리·어깨에서 김
+        const k = Math.max(0, Math.min(1, (p.damage || 0) / C.BERSERK_RAGE_PCT));
+        if (k > 0 && !p.stunned) {
+          const pulse = k > 0.6 ? 0.85 + 0.15 * Math.sin(performance.now() / 110) : 1;
+          bodyMat.color.lerp(_rage, C.BERSERK_RAGE_TINT * k); // 피부(플레이어 색)가 빨간 쪽으로
+          bodyMat.emissive.setRGB(C.BERSERK_RAGE_GLOW * k * pulse, 0.04 * k, 0);
+        }
+        if (k > 0.2 && Math.random() < dt * C.BERSERK_STEAM_RATE * k) {
+          const side = Math.random() < 0.5 ? -1 : 1;
+          const ox = Math.random() < 0.4 ? 0 : side * 0.25;
+          this.effects.burst({ x: s.x + Math.sin(p.yaw) * ox, y: s.y - Math.cos(p.yaw) * ox, z: s.z + (ox ? 1.25 : 1.6) }, { x: 0, y: 0, z: 1 }, 0xf4f4f4, 1, 0.9, 0.12, 0.8);
+        }
+      }
       if (p.empower > 0) {
         // 닌자 R 강화: 몸이 보라로 깜빡 + 손에서 보라 불티 (끝 1.5초는 빠르게)
         if (Math.floor(performance.now() / (p.empower < 1500 ? 70 : 160)) % 2) bodyMat.emissive.setHex(C.EMPOWER_GLOW);
