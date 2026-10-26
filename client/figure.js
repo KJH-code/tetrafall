@@ -386,11 +386,13 @@ function dressNinja(fig, costume, cloth) {
   fig.waist.add(sword);
   // 두 손에 단검: 주먹 끝에서 팔이 뻗는 쪽(-z)으로 짧은 날 + 검은 손잡이 → 찌르면 날이 앞으로
   for (const hand of fig.hands) {
-    hand.add(mesh(new THREE.BoxGeometry(0.022, 0.05, 0.05), black, 0, 0, -d.hand * 0.6));
+    const grip = mesh(new THREE.BoxGeometry(0.022, 0.05, 0.05), black, 0, 0, -d.hand * 0.6);
     const blade = new THREE.ConeGeometry(0.028, 0.2, 4);
     blade.rotateX(-Math.PI / 2); // 끝이 -z
     blade.scale(1, 0.35, 1); // 납작한 날
-    hand.add(mesh(blade, steel, 0, 0, -d.hand * 0.6 - 0.12));
+    const edge = mesh(blade, steel, 0, 0, -d.hand * 0.6 - 0.12);
+    grip.userData.dagger = edge.userData.dagger = true; // 1인칭은 왼손 단검 대신 표창 (viewmodel.js)
+    hand.add(grip, edge);
   }
 }
 

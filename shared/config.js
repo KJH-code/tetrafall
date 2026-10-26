@@ -730,6 +730,19 @@ export const CONFIG = {
   FIGURE_CHARS: ['tank', 'ninja', 'builder', 'hook', 'hunter', 'cannon', 'berserker', 'bard'], // TABS 식 몸(client/figure.js)으로 그리는 캐릭터 (2026-10-24). 캐릭터 없으면 로봇
   FIGURE_BODY: { tank: 'drum', ninja: 'slim', builder: 'sturdy', hook: 'reach', hunter: 'stalk', cannon: 'stout', berserker: 'brute', bard: 'lean' }, // 캐릭터별 체형 (client/figure.js BODIES). 2026-10-24 재혁: 탱크는 통통한 쪽
   FIGURE_SCALE: 1.15, // 몸 전체 크기 배율 (1 이면 로봇과 키가 같아도 가늘어서 작아 보임). 판정 상자는 그대로
+  // 1인칭 팔·무기 (client/viewmodel.js): 내 몸을 복제해 팔·무기만 따로 그림
+  VM_FOV: 62, // 뷰모델 카메라 화각 (필드 화각과 따로: 넓은 화각에서도 팔이 늘어나 보이지 않게)
+  VM_SCALE: 0.62, // 몸 크기 배율 (FIGURE_SCALE 에 곱함). 작을수록 팔이 화면을 덜 가림
+  VM_POS: { default: [0, -0.16, -0.26] }, // 어깨 높이 기준점 (카메라 기준: 오른쪽 +x, 위 +y, 뒤 +z). 캐릭터별로 덮어씀
+  VM_ARM_LOW: 1.0, // 내린 팔이 화면에선 이 각만큼 앞으로 든 팔 (라디안, π/2 = 정면)
+  VM_ARM_OUT: 0.5, // 옆으로 벌린 각 배율
+  VM_NARROW: 1.5, // 어깨 사이 거리 배율 (넓을수록 팔이 화면 양쪽 구석에서 나옴)
+  VM_ELBOW_ADD: 1.35, // 내린 팔일 때 팔꿈치를 더 굽히는 각
+  VM_BODY_FOLLOW: 0.45, // 몸통 숙임·비틂을 이만큼만 따라감
+  VM_BOB: 0.018, // 걷기 흔들림 (칸)
+  VM_BREATH: 0.004, // 숨쉬기 오르내림 (칸)
+  VM_GUN_AIM: [1.45, 0.25], // 갈고리 장전 권총을 겨눌 때 [어깨 앞으로 든 각, 팔꿈치]
+  VM_STAR_HIDE_MS: 350, // 닌자 표창을 던진 뒤 왼손이 비어 있는 시간
   FIGURE_HORN_SEGS: 6, // 광전사 뿔 마디 수 (마디마다 같은 각으로 꺾여 매끈한 곡선)
   FIGURE_HORN_LEN: 0.42, // 뿔 한 개 길이 (칸, 몸 크기 배율 전)
   FIGURE_HORN_CURL: 2.1, // 뿔이 뿌리에서 끝까지 위로 휘는 각 합 (라디안, C 자)
