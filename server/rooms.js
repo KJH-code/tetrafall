@@ -75,7 +75,7 @@ export class Rooms {
     const nick = cleanText(rawNick, C.NAME_MAX_LEN);
     const name = cleanText(rawName, C.ROOM_NAME_MAX_LEN) || (nick ? `${nick}의 방` : `방 ${code}`);
     const out = this.openLog(code);
-    const game = new Game((m) => out.log(m), { countdownMs: this.countdownMs, characters: true });
+    const game = new Game((m) => out.log(m), { countdownMs: this.countdownMs, characters: true, skyStairs: C.SKY_STAIRS_DEFAULT });
     game.setMap(C.MAP_DEFAULT);
     const room = { code, name, public: false, game, conns: new Map(), out };
     this.rooms.set(code, room);
@@ -190,6 +190,9 @@ export class Rooms {
       case 'setMode':
         if (host) game.setMode(String(msg.mode));
         break;
+      case 'skyStairs':
+        if (host) game.setSkyStairs(!!msg.on);
+        break;
       case 'start':
         if (host && !game.startRound()) {
           room.out.log(`시작 거부: 참가자 ${game.participants().length}명 (최소 ${C.MIN_PLAYERS}명, 관전자 제외)`);
@@ -235,6 +238,7 @@ export class Rooms {
         mode: r.game.mode,
         teamMode: r.game.teamMode,
         botLevel: r.game.botLevel,
+        skyStairs: r.game.skyStairs,
       });
     }
     return { type: 'rooms', rooms, count: this.rooms.size, max: C.ROOM_MAX };
