@@ -1005,7 +1005,20 @@ export const MOVES = {
     S: { shFwd: R(0.5), shOut: R(0.2), elbow: R(0.05), waistPitch: 0.6, thFwd: [0.7, 1.0], knee: [1.2, 1.5] },
   },
 
+  // 대포수: 탄이 있으면 포탄 (어깨 대포를 겨누듯 몸을 낮추고 → 쾅, 쏜 뒤는 반동 동작 cannonRecoil 이 이어받음), 없으면 대포째 후려치기 (허리를 크게 틀어 어깨 대포로)
+  '포탄': { W: { crouch: 0.35, waistPitch: 0.15, neckPitch: -0.1, shOut: [1.75, 0.6], shFwd: [0.25, 0.9], elbow: [1.7, 1.2] }, S: { crouch: 0.2, waistPitch: -0.2, shOut: [1.75, 0.8], shFwd: [0.25, 0.6], elbow: [1.7, 0.9] } },
+  '후려치기': {
+    W: { waistRoll: 1.0, waistSide: 0.15, crouch: 0.4, shOut: [1.75, 1.0], shFwd: [0.25, -0.4], elbow: [1.7, 0.8] },
+    S: { waistRoll: -0.9, waistPitch: 0.35, waistSide: -0.2, shOut: [1.75, 1.2], shFwd: [0.25, 0.6], elbow: [1.7, 0.4], thFwd: [-0.3, 0.6] },
+  },
+
   // ---- 스킬·필살기 ----
+  // 대포수 반동 (땅): 엉덩방아 — 다리가 앞으로 쭉 뻗으며 엉덩이부터 털썩, 몸은 뒤로 젖히고 왼팔 허우적 (대포는 어깨에 그대로)
+  cannonRecoil: { S: { thFwd: [1.45, 1.35], knee: [0.15, 0.3], waistPitch: -0.55, neckPitch: 0.35, shOut: [1.75, 1.6], shFwd: [0.25, 1.2], elbow: [1.7, 0.4] }, rec: 0.6 },
+  // R 대형 포탄 반동: 더 크게 — 뒤로 벌러덩 (다리가 하늘로)
+  cannonBigRecoil: { S: { thFwd: [2.0, 1.8], knee: [0.1, 0.5], waistPitch: -1.0, neckPitch: 0.5, shOut: [1.75, 2.2], shFwd: [0.25, 1.6], elbow: [1.7, 0.2] }, rec: 0.9 },
+  // F 발밑 포격: 대포를 발밑으로 쾅 쏴서 튀어 오름 — 웅크렸다가 다리를 쫙 펴고 만세
+  cannonJump: { S: { thFwd: [0.2, 0.2], thOut: [0.5, 0.5], knee: [0.1, 0.1], waistPitch: -0.2, neckPitch: -0.3, shOut: [1.75, 2.4], shFwd: [0.25, 0.3], elbow: [1.7, 0.2] }, rec: 0.6, float: true },
   // 사냥꾼 추적 도약: 네 발로 엎드려 웅크렸다가 (leapWarn) → 두 팔을 앞으로 뻗고 다리는 뒤로, 짐승처럼 덮침 (leap)
   hunterLeap: {
     W: { waistPitch: 1.15, shFwd: [1.25, 1.25], shOut: [0.3, 0.3], elbow: [0.2, 0.2], crouch: 1, neckPitch: -0.95 },
@@ -1223,6 +1236,11 @@ export function figureAnim(fig, st, dt, retry = false) {
     T.shFwd[0] = 0.35;
     T.shOut[0] = 0.55;
     T.elbow[0] = 1.95;
+  }
+  if (fig.cannon) {
+    // 쏜 순간 대포가 어깨 위에서 뒤로 툭 밀렸다 돌아옴
+    const k = fig.cannonKickAt ? Math.max(0, 1 - (performance.now() - fig.cannonKickAt) / (C.CANNON_KICK_MS || 1)) : 0;
+    fig.cannon.position.x = (fig.cannonBaseX ??= fig.cannon.position.x) - C.CANNON_KICK * k * k;
   }
   if (fig.cannon && !st.stunned && st.emote < 0) {
     // 대포를 어깨에 멘 자세: 오른손은 어깨 위 대포를 받치고, 왼손은 허리에 척 (걸으면 왼팔만 흔들림)
