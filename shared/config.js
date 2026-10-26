@@ -631,7 +631,11 @@ export const CONFIG = {
   FIGURE_HORN_LEN: 0.42, // 뿔 한 개 길이 (칸, 몸 크기 배율 전)
   FIGURE_HORN_CURL: 2.1, // 뿔이 뿌리에서 끝까지 위로 휘는 각 합 (라디안, C 자)
   BERSERK_RAGE_PCT: 120, // 광전사 분노 화면: 피해 % 가 이만큼이면 가장 화남 (눈 충혈·눈썹·핏줄·빡침 표시·김. 몸 색은 안 바꿈: 플레이어 구분 우선)
-  BERSERK_STEAM_RATE: 14, // 가장 화났을 때 초당 김 수
+  BERSERK_STEAM_RATE: 14,
+  BERSERK_SPIN_TURNS_PER_S: 2.2, // R 소용돌이 화면 회전 빠르기 (바퀴/초)
+  BERSERK_SPIN_FLAP: 2.2, // 소용돌이 중 수염·갈래·털 망토가 바깥으로 날리는 정도 (천 자락 들림 배율)
+  BERSERK_DIZZY_S: 1.4, // 소용돌이 끝나고 어지러워 비틀 + 눈 빙글 + 머리 위 별 (초)
+  BERSERK_SPIN_RING_COLOR: 0xff5030, // 소용돌이 범위 표시 (바닥 고리 + 도끼 궤적 원) // 가장 화났을 때 초당 김 수
   SHELL_SIZE: 0.2, // 화면 포탄 반지름 (판정 CANNON_SHELL_RADIUS 보다 작게: 잘 보이게만)
   SHELL_BIG_SIZE: 0.45, // 화면 대형 포탄 반지름
   CANNON_FLIP_PER_TURN: 4, // 대포수 공중 반동: recoil 이만큼마다 뒤로 한 바퀴 (공중 5 → 1바퀴, R 8 → 2바퀴)

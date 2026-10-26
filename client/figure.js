@@ -185,6 +185,7 @@ export function buildFigure(color, char, models) {
 // 왕눈알: 크게 튀어나온 흰자 + 앞을 보는 검은 눈동자. x 는 머리(또는 투구) 앞면에 맞춰 줌
 // sides: 그릴 눈 (-1 오른쪽, 1 왼쪽). 안대 찬 해적은 [1]. whiteMat: 흰자 재질 (광전사는 분노로 충혈되게 따로)
 function addEyes(neck, x, y, z, r, sides = [-1, 1], whiteMat = eyeWhiteMat) {
+  const pupils = [];
   for (const side of sides) {
     const white = mesh(new THREE.SphereGeometry(r, 12, 8), whiteMat, x, side * y, z);
     white.castShadow = false;
@@ -192,7 +193,9 @@ function addEyes(neck, x, y, z, r, sides = [-1, 1], whiteMat = eyeWhiteMat) {
     const pupil = mesh(new THREE.SphereGeometry(r * 0.45, 10, 6), pupilMat, r * 0.88, 0, 0);
     pupil.castShadow = false;
     white.add(pupil);
+    pupils.push(pupil);
   }
+  return pupils; // 어지러울 때 빙글 돌리려고 (광전사)
 }
 
 // 옷·소품 (캐릭터마다 고정 색). cloth = 피부 재질 (플레이어·팀 색): 옷 사이로 보이게 하거나 천 부분에 씀
@@ -777,7 +780,7 @@ function dressBerserker(fig, costume, cloth) {
   }
   // 분노 (render.js 가 피해 % 로 움직임): 충혈되는 흰자 (따로 재질) · 찌푸리는 굵은 눈썹 · 팔·이마에 솟는 핏줄. 피부(플레이어 색)는 그대로 둠
   const eyeMat = noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff }));
-  addEyes(fig.neck, d.headW * 0.46, 0.05, d.head * 0.5, C.FIGURE_EYE, [-1, 1], eyeMat);
+  fig.pupils = addEyes(fig.neck, d.headW * 0.46, 0.05, d.head * 0.5, C.FIGURE_EYE, [-1, 1], eyeMat);
   const brows = [-1, 1].map((side) => {
     const b = mesh(new THREE.BoxGeometry(0.03, 0.075, 0.025), ginger, d.headW * 0.5 + C.FIGURE_EYE * 0.6, side * 0.05, d.head * 0.5 + C.FIGURE_EYE + 0.012);
     fig.neck.add(b);
@@ -1013,7 +1016,17 @@ export const MOVES = {
     S: { waistRoll: -0.9, waistPitch: 0.35, waistSide: -0.2, shOut: [1.75, 1.2], shFwd: [0.25, 0.6], elbow: [1.7, 0.4], thFwd: [-0.3, 0.6] },
   },
 
+  // 광전사: 큰 도끼. 가로 베기 (오른쪽 뒤로 크게 젖혔다 120° 휩쓸기) → 내려찍기 (건축가 것과 같은 두 손 내려찍기) / 공중 회전 베기 (팔 뻗고 한 바퀴)
+  '가로 베기': {
+    W: { shOut: [1.6, 0.6], shFwd: [-0.3, 0.9], elbow: [0.4, 1.0], waistRoll: -1.1, waistSide: 0.15, crouch: 0.4 },
+    S: { shOut: [0.3, 0.9], shFwd: [1.5, 0.3], elbow: [0.1, 0.6], waistRoll: 1.0, waistPitch: 0.25, thFwd: [-0.2, 0.5] },
+  },
+  '회전 베기': { W: { shOut: [1.5, 1.3], shFwd: [0.2, 0.2], elbow: [0.2, 0.3], waistRoll: 0.7, thFwd: [1.0, 0.7], knee: [1.4, 1.1] }, S: { shOut: [1.55, 1.4], shFwd: [0.3, 0.2], elbow: [0.05, 0.3], waistRoll: 0, thFwd: [0.8, 0.9], knee: [1.2, 1.3] }, spin: -Math.PI * 2 },
+
   // ---- 스킬·필살기 ----
+  // 광전사 F 광폭 도약: 도끼를 두 손으로 머리 위로 치켜들고 무릎 접어 날아감 (rush) → 착지하며 쾅 내려찍기 (rushLand)
+  berserkerLeap: { S: { shFwd: [2.9, 2.9], shOut: [0.25, 0.25], elbow: [0.5, 0.5], waistPitch: -0.35, neckPitch: -0.3, thFwd: [1.3, 0.6], knee: [1.6, 1.0] }, rec: 0.6, float: true },
+  berserkerSlam: { S: { shFwd: [0.5, 0.5], shOut: [0.15, 0.15], elbow: [0.05, 0.05], waistPitch: 0.85, neckPitch: 0.2, crouch: 0.9 }, rec: 0.55 },
   // 대포수 반동 (땅): 엉덩방아 — 다리가 앞으로 쭉 뻗으며 엉덩이부터 털썩, 몸은 뒤로 젖히고 왼팔 허우적 (대포는 어깨에 그대로)
   cannonRecoil: { S: { thFwd: [1.45, 1.35], knee: [0.15, 0.3], waistPitch: -0.55, neckPitch: 0.35, shOut: [1.75, 1.6], shFwd: [0.25, 1.2], elbow: [1.7, 0.4] }, rec: 0.6 },
   // R 대형 포탄 반동: 더 크게 — 뒤로 벌러덩 (다리가 하늘로)
@@ -1232,11 +1245,22 @@ export function figureAnim(fig, st, dt, retry = false) {
     T.shFwd[1] = 0.55;
     T.elbow[1] = 0.7;
   }
-  if (fig.axe && !st.stunned && !st.act && st.emote < 0 && !st.air) {
+  if (fig.axe && !st.stunned && !st.act && st.emote < 0 && !st.air && !(st.whirl >= 0) && !(st.dizzy > 0)) {
     // 도끼를 어깨에 걸침: 오른팔꿈치를 접어 자루가 어깨 위로 넘어감
     T.shFwd[0] = 0.35;
     T.shOut[0] = 0.55;
     T.elbow[0] = 1.95;
+  }
+  if (st.dizzy > 0 && !st.stunned) {
+    // 소용돌이 끝: 어지러워 비틀 — 허리·고개가 느리게 휘청, 무릎 풀리고 팔은 허우적
+    const z = Math.min(1, st.dizzy * 1.5);
+    T.waistSide += Math.sin(t * 4.5) * 0.35 * z;
+    T.waistRoll += Math.sin(t * 2.9) * 0.4 * z;
+    T.neckPitch += Math.sin(t * 3.7) * 0.3 * z - 0.15 * z;
+    T.knee = T.knee.map((v, i) => v + (0.45 + Math.sin(t * 4.5 + i * 2) * 0.25) * z);
+    T.thFwd = T.thFwd.map((v) => v + 0.25 * z);
+    T.shOut = T.shOut.map((v, i) => v + (0.7 + Math.sin(t * 6 + i * 1.7) * 0.4) * z);
+    T.elbow = T.elbow.map((v) => v + 0.4 * z);
   }
   if (fig.cannon) {
     // 쏜 순간 대포가 어깨 위에서 뒤로 툭 밀렸다 돌아옴
@@ -1329,6 +1353,13 @@ export function figureAnim(fig, st, dt, retry = false) {
     if (m.spin && (act.phase === 'strike' || act.phase === 'rec')) spin = m.spin * ease(act.phase === 'strike' ? act.u * 0.2 : 0.2 + act.u * 0.8);
     if (m.turn && (act.phase === 'strike' || act.phase === 'rec')) spin = m.turn * (act.phase === 'strike' ? ease(act.u) : 1 - ease((act.u - 0.6) / 0.4)); // 옆으로 돌았다가 회복 끝에 돌아옴
   }
+  if (st.whirl >= 0 && !frozen) {
+    // 광전사 R 분노 소용돌이: 도끼 든 팔을 쭉 뻗고 팽이처럼 (처음 0.25초에 빨라짐). 원심력에 끌려가듯 도끼 쪽으로 기울고 고개는 뒤로 젖혀짐
+    const w = st.whirl;
+    const ramp = Math.min(1, w / 0.25);
+    spin = -Math.PI * 2 * C.BERSERK_SPIN_TURNS_PER_S * (w < 0.25 ? (w * w) / 0.5 : w - 0.125); // 빠르기가 0.25초 동안 0 → 최대 (돈 각 = 빠르기의 적분)
+    overlay(P, T, { shOut: [1.55, 1.45], shFwd: [0.35, 0.15], elbow: [0.05, 0.35], waistSide: -0.4, waistPitch: -0.1, neckPitch: -0.45, thOut: [0.2, 0.3], knee: [0.35, 0.2] }, ramp);
+  }
   fig.hips.rotation.z = spin;
   if (fig.gun) {
     // 장전이면 늘 손에 (빈 총이면 허리), 탕 동작 동안은 늘 손에. 장전이면 공이가 젖혀짐
@@ -1383,7 +1414,7 @@ export function figureAnim(fig, st, dt, retry = false) {
   }
   // 천 자락: 빨리 움직이거나 날아가면 뒤로 날리고 살랑임 (히트스톱 동안은 멈춤)
   if (frozen) return;
-  const sp = st.stunned ? 1 : st.walking || st.air ? Math.min(1, st.hs / C.MOVE_SPEED) : 0;
+  const sp = st.whirl >= 0 ? C.BERSERK_SPIN_FLAP : st.stunned ? 1 : st.walking || st.air ? Math.min(1, st.hs / C.MOVE_SPEED) : 0; // 소용돌이 중엔 수염·갈래·털 망토가 바깥으로 날림
   fig.flaps.forEach((f, i) => {
     f.obj.rotation.y = f.base + sp * f.lift + Math.sin(t * 9 + i * 1.7) * f.flutter * (0.3 + sp);
   });
@@ -1399,6 +1430,15 @@ export function figureAnim(fig, st, dt, retry = false) {
     }
     fig.rage.anger.visible = k > 0.5;
     fig.rage.anger.scale.setScalar(0.8 + 0.5 * Math.max(0, Math.sin(t * 9)));
+  }
+  if (fig.pupils) {
+    // 어지러움: 눈동자가 흰자 안에서 빙글빙글 (두 눈이 반대로)
+    fig.pupils.forEach((pu, i) => {
+      const r = C.FIGURE_EYE * 0.45;
+      const on = st.dizzy > 0 ? Math.min(1, st.dizzy * 2) : 0;
+      const a = t * 14 * (i ? -1 : 1);
+      pu.position.set(C.FIGURE_EYE * 0.88 * (1 - on * 0.15), Math.cos(a) * r * on, Math.sin(a) * r * on);
+    });
   }
   // 광전사 뿔: 마디마다 같은 각으로 위로 꺾여 매끈한 C 자 (뿌리는 바깥으로, 끝은 위로). 흐물거리지 않음 (2026-10-26 재혁: 그냥 위로 휘게)
   if (fig.horns) {

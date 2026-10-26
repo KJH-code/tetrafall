@@ -285,6 +285,7 @@ function handleEvent(e) {
     case 'interrupt': // 내 공격이 맞아서 끊김: 글자 없이 몸 동작만
       renderer.interrupt(e.who);
       if (e.kind === 'ult') renderer.aimEnd(e.who); // 조준 중에 끊긴 처형 사격
+      if (e.kind === 'ult' && playerById(e.who)?.char === 'berserker') renderer.setDizzy(e.who, C.BERSERK_DIZZY_S * 0.5); // 끊긴 소용돌이: 휘청 + 잠깐 어지러움
       break;
     case 'blink': // 닌자 순간 베기: 손발 다 뻗고 돌진 + 몸이 빠르게 미끄러져 감 (잔상·바람 줄) (공중에서도)
       renderer.skillMove(e.who, 'ninjaDash');
@@ -498,6 +499,31 @@ function handleEvent(e) {
       if (d !== undefined && d < 4) fx.shake(e.who === myId ? 0.18 : 0.1, 200);
       break;
     }
+    // ---- 광전사 ----
+    case 'rush': {
+      // F 광폭 도약: 도끼 치켜들고 날아감 + 발밑 흙먼지
+      renderer.skillMove(e.who, 'berserkerLeap');
+      fx.burst({ x: e.from.x, y: e.from.y, z: e.from.z + 0.1 }, null, 0xc0a070, 14, 3.5, 0.11, 0.45);
+      sound.play('swing', { dist: e.who === myId ? 0 : distToMe(e.from.x, e.from.y, e.from.z) });
+      break;
+    }
+    case 'rushLand':
+      renderer.skillMove(e.who, 'berserkerSlam');
+      renderer.rushLand(e);
+      break;
+    case 'spin': {
+      // R 분노 소용돌이 시작: 깎인 % 만큼 몸에서 김이 확 빠짐 (내 것이면 화면 % 가 쪼그라들며 바뀜). 도는 모습은 snapshot spinLeft 로
+      const a = playerById(e.who);
+      if (a) {
+        fx.burst({ x: a.x, y: a.y, z: a.z + 1.1 }, { x: 0, y: 0 }, 0xf4f4f4, 10 + Math.round((e.cut || 0) / 2), 4, 0.14, 0.7);
+        fx.ring({ x: a.x, y: a.y, z: a.z + 0.9 }, 0xff6040, 2.6, 0.3);
+      }
+      if (e.who === myId && e.cut > 0) damageEl.animate([{ transform: 'scale(1.6)', color: '#ffffff' }, { transform: 'scale(0.8)' }, { transform: 'scale(1)' }], { duration: 450 });
+      break;
+    }
+    case 'spinEnd':
+      renderer.spinEnd(e);
+      break;
     // ---- 대포수 ----
     case 'shellFire': {
       // 포구 불꽃·연기 + 쾅 + 반동 (땅: 엉덩방아, 공중: 뒤로 래그돌 회전)

@@ -146,7 +146,7 @@ export function playerColor(p, state) {
   return PLAYER_COLORS[p.slot % PLAYER_COLORS.length];
 }
 const _q = new THREE.Quaternion();
-const HEAVY_HITS = new Set(['bomb', 'shock', 'projectile', 'slam', 'wall', 'blast', 'bigbomb', 'quake', 'blockslam', 'execute', 'pounce', 'shell', 'bigshell', 'groundshot']); // 몸이 크게 휘청하는 공격
+const HEAVY_HITS = new Set(['bomb', 'shock', 'projectile', 'slam', 'wall', 'blast', 'bigbomb', 'quake', 'blockslam', 'execute', 'pounce', 'shell', 'bigshell', 'groundshot', 'leapwave', 'spinend']); // 몸이 크게 휘청하는 공격
 const MAX_SIDE = Math.max(C.GRID_W, C.GRID_D, ...Object.values(C.FIELD_SIZES));
 const MAX_CELLS = MAX_SIDE * MAX_SIDE * C.GRID_H; // 가장 큰 판 (인원별 필드 크기)
 
@@ -615,12 +615,106 @@ export class Renderer {
         air, walking, hs: a.hs, walk: a.walk, stunned: p.stunned || !!a.flipRag, dancing, emote, emoteT: a.emoteT, punch, holding: !!heldKind(p), t: a.t,
         hit, act: this.actFor(p.id), tumble: a.tumbleAmt, recover: a.recover * a.recoverPow, land: a.figLand * a.landPow, flip: a.flip >= 0 && !a.flipRag ? a.flip / C.FIGURE_FLIP_S : -1, rag: !!a.flipRag,
         sniffAt: fig.sniff ? this.sniffAngle(p) : null,
+        whirl: this.whirlTime(a, p), dizzy: a.dizzy > 0 ? a.dizzy / C.BERSERK_DIZZY_S : 0,
       }, dt);
+      if (a.dizzy > 0) a.dizzy -= dt;
     }
     const stretch = a.vz > C.ANIM_AIR_VZ && !fig ? C.ANIM_STRETCH : 0; // 올라가는 중: 위로 늘어나고 옆은 가늘게
     const land = fig ? 0 : a.land; // TABS 식 몸은 찌그러지지 않음
     const wide = 1 - stretch / 2 + land * C.ANIM_LAND_SQUASH * 0.6; // 착지: 납작해지며 옆으로 퍼짐
     rig.scale.set(wide, wide, 1 + stretch - land * C.ANIM_LAND_SQUASH);
+  }
+
+  // 광전사 R 소용돌이 경과 초 (snapshot spinLeft 로 시작 시각을 맞추고 그 뒤는 내 시계로 매끈하게). 안 돌면 -1
+  whirlTime(a, p) {
+    const bz = p.berserker;
+    if (!bz || !(bz.spinLeft > 0) || !p.alive) {
+      a.whirlT0 = null;
+      return -1;
+    }
+    const now = performance.now();
+    if (a.whirlT0 == null) a.whirlT0 = now - (bz.spinMs - bz.spinLeft);
+    const w = (now - a.whirlT0) / 1000;
+    return Number.isFinite(w) ? Math.min(w, bz.spinMs / 1000) : -1;
+  }
+
+  // 소용돌이 범위 표시 (발밑 빨간 고리 + 도끼 높이에서 빙글 도는 궤적 호) · 뿔 바람 · 어지러울 때 머리 위 별
+  updateWhirlFx(g, p, s, dt) {
+    const a = g.userData.anim;
+    const whirl = a.whirlT0 != null;
+    let w = g.userData.whirlFx;
+    if (whirl && !w) {
+      const r = C.BERSERKER_SPIN_RANGE;
+      const mat = noOutline(new THREE.MeshBasicMaterial({ color: C.BERSERK_SPIN_RING_COLOR, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false }));
+      const disc = noOutline(new THREE.MeshBasicMaterial({ color: C.BERSERK_SPIN_RING_COLOR, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false }));
+      const trailMat = noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false }));
+      const ring = new THREE.Mesh(new THREE.RingGeometry(r - 0.07, r, 40), mat);
+      ring.add(new THREE.Mesh(new THREE.CircleGeometry(r - 0.07, 40), disc));
+      const trail = new THREE.Mesh(new THREE.RingGeometry(r * 0.55, r * 0.95, 32, 1, 0, Math.PI * 1.2), trailMat);
+      for (const m of [ring, trail]) {
+        m.renderOrder = 4;
+        this.scene.add(m);
+      }
+      w = g.userData.whirlFx = { ring, trail, mats: [mat, disc, trailMat] };
+    }
+    if (w) {
+      w.ring.visible = w.trail.visible = whirl;
+      if (whirl) {
+        w.ring.position.set(s.x, s.y, s.z + 0.04);
+        w.trail.position.set(s.x, s.y, s.z + 0.9);
+        w.trail.rotation.z -= dt * Math.PI * 2 * C.BERSERK_SPIN_TURNS_PER_S;
+        // 뿔·몸 둘레 바람 줄: 흰 김이 바깥으로 휙
+        if (Math.random() < dt * 30) {
+          const ang = Math.random() * Math.PI * 2;
+          this.effects.burst({ x: s.x + Math.cos(ang) * 0.5, y: s.y + Math.sin(ang) * 0.5, z: s.z + 1.3 + Math.random() * 0.5 }, { x: Math.cos(ang) * 1.2, y: Math.sin(ang) * 1.2 }, 0xffffff, 1, 2.5, 0.06, 0.25);
+        }
+      }
+    }
+    // 어지러움: 머리 위로 노란 별 셋이 빙글
+    let st = g.userData.dizzyStars;
+    if (a.dizzy > 0 && !st) {
+      const mat = noOutline(new THREE.MeshBasicMaterial({ color: 0xffe040 }));
+      st = g.userData.dizzyStars = [0, 1, 2].map(() => {
+        const m = new THREE.Mesh(new THREE.OctahedronGeometry(0.07), mat);
+        this.scene.add(m);
+        return m;
+      });
+    }
+    if (st) {
+      const on = a.dizzy > 0 && p.alive;
+      st.forEach((m, i) => {
+        m.visible = on;
+        if (!on) return;
+        const ang = performance.now() / 180 + (i * Math.PI * 2) / 3;
+        m.position.set(s.x + Math.cos(ang) * 0.32, s.y + Math.sin(ang) * 0.32, s.z + C.PLAYER_HEIGHT * C.FIGURE_SCALE + 0.15);
+        m.rotation.z = ang * 2;
+      });
+    }
+  }
+
+  // 어지러움 시작 (소용돌이 끝 / 끊김)
+  setDizzy(who, sec) {
+    const g = this.playerMeshes.get(who);
+    if (g && g.userData.figure?.pupils) g.userData.anim.dizzy = sec;
+  }
+
+  // 광전사 이벤트 효과
+  rushLand(e) {
+    const pos = { x: e.x, y: e.y, z: e.z + 0.08 };
+    this.effects.ring(pos, 0xffc080, (e.r || 1.5) * 2, 0.35, true);
+    this.effects.burst(pos, null, 0x9a8a78, 22, 4.5, 0.14, 0.6);
+    if (this.curState) this.blockPulse(this.blockNeighbors([[Math.floor(e.x), Math.floor(e.y), Math.floor(e.z)]]).filter((c) => c[2] < Math.floor(e.z + 0.01)), 0xffffff, { jolt: -C.BLOCK_JOLT, opacity: 0.35 });
+    if (this.onBlast) this.onBlast(pos, false);
+  }
+
+  spinEnd(e) {
+    const pos = { x: e.x, y: e.y, z: e.z + 0.08 };
+    this.effects.ring(pos, 0xff7040, (e.r || 2) * 2.2, 0.4, true);
+    this.effects.ring({ x: e.x, y: e.y, z: e.z + 0.9 }, 0xffffff, (e.r || 2) * 1.6, 0.3);
+    this.effects.burst({ x: e.x, y: e.y, z: e.z + 0.6 }, null, 0xffb060, 26, 7, 0.13, 0.45);
+    this.effects.burst(pos, null, 0x9a8a78, 18, 4, 0.14, 0.6);
+    if (this.onBlast) this.onBlast(pos, (e.rage || 1) > 1.3);
+    this.setDizzy(e.who, C.BERSERK_DIZZY_S);
   }
 
   // 사냥꾼 대기 킁킁: 내가 표식을 붙인 가장 가까운 상대 쪽 각 (몸 기준, 왼쪽 +). 없으면 null
@@ -2179,9 +2273,13 @@ export class Renderer {
       }
       label.sprite.visible = p.alive && !(p.id === myId && this.third); // 3인칭에서 내 % 는 화면 아래에 (머리 위와 둘 다 있으면 겹침)
       this.updateHuntMarks(g, p, myId);
+      if (p.char === 'berserker' || g.userData.whirlFx || g.userData.dizzyStars) this.updateWhirlFx(g, p, s, dt);
     }
     for (const [id, g] of this.playerMeshes) {
       if (!seen.has(id)) {
+        const w = g.userData.whirlFx; // 씬에 따로 붙인 광전사 효과도 치움
+        if (w) this.scene.remove(w.ring, w.trail);
+        for (const m of g.userData.dizzyStars || []) this.scene.remove(m);
         this.scene.remove(g);
         this.playerMeshes.delete(id);
         this.smooth.delete(id);
