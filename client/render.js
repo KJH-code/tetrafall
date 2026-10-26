@@ -146,7 +146,7 @@ export function playerColor(p, state) {
   return PLAYER_COLORS[p.slot % PLAYER_COLORS.length];
 }
 const _q = new THREE.Quaternion();
-const HEAVY_HITS = new Set(['bomb', 'shock', 'projectile', 'slam', 'wall', 'blast', 'bigbomb', 'quake', 'blockslam']); // 몸이 크게 휘청하는 공격
+const HEAVY_HITS = new Set(['bomb', 'shock', 'projectile', 'slam', 'wall', 'blast', 'bigbomb', 'quake', 'blockslam', 'execute', 'pounce']); // 몸이 크게 휘청하는 공격
 const MAX_SIDE = Math.max(C.GRID_W, C.GRID_D, ...Object.values(C.FIELD_SIZES));
 const MAX_CELLS = MAX_SIDE * MAX_SIDE * C.GRID_H; // 가장 큰 판 (인원별 필드 크기)
 
@@ -1154,6 +1154,214 @@ export class Renderer {
     for (const mat of gone) if (!this.pulses.some((p) => p.mat === mat)) mat.dispose();
   }
 
+  // ---------- 사냥꾼 ----------
+  // 표식: 머리 위 이름표 바로 위에 빨간 마름모 1~3개 (화면 크기 고정 스프라이트). 사라지기 직전 깜빡.
+  // 내가 붙인 표식이 있으면 그것을, 없으면 가장 많은 것을 보여줌. 내가 붙인 표식 대상은 블록 뒤에서도 몸이 빨갛게 보임 (사냥꾼의 눈)
+  updateHuntMarks(g, p, myId) {
+    if (!g.userData.bodyOrder) {
+      // 사람 몸은 사냥꾼의 눈 복사본(1) 뒤에 그림 (2) → 복사본은 블록·땅에 가린 곳에만 나옴 (다른 사람 몸에 가린 곳엔 안 나옴)
+      g.traverse((o) => {
+        if (o.isMesh && o.renderOrder === 0) o.renderOrder = 2;
+      });
+      g.userData.bodyOrder = true;
+    }
+    const list = p.marks || [];
+    const mine = list.find((m) => m.by === myId);
+    const m = mine || list.reduce((a, b) => (!a || b.n > a.n ? b : a), null);
+    let hm = g.userData.huntMarks;
+    if (m && !hm) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 96;
+      canvas.height = 32;
+      const tex = new THREE.CanvasTexture(canvas);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false, transparent: true, sizeAttenuation: false }));
+      sprite.scale.set(0.09, 0.03, 1);
+      sprite.center.set(0.5, -1.4); // 이름표(같은 높이) 위로
+      sprite.position.z = C.PLAYER_HEIGHT + 0.45;
+      sprite.renderOrder = 12;
+      g.add(sprite);
+      hm = g.userData.huntMarks = { sprite, canvas, tex, n: 0 };
+    }
+    if (hm) {
+      const n = m && p.alive ? Math.min(C.HUNTER_MARK_MAX, m.n) : 0;
+      if (n !== hm.n) {
+        const c = hm.canvas.getContext('2d');
+        c.clearRect(0, 0, 96, 32);
+        for (let i = 0; i < n; i++) {
+          const x = 48 + (i - (n - 1) / 2) * 30;
+          c.beginPath();
+          c.moveTo(x, 3);
+          c.lineTo(x + 11, 16);
+          c.lineTo(x, 29);
+          c.lineTo(x - 11, 16);
+          c.closePath();
+          c.fillStyle = '#ff3a2a';
+          c.fill();
+          c.lineWidth = 3;
+          c.strokeStyle = '#300';
+          c.stroke();
+        }
+        hm.tex.needsUpdate = true;
+        hm.n = n;
+      }
+      const blink = m && m.left < C.MARK_BLINK_MS && Math.floor(performance.now() / C.MARK_BLINK_PERIOD_MS) % 2 === 1;
+      hm.sprite.visible = n > 0 && !blink && !(p.id === myId && !this.third);
+      hm.sprite.material.depthTest = !mine; // 내 표식은 블록 뒤에서도 보임
+    }
+    this.huntEye(g, !!mine && p.alive && p.id !== myId);
+  }
+
+  // 사냥꾼의 눈: 몸 부품마다 같은 모양의 빨간 복사본을 붙여, 블록에 가려진 부분에만 그림 (GreaterDepth).
+  // 복사본은 블록 다음·사람 몸 전에 그려서 (renderOrder 1 → 몸 2) 몸에 가린 곳엔 안 나옴
+  huntEye(g, on) {
+    let xr = g.userData.xray;
+    if (on && !xr) {
+      if (!this.xrayMat) this.xrayMat = noOutline(new THREE.MeshBasicMaterial({ color: C.HUNT_EYE_COLOR, depthFunc: THREE.GreaterDepth, depthWrite: false }));
+      const parts = [];
+      g.traverse((o) => {
+        if (o.isMesh && !o.isInstancedMesh && o.material !== this.xrayMat) parts.push(o);
+      });
+      xr = g.userData.xray = [];
+      for (const o of parts) {
+        const x = new THREE.Mesh(o.geometry, this.xrayMat);
+        x.renderOrder = 1;
+        x.castShadow = false;
+        o.add(x);
+        xr.push(x);
+      }
+    }
+    if (xr) for (const x of xr) x.visible = on;
+  }
+
+  // aim 이벤트: 대상마다 빨간 조준점 (화면을 보는 원 + 십자), 0.5초 동안 크게 → 작게 조여 듦. 블록 너머에서도 보임
+  aimAt(e) {
+    if (!this.aimGeo) {
+      this.aimGeo = new THREE.RingGeometry(0.26, 0.33, 24);
+      this.aimTick = new THREE.PlaneGeometry(0.06, 0.16);
+    }
+    const mat = noOutline(new THREE.MeshBasicMaterial({ color: 0xff2a1a, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false, side: THREE.DoubleSide }));
+    const now = performance.now();
+    for (const id of e.targets || []) {
+      const grp = new THREE.Group();
+      grp.add(new THREE.Mesh(this.aimGeo, mat));
+      for (let k = 0; k < 4; k++) {
+        const t = new THREE.Mesh(this.aimTick, mat);
+        const a = (k * Math.PI) / 2;
+        t.position.set(Math.cos(a) * 0.4, Math.sin(a) * 0.4, 0);
+        t.rotation.z = a + Math.PI / 2;
+        grp.add(t);
+      }
+      grp.renderOrder = 13;
+      grp.traverse((o) => (o.renderOrder = 13));
+      this.scene.add(grp);
+      (this.aims ||= []).push({ grp, mat, target: id, who: e.who, t0: now, ms: e.ms || 500 });
+    }
+  }
+
+  // 쏘거나 끊기면 조준점을 지움 (who 의 것만)
+  aimEnd(who) {
+    if (!this.aims) return;
+    for (const a of this.aims) if (a.who === who) a.t0 = -Infinity;
+  }
+
+  updateAims() {
+    if (!this.aims?.length) return;
+    const now = performance.now();
+    this.aims = this.aims.filter((a) => {
+      const s = this.smooth.get(a.target);
+      const u = (now - a.t0) / (a.ms + C.WARN_TAIL_MS);
+      if (u >= 1 || !s) {
+        this.scene.remove(a.grp);
+        a.mat.dispose();
+        return false;
+      }
+      a.grp.position.set(s.x, s.y, s.z + C.PLAYER_HEIGHT * 0.6);
+      a.grp.quaternion.copy(this.camera.quaternion);
+      const k = Math.min(1, u * 1.3);
+      a.grp.scale.setScalar(1.7 - 0.7 * k * k * (3 - 2 * k)); // 조여 듦
+      return true;
+    });
+  }
+
+  // shot 이벤트: 대상마다 석궁 화살이 아주 빠르게 날아감. 막혔으면 가린 블록 앞면에 박혀 잠깐 남음 (그 블록이 들썩)
+  shoot(e) {
+    this.aimEnd(e.who);
+    if (!e.from) return;
+    if (!this.arrowGeo) {
+      this.arrowGeo = new THREE.BoxGeometry(0.5, 0.03, 0.03);
+      this.arrowHead = new THREE.ConeGeometry(0.045, 0.12, 4).rotateZ(-Math.PI / 2);
+      this.arrowMat = toon({ color: 0x8a5a30 });
+      this.arrowHeadMat = toon({ color: 0xb8c2cc });
+      this.arrowFeather = new THREE.BoxGeometry(0.1, 0.008, 0.07);
+      this.arrowFeatherMat = toon({ color: 0xd8352a });
+    }
+    const now = performance.now();
+    for (const sh of e.shots || []) {
+      const from = new THREE.Vector3(e.from.x, e.from.y, e.from.z - 0.2);
+      let to = new THREE.Vector3(sh.to.x, sh.to.y, sh.to.z);
+      let stuck = null;
+      if (sh.blocked && this.curState) {
+        // 시선을 따라 가며 처음 만나는 블록 칸 앞에서 멈춤
+        const dir = to.clone().sub(from);
+        const len = dir.length();
+        dir.normalize();
+        for (let d = 0.3; d < len; d += 0.05) {
+          const q = from.clone().addScaledVector(dir, d);
+          if (this.solidAt(this.curState, q.x, q.y, q.z)) {
+            to = from.clone().addScaledVector(dir, d - 0.15);
+            stuck = [Math.floor(q.x), Math.floor(q.y), Math.floor(q.z)];
+            break;
+          }
+        }
+      }
+      const g = new THREE.Group();
+      const shaft = new THREE.Mesh(this.arrowGeo, this.arrowMat);
+      shaft.position.x = -0.25;
+      g.add(shaft);
+      const head = new THREE.Mesh(this.arrowHead, this.arrowHeadMat);
+      head.position.x = 0.04;
+      g.add(head);
+      for (const r of [0, Math.PI / 2]) {
+        const f = new THREE.Mesh(this.arrowFeather, this.arrowFeatherMat);
+        f.position.x = -0.46;
+        f.rotation.x = r;
+        g.add(f);
+      }
+      g.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), to.clone().sub(from).normalize());
+      g.position.copy(from);
+      this.scene.add(g);
+      (this.arrows ||= []).push({ g, from, to, t0: now, stuck, done: false });
+      this.trail(from, to, 0xff5040, C.ARROW_TRAIL_MS);
+    }
+  }
+
+  updateArrows() {
+    if (!this.arrows?.length) return;
+    const now = performance.now();
+    this.arrows = this.arrows.filter((a) => {
+      const u = (now - a.t0) / C.ARROW_FLY_MS;
+      if (u < 1) {
+        a.g.position.lerpVectors(a.from, a.to, u);
+        return true;
+      }
+      a.g.position.copy(a.to);
+      if (!a.done) {
+        a.done = true;
+        if (a.stuck) {
+          // 박힘: 나무 부스러기 + 블록 들썩 + 퍽
+          this.effects.burst(a.to, null, 0x9a8a78, 10, 2.5, 0.08, 0.4);
+          this.blockPulse([a.stuck], 0xffffff, { jolt: C.BLOCK_JOLT, opacity: 0.6 });
+          if (this.onArrowStuck) this.onArrowStuck(a.to);
+        }
+      }
+      if (!a.stuck || u * C.ARROW_FLY_MS > C.ARROW_FLY_MS + C.ARROW_STUCK_MS) {
+        this.scene.remove(a.g);
+        return false;
+      }
+      return true;
+    });
+  }
+
   // ---------- 닌자 순간 베기 ----------
   // blink 이벤트: 몸이 from → to 로 미끄러져 가게 (render 루프가 위치를 덮어씀) + 지나간 길에 바람 줄
   blinkSlide(e) {
@@ -1798,6 +2006,7 @@ export class Renderer {
         label.shown = key;
       }
       label.sprite.visible = p.alive && !(p.id === myId && this.third); // 3인칭에서 내 % 는 화면 아래에 (머리 위와 둘 다 있으면 겹침)
+      this.updateHuntMarks(g, p, myId);
     }
     for (const [id, g] of this.playerMeshes) {
       if (!seen.has(id)) {
@@ -1927,6 +2136,8 @@ export class Renderer {
     this.updateGhosts();
     this.updatePulses();
     this.updateSpinArcs();
+    this.updateAims();
+    this.updateArrows();
     this.updateGrabs();
     this.updateBeams(state);
     if (me) this.viewArm.material.color.setHex(playerColor(me, state));

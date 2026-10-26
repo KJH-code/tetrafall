@@ -542,9 +542,11 @@ export const CONFIG = {
   ROBOT_EYE_PUPIL: 0.3, // 로봇 눈동자 반지름 (같은 비율)
   ROBOT_RUN_SPEED: 3.2, // 이 속도(칸/초)보다 빠르면 로봇이 달리기 동작
   ROBOT_FADE_S: 0.15, // 로봇 동작이 바뀔 때 섞는 시간
-  FIGURE_CHARS: ['tank', 'ninja', 'builder', 'hook'], // TABS 식 몸(client/figure.js)으로 그리는 캐릭터 (2026-10-24). 캐릭터 없으면 로봇
-  FIGURE_BODY: { tank: 'drum', ninja: 'slim', builder: 'sturdy', hook: 'reach' }, // 캐릭터별 체형 (client/figure.js BODIES). 2026-10-24 재혁: 탱크는 통통한 쪽
+  FIGURE_CHARS: ['tank', 'ninja', 'builder', 'hook', 'hunter'], // TABS 식 몸(client/figure.js)으로 그리는 캐릭터 (2026-10-24). 캐릭터 없으면 로봇
+  FIGURE_BODY: { tank: 'drum', ninja: 'slim', builder: 'sturdy', hook: 'reach', hunter: 'stalk' }, // 캐릭터별 체형 (client/figure.js BODIES). 2026-10-24 재혁: 탱크는 통통한 쪽
   FIGURE_SCALE: 1.15, // 몸 전체 크기 배율 (1 이면 로봇과 키가 같아도 가늘어서 작아 보임). 판정 상자는 그대로
+  FIGURE_SNIFF_EVERY: 3.2, // 사냥꾼이 가만히 있을 때 킁킁하는 간격 (초)
+  FIGURE_SNIFF_LEN: 0.7, // 킁킁 한 번 길이 (초)
   FIGURE_EYE: 0.062, // 왕눈알 흰자 반지름 (칸, 몸 크기 배율 전)
   FIGURE_FOLLOW: 14, // 관절이 목표 자세를 따라가는 빠르기 (/초). 낮을수록 늦게 따라와 흐느적
   FIGURE_ARM_SPREAD: 0.22, // 가만히 있을 때 팔을 옆으로 벌린 각 (라디안)
@@ -586,6 +588,12 @@ export const CONFIG = {
   BLOCK_PULSE_MS: 260, // 블록이 움직이거나 바뀌는 순간 그 칸이 번쩍 부풀었다 사라지는 시간 (render.js blockPulse)
   SPIN_ARC_MS: 380, // 갈고리 공중 스핀: 갈고리 끝이 그리는 원이 남는 시간
   WARN_TAIL_MS: 80, // 바닥 예고를 서버 예고 시간보다 조금 더 (쾅 이벤트가 오는 지연만큼, 예고가 먼저 꺼지지 않게)
+  MARK_BLINK_MS: 1200, // 사냥꾼 표식이 사라지기 전 깜빡이기 시작하는 남은 시간
+  MARK_BLINK_PERIOD_MS: 140, // 표식 깜빡이는 간격
+  HUNT_EYE_COLOR: 0xff4030, // 사냥꾼의 눈: 블록 뒤 표식 대상 몸 색
+  ARROW_FLY_MS: 90, // 석궁 화살이 날아가는 시간 (판정은 즉시, 애니만)
+  ARROW_STUCK_MS: 1500, // 블록에 막힌 화살이 박혀 남는 시간
+  ARROW_TRAIL_MS: 220, // 화살 지나간 빨간 줄
   ULT_FAIL_MS: 900, // R 을 못 썼을 때 R 칸에 짧은 이유가 보이는 시간
   ULT_FAIL_SHAKE_MS: 350, // R 칸이 빨갛게 흔들리는 시간
   CAST_DROP_BLINK_MS: 400, // 기억해 둔 F·R 이 버려졌을 때 칸이 깜빡이는 시간
