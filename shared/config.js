@@ -344,6 +344,8 @@ export const CONFIG = {
   SKILL_AURA_COLOR: 0xffffff, // F: 발밑에 얇은 고리가 짧게 퍼지고 몸이 순간 하얗게 번쩍
   SKILL_AURA_MS: 300,
   SKILL_GLOW_MS: 140,
+  ULT_READY_SPARKLE_RATE: 2, // 그 빛에서 위로 오르는 반짝이 (초당, 아주 적게)
+  ULT_READY_AURA_OPACITY: 0.24, // R 게이지가 찬 상대 몸 둘레 옅은 빛 (ULT_AURA_COLOR, 숨 쉬듯 75~100%)
   ULT_AURA_COLOR: 0x8fe6ff, // R: 몸이 하늘색으로 빛나는 동안 반짝이가 위로 올라감 + 고리 두 겹
   ULT_AURA_MS: 900,
   COMBO_TEXT_MS: 900, // 내가 때리거나 맞은 콤보 'N HIT' 글자
