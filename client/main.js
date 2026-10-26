@@ -1206,6 +1206,7 @@ for (const a of ACTIONS) {
   name.textContent = a.label;
   const btn = document.createElement('button');
   btn.className = 'kb-btn';
+  if (a.id === 'item') name.classList.add('items-dim'); // 아이템 안 나오는 판이면 회색
   btn.addEventListener('click', () => {
     if (performance.now() < swallowClickUntil) return;
     listening = listening === a.id ? null : a.id;
@@ -1358,7 +1359,10 @@ function colorOf(p) {
 }
 const TEAM_KO = { red: '빨강', blue: '파랑' };
 
+// 아이템이 나오는 판인지 (서버가 알려 주기 전엔 설정값)
+document.body.classList.toggle('no-items', !C.ITEMS_ENABLED);
 function onState() {
+  if (state.itemsEnabled !== undefined) document.body.classList.toggle('no-items', !state.itemsEnabled);
   const p = me();
   if (!p) return;
   if (lastState && lastState.phase !== state.phase) renderer.clearQuakes(); // 판 시작·끝: 서버도 솟은 땅을 버림
