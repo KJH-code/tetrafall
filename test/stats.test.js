@@ -405,3 +405,51 @@ test('통계: 밟은 칸이 붙은 사망 줄도 킬·무기를 그대로 읽음
   assert.deepEqual([b.deaths[0].killer, b.deaths[0].weapon, b.deaths[0].ground], ['P2', '밀치기', null]);
   assert.equal(summarize([a, b]).blocks, null, '블록 줄이 없는 옛 로그는 표 없음');
 });
+
+test('통계: 죽은 뒤 판 끝까지 기다린 시간 (생존 모드, 사람·봇) · 사람 접속마다 연속 판 수와 나간 때', () => {
+  const text = [
+    'P1 접속 (slot 0) — 호스트',
+    'P1 이름: 재혁',
+    'P2 접속 (slot 1)',
+    'P3(봇) 접속 (slot 2)',
+    '===== ROUND 1 시작 (3명: P1 P2 P3(봇), 맵 평지) =====',
+    '  [사망] P2 낙사 @ 0:10 (위치 1.0, 2.0, -4.1, 피해 40%, 킬 없음)',
+    '  [사망] P3(봇) 낙사 @ 0:30 (위치 1.0, 2.0, -4.1, 피해 40%, 킬 없음)',
+    '===== ROUND 1 종료 | 길이 0:40 | 승자: P1 =====',
+    '===== ROUND 2 시작 (3명: P1 P2 P3(봇), 맵 평지) =====',
+    '  [사망] P1 낙사 @ 0:05 (위치 1.0, 2.0, -4.1, 피해 40%, 킬 없음)',
+    'P2 접속 종료',
+    '===== ROUND 2 종료 | 길이 0:20 | 승자: P3(봇) =====',
+    '  사망: P1 낙사@0:05, P2 접속 끊김@0:12',
+    'P2 접속 (slot 1)',
+    'P2 이름: 민수',
+    '===== ROUND 3 시작 (3명: P1 P2 P3(봇), 맵 평지) =====',
+    '===== ROUND 3 종료 | 길이 0:30 | 승자: P1 =====',
+    'P2 접속 종료',
+  ].join('\n');
+  const s = summarize(parseLog(text));
+  // 기다린 시간: 사람 P2 30초(1판)·P1 15초(2판), 봇 10초. 접속 끊김은 뺌
+  // 1판: P2 0:10 (먼저), P3(봇) 0:30 (판을 끝냄) / 2판: P1 0:05 (끝냄, 접속 끊김은 뺌)
+  assert.deepEqual(s.waits.human, { n: 2, median: 22.5, max: 30, share: (30 / 40 + 15 / 20) / 2, earlyN: 1, earlyMedian: 30, earlyShare: 30 / 40 });
+  assert.deepEqual(s.waits.bot, { n: 1, median: 10, max: 10, share: 10 / 40, earlyN: 0, earlyMedian: null, earlyShare: null });
+  // 연속 판: 재혁 3판 (끝까지), P2 2판 (판 중 나감), 민수 1판 (판 사이 나감)
+  assert.deepEqual(
+    s.sessions.list.map((x) => [x.who, x.rounds, x.left]).sort(),
+    [['P2', 2, '판 중'], ['민수', 1, '판 사이'], ['재혁', 3, null]],
+  );
+  assert.equal(s.sessions.median, 2);
+  assert.equal(s.sessions.max, 3);
+  const out = formatReport(s);
+  assert.match(out, /죽은 뒤 기다린 시간/);
+  assert.match(out, /연속 판 수 .* 접속 3 · 중앙값 2판 · 최대 3판 · 나간 때: 판 사이 1 \/ 판 중 1 \/ 끝까지 1/);
+});
+
+test('통계: 킬 점수전·블록 마스터 판은 기다린 시간에서 뺌 (부활·마스터 편)', () => {
+  const text = [
+    '===== ROUND 1 시작 (2명: P1 P2, 맵 평지) =====',
+    '  모드: 킬 점수전 (3:00 또는 7킬)',
+    '  [사망] P2 낙사 @ 0:10 (위치 1.0, 2.0, -4.1, 피해 40%, 킬 없음)',
+    '===== ROUND 1 종료 | 길이 3:00 | 승자: P1 =====',
+  ].join('\n');
+  assert.equal(summarize(parseLog(text)).waits, null);
+});
