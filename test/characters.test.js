@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Game } from '../server/game.js';
-import { CONFIG as C } from '../shared/config.js';
+import { CONFIG as C, basicSet } from '../shared/config.js';
 import { CELL } from '../shared/pieces.js';
 
 const TICK = 1000 / C.TICK_RATE;
@@ -2582,4 +2582,63 @@ test('팀전 같은 팀 공격 없음 (재혁 2026-10-26): 캐릭터마다 평�
     const foe = barrage(char, 3);
     assert.ok(foe.dmg > 0, `${char}: 상대에겐 들어감 (${foe.dmg}%)`);
   }
+});
+
+// 봇 하나가 가만히 있는 사람을 N ms 동안 때리게 두고 이벤트를 모음
+function botFight(c, oc, ms, setup = () => {}) {
+  const { g, b, t, brain } = botVs(c, oc);
+  place(b, 4, 5, 0);
+  place(t, 5.2, 5, Math.PI);
+  setup({ g, b, t, brain });
+  const ev = [];
+  for (let k = 0; k < ms; k += TICK) {
+    t.input = { fwd: 0, strafe: 0, jump: false, yaw: t.yaw, pitch: 0 };
+    if (!t.alive) break;
+    g.tick(TICK);
+    for (const e of g.drainEvents()) ev.push({ ...e, at: g.time });
+  }
+  return { g, b, t, ev };
+}
+
+test('봇 지능 (재혁 2026-10-26): 탱크·닌자는 지상 마지막 타로 띄운 뒤 1.2초 안에 점프해 공중 평타로 이어 감', () => {
+  for (const c of ['tank', 'ninja']) {
+    const { b, ev } = botFight(c, 'builder', 8000);
+    const n = basicSet(c).chain.length;
+    const launches = ev.filter((e) => e.type === 'hit' && e.kind === 'push' && e.by === b.id && e.ok && !e.air && e.n === n);
+    assert.ok(launches.length >= 1, `${c}: 띄움 ${launches.length}`);
+    const followed = launches.filter((l) => ev.some((e) => e.type === 'hit' && e.kind === 'push' && e.by === b.id && e.ok && e.air && e.at > l.at && e.at - l.at < 1200));
+    assert.ok(followed.length >= 1, `${c}: 띄운 뒤 공중 평타 ${followed.length}/${launches.length}`);
+  }
+});
+
+test('봇 지능: 사냥꾼은 찔러 넣기(표식) 뒤 F 가 있으면 덮침으로 잇고 (그 사이 점프 마무리로 콤보를 끊지 않음), F 가 없으면 점프해 공중 마무리', () => {
+  // F 있음: 덮침이 무적에 막히지 않고 들어감
+  const a = botFight('hunter', 'builder', 6000);
+  const pounces = a.ev.filter((e) => e.type === 'hit' && e.kind === 'pounce' && e.by === a.b.id);
+  assert.ok(pounces.length >= 1, '덮침 씀');
+  assert.ok(pounces.filter((e) => e.ok).length >= pounces.length / 2, `덮침 대부분 들어감 ${pounces.filter((e) => e.ok).length}/${pounces.length}`);
+  // F 없음: 찔러 넣기 뒤 공중 마무리
+  const z = botFight('hunter', 'builder', 6000, ({ b }) => {
+    b.skillReadyAt = Infinity;
+  });
+  const airFin = z.ev.filter((e) => e.type === 'hit' && e.kind === 'push' && e.by === z.b.id && e.ok && e.air && e.finish);
+  assert.ok(airFin.length >= 1, `공중 마무리 ${airFin.length}`);
+});
+
+test('봇 지능: 바드는 취약이 걸린 상대에게 다가가 메탈로 바꾸고, 메탈에서 많이 맞았으면 (콤보 중 아닐 때) 음유로 바꿔 치유', () => {
+  const { g, b, t, brain } = botVs('bard', 'tank');
+  place(b, 3, 5, 0);
+  place(t, 5.4, 5, Math.PI); // 리프 거리(1.8) 밖, 취약이면 바꾸는 거리 안
+  t.vulnUntil = g.time + 3000;
+  assert.equal(brain.useSkills(g, b, t, [t], []), true);
+  assert.equal(b.form, 'metal', '취약 상대 → 메탈');
+  // 메탈 + 많이 맞음 → 음유 (치유)
+  b.skillReadyAt = 0;
+  b.damage = 95;
+  Object.assign(t, { stunUntil: 0, comboHits: 0 });
+  place(t, 6.5, 5, Math.PI);
+  b.ult = 0;
+  assert.equal(brain.useSkills(g, b, t, [t], []), true);
+  assert.equal(b.form, 'bard', '치유');
+  assert.equal(b.damage, 95 - C.BARD_HEAL);
 });

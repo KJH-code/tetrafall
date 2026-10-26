@@ -397,7 +397,9 @@ export class BotBrain {
     }
     if (p.char === 'cannon') this.input.pitch = 0;
     // 바드 음유시인: 거리를 두고 류트 음파 (둔화)
-    if (p.char === 'bard' && p.form !== 'metal' && dist <= C.BARD_NOTE_RANGE * 0.8) {
+    // 취약(음표)이 걸린 상대에게 F 가 있으면 다가가서 메탈로 바꿔 때림 (걸고 날리기)
+    const softened = g.time < t.vulnUntil && g.time >= p.skillReadyAt;
+    if (p.char === 'bard' && p.form !== 'metal' && !softened && dist <= C.BARD_NOTE_RANGE * 0.8) {
       const dz = t.z + C.PLAYER_HEIGHT * 0.5 - (p.z + C.EYE_HEIGHT - 0.3);
       const err = this.shellErr || { yaw: 0, pitch: 0 };
       this.input.yaw = Math.atan2(t.y - p.y, t.x - p.x) + err.yaw;
@@ -416,7 +418,10 @@ export class BotBrain {
     // 닌자·탱크: 지상 마지막 타(올려 차기·방패 올려치기)로 띄운 상대를 점프해 따라가 공중 평타
     const lb = p.lastBasic;
     const launcher = p.char && !basicSet(p.char, p.form).chain.at(-1).finish;
-    if (launcher && lb && !lb.air && lb.n === basicSet(p.char, p.form).chain.length && g.time - lb.at < 900 && t.z > p.z + 0.4 && g.time < t.stunUntil && dist < 2) {
+    // 사냥꾼 찔러 넣기는 크게 안 띄움 → 상대가 경직이면 뛰어서 공중 마무리 (평평평 → 점프 → 공중 내려 베기)
+    // (F 가 있으면 먼저 F 덮침으로 잇고 — useSkills — 없을 때만 점프)
+    const lifted = t.z > p.z + 0.4 || (p.char === 'hunter' && !p.leap && g.time < p.skillReadyAt && g.time < t.stunUntil - 250);
+    if (launcher && !p.leap && lb && !lb.air && lb.n === basicSet(p.char, p.form).chain.length && g.time - lb.at < 900 && lifted && g.time < t.stunUntil && dist < 2) {
       this.input.fwd = dist > 0.8 ? 1 : 0;
       this.input.strafe = 0;
       this.input.yaw = Math.atan2(t.y - p.y, t.x - p.x);
@@ -575,14 +580,15 @@ export class BotBrain {
           face();
           return act('ult');
         }
-        if (skillReady && dist <= C.BARD_RIFF_RANGE + 0.3) return act('skill');
+        if (skillReady && (dist <= C.BARD_RIFF_RANGE + 0.3 || (g.time < t.vulnUntil && dist <= C.BARD_RIFF_RANGE + 0.8))) return act('skill');
       } else {
         // 메탈: 앞에 상대가 있으면 앰프 음파, 많이 맞았거나 멀어지면 음유시인으로 (치유)
         if (ultReady && level && dist <= C.BARD_AMP_RANGE * 0.8) {
           face();
           return act('ult');
         }
-        if (skillReady && (p.damage >= 90 || dist > 4.5)) return act('skill');
+        // 많이 맞았으면 콤보 중이 아닐 때 음유시인으로 (치유), 멀어져도 음유 (원거리)
+        if (skillReady && ((p.damage >= 90 && !comboing) || dist > 4.5)) return act('skill');
       }
     } else if (p.char === 'hunter') {
       // R: 보는 방향 안에 쏠 표식 대상이 있으면 (표식 많은 상대 쪽을 봄)
