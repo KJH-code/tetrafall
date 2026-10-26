@@ -2397,3 +2397,57 @@ test('봇 바드: 음유시인이면 거리 두고 음파, 앞에 상대가 있�
   assert.equal(brain.useSkills(g, b, t, [t], []), true);
   assert.ok(b.amp, '앰프');
 });
+
+// 봇 하나 (캐릭터 c) + 사람 상대 (캐릭터 oc), 평지
+function botVs(c, oc) {
+  const g = new Game(() => {}, { characters: true });
+  g.rng = () => 0.5;
+  const b = g.addBot();
+  g.setChar(b.id, c);
+  g.addPlayer(1);
+  g.setChar(1, oc);
+  g.startRound();
+  g.nextSpawnAt = Infinity;
+  g.controlItemNextAt = Infinity;
+  g.powerItemNextAt = Infinity;
+  return { g, b, t: g.players.get(1), brain: g.bots.get(b.id) };
+}
+
+test('봇 예고 피하기 (재혁 2026-10-26): 탱크 R 예고를 보고 BOT_REACTION_MS 뒤에 바깥으로 피함 (그 전엔 안 피함), 피할지는 예고마다 한 번 확률로', () => {
+  const run1 = (dodge) => {
+    const { g, b, t, brain } = botVs('hunter', 'tank');
+    place(t, 5, 5);
+    place(b, 6, 5, Math.PI);
+    brain.rng = () => (dodge ? 0 : 0.999);
+    Object.assign(t, { ult: g.ultMax(t) });
+    g.handleAction(1, { name: 'ult' }); // 내려찍기 예고 700ms
+    assert.ok(t.slamAt);
+    const d0 = Math.hypot(b.x - t.x, b.y - t.y);
+    let early = 0;
+    for (let ms = 0; ms < C.BOT_REACTION_MS - 2 * C.BOT_THINK_MS; ms += TICK) {
+      g.tick(TICK);
+      early = Math.max(early, Math.hypot(b.x - t.x, b.y - t.y) - d0);
+    }
+    for (let ms = 0; t.slamAt && ms < 1000; ms += TICK) g.tick(TICK);
+    return { early, far: Math.hypot(b.x - t.x, b.y - t.y), hit: b.damage > 0 };
+  };
+  const yes = run1(true);
+  const no = run1(false);
+  assert.ok(yes.far > no.far + 0.5, `피함 ${yes.far.toFixed(2)} / 안 피함 ${no.far.toFixed(2)}`);
+  assert.ok(no.hit, '안 피하면 맞음');
+  // 난이도: 쉬움은 거의 안 피함, 어려움은 상한까지
+  const lv = (level) => Math.min(C.BOT_DODGE_CHANCE_MAX, C.BOT_DODGE_CHANCE * (C.BOT_LEVELS[level]?.DODGE_CHANCE ?? 1));
+  assert.ok(lv('easy') <= 0.2 && lv('normal') > lv('easy') && lv('hard') <= C.BOT_DODGE_CHANCE_MAX && lv('hard') > lv('normal'));
+});
+
+test('봇 탱크 아머 돌진: 상대 평타 준비를 본 지 BOT_REACTION_MS 가 안 됐으면 안 씀 (사람 반응)', () => {
+  const { g, b, t, brain } = botVs('tank', 'ninja');
+  place(b, 3, 5, 0);
+  place(t, 3.8, 5, Math.PI); // 붙어 있음 (거리 돌진 조건 1칸 밖이 아님 → 반응 돌진만)
+  t.atk = { n: 1, def: { windup: 2000, rec: 0, finish: false }, air: false, chained: false, at: g.time + 2000 }; // 긴 준비 (방금 시작)
+  const enemies = [t];
+  brain.input.yaw = 0;
+  assert.equal(brain.useSkills(g, b, t, enemies, []), false, '방금 본 준비엔 반응 안 함');
+  t.atk.at = g.time + 2000 - C.BOT_REACTION_MS - 10; // 반응 시간 지남
+  assert.equal(brain.useSkills(g, b, t, enemies, []), true, '반응 시간 뒤엔 아머 돌진');
+});

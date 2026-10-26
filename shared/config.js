@@ -667,7 +667,13 @@ export const CONFIG = {
   // ---- AI 봇 (서버에서 돎, 사람과 같은 입력만 씀) ----
   BOT_THINK_MS: 100, // 판단 주기
   BOT_AIR_JUMP_VZ: 2, // 봇은 위로 가는 속도가 이보다 느려지면 (꼭대기 근처) 2단 점프
-  BOT_REACTION_MS: 450, // 그림자가 보이고 나서 피하기 시작할 때까지 (사람 반응 흉내)
+  BOT_REACTION_MS: 450, // 그림자가 보이고 나서 피하기 시작할 때까지 (사람 반응 흉내). 상대 예고 피하기·봇 탱크 아머 반응도 같은 지연
+  // 상대 예고 피하기 (2026-10-26 재혁: 봇은 예고를 안 보고 다 맞았음 → 봇 판이 사람 판과 달랐음). 지상 F 준비·탱크 R·평타 마무리 준비·사냥꾼 도약/조준·
+  // 광전사 회전·바드 앰프가 나를 노리면 BOT_REACTION_MS 뒤에 옆(범위 공격이면 바깥)으로 피함. 예고마다 한 번 BOT_DODGE_CHANCE 확률로 피할지 정함 (난이도 배수, 최대 BOT_DODGE_CHANCE_MAX)
+  BOT_DODGE_CHANCE: 0.6,
+  BOT_DODGE_CHANCE_MAX: 0.9,
+  BOT_DODGE_STEP: 2, // 피할 때 옆으로 가는 거리 (칸)
+  BOT_DODGE_DASH_MS: 300, // 남은 시간이 이보다 짧으면 대시로 피함 (대시가 있으면)
   BOT_AIM_ERROR_RAD: 0.3, // 투사체 조준 오차 (라디안, ± 이 안에서 무작위)
   BOT_SHELL_AIM_ERROR_RAD: 0.3, // 대포수 포탄·대형 포탄 조준 오차 (좌우·위아래 각각 ±, 쏠 때마다 새로). 2026-10-26 총괄 승인: 오차 0 명중 77%·승률 58% → 0.15 명중 73%·44% → 0.3 명중 61%·40% (투사체 BOT_AIM_ERROR_RAD 와 같게)
   BOT_DROP_DELAY_MS: 250, // 조종 중 상대 위에 맞춘 뒤 떨어뜨리기까지
@@ -682,9 +688,9 @@ export const CONFIG = {
   BOT_CONTROL_AIM_ERROR: 1, // 조종 블록 겨냥이 빗나가는 반경(칸) 기준. 아래 난이도 배수를 곱함 (보통·어려움 0 = 정확히 겨냥)
   // 봇 난이도 (호스트가 대기 화면에서 고름, 모든 봇에 같이). 위 BOT_* 값에 곱하는 배수. 보통 = 위 값 그대로 (조종 겨냥 오차만 0)
   BOT_LEVELS: {
-    easy: { CHAIN_DELAY_MS: 2.5, REACTION_MS: 1.7, AIM_ERROR_RAD: 2, SHELL_AIM_ERROR_RAD: 2, DROP_DELAY_MS: 3, PUSH_INTERVAL_MS: 1.8, BRICK_AIM_ERROR: 1.6, CONTROL_AIM_ERROR: 1.5 },
+    easy: { DODGE_CHANCE: 0.25, CHAIN_DELAY_MS: 2.5, REACTION_MS: 1.7, AIM_ERROR_RAD: 2, SHELL_AIM_ERROR_RAD: 2, DROP_DELAY_MS: 3, PUSH_INTERVAL_MS: 1.8, BRICK_AIM_ERROR: 1.6, CONTROL_AIM_ERROR: 1.5 },
     normal: { CONTROL_AIM_ERROR: 0 },
-    hard: { CHAIN_DELAY_MS: 0.5, REACTION_MS: 0.6, AIM_ERROR_RAD: 0.5, SHELL_AIM_ERROR_RAD: 0.5, DROP_DELAY_MS: 0.6, PUSH_INTERVAL_MS: 0.65, BRICK_AIM_ERROR: 0.6, CONTROL_AIM_ERROR: 0 },
+    hard: { DODGE_CHANCE: 1.4, CHAIN_DELAY_MS: 0.5, REACTION_MS: 0.6, AIM_ERROR_RAD: 0.5, SHELL_AIM_ERROR_RAD: 0.5, DROP_DELAY_MS: 0.6, PUSH_INTERVAL_MS: 0.65, BRICK_AIM_ERROR: 0.6, CONTROL_AIM_ERROR: 0 },
   },
   BOT_LEVEL_DEFAULT: 'normal',
 
