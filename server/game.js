@@ -3142,7 +3142,7 @@ export class Game {
   }
 
   targetConcurrent() {
-    return Math.max(1, Math.round(Math.min(C.CONCURRENT_MAX, 1 + Math.floor(this.elapsed() / C.CONCURRENT_RAMP_MS)) * this.areaScale())); // 넓은 판은 넓이만큼 더
+    return Math.max(1, Math.round(Math.min(C.CONCURRENT_MAX, C.CONCURRENT_START + Math.floor(this.elapsed() / C.CONCURRENT_RAMP_MS)) * this.areaScale())); // 넓은 판은 넓이만큼 더
   }
 
   addPiece(piece, fields) {
