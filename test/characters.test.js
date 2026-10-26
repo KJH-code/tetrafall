@@ -190,20 +190,23 @@ for (const char of C.CHARACTERS.filter((c) => C.BASIC_ATTACKS[c].chain.at(-1).fi
 }
 
 test('평타: 경직은 후딜 + 다음 타 준비 + 0.1초 이상 (바로 누르면 확정), 마무리 타만 finish (닌자는 지상 4타가 아니라 공중 2타), 풀 콤보 최단 시간 ≤ COMBO_MS', () => {
-  for (const char of C.CHARACTERS) {
-    const { chain, air } = C.BASIC_ATTACKS[char];
-    // 지상 마지막 타가 마무리가 아니고 공중 마지막 타가 마무리 (사냥꾼: 2026-10-26 재혁 가·ㄱ — 찔러 넣기 마무리 아님, 공중 내려 베기 마무리)
-    const ninja = char === 'ninja' || char === 'tank' || char === 'hunter';
+  // 마무리 타 자리: ground = 지상 마지막 타, air = 공중 마지막 타
+  // 닌자·탱크·사냥꾼: 지상 마지막 타는 띄우거나 잇는 타, 공중 마지막 타가 마무리 (사냥꾼 2026-10-26 재혁 가·ㄱ)
+  // 바드 음유시인: 원거리 음파·천천히 낙하라 마무리 없음. 바드 메탈: 지상·공중 둘 다 마무리 (공중 기타 꽂기)
+  const sets = C.CHARACTERS.map((char) => [char, C.BASIC_ATTACKS[char]]).concat([['bard 메탈', C.BASIC_ATTACKS.bard.metal]]);
+  const finishAt = { ninja: { air: true }, tank: { air: true }, hunter: { air: true }, bard: {}, 'bard 메탈': { ground: true, air: true } };
+  for (const [char, { chain, air }] of sets) {
+    const want = finishAt[char] || { ground: true };
     let t = 0;
     chain.forEach((d, i) => {
-      assert.equal(!!d.finish, !ninja && i === chain.length - 1, `${char} ${i + 1}타`);
+      assert.equal(!!d.finish, !!want.ground && i === chain.length - 1, `${char} ${i + 1}타`);
       if (i === chain.length - 1) return;
       assert.ok(d.stun >= d.rec + chain[i + 1].windup + 100, `${char} ${i + 1}타 경직 ${d.stun}`);
       t += d.rec + chain[i + 1].windup;
     });
     assert.ok(t <= C.COMBO_MS, `${char} 최단 ${t}`);
     air.forEach((d, i) => {
-      assert.equal(!!d.finish, ninja && i === air.length - 1, `${char} 공중 ${i + 1}타`);
+      assert.equal(!!d.finish, !!want.air && i === air.length - 1, `${char} 공중 ${i + 1}타`);
       if (i < air.length - 1) assert.ok(d.stun >= d.rec + air[i + 1].windup + 100, `${char} 공중 ${i + 1}타 경직`);
     });
   }
@@ -1939,4 +1942,212 @@ test('봇 광전사: 피해 % 높고 붙어 있으면 R, 조금 떨어진 상대
   place(t, 6.5, 5);
   assert.equal(brain.useSkills(g, b, t, [t], []), true);
   assert.ok(b.rush, 'F 도약');
+});
+
+test('바드 폼 전환 F: 음유시인으로 시작, 음유 → 메탈 = 기타 리프 (주변 밀침), 메탈 → 음유 = 치유 10% (0 아래로 안 감), 쿨 6초, 폼마다 평타가 바뀜', () => {
+  const { g, p, lines } = setupChars(['bard', 'tank']);
+  assert.equal(p(1).form, 'bard');
+  place(p(1), 4, 5, 0);
+  place(p(2), 5.2, 5);
+  g.handleAction(1, { name: 'skill' });
+  assert.equal(p(1).form, 'metal');
+  assert.equal(p(2).damage, C.BARD_RIFF_DAMAGE, '기타 리프');
+  assert.ok(p(2).kbx > 0);
+  assert.ok(p(1).skillReadyAt >= g.time + C.SKILL_CD_MS.bard - 1);
+  g.handleAction(1, { name: 'skill' });
+  assert.equal(p(1).form, 'metal', '쿨 중엔 안 바뀜');
+  // 메탈 평타 = 기타 후려치기 (근접)
+  run(g, 1500);
+  place(p(1), 4, 5, 0);
+  place(p(2), 5.2, 5);
+  const before = p(2).damage;
+  basic(g, 1);
+  assert.equal(p(2).damage - before, C.BASIC_ATTACKS.bard.metal.chain[0].dmg);
+  // 메탈 → 음유: 치유
+  run(g, C.SKILL_CD_MS.bard);
+  p(1).damage = 25;
+  g.handleAction(1, { name: 'skill' });
+  assert.equal(p(1).form, 'bard');
+  assert.equal(p(1).damage, 25 - C.BARD_HEAL);
+  assert.ok(lines.some((l) => l.includes('[스킬] P1 음유시인 폼 (치유 P1 25% → 15%)')), lines.join('\n'));
+  run(g, C.SKILL_CD_MS.bard);
+  g.handleAction(1, { name: 'skill' });
+  run(g, C.SKILL_CD_MS.bard);
+  p(1).damage = 4;
+  g.handleAction(1, { name: 'skill' });
+  assert.equal(p(1).damage, 0, '0 아래로 안 감');
+  // 판 시작·부활에 음유시인
+  p(1).form = 'metal';
+  g.respawn(p(1));
+  assert.equal(p(1).form, 'bard');
+});
+
+test('바드 치유 팀전: 범위 안 팀원도 10% 깎음, 범위 밖 팀원·상대는 아님', () => {
+  const g = new Game(() => {}, { characters: true });
+  g.rng = () => 0.5;
+  for (let i = 1; i <= 4; i++) g.addPlayer(i);
+  g.setChar(1, 'bard');
+  g.setTeamMode(true);
+  g.setTeam(1, 'red');
+  g.setTeam(2, 'red');
+  g.setTeam(3, 'red');
+  g.setTeam(4, 'blue');
+  g.startRound();
+  g.nextSpawnAt = Infinity;
+  const p = (id) => g.players.get(id);
+  while (g.phase !== 'playing') g.tick(TICK);
+  place(p(1), 3, 5);
+  place(p(2), 4, 5); // 가까운 팀원
+  place(p(3), 3 + C.BARD_HEAL_RANGE + 2, 5); // 먼 팀원
+  place(p(4), 3, 6); // 상대
+  p(1).form = 'metal';
+  for (let i = 1; i <= 4; i++) p(i).damage = 50;
+  g.handleAction(1, { name: 'skill' });
+  assert.deepEqual([1, 2, 3, 4].map((i) => p(i).damage), [40, 40, 50, 50]);
+});
+
+test('바드 류트 음파: 보이는 느린 투사체, 맞으면 약한 넉백 + 둔화 (이속 -20%, 안 쌓이고 갱신만)', () => {
+  const { g, p } = setupChars(['bard', 'tank']);
+  place(p(1), 2, 5, 0);
+  place(p(2), 6, 5);
+  g.drainEvents();
+  basic(g, 1);
+  assert.equal(p(2).damage, 0, '즉시 판정 아님');
+  assert.ok(g.drainEvents().some((e) => e.type === 'noteFire' && e.who === 1));
+  assert.equal(g.snapshot().notes.length, 1);
+  run(g, (4 / C.BARD_NOTE_SPEED) * 1000 + 100);
+  assert.equal(p(2).damage, C.BASIC_ATTACKS.bard.chain[0].dmg);
+  assert.ok(p(2).slowUntil > g.time);
+  const until = p(2).slowUntil;
+  assert.ok(Math.abs(g.snapshot().players.find((x) => x.id === 2).slowLeft - (until - g.time)) < 1);
+  // 둔화 중 걷는 속도
+  run(g, 700); // 경직 풀림
+  place(p(2), 5, 5);
+  p(2).slowUntil = g.time + 2000;
+  p(2).input = { fwd: 1, strafe: 0, jump: false };
+  p(2).yaw = Math.PI / 2;
+  const y0 = p(2).y;
+  run(g, 300);
+  const sp = (p(2).y - y0) / 0.3;
+  assert.ok(Math.abs(sp - C.MOVE_SPEED * (1 - C.BARD_SLOW)) < 0.3, `속도 ${sp.toFixed(2)}`);
+  // 다시 맞으면 끝 시각만 갱신 (더하지 않음): 남은 둔화가 있어도 맞은 시각 + BARD_SLOW_MS
+  run(g, 1000);
+  place(p(1), 2, 5, 0);
+  place(p(2), 4, 5);
+  p(2).slowUntil = g.time + 1500;
+  g.drainEvents();
+  g.handleAction(1, { name: 'push' });
+  let hitAt = 0;
+  for (let k = 0; k < 30 && !hitAt; k++) {
+    g.tick(TICK);
+    if (g.drainEvents().some((e) => e.type === 'hit' && e.kind === 'note' && e.ok)) hitAt = g.time;
+  }
+  assert.ok(hitAt, '두 번째 음파 맞음');
+  assert.ok(Math.abs(p(2).slowUntil - (hitAt + C.BARD_SLOW_MS)) <= TICK, `갱신 ${p(2).slowUntil - hitAt}`);
+});
+
+test('바드 음유 R 취약의 노래: 앞 넓은 범위 상대가 4초 동안 받는 넉백 ×1.3 (% 배율 넉백만), 뒤는 안 걸림', () => {
+  const { g, p } = setupChars(['bard', 'tank', 'builder']);
+  place(p(1), 4, 5, 0);
+  place(p(2), 7, 6); // 앞 (비스듬히)
+  place(p(3), 2, 5); // 뒤
+  p(1).ult = C.ULT_MAX;
+  g.handleAction(1, { name: 'ult' });
+  assert.equal(p(1).ult, 0);
+  assert.ok(p(2).vulnUntil >= g.time + C.BARD_VULN_MS - 1);
+  assert.equal(p(3).vulnUntil, 0, '뒤는 안 걸림');
+  const kb = (vuln, fixed) => {
+    const q = setupChars(['tank', 'builder']);
+    place(q.p(2), 5, 5);
+    q.p(2).damage = 100;
+    if (vuln) q.p(2).vulnUntil = q.g.time + 1000;
+    q.g.applyKnockback(q.p(2), 1, 0, 4, 0, 500, 0, { by: 1, kind: 'push' }, true, { fixed });
+    return q.p(2).kbx;
+  };
+  assert.ok(Math.abs(kb(true, false) / kb(false, false) - C.BARD_VULN_MULT) < 1e-9, '×1.3');
+  assert.equal(kb(true, true), kb(false, true), '고정 넉백은 그대로');
+  run(g, C.BARD_VULN_MS + TICK);
+  assert.equal(g.snapshot().players.find((x) => x.id === 2).vulnLeft, 0, '4초 뒤 풀림');
+});
+
+test('바드 음유 공중 평타: 천천히 낙하 (떨어지는 속도 제한), 맞으면 바로 풀림', () => {
+  const { g, p } = setupChars(['bard', 'tank']);
+  place(p(1), 4, 5, 0, 6);
+  Object.assign(p(1), { grounded: false, vz: -5 });
+  place(p(2), 8, 8);
+  basic(g, 1);
+  assert.ok(p(1).glideUntil > g.time);
+  run(g, 500);
+  assert.ok(p(1).vz >= -C.BARD_GLIDE_FALL - 1e-9, `vz ${p(1).vz}`);
+  assert.ok(p(1).z > 3, `천천히 z ${p(1).z.toFixed(2)}`);
+  g.applyKnockback(p(1), 1, 0, 1, 0, 300, 1, { by: 2, kind: 'push' });
+  assert.equal(p(1).glideUntil, 0, '맞으면 풀림');
+});
+
+test('바드 메탈 R 앰프 음파: 3초 동안 앞 원뿔에 작게 계속 밀침 (옆·뒤는 안 맞음), 끝에 크게, 연주 중 느리게·평타 안 나감, 맞으면 끊김', () => {
+  const { g, p, lines } = setupChars(['bard', 'tank', 'builder']);
+  place(p(1), 3, 5, 0);
+  place(p(2), 5, 5); // 앞
+  place(p(3), 3, 7.5); // 옆
+  p(1).form = 'metal';
+  p(1).ult = C.ULT_MAX;
+  g.handleAction(1, { name: 'ult' });
+  assert.ok(p(1).amp);
+  g.handleAction(1, { name: 'push' });
+  assert.equal(p(1).atk, null, '평타 안 나감');
+  let ticks = 0;
+  let end = false;
+  for (let t = 0; t < C.BARD_AMP_MS + 200; t += TICK) {
+    if (p(1).amp) Object.assign(p(2), { x: 5, y: 5, z: 0 });
+    Object.assign(p(1), { x: 3, y: 5, yaw: 0 });
+    g.tick(TICK);
+    for (const e of g.drainEvents()) {
+      if (e.type === 'hit' && e.kind === 'amp' && e.ok && e.target === 2) ticks++;
+      if (e.type === 'hit' && e.kind === 'ampend' && e.ok && e.target === 2) end = true;
+    }
+  }
+  assert.ok(ticks >= 8, `작은 밀침 ${ticks}번`);
+  assert.ok(end, lines.join('\n'));
+  assert.equal(p(3).damage, 0, '옆은 안 맞음');
+  // 맞으면 끊김
+  const q = setupChars(['bard', 'tank']);
+  place(q.p(1), 3, 5, 0);
+  place(q.p(2), 8, 8);
+  q.p(1).form = 'metal';
+  q.p(1).ult = C.ULT_MAX;
+  q.g.handleAction(1, { name: 'ult' });
+  run(q.g, 500);
+  q.g.applyKnockback(q.p(1), -1, 0, 1, 0, 300, 1, { by: 2, kind: 'push' });
+  assert.equal(q.p(1).amp, null);
+});
+
+test('봇 바드: 음유시인이면 거리 두고 음파, 앞에 상대가 있으면 취약의 노래, 붙으면 메탈로 전환, 메탈이면 앞 상대에게 앰프', () => {
+  const g = new Game(() => {}, { characters: true });
+  g.rng = () => 0.5;
+  const b = g.addBot();
+  g.setChar(b.id, 'bard');
+  g.addPlayer(1);
+  g.startRound();
+  g.nextSpawnAt = Infinity;
+  g.controlItemNextAt = Infinity;
+  g.powerItemNextAt = Infinity;
+  const t = g.players.get(1);
+  const brain = g.bots.get(b.id);
+  place(b, 2.5, 5, 0);
+  place(t, 6, 5);
+  g.drainEvents();
+  for (let k = 0; k < 30; k++) g.tick(TICK);
+  assert.ok(g.drainEvents().some((e) => e.type === 'noteFire' && e.who === b.id), '음파');
+  Object.assign(b, { atk: null, pushReadyAt: 0, ult: C.ULT_MAX });
+  place(b, 2.5, 5, 0);
+  place(t, 5.5, 5);
+  assert.equal(brain.useSkills(g, b, t, [t], []), true);
+  assert.ok(t.vulnUntil > g.time, '취약의 노래');
+  place(t, 3.8, 5);
+  assert.equal(brain.useSkills(g, b, t, [t], []), true);
+  assert.equal(b.form, 'metal', '붙으면 메탈');
+  Object.assign(b, { ult: C.ULT_MAX, atk: null, pushReadyAt: 0 });
+  place(t, 5, 5);
+  assert.equal(brain.useSkills(g, b, t, [t], []), true);
+  assert.ok(b.amp, '앰프');
 });

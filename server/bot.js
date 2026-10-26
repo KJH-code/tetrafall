@@ -1,7 +1,7 @@
 // 서버 안에서 도는 AI 봇. 사람과 똑같이 handleInput / handleAction 으로만 조작한다 (판정 특혜 없음).
 // BOT_THINK_MS 마다 한 번 판단하고, 그 사이에는 마지막 입력을 유지한다.
 // 사람처럼 보이게: 그림자를 보고 BOT_REACTION_MS 뒤에야 피하기 시작하고, 조준에는 오차가 있다.
-import { CONFIG as C } from '../shared/config.js';
+import { CONFIG as C, basicSet } from '../shared/config.js';
 import { rotatedCells, footprint } from '../shared/pieces.js';
 
 // 판 크기 (인원마다 다름): 봇이 판단할 때마다 그 게임의 크기로 맞춤 (update·useSkills 첫머리). 한 프로세스의 방들이 차례로 돌아서 안전
@@ -148,6 +148,15 @@ export class BotBrain {
       return;
     }
 
+    // 0.5) 복귀 (바드): 음유시인이면 공중 평타로 천천히 낙하하며 안쪽으로, 메탈이면 F 로 음유시인이 된 뒤
+    if (p.char === 'bard' && !p.grounded && p.vz < 0 && p.z < -0.3 && g.time >= p.stunUntil) {
+      this.moveTo(g, p, { x: W / 2, y: D / 2 });
+      g.handleInput(p.id, this.input);
+      if (p.form !== 'metal' && !p.glideUntil) g.handleAction(p.id, { name: 'push' });
+      else if (p.form === 'metal' && g.time >= p.skillReadyAt) g.handleAction(p.id, { name: 'skill' });
+      return;
+    }
+
     // 0.5) 복귀: 필드 밖으로 떨어지는 중이면 공중 F 를 쓰고 안쪽으로 (건축가 발판 + 부스트, 닌자 순간 베기 → 막히면 벽 차기,
     // 갈고리는 안쪽 방향에 걸 블록이 있을 때만)
     const toCenter = Math.atan2(D / 2 - p.y, W / 2 - p.x);
@@ -259,7 +268,7 @@ export class BotBrain {
 
   // 다음 평타 타의 사거리
   basicRange(p, g) {
-    const set = C.BASIC_ATTACKS[p.char];
+    const set = basicSet(p.char, p.form);
     const n = Math.min(p.chainN, set.chain.length - 1); // 다음 지상 타 (0부터)
     if (p.char === 'ninja' && g && g.time < p.empowerUntil && n < 3) return C.NINJA_STAR.range; // R 강화 표창
     const d = set.chain[n];
@@ -317,10 +326,27 @@ export class BotBrain {
       return;
     }
     if (p.char === 'cannon') this.input.pitch = 0;
+    // 바드 음유시인: 거리를 두고 류트 음파 (둔화)
+    if (p.char === 'bard' && p.form !== 'metal' && dist <= C.BARD_NOTE_RANGE * 0.8) {
+      const dz = t.z + C.PLAYER_HEIGHT * 0.5 - (p.z + C.EYE_HEIGHT - 0.3);
+      const err = this.shellErr || { yaw: 0, pitch: 0 };
+      this.input.yaw = Math.atan2(t.y - p.y, t.x - p.x) + err.yaw;
+      this.input.pitch = Math.atan2(dz, dist) + err.pitch;
+      this.input.fwd = dist < 2 && edgeDist(p.x - toT.x * 1.5, p.y - toT.y * 1.5) > 1 ? -1 : 0;
+      this.input.strafe = 0;
+      g.handleInput(p.id, this.input);
+      if (!p.atk && g.time >= p.pushReadyAt && g.time >= this.nextPushAt) {
+        g.handleAction(p.id, { name: 'push' });
+        this.nextPushAt = g.time + this.k('PUSH_INTERVAL_MS') * 0.5 * (0.7 + 0.6 * this.rng());
+        this.rollShellErr();
+      }
+      return;
+    }
+    if (p.char === 'bard') this.input.pitch = 0;
     // 닌자·탱크: 지상 마지막 타(올려 차기·방패 올려치기)로 띄운 상대를 점프해 따라가 공중 평타
     const lb = p.lastBasic;
-    const launcher = p.char && !C.BASIC_ATTACKS[p.char].chain.at(-1).finish;
-    if (launcher && lb && !lb.air && lb.n === C.BASIC_ATTACKS[p.char].chain.length && g.time - lb.at < 900 && t.z > p.z + 0.4 && g.time < t.stunUntil && dist < 2) {
+    const launcher = p.char && !basicSet(p.char, p.form).chain.at(-1).finish;
+    if (launcher && lb && !lb.air && lb.n === basicSet(p.char, p.form).chain.length && g.time - lb.at < 900 && t.z > p.z + 0.4 && g.time < t.stunUntil && dist < 2) {
       this.input.fwd = dist > 0.8 ? 1 : 0;
       this.input.strafe = 0;
       this.input.yaw = Math.atan2(t.y - p.y, t.x - p.x);
@@ -469,6 +495,22 @@ export class BotBrain {
         if (this.pathHits(p, yaw, land, avoid)) return false;
         face();
         return act('skill');
+      }
+    } else if (p.char === 'bard') {
+      if (p.form !== 'metal') {
+        // 음유: 앞 넓은 범위에 상대가 있으면 취약의 노래, 붙으면 메탈로 바꿔 기타 리프
+        if (ultReady && dist <= C.BARD_SONG_RANGE * 0.9 && Math.abs(t.z - p.z) < 2) {
+          face();
+          return act('ult');
+        }
+        if (skillReady && dist <= C.BARD_RIFF_RANGE + 0.3) return act('skill');
+      } else {
+        // 메탈: 앞에 상대가 있으면 앰프 음파, 많이 맞았거나 멀어지면 음유시인으로 (치유)
+        if (ultReady && level && dist <= C.BARD_AMP_RANGE * 0.8) {
+          face();
+          return act('ult');
+        }
+        if (skillReady && (p.damage >= 90 || dist > 4.5)) return act('skill');
       }
     } else if (p.char === 'hunter') {
       // R: 보는 방향 안에 쏠 표식 대상이 있으면 (표식 많은 상대 쪽을 봄)

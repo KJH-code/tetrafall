@@ -77,6 +77,7 @@ export function parseLog(text) {
         hunter: { marks: 0, shots: 0, refunds: 0 }, // 사냥꾼 표식·처형 사격·게이지 회수 (2026-10-26~)
         cannon: { fired: 0, hits: 0, broke: 0, big: 0 }, // 대포수 포탄 발사·명중·블록 부숨(칸)·대형 포탄 (2026-10-26~)
         berserker: { leaps: 0, spins: 0, rage: 0, cut: 0, endHits: 0, broken: 0 }, // 광전사 도약·소용돌이·분노 배율 합·깎은 피해 %·끝 날림 맞힌 수·끊김 (2026-10-26~)
+        bard: { notes: 0, toMetal: 0, toBard: 0, healed: 0, songs: 0, vuln: 0, amps: 0, ampBroken: 0 }, // 바드 음파 명중·폼 전환·치유한 피해 %·취약의 노래(걸린 사람)·앰프(끊김) (2026-10-26~)
       };
     } else if ((m = line.match(/^ {2}사망: (.*)$/)) && last) {
       // 접속 끊김은 [사망] 줄 없이 여기에만 나옴
@@ -139,6 +140,20 @@ export function parseLog(text) {
       cur.cannon.broke += m[1] ? Number(m[1]) : 1;
     } else if (/^ {2}\[필살\] \S+ 대형 포탄 발사/.test(line)) {
       cur.cannon.big++;
+    } else if (/^ {2}\[음파\] \S+ → \S+ 둔화/.test(line)) {
+      cur.bard.notes++;
+    } else if (/^ {2}\[스킬\] \S+ 메탈 폼/.test(line)) {
+      cur.bard.toMetal++;
+    } else if ((m = line.match(/^ {2}\[스킬\] \S+ 음유시인 폼 \(치유 (.*)\)$/))) {
+      cur.bard.toBard++;
+      for (const h of m[1].matchAll(/(\d+)% → (\d+)%/g)) cur.bard.healed += Number(h[1]) - Number(h[2]);
+    } else if ((m = line.match(/^ {2}\[필살\] \S+ 취약의 노래(?: → (.+))?$/))) {
+      cur.bard.songs++;
+      if (m[1]) cur.bard.vuln += m[1].split(', ').length;
+    } else if (/^ {2}\[필살\] \S+ 앰프 음파$/.test(line)) {
+      cur.bard.amps++;
+    } else if (/^ {2}\[필살\] \S+ 앰프 음파 끊김/.test(line)) {
+      cur.bard.ampBroken++;
     } else if (/^ {2}\[스킬\] \S+ 광폭 도약/.test(line)) {
       cur.berserker.leaps++;
     } else if ((m = line.match(/^ {2}\[필살\] \S+ 분노 소용돌이 \(분노 ×([\d.]+), 피해 (\d+)% → (\d+)%\)/))) {
@@ -342,7 +357,8 @@ export function summarize(rounds) {
       const hunter = ['marks', 'shots', 'refunds'].reduce((o, k) => ({ ...o, [k]: rounds.reduce((a, r) => a + r.hunter[k], 0) }), {});
       const cannon = ['fired', 'hits', 'broke', 'big'].reduce((o, k) => ({ ...o, [k]: rounds.reduce((a, r) => a + r.cannon[k], 0) }), {});
       const berserker = ['leaps', 'spins', 'rage', 'cut', 'endHits', 'broken'].reduce((o, k) => ({ ...o, [k]: rounds.reduce((a, r) => a + r.berserker[k], 0) }), {});
-      return { armor, hunter, cannon, berserker, blasts: all.length, wall: by('벽').length, third: by('3타 블록').length, pad: by('발판').length, cells, big: rounds.reduce((a, r) => a + r.bigBombs, 0) };
+      const bard = ['notes', 'toMetal', 'toBard', 'healed', 'songs', 'vuln', 'amps', 'ampBroken'].reduce((o, k) => ({ ...o, [k]: rounds.reduce((a, r) => a + r.bard[k], 0) }), {});
+      return { armor, hunter, cannon, berserker, bard, blasts: all.length, wall: by('벽').length, third: by('3타 블록').length, pad: by('발판').length, cells, big: rounds.reduce((a, r) => a + r.bigBombs, 0) };
     })(),
     combos: (() => {
       // 콤보 (2타 이상): 길이별 횟수 + 넣은 캐릭터별 (사람·봇 따로, 여럿이 같이 넣은 건 따로)
@@ -436,6 +452,9 @@ export function formatReport(s) {
     const b = s.builder;
     out.push('', '== 건축가 블록 ==', `폭발 ${b.blasts}번 (벽 ${b.wall} · 3타 블록 ${b.third} · 발판 ${b.pad}, 평균 ${b.blasts ? (b.cells / b.blasts).toFixed(1) : 0}칸) · 대폭발 ${b.big}번`);
   }
+  const bd = s.builder.bard;
+  if (bd.notes || bd.toMetal || bd.songs || bd.amps)
+    out.push('', '== 바드 ==', `음파 명중 ${bd.notes} · 메탈 전환 ${bd.toMetal} · 음유 전환 ${bd.toBard} (치유 ${bd.healed}%) · 취약의 노래 ${bd.songs}번 (${bd.vuln}명) · 앰프 음파 ${bd.amps}번 (끊김 ${bd.ampBroken})`);
   const bz = s.builder.berserker;
   if (bz.leaps || bz.spins)
     out.push('', '== 광전사 ==', `광폭 도약 ${bz.leaps}번 · 소용돌이 ${bz.spins}번 (평균 분노 ×${bz.spins ? (bz.rage / bz.spins).toFixed(2) : '-'} · 깎은 피해 평균 ${bz.spins ? Math.round(bz.cut / bz.spins) : '-'}% · 끝 날림 ${bz.endHits}명 · 끊김 ${bz.broken}번)`);
