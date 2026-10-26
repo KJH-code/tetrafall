@@ -83,10 +83,13 @@ export class ViewModel {
     waist.position.set(0, 0, -(d.torso - d.armR * 1.6)); // 어깨 높이가 기준점
     this.anchor.add(waist);
     this.anchor.scale.setScalar(C.FIGURE_SCALE * C.VM_SCALE);
-    // 그릴 것: 팔꿈치 아래 (아래팔 소매·보호대·장갑·든 무기) + 캐릭터 무기 중 몸통에 붙은 것 (탱크 앞 방패).
+    // 그릴 것: 팔꿈치 아래 (아래팔 소매·보호대·장갑·든 무기) + 캐릭터 무기 중 몸통에 붙은 것 (탱크 앞 방패, 대포수 어깨 대포, 바드 악기).
     // 윗팔·어깨 장식은 카메라 바로 옆이라 화면을 덮어서 안 그림
     const show = [...fig.elbows];
     if (fig.shields) show.push(fig.shields.front);
+    if (fig.cannon) show.push(fig.cannon);
+    if (fig.lute) show.push(fig.lute.lute);
+    if (fig.guitar) show.push(fig.guitar);
     for (const o of show) twin.get(o).traverse((m) => m.layers.set(LAYER));
     // 캐릭터별 1인칭 소품
     this.star = null;
@@ -105,6 +108,40 @@ export class ViewModel {
       this.star.position.set(0.02, 0, -fig.d.hand * 1.4);
       left.add(this.star);
     }
+    this.pips = null;
+    if (fig.cannon && fig.balls) {
+      // 대포수: 대포 등에 남은 포탄 수만큼 쇠공 (허리 뒤 포탄은 1인칭에서 안 보여서)
+      const cannon = twin.get(fig.cannon);
+      this.pips = fig.balls.map((b, i) => {
+        const m = new THREE.Mesh(b.geometry, b.material);
+        m.scale.setScalar(C.VM_PIP_SCALE);
+        m.position.set(0.05 + i * 0.13, 0, 0.14);
+        m.layers.set(LAYER);
+        cannon.add(m);
+        return m;
+      });
+    }
+    this.veins = null;
+    if (fig.rage) {
+      // 광전사: 분노가 차면 아래팔에도 핏줄 (머리 핏줄과 같이 벌떡벌떡)
+      const mat = fig.rage.veins[0]?.material || toon({ color: 0x9a1020 });
+      this.veins = fig.elbows.map((el) => {
+        const g = new THREE.Group();
+        // 갈라지는 핏줄 한 가닥 (줄기 + 양쪽 가지). 팔꿈치 쪽 (가운데는 가죽 팔목 보호대)
+        for (const [y, z, len, rot] of [[0, 0.06, 0.08, 0], [0.012, 0.11, 0.04, 0.6], [-0.012, 0.12, 0.04, -0.6]]) {
+          const v = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.008, len), mat);
+          v.position.set(fig.d.foreR * 1.0, y, -z);
+          v.rotation.x = rot;
+          v.layers.set(LAYER);
+          g.add(v);
+        }
+        twin.get(el).add(g);
+        return g;
+      });
+    }
+    this.raw = (C.VM_RAW_POSE || []).includes(g.userData.look);
+    this.spin = (C.VM_SPIN || []).includes(g.userData.look); // 바드 활강처럼 계속 도는 건 화면을 덮어서 뺌
+    this.cannon = fig.cannon ? twin.get(fig.cannon) : null; // 팔을 이미 몸 앞에 드는 캐릭터 (바드: 악기를 가슴에)
     this.thrownAt = -1e9;
     this.fig = fig;
     this.twin = { waist, shoulders: fig.shoulders.map((o) => twin.get(o)), elbows: fig.elbows.map((o) => twin.get(o)) };
@@ -121,10 +158,18 @@ export class ViewModel {
       t.scale.copy(s.scale);
       t.visible = s.visible;
     }
+    if (this.cannon) {
+      // 어깨 대포는 카메라 바로 옆이라 그대로면 화면 오른쪽을 다 덮음 → 작게, 오른쪽 아래로
+      this.cannon.scale.multiplyScalar(C.VM_CANNON[0]);
+      this.cannon.position.y += C.VM_CANNON[1];
+      this.cannon.position.z += C.VM_CANNON[2];
+    }
     const k = C.VM_BODY_FOLLOW;
     const w = fig.waist.rotation;
-    this.twin.waist.rotation.set(w.x * k, (w.y - fig.d.hunch) * k, w.z * k);
+    // 몸 전체 돌기(광전사 소용돌이·회전 베기·갈고리 스핀)는 VM_SPIN 캐릭터만 그대로: 무기를 든 팔이 화면을 휩쓸고 지나감
+    this.twin.waist.rotation.set(w.x * k, (w.y - fig.d.hunch) * k, w.z * k + (this.spin ? fig.hips.rotation.z : 0));
     for (let i = 0; i < 2; i++) {
+      if (this.raw) continue;
       const side = i ? 1 : -1;
       const sh = fig.shoulders[i].rotation;
       const fwd = -sh.y;
@@ -143,6 +188,15 @@ export class ViewModel {
       this.twin.shoulders[0].rotation.y = -C.VM_GUN_AIM[0];
       this.twin.elbows[0].rotation.y = -C.VM_GUN_AIM[1];
     }
+    if (this.pips) this.pips.forEach((m, i) => (m.visible = fig.balls[i].visible));
+    if (this.veins) {
+      const r = fig.rage.k;
+      const beat = 1 + 0.3 * Math.max(0, Math.sin((this.src.userData.anim.t || 0) * 9)) * r;
+      for (const g of this.veins) {
+        g.visible = r > 0.35;
+        g.scale.set(beat, beat, 1);
+      }
+    }
     if (this.star) {
       // 표창: 던진 직후 잠깐 빈손, 그 뒤 다시 쥠 (작게 튀어나옴)
       const u = (performance.now() - this.thrownAt) / C.VM_STAR_HIDE_MS;
@@ -153,7 +207,7 @@ export class ViewModel {
     const an = this.src.userData.anim;
     const amp = Math.min(1, (an.hs || 0) / C.MOVE_SPEED);
     const t = an.t || 0;
-    const [x, y, z] = (C.VM_POS[this.char] || C.VM_POS.default);
+    const [x, y, z] = C.VM_POS[this.char] || C.VM_POS.default;
     this.anchor.position.set(
       x + Math.sin(an.walk || 0) * C.VM_BOB * 0.6 * amp,
       y - Math.abs(Math.cos(an.walk || 0)) * C.VM_BOB * amp + Math.sin(t * 2) * C.VM_BREATH,
