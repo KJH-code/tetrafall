@@ -746,7 +746,7 @@ function dressBerserker(fig, costume, cloth) {
   fig.neck.add(mesh(new THREE.BoxGeometry(0.02, 0.035, 0.12), iron, d.headW * 0.62, 0, browZ - 0.05)); // 코 가리개
   fig.neck.add(mesh(new THREE.BoxGeometry(d.headW * 1.2, 0.02, 0.03), iron, 0, 0, browZ + d.headW * 0.6));
   // 뿔: 바이킹 소뿔. 마디 HORN_SEGS 개를 이어 붙인 휜 호 (투구 옆에서 바깥으로 나갔다 위로 C 자로 휨), 끝으로 갈수록 가늘고 뾰족.
-  // 색은 뿌리 상아색 → 끝 짙은 갈색 (마디마다 조금씩), 뿌리에 쇠 고리. 마디마다 관절이라 끝으로 갈수록 처지고 늦게 출렁 (figureAnim)
+  // 색은 뿌리 상아색 → 끝 짙은 갈색 (마디마다 조금씩), 뿌리에 쇠 고리. 휜 각은 figureAnim 이 마디마다 줌
   const N = C.FIGURE_HORN_SEGS;
   const ivory = new THREE.Color(0xf2e8cc);
   const brown = new THREE.Color(0x4e3018);
@@ -769,6 +769,7 @@ function dressBerserker(fig, costume, cloth) {
       if (side < 0) geo.rotateZ(Math.PI); // -y 로
       const j2 = k === 0 ? root : joint(parent, 0, side * len, 0);
       j2.add(mesh(geo, costume(ivory.clone().lerp(brown, (u0 + u1) / 2).getHex())));
+      j2.rotation.x = side * (k === 0 ? 0.15 : C.FIGURE_HORN_CURL / (N - 1)); // 처음부터 휜 채로 (figureAnim 도 같은 각)
       segs.push(j2);
       parent = j2;
     }
@@ -1399,18 +1400,9 @@ export function figureAnim(fig, st, dt, retry = false) {
     fig.rage.anger.visible = k > 0.5;
     fig.rage.anger.scale.setScalar(0.8 + 0.5 * Math.max(0, Math.sin(t * 9)));
   }
-  // 광전사 뿔: 마디마다 위로 꺾여 C 자 (뿌리는 바깥으로, 끝은 위로). 끝 마디로 갈수록 축 처지고 늦게 크게 출렁 (가만히 있어도 끝이 처짐)
+  // 광전사 뿔: 마디마다 같은 각으로 위로 꺾여 매끈한 C 자 (뿌리는 바깥으로, 끝은 위로). 흐물거리지 않음 (2026-10-26 재혁: 그냥 위로 휘게)
   if (fig.horns) {
-    const n = C.FIGURE_HORN_SEGS;
-    const wob = C.FIGURE_HORN_WOBBLE * (0.4 + sp * 1.2);
-    for (const h of fig.horns) {
-      h.segs.forEach((j, k) => {
-        const u = k / (n - 1); // 0 뿌리 ~ 1 끝
-        const curl = k === 0 ? 0.15 : C.FIGURE_HORN_CURL / (n - 1); // 마디마다 위로 꺾임 → 다 합쳐 C 자
-        const droop = C.FIGURE_HORN_DROOP * u * u; // 끝일수록 처짐
-        const sway = Math.sin(t * 6.5 - k * 0.55 + h.side) * wob * u; // 끝일수록 늦게·크게
-        j.rotation.x = h.side * (curl - droop / (n - 1) * 2 + sway);
-      });
-    }
+    const bend = C.FIGURE_HORN_CURL / (C.FIGURE_HORN_SEGS - 1);
+    for (const h of fig.horns) h.segs.forEach((j, k) => (j.rotation.x = h.side * (k === 0 ? 0.15 : bend)));
   }
 }
