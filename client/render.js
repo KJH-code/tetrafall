@@ -2243,6 +2243,7 @@ export class Renderer {
           this.effects.burst({ x: w.x, y: w.y, z: w.z + 0.05 }, { x: 0, y: 0 }, 0x9a9a9a, 1, 0.6, 0.07, 0.7);
         }
       }
+      if (g.userData.figure?.setForm) g.userData.figure.setForm(p.form); // 바드 폼 (서버 form: 'bard' | 'metal', 없으면 음유시인)
       const balls = g.userData.figure && g.userData.figure.balls;
       if (balls) balls.forEach((b, i) => (b.visible = i < (p.cannon ? p.cannon.ammo : balls.length))); // 대포수 허리 포탄 = 남은 탄
       // 왼손에 고른 칸의 물건, 조종권 대기 중이면 머리 위 하늘색 팔면체
