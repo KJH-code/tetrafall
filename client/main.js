@@ -1607,13 +1607,17 @@ function updateCooldowns(p, show) {
   const now = performance.now();
   for (const [k, a] of Object.entries(cdArcs)) {
     const cd = k === 'dash' ? p.dashCd : p.pushCd;
-    if (a.was > 0 && cd === 0) a.flashUntil = now + C.COOLDOWN_FLASH_MS; // 다 찼을 때 번쩍
+    // 공중 대시를 다 씀 (airDashes 0 = 공중, 땅에 닿으면 다시 참): 대시 원이 회색으로 꽉 참 → 착지하면 번쩍
+    const spent = k === 'dash' && p.airDashes === 0;
+    if ((a.was > 0 && cd === 0) || (a.spent && !spent && cd === 0)) a.flashUntil = now + C.COOLDOWN_FLASH_MS; // 다 찼을 때 번쩍
     a.was = cd;
-    const flashing = now < a.flashUntil;
-    const fill = cd > 0 ? 1 - cd / a.total : 1;
-    const on = cd > 0 || flashing;
+    a.spent = spent;
+    const flashing = now < a.flashUntil && !spent;
+    const fill = cd > 0 && !spent ? 1 - cd / a.total : 1;
+    const on = cd > 0 || flashing || spent;
+    a.el.classList.toggle('spent', spent);
     a.el.style.display = on ? '' : 'none';
-    a.track.style.display = cd > 0 ? '' : 'none';
+    a.track.style.display = cd > 0 && !spent ? '' : 'none';
     a.el.setAttribute('stroke-dasharray', `${a.len * fill} ${a.len}`);
     a.el.classList.toggle('flash', flashing);
   }
