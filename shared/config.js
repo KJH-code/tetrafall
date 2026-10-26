@@ -548,7 +548,7 @@ export const CONFIG = {
   BARD_VULN_MS: 4000,
   BARD_VULN_MULT: 1.3,
   // 메탈 R 앰프 음파: BARD_AMP_MS 동안 앞 원뿔(BARD_AMP_ANGLE_DEG 전체 각, BARD_AMP_RANGE)에 BARD_AMP_TICK_MS 마다 작게 밀침, 끝에 크게.
-  // 연주 중 이동 ×BARD_AMP_MOVE_MULT, 평타 안 나감, 맞으면 끊김
+  // 연주 중 이동 ×BARD_AMP_MOVE_MULT, 평타 안 나감. 맞아도 안 끊김 (넉백은 받고 경직 중에도 연주 계속 — 2026-10-26 재혁 가, 끊김 56~65% 라 약했음)
   BARD_AMP_MS: 3000,
   BARD_AMP_MOVE_MULT: 0.5,
   BARD_AMP_ANGLE_DEG: 70,
