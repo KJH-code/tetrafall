@@ -193,9 +193,10 @@ test('평타: 경직은 후딜 + 다음 타 준비 + 0.1초 이상 (바로 누�
   for (const char of C.CHARACTERS) {
     const { chain, air } = C.BASIC_ATTACKS[char];
     const ninja = char === 'ninja' || char === 'tank'; // 지상 마지막 타가 띄우고 공중 마지막 타가 마무리
+    const noFinish = char === 'hunter'; // 2026-10-26 재혁 "가": 사냥꾼 찔러 넣기는 마무리 아님 (공중 내려 베기도 아님) → 평타 마무리 없음
     let t = 0;
     chain.forEach((d, i) => {
-      assert.equal(!!d.finish, !ninja && i === chain.length - 1, `${char} ${i + 1}타`);
+      assert.equal(!!d.finish, !ninja && !noFinish && i === chain.length - 1, `${char} ${i + 1}타`);
       if (i === chain.length - 1) return;
       assert.ok(d.stun >= d.rec + chain[i + 1].windup + 100, `${char} ${i + 1}타 경직 ${d.stun}`);
       t += d.rec + chain[i + 1].windup;
@@ -1465,6 +1466,52 @@ test('사냥꾼 F 추적 도약: 사거리 6 안 표식 있는 가장 가까운 
   g.handleAction(1, { name: 'skill' });
   run(g, C.HUNTER_LEAP_WINDUP_MS + C.HUNTER_LEAP_MS + 2 * TICK);
   assert.ok(Math.abs(p(1).x - (2 + C.HUNTER_LEAP_DIST)) < 0.3, `x=${p(1).x.toFixed(2)}`);
+});
+
+test('사냥꾼 찔러 넣기 (재혁 "가"): 마무리 아님 — 평평평이 맞아도 콤보·경직이 이어지고 무적이 안 붙어 F 덮침이 들어감 (표식 +1), 덮침 뒤 평타도 이어짐', () => {
+  const { g, p } = setupChars(['hunter', 'tank']);
+  place(p(1), 3, 5, 0);
+  place(p(2), 4.1, 5);
+  for (let i = 0; i < 3; i++) {
+    basic(g, 1);
+    if (i < 2) run(g, p(1).pushReadyAt - g.time + TICK);
+  }
+  assert.equal(g.markOf(p(1), p(2)), 1, '표식 +1');
+  assert.equal(p(2).comboHits, 3, '콤보 이어짐');
+  assert.ok(p(2).iframeUntil <= g.time, '무적 없음');
+  assert.ok(p(2).stunUntil - g.time >= C.HUNTER_LEAP_WINDUP_MS + C.HUNTER_LEAP_MS, '경직이 F 덮침까지 감');
+  assert.ok(Math.abs(p(2).kbx) < 3, `밀림 작음 ${p(2).kbx}`);
+  g.handleAction(1, { name: 'skill' }); // 맞힌 후딜 캔슬
+  run(g, C.HUNTER_LEAP_WINDUP_MS + C.HUNTER_LEAP_MS + 2 * TICK);
+  assert.equal(p(2).lastHit.kind, 'pounce', '덮침 들어감');
+  assert.equal(p(2).comboHits, 4, '덮침도 콤보 (시간 마무리 아님)');
+  assert.ok(p(2).iframeUntil <= g.time);
+  const before = p(2).damage;
+  basic(g, 1);
+  assert.ok(p(2).damage > before, '덮침 뒤 평타');
+});
+
+test('사냥꾼 F 유도 (재혁 "다"): 도약 중 표식 대상이 움직이면 착지 직전까지 따라감, 처음 자리에서 최대 HUNTER_LEAP_HOMING_MAX 칸', () => {
+  const leapTo = (moveY) => {
+    const { g, p } = setupChars(['hunter', 'tank']);
+    place(p(1), 2, 5, 0);
+    place(p(2), 6, 5);
+    p(2).marks.set(1, { n: 1, at: g.time });
+    g.handleAction(1, { name: 'skill' });
+    run(g, C.HUNTER_LEAP_WINDUP_MS + TICK); // 도약 시작
+    for (let t = 0; t < C.HUNTER_LEAP_MS + 2 * TICK; t += TICK) {
+      Object.assign(p(2), { x: 6, y: 5 + Math.min(moveY, (moveY * t) / C.HUNTER_LEAP_MS) }); // 도약 중 옆으로 걸어감
+      g.tick(TICK);
+    }
+    return { g, p };
+  };
+  const a = leapTo(1.2);
+  assert.ok(a.p(1).y > 5.4, `따라감 y ${a.p(1).y.toFixed(2)}`);
+  assert.ok(Math.hypot(a.p(2).x - a.p(1).x, a.p(2).y - a.p(1).y) <= C.HUNTER_POUNCE_RANGE, '덮칠 거리 안');
+  assert.equal(a.p(2).lastHit.kind, 'pounce', '덮침');
+  const b = leapTo(5); // 너무 멀리 가면 최대 보정까지만
+  assert.ok(b.p(1).y <= 5 + C.HUNTER_LEAP_HOMING_MAX + 0.1, `최대 보정 y ${b.p(1).y.toFixed(2)}`);
+  assert.ok(b.p(1).y >= 5 + C.HUNTER_LEAP_HOMING_MAX - 0.4, `보정은 함 y ${b.p(1).y.toFixed(2)}`);
 });
 
 test('사냥꾼 R 처형 사격: 게이지 2배, 각 90°·사거리 8 안 표식 대상 전부를 0.5초 조준 뒤 맞힘 (표식 1개당 피해), 표식 소모, 블록이 가리면 막힘, 표식 3개를 맞히면 게이지를 돌려받음, 대상이 없으면 안 쓰임', () => {

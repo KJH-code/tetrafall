@@ -471,6 +471,8 @@ export class BotBrain {
       // F: 표식 있는 상대가 좀 떨어져 있으면 추적 도약
       const chase = enemies.some((o) => g.markOf(p, o) > 0 && Math.hypot(o.x - p.x, o.y - p.y) <= C.HUNTER_LEAP_RANGE && Math.hypot(o.x - p.x, o.y - p.y) > 2);
       if (skillReady && chase) return act('skill');
+      // 찔러 넣기(표식) 뒤 콤보 중이면 F 덮침으로 이어 감 (평평평 → F → 평평평, 2026-10-26 재혁 "가")
+      if (skillReady && comboing && g.markOf(p, t) > 0 && p.lastBasic && p.lastBasic.n === C.BASIC_ATTACKS.hunter.chain.length && !p.lastBasic.air && g.time - p.lastBasic.at < 400) return act('skill');
     } else if (p.char === 'hook') {
       // R 블록 내려찍기: 상대 쪽으로 블록이 닿고 상대가 내려찍는 직선 안이면
       const yawT = Math.atan2(t.y - p.y, t.x - p.x);

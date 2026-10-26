@@ -223,13 +223,14 @@ export const CONFIG = {
       ],
       air: [{ name: '갈고리 스핀', windup: 150, rec: 400, stun: 500, dmg: 6, kb: 3, up: 2, step: 0, angle: 180 }],
     },
-    // 사냥꾼 (2026-10-26 재혁 확정, docs/characters.md 3.5 사냥꾼형): 베기 → 반대 베기 → 찔러 넣기 (마무리, 맞으면 표식 +1). 속도는 탱크와 닌자 사이.
+    // 사냥꾼 (2026-10-26 재혁 확정, docs/characters.md 3.5 사냥꾼형): 베기 → 반대 베기 → 찔러 넣기 (맞으면 표식 +1). 속도는 탱크와 닌자 사이.
     // 공중 내려 베기 1타는 표식 없음. 수치는 초안 (stun·kb 는 문서에 없어 A 가 정함)
+    // 2026-10-26 재혁 결정 "가": 찔러 넣기는 마무리 아님 (봇 판: 마무리 → 무적이라 F 덮침·R 이 거의 다 빗나감). 이어지는 타 수준 kb + 긴 경직 → F 덮침·평타로 이어 감
     hunter: {
       chain: [
         { name: '베기', windup: 100, rec: 250, stun: 450, dmg: 5, kb: 1.2, up: 2, step: 0.3 },
         { name: '반대 베기', windup: 100, rec: 250, stun: 550, dmg: 5, kb: 1.2, up: 2, step: 0.3 },
-        { name: '찔러 넣기', windup: 200, rec: 450, stun: 600, dmg: 8, kb: 4.4, up: 3, step: 0.4, finish: true, mark: true },
+        { name: '찔러 넣기', windup: 200, rec: 450, stun: 850, dmg: 8, kb: 1.5, up: 2, step: 0.4, mark: true }, // stun ≥ F 준비 200 + 도약 300 + 여유
       ],
       air: [{ name: '내려 베기', windup: 150, rec: 400, stun: 500, dmg: 7, kb: 3, up: 2, step: 0 }],
     },
@@ -391,6 +392,10 @@ export const CONFIG = {
   HUNTER_LEAP_MS: 300, // 도약에 걸리는 시간
   HUNTER_LEAP_UP: 6,
   HUNTER_LEAP_BEHIND: 0.8, // 덮칠 때 상대 앞 이 거리에 내림
+  // 2026-10-26 재혁 결정 "다": 도약 중 착지 직전까지 표식 대상을 따라감 (유도). 틱마다 내릴 자리를 대상 쪽으로 HUNTER_LEAP_HOMING 비율만큼,
+  // 처음 정한 자리에서 최대 HUNTER_LEAP_HOMING_MAX 칸까지. 남은 시간에 맞춰 속도를 다시 정함
+  HUNTER_LEAP_HOMING: 0.8,
+  HUNTER_LEAP_HOMING_MAX: 2,
   HUNTER_POUNCE_RANGE: 1.4, // 내렸을 때 이 거리 안이면 덮침 (피해 작게, 경직으로 평타 연결)
   HUNTER_POUNCE_DAMAGE: 4,
   HUNTER_POUNCE_STUN_MS: 500,

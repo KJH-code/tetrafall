@@ -1565,6 +1565,8 @@ export class Game {
       const sec = C.HUNTER_LEAP_MS / 1000;
       L.vx = (to.x - p.x) / sec;
       L.vy = (to.y - p.y) / sec;
+      L.to = { ...to };
+      L.to0 = { ...to };
       L.endAt = this.time + C.HUNTER_LEAP_MS;
       p.vz = C.HUNTER_LEAP_UP;
       p.grounded = false;
@@ -1573,13 +1575,42 @@ export class Game {
       this.emit({ type: 'leap', who: p.id, target: L.target, from: { x: p.x, y: p.y, z: p.z }, to: { ...to, z: p.z }, ms: C.HUNTER_LEAP_MS });
       return;
     }
-    if (this.time < L.endAt) return;
+    if (this.time < L.endAt) {
+      this.hunterLeapHome(p, L);
+      return;
+    }
     p.leap = null;
     const t = L.target !== null ? this.players.get(L.target) : null;
     if (!t || !this.foe(p, t) || Math.hypot(t.x - p.x, t.y - p.y) > C.HUNTER_POUNCE_RANGE || Math.abs(t.z - p.z) > C.PLAYER_HEIGHT) return;
-    const hit = this.applyKnockback(t, t.x - p.x, t.y - p.y, 0, 0, C.HUNTER_POUNCE_STUN_MS, C.HUNTER_POUNCE_DAMAGE, { by: p.id, kind: 'pounce' });
+    // 덮침은 연타를 잇는 타 (재혁 "가": 평평평 → F 덮침 → 평평평): COMBO_MS 가 지나도 시간 마무리 아님. F 쿨이 있어 무한히 안 늘어남
+    const hit = this.applyKnockback(t, t.x - p.x, t.y - p.y, 0, 0, C.HUNTER_POUNCE_STUN_MS, C.HUNTER_POUNCE_DAMAGE, { by: p.id, kind: 'pounce' }, false, { chained: true });
     this.emit({ type: 'hit', kind: 'pounce', by: p.id, target: t.id, ok: hit, streak: hit ? p.streak : 0 });
     this.log(`  [스킬] ${p.name} 덮침 → ${t.name}${hit ? ` (${t.name} ${t.damage}%)` : ' 무적이라 무시'}`);
+  }
+
+  // 도약 유도 (재혁 "다"): 내릴 자리를 대상(앞 HUNTER_LEAP_BEHIND) 쪽으로 옮기고 (처음 자리에서 최대 HUNTER_LEAP_HOMING_MAX), 남은 시간에 맞춰 속도
+  hunterLeapHome(p, L) {
+    const t = L.target !== null ? this.players.get(L.target) : null;
+    const left = (L.endAt - this.time) / 1000;
+    if (!t || !this.foe(p, t) || left < 0.01) return; // 마지막 순간 (남은 시간 ~0) 은 그대로
+    const dx = t.x - p.x;
+    const dy = t.y - p.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const go = Math.max(0, d - C.HUNTER_LEAP_BEHIND);
+    const want = { x: p.x + (dx / d) * go, y: p.y + (dy / d) * go };
+    let nx = L.to.x + (want.x - L.to.x) * C.HUNTER_LEAP_HOMING;
+    let ny = L.to.y + (want.y - L.to.y) * C.HUNTER_LEAP_HOMING;
+    const ox = nx - L.to0.x;
+    const oy = ny - L.to0.y;
+    const off = Math.hypot(ox, oy);
+    if (off > C.HUNTER_LEAP_HOMING_MAX) {
+      nx = L.to0.x + (ox / off) * C.HUNTER_LEAP_HOMING_MAX;
+      ny = L.to0.y + (oy / off) * C.HUNTER_LEAP_HOMING_MAX;
+    }
+    L.to = { x: nx, y: ny };
+    L.vx = (nx - p.x) / left;
+    L.vy = (ny - p.y) / left;
+    p.yaw = Math.atan2(dy, dx);
   }
 
   // R 처형 사격 조준: 대상이 하나도 없으면 안 쓰임 (게이지 그대로)
