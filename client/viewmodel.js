@@ -45,7 +45,8 @@ export class ViewModel {
     }
     // 몸 좌표(앞 +x, 왼쪽 +y, 위 +z) → 카메라 좌표(앞 -z, 오른쪽 +x, 위 +y)
     this.anchor = new THREE.Group();
-    this.anchor.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 0, -1), new THREE.Vector3(-1, 0, 0), new THREE.Vector3(0, 1, 0)));
+    this.baseQuat = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 0, -1), new THREE.Vector3(-1, 0, 0), new THREE.Vector3(0, 1, 0)));
+    this.anchor.quaternion.copy(this.baseQuat);
     this.camera.add(this.anchor);
     this.src = null; // 지금 베끼는 3인칭 몸 (Group)
     this.pairs = []; // [원본, 복제] 관절·부품
@@ -82,7 +83,10 @@ export class ViewModel {
     const d = fig.d;
     waist.position.set(0, 0, -(d.torso - d.armR * 1.6)); // 어깨 높이가 기준점
     this.anchor.add(waist);
-    this.anchor.scale.setScalar(C.FIGURE_SCALE * C.VM_SCALE);
+    // 화면에서 비스듬히 (바드 악기 목이 조준점 아래를 가로지르지 않게 오른쪽으로 세움)
+    const roll = (C.VM_ROLL || {})[g.userData.look] || 0;
+    this.anchor.quaternion.copy(this.baseQuat).premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), roll));
+    this.anchor.scale.setScalar(C.FIGURE_SCALE * C.VM_SCALE * ((C.VM_SIZE || {})[g.userData.look] || 1)); // 굵은 몸(탱크·건축가)은 작게
     // 그릴 것: 팔꿈치 아래 (아래팔 소매·보호대·장갑·든 무기) + 캐릭터 무기 중 몸통에 붙은 것 (탱크 앞 방패, 대포수 어깨 대포, 바드 악기).
     // 윗팔·어깨 장식은 카메라 바로 옆이라 화면을 덮어서 안 그림
     const show = [...fig.elbows];
@@ -141,7 +145,8 @@ export class ViewModel {
     }
     this.raw = (C.VM_RAW_POSE || []).includes(g.userData.look);
     this.spin = (C.VM_SPIN || []).includes(g.userData.look); // 바드 활강처럼 계속 도는 건 화면을 덮어서 뺌
-    this.cannon = fig.cannon ? twin.get(fig.cannon) : null; // 팔을 이미 몸 앞에 드는 캐릭터 (바드: 악기를 가슴에)
+    this.cannon = fig.cannon ? twin.get(fig.cannon) : null;
+    this.shield = fig.shields ? twin.get(fig.shields.front) : null; // 팔을 이미 몸 앞에 드는 캐릭터 (바드: 악기를 가슴에)
     this.thrownAt = -1e9;
     this.fig = fig;
     this.twin = { waist, shoulders: fig.shoulders.map((o) => twin.get(o)), elbows: fig.elbows.map((o) => twin.get(o)) };
@@ -163,6 +168,13 @@ export class ViewModel {
       this.cannon.scale.multiplyScalar(C.VM_CANNON[0]);
       this.cannon.position.y += C.VM_CANNON[1];
       this.cannon.position.z += C.VM_CANNON[2];
+    }
+    if (this.shield) {
+      // 탱크 앞 방패: 그대로면 조준점 아래 가운데를 꽉 채움 → 작게, 왼쪽 아래로 비스듬히 (왼팔 방패)
+      this.shield.scale.multiplyScalar(C.VM_SHIELD[0]);
+      this.shield.position.y += C.VM_SHIELD[1];
+      this.shield.position.z += C.VM_SHIELD[2];
+      this.shield.rotation.z += C.VM_SHIELD[3];
     }
     const k = C.VM_BODY_FOLLOW;
     const w = fig.waist.rotation;
