@@ -156,6 +156,7 @@ $('keys-btn').addEventListener('click', () => $('keys-text').classList.toggle('h
 const helpEl = $('help');
 input.onUi = (id, down) => {
   if (id === 'help') helpEl.classList.toggle('hidden', !down);
+  if (id === 'practice' && down) setPracticeOpen(!practiceOpen); // 연습 방에서만 열림
   if (id === 'view' && down) {
     settings.third = !settings.third;
     $('set-third').checked = settings.third;
@@ -462,6 +463,9 @@ function handleEvent(e) {
     case 'counter': // 카운터히트: 같은 틱의 hit 보다 먼저 옴 → 맞은 몸이 더 크게 휘청
       renderer.counterHit(e.target);
       if (e.by === myId || e.target === myId) showCounter(e.target === myId);
+      break;
+    case 'dummyCombo': // 연습 방 허수아비 콤보 기록: 끝난 콤보는 잠깐 결과로 남김
+      if (e.done) practiceDone.set(e.id, { ...e, until: performance.now() + C.PRACTICE_COMBO_SHOW_MS });
       break;
     case 'combo': // 내가 때리거나 맞은 콤보만
       if (e.finish) renderer.comboFinish(e.target); // 마무리 타는 몸이 더 크게 휘청 (모두)
@@ -1324,7 +1328,7 @@ function onState() {
     sound.play('go');
     showBig('시작!', '#ffe14a', 700);
   }
-  if (lastState && lastState.phase === 'playing' && state.phase === 'over') {
+  if (lastState && lastState.phase === 'playing' && state.phase === 'over' && !inPractice()) {
     const w = state.players.find((x) => x.id === state.round.winnerId);
     sound.play('win');
     const wt = state.round.winnerTeam;
@@ -1366,7 +1370,13 @@ function fmt(ms) {
 const scoreEl = $('score');
 let scoreKey = '';
 function updateScore() {
-  const ps = state.players.filter((p) => !p.spectator).sort((a, b) => a.slot - b.slot); // 관전자는 승수에서 뺌
+  const ps = state.players.filter((p) => !p.spectator && !p.dummy).sort((a, b) => a.slot - b.slot); // 관전자·허수아비는 승수에서 뺌
+  if (inPractice()) {
+    // 연습 방: 승수 없음
+    scoreKey = '';
+    scoreEl.classList.add('hidden');
+    return;
+  }
   const tw = state.teamWins || { red: 0, blue: 0 };
   const kills = state.mode === 'kills' && state.phase !== 'lobby'; // 킬 점수전: 판 중·판 끝엔 승수 대신 이번 판 점수 + 남은 시간
   const ts = state.teamScores || { red: 0, blue: 0 };
@@ -1463,7 +1473,7 @@ function updateHud() {
     else center = `${n}명 접속. 호스트가 시작하길 기다리는 중`;
     showStart = isHost && state.canStart;
     showKeys = true;
-  } else if (state.phase === 'over') {
+  } else if (state.phase === 'over' && !inPractice()) {
     const w = state.players.find((x) => x.id === state.round.winnerId);
     const wt = state.round.winnerTeam;
     center = `라운드 ${state.round.n} 종료\n승자: ${wt ? `${TEAM_KO[wt]}팀` : winnersText()}`;
@@ -1517,6 +1527,7 @@ function updateHud() {
   const bomb = !!p && p.held === 'bomb';
   crosshair.classList.toggle('hidden', !(input.enabled && !p.controlling && !p.master));
   updateCooldowns(p, state.phase === 'playing' && input.enabled && !p.controlling && !p.master);
+  updatePractice(p);
   updateItemTimers();
   crosshair.classList.toggle('armed', armed || brick || bomb);
   crosshair.classList.toggle('brick', brick);
@@ -1893,6 +1904,115 @@ function updateCharRow(p) {
   if (!on) return;
   if (document.activeElement !== charSel) charSel.value = p.char;
   $('char-info').textContent = charDesc(p.char);
+}
+
+// ---------- 연습 방 (샌드박스): 토글·내 피해·허수아비·캐릭터 + 허수아비 콤보 기록 ----------
+// 연습 키(기본 Tab)로 왼쪽 작은 창을 열고 닫음 (열면 마우스가 풀려 고를 수 있음). 콤보 기록은 오른쪽에 작게, 연습 방에서만
+const practiceEl = $('practice');
+const practiceHint = $('practice-hint');
+const pcomboEl = $('pcombo');
+const prDummiesEl = $('pr-dummies');
+const prMyDmg = $('pr-mydmg');
+const prChar = $('pr-char');
+let practiceOpen = false;
+let prDummyKey = '';
+const practiceDone = new Map(); // 허수아비 id → 끝난 콤보 { hits, damage, dist, height, until }
+const inPractice = () => !!((room && room.practice) || (state && state.practice));
+const prPlaying = () => inPractice() && !!state && (state.phase === 'playing' || state.phase === 'countdown');
+$('practice-btn').addEventListener('click', () => {
+  syncNick();
+  roomsMsg.textContent = '';
+  send({ type: 'practice', nick: roomsNick.value, char: loadPref('tf-char') || undefined });
+});
+function setPracticeOpen(on) {
+  practiceOpen = !!on && prPlaying();
+  practiceEl.classList.toggle('hidden', !practiceOpen);
+  if (practiceOpen && document.pointerLockElement) document.exitPointerLock(); // 마우스로 고르게 (닫고 화면을 누르면 다시 조작)
+}
+$('pr-close').addEventListener('click', () => setPracticeOpen(false));
+for (const box of practiceEl.querySelectorAll('[data-pr]')) {
+  box.addEventListener('change', () => {
+    send({ type: 'practiceSet', key: box.dataset.pr, value: box.checked });
+    box.blur();
+  });
+}
+const pctOf = (el) => Math.round(Number(el.value) || 0); // 범위(0~최대)는 서버가 자름
+prMyDmg.addEventListener('change', () => send({ type: 'practiceSet', key: 'myDamage', value: pctOf(prMyDmg) }));
+for (const c of C.CHARACTERS) {
+  const o = document.createElement('option');
+  o.value = c;
+  o.textContent = C.CHAR_NAMES[c];
+  prChar.append(o);
+}
+prChar.addEventListener('change', () => {
+  try {
+    localStorage.setItem('tf-char', prChar.value);
+  } catch {
+    // 저장이 막혀도 이번 접속에는 보냄
+  }
+  send({ type: 'setChar', char: prChar.value });
+  prChar.blur();
+});
+$('pr-add').addEventListener('click', () => send({ type: 'dummyAdd' }));
+const fix1 = (v) => (Number.isFinite(v) ? v.toFixed(1) : '0');
+
+function updatePractice(p) {
+  const on = prPlaying();
+  if (!on && practiceOpen) setPracticeOpen(false);
+  practiceHint.classList.toggle('hidden', !on || practiceOpen);
+  if (!on) {
+    pcomboEl.textContent = '';
+    return;
+  }
+  const pr = state.practice || {};
+  const dummies = pr.dummies || [];
+  if (practiceOpen) {
+    for (const box of practiceEl.querySelectorAll('[data-pr]')) box.checked = !!pr[box.dataset.pr];
+    if (document.activeElement !== prMyDmg) prMyDmg.value = Math.round(p.damage || 0);
+    if (document.activeElement !== prChar && p.char) prChar.value = p.char;
+    // 허수아비 줄: 이름 · 피해 % 칸 · 삭제 (허수아비가 바뀔 때만 다시 만듦)
+    const key = dummies.map((d) => d.id).join(',');
+    if (key !== prDummyKey) {
+      prDummyKey = key;
+      prDummiesEl.textContent = '';
+      for (const d of dummies) {
+        const row = document.createElement('div');
+        row.className = 'dummy';
+        row.dataset.id = d.id;
+        const name = document.createElement('span');
+        name.textContent = shownName(playerById(d.id) || { name: '허수아비' });
+        const pct = document.createElement('input');
+        pct.type = 'number';
+        pct.min = '0';
+        pct.max = prMyDmg.max;
+        pct.step = prMyDmg.step;
+        pct.addEventListener('change', () => send({ type: 'dummySet', id: d.id, damage: pctOf(pct) }));
+        const del = document.createElement('button');
+        del.textContent = '삭제';
+        del.addEventListener('click', () => send({ type: 'dummyRemove', id: d.id }));
+        row.append(name, pct, document.createTextNode('%'), del);
+        prDummiesEl.append(row);
+      }
+    }
+    for (const row of prDummiesEl.children) {
+      const d = dummies.find((x) => String(x.id) === row.dataset.id);
+      const pct = row.querySelector('input');
+      if (d && document.activeElement !== pct) pct.value = Math.round(d.damageSet ?? playerById(d.id)?.damage ?? 0);
+    }
+  }
+  // 콤보 기록: 진행 중이면 노란 타 수 · 피해 · 거리 (높이는 뜬 만큼만), 끝나면 흰 글씨로 잠깐
+  const now = performance.now();
+  const lines = [];
+  for (const d of dummies) {
+    const c = d.combo;
+    const done = practiceDone.get(d.id);
+    const tag = dummies.length > 1 ? `${escapeHtml(shownName(playerById(d.id) || { name: '허수아비' }))} · ` : '';
+    const text = (x) => `${tag}<b>${x.hits}타</b> ${Math.round(x.damage)}% · ${fix1(x.dist)}칸${x.height >= C.PRACTICE_SHOW_HEIGHT ? ` · 높이 ${fix1(x.height)}` : ''}`;
+    if (c && c.active && c.hits > 0) lines.push(`<div class="c">${text(c)}</div>`);
+    else if (done && now < done.until) lines.push(`<div class="c done" style="opacity:${Math.min(1, (done.until - now) / 400)}">${text(done)}</div>`);
+  }
+  const html = lines.join('');
+  if (pcomboEl.innerHTML !== html) pcomboEl.innerHTML = html;
 }
 
 // 입력 전송

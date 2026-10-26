@@ -20,6 +20,7 @@ const pupilMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
 // arms[0] = 오른팔 (밀치기 휘두르기 애니메이션용). 각 팔의 userData.base = 기본 위치
 // char 가 FIGURE_CHARS 에 있으면 TABS 식 몸 (figure: 관절이 더 있음)
 export function buildCharacter(color, models = null, char = null) {
+  if (char === 'dummy') return buildDummy(color, models);
   if (C.FIGURE_CHARS.includes(char)) return buildFigure(color, char, models);
   return models && models.robot ? buildRobot(color, models) : buildBean(color, models);
 }
@@ -98,6 +99,83 @@ function buildBean(color, models) {
   }
 
   return { group, bodyMaterial, mats: [bodyMaterial], arms, hammer, held, waitMark, rig, parts, feet, robot: null };
+}
+
+// 연습 방 허수아비: 나무 기둥 + 가로 막대 팔(끝에 짚) + 자루 몸통(밧줄 허리) + 자루 머리(바느질 X 눈) + 짚 모자.
+// 캐릭터·콩과 확 갈리게 나무·짚 색만 쓰고, 플레이어 색(bodyMaterial)은 목에 두른 손수건만 (누구 허수아비인지)
+function buildDummy(color, models) {
+  const group = new THREE.Group();
+  const bodyMaterial = toon({ color });
+  const rig = new THREE.Group();
+  rig.position.z = H / 2;
+  group.add(rig);
+  const parts = new THREE.Group();
+  parts.position.z = -H / 2;
+  rig.add(parts);
+  const wood = toon({ color: 0x8a6236 });
+  const sack = toon({ color: 0xc9a86a });
+  const straw = toon({ color: 0xe8c860 });
+  const rope = toon({ color: 0x6a4a2a });
+  const stitch = new THREE.MeshBasicMaterial({ color: 0x2a1a10 });
+  const add = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    m.rotation.set(rx, ry, rz);
+    m.castShadow = true;
+    parts.add(m);
+    return m;
+  };
+  // 받침 (십자 나무) + 기둥
+  add(new THREE.BoxGeometry(0.5, 0.07, 0.06), wood, 0, 0, 0.03);
+  add(new THREE.BoxGeometry(0.07, 0.5, 0.06), wood, 0, 0, 0.03);
+  add(new THREE.CylinderGeometry(0.045, 0.05, H * 0.9, 6), wood, 0, 0, H * 0.45, Math.PI / 2);
+  // 자루 몸통 (아래가 좁은 통) + 밧줄 허리 + 아래로 삐져나온 짚
+  add(new THREE.CylinderGeometry(R * 0.95, R * 0.7, H * 0.36, 7), sack, 0, 0, H * 0.56, Math.PI / 2);
+  add(new THREE.CylinderGeometry(R * 0.82, R * 0.82, 0.04, 7), rope, 0, 0, H * 0.45, Math.PI / 2);
+  for (let k = 0; k < 6; k++) {
+    const a = (k / 6) * Math.PI * 2;
+    add(new THREE.ConeGeometry(0.03, 0.14, 4), straw, Math.cos(a) * R * 0.6, Math.sin(a) * R * 0.6, H * 0.34, -Math.PI / 2 + Math.sin(a) * 0.4, Math.cos(a) * 0.4, 0);
+  }
+  // 가로 막대 팔 + 끝에 짚 다발
+  add(new THREE.CylinderGeometry(0.03, 0.03, R * 4.2, 6), wood, 0, 0, H * 0.7);
+  for (const side of [-1, 1]) {
+    for (let k = 0; k < 3; k++) add(new THREE.ConeGeometry(0.035, 0.16, 4), straw, 0, side * (R * 2.15 + 0.05), H * 0.7 + (k - 1) * 0.035, 0, 0, (side > 0 ? 0 : Math.PI) + (k - 1) * 0.35); // 바깥(±y)으로 삐죽
+  }
+  // 목 손수건 = 플레이어 색
+  add(new THREE.CylinderGeometry(R * 0.6, R * 0.75, 0.07, 7), bodyMaterial, 0, 0, H * 0.75, Math.PI / 2);
+  // 자루 머리 + 바느질 X 눈 두 개 + 꿰맨 입 + 짚 모자
+  const headZ = H * 0.87;
+  const head = add(new THREE.IcosahedronGeometry(0.17, 1), sack, 0, 0, headZ);
+  head.scale.set(0.95, 1, 1.05);
+  for (const side of [-1, 1]) {
+    for (const r of [0.8, -0.8]) add(new THREE.BoxGeometry(0.01, 0.07, 0.015), stitch, 0.165, side * 0.06, headZ + 0.03, r, 0, 0);
+  }
+  add(new THREE.BoxGeometry(0.01, 0.1, 0.012), stitch, 0.163, 0, headZ - 0.06);
+  add(new THREE.CylinderGeometry(0.26, 0.26, 0.025, 10), straw, 0, 0, headZ + 0.13, Math.PI / 2);
+  add(new THREE.ConeGeometry(0.13, 0.15, 10), straw, 0, 0, headZ + 0.21, Math.PI / 2);
+
+  // 그리는 쪽이 같은 형태로 쓰게: 팔(밀치기 휘두르기)·망치·든 것은 빈 자리 (허수아비는 공격 안 함)
+  const dummyArm = () => {
+    const a = new THREE.Object3D();
+    a.userData.base = a.position.clone();
+    a.userData.baseRot = a.rotation.clone();
+    parts.add(a);
+    return a;
+  };
+  const arms = [dummyArm(), dummyArm()];
+  const hammer = new THREE.Object3D();
+  hammer.visible = false;
+  arms[0].add(hammer);
+  const held = heldItems(models);
+  for (const m of Object.values(held)) {
+    m.visible = false;
+    arms[1].add(m);
+  }
+  const waitMark = new THREE.Mesh(new THREE.OctahedronGeometry(0.12), new THREE.MeshBasicMaterial({ color: 0x20e0e0 }));
+  waitMark.position.z = H + 0.2;
+  waitMark.visible = false;
+  group.add(waitMark);
+  return { group, bodyMaterial, mats: [bodyMaterial], arms, hammer, held, waitMark, rig, parts, feet: [], robot: null };
 }
 
 // 손에 든 것: 아이템 모델 (없으면 단색 도형)

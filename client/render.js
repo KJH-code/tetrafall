@@ -566,7 +566,7 @@ export class Renderer {
   getPlayerMesh(p) {
     let g = this.playerMeshes.get(p.id);
     // 캐릭터마다 몸이 다르면(TABS 식) 캐릭터를 바꿨을 때 다시 만든다
-    const look = C.FIGURE_CHARS.includes(p.char) ? p.char : 'robot';
+    const look = p.dummy ? 'dummy' : C.FIGURE_CHARS.includes(p.char) ? p.char : 'robot'; // 연습 방 허수아비는 캐릭터 없는 허수아비 모양
     if (g && g.userData.look !== look) {
       this.scene.remove(g);
       this.playerMeshes.delete(p.id);

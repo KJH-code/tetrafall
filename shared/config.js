@@ -750,6 +750,8 @@ export const CONFIG = {
   VM_SPIN: ['berserker', 'hook'], // 몸 전체 돌기를 1인칭에도 그대로 (소용돌이·회전 베기·갈고리 스핀)
   VM_CANNON: [0.55, -0.06, -0.1], // 대포수 어깨 대포 [크기 배율, 오른쪽으로(-y) 옮김, 아래로 옮김] (몸 좌표 칸)
   VM_PIP_SCALE: 0.65, // 대포 위 남은 포탄 크기 배율
+  PRACTICE_COMBO_SHOW_MS: 2500, // 연습 방: 끝난 허수아비 콤보 결과를 오른쪽에 남겨 두는 시간
+  PRACTICE_SHOW_HEIGHT: 0.5, // 연습 방 콤보 기록: 이 높이(칸) 넘게 띄웠을 때만 '높이' 를 보임
   VM_STAR_HIDE_MS: 350, // 닌자 표창을 던진 뒤 왼손이 비어 있는 시간
   FIGURE_HORN_SEGS: 6, // 광전사 뿔 마디 수 (마디마다 같은 각으로 꺾여 매끈한 곡선)
   FIGURE_HORN_LEN: 0.42, // 뿔 한 개 길이 (칸, 몸 크기 배율 전)
