@@ -93,12 +93,14 @@ export class BotBrain {
   }
 
   // 그림자가 보이는 떨어지는 블록들 → 각각의 발자국 칸·남은 시간·위치 키
-  visibleDangers(g) {
+  // p 를 주면 발밑보다 낮은 하늘 계단 블록은 뺌 (올라타 있는 블록이 착지해도 위험이 아님)
+  visibleDangers(g, p = null) {
     const out = [];
     for (const piece of g.pieces) {
       if (piece.phase !== 'falling') continue;
+      if (p && piece.sky && piece.pz + 1 <= p.z + 0.05) continue;
       const eta = Math.max(0, (piece.pz - piece.landZ - 1) * piece.stepMs + (piece.nextStepAt - g.time));
-      if (eta > C.SHADOW_LEAD_MS) continue;
+      if (!g.shadowVisible(piece, eta)) continue;
       out.push({ cells: piece.cells.map(([dx, dy]) => [piece.px + dx, piece.py + dy]), eta, key: pieceKey(piece) });
     }
     // 놓인 폭탄: 폭발 범위(중심에서 BOMB_BLAST_RANGE 칸)를 위험 칸으로. 떨어지는 블록처럼 반응 시간 뒤에 피한다
@@ -119,7 +121,7 @@ export class BotBrain {
       this.targetBias.clear();
     }
     const enemies = this.enemies(g, p);
-    const dangers = this.visibleDangers(g);
+    const dangers = this.visibleDangers(g, p);
 
     // 그림자를 처음 본 순간부터 반응 시간이 지나야 "안다"
     const live = new Set();
@@ -178,7 +180,8 @@ export class BotBrain {
       return;
     }
 
-    // 1.5) 용암이 다가오면 높은 곳으로. 올라갈 길이 없으면 설치 블록으로 발판을 만든다
+    // 1.5) 용암이 다가오면 높은 곳으로 (하늘 계단이면 공중 블록 먼저). 올라갈 길이 없으면 설치 블록으로 발판을 만든다
+    if (this.skyHop(g, p)) return;
     if (this.climbFromLava(g, p, avoid)) return;
     if (this.brickStep(g, p)) return;
 
@@ -794,6 +797,56 @@ export class BotBrain {
   // 지금 한 번 점프로 올라갈 수 있는 높이 (칸)
   jumpReach(g, p) {
     return (g.time < p.jumpUntil ? 2.25 : 1.05) + (C.AIR_JUMPS > 0 ? 1 : 0); // 점프력 상승 중이면 2칸, 2단 점프로 1칸 더
+  }
+
+  // 하늘 계단: 용암이 BOT_SKY_HOP_LAVA 안이면 점프로 닿는 더 높은 하늘 블록으로 건너뛴다. 움직였거나 블록 위에서 버티면 true
+  // (건널 블록 = 윗면이 지금보다 0.5칸 넘게 높고 점프 높이 안, 가장 가까운 칸까지 BOT_SKY_HOP_DIST 안. 높을수록·가까울수록 먼저)
+  skyHop(g, p) {
+    if (!g.sky || !g.lava.active || p.z - g.lava.z > C.BOT_SKY_HOP_LAVA) return false;
+    const h0 = this.standHeight(g, p);
+    const reach = this.jumpReach(g, p);
+    let best = null;
+    let bs = -Infinity;
+    let onSky = false;
+    for (const pc of g.pieces) {
+      if (!pc.sky || pc.phase !== 'falling') continue;
+      const top = pc.pz + 1;
+      if (p.grounded && Math.abs(top - p.z) < 0.1 && pc.cells.some(([dx, dy]) => pc.px + dx === Math.floor(p.x) && pc.py + dy === Math.floor(p.y))) onSky = true;
+      if (top <= h0 + 0.5 || top > h0 + reach) continue;
+      let cell = null;
+      let cd = Infinity;
+      for (const [dx, dy] of pc.cells) {
+        const cx = pc.px + dx + 0.5;
+        const cy = pc.py + dy + 0.5;
+        const d = Math.hypot(cx - p.x, cy - p.y);
+        if (d < cd) {
+          cd = d;
+          cell = { x: cx, y: cy };
+        }
+      }
+      if (cd - 0.5 > C.BOT_SKY_HOP_DIST) continue;
+      const score = top * 2 - cd;
+      if (score > bs) {
+        bs = score;
+        best = { cell, top, d: cd };
+      }
+    }
+    if (!best) {
+      if (!onSky) return false;
+      this.input.fwd = 0; // 더 높은 블록이 없으면 지금 하늘 블록 위에서 버팀 (걸어 내려가면 용암)
+      this.input.strafe = 0;
+      return true;
+    }
+    this.input.yaw = Math.atan2(best.cell.y - p.y, best.cell.x - p.x);
+    this.input.pitch = 0;
+    this.input.fwd = best.d < 0.3 ? 0 : 1;
+    this.input.strafe = 0;
+    if (p.grounded) {
+      if (best.d < 2.5) this.input.jump = true;
+    } else if (p.airJumps > 0 && p.vz < C.BOT_AIR_JUMP_VZ && p.z < best.top) {
+      g.handleAction(p.id, { name: 'jump' }); // 2단 점프
+    }
+    return true;
   }
 
   // 용암이 2.5칸 안으로 다가오면 걸어서 이어진 가장 높은 칸으로 간다. 움직였으면 true

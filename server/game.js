@@ -32,7 +32,8 @@ function fmtTime(ms) {
 export class Game {
   // countdownMs: 판 시작 전 카운트다운. 서버는 C.ROUND_COUNTDOWN_MS, 테스트는 기본 0 (바로 시작)
   // characters: 캐릭터(패시브·스킬·필살기)를 쓸지. 서버(방)는 켬, 예전 규칙 테스트는 끔 (모두 캐릭터 없음 = 예전 그대로)
-  constructor(log = () => {}, { countdownMs = 0, characters = false } = {}) {
+  // skyStairs: 하늘 계단 (대기실 옵션). 서버(방)는 C.SKY_STAIRS_DEFAULT, 예전 규칙 테스트는 끔
+  constructor(log = () => {}, { countdownMs = 0, characters = false, skyStairs = false } = {}) {
     // 콤보 마무리 줄은 그 타의 [평타]·[돌진] 줄 다음에 찍히게 미뤄 둠 (다음 로그 줄 뒤, 또는 틱 시작에)
     this.pendingLogs = [];
     this.log = (m) => {
@@ -44,6 +45,10 @@ export class Game {
     };
     this.countdownMs = countdownMs;
     this.characters = characters;
+    this.skyStairs = !!skyStairs; // 호스트 옵션 (판 사이에만 바꿈)
+    this.sky = false; // 이번 판에 하늘 계단이 도는지 (판 시작 때 정함, 블록 마스터는 끔)
+    this.H = C.GRID_H; // 격자 높이 (판 시작 때: 하늘 계단이면 SKY_GRID_H)
+    this.skyTopId = 0; // 하늘 계단 사슬 맨 위 블록 id (새 블록은 이 옆에)
     this.rng = Math.random;
     this.time = 0; // 게임 시간 (ms). tick 마다 dt 만큼 증가
     this.phase = 'lobby'; // 'lobby' | 'countdown' | 'playing' | 'over'
@@ -52,7 +57,7 @@ export class Game {
     this.W = C.GRID_W; // 판 크기 (판 시작 때 인원으로 정함, FIELD_SIZES)
     this.D = C.GRID_D;
     this.spawnPoints = C.SPAWN_POINTS;
-    this.grid = new Uint8Array(this.W * this.D * C.GRID_H);
+    this.grid = new Uint8Array(this.W * this.D * this.H);
     this.gridVersion = 0;
     this.pieces = []; // 떨어지는·조종 중인 블록들
     this.pieceCounter = 0;
@@ -124,10 +129,11 @@ export class Game {
   }
 
   setFieldSize(size) {
+    this.H = this.sky ? C.SKY_GRID_H : C.GRID_H;
     this.W = size;
     this.D = size;
     this.spawnPoints = C.spawnPointsFor(size, size);
-    this.grid = new Uint8Array(this.W * this.D * C.GRID_H);
+    this.grid = new Uint8Array(this.W * this.D * this.H);
   }
 
   // 넓이 배율 (10×10 = 1): 떨어지는 블록 동시 개수·필드 아이템 수에 곱함
@@ -144,20 +150,20 @@ export class Game {
   }
 
   gridAt(cx, cy, cz) {
-    if (!this.inXY(cx, cy) || cz < 0 || cz >= C.GRID_H) return 0;
+    if (!this.inXY(cx, cy) || cz < 0 || cz >= this.H) return 0;
     return this.grid[this.idx(cx, cy, cz)];
   }
 
   // 플레이어 충돌용: 바닥, 쌓인 블록, 떨어지는 블록
   solidAt(cx, cy, cz) {
     if (cz < 0) return this.inXY(cx, cy); // 필드 안은 바닥, 밖은 허공
-    if (this.inXY(cx, cy) && cz < C.GRID_H && this.grid[this.idx(cx, cy, cz)]) return true;
+    if (this.inXY(cx, cy) && cz < this.H && this.grid[this.idx(cx, cy, cz)]) return true;
     return this.pieceCells.has(cellKey(cx, cy, cz));
   }
 
   // 그 기둥에서 가장 높은 블록 바로 위 z (블록 없으면 0)
   columnTop(cx, cy) {
-    for (let z = C.GRID_H - 1; z >= 0; z--) {
+    for (let z = this.H - 1; z >= 0; z--) {
       if (this.grid[this.idx(cx, cy, z)]) return z + 1;
     }
     return 0;
@@ -237,6 +243,8 @@ export class Game {
       grab: null, // 갈고리 R: 뽑은 블록 { at, v, meta, from } (at 에 내려찍기)
       marks: new Map(), // 사냥꾼 표식 (이 사람에게 붙은): 사냥꾼 id -> { n, at }
       leap: null, // 사냥꾼 F: { at(도약 시작), target, endAt, vx, vy }
+      windup: null, // 이동 스킬 지상 준비 (닌자·탱크·갈고리 F): { at(나가는 시각), yaw(누른 순간 방향) }
+      hookFly: null, // 갈고리 F 날아가는 중: { at(닿는 시각), yaw }
       huntAim: null, // 사냥꾼 R 조준: { at(쏘는 시각) }
       rush: null, // 광전사 F 도약: { endAt(도약 끝), vx, vy, landBy(이때까지 안 닿으면 충격파 없음) }
       spin: null, // 광전사 R 회전: { endAt, nextTick, rage(R 시작 때 피해 %) }
@@ -339,6 +347,14 @@ export class Game {
     return true;
   }
 
+  // 하늘 계단 켜고 끄기 (판 사이에만)
+  setSkyStairs(on) {
+    if (this.inRound() || this.skyStairs === !!on) return false;
+    this.skyStairs = !!on;
+    this.log(`[호스트] 하늘 계단 ${on ? '켬' : '끔'}`);
+    return true;
+  }
+
   // 캐릭터 고르기 (판 사이에만, 같은 캐릭터 여럿 됨)
   setChar(id, c) {
     const p = this.players.get(id);
@@ -371,7 +387,7 @@ export class Game {
       zombie: true,
       x: this.W / 2,
       y: this.D / 2,
-      z: C.GRID_H + 4,
+      z: this.H + 4,
       vz: 0,
       kbx: 0,
       kby: 0,
@@ -508,10 +524,12 @@ export class Game {
   startRound() {
     if (!this.canStart()) return false;
     const fielded = this.participants().length - (this.mode === 'master' ? 1 : 0);
+    this.sky = this.skyStairs && this.mode !== 'master'; // 블록 마스터는 자동 블록이 없음
+    this.skyTopId = 0;
     this.setFieldSize(this.fieldSizeFor(fielded));
     this.mapId = this.mapChoice === 'random' ? MAP_IDS[Math.floor(this.rng() * MAP_IDS.length)] : this.mapChoice;
     for (const [x, y, h] of mapColumns(this.mapId, this.W, this.D)) {
-      for (let z = 0; z < h && z < C.GRID_H; z++) this.grid[this.idx(x, y, z)] = CELL.TERRAIN;
+      for (let z = 0; z < h && z < this.H; z++) this.grid[this.idx(x, y, z)] = CELL.TERRAIN;
     }
     this.baseAvgHeight = this.avgHeight();
     this.gridVersion++;
@@ -590,6 +608,8 @@ export class Game {
         grab: null,
         marks: new Map(),
         leap: null,
+        windup: null,
+        hookFly: null,
         huntAim: null,
         rush: null,
         spin: null,
@@ -621,7 +641,7 @@ export class Game {
       const ps = this.participants().sort((a, b) => a.slot - b.slot);
       const m = ps[this.masterTurn % ps.length];
       this.masterTurn++;
-      Object.assign(m, { master: true, x: this.W / 2, y: this.D / 2, z: C.GRID_H + 4 });
+      Object.assign(m, { master: true, x: this.W / 2, y: this.D / 2, z: this.H + 4 });
     }
     if (this.countdownMs > 0) {
       this.phase = 'countdown';
@@ -646,6 +666,7 @@ export class Game {
     const lv = ps.some((p) => p.isBot) ? `, 봇 ${BOT_LEVEL_KO[this.botLevel]}` : '';
     this.log(`===== ROUND ${this.roundNumber} 시작 (${ps.length}명: ${ps.sort((a, b) => a.slot - b.slot).map((p) => p.name).join(' ')}, 맵 ${MAPS[this.mapId].name}${lv}) =====`); // 참가자 목록은 npm run stats 가 구성별로 셀 때 씀
     if (this.teamMode) this.log(`  팀: ${this.teamLine()}`); // npm run stats 가 팀 승리를 사람별로 나눌 때 씀
+    if (this.sky) this.log('  하늘 계단: 켬'); // npm run stats 가 켬/끔을 나눠 봄 (끔은 예전 로그와 같게 안 찍음)
     if (this.characters) this.log(`  캐릭터: ${ps.map((p) => `${p.name} ${C.CHAR_NAMES[p.char]}`).join(' / ')}`); // npm run stats 캐릭터별 승률
     // 모드 줄 (생존은 예전 로그와 같게 안 찍음). npm run stats 가 모드별로 셈
     if (this.mode === 'master') {
@@ -799,7 +820,7 @@ export class Game {
     for (let x = 0; x < this.W; x++) {
       for (let y = 0; y < this.D; y++) {
         const top = this.columnTop(x, y);
-        if (top <= C.GRID_H - 3 && !busy.has(x * 100 + y)) cols.push({ x, y, top });
+        if (top <= this.H - 3 && !busy.has(x * 100 + y)) cols.push({ x, y, top });
       }
     }
     if (!cols.length) return { x: this.W / 2, y: this.D / 2, z: this.columnTop(Math.floor(this.W / 2), Math.floor(this.D / 2)) };
@@ -849,6 +870,8 @@ export class Game {
       grab: null,
       marks: new Map(),
       leap: null,
+      windup: null,
+      hookFly: null,
       huntAim: null,
       rush: null,
       spin: null,
@@ -1257,8 +1280,29 @@ export class Game {
 
   // ---------- 캐릭터 스킬·필살기 ----------
   useSkill(p) {
-    if (p.slamAt || p.wallAt || p.grab || p.leap || p.huntAim || p.rush || p.spin || p.amp || this.time < p.chargeUntil) return false; // 다른 기술 발동 중
+    if (p.slamAt || p.wallAt || p.grab || p.leap || p.windup || p.hookFly || p.huntAim || p.rush || p.spin || p.amp || this.time < p.chargeUntil) return false; // 다른 기술 발동 중
     p.skillReadyAt = this.time + C.SKILL_CD_MS[p.char]; // 먼저 걸어 둠 (그림자 일격이 순간 베기 쿨을 초기화하는 것과 순서가 안 꼬이게)
+    if (p.grounded && C.SKILL_WINDUP_CHARS.includes(p.char)) {
+      // 이동 스킬 지상 예고: SKILL_WINDUP_MS 뒤 누른 순간 방향으로 나감 (updateCombat → fireWindup)
+      p.windup = { at: this.time + C.SKILL_WINDUP_MS, yaw: p.yaw };
+      this.emit({ type: 'skillWindup', who: p.id, kind: p.char, ms: C.SKILL_WINDUP_MS });
+      this.log(`  [스킬] ${p.name} ${C.CHAR_NAMES[p.char]} F 준비`);
+      return true;
+    }
+    return this.fireSkill(p);
+  }
+
+  // 이동 스킬 예고가 끝남: 누른 순간 방향으로 나감 (지금 보는 방향은 나간 뒤 돌려 둠)
+  fireWindup(p) {
+    const yaw = p.yaw;
+    p.yaw = p.windup.yaw;
+    p.windup = null;
+    if (!this.fireSkill(p)) this.log(`  [스킬] ${p.name} ${C.CHAR_NAMES[p.char]} F 못 나감 (자리 없음, 쿨타임 안 씀)`);
+    p.yaw = yaw; // 방향은 나갈 때 정해짐 (돌진 chargeDir·갈고리 hookFly·순간 베기 위치) → 보는 방향만 원래대로
+  }
+
+  // F 를 실제로 냄 (쿨타임은 useSkill 이 걸어 둠)
+  fireSkill(p) {
     const ok =
       p.char === 'tank'
         ? this.tankCharge(p)
@@ -1285,7 +1329,7 @@ export class Game {
   }
 
   useUlt(p) {
-    if (p.slamAt || p.wallAt || p.grab || p.leap || p.huntAim || p.rush || p.spin || p.amp || this.time < p.chargeUntil) return false;
+    if (p.slamAt || p.wallAt || p.grab || p.leap || p.windup || p.hookFly || p.huntAim || p.rush || p.spin || p.amp || this.time < p.chargeUntil) return false;
     if (p.char === 'tank') this.tankSlamStart(p);
     else if (p.char === 'ninja') this.ninjaEmpower(p); else if (p.char === 'builder') {
       if (!this.builderBigBomb(p)) return false; // 솟을 자리가 없으면 게이지 그대로
@@ -1371,7 +1415,7 @@ export class Game {
         const d = Math.hypot(x + 0.5 - p.x, y + 0.5 - p.y);
         if (d <= r0 || d > r1 || !this.inXY(x, y)) continue;
         const z = this.columnTop(x, y);
-        if (z >= C.GRID_H || Math.abs(z - p.z) > 2.5 || this.pieceCells.has(cellKey(x, y, z))) continue;
+        if (z >= this.H || Math.abs(z - p.z) > 2.5 || this.pieceCells.has(cellKey(x, y, z))) continue;
         this.grid[this.idx(x, y, z)] = CELL.BUILD;
         cells.push([x, y, z]);
       }
@@ -1935,7 +1979,7 @@ export class Game {
       }
       return true;
     }
-    if (!this.inXY(x, y) || z < 0 || z >= C.GRID_H) return false;
+    if (!this.inXY(x, y) || z < 0 || z >= this.H) return false;
     const v = this.grid[this.idx(x, y, z)];
     if (!v || v === CELL.TERRAIN) return false;
     this.grid[this.idx(x, y, z)] = 0;
@@ -2117,7 +2161,7 @@ export class Game {
       const x = cx + side[0] * i;
       const y = cy + side[1] * i;
       if (!this.inXY(x, y) || this.grid[this.idx(x, y, z0)]) continue;
-      for (let h = 0; h < C.BUILDER_WALL_HEIGHT; h++) if (z0 + h < C.GRID_H) cells.push([x, y, z0 + h]);
+      for (let h = 0; h < C.BUILDER_WALL_HEIGHT; h++) if (z0 + h < this.H) cells.push([x, y, z0 + h]);
     }
     if (!cells.length) return false;
     p.wallAt = this.time + C.BUILDER_WALL_WARN_MS;
@@ -2172,7 +2216,7 @@ export class Game {
 
   // 건축가 블록 놓기 (빈 칸일 때만). 놓았으면 true
   placeBBlock(p, x, y, z, kind, group) {
-    if (!this.inXY(x, y) || z < 0 || z >= C.GRID_H || this.grid[this.idx(x, y, z)] || this.pieceCells.has(cellKey(x, y, z))) return false;
+    if (!this.inXY(x, y) || z < 0 || z >= this.H || this.grid[this.idx(x, y, z)] || this.pieceCells.has(cellKey(x, y, z))) return false;
     this.grid[this.idx(x, y, z)] = CELL.BUILD;
     this.bblocks.set(cellKey(x, y, z), { x, y, z, owner: p.id, kind, group, expiresAt: this.time + C.BUILDER_BLOCK_MS, born: this.time });
     return true;
@@ -2374,7 +2418,7 @@ export class Game {
   // 조준 방향(yaw + pitch) 3D 직선을 눈 높이에서 HOOK_RANGE 만큼. 놓치면 보조로 발 층·한 칸 위 층을 수평으로
   // (2026-10-25 버그: 수평 한 층만 봐서 땅 위 1칸 높이 블록이 안 잡혀 R 이 거의 안 써졌음)
   hookRayBlock(p, yaw = p.yaw, pitch = p.pitch || 0) {
-    const solid = (x, y, z) => z >= 0 && z < C.GRID_H && ((this.inXY(x, y) && this.grid[this.idx(x, y, z)]) || this.pieceCells.has(cellKey(x, y, z)));
+    const solid = (x, y, z) => z >= 0 && z < this.H && ((this.inXY(x, y) && this.grid[this.idx(x, y, z)]) || this.pieceCells.has(cellKey(x, y, z)));
     const cp = Math.cos(pitch);
     const dir = { x: Math.cos(yaw) * cp, y: Math.sin(yaw) * cp, z: Math.sin(pitch) };
     const eye = { x: p.x, y: p.y, z: p.z + C.EYE_HEIGHT };
@@ -2412,7 +2456,7 @@ export class Game {
         const dy = y + 0.5 - p.y;
         const d = Math.hypot(dx, dy);
         if (d > C.HOOK_RANGE + 0.5 || d < 0.5 || (dx * fx + dy * fy) / d < cosHalf) continue;
-        for (let z = Math.max(0, z0 - 1); z <= Math.min(C.GRID_H - 1, z0 + 2); z++) {
+        for (let z = Math.max(0, z0 - 1); z <= Math.min(this.H - 1, z0 + 2); z++) {
           if (!((this.inXY(x, y) && this.grid[this.idx(x, y, z)]) || this.pieceCells.has(cellKey(x, y, z)))) continue;
           if (!best || d < best.d - 1e-9 || (Math.abs(d - best.d) < 1e-9 && z > best.z)) best = { x, y, z, d };
         }
@@ -2437,13 +2481,29 @@ export class Game {
   }
 
   // F 갈고리 (판정 즉시): 보는 방향에서 상대·블록 중 먼저 닿는 것. 상대면 끌어옴 + 장전, 블록이면 내가 끌려감 (공중 가능). 빗나가도 쿨타임
+  // 갈고리를 던짐: 판정은 HOOK_FLY_MS 뒤 갈고리가 닿는 순간 (hookLand). 빗나가도 쿨타임
   hookPull(p) {
+    p.hookFly = { at: this.time + C.HOOK_FLY_MS, yaw: p.yaw };
+    this.emit({ type: 'hookThrow', who: p.id, yaw: p.yaw, ms: C.HOOK_FLY_MS });
+    return true;
+  }
+
+  // 갈고리가 닿는 순간: 던진 방향, 지금 내 위치에서 상대·블록 판정 (예전 즉시 판정과 같은 규칙)
+  hookLand(p) {
+    const yaw = p.yaw;
+    p.yaw = p.hookFly.yaw;
+    p.hookFly = null;
+    this.hookResolve(p);
+    p.yaw = yaw;
+  }
+
+  hookResolve(p) {
     const t = this.hookTarget(p);
     const block = this.hookRayBlock(p);
     const td = t ? Math.hypot(t.x - p.x, t.y - p.y) : Infinity;
     if (block && block.d < td) {
       const go = Math.max(0, block.d - C.PLAYER_HALF - 0.05);
-      p.zipDir = { x: Math.cos(p.yaw), y: Math.sin(p.yaw) };
+      p.zipDir = { x: Math.cos(p.yaw), y: Math.sin(p.yaw) }; // 던진 방향 (hookLand 가 yaw 를 잠깐 바꿔 둠)
       p.zipUntil = this.time + (go / C.HOOK_ZIP_SPEED) * 1000;
       p.vz = Math.max(p.vz, C.HOOK_ZIP_UP);
       p.grounded = false;
@@ -2515,7 +2575,7 @@ export class Game {
     let cell = null;
     if (this.inXY(x, y)) {
       const z = this.columnTop(x, y);
-      if (z < C.GRID_H && !this.pieceCells.has(cellKey(x, y, z))) {
+      if (z < this.H && !this.pieceCells.has(cellKey(x, y, z))) {
         this.grid[this.idx(x, y, z)] = g.v;
         if (g.meta) this.bblocks.set(cellKey(x, y, z), { ...g.meta, x, y, z });
         cell = [x, y, z];
@@ -2556,7 +2616,7 @@ export class Game {
       if (p.comboHits > 0 && this.time >= p.stunUntil) this.endCombo(p);
       if (!this.onField(p)) {
         p.chargeUntil = p.slamAt = p.wallAt = p.zipUntil = 0;
-        p.leap = p.huntAim = p.rush = p.spin = p.amp = null;
+        p.leap = p.huntAim = p.rush = p.spin = p.windup = p.hookFly = p.amp = null;
         p.glideUntil = 0;
         p.marks.clear();
         if (p.grab) this.hookGrabDrop(p);
@@ -2578,6 +2638,8 @@ export class Game {
       if (p.char === 'ninja') this.ninjaTouch(p);
       if (p.marks.size) this.expireMarks(p);
       if (p.char === 'cannon') this.cannonReload(p);
+      if (p.windup && this.time >= p.windup.at) this.fireWindup(p);
+      if (p.hookFly && this.time >= p.hookFly.at) this.hookLand(p);
       if (p.leap) this.hunterLeapUpdate(p);
       if (p.rush) this.berserkerLeapUpdate(p);
       if (p.spin) this.berserkerSpinUpdate(p);
@@ -2652,9 +2714,9 @@ export class Game {
     const cells = offs.map(([ox, oy]) => [ax + ox, ay + oy]);
     if (!cells.every(([x, y]) => this.inXY(x, y))) return { cells: cells.map(([x, y]) => [x, y, 0]), z: 0, ok: false };
     const z = Math.max(...cells.map(([x, y]) => this.columnTop(x, y)));
-    const spawnZ = Math.min(z + C.BRICK_DROP_HEIGHT, C.GRID_H - 1);
+    const spawnZ = Math.min(z + C.BRICK_DROP_HEIGHT, this.H - 1);
     const ok =
-      z < C.GRID_H - 1 &&
+      z < this.H - 1 &&
       !cells.some(([x, y]) => this.pieceCells.has(cellKey(x, y, spawnZ))) && // 생길 자리에 떨어지는 블록이 있음
       !cells.some(([x, y]) => overlapsCell(p, x, y, p.z)); // 내 머리 위 (xy 가 내 몸과 겹침)
     return { cells: cells.map(([x, y]) => [x, y, z]), z, spawnZ, ok };
@@ -2704,7 +2766,7 @@ export class Game {
     const cells = [[ax, ay, z]];
     const R = C.BOMB_RADIUS;
     for (let dx = -R; dx <= R; dx++) for (let dy = -R; dy <= R; dy++) if ((dx || dy) && this.inXY(ax + dx, ay + dy)) cells.push([ax + dx, ay + dy, z]);
-    return { cells, ok: z < C.GRID_H };
+    return { cells, ok: z < this.H };
   }
 
   throwBomb(p) {
@@ -2735,7 +2797,7 @@ export class Game {
     for (let x = b.x - R; x <= b.x + R; x++) {
       for (let y = b.y - R; y <= b.y + R; y++) {
         for (let z = b.z - R; z <= b.z + R; z++) {
-          if (!this.inXY(x, y) || z < 0 || z >= C.GRID_H || !this.grid[this.idx(x, y, z)]) continue;
+          if (!this.inXY(x, y) || z < 0 || z >= this.H || !this.grid[this.idx(x, y, z)]) continue;
           this.grid[this.idx(x, y, z)] = 0;
           removed++;
         }
@@ -2875,6 +2937,11 @@ export class Game {
       this.hookGrabDrop(t); // 뽑던 블록은 제자리로
       t.ult = this.ultMax(t); // 게이지 돌려줌
     }
+    if (t.windup || t.hookFly) {
+      this.emit({ type: 'interrupt', who: t.id, kind: 'skill' });
+      t.skillReadyAt = this.time; // 준비 중·갈고리가 닿기 전에 끊긴 F 는 쿨타임 안 씀
+      t.windup = t.hookFly = null;
+    }
     t.zipUntil = 0; // 끌려가다 맞으면 멈춤
     if (t.leap) {
       if (!t.leap.endAt) {
@@ -2949,7 +3016,7 @@ export class Game {
   // 카운터히트 대상 (2026-10-25 재혁 결정, 첫 사람 플레이테스트: 1:1 에서 동시에 누르면 거의 다 카운터였음):
   // 빗나간 평타의 후딜, 돌진 중, 내려찍기·솟는 벽 준비·갈고리 블록 뽑는 중. 평타 준비 중·맞힌 평타의 후딜·걷기·점프는 아님
   busy(t) {
-    return !!((this.time < t.pushReadyAt && !t.atk && !t.atkLanded) || this.time < t.chargeUntil || t.slamAt || t.wallAt || t.grab || t.leap || t.huntAim || t.rush || t.spin || t.amp);
+    return !!((this.time < t.pushReadyAt && !t.atk && !t.atkLanded) || this.time < t.chargeUntil || t.slamAt || t.wallAt || t.grab || t.leap || t.windup || t.huntAim || t.rush || t.spin || t.amp);
   }
 
   // 공격이 안 들어가는 상태: 콤보 뒤 무적·부활 무적. 경직이 이미 풀린 콤보는 여기서 먼저 끝냄
@@ -3034,7 +3101,7 @@ export class Game {
   }
 
   pieceFits(piece) {
-    if (piece.landZ + 1 > C.GRID_H || piece.landZ > piece.pz) return false;
+    if (piece.landZ + 1 > this.H || piece.landZ > piece.pz) return false;
     // 블록 마스터: 조종 중인 블록은 주변보다 너무 높게 못 놓음 (빨간 미리보기)
     if (this.mode === 'master' && piece.phase === 'control' && this.tooTall(piece.cells.map(([dx, dy]) => [piece.px + dx, piece.py + dy]), piece.landZ)) return false;
     return true;
@@ -3133,10 +3200,92 @@ export class Game {
       this.nextSpawnAt = this.time + this.autoSpawnDelayMs();
       return;
     }
+    if (this.sky) {
+      this.fillSky();
+      return;
+    }
     const autos = this.pieces.filter((pc) => pc.controller === null && !pc.thrownBy).length; // 던진 블록은 안 셈
     if (autos >= this.targetConcurrent()) return;
     this.spawnAuto(); // 자리가 없으면 다음 간격에 다시
     this.nextSpawnAt = this.time + this.autoSpawnDelayMs();
+  }
+
+  // ---- 하늘 계단 ----
+  // 하늘 블록이 SKY_COUNT 개가 되도록 맨 위에 하나씩 붙인다 (자리가 없으면 다음 틱에 다시)
+  fillSky() {
+    let n = this.pieces.filter((pc) => pc.sky).length;
+    while (n < C.SKY_COUNT && this.spawnSky()) n++;
+  }
+
+  spawnSky() {
+    const skies = this.pieces.filter((pc) => pc.sky);
+    // 사슬 맨 위 = 마지막에 붙인 블록. 그게 착지·녹아 없으면 가장 높은 하늘 블록, 하나도 없으면 새 사슬
+    const top = skies.find((pc) => pc.id === this.skyTopId) || skies.reduce((a, pc) => (!a || pc.pz > a.pz ? pc : a), null);
+    const piece = this.chooseSkyPlacement(top);
+    if (!piece) return null;
+    // 모든 하늘 블록이 같은 순간에 한 칸씩 내려가게 판 시작 시각 기준 SKY_FALL_STEP_MS 박자에 맞춤 (높이차가 그대로)
+    const step = C.SKY_FALL_STEP_MS;
+    const nextStepAt = this.roundStartTime + (Math.floor((this.time - this.roundStartTime) / step) + 1) * step;
+    this.addPiece(piece, { phase: 'falling', controller: null, sky: true, stepMs: step, nextStepAt, controlEndsAt: 0 });
+    this.skyTopId = piece.id;
+    return piece;
+  }
+
+  // 하늘 블록 자리: 맨 위 블록(top) 옆, 높이 = top 지금 높이 + SKY_RISE_MIN~MAX, 칸 사이 거리 SKY_GAP_MIN ~ skyReach(높이차) × SKY_REACH_SAFETY.
+  // 다른 공중 블록과 같은 기둥에는 안 놓고, 높이가 비슷한(2칸 안) 블록과도 SKY_GAP_MIN 은 띄움.
+  // 조건을 만족하는 후보 중에서는 자동 블록처럼 CLEAR_BIAS 점수로 가중 무작위 (층 클리어 유도 유지). top 이 없으면 착지 높이 + SKY_BASE_UP
+  chooseSkyPlacement(top) {
+    const L = this.lowestLayer();
+    const busy = new Set();
+    for (const pc of this.pieces) for (const [dx, dy] of pc.cells) busy.add((pc.px + dx) * 100 + (pc.py + dy));
+    const rises = [];
+    for (let r = C.SKY_RISE_MIN; r <= C.SKY_RISE_MAX; r++) rises.push(r);
+    // 높이차는 무작위로 하나 먼저, 그 높이에 자리가 없으면 나머지
+    const first = rises.splice(Math.floor(this.rng() * rises.length), 1);
+    for (const r of top ? first.concat(rises) : [0]) {
+      const pz0 = top ? top.pz + r : 0;
+      if (top && pz0 + 1 > C.SKY_TOP_Z) continue;
+      const maxGap = top ? skyReach(r) * C.SKY_REACH_SAFETY : Infinity;
+      const cands = [];
+      let best = -Infinity;
+      for (const shape of SHAPE_NAMES) {
+        for (let rot = 0; rot < 4; rot++) {
+          const { w, d } = footprint(rotatedCells(shape, rot));
+          for (let px = 0; px <= this.W - w; px++) {
+            for (let py = 0; py <= this.D - d; py++) {
+              const piece = this.makePiece(shape, rot, px, py, pz0);
+              if (busy.size && piece.cells.some(([dx, dy]) => busy.has((px + dx) * 100 + (py + dy)))) continue;
+              if (!top) piece.pz = Math.min(C.SKY_TOP_Z - 1, piece.landZ + C.SKY_BASE_UP);
+              if (piece.pz <= piece.landZ) continue; // 놓자마자 착지하는 자리 (기둥이 사슬 높이까지 찼음)
+              piece.fits = this.pieceFits(piece);
+              if (!piece.fits) continue;
+              if (top && cellGap(piece, top) > maxGap) continue;
+              if (this.pieces.some((pc) => Math.abs(pc.pz - piece.pz) <= 2 && cellGap(piece, pc) < C.SKY_GAP_MIN)) continue;
+              const score = C.CLEAR_BIAS > 0 ? this.placementScore(piece, L) : 0;
+              if (score > best) best = score;
+              cands.push({ piece, score });
+            }
+          }
+        }
+      }
+      if (!cands.length) continue;
+      let total = 0;
+      for (const c of cands) total += c.w = Math.exp(C.CLEAR_BIAS * (c.score - best));
+      let x = this.rng() * total;
+      for (const c of cands) {
+        x -= c.w;
+        if (x <= 0) return c.piece;
+      }
+      return cands[cands.length - 1].piece;
+    }
+    return null;
+  }
+
+  // 용암에 녹은 하늘 블록: 격자에 안 남고 사라짐
+  meltPiece(piece) {
+    this.emit({ type: 'melt', cells: this.pieceWorldCells(piece) });
+    this.log(`  [하늘] ${piece.shape} 용암에 녹음 (z=${piece.pz})`);
+    this.removePiece(piece);
   }
 
   // 자동 블록 고르기: 들어갈 수 있는 모든 (모양, 회전, 위치) 중에서 가중 무작위로 하나.
@@ -3269,7 +3418,7 @@ export class Game {
     if (!C.CONTROL_TAKEOVER || !p.hasControl) return;
     if (this.pieces.some((pc) => pc.controller !== null)) return;
     let piece = null;
-    for (const pc of this.pieces) if (pc.phase === 'falling' && !pc.thrownBy && (!piece || pc.pz > piece.pz)) piece = pc; // 던진 블록은 못 뺏음
+    for (const pc of this.pieces) if (pc.phase === 'falling' && !pc.thrownBy && !pc.sky && (!piece || pc.pz > piece.pz)) piece = pc; // 던진 블록·하늘 계단 블록은 못 뺏음 (계단이 안 깨지게)
     if (!piece) {
       this.spawnControlled(p);
       return;
@@ -3327,6 +3476,10 @@ export class Game {
         continue;
       }
       // falling
+      if (this.meltsInLava(piece)) {
+        this.meltPiece(piece);
+        continue;
+      }
       while (this.pieces.includes(piece) && this.time >= piece.nextStepAt) {
         if (piece.pz <= piece.landZ) {
           this.landPiece(piece);
@@ -3337,12 +3490,27 @@ export class Game {
         piece.pz--;
         this.refreshPieceCells();
         this.crushCheck(piece);
+        if (this.meltsInLava(piece)) {
+          this.meltPiece(piece);
+          break;
+        }
         if (piece.pz <= piece.landZ) {
           this.landPiece(piece);
           break;
         }
       }
     }
+  }
+
+  // 하늘 블록은 용암이 켜진 뒤 아래면이 용암 표면에 닿으면 녹는다 (그 전에 기둥에 닿으면 보통 착지)
+  meltsInLava(piece) {
+    return !!piece.sky && this.lava.active && piece.pz <= this.lava.z && piece.pz > piece.landZ;
+  }
+
+  // 그림자(경고)를 보일지: 보통 블록은 착지 SHADOW_LEAD_MS 전부터, 하늘 블록은 착지 높이 + SKY_SHADOW_CELLS 안으로 내려오면 (봇도 같은 기준)
+  shadowVisible(piece, eta) {
+    if (piece.phase !== 'falling') return false;
+    return piece.sky ? piece.pz - piece.landZ <= C.SKY_SHADOW_CELLS : eta <= C.SHADOW_LEAD_MS;
   }
 
   // 블록 셀이 플레이어 AABB 와 겹치면 압사
@@ -3375,7 +3543,7 @@ export class Game {
   landPiece(piece = this.piece) {
     const cell = piece.thrownBy ? CELL.THROWN : cellOfShape(piece.shape); // 색 구분용
     for (const [x, y, z] of this.pieceWorldCells(piece)) {
-      if (z >= 0 && z < C.GRID_H) this.grid[this.idx(x, y, z)] = cell;
+      if (z >= 0 && z < this.H) this.grid[this.idx(x, y, z)] = cell;
     }
     const cells = this.pieceWorldCells(piece);
     this.emit({ type: 'land', cells: cells.map(([x, y, z]) => [x, y, z]), controlled: piece.controller !== null });
@@ -3387,7 +3555,7 @@ export class Game {
     this.clearLayers();
     if (this.mode === 'kills') this.sinkIfTall();
     for (const pc of this.pieces) this.updateLanding(pc);
-    if (!piece.thrownBy && this.mode !== 'master') this.nextSpawnAt = Math.max(this.nextSpawnAt, this.time + this.autoSpawnDelayMs()); // 던진 블록은 자동 블록 간격에 안 끼어듦 (마스터 블록은 dropPiece 가 정함)
+    if (!piece.thrownBy && !piece.sky && this.mode !== 'master') this.nextSpawnAt = Math.max(this.nextSpawnAt, this.time + this.autoSpawnDelayMs()); // 던진 블록은 자동 블록 간격에 안 끼어듦 (마스터 블록은 dropPiece 가 정함)
     if (wasControlled) {
       this.controlItemNextAt = this.time + C.CONTROL_ITEM_RESPAWN_MS;
       // 남의 조종 블록이 끝나길 기다리던 조종권 보유자는 바로 조종 시작
@@ -3401,7 +3569,7 @@ export class Game {
   clearLayers() {
     const layerSize = this.W * this.D;
     const full = [];
-    for (let z = 0; z < C.GRID_H; z++) {
+    for (let z = 0; z < this.H; z++) {
       let ok = true;
       for (let i = 0; i < layerSize && ok; i++) if (!this.grid[z * layerSize + i]) ok = false;
       if (ok) full.push(z);
@@ -3433,7 +3601,7 @@ export class Game {
     const layerSize = this.W * this.D;
     const next = new Uint8Array(this.grid.length);
     let dst = 0;
-    for (let z = 0; z < C.GRID_H; z++) {
+    for (let z = 0; z < this.H; z++) {
       if (full.includes(z)) continue;
       next.set(this.grid.subarray(z * layerSize, (z + 1) * layerSize), dst * layerSize);
       dst++;
@@ -3472,15 +3640,17 @@ export class Game {
     if (this.mode === 'kills') return; // 킬 점수전은 용암 대신 아래층을 지움 (sinkIfTall)
     const lava = this.lava;
     if (!lava.active) {
-      if (this.avgHeight() - this.baseAvgHeight < C.LAVA_TRIGGER_AVG_HEIGHT) return; // 시작 지형 빼고 쌓인 만큼
+      const piled = this.avgHeight() - this.baseAvgHeight >= C.LAVA_TRIGGER_AVG_HEIGHT; // 시작 지형 빼고 쌓인 만큼
+      const late = this.sky && this.elapsed() >= C.SKY_LAVA_TRIGGER_MS; // 하늘 계단: 시간이 지나도 시작
+      if (!piled && !late) return;
       lava.active = true;
       lava.z = C.LAVA_START_Z;
       lava.startedAt = this.time;
       this.emit({ type: 'lava' });
-      this.log(`  [용암] 쌓인 평균 높이 ${(this.avgHeight() - this.baseAvgHeight).toFixed(2)} → 용암 상승 시작 @ ${fmtTime(this.elapsed())}`);
+      this.log(`  [용암] ${piled ? '' : `${fmtTime(C.SKY_LAVA_TRIGGER_MS)} 지남 (하늘 계단), `}쌓인 평균 높이 ${(this.avgHeight() - this.baseAvgHeight).toFixed(2)} → 용암 상승 시작 @ ${fmtTime(this.elapsed())}`);
       return;
     }
-    lava.z = Math.min(C.GRID_H + 1, lava.z + dtMs / C.LAVA_RISE_MS_PER_CELL);
+    lava.z = Math.min(this.H + 1, lava.z + dtMs / C.LAVA_RISE_MS_PER_CELL);
     // 필드 밖에서 용암 높이 아래로 가면 밀려 떨어진 것이라 낙사로 센다 (용암판은 필드보다 넓게 그려짐)
     for (const p of this.players.values()) {
       if (!this.onField(p) || p.z >= lava.z - 0.05) continue;
@@ -3496,13 +3666,18 @@ export class Game {
       const x = Math.floor(this.rng() * this.W);
       const y = Math.floor(this.rng() * this.D);
       const z = this.columnTop(x, y);
-      if (z >= C.GRID_H) continue;
+      if (z >= this.H) continue;
       if (this.lava.active && z < this.lava.z + 1) continue; // 용암에 잠길 자리는 피함
       if (this.items.some((it) => it.x === x && it.y === y)) continue;
       this.items.push({ type, x, y, z });
       return true;
     }
     return false;
+  }
+
+  // 조종권 아이템이 나오는 판인지: 블록 마스터는 조종권 없음, 하늘 계단은 조종 블록이 계단 사이에 끼어 배치가 깨져서 끔
+  controlItemOn() {
+    return C.CONTROL_ITEM && this.mode !== 'master' && !this.sky;
   }
 
   // 조종권이 필드·누군가의 손·조종 중인 블록 어딘가에 있음 → 다음 조종권 시계가 안 돎
@@ -3519,13 +3694,13 @@ export class Game {
     if (this.phase !== 'playing') return { control: null, power: null };
     const powerCount = this.items.filter((it) => it.type !== 'control').length;
     return {
-      control: !C.CONTROL_ITEM || this.mode === 'master' || this.controlInPlay() ? null : Math.max(0, this.controlItemNextAt - this.time),
+      control: !this.controlItemOn() || this.controlInPlay() ? null : Math.max(0, this.controlItemNextAt - this.time),
       power: powerCount >= this.itemMax() ? null : Math.max(0, this.powerItemNextAt - this.time),
     };
   }
 
   updateItems() {
-    if (C.CONTROL_ITEM && this.mode !== 'master' && !this.controlInPlay() && this.time >= this.controlItemNextAt) { // 블록 마스터는 조종권 없음
+    if (this.controlItemOn() && !this.controlInPlay() && this.time >= this.controlItemNextAt) {
       if (!this.spawnItem('control')) this.controlItemNextAt = this.time + 1000;
     }
     const powerCount = this.items.filter((it) => it.type !== 'control').length;
@@ -3588,7 +3763,7 @@ export class Game {
 
   // 유령화가 끝났는데 블록 안이면 그 기둥 꼭대기로 밀어 올린다
   ejectFromBlocks(p) {
-    for (let i = 0; i < C.GRID_H + 2; i++) {
+    for (let i = 0; i < this.H + 2; i++) {
       const hits = this.overlappingSolid(this.aabb(p));
       if (!hits.length) return;
       let top = -Infinity;
@@ -3846,10 +4021,11 @@ export class Game {
         phase: piece.phase,
         controller: piece.controller,
         thrown: !!piece.thrownBy, // 설치 블록 (노랑)
+        sky: !!piece.sky, // 하늘 계단 블록
         landZ: piece.landZ,
         fits: piece.fits,
         shadow: piece.cells.map(([dx, dy]) => [piece.px + dx, piece.py + dy]),
-        shadowVisible: piece.phase === 'falling' && eta <= C.SHADOW_LEAD_MS,
+        shadowVisible: this.shadowVisible(piece, eta),
         eta,
         timeLeft: piece.phase === 'control' ? Math.max(0, piece.controlEndsAt - this.time) : 0,
       };
@@ -3936,6 +4112,7 @@ export class Game {
       itemTimers: this.itemTimers(),
       botLevel: this.botLevel,
       teamMode: this.teamMode,
+      skyStairs: this.skyStairs, // 대기실 옵션 (이번 판에 도는지는 field.h 가 SKY_GRID_H 인지로도 앎)
       teamWins: this.teamWins,
       mode: this.mode,
       teamScores: this.teamScores,
@@ -3947,7 +4124,7 @@ export class Game {
       bombs: this.bombs.map((b) => ({ id: b.id, x: b.x, y: b.y, z: b.z, left: Math.max(0, b.explodeAt - this.time) })),
       bblocks: [...this.bblocks.values()].map((b) => ({ x: b.x, y: b.y, z: b.z, owner: b.owner, kind: b.kind, group: b.group, left: b.kind === 'big' ? Math.max(0, (this.bigBombs.find((x) => x.group === b.group)?.at ?? this.time) - this.time) : Math.max(0, b.expiresAt - this.time) })), // 건축가 블록 (B: 색·깜빡임·묶음)
       gridVersion: this.gridVersion,
-      field: { w: this.W, d: this.D, h: C.GRID_H }, // 판 크기 (인원별, FIELD_SIZES). grid 배열은 (z * d + y) * w + x
+      field: { w: this.W, d: this.D, h: this.H }, // 판 크기 (인원별, FIELD_SIZES). grid 배열은 (z * d + y) * w + x
     };
     if (includeGrid || this.gridDirty) {
       out.grid = Array.from(this.grid);
@@ -3955,6 +4132,32 @@ export class Game {
     }
     return out;
   }
+}
+
+// 하늘 계단: 올라갈 높이 h(칸)일 때 점프(+꼭대기에서 공중 점프)로 닿는 수평 거리 (칸)
+export function skyReach(h) {
+  const g = C.GRAVITY;
+  const v = C.JUMP_SPEED;
+  if (C.AIR_JUMPS > 0) {
+    const va = C.AIR_JUMP_SPEED;
+    const d = va * va + 2 * g * ((v * v) / (2 * g) - h);
+    return d < 0 ? 0 : C.MOVE_SPEED * (v / g + (va + Math.sqrt(d)) / g);
+  }
+  const d = v * v - 2 * g * h;
+  return d < 0 ? 0 : (C.MOVE_SPEED * (v + Math.sqrt(d))) / g;
+}
+
+// 두 블록 칸 사이 가장 가까운 수평 거리 (칸 모서리끼리, 붙어 있으면 0)
+export function cellGap(a, b) {
+  let best = Infinity;
+  for (const [ax, ay] of a.cells) {
+    for (const [bx, by] of b.cells) {
+      const dx = Math.max(0, Math.abs(a.px + ax - (b.px + bx)) - 1);
+      const dy = Math.max(0, Math.abs(a.py + ay - (b.py + by)) - 1);
+      best = Math.min(best, Math.hypot(dx, dy));
+    }
+  }
+  return best;
 }
 
 function maxPlayers() {

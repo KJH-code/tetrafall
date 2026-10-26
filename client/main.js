@@ -285,6 +285,7 @@ function handleEvent(e) {
     case 'interrupt': // 내 공격이 맞아서 끊김: 글자 없이 몸 동작만
       renderer.interrupt(e.who);
       if (e.kind === 'ult') renderer.aimEnd(e.who); // 조준 중에 끊긴 처형 사격
+      if (e.kind === 'ult' && playerById(e.who)?.char === 'berserker') renderer.setDizzy(e.who, C.BERSERK_DIZZY_S * 0.5); // 끊긴 소용돌이: 휘청 + 잠깐 어지러움
       break;
     case 'blink': // 닌자 순간 베기: 손발 다 뻗고 돌진 + 몸이 빠르게 미끄러져 감 (잔상·바람 줄) (공중에서도)
       renderer.skillMove(e.who, 'ninjaDash');
@@ -498,6 +499,31 @@ function handleEvent(e) {
       if (d !== undefined && d < 4) fx.shake(e.who === myId ? 0.18 : 0.1, 200);
       break;
     }
+    // ---- 광전사 ----
+    case 'rush': {
+      // F 광폭 도약: 도끼 치켜들고 날아감 + 발밑 흙먼지
+      renderer.skillMove(e.who, 'berserkerLeap');
+      fx.burst({ x: e.from.x, y: e.from.y, z: e.from.z + 0.1 }, null, 0xc0a070, 14, 3.5, 0.11, 0.45);
+      sound.play('swing', { dist: e.who === myId ? 0 : distToMe(e.from.x, e.from.y, e.from.z) });
+      break;
+    }
+    case 'rushLand':
+      renderer.skillMove(e.who, 'berserkerSlam');
+      renderer.rushLand(e);
+      break;
+    case 'spin': {
+      // R 분노 소용돌이 시작: 깎인 % 만큼 몸에서 김이 확 빠짐 (내 것이면 화면 % 가 쪼그라들며 바뀜). 도는 모습은 snapshot spinLeft 로
+      const a = playerById(e.who);
+      if (a) {
+        fx.burst({ x: a.x, y: a.y, z: a.z + 1.1 }, { x: 0, y: 0 }, 0xf4f4f4, 10 + Math.round((e.cut || 0) / 2), 4, 0.14, 0.7);
+        fx.ring({ x: a.x, y: a.y, z: a.z + 0.9 }, 0xff6040, 2.6, 0.3);
+      }
+      if (e.who === myId && e.cut > 0) damageEl.animate([{ transform: 'scale(1.6)', color: '#ffffff' }, { transform: 'scale(0.8)' }, { transform: 'scale(1)' }], { duration: 450 });
+      break;
+    }
+    case 'spinEnd':
+      renderer.spinEnd(e);
+      break;
     // ---- 대포수 ----
     case 'shellFire': {
       // 포구 불꽃·연기 + 쾅 + 반동 (땅: 엉덩방아, 공중: 뒤로 래그돌 회전)
@@ -637,6 +663,13 @@ function feelEvent(e) {
     case 'fire': {
       const a = playerById(e.who);
       if (a) sound.play('fire', { dist: e.who === myId ? 0 : distToMe(a.x, a.y, a.z) });
+      return;
+    }
+    case 'melt': {
+      // 하늘 계단 블록이 용암에 녹음: 칸마다 주황 번쩍 + 지글 불티 + 연기
+      renderer.melt(e);
+      const c = e.cells?.[0];
+      if (c) sound.play('lava', { dist: distToMe(c[0] + 0.5, c[1] + 0.5, c[2]) });
       return;
     }
     case 'land': {
@@ -835,7 +868,7 @@ function renderRoomList() {
     const info = document.createElement('div');
     info.className = 'info';
     const bots = r.bots ? ` + 봇 ${r.bots} (${BOT_LEVEL_KO[r.botLevel] || r.botLevel})` : '';
-    info.textContent = `사람 ${r.humans}${bots} / ${r.max}명 · ${C.MODE_NAMES[r.mode] || '생존'} · 맵 ${MAP_KO[r.map] || r.map} · ${r.teamMode ? '팀전' : '개인전'}`;
+    info.textContent = `사람 ${r.humans}${bots} / ${r.max}명 · ${C.MODE_NAMES[r.mode] || '생존'} · 맵 ${MAP_KO[r.map] || r.map}${r.skyStairs ? ' · 하늘 계단' : ''} · ${r.teamMode ? '팀전' : '개인전'}`;
     const btn = document.createElement('button');
     btn.textContent = r.humans + r.bots >= r.max ? '꽉 참' : '들어가기';
     btn.disabled = r.humans + r.bots >= r.max;
@@ -921,6 +954,16 @@ document.addEventListener('keydown', (e) => {
 $('add-bot').addEventListener('click', () => send({ type: 'addBot' }));
 $('remove-bot').addEventListener('click', () => send({ type: 'removeBot' }));
 $('map-select').addEventListener('change', (e) => send({ type: 'setMap', map: e.target.value }));
+// 하늘 계단 (호스트, 판 사이): 맵 고르기 옆 체크 상자
+const skyLabel = document.createElement('label');
+skyLabel.style.cssText = 'font-size:15px;margin-left:8px';
+const skyBox = document.createElement('input');
+skyBox.type = 'checkbox';
+skyBox.id = 'sky-stairs';
+skyLabel.append(skyBox, ' 하늘 계단');
+skyLabel.title = '떨어지는 블록이 하늘까지 쌓여 위로 올라갈 수 있음 (높이 2배)';
+$('bot-btns').append(skyLabel);
+skyBox.addEventListener('change', () => send({ type: 'skyStairs', on: skyBox.checked }));
 $('bot-level').addEventListener('change', (e) => send({ type: 'botLevel', level: e.target.value }));
 $('mode-select').addEventListener('change', (e) => send({ type: 'setMode', mode: e.target.value }));
 const BOT_LEVEL_KO = { easy: '쉬움', normal: '보통', hard: '어려움' };
@@ -1376,6 +1419,7 @@ function updateHud() {
   // 맵: 호스트는 고르고, 다른 사람은 보기만
   const mapSel = $('map-select');
   if (state.map && document.activeElement !== mapSel) mapSel.value = state.map.choice;
+  if (state.skyStairs !== undefined) skyBox.checked = !!state.skyStairs;
   const lvSel = $('bot-level');
   if (state.botLevel && document.activeElement !== lvSel) lvSel.value = state.botLevel;
   const modeSel = $('mode-select');
@@ -1385,7 +1429,7 @@ function updateHud() {
   modeInfo.textContent = MODE_DESC[state.mode] || '';
   const mapInfo = $('map-info');
   mapInfo.classList.toggle('hidden', !(state.map && !isHost && between));
-  if (state.map) mapInfo.textContent = `맵: ${MAP_KO[state.map.choice] || state.map.choice} · 모드: ${C.MODE_NAMES[state.mode] || state.mode}`;
+  if (state.map) mapInfo.textContent = `맵: ${MAP_KO[state.map.choice] || state.map.choice} · 모드: ${C.MODE_NAMES[state.mode] || state.mode}${state.skyStairs ? ' · 하늘 계단' : ''}`;
   if (showBots) {
     $('add-bot').disabled = state.players.length >= Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length);
     $('remove-bot').disabled = !state.players.some((x) => x.isBot);

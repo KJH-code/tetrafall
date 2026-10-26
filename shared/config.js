@@ -70,6 +70,27 @@ export const CONFIG = {
   CLEAR_PICK_SHAPE: true, // true: 모양도 유도로 고름. false: 모양은 무작위 (이러면 bias 2 여도 22%)
   CLEAR_SCORE: { FILL: 4, CLEAR: 6, BAD_GAP: 3, HOLE: 3 }, // 점수 항목 (server/game.js placementScore 설명 참고)
 
+  // ---- 하늘 계단 (2026-10-26 재혁: 대기실 옵션, 기본 켬) ----
+  // 다음 블록들이 미리 높은 하늘에 떠서 천천히 내려온다. 이웃 블록끼리 점프(+공중 점프)로 건너갈 수 있는 높이차·틈으로 놓아 계단이 됨.
+  // 모든 하늘 블록이 같은 속도로 내려가서 이웃 사이 높이차·틈은 착지 전까지 그대로. 용암이 켜지면 용암 표면에 닿은 블록은 녹아 사라짐.
+  // 끄면 예전 규칙 그대로 (격자 높이 GRID_H, AUTO_FALL 낙하·동시 수). 블록 마스터는 자동 블록이 없어서 무시
+  // 닿는 거리 R(h) = MOVE_SPEED × 공중 시간 (꼭대기에서 공중 점프, h = 올라갈 높이): h=0 → 5.8칸, 1 → 5.3, 2 → 4.7
+  SKY_STAIRS_DEFAULT: true, // 방(대기실) 기본값. new Game() 기본은 끔 (예전 테스트 그대로)
+  SKY_GRID_H: 32, // 켬일 때 격자 높이 (판마다 game.H, snapshot field.h)
+  SKY_COUNT: 7, // 하늘에 떠 있는 블록 수 (착지·녹으면 맨 위에 새로)
+  SKY_TOP_Z: 32, // 블록 윗면 최고 높이 (상한)
+  SKY_RISE_MIN: 1, // 새 블록 = 맨 위 블록 지금 높이 + 이 범위의 칸 (정수 무작위)
+  SKY_RISE_MAX: 2, // 2단 점프 최고 약 2.8칸이라 여유 있게
+  SKY_GAP_MIN: 1, // 이웃 블록 칸 사이 최소 거리 (붙으면 머리 부딪힘·한 덩어리로 보임)
+  SKY_REACH_SAFETY: 0.5, // 틈은 R(높이차) × 이 값까지 → 높이차 1 이면 약 2.6칸, 2 면 약 2.3칸
+  SKY_FALL_STEP_MS: 2500, // 하늘 블록 1칸 내려오는 간격, 판 내내 고정 (예전 AUTO_FALL 500→300)
+  // 그림자(경고)는 착지까지 남은 칸 수로: 예전 SHADOW_LEAD_MS(착지 3초 전)는 한 칸 2.5초면 깔리기 0.5초 전이라 못 피함 (봇 판 압사 28% → 55%)
+  SKY_LAVA_TRIGGER_MS: 60000, // 켬 판은 판 시작 후 이 시간이 지나면 평균 높이와 상관없이 용암 시작 (2026-10-26 재혁: 착지가 느려 용암이 거의 안 옴, 봇 504판 중 2판)
+  SKY_SHADOW_CELLS: 3, // 착지 높이 + 이 칸 안으로 내려오면 그림자 (머리 위 약 1.4칸, 깔리기 약 5초 전)
+  SKY_BASE_UP: 6, // 사슬 첫 블록 높이: 그 아래 기둥(착지 높이)보다 이만큼 위
+  BOT_SKY_HOP_LAVA: 4, // 봇은 용암 표면이 발에서 이 높이(칸) 안이면 하늘 계단으로 올라탐
+  BOT_SKY_HOP_DIST: 3, // 봇이 노리는 하늘 블록까지 수평 거리 (칸 모서리까지)
+
   // ---- 조종권 ----
   CONTROL_TIME_MS: 8000, // 이 안에 안 떨구면 자동 낙하
   // true: 조종권을 먹는 즉시 조종 시작 (떨어지던 자동 블록을 넘겨받거나 새 블록). false: 다음 블록부터 조종. 2026-10-20 도입
@@ -332,6 +353,10 @@ export const CONFIG = {
   // 2026-10-24 재혁: 스킬이 직접 피해·넉백을 주고 콤보로 이어지게 (닌자 = 콤보 캐릭터). 남이 쓰는 것도 보이게 예고·효과
   SKILL_NAMES: { tank: '돌진', ninja: '순간 베기', builder: '솟는 벽', hook: '갈고리', hunter: '추적 도약', cannon: '발밑 포격', berserker: '광폭 도약', bard: '폼 전환' },
   ULT_NAMES: { tank: '내려찍기', ninja: '강화', builder: '대폭발', hook: '블록 내려찍기', hunter: '처형 사격', cannon: '대형 포탄', berserker: '분노 소용돌이', bard: '취약의 노래' },
+  // 이동 스킬 예고 (2026-10-26 재혁, docs/characters.md 2절): 닌자 F·탱크 F·갈고리 F 는 지상에서 쓰면 SKILL_WINDUP_MS 준비 (방향은 누른 순간 고정, 이벤트 skillWindup → 화면 번쩍·소리)
+  // 뒤에 나감, 공중에서 쓰면 바로 (복귀가 안 늦게). 준비 중에 맞으면 끊기고 쿨타임 돌려줌 (카운터 대상)
+  SKILL_WINDUP_MS: 150,
+  SKILL_WINDUP_CHARS: ['ninja', 'tank', 'hook'],
   SKILL_CD_MS: { tank: 8000, ninja: 6000, builder: 8000, hook: 8000, hunter: 7000, cannon: 8000, berserker: 7000, bard: 6000 }, // 봇 160판으로 맞춤 (2026-10-24). 건축가 11 → 8초 (2026-10-25: F 가 콤보 부품·복귀기, 지상·공중 같이 씀)
   CHAR_DEFAULT: 'tank',
   // 스킬·필살기를 쓰면 그 캐릭터에 빛 (글자 대신, 남에게도 보임. 누가 무엇인지는 캐릭터 모양으로). 2026-10-25 재혁:
@@ -339,6 +364,10 @@ export const CONFIG = {
   SKILL_AURA_COLOR: 0xffffff, // F: 발밑에 얇은 고리가 짧게 퍼지고 몸이 순간 하얗게 번쩍
   SKILL_AURA_MS: 300,
   SKILL_GLOW_MS: 140,
+  SKY_PIECE_WHITEN: 0.35, // 하늘 계단 블록: 모양 색을 흰색으로 섞는 정도 (밝게)
+  SKY_PIECE_OPACITY: 0.88, // 하늘 계단 블록 비침 (떠 있는 느낌)
+  ULT_READY_SPARKLE_RATE: 2, // 그 빛에서 위로 오르는 반짝이 (초당, 아주 적게)
+  ULT_READY_AURA_OPACITY: 0.24, // R 게이지가 찬 상대 몸 둘레 옅은 빛 (ULT_AURA_COLOR, 숨 쉬듯 75~100%)
   ULT_AURA_COLOR: 0x8fe6ff, // R: 몸이 하늘색으로 빛나는 동안 반짝이가 위로 올라감 + 고리 두 겹
   ULT_AURA_MS: 900,
   COMBO_TEXT_MS: 900, // 내가 때리거나 맞은 콤보 'N HIT' 글자
@@ -568,7 +597,7 @@ export const CONFIG = {
   BUILDER_HOLE_MS: 8000,
   // 갈고리 (연계: 평타로 밀고 → 갈고리로 다시 당겨 → 평타)
   // 장전 (플린트록): F 갈고리로 상대를 끌어오면 장전 (시간으로는 안 참), 판 시작·부활 때 장전. 평타 3타가 탕이면 빈 총
-  HOOK_RANGE: 5, // F 갈고리: 보는 방향 이 거리 안에서 상대·블록 중 먼저 닿는 것. 판정은 즉시
+  HOOK_RANGE: 5, // F 갈고리: 보는 방향 이 거리 안에서 상대·블록 중 먼저 닿는 것. 판정은 HOOK_FLY_MS 뒤 (갈고리가 닿는 순간)
   HOOK_HALF_ANGLE_DEG: 15, // 상대에 닿는 시야 반각
   HOOK_PULL_TO: 1, // 상대를 끌어와서 내 앞 이 거리에 놓음
   HOOK_STUN_MS: 600,
@@ -688,16 +717,21 @@ export const CONFIG = {
   ROBOT_EYE_PUPIL: 0.3, // 로봇 눈동자 반지름 (같은 비율)
   ROBOT_RUN_SPEED: 3.2, // 이 속도(칸/초)보다 빠르면 로봇이 달리기 동작
   ROBOT_FADE_S: 0.15, // 로봇 동작이 바뀔 때 섞는 시간
-  FIGURE_CHARS: ['tank', 'ninja', 'builder', 'hook', 'hunter', 'cannon', 'berserker'], // TABS 식 몸(client/figure.js)으로 그리는 캐릭터 (2026-10-24). 캐릭터 없으면 로봇
-  FIGURE_BODY: { tank: 'drum', ninja: 'slim', builder: 'sturdy', hook: 'reach', hunter: 'stalk', cannon: 'stout', berserker: 'brute' }, // 캐릭터별 체형 (client/figure.js BODIES). 2026-10-24 재혁: 탱크는 통통한 쪽
+  FIGURE_CHARS: ['tank', 'ninja', 'builder', 'hook', 'hunter', 'cannon', 'berserker', 'bard'], // TABS 식 몸(client/figure.js)으로 그리는 캐릭터 (2026-10-24). 캐릭터 없으면 로봇
+  FIGURE_BODY: { tank: 'drum', ninja: 'slim', builder: 'sturdy', hook: 'reach', hunter: 'stalk', cannon: 'stout', berserker: 'brute', bard: 'lean' }, // 캐릭터별 체형 (client/figure.js BODIES). 2026-10-24 재혁: 탱크는 통통한 쪽
   FIGURE_SCALE: 1.15, // 몸 전체 크기 배율 (1 이면 로봇과 키가 같아도 가늘어서 작아 보임). 판정 상자는 그대로
-  FIGURE_HORN_SEGS: 6, // 광전사 뿔 마디 수 (마디마다 관절: 끝으로 갈수록 처지고 늦게 출렁)
+  FIGURE_HORN_SEGS: 6, // 광전사 뿔 마디 수 (마디마다 같은 각으로 꺾여 매끈한 곡선)
   FIGURE_HORN_LEN: 0.42, // 뿔 한 개 길이 (칸, 몸 크기 배율 전)
   FIGURE_HORN_CURL: 2.1, // 뿔이 뿌리에서 끝까지 위로 휘는 각 합 (라디안, C 자)
-  FIGURE_HORN_WOBBLE: 0.22, // 뿔 끝 마디가 출렁이는 크기 (라디안, 움직이면 2.5배까지)
-  FIGURE_HORN_DROOP: 1.7, // 뿔 끝이 처지는 정도 (끝 마디일수록 제곱으로 커짐: 마지막 마디는 바깥으로 꺾여 축 처짐)
   BERSERK_RAGE_PCT: 120, // 광전사 분노 화면: 피해 % 가 이만큼이면 가장 화남 (눈 충혈·눈썹·핏줄·빡침 표시·김. 몸 색은 안 바꿈: 플레이어 구분 우선)
-  BERSERK_STEAM_RATE: 14, // 가장 화났을 때 초당 김 수
+  BERSERK_STEAM_RATE: 14,
+  BARD_LUTE_SCALE: 1.35, // 류트 크기 배율 (가슴 앞에서 작아 보여서)
+  BARD_HEADBANG_HZ: 2.2, // 바드 메탈 폼 대기 헤드뱅잉 (초당)
+  BARD_FORM_POP_MS: 320, // 폼 전환 때 모히칸이 솟거나 모자가 얹히는 시간
+  BERSERK_SPIN_TURNS_PER_S: 2.2, // R 소용돌이 화면 회전 빠르기 (바퀴/초)
+  BERSERK_SPIN_FLAP: 2.2, // 소용돌이 중 수염·갈래·털 망토가 바깥으로 날리는 정도 (천 자락 들림 배율)
+  BERSERK_DIZZY_S: 1.4, // 소용돌이 끝나고 어지러워 비틀 + 눈 빙글 + 머리 위 별 (초)
+  BERSERK_SPIN_RING_COLOR: 0xff5030, // 소용돌이 범위 표시 (바닥 고리 + 도끼 궤적 원) // 가장 화났을 때 초당 김 수
   SHELL_SIZE: 0.2, // 화면 포탄 반지름 (판정 CANNON_SHELL_RADIUS 보다 작게: 잘 보이게만)
   SHELL_BIG_SIZE: 0.45, // 화면 대형 포탄 반지름
   CANNON_FLIP_PER_TURN: 4, // 대포수 공중 반동: recoil 이만큼마다 뒤로 한 바퀴 (공중 5 → 1바퀴, R 8 → 2바퀴)
@@ -739,7 +773,7 @@ export const CONFIG = {
   QUAKE_SINK_SHAKE: 0.07, // 가라앉는 동안 떨림 (칸)
   QUAKE_COLOR: 0x9c8468, // 솟는 땅 색 (흙)
   // 갈고리 화면
-  HOOK_FLY_MS: 110, // 갈고리 머리가 날아가 닿는 시간 (판정은 즉시, 애니만)
+  HOOK_FLY_MS: 110, // 갈고리 머리가 날아가 닿는 시간. 판정도 이때 (2026-10-26: 던진 방향·닿는 순간 위치로, 그 사이 옆으로 피하면 빗나감)
   HOOK_HOLD_MS: 380, // 닿은 뒤 사슬이 걸려 있는 시간 (끌려오는 동안)
   HOOK_GRAB_SWING_R: 0.9, // R: 뽑은 블록을 머리 위에서 돌리는 반지름 (칸)
   HOOK_SLAM_FLY_MS: 150,

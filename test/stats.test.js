@@ -327,3 +327,20 @@ test('통계: 캐릭터 평타 — 타 번호별 명중 수 (공중 평타 따�
   assert.ok(formatReport(s).includes('음파 명중 1 · 메탈 전환 1 · 음유 전환 1 (치유 10%) · 취약의 노래 1번 (1명) · 앰프 음파 1번 (끊김 1)'));
   assert.ok(formatReport(s).includes('광폭 도약 1번 · 소용돌이 2번 (평균 분노 ×1.30 · 깎은 피해 평균 20% · 끝 날림 1명 · 끊김 1번)'));
 });
+
+test('통계: 하늘 계단 켬/끔을 나눠 보고 녹은 하늘 블록을 셈', () => {
+  const text = [
+    '===== ROUND 1 시작 (2명: P1 P2, 맵 평지) =====',
+    '  하늘 계단: 켬',
+    '  [하늘] T 용암에 녹음 (z=3)',
+    '  [사망] P2 압사 @ 0:30',
+    '===== ROUND 1 종료 | 길이 0:30 | 승자: P1 =====',
+    '===== ROUND 2 시작 (2명: P1 P2, 맵 평지) =====',
+    '  [사망] P1 낙사 @ 0:20',
+    '===== ROUND 2 종료 | 길이 0:20 | 승자: P2 =====',
+  ].join('\n');
+  const s = summarize(parseLog(text));
+  assert.deepEqual(s.bySky.map((g) => [g.key, g.rounds]).sort(), [['끔', 1], ['켬', 1]]);
+  assert.equal(s.melts, 1);
+  assert.match(formatReport(s), /하늘 계단별/);
+});

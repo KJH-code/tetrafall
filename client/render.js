@@ -146,9 +146,9 @@ export function playerColor(p, state) {
   return PLAYER_COLORS[p.slot % PLAYER_COLORS.length];
 }
 const _q = new THREE.Quaternion();
-const HEAVY_HITS = new Set(['bomb', 'shock', 'projectile', 'slam', 'wall', 'blast', 'bigbomb', 'quake', 'blockslam', 'execute', 'pounce', 'shell', 'bigshell', 'groundshot']); // 몸이 크게 휘청하는 공격
+const HEAVY_HITS = new Set(['bomb', 'shock', 'projectile', 'slam', 'wall', 'blast', 'bigbomb', 'quake', 'blockslam', 'execute', 'pounce', 'shell', 'bigshell', 'groundshot', 'leapwave', 'spinend']); // 몸이 크게 휘청하는 공격
 const MAX_SIDE = Math.max(C.GRID_W, C.GRID_D, ...Object.values(C.FIELD_SIZES));
-const MAX_CELLS = MAX_SIDE * MAX_SIDE * C.GRID_H; // 가장 큰 판 (인원별 필드 크기)
+const MAX_CELLS = MAX_SIDE * MAX_SIDE * Math.max(C.GRID_H, C.SKY_GRID_H || 0); // 가장 큰 판 (인원별 필드 크기 · 하늘 계단 높이)
 
 export class Renderer {
   // models: loadModels() 결과 (없으면 예전 도형으로 그림)
@@ -203,7 +203,8 @@ export class Renderer {
     // 하늘 시점: 필드가 화면에 꽉 차는 직교 카메라 (블록과 그림자가 같은 크기로 보인다)
     this.skyCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
     this.skyCamera.up.set(0, 1, 0);
-    this.skyCamera.position.set(this.W / 2, this.D / 2, C.SKY_CAMERA_HEIGHT);
+    this.H = C.GRID_H; // 지금 판 높이 (snapshot field.h: 하늘 계단이면 SKY_GRID_H)
+    this.skyCamera.position.set(this.W / 2, this.D / 2, this.skyCamH());
     this.skyCamera.lookAt(this.W / 2, this.D / 2, 0);
     this.fitSkyCamera();
 
@@ -229,7 +230,7 @@ export class Renderer {
     this.scene.add(this.floor);
     // 필드 경계 (높이 표시용 세로선)
     this.edges = new THREE.LineSegments(
-      new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, C.GRID_H)),
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), // setField 가 판 크기로 늘임
       new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 }),
     );
     this.scene.add(this.edges);
@@ -341,10 +342,17 @@ export class Renderer {
   }
 
   // 판 크기 (snapshot field: 인원별 10·12·14, 대기실 10). 바뀔 때만 바닥·격자선·경계·용암·해 그림자·하늘 시점을 맞춘다
-  setField(w, d, force = false) {
-    if (!(w > 0 && d > 0) || (!force && w === this.W && d === this.D)) return;
+  // 하늘 시점 카메라 높이: 판 높이 + (SKY_CAMERA_HEIGHT - GRID_H) 여백
+  skyCamH() {
+    return C.SKY_CAMERA_HEIGHT - C.GRID_H + (this.H || C.GRID_H);
+  }
+
+  setField(w, d, force = false, h = this.H || C.GRID_H) {
+    if (!(w > 0 && d > 0 && h > 0) || (!force && w === this.W && d === this.D && h === this.H)) return;
     this.W = w;
     this.D = d;
+    this.H = h;
+    this.skyCamera.far = Math.max(100, this.skyCamH() + 20);
     const cx = w / 2;
     const cy = d / 2;
     this.floor.scale.set(w, d, 1);
@@ -362,8 +370,8 @@ export class Renderer {
     this.gridLines.scale.set(w / n, 1, d / n);
     this.gridLines.position.set(cx, cy, 0.002);
     this.scene.add(this.gridLines);
-    this.edges.scale.set(w, d, 1);
-    this.edges.position.set(cx, cy, C.GRID_H / 2);
+    this.edges.scale.set(w, d, this.H);
+    this.edges.position.set(cx, cy, this.H / 2);
     this.lava.scale.set(w + 12, d + 12, 1);
     this.lavaTop.scale.set(w + 12, d + 12, 1);
     this.dome.position.set(cx, cy, 0);
@@ -371,9 +379,9 @@ export class Renderer {
     this.sun.position.copy(center).addScaledVector(new THREE.Vector3(...C.SUN_DIR).normalize(), 30);
     this.sun.target.position.copy(center);
     const reach = Math.hypot(w, d) / 2 + 4; // 필드 + 여백을 덮는 그림자 상자
-    Object.assign(this.sun.shadow.camera, { left: -reach, right: reach, top: reach + 4, bottom: -reach });
+    Object.assign(this.sun.shadow.camera, { left: -reach, right: reach, top: reach + 4 + (h - C.GRID_H), bottom: -reach, far: 60 + (h - C.GRID_H) * 1.5 }); // 하늘 계단이면 위로 더 (높은 블록도 그림자)
     this.sun.shadow.camera.updateProjectionMatrix();
-    this.skyCamera.position.set(cx, cy, C.SKY_CAMERA_HEIGHT);
+    this.skyCamera.position.set(cx, cy, this.skyCamH());
     this.skyCamera.lookAt(cx, cy, 0);
     this.fitSkyCamera();
     this.gridVersion = -1; // 격자 배열 길이가 바뀜 → 다시 그림
@@ -403,7 +411,7 @@ export class Renderer {
     const m = new THREE.Matrix4();
     const color = new THREE.Color();
     const count = { terrain: 0, build: 0, thrown: 0, shape: 0 };
-    for (let z = 0; z < C.GRID_H; z++) {
+    for (let z = 0; z < this.H; z++) {
       for (let y = 0; y < this.D; y++) {
         for (let x = 0; x < this.W; x++) {
           const v = grid[(z * this.D + y) * this.W + x];
@@ -443,6 +451,16 @@ export class Renderer {
       this.shapeMats[shape] = toon({ color: C.SHAPE_COLORS[shape] ?? 0xf0a030, map: this.tex.tetris, transparent: true, opacity: 1 });
     }
     return this.shapeMats[shape];
+  }
+
+  // 하늘 계단 블록 재질 (모양 색을 하얗게 섞어 밝게 + 하늘색 빛, 살짝 비침)
+  skyPieceMat(shape) {
+    this.skyMats ||= {};
+    if (!this.skyMats[shape]) {
+      const col = new THREE.Color(C.SHAPE_COLORS[shape] ?? 0xf0a030).lerp(new THREE.Color(0xffffff), C.SKY_PIECE_WHITEN);
+      this.skyMats[shape] = toon({ color: col.getHex(), emissive: 0x000000, map: this.tex.tetris, transparent: true, opacity: C.SKY_PIECE_OPACITY });
+    }
+    return this.skyMats[shape];
   }
 
   // 외곽선 켜기·끄기 (설정). 켜면 OutlineEffect 가 장면을 한 번 더 (뒤집힌 테두리로) 그린다
@@ -615,12 +633,106 @@ export class Renderer {
         air, walking, hs: a.hs, walk: a.walk, stunned: p.stunned || !!a.flipRag, dancing, emote, emoteT: a.emoteT, punch, holding: !!heldKind(p), t: a.t,
         hit, act: this.actFor(p.id), tumble: a.tumbleAmt, recover: a.recover * a.recoverPow, land: a.figLand * a.landPow, flip: a.flip >= 0 && !a.flipRag ? a.flip / C.FIGURE_FLIP_S : -1, rag: !!a.flipRag,
         sniffAt: fig.sniff ? this.sniffAngle(p) : null,
+        whirl: this.whirlTime(a, p), dizzy: a.dizzy > 0 ? a.dizzy / C.BERSERK_DIZZY_S : 0,
       }, dt);
+      if (a.dizzy > 0) a.dizzy -= dt;
     }
     const stretch = a.vz > C.ANIM_AIR_VZ && !fig ? C.ANIM_STRETCH : 0; // 올라가는 중: 위로 늘어나고 옆은 가늘게
     const land = fig ? 0 : a.land; // TABS 식 몸은 찌그러지지 않음
     const wide = 1 - stretch / 2 + land * C.ANIM_LAND_SQUASH * 0.6; // 착지: 납작해지며 옆으로 퍼짐
     rig.scale.set(wide, wide, 1 + stretch - land * C.ANIM_LAND_SQUASH);
+  }
+
+  // 광전사 R 소용돌이 경과 초 (snapshot spinLeft 로 시작 시각을 맞추고 그 뒤는 내 시계로 매끈하게). 안 돌면 -1
+  whirlTime(a, p) {
+    const bz = p.berserker;
+    if (!bz || !(bz.spinLeft > 0) || !p.alive) {
+      a.whirlT0 = null;
+      return -1;
+    }
+    const now = performance.now();
+    if (a.whirlT0 == null) a.whirlT0 = now - (bz.spinMs - bz.spinLeft);
+    const w = (now - a.whirlT0) / 1000;
+    return Number.isFinite(w) ? Math.min(w, bz.spinMs / 1000) : -1;
+  }
+
+  // 소용돌이 범위 표시 (발밑 빨간 고리 + 도끼 높이에서 빙글 도는 궤적 호) · 뿔 바람 · 어지러울 때 머리 위 별
+  updateWhirlFx(g, p, s, dt) {
+    const a = g.userData.anim;
+    const whirl = a.whirlT0 != null;
+    let w = g.userData.whirlFx;
+    if (whirl && !w) {
+      const r = C.BERSERKER_SPIN_RANGE;
+      const mat = noOutline(new THREE.MeshBasicMaterial({ color: C.BERSERK_SPIN_RING_COLOR, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false }));
+      const disc = noOutline(new THREE.MeshBasicMaterial({ color: C.BERSERK_SPIN_RING_COLOR, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false }));
+      const trailMat = noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false }));
+      const ring = new THREE.Mesh(new THREE.RingGeometry(r - 0.07, r, 40), mat);
+      ring.add(new THREE.Mesh(new THREE.CircleGeometry(r - 0.07, 40), disc));
+      const trail = new THREE.Mesh(new THREE.RingGeometry(r * 0.55, r * 0.95, 32, 1, 0, Math.PI * 1.2), trailMat);
+      for (const m of [ring, trail]) {
+        m.renderOrder = 4;
+        this.scene.add(m);
+      }
+      w = g.userData.whirlFx = { ring, trail, mats: [mat, disc, trailMat] };
+    }
+    if (w) {
+      w.ring.visible = w.trail.visible = whirl;
+      if (whirl) {
+        w.ring.position.set(s.x, s.y, s.z + 0.04);
+        w.trail.position.set(s.x, s.y, s.z + 0.9);
+        w.trail.rotation.z -= dt * Math.PI * 2 * C.BERSERK_SPIN_TURNS_PER_S;
+        // 뿔·몸 둘레 바람 줄: 흰 김이 바깥으로 휙
+        if (Math.random() < dt * 30) {
+          const ang = Math.random() * Math.PI * 2;
+          this.effects.burst({ x: s.x + Math.cos(ang) * 0.5, y: s.y + Math.sin(ang) * 0.5, z: s.z + 1.3 + Math.random() * 0.5 }, { x: Math.cos(ang) * 1.2, y: Math.sin(ang) * 1.2 }, 0xffffff, 1, 2.5, 0.06, 0.25);
+        }
+      }
+    }
+    // 어지러움: 머리 위로 노란 별 셋이 빙글
+    let st = g.userData.dizzyStars;
+    if (a.dizzy > 0 && !st) {
+      const mat = noOutline(new THREE.MeshBasicMaterial({ color: 0xffe040 }));
+      st = g.userData.dizzyStars = [0, 1, 2].map(() => {
+        const m = new THREE.Mesh(new THREE.OctahedronGeometry(0.07), mat);
+        this.scene.add(m);
+        return m;
+      });
+    }
+    if (st) {
+      const on = a.dizzy > 0 && p.alive;
+      st.forEach((m, i) => {
+        m.visible = on;
+        if (!on) return;
+        const ang = performance.now() / 180 + (i * Math.PI * 2) / 3;
+        m.position.set(s.x + Math.cos(ang) * 0.32, s.y + Math.sin(ang) * 0.32, s.z + C.PLAYER_HEIGHT * C.FIGURE_SCALE + 0.15);
+        m.rotation.z = ang * 2;
+      });
+    }
+  }
+
+  // 어지러움 시작 (소용돌이 끝 / 끊김)
+  setDizzy(who, sec) {
+    const g = this.playerMeshes.get(who);
+    if (g && g.userData.figure?.pupils) g.userData.anim.dizzy = sec;
+  }
+
+  // 광전사 이벤트 효과
+  rushLand(e) {
+    const pos = { x: e.x, y: e.y, z: e.z + 0.08 };
+    this.effects.ring(pos, 0xffc080, (e.r || 1.5) * 2, 0.35, true);
+    this.effects.burst(pos, null, 0x9a8a78, 22, 4.5, 0.14, 0.6);
+    if (this.curState) this.blockPulse(this.blockNeighbors([[Math.floor(e.x), Math.floor(e.y), Math.floor(e.z)]]).filter((c) => c[2] < Math.floor(e.z + 0.01)), 0xffffff, { jolt: -C.BLOCK_JOLT, opacity: 0.35 });
+    if (this.onBlast) this.onBlast(pos, false);
+  }
+
+  spinEnd(e) {
+    const pos = { x: e.x, y: e.y, z: e.z + 0.08 };
+    this.effects.ring(pos, 0xff7040, (e.r || 2) * 2.2, 0.4, true);
+    this.effects.ring({ x: e.x, y: e.y, z: e.z + 0.9 }, 0xffffff, (e.r || 2) * 1.6, 0.3);
+    this.effects.burst({ x: e.x, y: e.y, z: e.z + 0.6 }, null, 0xffb060, 26, 7, 0.13, 0.45);
+    this.effects.burst(pos, null, 0x9a8a78, 18, 4, 0.14, 0.6);
+    if (this.onBlast) this.onBlast(pos, (e.rage || 1) > 1.3);
+    this.setDizzy(e.who, C.BERSERK_DIZZY_S);
   }
 
   // 사냥꾼 대기 킁킁: 내가 표식을 붙인 가장 가까운 상대 쪽 각 (몸 기준, 왼쪽 +). 없으면 null
@@ -1255,6 +1367,68 @@ export class Renderer {
     this.huntEye(g, !!mine && p.alive && p.id !== myId);
   }
 
+  // R 게이지가 찬 상대: 발밑~몸 둘레에 옅은 하늘색 빛 (필살기 빛과 같은 계열, 압사 빨강·치명타 노랑과 다른 색). 은은하게 숨 쉬듯.
+  // 나는 안 그림 (HUD 로 앎). 사냥꾼은 ultMax(200) 기준
+  updateUltAura(g, p, s, myId, dt) {
+    const full = p.alive && !p.master && p.char && p.id !== myId && p.ult >= (p.ultMax || C.ULT_MAX);
+    let au = g.userData.ultAura;
+    if (!full) {
+      if (au) au.grp.visible = false;
+      return;
+    }
+    if (!au) {
+      if (!this.ultAuraTex) {
+        // 아래가 밝고 위로 사라지는 세로 그라데이션 (빛기둥 옆면) / 가운데가 밝은 원 (바닥)
+        const c = document.createElement('canvas');
+        c.width = 4;
+        c.height = 64;
+        const x = c.getContext('2d');
+        const gr = x.createLinearGradient(0, 64, 0, 0);
+        gr.addColorStop(0, 'rgba(255,255,255,1)');
+        gr.addColorStop(0.35, 'rgba(255,255,255,0.45)');
+        gr.addColorStop(1, 'rgba(255,255,255,0)');
+        x.fillStyle = gr;
+        x.fillRect(0, 0, 4, 64);
+        this.ultAuraTex = new THREE.CanvasTexture(c);
+        const d = document.createElement('canvas');
+        d.width = d.height = 64;
+        const y = d.getContext('2d');
+        const rg = y.createRadialGradient(32, 32, 4, 32, 32, 32);
+        rg.addColorStop(0, 'rgba(255,255,255,0.9)');
+        rg.addColorStop(0.7, 'rgba(255,255,255,0.35)');
+        rg.addColorStop(1, 'rgba(255,255,255,0)');
+        y.fillStyle = rg;
+        y.fillRect(0, 0, 64, 64);
+        this.ultFloorTex = new THREE.CanvasTexture(d);
+      }
+      const mk = (map) => noOutline(new THREE.MeshBasicMaterial({ color: C.ULT_AURA_COLOR, map, transparent: true, opacity: C.ULT_READY_AURA_OPACITY, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+      const grp = new THREE.Group();
+      const wall = new THREE.CylinderGeometry(0.42, 0.5, C.PLAYER_HEIGHT * 1.1, 20, 1, true);
+      wall.rotateX(Math.PI / 2);
+      wall.translate(0, 0, (C.PLAYER_HEIGHT * 1.1) / 2);
+      const wallMat = mk(this.ultAuraTex);
+      const floorMat = mk(this.ultFloorTex);
+      const wallM = new THREE.Mesh(wall, wallMat);
+      const floorM = new THREE.Mesh(new THREE.CircleGeometry(0.75, 24), floorMat);
+      floorM.position.z = 0.03;
+      for (const m of [wallM, floorM]) {
+        m.renderOrder = 6;
+        grp.add(m);
+      }
+      this.scene.add(grp);
+      au = g.userData.ultAura = { grp, mats: [wallMat, floorMat] };
+    }
+    au.grp.visible = true;
+    au.grp.position.set(s.x, s.y, s.z);
+    const breathe = 0.75 + 0.25 * Math.sin(performance.now() / 420);
+    for (const m of au.mats) m.opacity = C.ULT_READY_AURA_OPACITY * breathe;
+    // 가끔 반짝이 하나가 몸 둘레에서 위로 (필살기 빛과 같은 느낌, 아주 적게)
+    if (Math.random() < dt * C.ULT_READY_SPARKLE_RATE) {
+      const a = Math.random() * Math.PI * 2;
+      this.effects.burst({ x: s.x + Math.cos(a) * 0.4, y: s.y + Math.sin(a) * 0.4, z: s.z + 0.2 + Math.random() * 0.8 }, { x: 0, y: 0 }, C.ULT_AURA_COLOR, 1, 0.6, 0.05, 0.6);
+    }
+  }
+
   // 사냥꾼의 눈: 몸 부품마다 같은 모양의 빨간 복사본을 붙여, 블록에 가려진 부분에만 그림 (GreaterDepth).
   // 복사본은 블록 다음·사람 몸 전에 그려서 (renderOrder 1 → 몸 2) 몸에 가린 곳엔 안 나옴
   huntEye(g, on) {
@@ -1404,6 +1578,18 @@ export class Renderer {
       }
       return true;
     });
+  }
+
+  // melt 이벤트: 용암에 닿은 블록이 녹음 — 칸마다 주황 번쩍 + 지글 불티 + 검은·회색 연기 기둥
+  melt(e) {
+    const cells = (e.cells || []).filter((c) => c.every(Number.isFinite));
+    if (!cells.length) return;
+    this.blockPulse(cells, 0xff7020, { opacity: 0.8, ms: C.BLOCK_PULSE_MS * 1.6 });
+    for (const [x, y, z] of cells) {
+      const c = { x: x + 0.5, y: y + 0.5, z: z + 0.3 };
+      this.effects.burst(c, null, 0xffa030, 6, 3, 0.08, 0.4);
+      this.effects.burst({ x: c.x, y: c.y, z: c.z + 0.4 }, { x: 0, y: 0 }, 0x555555, 5, 1.2, 0.18, 1.1);
+    }
   }
 
   // ---------- 대포수 ----------
@@ -1874,7 +2060,7 @@ export class Renderer {
       this.bbSig = sig;
       // 건축가 블록·탱크 솟는 땅은 격자에선 빼고 따로 그림
       this.bbSkip = new Set([...list.map((b) => [b.x, b.y, b.z]), ...quakeCells].map(([x, y, z]) => (z * this.D + y) * this.W + x));
-      if (state.grid && state.grid.length === this.W * this.D * C.GRID_H) this.updateGrid(state.grid);
+      if (state.grid && state.grid.length === this.W * this.D * this.H) this.updateGrid(state.grid);
     }
     const now = performance.now();
     const owners = new Map(state.players.map((p) => [p.id, p]));
@@ -2015,7 +2201,7 @@ export class Renderer {
     const gz = Math.floor(z);
     if (gx < 0 || gy < 0 || gx >= this.W || gy >= this.D) return false;
     if (gz < 0) return true;
-    if (gz >= C.GRID_H || !state.grid) return false;
+    if (gz >= this.H || !state.grid) return false;
     return !!state.grid[(gz * this.D + gy) * this.W + gx]; // 판 크기가 막 바뀌어 배열이 짧아도 빈칸
   }
 
@@ -2030,9 +2216,9 @@ export class Renderer {
   render(state, myId, dt, view, cam) {
     if (!state) return;
     this.curState = state;
-    if (state.field) this.setField(state.field.w, state.field.d);
+    if (state.field) this.setField(state.field.w, state.field.d, false, state.field.h || C.GRID_H);
     this.stepView(view, dt);
-    if (state.grid && state.grid.length === this.W * this.D * C.GRID_H && state.gridVersion !== this.gridVersion) {
+    if (state.grid && state.grid.length === this.W * this.D * this.H && state.gridVersion !== this.gridVersion) {
       this.updateGrid(state.grid);
       this.gridVersion = state.gridVersion;
     }
@@ -2149,6 +2335,7 @@ export class Renderer {
           this.effects.burst({ x: w.x, y: w.y, z: w.z + 0.05 }, { x: 0, y: 0 }, 0x9a9a9a, 1, 0.6, 0.07, 0.7);
         }
       }
+      if (g.userData.figure?.setForm) g.userData.figure.setForm(p.form); // 바드 폼 (서버 form: 'bard' | 'metal', 없으면 음유시인)
       const balls = g.userData.figure && g.userData.figure.balls;
       if (balls) balls.forEach((b, i) => (b.visible = i < (p.cannon ? p.cannon.ammo : balls.length))); // 대포수 허리 포탄 = 남은 탄
       // 왼손에 고른 칸의 물건, 조종권 대기 중이면 머리 위 하늘색 팔면체
@@ -2179,9 +2366,15 @@ export class Renderer {
       }
       label.sprite.visible = p.alive && !(p.id === myId && this.third); // 3인칭에서 내 % 는 화면 아래에 (머리 위와 둘 다 있으면 겹침)
       this.updateHuntMarks(g, p, myId);
+      this.updateUltAura(g, p, s, myId, dt);
+      if (p.char === 'berserker' || g.userData.whirlFx || g.userData.dizzyStars) this.updateWhirlFx(g, p, s, dt);
     }
     for (const [id, g] of this.playerMeshes) {
       if (!seen.has(id)) {
+        const w = g.userData.whirlFx; // 씬에 따로 붙인 광전사 효과도 치움
+        if (w) this.scene.remove(w.ring, w.trail);
+        for (const m of g.userData.dizzyStars || []) this.scene.remove(m);
+        if (g.userData.ultAura) this.scene.remove(g.userData.ultAura.grp);
         this.scene.remove(g);
         this.playerMeshes.delete(id);
         this.smooth.delete(id);
@@ -2224,7 +2417,7 @@ export class Renderer {
       const [x, y, z] = piece.cells[i];
       pm.position.set(x + 0.5, y + 0.5, z + 0.5);
       pm.visible = true;
-      pm.material = piece.thrown ? this.thrownMat : piece.controller !== null ? this.controlledMat : this.shapeMat(piece.shape);
+      pm.material = piece.thrown ? this.thrownMat : piece.controller !== null ? this.controlledMat : piece.sky ? this.skyPieceMat(piece.shape) : this.shapeMat(piece.shape);
       const mine = piece.phase === 'control' && piece.controller === myId;
       const showShadow = piece.shadowVisible || mine;
       sm.visible = showShadow;
@@ -2328,6 +2521,12 @@ export class Renderer {
     this.thrownMat.opacity = this.pieceMat.opacity;
     this.thrownMat.emissive.setHex(Math.floor(performance.now() / C.THROWN_BLINK_MS) % 2 ? 0x806000 : 0x000000);
     for (const m of Object.values(this.shapeMats)) m.opacity = this.pieceMat.opacity;
+    // 하늘 계단 블록: 모양 색보다 밝고 하늘색으로 은은히 빛나며 살짝 비침 (떠 있는 느낌). 하늘 시점이면 더 비침
+    const skyGlow = 0.55 + 0.45 * Math.sin(performance.now() / 500);
+    for (const m of Object.values(this.skyMats || {})) {
+      m.opacity = this.pieceMat.opacity < 1 ? 0.45 : C.SKY_PIECE_OPACITY;
+      m.emissive.setRGB(0.12 * skyGlow, 0.22 * skyGlow, 0.3 * skyGlow);
+    }
 
     // 1인칭(또는 관전) 자세
     const eye = new THREE.Vector3();
@@ -2389,10 +2588,10 @@ export class Renderer {
     }
     // 전환 중: 1인칭 자세 → 필드 위 높은 곳에서 내려다보는 자세로 날아오르며 줌인 (끝에서 직교 카메라로 교체)
     const t = b * b * (3 - 2 * b); // smoothstep
-    const top = new THREE.Vector3(this.W / 2, this.D / 2, C.SKY_CAMERA_HEIGHT);
+    const top = new THREE.Vector3(this.W / 2, this.D / 2, this.skyCamH());
     const center = new THREE.Vector3(this.W / 2, this.D / 2, 0);
     const half = Math.max(this.W, this.D) / 2 + 1;
-    const skyFov = (2 * Math.atan(half / C.SKY_CAMERA_HEIGHT) * 180) / Math.PI;
+    const skyFov = (2 * Math.atan(half / this.skyCamH()) * 180) / Math.PI;
     this.camera.fov = this.fov + (skyFov - this.fov) * t;
     this.camera.updateProjectionMatrix();
     this.camera.position.lerpVectors(eye, top, t);
