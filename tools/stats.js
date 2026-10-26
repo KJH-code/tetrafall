@@ -61,6 +61,8 @@ export function parseLog(text) {
         map: m[4],
         botLevel: m[5] || null, // 봇 난이도 (넣기 전 로그엔 없음)
         mode: '생존', // 모드 줄이 없으면 생존 (예전 로그·생존 모드)
+        sky: false, // 하늘 계단 (줄이 없으면 끔)
+        melts: 0, // 용암에 녹은 하늘 블록
         master: null, // 블록 마스터 판의 마스터
         names: m[3] ? m[3].split(' ') : null, // 옛 로그엔 참가자 목록이 없음 → 끝날 때 사망자 + 승자로 채움
         deaths: [],
@@ -119,6 +121,10 @@ export function parseLog(text) {
     } else if ((m = line.match(/^ {2}캐릭터: (.*)$/))) {
       // "P1 탱크 / P2(봇) 닌자" → 이름 → 캐릭터
       cur.chars = new Map(m[1].split(' / ').map((x) => x.split(' ')));
+    } else if (line === '  하늘 계단: 켬') {
+      cur.sky = true;
+    } else if (line.startsWith('  [하늘] ') && line.includes('용암에 녹음')) {
+      cur.melts++;
     } else if ((m = line.match(/^ {2}모드: (블록 마스터|킬 점수전)(?: \(마스터 (\S+?),)?/))) {
       cur.mode = m[1];
       cur.master = m[2] || null;
@@ -296,6 +302,8 @@ export function summarize(rounds) {
     byCause,
     byComp: group(comp),
     byMap: group((r) => r.map),
+    bySky: rounds.some((r) => r.sky) ? group((r) => (r.sky ? '켬' : '끔')) : [],
+    melts: rounds.reduce((n, r) => n + r.melts, 0),
     byChar: (() => {
       // 캐릭터별 판·승 (사람·봇 따로). 캐릭터 줄이 있는 판만
       const t = new Map();
@@ -410,6 +418,7 @@ export function formatReport(s) {
   const groupRows = (g) => g.map((x) => [x.key, x.rounds, fmtSec(x.lenMedian), `${pct(x.crush, x.deaths)} (${x.crush}/${x.deaths})`]);
   out.push('', '== 인원 구성별 ==', table(['구성', '판', '길이 중앙값', '압사 비율'], groupRows(s.byComp)));
   out.push('', '== 맵별 ==', table(['맵', '판', '길이 중앙값', '압사 비율'], groupRows(s.byMap)));
+  if (s.bySky.length) out.push('', `== 하늘 계단별 == (용암에 녹은 하늘 블록 ${s.melts})`, table(['하늘 계단', '판', '길이 중앙값', '압사 비율'], groupRows(s.bySky)));
   if (s.byChar.length) out.push('', '== 캐릭터별 ==', table(['캐릭터', '판', '승', '승률'], s.byChar.map((c) => [c.key, c.rounds, c.wins, pct(c.wins, c.rounds)])));
   if (s.combos.total) {
     const lens = Object.keys(s.combos.len).map(Number).sort((a, b) => a - b);
