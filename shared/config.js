@@ -812,7 +812,6 @@ export const CONFIG = {
   GHOST_AIM_OPACITY: 0.6, // 조준 미리보기 큐브 비침
   GHOST_AIM_COOLDOWN_COLOR: 0x8a8a8a, // 쿨 중 미리보기 색
   GHOST_HINT_MS: 3500, // 처음 죽었을 때 '클릭: 블록 떨어뜨리기' 안내 시간
-  GHOST_DROP_CD_MS: 6000, // 유령 투하 쿨 (조준 원이 차오르는 기준)
   PRACTICE_COMBO_SHOW_MS: 2500, // 연습 방: 끝난 허수아비 콤보 결과를 오른쪽에 남겨 두는 시간
   PRACTICE_SHOW_HEIGHT: 0.5, // 연습 방 콤보 기록: 이 높이(칸) 넘게 띄웠을 때만 '높이' 를 보임
   VM_STAR_HIDE_MS: 350, // 닌자 표창을 던진 뒤 왼손이 비어 있는 시간
