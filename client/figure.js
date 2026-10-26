@@ -890,8 +890,10 @@ function dressBard(fig, costume, cloth) {
   const string = costume(0xf0e8d0);
   // ---- 음유시인 ----
   {
-    const green = costume(0x3e8a3a);
-    const darkGreen = costume(0x2a5e28);
+    // 숲색 (거의 검은 초록) + 금 테: 초록 플레이어여도 모자·망토가 몸(플레이어 색)과 갈려 보이게
+    const green = costume(0x1f3d1e);
+    const darkGreen = costume(0x142a14);
+    const gold = costume(0xd8a838);
     const head = part(fig.neck, 'bard');
     // 뾰족 모자: 앞뒤로 긴 납작 원뿔 (뒤로 꺾인 끝) + 테 + 플레이어 색 깃털
     const capZ = d.head * 0.72;
@@ -901,7 +903,7 @@ function dressBard(fig, costume, cloth) {
     const capM = mesh(cap, green, -0.03, 0, capZ + d.head * 0.3);
     capM.rotation.y = -0.45; // 끝이 뒤로
     head.add(capM);
-    head.add(mesh(ringGeo(d.headW * 0.62, d.headW * 0.62, 0.04, 10), darkGreen, 0, 0, capZ));
+    head.add(mesh(ringGeo(d.headW * 0.64, d.headW * 0.64, 0.045, 10), gold, 0, 0, capZ)); // 금 테
     const plume = mesh(new THREE.BoxGeometry(0.02, 0.05, 0.28), cloth, -0.02, d.headW * 0.58, capZ + 0.1);
     plume.rotation.x = -0.35;
     plume.rotation.y = -0.85;
@@ -909,7 +911,10 @@ function dressBard(fig, costume, cloth) {
     // 짧은 망토 (어깨 깃 + 등 자락) + 갈색 조끼 (앞 틈 셔츠) + 허리띠 + 바지·장화
     const body = part(fig.waist, 'bard');
     body.add(mesh(ringGeo(d.chestR * 1.0, d.chestR * 1.12, 0.07, 10, d.depth), darkGreen, 0, 0, d.torso - 0.02));
-    flap(fig, body, new THREE.BoxGeometry(0.02, d.chestR * 1.6, d.torso * 0.75), green, -d.chestR * d.depth - 0.03, 0, d.torso - 0.03, 0.12, 0.9, 0.12);
+    body.add(mesh(ringGeo(d.chestR * 1.13, d.chestR * 1.13, 0.02, 10, d.depth), gold, 0, 0, d.torso - 0.05)); // 깃 금 테
+    const cape = flap(fig, body, new THREE.BoxGeometry(0.02, d.chestR * 1.6, d.torso * 0.75), green, -d.chestR * d.depth - 0.03, 0, d.torso - 0.03, 0.12, 0.9, 0.12);
+    cape.add(mesh(new THREE.BoxGeometry(0.024, d.chestR * 1.62, 0.025), gold, 0, 0, -d.torso * 0.75)); // 망토 끝 금 테
+    for (const side of [-1, 1]) cape.add(mesh(new THREE.BoxGeometry(0.024, 0.02, d.torso * 0.75), gold, 0, side * d.chestR * 0.8, -d.torso * 0.375));
     const open = 0.7;
     const vest = new THREE.CylinderGeometry(d.chestR * 1.07, d.waistR * 1.12, d.torso * 0.85, 10, 1, true, Math.PI / 2 + open / 2, Math.PI * 2 - open);
     vest.rotateX(Math.PI / 2);
@@ -941,7 +946,8 @@ function dressBard(fig, costume, cloth) {
     const strings = new THREE.Group();
     for (const y of [-0.012, 0, 0.012]) strings.add(mesh(new THREE.BoxGeometry(0.004, 0.003, 0.5), string, 0.012, y, 0.2));
     lute.add(strings);
-    lute.position.set(d.chestR * d.depth + 0.07, 0.02, d.torso * 0.45);
+    lute.scale.setScalar(C.BARD_LUTE_SCALE);
+    lute.position.set(d.chestR * d.depth + 0.09, 0.02, d.torso * 0.42);
     lute.rotation.x = -0.9; // 목이 왼쪽(+y) 위로
     body.add(lute);
     fig.lute = { lute, strings };
