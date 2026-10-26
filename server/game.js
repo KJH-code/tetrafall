@@ -232,6 +232,9 @@ export class Game {
       zipUntil: 0, // 갈고리 F 블록 걸기: 이 시각까지 zipDir 로 끌려감
       zipDir: null,
       grab: null, // 갈고리 R: 뽑은 블록 { at, v, meta, from } (at 에 내려찍기)
+      marks: new Map(), // 사냥꾼 표식 (이 사람에게 붙은): 사냥꾼 id -> { n, at }
+      leap: null, // 사냥꾼 F: { at(도약 시작), target, endAt, vx, vy }
+      huntAim: null, // 사냥꾼 R 조준: { at(쏘는 시각) }
       atk: null, // 캐릭터 평타 준비 중: { n(몇 번째 타, 공중 0), def, at(판정 시각) }
       atkQueued: false, // 후딜·준비 중에 누른 평타 (끝나면 나감)
       atkLanded: false, // 마지막 평타가 상대를 맞혔나 (맞았으면 후딜을 스킬로 캔슬)
@@ -570,6 +573,9 @@ export class Game {
         zipUntil: 0,
         zipDir: null,
         grab: null,
+        marks: new Map(),
+        leap: null,
+        huntAim: null,
         atk: null,
         atkQueued: false,
         atkLanded: false,
@@ -817,6 +823,9 @@ export class Game {
       zipUntil: 0,
       zipDir: null,
       grab: null,
+      marks: new Map(),
+      leap: null,
+      huntAim: null,
       atk: null,
       atkQueued: false,
       atkLanded: false,
@@ -914,7 +923,7 @@ export class Game {
         this.cast(p, 'skill');
         return;
       case 'ult': // R: 필살기 (게이지가 다 차면)
-        if (stunned || controlling || !p.char || p.ult < C.ULT_MAX) return;
+        if (stunned || controlling || !p.char || p.ult < this.ultMax(p)) return;
         this.cast(p, 'ult');
         return;
       case 'pieceMove':
@@ -996,7 +1005,7 @@ export class Game {
     if (kind === 'skill') this.useSkill(p);
     else if (!this.useUlt(p)) {
       // 못 씀 (게이지 그대로): 화면이 알 수 있게 (갈고리 블록 없음, 건축가 솟을 자리 없음, 다른 기술 중)
-      const reason = p.slamAt || p.wallAt || p.grab || this.time < p.chargeUntil ? 'busy' : p.char === 'hook' ? 'noBlock' : 'noSpace';
+      const reason = p.slamAt || p.wallAt || p.grab || p.huntAim || this.time < p.chargeUntil ? 'busy' : p.char === 'hook' ? 'noBlock' : p.char === 'hunter' ? 'noTarget' : 'noSpace';
       this.emit({ type: 'ultFail', who: p.id, reason });
       this.log(`  [필살] ${p.name} 못 씀 (${reason})`);
     }
@@ -1006,7 +1015,7 @@ export class Game {
   castQueuedNow(p) {
     const kind = p.castQueued;
     p.castQueued = null;
-    if (this.time < p.stunUntil || this.isControlling(p) || (kind === 'skill' ? this.time < p.skillReadyAt : p.ult < C.ULT_MAX)) {
+    if (this.time < p.stunUntil || this.isControlling(p) || (kind === 'skill' ? this.time < p.skillReadyAt : p.ult < this.ultMax(p))) {
       this.emit({ type: 'castDrop', who: p.id, kind }); // 기억했던 F·R 이 버려짐 (소모 없음)
       return;
     }
@@ -1093,6 +1102,7 @@ export class Game {
         p.freezeUntil = this.time + stop;
         t.freezeUntil = this.time + stop;
         if (!landed && !this.sameTeam(p, t)) landed = t;
+        if (def.mark && !this.sameTeam(p, t)) this.addMark(p, t); // 사냥꾼 찔러 넣기: 표식 +1
       }
       this.emit({ type: 'hit', kind: 'push', by: p.id, target: t.id, ok: hit, crit: hit && crit, n, air, finish, streak: hit ? p.streak : 0 });
       this.log(`  [평타] ${p.name} → ${t.name} ${hit ? `넉백${crit ? ' 치명타' : ''} (${t.name} ${t.damage}%)` : '무적이라 무시'} ${label}`);
@@ -1203,10 +1213,18 @@ export class Game {
 
   // ---------- 캐릭터 스킬·필살기 ----------
   useSkill(p) {
-    if (p.slamAt || p.wallAt || p.grab || this.time < p.chargeUntil) return false; // 다른 기술 발동 중
+    if (p.slamAt || p.wallAt || p.grab || p.leap || p.huntAim || this.time < p.chargeUntil) return false; // 다른 기술 발동 중
     p.skillReadyAt = this.time + C.SKILL_CD_MS[p.char]; // 먼저 걸어 둠 (그림자 일격이 순간 베기 쿨을 초기화하는 것과 순서가 안 꼬이게)
     const ok =
-      p.char === 'tank' ? this.tankCharge(p) : p.char === 'ninja' ? this.ninjaBlink(p) : p.char === 'builder' ? this.builderWall(p) : this.hookPull(p);
+      p.char === 'tank'
+        ? this.tankCharge(p)
+        : p.char === 'ninja'
+          ? this.ninjaBlink(p)
+          : p.char === 'builder'
+            ? this.builderWall(p)
+            : p.char === 'hunter'
+              ? this.hunterLeap(p)
+              : this.hookPull(p);
     if (!ok) {
       p.skillReadyAt = this.time; // 못 쓰는 상황(벽 세울 자리 없음 등)이면 쿨타임 안 돎 — 갈고리는 빗나가도 돎 (hookPull 이 정함)
       return false;
@@ -1217,10 +1235,12 @@ export class Game {
   }
 
   useUlt(p) {
-    if (p.slamAt || p.wallAt || p.grab || this.time < p.chargeUntil) return false;
+    if (p.slamAt || p.wallAt || p.grab || p.leap || p.huntAim || this.time < p.chargeUntil) return false;
     if (p.char === 'tank') this.tankSlamStart(p);
     else if (p.char === 'ninja') this.ninjaEmpower(p); else if (p.char === 'builder') {
       if (!this.builderBigBomb(p)) return false; // 솟을 자리가 없으면 게이지 그대로
+    } else if (p.char === 'hunter') {
+      if (!this.hunterAim(p)) return false; // 사냥꾼: 쏠 표식 대상이 없으면 게이지 그대로
     } else if (!this.hookGrab(p)) return false; // 갈고리: 닿는 블록이 없으면 게이지 그대로
     p.ult = 0;
     this.emit({ type: 'ult', who: p.id, char: p.char, x: p.x, y: p.y, z: p.z });
@@ -1425,6 +1445,151 @@ export class Game {
     const z = Math.round(p.z) - 1;
     for (let x = Math.floor(p.x - C.PLAYER_HALF); x <= Math.floor(p.x + C.PLAYER_HALF); x++) for (let y = Math.floor(p.y - C.PLAYER_HALF); y <= Math.floor(p.y + C.PLAYER_HALF); y++) if (this.pieceCells.has(cellKey(x, y, z))) return true;
     return false;
+  }
+
+  // ---- 사냥꾼 (2026-10-26, docs/characters.md 3.5) ----
+  // R 게이지 필요량 (사냥꾼은 HUNTER_ULT_MULT 배)
+  ultMax(p) {
+    return C.ULT_MAX * (p && p.char === 'hunter' ? C.HUNTER_ULT_MULT : 1);
+  }
+
+  // 표식 +1 (최대 HUNTER_MARK_MAX), 쌓인 시각 갱신
+  addMark(p, t) {
+    const m = t.marks.get(p.id) || { n: 0, at: 0 };
+    m.n = Math.min(C.HUNTER_MARK_MAX, m.n + 1);
+    m.at = this.time;
+    t.marks.set(p.id, m);
+    this.emit({ type: 'mark', by: p.id, target: t.id, n: m.n });
+    this.log(`  [표식] ${p.name} → ${t.name} ${m.n}개`);
+  }
+
+  markOf(p, t) {
+    return t.marks.get(p.id)?.n || 0;
+  }
+
+  // 마지막으로 쌓인 뒤 HUNTER_MARK_MS 지난 표식은 사라짐
+  expireMarks(t) {
+    for (const [by, m] of t.marks) {
+      if (this.time - m.at < C.HUNTER_MARK_MS) continue;
+      t.marks.delete(by);
+      this.emit({ type: 'markGone', by, target: t.id });
+    }
+  }
+
+  // 블록이 시선을 가리나 (눈 높이 → 상대 가슴, 격자 칸·떨어지는 블록)
+  lineBlocked(p, t) {
+    const a = { x: p.x, y: p.y, z: p.z + C.EYE_HEIGHT };
+    const b = { x: t.x, y: t.y, z: t.z + C.PLAYER_HEIGHT * 0.6 };
+    const len = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+    for (let d = 0.3; d < len - 0.3; d += 0.1) {
+      const k = d / len;
+      if (this.solidAt(Math.floor(a.x + (b.x - a.x) * k), Math.floor(a.y + (b.y - a.y) * k), Math.floor(a.z + (b.z - a.z) * k))) return true;
+    }
+    return false;
+  }
+
+  // R 대상: 보는 방향 HUNTER_SHOT_ANGLE_DEG·HUNTER_SHOT_RANGE 안 내 표식이 있는 상대 (시선 검사는 따로)
+  shotTargets(p) {
+    const fx = Math.cos(p.yaw);
+    const fy = Math.sin(p.yaw);
+    const cosHalf = Math.cos(((C.HUNTER_SHOT_ANGLE_DEG / 2) * Math.PI) / 180);
+    return [...this.players.values()].filter((t) => {
+      if (!this.foe(p, t) || !this.markOf(p, t)) return false;
+      const dx = t.x - p.x;
+      const dy = t.y - p.y;
+      const d = Math.hypot(dx, dy);
+      return d <= C.HUNTER_SHOT_RANGE && (d < EPS || (dx * fx + dy * fy) / d >= cosHalf);
+    });
+  }
+
+  // F 추적 도약: 예고 HUNTER_LEAP_WINDUP_MS 뒤 표식 있는 가장 가까운 상대에게 (없으면 보는 방향 HUNTER_LEAP_DIST)
+  hunterLeap(p) {
+    let target = null;
+    let bd = Infinity;
+    for (const t of this.players.values()) {
+      if (!this.foe(p, t) || !this.markOf(p, t) || Math.abs(t.z - p.z) > 3) continue;
+      const d = Math.hypot(t.x - p.x, t.y - p.y);
+      if (d <= C.HUNTER_LEAP_RANGE && d < bd) {
+        bd = d;
+        target = t;
+      }
+    }
+    p.leap = { at: this.time + C.HUNTER_LEAP_WINDUP_MS, target: target ? target.id : null, endAt: 0, yaw: p.yaw };
+    this.emit({ type: 'leapWarn', who: p.id, target: p.leap.target, ms: C.HUNTER_LEAP_WINDUP_MS });
+    this.log(`  [스킬] ${p.name} 추적 도약 준비${target ? ` → ${target.name}` : ''}`);
+    return true;
+  }
+
+  hunterLeapUpdate(p) {
+    const L = p.leap;
+    if (!L.endAt) {
+      if (this.time < L.at) return;
+      const t = L.target !== null ? this.players.get(L.target) : null;
+      let to;
+      if (t && this.foe(p, t)) {
+        const dx = t.x - p.x;
+        const dy = t.y - p.y;
+        const d = Math.hypot(dx, dy) || 1;
+        const go = Math.max(0, d - C.HUNTER_LEAP_BEHIND);
+        to = { x: p.x + (dx / d) * go, y: p.y + (dy / d) * go };
+        p.yaw = Math.atan2(dy, dx);
+      } else to = { x: p.x + Math.cos(L.yaw) * C.HUNTER_LEAP_DIST, y: p.y + Math.sin(L.yaw) * C.HUNTER_LEAP_DIST };
+      const sec = C.HUNTER_LEAP_MS / 1000;
+      L.vx = (to.x - p.x) / sec;
+      L.vy = (to.y - p.y) / sec;
+      L.endAt = this.time + C.HUNTER_LEAP_MS;
+      p.vz = C.HUNTER_LEAP_UP;
+      p.grounded = false;
+      p.kbx = 0;
+      p.kby = 0;
+      this.emit({ type: 'leap', who: p.id, target: L.target, from: { x: p.x, y: p.y, z: p.z }, to: { ...to, z: p.z }, ms: C.HUNTER_LEAP_MS });
+      return;
+    }
+    if (this.time < L.endAt) return;
+    p.leap = null;
+    const t = L.target !== null ? this.players.get(L.target) : null;
+    if (!t || !this.foe(p, t) || Math.hypot(t.x - p.x, t.y - p.y) > C.HUNTER_POUNCE_RANGE || Math.abs(t.z - p.z) > C.PLAYER_HEIGHT) return;
+    const hit = this.applyKnockback(t, t.x - p.x, t.y - p.y, 0, 0, C.HUNTER_POUNCE_STUN_MS, C.HUNTER_POUNCE_DAMAGE, { by: p.id, kind: 'pounce' });
+    this.emit({ type: 'hit', kind: 'pounce', by: p.id, target: t.id, ok: hit, streak: hit ? p.streak : 0 });
+    this.log(`  [스킬] ${p.name} 덮침 → ${t.name}${hit ? ` (${t.name} ${t.damage}%)` : ' 무적이라 무시'}`);
+  }
+
+  // R 처형 사격 조준: 대상이 하나도 없으면 안 쓰임 (게이지 그대로)
+  hunterAim(p) {
+    const ts = this.shotTargets(p).filter((t) => !this.lineBlocked(p, t));
+    if (!ts.length) return false;
+    p.huntAim = { at: this.time + C.HUNTER_SHOT_WINDUP_MS };
+    this.emit({ type: 'aim', who: p.id, targets: ts.map((t) => t.id), ms: C.HUNTER_SHOT_WINDUP_MS });
+    this.log(`  [필살] ${p.name} 처형 사격 조준 (${ts.map((t) => `${t.name} ${this.markOf(p, t)}개`).join(', ')})`);
+    return true;
+  }
+
+  // 쏨 (즉시 판정): 지금 보는 방향 안 표식 대상 전부. 블록이 가리면 막힘. 표식 수만큼 세게, 표식 소모. 최대 표식 대상을 맞히면 게이지 돌려받음
+  hunterShoot(p) {
+    p.huntAim = null;
+    const shots = [];
+    let refund = false;
+    for (const t of this.shotTargets(p)) {
+      const n = this.markOf(p, t);
+      if (this.lineBlocked(p, t)) {
+        shots.push({ target: t.id, marks: n, blocked: true, to: { x: t.x, y: t.y, z: t.z + 1 } });
+        continue;
+      }
+      const hit = this.applyKnockback(t, t.x - p.x, t.y - p.y, C.HUNTER_SHOT_KB_BASE + n * C.HUNTER_SHOT_KB_PER_MARK, C.HUNTER_SHOT_UP, C.HUNTER_SHOT_STUN_MS, n * C.HUNTER_SHOT_DAMAGE_PER_MARK, { by: p.id, kind: 'execute' }, true);
+      this.emit({ type: 'hit', kind: 'execute', by: p.id, target: t.id, ok: hit, marks: n });
+      if (hit) {
+        t.marks.delete(p.id);
+        if (n >= C.HUNTER_MARK_MAX) refund = true;
+      }
+      shots.push({ target: t.id, marks: n, blocked: false, ok: hit, to: { x: t.x, y: t.y, z: t.z + 1 } });
+    }
+    this.emit({ type: 'shot', who: p.id, from: { x: p.x, y: p.y, z: p.z + C.EYE_HEIGHT }, shots });
+    if (refund) {
+      p.ult = this.ultMax(p);
+      this.emit({ type: 'ultRefund', who: p.id });
+    }
+    const txt = shots.map((x) => `${this.players.get(x.target).name} ${x.marks}개${x.blocked ? ' 막힘' : ''}`).join(', ');
+    this.log(`  [필살] ${p.name} 처형 사격 (${txt || '대상 없음'})${refund ? ' 게이지 회수' : ''}`);
   }
 
   // ---- 건축가 (2026-10-25 재혁 확정, docs/characters.md 3.1) ----
@@ -1634,7 +1799,7 @@ export class Game {
     }
     for (const b of order) this.removeBBlock(b, 'blast');
     this.holeUnder(order);
-    if (p) p.ult = Math.min(C.ULT_MAX, p.ult + order.length * C.BUILDER_BLAST_ULT); // 패시브: 내 블록 폭발 1칸당 게이지
+    if (p) p.ult = Math.min(this.ultMax(p), p.ult + order.length * C.BUILDER_BLAST_ULT); // 패시브: 내 블록 폭발 1칸당 게이지
     const hits = [];
     for (const t of this.players.values()) {
       if (!p || !this.foe(p, t)) continue;
@@ -1887,6 +2052,8 @@ export class Game {
       if (p.comboHits > 0 && this.time >= p.stunUntil) this.endCombo(p);
       if (!this.onField(p)) {
         p.chargeUntil = p.slamAt = p.wallAt = p.zipUntil = 0;
+        p.leap = p.huntAim = null;
+        p.marks.clear();
         if (p.grab) this.hookGrabDrop(p);
         p.atk = null;
         p.atkQueued = false;
@@ -1904,6 +2071,9 @@ export class Game {
         }
       }
       if (p.char === 'ninja') this.ninjaTouch(p);
+      if (p.marks.size) this.expireMarks(p);
+      if (p.leap) this.hunterLeapUpdate(p);
+      if (p.huntAim && this.time >= p.huntAim.at) this.hunterShoot(p);
       if (p.castQueued && !p.atk && (p.atkLanded || this.time >= p.pushReadyAt)) this.castQueuedNow(p);
       else if (p.atkQueued && !p.atk && this.time >= p.pushReadyAt) {
         p.atkQueued = false;
@@ -2186,14 +2356,26 @@ export class Game {
     }
     if (t.slamAt) {
       this.emit({ type: 'interrupt', who: t.id, kind: 'ult' });
-      t.ult = C.ULT_MAX; // 준비 중에 끊긴 내려찍기는 게이지 돌려줌
+      t.ult = this.ultMax(t); // 준비 중에 끊긴 내려찍기는 게이지 돌려줌
     }
     if (t.grab) {
       this.emit({ type: 'interrupt', who: t.id, kind: 'ult' });
       this.hookGrabDrop(t); // 뽑던 블록은 제자리로
-      t.ult = C.ULT_MAX; // 게이지 돌려줌
+      t.ult = this.ultMax(t); // 게이지 돌려줌
     }
     t.zipUntil = 0; // 끌려가다 맞으면 멈춤
+    if (t.leap) {
+      if (!t.leap.endAt) {
+        this.emit({ type: 'interrupt', who: t.id, kind: 'skill' });
+        t.skillReadyAt = this.time; // 뛰기 전에 끊긴 도약은 쿨타임 안 씀
+      }
+      t.leap = null;
+    }
+    if (t.huntAim) {
+      this.emit({ type: 'interrupt', who: t.id, kind: 'ult' });
+      t.huntAim = null;
+      t.ult = this.ultMax(t); // 조준 중에 끊긴 처형 사격은 게이지 돌려줌
+    }
     t.emoteUntil = 0; // 맞으면 이모트 끊김
     t.chargeUntil = 0; // 맞으면 돌진·내려찍기 끊김
     t.slamAt = 0;
@@ -2234,15 +2416,15 @@ export class Game {
   // 필살기 게이지: 피해 % 를 주거나 받은 만큼
   gainUlt(t, src, gain) {
     if (gain <= 0) return;
-    t.ult = Math.min(C.ULT_MAX, t.ult + gain * C.ULT_PER_DAMAGE);
+    t.ult = Math.min(this.ultMax(t), t.ult + gain * C.ULT_PER_DAMAGE);
     const by = src && src.by !== t.id ? this.players.get(src.by) : null;
-    if (by) by.ult = Math.min(C.ULT_MAX, by.ult + gain * C.ULT_PER_DAMAGE);
+    if (by) by.ult = Math.min(this.ultMax(by), by.ult + gain * C.ULT_PER_DAMAGE);
   }
 
   // 카운터히트 대상 (2026-10-25 재혁 결정, 첫 사람 플레이테스트: 1:1 에서 동시에 누르면 거의 다 카운터였음):
   // 빗나간 평타의 후딜, 돌진 중, 내려찍기·솟는 벽 준비·갈고리 블록 뽑는 중. 평타 준비 중·맞힌 평타의 후딜·걷기·점프는 아님
   busy(t) {
-    return !!((this.time < t.pushReadyAt && !t.atk && !t.atkLanded) || this.time < t.chargeUntil || t.slamAt || t.wallAt || t.grab);
+    return !!((this.time < t.pushReadyAt && !t.atk && !t.atkLanded) || this.time < t.chargeUntil || t.slamAt || t.wallAt || t.grab || t.leap || t.huntAim);
   }
 
   // 공격이 안 들어가는 상태: 콤보 뒤 무적·부활 무적. 경직이 이미 풀린 콤보는 여기서 먼저 끝냄
@@ -2962,6 +3144,9 @@ export class Game {
     if (this.time < p.chargeUntil) {
       ix = p.chargeDir.x * C.TANK_CHARGE_SPEED; // 탱크 돌진: 입력 대신 앞으로
       iy = p.chargeDir.y * C.TANK_CHARGE_SPEED;
+    } else if (p.leap && p.leap.endAt && this.time < p.leap.endAt) {
+      ix = p.leap.vx; // 사냥꾼 도약 중: 입력 대신 덮칠 자리로
+      iy = p.leap.vy;
     } else if (this.time < p.zipUntil) {
       ix = p.zipDir.x * C.HOOK_ZIP_SPEED; // 갈고리 블록 걸기: 블록 쪽으로 끌려감
       iy = p.zipDir.y * C.HOOK_ZIP_SPEED;
@@ -3198,6 +3383,8 @@ export class Game {
         combo: this.time < p.stunUntil ? p.comboHits : 0,
         empower: Math.max(0, p.empowerUntil - this.time), // 닌자 R 강화 남은 시간
         loaded: p.char === 'hook' ? p.loaded : undefined, // 갈고리 장전
+        ultMax: this.ultMax(p), // 필살기 게이지 필요량 (사냥꾼 2배)
+        marks: [...p.marks].map(([by, m]) => ({ by, n: m.n, left: Math.max(0, C.HUNTER_MARK_MS - (this.time - m.at)) })), // 이 사람에게 붙은 사냥꾼 표식
         respawnIn: !p.alive && p.respawnAt ? Math.max(0, p.respawnAt - this.time) : null,
         shieldLeft: Math.max(0, p.shieldUntil - this.time),
         score: this.scores.get(p.id) || 0,
@@ -3249,10 +3436,10 @@ function basicLabel(set, n, air, def) {
 }
 
 // 필살기 공격 종류 (탱크 아머를 깸)
-const ULT_KINDS = new Set(['slam', 'bigbomb', 'blockslam']);
+const ULT_KINDS = new Set(['slam', 'bigbomb', 'blockslam', 'execute']);
 
 const BBLOCK_LOG = { wall: '벽', third: '3타 블록', pad: '발판' };
-const WEAPON_LOG = { push: '밀치기', wallkick: '벽차기', blast: '블록폭발', bigbomb: '대폭발', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', blockslam: '블록내려찍기' };
+const WEAPON_LOG = { push: '밀치기', pounce: '덮치기', execute: '처형사격', wallkick: '벽차기', blast: '블록폭발', bigbomb: '대폭발', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', blockslam: '블록내려찍기' };
 
 function causeKo(cause) {
   if (cause === 'crush') return '압사';

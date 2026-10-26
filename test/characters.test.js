@@ -48,7 +48,7 @@ test('캐릭터: 판 사이에만 고름, 사람 기본 탱크, 봇은 무작위
   assert.equal(g.setChar(1, 'wizard'), false);
   g.startRound();
   assert.equal(g.setChar(1, 'tank'), false, '판 중엔 못 바꿈');
-  assert.ok(lines.includes('  캐릭터: P1 닌자 / P2(봇) 갈고리'));
+  assert.ok(lines.includes(`  캐릭터: P1 닌자 / P2(봇) ${C.CHAR_NAMES[C.CHARACTERS.at(-1)]}`));
   const old = new Game();
   old.addPlayer(1);
   assert.equal(old.players.get(1).char, null);
@@ -1397,4 +1397,143 @@ test('갈고리 R 한 번 누르면 나감 (2026-10-26 재혁: 두 번 눌러야
   q.g.drainEvents();
   q.g.applyKnockback(q.p(1), 1, 0, 1, 0, 300, 1, { by: 2, kind: 'push' });
   assert.ok(q.g.drainEvents().some((e) => e.type === 'castDrop' && e.who === 1 && e.kind === 'ult'));
+});
+
+// ---------- 사냥꾼 (2026-10-26, docs/characters.md 3.5) ----------
+
+test('사냥꾼 표식: 지상 평타 마무리(찔러 넣기)가 맞을 때만 +1 (최대 3, 사냥꾼마다 따로), 공중 평타로는 안 쌓임, 마지막으로 쌓인 뒤 5초면 사라짐. snapshot marks', () => {
+  const { g, lines, p } = setupChars(['hunter', 'tank', 'hunter']);
+  place(p(3), 9.5, 9.5);
+  const chain = () => {
+    place(p(1), 3, 4.5, 0);
+    place(p(2), 4.2, 4.5);
+    Object.assign(p(1), { chainN: 2, chainUntil: Infinity, pushReadyAt: 0 });
+    basic(g, 1);
+    run(g, 1000); // 경직·무적 풀림
+  };
+  // 1·2타는 표식 없음
+  place(p(1), 3, 4.5, 0);
+  place(p(2), 4.2, 4.5);
+  basic(g, 1);
+  assert.equal(g.markOf(p(1), p(2)), 0);
+  run(g, 1000);
+  for (const n of [1, 2, 3, 3]) {
+    chain();
+    assert.equal(g.markOf(p(1), p(2)), n, `표식 ${n}`);
+  }
+  assert.ok(lines.includes('  [표식] P1 → P2 3개'));
+  assert.equal(g.markOf(p(3), p(2)), 0, '다른 사냥꾼 것은 따로');
+  const snap = g.snapshot().players.find((x) => x.id === 2);
+  assert.equal(snap.marks[0].by, 1);
+  assert.equal(snap.marks[0].n, 3);
+  // 공중 평타는 안 쌓임
+  const q = setupChars(['hunter', 'tank']);
+  place(q.p(1), 3, 4.5, 0, 1);
+  Object.assign(q.p(1), { grounded: false, vz: -1 });
+  place(q.p(2), 4, 4.5);
+  basic(q.g, 1);
+  assert.ok(q.p(2).damage > 0);
+  assert.equal(q.g.markOf(q.p(1), q.p(2)), 0, '공중은 표식 없음');
+  // 5초 뒤 사라짐
+  run(g, C.HUNTER_MARK_MS - 1000 - 2 * TICK);
+  assert.equal(g.markOf(p(1), p(2)), 3);
+  g.drainEvents();
+  run(g, 3 * TICK);
+  assert.equal(g.markOf(p(1), p(2)), 0, '사라짐');
+  assert.ok(g.drainEvents().some((e) => e.type === 'markGone' && e.by === 1 && e.target === 2));
+});
+
+test('사냥꾼 F 추적 도약: 사거리 6 안 표식 있는 가장 가까운 상대에게 예고 0.2초 뒤 도약해 덮침 (평타로 이어짐), 표식이 없으면 보는 방향 3칸', () => {
+  const { g, p } = setupChars(['hunter', 'tank', 'builder']);
+  place(p(1), 2, 4.5, Math.PI); // 뒤를 보고 있어도
+  place(p(2), 7, 4.5);
+  place(p(3), 9.5, 9.5);
+  p(2).marks.set(1, { n: 1, at: g.time });
+  g.drainEvents();
+  g.handleAction(1, { name: 'skill' });
+  assert.ok(g.drainEvents().some((e) => e.type === 'leapWarn' && e.target === 2 && e.ms === C.HUNTER_LEAP_WINDUP_MS));
+  run(g, C.HUNTER_LEAP_WINDUP_MS + C.HUNTER_LEAP_MS + 2 * TICK);
+  assert.ok(Math.hypot(p(2).x - p(1).x, p(2).y - p(1).y) <= C.HUNTER_POUNCE_RANGE, `덮침 거리 ${(p(2).x - p(1).x).toFixed(2)}`);
+  assert.equal(p(2).damage, C.HUNTER_POUNCE_DAMAGE);
+  assert.ok(p(2).stunUntil > g.time, '경직 → 평타 연결');
+  assert.equal(p(2).lastHit.kind, 'pounce');
+  // 표식 없음: 보는 방향 3칸
+  run(g, C.SKILL_CD_MS.hunter);
+  p(2).marks.clear();
+  place(p(1), 2, 1.5, 0);
+  g.handleAction(1, { name: 'skill' });
+  run(g, C.HUNTER_LEAP_WINDUP_MS + C.HUNTER_LEAP_MS + 2 * TICK);
+  assert.ok(Math.abs(p(1).x - (2 + C.HUNTER_LEAP_DIST)) < 0.3, `x=${p(1).x.toFixed(2)}`);
+});
+
+test('사냥꾼 R 처형 사격: 게이지 2배, 각 90°·사거리 8 안 표식 대상 전부를 0.5초 조준 뒤 맞힘 (표식 1개당 피해), 표식 소모, 블록이 가리면 막힘, 표식 3개를 맞히면 게이지를 돌려받음, 대상이 없으면 안 쓰임', () => {
+  const { g, lines, p } = setupChars(['hunter', 'tank', 'builder', 'ninja']);
+  assert.equal(g.ultMax(p(1)), C.ULT_MAX * 2);
+  assert.equal(g.snapshot().players.find((x) => x.id === 1).ultMax, C.ULT_MAX * 2);
+  place(p(1), 2, 6.5, 0);
+  place(p(2), 6, 6.5); // 표식 2
+  place(p(3), 6, 9.5); // 표식 3
+  place(p(4), 6, 3.5); // 블록 뒤, 표식 1
+  p(2).marks.set(1, { n: 2, at: g.time });
+  p(3).marks.set(1, { n: 3, at: g.time });
+  p(4).marks.set(1, { n: 1, at: g.time });
+  for (let z = 0; z < 3; z++) for (const y of [4, 5]) g.grid[g.idx(4, y, z)] = CELL.TERRAIN; // p4 앞을 가림
+  g.gridChanged();
+  p(1).ult = C.ULT_MAX; // 1배로는 못 씀
+  g.handleAction(1, { name: 'ult' });
+  assert.equal(p(1).ult, C.ULT_MAX, '게이지 2배');
+  p(1).ult = g.ultMax(p(1));
+  g.drainEvents();
+  g.handleAction(1, { name: 'ult' });
+  assert.equal(p(1).ult, 0);
+  const aim = g.drainEvents().find((e) => e.type === 'aim');
+  assert.deepEqual(aim.targets.sort(), [2, 3], '블록 뒤는 조준에서 빠짐');
+  assert.equal(p(2).damage, 0, '바로는 안 맞음');
+  run(g, C.HUNTER_SHOT_WINDUP_MS + TICK);
+  assert.equal(p(2).damage, 2 * C.HUNTER_SHOT_DAMAGE_PER_MARK);
+  assert.equal(p(3).damage, 3 * C.HUNTER_SHOT_DAMAGE_PER_MARK);
+  assert.equal(p(4).damage, 0, '블록이 막음');
+  assert.equal(g.markOf(p(1), p(2)), 0, '표식 소모');
+  assert.equal(g.markOf(p(1), p(4)), 1, '막힌 대상 표식은 그대로');
+  assert.equal(p(1).ult, g.ultMax(p(1)), '표식 3개 → 게이지 돌려받음');
+  assert.equal(p(3).lastHit.kind, 'execute');
+  assert.ok(lines.some((l) => l.includes('[필살] P1 처형 사격') && l.includes('막힘') && l.includes('게이지 회수')), lines.join('\n'));
+  // 대상 없음 → 안 쓰임 + ultFail
+  run(g, 2000);
+  for (const i of [2, 3, 4]) p(i).marks.clear();
+  g.drainEvents();
+  g.handleAction(1, { name: 'ult' });
+  assert.equal(p(1).ult, g.ultMax(p(1)));
+  assert.ok(g.drainEvents().some((e) => e.type === 'ultFail' && e.reason === 'noTarget'));
+});
+
+test('봇 사냥꾼: 표식 대상이 보이면 R, 표식 있는 상대가 떨어져 있으면 F', () => {
+  const g = new Game(() => {}, { characters: true });
+  g.rng = () => 0.5;
+  const b = g.addBot();
+  g.setChar(b.id, 'hunter');
+  g.addPlayer(1);
+  g.startRound();
+  g.nextSpawnAt = Infinity;
+  const t = g.players.get(1);
+  const brain = g.bots.get(b.id);
+  place(b, 2, 4.5, Math.PI);
+  place(t, 6, 4.5);
+  t.marks.set(b.id, { n: 2, at: g.time });
+  b.ult = g.ultMax(b);
+  assert.equal(brain.useSkills(g, b, t, [t], []), true);
+  assert.ok(b.huntAim, 'R 조준');
+  // F (새 판: 위에서 쏜 상대는 날아감)
+  const g2 = new Game(() => {}, { characters: true });
+  g2.rng = () => 0.5;
+  const b2 = g2.addBot();
+  g2.setChar(b2.id, 'hunter');
+  g2.addPlayer(1);
+  g2.startRound();
+  const t2 = g2.players.get(1);
+  place(b2, 2, 4.5, 0);
+  place(t2, 6, 4.5);
+  t2.marks.set(b2.id, { n: 1, at: g2.time });
+  assert.equal(g2.bots.get(b2.id).useSkills(g2, b2, t2, [t2], []), true);
+  assert.ok(b2.leap, 'F 도약');
 });
