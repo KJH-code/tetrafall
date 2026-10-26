@@ -343,6 +343,52 @@ export class Renderer {
   }
 
   // 판 크기 (snapshot field: 인원별 10·12·14, 대기실 10). 바뀔 때만 바닥·격자선·경계·용암·해 그림자·하늘 시점을 맞춘다
+  // 착지 예고: 떨어지는 블록 그림자가 내려앉을 때가 가까울수록 진해짐 (단계별 재질 몇 개를 돌려 씀)
+  shadowFor(eta) {
+    if (!this.shadowSteps) {
+      this.shadowSteps = [0, 1, 2, 3, 4].map((k) => noOutline(new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: C.SHADOW_OPACITY_FAR + ((C.SHADOW_OPACITY_NEAR - C.SHADOW_OPACITY_FAR) * k) / 4 })));
+    }
+    const near = Number.isFinite(eta) ? 1 - Math.max(0, Math.min(1, eta / C.SHADOW_DARKEN_MS)) : 0;
+    return this.shadowSteps[Math.round(near * 4)];
+  }
+
+  // 압사 (death crush): 그 자리에 몸이 납작하게 찌그러진 채 잠깐 남음 (병맛, 왜 죽었는지 바로 보임) → 얇아지며 사라짐
+  crushFlat(who) {
+    const g = this.playerMeshes.get(who);
+    const s = this.smooth.get(who);
+    if (!g || !s) return;
+    const ud = g.userData;
+    g.userData = {}; // userData 의 순환 참조를 복사하지 않게
+    const flat = g.clone();
+    g.userData = ud;
+    flat.traverse((o) => {
+      if (o.isSprite) o.visible = false;
+      o.castShadow = false;
+    });
+    flat.visible = true;
+    flat.position.set(s.x, s.y, s.z + 0.02);
+    flat.scale.set(1.5, 1.5, C.CRUSH_FLAT_Z);
+    this.scene.add(flat);
+    (this.flats ||= []).push({ m: flat, t0: performance.now() });
+  }
+
+  updateFlats() {
+    if (!this.flats?.length) return;
+    const now = performance.now();
+    this.flats = this.flats.filter((f) => {
+      const age = now - f.t0;
+      if (age > C.CRUSH_FLAT_MS) {
+        this.scene.remove(f.m);
+        return false;
+      }
+      // 처음엔 납작하게 퍼졌다가 (살짝 튐) 끝 0.3초에 종잇장처럼 얇아지며 사라짐
+      const pop = age < 120 ? 1 + 0.25 * Math.sin((Math.PI * age) / 120) : 1;
+      const fade = Math.max(0, (age - (C.CRUSH_FLAT_MS - 300)) / 300);
+      f.m.scale.set(1.5 * pop, 1.5 * pop, C.CRUSH_FLAT_Z * (1 - fade * 0.9));
+      return true;
+    });
+  }
+
   // 카메라(eye) → 캐릭터 가슴 선분에 가까운 블록 칸(떨어지는 블록·하늘 계단 블록)을 반투명 재질로. 들어갈 때·나올 때 거리를 달리해 깜빡이지 않게
   fadeOccluders(eye, subject) {
     const target = subject ? new THREE.Vector3(subject.x, subject.y, subject.z + C.PLAYER_HEIGHT * 0.6) : null;
@@ -1944,6 +1990,7 @@ export class Renderer {
     for (const [x, y, z] of cells) {
       const c = { x: x + 0.5, y: y + 0.5, z: z + 0.5 };
       this.effects.burst(c, null, 0x8a8078, e.big ? 10 : 16, e.big ? 6 : 5, 0.16, 0.7); // 돌 조각
+      this.effects.burst(c, { x: 0, y: 0 }, 0x6e665e, e.big ? 3 : 5, 3, 0.28, 1.1); // 큰 덩어리 (위로 튀었다 떨어짐)
       this.effects.burst(c, null, 0xb0a898, 6, 2, 0.12, 0.8); // 먼지
     }
   }
@@ -2748,7 +2795,7 @@ export class Renderer {
       if (showShadow) {
         const [sx, sy] = piece.shadow[i];
         sm.position.set(sx + 0.5, sy + 0.5, piece.landZ + 0.03);
-        sm.material = mine ? this.previewMat : dangerAt(sx, sy) ? this.dangerShadowMat : this.shadowMat;
+        sm.material = mine ? this.previewMat : dangerAt(sx, sy) ? this.dangerShadowMat : this.shadowFor(piece.eta);
         if (mine) this.previewMat.color.setHex(piece.fits ? 0xf0a030 : 0xff2020);
       }
     }
@@ -2830,6 +2877,7 @@ export class Renderer {
     this.updateShells(state.shells || [], dt);
     this.updateNotes(state.notes || [], dt);
     this.updateAmpWaves();
+    this.updateFlats();
     this.updateGrabs();
     this.updateBeams(state);
     if (me) this.viewArm.material.color.setHex(playerColor(me, state));

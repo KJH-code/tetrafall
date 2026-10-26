@@ -375,7 +375,8 @@ function handleEvent(e) {
       if (a) {
         fx.burst({ x: a.x, y: a.y, z: a.z }, null, 0xffffff, 8, 2.5, 0.08, 0.35);
         fx.ring({ x: a.x, y: a.y, z: a.z + 0.05 }, 0xffffff, 1.4, 0.25, true);
-        sound.play('land', { dist: e.who === myId ? 0 : distToMe(a.x, a.y, a.z) });
+        fx.burst({ x: a.x, y: a.y, z: a.z + 0.05 }, null, 0xfff4b0, 6, 3, 0.05, 0.25); // 반짝
+        sound.play('tap', { dist: e.who === myId ? 0 : distToMe(a.x, a.y, a.z) });
       }
       // 밟힌 블록이 번쩍하며 꾹 눌림
       const pc = state?.pieces?.find((q) => q.id === e.piece);
@@ -392,6 +393,21 @@ function handleEvent(e) {
       renderer.armorOn(e.who, e.ms + 150);
       renderer.skillMove(e.who, 'tankSlam', e.ms);
       renderer.markCircle(e.x, e.y, e.z, e.r, 0xff3020, e.ms + C.WARN_TAIL_MS); // 쾅 이벤트가 닿을 때까지 끊기지 않게
+      {
+        // 솟을 고리 땅이 떨림: 예고 동안 고리 자리에서 흙먼지가 톡톡 + 가까우면 화면이 살짝 떨림
+        const steps = Math.max(1, Math.floor(e.ms / 90));
+        for (let k = 0; k < steps; k++) {
+          setTimeout(() => {
+            for (let n = 0; n < 4; n++) {
+              const ang = Math.random() * Math.PI * 2;
+              const rr = e.r + Math.random() * C.TANK_RING_WIDTH;
+              fx.burst({ x: e.x + Math.cos(ang) * rr, y: e.y + Math.sin(ang) * rr, z: e.z + 0.05 }, { x: 0, y: 0 }, C.QUAKE_COLOR, 1, 1.2, 0.1, 0.4);
+            }
+          }, k * 90);
+        }
+        const dd = distToMe(e.x, e.y, e.z);
+        if (dd !== undefined && dd < e.r + C.TANK_RING_WIDTH + 1.5) fx.shake(0.05, e.ms);
+      }
       break;
     case 'slam': {
       renderer.armorOff(e.who);
@@ -588,7 +604,11 @@ function handleEvent(e) {
       break;
     case 'blockBreak':
       renderer.blockBreak(e);
-      if (e.cells?.length) sound.play('land', { dist: distToMe(e.cells[0][0] + 0.5, e.cells[0][1] + 0.5, e.cells[0][2]) });
+      if (e.cells?.length) {
+        const dd = e.who === myId ? 0 : distToMe(e.cells[0][0] + 0.5, e.cells[0][1] + 0.5, e.cells[0][2]);
+        sound.play('shatter', { dist: dd }); // 와장창
+        if (dd !== undefined && dd < 3) fx.shake(e.big ? 0.18 : 0.08, 160);
+      }
       break;
     case 'groundShot':
       renderer.groundShot(e);
@@ -614,6 +634,7 @@ function handleEvent(e) {
     }
     case 'blockGrab': // R 1단계: 블록이 뽑혀 끌려와 머리 위에서 돎
       renderer.blockGrab(e);
+      sound.play('tear', { dist: e.who === myId ? 0 : distToMe(e.from[0] + 0.5, e.from[1] + 0.5, e.from[2]) }); // 찌익
       renderer.skillMove(e.who, 'hookSlam', e.ms);
       break;
     case 'blockSlam': // R 2단계: 앞으로 쾅 → 박힘 (필드 밖이면 떨어져 사라짐)
@@ -730,6 +751,7 @@ function feelEvent(e) {
         cy += y + 0.5;
         cz = Math.min(cz, z);
         fx.burst({ x: x + 0.5, y: y + 0.5, z }, null, 0x9a9a9a, 5, 2.8, 0.09, 0.4);
+        fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.05 }, { x: 0, y: 0 }, 0xb0aaa4, 2, 0.5, 0.2, 1.3); // 천천히 가라앉는 먼지 (여운)
       }
       // 내려앉은 블록이 꾹 눌렸다 돌아옴 + 받친 블록도 살짝 (옅게: 그림자·시야 안 가림)
       renderer.blockPulse(e.cells, 0xffffff, { jolt: -C.LAND_JOLT, opacity: 0.35 });
@@ -747,9 +769,13 @@ function feelEvent(e) {
       const d = e.who === myId ? 0 : distToMe(t.x, t.y, t.z);
       const pos = { x: t.x, y: t.y, z: t.z + 0.8 };
       if (e.cause === 'crush') {
+        renderer.crushFlat(e.who); // 납작하게 찌그러진 몸이 잠깐 남음
         fx.burst(pos, null, 0xff3030, 22, 6, 0.12, 0.6);
+        fx.burst({ x: t.x, y: t.y, z: t.z + 0.1 }, null, 0x9a9a9a, 14, 3.5, 0.12, 0.6); // 깔린 자리 먼지
         sound.play('crush', { dist: d });
-        if (e.who === myId) fx.shake(0.3, 400);
+        sound.play('land', { dist: d }); // 큰 쿵
+        if (e.who === myId) fx.shake(0.35, 450);
+        else if (d !== undefined && d < 4) fx.shake(0.1, 200);
       } else if (e.cause === 'lava') {
         fx.burst(pos, null, 0xffa020, 18, 4, 0.1, 0.6);
         sound.play('lavaDeath', { dist: d });

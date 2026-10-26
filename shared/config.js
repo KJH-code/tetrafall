@@ -367,6 +367,12 @@ export const CONFIG = {
   SKY_PIECE_WHITEN: 0.35, // 하늘 계단 블록: 모양 색을 흰색으로 섞는 정도 (밝게)
   SKY_PIECE_OPACITY: 0.88, // 하늘 계단 블록 비침 (떠 있는 느낌)
   LABEL_ABOVE_HEAD: 0.3, // 이름표를 머리(모자·모히칸 포함) 꼭대기에서 이만큼 위에 (예전 높이 아래로는 안 내림)
+  SHADOW_DARKEN_MS: 1500, // 착지 예고: 이 시간 안으로 들어오면 그림자가 점점 진해짐
+  SHADOW_OPACITY_FAR: 0.32, // 멀 때 그림자 진하기
+  SHADOW_OPACITY_NEAR: 0.7, // 내려앉기 직전 그림자 진하기
+  CRUSH_FLAT_MS: 1100, // 압사: 납작하게 찌그러진 몸이 남는 시간
+  CRUSH_FLAT_Z: 0.12, // 납작한 정도 (키 배율)
+  SFX_DETUNE: 0.06, // 효과음마다 높낮이를 ±이만큼 랜덤 (같은 소리가 덜 기계적으로)
   OCCLUDE_ENTER: 0.85, // 3인칭·관전: 카메라→캐릭터 선에서 이 거리(칸) 안의 떨어지는 블록 칸은 반투명
   OCCLUDE_EXIT: 1.05, // 반투명이 풀리는 거리 (들어갈 때보다 멀게: 경계에서 깜빡이지 않게)
   OCCLUDE_OPACITY: 0.22,
@@ -768,7 +774,7 @@ export const CONFIG = {
   // 건축가 블록 화면 (render.js updateBBlocks)
   BB_BLINK_MS: 1500, // 사라지기 이만큼 전부터 깜빡임
   BB_POP_MS: 260, // 생길 때 바닥에서 솟아오르는 시간 (살짝 넘쳤다 돌아옴)
-  BB_CHAIN_STEP_MS: 70, // 연쇄 폭발: 칸마다 이 간격으로 차례로 터짐
+  BB_CHAIN_STEP_MS: 50, // 연쇄 폭발: 칸마다 이 간격으로 차례로 터짐
   BB_BIG_SWELL: 0.18, // 대폭발 블록이 터지기 직전까지 부푸는 비율
   BB_TINT: 0.3, // 주인 색에 흰색을 섞는 비율 (금 간 무늬가 보이게)
   STAR_FLY_MS: 100, // 닌자 표창이 날아가 보이는 시간 (판정은 즉시, 맞는 효과는 표창이 닿을 때)

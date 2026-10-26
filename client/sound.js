@@ -39,8 +39,9 @@ export class Sound {
     const o = this.ctx.createOscillator();
     const g = this.ctx.createGain();
     o.type = type;
-    o.frequency.setValueAtTime(freq, t);
-    o.frequency.exponentialRampToValueAtTime(Math.max(20, freqEnd), t + dur);
+    const det = this.det || 1; // 같은 소리도 높낮이 조금씩 다르게 (play 마다)
+    o.frequency.setValueAtTime(freq * det, t);
+    o.frequency.exponentialRampToValueAtTime(Math.max(20, freqEnd * det), t + dur);
     g.gain.setValueAtTime(vol, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.connect(g).connect(this.master);
@@ -56,8 +57,9 @@ export class Sound {
     const f = this.ctx.createBiquadFilter();
     f.type = filter;
     f.Q.value = q;
-    f.frequency.setValueAtTime(freq, t);
-    f.frequency.exponentialRampToValueAtTime(Math.max(20, freqEnd), t + dur);
+    const det = this.det || 1;
+    f.frequency.setValueAtTime(freq * det, t);
+    f.frequency.exponentialRampToValueAtTime(Math.max(20, freqEnd * det), t + dur);
     const g = this.ctx.createGain();
     g.gain.setValueAtTime(vol, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
@@ -75,7 +77,21 @@ export class Sound {
   play(name, { dist, strong = false } = {}) {
     if (!this.ready()) return;
     const v = Sound.falloff(dist);
+    this.det = 1 + (Math.random() * 2 - 1) * C.SFX_DETUNE;
     switch (name) {
+      case 'tear': // 갈고리 R 블록 뜯김: 찌익 (높아지는 거친 소리) + 낮은 뚝
+        this.noise({ dur: 0.32, vol: 0.55 * v, filter: 'bandpass', freq: 350, freqEnd: 2600, q: 2.5 });
+        this.tone({ freq: 140, freqEnd: 60, dur: 0.2, type: 'sawtooth', vol: 0.25 * v, delay: 0.22 });
+        break;
+      case 'shatter': // 대포수 블록 부숨: 와장창 (깨지는 높은 소리 + 낮은 쾅 + 부스러기 딱딱)
+        this.noise({ dur: 0.35, vol: 0.7 * v, filter: 'highpass', freq: 2500, freqEnd: 900 });
+        this.tone({ freq: 110, freqEnd: 40, dur: 0.25, type: 'square', vol: 0.4 * v });
+        for (const d of [0.08, 0.15, 0.23]) this.tone({ freq: 1800 + Math.random() * 1200, freqEnd: 900, dur: 0.04, type: 'triangle', vol: 0.18 * v, delay: d });
+        break;
+      case 'tap': // 닌자가 떨어지는 블록에 닿음: 작은 탁
+        this.tone({ freq: 1400, freqEnd: 800, dur: 0.05, type: 'triangle', vol: 0.3 * v });
+        this.noise({ dur: 0.04, vol: 0.2 * v, filter: 'highpass', freq: 3000 });
+        break;
       case 'swing': // 휘두르는 바람 소리
         this.noise({ dur: 0.13, vol: 0.3 * v, filter: 'bandpass', freq: 1600, freqEnd: 500, q: 1.5 });
         break;
