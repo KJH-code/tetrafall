@@ -21,6 +21,12 @@ function clampIn(v, max) {
   return Math.max(0.45, Math.min(max - 0.45, v));
 }
 
+// 서 있을 자리용: 필드 끝에서 BOT_EDGE_MARGIN 칸 안 (밀려도 바로 안 떨어지게)
+function clampSafe(v, max) {
+  const m = Math.min(C.BOT_EDGE_MARGIN, max / 2);
+  return Math.max(m, Math.min(max - m, v));
+}
+
 // 플레이어 AABB 가 칸 목록 중 하나와 겹치는가 (xy 만)
 function overlapsCells(p, cells) {
   const h = C.PLAYER_HALF;
@@ -232,6 +238,9 @@ export class BotBrain {
       g.handleAction(p.id, { name: 'skill' });
       return;
     }
+
+    // 0.6) 공용 복귀: 필드 밖으로 날아가는 중이면 안쪽으로 (공중 대시로 넉백을 끊고, 2단 점프로 버팀)
+    if (this.recover(g, p)) return;
 
     // 0.8) 상대 예고 피하기 (반응 시간 뒤, 예고마다 정한 확률로)
     if (this.dodgeTelegraph(g, p, enemies, avoid)) return;
@@ -459,11 +468,11 @@ export class BotBrain {
       if (g.time < this.nextPushAt) {
         // 다음 밀치기까지는 상대 주변을 돌며 "뒤"를 잡으러 간다 (붙어서 가만히 있지 않는다)
         const side = { x: -dir.y, y: dir.x };
-        this.moveTo(g, p, { x: clampIn(t.x - dir.x * 1.2 + side.x * 0.6, W), y: clampIn(t.y - dir.y * 1.2 + side.y * 0.6, D) }, avoid);
+        this.moveTo(g, p, { x: clampSafe(t.x - dir.x * 1.2 + side.x * 0.6, W), y: clampSafe(t.y - dir.y * 1.2 + side.y * 0.6, D) }, avoid);
       }
       return;
     }
-    const spot = { x: clampIn(t.x - dir.x * 1.0, W), y: clampIn(t.y - dir.y * 1.0, D) };
+    const spot = { x: clampSafe(t.x - dir.x * 1.0, W), y: clampSafe(t.y - dir.y * 1.0, D) };
     this.moveTo(g, p, spot, avoid);
   }
 
@@ -878,6 +887,43 @@ export class BotBrain {
     const r = this.k('BRICK_AIM_ERROR') * Math.sqrt(this.rng());
     const a = this.rng() * Math.PI * 2;
     g.ghostDrop(p.id, Math.max(0, Math.min(W - 1, t.x + r * Math.cos(a))), Math.max(0, Math.min(D - 1, t.y + r * Math.sin(a))));
+  }
+
+  // ---------- 위치·복귀 (공용 헬퍼: 캐릭터 판단에서도 부를 수 있음) ----------
+  // 공중에서 필드 밖으로 떨어질 참인가: 지금 발밑이 필드 밖이거나, 지금 넉백 속도로 바닥 높이까지 떨어지는 동안 필드 밖에 닿음
+  fallingOff(g, p) {
+    if (p.grounded || !g.onField(p)) return false;
+    const inField = (x, y) => x >= 0.05 && x <= W - 0.05 && y >= 0.05 && y <= D - 0.05;
+    if (!inField(p.x, p.y)) return true;
+    // 바닥(0) 까지 떨어지는 시간 (위로 뜬 중이면 올라갔다 내려오는 시간 포함)
+    const h = Math.max(0, p.z);
+    const t = (p.vz + Math.sqrt(p.vz * p.vz + 2 * C.GRAVITY * h)) / C.GRAVITY;
+    const decay = (1 - Math.exp(-C.KB_DAMPING_AIR * t)) / C.KB_DAMPING_AIR; // 감쇠하는 넉백이 그동안 가는 거리 / 속도
+    return !inField(p.x + p.kbx * decay, p.y + p.kby * decay);
+  }
+
+  // 돌아갈 자리: 필드 안 가장 가까운 점에서 BOT_RECOVER_INSET 칸 더 안쪽
+  recoverPoint(p) {
+    const m = C.BOT_RECOVER_INSET;
+    return { x: Math.max(m, Math.min(W - m, p.x)), y: Math.max(m, Math.min(D - m, p.y)) };
+  }
+
+  // 복귀: 경직이 풀린 뒤 안쪽으로 걸음(공중 조작) + 넉백이 밖으로 향하면 공중 대시로 끊음 + 떨어지기 시작하면 2단 점프. 했으면 true
+  recover(g, p) {
+    if (!this.fallingOff(g, p) || g.time < p.stunUntil) return false;
+    const to = this.recoverPoint(p);
+    const dx = to.x - p.x;
+    const dy = to.y - p.y;
+    const d = Math.hypot(dx, dy) || 1;
+    this.input.yaw = Math.atan2(dy, dx);
+    this.input.pitch = 0;
+    this.input.fwd = 1;
+    this.input.strafe = 0;
+    g.handleInput(p.id, this.input);
+    const out = -(p.kbx * dx + p.kby * dy) / d; // 밖으로 향하는 넉백 속도
+    if (p.airDashes > 0 && g.time >= p.dashReadyAt && out > C.BOT_RECOVER_DASH_OUT) g.handleAction(p.id, { name: 'dash' });
+    else if (p.airJumps > 0 && p.vz < C.BOT_AIR_JUMP_VZ) g.handleAction(p.id, { name: 'jump' });
+    return true;
   }
 
   // 하늘 계단: 용암이 BOT_SKY_HOP_LAVA 안이면 점프로 닿는 더 높은 하늘 블록으로 건너뛴다. 움직였거나 블록 위에서 버티면 true
