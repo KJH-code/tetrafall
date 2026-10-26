@@ -293,33 +293,58 @@ test('하늘 계단: 사슬은 한 틱에 SKY_SPAWN_PER_TICK(1) 개씩, 같은 �
   assert.deepEqual(place(9).at, a.at, '같은 시드 → 같은 자리');
 });
 
-test('판 시작 랙: 4인 봇 판 첫 3초 틱 최대 시간이 느슨한 상한 안 (하늘 계단 켬·끔, 평지·피라미드)', () => {
-  const worst = (sky, map) => {
-    const g = new Game(() => {}, { characters: true, skyStairs: sky });
-    g.rng = seeded(3);
-    const h = g.addPlayer(1);
-    g.setSpectator(h.id, true);
-    for (let k = 0; k < 4; k++) g.addBot();
-    g.setMap(map);
-    g.startRound();
-    let mx = 0;
-    for (let i = 0; i < 90 && g.phase === 'playing'; i++) {
-      const t0 = performance.now();
-      g.tick(TICK);
-      mx = Math.max(mx, performance.now() - t0);
-    }
-    return mx;
+test('판 시작 랙: 4인 봇 판 첫 5초 — 한 틱에 자리 고르기 많아야 1번씩, 느린 placementScore 는 안 씀 (하늘 계단 켬·끔, 평지·피라미드)', () => {
+  // 벽시계 시간 대신 계산량으로 (기계가 바쁘면 시간은 흔들림). 예전 랙 = 한 틱에 하늘 블록 7개 + 후보마다 느린 placementScore
+  const P = Game.prototype;
+  const orig = { sky: P.chooseSkyPlacement, auto: P.chooseAutoPlacement, slow: P.placementScore, scorer: P.placementScorer };
+  let calls = { sky: 0, auto: 0, slow: 0, scored: 0 };
+  P.chooseSkyPlacement = function (...a) {
+    calls.sky++;
+    return orig.sky.apply(this, a);
   };
-  worst(true, 'flat'); // JIT 데우기 (서버는 오래 켜져 있음)
-  worst(false, 'flat');
-  for (const sky of [true, false]) for (const map of ['flat', 'pyramid']) {
-    const ms = worst(sky, map);
-    assert.ok(ms < 60, `${sky ? '켬' : '끔'} ${map}: 틱 최대 ${ms.toFixed(1)}ms (예전 0.2~0.9초)`);
+  P.chooseAutoPlacement = function (...a) {
+    calls.auto++;
+    return orig.auto.apply(this, a);
+  };
+  P.placementScore = function (...a) {
+    calls.slow++;
+    return orig.slow.apply(this, a);
+  };
+  P.placementScorer = function () {
+    const sc = orig.scorer.call(this);
+    const score = sc.score;
+    return { ...sc, score: (...b) => (calls.scored++, score(...b)) };
+  };
+  try {
+    for (const sky of [true, false]) {
+      for (const map of ['flat', 'pyramid']) {
+        const g = new Game(() => {}, { characters: true, skyStairs: sky });
+        g.rng = seeded(3);
+        const h = g.addPlayer(1);
+        g.setSpectator(h.id, true);
+        for (let k = 0; k < 4; k++) g.addBot();
+        g.setMap(map);
+        g.startRound();
+        const maxScored = SHAPE_NAMES.length * 4 * g.W * g.D * 2; // 자리 고르기 한 번의 후보 수 상한 (높이차 두 번까지)
+        let placed = 0;
+        for (let i = 0; i < 150 && g.phase === 'playing'; i++) {
+          calls = { sky: 0, auto: 0, slow: 0, scored: 0 };
+          g.tick(TICK);
+          const tag = `${sky ? '켬' : '끔'} ${map} 틱 ${i}`;
+          assert.ok(calls.sky <= 1, `${tag}: 하늘 자리 고르기 ${calls.sky}번`);
+          assert.ok(calls.auto <= 1, `${tag}: 자동 블록 자리 고르기 ${calls.auto}번`);
+          assert.equal(calls.slow, 0, `${tag}: 느린 placementScore`);
+          assert.ok(calls.scored <= maxScored, `${tag}: 후보 ${calls.scored}개`);
+          placed += sky ? calls.sky : calls.auto;
+        }
+        assert.ok(placed >= (sky ? C.SKY_COUNT : 1), `${sky ? '켬' : '끔'} ${map}: 블록이 놓임 (${placed})`);
+      }
+    }
+  } finally {
+    Object.assign(P, { chooseSkyPlacement: orig.sky, chooseAutoPlacement: orig.auto, placementScore: orig.slow, placementScorer: orig.scorer });
   }
 });
 
-test('판 시작 랙: 서버 시작 때 블록 자리 고르기 데우기 (warmUpPlacement) 가 오류 없이 금방 끝남', () => {
-  const t0 = performance.now();
+test('판 시작 랙: 서버 시작 때 블록 자리 고르기 데우기 (warmUpPlacement) 가 오류 없이 끝남', () => {
   warmUpPlacement(1);
-  assert.ok(performance.now() - t0 < 3000);
 });
