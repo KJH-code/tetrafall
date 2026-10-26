@@ -256,6 +256,8 @@ export class Game {
       form: 'bard', // 바드 폼: 'bard'(음유시인) / 'metal'
       glideUntil: 0, // 바드 음유 공중 평타 천천히 낙하 끝 시각
       glideCount: 0, // 착지 뒤 천천히 낙하 횟수 (BARD_GLIDE_MAX_PER_AIR)
+      dive: null, // 바드 메탈 기타 꽂기 낙하: { until, def }
+      diveUsed: false, // 착지 전 기타 꽂기 썼나
       amp: null, // 바드 메탈 R 앰프: { endAt, nextTick }
       slowUntil: 0, // 둔화 (바드 음파) 끝 시각
       vulnUntil: 0, // 넉백 취약 (바드 취약의 노래) 끝 시각
@@ -661,6 +663,8 @@ export class Game {
         form: 'bard',
         glideUntil: 0,
         glideCount: 0,
+        dive: null,
+        diveUsed: false,
         amp: null,
         slowUntil: 0,
         vulnUntil: 0,
@@ -929,6 +933,8 @@ export class Game {
       form: 'bard',
       glideUntil: 0,
       glideCount: 0,
+      dive: null,
+      diveUsed: false,
       amp: null,
       slowUntil: 0,
       vulnUntil: 0,
@@ -1152,6 +1158,7 @@ export class Game {
     const live = this.time < p.chainUntil;
     const n = air ? (p.airN > 0 && live && p.airN < set.air.length ? p.airN + 1 : 1) : p.chainN > 0 && live && p.chainN < set.chain.length ? p.chainN + 1 : 1;
     let def = air ? set.air[n - 1] : set.chain[n - 1];
+    if (def.dive && p.diveUsed) return; // 바드 기타 꽂기: 착지 전 1번
     if (def.loaded && p.loaded) def = def.loaded; // 갈고리 3타: 장전돼 있으면 탕
     if (def.ammo && p.cannonAmmo > 0) def = def.ammo; // 대포수: 탄이 있으면 포탄
     // 닌자 R 강화: 지상 1~3타와 공중 평타가 표창 2연발 (4타 올려 차기는 그대로)
@@ -1161,7 +1168,8 @@ export class Game {
     p.atk = { n, def, air, chained, at: this.time + def.windup };
     p.atkLanded = false;
     p.pushReadyAt = this.time + def.windup + def.rec;
-    if (def.glide && p.glideCount < C.BARD_GLIDE_MAX_PER_AIR) this.bardGlide(p, def.windup + def.rec); // 바드 공중 평타: 동작(준비+후딜) 동안만 천천히 낙하, 착지 전 N번까지
+    if (def.glide && p.glideCount < C.BARD_GLIDE_MAX_PER_AIR) this.bardGlide(p, def.windup + def.rec);
+    if (def.dive) this.bardDive(p, def); // 바드 기타 꽂기: 누르는 순간 아래로 // 바드 공중 평타: 동작(준비+후딜) 동안만 천천히 낙하, 착지 전 N번까지
     this.emit({ type: 'attack', who: p.id, char: p.char, n, air, name: def.name, windup: def.windup, finish: !!def.finish, star: !!def.star });
     if (def.windup <= 0) this.basicHit(p);
   }
@@ -1176,7 +1184,7 @@ export class Game {
       this.cannonShot(p);
       return this.basicChain(p, n, air, false, def);
     }
-    if (def.note || def.glide) {
+    if (def.note || def.glide || def.dive) { // 기타 꽂기 판정은 낙하 중 (bardDiveUpdate)
       if (def.note) this.bardNote(p); // 천천히 낙하는 누를 때 시작 (basicStart)
       return this.basicChain(p, n, air, false, def);
     }
@@ -1836,6 +1844,60 @@ export class Game {
     p.glideCount++;
     if (p.vz < -C.BARD_GLIDE_FALL) p.vz = -C.BARD_GLIDE_FALL;
     this.emit({ type: 'glide', who: p.id, ms });
+  }
+
+  // 메탈 공중 평타 기타 꽂기 시작: 아래로 빠르게, 수평으로는 느리게
+  bardDive(p, def) {
+    p.dive = { until: this.time + C.BARD_DIVE_MAX_MS, def };
+    p.diveUsed = true;
+    p.glideUntil = 0;
+    p.vz = Math.min(p.vz, -C.BARD_DIVE_SPEED);
+    p.kbx *= C.BARD_DIVE_MOVE_MULT;
+    p.kby *= C.BARD_DIVE_MOVE_MULT;
+    this.emit({ type: 'dive', who: p.id, x: p.x, y: p.y, z: p.z, speed: C.BARD_DIVE_SPEED });
+  }
+
+  // 기타 꽂기 판정 (한 번): 내려가며 아래 상대에 닿으면 아래로 꽂음, 아니면 착지 때 발밑 충격
+  bardDiveUpdate(p) {
+    const D = p.dive;
+    const def = D.def;
+    const hitOne = (t, dx, dy, up, how) => {
+      const hit = this.applyKnockback(t, dx, dy, def.kb, up, def.stun, def.dmg, { by: p.id, kind: 'push' }, true, { finish: true });
+      this.emit({ type: 'hit', kind: 'push', by: p.id, target: t.id, ok: hit, n: 1, air: true, finish: true, dive: how, streak: hit ? p.streak : 0 });
+      this.log(`  [평타] ${p.name} → ${t.name} ${hit ? `넉백 (${t.name} ${t.damage}%)` : '무적이라 무시'} 공중 기타 꽂기${how === 'land' ? ' 착지' : ''}`);
+      return hit;
+    };
+    // 내려가며 닿음: 수평 BARD_DIVE_HIT_R 안, 상대 머리가 내 발 근처~아래
+    for (const t of this.players.values()) {
+      if (!this.foe(p, t)) continue;
+      const dx = t.x - p.x;
+      const dy = t.y - p.y;
+      if (Math.hypot(dx, dy) > C.BARD_DIVE_HIT_R || t.z > p.z + 0.3 || t.z + C.PLAYER_HEIGHT < p.z - 0.6) continue;
+      p.dive = null;
+      const landed = hitOne(t, dx || Math.cos(p.yaw), dy || Math.sin(p.yaw), def.up, 'air');
+      p.atkLanded = landed;
+      this.emit({ type: 'diveEnd', who: p.id, what: 'hit', x: p.x, y: p.y, z: p.z });
+      return;
+    }
+    if (p.grounded) {
+      p.dive = null;
+      let any = false;
+      for (const t of this.players.values()) {
+        if (!this.foe(p, t)) continue;
+        const dx = t.x - p.x;
+        const dy = t.y - p.y;
+        const d = Math.hypot(dx, dy);
+        if (d > C.BARD_DIVE_LAND_RANGE || Math.abs(t.z - p.z) > C.PLAYER_HEIGHT) continue;
+        if (hitOne(t, d > 0.05 ? dx : Math.cos(p.yaw), d > 0.05 ? dy : Math.sin(p.yaw), C.BARD_DIVE_LAND_UP, 'land')) any = true;
+      }
+      p.atkLanded = any;
+      this.emit({ type: 'diveEnd', who: p.id, what: 'land', x: p.x, y: p.y, z: p.z, r: C.BARD_DIVE_LAND_RANGE });
+      return;
+    }
+    if (this.time >= D.until) {
+      p.dive = null;
+      this.emit({ type: 'diveEnd', who: p.id, what: 'expire', x: p.x, y: p.y, z: p.z });
+    }
   }
 
   // F 폼 전환: 음유 → 메탈 = 충격파 + 기타 리프, 메탈 → 음유 = 치유파
@@ -2737,6 +2799,7 @@ export class Game {
         p.chargeUntil = p.slamAt = p.wallAt = p.zipUntil = 0;
         p.leap = p.huntAim = p.rush = p.spin = p.amp = p.windup = p.hookFly = null;
         p.glideUntil = 0;
+        p.dive = null;
         p.marks.clear();
         if (p.grab) this.hookGrabDrop(p);
         p.atk = null;
@@ -2763,6 +2826,7 @@ export class Game {
       if (p.rush) this.berserkerLeapUpdate(p);
       if (p.spin) this.berserkerSpinUpdate(p);
       if (p.amp) this.bardAmpUpdate(p);
+      if (p.dive) this.bardDiveUpdate(p);
       if (p.huntAim && this.time >= p.huntAim.at) this.hunterShoot(p);
       if (p.castQueued && !p.atk && (p.atkLanded || this.time >= p.pushReadyAt)) this.castQueuedNow(p);
       else if (p.atkQueued && !p.atk && this.time >= p.pushReadyAt) {
@@ -3076,6 +3140,7 @@ export class Game {
     }
     t.rush = null; // 광전사 도약 중에 맞으면 충격파 없음 (쿨타임은 씀)
     t.glideUntil = 0; // 바드 천천히 낙하: 맞으면 풀림
+    t.dive = null; // 기타 꽂기 낙하도 끊김
     // 바드 앰프 음파: 맞아도 안 끊김 — 넉백은 받고 연주는 끝까지 (2026-10-26 재혁 가: 봇 판 끊김 56~65%)
     if (t.spin) {
       this.emit({ type: 'interrupt', who: t.id, kind: 'ult' });
@@ -4207,7 +4272,8 @@ export class Game {
           (p.atk && p.atk.def.finish ? C.BASIC_FINISH_MOVE_MULT : 1) * // 평타 마무리 준비 중
           (p.spin ? C.BERSERKER_SPIN_MOVE_MULT : 1) * // 광전사 회전 중 (천천히 쫓아감)
           (p.amp ? C.BARD_AMP_MOVE_MULT : 1) * // 바드 앰프 연주 중
-          (this.time < p.slowUntil ? 1 - C.BARD_SLOW : 1); // 둔화
+          (this.time < p.slowUntil ? 1 - C.BARD_SLOW : 1) * // 둔화
+          (p.dive ? C.BARD_DIVE_MOVE_MULT : 1); // 기타 꽂기 낙하 중
         ix = mv.x * speed;
         iy = mv.y * speed;
       }
@@ -4228,10 +4294,14 @@ export class Game {
     p.kby *= damp;
     if (Math.abs(p.kbx) < 0.01) p.kbx = 0;
     if (Math.abs(p.kby) < 0.01) p.kby = 0;
-    if (p.grounded) p.glideCount = 0; // 땅·블록(하늘 블록 포함)에 서면 천천히 낙하 횟수 다시
+    if (p.grounded && !p.dive) {
+      p.glideCount = 0; // 땅·블록(하늘 블록 포함)에 서면 천천히 낙하 횟수 다시
+      p.diveUsed = false; // 기타 꽂기도
+    }
     if (p.glideUntil && (p.grounded || this.time >= p.glideUntil)) p.glideUntil = 0;
     p.vz -= C.GRAVITY * (p.glideUntil ? C.BARD_GLIDE_GRAVITY : 1) * dt; // 바드 천천히 낙하: 중력 줄임
     if (p.glideUntil && p.vz < -C.BARD_GLIDE_FALL) p.vz = -C.BARD_GLIDE_FALL;
+    if (p.dive && p.vz > -C.BARD_DIVE_SPEED) p.vz = -C.BARD_DIVE_SPEED; // 기타 꽂기: 빠르게 아래로
     this.moveAxis(p, 'x', (ix + p.kbx) * dt);
     this.moveAxis(p, 'y', (iy + p.kby) * dt);
     p.grounded = false;

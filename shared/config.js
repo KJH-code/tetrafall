@@ -285,7 +285,7 @@ export const CONFIG = {
           { name: '기타 후려치기', windup: 150, rec: 300, stun: 650, dmg: 6, kb: 1.5, up: 1, step: 0.3 },
           { name: '기타 내려치기', windup: 250, rec: 450, stun: 700, dmg: 10, kb: 4.6, up: 3, step: 0.3, finish: true },
         ],
-        air: [{ name: '기타 꽂기', windup: 150, rec: 400, stun: 600, dmg: 9, kb: 2, up: -4, step: 0, angle: 180, finish: true }], // 아래로 꽂음 (up 음수)
+        air: [{ name: '기타 꽂기', windup: 150, rec: 400, stun: 600, dmg: 9, kb: 3.8, up: -4, step: 0, angle: 180, finish: true, dive: true }], // 누르면 아래로 빠르게 낙하 (BARD_DIVE_*), 내려가며 닿은 상대는 아래로 꽂고 (up 음수), 못 닿으면 착지 충격
       },
     },
   },
@@ -545,6 +545,15 @@ export const CONFIG = {
   // 땅에 닿거나 맞으면 바로 풀림 (2026-10-26 재혁: 3초 계속 이어지던 것 → 공격하는 동안만)
   BARD_GLIDE_GRAVITY: 0.25,
   BARD_GLIDE_FALL: 2,
+  // 메탈 공중 평타 기타 꽂기 (2026-10-26 재혁 버그: 아래로 꽂으며 빠르게 낙하): 누르는 순간 낙하 속도 BARD_DIVE_SPEED 이상, 수평 이동 ×BARD_DIVE_MOVE_MULT.
+  // 판정은 한 번: 내려가며 아래 상대에 닿으면 (수평 BARD_DIVE_HIT_R 안) 아래로 꽂음, 못 닿고 착지하면 발밑 BARD_DIVE_LAND_RANGE 충격 (위로 BARD_DIVE_LAND_UP).
+  // 착지 전 1번. BARD_DIVE_MAX_MS 안에 안 닿으면 (낭떠러지) 판정 없이 끝
+  BARD_DIVE_SPEED: 13,
+  BARD_DIVE_MOVE_MULT: 0.3,
+  BARD_DIVE_HIT_R: 0.9,
+  BARD_DIVE_LAND_RANGE: 1.5,
+  BARD_DIVE_LAND_UP: 3,
+  BARD_DIVE_MAX_MS: 1500,
   BARD_GLIDE_MAX_PER_AIR: 3, // 2026-10-26 재혁: 착지 전 천천히 낙하는 이 횟수까지 (땅·블록·하늘 블록에 서면 다시). 0.4초마다 눌러 계속 떠 있는 "니가와" 막기
   // F 음유 → 메탈: 충격파 + 기타 리프 (주변 밀침)
   BARD_RIFF_RANGE: 1.8,

@@ -1104,7 +1104,8 @@ test('연타 중엔 시간 마무리 없음 — 무한 콤보는 안 됨: 평타
     }
     const lens = lines.filter((l) => l.includes('[콤보] P1 → P2')).map((l) => Number(l.match(/(\d+)타/)[1]));
     // 광전사: F 광폭 도약이 매번 4칸 뛰어 떨어져서 첫 콤보 뒤로는 한 타씩만 맞음 (콤보로 안 셈) → 첫 콤보만 끝이 있으면 됨
-    assert.ok(lens.length > (char === 'berserker' ? 0 : 1), `${char}: 콤보가 끝나고 다시 시작`);
+    // 바드: F 로 1초마다 폼이 바뀌어 (음유 음파는 고정 넉백 한 타) 8초 안에 콤보가 하나만 날 수 있음 → 첫 콤보만 끝이 있으면 됨
+    assert.ok(lens.length > (char === 'berserker' || char === 'bard' ? 0 : 1), `${char}: 콤보가 끝나고 다시 시작`);
     const set = C.BASIC_ATTACKS[char];
     const bound = set.chain.length + set.air.length + 4; // 연타 전부 + 캔슬로 끼운 스킬 몇 번
     assert.ok(Math.max(...lens) <= bound, `${char}: 최대 ${Math.max(...lens)}타 (상한 ${bound}) ${lens.join(',')}`);
@@ -2412,6 +2413,59 @@ function botVs(c, oc) {
   g.powerItemNextAt = Infinity;
   return { g, b, t: g.players.get(1), brain: g.bots.get(b.id) };
 }
+
+test('바드 메탈 공중 기타 꽂기 (재혁 2026-10-26 버그): 누르면 아래로 빠르게 낙하 (수평 느리게), 아래 상대에 닿으면 아래로 꽂고, 못 닿으면 착지 충격, 착지 전 1번', () => {
+  const def = C.BASIC_ATTACKS.bard.metal.air[0];
+  assert.ok(def.dive);
+  // 아래 상대에 닿음 → 아래로 꽂음
+  const { g, p } = setupChars(['bard', 'tank']);
+  p(1).form = 'metal';
+  place(p(1), 4, 5, 0, 5);
+  Object.assign(p(1), { grounded: false, vz: 2 });
+  place(p(2), 4.3, 5, 0, 2); // 아래 (공중)
+  p(2).grounded = false;
+  g.drainEvents();
+  g.handleAction(1, { name: 'push' });
+  assert.ok(p(1).vz <= -C.BARD_DIVE_SPEED, '바로 아래로');
+  assert.ok(g.drainEvents().some((e) => e.type === 'dive' && e.who === 1));
+  for (let k = 0; k < 20 && p(2).damage === 0; k++) {
+    p(2).vz = 0;
+    g.tick(TICK);
+  }
+  assert.equal(p(2).damage, def.dmg, '닿음');
+  assert.ok(p(2).vz < 0, '아래로 꽂음');
+  // 못 닿으면 착지 충격 (위로 띄움), 낙하가 빠름
+  const q = setupChars(['bard', 'tank']);
+  q.p(1).form = 'metal';
+  place(q.p(1), 4, 5, 0, 6);
+  Object.assign(q.p(1), { grounded: false, vz: 0 });
+  place(q.p(2), 5.2, 5);
+  q.g.handleAction(1, { name: 'push' });
+  let ms = 0;
+  while (!q.p(1).grounded && ms < 2000) {
+    q.g.tick(TICK);
+    ms += TICK;
+  }
+  assert.ok(ms <= (6 / C.BARD_DIVE_SPEED) * 1000 + 3 * TICK, `빠르게 착지 ${ms.toFixed(0)}ms`);
+  run(q.g, 2 * TICK);
+  assert.equal(q.p(2).damage, def.dmg, '착지 충격');
+  assert.ok(q.p(2).vz > 0 || q.p(2).z > 0.05, '위로');
+  // 착지 전 1번
+  const r = setupChars(['bard', 'tank']);
+  r.p(1).form = 'metal';
+  place(r.p(1), 4, 5, 0, 30);
+  Object.assign(r.p(1), { grounded: false, vz: 0 });
+  r.g.handleAction(1, { name: 'push' });
+  run(r.g, 700);
+  r.p(1).dive = null; // 판정 끝났다고 침 (공중)
+  Object.assign(r.p(1), { z: 20, vz: 0, grounded: false });
+  r.g.drainEvents();
+  r.g.handleAction(1, { name: 'push' });
+  assert.ok(!r.g.drainEvents().some((e) => e.type === 'dive'), '착지 전 두 번째는 안 됨');
+  place(r.p(1), 4, 5, 0, 0);
+  run(r.g, 2 * TICK);
+  assert.equal(r.p(1).diveUsed, false, '착지하면 다시');
+});
 
 test('봇 예고 피하기 (재혁 2026-10-26): 탱크 R 예고를 보고 BOT_REACTION_MS 뒤에 바깥으로 피함 (그 전엔 안 피함), 피할지는 예고마다 한 번 확률로', () => {
   const run1 = (dodge) => {
