@@ -925,7 +925,7 @@ test('봇: 거리가 같은 상대가 여럿이면 늘 사람만 노리지 않�
 });
 
 // ---------- 2단계 A: 여러 블록·가속·용암 ----------
-test('블록 가속: 처음엔 자동 블록 1개, 시간이 지나면 동시에 여러 개 (최대 CONCURRENT_MAX)', () => {
+test('블록 가속: 처음엔 자동 블록 CONCURRENT_START(2)개, 시간이 지나면 동시에 여러 개 (최대 CONCURRENT_MAX)', () => {
   const { g, p1, p2 } = setup();
   p1.x = 0.5; // 블록에 안 깔리게 구석에 둔다 (판정은 블록 수만 본다)
   p2.x = 0.5;
@@ -938,7 +938,8 @@ test('블록 가속: 처음엔 자동 블록 1개, 시간이 지나면 동시에
     if (g.phase !== 'playing') break;
     max0 = Math.max(max0, g.pieces.length);
   }
-  assert.equal(max0, 1, '첫 20초는 1개');
+  assert.equal(C.CONCURRENT_START, 2);
+  assert.equal(max0, C.CONCURRENT_START, '첫 20초는 2개');
   g.roundStartTime = g.time - C.CONCURRENT_RAMP_MS * 10; // 판 후반으로
   assert.equal(g.targetConcurrent(), C.CONCURRENT_MAX);
   assert.equal(g.autoFallStepMs(), C.AUTO_FALL_STEP_MIN_MS);
@@ -2014,7 +2015,7 @@ test('필드 크기: 블록 마스터는 마스터를 뺀 필드 인원으로, �
   for (const t of [0, C.CONCURRENT_RAMP_MS * 3, 1e9]) {
     two.roundStartTime = four.roundStartTime = two.time - t;
     four.time = two.time;
-    const base = Math.min(C.CONCURRENT_MAX, 1 + Math.floor(t / C.CONCURRENT_RAMP_MS));
+    const base = Math.min(C.CONCURRENT_MAX, C.CONCURRENT_START + Math.floor(t / C.CONCURRENT_RAMP_MS));
     assert.equal(two.targetConcurrent(), base, '2인 그대로');
     assert.equal(four.targetConcurrent(), Math.round(base * 1.96));
   }
