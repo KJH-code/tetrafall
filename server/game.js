@@ -1124,7 +1124,7 @@ export class Game {
         p.freezeUntil = this.time + stop;
         t.freezeUntil = this.time + stop;
         if (!landed && !this.sameTeam(p, t)) landed = t;
-        if (def.mark && !this.sameTeam(p, t)) this.addMark(p, t); // 사냥꾼 반대 베기: 표식 +1
+        if (def.mark && !this.sameTeam(p, t)) this.addMark(p, t); // 사냥꾼 찔러 넣기: 표식 +1
       }
       this.emit({ type: 'hit', kind: 'push', by: p.id, target: t.id, ok: hit, crit: hit && crit, n, air, finish, streak: hit ? p.streak : 0 });
       this.log(`  [평타] ${p.name} → ${t.name} ${hit ? `넉백${crit ? ' 치명타' : ''} (${t.name} ${t.damage}%)` : '무적이라 무시'} ${label}`);
@@ -2718,10 +2718,6 @@ export class Game {
     if (t.castQueued) this.emit({ type: 'castDrop', who: t.id, kind: t.castQueued }); // 맞아서 기억했던 F·R 이 버려짐 (소모 없음)
     t.castQueued = null;
     t.chainN = 0;
-    if (!teammate && gain > 0 && src && src.kind !== 'execute' && this.players.get(src.by)?.char === 'hunter') {
-      const marks = this.markOf(this.players.get(src.by), t); // 사냥꾼: 대상에 쌓인 내 표식 1개당 피해 % 증가
-      if (marks) gain = Math.round(gain * (1 + marks * C.HUNTER_MARK_DAMAGE_BONUS));
-    }
     if (teammate) gain = 0; // 팀전: 같은 팀은 밀리기만 (피해 % 없음, 킬로도 안 침)
     else if (src && src.by !== t.id) {
       t.lastHit = { by: src.by, kind: src.kind, name: this.players.get(src.by)?.name };
