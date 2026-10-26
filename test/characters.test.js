@@ -2266,6 +2266,33 @@ test('바드 음유 공중 평타: 공격 동작(준비+후딜) 동안만 천천
   assert.equal(q.p(1).glideUntil, 0, '맞으면 풀림');
 });
 
+test('바드 천천히 낙하는 착지 전 BARD_GLIDE_MAX_PER_AIR(3)번까지, 땅·블록에 서면 다시 (2026-10-26 재혁: 계속 떠 있는 니가와 막기)', () => {
+  assert.equal(C.BARD_GLIDE_MAX_PER_AIR, 3);
+  const def = C.BASIC_ATTACKS.bard.air[0];
+  const ms = def.windup + def.rec;
+  const { g, p } = setupChars(['bard', 'tank']);
+  place(p(2), 1, 9);
+  place(p(1), 4, 5, 0, 14);
+  Object.assign(p(1), { grounded: false, vz: 0 });
+  let glides = 0;
+  for (let i = 0; i < 4; i++) {
+    g.drainEvents();
+    g.handleAction(1, { name: 'push' });
+    run(g, ms + TICK);
+    if (g.drainEvents().some((e) => e.type === 'glide')) glides++;
+  }
+  assert.equal(glides, 3, '3번까지');
+  assert.equal(g.snapshot().players.find((x) => x.id === 1).bard.glidesLeft, 0);
+  // 땅에 서면 다시
+  place(p(1), 4, 5, 0, 0);
+  run(g, 2 * TICK);
+  assert.equal(p(1).glideCount, 0);
+  Object.assign(p(1), { z: 6, grounded: false, vz: 0 });
+  g.drainEvents();
+  g.handleAction(1, { name: 'push' });
+  assert.ok(g.drainEvents().some((e) => e.type === 'glide'), '착지 뒤 다시 됨');
+});
+
 test('바드 메탈 R 앰프 음파: 3초 동안 앞 원뿔에 작게 계속 밀침 (옆·뒤는 안 맞음), 끝에 크게, 연주 중 느리게·평타 안 나감, 맞아도 안 끊김 (재혁 가: 넉백은 받고 경직 중에도 연주 계속)', () => {
   const { g, p, lines } = setupChars(['bard', 'tank', 'builder']);
   place(p(1), 3, 5, 0);

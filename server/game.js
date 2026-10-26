@@ -254,6 +254,7 @@ export class Game {
       spin: null, // 광전사 R 회전: { endAt, nextTick, rage(R 시작 때 피해 %) }
       form: 'bard', // 바드 폼: 'bard'(음유시인) / 'metal'
       glideUntil: 0, // 바드 음유 공중 평타 천천히 낙하 끝 시각
+      glideCount: 0, // 착지 뒤 천천히 낙하 횟수 (BARD_GLIDE_MAX_PER_AIR)
       amp: null, // 바드 메탈 R 앰프: { endAt, nextTick }
       slowUntil: 0, // 둔화 (바드 음파) 끝 시각
       vulnUntil: 0, // 넉백 취약 (바드 취약의 노래) 끝 시각
@@ -621,6 +622,7 @@ export class Game {
         spin: null,
         form: 'bard',
         glideUntil: 0,
+        glideCount: 0,
         amp: null,
         slowUntil: 0,
         vulnUntil: 0,
@@ -886,6 +888,7 @@ export class Game {
       spin: null,
       form: 'bard',
       glideUntil: 0,
+      glideCount: 0,
       amp: null,
       slowUntil: 0,
       vulnUntil: 0,
@@ -1114,7 +1117,7 @@ export class Game {
     p.atk = { n, def, air, chained, at: this.time + def.windup };
     p.atkLanded = false;
     p.pushReadyAt = this.time + def.windup + def.rec;
-    if (def.glide) this.bardGlide(p, def.windup + def.rec); // 바드 공중 평타: 동작(준비+후딜) 동안만 천천히 낙하
+    if (def.glide && p.glideCount < C.BARD_GLIDE_MAX_PER_AIR) this.bardGlide(p, def.windup + def.rec); // 바드 공중 평타: 동작(준비+후딜) 동안만 천천히 낙하, 착지 전 N번까지
     this.emit({ type: 'attack', who: p.id, char: p.char, n, air, name: def.name, windup: def.windup, finish: !!def.finish, star: !!def.star });
     if (def.windup <= 0) this.basicHit(p);
   }
@@ -1786,6 +1789,7 @@ export class Game {
   // 음유 공중 평타: 천천히 낙하 (integratePlayer 가 중력을 줄임)
   bardGlide(p, ms) {
     p.glideUntil = this.time + ms; // 이어 치면 다시 늘어남
+    p.glideCount++;
     if (p.vz < -C.BARD_GLIDE_FALL) p.vz = -C.BARD_GLIDE_FALL;
     this.emit({ type: 'glide', who: p.id, ms });
   }
@@ -4175,6 +4179,7 @@ export class Game {
     p.kby *= damp;
     if (Math.abs(p.kbx) < 0.01) p.kbx = 0;
     if (Math.abs(p.kby) < 0.01) p.kby = 0;
+    if (p.grounded) p.glideCount = 0; // 땅·블록(하늘 블록 포함)에 서면 천천히 낙하 횟수 다시
     if (p.glideUntil && (p.grounded || this.time >= p.glideUntil)) p.glideUntil = 0;
     p.vz -= C.GRAVITY * (p.glideUntil ? C.BARD_GLIDE_GRAVITY : 1) * dt; // 바드 천천히 낙하: 중력 줄임
     if (p.glideUntil && p.vz < -C.BARD_GLIDE_FALL) p.vz = -C.BARD_GLIDE_FALL;
@@ -4406,7 +4411,7 @@ export class Game {
         loaded: p.char === 'hook' ? p.loaded : undefined, // 갈고리 장전
         ultMax: this.ultMax(p), // 필살기 게이지 필요량 (사냥꾼 2배)
         cannon: p.char === 'cannon' ? { ammo: p.cannonAmmo, max: C.CANNON_AMMO_MAX, reloadLeft: p.reloadAt ? Math.max(0, p.reloadAt - this.time) : 0, reloadMs: C.CANNON_RELOAD_MS } : undefined, // 대포수 탄·장전
-        bard: p.char === 'bard' ? { form: p.form, glideLeft: p.glideUntil ? Math.max(0, p.glideUntil - this.time) : 0, ampLeft: p.amp ? Math.max(0, p.amp.endAt - this.time) : 0, ampMs: C.BARD_AMP_MS, ampYaw: p.amp ? this.ampYaw(p) : null } : undefined, // 바드 폼·천천히 낙하·앰프
+        bard: p.char === 'bard' ? { form: p.form, glideLeft: p.glideUntil ? Math.max(0, p.glideUntil - this.time) : 0, glidesLeft: Math.max(0, C.BARD_GLIDE_MAX_PER_AIR - p.glideCount), ampLeft: p.amp ? Math.max(0, p.amp.endAt - this.time) : 0, ampMs: C.BARD_AMP_MS, ampYaw: p.amp ? this.ampYaw(p) : null } : undefined, // 바드 폼·천천히 낙하·앰프
         slowLeft: Math.max(0, p.slowUntil - this.time), // 둔화 남은 ms (바드 음파)
         vulnLeft: Math.max(0, p.vulnUntil - this.time), // 넉백 취약 남은 ms (바드 취약의 노래, 머리 위 음표)
         berserker: p.char === 'berserker' ? { rage: this.rageMult(p.damage), spinLeft: p.spin ? Math.max(0, p.spin.endAt - this.time) : 0, spinMs: C.BERSERKER_SPIN_MS, spinRage: p.spin ? this.rageMult(p.spin.rage) : 0 } : undefined, // 광전사 분노 배율·회전
