@@ -38,6 +38,7 @@ export class BotBrain {
     this.nextThinkAt = 0;
     this.input = { fwd: 0, strafe: 0, jump: false, yaw: 0, pitch: 0 };
     this.dangerSeen = new Map(); // 블록 위치 키 -> 그림자를 처음 본 시각 (반응 시간 계산용)
+    this.threatSeen = new Map(); // 상대 예고 키 -> { at(처음 본 시각), dodge(피할지 — 예고마다 한 번 정함) }
     this.aimedAt = null; // 조종 중: 목표 위에 맞춘 시각
     this.dropOffset = null; // 조종 중: 이 블록에서 겨냥을 빗나가게 할 만큼 { piece, x, y }
     this.lastPos = null;
@@ -113,6 +114,69 @@ export class BotBrain {
     return out;
   }
 
+  // 나를 노리는 상대 예고: { key, o(상대), left(남은 ms), radial(범위 공격이면 바깥으로) }
+  telegraphs(g, p, enemies) {
+    const out = [];
+    for (const o of enemies) {
+      const dx = p.x - o.x;
+      const dy = p.y - o.y;
+      const d = Math.hypot(dx, dy);
+      if (Math.abs(p.z - o.z) > 2.5) continue;
+      // 보는 방향 앞 직선·부채꼴 안인가
+      const ahead = (yaw, len, half) => {
+        const along = dx * Math.cos(yaw) + dy * Math.sin(yaw);
+        const side = Math.abs(-dx * Math.sin(yaw) + dy * Math.cos(yaw));
+        return along > -0.3 && along <= len && side <= half;
+      };
+      const inCone = (yaw, len, deg) => d <= len && (d < 0.5 || (dx * Math.cos(yaw) + dy * Math.sin(yaw)) / d >= Math.cos(((deg / 2) * Math.PI) / 180));
+      if (o.windup) {
+        const reach = o.char === 'tank' ? C.TANK_CHARGE_SPEED * (C.TANK_CHARGE_MS / 1000) : o.char === 'ninja' ? C.NINJA_BLINK_DIST : C.HOOK_RANGE;
+        if (ahead(o.windup.yaw, reach + 0.5, 0.9)) out.push({ key: `${o.id}:windup:${o.windup.at}`, o, left: o.windup.at - g.time });
+      }
+      if (o.slamAt && d <= C.TANK_SLAM_RANGE + C.TANK_RING_WIDTH + 0.3) out.push({ key: `${o.id}:slam:${o.slamAt}`, o, left: o.slamAt - g.time, radial: true });
+      if (o.atk && o.atk.def.finish && !o.atk.def.shell && ahead(o.yaw, (o.atk.def.range || C.PUSH_RANGE) + 0.4, 1)) out.push({ key: `${o.id}:fin:${o.atk.at}`, o, left: o.atk.at - g.time });
+      if (o.leap && !o.leap.endAt && o.leap.target === p.id) out.push({ key: `${o.id}:leap:${o.leap.at}`, o, left: o.leap.at - g.time });
+      if (o.huntAim && g.markOf(o, p) > 0 && inCone(o.yaw, C.HUNTER_SHOT_RANGE, C.HUNTER_SHOT_ANGLE_DEG)) out.push({ key: `${o.id}:aim:${o.huntAim.at}`, o, left: o.huntAim.at - g.time });
+      if (o.spin && d <= C.BERSERKER_SPIN_END_RANGE + 0.5) out.push({ key: `${o.id}:spin:${o.spin.endAt}`, o, left: o.spin.endAt - g.time, radial: true });
+      if (o.amp && inCone(g.ampYaw(o), C.BARD_AMP_RANGE + 0.5, C.BARD_AMP_ANGLE_DEG + 10)) out.push({ key: `${o.id}:amp:${o.amp.endAt}`, o, left: o.amp.endAt - g.time });
+    }
+    return out;
+  }
+
+  // 예고를 처음 본 뒤 BOT_REACTION_MS 가 지나면, 예고마다 한 번 정한 확률로 옆(범위 공격이면 바깥)으로 피함. 피했으면 true
+  dodgeTelegraph(g, p, enemies, avoid) {
+    const threats = this.telegraphs(g, p, enemies);
+    const live = new Set(threats.map((t) => t.key));
+    for (const k of [...this.threatSeen.keys()]) if (!live.has(k)) this.threatSeen.delete(k);
+    if (g.time < p.stunUntil) return false;
+    const chance = Math.min(C.BOT_DODGE_CHANCE_MAX, this.k('DODGE_CHANCE'));
+    for (const t of threats) {
+      if (!this.threatSeen.has(t.key)) this.threatSeen.set(t.key, { at: g.time, dodge: this.rng() < chance });
+      const seen = this.threatSeen.get(t.key);
+      if (!seen.dodge || g.time - seen.at < this.k('REACTION_MS') || t.left <= 0) continue;
+      const dx = p.x - t.o.x;
+      const dy = p.y - t.o.y;
+      const d = Math.hypot(dx, dy) || 1;
+      // 후보: 바깥 (범위 공격) 또는 양옆 → 필드 안쪽으로 더 남는 쪽
+      const dirs = t.radial ? [[dx / d, dy / d], [-dy / d, dx / d], [dy / d, -dx / d]] : [[-dy / d, dx / d], [dy / d, -dx / d]];
+      let best = null;
+      for (const [ux, uy] of dirs) {
+        const spot = { x: p.x + ux * C.BOT_DODGE_STEP, y: p.y + uy * C.BOT_DODGE_STEP };
+        const e = edgeDist(spot.x, spot.y);
+        if (e < 0.8) continue;
+        if (!best || e > best.e) best = { spot, e };
+      }
+      if (!best) continue;
+      this.moveTo(g, p, best.spot, avoid);
+      if (t.left < C.BOT_DODGE_DASH_MS && g.time >= p.dashReadyAt) {
+        g.handleInput(p.id, this.input);
+        g.handleAction(p.id, { name: 'dash' });
+      }
+      return true;
+    }
+    return false;
+  }
+
   // ---------- 판단 ----------
   think(g, p) {
     this.input.jump = false;
@@ -168,6 +232,9 @@ export class BotBrain {
       g.handleAction(p.id, { name: 'skill' });
       return;
     }
+
+    // 0.8) 상대 예고 피하기 (반응 시간 뒤, 예고마다 정한 확률로)
+    if (this.dodgeTelegraph(g, p, enemies, avoid)) return;
 
     // 1) 피하기
     const hit = known.filter((d) => overlapsCells(p, d.cells));
@@ -431,7 +498,9 @@ export class BotBrain {
       if (ultReady && near(C.TANK_SLAM_RANGE + C.TANK_RING_WIDTH * 0.5).length) return act('ult'); // 바깥 고리까지
       // 상대가 공격을 준비하면 아머 돌진으로 뚫고 들어감
       const reachNow = C.TANK_CHARGE_SPEED * (C.TANK_CHARGE_MS / 1000);
-      if (skillReady && level && t.atk && dist <= reachNow && !this.pathHits(p, Math.atan2(t.y - p.y, t.x - p.x), dist, avoid)) {
+      // 상대 평타 준비를 보고 아머 돌진: 사람처럼 BOT_REACTION_MS 뒤에야 반응 (2026-10-26 재혁: 봇 탱크가 100ms 안에 읽어 1:1 이 셌음)
+      const atkSeen = t.atk ? g.time - (t.atk.at - t.atk.def.windup) : 0;
+      if (skillReady && level && t.atk && atkSeen >= this.k('REACTION_MS') && dist <= reachNow && !this.pathHits(p, Math.atan2(t.y - p.y, t.x - p.x), dist, avoid)) {
         face();
         return act('skill');
       }
