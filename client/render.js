@@ -614,12 +614,31 @@ export class Renderer {
       figureAnim(fig, {
         air, walking, hs: a.hs, walk: a.walk, stunned: p.stunned, dancing, emote, emoteT: a.emoteT, punch, holding: !!heldKind(p), t: a.t,
         hit, act: this.actFor(p.id), tumble: a.tumbleAmt, recover: a.recover * a.recoverPow, land: a.figLand * a.landPow, flip: a.flip >= 0 ? a.flip / C.FIGURE_FLIP_S : -1,
+        sniffAt: fig.sniff ? this.sniffAngle(p) : null,
       }, dt);
     }
     const stretch = a.vz > C.ANIM_AIR_VZ && !fig ? C.ANIM_STRETCH : 0; // 올라가는 중: 위로 늘어나고 옆은 가늘게
     const land = fig ? 0 : a.land; // TABS 식 몸은 찌그러지지 않음
     const wide = 1 - stretch / 2 + land * C.ANIM_LAND_SQUASH * 0.6; // 착지: 납작해지며 옆으로 퍼짐
     rig.scale.set(wide, wide, 1 + stretch - land * C.ANIM_LAND_SQUASH);
+  }
+
+  // 사냥꾼 대기 킁킁: 내가 표식을 붙인 가장 가까운 상대 쪽 각 (몸 기준, 왼쪽 +). 없으면 null
+  sniffAngle(p) {
+    let best = null;
+    let bd = Infinity;
+    for (const t of this.curState?.players || []) {
+      if (t.id === p.id || !t.alive || !(t.marks || []).some((m) => m.by === p.id)) continue;
+      const d = Math.hypot(t.x - p.x, t.y - p.y);
+      if (d < bd) {
+        bd = d;
+        best = t;
+      }
+    }
+    if (!best) return null;
+    let ang = Math.atan2(best.y - p.y, best.x - p.x) - p.yaw;
+    ang = Math.atan2(Math.sin(ang), Math.cos(ang));
+    return Number.isFinite(ang) ? ang : null;
   }
 
   // TABS 식 몸의 날아가기·구르기·일어나기·착지·2단 점프 공중제비 상태 (a 에 쌓음, figureAnim 과 rig 회전이 씀)
@@ -1972,7 +1991,8 @@ export class Renderer {
       g.userData.hammer.visible = p.char === 'builder'; // 건축가 무기 (예전 아이템 망치 모델)
       const gun = g.userData.figure && g.userData.figure.gun;
       if (gun) {
-        // 갈고리 장전: 허리 권총 부싯돌 자리에 불꽃이 깜빡 / 빈 총이면 가끔 연기
+        // 갈고리 장전: 손에 든 권총 부싯돌 자리에 불꽃이 깜빡 / 빈 총이면 허리에서 가끔 연기
+        gun.loaded = !!p.loaded;
         gun.spark.visible = !!p.loaded && Math.floor(performance.now() / 90) % 3 !== 0;
         if (!p.loaded && p.alive && gun.holster.visible && Math.random() < dt * 4) {
           const w = gun.holster.getWorldPosition(new THREE.Vector3());
