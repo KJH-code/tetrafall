@@ -498,7 +498,39 @@ function handleEvent(e) {
       if (d !== undefined && d < 4) fx.shake(e.who === myId ? 0.18 : 0.1, 200);
       break;
     }
+    // ---- 대포수 ----
+    case 'shellFire': {
+      // 포구 불꽃·연기 + 쾅 + 반동 (땅: 엉덩방아, 공중: 뒤로 래그돌 회전)
+      renderer.muzzleBlast(e);
+      renderer.cannonRecoil(e);
+      const d = e.who === myId ? 0 : distToMe(e.x, e.y, e.z);
+      sound.play('boom', { dist: d });
+      if (e.who === myId) fx.shake(e.big ? 0.3 : 0.14, e.big ? 300 : 160);
+      break;
+    }
+    case 'shellEnd':
+      renderer.shellImpact(e);
+      break;
+    case 'blockBreak':
+      renderer.blockBreak(e);
+      if (e.cells?.length) sound.play('land', { dist: distToMe(e.cells[0][0] + 0.5, e.cells[0][1] + 0.5, e.cells[0][2]) });
+      break;
+    case 'groundShot':
+      renderer.groundShot(e);
+      renderer.skillMove(e.who, 'cannonJump');
+      break;
+    case 'bigShellBlast':
+      renderer.bigShellBlast(e);
+      break;
     case 'reload': {
+      if (e.ammo !== undefined) {
+        // 대포수 장전: 허리 포탄이 하나 늘고 (snapshot) 내 것이면 찰칵 + HUD 칸 반짝
+        if (e.who === myId) {
+          sound.play('pickup', { dist: 0 });
+          cannonHudFlash(e.ammo);
+        }
+        break;
+      }
       // 장전 (상대를 끌어옴): 허리 권총에서 불꽃이 확 + 찰칵
       const a = playerById(e.who);
       if (a) fx.burst({ x: a.x, y: a.y, z: a.z + 0.75 }, null, 0xffd040, 12, 3, 0.07, 0.35);
@@ -1602,6 +1634,7 @@ function updateBottom(p) {
   if (p.iframeLeft > 0) buffs.push(`무적 ${(p.iframeLeft / 1000).toFixed(1)}s`);
   updateSkills(p);
   updateMyMarks(p);
+  updateCannonHud(p);
   const key = `${buffs.join('|')}#${item}`;
   if (key === bottomKey) return;
   bottomKey = key;
@@ -1643,6 +1676,37 @@ function updateSkills(p) {
   lastSelf = { ult: p.ult, damage: p.damage };
 }
 let lastSelf = null;
+// 대포수 탄: F·R 칸 옆에 포탄 3칸 (찬 칸 = 검은 공, 빈 칸 = 테두리) + 다음 한 발 장전 진행 (빈 칸 첫째가 아래부터 차오름)
+const cannonEl = document.createElement('div');
+cannonEl.className = 'slot';
+Object.assign(cannonEl.style, { display: 'none', minWidth: '0', gap: '6px', alignItems: 'center' });
+const cannonBalls = [];
+for (let i = 0; i < C.CANNON_AMMO_MAX; i++) {
+  const b = document.createElement('div');
+  Object.assign(b.style, { width: '18px', height: '18px', borderRadius: '50%', border: '2px solid #ddd', position: 'relative', overflow: 'hidden', background: 'transparent' });
+  const fill = document.createElement('div');
+  Object.assign(fill.style, { position: 'absolute', left: 0, right: 0, bottom: 0, height: '0%', background: '#2a2c30' });
+  b.append(fill);
+  cannonEl.append(b);
+  cannonBalls.push({ b, fill });
+}
+$('skills').append(cannonEl);
+function updateCannonHud(p) {
+  const c = p && p.char === 'cannon' && p.cannon;
+  cannonEl.style.display = c ? 'flex' : 'none';
+  if (!c) return;
+  const prog = c.reloadMs ? 1 - c.reloadLeft / c.reloadMs : 0;
+  cannonBalls.forEach(({ b, fill }, i) => {
+    const full = i < c.ammo;
+    fill.style.height = full ? '100%' : i === c.ammo && c.reloadLeft > 0 ? `${Math.round(prog * 100)}%` : '0%';
+    fill.style.background = full ? 'radial-gradient(circle at 35% 35%, #9a9ca4, #2a2c30 60%)' : '#6a6c70'; // 찬 칸 = 반짝이는 쇠공
+    b.style.borderColor = full ? '#ffd23a' : '#888';
+  });
+}
+function cannonHudFlash(ammo) {
+  const ball = cannonBalls[ammo - 1];
+  if (ball) ball.b.animate([{ transform: 'scale(1.5)', boxShadow: '0 0 10px #ffd23a' }, { transform: 'scale(1)' }], { duration: 300 });
+}
 // 내게 붙은 표식 (1인칭이라 머리 위가 안 보임): 화면 위 가운데 빨간 마름모, 사라지기 직전 깜빡
 const myMarksEl = document.createElement('div');
 myMarksEl.id = 'my-marks';

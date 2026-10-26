@@ -146,7 +146,7 @@ export function playerColor(p, state) {
   return PLAYER_COLORS[p.slot % PLAYER_COLORS.length];
 }
 const _q = new THREE.Quaternion();
-const HEAVY_HITS = new Set(['bomb', 'shock', 'projectile', 'slam', 'wall', 'blast', 'bigbomb', 'quake', 'blockslam', 'execute', 'pounce']); // 몸이 크게 휘청하는 공격
+const HEAVY_HITS = new Set(['bomb', 'shock', 'projectile', 'slam', 'wall', 'blast', 'bigbomb', 'quake', 'blockslam', 'execute', 'pounce', 'shell', 'bigshell', 'groundshot']); // 몸이 크게 휘청하는 공격
 const MAX_SIDE = Math.max(C.GRID_W, C.GRID_D, ...Object.values(C.FIELD_SIZES));
 const MAX_CELLS = MAX_SIDE * MAX_SIDE * C.GRID_H; // 가장 큰 판 (인원별 필드 크기)
 
@@ -612,14 +612,33 @@ export class Renderer {
       const punch = this.effects.punchAmount(p.id);
       const hit = this.hitFor(p);
       figureAnim(fig, {
-        air, walking, hs: a.hs, walk: a.walk, stunned: p.stunned, dancing, emote, emoteT: a.emoteT, punch, holding: !!heldKind(p), t: a.t,
-        hit, act: this.actFor(p.id), tumble: a.tumbleAmt, recover: a.recover * a.recoverPow, land: a.figLand * a.landPow, flip: a.flip >= 0 ? a.flip / C.FIGURE_FLIP_S : -1,
+        air, walking, hs: a.hs, walk: a.walk, stunned: p.stunned || !!a.flipRag, dancing, emote, emoteT: a.emoteT, punch, holding: !!heldKind(p), t: a.t,
+        hit, act: this.actFor(p.id), tumble: a.tumbleAmt, recover: a.recover * a.recoverPow, land: a.figLand * a.landPow, flip: a.flip >= 0 && !a.flipRag ? a.flip / C.FIGURE_FLIP_S : -1, rag: !!a.flipRag,
+        sniffAt: fig.sniff ? this.sniffAngle(p) : null,
       }, dt);
     }
     const stretch = a.vz > C.ANIM_AIR_VZ && !fig ? C.ANIM_STRETCH : 0; // 올라가는 중: 위로 늘어나고 옆은 가늘게
     const land = fig ? 0 : a.land; // TABS 식 몸은 찌그러지지 않음
     const wide = 1 - stretch / 2 + land * C.ANIM_LAND_SQUASH * 0.6; // 착지: 납작해지며 옆으로 퍼짐
     rig.scale.set(wide, wide, 1 + stretch - land * C.ANIM_LAND_SQUASH);
+  }
+
+  // 사냥꾼 대기 킁킁: 내가 표식을 붙인 가장 가까운 상대 쪽 각 (몸 기준, 왼쪽 +). 없으면 null
+  sniffAngle(p) {
+    let best = null;
+    let bd = Infinity;
+    for (const t of this.curState?.players || []) {
+      if (t.id === p.id || !t.alive || !(t.marks || []).some((m) => m.by === p.id)) continue;
+      const d = Math.hypot(t.x - p.x, t.y - p.y);
+      if (d < bd) {
+        bd = d;
+        best = t;
+      }
+    }
+    if (!best) return null;
+    let ang = Math.atan2(best.y - p.y, best.x - p.x) - p.yaw;
+    ang = Math.atan2(Math.sin(ang), Math.cos(ang));
+    return Number.isFinite(ang) ? ang : null;
   }
 
   // TABS 식 몸의 날아가기·구르기·일어나기·착지·2단 점프 공중제비 상태 (a 에 쌓음, figureAnim 과 rig 회전이 씀)
@@ -671,12 +690,20 @@ export class Renderer {
     } else a.fallVz = 0;
     a.figLand = Math.max(0, a.figLand - dt / C.FIGURE_LAND_S);
     // 2단 점프 공중제비 (airJump 이벤트가 a.flip = 0 으로 시작). 맞으면 끊김
+    // 대포수 공중 반동 (cannonFlip): 뒤로 래그돌처럼 여러 바퀴 (a.flipTurns·flipDir·flipS), 팔다리는 허우적 (a.flipRag)
+    const flipS = a.flipS || C.FIGURE_FLIP_S;
     if (a.flip >= 0) {
       a.flip += dt;
-      if (p.stunned || a.flip >= C.FIGURE_FLIP_S) a.flip = -1;
+      if (p.stunned || a.flip >= flipS || (a.flipRag && !air && a.flip > 0.15)) {
+        a.flip = -1;
+        a.flipS = a.flipTurns = 0;
+        a.flipDir = 1;
+        a.flipRag = false;
+      }
     }
-    const f = a.flip >= 0 ? a.flip / C.FIGURE_FLIP_S : 1;
-    a.flipAngle = a.flip >= 0 ? Math.PI * 2 * f * f * (3 - 2 * f) : 0; // 웅크리는 동안 천천히 → 가운데서 빨리 → 끝에서 느려짐
+    const f = a.flip >= 0 ? a.flip / flipS : 1;
+    const turns = a.flipTurns || 1;
+    a.flipAngle = a.flip >= 0 ? (a.flipDir || 1) * Math.PI * 2 * turns * (a.flipRag ? 1 - (1 - f) * (1 - f) : f * f * (3 - 2 * f)) : 0; // 공중제비: 웅크리는 동안 천천히 → 가운데서 빨리 → 끝에서 느려짐 / 반동: 처음이 가장 빠름
   }
 
   // 맞은 순간 (main.js 의 hit 이벤트). dir = 밀린 방향 (월드, 없으면 null). 콤보 마무리 타면 더 크게
@@ -897,6 +924,23 @@ export class Renderer {
   // 카운터히트 (counter 이벤트가 같은 타의 hit 보다 먼저 옴)
   counterHit(id) {
     this.counterAt.set(id, performance.now());
+  }
+
+  // 대포수 반동 (shellFire): 땅이면 엉덩방아 (동작), 공중이면 뒤로 래그돌 회전 (세기 recoil 만큼 바퀴·빠르기). 대포가 어깨에서 뒤로 툭
+  cannonRecoil(e) {
+    const g = this.playerMeshes.get(e.who);
+    const fig = g?.userData.figure;
+    const sm = this.smooth.get(e.who);
+    const air = !!(sm && this.curState && !this.feetOnGround(this.curState, sm));
+    if (fig) fig.cannonKickAt = performance.now();
+    if (air && fig) {
+      const a = g.userData.anim;
+      a.flip = 0;
+      a.flipRag = true;
+      a.flipDir = -1; // 뒤로
+      a.flipTurns = Math.max(1, Math.round((e.recoil || 5) / C.CANNON_FLIP_PER_TURN));
+      a.flipS = a.flipTurns * C.CANNON_FLIP_TURN_S;
+    } else this.skillMove(e.who, e.big ? 'cannonBigRecoil' : 'cannonRecoil');
   }
 
   // 2단 점프 (airJump 이벤트): 앞 공중제비
@@ -1360,6 +1404,119 @@ export class Renderer {
       }
       return true;
     });
+  }
+
+  // ---------- 대포수 ----------
+  // 포탄 (snapshot shells): 보통 = 쇠공 + 회색 연기 꼬리, 대형 = 큰 쇠공 + 빨갛게 달아오른 테 + 불·연기 꼬리.
+  // 30Hz 사이는 받은 위치에서 날아가는 방향으로 이어서 (끊김 없이). 끝나면 shellEnd 가 효과
+  updateShells(list, dt) {
+    if (!this.shellMeshes) {
+      this.shellMeshes = new Map();
+      this.shellGeo = new THREE.IcosahedronGeometry(1, 1);
+      this.shellMat = toon({ color: 0x2a2c30 });
+      this.bigShellMat = toon({ color: 0x3a2a26, emissive: 0x501000 });
+      this.shellBandMat = noOutline(new THREE.MeshBasicMaterial({ color: 0xff6a20 }));
+    }
+    const now = performance.now();
+    const seen = new Set();
+    for (const sh of list) {
+      seen.add(sh.id);
+      let m = this.shellMeshes.get(sh.id);
+      if (!m) {
+        const big = !!sh.big;
+        const mesh = new THREE.Mesh(this.shellGeo, big ? this.bigShellMat : this.shellMat);
+        mesh.scale.setScalar(big ? C.SHELL_BIG_SIZE : C.SHELL_SIZE);
+        mesh.castShadow = true;
+        if (big) {
+          const band = new THREE.Mesh(new THREE.TorusGeometry(1.02, 0.12, 4, 16), this.shellBandMat);
+          mesh.add(band);
+        }
+        this.scene.add(mesh);
+        m = { mesh, big, x: sh.x, y: sh.y, z: sh.z, at: now, speed: big ? C.CANNON_R_SPEED : C.CANNON_SHELL_SPEED, smoke: 0 };
+        this.shellMeshes.set(sh.id, m);
+      }
+      if (sh.x !== m.x || sh.y !== m.y || sh.z !== m.z) Object.assign(m, { x: sh.x, y: sh.y, z: sh.z, at: now });
+      m.dir = sh.dir;
+    }
+    for (const [id, m] of this.shellMeshes) {
+      if (!seen.has(id)) {
+        this.scene.remove(m.mesh);
+        this.shellMeshes.delete(id);
+        continue;
+      }
+      const ahead = Math.min(0.1, (now - m.at) / 1000) * m.speed; // 다음 위치가 올 때까지 날아가는 쪽으로
+      const d = m.dir || { x: 0, y: 0, z: 0 };
+      const x = m.x + d.x * ahead;
+      const y = m.y + d.y * ahead;
+      const z = m.z + d.z * ahead;
+      if (![x, y, z].every(Number.isFinite)) continue;
+      m.mesh.position.set(x, y, z);
+      m.mesh.rotation.x += dt * 9;
+      m.mesh.rotation.z += dt * 6;
+      // 꼬리: 보통은 회색 연기, 대형은 불꽃 + 진한 연기
+      m.smoke += dt * (m.big ? 60 : 30);
+      while (m.smoke >= 1) {
+        m.smoke -= 1;
+        const back = { x: x - d.x * 0.2, y: y - d.y * 0.2, z: z - d.z * 0.2 };
+        this.effects.burst(back, { x: 0, y: 0 }, m.big ? (Math.random() < 0.5 ? 0xff7a20 : 0x555555) : 0xaaaaaa, 1, 0.4, m.big ? 0.16 : 0.09, m.big ? 0.5 : 0.45);
+      }
+    }
+  }
+
+  // shellFire: 포구 불꽃 + 연기 뭉치 (쏘는 쪽으로)
+  muzzleBlast(e) {
+    const d = e.dir || { x: 1, y: 0, z: 0 };
+    const pos = { x: e.x, y: e.y, z: e.z };
+    this.effects.burst(pos, { x: d.x * 1.2, y: d.y * 1.2 }, 0xffd040, e.big ? 22 : 12, e.big ? 7 : 5, e.big ? 0.15 : 0.1, 0.25);
+    this.effects.burst(pos, { x: d.x * 0.6, y: d.y * 0.6 }, 0x888888, e.big ? 26 : 14, e.big ? 3.5 : 2.5, e.big ? 0.2 : 0.14, 0.8);
+    this.effects.ring(pos, 0xffe0a0, e.big ? 2.6 : 1.4, 0.2);
+  }
+
+  // shellEnd: 닿은 것에 따라 (사람·블록·지형·바닥 = 터짐, expire = 연기만). 대형 포탄은 bigShellBlast 가 크게 따로
+  shellImpact(e) {
+    const pos = { x: e.x, y: e.y, z: e.z };
+    if (e.what === 'expire') {
+      this.effects.burst(pos, null, 0x999999, 6, 1.2, 0.12, 0.6);
+      return;
+    }
+    if (e.big) return;
+    this.effects.burst(pos, null, 0xffb040, 12, 5, 0.1, 0.3);
+    this.effects.burst(pos, null, 0x777777, 12, 3, 0.14, 0.6);
+    this.effects.ring(pos, 0xffd080, 2, 0.25);
+    if (this.onShellHit) this.onShellHit(pos, false);
+  }
+
+  // blockBreak: 부서진 칸마다 번쩍 + 돌 파편이 사방으로 + 옆 블록 들썩 (대형 포탄은 지나간 길 따라)
+  blockBreak(e) {
+    const cells = (e.cells || []).filter((c) => c.every(Number.isFinite));
+    if (!cells.length) return;
+    this.blockPulse(cells, 0xffffff, { opacity: 0.85 });
+    this.blockPulse(this.blockNeighbors(cells), 0xffffff, { jolt: C.BLOCK_JOLT, opacity: 0.4 });
+    for (const [x, y, z] of cells) {
+      const c = { x: x + 0.5, y: y + 0.5, z: z + 0.5 };
+      this.effects.burst(c, null, 0x8a8078, e.big ? 10 : 16, e.big ? 6 : 5, 0.16, 0.7); // 돌 조각
+      this.effects.burst(c, null, 0xb0a898, 6, 2, 0.12, 0.8); // 먼지
+    }
+  }
+
+  // groundShot (F 발밑 포격): 발밑에 쾅 + 바닥 고리 (범위 r) + 흙먼지
+  groundShot(e) {
+    const pos = { x: e.x, y: e.y, z: e.z + 0.1 };
+    this.effects.ring(pos, 0xffc080, (e.r || 1.8) * 2, 0.35, true);
+    this.effects.burst(pos, null, 0xffb040, 16, 6, 0.12, 0.3);
+    this.effects.burst(pos, null, 0x9a8a78, 20, 4, 0.15, 0.7);
+    if (this.onBlast) this.onBlast(pos, false);
+  }
+
+  // bigShellBlast (R 끝 폭발): 크게 (범위 r 고리 둘 + 불·연기)
+  bigShellBlast(e) {
+    const pos = { x: e.x, y: e.y, z: e.z };
+    const r = e.r || 2.2;
+    this.effects.ring(pos, 0xffa040, r * 2.2, 0.4);
+    this.effects.ring({ x: e.x, y: e.y, z: Math.max(0.05, e.z - 0.5) }, 0xffd080, r * 2, 0.45, true);
+    this.effects.burst(pos, null, 0xff8020, 40, 9, 0.16, 0.5);
+    this.effects.burst(pos, null, 0x666666, 30, 4, 0.22, 1.0);
+    if (this.onBlast) this.onBlast(pos, true);
   }
 
   // ---------- 닌자 순간 베기 ----------
@@ -1942,6 +2099,18 @@ export class Renderer {
         m.opacity = opacity;
       }
       if (p.jumpLeft > 0 && !p.stunned) bodyMat.emissive.setHex(0x1a5a1a);
+      if (p.char === 'berserker' && p.alive) {
+        // 광전사 분노: 피해 % 따라 몸이 빨갛게 빛나고 (높으면 맥박처럼 출렁) 머리·어깨에서 김
+        const k = Math.max(0, Math.min(1, (p.damage || 0) / C.BERSERK_RAGE_PCT));
+        // 몸 색(플레이어 색)은 건드리지 않음: 누가 누군지가 우선. 분노는 붙는 효과로 (눈 충혈·눈썹·핏줄·빡침 표시는 figureAnim, 김은 여기)
+        const fig = g.userData.figure;
+        if (fig?.rage) fig.rage.k = k;
+        if (k > 0.2 && Math.random() < dt * C.BERSERK_STEAM_RATE * k) {
+          const side = Math.random() < 0.5 ? -1 : 1;
+          const ox = Math.random() < 0.4 ? 0 : side * 0.25;
+          this.effects.burst({ x: s.x + Math.sin(p.yaw) * ox, y: s.y - Math.cos(p.yaw) * ox, z: s.z + (ox ? 1.25 : 1.6) }, { x: 0, y: 0, z: 1 }, 0xf4f4f4, 1, 0.9, 0.12, 0.8);
+        }
+      }
       if (p.empower > 0) {
         // 닌자 R 강화: 몸이 보라로 깜빡 + 손에서 보라 불티 (끝 1.5초는 빠르게)
         if (Math.floor(performance.now() / (p.empower < 1500 ? 70 : 160)) % 2) bodyMat.emissive.setHex(C.EMPOWER_GLOW);
@@ -1972,13 +2141,16 @@ export class Renderer {
       g.userData.hammer.visible = p.char === 'builder'; // 건축가 무기 (예전 아이템 망치 모델)
       const gun = g.userData.figure && g.userData.figure.gun;
       if (gun) {
-        // 갈고리 장전: 허리 권총 부싯돌 자리에 불꽃이 깜빡 / 빈 총이면 가끔 연기
+        // 갈고리 장전: 손에 든 권총 부싯돌 자리에 불꽃이 깜빡 / 빈 총이면 허리에서 가끔 연기
+        gun.loaded = !!p.loaded;
         gun.spark.visible = !!p.loaded && Math.floor(performance.now() / 90) % 3 !== 0;
         if (!p.loaded && p.alive && gun.holster.visible && Math.random() < dt * 4) {
           const w = gun.holster.getWorldPosition(new THREE.Vector3());
           this.effects.burst({ x: w.x, y: w.y, z: w.z + 0.05 }, { x: 0, y: 0 }, 0x9a9a9a, 1, 0.6, 0.07, 0.7);
         }
       }
+      const balls = g.userData.figure && g.userData.figure.balls;
+      if (balls) balls.forEach((b, i) => (b.visible = i < (p.cannon ? p.cannon.ammo : balls.length))); // 대포수 허리 포탄 = 남은 탄
       // 왼손에 고른 칸의 물건, 조종권 대기 중이면 머리 위 하늘색 팔면체
       const kind = heldKind(p);
       for (const [k, m] of Object.entries(g.userData.held)) m.visible = k === kind;
@@ -2138,6 +2310,7 @@ export class Renderer {
     this.updateSpinArcs();
     this.updateAims();
     this.updateArrows();
+    this.updateShells(state.shells || [], dt);
     this.updateGrabs();
     this.updateBeams(state);
     if (me) this.viewArm.material.color.setHex(playerColor(me, state));
