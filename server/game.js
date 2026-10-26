@@ -357,6 +357,7 @@ export class Game {
     this.refreshPieceCells();
     this.bblocks = new Map();
     this.bigBombs = [];
+    for (const q of this.quakes) this.emit({ type: 'quakeFall', id: q.id, gone: [], cells: [] }); // 버리는 솟는 땅
     this.quakes = [];
     this.holes = [];
     this.items = [];
@@ -587,7 +588,8 @@ export class Game {
     this.bblocks = new Map(); // 건축가 블록: 셀 키 -> { x, y, z, owner, kind: 'wall'|'third'|'pad'|'big', group, expiresAt, born }
     this.bigBombs = []; // 건축가 대폭발 대기: { owner, group, at, dir }
     this.holes = []; // 폭발 구멍 (테스트 옵션 BUILDER_BLAST_HOLE): { x, y, z, v, at }
-    this.quakes = []; // 탱크 R 솟는 땅 (잠깐 솟았다 가라앉음): { cells: [[x,y,z]], at }
+    const oldQuakes = this.quakes; // 판 시작 때 버리는 솟는 땅 → 아래 events 를 비운 뒤 quakeFall 로 알림
+    this.quakes = []; // 탱크 R 솟는 땅 (잠깐 솟았다 가라앉음): { id, cells: [[x,y,z]], at }
     this.shells = []; // 대포수 포탄 (보통·대형)
     this.notes = []; // 바드 류트 음파
     this.shellCounter = this.shellCounter || 0;
@@ -596,6 +598,7 @@ export class Game {
     this.deaths = [];
     this.landed = emptyLanded();
     this.events = [];
+    for (const q of oldQuakes) this.emit({ type: 'quakeFall', id: q.id, gone: [], cells: [] }); // 화면에서 그 솟는 땅을 지우게
     this.winnerId = null;
     this.winnerTeam = null;
     this.winnerIds = [];
@@ -1487,7 +1490,8 @@ export class Game {
     }
     if (!cells.length) return 0;
     this.gridChanged();
-    this.quakes.push({ cells, at: this.time + C.TANK_RING_MS });
+    const qid = (this.quakeCounter = (this.quakeCounter || 0) + 1); // 솟는 땅 id (quakeRise·quakeFall 짝, 층 클리어로 칸이 옮겨지거나 지워져도 그대로)
+    this.quakes.push({ id: qid, cells, at: this.time + C.TANK_RING_MS });
     let n = 0;
     for (const t of this.players.values()) {
       if (!this.onField(t) || !cells.some(([x, y, z]) => overlapsCell(t, x, y, z))) continue;
@@ -1497,7 +1501,7 @@ export class Game {
       if (hit) n++;
       this.emit({ type: 'hit', kind: 'quake', by: p.id, target: t.id, ok: hit });
     }
-    this.emit({ type: 'quakeRise', who: p.id, cells, ms: C.TANK_RING_MS });
+    this.emit({ type: 'quakeRise', id: qid, who: p.id, cells, ms: C.TANK_RING_MS });
     return n;
   }
 
@@ -1509,7 +1513,7 @@ export class Game {
       const gone = q.cells.filter(([x, y, z]) => this.grid[this.idx(x, y, z)] === CELL.BUILD && !this.bblocks.has(cellKey(x, y, z)));
       for (const [x, y, z] of gone) this.grid[this.idx(x, y, z)] = 0;
       if (gone.length) this.gridChanged();
-      this.emit({ type: 'quakeFall', cells: gone });
+      this.emit({ type: 'quakeFall', id: q.id, gone, cells: gone }); // cells 는 예전 이름 (gone 과 같음)
     }
   }
 
