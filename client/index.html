@@ -119,6 +119,9 @@
     #rooms button { font-size: 15px; padding: 4px 14px; cursor: pointer; }
     #rooms button:disabled { opacity: .4; cursor: default; }
     #rooms-msg { color: #ffb050; white-space: pre-line; min-height: 1.6em; }
+    /* 아이템이 안 나오는 판 (snapshot itemsEnabled false): 아이템 칸·타이머·설명은 숨기고, 키 설정 줄은 회색 */
+    body.no-items .items-only { display: none !important; }
+    body.no-items .items-dim { opacity: .4; }
     /* 연습 방: 왼쪽 작은 패널 (연습 키로 열고 닫음, 가운데·허수아비를 안 가림) + 오른쪽 콤보 기록 */
     #practice { position: absolute; left: 12px; top: 70px; z-index: 18; pointer-events: auto; background: rgba(20,22,40,.92); padding: 10px 14px; border-radius: 10px; font-size: 14px; line-height: 1.7; width: 250px; }
     #practice h4 { margin: 0 0 4px; font-size: 15px; display: flex; justify-content: space-between; align-items: center; }
@@ -158,7 +161,7 @@
     <div id="vignette"></div>
     <div id="top">
       <div id="score" class="hidden"></div>
-      <div id="timers"><span id="t-control" class="t hidden"><span class="pie"></span><span class="txt"></span></span><span id="t-power" class="t hidden"><span class="pie"></span><span class="txt"></span></span></div>
+      <div id="timers"><span id="t-control" class="t hidden"><span class="pie"></span><span class="txt"></span></span><span id="t-power" class="t hidden items-only"><span class="pie"></span><span class="txt"></span></span></div>
       <div id="banner" class="hidden"></div>
       <div id="danger" class="hidden"></div>
       <div id="toasts"></div>
@@ -203,7 +206,7 @@
         <p>맞을수록 머리 위 <b>피해 %</b> 가 쌓여 더 멀리 날아간다. 떨어지면서 위에서 때리면 <b>치명타</b>.</p></div>
       <div class="card"><h3>2. 블록을 피하고, 떨어뜨리기</h3>
         <p>하늘에서 테트리스 블록이 떨어진다. 바닥의 <b>그림자</b>가 떨어질 자리 — 밑에 있으면 깔린다 (<b>압사</b>).</p>
-        <p>머리 위에 블록이 오면 화면에 <b>빨간 경고</b>. 아이템은 <b>하나만</b> 들 수 있고 <b data-key="item">우클릭</b>으로 쓴다.</p></div>
+        <p>머리 위에 블록이 오면 화면에 <b>빨간 경고</b>.<span class="items-only"> 아이템은 <b>하나만</b> 들 수 있고 <b data-key="item">우클릭</b>으로 쓴다.</span></p></div>
       <div class="card"><h3>3. 용암이 오면 위로</h3>
         <p>블록이 쌓이면 바닥에서 <b>용암</b>이 올라온다. 쌓인 블록을 타고 위로 — 공중에서 <span data-key="jump">Space</span> 를 한 번 더 누르면 <b>2단 점프</b> (2칸 벽).</p>
         <p>마지막까지 살아남으면 승리. <b>G</b> 를 누른 채 마우스로 이모트, 대기 화면 <b>설정</b>에서 감도·소리.</p></div>
@@ -238,7 +241,7 @@
         <div class="slot" id="skill-r"><div class="fill"></div><span class="key" data-key="ult">R</span><span class="name"></span></div>
         <div id="ammo" class="hidden" title="탕 (상대를 갈고리로 끌어오면 장전)"></div>
       </div>
-      <div id="item-slot" class="slot empty"><span class="key" data-key="item">우클릭</span><span class="name">아이템 —</span></div>
+      <div id="item-slot" class="slot empty items-only"><span class="key" data-key="item">우클릭</span><span class="name">아이템 —</span></div>
     </div>
     <div id="host-players" class="hidden"></div>
     <div id="center"><span id="center-text">연결 중...</span><br /><button id="start-btn" class="hidden">시작</button>
@@ -263,10 +266,10 @@
         <div id="keys-text" class="hidden" style="margin-top:8px">
         <span data-keys="fwd,left,back,right">WASD</span> 이동 · <span data-key="jump">Space</span> 점프 (공중에서 한 번 더) · <span data-key="dash">Shift</span> 대시 · <b data-key="skill">F</b> 캐릭터 스킬 · <b data-key="ult">R</b> 필살기 (때리거나 맞으면 게이지가 참)<br />
         <b data-key="attack">좌클릭</b> 평타 (가까운 상대를 바라보는 쪽으로 밀어냄)<br />
-        <b data-key="item">우클릭</b> 든 아이템 쓰기 — 아이템은 <b>하나만</b> 들 수 있음 (들고 있으면 다른 걸 못 주움)<br />
-        &nbsp;&nbsp;투사체(빨간 공) · 설치 블록(노란 상자, 조준한 곳에 1×2 를 떨어뜨림, <span data-keys="rotL,rotR">Q/E</span> 방향) · 폭탄(검은 공, 블록을 부숨)<br />
+        <span class="items-only"><b data-key="item">우클릭</b> 든 아이템 쓰기 — 아이템은 <b>하나만</b> 들 수 있음 (들고 있으면 다른 걸 못 주움)<br />
+        &nbsp;&nbsp;투사체(빨간 공) · 설치 블록(노란 상자, 조준한 곳에 1×2 를 떨어뜨림, <span data-keys="rotL,rotR">Q/E</span> 방향) · 폭탄(검은 공, 블록을 부숨)<br /></span>
         맞을수록 머리 위 <b>피해 %</b> 가 쌓이고 더 멀리 날아감 (대난투식)<br />
-        먹자마자 효과: 초록 = 점프력 상승 · 흰 고리 = 유령화 (블록 통과, 안 깔림) · 노랑 번개 = 이속 증가<br />
+        <span class="items-only">먹자마자 효과: 초록 = 점프력 상승 · 흰 고리 = 유령화 (블록 통과, 안 깔림) · 노랑 번개 = 이속 증가<br /></span>
         블록 마스터의 마스터: <span data-keys="pieceUp,pieceDown,pieceLeft,pieceRight">↑/↓/←/→</span> 이동 · <span data-keys="rotL,rotR">Q/E</span> 회전 · <b><span data-key="drop">Enter</span> 낙하</b><br />
         공중에서 떨어지면서 위에서 공중 평타를 맞히면 <b>치명타</b> (피해 ×<span id="crit-dmg"></span>, 더 멀리)<br />
         상대를 블록에 깔리게(압사) 하거나 밖으로 떨어뜨리면(낙사) 승리. 블록이 쌓이면 용암이 올라온다 — 위로!
@@ -274,7 +277,7 @@
       </div></div>
     </div>
     <div id="help" class="hidden"><span data-keys="fwd,left,back,right">WASD</span> 이동 · <span data-key="jump">Space</span> 점프·2단 점프 · <span data-key="dash">Shift</span> 대시 · <span data-key="attack">좌클릭</span> 평타 · <span data-key="skill">F</span> 스킬 · <span data-key="ult">R</span> 필살기 · <span data-key="view">V</span> 1인칭↔3인칭
-<span data-key="item">우클릭</span> 든 아이템 쓰기 (하나만) · <span data-keys="rotL,rotR">Q/E</span> 1×2 방향 · <span data-key="emote">G</span> 이모트
+<span class="items-only"><span data-key="item">우클릭</span> 든 아이템 쓰기 (하나만) · <span data-keys="rotL,rotR">Q/E</span> 1×2 방향 · </span><span data-key="emote">G</span> 이모트
 블록 마스터: <span data-keys="pieceUp,pieceDown,pieceLeft,pieceRight">↑/↓/←/→</span> 블록 이동 · <span data-keys="rotL,rotR">Q/E</span> 회전 · <span data-key="drop">Enter</span> 하드드롭 · 키는 설정에서 바꿈</div>
   </div>
   <script type="module" src="/main.js"></script>
