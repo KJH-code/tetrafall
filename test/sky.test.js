@@ -151,6 +151,24 @@ test('하늘 계단 켬: 용암이 켜진 뒤 용암 표면에 닿은 하늘 블
   assert.ok(g.drainEvents().some((e) => e.type === 'melt' && e.cells.length === 4));
 });
 
+test('하늘 계단: 켬 판에는 조종권 아이템이 안 나옴 (CONTROL_ITEM 이 켜져도)', () => {
+  const old = C.CONTROL_ITEM;
+  C.CONTROL_ITEM = true;
+  try {
+    const on = setup({ sky: true }).g;
+    const off = setup({ sky: false }).g;
+    for (const g of [on, off]) g.controlItemNextAt = g.time;
+    run(on, TICK * 3);
+    run(off, TICK * 3);
+    assert.equal(on.controlItemOn(), false);
+    assert.ok(!on.items.some((it) => it.type === 'control'));
+    assert.equal(off.controlItemOn(), true);
+    assert.ok(off.items.some((it) => it.type === 'control'), '끔 판은 그대로 나옴');
+  } finally {
+    C.CONTROL_ITEM = old;
+  }
+});
+
 test('하늘 계단: 블록 마스터는 옵션을 무시 (자동 블록이 없음)', () => {
   const g = new Game(() => {}, { skyStairs: true });
   g.rng = seeded(1);

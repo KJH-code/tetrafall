@@ -3399,6 +3399,11 @@ export class Game {
     return false;
   }
 
+  // 조종권 아이템이 나오는 판인지: 블록 마스터는 조종권 없음, 하늘 계단은 조종 블록이 계단 사이에 끼어 배치가 깨져서 끔
+  controlItemOn() {
+    return C.CONTROL_ITEM && this.mode !== 'master' && !this.sky;
+  }
+
   // 조종권이 필드·누군가의 손·조종 중인 블록 어딘가에 있음 → 다음 조종권 시계가 안 돎
   controlInPlay() {
     return (
@@ -3413,13 +3418,13 @@ export class Game {
     if (this.phase !== 'playing') return { control: null, power: null };
     const powerCount = this.items.filter((it) => it.type !== 'control').length;
     return {
-      control: !C.CONTROL_ITEM || this.mode === 'master' || this.controlInPlay() ? null : Math.max(0, this.controlItemNextAt - this.time),
+      control: !this.controlItemOn() || this.controlInPlay() ? null : Math.max(0, this.controlItemNextAt - this.time),
       power: powerCount >= this.itemMax() ? null : Math.max(0, this.powerItemNextAt - this.time),
     };
   }
 
   updateItems() {
-    if (C.CONTROL_ITEM && this.mode !== 'master' && !this.controlInPlay() && this.time >= this.controlItemNextAt) { // 블록 마스터는 조종권 없음
+    if (this.controlItemOn() && !this.controlInPlay() && this.time >= this.controlItemNextAt) {
       if (!this.spawnItem('control')) this.controlItemNextAt = this.time + 1000;
     }
     const powerCount = this.items.filter((it) => it.type !== 'control').length;
