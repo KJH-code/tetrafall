@@ -2293,39 +2293,63 @@ export class Renderer {
     if (s) this.effects.ring({ x: s.x, y: s.y, z: s.z + 0.05 }, 0xffffff, 1.8, (e.ms || C.SKILL_WINDUP_MS) / 1000, true);
   }
 
-  // R 1단계 (blockGrab): 블록이 지형에서 뽑혀 사슬에 끌려와 머리 위에서 돎. 건축가 블록이면 금 간 무늬
+  // R 1단계 (blockGrab): 덩어리(테트로미노 통째로, 지형은 1칸)가 ms 동안 제자리에서 덜덜 (큰 걸 든다는 예고) →
+  // 뽑혀 사슬에 끌려와 머리 위에서 모양 그대로 빙빙 (덩어리가 클수록 크게 돎). 건축가 블록이면 금 간 무늬, 하늘 블록은 밝고 살짝 비침
   blockGrab(e) {
     const now = performance.now();
-    const mat = e.builder ? toon({ color: 0xffb070, map: this.tex.cracked }) : toon({ color: 0xb0a8a0, map: this.tex.stone });
-    const mesh = new THREE.Mesh(this.bbGeo, mat);
-    mesh.castShadow = true;
-    const from = new THREE.Vector3(e.from[0] + 0.5, e.from[1] + 0.5, e.from[2] + 0.5);
-    mesh.position.copy(from);
+    const cells = e.cells && e.cells.length ? e.cells : [e.from];
+    const kind = e.v === CELL.TERRAIN ? 'stone' : e.v === CELL.BUILD ? 'wood' : e.v === CELL.THROWN ? 'sand' : 'tetris';
+    const col = new THREE.Color(e.builder ? 0xffb070 : cellColor(e.v));
+    if (e.sky) col.lerp(new THREE.Color(0xffffff), C.SKY_PIECE_WHITEN);
+    const mat = toon({ color: col.getHex(), map: e.builder ? this.tex.cracked : this.tex[kind], transparent: !!e.sky, opacity: e.sky ? C.SKY_PIECE_OPACITY : 1 });
+    // 덩어리 가운데가 원점, 칸은 원래 모양·방향 그대로
+    const center = new THREE.Vector3();
+    for (const [x, y, z] of cells) center.add(new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5));
+    center.divideScalar(cells.length);
+    const mesh = new THREE.Group();
+    let size = 0;
+    for (const [x, y, z] of cells) {
+      const cube = new THREE.Mesh(this.bbGeo, mat);
+      cube.position.set(x + 0.5 - center.x, y + 0.5 - center.y, z + 0.5 - center.z);
+      cube.castShadow = true;
+      mesh.add(cube);
+      size = Math.max(size, cube.position.length());
+    }
+    mesh.position.copy(center);
     this.scene.add(mesh);
     (this.grabs ||= new Map()).get(e.who)?.mesh && this.endGrab(e.who);
-    this.grabs.set(e.who, { mesh, from, t0: now, ms: e.ms || 300, slam: null, chain: this.makeChain() });
-    // 뽑히는 순간: 빈 자리가 번쩍 + 돌 조각 + 옆 블록 들썩
-    this.effects.burst(from, null, 0x8a7a68, 20, 4, 0.12, 0.55);
-    this.effects.burst(from, { x: 0, y: 0 }, 0x6a5e52, 8, 5, 0.18, 0.6);
-    const cell = e.from.map(Math.floor);
-    this.blockPulse([cell], 0xffffff, { opacity: 0.8 });
-    this.blockPulse(this.blockNeighbors([cell]), 0xffffff, { jolt: C.BLOCK_JOLT, opacity: 0.4 });
+    this.grabs.set(e.who, { mesh, mat, from: center.clone(), t0: now, ms: e.ms || 300, size, slam: null, chain: this.makeChain() });
+    // 잡히는 순간: 덩어리 칸이 번쩍 + 옆 블록 들썩 (뽑혀 나갈 때 돌 조각은 updateGrabs)
+    const cs = cells.map((c) => c.map(Math.floor));
+    this.blockPulse(cs, 0xffffff, { opacity: 0.6, ms: e.ms || 300 });
+    this.blockPulse(this.blockNeighbors(cs), 0xffffff, { jolt: C.BLOCK_JOLT, opacity: 0.35 });
   }
 
-  // R 2단계 (blockSlam): 머리 위에서 앞으로 크게 내려찍음 → 박힐 칸(없으면 필드 밖으로 떨어져 사라짐)
+  // R 2단계 (blockSlam): 머리 위에서 앞으로 크게 내려찍음 → 덩어리 모양 그대로 박힘 (빈 cells = 필드 밖으로 떨어져 사라짐)
   blockSlam(e) {
     const g = this.grabs?.get(e.who);
     const s = this.smooth.get(e.who);
     if (!g || !s) return;
-    const to = e.cell ? new THREE.Vector3(e.cell[0] + 0.5, e.cell[1] + 0.5, e.cell[2] + 0.5) : new THREE.Vector3(s.x + e.dir.x * (e.len + 1.5), s.y + e.dir.y * (e.len + 1.5), s.z - 3);
-    g.slam = { t0: performance.now(), from: g.mesh.position.clone(), to, cell: !!e.cell, dir: e.dir, line: { x: s.x, y: s.y, z: s.z } };
+    const cells = e.cells && e.cells.length ? e.cells : e.cell ? [e.cell] : [];
+    let to;
+    if (cells.length) {
+      to = new THREE.Vector3();
+      for (const [x, y, z] of cells) to.add(new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5));
+      to.divideScalar(cells.length);
+    } else to = new THREE.Vector3(s.x + e.dir.x * (e.len + 1.5), s.y + e.dir.y * (e.len + 1.5), s.z - 3);
+    // 박힌 모양이 뽑은 모양과 다르면 (필드 밖 칸을 버림) 큐브를 박힌 칸에 맞춤
+    if (cells.length && cells.length !== g.mesh.children.length) {
+      while (g.mesh.children.length > cells.length) g.mesh.remove(g.mesh.children[g.mesh.children.length - 1]);
+      cells.forEach(([x, y, z], k) => g.mesh.children[k].position.set(x + 0.5 - to.x, y + 0.5 - to.y, z + 0.5 - to.z));
+    }
+    g.slam = { t0: performance.now(), from: g.mesh.position.clone(), rot: g.mesh.rotation.z % (Math.PI * 2), to, cells, dir: e.dir, line: { x: s.x, y: s.y, z: s.z } };
   }
 
   endGrab(who) {
     const g = this.grabs.get(who);
     if (!g) return;
     this.scene.remove(g.mesh);
-    g.mesh.material.dispose();
+    g.mat.dispose();
     this.dropChain(g.chain);
     this.grabs.delete(who);
   }
@@ -2340,31 +2364,50 @@ export class Renderer {
         this.endGrab(who);
         continue;
       }
-      const over = new THREE.Vector3(s.x, s.y, s.z + C.PLAYER_HEIGHT + 0.9);
+      // 내 1인칭: 덩어리가 화면을 덮지 않게 더 높이 + 반투명
+      const mine = this.vm.on && this.playerMeshes.get(who) === this.vm.src;
+      g.mat.transparent = mine || g.mat.opacity < 1;
+      if (mine) g.mat.opacity = C.HOOK_GRAB_FP_OPACITY;
+      const over = new THREE.Vector3(s.x, s.y, s.z + C.PLAYER_HEIGHT + 0.9 + g.size * 0.5 + (mine ? C.HOOK_GRAB_FP_RAISE : 0));
+      const swingR = C.HOOK_GRAB_SWING_R + g.size; // 큰 덩어리는 크게 돎 (몸에 안 박히게)
       if (!g.slam) {
-        // 뽑혀서 끌려옴 → 머리 위에서 빙빙
-        const u = Math.min(1, (now - g.t0) / g.ms);
-        const ang = now / 90;
-        const circle = over.clone().add(new THREE.Vector3(Math.cos(ang) * C.HOOK_GRAB_SWING_R, Math.sin(ang) * C.HOOK_GRAB_SWING_R, 0));
-        g.mesh.position.copy(g.from.clone().lerp(circle, u * u * (3 - 2 * u)));
-        g.mesh.rotation.set(ang, ang * 0.7, 0);
+        const t = now - g.t0;
+        const shakeMs = g.ms * C.HOOK_GRAB_SHAKE_PART; // 서버는 ms 뒤에 내려찍음 → 앞쪽은 덜덜, 뒤쪽은 머리 위로 끌려옴
+        if (t < shakeMs) {
+          // 예고: 제자리에서 덜덜 (점점 세게)
+          const k = (t / shakeMs) * C.HOOK_GRAB_SHAKE;
+          g.mesh.position.set(g.from.x + (Math.random() - 0.5) * k, g.from.y + (Math.random() - 0.5) * k, g.from.z + Math.random() * k * 0.5);
+        } else {
+          if (!g.pulled) {
+            // 뽑힘: 빈 자리에서 돌 조각·흙
+            g.pulled = true;
+            this.effects.burst(g.from, null, 0x8a7a68, 14 + 4 * g.mesh.children.length, 4, 0.12, 0.55);
+            this.effects.burst(g.from, { x: 0, y: 0 }, 0x6a5e52, 8, 5, 0.18, 0.6);
+          }
+          // 끌려옴 → 머리 위에서 빙빙 (모양이 보이게 눕힌 채 z 축으로만 돎)
+          const u = Math.min(1, (t - shakeMs) / Math.max(1, g.ms - shakeMs));
+          const ang = now / 90;
+          const circle = over.clone().add(new THREE.Vector3(Math.cos(ang) * swingR, Math.sin(ang) * swingR, 0));
+          g.mesh.position.copy(g.from.clone().lerp(circle, u * u * (3 - 2 * u)));
+          g.mesh.rotation.set(0, 0, ang * 0.5 * u);
+        }
       } else {
-        // 내려찍음: 위로 솟았다 앞으로 떨어지는 호
+        // 내려찍음: 위로 솟았다 앞으로 떨어지는 호. 도는 각은 박힐 때 0 (격자 모양과 같게)
         const u = Math.min(1, (now - g.slam.t0) / C.HOOK_SLAM_FLY_MS);
         const p = g.slam.from.clone().lerp(g.slam.to, u);
         p.z += Math.sin(Math.PI * u) * 1.2;
         g.mesh.position.copy(p);
-        g.mesh.rotation.set(0, u * 3, 0);
+        g.mesh.rotation.set(0, 0, g.slam.rot * (1 - u));
         if (u >= 1 && !g.slam.done) {
           g.slam.done = true;
-          if (g.slam.cell) {
-            // 박힘: 흙먼지 + 쾅 + 내려찍은 줄을 따라 먼지
-            this.effects.burst(g.slam.to, null, 0x8a7a68, 26, 6, 0.13, 0.7);
-            this.effects.ring({ x: g.slam.to.x, y: g.slam.to.y, z: g.slam.to.z - 0.45 }, 0xc0a880, 3.5, 0.35, true);
+          if (g.slam.cells.length) {
+            // 박힘: 칸마다 흙먼지 + 쾅 + 내려찍은 줄을 따라 먼지
+            const cs = g.slam.cells.map((c) => c.map(Math.floor));
+            for (const [x, y, z] of cs) this.effects.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.5 }, null, 0x8a7a68, Math.ceil(26 / cs.length) + 4, 6, 0.13, 0.7);
+            this.effects.ring({ x: g.slam.to.x, y: g.slam.to.y, z: g.slam.to.z - 0.45 }, 0xc0a880, 3.5 + g.size, 0.35, true);
             for (let k = 1; k <= C.HOOK_SLAM_LEN; k++) this.effects.burst({ x: g.slam.line.x + g.slam.dir.x * k, y: g.slam.line.y + g.slam.dir.y * k, z: g.slam.line.z + 0.1 }, null, 0x9a8a78, 4, 2.5, 0.1, 0.5);
-            const cell = [g.slam.to.x, g.slam.to.y, g.slam.to.z].map(Math.floor);
-            this.blockPulse([cell], 0xffffff, { jolt: -C.BLOCK_JOLT, opacity: 0.85 });
-            this.blockPulse(this.blockNeighbors([cell]), 0xffffff, { jolt: C.BLOCK_JOLT * 1.5, opacity: 0.4 });
+            this.blockPulse(cs, 0xffffff, { jolt: -C.BLOCK_JOLT, opacity: 0.85 });
+            this.blockPulse(this.blockNeighbors(cs), 0xffffff, { jolt: C.BLOCK_JOLT * 1.5, opacity: 0.4 });
             if (this.onBlast) this.onBlast(g.slam.to, true);
             this.endGrab(who); // 이제 격자에 박힌 블록이 그 자리
             continue;
@@ -2380,8 +2423,8 @@ export class Renderer {
           }
         }
       }
-      // R 밧줄: 끌어오는 동안 팽팽, 머리 위에서 돌릴 땐 원심력으로 살짝 출렁, 내려찍을 땐 팽팽
-      this.setChain(g.chain, hand, g.mesh.position.clone(), now, 0, g.slam ? 0 : C.ROPE_WOBBLE * 0.4);
+      // R 밧줄: 덜덜·끌어오는 동안 팽팽, 머리 위에서 돌릴 땐 원심력으로 살짝 출렁, 내려찍을 땐 팽팽
+      this.setChain(g.chain, hand, g.mesh.position.clone(), now, 0, g.slam || now - g.t0 < g.ms * C.HOOK_GRAB_SHAKE_PART ? 0 : C.ROPE_WOBBLE * 0.4);
     }
   }
 
