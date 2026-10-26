@@ -707,7 +707,9 @@ export class Renderer {
     else if (p.stunned && a.hs > C.ANIM_TUMBLE_MIN_SPEED) a.spin -= dt * C.ANIM_TUMBLE_SPEED;
     else a.spin += (Math.round(a.spin / (Math.PI * 2)) * Math.PI * 2 - a.spin) * (1 - Math.exp(-C.ANIM_SMOOTH * dt));
     const lean = Math.min(1, a.hs / C.MOVE_SPEED) * C.ANIM_LEAN;
-    rig.rotation.y = lean + (fig ? a.flipAngle : a.spin);
+    // 바드 기타 꽂기: 떨어지는 동안 몸이 앞으로 확 뒤집혀 거꾸로 (머리·기타가 아래)
+    a.diveFlip = (a.diveFlip || 0) + ((fig && this.dives?.has(p.id) ? C.FIGURE_DIVE_FLIP : 0) - (a.diveFlip || 0)) * (1 - Math.exp(-14 * dt));
+    rig.rotation.y = lean + (fig ? a.flipAngle + a.diveFlip : a.spin);
     rig.rotation.x = jointed ? 0 : step * C.ANIM_SWAY; // 걸을 때 좌우로 살짝 흔들
     // 승자 춤·이모트 '춤': 깡충 뛰며 제자리에서 빙글
     const emote = p.emote ?? -1;
@@ -1006,10 +1008,59 @@ export class Renderer {
       if (age > a.windup + C.FIGURE_SWING_WAIT_S) return done(); // 판정이 안 옴 (캔슬)
       return { id: a.id, move: a.move, phase: 'wind', u: a.windup > 0 ? Math.min(1, age / a.windup) : 1, air: !!a.air };
     }
+    if (a.hold) return { id: a.id, move: a.move, phase: 'strike', u: 1, air: !!a.air }; // 바드 기타 꽂기: 떨어지는 동안 타격 자세 그대로
     const s = (now - a.struck) / 1000;
     if (s < C.FIGURE_STRIKE_S) return { id: a.id, move: a.move, phase: 'strike', u: s / C.FIGURE_STRIKE_S, air: !!a.air };
     const r = (s - C.FIGURE_STRIKE_S) / a.rec;
     return r >= 1 ? done() : { id: a.id, move: a.move, phase: 'rec', u: r, air: !!a.air };
+  }
+
+  // ---------- 바드 메탈 공중 기타 꽂기 (dive ~ diveEnd) ----------
+  diveStart(e) {
+    const now = performance.now();
+    (this.dives ||= new Map()).set(e.who, { t0: now, acc: 0 });
+    const a = this.acts.get(e.who);
+    if (a && a.move === '기타 꽂기' && !a.broken) Object.assign(a, { struck: a.struck || now, hold: true });
+    else this.acts.set(e.who, { id: ++this.hitSeq, move: '기타 꽂기', t0: now, windup: 0, struck: now, rec: 0.4, broken: 0, air: true, hold: true });
+  }
+
+  // what: 'hit' 공중에서 꽂힌 쾅 · 'land' 발밑 충격파 · 'expire' 그냥 끝
+  diveEnd(e) {
+    this.dives?.delete(e.who);
+    const a = this.acts.get(e.who);
+    if (a && a.hold) Object.assign(a, { hold: false, struck: performance.now() - C.FIGURE_STRIKE_S * 1000 }); // 바로 회복으로
+    const pos = { x: e.x, y: e.y, z: e.z };
+    if (e.what === 'hit') {
+      this.effects.burst({ x: e.x, y: e.y, z: e.z - 0.2 }, null, 0xffffff, 18, 6, 0.12, 0.5);
+      this.effects.burst({ x: e.x, y: e.y, z: e.z - 0.2 }, null, 0xff3040, 14, 5, 0.14, 0.6);
+      this.effects.ring({ x: e.x, y: e.y, z: e.z - 0.3 }, 0xff3040, 1.6, 0.3, true);
+    } else if (e.what === 'land') {
+      this.effects.ring({ x: e.x, y: e.y, z: e.z + 0.08 }, 0xff3040, e.r || 1.5, 0.4, true);
+      this.effects.ring({ x: e.x, y: e.y, z: e.z + 0.05 }, 0xc0a880, (e.r || 1.5) * 1.3, 0.5, true);
+      this.effects.burst(pos, { x: 0, y: 0 }, 0x9a8a78, 22, 5, 0.14, 0.6);
+    }
+  }
+
+  // 꽂으며 떨어지는 동안: 몸 둘레로 위로 스치는 속도선 (1인칭이면 화면 둘레로 지나감)
+  updateDives(dt) {
+    if (!this.dives?.size) return;
+    for (const [who, d] of this.dives) {
+      const s = this.smooth.get(who);
+      if (!s || performance.now() - d.t0 > C.BARD_DIVE_MAX_MS + 500) {
+        this.dives.delete(who);
+        continue;
+      }
+      d.acc += dt * C.DIVE_LINE_RATE;
+      while (d.acc >= 1) {
+        d.acc -= 1;
+        const ang = Math.random() * Math.PI * 2;
+        const mine = this.vm.on && this.playerMeshes.get(who) === this.vm.src;
+        const r = mine ? C.DIVE_LINE_R_MINE + Math.random() * 0.8 : 0.45 + Math.random() * 0.6; // 내 1인칭이면 화면을 안 덮게 멀리
+        const z = s.z + Math.random() * 1.8;
+        const p = { x: s.x + Math.cos(ang) * r, y: s.y + Math.sin(ang) * r, z };
+        this.trail(p, { ...p, z: z + 0.6 + Math.random() * 0.5 }, Math.random() < 0.5 ? 0xffffff : 0xff6070, 110);
+      }
+    }
   }
 
   // ---------- 탱크 ----------
@@ -2925,6 +2976,7 @@ export class Renderer {
     this.updateNotes(state.notes || [], dt);
     this.updateAmpWaves();
     this.updateFlats();
+    this.updateDives(dt);
     this.updateGrabs();
     this.updateBeams(state);
     if (me) this.viewArm.material.color.setHex(playerColor(me, state));
@@ -2933,7 +2985,7 @@ export class Renderer {
     const armView = !!(me && me.alive) && this.skyBlend === 0 && !cam.victory && !cam.selfie && !this.third; // 3인칭은 팔 대신 내 몸
     this.vm.sync(me ? this.playerMeshes.get(me.id) : null);
     this.vm.on = armView && !!this.vm.fig;
-    this.vm.update(dt);
+    this.vm.update(dt, me ? this.actFor(me.id) : null, !!(me && this.dives?.has(me.id)), !!(me && me.bard && me.bard.ampLeft > 0));
     this.viewArm.visible = armView && !this.vm.on; // 캐릭터 몸이 아니면 (로봇) 예전 팔
     this.viewHammer.visible = !!(me && me.char === 'builder') && !heldKind(me); // 1인칭 건축가 망치 (아이템을 들면 아이템)
     // 손에 든 것: 고른 핫바 칸에 뭐가 있으면 그 색 상자 (망치가 있으면 망치가 우선)

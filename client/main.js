@@ -555,6 +555,19 @@ function handleEvent(e) {
       if (e.what !== 'expire') fx.burst({ x: e.x, y: e.y, z: e.z }, null, C.BARD_NOTE_COLOR, 10, 3, 0.07, 0.4);
       else fx.burst({ x: e.x, y: e.y, z: e.z }, null, C.BARD_NOTE_COLOR, 4, 1, 0.05, 0.3);
       break;
+    case 'dive': // 메탈 공중 기타 꽂기: 거꾸로 뒤집혀 아래로 빠르게 (속도선은 render)
+      renderer.diveStart(e);
+      sound.play('swing', { dist: e.who === myId ? 0 : distToMe(e.x, e.y, e.z) });
+      break;
+    case 'diveEnd': {
+      renderer.diveEnd(e);
+      const d = e.who === myId ? 0 : distToMe(e.x, e.y, e.z);
+      if (e.what === 'land') {
+        sound.play('land', { dist: d });
+        if (d < 3) fx.shake(e.who === myId ? 0.25 : 0.1, 250);
+      } else if (e.what === 'hit' && d < 3) fx.shake(e.who === myId ? 0.3 : 0.12, 250);
+      break;
+    }
     case 'glide': {
       // 음유 공중: 빙글 도는 동안 (snapshot glideLeft) 발밑에서 초록 반짝
       const a = playerById(e.who);

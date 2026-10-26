@@ -143,7 +143,8 @@ export class ViewModel {
         return g;
       });
     }
-    this.raw = (C.VM_RAW_POSE || []).includes(g.userData.look);
+    this.hold = (C.VM_HOLD || []).includes(g.userData.look); // 두 손으로 무기를 잡는 캐릭터 (바드 악기·대포수 대포): 팔 각을 손이 잡을 점에서 거꾸로 셈
+    this.instr = fig.forms ? { bard: fig.lute ? twin.get(fig.lute.lute) : null, metal: fig.guitar ? twin.get(fig.guitar) : null } : null;
     this.spin = (C.VM_SPIN || []).includes(g.userData.look); // 바드 활강처럼 계속 도는 건 화면을 덮어서 뺌
     this.cannon = fig.cannon ? twin.get(fig.cannon) : null;
     this.shield = fig.shields ? twin.get(fig.shields.front) : null; // 팔을 이미 몸 앞에 드는 캐릭터 (바드: 악기를 가슴에)
@@ -153,8 +154,103 @@ export class ViewModel {
     this.char = g.userData.look;
   }
 
+  // 두 마디 팔: 손(손목 관절)이 target(허리 좌표)에 닿게 어깨 앞·옆 각과 팔꿈치를 셈. 못 닿으면 쭉 뻗어 그쪽으로
+  reach(i, target) {
+    const { upper: a, lower: b } = this.fig.d;
+    const sh = this.twin.shoulders[i];
+    const t = target.clone().sub(sh.position);
+    const L = Math.min(a + b - 1e-3, Math.max(Math.abs(a - b) + 1e-3, t.length()));
+    const beta = Math.PI - Math.acos(Math.max(-1, Math.min(1, (a * a + b * b - L * L) / (2 * a * b)))); // 팔꿈치 굽힘
+    const r = Math.max(1e-4, Math.hypot(t.y, t.z));
+    const alpha = Math.atan2(t.y, -t.z); // 팔이 놓인 면을 앞뒤 축(x)으로 돌린 각
+    const h0x = b * Math.sin(beta);
+    const h0z = -a - b * Math.cos(beta);
+    const f = Math.atan2(t.x, r) - Math.atan2(h0x, -h0z); // 그 면 안에서 앞으로 든 각
+    sh.rotation.set(alpha, -f, 0);
+    this.twin.elbows[i].rotation.y = -beta;
+  }
+
+  // obj 의 점 p (obj 좌표) → 허리 좌표
+  waistPoint(obj, p) {
+    const v = new THREE.Vector3(...p);
+    for (let o = obj; o && o !== this.twin.waist; o = o.parent) {
+      o.updateMatrix();
+      v.applyMatrix4(o.matrix);
+    }
+    return v;
+  }
+
+  // 화면 기준 추가 회전 (어깨 높이 기준점을 축으로): yaw 좌우로 휩쓸기, pitch 위아래, roll 기울기
+  swing(yaw, pitch, roll) {
+    this.anchor.quaternion
+      .copy(this.baseQuat)
+      .premultiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch, yaw, roll + ((C.VM_ROLL || {})[this.char] || 0), 'YXZ')));
+  }
+
+  // 바드: 악기를 늘 두 손에 (왼손 목·오른손 줄). 음유 평타 = 줄 긁기, 메탈 평타 = 기타째 휘두르기·내려치기, 공중 꽂기 = 기타 머리를 아래로
+  bardHold(act, t, dive, amp) {
+    const metal = this.fig.form === 'metal';
+    const ins = metal ? this.instr.metal : this.instr.bard;
+    if (!ins) return [0, 0];
+    const P = C.VM_GRIP[metal ? 'guitar' : 'lute'];
+    let strum = Math.sin(t * 3) * 0.01; // 가만히: 손끝만 살짝
+    let yaw = 0;
+    let pitch = 0;
+    let dx = 0;
+    let roll = 0;
+    const e = (u) => u * u * (3 - 2 * u);
+    if (amp) strum = Math.sin(t * 40) * 0.05; // R 앰프 연주: 미친 듯이 긁기
+    if (act && act.phase !== 'broken') {
+      const u = act.u;
+      if (act.move === '류트 음파' || act.move === 'bardSong') {
+        // 줄 긁기: 준비 때 손을 줄 위로 들었다가 → 타격 때 확 긁어내림 → 손이 줄 위에서 튕김
+        strum = act.phase === 'wind' ? 0.07 * e(u) : act.phase === 'strike' ? 0.07 - 0.15 * e(u) : -0.08 * (1 - e(u)) + Math.sin(u * 20) * 0.02 * (1 - u);
+        pitch = act.phase === 'strike' ? -0.08 * Math.sin(Math.PI * u) : 0;
+      } else if (act.move === '기타 후려치기') {
+        // 기타째 오른쪽으로 젖혔다가 → 화면을 가로질러 왼쪽으로 후려침 (기타가 조준점 아래를 휙 지나감)
+        yaw = act.phase === 'wind' ? -0.4 * e(u) : act.phase === 'strike' ? -0.4 + 1.1 * e(u) : 0.7 * (1 - e(u));
+        dx = act.phase === 'wind' ? 0.08 * e(u) : act.phase === 'strike' ? 0.08 - C.VM_SWEEP * e(u) : -(C.VM_SWEEP - 0.08) * (1 - e(u));
+        pitch = act.phase === 'strike' ? 0.25 * Math.sin(Math.PI * u) : 0;
+      } else if (act.move === '기타 내려치기') {
+        // 머리 위로 들었다가 → 앞 아래로 쾅
+        pitch = act.phase === 'wind' ? 0.9 * e(u) : act.phase === 'strike' ? 0.9 - 1.5 * e(u) : -0.6 * (1 - e(u));
+      } else if (act.move === 'bardRiff' || act.move === 'bardHeal') {
+        // 폼 전환: 악기를 번쩍 들어 올림 (메탈 리프는 더 높이 + 긁기)
+        const lift = act.move === 'bardRiff' ? 0.75 : 0.35;
+        pitch = act.phase === 'rec' ? lift * (1 - e(u)) : lift;
+        if (act.move === 'bardRiff') strum = Math.sin(t * 36) * 0.05;
+      } else if (act.move === '기타 꽂기') {
+        // 기타를 들어 올렸다가 → 세워서 머리를 아래로 (떨어지는 동안은 dive)
+        pitch = act.phase === 'wind' ? 0.6 * e(u) : act.phase === 'strike' ? 0.6 * (1 - e(u)) : 0;
+        roll = act.phase === 'strike' ? C.VM_DIVE_ROLL * e(u) : act.phase === 'rec' ? C.VM_DIVE_ROLL * (1 - e(u)) : 0;
+      }
+    }
+    if (dive) roll = C.VM_DIVE_ROLL + Math.sin(t * 30) * 0.03; // 꽂으며 떨어지는 동안: 기타 머리(왼쪽 끝)가 화면 아래로 내리꽂힘, 바람에 떨림
+    if (dive) dx = -0.12; // 기타를 화면 가운데로 모아 내리꽂음 (들어 올려야 숙여도 화면 안)
+    this.reach(1, this.waistPoint(ins, P.neck));
+    this.reach(0, this.waistPoint(ins, [P.body[0], P.body[1] + strum, P.body[2]]));
+    return [yaw, pitch, 0, dx, dive ? C.VM_DIVE_LIFT : 0, roll];
+  }
+
+  // 대포수: 어깨에 멘 대포를 두 손으로 (오른손 뒤 손잡이·왼손 앞 받침). 쏘면 대포·두 손이 같이 뒤로 튐, 탄 없음 후려치기 = 대포째 휘두름
+  cannonHold(act) {
+    const P = C.VM_GRIP.cannon;
+    this.reach(0, this.waistPoint(this.cannon, P.rear));
+    this.reach(1, this.waistPoint(this.cannon, P.front));
+    const e = (u) => u * u * (3 - 2 * u);
+    const kick = this.fig.cannonKickAt ? Math.max(0, 1 - (performance.now() - this.fig.cannonKickAt) / (C.CANNON_KICK_MS || 1)) : 0;
+    let yaw = 0;
+    let pitch = C.VM_CANNON_KICK_PITCH * kick * kick; // 반동: 대포 끝이 들림
+    if (act && act.move === '후려치기' && act.phase !== 'broken') {
+      const u = act.u;
+      yaw = act.phase === 'wind' ? -0.6 * e(u) : act.phase === 'strike' ? -0.6 + 1.6 * e(u) : 1.0 * (1 - e(u));
+    }
+    return [yaw, pitch, kick];
+  }
+
   // 매 프레임: 관절 베끼기 + 어깨 각 바꾸기 + 걷기·숨쉬기 흔들림
-  update(dt) {
+  // act: 내 공격 동작 (render.actFor), dive: 바드 기타 꽂기로 떨어지는 중, playing: 바드 R 앰프 연주 중
+  update(dt, act = null, dive = false, playing = false) {
     const fig = this.fig;
     if (!fig || !this.on) return;
     for (const [s, t] of this.pairs) {
@@ -164,10 +260,11 @@ export class ViewModel {
       t.visible = s.visible;
     }
     if (this.cannon) {
-      // 어깨 대포는 카메라 바로 옆이라 그대로면 화면 오른쪽을 다 덮음 → 작게, 오른쪽 아래로
+      // 어깨 대포는 카메라 바로 옆이라 그대로면 화면 오른쪽을 다 덮음 → 작게, 앞으로 내밀어 두 손이 닿게 (바주카처럼)
       this.cannon.scale.multiplyScalar(C.VM_CANNON[0]);
-      this.cannon.position.y += C.VM_CANNON[1];
-      this.cannon.position.z += C.VM_CANNON[2];
+      this.cannon.position.x += C.VM_CANNON[1];
+      this.cannon.position.y += C.VM_CANNON[2];
+      this.cannon.position.z += C.VM_CANNON[3];
     }
     if (this.shield) {
       // 탱크 앞 방패: 그대로면 조준점 아래 가운데를 꽉 채움 → 작게, 왼쪽 아래로 비스듬히 (왼팔 방패)
@@ -181,7 +278,7 @@ export class ViewModel {
     // 몸 전체 돌기(광전사 소용돌이·회전 베기·갈고리 스핀)는 VM_SPIN 캐릭터만 그대로: 무기를 든 팔이 화면을 휩쓸고 지나감
     this.twin.waist.rotation.set(w.x * k, (w.y - fig.d.hunch) * k, w.z * k + (this.spin ? fig.hips.rotation.z : 0));
     for (let i = 0; i < 2; i++) {
-      if (this.raw) continue;
+      if (this.hold) continue;
       const side = i ? 1 : -1;
       const sh = fig.shoulders[i].rotation;
       const fwd = -sh.y;
@@ -220,10 +317,14 @@ export class ViewModel {
     const amp = Math.min(1, (an.hs || 0) / C.MOVE_SPEED);
     const t = an.t || 0;
     const [x, y, z] = C.VM_POS[this.char] || C.VM_POS.default;
+    let sw = [0, 0, 0];
+    if (this.instr) sw = this.bardHold(act, t, dive, playing);
+    else if (this.hold && this.cannon) sw = this.cannonHold(act);
+    this.swing(sw[0], sw[1], sw[5] || 0);
     this.anchor.position.set(
-      x + Math.sin(an.walk || 0) * C.VM_BOB * 0.6 * amp,
-      y - Math.abs(Math.cos(an.walk || 0)) * C.VM_BOB * amp + Math.sin(t * 2) * C.VM_BREATH,
-      z,
+      x + (sw[3] || 0) + Math.sin(an.walk || 0) * C.VM_BOB * 0.6 * amp, // 휘두르기: 화면을 가로질러 옮김
+      y + (sw[4] || 0) - Math.abs(Math.cos(an.walk || 0)) * C.VM_BOB * amp + Math.sin(t * 2) * C.VM_BREATH,
+      z + (sw[2] || 0) * C.VM_CANNON_KICK_BACK, // 대포 반동: 화면 쪽으로 툭
     );
   }
 
