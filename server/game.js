@@ -3384,6 +3384,7 @@ export class Game {
         empower: Math.max(0, p.empowerUntil - this.time), // 닌자 R 강화 남은 시간
         loaded: p.char === 'hook' ? p.loaded : undefined, // 갈고리 장전
         ultMax: this.ultMax(p), // 필살기 게이지 필요량 (사냥꾼 2배)
+        ultTarget: p.char === 'hunter' ? this.onField(p) && this.shotTargets(p).some((t) => !this.lineBlocked(p, t)) : undefined, // 사냥꾼: 지금 R 쏠 대상이 있나 (R 버튼 회색)
         marks: [...p.marks].map(([by, m]) => ({ by, n: m.n, left: Math.max(0, C.HUNTER_MARK_MS - (this.time - m.at)) })), // 이 사람에게 붙은 사냥꾼 표식
         respawnIn: !p.alive && p.respawnAt ? Math.max(0, p.respawnAt - this.time) : null,
         shieldLeft: Math.max(0, p.shieldUntil - this.time),
