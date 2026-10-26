@@ -9,6 +9,17 @@ C.ITEMS_ENABLED = true; // 이 파일의 아이템 테스트는 켠 상태로 (�
 
 const TICK = 1000 / C.TICK_RATE;
 
+// 고정 시드 난수 (2026-10-26: Math.random 을 쓰던 테스트가 가끔 흔들렸음). 테스트마다 다른 k.
+// 다른 시드로도 성질이 맞는지 확인: TEST_SEED=7 npm test
+const SEED0 = Number(process.env.TEST_SEED || 1);
+function seeded(k = 0) {
+  let s = (SEED0 * 7919 + k * 104729) >>> 0 || 1;
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 2 ** 32;
+  };
+}
+
 function setup({ log = () => {} } = {}) {
   const lines = [];
   const g = new Game((s) => {
@@ -743,7 +754,7 @@ test('인원이 섞이면 로그에 인원수별 압사 비율이 따로 찍힌�
 
 test('층 클리어 유도: 유도를 세게 하면 한 칸 모양 빈자리를 거의 항상 채운다 (기본값은 약하게)', () => {
   const g = new Game();
-  g.rng = Math.random;
+  g.rng = seeded(1);
   const saved = C.CLEAR_BIAS;
   C.CLEAR_BIAS = 2;
   try {
@@ -775,7 +786,7 @@ test('층 클리어 유도 끄기 (CLEAR_BIAS=0): 주어진 무작위 모양 그
 
 test('층 클리어 유도: 유도를 세게 하면 구멍을 만드는 자리는 거의 안 고른다', () => {
   const g = new Game();
-  g.rng = Math.random;
+  g.rng = seeded(2);
   const saved = C.CLEAR_BIAS;
   C.CLEAR_BIAS = 2;
   // 바닥에 계단: x<3 은 1칸 높이. 걸치면 구멍이 생긴다
@@ -790,10 +801,11 @@ test('층 클리어 유도: 유도를 세게 하면 구멍을 만드는 자리�
 });
 
 // ---------- 봇 ----------
+let botSetups = 0; // 부를 때마다 다른 시드 (같은 시드면 여러 판이 똑같이 흘러감)
 function setupBot() {
   const lines = [];
   const g = new Game((x) => lines.push(x));
-  g.rng = Math.random;
+  g.rng = seeded(300 + botSetups++);
   const human = g.addPlayer(1);
   const bot = g.addBot();
   return { g, lines, human, bot };
@@ -889,14 +901,15 @@ test('봇: 가까이 있는 상대를 민다', () => {
 test('봇끼리 20판: 예외 없이 판이 끝나고, 봇 판은 로그에 따로 센다', () => {
   const lines = [];
   const g = new Game((x) => lines.push(x));
-  g.rng = Math.random;
+  g.rng = seeded(4);
   g.addBot();
   g.addBot();
   for (let r = 0; r < 20; r++) {
     g.startRound();
     const t0 = g.time;
-    while (g.phase === 'playing' && g.time - t0 < 180000) g.tick(TICK);
-    assert.equal(g.phase, 'over', `${r + 1}판이 3분 안에 안 끝남`);
+    // 멈추지 않고 끝나는지 (봇끼리 판 1200판: 중앙 1분 15초, 가장 긴 판 3분 16초 → 5분 안)
+    while (g.phase === 'playing' && g.time - t0 < 300000) g.tick(TICK);
+    assert.equal(g.phase, 'over', `${r + 1}판이 5분 안에 안 끝남`);
   }
   assert.ok(lines.some((l) => l.includes('2인(봇 2) 판 20판')), lines.slice(-3).join('\n'));
 });
@@ -906,7 +919,7 @@ test('봇: 거리가 같은 상대가 여럿이면 늘 사람만 노리지 않�
   let p3Pushed = 0;
   for (let r = 0; r < 40; r++) {
     const g = new Game();
-    g.rng = Math.random;
+    g.rng = seeded(5 * 100 + r);
     g.addPlayer(1);
     g.addBot();
     const p3 = g.addBot();
@@ -956,7 +969,7 @@ test('블록 가속: 처음엔 자동 블록 CONCURRENT_START(2)개, 시간이 �
 
 test('자동 블록은 다른 블록과 같은 기둥에 안 떨어진다', () => {
   const { g } = setup();
-  g.rng = Math.random;
+  g.rng = seeded(6);
   for (let i = 0; i < 30; i++) {
     g.pieces = [];
     g.refreshPieceCells();
@@ -1130,7 +1143,7 @@ test('블록이 착지하면 land 이벤트(셀 위치)가 나온다', () => {
 // ---------- 2단계 C: 아이템 ----------
 test('아이템 생성: 조종권 말고는 필드에 ITEM_MAX_ON_FIELD 개까지, 종류는 ITEM_POOL 에서', () => {
   const { g, p1, p2 } = setup();
-  g.rng = Math.random;
+  g.rng = seeded(7);
   p1.x = 0.5;
   p2.x = 0.5;
   g.controlItemNextAt = Infinity;
@@ -1435,7 +1448,7 @@ test('맵: 모든 맵·모든 판 크기(2·3·4인)에서 시작 위치마다 �
 
 test('맵: 무작위는 판마다 바뀌고, 이상한 값·판 진행 중 변경은 거부', () => {
   const g = new Game();
-  g.rng = Math.random;
+  g.rng = seeded(8);
   g.addPlayer(1);
   g.addPlayer(2);
   assert.equal(g.setMap('nope'), false);
