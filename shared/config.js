@@ -324,6 +324,8 @@ export const CONFIG = {
   SKILL_AURA_COLOR: 0xffffff, // F: 발밑에 얇은 고리가 짧게 퍼지고 몸이 순간 하얗게 번쩍
   SKILL_AURA_MS: 300,
   SKILL_GLOW_MS: 140,
+  ULT_READY_SPARKLE_RATE: 2, // 그 빛에서 위로 오르는 반짝이 (초당, 아주 적게)
+  ULT_READY_AURA_OPACITY: 0.24, // R 게이지가 찬 상대 몸 둘레 옅은 빛 (ULT_AURA_COLOR, 숨 쉬듯 75~100%)
   ULT_AURA_COLOR: 0x8fe6ff, // R: 몸이 하늘색으로 빛나는 동안 반짝이가 위로 올라감 + 고리 두 겹
   ULT_AURA_MS: 900,
   COMBO_TEXT_MS: 900, // 내가 때리거나 맞은 콤보 'N HIT' 글자
@@ -694,8 +696,6 @@ export const CONFIG = {
   ARROW_FLY_MS: 90, // 석궁 화살이 날아가는 시간 (판정은 즉시, 애니만)
   ARROW_STUCK_MS: 1500, // 블록에 막힌 화살이 박혀 남는 시간
   ARROW_TRAIL_MS: 220, // 화살 지나간 빨간 줄
-  SKILL_ICON_SIZE: 0.1, // 상대 머리 위 F 아이콘 크기 (화면 높이 비율, 이름표 0.13)
-  SKILL_ICON_CENTER_X: -1.75, // 아이콘 기준점: 음수일수록 이름표 오른쪽으로
   ULT_FAIL_MS: 900, // R 을 못 썼을 때 R 칸에 짧은 이유가 보이는 시간
   ULT_FAIL_SHAKE_MS: 350, // R 칸이 빨갛게 흔들리는 시간
   CAST_DROP_BLINK_MS: 400, // 기억해 둔 F·R 이 버려졌을 때 칸이 깜빡이는 시간

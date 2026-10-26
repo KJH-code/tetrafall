@@ -1349,61 +1349,66 @@ export class Renderer {
     this.huntEye(g, !!mine && p.alive && p.id !== myId);
   }
 
-  // 상대 F 읽기: 이름표 오른쪽에 작은 동그란 F 아이콘 (화면 크기 고정). 쓸 수 있으면 흰 바탕 + 노란 테,
-  // 쿨 중이면 회색 + 남은 쿨 비율만큼 테두리 호. 나와 캐릭터 없는 사람은 안 보임. 바뀔 때만 다시 그림
-  updateSkillIcon(g, p, myId) {
-    const total = p.char && C.SKILL_CD_MS[p.char];
-    const show = !!total && p.id !== myId && p.alive;
-    let ic = g.userData.skillIcon;
-    if (!show) {
-      if (ic) ic.sprite.visible = false;
+  // R 게이지가 찬 상대: 발밑~몸 둘레에 옅은 하늘색 빛 (필살기 빛과 같은 계열, 압사 빨강·치명타 노랑과 다른 색). 은은하게 숨 쉬듯.
+  // 나는 안 그림 (HUD 로 앎). 사냥꾼은 ultMax(200) 기준
+  updateUltAura(g, p, s, myId, dt) {
+    const full = p.alive && !p.master && p.char && p.id !== myId && p.ult >= (p.ultMax || C.ULT_MAX);
+    let au = g.userData.ultAura;
+    if (!full) {
+      if (au) au.grp.visible = false;
       return;
     }
-    if (!ic) {
-      const canvas = document.createElement('canvas');
-      canvas.width = canvas.height = 64;
-      const tex = new THREE.CanvasTexture(canvas);
-      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false, transparent: true, sizeAttenuation: false }));
-      sprite.scale.set(C.SKILL_ICON_SIZE, C.SKILL_ICON_SIZE, 1);
-      sprite.center.set(C.SKILL_ICON_CENTER_X, 0.5); // 이름표(같은 높이) 오른쪽으로
-      sprite.position.z = C.PLAYER_HEIGHT + 0.45;
-      sprite.renderOrder = 12;
-      g.add(sprite);
-      ic = g.userData.skillIcon = { sprite, canvas, tex, key: '' };
+    if (!au) {
+      if (!this.ultAuraTex) {
+        // 아래가 밝고 위로 사라지는 세로 그라데이션 (빛기둥 옆면) / 가운데가 밝은 원 (바닥)
+        const c = document.createElement('canvas');
+        c.width = 4;
+        c.height = 64;
+        const x = c.getContext('2d');
+        const gr = x.createLinearGradient(0, 64, 0, 0);
+        gr.addColorStop(0, 'rgba(255,255,255,1)');
+        gr.addColorStop(0.35, 'rgba(255,255,255,0.45)');
+        gr.addColorStop(1, 'rgba(255,255,255,0)');
+        x.fillStyle = gr;
+        x.fillRect(0, 0, 4, 64);
+        this.ultAuraTex = new THREE.CanvasTexture(c);
+        const d = document.createElement('canvas');
+        d.width = d.height = 64;
+        const y = d.getContext('2d');
+        const rg = y.createRadialGradient(32, 32, 4, 32, 32, 32);
+        rg.addColorStop(0, 'rgba(255,255,255,0.9)');
+        rg.addColorStop(0.7, 'rgba(255,255,255,0.35)');
+        rg.addColorStop(1, 'rgba(255,255,255,0)');
+        y.fillStyle = rg;
+        y.fillRect(0, 0, 64, 64);
+        this.ultFloorTex = new THREE.CanvasTexture(d);
+      }
+      const mk = (map) => noOutline(new THREE.MeshBasicMaterial({ color: C.ULT_AURA_COLOR, map, transparent: true, opacity: C.ULT_READY_AURA_OPACITY, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+      const grp = new THREE.Group();
+      const wall = new THREE.CylinderGeometry(0.42, 0.5, C.PLAYER_HEIGHT * 1.1, 20, 1, true);
+      wall.rotateX(Math.PI / 2);
+      wall.translate(0, 0, (C.PLAYER_HEIGHT * 1.1) / 2);
+      const wallMat = mk(this.ultAuraTex);
+      const floorMat = mk(this.ultFloorTex);
+      const wallM = new THREE.Mesh(wall, wallMat);
+      const floorM = new THREE.Mesh(new THREE.CircleGeometry(0.75, 24), floorMat);
+      floorM.position.z = 0.03;
+      for (const m of [wallM, floorM]) {
+        m.renderOrder = 6;
+        grp.add(m);
+      }
+      this.scene.add(grp);
+      au = g.userData.ultAura = { grp, mats: [wallMat, floorMat] };
     }
-    ic.sprite.visible = true;
-    const left = Math.max(0, Math.min(1, (p.skillCd || 0) / total));
-    const step = left > 0 ? Math.ceil(left * 16) : 0; // 16단계로만 다시 그림
-    const label = this.skillKey || 'F';
-    const key = `${step}|${label}`;
-    if (key === ic.key) return;
-    ic.key = key;
-    const c = ic.canvas.getContext('2d');
-    c.clearRect(0, 0, 64, 64);
-    const ready = step === 0;
-    c.beginPath();
-    c.arc(32, 32, 25, 0, Math.PI * 2);
-    c.fillStyle = ready ? 'rgba(255,255,255,0.92)' : 'rgba(70,70,70,0.75)';
-    c.fill();
-    c.lineWidth = 8;
-    if (ready) {
-      c.strokeStyle = '#ffd23a';
-      c.stroke();
-    } else {
-      // 남은 쿨: 12시부터 시계 방향으로 남은 만큼 어두운 호, 나머지는 회색 테
-      c.strokeStyle = 'rgba(160,160,160,0.9)';
-      c.stroke();
-      c.beginPath();
-      c.arc(32, 32, 25, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (step / 16));
-      c.strokeStyle = '#222';
-      c.stroke();
+    au.grp.visible = true;
+    au.grp.position.set(s.x, s.y, s.z);
+    const breathe = 0.75 + 0.25 * Math.sin(performance.now() / 420);
+    for (const m of au.mats) m.opacity = C.ULT_READY_AURA_OPACITY * breathe;
+    // 가끔 반짝이 하나가 몸 둘레에서 위로 (필살기 빛과 같은 느낌, 아주 적게)
+    if (Math.random() < dt * C.ULT_READY_SPARKLE_RATE) {
+      const a = Math.random() * Math.PI * 2;
+      this.effects.burst({ x: s.x + Math.cos(a) * 0.4, y: s.y + Math.sin(a) * 0.4, z: s.z + 0.2 + Math.random() * 0.8 }, { x: 0, y: 0 }, C.ULT_AURA_COLOR, 1, 0.6, 0.05, 0.6);
     }
-    c.fillStyle = ready ? '#222' : 'rgba(230,230,230,0.8)';
-    c.font = `bold ${label.length > 2 ? 18 : 28}px sans-serif`;
-    c.textAlign = 'center';
-    c.textBaseline = 'middle';
-    c.fillText(label.slice(0, 4), 32, 34);
-    ic.tex.needsUpdate = true;
   }
 
   // 사냥꾼의 눈: 몸 부품마다 같은 모양의 빨간 복사본을 붙여, 블록에 가려진 부분에만 그림 (GreaterDepth).
@@ -2331,7 +2336,7 @@ export class Renderer {
       }
       label.sprite.visible = p.alive && !(p.id === myId && this.third); // 3인칭에서 내 % 는 화면 아래에 (머리 위와 둘 다 있으면 겹침)
       this.updateHuntMarks(g, p, myId);
-      this.updateSkillIcon(g, p, myId);
+      this.updateUltAura(g, p, s, myId, dt);
       if (p.char === 'berserker' || g.userData.whirlFx || g.userData.dizzyStars) this.updateWhirlFx(g, p, s, dt);
     }
     for (const [id, g] of this.playerMeshes) {
@@ -2339,6 +2344,7 @@ export class Renderer {
         const w = g.userData.whirlFx; // 씬에 따로 붙인 광전사 효과도 치움
         if (w) this.scene.remove(w.ring, w.trail);
         for (const m of g.userData.dizzyStars || []) this.scene.remove(m);
+        if (g.userData.ultAura) this.scene.remove(g.userData.ultAura.grp);
         this.scene.remove(g);
         this.playerMeshes.delete(id);
         this.smooth.delete(id);
