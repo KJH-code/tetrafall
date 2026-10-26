@@ -45,6 +45,7 @@ renderer.onBlast = (pos, big) => {
   sound.play('boom', { dist: d });
   if (d !== undefined && d < (big ? 7 : 4)) fx.shake(big ? 0.4 : 0.15, big ? 450 : 200);
 };
+renderer.onArrowStuck = (pos) => sound.play('land', { dist: distToMe(pos.x, pos.y, pos.z) }); // 화살이 블록에 박힘
 document.addEventListener('pointerdown', () => sound.unlock());
 document.addEventListener('keydown', () => sound.unlock());
 
@@ -207,6 +208,60 @@ function handleEvent(e) {
     case 'ultFail': // 내 R 을 못 씀: R 칸이 빨갛게 흔들림 + 아주 짧은 글자
       if (e.who === myId) slotFail(e.reason);
       return;
+    // ---- 사냥꾼 ----
+    case 'mark': {
+      // 표식 +1: 맞은 사람 머리 위에서 빨간 불꽃 (개수는 snapshot marks 로 머리 위에)
+      const t = playerById(e.target);
+      if (t) fx.burst({ x: t.x, y: t.y, z: t.z + C.PLAYER_HEIGHT + 0.3 }, null, 0xff3a2a, 10 + e.n * 4, 2.5, 0.08, 0.4);
+      if (e.by === myId || e.target === myId) sound.play('pickup', { dist: 0 });
+      return;
+    }
+    case 'markGone': {
+      const t = playerById(e.target);
+      if (t) fx.burst({ x: t.x, y: t.y, z: t.z + C.PLAYER_HEIGHT + 0.3 }, null, 0x886666, 5, 1.2, 0.06, 0.3);
+      return;
+    }
+    case 'leapWarn': {
+      // 추적 도약 예고: 네 발로 웅크림 + 덮칠 대상까지 바닥에 빨간 줄
+      renderer.skillMove(e.who, 'hunterLeap', e.ms);
+      const a = playerById(e.who);
+      const t = e.target !== null && e.target !== undefined ? playerById(e.target) : null;
+      if (a && t) renderer.trail({ x: a.x, y: a.y, z: a.z + 0.08 }, { x: t.x, y: t.y, z: t.z + 0.08 }, 0xff3020, e.ms + C.HUNTER_LEAP_MS);
+      if (a) fx.burst({ x: a.x, y: a.y, z: a.z + 0.1 }, null, 0xc0a070, 6, 1.5, 0.08, 0.3);
+      break;
+    }
+    case 'leap':
+      renderer.skillStrike(e.who, 'hunterLeap');
+      fx.burst({ x: e.from.x, y: e.from.y, z: e.from.z + 0.1 }, null, 0xc0a070, 14, 3.5, 0.11, 0.45);
+      sound.play('swing', { dist: e.who === myId ? 0 : distToMe(e.from.x, e.from.y, e.from.z) });
+      setTimeout(() => fx.burst({ x: e.to.x, y: e.to.y, z: e.to.z + 0.1 }, null, 0xc0a070, 12, 3, 0.1, 0.4), e.ms);
+      break;
+    case 'aim': {
+      // 처형 사격 조준: 석궁을 꺼내 겨눔 + 대상마다 빨간 조준점. 내가 대상이면 화면 가장자리가 붉게 + 째깍
+      renderer.skillMove(e.who, 'hunterAim', e.ms);
+      renderer.aimAt(e);
+      if ((e.targets || []).includes(myId)) {
+        flashScreen('rgba(255,0,0,.22)');
+        sound.play('tick', { dist: 0 });
+      }
+      break;
+    }
+    case 'shot': {
+      renderer.skillStrike(e.who, 'hunterAim');
+      renderer.shoot(e);
+      sound.play('fire', { dist: e.who === myId ? 0 : distToMe(e.from.x, e.from.y, e.from.z) });
+      break;
+    }
+    case 'ultRefund': // 표식 3개 대상을 맞혀 R 게이지 돌려받음: 노란 빛 + 내 R 칸 반짝
+      renderer.aura(e.who, true);
+      if (e.who === myId) {
+        const r = $('skill-r');
+        r.classList.remove('glint');
+        void r.offsetWidth;
+        r.classList.add('glint');
+        sound.play('pickup', { dist: 0 });
+      }
+      break;
     case 'castDrop': // 기억해 둔 F·R 이 버려짐: 그 칸이 살짝 깜빡 (글자 없음)
       if (e.who === myId) slotBlink(e.kind === 'ult' ? 'skill-r' : 'skill-f');
       return;
@@ -229,6 +284,7 @@ function handleEvent(e) {
       break;
     case 'interrupt': // 내 공격이 맞아서 끊김: 글자 없이 몸 동작만
       renderer.interrupt(e.who);
+      if (e.kind === 'ult') renderer.aimEnd(e.who); // 조준 중에 끊긴 처형 사격
       break;
     case 'blink': // 닌자 순간 베기: 손발 다 뻗고 돌진 + 몸이 빠르게 미끄러져 감 (잔상·바람 줄) (공중에서도)
       renderer.skillMove(e.who, 'ninjaDash');
@@ -1545,6 +1601,7 @@ function updateBottom(p) {
     p.ammo > 0 ? `투사체 ×${p.ammo}` : p.bricks > 0 ? `설치 1×2 ×${p.bricks} ${p.brickSide ? '옆' : '앞'}` : p.bombs > 0 ? `폭탄 ×${p.bombs}` : '아이템 —';
   if (p.iframeLeft > 0) buffs.push(`무적 ${(p.iframeLeft / 1000).toFixed(1)}s`);
   updateSkills(p);
+  updateMyMarks(p);
   const key = `${buffs.join('|')}#${item}`;
   if (key === bottomKey) return;
   bottomKey = key;
@@ -1564,9 +1621,15 @@ function updateSkills(p) {
   f.querySelector('.name').textContent = `${C.SKILL_NAMES[p.char]} ${p.skillCd > 0 ? `${(p.skillCd / 1000).toFixed(1)}s` : ''}`;
   f.querySelector('.fill').style.width = `${p.skillCd > 0 ? (1 - p.skillCd / cdTotal) * 100 : 100}%`;
   f.classList.toggle('ready', p.skillCd <= 0);
-  r.querySelector('.name').textContent = performance.now() < ultFailUntil ? ultFailText : `${C.ULT_NAMES[p.char]} ${p.ult >= C.ULT_MAX ? '준비!' : `${p.ult}%`}`;
-  r.querySelector('.fill').style.width = `${(p.ult / C.ULT_MAX) * 100}%`;
-  r.classList.toggle('ready', p.ult >= C.ULT_MAX);
+  const ultMax = p.ultMax || C.ULT_MAX; // 사냥꾼은 2배
+  const full = p.ult >= ultMax;
+  const pct = Math.floor((p.ult / ultMax) * 100);
+  // 사냥꾼: 게이지가 찼어도 보는 방향에 표식 대상이 없으면 회색 (눌러도 안 쓰임)
+  const dim = full && p.char === 'hunter' && !huntTargetAhead(p);
+  r.querySelector('.name').textContent = performance.now() < ultFailUntil ? ultFailText : `${C.ULT_NAMES[p.char]} ${full ? '준비!' : `${pct}%`}`;
+  r.querySelector('.fill').style.width = `${Math.min(100, (p.ult / ultMax) * 100)}%`;
+  r.classList.toggle('ready', full && !dim);
+  r.style.filter = dim ? 'grayscale(1) brightness(.7)' : '';
   // 갈고리 장전: R 칸 옆 작은 탄 (금색 = 장전, 빈 고리 = 빈 총)
   const ammo = $('ammo');
   ammo.classList.toggle('hidden', p.char !== 'hook');
@@ -1580,8 +1643,33 @@ function updateSkills(p) {
   lastSelf = { ult: p.ult, damage: p.damage };
 }
 let lastSelf = null;
+// 사냥꾼 R 을 지금 쓸 수 있나 (근사: 보는 방향 각·사거리 안 내 표식 대상. 블록 가림은 안 봄, 서버가 최종 판정)
+function huntTargetAhead(p) {
+  const fx = Math.cos(input.yaw);
+  const fy = Math.sin(input.yaw);
+  const cosHalf = Math.cos(((C.HUNTER_SHOT_ANGLE_DEG / 2) * Math.PI) / 180);
+  return state.players.some((t) => {
+    if (t.id === p.id || !t.alive || !(t.marks || []).some((m) => m.by === p.id)) return false;
+    const dx = t.x - p.x;
+    const dy = t.y - p.y;
+    const d = Math.hypot(dx, dy);
+    return d <= C.HUNTER_SHOT_RANGE && (d < 0.01 || (dx * fx + dy * fy) / d >= cosHalf);
+  });
+}
+// 내게 붙은 표식 (1인칭이라 머리 위가 안 보임): 화면 위 가운데 빨간 마름모, 사라지기 직전 깜빡
+const myMarksEl = document.createElement('div');
+myMarksEl.id = 'my-marks';
+Object.assign(myMarksEl.style, { position: 'fixed', top: '13%', left: '50%', transform: 'translateX(-50%)', color: '#ff3a2a', fontSize: '26px', letterSpacing: '6px', textShadow: '0 0 4px #000, 0 0 2px #000', pointerEvents: 'none', zIndex: 5 });
+document.body.append(myMarksEl);
+function updateMyMarks(p) {
+  const list = (p && p.alive && p.marks) || [];
+  const m = list.reduce((a, b) => (!a || b.n > a.n ? b : a), null);
+  const blink = m && m.left < C.MARK_BLINK_MS && Math.floor(performance.now() / C.MARK_BLINK_PERIOD_MS) % 2 === 1;
+  const txt = m && !blink ? '◆'.repeat(Math.min(C.HUNTER_MARK_MAX, m.n)) : '';
+  if (myMarksEl.textContent !== txt) myMarksEl.textContent = txt;
+}
 // R 을 못 씀 (ultFail): 칸이 빨갛게 좌우로 흔들리고 이름 자리에 짧은 이유
-const ULT_FAIL_TEXT = { noBlock: '블록 없음', noSpace: '자리 없음', busy: '사용 중' };
+const ULT_FAIL_TEXT = { noBlock: '블록 없음', noSpace: '자리 없음', busy: '사용 중', noTarget: '대상 없음' };
 let ultFailUntil = 0;
 let ultFailText = '';
 function slotFail(reason) {
