@@ -2020,3 +2020,63 @@ test('필드 크기: 블록 마스터는 마스터를 뺀 필드 인원으로, �
     assert.equal(four.targetConcurrent(), Math.round(base * 1.96));
   }
 });
+
+test('공중 대시: 착지 전 AIR_DASHES(1) 번, 땅·쌓인 블록·하늘 블록에 서면 다시 채움. 지상 대시는 쿨타임만', () => {
+  assert.equal(C.AIR_DASHES, 1);
+  const { g, p1, p2 } = setup();
+  p2.x = 8.5;
+  p2.y = 8.5;
+  g.controlItemNextAt = Infinity;
+  g.powerItemNextAt = Infinity;
+  Object.assign(p1, { x: 5, y: 5, z: 0, yaw: 0, vz: 0, kbx: 0, kby: 0, grounded: true });
+  // 지상: 쿨타임만 지나면 계속 됨
+  for (let k = 0; k < 3; k++) {
+    g.handleAction(1, { name: 'dash' });
+    assert.ok(p1.dashReadyAt > g.time, `지상 대시 ${k + 1}`);
+    assert.equal(p1.airDashes, C.AIR_DASHES, '지상 대시는 공중 횟수를 안 씀');
+    run(g, C.DASH_COOLDOWN_MS + TICK);
+    Object.assign(p1, { x: 5, y: 5, kbx: 0, kby: 0 });
+  }
+  // 공중: 높이 뛰운 채로 (떨어지는 동안) 한 번만
+  Object.assign(p1, { x: 5, y: 5, z: 6, vz: 0, grounded: false, kbx: 0, kby: 0 });
+  g.handleAction(1, { name: 'dash' });
+  assert.equal(p1.airDashes, 0, '공중 대시 1번');
+  assert.ok(p1.kbx > 0);
+  g.tick(TICK);
+  p1.dashReadyAt = g.time; // 쿨이 끝났다고 치고 (떨어지는 데 쿨보다 짧게 걸려서)
+  assert.equal(p1.grounded, false, '아직 공중');
+  p1.kbx = 0;
+  g.handleAction(1, { name: 'dash' });
+  assert.equal(p1.kbx, 0, '쿨이 끝나도 착지 전엔 안 됨');
+  assert.equal(p1.dashReadyAt, g.time);
+  // 착지하면 채움
+  run(g, 2000);
+  assert.equal(p1.grounded, true);
+  assert.equal(p1.airDashes, C.AIR_DASHES);
+  assert.equal(g.snapshot().players.find((q) => q.id === 1).airDashes, C.AIR_DASHES, 'snapshot');
+});
+
+test('공중 대시: 쌓인 블록·떨어지는 블록(하늘 블록) 위에 서도 다시 채움. 닌자 블록 닿기 패시브는 공중 점프만 채움', () => {
+  const { g, p1, p2 } = setup();
+  p2.x = 8.5;
+  p2.y = 8.5;
+  g.controlItemNextAt = Infinity;
+  g.powerItemNextAt = Infinity;
+  // 쌓인 블록 위
+  g.grid[g.idx(5, 5, 0)] = CELL.THROWN;
+  g.gridChanged();
+  Object.assign(p1, { x: 5.5, y: 5.5, z: 1.3, vz: 0, grounded: false, kbx: 0, kby: 0, airDashes: 0 });
+  run(g, 500);
+  assert.equal(p1.grounded, true);
+  assert.equal(p1.z, 1);
+  assert.equal(p1.airDashes, C.AIR_DASHES, '쌓인 블록 위');
+  // 떨어지는 블록 위 (하늘 계단 블록처럼 공중에 떠 있는 블록)
+  g.grid[g.idx(5, 5, 0)] = 0;
+  g.gridChanged();
+  g.piece = Object.assign(g.makePiece('O', 0, 2, 2, 4), { phase: 'falling', controller: null, stepMs: 1e9, nextStepAt: Infinity });
+  Object.assign(p1, { x: 2.9, y: 2.9, z: 5.3, vz: 0, grounded: false, airDashes: 0 });
+  run(g, 500);
+  assert.equal(p1.grounded, true);
+  assert.equal(p1.z, 5);
+  assert.equal(p1.airDashes, C.AIR_DASHES, '공중 블록 위');
+});

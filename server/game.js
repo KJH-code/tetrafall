@@ -201,6 +201,7 @@ export class Game {
       freezeUntil: 0, // 히트스톱: 이 시각까지 움직임 정지 (속도는 보존)
       jumpUntil: 0, // 점프력 상승 끝나는 시각
       airJumps: C.AIR_JUMPS, // 남은 2단 점프 (땅에 닿으면 다시 채움)
+      airDashes: C.AIR_DASHES, // 남은 공중 대시 (땅에 닿으면 다시 채움)
       airJumpQueued: false, // 공중에서 점프 키를 새로 눌렀음 (다음 틱에 2단 점프)
       jumpQueuedUntil: 0, // 땅에서 누른 점프 기억 (JUMP_BUFFER_MS)
       ghostUntil: 0, // 유령화 끝나는 시각
@@ -577,6 +578,7 @@ export class Game {
         freezeUntil: 0,
         jumpUntil: 0,
         airJumps: C.AIR_JUMPS,
+        airDashes: C.AIR_DASHES,
         ghostUntil: 0,
         speedUntil: 0,
         bombs: 0,
@@ -857,6 +859,7 @@ export class Game {
       freezeUntil: 0,
       jumpUntil: 0,
       airJumps: C.AIR_JUMPS,
+      airDashes: C.AIR_DASHES,
       ghostUntil: 0,
       speedUntil: 0,
       bombs: 0,
@@ -967,6 +970,7 @@ export class Game {
         return;
       case 'dash':
         if (stunned || controlling || this.time < p.dashReadyAt) return; // 조종 중 대시 불가
+        if (!p.grounded && p.airDashes <= 0) return; // 공중 대시는 착지 전 AIR_DASHES 번까지
         this.dash(p);
         return;
       case 'push':
@@ -1020,6 +1024,7 @@ export class Game {
     p.kbx = dx * C.DASH_SPEED;
     p.kby = dy * C.DASH_SPEED;
     p.dashReadyAt = this.time + C.DASH_COOLDOWN_MS;
+    if (!p.grounded) p.airDashes--;
   }
 
   push(p) {
@@ -4070,7 +4075,10 @@ export class Game {
     const stunned = this.time < p.stunUntil;
     let ix = 0;
     let iy = 0;
-    if (p.grounded) p.airJumps = C.AIR_JUMPS; // 땅에 닿아 있으면 2단 점프 다시 (같은 틱에 땅에서 뛰어도 채운 뒤)
+    if (p.grounded) {
+      p.airJumps = C.AIR_JUMPS; // 땅에 닿아 있으면 2단 점프 다시 (같은 틱에 땅에서 뛰어도 채운 뒤)
+      p.airDashes = C.AIR_DASHES; // 공중 대시도
+    }
     if (this.time < p.chargeUntil) {
       ix = p.chargeDir.x * C.TANK_CHARGE_SPEED; // 탱크 돌진: 입력 대신 앞으로
       iy = p.chargeDir.y * C.TANK_CHARGE_SPEED;
@@ -4317,6 +4325,7 @@ export class Game {
         hasControl: p.hasControl,
         ammo: p.ammo,
         dashCd: Math.max(0, p.dashReadyAt - this.time),
+        airDashes: p.airDashes, // 남은 공중 대시 (공중에서 0 이면 Shift 안 됨)
         pushCd: Math.max(0, p.pushReadyAt - this.time),
         jumpLeft: Math.max(0, p.jumpUntil - this.time),
         danger: p.alive ? this.crushDanger(p) : null, // 머리 위로 떨어지는 블록이 깔기까지 남은 ms (없으면 null)
