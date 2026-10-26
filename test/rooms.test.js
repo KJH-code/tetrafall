@@ -116,7 +116,7 @@ test('방: 공개는 호스트만, 판 사이에만. 목록엔 이름·사람/�
   assert.equal(rooms.publicList().rooms.length, 1);
   // 스냅샷에도 방 정보
   rooms.broadcast();
-  assert.deepEqual(a.ws.last('state').room, { code, name: '같이 해요', public: true });
+  assert.deepEqual(a.ws.last('state').room, { code, name: '같이 해요', public: true, practice: false });
 });
 
 test('방: 사람이 다 나가면 봇이 있어도 방을 바로 없애고 로그를 닫음', () => {

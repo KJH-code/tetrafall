@@ -360,9 +360,18 @@ export class Game {
   // 캐릭터 고르기 (판 사이에만, 같은 캐릭터 여럿 됨)
   setChar(id, c) {
     const p = this.players.get(id);
-    if (!p || !this.characters || this.inRound() || !C.CHARACTERS.includes(c) || p.char === c) return false;
+    const live = this.mode === 'practice' && this.inRound(); // 연습은 판 중에도 바로
+    if (!p || !this.characters || p.dummy || (this.inRound() && !live) || !C.CHARACTERS.includes(c) || p.char === c) return false;
     p.char = c;
     this.log(`${p.name} 캐릭터: ${C.CHAR_NAMES[c]}`);
+    if (live && p.alive) {
+      // 캐릭터별 상태(쿨·게이지·탄·장전·표식·준비 중 기술)를 되살아날 때처럼 새로, 위치·피해 % 는 그대로
+      const keep = { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, vz: p.vz, kbx: p.kbx, kby: p.kby, grounded: p.grounded, damage: p.damage };
+      if (p.grab) this.hookGrabDrop(p);
+      this.respawn(p);
+      Object.assign(p, keep, { shieldUntil: 0, skillReadyAt: 0, ult: 0 });
+      this.emit({ type: 'charChange', who: p.id, char: c });
+    }
     return true;
   }
 
@@ -438,6 +447,7 @@ export class Game {
 
   canStart() {
     const ps = this.participants();
+    if (this.mode === 'practice') return ps.length >= 1 && !this.inRound(); // 연습: 혼자도
     if (this.teamMode && !(ps.some((p) => p.team === 'red') && ps.some((p) => p.team === 'blue'))) return false; // 팀마다 한 명 이상
     return ps.length >= C.MIN_PLAYERS && !this.inRound();
   }
@@ -758,6 +768,7 @@ export class Game {
 
   checkRoundEnd() {
     if (this.phase !== 'playing') return;
+    if (this.mode === 'practice') return; // 연습 판은 안 끝남
     if (this.mode === 'master') return void this.checkMasterEnd();
     if (this.mode === 'kills') return void this.checkKillsEnd();
     const alive = [...this.players.values()].filter((p) => p.alive);
@@ -920,6 +931,7 @@ export class Game {
   // 내 블록에 내가 깔리면 킬 없음
   kill(p, cause, src = null) {
     if (!p.alive) return;
+    if (this.mode === 'practice' && (p.dummy || this.practice.noDeath)) return void this.practiceReset(p, cause); // 연습: 허수아비·안 죽음은 바로 제자리
     p.alive = false;
     p.deathCause = cause;
     p.hasControl = false;
@@ -933,6 +945,7 @@ export class Game {
     this.log(`  [사망] ${p.name} ${causeKo(cause)} @ ${fmtTime(t)} (위치 ${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}, 피해 ${p.damage}%${killText}, 밟은 칸 ${GROUND_LOG[p.lastGround ?? 'none']})`);
     if (this.mode === 'kills' && this.phase === 'playing') this.scoreDeath(p, credit);
     if (this.mode === 'master' && this.phase === 'playing' && !p.master && this.master()) this.joinMasterSide(p);
+    if (this.mode === 'practice') p.respawnAt = this.time + C.PRACTICE_RESPAWN_MS; // 연습 ("안 죽음" 끔): 잠깐 뒤 제자리
   }
 
   // ---------- 입력 ----------
@@ -3202,6 +3215,7 @@ export class Game {
   }
 
   updateSpawning() {
+    if (this.mode === 'practice' && this.practice.noBlocks) return; // 연습: 블록 안 떨어짐
     if (this.time < this.nextSpawnAt) return;
     if (this.mode === 'master') {
       // 블록 마스터: 자동 블록 없이 마스터 편 각자의 블록만. 떨어뜨리면 MASTER_NEXT_PIECE_MS 뒤 다음 블록 (dropPiece 가 시계를 맞춤)
@@ -3872,6 +3886,7 @@ export class Game {
   }
 
   updateLava(dtMs) {
+    if (this.mode === 'practice' && this.practice.noBlocks) return; // 연습: 용암 없음
     if (this.mode === 'kills') return; // 킬 점수전은 용암 대신 아래층을 지움 (sinkIfTall)
     const lava = this.lava;
     if (!lava.active) {
@@ -4235,6 +4250,7 @@ export class Game {
     if (this.mode === 'kills') {
       for (const p of this.participants()) if (!p.alive && p.respawnAt && this.time >= p.respawnAt) this.respawn(p);
     }
+    if (this.mode === 'practice') this.updatePractice();
     this.updateLava(dtMs);
     this.updateItems();
     this.updateProjectiles(dt);
@@ -4264,6 +4280,157 @@ export class Game {
       if (v) return v === CELL.TERRAIN ? 'terrain' : 'stack';
     }
     return 'stack'; // 칸 경계에 걸쳐 서 있음 (건축가 블록이 막 사라진 칸 등): 블록 위로 셈
+  }
+
+  // ---------- 연습 모드 (2026-10-26 재혁) ----------
+  // 혼자 쓰는 방에서 바로 시작, 판이 안 끝남. 토글(practice)은 방 전체, 내 피해 % 는 사람마다. 허수아비 = 입력 없는 플레이어 (dummy)
+  startPractice() {
+    this.mode = 'practice';
+    this.practice = { noCooldown: false, fullUlt: false, noBlocks: true, noDeath: true };
+    this.skyStairs = false;
+    this.mapChoice = 'flat';
+    this.countdownMs = 0;
+    this.dummyCounter = this.dummyCounter || 0;
+    if (!this.startRound()) return false;
+    for (const p of this.players.values()) p.home = { x: p.x, y: p.y };
+    this.log('[연습] 시작');
+    return true;
+  }
+
+  // 토글·내 피해 %. 맞는 값이면 true
+  practiceSet(id, key, value) {
+    if (this.mode !== 'practice') return false;
+    if (key === 'myDamage') {
+      const p = this.players.get(id);
+      const v = practiceDamage(value);
+      if (!p || p.dummy || v === null) return false;
+      p.practiceDamage = v;
+      p.damage = v;
+      return true;
+    }
+    if (!Object.hasOwn(this.practice, key) || typeof value !== 'boolean') return false;
+    this.practice[key] = value;
+    if (key === 'noBlocks' && value) {
+      this.pieces = this.pieces.filter((pc) => pc.controller !== null || pc.thrownBy); // 떨어지던 자동·하늘 블록 치움 (조종·설치 블록은 그대로)
+      this.refreshPieceCells();
+      this.lava = { active: false, z: C.LAVA_START_Z, startedAt: 0 };
+    }
+    if (key === 'noBlocks' && !value) this.nextSpawnAt = this.time + C.FIRST_SPAWN_DELAY_MS;
+    return true;
+  }
+
+  // 허수아비 추가: 보낸 사람 앞 PRACTICE_DUMMY_DIST 칸 (필드 안으로). 자리가 꽉 찼거나 PRACTICE_DUMMY_MAX 개면 null
+  addDummy(byId) {
+    if (this.mode !== 'practice' || this.dummies().length >= C.PRACTICE_DUMMY_MAX) return null;
+    const id = -(1000 + ++this.dummyCounter);
+    const p = this.addPlayer(id, true);
+    if (!p) return null;
+    const by = this.players.get(byId);
+    const yaw = by ? by.yaw : 0;
+    const clamp = (v, n) => Math.max(0.5, Math.min(n - 0.5, v));
+    const x = clamp((by ? by.x : this.W / 2) + Math.cos(yaw) * C.PRACTICE_DUMMY_DIST, this.W);
+    const y = clamp((by ? by.y : this.D / 2) + Math.sin(yaw) * C.PRACTICE_DUMMY_DIST, this.D);
+    Object.assign(p, { name: `허수아비${this.dummyCounter}`, dummy: true, char: null, home: { x, y }, dummyDamage: 0, combo: null, lastCombo: null });
+    this.practiceReset(p, null);
+    p.yaw = yaw + Math.PI; // 나를 봄
+    this.log(`[연습] ${p.name} 추가`);
+    return p;
+  }
+
+  removeDummy(id) {
+    const list = this.dummies();
+    const d = id === undefined || id === null ? list[list.length - 1] : list.find((x) => x.id === id);
+    if (!d) return false;
+    d.alive = false; // 판 중에 나간 사람처럼 사망 기록을 남기지 않게
+    this.removePlayer(d.id);
+    return true;
+  }
+
+  setDummyDamage(id, value) {
+    const v = practiceDamage(value);
+    if (v === null) return false;
+    const list = id === undefined || id === null ? this.dummies() : this.dummies().filter((d) => d.id === id);
+    for (const d of list) {
+      d.dummyDamage = v;
+      if (!d.combo || !d.combo.active) d.damage = d.prevDamage = v; // 설정으로 바뀐 건 맞은 걸로 안 셈
+    }
+    return list.length > 0;
+  }
+
+  dummies() {
+    return [...this.players.values()].filter((p) => p.dummy).sort((a, b) => a.id - b.id).reverse();
+  }
+
+  // 제자리로 (허수아비: 추가한 자리, 사람: 처음 자리). 피해 % 는 설정값. cause 가 있으면 떨어지거나 깔려서
+  practiceReset(p, cause) {
+    if (p.dummy && p.combo && p.combo.active) this.finishCombo(p);
+    const home = p.home || this.spawnPoints[p.slot % this.spawnPoints.length];
+    this.respawn(p);
+    const z = this.spawnZ(home.x, home.y);
+    Object.assign(p, { x: home.x, y: home.y, z, damage: p.dummy ? p.dummyDamage : p.practiceDamage || 0, shieldUntil: 0, spectator: false });
+    p.prevX = p.x;
+    p.prevY = p.y;
+    p.prevZ = p.z;
+    p.prevDamage = p.damage;
+    p.prevCombo = 0;
+    if (cause) this.emit({ type: 'practiceReset', who: p.id, cause });
+  }
+
+  // 들어온 친구: 관전 말고 바로 처음 자리에서
+  practiceJoin(id) {
+    const p = this.players.get(id);
+    if (!p || this.mode !== 'practice' || !this.inRound()) return;
+    p.home = { x: p.x, y: p.y };
+    this.practiceReset(p, null);
+  }
+
+  // 틱마다: 쿨 없음·게이지 가득, 허수아비 콤보 기록·피해 % 되돌리기
+  updatePractice() {
+    const P = this.practice;
+    for (const p of this.participants()) if (!p.alive && p.respawnAt && this.time >= p.respawnAt) this.practiceReset(p, null); // "안 죽음" 끔
+    for (const p of this.players.values()) {
+      if (!p.alive || p.dummy) continue;
+      if (P.noCooldown && p.skillReadyAt > this.time) p.skillReadyAt = this.time;
+      if (P.fullUlt && p.char) p.ult = this.ultMax(p);
+    }
+    for (const d of this.dummies()) {
+      if (!d.alive) continue;
+      const hit = d.damage > d.prevDamage || d.comboHits > d.prevCombo;
+      if (hit) {
+        if (!d.combo || !d.combo.active) d.combo = { active: true, hits: 0, damage: 0, dist: 0, height: 0, sx: d.prevX, sy: d.prevY, sz: d.prevZ, dmg0: d.prevDamage };
+        d.combo.hits++;
+        d.combo.damage = d.damage - d.combo.dmg0;
+      }
+      const c = d.combo;
+      if (c && c.active) {
+        c.dist = Math.max(c.dist, Math.hypot(d.x - c.sx, d.y - c.sy));
+        c.height = Math.max(c.height, d.z - c.sz);
+        if (hit) this.emit({ type: 'dummyCombo', id: d.id, ...comboOut(c), done: false });
+        else if (d.comboHits === 0 && this.time >= d.stunUntil && d.grounded) this.finishCombo(d);
+      } else if (d.grounded && d.damage !== d.dummyDamage) d.damage = d.dummyDamage;
+      d.prevX = d.x;
+      d.prevY = d.y;
+      d.prevZ = d.z;
+      d.prevDamage = d.damage;
+      d.prevCombo = d.comboHits;
+    }
+  }
+
+  // 허수아비 콤보 끝: 기록을 남기고 피해 % 를 설정값으로
+  finishCombo(d) {
+    const c = d.combo;
+    c.active = false;
+    d.lastCombo = comboOut(c);
+    this.emit({ type: 'dummyCombo', id: d.id, ...d.lastCombo, done: true });
+    d.damage = d.dummyDamage;
+    d.prevDamage = d.damage;
+  }
+
+  practiceSnapshot() {
+    return {
+      ...this.practice,
+      dummies: this.dummies().map((d) => ({ id: d.id, damageSet: d.dummyDamage, combo: d.combo ? { ...comboOut(d.combo), active: d.combo.active } : null, last: d.lastCombo })),
+    };
   }
 
   // ---------- 스냅샷 ----------
@@ -4326,6 +4493,7 @@ export class Game {
         ammo: p.ammo,
         dashCd: Math.max(0, p.dashReadyAt - this.time),
         airDashes: p.airDashes, // 남은 공중 대시 (공중에서 0 이면 Shift 안 됨)
+        dummy: !!p.dummy, // 연습 허수아비
         pushCd: Math.max(0, p.pushReadyAt - this.time),
         jumpLeft: Math.max(0, p.jumpUntil - this.time),
         danger: p.alive ? this.crushDanger(p) : null, // 머리 위로 떨어지는 블록이 깔기까지 남은 ms (없으면 null)
@@ -4369,6 +4537,7 @@ export class Game {
       itemTimers: this.itemTimers(),
       botLevel: this.botLevel,
       teamMode: this.teamMode,
+      practice: this.mode === 'practice' ? this.practiceSnapshot() : null, // 연습 모드 토글·허수아비 콤보 기록
       skyStairs: this.skyStairs, // 대기실 옵션 (이번 판에 도는지는 field.h 가 SKY_GRID_H 인지로도 앎)
       teamWins: this.teamWins,
       mode: this.mode,
@@ -4417,6 +4586,18 @@ export function warmUpPlacement(rounds = 3) {
       g.chooseAutoPlacement(SHAPE_NAMES[0]);
     }
   }
+}
+
+// 연습: 피해 % 설정값 (0~PRACTICE_DAMAGE_MAX 정수, 아니면 null)
+function practiceDamage(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.min(C.PRACTICE_DAMAGE_MAX, Math.round(n)));
+}
+
+// 허수아비 콤보 기록 → 보낼 값 (dist·height 는 소수 둘째 자리)
+function comboOut(c) {
+  return { hits: c.hits, damage: c.damage, dist: Math.round(c.dist * 100) / 100, height: Math.round(Math.max(0, c.height) * 100) / 100 };
 }
 
 // 블록 칸들의 테두리 상자 (x0·y0 = 가장 작은 칸, x1·y1 = 가장 큰 칸 + 1)

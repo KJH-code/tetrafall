@@ -51,6 +51,7 @@ export class Rooms {
     if (!msg || typeof msg !== 'object') return;
     if (!conn.room) {
       if (msg.type === 'create') this.create(conn, msg.name, msg.nick);
+      else if (msg.type === 'practice') this.createPractice(conn, msg.nick, msg.char);
       else if (msg.type === 'join') this.join(conn, msg.code);
       return;
     }
@@ -85,6 +86,31 @@ export class Rooms {
     return room;
   }
 
+  // 연습 방: 비공개(목록에 안 뜸), 로그 파일 없음, 들어가면 바로 시작 + 허수아비 1개. 같은 코드로 친구가 들어오면 같이 연습
+  createPractice(conn, rawNick, char) {
+    if (this.rooms.size >= C.ROOM_MAX) {
+      send(conn.ws, { type: 'joinError', reason: `방이 이미 ${C.ROOM_MAX}개라 더 못 만듭니다` });
+      return null;
+    }
+    const code = this.newCode();
+    const nick = cleanText(rawNick, C.NAME_MAX_LEN);
+    const out = { log() {}, close() {} }; // 연습 판은 로그·stats 에서 뺌
+    const game = new Game(() => {}, { countdownMs: 0, characters: true, skyStairs: false });
+    const room = { code, name: nick ? `${nick}의 연습` : `연습 ${code}`, public: false, practice: true, game, conns: new Map(), out };
+    this.rooms.set(code, room);
+    this.serverLog(`방 ${code} 만듦: 연습 (방 ${this.rooms.size}개)`);
+    const player = game.addPlayer(conn.id);
+    conn.room = room;
+    room.conns.set(conn.id, conn);
+    if (nick) game.setNick(conn.id, nick);
+    if (char) game.setChar(conn.id, String(char));
+    game.startPractice();
+    game.addDummy(conn.id);
+    send(conn.ws, { type: 'welcome', id: conn.id, slot: player.slot, name: player.name, room: this.roomInfo(room) });
+    send(conn.ws, { ...game.snapshot(true), room: this.roomInfo(room) });
+    return room;
+  }
+
   join(conn, rawCode) {
     const code = String(rawCode ?? '').trim().toUpperCase();
     const room = this.rooms.get(code);
@@ -99,6 +125,7 @@ export class Rooms {
     }
     conn.room = room;
     room.conns.set(conn.id, conn);
+    if (room.practice) room.game.practiceJoin(conn.id); // 연습 방은 관전 말고 바로
     send(conn.ws, { type: 'welcome', id: conn.id, slot: player.slot, name: player.name, room: this.roomInfo(room) });
     send(conn.ws, { ...room.game.snapshot(true), room: this.roomInfo(room) });
     return true;
@@ -141,8 +168,8 @@ export class Rooms {
       case 'leave':
         this.leave(conn, '');
         break;
-      case 'setPublic': // 호스트: 공개 목록에 보이기 (판 사이에만)
-        if (host && !game.inRound() && room.public !== !!msg.on) {
+      case 'setPublic': // 호스트: 공개 목록에 보이기 (판 사이에만, 연습 방은 안 됨)
+        if (host && !room.practice && !game.inRound() && room.public !== !!msg.on) {
           room.public = !!msg.on;
           room.out.log(`[호스트] 방 ${room.public ? '공개' : '비공개'}`);
         }
@@ -193,6 +220,18 @@ export class Rooms {
       case 'skyStairs':
         if (host) game.setSkyStairs(!!msg.on);
         break;
+      case 'practiceSet': // 연습: 토글 (방 전체) · 내 피해 %
+        if (room.practice) game.practiceSet(id, String(msg.key), msg.value);
+        break;
+      case 'dummyAdd':
+        if (room.practice) game.addDummy(id);
+        break;
+      case 'dummyRemove':
+        if (room.practice) game.removeDummy(msg.id === undefined ? undefined : Number(msg.id));
+        break;
+      case 'dummySet':
+        if (room.practice) game.setDummyDamage(msg.id === undefined ? undefined : Number(msg.id), msg.damage);
+        break;
       case 'start':
         if (host && !game.startRound()) {
           room.out.log(`시작 거부: 참가자 ${game.participants().length}명 (최소 ${C.MIN_PLAYERS}명, 관전자 제외)`);
@@ -219,7 +258,7 @@ export class Rooms {
   }
 
   roomInfo(room) {
-    return { code: room.code, name: room.name, public: room.public };
+    return { code: room.code, name: room.name, public: room.public, practice: !!room.practice };
   }
 
   // 공개 방 목록 (방 밖 화면). 판 중인지는 안 보여줌 (재혁 결정: 이름·인원·맵·팀전·봇 난이도, 모드)
