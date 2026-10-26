@@ -352,7 +352,7 @@ function handleEvent(e) {
     }
     case 'quakeRise': {
       // 탱크 R 바깥 고리: 땅이 솟음 (흙먼지, 가까우면 흔들림)
-      renderer.quakeRise(e.cells, e.ms);
+      renderer.quakeRise(e.cells, e.ms, e.id);
       for (const [x, y, z] of e.cells) {
         fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.1 }, null, C.QUAKE_COLOR, 6, 4, 0.12, 0.5);
         fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.6 }, { x: 0, y: 0 }, 0x6a5e52, 2, 5, 0.16, 0.5); // 튀는 흙덩이
@@ -366,9 +366,9 @@ function handleEvent(e) {
       break;
     }
     case 'quakeFall': // 솟은 땅이 가라앉음
-      renderer.quakeFall(e.cells);
-      for (const [x, y, z] of e.cells) fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.1 }, null, C.QUAKE_COLOR, 4, 2, 0.1, 0.45);
-      if (e.cells.length) sound.play('land', { dist: distToMe(e.cells[0][0] + 0.5, e.cells[0][1] + 0.5, e.cells[0][2]) });
+      renderer.quakeFall(e.gone || e.cells || [], e.id);
+      for (const [x, y, z] of e.gone || e.cells || []) fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.1 }, null, C.QUAKE_COLOR, 4, 2, 0.1, 0.45);
+      if ((e.gone || e.cells || []).length) sound.play('land', { dist: distToMe((e.gone || e.cells)[0][0] + 0.5, (e.gone || e.cells)[0][1] + 0.5, (e.gone || e.cells)[0][2]) });
       break;
     case 'ninjaTouch': {
       // 닌자가 떨어지는 블록을 밟아 공중 점프 회복: 발밑에 흰 김 + 작은 고리
