@@ -352,7 +352,7 @@ function handleEvent(e) {
     }
     case 'quakeRise': {
       // 탱크 R 바깥 고리: 땅이 솟음 (흙먼지, 가까우면 흔들림)
-      renderer.quakeRise(e.cells);
+      renderer.quakeRise(e.cells, e.ms);
       for (const [x, y, z] of e.cells) {
         fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.1 }, null, C.QUAKE_COLOR, 6, 4, 0.12, 0.5);
         fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.6 }, { x: 0, y: 0 }, 0x6a5e52, 2, 5, 0.16, 0.5); // 튀는 흙덩이
@@ -479,6 +479,7 @@ function handleEvent(e) {
     }
     case 'mapChange': // 연습: 판 중 맵 바꿈 (격자는 gridVersion 으로 다시 그려짐)
       renderer.gridVersion = -1;
+      renderer.clearQuakes();
       break;
     case 'dummyCombo': // 연습 방 허수아비 콤보 기록: 끝난 콤보는 잠깐 결과로 남김
       if (e.done) practiceDone.set(e.id, { ...e, until: performance.now() + C.PRACTICE_COMBO_SHOW_MS });
@@ -1360,6 +1361,7 @@ const TEAM_KO = { red: '빨강', blue: '파랑' };
 function onState() {
   const p = me();
   if (!p) return;
+  if (lastState && lastState.phase !== state.phase) renderer.clearQuakes(); // 판 시작·끝: 서버도 솟은 땅을 버림
   if (lastState && lastState.phase === 'countdown' && state.phase === 'playing') {
     lastCount = null;
     sound.play('go');

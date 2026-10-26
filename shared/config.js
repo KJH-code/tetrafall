@@ -854,6 +854,7 @@ export const CONFIG = {
   FIGURE_HIT_ARMOR_BREAK: 2.4, // 아머가 깨진 타: 휘청 세기 (크게)
   QUAKE_RISE_MS: 160, // 탱크 R 고리 땅이 솟는 시간 (넘쳤다 돌아옴)
   QUAKE_SINK_MS: 280, // 가라앉는 시간
+  QUAKE_FALL_GRACE_MS: 1000, // 솟는 땅 화면 안전장치: 솟은 뒤 TANK_RING_MS + 이만큼 지나도 가라앉힘 이벤트가 없으면 화면에서 가라앉힘 (유령 블록 방지)
   QUAKE_SINK_SHAKE: 0.07, // 가라앉는 동안 떨림 (칸)
   QUAKE_COLOR: 0x9c8468, // 솟는 땅 색 (흙)
   // 갈고리 화면

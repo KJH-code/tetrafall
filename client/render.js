@@ -1142,7 +1142,7 @@ export class Renderer {
   }
 
   // quakeRise: 고리 모양 땅이 솟음 (격자에선 빼고 흙 블록으로 솟는 연출), quakeFall: 가라앉음
-  quakeRise(cells) {
+  quakeRise(cells, ms = C.TANK_RING_MS) {
     if (!this.quakeMat) this.quakeMat = toon({ color: C.QUAKE_COLOR, map: this.tex.stone });
     const meshes = cells.map(([x, y, z]) => {
       const m = new THREE.Mesh(this.bbGeo, this.quakeMat);
@@ -1151,20 +1151,39 @@ export class Renderer {
       this.scene.add(m);
       return m;
     });
-    this.quakes.push({ cells, t0: performance.now(), sinkAt: 0, meshes });
+    this.quakes.push({ cells, t0: performance.now(), ms, sinkAt: 0, meshes });
     this.blockPulse(cells, 0xffe8c0, { ms: C.QUAKE_RISE_MS + 120, opacity: 0.5 });
   }
 
+  // 칸으로 맞춰 가라앉힘. 못 맞추면 (층 클리어로 서버 칸이 아래로 밀렸거나 덮여서 빈 목록) 가장 먼저 솟은 것을 가라앉힘 — 안 그러면 화면에만 남는 유령 블록
   quakeFall(cells) {
     const key = (c) => c.join(',');
     const gone = new Set(cells.map(key));
-    for (const q of this.quakes) if (!q.sinkAt && q.cells.some((c) => gone.has(key(c)))) q.sinkAt = performance.now();
+    const now = performance.now();
+    let any = false;
+    for (const q of this.quakes) {
+      if (!q.sinkAt && q.cells.some((c) => gone.has(key(c)))) {
+        q.sinkAt = now;
+        any = true;
+      }
+    }
+    if (!any) {
+      const q = this.quakes.find((x) => !x.sinkAt);
+      if (q) q.sinkAt = now;
+    }
+  }
+
+  // 판이 바뀌면 (새 판·맵 바꿈) 서버는 솟은 땅을 가라앉힘 이벤트 없이 버림 → 화면 것도 바로 지움
+  clearQuakes() {
+    for (const q of this.quakes) for (const m of q.meshes) this.scene.remove(m);
+    this.quakes = [];
   }
 
   updateQuakes() {
     if (!this.quakes.length) return;
     const now = performance.now();
     this.quakes = this.quakes.filter((q) => {
+      if (!q.sinkAt && now - q.t0 > q.ms + C.QUAKE_FALL_GRACE_MS) q.sinkAt = now; // 안전장치: 가라앉힘 이벤트를 놓쳐도 유령으로 안 남게
       let h; // 땅 위로 나온 높이 비율 (0~1)
       if (q.sinkAt) {
         const u = (now - q.sinkAt) / C.QUAKE_SINK_MS;
