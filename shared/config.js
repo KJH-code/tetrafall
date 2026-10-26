@@ -590,9 +590,7 @@ export const CONFIG = {
   FIGURE_SCALE: 1.15, // 몸 전체 크기 배율 (1 이면 로봇과 키가 같아도 가늘어서 작아 보임). 판정 상자는 그대로
   FIGURE_HORN_WOBBLE: 0.35, // 광전사 뿔이 흐물거리는 크기 (라디안, 가만히 있을 때의 2.5배까지)
   FIGURE_HORN_DROOP: 0.5, // 광전사 뿔 끝 마디가 축 처진 각
-  BERSERK_RAGE_PCT: 120, // 광전사 분노 화면: 피해 % 가 이만큼이면 가장 빨갛게 (0 이면 평소)
-  BERSERK_RAGE_TINT: 0.45, // 가장 화났을 때 피부(플레이어 색)를 빨강 쪽으로 섞는 정도 (누가 누군지 남게 반 아래)
-  BERSERK_RAGE_GLOW: 0.6, // 가장 화났을 때 몸 빨간 빛 세기 (0~1)
+  BERSERK_RAGE_PCT: 120, // 광전사 분노 화면: 피해 % 가 이만큼이면 가장 화남 (눈 충혈·눈썹·핏줄·빡침 표시·김. 몸 색은 안 바꿈: 플레이어 구분 우선)
   BERSERK_STEAM_RATE: 14, // 가장 화났을 때 초당 김 수
   FIGURE_SNIFF_EVERY: 3.2, // 사냥꾼이 가만히 있을 때 킁킁하는 간격 (초)
   FIGURE_SNIFF_LEN: 0.7, // 킁킁 한 번 길이 (초)
