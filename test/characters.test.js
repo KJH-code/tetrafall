@@ -2097,18 +2097,34 @@ test('바드 음유 R 취약의 노래: 앞 넓은 범위 상대가 4초 동안 
   assert.equal(g.snapshot().players.find((x) => x.id === 2).vulnLeft, 0, '4초 뒤 풀림');
 });
 
-test('바드 음유 공중 평타: 천천히 낙하 (떨어지는 속도 제한), 맞으면 바로 풀림', () => {
+test('바드 음유 공중 평타: 공격 동작(준비+후딜) 동안만 천천히 낙하, 이어 치면 연장, 끝나면 바로 일반 낙하, 맞으면 바로 풀림 (2026-10-26 재혁)', () => {
+  const def = C.BASIC_ATTACKS.bard.air[0];
+  const ms = def.windup + def.rec;
   const { g, p } = setupChars(['bard', 'tank']);
-  place(p(1), 4, 5, 0, 6);
+  place(p(1), 4, 5, 0, 10);
   Object.assign(p(1), { grounded: false, vz: -5 });
   place(p(2), 8, 8);
-  basic(g, 1);
-  assert.ok(p(1).glideUntil > g.time);
-  run(g, 500);
-  assert.ok(p(1).vz >= -C.BARD_GLIDE_FALL - 1e-9, `vz ${p(1).vz}`);
-  assert.ok(p(1).z > 3, `천천히 z ${p(1).z.toFixed(2)}`);
-  g.applyKnockback(p(1), 1, 0, 1, 0, 300, 1, { by: 2, kind: 'push' });
-  assert.equal(p(1).glideUntil, 0, '맞으면 풀림');
+  g.handleAction(1, { name: 'push' });
+  assert.ok(Math.abs(p(1).glideUntil - (g.time + ms)) < 1e-6, '누르는 순간부터 동작 동안');
+  run(g, ms - 2 * TICK);
+  assert.ok(p(1).glideUntil > g.time && p(1).vz >= -C.BARD_GLIDE_FALL - 1e-9, `동작 중 천천히 vz ${p(1).vz}`);
+  run(g, 4 * TICK + 200);
+  assert.equal(p(1).glideUntil, 0, '동작 끝나면 풀림');
+  assert.ok(p(1).vz < -C.BARD_GLIDE_FALL - 1, `일반 낙하 vz ${p(1).vz.toFixed(2)}`);
+  // 이어 치면 연장
+  const q = setupChars(['bard', 'tank']);
+  place(q.p(1), 4, 5, 0, 14);
+  Object.assign(q.p(1), { grounded: false, vz: 0 });
+  place(q.p(2), 8, 8);
+  q.g.handleAction(1, { name: 'push' });
+  run(q.g, ms - TICK);
+  q.g.handleAction(1, { name: 'push' }); // 후딜 끝 무렵 다시 누름 (기억했다 나감)
+  run(q.g, 3 * TICK);
+  assert.ok(q.p(1).glideUntil > q.g.time, '연장');
+  assert.ok(q.p(1).vz >= -C.BARD_GLIDE_FALL - 1e-9);
+  // 맞으면 풀림
+  q.g.applyKnockback(q.p(1), 1, 0, 1, 0, 300, 1, { by: 2, kind: 'push' });
+  assert.equal(q.p(1).glideUntil, 0, '맞으면 풀림');
 });
 
 test('바드 메탈 R 앰프 음파: 3초 동안 앞 원뿔에 작게 계속 밀침 (옆·뒤는 안 맞음), 끝에 크게, 연주 중 느리게·평타 안 나감, 맞아도 안 끊김 (재혁 가: 넉백은 받고 경직 중에도 연주 계속)', () => {

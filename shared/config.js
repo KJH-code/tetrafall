@@ -539,10 +539,10 @@ export const CONFIG = {
   // 둔화: 이동 속도 × (1 - BARD_SLOW), BARD_SLOW_MS (안 쌓이고 갱신만). 압사 원칙: 약하게
   BARD_SLOW: 0.2,
   BARD_SLOW_MS: 2000,
-  // 음유 공중 평타 천천히 낙하: 중력 × BARD_GLIDE_GRAVITY, 떨어지는 속도 최대 BARD_GLIDE_FALL. 땅에 닿거나 맞거나 BARD_GLIDE_MS 지나면 풀림
+  // 음유 공중 평타 천천히 낙하: 중력 × BARD_GLIDE_GRAVITY, 떨어지는 속도 최대 BARD_GLIDE_FALL. 공중 평타 동작(준비+후딜) 동안만, 이어 치면 연장.
+  // 땅에 닿거나 맞으면 바로 풀림 (2026-10-26 재혁: 3초 계속 이어지던 것 → 공격하는 동안만)
   BARD_GLIDE_GRAVITY: 0.25,
   BARD_GLIDE_FALL: 2,
-  BARD_GLIDE_MS: 3000,
   // F 음유 → 메탈: 충격파 + 기타 리프 (주변 밀침)
   BARD_RIFF_RANGE: 1.8,
   BARD_RIFF_DAMAGE: 5,
