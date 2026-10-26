@@ -376,10 +376,9 @@ export class BotBrain {
     if (p.char === 'cannon' && p.cannonAmmo > 0 && dist <= C.CANNON_SHELL_RANGE * 0.7) {
       const dz = t.z + C.PLAYER_HEIGHT * 0.5 - (p.z + C.EYE_HEIGHT - 0.2);
       const err = this.shellErr || { yaw: 0, pitch: 0 }; // 쏠 때마다 새 조준 오차 (사람처럼 빗나감)
-      this.input.yaw = Math.atan2(t.y - p.y, t.x - p.x) + err.yaw;
+      this.kite(g, p, t, C.CANNON_SHELL_RANGE * 0.6, avoid); // A2 kite: 가장자리 안 등지고 상대 둘레 원 위로 거리 유지 (yaw = 상대 쪽)
+      this.input.yaw += err.yaw;
       this.input.pitch = Math.atan2(dz, dist) + err.pitch;
-      this.input.fwd = dist < 2.5 && edgeDist(p.x - toT.x * 1.5, p.y - toT.y * 1.5) > 1 ? -1 : 0;
-      this.input.strafe = 0;
       g.handleInput(p.id, this.input);
       if (!p.atk && g.time >= p.pushReadyAt && g.time >= this.nextPushAt) {
         g.handleAction(p.id, { name: 'push' });
@@ -395,10 +394,9 @@ export class BotBrain {
     if (p.char === 'bard' && p.form !== 'metal' && !softened && dist <= C.BARD_NOTE_RANGE * 0.8) {
       const dz = t.z + C.PLAYER_HEIGHT * 0.5 - (p.z + C.EYE_HEIGHT - 0.3);
       const err = this.shellErr || { yaw: 0, pitch: 0 };
-      this.input.yaw = Math.atan2(t.y - p.y, t.x - p.x) + err.yaw;
+      this.kite(g, p, t, C.BARD_NOTE_RANGE * 0.6, avoid); // A2 kite
+      this.input.yaw += err.yaw;
       this.input.pitch = Math.atan2(dz, dist) + err.pitch;
-      this.input.fwd = dist < 2 && edgeDist(p.x - toT.x * 1.5, p.y - toT.y * 1.5) > 1 ? -1 : 0;
-      this.input.strafe = 0;
       g.handleInput(p.id, this.input);
       if (!p.atk && g.time >= p.pushReadyAt && g.time >= this.nextPushAt) {
         g.handleAction(p.id, { name: 'push' });

@@ -2665,3 +2665,25 @@ test('봇 캐릭터 F 복귀 (2026-10-26): 필드 밖으로 떨어질 참이면 
   Object.assign(b, { x: g.W - 1, kbx: 12 });
   assert.equal(brain.charRecover(g, b), true, '넉백 예측');
 });
+
+test('봇 원거리 거리 두기 (A2 kite 연결): 대포수·바드 음유는 붙은 상대에게서 거리를 벌리며 쏘고, 필드 안에 남음', () => {
+  for (const c of ['cannon', 'bard']) {
+    const { g, b, t } = botVs(c, 'tank');
+    place(b, 5, 5, 0);
+    place(t, 6.3, 5, Math.PI);
+    b.skillReadyAt = Infinity; // F 없음 (바드는 붙으면 메탈로 바꾸는 게 먼저라서)
+    g.drainEvents();
+    let shots = 0;
+    let maxD = 0;
+    for (let k = 0; k < 3000; k += TICK) {
+      t.input = { fwd: 0, strafe: 0, jump: false, yaw: Math.PI, pitch: 0 };
+      Object.assign(t, { x: 6.3, y: 5 }); // 상대는 제자리
+      g.tick(TICK);
+      shots += g.drainEvents().filter((e) => (e.type === 'shellFire' || e.type === 'noteFire') && e.who === b.id).length;
+      maxD = Math.max(maxD, Math.hypot(b.x - t.x, b.y - t.y));
+    }
+    assert.ok(maxD > 2, `${c}: 거리 벌림 최대 ${maxD.toFixed(2)} (처음 1.3)`); // 대포수는 탄이 떨어지면 다시 붙음
+    assert.ok(b.x > 0.5 && b.x < g.W - 0.5 && b.y > 0.5 && b.y < g.D - 0.5 && b.alive, `${c}: 필드 안`);
+    assert.ok(shots >= 1, `${c}: 쏨 ${shots}`);
+  }
+});
