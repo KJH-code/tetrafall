@@ -1803,8 +1803,9 @@ export class Renderer {
     if (!a) return;
     a.cab.visible = on;
     if (!on) return;
+    const yaw = Number.isFinite(p.bard.ampYaw) ? p.bard.ampYaw : p.yaw; // 연주 방향 (BARD_AMP_LOCK_YAW 면 시작 때 고정, snapshot bard.ampYaw)
     // 앰프: 몸 왼쪽 뒤 비스듬히 1.1칸으로 늦게 따라옴 (바로 뒤면 3인칭 카메라를 가림), 바닥에 놓인 채 통통
-    const back = p.yaw + Math.PI * 0.75;
+    const back = yaw + Math.PI * 0.75;
     const bx = s.x + Math.cos(back) * 1.1;
     const by = s.y + Math.sin(back) * 1.1;
     const k = 1 - Math.exp(-6 * dt);
@@ -1812,7 +1813,7 @@ export class Renderer {
     a.y += (by - a.y) * k;
     const now = performance.now();
     a.cab.position.set(a.x, a.y, s.z + 0.35 + Math.abs(Math.sin(now / 90)) * 0.06);
-    a.cab.rotation.z = p.yaw;
+    a.cab.rotation.z = yaw;
     // 음파: 앞 원뿔 각만큼 벌어진 얇은 호가 몸에서 사거리까지 퍼지며 사라짐 (화면을 덮지 않게 선만)
     a.waveAcc += dt * 1000;
     if (a.waveAcc >= C.BARD_AMP_WAVE_MS) {
@@ -1823,7 +1824,7 @@ export class Renderer {
         const mat = noOutline(new THREE.MeshBasicMaterial({ color: C.BARD_AMP_COLOR, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }));
         const m = new THREE.Mesh(geo, mat);
         m.position.set(s.x, s.y, s.z + dz);
-        m.rotation.z = p.yaw;
+        m.rotation.z = yaw;
         m.renderOrder = 5;
         this.scene.add(m);
         (this.ampWaves ||= []).push({ m, mat, t0: now });
@@ -1833,7 +1834,7 @@ export class Renderer {
     a.bolt += dt * 14;
     while (a.bolt >= 1) {
       a.bolt -= 1;
-      const ang = p.yaw + (Math.random() - 0.5) * ((C.BARD_AMP_ANGLE_DEG * Math.PI) / 180);
+      const ang = yaw + (Math.random() - 0.5) * ((C.BARD_AMP_ANGLE_DEG * Math.PI) / 180);
       const r1 = 0.6 + Math.random() * (C.BARD_AMP_RANGE - 1.2);
       const r2 = r1 + 0.4 + Math.random() * 0.5;
       const z = s.z + 0.6 + Math.random() * 0.8;
