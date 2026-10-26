@@ -657,6 +657,7 @@ export const CONFIG = {
   GHOST_DROP_ENABLED: true,
   GHOST_DROP_CD_MS: 6000,
   GHOST_DROP_UP: 5, // 기둥 꼭대기 위 이 칸에서 생김 (보통 블록처럼 그림자 예고 시간이 생기게)
+  GHOST_DROP_UP_SKY: 2, // 하늘 계단 켬 판은 블록이 2.5초에 한 칸이라 (5칸이면 12.5초) 이만큼만 → 5초
   GHOST_DROP_BOTS: false, // 죽은 봇도 떨어뜨릴지 (봇 판 비교용, 기본 끔)
 
   // ---- 연습 모드 (2026-10-26 재혁: 혼자 쓰는 방, 판이 안 끝남, 허수아비) ----

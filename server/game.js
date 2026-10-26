@@ -4508,7 +4508,7 @@ export class Game {
     const top = this.columnTop(x, y);
     if (top >= this.H) return fail('full');
     if (this.pieces.some((pc) => pc.cells.some(([dx, dy]) => pc.px + dx === x && pc.py + dy === y))) return fail('busy');
-    const pz = Math.min(top + C.GHOST_DROP_UP, this.H - 1);
+    const pz = Math.min(top + (this.sky ? C.GHOST_DROP_UP_SKY : C.GHOST_DROP_UP), this.H - 1); // 켬 판은 느려서 낮게
     const stepMs = this.sky ? C.SKY_FALL_STEP_MS : this.autoFallStepMs(); // 그 판 보통 블록 속도
     const piece = { id: 0, shape: 'ghost', rot: 0, cells: [[0, 0]], px: x, py: y, pz, landZ: top, fits: true };
     this.addPiece(piece, { phase: 'falling', controller: null, ghostBy: p.id, ghostSlot: p.slot, stepMs, nextStepAt: this.time + stepMs, controlEndsAt: 0 });

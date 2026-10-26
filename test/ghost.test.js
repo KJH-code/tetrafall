@@ -37,6 +37,7 @@ test('유령 투하: 수치·기본값 (사람만, 봇은 꺼 둠)', () => {
   assert.equal(C.GHOST_DROP_ENABLED, true);
   assert.equal(C.GHOST_DROP_CD_MS, 6000);
   assert.equal(C.GHOST_DROP_BOTS, false);
+  assert.equal(C.GHOST_DROP_UP_SKY, 2);
 });
 
 test('유령 투하: 죽자마자 1개, 그 뒤 GHOST_DROP_CD_MS 쿨. 살아 있으면·필드 밖·같은 기둥 블록이면 거절, snapshot ghostCd', () => {
@@ -71,8 +72,9 @@ test('유령 투하: 그 판 보통 블록 속도로 떨어져 착지하면 GHOS
     g.kill(p(1), 'fall');
     const pc = g.ghostDrop(1, 5, 5);
     assert.equal(pc.stepMs, sky ? C.SKY_FALL_STEP_MS : g.autoFallStepMs());
+    assert.equal(pc.pz, sky ? C.GHOST_DROP_UP_SKY : C.GHOST_DROP_UP, '켬 판은 낮게 (GHOST_DROP_UP_SKY 2)');
     assert.equal(g.snapshot().pieces.find((x) => x.id === pc.id).ghostSlot, p(1).slot);
-    run(g, pc.stepMs * (C.GHOST_DROP_UP + 1) + TICK);
+    run(g, pc.stepMs * (pc.pz + 1) + TICK);
     assert.ok(!g.pieces.includes(pc), '착지');
     assert.equal(g.gridAt(5, 5, 0), CELL.GHOST_BASE + p(1).slot);
     assert.equal(g.landed.ghost, 1);
