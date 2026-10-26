@@ -815,6 +815,10 @@ export const CONFIG = {
   HOOK_FLY_MS: 110, // 갈고리 머리가 날아가 닿는 시간. 판정도 이때 (2026-10-26: 던진 방향·닿는 순간 위치로, 그 사이 옆으로 피하면 빗나감)
   HOOK_HOLD_MS: 380, // 닿은 뒤 사슬이 걸려 있는 시간 (끌려오는 동안)
   HOOK_GRAB_SWING_R: 0.9, // R: 뽑은 블록을 머리 위에서 돌리는 반지름 (칸)
+  HOOK_GRAB_SHAKE: 0.18, // R: 뽑히기 전(HOOK_GRAB_MS) 덩어리가 제자리에서 덜덜 떠는 폭 (칸, 끝으로 갈수록 세게)
+  HOOK_GRAB_SHAKE_PART: 0.5, // R: HOOK_GRAB_MS 중 앞쪽 이만큼은 제자리에서 덜덜, 나머지는 머리 위로 끌려옴 (그 뒤 서버가 내려찍음)
+  HOOK_GRAB_FP_OPACITY: 0.4, // R: 내 1인칭이면 머리 위 덩어리를 이만큼만 (화면을 덮지 않게)
+  HOOK_GRAB_FP_RAISE: 1.2, // R: 내 1인칭이면 덩어리를 이만큼 더 높이 (칸)
   HOOK_SLAM_FLY_MS: 150,
   HOOK_PULL_SLIDE_MS: 200, // 끌려오는 쪽: 갈고리가 닿을 때까지 제자리, 그 뒤 이 시간 동안 질질 끌려옴 (판정·위치는 서버가 즉시)
   BLOCK_PULSE_MS: 260, // 블록이 움직이거나 바뀌는 순간 그 칸이 번쩍 부풀었다 사라지는 시간 (render.js blockPulse)
