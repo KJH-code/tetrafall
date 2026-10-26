@@ -44,6 +44,7 @@ export function parseLog(text) {
   };
   let cur = null;
   let last = null; // 방금 끝난 판: 종료 줄 다음의 "  사망:" 요약 줄을 받음
+  let ended = null; // 방금 끝난 판: 종료 뒤 "  블록:" 줄을 받음 (다음 판 시작까지)
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.replace(/^\[[^\]]*\]\s?/, ''); // 앞의 [시각] 떼기
     let m;
@@ -55,6 +56,7 @@ export function parseLog(text) {
       else if (m[2] !== '(없음)' && m[2] !== c.key) c.aliases.add(m[2]);
     } else if ((m = line.match(/^===== ROUND (\d+) 시작 \((\d+)명(?:: (.*?))?, 맵 ([^,]+?)(?:, 봇 (\S+))?\) =====$/))) {
       last = null;
+      ended = null;
       cur = {
         n: Number(m[1]),
         size: Number(m[2]),
@@ -81,6 +83,12 @@ export function parseLog(text) {
         berserker: { leaps: 0, spins: 0, rage: 0, cut: 0, endHits: 0, broken: 0 }, // 광전사 도약·소용돌이·분노 배율 합·깎은 피해 %·끝 날림 맞힌 수·끊김 (2026-10-26~)
         bard: { notes: 0, toMetal: 0, toBard: 0, healed: 0, songs: 0, vuln: 0, amps: 0, ampBroken: 0 }, // 바드 음파 명중·폼 전환·치유한 피해 %·취약의 노래(걸린 사람)·앰프(끊김) (2026-10-26~)
       };
+    } else if ((m = line.match(/^ {2}블록: (.*)$/)) && ended) {
+      // 판 끝 놓인 블록 수 "자동 3 / 하늘 5 / …" (2026-10-26~)
+      ended.landed = Object.fromEntries(m[1].split(' / ').map((x) => x.split(' ')).map(([k, n]) => [k, Number(n)]));
+    } else if ((m = line.match(/^ {2}지형 변화: 남은 칸 (\d+) \/ 평균 높이 \+([\d.]+)$/)) && ended) {
+      ended.leftCells = Number(m[1]);
+      ended.rise = Number(m[2]);
     } else if ((m = line.match(/^ {2}사망: (.*)$/)) && last) {
       // 접속 끊김은 [사망] 줄 없이 여기에만 나옴
       for (const part of m[1].split(', ')) {
@@ -95,7 +103,7 @@ export function parseLog(text) {
       last = null;
     } else if (!cur) {
       continue;
-    } else if ((m = line.match(/^ {2}\[사망\] (\S+) (압사|낙사|용암|접속 끊김) @ (\d+:\d+)(?:.*피해 (\d+)%)?(?:, 킬 (?:없음|(\S+) ([^\s)]+)))?/))) {
+    } else if ((m = line.match(/^ {2}\[사망\] (\S+) (압사|낙사|용암|접속 끊김) @ (\d+:\d+)(?:.*피해 (\d+)%)?(?:, 킬 (?:없음|(\S+) ([^\s),]+)))?(?:, 밟은 칸 (\S+?)\))?/))) {
       // 킬: 이름 = 그 사람, null = 킬 없음, undefined = 킬 기록이 없던 옛 로그
       const killed = /, 킬 /.test(line);
       cur.deaths.push({
@@ -105,6 +113,7 @@ export function parseLog(text) {
         damage: m[4] === undefined ? null : Number(m[4]),
         killer: killed ? m[5] || null : undefined,
         weapon: killed ? m[6] || null : undefined,
+        ground: m[7] || null, // 마지막으로 밟은 칸 (2026-10-26~, 옛 로그 null)
       });
     } else if ((m = line.match(/^===== ROUND (\d+) 종료 \| 길이 (\d+:\d+) \| 승자: (.+) =====$/))) {
       if (Number(m[1]) === cur.n) {
@@ -114,6 +123,7 @@ export function parseLog(text) {
         cur.conns = new Map(cur.names.map((n) => [n, conn(n)])); // 이 판에 있던 접속 (이름은 나중에 넣어도 반영)
         rounds.push(cur);
         last = cur;
+        ended = cur;
       }
       cur = null;
     } else if ((m = line.match(/^ {2}팀: 빨강 ?(.*?) \/ 파랑 ?(.*)$/))) {
@@ -227,6 +237,47 @@ const shareOf = (deaths) => {
   return { crush: counted.filter((d) => d.cause === 'crush').length, n: counted.length };
 };
 
+// 블록이 지형을 바꾸나 (2026-10-26 C 가설: 판이 짧아 블록이 쌓이기 전에 끝남): 판 길이 구간·맵별로 놓인 블록 수와 사망 때 밟은 칸
+export const LEN_BUCKETS = [0, 20, 40, 60, 90]; // 초. 마지막은 90초 이상
+export const GROUND_KINDS = ['바닥', '지형', '블록', '하늘', '낙하블록', '없음'];
+function blockStats(rounds) {
+  const rs = rounds.filter((r) => r.landed);
+  if (!rs.length) return null;
+  const total = (r) => Object.values(r.landed).reduce((a, n) => a + n, 0);
+  const row = (key, list) => {
+    const grounds = Object.fromEntries(GROUND_KINDS.map((k) => [k, 0]));
+    let n = 0;
+    for (const r of list) for (const d of r.deaths) if (d.ground) {
+      grounds[d.ground] = (grounds[d.ground] || 0) + 1;
+      n++;
+    }
+    const secs = list.reduce((a, r) => a + r.len, 0);
+    const kinds = {};
+    for (const r of list) for (const [k, v] of Object.entries(r.landed)) kinds[k] = (kinds[k] || 0) + v;
+    const risen = list.filter((r) => r.rise !== undefined);
+    return { key, rounds: list.length, lenMedian: median(list.map((r) => r.len)), blocksMedian: median(list.map(total)), riseMedian: risen.length ? median(risen.map((r) => r.rise)) : null, perMin: secs ? (list.reduce((a, r) => a + total(r), 0) / secs) * 60 : 0, kinds, grounds, deaths: n };
+  };
+  const bucketOf = (len) => {
+    let i = LEN_BUCKETS.length - 1;
+    while (len < LEN_BUCKETS[i]) i--;
+    const lo = LEN_BUCKETS[i];
+    const hi = LEN_BUCKETS[i + 1];
+    return hi === undefined ? `${lo}초+` : `${lo}~${hi}초`;
+  };
+  const by = (keyOf, order) => {
+    const g = new Map();
+    for (const r of rs) {
+      const k = keyOf(r);
+      if (!g.has(k)) g.set(k, []);
+      g.get(k).push(r);
+    }
+    const keys = order ? order.filter((k) => g.has(k)) : [...g.keys()];
+    return keys.map((k) => row(k, g.get(k)));
+  };
+  const bucketNames = LEN_BUCKETS.map((lo, i) => bucketOf(lo));
+  return { all: row('전체', rs), byLen: by((r) => bucketOf(r.len), bucketNames), byMap: by((r) => r.map) };
+}
+
 // 판 목록 → 표로 낼 숫자
 export function summarize(rounds) {
   const deaths = rounds.flatMap((r) => r.deaths);
@@ -319,6 +370,7 @@ export function summarize(rounds) {
     byMap: group((r) => r.map),
     bySky: rounds.some((r) => r.sky) ? group((r) => (r.sky ? '켬' : '끔')) : [],
     melts: rounds.reduce((n, r) => n + r.melts, 0),
+    blocks: blockStats(rounds),
     byChar: (() => {
       // 캐릭터별 판·승 (사람·봇 따로). 캐릭터 줄이 있는 판만
       const t = new Map();
@@ -434,6 +486,15 @@ export function formatReport(s) {
   const groupRows = (g) => g.map((x) => [x.key, x.rounds, fmtSec(x.lenMedian), `${pct(x.crush, x.deaths)} (${x.crush}/${x.deaths})`]);
   out.push('', '== 인원 구성별 ==', table(['구성', '판', '길이 중앙값', '압사 비율'], groupRows(s.byComp)));
   out.push('', '== 맵별 ==', table(['맵', '판', '길이 중앙값', '압사 비율'], groupRows(s.byMap)));
+  if (s.blocks) {
+    const B = s.blocks;
+    const kindKeys = Object.keys(B.all.kinds);
+    const rows = (list) => list.map((x) => [x.key, x.rounds, fmtSec(x.lenMedian), x.blocksMedian, x.perMin.toFixed(1), x.riseMedian === null ? '-' : `+${x.riseMedian.toFixed(2)}`, ...GROUND_KINDS.map((k) => pct(x.grounds[k], x.deaths))]);
+    const head = (first) => [first, '판', '길이 중앙값', '블록 중앙값', '분당', '높이 변화', ...GROUND_KINDS];
+    out.push('', `== 블록·사망 때 밟은 칸 == (놓인 블록 ${kindKeys.map((k) => `${k} ${B.all.kinds[k]}`).join(' · ')}. 높이 변화 = 판 끝 평균 기둥 높이 - 시작 지형, 건축가 블록은 사라짐)`);
+    out.push(table(head('판 길이'), rows([...B.byLen, B.all])));
+    out.push('', table(head('맵'), rows(B.byMap)));
+  }
   if (s.bySky.length) out.push('', `== 하늘 계단별 == (용암에 녹은 하늘 블록 ${s.melts})`, table(['하늘 계단', '판', '길이 중앙값', '압사 비율'], groupRows(s.bySky)));
   if (s.byChar.length) out.push('', '== 캐릭터별 ==', table(['캐릭터', '판', '승', '승률'], s.byChar.map((c) => [c.key, c.rounds, c.wins, pct(c.wins, c.rounds)])));
   if (s.combos.total) {

@@ -93,6 +93,7 @@ export class Game {
     this.roundEndTime = 0;
     this.winnerId = null;
     this.deaths = []; // 이번 판 사망 기록
+    this.landed = emptyLanded(); // 이번 판 놓인 블록 수 (종류별, 판 끝 로그 "  블록:" → npm run stats)
     this.totals = { rounds: 0, crush: 0, fall: 0, lava: 0 }; // 누적 (합격선 측정용)
     this.totalsByCount = {}; // 인원수별 누적 { [n]: { rounds, crush, fall } }. 인원이 다르면 압사 비율을 따로 본다
     this.roundPlayerCount = 0;
@@ -550,6 +551,7 @@ export class Game {
     this.bgroup = 0;
     this.bombCounter = 0;
     this.deaths = [];
+    this.landed = emptyLanded();
     this.events = [];
     this.winnerId = null;
     this.winnerTeam = null;
@@ -569,6 +571,7 @@ export class Game {
         kbx: 0,
         kby: 0,
         grounded: true,
+        lastGround: null, // 마지막으로 밟은 칸 종류 (GROUND_LOG, 사망 로그 "밟은 칸")
         alive: !p.spectator,
         stunUntil: 0,
         freezeUntil: 0,
@@ -710,6 +713,8 @@ export class Game {
     const winText = winnerTeam ? `${TEAM_KO[winnerTeam]}팀` : list.length ? list.map((p) => p.name).join(' ') : '무승부'; // 여럿이면 공백으로 (npm run stats)
     this.log(`===== ROUND ${this.roundNumber} 종료 | 길이 ${fmtTime(dur)} | 승자: ${winText} =====`);
     this.log(`  사망: ${deathStr}`);
+    this.log(`  블록: ${Object.entries(this.landed).map(([k, n]) => `${LANDED_LOG[k]} ${n}`).join(' / ')}`);
+    this.log(`  지형 변화: 남은 칸 ${this.grid.reduce((n, v) => n + (v && v !== CELL.TERRAIN ? 1 : 0), 0)} / 평균 높이 +${(this.avgHeight() - this.baseAvgHeight).toFixed(2)}`); // 판 끝에 시작 지형 말고 남은 블록 칸 (층 클리어·사라진 건축가 블록은 빠짐)
     if (this.mode === 'master') {
       const m = this.master();
       this.log(`  결과: ${list.some((p) => p.master) ? `마스터 ${m.name} 승 (생존자 전멸)` : list.length ? `생존자 ${list.length}명 승` : '무승부'}`);
@@ -846,6 +851,7 @@ export class Game {
       kbx: 0,
       kby: 0,
       grounded: true,
+      lastGround: null,
       alive: true,
       stunUntil: 0,
       freezeUntil: 0,
@@ -920,7 +926,8 @@ export class Game {
     this.deaths.push({ name: p.name, cause, t, killer: credit ? credit.name : null, weapon: credit ? credit.kind : null });
     this.emit({ type: 'death', who: p.id, cause, by: credit ? credit.by : null, weapon: credit ? credit.kind : null, byName: credit ? credit.name : null });
     const killText = credit ? `, 킬 ${credit.name} ${WEAPON_LOG[credit.kind]}` : ', 킬 없음'; // "킬 없음" 을 적어야 킬 기록이 없던 옛 로그와 구분됨
-    this.log(`  [사망] ${p.name} ${causeKo(cause)} @ ${fmtTime(t)} (위치 ${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}, 피해 ${p.damage}%${killText})`);
+    // 밟은 칸: 죽기 전 마지막으로 서 있던 칸 (시작 지형 위 싸움인지, 블록이 바꾼 지형 위인지 → npm run stats)
+    this.log(`  [사망] ${p.name} ${causeKo(cause)} @ ${fmtTime(t)} (위치 ${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}, 피해 ${p.damage}%${killText}, 밟은 칸 ${GROUND_LOG[p.lastGround ?? 'none']})`);
     if (this.mode === 'kills' && this.phase === 'playing') this.scoreDeath(p, credit);
     if (this.mode === 'master' && this.phase === 'playing' && !p.master && this.master()) this.joinMasterSide(p);
   }
@@ -2219,6 +2226,7 @@ export class Game {
     if (!this.inXY(x, y) || z < 0 || z >= this.H || this.grid[this.idx(x, y, z)] || this.pieceCells.has(cellKey(x, y, z))) return false;
     this.grid[this.idx(x, y, z)] = CELL.BUILD;
     this.bblocks.set(cellKey(x, y, z), { x, y, z, owner: p.id, kind, group, expiresAt: this.time + C.BUILDER_BLOCK_MS, born: this.time });
+    this.landed.builder++;
     return true;
   }
 
@@ -2579,6 +2587,7 @@ export class Game {
         this.grid[this.idx(x, y, z)] = g.v;
         if (g.meta) this.bblocks.set(cellKey(x, y, z), { ...g.meta, x, y, z });
         cell = [x, y, z];
+        this.landed.hook++;
         this.gridChanged();
         // 그 칸 사람은 압사 대신 밀쳐냄 (내려찍은 방향으로 칸 밖, 막히면 블록 위로)
         for (const t of this.players.values()) {
@@ -3537,6 +3546,7 @@ export class Game {
   }
 
   landPiece(piece = this.piece) {
+    this.landed[piece.sky ? 'sky' : piece.controller !== null ? 'control' : piece.thrownBy ? 'item' : 'auto']++;
     const cell = piece.thrownBy ? CELL.THROWN : cellOfShape(piece.shape); // 색 구분용
     for (const [x, y, z] of this.pieceWorldCells(piece)) {
       if (z >= 0 && z < this.H) this.grid[this.idx(x, y, z)] = cell;
@@ -3985,6 +3995,7 @@ export class Game {
       for (const p of this.players.values()) if (this.onField(p)) this.integratePlayer(p, h);
       remaining -= h;
     }
+    for (const p of this.players.values()) if (p.grounded && p.alive && this.onField(p)) p.lastGround = this.groundKind(p);
     this.updateCombat();
     for (const p of this.players.values()) {
       if (this.onField(p) && p.z < C.FALL_DEATH_Z) this.kill(p, 'fall');
@@ -4004,6 +4015,23 @@ export class Game {
       return;
     }
     this.checkRoundEnd();
+  }
+
+  // 발밑 칸 종류 (GROUND_LOG 키): 몸 가운데 → 네 모서리 순으로 처음 닿는 칸. 필드 바닥 'floor', 맵 지형 'terrain',
+  // 쌓인 블록(떨어진 블록·건축가·설치 블록) 'stack', 하늘 계단 블록 'sky', 떨어지는 보통 블록 'piece'
+  groundKind(p) {
+    const cz = Math.round(p.z) - 1;
+    if (cz < 0) return 'floor';
+    const h = C.PLAYER_HALF * 0.9;
+    for (const [ox, oy] of [[0, 0], [-h, -h], [h, -h], [-h, h], [h, h]]) {
+      const x = Math.floor(p.x + ox);
+      const y = Math.floor(p.y + oy);
+      const id = this.pieceCells.get(cellKey(x, y, cz));
+      if (id !== undefined) return this.pieces.find((pc) => pc.id === id)?.sky ? 'sky' : 'piece';
+      const v = this.gridAt(x, y, cz);
+      if (v) return v === CELL.TERRAIN ? 'terrain' : 'stack';
+    }
+    return 'stack'; // 칸 경계에 걸쳐 서 있음 (건축가 블록이 막 사라진 칸 등): 블록 위로 셈
   }
 
   // ---------- 스냅샷 ----------
@@ -4181,6 +4209,14 @@ function basicLabel(set, n, air, def) {
 const ULT_KINDS = new Set(['slam', 'bigbomb', 'blockslam', 'execute', 'bigshell', 'spin', 'spinend', 'amp', 'ampend']);
 
 const BBLOCK_LOG = { wall: '벽', third: '3타 블록', pad: '발판' };
+// 판 끝 "  블록:" 줄 (npm run stats). 떨어진 블록은 착지할 때, 건축가 블록은 칸마다, 갈고리 R 은 박힐 때 셈
+const LANDED_LOG = { auto: '자동', sky: '하늘', control: '조종', item: '설치', builder: '건축가', hook: '갈고리' };
+function emptyLanded() {
+  return Object.fromEntries(Object.keys(LANDED_LOG).map((k) => [k, 0]));
+}
+// 사망 로그 "밟은 칸" (한 단어, npm run stats)
+const GROUND_LOG = { floor: '바닥', terrain: '지형', stack: '블록', sky: '하늘', piece: '낙하블록', none: '없음' };
+
 const WEAPON_LOG = { push: '밀치기', shell: '포탄', bigshell: '대형포탄', groundshot: '발밑포격', leapwave: '광폭도약', spin: '소용돌이회전', spinend: '소용돌이', note: '음파', riff: '기타리프', amp: '앰프', ampend: '앰프마무리', pounce: '덮치기', execute: '처형사격', wallkick: '벽차기', blast: '블록폭발', bigbomb: '대폭발', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', blockslam: '블록내려찍기' };
 
 function causeKo(cause) {
