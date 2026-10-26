@@ -1537,3 +1537,24 @@ test('봇 사냥꾼: 표식 대상이 보이면 R, 표식 있는 상대가 떨�
   assert.equal(g2.bots.get(b2.id).useSkills(g2, b2, t2, [t2], []), true);
   assert.ok(b2.leap, 'F 도약');
 });
+
+test('사냥꾼 R: 콘 안에 표식 있는 사람·없는 사람이 섞이면 표식 있는 사람만 맞음. 대상 없으면 게이지 유지 + ultFail. snapshot ultTarget', () => {
+  const { g, p } = setupChars(['hunter', 'tank', 'builder']);
+  place(p(1), 2, 4.5, 0);
+  place(p(2), 5, 4.5); // 표식 없음
+  place(p(3), 5, 5.8); // 표식 1
+  const snap = () => g.snapshot().players.find((x) => x.id === 1).ultTarget;
+  assert.equal(snap(), false, '표식 대상 없음');
+  p(1).ult = g.ultMax(p(1));
+  g.drainEvents();
+  g.handleAction(1, { name: 'ult' });
+  assert.equal(p(1).ult, g.ultMax(p(1)), '게이지 유지');
+  assert.ok(g.drainEvents().some((e) => e.type === 'ultFail' && e.reason === 'noTarget'));
+  p(3).marks.set(1, { n: 1, at: g.time });
+  assert.equal(snap(), true, 'R 대상 있음');
+  g.handleAction(1, { name: 'ult' });
+  run(g, C.HUNTER_SHOT_WINDUP_MS + TICK);
+  assert.equal(p(2).damage, 0, '표식 없는 사람은 안 맞음');
+  assert.equal(p(3).damage, C.HUNTER_SHOT_DAMAGE_PER_MARK);
+  assert.equal(g.snapshot().players.find((x) => x.id === 2).ultTarget, undefined, '사냥꾼만');
+});
