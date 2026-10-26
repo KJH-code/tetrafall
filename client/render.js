@@ -635,6 +635,7 @@ export class Renderer {
         hit, act: this.actFor(p.id), tumble: a.tumbleAmt, recover: a.recover * a.recoverPow, land: a.figLand * a.landPow, flip: a.flip >= 0 && !a.flipRag ? a.flip / C.FIGURE_FLIP_S : -1, rag: !!a.flipRag,
         sniffAt: fig.sniff ? this.sniffAngle(p) : null,
         whirl: this.whirlTime(a, p), dizzy: a.dizzy > 0 ? a.dizzy / C.BERSERK_DIZZY_S : 0,
+        glide: !!(p.bard && p.bard.glideLeft > 0 && air), amp: !!(p.bard && p.bard.ampLeft > 0),
       }, dt);
       if (a.dizzy > 0) a.dizzy -= dt;
     }
@@ -1593,6 +1594,223 @@ export class Renderer {
     }
   }
 
+  // ---------- 바드 ----------
+  // 류트 음파 (snapshot notes): 초록·금색으로 빛나는 8분음표가 위아래로 살랑이며 날아감 + 반짝이 꼬리. 30Hz 사이는 날아가는 방향으로 이어 그림
+  updateNotes(list, dt) {
+    if (!this.noteMeshes) {
+      this.noteMeshes = new Map();
+      this.noteMat = noOutline(new THREE.MeshBasicMaterial({ color: C.BARD_NOTE_COLOR }));
+      const g = new THREE.Group();
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), this.noteMat);
+      head.scale.set(1.3, 0.6, 0.9);
+      g.add(head);
+      const stem = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.34), this.noteMat);
+      stem.position.set(0.12, 0, 0.17);
+      g.add(stem);
+      const flag = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.025, 0.05), this.noteMat);
+      flag.position.set(0.18, 0, 0.3);
+      flag.rotation.y = 0.6;
+      g.add(flag);
+      this.noteProto = g;
+    }
+    const now = performance.now();
+    const seen = new Set();
+    for (const nt of list) {
+      seen.add(nt.id);
+      let m = this.noteMeshes.get(nt.id);
+      if (!m) {
+        const mesh = this.noteProto.clone();
+        this.scene.add(mesh);
+        m = { mesh, x: nt.x, y: nt.y, z: nt.z, at: now, t0: now, spark: 0 };
+        this.noteMeshes.set(nt.id, m);
+      }
+      if (nt.x !== m.x || nt.y !== m.y || nt.z !== m.z) Object.assign(m, { x: nt.x, y: nt.y, z: nt.z, at: now });
+      m.dir = nt.dir;
+    }
+    for (const [id, m] of this.noteMeshes) {
+      if (!seen.has(id)) {
+        this.scene.remove(m.mesh);
+        this.noteMeshes.delete(id);
+        continue;
+      }
+      const d = m.dir || { x: 0, y: 0, z: 0 };
+      const ahead = Math.min(0.1, (now - m.at) / 1000) * C.BARD_NOTE_SPEED;
+      const x = m.x + d.x * ahead;
+      const y = m.y + d.y * ahead;
+      const z = m.z + d.z * ahead + Math.sin((now - m.t0) / 70) * 0.12; // 살랑
+      if (![x, y, z].every(Number.isFinite)) continue;
+      m.mesh.position.set(x, y, z);
+      m.mesh.rotation.z = Math.atan2(d.y, d.x) + Math.PI / 2; // 옆에서 보이게
+      m.mesh.rotation.x = Math.sin((now - m.t0) / 120) * 0.4;
+      m.spark += dt * 18;
+      while (m.spark >= 1) {
+        m.spark -= 1;
+        this.effects.burst({ x, y, z }, { x: 0, y: 0 }, Math.random() < 0.5 ? C.BARD_NOTE_COLOR : 0xffe070, 1, 0.5, 0.05, 0.35);
+      }
+    }
+  }
+
+  // 머리 위 표시: 취약(vulnLeft) = 분홍 ♫ 가 통통 (넉백 ×1.3, 멀리서도 보이게) / 둔화(slowLeft) = 발밑 옅은 파란 소용돌이 (약하게)
+  updateStatusFx(g, p, s, myId) {
+    let fx = g.userData.statusFx;
+    const vuln = p.alive && p.vulnLeft > 0;
+    const slow = p.alive && p.slowLeft > 0;
+    if (!fx && (vuln || slow)) {
+      const c = document.createElement('canvas');
+      c.width = c.height = 64;
+      const x = c.getContext('2d');
+      x.fillStyle = '#ff6ad5';
+      x.strokeStyle = '#3a0030';
+      x.lineWidth = 4;
+      x.font = 'bold 54px sans-serif';
+      x.textAlign = 'center';
+      x.textBaseline = 'middle';
+      x.strokeText('♫', 32, 34);
+      x.fillText('♫', 32, 34);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthWrite: false, transparent: true, sizeAttenuation: false }));
+      sprite.scale.set(0.07, 0.07, 1);
+      sprite.center.set(0.5, -1.2); // 이름표 위
+      sprite.position.z = C.PLAYER_HEIGHT + 0.45;
+      sprite.renderOrder = 12;
+      g.add(sprite);
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.5, 24, 1, 0, Math.PI * 1.5), noOutline(new THREE.MeshBasicMaterial({ color: 0x6aa8ff, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false })));
+      ring.position.z = 0.04;
+      g.add(ring);
+      fx = g.userData.statusFx = { sprite, ring };
+    }
+    if (!fx) return;
+    fx.sprite.visible = vuln && !(p.id === myId && !this.third);
+    if (fx.sprite.visible) fx.sprite.center.y = -1.2 - 0.25 * Math.abs(Math.sin(performance.now() / 160));
+    fx.ring.visible = slow;
+    if (slow) fx.ring.rotation.z = -performance.now() / 300;
+  }
+
+  // 메탈 R 앰프 음파: 뒤에서 한 박자 늦게 따라오는 앰프 (검은 상자 + 스피커 + 빨간 테) + 앞 원뿔로 번쩍이는 전격 음파
+  updateAmpFx(g, p, s, dt) {
+    const on = !!(p.bard && p.bard.ampLeft > 0 && p.alive);
+    let a = g.userData.ampFx;
+    if (on && !a) {
+      const cab = new THREE.Group();
+      cab.add(new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.6, 0.7), toon({ color: 0x1a1a1e })));
+      const grille = new THREE.Mesh(new THREE.CircleGeometry(0.2, 16), noOutline(new THREE.MeshBasicMaterial({ color: 0x3a3a44 })));
+      grille.rotation.y = Math.PI / 2;
+      grille.position.set(0.23, 0, 0.05);
+      cab.add(grille);
+      const cone = new THREE.Mesh(new THREE.CircleGeometry(0.09, 12), noOutline(new THREE.MeshBasicMaterial({ color: 0x111111 })));
+      cone.rotation.y = Math.PI / 2;
+      cone.position.set(0.235, 0, 0.05);
+      cab.add(cone);
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(0.47, 0.62, 0.05), toon({ color: 0xd8202a }));
+      edge.position.z = 0.33;
+      cab.add(edge);
+      cab.traverse((o) => (o.castShadow = true));
+      this.scene.add(cab);
+      a = g.userData.ampFx = { cab, x: s.x, y: s.y, bolt: 0, waveAcc: 0 };
+    }
+    if (!a) return;
+    a.cab.visible = on;
+    if (!on) return;
+    // 앰프: 몸 왼쪽 뒤 비스듬히 1.1칸으로 늦게 따라옴 (바로 뒤면 3인칭 카메라를 가림), 바닥에 놓인 채 통통
+    const back = p.yaw + Math.PI * 0.75;
+    const bx = s.x + Math.cos(back) * 1.1;
+    const by = s.y + Math.sin(back) * 1.1;
+    const k = 1 - Math.exp(-6 * dt);
+    a.x += (bx - a.x) * k;
+    a.y += (by - a.y) * k;
+    const now = performance.now();
+    a.cab.position.set(a.x, a.y, s.z + 0.35 + Math.abs(Math.sin(now / 90)) * 0.06);
+    a.cab.rotation.z = p.yaw;
+    // 음파: 앞 원뿔 각만큼 벌어진 얇은 호가 몸에서 사거리까지 퍼지며 사라짐 (화면을 덮지 않게 선만)
+    a.waveAcc += dt * 1000;
+    if (a.waveAcc >= C.BARD_AMP_WAVE_MS) {
+      a.waveAcc = 0;
+      const half = ((C.BARD_AMP_ANGLE_DEG / 2) * Math.PI) / 180;
+      for (const dz of [0.75, 1.3]) {
+        const geo = new THREE.RingGeometry(0.86, 1, 20, 1, -half, half * 2);
+        const mat = noOutline(new THREE.MeshBasicMaterial({ color: C.BARD_AMP_COLOR, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }));
+        const m = new THREE.Mesh(geo, mat);
+        m.position.set(s.x, s.y, s.z + dz);
+        m.rotation.z = p.yaw;
+        m.renderOrder = 5;
+        this.scene.add(m);
+        (this.ampWaves ||= []).push({ m, mat, t0: now });
+      }
+    }
+    // 전격: 원뿔 안에 짧은 번개 줄
+    a.bolt += dt * 14;
+    while (a.bolt >= 1) {
+      a.bolt -= 1;
+      const ang = p.yaw + (Math.random() - 0.5) * ((C.BARD_AMP_ANGLE_DEG * Math.PI) / 180);
+      const r1 = 0.6 + Math.random() * (C.BARD_AMP_RANGE - 1.2);
+      const r2 = r1 + 0.4 + Math.random() * 0.5;
+      const z = s.z + 0.6 + Math.random() * 0.8;
+      this.trail({ x: s.x + Math.cos(ang) * r1, y: s.y + Math.sin(ang) * r1, z }, { x: s.x + Math.cos(ang + 0.08) * r2, y: s.y + Math.sin(ang + 0.08) * r2, z: z + (Math.random() - 0.5) * 0.4 }, Math.random() < 0.5 ? 0xffffff : C.BARD_AMP_COLOR, 90);
+    }
+  }
+
+  updateAmpWaves() {
+    if (!this.ampWaves?.length) return;
+    const now = performance.now();
+    this.ampWaves = this.ampWaves.filter((w) => {
+      const u = (now - w.t0) / C.BARD_AMP_WAVE_LIFE_MS;
+      if (u >= 1) {
+        this.scene.remove(w.m);
+        w.m.geometry.dispose();
+        w.mat.dispose();
+        return false;
+      }
+      w.m.scale.setScalar(0.4 + u * (C.BARD_AMP_RANGE - 0.4));
+      w.mat.opacity = 0.8 * (1 - u);
+      return true;
+    });
+  }
+
+  // form 이벤트: 메탈 = 리프 충격파 (빨간 고리 + 불꽃) + 류트 줄이 팅 끊어져 튐 / 음유 = 초록 치유파 (고리 + 위로 오르는 반짝이)
+  bardForm(e) {
+    const pos = { x: e.x ?? 0, y: e.y ?? 0, z: (e.z ?? 0) + 0.1 };
+    const sm = this.smooth.get(e.who);
+    if (e.x === undefined && sm) Object.assign(pos, { x: sm.x, y: sm.y, z: sm.z + 0.1 });
+    if (e.form === 'metal') {
+      this.effects.ring(pos, 0xff3040, (e.r || 1.8) * 2, 0.35, true);
+      this.effects.ring({ x: pos.x, y: pos.y, z: pos.z + 1 }, 0x4060ff, (e.r || 1.8) * 1.6, 0.3);
+      this.effects.burst({ x: pos.x, y: pos.y, z: pos.z + 1 }, null, 0xff4050, 22, 6, 0.1, 0.4);
+      this.effects.burst({ x: pos.x, y: pos.y, z: pos.z + 1.1 }, null, 0xf0e8d0, 6, 7, 0.04, 0.35); // 끊어진 류트 줄
+      if (this.onBlast) this.onBlast(pos, false);
+    } else {
+      this.effects.ring(pos, 0x60ff90, 4, 0.5, true);
+      this.effects.burst({ x: pos.x, y: pos.y, z: pos.z + 0.8 }, { x: 0, y: 0 }, 0x80ffa0, 18, 2.5, 0.08, 0.9);
+      for (const h of e.healed || []) {
+        const t = this.smooth.get(h.id);
+        if (t) this.effects.burst({ x: t.x, y: t.y, z: t.z + 1 }, { x: 0, y: 0 }, 0x80ffa0, 14, 2, 0.08, 1.0);
+      }
+    }
+  }
+
+  // song: 앞 부채꼴로 분홍 음표 물결 + 걸린 사람마다 분홍 번쩍
+  bardSong(e) {
+    const half = ((C.BARD_SONG_ANGLE_DEG / 2) * Math.PI) / 180;
+    for (let k = 0; k < 14; k++) {
+      const ang = e.yaw + (Math.random() * 2 - 1) * half;
+      const r = 0.8 + Math.random() * 1.2;
+      this.effects.burst({ x: e.x + Math.cos(ang) * r, y: e.y + Math.sin(ang) * r, z: e.z + 0.9 + Math.random() * 0.6 }, { x: Math.cos(ang) * 1.5, y: Math.sin(ang) * 1.5 }, 0xff6ad5, 1, 4, 0.08, 0.6);
+    }
+    this.effects.ring({ x: e.x, y: e.y, z: e.z + 1 }, 0xff6ad5, C.BARD_SONG_RANGE * 0.9, 0.4);
+    for (const id of e.targets || []) {
+      const t = this.smooth.get(id);
+      if (t) this.effects.burst({ x: t.x, y: t.y, z: t.z + 1.4 }, null, 0xff6ad5, 12, 3, 0.08, 0.5);
+    }
+  }
+
+  // ampEnd: 앞 원뿔 끝까지 큰 전격 쾅
+  ampEnd(e) {
+    const r = C.BARD_AMP_RANGE * 0.6;
+    const pos = { x: e.x + Math.cos(e.yaw) * r, y: e.y + Math.sin(e.yaw) * r, z: e.z + 1 };
+    this.effects.ring(pos, C.BARD_AMP_COLOR, 4, 0.35);
+    this.effects.burst(pos, { x: Math.cos(e.yaw) * 1.5, y: Math.sin(e.yaw) * 1.5 }, 0xffffff, 26, 8, 0.08, 0.35);
+    this.effects.burst(pos, null, C.BARD_AMP_COLOR, 20, 5, 0.1, 0.5);
+    if (this.onBlast) this.onBlast(pos, true);
+  }
+
   // ---------- 대포수 ----------
   // 포탄 (snapshot shells): 보통 = 쇠공 + 회색 연기 꼬리, 대형 = 큰 쇠공 + 빨갛게 달아오른 테 + 불·연기 꼬리.
   // 30Hz 사이는 받은 위치에서 날아가는 방향으로 이어서 (끊김 없이). 끝나면 shellEnd 가 효과
@@ -2394,7 +2612,7 @@ export class Renderer {
           this.effects.burst({ x: w.x, y: w.y, z: w.z + 0.05 }, { x: 0, y: 0 }, 0x9a9a9a, 1, 0.6, 0.07, 0.7);
         }
       }
-      if (g.userData.figure?.setForm) g.userData.figure.setForm(p.form); // 바드 폼 (서버 form: 'bard' | 'metal', 없으면 음유시인)
+      if (g.userData.figure?.setForm) g.userData.figure.setForm(p.bard?.form); // 바드 폼 (snapshot bard.form: 'bard' | 'metal', 없으면 음유시인)
       const balls = g.userData.figure && g.userData.figure.balls;
       if (balls) balls.forEach((b, i) => (b.visible = i < (p.cannon ? p.cannon.ammo : balls.length))); // 대포수 허리 포탄 = 남은 탄
       // 왼손에 고른 칸의 물건, 조종권 대기 중이면 머리 위 하늘색 팔면체
@@ -2426,6 +2644,8 @@ export class Renderer {
       label.sprite.visible = p.alive && !(p.id === myId && this.third); // 3인칭에서 내 % 는 화면 아래에 (머리 위와 둘 다 있으면 겹침)
       this.updateHuntMarks(g, p, myId);
       this.updateUltAura(g, p, s, myId, dt);
+      this.updateStatusFx(g, p, s, myId);
+      if (p.char === 'bard' || g.userData.ampFx) this.updateAmpFx(g, p, s, dt);
       if (p.char === 'berserker' || g.userData.whirlFx || g.userData.dizzyStars) this.updateWhirlFx(g, p, s, dt);
     }
     for (const [id, g] of this.playerMeshes) {
@@ -2434,6 +2654,7 @@ export class Renderer {
         if (w) this.scene.remove(w.ring, w.trail);
         for (const m of g.userData.dizzyStars || []) this.scene.remove(m);
         if (g.userData.ultAura) this.scene.remove(g.userData.ultAura.grp);
+        if (g.userData.ampFx) this.scene.remove(g.userData.ampFx.cab);
         this.scene.remove(g);
         this.playerMeshes.delete(id);
         this.smooth.delete(id);
@@ -2563,6 +2784,8 @@ export class Renderer {
     this.updateAims();
     this.updateArrows();
     this.updateShells(state.shells || [], dt);
+    this.updateNotes(state.notes || [], dt);
+    this.updateAmpWaves();
     this.updateGrabs();
     this.updateBeams(state);
     if (me) this.viewArm.material.color.setHex(playerColor(me, state));

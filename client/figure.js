@@ -1218,7 +1218,29 @@ export const MOVES = {
   },
   '회전 베기': { W: { shOut: [1.5, 1.3], shFwd: [0.2, 0.2], elbow: [0.2, 0.3], waistRoll: 0.7, thFwd: [1.0, 0.7], knee: [1.4, 1.1] }, S: { shOut: [1.55, 1.4], shFwd: [0.3, 0.2], elbow: [0.05, 0.3], waistRoll: 0, thFwd: [0.8, 0.9], knee: [1.2, 1.3] }, spin: -Math.PI * 2 },
 
+  // 바드 음유시인: 류트 음파 (오른손을 높이 들었다 줄을 확 긁어내림) / 공중 천천히 낙하 (팔 벌리고 빙글: glide 상태가 따로 돌림)
+  '류트 음파': { W: { shFwd: [1.6, 0.75], shOut: [0.6, 0.05], elbow: [1.2, 1.45], waistRoll: -0.25, neckPitch: -0.15 }, S: { shFwd: [0.35, 0.75], shOut: [0.2, 0.05], elbow: [1.7, 1.45], waistRoll: 0.2, waistPitch: 0.15, neckPitch: 0.1 } },
+  '천천히 낙하': { W: { shOut: [1.2, 1.2], shFwd: [0.4, 0.4], elbow: [0.3, 0.3] }, S: { shOut: [1.45, 1.45], shFwd: [0.2, 0.2], elbow: [0.2, 0.2], thFwd: [0.3, 0.3], knee: [0.5, 0.5] }, rec: 0.3 },
+  // 바드 메탈: 가슴의 기타째 몸을 크게 틀어 후려치기 → 두 손 머리 위로 들어 내려치기 / 공중: 거꾸로 곤두박질치며 아래로 꽂기
+  '기타 후려치기': {
+    W: { waistRoll: -1.0, waistSide: 0.15, crouch: 0.35, shFwd: [0.4, 1.0], shOut: [0.9, 0.2], elbow: [1.4, 1.3] },
+    S: { waistRoll: 0.9, waistPitch: 0.3, shFwd: [1.2, 0.8], shOut: [0.3, 0.5], elbow: [0.6, 0.9], thFwd: [-0.2, 0.5] },
+  },
+  '기타 내려치기': {
+    W: { shFwd: [3.0, 3.0], shOut: [0.15, 0.15], elbow: [0.6, 0.6], waistPitch: -0.45, neckPitch: -0.3 },
+    S: { shFwd: [0.6, 0.6], shOut: [0.1, 0.1], elbow: [0.05, 0.05], waistPitch: 0.85, neckPitch: 0.25, crouch: 0.8 },
+  },
+  '기타 꽂기': {
+    W: { shFwd: [2.8, 2.8], elbow: [0.5, 0.5], waistPitch: -0.4, thFwd: [1.3, 1.3], knee: [1.6, 1.6] },
+    S: { shFwd: [1.4, 1.4], shOut: [0.1, 0.1], elbow: [0.1, 0.1], waistPitch: 1.35, neckPitch: 0.4, thFwd: [-0.7, -0.5], knee: [0.3, 0.5] },
+  },
+
   // ---- 스킬·필살기 ----
+  // 바드 폼 전환: 메탈 = 기타를 머리 위로 치켜들고 리프 (충격파) / 음유 = 류트를 가슴에 안고 두 팔 벌려 치유
+  bardRiff: { S: { shFwd: [2.6, 2.4], shOut: [0.5, 0.5], elbow: [0.4, 0.5], waistPitch: -0.4, neckPitch: -0.5, thOut: [0.35, 0.35], crouch: 0.3 }, rec: 0.6 },
+  bardHeal: { S: { shOut: [1.7, 1.7], shFwd: [0.6, 0.6], elbow: [0.2, 0.2], waistPitch: -0.2, neckPitch: -0.35 }, rec: 0.6 },
+  // 음유 R 취약의 노래: 류트를 앞으로 내밀며 크게 한 번 긁음
+  bardSong: { S: { shFwd: [0.6, 1.4], shOut: [0.3, 0.0], elbow: [1.4, 0.6], waistPitch: 0.2, waistRoll: 0.3, neckPitch: -0.2 }, rec: 0.7 },
   // 광전사 F 광폭 도약: 도끼를 두 손으로 머리 위로 치켜들고 무릎 접어 날아감 (rush) → 착지하며 쾅 내려찍기 (rushLand)
   berserkerLeap: { S: { shFwd: [2.9, 2.9], shOut: [0.25, 0.25], elbow: [0.5, 0.5], waistPitch: -0.35, neckPitch: -0.3, thFwd: [1.3, 0.6], knee: [1.6, 1.0] }, rec: 0.6, float: true },
   berserkerSlam: { S: { shFwd: [0.5, 0.5], shOut: [0.15, 0.15], elbow: [0.05, 0.05], waistPitch: 0.85, neckPitch: 0.2, crouch: 0.9 }, rec: 0.55 },
@@ -1446,12 +1468,21 @@ export function figureAnim(fig, st, dt, retry = false) {
     T.shOut[0] = 0.55;
     T.elbow[0] = 1.95;
   }
-  if (fig.forms && !st.stunned && !st.act && st.emote < 0 && !st.air) {
+  if (fig.forms && !st.stunned && !st.act && st.emote < 0 && (!st.air || st.amp) && !st.glide) {
     // 바드: 악기를 가슴 앞에 들고 (왼손 목, 오른손 줄). 메탈은 대기 중 헤드뱅잉
     T.shFwd = [0.45, 0.75];
     T.shOut = [0.3, 0.05];
     T.elbow = [1.6, 1.45];
-    if (fig.form === 'metal' && !st.walking) {
+    if (st.amp) {
+      // 앰프 연주: 다리 벌리고 버팀 + 미친 듯이 줄 긁기 + 크게 헤드뱅잉
+      const bang = Math.max(0, Math.sin(t * C.BARD_HEADBANG_HZ * 1.6 * Math.PI * 2));
+      T.neckPitch += bang * 0.8 - 0.2;
+      T.waistPitch += bang * 0.2 + 0.1;
+      T.elbow[0] += Math.sin(t * 30) * 0.35;
+      T.thOut = [0.35, 0.35];
+      T.knee = T.knee.map((v) => v + 0.35);
+      T.thFwd = T.thFwd.map((v) => v + 0.2);
+    } else if (fig.form === 'metal' && !st.walking) {
       const bang = Math.max(0, Math.sin(t * C.BARD_HEADBANG_HZ * Math.PI * 2));
       T.neckPitch += bang * 0.55 - 0.1;
       T.waistPitch += bang * 0.12;
@@ -1566,6 +1597,11 @@ export function figureAnim(fig, st, dt, retry = false) {
     const ramp = Math.min(1, w / 0.25);
     spin = -Math.PI * 2 * C.BERSERK_SPIN_TURNS_PER_S * (w < 0.25 ? (w * w) / 0.5 : w - 0.125); // 빠르기가 0.25초 동안 0 → 최대 (돈 각 = 빠르기의 적분)
     overlay(P, T, { shOut: [1.55, 1.45], shFwd: [0.35, 0.15], elbow: [0.05, 0.35], waistSide: -0.4, waistPitch: -0.1, neckPitch: -0.45, thOut: [0.2, 0.3], knee: [0.35, 0.2] }, ramp);
+  }
+  if (st.glide && !frozen) {
+    // 음유 천천히 낙하: 팔 벌리고 단풍 씨앗처럼 빙글빙글
+    spin = (t * Math.PI * 2 * C.BARD_GLIDE_TURNS_PER_S) % (Math.PI * 2);
+    overlay(P, T, { shOut: [1.45, 1.45], shFwd: [0.25, 0.25], elbow: [0.15, 0.15], thFwd: [0.25, 0.25], knee: [0.4, 0.4], neckPitch: -0.25 }, 1);
   }
   fig.hips.rotation.z = spin;
   if (fig.gun) {

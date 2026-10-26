@@ -508,6 +508,46 @@ function handleEvent(e) {
       if (d !== undefined && d < 4) fx.shake(e.who === myId ? 0.18 : 0.1, 200);
       break;
     }
+    // ---- 바드 ----
+    case 'noteFire': {
+      // 류트 음파 발사: 줄 긁는 반짝 (음표는 snapshot notes)
+      fx.burst({ x: e.x, y: e.y, z: e.z }, e.dir ? { x: e.dir.x, y: e.dir.y } : null, C.BARD_NOTE_COLOR, 6, 3, 0.06, 0.3);
+      sound.play('pickup', { dist: e.who === myId ? 0 : distToMe(e.x, e.y, e.z) });
+      break;
+    }
+    case 'noteEnd':
+      if (e.what !== 'expire') fx.burst({ x: e.x, y: e.y, z: e.z }, null, C.BARD_NOTE_COLOR, 10, 3, 0.07, 0.4);
+      else fx.burst({ x: e.x, y: e.y, z: e.z }, null, C.BARD_NOTE_COLOR, 4, 1, 0.05, 0.3);
+      break;
+    case 'glide': {
+      // 음유 공중: 빙글 도는 동안 (snapshot glideLeft) 발밑에서 초록 반짝
+      const a = playerById(e.who);
+      if (a) fx.ring({ x: a.x, y: a.y, z: a.z + 0.1 }, C.BARD_NOTE_COLOR, 1.6, 0.3, true);
+      break;
+    }
+    case 'form':
+      // 폼 전환: 메탈 = 기타 치켜들고 리프 충격파 (모히칸은 snapshot form 으로 솟음) / 음유 = 두 팔 벌려 치유파
+      renderer.skillMove(e.who, e.form === 'metal' ? 'bardRiff' : 'bardHeal');
+      renderer.bardForm(e);
+      sound.play(e.form === 'metal' ? 'boom' : 'clear', { dist: e.who === myId ? 0 : e.x !== undefined ? distToMe(e.x, e.y, e.z) : undefined });
+      if (e.form === 'bard' && (e.healed || []).some((h) => h.id === myId)) damageEl.animate([{ transform: 'scale(1.5)', color: '#80ffa0' }, { transform: 'scale(1)' }], { duration: 450 });
+      break;
+    case 'song':
+      renderer.skillMove(e.who, 'bardSong');
+      renderer.bardSong(e);
+      sound.play('clear', { dist: e.who === myId ? 0 : distToMe(e.x, e.y, e.z) });
+      if ((e.targets || []).includes(myId)) flashScreen('rgba(255,106,213,.25)');
+      break;
+    case 'amp': {
+      // 앰프 음파 시작: 앰프·원뿔은 snapshot ampLeft 동안 (render). 연주는 figureAnim amp
+      const a = playerById(e.who);
+      if (a) fx.burst({ x: a.x, y: a.y, z: a.z + 1 }, null, C.BARD_AMP_COLOR, 16, 4, 0.08, 0.4);
+      sound.play('boom', { dist: e.who === myId ? 0 : a ? distToMe(a.x, a.y, a.z) : undefined });
+      break;
+    }
+    case 'ampEnd':
+      renderer.ampEnd(e);
+      break;
     // ---- 광전사 ----
     case 'rush': {
       // F 광폭 도약: 도끼 치켜들고 날아감 + 발밑 흙먼지
@@ -1712,7 +1752,8 @@ function updateSkills(p) {
   const pct = Math.floor((p.ult / ultMax) * 100);
   // 사냥꾼: 게이지가 찼어도 지금 쏠 표식 대상이 없으면 회색 (서버 판정 ultTarget, 다른 캐릭터는 undefined)
   const dim = full && p.ultTarget === false;
-  r.querySelector('.name').textContent = performance.now() < ultFailUntil ? ultFailText : `${C.ULT_NAMES[p.char]} ${full ? '준비!' : `${pct}%`}`;
+  const ultName = p.char === 'bard' && p.bard?.form === 'metal' ? C.BARD_METAL_ULT_NAME : C.ULT_NAMES[p.char]; // 바드는 폼 따라
+  r.querySelector('.name').textContent = performance.now() < ultFailUntil ? ultFailText : `${ultName} ${full ? '준비!' : `${pct}%`}`;
   r.querySelector('.fill').style.width = `${Math.min(100, (p.ult / ultMax) * 100)}%`;
   r.classList.toggle('ready', full && !dim);
   r.style.filter = dim ? 'grayscale(1) brightness(.7)' : '';

@@ -726,7 +726,12 @@ export const CONFIG = {
   BERSERK_RAGE_PCT: 120, // 광전사 분노 화면: 피해 % 가 이만큼이면 가장 화남 (눈 충혈·눈썹·핏줄·빡침 표시·김. 몸 색은 안 바꿈: 플레이어 구분 우선)
   BERSERK_STEAM_RATE: 14,
   BARD_LUTE_SCALE: 1.35, // 류트 크기 배율 (가슴 앞에서 작아 보여서)
-  BARD_HEADBANG_HZ: 2.2, // 바드 메탈 폼 대기 헤드뱅잉 (초당)
+  BARD_HEADBANG_HZ: 2.2,
+  BARD_GLIDE_TURNS_PER_S: 1.2,
+  BARD_NOTE_COLOR: 0x6af08a, // 류트 음파 음표 색 (초록)
+  BARD_AMP_COLOR: 0x7ab8ff, // 앰프 전격 음파 색 (푸른 번개)
+  BARD_AMP_WAVE_MS: 160, // 앰프 음파 호가 나가는 간격
+  BARD_AMP_WAVE_LIFE_MS: 450, // 호가 몸에서 사거리까지 퍼지는 시간 // 음유 천천히 낙하 때 빙글 도는 빠르기 (바퀴/초) // 바드 메탈 폼 대기 헤드뱅잉 (초당)
   BARD_FORM_POP_MS: 320, // 폼 전환 때 모히칸이 솟거나 모자가 얹히는 시간
   BERSERK_SPIN_TURNS_PER_S: 2.2, // R 소용돌이 화면 회전 빠르기 (바퀴/초)
   BERSERK_SPIN_FLAP: 2.2, // 소용돌이 중 수염·갈래·털 망토가 바깥으로 날리는 정도 (천 자락 들림 배율)
