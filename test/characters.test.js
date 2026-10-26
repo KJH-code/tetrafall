@@ -169,7 +169,7 @@ function fullChain(char, damage) {
   return { g, lines, p, events };
 }
 
-for (const char of C.CHARACTERS.filter((c) => C.BASIC_ATTACKS[c].chain.at(-1).finish)) {
+for (const char of C.CHARACTERS.filter((c) => C.BASIC_ATTACKS[c].chain.at(-1).finish && C.BASIC_ATTACKS[c].chain.length > 1)) {
   test(`평타 ${char}: 바로바로 누르면 0% 에서도 150% 에서도 1타부터 마지막 타까지 한 콤보 → 마무리, 피해 합 = 타별 딜 합`, () => {
     const chain = C.BASIC_ATTACKS[char].chain;
     for (const dmg0 of [0, 150]) {
@@ -1557,4 +1557,145 @@ test('사냥꾼 R: 콘 안에 표식 있는 사람·없는 사람이 섞이면 �
   assert.equal(p(2).damage, 0, '표식 없는 사람은 안 맞음');
   assert.equal(p(3).damage, C.HUNTER_SHOT_DAMAGE_PER_MARK);
   assert.equal(g.snapshot().players.find((x) => x.id === 2).ultTarget, undefined, '사냥꾼만');
+});
+
+// ---------- 대포수 (2026-10-26, docs/characters.md 3.6) ----------
+
+test('대포수 장전: 최대 3발, 판 시작에 가득, 쏘면 줄고 2.5초마다 한 발. 탄이 없으면 평타는 후려치기. snapshot cannon', () => {
+  const { g, p } = setupChars(['cannon', 'tank']);
+  place(p(2), 9.5, 9.5);
+  place(p(1), 2.5, 4.5, Math.PI / 2);
+  assert.equal(p(1).cannonAmmo, C.CANNON_AMMO_MAX);
+  for (let k = 0; k < 3; k++) {
+    g.handleAction(1, { name: 'push' });
+    run(g, 600);
+  }
+  assert.equal(p(1).cannonAmmo, 0);
+  g.drainEvents();
+  g.handleAction(1, { name: 'push' });
+  assert.equal(g.drainEvents().find((e) => e.type === 'attack').name, '후려치기', '탄 없으면 후려치기');
+  const s = g.snapshot().players.find((x) => x.id === 1).cannon;
+  assert.equal(s.ammo, 0);
+  assert.ok(s.reloadLeft > 0 && s.reloadLeft <= C.CANNON_RELOAD_MS);
+  run(g, C.CANNON_RELOAD_MS * 3 + 100);
+  assert.equal(p(1).cannonAmmo, 3, '다시 가득');
+  run(g, C.CANNON_RELOAD_MS);
+  assert.equal(p(1).cannonAmmo, 3, '최대 3');
+});
+
+test('대포수 포탄: 보이는 투사체로 날아가 (즉시 판정 아님) 맞으면 넉백 큼, 쏘면 반동 (공중에서 더 크게)', () => {
+  const { g, p } = setupChars(['cannon', 'tank']);
+  place(p(1), 2.5, 4.5, 0);
+  place(p(2), 7.5, 4.5);
+  p(1).pitch = -Math.atan2(C.EYE_HEIGHT - 0.2 - 0.8, 5); // 상대 가슴
+  g.drainEvents();
+  g.handleAction(1, { name: 'push' });
+  run(g, C.BASIC_ATTACKS.cannon.chain[0].ammo.windup + TICK);
+  assert.ok(g.drainEvents().some((e) => e.type === 'shellFire' && e.who === 1));
+  assert.equal(g.snapshot().shells.length, 1, '날아가는 중');
+  assert.equal(p(2).damage, 0, '바로는 안 맞음');
+  assert.ok(p(1).kbx < 0, '반동으로 뒤로');
+  run(g, 600);
+  assert.equal(p(2).damage, C.CANNON_SHELL_DAMAGE);
+  assert.equal(p(2).lastHit.kind, 'shell');
+  assert.ok(p(2).kbx > 0);
+  // 공중 반동이 더 큼
+  const ground = (() => {
+    const q = setupChars(['cannon', 'tank']);
+    place(q.p(2), 9.5, 9.5);
+    place(q.p(1), 4.5, 4.5, 0);
+    q.g.fireShell(q.p(1), false);
+    return -q.p(1).kbx;
+  })();
+  const air = (() => {
+    const q = setupChars(['cannon', 'tank']);
+    place(q.p(2), 9.5, 9.5);
+    place(q.p(1), 4.5, 4.5, 0, 2);
+    q.p(1).grounded = false;
+    q.g.fireShell(q.p(1), false);
+    return -q.p(1).kbx;
+  })();
+  assert.equal(ground, C.CANNON_RECOIL);
+  assert.equal(air, C.CANNON_RECOIL_AIR);
+});
+
+test('대포수 포탄: 쌓인 블록에 맞으면 1칸 부숨 (멈춤), 시작 지형·바닥은 안 부숨', () => {
+  const { g, p } = setupChars(['cannon', 'tank']);
+  place(p(2), 9.5, 9.5);
+  place(p(1), 2.5, 4.5, 0);
+  g.grid[g.idx(5, 4, 1)] = CELL.THROWN;
+  g.grid[g.idx(6, 4, 1)] = CELL.THROWN;
+  g.gridChanged();
+  g.drainEvents();
+  g.fireShell(p(1), false);
+  run(g, 800);
+  assert.equal(g.gridAt(5, 4, 1), 0, '1칸 부숨');
+  assert.equal(g.gridAt(6, 4, 1), CELL.THROWN, '멈춤 (뒤 칸은 그대로)');
+  assert.ok(g.drainEvents().some((e) => e.type === 'blockBreak' && e.cells.length === 1));
+  // 시작 지형
+  g.grid[g.idx(5, 4, 1)] = CELL.TERRAIN;
+  g.gridChanged();
+  g.fireShell(p(1), false);
+  run(g, 800);
+  assert.equal(g.gridAt(5, 4, 1), CELL.TERRAIN, '시작 지형은 안 부숨');
+  // 바닥 (아래로 쏨)
+  p(1).pitch = -1.2;
+  g.fireShell(p(1), false);
+  run(g, 800);
+  assert.equal(g.shells.length, 0, '바닥에 닿아 사라짐');
+});
+
+test('대포수 F 발밑 포격: 위로 크게 + 발밑 범위 넉백 (공중에서도), 탄 안 씀', () => {
+  const { g, p } = setupChars(['cannon', 'tank']);
+  place(p(1), 4.5, 4.5, 0);
+  place(p(2), 5.5, 4.5);
+  g.handleAction(1, { name: 'skill' });
+  assert.equal(p(1).vz, C.CANNON_JUMP_UP);
+  assert.equal(p(2).damage, C.CANNON_FBLAST_DAMAGE);
+  assert.ok(p(2).kbx > 0);
+  assert.equal(p(1).cannonAmmo, C.CANNON_AMMO_MAX, '탄 안 씀');
+  assert.ok(p(1).skillReadyAt > g.time);
+});
+
+test('대포수 R 대형 포탄: 블록을 관통하며 지나간 쌓인 블록 전부 부숨 (시작 지형은 통과), 사람은 밀치고 계속, 끝에서 폭발, 반동 큼', () => {
+  const { g, lines, p } = setupChars(['cannon', 'tank', 'builder']);
+  place(p(1), 1.5, 4.5, 0);
+  place(p(2), 4.5, 4.5); // 길 위
+  place(p(3), 9.5, 4.5); // 끝 근처
+  for (const x of [3, 6, 7]) g.grid[g.idx(x, 4, 1)] = CELL.THROWN;
+  g.grid[g.idx(5, 4, 1)] = CELL.TERRAIN;
+  g.gridChanged();
+  p(1).ult = C.ULT_MAX;
+  g.handleAction(1, { name: 'ult' });
+  assert.equal(p(1).kbx, -C.CANNON_R_RECOIL, '반동 큼');
+  run(g, (C.CANNON_R_RANGE / C.CANNON_R_SPEED) * 1000 + 200);
+  for (const x of [3, 6, 7]) assert.equal(g.gridAt(x, 4, 1), 0, `(${x},4,1) 부숨`);
+  assert.equal(g.gridAt(5, 4, 1), CELL.TERRAIN, '시작 지형은 그대로');
+  assert.ok(p(2).damage >= C.CANNON_R_DAMAGE, '지나가며 밀침');
+  assert.ok(p(3).damage >= C.CANNON_R_DAMAGE, '계속 날아가 뒤 사람도');
+  assert.ok(lines.some((l) => l.includes('[필살] P1 대형 포탄 폭발')), lines.join('\n'));
+});
+
+test('봇 대포수: 탄이 있으면 거리를 두고 조준해 포탄을 쏨, 앞에 상대가 있으면 R', () => {
+  const g = new Game(() => {}, { characters: true });
+  g.rng = () => 0.5;
+  const b = g.addBot();
+  g.setChar(b.id, 'cannon');
+  g.addPlayer(1);
+  g.startRound();
+  g.nextSpawnAt = Infinity;
+  g.controlItemNextAt = Infinity;
+  g.powerItemNextAt = Infinity;
+  const t = g.players.get(1);
+  place(b, 2.5, 4.5, 0);
+  place(t, 7.5, 4.5);
+  g.drainEvents();
+  for (let k = 0; k < 30; k++) g.tick(TICK);
+  assert.ok(g.drainEvents().some((e) => e.type === 'shellFire' && e.who === b.id), '포탄 쏨');
+  assert.ok(b.cannonAmmo < C.CANNON_AMMO_MAX);
+  b.ult = C.ULT_MAX;
+  Object.assign(b, { atk: null, pushReadyAt: 0 }); // 포탄 후딜이면 R 은 기억했다가 나감 → 후딜 없을 때로
+  place(t, b.x + 5, b.y);
+  assert.equal(g.bots.get(b.id).useSkills(g, b, t, [t], []), true);
+  assert.equal(b.ult, 0, 'R');
 });

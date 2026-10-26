@@ -151,7 +151,7 @@ export class BotBrain {
     // 0.5) 복귀: 필드 밖으로 떨어지는 중이면 공중 F 를 쓰고 안쪽으로 (건축가 발판 + 부스트, 닌자 순간 베기 → 막히면 벽 차기,
     // 갈고리는 안쪽 방향에 걸 블록이 있을 때만)
     const toCenter = Math.atan2(D / 2 - p.y, W / 2 - p.x);
-    if ((p.char === 'builder' || p.char === 'ninja' || p.char === 'hunter' || (p.char === 'hook' && g.hookRayBlock(p, toCenter, 0))) && !p.grounded && p.vz < 0 && p.z < -0.3 && g.time >= p.skillReadyAt && g.time >= p.stunUntil) {
+    if ((p.char === 'builder' || p.char === 'ninja' || p.char === 'hunter' || p.char === 'cannon' || (p.char === 'hook' && g.hookRayBlock(p, toCenter, 0))) && !p.grounded && p.vz < 0 && p.z < -0.3 && g.time >= p.skillReadyAt && g.time >= p.stunUntil) {
       this.moveTo(g, p, { x: W / 2, y: D / 2 });
       g.handleInput(p.id, this.input);
       g.handleAction(p.id, { name: 'skill' });
@@ -294,6 +294,21 @@ export class BotBrain {
     }
     const dist = Math.hypot(t.x - p.x, t.y - p.y);
     const toT = { x: (t.x - p.x) / (dist || 1), y: (t.y - p.y) / (dist || 1) };
+    // 대포수: 탄이 있으면 거리를 두고 상대 가슴을 조준해 쏨, 너무 붙으면 (가장자리가 아니면) 물러남
+    if (p.char === 'cannon' && p.cannonAmmo > 0 && dist <= C.CANNON_SHELL_RANGE * 0.7) {
+      const dz = t.z + C.PLAYER_HEIGHT * 0.5 - (p.z + C.EYE_HEIGHT - 0.2);
+      this.input.yaw = Math.atan2(t.y - p.y, t.x - p.x);
+      this.input.pitch = Math.atan2(dz, dist);
+      this.input.fwd = dist < 2.5 && edgeDist(p.x - toT.x * 1.5, p.y - toT.y * 1.5) > 1 ? -1 : 0;
+      this.input.strafe = 0;
+      g.handleInput(p.id, this.input);
+      if (!p.atk && g.time >= p.pushReadyAt && g.time >= this.nextPushAt) {
+        g.handleAction(p.id, { name: 'push' });
+        this.nextPushAt = g.time + this.k('PUSH_INTERVAL_MS') * 0.5 * (0.7 + 0.6 * this.rng());
+      }
+      return;
+    }
+    if (p.char === 'cannon') this.input.pitch = 0;
     // 닌자·탱크: 지상 마지막 타(올려 차기·방패 올려치기)로 띄운 상대를 점프해 따라가 공중 평타
     const lb = p.lastBasic;
     const launcher = p.char && !C.BASIC_ATTACKS[p.char].chain.at(-1).finish;
@@ -423,6 +438,15 @@ export class BotBrain {
         face(); // 상대 발밑에 벽을 솟게 해 띄움
         return act('skill');
       }
+    } else if (p.char === 'cannon') {
+      // R: 앞 직선에 상대가 있으면 대형 포탄 (블록째 뚫음)
+      if (ultReady && dist <= C.CANNON_R_RANGE * 0.7 && Math.abs(t.z - p.z) < 2) {
+        face();
+        this.input.pitch = Math.atan2(t.z + C.PLAYER_HEIGHT * 0.5 - (p.z + C.EYE_HEIGHT - 0.2), dist);
+        return act('ult');
+      }
+      // F: 붙은 상대가 공격을 준비하면 발밑 포격으로 띄워 내고 피함
+      if (skillReady && dist < 1.6 && t.atk) return act('skill');
     } else if (p.char === 'hunter') {
       // R: 보는 방향 안에 쏠 표식 대상이 있으면 (표식 많은 상대 쪽을 봄)
       const marked = enemies.filter((o) => g.markOf(p, o) > 0 && Math.hypot(o.x - p.x, o.y - p.y) <= C.HUNTER_SHOT_RANGE && !g.lineBlocked(p, o));

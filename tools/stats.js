@@ -75,6 +75,7 @@ export function parseLog(text) {
         bigBombs: 0, // 건축가 대폭발
         armor: { held: 0, broken: 0 }, // 탱크 아머 버팀·깨짐 (2026-10-25~)
         hunter: { marks: 0, shots: 0, refunds: 0 }, // 사냥꾼 표식·처형 사격·게이지 회수 (2026-10-26~)
+        cannon: { fired: 0, hits: 0, broke: 0, big: 0 }, // 대포수 포탄 발사·명중·블록 부숨(칸)·대형 포탄 (2026-10-26~)
       };
     } else if ((m = line.match(/^ {2}사망: (.*)$/)) && last) {
       // 접속 끊김은 [사망] 줄 없이 여기에만 나옴
@@ -129,6 +130,14 @@ export function parseLog(text) {
       countUse(cur, line);
     } else if ((m = line.match(/^ {2}\[폭발\] \S+ (벽|3타 블록|발판) (\d+)칸/))) {
       cur.blasts.push({ kind: m[1], n: Number(m[2]) });
+    } else if (/^ {2}\[포탄\] \S+ 발사/.test(line)) {
+      cur.cannon.fired++;
+    } else if (/^ {2}\[포탄\] \S+ → \S+ 넉백/.test(line)) {
+      cur.cannon.hits++;
+    } else if ((m = line.match(/^ {2}\[포탄\] \S+ (?:블록 부숨|대형 포탄 블록 (\d+)칸 부숨)/))) {
+      cur.cannon.broke += m[1] ? Number(m[1]) : 1;
+    } else if (/^ {2}\[필살\] \S+ 대형 포탄 발사/.test(line)) {
+      cur.cannon.big++;
     } else if (/^ {2}\[표식\] /.test(line)) {
       cur.hunter.marks++;
     } else if (/^ {2}\[필살\] \S+ 처형 사격 \(/.test(line)) {
@@ -320,7 +329,8 @@ export function summarize(rounds) {
       const cells = all.reduce((a, b) => a + b.n, 0);
       const armor = { held: rounds.reduce((a, r) => a + r.armor.held, 0), broken: rounds.reduce((a, r) => a + r.armor.broken, 0) };
       const hunter = ['marks', 'shots', 'refunds'].reduce((o, k) => ({ ...o, [k]: rounds.reduce((a, r) => a + r.hunter[k], 0) }), {});
-      return { armor, hunter, blasts: all.length, wall: by('벽').length, third: by('3타 블록').length, pad: by('발판').length, cells, big: rounds.reduce((a, r) => a + r.bigBombs, 0) };
+      const cannon = ['fired', 'hits', 'broke', 'big'].reduce((o, k) => ({ ...o, [k]: rounds.reduce((a, r) => a + r.cannon[k], 0) }), {});
+      return { armor, hunter, cannon, blasts: all.length, wall: by('벽').length, third: by('3타 블록').length, pad: by('발판').length, cells, big: rounds.reduce((a, r) => a + r.bigBombs, 0) };
     })(),
     combos: (() => {
       // 콤보 (2타 이상): 길이별 횟수 + 넣은 캐릭터별 (사람·봇 따로, 여럿이 같이 넣은 건 따로)
@@ -414,6 +424,7 @@ export function formatReport(s) {
     const b = s.builder;
     out.push('', '== 건축가 블록 ==', `폭발 ${b.blasts}번 (벽 ${b.wall} · 3타 블록 ${b.third} · 발판 ${b.pad}, 평균 ${b.blasts ? (b.cells / b.blasts).toFixed(1) : 0}칸) · 대폭발 ${b.big}번`);
   }
+  if (s.builder.cannon.fired || s.builder.cannon.big) out.push('', '== 대포수 ==', `포탄 ${s.builder.cannon.fired}발 · 명중 ${s.builder.cannon.hits} · 블록 부숨 ${s.builder.cannon.broke}칸 · 대형 포탄 ${s.builder.cannon.big}번`);
   if (s.builder.hunter.marks || s.builder.hunter.shots) out.push('', '== 사냥꾼 ==', `표식 ${s.builder.hunter.marks}번 · 처형 사격 ${s.builder.hunter.shots}번 (게이지 회수 ${s.builder.hunter.refunds}번)`);
   if (s.builder.armor.held || s.builder.armor.broken) out.push('', '== 탱크 아머 ==', `버팀 ${s.builder.armor.held}번 · 깨짐 ${s.builder.armor.broken}번`);
   out.push('', '== 모드별 ==', table(['모드', '판', '길이 중앙값', '압사 비율', ''], groupRows(s.byMode).map((row, i) => [...row, s.byMode[i].note])));
