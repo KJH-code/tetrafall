@@ -560,7 +560,8 @@ export const CONFIG = {
   // 메탈 R 앰프 음파: BARD_AMP_MS 동안 앞 원뿔(BARD_AMP_ANGLE_DEG 전체 각, BARD_AMP_RANGE)에 BARD_AMP_TICK_MS 마다 작게 밀침, 끝에 크게.
   // 연주 중 이동 ×BARD_AMP_MOVE_MULT, 평타 안 나감. 맞아도 안 끊김 (넉백은 받고 경직 중에도 연주 계속 — 2026-10-26 재혁 가, 끊김 56~65% 라 약했음)
   BARD_AMP_MS: 3000,
-  BARD_AMP_MOVE_MULT: 0.5,
+  BARD_AMP_MOVE_MULT: 0, // 2026-10-26 재혁 0.5 → 0 (연주 중 제자리: 쫓아가며 싹쓸이 막기)
+  BARD_AMP_LOCK_YAW: true, // 연주 방향도 시작 때 고정 (돌리면 제자리에서 원뿔로 주변을 쓸 수 있어서). false 면 보는 방향 따라감
   BARD_AMP_ANGLE_DEG: 70,
   BARD_AMP_RANGE: 4,
   BARD_AMP_TICK_MS: 300,
@@ -569,7 +570,7 @@ export const CONFIG = {
   BARD_AMP_TICK_UP: 1,
   BARD_AMP_TICK_STUN_MS: 450,
   BARD_AMP_END_DAMAGE: 10,
-  BARD_AMP_END_KB_SPEED: 5,
+  BARD_AMP_END_KB_SPEED: 4, // 2026-10-26 재혁 5 → 4
   BARD_AMP_END_KB_UP: 4,
   BARD_AMP_END_STUN_MS: 800,
   // 건축가 (2026-10-25 재혁 확정, docs/characters.md 3.1 — 지형·설치형 "깔고, 쳐서 터뜨린다". 수치는 초안, 밸런스는 나머지 캐릭터 뒤)

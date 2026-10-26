@@ -1843,15 +1843,20 @@ export class Game {
 
   // 메탈 R 앰프 음파 시작
   bardAmp(p) {
-    p.amp = { endAt: this.time + C.BARD_AMP_MS, nextTick: this.time };
-    this.emit({ type: 'amp', who: p.id, ms: C.BARD_AMP_MS });
+    p.amp = { endAt: this.time + C.BARD_AMP_MS, nextTick: this.time, yaw: p.yaw };
+    this.emit({ type: 'amp', who: p.id, ms: C.BARD_AMP_MS, yaw: p.yaw, lockYaw: C.BARD_AMP_LOCK_YAW });
     this.log(`  [필살] ${p.name} 앰프 음파`);
   }
 
+  // 앰프 원뿔 방향: 시작 때 방향 고정 (BARD_AMP_LOCK_YAW) 또는 지금 보는 방향
+  ampYaw(p) {
+    return C.BARD_AMP_LOCK_YAW && p.amp ? p.amp.yaw : p.yaw;
+  }
+
   // 앞 원뿔 안 상대 (앰프)
-  ampTargets(p) {
-    const fx = Math.cos(p.yaw);
-    const fy = Math.sin(p.yaw);
+  ampTargets(p, yaw = this.ampYaw(p)) {
+    const fx = Math.cos(yaw);
+    const fy = Math.sin(yaw);
     const cosHalf = Math.cos(((C.BARD_AMP_ANGLE_DEG / 2) * Math.PI) / 180);
     return [...this.players.values()].filter((t) => {
       if (!this.foe(p, t)) return false;
@@ -1864,8 +1869,9 @@ export class Game {
 
   bardAmpUpdate(p) {
     const A = p.amp;
-    const fx = Math.cos(p.yaw);
-    const fy = Math.sin(p.yaw);
+    const yaw = this.ampYaw(p);
+    const fx = Math.cos(yaw);
+    const fy = Math.sin(yaw);
     if (this.time >= A.nextTick && this.time < A.endAt) {
       A.nextTick += C.BARD_AMP_TICK_MS;
       for (const t of this.ampTargets(p)) {
@@ -1876,12 +1882,12 @@ export class Game {
     if (this.time < A.endAt) return;
     p.amp = null;
     const hits = [];
-    for (const t of this.ampTargets(p)) {
+    for (const t of this.ampTargets(p, yaw)) {
       const hit = this.applyKnockback(t, fx, fy, C.BARD_AMP_END_KB_SPEED, C.BARD_AMP_END_KB_UP, C.BARD_AMP_END_STUN_MS, C.BARD_AMP_END_DAMAGE, { by: p.id, kind: 'ampend' }, true, { finish: true });
       this.emit({ type: 'hit', kind: 'ampend', by: p.id, target: t.id, ok: hit, streak: hit ? p.streak : 0 });
       if (hit) hits.push(`${t.name} ${t.damage}%`);
     }
-    this.emit({ type: 'ampEnd', who: p.id, x: p.x, y: p.y, z: p.z, yaw: p.yaw });
+    this.emit({ type: 'ampEnd', who: p.id, x: p.x, y: p.y, z: p.z, yaw });
     this.log(`  [필살] ${p.name} 앰프 끝${hits.length ? ` → ${hits.join(', ')}` : ''}`);
   }
 
@@ -4120,7 +4126,7 @@ export class Game {
         loaded: p.char === 'hook' ? p.loaded : undefined, // 갈고리 장전
         ultMax: this.ultMax(p), // 필살기 게이지 필요량 (사냥꾼 2배)
         cannon: p.char === 'cannon' ? { ammo: p.cannonAmmo, max: C.CANNON_AMMO_MAX, reloadLeft: p.reloadAt ? Math.max(0, p.reloadAt - this.time) : 0, reloadMs: C.CANNON_RELOAD_MS } : undefined, // 대포수 탄·장전
-        bard: p.char === 'bard' ? { form: p.form, glideLeft: p.glideUntil ? Math.max(0, p.glideUntil - this.time) : 0, ampLeft: p.amp ? Math.max(0, p.amp.endAt - this.time) : 0, ampMs: C.BARD_AMP_MS } : undefined, // 바드 폼·천천히 낙하·앰프
+        bard: p.char === 'bard' ? { form: p.form, glideLeft: p.glideUntil ? Math.max(0, p.glideUntil - this.time) : 0, ampLeft: p.amp ? Math.max(0, p.amp.endAt - this.time) : 0, ampMs: C.BARD_AMP_MS, ampYaw: p.amp ? this.ampYaw(p) : null } : undefined, // 바드 폼·천천히 낙하·앰프
         slowLeft: Math.max(0, p.slowUntil - this.time), // 둔화 남은 ms (바드 음파)
         vulnLeft: Math.max(0, p.vulnUntil - this.time), // 넉백 취약 남은 ms (바드 취약의 노래, 머리 위 음표)
         berserker: p.char === 'berserker' ? { rage: this.rageMult(p.damage), spinLeft: p.spin ? Math.max(0, p.spin.endAt - this.time) : 0, spinMs: C.BERSERKER_SPIN_MS, spinRage: p.spin ? this.rageMult(p.spin.rage) : 0 } : undefined, // 광전사 분노 배율·회전

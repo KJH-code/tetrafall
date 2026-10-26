@@ -2151,6 +2151,26 @@ test('바드 메탈 R 앰프 음파: 3초 동안 앞 원뿔에 작게 계속 밀
   assert.ok(ended, '끝까지');
 });
 
+test('바드 앰프 (재혁 2026-10-26): 연주 중 제자리 (걸어도 안 움직임), 원뿔 방향은 시작 때 고정, 끝 날림 kb 4', () => {
+  assert.equal(C.BARD_AMP_MOVE_MULT, 0);
+  assert.equal(C.BARD_AMP_END_KB_SPEED, 4);
+  const { g, p } = setupChars(['bard', 'tank', 'builder']);
+  place(p(1), 4, 5, 0);
+  place(p(2), 8, 8);
+  place(p(3), 4, 7); // 왼쪽 (시작 방향 밖)
+  p(1).form = 'metal';
+  p(1).ult = C.ULT_MAX;
+  g.handleAction(1, { name: 'ult' });
+  p(1).input = { fwd: 1, strafe: 0, jump: false };
+  p(1).yaw = Math.PI / 2; // 왼쪽 사람 쪽으로 돌림
+  const x0 = p(1).x;
+  const y0 = p(1).y;
+  run(g, 600);
+  assert.ok(Math.hypot(p(1).x - x0, p(1).y - y0) < 0.01, '제자리');
+  assert.equal(g.snapshot().players.find((x) => x.id === 1).bard.ampYaw, 0, '방향 고정 (snapshot)');
+  assert.equal(p(3).damage, 0, '돌려도 원뿔은 시작 방향');
+});
+
 test('봇 바드: 음유시인이면 거리 두고 음파, 앞에 상대가 있으면 취약의 노래, 붙으면 메탈로 전환, 메탈이면 앞 상대에게 앰프', () => {
   const g = new Game(() => {}, { characters: true });
   g.rng = () => 0.5;
