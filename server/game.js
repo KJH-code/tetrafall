@@ -987,6 +987,7 @@ export class Game {
     if (this.mode === 'kills' && this.phase === 'playing') this.scoreDeath(p, credit);
     if (this.mode === 'master' && this.phase === 'playing' && !p.master && this.master()) this.joinMasterSide(p);
     if (this.mode === 'practice') p.respawnAt = this.time + C.PRACTICE_RESPAWN_MS; // 연습 ("안 죽음" 끔): 잠깐 뒤 제자리
+    p.ghostReadyAt = this.time; // 유령 투하: 죽자마자 첫 1개
   }
 
   // ---------- 입력 ----------
@@ -2666,7 +2667,7 @@ export class Game {
     const key = cellKey(b.x, b.y, b.z);
     if (this.pieceCells.has(key)) {
       const pc = this.pieces.find((x) => x.id === this.pieceCells.get(key));
-      const v = pc.thrownBy ? CELL.THROWN : cellOfShape(pc.shape);
+      const v = pieceCellValue(pc);
       return { piece: pc, cells: this.pieceWorldCells(pc).map(([x, y, z]) => ({ x, y, z, v, meta: null })) };
     }
     const i0 = this.idx(b.x, b.y, b.z);
@@ -3822,7 +3823,7 @@ export class Game {
     if (!C.CONTROL_TAKEOVER || !p.hasControl) return;
     if (this.pieces.some((pc) => pc.controller !== null)) return;
     let piece = null;
-    for (const pc of this.pieces) if (pc.phase === 'falling' && !pc.thrownBy && !pc.sky && (!piece || pc.pz > piece.pz)) piece = pc; // 던진 블록·하늘 계단 블록은 못 뺏음 (계단이 안 깨지게)
+    for (const pc of this.pieces) if (pc.phase === 'falling' && !pc.thrownBy && !pc.sky && !pc.ghostBy && (!piece || pc.pz > piece.pz)) piece = pc; // 던진 블록·하늘 계단 블록·유령 블록은 못 뺏음
     if (!piece) {
       this.spawnControlled(p);
       return;
@@ -3937,7 +3938,7 @@ export class Game {
             this.log(`  [투척] ${by ? by.name : '?'} 의 ${piece.shape} 에 ${p.name} 깔림`);
           }
           // 조종한 블록·던진 블록이면 그 사람의 킬, 자동 블록이면 마지막으로 날린 사람
-          const src = piece.controller !== null ? { by: piece.controller, kind: 'control' } : piece.thrownBy ? { by: piece.thrownBy, kind: 'thrown' } : null;
+          const src = piece.controller !== null ? { by: piece.controller, kind: 'control' } : piece.thrownBy ? { by: piece.thrownBy, kind: 'thrown' } : piece.ghostBy ? { by: piece.ghostBy, kind: 'ghost' } : null;
           this.kill(p, 'crush', src);
           break;
         }
@@ -3975,8 +3976,8 @@ export class Game {
   }
 
   landPiece(piece = this.piece) {
-    this.landed[piece.sky ? 'sky' : piece.controller !== null ? 'control' : piece.thrownBy ? 'item' : 'auto']++;
-    const cell = piece.thrownBy ? CELL.THROWN : cellOfShape(piece.shape); // 색 구분용
+    this.landed[piece.ghostBy ? 'ghost' : piece.sky ? 'sky' : piece.controller !== null ? 'control' : piece.thrownBy ? 'item' : 'auto']++;
+    const cell = pieceCellValue(piece); // 색 구분용
     for (const [x, y, z] of this.pieceWorldCells(piece)) {
       if (z >= 0 && z < this.H) {
         this.grid[this.idx(x, y, z)] = cell;
@@ -4432,6 +4433,7 @@ export class Game {
     for (const [id, brain] of this.bots) {
       const p = this.players.get(id);
       if (p && p.alive) brain.update(this, p);
+      else if (p && C.GHOST_DROP_BOTS && this.ghostCd(p) === 0) brain.ghostDrop(this, p); // 죽은 봇의 유령 투하 (봇 판 비교용)
     }
     this.updatePieces();
     let remaining = dt;
@@ -4478,6 +4480,43 @@ export class Game {
       if (v) return v === CELL.TERRAIN ? 'terrain' : 'stack';
     }
     return 'stack'; // 칸 경계에 걸쳐 서 있음 (건축가 블록이 막 사라진 칸 등): 블록 위로 셈
+  }
+
+  // ---------- 유령 투하 (2026-10-26 재혁) ----------
+  // 이 사람이 유령 투하를 할 수 있는 상태면 남은 쿨 ms (0 = 바로), 아니면 null
+  ghostCd(p) {
+    if (!C.GHOST_DROP_ENABLED || this.phase !== 'playing' || this.mode !== 'survival') return null;
+    if (p.alive || p.spectator || p.master || p.dummy || (p.isBot && !C.GHOST_DROP_BOTS) || !this.players.has(p.id)) return null;
+    return Math.max(0, (p.ghostReadyAt || 0) - this.time);
+  }
+
+  // 죽은 사람이 (x, y) 칸에 1칸 블록을 떨어뜨림. 되면 블록, 안 되면 ghostDropFail 이벤트 + null
+  ghostDrop(id, rx, ry) {
+    const p = this.players.get(id);
+    if (!p) return null;
+    const fail = (reason) => {
+      this.emit({ type: 'ghostDropFail', who: id, reason });
+      return null;
+    };
+    if (!C.GHOST_DROP_ENABLED || this.phase !== 'playing' || this.mode !== 'survival') return fail('mode');
+    const cd = this.ghostCd(p);
+    if (cd === null) return fail('notDead');
+    if (cd > 0) return fail('cooldown');
+    const x = Math.floor(Number(rx));
+    const y = Math.floor(Number(ry));
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !this.inXY(x, y)) return fail('outside');
+    const top = this.columnTop(x, y);
+    if (top >= this.H) return fail('full');
+    if (this.pieces.some((pc) => pc.cells.some(([dx, dy]) => pc.px + dx === x && pc.py + dy === y))) return fail('busy');
+    const pz = Math.min(top + (this.sky ? C.GHOST_DROP_UP_SKY : C.GHOST_DROP_UP), this.H - 1); // 켬 판은 느려서 낮게
+    const stepMs = this.sky ? C.SKY_FALL_STEP_MS : this.autoFallStepMs(); // 그 판 보통 블록 속도
+    const piece = { id: 0, shape: 'ghost', rot: 0, cells: [[0, 0]], px: x, py: y, pz, landZ: top, fits: true };
+    this.addPiece(piece, { phase: 'falling', controller: null, ghostBy: p.id, ghostSlot: p.slot, stepMs, nextStepAt: this.time + stepMs, controlEndsAt: 0 });
+    this.updateLanding(piece);
+    p.ghostReadyAt = this.time + C.GHOST_DROP_CD_MS;
+    this.emit({ type: 'ghostDrop', who: p.id, x, y, z: pz, slot: p.slot });
+    this.log(`  [유령] ${p.name} → (${x},${y}) 투하`);
+    return piece;
   }
 
   // ---------- 연습 모드 (2026-10-26 재혁) ----------
@@ -4642,6 +4681,8 @@ export class Game {
         phase: piece.phase,
         controller: piece.controller,
         thrown: !!piece.thrownBy, // 설치 블록 (노랑)
+        ghostBy: piece.ghostBy || null, // 유령 투하: 떨어뜨린 사람 id
+        ghostSlot: piece.ghostBy ? piece.ghostSlot : null, // 그 사람 자리 (색)
         sky: !!piece.sky, // 하늘 계단 블록
         landZ: piece.landZ,
         fits: piece.fits,
@@ -4692,6 +4733,7 @@ export class Game {
         dashCd: Math.max(0, p.dashReadyAt - this.time),
         airDashes: p.airDashes, // 남은 공중 대시 (공중에서 0 이면 Shift 안 됨)
         dummy: !!p.dummy, // 연습 허수아비
+        ghostCd: this.ghostCd(p), // 유령 투하: null = 지금 못 함 (살아 있음·모드 아님), 0 = 바로, 아니면 남은 쿨 ms
         pushCd: Math.max(0, p.pushReadyAt - this.time),
         jumpLeft: Math.max(0, p.jumpUntil - this.time),
         danger: p.alive ? this.crushDanger(p) : null, // 머리 위로 떨어지는 블록이 깔기까지 남은 ms (없으면 null)
@@ -4799,6 +4841,12 @@ function comboOut(c) {
   return { hits: c.hits, damage: c.damage, dist: Math.round(c.dist * 100) / 100, height: Math.round(Math.max(0, c.height) * 100) / 100 };
 }
 
+// 착지한 블록의 격자 값 (색): 유령 투하 = GHOST_BASE + 떨어뜨린 사람 자리, 설치 블록, 그 밖은 모양
+function pieceCellValue(pc) {
+  if (pc.ghostBy) return CELL.GHOST_BASE + pc.ghostSlot;
+  return pc.thrownBy ? CELL.THROWN : cellOfShape(pc.shape);
+}
+
 // 블록 칸들의 테두리 상자 (x0·y0 = 가장 작은 칸, x1·y1 = 가장 큰 칸 + 1)
 function cellBox(pc) {
   let x0 = Infinity;
@@ -4854,14 +4902,14 @@ const ULT_KINDS = new Set(['slam', 'bigbomb', 'blockslam', 'execute', 'bigshell'
 
 const BBLOCK_LOG = { wall: '벽', third: '3타 블록', pad: '발판' };
 // 판 끝 "  블록:" 줄 (npm run stats). 떨어진 블록은 착지할 때, 건축가 블록은 칸마다, 갈고리 R 은 박힐 때 셈
-const LANDED_LOG = { auto: '자동', sky: '하늘', control: '조종', item: '설치', builder: '건축가', hook: '갈고리' };
+const LANDED_LOG = { auto: '자동', sky: '하늘', control: '조종', item: '설치', builder: '건축가', hook: '갈고리', ghost: '유령' };
 function emptyLanded() {
   return Object.fromEntries(Object.keys(LANDED_LOG).map((k) => [k, 0]));
 }
 // 사망 로그 "밟은 칸" (한 단어, npm run stats)
 const GROUND_LOG = { floor: '바닥', terrain: '지형', stack: '블록', sky: '하늘', piece: '낙하블록', none: '없음' };
 
-const WEAPON_LOG = { push: '밀치기', shell: '포탄', bigshell: '대형포탄', groundshot: '발밑포격', leapwave: '광폭도약', spin: '소용돌이회전', spinend: '소용돌이', note: '음파', riff: '기타리프', amp: '앰프', ampend: '앰프마무리', pounce: '덮치기', execute: '처형사격', wallkick: '벽차기', blast: '블록폭발', bigbomb: '대폭발', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', blockslam: '블록내려찍기' };
+const WEAPON_LOG = { ghost: '유령블록', push: '밀치기', shell: '포탄', bigshell: '대형포탄', groundshot: '발밑포격', leapwave: '광폭도약', spin: '소용돌이회전', spinend: '소용돌이', note: '음파', riff: '기타리프', amp: '앰프', ampend: '앰프마무리', pounce: '덮치기', execute: '처형사격', wallkick: '벽차기', blast: '블록폭발', bigbomb: '대폭발', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', blockslam: '블록내려찍기' };
 
 function causeKo(cause) {
   if (cause === 'crush') return '압사';

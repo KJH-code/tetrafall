@@ -652,6 +652,14 @@ export const CONFIG = {
   PASS_CRUSH_SHARE: 0.5, // 1단계 합격선: 누적 사망 중 압사 비율. 판 종료 로그에 표시. 2026-10-20 재정의
   ROUND_TIME_LIMIT_MS: 0, // 0 = 제한 없음. 양수면 시간 초과 시 무승부
 
+  // ---- 유령 투하 (2026-10-26 재혁: 먼저 죽은 사람이 판 끝까지 구경만 함 → 하늘에서 1칸 블록을 떨어뜨림) ----
+  // 생존 모드(팀전 포함)만. 죽자마자 1개, 그 뒤 GHOST_DROP_CD_MS 마다. 보내는 칸의 기둥 꼭대기 + GHOST_DROP_UP 에서 생겨 그 판 보통 블록 속도로 떨어짐
+  GHOST_DROP_ENABLED: true,
+  GHOST_DROP_CD_MS: 6000,
+  GHOST_DROP_UP: 5, // 기둥 꼭대기 위 이 칸에서 생김 (보통 블록처럼 그림자 예고 시간이 생기게)
+  GHOST_DROP_UP_SKY: 2, // 하늘 계단 켬 판은 블록이 2.5초에 한 칸이라 (5칸이면 12.5초) 이만큼만 → 5초
+  GHOST_DROP_BOTS: false, // 죽은 봇도 떨어뜨릴지 (봇 판 비교용, 기본 끔)
+
   // ---- 연습 모드 (2026-10-26 재혁: 혼자 쓰는 방, 판이 안 끝남, 허수아비) ----
   PRACTICE_DUMMY_MAX: 3, // 허수아비 최대 (사람 + 허수아비 ≤ MAX_PLAYERS 자리)
   PRACTICE_DUMMY_DIST: 2, // 허수아비를 내 앞 이 거리(칸)에 놓음
