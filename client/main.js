@@ -1624,8 +1624,8 @@ function updateSkills(p) {
   const ultMax = p.ultMax || C.ULT_MAX; // 사냥꾼은 2배
   const full = p.ult >= ultMax;
   const pct = Math.floor((p.ult / ultMax) * 100);
-  // 사냥꾼: 게이지가 찼어도 보는 방향에 표식 대상이 없으면 회색 (눌러도 안 쓰임)
-  const dim = full && p.char === 'hunter' && !huntTargetAhead(p);
+  // 사냥꾼: 게이지가 찼어도 지금 쏠 표식 대상이 없으면 회색 (서버 판정 ultTarget, 다른 캐릭터는 undefined)
+  const dim = full && p.ultTarget === false;
   r.querySelector('.name').textContent = performance.now() < ultFailUntil ? ultFailText : `${C.ULT_NAMES[p.char]} ${full ? '준비!' : `${pct}%`}`;
   r.querySelector('.fill').style.width = `${Math.min(100, (p.ult / ultMax) * 100)}%`;
   r.classList.toggle('ready', full && !dim);
@@ -1643,19 +1643,6 @@ function updateSkills(p) {
   lastSelf = { ult: p.ult, damage: p.damage };
 }
 let lastSelf = null;
-// 사냥꾼 R 을 지금 쓸 수 있나 (근사: 보는 방향 각·사거리 안 내 표식 대상. 블록 가림은 안 봄, 서버가 최종 판정)
-function huntTargetAhead(p) {
-  const fx = Math.cos(input.yaw);
-  const fy = Math.sin(input.yaw);
-  const cosHalf = Math.cos(((C.HUNTER_SHOT_ANGLE_DEG / 2) * Math.PI) / 180);
-  return state.players.some((t) => {
-    if (t.id === p.id || !t.alive || !(t.marks || []).some((m) => m.by === p.id)) return false;
-    const dx = t.x - p.x;
-    const dy = t.y - p.y;
-    const d = Math.hypot(dx, dy);
-    return d <= C.HUNTER_SHOT_RANGE && (d < 0.01 || (dx * fx + dy * fy) / d >= cosHalf);
-  });
-}
 // 내게 붙은 표식 (1인칭이라 머리 위가 안 보임): 화면 위 가운데 빨간 마름모, 사라지기 직전 깜빡
 const myMarksEl = document.createElement('div');
 myMarksEl.id = 'my-marks';
