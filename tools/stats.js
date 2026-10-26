@@ -42,6 +42,12 @@ export function parseLog(text) {
     if (!conns.has(name)) conns.set(name, { key: null, aliases: new Set() });
     return conns.get(name);
   };
+  // 세션 = 사람 접속 하나가 "접속" 부터 "접속 종료" 까지 이 방에서 한 판 수 ("한 판 더" 지표). 봇은 안 셈
+  const sessions = new Map(); // P1 → { conn, rounds, left: '판 사이' | '판 중' | null(로그 끝까지 있음) }
+  const session = (name) => {
+    if (!sessions.has(name)) sessions.set(name, { name, conn: conn(name), rounds: 0, left: null });
+    return sessions.get(name);
+  };
   let cur = null;
   let last = null; // 방금 끝난 판: 종료 줄 다음의 "  사망:" 요약 줄을 받음
   let ended = null; // 방금 끝난 판: 종료 뒤 "  블록:" 줄을 받음 (다음 판 시작까지)
@@ -50,6 +56,11 @@ export function parseLog(text) {
     let m;
     if ((m = line.match(/^(P\d+(?:\(봇\))?) 접속 \(slot/))) {
       conns.set(m[1], { key: null, aliases: new Set() });
+      if (!isBot(m[1])) sessions.set(m[1], { name: m[1], conn: conns.get(m[1]), rounds: 0, left: null });
+    } else if ((m = line.match(/^(P\d+) 접속 종료$/))) {
+      const sn = session(m[1]);
+      sn.left = cur && cur.names && cur.names.includes(m[1]) ? '판 중' : '판 사이';
+      sessions.delete(m[1]);
     } else if ((m = line.match(/^(P\d+) 이름: (.*)$/))) {
       const c = conn(m[1]);
       if (m[2] !== '(없음)' && !c.key) c.key = m[2];
@@ -57,7 +68,9 @@ export function parseLog(text) {
     } else if ((m = line.match(/^===== ROUND (\d+) 시작 \((\d+)명(?:: (.*?))?, 맵 ([^,]+?)(?:, 봇 (\S+))?\) =====$/))) {
       last = null;
       ended = null;
+      const names = m[3] ? m[3].split(' ') : null;
       cur = {
+        sessions: names ? new Map(names.filter((n) => !isBot(n)).map((n) => [n, session(n)])) : null,
         n: Number(m[1]),
         size: Number(m[2]),
         map: m[4],
@@ -121,6 +134,9 @@ export function parseLog(text) {
         cur.winner = m[3] === '무승부' ? null : m[3];
         if (!cur.names) cur.names = [...new Set([...cur.deaths.map((d) => d.name), ...(cur.winner ? [cur.winner] : [])])];
         cur.conns = new Map(cur.names.map((n) => [n, conn(n)])); // 이 판에 있던 접속 (이름은 나중에 넣어도 반영)
+        // 판 시작 때 잡아 둔 세션 (판 중에 나간 사람도 이 판까지 셈). 참가자 목록이 없는 옛 로그는 끝날 때
+        if (!cur.sessions) cur.sessions = new Map(cur.names.filter((n) => !isBot(n)).map((n) => [n, session(n)]));
+        for (const sn of cur.sessions.values()) sn.rounds++;
         rounds.push(cur);
         last = cur;
         ended = cur;
@@ -278,6 +294,34 @@ function blockStats(rounds) {
   return { all: row('전체', rs), byLen: by((r) => bucketOf(r.len), bucketNames), byMap: by((r) => r.map) };
 }
 
+// 죽은 뒤 판 끝까지 기다린 시간 (관전). 생존 모드만 (킬 점수전은 부활, 블록 마스터는 죽으면 마스터 편으로 계속 함). 접속 끊김은 뺌
+function waitStats(rounds) {
+  const rows = [];
+  for (const r of rounds) {
+    if (r.mode !== '생존' || !r.len) continue;
+    const ds = r.deaths.filter((d) => d.cause !== 'disconnect');
+    const lastT = Math.max(...ds.map((d) => d.t));
+    for (const d of ds) rows.push({ bot: isBot(d.name), wait: Math.max(0, r.len - d.t), len: r.len, final: d.t === lastT }); // final: 판을 끝낸 사망 (기다림 0)
+  }
+  if (!rows.length) return null;
+  const sum = (list) => {
+    if (!list.length) return null;
+    const early = list.filter((x) => !x.final);
+    return { n: list.length, median: median(list.map((x) => x.wait)), max: Math.max(...list.map((x) => x.wait)), share: median(list.map((x) => x.wait / x.len)), earlyN: early.length, earlyMedian: median(early.map((x) => x.wait)), earlyShare: median(early.map((x) => x.wait / x.len)) };
+  };
+  return { human: sum(rows.filter((x) => !x.bot)), bot: sum(rows.filter((x) => x.bot)) };
+}
+
+// 사람 접속마다 이 방에서 연속으로 한 판 수와 나간 때 (판 사이·판 중·로그 끝까지)
+function sessionStats(rounds) {
+  const all = new Set();
+  for (const r of rounds) for (const sn of r.sessions?.values() || []) all.add(sn);
+  if (!all.size) return null;
+  const list = [...all].map((sn) => ({ who: sn.conn.key || sn.name, rounds: sn.rounds, left: sn.left }));
+  const n = (f) => list.filter(f).length;
+  return { n: list.length, median: median(list.map((x) => x.rounds)), max: Math.max(...list.map((x) => x.rounds)), betweenRounds: n((x) => x.left === '판 사이'), midRound: n((x) => x.left === '판 중'), stayed: n((x) => x.left === null), list };
+}
+
 // 판 목록 → 표로 낼 숫자
 export function summarize(rounds) {
   const deaths = rounds.flatMap((r) => r.deaths);
@@ -371,6 +415,8 @@ export function summarize(rounds) {
     bySky: rounds.some((r) => r.sky) ? group((r) => (r.sky ? '켬' : '끔')) : [],
     melts: rounds.reduce((n, r) => n + r.melts, 0),
     blocks: blockStats(rounds),
+    waits: waitStats(rounds),
+    sessions: sessionStats(rounds),
     byChar: (() => {
       // 캐릭터별 판·승 (사람·봇 따로). 캐릭터 줄이 있는 판만
       const t = new Map();
@@ -486,6 +532,18 @@ export function formatReport(s) {
   const groupRows = (g) => g.map((x) => [x.key, x.rounds, fmtSec(x.lenMedian), `${pct(x.crush, x.deaths)} (${x.crush}/${x.deaths})`]);
   out.push('', '== 인원 구성별 ==', table(['구성', '판', '길이 중앙값', '압사 비율'], groupRows(s.byComp)));
   out.push('', '== 맵별 ==', table(['맵', '판', '길이 중앙값', '압사 비율'], groupRows(s.byMap)));
+  if (s.waits) {
+    const W = s.waits;
+    const row = (k, w) => (w ? [k, w.n, fmtSec(w.median), fmtSec(w.max), pct(w.share, 1), w.earlyN, fmtSec(w.earlyMedian), w.earlyShare === null ? '-' : pct(w.earlyShare, 1)] : [k, 0, '-', '-', '-', 0, '-', '-']);
+    out.push('', '== 죽은 뒤 기다린 시간 (생존 모드, 판 끝까지 관전. "먼저 죽음" = 판을 끝낸 마지막 사망 빼고) ==');
+    out.push(table(['', '사망', '중앙값', '최대', '판 길이 대비', '먼저 죽음', '중앙값', '판 길이 대비'], [row('사람', W.human), row('봇', W.bot)]));
+  }
+  if (s.sessions) {
+    const S = s.sessions;
+    out.push('', `== 연속 판 수 (사람 접속마다, 한 방에서) == 접속 ${S.n} · 중앙값 ${S.median}판 · 최대 ${S.max}판 · 나간 때: 판 사이 ${S.betweenRounds} / 판 중 ${S.midRound} / 끝까지 ${S.stayed}`);
+    const shown = [...S.list].sort((a, b) => b.rounds - a.rounds).slice(0, 20);
+    out.push(table(['사람', '연속 판', '나간 때'], shown.map((x) => [x.who, x.rounds, x.left || '끝까지'])));
+  }
   if (s.blocks) {
     const B = s.blocks;
     const kindKeys = Object.keys(B.all.kinds);
