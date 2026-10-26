@@ -79,6 +79,7 @@ export const CONFIG = {
   SKY_STAIRS_DEFAULT: true, // 방(대기실) 기본값. new Game() 기본은 끔 (예전 테스트 그대로)
   SKY_GRID_H: 32, // 켬일 때 격자 높이 (판마다 game.H, snapshot field.h)
   SKY_COUNT: 7, // 하늘에 떠 있는 블록 수 (착지·녹으면 맨 위에 새로)
+  SKY_SPAWN_PER_TICK: 1, // 한 틱에 놓는 하늘 블록 수 (자리 고르기가 무거워서 나눔: 판 시작 사슬 7개 = 7틱 약 0.23초)
   SKY_TOP_Z: 32, // 블록 윗면 최고 높이 (상한)
   SKY_RISE_MIN: 1, // 새 블록 = 맨 위 블록 지금 높이 + 이 범위의 칸 (정수 무작위)
   SKY_RISE_MAX: 2, // 2단 점프 최고 약 2.8칸이라 여유 있게

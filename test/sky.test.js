@@ -1,9 +1,10 @@
 // 하늘 계단 (대기실 옵션): 다음 블록들이 미리 높은 하늘에 떠서 천천히 내려오고, 이웃끼리 점프로 건너는 계단이 된다
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Game, skyReach, cellGap } from '../server/game.js';
+import { Game, skyReach, cellGap, warmUpPlacement } from '../server/game.js';
 import { Rooms } from '../server/rooms.js';
 import { CONFIG as C } from '../shared/config.js';
+import { CELL, SHAPE_NAMES, rotatedCells, footprint } from '../shared/pieces.js';
 
 const TICK = 1000 / C.TICK_RATE;
 
@@ -83,7 +84,7 @@ test('하늘 계단 켬: 격자 높이 32, 하늘에 7개, 이웃끼리 높이�
     assert.equal(g.grid.length, g.W * g.D * C.SKY_GRID_H);
     assert.equal(g.snapshot().field.h, C.SKY_GRID_H);
     assert.ok(lines.includes('  하늘 계단: 켬'));
-    run(g, C.FIRST_SPAWN_DELAY_MS + TICK);
+    run(g, C.FIRST_SPAWN_DELAY_MS + TICK * (C.SKY_COUNT + 1)); // 한 틱에 하나씩 (SKY_SPAWN_PER_TICK)
     const s = skies(g);
     assert.equal(s.length, C.SKY_COUNT);
     for (const pc of s) {
@@ -250,4 +251,75 @@ test('하늘 계단: 켬 판은 SKY_LAVA_TRIGGER_MS 가 지나면 쌓인 높이�
     assert.equal(g.lava.active, sky, sky ? '켬: 시간이 지나 시작' : '끔: 쌓인 게 없으면 안 옴');
     if (sky) assert.ok(lines.some((l) => l.startsWith('  [용암] 1:00 지남 (하늘 계단)') && l.includes('용암 상승 시작')), lines.filter((l) => l.includes('[용암]')).join('\n'));
   }
+});
+
+// ---------- 판 시작 랙 (2026-10-26 버그: 사슬 7개를 한 틱에 놓아 서버 틱이 0.2~0.9초 멈춤) ----------
+
+test('자리 점수 빠른 계산 (placementScorer) 은 placementScore 와 같은 값 — 무작위 지형 여러 판, 모든 자리', () => {
+  const rng = seeded(42);
+  for (let trial = 0; trial < 40; trial++) {
+    const g = new Game(() => {});
+    g.setFieldSize([10, 12, 14][trial % 3]);
+    // 무작위 기둥 (가장 낮은 층에 구멍·덩어리가 여러 모양으로 생기게 0~2 위주)
+    for (let x = 0; x < g.W; x++) for (let y = 0; y < g.D; y++) {
+      const h = rng() < 0.6 ? 0 : Math.floor(rng() * 3);
+      for (let z = 0; z < h; z++) g.grid[g.idx(x, y, z)] = CELL.TERRAIN;
+    }
+    const sc = g.placementScorer();
+    assert.equal(sc.L, g.lowestLayer());
+    for (const shape of SHAPE_NAMES) for (let r = 0; r < 4; r++) {
+      const { w, d } = footprint(rotatedCells(shape, r));
+      for (let px = 0; px <= g.W - w; px++) for (let py = 0; py <= g.D - d; py++) {
+        const pc = g.makePiece(shape, r, px, py, 20);
+        assert.equal(sc.score(pc.cells, px, py, pc.landZ), g.placementScore(pc, sc.L), `${trial} ${shape}${r} (${px},${py})`);
+      }
+    }
+  }
+});
+
+test('하늘 계단: 사슬은 한 틱에 SKY_SPAWN_PER_TICK(1) 개씩, 같은 시드면 같은 자리', () => {
+  assert.equal(C.SKY_SPAWN_PER_TICK, 1);
+  const place = (seed) => {
+    const { g } = setup({ seed, n: 4 });
+    const counts = [];
+    while (g.time < C.FIRST_SPAWN_DELAY_MS + TICK * (C.SKY_COUNT + 2)) {
+      g.tick(TICK);
+      counts.push(skies(g).length);
+    }
+    return { counts: counts.filter((n, i) => i === 0 || n !== counts[i - 1]), at: skies(g).map((pc) => [pc.shape, pc.rot, pc.px, pc.py, pc.pz]) };
+  };
+  const a = place(9);
+  assert.deepEqual(a.counts, [0, 1, 2, 3, 4, 5, 6, 7], '틱마다 하나씩');
+  assert.deepEqual(place(9).at, a.at, '같은 시드 → 같은 자리');
+});
+
+test('판 시작 랙: 4인 봇 판 첫 3초 틱 최대 시간이 느슨한 상한 안 (하늘 계단 켬·끔, 평지·피라미드)', () => {
+  const worst = (sky, map) => {
+    const g = new Game(() => {}, { characters: true, skyStairs: sky });
+    g.rng = seeded(3);
+    const h = g.addPlayer(1);
+    g.setSpectator(h.id, true);
+    for (let k = 0; k < 4; k++) g.addBot();
+    g.setMap(map);
+    g.startRound();
+    let mx = 0;
+    for (let i = 0; i < 90 && g.phase === 'playing'; i++) {
+      const t0 = performance.now();
+      g.tick(TICK);
+      mx = Math.max(mx, performance.now() - t0);
+    }
+    return mx;
+  };
+  worst(true, 'flat'); // JIT 데우기 (서버는 오래 켜져 있음)
+  worst(false, 'flat');
+  for (const sky of [true, false]) for (const map of ['flat', 'pyramid']) {
+    const ms = worst(sky, map);
+    assert.ok(ms < 60, `${sky ? '켬' : '끔'} ${map}: 틱 최대 ${ms.toFixed(1)}ms (예전 0.2~0.9초)`);
+  }
+});
+
+test('판 시작 랙: 서버 시작 때 블록 자리 고르기 데우기 (warmUpPlacement) 가 오류 없이 금방 끝남', () => {
+  const t0 = performance.now();
+  warmUpPlacement(1);
+  assert.ok(performance.now() - t0 < 3000);
 });
