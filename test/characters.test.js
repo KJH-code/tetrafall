@@ -202,7 +202,8 @@ for (const char of C.CHARACTERS.filter((c) => C.BASIC_ATTACKS[c].chain.at(-1).fi
 test('평타: 경직은 후딜 + 다음 타 준비 + 0.1초 이상 (바로 누르면 확정), 마무리 타만 finish (닌자는 지상 4타가 아니라 공중 2타), 풀 콤보 최단 시간 ≤ COMBO_MS', () => {
   for (const char of C.CHARACTERS) {
     const { chain, air } = C.BASIC_ATTACKS[char];
-    const ninja = char === 'ninja' || char === 'tank'; // 지상 마지막 타가 띄우고 공중 마지막 타가 마무리
+    // 지상 마지막 타가 마무리가 아니고 공중 마지막 타가 마무리 (사냥꾼: 2026-10-26 재혁 가·ㄱ — 찔러 넣기 마무리 아님, 공중 내려 베기 마무리)
+    const ninja = char === 'ninja' || char === 'tank' || char === 'hunter';
     let t = 0;
     chain.forEach((d, i) => {
       assert.equal(!!d.finish, !ninja && i === chain.length - 1, `${char} ${i + 1}타`);
@@ -1480,6 +1481,85 @@ test('사냥꾼 F 추적 도약: 사거리 6 안 표식 있는 가장 가까운 
   assert.ok(Math.abs(p(1).x - (2 + C.HUNTER_LEAP_DIST)) < 0.3, `x=${p(1).x.toFixed(2)}`);
 });
 
+test('사냥꾼 찔러 넣기 (재혁 "가"): 마무리 아님 — 평평평이 맞아도 콤보·경직이 이어지고 무적이 안 붙어 F 덮침이 들어감 (표식 +1), 덮침 뒤 평타도 이어짐', () => {
+  const { g, p } = setupChars(['hunter', 'tank']);
+  place(p(1), 3, 5, 0);
+  place(p(2), 4.1, 5);
+  for (let i = 0; i < 3; i++) {
+    basic(g, 1);
+    if (i < 2) run(g, p(1).pushReadyAt - g.time + TICK);
+  }
+  assert.equal(g.markOf(p(1), p(2)), 1, '표식 +1');
+  assert.equal(p(2).comboHits, 3, '콤보 이어짐');
+  assert.ok(p(2).iframeUntil <= g.time, '무적 없음');
+  assert.ok(p(2).stunUntil - g.time >= C.HUNTER_LEAP_WINDUP_MS + C.HUNTER_LEAP_MS, '경직이 F 덮침까지 감');
+  assert.ok(Math.abs(p(2).kbx) < 3, `밀림 작음 ${p(2).kbx}`);
+  g.handleAction(1, { name: 'skill' }); // 맞힌 후딜 캔슬
+  run(g, C.HUNTER_LEAP_WINDUP_MS + C.HUNTER_LEAP_MS + 2 * TICK);
+  assert.equal(p(2).lastHit.kind, 'pounce', '덮침 들어감');
+  assert.equal(p(2).comboHits, 4, '덮침도 콤보 (시간 마무리 아님)');
+  assert.ok(p(2).iframeUntil <= g.time);
+  const before = p(2).damage;
+  basic(g, 1);
+  assert.ok(p(2).damage > before, '덮침 뒤 평타');
+});
+
+test('사냥꾼 F 유도 (재혁 "다"): 도약 중 표식 대상이 움직이면 착지 직전까지 따라감, 처음 자리에서 최대 HUNTER_LEAP_HOMING_MAX 칸', () => {
+  const leapTo = (moveY) => {
+    const { g, p } = setupChars(['hunter', 'tank']);
+    place(p(1), 2, 5, 0);
+    place(p(2), 6, 5);
+    p(2).marks.set(1, { n: 1, at: g.time });
+    g.handleAction(1, { name: 'skill' });
+    run(g, C.HUNTER_LEAP_WINDUP_MS + TICK); // 도약 시작
+    for (let t = 0; t < C.HUNTER_LEAP_MS + 2 * TICK; t += TICK) {
+      Object.assign(p(2), { x: 6, y: 5 + Math.min(moveY, (moveY * t) / C.HUNTER_LEAP_MS) }); // 도약 중 옆으로 걸어감
+      g.tick(TICK);
+    }
+    return { g, p };
+  };
+  const a = leapTo(1.2);
+  assert.ok(a.p(1).y > 5.4, `따라감 y ${a.p(1).y.toFixed(2)}`);
+  assert.ok(Math.hypot(a.p(2).x - a.p(1).x, a.p(2).y - a.p(1).y) <= C.HUNTER_POUNCE_RANGE, '덮칠 거리 안');
+  assert.equal(a.p(2).lastHit.kind, 'pounce', '덮침');
+  const b = leapTo(5); // 너무 멀리 가면 최대 보정까지만
+  assert.ok(b.p(1).y <= 5 + C.HUNTER_LEAP_HOMING_MAX + 0.1, `최대 보정 y ${b.p(1).y.toFixed(2)}`);
+  assert.ok(b.p(1).y >= 5 + C.HUNTER_LEAP_HOMING_MAX - 0.4, `보정은 함 y ${b.p(1).y.toFixed(2)}`);
+});
+
+test('사냥꾼 재혁 ㄱ·ㄴ·표식 10초: 공중 내려 베기가 마무리 (콤보 끝·무적), 처형 사격 넉백 = 기본 + 표식당 2.5, 표식은 10초 유지', () => {
+  assert.equal(C.HUNTER_MARK_MS, 10000);
+  assert.equal(C.HUNTER_SHOT_KB_PER_MARK, 2.5);
+  // 평평평 → 점프 → 공중 내려 베기 = 마무리
+  const { g, p } = setupChars(['hunter', 'tank']);
+  place(p(1), 3, 5, 0);
+  place(p(2), 4.1, 5);
+  for (let i = 0; i < 3; i++) {
+    basic(g, 1);
+    run(g, p(1).pushReadyAt - g.time + TICK);
+  }
+  assert.ok(p(2).comboHits >= 3);
+  Object.assign(p(1), { z: p(2).z + 0.5, grounded: false, vz: 0, x: p(2).x - 1, y: p(2).y, yaw: 0 });
+  basic(g, 1);
+  assert.equal(p(2).lastHit.kind, 'push');
+  assert.equal(p(2).comboHits, 0, '콤보 끝');
+  assert.ok(p(2).iframeUntil > g.time, '마무리 무적');
+  // 처형 사격 넉백: 표식 수에 비례
+  const shot = (n) => {
+    const q = setupChars(['hunter', 'tank']);
+    place(q.p(1), 2, 5, 0);
+    place(q.p(2), 5, 5);
+    q.p(2).marks.set(1, { n, at: q.g.time });
+    q.p(1).ult = q.g.ultMax(q.p(1));
+    q.g.handleAction(1, { name: 'ult' });
+    run(q.g, C.HUNTER_SHOT_WINDUP_MS + TICK);
+    return Math.hypot(q.p(2).kbx, q.p(2).kby);
+  };
+  const r = shot(3) / shot(1);
+  const want = (C.HUNTER_SHOT_KB_BASE + 3 * C.HUNTER_SHOT_KB_PER_MARK) / (C.HUNTER_SHOT_KB_BASE + C.HUNTER_SHOT_KB_PER_MARK);
+  assert.ok(Math.abs(r - want) < 0.05 * want, `넉백 비 ${r.toFixed(3)} (기대 ${want.toFixed(3)}, 표식 피해 % 차이 포함)`);
+});
+
 test('사냥꾼 R 처형 사격: 게이지 2배, 각 90°·사거리 8 안 표식 대상 전부를 0.5초 조준 뒤 맞힘 (표식 1개당 피해), 표식 소모, 블록이 가리면 막힘, 표식 3개를 맞히면 게이지를 돌려받음, 대상이 없으면 안 쓰임', () => {
   const { g, lines, p } = setupChars(['hunter', 'tank', 'builder', 'ninja']);
   assert.equal(g.ultMax(p(1)), C.ULT_MAX * 2);
@@ -1712,6 +1792,15 @@ test('봇 대포수: 탄이 있으면 거리를 두고 조준해 포탄을 쏨, 
   place(t, b.x + 5, b.y);
   assert.equal(g.bots.get(b.id).useSkills(g, b, t, [t], []), true);
   assert.equal(b.ult, 0, 'R');
+  // 조준 오차: 쏠 때마다 좌우·위아래 각각 ±BOT_SHELL_AIM_ERROR_RAD 안 무작위 (사람처럼 빗나감)
+  const brain = g.bots.get(b.id);
+  brain.rng = () => 1;
+  brain.rollShellErr();
+  assert.ok(Math.abs(brain.shellErr.yaw - C.BOT_SHELL_AIM_ERROR_RAD) < 1e-9);
+  brain.rng = () => 0;
+  brain.rollShellErr();
+  assert.ok(Math.abs(brain.shellErr.pitch + C.BOT_SHELL_AIM_ERROR_RAD) < 1e-9);
+  assert.ok(C.BOT_SHELL_AIM_ERROR_RAD > 0);
 });
 
 test('광전사 분노: 주는 넉백 × (1 + 자기 피해 % × 계수), 상한 없음. 고정 넉백 중간 타(가로 베기)는 그대로. 다른 캐릭터는 분노 없음', () => {
@@ -1738,7 +1827,7 @@ test('광전사 분노: 주는 넉백 × (1 + 자기 피해 % × 계수), 상한
   };
   assert.ok(swing(0, false) > 0);
   assert.equal(swing(200, false), swing(0, false), '가로 베기는 분노 없음');
-  assert.ok(Math.abs(swing(200, true) / swing(0, true) - 1.6) < 1e-6, '공중 회전 베기는 분노 ×1.6');
+  assert.ok(Math.abs(swing(200, true) / swing(0, true) - (1 + 200 * C.BERSERKER_RAGE_PER_PERCENT)) < 1e-6, '공중 회전 베기는 분노 배율');
 });
 
 test('광전사 평타: 가로 베기 (넓은 사거리) → 내려찍기 (마무리), 공중 회전 베기는 사방', () => {
@@ -1785,7 +1874,7 @@ test('광전사 F 광폭 도약: 앞으로 약 4칸 뛰고 땅에 닿으면 착�
   assert.equal(q.p(2).damage, 0, '충격파 없음');
 });
 
-test('광전사 R 분노 소용돌이: 피해 % 최대 40 깎음, 회전 중 작게 바깥으로 계속 밀침, 끝에 크게 날림 (R 시작 때 피해 % 만큼), 맞으면 끊김', () => {
+test('광전사 R 분노 소용돌이: 피해 % 최대 40 깎음, 회전 중 작게 바깥으로 계속 밀침, 끝에 크게 날림 (R 시작 때 깎은 뒤 피해 % 만큼, 재혁 가), 맞으면 끊김', () => {
   // 깎기
   const a = setupChars(['berserker', 'tank']);
   a.p(1).damage = 25;
@@ -1823,7 +1912,8 @@ test('광전사 R 분노 소용돌이: 피해 % 최대 40 깎음, 회전 중 작
   };
   const k200 = spinKb(200);
   const k40 = spinKb(40);
-  assert.ok(Math.abs(k200 / k40 - (1 + 200 * C.BERSERKER_RAGE_PER_PERCENT) / (1 + 40 * C.BERSERKER_RAGE_PER_PERCENT)) < 1e-6, '끝 날림 = R 시작 때 분노');
+  const after = (d) => d - Math.min(C.BERSERKER_RAGE_CUT, d);
+  assert.ok(Math.abs(k200 / k40 - (1 + after(200) * C.BERSERKER_RAGE_PER_PERCENT) / (1 + after(40) * C.BERSERKER_RAGE_PER_PERCENT)) < 1e-6, '끝 날림 = 깎은 뒤 분노');
   // 회전 중 맞으면 끊김
   const b = setupChars(['berserker', 'tank']);
   place(b.p(1), 4, 5, 0);
