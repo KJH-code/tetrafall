@@ -103,6 +103,7 @@ export const CONFIG = {
 
   // ---- 아이템 (조종권 제외) — 2단계 ----
   // 필드에 동시에 ITEM_MAX_ON_FIELD 개까지. 종류는 ITEM_POOL 에서 무작위
+  ITEMS_ENABLED: false, // 우클릭 파워 아이템을 필드에 내놓을지. 2026-10-26 재혁: 전부 꺼 둠 (코드는 그대로, true 면 예전처럼). 조종권은 CONTROL_ITEM
   ITEM_POOL: ['knockback', 'jump', 'ghost', 'brick', 'bomb', 'speed'], // 2026-10-25 재혁: 망치 아이템 뺌 ("개사기", 망치 모양은 건축가 무기로)
   ITEM_MAX_ON_FIELD: 2,
   ITEM_FIRST_SPAWN_MS: 4000, // 판 시작 후 첫 아이템
