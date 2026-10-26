@@ -1111,6 +1111,7 @@ export class Game {
     p.atk = { n, def, air, chained, at: this.time + def.windup };
     p.atkLanded = false;
     p.pushReadyAt = this.time + def.windup + def.rec;
+    if (def.glide) this.bardGlide(p, def.windup + def.rec); // 바드 공중 평타: 동작(준비+후딜) 동안만 천천히 낙하
     this.emit({ type: 'attack', who: p.id, char: p.char, n, air, name: def.name, windup: def.windup, finish: !!def.finish, star: !!def.star });
     if (def.windup <= 0) this.basicHit(p);
   }
@@ -1126,8 +1127,7 @@ export class Game {
       return this.basicChain(p, n, air, false, def);
     }
     if (def.note || def.glide) {
-      if (def.note) this.bardNote(p);
-      else this.bardGlide(p);
+      if (def.note) this.bardNote(p); // 천천히 낙하는 누를 때 시작 (basicStart)
       return this.basicChain(p, n, air, false, def);
     }
     const fx = Math.cos(p.yaw);
@@ -1781,10 +1781,10 @@ export class Game {
   }
 
   // 음유 공중 평타: 천천히 낙하 (integratePlayer 가 중력을 줄임)
-  bardGlide(p) {
-    p.glideUntil = this.time + C.BARD_GLIDE_MS;
+  bardGlide(p, ms) {
+    p.glideUntil = this.time + ms; // 이어 치면 다시 늘어남
     if (p.vz < -C.BARD_GLIDE_FALL) p.vz = -C.BARD_GLIDE_FALL;
-    this.emit({ type: 'glide', who: p.id, ms: C.BARD_GLIDE_MS });
+    this.emit({ type: 'glide', who: p.id, ms });
   }
 
   // F 폼 전환: 음유 → 메탈 = 충격파 + 기타 리프, 메탈 → 음유 = 치유파
