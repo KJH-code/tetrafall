@@ -515,7 +515,7 @@ export const CONFIG = {
   // R 분노 소용돌이: BERSERKER_SPIN_MS 동안 회전 (이동 ×BERSERKER_SPIN_MOVE_MULT), BERSERKER_SPIN_TICK_MS 마다 닿는 상대를 작게 밀침 (빨아들이지 않음),
   // 끝날 때 한 번 크게 날림 (분노는 R 시작 때 깎은 뒤 피해 % 로 — 2026-10-26 재혁 가, 봇 504판 광전사 50%·소용돌이 필살기 킬 1위). 시작할 때 자기 피해 % 를 BERSERKER_RAGE_CUT 만큼 깎음 (0 아래로는 안 감)
   BERSERKER_SPIN_MS: 1500,
-  BERSERKER_SPIN_MOVE_MULT: 0.6,
+  BERSERKER_SPIN_MOVE_MULT: 0.3, // 2026-10-26 재혁 0.6 → 0.3 (사람 판에서 "개셈")
   BERSERKER_SPIN_RANGE: 1.6,
   BERSERKER_SPIN_TICK_MS: 250,
   BERSERKER_SPIN_TICK_DAMAGE: 2,
@@ -527,7 +527,7 @@ export const CONFIG = {
   BERSERKER_SPIN_END_KB_SPEED: 4, // 2026-10-26 재혁 나 5 → 4 (가 뒤에도 47%·소용돌이 필살기 킬 1위)
   BERSERKER_SPIN_END_KB_UP: 5,
   BERSERKER_SPIN_END_STUN_MS: 800,
-  BERSERKER_RAGE_CUT: 40,
+  BERSERKER_RAGE_CUT: 20, // 2026-10-26 재혁 40 → 20
   // 바드 (2026-10-26 재혁 확정, docs/characters.md 3.8). 폼 form: 'bard'(음유시인, 판 시작·부활) / 'metal'. F = 폼 전환 (쿨 SKILL_CD_MS.bard), R = 지금 폼의 R
   BARD_FORM_NAMES: { bard: '음유시인', metal: '메탈' },
   BARD_METAL_ULT_NAME: '앰프 음파',

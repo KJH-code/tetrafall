@@ -1877,14 +1877,28 @@ test('광전사 F 광폭 도약: 앞으로 약 4칸 뛰고 땅에 닿으면 착�
   assert.equal(q.p(2).damage, 0, '충격파 없음');
 });
 
-test('광전사 R 분노 소용돌이: 피해 % 최대 40 깎음, 회전 중 작게 바깥으로 계속 밀침, 끝에 크게 날림 (R 시작 때 깎은 뒤 피해 % 만큼, 재혁 가), 맞으면 끊김', () => {
+test('광전사 R 분노 소용돌이: 피해 % 최대 BERSERKER_RAGE_CUT(20) 깎음, 회전 중 이동 ×0.3, 회전 중 작게 바깥으로 계속 밀침, 끝에 크게 날림 (R 시작 때 깎은 뒤 피해 % 만큼, 재혁 가), 맞으면 끊김', () => {
   // 깎기
   const a = setupChars(['berserker', 'tank']);
-  a.p(1).damage = 25;
+  assert.equal(C.BERSERKER_RAGE_CUT, 20);
+  assert.equal(C.BERSERKER_SPIN_MOVE_MULT, 0.3);
+  a.p(1).damage = 15;
   a.p(1).ult = C.ULT_MAX;
   a.g.handleAction(1, { name: 'ult' });
   assert.equal(a.p(1).damage, 0, '0 아래로는 안 감');
   assert.ok(a.p(1).spin);
+  // 회전 중 걷는 속도 ×BERSERKER_SPIN_MOVE_MULT
+  place(a.p(1), 4, 3, Math.PI / 2);
+  a.p(1).input = { fwd: 1, strafe: 0, jump: false };
+  const y0 = a.p(1).y;
+  run(a.g, 300);
+  const sp = (a.p(1).y - y0) / 0.3;
+  assert.ok(Math.abs(sp - C.MOVE_SPEED * C.BERSERKER_SPIN_MOVE_MULT) < 0.2, `회전 중 속도 ${sp.toFixed(2)}`);
+  const b50 = setupChars(['berserker', 'tank']);
+  b50.p(1).damage = 50;
+  b50.p(1).ult = C.ULT_MAX;
+  b50.g.handleAction(1, { name: 'ult' });
+  assert.equal(b50.p(1).damage, 50 - C.BERSERKER_RAGE_CUT, '최대만큼만 깎음');
   // 회전 + 끝 날림: 상대를 붙여 둠
   const spinKb = (startDmg) => {
     const { g, p, lines } = setupChars(['berserker', 'tank']);
