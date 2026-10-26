@@ -1276,6 +1276,145 @@ test('갈고리 R 블록 내려찍기: 보는 방향 첫 블록을 뽑아 → �
   assert.equal(left, 0, '필드 밖으로 사라짐');
 });
 
+// 블록 하나를 (x0,y0) 에 바로 착지시킴 (격자 + 블록 id)
+function landAt(g, shape, rot, px, py, pz = 0) {
+  const pc = g.addPiece(g.makePiece(shape, rot, px, py, pz), { phase: 'falling', controller: null, stepMs: 1e9, nextStepAt: Infinity, controlEndsAt: 0 });
+  g.landPiece(pc);
+  return pc;
+}
+function ultHook(g, p) {
+  p.ult = C.ULT_MAX;
+  g.drainEvents();
+  g.handleAction(p.id, { name: 'ult' });
+  return g.drainEvents().find((e) => e.type === 'blockGrab');
+}
+
+test('갈고리 R 테트로미노 통째로 (재혁 2026-10-26): 같은 모양 이웃 블록끼리 구분, 부서진 블록은 이어진 남은 칸만, 지형은 1칸', () => {
+  assert.equal(C.HOOK_GRAB_MS, 400);
+  assert.equal(C.HOOK_SLAM_WIDTH, 1.2);
+  assert.equal(C.HOOK_SLAM_DAMAGE, 14);
+  // 같은 모양 O 두 개가 붙어 있음: 앞 것만
+  const { g, p } = setupChars(['hook', 'ninja']);
+  place(p(2), 1, 9);
+  landAt(g, 'O', 0, 5, 4);
+  landAt(g, 'O', 0, 7, 4);
+  place(p(1), 3.5, 4.5, 0);
+  const e = ultHook(g, p(1));
+  assert.equal(e.cells.length, 4, '앞 O 4칸');
+  for (const [x, y] of [[5, 4], [6, 4], [5, 5], [6, 5]]) assert.equal(g.gridAt(x, y, 0), 0, `(${x},${y}) 뽑힘`);
+  for (const [x, y] of [[7, 4], [8, 4], [7, 5], [8, 5]]) assert.ok(g.gridAt(x, y, 0) >= CELL.SHAPE_BASE, `(${x},${y}) 옆 O 그대로`);
+  // 부서진 블록: I 의 가운데가 빠지면 맞은 쪽 이어진 칸만
+  const q = setupChars(['hook', 'ninja']);
+  place(q.p(2), 1, 9);
+  landAt(q.g, 'I', 0, 4, 4); // (4..7, 4)
+  q.g.grid[q.g.idx(6, 4, 0)] = 0;
+  q.g.gridChanged();
+  place(q.p(1), 2.5, 4.5, 0);
+  assert.deepEqual(ultHook(q.g, q.p(1)).cells.map((c) => c[0]).sort(), [4, 5], '이어진 2칸만');
+  assert.ok(q.g.gridAt(7, 4, 0) > 0, '떨어진 칸은 남음');
+  // 층 클리어로 내려앉아도 id 가 같이 내려감
+  const r = setupChars(['hook', 'ninja']);
+  place(r.p(2), 1, 9);
+  landAt(r.g, 'O', 0, 5, 4, 1);
+  r.g.dropLayers([0]);
+  assert.ok(r.g.gridAt(5, 4, 0) >= CELL.SHAPE_BASE);
+  place(r.p(1), 3.5, 4.5, 0);
+  assert.equal(ultHook(r.g, r.p(1)).cells.length, 4, '내려앉은 뒤에도 덩어리');
+  // 지형은 1칸
+  const t = setupChars(['hook', 'ninja']);
+  place(t.p(2), 1, 9);
+  for (const x of [5, 6]) t.g.grid[t.g.idx(x, 4, 0)] = CELL.TERRAIN;
+  t.g.gridChanged();
+  place(t.p(1), 3.5, 4.5, 0);
+  assert.equal(ultHook(t.g, t.p(1)).cells.length, 1);
+  assert.equal(t.g.gridAt(6, 4, 0), CELL.TERRAIN);
+});
+
+test('갈고리 R: 떨어지는 블록·하늘 블록은 통째로 (사슬에서 빠짐), 조종 중인 블록은 안 잡음, 뽑힌 블록 위 사람은 떨어짐, 뽑다 맞으면 제자리', () => {
+  const { g, p, lines } = setupChars(['hook', 'ninja']);
+  place(p(2), 1, 9);
+  const fall = g.addPiece(g.makePiece('T', 0, 5, 4, 1), { phase: 'falling', controller: null, sky: true, stepMs: 1e9, nextStepAt: Infinity, controlEndsAt: 0 });
+  place(p(1), 3.5, 4.5, 0);
+  const e = ultHook(g, p(1));
+  assert.equal(e.cells.length, 4);
+  assert.ok(e.sky);
+  assert.ok(!g.pieces.includes(fall), '블록 목록에서 빠짐');
+  assert.ok(lines.some((l) => l.includes('하늘 블록')));
+  // 조종 중인 블록은 안 잡음
+  const q = setupChars(['hook', 'ninja']);
+  place(q.p(2), 1, 9);
+  q.g.addPiece(q.g.makePiece('O', 0, 5, 4, 1), { phase: 'control', controller: 2, stepMs: 1e9, nextStepAt: Infinity, controlEndsAt: Infinity });
+  place(q.p(1), 3.5, 4.5, 0);
+  assert.equal(ultHook(q.g, q.p(1)), undefined, '안 잡힘');
+  assert.equal(q.p(1).ult, C.ULT_MAX);
+  // 뽑힌 블록 위 사람은 떨어짐
+  const r = setupChars(['hook', 'ninja']);
+  landAt(r.g, 'O', 0, 5, 4);
+  place(r.p(2), 6, 5, 0, 1); // O 위
+  place(r.p(1), 3.5, 4.5, 0);
+  ultHook(r.g, r.p(1));
+  run(r.g, 300);
+  assert.ok(r.p(2).z < 0.5, `떨어짐 z ${r.p(2).z.toFixed(2)}`);
+  // 뽑다 맞으면 덩어리 제자리 (다시 덩어리로)
+  const s = setupChars(['hook', 'ninja']);
+  place(s.p(2), 1, 9);
+  landAt(s.g, 'O', 0, 5, 4);
+  place(s.p(1), 3.5, 4.5, 0);
+  ultHook(s.g, s.p(1));
+  s.g.applyKnockback(s.p(1), -1, 0, 1, 0, 300, 1, { by: 2, kind: 'push' });
+  for (const [x, y] of [[5, 4], [6, 4], [5, 5], [6, 5]]) assert.ok(s.g.gridAt(x, y, 0) >= CELL.SHAPE_BASE, '제자리');
+  run(s.g, 1500);
+  place(s.p(1), 3.5, 4.5, 0);
+  assert.equal(ultHook(s.g, s.p(1)).cells.length, 4, '다시 덩어리');
+});
+
+test('갈고리 R 내려찍기: 뽑은 모양 그대로 끝 칸 중심에 박힘 (아래 가장 높은 기둥 위), 필드 밖 칸은 버림, 박힌 덩어리는 다시 통째로 잡힘, 놓인 칸 사람은 밀쳐냄', () => {
+  const { g, p } = setupChars(['hook', 'ninja']);
+  place(p(2), 1, 9);
+  landAt(g, 'L', 0, 3, 4);
+  const shape = [];
+  for (let x = 0; x < g.W; x++) for (let y = 0; y < g.D; y++) if (g.gridAt(x, y, 0) >= CELL.SHAPE_BASE) shape.push([x, y]);
+  g.grid[g.idx(7, 4, 0)] = CELL.TERRAIN; // 끝 쪽 기둥 하나 높음
+  g.gridChanged();
+  place(p(1), 1.5, 4.5, 0);
+  const e = ultHook(g, p(1));
+  assert.equal(e.cells.length, 4);
+  run(g, C.HOOK_GRAB_MS + TICK);
+  const slam = g.drainEvents().find((x) => x.type === 'blockSlam');
+  assert.equal(slam.cells.length, 4, '4칸 박힘');
+  const z = slam.cells[0][2];
+  assert.ok(slam.cells.every((c) => c[2] === z) && z >= 1, `한 높이, 높은 기둥 위 z=${z}`);
+  const norm = (cs) => {
+    const mx = Math.min(...cs.map((c) => c[0]));
+    const my = Math.min(...cs.map((c) => c[1]));
+    return cs.map((c) => `${c[0] - mx},${c[1] - my}`).sort().join(' ');
+  };
+  assert.equal(norm(slam.cells), norm(shape), '모양 그대로');
+  // 다시 통째로 잡힘
+  const sx = Math.min(...slam.cells.map((c) => c[0]));
+  place(p(1), sx - 1.5, slam.cells.find((c) => c[0] === sx)[1] + 0.5, 0, z);
+  assert.equal(ultHook(g, p(1)).cells.length, 4, '박힌 덩어리 통째로');
+  // 필드 밖 칸 버림
+  const q = setupChars(['hook', 'ninja']);
+  place(q.p(2), 1, 1);
+  place(q.p(1), q.g.W - 6 + 0.5, 4.5, 0);
+  landAt(q.g, 'I', 0, q.g.W - 5, 4); // 가로 I (W-5..W-2, 4)
+  q.p(1).yaw = 0;
+  ultHook(q.g, q.p(1));
+  run(q.g, C.HOOK_GRAB_MS + TICK);
+  const s2 = q.g.drainEvents().find((x) => x.type === 'blockSlam');
+  assert.ok(s2.cells.length < 4 && s2.cells.length >= 1, `필드 밖 칸 버림 ${s2.cells.length}`);
+  // 놓인 칸 사람은 압사 없이 밀쳐냄
+  const r = setupChars(['hook', 'ninja']);
+  landAt(r.g, 'O', 0, 3, 4);
+  place(r.p(1), 1.5, 4.5, 0);
+  place(r.p(2), 1.5 + C.HOOK_SLAM_LEN, 4.5);
+  ultHook(r.g, r.p(1));
+  run(r.g, C.HOOK_GRAB_MS + TICK);
+  assert.ok(r.p(2).alive, '압사 없음');
+  assert.equal(r.g.overlappingSolid(r.g.aabb(r.p(2))).length, 0, '블록과 안 겹침');
+});
+
 test('봇 갈고리: 상대 쪽으로 블록이 닿으면 R 블록 내려찍기, 없으면 안 씀. 떨어질 때 안쪽에 블록이 있으면 F 로 걸어 복귀', () => {
   const g = new Game(() => {}, { characters: true });
   g.rng = () => 0.5;

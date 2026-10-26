@@ -6,6 +6,7 @@ import { BotBrain } from './bot.js';
 import { MAPS, MAP_IDS, mapColumns } from './maps.js';
 
 const EPS = 1e-6;
+const DIR6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 
 
 function cellKey(cx, cy, cz) {
@@ -58,6 +59,7 @@ export class Game {
     this.D = C.GRID_D;
     this.spawnPoints = C.SPAWN_POINTS;
     this.grid = new Uint8Array(this.W * this.D * this.H);
+    this.gridPiece = new Int32Array(this.grid.length); // 칸마다 착지한 블록 id (갈고리 R 덩어리). 블록이 아닌 칸·지워진 칸은 의미 없음 (grid 색과 같이 봄)
     this.gridVersion = 0;
     this.pieces = []; // 떨어지는·조종 중인 블록들
     this.pieceCounter = 0;
@@ -135,6 +137,7 @@ export class Game {
     this.D = size;
     this.spawnPoints = C.spawnPointsFor(size, size);
     this.grid = new Uint8Array(this.W * this.D * this.H);
+    this.gridPiece = new Int32Array(this.grid.length); // 칸마다 착지한 블록 id (갈고리 R 덩어리). 블록이 아닌 칸·지워진 칸은 의미 없음 (grid 색과 같이 봄)
   }
 
   // 넓이 배율 (10×10 = 1): 떨어지는 블록 동시 개수·필드 아이템 수에 곱함
@@ -2390,7 +2393,7 @@ export class Game {
       const v = this.grid[this.idx(b.x, b.y, z)];
       if (!v) continue;
       this.grid[this.idx(b.x, b.y, z)] = 0;
-      this.holes.push({ x: b.x, y: b.y, z, v, at: this.time + C.BUILDER_HOLE_MS });
+      this.holes.push({ x: b.x, y: b.y, z, v, id: this.gridPiece[this.idx(b.x, b.y, z)], at: this.time + C.BUILDER_HOLE_MS });
     }
     this.gridChanged();
   }
@@ -2406,6 +2409,7 @@ export class Game {
       if (this.time < h.at) continue;
       if (this.grid[this.idx(h.x, h.y, h.z)] || [...this.players.values()].some((o) => this.onField(o) && overlapsCell(o, h.x, h.y, h.z))) continue; // 사람이 있으면 다음 틱
       this.grid[this.idx(h.x, h.y, h.z)] = h.v;
+      this.gridPiece[this.idx(h.x, h.y, h.z)] = h.id || 0;
       this.holes = this.holes.filter((x) => x !== h);
       this.gridChanged();
     }
@@ -2436,8 +2440,9 @@ export class Game {
   // 갈고리가 닿는 첫 블록 (격자 칸 또는 떨어지는 블록, 필드 바닥은 아님). { x, y, z, d(수평 거리) } 또는 null.
   // 조준 방향(yaw + pitch) 3D 직선을 눈 높이에서 HOOK_RANGE 만큼. 놓치면 보조로 발 층·한 칸 위 층을 수평으로
   // (2026-10-25 버그: 수평 한 층만 봐서 땅 위 1칸 높이 블록이 안 잡혀 R 이 거의 안 써졌음)
-  hookRayBlock(p, yaw = p.yaw, pitch = p.pitch || 0) {
-    const solid = (x, y, z) => z >= 0 && z < this.H && ((this.inXY(x, y) && this.grid[this.idx(x, y, z)]) || this.pieceCells.has(cellKey(x, y, z)));
+  // skip(x, y, z): 이 칸은 없는 셈 (R: 조종 중인 블록)
+  hookRayBlock(p, yaw = p.yaw, pitch = p.pitch || 0, skip = null) {
+    const solid = (x, y, z) => z >= 0 && z < this.H && ((this.inXY(x, y) && this.grid[this.idx(x, y, z)]) || this.pieceCells.has(cellKey(x, y, z))) && !(skip && skip(x, y, z));
     const cp = Math.cos(pitch);
     const dir = { x: Math.cos(yaw) * cp, y: Math.sin(yaw) * cp, z: Math.sin(pitch) };
     const eye = { x: p.x, y: p.y, z: p.z + C.EYE_HEIGHT };
@@ -2462,7 +2467,7 @@ export class Game {
   }
 
   // R 보조 판정: 보는 방향 반각 HOOK_GRAB_CONE_DEG, 수평 HOOK_RANGE 안, 발 층 -1 ~ +2 층의 블록 중 가장 가까운 것 (같으면 높은 칸)
-  hookConeBlock(p) {
+  hookConeBlock(p, skip = null) {
     const fx = Math.cos(p.yaw);
     const fy = Math.sin(p.yaw);
     const cosHalf = Math.cos((C.HOOK_GRAB_CONE_DEG * Math.PI) / 180);
@@ -2476,7 +2481,7 @@ export class Game {
         const d = Math.hypot(dx, dy);
         if (d > C.HOOK_RANGE + 0.5 || d < 0.5 || (dx * fx + dy * fy) / d < cosHalf) continue;
         for (let z = Math.max(0, z0 - 1); z <= Math.min(this.H - 1, z0 + 2); z++) {
-          if (!((this.inXY(x, y) && this.grid[this.idx(x, y, z)]) || this.pieceCells.has(cellKey(x, y, z)))) continue;
+          if (!((this.inXY(x, y) && this.grid[this.idx(x, y, z)]) || this.pieceCells.has(cellKey(x, y, z))) || (skip && skip(x, y, z))) continue;
           if (!best || d < best.d - 1e-9 || (Math.abs(d - best.d) < 1e-9 && z > best.z)) best = { x, y, z, d };
         }
       }
@@ -2546,35 +2551,70 @@ export class Game {
     return true;
   }
 
-  // R 블록 내려찍기 1단계: 보는 방향 첫 블록 1칸을 뽑음 (격자에서 빠짐). 없으면 false (게이지 그대로)
-  hookGrab(p) {
-    const b = this.hookRayBlock(p) || this.hookConeBlock(p); // 조준이 살짝 빗나가도 원뿔로 너그럽게 (2026-10-26 재혁: R 을 두 번 눌러야 했음)
-    if (!b) return false;
+  // R 으로 뽑을 덩어리: 맞은 칸이 떨어지는 블록이면 그 블록 통째로, 쌓인 블록이면 같은 블록 id·같은 색으로 6방향 이어진 칸 전부,
+  // 시작 지형·건축가 블록·내려찍어 박힌 칸(id 없음)은 1칸 (2026-10-26 재혁 "갈고리 R = 테트로미노 통째로")
+  hookGroup(b) {
     const key = cellKey(b.x, b.y, b.z);
-    let v = CELL.THROWN;
     if (this.pieceCells.has(key)) {
       const pc = this.pieces.find((x) => x.id === this.pieceCells.get(key));
-      v = cellOfShape(pc.shape);
-      pc.cells = pc.cells.filter(([dx, dy]) => !(pc.px + dx === b.x && pc.py + dy === b.y));
-      if (!pc.cells.length) this.removePiece(pc);
-      else {
-        this.refreshPieceCells();
-        this.updateLanding(pc);
+      const v = pc.thrownBy ? CELL.THROWN : cellOfShape(pc.shape);
+      return { piece: pc, cells: this.pieceWorldCells(pc).map(([x, y, z]) => ({ x, y, z, v, meta: null })) };
+    }
+    const i0 = this.idx(b.x, b.y, b.z);
+    const v = this.grid[i0];
+    const id = this.gridPiece[i0];
+    const meta = this.bblocks.get(key) || null;
+    if (!id || meta || !(v === CELL.THROWN || v >= CELL.SHAPE_BASE)) return { piece: null, cells: [{ x: b.x, y: b.y, z: b.z, v, meta }] };
+    const cells = [];
+    const seen = new Set([key]);
+    const stack = [[b.x, b.y, b.z]];
+    while (stack.length) {
+      const [x, y, z] = stack.pop();
+      cells.push({ x, y, z, v, meta: null });
+      for (const [dx, dy, dz] of DIR6) {
+        const nx = x + dx;
+        const ny = y + dy;
+        const nz = z + dz;
+        const k = cellKey(nx, ny, nz);
+        if (seen.has(k) || !this.inXY(nx, ny) || nz < 0 || nz >= this.H) continue;
+        seen.add(k);
+        const j = this.idx(nx, ny, nz);
+        if (this.grid[j] === v && this.gridPiece[j] === id) stack.push([nx, ny, nz]);
       }
-    } else {
-      v = this.grid[this.idx(b.x, b.y, b.z)];
-      this.grid[this.idx(b.x, b.y, b.z)] = 0;
+    }
+    return { piece: null, cells };
+  }
+
+  // R 블록 내려찍기 1단계: 보는 방향 첫 블록의 덩어리를 뽑음 (격자에서 빠짐). 없으면 false (게이지 그대로)
+  hookGrab(p) {
+    const skip = (x, y, z) => this.controlledCell(x, y, z); // 조종 중인 블록은 안 잡음
+    const b = this.hookRayBlock(p, p.yaw, p.pitch || 0, skip) || this.hookConeBlock(p, skip); // 조준이 살짝 빗나가도 원뿔로 너그럽게 (2026-10-26 재혁: R 을 두 번 눌러야 했음)
+    if (!b) return false;
+    const { piece, cells } = this.hookGroup(b);
+    if (piece) this.removePiece(piece); // 떨어지는 블록 통째로 (하늘 계단 블록이면 사슬에서 빠짐 → 맨 위 보충, 녹을 때와 같음)
+    else {
+      for (const c of cells) {
+        this.grid[this.idx(c.x, c.y, c.z)] = 0;
+        if (c.meta) this.bblocks.delete(cellKey(c.x, c.y, c.z));
+      }
       this.gridChanged();
     }
-    const meta = this.bblocks.get(key) || null; // 건축가 블록은 속성 그대로 옮김
-    if (meta) this.bblocks.delete(key);
-    p.grab = { at: this.time + C.HOOK_GRAB_MS, v, meta, from: [b.x, b.y, b.z], dir: { x: Math.cos(p.yaw), y: Math.sin(p.yaw) } };
-    this.emit({ type: 'blockGrab', who: p.id, from: [b.x, b.y, b.z], ms: C.HOOK_GRAB_MS, builder: !!meta });
-    this.log(`  [필살] ${p.name} 블록 뽑기 (${b.x},${b.y},${b.z})`);
+    for (const pc of this.pieces) this.updateLanding(pc);
+    const meta = cells.length === 1 ? cells[0].meta : null; // 건축가 블록은 속성 그대로 옮김
+    p.grab = { at: this.time + C.HOOK_GRAB_MS, cells, meta, from: [b.x, b.y, b.z], dir: { x: Math.cos(p.yaw), y: Math.sin(p.yaw) } };
+    this.emit({ type: 'blockGrab', who: p.id, from: [b.x, b.y, b.z], cells: cells.map((c) => [c.x, c.y, c.z]), v: cells[0].v, ms: C.HOOK_GRAB_MS, builder: !!meta, sky: !!(piece && piece.sky) });
+    this.log(`  [필살] ${p.name} 블록 뽑기 (${b.x},${b.y},${b.z})${cells.length > 1 ? ` ${cells.length}칸` : ''}${piece ? (piece.sky ? ' 하늘 블록' : ' 떨어지는 블록') : ''}`);
     return true;
   }
 
-  // R 2단계: 앞 직선 HOOK_SLAM_LEN 칸을 내려찍음 (넉백 + 띄움) → 끝 칸 기둥 꼭대기에 박힘 (사람은 밀쳐냄, 필드 밖이면 사라짐)
+  // 조종 중인 블록의 칸인가
+  controlledCell(x, y, z) {
+    const id = this.pieceCells.get(cellKey(x, y, z));
+    if (id === undefined) return false;
+    const pc = this.pieces.find((q) => q.id === id);
+    return !!(pc && pc.controller !== null);
+  }
+
   hookSlam(p) {
     const g = p.grab;
     p.grab = null;
@@ -2589,44 +2629,60 @@ export class Game {
       if (hit) n++;
       this.emit({ type: 'hit', kind: 'blockslam', by: p.id, target: t.id, ok: hit });
     }
-    const x = Math.floor(p.x + dir.x * C.HOOK_SLAM_LEN);
-    const y = Math.floor(p.y + dir.y * C.HOOK_SLAM_LEN);
-    let cell = null;
-    if (this.inXY(x, y)) {
-      const z = this.columnTop(x, y);
-      if (z < this.H && !this.pieceCells.has(cellKey(x, y, z))) {
-        this.grid[this.idx(x, y, z)] = g.v;
-        if (g.meta) this.bblocks.set(cellKey(x, y, z), { ...g.meta, x, y, z });
-        cell = [x, y, z];
-        this.landed.hook++;
-        this.gridChanged();
-        // 그 칸 사람은 압사 대신 밀쳐냄 (내려찍은 방향으로 칸 밖, 막히면 블록 위로)
-        for (const t of this.players.values()) {
-          if (!this.onField(t) || !overlapsCell(t, x, y, z)) continue;
-          const nx = dir.x > 0.5 ? x + 1 + C.PLAYER_HALF + 0.01 : dir.x < -0.5 ? x - C.PLAYER_HALF - 0.01 : t.x;
-          const ny = dir.y > 0.5 ? y + 1 + C.PLAYER_HALF + 0.01 : dir.y < -0.5 ? y - C.PLAYER_HALF - 0.01 : t.y;
-          const moved = { ...t, x: nx, y: ny };
-          if ((nx !== t.x || ny !== t.y) && !this.overlappingSolid(this.aabb(moved)).length) Object.assign(t, { x: nx, y: ny });
-          else this.ejectFromBlocks(t);
+    // 덩어리를 뽑은 모양 그대로 (방향도 그대로) 끝 칸을 중심으로, 모양 칸 아래 가장 높은 기둥 위에 박음. 필드 밖·떨어지는 블록과 겹치는 칸은 버림
+    const ex = Math.floor(p.x + dir.x * C.HOOK_SLAM_LEN);
+    const ey = Math.floor(p.y + dir.y * C.HOOK_SLAM_LEN);
+    const cx = Math.round(g.cells.reduce((a, c) => a + c.x, 0) / g.cells.length - 0.5);
+    const cy = Math.round(g.cells.reduce((a, c) => a + c.y, 0) / g.cells.length - 0.5);
+    const at = g.cells.map((c) => ({ ...c, x: ex + c.x - cx, y: ey + c.y - cy })).filter((c) => this.inXY(c.x, c.y));
+    let z = 0;
+    for (const c of at) z = Math.max(z, this.columnTop(c.x, c.y));
+    const placed = z < this.H ? at.filter((c) => !this.pieceCells.has(cellKey(c.x, c.y, z))) : [];
+    const id = placed.length > 1 ? ++this.pieceCounter : 0; // 다시 덩어리로 잡히게 새 id (1칸은 id 없음)
+    for (const c of placed) {
+      const i = this.idx(c.x, c.y, z);
+      this.grid[i] = c.v;
+      this.gridPiece[i] = id;
+      if (c.meta) this.bblocks.set(cellKey(c.x, c.y, z), { ...c.meta, x: c.x, y: c.y, z });
+    }
+    const cells = placed.map((c) => [c.x, c.y, z]);
+    if (cells.length) {
+      this.landed.hook++;
+      this.gridChanged();
+      for (const pc of this.pieces) this.updateLanding(pc);
+      // 박힌 칸 사람은 압사 대신 밀쳐냄 (내려찍은 방향으로 덩어리 밖, 막히면 블록 위로)
+      for (const t of this.players.values()) {
+        if (!this.onField(t) || !cells.some(([x, y]) => overlapsCell(t, x, y, z))) continue;
+        let moved = null;
+        for (let d = 0.1; d <= 4.5 && !moved; d += 0.1) {
+          const m = { ...t, x: t.x + dir.x * d, y: t.y + dir.y * d };
+          if (!this.overlappingSolid(this.aabb(m)).length) moved = m;
         }
+        if (moved) Object.assign(t, { x: moved.x, y: moved.y });
+        else this.ejectFromBlocks(t);
       }
     }
-    this.emit({ type: 'blockSlam', who: p.id, dir, len: C.HOOK_SLAM_LEN, cell, builder: !!g.meta });
-    this.log(`  [필살] ${p.name} 블록 내려찍기 (${n}명)${cell ? ` → (${cell.join(',')}) 박힘` : ' → 필드 밖으로 사라짐'}`);
+    this.emit({ type: 'blockSlam', who: p.id, dir, len: C.HOOK_SLAM_LEN, cell: cells[0] || null, cells, builder: !!g.meta });
+    const where = !cells.length ? ' → 필드 밖으로 사라짐' : cells.length === 1 ? ` → (${cells[0].join(',')}) 박힘` : ` → ${cells.length}칸 박힘 (${cells[0].join(',')})`;
+    this.log(`  [필살] ${p.name} 블록 내려찍기 (${n}명)${where}`);
     this.clearLayers();
   }
 
-  // R 뽑는 중에 맞아서 끊김: 블록은 원래 자리로 (비었으면), 아니면 사라짐
+  // 뽑는 중에 맞음: 덩어리를 제자리로 (빈 칸만)
   hookGrabDrop(p) {
     const g = p.grab;
     p.grab = null;
-    const [x, y, z] = g.from;
-    if (!this.grid[this.idx(x, y, z)] && !this.pieceCells.has(cellKey(x, y, z))) {
-      this.grid[this.idx(x, y, z)] = g.v;
-      if (g.meta) this.bblocks.set(cellKey(x, y, z), { ...g.meta, x, y, z });
-      this.gridChanged();
+    const id = g.cells.length > 1 ? ++this.pieceCounter : 0;
+    for (const c of g.cells) {
+      if (c.z >= this.H || this.grid[this.idx(c.x, c.y, c.z)] || this.pieceCells.has(cellKey(c.x, c.y, c.z))) continue;
+      this.grid[this.idx(c.x, c.y, c.z)] = c.v;
+      this.gridPiece[this.idx(c.x, c.y, c.z)] = id;
+      if (c.meta) this.bblocks.set(cellKey(c.x, c.y, c.z), { ...c.meta, x: c.x, y: c.y, z: c.z });
     }
+    this.gridChanged();
+    for (const pc of this.pieces) this.updateLanding(pc);
   }
+
 
   // 틱마다: 콤보가 끊긴 사람 무적, 돌진 부딪힘, 내려찍기·솟는 벽·블록 내려찍기 발동
   updateCombat() {
@@ -3778,7 +3834,10 @@ export class Game {
     this.landed[piece.sky ? 'sky' : piece.controller !== null ? 'control' : piece.thrownBy ? 'item' : 'auto']++;
     const cell = piece.thrownBy ? CELL.THROWN : cellOfShape(piece.shape); // 색 구분용
     for (const [x, y, z] of this.pieceWorldCells(piece)) {
-      if (z >= 0 && z < this.H) this.grid[this.idx(x, y, z)] = cell;
+      if (z >= 0 && z < this.H) {
+        this.grid[this.idx(x, y, z)] = cell;
+        this.gridPiece[this.idx(x, y, z)] = piece.id;
+      }
     }
     const cells = this.pieceWorldCells(piece);
     this.emit({ type: 'land', cells: cells.map(([x, y, z]) => [x, y, z]), controlled: piece.controller !== null });
@@ -3835,13 +3894,16 @@ export class Game {
   dropLayers(full) {
     const layerSize = this.W * this.D;
     const next = new Uint8Array(this.grid.length);
+    const nextPiece = new Int32Array(this.grid.length); // 블록 id 도 같이 내림
     let dst = 0;
     for (let z = 0; z < this.H; z++) {
       if (full.includes(z)) continue;
       next.set(this.grid.subarray(z * layerSize, (z + 1) * layerSize), dst * layerSize);
+      nextPiece.set(this.gridPiece.subarray(z * layerSize, (z + 1) * layerSize), dst * layerSize);
       dst++;
     }
     this.grid = next;
+    this.gridPiece = nextPiece;
     this.gridVersion++;
     this.gridDirty = true;
     for (const p of this.players.values()) {
