@@ -225,6 +225,7 @@ export const CONFIG = {
     },
     // 사냥꾼 (2026-10-26 재혁 확정, docs/characters.md 3.5 사냥꾼형): 베기 → 반대 베기 → 찔러 넣기 (맞으면 표식 +1). 속도는 탱크와 닌자 사이.
     // 공중 내려 베기 1타는 표식 없음. 수치는 초안 (stun·kb 는 문서에 없어 A 가 정함)
+    // 2026-10-26 재혁 ㄱ: 공중 내려 베기 = 마무리 (가+다 뒤 킬 낼 타가 없었음). 평평평(표식) → F 덮침 → 평평평 → 점프 → 공중 마무리. kb 는 탱크 공중 마무리 수준
     // 2026-10-26 재혁 결정 "가": 찔러 넣기는 마무리 아님 (봇 판: 마무리 → 무적이라 F 덮침·R 이 거의 다 빗나감). 이어지는 타 수준 kb + 긴 경직 → F 덮침·평타로 이어 감
     hunter: {
       chain: [
@@ -232,7 +233,7 @@ export const CONFIG = {
         { name: '반대 베기', windup: 100, rec: 250, stun: 550, dmg: 5, kb: 1.2, up: 2, step: 0.3 },
         { name: '찔러 넣기', windup: 200, rec: 450, stun: 850, dmg: 8, kb: 1.5, up: 2, step: 0.4, mark: true }, // stun ≥ F 준비 200 + 도약 300 + 여유
       ],
-      air: [{ name: '내려 베기', windup: 150, rec: 400, stun: 500, dmg: 7, kb: 3, up: 2, step: 0 }],
+      air: [{ name: '내려 베기', windup: 150, rec: 400, stun: 600, dmg: 7, kb: 3.8, up: 1, step: 0, finish: true }],
     },
     // 대포수 (2026-10-26 재혁 확정, docs/characters.md 3.6 견제): 탄이 있으면 평타 = 포탄 (서버가 날리는 보이는 투사체, 지상·공중), 없으면 대포 후려치기.
     // 한 타짜리 (이어 치기 없음). 수치는 초안 (준비·후딜·경직·넉백은 A 가 정함)
@@ -384,7 +385,7 @@ export const CONFIG = {
   // 사냥꾼 (2026-10-26 재혁 확정, docs/characters.md 3.5 — "표식을 남기면 끝까지 사냥한다". 수치는 초안)
   // 표식: 상대에게 붙음 (사냥꾼마다 따로). 지상 평타 마무리 타(찔러 넣기)가 맞으면 +1, 최대 HUNTER_MARK_MAX, 마지막으로 쌓인 뒤 HUNTER_MARK_MS 면 사라짐
   HUNTER_MARK_MAX: 3,
-  HUNTER_MARK_MS: 5000,
+  HUNTER_MARK_MS: 10000, // 2026-10-26 재혁 5 → 10초 (콤보를 다 못 맞히면 표식이 금방 사라져 R 을 못 씀)
   // F 추적 도약: HUNTER_LEAP_RANGE 안 표식 있는 가장 가까운 상대에게 (예고 HUNTER_LEAP_WINDUP_MS) 도약해 덮침, 없으면 보는 방향 HUNTER_LEAP_DIST 칸. 덮치면 이어 치기 창 → 평평평
   HUNTER_LEAP_RANGE: 6,
   HUNTER_LEAP_DIST: 3,
@@ -406,7 +407,7 @@ export const CONFIG = {
   HUNTER_SHOT_WINDUP_MS: 500,
   HUNTER_SHOT_DAMAGE_PER_MARK: 8,
   HUNTER_SHOT_KB_BASE: 2,
-  HUNTER_SHOT_KB_PER_MARK: 1.5,
+  HUNTER_SHOT_KB_PER_MARK: 2.5, // 2026-10-26 재혁 ㄴ 1.5 → 2.5 (킬 낼 기술)
   HUNTER_SHOT_UP: 3,
   HUNTER_SHOT_STUN_MS: 700,
   HUNTER_ULT_MULT: 2, // R 게이지 필요량 × 이 값 (대가)

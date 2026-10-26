@@ -192,11 +192,11 @@ for (const char of C.CHARACTERS.filter((c) => C.BASIC_ATTACKS[c].chain.at(-1).fi
 test('평타: 경직은 후딜 + 다음 타 준비 + 0.1초 이상 (바로 누르면 확정), 마무리 타만 finish (닌자는 지상 4타가 아니라 공중 2타), 풀 콤보 최단 시간 ≤ COMBO_MS', () => {
   for (const char of C.CHARACTERS) {
     const { chain, air } = C.BASIC_ATTACKS[char];
-    const ninja = char === 'ninja' || char === 'tank'; // 지상 마지막 타가 띄우고 공중 마지막 타가 마무리
-    const noFinish = char === 'hunter'; // 2026-10-26 재혁 "가": 사냥꾼 찔러 넣기는 마무리 아님 (공중 내려 베기도 아님) → 평타 마무리 없음
+    // 지상 마지막 타가 마무리가 아니고 공중 마지막 타가 마무리 (사냥꾼: 2026-10-26 재혁 가·ㄱ — 찔러 넣기 마무리 아님, 공중 내려 베기 마무리)
+    const ninja = char === 'ninja' || char === 'tank' || char === 'hunter';
     let t = 0;
     chain.forEach((d, i) => {
-      assert.equal(!!d.finish, !ninja && !noFinish && i === chain.length - 1, `${char} ${i + 1}타`);
+      assert.equal(!!d.finish, !ninja && i === chain.length - 1, `${char} ${i + 1}타`);
       if (i === chain.length - 1) return;
       assert.ok(d.stun >= d.rec + chain[i + 1].windup + 100, `${char} ${i + 1}타 경직 ${d.stun}`);
       t += d.rec + chain[i + 1].windup;
@@ -1512,6 +1512,39 @@ test('사냥꾼 F 유도 (재혁 "다"): 도약 중 표식 대상이 움직이�
   const b = leapTo(5); // 너무 멀리 가면 최대 보정까지만
   assert.ok(b.p(1).y <= 5 + C.HUNTER_LEAP_HOMING_MAX + 0.1, `최대 보정 y ${b.p(1).y.toFixed(2)}`);
   assert.ok(b.p(1).y >= 5 + C.HUNTER_LEAP_HOMING_MAX - 0.4, `보정은 함 y ${b.p(1).y.toFixed(2)}`);
+});
+
+test('사냥꾼 재혁 ㄱ·ㄴ·표식 10초: 공중 내려 베기가 마무리 (콤보 끝·무적), 처형 사격 넉백 = 기본 + 표식당 2.5, 표식은 10초 유지', () => {
+  assert.equal(C.HUNTER_MARK_MS, 10000);
+  assert.equal(C.HUNTER_SHOT_KB_PER_MARK, 2.5);
+  // 평평평 → 점프 → 공중 내려 베기 = 마무리
+  const { g, p } = setupChars(['hunter', 'tank']);
+  place(p(1), 3, 5, 0);
+  place(p(2), 4.1, 5);
+  for (let i = 0; i < 3; i++) {
+    basic(g, 1);
+    run(g, p(1).pushReadyAt - g.time + TICK);
+  }
+  assert.ok(p(2).comboHits >= 3);
+  Object.assign(p(1), { z: p(2).z + 0.5, grounded: false, vz: 0, x: p(2).x - 1, y: p(2).y, yaw: 0 });
+  basic(g, 1);
+  assert.equal(p(2).lastHit.kind, 'push');
+  assert.equal(p(2).comboHits, 0, '콤보 끝');
+  assert.ok(p(2).iframeUntil > g.time, '마무리 무적');
+  // 처형 사격 넉백: 표식 수에 비례
+  const shot = (n) => {
+    const q = setupChars(['hunter', 'tank']);
+    place(q.p(1), 2, 5, 0);
+    place(q.p(2), 5, 5);
+    q.p(2).marks.set(1, { n, at: q.g.time });
+    q.p(1).ult = q.g.ultMax(q.p(1));
+    q.g.handleAction(1, { name: 'ult' });
+    run(q.g, C.HUNTER_SHOT_WINDUP_MS + TICK);
+    return Math.hypot(q.p(2).kbx, q.p(2).kby);
+  };
+  const r = shot(3) / shot(1);
+  const want = (C.HUNTER_SHOT_KB_BASE + 3 * C.HUNTER_SHOT_KB_PER_MARK) / (C.HUNTER_SHOT_KB_BASE + C.HUNTER_SHOT_KB_PER_MARK);
+  assert.ok(Math.abs(r - want) < 0.05 * want, `넉백 비 ${r.toFixed(3)} (기대 ${want.toFixed(3)}, 표식 피해 % 차이 포함)`);
 });
 
 test('사냥꾼 R 처형 사격: 게이지 2배, 각 90°·사거리 8 안 표식 대상 전부를 0.5초 조준 뒤 맞힘 (표식 1개당 피해), 표식 소모, 블록이 가리면 막힘, 표식 3개를 맞히면 게이지를 돌려받음, 대상이 없으면 안 쓰임', () => {
