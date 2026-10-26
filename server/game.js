@@ -3416,12 +3416,14 @@ export class Game {
     if (this.mode === 'kills') return; // 킬 점수전은 용암 대신 아래층을 지움 (sinkIfTall)
     const lava = this.lava;
     if (!lava.active) {
-      if (this.avgHeight() - this.baseAvgHeight < C.LAVA_TRIGGER_AVG_HEIGHT) return; // 시작 지형 빼고 쌓인 만큼
+      const piled = this.avgHeight() - this.baseAvgHeight >= C.LAVA_TRIGGER_AVG_HEIGHT; // 시작 지형 빼고 쌓인 만큼
+      const late = this.sky && this.elapsed() >= C.SKY_LAVA_TRIGGER_MS; // 하늘 계단: 시간이 지나도 시작
+      if (!piled && !late) return;
       lava.active = true;
       lava.z = C.LAVA_START_Z;
       lava.startedAt = this.time;
       this.emit({ type: 'lava' });
-      this.log(`  [용암] 쌓인 평균 높이 ${(this.avgHeight() - this.baseAvgHeight).toFixed(2)} → 용암 상승 시작 @ ${fmtTime(this.elapsed())}`);
+      this.log(`  [용암] ${piled ? '' : `${fmtTime(C.SKY_LAVA_TRIGGER_MS)} 지남 (하늘 계단), `}쌓인 평균 높이 ${(this.avgHeight() - this.baseAvgHeight).toFixed(2)} → 용암 상승 시작 @ ${fmtTime(this.elapsed())}`);
       return;
     }
     lava.z = Math.min(this.H + 1, lava.z + dtMs / C.LAVA_RISE_MS_PER_CELL);
