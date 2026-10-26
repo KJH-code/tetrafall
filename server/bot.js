@@ -896,6 +896,56 @@ export class BotBrain {
   }
 
   // ---------- 위치·복귀 (공용 헬퍼: 캐릭터 판단에서도 부를 수 있음) ----------
+  // 거리 유지 이동 (원거리 캐릭터용 공용 헬퍼): 상대(t)와 want 칸 거리를 두고, 상대를 바라본 채 상대 둘레 원 위에서
+  // 가장자리·그림자(avoid 칸)를 등지지 않는 자리로 옆·안쪽으로 돈다. this.input 의 yaw·fwd·strafe·jump 만 정함 (pitch·handleInput 은 부르는 쪽).
+  // 고른 자리 {x, y} 를 돌려줌. 원 위 후보: 지금 방향에서 ±BOT_KITE_ARC_DEG 안 15° 간격, 점수 = 가장자리 거리 − 크게 도는 만큼 − 위험
+  kite(g, p, t, want, avoid = []) {
+    const dx0 = p.x - t.x;
+    const dy0 = p.y - t.y;
+    const a0 = Math.hypot(dx0, dy0) > 0.05 ? Math.atan2(dy0, dx0) : Math.atan2(D / 2 - t.y, W / 2 - t.x); // 겹쳐 있으면 안쪽으로
+    const h0 = this.standHeight(g, p);
+    const reach = this.jumpReach(g, p);
+    const steps = Math.round(C.BOT_KITE_ARC_DEG / 15);
+    let best = null;
+    let bs = -Infinity;
+    for (let k = -steps; k <= steps; k++) {
+      const a = a0 + (k * Math.PI) / 12;
+      const x = t.x + Math.cos(a) * want;
+      const y = t.y + Math.sin(a) * want;
+      if (x < 0.45 || y < 0.45 || x > W - 0.45 || y > D - 0.45) continue; // 필드 밖
+      let score = Math.min(edgeDist(x, y), 3) * 2 - Math.abs(k) * 0.3;
+      if (edgeDist(x, y) < C.BOT_EDGE_MARGIN) score -= 50;
+      if (overlapsCells({ x, y }, avoid)) score -= 100;
+      const top = g.columnTop(Math.floor(x), Math.floor(y));
+      if (top > h0 + reach) score -= 30; // 못 올라감
+      else if (h0 - top >= 2) score -= 10; // 낭떠러지 아래
+      if (this.pathHits(p, Math.atan2(y - p.y, x - p.x), Math.hypot(x - p.x, y - p.y), avoid)) score -= 20;
+      if (score > bs) {
+        bs = score;
+        best = { x, y };
+      }
+    }
+    if (!best) best = this.recoverPoint(p); // 원 위에 설 곳이 없으면 안쪽으로
+    this.input.yaw = Math.atan2(t.y - p.y, t.x - p.x); // 상대를 봄
+    const mx = best.x - p.x;
+    const my = best.y - p.y;
+    const len = Math.hypot(mx, my);
+    if (len < 0.2) {
+      this.input.fwd = 0;
+      this.input.strafe = 0;
+      return best;
+    }
+    const fx = Math.cos(this.input.yaw);
+    const fy = Math.sin(this.input.yaw);
+    this.input.fwd = (mx * fx + my * fy) / len; // 보는 방향 기준으로 앞뒤·옆 (moveDir 와 같은 축)
+    this.input.strafe = (mx * fy - my * fx) / len;
+    const ax = Math.floor(p.x + (mx / len) * 0.55);
+    const ay = Math.floor(p.y + (my / len) * 0.55);
+    const ahead = g.inXY(ax, ay) ? g.columnTop(ax, ay) : 0;
+    if (p.grounded && ahead > p.z + 0.05 && ahead <= p.z + reach) this.input.jump = true;
+    return best;
+  }
+
   // 공중에서 필드 밖으로 떨어질 참인가: 지금 발밑이 필드 밖이거나, 지금 넉백 속도로 바닥 높이까지 떨어지는 동안 필드 밖에 닿음
   fallingOff(g, p) {
     if (p.grounded || !g.onField(p)) return false;

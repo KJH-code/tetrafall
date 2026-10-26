@@ -693,6 +693,7 @@ export const CONFIG = {
   BOT_THINK_MS: 100, // 판단 주기
   BOT_AIR_JUMP_VZ: 2, // 봇은 위로 가는 속도가 이보다 느려지면 (꼭대기 근처) 2단 점프
   BOT_EDGE_MARGIN: 1.2, // 봇이 상대 뒤를 잡으러 갈 때 서는 자리는 필드 끝에서 이만큼 안 (예전 0.45)
+  BOT_KITE_ARC_DEG: 90, // kite: 상대 둘레 원에서 지금 방향 ±이 각도 안의 자리를 봄
   BOT_RECOVER_INSET: 1.2, // 복귀할 때 필드 끝에서 이만큼 안쪽 점을 노림
   BOT_RECOVER_DASH_OUT: 1, // 밖으로 향하는 넉백 속도(칸/초)가 이보다 빠르면 공중 대시로 끊음
   BOT_REACTION_MS: 450, // 그림자가 보이고 나서 피하기 시작할 때까지 (사람 반응 흉내). 상대 예고 피하기·봇 탱크 아머 반응도 같은 지연
