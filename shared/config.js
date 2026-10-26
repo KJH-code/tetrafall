@@ -366,6 +366,10 @@ export const CONFIG = {
   SKILL_GLOW_MS: 140,
   SKY_PIECE_WHITEN: 0.35, // 하늘 계단 블록: 모양 색을 흰색으로 섞는 정도 (밝게)
   SKY_PIECE_OPACITY: 0.88, // 하늘 계단 블록 비침 (떠 있는 느낌)
+  LABEL_ABOVE_HEAD: 0.3, // 이름표를 머리(모자·모히칸 포함) 꼭대기에서 이만큼 위에 (예전 높이 아래로는 안 내림)
+  OCCLUDE_ENTER: 0.85, // 3인칭·관전: 카메라→캐릭터 선에서 이 거리(칸) 안의 떨어지는 블록 칸은 반투명
+  OCCLUDE_EXIT: 1.05, // 반투명이 풀리는 거리 (들어갈 때보다 멀게: 경계에서 깜빡이지 않게)
+  OCCLUDE_OPACITY: 0.22,
   ULT_READY_SPARKLE_RATE: 2, // 그 빛에서 위로 오르는 반짝이 (초당, 아주 적게)
   ULT_READY_AURA_OPACITY: 0.24, // R 게이지가 찬 상대 몸 둘레 옅은 빛 (ULT_AURA_COLOR, 숨 쉬듯 75~100%)
   ULT_AURA_COLOR: 0x8fe6ff, // R: 몸이 하늘색으로 빛나는 동안 반짝이가 위로 올라감 + 고리 두 겹

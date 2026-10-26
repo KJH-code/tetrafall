@@ -343,6 +343,42 @@ export class Renderer {
   }
 
   // 판 크기 (snapshot field: 인원별 10·12·14, 대기실 10). 바뀔 때만 바닥·격자선·경계·용암·해 그림자·하늘 시점을 맞춘다
+  // 카메라(eye) → 캐릭터 가슴 선분에 가까운 블록 칸(떨어지는 블록·하늘 계단 블록)을 반투명 재질로. 들어갈 때·나올 때 거리를 달리해 깜빡이지 않게
+  fadeOccluders(eye, subject) {
+    const target = subject ? new THREE.Vector3(subject.x, subject.y, subject.z + C.PLAYER_HEIGHT * 0.6) : null;
+    const seg = target && eye ? target.clone().sub(eye) : null;
+    const len2 = seg ? seg.lengthSq() : 0;
+    const q = new THREE.Vector3();
+    for (const pm of this.pieceMeshes) {
+      let hide = false;
+      if (pm.visible && seg && len2 > 0.01) {
+        q.copy(pm.position).sub(eye);
+        const t = q.dot(seg) / len2;
+        if (t > 0 && t < 1) {
+          const d = q.sub(seg.clone().multiplyScalar(t)).length();
+          hide = d < (pm.userData.faded ? C.OCCLUDE_EXIT : C.OCCLUDE_ENTER);
+        }
+      }
+      pm.userData.faded = hide;
+      if (hide) pm.material = this.fadedMat(pm.material);
+    }
+  }
+
+  fadedMat(base) {
+    this.fadedMats ||= new Map();
+    let m = this.fadedMats.get(base);
+    if (!m) {
+      m = base.clone();
+      m.transparent = true;
+      m.opacity = C.OCCLUDE_OPACITY;
+      m.depthWrite = false;
+      noOutline(m);
+      this.fadedMats.set(base, m);
+      this.fadedMats.set(m, m); // 이미 반투명이면 그대로
+    }
+    return m;
+  }
+
   // 하늘 시점 카메라 높이: 판 높이 + (SKY_CAMERA_HEIGHT - GRID_H) 여백
   skyCamH() {
     return C.SKY_CAMERA_HEIGHT - C.GRID_H + (this.H || C.GRID_H);
@@ -539,7 +575,15 @@ export class Renderer {
       // 블록 뒤에 숨으면 이름표도 가려진다 (기둥 숲에서 숨는 의미가 있게)
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: true, depthWrite: false, transparent: true, sizeAttenuation: false }));
       sprite.scale.set(0.3, 0.13, 1);
-      sprite.position.z = C.PLAYER_HEIGHT + 0.45;
+      // 이름표 높이: 머리(모자·뿔·모히칸 포함) 꼭대기 위로. 들고 있는 무기는 안 셈. 낮아도 예전 높이 아래로는 안 내림
+      let labelZ = C.PLAYER_HEIGHT + 0.45;
+      if (ch.figure) {
+        g.updateMatrixWorld(true);
+        const top = new THREE.Box3().setFromObject(ch.figure.neck).max.z;
+        if (Number.isFinite(top)) labelZ = Math.max(labelZ, top + C.LABEL_ABOVE_HEAD);
+      }
+      g.userData.labelZ = labelZ;
+      sprite.position.z = labelZ;
       sprite.renderOrder = 11;
       g.add(sprite);
       g.userData.label = { sprite, canvas, tex, shown: null };
@@ -1335,7 +1379,7 @@ export class Renderer {
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false, transparent: true, sizeAttenuation: false }));
       sprite.scale.set(0.09, 0.03, 1);
       sprite.center.set(0.5, -1.4); // 이름표(같은 높이) 위로
-      sprite.position.z = C.PLAYER_HEIGHT + 0.45;
+      sprite.position.z = g.userData.labelZ ?? C.PLAYER_HEIGHT + 0.45;
       sprite.renderOrder = 12;
       g.add(sprite);
       hm = g.userData.huntMarks = { sprite, canvas, tex, n: 0 };
@@ -1670,7 +1714,7 @@ export class Renderer {
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthWrite: false, transparent: true, sizeAttenuation: false }));
       sprite.scale.set(0.07, 0.07, 1);
       sprite.center.set(0.5, -1.2); // 이름표 위
-      sprite.position.z = C.PLAYER_HEIGHT + 0.45;
+      sprite.position.z = g.userData.labelZ ?? C.PLAYER_HEIGHT + 0.45;
       sprite.renderOrder = 12;
       g.add(sprite);
       const ring = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.5, 24, 1, 0, Math.PI * 1.5), noOutline(new THREE.MeshBasicMaterial({ color: 0x6aa8ff, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false })));
@@ -2848,6 +2892,11 @@ export class Renderer {
     }
     if (!(me && me.alive && this.third)) this.tpDist = null; // 다음 3인칭은 처음 거리부터
     this.victoryCamera(state, cam, dt, eye, look);
+    // 3인칭·관전 따라가기: 카메라와 캐릭터 사이에 낀 떨어지는 블록·하늘 계단 블록은 반투명 (쌓인 블록은 위에서 카메라를 당김)
+    let subject = null;
+    if (me && me.alive && this.third && this.smooth.has(me.id)) subject = this.smooth.get(me.id);
+    else if (!(me && me.alive) && cam.follow != null && this.smooth.has(cam.follow)) subject = this.smooth.get(cam.follow);
+    this.fadeOccluders(subject && !cam.victory ? eye : null, subject);
 
     const b = this.skyBlend;
     const skyUp = new THREE.Vector3(Math.cos(this.skyYaw), Math.sin(this.skyYaw), 0);
