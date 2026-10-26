@@ -461,7 +461,7 @@ export const CONFIG = {
   BERSERKER_WAVE_KB_UP: 4,
   BERSERKER_WAVE_STUN_MS: 600,
   // R 분노 소용돌이: BERSERKER_SPIN_MS 동안 회전 (이동 ×BERSERKER_SPIN_MOVE_MULT), BERSERKER_SPIN_TICK_MS 마다 닿는 상대를 작게 밀침 (빨아들이지 않음),
-  // 끝날 때 한 번 크게 날림 (분노는 R 시작 때 피해 % 로). 시작할 때 자기 피해 % 를 BERSERKER_RAGE_CUT 만큼 깎음 (0 아래로는 안 감)
+  // 끝날 때 한 번 크게 날림 (분노는 R 시작 때 깎은 뒤 피해 % 로 — 2026-10-26 재혁 가, 봇 504판 광전사 50%·소용돌이 필살기 킬 1위). 시작할 때 자기 피해 % 를 BERSERKER_RAGE_CUT 만큼 깎음 (0 아래로는 안 감)
   BERSERKER_SPIN_MS: 1500,
   BERSERKER_SPIN_MOVE_MULT: 0.6,
   BERSERKER_SPIN_RANGE: 1.6,

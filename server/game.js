@@ -1695,14 +1695,15 @@ export class Game {
     this.log(`  [스킬] ${p.name} 착지 충격파${hits.length ? ` → ${hits.join(', ')}` : ''}`);
   }
 
-  // R 분노 소용돌이: 피해 % 를 깎고 (최대 BERSERKER_RAGE_CUT), 깎기 전 피해 % 를 마지막 날림 분노로 기억
+  // R 분노 소용돌이: 피해 % 를 깎고 (최대 BERSERKER_RAGE_CUT), 깎은 뒤 피해 % 를 마지막 날림 분노로 기억 (2026-10-26 재혁 가: 쓰면 분노가 식음)
   berserkerSpin(p) {
-    const rage = p.damage;
+    const before = p.damage;
     const cut = Math.min(C.BERSERKER_RAGE_CUT, p.damage);
     p.damage -= cut;
+    const rage = p.damage;
     p.spin = { endAt: this.time + C.BERSERKER_SPIN_MS, nextTick: this.time, rage };
     this.emit({ type: 'spin', who: p.id, ms: C.BERSERKER_SPIN_MS, rage: this.rageMult(rage), cut, damage: p.damage });
-    this.log(`  [필살] ${p.name} 분노 소용돌이 (분노 ×${this.rageMult(rage).toFixed(2)}, 피해 ${rage}% → ${p.damage}%)`);
+    this.log(`  [필살] ${p.name} 분노 소용돌이 (분노 ×${this.rageMult(rage).toFixed(2)}, 피해 ${before}% → ${p.damage}%)`);
   }
 
   berserkerSpinUpdate(p) {

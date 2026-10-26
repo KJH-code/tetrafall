@@ -1861,7 +1861,7 @@ test('광전사 F 광폭 도약: 앞으로 약 4칸 뛰고 땅에 닿으면 착�
   assert.equal(q.p(2).damage, 0, '충격파 없음');
 });
 
-test('광전사 R 분노 소용돌이: 피해 % 최대 40 깎음, 회전 중 작게 바깥으로 계속 밀침, 끝에 크게 날림 (R 시작 때 피해 % 만큼), 맞으면 끊김', () => {
+test('광전사 R 분노 소용돌이: 피해 % 최대 40 깎음, 회전 중 작게 바깥으로 계속 밀침, 끝에 크게 날림 (R 시작 때 깎은 뒤 피해 % 만큼, 재혁 가), 맞으면 끊김', () => {
   // 깎기
   const a = setupChars(['berserker', 'tank']);
   a.p(1).damage = 25;
@@ -1899,7 +1899,8 @@ test('광전사 R 분노 소용돌이: 피해 % 최대 40 깎음, 회전 중 작
   };
   const k200 = spinKb(200);
   const k40 = spinKb(40);
-  assert.ok(Math.abs(k200 / k40 - (1 + 200 * C.BERSERKER_RAGE_PER_PERCENT) / (1 + 40 * C.BERSERKER_RAGE_PER_PERCENT)) < 1e-6, '끝 날림 = R 시작 때 분노');
+  const after = (d) => d - Math.min(C.BERSERKER_RAGE_CUT, d);
+  assert.ok(Math.abs(k200 / k40 - (1 + after(200) * C.BERSERKER_RAGE_PER_PERCENT) / (1 + after(40) * C.BERSERKER_RAGE_PER_PERCENT)) < 1e-6, '끝 날림 = 깎은 뒤 분노');
   // 회전 중 맞으면 끊김
   const b = setupChars(['berserker', 'tank']);
   place(b.p(1), 4, 5, 0);
