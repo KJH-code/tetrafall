@@ -74,6 +74,7 @@ function drawLabel(canvas, name, color, d) {
 // 격자 칸 값 → 쌓인 블록 색
 function cellColor(v) {
   if (v === CELL.BUILD) return C.BUILD_COLOR;
+  if (CELL.GHOST_BASE !== undefined && v >= CELL.GHOST_BASE) return new THREE.Color(PLAYER_COLORS[(v - CELL.GHOST_BASE) % PLAYER_COLORS.length]).multiplyScalar(C.BLOCK_LANDED_SHADE).getHex(); // 유령 투하 블록: 떨어뜨린 사람 slot 색 (나가도 그대로)
   if (v === CELL.THROWN) return C.THROWN_COLOR;
   const shape = SHAPE_NAMES[v - CELL.SHAPE_BASE];
   if (shape) return new THREE.Color(C.SHAPE_COLORS[shape]).multiplyScalar(C.BLOCK_LANDED_SHADE).getHex();
@@ -546,6 +547,77 @@ export class Renderer {
       this.skyMats[shape] = toon({ color: col.getHex(), emissive: 0x000000, map: this.tex.tetris, transparent: true, opacity: C.SKY_PIECE_OPACITY });
     }
     return this.skyMats[shape];
+  }
+
+  // 유령 투하 블록 (떨어지는 동안): 떨어뜨린 사람 slot 색, 하얗게 섞여 살짝 비침 + 은은한 빛 (유령 느낌). 그림자는 보통 블록과 같음
+  ghostPieceMat(slot) {
+    this.ghostMats ||= {};
+    const k = (slot ?? 0) % PLAYER_COLORS.length;
+    if (!this.ghostMats[k]) {
+      const col = new THREE.Color(PLAYER_COLORS[k]);
+      this.ghostMats[k] = toon({ color: col.clone().lerp(new THREE.Color(0xffffff), C.GHOST_PIECE_WHITEN).getHex(), emissive: col.clone().multiplyScalar(0.25).getHex(), map: this.tex.tetris, transparent: true, opacity: C.GHOST_PIECE_OPACITY });
+    }
+    return this.ghostMats[k];
+  }
+
+  // 관전 중 유령 투하 조준: 화면 점(ndc)에서 나간 시선이 처음 닿는 칸 기둥 → { x, y, z: 기둥 꼭대기 (그 위에 떨어짐) }. 필드 밖이면 null
+  pickColumn(state, ndcX, ndcY) {
+    const cam = this.camera;
+    cam.updateMatrixWorld();
+    const o = new THREE.Vector3().setFromMatrixPosition(cam.matrixWorld);
+    const d = new THREE.Vector3(ndcX, ndcY, 0.5).unproject(cam).sub(o).normalize();
+    for (let t = 0.3; t < C.GHOST_AIM_RANGE; t += 0.05) {
+      const x = o.x + d.x * t;
+      const y = o.y + d.y * t;
+      const z = o.z + d.z * t;
+      if (z < -0.5) break; // 바닥 아래 (필드 밖 낭떠러지)
+      const gx = Math.floor(x);
+      const gy = Math.floor(y);
+      if (gx < 0 || gy < 0 || gx >= this.W || gy >= this.D) continue;
+      if (z <= 0 || this.solidAt(state, x, y, z)) return { x: gx, y: gy, z: this.columnTopAt(state, gx, gy) };
+    }
+    return null;
+  }
+
+  columnTopAt(state, x, y) {
+    if (!state.grid) return 0;
+    for (let z = this.H - 1; z >= 0; z--) if (state.grid[(z * this.D + y) * this.W + x]) return z + 1;
+    return 0;
+  }
+
+  // 조준 표시: 기둥 꼭대기 칸 테두리 + 그 위에 내 색 반투명 큐브 (쿨 중이면 회색). aim = null 이면 숨김
+  setGhostAim(aim) {
+    if (!this.ghostAim) {
+      const g = new THREE.Group();
+      const cubeMat = noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: C.GHOST_AIM_OPACITY, depthWrite: false }));
+      const cube = new THREE.Mesh(this.pieceBox, cubeMat);
+      cube.position.z = 0.5;
+      const edgeMat = new THREE.LineBasicMaterial({ color: 0xffffff });
+      const edge = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1.02, 1.02, 0.04)), edgeMat);
+      edge.position.z = 0.03;
+      const cubeEdge = new THREE.LineSegments(new THREE.EdgesGeometry(this.pieceBox), edgeMat);
+      cubeEdge.position.z = 0.5;
+      g.add(cube, edge, cubeEdge);
+      this.scene.add(g);
+      this.ghostAim = { g, cubeMat, edgeMat };
+    }
+    const a = this.ghostAim;
+    a.g.visible = !!aim;
+    if (!aim) return;
+    a.g.position.set(aim.x + 0.5, aim.y + 0.5, aim.z);
+    const col = aim.ready ? aim.color : C.GHOST_AIM_COOLDOWN_COLOR;
+    a.cubeMat.color.setHex(col);
+    a.edgeMat.color.setHex(aim.ready ? new THREE.Color(aim.color).lerp(new THREE.Color(0xffffff), 0.5).getHex() : C.GHOST_AIM_COOLDOWN_COLOR); // 테두리도 내 색 (밝게)
+    a.cubeMat.opacity = C.GHOST_AIM_OPACITY * (aim.ready ? 0.8 + 0.2 * Math.sin(performance.now() / 150) : 0.6);
+  }
+
+  // ghostDrop 이벤트: 유령 블록이 생김 — 그 사람 색 연기가 펑 + 하얀 고리 (하늘에서 생김)
+  ghostDropFx(e) {
+    const pos = { x: e.x + 0.5, y: e.y + 0.5, z: e.z + 0.5 };
+    const col = PLAYER_COLORS[(e.slot ?? 0) % PLAYER_COLORS.length];
+    this.effects.burst(pos, null, col, 14, 2.5, 0.14, 0.6);
+    this.effects.burst(pos, null, 0xffffff, 10, 1.6, 0.1, 0.5);
+    this.effects.ring(pos, 0xffffff, 1.4, 0.3, true);
   }
 
   // 외곽선 켜기·끄기 (설정). 켜면 OutlineEffect 가 장면을 한 번 더 (뒤집힌 테두리로) 그린다
@@ -2968,7 +3040,7 @@ export class Renderer {
       const [x, y, z] = piece.cells[i];
       pm.position.set(x + 0.5, y + 0.5, z + 0.5);
       pm.visible = true;
-      pm.material = piece.thrown ? this.thrownMat : piece.controller !== null ? this.controlledMat : piece.sky ? this.skyPieceMat(piece.shape) : this.shapeMat(piece.shape);
+      pm.material = piece.shape === 'ghost' ? this.ghostPieceMat(piece.ghostSlot) : piece.thrown ? this.thrownMat : piece.controller !== null ? this.controlledMat : piece.sky ? this.skyPieceMat(piece.shape) : this.shapeMat(piece.shape);
       const mine = piece.phase === 'control' && piece.controller === myId;
       const showShadow = piece.shadowVisible || mine;
       sm.visible = showShadow;

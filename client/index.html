@@ -34,6 +34,11 @@
     .toast.good { background: rgba(20,140,60,.9); }
     .toast.crit { background: rgba(230,170,0,.95); color: #000; font-weight: 900; font-size: 22px; }
     #center .keys { white-space: normal; font-size: 14px; text-align: left; margin-top: 10px; line-height: 1.5; color: #ddd; }
+    /* 유령 투하 조준 (관전 중): 조준점 둘레 원 — 쿨이면 회색이 차오름 */
+    #ghost-cd { position: absolute; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; pointer-events: none; border: 2px solid rgba(255,255,255,.85); box-sizing: border-box; }
+    #ghost-cd::after { content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: #fff; }
+    #ghost-cd.wait { border-color: rgba(160,160,160,.8); }
+    #ghost-hint { position: absolute; top: 38%; left: 50%; transform: translateX(-50%); font-size: 18px; font-weight: 700; color: #fff; text-shadow: 0 0 6px #000; pointer-events: none; transition: opacity .5s; }
     #spec { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); text-align: center; font-size: 17px; background: rgba(0,0,0,.6); padding: 8px 16px; border-radius: 8px; white-space: pre; pointer-events: none; }
     #emote-wheel { position: absolute; top: 50%; left: 50%; width: 300px; height: 300px; margin: -150px 0 0 -150px; border-radius: 50%; background: rgba(0,0,0,.45); pointer-events: none; }
     #emote-wheel .em { position: absolute; transform: translate(-50%, -50%); font-size: 18px; font-weight: bold; padding: 6px 12px; border-radius: 8px; background: rgba(0,0,0,.6); white-space: nowrap; }
@@ -228,6 +233,8 @@
     </div></div>
     <div id="emote-wheel" class="hidden"><span class="em" data-n="0" style="left:50%;top:14%"></span><span class="em" data-n="1" style="left:84%;top:50%"></span><span class="em" data-n="2" style="left:50%;top:86%"></span><span class="em" data-n="3" style="left:16%;top:50%"></span><span class="hint">마우스로 고르고<br /><span data-key="emote">G</span> 를 놓기</span></div>
     <div id="spec" class="hidden"></div>
+    <div id="ghost-cd" class="hidden"></div>
+    <div id="ghost-hint" class="hidden">클릭: 블록 떨어뜨리기</div>
     <div id="crosshair"></div>
     <!-- 조준점 둘레 쿨: 바깥 하늘색 = 대시, 안쪽 흰색 = 밀치기. 도는 동안만 보이고 다 차면 번쩍 -->
     <svg id="cd-ring" class="hidden" viewBox="0 0 64 64"><circle class="track dash-track" cx="32" cy="32" r="27" stroke-width="4" /><circle class="dash" cx="32" cy="32" r="27" /><circle class="track push-track" cx="32" cy="32" r="21" stroke-width="3" /><circle class="push" cx="32" cy="32" r="21" /></svg>

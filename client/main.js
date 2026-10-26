@@ -120,10 +120,10 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
-const KIND_KO = { push: '밀치기', projectile: '투사체', shock: '설치 블록 충격파', bomb: '폭탄', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', blockslam: '블록내려찍기', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기', quake: '솟는 땅' };
+const KIND_KO = { push: '밀치기', projectile: '투사체', shock: '설치 블록 충격파', bomb: '폭탄', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', blockslam: '블록내려찍기', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기', quake: '솟는 땅', ghost: '유령블록' };
 const ITEM_KO = { control: '조종권', knockback: '투사체', jump: '점프력 상승', ghost: '유령화', brick: '설치 블록', bomb: '폭탄', speed: '이속 증가' };
 const CAUSE_KO = { crush: '압사', fall: '낙사', lava: '용암' };
-const WEAPON_KO = { push: '밀치기', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종 블록', thrown: '설치 블록', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', blockslam: '블록내려찍기', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기', quake: '솟는 땅' };
+const WEAPON_KO = { push: '밀치기', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종 블록', thrown: '설치 블록', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', blockslam: '블록내려찍기', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기', quake: '솟는 땅', ghost: '유령블록' };
 
 // 오른쪽 위 킬 피드: "죽인 사람 → 죽은 사람 낙사 (망치)". 내가 낀 줄은 노란 테두리
 const killfeedEl = $('killfeed');
@@ -555,6 +555,13 @@ function handleEvent(e) {
     case 'noteEnd':
       if (e.what !== 'expire') fx.burst({ x: e.x, y: e.y, z: e.z }, null, C.BARD_NOTE_COLOR, 10, 3, 0.07, 0.4);
       else fx.burst({ x: e.x, y: e.y, z: e.z }, null, C.BARD_NOTE_COLOR, 4, 1, 0.05, 0.3);
+      break;
+    case 'ghostDrop': // 유령 블록 생김 (떨어지는 동안은 pieces 의 shape 'ghost')
+      renderer.ghostDropFx(e);
+      sound.play('tap', { dist: distToMe(e.x + 0.5, e.y + 0.5, e.z) });
+      break;
+    case 'ghostDropFail': // 내 투하가 안 됨 (쿨·칸 꽉 참 등): 조준 원만 살짝 흔들림 (글자 없음)
+      if (e.who === myId) ghostRefuse();
       break;
     case 'headBonk': { // 떨어지는 블록에 머리를 박았지만 살았음: 쿵 + 별 + 끄덕 (압사 납작과 다르게)
       renderer.headBonk(e);
@@ -1618,14 +1625,63 @@ function updateSpectate() {
   // 살아 있는 사람 목록 (지금 보는 사람은 ▶)
   const alive = aliveOthers();
   const list = alive.map((x) => `${!spec.overview && x.id === spec.target ? '▶ ' : ''}${shownName(x)} ${x.damage}%`).join('   ');
-  const text = `${head}\n${watching} · 마우스 돌리기 · 휠 거리 · 클릭/${keyText('jump')} 다음 사람 · 우클릭 ${spec.overview ? '따라가기' : '전체 보기'}${list ? `\n살아 있음: ${list}` : ''}`;
+  const next = ghostOn() ? `${keyText('jump')} 다음 사람 · 클릭 블록 떨어뜨리기` : `클릭/${keyText('jump')} 다음 사람`;
+  const text = `${head}\n${watching} · 마우스 돌리기 · 휠 거리 · ${next} · 우클릭 ${spec.overview ? '따라가기' : '전체 보기'}${list ? `\n살아 있음: ${list}` : ''}`;
   if (specEl.textContent !== text) specEl.textContent = text;
 }
 document.addEventListener('mousedown', (e) => {
   if (!spectating()) return;
-  if (e.button === 0) nextTarget(1);
+  if (e.button === 0) {
+    // 유령 투하가 되는 판이면 클릭 = 조준한 칸에 블록 떨어뜨리기 (다음 사람은 점프 키)
+    if (ghostOn()) {
+      if (ghost.aim && me().ghostCd === 0) send({ type: 'ghostDrop', x: ghost.aim.x, y: ghost.aim.y });
+      else ghostRefuse();
+    } else nextTarget(1);
+  }
   if (e.button === 2) spec.overview = !spec.overview;
 });
+
+// ---------- 유령 투하: 죽은 사람이 관전 중에 1칸 블록을 조준해 떨어뜨림 (snapshot ghostCd: null 못 함 · 0 가능 · ms 쿨) ----------
+// 조준 = 화면 가운데 (마우스가 잡혀 있으면) 또는 마우스 위치에서 나간 시선이 처음 닿는 칸 기둥
+const ghost = { aim: null, mouse: null, hinted: false, hintUntil: 0, refuseAt: 0 };
+const ghostCdEl = $('ghost-cd');
+const ghostHintEl = $('ghost-hint');
+const ghostOn = () => spectating() && me().ghostCd !== null && me().ghostCd !== undefined;
+document.addEventListener('mousemove', (e) => (ghost.mouse = { x: e.clientX, y: e.clientY }));
+function ghostRefuse() {
+  ghost.refuseAt = performance.now();
+}
+function updateGhostAim() {
+  const on = ghostOn() && renderer.skyBlend === 0;
+  ghostCdEl.classList.toggle('hidden', !on);
+  if (!on) {
+    ghost.aim = null;
+    renderer.setGhostAim(null);
+    ghostHintEl.classList.add('hidden');
+    return;
+  }
+  const p = me();
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  const at = input.locked || !ghost.mouse ? { x: w / 2, y: h / 2 } : ghost.mouse;
+  ghost.aim = renderer.pickColumn(state, (at.x / w) * 2 - 1, -(at.y / h) * 2 + 1);
+  const ready = p.ghostCd === 0;
+  renderer.setGhostAim(ghost.aim && { ...ghost.aim, ready, color: playerColor(p, state) });
+  // 조준 원: 쿨이면 회색이 시계 방향으로 차오름, 안 되는 걸 누르면 살짝 흔들림
+  ghostCdEl.style.left = `${at.x}px`;
+  ghostCdEl.style.top = `${at.y}px`;
+  ghostCdEl.classList.toggle('wait', !ready);
+  const fill = ready ? 1 : 1 - Math.min(1, p.ghostCd / C.GHOST_DROP_CD_MS);
+  ghostCdEl.style.background = ready ? 'rgba(255,255,255,.12)' : `conic-gradient(rgba(200,200,200,.55) ${fill * 360}deg, rgba(0,0,0,.25) 0)`;
+  const shake = performance.now() - ghost.refuseAt < 250 ? Math.sin(performance.now() / 20) * 4 : 0;
+  ghostCdEl.style.transform = `translateX(${shake}px)`;
+  // 처음 죽었을 때 한 번만 짧게 안내
+  if (!ghost.hinted) {
+    ghost.hinted = true;
+    ghost.hintUntil = performance.now() + C.GHOST_HINT_MS;
+  }
+  ghostHintEl.classList.toggle('hidden', performance.now() >= ghost.hintUntil);
+}
 // 휠: 관전 카메라 거리 (따라가기·전체 보기 따로)
 document.addEventListener('wheel', (e) => {
   if (!spectating() || !e.deltaY) return;
@@ -2091,6 +2147,7 @@ function frame(now) {
   // 한 프레임에서 에러가 나도 다음 프레임은 계속 그린다 (안 그러면 서버는 도는데 화면만 멈춤)
   try {
     updateSpectate();
+    updateGhostAim();
     if (state) music.setMood(state.phase === 'playing' || state.phase === 'countdown' ? (state.lava && state.lava.active ? 'lava' : 'battle') : 'calm');
     music.update();
     const vic = state && state.phase === 'over' && performance.now() < victory.until ? victory.id : null;
