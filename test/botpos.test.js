@@ -81,3 +81,33 @@ test('봇: 상대 뒤를 잡으러 가는 자리는 필드 끝에서 BOT_EDGE_MA
   run(g, 2500);
   assert.ok(bot.y >= C.BOT_EDGE_MARGIN - 0.35 && bot.x >= C.BOT_EDGE_MARGIN - 0.35, `봇 (${bot.x.toFixed(2)}, ${bot.y.toFixed(2)})`);
 });
+
+test('봇 kite: 상대와 want 칸 거리를 두고 상대를 바라본 채, 가장자리를 등지지 않게 옆·안쪽으로 돈다 (10번 모두)', () => {
+  for (let seed = 1; seed <= 10; seed++) {
+    const { g, human, bot, brain } = setup(seed);
+    // 상대가 가운데, 봇은 그 왼쪽 가장자리 근처 → 그냥 물러나면 떨어짐
+    Object.assign(human, { x: 3.5, y: 5 });
+    Object.assign(bot, { x: 1.2, y: 5, z: 0, grounded: true, kbx: 0, kby: 0 });
+    g.bots.delete(bot.id); // 봇 자체 판단은 끄고 kite 만
+    for (let t = 0; t < 2500; t += C.BOT_THINK_MS) {
+      brain.input.jump = false;
+      brain.kite(g, bot, human, 3);
+      g.handleInput(bot.id, brain.input);
+      for (let k = 0; k < C.BOT_THINK_MS; k += TICK) g.tick(TICK);
+    }
+    const d = Math.hypot(bot.x - human.x, bot.y - human.y);
+    assert.ok(bot.alive, `seed ${seed}`);
+    assert.ok(Math.abs(d - 3) < 0.8, `seed ${seed}: 거리 ${d.toFixed(2)}`);
+    assert.ok(Math.min(bot.x, g.W - bot.x, bot.y, g.D - bot.y) >= C.BOT_EDGE_MARGIN - 0.3, `seed ${seed}: 끝에서 떨어짐 (${bot.x.toFixed(2)}, ${bot.y.toFixed(2)})`);
+    assert.ok(Math.abs(Math.atan2(human.y - bot.y, human.x - bot.x) - bot.yaw) < 0.3 || Math.abs(Math.abs(Math.atan2(human.y - bot.y, human.x - bot.x) - bot.yaw) - 2 * Math.PI) < 0.3, `seed ${seed}: 상대를 봄`);
+  }
+});
+
+test('봇 kite: 원 위 자리가 그림자(avoid)면 그 자리는 피함', () => {
+  const { g, human, bot, brain } = setup(4);
+  Object.assign(human, { x: 5, y: 5 });
+  Object.assign(bot, { x: 2, y: 5 });
+  // 왼쪽(지금 방향) 자리가 그림자
+  const spot = brain.kite(g, bot, human, 3, [[1, 4], [2, 4], [1, 5], [2, 5], [1, 6], [2, 6]]);
+  assert.ok(!(spot.x >= 1 && spot.x < 3 && spot.y >= 4 && spot.y < 7), `자리 (${spot.x.toFixed(2)}, ${spot.y.toFixed(2)})`);
+});
