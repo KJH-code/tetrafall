@@ -464,6 +464,22 @@ function handleEvent(e) {
       renderer.counterHit(e.target);
       if (e.by === myId || e.target === myId) showCounter(e.target === myId);
       break;
+    case 'practiceReset': {
+      // 연습: 떨어지거나 깔려서 제자리로 (안 죽음·허수아비) — 그 자리에서 하얀 김만 작게
+      const t = playerById(e.who);
+      if (t) fx.burst({ x: t.x, y: t.y, z: t.z + 0.6 }, null, 0xffffff, 12, 2.5, 0.12, 0.5);
+      if (e.who === myId) flashScreen('rgba(255,255,255,.25)');
+      break;
+    }
+    case 'charChange': {
+      // 연습: 판 중 캐릭터 바꿈 — 플레이어 색 김이 펑 (몸은 다음 스냅샷에서 새 캐릭터로)
+      const t = playerById(e.who);
+      if (t) fx.burst({ x: t.x, y: t.y, z: t.z + 0.8 }, null, hex2num(colorOf(t)), 16, 3, 0.12, 0.5);
+      break;
+    }
+    case 'mapChange': // 연습: 판 중 맵 바꿈 (격자는 gridVersion 으로 다시 그려짐)
+      renderer.gridVersion = -1;
+      break;
     case 'dummyCombo': // 연습 방 허수아비 콤보 기록: 끝난 콤보는 잠깐 결과로 남김
       if (e.done) practiceDone.set(e.id, { ...e, until: performance.now() + C.PRACTICE_COMBO_SHOW_MS });
       break;
@@ -649,8 +665,8 @@ function handleEvent(e) {
       if (e.who === myId) toast('마스터 편이 됐다! 하늘에서 블록으로 남은 사람을 깔아라', 'good');
       else toast(`${nameOf(e.who)} 마스터 편으로`);
       break;
-    case 'respawn': // 킬 점수전 부활
-      if (e.who === myId) {
+    case 'respawn': // 킬 점수전 부활 (연습 방은 제자리로 돌아가는 것도 respawn → practiceReset·charChange 가 따로 보여 줌)
+      if (e.who === myId && !inPractice()) {
         toast(`부활! ${C.KILLS_SHIELD_MS / 1000}초 무적`, 'good');
         sound.play('go');
       }
@@ -1937,6 +1953,14 @@ for (const box of practiceEl.querySelectorAll('[data-pr]')) {
   });
 }
 const pctOf = (el) => Math.round(Number(el.value) || 0); // 범위(0~최대)는 서버가 자름
+const hex2num = (h) => parseInt(h.slice(1), 16);
+prMyDmg.max = C.PRACTICE_DAMAGE_MAX;
+const prMap = $('pr-map');
+for (const o of $('map-select').options) prMap.append(new Option(o.textContent, o.value));
+prMap.addEventListener('change', () => {
+  send({ type: 'setMap', map: prMap.value });
+  prMap.blur();
+});
 prMyDmg.addEventListener('change', () => send({ type: 'practiceSet', key: 'myDamage', value: pctOf(prMyDmg) }));
 for (const c of C.CHARACTERS) {
   const o = document.createElement('option');
@@ -1970,6 +1994,8 @@ function updatePractice(p) {
     for (const box of practiceEl.querySelectorAll('[data-pr]')) box.checked = !!pr[box.dataset.pr];
     if (document.activeElement !== prMyDmg) prMyDmg.value = Math.round(p.damage || 0);
     if (document.activeElement !== prChar && p.char) prChar.value = p.char;
+    if (document.activeElement !== prMap && state.map) prMap.value = state.map.choice;
+    $('pr-add').disabled = dummies.length >= C.PRACTICE_DUMMY_MAX;
     // 허수아비 줄: 이름 · 피해 % 칸 · 삭제 (허수아비가 바뀔 때만 다시 만듦)
     const key = dummies.map((d) => d.id).join(',');
     if (key !== prDummyKey) {
