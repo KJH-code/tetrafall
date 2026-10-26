@@ -50,7 +50,7 @@ test('하늘 계단 끔: new Game() 기본은 끔이고 격자 높이·낙하·�
   assert.equal(g.grid.length, g.W * g.D * C.GRID_H);
   assert.equal(g.snapshot().field.h, C.GRID_H);
   run(g, C.FIRST_SPAWN_DELAY_MS + TICK);
-  assert.equal(g.pieces.length, 1, '판 시작 동시 블록 1개');
+  assert.equal(g.pieces.length, 1, '판 시작 첫 블록 (두 번째는 AUTO_SPAWN_DELAY 뒤)');
   const pc = g.pieces[0];
   assert.equal(pc.sky, undefined);
   assert.ok(Math.abs(pc.stepMs - C.AUTO_FALL_STEP_MS) < 5, '판 시작 낙하 간격 (RAMP 시작값)');

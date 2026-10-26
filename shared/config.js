@@ -48,12 +48,13 @@ export const CONFIG = {
 
   // ---- 블록 낙하 ----
   // 2단계: 판이 길어질수록 블록이 빨라지고 많아진다 ("처음에 1개, 갈수록 더 짧게, 많이")
-  //   동시에 떨어지는 자동 블록 수 = min(MAX, 1 + 경과 / RAMP_MS)
+  //   동시에 떨어지는 자동 블록 수 = min(MAX, CONCURRENT_START + 경과 / RAMP_MS)
   //   다음 블록까지 간격·1칸 낙하 간격 = 시작값에서 끝값으로 RAMP_FULL_MS 동안 선형으로 줄어듦
   AUTO_FALL_STEP_MS: 500, // 자동 낙하: 1칸 내려오는 간격 (판 시작 때). 2026-10-24 350→500 (재혁: 억까 → 떨어지는 속도 감속)
   AUTO_FALL_STEP_MIN_MS: 300, // 판 후반 (RAMP_FULL_MS 이후). 2026-10-24 200→300
   AUTO_SPAWN_DELAY_MS: 1000, // 자동 블록끼리 나오는 간격 (판 시작 때)
   AUTO_SPAWN_DELAY_MIN_MS: 400, // 판 후반
+  CONCURRENT_START: 2, // 판 시작 동시 블록. 2026-10-26 재혁 1 → 2 (판이 짧아 블록이 쌓이기 전에 끝남. 봇 504판: 블록 위 사망 21 → 29%, 압사 32 → 37%, 판 30 → 28초). 하늘 계단 켬 판은 안 씀 (하늘 사슬)
   CONCURRENT_RAMP_MS: 20000, // 이 시간마다 동시 블록 +1
   CONCURRENT_MAX: 4,
   RAMP_FULL_MS: 90000, // 낙하·간격이 끝값에 닿는 시간
