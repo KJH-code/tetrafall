@@ -111,3 +111,11 @@ test('봇 kite: 원 위 자리가 그림자(avoid)면 그 자리는 피함', () 
   const spot = brain.kite(g, bot, human, 3, [[1, 4], [2, 4], [1, 5], [2, 5], [1, 6], [2, 6]]);
   assert.ok(!(spot.x >= 1 && spot.x < 3 && spot.y >= 4 && spot.y < 7), `자리 (${spot.x.toFixed(2)}, ${spot.y.toFixed(2)})`);
 });
+
+test('봇 복귀: 이미 낮게(발 < BOT_RECOVER_LOW_Z) 날아가면 공중 대시와 2단 점프를 같은 판단에 바로 (옆면에 막히지 않게)', () => {
+  const { g, bot, brain } = setup(5);
+  Object.assign(bot, { x: -0.3, y: 5, z: 0.3, vz: 1, grounded: false, kbx: -5, kby: 0, stunUntil: 0 });
+  assert.ok(brain.recover(g, bot));
+  assert.equal(bot.airDashes, 0, '대시');
+  assert.equal(bot.airJumpQueued, true, '2단 점프도 같이');
+});

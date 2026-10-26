@@ -961,8 +961,10 @@ export class BotBrain {
     this.input.strafe = 0;
     g.handleInput(p.id, this.input);
     const out = -(p.kbx * dx + p.kby * dy) / d; // 밖으로 향하는 넉백 속도
-    if (p.airDashes > 0 && g.time >= p.dashReadyAt && out > C.BOT_RECOVER_DASH_OUT) g.handleAction(p.id, { name: 'dash' });
-    else if (p.airJumps > 0 && p.vz < C.BOT_AIR_JUMP_VZ) g.handleAction(p.id, { name: 'jump' });
+    const dashed = p.airDashes > 0 && g.time >= p.dashReadyAt && out > C.BOT_RECOVER_DASH_OUT;
+    if (dashed) g.handleAction(p.id, { name: 'dash' });
+    // 2단 점프: 떨어지기 시작하면, 또는 이미 낮으면 (필드 바닥보다 낮게 돌아오면 옆면에 막힘) 대시와 같이 바로
+    if (p.airJumps > 0 && (p.vz < C.BOT_AIR_JUMP_VZ || p.z < C.BOT_RECOVER_LOW_Z)) g.handleAction(p.id, { name: 'jump' });
     return true;
   }
 
