@@ -3,6 +3,7 @@
 3D 폴가이즈식 PC 웹 대전. 격자 필드에 테트리미노가 떨어지고 플레이어끼리 밀어 떨어뜨리거나(낙사) 블록에 깔리게(압사) 한다. LAN 또는 인터넷(Cloudflare 터널), 서버 하나에 방 여러 개, 방마다 2~4인 + AI 봇.
 
 DevVault: Projects/Tetrafall
+캐릭터 설계 (원본): DevVault `Projects/Tetrafall/Characters/` (overview·common·combos·screen + 캐릭터마다 `<char id>.md`)
 
 ## 스택
 
