@@ -146,7 +146,6 @@ export function playerColor(p, state) {
   return PLAYER_COLORS[p.slot % PLAYER_COLORS.length];
 }
 const _q = new THREE.Quaternion();
-const _rage = new THREE.Color(0xff1a0a); // 광전사 분노 색
 const HEAVY_HITS = new Set(['bomb', 'shock', 'projectile', 'slam', 'wall', 'blast', 'bigbomb', 'quake', 'blockslam', 'execute', 'pounce']); // 몸이 크게 휘청하는 공격
 const MAX_SIDE = Math.max(C.GRID_W, C.GRID_D, ...Object.values(C.FIELD_SIZES));
 const MAX_CELLS = MAX_SIDE * MAX_SIDE * C.GRID_H; // 가장 큰 판 (인원별 필드 크기)
@@ -1965,11 +1964,9 @@ export class Renderer {
       if (p.char === 'berserker' && p.alive) {
         // 광전사 분노: 피해 % 따라 몸이 빨갛게 빛나고 (높으면 맥박처럼 출렁) 머리·어깨에서 김
         const k = Math.max(0, Math.min(1, (p.damage || 0) / C.BERSERK_RAGE_PCT));
-        if (k > 0 && !p.stunned) {
-          const pulse = k > 0.6 ? 0.85 + 0.15 * Math.sin(performance.now() / 110) : 1;
-          bodyMat.color.lerp(_rage, C.BERSERK_RAGE_TINT * k); // 피부(플레이어 색)가 빨간 쪽으로
-          bodyMat.emissive.setRGB(C.BERSERK_RAGE_GLOW * k * pulse, 0.04 * k, 0);
-        }
+        // 몸 색(플레이어 색)은 건드리지 않음: 누가 누군지가 우선. 분노는 붙는 효과로 (눈 충혈·눈썹·핏줄·빡침 표시는 figureAnim, 김은 여기)
+        const fig = g.userData.figure;
+        if (fig?.rage) fig.rage.k = k;
         if (k > 0.2 && Math.random() < dt * C.BERSERK_STEAM_RATE * k) {
           const side = Math.random() < 0.5 ? -1 : 1;
           const ox = Math.random() < 0.4 ? 0 : side * 0.25;

@@ -183,10 +183,10 @@ export function buildFigure(color, char, models) {
 }
 
 // 왕눈알: 크게 튀어나온 흰자 + 앞을 보는 검은 눈동자. x 는 머리(또는 투구) 앞면에 맞춰 줌
-// sides: 그릴 눈 (-1 오른쪽, 1 왼쪽). 안대 찬 해적은 [1]
-function addEyes(neck, x, y, z, r, sides = [-1, 1]) {
+// sides: 그릴 눈 (-1 오른쪽, 1 왼쪽). 안대 찬 해적은 [1]. whiteMat: 흰자 재질 (광전사는 분노로 충혈되게 따로)
+function addEyes(neck, x, y, z, r, sides = [-1, 1], whiteMat = eyeWhiteMat) {
   for (const side of sides) {
-    const white = mesh(new THREE.SphereGeometry(r, 12, 8), eyeWhiteMat, x, side * y, z);
+    const white = mesh(new THREE.SphereGeometry(r, 12, 8), whiteMat, x, side * y, z);
     white.castShadow = false;
     neck.add(white);
     const pupil = mesh(new THREE.SphereGeometry(r * 0.45, 10, 6), pupilMat, r * 0.88, 0, 0);
@@ -760,7 +760,43 @@ function dressBerserker(fig, costume, cloth) {
     tip.add(mesh(g2, bone));
     fig.horns.push({ root, tip, side });
   }
-  addEyes(fig.neck, d.headW * 0.46, 0.05, d.head * 0.5, C.FIGURE_EYE);
+  // 분노 (render.js 가 피해 % 로 움직임): 충혈되는 흰자 (따로 재질) · 찌푸리는 굵은 눈썹 · 팔·이마에 솟는 핏줄. 피부(플레이어 색)는 그대로 둠
+  const eyeMat = noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  addEyes(fig.neck, d.headW * 0.46, 0.05, d.head * 0.5, C.FIGURE_EYE, [-1, 1], eyeMat);
+  const brows = [-1, 1].map((side) => {
+    const b = mesh(new THREE.BoxGeometry(0.03, 0.075, 0.025), ginger, d.headW * 0.5 + C.FIGURE_EYE * 0.6, side * 0.05, d.head * 0.5 + C.FIGURE_EYE + 0.012);
+    fig.neck.add(b);
+    return { mesh: b, side };
+  });
+  const veinMat = costume(0xc0101a);
+  const veins = [];
+  const vein = (parent, x, y, z, len, rot) => {
+    const v = mesh(new THREE.BoxGeometry(0.012, 0.012, len), veinMat, x, y, z);
+    v.rotation.x = rot;
+    v.visible = false;
+    parent.add(v);
+    veins.push(v);
+  };
+  for (let i = 0; i < 2; i++) {
+    vein(fig.shoulders[i], d.armR * 0.95, 0.005, -d.upper * 0.45, d.upper * 0.5, 0.25);
+    vein(fig.shoulders[i], d.armR * 0.7, -0.03, -d.upper * 0.55, d.upper * 0.3, -0.4);
+  }
+  vein(fig.neck, d.headW * 0.47, 0.02, d.head * 0.66, 0.05, 0.5); // 이마 (투구 아래)
+  vein(fig.neck, d.headW * 0.47, -0.02, d.head * 0.66, 0.05, -0.5);
+  // 만화 '빡침' 표시: 투구 옆에 빨간 네 갈래 (분노 절반 넘으면 벌떡벌떡)
+  const anger = new THREE.Group();
+  const angerMat = noOutline(new THREE.MeshBasicMaterial({ color: 0xe0201a }));
+  for (let k = 0; k < 4; k++) {
+    const a = (k * Math.PI) / 2 + Math.PI / 4;
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.02, 0.05), angerMat);
+    arm.position.set(0, Math.cos(a) * 0.035, Math.sin(a) * 0.035);
+    arm.rotation.x = -a;
+    anger.add(arm);
+  }
+  anger.position.set(d.headW * 0.25, -d.headW * 0.75, d.head * 1.05);
+  anger.visible = false;
+  fig.neck.add(anger);
+  fig.rage = { eyeMat, brows, veins, anger, k: 0 };
   // 수염: 턱 아래 덥수룩한 덩어리 + 콧수염 + 땋은 갈래 둘 (흔들림)
   const beard = new THREE.IcosahedronGeometry(0.5, 1);
   beard.scale(d.headW * 0.55, d.headW * 1.0, d.head * 0.85);
@@ -1170,9 +1206,9 @@ export function figureAnim(fig, st, dt, retry = false) {
   }
   if (fig.axe && !st.stunned && !st.act && st.emote < 0 && !st.air) {
     // 도끼를 어깨에 걸침: 오른팔꿈치를 접어 자루가 어깨 위로 넘어감
-    T.shFwd[0] = 0.55;
-    T.shOut[0] = 0.5;
-    T.elbow[0] = 2.3;
+    T.shFwd[0] = 0.35;
+    T.shOut[0] = 0.55;
+    T.elbow[0] = 1.95;
   }
   if (fig.cannon && !st.stunned && st.emote < 0) {
     // 대포를 어깨에 멘 자세: 오른손은 어깨 위 대포를 받치고, 왼손은 허리에 척 (걸으면 왼팔만 흔들림)
@@ -1318,6 +1354,19 @@ export function figureAnim(fig, st, dt, retry = false) {
   fig.flaps.forEach((f, i) => {
     f.obj.rotation.y = f.base + sp * f.lift + Math.sin(t * 9 + i * 1.7) * f.flutter * (0.3 + sp);
   });
+  if (fig.rage) {
+    // 광전사 분노 (k 0~1, render.js 가 정함): 눈썹이 안쪽 아래로 찌푸려지고, 흰자가 충혈, 0.35 넘으면 핏줄이 섬 (높으면 벌떡벌떡)
+    const k = fig.rage.k;
+    for (const b of fig.rage.brows) b.mesh.rotation.x = b.side * (0.15 + 0.6 * k);
+    fig.rage.eyeMat.color.setRGB(1, 1 - 0.55 * k, 1 - 0.6 * k);
+    const beat = 1 + 0.25 * Math.max(0, Math.sin(t * 9)) * k;
+    for (const v of fig.rage.veins) {
+      v.visible = k > 0.35;
+      v.scale.set(beat, beat, 1);
+    }
+    fig.rage.anger.visible = k > 0.5;
+    fig.rage.anger.scale.setScalar(0.8 + 0.5 * Math.max(0, Math.sin(t * 9)));
+  }
   // 광전사 뿔: 위로 휘었다가 축 처지며 흐물흐물 (움직이거나 맞으면 더 크게 출렁, 끝 마디는 한 박자 늦게)
   if (fig.horns) {
     const wob = C.FIGURE_HORN_WOBBLE * (0.4 + sp * 1.2);
