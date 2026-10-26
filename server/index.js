@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { CONFIG as C } from '../shared/config.js';
 import { Rooms } from './rooms.js';
+import { warmUpPlacement } from './game.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || C.PORT;
@@ -145,6 +146,7 @@ setInterval(() => {
 }, TICK_MS);
 setInterval(() => rooms.broadcastList(), C.ROOM_LIST_MS);
 
+warmUpPlacement(); // 첫 판 첫 블록이 서버 틱을 막지 않게 (JIT 데우기)
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Tetrafall 호스트 서버 실행 중 (포트 ${PORT}, 틱 ${C.TICK_RATE}Hz, 방 최대 ${C.ROOM_MAX}개, 방마다 ${C.MIN_PLAYERS}~${Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length)}명)`);
   console.log('이 PC에서:        http://localhost:' + PORT);
