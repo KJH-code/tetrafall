@@ -619,7 +619,7 @@ test('이모트: 하는 동안 못 움직이고, 쿨 동안 다시 못 함, 맞�
 });
 
 // ---------- 팀전 ----------
-test('팀전: 같은 팀은 밀리지만 피해 % 없음·킬 아님, 다른 팀은 그대로. 한 팀만 남으면 그 팀 승리 (팀원 모두 승수 +1)', () => {
+test('팀전: 같은 팀 공격은 아무 효과 없음 (2026-10-26 재혁: 밀림·피해·킬 없음), 다른 팀은 그대로. 한 팀만 남으면 그 팀 승리 (팀원 모두 승수 +1)', () => {
   const { g, lines, ps } = setupN(4);
   const [a, b, c, d] = ps;
   g.phase = 'over';
@@ -639,7 +639,8 @@ test('팀전: 같은 팀은 밀리지만 피해 % 없음·킬 아님, 다른 팀
   Object.assign(d, { x: 7.5, y: 8 });
   g.handleAction(a.id, { name: 'push' });
   assert.equal(b.damage, 0, '팀원은 피해 % 없음');
-  assert.ok(b.kbx > 0, '그래도 밀림');
+  assert.equal(b.kbx, 0, '팀원은 안 밀림');
+  assert.equal(b.stunUntil, 0, '경직 없음');
   assert.equal(b.lastHit, null, '팀원이 민 건 킬로 안 침');
   g.kill(b, 'fall');
   assert.equal(g.deaths.at(-1).killer, null);

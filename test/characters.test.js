@@ -2505,3 +2505,81 @@ test('봇 탱크 아머 돌진: 상대 평타 준비를 본 지 BOT_REACTION_MS 
   t.atk.at = g.time + 2000 - C.BOT_REACTION_MS - 10; // 반응 시간 지남
   assert.equal(brain.useSkills(g, b, t, enemies, []), true, '반응 시간 뒤엔 아머 돌진');
 });
+
+// 팀전 4명: 1(char)·2 빨강, 3·4 파랑. 2명째부터 캐릭터는 탱크
+function teamChars(char) {
+  const g = new Game(() => {}, { characters: true });
+  g.rng = () => 0.5;
+  for (let i = 1; i <= 4; i++) g.addPlayer(i);
+  g.setChar(1, char);
+  for (let i = 2; i <= 4; i++) g.setChar(i, 'tank');
+  g.setTeamMode(true);
+  g.setTeam(1, 'red');
+  g.setTeam(2, 'red');
+  g.setTeam(3, 'blue');
+  g.setTeam(4, 'blue');
+  g.startRound();
+  g.nextSpawnAt = Infinity;
+  g.controlItemNextAt = Infinity;
+  g.powerItemNextAt = Infinity;
+  while (g.phase !== 'playing') g.tick(TICK);
+  return { g, p: (id) => g.players.get(id) };
+}
+
+test('팀전 같은 팀 공격 없음 (재혁 2026-10-26): 캐릭터마다 평타·F·R 을 앞 팀원에게 써도 넉백·경직·피해·표식·취약·둔화 없음, 같은 자리 상대에겐 들어감', () => {
+  // 앞 1.2칸에 한 명 세워 두고 평타 3번(공중 1번) · F · R (+ 바드는 폼 바꿔 한 번 더) 을 씀
+  const barrage = (char, victim) => {
+    const { g, p } = teamChars(char);
+    const others = [2, 3, 4].filter((i) => i !== victim);
+    place(p(others[0]), 1, 1);
+    place(p(others[1]), 1, 9);
+    const keep = () => {
+      Object.assign(p(1), { x: 3, y: 5, yaw: 0, pitch: 0 });
+      Object.assign(p(victim), { x: 4.2, y: 5 });
+      p(victim).z = Math.max(p(victim).z, 0);
+    };
+    place(p(1), 3, 5, 0);
+    place(p(victim), 4.2, 5);
+    if (char === 'hook') for (const y of [4, 5, 6]) g.grid[g.idx(6, y, 1)] = CELL.TERRAIN; // 갈고리 R 이 뽑을 블록
+    if (char === 'hunter' && victim === 3) p(victim).marks.set(1, { n: 2, at: g.time }); // 상대: 처형 사격 대상이 되게 (팀원엔 평타로도 표식이 안 붙어야 함)
+    g.gridChanged();
+    let touched = false; // 한 번이라도 넉백·경직을 받았나
+    const step = () => {
+      g.tick(TICK);
+      const v = p(victim);
+      if (Math.abs(v.kbx) + Math.abs(v.kby) > 0 || g.time < v.stunUntil) touched = true;
+    };
+    const act = (name) => {
+      keep();
+      g.handleAction(1, { name });
+      for (let t = 0; t < 700; t += TICK) {
+        if (char !== 'berserker' && char !== 'ninja') keep();
+        step();
+      }
+    };
+    const wait = (ms) => {
+      for (let t = 0; t < ms; t += TICK) step();
+    };
+    for (let i = 0; i < 3; i++) act('push');
+    act('skill');
+    p(1).ult = g.ultMax(p(1));
+    act('ult');
+    wait(3200); // 회전·앰프 끝까지
+    if (char === 'bard') {
+      p(1).skillReadyAt = 0;
+      act('skill');
+      act('push');
+      p(1).ult = g.ultMax(p(1));
+      act('ult');
+      wait(3200);
+    }
+    const v = p(victim);
+    return { dmg: v.damage, touched, marks: v.marks.size, vuln: v.vulnUntil, slow: v.slowUntil, alive: v.alive };
+  };
+  for (const char of C.CHARACTERS) {
+    const mate = barrage(char, 2);
+    assert.deepEqual(mate, { dmg: 0, touched: false, marks: 0, vuln: 0, slow: 0, alive: true }, `${char}: 팀원에게 효과 없음`);
+    const foe = barrage(char, 3);
+    assert.ok(foe.dmg > 0, `${char}: 상대에겐 들어감 (${foe.dmg}%)`);
+  }
+});

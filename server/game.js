@@ -1091,7 +1091,7 @@ export class Game {
     const fy = Math.sin(p.yaw);
     const cosHalf = Math.cos((C.PUSH_HALF_ANGLE_DEG * Math.PI) / 180);
     for (const t of this.players.values()) {
-      if (t === p || !this.onField(t)) continue;
+      if (t === p || !this.onField(t) || this.sameTeam(p, t)) continue; // 같은 팀은 그냥 통과
       const dx = t.x - p.x;
       const dy = t.y - p.y;
       const dist = Math.hypot(dx, dy);
@@ -1215,7 +1215,7 @@ export class Game {
     const label = basicLabel(set, n, air, def);
     let landed = null; // 처음 맞힌 상대 (같은 팀 빼고)
     for (const t of this.players.values()) {
-      if (t === p || !this.onField(t)) continue;
+      if (t === p || !this.onField(t) || this.sameTeam(p, t)) continue; // 같은 팀은 그냥 통과
       const dx = t.x - p.x;
       const dy = t.y - p.y;
       const dist = Math.hypot(dx, dy);
@@ -1285,7 +1285,7 @@ export class Game {
     let best = null;
     let bd = Infinity;
     for (const t of this.players.values()) {
-      if (t === p || !this.onField(t)) continue;
+      if (t === p || !this.onField(t) || this.sameTeam(p, t)) continue; // 같은 팀은 그냥 통과
       const dx = t.x - p.x;
       const dy = t.y - p.y;
       const dist = Math.hypot(dx, dy);
@@ -2204,7 +2204,7 @@ export class Game {
         const owner = this.players.get(sh.owner);
         // 사람
         for (const t of this.players.values()) {
-          if (!this.onField(t) || t.id === sh.owner || sh.hit.has(t.id)) continue;
+          if (!this.onField(t) || t.id === sh.owner || sh.hit.has(t.id) || this.sameTeam(owner, t)) continue; // 같은 팀은 통과
           if (!(sh.x > t.x - C.PLAYER_HALF - r && sh.x < t.x + C.PLAYER_HALF + r && sh.y > t.y - C.PLAYER_HALF - r && sh.y < t.y + C.PLAYER_HALF + r && sh.z > t.z - r && sh.z < t.z + C.PLAYER_HEIGHT + r)) continue;
           sh.hit.add(t.id);
           const big = sh.big;
@@ -2993,7 +2993,7 @@ export class Game {
     this.emit({ type: 'boom', who: b.by, x: cx, y: cy, z: cz });
     this.log(`  [폭탄] ${by ? by.name : '?'} 의 폭탄 폭발 (${b.x},${b.y}) z=${b.z}, 블록 ${removed}칸 파괴`);
     for (const t of this.players.values()) {
-      if (!this.onField(t) || t.id === b.by) continue;
+      if (!this.onField(t) || t.id === b.by || this.sameTeam(by, t)) continue; // 같은 팀은 안 맞음
       const dx = t.x - cx;
       const dy = t.y - cy;
       if (Math.hypot(dx, dy) > C.BOMB_BLAST_RANGE || Math.abs(t.z + C.PLAYER_HEIGHT / 2 - cz) > C.BOMB_BLAST_RANGE) continue;
@@ -3026,7 +3026,7 @@ export class Game {
     const cx = (x0 + x1) / 2;
     const cy = (y0 + y1) / 2;
     for (const t of this.players.values()) {
-      if (!this.onField(t) || t.id === piece.thrownBy) continue; // 던진 사람은 자기 충격파를 안 맞음
+      if (!this.onField(t) || t.id === piece.thrownBy || this.sameTeam(this.players.get(piece.thrownBy), t)) continue; // 던진 사람·같은 팀은 충격파를 안 맞음
       const gx = Math.max(x0 - (t.x + C.PLAYER_HALF), t.x - C.PLAYER_HALF - x1, 0);
       const gy = Math.max(y0 - (t.y + C.PLAYER_HALF), t.y - C.PLAYER_HALF - y1, 0);
       if (Math.hypot(gx, gy) > C.BRICK_SHOCK_RANGE || Math.abs(t.z - z) > C.BRICK_SHOCK_HEIGHT) continue;
@@ -3059,6 +3059,7 @@ export class Game {
   applyKnockback(t, dx, dy, speed, up, stunMs = C.STUN_MS, gain = 0, src = null, heavy = false, opts = {}) {
     if (this.invulnerable(t)) return false; // 콤보 뒤 무적·부활 무적
     const teammate = src && this.sameTeam(this.players.get(src.by), t);
+    if (teammate) return false; // 2026-10-26 재혁: 팀전에서 같은 팀 공격은 아무 효과 없음 (넉백·경직·피해·끊김 없이 통과)
     // 탱크 아머 (F 돌진 중·R 떠오르는 동안): 넉백·경직 없이 피해 % 만. 마무리 타·필살기면 깨지고 보통처럼 (카운터는 안 당함)
     let armorBroken = false;
     if (!teammate && t.char === 'tank' && (this.time < t.chargeUntil || t.slamAt)) {
@@ -4226,7 +4227,7 @@ export class Game {
           break;
         }
         for (const t of this.players.values()) {
-          if (!this.onField(t) || t.id === pr.owner) continue;
+          if (!this.onField(t) || t.id === pr.owner || this.sameTeam(this.players.get(pr.owner), t)) continue; // 같은 팀은 통과
           const r = C.PROJECTILE_RADIUS;
           if (
             pr.x > t.x - C.PLAYER_HALF - r &&
