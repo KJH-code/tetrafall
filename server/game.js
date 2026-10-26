@@ -3926,6 +3926,7 @@ export class Game {
           cz < p.z + C.PLAYER_HEIGHT - EPS &&
           cz + 1 > p.z + EPS
         ) {
+          if (this.headBonk(p, piece)) break; // 머리 박음: 아래로 빠져나갈 공간이 있으면 안 깔림
           if (piece.thrownBy) {
             const by = this.players.get(piece.thrownBy);
             this.log(`  [투척] ${by ? by.name : '?'} 의 ${piece.shape} 에 ${p.name} 깔림`);
@@ -3937,6 +3938,35 @@ export class Game {
         }
       }
     }
+  }
+
+  // 머리 박음 (2026-10-26 재혁: 압사 완화). 블록 아래면에서 몸 아래 기둥 꼭대기(필드 밖이면 끝없이)까지 빈 공간이
+  // CRUSH_ESCAPE_CELLS 칸 이상이면 압사 대신 블록 아래로 밀어 내리고 짧은 경직. 땅에 선 채 깔리면 공간이 키보다 작아 그대로 압사
+  headBonk(p, piece) {
+    const bottom = piece.pz; // 블록은 한 층 (모든 칸이 pz)
+    let floor = -Infinity;
+    const h = C.PLAYER_HALF - EPS;
+    for (let cx = Math.floor(p.x - h); cx <= Math.floor(p.x + h); cx++) {
+      for (let cy = Math.floor(p.y - h); cy <= Math.floor(p.y + h); cy++) {
+        if (!this.inXY(cx, cy)) continue; // 필드 밖은 바닥이 없음
+        let top = 0;
+        for (let z = Math.min(bottom, this.H) - 1; z >= 0; z--) {
+          if (this.grid[this.idx(cx, cy, z)] || (this.pieceCells.has(cellKey(cx, cy, z)) && this.pieceCells.get(cellKey(cx, cy, z)) !== piece.id)) {
+            top = z + 1;
+            break;
+          }
+        }
+        floor = Math.max(floor, top);
+      }
+    }
+    if (bottom - floor < C.CRUSH_ESCAPE_CELLS) return false;
+    p.z = bottom - C.PLAYER_HEIGHT;
+    p.vz = Math.min(p.vz, 0);
+    p.grounded = false;
+    p.stunUntil = Math.max(p.stunUntil, this.time + C.HEAD_BONK_STUN_MS);
+    this.emit({ type: 'headBonk', who: p.id, x: p.x, y: p.y, z: p.z });
+    this.log(`  [머리 박음] ${p.name} ← ${piece.shape} (빈 공간 ${Number.isFinite(floor) ? bottom - floor : '∞'}칸)`);
+    return true;
   }
 
   landPiece(piece = this.piece) {

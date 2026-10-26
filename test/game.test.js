@@ -2080,3 +2080,78 @@ test('공중 대시: 쌓인 블록·떨어지는 블록(하늘 블록) 위에 �
   assert.equal(p1.z, 5);
   assert.equal(p1.airDashes, C.AIR_DASHES, '공중 블록 위');
 });
+
+// ---------- 머리 박음 (2026-10-26 재혁: 압사 완화) ----------
+function bonkSetup() {
+  const lines = [];
+  const g = new Game((s) => lines.push(s));
+  g.rng = () => 0.5;
+  g.addPlayer(1);
+  g.addPlayer(2);
+  g.addPlayer(3);
+  g.startRound();
+  g.piece = null;
+  g.nextSpawnAt = Infinity;
+  g.controlItemNextAt = Infinity;
+  g.powerItemNextAt = Infinity;
+  const p = g.players.get(1);
+  Object.assign(g.players.get(2), { x: 8.5, y: 8.5 });
+  Object.assign(g.players.get(3), { x: 8.5, y: 1.5 });
+  // O 블록 (4,4)~(5,5), 떨어지는 중. 한 칸 내려오면 crushCheck
+  const drop = (pz, fields = {}) => {
+    g.piece = Object.assign(g.makePiece('O', 0, 4, 4, pz), { phase: 'falling', controller: null, stepMs: 100, nextStepAt: g.time + 1 }, fields);
+    g.updatePieces();
+    g.time += 2;
+    g.updatePieces();
+  };
+  return { g, lines, p, drop };
+}
+
+test('머리 박음: 점프 중 위 블록에 머리가 닿아도 블록 아래 빈 공간이 CRUSH_ESCAPE_CELLS(2) 칸 이상이면 안 죽고 아래로 밀려남 + 짧은 경직 + headBonk', () => {
+  assert.equal(C.CRUSH_ESCAPE_CELLS, 2);
+  const { g, lines, p, drop } = bonkSetup();
+  // 바닥(0)에서 뛰어 발 1.0, 머리 2.6 → 블록이 z=3 → 2 로 내려오며 머리에 닿음. 빈 공간 = 2 - 0 = 2칸
+  Object.assign(p, { x: 5, y: 5, z: 1.0, vz: 2, grounded: false });
+  g.drainEvents();
+  drop(3);
+  assert.equal(g.piece.pz, 2, '한 칸 내려옴');
+  assert.ok(p.alive, '안 죽음');
+  assert.ok(Math.abs(p.z - (2 - C.PLAYER_HEIGHT)) < 1e-9, `블록 아래로 z=${p.z}`);
+  assert.ok(p.vz <= 0);
+  assert.ok(p.stunUntil >= g.time + C.HEAD_BONK_STUN_MS - 3, '짧은 경직');
+  assert.ok(g.drainEvents().some((e) => e.type === 'headBonk' && e.who === 1));
+  assert.ok(lines.some((l) => l.startsWith('  [머리 박음] P1')));
+  assert.equal(g.deaths.length, 0);
+});
+
+test('머리 박음: 땅에 서 있는데 블록이 내려오면 지금처럼 압사 · 빈 공간 1칸이면 압사 · 조종·던진 블록도 같은 규칙 (킬은 압사일 때만)', () => {
+  // 땅에 서서 깔림: 블록 z=2 → 1, 빈 공간 1칸
+  let { g, p, drop } = bonkSetup();
+  Object.assign(p, { x: 5, y: 5, z: 0, vz: 0, grounded: true });
+  drop(2);
+  assert.equal(p.alive, false);
+  assert.equal(g.deaths[0].cause, 'crush');
+  // 1칸 높이 블록 위에서 뛰다가 머리: 빈 공간 = 2 - 1 = 1칸 → 압사
+  ({ g, p, drop } = bonkSetup());
+  for (const [x, y] of [[4, 4], [5, 4], [4, 5], [5, 5]]) g.grid[g.idx(x, y, 0)] = CELL.TERRAIN;
+  g.gridChanged();
+  Object.assign(p, { x: 5, y: 5, z: 1.2, vz: 2, grounded: false });
+  drop(3);
+  assert.equal(p.alive, false, '공간 1칸 → 압사');
+  // 조종 블록: 공간이 있으면 머리 박음 (킬 없음), 땅에 서 있으면 조종자 킬
+  ({ g, p, drop } = bonkSetup());
+  Object.assign(p, { x: 5, y: 5, z: 1.0, vz: 2, grounded: false });
+  drop(3, { controller: 2 });
+  assert.ok(p.alive, '조종 블록도 머리 박음');
+  ({ g, p, drop } = bonkSetup());
+  Object.assign(p, { x: 5, y: 5, z: 0, grounded: true });
+  drop(2, { controller: 2 });
+  assert.equal(p.alive, false);
+  assert.equal(g.deaths[0].killer, 'P2', '압사면 조종자 킬');
+  // 던진 블록
+  ({ g, p, drop } = bonkSetup());
+  Object.assign(p, { x: 5, y: 5, z: 1.0, vz: 2, grounded: false });
+  drop(3, { thrownBy: 3 });
+  assert.ok(p.alive, '던진 블록도 머리 박음');
+});
+
