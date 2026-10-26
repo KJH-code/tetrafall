@@ -2616,7 +2616,7 @@ export class Game {
       if (p.comboHits > 0 && this.time >= p.stunUntil) this.endCombo(p);
       if (!this.onField(p)) {
         p.chargeUntil = p.slamAt = p.wallAt = p.zipUntil = 0;
-        p.leap = p.huntAim = p.rush = p.spin = p.windup = p.hookFly = p.amp = null;
+        p.leap = p.huntAim = p.rush = p.spin = p.amp = p.windup = p.hookFly = null;
         p.glideUntil = 0;
         p.marks.clear();
         if (p.grab) this.hookGrabDrop(p);

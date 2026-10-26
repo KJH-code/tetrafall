@@ -317,7 +317,8 @@ export class Renderer {
     this.bbGeo = new THREE.BoxGeometry(1, 1, 1);
     this.bbStrapMat = toon({ color: 0x3a3a44 });
     this.quakes = []; // 탱크 R 솟는 땅: { cells, t0, sinkAt, meshes }
-    this.armorUntil = new Map(); // 탱크 아머 중 (id → 끝 시각): 몸이 금속처럼 번쩍
+    this.armorUntil = new Map();
+    this.windupUntil = new Map(); // 지상 F 준비 번쩍 (skillWindup) // 탱크 아머 중 (id → 끝 시각): 몸이 금속처럼 번쩍
     this.armorHitAt = new Map(); // 아머로 버틴 시각 (그 타는 안 휘청)
     this.armorBreakAt = new Map(); // 아머가 깨진 시각 (그 타는 크게 휘청)
     this.slides = new Map(); // 닌자 순간 베기 미끄러짐 (id → { from, to, t0, nextGhost })
@@ -1872,20 +1873,54 @@ export class Renderer {
     c.head.rotation.set(0, 0, t / 60);
   }
 
-  // F 갈고리 (hook 이벤트): 갈고리 머리가 HOOK_FLY_MS 동안 날아가 닿고 (상대·블록·빗나가면 사거리 끝), 걸리면 잠깐 사슬이 붙어 있다 감김
-  hookRope(e) {
-    const now = performance.now();
+  // F 갈고리. hookThrow (던짐): 갈고리 머리가 HOOK_FLY_MS 동안 던진 방향으로 날아감 →
+  // hook (닿는 순간 판정): 상대·블록이면 그쪽에 걸려 잠깐 팽팽 → 감김, 빗나가면 바로 감김. 던짐 없이 hook 만 오면 그 자리에서 날아가는 것부터
+  hookThrowRope(e) {
     const s = this.smooth.get(e.who);
     if (!s) return;
+    this.dropRope(e.who);
     const miss = new THREE.Vector3(s.x + Math.cos(e.yaw) * C.HOOK_RANGE, s.y + Math.sin(e.yaw) * C.HOOK_RANGE, s.z + C.HOOK_RAY_HEIGHT);
-    const block = e.block ? new THREE.Vector3(e.block[0] + 0.5, e.block[1] + 0.5, e.block[2] + 0.5) : null;
-    const target = e.target ?? null;
-    if (target !== null && this.smooth.has(target)) {
-      // 끌려오는 쪽: 갈고리가 날아가 닿을 때까지 원래 자리, 그 뒤 질질 끌려옴 (잔상 없음)
-      const ts = this.smooth.get(target);
-      this.slides.set(target, { from: { x: ts.x, y: ts.y, z: ts.z }, to: null, t0: now + C.HOOK_FLY_MS, ms: C.HOOK_PULL_SLIDE_MS, nextGhost: Infinity });
+    (this.ropes ||= []).push({ who: e.who, target: null, block: null, miss, t0: performance.now(), flyMs: e.ms || C.HOOK_FLY_MS, landAt: 0, caught: false, chain: this.makeChain() });
+  }
+
+  hookRope(e) {
+    const now = performance.now();
+    let r = this.ropes?.find((x) => x.who === e.who && !x.landAt);
+    if (!r) {
+      this.hookThrowRope({ who: e.who, yaw: e.yaw, ms: C.HOOK_FLY_MS });
+      r = this.ropes?.find((x) => x.who === e.who && !x.landAt);
+      if (!r) return;
     }
-    (this.ropes ||= []).push({ who: e.who, target, block, miss, t0: now, chain: this.makeChain(), caught: !!(block || target !== null) });
+    const target = e.target ?? null;
+    r.block = e.block ? new THREE.Vector3(e.block[0] + 0.5, e.block[1] + 0.5, e.block[2] + 0.5) : null;
+    r.target = target;
+    r.caught = !!(r.block || target !== null);
+    r.landAt = Math.max(now, r.t0 + 1); // 지금 닿음 (날아가던 끝이 그쪽으로 붙음)
+    r.landFrom = r.tip ? r.tip.clone() : null;
+    if (target !== null && this.smooth.has(target)) {
+      // 끌려오는 쪽: 닿은 지금부터 질질 끌려옴 (서버 위치로, 잔상 없음)
+      const ts = this.smooth.get(target);
+      this.slides.set(target, { from: { x: ts.x, y: ts.y, z: ts.z }, to: null, t0: now, ms: C.HOOK_PULL_SLIDE_MS, nextGhost: Infinity });
+    }
+  }
+
+  // 던진 갈고리가 닿기 전에 끊김 (interrupt skill): 그 자리에서 감김
+  hookCancel(who) {
+    const r = this.ropes?.find((x) => x.who === who && !x.landAt);
+    if (r) {
+      r.landAt = performance.now();
+      r.caught = false;
+      r.landFrom = r.tip ? r.tip.clone() : null;
+    }
+  }
+
+  dropRope(who) {
+    if (!this.ropes) return;
+    this.ropes = this.ropes.filter((r) => {
+      if (r.who !== who) return true;
+      this.dropChain(r.chain);
+      return false;
+    });
   }
 
   updateRopes() {
@@ -1894,38 +1929,55 @@ export class Renderer {
     const a = new THREE.Vector3();
     this.ropes = this.ropes.filter((r) => {
       const age = now - r.t0;
-      const life = C.HOOK_FLY_MS + (r.caught ? C.HOOK_HOLD_MS : 0) + C.HOOK_FLY_MS; // 날아감 → (걸림) → 감김
-      if (age > life || !this.hookHand(r.who, a)) {
+      // 서버 hook 이 늦으면 다 날아간 채로 잠깐 기다림, 너무 오래면 버림
+      if (!this.hookHand(r.who, a) || (!r.landAt && age > r.flyMs + 1000)) {
         this.dropChain(r.chain);
         return false;
       }
       const ts = r.target !== null ? this.smooth.get(r.target) : null;
-      const end = ts ? new THREE.Vector3(ts.x, ts.y, ts.z + 1) : r.block || r.miss;
-      let u;
+      const len0 = a.distanceTo(r.miss);
+      let end;
       let sag;
       let wave;
-      const hold = r.caught ? C.HOOK_HOLD_MS : 0;
-      const len = a.distanceTo(end);
-      if (age < C.HOOK_FLY_MS) {
-        // 날아감: 늘어지고 살짝 휜 채로 뻗어 나감
-        u = age / C.HOOK_FLY_MS;
-        sag = len * u * C.ROPE_SAG;
+      if (!r.landAt) {
+        // 날아감: 던진 방향으로 늘어지고 살짝 휜 채로 뻗어 나감
+        const u = Math.min(1, age / r.flyMs);
+        end = a.clone().lerp(r.miss, Math.max(0.02, u));
+        sag = len0 * u * C.ROPE_SAG;
         wave = C.ROPE_WOBBLE * 0.6 * (1 - u);
-      } else if (age < C.HOOK_FLY_MS + hold) {
-        // 걸림: 팽팽하게 (걸린 순간 짧게 퉁 떨림)
-        u = 1;
-        sag = 0;
-        wave = C.ROPE_WOBBLE * 0.4 * Math.exp(-(age - C.HOOK_FLY_MS) / 60);
       } else {
-        // 감김: 느슨해지며 출렁
-        const v = (age - C.HOOK_FLY_MS - hold) / C.HOOK_FLY_MS;
-        u = 1 - v;
-        sag = len * C.ROPE_SAG * 0.8 * u;
-        wave = C.ROPE_WOBBLE * (1 - v * 0.5);
+        const since = now - r.landAt;
+        const hold = r.caught ? C.HOOK_HOLD_MS : 0;
+        const goal = ts ? new THREE.Vector3(ts.x, ts.y, ts.z + 1) : r.block || r.landFrom || r.miss;
+        if (since > hold + C.HOOK_FLY_MS) {
+          this.dropChain(r.chain);
+          return false;
+        }
+        const len = a.distanceTo(goal);
+        if (since < hold) {
+          // 걸림: 팽팽하게 (걸린 순간 짧게 퉁 떨림)
+          end = goal;
+          sag = 0;
+          wave = C.ROPE_WOBBLE * 0.4 * Math.exp(-since / 60);
+        } else {
+          // 감김: 느슨해지며 손으로 돌아옴
+          const v = (since - hold) / C.HOOK_FLY_MS;
+          end = a.clone().lerp(goal, Math.max(0.02, 1 - v));
+          sag = len * C.ROPE_SAG * 0.8 * (1 - v);
+          wave = C.ROPE_WOBBLE * (1 - v * 0.5);
+        }
       }
-      this.setChain(r.chain, a, a.clone().lerp(end, Math.max(0.02, u)), now, sag, wave);
+      r.tip = end.clone();
+      this.setChain(r.chain, a, end, now, sag, wave);
       return true;
     });
+  }
+
+  // 지상 F 준비 (skillWindup, 닌자·탱크·갈고리): ms 동안 온몸(옷 포함)이 하얗게 번쩍 + 발밑 흰 고리
+  skillWindup(e) {
+    this.windupUntil.set(e.who, performance.now() + (e.ms || C.SKILL_WINDUP_MS));
+    const s = this.smooth.get(e.who);
+    if (s) this.effects.ring({ x: s.x, y: s.y, z: s.z + 0.05 }, 0xffffff, 1.8, (e.ms || C.SKILL_WINDUP_MS) / 1000, true);
   }
 
   // R 1단계 (blockGrab): 블록이 지형에서 뽑혀 사슬에 끌려와 머리 위에서 돎. 건축가 블록이면 금 간 무늬
@@ -2307,6 +2359,13 @@ export class Renderer {
       const glowing = now < (g.userData.glowUntil || 0);
       for (const m of g.userData.mats) if (m.emissive && m !== bodyMat) m.emissive.setHex(glowing ? g.userData.glowColor : 0x000000);
       if (glowing) bodyMat.emissive.setHex(g.userData.glowColor);
+      const wu = (this.windupUntil.get(p.id) || 0) - now;
+      if (wu > 0) {
+        // 지상 F 준비: 온몸 하얗게 (끝으로 갈수록 더 밝게 → 나가는 순간을 읽게)
+        const k = 1 - wu / C.SKILL_WINDUP_MS;
+        const v = 0.55 + 0.45 * Math.max(0, Math.min(1, k));
+        for (const m of g.userData.mats) if (m.emissive) m.emissive.setRGB(v, v, v);
+      }
       if (now < (this.armorUntil.get(p.id) || 0)) {
         // 탱크 아머: 온몸(옷 포함)이 금속처럼 번쩍 (빛이 훑고 지나가듯 밝기가 출렁), 버틴 순간엔 하얗게
         const hitFlash = now - (this.armorHitAt.get(p.id) || -1e9) < 90;
