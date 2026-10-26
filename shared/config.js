@@ -48,12 +48,13 @@ export const CONFIG = {
 
   // ---- 블록 낙하 ----
   // 2단계: 판이 길어질수록 블록이 빨라지고 많아진다 ("처음에 1개, 갈수록 더 짧게, 많이")
-  //   동시에 떨어지는 자동 블록 수 = min(MAX, 1 + 경과 / RAMP_MS)
+  //   동시에 떨어지는 자동 블록 수 = min(MAX, CONCURRENT_START + 경과 / RAMP_MS)
   //   다음 블록까지 간격·1칸 낙하 간격 = 시작값에서 끝값으로 RAMP_FULL_MS 동안 선형으로 줄어듦
   AUTO_FALL_STEP_MS: 500, // 자동 낙하: 1칸 내려오는 간격 (판 시작 때). 2026-10-24 350→500 (재혁: 억까 → 떨어지는 속도 감속)
   AUTO_FALL_STEP_MIN_MS: 300, // 판 후반 (RAMP_FULL_MS 이후). 2026-10-24 200→300
   AUTO_SPAWN_DELAY_MS: 1000, // 자동 블록끼리 나오는 간격 (판 시작 때)
   AUTO_SPAWN_DELAY_MIN_MS: 400, // 판 후반
+  CONCURRENT_START: 2, // 판 시작 동시 블록. 2026-10-26 재혁 1 → 2 (판이 짧아 블록이 쌓이기 전에 끝남. 봇 504판: 블록 위 사망 21 → 29%, 압사 32 → 37%, 판 30 → 28초). 하늘 계단 켬 판은 안 씀 (하늘 사슬)
   CONCURRENT_RAMP_MS: 20000, // 이 시간마다 동시 블록 +1
   CONCURRENT_MAX: 4,
   RAMP_FULL_MS: 90000, // 낙하·간격이 끝값에 닿는 시간
@@ -731,6 +732,23 @@ export const CONFIG = {
   FIGURE_CHARS: ['tank', 'ninja', 'builder', 'hook', 'hunter', 'cannon', 'berserker', 'bard'], // TABS 식 몸(client/figure.js)으로 그리는 캐릭터 (2026-10-24). 캐릭터 없으면 로봇
   FIGURE_BODY: { tank: 'drum', ninja: 'slim', builder: 'sturdy', hook: 'reach', hunter: 'stalk', cannon: 'stout', berserker: 'brute', bard: 'lean' }, // 캐릭터별 체형 (client/figure.js BODIES). 2026-10-24 재혁: 탱크는 통통한 쪽
   FIGURE_SCALE: 1.15, // 몸 전체 크기 배율 (1 이면 로봇과 키가 같아도 가늘어서 작아 보임). 판정 상자는 그대로
+  // 1인칭 팔·무기 (client/viewmodel.js): 내 몸을 복제해 팔·무기만 따로 그림
+  VM_FOV: 62, // 뷰모델 카메라 화각 (필드 화각과 따로: 넓은 화각에서도 팔이 늘어나 보이지 않게)
+  VM_SCALE: 0.62, // 몸 크기 배율 (FIGURE_SCALE 에 곱함). 작을수록 팔이 화면을 덜 가림
+  VM_POS: { default: [0, -0.16, -0.26], bard: [0, -0.08, -0.34], cannon: [0, -0.2, -0.26] }, // 어깨 높이 기준점 (카메라 기준: 오른쪽 +x, 위 +y, 뒤 +z). 캐릭터별로 덮어씀
+  VM_ARM_LOW: 1.0, // 내린 팔이 화면에선 이 각만큼 앞으로 든 팔 (라디안, π/2 = 정면)
+  VM_ARM_OUT: 0.5, // 옆으로 벌린 각 배율
+  VM_NARROW: 1.5, // 어깨 사이 거리 배율 (넓을수록 팔이 화면 양쪽 구석에서 나옴)
+  VM_ELBOW_ADD: 1.35, // 내린 팔일 때 팔꿈치를 더 굽히는 각
+  VM_BODY_FOLLOW: 0.45, // 몸통 숙임·비틂을 이만큼만 따라감
+  VM_BOB: 0.018, // 걷기 흔들림 (칸)
+  VM_BREATH: 0.004, // 숨쉬기 오르내림 (칸)
+  VM_GUN_AIM: [1.45, 0.25], // 갈고리 장전 권총을 겨눌 때 [어깨 앞으로 든 각, 팔꿈치]
+  VM_RAW_POSE: ['bard'], // 팔 각을 안 바꾸는 캐릭터 (바드는 악기를 이미 가슴 앞에 들고 있음: 기준점만 올려 보이게)
+  VM_SPIN: ['berserker', 'hook'], // 몸 전체 돌기를 1인칭에도 그대로 (소용돌이·회전 베기·갈고리 스핀)
+  VM_CANNON: [0.55, -0.06, -0.1], // 대포수 어깨 대포 [크기 배율, 오른쪽으로(-y) 옮김, 아래로 옮김] (몸 좌표 칸)
+  VM_PIP_SCALE: 0.65, // 대포 위 남은 포탄 크기 배율
+  VM_STAR_HIDE_MS: 350, // 닌자 표창을 던진 뒤 왼손이 비어 있는 시간
   FIGURE_HORN_SEGS: 6, // 광전사 뿔 마디 수 (마디마다 같은 각으로 꺾여 매끈한 곡선)
   FIGURE_HORN_LEN: 0.42, // 뿔 한 개 길이 (칸, 몸 크기 배율 전)
   FIGURE_HORN_CURL: 2.1, // 뿔이 뿌리에서 끝까지 위로 휘는 각 합 (라디안, C 자)

@@ -10,6 +10,7 @@ import { orbitEye, followDist } from '/shared/camera.js';
 import { itemModel } from '/models.js';
 import { makeTextures } from '/textures.js';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
+import { ViewModel } from '/viewmodel.js';
 
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
@@ -180,6 +181,7 @@ export class Renderer {
     this.viewArm.position.copy(this.viewArmBase);
     this.viewArm.visible = false;
     this.camera.add(this.viewArm);
+    this.vm = new ViewModel(); // 캐릭터 몸(figure)이면 이 팔 대신 캐릭터 팔·무기
     // 1인칭 망치 머리 (망치 있을 때만)
     this.viewHammer = itemModel(models, 'weapon', 0.26) || new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.12, 0.12), toon({ color: 0xff8a10 }));
     // 캡슐 먼 끝에서 손잡이를 쥐고 머리가 위로 (x축 +90도 회전이라 로컬 -y 가 화면 안쪽, 로컬 -z 가 화면 위).
@@ -1079,6 +1081,7 @@ export class Renderer {
   // 닌자 표창 (star 이벤트, 한 발마다): 첫 발은 오른손·둘째 발은 왼손으로 던지는 자세 + 아주 빠르게 직진하는 표창 (판정은 즉시)
   starShot(e) {
     const now = performance.now();
+    if (this.vm.src && this.playerMeshes.get(e.who) === this.vm.src) this.vm.starThrown();
     const a = this.acts.get(e.who);
     if (e.shot === 1 && a && (a.move === '표창' || a.move === '공중 표창') && !a.struck && !a.broken) a.struck = now;
     else {
@@ -2883,7 +2886,11 @@ export class Renderer {
     if (me) this.viewArm.material.color.setHex(playerColor(me, state));
     const vp = this.effects.punchAmount(myId);
     this.viewArm.position.set(this.viewArmBase.x - 0.12 * vp, this.viewArmBase.y + 0.08 * vp, this.viewArmBase.z - 0.3 * vp);
-    this.viewArm.visible = !!(me && me.alive) && this.skyBlend === 0 && !cam.victory && !cam.selfie && !this.third; // 3인칭은 팔 대신 내 몸
+    const armView = !!(me && me.alive) && this.skyBlend === 0 && !cam.victory && !cam.selfie && !this.third; // 3인칭은 팔 대신 내 몸
+    this.vm.sync(me ? this.playerMeshes.get(me.id) : null);
+    this.vm.on = armView && !!this.vm.fig;
+    this.vm.update(dt);
+    this.viewArm.visible = armView && !this.vm.on; // 캐릭터 몸이 아니면 (로봇) 예전 팔
     this.viewHammer.visible = !!(me && me.char === 'builder') && !heldKind(me); // 1인칭 건축가 망치 (아이템을 들면 아이템)
     // 손에 든 것: 고른 핫바 칸에 뭐가 있으면 그 색 상자 (망치가 있으면 망치가 우선)
     const kind = me ? heldKind(me) : null;
@@ -2963,6 +2970,7 @@ export class Renderer {
       const sh = this.effects.shakeOffset();
       if (sh) this.camera.position.add(new THREE.Vector3(sh.x, sh.y, sh.z));
       this.draw(this.camera);
+      this.vm.draw(this.renderer, this.outlineOn ? this.outline : null, this.camera.aspect);
       return;
     }
     // 전환 중: 1인칭 자세 → 필드 위 높은 곳에서 내려다보는 자세로 날아오르며 줌인 (끝에서 직교 카메라로 교체)
