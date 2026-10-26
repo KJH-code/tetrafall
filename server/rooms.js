@@ -211,8 +211,8 @@ export class Rooms {
       case 'botLevel':
         if (host) game.setBotLevel(String(msg.level));
         break;
-      case 'setMap':
-        if (host) game.setMap(String(msg.map));
+      case 'setMap': // 연습 방은 누구나, 판 중에도 바로
+        if (host || room.practice) game.setMap(String(msg.map));
         break;
       case 'setMode':
         if (host) game.setMode(String(msg.mode));

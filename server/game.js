@@ -335,9 +335,35 @@ export class Game {
   }
 
   setMap(choice) {
-    if (this.inRound()) return false;
     if (choice !== 'random' && !MAP_IDS.includes(choice)) return false;
+    if (this.mode === 'practice' && this.inRound()) return this.practiceMap(choice); // 연습은 판 중에도 바로
+    if (this.inRound()) return false;
     this.mapChoice = choice;
+    return true;
+  }
+
+  // 연습: 지형을 바로 바꿈. 쌓인 블록·건축가 블록·떨어지던 블록·아이템은 치우고 모두 제자리로 (피해 % 는 설정값)
+  practiceMap(choice) {
+    this.mapChoice = choice;
+    this.mapId = choice === 'random' ? MAP_IDS[Math.floor(this.rng() * MAP_IDS.length)] : choice;
+    this.grid = new Uint8Array(this.W * this.D * this.H);
+    for (const [x, y, h] of mapColumns(this.mapId, this.W, this.D)) {
+      for (let z = 0; z < h && z < this.H; z++) this.grid[this.idx(x, y, z)] = CELL.TERRAIN;
+    }
+    this.baseAvgHeight = this.avgHeight();
+    this.pieces = [];
+    this.refreshPieceCells();
+    this.bblocks = new Map();
+    this.bigBombs = [];
+    this.quakes = [];
+    this.holes = [];
+    this.items = [];
+    this.bombs = [];
+    this.lava = { active: false, z: C.LAVA_START_Z, startedAt: 0 };
+    this.gridVersion++;
+    this.gridDirty = true;
+    for (const p of this.participants()) if (p.alive || p.dummy) this.practiceReset(p, null);
+    this.emit({ type: 'mapChange', map: this.mapId });
     return true;
   }
 

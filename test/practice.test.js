@@ -213,3 +213,22 @@ test('연습: 판 중 캐릭터 바꾸기 (상태 새로, 위치·피해 % 그�
   rooms.message(b.conn, { type: 'setChar', char: 'cannon' });
   assert.notEqual(ng.players.get(b.conn.id).char, 'cannon');
 });
+
+test('연습: 판 중 맵 바꾸기 — 지형 바로 바꾸고 블록·아이템 치우고 모두 제자리 (지형 위), 누구나', () => {
+  const { rooms, join, a, room, g, me, dummy } = setup();
+  assert.equal(g.mapId, 'flat');
+  const b = join();
+  rooms.message(b.conn, { type: 'join', code: room.code });
+  rooms.message(b.conn, { type: 'setMap', map: 'pyramid' }); // 호스트 아님
+  assert.equal(g.mapId, 'pyramid');
+  assert.equal(g.phase, 'playing');
+  assert.ok(g.grid.some((v) => v === 1), '지형 생김');
+  assert.ok(g.drainEvents().some((e) => e.type === 'mapChange' && e.map === 'pyramid'));
+  const d = dummy();
+  assert.equal(d.z, g.spawnZ(d.x, d.y), '허수아비는 지형 위');
+  assert.equal(me.z, g.spawnZ(me.x, me.y));
+  rooms.message(a.conn, { type: 'setMap', map: 'nope' });
+  assert.equal(g.mapId, 'pyramid', '없는 맵은 무시');
+  rooms.message(a.conn, { type: 'setMap', map: 'flat' });
+  assert.ok(g.grid.every((v) => v === 0), '평지로');
+});
