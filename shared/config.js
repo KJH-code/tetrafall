@@ -694,6 +694,8 @@ export const CONFIG = {
   ARROW_FLY_MS: 90, // 석궁 화살이 날아가는 시간 (판정은 즉시, 애니만)
   ARROW_STUCK_MS: 1500, // 블록에 막힌 화살이 박혀 남는 시간
   ARROW_TRAIL_MS: 220, // 화살 지나간 빨간 줄
+  SKILL_ICON_SIZE: 0.1, // 상대 머리 위 F 아이콘 크기 (화면 높이 비율, 이름표 0.13)
+  SKILL_ICON_CENTER_X: -1.75, // 아이콘 기준점: 음수일수록 이름표 오른쪽으로
   ULT_FAIL_MS: 900, // R 을 못 썼을 때 R 칸에 짧은 이유가 보이는 시간
   ULT_FAIL_SHAKE_MS: 350, // R 칸이 빨갛게 흔들리는 시간
   CAST_DROP_BLINK_MS: 400, // 기억해 둔 F·R 이 버려졌을 때 칸이 깜빡이는 시간

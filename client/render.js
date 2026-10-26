@@ -1349,6 +1349,63 @@ export class Renderer {
     this.huntEye(g, !!mine && p.alive && p.id !== myId);
   }
 
+  // 상대 F 읽기: 이름표 오른쪽에 작은 동그란 F 아이콘 (화면 크기 고정). 쓸 수 있으면 흰 바탕 + 노란 테,
+  // 쿨 중이면 회색 + 남은 쿨 비율만큼 테두리 호. 나와 캐릭터 없는 사람은 안 보임. 바뀔 때만 다시 그림
+  updateSkillIcon(g, p, myId) {
+    const total = p.char && C.SKILL_CD_MS[p.char];
+    const show = !!total && p.id !== myId && p.alive;
+    let ic = g.userData.skillIcon;
+    if (!show) {
+      if (ic) ic.sprite.visible = false;
+      return;
+    }
+    if (!ic) {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 64;
+      const tex = new THREE.CanvasTexture(canvas);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false, transparent: true, sizeAttenuation: false }));
+      sprite.scale.set(C.SKILL_ICON_SIZE, C.SKILL_ICON_SIZE, 1);
+      sprite.center.set(C.SKILL_ICON_CENTER_X, 0.5); // 이름표(같은 높이) 오른쪽으로
+      sprite.position.z = C.PLAYER_HEIGHT + 0.45;
+      sprite.renderOrder = 12;
+      g.add(sprite);
+      ic = g.userData.skillIcon = { sprite, canvas, tex, key: '' };
+    }
+    ic.sprite.visible = true;
+    const left = Math.max(0, Math.min(1, (p.skillCd || 0) / total));
+    const step = left > 0 ? Math.ceil(left * 16) : 0; // 16단계로만 다시 그림
+    const label = this.skillKey || 'F';
+    const key = `${step}|${label}`;
+    if (key === ic.key) return;
+    ic.key = key;
+    const c = ic.canvas.getContext('2d');
+    c.clearRect(0, 0, 64, 64);
+    const ready = step === 0;
+    c.beginPath();
+    c.arc(32, 32, 25, 0, Math.PI * 2);
+    c.fillStyle = ready ? 'rgba(255,255,255,0.92)' : 'rgba(70,70,70,0.75)';
+    c.fill();
+    c.lineWidth = 8;
+    if (ready) {
+      c.strokeStyle = '#ffd23a';
+      c.stroke();
+    } else {
+      // 남은 쿨: 12시부터 시계 방향으로 남은 만큼 어두운 호, 나머지는 회색 테
+      c.strokeStyle = 'rgba(160,160,160,0.9)';
+      c.stroke();
+      c.beginPath();
+      c.arc(32, 32, 25, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (step / 16));
+      c.strokeStyle = '#222';
+      c.stroke();
+    }
+    c.fillStyle = ready ? '#222' : 'rgba(230,230,230,0.8)';
+    c.font = `bold ${label.length > 2 ? 18 : 28}px sans-serif`;
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(label.slice(0, 4), 32, 34);
+    ic.tex.needsUpdate = true;
+  }
+
   // 사냥꾼의 눈: 몸 부품마다 같은 모양의 빨간 복사본을 붙여, 블록에 가려진 부분에만 그림 (GreaterDepth).
   // 복사본은 블록 다음·사람 몸 전에 그려서 (renderOrder 1 → 몸 2) 몸에 가린 곳엔 안 나옴
   huntEye(g, on) {
@@ -2274,6 +2331,7 @@ export class Renderer {
       }
       label.sprite.visible = p.alive && !(p.id === myId && this.third); // 3인칭에서 내 % 는 화면 아래에 (머리 위와 둘 다 있으면 겹침)
       this.updateHuntMarks(g, p, myId);
+      this.updateSkillIcon(g, p, myId);
       if (p.char === 'berserker' || g.userData.whirlFx || g.userData.dizzyStars) this.updateWhirlFx(g, p, s, dt);
     }
     for (const [id, g] of this.playerMeshes) {

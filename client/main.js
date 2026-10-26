@@ -168,6 +168,7 @@ input.onUi = (id, down) => {
 const keyText = (id) => keyLabel(input.binds[id]);
 const pieceKeysText = () => `${groupLabel(input.binds, ['pieceUp', 'pieceDown', 'pieceLeft', 'pieceRight'])} 이동 · ${groupLabel(input.binds, ['rotL', 'rotR'])} 회전 · ${keyText('drop')} 낙하`;
 function refreshKeyLabels() {
+  renderer.skillKey = keyText('skill'); // 상대 머리 위 F 아이콘 글자도 내 키 설정 따라
   for (const el of document.querySelectorAll('[data-key]')) el.textContent = keyText(el.dataset.key);
   for (const el of document.querySelectorAll('[data-keys]')) el.textContent = groupLabel(input.binds, el.dataset.keys.split(','));
 }
