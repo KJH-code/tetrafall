@@ -2642,3 +2642,26 @@ test('봇 지능: 바드는 취약이 걸린 상대에게 다가가 메탈로 �
   assert.equal(b.form, 'bard', '치유');
   assert.equal(b.damage, 95 - C.BARD_HEAL);
 });
+
+test('봇 캐릭터 F 복귀 (2026-10-26): 필드 밖으로 떨어질 참이면 (넉백 예측) 내려오기 시작할 때 바로 F — 옆으로 가는 F 는 높이와 상관없이, 위로 뜨는 F 는 바닥 높이 근처에서, 바드·사냥꾼은 필드 높이 아래에서', () => {
+  const tryAt = (c, z, x = -0.6) => {
+    const { g, b, brain } = botVs(c, 'builder');
+    place(g.players.get(1), 8, 8);
+    Object.assign(b, { x, y: 5, z, vz: -1, grounded: false, kbx: 0, kby: 0, stunUntil: 0, airDashes: 0, airJumps: 0 });
+    const before = b.skillReadyAt;
+    return brain.charRecover(g, b) && b.skillReadyAt > before;
+  };
+  assert.equal(tryAt('ninja', 2), true, '닌자: 높이 2 에서도 순간 베기');
+  assert.equal(tryAt('berserker', 2), true, '광전사 도약');
+  assert.equal(tryAt('cannon', 2), false, '대포수: 아직 높으면 안 씀');
+  assert.equal(tryAt('cannon', 0.2), true, '대포수: 바닥 높이 근처');
+  assert.equal(tryAt('hunter', 2), false, '사냥꾼: 필드 높이 위면 안 씀');
+  assert.equal(tryAt('hunter', -0.5), true);
+  // 필드 안이고 넉백도 없으면 안 씀
+  const { g, b, brain } = botVs('ninja', 'builder');
+  Object.assign(b, { x: 5, y: 5, z: 2, vz: -1, grounded: false, kbx: 0, kby: 0 });
+  assert.equal(brain.charRecover(g, b), false);
+  // 필드 안이지만 큰 넉백으로 밖에 떨어질 참이면 씀
+  Object.assign(b, { x: g.W - 1, kbx: 12 });
+  assert.equal(brain.charRecover(g, b), true, '넉백 예측');
+});

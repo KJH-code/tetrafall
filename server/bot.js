@@ -220,24 +220,8 @@ export class BotBrain {
       return;
     }
 
-    // 0.5) 복귀 (바드): 음유시인이면 공중 평타로 천천히 낙하하며 안쪽으로, 메탈이면 F 로 음유시인이 된 뒤
-    if (p.char === 'bard' && !p.grounded && p.vz < 0 && p.z < -0.3 && g.time >= p.stunUntil) {
-      this.moveTo(g, p, { x: W / 2, y: D / 2 });
-      g.handleInput(p.id, this.input);
-      if (p.form !== 'metal' && !p.glideUntil) g.handleAction(p.id, { name: 'push' });
-      else if (p.form === 'metal' && g.time >= p.skillReadyAt) g.handleAction(p.id, { name: 'skill' });
-      return;
-    }
-
-    // 0.5) 복귀: 필드 밖으로 떨어지는 중이면 공중 F 를 쓰고 안쪽으로 (건축가 발판 + 부스트, 닌자 순간 베기 → 막히면 벽 차기,
-    // 갈고리는 안쪽 방향에 걸 블록이 있을 때만)
-    const toCenter = Math.atan2(D / 2 - p.y, W / 2 - p.x);
-    if ((p.char === 'builder' || p.char === 'ninja' || p.char === 'hunter' || p.char === 'cannon' || p.char === 'berserker' || (p.char === 'hook' && g.hookRayBlock(p, toCenter, 0))) && !p.grounded && p.vz < 0 && p.z < -0.3 && g.time >= p.skillReadyAt && g.time >= p.stunUntil) {
-      this.moveTo(g, p, { x: W / 2, y: D / 2 });
-      g.handleInput(p.id, this.input);
-      g.handleAction(p.id, { name: 'skill' });
-      return;
-    }
+    // 0.5) 캐릭터 F 복귀: 필드 밖으로 떨어질 참이면 (fallingOff, 넉백 예측 포함) 내려오기 시작할 때 돌아갈 자리 쪽으로 F (못 쓰면 0.6 공용 복귀)
+    if (this.charRecover(g, p)) return;
 
     // 0.6) 공용 복귀: 필드 밖으로 날아가는 중이면 안쪽으로 (공중 대시로 넉백을 끊고, 2단 점프로 버팀)
     if (this.recover(g, p)) return;
@@ -929,6 +913,35 @@ export class BotBrain {
     const out = -(p.kbx * dx + p.kby * dy) / d; // 밖으로 향하는 넉백 속도
     if (p.airDashes > 0 && g.time >= p.dashReadyAt && out > C.BOT_RECOVER_DASH_OUT) g.handleAction(p.id, { name: 'dash' });
     else if (p.airJumps > 0 && p.vz < C.BOT_AIR_JUMP_VZ) g.handleAction(p.id, { name: 'jump' });
+    return true;
+  }
+
+  // 캐릭터 F 복귀 (2026-10-26: p.z < -0.3 뒤에만 써서 늦었음 → fallingOff 로 일찍, recoverPoint 쪽으로). 썼으면 true
+  // 옆으로 가는 F (닌자 순간 베기·광전사 도약·사냥꾼 도약·탱크 돌진) 는 내려오기 시작하면 바로, 위로 뜨는 F (대포수 발밑 포격·건축가 발판) 는 바닥 높이 근처에서,
+  // 갈고리는 그쪽에 걸 블록이 있을 때, 바드는 음유면 천천히 낙하 (메탈이면 F 로 음유가 된 뒤). 바드·사냥꾼은 필드 높이 아래에서만
+  charRecover(g, p) {
+    if (!p.char || p.vz > 0 || g.time < p.stunUntil || !this.fallingOff(g, p)) return false;
+    const to = this.recoverPoint(p);
+    const yaw = Math.atan2(to.y - p.y, to.x - p.x);
+    const ready = g.time >= p.skillReadyAt;
+    // 바드 천천히 낙하·사냥꾼 도약은 일찍 쓰면 손해 (봇 504판: 낙사가 늘었음) → 예전처럼 필드 높이 아래로 떨어진 뒤에
+    if ((p.char === 'bard' || p.char === 'hunter') && p.z >= -0.3) return false;
+    let act = null;
+    if (p.char === 'bard') {
+      if (p.form !== 'metal') act = !p.glideUntil && p.glideCount < C.BARD_GLIDE_MAX_PER_AIR ? 'push' : null;
+      else if (ready) act = 'skill';
+    } else if (!ready) return false;
+    else if (p.char === 'ninja' || p.char === 'berserker' || p.char === 'tank') act = 'skill';
+    else if (p.char === 'hunter') act = g.players.size && [...g.players.values()].some((o) => o !== p && g.markOf(p, o) > 0 && Math.hypot(o.x - p.x, o.y - p.y) <= C.HUNTER_LEAP_RANGE) ? null : 'skill'; // 표식 대상이 있으면 그쪽으로 뛰어서 안 씀
+    else if (p.char === 'hook') act = g.hookRayBlock(p, yaw, 0) ? 'skill' : null;
+    else if (p.char === 'cannon' || p.char === 'builder') act = p.z < 0.5 ? 'skill' : null;
+    if (!act) return false;
+    this.input.yaw = yaw;
+    this.input.pitch = 0;
+    this.input.fwd = 1;
+    this.input.strafe = 0;
+    g.handleInput(p.id, this.input);
+    g.handleAction(p.id, { name: act });
     return true;
   }
 
