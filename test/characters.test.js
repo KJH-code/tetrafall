@@ -1760,6 +1760,15 @@ test('봇 대포수: 탄이 있으면 거리를 두고 조준해 포탄을 쏨, 
   place(t, b.x + 5, b.y);
   assert.equal(g.bots.get(b.id).useSkills(g, b, t, [t], []), true);
   assert.equal(b.ult, 0, 'R');
+  // 조준 오차: 쏠 때마다 좌우·위아래 각각 ±BOT_SHELL_AIM_ERROR_RAD 안 무작위 (사람처럼 빗나감)
+  const brain = g.bots.get(b.id);
+  brain.rng = () => 1;
+  brain.rollShellErr();
+  assert.ok(Math.abs(brain.shellErr.yaw - C.BOT_SHELL_AIM_ERROR_RAD) < 1e-9);
+  brain.rng = () => 0;
+  brain.rollShellErr();
+  assert.ok(Math.abs(brain.shellErr.pitch + C.BOT_SHELL_AIM_ERROR_RAD) < 1e-9);
+  assert.ok(C.BOT_SHELL_AIM_ERROR_RAD > 0);
 });
 
 test('광전사 분노: 주는 넉백 × (1 + 자기 피해 % × 계수), 상한 없음. 고정 넉백 중간 타(가로 베기)는 그대로. 다른 캐릭터는 분노 없음', () => {

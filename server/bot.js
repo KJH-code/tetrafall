@@ -251,6 +251,12 @@ export class BotBrain {
     return best;
   }
 
+  // 대포수 조준 오차 (좌우·위아래 각각 ±BOT_SHELL_AIM_ERROR_RAD)
+  rollShellErr() {
+    const e = this.k('SHELL_AIM_ERROR_RAD');
+    this.shellErr = { yaw: (this.rng() * 2 - 1) * e, pitch: (this.rng() * 2 - 1) * e };
+  }
+
   // 다음 평타 타의 사거리
   basicRange(p, g) {
     const set = C.BASIC_ATTACKS[p.char];
@@ -297,14 +303,16 @@ export class BotBrain {
     // 대포수: 탄이 있으면 거리를 두고 상대 가슴을 조준해 쏨, 너무 붙으면 (가장자리가 아니면) 물러남
     if (p.char === 'cannon' && p.cannonAmmo > 0 && dist <= C.CANNON_SHELL_RANGE * 0.7) {
       const dz = t.z + C.PLAYER_HEIGHT * 0.5 - (p.z + C.EYE_HEIGHT - 0.2);
-      this.input.yaw = Math.atan2(t.y - p.y, t.x - p.x);
-      this.input.pitch = Math.atan2(dz, dist);
+      const err = this.shellErr || { yaw: 0, pitch: 0 }; // 쏠 때마다 새 조준 오차 (사람처럼 빗나감)
+      this.input.yaw = Math.atan2(t.y - p.y, t.x - p.x) + err.yaw;
+      this.input.pitch = Math.atan2(dz, dist) + err.pitch;
       this.input.fwd = dist < 2.5 && edgeDist(p.x - toT.x * 1.5, p.y - toT.y * 1.5) > 1 ? -1 : 0;
       this.input.strafe = 0;
       g.handleInput(p.id, this.input);
       if (!p.atk && g.time >= p.pushReadyAt && g.time >= this.nextPushAt) {
         g.handleAction(p.id, { name: 'push' });
         this.nextPushAt = g.time + this.k('PUSH_INTERVAL_MS') * 0.5 * (0.7 + 0.6 * this.rng());
+        this.rollShellErr(); // 다음 발 오차 (이번 발은 준비 동안 지금 오차로 조준)
       }
       return;
     }
@@ -442,7 +450,9 @@ export class BotBrain {
       // R: 앞 직선에 상대가 있으면 대형 포탄 (블록째 뚫음)
       if (ultReady && dist <= C.CANNON_R_RANGE * 0.7 && Math.abs(t.z - p.z) < 2) {
         face();
-        this.input.pitch = Math.atan2(t.z + C.PLAYER_HEIGHT * 0.5 - (p.z + C.EYE_HEIGHT - 0.2), dist);
+        this.rollShellErr();
+        this.input.yaw += this.shellErr.yaw;
+        this.input.pitch = Math.atan2(t.z + C.PLAYER_HEIGHT * 0.5 - (p.z + C.EYE_HEIGHT - 0.2), dist) + this.shellErr.pitch;
         return act('ult');
       }
       // F: 붙은 상대가 공격을 준비하면 발밑 포격으로 띄워 내고 피함
