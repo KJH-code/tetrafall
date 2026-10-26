@@ -1814,7 +1814,7 @@ test('광전사 분노: 주는 넉백 × (1 + 자기 피해 % × 계수), 상한
   };
   assert.ok(swing(0, false) > 0);
   assert.equal(swing(200, false), swing(0, false), '가로 베기는 분노 없음');
-  assert.ok(Math.abs(swing(200, true) / swing(0, true) - 1.6) < 1e-6, '공중 회전 베기는 분노 ×1.6');
+  assert.ok(Math.abs(swing(200, true) / swing(0, true) - (1 + 200 * C.BERSERKER_RAGE_PER_PERCENT)) < 1e-6, '공중 회전 베기는 분노 배율');
 });
 
 test('광전사 평타: 가로 베기 (넓은 사거리) → 내려찍기 (마무리), 공중 회전 베기는 사방', () => {

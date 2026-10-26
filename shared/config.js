@@ -449,7 +449,7 @@ export const CONFIG = {
   // 광전사 (2026-10-26 재혁 확정, docs/characters.md 3.7 — "밀릴수록 세진다". 수치는 초안)
   // 패시브 분노: 광전사가 주는 넉백(수평) × (1 + 자기 피해 % × BERSERKER_RAGE_PER_PERCENT), 상한 없음 (재혁).
   // 고정 넉백인 평타 중간 타(가로 베기)는 빼고 (세지면 2타가 안 닿음) — 마무리·공중 평타·F·R 에
-  BERSERKER_RAGE_PER_PERCENT: 0.003,
+  BERSERKER_RAGE_PER_PERCENT: 0.0025, // 2026-10-26 재혁 다 0.003 → 0.0025 (가·나 뒤에도 45%·소용돌이 필살기 킬 1위)
   // F 광폭 도약: 보는 방향으로 BERSERKER_LEAP_DIST 칸을 BERSERKER_LEAP_MS 동안 뛰고, 땅에 닿으면 착지 충격파 (낭떠러지 밖으로 뛰면 복귀기)
   BERSERKER_LEAP_DIST: 4,
   BERSERKER_LEAP_MS: 500,
