@@ -745,20 +745,34 @@ function dressBerserker(fig, costume, cloth) {
   fig.neck.add(mesh(ringGeo(d.headW * 0.64, d.headW * 0.64, 0.05, 10), iron, 0, 0, browZ));
   fig.neck.add(mesh(new THREE.BoxGeometry(0.02, 0.035, 0.12), iron, d.headW * 0.62, 0, browZ - 0.05)); // 코 가리개
   fig.neck.add(mesh(new THREE.BoxGeometry(d.headW * 1.2, 0.02, 0.03), iron, 0, 0, browZ + d.headW * 0.6));
-  // 뿔: 투구 양옆에서 두 마디로 휘어 오르는데 마디마다 흐물흐물 (figureAnim 이 흔듦)
+  // 뿔: 바이킹 소뿔. 마디 HORN_SEGS 개를 이어 붙인 휜 호 (투구 옆에서 바깥으로 나갔다 위로 C 자로 휨), 끝으로 갈수록 가늘고 뾰족.
+  // 색은 뿌리 상아색 → 끝 짙은 갈색 (마디마다 조금씩), 뿌리에 쇠 고리. 마디마다 관절이라 끝으로 갈수록 처지고 늦게 출렁 (figureAnim)
+  const N = C.FIGURE_HORN_SEGS;
+  const ivory = new THREE.Color(0xf2e8cc);
+  const brown = new THREE.Color(0x4e3018);
   fig.horns = [];
   for (const side of [-1, 1]) {
-    const root = joint(fig.neck, 0, side * d.headW * 0.58, browZ + 0.05);
-    const g1 = new THREE.ConeGeometry(0.06, 0.19, 7);
-    if (side < 0) g1.rotateZ(Math.PI); // 원뿔 끝이 바깥(±y)
-    g1.translate(0, side * 0.095, 0);
-    root.add(mesh(g1, bone));
-    const tip = joint(root, 0, side * 0.17, 0);
-    const g2 = new THREE.ConeGeometry(0.042, 0.17, 7);
-    if (side < 0) g2.rotateZ(Math.PI);
-    g2.translate(0, side * 0.085, 0);
-    tip.add(mesh(g2, bone));
-    fig.horns.push({ root, tip, side });
+    const root = joint(fig.neck, 0, side * d.headW * 0.6, browZ + 0.04);
+    const ring = new THREE.TorusGeometry(0.058, 0.014, 5, 10);
+    ring.rotateX(Math.PI / 2); // 고리 면이 뿔 축(±y)에 수직
+    root.add(mesh(ring, iron, 0, side * 0.012, 0));
+    const segs = [];
+    let parent = root;
+    for (let k = 0; k < N; k++) {
+      const u0 = k / N;
+      const u1 = (k + 1) / N;
+      const r0 = 0.058 * (1 - u0 * 0.9);
+      const r1 = k === N - 1 ? 0.002 : 0.058 * (1 - u1 * 0.9); // 끝 마디는 뾰족
+      const len = C.FIGURE_HORN_LEN / N;
+      const geo = new THREE.CylinderGeometry(r1, r0 * 1.04, len * 1.12, 8); // 조금 길게 → 이음새가 겹쳐 안 보임
+      geo.translate(0, len / 2, 0); // 뿌리가 원점, +y 로 뻗음
+      if (side < 0) geo.rotateZ(Math.PI); // -y 로
+      const j2 = k === 0 ? root : joint(parent, 0, side * len, 0);
+      j2.add(mesh(geo, costume(ivory.clone().lerp(brown, (u0 + u1) / 2).getHex())));
+      segs.push(j2);
+      parent = j2;
+    }
+    fig.horns.push({ segs, side });
   }
   // 분노 (render.js 가 피해 % 로 움직임): 충혈되는 흰자 (따로 재질) · 찌푸리는 굵은 눈썹 · 팔·이마에 솟는 핏줄. 피부(플레이어 색)는 그대로 둠
   const eyeMat = noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff }));
@@ -991,7 +1005,20 @@ export const MOVES = {
     S: { shFwd: R(0.5), shOut: R(0.2), elbow: R(0.05), waistPitch: 0.6, thFwd: [0.7, 1.0], knee: [1.2, 1.5] },
   },
 
+  // 대포수: 탄이 있으면 포탄 (어깨 대포를 겨누듯 몸을 낮추고 → 쾅, 쏜 뒤는 반동 동작 cannonRecoil 이 이어받음), 없으면 대포째 후려치기 (허리를 크게 틀어 어깨 대포로)
+  '포탄': { W: { crouch: 0.35, waistPitch: 0.15, neckPitch: -0.1, shOut: [1.75, 0.6], shFwd: [0.25, 0.9], elbow: [1.7, 1.2] }, S: { crouch: 0.2, waistPitch: -0.2, shOut: [1.75, 0.8], shFwd: [0.25, 0.6], elbow: [1.7, 0.9] } },
+  '후려치기': {
+    W: { waistRoll: 1.0, waistSide: 0.15, crouch: 0.4, shOut: [1.75, 1.0], shFwd: [0.25, -0.4], elbow: [1.7, 0.8] },
+    S: { waistRoll: -0.9, waistPitch: 0.35, waistSide: -0.2, shOut: [1.75, 1.2], shFwd: [0.25, 0.6], elbow: [1.7, 0.4], thFwd: [-0.3, 0.6] },
+  },
+
   // ---- 스킬·필살기 ----
+  // 대포수 반동 (땅): 엉덩방아 — 다리가 앞으로 쭉 뻗으며 엉덩이부터 털썩, 몸은 뒤로 젖히고 왼팔 허우적 (대포는 어깨에 그대로)
+  cannonRecoil: { S: { thFwd: [1.45, 1.35], knee: [0.15, 0.3], waistPitch: -0.55, neckPitch: 0.35, shOut: [1.75, 1.6], shFwd: [0.25, 1.2], elbow: [1.7, 0.4] }, rec: 0.6 },
+  // R 대형 포탄 반동: 더 크게 — 뒤로 벌러덩 (다리가 하늘로)
+  cannonBigRecoil: { S: { thFwd: [2.0, 1.8], knee: [0.1, 0.5], waistPitch: -1.0, neckPitch: 0.5, shOut: [1.75, 2.2], shFwd: [0.25, 1.6], elbow: [1.7, 0.2] }, rec: 0.9 },
+  // F 발밑 포격: 대포를 발밑으로 쾅 쏴서 튀어 오름 — 웅크렸다가 다리를 쫙 펴고 만세
+  cannonJump: { S: { thFwd: [0.2, 0.2], thOut: [0.5, 0.5], knee: [0.1, 0.1], waistPitch: -0.2, neckPitch: -0.3, shOut: [1.75, 2.4], shFwd: [0.25, 0.3], elbow: [1.7, 0.2] }, rec: 0.6, float: true },
   // 사냥꾼 추적 도약: 네 발로 엎드려 웅크렸다가 (leapWarn) → 두 팔을 앞으로 뻗고 다리는 뒤로, 짐승처럼 덮침 (leap)
   hunterLeap: {
     W: { waistPitch: 1.15, shFwd: [1.25, 1.25], shOut: [0.3, 0.3], elbow: [0.2, 0.2], crouch: 1, neckPitch: -0.95 },
@@ -1210,6 +1237,11 @@ export function figureAnim(fig, st, dt, retry = false) {
     T.shOut[0] = 0.55;
     T.elbow[0] = 1.95;
   }
+  if (fig.cannon) {
+    // 쏜 순간 대포가 어깨 위에서 뒤로 툭 밀렸다 돌아옴
+    const k = fig.cannonKickAt ? Math.max(0, 1 - (performance.now() - fig.cannonKickAt) / (C.CANNON_KICK_MS || 1)) : 0;
+    fig.cannon.position.x = (fig.cannonBaseX ??= fig.cannon.position.x) - C.CANNON_KICK * k * k;
+  }
   if (fig.cannon && !st.stunned && st.emote < 0) {
     // 대포를 어깨에 멘 자세: 오른손은 어깨 위 대포를 받치고, 왼손은 허리에 척 (걸으면 왼팔만 흔들림)
     T.shFwd[0] = 0.25;
@@ -1367,13 +1399,18 @@ export function figureAnim(fig, st, dt, retry = false) {
     fig.rage.anger.visible = k > 0.5;
     fig.rage.anger.scale.setScalar(0.8 + 0.5 * Math.max(0, Math.sin(t * 9)));
   }
-  // 광전사 뿔: 위로 휘었다가 축 처지며 흐물흐물 (움직이거나 맞으면 더 크게 출렁, 끝 마디는 한 박자 늦게)
+  // 광전사 뿔: 마디마다 위로 꺾여 C 자 (뿌리는 바깥으로, 끝은 위로). 끝 마디로 갈수록 축 처지고 늦게 크게 출렁 (가만히 있어도 끝이 처짐)
   if (fig.horns) {
+    const n = C.FIGURE_HORN_SEGS;
     const wob = C.FIGURE_HORN_WOBBLE * (0.4 + sp * 1.2);
     for (const h of fig.horns) {
-      const a = Math.sin(t * 7 + h.side) * wob;
-      h.root.rotation.x = h.side * (0.75 + a); // 바깥에서 위로 휨 (흔들림)
-      h.tip.rotation.x = -h.side * (C.FIGURE_HORN_DROOP + Math.sin(t * 7 - 1.2 + h.side) * wob * 1.6); // 끝은 축 처짐
+      h.segs.forEach((j, k) => {
+        const u = k / (n - 1); // 0 뿌리 ~ 1 끝
+        const curl = k === 0 ? 0.15 : C.FIGURE_HORN_CURL / (n - 1); // 마디마다 위로 꺾임 → 다 합쳐 C 자
+        const droop = C.FIGURE_HORN_DROOP * u * u; // 끝일수록 처짐
+        const sway = Math.sin(t * 6.5 - k * 0.55 + h.side) * wob * u; // 끝일수록 늦게·크게
+        j.rotation.x = h.side * (curl - droop / (n - 1) * 2 + sway);
+      });
     }
   }
 }
