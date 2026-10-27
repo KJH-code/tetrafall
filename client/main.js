@@ -826,8 +826,7 @@ function feelEvent(e) {
         if (e.who === myId) fx.shake(0.35, 450);
         else if (d !== undefined && d < 4) fx.shake(0.1, 200);
       } else if (e.cause === 'lava') {
-        fx.burst(pos, null, 0xffa020, 18, 4, 0.1, 0.6);
-        sound.play('lavaDeath', { dist: d });
+        sound.play('lavaDeath', { dist: d }); // 튀김·잠김은 renderer.hazard (테마마다 모습)
       } else if (e.cause === 'fall') {
         sound.play('fall', { dist: d });
       }

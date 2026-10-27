@@ -1,7 +1,7 @@
 // 맵 테마 (TABS 식 저폴리 자연, 모습만 — 규칙·지형 칸은 그대로). 맵 id → 테마는 config WORLD_MAP_THEME, 테마 값은 WORLD_THEMES.
 // 표에 없는 맵(과 대기실)은 예전 노을 그대로. 테마가 있으면:
 // 하늘·안개·조명 색(밤이면 별·달) / 바닥(2칸 체크 + 얇은 칸 선) / 지형 블록 재질(윗면·옆면, 빛나는 금·수정) / 필드 아래 떠 있는 섬(절벽 + 바위 뿌리) /
-// 먼 배경 3층(가까운 작은 섬·구름 바다·먼 산) / 떠다니는 빛(반딧불·불씨·금가루) / 위험(용암 자리) 모습 (물·독늪·에너지·번개 구름·용암).
+// 먼 배경 3층(가까운 작은 섬·구름 바다·먼 산) / 떠다니는 빛(반딧불·불씨·금가루). 위험(용암 자리) 모습은 hazard.js (테마의 hazard 값).
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
@@ -751,77 +751,6 @@ function farShapes(P, look, r, cx, cy, n) {
   }
 }
 
-// 위험 표면 셰이더 (용암 자리). style: water 물결·물마루 · swamp 독늪 거품 방울 · energy 빛 띠 · storm 번개 구름.
-// 공통: 필드 가장자리를 따라 출렁이는 밝은 테 (위험 높이가 바로 읽히게)
-const HAZARD_STYLE = { water: 0, swamp: 1, energy: 2, storm: 3 };
-function hazardMaterial(h) {
-  return noOutline(new THREE.ShaderMaterial({
-    defines: { STYLE: HAZARD_STYLE[h.style] ?? 0 },
-    uniforms: {
-      time: { value: 0 },
-      deep: { value: new THREE.Color(h.deep) },
-      mid: { value: new THREE.Color(h.mid) },
-      foam: { value: new THREE.Color(h.foam) },
-      rect: { value: new THREE.Vector4(5, 5, 5, 5) }, // 필드 가운데 x, y, 반폭, 반깊이 (layout)
-    },
-    vertexShader: `uniform float time; varying vec2 vW;
-      void main() {
-        vec4 w = modelMatrix * vec4(position, 1.0);
-        vW = w.xy;
-        vec3 p = position;
-        p.z += sin(w.x * 1.1 + time * 1.3) * 0.05 + sin(w.y * 1.4 - time * 1.1) * 0.04;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
-      }`,
-    fragmentShader: `uniform float time; uniform vec3 deep; uniform vec3 mid; uniform vec3 foam; uniform vec4 rect; varying vec2 vW;
-      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-      void main() {
-        vec2 q = vW;
-        float t = time;
-        float n = sin(q.x * 0.9 + t * 0.8) + sin(q.y * 1.2 - t * 0.7) + sin((q.x + q.y) * 0.6 + t * 0.5) + sin(length(q - rect.xy) * 1.3 - t * 1.2);
-        vec3 c = mix(deep, mid, smoothstep(-3.0, 2.5, n));
-      #if STYLE == 0
-        float l = abs(fract(q.x * 0.33 + sin(q.y * 0.5 + t * 0.6) * 0.45 + t * 0.12) - 0.5);
-        c = mix(c, foam, (1.0 - smoothstep(0.0, 0.035, l)) * 0.4);
-        c = mix(c, foam, smoothstep(2.6, 3.0, n) * 0.8);
-      #elif STYLE == 1
-        // 독늪: 칸마다 부풀었다 터지는 거품 방울 고리 + 짙은 찌꺼기 얼룩
-        c = mix(c, deep * 0.7, smoothstep(0.5, 1.8, sin(q.x * 0.5 - t * 0.2) + sin(q.y * 0.6 + t * 0.15)) * 0.5);
-        vec2 cell = floor(q * 0.9);
-        vec2 f = fract(q * 0.9) - 0.5;
-        float rnd = hash(cell);
-        vec2 ctr = vec2(hash(cell + 3.1), hash(cell + 7.7)) - 0.5;
-        float life = fract(t * (0.25 + rnd * 0.35) + rnd);
-        float rad = life * 0.32;
-        float ring = 1.0 - smoothstep(0.0, 0.04, abs(length(f - ctr * 0.5) - rad));
-        c = mix(c, foam, ring * (1.0 - life) * step(0.35, rnd));
-      #elif STYLE == 2
-        // 에너지: 가운데에서 퍼져 나가는 빛 띠 + 반짝임
-        float d0 = length(q - rect.xy);
-        float band = pow(0.5 + 0.5 * sin(d0 * 1.6 - t * 2.4 + n * 0.4), 6.0);
-        c = mix(c, foam, band * 0.7);
-        float sp = step(0.985, hash(floor(q * 4.0) + floor(t * 6.0)));
-        c = mix(c, vec3(1.0), sp * 0.8);
-      #else
-        // 번개 구름: 소용돌이 구름 + 가끔 번쩍이는 갈래 번개
-        vec2 rel = q - rect.xy;
-        float ang = atan(rel.y, rel.x);
-        float sw = sin(ang * 3.0 + length(rel) * 0.5 - t * 0.6) + sin(ang * 5.0 - length(rel) * 0.3 + t * 0.4);
-        c = mix(deep, mid, smoothstep(-2.0, 2.0, sw + n * 0.5));
-        float flash = pow(max(0.0, sin(t * 1.7) * sin(t * 2.9 + 1.3)), 10.0);
-        float zig = abs(sin(q.x * 0.8 + sin(q.y * 2.3 + floor(t * 3.0)) * 1.4));
-        c = mix(c, foam, (1.0 - smoothstep(0.0, 0.06, zig)) * (0.25 + flash * 0.75));
-        c += foam * flash * 0.25;
-      #endif
-        vec2 dd = abs(q - rect.xy) - rect.zw;
-        float dist = length(max(dd, 0.0)) + min(max(dd.x, dd.y), 0.0);
-        float edge = 0.45 + 0.18 * sin(t * 2.2 + q.x * 1.9 + q.y * 1.6);
-        c = mix(c, foam, (1.0 - smoothstep(edge * 0.6, edge, abs(dist))) * 0.95);
-        gl_FragColor = vec4(c, 1.0);
-        #include <colorspace_fragment>
-      }`,
-  }));
-}
-
 // 아래 구름 바다: 넓은 원판, 끝으로 갈수록 투명해져 하늘에 녹아듦 (판 끝이 지평선에 곡선으로 보이지 않게)
 function seaMaterial(color, inner, outer) {
   return noOutline(new THREE.ShaderMaterial({
@@ -869,9 +798,6 @@ export class World {
       floor: r.floor.material,
       terrain: r.blockMeshes.terrain.material,
       terrainGeo: r.blockMeshes.terrain.geometry,
-      lavaTop: r.lavaTop.material,
-      lavaBody: r.lava.material.color.clone(),
-      lavaLight: r.lavaLight.color.clone(),
       edges: r.edges.material.opacity,
     };
     this.group = new THREE.Group(); // 섬 + 장식 (판 크기·테마가 바뀌면 다시 만듦)
@@ -880,11 +806,6 @@ export class World {
     r.scene.add(this.group);
     this.mats = [];
     this.motes = null; // 떠다니는 빛 { points, base, speed, rise }
-  }
-
-  // 위험(용암 자리) 모습: 테마가 있으면 그 값, 없으면 null (render.js 가 예전 용암 색). 용암 테마는 빛·입자만
-  get hazard() {
-    return this.look ? this.look.hazard : null;
   }
 
   // 매 프레임: 맵이 바뀌면 테마를 갈아 끼우고, 먼 섬·구름을 천천히 돌리고, 떠다니는 빛을 움직임
@@ -948,9 +869,6 @@ export class World {
       r.floor.material = b.floor;
       r.blockMeshes.terrain.material = b.terrain;
       r.blockMeshes.terrain.geometry = b.terrainGeo;
-      r.lavaTop.material = b.lavaTop;
-      r.lava.material.color.copy(b.lavaBody);
-      r.lavaLight.color.copy(b.lavaLight);
       r.edges.material.opacity = b.edges;
       r.terrainColor = null;
     } else {
@@ -986,19 +904,10 @@ export class World {
       const rim = toon({ color: L.floor.rim });
       r.floor.material = [rim, rim, rim, rim, floorTop, rim];
       this.floorTop = floorTop;
-      const h = L.hazard;
-      if (h.style === 'lava') {
-        r.lavaTop.material = b.lavaTop; // 예전 용암 그대로 (빛·입자 색만 테마)
-        r.lava.material.color.copy(b.lavaBody);
-      } else {
-        r.lavaTop.material = hazardMaterial(h);
-        r.lava.material.color.set(h.deep);
-        this.mats.push(r.lavaTop.material);
-      }
-      r.lavaLight.color.set(h.light[0]);
       r.edges.material.opacity = L.edgeOpacity;
       this.mats.push(side, top, bottom, floorTop, rim);
     }
+    r.hazard.setLook(L ? L.hazard : null); // 상승하는 위험 모습 (hazard.js)
     r.gridVersion = -1; // 지형 블록 색 다시
     r.setField(r.W, r.D, true, r.H); // 해 위치·섬 크기
   }
@@ -1128,7 +1037,6 @@ export class World {
     const cy = d / 2;
     this.floorTop.map.repeat.set(w / 2, d / 2);
     this.floorTop.emissiveMap?.repeat.set(w / 2, d / 2);
-    if (r.lavaTop.material.uniforms.rect) r.lavaTop.material.uniforms.rect.value.set(cx, cy, w / 2, d / 2);
     const rand = rng(L.seed);
     const k = this.low ? C.WORLD_LOW_DETAIL : 1;
     // 필드 아래 섬 (윗면은 바닥 판 바로 아래)

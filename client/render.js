@@ -18,6 +18,7 @@ import('/ragdoll.js')
   .then((m) => (RagdollWorld = m.RagdollWorld))
   .catch((e) => console.warn('래그돌 끔: cannon-es 를 못 불러옴 (npm install 필요)', e));
 import { World } from '/world.js';
+import { Hazard } from '/hazard.js';
 
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
@@ -86,28 +87,6 @@ function cellColor(v) {
   const shape = SHAPE_NAMES[v - CELL.SHAPE_BASE];
   if (shape) return new THREE.Color(C.SHAPE_COLORS[shape]).multiplyScalar(C.BLOCK_LANDED_SHADE).getHex();
   return C.TERRAIN_COLOR;
-}
-
-// 용암 표면: 꼭짓점을 천천히 출렁이고, 겹친 사인 무늬로 어두운 빨강 ~ 밝은 노랑이 흐름 (빛 계산 없이 스스로 빛남)
-function lavaSurfaceMaterial() {
-  return noOutline(new THREE.ShaderMaterial({
-    uniforms: { time: { value: 0 } },
-    vertexShader: `uniform float time; varying vec2 vXY;
-      void main() {
-        vec3 p = position;
-        p.z += sin(p.x * 1.3 + time * 1.1) * 0.06 + sin(p.y * 1.7 - time * 0.9) * 0.05;
-        vXY = p.xy;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
-      }`,
-    fragmentShader: `uniform float time; varying vec2 vXY;
-      void main() {
-        float n = sin(vXY.x * 0.9 + time * 0.5) + sin(vXY.y * 1.1 - time * 0.4) + sin((vXY.x + vXY.y) * 0.7 + time * 0.3) + sin(length(vXY) * 1.6 - time * 0.8);
-        float b = smoothstep(0.6, 2.4, n);
-        vec3 c = mix(vec3(0.55, 0.08, 0.02), vec3(1.0, 0.38, 0.05), smoothstep(-1.5, 1.2, n));
-        c = mix(c, vec3(1.0, 0.85, 0.35), b);
-        gl_FragColor = vec4(c, 1.0);
-      }`,
-  }));
 }
 
 // 노을 하늘: 안쪽을 그리는 큰 구. 높이에 따라 위·가운데·지평선 색을 섞고, 해 쪽은 밝게 + 해 원반
@@ -296,22 +275,9 @@ export class Renderer {
     this.dangerRing.visible = false;
     this.scene.add(this.dangerRing);
 
-    // 용암: 필드보다 넓은 판. 표면 높이 = state.lava.z
-    this.lavaBottom = -6;
-    this.lava = new THREE.Mesh(
-      new THREE.BoxGeometry(1, 1, 1), // 판 + 여백 6칸씩 (setField 가 늘임)
-      noOutline(new THREE.MeshBasicMaterial({ color: 0x9a2408 })),
-    );
-    this.lava.visible = false;
-    this.scene.add(this.lava);
-    // 표면: 천천히 출렁이고 밝은 무늬가 흐르는 판 (몸통 위에 얹음)
-    this.lavaTop = new THREE.Mesh(new THREE.PlaneGeometry(1, 1, 48, 48), lavaSurfaceMaterial());
-    this.lavaTop.visible = false;
-    this.scene.add(this.lavaTop);
-    // 용암 빛: 가까운 블록 옆면을 주황으로 비춤 (늘 씬에 두고 세기만 바꿈 — 빛 개수가 바뀌면 셰이더를 다시 만듦)
-    this.lavaLight = new THREE.PointLight(0xff6a20, 0, C.LAVA_LIGHT_RANGE, 1.4);
-    this.scene.add(this.lavaLight);
-    this.emberAcc = 0;
+    // 상승하는 위험 (용암 자리): 표면·몸통·빛·입자·화면 경고 (hazard.js). 표면 높이 = state.lava.z
+    this.hazard = new Hazard(this);
+    this.onHazardRise = null; // 소리 훅: ({ kind: 'start'|'step', z, style }) => …
     this.setField(C.GRID_W, C.GRID_D, true);
     // 맵 테마 (하늘·바닥·섬·먼 배경·위험 모습). 맵 id 로 고름, 표에 없는 맵은 위의 예전 모습 그대로
     this.world = new World(this);
@@ -484,8 +450,7 @@ export class Renderer {
     if (this.world) this.world.layout(); // 테마 섬·장식을 판 크기에 맞춰 (격자선도 테마면 숨김)
     this.edges.scale.set(w, d, this.H);
     this.edges.position.set(cx, cy, this.H / 2);
-    this.lava.scale.set(w + 12, d + 12, 1);
-    this.lavaTop.scale.set(w + 12, d + 12, 1);
+    this.hazard?.layout();
     this.dome.position.set(cx, cy, 0);
     const center = new THREE.Vector3(cx, cy, 0);
     this.sun.position.copy(center).addScaledVector(new THREE.Vector3(...this.sunDir).normalize(), 30);
@@ -655,6 +620,7 @@ export class Renderer {
     this.renderer.setPixelRatio(on ? 1 : Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.world.setLow(on);
+    this.hazard.setLow(on);
   }
 
   // 외곽선 켜기·끄기 (설정). 켜면 OutlineEffect 가 장면을 한 번 더 (뒤집힌 테두리로) 그린다
@@ -665,6 +631,7 @@ export class Renderer {
   draw(camera) {
     if (this.outlineOn) this.outline.render(this.scene, camera);
     else this.renderer.render(this.scene, camera);
+    this.hazard.drawOverlay(this.renderer); // 위험이 발 밑에 가까우면 화면 가장자리 색
   }
 
   // 그림자 켜기·끄기 (대기 화면 설정). 꺼지면 그림자 패스 자체를 안 돌아 느린 PC 에서 가벼움
@@ -3165,31 +3132,8 @@ export class Renderer {
       }
     }
 
-    // 용암
-    const lava = state.lava;
-    this.lava.visible = !!(lava && lava.active);
-    this.lavaTop.visible = this.lava.visible;
-    if (this.lava.visible) {
-      const h = Math.max(0.01, lava.z - this.lavaBottom - 0.15); // 표면 출렁임(±0.1)보다 아래 — 몸통 윗면이 물결 골로 비치지 않게
-      this.lava.scale.z = h;
-      this.lava.position.set(this.W / 2, this.D / 2, this.lavaBottom + h / 2);
-      this.lavaTop.position.set(this.W / 2, this.D / 2, lava.z);
-      const now = performance.now() / 1000;
-      this.lavaTop.material.uniforms.time.value = now;
-      // 빛은 살짝 일렁임
-      const hz = this.world.hazard; // 맵 테마의 위험 모습 (없으면 예전 용암)
-      this.lavaLight.intensity = C.LAVA_LIGHT_INTENSITY * (hz ? hz.light[1] : 1) * (0.85 + 0.15 * Math.sin(now * 7) * Math.sin(now * 2.3));
-      this.lavaLight.position.set(this.W / 2, this.D / 2, lava.z + 1.2);
-      // 불똥: 표면 아무 데서나 튀어 오름
-      this.emberAcc += dt * C.LAVA_EMBER_RATE * (this.lowGfx ? C.WORLD_LOW_DETAIL : 1);
-      const sparks = hz ? hz.particles : [0xffb030, 0xff5010];
-      for (; this.emberAcc >= 1; this.emberAcc--) {
-        const pos = { x: -1 + Math.random() * (this.W + 2), y: -1 + Math.random() * (this.D + 2), z: lava.z + 0.05 };
-        this.effects.burst(pos, null, sparks[Math.random() < 0.5 ? 0 : 1], 1, 4, 0.06, 0.8);
-      }
-    } else {
-      this.lavaLight.intensity = 0;
-    }
+    // 상승하는 위험 (용암 자리)
+    this.hazard.update(state, dt, myId, state.grid);
 
     // 아이템
     while (this.itemMeshes.length < state.items.length) {
