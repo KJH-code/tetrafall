@@ -1435,6 +1435,7 @@ function onState() {
     const ws = (state.round.winnerIds || []).map(playerById).filter(Boolean); // 승자가 여럿일 수 있음 (블록 마스터 생존자, 킬 점수전 동점)
     const star = wt ? state.players.find((x) => x.team === wt && x.alive) || state.players.find((x) => x.team === wt) : ws.find((x) => x.alive) || ws[0];
     if (star) victory = { id: star.id, until: performance.now() + C.WIN_BANNER_MS };
+    overAt = performance.now(); // 결과 연출 시작 (RESULTS_HERO_MS 동안 대기실 판 대신 결과만)
     const wasMaster = lastState.players.find((x) => x.master && !x.zombie);
     if (wt) showBig(`${TEAM_KO[wt]}팀 승리!`, hex(TEAM_MAIN[wt]), C.WIN_BANNER_MS, true);
     else if (ws.length > 1) showBig(state.mode === 'master' ? '생존자 승리!' : '공동 승리!', '#ffe14a', C.WIN_BANNER_MS, true);
@@ -1513,8 +1514,15 @@ const playerCards = new Map(); // id → { el, sub, pct } (초상·이름은 다
 const shownPct = new Map(); // id → 지난 프레임 피해 % (올라갈 때만 흔듦)
 let playersKey = '';
 const livePlayers = () => state.players.filter((p) => !p.spectator && !p.dummy).sort((a, b) => a.slot - b.slot);
+let overAt = -Infinity; // 이 브라우저에서 판이 끝난 시각 (판 끝에 들어온 사람은 결과 연출 없이 바로 대기실 판)
+// 판 끝 결과 연출 중인가: 끝나고 RESULTS_HERO_MS 동안은 가운데 결과만 (대기실 판·위 승수 줄 없이)
+function resultsHero() {
+  return !!state && state.phase === 'over' && !inPractice() && performance.now() - overAt < C.RESULTS_HERO_MS;
+}
+// 아래 플레이어 판: 판 중 + 판 끝 결과 연출 동안 (그 뒤엔 대기실과 같은 모습 — 승수는 위 줄, 승자는 대기실 판 글)
 function cardsOn() {
-  return !!state && !inPractice() && ['countdown', 'playing', 'over'].includes(state.phase) && livePlayers().length >= 2;
+  if (!state || inPractice() || livePlayers().length < 2) return false;
+  return state.phase === 'countdown' || state.phase === 'playing' || resultsHero();
 }
 function updatePlayers() {
   const on = cardsOn();
@@ -1568,11 +1576,11 @@ function updatePlayers() {
   }
 }
 
-// ---------- 판 끝: 승자 초상 + 결과 표 (이미 있는 숫자만) ----------
+// ---------- 판 끝: 승자 초상 + 결과 표 (이미 있는 숫자만). 끝나고 RESULTS_HERO_MS 동안 가운데 크게, 그 뒤 대기실 판 ----------
 const resultsEl = $('results');
 let resultsKey = '';
 function updateResults() {
-  const on = !!state && state.phase === 'over' && !inPractice() && livePlayers().length >= 2;
+  const on = resultsHero() && livePlayers().length >= 2;
   resultsEl.classList.toggle('hidden', !on);
   if (!on) {
     resultsKey = '';
@@ -1604,9 +1612,9 @@ function updateResults() {
     .join('');
   resultsEl.innerHTML =
     `<h4>라운드 ${state.round.n} 결과</h4>` +
-    `<div style="display:flex;gap:12px;align-items:center;margin-bottom:8px">` +
-    (big ? `<div style="width:86px;height:86px;background:rgba(0,0,0,.3) url(${big}) center/cover no-repeat;clip-path:polygon(12px 0,100% 0,calc(100% - 12px) 100%,0 100%);border-bottom:4px solid ${star ? colorOf(star) : '#888'};box-sizing:border-box"></div>` : '') +
-    `<div class="big" style="font-size:22px;color:${star ? colorOf(star) : 'var(--accent)'}">${escapeHtml(head)}</div></div>` +
+    `<div class="who">` +
+    (big ? `<div class="star" style="background-image:url(${big});border-bottom-color:${star ? colorOf(star) : '#888'}"></div>` : '') +
+    `<div class="head" style="color:${star ? colorOf(star) : 'var(--accent)'}">${escapeHtml(head)}</div></div>` +
     `<table><tr><th>이름</th><th>캐릭터</th><th>${kills ? '킬' : '승'}</th><th>피해</th><th>결과</th></tr>${rows}</table>`;
 }
 
@@ -1695,8 +1703,9 @@ function updateHud() {
     center = '화면을 클릭하면 조작 시작';
     showKeys = true;
   }
-  if (state.phase === 'over' && performance.now() < bigUntil) center = null; // "P2 승리!" 가 떠 있는 동안은 안내판을 감춤
+  if (state.phase === 'over' && (performance.now() < bigUntil || resultsHero())) center = null; // 승리 큰 글씨·결과 연출 동안은 대기실 판을 감춤 (그 뒤 미끄러져 들어옴)
   centerEl.classList.toggle('hidden', center === null);
+  centerEl.classList.toggle('slim', state.phase !== 'lobby' && state.phase !== 'over'); // 판 중 '화면을 클릭하면…' 은 작은 띠로 (몸을 덜 가림)
   centerText.textContent = center || '';
   startBtn.classList.toggle('hidden', !showStart);
   startBtn.textContent = state.phase === 'over' ? '재시작 (Enter)' : '시작 (Enter)';
