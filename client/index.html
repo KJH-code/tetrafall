@@ -90,6 +90,13 @@
     #ammo { align-self: center; width: 16px; height: 16px; border-radius: 50%; border: 3px solid #888; box-sizing: border-box; }
     #ammo.loaded { background: #ffc030; border-color: #fff0a0; box-shadow: 0 0 8px #ffc030; }
     @keyframes glint { 0% { transform: scale(1.18); box-shadow: 0 0 22px #fff; border-color: #fff; } 100% { transform: scale(1); } }
+    /* 색 고르기 (대기실): 동그란 색 칸, 내 색은 흰 테, 남이 쓰는 색은 흐리게 + × (못 고름) */
+    #color-row { margin-top: 6px; font-size: 14px; }
+    #color-row .sw { display: inline-block; width: 20px; height: 20px; border-radius: 50%; border: 2px solid rgba(255,255,255,.25); margin: 0 2px; vertical-align: middle; cursor: pointer; position: relative; box-sizing: border-box; }
+    #color-row .sw.mine { border-color: #fff; box-shadow: 0 0 0 2px #ffe14a; }
+    #color-row .sw.used { opacity: .3; cursor: not-allowed; }
+    #color-row .sw.used::after { content: '×'; position: absolute; inset: 0; line-height: 16px; text-align: center; font-size: 15px; font-weight: 900; color: #000; }
+    #color-row .note { color: #bbb; font-size: 12px; margin-left: 6px; }
     #char-info { font-size: 13px; color: #ddd; margin-top: 4px; white-space: normal; max-width: 560px; margin-left: auto; margin-right: auto; }
     .slot { min-width: 120px; padding: 6px 10px; background: rgba(0,0,0,.6); border: 3px solid rgba(255,255,255,.2); border-radius: 8px; font-size: 16px; text-align: center; white-space: nowrap; }
     .slot.sel { border-color: #fff; background: rgba(60,60,60,.85); }
@@ -266,6 +273,7 @@
         <div style="flex-basis:100%"><span id="room-link"></span></div></div>
       <div id="name-row" class="hidden" style="font-size:15px;margin-top:8px"><label>이름 <input id="name-input" style="font-size:15px;width:9em" placeholder="머리 위에 보임" /></label>
         <label id="char-label" style="margin-left:8px">캐릭터 <select id="char-select" style="font-size:15px"></select></label>
+        <div id="color-row">색 <span id="color-swatches"></span><span class="note hidden" id="color-team-note">팀전은 팀 색</span></div>
         <div id="char-info"></div></div>
       <div id="keys" class="keys hidden">
         <button class="settings-btn" style="font-size:14px;padding:3px 12px;margin:0">설정</button>

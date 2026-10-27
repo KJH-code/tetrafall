@@ -74,7 +74,7 @@ function drawLabel(canvas, name, color, d) {
 // 격자 칸 값 → 쌓인 블록 색
 function cellColor(v) {
   if (v === CELL.BUILD) return C.BUILD_COLOR;
-  if (CELL.GHOST_BASE !== undefined && v >= CELL.GHOST_BASE) return new THREE.Color(PLAYER_COLORS[(v - CELL.GHOST_BASE) % PLAYER_COLORS.length]).multiplyScalar(C.BLOCK_LANDED_SHADE).getHex(); // 유령 투하 블록: 떨어뜨린 사람 slot 색 (나가도 그대로)
+  if (CELL.GHOST_BASE !== undefined && v >= CELL.GHOST_BASE) return new THREE.Color(PLAYER_COLORS[(v - CELL.GHOST_BASE) % PLAYER_COLORS.length]).multiplyScalar(C.BLOCK_LANDED_SHADE).getHex(); // 유령 투하 블록: 떨어뜨린 사람 색 번호 (나가도 그대로)
   if (v === CELL.THROWN) return C.THROWN_COLOR;
   const shape = SHAPE_NAMES[v - CELL.SHAPE_BASE];
   if (shape) return new THREE.Color(C.SHAPE_COLORS[shape]).multiplyScalar(C.BLOCK_LANDED_SHADE).getHex();
@@ -135,17 +135,18 @@ function skyDome() {
   return dome;
 }
 
-export const PLAYER_COLORS = [0xe05050, 0x50c050, 0xb060e0, 0xe0c050, 0xf0f0f0, 0x40d0c0, 0xff80b0, 0x8a5a30];
+export const PLAYER_COLORS = C.PLAYER_PALETTE; // 사람이 고르는 색 (players[].color = 번호)
 // 팀전 몸 색: 팀마다 계열 색, 팀 안에서는 자리 순으로 명암을 달리해 구분
 export const TEAM_COLORS = { red: [0xe04040, 0xff8c50, 0xc02868, 0xff6090], blue: [0x3a6ee8, 0x30c0e8, 0x6a50e0, 0x40d8b0] };
 export const TEAM_MAIN = { red: 0xe04040, blue: 0x3a6ee8 };
+// 몸·이름·킬 로그·이펙트 색은 전부 이것으로: 팀전이면 팀 계열 (팀 안에서 명암), 아니면 고른 색 (예전 서버면 자리 순)
 export function playerColor(p, state) {
   if (state && state.teamMode && TEAM_COLORS[p.team]) {
     const mates = state.players.filter((o) => o.team === p.team).sort((a, b) => a.slot - b.slot);
     const list = TEAM_COLORS[p.team];
     return list[Math.max(0, mates.findIndex((o) => o.id === p.id)) % list.length];
   }
-  return PLAYER_COLORS[p.slot % PLAYER_COLORS.length];
+  return PLAYER_COLORS[(p.color ?? p.slot) % PLAYER_COLORS.length];
 }
 const _q = new THREE.Quaternion();
 const HEAVY_HITS = new Set(['bomb', 'shock', 'projectile', 'slam', 'wall', 'blast', 'bigbomb', 'quake', 'blockslam', 'execute', 'pounce', 'shell', 'bigshell', 'groundshot', 'leapwave', 'spinend']); // 몸이 크게 휘청하는 공격
@@ -550,9 +551,9 @@ export class Renderer {
   }
 
   // 유령 투하 블록 (떨어지는 동안): 떨어뜨린 사람 slot 색, 하얗게 섞여 살짝 비침 + 은은한 빛 (유령 느낌). 그림자는 보통 블록과 같음
-  ghostPieceMat(slot) {
+  ghostPieceMat(color) {
     this.ghostMats ||= {};
-    const k = (slot ?? 0) % PLAYER_COLORS.length;
+    const k = (color ?? 0) % PLAYER_COLORS.length;
     if (!this.ghostMats[k]) {
       const col = new THREE.Color(PLAYER_COLORS[k]);
       this.ghostMats[k] = toon({ color: col.clone().lerp(new THREE.Color(0xffffff), C.GHOST_PIECE_WHITEN).getHex(), emissive: col.clone().multiplyScalar(0.25).getHex(), map: this.tex.tetris, transparent: true, opacity: C.GHOST_PIECE_OPACITY });
@@ -614,7 +615,7 @@ export class Renderer {
   // ghostDrop 이벤트: 유령 블록이 생김 — 그 사람 색 연기가 펑 + 하얀 고리 (하늘에서 생김)
   ghostDropFx(e) {
     const pos = { x: e.x + 0.5, y: e.y + 0.5, z: e.z + 0.5 };
-    const col = PLAYER_COLORS[(e.slot ?? 0) % PLAYER_COLORS.length];
+    const col = PLAYER_COLORS[(e.color ?? e.slot ?? 0) % PLAYER_COLORS.length];
     this.effects.burst(pos, null, col, 14, 2.5, 0.14, 0.6);
     this.effects.burst(pos, null, 0xffffff, 10, 1.6, 0.1, 0.5);
     this.effects.ring(pos, 0xffffff, 1.4, 0.3, true);
@@ -645,7 +646,7 @@ export class Renderer {
       g = null;
     }
     if (!g) {
-      const color = PLAYER_COLORS[p.slot % PLAYER_COLORS.length];
+      const color = playerColor(p, this.curState); // 매 프레임 다시 칠함 (색·팀이 바뀌면 바로)
       const ch = buildCharacter(color, this.models, look === 'robot' ? null : look);
       g = ch.group;
       g.userData.look = look;
@@ -3040,7 +3041,7 @@ export class Renderer {
       const [x, y, z] = piece.cells[i];
       pm.position.set(x + 0.5, y + 0.5, z + 0.5);
       pm.visible = true;
-      pm.material = piece.shape === 'ghost' ? this.ghostPieceMat(piece.ghostSlot) : piece.thrown ? this.thrownMat : piece.controller !== null ? this.controlledMat : piece.sky ? this.skyPieceMat(piece.shape) : this.shapeMat(piece.shape);
+      pm.material = piece.shape === 'ghost' ? this.ghostPieceMat(piece.ghostColor ?? piece.ghostSlot) : piece.thrown ? this.thrownMat : piece.controller !== null ? this.controlledMat : piece.sky ? this.skyPieceMat(piece.shape) : this.shapeMat(piece.shape);
       const mine = piece.phase === 'control' && piece.controller === myId;
       const showShadow = piece.shadowVisible || mine;
       sm.visible = showShadow;

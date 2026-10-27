@@ -188,6 +188,7 @@ export class Game {
     const p = {
       id,
       slot,
+      color: this.freeColor(), // 색 (PLAYER_PALETTE 번호). 처음엔 빈 색 중 앞의 것, 사람은 대기실에서 바꿈 (setColor)
       name: `P${slot + 1}${isBot ? '(봇)' : ''}`,
       isBot,
       x: sp.x,
@@ -283,6 +284,26 @@ export class Game {
     if (this.hostId === null && !isBot) this.hostId = id;
     this.log(`${p.name} 접속 (slot ${slot})${this.hostId === id ? ' — 호스트' : ''}`);
     return p;
+  }
+
+  // 방에서 아무도 안 쓰는 색 중 가장 앞 번호 (자리가 팔레트보다 많을 일은 없지만 다 쓰였으면 0)
+  freeColor() {
+    const used = new Set([...this.players.values()].map((p) => p.color));
+    for (let c = 0; c < C.PLAYER_PALETTE.length; c++) if (!used.has(c)) return c;
+    return 0;
+  }
+
+  // 색 고르기 (2026-10-27 재혁): 판 사이에만, 팔레트 안 번호, 방에서 다른 사람이 쓰는 색은 안 됨 (먼저 고른 사람 우선).
+  // 팀전이어도 받아 둠 (팀전 몸 색은 화면이 팀 계열로 칠함, 고른 색은 개인전에서). 되면 true
+  setColor(id, raw) {
+    const p = this.players.get(id);
+    const c = raw; // 숫자만 (null·문자열은 거절)
+    if (!p || this.inRound() || !Number.isInteger(c) || c < 0 || c >= C.PLAYER_PALETTE.length) return false;
+    if (c === p.color) return true;
+    if ([...this.players.values()].some((o) => o !== p && o.color === c)) return false;
+    p.color = c;
+    this.log(`${p.name} 색: ${c}`);
+    return true;
   }
 
   // 봇 추가 (판 진행 중에는 안 됨). 성공하면 플레이어, 자리가 없으면 null
@@ -4511,10 +4532,10 @@ export class Game {
     const pz = Math.min(top + (this.sky ? C.GHOST_DROP_UP_SKY : C.GHOST_DROP_UP), this.H - 1); // 켬 판은 느려서 낮게
     const stepMs = this.sky ? C.SKY_FALL_STEP_MS : this.autoFallStepMs(); // 그 판 보통 블록 속도
     const piece = { id: 0, shape: 'ghost', rot: 0, cells: [[0, 0]], px: x, py: y, pz, landZ: top, fits: true };
-    this.addPiece(piece, { phase: 'falling', controller: null, ghostBy: p.id, ghostSlot: p.slot, stepMs, nextStepAt: this.time + stepMs, controlEndsAt: 0 });
+    this.addPiece(piece, { phase: 'falling', controller: null, ghostBy: p.id, ghostSlot: p.slot, ghostColor: p.color, stepMs, nextStepAt: this.time + stepMs, controlEndsAt: 0 });
     this.updateLanding(piece);
     p.ghostReadyAt = this.time + C.GHOST_DROP_CD_MS;
-    this.emit({ type: 'ghostDrop', who: p.id, x, y, z: pz, slot: p.slot });
+    this.emit({ type: 'ghostDrop', who: p.id, x, y, z: pz, slot: p.slot, color: p.color });
     this.log(`  [유령] ${p.name} → (${x},${y}) 투하`);
     return piece;
   }
@@ -4682,7 +4703,8 @@ export class Game {
         controller: piece.controller,
         thrown: !!piece.thrownBy, // 설치 블록 (노랑)
         ghostBy: piece.ghostBy || null, // 유령 투하: 떨어뜨린 사람 id
-        ghostSlot: piece.ghostBy ? piece.ghostSlot : null, // 그 사람 자리 (색)
+        ghostSlot: piece.ghostBy ? piece.ghostSlot : null, // 그 사람 자리
+        ghostColor: piece.ghostBy ? piece.ghostColor : null, // 그 사람 색 (PLAYER_PALETTE 번호)
         sky: !!piece.sky, // 하늘 계단 블록
         landZ: piece.landZ,
         fits: piece.fits,
@@ -4716,6 +4738,7 @@ export class Game {
       players: [...this.players.values()].map((p) => ({
         id: p.id,
         slot: p.slot,
+        color: p.color, // PLAYER_PALETTE 번호
         name: p.name,
         nick: p.nick,
         spectator: p.spectator,
@@ -4841,9 +4864,9 @@ function comboOut(c) {
   return { hits: c.hits, damage: c.damage, dist: Math.round(c.dist * 100) / 100, height: Math.round(Math.max(0, c.height) * 100) / 100 };
 }
 
-// 착지한 블록의 격자 값 (색): 유령 투하 = GHOST_BASE + 떨어뜨린 사람 자리, 설치 블록, 그 밖은 모양
+// 착지한 블록의 격자 값 (색): 유령 투하 = GHOST_BASE + 떨어뜨린 사람 색 번호 (나가도 그 색), 설치 블록, 그 밖은 모양
 function pieceCellValue(pc) {
-  if (pc.ghostBy) return CELL.GHOST_BASE + pc.ghostSlot;
+  if (pc.ghostBy) return CELL.GHOST_BASE + pc.ghostColor;
   return pc.thrownBy ? CELL.THROWN : cellOfShape(pc.shape);
 }
 

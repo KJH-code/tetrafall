@@ -199,6 +199,9 @@ export class Rooms {
       case 'setChar':
         game.setChar(id, String(msg.char));
         break;
+      case 'setColor': // 대기실 색 고르기 (PLAYER_PALETTE 번호, 쓰는 색·판 중이면 무시)
+        game.setColor(id, msg.color);
+        break;
       case 'teamMode':
         if (host) game.setTeamMode(!!msg.on);
         break;

@@ -66,7 +66,7 @@ test('유령 투하: 죽자마자 1개, 그 뒤 GHOST_DROP_CD_MS 쿨. 살아 있
   assert.ok(g.ghostDrop(1, 8, 2), '쿨 끝 → 다시');
 });
 
-test('유령 투하: 그 판 보통 블록 속도로 떨어져 착지하면 GHOST_BASE + 자리 값으로 남음 (하늘 계단 켬이면 그 속도)', () => {
+test('유령 투하: 그 판 보통 블록 속도로 떨어져 착지하면 GHOST_BASE + 색 번호 값으로 남음 (하늘 계단 켬이면 그 속도)', () => {
   for (const sky of [false, true]) {
     const { g, p } = setup({ sky });
     g.kill(p(1), 'fall');
@@ -74,9 +74,10 @@ test('유령 투하: 그 판 보통 블록 속도로 떨어져 착지하면 GHOS
     assert.equal(pc.stepMs, sky ? C.SKY_FALL_STEP_MS : g.autoFallStepMs());
     assert.equal(pc.pz, sky ? C.GHOST_DROP_UP_SKY : C.GHOST_DROP_UP, '켬 판은 낮게 (GHOST_DROP_UP_SKY 2)');
     assert.equal(g.snapshot().pieces.find((x) => x.id === pc.id).ghostSlot, p(1).slot);
+    assert.equal(g.snapshot().pieces.find((x) => x.id === pc.id).ghostColor, p(1).color);
     run(g, pc.stepMs * (pc.pz + 1) + TICK);
     assert.ok(!g.pieces.includes(pc), '착지');
-    assert.equal(g.gridAt(5, 5, 0), CELL.GHOST_BASE + p(1).slot);
+    assert.equal(g.gridAt(5, 5, 0), CELL.GHOST_BASE + p(1).color, '떨어뜨린 사람 색 (PLAYER_PALETTE 번호)');
     assert.equal(g.landed.ghost, 1);
   }
 });

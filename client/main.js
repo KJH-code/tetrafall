@@ -915,6 +915,8 @@ function connect() {
       if (nameInput.value) submitName();
       const savedChar = loadPref('tf-char');
       if (savedChar) send({ type: 'setChar', char: savedChar });
+      const savedColor = Number(loadPref('tf-color')); // 이미 누가 쓰면 서버가 거절 → 들어올 때 받은 빈 색 그대로
+      if (loadPref('tf-color') !== null && Number.isInteger(savedColor)) send({ type: 'setColor', color: savedColor });
     } else if (msg.type === 'left') {
       leftRoom(msg.reason);
     } else if (msg.type === 'state') {
@@ -1431,7 +1433,7 @@ function updateScore() {
   const kills = state.mode === 'kills' && state.phase !== 'lobby'; // 킬 점수전: 판 중·판 끝엔 승수 대신 이번 판 점수 + 남은 시간
   const ts = state.teamScores || { red: 0, blue: 0 };
   const left = kills && state.round.left !== null ? fmt(state.round.left) : '';
-  const key = `${kills}|${left}|` + ps.map((p) => `${p.id}:${p.wins}:${p.score}:${p.nick}:${p.team}`).join(',') + `|${myId}|${state.teamMode}|${tw.red}:${tw.blue}|${ts.red}:${ts.blue}`;
+  const key = `${kills}|${left}|` + ps.map((p) => `${p.id}:${p.wins}:${p.score}:${p.nick}:${p.team}:${p.color}`).join(',') + `|${myId}|${state.teamMode}|${tw.red}:${tw.blue}|${ts.red}:${ts.blue}`;
   if (key === scoreKey) return;
   scoreKey = key;
   scoreEl.classList.toggle('hidden', ps.length < 2);
@@ -1778,7 +1780,7 @@ function updateHostPlayers(show) {
   hostPlayersEl.classList.toggle('hidden', !show);
   if (!show) return;
   const ps = [...state.players].sort((a, b) => a.slot - b.slot);
-  const key = ps.map((p) => `${p.id}:${p.spectator}:${p.nick}:${p.team}`).join(',') + `|${state.teamMode}|${state.mode}`;
+  const key = ps.map((p) => `${p.id}:${p.spectator}:${p.nick}:${p.team}:${p.color}`).join(',') + `|${state.teamMode}|${state.mode}`;
   if (key === hostPlayersKey) return;
   hostPlayersKey = key;
   const title = document.createElement('div');
@@ -1996,7 +1998,34 @@ charSel.addEventListener('change', () => {
   send({ type: 'setChar', char: charSel.value });
   charSel.blur();
 });
+// 대기실 색 고르기: 팔레트 색 칸 (남이 쓰는 색은 ×, 판 중엔 대기 줄 자체가 숨음). 고른 색은 이 브라우저에 기억 (tf-color)
+const swatchEls = C.PLAYER_PALETTE.map((col, i) => {
+  const el = document.createElement('span');
+  el.className = 'sw';
+  el.style.background = hex(col);
+  el.addEventListener('click', () => {
+    if (el.classList.contains('used')) return;
+    try {
+      localStorage.setItem('tf-color', String(i));
+    } catch {
+      // 저장이 막혀도 이번 접속에는 보냄
+    }
+    send({ type: 'setColor', color: i });
+  });
+  $('color-swatches').append(el);
+  return el;
+});
+function updateColorRow(p) {
+  const used = new Set(state.players.filter((o) => o.id !== p.id).map((o) => o.color));
+  swatchEls.forEach((el, i) => {
+    el.classList.toggle('mine', p.color === i);
+    el.classList.toggle('used', used.has(i));
+    el.title = used.has(i) ? '다른 사람이 쓰는 색' : '';
+  });
+  $('color-team-note').classList.toggle('hidden', !state.teamMode);
+}
 function updateCharRow(p) {
+  if (p && p.color !== undefined) updateColorRow(p);
   const on = !!p && !!p.char;
   $('char-label').classList.toggle('hidden', !on);
   $('char-info').classList.toggle('hidden', !on);
