@@ -2150,6 +2150,14 @@ export class Renderer {
     });
   }
 
+  // glideRing 이벤트: 음유 천천히 낙하 음파 고리 (피해 있음) — 몸 둘레 판정 반경 e.r 까지 퍼지는 두 겹 고리 + 음표 반짝
+  bardGlideRing(e) {
+    const pos = { x: e.x, y: e.y, z: e.z + 0.9 };
+    this.effects.ring(pos, C.BARD_NOTE_COLOR, e.r - 0.2, 0.3, true);
+    this.effects.ring(pos, 0xffffff, (e.r - 0.2) * 0.8, 0.22, true);
+    this.effects.burst(pos, null, C.BARD_NOTE_COLOR, 10, 3, 0.06, 0.3);
+  }
+
   // form 이벤트: 메탈 = 리프 충격파 (빨간 고리 + 불꽃) + 류트 줄이 팅 끊어져 튐 / 음유 = 초록 치유파 (고리 + 위로 오르는 반짝이)
   bardForm(e) {
     const pos = { x: e.x ?? 0, y: e.y ?? 0, z: (e.z ?? 0) + 0.1 };

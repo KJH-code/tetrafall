@@ -1220,7 +1220,9 @@ export class Game {
     p.atk = { n, def, air, chained, at: this.time + def.windup };
     p.atkLanded = false;
     p.pushReadyAt = this.time + def.windup + def.rec;
-    if (def.glide && p.glideCount < C.BARD_GLIDE_MAX_PER_AIR) this.bardGlide(p, def.windup + def.rec);
+    const glided = !!def.glide && p.glideCount < C.BARD_GLIDE_MAX_PER_AIR; // 횟수를 다 쓰면 낙하도 고리도 없음
+    if (glided) this.bardGlide(p, def.windup + def.rec);
+    if (glided) p.atk.glided = true;
     if (def.dive) this.bardDive(p, def); // 바드 기타 꽂기: 누르는 순간 아래로 // 바드 공중 평타: 동작(준비+후딜) 동안만 천천히 낙하, 착지 전 N번까지
     this.emit({ type: 'attack', who: p.id, char: p.char, n, air, name: def.name, windup: def.windup, finish: !!def.finish, star: !!def.star });
     if (def.windup <= 0) this.basicHit(p);
@@ -1228,7 +1230,7 @@ export class Game {
 
   // 판정: 앞으로 step 만큼 나가며 부채꼴 안을 침. 중간 타는 고정 넉백, 마무리 타·공중 평타는 % 배율
   basicHit(p) {
-    const { n, def, air, chained } = p.atk;
+    const { n, def, air, chained, glided } = p.atk;
     p.atk = null;
     const set = basicSet(p.char, p.form);
     if (def.star) return this.starVolley(p, n, air, def, chained);
@@ -1238,7 +1240,8 @@ export class Game {
     }
     if (def.note || def.glide || def.dive) { // 기타 꽂기 판정은 낙하 중 (bardDiveUpdate)
       if (def.note) this.bardNote(p); // 천천히 낙하는 누를 때 시작 (basicStart)
-      return this.basicChain(p, n, air, false, def);
+      const landed = glided && this.bardGlideRing(p, n, air, def, chained);
+      return this.basicChain(p, n, air, landed, def);
     }
     const fx = Math.cos(p.yaw);
     const fy = Math.sin(p.yaw);
@@ -1897,6 +1900,30 @@ export class Game {
     p.glideCount++;
     if (p.vz < -C.BARD_GLIDE_FALL) p.vz = -C.BARD_GLIDE_FALL;
     this.emit({ type: 'glide', who: p.id, ms });
+  }
+
+  // 천천히 낙하 음파 고리: 몸 둘레 def.range 안 상대를 바깥으로 작게 밀침 (고정 넉백). 맞힌 사람이 있으면 true
+  bardGlideRing(p, n, air, def, chained) {
+    const set = basicSet(p.char, p.form);
+    const label = basicLabel(set, n, air, def);
+    const hits = [];
+    for (const t of this.players.values()) {
+      if (t === p || !this.onField(t) || this.sameTeam(p, t)) continue;
+      const dx = t.x - p.x;
+      const dy = t.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d > def.range || Math.abs(t.z - p.z) > C.PLAYER_HEIGHT) continue;
+      const hit = this.applyKnockback(t, d > 0.05 ? dx : Math.cos(p.yaw), d > 0.05 ? dy : Math.sin(p.yaw), def.kb, def.up, def.stun, def.dmg, { by: p.id, kind: 'glide' }, false, { fixed: true, chained });
+      if (hit) {
+        p.freezeUntil = this.time + C.BASIC_HITSTOP_MS;
+        t.freezeUntil = this.time + C.BASIC_HITSTOP_MS;
+        hits.push(t.id);
+      }
+      this.emit({ type: 'hit', kind: 'glide', by: p.id, target: t.id, ok: hit, n, air, finish: false, streak: hit ? p.streak : 0 });
+      this.log(`  [평타] ${p.name} → ${t.name} ${hit ? `넉백 (${t.name} ${t.damage}%)` : '무적이라 무시'} ${label}`);
+    }
+    this.emit({ type: 'glideRing', who: p.id, x: p.x, y: p.y, z: p.z, r: def.range, hits });
+    return hits.length > 0;
   }
 
   // 메탈 공중 평타 기타 꽂기 시작: 아래로 빠르게, 수평으로는 느리게
@@ -4959,7 +4986,7 @@ function emptyLanded() {
 // 사망 로그 "밟은 칸" (한 단어, npm run stats)
 const GROUND_LOG = { floor: '바닥', terrain: '지형', stack: '블록', sky: '하늘', piece: '낙하블록', none: '없음' };
 
-const WEAPON_LOG = { ghost: '유령블록', push: '밀치기', shell: '포탄', bigshell: '대형포탄', groundshot: '발밑포격', leapwave: '광폭도약', spin: '소용돌이회전', spinend: '소용돌이', note: '음파', riff: '기타리프', amp: '앰프', ampend: '앰프마무리', pounce: '덮치기', execute: '처형사격', wallkick: '벽차기', blast: '블록폭발', bigbomb: '대폭발', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', blockslam: '블록내려찍기' };
+const WEAPON_LOG = { ghost: '유령블록', push: '밀치기', shell: '포탄', bigshell: '대형포탄', groundshot: '발밑포격', leapwave: '광폭도약', spin: '소용돌이회전', spinend: '소용돌이', note: '음파', riff: '기타리프', glide: '낙하음파', amp: '앰프', ampend: '앰프마무리', pounce: '덮치기', execute: '처형사격', wallkick: '벽차기', blast: '블록폭발', bigbomb: '대폭발', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', blockslam: '블록내려찍기' };
 
 function causeKo(cause) {
   if (cause === 'crush') return '압사';

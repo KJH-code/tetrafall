@@ -391,6 +391,15 @@ export class BotBrain {
     // 바드 음유시인: 거리를 두고 류트 음파 (둔화)
     // 취약(음표)이 걸린 상대에게 F 가 있으면 다가가서 메탈로 바꿔 때림 (걸고 날리기)
     const softened = g.time < t.vulnUntil && g.time >= p.skillReadyAt;
+    // 바드 음유 공중: 상대가 천천히 낙하 음파 고리(몸 둘레) 안이면 공중 평타 (착지 전 횟수 남았을 때). 준비 동안은 상대 쪽으로 (거리 두기로 빠지면 고리 밖)
+    const glideDef = p.char === 'bard' && p.form !== 'metal' && basicSet('bard', 'bard').air[0];
+    const ringing = p.atk && p.atk.def.glide && p.atk.glided;
+    if (glideDef && !p.grounded && Math.abs(t.z - p.z) <= C.PLAYER_HEIGHT && (ringing || (dist <= glideDef.range && p.glideCount < C.BARD_GLIDE_MAX_PER_AIR && !p.atk && g.time >= p.pushReadyAt))) {
+      Object.assign(this.input, { yaw: Math.atan2(t.y - p.y, t.x - p.x), pitch: 0, fwd: dist > 0.6 ? 1 : 0, strafe: 0 });
+      g.handleInput(p.id, this.input);
+      if (!ringing) g.handleAction(p.id, { name: 'push' });
+      return;
+    }
     if (p.char === 'bard' && p.form !== 'metal' && !softened && dist <= C.BARD_NOTE_RANGE * 0.8) {
       const dz = t.z + C.PLAYER_HEIGHT * 0.5 - (p.z + C.EYE_HEIGHT - 0.3);
       const err = this.shellErr || { yaw: 0, pitch: 0 };
