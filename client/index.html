@@ -224,6 +224,10 @@
       background: linear-gradient(160deg, rgba(26,35,71,.93) 0%, rgba(10,15,34,.95) 70%); padding: 16px 26px; pointer-events: auto;
       max-height: calc(100vh - 70px); overflow-y: auto; box-sizing: border-box; box-shadow: var(--sh);
       clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 20px 100%, 0 calc(100% - 20px)); animation: slide-in .2s ease-out; }
+    /* 판 중 "화면을 클릭하면 조작 시작": 몸·상대를 안 가리게 위쪽 하늘에 작은 띠 */
+    #center.slim { top: 28%; padding: 9px 22px 11px; clip-path: polygon(14px 0, 100% 0, calc(100% - 14px) 100%, 0 100%); }
+    #center.slim #center-text { font-size: 18px; }
+    #center.slim .keys { margin-top: 6px; text-align: center; }
     #center-text { white-space: pre; font-family: var(--disp); font-size: 21px; line-height: 1.35; letter-spacing: .5px; }
     #center button { margin-top: 10px; }
     #start-btn { font-size: 23px; padding: 9px 34px; margin-top: 12px; }
@@ -262,16 +266,22 @@
     #host-players .title { grid-column: 1 / -1; font-family: var(--disp); color: var(--accent); font-size: 14px; }
     #host-players button { font-size: 12px; padding: 2px 9px; box-shadow: 0 3px 0 #0c1026; background: linear-gradient(180deg, #37426e, #202a4c); color: var(--text); }
     /* ===== 판 끝: 결과 표 ===== */
-    #results { position: absolute; right: 18px; top: 50%; transform: translateY(-50%); z-index: 4; pointer-events: none;
-      background: linear-gradient(160deg, rgba(26,35,71,.93), rgba(8,12,26,.95)); padding: 12px 18px 14px; box-shadow: var(--sh);
-      clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px)); animation: slide-up .3s ease-out; }
-    #results h4 { font-family: var(--disp); margin: 0 0 8px; font-size: 18px; color: var(--accent); letter-spacing: 1px; }
-    #results table { border-collapse: collapse; font-size: 13px; }
+    /* 판이 끝난 직후 RESULTS_HERO_MS 동안만: 가운데 크게 — 승자 초상 + 결과 표. 그 뒤엔 사라지고 대기실 판이 들어옴 */
+    #results { position: absolute; left: 50%; top: 58%; transform: translate(-50%, -50%); z-index: 4; pointer-events: none;
+      background: linear-gradient(160deg, rgba(26,35,71,.93), rgba(8,12,26,.95)); padding: 16px 26px 18px; box-shadow: var(--sh);
+      clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px)); animation: res-in .35s cubic-bezier(.2,1.3,.4,1); }
+    @keyframes res-in { from { opacity: 0; transform: translate(-50%, -38%) scale(.86); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+    #results .who { display: flex; gap: 14px; align-items: center; margin-bottom: 10px; }
+    #results .star { width: 150px; height: 150px; flex: none; background: rgba(0,0,0,.3) center/cover no-repeat; box-sizing: border-box;
+      border-bottom: 6px solid #888; clip-path: polygon(14px 0, 100% 0, calc(100% - 14px) 100%, 0 100%); }
+    #results .head { font-family: var(--disp); font-size: 40px; letter-spacing: -1px; text-shadow: 0 4px 0 rgba(0,0,0,.5); }
+    #results h4 { font-family: var(--disp); margin: 0 0 8px; font-size: 20px; color: var(--accent); letter-spacing: 1px; }
+    #results table { border-collapse: collapse; font-size: 15px; }
     #results th { font-family: var(--disp); color: var(--dim); font-weight: normal; padding: 2px 9px; text-align: right; font-size: 12px; }
     #results td { padding: 3px 9px; text-align: right; white-space: nowrap; }
-    #results td.n { text-align: left; font-family: var(--disp); font-size: 15px; }
+    #results td.n { text-align: left; font-family: var(--disp); font-size: 18px; }
     #results tr.win td { background: rgba(255,210,58,.14); }
-    #results .face { width: 26px; height: 26px; background: rgba(0,0,0,.3) center/cover no-repeat; display: inline-block; vertical-align: middle; margin-right: 5px;
+    #results .face { width: 32px; height: 32px; background: rgba(0,0,0,.3) center/cover no-repeat; display: inline-block; vertical-align: middle; margin-right: 5px;
       clip-path: polygon(5px 0, 100% 0, calc(100% - 5px) 100%, 0 100%); border-bottom: 2px solid var(--pcol, #888); box-sizing: border-box; }
     #results .big { font-family: var(--disp); font-size: 15px; }
     /* ===== 아이템 꺼진 판 ===== */
@@ -317,8 +327,12 @@
       #char-info { font-size: 12px; }
       #room-link { font-size: 11px; }
       #rooms h2 { font-size: 32px; }
-      #results { padding: 9px 13px 10px; }
-      #results table { font-size: 12px; }
+      #results { padding: 11px 18px 12px; top: 55%; }
+      #results .star { width: 108px; height: 108px; }
+      #results .head { font-size: 30px; }
+      #results table { font-size: 13px; }
+      #results td.n { font-size: 15px; }
+      #results .face { width: 26px; height: 26px; }
     }
   </style>
   <script type="importmap">
