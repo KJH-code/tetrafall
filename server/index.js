@@ -30,6 +30,10 @@ function resolveFile(urlPath) {
   if (urlPath === '/vendor/three.module.js') {
     return path.join(ROOT, 'node_modules', 'three', 'build', 'three.module.js');
   }
+  if (urlPath === '/vendor/cannon-es.js') {
+    // 몸 래그돌 물리 (client/ragdoll.js). import 'cannon-es' 가 여기로
+    return path.join(ROOT, 'node_modules', 'cannon-es', 'dist', 'cannon-es.js');
+  }
   let base;
   let rel;
   if (urlPath.startsWith('/vendor/jsm/')) {
