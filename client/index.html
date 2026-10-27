@@ -5,163 +5,312 @@
   <title>Tetrafall</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    html, body { margin: 0; height: 100%; background: #111; color: #eee; font-family: system-ui, sans-serif; overflow: hidden; }
+    /* ===== 글꼴 (Black Han Sans, SIL OFL 1.1 — client/assets/CREDITS.md) =====
+       굵고 각진 제목용. 작은 설명 글은 읽기 쉽게 시스템 글꼴을 그대로 쓴다 */
+    @font-face { font-family: 'Black Han Sans'; font-style: normal; font-weight: 400; font-display: swap;
+      src: url(/assets/fonts/black-han-sans-latin.woff2) format('woff2');
+      unicode-range: U+0000-02FF, U+2000-22FF, U+2190-21FF, U+2500-27BF, U+FEFF, U+FFFD; }
+    @font-face { font-family: 'Black Han Sans'; font-style: normal; font-weight: 400; font-display: swap;
+      src: url(/assets/fonts/black-han-sans-korean.woff2) format('woff2');
+      unicode-range: U+1100-11FF, U+3130-318F, U+A960-A97F, U+AC00-D7A3, U+D7B0-D7FF; }
+    /* ===== 공통 ===== */
+    :root {
+      --ink: #060913; --panel: #151d38; --panel2: #0a0f22; --line: #3c4a78;
+      --text: #f4f6ff; --dim: #9fabcd;
+      --accent: #ffd23a; --accent-d: #8a5c00; --hot: #ff4426; --cool: #3fd0ff; --good: #36d07a;
+      --disp: 'Black Han Sans', system-ui, sans-serif;
+      --cut: 14px; /* 판 모서리를 비스듬히 자르는 길이 */
+      --sh: 0 5px 0 rgba(0,0,0,.5), 0 16px 34px rgba(0,0,0,.55);
+    }
+    html, body { margin: 0; height: 100%; background: var(--ink); color: var(--text); font-family: system-ui, sans-serif; overflow: hidden; }
     canvas { display: block; }
     #hud { position: fixed; inset: 0; pointer-events: none; }
-    #status { position: absolute; top: 10px; left: 10px; font-size: 16px; font-weight: bold; line-height: 1.5; background: rgba(0,0,0,.45); padding: 4px 10px; border-radius: 6px; white-space: pre; }
-    #center { position: absolute; top: calc(50% + 26px); left: 50%; transform: translate(-50%, -50%); text-align: center; font-size: 20px; background: rgba(0,0,0,.55); padding: 14px 20px; border-radius: 8px; pointer-events: auto; max-height: calc(100vh - 80px); overflow-y: auto; box-sizing: border-box; } /* 대기 화면 줄이 늘어도 창 안에 (넘치면 스크롤) */
-    #center-text { white-space: pre; }
-    #center button { font-size: 18px; padding: 8px 18px; margin-top: 10px; cursor: pointer; }
-    #bot-btns button { font-size: 15px; padding: 5px 12px; }
-    #map-select { font-size: 15px; padding: 3px; }
-    #bot-btns button:disabled { opacity: .4; cursor: default; }
+    .hidden { display: none !important; }
+    /* 비스듬히 잘린 판 (스매시식 각진 UI). 글자는 기울이지 않아 그대로 읽힌다 */
+    .cut { clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut))); }
+    .par { clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); } /* 평행사변형 (버튼·띠) */
+    /* 창이 뜰 때 옆에서 미끄러져 들어옴 */
+    @keyframes slide-in { from { opacity: 0; transform: translate(-54%, -50%) scale(.96); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+    @keyframes slide-up { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes slide-left { from { opacity: 0; transform: translateX(-30px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes pop-in { from { opacity: 0; transform: scale(.82) rotate(-2deg); } to { opacity: 1; transform: scale(1) rotate(0); } }
+    @keyframes shake { 10%, 90% { transform: translateX(-2px); } 30%, 70% { transform: translateX(3px) ; } 50% { transform: translateX(-4px); } }
+    /* ===== 버튼·입력 ===== */
+    button { font-family: var(--disp); font-size: 16px; letter-spacing: .5px; color: #171b2c; cursor: pointer; border: 0;
+      background: linear-gradient(180deg, #ffe98a, #ffc21e); padding: 7px 17px;
+      clip-path: polygon(9px 0, 100% 0, calc(100% - 9px) 100%, 0 100%); box-shadow: 0 4px 0 var(--accent-d);
+      transition: transform .08s, filter .12s; }
+    button:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    button:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--accent-d); }
+    button:disabled { filter: grayscale(1) brightness(.55); cursor: default; box-shadow: none; transform: none; }
+    .ghost, #settings-close, #tut-skip, #room-leave, #remove-bot, #keys-reset, #settings-reset, #pr-close {
+      background: linear-gradient(180deg, #37426e, #202a4c); color: var(--text); box-shadow: 0 4px 0 #0c1026; }
+    input[type=text], input:not([type]), input[type=number] { background: #080d1e; color: var(--text); border: 2px solid var(--line);
+      font-family: var(--disp); font-size: 15px; padding: 5px 8px; outline: none; }
+    input[type=text]:focus, input:not([type]):focus, input[type=number]:focus { border-color: var(--accent); }
+    select { font-family: var(--disp); font-size: 15px; background: #080d1e; color: var(--text); border: 2px solid var(--line); padding: 4px 6px; cursor: pointer; }
+    input[type=range] { accent-color: var(--accent); }
+    input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; vertical-align: -2px; }
+    /* ===== 판 중: 위쪽 (시간·점수·배너) ===== */
+    #status { position: absolute; top: 12px; left: 14px; font-family: var(--disp); font-size: 26px; line-height: 1.1;
+      background: linear-gradient(180deg, #1b2342, #0a0f22); padding: 4px 18px 4px 14px; white-space: pre;
+      clip-path: polygon(0 0, 100% 0, calc(100% - 11px) 100%, 0 100%); box-shadow: var(--sh); border-left: 4px solid var(--accent); }
+    #top { position: absolute; z-index: 2; top: 12px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    #score { font-family: var(--disp); font-size: 20px; padding: 4px 20px; background: linear-gradient(180deg, #1b2342, #0a0f22);
+      white-space: nowrap; box-shadow: var(--sh); clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%); letter-spacing: .5px; }
+    #score .me { border-bottom: 3px solid var(--accent); }
+    #score .sep { color: #67739a; margin: 0 8px; }
+    #banner { font-family: var(--disp); font-size: 19px; padding: 7px 22px; background: linear-gradient(180deg, #0e8aa0, #075666); white-space: pre; text-align: center;
+      clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%); box-shadow: var(--sh); }
+    #danger { font-family: var(--disp); font-size: 25px; padding: 5px 22px; background: linear-gradient(180deg, #ff4426, #a81405); white-space: pre;
+      clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%); animation: danger-pulse .25s infinite alternate; box-shadow: var(--sh); }
+    @keyframes danger-pulse { from { transform: scale(1); } to { transform: scale(1.07); } }
+    #toasts { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .toast { font-family: var(--disp); font-size: 17px; padding: 5px 16px; background: rgba(8,12,26,.82); white-space: pre; transition: opacity .4s;
+      clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); animation: slide-up .18s ease-out; box-shadow: var(--sh); }
+    .toast.me { background: linear-gradient(180deg, #e04a16, #8d2707); }
+    .toast.good { background: linear-gradient(180deg, #19a257, #0b5c31); }
+    .toast.crit { background: linear-gradient(180deg, #ffd23a, #e39a00); color: #1a1200; font-size: 22px; }
+    #timers { display: flex; gap: 8px; justify-content: center; margin-top: 2px; font-family: var(--disp); font-size: 15px; }
+    #timers .t { display: flex; align-items: center; gap: 6px; background: rgba(8,12,26,.75); padding: 3px 12px;
+      clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%); }
+    #timers .pie { width: 13px; height: 13px; border-radius: 50%; }
+    /* ===== 판 중: 아래 플레이어 판 (스매시식 초상 + 큰 %) ===== */
+    #players { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); display: flex; gap: 10px; align-items: flex-end; z-index: 2; }
+    #players .pc { position: relative; width: 124px; padding: 4px 8px 5px; background: linear-gradient(180deg, rgba(23,31,58,.93), rgba(8,12,26,.93));
+      clip-path: polygon(11px 0, 100% 0, calc(100% - 11px) 100%, 0 100%); box-shadow: var(--sh); animation: slide-up .25s ease-out; text-align: center; }
+    /* 내 판은 조금 크고 위에 밝은 띠 — 한눈에 내 % 를 찾게 */
+    #players .pc.me { background: linear-gradient(180deg, rgba(48,62,110,.96), rgba(13,19,42,.96)); border-top: 4px solid var(--accent); padding-top: 2px; }
+    #players .pc.me .pct { font-size: 42px; }
+    #players .pc.me .nm { font-size: 14px; }
+    #players .pc .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: var(--pcol, #888); }
+    #players .pc .top { display: flex; align-items: center; gap: 5px; justify-content: center; }
+    #players .pc .face { width: 38px; height: 38px; flex: none; background: rgba(0,0,0,.35) center/cover no-repeat;
+      clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%); border-bottom: 3px solid var(--pcol, #888); box-sizing: border-box; }
+    #players .pc .nm { font-family: var(--disp); font-size: 13px; line-height: 1.1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 66px; }
+    #players .pc .sub { font-size: 11px; color: var(--dim); line-height: 1.2; white-space: nowrap; }
+    #players .pc .pct { font-family: var(--disp); font-size: 34px; line-height: 1; letter-spacing: -1px; text-shadow: 0 3px 0 rgba(0,0,0,.55); }
+    #players .pc .pct u { font-size: 20px; text-decoration: none; }
+    #players .pc.hurt .pct { animation: shake .3s; }
+    #players .pc.dead { filter: grayscale(.8) brightness(.66); }
+    /* 관전 중 따라가는 사람 */
+    #players .pc.watch { outline: 2px solid var(--accent); outline-offset: -2px; }
+    #players .pc.watch::after { content: '▶'; position: absolute; top: -15px; left: 50%; transform: translateX(-50%); color: var(--accent); font-size: 12px; }
+    #players .pc .pct i { font-style: normal; font-size: 27px; color: var(--hot); letter-spacing: 1px; }
+    /* ===== 판 중: 킬 로그 · 조작법 ===== */
+    #killfeed { position: absolute; top: 74px; right: 12px; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; pointer-events: none; }
+    #killfeed .kill { font-family: var(--disp); font-size: 15px; padding: 3px 12px; background: rgba(8,12,26,.8); white-space: nowrap; transition: opacity .5s;
+      clip-path: polygon(9px 0, 100% 0, calc(100% - 9px) 100%, 0 100%); animation: slide-left .2s ease-out; }
+    #killfeed .kill.mine { background: linear-gradient(180deg, #4a3a06, #241c02); border-bottom: 2px solid var(--accent); }
+    #killfeed .how { color: var(--dim); font-family: system-ui, sans-serif; font-size: 13px; }
+    #help { position: absolute; top: 10px; right: 12px; text-align: right; font-size: 12px; color: var(--dim); white-space: pre;
+      background: rgba(8,12,26,.6); padding: 7px 10px; clip-path: polygon(0 0, 100% 0, 100% 100%, 10px 100%); }
+    /* ===== 판 중: 가운데 연출 ===== */
     #crosshair { position: absolute; top: 50%; left: 50%; width: 10px; height: 10px; margin: -7px 0 0 -7px; border: 2px solid rgba(255,255,255,.8); border-radius: 50%; }
-    /* 투사체 보유: 빨간 큰 조준점 + 탄 수 */
     #crosshair.armed { width: 26px; height: 26px; margin: -15px 0 0 -15px; border: 3px solid #ff3030; box-shadow: 0 0 6px #ff3030; }
-    #crosshair.armed::after { content: attr(data-ammo); position: absolute; left: 34px; top: 2px; color: #ff5050; font-weight: bold; font-size: 15px; white-space: nowrap; text-shadow: 0 0 3px #000; }
+    #crosshair.armed::after { content: attr(data-ammo); position: absolute; left: 34px; top: 2px; color: #ff5050; font-family: var(--disp); font-size: 15px; white-space: nowrap; text-shadow: 0 0 3px #000; }
     #crosshair.brick { border-color: #f0d060; box-shadow: 0 0 6px #f0d060; border-radius: 3px; }
     #crosshair.brick::after { color: #f0d060; }
-    #top { position: absolute; z-index: 2; top: 12px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
-    #score { font-size: 22px; font-weight: bold; padding: 5px 14px; border-radius: 8px; background: rgba(0,0,0,.55); white-space: nowrap; text-shadow: 0 0 3px #000; }
-    #score .me { text-decoration: underline; }
-    #score .sep { color: #aaa; margin: 0 8px; }
-    #banner { font-size: 20px; font-weight: bold; padding: 8px 16px; border-radius: 8px; background: rgba(0,140,160,.85); white-space: pre; text-align: center; }
-    #danger { font-size: 24px; font-weight: 900; padding: 6px 18px; border-radius: 8px; background: rgba(220,20,20,.92); white-space: pre; animation: danger-pulse .25s infinite alternate; }
-    @keyframes danger-pulse { from { transform: scale(1); } to { transform: scale(1.08); } }
-    #toasts { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-    .toast { font-size: 18px; padding: 6px 14px; border-radius: 6px; background: rgba(0,0,0,.7); white-space: pre; transition: opacity .4s; }
-    .toast.me { background: rgba(200,60,20,.9); font-weight: bold; }
-    .toast.good { background: rgba(20,140,60,.9); }
-    .toast.crit { background: rgba(230,170,0,.95); color: #000; font-weight: 900; font-size: 22px; }
-    #center .keys { white-space: normal; font-size: 14px; text-align: left; margin-top: 10px; line-height: 1.5; color: #ddd; }
-    /* 유령 투하 조준 (관전 중): 조준점 둘레 원 — 쿨이면 회색이 차오름 */
-    #ghost-cd { position: absolute; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; pointer-events: none; border: 2px solid rgba(255,255,255,.85); box-sizing: border-box; }
-    #ghost-cd::after { content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: #fff; }
-    #ghost-cd.wait { border-color: rgba(160,160,160,.8); }
-    #ghost-hint { position: absolute; top: 38%; left: 50%; transform: translateX(-50%); font-size: 18px; font-weight: 700; color: #fff; text-shadow: 0 0 6px #000; pointer-events: none; transition: opacity .5s; }
-    #spec { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); text-align: center; font-size: 17px; background: rgba(0,0,0,.6); padding: 8px 16px; border-radius: 8px; white-space: pre; pointer-events: none; }
-    #emote-wheel { position: absolute; top: 50%; left: 50%; width: 300px; height: 300px; margin: -150px 0 0 -150px; border-radius: 50%; background: rgba(0,0,0,.45); pointer-events: none; }
-    #emote-wheel .em { position: absolute; transform: translate(-50%, -50%); font-size: 18px; font-weight: bold; padding: 6px 12px; border-radius: 8px; background: rgba(0,0,0,.6); white-space: nowrap; }
-    #emote-wheel .em.on { background: #ffd23a; color: #000; }
-    #emote-wheel .hint { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 13px; color: #ccc; text-align: center; }
-    #killfeed { position: absolute; top: 74px; right: 10px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; pointer-events: none; }
-    #killfeed .kill { font-size: 15px; font-weight: bold; padding: 3px 10px; border-radius: 5px; background: rgba(0,0,0,.6); white-space: nowrap; transition: opacity .5s; }
-    #killfeed .kill.mine { outline: 2px solid #ffe060; }
-    #killfeed .how { color: #ddd; font-weight: normal; }
-    #help { position: absolute; top: 10px; right: 10px; text-align: right; font-size: 12px; color: #aaa; white-space: pre; background: rgba(0,0,0,.35); padding: 6px 8px; border-radius: 6px; }
-    #hitmarker { position: absolute; top: 50%; left: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; opacity: 0; transition: opacity .15s; }
-    #hitmarker::before, #hitmarker::after { content: ''; position: absolute; left: 13px; top: 0; width: 4px; height: 30px; background: #fff; box-shadow: 0 0 4px #000; }
-    #hitmarker::before { transform: rotate(45deg); }
-    #hitmarker::after { transform: rotate(-45deg); }
-    #flash { position: absolute; inset: 0; background: rgba(255,0,0,.35); opacity: 0; transition: opacity .3s; }
-    #combo { position: absolute; top: 44%; left: 62%; font-size: 40px; font-weight: 900; font-style: italic; color: #ffd23a; text-shadow: 0 0 8px #000, 0 0 3px #000; z-index: 3; pointer-events: none; }
-    #combo.taken { color: #ff5a3a; }
-    #counter { position: absolute; top: 37%; left: 62%; font-size: 30px; font-weight: 900; font-style: italic; color: #5ae0ff; text-shadow: 0 0 8px #000, 0 0 3px #000; z-index: 3; pointer-events: none; animation: counter-pop .18s ease-out; }
-    #counter.taken { color: #ff5a3a; }
-    @keyframes counter-pop { from { transform: scale(1.7); } to { transform: scale(1); } }
-    #bigmsg { position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); font-size: 110px; font-weight: 900; white-space: nowrap; text-shadow: 0 0 12px #000, 0 0 4px #000; z-index: 3; }
-    #bigmsg.small { font-size: 72px; }
-    #bigmsg.small { top: 16%; } /* 승리·무승부: 화면 가운데 승자(카메라가 비춤)를 가리지 않게 위로 */
+    #crosshair.bomb { border-color: #ff7a20; box-shadow: 0 0 6px #ff7a20; }
     #cd-ring { position: absolute; top: 50%; left: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; pointer-events: none; transform: rotate(-90deg); }
     #cd-ring circle { fill: none; stroke-linecap: round; }
     #cd-ring .track { stroke: rgba(0,0,0,.25); }
     #cd-ring .dash { stroke: #5ad0ff; stroke-width: 4; }
     #cd-ring .push { stroke: #fff; stroke-width: 3; opacity: .85; }
     #cd-ring .flash { stroke-width: 6; filter: drop-shadow(0 0 4px #fff); }
-    #cd-ring .dash.spent { stroke: rgba(150,150,160,.6); } /* 공중 대시 다 씀 (착지 전엔 Shift 안 됨) */
-    #timers { display: flex; gap: 8px; justify-content: center; margin-top: 4px; font-size: 15px; font-weight: bold; }
-    #timers .t { display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,.55); padding: 3px 10px; border-radius: 6px; }
-    #timers .pie { width: 14px; height: 14px; border-radius: 50%; }
-    #crosshair.bomb { border-color: #ff7a20; box-shadow: 0 0 6px #ff7a20; }
-    /* 화면 아래 가운데: 버프 · 피해 % · 스킬 · 든 아이템 */
+    #cd-ring .dash.spent { stroke: rgba(150,150,160,.6); }
+    #hitmarker { position: absolute; top: 50%; left: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; opacity: 0; transition: opacity .15s; }
+    #hitmarker::before, #hitmarker::after { content: ''; position: absolute; left: 13px; top: 0; width: 4px; height: 30px; background: #fff; box-shadow: 0 0 4px #000; }
+    #hitmarker::before { transform: rotate(45deg); }
+    #hitmarker::after { transform: rotate(-45deg); }
+    #flash { position: absolute; inset: 0; background: rgba(255,0,0,.35); opacity: 0; transition: opacity .3s; }
+    #vignette { position: absolute; inset: 0; box-shadow: inset 0 0 140px 50px rgba(255,0,0,.55); opacity: 0; transition: opacity .15s; }
+    #vignette.on { opacity: 1; }
+    #combo { position: absolute; top: 44%; left: 62%; font-family: var(--disp); font-size: 42px; font-style: italic; color: var(--accent);
+      text-shadow: 0 0 10px #000, 0 4px 0 rgba(0,0,0,.6); z-index: 3; pointer-events: none; }
+    #combo.taken { color: #ff5a3a; }
+    #counter { position: absolute; top: 37%; left: 62%; font-family: var(--disp); font-size: 32px; font-style: italic; color: var(--cool);
+      text-shadow: 0 0 10px #000, 0 4px 0 rgba(0,0,0,.6); z-index: 3; pointer-events: none; animation: counter-pop .18s ease-out; }
+    #counter.taken { color: #ff5a3a; }
+    @keyframes counter-pop { from { transform: scale(1.7); } to { transform: scale(1); } }
+    #bigmsg { position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); font-family: var(--disp); font-size: 118px; white-space: nowrap;
+      text-shadow: 0 8px 0 rgba(0,0,0,.55), 0 0 18px #000; z-index: 3; letter-spacing: -2px; animation: pop-in .2s ease-out; }
+    #bigmsg.small { font-size: 74px; top: 15%; } /* 승리·무승부: 가운데 승자를 가리지 않게 위로 */
+    #stun { position: absolute; top: calc(50% + 30px); left: 50%; transform: translateX(-50%); font-family: var(--disp); font-size: 46px; color: var(--hot); text-shadow: 0 0 10px #000; }
+    #ghost-cd { position: absolute; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; pointer-events: none; border: 2px solid rgba(255,255,255,.85); box-sizing: border-box; }
+    #ghost-cd::after { content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: #fff; }
+    #ghost-cd.wait { border-color: rgba(160,160,160,.8); }
+    #ghost-hint { position: absolute; top: 38%; left: 50%; transform: translateX(-50%); font-family: var(--disp); font-size: 19px; color: #fff; text-shadow: 0 0 6px #000; pointer-events: none; transition: opacity .5s; }
+    #spec { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); text-align: center; font-size: 15px; background: rgba(8,12,26,.8);
+      padding: 7px 20px; white-space: pre; pointer-events: none; clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%); box-shadow: var(--sh); }
+    #emote-wheel { position: absolute; top: 50%; left: 50%; width: 300px; height: 300px; margin: -150px 0 0 -150px; border-radius: 50%; background: rgba(0,0,0,.45); pointer-events: none; }
+    #emote-wheel .em { position: absolute; transform: translate(-50%, -50%); font-family: var(--disp); font-size: 18px; padding: 5px 14px; background: rgba(8,12,26,.75); white-space: nowrap;
+      clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%); }
+    #emote-wheel .em.on { background: linear-gradient(180deg, #ffe98a, #ffc21e); color: #171b2c; }
+    #emote-wheel .hint { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 13px; color: #ccd; text-align: center; }
+    /* ===== 판 중: 아래 가운데 (버프 · 내 % · 스킬 · 아이템) ===== */
     #bottom { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
-    #buffs { display: flex; gap: 6px; font-size: 16px; min-height: 22px; }
-    .buff { background: rgba(0,0,0,.6); padding: 2px 9px; border-radius: 6px; font-weight: bold; }
-    #damage { font-size: 60px; font-weight: 900; line-height: 1; text-shadow: 0 0 8px #000, 0 0 3px #000; transition: transform .12s; }
-    #damage.pop { transform: scale(1.4); }
-    /* 3인칭: 내 몸이 화면 가운데 아래에 있어 큰 % 를 왼쪽 아래 구석으로 */
-    #damage.corner { position: absolute; left: 22px; bottom: 18px; font-size: 48px; }
-    #skills { display: flex; gap: 6px; }
+    #buffs { display: flex; gap: 6px; font-size: 14px; min-height: 20px; }
+    .buff { font-family: var(--disp); background: rgba(8,12,26,.8); padding: 2px 11px; clip-path: polygon(7px 0, 100% 0, calc(100% - 7px) 100%, 0 100%); }
+    #damage { font-family: var(--disp); font-size: 54px; line-height: 1; text-shadow: 0 5px 0 rgba(0,0,0,.5), 0 0 12px #000; transition: transform .12s; }
+    #damage.pop { transform: scale(1.35); }
+    #damage.corner { position: absolute; left: 22px; bottom: 18px; font-size: 44px; }
+    /* 아래 플레이어 판이 있는 판에서는 그 위로 올린다 (main.js 가 body.cards 를 켬) */
+    body.cards #bottom { bottom: 92px; }
+    body.cards #spec { bottom: 96px; }
+    #skills { display: flex; gap: 8px; }
     #skills .slot { position: relative; overflow: hidden; }
-    #skills .fill { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(255,200,40,.35); z-index: 0; }
+    #skills .fill { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(180deg, rgba(255,210,58,.45), rgba(255,138,31,.3)); z-index: 0; }
     #skills .slot span { position: relative; z-index: 1; }
-    #skills .slot.ready { border-color: #ffd23a; box-shadow: 0 0 8px #ffd23a; }
+    #skills .slot.ready { border-color: var(--accent); box-shadow: 0 0 14px rgba(255,210,58,.75); }
     #skills .slot.glint { animation: glint .5s ease-out; }
     #ammo { align-self: center; width: 16px; height: 16px; border-radius: 50%; border: 3px solid #888; box-sizing: border-box; }
     #ammo.loaded { background: #ffc030; border-color: #fff0a0; box-shadow: 0 0 8px #ffc030; }
     @keyframes glint { 0% { transform: scale(1.18); box-shadow: 0 0 22px #fff; border-color: #fff; } 100% { transform: scale(1); } }
-    /* 색 고르기 (대기실): 동그란 색 칸, 내 색은 흰 테, 남이 쓰는 색은 흐리게 + × (못 고름) */
-    #color-row { margin-top: 6px; font-size: 14px; }
-    #color-row .sw { display: inline-block; width: 20px; height: 20px; border-radius: 50%; border: 2px solid rgba(255,255,255,.25); margin: 0 2px; vertical-align: middle; cursor: pointer; position: relative; box-sizing: border-box; }
-    #color-row .sw.mine { border-color: #fff; box-shadow: 0 0 0 2px #ffe14a; }
-    #color-row .sw.used { opacity: .3; cursor: not-allowed; }
-    #color-row .sw.used::after { content: '×'; position: absolute; inset: 0; line-height: 16px; text-align: center; font-size: 15px; font-weight: 900; color: #000; }
-    #color-row .note { color: #bbb; font-size: 12px; margin-left: 6px; }
-    #char-info { font-size: 13px; color: #ddd; margin-top: 4px; white-space: normal; max-width: 560px; margin-left: auto; margin-right: auto; }
-    .slot { min-width: 120px; padding: 6px 10px; background: rgba(0,0,0,.6); border: 3px solid rgba(255,255,255,.2); border-radius: 8px; font-size: 16px; text-align: center; white-space: nowrap; }
-    .slot.sel { border-color: #fff; background: rgba(60,60,60,.85); }
-    .slot.empty { opacity: .55; }
-    .slot .key { color: #bbb; margin-right: 6px; font-weight: bold; }
-    #stun { position: absolute; top: calc(50% + 30px); left: 50%; transform: translateX(-50%); font-size: 44px; font-weight: 900; color: #ff3030; text-shadow: 0 0 8px #000; }
-    #vignette { position: absolute; inset: 0; box-shadow: inset 0 0 140px 50px rgba(255,0,0,.55); opacity: 0; transition: opacity .15s; }
-    #vignette.on { opacity: 1; }
-    #host-players { position: absolute; top: 100px; left: 10px; font-size: 14px; background: rgba(0,0,0,.55); padding: 8px 10px; border-radius: 8px; display: grid; grid-template-columns: auto auto auto auto; gap: 4px 6px; align-items: center; pointer-events: auto; }
-    #host-players .title { grid-column: 1 / -1; color: #ccc; }
-    #host-players button { font-size: 13px; padding: 2px 8px; cursor: pointer; }
-    #settings, #tutorial { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); z-index: 20; pointer-events: auto; }
-    #settings .box, #tutorial .box { background: rgba(20,22,40,.95); padding: 18px 24px; border-radius: 12px; min-width: 340px; max-width: 520px; font-size: 16px; line-height: 1.6; }
-    #settings h3, #tutorial h3 { margin: 0 0 10px; }
+    .slot { min-width: 118px; padding: 5px 12px; background: rgba(8,12,26,.78); border: 2px solid var(--line); font-family: var(--disp); font-size: 15px;
+      text-align: center; white-space: nowrap; clip-path: polygon(9px 0, 100% 0, calc(100% - 9px) 100%, 0 100%); }
+    .slot.sel { border-color: #fff; background: rgba(60,70,110,.9); }
+    .slot.empty { opacity: .5; }
+    .slot .key { color: var(--accent); margin-right: 7px; }
+    /* ===== 창 (설정 · 처음 안내 · 방 목록) ===== */
+    #settings, #tutorial, #rooms { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      background: radial-gradient(circle at 50% 40%, rgba(16,22,46,.72), rgba(3,5,12,.93)); z-index: 20; pointer-events: auto; }
+    #rooms { z-index: 15; }
+    /* 메뉴 배경 자리: 지금은 비스듬한 색 띠. 나중에 3D 떠 있는 섬 장면이 여기로 들어온다 (B3) */
+    #menu-bg { position: absolute; inset: 0; overflow: hidden; pointer-events: none;
+      background: repeating-linear-gradient(104deg, rgba(60,74,120,.1) 0 60px, transparent 60px 150px); }
+    #settings .box, #tutorial .box, #rooms .box { position: relative; background: linear-gradient(160deg, #1a2347 0%, #0c1227 60%, #090d1d 100%);
+      padding: 20px 28px 22px; min-width: 340px; max-width: 540px; font-size: 15px; line-height: 1.6; box-shadow: var(--sh);
+      clip-path: polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% 100%, 22px 100%, 0 calc(100% - 22px)); animation: pop-in .16s ease-out; }
+    #settings .box::before, #tutorial .box::before, #rooms .box::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: linear-gradient(180deg, var(--accent), var(--hot)); }
+    #settings h3, #tutorial h3, #rooms h2 { font-family: var(--disp); margin: 0 0 12px; letter-spacing: 1px; }
+    #rooms h2 { font-size: 40px; line-height: 1; color: var(--accent); text-shadow: 0 5px 0 rgba(0,0,0,.5); margin-bottom: 2px; }
+    #rooms .sub { color: var(--dim); font-size: 13px; margin-bottom: 10px; }
+    #settings h3 { font-size: 26px; color: var(--accent); }
+    #tutorial h3 { font-size: 22px; color: var(--accent); }
     #settings .row { display: grid; grid-template-columns: 7em 1fr 4em; gap: 8px; align-items: center; margin: 6px 0; }
-    #settings .btns, #tutorial .btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
-    #settings button, #tutorial button { font-size: 15px; padding: 5px 14px; cursor: pointer; }
-    #keybinds { display: grid; grid-template-columns: 1fr 9.5em; gap: 3px 10px; align-items: center; max-height: 34vh; overflow-y: auto; font-size: 14px; padding-right: 4px; }
-    #keybinds .kb-group { grid-column: 1 / 3; color: #ffd23a; font-size: 13px; margin-top: 4px; }
-    #settings .kb-btn { font-size: 14px; padding: 2px 8px; }
-    #settings .kb-btn.wait { background: #ffd23a; }
-    #settings .kb-btn.dup { outline: 2px solid #ff4040; color: #c00; }
-    #key-dup { color: #ff7060; font-size: 13px; min-height: 1em; }
+    #settings .btns, #tutorial .btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+    #settings button, #tutorial button, #rooms button { font-size: 15px; }
+    #settings .box { max-height: calc(100vh - 40px); overflow-y: auto; }
+    #keybinds { display: grid; grid-template-columns: 1fr 9.5em; gap: 3px 10px; align-items: center; max-height: 30vh; overflow-y: auto; font-size: 13px; padding-right: 4px; }
+    #keybinds .kb-group { grid-column: 1 / 3; font-family: var(--disp); color: var(--accent); font-size: 14px; margin-top: 6px; }
+    #settings .kb-btn { font-size: 13px; padding: 2px 9px; box-shadow: 0 3px 0 #0c1026; background: linear-gradient(180deg, #37426e, #202a4c); color: var(--text); }
+    #settings .kb-btn.wait { background: linear-gradient(180deg, #ffe98a, #ffc21e); color: #171b2c; }
+    #settings .kb-btn.dup { outline: 2px solid var(--hot); color: #ffb0a4; }
+    #key-dup { color: #ff8a78; font-size: 13px; min-height: 1em; }
     #tutorial .card p { margin: 6px 0; }
-    #tutorial .page { color: #aaa; font-size: 13px; margin-right: auto; align-self: center; }
-    /* 방 밖: 방 만들기 · 코드로 들어가기 · 공개 방 목록 */
-    #rooms { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(10,12,28,.88); z-index: 15; pointer-events: auto; }
-    #rooms .box { background: rgba(20,22,40,.95); padding: 18px 24px; border-radius: 12px; width: 560px; max-width: calc(100vw - 32px); font-size: 16px; line-height: 1.6; }
-    #rooms h2 { margin: 0 0 8px; }
-    #rooms h3 { margin: 14px 0 6px; font-size: 16px; color: #ccc; }
-    #rooms input { font-size: 15px; padding: 3px 6px; }
-    #rooms button { font-size: 15px; padding: 4px 14px; cursor: pointer; }
-    #rooms button:disabled { opacity: .4; cursor: default; }
+    #tutorial .page { color: var(--dim); font-size: 13px; margin-right: auto; align-self: center; }
+    #rooms h3 { font-family: var(--disp); margin: 14px 0 6px; font-size: 16px; color: var(--dim); letter-spacing: .5px; }
+    #rooms input { font-size: 15px; }
     #rooms-msg { color: #ffb050; white-space: pre-line; min-height: 1.6em; }
-    /* 아이템이 안 나오는 판 (snapshot itemsEnabled false): 아이템 칸·타이머·설명은 숨기고, 키 설정 줄은 회색 */
+    #room-code { width: 5em; text-transform: uppercase; letter-spacing: 3px; }
+    #room-list { display: flex; flex-direction: column; gap: 6px; max-height: 34vh; overflow-y: auto; }
+    #room-list .room { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; background: linear-gradient(100deg, rgba(60,74,120,.5), rgba(20,27,54,.5));
+      padding: 7px 12px; clip-path: polygon(9px 0, 100% 0, calc(100% - 9px) 100%, 0 100%); font-family: var(--disp); animation: slide-left .18s ease-out; }
+    #room-list .room .info { color: var(--dim); font-family: system-ui, sans-serif; font-size: 12px; }
+    #room-list .room button { grid-row: 1 / 3; grid-column: 2; }
+    #room-list .none { color: #6e7899; }
+    /* ===== 대기실 (가운데 판) ===== */
+    #center { position: absolute; top: calc(50% + 18px); left: 50%; transform: translate(-50%, -50%); text-align: center; font-size: 17px;
+      background: linear-gradient(160deg, rgba(26,35,71,.93) 0%, rgba(10,15,34,.95) 70%); padding: 16px 26px; pointer-events: auto;
+      max-height: calc(100vh - 70px); overflow-y: auto; box-sizing: border-box; box-shadow: var(--sh);
+      clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 20px 100%, 0 calc(100% - 20px)); animation: slide-in .2s ease-out; }
+    #center-text { white-space: pre; font-family: var(--disp); font-size: 21px; line-height: 1.35; letter-spacing: .5px; }
+    #center button { margin-top: 10px; }
+    #start-btn { font-size: 23px; padding: 9px 34px; margin-top: 12px; }
+    #bot-btns { margin-top: 10px; display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; }
+    #bot-btns button { font-size: 14px; padding: 5px 13px; }
+    #bot-btns label { font-size: 14px; color: var(--dim); display: flex; gap: 5px; align-items: center; }
+    #center .keys { white-space: normal; font-size: 13px; text-align: left; margin-top: 12px; line-height: 1.55; color: #cdd5ee; }
+    #center .keys b, #center .keys span[data-key], #center .keys span[data-keys] { color: var(--accent); font-family: var(--disp); font-weight: normal; }
+    #map-info, #mode-info { font-size: 14px; }
+    #room-row { font-size: 14px; margin-top: 10px; display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; color: var(--dim); }
+    #room-row .code { font-family: var(--disp); font-size: 19px; letter-spacing: 3px; color: var(--accent); }
+    #room-row button { font-size: 13px; padding: 3px 11px; margin: 0; }
+    #room-link { font-size: 12px; color: #7d88ab; user-select: all; }
+    #name-row { font-size: 14px; margin-top: 10px; }
+    /* 캐릭터 고르기: 초상 카드 (select 는 그대로 두고 카드가 값을 바꾼다) */
+    #char-label { display: none; } /* 고르기는 초상 카드로 — select 는 값만 들고 있는다 (기존 코드·스크립트가 그대로 씀) */
+    #char-cards { display: flex; gap: 5px; justify-content: center; flex-wrap: wrap; margin: 8px auto 2px; max-width: 520px; }
+    #char-cards .cc { position: relative; box-sizing: border-box; width: 60px; padding: 3px 4px 4px; cursor: pointer; background: linear-gradient(180deg, rgba(40,52,94,.8), rgba(10,15,34,.85));
+      clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%); transition: transform .1s, filter .1s; }
+    #char-cards .cc:hover { transform: translateY(-3px); filter: brightness(1.2); }
+    #char-cards .cc .face { width: 100%; height: 48px; background: rgba(0,0,0,.3) center/contain no-repeat; }
+    #char-cards .cc .nm { font-family: var(--disp); font-size: 12px; color: var(--dim); line-height: 1.2; }
+    #char-cards .cc.sel { background: linear-gradient(180deg, #ffe98a, #ffb400); box-shadow: 0 0 16px rgba(255,210,58,.6); }
+    #char-cards .cc.sel .nm { color: #1a1300; }
+    #color-row { margin-top: 8px; font-size: 13px; color: var(--dim); }
+    #color-row .sw { display: inline-block; width: 20px; height: 20px; border: 2px solid rgba(255,255,255,.22); margin: 0 2px; vertical-align: middle; cursor: pointer;
+      position: relative; box-sizing: border-box; clip-path: polygon(5px 0, 100% 0, calc(100% - 5px) 100%, 0 100%); }
+    #color-row .sw.mine { border-color: #fff; box-shadow: 0 0 0 2px var(--accent); }
+    #color-row .sw.used { opacity: .28; cursor: not-allowed; }
+    #color-row .sw.used::after { content: '×'; position: absolute; inset: 0; line-height: 16px; text-align: center; font-size: 15px; font-weight: 900; color: #000; }
+    #color-row .note { color: var(--dim); font-size: 12px; margin-left: 6px; }
+    #char-info { font-size: 13px; color: #cdd5ee; margin-top: 6px; white-space: normal; max-width: 560px; margin-left: auto; margin-right: auto; }
+    #host-players { position: absolute; top: 96px; left: 14px; font-size: 13px; background: linear-gradient(160deg, rgba(26,35,71,.9), rgba(10,15,34,.92));
+      padding: 10px 14px; display: grid; grid-template-columns: auto auto auto auto; gap: 5px 7px; align-items: center; pointer-events: auto;
+      clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px)); box-shadow: var(--sh); animation: slide-left .2s ease-out; }
+    #host-players .title { grid-column: 1 / -1; font-family: var(--disp); color: var(--accent); font-size: 14px; }
+    #host-players button { font-size: 12px; padding: 2px 9px; box-shadow: 0 3px 0 #0c1026; background: linear-gradient(180deg, #37426e, #202a4c); color: var(--text); }
+    /* ===== 판 끝: 결과 표 ===== */
+    #results { position: absolute; right: 18px; top: 50%; transform: translateY(-50%); z-index: 4; pointer-events: none;
+      background: linear-gradient(160deg, rgba(26,35,71,.93), rgba(8,12,26,.95)); padding: 12px 18px 14px; box-shadow: var(--sh);
+      clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px)); animation: slide-up .3s ease-out; }
+    #results h4 { font-family: var(--disp); margin: 0 0 8px; font-size: 18px; color: var(--accent); letter-spacing: 1px; }
+    #results table { border-collapse: collapse; font-size: 13px; }
+    #results th { font-family: var(--disp); color: var(--dim); font-weight: normal; padding: 2px 9px; text-align: right; font-size: 12px; }
+    #results td { padding: 3px 9px; text-align: right; white-space: nowrap; }
+    #results td.n { text-align: left; font-family: var(--disp); font-size: 15px; }
+    #results tr.win td { background: rgba(255,210,58,.14); }
+    #results .face { width: 26px; height: 26px; background: rgba(0,0,0,.3) center/cover no-repeat; display: inline-block; vertical-align: middle; margin-right: 5px;
+      clip-path: polygon(5px 0, 100% 0, calc(100% - 5px) 100%, 0 100%); border-bottom: 2px solid var(--pcol, #888); box-sizing: border-box; }
+    #results .big { font-family: var(--disp); font-size: 15px; }
+    /* ===== 아이템 꺼진 판 ===== */
     body.no-items .items-only { display: none !important; }
     body.no-items .items-dim { opacity: .4; }
-    /* 연습 방: 왼쪽 작은 패널 (연습 키로 열고 닫음, 가운데·허수아비를 안 가림) + 오른쪽 콤보 기록 */
-    #practice { position: absolute; left: 12px; top: 70px; z-index: 18; pointer-events: auto; background: rgba(20,22,40,.92); padding: 10px 14px; border-radius: 10px; font-size: 14px; line-height: 1.7; width: 250px; }
-    #practice h4 { margin: 0 0 4px; font-size: 15px; display: flex; justify-content: space-between; align-items: center; }
-    #practice h4 button { font-size: 12px; padding: 1px 8px; }
+    /* ===== 연습 방 ===== */
+    #practice { position: absolute; left: 14px; top: 70px; z-index: 18; pointer-events: auto; background: linear-gradient(160deg, rgba(26,35,71,.94), rgba(9,14,30,.95));
+      padding: 12px 16px; font-size: 13px; line-height: 1.7; width: 252px; box-shadow: var(--sh); animation: slide-left .2s ease-out;
+      clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px)); }
+    #practice h4 { font-family: var(--disp); margin: 0 0 6px; font-size: 18px; color: var(--accent); display: flex; justify-content: space-between; align-items: center; letter-spacing: 1px; }
+    #practice h4 button { font-size: 12px; padding: 2px 9px; }
     #practice label { display: block; }
-    #practice input[type=number] { width: 4.2em; font-size: 14px; }
-    #practice .sub { margin-top: 6px; color: #ccc; font-size: 13px; }
+    #practice input[type=number] { width: 4.2em; font-size: 13px; }
+    #practice .sub { margin-top: 8px; color: var(--dim); font-size: 13px; }
     #practice .dummy { display: flex; gap: 6px; align-items: center; }
     #practice .dummy span { flex: 1; }
-    #practice button { cursor: pointer; }
-    #practice select { font-size: 14px; }
-    #practice-hint { position: absolute; left: 12px; top: 70px; font-size: 12px; color: #bbb; background: rgba(0,0,0,.3); padding: 2px 8px; border-radius: 6px; pointer-events: none; }
-    #pcombo { position: absolute; right: 14px; top: 34%; text-align: right; pointer-events: none; font-size: 14px; line-height: 1.5; }
-    #pcombo .c { background: rgba(0,0,0,.4); padding: 3px 10px; border-radius: 6px; margin-bottom: 4px; transition: opacity .4s; }
-    #pcombo .c b { color: #ffd23a; font-size: 18px; }
-    #pcombo .c.done { color: #ddd; }
+    #practice button { font-size: 13px; padding: 3px 10px; }
+    #practice select { font-size: 13px; }
+    #practice-hint { position: absolute; left: 14px; top: 70px; font-size: 12px; color: var(--dim); background: rgba(8,12,26,.5); padding: 3px 10px; pointer-events: none;
+      clip-path: polygon(7px 0, 100% 0, calc(100% - 7px) 100%, 0 100%); }
+    #pcombo { position: absolute; right: 16px; top: 32%; text-align: right; pointer-events: none; font-size: 13px; line-height: 1.5; }
+    #pcombo .c { background: rgba(8,12,26,.6); padding: 3px 12px; margin-bottom: 4px; transition: opacity .4s;
+      clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%); }
+    #pcombo .c b { font-family: var(--disp); color: var(--accent); font-size: 19px; }
+    #pcombo .c.done { color: #d6dcf0; }
     #pcombo .c.done b { color: #fff; }
-    #room-code { width: 5em; text-transform: uppercase; letter-spacing: 2px; }
-    #room-list { display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow-y: auto; }
-    #room-list .room { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; background: rgba(255,255,255,.07); padding: 6px 10px; border-radius: 8px; }
-    #room-list .room .info { color: #aaa; font-size: 13px; }
-    #room-list .room button { grid-row: 1 / 3; grid-column: 2; }
-    #room-list .none { color: #888; }
-    #room-row { font-size: 15px; margin-top: 8px; display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; }
-    #room-row .code { font-weight: bold; letter-spacing: 2px; color: #ffe060; }
-    #room-row button { font-size: 13px; padding: 2px 10px; cursor: pointer; margin: 0; }
-    #room-link { font-size: 12px; color: #aaa; user-select: all; }
-    .hidden { display: none !important; }
+    /* 작은 창: 글씨·판을 줄여 화면을 덜 가림 */
+    @media (max-height: 620px), (max-width: 1100px) {
+      #players .pc { width: 104px; }
+      #players .pc .pct { font-size: 28px; }
+      #players .pc .face { width: 32px; height: 32px; }
+      #bigmsg { font-size: 88px; }
+      #bigmsg.small { font-size: 56px; }
+      #damage { font-size: 42px; }
+      #damage.corner { font-size: 36px; }
+      #center { font-size: 14px; padding: 11px 18px; top: calc(50% + 10px); }
+      #center-text { font-size: 18px; }
+      #start-btn { font-size: 20px; padding: 7px 26px; margin-top: 8px; }
+      #char-cards { gap: 4px; margin-top: 6px; }
+      #char-cards .cc { width: 48px; }
+      #char-cards .cc .face { height: 40px; }
+      #char-cards .cc .nm { font-size: 11px; }
+      #char-info { font-size: 12px; }
+      #room-link { font-size: 11px; }
+      #rooms h2 { font-size: 32px; }
+      #results { padding: 9px 13px 10px; }
+      #results table { font-size: 12px; }
+    }
   </style>
   <script type="importmap">
     { "imports": { "three": "/vendor/three.module.js", "three/addons/": "/vendor/jsm/", "cannon-es": "/vendor/cannon-es.js" } }
@@ -225,8 +374,9 @@
         <p>마지막까지 살아남으면 승리. <b>G</b> 를 누른 채 마우스로 이모트, 대기 화면 <b>설정</b>에서 감도·소리.</p></div>
       <div class="btns"><span id="tut-page" class="page"></span><button id="tut-skip">넘기기</button><button id="tut-next">다음</button></div>
     </div></div>
-    <div id="rooms" class="hidden"><div class="box">
-      <h2>Tetrafall</h2>
+    <div id="rooms" class="hidden"><div id="menu-bg"></div><div class="box">
+      <h2>TETRAFALL</h2>
+      <div class="sub">떨어지는 블록 위에서 밀어 떨어뜨리는 3D 대전</div>
       <div><label>내 이름 <input id="rooms-nick" style="width:9em" placeholder="머리 위에 보임" /></label>
         <button class="settings-btn" style="float:right;font-size:14px;padding:3px 12px">설정</button></div>
       <div id="rooms-msg"></div>
@@ -250,7 +400,7 @@
     <div id="stun" class="hidden">경직!</div>
     <div id="bottom" class="hidden">
       <div id="buffs"></div>
-      <div id="damage">0%</div>
+      <div id="damage" class="hidden">0%</div>
       <div id="skills" class="hidden">
         <div class="slot" id="skill-f"><div class="fill"></div><span class="key" data-key="skill">F</span><span class="name"></span></div>
         <div class="slot" id="skill-r"><div class="fill"></div><span class="key" data-key="ult">R</span><span class="name"></span></div>
@@ -258,6 +408,10 @@
       </div>
       <div id="item-slot" class="slot empty items-only"><span class="key" data-key="item">우클릭</span><span class="name">아이템 —</span></div>
     </div>
+    <!-- 화면 아래: 사람마다 초상 + 큰 % 판 (스매시식). main.js updatePlayers 가 채움 -->
+    <div id="players" class="hidden"></div>
+    <!-- 판 끝: 결과 표 (이미 있는 숫자 — 승·점수·마지막 % ·사망 원인) -->
+    <div id="results" class="hidden"></div>
     <div id="host-players" class="hidden"></div>
     <div id="center"><span id="center-text">연결 중...</span><br /><button id="start-btn" class="hidden">시작</button>
       <div id="bot-btns" class="hidden"><button id="add-bot">봇 추가</button> <button id="remove-bot">봇 빼기</button>
@@ -274,6 +428,7 @@
         <div style="flex-basis:100%"><span id="room-link"></span></div></div>
       <div id="name-row" class="hidden" style="font-size:15px;margin-top:8px"><label>이름 <input id="name-input" style="font-size:15px;width:9em" placeholder="머리 위에 보임" /></label>
         <label id="char-label" style="margin-left:8px">캐릭터 <select id="char-select" style="font-size:15px"></select></label>
+        <div id="char-cards"></div><!-- 초상 카드 (누르면 위 select 값을 바꿈 — 고르는 길은 하나) -->
         <div id="color-row">색 <span id="color-swatches"></span><span class="note hidden" id="color-team-note">팀전은 팀 색</span></div>
         <div id="char-info"></div></div>
       <div id="keys" class="keys hidden">

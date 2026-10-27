@@ -6,6 +6,7 @@ import { ACTIONS, DEFAULT_BINDS, keyLabel, groupLabel, normCode, saveBinds, conf
 import { Sound } from '/sound.js';
 import { Music } from '/music.js';
 import { loadModels } from '/models.js';
+import { portrait, setPortraitModels } from '/portrait.js';
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $('status');
@@ -25,6 +26,7 @@ const models = await loadModels().catch((err) => {
   console.warn('모델을 못 불러와 기본 도형으로 그림:', err);
   return null;
 });
+setPortraitModels(models); // 초상(HUD 판·캐릭터 카드)도 같은 모델로
 const renderer = new Renderer(document.body, models);
 let ws = null;
 let myId = null;
@@ -1436,10 +1438,13 @@ function updateScore() {
   const kills = state.mode === 'kills' && state.phase !== 'lobby'; // 킬 점수전: 판 중·판 끝엔 승수 대신 이번 판 점수 + 남은 시간
   const ts = state.teamScores || { red: 0, blue: 0 };
   const left = kills && state.round.left !== null ? fmt(state.round.left) : '';
-  const key = `${kills}|${left}|` + ps.map((p) => `${p.id}:${p.wins}:${p.score}:${p.nick}:${p.team}:${p.color}`).join(',') + `|${myId}|${state.teamMode}|${tw.red}:${tw.blue}|${ts.red}:${ts.blue}`;
+  // 판 중엔 아래 플레이어 판이 사람마다 승수·점수를 보여 준다 → 맨 위 줄은 팀 합계가 필요한 팀전에만 (화면 덜 가리게)
+  const dup = cardsOn() && !state.teamMode;
+  const key = `${kills}|${left}|${dup}|` + ps.map((p) => `${p.id}:${p.wins}:${p.score}:${p.nick}:${p.team}:${p.color}`).join(',') + `|${myId}|${state.teamMode}|${tw.red}:${tw.blue}|${ts.red}:${ts.blue}`;
   if (key === scoreKey) return;
   scoreKey = key;
-  scoreEl.classList.toggle('hidden', ps.length < 2);
+  scoreEl.classList.toggle('hidden', ps.length < 2 || dup);
+  if (dup) return;
   const name = (p) => `<span style="color:${colorOf(p)}" class="${p.id === myId ? 'me' : ''}">${escapeHtml(shownName(p))}</span>`;
   const team = (t) => `<span style="color:${hex(TEAM_MAIN[t])}" class="${me() && me().team === t ? 'me' : ''}">${TEAM_KO[t]}</span>`;
   if (kills) {
@@ -1459,6 +1464,110 @@ function updateScore() {
   }
 }
 
+// ---------- 화면 아래 플레이어 판 (스매시식: 초상 · 이름 · 큰 % · 내 색 띠) ----------
+// 카운트다운·판 중·판 끝에 사람마다 한 칸. 맞으면 % 가 흔들리고, 죽으면 회색 KO
+const playersEl = $('players');
+const playerCards = new Map(); // id → { el, sub, pct } (초상·이름은 다시 만들 때만 바뀜)
+const shownPct = new Map(); // id → 지난 프레임 피해 % (올라갈 때만 흔듦)
+let playersKey = '';
+const livePlayers = () => state.players.filter((p) => !p.spectator && !p.dummy).sort((a, b) => a.slot - b.slot);
+function cardsOn() {
+  return !!state && !inPractice() && ['countdown', 'playing', 'over'].includes(state.phase) && livePlayers().length >= 2;
+}
+function updatePlayers() {
+  const on = cardsOn();
+  playersEl.classList.toggle('hidden', !on);
+  document.body.classList.toggle('cards', on); // 판이 있으면 아래 줄(스킬·관전 안내)을 그 위로 올린다
+  if (!on) {
+    playersKey = '';
+    return;
+  }
+  const ps = livePlayers();
+  const key = ps.map((p) => `${p.id}:${p.char}:${p.color}:${p.team}:${shownName(p)}`).join(',') + `|${state.teamMode}|${state.mode}`;
+  if (key !== playersKey) {
+    playersKey = key;
+    playersEl.textContent = '';
+    playerCards.clear();
+    for (const p of ps) {
+      const el = document.createElement('div');
+      el.className = 'pc';
+      el.innerHTML =
+        '<div class="top"><div class="face"></div><div><div class="nm"></div><div class="sub"></div></div></div><div class="pct"></div><div class="bar"></div>';
+      const col = colorOf(p);
+      el.style.setProperty('--pcol', col);
+      el.classList.toggle('me', p.id === myId);
+      const img = p.char ? portrait(p.char, playerColor(p, state), 96) : '';
+      if (img) el.querySelector('.face').style.backgroundImage = `url(${img})`;
+      el.querySelector('.nm').textContent = shownName(p);
+      playersEl.append(el);
+      playerCards.set(p.id, { el, sub: el.querySelector('.sub'), pct: el.querySelector('.pct') });
+    }
+  }
+  const kills = state.mode === 'kills';
+  for (const p of ps) {
+    const c = playerCards.get(p.id);
+    if (!c) continue;
+    const was = shownPct.get(p.id);
+    if (was !== undefined && p.damage > was && p.alive) {
+      c.el.classList.remove('hurt');
+      void c.el.offsetWidth; // 다시 흔들리게 애니메이션 되감기
+      c.el.classList.add('hurt');
+    }
+    shownPct.set(p.id, p.damage);
+    const dead = !p.alive && !p.master;
+    c.el.classList.toggle('dead', dead);
+    c.el.classList.toggle('watch', spectating() && !spec.overview && spec.target === p.id); // 관전 중 보고 있는 사람
+    const pct = dead ? '<i>KO</i>' : `${p.damage}<u>%</u>`;
+    if (c.pct.innerHTML !== pct) c.pct.innerHTML = pct;
+    c.pct.style.color = dead ? '' : damageColor(p.damage);
+    const tag = state.teamMode ? `${TEAM_KO[p.team] || ''}팀 · ` : '';
+    const sub = `${tag}${C.CHAR_NAMES[p.char] || ''} ${kills ? `킬 ${p.score}` : `승 ${p.wins}`}`;
+    if (c.sub.textContent !== sub) c.sub.textContent = sub;
+  }
+}
+
+// ---------- 판 끝: 승자 초상 + 결과 표 (이미 있는 숫자만) ----------
+const resultsEl = $('results');
+let resultsKey = '';
+function updateResults() {
+  const on = !!state && state.phase === 'over' && !inPractice() && livePlayers().length >= 2;
+  resultsEl.classList.toggle('hidden', !on);
+  if (!on) {
+    resultsKey = '';
+    return;
+  }
+  const ps = livePlayers();
+  const winners = new Set(state.round.winnerIds && state.round.winnerIds.length ? state.round.winnerIds : [state.round.winnerId].filter(Boolean));
+  const kills = state.mode === 'kills';
+  const key = `${state.round.n}|${state.mode}|${state.teamMode}|${[...winners].join(',')}|` + ps.map((p) => `${p.id}:${p.wins}:${p.score}:${p.damage}:${p.alive}:${p.cause}`).join(',');
+  if (key === resultsKey) return;
+  resultsKey = key;
+  const star = ps.find((p) => winners.has(p.id));
+  const big = star && star.char ? portrait(star.char, playerColor(star, state), 192) : '';
+  const head = state.round.winnerTeam
+    ? `${TEAM_KO[state.round.winnerTeam]}팀 승리`
+    : winners.size > 1
+      ? '공동 승리'
+      : star
+        ? `${shownName(star)} 승리`
+        : '무승부';
+  const rows = [...ps]
+    .sort((a, b) => Number(winners.has(b.id)) - Number(winners.has(a.id)) || (kills ? b.score - a.score : b.wins - a.wins) || a.slot - b.slot)
+    .map((p) => {
+      const img = p.char ? portrait(p.char, playerColor(p, state), 64) : '';
+      const face = `<span class="face" style="--pcol:${colorOf(p)}${img ? `;background-image:url(${img})` : ''}"></span>`;
+      const how = p.alive ? '생존' : CAUSE_KO[p.cause] || '탈락';
+      return `<tr class="${winners.has(p.id) ? 'win' : ''}"><td class="n" style="color:${colorOf(p)}">${face}${escapeHtml(shownName(p))}</td><td>${C.CHAR_NAMES[p.char] || '—'}</td><td class="big">${kills ? p.score : p.wins}</td><td class="big">${p.damage}%</td><td>${how}</td></tr>`;
+    })
+    .join('');
+  resultsEl.innerHTML =
+    `<h4>라운드 ${state.round.n} 결과</h4>` +
+    `<div style="display:flex;gap:12px;align-items:center;margin-bottom:8px">` +
+    (big ? `<div style="width:86px;height:86px;background:rgba(0,0,0,.3) url(${big}) center/cover no-repeat;clip-path:polygon(12px 0,100% 0,calc(100% - 12px) 100%,0 100%);border-bottom:4px solid ${star ? colorOf(star) : '#888'};box-sizing:border-box"></div>` : '') +
+    `<div class="big" style="font-size:22px;color:${star ? colorOf(star) : 'var(--accent)'}">${escapeHtml(head)}</div></div>` +
+    `<table><tr><th>이름</th><th>캐릭터</th><th>${kills ? '킬' : '승'}</th><th>피해</th><th>결과</th></tr>${rows}</table>`;
+}
+
 // ---------- HUD ----------
 function updateHud() {
   if (!state || closed) return;
@@ -1471,6 +1580,8 @@ function updateHud() {
   statusEl.textContent = timeShown || '';
 
   updateScore();
+  updatePlayers();
+  updateResults();
   updateBig();
   updateBottom(p);
 
@@ -1629,7 +1740,8 @@ function updateSpectate() {
   const watching = spec.overview || !now ? '전체 보기' : `${shownName(now)} 따라가는 중`;
   // 살아 있는 사람 목록 (지금 보는 사람은 ▶)
   const alive = aliveOthers();
-  const list = alive.map((x) => `${!spec.overview && x.id === spec.target ? '▶ ' : ''}${shownName(x)} ${x.damage}%`).join('   ');
+  // 살아 있는 사람·피해 % 는 아래 플레이어 판이 보여 준다 (보는 사람 판에 ▶) → 판이 없을 때만 글로
+  const list = cardsOn() ? '' : alive.map((x) => `${!spec.overview && x.id === spec.target ? '▶ ' : ''}${shownName(x)} ${x.damage}%`).join('   ');
   const next = ghostOn() ? `${keyText('jump')} 다음 사람 · 클릭 블록 떨어뜨리기` : `클릭/${keyText('jump')} 다음 사람`;
   const text = `${head}\n${watching} · 마우스 돌리기 · 휠 거리 · ${next} · 우클릭 ${spec.overview ? '따라가기' : '전체 보기'}${list ? `\n살아 있음: ${list}` : ''}`;
   if (specEl.textContent !== text) specEl.textContent = text;
@@ -1847,7 +1959,8 @@ let bottomKey = '';
 function updateBottom(p) {
   const show = !!p && p.alive && !p.master && (state.phase === 'playing' || state.phase === 'countdown'); // 마스터는 몸이 없어 아이템·피해 % 없음
   bottomEl.classList.toggle('hidden', !show);
-  damageEl.classList.toggle('hidden', !show); // 3인칭에선 #bottom 밖 (구석)
+  // 내 피해 % 는 아래 내 판(#players)이 크게 보여 준다 → 판이 없는 때(연습·혼자)만 따로 띄운다
+  damageEl.classList.toggle('hidden', !show || cardsOn()); // 3인칭에선 #bottom 밖 (구석)
   const stunned = show && p.stunned;
   stunEl.classList.toggle('hidden', !stunned);
   vignetteEl.classList.toggle('on', stunned);
@@ -2027,13 +2140,43 @@ function updateColorRow(p) {
   });
   $('color-team-note').classList.toggle('hidden', !state.teamMode);
 }
+// 캐릭터 초상 카드 (대기실): 누르면 위 select 값을 바꿔 보낸다 — 고르는 길은 하나로 둔다.
+// 초상은 내 색으로 그리므로 색을 바꾸면 다시 그린다 (portrait.js 가 캐시)
+const charCardsEl = $('char-cards');
+let charCardsKey = '';
+function updateCharCards(p) {
+  const col = playerColor(p, state);
+  if (charCardsKey !== String(col)) {
+    charCardsKey = String(col);
+    charCardsEl.textContent = '';
+    for (const c of C.CHARACTERS) {
+      const el = document.createElement('div');
+      el.className = 'cc';
+      el.dataset.char = c;
+      el.title = C.CHAR_NAMES[c];
+      el.innerHTML = '<div class="face"></div><div class="nm"></div>';
+      const img = portrait(c, col, 128, true);
+      if (img) el.querySelector('.face').style.backgroundImage = `url(${img})`;
+      el.querySelector('.nm').textContent = C.CHAR_NAMES[c];
+      el.addEventListener('click', () => {
+        if (charSel.value === c) return;
+        charSel.value = c;
+        charSel.dispatchEvent(new Event('change'));
+      });
+      charCardsEl.append(el);
+    }
+  }
+  for (const el of charCardsEl.children) el.classList.toggle('sel', el.dataset.char === p.char);
+}
 function updateCharRow(p) {
   if (p && p.color !== undefined) updateColorRow(p);
   const on = !!p && !!p.char;
   $('char-label').classList.toggle('hidden', !on);
+  charCardsEl.classList.toggle('hidden', !on);
   $('char-info').classList.toggle('hidden', !on);
   if (!on) return;
   if (document.activeElement !== charSel) charSel.value = p.char;
+  updateCharCards(p);
   $('char-info').textContent = charDesc(p.char);
 }
 
