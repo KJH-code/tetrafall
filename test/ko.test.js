@@ -102,3 +102,36 @@ test('접속: ping → pong 은 보낸 시각을 그대로 + 서버 틱 부하 (
   rooms.message(conn, { type: 'ping' });
   assert.equal(ws.msgs.length, n, '숫자가 아니면 답 없음');
 });
+
+test('접속 표시 계산 (shared/net.js): 핑 = 왕복 시간, 높거나 튀면 알림, 스냅샷이 끊기면 알림, 서버가 느리면 알림, 알림은 잠깐 뒤 사라짐', async () => {
+  const { NetMeter } = await import('../shared/net.js');
+  const m = new NetMeter();
+  assert.equal(m.view(0).ping, '…');
+  const pong = (sent, now, extra = {}) => m.onPong({ type: 'pong', t: sent, workMs: 3, behindMs: 0, ...extra }, now);
+  for (let i = 0; i < 5; i++) pong(i * 1000, i * 1000 + 40);
+  let v = m.view(4100);
+  assert.equal(v.ping, '40ms');
+  assert.equal(v.warn, null);
+  assert.equal(v.level, 'ok');
+  pong(5000, 5000 + 40 * C.NET_PING_SPIKE_MULT + 60); // 튐
+  assert.match(m.view(5200).warn, /핑 튐/);
+  assert.equal(m.view(5200 + C.NET_WARN_HOLD_MS + 100).warn, null, '잠깐 뒤 사라짐');
+  // 스냅샷 끊김
+  m.onState(10000);
+  m.onState(10033);
+  assert.equal(m.view(10040).warn, null);
+  assert.match(m.view(10033 + C.NET_SNAPSHOT_GAP_MS + 50).warn, /끊김/, '지금도 안 옴');
+  // 서버 느림
+  m.onState(20000);
+  m.view(20000 + C.NET_WARN_HOLD_MS + 1); // 앞 알림 지나감
+  m.warn = null;
+  m.onState(20030);
+  pong(20000, 20040, { workMs: C.NET_SERVER_SLOW_MS + 5 });
+  assert.equal(m.view(20050).warn, '서버 느림');
+  assert.equal(m.view(20050).server, C.NET_SERVER_SLOW_MS + 5);
+  // 아주 높은 핑은 bad
+  m.onState(30290);
+  pong(30000, 30000 + C.NET_PING_WARN_MS * 2 + 10);
+  m.onState(30300);
+  assert.equal(m.view(30310).level, 'bad');
+});

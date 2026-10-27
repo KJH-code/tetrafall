@@ -6,6 +6,7 @@ import { ACTIONS, DEFAULT_BINDS, keyLabel, groupLabel, normCode, saveBinds, conf
 import { Sound } from '/sound.js';
 import { Music } from '/music.js';
 import { loadModels } from '/models.js';
+import { NetStatus } from '/net.js';
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $('status');
@@ -882,11 +883,13 @@ function stopHud() {
   for (const el of [startBtn, $('bot-btns'), $('map-info'), $('name-row'), $('room-row'), $('host-players'), $('keys'), $('spec')]) el.classList.add('hidden');
 }
 
+let net = null; // 접속 상태 표시 (client/net.js)
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}`);
   ws.onopen = () => {
     statusEl.textContent = '연결됨. 서버 응답 대기...';
+    if (!net) net = new NetStatus(send); // 핑·렉 표시 (client/net.js)
     // 링크(?room=ABCD)로 왔으면 바로 그 방으로
     const code = new URLSearchParams(location.search).get('room');
     if (code) {
@@ -897,6 +900,7 @@ function connect() {
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
     msg.recvAt = performance.now(); // 받은 시각 (화면 위치 보간의 서버 시계 추정)
+    if (net) net.onMessage(msg);
     if (msg.type === 'rooms') {
       roomList = msg;
       if (!myId && !pendingJoin) showRooms();

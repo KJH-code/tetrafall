@@ -1253,6 +1253,7 @@ export const CONFIG = {
   NET_PING_SPIKE_MULT: 2.5, // 핑이 최근 평균의 이 배 넘게 튀면 렉 알림
   NET_SNAPSHOT_GAP_MS: 250, // 스냅샷이 이만큼 안 오면 "끊김" 알림
   NET_SERVER_SLOW_MS: 20, // 서버 틱 한 번 일한 시간이 이보다 길면 "서버 느림" (틱 33ms)
+  NET_SERVER_BEHIND_MS: 100, // 서버 틱이 정해진 시각보다 이만큼 밀리면 "서버 느림" (타이머가 조금씩 늦는 건 무시)
   NET_WARN_HOLD_MS: 1500, // 알림을 이만큼 보여 줌
   // ---- KO 연출 (2026-10-27 재혁) ----
   FINAL_KILL_WINDOW_MS: 500, // 판이 끝나기 이만큼 안의 죽음이 "마지막 킬" (서버 finalKill 이벤트)
