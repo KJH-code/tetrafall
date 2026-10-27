@@ -136,7 +136,7 @@ test('접속 표시 계산 (shared/net.js): 핑 = 왕복 시간, 높거나 튀�
   assert.equal(m.view(30310).level, 'bad');
 });
 
-test('터널 링크: 서버가 터널 주소(https 만)를 받으면 방 정보 link = 주소/?room=코드, 없으면 null. 이상한 주소는 거부', async () => {
+test('터널 링크: 서버가 터널 주소(https 만)를 받으면 방 정보 link = 주소/?room=코드, 없으면 필드 없음. 이상한 주소는 거부', async () => {
   const { roomLinkOf } = await import('../server/rooms.js');
   assert.equal(roomLinkOf('https://a-b.trycloudflare.com/', 'ABCD'), 'https://a-b.trycloudflare.com/?room=ABCD');
   const rooms = new Rooms({ rng: () => 0.5 });
@@ -144,7 +144,7 @@ test('터널 링크: 서버가 터널 주소(https 만)를 받으면 방 정보 
   const conn = rooms.connect(ws);
   rooms.message(conn, { type: 'create', name: '방', nick: 'a' });
   const code = ws.last('welcome').room.code;
-  assert.equal(ws.last('welcome').room.link, null, '터널 없으면 null (화면이 지금 주소로)');
+  assert.equal(ws.last('welcome').room.link, undefined, '터널 없으면 없음 (화면이 지금 주소로)');
   assert.equal(rooms.setPublicUrl('http://evil.example'), false, 'https 만');
   assert.equal(rooms.setPublicUrl('https://x.trycloudflare.com/"><script>'), false);
   assert.equal(rooms.setPublicUrl('https://pottery-sense.trycloudflare.com'), true);

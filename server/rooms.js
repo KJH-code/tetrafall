@@ -280,8 +280,10 @@ export class Rooms {
   }
 
   roomInfo(room) {
-    // link: 친구에게 줄 방 주소 (npm run online 의 터널 주소가 있으면 그걸로, 없으면 null → 화면이 지금 주소로)
-    return { code: room.code, name: room.name, public: room.public, practice: !!room.practice, link: this.publicUrl ? roomLinkOf(this.publicUrl, room.code) : null };
+    // link: 친구에게 줄 방 주소 (npm run online 의 터널 주소가 있을 때만, 없으면 필드 없음 → 화면이 지금 주소로)
+    const info = { code: room.code, name: room.name, public: room.public, practice: !!room.practice };
+    if (this.publicUrl) info.link = roomLinkOf(this.publicUrl, room.code);
+    return info;
   }
 
   // npm run online 이 찾은 터널 주소 (https 만). 이미 있는 방 사람들에게도 다음 스냅샷부터 새 링크
