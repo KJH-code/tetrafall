@@ -42,10 +42,11 @@ const fx = renderer.effects;
 // 건축가 블록이 한 칸 터질 때 (연쇄는 칸마다 차례로): 소리 + 가까우면 흔들림
 renderer.onBlast = (pos, big) => {
   const d = distToMe(pos.x, pos.y, pos.z);
-  sound.play('boom', { dist: d });
+  sound.play('boom', { dist: d, pos });
   if (d !== undefined && d < (big ? 7 : 4)) fx.shake(big ? 0.4 : 0.15, big ? 450 : 200);
 };
 renderer.onArrowStuck = (pos) => sound.play('land', { dist: distToMe(pos.x, pos.y, pos.z) }); // 화살이 블록에 박힘
+if (typeof renderer.onHazardRise === 'function') renderer.onHazardRise((h) => sound.hazardRise(h)); // 위험 액체가 차오르는 순간 (렌더러 훅, 없으면 sound.update 가 state.lava 로 감지)
 document.addEventListener('pointerdown', () => sound.unlock());
 document.addEventListener('keydown', () => sound.unlock());
 
@@ -54,7 +55,7 @@ function onLocalAction(action) {
   const p = me();
   if (action.name === 'push' && state && state.phase === 'playing' && p && p.alive && !p.controlling && !p.stunned) {
     fx.startPunch(myId);
-    sound.play('swing');
+    sound.play('swing', { char: p.char });
   }
 }
 const input = new Input(renderer.canvas, (action) => {
@@ -250,7 +251,7 @@ function handleEvent(e) {
     case 'shot': {
       renderer.skillStrike(e.who, 'hunterAim');
       renderer.shoot(e);
-      sound.play('fire', { dist: e.who === myId ? 0 : distToMe(e.from.x, e.from.y, e.from.z) });
+      sound.play('fire', { dist: e.who === myId ? 0 : distToMe(e.from.x, e.from.y, e.from.z), pos: e.from, char: playerById(e.who)?.char });
       break;
     }
     case 'ultRefund': // 표식 3개 대상을 맞혀 R 게이지 돌려받음: 노란 빛 + 내 R 칸 반짝
@@ -502,7 +503,8 @@ function handleEvent(e) {
       renderer.skillStrike(e.who, 'hookThrow');
       renderer.hookThrowRope(e);
       const a = playerById(e.who);
-      sound.play('swing', { dist: e.who === myId ? 0 : a ? distToMe(a.x, a.y, a.z) : undefined });
+      sound.play('swing', { dist: e.who === myId ? 0 : a ? distToMe(a.x, a.y, a.z) : undefined, pos: a, char: 'hook' });
+      sound.play('latch', { dist: e.who === myId ? 0 : a ? distToMe(a.x, a.y, a.z) : undefined, pos: a });
       break;
     }
     case 'hook': {
@@ -594,13 +596,14 @@ function handleEvent(e) {
       // 폼 전환: 메탈 = 기타 치켜들고 리프 충격파 (모히칸은 snapshot form 으로 솟음) / 음유 = 두 팔 벌려 치유파
       renderer.skillMove(e.who, e.form === 'metal' ? 'bardRiff' : 'bardHeal');
       renderer.bardForm(e);
-      sound.play(e.form === 'metal' ? 'boom' : 'clear', { dist: e.who === myId ? 0 : e.x !== undefined ? distToMe(e.x, e.y, e.z) : undefined });
+      sound.play('strum', { dist: e.who === myId ? 0 : e.x !== undefined ? distToMe(e.x, e.y, e.z) : undefined, form: e.form });
+      if (e.form === 'metal') sound.play('boom', { dist: e.who === myId ? 0 : e.x !== undefined ? distToMe(e.x, e.y, e.z) : undefined });
       if (e.form === 'bard' && (e.healed || []).some((h) => h.id === myId)) damageEl.animate([{ transform: 'scale(1.5)', color: '#80ffa0' }, { transform: 'scale(1)' }], { duration: 450 });
       break;
     case 'song':
       renderer.skillMove(e.who, 'bardSong');
       renderer.bardSong(e);
-      sound.play('clear', { dist: e.who === myId ? 0 : distToMe(e.x, e.y, e.z) });
+      sound.play('strum', { dist: e.who === myId ? 0 : distToMe(e.x, e.y, e.z), pos: e });
       if ((e.targets || []).includes(myId)) flashScreen('rgba(255,106,213,.25)');
       break;
     case 'amp': {
@@ -670,7 +673,7 @@ function handleEvent(e) {
       if (e.ammo !== undefined) {
         // 대포수 장전: 허리 포탄이 하나 늘고 (snapshot) 내 것이면 찰칵 + HUD 칸 반짝
         if (e.who === myId) {
-          sound.play('pickup', { dist: 0 });
+          sound.play('latch', { dist: 0 });
           cannonHudFlash(e.ammo);
         }
         break;
@@ -678,7 +681,7 @@ function handleEvent(e) {
       // 장전 (상대를 끌어옴): 허리 권총에서 불꽃이 확 + 찰칵
       const a = playerById(e.who);
       if (a) fx.burst({ x: a.x, y: a.y, z: a.z + 0.75 }, null, 0xffd040, 12, 3, 0.07, 0.35);
-      sound.play('pickup', { dist: e.who === myId ? 0 : a ? distToMe(a.x, a.y, a.z) : undefined });
+      sound.play('latch', { dist: e.who === myId ? 0 : a ? distToMe(a.x, a.y, a.z) : undefined, pos: a });
       break;
     }
     case 'blockGrab': // R 1단계: 블록이 뽑혀 끌려와 머리 위에서 돎
@@ -736,7 +739,7 @@ function feelEvent(e) {
       const a = playerById(e.who);
       if (!a) return;
       fx.startPunch(e.who);
-      sound.play('swing', { dist: distToMe(a.x, a.y, a.z) });
+      sound.play('swing', { dist: distToMe(a.x, a.y, a.z), pos: a, char: a.char });
       return;
     }
     case 'hit': {
@@ -760,22 +763,24 @@ function feelEvent(e) {
         // 치명타: 금색 파편 한 겹 + 큰 고리 + 전용 소리
         fx.burst(chest, dir, 0xffd030, C.FX_PARTICLES * 2, 8, 0.12, 0.6);
         fx.ring(chest, 0xffd030, 4.2);
-        sound.play('crit', { dist: e.by === myId || e.target === myId ? 0 : distToMe(t.x, t.y, t.z) });
+        sound.play('crit', { dist: e.by === myId || e.target === myId ? 0 : distToMe(t.x, t.y, t.z), pos: t });
       }
       fx.burst(chest, dir, e.kind === 'projectile' ? 0xffee40 : heavy ? 0xffa040 : 0xfff2c0, heavy ? C.FX_PARTICLES * 2 : C.FX_PARTICLES, heavy ? 7 : 5);
       fx.ring(chest, e.kind === 'projectile' ? 0xffee40 : heavy ? 0xff8a10 : 0xffffff, heavy ? 3.4 : 2.4);
       fx.hitSquash(e.target);
       renderer.hitReact(e.target, dir, { heavy, crit: e.crit, kind: e.kind }); // TABS 식 몸: 맞은 방향으로 휘청
+      const weapon = { char: a?.char, form: a?.bard?.form }; // 때린 캐릭터 무기 소리 (바드는 폼)
       if (e.target === myId) {
         sound.play('hurt');
+        sound.play('hit', { dist: 0, ...weapon });
         fx.shake(C.FX_SHAKE_HURT * (heavy ? 1.6 : 1));
       } else if (e.by === myId) {
-        sound.play('hit', { strong: true });
+        sound.play('hit', { strong: true, ...weapon });
         if (heavy) sound.play('hurt'); // 망치는 묵직한 저음을 한 겹 더
         fx.shake(C.FX_SHAKE_HIT * (heavy ? 2 : 1), 150);
         showHitmarker();
       } else {
-        sound.play('hit', { dist: distToMe(t.x, t.y, t.z) });
+        sound.play('hit', { dist: distToMe(t.x, t.y, t.z), pos: t, ...weapon });
       }
       return;
     }
@@ -788,7 +793,7 @@ function feelEvent(e) {
       // 하늘 계단 블록이 용암에 녹음: 칸마다 주황 번쩍 + 지글 불티 + 연기
       renderer.melt(e);
       const c = e.cells?.[0];
-      if (c) sound.play('lava', { dist: distToMe(c[0] + 0.5, c[1] + 0.5, c[2]) });
+      if (c) sound.play('sizzle', { dist: distToMe(c[0] + 0.5, c[1] + 0.5, c[2]), pos: { x: c[0] + 0.5, y: c[1] + 0.5, z: c[2] } });
       return;
     }
     case 'land': {
@@ -808,7 +813,7 @@ function feelEvent(e) {
       cx /= e.cells.length;
       cy /= e.cells.length;
       const d = distToMe(cx, cy, cz);
-      sound.play('land', { dist: d });
+      sound.play('land', { dist: d, pos: { x: cx, y: cy, z: cz } });
       if (d !== undefined && d < 3.5) fx.shake(0.08, 180);
       return;
     }
@@ -817,19 +822,20 @@ function feelEvent(e) {
       if (!t) return;
       const d = e.who === myId ? 0 : distToMe(t.x, t.y, t.z);
       const pos = { x: t.x, y: t.y, z: t.z + 0.8 };
+      if (e.who === myId) sound.play('lose', { dist: 0 });
       if (e.cause === 'crush') {
         renderer.crushFlat(e.who); // 납작하게 찌그러진 몸이 잠깐 남음
         fx.burst(pos, null, 0xff3030, 22, 6, 0.12, 0.6);
         fx.burst({ x: t.x, y: t.y, z: t.z + 0.1 }, null, 0x9a9a9a, 14, 3.5, 0.12, 0.6); // 깔린 자리 먼지
-        sound.play('crush', { dist: d });
-        sound.play('land', { dist: d }); // 큰 쿵
+        sound.play('crush', { dist: d, pos });
+        sound.play('land', { dist: d, pos }); // 큰 쿵
         if (e.who === myId) fx.shake(0.35, 450);
         else if (d !== undefined && d < 4) fx.shake(0.1, 200);
       } else if (e.cause === 'lava') {
         fx.burst(pos, null, 0xffa020, 18, 4, 0.1, 0.6);
-        sound.play('lavaDeath', { dist: d });
+        sound.play('lavaDeath', { dist: d, pos });
       } else if (e.cause === 'fall') {
-        sound.play('fall', { dist: d });
+        sound.play('fall', { dist: d, pos });
       }
       return;
     }
@@ -853,7 +859,7 @@ function feelEvent(e) {
       fx.burst({ x: e.x, y: e.y, z: e.z }, null, 0xff7020, 40, 9, 0.16, 0.7);
       fx.burst({ x: e.x, y: e.y, z: e.z }, null, 0x555555, 24, 5, 0.12, 0.9);
       fx.ring({ x: e.x, y: e.y, z: e.z }, 0xffa040, 4.5);
-      sound.play('boom', { dist: d });
+      sound.play('boom', { dist: d, pos: e });
       if (d !== undefined && d < 6) fx.shake(0.35 * (1 - d / 6), 450);
       return;
     }
@@ -2181,10 +2187,11 @@ function frame(now) {
     updateSpectate();
     updateGhostAim();
     if (state) music.setMood(state.phase === 'playing' || state.phase === 'countdown' ? (state.lava && state.lava.active ? 'lava' : 'battle') : 'calm');
-    music.update();
+    music.update(state); // 맵 테마별 곡
     const vic = state && state.phase === 'over' && performance.now() < victory.until ? victory.id : null;
     const selfie = p && p.alive && p.emote >= 0 && !vic ? myId : null; // 내 이모트는 앞에서 보이게
     renderer.render(state, myId, dt, view, { yaw: input.yaw, pitch: input.pitch, follow: spectating() && !spec.overview ? spec.target : null, dist: spec.dist, overviewDist: spec.overviewDist, victory: vic, selfie });
+    sound.update(renderer.camera.matrixWorld.elements, state, dt); // 귀(카메라) 위치·방향 + 위험 액체 지속음
     updateHud();
   } catch (err) {
     if (!frameErrorShown) console.error('프레임 에러 (계속 그림):', err);
