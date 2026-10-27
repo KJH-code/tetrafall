@@ -896,6 +896,7 @@ function connect() {
   };
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
+    msg.recvAt = performance.now(); // 받은 시각 (화면 위치 보간의 서버 시계 추정)
     if (msg.type === 'rooms') {
       roomList = msg;
       if (!myId && !pendingJoin) showRooms();

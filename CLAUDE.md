@@ -28,6 +28,7 @@ Windows PowerShell 에서 npm 이 막히면 `npm.cmd`.
 - `shared/config.js` — **튜닝 수치는 전부 여기.** 코드에 숫자를 박지 않는다
 - `shared/pieces.js` — 테트리미노 모양·회전
 - `shared/camera.js` — 관전 궤도 카메라 (three.js 없는 순수 계산, `render.js` 가 씀)
+- `client/interp.js` — 플레이어 화면 위치 보간 (three.js 없는 순수 계산, `render.js` 가 씀). 스냅샷을 서버 시각(`state.time`)으로 쌓고 조금 늦은 시각(남 `INTERP_DELAY_MS`, 나 `INTERP_DELAY_SELF_MS`)을 두 스냅샷 사이에서 보간
 - `server/game.js` — 게임 상태: 격자, 블록 낙하, 플레이어 물리, 넉백, 사망 판정, 용암, 아이템, 로그, 모드(`mode`: 생존·블록 마스터·킬 점수전). 블록 마스터의 마스터는 살아 있지만 필드에 없음 → 판정 대상은 `onField(p)` 로 고른다. 캐릭터(`char`, 스킬·필살기)는 `new Game(log, { characters: true })` 일 때만 (서버 방은 켬, 예전 규칙 테스트는 끔). 하늘 계단(`sky`, 하늘 블록 사슬·격자 높이 `game.H` 32)도 `{ skyStairs: true }` 일 때만 (방은 `SKY_STAIRS_DEFAULT`). 연습 모드는 `mode: 'practice'` (`startPractice`, 판이 안 끝남, 허수아비 `dummy`, 방 `practice` 는 로그 파일 없음)
 - `server/bot.js` — AI 봇 (handleInput / handleAction 만 씀, 판정 특혜 없음)
 - `server/index.js` — 정적 서빙 + WebSocket + 틱 루프 + 방마다 로그 파일 (`logs/<서버 시각>/<방 시각>_<코드>.txt`)
@@ -35,7 +36,7 @@ Windows PowerShell 에서 npm 이 막히면 `npm.cmd`.
 - `client/` — 렌더(`render.js`), 캐릭터(`character.js`), 입력(`input.js`), HUD·네트워크(`main.js`), 효과음(`sound.js`), 배경음악(`music.js`), 캐릭터 몸·동작(`figure.js`, 1인칭·3인칭은 `render.js`, 1인칭 팔·무기는 `viewmodel.js`: 내 몸을 복제해 관절을 베낌), 모델 불러오기(`models.js`, 파일은 `client/assets/` 출처 `CREDITS.md`), 툰 재질·외곽선(`toon.js`), 코드 텍스처(`textures.js`), 조작 키 설정(`keys.js`, 설정 창에서 바꿈, `tf-keys`). 연습 방 화면(연습 창·허수아비 콤보 기록)은 `main.js`, 허수아비 모양은 `character.js`
 - `tools/online.js` — `npm run online` (서버 자식 프로세스 + cloudflared, 출력에서 터널 주소 찾기)
 - `tools/stats.js` — 서버 로그 요약 (판 길이·압사 비율·구성별·맵별·캐릭터별·콤보·플레이어별·아이템). 로그 형식을 바꾸면 여기도
-- `test/game.test.js` — 단위 테스트, `test/rooms.test.js` — 방, `test/stats.test.js` — 로그 요약이 실제 게임 로그를 읽는지, `test/online.test.js` — 터널 주소 찾기, `test/camera.test.js` — 관전 카메라, `test/modes.test.js` — 게임 모드, `test/characters.test.js` — 캐릭터, `test/keys.test.js` — 조작 키 설정, `test/sky.test.js` — 하늘 계단 (대기실 옵션, 끄면 예전 그대로), `test/windup.test.js` — 이동 스킬 예고 (닌자·탱크·갈고리 F 지상 준비, 갈고리 닿는 순간 판정), `test/practice.test.js` — 연습 모드 (혼자 방·토글·허수아비 콤보 기록·판 중 캐릭터 바꾸기), `test/quake.test.js` — 탱크 R 솟는 땅 이벤트 id (quakeRise·quakeFall 짝), `test/ghost.test.js` — 유령 투하 (죽은 사람이 1칸 블록, 생존 모드), `test/colors.test.js` — 플레이어 색 고르기 (팔레트·중복 거절·판 중 거절·봇 자동), `test/botpos.test.js` — 봇 위치·복귀 (공중 대시·2단 점프로 안쪽, 가장자리 여유)
+- `test/game.test.js` — 단위 테스트, `test/rooms.test.js` — 방, `test/stats.test.js` — 로그 요약이 실제 게임 로그를 읽는지, `test/online.test.js` — 터널 주소 찾기, `test/camera.test.js` — 관전 카메라, `test/modes.test.js` — 게임 모드, `test/characters.test.js` — 캐릭터, `test/keys.test.js` — 조작 키 설정, `test/sky.test.js` — 하늘 계단 (대기실 옵션, 끄면 예전 그대로), `test/windup.test.js` — 이동 스킬 예고 (닌자·탱크·갈고리 F 지상 준비, 갈고리 닿는 순간 판정), `test/practice.test.js` — 연습 모드 (혼자 방·토글·허수아비 콤보 기록·판 중 캐릭터 바꾸기), `test/quake.test.js` — 탱크 R 솟는 땅 이벤트 id (quakeRise·quakeFall 짝), `test/ghost.test.js` — 유령 투하 (죽은 사람이 1칸 블록, 생존 모드), `test/colors.test.js` — 플레이어 색 고르기 (팔레트·중복 거절·판 중 거절·봇 자동), `test/botpos.test.js` — 봇 위치·복귀 (공중 대시·2단 점프로 안쪽, 가장자리 여유), `test/interp.test.js` — 화면 위치 보간 (들쭉날쭉 도착해도 고른 속도)
 
 ## 규칙
 
