@@ -6,6 +6,8 @@ import { ACTIONS, DEFAULT_BINDS, keyLabel, groupLabel, normCode, saveBinds, conf
 import { Sound } from '/sound.js';
 import { Music } from '/music.js';
 import { loadModels } from '/models.js';
+import { NetStatus } from '/net.js';
+import { KO } from '/ko.js';
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $('status');
@@ -39,6 +41,16 @@ function send(obj) {
 const sound = new Sound();
 const music = new Music(sound);
 const fx = renderer.effects;
+// KO 연출 (client/ko.js): 스매시 줄기·마지막 킬 슬로모션·압사. 소리는 ko.on('smash'|'final'|'crush', cb)
+const ko = new KO(renderer.scene, fx, {
+  colorOf: (id) => {
+    const p = playerById(id);
+    return p ? playerColor(p, state) : 0xffffff;
+  },
+  lowGfx: () => settings.lowGfx,
+  field: () => ({ w: state?.field?.w ?? C.GRID_W, d: state?.field?.d ?? C.GRID_D }),
+});
+renderer.camHook = (cam) => ko.camHook(cam);
 // 건축가 블록이 한 칸 터질 때 (연쇄는 칸마다 차례로): 소리 + 가까우면 흔들림
 renderer.onBlast = (pos, big) => {
   const d = distToMe(pos.x, pos.y, pos.z);
@@ -817,12 +829,16 @@ function feelEvent(e) {
       if (d !== undefined && d < 3.5) fx.shake(0.08, 180);
       return;
     }
+    case 'finalKill':
+      ko.final(e);
+      return;
     case 'death': {
       const t = playerById(e.who);
       if (!t) return;
       const d = e.who === myId ? 0 : distToMe(t.x, t.y, t.z);
       const pos = { x: t.x, y: t.y, z: t.z + 0.8 };
       if (e.who === myId) sound.play('lose', { dist: 0 });
+      ko.death(e, null, e.who === myId, d);
       if (e.cause === 'crush') {
         renderer.crushFlat(e.who); // 납작하게 찌그러진 몸이 잠깐 남음
         fx.burst(pos, null, 0xff3030, 22, 6, 0.12, 0.6);
@@ -888,11 +904,13 @@ function stopHud() {
   for (const el of [startBtn, $('bot-btns'), $('map-info'), $('name-row'), $('room-row'), $('host-players'), $('keys'), $('spec')]) el.classList.add('hidden');
 }
 
+let net = null; // 접속 상태 표시 (client/net.js)
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}`);
   ws.onopen = () => {
     statusEl.textContent = '연결됨. 서버 응답 대기...';
+    if (!net) net = new NetStatus(send); // 핑·렉 표시 (client/net.js)
     // 링크(?room=ABCD)로 왔으면 바로 그 방으로
     const code = new URLSearchParams(location.search).get('room');
     if (code) {
@@ -903,6 +921,7 @@ function connect() {
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
     msg.recvAt = performance.now(); // 받은 시각 (화면 위치 보간의 서버 시계 추정)
+    if (net) net.onMessage(msg);
     if (msg.type === 'rooms') {
       roomList = msg;
       if (!myId && !pendingJoin) showRooms();
@@ -966,7 +985,7 @@ function setUrlRoom(code) {
     // 주소창을 못 바꿔도 게임엔 지장 없음
   }
 }
-const roomLink = (code) => `${location.origin}${location.pathname}?room=${code}`;
+const roomLink = (code) => (room && room.code === code && room.link) || `${location.origin}${location.pathname}?room=${code}`; // 터널 주소가 있으면 그걸로 (서버 room.link)
 
 function showRooms(message) {
   roomsEl.classList.remove('hidden');
@@ -2171,8 +2190,9 @@ setInterval(() => {
 let last = performance.now();
 let frameErrorShown = false;
 function frame(now) {
-  const dt = Math.min(0.1, (now - last) / 1000);
+  const dt = Math.min(0.1, (now - last) / 1000) * ko.timeScale(now); // KO 슬로모션·히트스톱 (화면만)
   last = now;
+  ko.update(dt);
   const p = me();
   const view = p && p.alive && (p.controlling || p.master) ? 'sky' : 'fps'; // 블록 마스터는 다음 블록을 기다리는 동안에도 하늘
   if (view === 'sky' && !input.sky) {
@@ -2214,6 +2234,7 @@ const debug = {
   renderer,
   sound,
   music,
+  ko,
   // 클릭과 같은 경로로 행동 보내기 (로컬 팔 휘두르기·소리 포함)
   act: (action) => {
     onLocalAction(action);

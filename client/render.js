@@ -3335,6 +3335,7 @@ export class Renderer {
       this.camera.lookAt(look);
       const sh = this.effects.shakeOffset();
       if (sh) this.camera.position.add(new THREE.Vector3(sh.x, sh.y, sh.z));
+      if (this.camHook) this.camHook(this.camera); // KO 연출 (client/ko.js 마지막 킬 줌·화면 끝 번쩍)
       this.draw(this.camera);
       this.vm.draw(this.renderer, this.outlineOn ? this.outline : null, this.camera.aspect);
       return;

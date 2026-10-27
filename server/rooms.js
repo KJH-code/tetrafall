@@ -7,6 +7,11 @@ import { Game } from './game.js';
 
 const maxPlayers = () => Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length);
 
+// 방 주소: 터널 주소 + ?room=코드 (tools/online.js 콘솔 안내와 같은 모양)
+export function roomLinkOf(base, code) {
+  return `${base.replace(/\/+$/, '')}/?room=${code}`;
+}
+
 function send(ws, obj) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(obj));
 }
@@ -32,6 +37,12 @@ export class Rooms {
     this.conns = new Set();
     this.nextId = 1; // 플레이어 id 는 방이 달라도 겹치지 않게 서버 전체에서 셈
     this.lastList = '';
+    this.load = { workMs: 0, behindMs: 0 }; // 서버 틱 부하 (index.js 가 noteTick 으로 알려 줌) → pong 에 실어 보냄
+  }
+
+  // 서버 틱 한 번의 일한 시간·밀린 시간 (ms). 화면 핑 표시에 "서버가 늦음" 을 보이려고. 일한 시간은 천천히 줄어드는 최댓값
+  noteTick(workMs, behindMs) {
+    this.load = { workMs: Math.max(workMs, this.load.workMs * C.NET_LOAD_DECAY), behindMs };
   }
 
   // ---------- 접속 ----------
@@ -49,6 +60,11 @@ export class Rooms {
 
   message(conn, msg) {
     if (!msg || typeof msg !== 'object') return;
+    // 핑: 보낸 시각 t 를 그대로 돌려줌 (왕복 시간은 화면이 잼) + 서버 틱 부하. 방 안·밖 둘 다
+    if (msg.type === 'ping') {
+      if (Number.isFinite(msg.t)) send(conn.ws, { type: 'pong', t: msg.t, workMs: Math.round(this.load.workMs * 10) / 10, behindMs: Math.round(this.load.behindMs), tickMs: 1000 / C.TICK_RATE });
+      return;
+    }
     if (!conn.room) {
       if (msg.type === 'create') this.create(conn, msg.name, msg.nick);
       else if (msg.type === 'practice') this.createPractice(conn, msg.nick, msg.char);
@@ -264,7 +280,17 @@ export class Rooms {
   }
 
   roomInfo(room) {
-    return { code: room.code, name: room.name, public: room.public, practice: !!room.practice };
+    // link: 친구에게 줄 방 주소 (npm run online 의 터널 주소가 있을 때만, 없으면 필드 없음 → 화면이 지금 주소로)
+    const info = { code: room.code, name: room.name, public: room.public, practice: !!room.practice };
+    if (this.publicUrl) info.link = roomLinkOf(this.publicUrl, room.code);
+    return info;
+  }
+
+  // npm run online 이 찾은 터널 주소 (https 만). 이미 있는 방 사람들에게도 다음 스냅샷부터 새 링크
+  setPublicUrl(url) {
+    const u = typeof url === 'string' && /^https:\/\/[a-z0-9.-]+$/i.test(url.replace(/\/+$/, '')) ? url.replace(/\/+$/, '') : null;
+    this.publicUrl = u;
+    return !!u;
   }
 
   // 공개 방 목록 (방 밖 화면). 판 중인지는 안 보여줌 (재혁 결정: 이름·인원·맵·팀전·봇 난이도, 모드)

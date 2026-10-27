@@ -95,6 +95,7 @@ export class Game {
     this.roundEndTime = 0;
     this.winnerId = null;
     this.deaths = []; // 이번 판 사망 기록
+    this.lastDeath = null; // 마지막 죽음 (finalKill)
     this.landed = emptyLanded(); // 이번 판 놓인 블록 수 (종류별, 판 끝 로그 "  블록:" → npm run stats)
     this.totals = { rounds: 0, crush: 0, fall: 0, lava: 0 }; // 누적 (합격선 측정용)
     this.totalsByCount = {}; // 인원수별 누적 { [n]: { rounds, crush, fall } }. 인원이 다르면 압사 비율을 따로 본다
@@ -616,6 +617,7 @@ export class Game {
     this.shellCounter = this.shellCounter || 0;
     this.bgroup = 0;
     this.bombCounter = 0;
+    this.lastDeath = null;
     this.deaths = [];
     this.landed = emptyLanded();
     this.events = [];
@@ -760,6 +762,9 @@ export class Game {
   endRound(winner, winnerTeam = null, winners = null) {
     for (const p of this.players.values()) if (p.comboHits >= 2) this.endCombo(p); // 판이 끝날 때 이어지던 콤보도 로그에 (통계)
     this.phase = 'over';
+    // 판을 끝낸 죽음 (화면: 마지막 킬 슬로모션). FINAL_KILL_WINDOW_MS 안의 죽음만 (판정·서버 시간과 상관없는 화면 연출용)
+    const d = this.lastDeath;
+    if (d && this.time - d.at <= C.FINAL_KILL_WINDOW_MS) this.emit({ type: 'finalKill', ...d, winners: (winners || (winner ? [winner] : [])).map((p) => p.id), winnerTeam });
     this.roundEndTime = this.time;
     const list = winners || (winner ? [winner] : []);
     this.winnerIds = list.map((p) => p.id);
@@ -1001,7 +1006,10 @@ export class Game {
     let credit = src ? { by: src.by, kind: src.kind, name: this.players.get(src.by)?.name } : p.lastHit;
     if (credit && (credit.by === p.id || !credit.name || this.sameTeam(this.players.get(credit.by), p))) credit = null; // 팀 블록에 깔려도 킬 아님
     this.deaths.push({ name: p.name, cause, t, killer: credit ? credit.name : null, weapon: credit ? credit.kind : null });
-    this.emit({ type: 'death', who: p.id, cause, by: credit ? credit.by : null, weapon: credit ? credit.kind : null, byName: credit ? credit.name : null });
+    // 화면 KO 연출: 죽은 자리 + 낙사면 떨어진 쪽 (필드 가장자리 바깥 방향 out). 판을 끝내는 죽음이면 endRound 가 finalKill 로 다시 알림
+    const out = cause === 'fall' ? this.outward(p) : null;
+    this.lastDeath = { who: p.id, cause, by: credit ? credit.by : null, x: p.x, y: p.y, z: p.z, out, at: this.time };
+    this.emit({ type: 'death', who: p.id, cause, by: credit ? credit.by : null, weapon: credit ? credit.kind : null, byName: credit ? credit.name : null, x: p.x, y: p.y, z: p.z, out });
     const killText = credit ? `, 킬 ${credit.name} ${WEAPON_LOG[credit.kind]}` : ', 킬 없음'; // "킬 없음" 을 적어야 킬 기록이 없던 옛 로그와 구분됨
     // 밟은 칸: 죽기 전 마지막으로 서 있던 칸 (시작 지형 위 싸움인지, 블록이 바꾼 지형 위인지 → npm run stats)
     this.log(`  [사망] ${p.name} ${causeKo(cause)} @ ${fmtTime(t)} (위치 ${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}, 피해 ${p.damage}%${killText}, 밟은 칸 ${GROUND_LOG[p.lastGround ?? 'none']})`);
@@ -1009,6 +1017,25 @@ export class Game {
     if (this.mode === 'master' && this.phase === 'playing' && !p.master && this.master()) this.joinMasterSide(p);
     if (this.mode === 'practice') p.respawnAt = this.time + C.PRACTICE_RESPAWN_MS; // 연습 ("안 죽음" 끔): 잠깐 뒤 제자리
     p.ghostReadyAt = this.time; // 유령 투하: 죽자마자 첫 1개
+  }
+
+  // 낙사한 쪽: 필드 밖이면 가장 가까운 필드 점에서 그 사람 쪽, 필드 안이면 가장 가까운 가장자리 바깥 (단위 벡터 {x, y})
+  outward(p) {
+    const cx = Math.max(0, Math.min(this.W, p.x));
+    const cy = Math.max(0, Math.min(this.D, p.y));
+    let dx = p.x - cx;
+    let dy = p.y - cy;
+    if (Math.hypot(dx, dy) < 1e-6) {
+      const edges = [
+        [p.x, -1, 0],
+        [this.W - p.x, 1, 0],
+        [p.y, 0, -1],
+        [this.D - p.y, 0, 1],
+      ].sort((a, b) => a[0] - b[0]);
+      [, dx, dy] = edges[0];
+    }
+    const len = Math.hypot(dx, dy) || 1;
+    return { x: dx / len, y: dy / len };
   }
 
   // ---------- 입력 ----------
