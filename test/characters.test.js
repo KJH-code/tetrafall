@@ -2294,6 +2294,71 @@ test('바드 천천히 낙하는 착지 전 BARD_GLIDE_MAX_PER_AIR(3)번까지, 
   assert.ok(g.drainEvents().some((e) => e.type === 'glide'), '착지 뒤 다시 됨');
 });
 
+test('바드 음유 천천히 낙하 음파 고리 (2026-10-27 재혁): 누를 때마다 몸 둘레 1.2칸 사방에 피해 3·고정 넉백 바깥으로·경직 300, 둔화 없음. 3번 다 쓰면 고리도 없음', () => {
+  const def = C.BASIC_ATTACKS.bard.air[0];
+  assert.deepEqual([def.dmg, def.kb, def.up, def.stun, def.range], [3, 1.5, 1, 300, 1.2]);
+  const ms = def.windup + def.rec;
+  const ring = (dmg2) => {
+    const q = setupChars(['bard', 'tank', 'builder']);
+    place(q.p(1), 6, 5, 0, 6); // 오른쪽(+x)을 봄
+    place(q.p(2), 5, 5, 0, 6); // 뒤 1칸: 사방이라 맞음
+    place(q.p(3), 6, 6.5, 0, 6); // 옆 1.5칸: 밖
+    for (const id of [1, 2, 3]) Object.assign(q.p(id), { grounded: false, vz: 0 });
+    q.p(2).damage = dmg2;
+    q.g.drainEvents();
+    q.g.handleAction(1, { name: 'push' });
+    run(q.g, def.windup + TICK);
+    return { ...q, ev: q.g.drainEvents() };
+  };
+  const a = ring(0);
+  const r = a.ev.find((e) => e.type === 'glideRing');
+  assert.ok(r, '고리 이벤트');
+  assert.deepEqual(r.hits, [2]);
+  assert.equal(r.r, 1.2);
+  assert.equal(a.p(2).damage, 3);
+  assert.ok(a.p(2).kbx < 0, '바깥(뒤)으로 밀림');
+  assert.ok(a.p(2).stunUntil > a.g.time, '경직');
+  assert.equal(a.p(2).slowUntil || 0, 0, '둔화 없음');
+  assert.equal(a.p(3).damage, 0, '1.2칸 밖은 안 맞음');
+  assert.ok(a.lines.some((l) => /\[평타\] P1 → P2 넉백 .* 공중 천천히 낙하/.test(l)), '평타 로그 (stats 공중 평타 명중)');
+  const b = ring(150);
+  assert.ok(Math.abs(b.p(2).kbx - a.p(2).kbx) < 1e-9, '고정 넉백: 피해 % 와 무관');
+  // 같은 팀은 통과
+  const t = setupChars(['bard', 'tank']);
+  t.g.teamMode = true;
+  t.p(1).team = t.p(2).team = 0;
+  place(t.p(1), 6, 5, 0, 6);
+  place(t.p(2), 5, 5, 0, 6);
+  for (const id of [1, 2]) Object.assign(t.p(id), { grounded: false, vz: 0 });
+  t.g.handleAction(1, { name: 'push' });
+  run(t.g, def.windup + TICK);
+  assert.equal(t.p(2).damage, 0, '팀원은 안 맞음');
+  // 낙하 횟수를 다 쓰면 (4번째) 고리도 안 나감
+  const { g, p } = setupChars(['bard', 'tank']);
+  place(p(2), 1, 9);
+  place(p(1), 4, 5, 0, 20);
+  Object.assign(p(1), { grounded: false, vz: 0 });
+  const rings = [];
+  for (let i = 0; i < 4; i++) {
+    g.handleAction(1, { name: 'push' });
+    run(g, ms + TICK);
+    rings.push(g.drainEvents().filter((e) => e.type === 'glideRing').length);
+  }
+  assert.deepEqual(rings, [1, 1, 1, 0]);
+});
+
+test('바드 낙하 음파로 날려 죽이면 킬 무기 glide (로그 "낙하음파")', () => {
+  const { g, p, lines } = setupChars(['bard', 'tank']);
+  place(p(1), 6, 5, 0, 6);
+  place(p(2), 5, 5, 0, 6);
+  for (const id of [1, 2]) Object.assign(p(id), { grounded: false, vz: 0 });
+  g.handleAction(1, { name: 'push' });
+  run(g, C.BASIC_ATTACKS.bard.air[0].windup + TICK);
+  assert.equal(p(2).lastHit.kind, 'glide');
+  g.kill(p(2), 'fall');
+  assert.ok(lines.some((l) => /\[사망\] P2 .*킬 P1 낙하음파/.test(l)));
+});
+
 test('바드 메탈 R 앰프 음파: 3초 동안 앞 원뿔에 작게 계속 밀침 (옆·뒤는 안 맞음), 끝에 크게, 연주 중 느리게·평타 안 나감, 맞아도 안 끊김 (재혁 가: 넉백은 받고 경직 중에도 연주 계속)', () => {
   const { g, p, lines } = setupChars(['bard', 'tank', 'builder']);
   place(p(1), 3, 5, 0);
@@ -2397,6 +2462,36 @@ test('봇 바드: 음유시인이면 거리 두고 음파, 앞에 상대가 있�
   place(t, 5, 5);
   assert.equal(brain.useSkills(g, b, t, [t], []), true);
   assert.ok(b.amp, '앰프');
+});
+
+test('봇 바드 음유: 공중에서 상대가 낙하 음파 고리 안이면 공중 평타로 맞힘 (밖·횟수 다 씀은 안 맞음)', () => {
+  const mk = () => {
+    const g = new Game(() => {}, { characters: true });
+    g.rng = () => 0.5;
+    const b = g.addBot();
+    g.setChar(b.id, 'bard');
+    g.addPlayer(1);
+    g.startRound();
+    g.nextSpawnAt = Infinity;
+    return { g, b, t: g.players.get(1), brain: g.bots.get(b.id) };
+  };
+  const range = C.BASIC_ATTACKS.bard.air[0].range;
+  const press = (dx, count) => {
+    const { g, b, t, brain } = mk();
+    place(b, 5, 5, 0, 3);
+    place(t, 5 + dx, 5, 0, 3);
+    Object.assign(b, { grounded: false, vz: 0, glideCount: count, atk: null, pushReadyAt: 0 });
+    Object.assign(t, { grounded: false, vz: 0, iframeUntil: 0, shieldUntil: 0 });
+    g.drainEvents();
+    brain.attack(g, b, t, null, []);
+    const pressed = !!b.atk;
+    for (let k = 0; k < 5; k++) g.tick(TICK);
+    const ring = g.drainEvents().find((e) => e.type === 'glideRing');
+    return { pressed, hit: !!(ring && ring.hits.includes(1)) };
+  };
+  assert.deepEqual(press(range - 0.2, 0), { pressed: true, hit: true }, '고리 안: 눌러서 맞힘');
+  assert.equal(press(range + 0.5, 0).hit, false, '고리 밖은 안 맞음');
+  assert.equal(press(range - 0.2, C.BARD_GLIDE_MAX_PER_AIR).hit, false, '횟수 다 쓰면 고리 없음');
 });
 
 // 봇 하나 (캐릭터 c) + 사람 상대 (캐릭터 oc), 평지

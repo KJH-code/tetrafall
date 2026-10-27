@@ -136,7 +136,7 @@ function escapeHtml(s) {
 const KIND_KO = { push: '밀치기', projectile: '투사체', shock: '설치 블록 충격파', bomb: '폭탄', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', blockslam: '블록내려찍기', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기', quake: '솟는 땅', ghost: '유령블록' };
 const ITEM_KO = { control: '조종권', knockback: '투사체', jump: '점프력 상승', ghost: '유령화', brick: '설치 블록', bomb: '폭탄', speed: '이속 증가' };
 const CAUSE_KO = { crush: '압사', fall: '낙사', lava: '용암' };
-const WEAPON_KO = { push: '밀치기', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종 블록', thrown: '설치 블록', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', blockslam: '블록내려찍기', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기', quake: '솟는 땅', ghost: '유령블록' };
+const WEAPON_KO = { push: '밀치기', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종 블록', thrown: '설치 블록', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', blockslam: '블록내려찍기', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기', quake: '솟는 땅', ghost: '유령블록', glide: '낙하 음파' };
 
 // 오른쪽 위 킬 피드: "죽인 사람 → 죽은 사람 낙사 (망치)". 내가 낀 줄은 노란 테두리
 const killfeedEl = $('killfeed');
@@ -601,9 +601,12 @@ function handleEvent(e) {
     case 'glide': {
       // 음유 공중: 빙글 도는 동안 (snapshot glideLeft) 발밑에서 초록 반짝
       const a = playerById(e.who);
-      if (a) fx.ring({ x: a.x, y: a.y, z: a.z + 0.1 }, C.BARD_NOTE_COLOR, 1.6, 0.3, true);
+      if (a) fx.ring({ x: a.x, y: a.y, z: a.z + 0.1 }, C.BARD_NOTE_COLOR, 0.6, 0.3, true);
       break;
     }
+    case 'glideRing': // 음유 천천히 낙하 음파 고리 (피해): 소리는 B2
+      renderer.bardGlideRing(e);
+      break;
     case 'form':
       // 폼 전환: 메탈 = 기타 치켜들고 리프 충격파 (모히칸은 snapshot form 으로 솟음) / 음유 = 두 팔 벌려 치유파
       renderer.skillMove(e.who, e.form === 'metal' ? 'bardRiff' : 'bardHeal');

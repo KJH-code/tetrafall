@@ -298,7 +298,7 @@ export const CONFIG = {
     // 압사 원칙: 점프 봉인·입력 무시 없음, 둔화 약하게. 수치는 초안 (A 가 정함)
     bard: {
       chain: [{ name: '류트 음파', windup: 150, rec: 350, stun: 300, dmg: 3, kb: 1, up: 0.5, step: 0, note: true }],
-      air: [{ name: '천천히 낙하', windup: 100, rec: 300, stun: 0, dmg: 0, kb: 0, up: 0, step: 0, glide: true }],
+      air: [{ name: '천천히 낙하', windup: 100, rec: 300, stun: 300, dmg: 3, kb: 1.5, up: 1, step: 0, range: 1.2, glide: true }], // 2026-10-27 재혁: 누를 때마다 (착지 전 BARD_GLIDE_MAX_PER_AIR 번) 몸 둘레 range 칸 음파 고리, 바깥으로 고정 넉백. 둔화 없음
       metal: {
         chain: [
           { name: '기타 후려치기', windup: 150, rec: 300, stun: 650, dmg: 6, kb: 1.5, up: 1, step: 0.3 },
