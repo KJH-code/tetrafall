@@ -1069,6 +1069,36 @@ export const CONFIG = {
   FIGURE_FLAP_SPRING: { w: 9, damp: 0.35 }, // 천 자락(망토·수염·갈래)이 속도를 따라가는 스프링: 멈추면 앞으로 넘어갔다 내려옴
   FIGURE_DROP_FOLLOW: 25, // 엉덩이 높이가 땅↔공중 사이에서 바뀔 때 따라가는 빠르기 (/초, 뚝 끊김 방지)
   FIGURE_SETTLE: 10, // 도는 동작이 끝나고 가장 가까운 한 바퀴 각으로 돌아가는 빠르기 (/초)
+  // 액티브 래그돌 (2026-10-27 시범, client/ragdoll.js · ragdoll-math.js · cannon-es). 판정은 서버 AABB 그대로, 몸 모습만 클라 물리.
+  // 평소·공격: 관절 모터가 지금 자세(figureAnim)를 세게 따라감 / 맞음·기절·낙사: 모터 힘이 빠져 흐물흐물 (TABS)
+  RAGDOLL_CHARS: ['tank', 'ninja'], // 래그돌로 그리는 캐릭터 (빈 배열이면 끔). 1인칭 내 몸은 늘 끔 (viewmodel 이 관절을 베낌)
+  RAGDOLL_STEP: 1 / 120, // 물리 고정 걸음 (초)
+  RAGDOLL_MAX_STEPS: 6, // 한 프레임에 최대 걸음 수 (느린 프레임에서 따라잡기 상한)
+  RAGDOLL_GRAVITY: 20, // 몸 물리 중력 (칸/초², 서버 GRAVITY 와 같게)
+  RAGDOLL_KP: 2500, // 관절 모터: 목표 자세와의 각 차이 1 라디안당 각가속도 (/초²). 클수록 자세를 세게 지킴
+  RAGDOLL_KD: 80, // 관절 모터 감쇠 (/초)
+  RAGDOLL_ROOT_KP: 1800, // 골반이 서버(보간) 위치를 따라가는 세기 (/초²)
+  RAGDOLL_ROOT_KD: 85, // 같은 것 감쇠 (/초)
+  RAGDOLL_ROOT_SHARE: 0.25, // 힘이 다 빠졌을 때 팔다리도 골반 끌어당김을 이만큼 나눠 받음 (골반 혼자 몸 전체를 끌면 출렁여 깨짐)
+  RAGDOLL_LIN_KP: 2500, // 몸통·팔다리 조각이 자기 목표 위치로 가는 세기 (/초², 모터 세기를 곱함). 세면 자세가 그대로 읽힘
+  RAGDOLL_LIN_KD: 80, // 같은 것 감쇠 (/초)
+  RAGDOLL_COLLIDE_BELOW: 0.6, // 모터 세기가 이보다 약할 때만 바닥·블록과 부딪힘 (맞음·경직·낙사)
+  RAGDOLL_ITERATIONS: 15, // 물리 풀이 반복 (클수록 관절이 덜 벌어짐)
+  RAGDOLL_MAX_DRIFT: 0.35, // 골반이 판정 위치에서 이보다 (칸) 멀어지면 몸 전체를 순간 맞춤
+  RAGDOLL_MOTOR_ATTACK: 1.6, // 공격 중 모터 세기 배율 (예고·타격이 읽히게)
+  RAGDOLL_ATTACK_SNAP: 0.6, // 공격 준비·타격 동안 화면 자세를 목표 자세 쪽으로 이만큼 섞음 (0 물리 그대로 ~ 1 목표 그대로, 타격이 확 튀게)
+  RAGDOLL_HIT_MOTOR: 0.03, // 맞은 순간 모터 세기 (몸이 포개짐) → RAGDOLL_HIT_RECOVER_S 동안 1 로
+  RAGDOLL_HIT_RECOVER_S: 0.5,
+  RAGDOLL_STUN_MOTOR: 0.01, // 경직(날아감) 중 모터 세기 (팔다리 휘날림)
+  RAGDOLL_STUN_RECOVER_S: 0.5, // 경직이 풀리고 모터가 다시 세지는 시간 (일어나기)
+  RAGDOLL_FALL_MOTOR: 0.01, // 바닥 아래로 떨어지는 중 (낙사) 모터 세기
+  RAGDOLL_FALL_Z: -0.4, // 발이 이보다 낮으면 낙사 중으로 봄 (칸)
+  RAGDOLL_HIT_IMPULSE: 4, // 맞을 때 가슴·머리에 주는 충격 (세기 1, 질량 1 당 칸/초)
+  RAGDOLL_HIT_UP: 0.35, // 충격의 위쪽 비율
+  RAGDOLL_MASS: { pelvis: 3, chest: 4, head: 1.2, upper: 0.7, fore: 0.5, thigh: 1.4, shin: 1 }, // 몸 조각 질량 비율
+  RAGDOLL_DAMPING: 0.05, // 조각마다 공기 저항 (선·각 모두)
+  RAGDOLL_FRICTION: 0.6, // 바닥·블록 마찰
+  RAGDOLL_GROUND_REACH: 2, // 래그돌 둘레 이 칸 안의 단단한 칸만 물리 상자로 (가까운 것만)
   FIGURE_ARM_SPREAD: 0.22, // 가만히 있을 때 팔을 옆으로 벌린 각 (라디안)
   FIGURE_WALK_LEG: 0.7, // 걸을 때 허벅지를 앞뒤로 드는 최대 각
   FIGURE_WALK_KNEE: 0.9, // 걸을 때 무릎을 굽히는 최대 각

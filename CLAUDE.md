@@ -9,7 +9,7 @@ DevVault: Projects/Tetrafall
 
 - Node (서버, `ws`) + three.js (클라이언트). 순수 JS ES 모듈, 빌드 없음
 - 서버가 게임 상태의 권위 (30Hz 고정 틱). 클라이언트는 입력 전송 + 렌더링만, 예측 없음
-- 물리엔진 없음: 블록은 3D 정수 배열, 플레이어만 AABB 충돌 + 넉백
+- 게임 물리엔진 없음: 블록은 3D 정수 배열, 플레이어만 AABB 충돌 + 넉백. 몸 모습만 클라에서 cannon-es 래그돌 (`client/ragdoll.js`, 판정과 무관, `RAGDOLL_CHARS` 캐릭터만. 서버는 `/vendor/cannon-es.js` 로 서빙)
 
 ## 명령
 
@@ -28,6 +28,7 @@ Windows PowerShell 에서 npm 이 막히면 `npm.cmd`.
 - `shared/config.js` — **튜닝 수치는 전부 여기.** 코드에 숫자를 박지 않는다
 - `shared/pieces.js` — 테트리미노 모양·회전
 - `shared/camera.js` — 관전 궤도 카메라 (three.js 없는 순수 계산, `render.js` 가 씀)
+- `client/ragdoll.js` — 액티브 래그돌 (cannon-es): figure 관절마다 몸 조각, 관절 모터가 figureAnim 자세를 따라가고 맞음·경직·낙사엔 힘이 빠짐. 골반은 판정(보간) 위치를 따라감. 1인칭 내 몸은 끔. 순수 계산(모터 세기·PD·끌어당김)은 `client/ragdoll-math.js`
 - `client/interp.js` — 플레이어 화면 위치 보간 (three.js 없는 순수 계산, `render.js` 가 씀). 스냅샷을 서버 시각(`state.time`)으로 쌓고 조금 늦은 시각(남 `INTERP_DELAY_MS`, 나 `INTERP_DELAY_SELF_MS`)을 두 스냅샷 사이에서 보간
 - `server/game.js` — 게임 상태: 격자, 블록 낙하, 플레이어 물리, 넉백, 사망 판정, 용암, 아이템, 로그, 모드(`mode`: 생존·블록 마스터·킬 점수전). 블록 마스터의 마스터는 살아 있지만 필드에 없음 → 판정 대상은 `onField(p)` 로 고른다. 캐릭터(`char`, 스킬·필살기)는 `new Game(log, { characters: true })` 일 때만 (서버 방은 켬, 예전 규칙 테스트는 끔). 하늘 계단(`sky`, 하늘 블록 사슬·격자 높이 `game.H` 32)도 `{ skyStairs: true }` 일 때만 (방은 `SKY_STAIRS_DEFAULT`). 연습 모드는 `mode: 'practice'` (`startPractice`, 판이 안 끝남, 허수아비 `dummy`, 방 `practice` 는 로그 파일 없음)
 - `server/bot.js` — AI 봇 (handleInput / handleAction 만 씀, 판정 특혜 없음)
@@ -36,7 +37,7 @@ Windows PowerShell 에서 npm 이 막히면 `npm.cmd`.
 - `client/` — 렌더(`render.js`), 캐릭터(`character.js`), 입력(`input.js`), HUD·네트워크(`main.js`), 효과음(`sound.js`), 배경음악(`music.js`), 캐릭터 몸·동작(`figure.js`, 1인칭·3인칭은 `render.js`, 1인칭 팔·무기는 `viewmodel.js`: 내 몸을 복제해 관절을 베낌), 모델 불러오기(`models.js`, 파일은 `client/assets/` 출처 `CREDITS.md`), 툰 재질·외곽선(`toon.js`), 코드 텍스처(`textures.js`), 조작 키 설정(`keys.js`, 설정 창에서 바꿈, `tf-keys`). 맵 테마(`world.js`: 하늘·바닥·지형 블록 재질·떠 있는 섬·먼 배경·위험 모습, 맵 id → 테마는 config `WORLD_MAP_THEME`·`WORLD_THEMES`, 표에 없는 맵은 예전 노을. 설정 '그래픽 낮춤') 연습 방 화면(연습 창·허수아비 콤보 기록)은 `main.js`, 허수아비 모양은 `character.js`
 - `tools/online.js` — `npm run online` (서버 자식 프로세스 + cloudflared, 출력에서 터널 주소 찾기)
 - `tools/stats.js` — 서버 로그 요약 (판 길이·압사 비율·구성별·맵별·캐릭터별·콤보·플레이어별·아이템). 로그 형식을 바꾸면 여기도
-- `test/game.test.js` — 단위 테스트, `test/rooms.test.js` — 방, `test/stats.test.js` — 로그 요약이 실제 게임 로그를 읽는지, `test/online.test.js` — 터널 주소 찾기, `test/camera.test.js` — 관전 카메라, `test/modes.test.js` — 게임 모드, `test/characters.test.js` — 캐릭터, `test/keys.test.js` — 조작 키 설정, `test/sky.test.js` — 하늘 계단 (대기실 옵션, 끄면 예전 그대로), `test/windup.test.js` — 이동 스킬 예고 (닌자·탱크·갈고리 F 지상 준비, 갈고리 닿는 순간 판정), `test/practice.test.js` — 연습 모드 (혼자 방·토글·허수아비 콤보 기록·판 중 캐릭터 바꾸기), `test/quake.test.js` — 탱크 R 솟는 땅 이벤트 id (quakeRise·quakeFall 짝), `test/ghost.test.js` — 유령 투하 (죽은 사람이 1칸 블록, 생존 모드), `test/colors.test.js` — 플레이어 색 고르기 (팔레트·중복 거절·판 중 거절·봇 자동), `test/botpos.test.js` — 봇 위치·복귀 (공중 대시·2단 점프로 안쪽, 가장자리 여유), `test/interp.test.js` — 화면 위치 보간 (들쭉날쭉 도착해도 고른 속도), `test/world.test.js` — 맵 테마 표 (맵·테마 id, 값 빠짐 없음)
+- `test/game.test.js` — 단위 테스트, `test/rooms.test.js` — 방, `test/stats.test.js` — 로그 요약이 실제 게임 로그를 읽는지, `test/online.test.js` — 터널 주소 찾기, `test/camera.test.js` — 관전 카메라, `test/modes.test.js` — 게임 모드, `test/characters.test.js` — 캐릭터, `test/keys.test.js` — 조작 키 설정, `test/sky.test.js` — 하늘 계단 (대기실 옵션, 끄면 예전 그대로), `test/windup.test.js` — 이동 스킬 예고 (닌자·탱크·갈고리 F 지상 준비, 갈고리 닿는 순간 판정), `test/practice.test.js` — 연습 모드 (혼자 방·토글·허수아비 콤보 기록·판 중 캐릭터 바꾸기), `test/quake.test.js` — 탱크 R 솟는 땅 이벤트 id (quakeRise·quakeFall 짝), `test/ghost.test.js` — 유령 투하 (죽은 사람이 1칸 블록, 생존 모드), `test/colors.test.js` — 플레이어 색 고르기 (팔레트·중복 거절·판 중 거절·봇 자동), `test/botpos.test.js` — 봇 위치·복귀 (공중 대시·2단 점프로 안쪽, 가장자리 여유), `test/interp.test.js` — 화면 위치 보간 (들쭉날쭉 도착해도 고른 속도), `test/ragdoll.test.js` — 래그돌 순수 계산 (모터 세기·관절 모터·골반 끌어당김), `test/world.test.js` — 맵 테마 표 (맵·테마 id, 값 빠짐 없음)
 
 ## 규칙
 

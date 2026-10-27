@@ -12,6 +12,7 @@ import { makeTextures } from '/textures.js';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
 import { ViewModel } from '/viewmodel.js';
 import { SnapClock, pushTrack, sampleTrack } from '/interp.js';
+import { RagdollWorld } from '/ragdoll.js';
 import { World } from '/world.js';
 
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
@@ -972,6 +973,31 @@ export class Renderer {
     let ang = Math.atan2(best.y - p.y, best.x - p.x) - p.yaw;
     ang = Math.atan2(Math.sin(ang), Math.cos(ang));
     return Number.isFinite(ang) ? ang : null;
+  }
+
+  // 래그돌 목표 자세·모터 세기 입력 (client/ragdoll.js · ragdoll-math.js)
+  ragdollCapture(g, p, s, dt) {
+    const a = g.userData.anim;
+    const now = performance.now();
+    if (a.ragWasStunned && !p.stunned) a.ragStunEnd = now;
+    a.ragWasStunned = !!p.stunned;
+    const hit = this.hitFor(p);
+    const h = this.hits.get(p.id);
+    let hx = -Math.cos(p.yaw);
+    let hy = -Math.sin(p.yaw);
+    if (h?.dir && Number.isFinite(h.dir.x) && Number.isFinite(h.dir.y)) {
+      const l = Math.hypot(h.dir.x, h.dir.y) || 1;
+      hx = h.dir.x / l;
+      hy = h.dir.y / l;
+    }
+    const act = this.actFor(p.id);
+    this.ragdoll.capture(
+      p.id,
+      g,
+      { stunned: !!p.stunned, sinceStun: a.ragStunEnd ? (now - a.ragStunEnd) / 1000 : Infinity, hitAge: hit ? hit.age : null, falling: s.z < C.RAGDOLL_FALL_Z, act: act ? act.phase : null },
+      hit ? { id: hit.id, x: hx, y: hy, pow: hit.pow } : null,
+      dt,
+    );
   }
 
   // TABS 식 몸의 날아가기·구르기·일어나기·착지·2단 점프 공중제비 상태 (a 에 쌓음, figureAnim 과 rig 회전이 씀)
@@ -2903,6 +2929,7 @@ export class Renderer {
       }
     }
     const clockT = this.snapClock.advance(performance.now(), dt * 1000);
+    const ragKeep = new Set(); // 이번 프레임에 래그돌로 그리는 사람
     for (const p of state.players) {
       seen.add(p.id);
       const g = this.getPlayerMesh(p);
@@ -2930,6 +2957,15 @@ export class Renderer {
       if (![s.x, s.y, s.z].every(Number.isFinite)) Object.assign(s, { x: p.x, y: p.y, z: p.z }); // 안전장치
       g.position.set(s.x, s.y, s.z);
       g.rotation.z = p.yaw;
+      const firstPerson = view === 'fps' && this.skyBlend === 0 && !cam.victory && !cam.selfie && (!this.third || (this.tpDist ?? C.TP_DIST) < C.TP_HIDE_DIST); // 3인칭은 카메라가 머리 속으로 당겨졌을 때만 숨김
+      // 래그돌 (RAGDOLL_CHARS): 1인칭 내 몸은 끔 (viewmodel 이 관절을 베낌). 지난 프레임 물리 회전을 지우고 figureAnim 이 자세를 정하게
+      const rag = !!g.userData.figure && C.RAGDOLL_CHARS.includes(p.char) && p.alive && !p.master && !(p.id === myId && (firstPerson || !this.third));
+      if (rag) {
+        ragKeep.add(p.id);
+        this.ragdoll ||= new RagdollWorld();
+        if (!this.ragdoll.has(p.id)) this.ragdoll.create(p.id, g.userData.figure);
+        this.ragdoll.restore(p.id);
+      } else if (this.ragdoll?.has(p.id)) this.ragdoll.remove(p.id);
       this.animate(g, s, p, dt);
       if (slide && performance.now() >= slide.nextGhost && this.slides.has(p.id)) {
         slide.nextGhost += C.BLINK_GHOST_MS;
@@ -2939,7 +2975,6 @@ export class Renderer {
       if (p.speedLeft > 0 && g.userData.anim.hs > 1 && Math.random() < dt * C.SPEED_TRAIL_RATE) {
         this.effects.burst({ x: s.x, y: s.y, z: s.z + 0.15 }, null, 0xffe020, 3, 1.2, 0.07, 0.35);
       }
-      const firstPerson = view === 'fps' && this.skyBlend === 0 && !cam.victory && !cam.selfie && (!this.third || (this.tpDist ?? C.TP_DIST) < C.TP_HIDE_DIST); // 3인칭은 카메라가 머리 속으로 당겨졌을 때만 숨김
       g.visible = p.alive && !p.master && !(p.id === myId && firstPerson); // 블록 마스터의 마스터는 필드에 없음
       const bodyMat = g.userData.bodyMat;
       // 경직 중엔 흰색으로 빠르게 깜빡임
@@ -3052,6 +3087,13 @@ export class Renderer {
       this.updateStatusFx(g, p, s, myId);
       if (p.char === 'bard' || g.userData.ampFx) this.updateAmpFx(g, p, s, dt);
       if (p.char === 'berserker' || g.userData.whirlFx || g.userData.dizzyStars) this.updateWhirlFx(g, p, s, dt);
+      if (rag) this.ragdollCapture(g, p, s, dt);
+    }
+    if (this.ragdoll) {
+      // 몸 물리: 모은 목표 자세로 한 번에 돌리고 관절 회전으로 되돌려 넣음
+      this.ragdoll.prune(ragKeep);
+      this.ragdoll.step(dt, (x, y, z) => this.solidAt(state, x, y, z));
+      for (const id of ragKeep) this.ragdoll.apply(id);
     }
     for (const [id, g] of this.playerMeshes) {
       if (!seen.has(id)) {
