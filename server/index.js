@@ -152,6 +152,7 @@ setInterval(() => rooms.broadcastList(), C.ROOM_LIST_MS);
 
 warmUpPlacement(); // 첫 판 첫 블록이 서버 틱을 막지 않게 (JIT 데우기)
 server.listen(PORT, '0.0.0.0', () => {
+  if (!fs.existsSync(path.join(ROOT, 'node_modules', 'cannon-es'))) console.log('⚠ cannon-es 가 없음 → 몸 래그돌이 꺼짐. 레포 폴더에서 npm install 을 한 번 해 주세요 (Windows PowerShell 은 npm.cmd install)');
   console.log(`Tetrafall 호스트 서버 실행 중 (포트 ${PORT}, 틱 ${C.TICK_RATE}Hz, 방 최대 ${C.ROOM_MAX}개, 방마다 ${C.MIN_PLAYERS}~${Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length)}명)`);
   console.log('이 PC에서:        http://localhost:' + PORT);
   for (const [name, addrs] of Object.entries(os.networkInterfaces())) {

@@ -12,7 +12,11 @@ import { makeTextures } from '/textures.js';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
 import { ViewModel } from '/viewmodel.js';
 import { SnapClock, pushTrack, sampleTrack } from '/interp.js';
-import { RagdollWorld } from '/ragdoll.js';
+// 래그돌은 cannon-es 가 없어도 게임이 뜨게 따로 불러옴 (npm install 안 한 상태면 래그돌만 꺼짐)
+let RagdollWorld = null;
+import('/ragdoll.js')
+  .then((m) => (RagdollWorld = m.RagdollWorld))
+  .catch((e) => console.warn('래그돌 끔: cannon-es 를 못 불러옴 (npm install 필요)', e));
 import { World } from '/world.js';
 
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
@@ -2962,7 +2966,7 @@ export class Renderer {
       g.rotation.z = p.yaw;
       const firstPerson = view === 'fps' && this.skyBlend === 0 && !cam.victory && !cam.selfie && (!this.third || (this.tpDist ?? C.TP_DIST) < C.TP_HIDE_DIST); // 3인칭은 카메라가 머리 속으로 당겨졌을 때만 숨김
       // 래그돌 (RAGDOLL_CHARS): 1인칭 내 몸은 끔 (viewmodel 이 관절을 베낌). 지난 프레임 물리 회전을 지우고 figureAnim 이 자세를 정하게
-      const rag = !!g.userData.figure && C.RAGDOLL_CHARS.includes(p.char) && p.alive && !p.master && !(p.id === myId && (firstPerson || !this.third));
+      const rag = !!RagdollWorld && !!g.userData.figure && C.RAGDOLL_CHARS.includes(p.char) && p.alive && !p.master && !(p.id === myId && (firstPerson || !this.third));
       if (rag) {
         ragKeep.add(p.id);
         this.ragdoll ||= new RagdollWorld();
