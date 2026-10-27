@@ -95,6 +95,7 @@ export class Game {
     this.roundEndTime = 0;
     this.winnerId = null;
     this.deaths = []; // 이번 판 사망 기록
+    this.lastDeath = null; // 마지막 죽음 (finalKill)
     this.landed = emptyLanded(); // 이번 판 놓인 블록 수 (종류별, 판 끝 로그 "  블록:" → npm run stats)
     this.totals = { rounds: 0, crush: 0, fall: 0, lava: 0 }; // 누적 (합격선 측정용)
     this.totalsByCount = {}; // 인원수별 누적 { [n]: { rounds, crush, fall } }. 인원이 다르면 압사 비율을 따로 본다
@@ -616,6 +617,7 @@ export class Game {
     this.shellCounter = this.shellCounter || 0;
     this.bgroup = 0;
     this.bombCounter = 0;
+    this.lastDeath = null;
     this.deaths = [];
     this.landed = emptyLanded();
     this.events = [];
@@ -760,6 +762,9 @@ export class Game {
   endRound(winner, winnerTeam = null, winners = null) {
     for (const p of this.players.values()) if (p.comboHits >= 2) this.endCombo(p); // 판이 끝날 때 이어지던 콤보도 로그에 (통계)
     this.phase = 'over';
+    // 판을 끝낸 죽음 (화면: 마지막 킬 슬로모션). FINAL_KILL_WINDOW_MS 안의 죽음만 (판정·서버 시간과 상관없는 화면 연출용)
+    const d = this.lastDeath;
+    if (d && this.time - d.at <= C.FINAL_KILL_WINDOW_MS) this.emit({ type: 'finalKill', ...d, winners: (winners || (winner ? [winner] : [])).map((p) => p.id), winnerTeam });
     this.roundEndTime = this.time;
     const list = winners || (winner ? [winner] : []);
     this.winnerIds = list.map((p) => p.id);
@@ -1001,7 +1006,10 @@ export class Game {
     let credit = src ? { by: src.by, kind: src.kind, name: this.players.get(src.by)?.name } : p.lastHit;
     if (credit && (credit.by === p.id || !credit.name || this.sameTeam(this.players.get(credit.by), p))) credit = null; // 팀 블록에 깔려도 킬 아님
     this.deaths.push({ name: p.name, cause, t, killer: credit ? credit.name : null, weapon: credit ? credit.kind : null });
-    this.emit({ type: 'death', who: p.id, cause, by: credit ? credit.by : null, weapon: credit ? credit.kind : null, byName: credit ? credit.name : null });
+    // 화면 KO 연출: 죽은 자리 + 낙사면 떨어진 쪽 (필드 가장자리 바깥 방향 out). 판을 끝내는 죽음이면 endRound 가 finalKill 로 다시 알림
+    const out = cause === 'fall' ? this.outward(p) : null;
+    this.lastDeath = { who: p.id, cause, by: credit ? credit.by : null, x: p.x, y: p.y, z: p.z, out, at: this.time };
+    this.emit({ type: 'death', who: p.id, cause, by: credit ? credit.by : null, weapon: credit ? credit.kind : null, byName: credit ? credit.name : null, x: p.x, y: p.y, z: p.z, out });
     const killText = credit ? `, 킬 ${credit.name} ${WEAPON_LOG[credit.kind]}` : ', 킬 없음'; // "킬 없음" 을 적어야 킬 기록이 없던 옛 로그와 구분됨
     // 밟은 칸: 죽기 전 마지막으로 서 있던 칸 (시작 지형 위 싸움인지, 블록이 바꾼 지형 위인지 → npm run stats)
     this.log(`  [사망] ${p.name} ${causeKo(cause)} @ ${fmtTime(t)} (위치 ${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}, 피해 ${p.damage}%${killText}, 밟은 칸 ${GROUND_LOG[p.lastGround ?? 'none']})`);
@@ -1009,6 +1017,25 @@ export class Game {
     if (this.mode === 'master' && this.phase === 'playing' && !p.master && this.master()) this.joinMasterSide(p);
     if (this.mode === 'practice') p.respawnAt = this.time + C.PRACTICE_RESPAWN_MS; // 연습 ("안 죽음" 끔): 잠깐 뒤 제자리
     p.ghostReadyAt = this.time; // 유령 투하: 죽자마자 첫 1개
+  }
+
+  // 낙사한 쪽: 필드 밖이면 가장 가까운 필드 점에서 그 사람 쪽, 필드 안이면 가장 가까운 가장자리 바깥 (단위 벡터 {x, y})
+  outward(p) {
+    const cx = Math.max(0, Math.min(this.W, p.x));
+    const cy = Math.max(0, Math.min(this.D, p.y));
+    let dx = p.x - cx;
+    let dy = p.y - cy;
+    if (Math.hypot(dx, dy) < 1e-6) {
+      const edges = [
+        [p.x, -1, 0],
+        [this.W - p.x, 1, 0],
+        [p.y, 0, -1],
+        [this.D - p.y, 0, 1],
+      ].sort((a, b) => a[0] - b[0]);
+      [, dx, dy] = edges[0];
+    }
+    const len = Math.hypot(dx, dy) || 1;
+    return { x: dx / len, y: dy / len };
   }
 
   // ---------- 입력 ----------
@@ -1193,7 +1220,9 @@ export class Game {
     p.atk = { n, def, air, chained, at: this.time + def.windup };
     p.atkLanded = false;
     p.pushReadyAt = this.time + def.windup + def.rec;
-    if (def.glide && p.glideCount < C.BARD_GLIDE_MAX_PER_AIR) this.bardGlide(p, def.windup + def.rec);
+    const glided = !!def.glide && p.glideCount < C.BARD_GLIDE_MAX_PER_AIR; // 횟수를 다 쓰면 낙하도 고리도 없음
+    if (glided) this.bardGlide(p, def.windup + def.rec);
+    if (glided) p.atk.glided = true;
     if (def.dive) this.bardDive(p, def); // 바드 기타 꽂기: 누르는 순간 아래로 // 바드 공중 평타: 동작(준비+후딜) 동안만 천천히 낙하, 착지 전 N번까지
     this.emit({ type: 'attack', who: p.id, char: p.char, n, air, name: def.name, windup: def.windup, finish: !!def.finish, star: !!def.star });
     if (def.windup <= 0) this.basicHit(p);
@@ -1201,7 +1230,7 @@ export class Game {
 
   // 판정: 앞으로 step 만큼 나가며 부채꼴 안을 침. 중간 타는 고정 넉백, 마무리 타·공중 평타는 % 배율
   basicHit(p) {
-    const { n, def, air, chained } = p.atk;
+    const { n, def, air, chained, glided } = p.atk;
     p.atk = null;
     const set = basicSet(p.char, p.form);
     if (def.star) return this.starVolley(p, n, air, def, chained);
@@ -1211,7 +1240,8 @@ export class Game {
     }
     if (def.note || def.glide || def.dive) { // 기타 꽂기 판정은 낙하 중 (bardDiveUpdate)
       if (def.note) this.bardNote(p); // 천천히 낙하는 누를 때 시작 (basicStart)
-      return this.basicChain(p, n, air, false, def);
+      const landed = glided && this.bardGlideRing(p, n, air, def, chained);
+      return this.basicChain(p, n, air, landed, def);
     }
     const fx = Math.cos(p.yaw);
     const fy = Math.sin(p.yaw);
@@ -1870,6 +1900,30 @@ export class Game {
     p.glideCount++;
     if (p.vz < -C.BARD_GLIDE_FALL) p.vz = -C.BARD_GLIDE_FALL;
     this.emit({ type: 'glide', who: p.id, ms });
+  }
+
+  // 천천히 낙하 음파 고리: 몸 둘레 def.range 안 상대를 바깥으로 작게 밀침 (고정 넉백). 맞힌 사람이 있으면 true
+  bardGlideRing(p, n, air, def, chained) {
+    const set = basicSet(p.char, p.form);
+    const label = basicLabel(set, n, air, def);
+    const hits = [];
+    for (const t of this.players.values()) {
+      if (t === p || !this.onField(t) || this.sameTeam(p, t)) continue;
+      const dx = t.x - p.x;
+      const dy = t.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d > def.range || Math.abs(t.z - p.z) > C.PLAYER_HEIGHT) continue;
+      const hit = this.applyKnockback(t, d > 0.05 ? dx : Math.cos(p.yaw), d > 0.05 ? dy : Math.sin(p.yaw), def.kb, def.up, def.stun, def.dmg, { by: p.id, kind: 'glide' }, false, { fixed: true, chained });
+      if (hit) {
+        p.freezeUntil = this.time + C.BASIC_HITSTOP_MS;
+        t.freezeUntil = this.time + C.BASIC_HITSTOP_MS;
+        hits.push(t.id);
+      }
+      this.emit({ type: 'hit', kind: 'glide', by: p.id, target: t.id, ok: hit, n, air, finish: false, streak: hit ? p.streak : 0 });
+      this.log(`  [평타] ${p.name} → ${t.name} ${hit ? `넉백 (${t.name} ${t.damage}%)` : '무적이라 무시'} ${label}`);
+    }
+    this.emit({ type: 'glideRing', who: p.id, x: p.x, y: p.y, z: p.z, r: def.range, hits });
+    return hits.length > 0;
   }
 
   // 메탈 공중 평타 기타 꽂기 시작: 아래로 빠르게, 수평으로는 느리게
@@ -4932,7 +4986,7 @@ function emptyLanded() {
 // 사망 로그 "밟은 칸" (한 단어, npm run stats)
 const GROUND_LOG = { floor: '바닥', terrain: '지형', stack: '블록', sky: '하늘', piece: '낙하블록', none: '없음' };
 
-const WEAPON_LOG = { ghost: '유령블록', push: '밀치기', shell: '포탄', bigshell: '대형포탄', groundshot: '발밑포격', leapwave: '광폭도약', spin: '소용돌이회전', spinend: '소용돌이', note: '음파', riff: '기타리프', amp: '앰프', ampend: '앰프마무리', pounce: '덮치기', execute: '처형사격', wallkick: '벽차기', blast: '블록폭발', bigbomb: '대폭발', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', blockslam: '블록내려찍기' };
+const WEAPON_LOG = { ghost: '유령블록', push: '밀치기', shell: '포탄', bigshell: '대형포탄', groundshot: '발밑포격', leapwave: '광폭도약', spin: '소용돌이회전', spinend: '소용돌이', note: '음파', riff: '기타리프', glide: '낙하음파', amp: '앰프', ampend: '앰프마무리', pounce: '덮치기', execute: '처형사격', wallkick: '벽차기', blast: '블록폭발', bigbomb: '대폭발', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종블록', thrown: '설치블록', slam: '내려찍기', hook: '갈고리', charge: '돌진', slash: '순간베기', wall: '솟는벽', blockslam: '블록내려찍기' };
 
 function causeKo(cause) {
   if (cause === 'crush') return '압사';

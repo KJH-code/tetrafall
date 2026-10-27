@@ -103,6 +103,15 @@
       clip-path: polygon(9px 0, 100% 0, calc(100% - 9px) 100%, 0 100%); animation: slide-left .2s ease-out; }
     #killfeed .kill.mine { background: linear-gradient(180deg, #4a3a06, #241c02); border-bottom: 2px solid var(--accent); }
     #killfeed .how { color: var(--dim); font-family: system-ui, sans-serif; font-size: 13px; }
+    /* 접속 상태 (client/net.js): 오른쪽 아래 작은 띠. 핑 색 = 상태, 렉 알림은 그 위 빨간 띠 (글자만, 아이콘 없음) */
+    #net { position: fixed; right: 10px; bottom: 8px; z-index: 50; pointer-events: none; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+    #netPing { font-family: var(--disp); font-size: 12px; color: var(--dim); background: rgba(8,12,26,.6); padding: 2px 12px;
+      clip-path: polygon(7px 0, 100% 0, calc(100% - 7px) 100%, 0 100%); }
+    #netPing[data-level=warn] { color: #1a1300; background: linear-gradient(180deg, #ffe98a, #ffb400); }
+    #netPing[data-level=bad] { color: #fff; background: linear-gradient(180deg, #ff4426, #a81405); }
+    #netWarn { font-family: var(--disp); font-size: 15px; color: #fff; background: linear-gradient(180deg, #ff4426, #a81405); padding: 4px 16px;
+      clip-path: polygon(9px 0, 100% 0, calc(100% - 9px) 100%, 0 100%); box-shadow: var(--sh); animation: slide-left .2s ease-out; }
+    #netWarn:empty { display: none; }
     #help { position: absolute; top: 10px; right: 12px; text-align: right; font-size: 12px; color: var(--dim); white-space: pre;
       background: rgba(8,12,26,.6); padding: 7px 10px; clip-path: polygon(0 0, 100% 0, 100% 100%, 10px 100%); }
     /* ===== 판 중: 가운데 연출 ===== */

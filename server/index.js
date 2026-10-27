@@ -111,6 +111,10 @@ function openLog(code) {
   };
 }
 
+// npm run online (tools/online.js) 이 터널 주소를 찾으면 IPC 로 알려 줌 → 대기실 "링크 복사" 가 터널 주소로
+process.on('message', (m) => {
+  if (m && m.type === 'publicUrl' && rooms.setPublicUrl(m.url)) console.log(`친구용 주소: ${m.url}`);
+});
 const rooms = new Rooms({
   openLog,
   serverLog: (msg) => console.log(`[${stamp()}] ${msg}`),
@@ -141,12 +145,14 @@ setInterval(() => {
   acc += now - last;
   last = now;
   let steps = 0;
+  const behind = Math.max(0, acc - TICK_MS); // 정해진 틱 시각보다 밀린 시간
   while (acc >= TICK_MS && steps < 5) {
     rooms.tick(TICK_MS);
     acc -= TICK_MS;
     steps++;
   }
   if (acc > TICK_MS * 5) acc = 0; // 너무 밀리면 버린다
+  rooms.noteTick(performance.now() - now, behind); // 핑 화면에 서버 부하 (pong)
   if (steps > 0) rooms.broadcast();
 }, TICK_MS);
 setInterval(() => rooms.broadcastList(), C.ROOM_LIST_MS);

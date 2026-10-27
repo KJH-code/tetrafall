@@ -27,7 +27,7 @@ function segDefs(fig) {
   const d = fig.d;
   const depth = d.depth || 0.75;
   return [
-    ['pelvis', fig.hips, -1, [d.waistR * 0.6, d.hipY + d.legR, 0.1], 0.02, 'pelvis', null],
+    ['pelvis', fig.hips, -1, [d.waistR * depth, Math.max(d.waistR, d.hipY + d.legR), 0.1], 0.02, 'pelvis', null], // figure.js pelvisGeo 와 같은 크기
     ['chest', fig.waist, 0, [d.chestR * depth, d.chestR, d.torso / 2], d.torso / 2, 'chest', 'waist'],
     ['head', fig.neck, 1, [d.headW / 2, d.headW / 2, d.head / 2], d.head / 2, 'head', 'neck'],
     ['upperR', fig.shoulders[0], 1, [d.armR, d.armR, d.upper / 2], -d.upper / 2, 'upper', null],
