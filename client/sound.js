@@ -24,6 +24,7 @@ export class Sound {
   setVolume(v) {
     this.volume = v;
     if (this.master) this.master.gain.value = C.SFX_VOLUME * v;
+    if (this.direct) this.direct.gain.value = C.SFX_VOLUME * v;
   }
 
   // 사용자 입력 이벤트 안에서 한 번 불러 오디오를 깨운다
@@ -41,7 +42,16 @@ export class Sound {
     this.ctx = ctx;
     this.master = ctx.createGain();
     this.master.gain.value = C.SFX_VOLUME * this.volume;
-    this.master.connect(dest);
+    // 슬로모션 필터·크기 (slowmo): 평소엔 다 통과
+    this.slowFilter = ctx.createBiquadFilter();
+    this.slowFilter.type = 'lowpass';
+    this.slowFilter.frequency.value = 20000;
+    this.slowGain = ctx.createGain();
+    this.master.connect(this.slowFilter).connect(this.slowGain).connect(dest);
+    this.slowRate = 1;
+    this.direct = ctx.createGain(); // 슬로모션 필터를 안 거치는 출구 (마지막 킬 소리 자체)
+    this.direct.gain.value = C.SFX_VOLUME * this.volume;
+    this.direct.connect(dest);
     const len = ctx.sampleRate;
     this.noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = this.noiseBuf.getChannelData(0);
@@ -87,7 +97,7 @@ export class Sound {
   }
 
   // 소리 하나의 출구: 거리로 작아지고 (falloff) 방향으로 왼쪽·오른쪽 (pos 가 있고 내 소리가 아니면)
-  bus(dist, pos) {
+  bus(dist, pos, out = this.master) {
     let d = dist;
     let pan = 0;
     const L = this.listener;
@@ -104,8 +114,8 @@ export class Sound {
     if (pan && this.ctx.createStereoPanner) {
       const p = this.ctx.createStereoPanner();
       p.pan.value = Math.max(-1, Math.min(1, pan));
-      g.connect(p).connect(this.master);
-    } else g.connect(this.master);
+      g.connect(p).connect(out);
+    } else g.connect(out);
     return g;
   }
 
@@ -199,8 +209,8 @@ export class Sound {
   // char = 그 소리를 낸 캐릭터 (무기 소리), strong = 내가 때림, form = 바드 폼
   play(name, { dist, pos, strong = false, char, form } = {}) {
     if (!this.ready()) return;
-    this.det = 1 + (Math.random() * 2 - 1) * C.SFX_DETUNE;
-    const o = this.bus(dist, pos);
+    this.det = (1 + (Math.random() * 2 - 1) * C.SFX_DETUNE) * this.slowRate;
+    const o = this.bus(dist, pos, name === 'final' ? this.direct : this.master); // 마지막 킬 소리는 자기 슬로모션에 안 먹먹해지게
     const w = (char && C.SFX_WEAPONS[char]) || null;
     switch (name) {
       case 'tear': // 갈고리 R 블록 뜯김: 찌익 (높아지는 거친 소리) + 나무 뚝
@@ -299,6 +309,42 @@ export class Sound {
       case 'strum': // 바드 노래·폼: 기타 긁기
         this.strum(o, 1, form === 'metal');
         break;
+      case 'smash': // KO 스매시 (낙사): 쾅 + 바깥으로 뻗는 폭발 꼬리 (+ 내 것·가까우면 높은 핑)
+        this.sample('boom', { rate: 0.85, out: o });
+        this.sample('boomLow', { out: o });
+        this.noise({ dur: 0.9, vol: 0.45, filter: 'bandpass', freq: 2400, freqEnd: 260, q: 0.9, delay: 0.05, out: o });
+        if (strong) this.tone({ freq: 1900, freqEnd: 1500, dur: 0.6, type: 'sine', vol: 0.18, delay: 0.04, out: o });
+        break;
+      case 'koCrush': // KO 압사: 묵직한 쾅 (히트스톱 순간) → 멈춤이 풀릴 때 부스러기
+        this.sample('punchH', { rate: 0.55, out: o });
+        this.sample('boomLow', { rate: 1.2, vol: 0.8, out: o });
+        this.tone({ freq: 60, freqEnd: 24, dur: 0.5, type: 'sine', vol: strong ? 0.8 : 0.5, out: o });
+        this.sample('mining', { rate: 0.8, delay: C.SFX_KO.crushTail, out: o });
+        this.sample('softH', { rate: 0.8, delay: C.SFX_KO.crushTail, out: o });
+        break;
+      case 'final': { // 마지막 킬 슬로모션: 낮게 늘어진 쾅 + 깊은 종 + 차오르는 바람
+        this.det = 1;
+        this.sample('boom', { rate: 0.45, out: o });
+        this.sample('bell', { rate: 0.5, vol: 1.2, delay: 0.05, out: o });
+        this.tone({ freq: 55, freqEnd: 30, dur: 1.6, type: 'sine', vol: 0.6, out: o });
+        // 바람이 차올랐다 확 사라짐 (슬로모션 끝에 맞춰)
+        const t = this.now();
+        const src = this.ctx.createBufferSource();
+        src.buffer = this.noiseBuf;
+        src.loop = true;
+        const f = this.ctx.createBiquadFilter();
+        f.type = 'bandpass';
+        f.frequency.setValueAtTime(250, t);
+        f.frequency.exponentialRampToValueAtTime(2500, t + 1.3);
+        const g = this.ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.35, t + 1.3);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
+        src.connect(f).connect(g).connect(o);
+        src.start(t);
+        src.stop(t + 1.65);
+        break;
+      }
       case 'tick': // 카운트다운 3·2·1
         this.tone({ freq: 660, dur: 0.12, type: 'square', vol: 0.22, out: o });
         break;
@@ -319,6 +365,19 @@ export class Sound {
         break;
       default:
     }
+  }
+
+  // 화면 시간 배율 (KO 슬로모션, main.js 프레임마다): 슬로모션이면 효과음을 먹먹하고 낮게, 아니면 원래대로
+  slowmo(scale) {
+    if (!this.ready() || !this.slowFilter) return;
+    const K = C.SFX_KO;
+    const slow = scale < 1 && scale > K.slowAbove;
+    if (slow === this.slowOn) return;
+    this.slowOn = slow;
+    this.slowRate = slow ? K.slowRate : 1;
+    const t = this.now();
+    this.slowFilter.frequency.setTargetAtTime(slow ? K.slowLowpass : 20000, t, K.ease);
+    this.slowGain.gain.setTargetAtTime(slow ? K.slowGain : 1, t, K.ease);
   }
 
   // ---------- 위험 액체 ----------

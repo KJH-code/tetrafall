@@ -74,3 +74,11 @@ test('긴장 버전: 더 빠르고 단조 (장3·6·7도가 반음 내려감), �
   assert.equal(degreeNote(calm, 7), calm.root + 12); // 한 옥타브 위 으뜸음
   assert.equal(songFor('없는테마', false), C.MUSIC_THEMES[C.MUSIC_THEME_DEFAULT]);
 });
+
+test('KO 소리: 압사 부스러기는 화면 히트스톱이 풀릴 때, 슬로모션 판정은 히트스톱(아주 짧은 멈춤)은 빼고 마지막 킬 슬로모션은 넣음', () => {
+  const K = C.SFX_KO;
+  assert.ok(Math.abs(K.crushTail - C.KO_CRUSH_STOP_MS / 1000) < 0.03);
+  assert.ok(K.slowAbove > C.KO_CRUSH_STOP_SCALE, '히트스톱은 슬로모션 아님');
+  assert.ok(K.slowAbove < C.KO_FINAL_SCALE, '마지막 킬은 슬로모션');
+  assert.ok(K.slowRate > 0.3 && K.slowRate < 1 && K.musicDuck > 0 && K.musicDuck < 1);
+});
