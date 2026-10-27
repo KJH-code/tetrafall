@@ -22,6 +22,7 @@ const MIME = {
   '.png': 'image/png',
   '.glb': 'model/gltf-binary',
   '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
 };
 
 // URL → 디스크 경로. 클라이언트 폴더, 공용 폴더, three.js 모듈만 노출한다.
