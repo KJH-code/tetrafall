@@ -1066,7 +1066,7 @@ function dressBard(fig, costume, cloth) {
 }
 
 // ---------- 동작 ----------
-// 관절마다 목표 각도를 정하고 FIGURE_FOLLOW 빠르기로 따라감 → 살짝 늦게 따라와 흐느적거림 (TABS 느낌)
+// 관절마다 목표 각도를 정하고 스프링(FIGURE_SPRING)으로 따라감 → 살짝 늦게, 살짝 넘치며 따라와 흐느적거림 (TABS 느낌)
 // 각도 이름: fwd = 앞으로 드는 각 (어깨·허벅지), out = 옆으로 벌리는 각 (어깨), bend = 굽힘 (팔꿈치 앞, 무릎 뒤)
 // waistSide = 허리를 왼쪽(+y)으로 기울인 각, waistRoll = 허리 비틂 (위에서 봐서 왼쪽으로 돎)
 function restPose(d) {
@@ -1083,6 +1083,36 @@ function restPose(d) {
     thOut: [0, 0],
     knee: [d.bend || 0, d.bend || 0],
   };
+}
+
+// 관절 무리별 스프링 (FIGURE_SPRING: w 빠르기 /초, damp 감쇠비 — 1 이면 안 넘침, 작을수록 출렁)
+const SPRING_GROUP = { waistPitch: 'body', waistRoll: 'body', waistSide: 'body', hipsZ: 'body', neckPitch: 'neck', shFwd: 'arm', shOut: 'arm', elbow: 'arm', thFwd: 'leg', thOut: 'leg', knee: 'leg' };
+function zeroPose(P) {
+  const V = {};
+  for (const [k, v] of Object.entries(P)) V[k] = Array.isArray(v) ? v.map(() => 0) : 0;
+  return V;
+}
+// P 를 T 쪽으로 스프링으로 (속도 V). 작은 걸음으로 나눠 안정하게
+function springPose(P, V, T, dt, fast = 1) {
+  const n = Math.max(1, Math.ceil(dt / C.FIGURE_SPRING_STEP));
+  const h = dt / n;
+  for (const key of Object.keys(T)) {
+    if (!(key in V)) V[key] = Array.isArray(T[key]) ? T[key].map(() => 0) : 0;
+    const sp = C.FIGURE_SPRING[SPRING_GROUP[key] || 'body'];
+    const w = sp.w * fast;
+    const kk = w * w;
+    const c = 2 * sp.damp * w;
+    const one = (x, v, tg) => {
+      for (let j = 0; j < n; j++) {
+        v += (kk * (tg - x) - c * v) * h;
+        x += v * h;
+      }
+      return [x, v];
+    };
+    if (Array.isArray(T[key])) {
+      for (let i = 0; i < T[key].length; i++) [P[key][i], V[key][i]] = one(P[key][i], V[key][i], T[key][i]);
+    } else [P[key], V[key]] = one(P[key], V[key], T[key]);
+  }
 }
 
 // 맞은 순간 자세 (히트스톱 동안 이대로 멈칫): 팔다리가 맞은 쪽 반대로 남고 (몸통만 먼저 밀림), 무릎이 꺾임.
@@ -1113,7 +1143,7 @@ function stepSway(sw, dt) {
 
 // ---------- 공격 동작 (평타·스킬·필살기) ----------
 // 동작마다 준비 자세 W 와 타격 자세 S. 준비(크게, 상대가 읽는 예고) → 타격(아주 짧게 S 로 튐) → 회복(S 에서 천천히 풀림).
-// 공격 자세는 FIGURE_FOLLOW 를 건너뛰고 바로 그 자세 (속은 격투), 끝나면 평소처럼 흐물흐물 돌아옴 (겉은 병맛).
+// 공격 자세는 스프링을 건너뛰고 바로 그 자세 (속은 격투), 끝나면 평소처럼 흐물흐물 돌아옴 (겉은 병맛).
 // 자세 칸: 허리 waistPitch(앞 숙임)·waistRoll(왼쪽으로 비틂 = 오른 어깨 앞)·waistSide, 고개 neckPitch,
 // 팔다리 [오른쪽, 왼쪽] (null = 그대로): shFwd(앞으로 듦)·shOut(옆으로 벌림)·elbow·thFwd·knee, crouch(0~1 두 무릎 굽힘)
 // spin: 타격~회복 동안 몸 전체를 도는 각 (라디안, +면 왼쪽으로). rec: 스킬처럼 서버 표에 회복 시간이 없을 때 (초)
@@ -1304,21 +1334,32 @@ const BROKEN = { shFwd: [2.3, 1.9], shOut: [1.3, 1.5], elbow: [0.2, 0.5], waistP
 
 // 공격 자세를 P 에 바로 덮어씀 (w = 0~1 섞는 정도). 값은 절대 각 (매 프레임 쌓이지 않게).
 // crouch 는 이번 프레임 목표 자세 T 의 다리에서 두 무릎을 더 굽힌 각 (다리 각을 직접 준 동작은 그쪽이 이김)
-function overlay(P, T, pose, w) {
+// V = 관절 스프링 속도: 덮어쓴 만큼 줄임 (자세를 붙잡는 동안 스프링 속도가 쌓였다가 끝날 때 팔이 튕겨 나가지 않게)
+function overlay(P, T, pose, w, V) {
   if (!pose || w <= 0) return;
+  const keep = 1 - Math.min(1, w);
   if (pose.crouch) {
     for (let i = 0; i < 2; i++) {
       P.thFwd[i] += (T.thFwd[i] + 0.9 * pose.crouch - P.thFwd[i]) * w;
       P.knee[i] += (T.knee[i] + 1.6 * pose.crouch - P.knee[i]) * w;
+      if (V) {
+        V.thFwd[i] *= keep;
+        V.knee[i] *= keep;
+      }
     }
   }
   for (const [key, val] of Object.entries(pose)) {
     if (val === null || val === undefined || !(key in P)) continue;
     if (Array.isArray(val)) {
       val.forEach((v, i) => {
-        if (v !== null) P[key][i] += (v - P[key][i]) * w;
+        if (v === null) return;
+        P[key][i] += (v - P[key][i]) * w;
+        if (V) V[key][i] *= keep;
       });
-    } else P[key] += (val - P[key]) * w;
+    } else {
+      P[key] += (val - P[key]) * w;
+      if (V) V[key] *= keep;
+    }
   }
 }
 
@@ -1556,39 +1597,57 @@ export function figureAnim(fig, st, dt, retry = false) {
   }
   if (frozen) hitPose(T, hit.dx, hit.dy, hit.pow);
 
-  // 따라가기 (처음엔 바로 그 자세, 히트스톱도 바로 그 자세로 멈칫)
-  const k = fig.pose && !frozen ? 1 - Math.exp(-C.FIGURE_FOLLOW * (st.flip >= 0 ? 2.5 : 1) * dt) : 1; // 공중제비는 빨리 웅크려야 보임
+  // 따라가기: 관절마다 스프링 (살짝 넘쳤다 돌아옴). 팔·고개는 느슨해서 몸보다 늦게 따라옴 (follow-through)
+  // 처음엔 바로 그 자세, 히트스톱도 바로 그 자세로 멈칫
   const P = fig.pose || (fig.pose = restPose(d));
-  const lerp = (a, b) => a + (b - a) * k;
-  for (const key of Object.keys(T)) {
-    if (Array.isArray(T[key])) P[key] = P[key].map((v, i) => lerp(v, T[key][i]));
-    else P[key] = lerp(P[key], T[key]);
+  if (!fig.poseV || !poseOk(fig.poseV)) fig.poseV = zeroPose(P);
+  const V = fig.poseV;
+  if (frozen) {
+    for (const key of Object.keys(T)) {
+      P[key] = Array.isArray(T[key]) ? [...T[key]] : T[key];
+      V[key] = Array.isArray(T[key]) ? T[key].map(() => 0) : 0;
+    }
+  } else {
+    // 몸이 빨라지면 팔·고개가 뒤로 처지고 멈추면 앞으로 쏠림, 옆으로 꺾으면 반대쪽으로 (몸 기준 가속도, render.js 가 줌)
+    const af = finite(st.accF ?? 0) ? st.accF ?? 0 : 0;
+    const as = finite(st.accS ?? 0) ? st.accS ?? 0 : 0;
+    const lim = C.FIGURE_LAG_ACC_MAX;
+    const f = Math.max(-lim, Math.min(lim, af)) * dt;
+    const sd = Math.max(-lim, Math.min(lim, as)) * dt;
+    for (let i = 0; i < 2; i++) {
+      V.shFwd[i] -= f * C.FIGURE_LAG_ARM;
+      V.shOut[i] += (i ? -sd : sd) * C.FIGURE_LAG_ARM;
+    }
+    V.neckPitch -= f * C.FIGURE_LAG_NECK;
+    const fast = st.flip >= 0 ? C.FIGURE_SPRING_FLIP : 1; // 공중제비는 빨리 웅크려야 보임
+    springPose(P, V, T, dt, fast);
   }
   if (st.punch > 0 && !frozen && !st.act) {
     // 밀치기 팔은 늦게 따라오면 안 보임 (0.22초짜리) → 바로 그 자세
     P.shFwd[0] = T.shFwd[0];
     P.shOut[0] = T.shOut[0];
     P.elbow[0] = T.elbow[0];
+    V.shFwd[0] = V.shOut[0] = V.elbow[0] = 0;
   }
   // 공격 동작: 따라가기를 건너뛰고 바로 덮어씀. 끝나면 덮어쓴 자세에서 평소처럼 흐물흐물 돌아옴
   let spin = 0;
   const act = st.act && (st.act.phase === 'broken' || (!frozen && (!st.stunned || MOVES[st.act.move].stunOk))) ? st.act : null; // 끊김·끌려옴은 맞은 휘청 위에 겹침
   if (act) {
     const m = MOVES[act.move] || MOVES.punch;
-    if (act.phase === 'wind') overlay(P, T, m.W, ease(act.u * 1.4)); // 준비 시간의 앞쪽에서 이미 크게
+    if (act.phase === 'wind') overlay(P, T, m.W, ease(act.u * 1.4), V); // 준비 시간의 앞쪽에서 이미 크게
     else if (act.phase === 'strike') {
-      overlay(P, T, m.W, 1 - act.u);
-      overlay(P, T, m.S, ease(act.u * 2));
+      overlay(P, T, m.W, 1 - act.u, V);
+      overlay(P, T, m.S, ease(act.u * 2), V);
     } else if (act.phase === 'rec') {
       // 공중 공격은 타격 자세를 빨리 풀어 떨어지는 동안 굳은 자세로 남지 않게 (지상은 느리게)
-      overlay(P, T, m.S, 1 - ease(act.air ? act.u * 2.2 : act.u));
-      if (m.pull) overlay(P, T, { shFwd: L(0.4), elbow: L(2.0), waistPitch: -0.3 }, Math.sin(Math.PI * Math.min(1, act.u * 1.5))); // 갈고리 당김
+      overlay(P, T, m.S, 1 - ease(act.air ? act.u * 2.2 : act.u), V);
+      if (m.pull) overlay(P, T, { shFwd: L(0.4), elbow: L(2.0), waistPitch: -0.3 }, Math.sin(Math.PI * Math.min(1, act.u * 1.5)), V); // 갈고리 당김
     } else if (act.phase === 'broken') {
       if (sw.brokenId !== act.id) {
         sw.brokenId = act.id;
         sw.vx -= C.FIGURE_HIT_KICK * 0.3; // 뒤로 조금 더 휘청 (맞은 휘청에 얹힘)
       }
-      overlay(P, T, BROKEN, act.u < 0.25 ? 1 : 1 - ease((act.u - 0.25) / 0.75));
+      overlay(P, T, BROKEN, act.u < 0.25 ? 1 : 1 - ease((act.u - 0.25) / 0.75), V);
     }
     if (m.spin && (act.phase === 'strike' || act.phase === 'rec')) spin = m.spin * ease(act.phase === 'strike' ? act.u * 0.2 : 0.2 + act.u * 0.8);
     if (m.turn && (act.phase === 'strike' || act.phase === 'rec')) spin = m.turn * (act.phase === 'strike' ? ease(act.u) : 1 - ease((act.u - 0.6) / 0.4)); // 옆으로 돌았다가 회복 끝에 돌아옴
@@ -1598,14 +1657,22 @@ export function figureAnim(fig, st, dt, retry = false) {
     const w = st.whirl;
     const ramp = Math.min(1, w / 0.25);
     spin = -Math.PI * 2 * C.BERSERK_SPIN_TURNS_PER_S * (w < 0.25 ? (w * w) / 0.5 : w - 0.125); // 빠르기가 0.25초 동안 0 → 최대 (돈 각 = 빠르기의 적분)
-    overlay(P, T, { shOut: [1.55, 1.45], shFwd: [0.35, 0.15], elbow: [0.05, 0.35], waistSide: -0.4, waistPitch: -0.1, neckPitch: -0.45, thOut: [0.2, 0.3], knee: [0.35, 0.2] }, ramp);
+    overlay(P, T, { shOut: [1.55, 1.45], shFwd: [0.35, 0.15], elbow: [0.05, 0.35], waistSide: -0.4, waistPitch: -0.1, neckPitch: -0.45, thOut: [0.2, 0.3], knee: [0.35, 0.2] }, ramp, V);
   }
   if (st.glide && !frozen) {
     // 음유 천천히 낙하: 팔 벌리고 단풍 씨앗처럼 빙글빙글
     spin = (t * Math.PI * 2 * C.BARD_GLIDE_TURNS_PER_S) % (Math.PI * 2);
-    overlay(P, T, { shOut: [1.45, 1.45], shFwd: [0.25, 0.25], elbow: [0.15, 0.15], thFwd: [0.25, 0.25], knee: [0.4, 0.4], neckPitch: -0.25 }, 1);
+    overlay(P, T, { shOut: [1.45, 1.45], shFwd: [0.25, 0.25], elbow: [0.15, 0.15], thFwd: [0.25, 0.25], knee: [0.4, 0.4], neckPitch: -0.25 }, 1, V);
   }
-  fig.hips.rotation.z = spin;
+  // 도는 동작(소용돌이·글라이드·춤 등)이 끝나면 가장 가까운 한 바퀴 각으로 스르륵 (안 그러면 0 으로 뚝 돌아옴). 도는 동안은 그대로
+  const spinning = spin !== 0;
+  if (spinning || !Number.isFinite(fig.spinS)) fig.spinS = spin;
+  else {
+    const to = Math.round(fig.spinS / (Math.PI * 2)) * Math.PI * 2;
+    fig.spinS += (to - fig.spinS) * (1 - Math.exp(-C.FIGURE_SETTLE * dt));
+    if (Math.abs(to - fig.spinS) < 1e-3) fig.spinS = 0;
+  }
+  fig.hips.rotation.z = fig.spinS;
   if (fig.gun) {
     // 장전이면 늘 손에 (빈 총이면 허리), 탕 동작 동안은 늘 손에. 장전이면 공이가 젖혀짐
     const inHand = (!!act && !!MOVES[act.move].gun && act.phase !== 'broken') || !!fig.gun.loaded;
@@ -1634,9 +1701,14 @@ export function figureAnim(fig, st, dt, retry = false) {
     }
     drop = Math.max(0, d.thigh + d.shin - reach);
   }
+  // 엉덩이 높이: 땅↔공중·구르기 사이에서 뚝 바뀌지 않게 빠르게 따라감 (처음·히트스톱은 바로)
+  if (!Number.isFinite(fig.dropS) || frozen) fig.dropS = drop;
+  else fig.dropS += (drop - fig.dropS) * (1 - Math.exp(-C.FIGURE_DROP_FOLLOW * dt));
+  drop = fig.dropS;
   if (!poseOk(P) || !Number.isFinite(drop) || !Number.isFinite(spin)) {
     // 그래도 깨졌으면 이번 프레임은 기본 자세로 (다음 프레임은 깨끗한 자세부터)
     fig.pose = restPose(d);
+    fig.poseV = null;
     Object.assign(sw, { x: 0, y: 0, vx: 0, vy: 0 });
     if (!retry) return figureAnim(fig, { ...st, act: null, hit: null, walking: false, air: false }, 0, true);
     return;
@@ -1660,8 +1732,15 @@ export function figureAnim(fig, st, dt, retry = false) {
   // 천 자락: 빨리 움직이거나 날아가면 뒤로 날리고 살랑임 (히트스톱 동안은 멈춤)
   if (frozen) return;
   const sp = st.whirl >= 0 ? C.BERSERK_SPIN_FLAP : st.stunned ? 1 : st.walking || st.air ? Math.min(1, st.hs / C.MOVE_SPEED) : 0; // 소용돌이 중엔 수염·갈래·털 망토가 바깥으로 날림
+  // 자락은 스프링으로 늦게: 멈추면 앞으로 한 번 넘어갔다가 내려옴
+  const fl = fig.flapS && Number.isFinite(fig.flapS.x + fig.flapS.v) ? fig.flapS : (fig.flapS = { x: sp, v: 0 });
+  const fw = C.FIGURE_FLAP_SPRING.w;
+  for (let j = 0, n = Math.max(1, Math.ceil(dt / C.FIGURE_SPRING_STEP)); j < n; j++) {
+    fl.v += (fw * fw * (sp - fl.x) - 2 * C.FIGURE_FLAP_SPRING.damp * fw * fl.v) * (dt / n);
+    fl.x += fl.v * (dt / n);
+  }
   fig.flaps.forEach((f, i) => {
-    f.obj.rotation.y = f.base + sp * f.lift + Math.sin(t * 9 + i * 1.7) * f.flutter * (0.3 + sp);
+    f.obj.rotation.y = f.base + fl.x * f.lift + Math.sin(t * 9 + i * 1.7) * f.flutter * (0.3 + Math.max(0, fl.x));
   });
   if (fig.rage) {
     // 광전사 분노 (k 0~1, render.js 가 정함): 눈썹이 안쪽 아래로 찌푸려지고, 흰자가 충혈, 0.35 넘으면 핏줄이 섬 (높으면 벌떡벌떡)

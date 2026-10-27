@@ -11,6 +11,7 @@ import { itemModel } from '/models.js';
 import { makeTextures } from '/textures.js';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
 import { ViewModel } from '/viewmodel.js';
+import { SnapClock, pushTrack, sampleTrack } from '/interp.js';
 
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
@@ -330,7 +331,10 @@ export class Renderer {
     this.hitSeq = 0;
     this.itemMeshes = [];
     this.projMeshes = [];
-    this.smooth = new Map(); // id -> {x,y,z}
+    this.smooth = new Map(); // id -> {x,y,z} 화면에 그리는 위치 (보간됨)
+    this.tracks = new Map(); // id -> 최근 스냅샷 위치 [{t,x,y,z}] (client/interp.js)
+    this.snapClock = new SnapClock();
+    this.snapTime = null;
     this.skyBlend = 0; // 0 = 1인칭, 1 = 하늘 시점. 사이 값은 전환 중
     this.third = false; // 3인칭 (설정·V 키). 살아 있을 때 내 캐릭터 뒤·위에서 봄
     this.tpDist = null; // 3인칭 카메라 실제 거리 (막히면 줄어듦, followDist)
@@ -771,6 +775,15 @@ export class Renderer {
     // 경직된 채 빠르게 날아가면 뒤로 구름. 끝나면 가장 가까운 바로 선 자세로 돌아옴
     if (fig) {
       this.figureFlight(a, s, p, air, vx, vy, dt);
+      // 몸 기준 가속도 (앞 +, 왼쪽 +): 팔·고개가 늦게 따라오는 힘 (figureAnim follow-through)
+      const c = Math.cos(p.yaw);
+      const sn = Math.sin(p.yaw);
+      const ax = a.pvxs === undefined ? 0 : (a.vxs - a.pvxs) / dt;
+      const ay = a.pvys === undefined ? 0 : (a.vys - a.pvys) / dt;
+      a.pvxs = a.vxs;
+      a.pvys = a.vys;
+      a.accF = c * ax + sn * ay;
+      a.accS = -sn * ax + c * ay;
       // 안전장치: 구르기·공중제비 각이 깨지면 바로 선 자세로
       if (!Number.isFinite(a.spin)) a.spin = 0;
       if (!Number.isFinite(a.flipAngle)) a.flipAngle = 0;
@@ -787,7 +800,14 @@ export class Renderer {
     const emote = p.emote ?? -1;
     const dancing = this.victoryId === p.id || emote === 1;
     a.dance = dancing ? (a.dance || 0) + dt : 0;
-    rig.rotation.z = dancing && !robot ? a.dance * C.VICTORY_SPIN : 0;
+    // 춤이 끝나면 가장 가까운 한 바퀴 각으로 스르륵 (0 으로 뚝 돌아오지 않게)
+    if (dancing) a.danceSpin = a.dance * C.VICTORY_SPIN;
+    else if (a.danceSpin) {
+      const to = Math.round(a.danceSpin / (Math.PI * 2)) * Math.PI * 2;
+      a.danceSpin += (to - a.danceSpin) * (1 - Math.exp(-C.FIGURE_SETTLE * dt));
+      if (Math.abs(to - a.danceSpin) < 1e-3) a.danceSpin = 0;
+    }
+    rig.rotation.z = !robot && Number.isFinite(a.danceSpin) ? a.danceSpin : 0;
     if (fig && a.spin) rig.quaternion.premultiply(_q.setFromAxisAngle(a.tumbleAxis, a.spin)); // 날아가는 쪽으로 구름
     if (dancing && !robot) parts.position.z += Math.abs(Math.sin(a.dance * C.VICTORY_HOP_FREQ)) * C.VICTORY_HOP;
     if (robot) this.robotAnim(robot, p, a, air, walking, dancing, emote, dt);
@@ -798,7 +818,7 @@ export class Renderer {
       const hit = this.hitFor(p);
       figureAnim(fig, {
         air, walking, hs: a.hs, walk: a.walk, stunned: p.stunned || !!a.flipRag, dancing, emote, emoteT: a.emoteT, punch, holding: !!heldKind(p), t: a.t,
-        hit, act: this.actFor(p.id), tumble: a.tumbleAmt, recover: a.recover * a.recoverPow, land: a.figLand * a.landPow, flip: a.flip >= 0 && !a.flipRag ? a.flip / C.FIGURE_FLIP_S : -1, rag: !!a.flipRag,
+        hit, act: this.actFor(p.id), accF: a.accF, accS: a.accS, tumble: a.tumbleAmt, recover: a.recover * a.recoverPow, land: a.figLand * a.landPow, flip: a.flip >= 0 && !a.flipRag ? a.flip / C.FIGURE_FLIP_S : -1, rag: !!a.flipRag,
         sniffAt: fig.sniff ? this.sniffAngle(p) : null,
         whirl: this.whirlTime(a, p), dizzy: a.dizzy > 0 ? a.dizzy / C.BERSERK_DIZZY_S : 0,
         glide: !!(p.bard && p.bard.glideLeft > 0 && air), amp: !!(p.bard && p.bard.ampLeft > 0),
@@ -982,6 +1002,7 @@ export class Renderer {
     if (a.flip >= 0) {
       a.flip += dt;
       if (p.stunned || a.flip >= flipS || (a.flipRag && !air && a.flip > 0.15)) {
+        if (a.flip < flipS) a.flipRest = a.flipAngle; // 중간에 끊김: 그 각에서 가장 가까운 바로 선 각으로 스르륵
         a.flip = -1;
         a.flipS = a.flipTurns = 0;
         a.flipDir = 1;
@@ -990,7 +1011,13 @@ export class Renderer {
     }
     const f = a.flip >= 0 ? a.flip / flipS : 1;
     const turns = a.flipTurns || 1;
-    a.flipAngle = a.flip >= 0 ? (a.flipDir || 1) * Math.PI * 2 * turns * (a.flipRag ? 1 - (1 - f) * (1 - f) : f * f * (3 - 2 * f)) : 0; // 공중제비: 웅크리는 동안 천천히 → 가운데서 빨리 → 끝에서 느려짐 / 반동: 처음이 가장 빠름
+    if (a.flip >= 0) a.flipRest = 0;
+    else if (a.flipRest) {
+      const to = Math.round(a.flipRest / (Math.PI * 2)) * Math.PI * 2;
+      a.flipRest += (to - a.flipRest) * (1 - Math.exp(-C.FIGURE_SETTLE * dt));
+      if (Math.abs(to - a.flipRest) < 1e-3 || !Number.isFinite(a.flipRest)) a.flipRest = 0;
+    }
+    a.flipAngle = a.flip >= 0 ? (a.flipDir || 1) * Math.PI * 2 * turns * (a.flipRag ? 1 - (1 - f) * (1 - f) : f * f * (3 - 2 * f)) : a.flipRest || 0; // 공중제비: 웅크리는 동안 천천히 → 가운데서 빨리 → 끝에서 느려짐 / 반동: 처음이 가장 빠름
   }
 
   // 맞은 순간 (main.js 의 hit 이벤트). dir = 밀린 방향 (월드, 없으면 null). 콤보 마무리 타면 더 크게
@@ -2839,7 +2866,16 @@ export class Renderer {
     // 플레이어
     this.victoryId = cam.victory || null;
     const seen = new Set();
-    const k = 1 - Math.exp(-25 * dt);
+    // 위치: 스냅샷을 서버 시각으로 쌓아 두고 조금 늦은 시각의 위치를 두 스냅샷 사이에서 보간 (client/interp.js)
+    if (Number.isFinite(state.time) && state.time !== this.snapTime) {
+      this.snapTime = state.time;
+      this.snapClock.onSnapshot(state.time, state.recvAt ?? performance.now());
+      for (const p of state.players) {
+        if (!this.tracks.has(p.id)) this.tracks.set(p.id, []);
+        pushTrack(this.tracks.get(p.id), state.time, p.x, p.y, p.z);
+      }
+    }
+    const clockT = this.snapClock.advance(performance.now(), dt * 1000);
     for (const p of state.players) {
       seen.add(p.id);
       const g = this.getPlayerMesh(p);
@@ -2860,10 +2896,9 @@ export class Renderer {
           Object.assign(s, { x: slide.from.x + (to.x - slide.from.x) * e, y: slide.from.y + (to.y - slide.from.y) * e, z: slide.from.z + (p.z - slide.from.z) * e });
         }
       } else {
-        if (Math.hypot(p.x - s.x, p.y - s.y, p.z - s.z) > 3) Object.assign(s, { x: p.x, y: p.y, z: p.z });
-        s.x += (p.x - s.x) * k;
-        s.y += (p.y - s.y) * k;
-        s.z += (p.z - s.z) * k;
+        const track = this.tracks.get(p.id);
+        const at = clockT === null ? null : clockT - (p.id === myId ? C.INTERP_DELAY_SELF_MS : C.INTERP_DELAY_MS);
+        if (at === null || !track || !sampleTrack(track, at, C.INTERP_EXTRAP_MS, s)) Object.assign(s, { x: p.x, y: p.y, z: p.z });
       }
       if (![s.x, s.y, s.z].every(Number.isFinite)) Object.assign(s, { x: p.x, y: p.y, z: p.z }); // 안전장치
       g.position.set(s.x, s.y, s.z);
@@ -3001,6 +3036,7 @@ export class Renderer {
         this.scene.remove(g);
         this.playerMeshes.delete(id);
         this.smooth.delete(id);
+        this.tracks.delete(id);
       }
     }
 

@@ -846,7 +846,17 @@ export const CONFIG = {
   FIGURE_SNIFF_EVERY: 3.2, // 사냥꾼이 가만히 있을 때 킁킁하는 간격 (초)
   FIGURE_SNIFF_LEN: 0.7, // 킁킁 한 번 길이 (초)
   FIGURE_EYE: 0.062, // 왕눈알 흰자 반지름 (칸, 몸 크기 배율 전)
-  FIGURE_FOLLOW: 14, // 관절이 목표 자세를 따라가는 빠르기 (/초). 낮을수록 늦게 따라와 흐느적
+  // 관절 스프링 (2026-10-27, FIGURE_FOLLOW 14/초 지수 추종 대신). w = 빠르기 (/초, 클수록 빨리 따라옴), damp = 감쇠비 (1 이면 안 넘침, 작을수록 출렁)
+  // 다리는 발이 땅을 디뎌야 해서 단단하게, 팔·고개는 느슨하게 → 몸보다 늦게 따라와 흐느적 (TABS)
+  FIGURE_SPRING: { body: { w: 22, damp: 0.7 }, neck: { w: 15, damp: 0.4 }, arm: { w: 19, damp: 0.45 }, leg: { w: 28, damp: 0.85 } },
+  FIGURE_SPRING_FLIP: 1.6, // 2단 점프 공중제비 동안 스프링 빠르기 배율 (빨리 웅크려야 보임)
+  FIGURE_SPRING_STEP: 0.008, // 스프링 계산 한 걸음 최대 (초). 프레임이 길어도 안 튀게
+  FIGURE_LAG_ARM: 0.8, // 몸 가속도(칸/초²) 1 당 팔이 뒤로 처지는 힘 (빨라지면 팔이 뒤로, 멈추면 앞으로 쏠림)
+  FIGURE_LAG_NECK: 0.35, // 같은 것, 고개
+  FIGURE_LAG_ACC_MAX: 80, // 가속도 상한 (칸/초², 순간이동·대시 첫 프레임에 팔이 날아가지 않게)
+  FIGURE_FLAP_SPRING: { w: 9, damp: 0.35 }, // 천 자락(망토·수염·갈래)이 속도를 따라가는 스프링: 멈추면 앞으로 넘어갔다 내려옴
+  FIGURE_DROP_FOLLOW: 25, // 엉덩이 높이가 땅↔공중 사이에서 바뀔 때 따라가는 빠르기 (/초, 뚝 끊김 방지)
+  FIGURE_SETTLE: 10, // 도는 동작이 끝나고 가장 가까운 한 바퀴 각으로 돌아가는 빠르기 (/초)
   FIGURE_ARM_SPREAD: 0.22, // 가만히 있을 때 팔을 옆으로 벌린 각 (라디안)
   FIGURE_WALK_LEG: 0.7, // 걸을 때 허벅지를 앞뒤로 드는 최대 각
   FIGURE_WALK_KNEE: 0.9, // 걸을 때 무릎을 굽히는 최대 각
@@ -945,6 +955,15 @@ export const CONFIG = {
   ANIM_TUMBLE_MIN_SPEED: 3, // 경직 중 이 속도(칸/초)보다 빠르게 날아가면 구름
   ANIM_TUMBLE_SPEED: 11, // 구르는 빠르기 (라디안/초)
   ANIM_SMOOTH: 12, // 속도·구르기 복귀를 따라가는 빠르기 (클수록 즉각)
+  // 위치 보간 (client/interp.js). 2026-10-27: 최신 스냅샷을 지수로 쫓던 것 → 두 스냅샷 사이 보간 (60fps 에서 프레임마다 속도가 ±46% 들쭉날쭉하던 것)
+  INTERP_DELAY_MS: 50, // 남의 캐릭터: 서버 시각보다 이만큼 늦게 그림 (1틱 33ms + 도착 흔들림 여유)
+  INTERP_DELAY_SELF_MS: 35, // 내 캐릭터: 덜 늦게 (조작감). 다음 스냅샷이 늦으면 INTERP_EXTRAP_MS 까지 내다봄
+  INTERP_EXTRAP_MS: 40, // 다음 스냅샷이 아직 안 왔을 때 마지막 속도로 더 가는 최대 시간
+  INTERP_CLOCK_SAMPLES: 30, // 서버 시각 추정에 쓰는 최근 스냅샷 수 (가장 덜 늦게 온 것을 기준으로)
+  INTERP_CLOCK_SLEW: 0.1, // 화면 시계가 목표와 어긋났을 때 프레임 시간의 이 비율까지만 빠르게·느리게 흐름
+  INTERP_RESET_MS: 1000, // 화면 시계가 이보다 어긋나면 (탭 멈춤·새 방) 바로 맞춤
+  INTERP_TELEPORT: 3, // 스냅샷 사이 이보다 멀리 (칸) 움직이면 보간 안 하고 바로 (부활·순간이동)
+  INTERP_TRACK_LEN: 12, // 플레이어마다 기억하는 스냅샷 수
   ANIM_WALK_MIN_SPEED: 0.6, // 이 속도(칸/초)보다 빨라야 걷는 동작
   ANIM_STEP: 0.09, // 걸을 때 발을 앞뒤로 내미는 거리 (칸)
   ANIM_SWAY: 0.06, // 걸을 때 좌우로 흔들리는 각도 (라디안)
