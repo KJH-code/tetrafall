@@ -1,5 +1,5 @@
 // 액티브 래그돌 (cannon-es). 판정은 서버 AABB 그대로, 몸 모습만 물리.
-// 몸 조각 11개 (골반·가슴·머리·위팔·아래팔·허벅지·정강이)가 figure 관절마다 하나씩, 공 관절로 이어짐.
+// 몸 조각 11개 (골반·가슴·머리·위팔·아래팔·허벅지·정강이)가 figure 관절마다 하나씩. 어깨는 공 관절, 나머지는 각도 제한 원뿔 (RAGDOLL_LIMITS).
 // 매 프레임: figureAnim 이 정한 자세를 목표로 잡고 (capture) → 관절 모터(PD 토크)로 따라가며 물리를 돌리고 (step)
 // → 조각의 회전을 figure 관절 회전으로 되돌려 넣음 (apply). 관절 위치·엉덩이 높이는 그대로라 옷·무기·납작·머리 박음은 그대로 붙음.
 // 모터 세기는 ragdoll-math.js: 평소·공격 세게, 맞음·경직·낙사 약하게 (흐물흐물). 골반은 판정(보간) 위치를 강하게 따라감
@@ -22,29 +22,29 @@ const _acc = {};
 const _pull = {};
 const _lim = {};
 
-// 몸 조각 정의: [이름, figure 관절, 부모 조각 번호, 반 크기(d → [x,y,z]), 관절에서 조각 가운데까지 z(d), 질량 키]
+// 몸 조각 정의: [이름, figure 관절, 부모 조각 번호, 반 크기(d → [x,y,z]), 관절에서 조각 가운데까지 z(d), 질량 키, 관절 제한 키]
 function segDefs(fig) {
   const d = fig.d;
   const depth = d.depth || 0.75;
   return [
-    ['pelvis', fig.hips, -1, [d.waistR * 0.6, d.hipY + d.legR, 0.1], 0.02, 'pelvis'],
-    ['chest', fig.waist, 0, [d.chestR * depth, d.chestR, d.torso / 2], d.torso / 2, 'chest'],
-    ['head', fig.neck, 1, [d.headW / 2, d.headW / 2, d.head / 2], d.head / 2, 'head'],
-    ['upperR', fig.shoulders[0], 1, [d.armR, d.armR, d.upper / 2], -d.upper / 2, 'upper'],
-    ['upperL', fig.shoulders[1], 1, [d.armR, d.armR, d.upper / 2], -d.upper / 2, 'upper'],
-    ['foreR', fig.elbows[0], 3, [d.foreR, d.foreR, (d.lower + d.hand) / 2], -(d.lower + d.hand) / 2, 'fore'],
-    ['foreL', fig.elbows[1], 4, [d.foreR, d.foreR, (d.lower + d.hand) / 2], -(d.lower + d.hand) / 2, 'fore'],
-    ['thighR', fig.thighs[0], 0, [d.legR, d.legR, d.thigh / 2], -d.thigh / 2, 'thigh'],
-    ['thighL', fig.thighs[1], 0, [d.legR, d.legR, d.thigh / 2], -d.thigh / 2, 'thigh'],
-    ['shinR', fig.knees[0], 7, [d.legR * 0.85, d.legR * 0.85, (d.shin + d.foot) / 2], -(d.shin + d.foot) / 2, 'shin'],
-    ['shinL', fig.knees[1], 8, [d.legR * 0.85, d.legR * 0.85, (d.shin + d.foot) / 2], -(d.shin + d.foot) / 2, 'shin'],
+    ['pelvis', fig.hips, -1, [d.waistR * 0.6, d.hipY + d.legR, 0.1], 0.02, 'pelvis', null],
+    ['chest', fig.waist, 0, [d.chestR * depth, d.chestR, d.torso / 2], d.torso / 2, 'chest', 'waist'],
+    ['head', fig.neck, 1, [d.headW / 2, d.headW / 2, d.head / 2], d.head / 2, 'head', 'neck'],
+    ['upperR', fig.shoulders[0], 1, [d.armR, d.armR, d.upper / 2], -d.upper / 2, 'upper', null],
+    ['upperL', fig.shoulders[1], 1, [d.armR, d.armR, d.upper / 2], -d.upper / 2, 'upper', null],
+    ['foreR', fig.elbows[0], 3, [d.foreR, d.foreR, (d.lower + d.hand) / 2], -(d.lower + d.hand) / 2, 'fore', 'elbow'],
+    ['foreL', fig.elbows[1], 4, [d.foreR, d.foreR, (d.lower + d.hand) / 2], -(d.lower + d.hand) / 2, 'fore', 'elbow'],
+    ['thighR', fig.thighs[0], 0, [d.legR, d.legR, d.thigh / 2], -d.thigh / 2, 'thigh', 'hip'],
+    ['thighL', fig.thighs[1], 0, [d.legR, d.legR, d.thigh / 2], -d.thigh / 2, 'thigh', 'hip'],
+    ['shinR', fig.knees[0], 7, [d.legR * 0.85, d.legR * 0.85, (d.shin + d.foot) / 2], -(d.shin + d.foot) / 2, 'shin', 'knee'],
+    ['shinL', fig.knees[1], 8, [d.legR * 0.85, d.legR * 0.85, (d.shin + d.foot) / 2], -(d.shin + d.foot) / 2, 'shin', 'knee'],
   ];
 }
 
 export class RagdollWorld {
   constructor() {
     this.world = new CANNON.World({ gravity: new CANNON.Vec3(0, 0, -C.RAGDOLL_GRAVITY) });
-    this.world.broadphase = new CANNON.NaiveBroadphase();
+    this.world.broadphase = new CANNON.SAPBroadphase(this.world);
     this.world.solver.iterations = C.RAGDOLL_ITERATIONS;
     this.world.allowSleep = false;
     this.world.defaultContactMaterial.friction = C.RAGDOLL_FRICTION;
@@ -60,13 +60,19 @@ export class RagdollWorld {
     return this.rags.has(id);
   }
 
-  create(id, fig) {
+  // 래그돌이 이 몸(fig)으로 만들어졌나 (캐릭터를 바꾸면 몸이 새로 만들어짐)
+  figOf(id) {
+    return this.rags.get(id)?.fig;
+  }
+
+  create(id, fig, char) {
     const S = C.FIGURE_SCALE;
     const segs = [];
     const constraints = [];
     let mass = 0;
-    for (const [name, joint, parent, half, cz, mk] of segDefs(fig)) {
-      const m = C.RAGDOLL_MASS[mk];
+    const weight = C.RAGDOLL_WEIGHT[(C.FIGURE_BODY && C.FIGURE_BODY[char]) || ''] ?? 1; // 체형별 무게 (무거우면 맞아도 덜 튐)
+    for (const [name, joint, parent, half, cz, mk, lim] of segDefs(fig)) {
+      const m = C.RAGDOLL_MASS[mk] * weight;
       const body = new CANNON.Body({
         mass: m,
         shape: new CANNON.Box(new CANNON.Vec3(half[0] * S, half[1] * S, Math.max(0.02, half[2] * S))),
@@ -77,19 +83,31 @@ export class RagdollWorld {
       });
       mass += m;
       this.world.addBody(body);
-      segs.push({ name, joint, parent, body, cz, rest: joint.rotation.clone(), tp: new THREE.Vector3(), tq: new THREE.Quaternion(), wq: new THREE.Quaternion(), tw: { x: 0, y: 0, z: 0 }, tv: new THREE.Vector3() });
+      segs.push({ name, joint, parent, body, cz, lim, rest: joint.rotation.clone(), tp: new THREE.Vector3(), tq: new THREE.Quaternion(), wq: new THREE.Quaternion(), tw: { x: 0, y: 0, z: 0 }, tv: new THREE.Vector3() });
     }
-    // 공 관절: 자식 관절 원점 = 부모 관절 좌표의 joint.position. 조각 원점은 관절에서 z 로 cz 떨어진 가운데
+    // 관절: 자식 관절 원점 = 부모 관절 좌표의 joint.position. 조각 원점은 관절에서 z 로 cz 떨어진 가운데.
+    // 각도 제한(RAGDOLL_LIMITS)이 있으면 원뿔: 부모 쪽 축(가운데 방향) 둘레 angle 안으로만 자식 축이 감 (무릎·팔꿈치가 반대로 안 꺾임)
     for (const sg of segs) {
       if (sg.parent < 0) continue;
       const pa = segs[sg.parent];
       const jp = sg.joint.position;
-      const c = new CANNON.PointToPointConstraint(pa.body, new CANNON.Vec3(jp.x * S, jp.y * S, (jp.z - pa.cz) * S), sg.body, new CANNON.Vec3(0, 0, -sg.cz * S));
+      const pivotA = new CANNON.Vec3(jp.x * S, jp.y * S, (jp.z - pa.cz) * S);
+      const pivotB = new CANNON.Vec3(0, 0, -sg.cz * S);
+      const L = sg.lim && C.RAGDOLL_LIMITS[sg.lim];
+      let c;
+      if (L) {
+        // 가운데 방향: 기본 축(몸통·목은 위 +z, 팔다리는 아래 -z)을 부모 y 축으로 rotY 만큼 돌린 방향 (figure 관절 rotation.y 와 같은 부호)
+        const u = L.up ? 1 : -1;
+        const axisA = new CANNON.Vec3(u * Math.sin(L.rotY), 0, u * Math.cos(L.rotY));
+        const axisB = new CANNON.Vec3(0, 0, u);
+        c = new CANNON.ConeTwistConstraint(pa.body, sg.body, { pivotA, pivotB, axisA, axisB, angle: L.cone, twistAngle: L.twist ?? 0 });
+        if (L.twist == null) c.equations = c.equations.filter((e) => e !== c.twistEquation); // 비틀림 제한 없음 (무릎·팔꿈치·엉덩이: 축이 기울어 있어 기준이 어긋남)
+      } else c = new CANNON.PointToPointConstraint(pa.body, pivotA, sg.body, pivotB);
       c.collideConnected = false;
       this.world.addConstraint(c);
       constraints.push(c);
     }
-    const rag = { fig, segs, constraints, motor: 1, snap: 0, hitId: null, mass, fresh: true, rootV: new THREE.Vector3() };
+    const rag = { fig, segs, constraints, motor: 1, snap: 0, hitId: null, mass, weight, fresh: true, rootV: new THREE.Vector3() };
     this.rags.set(id, rag);
     return rag;
   }
@@ -148,7 +166,7 @@ export class RagdollWorld {
       // 맞음: 가슴·머리를 밀린 쪽으로 툭 (골반은 판정 위치를 따라가니 윗몸이 포개짐)
       for (const k of [1, 2]) {
         const b = rag.segs[k].body;
-        const j = C.RAGDOLL_HIT_IMPULSE * hit.pow * b.mass;
+        const j = (C.RAGDOLL_HIT_IMPULSE * hit.pow * b.mass) / rag.weight;
         b.applyImpulse(_cv.set(hit.x * j, hit.y * j, C.RAGDOLL_HIT_UP * j));
       }
     }
@@ -164,7 +182,16 @@ export class RagdollWorld {
     }
   }
 
-  // 래그돌 둘레의 단단한 칸만 정적 상자로 (solid(x, y, z) = 그 점이 든 칸이 단단한가)
+  // 판 바닥 (z < 0, 판 안은 다 단단함) = 판 크기 상자 하나. 판 크기가 바뀌면 다시
+  updateFloor(w, d) {
+    if (this.floorKey === `${w},${d}`) return;
+    if (this.floor) this.world.removeBody(this.floor);
+    this.floorKey = `${w},${d}`;
+    this.floor = new CANNON.Body({ mass: 0, shape: new CANNON.Box(new CANNON.Vec3(w / 2, d / 2, 0.5)), position: new CANNON.Vec3(w / 2, d / 2, -0.5), collisionFilterGroup: GROUND, collisionFilterMask: PART });
+    this.world.addBody(this.floor);
+  }
+
+  // 래그돌 둘레의 단단한 칸만 정적 상자로 (solid(x, y, z) = 그 점이 든 칸이 단단한가). 바닥 줄(z -1)은 updateFloor 가 맡음
   updateGround(solid) {
     const need = new Set();
     const R = C.RAGDOLL_GROUND_REACH;
@@ -173,7 +200,7 @@ export class RagdollWorld {
       const bx = Math.floor(p.x), by = Math.floor(p.y), bz = Math.floor(p.z);
       for (let x = bx - R; x <= bx + R; x++) {
         for (let y = by - R; y <= by + R; y++) {
-          for (let z = Math.max(-1, bz - R); z <= bz + 1; z++) if (solid(x + 0.5, y + 0.5, z + 0.5)) need.add(`${x},${y},${z}`);
+          for (let z = Math.max(0, bz - R); z <= bz + 1; z++) if (solid(x + 0.5, y + 0.5, z + 0.5)) need.add(`${x},${y},${z}`);
         }
       }
     }
@@ -193,13 +220,14 @@ export class RagdollWorld {
   }
 
   // 물리 돌리기 (고정 걸음). 걸음마다 골반 끌어당김 + 관절 모터
-  step(dt, solid) {
+  step(dt, solid, field) {
     const t0 = performance.now();
     this.stats.steps = 0;
     if (!this.rags.size) {
       this.stats.ms = 0;
       return;
     }
+    this.updateFloor(field.w, field.d);
     this.updateGround(solid);
     this.acc = Math.min(this.acc + dt, C.RAGDOLL_STEP * C.RAGDOLL_MAX_STEPS);
     while (this.acc >= C.RAGDOLL_STEP) {
@@ -223,7 +251,7 @@ export class RagdollWorld {
   drive(rag) {
     const root = rag.segs[0];
     const rb = root.body;
-    const pull = rootPull(rb.position, rb.velocity, root.tp, rag.rootV, _pull);
+    const pull = rootPull(rb.position, rb.velocity, root.tp, rag.rootV, rag.motor, _pull);
     if (pull.snap) {
       this.snapAll(rag);
       return;

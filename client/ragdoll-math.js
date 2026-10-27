@@ -61,16 +61,21 @@ export function pdAngular(q, t, w, tw, motor, out = {}) {
   return Object.assign(out, { x: kp * e.x + kd * (tw.x * f - w.x), y: kp * e.y + kd * (tw.y * f - w.y), z: kp * e.z + kd * (tw.z * f - w.z) });
 }
 
-// 골반 끌어당기기: 판정(보간) 위치 t 에서 멀면 순간 맞춤 (snap), 아니면 스프링 가속도 (중력 보정 포함)
-export function rootPull(p, v, t, tv, out = {}) {
-  const dx = t.x - p.x, dy = t.y - p.y, dz = t.z - p.z;
+// 골반 끌어당기기: 판정(보간) 위치 t 에서 멀면 순간 맞춤 (snap), 아니면 스프링 가속도 (중력 보정 포함).
+// 힘이 빠지면 (motor < 1) 골반이 판정 위치보다 RAGDOLL_SLUMP 까지 아래로 처질 수 있음 → 바닥에 쓰러져 누움 (위로는 안 끌어올림)
+export function rootPull(p, v, t, tv, motor = 1, out = {}) {
+  const slump = C.RAGDOLL_SLUMP * (1 - Math.min(1, Math.max(0, motor)));
+  const dx = t.x - p.x, dy = t.y - p.y;
+  let dz = t.z - p.z;
+  if (dz > 0) dz = Math.max(0, dz - slump); // 처진 만큼은 봐줌
   if (Math.hypot(dx, dy, dz) > C.RAGDOLL_MAX_DRIFT) return Object.assign(out, { snap: true, x: 0, y: 0, z: 0 });
   const kp = C.RAGDOLL_ROOT_KP, kd = C.RAGDOLL_ROOT_KD;
+  const lift = 1 - slump / Math.max(1e-6, C.RAGDOLL_SLUMP || 1); // 다 처지면 중력 보정도 끔 (쓰러짐)
   return Object.assign(out, {
     snap: false,
     x: kp * dx + kd * (tv.x - v.x),
     y: kp * dy + kd * (tv.y - v.y),
-    z: kp * dz + kd * (tv.z - v.z) + C.RAGDOLL_GRAVITY,
+    z: kp * dz + kd * (tv.z - v.z) * lift + C.RAGDOLL_GRAVITY * Math.max(C.RAGDOLL_LIMP_LIFT, lift),
   });
 }
 

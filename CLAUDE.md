@@ -9,7 +9,7 @@ DevVault: Projects/Tetrafall
 
 - Node (서버, `ws`) + three.js (클라이언트). 순수 JS ES 모듈, 빌드 없음
 - 서버가 게임 상태의 권위 (30Hz 고정 틱). 클라이언트는 입력 전송 + 렌더링만, 예측 없음
-- 게임 물리엔진 없음: 블록은 3D 정수 배열, 플레이어만 AABB 충돌 + 넉백. 몸 모습만 클라에서 cannon-es 래그돌 (`client/ragdoll.js`, 판정과 무관, `RAGDOLL_CHARS` 캐릭터만. 서버는 `/vendor/cannon-es.js` 로 서빙)
+- 게임 물리엔진 없음: 블록은 3D 정수 배열, 플레이어만 AABB 충돌 + 넉백. 몸 모습만 클라에서 cannon-es 래그돌 (`client/ragdoll.js`, 판정과 무관, `RAGDOLL_CHARS` 캐릭터 = 지금 8명 전부. 서버는 `/vendor/cannon-es.js` 로 서빙)
 
 ## 명령
 
@@ -28,7 +28,7 @@ Windows PowerShell 에서 npm 이 막히면 `npm.cmd`.
 - `shared/config.js` — **튜닝 수치는 전부 여기.** 코드에 숫자를 박지 않는다
 - `shared/pieces.js` — 테트리미노 모양·회전
 - `shared/camera.js` — 관전 궤도 카메라 (three.js 없는 순수 계산, `render.js` 가 씀)
-- `client/ragdoll.js` — 액티브 래그돌 (cannon-es): figure 관절마다 몸 조각, 관절 모터가 figureAnim 자세를 따라가고 맞음·경직·낙사엔 힘이 빠짐. 골반은 판정(보간) 위치를 따라감. 1인칭 내 몸은 끔. 순수 계산(모터 세기·PD·끌어당김)은 `client/ragdoll-math.js`
+- `client/ragdoll.js` — 액티브 래그돌 (cannon-es): figure 관절마다 몸 조각, 관절 모터가 figureAnim 자세를 따라가고 맞음·경직·낙사엔 힘이 빠져 쓰러졌다 일어남 (골반이 `RAGDOLL_SLUMP` 까지 처짐). 골반은 판정(보간) 위치를 따라감. 관절 각도 제한 `RAGDOLL_LIMITS`, 체형별 무게 `RAGDOLL_WEIGHT`. 1인칭 내 몸은 끔. 순수 계산(모터 세기·PD·끌어당김)은 `client/ragdoll-math.js`
 - `client/interp.js` — 플레이어 화면 위치 보간 (three.js 없는 순수 계산, `render.js` 가 씀). 스냅샷을 서버 시각(`state.time`)으로 쌓고 조금 늦은 시각(남 `INTERP_DELAY_MS`, 나 `INTERP_DELAY_SELF_MS`)을 두 스냅샷 사이에서 보간
 - `server/game.js` — 게임 상태: 격자, 블록 낙하, 플레이어 물리, 넉백, 사망 판정, 용암, 아이템, 로그, 모드(`mode`: 생존·블록 마스터·킬 점수전). 블록 마스터의 마스터는 살아 있지만 필드에 없음 → 판정 대상은 `onField(p)` 로 고른다. 캐릭터(`char`, 스킬·필살기)는 `new Game(log, { characters: true })` 일 때만 (서버 방은 켬, 예전 규칙 테스트는 끔). 하늘 계단(`sky`, 하늘 블록 사슬·격자 높이 `game.H` 32)도 `{ skyStairs: true }` 일 때만 (방은 `SKY_STAIRS_DEFAULT`). 연습 모드는 `mode: 'practice'` (`startPractice`, 판이 안 끝남, 허수아비 `dummy`, 방 `practice` 는 로그 파일 없음)
 - `server/bot.js` — AI 봇 (handleInput / handleAction 만 씀, 판정 특혜 없음)

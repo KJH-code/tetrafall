@@ -75,3 +75,40 @@ test('팔다리 조각: 세기 1 이면 목표 위치로 + 중력 보정, 세기
   const b = limbPull(o, { x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: 3, z: 0 }, 0);
   assert.deepEqual([b.x, b.y, b.z], [0, 0, 0]);
 });
+
+test('힘이 빠지면 골반이 RAGDOLL_SLUMP 까지 아래로 처져도 안 끌어올림 (쓰러져 누움), 세면 바로 끌어올림', () => {
+  const o = { x: 0, y: 0, z: 0 };
+  const below = { x: 0, y: 0, z: -C.RAGDOLL_SLUMP * 0.9 }; // 판정 위치(0)보다 아래
+  const limp = rootPull(below, o, o, o, 0);
+  assert.equal(limp.snap, false);
+  assert.ok(limp.z < C.RAGDOLL_GRAVITY, '중력 보정이 줄어 떨어짐');
+  const strong = rootPull({ x: 0, y: 0, z: -0.3 }, o, o, o, 1);
+  assert.equal(strong.snap, false);
+  assert.ok(strong.z > C.RAGDOLL_GRAVITY, '세면 위로 끌어올림');
+  // 힘이 서서히 돌아오는 동안 (일어나기) 누운 자리에서 순간 맞춤 없이 끌어올림
+  for (let m = 0; m <= 1; m += 0.1) {
+    const depth = C.RAGDOLL_SLUMP * (1 - m) * 0.95 + 0.1 * m;
+    assert.equal(rootPull({ x: 0, y: 0, z: -depth }, o, o, o, m).snap, false, `세기 ${m.toFixed(1)}`);
+  }
+  // 처질 수 있는 거리보다 더 내려가면 다시 끌어올림
+  assert.ok(rootPull({ x: 0, y: 0, z: -C.RAGDOLL_SLUMP - 0.1 }, o, o, o, 0).z > 0);
+});
+
+test('관절 각도 제한: 평소 자세 범위가 다 들어가게 (무릎·팔꿈치 굽힘 0~2.2, 엉덩이 앞 0~1.9)', () => {
+  const inside = (L, a) => Math.abs(a - L.rotY) <= L.cone;
+  const { knee, elbow, hip } = C.RAGDOLL_LIMITS;
+  for (const a of [0, 1, 2.2]) assert.ok(inside(knee, a), `무릎 ${a}`);
+  assert.ok(!inside(knee, -0.3), '무릎은 앞으로 안 꺾임');
+  for (const a of [0, 1.6, 2.1]) assert.ok(inside(elbow, -a), `팔꿈치 ${a}`);
+  assert.ok(!inside(elbow, 0.3), '팔꿈치는 뒤로 안 꺾임');
+  for (const a of [-0.5, 0.9, 1.9]) assert.ok(inside(hip, -a), `엉덩이 ${a}`);
+});
+
+test('체형별 무게: 탱크(drum)가 가장 무겁고 닌자(slim)가 가장 가벼움, 8명 다 래그돌', () => {
+  const w = C.RAGDOLL_WEIGHT;
+  const all = Object.values(C.FIGURE_BODY).map((b) => w[b]);
+  assert.ok(all.every(Number.isFinite));
+  assert.equal(Math.max(...all), w[C.FIGURE_BODY.tank]);
+  assert.equal(Math.min(...all), w[C.FIGURE_BODY.ninja]);
+  assert.deepEqual([...C.RAGDOLL_CHARS].sort(), [...C.CHARACTERS].sort());
+});

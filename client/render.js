@@ -981,8 +981,9 @@ export class Renderer {
   ragdollCapture(g, p, s, dt) {
     const a = g.userData.anim;
     const now = performance.now();
-    if (a.ragWasStunned && !p.stunned) a.ragStunEnd = now;
-    a.ragWasStunned = !!p.stunned;
+    const limp = !!p.stunned || !!a.flipRag; // 경직 또는 대포수 공중 반동 (래그돌처럼 뒤로 구름)
+    if (a.ragWasStunned && !limp) a.ragStunEnd = now;
+    a.ragWasStunned = limp;
     const hit = this.hitFor(p);
     const h = this.hits.get(p.id);
     let hx = -Math.cos(p.yaw);
@@ -996,7 +997,7 @@ export class Renderer {
     this.ragdoll.capture(
       p.id,
       g,
-      { stunned: !!p.stunned, sinceStun: a.ragStunEnd ? (now - a.ragStunEnd) / 1000 : Infinity, hitAge: hit ? hit.age : null, falling: s.z < C.RAGDOLL_FALL_Z, act: act ? act.phase : null },
+      { stunned: limp, sinceStun: a.ragStunEnd ? (now - a.ragStunEnd) / 1000 : Infinity, hitAge: hit ? hit.age : null, falling: s.z < C.RAGDOLL_FALL_Z, act: act ? act.phase : null },
       hit ? { id: hit.id, x: hx, y: hy, pow: hit.pow } : null,
       dt,
     );
@@ -2965,7 +2966,8 @@ export class Renderer {
       if (rag) {
         ragKeep.add(p.id);
         this.ragdoll ||= new RagdollWorld();
-        if (!this.ragdoll.has(p.id)) this.ragdoll.create(p.id, g.userData.figure);
+        if (this.ragdoll.has(p.id) && this.ragdoll.figOf(p.id) !== g.userData.figure) this.ragdoll.remove(p.id); // 캐릭터가 바뀌어 몸이 새로 생김
+        if (!this.ragdoll.has(p.id)) this.ragdoll.create(p.id, g.userData.figure, p.char);
         this.ragdoll.restore(p.id);
       } else if (this.ragdoll?.has(p.id)) this.ragdoll.remove(p.id);
       this.animate(g, s, p, dt);
@@ -3094,7 +3096,7 @@ export class Renderer {
     if (this.ragdoll) {
       // 몸 물리: 모은 목표 자세로 한 번에 돌리고 관절 회전으로 되돌려 넣음
       this.ragdoll.prune(ragKeep);
-      this.ragdoll.step(dt, (x, y, z) => this.solidAt(state, x, y, z));
+      this.ragdoll.step(dt, (x, y, z) => this.solidAt(state, x, y, z), { w: this.W, d: this.D });
       for (const id of ragKeep) this.ragdoll.apply(id);
     }
     for (const [id, g] of this.playerMeshes) {

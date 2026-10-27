@@ -1076,7 +1076,7 @@ export const CONFIG = {
   FIGURE_SETTLE: 10, // 도는 동작이 끝나고 가장 가까운 한 바퀴 각으로 돌아가는 빠르기 (/초)
   // 액티브 래그돌 (2026-10-27 시범, client/ragdoll.js · ragdoll-math.js · cannon-es). 판정은 서버 AABB 그대로, 몸 모습만 클라 물리.
   // 평소·공격: 관절 모터가 지금 자세(figureAnim)를 세게 따라감 / 맞음·기절·낙사: 모터 힘이 빠져 흐물흐물 (TABS)
-  RAGDOLL_CHARS: ['tank', 'ninja'], // 래그돌로 그리는 캐릭터 (빈 배열이면 끔). 1인칭 내 몸은 늘 끔 (viewmodel 이 관절을 베낌)
+  RAGDOLL_CHARS: ['tank', 'ninja', 'builder', 'hook', 'hunter', 'cannon', 'berserker', 'bard'], // 래그돌로 그리는 캐릭터 (빈 배열이면 끔). 1인칭 내 몸은 늘 끔 (viewmodel 이 관절을 베낌). 2026-10-27 재혁: 8명 전부
   RAGDOLL_STEP: 1 / 120, // 물리 고정 걸음 (초)
   RAGDOLL_MAX_STEPS: 6, // 한 프레임에 최대 걸음 수 (느린 프레임에서 따라잡기 상한)
   RAGDOLL_GRAVITY: 20, // 몸 물리 중력 (칸/초², 서버 GRAVITY 와 같게)
@@ -1084,7 +1084,7 @@ export const CONFIG = {
   RAGDOLL_KD: 80, // 관절 모터 감쇠 (/초)
   RAGDOLL_ROOT_KP: 1800, // 골반이 서버(보간) 위치를 따라가는 세기 (/초²)
   RAGDOLL_ROOT_KD: 85, // 같은 것 감쇠 (/초)
-  RAGDOLL_ROOT_SHARE: 0.25, // 힘이 다 빠졌을 때 팔다리도 골반 끌어당김을 이만큼 나눠 받음 (골반 혼자 몸 전체를 끌면 출렁여 깨짐)
+  RAGDOLL_ROOT_SHARE: 0.12, // 힘이 다 빠졌을 때 팔다리도 골반 끌어당김을 이만큼 나눠 받음 (골반 혼자 몸 전체를 끌면 출렁여 깨짐)
   RAGDOLL_LIN_KP: 2500, // 몸통·팔다리 조각이 자기 목표 위치로 가는 세기 (/초², 모터 세기를 곱함). 세면 자세가 그대로 읽힘
   RAGDOLL_LIN_KD: 80, // 같은 것 감쇠 (/초)
   RAGDOLL_COLLIDE_BELOW: 0.6, // 모터 세기가 이보다 약할 때만 바닥·블록과 부딪힘 (맞음·경직·낙사)
@@ -1092,14 +1092,26 @@ export const CONFIG = {
   RAGDOLL_MAX_DRIFT: 0.35, // 골반이 판정 위치에서 이보다 (칸) 멀어지면 몸 전체를 순간 맞춤
   RAGDOLL_MOTOR_ATTACK: 1.6, // 공격 중 모터 세기 배율 (예고·타격이 읽히게)
   RAGDOLL_ATTACK_SNAP: 0.6, // 공격 준비·타격 동안 화면 자세를 목표 자세 쪽으로 이만큼 섞음 (0 물리 그대로 ~ 1 목표 그대로, 타격이 확 튀게)
-  RAGDOLL_HIT_MOTOR: 0.03, // 맞은 순간 모터 세기 (몸이 포개짐) → RAGDOLL_HIT_RECOVER_S 동안 1 로
-  RAGDOLL_HIT_RECOVER_S: 0.5,
-  RAGDOLL_STUN_MOTOR: 0.01, // 경직(날아감) 중 모터 세기 (팔다리 휘날림)
-  RAGDOLL_STUN_RECOVER_S: 0.5, // 경직이 풀리고 모터가 다시 세지는 시간 (일어나기)
-  RAGDOLL_FALL_MOTOR: 0.01, // 바닥 아래로 떨어지는 중 (낙사) 모터 세기
+  RAGDOLL_HIT_MOTOR: 0.004, // 맞은 순간 모터 세기 (몸이 포개짐) → RAGDOLL_HIT_RECOVER_S 동안 1 로
+  RAGDOLL_HIT_RECOVER_S: 0.9,
+  RAGDOLL_STUN_MOTOR: 0.002, // 경직(날아감) 중 모터 세기 (팔다리 휘날림)
+  RAGDOLL_STUN_RECOVER_S: 0.85, // 경직이 풀리고 모터가 다시 세지는 시간 (일어나기)
+  RAGDOLL_FALL_MOTOR: 0.002, // 바닥 아래로 떨어지는 중 (낙사) 모터 세기
   RAGDOLL_FALL_Z: -0.4, // 발이 이보다 낮으면 낙사 중으로 봄 (칸)
-  RAGDOLL_HIT_IMPULSE: 4, // 맞을 때 가슴·머리에 주는 충격 (세기 1, 질량 1 당 칸/초)
-  RAGDOLL_HIT_UP: 0.35, // 충격의 위쪽 비율
+  RAGDOLL_HIT_IMPULSE: 7, // 맞을 때 가슴·머리에 주는 충격 (세기 1, 질량 1 당 칸/초)
+  RAGDOLL_HIT_UP: 0.45, // 충격의 위쪽 비율
+  RAGDOLL_SLUMP: 0.55, // 힘이 다 빠지면 골반이 판정 위치보다 이만큼 (칸) 아래로 처질 수 있음 → 바닥에 쓰러져 누움, 힘이 돌아오면 일어남
+  RAGDOLL_LIMP_LIFT: 0.25, // 다 처졌을 때 골반이 받는 중력 보정 비율 (0 이면 그대로 떨어짐)
+  RAGDOLL_WEIGHT: { drum: 1.6, brute: 1.3, stout: 1.3, sturdy: 1.15, lean: 1, reach: 1, stalk: 0.95, slim: 0.75 }, // 체형별 무게 (FIGURE_BODY). 무거울수록 맞을 때 덜 튐 (탱크 무겁게, 닌자 가볍게)
+  // 관절 각도 제한 (원뿔): rotY = 가운데 방향을 figure 관절 rotation.y 부호로 기울인 각, cone = 가운데에서 벗어날 수 있는 각, twist = 비틀림 한계 (없으면 제한 없음).
+  // 무릎은 뒤로만, 팔꿈치·엉덩이는 앞으로 많이 (평소 자세 범위는 다 들어가게 넉넉히). 어깨는 제한 없음 (팔 휘두름)
+  RAGDOLL_LIMITS: {
+    waist: { up: true, rotY: 0.2, cone: 0.9, twist: 1.1 },
+    neck: { up: true, rotY: 0, cone: 0.9, twist: 0.9 },
+    elbow: { rotY: -1.3, cone: 1.45 },
+    knee: { rotY: 1.25, cone: 1.35 },
+    hip: { rotY: -0.7, cone: 1.45 },
+  },
   RAGDOLL_MASS: { pelvis: 3, chest: 4, head: 1.2, upper: 0.7, fore: 0.5, thigh: 1.4, shin: 1 }, // 몸 조각 질량 비율
   RAGDOLL_DAMPING: 0.05, // 조각마다 공기 저항 (선·각 모두)
   RAGDOLL_FRICTION: 0.6, // 바닥·블록 마찰
