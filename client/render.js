@@ -117,17 +117,26 @@ function skyDome() {
       horizon: { value: new THREE.Color(C.SKY_HORIZON) },
       sunDir: { value: new THREE.Vector3(...C.SUN_DIR).normalize() },
       below: { value: new THREE.Color(C.SKY_HORIZON).multiplyScalar(0.55) }, // 지평선 아래 (맵 테마가 바꿈, world.js)
+      glow: { value: new THREE.Vector3(1.0, 0.65, 0.35) }, // 해 둘레 번짐 색 (밤 테마는 달빛)
+      disc: { value: new THREE.Vector3(1.0, 0.93, 0.75) }, // 해(달) 원반 색
+      discSize: { value: 0.0005 }, // 원반 크기 (1 - cos 반지름)
+      stars: { value: 0 }, // 별 밝기 (밤 테마)
     },
     vertexShader: `varying vec3 vDir;
       void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-    fragmentShader: `uniform vec3 top; uniform vec3 mid; uniform vec3 horizon; uniform vec3 sunDir; uniform vec3 below; varying vec3 vDir;
+    fragmentShader: `uniform vec3 top; uniform vec3 mid; uniform vec3 horizon; uniform vec3 sunDir; uniform vec3 below; uniform vec3 glow; uniform vec3 disc; uniform float discSize; uniform float stars; varying vec3 vDir;
       void main() {
         float h = clamp(vDir.z, -1.0, 1.0);
         vec3 c = h < 0.25 ? mix(horizon, mid, smoothstep(0.0, 0.25, h)) : mix(mid, top, smoothstep(0.25, 0.85, h));
         if (h < 0.0) c = mix(horizon, below, smoothstep(0.0, -0.4, h));
         float s = max(dot(normalize(vDir), sunDir), 0.0);
-        c += vec3(1.0, 0.65, 0.35) * pow(s, 8.0) * 0.45;
-        c = mix(c, vec3(1.0, 0.93, 0.75), smoothstep(0.9985, 0.9995, s));
+        if (stars > 0.0) {
+          vec3 g = floor(normalize(vDir) * 220.0);
+          float hs = fract(sin(dot(g, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+          c += vec3(step(0.9972, hs) * stars * smoothstep(0.04, 0.35, h) * (0.5 + 0.5 * fract(hs * 91.0)));
+        }
+        c += glow * pow(s, 8.0) * 0.45;
+        c = mix(c, disc, smoothstep(1.0 - discSize - 0.001, 1.0 - discSize, s));
         gl_FragColor = vec4(c, 1.0);
       }`,
   });
