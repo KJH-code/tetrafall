@@ -12,6 +12,7 @@ import { makeTextures } from '/textures.js';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
 import { ViewModel } from '/viewmodel.js';
 import { SnapClock, pushTrack, sampleTrack } from '/interp.js';
+import { World } from '/world.js';
 
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
@@ -115,14 +116,15 @@ function skyDome() {
       mid: { value: new THREE.Color(C.SKY_MID) },
       horizon: { value: new THREE.Color(C.SKY_HORIZON) },
       sunDir: { value: new THREE.Vector3(...C.SUN_DIR).normalize() },
+      below: { value: new THREE.Color(C.SKY_HORIZON).multiplyScalar(0.55) }, // 지평선 아래 (맵 테마가 바꿈, world.js)
     },
     vertexShader: `varying vec3 vDir;
       void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-    fragmentShader: `uniform vec3 top; uniform vec3 mid; uniform vec3 horizon; uniform vec3 sunDir; varying vec3 vDir;
+    fragmentShader: `uniform vec3 top; uniform vec3 mid; uniform vec3 horizon; uniform vec3 sunDir; uniform vec3 below; varying vec3 vDir;
       void main() {
         float h = clamp(vDir.z, -1.0, 1.0);
         vec3 c = h < 0.25 ? mix(horizon, mid, smoothstep(0.0, 0.25, h)) : mix(mid, top, smoothstep(0.25, 0.85, h));
-        if (h < 0.0) c = mix(horizon, horizon * 0.55, smoothstep(0.0, -0.4, h));
+        if (h < 0.0) c = mix(horizon, below, smoothstep(0.0, -0.4, h));
         float s = max(dot(normalize(vDir), sunDir), 0.0);
         c += vec3(1.0, 0.65, 0.35) * pow(s, 8.0) * 0.45;
         c = mix(c, vec3(1.0, 0.93, 0.75), smoothstep(0.9985, 0.9995, s));
@@ -216,6 +218,8 @@ export class Renderer {
     // 노을: 하늘은 따뜻하게, 땅 반사는 푸르스름하게. 해는 낮게 떠서 그림자가 길다
     const hemi = new THREE.HemisphereLight(0xffe2d2, 0x8a90b8, 1.15);
     this.scene.add(hemi);
+    this.hemi = hemi;
+    this.sunDir = C.SUN_DIR; // 해 방향 (맵 테마가 바꿈)
     const sun = new THREE.DirectionalLight(C.SUN_COLOR, 1.25);
     const center = new THREE.Vector3(this.W / 2, this.D / 2, 0);
     sun.position.copy(center).addScaledVector(new THREE.Vector3(...C.SUN_DIR).normalize(), 30);
@@ -295,6 +299,8 @@ export class Renderer {
     this.scene.add(this.lavaLight);
     this.emberAcc = 0;
     this.setField(C.GRID_W, C.GRID_D, true);
+    // 맵 테마 (하늘·바닥·섬·먼 배경·위험 모습). 맵 id 로 고름, 표에 없는 맵은 위의 예전 모습 그대로
+    this.world = new World(this);
 
     this.effects = new Effects(this.scene);
     // 조종 중 하늘에서 본 블록의 착지 미리보기 (조종자에게만)
@@ -461,13 +467,14 @@ export class Renderer {
     this.gridLines.scale.set(w / n, 1, d / n);
     this.gridLines.position.set(cx, cy, 0.002);
     this.scene.add(this.gridLines);
+    if (this.world) this.world.layout(); // 테마 섬·장식을 판 크기에 맞춰 (격자선도 테마면 숨김)
     this.edges.scale.set(w, d, this.H);
     this.edges.position.set(cx, cy, this.H / 2);
     this.lava.scale.set(w + 12, d + 12, 1);
     this.lavaTop.scale.set(w + 12, d + 12, 1);
     this.dome.position.set(cx, cy, 0);
     const center = new THREE.Vector3(cx, cy, 0);
-    this.sun.position.copy(center).addScaledVector(new THREE.Vector3(...C.SUN_DIR).normalize(), 30);
+    this.sun.position.copy(center).addScaledVector(new THREE.Vector3(...this.sunDir).normalize(), 30);
     this.sun.target.position.copy(center);
     const reach = Math.hypot(w, d) / 2 + 4; // 필드 + 여백을 덮는 그림자 상자
     Object.assign(this.sun.shadow.camera, { left: -reach, right: reach, top: reach + 4 + (h - C.GRID_H), bottom: -reach, far: 60 + (h - C.GRID_H) * 1.5 }); // 하늘 계단이면 위로 더 (높은 블록도 그림자)
@@ -513,7 +520,7 @@ export class Renderer {
           m.makeTranslation(x + 0.5, y + 0.5, z + 0.5);
           mesh.setMatrixAt(n, m);
           // 무엇이 남긴 칸인지에 따라 색 (지형 돌·쌓기 나무·설치 블록 모래·테트리미노 모양 색), 인접 칸은 체커보드로 살짝 명암
-          color.setHex(cellColor(v));
+          color.setHex(v === CELL.TERRAIN && this.terrainColor != null ? this.terrainColor : cellColor(v)); // 테마 지형 블록은 재질 색 그대로
           if ((x + y + z) % 2) color.multiplyScalar(0.94);
           mesh.setColorAt(n, color);
         }
@@ -623,6 +630,15 @@ export class Renderer {
     this.effects.burst(pos, null, col, 14, 2.5, 0.14, 0.6);
     this.effects.burst(pos, null, 0xffffff, 10, 1.6, 0.1, 0.5);
     this.effects.ring(pos, 0xffffff, 1.4, 0.3, true);
+  }
+
+  // 그래픽 낮춤 (설정): 화면 해상도 1배, 맵 테마 장식·위험 입자 줄임
+  setLowGfx(on) {
+    if (this.lowGfx === !!on) return;
+    this.lowGfx = !!on;
+    this.renderer.setPixelRatio(on ? 1 : Math.min(window.devicePixelRatio, 2));
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.world.setLow(on);
   }
 
   // 외곽선 켜기·끄기 (설정). 켜면 OutlineEffect 가 장면을 한 번 더 (뒤집힌 테두리로) 그린다
@@ -2858,6 +2874,7 @@ export class Renderer {
     if (!state) return;
     this.curState = state;
     if (state.field) this.setField(state.field.w, state.field.d, false, state.field.h || C.GRID_H);
+    this.world.update(state, dt);
     this.stepView(view, dt);
     if (state.grid && state.grid.length === this.W * this.D * this.H && state.gridVersion !== this.gridVersion) {
       this.updateGrid(state.grid);
@@ -3094,20 +3111,22 @@ export class Renderer {
     this.lava.visible = !!(lava && lava.active);
     this.lavaTop.visible = this.lava.visible;
     if (this.lava.visible) {
-      const h = Math.max(0.01, lava.z - this.lavaBottom - 0.02);
+      const h = Math.max(0.01, lava.z - this.lavaBottom - 0.15); // 표면 출렁임(±0.1)보다 아래 — 몸통 윗면이 물결 골로 비치지 않게
       this.lava.scale.z = h;
       this.lava.position.set(this.W / 2, this.D / 2, this.lavaBottom + h / 2);
       this.lavaTop.position.set(this.W / 2, this.D / 2, lava.z);
       const now = performance.now() / 1000;
       this.lavaTop.material.uniforms.time.value = now;
       // 빛은 살짝 일렁임
-      this.lavaLight.intensity = C.LAVA_LIGHT_INTENSITY * (0.85 + 0.15 * Math.sin(now * 7) * Math.sin(now * 2.3));
+      const hz = this.world.hazard; // 맵 테마의 위험 모습 (없으면 예전 용암)
+      this.lavaLight.intensity = C.LAVA_LIGHT_INTENSITY * (hz ? hz.light[1] : 1) * (0.85 + 0.15 * Math.sin(now * 7) * Math.sin(now * 2.3));
       this.lavaLight.position.set(this.W / 2, this.D / 2, lava.z + 1.2);
       // 불똥: 표면 아무 데서나 튀어 오름
-      this.emberAcc += dt * C.LAVA_EMBER_RATE;
+      this.emberAcc += dt * C.LAVA_EMBER_RATE * (this.lowGfx ? C.WORLD_LOW_DETAIL : 1);
+      const sparks = hz ? hz.particles : [0xffb030, 0xff5010];
       for (; this.emberAcc >= 1; this.emberAcc--) {
         const pos = { x: -1 + Math.random() * (this.W + 2), y: -1 + Math.random() * (this.D + 2), z: lava.z + 0.05 };
-        this.effects.burst(pos, null, Math.random() < 0.5 ? 0xffb030 : 0xff5010, 1, 4, 0.06, 0.8);
+        this.effects.burst(pos, null, sparks[Math.random() < 0.5 ? 0 : 1], 1, 4, 0.06, 0.8);
       }
     } else {
       this.lavaLight.intensity = 0;

@@ -787,6 +787,62 @@ export const CONFIG = {
   SUN_COLOR: 0xffc890,
   FOG_NEAR: 28,
   FOG_FAR: 75,
+  // 맵 테마 (client/world.js, 모습만). 표에 없는 맵은 위의 노을 그대로 → 새 맵 테마는 WORLD_THEMES 에 값을 넣고 WORLD_MAP_THEME 에 잇기만
+  WORLD_MAP_THEME: { flat: 'meadow', pyramid: 'desert' },
+  WORLD_DRIFT_SPEED: 0.006, // 먼 섬·구름이 필드 둘레를 도는 빠르기 (라디안/초)
+  WORLD_LOW_DETAIL: 0.4, // 그래픽 낮춤: 먼 섬·구름·위험 입자 수 비율
+  // 테마 값: sky 하늘 그라데이션(below = 지평선 아래, 구름 바다 쪽) · sunDir 해 방향 · hemi [하늘, 땅, 세기] · fog [색, 시작, 끝]
+  // floor 바닥 (a·b 체크 두 색, line 칸 선, rim 판 옆면) · terrain 지형 블록 (paint grass|sandstone, top·side 면 색, rim 테두리)
+  // cliff 섬 절벽·뿌리 띠 색 (위→아래) · props 먼 섬 소품 · far 먼 산 (shapes peak|mesa|pyramid) · sea 아래 구름 바다 [색, 높이] · edgeOpacity 필드 높이 세로선
+  // hazard 위험(용암 자리): deep·mid 물 색, foam 물마루·가장자리 거품, light [빛 색, 세기 배율], particles 튀는 입자 두 색
+  WORLD_THEMES: {
+    meadow: { // 평지: 초원 섬 · 맑은 낮 · 파란 물
+      seed: 11,
+      sky: { top: 0x2f7fd8, mid: 0x7fc0f0, horizon: 0xdff0f6, below: 0xc4e2f2 },
+      sunDir: [-0.45, 0.5, 0.78],
+      sunColor: 0xfff4e0,
+      sunIntensity: 1.7,
+      hemi: [0xeef6ff, 0x7a9660, 1.05],
+      fog: [0xd6ebf4, 45, 120],
+      floor: { paint: 'grass', a: 0x88cc58, b: 0x7bbf4c, line: 'rgba(40,70,25,0.35)', rim: 0x6aa844 },
+      terrain: { paint: 'grass', top: 0x86c857, side: 0x9a6b44, rim: 0x4c3420 },
+      cliff: [0x9a6b44, 0x8f8576, 0x81786a, 0x72695c, 0x645b50],
+      rock: 0x8f8778,
+      trunk: 0x7a5434,
+      leaf: [0x5fae48, 0x76c056, 0x4f9a3e, 0x9ccc5a],
+      props: ['pine', 'round', 'round', 'rock'],
+      cloud: 0xffffff,
+      far: { shapes: ['peak'], color: 0x7090b8, base: -22, count: 14 },
+      sea: [0xeef6fb, -16], // 구름 바다 [색, 높이]
+      clouds: 30,
+      islets: 7,
+      edgeOpacity: 0.05,
+      hazard: { deep: 0x0e3e9c, mid: 0x2a7ee6, foam: 0xf0f8ff, light: [0x5aa8ff, 0.6], particles: [0xffffff, 0xa8d8ff] },
+    },
+    desert: { // 피라미드: 사막 · 늦은 오후 · 청록 오아시스 물 · 사암 블록
+      seed: 23,
+      sky: { top: 0x3c7ccc, mid: 0x9cc0e0, horizon: 0xf8d8a0, below: 0xeccb94 },
+      sunDir: [-0.62, 0.5, 0.42],
+      sunColor: 0xffd29a,
+      sunIntensity: 1.55,
+      hemi: [0xfff0d8, 0xb08a5a, 1.0],
+      fog: [0xf2dcb0, 45, 120],
+      floor: { paint: 'sand', a: 0xebcf8e, b: 0xe0c27e, line: 'rgba(120,80,30,0.35)', rim: 0xd2a964 },
+      terrain: { paint: 'sandstone', top: 0xf0d49a, side: 0xd9a868, rim: 0x8a5a2c },
+      cliff: [0xc98a50, 0xa85e34, 0xd49a5c, 0x9a5230, 0x7c4426], // 붉은 사암 지층
+      rock: 0xc08a56,
+      trunk: 0x8a6440,
+      leaf: [0x5c9a48, 0x6fae50, 0x4e8a3c],
+      props: ['cactus', 'palm', 'rock', 'pyramid'],
+      cloud: 0xfff2e0,
+      far: { shapes: ['mesa', 'mesa', 'pyramid'], color: 0xc08a5a, base: -20, count: 12 },
+      sea: [0xf0dcb8, -16], // 아래 모래 안개 바다 (밝게, 붉은 절벽 띠가 도드라지게)
+      clouds: 18,
+      islets: 6,
+      edgeOpacity: 0.05,
+      hazard: { deep: 0x05606c, mid: 0x14b8b0, foam: 0xe4fff6, light: [0x40e0d0, 0.6], particles: [0xffffff, 0x9ff0e4] },
+    },
+  },
   HELD_MODEL_SIZE: 0.28,
   ROBOT_EYE_WHITE: 0.62, // 로봇 흰자 반지름 (원래 검은 눈 무리 크기에 대한 비율)
   ROBOT_EYE_PUPIL: 0.3, // 로봇 눈동자 반지름 (같은 비율)
