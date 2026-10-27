@@ -1329,9 +1329,14 @@ export const CONFIG = {
   // ---- 접속 상태 (2026-10-27 재혁: 렉·핑을 모름) ----
   NET_PING_MS: 1000, // 화면이 서버에 ping 보내는 간격
   NET_LOAD_DECAY: 0.95, // 서버 틱 일한 시간 최댓값이 틱마다 줄어드는 비율 (pong 의 workMs)
-  NET_PING_WARN_MS: 150, // 핑이 이보다 높으면 렉 알림
-  NET_PING_SPIKE_MULT: 2.5, // 핑이 최근 평균의 이 배 넘게 튀면 렉 알림
-  NET_SNAPSHOT_GAP_MS: 250, // 스냅샷이 이만큼 안 오면 "끊김" 알림
+  NET_PING_WARN_MS: 150, // 핑이 이보다 높으면 렉 알림 (2026-10-27: 한 번 튄 건 무시 — 연속 NET_PING_REPEAT 번일 때만. 화면 멈칫으로 pong 처리가 늦은 것과 구분)
+  NET_PING_SPIKE_MULT: 2.5, // 핑이 최근 평균의 이 배 넘게 튀면 렉 알림 (이것도 연속 NET_PING_REPEAT 번)
+  NET_PING_REPEAT: 2,
+  NET_SNAPSHOT_GAP_MS: 250, // 스냅샷 사이가 이만큼 비면 "끊김" 후보: NET_GAP_WINDOW_MS 안에 NET_GAP_REPEAT 번이면 알림 (로컬 한 번 흔들림은 무시, 2026-10-27 B 헤드리스 핑 5ms 에 노랑)
+  NET_GAP_REPEAT: 2,
+  NET_GAP_WINDOW_MS: 3000,
+  NET_FRAME_WINDOW: 30, // 화면 프레임 간격을 이만큼 (최근 프레임 수) 보고 가장 긴 것 (또는 지금 프레임이 안 끝난 시간) 을 '화면 멈칫' 으로 핑·스냅샷 빈 시간에서 빼고 판정 (느린 화면은 네트워크 렉이 아님, 표시 핑은 그대로)
+  NET_SNAPSHOT_STALL_MS: 600, // 한 번이라도 이만큼 비면 (또는 지금 이만큼 안 오면) 바로 "끊김"
   NET_SERVER_SLOW_MS: 20, // 서버 틱 한 번 일한 시간이 이보다 길면 "서버 느림" (틱 33ms)
   NET_SERVER_BEHIND_MS: 100, // 서버 틱이 정해진 시각보다 이만큼 밀리면 "서버 느림" (타이머가 조금씩 늦는 건 무시)
   NET_WARN_HOLD_MS: 1500, // 알림을 이만큼 보여 줌

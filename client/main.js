@@ -6,9 +6,9 @@ import { ACTIONS, DEFAULT_BINDS, keyLabel, groupLabel, normCode, saveBinds, conf
 import { Sound } from '/sound.js';
 import { Music } from '/music.js';
 import { loadModels } from '/models.js';
-import { portrait, setPortraitModels } from '/portrait.js';
 import { NetStatus } from '/net.js';
 import { KO } from '/ko.js';
+import { portrait, setPortraitModels } from '/portrait.js';
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $('status');
