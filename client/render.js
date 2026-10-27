@@ -531,6 +531,7 @@ export class Renderer {
           // 무엇이 남긴 칸인지에 따라 색 (지형 돌·쌓기 나무·설치 블록 모래·테트리미노 모양 색), 인접 칸은 체커보드로 살짝 명암
           color.setHex(v === CELL.TERRAIN && this.terrainColor != null ? this.terrainColor : cellColor(v)); // 테마 지형 블록은 재질 색 그대로
           if ((x + y + z) % 2) color.multiplyScalar(0.94);
+          if (kind === 'terrain' && this.terrainColor != null) this.world.cellLook(n, x, y, z, color); // 테마 블록: 칸마다 무늬 변형·색 흔들림
           mesh.setColorAt(n, color);
         }
       }
@@ -540,6 +541,7 @@ export class Renderer {
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }
+    if (this.world) this.world.gridDone(grid); // 테마 블록 소품 (드러난 옆면의 결정·깨진 돌)
   }
 
   // 필드에 놓인 아이템 모양: 모델이 있으면 모델, 없으면 예전 도형 (이속 증가는 늘 번개 도형)

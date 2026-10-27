@@ -4,8 +4,10 @@
 // 먼 배경 3층(가까운 작은 섬·구름 바다·먼 산) / 떠다니는 빛(반딧불·불씨·금가루) / 위험(용암 자리) 모습 (물·독늪·에너지·번개 구름·용암).
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { CONFIG as C } from '/shared/config.js';
 import { toon, noOutline } from '/toon.js';
+import { CELL } from '/shared/pieces.js';
 
 // 같은 모양이 매번 같게 (새로고침마다 배경이 바뀌지 않게)
 function rng(seed) {
@@ -174,12 +176,171 @@ function bricks(ctx, n, base, top) {
   }
 }
 
-// 지형 블록 면 (64px 한 장 = 블록 한 면). 테두리를 어둡게 그려 칸 경계가 보이게 (예전 블록과 같은 방식).
-// paint: grass(잔디 윗면·흙 옆면) · sandstone/bricks(벽돌) · crystal(어두운 돌 + 빛나는 수정 결) · basalt(현무암 + 빛나는 금) · stump(나이테 윗면·나무껍질 옆면)
+// 칸 위치 → 0~1 (같은 칸은 늘 같은 값). salt 로 여러 갈래
+export function cellHash(x, y, z, salt = 0) {
+  let h = (x * 374761393 + y * 668265263 + z * 2147483647 + salt * 1442695041) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+
+// 보로노이 판 (용암 껍질·현무암 기둥·수정 바탕 돌): 칸 안 점 몇 개에서 가장 가까운 점으로 칠하고,
+// 가장 가까운 두 점 거리 차가 작은 곳이 금 (판 경계). sy < 1 이면 세로로 긴 판 (현무암 기둥 결)
+function voronoi(n, r, count, sy) {
+  const pts = [];
+  for (let i = 0; i < count; i++) pts.push([r() * n, r() * n]);
+  const near = new Int16Array(n * n);
+  const edge = new Float32Array(n * n);
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      let d1 = 1e9;
+      let d2 = 1e9;
+      let i1 = 0;
+      pts.forEach(([px, py], i) => {
+        const dx = x - px;
+        const dy = (y - py) * sy;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < d1) {
+          d2 = d1;
+          d1 = d;
+          i1 = i;
+        } else if (d < d2) d2 = d;
+      });
+      near[y * n + x] = i1;
+      edge[y * n + x] = d2 - d1;
+    }
+  }
+  return { near, edge };
+}
+
+// 캔버스에 쓸 sRGB 0~255 (THREE.Color 안쪽 값은 선형이라 그대로 쓰면 어두워짐)
+const rgb = (c) => {
+  const o = {};
+  new THREE.Color(c).getRGB(o, THREE.SRGBColorSpace);
+  return [o.r * 255, o.g * 255, o.b * 255];
+};
+
+// 현무암 / 식은 용암 껍질: 판마다 색이 조금씩 다르고 (식은 정도), 판 경계가 거미줄 같은 금. 금 일부는 빛나며 둘레로 빛이 번짐
+function basaltFace(ctx, gctx, n, r, t, face) {
+  const side = face !== 'top';
+  const count = side ? 7 : 6;
+  const { near, edge } = voronoi(n, r, count, side ? 0.35 : 1);
+  const base = new THREE.Color(face === 'top' ? t.top : t.side);
+  const crust = new THREE.Color(t.crust ?? t.side);
+  const shades = Array.from({ length: count }, () => rgb(base.clone().lerp(crust, r() * 0.45).multiplyScalar(0.78 + r() * 0.35)));
+  const hot = Array.from({ length: count }, () => r() < (face === 'side' ? 0.3 : 0.18)); // 이 판 둘레 금이 빛남 (적게 — 블록이 용암처럼 보이면 안 됨)
+  const glow = rgb(t.glow);
+  const core = rgb(new THREE.Color(t.glow).lerp(new THREE.Color(0xffd070), 0.45));
+  const img = ctx.createImageData(n, n);
+  const gimg = gctx.createImageData(n, n);
+  for (let i = 0; i < n * n; i++) {
+    const e = edge[i];
+    let c = shades[near[i]];
+    let g = [0, 0, 0];
+    if (hot[near[i]]) {
+      const k = Math.exp(-e / 1.8); // 금에서 멀어질수록 빛이 옅어짐
+      if (e < 0.9) c = core;
+      else c = c.map((v, j) => v + (glow[j] - v) * k * 0.35);
+      g = (e < 0.9 ? core : glow).map((v) => v * (e < 0.9 ? 0.9 : k * 0.45));
+    } else if (e < 1.2) {
+      c = c.map((v) => v * 0.45); // 식은 금: 어두운 선
+    } else if (e < 3) {
+      c = c.map((v) => v * 0.82);
+    }
+    img.data.set([c[0], c[1], c[2], 255], i * 4);
+    gimg.data.set([g[0], g[1], g[2], 255], i * 4);
+  }
+  ctx.putImageData(img, 0, 0);
+  gctx.putImageData(gimg, 0, 0);
+}
+
+// 수정 바탕 돌: 낮은 대비 판 + 비스듬한 면 반사 띠, 그 위에 가장자리에서 솟은 각진 결정 결 (밝은 면·어두운 면·흰 반사 선)
+function crystalFace(ctx, gctx, n, r, t, face, v) {
+  const { near, edge } = voronoi(n, r, 5, 1);
+  const base = new THREE.Color(face === 'top' ? t.top : t.side);
+  const shades = Array.from({ length: 5 }, () => rgb(base.clone().multiplyScalar(0.85 + r() * 0.3)));
+  const img = ctx.createImageData(n, n);
+  for (let i = 0; i < n * n; i++) {
+    const s = shades[near[i]];
+    const k = edge[i] < 1.2 ? 0.7 : 1;
+    img.data.set([s[0] * k, s[1] * k, s[2] * k, 255], i * 4);
+  }
+  ctx.putImageData(img, 0, 0);
+  const band = ctx.createLinearGradient(0, n, n, 0); // 면 반사 띠
+  const at = 0.3 + r() * 0.4;
+  band.addColorStop(Math.max(0, at - 0.12), 'rgba(255,255,255,0)');
+  band.addColorStop(at, 'rgba(220,230,255,0.16)');
+  band.addColorStop(Math.min(1, at + 0.12), 'rgba(255,255,255,0)');
+  ctx.fillStyle = band;
+  ctx.fillRect(0, 0, n, n);
+  const shards = [0, 1, 2, 3][v % 4] + (face === 'bottom' ? -1 : 0); // 변형마다 결 수가 다름 (0개짜리도 있음)
+  const gl = new THREE.Color(t.glow);
+  const col = (k) => hex(gl.clone().multiplyScalar(k));
+  for (let s = 0; s < shards; s++) {
+    // 가장자리 한 점에서 안쪽으로 뻗는 육각 기둥 실루엣
+    const e = Math.floor(r() * 4);
+    const u = 8 + r() * (n - 16);
+    const [ox, oy, ang] = [[u, n, -Math.PI / 2], [u, 0, Math.PI / 2], [0, u, 0], [n, u, Math.PI]][e];
+    const a = ang + (r() - 0.5) * 1.1;
+    const len = 16 + r() * 18;
+    const w = 4 + r() * 4;
+    const dx = Math.cos(a);
+    const dy = Math.sin(a);
+    const px = -dy * w;
+    const py = dx * w;
+    const p = (l, sd) => [ox + dx * l + px * sd, oy + dy * l + py * sd];
+    const outline = [p(0, -1), p(len * 0.75, -1), p(len, 0), p(len * 0.75, 1), p(0, 1)];
+    const lit = [p(0, 0), p(len, 0), p(len * 0.75, 1), p(0, 1)];
+    for (const [c, mult] of [[ctx, 1], [gctx, 0.75]]) {
+      c.fillStyle = col(0.55 * mult);
+      c.beginPath();
+      outline.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y)));
+      c.closePath();
+      c.fill();
+      c.fillStyle = col(1.0 * mult);
+      c.beginPath();
+      lit.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y)));
+      c.closePath();
+      c.fill();
+      c.strokeStyle = `rgba(255,255,255,${0.85 * mult})`;
+      c.lineWidth = 1.2;
+      c.beginPath();
+      c.moveTo(...p(len * 0.1, 0.45));
+      c.lineTo(...p(len * 0.8, 0.45));
+      c.stroke();
+    }
+  }
+}
+
+// 지형 블록 면: 변형 WORLD_BLOCK_VARIANTS 장을 가로로 이어 붙인 한 장 (칸마다 셰이더가 하나를 고름).
+// 테두리를 어둡게 그려 칸 경계가 보이게 (예전 블록과 같은 방식).
+// paint: grass(잔디 윗면·흙 옆면) · sandstone/bricks(벽돌) · crystal(수정 결) · basalt(현무암 껍질 + 빛나는 금) · stump(나이테 윗면·나무껍질 옆면)
 function blockFace(t, face) {
-  const glow = !!t.glow;
-  return canvasTex(64, (ctx, n, gctx) => {
-    const r = rng(face === 'top' ? 3 : face === 'side' ? 5 : 9);
+  const K = C.WORLD_BLOCK_VARIANTS;
+  const n = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = n * K;
+  canvas.height = n;
+  const glowCanvas = t.glow ? document.createElement('canvas') : null;
+  if (glowCanvas) {
+    glowCanvas.width = n * K;
+    glowCanvas.height = n;
+  }
+  for (let v = 0; v < K; v++) {
+    // 변형 한 장을 따로 그려서 붙임 (그리기 함수는 0..n 좌표만 씀)
+    const one = document.createElement('canvas');
+    one.width = one.height = n;
+    const ctx = one.getContext('2d');
+    let gctx = null;
+    let gone = null;
+    if (glowCanvas) {
+      gone = document.createElement('canvas');
+      gone.width = gone.height = n;
+      gctx = gone.getContext('2d');
+      gctx.fillStyle = '#000';
+      gctx.fillRect(0, 0, n, n);
+    }
+    const r = rng((face === 'top' ? 3 : face === 'side' ? 5 : 9) + v * 101);
     const base = face === 'top' ? t.top : t.side;
     ctx.fillStyle = hex(base);
     ctx.fillRect(0, 0, n, n);
@@ -189,68 +350,150 @@ function blockFace(t, face) {
       } else {
         ctx.fillStyle = hex(shade(t.side, 0.82));
         for (let k = 0; k < 16; k++) ctx.fillRect(r() * n, 18 + r() * (n - 20), 3 + r() * 4, 3 + r() * 3);
+        ctx.fillStyle = hex(shade(t.side, 1.12));
+        for (let k = 0; k < 3; k++) ctx.fillRect(r() * n, 24 + r() * (n - 28), 4 + r() * 3, 3); // 작은 돌
         if (face === 'side') {
-          // 위쪽 띠: 잔디가 흘러내린 들쭉날쭉한 가장자리
+          // 위쪽 띠: 잔디가 흘러내린 들쭉날쭉한 가장자리 (변형마다 길이가 다름)
           ctx.fillStyle = hex(t.top);
           ctx.beginPath();
           ctx.moveTo(0, 0);
           ctx.lineTo(n, 0);
-          for (let x = n; x >= 0; x -= 8) ctx.lineTo(x, 11 + ((x / 8) % 2) * 6 + r() * 3);
+          for (let x = n; x >= 0; x -= 6) ctx.lineTo(x, 9 + r() * 9);
           ctx.closePath();
           ctx.fill();
         }
       }
     } else if (t.paint === 'stump') {
       if (face === 'top') {
-        for (let k = 5; k >= 1; k--) {
-          ctx.strokeStyle = hex(shade(t.top, 0.78 + (k % 2) * 0.1));
-          ctx.lineWidth = 2;
+        const cx = n / 2 + (r() - 0.5) * 14;
+        const cy = n / 2 + (r() - 0.5) * 14;
+        const rings = 4 + Math.floor(r() * 3);
+        for (let k = rings; k >= 1; k--) {
+          ctx.strokeStyle = hex(shade(t.top, 0.76 + (k % 2) * 0.12));
+          ctx.lineWidth = 1.5 + r() * 1.5;
           ctx.beginPath();
-          ctx.arc(n / 2 + (r() - 0.5) * 2, n / 2 + (r() - 0.5) * 2, k * 5.5, 0, Math.PI * 2);
+          ctx.ellipse(cx, cy, k * 5.5, k * (4.6 + r()), r(), 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        if (r() < 0.6) {
+          // 마른 금 (가운데에서 바깥으로)
+          ctx.strokeStyle = hex(shade(t.top, 0.55));
+          ctx.lineWidth = 1.5;
+          const a = r() * Math.PI * 2;
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(cx + Math.cos(a) * 26, cy + Math.sin(a) * 26);
           ctx.stroke();
         }
       } else {
         ctx.strokeStyle = hex(shade(t.side, 0.7));
-        ctx.lineWidth = 3;
-        for (let x = 4; x < n; x += 7 + r() * 4) {
+        for (let x = 2 + r() * 4; x < n; x += 6 + r() * 5) {
+          ctx.lineWidth = 2 + r() * 2;
           ctx.beginPath();
           ctx.moveTo(x, 0);
-          ctx.lineTo(x + (r() - 0.5) * 6, n);
+          ctx.bezierCurveTo(x + (r() - 0.5) * 8, n / 3, x + (r() - 0.5) * 8, (2 * n) / 3, x + (r() - 0.5) * 6, n);
           ctx.stroke();
         }
-      }
-    } else if (t.paint === 'crystal' || t.paint === 'basalt') {
-      ctx.fillStyle = hex(shade(base, 0.85));
-      for (let k = 0; k < 10; k++) ctx.fillRect(r() * n, r() * n, 3 + r() * 5, 3 + r() * 5);
-      if (t.paint === 'basalt') {
-        cracks([ctx, gctx], n, r, hex(t.glow), 1, 1.8, 0.22);
-      } else {
-        // 수정 결: 모서리에서 솟은 빛나는 각진 조각
-        for (let k = 0; k < (face === 'top' ? 3 : 2); k++) {
-          const x = 8 + r() * (n - 16);
-          const y = 8 + r() * (n - 16);
-          const s = 5 + r() * 6;
-          for (const c of [ctx, gctx]) {
-            c.fillStyle = hex(t.glow);
-            c.beginPath();
-            c.moveTo(x, y - s);
-            c.lineTo(x + s * 0.6, y);
-            c.lineTo(x, y + s);
-            c.lineTo(x - s * 0.6, y);
-            c.closePath();
-            c.fill();
-          }
+        if (r() < 0.4) {
+          ctx.fillStyle = hex(shade(t.side, 0.55)); // 옹이
+          ctx.beginPath();
+          ctx.ellipse(12 + r() * 40, 14 + r() * 36, 4, 6, 0, 0, Math.PI * 2);
+          ctx.fill();
         }
       }
+    } else if (t.paint === 'basalt') {
+      basaltFace(ctx, gctx, n, r, t, face);
+    } else if (t.paint === 'crystal') {
+      crystalFace(ctx, gctx, n, r, t, face, v);
     } else {
       ctx.fillStyle = hex(shade(base, 0.9));
       for (let k = 0; k < 14; k++) ctx.fillRect(r() * n, r() * n, 2 + r() * 3, 2 + r() * 3);
       bricks(ctx, n, base, face === 'top');
+      // 변형마다 벽돌 한두 장 색이 다르거나 금이 감
+      if (face !== 'top') {
+        const row = Math.floor(r() * 3);
+        ctx.fillStyle = hex(shade(base, r() < 0.5 ? 0.86 : 1.08));
+        ctx.fillRect(4 + r() * 20, row * (n / 3) + 3, 18, n / 3 - 6);
+      }
+      if (r() < 0.5) {
+        ctx.strokeStyle = hex(shade(base, 0.6));
+        ctx.lineWidth = 1.2;
+        let x = 10 + r() * 44;
+        let y = 6 + r() * 20;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        for (let k = 0; k < 3; k++) ctx.lineTo((x += (r() - 0.5) * 14), (y += 6 + r() * 8));
+        ctx.stroke();
+      }
     }
     ctx.strokeStyle = hex(t.rim);
-    ctx.lineWidth = 4;
+    ctx.lineWidth = t.paint === 'basalt' || t.paint === 'crystal' ? 3 : 4;
     ctx.strokeRect(2, 2, n - 4, n - 4);
-  }, false, glow);
+    canvas.getContext('2d').drawImage(one, v * n, 0);
+    if (gone) glowCanvas.getContext('2d').drawImage(gone, v * n, 0);
+  }
+  const tex = toTex(canvas);
+  if (glowCanvas) tex.userData.glow = toTex(glowCanvas);
+  return tex;
+}
+
+// 지형 블록 재질: 칸마다 인스턴스 속성 aVar (변형 번호, 90도 돌림 수, 좌우 뒤집기) 로 이어 붙인 한 장에서 변형을 고르고 돌림.
+// uv 는 블록 안 위치·면 방향으로 셰이더가 직접 만듦 (모서리 깎은 블록이라도 면마다 0~1). 옆면은 위아래가 있는 무늬(잔디 띠·벽돌)면 뒤집기만
+function blockMaterial(tex, sideRot) {
+  const params = tex.userData.glow ? { map: tex, emissive: 0xffffff, emissiveMap: tex.userData.glow } : { map: tex };
+  const mat = noOutline(toon(params));
+  const K = C.WORLD_BLOCK_VARIANTS;
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uK = { value: K };
+    sh.uniforms.uSideRot = { value: sideRot ? 1 : 0 };
+    sh.vertexShader = `attribute vec4 aVar;\nuniform float uK;\nuniform float uSideRot;\n${sh.vertexShader}`.replace(
+      '#include <uv_vertex>',
+      `#include <uv_vertex>
+      vec3 an = abs(normal);
+      bool topF = an.z >= an.x && an.z >= an.y;
+      vec2 tuv;
+      if (topF) tuv = vec2(position.x * sign(normal.z), position.y);
+      else if (an.x >= an.y) tuv = vec2(position.y * sign(normal.x), position.z);
+      else tuv = vec2(-position.x * sign(normal.y), position.z);
+      tuv = clamp(tuv + 0.5, 0.0, 1.0);
+      if (aVar.z > 0.5) tuv.x = 1.0 - tuv.x;
+      float rot = (topF || uSideRot > 0.5) ? aVar.y : 0.0;
+      vec2 cc = tuv - 0.5;
+      for (int i = 0; i < 3; i++) if (float(i) < rot) cc = vec2(-cc.y, cc.x);
+      tuv = cc + 0.5;
+      tuv.x = (clamp(tuv.x, 0.006, 0.994) + aVar.x) / uK;
+      #ifdef USE_MAP
+      vMapUv = tuv;
+      #endif
+      #ifdef USE_EMISSIVEMAP
+      vEmissiveMapUv = tuv;
+      #endif`,
+    );
+  };
+  mat.customProgramCacheKey = () => `tf-block-${K}-${sideRot ? 1 : 0}`;
+  return mat;
+}
+
+// 블록 위 소품 (드러난 옆면에 붙는 낮은 결정 덩어리 · 깨진 돌 조각). 원점이 붙는 자리, +z 가 바깥으로 뻗는 방향
+function decorGeometry(kind) {
+  const list = [];
+  const push = (g, m) => {
+    const x = g.index ? g.toNonIndexed() : g;
+    x.deleteAttribute('uv');
+    x.applyMatrix4(m);
+    list.push(x);
+  };
+  if (kind === 'crystal') {
+    for (const [ox, oy, h, tx, ty] of [[0, 0, 1, 0, 0], [0.32, 0.1, 0.65, 0.35, 0.1], [-0.28, -0.15, 0.55, -0.3, -0.2]]) {
+      const m = M().makeTranslation(ox, oy, h * 0.45).multiply(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(ty, tx, 0))).multiply(M().makeScale(0.22, 0.22, h * 0.55));
+      push(new THREE.OctahedronGeometry(1, 0), m);
+    }
+  } else {
+    for (const [ox, oy, s] of [[0, 0, 0.32], [0.38, 0.12, 0.2], [-0.3, 0.2, 0.17]]) push(new THREE.DodecahedronGeometry(s, 0), M().makeTranslation(ox, oy, s * 0.5).multiply(M().makeScale(1, 0.8, 0.7)));
+  }
+  const g = mergeGeometries(list);
+  g.computeVertexNormals();
+  return g;
 }
 
 // 떠 있는 섬 아랫부분: 윗고리는 필드 테두리(정사각형) 그대로 → 첫 띠는 거의 수직 절벽 → 아래로 좁아지며 울퉁불퉁한 바위 뿌리.
@@ -625,6 +868,7 @@ export class World {
       sun: [r.sun.color.clone(), r.sun.intensity],
       floor: r.floor.material,
       terrain: r.blockMeshes.terrain.material,
+      terrainGeo: r.blockMeshes.terrain.geometry,
       lavaTop: r.lavaTop.material,
       lavaBody: r.lava.material.color.clone(),
       lavaLight: r.lavaLight.color.clone(),
@@ -672,7 +916,10 @@ export class World {
   setLow(on) {
     if (this.low === !!on) return;
     this.low = !!on;
-    if (this.look) this.layout();
+    if (this.look) {
+      this.layout();
+      this.r.gridVersion = -1; // 블록 소품 켜기·끄기
+    }
   }
 
   apply(id) {
@@ -684,6 +931,7 @@ export class World {
     const u = r.dome.material.uniforms;
     for (const m of this.mats) m.dispose?.();
     this.mats = [];
+    this.clearDecor();
     if (!L) {
       for (const k of Object.keys(b.sky)) u[k].value.copy(b.sky[k]);
       u.discSize.value = b.discSize;
@@ -699,6 +947,7 @@ export class World {
       r.sunDir = C.SUN_DIR;
       r.floor.material = b.floor;
       r.blockMeshes.terrain.material = b.terrain;
+      r.blockMeshes.terrain.geometry = b.terrainGeo;
       r.lavaTop.material = b.lavaTop;
       r.lava.material.color.copy(b.lavaBody);
       r.lavaLight.color.copy(b.lavaLight);
@@ -723,12 +972,13 @@ export class World {
       r.sun.intensity = L.sunIntensity;
       r.sunDir = L.sunDir;
       // 지형 블록: 윗면·옆면·밑면 따로 (BoxGeometry 면 순서 +x −x +y −y +z −z). 인스턴스 색은 흰색으로 (재질 색 그대로).
-      // 빛나는 금·수정은 발광 지도 (밤에도 어둡게 안 묻힘)
-      const mk = (map) => noOutline(toon(map.userData.glow ? { map, emissive: 0xffffff, emissiveMap: map.userData.glow } : { map }));
-      const side = mk(blockFace(L.terrain, 'side'));
-      const top = mk(blockFace(L.terrain, 'top'));
-      const bottom = mk(blockFace(L.terrain, 'bottom'));
+      // 빛나는 금·수정은 발광 지도 (밤에도 어둡게 안 묻힘). 칸마다 변형·돌림·뒤집기 (blockMaterial) + 모서리 깎은 모양
+      const sideRot = ['crystal', 'basalt'].includes(L.terrain.paint); // 위아래 없는 무늬는 옆면도 돌림
+      const side = blockMaterial(blockFace(L.terrain, 'side'), sideRot);
+      const top = blockMaterial(blockFace(L.terrain, 'top'), true);
+      const bottom = blockMaterial(blockFace(L.terrain, 'bottom'), true);
       r.blockMeshes.terrain.material = [side, side, side, side, top, bottom];
+      r.blockMeshes.terrain.geometry = this.blockGeometry();
       r.terrainColor = 0xffffff;
       // 바닥 판: 윗면 체크무늬, 옆면(두께 0.3)은 테두리 색
       const ft = floorTexture(L.floor);
@@ -751,6 +1001,112 @@ export class World {
     }
     r.gridVersion = -1; // 지형 블록 색 다시
     r.setField(r.W, r.D, true, r.H); // 해 위치·섬 크기
+  }
+
+  // 테마 지형 블록 모양: 모서리 살짝 깎은 상자 (윗면 가운데는 평평 — 서는 자리 그대로) + 칸마다 변형 속성
+  blockGeometry() {
+    if (!this.blockGeo) {
+      const g = new RoundedBoxGeometry(1, 1, 1, 2, C.WORLD_BLOCK_BEVEL);
+      const n = this.r.blockMeshes.terrain.instanceMatrix.count;
+      this.varAttr = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
+      g.setAttribute('aVar', this.varAttr);
+      this.blockGeo = g;
+    }
+    return this.blockGeo;
+  }
+
+  // updateGrid 가 테마 지형 칸마다 부름: n 번째 인스턴스의 변형·돌림·뒤집기를 칸 위치로 정하고, 색(밝기·빛깔)을 조금 흔듦
+  cellLook(n, x, y, z, color) {
+    if (!this.look) return;
+    const t = this.look.terrain;
+    this.varAttr.setXYZW(n, Math.floor(cellHash(x, y, z, 1) * C.WORLD_BLOCK_VARIANTS), Math.floor(cellHash(x, y, z, 2) * 4), cellHash(x, y, z, 3) < 0.5 ? 1 : 0, 0);
+    const j = t.jitter ?? C.WORLD_BLOCK_JITTER;
+    color.multiplyScalar(1 - j + cellHash(x, y, z, 4) * j * 2);
+    if (t.tints) color.lerp(new THREE.Color(t.tints[Math.floor(cellHash(x, y, z, 5) * t.tints.length)]), t.tintMix ?? 0.15);
+  }
+
+  // updateGrid 끝: 변형 속성 올리고, 드러난 옆면에 블록 소품 (결정 덩어리·깨진 돌) 다시 놓기
+  gridDone(grid) {
+    if (!this.look) return;
+    this.varAttr.needsUpdate = true;
+    this.placeDecor(grid);
+  }
+
+  placeDecor(grid) {
+    const { r } = this;
+    const dec = this.look.terrain.decor;
+    if (this.decor) for (const m of this.decor) m.count = 0;
+    if (!dec || this.low || !grid) return;
+    if (!this.decor) {
+      const geo = decorGeometry(dec.kind);
+      const solid = new THREE.InstancedMesh(geo, toon({ color: 0xffffff, flatShading: true, emissive: dec.kind === 'crystal' ? shade(this.look.terrain.glow, 0.35) : 0x000000 }), C.WORLD_DECOR_MAX);
+      const parts = [solid];
+      if (dec.kind === 'rubble') {
+        // 깨진 돌 틈으로 비치는 빛 (작은 조각)
+        parts.push(new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.09, 0), noOutline(new THREE.MeshBasicMaterial({ color: this.look.terrain.glow })), C.WORLD_DECOR_MAX));
+      }
+      for (const m of parts) {
+        m.count = 0;
+        m.frustumCulled = false;
+        m.castShadow = dec.kind !== 'crystal';
+        r.scene.add(m);
+      }
+      noOutline(solid.material);
+      this.decor = parts;
+    }
+    const { W, D, H } = r;
+    const at3 = (x, y, z) => (x < 0 || y < 0 || x >= W || y >= D || z < 0 || z >= H ? 0 : grid[(z * D + y) * W + x]);
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const up = new THREE.Vector3(0, 0, 1);
+    const col = new THREE.Color();
+    const palette = this.look.glow || [this.look.terrain.glow];
+    let n = 0;
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (let z = 0; z < H && n < C.WORLD_DECOR_MAX; z++) {
+      for (let y = 0; y < D && n < C.WORLD_DECOR_MAX; y++) {
+        for (let x = 0; x < W && n < C.WORLD_DECOR_MAX; x++) {
+          if (grid[(z * D + y) * W + x] !== CELL.TERRAIN || cellHash(x, y, z, 6) > dec.chance) continue;
+          const open = dirs.filter(([dx, dy]) => !at3(x + dx, y + dy, z));
+          if (!open.length) continue;
+          const [dx, dy] = open[Math.floor(cellHash(x, y, z, 7) * open.length)];
+          const along = (cellHash(x, y, z, 8) - 0.5) * 0.6; // 면 위 가로 자리
+          const h = dec.kind === 'crystal' ? 0.12 + cellHash(x, y, z, 9) * 0.3 : 0.02; // 결정은 옆면 아래~가운데, 돌은 바닥 모서리
+          const pos = new THREE.Vector3(x + 0.5 + dx * 0.5 - dy * along, y + 0.5 + dy * 0.5 + dx * along, z + h);
+          const out = new THREE.Vector3(dx, dy, 0);
+          const dir = dec.kind === 'crystal' ? out.clone().multiplyScalar(0.8).add(new THREE.Vector3(0, 0, 0.6)).normalize() : up;
+          q.setFromUnitVectors(up, dir);
+          q.multiply(new THREE.Quaternion().setFromAxisAngle(up, cellHash(x, y, z, 10) * Math.PI * 2));
+          const s = dec.size[0] + cellHash(x, y, z, 11) * (dec.size[1] - dec.size[0]);
+          m.compose(pos, q, new THREE.Vector3(s, s, s));
+          this.decor[0].setMatrixAt(n, m);
+          col.set(dec.kind === 'crystal' ? palette[Math.floor(cellHash(x, y, z, 12) * palette.length)] : this.look.terrain.side).multiplyScalar(dec.kind === 'crystal' ? 1 : 0.8);
+          this.decor[0].setColorAt(n, col);
+          if (this.decor[1]) {
+            m.compose(pos.clone().add(new THREE.Vector3(0, 0, 0.05)), q, new THREE.Vector3(s, s, s));
+            this.decor[1].setMatrixAt(n, m);
+          }
+          n++;
+        }
+      }
+    }
+    for (const mesh of this.decor) {
+      mesh.count = n;
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    }
+  }
+
+  // 테마가 바뀌면 블록 소품을 치움 (다음 updateGrid 에서 새 테마로)
+  clearDecor() {
+    if (!this.decor) return;
+    for (const m of this.decor) {
+      this.r.scene.remove(m);
+      m.geometry.dispose();
+      m.material.dispose();
+      m.dispose();
+    }
+    this.decor = null;
   }
 
   // 판 크기에 맞춰 섬·장식을 다시 만듦 (setField 가 부름)

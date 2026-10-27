@@ -54,3 +54,15 @@ test('맵 테마: 위험 모습이 맵끼리 겹치지 않음 (독늪 2개는 �
   assert.ok(C.WORLD_FAR.dist[1] < 150, '먼 배경은 하늘 구(150) 안쪽');
   assert.ok(C.WORLD_SEA_FADE[0] < C.WORLD_SEA_FADE[1] && C.WORLD_SEA_FADE[1] < 150);
 });
+
+test('맵 테마: 블록 무늬 변형 (칸 해시 범위·고르게 섞임) · 블록 소품은 결정·깨진 돌만', async () => {
+  assert.ok(C.WORLD_BLOCK_VARIANTS >= 2 && Number.isInteger(C.WORLD_BLOCK_VARIANTS));
+  assert.ok(C.WORLD_BLOCK_JITTER > 0 && C.WORLD_BLOCK_JITTER < 0.2);
+  assert.ok(C.WORLD_BLOCK_BEVEL > 0 && C.WORLD_BLOCK_BEVEL < 0.15, '모서리만 살짝 (윗면 가운데 평평)');
+  for (const t of Object.values(C.WORLD_THEMES)) {
+    const d = t.terrain.decor;
+    if (!d) continue;
+    assert.ok(['crystal', 'rubble'].includes(d.kind));
+    assert.ok(d.chance > 0 && d.chance < 0.5 && d.size[0] <= d.size[1] && d.size[1] <= 0.8);
+  }
+});

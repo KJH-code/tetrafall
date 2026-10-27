@@ -792,11 +792,16 @@ export const CONFIG = {
   WORLD_DRIFT_SPEED: 0.006, // 먼 섬·구름이 필드 둘레를 도는 빠르기 (라디안/초)
   WORLD_LOW_DETAIL: 0.4, // 그래픽 낮춤: 먼 섬·구름·떠다니는 빛·위험 입자 수 비율
   WORLD_FAR: { dist: [112, 138], height: [8, 18], radius: [5, 11] }, // 먼 배경 크기 (칸). 하늘 구 반지름 150 안쪽
-  WORLD_SEA_FADE: [70, 145], // 구름 바다 판: 이 거리부터 끝까지 투명해짐 (판 끝이 지평선에 곡선으로 안 보이게)
+  WORLD_SEA_FADE: [70, 145],
+  WORLD_BLOCK_VARIANTS: 4, // 테마 지형 블록 면 무늬 변형 수 (칸 위치로 고르고, 90도 돌림·뒤집기)
+  WORLD_BLOCK_JITTER: 0.08, // 칸마다 밝기 흔들림 (±)
+  WORLD_BLOCK_BEVEL: 0.07, // 블록 모서리 깎은 반지름 (칸). 윗면 가운데는 평평 → 서는 자리 그대로
+  WORLD_DECOR_MAX: 240, // 블록 소품 (결정 덩어리·깨진 돌) 최대 수. 그래픽 낮춤이면 없음 // 구름 바다 판: 이 거리부터 끝까지 투명해짐 (판 끝이 지평선에 곡선으로 안 보이게)
   // 테마 값: sky 하늘 그라데이션(below = 지평선 아래, 구름 바다 쪽 · 밤이면 stars 별 밝기, disc 달 색, glow 달빛 번짐, discSize 원반 크기)
   // sunDir 해(달) 방향 · hemi [하늘, 땅, 세기] · fog [색, 시작, 끝]
   // floor 바닥 (paint grass|sand|stone|cracks|marble|moss, a·b 체크 두 색, line 칸 선, rim 판 옆면, glow 빛나는 금 색)
-  // terrain 지형 블록 (paint grass|sandstone|bricks|crystal|basalt|stump, top·side 면 색, rim 테두리, glow 빛나는 결 색)
+  // terrain 지형 블록 (paint grass|sandstone|bricks|crystal|basalt|stump, top·side 면 색, rim 테두리, glow 빛나는 결 색, crust 식은 껍질 색,
+  //   tints 칸마다 섞는 빛깔 (tintMix 비율), jitter 밝기 흔들림, decor 블록 소품 { kind crystal|rubble, chance 칸 비율, size [최소, 최대] })
   // cliff 섬 절벽·뿌리 띠 색 (위→아래) · props 먼 섬 소품 · glow 빛나는 소품 색 · wall·roof·flag 탑·집 색
   // far 먼 배경 (shapes peak|mesa|pyramid|volcano|crystal|cumulus|bigshroom|castle, haze 지평선 색 섞는 비율 [최소, 최대])
   // sea 아래 구름 바다 [색, 높이] · cloudGlow 구름 스스로 밝기 · motes 떠다니는 빛 { color, count, size, rise 위로 올라감, speed } · edgeOpacity 필드 높이 세로선
@@ -858,7 +863,7 @@ export const CONFIG = {
       hemi: [0xb8a8ff, 0x48386e, 1.55],
       fog: [0x2a2052, 40, 120],
       floor: { paint: 'stone', a: 0x5a5474, b: 0x524c6a, line: 'rgba(20,14,40,0.55)', rim: 0x4a4466 },
-      terrain: { paint: 'crystal', top: 0x6c6290, side: 0x544a74, rim: 0x231c3a, glow: 0x6ef2ff },
+      terrain: { paint: 'crystal', top: 0x6c6290, side: 0x544a74, rim: 0x231c3a, glow: 0x6ef2ff, tints: [0x8a7cc0, 0x5a6ab0, 0x7a5aa8], decor: { kind: 'crystal', chance: 0.22, size: [0.32, 0.5] } },
       cliff: [0x4a4268, 0x3c3458, 0x322b4c, 0x29233e, 0x201b32],
       rock: 0x4c4466,
       trunk: 0x3a3250,
@@ -884,7 +889,7 @@ export const CONFIG = {
       hemi: [0xffbca0, 0x5c3030, 1.45],
       fog: [0x3c1410, 40, 115],
       floor: { paint: 'cracks', a: 0x4a4446, b: 0x423c3e, line: 'rgba(0,0,0,0.5)', rim: 0x302a2c, glow: 0xff6a1a },
-      terrain: { paint: 'basalt', top: 0x585254, side: 0x464042, rim: 0x161214, glow: 0xff7a24 },
+      terrain: { paint: 'basalt', top: 0x585254, side: 0x464042, rim: 0x161214, glow: 0xff7a24, crust: 0x4a2e28, tints: [0x5a5050, 0x484244, 0x5a4840], decor: { kind: 'rubble', chance: 0.2, size: [0.45, 0.7] } },
       cliff: [0x3e3838, 0x322c2c, 0x2a2424, 0x221c1c, 0x1a1414],
       rock: 0x3a3434,
       trunk: 0x2a2220,
