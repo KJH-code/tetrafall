@@ -1257,6 +1257,26 @@ export const CONFIG = {
   NET_WARN_HOLD_MS: 1500, // 알림을 이만큼 보여 줌
   // ---- KO 연출 (2026-10-27 재혁) ----
   FINAL_KILL_WINDOW_MS: 500, // 판이 끝나기 이만큼 안의 죽음이 "마지막 킬" (서버 finalKill 이벤트)
+  // 화면 (client/ko.js). 그래픽 낮춤이면 입자 × KO_LOW_GFX_PARTICLES
+  KO_SMASH_MS: 900, // 스매시 폭발 줄기가 뻗었다 사라지는 시간
+  KO_SMASH_LEN: 9, // 줄기 길이 (칸)
+  KO_SMASH_WIDTH: 1.6, // 줄기 끝 반지름 (칸)
+  KO_SMASH_UP: 0.6, // 줄기가 바깥에서 위로 드는 정도 (바깥 방향 1 에 대한 위 성분)
+  KO_SMASH_PARTICLES: 40,
+  KO_EDGE_MS: 700, // 화면 끝 번쩍 (떨어진 쪽, 그 사람 색)
+  KO_NEAR_DIST: 6, // 이 거리 안이면 내 화면도 흔들림·히트스톱
+  KO_SHAKE_ME: 0.45, // 내가 KO 됐을 때 흔들림
+  KO_SHAKE_NEAR: 0.18, // 가까운 사람이 KO 됐을 때
+  KO_SHAKE_MS: 500,
+  KO_CRUSH_DUST: 46, // 압사 먼지 입자
+  KO_CRUSH_CHIPS: 24, // 압사 블록 조각
+  KO_CRUSH_STOP_MS: 120, // 압사 히트스톱 (화면만 멈칫)
+  KO_CRUSH_STOP_SCALE: 0.05, // 히트스톱 동안 화면 시간 배율
+  KO_FINAL_MS: 1600, // 마지막 킬 슬로모션 길이 (판 끝난 뒤 화면만)
+  KO_FINAL_SCALE: 0.25, // 슬로모션 화면 시간 배율
+  KO_FINAL_ZOOM: 0.6, // 슬로모션 때 시야각 배율 (작을수록 확대)
+  KO_FINAL_LOOK: 0.7, // 슬로모션 때 카메라가 킬 자리 쪽으로 돌아보는 정도 (0~1)
+  KO_LOW_GFX_PARTICLES: 0.4,
 };
 
 // 캐릭터의 평타 세트 (바드는 메탈 폼이면 metal 세트)
