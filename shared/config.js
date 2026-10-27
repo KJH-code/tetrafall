@@ -1246,6 +1246,16 @@ export const CONFIG = {
   KILLFEED_MS: 6000, // 오른쪽 위 킬 알림이 떠 있는 시간
   KILLFEED_MAX: 5, // 킬 알림 최대 줄 수
   INPUT_SEND_RATE: 30, // 입력 전송 Hz
+  // ---- 접속 상태 (2026-10-27 재혁: 렉·핑을 모름) ----
+  NET_PING_MS: 1000, // 화면이 서버에 ping 보내는 간격
+  NET_LOAD_DECAY: 0.95, // 서버 틱 일한 시간 최댓값이 틱마다 줄어드는 비율 (pong 의 workMs)
+  NET_PING_WARN_MS: 150, // 핑이 이보다 높으면 렉 알림
+  NET_PING_SPIKE_MULT: 2.5, // 핑이 최근 평균의 이 배 넘게 튀면 렉 알림
+  NET_SNAPSHOT_GAP_MS: 250, // 스냅샷이 이만큼 안 오면 "끊김" 알림
+  NET_SERVER_SLOW_MS: 20, // 서버 틱 한 번 일한 시간이 이보다 길면 "서버 느림" (틱 33ms)
+  NET_WARN_HOLD_MS: 1500, // 알림을 이만큼 보여 줌
+  // ---- KO 연출 (2026-10-27 재혁) ----
+  FINAL_KILL_WINDOW_MS: 500, // 판이 끝나기 이만큼 안의 죽음이 "마지막 킬" (서버 finalKill 이벤트)
 };
 
 // 캐릭터의 평타 세트 (바드는 메탈 폼이면 metal 세트)

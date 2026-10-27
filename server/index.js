@@ -140,12 +140,14 @@ setInterval(() => {
   acc += now - last;
   last = now;
   let steps = 0;
+  const behind = Math.max(0, acc - TICK_MS); // 정해진 틱 시각보다 밀린 시간
   while (acc >= TICK_MS && steps < 5) {
     rooms.tick(TICK_MS);
     acc -= TICK_MS;
     steps++;
   }
   if (acc > TICK_MS * 5) acc = 0; // 너무 밀리면 버린다
+  rooms.noteTick(performance.now() - now, behind); // 핑 화면에 서버 부하 (pong)
   if (steps > 0) rooms.broadcast();
 }, TICK_MS);
 setInterval(() => rooms.broadcastList(), C.ROOM_LIST_MS);

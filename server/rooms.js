@@ -32,6 +32,12 @@ export class Rooms {
     this.conns = new Set();
     this.nextId = 1; // 플레이어 id 는 방이 달라도 겹치지 않게 서버 전체에서 셈
     this.lastList = '';
+    this.load = { workMs: 0, behindMs: 0 }; // 서버 틱 부하 (index.js 가 noteTick 으로 알려 줌) → pong 에 실어 보냄
+  }
+
+  // 서버 틱 한 번의 일한 시간·밀린 시간 (ms). 화면 핑 표시에 "서버가 늦음" 을 보이려고. 일한 시간은 천천히 줄어드는 최댓값
+  noteTick(workMs, behindMs) {
+    this.load = { workMs: Math.max(workMs, this.load.workMs * C.NET_LOAD_DECAY), behindMs };
   }
 
   // ---------- 접속 ----------
@@ -49,6 +55,11 @@ export class Rooms {
 
   message(conn, msg) {
     if (!msg || typeof msg !== 'object') return;
+    // 핑: 보낸 시각 t 를 그대로 돌려줌 (왕복 시간은 화면이 잼) + 서버 틱 부하. 방 안·밖 둘 다
+    if (msg.type === 'ping') {
+      if (Number.isFinite(msg.t)) send(conn.ws, { type: 'pong', t: msg.t, workMs: Math.round(this.load.workMs * 10) / 10, behindMs: Math.round(this.load.behindMs), tickMs: 1000 / C.TICK_RATE });
+      return;
+    }
     if (!conn.room) {
       if (msg.type === 'create') this.create(conn, msg.name, msg.nick);
       else if (msg.type === 'practice') this.createPractice(conn, msg.nick, msg.char);
