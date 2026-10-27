@@ -345,6 +345,16 @@ export class Sound {
         src.stop(t + 1.65);
         break;
       }
+      case 'glideRing': { // 음유 낙하 음파 고리: 류트 팅 (화음 두 음) + 퍼져 나가는 음파 (떨리며 내려가는 울림 + 바람)
+        this.sample('pluck', { rate: 1.25, out: o });
+        const [a, b] = C.SFX_STRUM.slice(-2);
+        this.tone({ freq: midiHz(a + 12), dur: 0.35, type: 'triangle', vol: 0.18, out: o });
+        this.tone({ freq: midiHz(b + 12), dur: 0.4, type: 'triangle', vol: 0.15, delay: 0.06, out: o });
+        this.tone({ freq: 520, freqEnd: 180, dur: 0.6, type: 'sine', vol: 0.22, delay: 0.04, out: o });
+        this.noise({ dur: 0.55, vol: 0.18, filter: 'bandpass', freq: 600, freqEnd: 2600, q: 1.4, delay: 0.04, out: o });
+        if (strong) this.tone({ freq: 1600, freqEnd: 1200, dur: 0.15, type: 'sine', vol: 0.1, delay: 0.1, out: o }); // 누군가 맞음: 반짝
+        break;
+      }
       case 'tick': // 카운트다운 3·2·1
         this.tone({ freq: 660, dur: 0.12, type: 'square', vol: 0.22, out: o });
         break;

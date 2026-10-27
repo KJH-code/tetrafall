@@ -613,8 +613,9 @@ function handleEvent(e) {
       if (a) fx.ring({ x: a.x, y: a.y, z: a.z + 0.1 }, C.BARD_NOTE_COLOR, 0.6, 0.3, true);
       break;
     }
-    case 'glideRing': // 음유 천천히 낙하 음파 고리 (피해): 소리는 B2
+    case 'glideRing': // 음유 천천히 낙하 음파 고리 (피해). 맞은 사람 타격 소리는 hit (kind glide) 가 바드 무기로 냄
       renderer.bardGlideRing(e);
+      sound.play('glideRing', { dist: e.who === myId ? 0 : distToMe(e.x, e.y, e.z), pos: e, strong: (e.hits || []).length > 0 });
       break;
     case 'form':
       // 폼 전환: 메탈 = 기타 치켜들고 리프 충격파 (모히칸은 snapshot form 으로 솟음) / 음유 = 두 팔 벌려 치유파
