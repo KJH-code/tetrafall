@@ -874,6 +874,23 @@ export const CONFIG = {
   WORLD_BLOCK_JITTER: 0.08, // 칸마다 밝기 흔들림 (±)
   WORLD_BLOCK_BEVEL: 0.07, // 블록 모서리 깎은 반지름 (칸). 윗면 가운데는 평평 → 서는 자리 그대로
   WORLD_DECOR_MAX: 240, // 블록 소품 (결정 덩어리·깨진 돌) 최대 수. 그래픽 낮춤이면 없음 // 구름 바다 판: 이 거리부터 끝까지 투명해짐 (판 끝이 지평선에 곡선으로 안 보이게)
+  // 상승하는 위험 모습 (client/hazard.js, 화면만 — 판정은 서버 lava.z). 테마마다 값은 WORLD_THEMES.*.hazard
+  HAZARD_FALLBACK: 'volcano', // 테마 없는 화면(대기실)의 위험 모습
+  HAZARD_DEEP: 8, // 몸통 바닥 깊이 (표면 아래 칸) · 필드 밖 깊이
+  HAZARD_SEG: [120, 40], // 표면 격자 수 (정점 파도) [보통, 그래픽 낮춤]
+  HAZARD_FIELD_RES: 4, // 닿는 곳 거리 표: 칸마다 몇 칸으로 나눔
+  HAZARD_FOAM_DIST: 3, // 거리 표 최대 (칸)
+  HAZARD_RISE_STEP: 0.5, // 표면이 이만큼(칸) 오를 때마다 번쩍·흔들림·소리 훅 (16초/칸이라 8초마다)
+  HAZARD_PULSE_DECAY: 1.2, // 번쩍이 사라지는 빠르기 (/초)
+  HAZARD_RISE_SHAKE: [0.06, 260, 4], // 차오를 때 흔들림 [세기, ms, 내 발과 표면 거리가 이 칸 안일 때만]
+  HAZARD_VIGNETTE_DIST: 2.5, // 내 발이 표면 위 이 칸 안이면 화면 가장자리 경고
+  HAZARD_VIGNETTE_MAX: 0.55, // 경고 최대 진하기
+  HAZARD_BULGE_DIST: 1.2, // 표면이 발 밑 이 칸 안이면 들썩
+  HAZARD_BULGE_AMP: 0.18, // 들썩 높이 (칸)
+  HAZARD_CONTACT_RATE: 14, // 닿는 곳 입자 (초당, 그래픽 낮춤이면 없음)
+  HAZARD_SINK_MS: 2400, // 빠진 몸이 잠기는 시간
+  HAZARD_SINK_FLOAT: 0.3, // 그중 앞부분 비율은 표면에 걸려 허우적
+  HAZARD_SINK_DEPTH: 1.5, // 잠기는 깊이 (칸)
   // 테마 값: sky 하늘 그라데이션(below = 지평선 아래, 구름 바다 쪽 · 밤이면 stars 별 밝기, disc 달 색, glow 달빛 번짐, discSize 원반 크기)
   // sunDir 해(달) 방향 · hemi [하늘, 땅, 세기] · fog [색, 시작, 끝]
   // floor 바닥 (paint grass|sand|stone|cracks|marble|moss, a·b 체크 두 색, line 칸 선, rim 판 옆면, glow 빛나는 금 색)
@@ -882,8 +899,10 @@ export const CONFIG = {
   // cliff 섬 절벽·뿌리 띠 색 (위→아래) · props 먼 섬 소품 · glow 빛나는 소품 색 · wall·roof·flag 탑·집 색
   // far 먼 배경 (shapes peak|mesa|pyramid|volcano|crystal|cumulus|bigshroom|castle, haze 지평선 색 섞는 비율 [최소, 최대])
   // sea 아래 구름 바다 [색, 높이] · cloudGlow 구름 스스로 밝기 · motes 떠다니는 빛 { color, count, size, rise 위로 올라감, speed } · edgeOpacity 필드 높이 세로선
-  // hazard 위험(용암 자리): style water|swamp|energy|storm|lava (lava = 예전 용암 셰이더), deep·mid 색, foam 물마루·가장자리 테,
-  //   light [빛 색, 세기 배율], particles 튀는 입자 두 색. 밤 맵은 반구광(hemi)을 세게 해 캐릭터·블록이 안 묻히게
+  // hazard 위험(용암 자리, hazard.js): style water|lava|swamp|energy|storm, deep·mid 깊은 곳 색, shallow 얕은 곳, foam 닿는 곳 테·물마루,
+  //   alpha [깊은 곳, 얕은 곳] 불투명도, reflect 하늘 반사, wave [파도 높이, 빠르기], depthFade 얕음→깊음 거리(칸),
+  //   tint 잠긴 블록 색 (tintDepth 깊이당), band [닿는 선 위 띠 색, 세기, 빛남(true)/어두워짐], contact 닿는 곳 입자 색, ambient·particleSpeed 표면 입자,
+  //   light [빛 색, 세기 배율], particles 표면 입자 두 색, splash 빠질 때 튀김 두 색, vignette 화면 경고 색 (낮 맵은 짙게, 밤 맵은 밝게 — 배경과 대비). 밤 맵은 반구광(hemi)을 세게 해 캐릭터·블록이 안 묻히게
   WORLD_THEMES: {
     meadow: { // 평지: 초원 섬 · 맑은 낮 · 파란 물
       seed: 11,
@@ -906,7 +925,7 @@ export const CONFIG = {
       clouds: 30,
       islets: 7,
       edgeOpacity: 0.05,
-      hazard: { style: 'water', deep: 0x0e3e9c, mid: 0x2a7ee6, foam: 0xf0f8ff, light: [0x5aa8ff, 0.6], particles: [0xffffff, 0xa8d8ff] },
+      hazard: { style: 'water', deep: 0x0b3a8c, mid: 0x2a7ee6, shallow: 0x7ad4ff, foam: 0xf4fbff, alpha: [0.9, 0.5], reflect: 0.55, wave: [0.07, 1.0], depthFade: 1.4, tint: 0x2a6ad0, tintDepth: 0.4, band: [0x6a7a90, 0.5, false], contact: 0xffffff, ambient: 0.5, particleSpeed: 3, light: [0x5aa8ff, 0.6], particles: [0xffffff, 0xa8d8ff], splash: [0xffffff, 0x8fd0ff], vignette: 0x082a7a },
     },
     desert: { // 피라미드: 사막 · 늦은 오후 · 청록 오아시스 물 · 사암 블록
       seed: 23,
@@ -929,7 +948,7 @@ export const CONFIG = {
       clouds: 18,
       islets: 6,
       edgeOpacity: 0.05,
-      hazard: { style: 'water', deep: 0x05606c, mid: 0x14b8b0, foam: 0xe4fff6, light: [0x40e0d0, 0.6], particles: [0xffffff, 0x9ff0e4] },
+      hazard: { style: 'water', deep: 0x05606c, mid: 0x14b8b0, shallow: 0x80f2e2, foam: 0xe8fff8, alpha: [0.9, 0.5], reflect: 0.5, wave: [0.06, 0.9], depthFade: 1.4, tint: 0x1a9a98, tintDepth: 0.4, band: [0x8a7a68, 0.55, false], contact: 0xffffff, ambient: 0.5, particleSpeed: 3, light: [0x40e0d0, 0.6], particles: [0xffffff, 0x9ff0e4], splash: [0xffffff, 0x9ff0e4], vignette: 0x044a50 },
     },
     crystal: { // 계단: 수정 동굴 · 밤 · 분홍 에너지 액체 · 수정 블록
       seed: 37,
@@ -955,7 +974,7 @@ export const CONFIG = {
       islets: 7,
       motes: { color: 0x9ae8ff, count: 50, size: 0.16 },
       edgeOpacity: 0.06,
-      hazard: { style: 'energy', deep: 0x7a0a62, mid: 0xff3cb4, foam: 0xffd4f4, light: [0xff4cc8, 1.0], particles: [0xffb4f0, 0xff40c0] },
+      hazard: { style: 'energy', deep: 0x7a0a62, mid: 0xff3cb4, shallow: 0xffa8e4, foam: 0xffe4fa, alpha: [0.88, 0.6], reflect: 0.35, wave: [0.05, 1.3], depthFade: 1.0, tint: 0xff40c0, tintDepth: 0.5, band: [0xff50c8, 0.6, true], contact: 0xffc8f4, ambient: 0.8, particleSpeed: 4, light: [0xff4cc8, 1.0], particles: [0xffb4f0, 0xff40c0], splash: [0xffffff, 0xff50d0], vignette: 0xff3cb4 },
     },
     volcano: { // 그릇: 화산 분화구 · 밤 · 용암 · 현무암 블록 (빛나는 금)
       seed: 41,
@@ -981,7 +1000,7 @@ export const CONFIG = {
       islets: 6,
       motes: { color: 0xff9a40, count: 60, size: 0.12, rise: true, speed: 1.2 },
       edgeOpacity: 0.06,
-      hazard: { style: 'lava', light: [0xff6a20, 1.0], particles: [0xffb030, 0xff5010] },
+      hazard: { style: 'lava', deep: 0x4a0a04, mid: 0xff4a08, shallow: 0xffa830, foam: 0xffe070, alpha: [1, 1], reflect: 0.08, wave: [0.04, 0.5], depthFade: 0.8, tint: 0xff5010, tintDepth: 0.8, band: [0xff5a10, 0.9, true], contact: 0xd8d0c8, ambient: 1, particleSpeed: 4, light: [0xff6a20, 1.0], particles: [0xffb030, 0xff5010], splash: [0xffb030, 0x5a5050], vignette: 0xff4010 }, // 닿는 곳 입자 = 증기 (희끄무레)
     },
     skycastle: { // 나선: 하늘 성 · 금빛 해질녘 · 번개 구름 · 흰 돌벽돌
       seed: 53,
@@ -1008,7 +1027,7 @@ export const CONFIG = {
       islets: 8,
       motes: { color: 0xffe080, count: 40, size: 0.1 },
       edgeOpacity: 0.05,
-      hazard: { style: 'storm', deep: 0x24124a, mid: 0x6c3cbc, foam: 0xeadcff, light: [0xa070ff, 0.9], particles: [0xe8d8ff, 0xa070ff] },
+      hazard: { style: 'storm', deep: 0x24124a, mid: 0x6c3cbc, shallow: 0xa484ec, foam: 0xf0e4ff, alpha: [0.95, 0.7], reflect: 0.3, wave: [0.1, 0.8], depthFade: 1.2, tint: 0x6a40c0, tintDepth: 0.5, band: [0xc0a0ff, 0.4, true], contact: 0xf0e8ff, ambient: 0.7, particleSpeed: 4, light: [0xa070ff, 0.9], particles: [0xe8d8ff, 0xa070ff], splash: [0xffffff, 0xa070ff], vignette: 0x8a50ff },
     },
     mushroom: { // 기둥 숲: 버섯 숲 · 밤 반딧불 · 형광 연두 독늪 · 그루터기 블록
       seed: 67,
@@ -1034,7 +1053,7 @@ export const CONFIG = {
       islets: 7,
       motes: { color: 0xfff27a, count: 70, size: 0.13 }, // 반딧불 (노랑 — 독늪 연두와 다르게)
       edgeOpacity: 0.06,
-      hazard: { style: 'swamp', deep: 0x1c5a08, mid: 0x7cff2a, foam: 0xdcff96, light: [0x8aff40, 1.0], particles: [0xc8ff60, 0x60ff20] },
+      hazard: { style: 'swamp', deep: 0x1c5a08, mid: 0x7cff2a, shallow: 0xbcff78, foam: 0xdcff96, alpha: [0.95, 0.75], reflect: 0.25, wave: [0.035, 0.6], depthFade: 1.0, tint: 0x60d020, tintDepth: 0.6, band: [0x80ff40, 0.35, true], contact: 0xdcff96, ambient: 0.6, particleSpeed: 2, light: [0x8aff40, 1.0], particles: [0xc8ff60, 0x60ff20], splash: [0xc8ff60, 0x60ff20], vignette: 0x70ff30 },
     },
     castle: { // 요새: 중세 성 · 맑은 오후 · 탁한 겨자빛 해자 독늪 · 성벽 돌
       seed: 79,
@@ -1060,7 +1079,7 @@ export const CONFIG = {
       clouds: 28,
       islets: 7,
       edgeOpacity: 0.05,
-      hazard: { style: 'swamp', deep: 0x3a2e08, mid: 0x9a8418, foam: 0xf0e878, light: [0xc0a840, 0.5], particles: [0xe8d870, 0xa09030] }, // 겨자빛 탁한 늪 (잔디 초록·버섯 숲 형광 연두와 다르게)
+      hazard: { style: 'swamp', deep: 0x3a2e08, mid: 0x9a8418, shallow: 0xccb444, foam: 0xf0e878, alpha: [0.96, 0.8], reflect: 0.25, wave: [0.035, 0.6], depthFade: 1.0, tint: 0x8a7a18, tintDepth: 0.6, band: [0x5a5030, 0.5, false], contact: 0xf0e878, ambient: 0.5, particleSpeed: 2, light: [0xc0a840, 0.5], particles: [0xe8d870, 0xa09030], splash: [0xe8d870, 0xa09030], vignette: 0x3a2a04 }, // 겨자빛 탁한 늪 (잔디 초록·버섯 숲 형광 연두와 다르게)
     },
   },
   HELD_MODEL_SIZE: 0.28,
