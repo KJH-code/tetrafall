@@ -18,6 +18,12 @@ export class NetStatus {
     parent.appendChild(this.el);
     this.timer = setInterval(() => this.send(this.meter.ping(performance.now())), C.NET_PING_MS);
     this.drawTimer = setInterval(() => this.draw(), 250);
+    // 화면 프레임 간격 (느린 화면 때문에 늦게 처리된 pong·스냅샷을 렉으로 안 보게)
+    const frame = (t) => {
+      this.meter.onFrame(t);
+      if (!this.stopped) requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
   }
 
   // main.js ws.onmessage 에서 모든 메시지를 넘김 (pong·state 만 씀)
@@ -35,6 +41,7 @@ export class NetStatus {
   }
 
   stop() {
+    this.stopped = true;
     clearInterval(this.timer);
     clearInterval(this.drawTimer);
   }

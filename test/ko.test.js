@@ -103,7 +103,7 @@ test('접속: ping → pong 은 보낸 시각을 그대로 + 서버 틱 부하 (
   assert.equal(ws.msgs.length, n, '숫자가 아니면 답 없음');
 });
 
-test('접속 표시 계산 (shared/net.js): 핑 = 왕복 시간, 높거나 튀면 알림, 스냅샷이 끊기면 알림, 서버가 느리면 알림, 알림은 잠깐 뒤 사라짐', async () => {
+test('접속 표시 계산 (shared/net.js): 핑 = 왕복 시간, 연속으로 높거나 튀면 알림, 스냅샷이 자주·길게 끊기면 알림, 서버가 느리면 알림, 알림은 잠깐 뒤 사라짐', async () => {
   const { NetMeter } = await import('../shared/net.js');
   const m = new NetMeter();
   assert.equal(m.view(0).ping, '…');
@@ -113,27 +113,106 @@ test('접속 표시 계산 (shared/net.js): 핑 = 왕복 시간, 높거나 튀�
   assert.equal(v.ping, '40ms');
   assert.equal(v.warn, null);
   assert.equal(v.level, 'ok');
-  pong(5000, 5000 + 40 * C.NET_PING_SPIKE_MULT + 60); // 튐
-  assert.match(m.view(5200).warn, /핑 튐/);
-  assert.equal(m.view(5200 + C.NET_WARN_HOLD_MS + 100).warn, null, '잠깐 뒤 사라짐');
-  // 스냅샷 끊김
+  const spikeRtt = 40 * C.NET_PING_SPIKE_MULT + 20; // 평균의 배수는 넘고 NET_PING_WARN_MS 는 안 넘음
+  pong(5000, 5000 + spikeRtt); // 한 번 튐: 무시
+  assert.equal(m.view(5200).warn, null, '한 번 튄 건 알림 없음');
+  pong(6000, 6000 + spikeRtt); // 연속: 알림
+  assert.match(m.view(6200).warn, /핑 튐/);
+  assert.equal(m.view(6200 + C.NET_WARN_HOLD_MS + 100).warn, null, '잠깐 뒤 사라짐');
+  pong(7000, 7040);
+  const fresh = () => Object.assign(m, { warn: null, lastStateAt: null, gaps: [] }); // 앞 단계와 이어지지 않게
+  // 스냅샷 끊김: 한 번 GAP 은 무시, 창 안에 두 번이면 알림, 한 번이라도 STALL 넘으면 바로
+  fresh();
   m.onState(10000);
   m.onState(10033);
-  assert.equal(m.view(10040).warn, null);
-  assert.match(m.view(10033 + C.NET_SNAPSHOT_GAP_MS + 50).warn, /끊김/, '지금도 안 옴');
-  // 서버 느림
+  m.onState(10033 + C.NET_SNAPSHOT_GAP_MS + 30);
+  assert.equal(m.view(10033 + C.NET_SNAPSHOT_GAP_MS + 40).warn, null, '한 번 흔들림은 무시');
+  m.onState(10600);
+  m.onState(10600 + C.NET_SNAPSHOT_GAP_MS + 30);
+  assert.match(m.view(10950).warn, /끊김/, '3초 안에 두 번');
+  fresh();
   m.onState(20000);
-  m.view(20000 + C.NET_WARN_HOLD_MS + 1); // 앞 알림 지나감
+  m.onState(20000 + C.NET_SNAPSHOT_GAP_MS + 30); // 앞 흔들림은 창 밖
+  assert.equal(m.view(20000 + C.NET_SNAPSHOT_GAP_MS + 40).warn, null);
+  fresh();
+  m.onState(30000);
+  m.onState(30000 + C.NET_SNAPSHOT_STALL_MS + 50);
+  assert.match(m.view(30000 + C.NET_SNAPSHOT_STALL_MS + 60).warn, /끊김/, '길게 한 번');
+  fresh();
+  m.onState(40000);
+  assert.equal(m.view(40000 + C.NET_SNAPSHOT_GAP_MS + 50).warn, null, '지금 조금 안 오는 건 무시');
+  assert.match(m.view(40000 + C.NET_SNAPSHOT_STALL_MS + 50).warn, /끊김/, '지금도 길게 안 옴');
+  // 서버 느림
+  fresh();
+  m.onState(50000);
+  pong(50000, 50040, { workMs: C.NET_SERVER_SLOW_MS + 5 });
+  assert.equal(m.view(50050).warn, '서버 느림');
+  assert.equal(m.view(50050).server, C.NET_SERVER_SLOW_MS + 5);
+  // 아주 높은 핑: 연속이면 bad, 한 번이면 아님
+  const high = C.NET_PING_WARN_MS * 2 + 10;
+  fresh();
+  m.onState(60290);
+  pong(60000, 60000 + high);
+  m.onState(60300);
+  assert.equal(m.view(60310).level, 'ok', '한 번은 아님');
+  for (let t = 60333; t <= 61300; t += 33) m.onState(t);
+  pong(61000, 61000 + high);
+  assert.equal(m.view(61310).level, 'bad');
+  assert.match(m.view(61310).warn, /핑 높음/);
+});
+
+test('접속 표시: 로컬 흔들림 (핑 5ms, 가끔 화면이 멈칫해 pong 하나·스냅샷 사이 하나가 늦음) 에는 1분 동안 노랑이 안 뜸', async () => {
+  const { NetMeter } = await import('../shared/net.js');
+  const m = new NetMeter();
+  const tick = 1000 / C.TICK_RATE;
+  let worst = 'ok';
+  for (let now = 0, k = 0; now < 60000; k++) {
+    const stall = k % 150 === 75 ? C.NET_SNAPSHOT_GAP_MS + 80 : 0; // 5초마다 한 번 멈칫
+    now += tick + stall;
+    m.onState(now);
+    if (k % 30 === 0) m.onPong({ type: 'pong', t: now - 5 - stall, workMs: 2, behindMs: 0 }, now);
+    const v = m.view(now + 5);
+    if (v.level !== 'ok') worst = v.level + ' ' + v.warn;
+  }
+  assert.equal(worst, 'ok');
+});
+
+test('접속 표시: 느린 화면 (프레임 90ms, 헤드리스) 에서 pong·스냅샷이 프레임을 기다려 늦어도 노랑 없음, 그보다 큰 진짜 끊김·높은 핑은 알림', async () => {
+  const { NetMeter } = await import('../shared/net.js');
+  const m = new NetMeter();
+  const frame = 90;
+  let s = 7;
+  const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0), s / 2 ** 32);
+  let worst = 'ok';
+  for (let now = 0, k = 0; now < 30000; k++) {
+    now += frame * (0.8 + 0.4 * rnd());
+    m.onFrame(now);
+    if (k % 3 !== 1) m.onState(now - rnd() * 20); // 스냅샷은 프레임에 몰려 처리됨
+    if (k % 11 === 0) m.onPong({ type: 'pong', t: now - 5 - rnd() * frame, workMs: 2, behindMs: 0 }, now);
+    const v = m.view(now);
+    if (v.level !== 'ok') worst = v.level + ' ' + v.warn;
+  }
+  assert.equal(worst, 'ok');
+  assert.ok(m.frameMs >= frame && m.frameMs <= frame * 1.2);
+  // 화면이 1초 통째로 멈춤 (그 사이 프레임 없음): 멈춘 뒤 몰려 온 스냅샷·pong 은 렉 아님
+  m.onFrame(30000);
+  m.onState(30000);
+  m.onState(31050);
+  m.onPong({ type: 'pong', t: 30000, workMs: 2 }, 31060);
+  m.onPong({ type: 'pong', t: 30010, workMs: 2 }, 31061);
+  assert.equal(m.view(31070).warn, null, '화면 멈칫은 렉 아님');
+  m.lastFrameAt = null; // 아래는 프레임 시각 없이 (프레임 간격만)
+  // 진짜 렉: 핑 두 번 연속 크게 튐 / 스냅샷이 프레임 + 끊김 기준보다 오래 두 번
+  for (let t = 31100; t <= 33000; t += 33) m.onState(t);
+  m.onPong({ type: 'pong', t: 32000 - 300, workMs: 2 }, 32000);
+  m.onPong({ type: 'pong', t: 33000 - 300, workMs: 2 }, 33000);
+  assert.match(m.view(33010).warn, /핑/);
   m.warn = null;
-  m.onState(20030);
-  pong(20000, 20040, { workMs: C.NET_SERVER_SLOW_MS + 5 });
-  assert.equal(m.view(20050).warn, '서버 느림');
-  assert.equal(m.view(20050).server, C.NET_SERVER_SLOW_MS + 5);
-  // 아주 높은 핑은 bad
-  m.onState(30290);
-  pong(30000, 30000 + C.NET_PING_WARN_MS * 2 + 10);
-  m.onState(30300);
-  assert.equal(m.view(30310).level, 'bad');
+  m.onState(40000);
+  m.onState(40000 + C.NET_SNAPSHOT_GAP_MS + frame + 40);
+  m.onState(40700);
+  m.onState(40700 + C.NET_SNAPSHOT_GAP_MS + frame + 40);
+  assert.match(m.view(41100).warn, /끊김/);
 });
 
 test('터널 링크: 서버가 터널 주소(https 만)를 받으면 방 정보 link = 주소/?room=코드, 없으면 필드 없음. 이상한 주소는 거부', async () => {
