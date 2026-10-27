@@ -1126,7 +1126,7 @@ nameInput.value = savedName();
 
 // ---------- 설정 (감도·효과음·음악·시야각·그림자). 이 브라우저에 기억 ----------
 // 대기 화면과 "화면을 클릭하면 조작 시작" 판(ESC 로 마우스를 풀었을 때)의 '설정' 버튼으로 연다
-const SETTINGS_DEFAULT = { sens: 1, sfx: 1, music: 1, fov: C.FOV_DEFAULT, shadows: true, outline: true, third: false };
+const SETTINGS_DEFAULT = { sens: 1, sfx: 1, music: 1, fov: C.FOV_DEFAULT, shadows: true, outline: true, lowGfx: false, third: false };
 function loadSettings() {
   let saved = {};
   try {
@@ -1147,6 +1147,7 @@ function applySettings() {
   renderer.fov = settings.fov;
   renderer.setShadows(settings.shadows);
   renderer.setOutline(settings.outline);
+  renderer.setLowGfx(settings.lowGfx);
   renderer.third = !!settings.third;
   // 3인칭: 내 캐릭터가 화면 가운데 아래에 서므로 큰 피해 % 는 왼쪽 아래 구석으로 (가운데 상대를 안 가리게).
   // #bottom 은 transform 이 있어 그 안에선 구석에 못 붙임 → #hud 로 옮김
@@ -1185,6 +1186,7 @@ for (const [id, key, fmt] of fields) {
 const checks = [
   ['set-shadows', 'shadows'],
   ['set-outline', 'outline'],
+  ['set-lowgfx', 'lowGfx'],
   ['set-third', 'third'],
 ];
 for (const [id, key] of checks) {
