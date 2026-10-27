@@ -837,8 +837,8 @@ function feelEvent(e) {
       if (!t) return;
       const d = e.who === myId ? 0 : distToMe(t.x, t.y, t.z);
       const pos = { x: t.x, y: t.y, z: t.z + 0.8 };
-      if (e.who === myId) sound.play('lose', { dist: 0 });
       ko.death(e, null, e.who === myId, d);
+      if (e.who === myId) sound.play('lose', { dist: 0 });
       if (e.cause === 'crush') {
         renderer.crushFlat(e.who); // 납작하게 찌그러진 몸이 잠깐 남음
         fx.burst(pos, null, 0xff3030, 22, 6, 0.12, 0.6);
@@ -962,6 +962,12 @@ function connect() {
       roomsMsg.textContent = '서버 연결 끊김. 새로고침하세요.';
       for (const b of roomsEl.querySelectorAll('button:not(.settings-btn)')) b.disabled = true;
     }
+    // 자동으로 다시 붙어 봄 (client/net.js): 되면 새로고침 → ?room=코드 로 같은 방
+    if (net)
+      net.reconnect((text) => {
+        centerText.textContent = text;
+        if (!roomsEl.classList.contains('hidden')) roomsMsg.textContent = text;
+      });
   };
 }
 

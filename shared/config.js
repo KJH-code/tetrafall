@@ -1346,6 +1346,17 @@ export const CONFIG = {
   KO_FINAL_ZOOM: 0.6, // 슬로모션 때 시야각 배율 (작을수록 확대)
   KO_FINAL_LOOK: 0.7, // 슬로모션 때 카메라가 킬 자리 쪽으로 돌아보는 정도 (0~1)
   KO_LOW_GFX_PARTICLES: 0.4,
+  // ---- npm run online 터널 지키기 (tools/online.js TunnelKeeper, 2026-10-27 재혁: 링크가 켜자마자 530·1033 에러일 때가 많음) ----
+  TUNNEL_URL_TIMEOUT_MS: 20000, // cloudflared 를 켜고 이 안에 주소가 안 나오면 다시 켬
+  TUNNEL_POLL_MS: 250, // 주소 나왔나 보는 간격
+  TUNNEL_READY_TIMEOUT_MS: 45000, // 주소를 받고 이 안에 실제로 안 열리면 다시 켬 (보통 몇 초 ~ 20초)
+  TUNNEL_PROBE_INTERVAL_MS: 2000, // 열리나 다시 보는 간격
+  TUNNEL_PROBE_TIMEOUT_MS: 8000, // 요청 하나 기다리는 시간
+  TUNNEL_HEALTH_MS: 30000, // 열린 뒤 확인 간격
+  TUNNEL_HEALTH_FAILS: 2, // 연속 이만큼 안 열리면 다시 켬
+  TUNNEL_MAX_RESTARTS: 5, // 연속 실패 상한 (넘으면 포기하고 안내)
+  NET_RECONNECT_MS: 2000, // 화면: 서버 연결이 끊기면 이 간격으로 다시 붙어 봄
+  NET_RECONNECT_TRIES: 30, // 이만큼 해도 안 되면 그만 (터널 주소가 바뀌었으면 새 링크가 필요)
 };
 
 // 캐릭터의 평타 세트 (바드는 메탈 폼이면 metal 세트)
