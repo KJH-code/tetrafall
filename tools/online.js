@@ -60,11 +60,143 @@ export function banner(url, copied = false) {
   return ['', bar, ...lines.map((l) => `  ${l}`), bar, ''].join('\n');
 }
 
+// 터널 지키기 (2026-10-27 재혁: "링크가 안 될 때도 많음" = 켜자마자 Cloudflare 530·1033 에러 페이지).
+// cloudflared 를 켜고 → 주소를 받고 → 그 주소로 실제 요청(HTTP + 웹소켓)이 될 때까지 기다렸다가 알림 (onReady).
+// 정한 시간 안에 안 열리거나, 열린 뒤에 죽으면 cloudflared 를 다시 켜서 새 주소 (연속 실패 TUNNEL_MAX_RESTARTS 번까지).
+// spawnTunnel() → { stdout, stderr (data 이벤트), on('exit'), kill() }, probe(url) → Promise<bool>, sleep(ms), now() 는 테스트에서 가짜로
+export class TunnelKeeper {
+  constructor({ spawnTunnel, probe, onReady = () => {}, onStatus = () => {}, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = () => Date.now() }) {
+    Object.assign(this, { spawnTunnel, probe, onReady, onStatus, sleep, now });
+    this.stopped = false;
+    this.fails = 0; // 연속 실패 (열리면 0)
+    this.child = null;
+    this.url = null; // 지금 열린 주소
+  }
+
+  stop() {
+    this.stopped = true;
+    if (this.child) this.child.kill();
+  }
+
+  async run() {
+    while (!this.stopped) {
+      if (this.fails > C.TUNNEL_MAX_RESTARTS) {
+        this.onStatus('give-up', `터널을 ${C.TUNNEL_MAX_RESTARTS + 1}번 켰는데 안 열립니다. 서버는 켜져 있어 같은 Wi-Fi 에서는 됩니다. 잠시 뒤 npm run online 을 다시 해 보세요`);
+        return false;
+      }
+      const child = this.spawnTunnel();
+      this.child = child;
+      let out = '';
+      let exited = false;
+      const onData = (b) => {
+        out = (out + b.toString()).slice(-4000);
+      };
+      child.stdout?.on('data', onData);
+      child.stderr?.on('data', onData);
+      child.on('exit', () => {
+        exited = true;
+      });
+      child.on('error', () => {
+        exited = true;
+      });
+      // 1) 주소 받기
+      let url = null;
+      for (const t0 = this.now(); !url && !exited && !this.stopped && this.now() - t0 < C.TUNNEL_URL_TIMEOUT_MS; ) {
+        url = tunnelUrl(out);
+        if (!url) await this.sleep(C.TUNNEL_POLL_MS);
+      }
+      if (this.stopped) return true;
+      if (!url) {
+        this.fail(child, exited ? 'cloudflared 가 바로 꺼짐' : '주소를 못 받음', out);
+        if (exited && /ENOENT|not found|not recognized/i.test(out)) return false;
+        continue;
+      }
+      // 2) 그 주소가 실제로 열릴 때까지 (Cloudflare 가 주소를 퍼뜨리는 데 몇 초 걸림)
+      this.onStatus('checking', `터널 주소 받음: ${url} — 친구가 열 수 있는지 확인 중…`);
+      let open = false;
+      for (const t0 = this.now(); !open && !exited && !this.stopped && this.now() - t0 < C.TUNNEL_READY_TIMEOUT_MS; ) {
+        open = await this.probe(url);
+        if (!open) await this.sleep(C.TUNNEL_PROBE_INTERVAL_MS);
+      }
+      if (this.stopped) return true;
+      if (!open) {
+        this.fail(child, exited ? '터널이 꺼짐' : `${Math.round(C.TUNNEL_READY_TIMEOUT_MS / 1000)}초 안에 안 열림`, out);
+        continue;
+      }
+      this.fails = 0;
+      this.url = url;
+      this.onReady(url);
+      // 3) 열린 뒤에도 주기적으로 확인. 꺼지거나 연속 TUNNEL_HEALTH_FAILS 번 안 열리면 다시 켬
+      let bad = 0;
+      while (!this.stopped && !exited && bad < C.TUNNEL_HEALTH_FAILS) {
+        await this.sleep(C.TUNNEL_HEALTH_MS);
+        if (this.stopped || exited) break;
+        bad = (await this.probe(url)) ? 0 : bad + 1;
+      }
+      if (this.stopped) return true;
+      this.url = null;
+      this.fail(child, exited ? '터널이 꺼짐' : '주소가 안 열림', out, true);
+    }
+    return true;
+  }
+
+  fail(child, why, out, wasOpen = false) {
+    this.fails++;
+    try {
+      child.kill();
+    } catch {
+      // 이미 꺼짐
+    }
+    this.onStatus('restart', `${wasOpen ? '열려 있던 ' : ''}터널 문제 (${why}) → 다시 켭니다 (${this.fails}/${C.TUNNEL_MAX_RESTARTS})`, out);
+  }
+}
+
+// 주소가 실제로 열리나: 첫 화면 HTTP 200 + 웹소켓 열림 (Node 22 전역 WebSocket, 없으면 HTTP 만)
+export async function probeUrl(url, { fetchFn = globalThis.fetch, WS = globalThis.WebSocket, timeoutMs = C.TUNNEL_PROBE_TIMEOUT_MS } = {}) {
+  try {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), timeoutMs);
+    const res = await fetchFn(`${url}/`, { signal: ctl.signal, redirect: 'manual' }).finally(() => clearTimeout(timer));
+    if (!res.ok) return false;
+    const body = await res.text();
+    if (!/Tetrafall/.test(body)) return false; // Cloudflare 안내·에러 페이지가 200 으로 올 때
+  } catch {
+    return false;
+  }
+  if (!WS) return true;
+  return new Promise((resolve) => {
+    let done = false;
+    const end = (ok) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try {
+        ws.close();
+      } catch {
+        // 무시
+      }
+      resolve(ok);
+    };
+    const timer = setTimeout(() => end(false), timeoutMs);
+    let ws;
+    try {
+      ws = new WS(url.replace(/^https:/, 'wss:'));
+    } catch {
+      return end(false);
+    }
+    ws.onopen = () => end(true);
+    ws.onerror = () => end(false);
+    ws.onclose = () => end(false);
+  });
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   const port = Number(process.env.PORT) || C.PORT;
+  let keeper = null;
   const children = [];
   const stopAll = () => {
+    if (keeper) keeper.stop();
     for (const c of children) if (c.exitCode === null) c.kill();
   };
   process.on('SIGINT', () => {
@@ -72,7 +204,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exit(0);
   });
 
-  // ipc: 터널 주소를 서버에 알려 대기실 "링크 복사" 가 이 주소로 (server/index.js process.on('message'))
+  // ipc: 터널 주소를 서버에 알려 대기실 "링크 복사" 가 이 주소로 (server/index.js process.on('message')). 터널을 다시 켜도 서버·방·판은 그대로
   const server = spawn(process.execPath, [path.join(root, 'server', 'index.js')], { stdio: ['inherit', 'inherit', 'inherit', 'ipc'], env: { ...process.env, PORT: String(port) } });
   children.push(server);
   server.on('exit', (code) => {
@@ -81,29 +213,26 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exit(code ?? 0);
   });
 
-  const cf = spawn(process.env.CLOUDFLARED || 'cloudflared', ['tunnel', '--no-autoupdate', '--url', `http://localhost:${port}`], {
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  children.push(cf);
-  let shown = false;
-  let tail = '';
-  const onData = (buf) => {
-    if (shown) return;
-    tail = (tail + buf.toString()).slice(-4000);
-    const url = tunnelUrl(tail);
-    if (url) {
-      shown = true;
+  keeper = new TunnelKeeper({
+    spawnTunnel: () => {
+      const cf = spawn(process.env.CLOUDFLARED || 'cloudflared', ['tunnel', '--no-autoupdate', '--url', `http://localhost:${port}`], { stdio: ['ignore', 'pipe', 'pipe'] });
+      cf.on('error', (err) => {
+        if (err.code === 'ENOENT') {
+          console.log(`\n${INSTALL}\n`);
+          keeper.stop();
+        } else console.log(`터널 실행 실패: ${err.message}`);
+      });
+      return cf;
+    },
+    probe: (url) => probeUrl(url),
+    onStatus: (kind, text, out) => {
+      console.log(`[터널] ${text}`);
+      if (kind === 'give-up' && out) console.log(String(out).slice(-800));
+    },
+    onReady: (url) => {
       if (server.connected) server.send({ type: 'publicUrl', url });
       copyToClipboard(url).then((copied) => console.log(banner(url, copied)));
-    }
-  };
-  cf.stdout.on('data', onData);
-  cf.stderr.on('data', onData);
-  cf.on('error', (err) => {
-    if (err.code === 'ENOENT') console.log(`\n${INSTALL}\n`);
-    else console.log(`터널 실행 실패: ${err.message}`);
+    },
   });
-  cf.on('exit', (code) => {
-    if (code !== null && code !== 0) console.log(`터널이 꺼짐 (코드 ${code}). 마지막 출력:\n${tail.slice(-800)}`);
-  });
+  keeper.run();
 }

@@ -962,6 +962,12 @@ function connect() {
       roomsMsg.textContent = '서버 연결 끊김. 새로고침하세요.';
       for (const b of roomsEl.querySelectorAll('button:not(.settings-btn)')) b.disabled = true;
     }
+    // 자동으로 다시 붙어 봄 (client/net.js): 되면 새로고침 → ?room=코드 로 같은 방
+    if (net)
+      net.reconnect((text) => {
+        centerText.textContent = text;
+        if (!roomsEl.classList.contains('hidden')) roomsMsg.textContent = text;
+      });
   };
 }
 
