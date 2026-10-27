@@ -142,10 +142,10 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
-const KIND_KO = { push: '밀치기', projectile: '투사체', shock: '설치 블록 충격파', bomb: '폭탄', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', blockslam: '블록내려찍기', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기', quake: '솟는 땅', ghost: '유령블록' };
+const KIND_KO = { push: '밀치기', projectile: '투사체', shock: '설치 블록 충격파', bomb: '폭탄', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', blockslam: '블록내려찍기', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기', quake: '솟는 땅', ghost: '유령블록', shell: '포탄', bigshell: '대형 포탄', groundshot: '발밑 포격', pounce: '추적 도약', execute: '처형 사격', leapwave: '광폭 도약', spin: '분노 소용돌이', note: '음파', riff: '리프', amp: '앰프 음파' }; // 캐릭터 무기 이름은 config SKILL_NAMES·ULT_NAMES 와 같게
 const ITEM_KO = { control: '조종권', knockback: '투사체', jump: '점프력 상승', ghost: '유령화', brick: '설치 블록', bomb: '폭탄', speed: '이속 증가' };
 const CAUSE_KO = { crush: '압사', fall: '낙사', lava: '용암' };
-const WEAPON_KO = { push: '밀치기', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종 블록', thrown: '설치 블록', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', blockslam: '블록내려찍기', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기', quake: '솟는 땅', ghost: '유령블록', glide: '낙하 음파' };
+const WEAPON_KO = { push: '밀치기', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종 블록', thrown: '설치 블록', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', blockslam: '블록내려찍기', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기', quake: '솟는 땅', ghost: '유령블록', glide: '낙하 음파', shell: '포탄', bigshell: '대형 포탄', groundshot: '발밑 포격', pounce: '추적 도약', execute: '처형 사격', leapwave: '광폭 도약', spin: '분노 소용돌이', note: '음파', riff: '리프', amp: '앰프 음파' };
 
 // 오른쪽 위 킬 피드: "죽인 사람 → 죽은 사람 낙사 (망치)". 내가 낀 줄은 노란 테두리
 const killfeedEl = $('killfeed');
