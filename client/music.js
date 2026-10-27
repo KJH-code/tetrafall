@@ -65,6 +65,17 @@ export class Music {
     if (this.gain) this.gain.gain.setTargetAtTime(C.MUSIC_VOLUME * v, this.sound.ctx.currentTime, 0.15);
   }
 
+  // 잠깐 줄임 (KO 마지막 킬 슬로모션): seconds 동안 MUSIC_VOLUME × musicDuck, 그 뒤 천천히 원래대로
+  duck(seconds, level = C.SFX_KO.musicDuck, at = null) {
+    if (!this.gain || !this.ctx) return;
+    const t = at ?? this.ctx.currentTime; // at: 녹음 확인용 시각
+    const full = C.MUSIC_VOLUME * this.volume;
+    const g = this.gain.gain;
+    g.cancelScheduledValues(t);
+    g.setTargetAtTime(full * level, t, 0.05);
+    g.setTargetAtTime(full, t + seconds, 0.35);
+  }
+
   setMood(mood) {
     this.mood = mood;
   }

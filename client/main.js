@@ -51,6 +51,13 @@ const ko = new KO(renderer.scene, fx, {
   field: () => ({ w: state?.field?.w ?? C.GRID_W, d: state?.field?.d ?? C.GRID_D }),
 });
 renderer.camHook = (cam) => ko.camHook(cam);
+// KO 소리: 스매시 쾅·압사 쿵 (거리·좌우), 마지막 킬 = 낮게 늘어진 쾅 + 음악 잠깐 줄임
+ko.on('smash', (i) => sound.play('smash', { dist: i.me ? 0 : undefined, pos: i, strong: i.me || i.near }));
+ko.on('crush', (i) => sound.play('koCrush', { dist: i.me ? 0 : undefined, pos: i, strong: i.me || i.near }));
+ko.on('final', (i) => {
+  sound.play('final', { pos: i });
+  music.duck(C.KO_FINAL_MS / 1000);
+});
 // 건축가 블록이 한 칸 터질 때 (연쇄는 칸마다 차례로): 소리 + 가까우면 흔들림
 renderer.onBlast = (pos, big) => {
   const d = distToMe(pos.x, pos.y, pos.z);
@@ -2191,6 +2198,7 @@ let last = performance.now();
 let frameErrorShown = false;
 function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000) * ko.timeScale(now); // KO 슬로모션·히트스톱 (화면만)
+  sound.slowmo(ko.timeScale(now)); // 슬로모션이면 효과음 먹먹하고 낮게
   last = now;
   ko.update(dt);
   const p = me();

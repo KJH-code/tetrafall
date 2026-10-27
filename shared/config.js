@@ -786,6 +786,16 @@ export const CONFIG = {
     berserker: { swing: 'cloth', rate: 0.6, hit: 'chop' }, // 도끼
     bard: { swing: 'cloth', rate: 1, hit: 'strum' }, // 기타·류트
   },
+  // KO 연출 소리 (ko.on 'smash'·'final'·'crush'). 화면 시간이 느려지면 (슬로모션) 효과음은 먹먹하고 낮게, 음악은 잠깐 줄임
+  SFX_KO: {
+    slowAbove: 0.15, // 화면 시간 배율이 이보다 크고 1 보다 작으면 슬로모션으로 봄 (이하 = 압사 히트스톱처럼 아주 짧은 멈춤 → 소리는 그대로)
+    slowRate: 0.7, // 슬로모션 동안 새로 나는 효과음 높낮이 (빠르기) 배율
+    slowLowpass: 1300, // 슬로모션 동안 효과음 전체를 이 높이(Hz) 위로 깎음 (먹먹하게)
+    slowGain: 0.75, // 슬로모션 동안 효과음 크기
+    ease: 0.08, // 먹먹해지고 풀리는 시간 (초)
+    musicDuck: 0.3, // 마지막 킬 슬로모션 동안 음악 크기 배율
+    crushTail: 0.12, // 압사 KO: 큰 쿵 뒤 부스러기가 이만큼 뒤에 (화면 히트스톱 KO_CRUSH_STOP_MS 와 맞춤)
+  },
   SFX_PAN: 0.75, // 남 소리를 왼쪽·오른쪽으로 벌리는 정도 (0 가운데 ~ 1 한쪽 끝)
   SFX_STRUM: [52, 59, 64, 67], // 바드 타격 기타 화음 (MIDI, 메탈 폼은 낮게 + 찌그러뜨림)
   // 위험 액체 지속 소리 (용암·물·늪·에너지·폭풍 = WORLD_THEMES hazard.style). 거리 = 내 귀(카메라)에서 표면까지 높이
