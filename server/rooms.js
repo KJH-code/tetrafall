@@ -7,6 +7,11 @@ import { Game } from './game.js';
 
 const maxPlayers = () => Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length);
 
+// 방 주소: 터널 주소 + ?room=코드 (tools/online.js 콘솔 안내와 같은 모양)
+export function roomLinkOf(base, code) {
+  return `${base.replace(/\/+$/, '')}/?room=${code}`;
+}
+
 function send(ws, obj) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(obj));
 }
@@ -275,7 +280,15 @@ export class Rooms {
   }
 
   roomInfo(room) {
-    return { code: room.code, name: room.name, public: room.public, practice: !!room.practice };
+    // link: 친구에게 줄 방 주소 (npm run online 의 터널 주소가 있으면 그걸로, 없으면 null → 화면이 지금 주소로)
+    return { code: room.code, name: room.name, public: room.public, practice: !!room.practice, link: this.publicUrl ? roomLinkOf(this.publicUrl, room.code) : null };
+  }
+
+  // npm run online 이 찾은 터널 주소 (https 만). 이미 있는 방 사람들에게도 다음 스냅샷부터 새 링크
+  setPublicUrl(url) {
+    const u = typeof url === 'string' && /^https:\/\/[a-z0-9.-]+$/i.test(url.replace(/\/+$/, '')) ? url.replace(/\/+$/, '') : null;
+    this.publicUrl = u;
+    return !!u;
   }
 
   // 공개 방 목록 (방 밖 화면). 판 중인지는 안 보여줌 (재혁 결정: 이름·인원·맵·팀전·봇 난이도, 모드)

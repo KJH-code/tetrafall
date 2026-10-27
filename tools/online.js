@@ -22,8 +22,39 @@ const INSTALL = [
   '설치하고 다시 npm run online',
 ].join('\n');
 
-function banner(url) {
-  const lines = ['친구에게 이 주소를 보내세요 (켤 때마다 바뀜):', '', `  ${url}`, '', '방을 만든 뒤 대기 화면의 "링크 복사" 로 그 방 주소를 보내도 됨'];
+// 클립보드에 넣는 명령 (운영체제마다). 없으면 null
+export function clipboardCommand(platform = process.platform) {
+  if (platform === 'win32') return ['clip', []];
+  if (platform === 'darwin') return ['pbcopy', []];
+  if (platform === 'linux') return process.env.WAYLAND_DISPLAY ? ['wl-copy', []] : ['xclip', ['-selection', 'clipboard']];
+  return null;
+}
+
+// 주소를 클립보드에 (실패해도 조용히 false)
+function copyToClipboard(text) {
+  const cmd = clipboardCommand();
+  if (!cmd) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    try {
+      const c = spawn(cmd[0], cmd[1], { stdio: ['pipe', 'ignore', 'ignore'] });
+      c.on('error', () => resolve(false));
+      c.on('exit', (code) => resolve(code === 0));
+      c.stdin.end(text);
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+export function banner(url, copied = false) {
+  const lines = [
+    '친구에게 이 주소를 보내세요 (켤 때마다 바뀜):',
+    '',
+    `  ${url}`,
+    '',
+    copied ? '(클립보드에 복사해 둠 — 메신저에 붙여 넣기만)' : '(복사: 위 주소를 드래그)',
+    '방을 만든 뒤 대기 화면의 "링크 복사" 는 이 주소 + 방 코드로 복사됨',
+  ];
   const w = Math.max(...lines.map((l) => l.length)) + 4;
   const bar = '='.repeat(w);
   return ['', bar, ...lines.map((l) => `  ${l}`), bar, ''].join('\n');
@@ -41,7 +72,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exit(0);
   });
 
-  const server = spawn(process.execPath, [path.join(root, 'server', 'index.js')], { stdio: 'inherit', env: { ...process.env, PORT: String(port) } });
+  // ipc: 터널 주소를 서버에 알려 대기실 "링크 복사" 가 이 주소로 (server/index.js process.on('message'))
+  const server = spawn(process.execPath, [path.join(root, 'server', 'index.js')], { stdio: ['inherit', 'inherit', 'inherit', 'ipc'], env: { ...process.env, PORT: String(port) } });
   children.push(server);
   server.on('exit', (code) => {
     console.log(`서버가 꺼짐 (코드 ${code}). 터널도 끕니다`);
@@ -61,7 +93,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const url = tunnelUrl(tail);
     if (url) {
       shown = true;
-      console.log(banner(url));
+      if (server.connected) server.send({ type: 'publicUrl', url });
+      copyToClipboard(url).then((copied) => console.log(banner(url, copied)));
     }
   };
   cf.stdout.on('data', onData);

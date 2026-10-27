@@ -110,6 +110,10 @@ function openLog(code) {
   };
 }
 
+// npm run online (tools/online.js) 이 터널 주소를 찾으면 IPC 로 알려 줌 → 대기실 "링크 복사" 가 터널 주소로
+process.on('message', (m) => {
+  if (m && m.type === 'publicUrl' && rooms.setPublicUrl(m.url)) console.log(`친구용 주소: ${m.url}`);
+});
 const rooms = new Rooms({
   openLog,
   serverLog: (msg) => console.log(`[${stamp()}] ${msg}`),

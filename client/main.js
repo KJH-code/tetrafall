@@ -979,7 +979,7 @@ function setUrlRoom(code) {
     // 주소창을 못 바꿔도 게임엔 지장 없음
   }
 }
-const roomLink = (code) => `${location.origin}${location.pathname}?room=${code}`;
+const roomLink = (code) => (room && room.code === code && room.link) || `${location.origin}${location.pathname}?room=${code}`; // 터널 주소가 있으면 그걸로 (서버 room.link)
 
 function showRooms(message) {
   roomsEl.classList.remove('hidden');
