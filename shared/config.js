@@ -745,8 +745,74 @@ export const CONFIG = {
   // ---- 타격감 (클라이언트, 2단계) ----
   SFX_VOLUME: 0.5, // 전체 효과음 크기 0~1
   MUSIC_VOLUME: 0.07, // 배경음악 크기 (효과음보다 작게)
-  MUSIC_BPM: { calm: 92, battle: 138, lava: 166 }, // 대기·판 중·용암 때 빠르기
   SFX_HEAR_RANGE: 14, // 이 거리(칸) 밖 소리는 작게 (최소 20%)
+  // ---- 소리 개편 (2026-10-27, client/sound.js · music.js). 효과음 = 몸에 닿는 소리는 Kenney CC0 파일 + UI·이어지는 소리는 합성 ----
+  SFX_DIR: '/assets/sfx/', // 효과음 파일 폴더 (client/assets/sfx, 출처 CREDITS.md)
+  // 소리 묶음: 이름 → 파일(확장자 .ogg 빼고) 여러 개 중 하나를 골라 틀고 높낮이를 SFX_DETUNE 만큼 흔듦 (반복 피로), gain = 묶음 크기
+  SFX_BANKS: {
+    punchM: { files: ['impactPunch_medium_000', 'impactPunch_medium_001', 'impactPunch_medium_002', 'impactPunch_medium_003', 'impactPunch_medium_004'], gain: 0.8 }, // 맞음 (퍽)
+    punchH: { files: ['impactPunch_heavy_000', 'impactPunch_heavy_001', 'impactPunch_heavy_002', 'impactPunch_heavy_003', 'impactPunch_heavy_004'], gain: 0.9 }, // 세게 맞음·내가 맞음
+    plateH: { files: ['impactPlate_heavy_000', 'impactPlate_heavy_001', 'impactPlate_heavy_002', 'impactPlate_heavy_003', 'impactPlate_heavy_004'], gain: 0.55 }, // 방패·금속판 (탱크)
+    woodH: { files: ['impactWood_heavy_000', 'impactWood_heavy_001', 'impactWood_heavy_002', 'impactWood_heavy_003', 'impactWood_heavy_004'], gain: 0.8 }, // 블록 착지·망치
+    woodL: { files: ['impactWood_light_000', 'impactWood_light_001', 'impactWood_light_002'], gain: 0.6 }, // 화살 박힘·작은 나무
+    mining: { files: ['impactMining_000', 'impactMining_001', 'impactMining_002'], gain: 0.7 }, // 돌 깨짐 (블록 부숨·솟는 땅)
+    bell: { files: ['impactBell_heavy_002', 'impactBell_heavy_003'], gain: 0.45 }, // 치명타 딩
+    tapL: { files: ['impactGeneric_light_000', 'impactGeneric_light_001', 'impactGeneric_light_002'], gain: 0.6 }, // 작은 탁
+    softH: { files: ['impactSoft_heavy_000', 'impactSoft_heavy_001', 'impactSoft_heavy_002'], gain: 1 }, // 몸이 깔림·쓰러짐
+    metalM: { files: ['impactMetal_medium_000', 'impactMetal_medium_001', 'impactMetal_medium_003'], gain: 0.55 }, // 갈고리·아머 쨍
+    metalL: { files: ['impactMetal_light_001', 'impactMetal_light_004'], gain: 0.5 }, // 가벼운 금속
+    glassH: { files: ['impactGlass_heavy_000', 'impactGlass_heavy_002'], gain: 0.35 }, // 수정·와장창 높은 겹
+    chop: { files: ['chop'], gain: 0.75 }, // 도끼 (광전사)
+    slice: { files: ['knifeSlice', 'knifeSlice2'], gain: 0.55 }, // 단검 베기 (닌자)
+    draw: { files: ['drawKnife3'], gain: 1.6 }, // 칼 휘두름 (원본이 작아 키움)
+    cloth: { files: ['cloth1', 'cloth2', 'cloth3'], gain: 1.1 }, // 휘두름·뛰기 옷 펄럭
+    latch: { files: ['metalLatch', 'metalClick'], gain: 0.5 }, // 장전·갈고리 걸림
+    boom: { files: ['explosionCrunch_000', 'explosionCrunch_001', 'explosionCrunch_002'], gain: 0.7 }, // 폭발
+    boomLow: { files: ['lowFrequency_explosion_001'], gain: 0.9 }, // 폭발 낮은 겹·우르릉
+    slime: { files: ['slime_000'], gain: 0.6 }, // 녹음·늪 빠짐
+    pluck: { files: ['pluck_001', 'pluck_002'], gain: 0.5 }, // 석궁 줄 (사냥꾼)
+    confirm: { files: ['confirmation_001'], gain: 0.4 }, // 아이템 먹음
+    jingleWin: { files: ['jingles_STEEL02'], gain: 0.55 }, // 판 끝 승리 (올라가는 스틸드럼)
+    jingleLose: { files: ['jingles_STEEL05'], gain: 0.45 }, // 내가 죽음 (내려가는 스틸드럼)
+  },
+  // 캐릭터별 무기 소리: swing = 휘두를 때 묶음 (rate = 높낮이 배율, 낮을수록 무거움), hit = 때려서 맞을 때 덧씌우는 묶음 ('strum' 은 합성 기타)
+  SFX_WEAPONS: {
+    tank: { swing: 'cloth', rate: 0.7, hit: 'plateH' }, // 방패·주먹
+    ninja: { swing: 'draw', rate: 1.15, hit: 'slice' }, // 단검
+    builder: { swing: 'cloth', rate: 0.65, hit: 'woodH' }, // 망치
+    hook: { swing: 'cloth', rate: 1, hit: 'metalM' }, // 갈고리·권총
+    hunter: { swing: 'cloth', rate: 1.1, hit: 'woodL', shot: 'pluck' }, // 석궁
+    cannon: { swing: 'cloth', rate: 0.75, hit: 'punchH' }, // 대포
+    berserker: { swing: 'cloth', rate: 0.6, hit: 'chop' }, // 도끼
+    bard: { swing: 'cloth', rate: 1, hit: 'strum' }, // 기타·류트
+  },
+  SFX_PAN: 0.75, // 남 소리를 왼쪽·오른쪽으로 벌리는 정도 (0 가운데 ~ 1 한쪽 끝)
+  SFX_STRUM: [52, 59, 64, 67], // 바드 타격 기타 화음 (MIDI, 메탈 폼은 낮게 + 찌그러뜨림)
+  // 위험 액체 지속 소리 (용암·물·늪·에너지·폭풍 = WORLD_THEMES hazard.style). 거리 = 내 귀(카메라)에서 표면까지 높이
+  SFX_HAZARD: {
+    range: 9, // 이 높이(칸) 위면 아주 작게
+    min: 0.12, // 멀어도 남는 크기 비율
+    fade: 0.4, // 크기가 바뀌는 시간 (초)
+    vol: { water: 0.5, lava: 0.45, swamp: 0.38, energy: 0.34, storm: 0.4 },
+    pops: { water: 1.2, lava: 3.5, swamp: 5, energy: 0.4, storm: 0.13 }, // 초당 튀는 소리 (출렁·뽀글·지직·천둥)
+    fallback: 'lava', // 테마가 없는 맵 (예전 노을)
+  },
+  // ---- 배경음악 (합성, 테마별). 음 = MIDI, scale = 으뜸음에서 반음 간격, prog = 마디마다 화음 (음계 몇 번째 음 위의 3화음) ----
+  // lead·bass = 악기 (music.js INSTRUMENTS), drums = 장단 (DRUMS), arp = 화음 쪼개는 모양, motif = 마디마다 멜로디 쓸 확률
+  MUSIC_THEMES: {
+    lobby: { bpm: 92, root: 57, scale: [0, 2, 4, 5, 7, 9, 11], prog: [5, 3, 0, 4], lead: 'bell', bass: 'sine', drums: 'none', arp: 'pad', motif: 0.3 }, // 대기실: 느긋한 벨 + 화음
+    meadow: { bpm: 128, root: 60, scale: [0, 2, 4, 5, 7, 9, 11], prog: [0, 4, 5, 3], lead: 'pluck', bass: 'triangle', drums: 'pop', arp: 'up', motif: 0.6 }, // 초원: 밝은 장조
+    desert: { bpm: 112, root: 62, scale: [0, 1, 4, 5, 7, 8, 10], prog: [0, 1, 0, 6], lead: 'reed', bass: 'triangle', drums: 'tamb', arp: 'updown', motif: 0.7 }, // 사막: 프리지안 도미넌트 + 탬버린
+    crystal: { bpm: 96, root: 64, scale: [0, 2, 4, 6, 7, 9, 11], prog: [0, 1, 5, 4], lead: 'bell', bass: 'sine', drums: 'sparse', arp: 'pad', motif: 0.5, echo: 0.42 }, // 수정 동굴: 리디안 벨 + 메아리
+    volcano: { bpm: 150, root: 52, scale: [0, 2, 3, 5, 7, 8, 11], prog: [0, 5, 6, 4], lead: 'saw', bass: 'saw', drums: 'heavy', arp: 'down', motif: 0.5 }, // 화산: 화성 단조 + 무거운 북
+    skycastle: { bpm: 120, root: 65, scale: [0, 2, 4, 6, 7, 9, 11], prog: [0, 3, 4, 0], lead: 'triangle', bass: 'sine', drums: 'pop', arp: 'pad', motif: 0.6, echo: 0.3 }, // 하늘 성: 리디안 패드
+    mushroom: { bpm: 132, root: 67, scale: [0, 2, 4, 7, 9], prog: [0, 3, 4, 2], lead: 'marimba', bass: 'triangle', drums: 'wood', arp: 'bounce', motif: 0.7 }, // 버섯 숲: 오음 마림바, 통통
+    castle: { bpm: 110, root: 62, scale: [0, 2, 3, 5, 7, 9, 10], prog: [0, 6, 3, 4], lead: 'lute', bass: 'triangle', drums: 'march', arp: 'up', motif: 0.6 }, // 중세 성: 도리안 류트 + 행진 북
+  },
+  MUSIC_MIX: { drums: 0.5, lead: 1.5, bass: 1 }, // 음악 안의 크기 비율 (북이 멜로디를 덮지 않게)
+  MUSIC_THEME_DEFAULT: 'volcano', // 테마가 없는 맵 (예전 노을: 용암)
+  // 위험이 차오를 때 긴장 버전: 빠르기 배율, 음계를 단조로 (3·6·7 음 반음 내림), 드럼 두 배, 리드 한 옥타브 위
+  MUSIC_TENSION: { bpm: 1.22, minor: true, drums: 'heavy', leadUp: 12 },
   FX_SHAKE_HURT: 0.18, // 맞았을 때 화면 흔들림 세기 (칸)
   FX_SHAKE_HIT: 0.05, // 때렸을 때
   FX_SHAKE_MS: 280,
@@ -998,7 +1064,7 @@ export const CONFIG = {
   VM_FOV: 62, // 뷰모델 카메라 화각 (필드 화각과 따로: 넓은 화각에서도 팔이 늘어나 보이지 않게)
   VM_SCALE: 0.62, // 몸 크기 배율 (FIGURE_SCALE 에 곱함). 작을수록 팔이 화면을 덜 가림
   VM_POS: { default: [0, -0.16, -0.26], tank: [0, -0.2, -0.26], bard: [0.32, -0.14, -0.34], cannon: [0.24, -0.24, -0.45] }, // 어깨 높이 기준점 (카메라 기준: 오른쪽 +x, 위 +y, 뒤 +z). 캐릭터별로 덮어씀
-  VM_SIZE: { tank: 0.7, builder: 0.7, bard: 0.7, cannon: 0.7 }, // 캐릭터별 크기 배율 (VM_SCALE 에 곱함). 굵은 팔은 화면을 많이 덮어서 작게
+  VM_SIZE: { tank: 0.7, builder: 0.7, bard: 0.7, cannon: 0.7, berserker: 0.75 }, // 캐릭터별 크기 배율 (VM_SCALE 에 곱함). 굵은 팔은 화면을 많이 덮어서 작게 (광전사: 2026-10-27 어깨 넓고 팔뚝 굵어짐)
   VM_ROLL: { bard: 0.25 }, // 캐릭터별 화면 기울기 (라디안, + 면 반시계 방향). 바드 악기를 화면 아래에 가로로 눕혀 듦 (목이 조준점 쪽으로 안 감)
   VM_ARM_LOW: 1.0, // 내린 팔이 화면에선 이 각만큼 앞으로 든 팔 (라디안, π/2 = 정면)
   VM_ARM_OUT: 0.5, // 옆으로 벌린 각 배율
@@ -1062,6 +1128,7 @@ export const CONFIG = {
   CANNON_KICK_MS: 220,
   FIGURE_SNIFF_EVERY: 3.2, // 사냥꾼이 가만히 있을 때 킁킁하는 간격 (초)
   FIGURE_SNIFF_LEN: 0.7, // 킁킁 한 번 길이 (초)
+  FIGURE_MUSCLE_SHADE: 0.6, // 광전사 근육 사이 홈 색 = 피부색 × 이 값
   FIGURE_EYE: 0.062, // 왕눈알 흰자 반지름 (칸, 몸 크기 배율 전)
   // 관절 스프링 (2026-10-27, FIGURE_FOLLOW 14/초 지수 추종 대신). w = 빠르기 (/초, 클수록 빨리 따라옴), damp = 감쇠비 (1 이면 안 넘침, 작을수록 출렁)
   // 다리는 발이 땅을 디뎌야 해서 단단하게, 팔·고개는 느슨하게 → 몸보다 늦게 따라와 흐느적 (TABS)
@@ -1123,6 +1190,8 @@ export const CONFIG = {
   FIGURE_RUN_LEAN: 0.18, // 최고 속도로 걸을 때 허리를 앞으로 숙이는 각
   FIGURE_HELD_SCALE: 0.7, // 손에 든 것 크기 배율 (팔이 가늘어서)
   FIGURE_RUN_TWIST: 0.2, // 달릴 때 어깨를 다리 반대로 비트는 각
+  FIGURE_HIP_TWIST: 0.4, // 공격 동작의 허리 비틂(waistRoll) 중 골반(다리째)이 나눠 받는 비율. 허리만 돌면 윗몸만 따로 노는 것처럼 보임 (2026-10-27 재혁: 광전사 상체가 따로 놂)
+  FIGURE_HIP_TWIST_FOLLOW: 8, // 공격이 시작·끝날 때 그 나눔이 켜지고 꺼지는 빠르기 (/초)
   FIGURE_RUN_ELBOW: 0.9, // 최고 속도로 달릴 때 팔꿈치를 더 굽히는 각 (팔 펌프)
   FIGURE_HIT_LEAN: 0.35, // 맞은 순간 허리가 밀린 쪽으로 꺾이는 각 (세기 1 기준)
   FIGURE_HIT_KICK: 6, // 히트스톱이 끝나고 밀린 쪽으로 더 튕기는 빠르기 (라디안/초, 세기 1 기준)
