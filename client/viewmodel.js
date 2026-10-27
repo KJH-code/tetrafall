@@ -276,7 +276,8 @@ export class ViewModel {
     const k = C.VM_BODY_FOLLOW;
     const w = fig.waist.rotation;
     // 몸 전체 돌기(광전사 소용돌이·회전 베기·갈고리 스핀)는 VM_SPIN 캐릭터만 그대로: 무기를 든 팔이 화면을 휩쓸고 지나감
-    this.twin.waist.rotation.set(w.x * k, (w.y - fig.d.hunch) * k, w.z * k + (this.spin ? fig.hips.rotation.z : 0));
+    const hipTwist = fig.hipTwist || 0; // 공격 비틂 중 골반이 받은 몫도 몸통 비틂으로 (1인칭 팔은 예전과 같은 각)
+    this.twin.waist.rotation.set(w.x * k, (w.y - fig.d.hunch) * k, (w.z + hipTwist) * k + (this.spin ? fig.hips.rotation.z - hipTwist : 0));
     for (let i = 0; i < 2; i++) {
       if (this.hold) continue;
       const side = i ? 1 : -1;
