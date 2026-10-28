@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { CONFIG as C } from '../shared/config.js';
 import { songFor, chordAt, degreeNote, INSTRUMENTS, DRUMS, ARPS } from '../client/music.js';
-import { hitTier } from '../client/hit-tier.js';
+import { hitTier, hitStep } from '../client/hit-tier.js';
 import { FILES as PREP_FILES } from '../tools/prep-sfx.mjs';
 
 const SFX = new URL('../client/assets/sfx/', import.meta.url);
@@ -22,8 +22,8 @@ test('효과음 묶음의 파일이 다 있고, 폴더에 안 쓰는 파일이 �
 test('효과음 출처: CREDITS.md 에 팩마다 CC0 로 적혀 있음', () => {
   const credits = fs.readFileSync(new URL('../client/assets/CREDITS.md', import.meta.url), 'utf8');
   for (const pack of ['impact-sounds', 'rpg-audio', 'sci-fi-sounds', 'interface-sounds', 'music-jingles']) assert.ok(credits.includes(`kenney.nl/assets/${pack}`), pack);
-  for (const prefix of ['impactPunch', 'chop', 'explosionCrunch', 'pluck', 'jingles_STEEL', 'hitCrack', 'swishBlade', 'hitSlap', 'hitThump', 'hitTock']) assert.ok(credits.includes(prefix), prefix);
-  for (const pack of ['thwack-sounds', 'content/punch', 'content/impact', '37-hitspunches', '20-sword-sound-effects', 'swishes-sound-pack', 'content/100-cc0-sfx', '100-cc0-sfx-2']) assert.ok(credits.includes(pack), pack);
+  for (const prefix of ['impactPunch', 'chop', 'explosionCrunch', 'pluck', 'jingles_STEEL', 'hitHeavy', 'swishBlade']) assert.ok(credits.includes(prefix), prefix);
+  for (const pack of ['content/punch', 'content/impact', '37-hitspunches', '20-sword-sound-effects', 'swishes-sound-pack']) assert.ok(credits.includes(pack), pack);
 });
 
 test('캐릭터 8명 모두 무기 소리가 있고, 그 묶음이 있음 (strum 은 합성 기타)', () => {
@@ -93,16 +93,12 @@ test('타격 세기 단계: 치명 > 강 (마무리·묵직한 스킬) > 약 (�
   assert.equal(hitTier({ kind: 'push', star: true }), 'light');
   assert.equal(hitTier({ kind: 'projectile' }), 'light');
   assert.equal(hitTier({ kind: 'push', n: 2 }), 'medium');
-  // 단계마다 크랙(고역 '팍')이 있고, 강할수록 크랙·몸통이 커지고 낮아짐, 강타·치명은 히트스톱 뒤 '콰앙'
+  // 강타·치명은 묵직한 '퍽!' + 강타 몸통, 히트스톱 뒤 '콰앙'
   const T = C.SFX_HIT_TIERS;
-  const order = ['light', 'medium', 'heavy', 'crit'];
-  for (const k of order) assert.ok(T[k].crack > 0, k);
-  for (let i = 1; i < order.length; i++) {
-    assert.ok(T[order[i]].crack >= T[order[i - 1]].crack && T[order[i]].punch >= T[order[i - 1]].punch, order[i]);
-  }
-  assert.ok(T.light.rate > T.heavy.rate);
+  for (const k of ['heavy', 'crit']) assert.ok(C.SFX_BANKS[T[k].bank] && T[k].heavy > 0 && T[k].rate < 1, k);
+  assert.ok(T.crit.rate <= T.heavy.rate && T.crit.heavy >= T.heavy.heavy && T.crit.ring > 0);
   assert.equal(T.heavy.release, C.BASIC_FINISH_HITSTOP_MS);
-  assert.ok(T.crit.release > T.heavy.release && T.medium.release === 0);
+  assert.ok(T.crit.release > T.heavy.release);
   // 강타·약타 kind 가 겹치지 않음
   assert.ok(!C.SFX_HEAVY_KINDS.some((k) => C.SFX_LIGHT_KINDS.includes(k)));
 });
@@ -118,36 +114,23 @@ test('다듬은 재료 (tools/prep-sfx.mjs FILES) 가 다 소리 묶음에 들�
   for (const [name] of PREP_FILES) assert.ok(used.has(name), name);
 });
 
-test('가볍게 (2026-10-28): 약·중타·휘두름은 높고 짧게 끊음, 강·치명은 안 끊고 묵직하게 (대비)', () => {
-  const T = C.SFX_HIT_TIERS;
-  for (const k of ['light', 'medium']) {
-    assert.ok(T[k].rate > 1 && T[k].punchRate >= 1, `${k} 높게`);
-    assert.ok(T[k].cut > 0 && T[k].cut < 0.15, `${k} 짧게`);
-    assert.ok(T[k].punch < T.heavy.punch, `${k} 몸통 줄임`);
+test('퍽퍽퍽 (2026-10-28 재혁): 약·중타는 예전 Kenney impactPunch \'퍽\', 콤보 1타 < 2타 < 3타 < 마무리 점점 크고 낮고 몸통 있게', () => {
+  const S = C.SFX_HIT_COMBO;
+  assert.equal(S.length, 3);
+  for (const st of S) assert.ok(C.SFX_BANKS[st.bank].files.every((f) => f.startsWith('impactPunch_')), st.bank);
+  for (let i = 1; i < S.length; i++) {
+    assert.ok(S[i].vol >= S[i - 1].vol && S[i].rate < S[i - 1].rate && S[i].body > S[i - 1].body && S[i].weapon >= S[i - 1].weapon, `${i + 1}타`);
   }
-  assert.ok(T.light.cut <= T.medium.cut);
-  for (const k of ['heavy', 'crit']) assert.ok(!T[k].cut && T[k].rate < 1, `${k} 묵직`);
+  const fin = C.SFX_HIT_TIERS.heavy; // 마무리 = 강타
+  const last = S[S.length - 1];
+  assert.ok(fin.rate < last.rate && fin.body > last.body && fin.vol >= last.vol);
+  assert.ok(C.SFX_HIT_LIGHT > 0 && C.SFX_HIT_LIGHT < 1);
+  // 순번: 평타 n, 없으면 streak, 3 에서 멈춤
+  assert.equal(hitStep({ kind: 'push', n: 1 }), 1);
+  assert.equal(hitStep({ kind: 'push', n: 2, streak: 7 }), 2);
+  assert.equal(hitStep({ kind: 'slash', streak: 2 }), 2);
+  assert.equal(hitStep({ kind: 'push', n: 5 }), 3);
+  assert.equal(hitStep({ kind: 'charge' }), 1);
+  // 휘두름은 e1b310b 의 짧은 '휙' 그대로
   assert.ok(C.SFX_SWING.rate > 1 && C.SFX_SWING.cut > 0 && C.SFX_SWING.cut < 0.25);
-});
-
-test('타격 후보 (SFX_HIT_STYLE): 기본 A, 후보마다 약·중타 겹과 휘두름이 있고 묶음이 다 있음, 서로 다른 재료', () => {
-  const S = C.SFX_HIT_STYLES;
-  assert.equal(C.SFX_HIT_STYLE, 'A');
-  assert.equal(S.A, null);
-  const main = new Set();
-  for (const [id, st] of Object.entries(S)) {
-    if (!st) continue;
-    for (const k of ['light', 'medium']) {
-      assert.ok(Array.isArray(st[k]) && st[k].length, `${id} ${k}`);
-      for (const L of st[k]) {
-        assert.ok(L.bank || L.noise || L.tone, `${id} ${k} 겹 종류`);
-        if (L.bank) assert.ok(C.SFX_BANKS[L.bank], `${id} ${L.bank}`);
-        if (L.cut) assert.ok(L.cut < 0.15, `${id} ${k} 짧게`);
-      }
-    }
-    assert.ok(st.weaponRate > 0, id);
-    assert.ok(st.swing.rate > 0 && st.swing.cut > 0 && st.swing.cut < 0.25, `${id} 휘두름`);
-    main.add(st.medium.find((L) => L.bank)?.bank);
-  }
-  assert.equal(main.size, Object.values(S).filter(Boolean).length); // 후보마다 중심 재료가 다름
 });

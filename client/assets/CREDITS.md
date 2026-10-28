@@ -23,7 +23,7 @@ CC0 라 표기 의무는 없지만 만든 사람을 남겨 둔다.
 
 | 파일 (`sfx/` 안, 원래 이름 그대로) | 출처 | 라이선스 |
 |---|---|---|
-| `impactPunch_heavy_*`, `impactPlate_heavy_*`, `impactWood_*`, `impactMining_*`, `impactBell_heavy_*`, `impactGeneric_light_*`, `impactSoft_heavy_*`, `impactMetal_*`, `impactGlass_heavy_*` | Kenney, Impact Sounds 1.0 — https://kenney.nl/assets/impact-sounds | CC0 1.0 |
+| `impactPunch_*`, `impactPlate_heavy_*`, `impactWood_*`, `impactMining_*`, `impactBell_heavy_*`, `impactGeneric_light_*`, `impactSoft_heavy_*`, `impactMetal_*`, `impactGlass_heavy_*` | Kenney, Impact Sounds 1.0 — https://kenney.nl/assets/impact-sounds | CC0 1.0 |
 | `chop`, `knifeSlice*`, `cloth1~3`, `metalLatch`, `metalClick` | Kenney, RPG Audio 1.0 — https://kenney.nl/assets/rpg-audio | CC0 1.0 |
 | `explosionCrunch_000~002`, `lowFrequency_explosion_001`, `slime_000` | Kenney, Sci-fi Sounds 1.0 — https://kenney.nl/assets/sci-fi-sounds | CC0 1.0 |
 | `pluck_001~002`, `confirmation_001` | Kenney, Interface Sounds 1.0 — https://kenney.nl/assets/interface-sounds | CC0 1.0 |
@@ -38,11 +38,8 @@ OpenGameArt CC0 원본을 `tools/prep-sfx.mjs` 로 역할별로 다듬음 (앞 �
 
 | 파일 | 원본 팩 | 라이선스 |
 |---|---|---|
-| `hitCrack_1~3`, `hitPunch_3` | Thwack Sounds — Jordan Irwin (AntumDeluge) — https://opengameart.org/content/thwack-sounds | CC0 1.0 |
-| `hitPunch_1·2`, `hitHeavy_1` | Punch — qubodup — https://opengameart.org/content/punch | CC0 1.0 |
+| `hitHeavy_1` | Punch — qubodup — https://opengameart.org/content/punch | CC0 1.0 |
 | `hitHeavy_4`, `hitRing_1` | Impact — qubodup — https://opengameart.org/content/impact | CC0 1.0 |
-| `hitPunch_4·5`, `hitHeavy_2·3` | 37 hits/punches — independent.nu ljudbank — https://opengameart.org/content/37-hitspunches | CC0 1.0 |
+| `hitHeavy_2·3` | 37 hits/punches — independent.nu ljudbank — https://opengameart.org/content/37-hitspunches | CC0 1.0 |
 | `swishBlade_1~3` | 20 Sword Sound Effects — StarNinjas — https://opengameart.org/content/20-sword-sound-effects-attacks-and-clashes | CC0 1.0 |
 | `swishMid_1~4`, `swishHeavy_1~3` | Swishes Sound Pack — https://opengameart.org/content/swishes-sound-pack | CC0 1.0 |
-| `hitSlap_2`, `hitThump_1`, `hitTock_1·2` | 100 CC0 SFX — rubberduck — https://opengameart.org/content/100-cc0-sfx | CC0 1.0 |
-| `hitSlap_1·3`, `hitThump_2~4`, `hitTock_3` | 100 CC0 SFX #2 — rubberduck — https://opengameart.org/content/100-cc0-sfx-2 | CC0 1.0 |

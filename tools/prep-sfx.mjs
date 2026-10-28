@@ -1,48 +1,31 @@
 // 타격·휘두름 효과음 재료 다듬기 (2026-10-28): OpenGameArt CC0 원본 → client/assets/sfx/*.ogg
 //   node tools/prep-sfx.mjs <원본 폴더> [출력 폴더]
 // <원본 폴더> 에 아래 SOURCES 의 팩을 받아 풀어 둠 (7z 는 7z 나 py7zr 로). 파일마다 앞 무음 자르기 → 대역 거르기 → 길이 자르기·끝 페이드 → 최고점 -1dB 로 맞춤 → 모노 ogg.
-// 왜: 예전 타격(Kenney impactPunch)은 무게중심 ~100Hz·3kHz 위가 거의 없고 어택 30~40ms 라 '둔탁'. 스매시식 '팍!' = 1~3ms 고역 크랙 + 짧은 중역 펀치 + 짧은 꼬리 → 재료를 역할별로 나눠 다듬고 sound.js 가 겹쳐 틈
+// 쓰는 곳: 강타·치명 몸통 (hitHeavy·hitRing) 과 휘두름 (swish*). 약·중타 '퍽' 은 Kenney impactPunch 원본 그대로 (2026-10-28 재혁: 고역 크랙 '팍' 대신 예전 '퍽')
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
 // 팩 (전부 OpenGameArt, 페이지 라이선스 CC0)
 export const SOURCES = {
-  thwack: 'https://opengameart.org/content/thwack-sounds (Jordan Irwin / AntumDeluge, thwack-1.0.zip)',
   qubodupPunch: 'https://opengameart.org/content/punch (qubodup, qubodupPunch.7z)',
   qubodupImpact: 'https://opengameart.org/content/impact (qubodup, qubodupImpact.7z)',
   ljudbank: 'https://opengameart.org/content/37-hitspunches (independent.nu ljudbank, independent_nu_ljudbank-hits_and_punches.7z)',
   starninjasSword: 'https://opengameart.org/content/20-sword-sound-effects-attacks-and-clashes (StarNinjas, sword_-_starninjas_1.zip)',
   swishes: 'https://opengameart.org/content/swishes-sound-pack (swishes.zip)',
-  rubberduck1: 'https://opengameart.org/content/100-cc0-sfx (rubberduck, 100-CC0-SFX_0.zip)',
-  rubberduck2: 'https://opengameart.org/content/100-cc0-sfx-2 (rubberduck, sfx_100_v2.zip)',
 };
 
-// 역할: hp = 이 높이 아래를 깎음 (Hz), lp = 위를 깎음, len = 길이 (초), fade = 끝 페이드 길이, gate = 앞 무음으로 보고 자를 크기 (dB, 기본 -40: 원본 앞에 작은 잡음이 있으면 높임)
+// 역할: hp = 이 높이 아래를 깎음 (Hz), lp = 위를 깎음, len = 길이 (초), fade = 끝 페이드 길이
 const ROLES = {
-  crack: { hp: 1200, lp: 16000, len: 0.16, fade: 0.1 }, // 맞는 순간 '팍' (고역 찰싹)
-  punch: { hp: 110, lp: 7000, len: 0.22, fade: 0.12 }, // 짧은 몸통 '퍽' (중역, 웅웅 저음은 깎음)
   heavy: { hp: 45, lp: 9000, len: 0.5, fade: 0.25 }, // 강타 '콰앙' 몸통
   ring: { hp: 900, lp: 16000, len: 0.4, fade: 0.25 }, // 치명타 쨍
   swishBlade: { hp: 1500, lp: 16000, len: 0.3, fade: 0.15 }, // 칼 '슉' (높고 짧게)
   swishMid: { hp: 400, lp: 12000, len: 0.18, fade: 0.08 }, // 맨손·보통 '휙'
   swishHeavy: { hp: 150, lp: 8000, len: 0.24, fade: 0.1 }, // 도끼·망치 '훙'
-  // 타격 후보 (config SFX_HIT_STYLES): B 찰싹 '짝' / C 쿠션 '퐁·팍' / D 스포츠 '탁'
-  slap: { gate: -24, hp: 700, lp: 14000, len: 0.12, fade: 0.07 }, // 마른 손바닥 '짝'
-  thump: { gate: -24, hp: 90, lp: 5000, len: 0.16, fade: 0.1 }, // 속 빈 상자·쿠션 '퐁'
-  tock: { gate: -24, hp: 400, lp: 12000, len: 0.14, fade: 0.08 }, // 나무 블록 '탁'
 };
 
 // [출력 이름, 역할, 원본 (원본 폴더 기준)]
 export const FILES = [
-  ['hitCrack_1', 'crack', 'thwack-1.0/PCM/thwack-01.wav'],
-  ['hitCrack_2', 'crack', 'thwack-1.0/PCM/thwack-04.wav'],
-  ['hitCrack_3', 'crack', 'thwack-1.0/PCM/thwack-10.wav'],
-  ['hitPunch_1', 'punch', 'qubodupPunch/qubodupPunch/qubodupPunch01.flac'],
-  ['hitPunch_2', 'punch', 'qubodupPunch/qubodupPunch/qubodupPunch05.flac'],
-  ['hitPunch_3', 'punch', 'thwack-1.0/PCM/thwack-06.wav'],
-  ['hitPunch_4', 'punch', 'independent_nu_ljudbank-hits_and_punches/hits/hit15.mp3.flac'],
-  ['hitPunch_5', 'punch', 'independent_nu_ljudbank-hits_and_punches/hits/hit10.mp3.flac'],
   ['hitHeavy_1', 'heavy', 'qubodupPunch/qubodupPunch/qubodupPunch04.flac'],
   ['hitHeavy_2', 'heavy', 'independent_nu_ljudbank-hits_and_punches/hits/hit24.mp3.flac'],
   ['hitHeavy_3', 'heavy', 'independent_nu_ljudbank-hits_and_punches/hits/hit25.mp3.flac'],
@@ -58,16 +41,6 @@ export const FILES = [
   ['swishHeavy_1', 'swishHeavy', 'swishes/swishes/swish-1.wav'],
   ['swishHeavy_2', 'swishHeavy', 'swishes/swishes/swish-5.wav'],
   ['swishHeavy_3', 'swishHeavy', 'swishes/swishes/swish-7.wav'],
-  ['hitSlap_1', 'slap', 'sfx_100_v2/sfx100v2_misc_20.ogg'],
-  ['hitSlap_2', 'slap', '100-CC0-SFX_0/other_06.ogg'],
-  ['hitSlap_3', 'slap', 'sfx_100_v2/sfx100v2_hit_03.ogg'],
-  ['hitThump_1', 'thump', '100-CC0-SFX_0/wooded_box_open.ogg'],
-  ['hitThump_2', 'thump', 'sfx_100_v2/sfx100v2_wood_04.ogg'],
-  ['hitThump_3', 'thump', 'sfx_100_v2/sfx100v2_misc_08.ogg'],
-  ['hitThump_4', 'thump', 'sfx_100_v2/sfx100v2_misc_01.ogg'],
-  ['hitTock_1', 'tock', '100-CC0-SFX_0/wooden_02.ogg'],
-  ['hitTock_2', 'tock', '100-CC0-SFX_0/wooden_03.ogg'],
-  ['hitTock_3', 'tock', 'sfx_100_v2/sfx100v2_wood_01.ogg'],
 ];
 
 function peakDb(file, filters) {
@@ -95,7 +68,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const file = path.join(src, rel);
     const base = [
       'aformat=channel_layouts=mono',
-      `silenceremove=start_periods=1:start_threshold=${r.gate ?? -40}dB:start_silence=0.002`,
+      'silenceremove=start_periods=1:start_threshold=-40dB:start_silence=0.002',
       `highpass=f=${r.hp}`,
       `lowpass=f=${r.lp}`,
       `atrim=0:${r.len}`,

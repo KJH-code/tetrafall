@@ -8,7 +8,7 @@ import { Music } from '/music.js';
 import { loadModels } from '/models.js';
 import { NetStatus } from '/net.js';
 import { KO } from '/ko.js';
-import { hitTier } from '/hit-tier.js';
+import { hitTier, hitStep } from '/hit-tier.js';
 import { portrait, setPortraitModels } from '/portrait.js';
 
 const $ = (id) => document.getElementById(id);
@@ -795,7 +795,7 @@ function feelEvent(e) {
       fx.ring(chest, e.kind === 'projectile' ? 0xffee40 : heavy ? 0xff8a10 : 0xffffff, heavy ? 3.4 : 2.4);
       fx.hitSquash(e.target);
       renderer.hitReact(e.target, dir, { heavy, crit: e.crit, kind: e.kind }); // TABS 식 몸: 맞은 방향으로 휘청
-      const weapon = { char: a?.char, form: a?.bard?.form, tier: hitTier(e) }; // 때린 캐릭터 무기 소리 (바드는 폼) + 세기 단계 (약·중·강·치명)
+      const weapon = { char: a?.char, form: a?.bard?.form, tier: hitTier(e), step: hitStep(e) }; // 때린 캐릭터 무기 소리 (바드는 폼) + 세기 단계 (약·중·강·치명) + 콤보 순번
       if (e.target === myId) {
         sound.play('hurt');
         sound.play('hit', { dist: 0, ...weapon });

@@ -177,18 +177,6 @@ export class Sound {
     return true;
   }
 
-  // 약·중타·휘두름 소리 후보 (config SFX_HIT_STYLE, hitStyle 로 덮어씀: 비교 녹음용). 'A' 면 null (예전 그대로)
-  style() {
-    return C.SFX_HIT_STYLES[this.hitStyle || C.SFX_HIT_STYLE] || null;
-  }
-
-  // 후보 겹 하나: 효과음 묶음 또는 합성 잡음·음
-  layer(L, out) {
-    if (L.bank) this.sample(L.bank, { vol: L.vol, rate: L.rate, cut: L.cut, delay: L.delay, out });
-    else if (L.noise) this.noise({ ...L.noise, out });
-    else if (L.tone) this.tone({ ...L.tone, out });
-  }
-
   // 합성 기타 (바드 타격): 화음을 빠르게 긁음. metal 이면 낮고 찌그러진 파워 코드
   strum(out, vol, metal = false) {
     const t0 = this.now();
@@ -225,8 +213,8 @@ export class Sound {
   }
 
   // name: 이벤트 소리. dist = 내 몸에서 거리 (0 = 내 소리), pos = 소리 난 곳 (있으면 내 귀 기준 거리·방향),
-  // char = 그 소리를 낸 캐릭터 (무기 소리), strong = 내가 때림, form = 바드 폼, tier = 타격 세기 단계 (light·medium·heavy·crit, hitTier)
-  play(name, { dist, pos, strong = false, char, form, tier } = {}) {
+  // char = 그 소리를 낸 캐릭터 (무기 소리), strong = 내가 때림, form = 바드 폼, tier = 타격 세기 단계 (light·medium·heavy·crit, hitTier), step = 평타 콤보 순번 (1·2·3, hitStep)
+  play(name, { dist, pos, strong = false, char, form, tier, step } = {}) {
     if (!this.ready()) return;
     this.det = (1 + (Math.random() * 2 - 1) * C.SFX_DETUNE) * this.slowRate;
     const o = this.bus(dist, pos, name === 'final' ? this.direct : this.master); // 마지막 킬 소리는 자기 슬로모션에 안 먹먹해지게
@@ -246,37 +234,26 @@ export class Sound {
         break;
       case 'swing': { // 휘두름: 짧고 날카로운 '휙' (무기 크기별 묶음·높낮이) + 보통·무거운 무기는 바람 가르는 고역 한 겹
         const sw = w || { swing: 'swishMid', rate: 1 };
-        const st = this.style();
-        if (st) { // 후보 B·C·D: 휘두름 높낮이·길이 + 합성 바람
-          const S = st.swing;
-          this.sample(sw.swing, { rate: sw.rate * S.rate, cut: S.cut, vol: S.vol, out: o });
-          if (S.air) this.noise({ ...S.air, out: o });
-          break;
-        }
         const S = C.SFX_SWING;
         const rate = sw.rate * S.rate;
         this.sample(sw.swing, { rate, cut: S.cut, out: o });
         if (sw.swing !== 'swishBlade') this.sample('swishBlade', { rate: rate * 0.7, vol: C.SFX_SWING_AIR, cut: S.cut, out: o });
         break;
       }
-      case 'hit': { // 맞음 (스매시식): 고역 크랙 '팍' + 짧은 펀치 '퍽' (+ 강타 몸통) → 무기 겹은 얇게 → 강타·치명타는 히트스톱이 풀릴 때 '콰앙'
-        const T = C.SFX_HIT_TIERS[tier] || C.SFX_HIT_TIERS[strong ? 'medium' : 'light'];
-        const r = T.rate;
-        const cut = T.cut || 0; // 약·중타: 꼬리를 짧게 (통통 가볍게)
-        const st = this.style();
-        const lm = st && !T.release && (st[tier] || st[strong ? 'medium' : 'light']);
-        if (lm) { // 후보 B·C·D 의 약·중타: 그 후보의 겹 + 얇은 무기 겹 (강타·치명은 아래 공통)
-          for (const L of lm) this.layer(L, o);
-          if (w && w.hit === 'strum') this.strum(o, 0.6, form === 'metal');
-          else if (w) this.sample(w.hit, { vol: C.SFX_WEAPON_LAYER, rate: st.weaponRate, cut: cut && cut * 1.5, out: o });
-          break;
+      case 'hit': { // 맞음 '퍽' (Kenney impactPunch, 17bb4e8 그대로): 평타 콤보는 1타 < 2타 < 3타 점점 크고 낮고 몸통 있게, 마무리·묵직한 스킬은 '콰앙' (히트스톱이 풀릴 때 날아감)
+        const steps = C.SFX_HIT_COMBO;
+        const T = C.SFX_HIT_TIERS[tier] || steps[Math.min(steps.length, Math.max(1, step || (strong ? 2 : 1))) - 1];
+        const v = tier === 'light' ? C.SFX_HIT_LIGHT : 1; // 표창·투사체는 조금 작게
+        if (!this.sample(T.bank, { vol: T.vol * v, rate: T.rate, out: o })) {
+          this.tone({ freq: 190, freqEnd: 55, dur: 0.14, type: 'square', vol: 0.4 * T.vol * v, out: o });
+          this.noise({ dur: 0.16, vol: 0.5 * T.vol * v, freq: 2600, freqEnd: 300, out: o });
         }
-        if (T.crack) this.sample('hitCrack', { vol: T.crack, rate: r, cut, out: o });
-        if (T.punch) this.sample('hitPunch', { vol: T.punch, rate: r * (T.punchRate || 1), cut, out: o });
-        if (T.heavy) this.sample('hitHeavy', { vol: T.heavy, rate: r, out: o });
+        if (T.body) this.tone({ ...C.SFX_HIT_BODY, vol: T.body * v, out: o });
+        if (T.heavy) this.sample('hitHeavy', { vol: T.heavy, rate: T.rate, out: o });
         if (T.ring) this.sample('hitRing', { vol: T.ring, out: o });
-        if (w && w.hit === 'strum') this.strum(o, 0.6, form === 'metal');
-        else if (w) this.sample(w.hit, { vol: C.SFX_WEAPON_LAYER, rate: T.weaponRate || 1, cut: cut && cut * 1.5, out: o });
+        if (w && w.hit === 'strum') this.strum(o, T.weapon * 1.1 * v, form === 'metal');
+        else if (w) this.sample(w.hit, { vol: T.weapon * v, out: o });
+        this.tone({ ...C.SFX_HIT_TICK, type: 'triangle', out: o }); // 짧은 '딱': 맞는 순간을 또렷하게
         if (T.release) {
           // 날아감: 낮은 쾅 + 멀어지는 바람 (히트스톱 길이만큼 늦게)
           const d = T.release / 1000;
@@ -289,8 +266,9 @@ export class Sound {
       case 'crit': // 치명타 표시음: 종 딩 (타격 자체는 hit 의 crit 단계)
         if (!this.sample('bell', { rate: 1.4, out: o })) this.tone({ freq: 2200, freqEnd: 1600, dur: 0.18, type: 'triangle', vol: 0.3, out: o });
         break;
-      case 'hurt': // 내가 맞음: 크랙 뒤에 몸에 울리는 짧은 저음 (크랙을 덮지 않게 조금 늦게·짧게)
-        this.tone({ freq: 120, freqEnd: 50, dur: 0.15, type: 'sine', vol: 0.35, delay: 0.012, out: o });
+      case 'hurt': // 내가 맞음: 낮고 묵직하게 (무게감 저음 + 묵직한 퍽)
+        this.sample('punchH', { rate: 0.8, out: o });
+        this.tone({ freq: 140, freqEnd: 40, dur: 0.28, type: 'sine', vol: 0.7, out: o });
         break;
       case 'fire': // 쏨: 사냥꾼은 석궁 줄 팅, 나머지는 합성 탕
         if (w && w.shot && this.sample(w.shot, { rate: 0.9, out: o })) {
@@ -360,7 +338,6 @@ export class Sound {
         break;
       case 'koCrush': // KO 압사: 묵직한 쾅 (히트스톱 순간) → 멈춤이 풀릴 때 부스러기
         this.sample('punchH', { rate: 0.55, out: o });
-        this.sample('hitCrack', { rate: 0.8, out: o });
         this.sample('boomLow', { rate: 1.2, vol: 0.8, out: o });
         this.tone({ freq: 60, freqEnd: 24, dur: 0.5, type: 'sine', vol: strong ? 0.8 : 0.5, out: o });
         this.sample('mining', { rate: 0.8, delay: C.SFX_KO.crushTail, out: o });
