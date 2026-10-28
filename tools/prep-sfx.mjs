@@ -65,8 +65,16 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     console.error('사용법: node tools/prep-sfx.mjs <원본 폴더> [출력 폴더]');
     process.exit(1);
   }
+  if (spawnSync('ffmpeg', ['-version']).error) {
+    console.error('ffmpeg 가 없습니다. 설치하고 PATH 에 넣어 주세요 (Windows: winget install ffmpeg / macOS: brew install ffmpeg / Linux: apt install ffmpeg)');
+    process.exit(1);
+  }
   fs.mkdirSync(out, { recursive: true });
   for (const [name, role, rel] of FILES) {
+    if (!fs.existsSync(path.join(src, rel))) {
+      console.error(`원본 없음: ${rel} — SOURCES 의 팩을 <원본 폴더> 에 풀어 주세요`);
+      process.exit(1);
+    }
     const r = ROLES[role];
     const file = path.join(src, rel);
     const base = [
