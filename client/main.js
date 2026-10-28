@@ -10,6 +10,7 @@ import { NetStatus } from '/net.js';
 import { KO } from '/ko.js';
 import { hitTier, hitStep } from '/hit-tier.js';
 import { portrait, setPortraitModels } from '/portrait.js';
+import { screenOf, wipeKind, wipePlan } from '/shared/wipe.js';
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $('status');
@@ -946,7 +947,7 @@ function connect() {
       room = msg.room;
       pendingJoin = false;
       setUrlRoom(room.code); // 새로고침해도 같은 방으로
-      roomsEl.classList.add('hidden');
+      roomsEl.classList.add('leaving'); // 방 목록은 전환 띠가 화면을 다 덮을 때 숨김 (updateScreen). 그동안 클릭은 안 먹음
       statusEl.classList.remove('hidden');
       const sp = C.SPAWN_POINTS[msg.slot % C.SPAWN_POINTS.length];
       input.setYawPitch(sp.yaw, 0);
@@ -964,6 +965,7 @@ function connect() {
       state = msg;
       if (msg.room) room = msg.room;
       onState();
+      updateScreen(); // 화면 전환은 스냅샷을 받는 즉시 시작 (다음 그리기 프레임이 무거워도 띠는 컴포지터에서 돎)
       for (const e of msg.events || []) handleEvent(e);
     }
   };
@@ -1006,7 +1008,7 @@ function setUrlRoom(code) {
 const roomLink = (code) => (room && room.code === code && room.link) || `${location.origin}${location.pathname}?room=${code}`; // 터널 주소가 있으면 그걸로 (서버 room.link)
 
 function showRooms(message) {
-  roomsEl.classList.remove('hidden');
+  roomsEl.classList.remove('hidden', 'leaving');
   statusEl.classList.add('hidden');
   if (message !== undefined) roomsMsg.textContent = message;
   if (document.activeElement !== roomsNick) roomsNick.value = nameInput.value;
@@ -1516,6 +1518,12 @@ const livePlayers = () => state.players.filter((p) => !p.spectator && !p.dummy).
 let overAt = -Infinity; // 이 브라우저에서 판이 끝난 시각 (판 끝에 들어온 사람은 결과 연출 없이 바로 대기실 판)
 // 판 끝 결과 연출 중인가: 끝나고 RESULTS_HERO_MS 동안은 가운데 결과만 (대기실 판·위 승수 줄 없이)
 function resultsHero() {
+  if (wipeFrom === 'results' && uiHold()) return true; // 결과 → 대기실 띠가 덮기 전까지는 결과 그대로 (그리기만)
+  return resultsHeroNow();
+}
+// 시간으로만 본 결과 연출 여부 (화면 전환 판단용 — 위의 '띠 덮기 전 그대로' 를 빼야 전환이 되풀이되지 않음)
+function resultsHeroNow() {
+  if (debug.holdResults && state && state.phase === 'over' && overAt > 0) return true; // 확인용: 결과 연출을 붙잡아 둠 (gif 찍기)
   return !!state && state.phase === 'over' && !inPractice() && performance.now() - overAt < C.RESULTS_HERO_MS;
 }
 // 아래 플레이어 판: 판 중 + 판 끝 결과 연출 동안 (그 뒤엔 대기실과 같은 모습 — 승수는 위 줄, 승자는 대기실 판 글)
@@ -1617,8 +1625,104 @@ function updateResults() {
     `<table><tr><th>이름</th><th>캐릭터</th><th>${kills ? '킬' : '승'}</th><th>피해</th><th>결과</th></tr>${rows}</table>`;
 }
 
+// ---------- 화면 전환 슬래시 (스매시식, shared/wipe.js) ----------
+// 메뉴 → 방, 대기실 → 판 시작, 판 끝 → 결과, 결과 → 대기실 판. 비스듬한 띠가 쓸고 지나가며 다 덮은 순간(coverMs)에 화면이 바뀜.
+// 띠는 화면만 가림 (pointer-events 없음) — 입력·카운트다운은 서버 시간 그대로. 그래픽 낮춤·움직임 줄이기면 짧은 페이드
+const wipeEl = $('wipe');
+let screenNow = null; // 지난 프레임의 화면 ('menu'·'lobby'·'game'·'results')
+let wipeCoverAt = -Infinity; // 띠가 화면을 다 덮는 시각 — 그 전까지는 대기실 판·결과·아래 판을 지난 모습으로 둠
+let wipeTimer = null;
+let wipeNow = null; // 지금 띠 { plan, anims } (확인용 __tf.wipeSeek 이 멈춰 볼 때 씀)
+let wipeSeekT = null;
+let wipeFrom = null; // 지금 띠가 떠나는 화면
+let wipeHoldState = null; // 띠가 덮기 전까지 HUD 가 그리는 스냅샷 (전환 직전) // 확인용: 띠를 이 시각(ms)에 멈춰 둠 — null 이면 보통대로 시간이 흐름
+const reducedMotion = () => settings.lowGfx || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+function uiHold() {
+  if (wipeSeekT !== null && wipeNow) return wipeSeekT < wipeNow.plan.coverMs;
+  return performance.now() < wipeCoverAt;
+}
+function playWipe(kind) {
+  const plan = wipePlan(kind, reducedMotion());
+  if (!plan) return null;
+  for (const a of wipeEl.getAnimations({ subtree: true })) a.cancel();
+  wipeSeekT = null;
+  wipeEl.textContent = '';
+  wipeEl.className = `on ${plan.kind}`;
+  if (plan.fade) {
+    const f = document.createElement('div');
+    f.className = 'fade';
+    wipeEl.append(f);
+    f.animate([{ opacity: 0 }, { opacity: 1, offset: C.UI_WIPE_IN }, { opacity: 0 }], { duration: plan.ms, easing: 'ease-out', fill: 'both' });
+  } else {
+    plan.bands.forEach((b, i) => {
+      const el = document.createElement('div');
+      el.className = `band k${i}${i === plan.bands.length - 1 ? ' main' : ''}`;
+      el.append(document.createElement('i')); // 기울기·색은 index.html (#wipe .band i)
+      wipeEl.append(el);
+      el.animate(
+        b.frames.map((f) => ({ offset: f.offset, transform: `translateX(${f.x}vw)` })),
+        { duration: b.ms, delay: b.delay, easing: 'cubic-bezier(.6,0,.3,1)', fill: 'both' }
+      );
+    });
+  }
+  wipeNow = { plan, anims: wipeEl.getAnimations({ subtree: true }) };
+  wipeCoverAt = performance.now() + plan.coverMs;
+  document.body.classList.add('wipe-hold'); // 덮기 전 지난 화면(대기실 판 등)은 클릭이 안 먹게 — 화면 클릭(조작 잡기)은 그대로
+  clearTimeout(wipeTimer);
+  wipeTimer = setTimeout(endWipe, plan.ms);
+  return plan;
+}
+function endWipe() {
+  if (wipeSeekT !== null) return; // 확인용으로 멈춰 둔 띠
+  wipeEl.className = '';
+  wipeEl.textContent = '';
+  wipeNow = null;
+}
+// 확인용 (Playwright gif): 방금 띠를 t ms 에 멈추고 화면 교체도 그 시각 기준으로. t = null 이면 풀어서 끝냄
+function wipeSeek(t) {
+  if (!wipeNow) return null;
+  wipeSeekT = t;
+  for (const a of wipeNow.anims) {
+    if (t === null) a.finish();
+    else {
+      a.pause();
+      a.currentTime = t;
+    }
+  }
+  if (t === null) endWipe();
+  return wipeNow ? wipeNow.plan : null;
+}
+function updateScreen() {
+  const next = screenOf({ inRoom: !!(myId && state), phase: state && state.phase, hero: resultsHeroNow() });
+  const kind = wipeKind(screenNow, next);
+  if (kind) {
+    wipeFrom = screenNow;
+    wipeHoldState = screenNow === 'results' ? state : lastState; // 결과 → 대기실은 시간으로 바뀌어 지금 스냅샷, 나머지는 바뀌기 직전 스냅샷
+    playWipe(kind);
+  }
+  screenNow = next;
+  if (!uiHold()) document.body.classList.remove('wipe-hold');
+  // 방에 들어감: 방 목록·메뉴 장면은 띠가 다 덮을 때 치움
+  if (next !== 'menu' && roomsEl.classList.contains('leaving') && !uiHold()) {
+    roomsEl.classList.add('hidden');
+    roomsEl.classList.remove('leaving');
+  }
+}
+
 // ---------- HUD ----------
+// 화면 전환 띠가 다 덮기 전엔 HUD 를 전환 직전 스냅샷으로 그림 (대기실 판 등이 띠 밑에서 바뀌게). 게임 진행·입력은 진짜 state 그대로
 function updateHud() {
+  if (uiHold() && wipeHoldState) {
+    const real = state;
+    state = wipeHoldState;
+    try {
+      drawHud();
+    } finally {
+      state = real;
+    }
+  } else drawHud();
+}
+function drawHud() {
   if (!state || closed) return;
   const p = me();
   const isHost = state.hostId === myId;
@@ -2385,7 +2489,9 @@ function frame(now) {
     music.update(state); // 맵 테마별 곡
     const vic = state && state.phase === 'over' && performance.now() < victory.until ? victory.id : null;
     const selfie = p && p.alive && p.emote >= 0 && !vic ? myId : null; // 내 이모트는 앞에서 보이게
-    renderer.render(state, myId, dt, view, { yaw: input.yaw, pitch: input.pitch, follow: spectating() && !spec.overview ? spec.target : null, dist: spec.dist, overviewDist: spec.overviewDist, victory: vic, selfie });
+    updateScreen(); // 시간으로 바뀌는 전환 (결과 연출 → 대기실 판)
+    // 방 목록이 떠 있는 동안은 메뉴 3D 장면 그대로 (방에 들어가도 전환 띠가 다 덮을 때 진짜 장면으로 바뀜)
+    renderer.render(roomsEl.classList.contains('hidden') ? state : null, myId, dt, view, { yaw: input.yaw, pitch: input.pitch, follow: spectating() && !spec.overview ? spec.target : null, dist: spec.dist, overviewDist: spec.overviewDist, victory: vic, selfie });
     sound.update(renderer.camera.matrixWorld.elements, state, dt); // 귀(카메라) 위치·방향 + 위험 액체 지속음
     updateHud();
   } catch (err) {
@@ -2410,6 +2516,8 @@ const debug = {
   sound,
   music,
   ko,
+  wipeSeek, // 화면 전환 띠를 그 시각에 멈춤 (gif 찍기)
+  holdResults: false, // true 면 판 끝 결과 연출이 시간으로 안 끝남 (gif 찍기). false 로 돌리면 그때 대기실 판으로
   // 클릭과 같은 경로로 행동 보내기 (로컬 팔 휘두르기·소리 포함)
   act: (action) => {
     onLocalAction(action);
