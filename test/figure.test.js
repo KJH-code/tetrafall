@@ -135,3 +135,14 @@ test('건축가 (땅딸막 노동자): 보통 몸보다 키 작고 다리 짧고
   assert.ok(height(b) > height(B[C.FIGURE_BODY.cannon]), '대포수보다는 큼');
   assert.ok(C.RAGDOLL_WEIGHT[C.FIGURE_BODY.builder] > C.RAGDOLL_WEIGHT.lean, '무거움');
 });
+
+test('바드 (호리호리 음유시인): 보통 몸보다 다리 길고 가늘고 어깨 좁고, 가벼움', () => {
+  const b = B[C.FIGURE_BODY.bard];
+  const lean = B.lean;
+  assert.ok(legs(b) > legs(lean) * 1.05, '다리 김');
+  assert.ok(b.legR < lean.legR && b.armR < lean.armR, '가는 팔다리');
+  assert.ok(b.shoulderY < lean.shoulderY, '좁은 어깨');
+  assert.ok(height(b) > height(B[C.FIGURE_BODY.builder]) * 1.2, '건축가와 실루엣이 확 다름');
+  assert.ok(C.RAGDOLL_WEIGHT[C.FIGURE_BODY.bard] < C.RAGDOLL_WEIGHT.lean, '가벼움');
+  assert.ok(C.BARD_CAPE_LEN > 0 && C.BARD_HOOD_H > 0, '플레이어 색 망토·두건');
+});

@@ -1137,6 +1137,8 @@ export const CONFIG = {
     slim: { foot: 0.06, shin: 0.37, thigh: 0.37, torso: 0.47, chestR: 0.14, waistR: 0.11, depth: 0.72, head: 0.27, headW: 0.165, sink: -0.05, upper: 0.3, lower: 0.27, armR: 0.042, foreR: 0.038, legR: 0.058, hand: 0.045, shoulderY: 0.17, hipY: 0.07, hunch: 0.05, spread: 0.24 },
     // 땅딸막 노동자 (건축가): 키 작고 다리 짧음, 넓은 어깨·두꺼운 팔뚝, 배 살짝 (2026-10-28 재혁: 마리오·밥 더 빌더 느낌)
     sturdy: { foot: 0.07, shin: 0.25, thigh: 0.25, torso: 0.55, chestR: 0.235, waistR: 0.22, depth: 0.84, head: 0.28, headW: 0.21, sink: 0.04, upper: 0.25, lower: 0.25, armR: 0.068, foreR: 0.076, legR: 0.09, hand: 0.068, shoulderY: 0.29, hipY: 0.1, hunch: 0.05, bend: 0.12, spread: 0.36 },
+    // 호리호리 음유시인 (바드): 가늘고 다리 김, 좁은 어깨, 곧은 자세 (2026-10-28 재혁: 로빈후드)
+    lithe: { foot: 0.06, shin: 0.41, thigh: 0.4, torso: 0.45, chestR: 0.14, waistR: 0.11, depth: 0.72, head: 0.27, headW: 0.17, sink: -0.06, upper: 0.29, lower: 0.27, armR: 0.04, foreR: 0.036, legR: 0.056, hand: 0.045, shoulderY: 0.165, hipY: 0.068, hunch: -0.04, spread: 0.18 },
     // 팔 긴 보통 몸 (갈고리)
     reach: { foot: 0.06, shin: 0.34, thigh: 0.34, torso: 0.5, chestR: 0.16, waistR: 0.13, depth: 0.74, head: 0.28, headW: 0.175, sink: -0.04, upper: 0.34, lower: 0.32, armR: 0.05, foreR: 0.046, legR: 0.066, hand: 0.05, shoulderY: 0.19, hipY: 0.075, hunch: 0.06, spread: 0.26 },
     // 구부정한 보통 몸 (사냥꾼): 고개를 앞으로 빼고 냄새 맡는 자세
@@ -1149,7 +1151,7 @@ export const CONFIG = {
     drum: { foot: 0.07, shin: 0.22, thigh: 0.22, torso: 0.74, chestR: 0.31, waistR: 0.31, depth: 0.86, barrel: true, head: 0.27, headW: 0.2, sink: 0.05, upper: 0.27, lower: 0.25, armR: 0.08, foreR: 0.08, legR: 0.09, hand: 0.07, shoulderY: 0.31, hipY: 0.12, hunch: 0.04, spread: 0.45 },
   
   },
-  FIGURE_BODY: { tank: 'drum', ninja: 'slim', builder: 'sturdy', hook: 'reach', hunter: 'stalk', cannon: 'stout', berserker: 'brute', bard: 'lean' }, // 캐릭터별 체형 (client/figure.js BODIES). 2026-10-24 재혁: 탱크는 통통한 쪽
+  FIGURE_BODY: { tank: 'drum', ninja: 'slim', builder: 'sturdy', hook: 'reach', hunter: 'stalk', cannon: 'stout', berserker: 'brute', bard: 'lithe' }, // 캐릭터별 체형 (client/figure.js BODIES). 2026-10-24 재혁: 탱크는 통통한 쪽
   FIGURE_SCALE: 1.15, // 몸 전체 크기 배율 (1 이면 로봇과 키가 같아도 가늘어서 작아 보임). 판정 상자는 그대로
   // 1인칭 팔·무기 (client/viewmodel.js): 내 몸을 복제해 팔·무기만 따로 그림
   VM_FOV: 62, // 뷰모델 카메라 화각 (필드 화각과 따로: 넓은 화각에서도 팔이 늘어나 보이지 않게)
@@ -1200,6 +1202,8 @@ export const CONFIG = {
   BERSERK_RAGE_PCT: 120, // 광전사 분노 화면: 피해 % 가 이만큼이면 가장 화남 (눈 충혈·눈썹·핏줄·빡침 표시·김. 몸 색은 안 바꿈: 플레이어 구분 우선)
   BERSERK_STEAM_RATE: 14,
   BARD_LUTE_SCALE: 1.35, // 류트 크기 배율 (가슴 앞에서 작아 보여서)
+  BARD_HOOD_H: 0.2, // 음유시인 어깨 두건 깃 높이 (플레이어 색)
+  BARD_CAPE_LEN: 0.62, // 음유시인 망토 길이 (몸 비율 전 칸, 어깨에서 무릎 위까지). 플레이어 색 (멀리서 누군지 보이게)
   BARD_HEADBANG_HZ: 2.2,
   BARD_GLIDE_TURNS_PER_S: 1.2,
   BARD_NOTE_COLOR: 0x6af08a, // 류트 음파 음표 색 (초록)
@@ -1266,7 +1270,7 @@ export const CONFIG = {
   RAGDOLL_HIT_UP: 0.45, // 충격의 위쪽 비율
   RAGDOLL_SLUMP: 0.55, // 힘이 다 빠지면 골반이 판정 위치보다 이만큼 (칸) 아래로 처질 수 있음 → 바닥에 쓰러져 누움, 힘이 돌아오면 일어남
   RAGDOLL_LIMP_LIFT: 0.25, // 다 처졌을 때 골반이 받는 중력 보정 비율 (0 이면 그대로 떨어짐)
-  RAGDOLL_WEIGHT: { drum: 1.6, brute: 1.3, stout: 1.3, sturdy: 1.25, lean: 1, reach: 1, stalk: 0.95, slim: 0.75 }, // 체형별 무게 (FIGURE_BODY). 무거울수록 맞을 때 덜 튐 (탱크 무겁게, 닌자 가볍게)
+  RAGDOLL_WEIGHT: { drum: 1.6, brute: 1.3, stout: 1.3, sturdy: 1.25, lean: 1, lithe: 0.85, reach: 1, stalk: 0.95, slim: 0.75 }, // 체형별 무게 (FIGURE_BODY). 무거울수록 맞을 때 덜 튐 (탱크 무겁게, 닌자 가볍게)
   // 관절 각도 제한 (원뿔): rotY = 가운데 방향을 figure 관절 rotation.y 부호로 기울인 각, cone = 가운데에서 벗어날 수 있는 각, twist = 비틀림 한계 (없으면 제한 없음).
   // 무릎은 뒤로만, 팔꿈치·엉덩이는 앞으로 많이 (평소 자세 범위는 다 들어가게 넉넉히). 어깨는 제한 없음 (팔 휘두름)
   RAGDOLL_LIMITS: {
