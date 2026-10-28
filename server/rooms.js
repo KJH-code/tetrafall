@@ -1,7 +1,10 @@
 // 방: 서버 하나에 게임 여러 개. 방 = 게임 + 들어온 접속 + 로그 파일.
 // 접속은 처음엔 방 밖(목록 화면)에 있고, 방을 만들거나 코드로 들어간다. 나가거나 내보내지면 다시 방 밖으로.
-// 사람이 0명이 되면 방을 바로 없앤다 (봇도 같이, 승수도 사라짐).
+// 사람이 0명이 되면 방을 없앤다 (봇도 같이, 승수도 사라짐).
+// 재접속 (2026-10-28): 들어오면 자리 토큰 (welcome.token). 연결이 끊기면 자리를 RECONNECT_GRACE_MS 동안 유지 (판 중이면 봇 대리),
+// 그 안에 { type: 'rejoin', code, token } 으로 오면 같은 자리 (같은 플레이어 id). 지나면 예전처럼 나감. 같은 토큰이 또 오면 새 접속이 자리를 가져감.
 // 소켓은 { readyState, OPEN, send(text) } 만 쓴다 (테스트는 가짜 소켓).
+import { randomBytes } from 'node:crypto';
 import { CONFIG as C } from '../shared/config.js';
 import { Game } from './game.js';
 
@@ -53,9 +56,71 @@ export class Rooms {
     return conn;
   }
 
+  // 연결 끊김: 방 안이면 자리 유지 (setAway), 방 밖이면 그냥 지움
   disconnect(conn) {
-    if (conn.room) this.leave(conn, null);
+    const room = conn.room;
+    const seat = room && room.seats.get(conn.id);
+    if (seat && seat.conn === conn) {
+      seat.conn = null;
+      seat.awayAt = room.game.time;
+      room.conns.delete(conn.id);
+      conn.room = null;
+      room.game.setAway(conn.id, true);
+    } else if (room) this.leave(conn, null);
     this.conns.delete(conn);
+  }
+
+  // 토큰으로 같은 자리에 다시 붙기. 방·토큰이 안 맞거나 자리 유지 시간이 지났으면 rejoinError (화면은 보통 들어가기로 다시)
+  rejoin(conn, rawCode, token) {
+    const code = String(rawCode ?? '').trim().toUpperCase();
+    const room = this.rooms.get(code);
+    const found = room && typeof token === 'string' ? [...room.seats.entries()].find(([, s]) => s.token === token) : null;
+    if (!found) {
+      send(conn.ws, { type: 'rejoinError', code, reason: '자리가 없습니다 (시간이 지났거나 방이 없어짐)' });
+      return false;
+    }
+    const [id, seat] = found;
+    const old = seat.conn;
+    if (old) {
+      // 같은 토큰이 다른 창에서 또 옴: 새 창이 자리를 가져감, 옛 창은 방 밖 목록으로 (새 id — 같은 id 로 다른 방에 못 들어가게)
+      room.conns.delete(old.id);
+      old.room = null;
+      old.id = this.nextId++;
+      send(old.ws, { type: 'left', reason: '다른 창에서 이 자리로 들어왔습니다', replaced: true });
+      this.sendList(old);
+      room.game.log(`  [복귀] ${room.game.players.get(id).name} 다른 창으로 옮김`);
+    }
+    const awayMs = seat.awayAt === null ? 0 : room.game.time - seat.awayAt;
+    conn.id = id;
+    conn.room = room;
+    room.conns.set(id, conn);
+    seat.conn = conn;
+    seat.awayAt = null;
+    room.game.setAway(id, false);
+    if (!old) room.game.log(`  (복귀까지 ${(awayMs / 1000).toFixed(1)}초)`); // npm run stats 가 셈
+    const player = room.game.players.get(id);
+    send(conn.ws, { type: 'welcome', id, slot: player.slot, name: player.name, room: this.roomInfo(room), token: seat.token, rejoined: true });
+    send(conn.ws, { ...room.game.snapshot(true), room: this.roomInfo(room) });
+    return true;
+  }
+
+  // 자리 토큰 (추측 불가): 이 방 안에서 겹치지 않게
+  newSeat(room, conn) {
+    const token = randomBytes(C.RECONNECT_TOKEN_BYTES).toString('hex');
+    room.seats.set(conn.id, { token, conn, awayAt: null });
+    return token;
+  }
+
+  // 끊긴 자리 중 유지 시간이 지난 것: 예전처럼 나감 (판 중이면 접속 끊김 사망), 사람이 0명이면 방도 없앰
+  expireSeats(room) {
+    for (const [id, seat] of room.seats) {
+      if (seat.awayAt === null || room.game.time - seat.awayAt < C.RECONNECT_GRACE_MS) continue;
+      const p = room.game.players.get(id);
+      room.game.log(`  [끊김 만료] ${p ? p.name : id} ${C.RECONNECT_GRACE_MS / 1000}초 안에 안 돌아옴`);
+      room.seats.delete(id);
+      room.game.removePlayer(id);
+    }
+    if (room.game.humanCount() === 0) this.close(room);
   }
 
   message(conn, msg) {
@@ -69,6 +134,7 @@ export class Rooms {
       if (msg.type === 'create') this.create(conn, msg.name, msg.nick);
       else if (msg.type === 'practice') this.createPractice(conn, msg.nick, msg.char);
       else if (msg.type === 'join') this.join(conn, msg.code);
+      else if (msg.type === 'rejoin') this.rejoin(conn, msg.code, msg.token);
       return;
     }
     this.roomMessage(conn.room, conn, msg);
@@ -94,7 +160,7 @@ export class Rooms {
     const out = this.openLog(code);
     const game = new Game((m) => out.log(m), { countdownMs: this.countdownMs, characters: true, skyStairs: C.SKY_STAIRS_DEFAULT });
     game.setMap(C.MAP_DEFAULT);
-    const room = { code, name, public: false, game, conns: new Map(), out };
+    const room = { code, name, public: false, game, conns: new Map(), seats: new Map(), out }; // seats: 플레이어 id → { token, conn, awayAt }
     this.rooms.set(code, room);
     out.log(`방 ${code} 만듦: ${name} (비공개)`);
     this.serverLog(`방 ${code} 만듦: ${name} (방 ${this.rooms.size}개)`);
@@ -112,7 +178,7 @@ export class Rooms {
     const nick = cleanText(rawNick, C.NAME_MAX_LEN);
     const out = { log() {}, close() {} }; // 연습 판은 로그·stats 에서 뺌
     const game = new Game(() => {}, { countdownMs: 0, characters: true, skyStairs: false });
-    const room = { code, name: nick ? `${nick}의 연습` : `연습 ${code}`, public: false, practice: true, game, conns: new Map(), out };
+    const room = { code, name: nick ? `${nick}의 연습` : `연습 ${code}`, public: false, practice: true, game, conns: new Map(), seats: new Map(), out };
     this.rooms.set(code, room);
     this.serverLog(`방 ${code} 만듦: 연습 (방 ${this.rooms.size}개)`);
     const player = game.addPlayer(conn.id);
@@ -122,7 +188,8 @@ export class Rooms {
     if (char) game.setChar(conn.id, String(char));
     game.startPractice();
     game.addDummy(conn.id);
-    send(conn.ws, { type: 'welcome', id: conn.id, slot: player.slot, name: player.name, room: this.roomInfo(room) });
+    const token = this.newSeat(room, conn);
+    send(conn.ws, { type: 'welcome', id: conn.id, slot: player.slot, name: player.name, room: this.roomInfo(room), token });
     send(conn.ws, { ...game.snapshot(true), room: this.roomInfo(room) });
     return room;
   }
@@ -142,7 +209,8 @@ export class Rooms {
     conn.room = room;
     room.conns.set(conn.id, conn);
     if (room.practice) room.game.practiceJoin(conn.id); // 연습 방은 관전 말고 바로
-    send(conn.ws, { type: 'welcome', id: conn.id, slot: player.slot, name: player.name, room: this.roomInfo(room) });
+    const token = this.newSeat(room, conn);
+    send(conn.ws, { type: 'welcome', id: conn.id, slot: player.slot, name: player.name, room: this.roomInfo(room), token });
     send(conn.ws, { ...room.game.snapshot(true), room: this.roomInfo(room) });
     return true;
   }
@@ -153,6 +221,7 @@ export class Rooms {
     if (!room) return;
     room.game.removePlayer(conn.id);
     room.conns.delete(conn.id);
+    room.seats.delete(conn.id);
     conn.room = null;
     if (room.game.humanCount() === 0) this.close(room);
     if (reason !== null) {
@@ -206,7 +275,10 @@ export class Rooms {
         room.out.log(`[호스트] ${game.players.get(target).name} 내보냄`);
         const tconn = room.conns.get(target);
         if (tconn) this.leave(tconn, '호스트가 방에서 내보냈습니다');
-        else game.removePlayer(target);
+        else {
+          room.seats.delete(target); // 끊긴 사람도 자리 없앰
+          game.removePlayer(target);
+        }
         break;
       }
       case 'setName':
@@ -265,7 +337,10 @@ export class Rooms {
 
   // ---------- 틱·보내기 ----------
   tick(dt) {
-    for (const room of this.rooms.values()) room.game.tick(dt);
+    for (const room of [...this.rooms.values()]) {
+      room.game.tick(dt);
+      this.expireSeats(room);
+    }
   }
 
   // 방마다 스냅샷 한 번 (이벤트는 보낼 때 비움)

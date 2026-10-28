@@ -7,6 +7,7 @@ import { Sound } from '/sound.js';
 import { Music } from '/music.js';
 import { loadModels } from '/models.js';
 import { NetStatus } from '/net.js';
+import { seatToken, saveSeat, dropSeat } from '/seat.js';
 import { KO } from '/ko.js';
 import { hitTier, hitStep } from '/hit-tier.js';
 import { portrait, setPortraitModels } from '/portrait.js';
@@ -919,6 +920,7 @@ function stopHud() {
 }
 
 let net = null; // 접속 상태 표시 (client/net.js)
+let aimFromState = false; // 재접속 직후: 다음 스냅샷의 내 방향으로 시선 맞춤
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}`);
@@ -929,7 +931,8 @@ function connect() {
     const code = new URLSearchParams(location.search).get('room');
     if (code) {
       pendingJoin = true; // 먼저 오는 목록으로 방 밖 화면을 띄우지 않게
-      send({ type: 'join', code });
+      const token = seatToken(code); // 이 방 자리 토큰이 있으면 같은 자리로 (재접속, client/seat.js)
+      send(token ? { type: 'rejoin', code, token } : { type: 'join', code });
     }
   };
   ws.onmessage = (ev) => {
@@ -939,6 +942,9 @@ function connect() {
     if (msg.type === 'rooms') {
       roomList = msg;
       if (!myId && !pendingJoin) showRooms();
+    } else if (msg.type === 'rejoinError') {
+      dropSeat(msg.code); // 자리 유지 시간이 지났거나 방이 없어짐 → 보통 들어가기로
+      send({ type: 'join', code: msg.code });
     } else if (msg.type === 'joinError') {
       pendingJoin = false;
       setUrlRoom(null);
@@ -948,16 +954,22 @@ function connect() {
       room = msg.room;
       pendingJoin = false;
       setUrlRoom(room.code); // 새로고침해도 같은 방으로
+      saveSeat(room.code, msg.token);
       roomsEl.classList.add('leaving'); // 방 목록은 전환 띠가 화면을 다 덮을 때 숨김 (updateScreen). 그동안 클릭은 안 먹음
       statusEl.classList.remove('hidden');
       const sp = C.SPAWN_POINTS[msg.slot % C.SPAWN_POINTS.length];
       input.setYawPitch(sp.yaw, 0);
+      if (msg.rejoined) {
+        aimFromState = true; // 재접속: 이름·캐릭터·색은 서버에 남아 있는 그대로, 시선은 첫 스냅샷의 내 방향으로
+        return;
+      }
       if (nameInput.value) submitName();
       const savedChar = loadPref('tf-char');
       if (savedChar) send({ type: 'setChar', char: savedChar });
       const savedColor = Number(loadPref('tf-color')); // 이미 누가 쓰면 서버가 거절 → 들어올 때 받은 빈 색 그대로
       if (loadPref('tf-color') !== null && Number.isInteger(savedColor)) send({ type: 'setColor', color: savedColor });
     } else if (msg.type === 'left') {
+      if (room && !msg.replaced) dropSeat(room.code); // 다른 창이 자리를 가져간 거면 토큰은 그 창 것
       leftRoom(msg.reason);
     } else if (msg.type === 'state') {
       if (!myId) return; // 방을 나간 직후 남은 스냅샷
@@ -965,6 +977,11 @@ function connect() {
       if (!msg.grid && state && state.grid) msg.grid = state.grid; // 격자는 바뀔 때만 온다
       state = msg;
       if (msg.room) room = msg.room;
+      const meNow = aimFromState && msg.players.find((p) => p.id === myId);
+      if (meNow) {
+        input.setYawPitch(meNow.yaw, meNow.pitch || 0);
+        aimFromState = false;
+      }
       onState();
       updateScreen(); // 화면 전환은 스냅샷을 받는 즉시 시작 (다음 그리기 프레임이 무거워도 띠는 컴포지터에서 돎)
       for (const e of msg.events || []) handleEvent(e);

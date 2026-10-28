@@ -104,6 +104,7 @@ export class Game {
     this.roundPlayerCount = 0;
     this.roundBotCount = 0;
     this.bots = new Map(); // 봇 플레이어 id -> BotBrain. 봇 id 는 음수
+    this.proxies = new Map(); // 접속이 끊긴 사람 id -> 대신 조종하는 BotBrain (setAway, 봇처럼 handleInput·handleAction 만)
     this.botCounter = 0;
     this.nextSpawnAt = 0;
     this.controlItemNextAt = 0;
@@ -328,6 +329,24 @@ export class Game {
     for (const id of [...this.bots.keys()]) this.removePlayer(id);
   }
 
+  // 접속 끊김·복귀 (server/rooms.js 가 부름): 자리는 그대로, 끊긴 동안 봇이 대신 조종 (판정 특혜 없음). 돌아오면 바로 돌려받고 입력은 멈춤
+  setAway(id, on) {
+    const p = this.players.get(id);
+    if (!p || p.isBot || !!p.away === !!on) return false;
+    p.away = !!on;
+    if (on) {
+      this.proxies.set(id, new BotBrain(() => this.rng(), () => this.botLevel));
+      this.log(`  [끊김] ${p.name} 자리 유지 ${C.RECONNECT_GRACE_MS / 1000}초${this.inRound() ? ' (봇 대리)' : ''}`);
+    } else {
+      this.proxies.delete(id);
+      p.input.fwd = 0;
+      p.input.strafe = 0;
+      p.input.jump = false;
+      this.log(`  [복귀] ${p.name}`);
+    }
+    return true;
+  }
+
   humanCount() {
     return [...this.players.values()].filter((p) => !p.isBot).length;
   }
@@ -337,6 +356,7 @@ export class Game {
     if (!p) return;
     this.players.delete(id);
     this.bots.delete(id);
+    this.proxies.delete(id);
     this.log(`${p.name} ${p.isBot ? '빠짐' : '접속 종료'}`);
     if (this.hostId === id) {
       const next = [...this.players.values()].find((o) => !o.isBot);
@@ -4518,6 +4538,10 @@ export class Game {
       if (p && p.alive) brain.update(this, p);
       else if (p && C.GHOST_DROP_BOTS && this.ghostCd(p) === 0) brain.ghostDrop(this, p); // 죽은 봇의 유령 투하 (봇 판 비교용)
     }
+    for (const [id, brain] of this.proxies) {
+      const p = this.players.get(id);
+      if (p && p.alive && this.onField(p)) brain.update(this, p); // 끊긴 사람 대리 (블록 마스터의 마스터는 필드 밖이라 안 움직임)
+    }
     this.updatePieces();
     let remaining = dt;
     while (remaining > 0) {
@@ -4800,6 +4824,7 @@ export class Game {
       players: [...this.players.values()].map((p) => ({
         id: p.id,
         slot: p.slot,
+        away: !!p.away, // 접속 끊김 (자리 유지 중, 판 중이면 봇 대리)
         color: p.color, // PLAYER_PALETTE 번호
         name: p.name,
         nick: p.nick,
