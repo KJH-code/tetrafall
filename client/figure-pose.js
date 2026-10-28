@@ -109,7 +109,7 @@ export function idlePose(T, kind, u, s, form) {
     else Object.assign(P, { waistSide: (u < 0.75 ? 1 : -1) * 0.28, neckPitch: 0.1 });
   } else if (kind === 'pluck') {
     // 바드: 오른손으로 줄을 툭 튕기고 고개를 까딱 (악기 든 자세 위)
-    Object.assign(P, { elbow: [1.6 + Math.max(0, Math.sin(s * 20)) * 0.4, null], neckPitch: Math.sin(s * 10) * 0.2 + (form === 'metal' ? 0.15 : 0) });
+    Object.assign(P, { elbow: [1.5 + Math.max(0, Math.sin(s * 20)) * 0.7, null], shOut: [0.3 + Math.max(0, Math.sin(s * 20)) * 0.25, null], neckPitch: Math.sin(s * 10) * 0.3 + (form === 'metal' ? 0.15 : 0) });
   }
   for (const [key, val] of Object.entries(P)) {
     if (Array.isArray(val)) val.forEach((v, i) => v !== null && (T[key][i] += (v - T[key][i]) * k));
