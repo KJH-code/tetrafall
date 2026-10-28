@@ -1137,6 +1137,7 @@ function restPose(d) {
     hipsZ: 0,
     shFwd: [0, 0],
     shOut: [d.spread, d.spread],
+    shTwist: [0, 0],
     elbow: [0.15, 0.15],
     thFwd: [(d.bend || 0) * 0.5, (d.bend || 0) * 0.5],
     thOut: [0, 0],
@@ -1145,7 +1146,7 @@ function restPose(d) {
 }
 
 // 관절 무리별 스프링 (FIGURE_SPRING: w 빠르기 /초, damp 감쇠비 — 1 이면 안 넘침, 작을수록 출렁)
-const SPRING_GROUP = { waistPitch: 'body', waistRoll: 'body', waistSide: 'body', hipsZ: 'body', neckPitch: 'neck', shFwd: 'arm', shOut: 'arm', elbow: 'arm', thFwd: 'leg', thOut: 'leg', knee: 'leg' };
+const SPRING_GROUP = { waistPitch: 'body', waistRoll: 'body', waistSide: 'body', hipsZ: 'body', neckPitch: 'neck', shFwd: 'arm', shOut: 'arm', shTwist: 'arm', elbow: 'arm', thFwd: 'leg', thOut: 'leg', knee: 'leg' };
 function zeroPose(P) {
   const V = {};
   for (const [k, v] of Object.entries(P)) V[k] = Array.isArray(v) ? v.map(() => 0) : 0;
@@ -1204,7 +1205,7 @@ function stepSway(sw, dt) {
 // 동작마다 준비 자세 W 와 타격 자세 S. 준비(크게, 상대가 읽는 예고) → 타격(아주 짧게 S 로 튐) → 회복(S 에서 천천히 풀림).
 // 공격 자세는 스프링을 건너뛰고 바로 그 자세 (속은 격투), 끝나면 평소처럼 흐물흐물 돌아옴 (겉은 병맛).
 // 자세 칸: 허리 waistPitch(앞 숙임)·waistRoll(왼쪽으로 비틂 = 오른 어깨 앞)·waistSide, 고개 neckPitch,
-// 팔다리 [오른쪽, 왼쪽] (null = 그대로): shFwd(앞으로 듦)·shOut(옆으로 벌림)·elbow·thFwd·knee, crouch(0~1 두 무릎 굽힘)
+// 팔다리 [오른쪽, 왼쪽] (null = 그대로): shFwd(앞으로 듦)·shOut(옆으로 벌림)·shTwist(팔 비틂, + 면 굽힌 팔이 안쪽으로)·elbow·thFwd·knee, crouch(0~1 두 무릎 굽힘)
 // spin: 타격~회복 동안 몸 전체를 도는 각 (라디안, +면 왼쪽으로). rec: 스킬처럼 서버 표에 회복 시간이 없을 때 (초)
 // shield: 그 동작 동안 탱크 방패를 등에서 몸 앞으로. turn: 타격 동안 몸을 그 각만큼 돌렸다가 회복 끝에 돌아옴. float: 다리를 앞으로 뻗어도 엉덩이를 바닥으로 안 내림 (날아가는 자세)
 const R = (v) => [v, null]; // 오른팔(다리)만
@@ -1399,11 +1400,11 @@ const wob = (t, hz, a) => Math.sin(t * hz * Math.PI * 2) * a;
 export const POSES = {
   tank: {
     taunt: { W: { shFwd: [1.2, 1.3], elbow: [1.6, 1.5], crouch: 0.5, waistPitch: 0.25 }, S: { shFwd: [1.0, 1.25], shOut: [0.1, 0.05], elbow: [1.9, 1.45], crouch: 0.4, waistPitch: 0.15, neckPitch: -0.1 }, loop: (t) => ({ shFwd: R(0.9 + Math.max(0, wob(t, 2.2, 0.6))), elbow: R(1.9 - Math.max(0, wob(t, 2.2, 0.7))) }), shield: true },
-    victory: { W: { crouch: 0.4, waistPitch: 0.2, shFwd: [0.6, 0.6] }, S: { shFwd: [1.05, 1.05], shOut: [-0.55, -0.55], elbow: [2.15, 2.15], waistPitch: -0.12, neckPitch: -0.25, thOut: [0.15, 0.15] }, loop: (t) => ({ neckPitch: -0.25 + Math.max(0, wob(t, 0.9, 0.25)) }) },
+    victory: { W: { crouch: 0.4, waistPitch: 0.2, shFwd: [0.6, 0.6] }, S: { shFwd: [1.1, 1.1], shOut: [0.15, 0.15], shTwist: [1.4, 1.4], elbow: [1.75, 1.75], waistPitch: -0.2, neckPitch: -0.5, thOut: [0.18, 0.18] }, loop: (t) => ({ neckPitch: -0.5 + Math.max(0, wob(t, 0.9, 0.2)) }) }, // 팔짱 (방패는 등에), 턱 높이 들고 끄덕
   },
   ninja: {
     taunt: { W: { crouch: 0.6, shFwd: [0.4, 0.4], shOut: [0.6, 0.6], elbow: [1.2, 1.2] }, S: { shFwd: [1.15, 1.15], shOut: [-0.4, -0.4], elbow: [1.95, 1.95], thFwd: [1.2, 0], knee: [1.9, 0.15], neckPitch: 0.15, waistPitch: 0.1 }, loop: (t) => ({ elbow: [1.95 + wob(t, 3, 0.08), 1.95 - wob(t, 3, 0.08)] }) },
-    victory: { W: { crouch: 0.7, shFwd: [-0.4, -0.4], shOut: [0.5, 0.5] }, S: { thFwd: [1.25, -0.35], knee: [1.6, 2.1], shFwd: [1.3, 1.3], shOut: [-0.45, -0.45], elbow: [0.8, 0.8], waistPitch: 0.25, neckPitch: 0.35 }, loop: (t) => ({ neckPitch: 0.35 + wob(t, 0.5, 0.05) }) },
+    victory: { W: { crouch: 0.7, shFwd: [-0.4, -0.4], shOut: [0.5, 0.5] }, S: { thFwd: [-0.05, 1.55], knee: [1.65, 1.7], shFwd: [0.9, 0.9], shOut: [0.1, 0.1], shTwist: [1.2, 1.2], elbow: [1.9, 1.9], waistPitch: 0.12, neckPitch: 0.3 }, loop: (t) => ({ neckPitch: 0.3 + wob(t, 0.5, 0.05) }) }, // 오른 무릎을 땅에 꿇고 왼발 앞, 두 단검 가슴 앞 X자
   },
   builder: {
     taunt: { W: { shFwd: [1.5, -0.2], elbow: [1.2, 1.4], crouch: 0.3 }, S: { shFwd: [0.3, -0.35], shOut: [0.5, 0.8], elbow: [2.45, 2.0], waistSide: -0.12, neckPitch: -0.1 }, loop: (t) => ({ neckPitch: -0.1 + Math.max(0, wob(t, 1.6, 0.25)) }) },
@@ -1415,7 +1416,7 @@ export const POSES = {
   },
   hunter: {
     taunt: { W: { crouch: 0.45, waistPitch: 0.45, neckPitch: 0.35, shFwd: [0.3, 0.3] }, S: { shFwd: [1.6, 0.2], shOut: [0.05, 0.4], elbow: [0, 0.5], waistRoll: 0.35, waistPitch: 0.15, thFwd: [0.5, -0.2], neckPitch: -0.1 }, loop: (t) => ({ shFwd: R(1.6 + wob(t, 3, 0.05)) }) },
-    victory: { W: { crouch: 0.5, waistPitch: 0.3 }, S: { shFwd: [1.3, 0.55], shOut: [0.85, 0.2], elbow: [2.35, 1.3], crouch: 0.3, waistPitch: 0.2, neckPitch: -0.2, thFwd: [0.6, -0.1] }, loop: (t) => ({ waistRoll: wob(t, 0.35, 0.4) }) },
+    victory: { W: { crouch: 0.5, waistPitch: 0.3 }, S: { shFwd: [2.5, 0.4], shOut: [0, 0.25], shTwist: [0.6, 0], elbow: [1.6, 1.2], crouch: 0.35, waistPitch: 0.45, neckPitch: -0.55, thFwd: [0.75, -0.15] }, loop: (t) => ({ waistRoll: wob(t, 0.35, 0.35) }) }, // 손바닥을 이마에 대고 몸을 앞으로 내밀어 먼 곳을 살핌
   },
   cannon: {
     taunt: { W: { crouch: 0.5, waistPitch: 0.25, shFwd: [0.25, 0.6], elbow: [1.7, 1.6] }, S: { waistPitch: -0.45, neckPitch: 0.2, shFwd: [0.25, 0.2], shOut: [1.75, 2.5], elbow: [1.7, 0.4], thFwd: [0.35, -0.15] }, loop: (t) => ({ shOut: [1.75, 2.5 + Math.max(0, wob(t, 2.5, 0.35))] }) },
@@ -1426,8 +1427,8 @@ export const POSES = {
     victory: { W: { crouch: 0.6, waistPitch: 0.4, shFwd: [0.6, 0.6], elbow: [1.5, 1.5] }, S: { shFwd: [3.0, 0.35], shOut: [0.25, 1.35], elbow: [0.25, 1.9], thOut: [0.3, 0.3], crouch: 0.35, waistPitch: -0.25, neckPitch: -0.5 }, loop: (t) => ({ shFwd: R(2.9 + Math.max(0, wob(t, 1.2, 0.2))), elbow: L(1.9 + wob(t, 8, 0.06)), neckPitch: -0.5 + wob(t, 6, 0.04) }) },
   },
   bard: {
-    taunt: { W: { shFwd: [1.6, 0.75], shOut: [0.6, 0.05], elbow: [1.0, 1.45] }, S: { shFwd: [0.6, 0.75], shOut: [1.3, 0.05], elbow: [0.3, 1.45], waistPitch: 0.75, neckPitch: 0.2, thFwd: [-0.35, 0.2] }, loop: (t) => ({ shOut: R(1.3 + wob(t, 1.2, 0.12)) }) },
-    victory: { W: { shFwd: [0.45, 0.75], shOut: [0.3, 0.05], elbow: [1.6, 1.45] }, S: { shFwd: [0.45, 0.75], shOut: [0.3, 0.05], elbow: [1.6, 1.45], neckPitch: -0.2 }, loop: (t) => ({ elbow: R(1.6 + wob(t, 6, 0.3)), waistSide: wob(t, 1, 0.12), neckPitch: -0.2 + wob(t, 2, 0.1), thFwd: L(Math.max(0, wob(t, 2, 0.35))), knee: L(Math.max(0, wob(t, 2, 0.5))) }) },
+    taunt: { W: { shFwd: [2.7, 0.75], shOut: [0.35, 0.05], elbow: [2.1, 1.45], waistPitch: -0.15, neckPitch: -0.1 }, S: { shFwd: [0.75, -0.55], shOut: [1.35, 0.75], elbow: [0.2, 0.25], waistPitch: 1.0, neckPitch: 0.1, thFwd: [-0.8, 0.45], knee: [0.35, 0.55] }, loop: (t) => ({ elbow: R(0.2 + Math.max(0, wob(t, 1.5, 0.35))) }) }, // 모자 벗듯 손을 머리에 → 한 발 뒤로 빼고 깊이 숙이며 팔을 옆으로 크게 쓸어 인사
+    victory: { W: { shFwd: [0.45, 0.75], shOut: [0.3, 0.05], elbow: [1.6, 1.45], crouch: 0.4 }, S: { shFwd: [0.55, 1.3], shOut: [0.5, 0.1], elbow: [1.5, 0.8], waistPitch: -0.7, waistRoll: 0.3, neckPitch: -0.4, thFwd: [-0.35, 0.6], knee: [0.15, 0.55] }, loop: (t) => ({ shFwd: R(0.55 + wob(t, 4, 0.35)), elbow: R(1.5 + wob(t, 4, 0.6)), waistPitch: -0.7 + Math.abs(wob(t, 1, 0.15)), neckPitch: -0.4 - Math.abs(wob(t, 1, 0.25)), waistSide: wob(t, 0.5, 0.12) }) }, // 뒤로 젖혀 류트를 치켜들고 독주: 한 발 앞, 긁는 손 크게
   },
   metal: {
     taunt: { W: { shFwd: [0.45, 0.75], elbow: [1.6, 1.45], crouch: 0.3 }, S: { shFwd: [2.9, 0.75], shOut: [0.25, 0.05], elbow: [0.25, 1.45], thOut: [0.3, 0.3], crouch: 0.3, waistPitch: -0.2, neckPitch: -0.3 }, loop: (t) => ({ neckPitch: -0.3 + Math.max(0, wob(t, 2.5, 0.7)), waistPitch: -0.2 + Math.max(0, wob(t, 2.5, 0.2)) }) },
@@ -1854,6 +1855,7 @@ export function figureAnim(fig, st, dt, retry = false) {
     // 어깨: x 축으로 벌리고(out), y 축으로 앞으로(fwd). 아래(-z)를 보던 팔이 앞(+x)으로 가려면 y 축 음의 회전
     fig.shoulders[i].rotation.x = side * P.shOut[i];
     fig.shoulders[i].rotation.y = -P.shFwd[i];
+    fig.shoulders[i].rotation.z = -side * P.shTwist[i]; // 팔을 제 축으로 비틂 (+ = 팔꿈치 굽힘이 몸 안쪽으로: 팔짱·X자)
     fig.elbows[i].rotation.y = -P.elbow[i];
     fig.thighs[i].rotation.x = side * P.thOut[i];
     fig.thighs[i].rotation.y = -P.thFwd[i];
