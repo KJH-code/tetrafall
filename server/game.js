@@ -49,7 +49,9 @@ export class Game {
     this.skyStairs = !!skyStairs; // 호스트 옵션 (판 사이에만 바꿈)
     this.sky = false; // 이번 판에 하늘 계단이 도는지 (판 시작 때 정함, 블록 마스터는 끔)
     this.H = C.GRID_H; // 격자 높이 (판 시작 때: 하늘 계단이면 SKY_GRID_H)
-    this.skyTopId = 0; // 하늘 계단 사슬 맨 위 블록 id (새 블록은 이 옆에)
+    this.skyTops = []; // 하늘 계단 사슬마다 맨 위 블록 id (새 블록은 이 옆에)
+    this.skyChains = 1; // 이번 판 사슬 수 (SKY_CHAINS, 판 시작 때 인원으로)
+    this.skyLavaMs = C.SKY_LAVA_TRIGGER_MS; // 이번 판 용암 시작 시각 (SKY_LAVA_TRIGGER_BY_COUNT)
     this.rng = Math.random;
     this.time = 0; // 게임 시간 (ms). tick 마다 dt 만큼 증가
     this.phase = 'lobby'; // 'lobby' | 'countdown' | 'playing' | 'over'
@@ -127,9 +129,7 @@ export class Game {
 
   // 판 크기: 필드에 나가는 사람·봇 수 → FIELD_SIZES (블록 마스터는 마스터 빼고)
   fieldSizeFor(n) {
-    const keys = Object.keys(C.FIELD_SIZES).map(Number).sort((a, b) => a - b);
-    const k = keys.filter((x) => x <= n).pop() ?? keys[0];
-    return C.FIELD_SIZES[k];
+    return byCount(C.FIELD_SIZES, n);
   }
 
   setFieldSize(size) {
@@ -592,7 +592,9 @@ export class Game {
     if (!this.canStart()) return false;
     const fielded = this.participants().length - (this.mode === 'master' ? 1 : 0);
     this.sky = this.skyStairs && this.mode !== 'master'; // 블록 마스터는 자동 블록이 없음
-    this.skyTopId = 0;
+    this.skyTops = [];
+    this.skyChains = byCount(C.SKY_CHAINS, fielded);
+    this.skyLavaMs = byCount(C.SKY_LAVA_TRIGGER_BY_COUNT, fielded);
     this.setFieldSize(this.fieldSizeFor(fielded));
     this.mapId = this.mapChoice === 'random' ? MAP_IDS[Math.floor(this.rng() * MAP_IDS.length)] : this.mapChoice;
     for (const [x, y, h] of mapColumns(this.mapId, this.W, this.D)) {
@@ -3475,22 +3477,28 @@ export class Game {
   // ---- 하늘 계단 ----
   // 하늘 블록이 SKY_COUNT 개가 되도록 맨 위에 하나씩 붙인다 (자리가 없으면 다음 틱에 다시)
   // 한 틱에 SKY_SPAWN_PER_TICK 개까지 (2026-10-26 버그: 판 시작 7개를 한 틱에 놓아 서버 틱이 멈춤 → 7틱에 나눠 놓음)
+  // 사슬이 여럿이면 (SKY_CHAINS) 블록이 가장 적은 사슬부터, 한 틱에 모두 합쳐 SKY_SPAWN_PER_TICK 개
   fillSky() {
-    let n = this.pieces.filter((pc) => pc.sky).length;
-    for (let k = 0; k < C.SKY_SPAWN_PER_TICK && n < C.SKY_COUNT && this.spawnSky(); k++) n++;
+    const n = Array.from({ length: this.skyChains }, () => 0);
+    for (const pc of this.pieces) if (pc.sky && pc.chain < this.skyChains) n[pc.chain]++;
+    for (let k = 0; k < C.SKY_SPAWN_PER_TICK; k++) {
+      const c = n.indexOf(Math.min(...n));
+      if (n[c] >= C.SKY_COUNT || !this.spawnSky(c)) return;
+      n[c]++;
+    }
   }
 
-  spawnSky() {
-    const skies = this.pieces.filter((pc) => pc.sky);
+  spawnSky(chain = 0) {
+    const skies = this.pieces.filter((pc) => pc.sky && pc.chain === chain);
     // 사슬 맨 위 = 마지막에 붙인 블록. 그게 착지·녹아 없으면 가장 높은 하늘 블록, 하나도 없으면 새 사슬
-    const top = skies.find((pc) => pc.id === this.skyTopId) || skies.reduce((a, pc) => (!a || pc.pz > a.pz ? pc : a), null);
+    const top = skies.find((pc) => pc.id === this.skyTops[chain]) || skies.reduce((a, pc) => (!a || pc.pz > a.pz ? pc : a), null);
     const piece = this.chooseSkyPlacement(top);
     if (!piece) return null;
     // 모든 하늘 블록이 같은 순간에 한 칸씩 내려가게 판 시작 시각 기준 SKY_FALL_STEP_MS 박자에 맞춤 (높이차가 그대로)
     const step = C.SKY_FALL_STEP_MS;
     const nextStepAt = this.roundStartTime + (Math.floor((this.time - this.roundStartTime) / step) + 1) * step;
-    this.addPiece(piece, { phase: 'falling', controller: null, sky: true, stepMs: step, nextStepAt, controlEndsAt: 0 });
-    this.skyTopId = piece.id;
+    this.addPiece(piece, { phase: 'falling', controller: null, sky: true, chain, stepMs: step, nextStepAt, controlEndsAt: 0 });
+    this.skyTops[chain] = piece.id;
     return piece;
   }
 
@@ -4159,13 +4167,13 @@ export class Game {
     const lava = this.lava;
     if (!lava.active) {
       const piled = this.avgHeight() - this.baseAvgHeight >= C.LAVA_TRIGGER_AVG_HEIGHT; // 시작 지형 빼고 쌓인 만큼
-      const late = this.sky && this.elapsed() >= C.SKY_LAVA_TRIGGER_MS; // 하늘 계단: 시간이 지나도 시작
+      const late = this.sky && this.elapsed() >= this.skyLavaMs; // 하늘 계단: 시간이 지나도 시작 (인원별 SKY_LAVA_TRIGGER_BY_COUNT)
       if (!piled && !late) return;
       lava.active = true;
       lava.z = C.LAVA_START_Z;
       lava.startedAt = this.time;
       this.emit({ type: 'lava' });
-      this.log(`  [용암] ${piled ? '' : `${fmtTime(C.SKY_LAVA_TRIGGER_MS)} 지남 (하늘 계단), `}쌓인 평균 높이 ${(this.avgHeight() - this.baseAvgHeight).toFixed(2)} → 용암 상승 시작 @ ${fmtTime(this.elapsed())}`);
+      this.log(`  [용암] ${piled ? '' : `${fmtTime(this.skyLavaMs)} 지남 (하늘 계단), `}쌓인 평균 높이 ${(this.avgHeight() - this.baseAvgHeight).toFixed(2)} → 용암 상승 시작 @ ${fmtTime(this.elapsed())}`);
       return;
     }
     lava.z = Math.min(this.H + 1, lava.z + dtMs / C.LAVA_RISE_MS_PER_CELL);
@@ -4951,6 +4959,13 @@ export function cellGap(a, b) {
     }
   }
   return Math.sqrt(best); // 제곱으로 비교하고 마지막에 한 번만 (하늘 자리 고르기에서 많이 부름)
+}
+
+// 인원별 표 ({ 인원: 값 }) 에서 n 이하 가장 큰 칸 (없으면 가장 작은 칸): FIELD_SIZES · SKY_CHAINS
+function byCount(table, n) {
+  const keys = Object.keys(table).map(Number).sort((a, b) => a - b);
+  const k = keys.filter((x) => x <= n).pop() ?? keys[0];
+  return table[k];
 }
 
 function maxPlayers() {

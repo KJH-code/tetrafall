@@ -348,3 +348,48 @@ test('판 시작 랙: 4인 봇 판 첫 5초 — 한 틱에 자리 고르기 많�
 test('판 시작 랙: 서버 시작 때 블록 자리 고르기 데우기 (warmUpPlacement) 가 오류 없이 끝남', () => {
   warmUpPlacement(1);
 });
+
+test('하늘 계단 인원별 (2026-10-28 "블록 더 많이"): 2~4명은 사슬 1개·용암 60초 그대로, 5명 이상은 사슬이 늘고 용암이 조금 일찍', () => {
+  for (const n of [2, 3, 4]) {
+    assert.equal(C.SKY_CHAINS[n], 1, `${n}명 사슬`);
+    const lava = Object.entries(C.SKY_LAVA_TRIGGER_BY_COUNT).filter(([k]) => +k <= n).pop()[1];
+    assert.equal(lava, C.SKY_LAVA_TRIGGER_MS, `${n}명 용암`);
+  }
+  let prev = 1;
+  for (let n = 5; n <= C.MAX_PLAYERS; n++) {
+    assert.ok(C.SKY_CHAINS[n] >= 2 && C.SKY_CHAINS[n] >= prev, `${n}명 사슬 ${C.SKY_CHAINS[n]}`);
+    prev = C.SKY_CHAINS[n];
+  }
+  // 경고(그림자) 시간은 그대로: 한 칸 2.5초 × 3칸
+  assert.equal(C.SKY_FALL_STEP_MS, 2500);
+  assert.equal(C.SKY_SHADOW_CELLS, 3);
+  for (const [n, chains, lava] of [[4, 1, 60000], [6, C.SKY_CHAINS[6], 55000], [8, C.SKY_CHAINS[8], 50000]]) {
+    const { g, lines } = setup({ n, seed: n });
+    assert.equal(g.skyChains, chains);
+    assert.equal(g.skyLavaMs, lava);
+    run(g, C.FIRST_SPAWN_DELAY_MS + TICK * (C.SKY_COUNT * chains + 2)); // 모두 합쳐 한 틱에 하나씩
+    const s = skies(g);
+    assert.equal(s.length, C.SKY_COUNT * chains, `${n}명 하늘 블록`);
+    for (let c = 0; c < chains; c++) assert.equal(s.filter((pc) => pc.chain === c).length, C.SKY_COUNT, `${n}명 사슬 ${c}`);
+    for (const pc of s) assert.equal(pc.stepMs, C.SKY_FALL_STEP_MS, '떨어지는 빠르기 그대로');
+    // 용암: 쌓이지 않아도 이 시각에 시작
+    run(g, lava - g.elapsed() + 2 * TICK);
+    assert.ok(g.lava.active, `${n}명 ${lava / 1000}초 용암`);
+    const lavaLine = lines.find((l) => l.includes('[용암]'));
+    assert.ok(lavaLine.includes(`${Math.floor(lava / 60000)}:${String((lava / 1000) % 60).padStart(2, '0')} 지남`) || !lavaLine.includes('지남'), lavaLine);
+  }
+});
+
+test('하늘 계단 사슬 여럿: 사슬마다 따로 계단 (새 블록은 자기 사슬 맨 위 블록 옆, 높이차 SKY_RISE_MIN~MAX)', () => {
+  const { g } = setup({ n: 8, seed: 3 });
+  const seen = new Map();
+  for (let t = 0; t < 30000; t += TICK) {
+    g.tick(TICK);
+    for (const pc of skies(g)) {
+      if (seen.has(pc.id)) continue;
+      seen.set(pc.id, { chain: pc.chain, pz: pc.pz, at: g.time });
+    }
+  }
+  assert.equal(new Set([...seen.values()].map((v) => v.chain)).size, C.SKY_CHAINS[8]);
+  for (let c = 0; c < C.SKY_CHAINS[8]; c++) assert.ok([...seen.values()].filter((v) => v.chain === c).length > C.SKY_COUNT, `사슬 ${c} 이 계속 이어짐`);
+});
