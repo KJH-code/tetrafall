@@ -13,7 +13,7 @@ export const MAPS = {
 
 export const MAP_IDS = Object.keys(MAPS);
 
-// 기둥 높이 목록 [x, y, h] 를 돌려준다 (h 칸만큼 z=0 부터 쌓음). W·D 는 판 크기 (인원별 10·12·14, 가운데 기준으로 늘어남)
+// 기둥 높이 목록 [x, y, h] 를 돌려준다 (h 칸만큼 z=0 부터 쌓음). W·D 는 판 크기 (인원별 10~19, FIELD_SIZES. 가운데 기준으로 늘어나고 높이는 10×10 과 같게)
 export function mapColumns(id, W, D) {
   const out = [];
   if (id === 'pyramid') {
@@ -28,12 +28,13 @@ export function mapColumns(id, W, D) {
       }
     }
   } else if (id === 'bowl') {
-    // 링 거리 0.5·1.5 는 평지, 2.5 → 1층, 3.5 → 2층, 4.5(맨 바깥) → 3층
+    // 10×10: 링 거리 0.5·1.5 는 평지, 2.5 → 1층, 3.5 → 2층, 4.5(맨 바깥) → 3층. 큰 판은 바깥 세 줄만 1·2·3층 (평지가 넓어짐, 2026-10-28 8인: 예전엔 19×19 바깥이 8층)
     const cx = (W - 1) / 2;
     const cy = (D - 1) / 2;
+    const flat = Math.min(W, D) / 2 - 5; // 10×10 보다 늘어난 링 수
     for (let x = 0; x < W; x++) {
       for (let y = 0; y < D; y++) {
-        const h = Math.floor(Math.max(Math.abs(x - cx), Math.abs(y - cy))) - 1;
+        const h = Math.floor(Math.max(Math.abs(x - cx), Math.abs(y - cy)) - flat) - 1;
         if (h > 0) out.push([x, y, h]);
       }
     }
@@ -74,10 +75,11 @@ export function mapColumns(id, W, D) {
       }
     }
   } else if (id === 'stairs') {
-    // 아래쪽 두 줄은 x 가 커질수록, 위쪽 두 줄은 x 가 작아질수록 높아짐 (0~4층)
+    // 아래쪽 두 줄은 x 가 커질수록, 위쪽 두 줄은 x 가 작아질수록 높아짐 (0~4층). 한 층 너비 = W / 5 칸 (10×10 은 2칸, 큰 판은 넓은 계단 — 2026-10-28 예전엔 19×19 가 9층)
+    const run = W / 5;
     for (let x = 0; x < W; x++) {
-      const up = Math.floor(x / 2);
-      const down = Math.floor((W - 1 - x) / 2);
+      const up = Math.floor(x / run);
+      const down = Math.floor((W - 1 - x) / run);
       for (const y of [0, 1]) if (up > 0) out.push([x, y, up]);
       for (const y of [D - 2, D - 1]) if (down > 0) out.push([x, y, down]);
     }

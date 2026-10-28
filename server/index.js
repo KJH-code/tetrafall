@@ -120,7 +120,16 @@ const rooms = new Rooms({
   serverLog: (msg) => console.log(`[${stamp()}] ${msg}`),
   countdownMs: C.ROUND_COUNTDOWN_MS,
 });
-const wss = new WebSocketServer({ server });
+// 스냅샷 압축 (permessage-deflate, 2026-10-28 8인): 8명 판 스냅샷 평균 9.6KB × 30Hz ≈ 2.35Mbps/명 → 약 0.5Mbps/명. 메시지마다 따로 압축 (연결마다 문맥 안 들고 있음: 메모리 적게)
+const wss = new WebSocketServer({
+  server,
+  perMessageDeflate: {
+    threshold: C.NET_DEFLATE_MIN_BYTES,
+    zlibDeflateOptions: { level: C.NET_DEFLATE_LEVEL },
+    serverNoContextTakeover: true,
+    clientNoContextTakeover: true,
+  },
+});
 
 wss.on('connection', (ws) => {
   const conn = rooms.connect(ws);
