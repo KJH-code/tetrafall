@@ -901,6 +901,13 @@ export const CONFIG = {
   WORLD_BLOCK_JITTER: 0.08, // 칸마다 밝기 흔들림 (±)
   WORLD_BLOCK_BEVEL: 0.07, // 블록 모서리 깎은 반지름 (칸). 윗면 가운데는 평평 → 서는 자리 그대로
   WORLD_DECOR_MAX: 240, // 블록 소품 (결정 덩어리·깨진 돌) 최대 수. 그래픽 낮춤이면 없음 // 구름 바다 판: 이 거리부터 끝까지 투명해짐 (판 끝이 지평선에 곡선으로 안 보이게)
+  // 메뉴(방 목록) 뒤 3D 대기 장면 (client/menu-scene.js, 화면만)
+  MENU_CHARS: [4, 2], // 섬 위 캐릭터 수 [보통, 그래픽 낮춤]
+  MENU_EMOTE_EVERY_MS: 7000, // 캐릭터마다 이모트 간격 (대충, 흔들림 있음)
+  MENU_CAM_SPEED: 0.07, // 카메라가 섬 둘레를 도는 빠르기 (라디안/초)
+  MENU_CAM_PITCH: -0.42, // 카메라 내려다보는 각 (음수 = 위에서)
+  MENU_CAM_DIST: 16, // 섬 가운데에서 카메라 거리 (칸)
+  MENU_VIEW_SHIFT: 0.3, // 화면 너비 비율만큼 장면을 왼쪽으로 (가운데 메뉴 판에 섬이 안 가리게)
   // 상승하는 위험 모습 (client/hazard.js, 화면만 — 판정은 서버 lava.z). 테마마다 값은 WORLD_THEMES.*.hazard
   HAZARD_FALLBACK: 'volcano', // 테마 없는 화면(대기실)의 위험 모습
   HAZARD_DEEP: 8, // 몸통 바닥 깊이 (표면 아래 칸) · 필드 밖 깊이

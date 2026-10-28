@@ -19,6 +19,7 @@ import('/ragdoll.js')
   .catch((e) => console.warn('래그돌 끔: cannon-es 를 못 불러옴 (npm install 필요)', e));
 import { World } from '/world.js';
 import { Hazard } from '/hazard.js';
+import { MenuScene } from '/menu-scene.js';
 
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
@@ -617,6 +618,8 @@ export class Renderer {
   setLowGfx(on) {
     if (this.lowGfx === !!on) return;
     this.lowGfx = !!on;
+    document.body.classList.toggle('low-gfx', this.lowGfx); // 메뉴 배경 흐림 끔 (index.html)
+    this.menu = null; // 메뉴 장면을 새 설정으로 (캐릭터 수)
     this.renderer.setPixelRatio(on ? 1 : Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.world.setLow(on);
@@ -2888,7 +2891,20 @@ export class Renderer {
   }
 
   render(state, myId, dt, view, cam) {
-    if (!state) return;
+    if (!state) {
+      // 메뉴(방 밖): 화면만의 가짜 대기 장면 (menu-scene.js). 방에 들어가면 버림
+      this.menu ||= new MenuScene(Math.random, this.lowGfx);
+      const f = this.menu.step(dt || 0);
+      // 섬이 가운데 메뉴 판에 가리지 않게 화면 왼쪽으로 비킴 (카메라 화면만 옆으로 밀기)
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      this.camera.setViewOffset(w, h, w * C.MENU_VIEW_SHIFT, 0, w, h);
+      return this.render(f.state, null, dt, 'fps', f.cam);
+    }
+    if (this.menu && !state.menu) {
+      this.menu = null; // 진짜 판·대기실이 옴 → 가짜 몸은 아래 players 정리에서 지워짐
+      this.camera.clearViewOffset();
+    }
     this.curState = state;
     if (state.field) this.setField(state.field.w, state.field.d, false, state.field.h || C.GRID_H);
     this.world.update(state, dt);
@@ -3064,7 +3080,7 @@ export class Renderer {
         label.tex.needsUpdate = true;
         label.shown = key;
       }
-      label.sprite.visible = p.alive && !(p.id === myId && this.third); // 3인칭에서 내 % 는 화면 아래에 (머리 위와 둘 다 있으면 겹침)
+      label.sprite.visible = p.alive && !state.menu && !(p.id === myId && this.third); // 메뉴 배경 장면은 이름·% 없음 // 3인칭에서 내 % 는 화면 아래에 (머리 위와 둘 다 있으면 겹침)
       this.updateHuntMarks(g, p, myId);
       this.updateUltAura(g, p, s, myId, dt);
       this.updateStatusFx(g, p, s, myId);

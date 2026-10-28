@@ -184,10 +184,11 @@
     /* ===== 창 (설정 · 처음 안내 · 방 목록) ===== */
     #settings, #tutorial, #rooms { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
       background: radial-gradient(circle at 50% 40%, rgba(16,22,46,.72), rgba(3,5,12,.93)); z-index: 20; pointer-events: auto; }
-    #rooms { z-index: 15; }
-    /* 메뉴 배경 자리: 지금은 비스듬한 색 띠. 나중에 3D 떠 있는 섬 장면이 여기로 들어온다 (B3) */
-    #menu-bg { position: absolute; inset: 0; overflow: hidden; pointer-events: none;
-      background: repeating-linear-gradient(104deg, rgba(60,74,120,.1) 0 60px, transparent 60px 150px); }
+    /* 방 목록: 뒤에 3D 떠 있는 섬 대기 장면이 비침 (render.js · menu-scene.js). 가운데는 옅게, 가장자리·판 뒤는 어둡게 + 살짝 흐림 → 글씨가 읽히게 */
+    #rooms { z-index: 15; background: radial-gradient(ellipse at 50% 45%, rgba(8,12,28,.18) 0%, rgba(6,9,20,.42) 55%, rgba(3,5,12,.78) 100%); }
+    #menu-bg { position: absolute; inset: 0; overflow: hidden; pointer-events: none; backdrop-filter: blur(1.5px) saturate(1.1);
+      background: repeating-linear-gradient(104deg, rgba(60,74,120,.06) 0 60px, transparent 60px 150px); }
+    body.low-gfx #menu-bg { backdrop-filter: none; }
     #settings .box, #tutorial .box, #rooms .box { position: relative; background: linear-gradient(160deg, #1a2347 0%, #0c1227 60%, #090d1d 100%);
       padding: 20px 28px 22px; min-width: 340px; max-width: 540px; font-size: 15px; line-height: 1.6; box-shadow: var(--sh);
       clip-path: polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% 100%, 22px 100%, 0 calc(100% - 22px)); animation: pop-in .16s ease-out; }
