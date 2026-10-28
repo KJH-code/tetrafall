@@ -21,6 +21,7 @@ import('/ragdoll.js')
 import { World } from '/world.js';
 import { Hazard } from '/hazard.js';
 import { MenuScene } from '/menu-scene.js';
+import { labelSizes } from '/shared/hud-layout.js';
 
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
@@ -147,6 +148,8 @@ export function playerColor(p, state) {
   return PLAYER_COLORS[(p.color ?? p.slot) % PLAYER_COLORS.length];
 }
 const _q = new THREE.Quaternion();
+const _lv = new THREE.Vector3(); // 이름표 거리 재기
+const [LABEL_W, LABEL_H] = C.LABEL_SIZE; // 머리 위 이름·% 화면 크기 (sizeAttenuation 끔)
 const HEAVY_HITS = new Set(['bomb', 'shock', 'projectile', 'slam', 'wall', 'blast', 'bigbomb', 'quake', 'blockslam', 'execute', 'pounce', 'shell', 'bigshell', 'groundshot', 'leapwave', 'spinend']); // 몸이 크게 휘청하는 공격
 const MAX_SIDE = Math.max(C.GRID_W, C.GRID_D, ...Object.values(C.FIELD_SIZES));
 const MAX_CELLS = MAX_SIDE * MAX_SIDE * Math.max(C.GRID_H, C.SKY_GRID_H || 0); // 가장 큰 판 (인원별 필드 크기 · 하늘 계단 높이)
@@ -702,7 +705,7 @@ export class Renderer {
       // 거리와 상관없이 화면에서 같은 크기 (가까이 붙은 상대의 숫자가 화면을 덮지 않게).
       // 블록 뒤에 숨으면 이름표도 가려진다 (기둥 숲에서 숨는 의미가 있게)
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: true, depthWrite: false, transparent: true, sizeAttenuation: false }));
-      sprite.scale.set(0.3, 0.13, 1);
+      sprite.scale.set(LABEL_W, LABEL_H, 1);
       // 이름표 높이: 머리(모자·뿔·모히칸 포함) 꼭대기 위로. 들고 있는 무기는 안 셈. 낮아도 예전 높이 아래로는 안 내림
       let labelZ = C.PLAYER_HEIGHT + 0.45;
       if (ch.figure) {
@@ -844,6 +847,22 @@ export class Renderer {
     const land = fig ? 0 : a.land; // TABS 식 몸은 찌그러지지 않음
     const wide = 1 - stretch / 2 + land * C.ANIM_LAND_SQUASH * 0.6; // 착지: 납작해지며 옆으로 퍼짐
     rig.scale.set(wide, wide, 1 + stretch - land * C.ANIM_LAND_SQUASH);
+  }
+
+  // 머리 위 이름·% 가 많으면 (5명 넘게 보이면) 카메라에서 먼 사람 것은 작고 흐리게 (shared/hud-layout.js labelSizes)
+  thinLabels() {
+    const vis = [];
+    for (const g of this.playerMeshes.values()) {
+      const l = g.userData.label;
+      if (l && l.sprite.visible) vis.push(l.sprite);
+    }
+    const cam = this.camera.position;
+    const sizes = labelSizes(vis.map((sp) => sp.getWorldPosition(_lv).distanceTo(cam)));
+    vis.forEach((sp, i) => {
+      const k = sizes[i];
+      sp.scale.set(LABEL_W * k.scale, LABEL_H * k.scale, 1);
+      sp.material.opacity = k.opacity;
+    });
   }
 
   // 광전사 R 소용돌이 경과 초 (snapshot spinLeft 로 시작 시각을 맞추고 그 뒤는 내 시계로 매끈하게). 안 돌면 -1
@@ -3131,6 +3150,7 @@ export class Renderer {
       if (p.char === 'berserker' || g.userData.whirlFx || g.userData.dizzyStars) this.updateWhirlFx(g, p, s, dt);
       if (rag) this.ragdollCapture(g, p, s, dt);
     }
+    this.thinLabels();
     if (this.ragdoll) {
       // 몸 물리: 모은 목표 자세로 한 번에 돌리고 관절 회전으로 되돌려 넣음
       this.ragdoll.prune(ragKeep);

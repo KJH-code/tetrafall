@@ -11,6 +11,7 @@ import { KO } from '/ko.js';
 import { hitTier, hitStep } from '/hit-tier.js';
 import { portrait, setPortraitModels } from '/portrait.js';
 import { screenOf, wipeKind, wipePlan } from '/shared/wipe.js';
+import { cardLayout, lobbyPlace } from '/shared/hud-layout.js';
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $('status');
@@ -1511,6 +1512,8 @@ function updateScore() {
 // ---------- 화면 아래 플레이어 판 (스매시식: 초상 · 이름 · 큰 % · 내 색 띠) ----------
 // 카운트다운·판 중·판 끝에 사람마다 한 칸. 맞으면 % 가 흔들리고, 죽으면 회색 KO
 const playersEl = $('players');
+// 아래 줄(스킬·관전 안내)을 판 키만큼 위로: 판 높이가 인원·작은 판 여부로 바뀌므로 재서 --cards-h 로
+new ResizeObserver(() => document.body.style.setProperty('--cards-h', `${playersEl.offsetHeight}px`)).observe(playersEl);
 const playerCards = new Map(); // id → { el, sub, pct } (초상·이름은 다시 만들 때만 바뀜)
 const shownPct = new Map(); // id → 지난 프레임 피해 % (올라갈 때만 흔듦)
 let playersKey = '';
@@ -1559,6 +1562,16 @@ function updatePlayers() {
       playersEl.append(el);
       playerCards.set(p.id, { el, sub: el.querySelector('.sub'), pct: el.querySelector('.pct') });
     }
+  }
+  // 인원·화면 폭 따라 판 크기 (8명이어도 한 줄·화면 안, 5명부터 작은 판)
+  const layKey = `${ps.length}|${innerWidth}`;
+  if (playersEl.dataset.lay !== layKey) {
+    const L = cardLayout(ps.length, innerWidth);
+    playersEl.dataset.lay = layKey;
+    playersEl.style.setProperty('--pc-w', `${L.w}px`);
+    playersEl.style.setProperty('--pc-gap', `${L.gap}px`);
+    playersEl.style.setProperty('--pc-s', String(L.scale));
+    playersEl.classList.toggle('compact', L.compact);
   }
   const kills = state.mode === 'kills';
   for (const p of ps) {
@@ -1709,6 +1722,27 @@ function updateScreen() {
   }
 }
 
+// 대기실: 왼쪽 플레이어 관리 칸(8명이면 길어짐)과 가운데 판이 겹치면 판을 오른쪽으로 비키거나 줄임 (shared/hud-layout.js).
+// 크기를 재야 해서 화면 폭·인원·단계가 바뀔 때와 1초마다만 다시 잼
+const hostEl = $('host-players');
+let lobbyKey = '';
+let lobbyAt = 0;
+function placeLobby() {
+  const host = !hostEl.classList.contains('hidden') && !centerEl.classList.contains('hidden');
+  const key = `${innerWidth}|${innerHeight}|${host}|${state.players.length}|${state.phase}`;
+  const now = performance.now();
+  if (key === lobbyKey && now - lobbyAt < 1000) return;
+  lobbyKey = key;
+  lobbyAt = now;
+  centerEl.style.left = '';
+  centerEl.style.maxWidth = '';
+  if (!host) return;
+  const hr = hostEl.getBoundingClientRect().right;
+  const p = lobbyPlace(innerWidth, centerEl.offsetWidth, hr);
+  if (p.cx !== innerWidth / 2) centerEl.style.left = `${p.cx}px`;
+  if (p.maxW) centerEl.style.maxWidth = `${p.maxW}px`;
+}
+
 // ---------- HUD ----------
 // 화면 전환 띠가 다 덮기 전엔 HUD 를 전환 직전 스냅샷으로 그림 (대기실 판 등이 띠 밑에서 바뀌게). 게임 진행·입력은 진짜 state 그대로
 function updateHud() {
@@ -1721,6 +1755,7 @@ function updateHud() {
       state = real;
     }
   } else drawHud();
+  if (state && !closed) updateBig(); // 카운트다운 3·2·1 은 띠 밑에서도 진짜 서버 시간으로 (전환이 숫자를 늦추지 않게)
 }
 function drawHud() {
   if (!state || closed) return;
@@ -1735,7 +1770,6 @@ function drawHud() {
   updateScore();
   updatePlayers();
   updateResults();
-  updateBig();
   updateBottom(p);
 
   // 압사 경고: 내 머리 위로 떨어지는 블록이 곧 깔 때 (서버가 계산한 남은 시간)
@@ -1821,6 +1855,7 @@ function drawHud() {
   if (between) updateCharRow(p);
   updateRoomRow(between, isHost);
   updateHostPlayers(isHost && between);
+  placeLobby();
   const showBots = isHost && between;
   $('bot-btns').classList.toggle('hidden', !showBots);
   // 맵: 호스트는 고르고, 다른 사람은 보기만

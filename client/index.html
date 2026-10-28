@@ -82,12 +82,13 @@
       clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%); }
     #timers .pie { width: 13px; height: 13px; border-radius: 50%; }
     /* ===== 판 중: 아래 플레이어 판 (스매시식 초상 + 큰 %) ===== */
-    #players { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); display: flex; gap: 10px; align-items: flex-end; z-index: 2; }
-    #players .pc { position: relative; width: 124px; padding: 4px 8px 5px; background: linear-gradient(180deg, rgba(23,31,58,.93), rgba(8,12,26,.93));
+    /* 판 폭·간격·글자 배율은 인원·화면 폭 따라 main.js 가 --pc-w·--pc-gap·--pc-s 로 (shared/hud-layout.js, config HUD_CARD_*). 늘 한 줄 */
+    #players { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); display: flex; gap: var(--pc-gap, 10px); align-items: flex-end; z-index: 2; }
+    #players .pc { position: relative; box-sizing: border-box; width: var(--pc-w, 140px); padding: 4px 8px 5px; background: linear-gradient(180deg, rgba(23,31,58,.93), rgba(8,12,26,.93));
       clip-path: polygon(11px 0, 100% 0, calc(100% - 11px) 100%, 0 100%); box-shadow: var(--sh); animation: slide-up .25s ease-out; text-align: center; }
     /* 내 판은 조금 크고 위에 밝은 띠 — 한눈에 내 % 를 찾게 */
     #players .pc.me { background: linear-gradient(180deg, rgba(48,62,110,.96), rgba(13,19,42,.96)); border-top: 4px solid var(--accent); padding-top: 2px; }
-    #players .pc.me .pct { font-size: 42px; }
+    #players .pc.me .pct { font-size: calc(42px * var(--pc-s, 1)); }
     #players .pc.me .nm { font-size: 14px; }
     #players .pc .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: var(--pcol, #888); }
     #players .pc .top { display: flex; align-items: center; gap: 5px; justify-content: center; }
@@ -95,16 +96,22 @@
       clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%); border-bottom: 3px solid var(--pcol, #888); box-sizing: border-box; }
     #players .pc .nm { font-family: var(--disp); font-size: 13px; line-height: 1.1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 66px; }
     #players .pc .sub { font-size: 11px; color: var(--dim); line-height: 1.2; white-space: nowrap; }
-    #players .pc .pct { font-family: var(--disp); font-size: 34px; line-height: 1; letter-spacing: -1px; text-shadow: 0 3px 0 rgba(0,0,0,.55); }
+    #players .pc .pct { font-family: var(--disp); font-size: calc(34px * var(--pc-s, 1)); line-height: 1; letter-spacing: -1px; text-shadow: 0 3px 0 rgba(0,0,0,.55); }
     #players .pc .pct u { font-size: 20px; text-decoration: none; }
     #players .pc.hurt .pct { animation: shake .3s; }
     #players .pc.dead { filter: grayscale(.8) brightness(.66); }
     /* 관전 중 따라가는 사람 */
     #players .pc.watch { outline: 2px solid var(--accent); outline-offset: -2px; }
     #players .pc.watch::after { content: '▶'; position: absolute; top: -15px; left: 50%; transform: translateX(-50%); color: var(--accent); font-size: 12px; }
+    /* 작은 판 (5명부터·좁은 화면): 캐릭터·승 줄 빼고 초상·이름·% 만 (키가 낮아져 위 스킬 칸과 안 닿음) */
+    #players.compact .pc { padding: 3px 5px 5px; }
+    #players.compact .pc .sub { display: none; }
+    #players.compact .pc .top { gap: 4px; }
+    #players.compact .pc .face { width: calc(30px * var(--pc-s, 1) + 2px); height: calc(30px * var(--pc-s, 1) + 2px); }
+    #players.compact .pc .nm { max-width: calc(var(--pc-w, 140px) - 50px); font-size: 12px; }
     #players .pc .pct i { font-style: normal; font-size: 27px; color: var(--hot); letter-spacing: 1px; }
     /* ===== 판 중: 킬 로그 · 조작법 ===== */
-    #killfeed { position: absolute; top: 74px; right: 12px; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; pointer-events: none; }
+    #killfeed { position: absolute; top: 86px; right: 12px; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; pointer-events: none; }
     #killfeed .kill { font-family: var(--disp); font-size: 15px; padding: 3px 12px; background: rgba(8,12,26,.8); white-space: nowrap; transition: opacity .5s;
       clip-path: polygon(9px 0, 100% 0, calc(100% - 9px) 100%, 0 100%); animation: slide-left .2s ease-out; }
     #killfeed .kill.mine { background: linear-gradient(180deg, #4a3a06, #241c02); border-bottom: 2px solid var(--accent); }
@@ -125,7 +132,7 @@
     /* 띠가 다 덮기 전: 지난 화면은 클릭이 안 먹게 (방 목록은 들어간 뒤 사라지는 중) */
     body.wipe-hold #center, body.wipe-hold #results, #rooms.leaving { pointer-events: none; }
     #rooms.leaving * { pointer-events: none; }
-    #net { position: fixed; right: 10px; bottom: 8px; z-index: 50; pointer-events: none; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+    #net { position: fixed; right: 12px; top: 52px; z-index: 50; pointer-events: none; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
     #netPing { font-family: var(--disp); font-size: 12px; color: var(--dim); background: rgba(8,12,26,.6); padding: 2px 12px;
       clip-path: polygon(7px 0, 100% 0, calc(100% - 7px) 100%, 0 100%); }
     #netPing[data-level=warn] { color: #1a1300; background: linear-gradient(180deg, #ffe98a, #ffb400); }
@@ -186,8 +193,8 @@
     #damage.pop { transform: scale(1.35); }
     #damage.corner { position: absolute; left: 22px; bottom: 18px; font-size: 44px; }
     /* 아래 플레이어 판이 있는 판에서는 그 위로 올린다 (main.js 가 body.cards 를 켬) */
-    body.cards #bottom { bottom: 92px; }
-    body.cards #spec { bottom: 96px; }
+    body.cards #bottom { bottom: calc(var(--cards-h, 80px) + 18px); }
+    body.cards #spec { bottom: calc(var(--cards-h, 80px) + 22px); }
     #skills { display: flex; gap: 8px; }
     #skills .slot { position: relative; overflow: hidden; }
     #skills .fill { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(180deg, rgba(255,210,58,.45), rgba(255,138,31,.3)); z-index: 0; }
@@ -332,9 +339,10 @@
     #pcombo .c.done b { color: #fff; }
     /* 작은 창: 글씨·판을 줄여 화면을 덜 가림 */
     @media (max-height: 620px), (max-width: 1100px) {
-      #players .pc { width: 104px; }
-      #players .pc .pct { font-size: 28px; }
-      #players .pc .face { width: 32px; height: 32px; }
+      #score { font-size: 16px; padding: 3px 16px; max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; }
+      #score .sep { margin: 0 5px; }
+      #host-players { font-size: 12px; padding: 8px 10px; gap: 4px 5px; }
+      #host-players button { font-size: 11px; padding: 2px 7px; }
       #bigmsg { font-size: 88px; }
       #bigmsg.small { font-size: 56px; }
       #damage { font-size: 42px; }
