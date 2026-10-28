@@ -750,7 +750,15 @@ export const CONFIG = {
   SFX_DIR: '/assets/sfx/', // 효과음 파일 폴더 (client/assets/sfx, 출처 CREDITS.md)
   // 소리 묶음: 이름 → 파일(확장자 .ogg 빼고) 여러 개 중 하나를 골라 틀고 높낮이를 SFX_DETUNE 만큼 흔듦 (반복 피로), gain = 묶음 크기
   SFX_BANKS: {
-    punchM: { files: ['impactPunch_medium_000', 'impactPunch_medium_001', 'impactPunch_medium_002', 'impactPunch_medium_003', 'impactPunch_medium_004'], gain: 0.8 }, // 맞음 (퍽)
+    // 타격 (2026-10-28 다시, OpenGameArt CC0 를 tools/prep-sfx.mjs 로 역할별 다듬음): 크랙 '팍' + 펀치 '퍽' + 강타 몸통 '콰앙' + 치명타 쨍
+    hitCrack: { files: ['hitCrack_1', 'hitCrack_2', 'hitCrack_3'], gain: 1.1 },
+    hitPunch: { files: ['hitPunch_1', 'hitPunch_2', 'hitPunch_3', 'hitPunch_4', 'hitPunch_5'], gain: 1 },
+    hitHeavy: { files: ['hitHeavy_1', 'hitHeavy_2', 'hitHeavy_3', 'hitHeavy_4'], gain: 0.8 },
+    hitRing: { files: ['hitRing_1'], gain: 0.45 },
+    // 휘두름: 칼 '슉' (높고 짧게) · 보통 '휙' · 무거운 '훙'
+    swishBlade: { files: ['swishBlade_1', 'swishBlade_2', 'swishBlade_3'], gain: 0.55 },
+    swishMid: { files: ['swishMid_1', 'swishMid_2', 'swishMid_3', 'swishMid_4'], gain: 0.7 },
+    swishHeavy: { files: ['swishHeavy_1', 'swishHeavy_2', 'swishHeavy_3'], gain: 0.8 },
     punchH: { files: ['impactPunch_heavy_000', 'impactPunch_heavy_001', 'impactPunch_heavy_002', 'impactPunch_heavy_003', 'impactPunch_heavy_004'], gain: 0.9 }, // 세게 맞음·내가 맞음
     plateH: { files: ['impactPlate_heavy_000', 'impactPlate_heavy_001', 'impactPlate_heavy_002', 'impactPlate_heavy_003', 'impactPlate_heavy_004'], gain: 0.55 }, // 방패·금속판 (탱크)
     woodH: { files: ['impactWood_heavy_000', 'impactWood_heavy_001', 'impactWood_heavy_002', 'impactWood_heavy_003', 'impactWood_heavy_004'], gain: 0.8 }, // 블록 착지·망치
@@ -764,7 +772,6 @@ export const CONFIG = {
     glassH: { files: ['impactGlass_heavy_000', 'impactGlass_heavy_002'], gain: 0.35 }, // 수정·와장창 높은 겹
     chop: { files: ['chop'], gain: 0.75 }, // 도끼 (광전사)
     slice: { files: ['knifeSlice', 'knifeSlice2'], gain: 0.55 }, // 단검 베기 (닌자)
-    draw: { files: ['drawKnife3'], gain: 1.6 }, // 칼 휘두름 (원본이 작아 키움)
     cloth: { files: ['cloth1', 'cloth2', 'cloth3'], gain: 1.1 }, // 휘두름·뛰기 옷 펄럭
     latch: { files: ['metalLatch', 'metalClick'], gain: 0.5 }, // 장전·갈고리 걸림
     boom: { files: ['explosionCrunch_000', 'explosionCrunch_001', 'explosionCrunch_002'], gain: 0.7 }, // 폭발
@@ -776,16 +783,30 @@ export const CONFIG = {
     jingleLose: { files: ['jingles_STEEL05'], gain: 0.45 }, // 내가 죽음 (내려가는 스틸드럼)
   },
   // 캐릭터별 무기 소리: swing = 휘두를 때 묶음 (rate = 높낮이 배율, 낮을수록 무거움), hit = 때려서 맞을 때 덧씌우는 묶음 ('strum' 은 합성 기타)
+  // swing = 휘두름 묶음 (swishBlade·swishMid·swishHeavy), rate = 높낮이 (무기가 클수록 낮게), hit = 공통 타격 위에 얇게 얹는 무기 겹
   SFX_WEAPONS: {
-    tank: { swing: 'cloth', rate: 0.7, hit: 'plateH' }, // 방패·주먹
-    ninja: { swing: 'draw', rate: 1.15, hit: 'slice' }, // 단검
-    builder: { swing: 'cloth', rate: 0.65, hit: 'woodH' }, // 망치
-    hook: { swing: 'cloth', rate: 1, hit: 'metalM' }, // 갈고리·권총
-    hunter: { swing: 'cloth', rate: 1.1, hit: 'woodL', shot: 'pluck' }, // 석궁
-    cannon: { swing: 'cloth', rate: 0.75, hit: 'punchH' }, // 대포
-    berserker: { swing: 'cloth', rate: 0.6, hit: 'chop' }, // 도끼
-    bard: { swing: 'cloth', rate: 1, hit: 'strum' }, // 기타·류트
+    tank: { swing: 'swishHeavy', rate: 0.85, hit: 'plateH' }, // 방패·주먹
+    ninja: { swing: 'swishBlade', rate: 1.15, hit: 'slice' }, // 단검
+    builder: { swing: 'swishHeavy', rate: 0.75, hit: 'woodH' }, // 망치
+    hook: { swing: 'swishMid', rate: 1, hit: 'metalM' }, // 갈고리·권총
+    hunter: { swing: 'swishMid', rate: 1.12, hit: 'woodL', shot: 'pluck' }, // 석궁
+    cannon: { swing: 'swishHeavy', rate: 0.9, hit: 'hitHeavy' }, // 대포
+    berserker: { swing: 'swishHeavy', rate: 0.68, hit: 'chop' }, // 도끼
+    bard: { swing: 'swishMid', rate: 0.95, hit: 'strum' }, // 기타·류트
   },
+  SFX_SWING_AIR: 0.35, // 보통·무거운 휘두름 위에 얹는 칼 '슉' 크기 (바람 가르는 고역, 높낮이는 rate × 0.7)
+  SFX_WEAPON_LAYER: 0.45, // 공통 타격 위 무기 겹 크기 (공통 '팍' 이 기본, 무기는 색만)
+  // 타격 세기 단계 (main.js 가 hit 이벤트로 고름): 약 / 중 / 강 (마무리·묵직한 스킬) / 치명
+  // crack·punch·heavy = 묶음 크기 (0 이면 안 틈), rate = 높낮이, release = 히트스톱이 풀리는 순간(ms) 날아가는 '콰앙' (0 이면 없음)
+  SFX_HIT_TIERS: {
+    light: { crack: 0.55, punch: 0.45, heavy: 0, rate: 1.15, release: 0 },
+    medium: { crack: 0.9, punch: 0.9, heavy: 0, rate: 1, release: 0 },
+    heavy: { crack: 1, punch: 1, heavy: 0.9, rate: 0.92, release: 110 },
+    crit: { crack: 1, punch: 1, heavy: 1, rate: 0.95, release: 180, ring: 1 },
+  },
+  SFX_HIT_RELEASE: 0.3, // 강타·치명 '날아감' 겹 크기 (맞는 순간 '팍'보다 작게: 최고점이 맞는 순간에 오게)
+  SFX_HEAVY_KINDS: ['blast', 'bigbomb', 'bigshell', 'blockslam', 'slam', 'charge', 'execute', 'spinend', 'leapwave', 'pounce', 'riff', 'ampend', 'wall', 'bomb'], // 이 kind 로 맞으면 강타
+  SFX_LIGHT_KINDS: ['projectile', 'note', 'glide', 'spin', 'amp', 'shock'], // 약타 (연속으로 자주 맞는 것·투사체)
   // KO 연출 소리 (ko.on 'smash'·'final'·'crush'). 화면 시간이 느려지면 (슬로모션) 효과음은 먹먹하고 낮게, 음악은 잠깐 줄임
   SFX_KO: {
     slowAbove: 0.15, // 화면 시간 배율이 이보다 크고 1 보다 작으면 슬로모션으로 봄 (이하 = 압사 히트스톱처럼 아주 짧은 멈춤 → 소리는 그대로)

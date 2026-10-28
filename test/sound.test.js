@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { CONFIG as C } from '../shared/config.js';
 import { songFor, chordAt, degreeNote, INSTRUMENTS, DRUMS, ARPS } from '../client/music.js';
+import { hitTier } from '../client/hit-tier.js';
+import { FILES as PREP_FILES } from '../tools/prep-sfx.mjs';
 
 const SFX = new URL('../client/assets/sfx/', import.meta.url);
 
@@ -20,7 +22,8 @@ test('효과음 묶음의 파일이 다 있고, 폴더에 안 쓰는 파일이 �
 test('효과음 출처: CREDITS.md 에 팩마다 CC0 로 적혀 있음', () => {
   const credits = fs.readFileSync(new URL('../client/assets/CREDITS.md', import.meta.url), 'utf8');
   for (const pack of ['impact-sounds', 'rpg-audio', 'sci-fi-sounds', 'interface-sounds', 'music-jingles']) assert.ok(credits.includes(`kenney.nl/assets/${pack}`), pack);
-  for (const prefix of ['impactPunch', 'chop', 'explosionCrunch', 'pluck', 'jingles_STEEL']) assert.ok(credits.includes(prefix), prefix);
+  for (const prefix of ['impactPunch', 'chop', 'explosionCrunch', 'pluck', 'jingles_STEEL', 'hitCrack', 'swishBlade']) assert.ok(credits.includes(prefix), prefix);
+  for (const pack of ['thwack-sounds', 'content/punch', 'content/impact', '37-hitspunches', '20-sword-sound-effects', 'swishes-sound-pack']) assert.ok(credits.includes(pack), pack);
 });
 
 test('캐릭터 8명 모두 무기 소리가 있고, 그 묶음이 있음 (strum 은 합성 기타)', () => {
@@ -81,4 +84,36 @@ test('KO 소리: 압사 부스러기는 화면 히트스톱이 풀릴 때, 슬�
   assert.ok(K.slowAbove > C.KO_CRUSH_STOP_SCALE, '히트스톱은 슬로모션 아님');
   assert.ok(K.slowAbove < C.KO_FINAL_SCALE, '마지막 킬은 슬로모션');
   assert.ok(K.slowRate > 0.3 && K.slowRate < 1 && K.musicDuck > 0 && K.musicDuck < 1);
+});
+
+test('타격 세기 단계: 치명 > 강 (마무리·묵직한 스킬) > 약 (표창·투사체) > 중 (평타)', () => {
+  assert.equal(hitTier({ kind: 'push', crit: true, finish: true }), 'crit');
+  assert.equal(hitTier({ kind: 'push', finish: true }), 'heavy');
+  assert.equal(hitTier({ kind: 'blast' }), 'heavy');
+  assert.equal(hitTier({ kind: 'push', star: true }), 'light');
+  assert.equal(hitTier({ kind: 'projectile' }), 'light');
+  assert.equal(hitTier({ kind: 'push', n: 2 }), 'medium');
+  // 단계마다 크랙(고역 '팍')이 있고, 강할수록 크랙·몸통이 커지고 낮아짐, 강타·치명은 히트스톱 뒤 '콰앙'
+  const T = C.SFX_HIT_TIERS;
+  const order = ['light', 'medium', 'heavy', 'crit'];
+  for (const k of order) assert.ok(T[k].crack > 0, k);
+  for (let i = 1; i < order.length; i++) {
+    assert.ok(T[order[i]].crack >= T[order[i - 1]].crack && T[order[i]].punch >= T[order[i - 1]].punch, order[i]);
+  }
+  assert.ok(T.light.rate > T.heavy.rate);
+  assert.equal(T.heavy.release, C.BASIC_FINISH_HITSTOP_MS);
+  assert.ok(T.crit.release > T.heavy.release && T.medium.release === 0);
+  // 강타·약타 kind 가 겹치지 않음
+  assert.ok(!C.SFX_HEAVY_KINDS.some((k) => C.SFX_LIGHT_KINDS.includes(k)));
+});
+
+test('휘두름: 무기마다 휘두름 묶음이 칼·보통·무거운 셋 중 하나, 큰 무기일수록 낮게', () => {
+  for (const ch of C.CHARACTERS) assert.ok(['swishBlade', 'swishMid', 'swishHeavy'].includes(C.SFX_WEAPONS[ch].swing), ch);
+  assert.equal(C.SFX_WEAPONS.ninja.swing, 'swishBlade');
+  assert.ok(C.SFX_WEAPONS.berserker.rate < C.SFX_WEAPONS.hook.rate && C.SFX_WEAPONS.hook.rate < C.SFX_WEAPONS.ninja.rate);
+});
+
+test('다듬은 재료 (tools/prep-sfx.mjs FILES) 가 다 소리 묶음에 들어 있음', () => {
+  const used = new Set(Object.values(C.SFX_BANKS).flatMap((b) => b.files));
+  for (const [name] of PREP_FILES) assert.ok(used.has(name), name);
 });
