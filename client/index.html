@@ -273,11 +273,35 @@
     #name-row { font-size: 14px; margin-top: 10px; }
     /* 캐릭터 고르기: 초상 카드 (select 는 그대로 두고 카드가 값을 바꾼다) */
     #char-label { display: none; } /* 고르기는 초상 카드로 — select 는 값만 들고 있는다 (기존 코드·스크립트가 그대로 씀) */
-    #char-cards { display: flex; gap: 5px; justify-content: center; flex-wrap: wrap; margin: 8px auto 2px; max-width: 520px; }
+    /* 캐릭터 고르기 (대기실 판 안): 큰 3D 내 캐릭터 + 카드 판 (5칸 × 2줄, 끝칸 '랜덤') + 누르면 뜨는 스킬 카드 */
+    #char-pick { position: relative; display: flex; gap: 12px; align-items: stretch; justify-content: center; margin: 8px auto 2px; max-width: 560px; }
+    #char-stage { position: relative; width: 150px; height: 196px; flex: none; cursor: pointer;
+      background: radial-gradient(ellipse at 50% 88%, rgba(255,210,58,.28), transparent 58%), linear-gradient(180deg, rgba(40,52,94,.65), rgba(10,15,34,.75));
+      clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%); }
+    #char-stage canvas, #char-stage .flat { position: absolute; left: 0; top: 0; width: 100%; height: calc(100% - 26px); object-fit: contain; }
+    #char-stage .who { position: absolute; left: 0; right: 0; bottom: 3px; font-family: var(--disp); font-size: 19px; text-align: center; color: var(--accent); text-shadow: 0 3px 0 rgba(0,0,0,.5); }
+    #char-pick .side { display: flex; flex-direction: column; gap: 6px; align-items: center; justify-content: center; }
+    #char-info-btn { font-size: 13px; padding: 3px 14px; }
+    #char-cards { display: grid; grid-template-columns: repeat(5, auto); gap: 5px; justify-content: center; }
     #char-cards .cc { position: relative; box-sizing: border-box; width: 60px; padding: 3px 4px 4px; cursor: pointer; background: linear-gradient(180deg, rgba(40,52,94,.8), rgba(10,15,34,.85));
       clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%); transition: transform .1s, filter .1s; }
     #char-cards .cc:hover { transform: translateY(-3px); filter: brightness(1.2); }
-    #char-cards .cc .face { width: 100%; height: 48px; background: rgba(0,0,0,.3) center/contain no-repeat; }
+    #char-cards .cc .face { width: 100%; height: 58px; background: rgba(0,0,0,.3) center/contain no-repeat; }
+    /* '랜덤' 칸: 글자만 (아이콘 없음). 뽑는 동안 불이 카드 사이를 돌다(.roll) 멈춤 */
+    #char-cards .cc.random .face { display: flex; align-items: center; justify-content: center; font-family: var(--disp); font-size: 17px; color: var(--accent);
+      background: repeating-linear-gradient(-62deg, rgba(255,210,58,.12) 0 8px, transparent 8px 16px); }
+    #char-cards .cc.roll { background: linear-gradient(180deg, #fff3b0, #ffd23a); transform: translateY(-3px); }
+    #char-cards.rolling .cc { pointer-events: none; }
+    #char-card { position: absolute; left: 162px; right: 0; top: 0; bottom: 0; z-index: 2; text-align: left; padding: 10px 14px; box-sizing: border-box; overflow-y: auto;
+      background: linear-gradient(160deg, rgba(36,47,92,.98), rgba(9,14,30,.98)); box-shadow: var(--sh); animation: slide-left .18s ease-out;
+      clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px)); }
+    #char-card .nm { font-family: var(--disp); font-size: 22px; color: var(--accent); }
+    #char-card .intro { font-size: 13px; color: #d7def5; margin: 2px 0 8px; }
+    #char-card .sk { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 13px; line-height: 1.45; margin-bottom: 6px; }
+    #char-card .sk b { font-family: var(--disp); font-weight: normal; color: var(--accent); white-space: nowrap; }
+    #char-card .sk .t { font-family: var(--disp); color: var(--text); }
+    #char-card .sk .d { grid-column: 2; color: #c3cbe6; }
+    #char-card .close { position: absolute; right: 16px; bottom: 8px; font-size: 12px; padding: 2px 10px; }
     #char-cards .cc .nm { font-family: var(--disp); font-size: 12px; color: var(--dim); line-height: 1.2; }
     #char-cards .cc.sel { background: linear-gradient(180deg, #ffe98a, #ffb400); box-shadow: 0 0 16px rgba(255,210,58,.6); }
     #char-cards .cc.sel .nm { color: #1a1300; }
@@ -350,10 +374,22 @@
       #center { font-size: 14px; padding: 11px 18px; top: calc(50% + 10px); }
       #center-text { font-size: 18px; }
       #start-btn { font-size: 20px; padding: 7px 26px; margin-top: 8px; }
-      #char-cards { gap: 4px; margin-top: 6px; }
-      #char-cards .cc { width: 48px; }
-      #char-cards .cc .face { height: 40px; }
+      #char-cards { gap: 4px; }
+      #char-cards .cc { width: 50px; }
+      #char-cards .cc .face { height: 44px; }
       #char-cards .cc .nm { font-size: 11px; }
+      #char-stage { width: 112px; height: 138px; }
+      #char-cards .cc .face { height: 38px; }
+      #char-pick { margin-top: 4px; }
+      /* 키가 작은 창: 대기실 판이 넘치지 않게 덜 중요한 줄을 뺌 (주소 글자는 '링크 복사' 로, F·R 한 줄은 스킬 카드로) */
+      #room-link, #char-pick ~ #char-info { display: none; }
+      #name-row { margin-top: 6px; }
+      #room-row { margin-top: 6px; }
+      #center-text { font-size: 16px; }
+      #char-stage .who { font-size: 16px; }
+      #char-card { left: 126px; padding: 8px 10px; }
+      #char-card .nm { font-size: 18px; }
+      #char-card .sk, #char-card .intro { font-size: 12px; }
       #char-info { font-size: 12px; }
       #room-link { font-size: 11px; }
       #rooms h2 { font-size: 32px; }
@@ -481,7 +517,12 @@
         <div style="flex-basis:100%"><span id="room-link"></span></div></div>
       <div id="name-row" class="hidden" style="font-size:15px;margin-top:8px"><label>이름 <input id="name-input" style="font-size:15px;width:9em" placeholder="머리 위에 보임" /></label>
         <label id="char-label" style="margin-left:8px">캐릭터 <select id="char-select" style="font-size:15px"></select></label>
-        <div id="char-cards"></div><!-- 초상 카드 (누르면 위 select 값을 바꿈 — 고르는 길은 하나) -->
+        <!-- 캐릭터 고르기: 왼쪽 큰 3D 내 캐릭터 (누르면 스킬 카드), 오른쪽 초상 카드 + 랜덤. 카드는 위 select 값을 바꿈 (고르는 길은 하나) -->
+        <div id="char-pick">
+          <div id="char-stage" title="눌러서 스킬 보기"><img class="flat hidden" alt="" /><div class="who"></div></div>
+          <div class="side"><div id="char-cards"></div><button id="char-info-btn" class="ghost">스킬 보기</button></div>
+          <div id="char-card" class="hidden"></div>
+        </div>
         <div id="color-row">색 <span id="color-swatches"></span><span class="note hidden" id="color-team-note">팀전은 팀 색</span></div>
         <div id="char-info"></div></div>
       <div id="keys" class="keys hidden">
