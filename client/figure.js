@@ -161,7 +161,7 @@ export function buildFigure(color, char, models) {
     feet.push(foot);
   }
 
-  const fig = { d, hips, waist, torso, neck, shoulders, elbows, hands, thighs, knees, feet, flaps: [], pose: null };
+  const fig = { d, char, hips, waist, torso, neck, shoulders, elbows, hands, thighs, knees, feet, flaps: [], pose: null };
   dressUp(char, fig, costume, skin);
 
   // 망치는 오른손 (건축가 무기, render.js 가 건축가만 보임): 손잡이를 쥐고 머리가 주먹 앞쪽으로 (모델은 손잡이가 z 축, 머리가 +z 끝)
@@ -1391,6 +1391,70 @@ export const MOVES = {
 // 끊긴 공격: 팔이 튕겨 나가며 자세가 무너짐 (뒤로 젖히고 무릎이 꺾임)
 const BROKEN = { shFwd: [2.3, 1.9], shOut: [1.3, 1.5], elbow: [0.2, 0.5], waistPitch: -0.25, neckPitch: -0.45, waistRoll: 0.3, crouch: 0.6 };
 
+// ---------- 도발·승리 포즈 (스매시식) ----------
+// 캐릭터(바드는 폼)마다 taunt = 이모트 바퀴 전용 칸(C.EMOTE_CHAR), victory = 판 끝 승자. 준비 W 로 모였다가 → 결정 포즈 S 에 딱 멈추고
+// → loop(초) 가 S 위에 작은 반복을 얹음 (끝나지 않는 승리 포즈도 살아 있게). 도발은 이모트 끝나기 전에 풀려 돌아옴. 자세 칸은 MOVES 와 같음
+// shield: 그동안 탱크 방패를 몸 앞에
+const wob = (t, hz, a) => Math.sin(t * hz * Math.PI * 2) * a;
+export const POSES = {
+  tank: {
+    taunt: { W: { shFwd: [1.2, 1.3], elbow: [1.6, 1.5], crouch: 0.5, waistPitch: 0.25 }, S: { shFwd: [1.0, 1.25], shOut: [0.1, 0.05], elbow: [1.9, 1.45], crouch: 0.4, waistPitch: 0.15, neckPitch: -0.1 }, loop: (t) => ({ shFwd: R(0.9 + Math.max(0, wob(t, 2.2, 0.6))), elbow: R(1.9 - Math.max(0, wob(t, 2.2, 0.7))) }), shield: true },
+    victory: { W: { crouch: 0.4, waistPitch: 0.2, shFwd: [0.6, 0.6] }, S: { shFwd: [1.05, 1.05], shOut: [-0.55, -0.55], elbow: [2.15, 2.15], waistPitch: -0.12, neckPitch: -0.25, thOut: [0.15, 0.15] }, loop: (t) => ({ neckPitch: -0.25 + Math.max(0, wob(t, 0.9, 0.25)) }) },
+  },
+  ninja: {
+    taunt: { W: { crouch: 0.6, shFwd: [0.4, 0.4], shOut: [0.6, 0.6], elbow: [1.2, 1.2] }, S: { shFwd: [1.15, 1.15], shOut: [-0.4, -0.4], elbow: [1.95, 1.95], thFwd: [1.2, 0], knee: [1.9, 0.15], neckPitch: 0.15, waistPitch: 0.1 }, loop: (t) => ({ elbow: [1.95 + wob(t, 3, 0.08), 1.95 - wob(t, 3, 0.08)] }) },
+    victory: { W: { crouch: 0.7, shFwd: [-0.4, -0.4], shOut: [0.5, 0.5] }, S: { thFwd: [1.25, -0.35], knee: [1.6, 2.1], shFwd: [1.3, 1.3], shOut: [-0.45, -0.45], elbow: [0.8, 0.8], waistPitch: 0.25, neckPitch: 0.35 }, loop: (t) => ({ neckPitch: 0.35 + wob(t, 0.5, 0.05) }) },
+  },
+  builder: {
+    taunt: { W: { shFwd: [1.5, -0.2], elbow: [1.2, 1.4], crouch: 0.3 }, S: { shFwd: [0.3, -0.35], shOut: [0.5, 0.8], elbow: [2.45, 2.0], waistSide: -0.12, neckPitch: -0.1 }, loop: (t) => ({ neckPitch: -0.1 + Math.max(0, wob(t, 1.6, 0.25)) }) },
+    victory: { W: { crouch: 0.5, shFwd: [0.5, 0.5], elbow: [1.5, 1.5] }, S: { shFwd: [3.0, 1.05], shOut: [0.3, 0.1], elbow: [0.2, 1.7], waistPitch: -0.15, neckPitch: -0.3, thOut: [0.12, 0.12] }, loop: (t) => ({ shFwd: R(2.85 + wob(t, 1.4, 0.18)), elbow: R(0.25 - wob(t, 1.4, 0.15)) }) },
+  },
+  hook: {
+    taunt: { W: { shFwd: [0.2, 0.8], elbow: [1.2, 1.4], waistRoll: 0.1 }, S: { shFwd: [-0.35, 1.35], shOut: [0.75, 0.05], elbow: [2.0, 0.9], waistRoll: 0.25, waistPitch: -0.12, neckPitch: -0.2 }, loop: (t) => ({ elbow: L(1.0 + Math.max(0, wob(t, 2.4, 0.75))) }) },
+    victory: { W: { crouch: 0.4, shFwd: [0.4, 0.2] }, S: { shFwd: [2.95, -0.35], shOut: [0.25, 0.75], elbow: [0.15, 2.0], thFwd: [0, 1.15], knee: [0, 1.25], waistPitch: -0.12, neckPitch: -0.3 }, loop: (t) => ({ shFwd: R(2.95 + wob(t, 0.8, 0.12)) }) },
+  },
+  hunter: {
+    taunt: { W: { crouch: 0.45, waistPitch: 0.45, neckPitch: 0.35, shFwd: [0.3, 0.3] }, S: { shFwd: [1.6, 0.2], shOut: [0.05, 0.4], elbow: [0, 0.5], waistRoll: 0.35, waistPitch: 0.15, thFwd: [0.5, -0.2], neckPitch: -0.1 }, loop: (t) => ({ shFwd: R(1.6 + wob(t, 3, 0.05)) }) },
+    victory: { W: { crouch: 0.5, waistPitch: 0.3 }, S: { shFwd: [1.3, 0.55], shOut: [0.85, 0.2], elbow: [2.35, 1.3], crouch: 0.3, waistPitch: 0.2, neckPitch: -0.2, thFwd: [0.6, -0.1] }, loop: (t) => ({ waistRoll: wob(t, 0.35, 0.4) }) },
+  },
+  cannon: {
+    taunt: { W: { crouch: 0.5, waistPitch: 0.25, shFwd: [0.25, 0.6], elbow: [1.7, 1.6] }, S: { waistPitch: -0.45, neckPitch: 0.2, shFwd: [0.25, 0.2], shOut: [1.75, 2.5], elbow: [1.7, 0.4], thFwd: [0.35, -0.15] }, loop: (t) => ({ shOut: [1.75, 2.5 + Math.max(0, wob(t, 2.5, 0.35))] }) },
+    victory: { W: { crouch: 0.3, waistPitch: 0.2 }, S: { waistPitch: -0.35, neckPitch: -0.3, shFwd: [0.25, 0.55], shOut: [1.75, -0.1], elbow: [1.7, 1.75], thOut: [0.2, 0.2] }, loop: (t) => ({ waistPitch: -0.35 + Math.abs(wob(t, 2.2, 0.12)), neckPitch: -0.3 - Math.abs(wob(t, 2.2, 0.12)) }) },
+  },
+  berserker: {
+    taunt: { W: { crouch: 0.6, waistPitch: 0.45, shFwd: [0.5, 0.5], shOut: [0.6, 0.6], elbow: [1.6, 1.6] }, S: { shOut: [1.3, 1.3], shFwd: [0.45, 0.45], elbow: [1.6, 1.6], thOut: [0.32, 0.32], crouch: 0.45, waistPitch: -0.25, neckPitch: -0.55 }, loop: (t) => ({ elbow: [1.6 + wob(t, 9, 0.07), 1.6 - wob(t, 9, 0.07)], neckPitch: -0.55 + wob(t, 7, 0.04) }) },
+    victory: { W: { crouch: 0.6, waistPitch: 0.4, shFwd: [0.6, 0.6], elbow: [1.5, 1.5] }, S: { shFwd: [3.0, 0.35], shOut: [0.25, 1.35], elbow: [0.25, 1.9], thOut: [0.3, 0.3], crouch: 0.35, waistPitch: -0.25, neckPitch: -0.5 }, loop: (t) => ({ shFwd: R(2.9 + Math.max(0, wob(t, 1.2, 0.2))), elbow: L(1.9 + wob(t, 8, 0.06)), neckPitch: -0.5 + wob(t, 6, 0.04) }) },
+  },
+  bard: {
+    taunt: { W: { shFwd: [1.6, 0.75], shOut: [0.6, 0.05], elbow: [1.0, 1.45] }, S: { shFwd: [0.6, 0.75], shOut: [1.3, 0.05], elbow: [0.3, 1.45], waistPitch: 0.75, neckPitch: 0.2, thFwd: [-0.35, 0.2] }, loop: (t) => ({ shOut: R(1.3 + wob(t, 1.2, 0.12)) }) },
+    victory: { W: { shFwd: [0.45, 0.75], shOut: [0.3, 0.05], elbow: [1.6, 1.45] }, S: { shFwd: [0.45, 0.75], shOut: [0.3, 0.05], elbow: [1.6, 1.45], neckPitch: -0.2 }, loop: (t) => ({ elbow: R(1.6 + wob(t, 6, 0.3)), waistSide: wob(t, 1, 0.12), neckPitch: -0.2 + wob(t, 2, 0.1), thFwd: L(Math.max(0, wob(t, 2, 0.35))), knee: L(Math.max(0, wob(t, 2, 0.5))) }) },
+  },
+  metal: {
+    taunt: { W: { shFwd: [0.45, 0.75], elbow: [1.6, 1.45], crouch: 0.3 }, S: { shFwd: [2.9, 0.75], shOut: [0.25, 0.05], elbow: [0.25, 1.45], thOut: [0.3, 0.3], crouch: 0.3, waistPitch: -0.2, neckPitch: -0.3 }, loop: (t) => ({ neckPitch: -0.3 + Math.max(0, wob(t, 2.5, 0.7)), waistPitch: -0.2 + Math.max(0, wob(t, 2.5, 0.2)) }) },
+    victory: { W: { crouch: 0.6, shFwd: [0.45, 0.75], elbow: [1.6, 1.45] }, S: { thFwd: [1.3, -0.45], knee: [1.5, 2.1], shFwd: [0.45, 0.75], shOut: [0.3, 0.05], elbow: [1.6, 1.45], waistPitch: -0.45, neckPitch: -0.5 }, loop: (t) => ({ elbow: R(1.6 + wob(t, 7, 0.3)), neckPitch: -0.5 + Math.max(0, wob(t, 2.2, 0.75)) }) },
+  },
+};
+
+// 도발·승리 포즈 시간 축: t = 시작부터 초, end = 끝나는 초 (승리는 Infinity = 결정 포즈 유지)
+function poseAt(P, T, V, set, t, end) {
+  const tin = C.POSE_IN_S;
+  const tsnap = tin + C.POSE_SNAP_S;
+  if (t < tin) return overlay(P, T, set.W, ease(t / tin), V);
+  const S = set.loop && t >= tsnap ? { ...set.S, ...mergeSides(set.S, set.loop(t - tsnap)) } : set.S;
+  const out = Number.isFinite(end) ? 1 - ease((t - (end - C.POSE_OUT_S)) / C.POSE_OUT_S) : 1;
+  if (t < tsnap) {
+    const u = (t - tin) / C.POSE_SNAP_S;
+    overlay(P, T, set.W, 1 - u, V);
+    overlay(P, T, S, ease(u), V);
+  } else overlay(P, T, S, Math.min(1, out), V);
+}
+// loop 의 [값, null] (한쪽만) 이 S 의 다른 쪽을 지우지 않게
+function mergeSides(S, add) {
+  const out = {};
+  for (const [k, v] of Object.entries(add)) out[k] = Array.isArray(v) && Array.isArray(S[k]) ? v.map((x, i) => (x === null ? S[k][i] : x)) : v;
+  return out;
+}
+
 // 공격 자세를 P 에 바로 덮어씀 (w = 0~1 섞는 정도). 값은 절대 각 (매 프레임 쌓이지 않게).
 // crouch 는 이번 프레임 목표 자세 T 의 다리에서 두 무릎을 더 굽힌 각 (다리 각을 직접 준 동작은 그쪽이 이김)
 // V = 관절 스프링 속도: 덮어쓴 만큼 줄임 (자세를 붙잡는 동안 스프링 속도가 쌓였다가 끝날 때 팔이 튕겨 나가지 않게)
@@ -1711,6 +1775,9 @@ export function figureAnim(fig, st, dt, retry = false) {
     if (m.spin && (act.phase === 'strike' || act.phase === 'rec')) spin = m.spin * ease(act.phase === 'strike' ? act.u * 0.2 : 0.2 + act.u * 0.8);
     if (m.turn && (act.phase === 'strike' || act.phase === 'rec')) spin = m.turn * (act.phase === 'strike' ? ease(act.u) : 1 - ease((act.u - 0.6) / 0.4)); // 옆으로 돌았다가 회복 끝에 돌아옴
   }
+  // 도발 (이모트 전용 칸) · 승리 포즈: 공격 중·맞음·경직이면 안 함
+  const poseSet = !act && !frozen && !st.stunned ? POSES[fig.form === 'metal' ? 'metal' : fig.char]?.[st.victory >= 0 ? 'victory' : st.emote === C.EMOTE_CHAR ? 'taunt' : ''] : null;
+  if (poseSet) poseAt(P, T, V, poseSet, st.victory >= 0 ? st.victory : st.emoteT, st.victory >= 0 ? Infinity : C.EMOTE_MS / 1000);
   if (st.whirl >= 0 && !frozen) {
     // 광전사 R 분노 소용돌이: 도끼 든 팔을 쭉 뻗고 팽이처럼 (처음 0.25초에 빨라짐). 원심력에 끌려가듯 도끼 쪽으로 기울고 고개는 뒤로 젖혀짐
     const w = st.whirl;
@@ -1744,7 +1811,7 @@ export function figureAnim(fig, st, dt, retry = false) {
     fig.bow.back.visible = !inHand;
   }
   if (fig.shields) {
-    const front = !!act && !!MOVES[act.move].shield && act.phase !== 'broken';
+    const front = (!!act && !!MOVES[act.move].shield && act.phase !== 'broken') || !!poseSet?.shield;
     fig.shields.front.visible = front;
     fig.shields.back.visible = !front;
   }

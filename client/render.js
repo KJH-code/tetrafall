@@ -799,9 +799,11 @@ export class Renderer {
     a.diveFlip = (a.diveFlip || 0) + ((fig && this.dives?.has(p.id) ? C.FIGURE_DIVE_FLIP : 0) - (a.diveFlip || 0)) * (1 - Math.exp(-14 * dt));
     rig.rotation.y = lean + (fig ? a.flipAngle + a.diveFlip : a.spin);
     rig.rotation.x = jointed ? 0 : step * C.ANIM_SWAY; // 걸을 때 좌우로 살짝 흔들
-    // 승자 춤·이모트 '춤': 깡충 뛰며 제자리에서 빙글
+    // 승자 춤·이모트 '춤': 깡충 뛰며 제자리에서 빙글. TABS 식 몸은 승자면 춤 대신 캐릭터별 승리 포즈 (figure.js POSES, a.vicT = 승리 경과 초)
     const emote = p.emote ?? -1;
-    const dancing = this.victoryId === p.id || emote === 1;
+    const won = this.victoryId === p.id || !!this.winners?.has(p.id);
+    a.vicT = won && fig ? (a.vicT >= 0 ? a.vicT : 0) + dt : -1;
+    const dancing = (this.victoryId === p.id && !fig) || emote === 1;
     a.dance = dancing ? (a.dance || 0) + dt : 0;
     // 춤이 끝나면 가장 가까운 한 바퀴 각으로 스르륵 (0 으로 뚝 돌아오지 않게)
     if (dancing) a.danceSpin = a.dance * C.VICTORY_SPIN;
@@ -820,7 +822,7 @@ export class Renderer {
       const punch = this.effects.punchAmount(p.id);
       const hit = this.hitFor(p);
       figureAnim(fig, {
-        air, walking, hs: a.hs, walk: a.walk, stunned: p.stunned || !!a.flipRag, dancing, emote, emoteT: a.emoteT, punch, holding: !!heldKind(p), t: a.t,
+        air, walking, hs: a.hs, walk: a.walk, stunned: p.stunned || !!a.flipRag, dancing, emote, emoteT: a.emoteT, victory: a.vicT, punch, holding: !!heldKind(p), t: a.t,
         hit, act: this.actFor(p.id), accF: a.accF, accS: a.accS, tumble: a.tumbleAmt, recover: a.recover * a.recoverPow, land: a.figLand * a.landPow, flip: a.flip >= 0 && !a.flipRag ? a.flip / C.FIGURE_FLIP_S : -1, rag: !!a.flipRag,
         sniffAt: fig.sniff ? this.sniffAngle(p) : null,
         whirl: this.whirlTime(a, p), dizzy: a.dizzy > 0 ? a.dizzy / C.BERSERK_DIZZY_S : 0,
@@ -971,7 +973,7 @@ export class Renderer {
     this.ragdoll.capture(
       p.id,
       g,
-      { stunned: limp, sinceStun: a.ragStunEnd ? (now - a.ragStunEnd) / 1000 : Infinity, hitAge: hit ? hit.age : null, falling: s.z < C.RAGDOLL_FALL_Z, act: act ? act.phase : null },
+      { stunned: limp, sinceStun: a.ragStunEnd ? (now - a.ragStunEnd) / 1000 : Infinity, hitAge: hit ? hit.age : null, falling: s.z < C.RAGDOLL_FALL_Z, act: act ? act.phase : (p.emote ?? -1) >= 0 || a.vicT >= 0 ? 'pose' : null }, // 이모트·승리 포즈는 모터 세게 (힘 안 빠지게)
       hit ? { id: hit.id, x: hx, y: hy, pow: hit.pow } : null,
       dt,
     );
@@ -2916,6 +2918,9 @@ export class Renderer {
 
     // 플레이어
     this.victoryId = cam.victory || null;
+    // 판 끝 (결과 연출 동안 계속): 이긴 사람(팀전이면 이긴 팀)은 승리 포즈를 유지 (카메라 연출은 WIN_BANNER_MS 뿐)
+    const rd = state && state.phase === 'over' && !state.practice ? state.round : null;
+    this.winners = rd ? new Set([...(rd.winnerIds || []), ...(rd.winnerTeam ? state.players.filter((q) => q.team === rd.winnerTeam).map((q) => q.id) : [])]) : null;
     const seen = new Set();
     // 위치: 스냅샷을 서버 시각으로 쌓아 두고 조금 늦은 시각의 위치를 두 스냅샷 사이에서 보간 (client/interp.js)
     if (Number.isFinite(state.time) && state.time !== this.snapTime) {

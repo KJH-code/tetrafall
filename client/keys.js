@@ -82,3 +82,11 @@ export function groupLabel(binds, ids) {
   const labels = ids.map((id) => keyLabel(binds[id]));
   return ids.length === 4 && labels.every((l) => /^[A-Z0-9]$/.test(l)) ? labels.join('') : labels.join('/');
 }
+
+// 이모트 바퀴 칸 고르기 (input.js): w = 바퀴를 연 뒤 마우스를 움직인 양 {x 오른쪽, y 아래}. 위가 0, 시계 방향으로 n 칸.
+// minPx 보다 덜 움직였으면 -1 (안 고름)
+export function wheelSlot(w, n, minPx) {
+  if (!w || !(n > 0) || Math.hypot(w.x, w.y) < minPx) return -1;
+  const ang = Math.atan2(w.x, -w.y); // 위 0, 오른쪽 +π/2
+  return ((Math.round(ang / ((Math.PI * 2) / n)) % n) + n) % n;
+}

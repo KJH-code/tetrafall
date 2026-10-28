@@ -1867,6 +1867,12 @@ const wheelEl = $('emote-wheel');
 const wheelItems = [...wheelEl.querySelectorAll('.em')];
 wheelItems.forEach((el, i) => (el.textContent = C.EMOTE_NAMES[i]));
 input.onWheel = (pick) => {
+  if (pick === -1) {
+    // 바퀴를 열 때: 전용 도발 칸 이름 = 내 캐릭터 (바드는 지금 폼)
+    const me = state && state.players.find((q) => q.id === myId);
+    const look = me && (me.char === 'bard' && me.bard?.form === 'metal' ? 'metal' : me.char);
+    wheelItems[C.EMOTE_CHAR].textContent = C.EMOTE_CHAR_NAMES[look] || C.EMOTE_NAMES[C.EMOTE_CHAR];
+  }
   wheelEl.classList.toggle('hidden', pick === null);
   wheelItems.forEach((el, i) => el.classList.toggle('on', i === pick));
 };
