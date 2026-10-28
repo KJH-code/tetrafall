@@ -167,11 +167,12 @@ test('갈고리 (덩치 큰 선장): 위가 크고 아래가 가는 몸 — 가�
   assert.ok(C.HOOK_COAT_LEN > 0);
 });
 
-test('닌자 (치비 그림자): 가장 가는 몸 + 머리가 몸통에 비해 큼, 대포수 다음으로 작음', () => {
+test('닌자 (재빠른 그림자): 가늘고 날렵, 머리는 보통 비율, 키는 예전처럼 큰 편 (치비 아님)', () => {
   const b = B[C.FIGURE_BODY.ninja];
   const lean = B.lean;
-  assert.ok(b.head / b.torso > 0.8 && b.headW > lean.headW * 1.3, '큰 머리 (치비)');
-  assert.ok(height(b) < height(lean) * 0.9 && height(b) < height(B[C.FIGURE_BODY.builder]), '작음');
-  assert.ok(b.legR <= B[C.FIGURE_BODY.bard].legR && b.armR <= B[C.FIGURE_BODY.bard].armR, '가장 가는 팔다리 축');
+  assert.ok(Math.abs(b.headW - lean.headW) < 0.02 && b.head / b.torso < 0.7, '보통 머리');
+  assert.ok(height(b) > height(lean) * 0.97, '키 큰 편');
+  assert.ok(b.legR < lean.legR && b.armR < lean.armR && b.chestR < lean.chestR, '가는 몸');
+  assert.ok(b.hunch > 0 && b.bend > 0, '살짝 숙인 날렵한 자세');
   assert.ok(C.NINJA_SCARF_LEN > 0);
 });

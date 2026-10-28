@@ -386,7 +386,7 @@ function flap(fig, parent, geo, mat, x, y, z, base, lift, flutter) {
   return pivot;
 }
 
-// 닌자 (재빠른 그림자): 가장 작고 가는 치비 몸 (머리 크게) + 두건(눈 둘레만 피부 띠) + 검은 도복 (닫힌 몸통, 겹친 깃) + 헐렁한 바지 (발목 붕대로 조임)
+// 닌자 (재빠른 그림자): 가늘고 날렵한 몸 + 두건(눈 둘레만 피부 띠) + 검은 도복 (닫힌 몸통, 겹친 깃) + 헐렁한 바지 (발목 붕대로 조임)
 // + 팔뚝·정강이 붕대 + 등에 칼. 플레이어 색 큰 면 = 길게 날리는 목도리 + 허리띠(오비) + 머리띠 (2026-10-28)
 function dressNinja(fig, costume, cloth) {
   const d = fig.d;

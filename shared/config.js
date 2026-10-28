@@ -1133,8 +1133,8 @@ export const CONFIG = {
   FIGURE_BODIES: {
     // 보통 마네킹
     lean: { foot: 0.06, shin: 0.36, thigh: 0.36, torso: 0.48, chestR: 0.15, waistR: 0.12, depth: 0.72, head: 0.28, headW: 0.17, sink: -0.05, upper: 0.3, lower: 0.27, armR: 0.045, foreR: 0.04, legR: 0.065, hand: 0.048, shoulderY: 0.18, hipY: 0.075, hunch: 0, spread: 0.22 },
-    // 치비 닌자 (재빠른 그림자): 가장 작고 가는 몸 + 큰 머리, 살짝 숙이고 무릎 굽힘 (2026-10-28)
-    slim: { foot: 0.06, shin: 0.25, thigh: 0.24, torso: 0.4, chestR: 0.14, waistR: 0.115, depth: 0.78, head: 0.34, headW: 0.23, sink: -0.02, upper: 0.24, lower: 0.22, armR: 0.04, foreR: 0.038, legR: 0.052, hand: 0.05, shoulderY: 0.155, hipY: 0.065, hunch: 0.15, bend: 0.25, spread: 0.3 },
+    // 닌자 (재빠른 그림자): 가늘고 날렵한 몸, 살짝 숙이고 무릎 굽힘 (2026-10-28 재혁: 치비 말고 보통 머리·원래 키)
+    slim: { foot: 0.06, shin: 0.37, thigh: 0.37, torso: 0.46, chestR: 0.14, waistR: 0.11, depth: 0.76, head: 0.27, headW: 0.17, sink: -0.05, upper: 0.29, lower: 0.27, armR: 0.04, foreR: 0.037, legR: 0.054, hand: 0.046, shoulderY: 0.165, hipY: 0.066, hunch: 0.12, bend: 0.2, spread: 0.26 },
     // 땅딸막 노동자 (건축가): 키 작고 다리 짧음, 넓은 어깨·두꺼운 팔뚝, 배 살짝 (2026-10-28 재혁: 마리오·밥 더 빌더 느낌)
     sturdy: { foot: 0.07, shin: 0.25, thigh: 0.25, torso: 0.55, chestR: 0.235, waistR: 0.22, depth: 0.84, head: 0.28, headW: 0.21, sink: 0.04, upper: 0.25, lower: 0.25, armR: 0.068, foreR: 0.076, legR: 0.09, hand: 0.068, shoulderY: 0.29, hipY: 0.1, hunch: 0.05, bend: 0.12, spread: 0.36 },
     // 호리호리 음유시인 (바드): 가늘고 다리 김, 좁은 어깨, 곧은 자세 (2026-10-28 재혁: 로빈후드)
