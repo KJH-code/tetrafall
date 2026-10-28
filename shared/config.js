@@ -1141,8 +1141,8 @@ export const CONFIG = {
     lithe: { foot: 0.06, shin: 0.41, thigh: 0.4, torso: 0.45, chestR: 0.14, waistR: 0.11, depth: 0.72, head: 0.27, headW: 0.17, sink: -0.06, upper: 0.29, lower: 0.27, armR: 0.04, foreR: 0.036, legR: 0.056, hand: 0.045, shoulderY: 0.165, hipY: 0.068, hunch: -0.04, spread: 0.18 },
     // 팔 긴 보통 몸 (갈고리)
     reach: { foot: 0.06, shin: 0.34, thigh: 0.34, torso: 0.5, chestR: 0.16, waistR: 0.13, depth: 0.74, head: 0.28, headW: 0.175, sink: -0.04, upper: 0.34, lower: 0.32, armR: 0.05, foreR: 0.046, legR: 0.066, hand: 0.05, shoulderY: 0.19, hipY: 0.075, hunch: 0.06, spread: 0.26 },
-    // 구부정한 보통 몸 (사냥꾼): 고개를 앞으로 빼고 냄새 맡는 자세
-    stalk: { foot: 0.06, shin: 0.35, thigh: 0.35, torso: 0.49, chestR: 0.155, waistR: 0.12, depth: 0.74, head: 0.28, headW: 0.17, sink: -0.04, upper: 0.31, lower: 0.28, armR: 0.047, foreR: 0.042, legR: 0.064, hand: 0.05, shoulderY: 0.18, hipY: 0.075, hunch: 0.38, bend: 0.45, spread: 0.24 },
+    // 웅크린 추적자 (사냥꾼): 사냥개처럼 등 굽고 목을 앞으로 뺀 마른 몸, 무릎 늘 굽힘, 긴 팔 (2026-10-28 낮은 실루엣)
+    stalk: { foot: 0.06, shin: 0.36, thigh: 0.33, torso: 0.47, chestR: 0.16, waistR: 0.115, depth: 0.76, head: 0.28, headW: 0.17, sink: -0.07, upper: 0.33, lower: 0.31, armR: 0.042, foreR: 0.038, legR: 0.058, hand: 0.05, shoulderY: 0.175, hipY: 0.07, hunch: 0.52, bend: 0.6, spread: 0.2 },
     // 작고 통통한 몸 (대포수): 짧은 다리, 둥근 배, 굵은 팔 (탱크보다 작음)
     stout: { foot: 0.065, shin: 0.18, thigh: 0.19, torso: 0.5, chestR: 0.21, waistR: 0.23, depth: 0.9, barrel: true, head: 0.27, headW: 0.19, sink: 0.02, upper: 0.25, lower: 0.23, armR: 0.06, foreR: 0.056, legR: 0.075, hand: 0.058, shoulderY: 0.22, hipY: 0.09, hunch: 0.04, spread: 0.36 },
     // 우락부락한 몸 (광전사): 키 작고 다부짐 — 아주 넓은 어깨·두꺼운 가슴 역삼각, 목 거의 없음, 굵은 팔뚝, 짧고 단단한 다리, 앞으로 숙인 공격적 자세 (2026-10-27 재혁: 코믹스 울버린 참고)
@@ -1157,7 +1157,7 @@ export const CONFIG = {
   VM_FOV: 62, // 뷰모델 카메라 화각 (필드 화각과 따로: 넓은 화각에서도 팔이 늘어나 보이지 않게)
   VM_SCALE: 0.62, // 몸 크기 배율 (FIGURE_SCALE 에 곱함). 작을수록 팔이 화면을 덜 가림
   VM_POS: { default: [0, -0.16, -0.26], tank: [0, -0.2, -0.26], bard: [0.32, -0.14, -0.34], cannon: [0.24, -0.24, -0.45] }, // 어깨 높이 기준점 (카메라 기준: 오른쪽 +x, 위 +y, 뒤 +z). 캐릭터별로 덮어씀
-  VM_SIZE: { tank: 0.7, builder: 0.58, bard: 0.7, cannon: 0.7, berserker: 0.75 }, // 캐릭터별 크기 배율 (VM_SCALE 에 곱함). 굵은 팔은 화면을 많이 덮어서 작게 (광전사: 2026-10-27 어깨 넓고 팔뚝 굵어짐)
+  VM_SIZE: { tank: 0.7, builder: 0.58, bard: 0.7, cannon: 0.7, berserker: 0.75, hunter: 0.8 }, // 캐릭터별 크기 배율 (VM_SCALE 에 곱함). 굵은 팔은 화면을 많이 덮어서 작게 (광전사: 2026-10-27 어깨 넓고 팔뚝 굵어짐)
   VM_ROLL: { bard: 0.25 }, // 캐릭터별 화면 기울기 (라디안, + 면 반시계 방향). 바드 악기를 화면 아래에 가로로 눕혀 듦 (목이 조준점 쪽으로 안 감)
   VM_ARM_LOW: 1.0, // 내린 팔이 화면에선 이 각만큼 앞으로 든 팔 (라디안, π/2 = 정면)
   VM_ARM_OUT: 0.5, // 옆으로 벌린 각 배율
@@ -1202,6 +1202,7 @@ export const CONFIG = {
   BERSERK_RAGE_PCT: 120, // 광전사 분노 화면: 피해 % 가 이만큼이면 가장 화남 (눈 충혈·눈썹·핏줄·빡침 표시·김. 몸 색은 안 바꿈: 플레이어 구분 우선)
   BERSERK_STEAM_RATE: 14,
   BARD_LUTE_SCALE: 1.35, // 류트 크기 배율 (가슴 앞에서 작아 보여서)
+  HUNTER_CAPE_LEN: 0.56, // 사냥꾼 털 망토 등 자락 길이 (겉 초록·안감 플레이어 색)
   METAL_PAD_R: 0.105, // 메탈 폼 징 재킷 어깨 패드 반지름 (몸 비율 전 칸)
   METAL_SOLE: 0.07, // 메탈 부츠 두꺼운 밑창 두께
   METAL_COLLAR: 0.11, // 메탈 재킷 세운 깃 높이

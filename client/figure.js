@@ -680,34 +680,67 @@ function dressHunter(fig, costume, cloth) {
   fig.nose = mesh(nose, cloth, d.headW * 0.5 + 0.06, 0, eyeZ - 0.075);
   fig.neck.add(fig.nose);
   fig.neck.add(mesh(new THREE.IcosahedronGeometry(0.04, 0), cloth, d.headW * 0.5 + 0.13, 0, eyeZ - 0.085));
-  // 가죽 조끼 (앞 틈으로 셔츠 = 피부) + 허리띠·버클 + 빈 칼집
-  const open = 0.6;
-  const vest = new THREE.CylinderGeometry(d.chestR * 1.08, d.waistR * 1.14, d.torso * 0.9, 10, 1, true, Math.PI / 2 + open / 2, Math.PI * 2 - open);
-  vest.rotateX(Math.PI / 2);
-  vest.scale(d.depth, 1, 1);
-  const vm = mesh(vest, leather, 0, 0, d.torso * 0.5);
-  vm.material.side = THREE.DoubleSide;
-  fig.waist.add(vm);
-  fig.waist.add(mesh(ringGeo(d.waistR * 1.2, d.waistR * 1.2, 0.07, 8, d.depth), dark, 0, 0, 0.06));
-  fig.waist.add(mesh(new THREE.BoxGeometry(0.025, 0.07, 0.06), steel, d.waistR * 1.2 * d.depth + 0.01, 0, 0.06));
-  fig.waist.add(mesh(new THREE.BoxGeometry(0.045, 0.055, 0.22), dark, 0, -d.waistR * 1.28, -0.05));
-  // 망토: 어깨 깃 + 무릎까지 오는 넓은 자락 (가운데 + 양옆 둘, 뛰면 날림)
-  fig.waist.add(mesh(ringGeo(d.chestR * 1.0, d.chestR * 1.16, 0.08, 10, d.depth), green, 0, 0, d.torso - 0.02));
-  const capeLen = d.torso + d.thigh + 0.05;
-  flap(fig, fig.waist, new THREE.BoxGeometry(0.02, d.chestR * 1.5, capeLen), green, -d.chestR * d.depth - 0.03, 0, d.torso - 0.03, 0.1, 0.9, 0.1);
-  for (const side of [-1, 1]) flap(fig, fig.waist, new THREE.BoxGeometry(0.02, d.chestR * 0.9, capeLen * 0.92), green, -d.chestR * d.depth * 0.7, side * d.chestR * 0.85, d.torso - 0.03, 0.08, 0.75, 0.14);
-  // 바지 (허벅지·정강이 덮음) + 장화 + 가죽 장갑 (아래팔까지)
-  for (let i = 0; i < 2; i++) {
-    fig.thighs[i].add(mesh(limbGeo(d.thigh * 1.08, d.legR * 1.2, d.legR * 1.08, 7), pants));
-    fig.knees[i].add(mesh(new THREE.IcosahedronGeometry(d.legR * 1.1, 0), pants)); // 무릎 (굽혀도 틈 없게)
-    fig.knees[i].add(mesh(limbGeo(d.shin * 0.45, d.legR * 1.05, d.legR * 0.95, 7), pants));
-    fig.knees[i].add(mesh(limbGeo(d.shin * 0.6, d.legR * 1.15, d.legR * 1.0, 8), dark, 0, 0, -d.shin * 0.4));
-    fig.knees[i].add(mesh(ringGeo(d.legR * 1.4, d.legR * 1.3, 0.05, 8), dark, 0, 0, -d.shin * 0.38));
-    fig.feet[i].add(mesh(new THREE.BoxGeometry(d.legR * 3.2, d.legR * 1.7, d.foot * 1.2), dark, d.legR * 0.6, 0, -d.foot / 2));
-    fig.elbows[i].add(mesh(limbGeo(d.lower * 0.55, d.foreR * 1.3, d.foreR * 1.45, 7), leather, 0, 0, -d.lower * 0.45));
-    fig.hands[i].add(mesh(new THREE.IcosahedronGeometry(d.hand * 1.15, 0), leather));
+  // 웅크린 추적자 옷: 몸통 = 닫힌 가죽 저킨 (몸통 재질, 맨살 안 보임) + 앞 여밈 끈. 플레이어 색 큰 면 = 목도리 + 망토 안감 (앞·옆에서 보임)
+  const T = d.torso;
+  const rz = (z) => d.waistR + ((d.chestR - d.waistR) * z) / T;
+  const fur = costume(0x8a7a66);
+  fig.torso.material = leather;
+  for (let k = 0; k < 4; k++) fig.waist.add(mesh(ringGeo(0.006, 0.006, 0.05, 4).rotateY(Math.PI / 2), dark, rz(T * (0.25 + k * 0.15)) * d.depth + 0.004, 0, T * (0.25 + k * 0.15))); // 여밈 끈
+  fig.waist.add(mesh(ringGeo(d.waistR * 1.18, d.waistR * 1.18, 0.06, 10, d.depth), dark, 0, 0, 0.05));
+  fig.waist.add(mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.014, 8).rotateZ(Math.PI / 2), steel, d.waistR * 1.18 * d.depth + 0.007, 0, 0.05));
+  fig.waist.add(mesh(ringGeo(d.waistR * 1.15, d.waistR * 1.45, 0.12, 10, d.depth), leather, 0, 0, -0.03)); // 저킨 자락 (골반 위끝을 덮음)
+  // 칼집 (오른 허리) + 화살통 (왼 허리 뒤, 석궁 화살)
+  const sheath = mesh(latheLimb(0.2, [[0, 0.028], [0.8, 0.024], [1, 0.012]], 6), dark, 0.02, -d.waistR * 1.3, 0.04);
+  sheath.rotation.x = -0.25;
+  fig.waist.add(sheath);
+  const quiver = new THREE.Group();
+  quiver.add(mesh(latheLimb(0.24, [[0, 0.045], [1, 0.04]], 8, 0), leather));
+  quiver.add(mesh(ringGeo(0.048, 0.048, 0.02, 8), dark, 0, 0, -0.005));
+  for (const [y, x] of [[-0.015, 0.01], [0.015, -0.01], [0, 0.02]]) quiver.add(mesh(ringGeo(0.006, 0.006, 0.08, 4), steel, x, y, 0.03));
+  quiver.position.set(-d.waistR * 0.6 * d.depth, d.waistR * 1.25, 0.16);
+  quiver.rotation.x = 0.35;
+  quiver.rotation.y = 0.25;
+  fig.waist.add(quiver);
+  // 털 어깨 망토: 어깨를 덮는 털 덧댐 (덩어리 여럿이 겹친 둥근 깃) + 등 뒤 짧고 넓은 자락 (겉 초록 · 안감 플레이어 색, 엉덩이까지)
+  for (let k = 0; k < 9; k++) {
+    const ang = Math.PI * (0.5 + (k * 1.0) / 8);
+    lump(fig.waist, 0.07, 0.075, 0.055, fur, Math.cos(ang) * rz(T) * d.depth * 1.05, Math.sin(ang) * rz(T) * 1.08, T - 0.015, 0.3 * k, 0.5 * k, 1);
   }
-  fig.hips.add(mesh(pelvisGeo(d, 1.12, 0.16), pants, 0, 0, 0.02));
+  for (const side of [-1, 1]) lump(fig.waist, 0.09, 0.08, 0.06, fur, 0.01, side * d.shoulderY, T + 0.005, side * 0.3, 0, 1);
+  const capeLen = C.HUNTER_CAPE_LEN;
+  const arc = (r0, r1, flip) => {
+    const g = new THREE.CylinderGeometry(r0, r1, capeLen, 12, 1, true, Math.PI * 1.1, Math.PI * 0.8);
+    g.rotateX(Math.PI / 2);
+    g.scale(d.depth, flip ? -1 : 1, 1); // 안감은 y 를 뒤집어 면이 안쪽을 봄 (자락이 좌우 대칭이라 모양은 같음)
+    g.translate(0, 0, -capeLen / 2);
+    return g;
+  };
+  const pivot = joint(fig.waist, 0, 0, T - 0.02);
+  pivot.add(mesh(arc(rz(T) * 1.15, rz(T) * 1.95, false), green));
+  pivot.add(mesh(arc(rz(T) * 1.12, rz(T) * 1.91, true), cloth)); // 안감 (플레이어 색)
+  pivot.rotation.y = 0.12;
+  fig.flaps.push({ obj: pivot, base: 0.12, lift: 0.55, flutter: 0.12 });
+  // 목도리 (플레이어 색): 목에 감은 둥근 띠 + 앞으로 늘어진 두 자락
+  fig.waist.add(mesh(new THREE.TorusGeometry(d.headW * 0.55, 0.035, 6, 12).scale(d.depth * 1.1, 1, 0.9), cloth, 0.01, 0, T + 0.01));
+  for (const side of [-1, 1]) flap(fig, fig.waist, new THREE.BoxGeometry(0.02, 0.05, 0.16), cloth, rz(T) * d.depth * 0.85, side * 0.035, T - 0.01, -0.15, 0.4, 0.15);
+  // 팔: 가죽 소매가 어깨부터 매끈하게 (긴 팔) → 팔꿈치 아래 가죽 장갑 (손목 쪽 넓은 덧댐). 다리: 바지 + 무릎까지 오는 장화 (둥근 모양)
+  const A = d.armR;
+  const sleeve = latheLimb(d.upper, [[0, A * 1.35], [0.4, A * 1.4], [1, A * 1.15]], 10, A * 1.0);
+  const glove = latheLimb(d.lower, [[0, A * 1.2], [0.25, A * 1.3], [0.7, d.foreR * 1.35], [1, d.foreR * 1.6]], 10, A * 1.0);
+  const L = d.legR;
+  const thighGeo = latheLimb(d.thigh, [[0, L * 1.3], [0.4, L * 1.3], [1, L * 1.08]], 10, L * 0.8);
+  for (let i = 0; i < 2; i++) {
+    fig.shoulders[i].add(mesh(sleeve, green));
+    fig.elbows[i].add(mesh(glove, leather));
+    fig.hands[i].add(mesh(new THREE.IcosahedronGeometry(d.hand * 1.2, 1), leather));
+    fig.thighs[i].add(mesh(thighGeo, pants));
+    fig.knees[i].add(mesh(new THREE.IcosahedronGeometry(L * 1.1, 1), pants));
+    fig.knees[i].add(mesh(latheLimb(d.shin, [[0, L * 1.3], [0.15, L * 1.4], [1, L * 1.2]], 10, 0), dark, 0, 0, -0.01)); // 무릎까지 장화
+    fig.knees[i].add(mesh(ringGeo(L * 1.5, L * 1.45, 0.05, 10), leather, 0, 0, -0.02)); // 장화 접은 단
+    fig.feet[i].children[0].visible = false;
+    lump(fig.feet[i], L * 1.85, L * 1.15, d.foot * 1.0, dark, L * 0.7, 0, -d.foot * 0.4, 0, 0, 1);
+  }
+  fig.hips.add(mesh(pelvisGeo(d, 1.12, 0.18), pants, 0, 0, 0));
   // 오른손 사냥칼: 손잡이 + 넓적한 날 (팔이 뻗는 쪽 -z 로)
   const hand = fig.hands[0];
   hand.add(mesh(new THREE.BoxGeometry(0.03, 0.035, 0.07), dark, 0, 0, -d.hand * 0.5));
@@ -731,7 +764,7 @@ function dressHunter(fig, costume, cloth) {
   };
   const back = crossbow();
   back.scale.setScalar(1.2);
-  back.position.set(-d.chestR * d.depth - 0.07, 0, d.torso * 0.62);
+  back.position.set(-rz(T * 0.62) * d.depth * 1.75 - 0.04, 0, T * 0.55); // 망토 위
   back.rotation.x = -0.8; // 비스듬히 등에 (망토 위)
   back.rotation.y = Math.PI; // 활이 아래쪽
   fig.waist.add(back);

@@ -146,3 +146,13 @@ test('바드 (호리호리 음유시인): 보통 몸보다 다리 길고 가늘�
   assert.ok(C.RAGDOLL_WEIGHT[C.FIGURE_BODY.bard] < C.RAGDOLL_WEIGHT.lean, '가벼움');
   assert.ok(C.BARD_CAPE_LEN > 0 && C.BARD_HOOD_H > 0, '플레이어 색 망토·두건');
 });
+
+test('사냥꾼 (웅크린 추적자): 크게 굽은 등·늘 굽힌 무릎·앞으로 뺀 목, 긴 팔, 망토 안감', () => {
+  const b = B[C.FIGURE_BODY.hunter];
+  const lean = B.lean;
+  assert.ok(b.hunch >= 0.5 && b.bend >= 0.5, '굽은 등·무릎');
+  assert.ok(b.sink < lean.sink, '목을 앞으로 뺌');
+  assert.ok(b.upper + b.lower > lean.upper + lean.lower, '긴 팔');
+  assert.ok(b.hunch > B[C.FIGURE_BODY.bard].hunch + 0.4, '꼿꼿한 바드와 반대');
+  assert.ok(C.HUNTER_CAPE_LEN > 0);
+});
