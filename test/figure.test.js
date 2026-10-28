@@ -185,3 +185,13 @@ test('대포수 (통통 포수 꼬마): 가장 작고, 공 같은 몸통 (배 = 
   assert.ok(b.foreR > B.lean.foreR * 1.4, '굵은 팔');
   assert.ok(C.CANNON_SHORTS_GROW < 0.8, '배가 반바지 위로 튀어나옴');
 });
+
+test('탱크 (걸어 다니는 요새): 가장 크고 무거운 몸, 가장 넓은 어깨·굵은 다리, 허리 천 (플레이어 색)', () => {
+  const b = B[C.FIGURE_BODY.tank];
+  for (const [ch, body] of Object.entries(C.FIGURE_BODY)) {
+    if (ch === 'tank') continue;
+    assert.ok(b.shoulderY >= B[body].shoulderY && b.legR >= B[body].legR, `${ch} 보다 넓고 굵음`);
+    assert.ok(C.RAGDOLL_WEIGHT[C.FIGURE_BODY.tank] > C.RAGDOLL_WEIGHT[body], `${ch} 보다 무거움`);
+  }
+  assert.ok(C.TANK_TABARD_LEN > 0 && C.TANK_PAD > 2);
+});

@@ -1148,7 +1148,7 @@ export const CONFIG = {
     // 우락부락한 몸 (광전사): 키 작고 다부짐 — 아주 넓은 어깨·두꺼운 가슴 역삼각, 목 거의 없음, 굵은 팔뚝, 짧고 단단한 다리, 앞으로 숙인 공격적 자세 (2026-10-27 재혁: 코믹스 울버린 참고)
     brute: { foot: 0.07, shin: 0.22, thigh: 0.22, torso: 0.56, chestR: 0.29, waistR: 0.2, depth: 0.74, head: 0.27, headW: 0.21, sink: 0.1, upper: 0.27, lower: 0.26, armR: 0.08, foreR: 0.085, legR: 0.1, hand: 0.078, shoulderY: 0.34, hipY: 0.105, hunch: 0.3, bend: 0.3, spread: 0.42 },
     // 드럼통 (탱크): 둥근 통 몸통, 팔다리 짧고 뭉툭
-    drum: { foot: 0.07, shin: 0.22, thigh: 0.22, torso: 0.74, chestR: 0.31, waistR: 0.31, depth: 0.86, barrel: true, head: 0.27, headW: 0.2, sink: 0.05, upper: 0.27, lower: 0.25, armR: 0.08, foreR: 0.08, legR: 0.09, hand: 0.07, shoulderY: 0.31, hipY: 0.12, hunch: 0.04, spread: 0.45 },
+    drum: { foot: 0.08, shin: 0.22, thigh: 0.22, torso: 0.74, chestR: 0.32, waistR: 0.31, depth: 0.86, barrel: true, head: 0.27, headW: 0.2, sink: 0.05, upper: 0.27, lower: 0.25, armR: 0.085, foreR: 0.085, legR: 0.1, hand: 0.075, shoulderY: 0.35, hipY: 0.13, hunch: 0.04, bend: 0.15, spread: 0.45 },
   
   },
   FIGURE_BODY: { tank: 'drum', ninja: 'slim', builder: 'sturdy', hook: 'reach', hunter: 'stalk', cannon: 'stout', berserker: 'brute', bard: 'lithe' }, // 캐릭터별 체형 (client/figure.js BODIES). 2026-10-24 재혁: 탱크는 통통한 쪽
@@ -1202,6 +1202,8 @@ export const CONFIG = {
   BERSERK_RAGE_PCT: 120, // 광전사 분노 화면: 피해 % 가 이만큼이면 가장 화남 (눈 충혈·눈썹·핏줄·빡침 표시·김. 몸 색은 안 바꿈: 플레이어 구분 우선)
   BERSERK_STEAM_RATE: 14,
   BARD_LUTE_SCALE: 1.35, // 류트 크기 배율 (가슴 앞에서 작아 보여서)
+  TANK_TABARD_LEN: 0.36, // 탱크 허리 천 (플레이어 색) 길이
+  TANK_PAD: 2.6, // 탱크 어깨 판 반지름 (팔 굵기 배)
   CANNON_SHORTS_GROW: 0.62, // 대포수 반바지 굵기 배율 (배 반지름 기준: 작을수록 배가 반바지 위로 둥글게 튀어나옴)
   NINJA_SCARF_LEN: 0.62, // 닌자 목도리 자락 길이 (플레이어 색, 등 뒤로 날림)
   HOOK_COAT_LEN: 0.42, // 갈고리 코트 자락 길이 (허리에서 무릎 위까지, 안감 플레이어 색)

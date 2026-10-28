@@ -298,26 +298,39 @@ function dressTank(fig, costume, cloth) {
   const beltR = d.chestR * 0.82;
   fig.waist.add(mesh(ringGeo(beltR, beltR, 0.06, 8, d.depth), leather, 0, 0, 0.03));
   fig.waist.add(mesh(new THREE.BoxGeometry(0.03, 0.08, 0.07), gold, beltR * d.depth + 0.01, 0, 0.03)); // 버클
-  const tabard = new THREE.BoxGeometry(0.025, beltR * 0.75, 0.3);
-  tabard.translate(0, 0, -0.15);
-  const tab = mesh(tabard, cloth, beltR * d.depth + 0.005, 0, 0.01);
-  tab.rotation.y = -0.12; // 아래가 살짝 앞으로
-  fig.waist.add(tab);
-  // 허리 치마판: 옆·앞 비스듬히 4장 (엉덩이에 붙어 몸통과 같이 안 숙여짐)
-  for (const [ang, w] of [[0.75, 0.13], [-0.75, 0.13], [1.6, 0.12], [-1.6, 0.12]]) {
-    const plate = new THREE.BoxGeometry(0.025, w, 0.17);
-    plate.translate(0, 0, -0.085);
-    const m = mesh(plate, steel, Math.cos(ang) * beltR * d.depth, Math.sin(ang) * beltR, 0.04);
-    m.rotation.order = 'ZYX';
-    m.rotation.z = ang;
-    m.rotation.y = -0.22; // 아래가 바깥으로 벌어짐
-    fig.hips.add(m);
+  // 허리 천 (타바드, 플레이어 색): 앞·뒤로 넓게 늘어진 둥근 천 (아래 금 테, 걸으면 흔들림). 엉덩이에 붙어 다리 사이로 늘어짐
+  const arcGeo = (r0, r1, h, start, len) => {
+    const g = new THREE.CylinderGeometry(r0, r1, h, 8, 1, true, start, len);
+    g.rotateX(Math.PI / 2);
+    g.scale(d.depth, 1, 1);
+    g.translate(0, 0, -h / 2);
+    return g;
+  };
+  for (const [front, base] of [[true, -0.05], [false, 0.05]]) {
+    const st = front ? Math.PI / 2 - 0.55 : Math.PI * 1.5 - 0.55; // 앞(+x) / 뒤(-x) 가운데
+    const pv = joint(fig.hips, 0, 0, 0.05);
+    pv.add(mesh(arcGeo(beltR * 1.12, beltR * 1.35, C.TANK_TABARD_LEN, st, 1.1), cloth));
+    const hem = new THREE.TorusGeometry(beltR * 1.35, 0.012, 4, 8, 1.1);
+    hem.rotateZ(st - Math.PI / 2); // 위 arcGeo 와 같은 각 (Cylinder θ 0 = -y 쪽에서 시작)
+    hem.scale(d.depth, 1, 1);
+    pv.add(mesh(hem, gold, 0, 0, -C.TANK_TABARD_LEN));
+    pv.rotation.y = base;
+    fig.flaps.push({ obj: pv, base, lift: front ? -0.3 : 0.3, flutter: 0.05 });
+  }
+  fig.hips.children[0].visible = false; // 맨살 골반 대신 사슬 바지
+  fig.hips.add(mesh(pelvisGeo(d, 1.05, 0.2), dark, 0, 0, 0));
+  // 허리 치마판 (태싯): 옆으로 둥글게 휜 쇠판 두 겹씩 (엉덩이에 붙어 몸통과 같이 안 숙여짐, 아래가 바깥으로 벌어짐)
+  for (const side of [-1, 1]) {
+    for (let k = 0; k < 2; k++) {
+      const g = arcGeo(beltR * (1.08 + k * 0.08), beltR * (1.3 + k * 0.08), 0.1, (side > 0 ? Math.PI : 0) - 0.85, 1.7); // θ 0 = 오른쪽(-y), π = 왼쪽
+      fig.hips.add(mesh(g, k ? dark : steel, 0, 0, 0.06 - k * 0.07));
+    }
   }
 
   // ---- 어깨: 3단으로 겹친 판 (큰 돔 + 아래로 작아지는 두 겹) ----
   for (const sh of fig.shoulders) {
     const side = Math.sign(sh.position.y);
-    const r = d.armR * 2.3;
+    const r = d.armR * C.TANK_PAD;
     const pad = new THREE.Group();
     pad.add(mesh(domeGeo(r), steel));
     const l1 = mesh(domeGeo(r * 0.92), dark, 0, side * 0.02, -0.05);
@@ -331,25 +344,35 @@ function dressTank(fig, costume, cloth) {
     pad.rotation.x = side * 0.3; // 바깥으로 기울어짐
     sh.add(pad);
   }
-  // ---- 팔: 윗팔 판 + 팔꿈치 보호대 + 아래팔 판(손 쪽이 벌어짐) + 큰 장갑 ----
+  // ---- 팔: 매끈한 윗팔 판 (위에 플레이어 색 띠) → 둥근 팔꿈치 판 (날개) → 손 쪽이 벌어지는 아래팔 판 → 큰 둥근 건틀릿 ----
+  const A = d.armR;
+  const rere = latheLimb(d.upper, [[0, A * 1.35], [0.5, A * 1.4], [1, A * 1.3]], 10, A * 1.1);
+  const vamb = latheLimb(d.lower * 0.85, [[0, d.foreR * 1.25], [0.6, d.foreR * 1.35], [1, d.foreR * 1.6]], 10, d.foreR * 1.0);
   for (let i = 0; i < 2; i++) {
-    fig.shoulders[i].add(mesh(limbGeo(d.upper * 0.55, d.armR * 1.15, d.armR * 1.05, 8), cloth, 0, 0, -d.upper * 0.35)); // 소매
-    fig.elbows[i].add(mesh(new THREE.IcosahedronGeometry(d.foreR * 1.25, 0), steel));
-    fig.elbows[i].add(mesh(limbGeo(d.lower * 0.7, d.foreR * 1.1, d.foreR * 1.35, 8), steel, 0, 0, -d.lower * 0.22));
-    const fist = new THREE.IcosahedronGeometry(d.hand * 1.15, 0);
-    fist.scale(1.1, 0.9, 1);
-    fig.hands[i].add(mesh(fist, dark));
+    fig.shoulders[i].add(mesh(rere, steel));
+    fig.shoulders[i].add(mesh(ringGeo(A * 1.43, A * 1.43, 0.05, 10), cloth, 0, 0, -d.upper * 0.45)); // 팔 띠
+    fig.elbows[i].add(mesh(new THREE.IcosahedronGeometry(d.foreR * 1.45, 1), dark));
+    fig.elbows[i].add(mesh(domeGeo(d.foreR * 1.1, 8), steel, -d.foreR * 0.9, 0, 0).rotateY(-Math.PI / 2)); // 팔꿈치 날개
+    fig.elbows[i].add(mesh(vamb, steel, 0, 0, -d.lower * 0.1));
+    lump(fig.hands[i], d.hand * 1.35, d.hand * 1.2, d.hand * 1.25, dark, 0, 0, 0, 0, 0, 1);
+    fig.hands[i].add(mesh(ringGeo(d.foreR * 1.65, d.foreR * 1.7, 0.04, 10), steel, 0, 0, d.hand * 0.8)); // 건틀릿 목
   }
-  // ---- 다리: 허벅지 앞 판 + 무릎 보호대(+ 날개) + 정강이 판 + 겹친 쇠 장화 ----
+  // ---- 다리: 매끈한 허벅지 판 → 둥근 무릎 판 (날개) → 굵은 정강이 판 → 땅에 박힌 큰 쇠 장화 (겹친 발등판, 둥근) ----
+  const L = d.legR;
   for (let i = 0; i < 2; i++) {
-    fig.thighs[i].add(mesh(new THREE.BoxGeometry(0.03, d.legR * 2.1, d.thigh * 0.55), steel, d.legR * 1.05, 0, -d.thigh * 0.38));
+    fig.thighs[i].add(mesh(latheLimb(d.thigh, [[0, L * 1.45], [0.5, L * 1.45], [1, L * 1.3]], 10, L * 0.9), steel));
     const kn = fig.knees[i];
-    kn.add(mesh(new THREE.IcosahedronGeometry(d.legR * 1.15, 0), steel, d.legR * 0.35, 0, 0));
-    kn.add(mesh(new THREE.BoxGeometry(0.02, d.legR * 2.6, d.legR * 1.1), dark, d.legR * 0.9, 0, 0)); // 무릎 날개
-    kn.add(mesh(limbGeo(d.shin * 0.75, d.legR * 1.05, d.legR * 0.95, 8), steel, 0, 0, -d.shin * 0.12));
+    kn.add(mesh(new THREE.IcosahedronGeometry(L * 1.35, 1), dark));
+    kn.add(mesh(domeGeo(L * 1.1, 8), steel, L * 1.1, 0, 0).rotateY(Math.PI / 2)); // 무릎 날개
+    kn.add(mesh(latheLimb(d.shin, [[0, L * 1.35], [0.4, L * 1.5], [1, L * 1.55]], 10), steel, 0, 0, -0.02));
     const ft = fig.feet[i];
-    ft.add(mesh(new THREE.BoxGeometry(d.legR * 3.3, d.legR * 1.8, d.foot * 1.15), dark, d.legR * 0.65, 0, -d.foot / 2));
-    for (let k = 0; k < 2; k++) ft.add(mesh(new THREE.BoxGeometry(d.legR * 0.9, d.legR * 1.7, 0.03), steel, d.legR * (1.2 + k * 0.75), 0, 0.01 - k * 0.015)); // 발등 겹판
+    ft.children[0].visible = false;
+    lump(ft, L * 2.1, L * 1.45, d.foot * 1.2, dark, L * 0.75, 0, -d.foot * 0.35, 0, 0, 1);
+    for (let k = 0; k < 3; k++) {
+      const plate = new THREE.CylinderGeometry(L * 1.3, L * 1.3, 0.04, 10, 1, true, -Math.PI / 2, Math.PI);
+      plate.rotateY(Math.PI / 2); // 반원 판이 발등을 덮음
+      ft.add(mesh(plate, steel, L * (0.9 + k * 0.45), 0, d.foot * (0.15 - k * 0.12)));
+    }
   }
 
   // ---- 등에 둥근 방패: 플레이어 색 판 + 쇠 테두리 + 가로 띠 + 가운데 돌기 ----
