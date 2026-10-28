@@ -4,6 +4,7 @@ import { CONFIG as C } from '/shared/config.js';
 import { toon, noOutline } from '/toon.js';
 import { buildCharacter, charAccessory } from '/character.js';
 import { figureAnim, MOVES } from '/figure.js';
+import { gaitOf } from '/figure-pose.js';
 import { Effects } from '/effects.js';
 import { CELL, SHAPE_NAMES } from '/shared/pieces.js';
 import { orbitEye, followDist } from '/shared/camera.js';
@@ -768,7 +769,7 @@ export class Renderer {
     a.land = Math.max(0, a.land - dt / C.ANIM_LAND_S);
     // 걷기: 발이 땅에 있을 때만 걸음 위상이 돎
     const walking = !air && a.hs > C.ANIM_WALK_MIN_SPEED;
-    if (walking) a.walk += dt * a.hs * C.ANIM_WALK_FREQ;
+    if (walking) a.walk += dt * a.hs * C.ANIM_WALK_FREQ * (g.userData.figure ? gaitOf(g.userData.figure.char).freq : 1); // 캐릭터별 발 빠르기 (FIGURE_GAIT freq)
     const step = walking ? Math.sin(a.walk) : 0;
     const robot = g.userData.robot; // 로봇은 걷기·춤을 모델 동작이 하므로 통통 튀기·흔들기·빙글은 안 함
     const fig = g.userData.figure; // TABS 식 몸은 관절로 걸음 (통통 튀기·흔들기·늘어나기 안 함, 춤 빙글은 함)
@@ -787,6 +788,7 @@ export class Renderer {
       a.pvys = a.vys;
       a.accF = c * ax + sn * ay;
       a.accS = -sn * ax + c * ay;
+      this.figureHabits(a, s, p, air, walking, dt);
       // 안전장치: 구르기·공중제비 각이 깨지면 바로 선 자세로
       if (!Number.isFinite(a.spin)) a.spin = 0;
       if (!Number.isFinite(a.flipAngle)) a.flipAngle = 0;
@@ -797,7 +799,7 @@ export class Renderer {
     const lean = Math.min(1, a.hs / C.MOVE_SPEED) * C.ANIM_LEAN;
     // 바드 기타 꽂기: 떨어지는 동안 몸이 앞으로 확 뒤집혀 거꾸로 (머리·기타가 아래)
     a.diveFlip = (a.diveFlip || 0) + ((fig && this.dives?.has(p.id) ? C.FIGURE_DIVE_FLIP : 0) - (a.diveFlip || 0)) * (1 - Math.exp(-14 * dt));
-    rig.rotation.y = lean + (fig ? a.flipAngle + a.diveFlip : a.spin);
+    rig.rotation.y = lean + (fig ? a.flipAngle + a.diveFlip + C.FIGURE_AIR_DASH.tilt * Math.min(1, ((a.airDashT || 0) / C.FIGURE_AIR_DASH.s) * 4) : a.spin); // 공중 대시: 몸 전체 앞으로 눕힘 (슈퍼맨)
     rig.rotation.x = jointed ? 0 : step * C.ANIM_SWAY; // 걸을 때 좌우로 살짝 흔들
     // 승자 춤·이모트 '춤': 깡충 뛰며 제자리에서 빙글. TABS 식 몸은 승자면 춤 대신 캐릭터별 승리 포즈 (figure.js POSES, a.vicT = 승리 경과 초)
     const emote = p.emote ?? -1;
@@ -825,6 +827,7 @@ export class Renderer {
         air, walking, hs: a.hs, walk: a.walk, stunned: p.stunned || !!a.flipRag, dancing, emote, emoteT: a.emoteT, victory: a.vicT, punch, holding: !!heldKind(p), t: a.t,
         hit, act: this.actFor(p.id), accF: a.accF, accS: a.accS, tumble: a.tumbleAmt, recover: a.recover * a.recoverPow, land: a.figLand * a.landPow, flip: a.flip >= 0 && !a.flipRag ? a.flip / C.FIGURE_FLIP_S : -1, rag: !!a.flipRag,
         sniffAt: fig.sniff ? this.sniffAngle(p) : null,
+        vz: a.vz, idle: a.idleT, airDash: (a.airDashT || 0) / C.FIGURE_AIR_DASH.s, bump: a.bump,
         whirl: this.whirlTime(a, p), dizzy: a.dizzy > 0 ? a.dizzy / C.BERSERK_DIZZY_S : 0,
         glide: !!(p.bard && p.bard.glideLeft > 0 && air), amp: !!(p.bard && p.bard.ampLeft > 0),
       }, dt);
@@ -1049,6 +1052,41 @@ export class Renderer {
       if (Math.abs(to - a.flipRest) < 1e-3 || !Number.isFinite(a.flipRest)) a.flipRest = 0;
     }
     a.flipAngle = a.flip >= 0 ? (a.flipDir || 1) * Math.PI * 2 * turns * (a.flipRag ? 1 - (1 - f) * (1 - f) : f * f * (3 - 2 * f)) : a.flipRest || 0; // 공중제비: 웅크리는 동안 천천히 → 가운데서 빨리 → 끝에서 느려짐 / 반동: 처음이 가장 빠름
+  }
+
+  // 걸음걸이 밖 버릇 (a 에 쌓음, figureAnim 이 씀): 가만히 있은 시간 (평소 버릇), 공중 대시 슈퍼맨, 벽·몸에 부딪힘 휘청
+  figureHabits(a, s, p, air, walking, dt) {
+    const busy = walking || air || p.stunned || this.acts.has(p.id) || (p.emote ?? -1) >= 0;
+    a.idleT = busy ? 0 : (a.idleT || 0) + dt;
+    // 공중 대시: 공중에서 남은 공중 대시가 줄면 (서버 airDashes) 슈퍼맨 자세 잠깐
+    if (air && Number.isFinite(a.airDashesPrev) && p.airDashes < a.airDashesPrev) a.airDashT = C.FIGURE_AIR_DASH.s;
+    a.airDashesPrev = p.airDashes;
+    a.airDashT = p.stunned ? 0 : Math.max(0, (a.airDashT || 0) - dt);
+    // 부딪힘: 땅에서 달리다 급히 멈췄고, 가던 쪽 바로 앞에 블록·사람이 있으면 (스스로 멈춘 것과 구별) 작은 휘청. 경직 중엔 안 함
+    const B = C.FIGURE_BUMP;
+    const hs = Math.hypot(a.vxs, a.vys);
+    const prev = a.bumpPrev || { hs: 0, vx: 0, vy: 0 };
+    a.bumpPrev = { hs, vx: a.vxs, vy: a.vys };
+    a.bumpCd = Math.max(0, (a.bumpCd || 0) - dt);
+    if (air || p.stunned || a.bumpCd > 0 || prev.hs < B.minSpeed || (prev.hs - hs) / Math.max(dt, 1e-3) < B.decel) return;
+    const ux = prev.vx / prev.hs;
+    const uy = prev.vy / prev.hs;
+    const ahead = C.PLAYER_HALF + B.reach;
+    let blocked = !!this.curState && this.solidAt(this.curState, s.x + ux * ahead, s.y + uy * ahead, s.z + 0.5);
+    if (!blocked && this.curState) {
+      for (const o of this.curState.players) {
+        if (o.id === p.id || !o.alive) continue;
+        const dx = o.x - s.x;
+        const dy = o.y - s.y;
+        if (Math.abs(o.z - s.z) < C.PLAYER_HEIGHT && Math.hypot(dx, dy) < C.PLAYER_HALF * 2 + B.reach && dx * ux + dy * uy > 0) blocked = true;
+      }
+    }
+    if (!blocked) return;
+    a.bumpCd = B.cooldown;
+    // 몸 기준 방향 (앞 +x, 왼쪽 +y): 가던 쪽 반대로 튕김
+    const c = Math.cos(p.yaw);
+    const sn = Math.sin(p.yaw);
+    a.bump = { id: (a.bump?.id || 0) + 1, dx: -(c * ux + sn * uy), dy: -(-sn * ux + c * uy), pow: prev.hs };
   }
 
   // 맞은 순간 (main.js 의 hit 이벤트). dir = 밀린 방향 (월드, 없으면 null). 콤보 마무리 타면 더 크게
