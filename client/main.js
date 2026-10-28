@@ -1742,7 +1742,9 @@ function drawHud() {
   const danger = p && p.alive && state.phase === 'playing' ? p.danger : null;
   dangerEl.classList.toggle('hidden', danger === null || danger === undefined);
   if (danger !== null && danger !== undefined) {
-    dangerEl.textContent = `⚠ 머리 위 블록! ${(danger / 1000).toFixed(1)}초`;
+    // 글자만 (아이콘 없음): "머리 위 블록!" + 남은 초는 옆 작은 칸. 모양은 index.html #danger
+    if (!dangerEl.firstElementChild) dangerEl.innerHTML = '<span class="msg">머리 위 블록!</span><span class="sec"></span>';
+    dangerEl.lastElementChild.textContent = `${(danger / 1000).toFixed(1)}초`;
     if (lastDanger === null) sound.play('danger');
   }
   lastDanger = danger ?? null;

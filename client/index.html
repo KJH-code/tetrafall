@@ -62,9 +62,15 @@
     #score .sep { color: #67739a; margin: 0 8px; }
     #banner { font-family: var(--disp); font-size: 19px; padding: 7px 22px; background: linear-gradient(180deg, #0e8aa0, #075666); white-space: pre; text-align: center;
       clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%); box-shadow: var(--sh); }
-    #danger { font-family: var(--disp); font-size: 25px; padding: 5px 22px; background: linear-gradient(180deg, #ff4426, #a81405); white-space: pre;
-      clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%); animation: danger-pulse .25s infinite alternate; box-shadow: var(--sh); }
-    @keyframes danger-pulse { from { transform: scale(1); } to { transform: scale(1.07); } }
+    /* 압사 경고: 빨강 사선 줄무늬 띠 + 양 끝 노랑 사선, 남은 초는 오른쪽 검은 칸. 짧게 깜빡 (밝기만, 크기는 그대로라 글자가 안 흔들림) */
+    #danger { display: flex; align-items: stretch; font-family: var(--disp); font-size: 24px; line-height: 1; white-space: pre; box-shadow: var(--sh);
+      background: linear-gradient(90deg, var(--accent) 0 14px, transparent 14px calc(100% - 14px), var(--accent) calc(100% - 14px)),
+        repeating-linear-gradient(-62deg, #ff4426 0 16px, #d92a0c 16px 32px);
+      clip-path: polygon(14px 0, 100% 0, calc(100% - 14px) 100%, 0 100%); animation: danger-blink .32s steps(2, jump-none) infinite; }
+    #danger .msg { padding: 7px 14px 7px 28px; text-shadow: 0 3px 0 rgba(0,0,0,.4); }
+    #danger .sec { padding: 7px 28px 7px 14px; background: rgba(8,12,26,.85); color: var(--accent); font-size: 20px; display: flex; align-items: center;
+      clip-path: polygon(10px 0, 100% 0, 100% 100%, 0 100%); }
+    @keyframes danger-blink { from { filter: brightness(1.18); } to { filter: brightness(.9); } }
     #toasts { display: flex; flex-direction: column; align-items: center; gap: 6px; }
     .toast { font-family: var(--disp); font-size: 17px; padding: 5px 16px; background: rgba(8,12,26,.82); white-space: pre; transition: opacity .4s;
       clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); animation: slide-up .18s ease-out; box-shadow: var(--sh); }
