@@ -20,8 +20,10 @@ test('재혁이 고른 전환만: 메뉴→방 짧게, 판 시작·결과 등장
   assert.equal(wipeKind('results', 'game'), 'big'); // 결과 중에 Enter 재시작
   assert.equal(wipeKind('game', 'results'), 'big'); // 판 끝 → 결과
   assert.equal(wipeKind('results', 'lobby'), 'short'); // 결과 → 대기실 판
-  // 안 하는 것: 같은 화면, 방 나가기, 연습·결과 없는 판 끝, 처음 그리기
-  for (const [a, b] of [['lobby', 'lobby'], ['game', 'game'], ['lobby', 'menu'], ['game', 'menu'], ['game', 'lobby'], [null, 'lobby'], [null, 'menu']]) assert.equal(wipeKind(a, b), null, `${a}→${b}`);
+  // 안 하는 것: 같은 화면, 연습·결과 없는 판 끝, 처음 그리기
+  for (const [a, b] of [['lobby', 'lobby'], ['game', 'game'], ['game', 'lobby'], [null, 'lobby'], [null, 'menu']]) assert.equal(wipeKind(a, b), null, `${a}→${b}`);
+  assert.equal(wipeKind('lobby', 'menu'), 'short'); // 방 나가기
+  assert.equal(wipeKind('game', 'menu'), 'short');
 });
 
 test('짧은 전환은 0.3~0.5초, 큰 전환은 0.6~1초 (재혁 기준), 큰 쪽이 더 김', () => {

@@ -15,6 +15,7 @@ import { screenOf, wipeKind, wipePlan } from '/shared/wipe.js';
 import { cardLayout, lobbyPlace } from '/shared/hud-layout.js';
 import { randomReel } from '/shared/char-select.js';
 import { CharStage } from '/char-stage.js';
+import { leaveNeedsConfirm } from '/shared/leave.js';
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $('status');
@@ -1107,10 +1108,45 @@ function leftRoom(reason) {
   roomRowKey = '';
   if (document.pointerLockElement) document.exitPointerLock();
   setUrlRoom(null);
-  showRooms(reason || '');
+  // 메뉴로 짧은 슬래시: 방 목록은 띠가 다 덮을 때 (shared/wipe.js 'short')
+  const plan = screenNow && screenNow !== 'menu' ? playWipe(wipeKind(screenNow, 'menu')) : null;
+  screenNow = 'menu';
+  if (plan) setTimeout(() => !myId && showRooms(reason || ''), plan.coverMs);
+  else showRooms(reason || '');
 }
 
-$('room-leave').addEventListener('click', () => send({ type: 'leave' }));
+// 방 나가기 (대기실 버튼·설정 창·연습 창 모두 같은 길): 자리 토큰·주소의 ?room= 를 먼저 지움 → 새로고침해도 메뉴
+function leaveRoom() {
+  if (room) dropSeat(room.code);
+  setUrlRoom(null);
+  send({ type: 'leave' });
+}
+// 설정 창 '방 나가기': 판 중이면 한 번 더 (LEAVE_CONFIRM_MS 안에 다시 눌러야 — 나가면 그 판은 패배), 연습·대기실은 바로
+const settingsLeave = $('settings-leave');
+let leaveArmed = null;
+function disarmLeave() {
+  clearTimeout(leaveArmed);
+  leaveArmed = null;
+  settingsLeave.classList.remove('armed');
+  settingsLeave.textContent = '방 나가기';
+  $('leave-note').classList.add('hidden');
+}
+settingsLeave.addEventListener('click', () => {
+  const p = me();
+  const ask = !!state && leaveNeedsConfirm({ phase: state.phase, practice: inPractice(), alive: p ? p.alive : false });
+  if (ask && !leaveArmed) {
+    settingsLeave.classList.add('armed');
+    settingsLeave.textContent = '정말 나가기';
+    $('leave-note').classList.remove('hidden');
+    leaveArmed = setTimeout(disarmLeave, C.LEAVE_CONFIRM_MS);
+    return;
+  }
+  disarmLeave();
+  openSettings(false);
+  leaveRoom();
+});
+
+$('room-leave').addEventListener('click', leaveRoom);
 $('room-public').addEventListener('click', () => room && send({ type: 'setPublic', on: !room.public }));
 $('room-copy').addEventListener('click', async () => {
   if (!room) return;
@@ -1346,6 +1382,8 @@ showBinds();
 function openSettings(on) {
   if (!on) listening = null;
   settingsEl.classList.toggle('hidden', !on);
+  settingsLeave.classList.toggle('hidden', !myId); // 방 안일 때만
+  disarmLeave();
 }
 document.querySelectorAll('.settings-btn').forEach((b) => b.addEventListener('click', () => openSettings(true)));
 $('settings-close').addEventListener('click', () => openSettings(false));
@@ -2502,6 +2540,10 @@ function setPracticeOpen(on) {
   if (practiceOpen && document.pointerLockElement) document.exitPointerLock(); // 마우스로 고르게 (닫고 화면을 누르면 다시 조작)
 }
 $('pr-close').addEventListener('click', () => setPracticeOpen(false));
+$('pr-leave').addEventListener('click', () => {
+  setPracticeOpen(false);
+  leaveRoom(); // 연습은 안 물음
+});
 for (const box of practiceEl.querySelectorAll('[data-pr]')) {
   box.addEventListener('change', () => {
     send({ type: 'practiceSet', key: box.dataset.pr, value: box.checked });

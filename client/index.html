@@ -235,6 +235,11 @@
     #tutorial h3 { font-size: 22px; color: var(--accent); }
     #settings .row { display: grid; grid-template-columns: 7em 1fr 4em; gap: 8px; align-items: center; margin: 6px 0; }
     #settings .btns, #tutorial .btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+    /* 방 나가기 (설정 창·연습 창): 글자 버튼, 빨강 띠 — 판 중엔 한 번 더 눌러야 (#leave-note) */
+    button.leave { background: linear-gradient(180deg, #ff6a4a, #c2280e); color: #fff; box-shadow: 0 4px 0 #6d1404; }
+    #settings .btns .leave { margin-right: auto; }
+    button.leave.armed { background: linear-gradient(180deg, #ffe98a, #ffc21e); color: #3a0a00; animation: danger-blink .32s steps(2, jump-none) infinite; }
+    #leave-note { color: #ff9a84; font-size: 13px; margin-top: 6px; }
     #settings button, #tutorial button, #rooms button { font-size: 15px; }
     #settings .box { max-height: calc(100vh - 40px); overflow-y: auto; }
     #keybinds { display: grid; grid-template-columns: 1fr 9.5em; gap: 3px 10px; align-items: center; max-height: 30vh; overflow-y: auto; font-size: 13px; padding-right: 4px; }
@@ -427,7 +432,7 @@
     <div id="bigmsg" class="hidden"></div>
     <div id="combo" class="hidden"></div>
     <div id="practice" class="hidden">
-      <h4>연습 <button id="pr-close">닫기 (<span data-key="practice">Tab</span>)</button></h4>
+      <h4>연습 <span><button id="pr-leave" class="ghost leave">연습 나가기</button> <button id="pr-close">닫기 (<span data-key="practice">Tab</span>)</button></span></h4>
       <label><input type="checkbox" data-pr="noCooldown" /> F 쿨 없음</label>
       <label><input type="checkbox" data-pr="fullUlt" /> R 항상 가득</label>
       <label><input type="checkbox" data-pr="noBlocks" /> 블록·용암 없음</label>
@@ -456,7 +461,8 @@
       <div style="font-size:13px;color:#bbb">칸을 누르고 바꿀 키나 마우스 버튼(옆 버튼도)을 누름 · Esc 취소</div>
       <div id="keybinds"></div>
       <div id="key-dup"></div>
-      <div class="btns"><button id="settings-tutorial">처음 안내 다시 보기</button><button id="settings-reset">기본값</button><button id="settings-close">닫기</button></div>
+      <div class="btns"><button id="settings-leave" class="ghost leave hidden">방 나가기</button><button id="settings-tutorial">처음 안내 다시 보기</button><button id="settings-reset">기본값</button><button id="settings-close">닫기</button></div>
+      <div id="leave-note" class="hidden">판 중엔 나가면 이 판은 패배 — 한 번 더 누르면 나감</div>
     </div></div>
     <div id="tutorial" class="hidden"><div class="box">
       <div class="card"><h3>1. 밀어서 떨어뜨리기</h3>

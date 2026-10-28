@@ -10,10 +10,11 @@ export function screenOf({ inRoom, phase, hero }) {
   return 'lobby';
 }
 
-// 재혁이 고른 전환만: 메뉴 → 방(대기실·연습) / 대기실·결과 → 판 시작 / 판 끝 → 결과 / 결과 → 대기실 판
+// 재혁이 고른 전환만: 메뉴 → 방(대기실·연습) / 대기실·결과 → 판 시작 / 판 끝 → 결과 / 결과 → 대기실 판 / 방 나가기 → 메뉴 (짧게)
 export function wipeKind(prev, next) {
   if (!prev || !next || prev === next) return null;
   if (prev === 'menu') return 'short';
+  if (next === 'menu') return 'short'; // 방 나가기 (대기실·판·결과 → 메뉴)
   if (next === 'game' && (prev === 'lobby' || prev === 'results')) return 'big';
   if (prev === 'game' && next === 'results') return 'big';
   if (prev === 'results' && next === 'lobby') return 'short';
