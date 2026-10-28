@@ -156,3 +156,13 @@ test('사냥꾼 (웅크린 추적자): 크게 굽은 등·늘 굽힌 무릎·앞
   assert.ok(b.hunch > B[C.FIGURE_BODY.bard].hunch + 0.4, '꼿꼿한 바드와 반대');
   assert.ok(C.HUNTER_CAPE_LEN > 0);
 });
+
+test('갈고리 (덩치 큰 선장): 위가 크고 아래가 가는 몸 — 가슴이 다리보다 훨씬 굵고, 긴 팔, 넓은 어깨', () => {
+  const b = B[C.FIGURE_BODY.hook];
+  const lean = B.lean;
+  assert.ok(b.chestR > b.legR * 4, '큰 상체 · 가는 다리');
+  assert.ok(b.chestR > lean.chestR * 1.5 && b.shoulderY > lean.shoulderY * 1.4, '술통 가슴·넓은 어깨');
+  assert.ok(b.legR < lean.legR, '가는 다리');
+  assert.ok(b.upper + b.lower > lean.upper + lean.lower, '긴 팔');
+  assert.ok(C.HOOK_COAT_LEN > 0);
+});
