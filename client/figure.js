@@ -626,8 +626,8 @@ function dressHook(fig, costume, cloth) {
   coil.rotateX(Math.PI / 2);
   fig.waist.add(mesh(coil, rope, -0.02, -d.waistR * 1.3, 0.0));
   fig.waist.add(mesh(coil.clone(), rope, -0.02, -d.waistR * 1.3, 0.04));
-  // 수염: 턱 아래 덥수룩한 검은 덩어리 + 콧수염
-  lump(fig.neck, d.headW * 0.4, d.headW * 0.5, d.head * 0.35, black, d.headW * 0.42, 0, d.head * 0.15, 0, 0.25, 1);
+  // 수염: 턱 끝 작은 염소수염 + 콧수염 (얼굴·입 쪽 피부가 보이게, 2026-10-28 재혁)
+  lump(fig.neck, 0.035, d.headW * 0.2, d.head * 0.14, black, d.headW * 0.4, 0, d.head * 0.02, 0, 0.3, 1);
   for (const side of [-1, 1]) lump(fig.neck, 0.03, 0.05, 0.022, black, d.headW * 0.5, side * 0.04, d.head * 0.34, side * 0.4, 0, 1);
   // 팔: 어깨부터 매끈한 코트 소매 (굵고 긴 팔) → 플레이어 색 큰 끝동 (금 테). 다리: 가는 바지 + 큰 장화 (넓게 접은 윗단)
   const A = d.armR;
