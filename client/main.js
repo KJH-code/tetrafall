@@ -1504,12 +1504,12 @@ function updateScore() {
   const left = kills && state.round.left !== null ? fmt(state.round.left) : '';
   // 판 중엔 아래 플레이어 판이 사람마다 승수·점수를 보여 준다 → 맨 위 줄은 팀 합계가 필요한 팀전에만 (화면 덜 가리게)
   const dup = cardsOn() && !state.teamMode;
-  const key = `${kills}|${left}|${dup}|` + ps.map((p) => `${p.id}:${p.wins}:${p.score}:${p.nick}:${p.team}:${p.color}`).join(',') + `|${myId}|${state.teamMode}|${tw.red}:${tw.blue}|${ts.red}:${ts.blue}`;
+  const key = `${kills}|${left}|${dup}|` + ps.map((p) => `${p.id}:${p.wins}:${p.score}:${p.nick}:${p.team}:${p.color}:${!!p.away}`).join(',') + `|${myId}|${state.teamMode}|${tw.red}:${tw.blue}|${ts.red}:${ts.blue}`;
   if (key === scoreKey) return;
   scoreKey = key;
   scoreEl.classList.toggle('hidden', ps.length < 2 || dup);
   if (dup) return;
-  const name = (p) => `<span style="color:${colorOf(p)}" class="${p.id === myId ? 'me' : ''}">${escapeHtml(shownName(p))}</span>`;
+  const name = (p) => `<span style="color:${colorOf(p)}" class="${p.id === myId ? 'me' : ''}${p.away ? ' away' : ''}">${escapeHtml(shownName(p))}${p.away ? '<small> 자리 비움</small>' : ''}</span>`;
   const team = (t) => `<span style="color:${hex(TEAM_MAIN[t])}" class="${me() && me().team === t ? 'me' : ''}">${TEAM_KO[t]}</span>`;
   if (kills) {
     const tail = left ? `<span class="sep">·</span>${left}` : '';
@@ -1571,7 +1571,7 @@ function updatePlayers() {
       const el = document.createElement('div');
       el.className = 'pc';
       el.innerHTML =
-        '<div class="top"><div class="face"></div><div><div class="nm"></div><div class="sub"></div></div></div><div class="pct"></div><div class="bar"></div>';
+        '<div class="top"><div class="face"></div><div><div class="nm"></div><div class="sub"></div></div></div><div class="pct"></div><div class="bar"></div><div class="away-tag">자리 비움</div>';
       const col = colorOf(p);
       el.style.setProperty('--pcol', col);
       el.classList.toggle('me', p.id === myId);
@@ -1605,6 +1605,7 @@ function updatePlayers() {
     shownPct.set(p.id, p.damage);
     const dead = !p.alive && !p.master;
     c.el.classList.toggle('dead', dead);
+    c.el.classList.toggle('away', !!p.away); // 끊겨서 자리만 남음 (봇이 대신 조종) — 글자 + 살짝 흐리게
     c.el.classList.toggle('watch', spectating() && !spec.overview && spec.target === p.id); // 관전 중 보고 있는 사람
     const pct = dead ? '<i>KO</i>' : `${p.damage}<u>%</u>`;
     if (c.pct.innerHTML !== pct) c.pct.innerHTML = pct;
@@ -2112,7 +2113,7 @@ function updateHostPlayers(show) {
   hostPlayersEl.classList.toggle('hidden', !show);
   if (!show) return;
   const ps = [...state.players].sort((a, b) => a.slot - b.slot);
-  const key = ps.map((p) => `${p.id}:${p.spectator}:${p.nick}:${p.team}:${p.color}`).join(',') + `|${state.teamMode}|${state.mode}`;
+  const key = ps.map((p) => `${p.id}:${p.spectator}:${p.nick}:${p.team}:${p.color}:${!!p.away}`).join(',') + `|${state.teamMode}|${state.mode}`;
   if (key === hostPlayersKey) return;
   hostPlayersKey = key;
   const title = document.createElement('div');
@@ -2139,8 +2140,9 @@ function updateHostPlayers(show) {
   const cells = [title, teamRow];
   for (const p of ps) {
     const who = document.createElement('span');
-    who.textContent = `${shownName(p)}${p.id === myId ? ' (나)' : ''}${p.spectator ? ' · 관전' : ''}`; // 이름은 textContent 로
+    who.textContent = `${shownName(p)}${p.id === myId ? ' (나)' : ''}${p.spectator ? ' · 관전' : ''}${p.away ? ' · 자리 비움' : ''}`; // 이름은 textContent 로
     who.style.color = colorOf(p);
+    who.classList.toggle('away', !!p.away); // 끊겨서 자리만 남음 (판 중이면 봇이 대신 조종)
     const spec = document.createElement('button');
     spec.textContent = p.spectator ? '참가로' : '관전으로';
     spec.addEventListener('click', () => send({ type: 'spectate', target: p.id, on: !p.spectator }));

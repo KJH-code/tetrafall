@@ -100,6 +100,13 @@
     #players .pc .pct u { font-size: 20px; text-decoration: none; }
     #players .pc.hurt .pct { animation: shake .3s; }
     #players .pc.dead { filter: grayscale(.8) brightness(.66); }
+    /* 자리 비움 (접속 끊김, 판 중이면 봇이 대신 조종): 판 살짝 흐리게 + 위에 글자 (아이콘 없음) */
+    #players .pc .away-tag { display: none; position: absolute; left: 6px; top: 0; white-space: nowrap; z-index: 1;
+      font-family: var(--disp); font-size: 10px; padding: 1px 8px; color: #1a1300; background: var(--accent); clip-path: polygon(5px 0, 100% 0, calc(100% - 5px) 100%, 0 100%); }
+    #players .pc.away { opacity: .62; }
+    #players .pc.away .away-tag { display: block; }
+    #host-players .away, #score .away { opacity: .6; }
+    #score .away small { font-size: 11px; color: var(--dim); }
     /* 관전 중 따라가는 사람 */
     #players .pc.watch { outline: 2px solid var(--accent); outline-offset: -2px; }
     #players .pc.watch::after { content: '▶'; position: absolute; top: -15px; left: 50%; transform: translateX(-50%); color: var(--accent); font-size: 12px; }
