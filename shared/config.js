@@ -1143,8 +1143,8 @@ export const CONFIG = {
     reach: { foot: 0.06, shin: 0.33, thigh: 0.3, torso: 0.58, chestR: 0.25, waistR: 0.19, depth: 0.82, head: 0.28, headW: 0.19, sink: 0.02, upper: 0.34, lower: 0.33, armR: 0.06, foreR: 0.055, legR: 0.055, hand: 0.058, shoulderY: 0.28, hipY: 0.07, hunch: 0.08, spread: 0.32 },
     // 웅크린 추적자 (사냥꾼): 사냥개처럼 등 굽고 목을 앞으로 뺀 마른 몸, 무릎 늘 굽힘, 긴 팔 (2026-10-28 낮은 실루엣)
     stalk: { foot: 0.06, shin: 0.36, thigh: 0.33, torso: 0.47, chestR: 0.16, waistR: 0.115, depth: 0.76, head: 0.28, headW: 0.17, sink: -0.07, upper: 0.33, lower: 0.31, armR: 0.042, foreR: 0.038, legR: 0.058, hand: 0.05, shoulderY: 0.175, hipY: 0.07, hunch: 0.52, bend: 0.6, spread: 0.2 },
-    // 작고 통통한 몸 (대포수): 짧은 다리, 둥근 배, 굵은 팔 (탱크보다 작음)
-    stout: { foot: 0.065, shin: 0.18, thigh: 0.19, torso: 0.5, chestR: 0.21, waistR: 0.23, depth: 0.9, barrel: true, head: 0.27, headW: 0.19, sink: 0.02, upper: 0.25, lower: 0.23, armR: 0.06, foreR: 0.056, legR: 0.075, hand: 0.058, shoulderY: 0.22, hipY: 0.09, hunch: 0.04, spread: 0.36 },
+    // 통통 포수 꼬마 (대포수): 공처럼 둥근 배, 짧고 굵은 팔다리 (탱크보다 작음, 2026-10-28)
+    stout: { foot: 0.065, shin: 0.19, thigh: 0.18, torso: 0.52, chestR: 0.25, waistR: 0.25, depth: 0.92, barrel: true, head: 0.27, headW: 0.2, sink: 0.03, upper: 0.22, lower: 0.21, armR: 0.068, foreR: 0.066, legR: 0.092, hand: 0.064, shoulderY: 0.24, hipY: 0.1, hunch: 0.02, spread: 0.4 },
     // 우락부락한 몸 (광전사): 키 작고 다부짐 — 아주 넓은 어깨·두꺼운 가슴 역삼각, 목 거의 없음, 굵은 팔뚝, 짧고 단단한 다리, 앞으로 숙인 공격적 자세 (2026-10-27 재혁: 코믹스 울버린 참고)
     brute: { foot: 0.07, shin: 0.22, thigh: 0.22, torso: 0.56, chestR: 0.29, waistR: 0.2, depth: 0.74, head: 0.27, headW: 0.21, sink: 0.1, upper: 0.27, lower: 0.26, armR: 0.08, foreR: 0.085, legR: 0.1, hand: 0.078, shoulderY: 0.34, hipY: 0.105, hunch: 0.3, bend: 0.3, spread: 0.42 },
     // 드럼통 (탱크): 둥근 통 몸통, 팔다리 짧고 뭉툭

@@ -847,8 +847,8 @@ function dressHunter(fig, costume, cloth) {
   fig.sniff = true;
 }
 
-// 대포수: 갈고리 해적단의 포수. 작고 통통한 몸 + 몸보다 큰 대포를 오른 어깨에 멤 + 두건(반다나, 매듭 자락) + 줄무늬 셔츠 + 검은 바지·장화 + 금 귀걸이.
-// 플레이어(팀) 색 = 두건·셔츠 줄무늬 (흰 줄과 번갈아). 대포는 쇠 몸통 + 놋쇠 테 + 둥근 꽁무니, 허리 뒤에 포탄 3개 (fig.balls, 탄 수 표시용)
+// 대포수 (통통 포수 꼬마): 갈고리 해적단의 포수. 공처럼 둥근 배 + 짧고 굵은 팔다리 + 몸보다 큰 대포를 오른 어깨에 멤 + 두건(반다나, 매듭 자락) + 줄무늬 셔츠 + 가죽 띠·포탄 주머니 + 반바지·장화 + 금 귀걸이.
+// 플레이어(팀) 색 = 셔츠 줄무늬·소매 줄 + 맨팔. 대포는 쇠 몸통 + 놋쇠 테 + 둥근 꽁무니, 허리 뒤에 포탄 3개 (fig.balls, 탄 수 표시용)
 function dressCannon(fig, costume, cloth) {
   const d = fig.d;
   const black = costume(0x222228);
@@ -868,23 +868,45 @@ function dressCannon(fig, costume, cloth) {
   for (const side of [-1, 1]) flap(fig, fig.neck, new THREE.BoxGeometry(0.015, 0.045, 0.14), black, -d.headW * 0.6, side * 0.025, capZ - 0.01, 0.35 + side * 0.1, 0.7, 0.25);
   addEyes(fig.neck, d.headW * 0.46, 0.05, eyeZ, C.FIGURE_EYE);
   fig.neck.add(mesh(new THREE.TorusGeometry(0.02, 0.006, 4, 8), brass, 0, -d.headW * 0.5, eyeZ - 0.05)); // 금 귀걸이
-  // 줄무늬 셔츠: 둥근 배 위에 가로 띠를 흰색·플레이어 색 번갈아 (몸통 자체는 피부 = 플레이어 색)
-  const n = 5;
+  // 줄무늬 셔츠: 공 같은 배 (몸통 = 흰 셔츠 재질) 위에 플레이어 색 가로 줄 (맨살 없이 흰·플레이어 색 번갈아)
+  fig.torso.material = white;
+  const n = 4;
   for (let k = 0; k < n; k++) {
-    const z = d.torso * (0.18 + (k * 0.66) / (n - 1));
-    const r = d.chestR * Math.sqrt(Math.max(0.05, 1 - ((z - d.torso / 2) / (d.torso / 2)) ** 2)) * 1.04 + 0.006;
-    fig.waist.add(mesh(ringGeo(r, r, 0.045, 12, d.depth), k % 2 ? cloth : white, 0, 0, z));
+    const z = d.torso * (0.2 + (k * 0.6) / (n - 1));
+    const r = d.chestR * Math.sqrt(Math.max(0.05, 1 - ((z - d.torso / 2) / (d.torso / 2)) ** 2)) * 1.03 + 0.006;
+    fig.waist.add(mesh(ringGeo(r, r, 0.055, 14, d.depth), cloth, 0, 0, z));
   }
-  for (const el of fig.shoulders) el.add(mesh(limbGeo(d.upper * 0.5, d.armR * 1.25, d.armR * 1.15, 7), white, 0, 0, -0.02)); // 소매
-  // 검은 바지 + 넓은 갈색 허리띠·금 버클 + 장화
-  fig.waist.add(mesh(ringGeo(d.waistR * 0.98, d.waistR * 0.98, 0.07, 10, d.depth), brown, 0, 0, d.torso * 0.12));
-  fig.waist.add(mesh(new THREE.BoxGeometry(0.03, 0.08, 0.07), brass, d.waistR * 0.98 * d.depth, 0, d.torso * 0.12));
-  fig.hips.add(mesh(pelvisGeo(d, 1.15, 0.17), black, 0, 0, 0.02));
+  // 가죽 띠 (왼 어깨 → 오른 허리, 배를 감고 비스듬히) + 포탄 주머니 둘
+  const strap = new THREE.TorusGeometry(d.chestR * 1.05, 0.018, 4, 16);
+  strap.scale(d.depth * 1.02, 1, 1.25);
+  const sm = mesh(strap, brown, 0, 0, d.torso * 0.52);
+  sm.rotation.x = 0.75;
+  fig.waist.add(sm);
+  for (const [y, z] of [[-0.09, 0.32], [0.04, 0.6]]) lump(fig.waist, 0.035, 0.045, 0.045, brown, d.chestR * d.depth * 0.98, y, d.torso * z, 0, 0, 1);
+  // 팔: 짧은 흰 소매 (플레이어 색 줄 하나) → 굵고 짧은 맨팔뚝 (손목 쪽까지 굵음) → 둥근 주먹
+  const A = d.armR;
+  const sleeve = latheLimb(d.upper * 0.6, [[0, A * 1.45], [0.6, A * 1.5], [1, A * 1.45]], 10, A * 1.1);
+  const upperArm = latheLimb(d.upper, [[0, A * 1.15], [0.55, A * 1.25], [1, A * 1.05]], 10);
+  const fore = latheLimb(d.lower, [[0, A * 1.1], [0.35, A * 1.3], [1, d.foreR * 1.15]], 10, A * 1.0);
   for (let i = 0; i < 2; i++) {
-    fig.thighs[i].add(mesh(limbGeo(d.thigh * 1.05, d.legR * 1.25, d.legR * 1.1, 7), black));
-    fig.knees[i].add(mesh(limbGeo(d.shin * 0.75, d.legR * 1.2, d.legR * 1.05, 8), black, 0, 0, -d.shin * 0.25));
-    fig.knees[i].add(mesh(ringGeo(d.legR * 1.45, d.legR * 1.35, 0.05, 8), black, 0, 0, -d.shin * 0.22));
-    fig.feet[i].add(mesh(new THREE.BoxGeometry(d.legR * 3.2, d.legR * 1.8, d.foot * 1.25), black, d.legR * 0.6, 0, -d.foot / 2));
+    fig.shoulders[i].add(mesh(upperArm, cloth));
+    fig.shoulders[i].add(mesh(sleeve, white));
+    fig.shoulders[i].add(mesh(ringGeo(A * 1.53, A * 1.53, 0.03, 10), cloth, 0, 0, -d.upper * 0.45));
+    fig.elbows[i].add(mesh(fore, cloth));
+    fig.hands[i].add(mesh(new THREE.IcosahedronGeometry(d.hand * 1.2, 1), cloth));
+  }
+  // 넓은 갈색 허리띠·둥근 금 버클 + 짧고 헐렁한 검은 반바지 + 굵은 장화 (둥근, 접은 단)
+  fig.waist.add(mesh(ringGeo(d.waistR * 1.0, d.waistR * 1.0, 0.07, 14, d.depth), brown, 0, 0, d.torso * 0.12));
+  fig.waist.add(mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.018, 10).rotateZ(Math.PI / 2), brass, d.waistR * d.depth + 0.008, 0, d.torso * 0.12));
+  fig.hips.add(mesh(pelvisGeo(d, 1.15, 0.2), black, 0, 0, 0));
+  const L = d.legR;
+  for (let i = 0; i < 2; i++) {
+    fig.thighs[i].add(mesh(latheLimb(d.thigh * 1.02, [[0, L * 1.45], [0.5, L * 1.55], [1, L * 1.35]], 10, L * 0.9), black));
+    fig.knees[i].add(mesh(new THREE.IcosahedronGeometry(L * 1.3, 1), black));
+    fig.knees[i].add(mesh(latheLimb(d.shin, [[0, L * 1.45], [0.2, L * 1.4], [1, L * 1.35]], 10), brown, 0, 0, -0.01)); // 장화
+    fig.knees[i].add(mesh(ringGeo(L * 1.65, L * 1.5, 0.05, 10), brown, 0, 0, -0.02));
+    fig.feet[i].children[0].visible = false;
+    lump(fig.feet[i], L * 1.75, L * 1.2, d.foot * 1.0, brown, L * 0.6, 0, -d.foot * 0.4, 0, 0, 1);
   }
   // 허리 뒤 포탄 3개 (탄 수만큼 보임, render 가 끔)
   fig.balls = [-1, 0, 1].map((k) => {

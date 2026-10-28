@@ -176,3 +176,11 @@ test('닌자 (재빠른 그림자): 가늘고 날렵, 머리는 보통 비율, �
   assert.ok(b.hunch > 0 && b.bend > 0, '살짝 숙인 날렵한 자세');
   assert.ok(C.NINJA_SCARF_LEN > 0);
 });
+
+test('대포수 (통통 포수 꼬마): 가장 작고, 공 같은 몸통 (배 = 가슴), 짧고 굵은 팔다리', () => {
+  const b = B[C.FIGURE_BODY.cannon];
+  assert.ok(b.barrel && b.waistR >= b.chestR, '공 같은 배');
+  for (const [ch, body] of Object.entries(C.FIGURE_BODY)) if (ch !== 'cannon') assert.ok(height(b) < height(B[body]), `${ch} 보다 작음`);
+  assert.ok(b.legR > B[C.FIGURE_BODY.builder].legR && legs(b) < legs(B[C.FIGURE_BODY.builder]), '건축가보다 다리 굵고 짧음');
+  assert.ok(b.foreR > B.lean.foreR * 1.5, '굵은 팔');
+});
