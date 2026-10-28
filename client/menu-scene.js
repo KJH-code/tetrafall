@@ -73,7 +73,8 @@ export class MenuScene {
   }
 
   // 한 프레임: 시간·이모트·고개 돌리기. 돌려주는 값 = renderer.render 에 넘길 state 와 카메라
-  step(dt) {
+  // spin: 카메라가 섬 둘레를 도는지 (타이틀 동안은 멈춤)
+  step(dt, spin = true) {
     const ms = dt * 1000;
     this.time += ms;
     const rnd = this.rnd;
@@ -97,7 +98,7 @@ export class MenuScene {
     }
     this.state.time = this.time;
     this.state.recvAt = performance.now();
-    this.camYaw += dt * C.MENU_CAM_SPEED;
+    if (spin) this.camYaw += dt * C.MENU_CAM_SPEED;
     return { state: this.state, cam: { yaw: this.camYaw, pitch: C.MENU_CAM_PITCH, follow: null, overviewDist: C.MENU_CAM_DIST } };
   }
 }

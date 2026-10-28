@@ -16,6 +16,8 @@ import { cardLayout, lobbyPlace } from '/shared/hud-layout.js';
 import { randomReel } from '/shared/char-select.js';
 import { CharStage } from '/char-stage.js';
 import { leaveNeedsConfirm } from '/shared/leave.js';
+import { showTitle } from '/shared/title.js';
+import { startTitle } from '/title.js';
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $('status');
@@ -2706,3 +2708,5 @@ const debug = {
   },
 };
 window.__tf = debug;
+// 타이틀 화면 (client/title.js): 처음 켤 때만. 링크(?room=)·재접속 자동 복귀면 건너뜀
+if (showTitle(location.search)) debug.title = startTitle({ renderer, playWipe, reduced: reducedMotion(), unlock: () => sound.unlock() });
