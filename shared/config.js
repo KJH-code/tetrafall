@@ -1127,13 +1127,35 @@ export const CONFIG = {
   ROBOT_RUN_SPEED: 3.2, // 이 속도(칸/초)보다 빠르면 로봇이 달리기 동작
   ROBOT_FADE_S: 0.15, // 로봇 동작이 바뀔 때 섞는 시간
   FIGURE_CHARS: ['tank', 'ninja', 'builder', 'hook', 'hunter', 'cannon', 'berserker', 'bard'], // TABS 식 몸(client/figure.js)으로 그리는 캐릭터 (2026-10-24). 캐릭터 없으면 로봇
+  // 체형 (칸, client/figure.js). foot 발 두께, shin·thigh 다리 마디, torso 몸통 높이, chestR·waistR 가슴·허리 반지름, depth 앞뒤 납작함,
+  // barrel 이면 몸통이 둥근 통, head·headW 머리 높이·폭, sink 머리가 어깨에 묻히는 깊이, upper·lower 팔 마디, armR·foreR 팔 굵기,
+  // legR 다리 굵기, hand 손 크기, shoulderY 어깨 관절 옆 거리, hipY 다리 사이, hunch 구부정한 각, bend 가만히 설 때 무릎 굽힘(없으면 0), spread 팔 벌린 각
+  FIGURE_BODIES: {
+    // 보통 마네킹
+    lean: { foot: 0.06, shin: 0.36, thigh: 0.36, torso: 0.48, chestR: 0.15, waistR: 0.12, depth: 0.72, head: 0.28, headW: 0.17, sink: -0.05, upper: 0.3, lower: 0.27, armR: 0.045, foreR: 0.04, legR: 0.065, hand: 0.048, shoulderY: 0.18, hipY: 0.075, hunch: 0, spread: 0.22 },
+    // 마른 몸 (닌자): 가늘고 다리 김
+    slim: { foot: 0.06, shin: 0.37, thigh: 0.37, torso: 0.47, chestR: 0.14, waistR: 0.11, depth: 0.72, head: 0.27, headW: 0.165, sink: -0.05, upper: 0.3, lower: 0.27, armR: 0.042, foreR: 0.038, legR: 0.058, hand: 0.045, shoulderY: 0.17, hipY: 0.07, hunch: 0.05, spread: 0.24 },
+    // 땅딸막 노동자 (건축가): 키 작고 다리 짧음, 넓은 어깨·두꺼운 팔뚝, 배 살짝 (2026-10-28 재혁: 마리오·밥 더 빌더 느낌)
+    sturdy: { foot: 0.07, shin: 0.25, thigh: 0.25, torso: 0.55, chestR: 0.235, waistR: 0.22, depth: 0.84, head: 0.28, headW: 0.21, sink: 0.04, upper: 0.25, lower: 0.25, armR: 0.068, foreR: 0.076, legR: 0.09, hand: 0.068, shoulderY: 0.29, hipY: 0.1, hunch: 0.05, bend: 0.12, spread: 0.36 },
+    // 팔 긴 보통 몸 (갈고리)
+    reach: { foot: 0.06, shin: 0.34, thigh: 0.34, torso: 0.5, chestR: 0.16, waistR: 0.13, depth: 0.74, head: 0.28, headW: 0.175, sink: -0.04, upper: 0.34, lower: 0.32, armR: 0.05, foreR: 0.046, legR: 0.066, hand: 0.05, shoulderY: 0.19, hipY: 0.075, hunch: 0.06, spread: 0.26 },
+    // 구부정한 보통 몸 (사냥꾼): 고개를 앞으로 빼고 냄새 맡는 자세
+    stalk: { foot: 0.06, shin: 0.35, thigh: 0.35, torso: 0.49, chestR: 0.155, waistR: 0.12, depth: 0.74, head: 0.28, headW: 0.17, sink: -0.04, upper: 0.31, lower: 0.28, armR: 0.047, foreR: 0.042, legR: 0.064, hand: 0.05, shoulderY: 0.18, hipY: 0.075, hunch: 0.38, bend: 0.45, spread: 0.24 },
+    // 작고 통통한 몸 (대포수): 짧은 다리, 둥근 배, 굵은 팔 (탱크보다 작음)
+    stout: { foot: 0.065, shin: 0.18, thigh: 0.19, torso: 0.5, chestR: 0.21, waistR: 0.23, depth: 0.9, barrel: true, head: 0.27, headW: 0.19, sink: 0.02, upper: 0.25, lower: 0.23, armR: 0.06, foreR: 0.056, legR: 0.075, hand: 0.058, shoulderY: 0.22, hipY: 0.09, hunch: 0.04, spread: 0.36 },
+    // 우락부락한 몸 (광전사): 키 작고 다부짐 — 아주 넓은 어깨·두꺼운 가슴 역삼각, 목 거의 없음, 굵은 팔뚝, 짧고 단단한 다리, 앞으로 숙인 공격적 자세 (2026-10-27 재혁: 코믹스 울버린 참고)
+    brute: { foot: 0.07, shin: 0.22, thigh: 0.22, torso: 0.56, chestR: 0.29, waistR: 0.2, depth: 0.74, head: 0.27, headW: 0.21, sink: 0.1, upper: 0.27, lower: 0.26, armR: 0.08, foreR: 0.085, legR: 0.1, hand: 0.078, shoulderY: 0.34, hipY: 0.105, hunch: 0.3, bend: 0.3, spread: 0.42 },
+    // 드럼통 (탱크): 둥근 통 몸통, 팔다리 짧고 뭉툭
+    drum: { foot: 0.07, shin: 0.22, thigh: 0.22, torso: 0.74, chestR: 0.31, waistR: 0.31, depth: 0.86, barrel: true, head: 0.27, headW: 0.2, sink: 0.05, upper: 0.27, lower: 0.25, armR: 0.08, foreR: 0.08, legR: 0.09, hand: 0.07, shoulderY: 0.31, hipY: 0.12, hunch: 0.04, spread: 0.45 },
+  
+  },
   FIGURE_BODY: { tank: 'drum', ninja: 'slim', builder: 'sturdy', hook: 'reach', hunter: 'stalk', cannon: 'stout', berserker: 'brute', bard: 'lean' }, // 캐릭터별 체형 (client/figure.js BODIES). 2026-10-24 재혁: 탱크는 통통한 쪽
   FIGURE_SCALE: 1.15, // 몸 전체 크기 배율 (1 이면 로봇과 키가 같아도 가늘어서 작아 보임). 판정 상자는 그대로
   // 1인칭 팔·무기 (client/viewmodel.js): 내 몸을 복제해 팔·무기만 따로 그림
   VM_FOV: 62, // 뷰모델 카메라 화각 (필드 화각과 따로: 넓은 화각에서도 팔이 늘어나 보이지 않게)
   VM_SCALE: 0.62, // 몸 크기 배율 (FIGURE_SCALE 에 곱함). 작을수록 팔이 화면을 덜 가림
   VM_POS: { default: [0, -0.16, -0.26], tank: [0, -0.2, -0.26], bard: [0.32, -0.14, -0.34], cannon: [0.24, -0.24, -0.45] }, // 어깨 높이 기준점 (카메라 기준: 오른쪽 +x, 위 +y, 뒤 +z). 캐릭터별로 덮어씀
-  VM_SIZE: { tank: 0.7, builder: 0.7, bard: 0.7, cannon: 0.7, berserker: 0.75 }, // 캐릭터별 크기 배율 (VM_SCALE 에 곱함). 굵은 팔은 화면을 많이 덮어서 작게 (광전사: 2026-10-27 어깨 넓고 팔뚝 굵어짐)
+  VM_SIZE: { tank: 0.7, builder: 0.58, bard: 0.7, cannon: 0.7, berserker: 0.75 }, // 캐릭터별 크기 배율 (VM_SCALE 에 곱함). 굵은 팔은 화면을 많이 덮어서 작게 (광전사: 2026-10-27 어깨 넓고 팔뚝 굵어짐)
   VM_ROLL: { bard: 0.25 }, // 캐릭터별 화면 기울기 (라디안, + 면 반시계 방향). 바드 악기를 화면 아래에 가로로 눕혀 듦 (목이 조준점 쪽으로 안 감)
   VM_ARM_LOW: 1.0, // 내린 팔이 화면에선 이 각만큼 앞으로 든 팔 (라디안, π/2 = 정면)
   VM_ARM_OUT: 0.5, // 옆으로 벌린 각 배율
@@ -1239,7 +1261,7 @@ export const CONFIG = {
   RAGDOLL_HIT_UP: 0.45, // 충격의 위쪽 비율
   RAGDOLL_SLUMP: 0.55, // 힘이 다 빠지면 골반이 판정 위치보다 이만큼 (칸) 아래로 처질 수 있음 → 바닥에 쓰러져 누움, 힘이 돌아오면 일어남
   RAGDOLL_LIMP_LIFT: 0.25, // 다 처졌을 때 골반이 받는 중력 보정 비율 (0 이면 그대로 떨어짐)
-  RAGDOLL_WEIGHT: { drum: 1.6, brute: 1.3, stout: 1.3, sturdy: 1.15, lean: 1, reach: 1, stalk: 0.95, slim: 0.75 }, // 체형별 무게 (FIGURE_BODY). 무거울수록 맞을 때 덜 튐 (탱크 무겁게, 닌자 가볍게)
+  RAGDOLL_WEIGHT: { drum: 1.6, brute: 1.3, stout: 1.3, sturdy: 1.25, lean: 1, reach: 1, stalk: 0.95, slim: 0.75 }, // 체형별 무게 (FIGURE_BODY). 무거울수록 맞을 때 덜 튐 (탱크 무겁게, 닌자 가볍게)
   // 관절 각도 제한 (원뿔): rotY = 가운데 방향을 figure 관절 rotation.y 부호로 기울인 각, cone = 가운데에서 벗어날 수 있는 각, twist = 비틀림 한계 (없으면 제한 없음).
   // 무릎은 뒤로만, 팔꿈치·엉덩이는 앞으로 많이 (평소 자세 범위는 다 들어가게 넉넉히). 어깨는 제한 없음 (팔 휘두름)
   RAGDOLL_LIMITS: {

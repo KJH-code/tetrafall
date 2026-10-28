@@ -109,3 +109,29 @@ test('부딪힘 휘청 설정', () => {
   const B = C.FIGURE_BUMP;
   assert.ok(B.decel > 0 && B.minSpeed > 0 && B.kick > 0 && B.cooldown > 0 && B.reach > 0 && B.reach < 1);
 });
+
+// 체형 표 (FIGURE_BODIES): 캐릭터마다 실루엣이 달라야 함 (2026-10-28 재혁: "다 똑같은 막대기 몸")
+const B = C.FIGURE_BODIES;
+const legs = (b) => b.foot + b.shin + b.thigh;
+const height = (b) => legs(b) + b.torso - b.sink + b.head; // 몸 비율 전, 숙임 무시
+const KEYS = ['foot', 'shin', 'thigh', 'torso', 'chestR', 'waistR', 'depth', 'head', 'headW', 'sink', 'upper', 'lower', 'armR', 'foreR', 'legR', 'hand', 'shoulderY', 'hipY', 'hunch', 'spread'];
+
+test('체형 표: FIGURE_BODY 가 가리키는 체형이 다 있고 값이 다 숫자', () => {
+  for (const [ch, body] of Object.entries(C.FIGURE_BODY)) {
+    assert.ok(B[body], `${ch} → ${body}`);
+    for (const k of KEYS) assert.ok(Number.isFinite(B[body][k]), `${body}.${k}`);
+    assert.ok(C.RAGDOLL_WEIGHT[body] > 0, `${body} 래그돌 무게`);
+  }
+});
+
+test('건축가 (땅딸막 노동자): 보통 몸보다 키 작고 다리 짧고, 어깨 넓고 팔뚝 굵고, 배가 가슴만큼 (막대 몸 아님)', () => {
+  const b = B[C.FIGURE_BODY.builder];
+  const lean = B.lean;
+  assert.ok(height(b) < height(lean) * 0.92, '키 작음');
+  assert.ok(legs(b) < legs(lean) * 0.75, '다리 짧음');
+  assert.ok(b.shoulderY > lean.shoulderY * 1.4, '어깨 넓음');
+  assert.ok(b.foreR > lean.foreR * 1.7 && b.foreR >= b.armR, '팔뚝 굵음 (위팔 이상)');
+  assert.ok(b.waistR > b.chestR * 0.9, '배 살짝');
+  assert.ok(height(b) > height(B[C.FIGURE_BODY.cannon]), '대포수보다는 큼');
+  assert.ok(C.RAGDOLL_WEIGHT[C.FIGURE_BODY.builder] > C.RAGDOLL_WEIGHT.lean, '무거움');
+});
