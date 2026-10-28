@@ -72,6 +72,17 @@ function plaidTexture(colors) {
   return tex;
 }
 
+// 굴곡 있는 팔다리 (근육선): profile = [[t, r], ...] (t 0 = 위 끝 ~ 1 = 아래 끝, r 반지름). 관절에서 -z 로 len, 매끈하게 한 덩어리.
+// top 을 주면 위 끝을 그만큼 위로 둥글게 덮음 (어깨처럼 공을 따로 안 붙여도 됨)
+function latheLimb(len, profile, seg = 10, top = 0) {
+  const pts = [];
+  if (top > 0) for (let k = 0; k <= 3; k++) pts.push(new THREE.Vector2(profile[0][1] * Math.sin((k / 3) * Math.PI * 0.5), top * Math.cos((k / 3) * Math.PI * 0.5)));
+  for (const [t, r] of profile) pts.push(new THREE.Vector2(r, -t * len));
+  const geo = new THREE.LatheGeometry(pts.reverse(), seg); // 아래 → 위 순서라야 면이 바깥을 봄
+  geo.rotateX(Math.PI / 2); // 축 y → z (위 끝이 원점, 아래로 -z)
+  return geo;
+}
+
 // 저폴리 덩어리 (근육·배·털 뭉치): 정이십면체를 sx·sy·sz 로 늘려 parent 에 붙임. detail 1 이면 더 둥긂
 function lump(parent, sx, sy, sz, mat, x, y, z, rx = 0, ry = 0, detail = 0) {
   const g = new THREE.IcosahedronGeometry(1, detail);
@@ -1125,7 +1136,7 @@ function dressBard(fig, costume, cloth) {
     const stud = costume(0xd8dce4);
     torsoMat.metal = tee;
     const head = part(fig.neck, 'metal');
-    // 모히칸: 머리 가운데 앞에서 뒤로 뾰족 가시 줄 (빨강·검정 번갈아). fig.mohawk 를 키워 솟는 연출
+    // 모히칸: 머리 가운데 앞에서 뒤로 뾰족 가시 줄 (플레이어 색·검정 번갈아). fig.mohawk 를 키워 솟는 연출
     const mohawk = new THREE.Group();
     const n = 8;
     for (let k = 0; k < n; k++) {
@@ -1134,7 +1145,7 @@ function dressBard(fig, costume, cloth) {
       const geo = new THREE.ConeGeometry(0.045, h, 5);
       geo.rotateX(Math.PI / 2); // 축 +z
       geo.scale(1, 0.4, 1); // 옆으로 납작 (지느러미처럼 한 줄)
-      const spike = mesh(geo, k % 2 ? black : red, Math.cos(a) * d.headW * 0.5, 0, d.head * 0.5 + Math.sin(a) * d.head * 0.5);
+      const spike = mesh(geo, k % 2 ? black : cloth, Math.cos(a) * d.headW * 0.5, 0, d.head * 0.5 + Math.sin(a) * d.head * 0.5); // 플레이어 색·검정 번갈아
       spike.rotation.y = Math.PI / 2 - a; // 머리 표면에서 바깥(반지름 방향)으로
       spike.position.addScaledVector(new THREE.Vector3(Math.cos(a), 0, Math.sin(a)), h / 2 - 0.01);
       mohawk.add(spike);
@@ -1151,9 +1162,26 @@ function dressBard(fig, costume, cloth) {
     const jm = mesh(jacket, black, 0, 0, T * 0.52);
     jm.material.side = THREE.DoubleSide;
     body.add(jm);
-    body.add(mesh(ringGeo(d.headW * 0.58, d.headW * 0.72, 0.05, 10), black, 0, 0, T - d.sink * 0 - 0.01)); // 티 깃
+    const collar = new THREE.CylinderGeometry(d.headW * 0.85, d.headW * 0.62, C.METAL_COLLAR, 10, 1, true, Math.PI * 0.62, Math.PI * 1.76); // 세운 재킷 깃 (앞이 트임)
+    collar.rotateX(Math.PI / 2);
+    const collarM = mesh(collar, black, -0.01, 0, T + C.METAL_COLLAR / 2 - 0.02);
+    collarM.material.side = THREE.DoubleSide;
+    body.add(collarM);
     for (const side of [-1, 1]) {
-      for (let k = 0; k < 3; k++) body.add(mesh(new THREE.ConeGeometry(0.02, 0.065, 4), stud, -0.02 + k * 0.03, side * (d.shoulderY + 0.005), T - 0.01).rotateX(side * -0.3));
+      // 어깨 패드: 검정 가죽 반구 + 징 테 + 큰 가시 셋 (가는 몸이라도 어깨 실루엣이 넓게)
+      const pad = mesh(domeGeo(C.METAL_PAD_R, 10), black, 0, side * d.shoulderY, T - 0.02);
+      pad.scale.set(1.1, 1, 0.75);
+      pad.rotation.x = side * -0.45;
+      body.add(pad);
+      const padRim = mesh(new THREE.TorusGeometry(C.METAL_PAD_R * 1.0, 0.009, 4, 12), stud, 0, side * d.shoulderY, T - 0.02);
+      padRim.scale.set(1.1, 1, 1);
+      padRim.rotation.x = side * -0.45;
+      body.add(padRim);
+      for (let k = 0; k < 3; k++) {
+        const sp = mesh(new THREE.ConeGeometry(0.022, 0.11 - Math.abs(k - 1) * 0.025, 5), stud, -0.04 + k * 0.04, side * (d.shoulderY + C.METAL_PAD_R * 0.35), T + C.METAL_PAD_R * 0.55);
+        sp.rotation.x = side * -0.6;
+        body.add(sp);
+      }
       for (let k = 0; k < 3; k++) {
         const ang = side * (open / 2 + 0.15);
         const z = T * (0.3 + k * 0.2);
@@ -1171,14 +1199,14 @@ function dressBard(fig, costume, cloth) {
       const a = (k / 6) * Math.PI * 2;
       body.add(mesh(new THREE.IcosahedronGeometry(0.013, 0), stud, Math.cos(a) * d.waistR * 1.2 * d.depth, Math.sin(a) * d.waistR * 1.2, 0.06));
     }
-    // 맨팔 (플레이어 색): 둥근 어깨 + 위팔 → 팔꿈치 공 → 팔뚝이 한 덩어리로 이어짐 (기본 막대 팔 위에 덮음) + 가시 팔찌·플레이어 색 띠
+    // 맨팔 (플레이어 색): 근육선 있는 한 덩어리 (둥근 어깨 → 알통이 부푼 위팔 → 가는 팔꿈치 / 팔꿈치 아래 부푼 팔뚝 → 가는 손목). 팔꿈치는 위아래가 겹침
+    const A = d.armR;
+    const upperGeo = latheLimb(d.upper, [[0, A * 1.5], [0.15, A * 1.75], [0.45, A * 1.85], [0.78, A * 1.3], [1, A * 1.1]], 10, A * 1.1);
+    const foreGeo = latheLimb(d.lower, [[0, A * 1.2], [0.2, A * 1.65], [0.5, A * 1.35], [0.85, d.foreR * 1.15], [1, d.foreR * 1.05]], 10, A * 1.0);
     for (let i = 0; i < 2; i++) {
-      const sh = part(fig.shoulders[i], 'metal');
-      sh.add(mesh(domeGeo(d.armR * 1.25, 10), cloth, 0, 0, d.armR * 0.3));
-      sh.add(mesh(limbGeo(d.upper + d.armR * 0.3, d.armR * 1.25, d.armR * 1.05, 10), cloth, 0, 0, d.armR * 0.3));
+      part(fig.shoulders[i], 'metal').add(mesh(upperGeo, cloth));
       const wrist = part(fig.elbows[i], 'metal');
-      wrist.add(mesh(new THREE.IcosahedronGeometry(d.armR * 1.05, 1), cloth));
-      wrist.add(mesh(limbGeo(d.lower, d.armR * 1.05, d.foreR * 1.1, 10), cloth));
+      wrist.add(mesh(foreGeo, cloth));
       wrist.add(mesh(limbGeo(0.06, d.foreR * 1.6, d.foreR * 1.6, 10), black, 0, 0, -d.lower * 0.72));
       wrist.add(mesh(limbGeo(0.02, d.foreR * 1.65, d.foreR * 1.65, 10), cloth, 0, 0, -d.lower * 0.7)); // 플레이어 색 띠
       for (let k = 0; k < 5; k++) {
@@ -1190,11 +1218,35 @@ function dressBard(fig, costume, cloth) {
       }
     }
     // 찢어진 청바지 (무릎에 빨간 패치) + 검정 장화 빨간 끈
+    // 찢어진 스키니 청바지: 허벅지가 무릎으로 가늘어지는 굴곡 (무릎에 찢어진 틈 = 검정 + 실밥 흰 줄) + 두꺼운 밑창 검정 부츠 (빨간 끈) + 허리 체인
+    const L = d.legR;
+    const thighGeo = latheLimb(d.thigh, [[0, L * 1.35], [0.3, L * 1.3], [0.8, L * 1.08], [1, L * 1.05]], 10, L * 0.8);
+    const shinGeo = latheLimb(d.shin * 0.55, [[0, L * 1.08], [0.35, L * 1.15], [1, L * 1.0]], 10, L * 0.9);
     for (let i = 0; i < 2; i++) {
-      pants(i, 'metal', blue, red);
-      boot(i, 'metal', black, null);
+      part(fig.thighs[i], 'metal').add(mesh(thighGeo, blue));
       const kn = part(fig.knees[i], 'metal');
-      for (const z of [0.55, 0.7, 0.85]) kn.add(mesh(ringGeo(d.legR * 1.38, d.legR * 1.38, 0.012, 10), red, 0, 0, -d.shin * z));
+      kn.add(mesh(shinGeo, blue));
+      const rip = mesh(new THREE.SphereGeometry(L * 1.0, 10, 6, -0.7, 1.4, 0.9, 1.3), black, 0.006, 0, 0); // 무릎 찢어진 틈 (앞쪽만)
+      rip.rotation.x = Math.PI / 2;
+      rip.rotation.z = -Math.PI / 2;
+      kn.add(rip);
+      for (const z of [-0.025, 0.025]) kn.add(mesh(ringGeo(0.004, 0.004, L * 1.4, 4).rotateX(Math.PI / 2), stud, L * 1.06, 0, z)); // 실밥
+      const f = part(fig.feet[i], 'metal');
+      lump(f, L * 2.3, L * 1.6, d.foot * 1.0, black, L * 0.8, 0, -d.foot * 0.2, 0, 0, 1);
+      const sole = mesh(new THREE.CylinderGeometry(1, 1, C.METAL_SOLE, 10).rotateX(Math.PI / 2), black, L * 0.8, 0, -d.foot + C.METAL_SOLE / 2);
+      sole.scale.set(L * 2.4, L * 1.7, 1);
+      f.add(sole);
+      const welt = mesh(new THREE.CylinderGeometry(1, 1, 0.012, 10).rotateX(Math.PI / 2), red, L * 0.8, 0, -d.foot + C.METAL_SOLE + 0.004); // 밑창 위 빨간 줄
+      welt.scale.set(L * 2.42, L * 1.72, 1);
+      f.add(welt);
+      kn.add(mesh(limbGeo(d.shin * 0.62, L * 1.75, L * 1.85, 10), black, 0, 0, -d.shin * 0.4)); // 큰 부츠 목 (가는 다리와 대비)
+      for (const z of [0.52, 0.68, 0.84]) kn.add(mesh(ringGeo(L * 1.8 + z * L * 0.12, L * 1.8 + z * L * 0.12, 0.016, 10), stud, 0, 0, -d.shin * z)); // 은색 버클 띠
+    }
+    for (let k = 0; k < 6; k++) {
+      const link = mesh(new THREE.TorusGeometry(0.016, 0.005, 4, 8), stud, -d.waistR * 0.5 * d.depth + k * 0.02, -d.waistR * 1.15, 0.03 - Math.sin((k / 5) * Math.PI) * 0.09);
+      link.rotation.x = Math.PI / 2;
+      link.rotation.y = k % 2 ? Math.PI / 2 : 0;
+      body.add(link); // 허리 체인 (오른쪽 옆구리로 늘어짐)
     }
     part(fig.hips, 'metal').add(mesh(pelvisGeo(d, 1.12, 0.18), blue, 0, 0, 0));
     // 일렉기타: 뾰족한 V 몸통 (빨강 + 검정 테) + 긴 목 + 뾰족 머리 + 줄. 가슴 앞에 비스듬히 (목이 왼쪽 위로)

@@ -1202,6 +1202,9 @@ export const CONFIG = {
   BERSERK_RAGE_PCT: 120, // 광전사 분노 화면: 피해 % 가 이만큼이면 가장 화남 (눈 충혈·눈썹·핏줄·빡침 표시·김. 몸 색은 안 바꿈: 플레이어 구분 우선)
   BERSERK_STEAM_RATE: 14,
   BARD_LUTE_SCALE: 1.35, // 류트 크기 배율 (가슴 앞에서 작아 보여서)
+  METAL_PAD_R: 0.105, // 메탈 폼 징 재킷 어깨 패드 반지름 (몸 비율 전 칸)
+  METAL_SOLE: 0.07, // 메탈 부츠 두꺼운 밑창 두께
+  METAL_COLLAR: 0.11, // 메탈 재킷 세운 깃 높이
   BARD_HOOD_H: 0.2, // 음유시인 어깨 두건 깃 높이 (플레이어 색)
   BARD_CAPE_LEN: 0.62, // 음유시인 망토 길이 (몸 비율 전 칸, 어깨에서 무릎 위까지). 플레이어 색 (멀리서 누군지 보이게)
   BARD_HEADBANG_HZ: 2.2,
