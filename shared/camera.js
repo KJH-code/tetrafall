@@ -29,3 +29,8 @@ export function followDist(cur, want, dt, rate) {
   if (cur == null || want <= cur) return want;
   return cur + (want - cur) * (1 - Math.exp(-rate * dt));
 }
+
+// 전체 보기 거리 배율: 판이 기본(GRID_W)보다 크면 그만큼 멀리 (2026-10-28 8인 19×19 — 휠 줌은 이 배율에 곱해짐)
+export function overviewScale(side, base) {
+  return Math.max(1, side / base);
+}

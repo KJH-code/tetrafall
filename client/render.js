@@ -7,7 +7,7 @@ import { figureAnim, MOVES } from '/figure.js';
 import { gaitOf } from '/figure-pose.js';
 import { Effects } from '/effects.js';
 import { CELL, SHAPE_NAMES } from '/shared/pieces.js';
-import { orbitEye, followDist } from '/shared/camera.js';
+import { orbitEye, followDist, overviewScale } from '/shared/camera.js';
 import { itemModel } from '/models.js';
 import { makeTextures } from '/textures.js';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
@@ -3319,7 +3319,7 @@ export class Renderer {
       if (this.overviewZ === undefined) this.overviewZ = want;
       this.overviewZ += (want - this.overviewZ) * (1 - Math.exp(-C.SPECTATE_OVERVIEW_FOLLOW * dt));
       look.set(this.W / 2, this.D / 2, this.overviewZ);
-      const e = orbitEye(look, cam.yaw, cam.pitch, cam.overviewDist ?? C.SPECTATE_OVERVIEW_DIST);
+      const e = orbitEye(look, cam.yaw, cam.pitch, (cam.overviewDist ?? C.SPECTATE_OVERVIEW_DIST) * overviewScale(Math.max(this.W, this.D), C.GRID_W)); // 큰 판은 멀리
       eye.set(e.x, e.y, Math.max(0.5, e.z));
     }
     if (!(me && me.alive && this.third)) this.tpDist = null; // 다음 3인칭은 처음 거리부터
