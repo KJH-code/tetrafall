@@ -42,6 +42,35 @@ function pelvisGeo(d, grow = 1, h = 0.14) {
   return geo;
 }
 
+// 체크 무늬 천 텍스처 (작업 셔츠): colors = [바탕, 굵은 줄, 가는 줄]. 같은 무늬는 한 번만 만듦
+const _plaid = new Map();
+function plaidTexture(colors) {
+  const key = colors.join(',');
+  if (_plaid.has(key)) return _plaid.get(key);
+  const n = 32;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = n;
+  const g = cv.getContext('2d');
+  const hex = (c) => '#' + c.toString(16).padStart(6, '0');
+  g.fillStyle = hex(colors[0]);
+  g.fillRect(0, 0, n, n);
+  g.globalAlpha = 0.55;
+  g.fillStyle = hex(colors[1]);
+  g.fillRect(0, 10, n, 6);
+  g.fillRect(10, 0, 6, n);
+  g.globalAlpha = 0.9;
+  g.fillStyle = hex(colors[2]);
+  g.fillRect(0, 26, n, 2);
+  g.fillRect(26, 0, 2, n);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(C.FIGURE_PLAID_REPEAT, C.FIGURE_PLAID_REPEAT);
+  tex.magFilter = THREE.NearestFilter;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  _plaid.set(key, tex);
+  return tex;
+}
+
 // 저폴리 덩어리 (근육·배·털 뭉치): 정이십면체를 sx·sy·sz 로 늘려 parent 에 붙임. detail 1 이면 더 둥긂
 function lump(parent, sx, sy, sz, mat, x, y, z, rx = 0, ry = 0, detail = 0) {
   const g = new THREE.IcosahedronGeometry(1, detail);
@@ -414,8 +443,11 @@ function dressBuilder(fig, costume, cloth) {
   const gold = costume(0xe0b030);
   const stache = costume(0x4a2c18);
   const piece = costume(0x30c8e8); // 테트리미노 (하늘색: 작업복 주황·모자 노랑과 안 겹침)
-  const shade = costume(0x000000);
-  fig.shade = { mat: shade, src: cloth }; // 걷은 소매 테 (셔츠 = 피부색보다 어둡게, figureAnim 이 칠함)
+  const cream = costume(C.FIGURE_BUILDER_SHIRT[1]);
+  // 작업 셔츠 (체크 무늬 천): 피부(플레이어 색)와 어떤 팔레트·팀 색에서도 갈리게 무늬로. 몸통 맨살 통도 셔츠로 덮음
+  const shirt = costume(0xffffff);
+  shirt.map = plaidTexture(C.FIGURE_BUILDER_SHIRT);
+  fig.torso.material = shirt;
   // 안전모: 돔 + 앞으로 긴 챙 + 가운데 능선
   const browZ = d.head * 0.7;
   const hat = mesh(domeGeo(d.headW * 0.66), yellow, 0, 0, browZ);
@@ -426,7 +458,7 @@ function dressBuilder(fig, costume, cloth) {
   fig.neck.add(brim);
   fig.neck.add(mesh(ringGeo(0.016, 0.016, d.headW * 1.25, 6).rotateY(Math.PI / 2), yellow, 0, 0, browZ + d.headW * 0.58));
   addEyes(fig.neck, d.headW * 0.44, 0.05, d.head * 0.5, C.FIGURE_EYE);
-  fig.waist.add(mesh(ringGeo(d.headW * 0.6, d.headW * 0.78, 0.06, 10), shade, 0, 0, T - d.sink + 0.01)); // 셔츠 깃
+  fig.waist.add(mesh(ringGeo(d.headW * 0.6, d.headW * 0.78, 0.06, 10), cream, 0, 0, T - d.sink + 0.01)); // 셔츠 깃
   // 덥수룩한 콧수염 (양쪽으로 처짐) + 둥근 코
   for (const side of [-1, 1]) lump(fig.neck, 0.035, 0.06, 0.03, stache, d.headW * 0.47, side * 0.045, d.head * 0.3, side * 0.35, 0, 1);
   lump(fig.neck, 0.035, 0.035, 0.035, cloth, d.headW * 0.52, 0, d.head * 0.38, 0, 0, 1);
@@ -464,13 +496,16 @@ function dressBuilder(fig, costume, cloth) {
   tool.add(mesh(ringGeo(0.022, 0.022, 0.07, 6).rotateY(Math.PI / 2), steel, 0, 0, 0.03));
   tool.position.set(0, -d.waistR * 1.22, -0.01);
   fig.waist.add(tool);
-  // 팔: 어깨 덩어리 + 걷어 올린 소매 테 + 굵은 팔뚝 (뽀빠이) + 장갑. 다리: 작업복 바지 + 접은 단 + 둥근 작업화
+  // 팔: 어깨부터 매끈한 셔츠 소매 (둥근 어깨 + 위팔) → 팔꿈치에 걷어 올린 소매 테 → 맨살 팔뚝이 손목 쪽으로 굵어짐 (뽀빠이) → 장갑.
+  // 소매 테가 팔꿈치 관절을 감싸 굽혀도 이음이 안 벌어짐. 다리: 작업복 바지 + 접은 단 + 둥근 작업화
+  const rU = d.armR * 1.3;
   for (let i = 0; i < 2; i++) {
-    const side = i ? 1 : -1;
-    lump(fig.shoulders[i], d.armR * 1.45, d.armR * 1.5, d.armR * 1.35, cloth, 0, side * d.armR * 0.2, -d.armR * 0.2, 0, 0, 1);
-    fig.shoulders[i].add(mesh(limbGeo(0.04, d.armR * 1.28, d.armR * 1.25, 8), shade, 0, 0, -d.upper * 0.5));
-    lump(fig.elbows[i], d.foreR * 1.3, d.foreR * 1.25, d.lower * 0.3, cloth, 0, 0, -d.lower * 0.35, 0, 0, 1);
-    fig.hands[i].add(mesh(new THREE.IcosahedronGeometry(d.hand * 1.25, 1), tan));
+    fig.shoulders[i].add(mesh(domeGeo(rU, 10), shirt, 0, 0, d.armR * 0.35)); // 어깨 둥근 끝 (소매와 같은 굵기·천)
+    fig.shoulders[i].add(mesh(limbGeo(d.upper + d.armR * 0.35, rU, rU * 0.95, 10), shirt, 0, 0, d.armR * 0.35));
+    fig.elbows[i].add(mesh(ringGeo(rU * 1.12, rU * 1.12, d.armR * 1.1, 10), cream, 0, 0, -d.armR * 0.15)); // 걷은 소매 테
+    fig.elbows[i].add(mesh(limbGeo(d.lower + d.foreR * 0.4, d.foreR * 1.0, d.foreR * 1.3, 10), cloth, 0, 0, d.foreR * 0.4)); // 팔뚝 (손목 쪽이 굵음)
+    fig.hands[i].add(mesh(ringGeo(d.foreR * 1.35, d.foreR * 1.4, 0.035, 10), tan, 0, 0, d.hand * 0.6)); // 장갑 목
+    fig.hands[i].add(mesh(new THREE.IcosahedronGeometry(d.hand * 1.4, 1), tan));
     fig.thighs[i].add(mesh(limbGeo(d.thigh * 1.04, d.legR * 1.25, d.legR * 1.15, 8), orange));
     fig.knees[i].add(mesh(new THREE.IcosahedronGeometry(d.legR * 1.18, 1), orange));
     fig.knees[i].add(mesh(limbGeo(d.shin, d.legR * 1.12, d.legR * 1.22, 8), orange));
