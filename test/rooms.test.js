@@ -21,6 +21,14 @@ function fakeWs() {
   };
 }
 
+// 끊긴 자리의 유지 시간이 다 지난 것으로 (판을 60초 돌리지 않고) → 다음 틱에 나감
+function expireAway(rooms, code) {
+  const room = rooms.rooms.get(code);
+  if (!room) return;
+  for (const seat of room.seats.values()) if (seat.awayAt !== null) seat.awayAt = room.game.time - C.RECONNECT_GRACE_MS;
+  rooms.tick(0);
+}
+
 // 방마다 로그를 배열에 모으는 서버
 function setup(seed = 1) {
   const logs = {};
@@ -134,7 +142,9 @@ test('방: 사람이 다 나가면 봇이 있어도 방을 바로 없애고 로�
   assert.ok(rooms.rooms.has(code), '사람이 남아 있으면 방 유지');
   assert.ok(rooms.rooms.get(code).game.isHost(b.conn.id), '호스트는 남은 사람에게');
   rooms.disconnect(b.conn); // 창 닫기
-  assert.ok(!rooms.rooms.has(code), '사람 0명 → 방 없음');
+  assert.ok(rooms.rooms.has(code), '끊겨도 자리 유지 동안은 방이 남음 (재접속)');
+  expireAway(rooms, code);
+  assert.ok(!rooms.rooms.has(code), '자리 유지 시간이 지나 사람 0명 → 방 없음');
   assert.deepEqual(closed, [code]);
   assert.ok(logs[code].at(-1).includes('닫음'));
   const c = join();
@@ -154,7 +164,7 @@ test(`방: 최대 ${C.ROOM_MAX}개, 넘으면 못 만듦. 하나가 닫히면 �
   const x = join();
   rooms.message(x.conn, { type: 'create' });
   assert.match(x.ws.last('joinError').reason, /더 못 만듭니다/);
-  rooms.disconnect(owners[0].conn);
+  rooms.message(owners[0].conn, { type: 'leave' });
   rooms.message(x.conn, { type: 'create' });
   assert.ok(x.ws.last('welcome'));
 });
@@ -219,9 +229,12 @@ test('방: 판 중에 창을 닫으면 그 방 로그에 접속 끊김 사망, �
   rooms.message(a.conn, { type: 'start' });
   rooms.tick(TICK);
   rooms.disconnect(b.conn);
+  assert.ok(logs[code].some((l) => /\[끊김\] P2 자리 유지 60초 \(봇 대리\)/.test(l)), '끊기면 바로 죽지 않고 봇 대리');
+  expireAway(rooms, code); // 자리 유지 시간이 지나면 예전처럼
   assert.ok(logs[code].some((l) => /ROUND 1 종료 .*승자: P1/.test(l)), '남은 한 명이 승리');
   assert.ok(logs[code].some((l) => /사망: .*P2 접속 끊김/.test(l)));
   rooms.disconnect(a.conn);
+  expireAway(rooms, code);
   assert.equal(rooms.rooms.size, 0);
 });
 

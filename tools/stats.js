@@ -54,7 +54,20 @@ export function parseLog(text) {
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.replace(/^\[[^\]]*\]\s?/, ''); // 앞의 [시각] 떼기
     let m;
-    if ((m = line.match(/^(P\d+(?:\(봇\))?) 접속 \(slot/))) {
+    const rc = cur || last; // 재접속 줄을 셀 판 (판 중이면 그 판, 판 사이면 바로 앞 판)
+    if ((m = line.match(/^\s*\[끊김\] \S+ 자리 유지 \d+초( \(봇 대리\))?$/))) {
+      if (rc) {
+        rc.reconnect.away++;
+        if (m[1]) rc.reconnect.proxied++;
+      }
+    } else if ((m = line.match(/^\s*\(복귀까지 ([\d.]+)초\)$/))) {
+      if (rc) {
+        rc.reconnect.back++;
+        rc.reconnect.backSec.push(Number(m[1]));
+      }
+    } else if (/^\s*\[끊김 만료\] /.test(line)) {
+      if (rc) rc.reconnect.expired++;
+    } else if ((m = line.match(/^(P\d+(?:\(봇\))?) 접속 \(slot/))) {
       conns.set(m[1], { key: null, aliases: new Set() });
       if (!isBot(m[1])) sessions.set(m[1], { name: m[1], conn: conns.get(m[1]), rounds: 0, left: null });
     } else if ((m = line.match(/^(P\d+) 접속 종료$/))) {
@@ -95,6 +108,7 @@ export function parseLog(text) {
         cannon: { fired: 0, hits: 0, broke: 0, big: 0 }, // 대포수 포탄 발사·명중·블록 부숨(칸)·대형 포탄 (2026-10-26~)
         berserker: { leaps: 0, spins: 0, rage: 0, cut: 0, endHits: 0, broken: 0 }, // 광전사 도약·소용돌이·분노 배율 합·깎은 피해 %·끝 날림 맞힌 수·끊김 (2026-10-26~)
         bard: { notes: 0, toMetal: 0, toBard: 0, healed: 0, songs: 0, vuln: 0, amps: 0, ampBroken: 0 }, // 바드 음파 명중·폼 전환·치유한 피해 %·취약의 노래(걸린 사람)·앰프(끊김) (2026-10-26~)
+        reconnect: { away: 0, proxied: 0, back: 0, backSec: [], expired: 0 }, // 재접속: 끊김 (판 중이면 봇 대리)·돌아옴 (걸린 초)·안 돌아옴. 판 사이 일은 바로 앞 판에 셈 (2026-10-28~)
       };
     } else if ((m = line.match(/^ {2}블록: (.*)$/)) && ended) {
       // 판 끝 놓인 블록 수 "자동 3 / 하늘 5 / …" (2026-10-26~)
@@ -509,6 +523,11 @@ export function summarize(rounds) {
     fallDamage,
     weapons,
     items,
+    reconnect: (() => {
+      const all = rounds.map((r) => r.reconnect).filter(Boolean);
+      const sum = (k) => all.reduce((a, x) => a + x[k], 0);
+      return { away: sum('away'), proxied: sum('proxied'), back: sum('back'), expired: sum('expired'), backMedian: median(all.flatMap((x) => x.backSec)) };
+    })(),
   };
 }
 
@@ -589,6 +608,8 @@ export function formatReport(s) {
   if (s.builder.cannon.fired || s.builder.cannon.big) out.push('', '== 대포수 ==', `포탄 ${s.builder.cannon.fired}발 · 명중 ${s.builder.cannon.hits} · 블록 부숨 ${s.builder.cannon.broke}칸 · 대형 포탄 ${s.builder.cannon.big}번`);
   if (s.builder.hunter.marks || s.builder.hunter.shots) out.push('', '== 사냥꾼 ==', `표식 ${s.builder.hunter.marks}번 · 처형 사격 ${s.builder.hunter.shots}번 (게이지 회수 ${s.builder.hunter.refunds}번)`);
   if (s.builder.armor.held || s.builder.armor.broken) out.push('', '== 탱크 아머 ==', `버팀 ${s.builder.armor.held}번 · 깨짐 ${s.builder.armor.broken}번`);
+  const rc = s.reconnect;
+  if (rc && rc.away) out.push('', '== 재접속 ==', `끊김 ${rc.away}번 (판 중 봇 대리 ${rc.proxied}) · 돌아옴 ${rc.back}번 (걸린 시간 중앙값 ${rc.backMedian === null ? '-' : `${rc.backMedian}초`}) · ${C.RECONNECT_GRACE_MS / 1000}초 안에 안 옴 ${rc.expired}번`);
   out.push('', '== 모드별 ==', table(['모드', '판', '길이 중앙값', '압사 비율', ''], groupRows(s.byMode).map((row, i) => [...row, s.byMode[i].note])));
   out.push(
     '',
