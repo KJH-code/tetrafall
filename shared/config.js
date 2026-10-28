@@ -759,6 +759,9 @@ export const CONFIG = {
     swishBlade: { files: ['swishBlade_1', 'swishBlade_2', 'swishBlade_3'], gain: 0.55 },
     swishMid: { files: ['swishMid_1', 'swishMid_2', 'swishMid_3', 'swishMid_4'], gain: 0.7 },
     swishHeavy: { files: ['swishHeavy_1', 'swishHeavy_2', 'swishHeavy_3'], gain: 0.8 },
+    hitSlap: { files: ['hitSlap_1', 'hitSlap_2', 'hitSlap_3'], gain: 0.9 }, // 타격 후보 B·C·D 재료 (SFX_HIT_STYLES)
+    hitThump: { files: ['hitThump_1', 'hitThump_2', 'hitThump_3', 'hitThump_4'], gain: 1 },
+    hitTock: { files: ['hitTock_1', 'hitTock_2', 'hitTock_3'], gain: 0.9 },
     punchH: { files: ['impactPunch_heavy_000', 'impactPunch_heavy_001', 'impactPunch_heavy_002', 'impactPunch_heavy_003', 'impactPunch_heavy_004'], gain: 0.9 }, // 세게 맞음·내가 맞음
     plateH: { files: ['impactPlate_heavy_000', 'impactPlate_heavy_001', 'impactPlate_heavy_002', 'impactPlate_heavy_003', 'impactPlate_heavy_004'], gain: 0.55 }, // 방패·금속판 (탱크)
     woodH: { files: ['impactWood_heavy_000', 'impactWood_heavy_001', 'impactWood_heavy_002', 'impactWood_heavy_003', 'impactWood_heavy_004'], gain: 0.8 }, // 블록 착지·망치
@@ -805,6 +808,57 @@ export const CONFIG = {
     medium: { crack: 0.75, punch: 0.65, heavy: 0, rate: 1.22, punchRate: 1.25, weaponRate: 1.12, cut: 0.11, release: 0 },
     heavy: { crack: 1, punch: 1, heavy: 0.9, rate: 0.92, release: 110 },
     crit: { crack: 1, punch: 1, heavy: 1, rate: 0.95, release: 180, ring: 1 },
+  },
+  // 약·중타 + 휘두름 소리 후보 (2026-10-28 재혁이 귀로 고름). 강타·치명·KO 는 후보와 상관없이 SFX_HIT_TIERS 그대로
+  // 'A' = 지금 (SFX_HIT_TIERS 의 crack·punch 겹, 212e987). 나머지는 겹 목록: { bank, vol, rate, cut, delay } = 효과음 묶음, { noise: {...} } / { tone: {...} } = 합성 (sound.js noise·tone 인자)
+  // swing: 무기 휘두름 묶음 rate 에 곱함 · cut 초에서 끊음 · vol, air = 위에 얹는 합성 바람 (A 는 SFX_SWING·SFX_SWING_AIR)
+  SFX_HIT_STYLE: 'A',
+  SFX_HIT_STYLES: {
+    A: null,
+    B: { // 손바닥 찰싹 '짝': 마른 박수 (잡음 세 번 겹친 박수 + 고역 찰싹), 몸통 없음
+      light: [
+        { noise: { dur: 0.012, vol: 0.85, filter: 'bandpass', freq: 1600, q: 1.6 } },
+        { noise: { dur: 0.012, vol: 0.77, filter: 'bandpass', freq: 1500, q: 1.6, delay: 0.008 } },
+        { noise: { dur: 0.06, vol: 0.94, filter: 'bandpass', freq: 1900, freqEnd: 1200, q: 1.3, delay: 0.016 } },
+        { bank: 'hitSlap', vol: 0.94, rate: 1.15, cut: 0.08 },
+      ],
+      medium: [
+        { noise: { dur: 0.014, vol: 1.1, filter: 'bandpass', freq: 1400, q: 1.5 } },
+        { noise: { dur: 0.014, vol: 1.02, filter: 'bandpass', freq: 1300, q: 1.5, delay: 0.009 } },
+        { noise: { dur: 0.09, vol: 1.27, filter: 'bandpass', freq: 1700, freqEnd: 900, q: 1.2, delay: 0.018 } },
+        { bank: 'hitSlap', vol: 1.36, rate: 1, cut: 0.11 },
+        { tone: { freq: 230, freqEnd: 140, dur: 0.04, vol: 0.26 } },
+      ],
+      weaponRate: 1.2,
+      swing: { rate: 1.35, cut: 0.1, vol: 0.9, air: { dur: 0.08, vol: 0.22, filter: 'bandpass', freq: 3000, freqEnd: 6500, q: 1.2 } },
+    },
+    C: { // 쿠션 '퐁·팍': 속 빈 상자·고무 몸통 (중저역 통) + 짧게 내려가는 통 울림 + 부드러운 '팍' (폴가이즈 쪽)
+      light: [
+        { bank: 'hitThump', vol: 0.75, rate: 1.25, cut: 0.1 },
+        { tone: { freq: 420, freqEnd: 230, dur: 0.08, vol: 0.3 } },
+        { noise: { dur: 0.04, vol: 0.2, filter: 'bandpass', freq: 1100, q: 0.9 } },
+      ],
+      medium: [
+        { bank: 'hitThump', vol: 1, rate: 1.05, cut: 0.13 },
+        { tone: { freq: 330, freqEnd: 170, dur: 0.1, vol: 0.4 } },
+        { noise: { dur: 0.05, vol: 0.3, filter: 'bandpass', freq: 900, q: 0.9 } },
+      ],
+      weaponRate: 1,
+      swing: { rate: 0.95, cut: 0.18, vol: 0.7, air: { dur: 0.16, vol: 0.3, filter: 'bandpass', freq: 500, freqEnd: 1100, q: 0.7 } },
+    },
+    D: { // 스포츠 '탁': 나무 블록·공·라켓처럼 짧고 맑은 음높이 있는 타격 + 아주 짧은 딸깍
+      light: [
+        { bank: 'hitTock', vol: 0.6, rate: 1.2, cut: 0.09 },
+        { noise: { dur: 0.012, vol: 0.2, filter: 'highpass', freq: 3500 } },
+      ],
+      medium: [
+        { bank: 'hitTock', vol: 0.8, rate: 1, cut: 0.12 },
+        { noise: { dur: 0.015, vol: 0.28, filter: 'highpass', freq: 3000 } },
+        { bank: 'hitPunch', vol: 0.2, rate: 1.3, cut: 0.08 },
+      ],
+      weaponRate: 1.1,
+      swing: { rate: 1.25, cut: 0.12, vol: 0.9, air: { dur: 0.1, vol: 0.2, filter: 'bandpass', freq: 1800, freqEnd: 4200, q: 2 } },
+    },
   },
   SFX_HIT_RELEASE: 0.3, // 강타·치명 '날아감' 겹 크기 (맞는 순간 '팍'보다 작게: 최고점이 맞는 순간에 오게)
   SFX_HEAVY_KINDS: ['blast', 'bigbomb', 'bigshell', 'blockslam', 'slam', 'charge', 'execute', 'spinend', 'leapwave', 'pounce', 'riff', 'ampend', 'wall', 'bomb'], // 이 kind 로 맞으면 강타

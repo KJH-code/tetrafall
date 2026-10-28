@@ -44,3 +44,5 @@ OpenGameArt CC0 원본을 `tools/prep-sfx.mjs` 로 역할별로 다듬음 (앞 �
 | `hitPunch_4·5`, `hitHeavy_2·3` | 37 hits/punches — independent.nu ljudbank — https://opengameart.org/content/37-hitspunches | CC0 1.0 |
 | `swishBlade_1~3` | 20 Sword Sound Effects — StarNinjas — https://opengameart.org/content/20-sword-sound-effects-attacks-and-clashes | CC0 1.0 |
 | `swishMid_1~4`, `swishHeavy_1~3` | Swishes Sound Pack — https://opengameart.org/content/swishes-sound-pack | CC0 1.0 |
+| `hitSlap_2`, `hitThump_1`, `hitTock_1·2` | 100 CC0 SFX — rubberduck — https://opengameart.org/content/100-cc0-sfx | CC0 1.0 |
+| `hitSlap_1·3`, `hitThump_2~4`, `hitTock_3` | 100 CC0 SFX #2 — rubberduck — https://opengameart.org/content/100-cc0-sfx-2 | CC0 1.0 |

@@ -22,8 +22,8 @@ test('효과음 묶음의 파일이 다 있고, 폴더에 안 쓰는 파일이 �
 test('효과음 출처: CREDITS.md 에 팩마다 CC0 로 적혀 있음', () => {
   const credits = fs.readFileSync(new URL('../client/assets/CREDITS.md', import.meta.url), 'utf8');
   for (const pack of ['impact-sounds', 'rpg-audio', 'sci-fi-sounds', 'interface-sounds', 'music-jingles']) assert.ok(credits.includes(`kenney.nl/assets/${pack}`), pack);
-  for (const prefix of ['impactPunch', 'chop', 'explosionCrunch', 'pluck', 'jingles_STEEL', 'hitCrack', 'swishBlade']) assert.ok(credits.includes(prefix), prefix);
-  for (const pack of ['thwack-sounds', 'content/punch', 'content/impact', '37-hitspunches', '20-sword-sound-effects', 'swishes-sound-pack']) assert.ok(credits.includes(pack), pack);
+  for (const prefix of ['impactPunch', 'chop', 'explosionCrunch', 'pluck', 'jingles_STEEL', 'hitCrack', 'swishBlade', 'hitSlap', 'hitThump', 'hitTock']) assert.ok(credits.includes(prefix), prefix);
+  for (const pack of ['thwack-sounds', 'content/punch', 'content/impact', '37-hitspunches', '20-sword-sound-effects', 'swishes-sound-pack', 'content/100-cc0-sfx', '100-cc0-sfx-2']) assert.ok(credits.includes(pack), pack);
 });
 
 test('캐릭터 8명 모두 무기 소리가 있고, 그 묶음이 있음 (strum 은 합성 기타)', () => {
@@ -128,4 +128,26 @@ test('가볍게 (2026-10-28): 약·중타·휘두름은 높고 짧게 끊음, �
   assert.ok(T.light.cut <= T.medium.cut);
   for (const k of ['heavy', 'crit']) assert.ok(!T[k].cut && T[k].rate < 1, `${k} 묵직`);
   assert.ok(C.SFX_SWING.rate > 1 && C.SFX_SWING.cut > 0 && C.SFX_SWING.cut < 0.25);
+});
+
+test('타격 후보 (SFX_HIT_STYLE): 기본 A, 후보마다 약·중타 겹과 휘두름이 있고 묶음이 다 있음, 서로 다른 재료', () => {
+  const S = C.SFX_HIT_STYLES;
+  assert.equal(C.SFX_HIT_STYLE, 'A');
+  assert.equal(S.A, null);
+  const main = new Set();
+  for (const [id, st] of Object.entries(S)) {
+    if (!st) continue;
+    for (const k of ['light', 'medium']) {
+      assert.ok(Array.isArray(st[k]) && st[k].length, `${id} ${k}`);
+      for (const L of st[k]) {
+        assert.ok(L.bank || L.noise || L.tone, `${id} ${k} 겹 종류`);
+        if (L.bank) assert.ok(C.SFX_BANKS[L.bank], `${id} ${L.bank}`);
+        if (L.cut) assert.ok(L.cut < 0.15, `${id} ${k} 짧게`);
+      }
+    }
+    assert.ok(st.weaponRate > 0, id);
+    assert.ok(st.swing.rate > 0 && st.swing.cut > 0 && st.swing.cut < 0.25, `${id} 휘두름`);
+    main.add(st.medium.find((L) => L.bank)?.bank);
+  }
+  assert.equal(main.size, Object.values(S).filter(Boolean).length); // 후보마다 중심 재료가 다름
 });

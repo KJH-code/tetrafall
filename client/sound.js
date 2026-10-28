@@ -177,6 +177,18 @@ export class Sound {
     return true;
   }
 
+  // 약·중타·휘두름 소리 후보 (config SFX_HIT_STYLE, hitStyle 로 덮어씀: 비교 녹음용). 'A' 면 null (예전 그대로)
+  style() {
+    return C.SFX_HIT_STYLES[this.hitStyle || C.SFX_HIT_STYLE] || null;
+  }
+
+  // 후보 겹 하나: 효과음 묶음 또는 합성 잡음·음
+  layer(L, out) {
+    if (L.bank) this.sample(L.bank, { vol: L.vol, rate: L.rate, cut: L.cut, delay: L.delay, out });
+    else if (L.noise) this.noise({ ...L.noise, out });
+    else if (L.tone) this.tone({ ...L.tone, out });
+  }
+
   // 합성 기타 (바드 타격): 화음을 빠르게 긁음. metal 이면 낮고 찌그러진 파워 코드
   strum(out, vol, metal = false) {
     const t0 = this.now();
@@ -234,6 +246,13 @@ export class Sound {
         break;
       case 'swing': { // 휘두름: 짧고 날카로운 '휙' (무기 크기별 묶음·높낮이) + 보통·무거운 무기는 바람 가르는 고역 한 겹
         const sw = w || { swing: 'swishMid', rate: 1 };
+        const st = this.style();
+        if (st) { // 후보 B·C·D: 휘두름 높낮이·길이 + 합성 바람
+          const S = st.swing;
+          this.sample(sw.swing, { rate: sw.rate * S.rate, cut: S.cut, vol: S.vol, out: o });
+          if (S.air) this.noise({ ...S.air, out: o });
+          break;
+        }
         const S = C.SFX_SWING;
         const rate = sw.rate * S.rate;
         this.sample(sw.swing, { rate, cut: S.cut, out: o });
@@ -244,6 +263,14 @@ export class Sound {
         const T = C.SFX_HIT_TIERS[tier] || C.SFX_HIT_TIERS[strong ? 'medium' : 'light'];
         const r = T.rate;
         const cut = T.cut || 0; // 약·중타: 꼬리를 짧게 (통통 가볍게)
+        const st = this.style();
+        const lm = st && !T.release && (st[tier] || st[strong ? 'medium' : 'light']);
+        if (lm) { // 후보 B·C·D 의 약·중타: 그 후보의 겹 + 얇은 무기 겹 (강타·치명은 아래 공통)
+          for (const L of lm) this.layer(L, o);
+          if (w && w.hit === 'strum') this.strum(o, 0.6, form === 'metal');
+          else if (w) this.sample(w.hit, { vol: C.SFX_WEAPON_LAYER, rate: st.weaponRate, cut: cut && cut * 1.5, out: o });
+          break;
+        }
         if (T.crack) this.sample('hitCrack', { vol: T.crack, rate: r, cut, out: o });
         if (T.punch) this.sample('hitPunch', { vol: T.punch, rate: r * (T.punchRate || 1), cut, out: o });
         if (T.heavy) this.sample('hitHeavy', { vol: T.heavy, rate: r, out: o });
