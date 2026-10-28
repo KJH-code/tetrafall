@@ -1250,6 +1250,36 @@ export const CONFIG = {
   FIGURE_HIP_TWIST: 0.4, // 공격 동작의 허리 비틂(waistRoll) 중 골반(다리째)이 나눠 받는 비율. 허리만 돌면 윗몸만 따로 노는 것처럼 보임 (2026-10-27 재혁: 광전사 상체가 따로 놂)
   FIGURE_HIP_TWIST_FOLLOW: 8, // 공격이 시작·끝날 때 그 나눔이 켜지고 꺼지는 빠르기 (/초)
   FIGURE_RUN_ELBOW: 0.9, // 최고 속도로 달릴 때 팔꿈치를 더 굽히는 각 (팔 펌프)
+  // 캐릭터별 걸음걸이 (2026-10-28, figure.js gaitPose). 빠진 칸은 FIGURE_GAIT_DEFAULT
+  // stride 보폭(허벅지 각 배율) · freq 발 빠르기 배율 (render.js 걸음 위상) · lean 더 숙임 · neck 고개 (+ 숙임) · arm 팔 흔들기 배율 · armBack 팔을 뒤로 젖힘 (닌자) · elbow 팔꿈치 더 굽힘
+  // knee 무릎 배율 · crouch 늘 굽힌 무릎 (웅크림) · wide 다리 벌림 · bounce 엉덩이 오르내림 (칸, 디딜 때 가장 낮음) · sway 옆으로 흔들 (뒤뚱) · twist 어깨 비틂 배율 · shrug 걸음마다 어깨·윗몸 들썩 (성난 황소)
+  FIGURE_GAIT_DEFAULT: { stride: 1, freq: 1, lean: 0, neck: 0, arm: 1, armBack: 0, elbow: 0, knee: 1, crouch: 0, wide: 0, bounce: 0.02, sway: 0, twist: 1, shrug: 0 },
+  FIGURE_GAIT: {
+    tank: { stride: 0.75, freq: 0.8, lean: -0.05, arm: 0.55, knee: 0.7, wide: 0.12, bounce: 0.07, sway: 0.1, twist: 0.6 }, // 쿵쿵: 짧고 느린 보폭, 다리 벌리고 디딜 때 푹 꺼짐
+    ninja: { stride: 1.15, freq: 1.15, lean: 0.38, neck: -0.15, arm: 0.15, armBack: 1.25, elbow: -0.9, knee: 1.15, bounce: 0.015, twist: 0.4 }, // 숙이고 팔을 뒤로 쭉
+    cannon: { stride: 0.55, freq: 1.5, lean: 0, arm: 0.9, knee: 0.75, bounce: 0.04, sway: 0.06, twist: 0.6 }, // 종종: 짧은 다리로 빠르게
+    berserker: { stride: 1, freq: 0.95, lean: 0.3, neck: -0.2, arm: 1.1, elbow: 0.4, knee: 1, wide: 0.06, bounce: 0.05, sway: 0.05, twist: 1.3, shrug: 0.32 }, // 성난 황소: 숙이고 걸음마다 어깨 들썩
+    hunter: { stride: 0.75, freq: 0.95, lean: 0.32, neck: -0.25, arm: 0.45, elbow: 0.5, knee: 0.9, crouch: 0.45, bounce: 0.01, twist: 0.5 }, // 웅크려 살금
+    builder: { stride: 0.85, freq: 0.88, lean: 0.12, neck: 0.1, arm: 0.8, knee: 0.85, bounce: 0.05, sway: 0.04 }, // 터벅터벅: 고개 살짝 숙이고 무겁게
+    hook: { stride: 0.8, freq: 0.9, lean: -0.02, arm: 0.7, knee: 0.6, wide: 0.16, bounce: 0.03, sway: 0.22, twist: 0.5 }, // 뒤뚱 해적: 다리 벌리고 옆으로 흔들
+    bard: { stride: 1.05, freq: 1.12, lean: 0, neck: -0.08, arm: 1, knee: 1.2, bounce: 0.09, sway: 0.04 }, // 경쾌: 통통 튀며
+  },
+  FIGURE_ACC_LEAN: { fwd: 0.012, side: 0.01, max: 0.35 }, // 가속·멈춤 (|앞뒤 가속도|) 만큼 앞으로, 옆 가속도 (방향 전환) 만큼 그쪽으로 몸 기울임 (칸/초² 당 라디안, 최대)
+  // 공중 자세 (figure.js airPose): 위아래 속도 vz 가 이 값을 넘으면 오름·내려옴 자세가 다 섞임 (그 사이는 정점 자세)
+  FIGURE_AIR_VZ: 3,
+  FIGURE_AIR_DASH: { s: 0.2, tilt: 0.9 }, // 공중 대시 슈퍼맨 자세 시간 (초) · 몸 전체 앞으로 눕는 각
+  FIGURE_BUMP: { decel: 25, minSpeed: 2, kick: 0.35, cooldown: 0.4, reach: 0.25 }, // 부딪힘: 땅에서 이 감속(칸/초²)보다 급히 멈추고 가던 쪽 reach 칸 안에 블록·사람이 있으면 휘청 (kick = 휘청 빠르기, 속도 1칸/초당)
+  // 평소 버릇 (figure.js idlePose): 가만히 after 초 지나면 every 초마다 len 초 동안 캐릭터별 짧은 동작. 사냥꾼은 킁킁 (FIGURE_SNIFF_*)
+  FIGURE_IDLE_AFTER: 2.5,
+  FIGURE_IDLE: {
+    tank: { kind: 'tap', every: 4.5, len: 1.1 }, // 등 방패 툭툭
+    ninja: { kind: 'twirl', every: 3.8, len: 1.2 }, // 단검 손에서 돌리기
+    builder: { kind: 'shoulder', every: 5, len: 1.4 }, // 망치 어깨에 척
+    hook: { kind: 'polish', every: 4.2, len: 1.3 }, // 갈고리 닦기
+    cannon: { kind: 'fiddle', every: 4, len: 1.2 }, // 어깨 포탄 만지작
+    berserker: { kind: 'flex', every: 4.4, len: 1.5 }, // 씩씩 힘주고 목 꺾기
+    bard: { kind: 'pluck', every: 3.6, len: 1 }, // 줄 튕기며 고개 까딱
+  },
   FIGURE_HIT_LEAN: 0.35, // 맞은 순간 허리가 밀린 쪽으로 꺾이는 각 (세기 1 기준)
   FIGURE_HIT_KICK: 6, // 히트스톱이 끝나고 밀린 쪽으로 더 튕기는 빠르기 (라디안/초, 세기 1 기준)
   FIGURE_HIT_SPRING_K: 70, // 휘청 스프링 세기 (클수록 빨리 흔들림)

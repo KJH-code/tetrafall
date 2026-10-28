@@ -6,6 +6,7 @@ import { CONFIG as C } from '/shared/config.js';
 import { toon, noOutline } from '/toon.js';
 import { heldItems } from '/character.js';
 import { itemModel } from '/models.js';
+import { gaitOf, gaitPose, airPose, accLean, idlePose, overlayT, SUPERMAN } from '/figure-pose.js';
 
 // 눈알은 외곽선을 안 그림 (흰자 둘레에 검은 테가 생겨 부자연스러움)
 const eyeWhiteMat = noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff }));
@@ -161,7 +162,7 @@ export function buildFigure(color, char, models) {
     feet.push(foot);
   }
 
-  const fig = { d, hips, waist, torso, neck, shoulders, elbows, hands, thighs, knees, feet, flaps: [], pose: null };
+  const fig = { d, char, hips, waist, torso, neck, shoulders, elbows, hands, thighs, knees, feet, flaps: [], pose: null };
   dressUp(char, fig, costume, skin);
 
   // 망치는 오른손 (건축가 무기, render.js 가 건축가만 보임): 손잡이를 쥐고 머리가 주먹 앞쪽으로 (모델은 손잡이가 z 축, 머리가 +z 끝)
@@ -1463,24 +1464,19 @@ export function figureAnim(fig, st, dt, retry = false) {
     sw.vx = hit.dx * C.FIGURE_HIT_KICK * hit.pow;
     sw.vy = hit.dy * C.FIGURE_HIT_KICK * hit.pow;
   }
+  if (st.bump && st.bump.id !== sw.bumpId && finite(st.bump.dx, st.bump.dy, st.bump.pow)) {
+    // 벽·몸에 부딪힘: 휘청 스프링에 튕김만 얹음 (맞음보다 작게, 멈칫 없음)
+    sw.bumpId = st.bump.id;
+    if (!st.stunned) {
+      sw.vx += st.bump.dx * C.FIGURE_BUMP.kick * Math.min(st.bump.pow, C.MOVE_SPEED * 1.5);
+      sw.vy += st.bump.dy * C.FIGURE_BUMP.kick * Math.min(st.bump.pow, C.MOVE_SPEED * 1.5);
+    }
+  }
   const frozen = !!hit && hit.age < hit.stop; // 히트스톱: 맞은 자세로 멈춤
   if (!frozen) stepSway(sw, dt);
 
   if (st.walking) {
-    const amp = Math.min(1, st.hs / C.MOVE_SPEED);
-    for (let i = 0; i < 2; i++) {
-      const ph = st.walk + (i ? Math.PI : 0);
-      T.thFwd[i] = Math.sin(ph) * C.FIGURE_WALK_LEG * amp;
-      // 뒤로 차 올리는 무릎 (빠를수록 높이)
-      T.knee[i] = Math.max(0, -Math.cos(ph)) * C.FIGURE_WALK_KNEE * amp + Math.max(0, -Math.sin(ph)) * 0.4 * amp;
-      T.shFwd[i] = -Math.sin(ph) * C.FIGURE_WALK_ARM * amp + 0.15 * amp;
-      T.elbow[i] = 0.3 + C.FIGURE_RUN_ELBOW * amp + Math.max(0, -Math.sin(ph)) * 0.3 * amp; // 앞으로 올 때 더 굽혀 펌프
-      T.shOut[i] = d.spread * (1 - 0.5 * amp);
-    }
-    T.waistPitch = d.hunch + C.FIGURE_RUN_LEAN * amp;
-    T.waistRoll = -Math.sin(st.walk) * C.FIGURE_RUN_TWIST * amp; // 어깨가 다리 반대로 비틂
-    T.waistSide = Math.sin(st.walk) * 0.05 * amp; // 디딘 다리 쪽으로 살짝
-    T.neckPitch = -d.hunch - C.FIGURE_RUN_LEAN * amp * 0.6 + Math.cos(st.walk * 2) * 0.05 * amp; // 고개는 앞을 봄
+    gaitPose(T, d, st, gaitOf(fig.char));
   } else {
     T.waistPitch = d.hunch + Math.sin(t * 2) * 0.02; // 숨쉬기
     T.shOut = T.shOut.map((o, i) => o + Math.sin(t * 1.7 + i) * 0.03);
@@ -1495,18 +1491,9 @@ export function figureAnim(fig, st, dt, retry = false) {
       if (target) T.waistRoll += Math.max(-1, Math.min(1, st.sniffAt)) * 0.7;
     }
   }
-  if (st.air) {
-    // 공중: 두 무릎을 접고 (한쪽 더), 공격 중이 아니면 팔을 벌려 허우적. 공격 중엔 팔을 가만히 둬서 공격 자세만 읽히게
-    const attacking = !!st.act && st.act.phase !== 'broken';
-    T.shOut = attacking ? [0.5, 0.5] : [1.1 + Math.sin(t * 14) * 0.25, 1.1 + Math.sin(t * 14 + 1) * 0.25];
-    T.shFwd = [0.2, 0.2];
-    T.elbow = [0.4, 0.4];
-    T.thFwd = [0.9, 0.35];
-    T.knee = [1.3, 0.9];
-    T.waistPitch = d.hunch + 0.1;
-    T.waistRoll = 0;
-    T.waistSide = 0;
-  }
+  if (st.air) airPose(T, d, st, t, !!st.act && st.act.phase !== 'broken');
+  if (st.airDash > 0 && !st.stunned) overlayT(T, SUPERMAN, Math.min(1, st.airDash * 4)); // 공중 대시: 한 팔 앞으로 쭉, 다리 뒤로 (끝에서 풀림)
+  if (!st.stunned && !(st.flip >= 0)) accLean(T, st);
   if (st.flip >= 0) {
     // 2단 점프 공중제비: 무릎을 가슴으로 당겨 웅크림 (돌기는 render.js 가 몸 전체를)
     const tuck = Math.min(1, st.flip * 5, (1 - st.flip) * 3); // 시작하자마자 웅크리고 끝에서 폄
@@ -1623,6 +1610,12 @@ export function figureAnim(fig, st, dt, retry = false) {
     T.elbow[0] = 1.5;
     T.shFwd[0] = st.walking ? 0.2 + T.shFwd[0] * 0.3 : 0.25;
     T.shOut[0] = 0.15;
+  }
+  if (st.idle > C.FIGURE_IDLE_AFTER && !st.walking && !st.air && !st.stunned && !st.act && !st.dancing && st.emote < 0 && !st.holding && !(st.dizzy > 0) && !st.amp) {
+    // 평소 버릇: 가만히 있으면 몇 초마다 캐릭터별 짧은 동작
+    const hb = C.FIGURE_IDLE[fig.char];
+    const ph = hb ? (st.idle - C.FIGURE_IDLE_AFTER) % hb.every : -1;
+    if (hb && ph < hb.len) idlePose(T, hb.kind, ph / hb.len, ph, fig.form);
   }
   if (st.dancing) {
     // 춤: 양팔을 번갈아 위로 펌프
