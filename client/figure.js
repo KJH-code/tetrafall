@@ -1676,7 +1676,7 @@ export function figureAnim(fig, st, dt, retry = false) {
     T.shFwd[0] = st.walking ? 0.2 + T.shFwd[0] * 0.3 : 0.25;
     T.shOut[0] = 0.15;
   }
-  if (st.idle > C.FIGURE_IDLE_AFTER && !st.walking && !st.air && !st.stunned && !st.act && !st.dancing && st.emote < 0 && !st.holding && !(st.dizzy > 0) && !st.amp) {
+  if (st.idle > C.FIGURE_IDLE_AFTER && !st.walking && !st.air && !st.stunned && !st.act && !st.dancing && st.emote < 0 && !(st.victory >= 0) && !st.holding && !(st.dizzy > 0) && !st.amp) {
     // 평소 버릇: 가만히 있으면 몇 초마다 캐릭터별 짧은 동작
     const hb = C.FIGURE_IDLE[fig.char];
     const ph = hb ? (st.idle - C.FIGURE_IDLE_AFTER) % hb.every : -1;
