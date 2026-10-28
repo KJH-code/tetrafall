@@ -13,6 +13,8 @@ import { hitTier, hitStep } from '/hit-tier.js';
 import { portrait, setPortraitModels } from '/portrait.js';
 import { screenOf, wipeKind, wipePlan } from '/shared/wipe.js';
 import { cardLayout, lobbyPlace } from '/shared/hud-layout.js';
+import { randomReel } from '/shared/char-select.js';
+import { CharStage } from '/char-stage.js';
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $('status');
@@ -1870,6 +1872,7 @@ function drawHud() {
   const between = state.phase === 'lobby' || state.phase === 'over';
   $('name-row').classList.toggle('hidden', !between);
   if (between) updateCharRow(p);
+  else releaseCharStage();
   updateRoomRow(between, isHost);
   updateHostPlayers(isHost && between);
   placeLobby();
@@ -2354,10 +2357,38 @@ function updateColorRow(p) {
   });
   $('color-team-note').classList.toggle('hidden', !state.teamMode);
 }
-// 캐릭터 초상 카드 (대기실): 누르면 위 select 값을 바꿔 보낸다 — 고르는 길은 하나로 둔다.
-// 초상은 내 색으로 그리므로 색을 바꾸면 다시 그린다 (portrait.js 가 캐시)
+// 캐릭터 고르기 (대기실 판 안, 2026-10-28 재혁): 초상 카드 + 끝칸 '랜덤', 왼쪽 큰 3D 내 캐릭터 (고르면 정면에서 전용 도발 한 번,
+// 그 뒤 천천히 돎 — client/char-stage.js), 스킬 카드는 큰 캐릭터나 '스킬 보기' 를 눌러야 보임.
+// 카드는 숨은 select 값을 바꿔 보낸다 — 고르는 길은 하나. 초상은 내 색으로 그리므로 색을 바꾸면 다시 그린다 (portrait.js 가 캐시)
 const charCardsEl = $('char-cards');
+const charPickEl = $('char-pick');
+const charStageEl = $('char-stage');
+const charCardEl = $('char-card');
+const charStage = new CharStage(charStageEl, models);
 let charCardsKey = '';
+let stageChar = null; // 큰 캐릭터에 지금 나온 캐릭터 (바뀌면 도발)
+let rolling = false; // '랜덤' 뽑는 중
+function chooseChar(c) {
+  if (charSel.value === c) return;
+  charSel.value = c;
+  charSel.dispatchEvent(new Event('change'));
+}
+function rollRandom() {
+  if (rolling) return;
+  const { pick, steps } = randomReel(C.CHARACTERS, charSel.value);
+  rolling = true;
+  charCardsEl.classList.add('rolling');
+  const light = (c) => {
+    for (const el of charCardsEl.children) el.classList.toggle('roll', el.dataset.char === c);
+  };
+  for (const st of steps) setTimeout(() => light(st.char), st.at);
+  setTimeout(() => {
+    light(null);
+    charCardsEl.classList.remove('rolling');
+    rolling = false;
+    chooseChar(pick); // 서버에 가는 건 실제 캐릭터 id
+  }, steps.at(-1).at + C.CHAR_RANDOM_STEP_MS);
+}
 function updateCharCards(p) {
   const col = playerColor(p, state);
   if (charCardsKey !== String(col)) {
@@ -2372,26 +2403,77 @@ function updateCharCards(p) {
       const img = portrait(c, col, 128, true);
       if (img) el.querySelector('.face').style.backgroundImage = `url(${img})`;
       el.querySelector('.nm').textContent = C.CHAR_NAMES[c];
-      el.addEventListener('click', () => {
-        if (charSel.value === c) return;
-        charSel.value = c;
-        charSel.dispatchEvent(new Event('change'));
-      });
+      el.addEventListener('click', () => chooseChar(c));
       charCardsEl.append(el);
     }
+    const rnd = document.createElement('div'); // '랜덤' 칸 (글자만)
+    rnd.className = 'cc random';
+    rnd.dataset.random = '1';
+    rnd.innerHTML = '<div class="face">랜덤</div><div class="nm">아무나</div>';
+    rnd.addEventListener('click', rollRandom);
+    charCardsEl.append(rnd);
   }
-  for (const el of charCardsEl.children) el.classList.toggle('sel', el.dataset.char === p.char);
+  if (!rolling) for (const el of charCardsEl.children) el.classList.toggle('sel', el.dataset.char === p.char);
+}
+// 스킬 카드: 이름·한 줄 소개·F·R (키는 설정 따라)
+let charCardKey = '';
+function fillCharCard(c) {
+  const key = `${c}|${keyText('skill')}|${keyText('ult')}`;
+  if (key === charCardKey) return;
+  charCardKey = key;
+  const row = (k, name, desc) => `<b>${escapeHtml(k)}</b><span class="t">${escapeHtml(name)}</span><span class="d">${escapeHtml(desc)}</span>`;
+  charCardEl.innerHTML =
+    `<div class="nm">${escapeHtml(C.CHAR_NAMES[c])}</div><div class="intro">${escapeHtml(C.CHAR_INTRO[c])}</div>` +
+    `<div class="sk">${row(keyText('skill'), C.SKILL_NAMES[c], C.SKILL_DESC[c])}${row(keyText('ult'), C.ULT_NAMES[c], C.ULT_DESC[c])}</div>` +
+    '<button class="close ghost">닫기</button>';
+}
+function toggleCharCard(on = charCardEl.classList.contains('hidden')) {
+  charCardEl.classList.toggle('hidden', !on);
+  $('char-info-btn').textContent = on ? '스킬 닫기' : '스킬 보기';
+}
+charStageEl.addEventListener('click', () => toggleCharCard());
+$('char-info-btn').addEventListener('click', () => toggleCharCard());
+charCardEl.addEventListener('click', (e) => {
+  if (e.target.closest('.close')) toggleCharCard(false);
+});
+// 큰 3D 캐릭터: 그래픽 낮춤이면 3D 대신 큰 초상 그림
+function updateCharStage(p) {
+  const col = playerColor(p, state);
+  const flat = charStageEl.querySelector('.flat');
+  charStageEl.querySelector('.who').textContent = C.CHAR_NAMES[p.char];
+  const changed = stageChar !== null && stageChar !== p.char;
+  stageChar = p.char;
+  if (settings.lowGfx) {
+    charStage.release();
+    const img = portrait(p.char, col, 256, true);
+    if (flat.getAttribute('src') !== img) flat.setAttribute('src', img);
+    flat.classList.remove('hidden');
+    return;
+  }
+  flat.classList.add('hidden');
+  charStage.set(p.char, col, changed);
+  charStage.draw();
 }
 function updateCharRow(p) {
   if (p && p.color !== undefined) updateColorRow(p);
   const on = !!p && !!p.char;
   $('char-label').classList.toggle('hidden', !on);
-  charCardsEl.classList.toggle('hidden', !on);
+  charPickEl.classList.toggle('hidden', !on);
   $('char-info').classList.toggle('hidden', !on);
-  if (!on) return;
+  if (!on) {
+    charStage.release();
+    return;
+  }
   if (document.activeElement !== charSel) charSel.value = p.char;
   updateCharCards(p);
+  updateCharStage(p);
+  fillCharCard(p.char);
   $('char-info').textContent = charDesc(p.char);
+}
+// 판이 시작하면 큰 3D 캐릭터의 렌더러를 놓음 (판 중엔 안 돎)
+function releaseCharStage() {
+  charStage.release();
+  stageChar = null;
 }
 
 // ---------- 연습 방 (샌드박스): 토글·내 피해·허수아비·캐릭터 + 허수아비 콤보 기록 ----------
@@ -2571,6 +2653,7 @@ const debug = {
   music,
   ko,
   wipeSeek, // 화면 전환 띠를 그 시각에 멈춤 (gif 찍기)
+  charStage, // 대기실 큰 3D 캐릭터 (gif 찍기: draw(t) 를 시각 지정으로)
   holdResults: false, // true 면 판 끝 결과 연출이 시간으로 안 끝남 (gif 찍기). false 로 돌리면 그때 대기실 판으로
   // 클릭과 같은 경로로 행동 보내기 (로컬 팔 휘두르기·소리 포함)
   act: (action) => {
