@@ -1,6 +1,6 @@
 // 키보드·마우스 입력. 연속 입력은 주기적으로, 단발 행동은 즉시 서버에 보낸다.
 import { CONFIG as C } from '/shared/config.js';
-import { loadBinds, normCode } from '/keys.js';
+import { loadBinds, normCode, wheelSlot } from '/keys.js';
 
 // 글자 칸에 쓰는 중 (체크박스·슬라이더에 포커스가 남은 건 아님)
 const typing = () => {
@@ -137,12 +137,9 @@ export class Input {
     if (act) act();
   }
 
-  // 바퀴에서 고른 것: 위 0 · 오른쪽 1 · 아래 2 · 왼쪽 3, 덜 움직였으면 -1
+  // 바퀴에서 고른 것: 위 0 부터 시계 방향으로 칸마다 (EMOTE_NAMES 개, 5칸이면 72°씩), 덜 움직였으면 -1
   wheelPick() {
-    const w = this.wheel;
-    if (!w || Math.hypot(w.x, w.y) < C.EMOTE_PICK_PX) return -1;
-    if (Math.abs(w.x) > Math.abs(w.y)) return w.x > 0 ? 1 : 3;
-    return w.y < 0 ? 0 : 2;
+    return wheelSlot(this.wheel, C.EMOTE_NAMES.length, C.EMOTE_PICK_PX);
   }
 
   // 방향키 (블록 조종): 하늘 화면 기준 (sx 오른쪽, sy 위) → 격자 방향. 화면 위쪽이 보던 방향(90도 단위)이라 돌려서 보낸다

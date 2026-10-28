@@ -601,6 +601,19 @@ test('킬: 조종·투척 블록 압사는 그 블록 주인, 자동 블록은 �
 });
 
 // ---------- 이모트 ----------
+test('이모트: 바퀴 칸 수(EMOTE_NAMES)까지 — 캐릭터 전용 도발(EMOTE_CHAR, 5번째) 은 받고 그 너머는 거절', () => {
+  const { g, p1 } = setup();
+  g.controlItemNextAt = Infinity;
+  g.powerItemNextAt = Infinity;
+  assert.equal(C.EMOTE_NAMES.length, 5);
+  assert.equal(C.EMOTE_CHAR, C.EMOTE_NAMES.length - 1);
+  g.handleAction(1, { name: 'emote', n: C.EMOTE_NAMES.length });
+  assert.equal(g.snapshot().players.find((p) => p.id === 1).emote, -1, '없는 칸은 거절');
+  g.handleAction(1, { name: 'emote', n: C.EMOTE_CHAR });
+  assert.equal(g.snapshot().players.find((p) => p.id === 1).emote, C.EMOTE_CHAR);
+  assert.ok(p1);
+});
+
 test('이모트: 하는 동안 못 움직이고, 쿨 동안 다시 못 함, 맞거나 공격하면 끊김, 판 끝난 뒤에도 됨', () => {
   const { g, p1, p2 } = setup();
   g.controlItemNextAt = Infinity; // 기다리는 동안 조종권을 먹으면 조종 중이라 이모트가 안 됨

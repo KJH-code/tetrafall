@@ -138,12 +138,17 @@ export const CONFIG = {
   SPEED_MULT: 1.4,
   SPEED_TRAIL_RATE: 14, // 이속 증가 중 달릴 때 발밑 잔상이 생기는 빈도 (초당)
   // 이모트 (2026-10-22): G 를 누른 채 마우스 방향으로 고름 (위·오른쪽·아래·왼쪽). 하는 동안 못 움직임, 맞거나 공격하면 끊김
-  EMOTE_NAMES: ['손 흔들기', '춤', '웃기', '도발'],
+  EMOTE_NAMES: ['손 흔들기', '춤', '웃기', '도발', '전용 도발'], // 바퀴 칸 (위부터 시계 방향, 72°씩). 서버는 이 길이까지만 받음. 마지막 칸 = 캐릭터 전용 (이름은 EMOTE_CHAR_NAMES)
+  EMOTE_CHAR: 4, // 캐릭터 전용 도발 번호 (client/figure.js POSES taunt)
+  EMOTE_CHAR_NAMES: { tank: '덤벼', ninja: '인 맺기', builder: '어깨 망치', hook: '이리 와', hunter: '찍었다', cannon: '하늘 포', berserker: '포효', bard: '인사', metal: '메탈 뿔' }, // 전용 도발 칸 이름 (바드는 폼별: metal). 2026-10-28 재혁: AI 가 정하고 gif 로 확인
+  POSE_IN_S: 0.22, // 도발·승리 포즈: 준비 자세로 모이는 시간 (초)
+  POSE_SNAP_S: 0.1, // 준비 → 결정 포즈로 딱 튀는 시간
+  POSE_OUT_S: 0.3, // 도발이 끝나기 전 이 동안 풀려 돌아옴 (승리는 안 풀림)
   EMOTE_MS: 1600,
   EMOTE_COOLDOWN_MS: 2500,
   EMOTE_ARM_SCALE: 1.9, // 이모트 땐 팔을 키워서 멀리서도 동작이 보이게
   EMOTE_PICK_PX: 30,
-  EMOTE_CLIPS: ['Wave', 'Dance', 'Yes', 'No'], // 로봇 모델에서 이모트마다 쓰는 동작 (손 흔들기·춤·웃기(끄덕끄덕)·도발(고개 젓기)) // 바퀴 메뉴: 마우스를 이만큼(px) 움직여야 고른 것으로 침
+  EMOTE_CLIPS: ['Wave', 'Dance', 'Yes', 'No', 'Wave'], // 로봇 모델에서 이모트마다 쓰는 동작 (손 흔들기·춤·웃기(끄덕끄덕)·도발(고개 젓기)) // 바퀴 메뉴: 마우스를 이만큼(px) 움직여야 고른 것으로 침
   // 손에 드는 아이템은 하나만 (2026-10-24 재혁: 핫바·쌓기 블록 없앰). 들고 있으면 다른 손 아이템은 못 주움 (필드에 남음).
   // 우클릭으로 씀 (투사체·설치 블록·폭탄). 버프(점프·유령·이속)는 먹자마자 효과라 따로
   HELD_ITEMS: ['knockback', 'brick', 'bomb'],
@@ -1215,6 +1220,7 @@ export const CONFIG = {
   RAGDOLL_ITERATIONS: 15, // 물리 풀이 반복 (클수록 관절이 덜 벌어짐)
   RAGDOLL_MAX_DRIFT: 0.35, // 골반이 판정 위치에서 이보다 (칸) 멀어지면 몸 전체를 순간 맞춤
   RAGDOLL_MOTOR_ATTACK: 1.6, // 공격 중 모터 세기 배율 (예고·타격이 읽히게)
+  RAGDOLL_POSE_SNAP: 0.5, // 이모트·승리 포즈 동안 화면 자세를 목표 쪽으로 섞는 비율 (모터도 공격만큼 세게: 포즈가 흐물거리지 않고 또렷하게)
   RAGDOLL_ATTACK_SNAP: 0.6, // 공격 준비·타격 동안 화면 자세를 목표 자세 쪽으로 이만큼 섞음 (0 물리 그대로 ~ 1 목표 그대로, 타격이 확 튀게)
   RAGDOLL_HIT_MOTOR: 0.004, // 맞은 순간 모터 세기 (몸이 포개짐) → RAGDOLL_HIT_RECOVER_S 동안 1 로
   RAGDOLL_HIT_RECOVER_S: 0.9,

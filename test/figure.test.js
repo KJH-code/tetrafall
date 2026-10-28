@@ -16,3 +16,10 @@ test('광전사 체형·1인칭 크기 설정이 있음', () => {
   assert.equal(C.FIGURE_BODY.berserker, 'brute');
   assert.ok(C.VM_SIZE.berserker > 0 && C.VM_SIZE.berserker < 1);
 });
+
+test('전용 도발 칸 이름이 8명 + 메탈 폼 다 있고, 포즈 시간 수치가 이모트 길이 안에 들어감', () => {
+  for (const ch of [...C.FIGURE_CHARS, 'metal']) assert.ok(C.EMOTE_CHAR_NAMES[ch], ch);
+  assert.ok(C.POSE_IN_S > 0 && C.POSE_SNAP_S > 0 && C.POSE_OUT_S > 0);
+  assert.ok(C.POSE_IN_S + C.POSE_SNAP_S + C.POSE_OUT_S < C.EMOTE_MS / 1000 - 0.5, '결정 포즈로 멈춰 있는 시간이 0.5초 넘게');
+  assert.equal(C.EMOTE_CLIPS.length, C.EMOTE_NAMES.length, '로봇도 칸마다 동작');
+});

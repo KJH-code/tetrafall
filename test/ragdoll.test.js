@@ -112,3 +112,12 @@ test('체형별 무게: 탱크(drum)가 가장 무겁고 닌자(slim)가 가장 
   assert.equal(Math.min(...all), w[C.FIGURE_BODY.ninja]);
   assert.deepEqual([...C.RAGDOLL_CHARS].sort(), [...C.CHARACTERS].sort());
 });
+
+test('이모트·승리 포즈 (act pose) 는 모터 세게 + 목표로 섞음, 맞으면 그래도 힘이 빠짐', () => {
+  const m = ragdollMotor({ ...calm, act: 'pose' });
+  assert.equal(m.motor, C.RAGDOLL_MOTOR_ATTACK);
+  assert.equal(m.snap, C.RAGDOLL_POSE_SNAP);
+  const hit = ragdollMotor({ ...calm, act: 'pose', hitAge: 0 });
+  assert.ok(hit.motor < 0.1);
+  assert.equal(hit.snap, 0);
+});

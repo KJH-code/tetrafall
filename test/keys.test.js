@@ -41,3 +41,19 @@ test('키 설정: 저장소가 없거나 깨졌으면 기본값, 일부만 있�
     delete globalThis.localStorage;
   }
 });
+
+test('이모트 바퀴 5칸: 위가 0, 시계 방향 72°씩, 덜 움직이면 -1', async () => {
+  const { wheelSlot } = await import('../client/keys.js');
+  const at = (deg, r = 100) => ({ x: Math.sin((deg * Math.PI) / 180) * r, y: -Math.cos((deg * Math.PI) / 180) * r }); // y 는 아래가 +
+  assert.equal(wheelSlot(at(0), 5, 30), 0);
+  assert.equal(wheelSlot(at(72), 5, 30), 1);
+  assert.equal(wheelSlot(at(144), 5, 30), 2);
+  assert.equal(wheelSlot(at(216), 5, 30), 3);
+  assert.equal(wheelSlot(at(288), 5, 30), 4);
+  assert.equal(wheelSlot(at(-40), 5, 30), 4);
+  assert.equal(wheelSlot(at(35), 5, 30), 0);
+  assert.equal(wheelSlot(at(37), 5, 30), 1);
+  assert.equal(wheelSlot(at(90, 10), 5, 30), -1);
+  assert.equal(wheelSlot(null, 5, 30), -1);
+  assert.equal(wheelSlot(at(90), 4, 30), 1); // 4칸이면 예전처럼 오른쪽 1
+});

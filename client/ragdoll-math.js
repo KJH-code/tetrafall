@@ -9,7 +9,7 @@ const ease = (u) => {
 };
 
 // 모터 세기 (0~): 평소 1, 공격 중 세게, 맞은 직후·경직·낙사 중엔 힘이 빠짐. snap = 화면 자세를 목표 자세로 섞는 비율 (공격 예고·타격)
-// st: { stunned, sinceStun(경직이 풀린 지 초, 없으면 Infinity), hitAge(맞은 지 초, 없으면 null), falling, act(phase 또는 null) }
+// st: { stunned, sinceStun(경직이 풀린 지 초, 없으면 Infinity), hitAge(맞은 지 초, 없으면 null), falling, act(phase 또는 'pose'(이모트·승리) 또는 null) }
 export function ragdollMotor(st) {
   let motor = 1;
   let snap = 0;
@@ -17,6 +17,10 @@ export function ragdollMotor(st) {
     motor = C.RAGDOLL_MOTOR_ATTACK;
     snap = C.RAGDOLL_ATTACK_SNAP;
   } else if (st.act === 'rec') motor = C.RAGDOLL_MOTOR_ATTACK;
+  else if (st.act === 'pose') {
+    motor = C.RAGDOLL_MOTOR_ATTACK;
+    snap = C.RAGDOLL_POSE_SNAP;
+  }
   if (st.hitAge !== null && st.hitAge !== undefined && st.hitAge < C.RAGDOLL_HIT_RECOVER_S) {
     motor = Math.min(motor, C.RAGDOLL_HIT_MOTOR + (1 - C.RAGDOLL_HIT_MOTOR) * ease(st.hitAge / C.RAGDOLL_HIT_RECOVER_S));
     snap = 0;
