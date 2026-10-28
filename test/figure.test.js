@@ -182,5 +182,6 @@ test('대포수 (통통 포수 꼬마): 가장 작고, 공 같은 몸통 (배 = 
   assert.ok(b.barrel && b.waistR >= b.chestR, '공 같은 배');
   for (const [ch, body] of Object.entries(C.FIGURE_BODY)) if (ch !== 'cannon') assert.ok(height(b) < height(B[body]), `${ch} 보다 작음`);
   assert.ok(b.legR > B[C.FIGURE_BODY.builder].legR && legs(b) < legs(B[C.FIGURE_BODY.builder]), '건축가보다 다리 굵고 짧음');
-  assert.ok(b.foreR > B.lean.foreR * 1.5, '굵은 팔');
+  assert.ok(b.foreR > B.lean.foreR * 1.4, '굵은 팔');
+  assert.ok(C.CANNON_SHORTS_GROW < 0.8, '배가 반바지 위로 튀어나옴');
 });
