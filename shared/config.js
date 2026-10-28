@@ -1221,6 +1221,9 @@ export const CONFIG = {
   FIGURE_SNIFF_LEN: 0.7, // 킁킁 한 번 길이 (초)
   FIGURE_BUILDER_SHIRT: [0x2c4a7a, 0xe8dcc0, 0xd8a838], // 건축가 작업 셔츠 체크 [바탕 남색, 굵은 줄 크림 (걷은 소매 테·깃도), 가는 줄 겨자]. 무늬라 어떤 플레이어 색(피부)과도 갈림 (2026-10-28 재혁)
   FIGURE_PLAID_REPEAT: 3, // 체크 무늬 반복 수 (원통 한 바퀴·한 마디에)
+  FIGURE_HAT_TRIM: 0.55, // 건축가 안전모(플레이어 색) 능선·챙 테·띠 = 모자 색 × 이 값
+  FIGURE_TRIM_DARK: 0.22, // 모자 색 밝기가 이보다 어두우면 (숯·자두 등) 테를 어둡게 말고 흰색 쪽으로
+  FIGURE_TRIM_LIGHTEN: 0.5, // 그때 흰색으로 섞는 비율
   FIGURE_MUSCLE_SHADE: 0.6, // 광전사 근육 사이 홈 색 = 피부색 × 이 값
   FIGURE_EYE: 0.062, // 왕눈알 흰자 반지름 (칸, 몸 크기 배율 전)
   // 관절 스프링 (2026-10-27, FIGURE_FOLLOW 14/초 지수 추종 대신). w = 빠르기 (/초, 클수록 빨리 따라옴), damp = 감쇠비 (1 이면 안 넘침, 작을수록 출렁)

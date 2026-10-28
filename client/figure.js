@@ -13,6 +13,7 @@ const eyeWhiteMat = noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff }));
 const pupilMat = noOutline(new THREE.MeshBasicMaterial({ color: 0x111111 }));
 
 const flat = (color) => toon({ color }); // (MeshToonMaterial 엔 flatShading 이 없음. 각진 느낌은 저폴리 도형으로)
+const _white = new THREE.Color(0xffffff);
 
 const BODIES = C.FIGURE_BODIES; // 체형 표는 shared/config.js (테스트 test/figure.test.js)
 
@@ -433,7 +434,6 @@ function dressNinja(fig, costume, cloth) {
 function dressBuilder(fig, costume, cloth) {
   const d = fig.d;
   const T = d.torso;
-  const yellow = costume(0xf2c418);
   const orange = costume(0xff7a1a);
   const darkOrange = costume(0xc85a10);
   const reflect = costume(0xe6edf2);
@@ -448,15 +448,21 @@ function dressBuilder(fig, costume, cloth) {
   const shirt = costume(0xffffff);
   shirt.map = plaidTexture(C.FIGURE_BUILDER_SHIRT);
   fig.torso.material = shirt;
-  // 안전모: 돔 + 앞으로 긴 챙 + 가운데 능선
+  // 안전모 (플레이어 색: 건축가끼리 멀리서 갈리게, 2026-10-28 재혁): 돔 + 앞으로 긴 챙 + 가운데 능선·챙 테는 대비 색 (어두운 모자면 밝게, figureAnim 이 칠함)
+  const trim = costume(0x000000);
+  fig.shade = { mat: trim, src: cloth, k: C.FIGURE_HAT_TRIM, contrast: true };
   const browZ = d.head * 0.7;
-  const hat = mesh(domeGeo(d.headW * 0.66), yellow, 0, 0, browZ);
+  const hat = mesh(domeGeo(d.headW * 0.66), cloth, 0, 0, browZ);
   hat.scale.z = 0.85;
   fig.neck.add(hat);
-  const brim = mesh(ringGeo(d.headW * 0.72, d.headW * 0.72, 0.025, 10), yellow, 0.025, 0, browZ);
+  const brim = mesh(ringGeo(d.headW * 0.72, d.headW * 0.72, 0.025, 10), cloth, 0.025, 0, browZ);
   brim.scale.x = 1.25;
   fig.neck.add(brim);
-  fig.neck.add(mesh(ringGeo(0.016, 0.016, d.headW * 1.25, 6).rotateY(Math.PI / 2), yellow, 0, 0, browZ + d.headW * 0.58));
+  const brimEdge = mesh(ringGeo(d.headW * 0.74, d.headW * 0.74, 0.012, 10), trim, 0.025, 0, browZ - 0.008);
+  brimEdge.scale.x = 1.25;
+  fig.neck.add(brimEdge);
+  fig.neck.add(mesh(ringGeo(0.016, 0.016, d.headW * 1.25, 6).rotateY(Math.PI / 2), trim, 0, 0, browZ + d.headW * 0.58));
+  fig.neck.add(mesh(ringGeo(d.headW * 0.67, d.headW * 0.67, 0.02, 10), trim, 0, 0, browZ + 0.012)); // 모자 띠
   addEyes(fig.neck, d.headW * 0.44, 0.05, d.head * 0.5, C.FIGURE_EYE);
   fig.waist.add(mesh(ringGeo(d.headW * 0.6, d.headW * 0.78, 0.06, 10), cream, 0, 0, T - d.sink + 0.01)); // 셔츠 깃
   // 덥수룩한 콧수염 (양쪽으로 처짐) + 둥근 코
@@ -469,7 +475,13 @@ function dressBuilder(fig, costume, cloth) {
   fig.waist.add(mesh(ringGeo(rz(T * 0.36) * 1.12, rz(T * 0.36) * 1.12, 0.035, 10, d.depth), reflect, 0, 0, T * 0.36)); // 반사 띠
   const bibX = rz(T * 0.66) * d.depth * 0.93;
   lump(fig.waist, 0.03, d.chestR * 0.62, T * 0.2, orange, bibX, 0, T * 0.64, 0, 0.08, 1); // 가슴판
-  lump(fig.waist, 0.012, d.chestR * 0.3, T * 0.07, darkOrange, bibX + 0.022, 0, T * 0.62, 0, 0.08, 1); // 가슴 주머니
+  // 가슴 주머니: 가슴판 위에 살짝 튀어나온 납작한 천 조각 (같은 주황) + 위쪽 덮개 선 (어두운 주황)
+  const pocket = mesh(new THREE.BoxGeometry(0.012, d.chestR * 0.5, T * 0.13), orange, bibX + 0.03, 0, T * 0.6);
+  pocket.rotation.y = 0.08;
+  fig.waist.add(pocket);
+  const flap = mesh(new THREE.BoxGeometry(0.016, d.chestR * 0.54, 0.014), darkOrange, bibX + 0.034, 0, T * 0.66);
+  flap.rotation.y = 0.08;
+  fig.waist.add(flap);
   for (const side of [-1, 1]) {
     // 멜빵: 가슴판 위끝 → 어깨 위로 넘어 → 등으로 X
     const front = mesh(ringGeo(0.018, 0.018, T * 0.36, 6), orange, bibX - 0.01, side * d.chestR * 0.42, T * 0.86);
@@ -1896,8 +1908,10 @@ export function figureAnim(fig, st, dt, retry = false) {
     fig.knees[i].rotation.y = P.knee[i];
   }
   if (fig.shade) {
-    // 근육 사이 홈: 피부(플레이어 색, render.js 가 매 프레임 칠함)보다 어둡게 따라감
-    fig.shade.mat.color.copy(fig.shade.src.color).multiplyScalar(C.FIGURE_MUSCLE_SHADE);
+    // 근육 사이 홈·모자 테: 피부(플레이어 색, render.js 가 매 프레임 칠함)보다 어둡게 따라감. contrast 면 어두운 피부일 땐 밝게
+    const sc = fig.shade.mat.color.copy(fig.shade.src.color);
+    if (fig.shade.contrast && sc.r * 0.3 + sc.g * 0.59 + sc.b * 0.11 < C.FIGURE_TRIM_DARK) sc.lerp(_white, C.FIGURE_TRIM_LIGHTEN);
+    else sc.multiplyScalar(fig.shade.k ?? C.FIGURE_MUSCLE_SHADE);
     fig.shade.mat.emissive.copy(fig.shade.src.emissive);
   }
   // 천 자락: 빨리 움직이거나 날아가면 뒤로 날리고 살랑임 (히트스톱 동안은 멈춤)
