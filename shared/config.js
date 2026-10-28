@@ -794,13 +794,15 @@ export const CONFIG = {
     berserker: { swing: 'swishHeavy', rate: 0.68, hit: 'chop' }, // 도끼
     bard: { swing: 'swishMid', rate: 0.95, hit: 'strum' }, // 기타·류트
   },
+  SFX_SWING: { rate: 1.22, cut: 0.15 }, // 휘두름 전체: 무기 rate 에 곱하는 높낮이 (높게) · 이 길이(초)에서 끊음 (짧게)
   SFX_SWING_AIR: 0.35, // 보통·무거운 휘두름 위에 얹는 칼 '슉' 크기 (바람 가르는 고역, 높낮이는 rate × 0.7)
   SFX_WEAPON_LAYER: 0.45, // 공통 타격 위 무기 겹 크기 (공통 '팍' 이 기본, 무기는 색만)
   // 타격 세기 단계 (main.js 가 hit 이벤트로 고름): 약 / 중 / 강 (마무리·묵직한 스킬) / 치명
   // crack·punch·heavy = 묶음 크기 (0 이면 안 틈), rate = 높낮이, release = 히트스톱이 풀리는 순간(ms) 날아가는 '콰앙' (0 이면 없음)
   SFX_HIT_TIERS: {
-    light: { crack: 0.55, punch: 0.45, heavy: 0, rate: 1.15, release: 0 },
-    medium: { crack: 0.9, punch: 0.9, heavy: 0, rate: 1, release: 0 },
+    // 2026-10-28 재혁 '조금 더 유쾌하고 가볍게': 약·중은 높고 (rate) 짧게 (cut 초에서 끊음) + 펀치 몸통 줄이고 더 높게 (punchRate) → 통통 경쾌. 강·치명은 그대로 묵직 (대비)
+    light: { crack: 0.5, punch: 0.4, heavy: 0, rate: 1.35, punchRate: 1.3, weaponRate: 1.2, cut: 0.08, release: 0 },
+    medium: { crack: 0.75, punch: 0.65, heavy: 0, rate: 1.22, punchRate: 1.25, weaponRate: 1.12, cut: 0.11, release: 0 },
     heavy: { crack: 1, punch: 1, heavy: 0.9, rate: 0.92, release: 110 },
     crit: { crack: 1, punch: 1, heavy: 1, rate: 0.95, release: 180, ring: 1 },
   },

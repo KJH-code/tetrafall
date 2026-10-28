@@ -117,3 +117,15 @@ test('다듬은 재료 (tools/prep-sfx.mjs FILES) 가 다 소리 묶음에 들�
   const used = new Set(Object.values(C.SFX_BANKS).flatMap((b) => b.files));
   for (const [name] of PREP_FILES) assert.ok(used.has(name), name);
 });
+
+test('가볍게 (2026-10-28): 약·중타·휘두름은 높고 짧게 끊음, 강·치명은 안 끊고 묵직하게 (대비)', () => {
+  const T = C.SFX_HIT_TIERS;
+  for (const k of ['light', 'medium']) {
+    assert.ok(T[k].rate > 1 && T[k].punchRate >= 1, `${k} 높게`);
+    assert.ok(T[k].cut > 0 && T[k].cut < 0.15, `${k} 짧게`);
+    assert.ok(T[k].punch < T.heavy.punch, `${k} 몸통 줄임`);
+  }
+  assert.ok(T.light.cut <= T.medium.cut);
+  for (const k of ['heavy', 'crit']) assert.ok(!T[k].cut && T[k].rate < 1, `${k} 묵직`);
+  assert.ok(C.SFX_SWING.rate > 1 && C.SFX_SWING.cut > 0 && C.SFX_SWING.cut < 0.25);
+});

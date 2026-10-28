@@ -155,7 +155,8 @@ export class Sound {
   }
 
   // 효과음 묶음에서 하나를 골라 틈 (파일이 없으면 false → 부른 쪽이 합성으로 대신)
-  sample(bank, { vol = 1, rate = 1, delay = 0, out = this.master } = {}) {
+  // cut = 이 길이(초)에서 끊음 (뒤 40% 동안 빠르게 줄여 딸깍 없이). 꼬리를 짧게 해 통통 가볍게
+  sample(bank, { vol = 1, rate = 1, delay = 0, out = this.master, cut = 0 } = {}) {
     const b = C.SFX_BANKS[bank];
     if (!b) return false;
     const have = b.files.filter((f) => this.buffers.has(f));
@@ -164,9 +165,15 @@ export class Sound {
     src.buffer = this.buffers.get(have[Math.floor(Math.random() * have.length)]);
     src.playbackRate.value = rate * (this.det || 1);
     const g = this.ctx.createGain();
+    const t = this.now() + delay;
     g.gain.value = vol * b.gain;
+    if (cut > 0) {
+      g.gain.setValueAtTime(vol * b.gain, t + cut * 0.6);
+      g.gain.linearRampToValueAtTime(0, t + cut);
+    }
     src.connect(g).connect(out);
-    src.start(this.now() + delay);
+    src.start(t);
+    if (cut > 0) src.stop(t + cut + 0.01);
     return true;
   }
 
@@ -227,19 +234,22 @@ export class Sound {
         break;
       case 'swing': { // 휘두름: 짧고 날카로운 '휙' (무기 크기별 묶음·높낮이) + 보통·무거운 무기는 바람 가르는 고역 한 겹
         const sw = w || { swing: 'swishMid', rate: 1 };
-        this.sample(sw.swing, { rate: sw.rate, out: o });
-        if (sw.swing !== 'swishBlade') this.sample('swishBlade', { rate: sw.rate * 0.7, vol: C.SFX_SWING_AIR, out: o });
+        const S = C.SFX_SWING;
+        const rate = sw.rate * S.rate;
+        this.sample(sw.swing, { rate, cut: S.cut, out: o });
+        if (sw.swing !== 'swishBlade') this.sample('swishBlade', { rate: rate * 0.7, vol: C.SFX_SWING_AIR, cut: S.cut, out: o });
         break;
       }
       case 'hit': { // 맞음 (스매시식): 고역 크랙 '팍' + 짧은 펀치 '퍽' (+ 강타 몸통) → 무기 겹은 얇게 → 강타·치명타는 히트스톱이 풀릴 때 '콰앙'
         const T = C.SFX_HIT_TIERS[tier] || C.SFX_HIT_TIERS[strong ? 'medium' : 'light'];
         const r = T.rate;
-        if (T.crack) this.sample('hitCrack', { vol: T.crack, rate: r, out: o });
-        if (T.punch) this.sample('hitPunch', { vol: T.punch, rate: r, out: o });
+        const cut = T.cut || 0; // 약·중타: 꼬리를 짧게 (통통 가볍게)
+        if (T.crack) this.sample('hitCrack', { vol: T.crack, rate: r, cut, out: o });
+        if (T.punch) this.sample('hitPunch', { vol: T.punch, rate: r * (T.punchRate || 1), cut, out: o });
         if (T.heavy) this.sample('hitHeavy', { vol: T.heavy, rate: r, out: o });
         if (T.ring) this.sample('hitRing', { vol: T.ring, out: o });
         if (w && w.hit === 'strum') this.strum(o, 0.6, form === 'metal');
-        else if (w) this.sample(w.hit, { vol: C.SFX_WEAPON_LAYER, out: o });
+        else if (w) this.sample(w.hit, { vol: C.SFX_WEAPON_LAYER, rate: T.weaponRate || 1, cut: cut && cut * 1.5, out: o });
         if (T.release) {
           // 날아감: 낮은 쾅 + 멀어지는 바람 (히트스톱 길이만큼 늦게)
           const d = T.release / 1000;
