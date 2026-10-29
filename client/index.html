@@ -126,6 +126,20 @@
     /* 접속 상태 (client/net.js): 오른쪽 아래 작은 띠. 핑 색 = 상태, 렉 알림은 그 위 빨간 띠 (글자만, 아이콘 없음) */
     /* ===== 화면 전환 슬래시 (메뉴→방, 판 시작, 결과 등장, 결과→대기실) =====
        띠(.band)는 JS 가 translateX 로 쓸고, 기울기·색은 여기. 앞 띠들은 노랑·주황 줄로 먼저 지나가고 마지막 남색 띠(.main)가 화면을 다 덮음 */
+    /* ===== 타이틀 (처음 켤 때, client/title.js): 3D 블록 로고는 캔버스에, 여기는 아래 안내 글씨만 ===== */
+    #title { position: fixed; inset: 0; z-index: 40; pointer-events: auto; cursor: pointer;
+      background: radial-gradient(ellipse at 50% 42%, transparent 0 45%, rgba(3,5,12,.55) 100%); }
+    #title .hint { position: absolute; left: 50%; bottom: 13%; transform: translateX(-50%); font-family: var(--disp); font-size: clamp(20px, 2.6vw, 34px);
+      color: var(--text); letter-spacing: 2px; white-space: nowrap; text-shadow: 0 4px 0 rgba(0,0,0,.55), 0 0 18px rgba(0,0,0,.6);
+      padding: 8px 26px; background: rgba(6,9,19,.55); clip-path: polygon(var(--cut) 0, 100% 0, calc(100% - var(--cut)) 100%, 0 100%);
+      animation: title-blink 1.6s ease-in-out infinite; }
+    #title .hint b { color: var(--accent); }
+    #title.pressed .hint { animation: none; opacity: 0; transition: opacity .2s; }
+    #title.reduced { animation: title-fade .5s ease-out both; }
+    #title.reduced .hint { animation: none; }
+    @keyframes title-blink { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+    @keyframes title-fade { from { opacity: 0; } to { opacity: 1; } }
+    body.title-on #rooms, body.title-on #status, body.title-on #tutorial, body.title-on #center, body.title-on #crosshair { visibility: hidden; }
     #wipe { position: fixed; inset: 0; z-index: 60; pointer-events: none; overflow: hidden; display: none; }
     #wipe.on { display: block; }
     #wipe .band { position: absolute; top: -12vh; left: 0; width: 210vw; height: 124vh; will-change: transform; }
@@ -559,6 +573,7 @@
 블록 마스터: <span data-keys="pieceUp,pieceDown,pieceLeft,pieceRight">↑/↓/←/→</span> 블록 이동 · <span data-keys="rotL,rotR">Q/E</span> 회전 · <span data-key="drop">Enter</span> 하드드롭 · 키는 설정에서 바꿈</div>
   </div>
   <!-- 화면 전환 슬래시 (main.js playWipe, 시간은 config UI_WIPE·계산은 shared/wipe.js): 띠만 그리고 클릭은 통과 -->
+  <div id="title" class="hidden"><div class="hint"><b>Enter</b> / 클릭하여 시작</div></div>
   <div id="wipe" aria-hidden="true"></div>
   <script type="module" src="/main.js"></script>
 </body>

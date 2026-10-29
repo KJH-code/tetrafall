@@ -951,6 +951,32 @@ export const CONFIG = {
   WORLD_BLOCK_JITTER: 0.08, // 칸마다 밝기 흔들림 (±)
   WORLD_BLOCK_BEVEL: 0.07, // 블록 모서리 깎은 반지름 (칸). 윗면 가운데는 평평 → 서는 자리 그대로
   WORLD_DECOR_MAX: 240, // 블록 소품 (결정 덩어리·깨진 돌) 최대 수. 그래픽 낮춤이면 없음 // 구름 바다 판: 이 거리부터 끝까지 투명해짐 (판 끝이 지평선에 곡선으로 안 보이게)
+  // 타이틀 화면 (shared/title.js 계산 · client/title-scene.js 3D · client/title.js 흐름). 처음 켤 때만, 링크로 오면 건너뜀
+  TITLE_TEXT: 'TETRAFALL', // 로고 글자 (5×7 복셀 글꼴: 대문자·숫자·! -)
+  TITLE_MAP: 'stairs', // 타이틀 뒤 섬 = 수정 동굴 (자수정 하늘, 재혁 2026-10-29). 타이틀에서 내려온 메뉴도 이 섬, 타이틀 안 거친 메뉴는 무작위
+  TITLE_BOLD: 2, // 글꼴 한 칸 = 2×2 칸 (획 2칸 두께, 10×14 글자)
+  TITLE_GAP: 1, // 글자 사이 (글꼴 칸, ×TITLE_BOLD)
+  TITLE_BUILD_MS: 3200, // 다 쌓이는 데 걸리는 시간 — 조각 수에서 출발 간격을 거꾸로 계산 (titleInterval)
+  TITLE_DROP_MIN_MS: 8, // 출발 간격 최소
+  TITLE_DROP_INTERVAL_MS: 55, // 간격 기본값 (dropSchedule 를 그냥 부를 때)
+  TITLE_FALL_MS: 520, // 조각 하나가 떨어지는 시간
+  TITLE_SETTLE_MS: 260, // 닿은 뒤 작게 튕기는 시간
+  TITLE_DROP_H: 9, // 떨어지기 시작하는 높이 (글자 칸)
+  TITLE_BOUNCE: 0.25, // 튕김 높이 (글자 칸)
+  TITLE_FAST: 6, // 누르면 남은 쌓기를 이만큼 빨리 감음
+  TITLE_SCALE: 0.5, // 글자 칸 하나의 크기 (게임 칸)
+  TITLE_FILL: 0.8, // 로고 폭이 화면 폭의 이만큼 (카메라 거리를 화면 비율·시야각으로 계산)
+  TITLE_GLOW: 0.32, // 블록 색이 스스로 빛나는 정도 (밤 하늘에서도 튀게)
+  TITLE_OUTLINE: 0.16, // 검은 외곽선 두께 (블록 크기 비율)
+  TITLE_OUTLINE_COLOR: 0x0a0814,
+  TITLE_HEIGHT: 40, // 로고 높이 (섬 위, 칸)
+  TITLE_AHEAD: 24, // 로고가 섬 가운데에서 카메라가 보는 쪽으로 떨어진 거리
+  TITLE_CAM_UP: -4, // 그 카메라를 로고 가운데보다 조금 아래에 (올려다봄)
+  TITLE_CAM_SIDE: -2.5, // 옆으로 비켜 보기 (블록 옆면이 보이게)
+  TITLE_CAM_SWAY: 1.5, // 쌓이는 동안 옆으로 천천히 흔들림
+  TITLE_ZOOM_MS: 1100, // 누른 뒤 메뉴 섬 쪽으로 내려오는 시간
+  TITLE_WIPE_AT: 0.55, // 내려오기 이 비율에서 짧은 슬래시 시작
+  TITLE_INPUT_DELAY_MS: 250, // 켜자마자 눌린 키는 무시
   // 메뉴(방 목록) 뒤 3D 대기 장면 (client/menu-scene.js, 화면만)
   MENU_CHARS: [4, 2], // 섬 위 캐릭터 수 [보통, 그래픽 낮춤]
   MENU_EMOTE_EVERY_MS: 7000, // 캐릭터마다 이모트 간격 (대충, 흔들림 있음)
