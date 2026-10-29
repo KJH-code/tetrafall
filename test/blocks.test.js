@@ -3,11 +3,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG as C } from '../shared/config.js';
 import { CELL } from '../shared/pieces.js';
-import { blockStyle, openBits } from '../shared/block-style.js';
+import { blockStyle, openBits, cellLooks, cellRand, sproutSpots } from '../shared/block-style.js';
 
-const NUM = ['segs', 'disp', 'step', 'edge', 'wear', 'mottle', 'topLift', 'veins', 'veinScale', 'lip', 'sheen'];
+const NUM = ['segs', 'disp', 'step', 'edge', 'wear', 'mottle', 'topLift', 'veins', 'veinScale', 'lip', 'sheen', 'sideShade', 'ao', 'hi'];
 const PAIRS = ['chamfer', 'blotch', 'height', 'grid', 'strata'];
-const BLOCK_KEYS = new Set([...NUM, ...PAIRS, 'brick', 'top', 'side', 'rim', 'tints']);
+const BLOCK_KEYS = new Set([...NUM, ...PAIRS, 'brick', 'top', 'side', 'rim', 'tints', 'sprout']);
+const SPROUTS = ['crystal', 'basalt', 'mushroom', 'brick', 'ledge', 'tuft'];
 
 test('지형 블록 스타일: 재혁이 고른 주상절리, 윗면에만 칸 경계', () => {
   assert.equal(C.WORLD_BLOCK_STYLE, 'columns');
@@ -68,4 +69,77 @@ test('테트리미노 칸: 작고 둥글고 살짝 빛나서 지형과 구분', 
   assert.ok(P.size < 1 && P.size >= 0.9, '칸 사이 틈');
   assert.ok(P.bevel > 0 && P.bevel < P.size / 2, '둥근 모서리');
   assert.ok(P.glow > 0 && P.glow < 0.4, '살짝 빛남');
+});
+
+test('입체감: 옆면이 윗면보다 어둡고, 벽 밑 그늘·윗 모서리 하이라이트', () => {
+  for (const [id, t] of Object.entries(C.WORLD_THEMES)) {
+    const s = blockStyle(t.terrain);
+    assert.ok(s.sideShade < 0.8 && s.sideShade > 0.4, `${id}.sideShade`);
+    assert.ok(s.ao > 0 && s.ao < 0.8, `${id}.ao`);
+    assert.ok(s.hi > 0, `${id}.hi`);
+    assert.ok(s.topLift > 1, `${id}.topLift`);
+  }
+});
+
+test('튀어나온 조각: 테마마다 하나, 값 범위', () => {
+  for (const [id, t] of Object.entries(C.WORLD_THEMES)) {
+    const sp = blockStyle(t.terrain).sprout;
+    assert.ok(sp && SPROUTS.includes(sp.kind), `${id}.sprout`);
+    assert.ok(sp.side >= 0 && sp.side <= 0.4 && sp.top >= 0 && sp.top <= 0.4, `${id}: 과하지 않게`);
+    assert.ok(sp.size[0] > 0 && sp.size[0] <= sp.size[1] && sp.size[1] <= 2, `${id}.size`);
+  }
+  assert.equal(blockStyle(C.WORLD_THEMES.crystal.terrain).sprout.kind, 'crystal', '수정 동굴은 결정이 튀어나옴');
+  assert.ok(C.BLOCK_SPROUT_TOP_SCALE < 1 && C.BLOCK_SPROUT_MAX > 0);
+});
+
+test('그늘 비트: 위 칸 블록 → 윗면 가장자리, 바깥 아래 막힘(바닥 포함) → 옆면 아래', () => {
+  const W = 3, D = 1, H = 2;
+  const grid = new Uint8Array(W * D * H);
+  const at = (x, y, z) => (z * D + y) * W + x;
+  grid[at(0, 0, 0)] = CELL.TERRAIN;
+  grid[at(1, 0, 0)] = CELL.TERRAIN;
+  grid[at(1, 0, 1)] = CELL.SHAPE_BASE; // (0,0,0) 의 +x 위에 블록 → (0,0,0) 윗면 +x 가장자리 그늘
+  const { open, ao, lift } = cellLooks(grid, W, D, H);
+  assert.equal(open.length, 2);
+  assert.ok(ao[0] & 1, '윗면 +x 그늘');
+  assert.ok(ao[0] & 32, '바닥 층 옆면은 바닥에 닿음 (−x)');
+  assert.ok(lift.every((v) => v >= -0.5 && v < 0.5));
+});
+
+test('칸 난수: 0..1, 같은 자리 같은 값, 자리마다 다름', () => {
+  const vals = new Set();
+  for (let x = 0; x < 20; x++) for (let y = 0; y < 20; y++) {
+    const v = cellRand(x, y, 3, 2);
+    assert.ok(v >= 0 && v < 1);
+    assert.equal(v, cellRand(x, y, 3, 2));
+    vals.add(Math.floor(v * 10));
+  }
+  assert.equal(vals.size, 10, '고르게 퍼짐');
+});
+
+test('튀어나온 조각 자리: 드러난 면에만, 윗면은 가장자리, 최대 수', () => {
+  const W = 6, D = 6, H = 3;
+  const grid = new Uint8Array(W * D * H);
+  for (let y = 0; y < D; y++) for (let x = 0; x < W; x++) grid[y * W + x] = CELL.TERRAIN; // 바닥 한 층 꽉
+  grid[(1 * D + 2) * W + 2] = CELL.TERRAIN; // 위에 한 칸
+  const sp = { kind: 'crystal', side: 1, top: 1, size: [0.5, 1] };
+  const spots = sproutSpots(grid, W, D, H, null, sp, 1000);
+  const open = openBits(grid, W, D, H);
+  assert.ok(spots.length > 0);
+  for (const p of spots) {
+    if (p.face < 4) {
+      const nx = [1, -1, 0, 0][p.face], ny = [0, 0, 1, -1][p.face];
+      const x = p.x + nx, y = p.y + ny;
+      assert.ok(x < 0 || y < 0 || x >= W || y >= D || grid[(p.z * D + y) * W + x] !== CELL.TERRAIN, '옆이 빈 면');
+    } else {
+      assert.ok(Math.max(Math.abs(p.u), Math.abs(p.v)) >= 0.35, '윗면은 가장자리');
+      assert.ok(p.s <= sp.size[1] * C.BLOCK_SPROUT_TOP_SCALE + 1e-9, '윗면은 작게');
+      assert.ok(p.z + 1 >= H || grid[((p.z + 1) * D + p.y) * W + p.x] === 0, '위가 빈 칸');
+    }
+    assert.ok(p.s >= 0 && p.s <= sp.size[1]);
+  }
+  assert.ok(open.length === W * D + 1);
+  assert.deepEqual(sproutSpots(grid, W, D, H, null, sp, 1000), spots, '같은 판이면 같은 자리');
+  assert.equal(sproutSpots(grid, W, D, H, null, sp, 5).length, 5, '최대 수');
+  assert.equal(sproutSpots(grid, W, D, H, null, null, 50).length, 0);
 });

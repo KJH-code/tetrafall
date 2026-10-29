@@ -8,7 +8,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { CONFIG as C } from '/shared/config.js';
 import { toon, noOutline } from '/toon.js';
 import { CELL } from '/shared/pieces.js';
-import { terrainGeometry, terrainMaterial, terrainOpenMask } from '/blocks.js';
+import { terrainGeometry, terrainMaterial, terrainCells, BlockDecor } from '/blocks.js';
 import { blockStyle } from '/shared/block-style.js';
 
 // 같은 모양이 매번 같게 (새로고침마다 배경이 바뀌지 않게)
@@ -858,6 +858,8 @@ export class World {
     this.id = id;
     this.look = id ? C.WORLD_THEMES[id] : null;
     this.tfOn = false; // 셰이더 지형 블록 (테마가 있고 스타일이 있을 때 아래서 켬)
+    this.sprout?.dispose(r.scene);
+    this.sprout = null;
     const L = this.look;
     const b = this.base;
     const u = r.dome.material.uniforms;
@@ -904,6 +906,7 @@ export class World {
       // 빛나는 금·수정은 발광 지도 (밤에도 어둡게 안 묻힘). 칸마다 변형·돌림·뒤집기 (blockMaterial) + 모서리 깎은 모양
       const style = blockStyle(L.terrain);
       this.tfOn = !!style;
+      if (style && style.sprout) this.sprout = new BlockDecor(r.scene, style, L.glow || (L.terrain.glow != null ? [L.terrain.glow] : null)); // 블록에서 튀어나온 조각
       if (style) {
         // 저폴리 셰이더 블록 (client/blocks.js): 칸 텍스처 없이 월드 좌표로 색·모양, 맞닿은 칸끼리 이어 보임
         const n = r.blockMeshes.terrain.instanceMatrix.count;
@@ -965,8 +968,10 @@ export class World {
   // updateGrid 끝: 변형 속성 올리고, 드러난 옆면에 블록 소품 (결정 덩어리·깨진 돌) 다시 놓기
   gridDone(grid) {
     if (!this.look) return;
-    if (this.tfOn) terrainOpenMask(this.tfGeo.attributes.aOpen, grid, this.r.W, this.r.D, this.r.H, this.r.bbSkip);
-    else this.varAttr.needsUpdate = true;
+    if (this.tfOn) {
+      terrainCells(this.tfGeo.attributes.aCell, grid, this.r.W, this.r.D, this.r.H, this.r.bbSkip);
+      this.sprout?.update(grid, this.r.W, this.r.D, this.r.H, this.r.bbSkip, this.low);
+    } else this.varAttr.needsUpdate = true;
     this.placeDecor(grid);
   }
 
@@ -974,7 +979,7 @@ export class World {
     const { r } = this;
     const dec = this.look.terrain.decor;
     if (this.decor) for (const m of this.decor) m.count = 0;
-    if (!dec || this.low || !grid) return;
+    if (!dec || this.low || !grid || this.tfOn) return; // 셰이더 블록은 튀어나온 조각 (blocks.js BlockDecor) 이 대신
     if (!this.decor) {
       const geo = decorGeometry(dec.kind);
       const solid = new THREE.InstancedMesh(geo, toon({ color: 0xffffff, flatShading: true, emissive: dec.kind === 'crystal' ? shade(this.look.terrain.glow, 0.35) : 0x000000 }), C.WORLD_DECOR_MAX);
