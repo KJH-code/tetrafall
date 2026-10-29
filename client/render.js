@@ -621,7 +621,7 @@ export class Renderer {
 
   // 타이틀 화면 (title.js 가 부름): 메뉴 장면 하늘에 블록 로고. instant = 떨어짐 없이 완성 로고
   startTitle(instant = false) {
-    this.menu ||= new MenuScene(Math.random, this.lowGfx);
+    if (!this.menu || this.menu.mapId !== C.TITLE_MAP) this.menu = new MenuScene(Math.random, this.lowGfx, C.TITLE_MAP); // 타이틀 섬 = 수정 동굴 고정, 내려온 메뉴도 같은 섬
     this.endTitle();
     this.title = new TitleScene(this, this.menu.camYaw, instant);
     return this.title;

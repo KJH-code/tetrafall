@@ -2,7 +2,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG as C } from '../shared/config.js';
-import { titleCells, titlePieces, dropSchedule, titleDoneAt, pieceLift, showTitle, GLYPH_W, GLYPH_H } from '../shared/title.js';
+import { titleCells, titlePieces, dropSchedule, titleDoneAt, pieceLift, showTitle, titleInterval, titleCamDist, GLYPH_W, GLYPH_H } from '../shared/title.js';
+import { MAP_IDS } from '../shared/maps.js';
+import { MenuScene } from '../client/menu-scene.js';
 
 test('타이틀: 글자 → 5×7 칸, 글자 사이 1칸, 모르는 글자는 빈칸', () => {
   const t = titleCells('T');
@@ -73,4 +75,39 @@ test('타이틀: 링크(?room=)로 오면 건너뜀 (재접속 자동 복귀도 
   assert.equal(showTitle('?x=1'), true);
   assert.equal(showTitle('?room=ABCD'), false);
   assert.equal(showTitle('?room='), true, '빈 코드면 메뉴 (보통 켜기)');
+});
+
+test('타이틀: 굵은 글꼴 (한 칸 = 2×2, 획 2칸), 조각이 늘어도 다 쌓이는 시간은 TITLE_BUILD_MS 쯤', () => {
+  const thin = titleCells(C.TITLE_TEXT, C.TITLE_GAP, 1);
+  const bold = titleCells(C.TITLE_TEXT, C.TITLE_GAP, C.TITLE_BOLD);
+  assert.equal(C.TITLE_BOLD, 2);
+  assert.equal(bold.cells.length, thin.cells.length * 4);
+  assert.equal(bold.height, GLYPH_H * 2);
+  assert.equal(bold.width, thin.width * 2);
+  const keys = new Set(bold.cells.map((c) => `${c.x},${c.y}`));
+  // T 의 기둥은 2칸 폭: 아래 끝 두 칸
+  assert.ok(keys.has('4,0') && keys.has('5,0'));
+  const pieces = titlePieces(bold.cells);
+  const start = dropSchedule(pieces, titleInterval(pieces.length));
+  const done = titleDoneAt(start);
+  assert.ok(Math.abs(done - C.TITLE_BUILD_MS) < 300, `다 쌓이는 시간 ${done}`);
+  assert.equal(titleInterval(1), 0);
+  assert.ok(titleInterval(100000) >= C.TITLE_DROP_MIN_MS);
+});
+
+test('타이틀: 카메라 거리 — 로고 폭이 화면 폭의 TITLE_FILL, 좁은 화면이면 더 멀리', () => {
+  const w = 50;
+  const d169 = titleCamDist(w, 75, 16 / 9);
+  const half = Math.tan((37.5 * Math.PI) / 180) * (16 / 9) * d169;
+  assert.ok(Math.abs(w / 2 / half - C.TITLE_FILL) < 1e-9);
+  assert.ok(titleCamDist(w, 75, 4 / 3) > d169);
+  assert.ok(C.TITLE_FILL > 0.6 && C.TITLE_FILL < 0.95, '좌우 여백 적당히');
+});
+
+test('타이틀: 섬 맵 고정 (config TITLE_MAP = 수정 동굴 계단), 메뉴 장면이 그 맵으로', () => {
+  assert.equal(C.TITLE_MAP, 'stairs');
+  assert.equal(C.WORLD_MAP_THEME[C.TITLE_MAP], 'crystal');
+  assert.ok(MAP_IDS.includes(C.TITLE_MAP));
+  assert.equal(new MenuScene(Math.random, false, C.TITLE_MAP).mapId, 'stairs');
+  assert.ok(MAP_IDS.includes(new MenuScene(Math.random, false, 'nope').mapId), '없는 맵이면 무작위');
 });

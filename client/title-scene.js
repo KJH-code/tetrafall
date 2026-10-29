@@ -2,7 +2,7 @@
 // Renderer 가 메뉴 장면(menu-scene.js)과 같이 그림 (render.js: this.title). 블록 텍스처·색은 게임 블록 그대로
 import * as THREE from 'three';
 import { CONFIG as C } from '/shared/config.js';
-import { titleCells, titlePieces, dropSchedule, titleDoneAt, pieceLift } from '/shared/title.js';
+import { titleCells, titlePieces, dropSchedule, titleDoneAt, pieceLift, titleInterval, titleCamDist } from '/shared/title.js';
 import { toon, noOutline } from '/toon.js';
 
 const ease = (k) => (k < 0 ? 0 : k > 1 ? 1 : k * k * (3 - 2 * k));
@@ -15,9 +15,9 @@ export class TitleScene {
     this.fast = false; // 누름 → 빨리 감기
     this.zoomT = null; // 내려오기 시작 뒤 ms (null = 아직)
     this.instant = instant;
-    const { cells, width, height } = titleCells(C.TITLE_TEXT);
+    const { cells, width, height } = titleCells(C.TITLE_TEXT, C.TITLE_GAP, C.TITLE_BOLD);
     this.pieces = titlePieces(cells);
-    this.start = dropSchedule(this.pieces);
+    this.start = dropSchedule(this.pieces, titleInterval(this.pieces.length));
     this.doneAt = instant ? 0 : titleDoneAt(this.start);
     this.size = [width, height];
     // 로고 자리: 섬 가운데에서 카메라가 보는 쪽으로 TITLE_AHEAD 칸, 위로 TITLE_HEIGHT 칸. 글자는 카메라 오른쪽으로 늘어섬
@@ -26,9 +26,16 @@ export class TitleScene {
     this.right = new THREE.Vector3(d.y, -d.x, 0);
     this.center = new THREE.Vector3(r.W / 2, r.D / 2, 0).addScaledVector(d, C.TITLE_AHEAD).add(new THREE.Vector3(0, 0, C.TITLE_HEIGHT));
     const n = cells.length;
-    const mat = noOutline(toon({ color: 0xffffff, map: r.tex.tetris, emissive: 0x202030 }));
+    // 밤 하늘에서도 튀게: 블록 색이 스스로 조금 빛남 (색 비례) + 검은 외곽선 (뒤집은 껍데기, 인스턴스 하나 더)
+    const mat = noOutline(toon({ color: 0xffffff, map: r.tex.tetris }));
+    mat.onBeforeCompile = (sh) => {
+      sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n totalEmissiveRadiance += diffuseColor.rgb * ${C.TITLE_GLOW.toFixed(3)};`);
+    };
+    mat.customProgramCacheKey = () => `tf-title-${C.TITLE_GLOW}`;
     this.mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mat, n);
     this.mesh.frustumCulled = false;
+    this.shell = new THREE.InstancedMesh(this.mesh.geometry, noOutline(new THREE.MeshBasicMaterial({ color: C.TITLE_OUTLINE_COLOR, side: THREE.BackSide })), n);
+    this.shell.frustumCulled = false;
     const col = new THREE.Color();
     let i = 0;
     this.slots = []; // 인스턴스 → [조각 번호, 칸]
@@ -41,7 +48,7 @@ export class TitleScene {
       }
     });
     this.rot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.atan2(this.right.y, this.right.x));
-    r.scene.add(this.mesh);
+    r.scene.add(this.mesh, this.shell);
     this.place();
   }
 
@@ -53,14 +60,18 @@ export class TitleScene {
     const pos = new THREE.Vector3();
     const zero = new THREE.Vector3(0, 0, 0);
     const one = new THREE.Vector3(s * 0.97, s * 0.97, s * 0.97);
+    const big = new THREE.Vector3(s * (1 + C.TITLE_OUTLINE), s * (1 + C.TITLE_OUTLINE), s * (1 + C.TITLE_OUTLINE));
     this.slots.forEach(([pi, c], i) => {
       const lift = this.instant ? 0 : pieceLift(this.t, this.start[pi]);
       pos.copy(this.center).addScaledVector(this.right, (c.x - w / 2 + 0.5) * s);
       pos.z += (c.y - h / 2 + 0.5 + (lift || 0)) * s;
       m.compose(pos, this.rot, lift === null ? zero : one);
       this.mesh.setMatrixAt(i, m);
+      m.compose(pos, this.rot, lift === null ? zero : big);
+      this.shell.setMatrixAt(i, m);
     });
     this.mesh.instanceMatrix.needsUpdate = true;
+    this.shell.instanceMatrix.needsUpdate = true;
   }
 
   get done() {
@@ -81,7 +92,10 @@ export class TitleScene {
     this.place();
     // 로고를 살짝 아래·옆에서 (정면이면 블록이 납작한 그림처럼 보임) + 천천히 흔들려 입체가 보이게
     const sway = Math.sin(this.t / 1000 * 0.7) * C.TITLE_CAM_SWAY;
-    const titleEye = this.center.clone().addScaledVector(this.dir, -C.TITLE_CAM_DIST).addScaledVector(this.right, C.TITLE_CAM_SIDE + sway).add(new THREE.Vector3(0, 0, C.TITLE_CAM_UP));
+    // 거리는 로고 폭이 화면 폭의 TITLE_FILL 만큼 차게 (화면 비율·시야각 따라)
+    const cam = this.r.camera;
+    const dist = titleCamDist(this.size[0] * C.TITLE_SCALE, cam.fov, cam.aspect);
+    const titleEye = this.center.clone().addScaledVector(this.dir, -dist).addScaledVector(this.right, C.TITLE_CAM_SIDE + sway).add(new THREE.Vector3(0, 0, C.TITLE_CAM_UP));
     const k = this.zoomT === null ? 0 : ease(this.zoomT / C.TITLE_ZOOM_MS);
     // 내려오기: 처음엔 천천히 뒤로 빠졌다가 섬 쪽으로 확 (k 를 한 번 더 굽힘)
     const kk = k * k;
@@ -91,9 +105,11 @@ export class TitleScene {
   }
 
   dispose() {
-    this.r.scene.remove(this.mesh);
+    this.r.scene.remove(this.mesh, this.shell);
     this.mesh.geometry.dispose();
     this.mesh.material.dispose();
+    this.shell.material.dispose();
     this.mesh.dispose();
+    this.shell.dispose();
   }
 }

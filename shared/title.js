@@ -47,18 +47,35 @@ const FONT = {
 export const GLYPH_W = 5;
 export const GLYPH_H = 7;
 
-// 글자 → 칸 [{ x, y }] (x 는 왼쪽부터, y 는 아래부터 = 0). 글자 사이 1칸. 모르는 글자는 빈칸
-export function titleCells(text, gap = 1) {
+// 글자 → 칸 [{ x, y }] (x 는 왼쪽부터, y 는 아래부터 = 0). 글자 사이 gap 칸. 모르는 글자는 빈칸.
+// bold: 글꼴 한 칸을 bold×bold 칸으로 (2 = 획 2칸 두께, 10×14 글자, 글자 사이도 2배)
+export function titleCells(text, gap = 1, bold = 1) {
   const cells = [];
   let ox = 0;
+  const k = Math.max(1, Math.floor(bold));
   for (const ch of String(text).toUpperCase()) {
     const g = FONT[ch] || FONT[' '];
     g.forEach((row, r) => {
-      for (let c = 0; c < GLYPH_W; c++) if (row[c] === '#') cells.push({ x: ox + c, y: GLYPH_H - 1 - r });
+      for (let c = 0; c < GLYPH_W; c++) {
+        if (row[c] !== '#') continue;
+        for (let i = 0; i < k; i++) for (let j = 0; j < k; j++) cells.push({ x: ox + c * k + i, y: (GLYPH_H - 1 - r) * k + j });
+      }
     });
-    ox += GLYPH_W + gap;
+    ox += (GLYPH_W + gap) * k;
   }
-  return { cells, width: Math.max(0, ox - gap), height: GLYPH_H };
+  return { cells, width: Math.max(0, ox - gap * k), height: GLYPH_H * k };
+}
+
+// 조각 n 개가 다 쌓이는 시간이 TITLE_BUILD_MS 쯤 되게 출발 간격 (ms). 조각이 많으면 짧게 (겹쳐 떨어짐), 최소 TITLE_DROP_MIN_MS
+export function titleInterval(n, buildMs = C.TITLE_BUILD_MS, fallMs = C.TITLE_FALL_MS, settleMs = C.TITLE_SETTLE_MS) {
+  if (n <= 1) return 0;
+  return Math.max(C.TITLE_DROP_MIN_MS, (buildMs - fallMs - settleMs) / (n - 1));
+}
+
+// 로고 폭이 화면 폭의 fill 만큼 차게 하는 카메라 거리. worldW = 로고 폭 (게임 칸), fovDeg = 세로 시야각, aspect = 폭/높이
+export function titleCamDist(worldW, fovDeg, aspect, fill = C.TITLE_FILL) {
+  const tanH = Math.tan(((fovDeg * Math.PI) / 180) / 2) * aspect;
+  return worldW / 2 / (fill * tanH);
 }
 
 // 칸 → 조각: 아래 줄·왼쪽부터 아직 안 쓴 칸에서 시작해 붙은 칸(상하좌우)을 넓이 우선으로 최대 size 개 묶음.
