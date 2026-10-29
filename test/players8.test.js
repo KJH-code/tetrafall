@@ -113,21 +113,12 @@ test('시작 위치: 5~8명 판에서 서로 5칸 이상 떨어짐, 필드 안, 
   }
 });
 
-test('맵 모양: 큰 판에서도 가장 높은 층이 10×10 과 같음 (계단 4층·그릇 3층…), 10×10 모양은 그대로', () => {
-  const top = (id, W) => Math.max(0, ...mapColumns(id, W, W).map((c) => c[2]));
-  const expect10 = { flat: 0, pyramid: 3, stairs: 4, bowl: 3, spiral: 5, pillars: 3, fortress: 3 };
+test('맵 모양: 판 크기마다 칸이 판 안 (모양·높이·대칭은 test/maps.test.js)', () => {
   for (const id of MAP_IDS) {
-    assert.equal(top(id, 10), expect10[id], `${id} 10×10`);
     for (const W of Object.values(C.FIELD_SIZES)) {
-      assert.equal(top(id, W), expect10[id], `${id} ${W}×${W}`);
       for (const [x, y] of mapColumns(id, W, W)) assert.ok(x >= 0 && x < W && y >= 0 && y < W);
     }
   }
-  // 10×10 계단·그릇은 예전 식 그대로
-  const stairs10 = mapColumns('stairs', 10, 10);
-  assert.deepEqual(stairs10.filter(([, y]) => y === 0).map(([x, , h]) => [x, h]), [[2, 1], [3, 1], [4, 2], [5, 2], [6, 3], [7, 3], [8, 4], [9, 4]]);
-  const bowl10 = mapColumns('bowl', 10, 10);
-  assert.deepEqual(bowl10.filter(([, y]) => y === 4).map(([x, , h]) => [x, h]), [[0, 3], [1, 2], [2, 1], [7, 1], [8, 2], [9, 3]]);
 });
 
 test('팀전 4:4: 8명이 들어오면 빨강 4 · 파랑 4, 시작 가능', () => {
