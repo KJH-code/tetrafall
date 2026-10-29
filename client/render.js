@@ -9,6 +9,7 @@ import { Effects } from '/effects.js';
 import { CELL, SHAPE_NAMES } from '/shared/pieces.js';
 import { orbitEye, followDist, overviewScale } from '/shared/camera.js';
 import { itemModel } from '/models.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { makeTextures } from '/textures.js';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
 import { ViewModel } from '/viewmodel.js';
@@ -155,6 +156,19 @@ const HEAVY_HITS = new Set(['bomb', 'shock', 'projectile', 'slam', 'wall', 'blas
 const MAX_SIDE = Math.max(C.GRID_W, C.GRID_D, ...Object.values(C.FIELD_SIZES));
 const MAX_CELLS = MAX_SIDE * MAX_SIDE * Math.max(C.GRID_H, C.SKY_GRID_H || 0); // 가장 큰 판 (인원별 필드 크기 · 하늘 계단 높이)
 
+// 테트리미노 재질이 제 색으로 살짝 빛남 (밤 테마에서도 지형과 구분)
+const pieceGlow = (c) => ({ emissive: c, emissiveIntensity: C.PIECE_LOOK.glow });
+
+// 쌓인 테트리미노 (인스턴스 색 = 모양 색): 칸 색 그대로 살짝 빛남 (발광 = 칸 색 × glow)
+function landedPieceMat(map) {
+  const m = toon({ color: 0xffffff, map });
+  m.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n totalEmissiveRadiance += diffuseColor.rgb * ${C.PIECE_LOOK.glow.toFixed(3)};`);
+  };
+  m.customProgramCacheKey = () => `tf-landed-${C.PIECE_LOOK.glow}`;
+  return m;
+}
+
 export class Renderer {
   // models: loadModels() 결과 (없으면 예전 도형으로 그림)
   constructor(canvasParent, models = null) {
@@ -245,9 +259,13 @@ export class Renderer {
 
     // 쌓인 블록 (인스턴스). 텍스처가 종류마다 달라 종류별로 하나씩: 지형 돌 · 쌓기 나무 · 설치 블록 모래 · 테트리미노
     const blockGeo = new THREE.BoxGeometry(1, 1, 1);
+    // 테트리미노 칸: 조금 작고 둥근 장난감 블록 (칸 사이 틈 + 둥근 모서리 + 살짝 빛남 → 이어진 무광 지형과 구분). 떨어질 때·쌓인 뒤 같은 모양
+    const P = C.PIECE_LOOK;
+    this.pieceBox = new RoundedBoxGeometry(P.size, P.size, P.size, 2, P.bevel);
+    this.cubeBox = new THREE.BoxGeometry(1, 1, 1);
     this.blockMeshes = {};
-    for (const [kind, map] of Object.entries({ terrain: this.tex.stone, build: this.tex.wood, thrown: this.tex.sand, shape: this.tex.tetris })) {
-      const mesh = new THREE.InstancedMesh(blockGeo, toon({ color: 0xffffff, map }), MAX_CELLS);
+    for (const [kind, map] of Object.entries({ terrain: this.tex.stone, build: this.tex.wood, thrown: this.tex.sand, shape: this.tex.piece })) {
+      const mesh = new THREE.InstancedMesh(kind === 'shape' ? this.pieceBox : blockGeo, kind === 'shape' ? landedPieceMat(map) : toon({ color: 0xffffff, map }), MAX_CELLS);
       mesh.count = 0;
       // three.js 는 InstancedMesh 의 경계 구를 처음 한 번만 계산하고 갱신하지 않는다.
       // 블록이 0개일 때 계산된 빈 구가 남으면 원점 모서리가 시야 밖일 때 쌓인 블록 전체가 안 그려진다.
@@ -265,12 +283,11 @@ export class Renderer {
     // 떨어지는 블록 셀 + 그림자 (블록 여러 개 → 필요한 만큼 늘어나는 풀)
     this.pieceMeshes = [];
     this.shadowMeshes = [];
-    this.pieceMat = toon({ color: 0xf0a030, map: this.tex.tetris, transparent: true, opacity: 1 }); // 자동 블록
-    this.controlledMat = toon({ color: 0xd040d0, emissive: 0x501050, map: this.tex.tetris, transparent: true, opacity: 1 }); // 누가 조종 중인 블록 (빛나서 T 모양 보라와 구분)
+    this.pieceMat = toon({ color: 0xf0a030, map: this.tex.piece, transparent: true, opacity: 1, ...pieceGlow(0xf0a030) }); // 자동 블록
+    this.controlledMat = toon({ color: 0xd040d0, emissive: 0x501050, map: this.tex.piece, transparent: true, opacity: 1 }); // 누가 조종 중인 블록 (빛나서 T 모양 보라와 구분)
     this.shapeMats = {}; // 자동 블록: 모양마다 색
     this.thrownMat = toon({ color: 0xffffff, emissive: 0x000000, map: this.tex.sand, transparent: true, opacity: 1 }); // 던진 설치 블록: 흰색 + 노랗게 깜빡임 (O 블록 노랑과 구분)
     this.shadowMat = noOutline(new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45 }));
-    this.pieceBox = new THREE.BoxGeometry(1, 1, 1);
     this.shadowBox = new THREE.BoxGeometry(0.96, 0.96, 0.06);
     this.markBox = new THREE.BoxGeometry(0.94, 0.94, 0.04); // 스킬 예고 칸
     this.marks = [];
@@ -533,7 +550,8 @@ export class Renderer {
 
   shapeMat(shape) {
     if (!this.shapeMats[shape]) {
-      this.shapeMats[shape] = toon({ color: C.SHAPE_COLORS[shape] ?? 0xf0a030, map: this.tex.tetris, transparent: true, opacity: 1 });
+      const c = C.SHAPE_COLORS[shape] ?? 0xf0a030;
+      this.shapeMats[shape] = toon({ color: c, map: this.tex.piece, transparent: true, opacity: 1, ...pieceGlow(c) });
     }
     return this.shapeMats[shape];
   }
@@ -543,7 +561,7 @@ export class Renderer {
     this.skyMats ||= {};
     if (!this.skyMats[shape]) {
       const col = new THREE.Color(C.SHAPE_COLORS[shape] ?? 0xf0a030).lerp(new THREE.Color(0xffffff), C.SKY_PIECE_WHITEN);
-      this.skyMats[shape] = toon({ color: col.getHex(), emissive: 0x000000, map: this.tex.tetris, transparent: true, opacity: C.SKY_PIECE_OPACITY });
+      this.skyMats[shape] = toon({ color: col.getHex(), map: this.tex.piece, transparent: true, opacity: C.SKY_PIECE_OPACITY, ...pieceGlow(col.getHex()) });
     }
     return this.skyMats[shape];
   }
@@ -554,7 +572,7 @@ export class Renderer {
     const k = (color ?? 0) % PLAYER_COLORS.length;
     if (!this.ghostMats[k]) {
       const col = new THREE.Color(PLAYER_COLORS[k]);
-      this.ghostMats[k] = toon({ color: col.clone().lerp(new THREE.Color(0xffffff), C.GHOST_PIECE_WHITEN).getHex(), emissive: col.clone().multiplyScalar(0.25).getHex(), map: this.tex.tetris, transparent: true, opacity: C.GHOST_PIECE_OPACITY });
+      this.ghostMats[k] = toon({ color: col.clone().lerp(new THREE.Color(0xffffff), C.GHOST_PIECE_WHITEN).getHex(), emissive: col.clone().multiplyScalar(0.25).getHex(), map: this.tex.piece, transparent: true, opacity: C.GHOST_PIECE_OPACITY });
     }
     return this.ghostMats[k];
   }
@@ -589,12 +607,12 @@ export class Renderer {
     if (!this.ghostAim) {
       const g = new THREE.Group();
       const cubeMat = noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: C.GHOST_AIM_OPACITY, depthWrite: false }));
-      const cube = new THREE.Mesh(this.pieceBox, cubeMat);
+      const cube = new THREE.Mesh(this.cubeBox, cubeMat);
       cube.position.z = 0.5;
       const edgeMat = new THREE.LineBasicMaterial({ color: 0xffffff });
       const edge = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1.02, 1.02, 0.04)), edgeMat);
       edge.position.z = 0.03;
-      const cubeEdge = new THREE.LineSegments(new THREE.EdgesGeometry(this.pieceBox), edgeMat);
+      const cubeEdge = new THREE.LineSegments(new THREE.EdgesGeometry(this.cubeBox), edgeMat);
       cubeEdge.position.z = 0.5;
       g.add(cube, edge, cubeEdge);
       this.scene.add(g);
@@ -2641,7 +2659,7 @@ export class Renderer {
   blockGrab(e) {
     const now = performance.now();
     const cells = e.cells && e.cells.length ? e.cells : [e.from];
-    const kind = e.v === CELL.TERRAIN ? 'stone' : e.v === CELL.BUILD ? 'wood' : e.v === CELL.THROWN ? 'sand' : 'tetris';
+    const kind = e.v === CELL.TERRAIN ? 'stone' : e.v === CELL.BUILD ? 'wood' : e.v === CELL.THROWN ? 'sand' : 'piece';
     const col = new THREE.Color(e.builder ? 0xffb070 : cellColor(e.v));
     if (e.sky) col.lerp(new THREE.Color(0xffffff), C.SKY_PIECE_WHITEN);
     const mat = toon({ color: col.getHex(), map: e.builder ? this.tex.cracked : this.tex[kind], transparent: !!e.sky, opacity: e.sky ? C.SKY_PIECE_OPACITY : 1 });
@@ -2652,7 +2670,7 @@ export class Renderer {
     const mesh = new THREE.Group();
     let size = 0;
     for (const [x, y, z] of cells) {
-      const cube = new THREE.Mesh(this.bbGeo, mat);
+      const cube = new THREE.Mesh(kind === 'piece' && !e.builder ? this.pieceBox : this.bbGeo, mat);
       cube.position.set(x + 0.5 - center.x, y + 0.5 - center.y, z + 0.5 - center.z);
       cube.castShadow = true;
       mesh.add(cube);
