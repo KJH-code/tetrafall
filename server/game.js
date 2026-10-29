@@ -4,6 +4,7 @@ import { CONFIG as C, basicSet } from '../shared/config.js';
 import { SHAPE_NAMES, CELL, cellOfShape, rotatedCells, footprint } from '../shared/pieces.js';
 import { BotBrain } from './bot.js';
 import { MAPS, MAP_IDS, mapColumns } from './maps.js';
+import { Tutorial } from './tutorial.js';
 
 const EPS = 1e-6;
 const DIR6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
@@ -115,6 +116,7 @@ export class Game {
 
   emit(e) {
     this.events.push(e);
+    if (this.tutorial) this.tutorial.onEvent(e); // 튜토리얼 완료 판정 (치명타·스킬·낙사 등)
   }
 
   drainEvents() {
@@ -389,11 +391,18 @@ export class Game {
   // 연습: 지형을 바로 바꿈. 쌓인 블록·건축가 블록·떨어지던 블록·아이템은 치우고 모두 제자리로 (피해 % 는 설정값)
   practiceMap(choice) {
     this.mapChoice = choice;
-    this.mapId = choice === 'random' ? MAP_IDS[Math.floor(this.rng() * MAP_IDS.length)] : choice;
+    const mapId = choice === 'random' ? MAP_IDS[Math.floor(this.rng() * MAP_IDS.length)] : choice;
+    const cells = [];
+    for (const [x, y, h] of mapColumns(mapId, this.W, this.D)) for (let z = 0; z < h; z++) cells.push([x, y, z, CELL.TERRAIN]);
+    return this.resetArena(mapId, cells);
+  }
+
+  // 연습·튜토리얼: 지형을 cells ([x, y, z, 칸 값]) 로 새로 깔고 나머지(블록·아이템·용암 등)는 치움, 모두 제자리로
+  resetArena(mapId, cells) {
+    this.mapId = mapId;
     this.grid = new Uint8Array(this.W * this.D * this.H);
-    for (const [x, y, h] of mapColumns(this.mapId, this.W, this.D)) {
-      for (let z = 0; z < h && z < this.H; z++) this.grid[this.idx(x, y, z)] = CELL.TERRAIN;
-    }
+    this.gridPiece = new Int32Array(this.grid.length);
+    for (const [x, y, z, v] of cells) if (this.inXY(x, y) && z >= 0 && z < this.H) this.grid[this.idx(x, y, z)] = v;
     this.baseAvgHeight = this.avgHeight();
     this.pieces = [];
     this.refreshPieceCells();
@@ -4246,6 +4255,7 @@ export class Game {
   }
 
   updateItems() {
+    if (this.tutorial) return this.pickupItems(); // 튜토리얼: 단계가 놓은 아이템만
     if (this.controlItemOn() && !this.controlInPlay() && this.time >= this.controlItemNextAt) {
       if (!this.spawnItem('control')) this.controlItemNextAt = this.time + 1000;
     }
@@ -4254,6 +4264,11 @@ export class Game {
       const type = C.ITEM_POOL[Math.floor(this.rng() * C.ITEM_POOL.length)];
       this.powerItemNextAt = this.time + (this.spawnItem(type) ? C.ITEM_RESPAWN_MS : 1000);
     }
+    this.pickupItems();
+  }
+
+  // 필드 아이템 줍기 (닿으면)
+  pickupItems() {
     for (let i = this.items.length - 1; i >= 0; i--) {
       const it = this.items[i];
       it.z = this.columnTop(it.x, it.y);
@@ -4558,6 +4573,7 @@ export class Game {
       for (const p of this.participants()) if (!p.alive && p.respawnAt && this.time >= p.respawnAt) this.respawn(p);
     }
     if (this.mode === 'practice') this.updatePractice();
+    if (this.tutorial) this.tutorial.update(dtMs);
     this.updateLava(dtMs);
     this.updateItems();
     this.updateProjectiles(dt);
@@ -4638,6 +4654,13 @@ export class Game {
     if (!this.startRound()) return false;
     for (const p of this.players.values()) p.home = { x: p.x, y: p.y };
     this.log('[연습] 시작');
+    return true;
+  }
+
+  // 튜토리얼 (2026-10-29): 연습 판 위에서 단계 하나씩 (server/tutorial.js). id = 배우는 사람
+  startTutorial(id) {
+    if (!this.startPractice()) return false;
+    this.tutorial = new Tutorial(this, id);
     return true;
   }
 
@@ -4888,7 +4911,8 @@ export class Game {
       itemsEnabled: C.ITEMS_ENABLED || this.controlItemOn(), // 필드에 아이템이 나오는 판인지 (false 면 화면의 우클릭 아이템 칸·다음 아이템 타이머 숨김)
       botLevel: this.botLevel,
       teamMode: this.teamMode,
-      practice: this.mode === 'practice' ? this.practiceSnapshot() : null, // 연습 모드 토글·허수아비 콤보 기록
+      practice: this.mode === 'practice' ? this.practiceSnapshot() : null,
+      tutorial: this.tutorial ? this.tutorial.snapshot() : null, // 튜토리얼 진행 (단계·해냄·끝) // 연습 모드 토글·허수아비 콤보 기록
       skyStairs: this.skyStairs, // 대기실 옵션 (이번 판에 도는지는 field.h 가 SKY_GRID_H 인지로도 앎)
       teamWins: this.teamWins,
       mode: this.mode,

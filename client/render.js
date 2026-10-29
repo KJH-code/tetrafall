@@ -2404,6 +2404,39 @@ export class Renderer {
     }
   }
 
+  // 튜토리얼 목표 칸 (걸어서 가기·벽 위로): 바닥에 빛나는 고리 + 옅은 빛 기둥, 숨 쉬듯 출렁. 목표가 없거나 해내면 숨김
+  updateTutorialMark(t) {
+    const target = t && !t.done && !t.ok ? t.target : null;
+    if (!target) {
+      if (this.tutMark) this.tutMark.visible = false;
+      return;
+    }
+    if (!this.tutMark) {
+      const g = new THREE.Group();
+      const col = C.TUTORIAL_MARK_COLOR;
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.34, 0.46, 32), noOutline(new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false })));
+      ring.position.z = 0.03;
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, C.TUTORIAL_MARK_H, 20, 1, true), noOutline(new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false })));
+      beam.rotation.x = Math.PI / 2;
+      beam.position.z = C.TUTORIAL_MARK_H / 2;
+      g.add(ring, beam);
+      g.userData = { ring, beam };
+      this.scene.add(g);
+      this.tutMark = g;
+    }
+    const g = this.tutMark;
+    let top = 0; // 그 칸 맨 위 (벽 위 목표면 벽 꼭대기)
+    if (this.curState) for (let z = this.H - 1; z >= 0; z--) if (this.solidAt(this.curState, target.x, target.y, z + 0.5)) {
+      top = z + 1;
+      break;
+    }
+    g.position.set(target.x, target.y, top);
+    const k = 0.5 + 0.5 * Math.sin(performance.now() / 260);
+    g.userData.ring.scale.setScalar(1 + 0.18 * k);
+    g.userData.beam.material.opacity = 0.14 + 0.14 * k;
+    g.visible = true;
+  }
+
   // 잔상: 지금 몸을 통째로 복사해 반투명 한 색으로 남기고 서서히 지움 (이름표·화살표는 뺌)
   spawnGhost(g, color) {
     // clone 은 userData 를 JSON 으로 복사함 → 몸 그룹의 userData(관절·재질 참조)는 잠깐 비우고 복사
@@ -3278,6 +3311,8 @@ export class Renderer {
         if (mine) this.previewMat.color.setHex(piece.fits ? 0xf0a030 : 0xff2020);
       }
     }
+
+    this.updateTutorialMark(state.tutorial);
 
     // 상승하는 위험 (용암 자리)
     const th = prof.begin(); // 성능 표시: 위험 액체

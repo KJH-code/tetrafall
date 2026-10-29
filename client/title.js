@@ -4,8 +4,8 @@
 // 링크(?room=)로 오면 건너뜀 — 부르는 쪽(main.js)이 shared/title.js showTitle 로 판단
 import { CONFIG as C } from '/shared/config.js';
 
-// renderer: Renderer, playWipe: main.js 의 화면 전환 (kind → plan), reduced: 움직임 줄이기, unlock: 첫 입력 때 소리 풀기
-export function startTitle({ renderer, playWipe, reduced = false, unlock = () => {} }) {
+// renderer: Renderer, playWipe: main.js 의 화면 전환 (kind → plan), reduced: 움직임 줄이기, unlock: 첫 입력 때 소리 풀기, onDone: 타이틀이 끝나 방 목록이 보일 때
+export function startTitle({ renderer, playWipe, reduced = false, unlock = () => {}, onDone = () => {} }) {
   const el = document.getElementById('title');
   if (!el) return null;
   const scene = renderer.startTitle(reduced);
@@ -24,6 +24,7 @@ export function startTitle({ renderer, playWipe, reduced = false, unlock = () =>
     window.removeEventListener('keydown', onKey, true);
     window.removeEventListener('keyup', swallow, true);
     el.removeEventListener('pointerdown', onPointer);
+    onDone(); // 방 목록이 보임 (처음이면 튜토리얼 묻기)
   }
 
   // 띠가 화면을 다 덮을 때 타이틀을 치우고 (그 뒤는 방 목록), 카메라가 다 내려오면 로고 블록 정리

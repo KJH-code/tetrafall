@@ -133,6 +133,7 @@ export class Rooms {
     if (!conn.room) {
       if (msg.type === 'create') this.create(conn, msg.name, msg.nick);
       else if (msg.type === 'practice') this.createPractice(conn, msg.nick, msg.char);
+      else if (msg.type === 'tutorial') this.createPractice(conn, msg.nick, msg.char, true);
       else if (msg.type === 'join') this.join(conn, msg.code);
       else if (msg.type === 'rejoin') this.rejoin(conn, msg.code, msg.token);
       return;
@@ -169,7 +170,8 @@ export class Rooms {
   }
 
   // 연습 방: 비공개(목록에 안 뜸), 로그 파일 없음, 들어가면 바로 시작 + 허수아비 1개. 같은 코드로 친구가 들어오면 같이 연습
-  createPractice(conn, rawNick, char) {
+  // tutorial: 튜토리얼 방 (연습 위에 단계, 허수아비·지형은 단계가 놓음, 이것도 로그 파일 없음)
+  createPractice(conn, rawNick, char, tutorial = false) {
     if (this.rooms.size >= C.ROOM_MAX) {
       send(conn.ws, { type: 'joinError', reason: `방이 이미 ${C.ROOM_MAX}개라 더 못 만듭니다` });
       return null;
@@ -178,16 +180,19 @@ export class Rooms {
     const nick = cleanText(rawNick, C.NAME_MAX_LEN);
     const out = { log() {}, close() {} }; // 연습 판은 로그·stats 에서 뺌
     const game = new Game(() => {}, { countdownMs: 0, characters: true, skyStairs: false });
-    const room = { code, name: nick ? `${nick}의 연습` : `연습 ${code}`, public: false, practice: true, game, conns: new Map(), seats: new Map(), out };
+    const room = { code, name: nick ? `${nick}의 ${tutorial ? '튜토리얼' : '연습'}` : `${tutorial ? '튜토리얼' : '연습'} ${code}`, public: false, practice: true, tutorial, game, conns: new Map(), seats: new Map(), out };
     this.rooms.set(code, room);
-    this.serverLog(`방 ${code} 만듦: 연습 (방 ${this.rooms.size}개)`);
+    this.serverLog(`방 ${code} 만듦: ${tutorial ? '튜토리얼' : '연습'} (방 ${this.rooms.size}개)`);
     const player = game.addPlayer(conn.id);
     conn.room = room;
     room.conns.set(conn.id, conn);
     if (nick) game.setNick(conn.id, nick);
     if (char) game.setChar(conn.id, String(char));
-    game.startPractice();
-    game.addDummy(conn.id);
+    if (tutorial) game.startTutorial(conn.id);
+    else {
+      game.startPractice();
+      game.addDummy(conn.id);
+    }
     const token = this.newSeat(room, conn);
     send(conn.ws, { type: 'welcome', id: conn.id, slot: player.slot, name: player.name, room: this.roomInfo(room), token });
     send(conn.ws, { ...game.snapshot(true), room: this.roomInfo(room) });
@@ -314,6 +319,9 @@ export class Rooms {
       case 'ghostDrop': // 유령 투하: 죽은 사람이 고른 칸에 1칸 블록 (생존 모드)
         game.ghostDrop(id, msg.x, msg.y);
         break;
+      case 'tutorialSkip': // 튜토리얼: 이 단계 넘기기
+        if (room.tutorial && game.tutorial) game.tutorial.skip();
+        break;
       case 'practiceSet': // 연습: 토글 (방 전체) · 내 피해 %
         if (room.practice) game.practiceSet(id, String(msg.key), msg.value);
         break;
@@ -357,6 +365,7 @@ export class Rooms {
   roomInfo(room) {
     // link: 친구에게 줄 방 주소 (npm run online 의 터널 주소가 있을 때만, 없으면 필드 없음 → 화면이 지금 주소로)
     const info = { code: room.code, name: room.name, public: room.public, practice: !!room.practice };
+    if (room.tutorial) info.tutorial = true; // 튜토리얼 방만 (보통 방 정보는 예전 그대로)
     if (this.publicUrl) info.link = roomLinkOf(this.publicUrl, room.code);
     return info;
   }

@@ -912,6 +912,35 @@ export const CONFIG = {
   PERF_LOW_FRAC: 0.01,
   PERF_DRAW_MS: 250, // 패널 글자 다시 쓰는 간격
   PERF_SECTIONS: { ragdoll: '래그돌', bodies: '몸 애니', grid: '블록', hazard: '위험', render: '렌더' }, // 재는 구간 (나머지는 '기타 JS')
+  // 직접 해 보는 튜토리얼 (2026-10-29 재혁): 혼자 방(연습 모드 위)에서 목표 하나씩. 해내면 체크·소리 → 다음, '이 단계 넘기기' 늘 있음. 3~5분.
+  // 단계 표: 문구의 {키 id} 는 화면이 지금 키 설정 이름으로 (keys.js), {skillDesc}·{ultDesc} 는 고른 캐릭터의 SKILL_DESC·ULT_DESC.
+  // 자리는 필드 가운데 기준 (+x 앞): start [x, y, 보는 방향]·target·dummies [x, y, 피해 %] 는 가운데 칸의 가운데에서 몇 칸, items [x, y, 종류]·blocks [x0, y0, x1, y1, 높이] (양 끝 포함)·stairs [[x, y0, y1, 높이], ...] 는 가운데 칸에서 몇 번째 칸
+  // skipChars: 이 캐릭터는 이 단계 없음 (바드는 공중 평타가 천천히 낙하·기타 꽂기라 치명타가 없음). kind = 완료 조건 (shared/tutorial.js judge): reach 목표 칸 (minZ 높이 위에 서서) · dash · damage 허수아비 pct% · ringout 허수아비 낙사 · crit 치명타 · skill F · ult R ·
+  // item 주워서 쓰기 · dodge 떨어지는 블록 n개 피함 · climb 용암 위 z 까지 오름. 서버 판정은 server/tutorial.js, 진행·문구 순수 계산은 shared/tutorial.js
+  TUTORIAL_STEPS: [
+    { id: 'move', part: 1, kind: 'reach', keys: ['fwd', 'left', 'back', 'right'], text: '빛나는 칸까지 걸어가기 · {fwd}{left}{back}{right}', start: [-3, -2, 0.6], target: [2, 2] },
+    { id: 'jump', part: 1, kind: 'reach', minZ: 2, keys: ['jump'], text: '2칸 벽 위로 · {jump} 점프 → 공중에서 {jump} 한 번 더 = 2단 점프', start: [-3, 0, 0], target: [3, 0], blocks: [[1, -5, 4, 4, 2]] },
+    { id: 'dash', part: 1, kind: 'dash', keys: ['dash'], text: '대시 · {dash} — 순간 빠르게 (공중에서도 한 번)', start: [-3, 0, 0] },
+    { id: 'push', part: 2, kind: 'damage', pct: 30, keys: ['attack'], text: '허수아비 밀기 · {attack} — 맞을수록 피해 % 가 쌓여 더 멀리 날아감 (30% 까지)', start: [-1.5, 0, 0], dummies: [[0.5, 0, 0]] },
+    { id: 'ringout', part: 2, kind: 'ringout', keys: ['attack'], text: '허수아비를 섬 밖으로 떨어뜨리기 (낙사) · {attack} — 피해 % 가 높으면 멀리 날아감', start: [1.4, 0, 0], dummies: [[3, 0, 90]] },
+    { id: 'crit', part: 2, kind: 'crit', keys: ['jump', 'attack'], text: '치명타 · {jump} 점프, 떨어지는 중에 {attack} — 위에서 치면 더 세게', start: [-1.5, 0, 0], dummies: [[0.5, 0, 0]], skipChars: ['bard'] },
+    { id: 'skill', part: 3, kind: 'skill', keys: ['skill'], text: '스킬 {skill} · {skillDesc}', start: [-2, 0, 0], dummies: [[0.5, 0, 0]], noCooldown: true, marks: 1 },
+    { id: 'ult', part: 3, kind: 'ult', keys: ['ult'], text: '필살기 {ult} (게이지가 차면) · {ultDesc}', start: [-2, 0, 0], dummies: [[0.5, 0, 0]], blocks: [[-1, 1, -1, 1, 2]], noCooldown: true, fullUlt: true, marks: 3 },
+    { id: 'item', part: 3, kind: 'item', keys: ['item'], text: '아이템 주워서 쓰기 · {item} (손 아이템은 하나만)', start: [-3, 0, 0], items: [[-1, 0, 'knockback']], dummies: [[2, 0, 0]] },
+    { id: 'dodge', part: 4, kind: 'dodge', n: 3, keys: [], text: '블록 피하기 · 바닥 그림자 = 블록이 떨어질 자리 (3개)', start: [0, 0, 0] },
+    { id: 'climb', part: 4, kind: 'climb', z: 5, keys: ['jump'], text: '용암 위로 · 쌓인 블록을 {jump} 점프로 타고 맨 위까지', start: [-4, 0, 0], stairs: [[-3, -1, 1, 1], [-2, -1, 1, 2], [-1, -1, 1, 3], [0, -1, 1, 4], [1, -1, 1, 5], [2, -1, 1, 5]] },
+  ],
+  TUTORIAL_NEXT_MS: 1400, // 해낸 뒤 체크·소리를 보여 주고 다음 단계까지
+  TUTORIAL_REACH_R: 0.9, // reach: 목표 칸 가운데에서 이 거리 안
+  TUTORIAL_DODGE_EVERY_MS: 1600, // dodge: 앞 블록이 내려앉고 이만큼 뒤 다음 블록 (내 자리를 덮게)
+  TUTORIAL_DODGE_DROP_Z: 6, // dodge: 블록이 이 높이(바닥 위 칸)에서 떨어지기 시작
+  TUTORIAL_DODGE_STEP_MS: 330, // dodge: 1칸 내려오는 간격 (그림자를 보고 피할 시간 ≈ 높이 × 이것)
+  TUTORIAL_LAVA_START_Z: -0.6, // climb: 용암 처음 높이 (바닥 아래)
+  TUTORIAL_LAVA_MS_PER_CELL: 2400, // climb: 용암이 1칸 오르는 시간 (보통 판보다 느리게)
+  TUTORIAL_LAVA_TOP_GAP: 1.5, // climb: 용암은 꼭대기(z)보다 이만큼 아래에서 멈춤 (올라가면 안전)
+  TUTORIAL_BOTS: 3, // 끝난 뒤 '봇 3명과 한 판'
+  TUTORIAL_MARK_COLOR: 0x5ef09a, // 목표 칸 빛 (고리 + 기둥)
+  TUTORIAL_MARK_H: 2.4, // 목표 칸 빛 기둥 높이 (칸)
   // 그리기 수 줄이기 (2026-10-29, 8명 판 그리기 ~1800 → 캐릭터 몸 조각·파편·떨어지는 블록 칸이 대부분)
   BATCH_MIN_PIECES: 2, // 캐릭터 몸 조각: 같은 재질 묶음(색·발광만 다른 재질은 한 묶음)이 이만큼 이상이면 SkinnedMesh 하나로 합침 (client/batch.js)
   BATCH_HIDE_LAYER: 30, // 합친 조각 Mesh 가 옮겨 가는 층 (아무 카메라도 안 켜서 안 그려짐, 뼈로만 씀)

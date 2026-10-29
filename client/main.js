@@ -19,6 +19,7 @@ import { leaveNeedsConfirm } from '/shared/leave.js';
 import { PerfPanel } from '/perf.js';
 import { showTitle } from '/shared/title.js';
 import { startTitle } from '/title.js';
+import { TutorialUI, tutorialState } from '/tutorial-ui.js';
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $('status');
@@ -197,6 +198,7 @@ input.onUi = (id, down) => {
   if (id === 'help') helpEl.classList.toggle('hidden', !down);
   if (id === 'practice' && down) setPracticeOpen(!practiceOpen); // 연습 방에서만 열림
   if (id === 'perf' && down) perfPanel.toggle(); // 성능 표시 (기본 F3)
+  if (id === 'tutSkip' && down && state && state.tutorial && !state.tutorial.done) tut.skipStep(); // 튜토리얼 이 단계 넘기기 (기본 N)
   if (id === 'view' && down) {
     settings.third = !settings.third;
     $('set-third').checked = settings.third;
@@ -239,6 +241,8 @@ function showCounter(taken) {
 
 let myStreak = 0; // 내가 이어 넣은 타 수 (streak 이벤트, 상대가 바뀌어도 이어짐)
 function handleEvent(e) {
+  tut.onEvent(e, myId); // 튜토리얼 해냄·끝 소리
+  if (e.type === 'tutorialStep' && e.who === myId) input.setYawPitch(e.yaw, 0); // 단계 처음 자리에서 볼 쪽으로
   // 닌자 표창에 맞음: 판정은 즉시지만 맞는 효과는 표창이 날아가 닿을 때 (STAR_FLY_MS 뒤)
   if (e.type === 'hit' && e.star && !e.late) {
     setTimeout(() => handleEvent({ ...e, late: true }), C.STAR_FLY_MS);
@@ -977,6 +981,12 @@ function connect() {
         aimFromState = true; // 재접속: 이름·캐릭터·색은 서버에 남아 있는 그대로, 시선은 첫 스냅샷의 내 방향으로
         return;
       }
+      if (quickPending && !room.practice) {
+        // 튜토리얼 끝 '봇 3명과 한 판': 내가 만든 새 방 → 봇 넣고 바로 시작
+        quickPending = false;
+        for (let i = 0; i < C.TUTORIAL_BOTS; i++) send({ type: 'addBot' });
+        send({ type: 'start' });
+      }
       if (nameInput.value) submitName();
       const savedChar = loadPref('tf-char');
       if (savedChar) send({ type: 'setChar', char: savedChar });
@@ -1409,38 +1419,41 @@ $('settings-reset').addEventListener('click', () => {
   saveSettings();
 });
 
-// ---------- 처음 하는 사람 안내: 이 브라우저가 처음이면 카드 3장 (설정에서 다시 보기) ----------
-const tutorialEl = $('tutorial');
-const cards = [...tutorialEl.querySelectorAll('.card')];
-let cardIdx = 0;
-function showCard(i) {
-  cardIdx = i;
-  cards.forEach((c, k) => c.classList.toggle('hidden', k !== i));
-  $('tut-next').textContent = i === cards.length - 1 ? '시작하기' : '다음';
-  $('tut-page').textContent = `${i + 1} / ${cards.length}`;
-}
-function openTutorial(on) {
-  tutorialEl.classList.toggle('hidden', !on);
-  if (on) showCard(0);
-  else {
+// ---------- 튜토리얼 (client/tutorial-ui.js): 처음 켜면 타이틀 뒤에 묻기, 메뉴·설정 '튜토리얼' 은 바로 캐릭터 고르기 ----------
+let quickPending = false; // 튜토리얼 끝 '봇 3명과 한 판': 새 방이 열리면 봇을 넣고 바로 시작
+const tut = new TutorialUI({
+  send: (m) => send(m),
+  keyName: (id) => keyText(id),
+  keyGroup: (ids) => groupLabel(input.binds, ids),
+  bindsKey: () => JSON.stringify(input.binds),
+  sound,
+  nick: () => {
+    syncNick();
+    return roomsNick.value;
+  },
+  color: () => C.PLAYER_PALETTE[0],
+  loadChar: () => loadPref('tf-char'),
+  saveChar: (c) => {
     try {
-      localStorage.setItem('tf-tutorial', 'done');
+      localStorage.setItem('tf-char', c);
     } catch {
-      // 저장이 막혀 있으면 다음에 또 보임
+      // 저장이 막혀도 이번 튜토리얼은 그 캐릭터
     }
-  }
-}
-$('tut-next').addEventListener('click', () => (cardIdx < cards.length - 1 ? showCard(cardIdx + 1) : openTutorial(false)));
-$('tut-skip').addEventListener('click', () => openTutorial(false));
+  },
+  leaveRoom: () => leaveRoom(),
+  quickMatch: () => {
+    quickPending = true;
+    leaveRoom();
+    send({ type: 'create', name: '', nick: roomsNick.value });
+  },
+});
+const inTutorial = () => !!((room && room.tutorial) || (state && state.tutorial));
+$('tutorial-btn').addEventListener('click', () => tut.pick());
 $('settings-tutorial').addEventListener('click', () => {
   openSettings(false);
-  openTutorial(true);
+  if (myId) leaveRoom(); // 방 안이면 나와서 (튜토리얼은 따로 혼자 방)
+  tut.pick();
 });
-try {
-  if (localStorage.getItem('tf-tutorial') !== 'done') openTutorial(true);
-} catch {
-  openTutorial(true);
-}
 nameInput.addEventListener('change', submitName);
 nameInput.addEventListener('keydown', (e) => {
   e.stopPropagation(); // 이름 칠 때는 게임 키(Enter 시작, 숫자 칸)가 안 먹게
@@ -1490,6 +1503,7 @@ document.body.classList.toggle('no-items', !C.ITEMS_ENABLED);
 function onState() {
   if (state.itemsEnabled !== undefined) document.body.classList.toggle('no-items', !state.itemsEnabled);
   const p = me();
+  tut.update(state, p); // 튜토리얼 진행 띠·끝 화면
   if (!p) return;
   if (lastState && lastState.phase !== state.phase) renderer.clearQuakes(); // 판 시작·끝: 서버도 솟은 땅을 버림
   if (lastState && lastState.phase === 'countdown' && state.phase === 'playing') {
@@ -1917,6 +1931,7 @@ function drawHud() {
   centerText.textContent = center || '';
   startBtn.classList.toggle('hidden', !showStart);
   startBtn.textContent = state.phase === 'over' ? '재시작 (Enter)' : '시작 (Enter)';
+  $('first-hint').classList.toggle('hidden', !(state.phase === 'lobby' && tutorialState() !== 'done' && !inPractice())); // 튜토리얼 안 한 사람: 대기실에 핵심 키 한 줄
   keysEl.classList.toggle('hidden', !showKeys);
   // 봇 버튼: 호스트만, 판 사이에만
   const between = state.phase === 'lobby' || state.phase === 'over';
@@ -2539,7 +2554,7 @@ let practiceOpen = false;
 let prDummyKey = '';
 const practiceDone = new Map(); // 허수아비 id → 끝난 콤보 { hits, damage, dist, height, until }
 const inPractice = () => !!((room && room.practice) || (state && state.practice));
-const prPlaying = () => inPractice() && !!state && (state.phase === 'playing' || state.phase === 'countdown');
+const prPlaying = () => inPractice() && !inTutorial() && !!state && (state.phase === 'playing' || state.phase === 'countdown'); // 튜토리얼 방은 연습 창·콤보 기록 없음
 $('practice-btn').addEventListener('click', () => {
   syncNick();
   roomsMsg.textContent = '';
@@ -2721,4 +2736,7 @@ const debug = {
 };
 window.__tf = debug;
 // 타이틀 화면 (client/title.js): 처음 켤 때만. 링크(?room=)·재접속 자동 복귀면 건너뜀
-if (showTitle(location.search)) debug.title = startTitle({ renderer, playWipe, reduced: reducedMotion(), unlock: () => sound.unlock() });
+// 처음 켠 사람(튜토리얼 안 물어봄)은 타이틀이 끝나면 '튜토리얼 할래?'
+if (showTitle(location.search)) debug.title = startTitle({ renderer, playWipe, reduced: reducedMotion(), unlock: () => sound.unlock(), onDone: () => tutorialState() === null && !myId && tut.ask() });
+else if (tutorialState() === null && !new URLSearchParams(location.search).get('room')) tut.ask();
+debug.tut = tut;

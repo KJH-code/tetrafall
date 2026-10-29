@@ -43,7 +43,7 @@
     button:hover { filter: brightness(1.1); transform: translateY(-1px); }
     button:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--accent-d); }
     button:disabled { filter: grayscale(1) brightness(.55); cursor: default; box-shadow: none; transform: none; }
-    .ghost, #settings-close, #tut-skip, #room-leave, #remove-bot, #keys-reset, #settings-reset, #pr-close {
+    .ghost, #settings-close, #room-leave, #remove-bot, #keys-reset, #settings-reset, #pr-close {
       background: linear-gradient(180deg, #37426e, #202a4c); color: var(--text); box-shadow: 0 4px 0 #0c1026; }
     input[type=text], input:not([type]), input[type=number] { background: #080d1e; color: var(--text); border: 2px solid var(--line);
       font-family: var(--disp); font-size: 15px; padding: 5px 8px; outline: none; }
@@ -268,8 +268,36 @@
     #settings .kb-btn.wait { background: linear-gradient(180deg, #ffe98a, #ffc21e); color: #171b2c; }
     #settings .kb-btn.dup { outline: 2px solid var(--hot); color: #ffb0a4; }
     #key-dup { color: #ff8a78; font-size: 13px; min-height: 1em; }
-    #tutorial .card p { margin: 6px 0; }
-    #tutorial .page { color: var(--dim); font-size: 13px; margin-right: auto; align-self: center; }
+    #tutorial p { margin: 6px 0; }
+    #tutorial .dim, #tutorial .steps { color: var(--dim); font-size: 13px; }
+    #tutorial .box { max-width: 620px; }
+    #tut-chars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0 6px; }
+    #tut-chars .tc { position: relative; height: 104px; background: linear-gradient(180deg, #26305a, #10162e); cursor: pointer; box-shadow: 0 3px 0 #0c1026;
+      clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%); transition: transform .08s, filter .12s; }
+    #tut-chars .tc:hover { filter: brightness(1.15); transform: translateY(-2px); }
+    #tut-chars .tc .face { position: absolute; inset: 0 0 20px; background: center/contain no-repeat; }
+    #tut-chars .tc .nm { position: absolute; left: 0; right: 0; bottom: 2px; text-align: center; font-family: var(--disp); font-size: 14px; }
+    #tut-chars .tc.sel { background: linear-gradient(180deg, #ffe98a, #ffb81e); }
+    #tut-chars .tc.sel .nm { color: #171b2c; }
+    #tut-char-intro { min-height: 3.2em; font-size: 14px; }
+    #tut-char-intro b { color: var(--accent); font-family: var(--disp); font-weight: normal; }
+    #tut-sum { font-family: var(--disp); font-size: 18px; color: var(--good); }
+    /* 튜토리얼 진행 띠 (판 중 위): 노랑 진행 칸 + 남색 사선 띠 + 해내면 초록 '해냄!' */
+    #tut-band { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); z-index: 3; display: flex; align-items: stretch; max-width: calc(100vw - 40px);
+      font-family: var(--disp); font-size: 19px; line-height: 1.25; filter: drop-shadow(0 5px 0 rgba(0,0,0,.45)); animation: slide-up .25s ease-out; pointer-events: auto; }
+    #tut-band .prog { background: linear-gradient(180deg, #ffe98a, #ffc21e); color: #171b2c; padding: 9px 18px 9px 16px; white-space: nowrap;
+      clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%); margin-right: -12px; z-index: 1; }
+    #tut-band .txt { background: repeating-linear-gradient(-62deg, #1b2448 0 22px, #151d3c 22px 44px); padding: 9px 26px; color: var(--text); max-width: 640px;
+      clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%); }
+    #tut-band .txt .k { color: var(--accent); padding: 0 3px; }
+    #tut-band .ok { display: none; white-space: nowrap; background: linear-gradient(180deg, #5ef09a, #1fa85a); color: #062611; padding: 9px 20px; margin-left: -12px;
+      clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%); }
+    #tut-band.done .ok { display: block; animation: pop-in .2s ease-out; }
+    #tut-band.done .txt { filter: brightness(.75); }
+    #tut-skip-step { align-self: center; margin-left: 8px; font-size: 13px; padding: 4px 12px; white-space: nowrap; }
+    #first-hint { font-size: 14px; color: var(--text); background: rgba(10,15,34,.85); padding: 5px 18px; margin: 4px auto 6px; display: inline-block; max-width: 760px;
+      clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); border-left: 4px solid var(--accent); }
+    #first-hint b { color: var(--accent); font-family: var(--disp); font-weight: normal; margin-right: 6px; }
     #rooms h3 { font-family: var(--disp); margin: 14px 0 6px; font-size: 16px; color: var(--dim); letter-spacing: .5px; }
     #rooms input { font-size: 15px; }
     #rooms-msg { color: #ffb050; white-space: pre-line; min-height: 1.6em; }
@@ -448,6 +476,9 @@
       <div id="danger" class="hidden"></div>
       <div id="toasts"></div>
     </div>
+    <!-- 튜토리얼 진행 띠: 진행 칸 '2 / 11' + 할 일 (키는 지금 키 설정 이름) + 해내면 '해냄!' + 넘기기 -->
+    <div id="tut-band" class="hidden"><span class="prog"></span><span class="txt"></span><span class="ok">해냄!</span>
+      <button id="tut-skip-step" class="ghost">이 단계 넘기기 (<span data-key="tutSkip">N</span>)</button></div>
     <div id="status">연결 중...</div>
     <div id="bigmsg" class="hidden"></div>
     <div id="combo" class="hidden"></div>
@@ -481,20 +512,22 @@
       <div style="font-size:13px;color:#bbb">칸을 누르고 바꿀 키나 마우스 버튼(옆 버튼도)을 누름 · Esc 취소</div>
       <div id="keybinds"></div>
       <div id="key-dup"></div>
-      <div class="btns"><button id="settings-leave" class="ghost leave hidden">방 나가기</button><button id="settings-tutorial">처음 안내 다시 보기</button><button id="settings-reset">기본값</button><button id="settings-close">닫기</button></div>
+      <div class="btns"><button id="settings-leave" class="ghost leave hidden">방 나가기</button><button id="settings-tutorial">튜토리얼</button><button id="settings-reset">기본값</button><button id="settings-close">닫기</button></div>
       <div id="leave-note" class="hidden">판 중엔 나가면 이 판은 패배 — 한 번 더 누르면 나감</div>
     </div></div>
+    <!-- 튜토리얼 (main.js): 처음 켜면 묻기 → 캐릭터 고르기 → (튜토리얼 방) → 끝 화면. 판 중 진행 띠는 #tut-band -->
     <div id="tutorial" class="hidden"><div class="box">
-      <div class="card"><h3>1. 밀어서 떨어뜨리기</h3>
-        <p><b data-key="attack">좌클릭</b>으로 앞의 상대를 밀고, <b data-key="dash">Shift</b> 로 대시. 필드 밖으로 떨어지면 탈락 (<b>낙사</b>).</p>
-        <p>맞을수록 머리 위 <b>피해 %</b> 가 쌓여 더 멀리 날아간다. 떨어지면서 위에서 때리면 <b>치명타</b>.</p></div>
-      <div class="card"><h3>2. 블록을 피하고, 떨어뜨리기</h3>
-        <p>하늘에서 테트리스 블록이 떨어진다. 바닥의 <b>그림자</b>가 떨어질 자리 — 밑에 있으면 깔린다 (<b>압사</b>).</p>
-        <p>머리 위에 블록이 오면 화면에 <b>빨간 경고</b>.<span class="items-only"> 아이템은 <b>하나만</b> 들 수 있고 <b data-key="item">우클릭</b>으로 쓴다.</span></p></div>
-      <div class="card"><h3>3. 용암이 오면 위로</h3>
-        <p>블록이 쌓이면 바닥에서 <b>용암</b>이 올라온다. 쌓인 블록을 타고 위로 — 공중에서 <span data-key="jump">Space</span> 를 한 번 더 누르면 <b>2단 점프</b> (2칸 벽).</p>
-        <p>마지막까지 살아남으면 승리. <b>G</b> 를 누른 채 마우스로 이모트, 대기 화면 <b>설정</b>에서 감도·소리.</p></div>
-      <div class="btns"><span id="tut-page" class="page"></span><button id="tut-skip">넘기기</button><button id="tut-next">다음</button></div>
+      <div class="pane ask"><h3>처음이에요?</h3>
+        <p>혼자 섬에서 <b>직접 해 보는 튜토리얼</b> (3~5분)</p>
+        <p class="steps">이동·점프·대시 → 밀어서 떨어뜨리기·치명타 → 스킬·필살기·아이템 → 블록 피하고 용암 위로</p>
+        <div class="btns"><button id="tut-no" class="ghost">건너뛰기</button><button id="tut-yes">튜토리얼 하기</button></div></div>
+      <div class="pane pick hidden"><h3>캐릭터 고르기</h3>
+        <p class="dim">스킬 단계는 고른 캐릭터로 해 봄 (대기실에서 언제든 바꿈)</p>
+        <div id="tut-chars"></div><div id="tut-char-intro"></div>
+        <div class="btns"><button id="tut-back" class="ghost">뒤로</button><button id="tut-go">시작</button></div></div>
+      <div class="pane done hidden"><h3>튜토리얼 끝!</h3>
+        <p id="tut-sum"></p><p class="dim">이제 진짜 판: 블록이 떨어지고, 밀고, 살아남기</p>
+        <div class="btns"><button id="tut-menu" class="ghost">메뉴로</button><button id="tut-match">봇 3명과 한 판</button></div></div>
     </div></div>
     <div id="rooms" class="hidden"><div id="menu-bg"></div><div class="box">
       <h2>TETRAFALL</h2>
@@ -507,7 +540,7 @@
       <h3>코드로 들어가기</h3>
       <div><input id="room-code" placeholder="ABCD" /> <button id="room-join">들어가기</button></div>
       <h3>연습 (혼자, 허수아비 · 친구도 코드로 들어옴)</h3>
-      <div><button id="practice-btn">연습</button></div>
+      <div><button id="practice-btn">연습</button> <button id="tutorial-btn" class="ghost">튜토리얼</button></div>
       <h3>공개 방 <span id="rooms-count" style="font-weight:normal;font-size:13px"></span></h3>
       <div id="room-list"></div>
     </div></div>
@@ -535,7 +568,9 @@
     <!-- 판 끝: 결과 표 (이미 있는 숫자 — 승·점수·마지막 % ·사망 원인) -->
     <div id="results" class="hidden"></div>
     <div id="host-players" class="hidden"></div>
-    <div id="center"><span id="center-text">연결 중...</span><br /><button id="start-btn" class="hidden">시작</button>
+    <div id="center"><span id="center-text">연결 중...</span><br />
+      <div id="first-hint" class="hidden"><b>처음이면</b> <span data-keys="fwd,left,back,right">WASD</span> 이동 · <span data-key="jump">Space</span> 점프 (공중에서 한 번 더) · <span data-key="dash">Shift</span> 대시 · <span data-key="attack">좌클릭</span> 밀기 · <span data-key="skill">F</span> 스킬 · <span data-key="ult">R</span> 필살기 — 밀어서 떨어뜨리기 · 튜토리얼은 설정에서</div>
+      <button id="start-btn" class="hidden">시작</button>
       <div id="bot-btns" class="hidden"><button id="add-bot">봇 추가</button> <button id="remove-bot">봇 빼기</button>
         <label style="font-size:15px;margin-left:8px">모드 <select id="mode-select"><option value="survival">생존</option><option value="master">블록 마스터</option><option value="kills">킬 점수전</option></select></label>
         <label style="font-size:15px;margin-left:8px">봇 <select id="bot-level"><option value="easy">쉬움</option><option value="normal">보통</option><option value="hard">어려움</option></select></label>
