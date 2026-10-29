@@ -21,6 +21,7 @@ import('/ragdoll.js')
 import { World } from '/world.js';
 import { Hazard } from '/hazard.js';
 import { MenuScene } from '/menu-scene.js';
+import { TitleScene } from '/title-scene.js';
 import { labelSizes } from '/shared/hud-layout.js';
 
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
@@ -616,6 +617,20 @@ export class Renderer {
     this.effects.burst(pos, null, col, 14, 2.5, 0.14, 0.6);
     this.effects.burst(pos, null, 0xffffff, 10, 1.6, 0.1, 0.5);
     this.effects.ring(pos, 0xffffff, 1.4, 0.3, true);
+  }
+
+  // 타이틀 화면 (title.js 가 부름): 메뉴 장면 하늘에 블록 로고. instant = 떨어짐 없이 완성 로고
+  startTitle(instant = false) {
+    if (!this.menu || this.menu.mapId !== C.TITLE_MAP) this.menu = new MenuScene(Math.random, this.lowGfx, C.TITLE_MAP); // 타이틀 섬 = 수정 동굴 고정, 내려온 메뉴도 같은 섬
+    this.endTitle();
+    this.title = new TitleScene(this, this.menu.camYaw, instant);
+    return this.title;
+  }
+
+  endTitle() {
+    if (!this.title) return;
+    this.title.dispose();
+    this.title = null;
   }
 
   // 그래픽 낮춤 (설정): 화면 해상도 1배, 맵 테마 장식·위험 입자 줄임
@@ -2953,15 +2968,25 @@ export class Renderer {
     if (!state) {
       // 메뉴(방 밖): 화면만의 가짜 대기 장면 (menu-scene.js). 방에 들어가면 버림
       this.menu ||= new MenuScene(Math.random, this.lowGfx);
-      const f = this.menu.step(dt || 0);
+      const f = this.menu.step(dt || 0, !this.title); // 타이틀 동안은 카메라가 안 돎 (내려온 자리 = 메뉴 카메라)
       // 섬이 가운데 메뉴 판에 가리지 않게 화면 왼쪽으로 비킴 (카메라 화면만 옆으로 밀기)
+      let shift = C.MENU_VIEW_SHIFT;
+      if (this.title) {
+        // 타이틀 (title-scene.js): 하늘의 로고를 보다가 누르면 메뉴 카메라 자리로 내려옴
+        const look = new THREE.Vector3(this.W / 2, this.D / 2, this.overviewZ ?? 2);
+        const e = orbitEye(look, f.cam.yaw, f.cam.pitch, f.cam.overviewDist);
+        const ts = this.title.step(dt || 0, { eye: new THREE.Vector3(e.x, e.y, Math.max(0.5, e.z)), look });
+        f.cam.pose = ts.pose;
+        shift = ts.shift;
+      }
       const w = window.innerWidth;
       const h = window.innerHeight;
-      this.camera.setViewOffset(w, h, w * C.MENU_VIEW_SHIFT, 0, w, h);
+      this.camera.setViewOffset(w, h, w * shift, 0, w, h);
       return this.render(f.state, null, dt, 'fps', f.cam);
     }
     if (this.menu && !state.menu) {
       this.menu = null; // 진짜 판·대기실이 옴 → 가짜 몸은 아래 players 정리에서 지워짐
+      this.endTitle();
       this.camera.clearViewOffset();
     }
     this.curState = state;
@@ -3341,6 +3366,10 @@ export class Renderer {
       look.set(this.W / 2, this.D / 2, this.overviewZ);
       const e = orbitEye(look, cam.yaw, cam.pitch, (cam.overviewDist ?? C.SPECTATE_OVERVIEW_DIST) * overviewScale(Math.max(this.W, this.D), C.GRID_W)); // 큰 판은 멀리
       eye.set(e.x, e.y, Math.max(0.5, e.z));
+    }
+    if (cam.pose) {
+      eye.copy(cam.pose.eye); // 타이틀 카메라 (메뉴 장면)
+      look.copy(cam.pose.look);
     }
     if (!(me && me.alive && this.third)) this.tpDist = null; // 다음 3인칭은 처음 거리부터
     this.victoryCamera(state, cam, dt, eye, look);
