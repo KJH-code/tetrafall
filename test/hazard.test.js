@@ -61,3 +61,30 @@ test('위험 모습: 테마 7개 모두 값이 있고 종류 5가지를 다 씀'
   assert.ok(C.WORLD_THEMES[C.HAZARD_FALLBACK]);
   assert.ok(C.HAZARD_SEG[1] < C.HAZARD_SEG[0], '그래픽 낮춤이면 표면 격자 적게');
 });
+
+test('위험 화면: 먼 섬·산이 표면에 걸친 곳 — 걸치면 그 높이 반지름 원, 큰 것부터 최대 수', async () => {
+  const { farRings } = await import('../client/hazard-field.js');
+  const cone = { x: 0, y: 0, zBot: -10, zTop: 10, rBot: 8, rTop: 0 };
+  const islet = { x: 10, y: 0, zTop: 2, zBot: -4, rTop: 3, rBot: 0 }; // 둥글게 내려가기 전 (HAZARD_CURVE_FROM 안)
+  assert.deepEqual(farRings([cone], 0), [{ x: 0, y: 0, r: 4 }], '원뿔 가운데 높이 = 반지름 절반');
+  assert.equal(farRings([cone], -11).length, 0, '표면이 밑보다 아래면 없음');
+  assert.equal(farRings([cone], 10 + C.HAZARD_RING_ABOVE + 0.1).length, 0, '꼭대기까지 다 잠기고 나면 없음');
+  assert.equal(farRings([islet], 1)[0].r, 2.5);
+  const many = Array.from({ length: 40 }, (_, i) => ({ x: i * 0.4, y: 0, zBot: -1, zTop: 1, rBot: i + 1, rTop: i + 1 }));
+  const r = farRings(many, 0);
+  assert.equal(r.length, C.HAZARD_FAR_RINGS);
+  assert.equal(r[0].r, 40, '큰 것부터');
+  assert.ok(C.HAZARD_FAR_SIZE < 150, '하늘 구 안쪽');
+});
+
+test('위험 화면: 먼 바다는 지평선 쪽으로 둥글게 내려감 — 가까이는 평평, 먼 산은 표면이 더 올라와야 잠김', async () => {
+  const { seaDrop, farRings } = await import('../client/hazard-field.js');
+  assert.equal(seaDrop(0), 0);
+  assert.equal(seaDrop(C.HAZARD_CURVE_FROM), 0, '필드 위 판 둘레까지 평평');
+  assert.ok(seaDrop(125) > 5 && seaDrop(125) < 20);
+  assert.ok(seaDrop(100) < seaDrop(130));
+  const far = { x: 125, y: 0, zBot: -16, zTop: 0, rBot: 8, rTop: 0 };
+  assert.equal(farRings([far], -1, 16, 0, 0).length, 1, '먼 산 밑이 걸침 (내려간 표면 높이)');
+  const zl = -1 - seaDrop(125);
+  assert.ok(Math.abs(farRings([far], -1, 16, 0, 0)[0].r - 8 * (1 - (zl + 16) / 16)) < 1e-9);
+});

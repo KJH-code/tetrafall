@@ -989,6 +989,14 @@ export const CONFIG = {
   HAZARD_BULGE_DIST: 1.2, // 표면이 발 밑 이 칸 안이면 들썩
   HAZARD_BULGE_AMP: 0.18, // 들썩 높이 (칸)
   HAZARD_CONTACT_RATE: 14, // 닿는 곳 입자 (초당, 그래픽 낮춤이면 없음)
+  HAZARD_FAR_SIZE: 145, // 지평선까지 바다: 필드 밖 큰 판 반 크기 (칸, 하늘 구 150 안쪽). 끝 쪽은 지평선 색으로 녹이며 투명
+  HAZARD_CURVE: 0.0009, // 먼 바다가 지평선 쪽으로 둥글게 내려가는 정도 (거리² 배율) → 먼 산이 차례로 잠김 (125칸에서 약 10칸 아래)
+  HAZARD_CURVE_FROM: 20, // 이 거리(필드 가운데에서) 안쪽은 평평 (필드 위 판과 이음매 없이)
+  HAZARD_FAR_SEG: 64, // 먼 판 격자 수 (둥글게 내려가는 모양만)
+  HAZARD_FOG_MIX: 0.75, // 먼 액체가 안개색에 섞이는 정도 (안개 끝에서)
+  HAZARD_SHIMMER_NORMAL: 0.9, // 먼 표면 잔물결 법선 세기 (햇빛 반짝임 길, 그래픽 낮춤이면 끔)
+  HAZARD_FAR_RINGS: 16, // 먼 섬·산이 잠기는 곳 테 최대 수 (셰이더 uniform)
+  HAZARD_RING_ABOVE: 0.4, // 꼭대기가 표면 아래로 이만큼 잠길 때까지 테 (잠긴 직후 거품)
   HAZARD_SINK_MS: 2400, // 빠진 몸이 잠기는 시간
   HAZARD_SINK_FLOAT: 0.3, // 그중 앞부분 비율은 표면에 걸려 허우적
   HAZARD_SINK_DEPTH: 1.5, // 잠기는 깊이 (칸)
