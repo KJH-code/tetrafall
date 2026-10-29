@@ -906,6 +906,12 @@ export const CONFIG = {
   LABEL_FULL_N: 4, // 머리 위 이름·% 를 원래 크기로 그리는 사람 수 (카메라에서 가까운 순). 나머지는 작고 흐리게
   LABEL_FAR_SCALE: 0.68, // 그 나머지 크기 배율
   LABEL_FAR_OPACITY: 0.72, // 그 나머지 불투명도
+  // 성능 표시 (F3, 2026-10-29 재혁: 8명 판에서 어디가 무거운지 숫자로). shared/perf.js 가 계산, client/perf.js 가 재고 보여 줌
+  PERF_FPS_MS: 1000, // FPS·평균 프레임 시간: 최근 이만큼
+  PERF_LOW_MS: 5000, // 최악(1% low): 최근 이만큼 프레임 중 가장 느린 PERF_LOW_FRAC 의 평균 (1초는 표본이 적어서 길게)
+  PERF_LOW_FRAC: 0.01,
+  PERF_DRAW_MS: 250, // 패널 글자 다시 쓰는 간격
+  PERF_SECTIONS: { ragdoll: '래그돌', bodies: '몸 애니', grid: '블록', hazard: '위험', render: '렌더' }, // 재는 구간 (나머지는 '기타 JS')
   LEAVE_CONFIRM_MS: 3000, // 판 중 '방 나가기' 를 한 번 누르면 이 동안 '정말 나가기' 로 바뀜 (한 번 더 누르면 나감, 연습·대기실은 바로)
   RESULTS_HERO_MS: 5000, // 판이 끝나면 이 동안은 결과 연출만 (가운데 승자 초상 크게 + 결과 표, 대기실 판은 숨김). 그 뒤 결과는 사라지고 대기실 판이 들어옴 (승수는 위 줄). 호스트 Enter 재시작은 그동안에도 됨
   // 화면 전환 (2026-10-28 재혁: 스매시식 사선 슬래시). shared/wipe.js 가 계산, client/main.js 가 띄움, 모양(색·기울기·띠 폭)은 index.html #wipe.

@@ -24,6 +24,7 @@ import { Hazard } from '/hazard.js';
 import { MenuScene } from '/menu-scene.js';
 import { TitleScene } from '/title-scene.js';
 import { labelSizes } from '/shared/hud-layout.js';
+import { prof } from '/perf.js';
 
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
@@ -669,9 +670,11 @@ export class Renderer {
   }
 
   draw(camera) {
+    const t = prof.begin(); // 성능 표시 (F3): 렌더 구간
     if (this.outlineOn) this.outline.render(this.scene, camera);
     else this.renderer.render(this.scene, camera);
     this.hazard.drawOverlay(this.renderer); // 위험이 발 밑에 가까우면 화면 가장자리 색
+    prof.end('render', t);
   }
 
   // 그림자 켜기·끄기 (대기 화면 설정). 꺼지면 그림자 패스 자체를 안 돌아 느린 PC 에서 가벼움
@@ -3009,12 +3012,14 @@ export class Renderer {
     }
     this.curState = state;
     if (state.field) this.setField(state.field.w, state.field.d, false, state.field.h || C.GRID_H);
+    const tg = prof.begin(); // 성능 표시: 블록·지형 갱신
     this.world.update(state, dt);
     this.stepView(view, dt);
     if (state.grid && state.grid.length === this.W * this.D * this.H && state.gridVersion !== this.gridVersion) {
       this.updateGrid(state.grid);
       this.gridVersion = state.gridVersion;
     }
+    prof.end('grid', tg);
 
     // 플레이어
     this.victoryId = cam.victory || null;
@@ -3033,6 +3038,7 @@ export class Renderer {
     }
     const clockT = this.snapClock.advance(performance.now(), dt * 1000);
     const ragKeep = new Set(); // 이번 프레임에 래그돌로 그리는 사람
+    const tb = prof.begin(); // 성능 표시: 몸 애니 (보간·figureAnim·이름표 — 래그돌 물리는 따로)
     for (const p of state.players) {
       seen.add(p.id);
       const g = this.getPlayerMesh(p);
@@ -3194,11 +3200,15 @@ export class Renderer {
       if (rag) this.ragdollCapture(g, p, s, dt);
     }
     this.thinLabels();
+    prof.end('bodies', tb);
+    this.ragCount = this.ragdoll ? ragKeep.size : 0; // 성능 표시: 래그돌 켠 수
     if (this.ragdoll) {
       // 몸 물리: 모은 목표 자세로 한 번에 돌리고 관절 회전으로 되돌려 넣음
+      const tr = prof.begin();
       this.ragdoll.prune(ragKeep);
       this.ragdoll.step(dt, (x, y, z) => this.solidAt(state, x, y, z), { w: this.W, d: this.D });
       for (const id of ragKeep) this.ragdoll.apply(id);
+      prof.end('ragdoll', tr);
     }
     for (const [id, g] of this.playerMeshes) {
       if (!seen.has(id)) {
@@ -3263,7 +3273,9 @@ export class Renderer {
     }
 
     // 상승하는 위험 (용암 자리)
+    const th = prof.begin(); // 성능 표시: 위험 액체
     this.hazard.update(state, dt, myId, state.grid);
+    prof.end('hazard', th);
 
     // 아이템
     while (this.itemMeshes.length < state.items.length) {

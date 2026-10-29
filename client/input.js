@@ -110,7 +110,7 @@ export class Input {
 
   press(id) {
     // 판과 상관없이 되는 것: 도움말·시점 (main 이 처리), 이모트 바퀴 (판이 끝난 뒤에도 됨)
-    if (id === 'help' || id === 'view' || id === 'practice') return this.onUi(id, true);
+    if (id === 'help' || id === 'view' || id === 'practice' || id === 'perf') return this.onUi(id, true);
     if (id === 'emote') {
       if (this.locked && !this.wheel) {
         this.wheel = { x: 0, y: 0 };

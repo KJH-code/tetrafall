@@ -66,6 +66,7 @@ export function startTitle({ renderer, playWipe, reduced = false, unlock = () =>
     go();
   }
   function swallow(e) {
+    if (/^F\d+$/.test(e.key)) return; // 누름을 통과시킨 F 키는 뗌도 (안 그러면 F3 성능 표시가 눌린 채로 남음)
     if (!finished || pressed) {
       e.preventDefault();
       e.stopImmediatePropagation();

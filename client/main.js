@@ -16,6 +16,7 @@ import { cardLayout, lobbyPlace } from '/shared/hud-layout.js';
 import { randomReel } from '/shared/char-select.js';
 import { CharStage } from '/char-stage.js';
 import { leaveNeedsConfirm } from '/shared/leave.js';
+import { PerfPanel } from '/perf.js';
 import { showTitle } from '/shared/title.js';
 import { startTitle } from '/title.js';
 
@@ -39,6 +40,13 @@ const models = await loadModels().catch((err) => {
 });
 setPortraitModels(models); // 초상(HUD 판·캐릭터 카드)도 같은 모델로
 const renderer = new Renderer(document.body, models);
+// 성능 표시 (F3): 구간 ms·FPS·그리기 수 (client/perf.js). 꺼져 있으면 재지 않음
+const perfPanel = new PerfPanel($('perf'), renderer.renderer, () => ({
+  players: state ? state.players.length : 0,
+  rag: renderer.ragCount || 0,
+  low: !!settings.lowGfx,
+  ping: ($('netPing')?.textContent || '').replace(/^핑\s*/, ''),
+}));
 let ws = null;
 let myId = null;
 let state = null;
@@ -188,6 +196,7 @@ const helpEl = $('help');
 input.onUi = (id, down) => {
   if (id === 'help') helpEl.classList.toggle('hidden', !down);
   if (id === 'practice' && down) setPracticeOpen(!practiceOpen); // 연습 방에서만 열림
+  if (id === 'perf' && down) perfPanel.toggle(); // 성능 표시 (기본 F3)
   if (id === 'view' && down) {
     settings.third = !settings.third;
     $('set-third').checked = settings.third;
@@ -2650,6 +2659,7 @@ setInterval(() => {
 let last = performance.now();
 let frameErrorShown = false;
 function frame(now) {
+  perfPanel.frameStart(now);
   const dt = Math.min(0.1, (now - last) / 1000) * ko.timeScale(now); // KO 슬로모션·히트스톱 (화면만)
   sound.slowmo(ko.timeScale(now)); // 슬로모션이면 효과음 먹먹하고 낮게
   last = now;
@@ -2680,6 +2690,7 @@ function frame(now) {
     if (!frameErrorShown) console.error('프레임 에러 (계속 그림):', err);
     frameErrorShown = true;
   }
+  perfPanel.frameEnd(now);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -2699,6 +2710,7 @@ const debug = {
   music,
   ko,
   wipeSeek, // 화면 전환 띠를 그 시각에 멈춤 (gif 찍기)
+  perfPanel, // 성능 표시 (F3)
   charStage, // 대기실 큰 3D 캐릭터 (gif 찍기: draw(t) 를 시각 지정으로)
   holdResults: false, // true 면 판 끝 결과 연출이 시간으로 안 끝남 (gif 찍기). false 로 돌리면 그때 대기실 판으로
   // 클릭과 같은 경로로 행동 보내기 (로컬 팔 휘두르기·소리 포함)

@@ -161,6 +161,12 @@
     #netWarn { font-family: var(--disp); font-size: 15px; color: #fff; background: linear-gradient(180deg, #ff4426, #a81405); padding: 4px 16px;
       clip-path: polygon(9px 0, 100% 0, calc(100% - 9px) 100%, 0 100%); box-shadow: var(--sh); animation: slide-left .2s ease-out; }
     #netWarn:empty { display: none; }
+    /* 성능 표시 (F3): 핑 아래 작은 글자 판. 클릭은 '복사' 만 받음. 켜져 있으면 킬 로그를 그 아래로 */
+    #perf { position: fixed; right: 12px; top: 80px; z-index: 50; pointer-events: none; text-align: right; background: rgba(8,12,26,.72); padding: 6px 10px 7px;
+      clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%, 0 8px); }
+    #perf .txt { margin: 0; font: 12px/1.45 ui-monospace, Consolas, monospace; color: #dfe6ff; white-space: pre-wrap; max-width: 400px; }
+    #perf .copy { pointer-events: auto; font-size: 11px; padding: 2px 10px; margin-top: 4px; }
+    body.perf #killfeed { top: 260px; }
     #help { position: absolute; top: 10px; right: 12px; text-align: right; font-size: 12px; color: var(--dim); white-space: pre;
       background: rgba(8,12,26,.6); padding: 7px 10px; clip-path: polygon(0 0, 100% 0, 100% 100%, 10px 100%); }
     /* ===== 판 중: 가운데 연출 ===== */
@@ -575,6 +581,8 @@
   <!-- 화면 전환 슬래시 (main.js playWipe, 시간은 config UI_WIPE·계산은 shared/wipe.js): 띠만 그리고 클릭은 통과 -->
   <div id="title" class="hidden"><div class="hint"><b>Enter</b> / 클릭하여 시작</div></div>
   <div id="wipe" aria-hidden="true"></div>
+  <!-- 성능 표시 (F3, client/perf.js): 오른쪽 위 핑 아래, 글자만 -->
+  <div id="perf" class="hidden"><pre class="txt"></pre><button class="copy ghost">복사</button></div>
   <script type="module" src="/main.js"></script>
 </body>
 </html>
