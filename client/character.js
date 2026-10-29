@@ -7,6 +7,7 @@ import { CONFIG as C } from '/shared/config.js';
 import { toon, noOutline } from '/toon.js';
 import { itemModel } from '/models.js';
 import { buildFigure } from '/figure.js';
+import { batchPieces } from '/batch.js';
 
 const R = C.PLAYER_HALF; // 몸통 반지름 = 판정 반폭
 const H = C.PLAYER_HEIGHT;
@@ -19,10 +20,11 @@ const pupilMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
 // 이름표·화살표·조종 대기 표시는 group 에 바로 붙어 같이 돌지 않는다. bodyMaterial 의 color/emissive 를 바꾸면 몸통·팔이 같이 바뀐다 (색, 경직 깜빡임)
 // arms[0] = 오른팔 (밀치기 휘두르기 애니메이션용). 각 팔의 userData.base = 기본 위치
 // char 가 FIGURE_CHARS 에 있으면 TABS 식 몸 (figure: 관절이 더 있음)
+// 몸 조각은 재질(색·발광만 다르면 한 재질)마다 하나로 합쳐 그림 (batch.js, 그리기 수 줄이기). 로봇 모델은 그대로
 export function buildCharacter(color, models = null, char = null) {
-  if (char === 'dummy') return buildDummy(color, models);
-  if (C.FIGURE_CHARS.includes(char)) return buildFigure(color, char, models);
-  return models && models.robot ? buildRobot(color, models) : buildBean(color, models);
+  const ch = char === 'dummy' ? buildDummy(color, models) : C.FIGURE_CHARS.includes(char) ? buildFigure(color, char, models) : models && models.robot ? buildRobot(color, models) : buildBean(color, models);
+  if (!ch.robot) ch.batches = batchPieces(ch.group);
+  return ch;
 }
 
 function buildBean(color, models) {

@@ -9,13 +9,29 @@ const MAX_RINGS = 12;
 export class Effects {
   constructor(scene) {
     this.scene = scene;
+    // 파편: 하나씩 Mesh 면 큰 타격 한 번에 그리기 수십~백여 번 → InstancedMesh 하나 (칸마다 색 instanceColor + 투명도 instOpacity)
     const box = new THREE.BoxGeometry(1, 1, 1);
-    this.particles = [];
+    this.opacity = new THREE.InstancedBufferAttribute(new Float32Array(MAX_PARTICLES), 1);
+    this.opacity.setUsage(THREE.DynamicDrawUsage);
+    box.setAttribute('instOpacity', this.opacity);
+    const mat = noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true }));
+    mat.onBeforeCompile = (sh) => {
+      sh.vertexShader = 'attribute float instOpacity;\nvarying float vInstOpacity;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvInstOpacity = instOpacity;');
+      sh.fragmentShader = 'varying float vInstOpacity;\n' + sh.fragmentShader.replace('#include <opaque_fragment>', 'diffuseColor.a *= vInstOpacity;\n\t#include <opaque_fragment>');
+    };
+    this.pmesh = new THREE.InstancedMesh(box, mat, MAX_PARTICLES);
+    this.pmesh.frustumCulled = false;
+    this.pmesh.count = 0;
+    this.pmesh.setColorAt(0, new THREE.Color(0xffffff)); // instanceColor 만들기
+    this.pmesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+    scene.add(this.pmesh);
+    this.particles = []; // 파편 자리 (장면엔 안 넣음): update 가 보이는 것만 pmesh 에 옮김
     for (let i = 0; i < MAX_PARTICLES; i++) {
-      const m = new THREE.Mesh(box, noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true })));
+      const m = new THREE.Object3D();
       m.visible = false;
+      m.color = new THREE.Color(0xffffff);
+      m.opacity = 1;
       m.userData = { vx: 0, vy: 0, vz: 0, life: 0, max: 1, size: 0.1 };
-      scene.add(m);
       this.particles.push(m);
     }
     const ringGeo = new THREE.RingGeometry(0.8, 1, 40);
@@ -50,8 +66,8 @@ export class Effects {
       u.size = size * (0.6 + Math.random() * 0.8);
       m.position.set(pos.x, pos.y, pos.z);
       m.scale.setScalar(u.size);
-      m.material.color.setHex(color);
-      m.material.opacity = 1;
+      m.color.setHex(color);
+      m.opacity = 1;
       m.visible = true;
     }
   }
@@ -134,10 +150,24 @@ export class Effects {
       m.position.x += u.vx * dt;
       m.position.y += u.vy * dt;
       m.position.z += u.vz * dt;
-      m.material.opacity = Math.min(1, (u.life / u.max) * 1.5);
+      m.opacity = Math.min(1, (u.life / u.max) * 1.5);
       m.rotation.x += dt * 8;
       m.rotation.y += dt * 6;
     }
+    let n = 0;
+    for (const m of this.particles) {
+      if (!m.visible) continue;
+      m.updateMatrix();
+      this.pmesh.setMatrixAt(n, m.matrix);
+      this.pmesh.setColorAt(n, m.color);
+      this.opacity.array[n] = m.opacity;
+      n++;
+    }
+    this.pmesh.count = n;
+    this.pmesh.visible = n > 0;
+    this.pmesh.instanceMatrix.needsUpdate = true;
+    this.pmesh.instanceColor.needsUpdate = true;
+    this.opacity.needsUpdate = true;
     for (const m of this.rings) {
       if (!m.visible) continue;
       const u = m.userData;

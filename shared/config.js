@@ -912,6 +912,10 @@ export const CONFIG = {
   PERF_LOW_FRAC: 0.01,
   PERF_DRAW_MS: 250, // 패널 글자 다시 쓰는 간격
   PERF_SECTIONS: { ragdoll: '래그돌', bodies: '몸 애니', grid: '블록', hazard: '위험', render: '렌더' }, // 재는 구간 (나머지는 '기타 JS')
+  // 그리기 수 줄이기 (2026-10-29, 8명 판 그리기 ~1800 → 캐릭터 몸 조각·파편·떨어지는 블록 칸이 대부분)
+  BATCH_MIN_PIECES: 2, // 캐릭터 몸 조각: 같은 재질 묶음(색·발광만 다른 재질은 한 묶음)이 이만큼 이상이면 SkinnedMesh 하나로 합침 (client/batch.js)
+  BATCH_HIDE_LAYER: 30, // 합친 조각 Mesh 가 옮겨 가는 층 (아무 카메라도 안 켜서 안 그려짐, 뼈로만 씀)
+  INSTANCE_POOL_MIN: 16, // 떨어지는 블록 칸·그림자 칸 InstancedMesh 처음 칸 수 (모자라면 두 배로 다시 만듦, client/instpool.js)
   LEAVE_CONFIRM_MS: 3000, // 판 중 '방 나가기' 를 한 번 누르면 이 동안 '정말 나가기' 로 바뀜 (한 번 더 누르면 나감, 연습·대기실은 바로)
   RESULTS_HERO_MS: 5000, // 판이 끝나면 이 동안은 결과 연출만 (가운데 승자 초상 크게 + 결과 표, 대기실 판은 숨김). 그 뒤 결과는 사라지고 대기실 판이 들어옴 (승수는 위 줄). 호스트 Enter 재시작은 그동안에도 됨
   // 화면 전환 (2026-10-28 재혁: 스매시식 사선 슬래시). shared/wipe.js 가 계산, client/main.js 가 띄움, 모양(색·기울기·띠 폭)은 index.html #wipe.

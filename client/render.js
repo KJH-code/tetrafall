@@ -3,6 +3,8 @@ import * as THREE from 'three';
 import { CONFIG as C } from '/shared/config.js';
 import { toon, noOutline } from '/toon.js';
 import { buildCharacter, charAccessory } from '/character.js';
+import { cloneBatched, paintBatched } from '/batch.js';
+import { InstancePool } from '/instpool.js';
 import { figureAnim, MOVES } from '/figure.js';
 import { gaitOf } from '/figure-pose.js';
 import { Effects } from '/effects.js';
@@ -290,6 +292,8 @@ export class Renderer {
     this.thrownMat = toon({ color: 0xffffff, emissive: 0x000000, map: this.tex.sand, transparent: true, opacity: 1 }); // 던진 설치 블록: 흰색 + 노랗게 깜빡임 (O 블록 노랑과 구분)
     this.shadowMat = noOutline(new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45 }));
     this.shadowBox = new THREE.BoxGeometry(0.96, 0.96, 0.06);
+    this.piecePool = new InstancePool(this.scene, this.pieceBox, { castShadow: true });
+    this.shadowPool = new InstancePool(this.scene, this.shadowBox);
     this.markBox = new THREE.BoxGeometry(0.94, 0.94, 0.04); // 스킬 예고 칸
     this.marks = [];
     // 압사 경고: 나를 깔 블록의 그림자는 빨갛게 + 내 발밑에 빨간 고리
@@ -377,7 +381,7 @@ export class Renderer {
     if (!g || !s) return;
     const ud = g.userData;
     g.userData = {}; // userData 의 순환 참조를 복사하지 않게
-    const flat = g.clone();
+    const flat = cloneBatched(g);
     g.userData = ud;
     flat.traverse((o) => {
       if (o.isSprite) o.visible = false;
@@ -1888,11 +1892,16 @@ export class Renderer {
       if (!this.xrayMat) this.xrayMat = noOutline(new THREE.MeshBasicMaterial({ color: C.HUNT_EYE_COLOR, depthFunc: THREE.GreaterDepth, depthWrite: false }));
       const parts = [];
       g.traverse((o) => {
-        if (o.isMesh && !o.isInstancedMesh && o.material !== this.xrayMat) parts.push(o);
+        if (o.isMesh && !o.isInstancedMesh && !o.userData.batched && o.material !== this.xrayMat) parts.push(o); // 합친 조각은 합친 메시로 한 번에
       });
       xr = g.userData.xray = [];
       for (const o of parts) {
-        const x = new THREE.Mesh(o.geometry, this.xrayMat);
+        let x;
+        if (o.userData.pieceBatch) {
+          x = new THREE.SkinnedMesh(o.geometry, this.xrayMat);
+          x.bind(o.skeleton, o.bindMatrix);
+          x.frustumCulled = false;
+        } else x = new THREE.Mesh(o.geometry, this.xrayMat);
         x.renderOrder = 1;
         x.castShadow = false;
         o.add(x);
@@ -2402,17 +2411,15 @@ export class Renderer {
     g.userData = {};
     let obj;
     try {
-      obj = g.clone(true);
+      obj = cloneBatched(g); // 합친 몸이 복제본 조각을 따라가게
     } finally {
       g.userData = ud;
     }
     const mat = noOutline(new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.4, depthWrite: false }));
+    paintBatched(obj, mat);
     obj.traverse((o) => {
       if (o.isSprite) o.visible = false;
-      else if (o.isMesh) {
-        o.material = mat;
-        o.castShadow = false;
-      }
+      else if (o.isMesh) o.castShadow = false;
     });
     for (const k of ['arrow', 'ring']) {
       const i = g.children.indexOf(ud[k]);
@@ -3230,12 +3237,12 @@ export class Renderer {
     for (const piece of pieces) for (let i = 0; i < piece.cells.length; i++) slots.push([piece, i]);
     const need = slots.length;
     while (this.pieceMeshes.length < need) {
-      const m = new THREE.Mesh(this.pieceBox, this.pieceMat);
-      m.castShadow = true;
-      this.scene.add(m);
+      // 칸마다 '자리'만 (장면엔 안 넣음): 위치·재질을 정하면 그리기 직전 flushPieces 가 재질마다 InstancedMesh 하나로 그림
+      const m = new THREE.Object3D();
+      m.material = this.pieceMat;
       this.pieceMeshes.push(m);
-      const s = new THREE.Mesh(this.shadowBox, this.shadowMat);
-      this.scene.add(s);
+      const s = new THREE.Object3D();
+      s.material = this.shadowMat;
       this.shadowMeshes.push(s);
     }
     // 압사 경고 중이면 내 몸과 겹치는 그림자 칸을 빨갛게, 발밑에 빨간 고리 (깜빡)
@@ -3408,6 +3415,8 @@ export class Renderer {
     if (me && me.alive && this.third && this.smooth.has(me.id)) subject = this.smooth.get(me.id);
     else if (!(me && me.alive) && cam.follow != null && this.smooth.has(cam.follow)) subject = this.smooth.get(cam.follow);
     this.fadeOccluders(subject && !cam.victory ? eye : null, subject);
+    this.piecePool.flush(this.pieceMeshes); // 떨어지는 블록 칸·그림자 칸: 재질마다 한 번에 그림
+    this.shadowPool.flush(this.shadowMeshes);
 
     const b = this.skyBlend;
     const skyUp = new THREE.Vector3(Math.cos(this.skyYaw), Math.sin(this.skyYaw), 0);
