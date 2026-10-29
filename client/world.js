@@ -679,6 +679,7 @@ function prop(P, kind, look, r, x, y, z, s) {
 // 먼 떠 있는 작은 섬: 바위 뿌리 + 윗면 + 소품 몇 개
 function islet(P, look, r, x, y, z) {
   const s = 1.6 + r() * 2.4;
+  P.objs?.push({ x, y, zTop: z + 0.3, zBot: z - s * 2, rTop: s * 1.1, rBot: 0, drift: true }); // 위험 액체에 잠기는 곳 (hazard.js 거품 테)
   const geo = islandGeometry(s * 2, s * 2, s * 1.8, Math.floor(r() * 1e6), look.cliff);
   P.solid.addColored(geo, M().makeTranslation(x, y, z));
   geo.dispose();
@@ -712,6 +713,9 @@ function farShapes(P, look, r, cx, cy, n) {
     const y = cy + Math.sin(a) * dist;
     const tint = new THREE.Color(f.color).lerp(new THREE.Color(look.sky.horizon), f.haze[0] + r() * (f.haze[1] - f.haze[0]));
     const base = f.base;
+    // 위험 액체에 잠기는 곳 (대충 원뿔대: 밑 반지름 → 꼭대기 반지름)
+    const shape = { mesa: [0.6, 1, 0.7], volcano: [1, 1, 0.22], peak: [1, 1, 0], pyramid: [1, 1, 0] }[kind] || [1, 0.6, 0.1];
+    P.objs?.push({ x, y, zBot: base, zTop: base + h * shape[0], rBot: rad * shape[1], rTop: rad * shape[2], drift: false });
     if (kind === 'mesa') {
       P.solid.add(new THREE.CylinderGeometry(rad * 0.7, rad, h * 0.6, 7, 1), tint, at(x, y, base + h * 0.3, r() * 3));
     } else if (kind === 'pyramid') {
@@ -912,6 +916,17 @@ export class World {
     r.setField(r.W, r.D, true, r.H); // 해 위치·섬 크기
   }
 
+  // 위험 액체에 잠길 먼 섬·산 (hazard.js 가 매 프레임): 도는 섬은 지금 돈 각만큼 돌려서 월드 자리로
+  farObjects() {
+    if (!this.look || !this.farObjs) return [];
+    const a = this.drift.rotation.z;
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    const cx = this.drift.position.x;
+    const cy = this.drift.position.y;
+    return this.farObjs.map((o) => (o.drift ? { ...o, x: cx + o.x * ca - o.y * sa, y: cy + o.x * sa + o.y * ca } : o));
+  }
+
   // 테마 지형 블록 모양: 모서리 살짝 깎은 상자 (윗면 가운데는 평평 — 서는 자리 그대로) + 칸마다 변형 속성
   blockGeometry() {
     if (!this.blockGeo) {
@@ -1045,7 +1060,8 @@ export class World {
     island.receiveShadow = true;
     this.group.add(island);
     // 섬 뿌리에 매달린 바위 + 먼 섬 (한 메시) + 빛나는 소품 (한 메시)
-    const near = { solid: new Parts(), glow: new Parts() };
+    this.farObjs = []; // 위험 액체에 잠길 먼 섬·산 (farObjects)
+    const near = { solid: new Parts(), glow: new Parts(), objs: this.farObjs };
     for (let i = 0; i < 6; i++) {
       const a = rand() * Math.PI * 2;
       prop(near, 'rock', L, rand, Math.cos(a) * w * 0.3, Math.sin(a) * d * 0.3, -2.5 - rand() * 4, 1.2 + rand() * 1.5);
@@ -1076,7 +1092,7 @@ export class World {
     sea.renderOrder = -0.5; // 하늘 다음, 나머지 전
     this.group.add(sea);
     // 먼 배경: 안개 없이 (멀리서도 실루엣)
-    const far = { solid: new Parts(), glow: new Parts() };
+    const far = { solid: new Parts(), glow: new Parts(), objs: this.farObjs };
     farShapes(far, L, rand, cx, cy, Math.round(L.far.count * (this.low ? 0.6 : 1)));
     add(far.solid.mesh(noOutline(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, fog: false }))), this.group);
     add(far.glow.mesh(noOutline(new THREE.MeshBasicMaterial({ vertexColors: true, fog: false }))), this.group);
