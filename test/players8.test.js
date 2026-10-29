@@ -115,7 +115,7 @@ test('시작 위치: 5~8명 판에서 서로 5칸 이상 떨어짐, 필드 안, 
 
 test('맵 모양: 큰 판에서도 가장 높은 층이 10×10 과 같음 (계단 4층·그릇 3층…), 10×10 모양은 그대로', () => {
   const top = (id, W) => Math.max(0, ...mapColumns(id, W, W).map((c) => c[2]));
-  const expect10 = { flat: 0, pyramid: 3, stairs: 4, bowl: 3, spiral: 5, pillars: 3, fortress: 3 };
+  const expect10 = { flat: 0, pyramid: 4, stairs: 5, bowl: 3, spiral: 6, pillars: 3, fortress: 4 }; // 2026-10-29 테마 포인트 (머릿돌·수정 기둥·성가퀴·망루) 로 한 층씩
   for (const id of MAP_IDS) {
     assert.equal(top(id, 10), expect10[id], `${id} 10×10`);
     for (const W of Object.values(C.FIELD_SIZES)) {
