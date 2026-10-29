@@ -953,7 +953,7 @@ export const CONFIG = {
     columns: { segs: 1, disp: 0, chamfer: [0.08, 0.14], step: 0.14, blotch: [0.12, 0.35], edge: 0.6, wear: 0.7, mottle: 0.28, topLift: 1.5, height: [0.72, 6], veins: 0.6, veinScale: 0.8, grid: [0.2, 0.025], sideShade: 0.66, ao: 0.5, hi: 0.55 }, // 시안 B 주상절리 (고름)
     smooth: { segs: 1, disp: 0, chamfer: [0.1, 0.12], step: 0, blotch: [0.08, 0.6], edge: 0.35, wear: 0.4, mottle: 0.1, topLift: 1.4, height: [0.65, 6], veins: 0, veinScale: 0.6, grid: [0, 0.03] }, // 시안 C 매끈 저폴리
   },
-  BLOCK_SPROUT_MAX: 500, // 튀어나온 조각 최대 수 (조각 종류마다 인스턴스 하나)
+  BLOCK_SPROUT_MAX: 800, // 튀어나온 조각 최대 수 (조각 종류마다 인스턴스 하나)
   BLOCK_SPROUT_TOP_SCALE: 0.55, // 밟는 윗면 조각은 이만큼 작게 (발에 안 걸리게, 판정 무관)
   WORLD_BLOCK_VARIANTS: 4, // 테마 지형 블록 면 무늬 변형 수 (칸 위치로 고르고, 90도 돌림·뒤집기)
   WORLD_BLOCK_JITTER: 0.08, // 칸마다 밝기 흔들림 (±)
@@ -1129,7 +1129,7 @@ export const CONFIG = {
       hemi: [0xfff0d4, 0x8c7ca4, 1.1],
       fog: [0xffdca4, 45, 120],
       floor: { paint: 'marble', a: 0xf2ece0, b: 0xe6decc, line: 'rgba(150,120,60,0.4)', rim: 0xd8b860 },
-      terrain: { paint: 'bricks', top: 0xf4efe4, side: 0xe2d9c6, rim: 0xc09a40, block: { step: 0.05, mottle: 0.12, brick: [0.62, 0.333, 0.035, 0.12], tints: [0xf4efe4, 0xeadfcb, 0xf8f3ea], sprout: { kind: 'brick', side: 0.14, top: 0, size: [1, 1] } } }, // 흰 돌벽돌
+      terrain: { paint: 'bricks', top: 0xf4efe4, side: 0xe2d9c6, rim: 0xc09a40, block: { step: 0.05, mottle: 0.12, brick: [0.62, 0.333, 0.035, 0.12], tints: [0xf4efe4, 0xeadfcb, 0xf8f3ea], sprout: { kind: 'brick', side: 0.25, top: 0, size: [1, 1] } } }, // 흰 돌벽돌
       cliff: [0xe6dccb, 0xb8a8a4, 0xa09094, 0x8a7a84, 0x706070],
       rock: 0xc8bcb4,
       trunk: 0x8a6a4a,
@@ -1182,7 +1182,7 @@ export const CONFIG = {
       hemi: [0xf0f4ff, 0x7a8a60, 1.05],
       fog: [0xdceaea, 45, 120],
       floor: { paint: 'grass', a: 0x80c050, b: 0x74b446, line: 'rgba(40,70,25,0.35)', rim: 0x8a8a88 }, // 판 옆면 = 돌 테
-      terrain: { paint: 'bricks', top: 0xb0b0ac, side: 0x9c9c9a, rim: 0x46464a, block: { step: 0.06, mottle: 0.2, brick: [0.8, 0.5, 0.04, 0.16], tints: [0xb0b0ac, 0xa2a89e, 0xbab4aa], sprout: { kind: 'brick', side: 0.2, top: 0, size: [1, 1] } } }, // 회색 돌벽돌
+      terrain: { paint: 'bricks', top: 0xb0b0ac, side: 0x9c9c9a, rim: 0x46464a, block: { step: 0.06, mottle: 0.2, brick: [0.8, 0.5, 0.04, 0.16], tints: [0xb0b0ac, 0xa2a89e, 0xbab4aa], sprout: { kind: 'brick', side: 0.28, top: 0, size: [1, 1] } } }, // 회색 돌벽돌
       cliff: [0x8a8a88, 0x7a7268, 0x6e665c, 0x625a50, 0x544c44],
       rock: 0x8a8a86,
       trunk: 0x6a4a30,

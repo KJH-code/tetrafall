@@ -140,6 +140,8 @@ test('튀어나온 조각 자리: 드러난 면에만, 윗면은 가장자리, �
   }
   assert.ok(open.length === W * D + 1);
   assert.deepEqual(sproutSpots(grid, W, D, H, null, sp, 1000), spots, '같은 판이면 같은 자리');
-  assert.equal(sproutSpots(grid, W, D, H, null, sp, 5).length, 5, '최대 수');
+  const few = sproutSpots(grid, W, D, H, null, sp, 5);
+  assert.equal(few.length, 5, '최대 수');
+  assert.ok(few[4].y > few[0].y || few[4].z > few[0].z, '넘치면 앞쪽만이 아니라 고르게 솎음');
   assert.equal(sproutSpots(grid, W, D, H, null, null, 50).length, 0);
 });

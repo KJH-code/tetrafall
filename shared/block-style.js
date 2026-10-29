@@ -81,9 +81,19 @@ export function cellLooks(grid, W, D, H, skip) {
 }
 
 // 블록에서 튀어나온 조각 자리 (테마 sprout: { kind, side, top, size }). 드러난 옆면 (+x·−x·+y·−y) 과 윗면 (발에 안 걸리게 가장자리, 작게)
-// 결과: { x, y, z (칸), face: 0 +x · 1 −x · 2 +y · 3 −y · 4 윗면, u, v (면 위 자리 −0.5..0.5), s (크기), spin (0..1) }. max 개까지
+// 결과: { x, y, z (칸), face: 0 +x · 1 −x · 2 +y · 3 −y · 4 윗면, u, v (면 위 자리 −0.5..0.5), s (크기), spin (0..1) }.
+// max 개를 넘으면 고르게 솎음 (아래 층부터 다 차지 않게)
 export function sproutSpots(grid, W, D, H, skip, sp, max) {
+  const all = allSprouts(grid, W, D, H, skip, sp);
+  if (all.length <= max) return all;
   const out = [];
+  for (let i = 0; i < max; i++) out.push(all[Math.floor((i * all.length) / max)]);
+  return out;
+}
+
+function allSprouts(grid, W, D, H, skip, sp) {
+  const out = [];
+  const max = Infinity;
   if (!sp) return out;
   const looks = openBits(grid, W, D, H, skip);
   let n = 0;
