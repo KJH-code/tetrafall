@@ -62,6 +62,33 @@ function tetris(ctx, n) {
   ctx.strokeRect(1.5, 1.5, n - 3, n - 3);
 }
 
+// 테트리미노 (떨어지는·쌓인 블록, 2026-10-29): 둥근 장난감 블록 면 — 검은 테두리 없이 밝은 판 + 위·왼쪽 빛 + 아래·오른쪽 그늘 + 반짝 줄.
+// 테마 지형(이어진 무광 돌)과 확실히 달라 보이게. 모서리는 모양(RoundedBox)이 둥글게
+function piece(ctx, n) {
+  const g = ctx.createLinearGradient(0, 0, n, n);
+  g.addColorStop(0, gray(255));
+  g.addColorStop(0.45, gray(238));
+  g.addColorStop(1, gray(196));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, n, n);
+  const b = n * 0.17;
+  ctx.fillStyle = gray(232);
+  ctx.beginPath();
+  ctx.roundRect(b, b, n - 2 * b, n - 2 * b, n * 0.08);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.7)';
+  ctx.lineWidth = n * 0.035;
+  ctx.beginPath();
+  ctx.moveTo(b, n - b);
+  ctx.lineTo(b, b);
+  ctx.lineTo(n - b, b);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.75)'; // 반짝 줄
+  ctx.beginPath();
+  ctx.roundRect(b * 1.5, b * 1.45, n * 0.3, n * 0.07, n * 0.035);
+  ctx.fill();
+}
+
 // 돌 (시작 지형): 얼룩 + 금
 function stone(ctx, n) {
   const r = rng(7);
@@ -206,6 +233,7 @@ function tile(ctx, n) {
 export function makeTextures(floorRepeat) {
   return {
     tetris: canvasTexture(tetris),
+    piece: canvasTexture(piece),
     stone: canvasTexture(stone),
     wood: canvasTexture(wood),
     sand: canvasTexture(sand),

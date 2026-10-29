@@ -9,6 +9,7 @@ import { CONFIG as C } from '/shared/config.js';
 import { toon, noOutline } from '/toon.js';
 import { CELL } from '/shared/pieces.js';
 import { terrainGeometry, terrainMaterial, terrainOpenMask } from '/blocks.js';
+import { blockStyle } from '/shared/block-style.js';
 
 // 같은 모양이 매번 같게 (새로고침마다 배경이 바뀌지 않게)
 function rng(seed) {
@@ -782,7 +783,6 @@ function dotTexture() {
 }
 
 // 지금 고른 셰이더 블록 스타일 (없으면 예전 텍스처 블록)
-const r_tfStyle = () => C.WORLD_BLOCK_STYLES[C.WORLD_BLOCK_STYLE];
 
 export class World {
   // r: Renderer. 테마 없는 모습(예전 노을)을 기억해 두고, 테마가 없는 맵으로 오면 되돌린다
@@ -841,10 +841,11 @@ export class World {
   setLow(on) {
     if (this.low === !!on) return;
     this.low = !!on;
-    const tf = this.tfMat?.userData.tfUniforms;
-    if (tf && r_tfStyle()) {
-      tf.tfDisp.value = this.low ? 0 : r_tfStyle().disp; // 그래픽 낮춤: 꼭짓점 흔들기·높낮이 끔
-      tf.tfStep.value = this.low ? 0 : r_tfStyle().step;
+    if (this.tfOn) {
+      const tf = this.tfMat.userData.tfUniforms;
+      const s = this.tfMat.userData.tfStyle;
+      tf.tfDisp.value = this.low ? 0 : s.disp; // 그래픽 낮춤: 꼭짓점 흔들기·높낮이 끔
+      tf.tfStep.value = this.low ? 0 : s.step;
     }
     if (this.look) {
       this.layout();
@@ -856,6 +857,7 @@ export class World {
     const { r } = this;
     this.id = id;
     this.look = id ? C.WORLD_THEMES[id] : null;
+    this.tfOn = false; // 셰이더 지형 블록 (테마가 있고 스타일이 있을 때 아래서 켬)
     const L = this.look;
     const b = this.base;
     const u = r.dome.material.uniforms;
@@ -900,7 +902,8 @@ export class World {
       r.sunDir = L.sunDir;
       // 지형 블록: 윗면·옆면·밑면 따로 (BoxGeometry 면 순서 +x −x +y −y +z −z). 인스턴스 색은 흰색으로 (재질 색 그대로).
       // 빛나는 금·수정은 발광 지도 (밤에도 어둡게 안 묻힘). 칸마다 변형·돌림·뒤집기 (blockMaterial) + 모서리 깎은 모양
-      const style = C.WORLD_BLOCK_STYLES[C.WORLD_BLOCK_STYLE];
+      const style = blockStyle(L.terrain);
+      this.tfOn = !!style;
       if (style) {
         // 저폴리 셰이더 블록 (client/blocks.js): 칸 텍스처 없이 월드 좌표로 색·모양, 맞닿은 칸끼리 이어 보임
         const n = r.blockMeshes.terrain.instanceMatrix.count;
@@ -908,7 +911,7 @@ export class World {
           this.tfGeo = terrainGeometry(n, style.segs);
           this.tfGeo.userData.segs = style.segs;
         }
-        this.tfMat = terrainMaterial(L.terrain, style, this.low);
+        this.tfMat = terrainMaterial(style, this.low);
         r.blockMeshes.terrain.material = this.tfMat;
         r.blockMeshes.terrain.geometry = this.tfGeo;
         this.mats.push(this.tfMat);
@@ -951,7 +954,7 @@ export class World {
   // updateGrid 가 테마 지형 칸마다 부름: n 번째 인스턴스의 변형·돌림·뒤집기를 칸 위치로 정하고, 색(밝기·빛깔)을 조금 흔듦
   cellLook(n, x, y, z, color) {
     if (!this.look) return;
-    if (r_tfStyle()) return void color.setRGB(1, 1, 1); // 셰이더 블록: 칸마다 색을 흔들지 않음 (칸 경계가 드러남). 색은 셰이더가 월드 좌표로
+    if (this.tfOn) return void color.setRGB(1, 1, 1); // 셰이더 블록: 칸마다 색을 흔들지 않음 (칸 경계가 드러남). 색은 셰이더가 월드 좌표로
     const t = this.look.terrain;
     this.varAttr.setXYZW(n, Math.floor(cellHash(x, y, z, 1) * C.WORLD_BLOCK_VARIANTS), Math.floor(cellHash(x, y, z, 2) * 4), cellHash(x, y, z, 3) < 0.5 ? 1 : 0, 0);
     const j = t.jitter ?? C.WORLD_BLOCK_JITTER;
@@ -962,7 +965,7 @@ export class World {
   // updateGrid 끝: 변형 속성 올리고, 드러난 옆면에 블록 소품 (결정 덩어리·깨진 돌) 다시 놓기
   gridDone(grid) {
     if (!this.look) return;
-    if (r_tfStyle()) terrainOpenMask(this.tfGeo.attributes.aOpen, grid, this.r.W, this.r.D, this.r.H, this.r.bbSkip);
+    if (this.tfOn) terrainOpenMask(this.tfGeo.attributes.aOpen, grid, this.r.W, this.r.D, this.r.H, this.r.bbSkip);
     else this.varAttr.needsUpdate = true;
     this.placeDecor(grid);
   }
