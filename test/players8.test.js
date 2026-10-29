@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { Game } from '../server/game.js';
 import { Rooms } from '../server/rooms.js';
 import { CONFIG as C } from '../shared/config.js';
-import { MAP_IDS, mapColumns } from '../shared/maps.js';
+import { MAP_IDS, mapColumns, baseColumns } from '../shared/maps.js';
 import { overviewScale } from '../shared/camera.js';
 
 const TICK = 1000 / C.TICK_RATE;
@@ -115,18 +115,18 @@ test('시작 위치: 5~8명 판에서 서로 5칸 이상 떨어짐, 필드 안, 
 
 test('맵 모양: 큰 판에서도 가장 높은 층이 10×10 과 같음 (계단 4층·그릇 3층…), 10×10 모양은 그대로', () => {
   const top = (id, W) => Math.max(0, ...mapColumns(id, W, W).map((c) => c[2]));
-  const expect10 = { flat: 0, pyramid: 4, stairs: 5, bowl: 3, spiral: 6, pillars: 3, fortress: 4 }; // 2026-10-29 테마 포인트 (머릿돌·수정 기둥·성가퀴·망루) 로 한 층씩
+  const expect10 = { flat: 0, pyramid: 4, stairs: 6, bowl: 4, spiral: 7, pillars: 4, fortress: 4 }; // 2026-10-29 테마 포인트 (머릿돌·수정 첨탑·화산 굴뚝·뾰족탑·큰 버섯·망루)
   for (const id of MAP_IDS) {
     assert.equal(top(id, 10), expect10[id], `${id} 10×10`);
     for (const W of Object.values(C.FIELD_SIZES)) {
-      assert.equal(top(id, W), expect10[id], `${id} ${W}×${W}`);
+      assert.equal(top(id, W), expect10[id] + (id === 'pyramid' && W > 10 ? 1 : 0), `${id} ${W}×${W}`); // 피라미드 머릿돌은 12칸부터 5층
       for (const [x, y] of mapColumns(id, W, W)) assert.ok(x >= 0 && x < W && y >= 0 && y < W);
     }
   }
   // 10×10 계단·그릇은 예전 식 그대로
-  const stairs10 = mapColumns('stairs', 10, 10);
+  const stairs10 = baseColumns('stairs', 10, 10); // 테마 포인트 전 예전 배치 (포인트는 test/maps.test.js)
   assert.deepEqual(stairs10.filter(([, y]) => y === 0).map(([x, , h]) => [x, h]), [[2, 1], [3, 1], [4, 2], [5, 2], [6, 3], [7, 3], [8, 4], [9, 4]]);
-  const bowl10 = mapColumns('bowl', 10, 10);
+  const bowl10 = baseColumns('bowl', 10, 10);
   assert.deepEqual(bowl10.filter(([, y]) => y === 4).map(([x, , h]) => [x, h]), [[0, 3], [1, 2], [2, 1], [7, 1], [8, 2], [9, 3]]);
 });
 

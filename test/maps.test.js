@@ -22,7 +22,7 @@ test('맵: 칸은 판 안·정수 높이 1..MAP_MAX_H·한 칸 한 번', () => {
   }
 });
 
-test('맵: 예전 배치 그대로 + 포인트만 — 바뀐 칸은 16칸 이하, 높아진 칸은 딱 1층, 낮아진 칸은 바닥까지 (틈)', () => {
+test('맵: 예전 배치 그대로 + 포인트만 — 바뀐 칸은 48칸 이하, 높아진 칸은 3층까지, 낮아진 칸은 바닥까지 (틈)', () => {
   for (const id of MAP_IDS) for (const W of SIZES) {
     const a = grid(baseColumns(id, W, W), W);
     const b = grid(mapColumns(id, W, W), W);
@@ -32,18 +32,18 @@ test('맵: 예전 배치 그대로 + 포인트만 — 바뀐 칸은 16칸 이하
       if (a[x][y]) base++;
       if (a[x][y] === b[x][y]) continue;
       changed++;
-      if (b[x][y] > a[x][y]) assert.ok(b[x][y] === a[x][y] + 1 || (id === 'pillars' && a[x][y] < b[x][y]), `${id} ${W} (${x},${y}) ${a[x][y]}→${b[x][y]}`);
+      if (b[x][y] > a[x][y]) assert.ok(b[x][y] - a[x][y] <= 3, `${id} ${W} (${x},${y}) ${a[x][y]}→${b[x][y]}`); // 포인트는 3층까지 덧붙임
       else assert.equal(b[x][y], 0, `${id} ${W} (${x},${y}) 틈은 바닥까지`);
     }
-    assert.ok(changed <= 16, `${id} ${W}: ${changed}칸 / ${base}`); // 포인트 4곳 × 몇 칸
+    assert.ok(changed <= 48, `${id} ${W}: ${changed}칸 / ${base}`); // 포인트 여러 곳 × 몇 칸 (2026-10-29 재혁 '조금 더': 16 → 48)
     if (id === 'flat') assert.equal(changed, 0);
   }
 });
 
-test('맵 포인트: 피라미드 머릿돌 4층·수정 기둥 5층·성가퀴 6층·망루 4층, 그릇·요새 벽마다 틈 (90° 돌려도 같은 자리)', () => {
+test('맵 포인트: 피라미드 머릿돌 5층·수정 첨탑 6층·뾰족탑 7층·망루 4층·화산 굴뚝 4층·가운데 버섯 4층, 그릇·요새 벽마다 틈 (90° 돌려도 같은 자리)', () => {
   for (const W of SIZES) {
     const top = (id) => Math.max(...mapColumns(id, W, W).map((c) => c[2]));
-    assert.deepEqual(['pyramid', 'stairs', 'spiral', 'fortress', 'bowl'].map(top), [4, 5, 6, 4, 3], `${W}`);
+    assert.deepEqual(['pyramid', 'stairs', 'spiral', 'fortress', 'bowl', 'pillars'].map(top), [W === 10 ? 4 : 5, 6, 7, 4, 4, 4], `${W}`); // 10×10 피라미드는 꼭대기가 좁아 머릿돌 4층
     for (const id of ['bowl', 'fortress']) {
       const a = grid(baseColumns(id, W, W), W);
       const b = grid(mapColumns(id, W, W), W);
