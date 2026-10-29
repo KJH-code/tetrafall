@@ -938,6 +938,15 @@ export const CONFIG = {
   WORLD_LOW_DETAIL: 0.4, // 그래픽 낮춤: 먼 섬·구름·떠다니는 빛·위험 입자 수 비율
   WORLD_FAR: { dist: [112, 138], height: [8, 18], radius: [5, 11] }, // 먼 배경 크기 (칸). 하늘 구 반지름 150 안쪽
   WORLD_SEA_FADE: [70, 145],
+  // 테마 지형 블록 모습 (client/blocks.js 셰이더, 2026-10-29 재혁: 칸마다 줄·복붙 같은 무늬 없이 TABS 저폴리). 없는 이름이면 예전 텍스처 블록
+  // segs 면 나눔 · disp 꼭짓점 흔들기 (월드 잡음, 칸) · chamfer 드러난 모서리 깎기 [최소, 최대] · step 드러난 윗면 칸마다 높낮이 · blotch 큰 얼룩 [크기(1/칸), 섞는 정도]
+  // edge 드러난 모서리 어둡게 · height 아래 어둡게 [바닥 밝기, 이 높이에서 원래 밝기] · veins 테마 빛 금 세기 (용암·수정) · veinScale 금 촘촘함
+  WORLD_BLOCK_STYLE: 'rock',
+  WORLD_BLOCK_STYLES: {
+    rock: { segs: 2, disp: 0.09, chamfer: [0.07, 0.17], step: 0, blotch: [0.16, 0.55], edge: 0.55, height: [0.6, 6], veins: 0.9, veinScale: 1 }, // 깎은 바위
+    columns: { segs: 1, disp: 0, chamfer: [0.05, 0.1], step: 0.14, blotch: [0.12, 0.45], edge: 0.45, height: [0.55, 6], veins: 0.75, veinScale: 0.8 }, // 높낮이 기둥 (현무암 주상절리)
+    smooth: { segs: 1, disp: 0, chamfer: [0.1, 0.12], step: 0, blotch: [0.09, 0.4], edge: 0.3, height: [0.7, 6], veins: 0.5, veinScale: 0.6 }, // 매끈 저폴리
+  },
   WORLD_BLOCK_VARIANTS: 4, // 테마 지형 블록 면 무늬 변형 수 (칸 위치로 고르고, 90도 돌림·뒤집기)
   WORLD_BLOCK_JITTER: 0.08, // 칸마다 밝기 흔들림 (±)
   WORLD_BLOCK_BEVEL: 0.07, // 블록 모서리 깎은 반지름 (칸). 윗면 가운데는 평평 → 서는 자리 그대로
