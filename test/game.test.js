@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { Game } from '../server/game.js';
 import { CONFIG as C } from '../shared/config.js';
 import { CELL, cellOfShape } from '../shared/pieces.js';
+import { mapColumns } from '../shared/maps.js';
 
 C.ITEMS_ENABLED = true; // 이 파일의 아이템 테스트는 켠 상태로 (기본은 꺼 둠 → 아래 '아이템 꺼 둠' 테스트가 확인). 테스트 파일마다 따로 돌아서 다른 파일엔 안 번짐
 
@@ -1410,18 +1411,21 @@ test('맵: 피라미드·계단 지형이 깔리고, 시작 위치는 지형 위
     g.nextSpawnAt = Infinity;
     g.tick(TICK);
     assert.equal(g.lava.active, false, `${id} 시작하자마자 용암 X (평균 ${g.avgHeight().toFixed(2)})`);
-    // 올라가는 방향의 단차는 1칸 (기본 점프로 올라감): 피라미드는 모든 이웃, 계단은 계단 따라(x 방향)
-    for (let x = 0; x < C.GRID_W; x++) {
-      for (let y = 0; y < C.GRID_D; y++) {
-        if (x + 1 < C.GRID_W) assert.ok(Math.abs(g.columnTop(x, y) - g.columnTop(x + 1, y)) <= 1, `${id} (${x},${y})→x+1`);
-        if (id === 'pyramid' && y + 1 < C.GRID_D) assert.ok(Math.abs(g.columnTop(x, y) - g.columnTop(x, y + 1)) <= 1, `${id} (${x},${y})→y+1`);
+    // 피라미드는 이웃 칸끼리 단차 1칸 (기본 점프로 올라감) — 12칸 이상 판 (10×10 은 모서리 시작 자리에 한 칸 깎임).
+    // 오르는 길 전체는 아래 테스트·test/maps.test.js
+    if (id === 'pyramid') {
+      const big = mapColumns('pyramid', 12, 12);
+      const top = (x, y) => big.find((c) => c[0] === x && c[1] === y)?.[2] ?? 0;
+      for (let x = 0; x + 1 < 12; x++) for (let y = 0; y + 1 < 12; y++) {
+        assert.ok(Math.abs(top(x, y) - top(x + 1, y)) <= 1 && Math.abs(top(x, y) - top(x, y + 1)) <= 1, `12×12 (${x},${y})`);
       }
     }
   }
 });
 
-test('맵: 모든 맵·모든 판 크기(2·3·4인)에서 시작 위치마다 걸어서(한 걸음 1칸까지) 그 맵의 맨 위까지 갈 수 있다', () => {
-  for (const n of [2, 3, 4])
+// 2026-10-29 맵 다시: 한 걸음 2칸까지 (2단 점프, 봇 climbFromLava 길찾기와 같음). 예전엔 1칸
+test('맵: 모든 맵·모든 판 크기(2~8인)에서 시작 위치마다 걸어서(이웃 칸, 한 걸음 2칸까지 = 2단 점프) 그 맵의 맨 위까지 갈 수 있다', () => {
+  for (const n of [2, 3, 4, 5, 6, 7, 8])
   for (const id of ['flat', 'pyramid', 'stairs', 'bowl', 'spiral', 'pillars', 'fortress']) {
     const g = new Game();
     for (let i = 1; i <= n; i++) g.addPlayer(i);
@@ -1449,7 +1453,7 @@ test('맵: 모든 맵·모든 판 크기(2·3·4인)에서 시작 위치마다 �
           const nx = x + dx;
           const ny = y + dy;
           if (nx < 0 || ny < 0 || nx >= g.W || ny >= g.D || seen.has(nx * 100 + ny)) continue;
-          if (g.columnTop(nx, ny) > h + 1) continue;
+          if (g.columnTop(nx, ny) > h + 2) continue;
           seen.add(nx * 100 + ny);
           q.push([nx, ny]);
         }
