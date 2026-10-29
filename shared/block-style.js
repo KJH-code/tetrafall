@@ -7,7 +7,7 @@ import { CELL } from './pieces.js';
 export function blockStyle(terrain, styleName = C.WORLD_BLOCK_STYLE) {
   const style = C.WORLD_BLOCK_STYLES[styleName];
   if (!style || !terrain) return null;
-  const s = { lip: 0, strata: [0, 0], brick: null, grid: [0, 0], sheen: 0, sideShade: 1, ao: 0, hi: 0, sprout: null, ...style, ...terrain, ...(terrain.block || {}) };
+  const s = { lip: 0, strata: [0, 0], brick: null, grid: [0, 0], sheen: 0, sideShade: 1, ao: 0, hi: 0, selfLight: 0, sprout: null, ...style, ...terrain, ...(terrain.block || {}) };
   delete s.block;
   const tints = (s.tints && s.tints.length ? s.tints : [s.side]).slice(0, 3);
   while (tints.length < 3) tints.push(tints[tints.length - 1]);
@@ -80,7 +80,7 @@ export function cellLooks(grid, W, D, H, skip) {
   return { open, ao, lift };
 }
 
-// 블록에서 튀어나온 조각 자리 (테마 sprout: { kind, side, top, size }). 드러난 옆면 (+x·−x·+y·−y) 과 윗면 (발에 안 걸리게 가장자리, 작게)
+// 블록에서 튀어나온 조각 자리 (테마 sprout: { kind, side, top, size, ground }). 드러난 옆면 (+x·−x·+y·−y) 과 윗면 (발에 안 걸리게 가장자리, 작게)
 // 결과: { x, y, z (칸), face: 0 +x · 1 −x · 2 +y · 3 −y · 4 윗면, u, v (면 위 자리 −0.5..0.5), s (크기), spin (0..1) }.
 // max 개를 넘으면 고르게 솎음 (아래 층부터 다 차지 않게)
 export function sproutSpots(grid, W, D, H, skip, sp, max) {
@@ -90,6 +90,9 @@ export function sproutSpots(grid, W, D, H, skip, sp, max) {
   for (let i = 0; i < max; i++) out.push(all[Math.floor((i * all.length) / max)]);
   return out;
 }
+
+const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const solidAt = (grid, W, D, H, x, y, z) => z < 0 || (x >= 0 && y >= 0 && x < W && y < D && z < H && grid[(z * D + y) * W + x] !== 0);
 
 function allSprouts(grid, W, D, H, skip, sp) {
   const out = [];
@@ -106,7 +109,10 @@ function allSprouts(grid, W, D, H, skip, sp) {
         const size = (k) => sp.size[0] + cellRand(x, y, z, k) * (sp.size[1] - sp.size[0]);
         for (let f = 0; f < 4 && out.length < max; f++) {
           if (!(m & (1 << f)) || cellRand(x, y, z, 10 + f) >= sp.side) continue;
-          out.push({ x, y, z, face: f, u: (cellRand(x, y, z, 20 + f) - 0.5) * 0.6, v: (cellRand(x, y, z, 30 + f) - 0.5) * 0.5, s: size(40 + f), spin: cellRand(x, y, z, 50 + f) });
+          // ground: 무너진 덩어리처럼 옆면 바닥에 (바깥 아래 칸이 막힌 곳만 — 공중에 안 뜨게)
+          if (sp.ground && !solidAt(grid, W, D, H, x + DIRS[f][0], y + DIRS[f][1], z - 1)) continue;
+          const v = sp.ground ? -0.5 : (cellRand(x, y, z, 30 + f) - 0.5) * 0.5;
+          out.push({ x, y, z, face: f, u: (cellRand(x, y, z, 20 + f) - 0.5) * 0.6, v, s: size(40 + f), spin: cellRand(x, y, z, 50 + f) });
         }
         if (m & 16 && sp.top && cellRand(x, y, z, 14) < sp.top && out.length < max) {
           // 윗면은 드러난 옆 가장자리 쪽 (없으면 모서리), 작게

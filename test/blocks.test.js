@@ -5,10 +5,10 @@ import { CONFIG as C } from '../shared/config.js';
 import { CELL } from '../shared/pieces.js';
 import { blockStyle, openBits, cellLooks, cellRand, sproutSpots } from '../shared/block-style.js';
 
-const NUM = ['segs', 'disp', 'step', 'edge', 'wear', 'mottle', 'topLift', 'veins', 'veinScale', 'lip', 'sheen', 'sideShade', 'ao', 'hi'];
+const NUM = ['segs', 'disp', 'step', 'edge', 'wear', 'mottle', 'topLift', 'veins', 'veinScale', 'lip', 'sheen', 'sideShade', 'ao', 'hi', 'selfLight'];
 const PAIRS = ['chamfer', 'blotch', 'height', 'grid', 'strata'];
 const BLOCK_KEYS = new Set([...NUM, ...PAIRS, 'brick', 'top', 'side', 'rim', 'tints', 'sprout']);
-const SPROUTS = ['crystal', 'basalt', 'mushroom', 'brick', 'ledge', 'tuft'];
+const SPROUTS = ['crystal', 'basalt', 'mushroom', 'brick', 'ledge', 'rubble', 'tuft'];
 
 test('지형 블록 스타일: 재혁이 고른 주상절리, 윗면에만 칸 경계', () => {
   assert.equal(C.WORLD_BLOCK_STYLE, 'columns');
@@ -41,7 +41,8 @@ test('테마 결: 재질마다 다르게', () => {
   assert.ok(s('mushroom').lip > 0, '버섯 숲 이끼');
   assert.ok(s('desert').strata[1] > 0, '사막 사암 층');
   assert.ok(s('crystal').sheen > 0 && s('crystal').veins > 0, '수정 결정 면 + 맥');
-  assert.ok(s('volcano').veins > 0 && s('volcano').veins < C.WORLD_BLOCK_STYLES.columns.veins, '화산 용암 금 약하게');
+  assert.ok(s('volcano').veins > 0, '화산 용암 금');
+  assert.ok(s('volcano').selfLight > 0 && s('volcano').selfLight < 0.6, '화산: 어두운 하늘에 묻히지 않게');
   assert.ok(s('skycastle').brick && s('castle').brick, '성 돌벽돌');
   for (const id of ['meadow', 'desert', 'skycastle', 'mushroom', 'castle']) assert.equal(s(id).veins, 0, `${id}: 빛 색이 없으면 빛 금 없음`);
 });
@@ -144,4 +145,19 @@ test('튀어나온 조각 자리: 드러난 면에만, 윗면은 가장자리, �
   assert.equal(few.length, 5, '최대 수');
   assert.ok(few[4].y > few[0].y || few[4].z > few[0].z, '넘치면 앞쪽만이 아니라 고르게 솎음');
   assert.equal(sproutSpots(grid, W, D, H, null, null, 50).length, 0);
+});
+
+test('벽 밑 덩어리 (ground): 바깥 아래 칸이 막힌 옆면에만, 옆면 바닥에', () => {
+  const W = 4, D = 1, H = 3;
+  const grid = new Uint8Array(W * D * H);
+  const at = (x, y, z) => (z * D + y) * W + x;
+  grid[at(1, 0, 0)] = CELL.TERRAIN;
+  grid[at(1, 0, 1)] = CELL.TERRAIN; // 2층: 바깥 아래 (0,0,0)·(2,0,0) 빈 칸 → 덩어리 없음
+  const sp = { kind: 'rubble', side: 1, top: 0, size: [1, 1], ground: true };
+  const spots = sproutSpots(grid, W, D, H, null, sp, 100);
+  assert.ok(spots.length > 0);
+  for (const p of spots) {
+    assert.equal(p.z, 0, '공중 옆면엔 안 붙음');
+    assert.equal(p.v, -0.5, '옆면 바닥');
+  }
 });

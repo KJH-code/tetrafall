@@ -72,6 +72,7 @@ export function terrainMaterial(s, low) {
     tfSideShade: { value: s.sideShade ?? 1 },
     tfAO: { value: s.ao || 0 },
     tfHi: { value: s.hi || 0 },
+    tfSelf: { value: s.selfLight || 0 },
   };
   m.userData.tfUniforms = uniforms;
   m.userData.tfStyle = s;
@@ -119,12 +120,13 @@ float tfBit(float m, float b) { return mod(floor(m / b), 2.0); }`,
         `#include <common>
 uniform vec3 tfTop; uniform vec3 tfSide; uniform vec3 tfRim; uniform vec3 tfTint0; uniform vec3 tfTint1; uniform vec3 tfTint2; uniform vec3 tfGlow;
 uniform vec2 tfBlotch; uniform float tfEdge; uniform vec2 tfHeight; uniform float tfVein; uniform float tfVeinScale; uniform float tfMottle; uniform float tfWear; uniform float tfTopLift;
-uniform vec2 tfGrid; uniform float tfLip; uniform vec2 tfStrata; uniform vec4 tfBrick; uniform float tfSheen; uniform float tfSideShade; uniform float tfAO; uniform float tfHi;
+uniform vec2 tfGrid; uniform float tfLip; uniform vec2 tfStrata; uniform vec4 tfBrick; uniform float tfSheen; uniform float tfSideShade; uniform float tfAO; uniform float tfHi; uniform float tfSelf;
 varying vec3 vTfW; varying vec3 vTfCell; varying float vTfOpen; varying float vTfAO; varying float vTfLift;
 ${NOISE}
 float tfBitF(float m, float b) { return mod(floor(m / b + 0.001), 2.0); }
 float tfGlowAmt = 0.0;
-float tfSheenAmt = 0.0;`,
+float tfSheenAmt = 0.0;
+vec3 tfBase = vec3(0.0);`,
       )
       .replace(
         '#include <color_fragment>',
@@ -205,12 +207,13 @@ float tfSheenAmt = 0.0;`,
   }
   // 수정 빛 테: 비스듬히 보이는 면이 빛 색으로 (결정 면이 반짝)
   if (tfSheen > 0.0) tfSheenAmt = pow(1.0 - abs(dot(tfN, normalize(cameraPosition - vTfW))), 3.0) * tfSheen;
+  tfBase = base;
   diffuseColor.rgb *= base;`,
       )
       .replace(
         '#include <emissivemap_fragment>',
         `#include <emissivemap_fragment>
-  totalEmissiveRadiance += tfGlow * (tfGlowAmt * tfVein + tfSheenAmt);`,
+  totalEmissiveRadiance += tfGlow * (tfGlowAmt * tfVein + tfSheenAmt) + tfBase * tfSelf; // selfLight: 어두운 하늘 맵에서 블록이 묻히지 않게 제 색으로 조금 빛남`,
       );
   };
   m.customProgramCacheKey = () => `tfBlocks:${low ? 1 : 0}`;
@@ -267,8 +270,13 @@ function sproutKind(kind, s, palette) {
       [zUp(new THREE.CylinderGeometry(0.075, 0.075, 0.18, 6)), M4().makeTranslation(0.15, 0.02, 0.09)],
       [zUp(new THREE.CylinderGeometry(0.07, 0.07, 0.12, 6)), M4().makeTranslation(0.06, 0.14, 0.06)],
     ]);
-    const lava = merged([[new THREE.OctahedronGeometry(0.05, 0), M4().makeTranslation(0.07, 0.06, 0.02)]]);
-    return { parts: [{ geo, color: (r) => side.clone().multiplyScalar(1.5 + r * 0.5) }, { geo: lava, color: () => new THREE.Color(s.glow ?? 0xff7a24), basic: true }], tilt: 0, tiltTop: 0, spin: true };
+    // 기둥 끝은 밝은 재빛 + 사이 틈에서 용암 빛
+    const lava = merged([
+      [new THREE.OctahedronGeometry(0.07, 0), M4().makeTranslation(0.08, 0.07, 0.03)],
+      [new THREE.OctahedronGeometry(0.05, 0), M4().makeTranslation(-0.07, 0.05, 0.02)],
+      [new THREE.OctahedronGeometry(0.045, 0), M4().makeTranslation(0.11, -0.07, 0.02)],
+    ]);
+    return { parts: [{ geo, color: (r) => top.clone().multiplyScalar(0.9 + r * 0.35) }, { geo: lava, color: () => new THREE.Color(s.glow ?? 0xff7a24), basic: true }], tilt: 0, tiltTop: 0, spin: true };
   }
   if (kind === 'mushroom') {
     const cap = merged([[new THREE.SphereGeometry(0.13, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), M4().makeTranslation(0, 0, 0.14).multiply(rotXY(Math.PI / 2, 0)).multiply(M4().makeScale(1, 0.75, 1))]]);
@@ -279,6 +287,15 @@ function sproutKind(kind, s, palette) {
     const [w, h] = s.brick || [0.62, 0.333];
     const geo = new THREE.BoxGeometry(w * 0.9, h * 0.82, 0.12).translate(0, 0, 0.02);
     return { parts: [{ geo, color: (r) => side.clone().multiplyScalar((0.72 + r * 0.22) * (s.sideShade ?? 1) / 0.66) }], tilt: 0, tiltTop: 0, align: 'brick' };
+  }
+  if (kind === 'rubble') {
+    // 무너진 덩어리: 벽 밑에 붙은 저폴리 돌 셋 (반쯤 묻힘)
+    const geo = merged([
+      [new THREE.DodecahedronGeometry(0.16, 0), M4().makeTranslation(0, 0.02, 0.02).multiply(M4().makeScale(1.2, 0.9, 0.8))],
+      [new THREE.DodecahedronGeometry(0.11, 0), M4().makeTranslation(0.2, 0.0, 0.08).multiply(M4().makeScale(1, 0.85, 0.8))],
+      [new THREE.DodecahedronGeometry(0.08, 0), M4().makeTranslation(-0.17, 0.02, 0.1)],
+    ]);
+    return { parts: [{ geo, color: (r) => side.clone().lerp(top, 0.3).multiplyScalar(0.88 + r * 0.2) }], tilt: 0, tiltTop: 0, align: 'ground' };
   }
   if (kind === 'ledge') {
     const geo = new THREE.BoxGeometry(0.8, 0.08, 0.2).translate(0, 0, 0.04);
@@ -345,6 +362,7 @@ export class BlockDecor {
           zc = (row + 0.5) * h;
           u = ((id + 0.5 - row * 0.5) * w - (p.face < 2 ? p.y + 0.5 : p.x + 0.5)) * (p.face < 2 ? nx : -ny);
         } else if (K.align === 'ledge' && s.strata[0] > 0) zc = Math.round(zc * s.strata[0]) / s.strata[0];
+        else if (K.align === 'ground') zc = p.z + 0.1; // 벽 밑 바닥에 반쯤 묻힘
         pos = new THREE.Vector3(cx, cy, 0).addScaledVector(n, 0.5).addScaledVector(t, u).setZ(Math.min(zc, p.z + 0.9));
         Z.copy(n).multiplyScalar(Math.cos(K.tilt)).addScaledVector(up, Math.sin(K.tilt)).normalize();
         X.copy(t);

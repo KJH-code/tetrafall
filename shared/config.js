@@ -945,7 +945,7 @@ export const CONFIG = {
   // segs 면 나눔 · disp 꼭짓점 흔들기 (월드 잡음, 칸) · chamfer 드러난 모서리 깎기 [최소, 최대] · step 드러난 윗면 칸마다 높낮이 (발 높이 어긋남 최대 step/2) · blotch 큰 얼룩 [크기(1/칸), 세기]
   // edge 드러난 옆 모서리 어둡게 · wear 드러난 윗면 가장자리 밝게 (닳음) · mottle 자리마다 밝기 흔들림 · topLift 윗면 밝게 · height 아래 어둡게 [바닥 밝기, 이 높이에서 원래 밝기]
   // veins 테마 빛 금 세기 (빛 색 glow 있는 테마만) · veinScale 금 촘촘함 · grid 윗면 칸 경계 [어둡게, 두께(칸)]
-  // sideShade 옆면 밝기 (윗면과 대비) · ao 벽 밑·바닥에 닿은 옆면 아래 그늘 · hi 드러난 윗 모서리 하이라이트
+  // sideShade 옆면 밝기 (윗면과 대비) · ao 벽 밑·바닥에 닿은 옆면 아래 그늘 · hi 드러난 윗 모서리 하이라이트 · selfLight 제 색으로 빛남 (어두운 하늘 맵, block 에서)
   // 테마 결 (block 에서만): lip 윗면 색이 옆으로 흘러내리는 깊이 (잔디·이끼) · strata 사암 층 [층/칸, 밝기 차] · brick 돌벽돌 [폭, 높이, 줄눈, 벽돌마다 밝기] · sheen 비스듬한 면 빛 (수정)
   // sprout 튀어나온 조각 (화면만, 그래픽 낮춤이면 끔): kind crystal|basalt|mushroom|brick|ledge|tuft · side 드러난 옆면마다 확률 · top 드러난 윗면 확률 (가장자리, BLOCK_SPROUT_TOP_SCALE 배 작게) · size [최소, 최대]
   WORLD_BLOCK_STYLE: 'columns',
@@ -1063,7 +1063,7 @@ export const CONFIG = {
       hemi: [0xfff0d8, 0xb08a5a, 1.0],
       fog: [0xf2dcb0, 45, 120],
       floor: { paint: 'sand', a: 0xebcf8e, b: 0xe0c27e, line: 'rgba(120,80,30,0.35)', rim: 0xd2a964 },
-      terrain: { paint: 'sandstone', top: 0xf0d49a, side: 0xd9a868, rim: 0x8a5a2c, block: { strata: [2.6, 0.12], height: [0.85, 6], mottle: 0.18, tints: [0xf2d49a, 0xe6bc7c, 0xf6dfb4], sprout: { kind: 'ledge', side: 0.22, top: 0, size: [0.8, 1.15] } } }, // 사암 층
+      terrain: { paint: 'sandstone', top: 0xf0d49a, side: 0xd9a868, rim: 0x8a5a2c, block: { strata: [2.6, 0.12], height: [0.85, 6], mottle: 0.18, tints: [0xf2d49a, 0xe6bc7c, 0xf6dfb4], sprout: { kind: 'rubble', side: 0.14, top: 0, size: [0.9, 1.4], ground: true } } }, // 사암 층 + 벽 밑 무너진 사암 덩어리
       cliff: [0xc98a50, 0xa85e34, 0xd49a5c, 0x9a5230, 0x7c4426], // 붉은 사암 지층
       rock: 0xc08a56,
       trunk: 0x8a6440,
@@ -1112,7 +1112,7 @@ export const CONFIG = {
       hemi: [0xffbca0, 0x5c3030, 1.45],
       fog: [0x3c1410, 40, 115],
       floor: { paint: 'cracks', a: 0x4a4446, b: 0x423c3e, line: 'rgba(0,0,0,0.5)', rim: 0x302a2c, glow: 0xff6a1a },
-      terrain: { paint: 'basalt', top: 0x585254, side: 0x464042, rim: 0x161214, glow: 0xff7a24, crust: 0x4a2e28, tints: [0x5a5050, 0x484244, 0x5a4840], decor: { kind: 'rubble', chance: 0.2, size: [0.45, 0.7] }, block: { veins: 0.42, height: [0.6, 6], sprout: { kind: 'basalt', side: 0.24, top: 0.05, size: [1.1, 1.6] } } }, // 현무암 + 용암 금 약하게
+      terrain: { paint: 'basalt', top: 0x585254, side: 0x464042, rim: 0x161214, glow: 0xff7a24, crust: 0x4a2e28, tints: [0x5a5050, 0x484244, 0x5a4840], decor: { kind: 'rubble', chance: 0.2, size: [0.45, 0.7] }, block: { top: 0x8e8080, side: 0x5a5052, topLift: 1.55, sideShade: 0.72, height: [0.8, 6], veins: 0.75, selfLight: 0.2, sprout: { kind: 'basalt', side: 0.24, top: 0.05, size: [1.1, 1.6] } } }, // 현무암 (어두운 하늘에 묻히지 않게 밝은 재빛 윗면) + 용암 금
       cliff: [0x3e3838, 0x322c2c, 0x2a2424, 0x221c1c, 0x1a1414],
       rock: 0x3a3434,
       trunk: 0x2a2220,
