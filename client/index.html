@@ -281,7 +281,8 @@
     #tut-chars .tc.sel .nm { color: #171b2c; }
     #tut-char-intro { min-height: 3.2em; font-size: 14px; }
     #tut-char-intro b { color: var(--accent); font-family: var(--disp); font-weight: normal; }
-    #tut-sum { font-family: var(--disp); font-size: 18px; color: var(--good); }
+    #tut-sum { font-family: var(--disp); font-size: 18px; color: var(--text); line-height: 1.5; }
+    #tut-sum[data-kind="all"] { color: var(--good); }
     /* 튜토리얼 진행 띠 (판 중 위): 노랑 진행 칸 + 남색 사선 띠 + 해내면 초록 '해냄!' */
     #tut-band { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); z-index: 3; display: flex; align-items: stretch; max-width: calc(100vw - 40px);
       font-family: var(--disp); font-size: 19px; line-height: 1.25; filter: drop-shadow(0 5px 0 rgba(0,0,0,.45)); animation: slide-up .25s ease-out; pointer-events: auto; }
@@ -525,7 +526,7 @@
         <p class="dim">스킬 단계는 고른 캐릭터로 해 봄 (대기실에서 언제든 바꿈)</p>
         <div id="tut-chars"></div><div id="tut-char-intro"></div>
         <div class="btns"><button id="tut-back" class="ghost">뒤로</button><button id="tut-go">시작</button></div></div>
-      <div class="pane done hidden"><h3>튜토리얼 끝!</h3>
+      <div class="pane done hidden"><h3 id="tut-title">튜토리얼 끝!</h3>
         <p id="tut-sum"></p><p class="dim">이제 진짜 판: 블록이 떨어지고, 밀고, 살아남기</p>
         <div class="btns"><button id="tut-menu" class="ghost">메뉴로</button><button id="tut-match">봇 3명과 한 판</button></div></div>
     </div></div>

@@ -54,6 +54,8 @@ export class Tutorial {
     const v = cellOfShape(SHAPE_NAMES[i % SHAPE_NAMES.length]);
     g.resetArena('flat', L.cells.map(([x, y, z]) => [x, y, z, v]));
     for (const d of L.dummies) this.addDummy(d.x, d.y, d.damage);
+    const ds = g.dummies().reverse(); // 놓은 순서
+    ds.forEach((d, k) => (d.name = ds.length > 1 ? `허수아비 ${k + 1}` : '허수아비')); // 연습처럼 늘어나는 번호 대신 (여럿일 때만 구분)
     for (const it of L.items) g.items.push({ type: it.type, x: Math.floor(it.x), y: Math.floor(it.y), z: g.columnTop(Math.floor(it.x), Math.floor(it.y)) });
     if (p && step.marks && p.char === 'hunter') for (const d of g.dummies()) for (let k = 0; k < step.marks; k++) g.addMark(p, d); // 사냥꾼 F·R 은 표식이 있어야
     if (step.kind === 'climb') g.lava = { active: true, z: C.TUTORIAL_LAVA_START_Z, startedAt: g.time };

@@ -939,8 +939,14 @@ export const CONFIG = {
   TUTORIAL_LAVA_MS_PER_CELL: 2400, // climb: 용암이 1칸 오르는 시간 (보통 판보다 느리게)
   TUTORIAL_LAVA_TOP_GAP: 1.5, // climb: 용암은 꼭대기(z)보다 이만큼 아래에서 멈춤 (올라가면 안전)
   TUTORIAL_BOTS: 3, // 끝난 뒤 '봇 3명과 한 판'
-  TUTORIAL_MARK_COLOR: 0x5ef09a, // 목표 칸 빛 (고리 + 기둥)
-  TUTORIAL_MARK_H: 2.4, // 목표 칸 빛 기둥 높이 (칸)
+  // 목표 칸 빛 (2026-10-29 재혁: 연해서 멀리서 안 보임 → 진하게): 바닥 고리 + 바깥 빛 기둥 + 가운데 밝은 심지, 맥동 (pulseMs 주기)
+  TUTORIAL_MARK: { color: 0x5ef09a, core: 0xd8ffe6, h: 4.5, beamR: 0.46, beamOpacity: [0.34, 0.6], coreR: 0.11, coreOpacity: [0.7, 1], ring: [0.3, 0.52], ringOpacity: 1, ringPulse: 0.25, pulseMs: 900 },
+  // 끝 화면 문구 (2026-10-29 재혁: '11단계 중 0단계 해냄' 이 차가움 → 숫자 0 을 앞세우지 않고, 넘긴 게 있으면 다시 할 길을 부드럽게). shared/tutorial.js doneMessage
+  TUTORIAL_DONE_TEXT: {
+    all: { title: '튜토리얼 완료!', text: '모든 단계를 해냈어요. 이제 진짜 판에서 밀고, 피하고, 살아남기!' },
+    some: { title: '튜토리얼 끝!', text: '{ok}단계를 해냈어요. 넘긴 단계는 메뉴의 \'튜토리얼\' 에서 언제든 다시 해 볼 수 있어요.' },
+    none: { title: '튜토리얼 끝!', text: '넘긴 단계는 메뉴의 \'튜토리얼\' 에서 언제든 다시 해 볼 수 있어요. 바로 한 판 해 봐도 좋아요!' },
+  },
   // 그리기 수 줄이기 (2026-10-29, 8명 판 그리기 ~1800 → 캐릭터 몸 조각·파편·떨어지는 블록 칸이 대부분)
   BATCH_MIN_PIECES: 2, // 캐릭터 몸 조각: 같은 재질 묶음(색·발광만 다른 재질은 한 묶음)이 이만큼 이상이면 SkinnedMesh 하나로 합침 (client/batch.js)
   BATCH_HIDE_LAYER: 30, // 합친 조각 Mesh 가 옮겨 가는 층 (아무 카메라도 안 켜서 안 그려짐, 뼈로만 씀)

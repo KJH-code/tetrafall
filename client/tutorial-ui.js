@@ -1,7 +1,7 @@
 // 튜토리얼 화면 (2026-10-29 재혁): 처음 켜면 묻기(#tutorial .ask) → 캐릭터 고르기(.pick) → 튜토리얼 방 (판 중 진행 띠 #tut-band) → 끝(.done: 봇 3명과 한 판 / 메뉴로).
 // 단계 판정·지형은 서버 (server/tutorial.js), 띠 문구는 shared/tutorial.js stepText 로 지금 키 설정 이름을 넣어 만듦. 다 했거나 건너뛰면 tf-tutorial = done
 import { CONFIG as C } from '/shared/config.js';
-import { stepText, tutorialStep, progressLabel } from '/shared/tutorial.js';
+import { stepText, tutorialStep, progressLabel, doneMessage } from '/shared/tutorial.js';
 import { portrait } from '/portrait.js';
 
 const $ = (id) => document.getElementById(id);
@@ -124,8 +124,10 @@ export class TutorialUI {
       this.band.classList.add('hidden');
       if (!this.doneShown) {
         this.doneShown = true;
-        const ok = (t.results || []).filter((r) => r === 'ok').length;
-        $('tut-sum').textContent = `${t.n}단계 중 ${ok}단계 해냄`;
+        const msg = doneMessage(t.results);
+        $('tut-title').textContent = msg.title;
+        $('tut-sum').textContent = msg.text;
+        $('tut-sum').dataset.kind = msg.kind;
         this.pane('done');
         if (document.pointerLockElement) document.exitPointerLock();
       }

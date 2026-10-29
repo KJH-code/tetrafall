@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Rooms } from '../server/rooms.js';
 import { CONFIG as C } from '../shared/config.js';
-import { tutorialLayout, tutorialSteps, tutorialStep, stepText, judge, progressLabel, nextStep, TUTORIAL_N } from '../shared/tutorial.js';
+import { tutorialLayout, tutorialSteps, tutorialStep, stepText, judge, progressLabel, nextStep, doneMessage, TUTORIAL_N } from '../shared/tutorial.js';
 import { TutorialPilot } from '../shared/tutorial-pilot.js';
 
 const TICK = 1000 / C.TICK_RATE;
@@ -223,5 +223,30 @@ test('자동 조종으로 8명 모두 끝까지 (넘기기 없이 전부 해냄,
     assert.ok(r.done, `${char} 끝남`);
     assert.ok(r.results.every((x) => x === 'ok') && r.results.length === tutorialSteps(char).length, `${char}: ${r.results.join(',')}`);
     assert.ok(r.ms < 120000, `${char}: ${(r.ms / 1000).toFixed(0)}초`);
+  }
+});
+
+test('끝 화면 문구: 다 해냄 = 축하, 넘긴 게 있으면 다시 할 길 (해낸 수가 0 이면 숫자를 안 씀)', () => {
+  const all = doneMessage(Array(11).fill('ok'));
+  assert.equal(all.kind, 'all');
+  assert.equal(all.title, C.TUTORIAL_DONE_TEXT.all.title);
+  const some = doneMessage(['ok', 'skip', 'ok']);
+  assert.equal(some.kind, 'some');
+  assert.ok(some.text.includes('2단계') && some.text.includes('튜토리얼'));
+  const none = doneMessage(Array(11).fill('skip'));
+  assert.equal(none.kind, 'none');
+  assert.ok(!/\d/.test(none.text) && !/\d/.test(none.title), '숫자 없음');
+  assert.ok(none.text.includes('튜토리얼'), '다시 하는 곳');
+  for (const m of [all, some, none]) assert.ok(!m.text.includes('{'));
+});
+
+test('허수아비 이름: 튜토리얼은 그냥 \'허수아비\' (단계를 지나도 번호가 안 붙음)', () => {
+  const { g } = setup();
+  for (const id of ['push', 'ringout', 'crit', 'skill', 'ult', 'item']) {
+    while (g.tutorial.step.id !== id) g.tutorial.skip();
+    const ds = g.dummies();
+    assert.equal(ds.length, 1);
+    assert.equal(ds[0].name, '허수아비', id);
+    assert.equal(g.snapshot(false).players.find((p) => p.dummy).name, '허수아비');
   }
 });

@@ -90,3 +90,12 @@ export function judge(step, ctx) {
 export function nextStep(i, n = TUTORIAL_N) {
   return i + 1 < n ? i + 1 : null;
 }
+
+// 끝 화면 문구 (config TUTORIAL_DONE_TEXT): 다 해냄 / 일부 넘김 / 다 넘김. 해낸 수가 0 이면 숫자를 안 씀
+export function doneMessage(results) {
+  const ok = (results || []).filter((r) => r === 'ok').length;
+  const n = (results || []).length;
+  const T = C.TUTORIAL_DONE_TEXT;
+  const pick = n > 0 && ok === n ? T.all : ok > 0 ? T.some : T.none;
+  return { title: pick.title, text: pick.text.replace('{ok}', String(ok)), kind: pick === T.all ? 'all' : pick === T.some ? 'some' : 'none' };
+}

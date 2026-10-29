@@ -2404,23 +2404,29 @@ export class Renderer {
     }
   }
 
-  // 튜토리얼 목표 칸 (걸어서 가기·벽 위로): 바닥에 빛나는 고리 + 옅은 빛 기둥, 숨 쉬듯 출렁. 목표가 없거나 해내면 숨김
+  // 튜토리얼 목표 칸 (걸어서 가기·벽 위로): 바닥 고리 + 퍼지는 고리 + 진한 빛 기둥 + 밝은 심지, 맥동 (config TUTORIAL_MARK). 목표가 없거나 해내면 숨김
   updateTutorialMark(t) {
     const target = t && !t.done && !t.ok ? t.target : null;
     if (!target) {
       if (this.tutMark) this.tutMark.visible = false;
       return;
     }
+    const M = C.TUTORIAL_MARK;
     if (!this.tutMark) {
       const g = new THREE.Group();
-      const col = C.TUTORIAL_MARK_COLOR;
-      const ring = new THREE.Mesh(new THREE.RingGeometry(0.34, 0.46, 32), noOutline(new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false })));
+      const basic = (color, opacity) => noOutline(new THREE.MeshBasicMaterial({ color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false }));
+      const ring = new THREE.Mesh(new THREE.RingGeometry(M.ring[0], M.ring[1], 40), basic(M.color, M.ringOpacity));
       ring.position.z = 0.03;
-      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, C.TUTORIAL_MARK_H, 20, 1, true), noOutline(new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false })));
-      beam.rotation.x = Math.PI / 2;
-      beam.position.z = C.TUTORIAL_MARK_H / 2;
-      g.add(ring, beam);
-      g.userData = { ring, beam };
+      const wave = new THREE.Mesh(new THREE.RingGeometry(M.ring[0], M.ring[1], 40), basic(M.color, M.ringOpacity)); // 퍼져 나가는 고리
+      wave.position.z = 0.04;
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(M.beamR, M.beamR, M.h, 24, 1, true), basic(M.color, M.beamOpacity[0]));
+      const core = new THREE.Mesh(new THREE.CylinderGeometry(M.coreR, M.coreR, M.h, 12, 1, true), basic(M.core, M.coreOpacity[0]));
+      for (const m of [beam, core]) {
+        m.rotation.x = Math.PI / 2;
+        m.position.z = M.h / 2;
+      }
+      g.add(ring, wave, beam, core);
+      g.userData = { ring, wave, beam, core };
       this.scene.add(g);
       this.tutMark = g;
     }
@@ -2431,9 +2437,14 @@ export class Renderer {
       break;
     }
     g.position.set(target.x, target.y, top);
-    const k = 0.5 + 0.5 * Math.sin(performance.now() / 260);
-    g.userData.ring.scale.setScalar(1 + 0.18 * k);
-    g.userData.beam.material.opacity = 0.14 + 0.14 * k;
+    const ph = (performance.now() % M.pulseMs) / M.pulseMs; // 0→1 한 주기
+    const k = 0.5 + 0.5 * Math.sin(ph * Math.PI * 2);
+    const u = g.userData;
+    u.ring.scale.setScalar(1 + M.ringPulse * k);
+    u.wave.scale.setScalar(1 + ph * 1.6);
+    u.wave.material.opacity = M.ringOpacity * (1 - ph);
+    u.beam.material.opacity = M.beamOpacity[0] + (M.beamOpacity[1] - M.beamOpacity[0]) * k;
+    u.core.material.opacity = M.coreOpacity[0] + (M.coreOpacity[1] - M.coreOpacity[0]) * k;
     g.visible = true;
   }
 
