@@ -940,12 +940,12 @@ export const CONFIG = {
   WORLD_SEA_FADE: [70, 145],
   // 테마 지형 블록 모습 (client/blocks.js 셰이더, 2026-10-29 재혁: 칸마다 줄·복붙 같은 무늬 없이 TABS 저폴리). 없는 이름이면 예전 텍스처 블록
   // segs 면 나눔 · disp 꼭짓점 흔들기 (월드 잡음, 칸) · chamfer 드러난 모서리 깎기 [최소, 최대] · step 드러난 윗면 칸마다 높낮이 · blotch 큰 얼룩 [크기(1/칸), 섞는 정도]
-  // edge 드러난 모서리 어둡게 · height 아래 어둡게 [바닥 밝기, 이 높이에서 원래 밝기] · veins 테마 빛 금 세기 (용암·수정) · veinScale 금 촘촘함
+  // edge 드러난 옆 모서리 어둡게 · wear 드러난 윗면 가장자리 밝게 (닳음) · mottle 자리마다 밝기 흔들림 · height 아래 어둡게 [바닥 밝기, 이 높이에서 원래 밝기] · veins 테마 빛 금 세기 (용암·수정) · veinScale 금 촘촘함
   WORLD_BLOCK_STYLE: 'rock',
   WORLD_BLOCK_STYLES: {
-    rock: { segs: 2, disp: 0.09, chamfer: [0.07, 0.17], step: 0, blotch: [0.16, 0.55], edge: 0.55, height: [0.6, 6], veins: 0.9, veinScale: 1 }, // 깎은 바위
-    columns: { segs: 1, disp: 0, chamfer: [0.05, 0.1], step: 0.14, blotch: [0.12, 0.45], edge: 0.45, height: [0.55, 6], veins: 0.75, veinScale: 0.8 }, // 높낮이 기둥 (현무암 주상절리)
-    smooth: { segs: 1, disp: 0, chamfer: [0.1, 0.12], step: 0, blotch: [0.09, 0.4], edge: 0.3, height: [0.7, 6], veins: 0.5, veinScale: 0.6 }, // 매끈 저폴리
+    rock: { segs: 2, disp: 0.13, chamfer: [0.08, 0.2], step: 0, blotch: [0.16, 0.5], edge: 0.6, wear: 0.7, mottle: 0.45, topLift: 1.35, height: [0.55, 6], veins: 0.95, veinScale: 1 }, // 깎은 바위: 울퉁불퉁 + 빛 금
+    columns: { segs: 1, disp: 0, chamfer: [0.08, 0.14], step: 0.22, blotch: [0.12, 0.45], edge: 0.65, wear: 0.8, mottle: 0.3, topLift: 1.5, height: [0.5, 6], veins: 0.6, veinScale: 0.8 }, // 높낮이 기둥 (현무암 주상절리): 윗면이 칸마다 오르내림 + 밝은 윗면 테
+    smooth: { segs: 1, disp: 0, chamfer: [0.1, 0.12], step: 0, blotch: [0.08, 0.7], edge: 0.35, wear: 0.4, mottle: 0.1, topLift: 1.4, height: [0.65, 6], veins: 0, veinScale: 0.6 }, // 매끈 저폴리: 금 없이 큰 얼룩 색만
   },
   WORLD_BLOCK_VARIANTS: 4, // 테마 지형 블록 면 무늬 변형 수 (칸 위치로 고르고, 90도 돌림·뒤집기)
   WORLD_BLOCK_JITTER: 0.08, // 칸마다 밝기 흔들림 (±)

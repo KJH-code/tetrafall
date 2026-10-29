@@ -50,6 +50,9 @@ export function terrainMaterial(look, style, low) {
     tfHeight: { value: new THREE.Vector2(style.height[0], style.height[1]) },
     tfVein: { value: vein },
     tfVeinScale: { value: style.veinScale || 1 },
+    tfMottle: { value: style.mottle || 0 },
+    tfWear: { value: style.wear || 0 },
+    tfTopLift: { value: style.topLift || 1 },
   };
   m.userData.tfUniforms = uniforms;
   m.onBeforeCompile = (sh) => {
@@ -94,7 +97,7 @@ float tfBit(float m, float b) { return mod(floor(m / b), 2.0); }`,
         '#include <common>',
         `#include <common>
 uniform vec3 tfTop; uniform vec3 tfSide; uniform vec3 tfRim; uniform vec3 tfTint0; uniform vec3 tfTint1; uniform vec3 tfTint2; uniform vec3 tfGlow;
-uniform vec2 tfBlotch; uniform float tfEdge; uniform vec2 tfHeight; uniform float tfVein; uniform float tfVeinScale;
+uniform vec2 tfBlotch; uniform float tfEdge; uniform vec2 tfHeight; uniform float tfVein; uniform float tfVeinScale; uniform float tfMottle; uniform float tfWear; uniform float tfTopLift;
 varying vec3 vTfW; varying vec3 vTfCell; varying float vTfOpen;
 ${NOISE}
 float tfBitF(float m, float b) { return mod(floor(m / b + 0.001), 2.0); }
@@ -105,7 +108,7 @@ float tfGlowAmt = 0.0;`,
         `#include <color_fragment>
   vec3 tfN = normalize(cross(dFdx(vTfW), dFdy(vTfW)));
   float up = smoothstep(0.55, 0.85, tfN.z);
-  vec3 base = mix(tfSide, tfTop, up);
+  vec3 base = mix(tfSide, tfTop * tfTopLift, up);
   if (tfN.z < -0.5) base = tfSide * 0.6;
   // 여러 칸에 걸친 큰 얼룩 (테마 빛깔 셋)
   float b1 = tfFbm(vTfW * tfBlotch.x + 5.0);
@@ -121,7 +124,11 @@ float tfGlowAmt = 0.0;`,
   if (an.x < 0.7) { if (tfBitF(vTfOpen, 1.0) > 0.5) d = min(d, 0.5 - l.x); if (tfBitF(vTfOpen, 2.0) > 0.5) d = min(d, 0.5 + l.x); }
   if (an.y < 0.7) { if (tfBitF(vTfOpen, 4.0) > 0.5) d = min(d, 0.5 - l.y); if (tfBitF(vTfOpen, 8.0) > 0.5) d = min(d, 0.5 + l.y); }
   if (an.z < 0.7) { if (tfBitF(vTfOpen, 16.0) > 0.5) d = min(d, 0.5 - l.z); if (tfBitF(vTfOpen, 32.0) > 0.5) d = min(d, 0.5 + l.z); }
-  base = mix(base, tfRim, tfEdge * (1.0 - smoothstep(0.0, 0.16, d)));
+  float e = 1.0 - smoothstep(0.0, 0.16, d);
+  if (up > 0.5) base = mix(base, base * 1.35 + 0.04, tfWear * e); // 윗면 가장자리는 닳아 밝게
+  else base = mix(base, tfRim, tfEdge * e); // 옆면 모서리는 어둡게
+  // 면마다·자리마다 조금씩 다른 밝기 (깎은 면이 드러나게, 월드 좌표라 칸 경계와 상관없음)
+  base *= 1.0 + (tfNoise(floor(vTfW * 3.0) + 0.5) - 0.5) * tfMottle + (tfNoise(vTfW * 0.7 + 2.0) - 0.5) * tfMottle;
   // 테마 결: 여러 칸에 걸쳐 이어지는 가는 빛 금 (용암·수정)
   if (tfVein > 0.0) {
     float v = tfNoise(vTfW * vec3(0.9, 0.9, 1.3) * tfVeinScale) - 0.5;
