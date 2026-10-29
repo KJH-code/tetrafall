@@ -7,16 +7,17 @@
 import * as THREE from 'three';
 import { CONFIG as C } from '/shared/config.js';
 import { noOutline } from '/toon.js';
-import { hazardField, riseStep, vignetteStrength, HAZARD_MARGIN } from '/hazard-field.js';
+import { hazardField, riseStep, vignetteStrength, farRings, HAZARD_MARGIN } from '/hazard-field.js';
 
 const STYLE = { water: 0, lava: 1, swamp: 2, energy: 3, storm: 4 };
 
-// 표면 셰이더 (STYLE 로 질감 갈래)
-function surfaceMaterial(style) {
+// 표면 셰이더 (STYLE 로 질감 갈래). far = 필드 밖 지평선까지 큰 판 (가운데 구멍은 버리고, 파도 없이 평평 — 안쪽 판은 가장자리로 갈수록 파도가 잦아들어 이음매 없음).
+// shimmer = 먼 표면 반짝임·잔물결 법선 (그래픽 낮춤이면 끔)
+function surfaceMaterial(style, far = false, shimmer = true) {
   return noOutline(new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: true,
-    defines: { STYLE: STYLE[style] ?? 1 },
+    defines: { STYLE: STYLE[style] ?? 1, FAR: far ? 1 : 0, SHIMMER: shimmer ? 1 : 0, RINGS: C.HAZARD_FAR_RINGS },
     uniforms: {
       uTime: { value: 0 },
       uZ: { value: 0 },
@@ -34,15 +35,31 @@ function surfaceMaterial(style) {
       uAlpha: { value: new THREE.Vector2(1, 1) },
       uReflect: { value: 0.3 },
       uDepthFade: { value: 1 },
+      uMargin: { value: 6 }, // 필드 둘레 안쪽 판 여백 (칸)
+      uRings: { value: Array.from({ length: C.HAZARD_FAR_RINGS }, () => new THREE.Vector4(0, 0, 0, 0)) }, // 먼 섬·산이 표면에 걸친 원 (x, y, r, 켬)
+      uFog: { value: new THREE.Color() },
+      uFogRange: { value: new THREE.Vector3(40, 120, 145) }, // 안개 시작·끝, 판 끝 (투명해지는 곳)
+      uHorizon: { value: new THREE.Color() },
     },
-    vertexShader: `uniform float uTime; uniform vec2 uWave; uniform float uPulse; uniform vec4 uBulge; uniform vec4 uFieldRect;
+    vertexShader: `uniform float uTime; uniform vec2 uWave; uniform float uPulse; uniform vec4 uBulge; uniform vec4 uFieldRect; uniform float uMargin;
       varying vec3 vW; varying vec3 vN; varying vec2 vF;
       void main() {
         vec4 w = modelMatrix * vec4(position, 1.0);
         vec2 p = w.xy;
         float t = uTime * uWave.y;
         vec2 d1 = vec2(0.94, 0.33); vec2 d2 = vec2(-0.41, 0.91); vec2 d3 = vec2(0.66, -0.75);
-        float a = uWave.x * (1.0 + uPulse * 1.6);
+        // 파도는 필드 둘레 여백 바깥쪽으로 갈수록 잦아듦 → 바깥 큰 판(평평)과 이음매 없이 만남
+        vec2 hf = uFieldRect.zw * 0.5;
+        vec2 ctr = uFieldRect.xy + hf;
+        float out_ = length(max(abs(p - ctr) - (hf - uMargin), 0.0));
+        float wf = 1.0 - smoothstep(uMargin * 0.4, uMargin * 0.92, out_);
+      #if FAR == 1
+        wf = 0.0;
+        // 지평선 쪽으로 둥글게 내려감 (hazard-field.js seaDrop 과 같은 식)
+        float rr = max(0.0, length(p - ctr) - ${C.HAZARD_CURVE_FROM.toFixed(2)});
+        w.z -= rr * rr * ${C.HAZARD_CURVE.toFixed(6)};
+      #endif
+        float a = uWave.x * (1.0 + uPulse * 1.6) * wf;
         float f1 = dot(d1, p) * 1.1 + t * 1.3;
         float f2 = dot(d2, p) * 1.6 - t * 1.1;
         float f3 = dot(d3, p) * 2.3 + t * 1.7;
@@ -62,6 +79,7 @@ function surfaceMaterial(style) {
     fragmentShader: `uniform float uTime; uniform float uZ; uniform float uPulse; uniform sampler2D uField;
       uniform vec3 uDeep; uniform vec3 uMid; uniform vec3 uShallow; uniform vec3 uFoam; uniform vec3 uSky; uniform vec3 uSunDir;
       uniform vec2 uAlpha; uniform float uReflect; uniform float uDepthFade; uniform vec4 uFieldRect;
+      uniform vec4 uRings[RINGS]; uniform vec3 uFog; uniform vec3 uFogRange; uniform vec3 uHorizon;
       varying vec3 vW; varying vec3 vN; varying vec2 vF;
       float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float noise(vec2 p) {
@@ -81,13 +99,27 @@ function surfaceMaterial(style) {
         return sqrt(vec2(d1, d2));
       }
       void main() {
-        vec4 fld = texture2D(uField, vF);
+      #if FAR == 1
+        // 가운데(안쪽 판 자리)는 버림
+        vec2 hf0 = uFieldRect.zw * 0.5;
+        if (all(lessThan(abs(vW.xy - (uFieldRect.xy + hf0)), hf0 - 0.02))) discard;
+      #endif
+        vec4 fld = texture2D(uField, clamp(vF, 0.0, 1.0));
         float dist = fld.r * 3.0;
         float ground = fld.g * 40.0 - 10.0;
         float depth = max(0.0, uZ - ground);
         float sh = 1.0 - smoothstep(0.0, uDepthFade, depth);
         vec3 V = normalize(cameraPosition - vW);
         vec3 N = normalize(vN);
+      #if SHIMMER == 1
+        // 잔물결 법선: 겹친 잡음 기울기 (멀수록 크게 보이는 결) → 수평선 쪽 햇빛 반짝임 길
+        vec2 sq = vW.xy * 0.35 + uTime * vec2(0.05, 0.03);
+        float e = 0.15;
+        float n0 = noise(sq) + 0.5 * noise(sq * 2.7 - uTime * 0.07);
+        float nx = noise(sq + vec2(e, 0.0)) + 0.5 * noise((sq + vec2(e, 0.0)) * 2.7 - uTime * 0.07);
+        float ny = noise(sq + vec2(0.0, e)) + 0.5 * noise((sq + vec2(0.0, e)) * 2.7 - uTime * 0.07);
+        N = normalize(N + vec3(n0 - nx, n0 - ny, 0.0) * ${C.HAZARD_SHIMMER_NORMAL.toFixed(3)});
+      #endif
         float fres = pow(1.0 - max(dot(N, V), 0.0), 3.0);
         vec2 q = vW.xy;
         float t = uTime;
@@ -154,8 +186,24 @@ function surfaceMaterial(style) {
         float halo = (1.0 - smoothstep(0.3, 1.1, dist)) * 0.25; // 테 바깥 옅은 번짐
         c = mix(c, uFoam, foam + halo * (1.0 - foam));
         c += uFoam * uPulse * 0.3;
+        // 먼 섬·산이 잠기는 곳 테 (거품·불꽃·김)
+        for (int i = 0; i < RINGS; i++) {
+          vec4 rg = uRings[i];
+          if (rg.w < 0.5) continue;
+          float rd = abs(length(q - rg.xy) - rg.z);
+          float ring = (1.0 - smoothstep(0.0, 0.6 + 0.25 * sin(t * 2.0 + float(i) * 1.7 + q.x), rd)) * mix(0.5, 1.0, noise(q * 3.0 + t));
+          c = mix(c, uFoam, ring * 0.9);
+          foam = max(foam, ring);
+        }
         float a = mix(uAlpha.x, uAlpha.y, sh);
+        a = mix(a, 1.0, smoothstep(-1.0, -4.0, ground)); // 바닥이 먼 곳(필드 밖 바다)은 불투명 — 아래 구름 바다가 비치지 않게
         a = max(a, foam);
+        // 안개: 멀수록 안개색, 판 끝은 지평선 색으로 녹이며 투명 (하늘과 이음매 없이)
+        float cd = length(vW - cameraPosition);
+        c = mix(c, uFog, smoothstep(uFogRange.x, uFogRange.y, cd) * ${C.HAZARD_FOG_MIX.toFixed(3)});
+        float edge = length(vW.xy - (uFieldRect.xy + uFieldRect.zw * 0.5));
+        c = mix(c, uHorizon, smoothstep(uFogRange.z * 0.7, uFogRange.z, edge));
+        a *= 1.0 - smoothstep(uFogRange.z * 0.9, uFogRange.z, edge);
         gl_FragColor = vec4(c, a);
         #include <colorspace_fragment>
       }`.replace('uFieldRectC()', 'uFieldRect.xy + uFieldRect.zw * 0.5'),
@@ -237,17 +285,28 @@ export class Hazard {
   setLook(h) {
     this.look = h || C.WORLD_THEMES[C.HAZARD_FALLBACK].hazard;
     const L = this.look;
-    if (this.style !== L.style || !this.surface) {
-      if (this.surface) {
-        this.r.scene.remove(this.surface);
-        this.surface.geometry.dispose();
-        this.surface.material.dispose();
+    if (this.style !== L.style || !this.surface || this.builtLow !== this.low) {
+      for (const m of [this.surface, this.far]) {
+        if (!m) continue;
+        this.r.scene.remove(m);
+        m.geometry.dispose();
+        m.material.dispose();
       }
       this.style = L.style;
-      this.surface = new THREE.Mesh(this.surfaceGeometry(), surfaceMaterial(L.style));
+      this.builtLow = this.low;
+      this.surface = new THREE.Mesh(this.surfaceGeometry(), surfaceMaterial(L.style, false, !this.low));
       this.surface.visible = false;
       this.surface.renderOrder = 1; // 투명: 블록 뒤에 그림
-      this.r.scene.add(this.surface);
+      // 지평선까지 바다: 필드 밖 큰 판 하나 (같은 uniform 을 나눠 씀 → 색·높이·시간이 늘 같음)
+      const R = C.HAZARD_FAR_SIZE;
+      const farMat = surfaceMaterial(L.style, true, !this.low);
+      farMat.uniforms = this.surface.material.uniforms;
+      this.far = new THREE.Mesh(new THREE.PlaneGeometry(2 * R, 2 * R, C.HAZARD_FAR_SEG, C.HAZARD_FAR_SEG), farMat);
+      this.far.visible = false;
+      this.far.renderOrder = 1;
+      this.far.frustumCulled = false;
+      this.r.scene.add(this.surface, this.far);
+      this.fieldKey = '';
     }
     const u = this.surface.material.uniforms;
     for (const k of ['Deep', 'Mid', 'Shallow', 'Foam']) u[`u${k}`].value.set(L[k.toLowerCase()]);
@@ -272,10 +331,7 @@ export class Hazard {
   setLow(on) {
     if (this.low === !!on) return;
     this.low = !!on;
-    if (this.surface) {
-      this.surface.geometry.dispose();
-      this.surface.geometry = this.surfaceGeometry();
-    }
+    if (this.look) this.setLook(this.look); // 반짝임·거품 갈래가 달라서 재질을 새로 (격자 수도)
   }
 
   // 판 크기가 바뀌면 (setField)
@@ -345,7 +401,17 @@ export class Hazard {
     for (const mesh of Object.values(r.blockMeshes)) for (const m of [].concat(mesh.material)) this.tint(m);
     for (const m of [].concat(r.floor.material)) this.tint(m);
     this.surface.visible = on;
-    this.body.visible = on;
+    this.far.visible = on;
+    this.body.visible = false; // 지평선까지 바다라 몸통 상자는 안 씀 (밑에서 볼 일 없음)
+    // 하늘 지평선 아래도 액체 색으로 (먼 판 끝 너머가 구름 바다 색으로 남지 않게). 꺼지면 되돌림
+    const du = r.dome.material.uniforms;
+    if (on) {
+      if (!this.belowSaved) this.belowSaved = du.below.value.clone();
+      du.below.value.copy(this.belowSaved).lerp(new THREE.Color(L.deep).lerp(r.scene.fog.color, C.HAZARD_FOG_MIX), 0.9);
+    } else if (this.belowSaved) {
+      du.below.value.copy(this.belowSaved);
+      this.belowSaved = null;
+    }
     this.pulse = Math.max(0, this.pulse - dt * C.HAZARD_PULSE_DECAY);
     const me = state.players.find((p) => p.id === myId);
     if (!on) {
@@ -377,7 +443,15 @@ export class Hazard {
     this.body.scale.z = h;
     this.body.position.set(cx, cy, this.bottom + h / 2);
     this.surface.position.set(cx, cy, zs);
+    this.far.position.set(cx, cy, zs);
     const u = this.surface.material.uniforms;
+    u.uMargin.value = HAZARD_MARGIN;
+    u.uFog.value.copy(r.scene.fog.color);
+    u.uFogRange.value.set(r.scene.fog.near, r.scene.fog.far, C.HAZARD_FAR_SIZE);
+    u.uHorizon.value.copy(du.horizon.value);
+    // 먼 섬·산이 표면에 걸친 곳 (거품·김 테, 그래픽 낮춤이면 없음)
+    const rings = this.low ? [] : farRings(r.world.farObjects ? r.world.farObjects() : [], zs, C.HAZARD_FAR_RINGS, cx, cy);
+    u.uRings.value.forEach((v, i) => (rings[i] ? v.set(rings[i].x, rings[i].y, rings[i].r, 1) : v.set(0, 0, 0, 0)));
     u.uTime.value = now;
     u.uZ.value = zs;
     u.uPulse.value = this.pulse;

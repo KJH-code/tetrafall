@@ -8,6 +8,8 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { CONFIG as C } from '/shared/config.js';
 import { toon, noOutline } from '/toon.js';
 import { CELL } from '/shared/pieces.js';
+import { terrainGeometry, terrainMaterial, terrainOpenMask } from '/blocks.js';
+import { blockStyle } from '/shared/block-style.js';
 
 // 같은 모양이 매번 같게 (새로고침마다 배경이 바뀌지 않게)
 function rng(seed) {
@@ -679,6 +681,7 @@ function prop(P, kind, look, r, x, y, z, s) {
 // 먼 떠 있는 작은 섬: 바위 뿌리 + 윗면 + 소품 몇 개
 function islet(P, look, r, x, y, z) {
   const s = 1.6 + r() * 2.4;
+  P.objs?.push({ x, y, zTop: z + 0.3, zBot: z - s * 2, rTop: s * 1.1, rBot: 0, drift: true }); // 위험 액체에 잠기는 곳 (hazard.js 거품 테)
   const geo = islandGeometry(s * 2, s * 2, s * 1.8, Math.floor(r() * 1e6), look.cliff);
   P.solid.addColored(geo, M().makeTranslation(x, y, z));
   geo.dispose();
@@ -712,6 +715,9 @@ function farShapes(P, look, r, cx, cy, n) {
     const y = cy + Math.sin(a) * dist;
     const tint = new THREE.Color(f.color).lerp(new THREE.Color(look.sky.horizon), f.haze[0] + r() * (f.haze[1] - f.haze[0]));
     const base = f.base;
+    // 위험 액체에 잠기는 곳 (대충 원뿔대: 밑 반지름 → 꼭대기 반지름)
+    const shape = { mesa: [0.6, 1, 0.7], volcano: [1, 1, 0.22], peak: [1, 1, 0], pyramid: [1, 1, 0] }[kind] || [1, 0.6, 0.1];
+    P.objs?.push({ x, y, zBot: base, zTop: base + h * shape[0], rBot: rad * shape[1], rTop: rad * shape[2], drift: false });
     if (kind === 'mesa') {
       P.solid.add(new THREE.CylinderGeometry(rad * 0.7, rad, h * 0.6, 7, 1), tint, at(x, y, base + h * 0.3, r() * 3));
     } else if (kind === 'pyramid') {
@@ -780,6 +786,8 @@ function dotTexture() {
   return dotTex;
 }
 
+// 지금 고른 셰이더 블록 스타일 (없으면 예전 텍스처 블록)
+
 export class World {
   // r: Renderer. 테마 없는 모습(예전 노을)을 기억해 두고, 테마가 없는 맵으로 오면 되돌린다
   constructor(r) {
@@ -837,6 +845,12 @@ export class World {
   setLow(on) {
     if (this.low === !!on) return;
     this.low = !!on;
+    if (this.tfOn) {
+      const tf = this.tfMat.userData.tfUniforms;
+      const s = this.tfMat.userData.tfStyle;
+      tf.tfDisp.value = this.low ? 0 : s.disp; // 그래픽 낮춤: 꼭짓점 흔들기·높낮이 끔
+      tf.tfStep.value = this.low ? 0 : s.step;
+    }
     if (this.look) {
       this.layout();
       this.r.gridVersion = -1; // 블록 소품 켜기·끄기
@@ -847,6 +861,7 @@ export class World {
     const { r } = this;
     this.id = id;
     this.look = id ? C.WORLD_THEMES[id] : null;
+    this.tfOn = false; // 셰이더 지형 블록 (테마가 있고 스타일이 있을 때 아래서 켬)
     const L = this.look;
     const b = this.base;
     const u = r.dome.material.uniforms;
@@ -891,12 +906,28 @@ export class World {
       r.sunDir = L.sunDir;
       // 지형 블록: 윗면·옆면·밑면 따로 (BoxGeometry 면 순서 +x −x +y −y +z −z). 인스턴스 색은 흰색으로 (재질 색 그대로).
       // 빛나는 금·수정은 발광 지도 (밤에도 어둡게 안 묻힘). 칸마다 변형·돌림·뒤집기 (blockMaterial) + 모서리 깎은 모양
-      const sideRot = ['crystal', 'basalt'].includes(L.terrain.paint); // 위아래 없는 무늬는 옆면도 돌림
-      const side = blockMaterial(blockFace(L.terrain, 'side'), sideRot);
-      const top = blockMaterial(blockFace(L.terrain, 'top'), true);
-      const bottom = blockMaterial(blockFace(L.terrain, 'bottom'), true);
-      r.blockMeshes.terrain.material = [side, side, side, side, top, bottom];
-      r.blockMeshes.terrain.geometry = this.blockGeometry();
+      const style = blockStyle(L.terrain);
+      this.tfOn = !!style;
+      if (style) {
+        // 저폴리 셰이더 블록 (client/blocks.js): 칸 텍스처 없이 월드 좌표로 색·모양, 맞닿은 칸끼리 이어 보임
+        const n = r.blockMeshes.terrain.instanceMatrix.count;
+        if (!this.tfGeo || this.tfGeo.userData.segs !== style.segs) {
+          this.tfGeo = terrainGeometry(n, style.segs);
+          this.tfGeo.userData.segs = style.segs;
+        }
+        this.tfMat = terrainMaterial(style, this.low);
+        r.blockMeshes.terrain.material = this.tfMat;
+        r.blockMeshes.terrain.geometry = this.tfGeo;
+        this.mats.push(this.tfMat);
+      } else {
+        const sideRot = ['crystal', 'basalt'].includes(L.terrain.paint); // 위아래 없는 무늬는 옆면도 돌림
+        const side = blockMaterial(blockFace(L.terrain, 'side'), sideRot);
+        const top = blockMaterial(blockFace(L.terrain, 'top'), true);
+        const bottom = blockMaterial(blockFace(L.terrain, 'bottom'), true);
+        r.blockMeshes.terrain.material = [side, side, side, side, top, bottom];
+        r.blockMeshes.terrain.geometry = this.blockGeometry();
+        this.mats.push(side, top, bottom);
+      }
       r.terrainColor = 0xffffff;
       // 바닥 판: 윗면 체크무늬, 옆면(두께 0.3)은 테두리 색
       const ft = floorTexture(L.floor);
@@ -905,11 +936,22 @@ export class World {
       r.floor.material = [rim, rim, rim, rim, floorTop, rim];
       this.floorTop = floorTop;
       r.edges.material.opacity = L.edgeOpacity;
-      this.mats.push(side, top, bottom, floorTop, rim);
+      this.mats.push(floorTop, rim);
     }
     r.hazard.setLook(L ? L.hazard : null); // 상승하는 위험 모습 (hazard.js)
     r.gridVersion = -1; // 지형 블록 색 다시
     r.setField(r.W, r.D, true, r.H); // 해 위치·섬 크기
+  }
+
+  // 위험 액체에 잠길 먼 섬·산 (hazard.js 가 매 프레임): 도는 섬은 지금 돈 각만큼 돌려서 월드 자리로
+  farObjects() {
+    if (!this.look || !this.farObjs) return [];
+    const a = this.drift.rotation.z;
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    const cx = this.drift.position.x;
+    const cy = this.drift.position.y;
+    return this.farObjs.map((o) => (o.drift ? { ...o, x: cx + o.x * ca - o.y * sa, y: cy + o.x * sa + o.y * ca } : o));
   }
 
   // 테마 지형 블록 모양: 모서리 살짝 깎은 상자 (윗면 가운데는 평평 — 서는 자리 그대로) + 칸마다 변형 속성
@@ -927,6 +969,7 @@ export class World {
   // updateGrid 가 테마 지형 칸마다 부름: n 번째 인스턴스의 변형·돌림·뒤집기를 칸 위치로 정하고, 색(밝기·빛깔)을 조금 흔듦
   cellLook(n, x, y, z, color) {
     if (!this.look) return;
+    if (this.tfOn) return void color.setRGB(1, 1, 1); // 셰이더 블록: 칸마다 색을 흔들지 않음 (칸 경계가 드러남). 색은 셰이더가 월드 좌표로
     const t = this.look.terrain;
     this.varAttr.setXYZW(n, Math.floor(cellHash(x, y, z, 1) * C.WORLD_BLOCK_VARIANTS), Math.floor(cellHash(x, y, z, 2) * 4), cellHash(x, y, z, 3) < 0.5 ? 1 : 0, 0);
     const j = t.jitter ?? C.WORLD_BLOCK_JITTER;
@@ -937,7 +980,8 @@ export class World {
   // updateGrid 끝: 변형 속성 올리고, 드러난 옆면에 블록 소품 (결정 덩어리·깨진 돌) 다시 놓기
   gridDone(grid) {
     if (!this.look) return;
-    this.varAttr.needsUpdate = true;
+    if (this.tfOn) terrainOpenMask(this.tfGeo.attributes.aOpen, grid, this.r.W, this.r.D, this.r.H, this.r.bbSkip);
+    else this.varAttr.needsUpdate = true;
     this.placeDecor(grid);
   }
 
@@ -1045,7 +1089,8 @@ export class World {
     island.receiveShadow = true;
     this.group.add(island);
     // 섬 뿌리에 매달린 바위 + 먼 섬 (한 메시) + 빛나는 소품 (한 메시)
-    const near = { solid: new Parts(), glow: new Parts() };
+    this.farObjs = []; // 위험 액체에 잠길 먼 섬·산 (farObjects)
+    const near = { solid: new Parts(), glow: new Parts(), objs: this.farObjs };
     for (let i = 0; i < 6; i++) {
       const a = rand() * Math.PI * 2;
       prop(near, 'rock', L, rand, Math.cos(a) * w * 0.3, Math.sin(a) * d * 0.3, -2.5 - rand() * 4, 1.2 + rand() * 1.5);
@@ -1076,7 +1121,7 @@ export class World {
     sea.renderOrder = -0.5; // 하늘 다음, 나머지 전
     this.group.add(sea);
     // 먼 배경: 안개 없이 (멀리서도 실루엣)
-    const far = { solid: new Parts(), glow: new Parts() };
+    const far = { solid: new Parts(), glow: new Parts(), objs: this.farObjs };
     farShapes(far, L, rand, cx, cy, Math.round(L.far.count * (this.low ? 0.6 : 1)));
     add(far.solid.mesh(noOutline(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, fog: false }))), this.group);
     add(far.glow.mesh(noOutline(new THREE.MeshBasicMaterial({ vertexColors: true, fog: false }))), this.group);

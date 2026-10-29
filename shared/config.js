@@ -922,6 +922,7 @@ export const CONFIG = {
   // 화면 색·조명 (2026-10-22 4단계, 화면만). 테트리미노는 모양마다 색, 쌓이면 BLOCK_LANDED_SHADE 만큼 어둡게
   SHAPE_COLORS: { I: 0x38c8e8, O: 0xf8e030, T: 0xa050e0, S: 0x50c850, Z: 0xe85050, J: 0x4070e8, L: 0xf08a30 },
   BLOCK_LANDED_SHADE: 0.88,
+  PIECE_LOOK: { size: 0.94, bevel: 0.1, glow: 0.16 }, // 테트리미노 칸 모양 (떨어지는·쌓인·하늘 계단·유령): 크기 (칸 사이 틈), 둥근 모서리 반지름, 제 색으로 빛남 — 이어진 무광 지형과 구분
   TERRAIN_COLOR: 0x8c8a96, // 시작 지형 (돌)
   BUILD_COLOR: 0xa87448, // 쌓기 블록 (나무)
   THROWN_COLOR: 0xd8c890, // 착지한 설치 블록 (모래)
@@ -939,6 +940,18 @@ export const CONFIG = {
   WORLD_LOW_DETAIL: 0.4, // 그래픽 낮춤: 먼 섬·구름·떠다니는 빛·위험 입자 수 비율
   WORLD_FAR: { dist: [112, 138], height: [8, 18], radius: [5, 11] }, // 먼 배경 크기 (칸). 하늘 구 반지름 150 안쪽
   WORLD_SEA_FADE: [70, 145],
+  // 테마 지형 블록 모습 (client/blocks.js 셰이더, 값 합치기 shared/block-style.js). 2026-10-29 재혁: 칸마다 줄·복붙 무늬 없이 TABS 저폴리 → 주상절리(columns) 고름,
+  // 칸 경계는 밟는 윗면에만 알아볼 정도. 없는 이름이면 예전 텍스처 블록. 테마마다 WORLD_THEMES.*.terrain.block 이 아래 값을 덮어씀
+  // segs 면 나눔 · disp 꼭짓점 흔들기 (월드 잡음, 칸) · chamfer 드러난 모서리 깎기 [최소, 최대] · step 드러난 윗면 칸마다 높낮이 (발 높이 어긋남 최대 step/2) · blotch 큰 얼룩 [크기(1/칸), 세기]
+  // edge 드러난 옆 모서리 어둡게 · wear 드러난 윗면 가장자리 밝게 (닳음) · mottle 자리마다 밝기 흔들림 · topLift 윗면 밝게 · height 아래 어둡게 [바닥 밝기, 이 높이에서 원래 밝기]
+  // veins 테마 빛 금 세기 (빛 색 glow 있는 테마만) · veinScale 금 촘촘함 · grid 윗면 칸 경계 [어둡게, 두께(칸)]
+  // 테마 결 (block 에서만): lip 윗면 색이 옆으로 흘러내리는 깊이 (잔디·이끼) · strata 사암 층 [층/칸, 밝기 차] · brick 돌벽돌 [폭, 높이, 줄눈, 벽돌마다 밝기] · sheen 비스듬한 면 빛 (수정)
+  WORLD_BLOCK_STYLE: 'columns',
+  WORLD_BLOCK_STYLES: {
+    rock: { segs: 2, disp: 0.13, chamfer: [0.08, 0.2], step: 0, blotch: [0.16, 0.5], edge: 0.6, wear: 0.7, mottle: 0.45, topLift: 1.35, height: [0.55, 6], veins: 0.95, veinScale: 1, grid: [0, 0.03] }, // 시안 A 깎은 바위
+    columns: { segs: 1, disp: 0, chamfer: [0.08, 0.14], step: 0.14, blotch: [0.12, 0.35], edge: 0.6, wear: 0.7, mottle: 0.28, topLift: 1.4, height: [0.72, 6], veins: 0.6, veinScale: 0.8, grid: [0.2, 0.025] }, // 시안 B 주상절리 (고름)
+    smooth: { segs: 1, disp: 0, chamfer: [0.1, 0.12], step: 0, blotch: [0.08, 0.6], edge: 0.35, wear: 0.4, mottle: 0.1, topLift: 1.4, height: [0.65, 6], veins: 0, veinScale: 0.6, grid: [0, 0.03] }, // 시안 C 매끈 저폴리
+  },
   WORLD_BLOCK_VARIANTS: 4, // 테마 지형 블록 면 무늬 변형 수 (칸 위치로 고르고, 90도 돌림·뒤집기)
   WORLD_BLOCK_JITTER: 0.08, // 칸마다 밝기 흔들림 (±)
   WORLD_BLOCK_BEVEL: 0.07, // 블록 모서리 깎은 반지름 (칸). 윗면 가운데는 평평 → 서는 자리 그대로
@@ -990,6 +1003,14 @@ export const CONFIG = {
   HAZARD_BULGE_DIST: 1.2, // 표면이 발 밑 이 칸 안이면 들썩
   HAZARD_BULGE_AMP: 0.18, // 들썩 높이 (칸)
   HAZARD_CONTACT_RATE: 14, // 닿는 곳 입자 (초당, 그래픽 낮춤이면 없음)
+  HAZARD_FAR_SIZE: 145, // 지평선까지 바다: 필드 밖 큰 판 반 크기 (칸, 하늘 구 150 안쪽). 끝 쪽은 지평선 색으로 녹이며 투명
+  HAZARD_CURVE: 0.0009, // 먼 바다가 지평선 쪽으로 둥글게 내려가는 정도 (거리² 배율) → 먼 산이 차례로 잠김 (125칸에서 약 10칸 아래)
+  HAZARD_CURVE_FROM: 20, // 이 거리(필드 가운데에서) 안쪽은 평평 (필드 위 판과 이음매 없이)
+  HAZARD_FAR_SEG: 64, // 먼 판 격자 수 (둥글게 내려가는 모양만)
+  HAZARD_FOG_MIX: 0.75, // 먼 액체가 안개색에 섞이는 정도 (안개 끝에서)
+  HAZARD_SHIMMER_NORMAL: 0.9, // 먼 표면 잔물결 법선 세기 (햇빛 반짝임 길, 그래픽 낮춤이면 끔)
+  HAZARD_FAR_RINGS: 16, // 먼 섬·산이 잠기는 곳 테 최대 수 (셰이더 uniform)
+  HAZARD_RING_ABOVE: 0.4, // 꼭대기가 표면 아래로 이만큼 잠길 때까지 테 (잠긴 직후 거품)
   HAZARD_SINK_MS: 2400, // 빠진 몸이 잠기는 시간
   HAZARD_SINK_FLOAT: 0.3, // 그중 앞부분 비율은 표면에 걸려 허우적
   HAZARD_SINK_DEPTH: 1.5, // 잠기는 깊이 (칸)
@@ -1015,7 +1036,7 @@ export const CONFIG = {
       hemi: [0xeef6ff, 0x7a9660, 1.05],
       fog: [0xd6ebf4, 45, 120],
       floor: { paint: 'grass', a: 0x88cc58, b: 0x7bbf4c, line: 'rgba(40,70,25,0.35)', rim: 0x6aa844 },
-      terrain: { paint: 'grass', top: 0x86c857, side: 0x9a6b44, rim: 0x4c3420 },
+      terrain: { paint: 'grass', top: 0x86c857, side: 0x9a6b44, rim: 0x4c3420, block: { lip: 0.2, strata: [2.2, 0.035], tints: [0xa0d468, 0x78b44e, 0x9cb858] } }, // 잔디 윗면이 흙 옆면으로 흘러내림
       cliff: [0x9a6b44, 0x8f8576, 0x81786a, 0x72695c, 0x645b50],
       rock: 0x8f8778,
       trunk: 0x7a5434,
@@ -1038,7 +1059,7 @@ export const CONFIG = {
       hemi: [0xfff0d8, 0xb08a5a, 1.0],
       fog: [0xf2dcb0, 45, 120],
       floor: { paint: 'sand', a: 0xebcf8e, b: 0xe0c27e, line: 'rgba(120,80,30,0.35)', rim: 0xd2a964 },
-      terrain: { paint: 'sandstone', top: 0xf0d49a, side: 0xd9a868, rim: 0x8a5a2c },
+      terrain: { paint: 'sandstone', top: 0xf0d49a, side: 0xd9a868, rim: 0x8a5a2c, block: { strata: [2.6, 0.12], height: [0.85, 6], mottle: 0.18, tints: [0xf2d49a, 0xe6bc7c, 0xf6dfb4] } }, // 사암 층
       cliff: [0xc98a50, 0xa85e34, 0xd49a5c, 0x9a5230, 0x7c4426], // 붉은 사암 지층
       rock: 0xc08a56,
       trunk: 0x8a6440,
@@ -1061,7 +1082,7 @@ export const CONFIG = {
       hemi: [0xb8a8ff, 0x48386e, 1.55],
       fog: [0x2a2052, 40, 120],
       floor: { paint: 'stone', a: 0x5a5474, b: 0x524c6a, line: 'rgba(20,14,40,0.55)', rim: 0x4a4466 },
-      terrain: { paint: 'crystal', top: 0x6c6290, side: 0x544a74, rim: 0x231c3a, glow: 0x6ef2ff, tints: [0x8a7cc0, 0x5a6ab0, 0x7a5aa8], decor: { kind: 'crystal', chance: 0.22, size: [0.32, 0.5] } },
+      terrain: { paint: 'crystal', top: 0x6c6290, side: 0x544a74, rim: 0x231c3a, glow: 0x6ef2ff, tints: [0x8a7cc0, 0x5a6ab0, 0x7a5aa8], decor: { kind: 'crystal', chance: 0.22, size: [0.32, 0.5] }, block: { segs: 2, disp: 0.07, step: 0.12, mottle: 0.42, veins: 0.5, veinScale: 0.9, sheen: 0.16 } }, // 결정 면 (꼭짓점 흔들어 깎은 면 + 비스듬한 면 빛) + 수정 맥
       cliff: [0x4a4268, 0x3c3458, 0x322b4c, 0x29233e, 0x201b32],
       rock: 0x4c4466,
       trunk: 0x3a3250,
@@ -1087,7 +1108,7 @@ export const CONFIG = {
       hemi: [0xffbca0, 0x5c3030, 1.45],
       fog: [0x3c1410, 40, 115],
       floor: { paint: 'cracks', a: 0x4a4446, b: 0x423c3e, line: 'rgba(0,0,0,0.5)', rim: 0x302a2c, glow: 0xff6a1a },
-      terrain: { paint: 'basalt', top: 0x585254, side: 0x464042, rim: 0x161214, glow: 0xff7a24, crust: 0x4a2e28, tints: [0x5a5050, 0x484244, 0x5a4840], decor: { kind: 'rubble', chance: 0.2, size: [0.45, 0.7] } },
+      terrain: { paint: 'basalt', top: 0x585254, side: 0x464042, rim: 0x161214, glow: 0xff7a24, crust: 0x4a2e28, tints: [0x5a5050, 0x484244, 0x5a4840], decor: { kind: 'rubble', chance: 0.2, size: [0.45, 0.7] }, block: { veins: 0.28, height: [0.6, 6] } }, // 현무암 + 용암 금 약하게
       cliff: [0x3e3838, 0x322c2c, 0x2a2424, 0x221c1c, 0x1a1414],
       rock: 0x3a3434,
       trunk: 0x2a2220,
@@ -1113,7 +1134,7 @@ export const CONFIG = {
       hemi: [0xfff0d4, 0x8c7ca4, 1.1],
       fog: [0xffdca4, 45, 120],
       floor: { paint: 'marble', a: 0xf2ece0, b: 0xe6decc, line: 'rgba(150,120,60,0.4)', rim: 0xd8b860 },
-      terrain: { paint: 'bricks', top: 0xf4efe4, side: 0xe2d9c6, rim: 0xc09a40 },
+      terrain: { paint: 'bricks', top: 0xf4efe4, side: 0xe2d9c6, rim: 0xc09a40, block: { step: 0.05, mottle: 0.12, brick: [0.62, 0.333, 0.035, 0.12], tints: [0xf4efe4, 0xeadfcb, 0xf8f3ea] } }, // 흰 돌벽돌
       cliff: [0xe6dccb, 0xb8a8a4, 0xa09094, 0x8a7a84, 0x706070],
       rock: 0xc8bcb4,
       trunk: 0x8a6a4a,
@@ -1140,7 +1161,7 @@ export const CONFIG = {
       hemi: [0xa8f0d8, 0x34503e, 1.55],
       fog: [0x0e3030, 40, 115],
       floor: { paint: 'moss', a: 0x4a7840, b: 0x426e3a, line: 'rgba(10,30,10,0.5)', rim: 0x5a4430 },
-      terrain: { paint: 'stump', top: 0xc8985e, side: 0x7a5434, rim: 0x2e1e12 },
+      terrain: { paint: 'stump', top: 0xc8985e, side: 0x7a5434, rim: 0x2e1e12, block: { top: 0x6e9a4a, lip: 0.24, tints: [0x84aa54, 0x5e8a46, 0x9a9a52] } }, // 이끼 낀 흙 (셰이더 블록은 윗면 이끼, 예전 텍스처는 나무 그루터기)
       cliff: [0x5a4030, 0x4a3a30, 0x3a3028, 0x2e2620, 0x241e1a],
       rock: 0x4a5048,
       trunk: 0xd8d0b8, // 버섯 대
@@ -1166,7 +1187,7 @@ export const CONFIG = {
       hemi: [0xf0f4ff, 0x7a8a60, 1.05],
       fog: [0xdceaea, 45, 120],
       floor: { paint: 'grass', a: 0x80c050, b: 0x74b446, line: 'rgba(40,70,25,0.35)', rim: 0x8a8a88 }, // 판 옆면 = 돌 테
-      terrain: { paint: 'bricks', top: 0xb0b0ac, side: 0x9c9c9a, rim: 0x46464a },
+      terrain: { paint: 'bricks', top: 0xb0b0ac, side: 0x9c9c9a, rim: 0x46464a, block: { step: 0.06, mottle: 0.2, brick: [0.8, 0.5, 0.04, 0.16], tints: [0xb0b0ac, 0xa2a89e, 0xbab4aa] } }, // 회색 돌벽돌
       cliff: [0x8a8a88, 0x7a7268, 0x6e665c, 0x625a50, 0x544c44],
       rock: 0x8a8a86,
       trunk: 0x6a4a30,

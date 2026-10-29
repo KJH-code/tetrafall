@@ -91,3 +91,24 @@ export function vignetteStrength(gap, pulse = 0) {
   const k = 1 - Math.max(0, gap) / C.HAZARD_VIGNETTE_DIST;
   return Math.min(C.HAZARD_VIGNETTE_MAX, C.HAZARD_VIGNETTE_MAX * k * k + pulse * 0.2);
 }
+
+// 먼 바다가 지평선 쪽으로 둥글게 내려가는 깊이 (칸): 필드 가운데에서 r 칸. HAZARD_CURVE_FROM 안쪽은 0 (필드 위 판과 이음매 없이)
+// → 먼 산은 표면이 한참 올라와야 잠김 (차례로 잠김)
+export function seaDrop(r) {
+  const d = Math.max(0, r - C.HAZARD_CURVE_FROM);
+  return d * d * C.HAZARD_CURVE;
+}
+
+// 먼 섬·산이 표면에 걸친 곳 (거품·김 테): objs = [{ x, y, zBot, zTop, rBot, rTop }] (원뿔대 근사).
+// 그 자리 표면 높이 (zs - seaDrop) 가 그 사이면 그 높이의 반지름 원. 큰 것부터 max 개 (셰이더 uniform 수). cx, cy = 필드 가운데
+export function farRings(objs, zs, max = C.HAZARD_FAR_RINGS, cx = 0, cy = 0) {
+  const out = [];
+  for (const o of objs) {
+    const zl = zs - seaDrop(Math.hypot(o.x - cx, o.y - cy));
+    if (!(zl > o.zBot && zl < o.zTop + C.HAZARD_RING_ABOVE)) continue;
+    const k = Math.min(1, (zl - o.zBot) / Math.max(1e-6, o.zTop - o.zBot));
+    const r = o.rBot + (o.rTop - o.rBot) * k;
+    if (r > 0.05) out.push({ x: o.x, y: o.y, r });
+  }
+  return out.sort((a, b) => b.r - a.r).slice(0, max);
+}
