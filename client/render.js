@@ -676,6 +676,65 @@ export class Renderer {
     return this.title;
   }
 
+  // 장면 빛 수 (확인용: 미리 데운 셰이더와 대기실 빛 구성이 같은지)
+  lightCounts() {
+    const n = {};
+    this.scene.traverseVisible((o) => {
+      if (o.isLight) n[o.type] = (n[o.type] || 0) + 1 + (o.castShadow ? 100 : 0);
+    });
+    return n;
+  }
+
+  // 대기실 첫 진입 멈춤 줄이기: 메뉴에 있는 동안 가짜 대기실 (이번 창 테마 맵 + 캐릭터 전원) 을 한 프레임 그려 셰이더 (몸·블록·그림자·외곽선·블룸·무대) 를
+  // 미리 만들어 둠. 대기실 무대 빛 수는 테마마다 같아서 (LOBBY_DARK.lights) 어느 맵 대기실로 들어가도 그대로 씀. 그린 뒤 가짜 몸·장면은 치움
+  prewarmLobby() {
+    this.prewarmed = true;
+    const theme = sessionTheme();
+    const map = Object.keys(C.WORLD_MAP_THEME).find((m) => C.WORLD_MAP_THEME[m] === theme) || MAP_IDS[0];
+    const ids = [];
+    const players = C.CHARACTERS.map((ch, i) => {
+      ids.push(-7000 - i);
+      return { id: -7000 - i, slot: i, color: i, name: '', char: ch, x: 1.5 + i, y: 2.5, z: 0, yaw: 0, pitch: 0, alive: true, damage: 0, emote: -1 };
+    });
+    const st = { type: 'state', menu: true, phase: 'lobby', time: NaN, players, pieces: [], items: [], projectiles: [], lava: { active: false, z: C.LAVA_START_Z }, map: { choice: map, id: map }, field: { w: C.GRID_W, d: C.GRID_D, h: C.GRID_H }, grid: new Uint8Array(C.GRID_W * C.GRID_D * C.GRID_H), gridVersion: -7, mode: 'survival', round: { n: 0 } };
+    const t0 = performance.now();
+    const np0 = this.renderer.info.programs.length;
+    this.prewarming = true;
+    try {
+      // 두 번: three 는 그림자 패스를 그 프레임 빛 설정 전에 그려서, 첫 번째의 그림자 셰이더는 앞 프레임 (타이틀 장면) 빛 수로 만들어짐
+      for (let k = 0; k < 2; k++) this.render(st, ids[0], 0, 'fps', { yaw: 0.6, pitch: -0.3 }); // 첫 사람 = 나 (1인칭 팔도 데움)
+      // 안 그려진 재질 (빈 InstancedMesh: 떨어지는 블록·파편·건축가 블록 등) 도 블룸 렌더 타깃 기준으로 셰이더를 만들어 둠
+      const R = this.renderer;
+      const rt = this.dark?.composer?.readBuffer ?? null;
+      R.setRenderTarget(rt);
+      R.compile(this.scene, this.camera);
+      R.setRenderTarget(null);
+      this.prewarmLights = this.lightCounts(); // 확인용
+    } catch (e) {
+      console.warn('대기실 미리 데우기 실패 (무시):', e);
+      this.prewarmError = String(e && e.stack || e).slice(0, 300); // 확인용
+    } finally {
+      this.prewarming = false;
+      for (const id of ids) {
+        const g = this.playerMeshes.get(id);
+        if (g) this.scene.remove(g);
+        this.playerMeshes.delete(id);
+        this.smooth.delete(id);
+        this.tracks.delete(id);
+        if (this.ragdoll?.has(id)) this.ragdoll.remove(id);
+      }
+      this.prewarmDark = this.dark; // 재질을 살려 둬야 셰이더가 남음 → 진짜 대기실이 몇 프레임 그린 뒤 버림
+      this.dark?.detach();
+      this.dark = null;
+      this.preview = null;
+      this.gridVersion = -1;
+      this.curState = null;
+      this.prewarmMs = Math.round(performance.now() - t0); // 확인용
+      this.prewarmPrograms = this.renderer.info.programs.length - np0;
+      this.prewarmKeys = this.renderer.info.programs.slice(np0).map((p) => p.cacheKey); // 확인용
+    }
+  }
+
   // 대기실 지형 미리보기 (재혁: 맵 바꾸면 곧바로 뒤 화면도): 고른 맵 (map.choice) 의 시작 지형을 클라에서 깔아 보여 줌
   // (shared/maps.js mapColumns, 판 크기는 지금 대기실 판). 무작위·대기실 아님이면 끄고 서버 격자로. 판 시작하면 서버가 같은 맵을 깖
   lobbyPreview(state, theme) {
@@ -3161,13 +3220,16 @@ export class Renderer {
       }
       this.title ||= new TitleScene(this, sessionTheme(), { menu: true, low: this.lowGfx });
       markTheme(this.title.theme);
+      // 메뉴에서 자리 잡은 뒤 한 번: 대기실 장면을 몰래 그려 셰이더를 미리 데움 (대기실 첫 진입 멈춤 줄이기). 그린 건 아래 타이틀이 덮음
+      if (this.title.menu) this.title.menuAt ??= performance.now();
+      if (!this.prewarmed && this.title.menuAt && performance.now() - this.title.menuAt > C.LOBBY_DARK.prewarmMs) this.prewarmLobby();
       this.title.step(dt || 0);
       const tp = prof.begin();
       this.title.draw();
       prof.end('render', tp);
       return;
     }
-    if (this.title) this.endTitle(); // 진짜 판·대기실이 옴
+    if (this.title && !this.prewarming) this.endTitle(); // 진짜 판·대기실이 옴
     this.curState = state;
     // 대기실 지형 미리보기면 지금 인원의 판 크기로 그림 (서버 대기실 판은 작아서, 사람 위치는 가운데 맞춰 화면만 밀어 줌 — previewOff)
     const pvSize = this.previewSize(state);
@@ -3187,6 +3249,11 @@ export class Renderer {
     }
     if (dk && !this.dark) this.dark = new LobbyDark(this, dk, !!swapFrom);
     this.dark?.update();
+    if (this.prewarmDark && !this.prewarming) this.prewarmDark.roomFrames = (this.prewarmDark.roomFrames || 0) + 1;
+    if (this.prewarmDark && !this.prewarming && ((this.dark?.frames ?? 0) > 2 || this.prewarmDark.roomFrames > 120)) {
+      this.prewarmDark.dispose(false); // 미리 데운 무대는 이제 버림 (진짜 대기실이 같은 셰이더를 씀, 대기실 없는 방 (연습) 이면 조금 뒤)
+      this.prewarmDark = null;
+    }
     markTheme(this.dark ? this.dark.theme : null);
     this.stepView(view, dt);
     this.lobbyPreview(state, dk);

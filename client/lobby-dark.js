@@ -43,6 +43,11 @@ export class LobbyDark {
     // 무대 빛: 로고용 앞 빛은 섬 위로
     this.stage.lights[1]?.[0].position.set(-R * 0.4, -R * 0.6, 14);
     this.stage.backLight.position.set(0, R * 0.5, 6);
+    // 빛 수를 테마마다 같게 (LOBBY_DARK.lights): 모자라면 세기 0 빛으로 채움 → 대기실 첫 진입·맵 바꿈에 게임 장면 재질 셰이더를 다시 안 만듦 (메뉴에서 미리 데운 것 그대로)
+    const count = (type) => this.stage.lights.filter(([l]) => l.type === type).length;
+    for (const [type, want] of [['PointLight', L.lights.point], ['DirectionalLight', L.lights.dir]]) {
+      for (let k = count(type); k < want; k++) this.stage.light(type === 'PointLight' ? new THREE.PointLight(0, 0) : new THREE.DirectionalLight(0, 0), 0);
+    }
     r.scene.add(this.stage.scene);
     if (!this.low) {
       const w = window.innerWidth;
@@ -95,6 +100,8 @@ export class LobbyDark {
 
   // 매 프레임
   update() {
+    this.drawn = true; // 이번 프레임에 그려짐 (확인용)
+    this.frames = (this.frames || 0) + 1;
     this.apply();
     this.stage.update(performance.now() / 1000, 1, window.innerHeight * 0.5 * this.r.renderer.getPixelRatio());
   }
@@ -120,10 +127,19 @@ export class LobbyDark {
     return true;
   }
 
+  // 장면에서만 떼고 재질·셰이더는 살려 둠 (메뉴 미리 데우기: 진짜 대기실이 같은 셰이더를 다시 쓰게, 그 뒤 dispose)
+  detach() {
+    const { r } = this;
+    r.scene.remove(this.stage.scene);
+    r.dome.visible = true;
+    r.world.group.visible = true;
+    r.world.dirty = true; // 하늘·안개·빛은 다음에 밝은 판을 그릴 때 다시 칠함 (지금 world.apply 하면 재질을 새로 만들어 데운 셰이더가 버려짐)
+  }
+
   // 치움. restore: 밝은 판으로 되돌림 (하늘 구·먼 섬·맵 테마 다시 칠하기) — 다른 테마 대기실로 바로 바꿀 땐 false
   dispose(restore = true) {
     const { r } = this;
-    r.scene.remove(this.stage.scene);
+    if (this.stage.scene.parent) r.scene.remove(this.stage.scene);
     this.stage.dispose();
     if (this.composer) {
       this.bloom.dispose();

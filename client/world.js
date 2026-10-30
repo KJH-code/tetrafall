@@ -820,7 +820,7 @@ export class World {
   // theme: 테마를 정해서 (대기실 = 고른 맵의 테마, 바닥·블록도 미리보기). 없으면 지금 섬 맵의 테마
   update(state, dt, theme = null) {
     const id = theme || (state && state.map && C.WORLD_MAP_THEME[state.map.id]) || null;
-    if (id !== this.id) this.apply(id);
+    if (id !== this.id || (this.dirty && !theme)) this.apply(id); // dirty: 대기실 미리 데우기 뒤 밝은 판이면 하늘·빛 다시 (render.js prewarmLobby)
     if (!this.look) return;
     this.drift.rotation.z += dt * C.WORLD_DRIFT_SPEED;
     const m = this.motes;
@@ -860,6 +860,7 @@ export class World {
 
   apply(id) {
     const { r } = this;
+    this.dirty = false;
     this.id = id;
     this.look = id ? C.WORLD_THEMES[id] : null;
     this.tfOn = false; // 셰이더 지형 블록 (테마가 있고 스타일이 있을 때 아래서 켬)

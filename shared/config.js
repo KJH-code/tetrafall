@@ -1133,7 +1133,7 @@ export const CONFIG = {
   MENU_DRIFT: { side: 5, bob: 0.8, yaw: 0.3, speed: [0.11, 0.17, 0.07], easeMs: 3000 },
   MENU_THEME_KEY: 'tf-menu-theme', // 이번 창 (sessionStorage) 메뉴·타이틀 테마 — 타이틀을 안 거친 메뉴도 같은 테마
   // 대기실 (방 안·판 전) 배경 = 그 방 맵 테마의 어두운 엔딩 장면 (client/lobby-dark.js): 섬·사람은 그대로, 둘레만. 판 시작하면 밝은 판
-  LOBBY_DARK: { drop: 6, clear: 0.85, fog: [8, 30], sun: 0.55, hemi: 0.8, flash: 0.85, flashMs: 600 }, // drop 섬 아래 거울 바닥 깊이 (칸) · clear 소품 안 두는 반지름 (판 크기 비율) · fog 안개 시작·끝 더하기 · sun·hemi 섬 빛 (테마 key·amb 세기 비율) · flash·flashMs 맵 바꿈 번쩍 세기·가라앉는 시간 (재혁: 맵 바꾸면 곧바로 장면도)
+  LOBBY_DARK: { drop: 6, clear: 0.85, fog: [8, 30], sun: 0.55, hemi: 0.8, flash: 0.85, flashMs: 600, lights: { point: 5, dir: 1 }, prewarmMs: 1500 }, // lights 대기실 무대 빛 수 (모든 테마 같게 채움 — 셰이더 다시 안 만듦) · prewarmMs 메뉴 카메라가 자리 잡고 이만큼 뒤 대기실 장면을 한 번 몰래 그려 셰이더를 미리 데움 · drop 섬 아래 거울 바닥 깊이 (칸) · clear 소품 안 두는 반지름 (판 크기 비율) · fog 안개 시작·끝 더하기 · sun·hemi 섬 빛 (테마 key·amb 세기 비율) · flash·flashMs 맵 바꿈 번쩍 세기·가라앉는 시간 (재혁: 맵 바꾸면 곧바로 장면도)
   // 상승하는 위험 모습 (client/hazard.js, 화면만 — 판정은 서버 lava.z). 테마마다 값은 WORLD_THEMES.*.hazard
   HAZARD_NOISE_WAVE: 1.6, // 잡음 파도 높이 배수 (× 테마 wave[0]). 2026-10-30 재혁: 사인파 줄무늬 → 겹친 잡음 + 흐르는 빛 띠 (시안 A)
   HAZARD_FALLBACK: 'volcano', // 테마 없는 화면(대기실)의 위험 모습
