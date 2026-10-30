@@ -106,6 +106,16 @@
     #players .pc.away { opacity: .62; }
     #players .pc.away .away-tag { display: block; }
     #host-players .away, #score .away { opacity: .6; }
+    /* 킬 점수전 위 띠: 1~3위 + 나 (등수·이름·킬·목표까지 막대) 또는 팀 합계 막대 + 목표·남은 시간 */
+    #score.kills { display: flex; align-items: center; gap: 4px; font-size: 18px; }
+    #score .kc { display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; }
+    #score .kc em { font-style: normal; font-size: 13px; color: var(--dim); }
+    #score .kc.mine { background: rgba(255,210,58,.12); box-shadow: inset 0 -2px 0 var(--accent); }
+    #score .kc.extra { margin-left: 6px; border-left: 2px solid #3c4a78; }
+    #score .prog { display: inline-block; width: 46px; height: 6px; background: rgba(255,255,255,.12); vertical-align: middle; overflow: hidden;
+      clip-path: polygon(3px 0, 100% 0, calc(100% - 3px) 100%, 0 100%); }
+    #score .prog > i { display: block; height: 100%; transition: width .3s; }
+    #score.kills .goal { font-size: 13px; color: var(--dim); }
     #score .away small { font-size: 11px; color: var(--dim); }
     /* 관전 중 따라가는 사람 */
     #players .pc.watch { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -117,12 +127,23 @@
     #players.compact .pc .face { width: calc(30px * var(--pc-s, 1) + 2px); height: calc(30px * var(--pc-s, 1) + 2px); }
     #players.compact .pc .nm { max-width: calc(var(--pc-w, 140px) - 50px); font-size: 12px; }
     #players .pc .pct i { font-style: normal; font-size: 27px; color: var(--hot); letter-spacing: 1px; }
+    /* 체력전: % 아래 HP 막대 (서버 hp·hpMax 가 있을 때만) */
+    #players .pc .hp { display: none; height: 6px; margin: 3px 4px 2px; background: rgba(255,255,255,.14); clip-path: polygon(3px 0, 100% 0, calc(100% - 3px) 100%, 0 100%); }
+    #players .pc.has-hp .hp { display: block; }
+    #players .pc .hp i { display: block; height: 100%; background: linear-gradient(180deg, #7dff9a, #2fbf5a); transition: width .2s; }
+    #players .pc .hp i.low { background: linear-gradient(180deg, #ff8a6a, #e0300c); }
     /* ===== 판 중: 킬 로그 · 조작법 ===== */
     #killfeed { position: absolute; top: 86px; right: 12px; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; pointer-events: none; }
     #killfeed .kill { font-family: var(--disp); font-size: 15px; padding: 3px 12px; background: rgba(8,12,26,.8); white-space: nowrap; transition: opacity .5s;
       clip-path: polygon(9px 0, 100% 0, calc(100% - 9px) 100%, 0 100%); animation: slide-left .2s ease-out; }
-    #killfeed .kill.mine { background: linear-gradient(180deg, #4a3a06, #241c02); border-bottom: 2px solid var(--accent); }
+    /* "죽인 사람 ▸ 죽은 사람 원인" + 연속 킬. 내 킬 = 금빛, 내 죽음 = 빨강 */
+    #killfeed .kill { display: flex; align-items: center; gap: 6px; }
+    #killfeed .kill.my-kill { background: linear-gradient(180deg, #5a4506, #2a2002); box-shadow: inset 0 -2px 0 var(--accent), 0 0 12px rgba(255,210,58,.35); }
+    #killfeed .kill.my-death { background: linear-gradient(180deg, #5a160a, #2a0804); box-shadow: inset 0 -2px 0 var(--hot); }
+    #killfeed .arrow { color: var(--dim); font-size: 12px; }
     #killfeed .how { color: var(--dim); font-family: system-ui, sans-serif; font-size: 13px; }
+    #killfeed .streak { font-size: 12px; padding: 1px 8px; color: #1a1300; background: linear-gradient(180deg, #ffe98a, #ffb400);
+      clip-path: polygon(5px 0, 100% 0, calc(100% - 5px) 100%, 0 100%); animation: pop-in .2s ease-out; }
     /* 접속 상태 (client/net.js): 오른쪽 아래 작은 띠. 핑 색 = 상태, 렉 알림은 그 위 빨간 띠 (글자만, 아이콘 없음) */
     /* ===== 화면 전환 슬래시 (메뉴→방, 판 시작, 결과 등장, 결과→대기실) =====
        띠(.band)는 JS 가 translateX 로 쓸고, 기울기·색은 여기. 앞 띠들은 노랑·주황 줄로 먼저 지나가고 마지막 남색 띠(.main)가 화면을 다 덮음 */
@@ -220,6 +241,30 @@
     #ghost-hint { position: absolute; top: 38%; left: 50%; transform: translateX(-50%); font-family: var(--disp); font-size: 19px; color: #fff; text-shadow: 0 0 6px #000; pointer-events: none; transition: opacity .5s; }
     #spec { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); text-align: center; font-size: 15px; background: rgba(8,12,26,.8);
       padding: 7px 20px; white-space: pre; pointer-events: none; clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%); box-shadow: var(--sh); }
+    /* 킬 점수전 Tab 점수표 (누르고 있는 동안) */
+    #scoreboard { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); z-index: 5; pointer-events: none; padding: 12px 22px 14px;
+      background: linear-gradient(160deg, rgba(26,35,71,.94), rgba(8,12,26,.95)); box-shadow: var(--sh);
+      clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px)); border-left: 5px solid var(--accent); }
+    #scoreboard h4 { margin: 0 0 8px; font-family: var(--disp); font-weight: normal; font-size: 22px; color: var(--accent); }
+    #scoreboard h4 small { font-size: 14px; color: var(--dim); margin-left: 10px; }
+    #scoreboard table { border-collapse: collapse; font-size: 15px; min-width: 380px; }
+    #scoreboard th { font-family: var(--disp); font-weight: normal; color: var(--dim); font-size: 12px; padding: 2px 10px; text-align: right; }
+    #scoreboard td { padding: 4px 10px; text-align: right; font-family: var(--disp); }
+    #scoreboard .n { text-align: left; font-size: 17px; }
+    #scoreboard .rk { color: var(--dim); font-size: 13px; }
+    #scoreboard .sc { color: var(--accent); font-size: 18px; }
+    #scoreboard tr.me td { background: rgba(255,210,58,.14); }
+    /* 킬 점수전 부활 대기: 누구에게 · 원인 + 큰 숫자 (관전 화면 위, 가운데 조금 위) */
+    #respawn { position: absolute; left: 50%; top: 24%; transform: translateX(-50%); z-index: 3; pointer-events: none; text-align: center; }
+    #respawn .lab { font-family: var(--disp); font-size: 18px; color: #fff; letter-spacing: 2px; text-shadow: 0 3px 0 rgba(0,0,0,.5); }
+    #respawn .num { font-family: var(--disp); font-size: 96px; line-height: 1; color: var(--accent); text-shadow: 0 6px 0 rgba(0,0,0,.5), 0 0 18px #000; }
+    #respawn .num.tick { animation: num-tick .3s ease-out; } /* 숫자가 바뀔 때 톡 (크기만, 흐려지지 않게) */
+    @keyframes num-tick { from { transform: scale(1.3); } to { transform: scale(1); } }
+    #respawn .why { display: inline-block; margin-top: 4px; font-family: var(--disp); font-size: 17px; padding: 4px 16px; background: rgba(90,22,10,.85); color: #ffd6cc;
+      clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
+    #respawn .why:empty { display: none; }
+    /* 부활 순간: 화면 가장자리 빛 */
+    #respawn-flash { position: absolute; inset: 0; pointer-events: none; opacity: 0; box-shadow: inset 0 0 120px 40px rgba(120,230,255,.75), inset 0 0 0 4px rgba(255,255,255,.8); }
     #emote-wheel { position: absolute; top: 50%; left: 50%; width: 300px; height: 300px; margin: -150px 0 0 -150px; border-radius: 50%; background: rgba(0,0,0,.45); pointer-events: none; }
     #emote-wheel .em { position: absolute; transform: translate(-50%, -50%); font-family: var(--disp); font-size: 18px; padding: 5px 14px; background: rgba(8,12,26,.75); white-space: nowrap;
       clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%); }
@@ -568,6 +613,11 @@
       #results table { font-size: 13px; }
       #results td.n { font-size: 15px; }
       #results .face { width: 26px; height: 26px; }
+      #score.kills { font-size: 15px; }
+      #score .prog { width: 30px; }
+      #score .kc { padding: 0 5px; }
+      #respawn .num { font-size: 72px; }
+      #scoreboard table { font-size: 13px; min-width: 320px; }
     }
   </style>
   <script type="importmap">
@@ -658,6 +708,10 @@
     </div></div>
     <div id="emote-wheel" class="hidden"><span class="em" data-n="0" style="left:50%;top:14%"></span><span class="em" data-n="1" style="left:84%;top:39%"></span><span class="em" data-n="2" style="left:71%;top:79%"></span><span class="em" data-n="3" style="left:29%;top:79%"></span><span class="em" data-n="4" style="left:16%;top:39%"></span><span class="hint">마우스로 고르고<br /><span data-key="emote">G</span> 를 놓기</span></div>
     <div id="spec" class="hidden"></div>
+    <!-- 킬 점수전 (main.js updateKillsHud): Tab 점수표 · 부활 카운트다운 · 부활 빛 -->
+    <div id="scoreboard" class="hidden"></div>
+    <div id="respawn" class="hidden"><div class="lab">부활까지</div><div class="num"></div><div class="why"></div></div>
+    <div id="respawn-flash"></div>
     <div id="ghost-cd" class="hidden"></div>
     <div id="ghost-hint" class="hidden">클릭: 블록 떨어뜨리기</div>
     <div id="crosshair"></div>

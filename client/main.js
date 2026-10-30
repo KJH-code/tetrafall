@@ -16,6 +16,7 @@ import { screenOf, wipeKind, wipePlan } from '/shared/wipe.js';
 import { victoryPlan, victoryStage } from '/shared/victory.js';
 import { MAP_IDS, mapName } from '/shared/maps.js';
 import { cardLayout, lobbyDock } from '/shared/hud-layout.js';
+import { KillTally, streakText, progress, topBar, scoreRows, respawnSecs, hpFrac } from '/shared/kills-hud.js';
 import { randomReel } from '/shared/char-select.js';
 import { CharStage } from '/char-stage.js';
 import { leaveNeedsConfirm } from '/shared/leave.js';
@@ -171,24 +172,41 @@ const ITEM_KO = { control: '조종권', knockback: '투사체', jump: '점프력
 const CAUSE_KO = { crush: '압사', fall: '낙사', lava: '용암' };
 const WEAPON_KO = { push: '밀치기', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종 블록', thrown: '설치 블록', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', blockslam: '블록내려찍기', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기', quake: '솟는 땅', ghost: '유령블록', glide: '낙하 음파', shell: '포탄', bigshell: '대형 포탄', groundshot: '발밑 포격', pounce: '추적 도약', execute: '처형 사격', leapwave: '광폭 도약', spin: '분노 소용돌이', note: '음파', riff: '리프', amp: '앰프 음파' };
 
-// 오른쪽 위 킬 피드: "죽인 사람 → 죽은 사람 낙사 (망치)". 내가 낀 줄은 노란 테두리
+// 오른쪽 위 킬 피드: "죽인 사람 ▸ 죽은 사람 낙사 (망치)" + 연속 킬. 내 킬은 금빛, 내 죽음은 빨강
+// 판 동안 킬·죽음·자멸·연속 킬 세기 (shared/kills-hud.js — 서버 스냅샷에 그 필드가 오면 그것이 먼저)
+const killTally = new KillTally();
+let tallyRound = null;
 const killfeedEl = $('killfeed');
-function killFeed(e) {
+function killFeed(e, streak) {
   const victim = playerById(e.who);
   const killer = e.by !== null ? playerById(e.by) : null;
   const row = document.createElement('div');
-  row.className = `kill${e.who === myId || e.by === myId ? ' mine' : ''}`;
+  const myKill = e.by === myId && e.who !== myId;
+  row.className = `kill${myKill ? ' my-kill' : ''}${e.who === myId ? ' my-death' : ''}`;
   const name = (p, fallback) => {
     const span = document.createElement('span');
+    span.className = 'who';
     span.textContent = p ? shownName(p) : fallback || '?';
     if (p) span.style.color = colorOf(p);
     return span;
   };
   const how = document.createElement('span');
   how.className = 'how';
-  how.textContent = ` ${CAUSE_KO[e.cause] || e.cause}${e.weapon ? ` (${WEAPON_KO[e.weapon] || e.weapon})` : ''}`;
-  if (e.by !== null) row.append(name(killer, e.byName), ' → ');
+  how.textContent = `${CAUSE_KO[e.cause] || e.cause}${e.weapon ? ` (${WEAPON_KO[e.weapon] || e.weapon})` : ''}`;
+  if (e.by !== null && e.by !== e.who) {
+    const arrow = document.createElement('span');
+    arrow.className = 'arrow';
+    arrow.textContent = '▸';
+    row.append(name(killer, e.byName), arrow);
+  }
   row.append(name(victim), how);
+  const st = streakText(streak);
+  if (st) {
+    const b = document.createElement('span');
+    b.className = 'streak';
+    b.textContent = st;
+    row.append(b);
+  }
   killfeedEl.appendChild(row);
   while (killfeedEl.children.length > C.KILLFEED_MAX) killfeedEl.firstChild.remove();
   setTimeout(() => (row.style.opacity = 0), C.KILLFEED_MS);
@@ -203,6 +221,7 @@ const helpEl = $('help');
 input.onUi = (id, down) => {
   if (id === 'help') helpEl.classList.toggle('hidden', !down);
   if (id === 'practice' && down) setPracticeOpen(!practiceOpen); // 연습 방에서만 열림
+  if (id === 'practice') scoresHeld = down; // 같은 키를 누르고 있는 동안 킬 점수전 점수표 (#scoreboard)
   if (id === 'perf' && down) perfPanel.toggle(); // 성능 표시 (기본 F3)
   if (id === 'tutSkip' && down && state && state.tutorial && !state.tutorial.done) tut.skipStep(); // 튜토리얼 이 단계 넘기기 (기본 N)
   if (id === 'view' && down) {
@@ -755,6 +774,7 @@ function handleEvent(e) {
       if (e.who === myId && !inPractice()) {
         toast(`부활! ${C.KILLS_SHIELD_MS / 1000}초 무적`, 'good');
         sound.play('go');
+        respawnFlash(); // 화면 가장자리 짧은 빛
       }
       break;
     case 'hit': // 글자 알림 없이 화면 번쩍·소리·이펙트·콤보 숫자로 (2026-10-24 재혁: 글이 너무 많음)
@@ -767,7 +787,7 @@ function handleEvent(e) {
       if (e.who !== myId) toast(`${nameOf(e.who)} 블록 조종 시작. 그림자를 조심!`);
       break;
     case 'death':
-      if (e.cause !== 'disconnect') killFeed(e);
+      if (e.cause !== 'disconnect') killFeed(e, killTally.add(e));
       if (e.who === myId) {
         // 나를 죽인 사람부터 따라감 (없거나 이미 죽었으면 다음 사람)
         spec.killed = { cause: e.cause, by: e.by, byName: e.byName, weapon: e.weapon };
@@ -1253,6 +1273,16 @@ skyLabel.append(skyBox, ' 하늘 계단');
 skyLabel.title = '떨어지는 블록이 하늘까지 쌓여 위로 올라갈 수 있음 (높이 2배)';
 $('bot-btns').append(skyLabel);
 skyBox.addEventListener('change', () => send({ type: 'skyStairs', on: skyBox.checked }));
+// 체력전 (호스트, 판 사이): 서버가 스냅샷에 hpMode 를 보낼 때만 보임 (A1 서버 쪽). 메시지 이름은 하늘 계단과 같은 꼴
+const hpLabel = document.createElement('label');
+const hpBox = document.createElement('input');
+hpBox.type = 'checkbox';
+hpBox.id = 'hp-mode';
+hpLabel.append(hpBox, ' 체력전');
+hpLabel.title = '% 대신 체력: 다 닳으면 KO (아래 판에 HP 막대)';
+hpLabel.classList.add('hidden');
+$('bot-btns').append(hpLabel);
+hpBox.addEventListener('change', () => send({ type: 'hpMode', on: hpBox.checked }));
 $('bot-level').addEventListener('change', (e) => send({ type: 'botLevel', level: e.target.value }));
 $('mode-select').addEventListener('change', (e) => send({ type: 'setMode', mode: e.target.value }));
 const BOT_LEVEL_KO = { easy: '쉬움', normal: '보통', hard: '어려움' };
@@ -1539,6 +1569,10 @@ const TEAM_KO = { red: '빨강', blue: '파랑' };
 // 아이템이 나오는 판인지 (서버가 알려 주기 전엔 설정값)
 document.body.classList.toggle('no-items', !C.ITEMS_ENABLED);
 function onState() {
+  if (state.round && state.round.n !== tallyRound) {
+    tallyRound = state.round.n; // 새 판: 킬·죽음 세기 처음부터
+    killTally.reset();
+  }
   if (state.itemsEnabled !== undefined) document.body.classList.toggle('no-items', !state.itemsEnabled);
   const p = me();
   tut.update(state, p); // 튜토리얼 진행 띠·끝 화면
@@ -1605,7 +1639,7 @@ function updateScore() {
   const ts = state.teamScores || { red: 0, blue: 0 };
   const left = kills && state.round.left !== null ? fmt(state.round.left) : '';
   // 판 중엔 아래 플레이어 판이 사람마다 승수·점수를 보여 준다 → 맨 위 줄은 팀 합계가 필요한 팀전에만 (화면 덜 가리게)
-  const dup = cardsOn() && !state.teamMode;
+  const dup = cardsOn() && !state.teamMode && !kills; // 킬 점수전은 위 띠에 목표까지 진행 (아래 판과 따로)
   const key = `${kills}|${left}|${dup}|` + ps.map((p) => `${p.id}:${p.wins}:${p.score}:${p.nick}:${p.team}:${p.color}:${!!p.away}`).join(',') + `|${myId}|${state.teamMode}|${tw.red}:${tw.blue}|${ts.red}:${ts.blue}`;
   if (key === scoreKey) return;
   scoreKey = key;
@@ -1613,10 +1647,23 @@ function updateScore() {
   if (dup) return;
   const name = (p) => `<span style="color:${colorOf(p)}" class="${p.id === myId ? 'me' : ''}${p.away ? ' away' : ''}">${escapeHtml(shownName(p))}${p.away ? '<small> 자리 비움</small>' : ''}</span>`;
   const team = (t) => `<span style="color:${hex(TEAM_MAIN[t])}" class="${me() && me().team === t ? 'me' : ''}">${TEAM_KO[t]}</span>`;
+  scoreEl.classList.toggle('kills', kills);
   if (kills) {
-    const tail = left ? `<span class="sep">·</span>${left}` : '';
-    if (state.teamMode) scoreEl.innerHTML = `킬 ${team('red')} ${ts.red}<span class="sep">:</span>${ts.blue} ${team('blue')}${tail}`;
-    else scoreEl.innerHTML = `킬 ${[...ps].sort((a, b) => b.score - a.score).map((p) => `${name(p)} ${p.score}`).join('<span class="sep">·</span>')}${tail}`;
+    // 킬 점수전: 목표 킬까지 진행 막대. 개인전 1~3위 + 나, 팀전 팀 합계 (shared/kills-hud.js)
+    const tail = `<span class="sep">·</span><span class="goal">목표 ${state.teamMode ? C.KILLS_TARGET_TEAM : C.KILLS_TARGET}킬</span>${left ? `<span class="sep">·</span>${left}` : ''}`;
+    const bar = (score, target, col) => `<i class="prog"><i style="width:${(progress(score, target) * 100).toFixed(1)}%;background:${col}"></i></i>`;
+    if (state.teamMode) {
+      const T = C.KILLS_TARGET_TEAM;
+      scoreEl.innerHTML = `${team('red')} <b>${ts.red}</b>${bar(ts.red, T, hex(TEAM_MAIN.red))}<span class="sep">:</span>${bar(ts.blue, T, hex(TEAM_MAIN.blue))}<b>${ts.blue}</b> ${team('blue')}${tail}`;
+    } else {
+      scoreEl.innerHTML =
+        topBar(ps, myId)
+          .map((r) => {
+            const p = playerById(r.id);
+            return `<span class="kc${r.me ? ' mine' : ''}${r.extra ? ' extra' : ''}"><em>${r.rank}</em>${name(p)} <b>${r.score}</b>${bar(r.score, C.KILLS_TARGET, colorOf(p))}</span>`;
+          })
+          .join('') + tail;
+    }
     return;
   }
   if (state.teamMode) {
@@ -1687,7 +1734,7 @@ function updatePlayers() {
       const el = document.createElement('div');
       el.className = 'pc';
       el.innerHTML =
-        '<div class="top"><div class="face"></div><div><div class="nm"></div><div class="sub"></div></div></div><div class="pct"></div><div class="bar"></div><div class="away-tag">자리 비움</div>';
+        '<div class="top"><div class="face"></div><div><div class="nm"></div><div class="sub"></div></div></div><div class="pct"></div><div class="hp"><i></i></div><div class="bar"></div><div class="away-tag">자리 비움</div>';
       const col = colorOf(p);
       el.style.setProperty('--pcol', col);
       el.classList.toggle('me', p.id === myId);
@@ -1695,7 +1742,7 @@ function updatePlayers() {
       if (img) el.querySelector('.face').style.backgroundImage = `url(${img})`;
       el.querySelector('.nm').textContent = shownName(p);
       playersEl.append(el);
-      playerCards.set(p.id, { el, sub: el.querySelector('.sub'), pct: el.querySelector('.pct') });
+      playerCards.set(p.id, { el, sub: el.querySelector('.sub'), pct: el.querySelector('.pct'), hp: el.querySelector('.hp i') });
     }
   }
   // 인원·화면 폭 따라 판 크기 (8명이어도 한 줄·화면 안, 5명부터 작은 판)
@@ -1723,6 +1770,12 @@ function updatePlayers() {
     c.el.classList.toggle('dead', dead);
     c.el.classList.toggle('away', !!p.away); // 끊겨서 자리만 남음 (봇이 대신 조종) — 글자 + 살짝 흐리게
     c.el.classList.toggle('watch', spectating() && !spec.overview && spec.target === p.id); // 관전 중 보고 있는 사람
+    const hpf = state.hpMode ? hpFrac(p) : null; // 체력전: % 옆 HP 막대 (서버 hp·hpMax)
+    c.el.classList.toggle('has-hp', hpf !== null);
+    if (hpf !== null) {
+      c.hp.style.width = `${(hpf * 100).toFixed(1)}%`;
+      c.hp.classList.toggle('low', hpf < C.HUD_HP_LOW);
+    }
     const pct = dead ? '<i>KO</i>' : `${p.damage}<u>%</u>`;
     if (c.pct.innerHTML !== pct) c.pct.innerHTML = pct;
     c.pct.style.color = dead ? '' : damageColor(p.damage);
@@ -1893,6 +1946,7 @@ function drawHud() {
 
   updateScore();
   updatePlayers();
+  updateKillsHud();
   updateResults();
   updateBottom(p);
 
@@ -1989,6 +2043,8 @@ function drawHud() {
   const mapSel = $('map-select');
   if (state.map && document.activeElement !== mapSel) mapSel.value = state.map.choice;
   if (state.skyStairs !== undefined) skyBox.checked = !!state.skyStairs;
+  hpLabel.classList.toggle('hidden', state.hpMode === undefined);
+  if (state.hpMode !== undefined) hpBox.checked = !!state.hpMode;
   const lvSel = $('bot-level');
   if (state.botLevel && document.activeElement !== lvSel) lvSel.value = state.botLevel;
   const modeSel = $('mode-select');
@@ -2022,6 +2078,64 @@ function drawHud() {
 // ---------- 관전: 죽었거나 관전자면 살아 있는 사람을 3인칭으로 따라감 ----------
 // 클릭·스페이스 = 다음 사람, 우클릭 = 전체 보기 ↔ 따라가기
 const spec = { target: null, overview: false, killed: null, round: null, dist: C.SPECTATE_DIST, overviewDist: C.SPECTATE_OVERVIEW_DIST };
+// ---------- 킬 점수전: Tab 점수표 · 부활 카운트다운 · 부활 빛 ----------
+let scoresHeld = false; // 연습 창 키(기본 Tab)를 누르고 있는 중
+let scoreboardKey = '';
+const scoreboardEl = $('scoreboard');
+const respawnEl = $('respawn');
+const killsGame = () => !!state && state.mode === 'kills' && !inPractice() && ['countdown', 'playing', 'over'].includes(state.phase);
+function updateKillsHud() {
+  // Tab 점수표: 등수·이름·킬·죽음·자멸·점수 (팀전은 팀끼리)
+  const showTable = scoresHeld && killsGame();
+  scoreboardEl.classList.toggle('hidden', !showTable);
+  if (showTable) {
+    const rows = scoreRows(state.players, killTally, state.teamMode);
+    const key = JSON.stringify(rows) + myId;
+    if (key !== scoreboardKey) {
+      scoreboardKey = key;
+      const target = state.teamMode ? C.KILLS_TARGET_TEAM : C.KILLS_TARGET;
+      const ts = state.teamScores || { red: 0, blue: 0 };
+      const head = state.teamMode
+        ? `<span style="color:${hex(TEAM_MAIN.red)}">빨강 ${ts.red}</span> : <span style="color:${hex(TEAM_MAIN.blue)}">${ts.blue} 파랑</span> · 목표 ${target}킬`
+        : `목표 ${target}킬`;
+      const tr = rows
+        .map((r, i) => {
+          const p = playerById(r.id);
+          const nm = `<span style="color:${colorOf(p)}">${escapeHtml(shownName(p))}</span>`;
+          const tm = state.teamMode ? `<td class="tm" style="color:${hex(TEAM_MAIN[r.team])}">${TEAM_KO[r.team] || ''}</td>` : '';
+          return `<tr class="${r.id === myId ? 'me' : ''}"><td class="rk">${i + 1}</td>${tm}<td class="n">${nm}</td><td>${r.kills}</td><td>${r.deaths}</td><td>${r.self}</td><td class="sc">${r.score}</td></tr>`;
+        })
+        .join('');
+      scoreboardEl.innerHTML = `<h4>점수표 <small>${head}</small></h4><table><tr><th></th>${state.teamMode ? '<th>팀</th>' : ''}<th class="n">이름</th><th>킬</th><th>죽음</th><th>자멸</th><th>점수</th></tr>${tr}</table>`;
+    }
+  }
+  // 죽은 뒤 부활 대기: 누구에게 · 원인 + 큰 숫자 (관전 화면은 그대로)
+  const p = me();
+  const waiting = killsGame() && state.phase === 'playing' && p && !p.alive && p.respawnIn !== null && p.respawnIn !== undefined;
+  respawnEl.classList.toggle('hidden', !waiting);
+  if (waiting) {
+    const k = spec.killed;
+    const by = k && k.by !== null && k.by !== myId ? `${nameOf(k.by) !== '?' ? nameOf(k.by) : k.byName}에게 · ` : '';
+    const why = `${by}${CAUSE_KO[p.cause] || CAUSE_KO[k?.cause] || ''}${k && k.weapon ? ` (${WEAPON_KO[k.weapon] || k.weapon})` : ''}${k && (k.by === null || k.by === myId) ? ' · 자멸 -1' : ''}`;
+    const n = String(respawnSecs(p.respawnIn));
+    const whyEl = respawnEl.querySelector('.why');
+    const numEl = respawnEl.querySelector('.num');
+    if (whyEl.textContent !== why) whyEl.textContent = why;
+    if (numEl.textContent !== n) {
+      numEl.textContent = n;
+      numEl.classList.remove('tick');
+      void numEl.offsetWidth; // 숫자가 바뀔 때마다 톡 (애니메이션 되감기)
+      numEl.classList.add('tick');
+    }
+  }
+}
+// 부활 순간: 화면 가장자리 짧은 빛 (KILLS_RESPAWN_FLASH_MS)
+const respawnFlashEl = $('respawn-flash');
+function respawnFlash() {
+  respawnFlashEl.getAnimations().forEach((a) => a.cancel());
+  respawnFlashEl.animate([{ opacity: 0.95 }, { opacity: 0 }], { duration: C.KILLS_RESPAWN_FLASH_MS, easing: 'ease-out' });
+}
+
 const specEl = $('spec');
 function spectating() {
   const p = me();
@@ -2053,7 +2167,7 @@ function updateSpectate() {
   if (p.spectator) head = '관전 중 (호스트가 관전으로 바꿈)';
   else if (!p.cause) head = '이번 판은 관전 (다음 판부터 참가)';
   else head = `사망: ${CAUSE_KO[p.cause] || p.cause}${k && k.by !== null ? ` — ${nameOf(k.by) !== '?' ? nameOf(k.by) : k.byName}의 ${WEAPON_KO[k.weapon] || k.weapon}` : ''}`;
-  if (p.respawnIn !== null && p.respawnIn !== undefined) head += ` · 부활까지 ${Math.ceil(p.respawnIn / 1000)}초`;
+  if (p.respawnIn !== null && p.respawnIn !== undefined && state.mode !== 'kills') head += ` · 부활까지 ${Math.ceil(p.respawnIn / 1000)}초`; // 킬 점수전은 가운데 큰 카운트다운 (#respawn)
   const now = playerById(spec.target);
   const watching = spec.overview || !now ? '전체 보기' : `${shownName(now)} 따라가는 중`;
   // 살아 있는 사람 목록 (지금 보는 사람은 ▶)
