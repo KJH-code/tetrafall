@@ -271,6 +271,19 @@ export class PlayersPart {
     return true;
   }
 
+  // 체력전 켜고 끄기 (판 사이에만, 연습 방은 안 됨)
+  setHpMode(on) {
+    if (this.inRound() || this.mode === 'practice' || this.hpMode === !!on) return false;
+    this.hpMode = !!on;
+    this.log(`[호스트] 체력전 ${on ? '켬' : '끔'}`);
+    return true;
+  }
+
+  // 체력전: HP (HP_MAX − 피해 %) 가 0 이하인 사람은 그 자리에서 KO (마지막으로 때린 사람 킬, lastHit). 틱마다 전투 뒤에
+  hpKnockouts() {
+    for (const p of this.players.values()) if (p.alive && this.onField(p) && p.damage >= C.HP_MAX) this.kill(p, 'hp');
+  }
+
   // 캐릭터 고르기 (판 사이에만, 같은 캐릭터 여럿 됨)
   setChar(id, c) {
     const p = this.players.get(id);

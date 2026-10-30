@@ -114,7 +114,7 @@ test('방: 공개는 호스트만, 판 사이에만. 목록엔 이름·사람/�
   rooms.message(b.conn, { type: 'setMode', mode: 'master' }); // 호스트 아님 → 무시
   rooms.message(a.conn, { type: 'setPublic', on: true });
   assert.deepEqual(rooms.publicList().rooms, [
-    { code, name: '같이 해요', humans: 2, bots: 1, max: Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length), map: 'stairs', mode: 'kills', teamMode: true, botLevel: 'hard', skyStairs: true },
+    { code, name: '같이 해요', humans: 2, bots: 1, max: Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length), map: 'stairs', mode: 'kills', teamMode: true, botLevel: 'hard', skyStairs: true, hpMode: false },
   ]);
   assert.ok(logs[code].includes('[호스트] 방 공개'));
   // 판 중에는 못 바꿈

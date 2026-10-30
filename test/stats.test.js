@@ -128,7 +128,7 @@ test('통계: 이름으로 묶고, 접속 끊김은 요약 줄에서 받고, 옛
   assert.deepEqual(rounds[0].players.map((p) => p.key), ['재혁', 'P2', 'P3(봇)']);
   assert.deepEqual(rounds[1].players.map((p) => p.key).sort(), ['P3(봇)', '재혁']);
   const s = summarize(rounds);
-  assert.deepEqual(s.byCause, { crush: 1, fall: 1, lava: 0, disconnect: 1 });
+  assert.deepEqual(s.byCause, { crush: 1, fall: 1, lava: 0, hp: 0, disconnect: 1 });
   const me = s.players.find((p) => p.key === '재혁');
   assert.equal(me.rounds, 2);
   assert.equal(me.wins, 1);

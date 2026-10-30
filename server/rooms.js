@@ -375,6 +375,9 @@ export class Rooms {
       case 'skyStairs':
         if (host) game.setSkyStairs(!!msg.on);
         break;
+      case 'hpMode': // 체력전 (대기실 옵션)
+        if (host) game.setHpMode(!!msg.on);
+        break;
       case 'ghostDrop': // 유령 투하: 죽은 사람이 고른 칸에 1칸 블록 (생존 모드)
         game.ghostDrop(id, msg.x, msg.y);
         break;
@@ -463,6 +466,7 @@ export class Rooms {
         teamMode: r.game.teamMode,
         botLevel: r.game.botLevel,
         skyStairs: r.game.skyStairs,
+        hpMode: r.game.hpMode,
       });
     }
     return { type: 'rooms', rooms, count: this.rooms.size, max: C.ROOM_MAX };

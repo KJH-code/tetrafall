@@ -11,6 +11,7 @@ export class PracticePart {
     this.mode = 'practice';
     this.practice = { noCooldown: false, fullUlt: false, noBlocks: true, noDeath: true };
     this.skyStairs = false;
+    this.hpMode = false; // 연습·튜토리얼은 체력전 없음
     this.mapChoice = 'flat';
     this.countdownMs = 0;
     this.dummyCounter = this.dummyCounter || 0;

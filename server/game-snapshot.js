@@ -84,6 +84,7 @@ export class SnapshotPart {
         brickSide: p.brickSide,
         aim: p.alive ? this.aimPreview(p) : null, // 고른 칸으로 우클릭하면 어디에 무엇이 생기는지
         damage: p.damage,
+        hp: this.hpMode ? Math.max(0, C.HP_MAX - p.damage) : undefined, // 체력전: 남은 HP (켰을 때만)
         wins: p.wins,
         controlling: this.isControlling(p),
         cause: p.deathCause,
@@ -118,6 +119,8 @@ export class SnapshotPart {
       practice: this.mode === 'practice' ? this.practiceSnapshot() : null,
       tutorial: this.tutorial ? this.tutorial.snapshot() : null, // 튜토리얼 진행 (단계·해냄·끝) // 연습 모드 토글·허수아비 콤보 기록
       skyStairs: this.skyStairs, // 대기실 옵션 (이번 판에 도는지는 field.h 가 SKY_GRID_H 인지로도 앎)
+      hpMode: this.hpMode || undefined, // 체력전 (켰을 때만 실음 — 끄면 스냅샷이 예전과 같게)
+      hpMax: this.hpMode ? C.HP_MAX : undefined,
       teamWins: this.teamWins,
       mode: this.mode,
       teamScores: this.teamScores,

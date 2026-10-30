@@ -164,6 +164,7 @@ export class RoundPart {
     this.log(`===== ROUND ${this.roundNumber} 시작 (${ps.length}명: ${ps.sort((a, b) => a.slot - b.slot).map((p) => p.name).join(' ')}, 맵 ${MAPS[this.mapId].log}${lv}) =====`); // 참가자 목록은 npm run stats 가 구성별로 셀 때 씀. 맵은 예전 이름 (log) 그대로 — 화면 이름은 MAPS name
     if (this.teamMode) this.log(`  팀: ${this.teamLine()}`); // npm run stats 가 팀 승리를 사람별로 나눌 때 씀
     if (this.sky) this.log('  하늘 계단: 켬'); // npm run stats 가 켬/끔을 나눠 봄 (끔은 예전 로그와 같게 안 찍음)
+    if (this.hpMode) this.log(`  체력전: 켬 (HP ${C.HP_MAX})`); // npm run stats 가 켬/끔을 나눠 봄 (끔은 안 찍음)
     if (this.characters) this.log(`  캐릭터: ${ps.map((p) => `${p.name} ${C.CHAR_NAMES[p.char]}`).join(' / ')}`); // npm run stats 캐릭터별 승률
     // 모드 줄 (생존은 예전 로그와 같게 안 찍음). npm run stats 가 모드별로 셈
     if (this.mode === 'master') {
