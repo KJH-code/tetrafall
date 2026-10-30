@@ -2433,21 +2433,34 @@ export class Game {
     this.clearLayers();
   }
 
-  // 공중 F: 발밑 칸에 발판 + 위로 BUILDER_PAD_BOOST. 칸을 못 놓아도(필드 밖·막힘) 부스트는 함 (복귀기)
+  // 공중 F (2026-10-30 재혁: 1칸 발판 + 부스트 → 세로 기둥): 발밑으로 BUILDER_PAD_HEIGHT 칸 기둥을 세우고 나는 그 위에 섬 (부스트 없음).
+  // 기둥은 발밑 칸부터 아래로, 막힌 칸(블록·바닥·사람)에서 멈춤 (그 아래가 바로 땅이면 1칸). 한 칸도 못 놓으면(필드 밖·바로 밑이 막힘) 예전처럼 위로 부스트 (복귀기).
+  // 두 칸은 같은 묶음 → 망치로 치면 같이 터짐, BUILDER_BLOCK_MS 뒤 같이 사라짐
   builderPad(p) {
     const x = Math.floor(p.x);
     const y = Math.floor(p.y);
-    const z = Math.floor(p.z) - 1;
+    const top = Math.floor(p.z); // 서게 될 높이 (발밑 칸 윗면)
     const g = ++this.bgroup;
-    const ok = this.inXY(x, y) && z >= 0 && ![...this.players.values()].some((o) => this.onField(o) && overlapsCell(o, x, y, z)) && this.placeBBlock(p, x, y, z, 'pad', g);
-    if (ok) {
-      this.gridChanged();
-      this.emit({ type: 'bblock', who: p.id, kind: 'pad', group: g, cells: [[x, y, z]], ms: C.BUILDER_BLOCK_MS });
+    const cells = [];
+    for (let k = 1; k <= C.BUILDER_PAD_HEIGHT; k++) {
+      const z = top - k;
+      if (!this.inXY(x, y) || z < 0 || this.grid[this.idx(x, y, z)] || this.pieceCells.has(cellKey(x, y, z))) break;
+      if ([...this.players.values()].some((o) => o !== p && this.onField(o) && overlapsCell(o, x, y, z))) break;
+      cells.push([x, y, z]);
     }
-    p.vz = C.BUILDER_PAD_BOOST;
-    p.grounded = false;
-    this.emit({ type: 'padBoost', who: p.id, cell: ok ? [x, y, z] : null });
-    this.log(`  [스킬] ${p.name} 발판${ok ? ` (${x},${y},${z})` : ' (칸 없이 부스트)'}`);
+    const placed = cells.filter(([cx, cy, cz]) => this.placeBBlock(p, cx, cy, cz, 'pad', g));
+    if (placed.length) {
+      this.gridChanged();
+      this.emit({ type: 'bblock', who: p.id, kind: 'pad', group: g, cells: placed, ms: C.BUILDER_BLOCK_MS });
+      p.z = top;
+      p.vz = 0;
+      p.grounded = true;
+    } else {
+      p.vz = C.BUILDER_PAD_BOOST;
+      p.grounded = false;
+    }
+    this.emit({ type: 'padBoost', who: p.id, cell: placed.length ? placed[0] : null, cells: placed, stand: placed.length > 0 });
+    this.log(`  [스킬] ${p.name} 발판${placed.length ? ` 기둥 ${placed.length}칸 (${x},${y},${placed[placed.length - 1][2]}~${placed[0][2]})` : ' (칸 없이 부스트)'}`);
     return true;
   }
 
@@ -2564,13 +2577,13 @@ export class Game {
     return targets.length > 0;
   }
 
-  // 벽·3타 블록·발판 폭발. 벽은 같은 묶음끼리 이어진 칸으로 연쇄. 사람은 한 번씩, 가까운 터진 칸 수 × BUILDER_BLAST_DAMAGE.
+  // 벽·3타 블록·발판 폭발. 벽·발판 기둥은 같은 묶음(같은 F)끼리 이어진 칸으로 연쇄. 사람은 한 번씩, 가까운 터진 칸 수 × BUILDER_BLAST_DAMAGE.
   // 치는 방향(dir) 앞쪽 사람만 dir 쪽으로 날림, 건축가 자신은 안 맞음. 터진 칸 수를 돌려줌
   blast(start, dir) {
     const p = this.players.get(start.owner);
     const order = [start];
     const seen = new Set([cellKey(start.x, start.y, start.z)]);
-    if (start.kind === 'wall') {
+    if (start.kind === 'wall' || start.kind === 'pad') {
       for (let i = 0; i < order.length; i++) {
         const c = order[i];
         for (const [ox, oy, oz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {

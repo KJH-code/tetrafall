@@ -214,7 +214,7 @@ export class Sound {
 
   // name: 이벤트 소리. dist = 내 몸에서 거리 (0 = 내 소리), pos = 소리 난 곳 (있으면 내 귀 기준 거리·방향),
   // char = 그 소리를 낸 캐릭터 (무기 소리), strong = 내가 때림, form = 바드 폼, tier = 타격 세기 단계 (light·medium·heavy·crit, hitTier), step = 평타 콤보 순번 (1·2·3, hitStep)
-  play(name, { dist, pos, strong = false, char, form, tier, step } = {}) {
+  play(name, { dist, pos, strong = false, big = false, char, form, tier, step } = {}) {
     if (!this.ready()) return;
     this.det = (1 + (Math.random() * 2 - 1) * C.SFX_DETUNE) * this.slowRate;
     const o = this.bus(dist, pos, name === 'final' ? this.direct : this.master); // 마지막 킬 소리는 자기 슬로모션에 안 먹먹해지게
@@ -390,6 +390,23 @@ export class Sound {
       case 'lose': // 내가 죽음: 내려가는 징글
         this.det = 1;
         this.sample('jingleLose', { out: o });
+        break;
+      // 건축가 상자 (2026-10-30 시안 A): 솟음 = 나무 '퉁' + 낮은 쿵 (R 은 더 크게), 무너짐 = 판자 와르르, 째깍 = 시계 딸깍 (마지막은 높게), 터짐 층 = 판자 와작
+      case 'bbRise':
+        if (!this.sample('woodL', { rate: 1.35, out: o })) this.tone({ freq: 520, freqEnd: 260, dur: 0.08, type: 'triangle', vol: 0.3, out: o });
+        this.tone({ freq: big ? 70 : 110, freqEnd: big ? 40 : 60, dur: big ? 0.3 : 0.16, type: 'sine', vol: big ? 0.45 : 0.3, out: o });
+        break;
+      case 'bbBreak':
+        if (!this.sample('woodL', { rate: 0.8, out: o })) this.noise({ dur: 0.25, vol: 0.35, filter: 'bandpass', freq: 900, out: o });
+        this.noise({ dur: 0.3, vol: 0.22, filter: 'lowpass', freq: 1400, freqEnd: 300, delay: 0.05, out: o });
+        break;
+      case 'bbTick':
+        this.tone({ freq: strong ? 2400 : 1700, dur: 0.035, type: 'square', vol: strong ? 0.3 : 0.2, out: o });
+        this.tone({ freq: strong ? 1200 : 850, dur: 0.05, type: 'triangle', vol: 0.15, delay: 0.012, out: o });
+        break;
+      case 'bbBlast':
+        if (!this.sample('woodH', { rate: strong ? 0.75 : 1.05, out: o })) this.noise({ dur: 0.3, vol: 0.5, filter: 'bandpass', freq: 700, out: o });
+        this.sample('woodL', { rate: 1.6, delay: 0.04, vol: 0.7, out: o });
         break;
       case 'clear':
         [523, 659, 784, 1047].forEach((f, i) => this.tone({ freq: f, dur: 0.15, type: 'triangle', vol: 0.3, delay: i * 0.07, out: o }));

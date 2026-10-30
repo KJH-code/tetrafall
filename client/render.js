@@ -5,6 +5,9 @@ import { toon, noOutline } from '/toon.js';
 import { buildCharacter, charAccessory } from '/character.js';
 import { cloneBatched, paintBatched } from '/batch.js';
 import { InstancePool } from '/instpool.js';
+import { BuilderBlocks } from '/bblocks.js';
+import { Shards } from '/shards.js';
+import { riseScale, crackOf, flashOf, bigPrep, collapseAt, shardCount } from '/shared/bblock-look.js';
 import { figureAnim, MOVES } from '/figure.js';
 import { gaitOf } from '/figure-pose.js';
 import { Effects } from '/effects.js';
@@ -314,9 +317,11 @@ export class Renderer {
     this.hits = new Map(); // 맞은 몸 반응 (id → { id, t0, stop, dir, pow }, hitReact)
     this.finishAt = new Map(); // 콤보 마무리 타를 받은 시각 (comboFinish)
     this.counterAt = new Map(); // 카운터히트를 받은 시각 (counterHit)
-    // 건축가 블록: 칸마다 메시 (주인 색·금 간 무늬·깜빡임·솟기), 같은 묶음 이음 띠, 연쇄 폭발 대기 칸
-    this.bbMeshes = [];
-    this.bbStraps = [];
+    // 건축가 블록 (시안 A 공사장 나무 상자, client/bblocks.js): 부품마다 InstancedMesh, 같은 묶음 이음 쇠 띠, 연쇄 폭발 대기 칸, 수명 끝 무너짐, 판자 조각
+    this.bb = new BuilderBlocks(this.scene);
+    this.shards = new Shards(this.scene, this.bb.textures.wood, (x, y, z) => (this.curState ? this.solidAt(this.curState, x, y, z) : z < 0));
+    this.bbLast = new Map(); // 칸 → { kind, color } (터지거나 무너질 때 그 모습으로)
+    this.bbCollapses = []; // 무너지는 중 { x, y, z, kind, color, t0, dir }
     this.bbSig = '';
     this.bbSkip = null;
     this.bbBorn = new Map(); // 칸 → 생긴 시각 (솟는 연출)
@@ -2725,14 +2730,16 @@ export class Renderer {
   }
 
   // R 1단계 (blockGrab): 덩어리(테트로미노 통째로, 지형은 1칸)가 ms 동안 제자리에서 덜덜 (큰 걸 든다는 예고) →
-  // 뽑혀 사슬에 끌려와 머리 위에서 모양 그대로 빙빙 (덩어리가 클수록 크게 돎). 건축가 블록이면 금 간 무늬, 하늘 블록은 밝고 살짝 비침
+  // 뽑혀 사슬에 끌려와 머리 위에서 모양 그대로 빙빙 (덩어리가 클수록 크게 돎). 건축가 블록이면 판자 상자, 하늘 블록은 밝고 살짝 비침
   blockGrab(e) {
     const now = performance.now();
     const cells = e.cells && e.cells.length ? e.cells : [e.from];
     const kind = e.v === CELL.TERRAIN ? 'stone' : e.v === CELL.BUILD ? 'wood' : e.v === CELL.THROWN ? 'sand' : 'piece';
-    const col = new THREE.Color(e.builder ? 0xffb070 : cellColor(e.v, this.pieceLook.spec.colors));
+    const col = new THREE.Color(e.builder ? 0xffffff : cellColor(e.v, this.pieceLook.spec.colors));
     if (e.sky) col.lerp(new THREE.Color(0xffffff), C.SKY_PIECE_WHITEN);
-    const mat = toon({ color: col.getHex(), map: e.builder ? this.tex.cracked : kind === 'piece' ? this.pieceLook.map : this.tex[kind], transparent: !!e.sky, opacity: e.sky ? C.SKY_PIECE_OPACITY : 1 });
+    const matOpts = { color: col.getHex(), transparent: !!e.sky, opacity: e.sky ? C.SKY_PIECE_OPACITY : 1 };
+    // 건축가 블록 = 판자 상자, 테트리미노 칸 = 맵 테마 모습 (piece-look.js)
+    const mat = kind === 'piece' && !e.builder ? this.pieceLook.material(matOpts) : toon({ ...matOpts, map: e.builder ? this.bb.textures.wood : this.tex[kind] });
     // 덩어리 가운데가 원점, 칸은 원래 모양·방향 그대로
     const center = new THREE.Vector3();
     for (const [x, y, z] of cells) center.add(new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5));
@@ -2889,8 +2896,8 @@ export class Renderer {
   }
 
   // ---------- 건축가 블록 ----------
-  // 격자엔 CELL.BUILD 로 있지만 여기서 따로 그림: 주인 색 + 금 간 무늬, 생길 때 솟음, 사라지기 전 깜빡임,
-  // 같은 묶음(같은 F 의 벽 등) 이웃 칸은 위를 쇠 띠로 이음 (연쇄가 어디까지 번지는지 보이게), 대폭발 블록은 빨갛게 부풀며 째깍
+  // 격자엔 CELL.BUILD 로 있지만 여기서 따로 그림 (client/bblocks.js, 시안 A 공사장 나무 상자): 생길 때 바닥을 뚫고 솟아 살짝 넘침, 수명 끝 무렵 금이 퍼지고 하얗게 깜빡,
+  // 같은 묶음(같은 F) 이웃 칸은 윗면을 쇠 띠로 이음 (연쇄가 어디까지 번지는지), R 블록은 위 빛 판이 점점 세지며 부풂, 연쇄 대기 칸은 하얗게, 수명 끝은 부서지며 내려앉음
   updateBBlocks(state) {
     const list = state.bblocks || [];
     const quakeCells = this.quakes.filter((q) => !q.sinkAt).flatMap((q) => q.cells);
@@ -2907,104 +2914,105 @@ export class Renderer {
       const o = owners.get(id);
       return new THREE.Color(o ? playerColor(o, state) : 0xc08040).lerp(new THREE.Color(0xffffff), C.BB_TINT);
     };
-    // 연쇄 대기 칸: 차례가 오면 터짐
+    const items = [];
+    for (const b of list) {
+      const color = tint(b.owner);
+      this.bbLast.set(`${b.x},${b.y},${b.z}`, { kind: b.kind, color });
+      const it = { x: b.x, y: b.y, z: b.z, kind: b.kind, color, sx: 1, sz: 1, crack: 0, flash: 0, glow: 0 };
+      const born = this.bbBorn.get(`${b.x},${b.y},${b.z}`);
+      if (born !== undefined) {
+        const u = (now - born) / C.BB_POP_MS;
+        if (u >= 1) this.bbBorn.delete(`${b.x},${b.y},${b.z}`);
+        else it.sz = riseScale(u);
+      }
+      if (b.kind === 'big') {
+        const pr = bigPrep(b.left, now);
+        it.sx = pr.swell;
+        it.sz *= pr.swell;
+        it.glow = pr.glow;
+      } else {
+        it.crack = crackOf(b.left);
+        it.flash = flashOf(b.left, now);
+      }
+      items.push(it);
+    }
+    // 연쇄 대기 칸: 차례가 오면 터짐, 그 전엔 하얗게
     const ghosts = [];
     for (const gh of this.bbGhosts) {
       if (now >= gh.at) this.bbPop(gh);
       else ghosts.push(gh);
     }
     this.bbGhosts = ghosts;
-    const draw = [...list.map((b) => ({ ...b, color: tint(b.owner) })), ...ghosts.map((g) => ({ ...g, kind: 'ghost', left: Infinity }))];
-    while (this.bbMeshes.length < draw.length) {
-      const m = new THREE.Mesh(this.bbGeo, toon({ color: 0xffffff, map: this.tex.cracked, transparent: true }));
-      m.castShadow = m.receiveShadow = true;
-      this.scene.add(m);
-      this.bbMeshes.push(m);
+    for (const gh of ghosts) items.push({ x: gh.x, y: gh.y, z: gh.z, kind: gh.kind, color: gh.color, sx: 1, sz: 1, crack: 0.4, flash: 0.9, glow: 1 });
+    // 수명 끝: 부서지며 내려앉음
+    this.bbCollapses = this.bbCollapses.filter((c) => now - c.t0 < C.BB_COLLAPSE_MS);
+    for (const c of this.bbCollapses) {
+      const k = collapseAt((now - c.t0) / C.BB_COLLAPSE_MS);
+      items.push({ x: c.x, y: c.y, z: c.z, kind: c.kind, color: c.color, sx: 1, sz: k.sz, sink: k.sink, tilt: k.tilt, tiltDir: c.dir, crack: 1, flash: 0 });
     }
-    this.bbMeshes.forEach((m, i) => {
-      const b = draw[i];
-      m.visible = !!b;
-      if (!b) return;
-      const mat = m.material;
-      let sx = 1;
-      let sz = 1;
-      let emissive = 0x000000;
-      let opacity = 1;
-      // 솟기: 바닥에서 위로 자라며 살짝 넘쳤다 돌아옴
-      const born = this.bbBorn.get(`${b.x},${b.y},${b.z}`);
-      if (born !== undefined) {
-        const u = (now - born) / C.BB_POP_MS;
-        if (u >= 1) this.bbBorn.delete(`${b.x},${b.y},${b.z}`);
-        else sz = Math.max(0.05, 1 + 0.25 * Math.sin(Math.PI * u) - (1 - u) ** 3);
-      }
-      if (b.kind === 'big') {
-        // 대폭발: 터질 때가 가까울수록 크게 부풀고 빨리 깜빡
-        const k = 1 - Math.min(1, b.left / C.BUILDER_BIG_FUSE_MS);
-        sx = 1 + C.BB_BIG_SWELL * k + 0.04 * Math.sin(now / 35);
-        sz *= sx;
-        mat.color.setHex(0xff4030);
-        emissive = Math.floor(now / (50 + b.left / 5)) % 2 ? 0xa01000 : 0x300000;
-      } else if (b.kind === 'ghost') {
-        mat.color.copy(b.color);
-        emissive = 0xffffff; // 곧 터짐: 하얗게
-      } else {
-        mat.color.copy(b.color);
-        if (b.left < C.BB_BLINK_MS && Math.floor(now / (b.left < C.BB_BLINK_MS / 3 ? 70 : 140)) % 2) opacity = 0.35; // 사라지기 직전 깜빡임
-      }
-      mat.emissive.setHex(emissive);
-      mat.opacity = opacity;
-      m.scale.set(sx, sx, sz);
-      m.position.set(b.x + 0.5, b.y + 0.5, b.z + sz / 2);
-    });
     // 같은 묶음 이웃 칸: 윗면 이음매에 쇠 띠
     const at = new Map(list.map((b) => [`${b.x},${b.y},${b.z}`, b]));
-    const pairs = [];
+    const straps = [];
     for (const b of list) {
       for (const [dx, dy] of [[1, 0], [0, 1]]) {
         const n = at.get(`${b.x + dx},${b.y + dy},${b.z}`);
-        if (n && n.group === b.group) pairs.push([b, dx, dy]);
+        if (n && n.group === b.group) straps.push({ x: b.x + 0.5 + dx * 0.5, y: b.y + 0.5 + dy * 0.5, z: b.z + 1.01, dx, dy });
       }
     }
-    while (this.bbStraps.length < pairs.length) {
-      const s = new THREE.Mesh(this.bbGeo, this.bbStrapMat);
-      this.scene.add(s);
-      this.bbStraps.push(s);
-    }
-    this.bbStraps.forEach((s, i) => {
-      const pr = pairs[i];
-      s.visible = !!pr;
-      if (!pr) return;
-      const [b, dx, dy] = pr;
-      s.scale.set(dx ? 0.55 : 0.16, dy ? 0.55 : 0.16, 0.06);
-      s.position.set(b.x + 0.5 + dx * 0.5, b.y + 0.5 + dy * 0.5, b.z + 1.01);
-    });
+    this.bb.draw(items, straps);
   }
 
-  // bblock 이벤트: 솟는 연출 시작
+  // bblock 이벤트: 바닥을 뚫고 솟음 + 아래에 흙먼지
   bblockBorn(cells) {
     const now = performance.now();
-    for (const [x, y, z] of cells) this.bbBorn.set(`${x},${y},${z}`, now);
+    const low = this.lowGfx;
+    const bottom = Math.min(...cells.map((c) => c[2]));
+    for (const [x, y, z] of cells) {
+      this.bbBorn.set(`${x},${y},${z}`, now);
+      if (z === bottom) this.effects.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.05 }, null, 0xa0835c, low ? 2 : 6, 2.6, 0.1, 0.45);
+    }
   }
 
-  // blast 이벤트: 서버는 한 번에 지웠지만 화면에선 cells 순서대로 차례로 터짐 (치는 방향 dir 로 파편)
+  // bblockGone 이벤트 (수명 끝·오래된 3타 블록): 부서지며 내려앉음 + 판자 조각 + 먼지
+  bbCollapse(cells) {
+    const now = performance.now();
+    const low = this.lowGfx;
+    for (const [x, y, z] of cells) {
+      const last = this.bbLast.get(`${x},${y},${z}`) || { kind: 'wall', color: new THREE.Color(0xc08040) };
+      this.bbLast.delete(`${x},${y},${z}`);
+      this.bbCollapses.push({ x, y, z, kind: last.kind, color: last.color, t0: now, dir: Math.random() * Math.PI * 2 });
+      const pos = { x: x + 0.5, y: y + 0.5, z: z + 0.4 };
+      this.shards.spawn(pos, null, shardCount('collapse', low), [C.BB_LOOK.wood, C.BB_LOOK.woodPad, 0x8a6a40], 2.5);
+      this.effects.burst(pos, null, 0x9a9080, low ? 3 : 8, 2, 0.1, 0.5);
+    }
+  }
+
+  // blast 이벤트: 서버는 한 번에 지웠지만 화면에선 cells 순서대로 차례로 터짐 (치는 방향 dir 로 파편, 연쇄는 하나씩 톡톡)
   blastChain(e, color) {
     const now = performance.now();
     const c = new THREE.Color(color).lerp(new THREE.Color(0xffffff), C.BB_TINT);
-    e.cells.forEach(([x, y, z], i) => this.bbGhosts.push({ x, y, z, color: c, at: now + i * C.BB_CHAIN_STEP_MS, dir: e.dir, hex: color }));
+    e.cells.forEach(([x, y, z], i) => {
+      const last = this.bbLast.get(`${x},${y},${z}`);
+      this.bbGhosts.push({ x, y, z, kind: last ? last.kind : 'wall', color: last ? last.color : c, at: now + i * C.BB_CHAIN_STEP_MS, dir: e.dir, hex: color });
+    });
   }
 
-  // 한 칸 터짐: 치는 방향으로 파편 + 회색 먼지 + 작은 고리
+  // 한 칸 터짐: 번쩍 + 판자·쇠 조각 (치는 방향으로) + 먼지 + 충격 고리 + 붙어 있던 블록 들썩. 소리·가까우면 흔들림은 onBlast
   bbPop(gh, big = false) {
+    const low = this.lowGfx;
+    const kind = big ? 'big' : gh.kind || this.bbLast.get(`${gh.x},${gh.y},${gh.z}`)?.kind || 'wall';
+    this.bbLast.delete(`${gh.x},${gh.y},${gh.z}`);
     const pos = { x: gh.x + 0.5, y: gh.y + 0.5, z: gh.z + 0.5 };
     const dir = gh.dir ? { x: gh.dir.x * 1.2, y: gh.dir.y * 1.2 } : null;
-    this.effects.burst(pos, dir, gh.hex ?? 0xc08040, big ? 30 : 16, big ? 9 : 7, 0.14, 0.55);
-    this.effects.burst(pos, null, 0x777777, big ? 18 : 8, 4, 0.12, 0.7);
-    this.effects.burst(pos, dir, 0xffc040, 8, 8, 0.1, 0.3);
+    const L = C.BB_LOOK;
+    this.shards.spawn(pos, dir, shardCount(kind, low), kind === 'big' ? [L.woodBig, L.woodBig, L.steel, 0xff7a20] : [L.wood, L.wood, L.woodPad, L.steel], big ? 8 : C.BB_SHARDS.speed);
+    this.effects.burst(pos, null, 0x8a8478, Math.round((big ? 16 : 7) * (low ? C.BB_LOW_FX : 1)), 4, 0.12, 0.7);
+    this.effects.burst(pos, dir, 0xffc040, low ? 3 : 8, 8, 0.1, 0.3);
     this.effects.ring(pos, 0xffd080, big ? 5 : 2.6, 0.3);
     // 터진 칸이 번쩍 + 붙어 있던 블록이 들썩
     this.blockPulse([[gh.x, gh.y, gh.z]], 0xffe0a0, { ms: C.BLOCK_PULSE_MS * 0.8, opacity: 0.9 });
     this.blockPulse(this.blockNeighbors([[gh.x, gh.y, gh.z]]), 0xffd080, { jolt: big ? C.BLOCK_JOLT * 1.5 : C.BLOCK_JOLT, opacity: 0.45 });
-    if (this.onBlast) this.onBlast(pos, big);
+    if (this.onBlast) this.onBlast(pos, big, true);
   }
 
   updateBombs(bombs) {
@@ -3417,6 +3425,7 @@ export class Renderer {
     const kind = me ? heldKind(me) : null;
     for (const [k, o] of Object.entries(this.viewHeld)) o.visible = k === kind; // 든 아이템 (건축가는 아이템을 들면 망치 대신)
     this.effects.update(dt, this.skyBlend >= 1 ? this.skyCamera : this.camera);
+    this.shards.update(Math.min(dt, 0.05));
     this.updateMarks();
     this.pieceMat.opacity = (this.skyBlend > 0.5 ? 0.55 : 1) * this.pieceLook.spec.opacity; // 하늘 시점에선 블록 너머로 착지 미리보기가 보이게 (보석 테마는 늘 살짝 비침)
     this.controlledMat.opacity = this.pieceMat.opacity;
