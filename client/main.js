@@ -11,7 +11,7 @@ import { NetStatus } from '/net.js';
 import { seatToken, saveSeat, dropSeat } from '/seat.js';
 import { KO } from '/ko.js';
 import { hitTier, hitStep } from '/hit-tier.js';
-import { portrait, setPortraitModels } from '/portrait.js';
+import { portrait, setPortraitModels, warmPortraits } from '/portrait.js';
 import { screenOf, wipeKind, wipePlan } from '/shared/wipe.js';
 import { victoryPlan, victoryStage } from '/shared/victory.js';
 import { MAP_IDS, mapName } from '/shared/maps.js';
@@ -1062,6 +1062,18 @@ function setUrlRoom(code) {
   }
 }
 const roomLink = (code) => (room && room.code === code && room.link) || `${location.origin}${location.pathname}?room=${code}`; // 터널 주소가 있으면 그걸로 (서버 room.link)
+
+// 메뉴에 자리 잡은 뒤 대기실 캐릭터 카드 초상을 쉴 때마다 한 장씩 미리 그림 (portrait.js — 대기실 첫 진입 멈춤 줄이기).
+// 색은 들어가서 받을 가능성이 큰 색: 기억한 색 (tf-color), 없으면 첫 색 (방을 만든 사람)
+let portraitsWarmed = false;
+let menuSince = null; // 메뉴가 계속 떠 있던 시작 시각 (frame 이 잼)
+function warmCardPortraits() {
+  if (portraitsWarmed) return;
+  portraitsWarmed = true;
+  const saved = Number(loadPref('tf-color'));
+  const col = C.PLAYER_PALETTE[Number.isInteger(saved) && saved >= 0 ? saved % C.PLAYER_PALETTE.length : 0];
+  warmPortraits(C.CHARACTERS.map((c) => [c, col, 128, true]));
+}
 
 function showRooms(message) {
   roomsEl.classList.remove('hidden', 'leaving');
@@ -2727,6 +2739,10 @@ function frame(now) {
     const vic = stage === 'closeup' ? victory.id : null; // 승자 클로즈업 (슬로모션 뒤, 결과 표 전)
     const selfie = p && p.alive && p.emote >= 0 && !vic ? myId : null; // 내 이모트는 앞에서 보이게
     updateScreen(); // 시간으로 바뀌는 전환 (결과 연출 → 대기실 판)
+    // 메뉴가 떠 있고 타이틀이 끝난 뒤 PORTRAIT_WARM_MS 지나면 초상 미리 그리기 (타이틀 연출을 멈추지 않게)
+    const inMenu = !myId && !roomsEl.classList.contains('hidden') && !document.body.classList.contains('title-on');
+    menuSince = inMenu ? (menuSince ?? now) : null;
+    if (inMenu && now - menuSince > C.PORTRAIT_WARM_MS) warmCardPortraits();
     // 방 목록이 떠 있는 동안은 메뉴 3D 장면 그대로 (방에 들어가도 전환 띠가 다 덮을 때 진짜 장면으로 바뀜)
     renderer.render(roomsEl.classList.contains('hidden') ? state : null, myId, dt, view, { yaw: input.yaw, pitch: input.pitch, follow: spectating() && !spec.overview ? spec.target : null, dist: spec.dist, overviewDist: spec.overviewDist, victory: vic, victoryHold: stage === 'slow', victorySnap: reducedMotion(), selfie });
     sound.update(renderer.camera.matrixWorld.elements, state, dt); // 귀(카메라) 위치·방향 + 위험 액체 지속음

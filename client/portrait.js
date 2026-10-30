@@ -8,7 +8,7 @@ import { figureAnim } from '/figure.js';
 
 const LEFT_SIDE = ['cannon']; // 오른손·오른어깨 무기가 커서 왼쪽(+y)에서 봐야 얼굴이 보이는 캐릭터
 const cache = new Map(); // `${char}|${color}|${size}|${full}` → dataURL
-let gl = null; // 초상 전용 렌더러 (하나만, 다 쓰면 그대로 둠)
+let gl = null; // 초상·대기실 큰 캐릭터(char-stage.js)가 같이 쓰는 렌더러 (하나만, 다 쓰면 그대로 둠)
 let models = null; // models.js 결과 (있으면 무기를 든 모습)
 
 // 몸 색이 어두워도 카드에서 윤곽이 보이게: 앞·위·뒤에서 비추는 고정 조명
@@ -24,13 +24,42 @@ function makeScene() {
   return scene;
 }
 
-function renderer(size) {
+// WebGL 문맥 하나를 같이 씀: 새 문맥마다 툰 재질 셰이더를 처음부터 다시 만들어 첫 그림이 매우 느림 (느린 GPU·헤드리스 수십 초).
+// 그리고 나서 같은 작업(task) 안에서 캔버스를 읽음 (toDataURL·drawImage)
+export function sharedGL() {
   if (!gl) {
     gl = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
     gl.setClearColor(0x000000, 0);
   }
-  gl.setSize(size, size, false);
   return gl;
+}
+
+function renderer(size) {
+  const g = sharedGL();
+  g.setPixelRatio(1);
+  g.setSize(size, size, false);
+  return g;
+}
+
+// 메뉴에 있는 동안 쉴 때마다 한 장씩 미리 그려 캐시 (대기실에 들어가는 순간 카드 8장을 한꺼번에 그리느라 멈추지 않게).
+// list: [char, color, size, full] 들. 첫 장이 셰이더를 만듦 (가장 오래 걸림), 나머지는 짧음
+const warmQueue = [];
+let warming = false;
+const idle = (f) => (window.requestIdleCallback ? requestIdleCallback(f, { timeout: 1500 }) : setTimeout(f, 200));
+export function warmPortraits(list) {
+  warmQueue.push(...list);
+  if (warming) return;
+  warming = true;
+  const step = () => {
+    const job = warmQueue.shift();
+    if (!job) {
+      warming = false;
+      return;
+    }
+    portrait(...job);
+    idle(step);
+  };
+  idle(step);
 }
 
 // 가만히 선 자세 한 프레임 (숨쉬기 위상 t 를 조금 줘서 팔이 굳어 보이지 않게)

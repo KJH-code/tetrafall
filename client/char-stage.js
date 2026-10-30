@@ -1,14 +1,16 @@
 // 대기실 큰 3D 캐릭터 (캐릭터 고르기): 내 캐릭터를 내 색으로 크게, 천천히 돌고, 고르면 정면에서 전용 도발 한 번.
-// 게임 장면과 따로 (자기 캔버스·렌더러). main.js 가 대기실 판이 떠 있을 때만 draw() 를 부르고, 판이 시작하면 release() 로 렌더러를 놓는다.
+// 게임 장면과 따로: 초상(portrait.js)과 같은 렌더러로 그려 자기 2D 캔버스에 옮김 (WebGL 문맥을 새로 안 만들어 셰이더를 다시 안 만듦 — 대기실 첫 진입 멈춤).
+// main.js 가 대기실 판이 떠 있을 때만 draw() 를 부르고, 판이 시작하면 release() 로 몸을 놓는다.
 // 래그돌 없이 figureAnim 만. 방향·도발 시간은 shared/char-select.js
 import * as THREE from 'three';
 import { CONFIG as C } from '/shared/config.js';
 import { buildCharacter } from '/character.js';
 import { figureAnim } from '/figure.js';
 import { stageYaw, tauntAt } from '/shared/char-select.js';
+import { sharedGL } from '/portrait.js';
 
 export class CharStage {
-  // box: 캔버스를 넣을 칸 (캔버스는 init 때 새로 — 놓은 렌더러의 캔버스는 다시 못 씀)
+  // box: 캔버스를 넣을 칸
   constructor(box, models = null) {
     this.box = box;
     this.canvas = null;
@@ -24,8 +26,9 @@ export class CharStage {
     if (this.gl) return;
     this.canvas = document.createElement('canvas');
     this.box.prepend(this.canvas);
-    this.gl = new THREE.WebGLRenderer({ canvas: this.canvas, alpha: true, antialias: true });
-    this.gl.setClearColor(0x000000, 0);
+    this.ctx = this.canvas.getContext('2d');
+    this.gl = sharedGL();
+    if (this.scene) return; // 장면·빛·카메라는 한 번만
     this.scene = new THREE.Scene();
     this.scene.add(new THREE.AmbientLight(0xffffff, 1.05));
     const key = new THREE.DirectionalLight(0xffffff, 1.5);
@@ -79,12 +82,17 @@ export class CharStage {
     const h = this.canvas.clientHeight;
     if (!w || !h) return;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    if (this.canvas.width !== Math.round(w * dpr) || this.canvas.height !== Math.round(h * dpr)) {
-      this.gl.setPixelRatio(dpr);
-      this.gl.setSize(w, h, false);
+    const W = Math.round(w * dpr);
+    const H = Math.round(h * dpr);
+    if (this.canvas.width !== W || this.canvas.height !== H) {
+      this.canvas.width = W;
+      this.canvas.height = H;
       this.camera.aspect = w / h;
       this.camera.updateProjectionMatrix();
     }
+    // 같이 쓰는 렌더러라 매번 크기를 맞춤 (초상이 그 사이에 바꿨을 수 있음)
+    this.gl.setPixelRatio(1);
+    this.gl.setSize(W, H, false);
     const dt = Math.min(0.1, this.last ? (now - this.last) / 1000 : 0);
     this.last = now;
     const age = now - this.pickedAt;
@@ -94,19 +102,20 @@ export class CharStage {
       figureAnim(this.ch.figure, { air: false, walking: false, hs: 0, walk: 0, t: now / 1000, flip: -1, emote: tz.on ? C.EMOTE_CHAR : -1, emoteT: tz.t, punch: 0, dizzy: 0, whirl: -1, sniffAt: null }, dt);
     }
     this.gl.render(this.scene, this.camera);
+    this.ctx.clearRect(0, 0, W, H);
+    this.ctx.drawImage(this.gl.domElement, 0, 0);
   }
 
-  // 판이 시작하면: 렌더러를 놓아 판 중엔 아무것도 안 돎 (대기실로 오면 set 이 다시 만듦)
+  // 판이 시작하면: 몸을 놓아 판 중엔 아무것도 안 돎 (대기실로 오면 set 이 다시 만듦). 렌더러는 초상과 같이 쓰므로 그대로 둠
   release() {
     if (!this.gl) return;
     if (this.ch) this.turn.remove(this.ch.group);
     this.ch = null;
     this.key = '';
-    this.gl.dispose();
-    this.gl.forceContextLoss();
     this.gl = null;
     this.canvas.remove();
     this.canvas = null;
+    this.ctx = null;
   }
 
   get active() {
