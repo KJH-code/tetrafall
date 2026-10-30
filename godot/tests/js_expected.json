@@ -1,0 +1,14 @@
+{
+  "push_dist_0": 0.619,
+  "push_damage_after_0": 10,
+  "push_dist_50": 1.063,
+  "push_damage_after_50": 60,
+  "piece_land_ms": 8033.333,
+  "crush_ms": 7533.333,
+  "jump_peak": 1.283,
+  "jump_air_ms": 700,
+  "dash_dist": 0.901,
+  "walk_1s": 4.5,
+  "fall_death_ms": 1066.667,
+  "fall_death_cause": "fall"
+}
