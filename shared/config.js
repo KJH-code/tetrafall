@@ -1473,12 +1473,28 @@ export const CONFIG = {
   FIGURE_HIT_SPRING_DAMP: 7, // 휘청 스프링 감쇠 (클수록 빨리 멈춤)
   FIGURE_HIT_HEAVY: 1.5, // 무거운 공격 (망치·치명타·폭탄 등) 휘청 세기
   FIGURE_HIT_FINISH: 2.2, // 콤보 마무리 타 휘청 세기
-  // 건축가 블록 화면 (render.js updateBBlocks)
-  BB_BLINK_MS: 1500, // 사라지기 이만큼 전부터 깜빡임
+  // 건축가 블록 화면 (2026-10-30 재혁 시안 A '공사장 나무 상자'): client/bblocks.js 가 그리고, 칸 모양·연출 곡선 순수 계산은 shared/bblock-look.js
+  // 바탕(판자·쇠 모서리)은 고정 색, 공사 줄무늬 띠만 주인 색. 종류마다: 벽 = 가로 판자·대각 버팀목·가운데 띠, 발판 기둥 = 세로 판자·윗가장자리 띠,
+  // 3타 = 작은 상자·세로 띠, R = 어두운 나무·넓은 띠·위 주황 빛 판 (터질 때가 가까울수록 세짐). 크기는 칸 비율
+  BB_LOOK: {
+    box: { wall: 0.96, pad: 0.96, third: 0.84, big: 0.98 }, // 상자 한 변
+    corner: 0.11, // 쇠 모서리 굵기
+    band: { wall: { z: 0.62, h: 0.18 }, pad: { z: 0.9, h: 0.1 }, third: { w: 0.16 }, big: { z: 0.5, h: 0.32 } }, // 띠: z = 가운데 높이(상자 높이 비율), h = 두께, third 는 세로 띠 폭
+    plate: { size: 0.5, h: 0.06 }, // R 위 빛 판
+    wood: 0xc99a5c, woodPad: 0xb98a50, woodBig: 0x6e432a, steel: 0x4a4f5a,
+    plateCold: 0x8a2a0c, plateHot: 0xff7a20, plateWhite: 0xfff2c0, // R 빛 판: 평소 → 터지기 직전
+    stripeRepeat: [1.6, 0.3], // 띠 줄무늬 반복 (띠가 넓고 낮아 세로로 덜 눌리게)
+  },
+  BB_BLINK_MS: 1500, // 사라지기 이만큼 전부터 하얗게 깜빡임 (빨라짐)
+  BB_CRACK_MS: 3500, // 사라지기 이만큼 전부터 금이 가운데서 점점 퍼짐
+  BB_COLLAPSE_MS: 420, // 수명이 끝나면 이 동안 부서지며 내려앉음 (납작·기울며 가라앉음 + 판자 조각)
+  BB_SHARDS: { wall: 9, pad: 9, third: 7, big: 16, collapse: 6, max: 320, life: 1.2, speed: 5.5, size: [0.3, 0.08, 0.035] }, // 터질 때 판자 조각 (칸마다), 최대 동시, 수명 초, 빠르기, 크기
+  BB_LOW_FX: 0.4, // 그래픽 낮춤: 조각·먼지 수 비율
+  BB_BIG_TICKS: [0, 0.32, 0.55, 0.7, 0.81, 0.89, 0.95], // R 준비 동안 째깍 시각 (BUILDER_BIG_FUSE_MS 비율, 점점 빠르게)
   BB_POP_MS: 260, // 생길 때 바닥에서 솟아오르는 시간 (살짝 넘쳤다 돌아옴)
   BB_CHAIN_STEP_MS: 50, // 연쇄 폭발: 칸마다 이 간격으로 차례로 터짐
   BB_BIG_SWELL: 0.18, // 대폭발 블록이 터지기 직전까지 부푸는 비율
-  BB_TINT: 0.3, // 주인 색에 흰색을 섞는 비율 (금 간 무늬가 보이게)
+  BB_TINT: 0.08, // 띠 주인 색에 흰색을 섞는 비율 (어두운 색도 줄무늬가 보이게, 너무 섞으면 바래 보임)
   STAR_FLY_MS: 100, // 닌자 표창이 날아가 보이는 시간 (판정은 즉시, 맞는 효과는 표창이 닿을 때)
   EMPOWER_GLOW: 0x6a2ad0, // 닌자 R 강화 중 몸이 깜빡이는 빛 (보라)
   // 탱크 화면
