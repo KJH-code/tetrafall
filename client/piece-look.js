@@ -1,4 +1,4 @@
-// 테트리미노 칸 모습 (떨어지는·쌓인·하늘 계단·유령·R 집기·타이틀 로고): 맵 테마마다 모양(둥근 상자 크기·모서리)·면 텍스처·조각 색·셰이더 결.
+// 테트리미노 칸 모습 (떨어지는·쌓인·하늘 계단·유령·R 집기, 렌더러 밖에서도 씀 — 예: new PieceLook(pieceSpec(테마 id)) 로 로고 블록): 맵 테마마다 모양(둥근 상자 크기·모서리)·면 텍스처·조각 색·셰이더 결.
 // 값은 shared/piece-look.js pieceSpec (config PIECE_LOOK + WORLD_THEMES.*.piece). 그래픽 낮춤이면 모서리 한 단·빛 테·금 빛·금 테 끔 (제 색 빛남만)
 // 셰이더 결 (모두 조각 색 기준이라 인스턴스 색에도 맞음): glow 제 색으로 빛남 · crack 텍스처 밝은 금이 빛남 (흑요석) · fresnel 비스듬한 면 빛 테 (보석·버섯) · band 면 가장자리 금속 테 (대리석 금 테)
 import * as THREE from 'three';
@@ -9,12 +9,12 @@ import { pieceTexture } from '/textures.js';
 const f3 = (v) => Number(v).toFixed(3);
 
 export class PieceLook {
-  // spec = pieceSpec(테마), toyMap = 기본 장난감 블록 텍스처, low = 그래픽 낮춤
-  constructor(spec, toyMap, low) {
+  // spec = pieceSpec(테마), toyMap = 텍스처가 없을 때 (생략 가능), low = 그래픽 낮춤
+  constructor(spec, toyMap = null, low = false) {
     this.spec = spec;
     this.low = !!low;
     this.geo = new RoundedBoxGeometry(spec.size, spec.size, spec.size, this.low ? 1 : spec.segs, spec.bevel);
-    this.map = pieceTexture(spec.style) || toyMap;
+    this.map = pieceTexture(spec.style) || toyMap || pieceTexture('toy');
     this.mats = [];
   }
 

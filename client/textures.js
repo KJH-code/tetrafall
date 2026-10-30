@@ -245,6 +245,7 @@ export function makeTextures(floorRepeat) {
 
 // ---- 테마별 테트리미노 칸 면 (client/piece-look.js, config WORLD_THEMES.*.piece.style). 밝은 회색조 → 조각 색이 곱해짐
 const PIECE_FACES = {
+  toy: piece, // 기본 둥근 장난감 블록 (테마 없음)
   // 칠한 나무 장난감: 나뭇결 + 둥근 칠 판
   wood(ctx, n) {
     const r = rng(11);
