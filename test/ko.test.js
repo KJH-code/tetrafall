@@ -241,23 +241,12 @@ test('터널 링크: npm run online 이 IPC 로 보낸 주소를 서버 프로�
   assert.deepEqual(clipboardCommand('win32'), ['clip', []]);
   assert.deepEqual(clipboardCommand('darwin'), ['pbcopy', []]);
   assert.equal(clipboardCommand('aix'), null);
-  const { spawn } = await import('node:child_process');
-  const path = await import('node:path');
-  const { fileURLToPath } = await import('node:url');
-  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-  const port = String(30000 + Math.floor(Math.random() * 20000));
-  const srv = spawn(process.execPath, [path.join(root, 'server', 'index.js')], { stdio: ['ignore', 'pipe', 'pipe', 'ipc'], env: { ...process.env, PORT: port } });
-  let out = '';
-  srv.stdout.on('data', (b) => (out += b));
+  const { startServer } = await import('./server-process.js');
+  const { srv, until, stop } = await startServer({ ipc: true });
   try {
-    const until = async (re, ms) => {
-      for (let t = 0; t < ms && !re.test(out); t += 50) await new Promise((r) => setTimeout(r, 50));
-      return re.test(out);
-    };
-    assert.ok(await until(/실행 중/, 5000), out);
     srv.send({ type: 'publicUrl', url: 'https://pottery-sense.trycloudflare.com' });
-    assert.ok(await until(/친구용 주소: https:\/\/pottery-sense\.trycloudflare\.com/, 3000), out);
+    assert.ok(await until(/친구용 주소: https:\/\/pottery-sense\.trycloudflare\.com/));
   } finally {
-    srv.kill();
+    stop();
   }
 });

@@ -163,15 +163,24 @@ test('메시지 빈도: 연결마다 초당 NET_MSG_RATE (몰리면 NET_MSG_BURS
   assert.equal(y.ws.msgs.filter((m) => m.type === 'pong').length, sent);
 });
 
-test('긴 글자: 1천만 자 이름·방 이름도 먼저 잘라서 바로 처리 (틱이 안 멈춤)', () => {
+test('긴 글자: 1천만 자 이름·방 이름도 먼저 TEXT_RAW_MAX 로 잘라서 정리 (긴 문자열에 정규식을 통째로 안 돌림 → 틱이 안 멈춤)', () => {
   const { rooms, join } = setup();
   const long = 'ㄱ'.repeat(10_000_000);
   const x = join();
-  const t0 = performance.now();
-  rooms.message(x.conn, { type: 'create', name: long, nick: long });
-  rooms.message(x.conn, { type: 'setName', name: long });
-  const ms = performance.now() - t0;
-  assert.ok(ms < 100, `${ms.toFixed(0)}ms`);
+  // 시간 대신 (느린 기계·첫 실행에 흔들림) 정규식이 실제로 본 가장 긴 글자 수로 판정
+  const replace = String.prototype.replace;
+  let longest = 0;
+  String.prototype.replace = function (...a) {
+    longest = Math.max(longest, this.length);
+    return replace.apply(this, a);
+  };
+  try {
+    rooms.message(x.conn, { type: 'create', name: long, nick: long });
+    rooms.message(x.conn, { type: 'setName', name: long });
+  } finally {
+    String.prototype.replace = replace;
+  }
+  assert.ok(longest <= C.TEXT_RAW_MAX, `정규식이 ${longest}자를 봄`);
   const p = x.conn.room.game.players.get(x.conn.id);
   assert.equal([...p.nick].length, C.NAME_MAX_LEN);
   assert.equal([...x.conn.room.name].length, C.ROOM_NAME_MAX_LEN);
@@ -203,18 +212,10 @@ test('바드 앰프 연주 중 대시는 거부 (제자리, 재혁 S2), 광전�
 });
 
 test('서버 프로세스: 잘못된 % 주소는 400 (서버 안 죽음), 64KB 넘는 메시지는 그 연결만 끊김', async () => {
-  const { spawn } = await import('node:child_process');
-  const path = await import('node:path');
-  const { fileURLToPath } = await import('node:url');
   const { default: WebSocket } = await import('ws');
-  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-  const port = String(30000 + Math.floor(Math.random() * 20000));
-  const srv = spawn(process.execPath, [path.join(root, 'server', 'index.js')], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PORT: port } });
-  let out = '';
-  srv.stdout.on('data', (d) => (out += d));
-  srv.stderr.on('data', (d) => (out += d));
+  const { startServer } = await import('./server-process.js');
+  const { srv, port, stop } = await startServer();
   try {
-    for (let t = 0; t < 5000 && !/실행 중/.test(out); t += 50) await new Promise((r) => setTimeout(r, 50));
     const bad = await fetch(`http://localhost:${port}/%E0%A4%A`);
     assert.equal(bad.status, 400);
     const ok = await fetch(`http://localhost:${port}/`);
@@ -237,6 +238,6 @@ test('서버 프로세스: 잘못된 % 주소는 400 (서버 안 죽음), 64KB �
     other.close();
     assert.equal(srv.exitCode, null, '서버 프로세스 살아 있음');
   } finally {
-    srv.kill();
+    stop();
   }
 });
