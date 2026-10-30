@@ -212,3 +212,33 @@ test('테마별 칸 모양: 칸 안에 들어가고, 부품 색 속성, 삼각�
   }
   assert.ok(shapes.size >= 6, '테마마다 모양이 다름 (화산만 둥근 상자)');
 });
+
+test('판 빛 안: 고른 안이 표에 있고, 판 밝기 유지 (어둡게 안 함·가운데 그대로), off 는 지금 모습', () => {
+  const P = C.GAME_LIGHT_PRESETS;
+  assert.ok(P[C.GAME_LIGHT], 'GAME_LIGHT');
+  assert.deepEqual(P.off.grade, [1, 1, 1]);
+  assert.ok(P.off.vignette[0] === 0 && P.off.rim === 0 && P.off.halo[0] === 0 && P.off.flash === 0 && !P.off.sky);
+  for (const [k, p] of Object.entries(P)) {
+    assert.ok(p.grade[0] >= 1 && p.grade[0] <= 1.4 && p.grade[1] >= 1 && p.grade[1] <= 1.15, `${k} 색 보정`);
+    assert.ok(p.grade[2] >= 1, `${k}: 밝기는 안 낮춤`);
+    assert.ok(p.vignette[0] <= 0.55 && p.vignette[1] >= 0.45, `${k}: 가장자리만 어둡게`);
+    assert.ok(!p.sky || (p.sky[0] >= 0.5 && p.sky[0] <= 1), `${k}: 하늘만 조금`);
+    assert.ok(p.halo[0] <= 0.6 && p.rim <= 1, `${k} 빛`);
+  }
+  for (const k of ['land', 'ko', 'ult']) assert.ok(C.GAME_LIGHT_FLASH[k][1] <= 800, `${k} 빛 터짐은 짧게`);
+});
+
+test('위험 액체: 잡음 파도 값, 탁한 누런 색 없음 (성 해자), 수정 동굴은 형광 분홍 말고 보라', () => {
+  assert.ok(C.HAZARD_NOISE_WAVE > 0 && C.HAZARD_NOISE_WAVE < 3);
+  // 탁한 누런 색 = 빨강·초록이 비슷하고 파랑이 아주 낮은 중간 밝기 (예전 성 해자 0x9a8418)
+  const muddy = (c) => { const r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255; return Math.abs(r - g) < 40 && b < 0.4 * Math.min(r, g) && r > 60 && r < 220; };
+  for (const [id, t] of Object.entries(C.WORLD_THEMES)) {
+    if (t.hazard.style === 'lava') continue;
+    for (const k of ['deep', 'mid', 'shallow']) assert.ok(!muddy(t.hazard[k]), `${id}.hazard.${k} 탁함`);
+  }
+  // 형광 분홍 = 빨강·파랑이 크고 초록이 아주 낮음 (예전 0xff3cb4)
+  const neonPink = (c) => { const r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255; return r > 220 && g < 90 && b > 120; };
+  const cr = C.WORLD_THEMES.crystal.hazard;
+  for (const k of ['deep', 'mid', 'shallow', 'tint', 'vignette']) assert.ok(!neonPink(cr[k]), `crystal.hazard.${k} 형광 분홍`);
+  assert.ok(((cr.mid & 255) > ((cr.mid >> 16) & 255)), '수정 액체 가운데 색은 보라 (파랑 > 빨강)');
+});

@@ -10,6 +10,8 @@ import { noOutline } from '/toon.js';
 import { hazardField, riseStep, vignetteStrength, farRings, HAZARD_MARGIN } from '/hazard-field.js';
 
 const STYLE = { water: 0, lava: 1, swamp: 2, energy: 3, storm: 4 };
+// 2026-10-30 재혁 '액체 못생김' → 시안 A (스스로 빛나는 흐르는 빛 띠) 고름: 파도는 사인파 대신 겹친 잡음 (다른 크기·방향·흐름),
+// 표면은 맑은 두 색이 휘감긴 잡음으로 섞이고 밝은 빛 띠 (등고선) 가 흐름. 닿는 곳 테는 빛 번짐
 
 // 표면 셰이더 (STYLE 로 질감 갈래). far = 필드 밖 지평선까지 큰 판 (가운데 구멍은 버리고, 파도 없이 평평 — 안쪽 판은 가장자리로 갈수록 파도가 잦아들어 이음매 없음).
 // shimmer = 먼 표면 반짝임·잔물결 법선 (그래픽 낮춤이면 끔)
@@ -43,11 +45,20 @@ function surfaceMaterial(style, far = false, shimmer = true) {
     },
     vertexShader: `uniform float uTime; uniform vec2 uWave; uniform float uPulse; uniform vec4 uBulge; uniform vec4 uFieldRect; uniform float uMargin;
       varying vec3 vW; varying vec3 vN; varying vec2 vF;
+      float vh(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float vn(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(vh(i), vh(i + vec2(1.0, 0.0)), f.x), mix(vh(i + vec2(0.0, 1.0)), vh(i + vec2(1.0, 1.0)), f.x), f.y); }
+      // 잡음 파도: 크기·방향·흐름이 다른 세 겹 (반복이 안 보이게)
+      float wave(vec2 p, float t) {
+        vec2 a = p * 0.32 + vec2(t * 0.19, t * 0.11);
+        vec2 b = mat2(0.8, -0.6, 0.6, 0.8) * p * 0.71 - vec2(t * 0.15, -t * 0.22);
+        vec2 c = mat2(-0.5, 0.87, -0.87, -0.5) * p * 1.6 + vec2(t * 0.31, t * 0.07);
+        return (vn(a) - 0.5) * 2.0 + (vn(b) - 0.5) * 1.1 + (vn(c) - 0.5) * 0.45;
+      }
       void main() {
         vec4 w = modelMatrix * vec4(position, 1.0);
         vec2 p = w.xy;
         float t = uTime * uWave.y;
-        vec2 d1 = vec2(0.94, 0.33); vec2 d2 = vec2(-0.41, 0.91); vec2 d3 = vec2(0.66, -0.75);
         // 파도는 필드 둘레 여백 바깥쪽으로 갈수록 잦아듦 → 바깥 큰 판(평평)과 이음매 없이 만남
         vec2 hf = uFieldRect.zw * 0.5;
         vec2 ctr = uFieldRect.xy + hf;
@@ -60,11 +71,10 @@ function surfaceMaterial(style, far = false, shimmer = true) {
         w.z -= rr * rr * ${C.HAZARD_CURVE.toFixed(6)};
       #endif
         float a = uWave.x * (1.0 + uPulse * 1.6) * wf;
-        float f1 = dot(d1, p) * 1.1 + t * 1.3;
-        float f2 = dot(d2, p) * 1.6 - t * 1.1;
-        float f3 = dot(d3, p) * 2.3 + t * 1.7;
-        float h = a * (sin(f1) + 0.6 * sin(f2) + 0.3 * sin(f3));
-        vec2 g = a * (cos(f1) * 1.1 * d1 + 0.6 * cos(f2) * 1.6 * d2 + 0.3 * cos(f3) * 2.3 * d3);
+        float aw = a * ${C.HAZARD_NOISE_WAVE.toFixed(3)};
+        float h0 = wave(p, t);
+        float h = aw * h0;
+        vec2 g = aw * vec2(wave(p + vec2(0.2, 0.0), t) - h0, wave(p + vec2(0.0, 0.2), t) - h0) / 0.2;
         // 발 밑 들썩 (가까이 선 사람)
         vec2 bp = p - uBulge.xy;
         float bump = uBulge.z * exp(-dot(bp, bp) * 1.6) * (0.65 + 0.35 * sin(uTime * 7.0));
@@ -174,9 +184,24 @@ function surfaceMaterial(style, far = false, shimmer = true) {
         c += uFoam * flash * 0.2;
         glow = 0.5;
       #endif
+        // 휘감긴 잡음 (반복 없이 흐름): 색 층·빛 띠·물결 선이 다 이것에서
+        vec2 wq = q * 0.21 + vec2(noise(q * 0.13 + t * 0.04), noise(q * 0.13 - t * 0.035 + 5.2)) * 2.4;
+        float fb = noise(wq + t * 0.05) * 0.62 + noise(wq * 2.3 - t * 0.07) * 0.28 + noise(wq * 5.3 + t * 0.11) * 0.1;
+        float sparse = smoothstep(0.5, 0.72, noise(q * 0.27 + vec2(t * 0.03, -t * 0.02) + 11.0)); // 드문드문
+        // A 스스로 빛나는 표면: 맑은 두 색 + 흐르는 밝은 빛 띠 (등고선) + 반짝 (용암은 껍질·금 그대로 더 밝게)
+      #if STYLE != 1
+        c = mix(uDeep, uMid, smoothstep(0.22, 0.78, fb));
+        float rib = smoothstep(0.8, 0.97, abs(fract(fb * 3.2 - t * 0.06) - 0.5) * 2.0) * (0.3 + 0.7 * sparse); // 흐르는 빛 띠 (등고선)
+        c = mix(c, uShallow, rib * 0.85);
+        c += uFoam * pow(rib, 3.0) * 0.35;
+        c += uFoam * step(0.988, noise(q * 6.0 + t * 1.2)) * 0.5;
+      #else
+        c *= 1.15;
+      #endif
+        glow = max(glow, 0.8);
         // 얕은 곳 밝게
         c = mix(c, uShallow, sh * 0.55 * (1.0 - glow * 0.5));
-        // 하늘 반사 + 햇빛 반짝임
+        // 하늘 반사 + 햇빛 반짝임 (만화풍은 반사도 한 단)
         c = mix(c, uSky, fres * uReflect * (1.0 - glow * 0.6));
         c += pow(max(dot(reflect(-V, N), uSunDir), 0.0), 90.0) * uReflect * 0.9;
         // 닿는 곳 테 (거품·불꽃·증기): 출렁이며 끊기는 띠
@@ -184,6 +209,7 @@ function surfaceMaterial(style, far = false, shimmer = true) {
         float foam = 1.0 - smoothstep(0.05, 0.3 + wob + uPulse * 0.3, dist);
         foam *= mix(0.45, 1.0, smoothstep(0.3, 0.7, noise(q * 5.0 + t * 0.9)));
         float halo = (1.0 - smoothstep(0.3, 1.1, dist)) * 0.25; // 테 바깥 옅은 번짐
+        c += uShallow * halo * 0.8; // 빛나는 테 번짐
         c = mix(c, uFoam, foam + halo * (1.0 - foam));
         c += uFoam * uPulse * 0.3;
         // 먼 섬·산이 잠기는 곳 테 (거품·불꽃·김)

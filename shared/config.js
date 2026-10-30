@@ -982,6 +982,21 @@ export const CONFIG = {
   SUN_COLOR: 0xffc890,
   FOG_NEAR: 28,
   FOG_FAR: 75,
+  // 판 빛 (client/game-light.js, 2026-10-30 재혁: 타이틀 '빛 언어' 를 판에 섞되 밝기는 유지 — 블록·그림자·가장자리·상대가 잘 보이게). 그래픽 낮춤이면 'off'
+  // grade [채도, 대비, 밝기] (캔버스 CSS 색 보정) · vignette [가장자리 어둠 세기, 어둠 시작 (화면 반지름 비율), 색 'r,g,b'] · rim 블록 빛 테두리 (프레넬)
+  // halo [빛 무리 세기, 크기 (칸)] 떨어지는 블록·아이템 둘레 · flash 빛 터짐 크기 배수 (0 = 끔) · sky [하늘·안개 밝기 배수, 채도 더함] 판 중에만 (필드 조명은 그대로)
+  GAME_LIGHT: 'vivid', // 2026-10-30 재혁 고름 (C)
+  GAME_LIGHT_PRESETS: {
+    off: { grade: [1, 1, 1], vignette: [0, 0.6, '0,0,0'], rim: 0, halo: [0, 1], flash: 0, sky: null },
+    rim: { grade: [1.15, 1.05, 1], vignette: [0.35, 0.58, '12,6,24'], rim: 0.5, halo: [0, 1], flash: 0, sky: [0.75, 0.08] }, // A: 색 진하게 + 하늘 어둡게 + 비네트 + 블록 빛 테두리
+    glow: { grade: [1.15, 1.06, 1], vignette: [0.38, 0.56, '12,6,24'], rim: 0.5, halo: [0.35, 2.4], flash: 1, sky: [0.7, 0.1] }, // B: A + 빛 무리 + 착지·KO·필살기 빛 터짐
+    vivid: { grade: [1.28, 1.1, 1.02], vignette: [0.5, 0.5, '14,6,28'], rim: 0.75, halo: [0.5, 2.8], flash: 1.5, sky: [0.5, 0.15] }, // C: B 를 세게 (하늘 많이 어둡게 — 타이틀에 가장 가까움)
+  },
+  GAME_LIGHT_MAX: 600, // 빛 무리·빛 터짐 사각형 최대 수 (InstancedMesh 하나)
+  GAME_LIGHT_FLASH_MAX: 48, // 동시에 남는 빛 터짐 수
+  GAME_LIGHT_FLASH: { land: [1.8, 280], ko: [5, 560], ult: [4, 460], color: 0xfff0c8 }, // 빛 터짐 [크기 (칸), ms], color 테마 빛이 없을 때
+  GAME_LIGHT_ITEM: 0xffe48a, // 아이템 빛 무리 색
+  GAME_LIGHT_SKY_SPEED: 0.8, // 하늘이 어두워지는·돌아오는 빠르기 (/초, 0→1)
   // 맵 테마 (client/world.js, 모습만). 표에 없는 맵은 위의 노을 그대로 → 새 맵 테마는 WORLD_THEMES 에 값을 넣고 WORLD_MAP_THEME 에 잇기만
   WORLD_MAP_THEME: { flat: 'meadow', pyramid: 'desert', stairs: 'crystal', bowl: 'volcano', spiral: 'skycastle', pillars: 'mushroom', fortress: 'castle' },
   WORLD_DRIFT_SPEED: 0.006, // 먼 섬·구름이 필드 둘레를 도는 빠르기 (라디안/초)
@@ -1122,6 +1137,7 @@ export const CONFIG = {
   MENU_CAM_DIST: 16, // 섬 가운데에서 카메라 거리 (칸)
   MENU_VIEW_SHIFT: 0.3, // 화면 너비 비율만큼 장면을 왼쪽으로 (가운데 메뉴 판에 섬이 안 가리게)
   // 상승하는 위험 모습 (client/hazard.js, 화면만 — 판정은 서버 lava.z). 테마마다 값은 WORLD_THEMES.*.hazard
+  HAZARD_NOISE_WAVE: 1.6, // 잡음 파도 높이 배수 (× 테마 wave[0]). 2026-10-30 재혁: 사인파 줄무늬 → 겹친 잡음 + 흐르는 빛 띠 (시안 A)
   HAZARD_FALLBACK: 'volcano', // 테마 없는 화면(대기실)의 위험 모습
   HAZARD_DEEP: 8, // 몸통 바닥 깊이 (표면 아래 칸) · 필드 밖 깊이
   HAZARD_SEG: [120, 40], // 표면 격자 수 (정점 파도) [보통, 그래픽 낮춤]
@@ -1232,7 +1248,7 @@ export const CONFIG = {
       islets: 7,
       motes: { color: 0x9ae8ff, count: 50, size: 0.16 },
       edgeOpacity: 0.06,
-      hazard: { style: 'energy', deep: 0x7a0a62, mid: 0xff3cb4, shallow: 0xffa8e4, foam: 0xffe4fa, alpha: [0.88, 0.6], reflect: 0.35, wave: [0.05, 1.3], depthFade: 1.0, tint: 0xff40c0, tintDepth: 0.5, band: [0xff50c8, 0.6, true], contact: 0xffc8f4, ambient: 0.8, particleSpeed: 4, light: [0xff4cc8, 1.0], particles: [0xffb4f0, 0xff40c0], splash: [0xffffff, 0xff50d0], vignette: 0xff3cb4 },
+      hazard: { style: 'energy', deep: 0x30186a, mid: 0x8a58d8, shallow: 0xc8acf4, foam: 0xf2ebff, alpha: [0.88, 0.6], reflect: 0.35, wave: [0.05, 1.3], depthFade: 1.0, tint: 0x7c52c8, tintDepth: 0.5, band: [0x9a70e8, 0.6, true], contact: 0xe4d8ff, ambient: 0.8, particleSpeed: 4, light: [0x9a6ef0, 1.0], particles: [0xe0d0ff, 0x9a6ae0], splash: [0xffffff, 0xa078f0], vignette: 0x7c52c8 } // 보라 빛 (2026-10-30 재혁: 형광 분홍 눈 아픔),
     },
     volcano: { // 그릇: 화산 분화구 · 밤 · 용암 · 현무암 블록 (빛나는 금)
       seed: 41,
@@ -1314,7 +1330,7 @@ export const CONFIG = {
       islets: 7,
       motes: { color: 0xfff27a, count: 70, size: 0.13 }, // 반딧불 (노랑 — 독늪 연두와 다르게)
       edgeOpacity: 0.06,
-      hazard: { style: 'swamp', deep: 0x1c5a08, mid: 0x7cff2a, shallow: 0xbcff78, foam: 0xdcff96, alpha: [0.95, 0.75], reflect: 0.25, wave: [0.035, 0.6], depthFade: 1.0, tint: 0x60d020, tintDepth: 0.6, band: [0x80ff40, 0.35, true], contact: 0xdcff96, ambient: 0.6, particleSpeed: 2, light: [0x8aff40, 1.0], particles: [0xc8ff60, 0x60ff20], splash: [0xc8ff60, 0x60ff20], vignette: 0x70ff30 },
+      hazard: { style: 'swamp', deep: 0x0a4a1c, mid: 0x2ee06a, shallow: 0x9cffb4, foam: 0xe4ffe8, alpha: [0.95, 0.75], reflect: 0.25, wave: [0.035, 0.6], depthFade: 1.0, tint: 0x60d020, tintDepth: 0.6, band: [0x80ff40, 0.35, true], contact: 0xdcff96, ambient: 0.6, particleSpeed: 2, light: [0x8aff40, 1.0], particles: [0xc8ff60, 0x60ff20], splash: [0xc8ff60, 0x60ff20], vignette: 0x70ff30 },
     },
     castle: { // 요새: 중세 성 · 맑은 오후 · 탁한 겨자빛 해자 독늪 · 성벽 돌
       seed: 79,
@@ -1341,7 +1357,7 @@ export const CONFIG = {
       clouds: 28,
       islets: 7,
       edgeOpacity: 0.05,
-      hazard: { style: 'swamp', deep: 0x3a2e08, mid: 0x9a8418, shallow: 0xccb444, foam: 0xf0e878, alpha: [0.96, 0.8], reflect: 0.25, wave: [0.035, 0.6], depthFade: 1.0, tint: 0x8a7a18, tintDepth: 0.6, band: [0x5a5030, 0.5, false], contact: 0xf0e878, ambient: 0.5, particleSpeed: 2, light: [0xc0a840, 0.5], particles: [0xe8d870, 0xa09030], splash: [0xe8d870, 0xa09030], vignette: 0x3a2a04 }, // 겨자빛 탁한 늪 (잔디 초록·버섯 숲 형광 연두와 다르게)
+      hazard: { style: 'swamp', deep: 0x06302c, mid: 0x109a78, shallow: 0x6ee8c0, foam: 0xd8fff0, alpha: [0.96, 0.8], reflect: 0.3, wave: [0.035, 0.6], depthFade: 1.0, tint: 0x0e8068, tintDepth: 0.6, band: [0x2a5a50, 0.5, false], contact: 0xd8fff0, ambient: 0.5, particleSpeed: 2, light: [0x40d0a8, 0.5], particles: [0xc0ffe8, 0x40c8a0], splash: [0xd8fff0, 0x40c8a0], vignette: 0x063a30 }, // 겨자빛 탁한 늪 (잔디 초록·버섯 숲 형광 연두와 다르게)
     },
   },
   HELD_MODEL_SIZE: 0.28,

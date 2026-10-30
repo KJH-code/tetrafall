@@ -29,6 +29,7 @@ export class PieceLook {
     const m = toon({ map: this.map, ...params });
     const glow = (s.glow || 0) + extraGlow;
     const fx = !this.low;
+    const rim = fx ? this.rim || 0 : 0; // 판 빛 테두리 (render.js 가 GAME_LIGHT 안 값으로)
     const acc = (s.accent || [0xffffff, 0xffffff]).map((c) => new THREE.Color(c));
     const v3 = (c) => `vec3(${f3(c.r)}, ${f3(c.g)}, ${f3(c.b)})`;
     m.onBeforeCompile = (sh) => {
@@ -54,10 +55,11 @@ export class PieceLook {
 #ifdef USE_MAP
   totalEmissiveRadiance += diffuseColor.rgb * ${f3(fx ? s.crack : 0)} * smoothstep(0.6, 0.95, sampledDiffuseColor.r);
 #endif
-  totalEmissiveRadiance += mix(diffuseColor.rgb, vec3(1.0), 0.4) * ${f3(fx ? s.fresnel : 0)} * pow(1.0 - abs(dot(normal, normalize(vViewPosition))), 2.5);`,
+  totalEmissiveRadiance += mix(diffuseColor.rgb, vec3(1.0), 0.4) * ${f3(fx ? s.fresnel : 0)} * pow(1.0 - abs(dot(normal, normalize(vViewPosition))), 2.5);
+  totalEmissiveRadiance += mix(diffuseColor.rgb, vec3(1.0), 0.6) * ${f3(rim)} * pow(1.0 - abs(dot(normal, normalize(vViewPosition))), 3.0); // 판 빛 테두리 (GAME_LIGHT rim)`,
       );
     };
-    m.customProgramCacheKey = () => `tf-piece:${s.style}:${f3(glow)}:${(s.accent || []).join()}:${fx ? `${f3(s.crack)}:${f3(s.fresnel)}` : 'low'}`;
+    m.customProgramCacheKey = () => `tf-piece:${s.style}:${f3(glow)}:${(s.accent || []).join()}:${fx ? `${f3(s.crack)}:${f3(s.fresnel)}:${f3(rim)}` : 'low'}`;
     this.mats.push(m);
     return m;
   }
