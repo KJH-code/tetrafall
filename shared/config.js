@@ -953,7 +953,7 @@ export const CONFIG = {
   BATCH_HIDE_LAYER: 30, // 합친 조각 Mesh 가 옮겨 가는 층 (아무 카메라도 안 켜서 안 그려짐, 뼈로만 씀)
   INSTANCE_POOL_MIN: 16, // 떨어지는 블록 칸·그림자 칸 InstancedMesh 처음 칸 수 (모자라면 두 배로 다시 만듦, client/instpool.js)
   LEAVE_CONFIRM_MS: 3000, // 판 중 '방 나가기' 를 한 번 누르면 이 동안 '정말 나가기' 로 바뀜 (한 번 더 누르면 나감, 연습·대기실은 바로)
-  RESULTS_HERO_MS: 5000, // 판이 끝나면 이 동안은 결과 연출만 (가운데 승자 초상 크게 + 결과 표, 대기실 판은 숨김). 그 뒤 결과는 사라지고 대기실 판이 들어옴 (승수는 위 줄). 호스트 Enter 재시작은 그동안에도 됨
+  RESULTS_HERO_MS: 5000, // 승자 클로즈업 (VICTORY_CLOSEUP_MS) 이 끝나면 이 동안은 결과 연출만 (가운데 승자 초상 크게 + 결과 표, 대기실 판은 숨김). 그 뒤 결과는 사라지고 대기실 판이 들어옴 (승수는 위 줄). 호스트 Enter 재시작은 그동안에도 됨
   // 화면 전환 (2026-10-28 재혁: 스매시식 사선 슬래시). shared/wipe.js 가 계산, client/main.js 가 띄움, 모양(색·기울기·띠 폭)은 index.html #wipe.
   // 짧은 것 = 메뉴 → 대기실·연습, 결과 → 대기실 판 (자주 봄) / 큰 것 = 대기실 → 판 시작, 판 끝 → 결과. 판 시작은 슬래시만 (뒤의 카운트다운은 서버 시간 그대로, 안 늦춤)
   UI_WIPE: {
@@ -1646,8 +1646,11 @@ export const CONFIG = {
   THROWN_BLINK_MS: 120, // 떨어지는 설치 블록 깜빡임 간격
   // 승리 연출: 판이 끝나고 WIN_BANNER_MS 동안 모두의 카메라가 승자 정면으로
   VICTORY_FLY_S: 0.7, // 카메라가 날아가는 시간 (초)
+  VICTORY_CLOSEUP_MS: 2800, // 판 끝 승자 클로즈업 (마지막 킬 슬로모션 뒤, 결과 표 전). 카메라가 승자 앞으로 날아가 승리 포즈를 보여 줌 (shared/victory.js)
+  VICTORY_CLOSEUP_REDUCED_MS: 1500, // 움직임 줄이기·그래픽 낮춤: 카메라가 날아가지 않고 바로 승자 앞, 짧게
   VICTORY_DIST: 2.8, // 승자 앞 거리 (칸)
   VICTORY_UP: 1.4, // 발 위 높이 (칸)
+  VICTORY_LOOK_UP: 0.45, // 승리 카메라가 승자 가슴보다 이만큼 위를 봄 (칸): 승자가 화면 아래쪽 2/3 에 오고 머리 위가 '승리!' 큰 글씨 자리
   VICTORY_SPIN: 5, // 춤: 빙글 도는 빠르기 (라디안/초)
   VICTORY_HOP: 0.35, // 춤: 깡충 높이 (칸)
   VICTORY_HOP_FREQ: 7, // 춤: 깡충 빠르기

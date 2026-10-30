@@ -82,3 +82,29 @@ test('그래픽 낮춤·움직임 줄이기: 띠 없이 짧은 페이드', () =>
 test('판 시작 슬래시는 카운트다운보다 짧음 (카운트다운이 끝나기 전에 사라져 첫 입력을 안 가림)', () => {
   assert.ok(wipePlan('big').ms < C.ROUND_COUNTDOWN_MS);
 });
+
+// 판 끝 순서 (shared/victory.js): 슬로모션 → 승자 클로즈업 → 결과 표 → 대기실 판
+import { victoryPlan, victoryStage } from '../shared/victory.js';
+test('판 끝: 승자 클로즈업 뒤 결과, 슬로모션이 남았으면 그 뒤, 승자 없으면 바로 결과', () => {
+  const p = victoryPlan({ star: true, slowLeftMs: 1600 });
+  assert.equal(p.closeupAt, 1600);
+  assert.equal(p.resultsAt, 1600 + C.VICTORY_CLOSEUP_MS);
+  assert.equal(p.endAt, p.resultsAt + C.RESULTS_HERO_MS);
+  assert.equal(victoryStage(p, 0), 'slow');
+  assert.equal(victoryStage(p, 1600), 'closeup');
+  assert.equal(victoryStage(p, p.resultsAt - 1), 'closeup');
+  assert.equal(victoryStage(p, p.resultsAt), 'results');
+  assert.equal(victoryStage(p, p.endAt), 'lobby');
+  assert.ok(C.VICTORY_CLOSEUP_MS >= 2000 && C.VICTORY_CLOSEUP_MS <= 3000, '2~3초');
+  // 승자 없음·무승부: 바로 결과
+  const none = victoryPlan({ star: false, slowLeftMs: 1600 });
+  assert.equal(victoryStage(none, 0), 'results');
+  // 움직임 줄이기: 짧게
+  const red = victoryPlan({ star: true, reduced: true });
+  assert.equal(red.resultsAt, C.VICTORY_CLOSEUP_REDUCED_MS);
+  assert.ok(C.VICTORY_CLOSEUP_REDUCED_MS < C.VICTORY_CLOSEUP_MS);
+  assert.equal(victoryPlan({ star: true, slowLeftMs: NaN }).closeupAt, 0);
+  // 클로즈업 동안은 판 화면 그대로 (결과 슬래시는 그 뒤: game → results)
+  assert.equal(screenOf({ inRoom: true, phase: 'over', hero: false, closeup: true }), 'game');
+  assert.equal(wipeKind('game', 'results'), 'big');
+});

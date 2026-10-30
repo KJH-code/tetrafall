@@ -3,9 +3,11 @@
 // 바뀔 때 어느 전환인지(short·big·없음)와, 띠마다 언제 어디로 가는지(WAAPI 키프레임)·언제 화면을 다 덮는지(coverMs)를 낸다.
 import { CONFIG as C } from './config.js';
 
-export function screenOf({ inRoom, phase, hero }) {
+// closeup = 판 끝 승자 클로즈업 중 (shared/victory.js): 아직 판 화면 그대로 (결과 표 슬래시는 클로즈업 뒤)
+export function screenOf({ inRoom, phase, hero, closeup = false }) {
   if (!inRoom) return 'menu';
   if (phase === 'countdown' || phase === 'playing') return 'game';
+  if (phase === 'over' && closeup) return 'game';
   if (phase === 'over' && hero) return 'results';
   return 'lobby';
 }

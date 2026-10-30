@@ -771,7 +771,7 @@ export class Game {
     this.controlItemNextAt = this.time + C.CONTROL_ITEM_RESPAWN_MS;
     this.powerItemNextAt = this.time + C.ITEM_FIRST_SPAWN_MS;
     const lv = ps.some((p) => p.isBot) ? `, 봇 ${BOT_LEVEL_KO[this.botLevel]}` : '';
-    this.log(`===== ROUND ${this.roundNumber} 시작 (${ps.length}명: ${ps.sort((a, b) => a.slot - b.slot).map((p) => p.name).join(' ')}, 맵 ${MAPS[this.mapId].name}${lv}) =====`); // 참가자 목록은 npm run stats 가 구성별로 셀 때 씀
+    this.log(`===== ROUND ${this.roundNumber} 시작 (${ps.length}명: ${ps.sort((a, b) => a.slot - b.slot).map((p) => p.name).join(' ')}, 맵 ${MAPS[this.mapId].log}${lv}) =====`); // 참가자 목록은 npm run stats 가 구성별로 셀 때 씀. 맵은 예전 이름 (log) 그대로 — 화면 이름은 MAPS name
     if (this.teamMode) this.log(`  팀: ${this.teamLine()}`); // npm run stats 가 팀 승리를 사람별로 나눌 때 씀
     if (this.sky) this.log('  하늘 계단: 켬'); // npm run stats 가 켬/끔을 나눠 봄 (끔은 예전 로그와 같게 안 찍음)
     if (this.characters) this.log(`  캐릭터: ${ps.map((p) => `${p.name} ${C.CHAR_NAMES[p.char]}`).join(' / ')}`); // npm run stats 캐릭터별 승률
