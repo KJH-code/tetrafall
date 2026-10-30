@@ -255,7 +255,10 @@
     #scoreboard .sc { color: var(--accent); font-size: 18px; }
     #scoreboard tr.me td { background: rgba(255,210,58,.14); }
     /* 킬 점수전 부활 대기: 누구에게 · 원인 + 큰 숫자 (관전 화면 위, 가운데 조금 위) */
-    #respawn { position: absolute; left: 50%; top: 24%; transform: translateX(-50%); z-index: 3; pointer-events: none; text-align: center; }
+    /* 어두운 바탕 판: 뒤 캐릭터 머리 위 이름표·% 와 겹쳐도 숫자·원인이 읽히게 */
+    #respawn { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); z-index: 3; pointer-events: none; text-align: center;
+      padding: 10px 30px 12px; background: radial-gradient(ellipse at 50% 50%, rgba(8,12,26,.88) 0%, rgba(8,12,26,.78) 60%, rgba(8,12,26,.55) 100%);
+      clip-path: polygon(14px 0, 100% 0, calc(100% - 14px) 100%, 0 100%); box-shadow: var(--sh); }
     #respawn .lab { font-family: var(--disp); font-size: 18px; color: #fff; letter-spacing: 2px; text-shadow: 0 3px 0 rgba(0,0,0,.5); }
     #respawn .num { font-family: var(--disp); font-size: 96px; line-height: 1; color: var(--accent); text-shadow: 0 6px 0 rgba(0,0,0,.5), 0 0 18px #000; }
     #respawn .num.tick { animation: num-tick .3s ease-out; } /* 숫자가 바뀔 때 톡 (크기만, 흐려지지 않게) */
