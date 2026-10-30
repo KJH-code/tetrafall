@@ -29,6 +29,7 @@ import { World } from '/world.js';
 import { Hazard } from '/hazard.js';
 import { TitleScene } from '/title-scene.js';
 import { LobbyDark } from '/lobby-dark.js';
+import { MAP_IDS, mapColumns } from '/shared/maps.js';
 import { lobbyTheme } from '/shared/title.js';
 import { sessionTheme, markTheme } from '/menu-theme.js';
 import { labelSizes } from '/shared/hud-layout.js';
@@ -670,6 +671,41 @@ export class Renderer {
     this.endTitle();
     this.title = new TitleScene(this, theme, { instant, low: this.lowGfx });
     return this.title;
+  }
+
+  // 대기실 지형 미리보기 (재혁: 맵 바꾸면 곧바로 뒤 화면도): 고른 맵 (map.choice) 의 시작 지형을 클라에서 깔아 보여 줌
+  // (shared/maps.js mapColumns, 판 크기는 지금 대기실 판). 무작위·대기실 아님이면 끄고 서버 격자로. 판 시작하면 서버가 같은 맵을 깖
+  lobbyPreview(state, theme) {
+    const pick = theme && state.map && state.map.choice !== 'random' && MAP_IDS.includes(state.map.choice) ? state.map.choice : null;
+    const key = pick && `${pick}:${this.W}x${this.D}x${this.H}`;
+    if (key === (this.preview?.key ?? null)) return;
+    if (!pick) {
+      this.preview = null;
+      this.gridVersion = -1; // 서버 격자를 다시 그림
+      return;
+    }
+    const grid = new Uint8Array(this.W * this.D * this.H);
+    const top = new Float32Array(this.W * this.D);
+    for (const [x, y, h] of mapColumns(pick, this.W, this.D)) {
+      if (x < 0 || y < 0 || x >= this.W || y >= this.D) continue;
+      for (let z = 0; z < Math.min(h, this.H); z++) grid[(z * this.D + y) * this.W + x] = CELL.TERRAIN;
+      top[y * this.W + x] = Math.max(top[y * this.W + x], h);
+    }
+    this.preview = { key, grid, top };
+    this.gridVersion = -1; // 아래에서 미리보기 격자를 그림
+  }
+
+  // 미리보기 지형 높이: 몸 둘레 네 모서리 칸 중 가장 높은 윗면
+  previewTop(x, y) {
+    const P = this.preview;
+    const h = C.PLAYER_HALF;
+    let t = 0;
+    for (const [dx, dy] of [[-h, -h], [h, -h], [-h, h], [h, h]]) {
+      const gx = Math.floor(x + dx);
+      const gy = Math.floor(y + dy);
+      if (gx >= 0 && gy >= 0 && gx < this.W && gy < this.D) t = Math.max(t, P.top[gy * this.W + gx]);
+    }
+    return t;
   }
 
   // 지금 배경 테마 (메뉴 = 타이틀 장면, 대기실 = 방 맵 테마 장면) — 음악 앰비언트·HTML 판 색
@@ -3105,7 +3141,14 @@ export class Renderer {
     this.dark?.update();
     markTheme(this.dark ? this.dark.theme : null);
     this.stepView(view, dt);
-    if (state.grid && state.grid.length === this.W * this.D * this.H && state.gridVersion !== this.gridVersion) {
+    this.lobbyPreview(state, dk);
+    if (this.preview) {
+      // 대기실 지형 미리보기 중: 서버 격자 대신 미리보기 격자 (테마가 바뀌어 다시 칠할 때도)
+      if (this.gridVersion !== 'preview') {
+        this.updateGrid(this.preview.grid);
+        this.gridVersion = 'preview';
+      }
+    } else if (state.grid && state.grid.length === this.W * this.D * this.H && state.gridVersion !== this.gridVersion) {
       this.updateGrid(state.grid);
       this.gridVersion = state.gridVersion;
     }
@@ -3154,6 +3197,7 @@ export class Renderer {
         if (at === null || !track || !sampleTrack(track, at, C.INTERP_EXTRAP_MS, s)) Object.assign(s, { x: p.x, y: p.y, z: p.z });
       }
       if (![s.x, s.y, s.z].every(Number.isFinite)) Object.assign(s, { x: p.x, y: p.y, z: p.z }); // 안전장치
+      if (this.preview && p.alive) s.z = Math.max(s.z, this.previewTop(s.x, s.y)); // 대기실 지형 미리보기: 서버는 바닥에 서 있으니 화면만 그 칸 위로
       g.position.set(s.x, s.y, s.z);
       g.rotation.z = p.yaw;
       const firstPerson = view === 'fps' && this.skyBlend === 0 && !cam.victory && !cam.selfie && (!this.third || (this.tpDist ?? C.TP_DIST) < C.TP_HIDE_DIST); // 3인칭은 카메라가 머리 속으로 당겨졌을 때만 숨김

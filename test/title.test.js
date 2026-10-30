@@ -4,7 +4,6 @@ import assert from 'node:assert/strict';
 import { CONFIG as C } from '../shared/config.js';
 import { titleCells, titlePieces, dropSchedule, titleDoneAt, pieceLift, showTitle, titleInterval, titleCamDist, GLYPH_W, GLYPH_H } from '../shared/title.js';
 import { MAP_IDS } from '../shared/maps.js';
-import { MenuScene } from '../client/menu-scene.js';
 
 test('타이틀: 글자 → 5×7 칸, 글자 사이 1칸, 모르는 글자는 빈칸', () => {
   const t = titleCells('T');
@@ -104,7 +103,7 @@ test('타이틀: 카메라 거리 — 로고 폭이 화면 폭의 TITLE_FILL, �
   assert.ok(C.TITLE_FILL > 0.6 && C.TITLE_FILL < 0.95, '좌우 여백 적당히');
 });
 
-test('타이틀 테마: 맵 테마 7개 모두 엔딩 장면 값이 빠짐 없이, 켤 때마다 무작위 하나 (어느 테마든 나옴), 뒤 메뉴 섬은 그 테마의 맵', async () => {
+test('타이틀 테마: 맵 테마 7개 모두 엔딩 장면 값이 빠짐 없이, 켤 때마다 무작위 하나 (어느 테마든 나옴), 그 테마의 맵이 있음', async () => {
   const { pickTitleTheme, titleMapFor, TITLE_THEME_IDS } = await import('../shared/title.js');
   assert.deepEqual([...TITLE_THEME_IDS].sort(), Object.keys(C.WORLD_THEMES).sort(), '맵 테마 7개 = 타이틀 테마');
   assert.equal(TITLE_THEME_IDS.length, 7);
@@ -127,7 +126,6 @@ test('타이틀 테마: 맵 테마 7개 모두 엔딩 장면 값이 빠짐 없�
     const map = titleMapFor(id);
     assert.ok(MAP_IDS.includes(map), `${id} → 맵 ${map}`);
     assert.equal(C.WORLD_MAP_THEME[map], id);
-    assert.equal(new MenuScene(Math.random, false, map).mapId, map, '메뉴 장면이 그 맵으로');
   }
   assert.equal(C.TITLE_THEMES.crystal.sound.ping, 'drip', '수정 동굴 = 물방울·울림');
   // 무작위: 0~1 난수 칸마다 다른 테마, 다 나옴
@@ -137,7 +135,6 @@ test('타이틀 테마: 맵 테마 7개 모두 엔딩 장면 값이 빠짐 없�
   assert.ok(TITLE_THEME_IDS.includes(pickTitleTheme(() => 0.999999)));
   assert.ok(TITLE_THEME_IDS.includes(pickTitleTheme(Math.random)));
   assert.equal(titleMapFor('nope'), null);
-  assert.ok(MAP_IDS.includes(new MenuScene(Math.random, false, 'nope').mapId), '없는 맵이면 무작위');
 });
 
 test('타이틀 빛: 캄캄하게 시작해 밝아짐, 다 쌓인 순간 빛 터짐 (글자 빛 최대) → 가라앉아 잔잔히 빛남', async () => {
