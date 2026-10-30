@@ -1575,7 +1575,7 @@ export class Renderer {
       return;
     }
     this.victoryT += dt;
-    const k = Math.min(1, this.victoryT / C.VICTORY_FLY_S);
+    const k = cam.victorySnap ? 1 : Math.min(1, this.victoryT / C.VICTORY_FLY_S); // 움직임 줄이기: 날아가지 않고 바로
     const t = k * k * (3 - 2 * k); // smoothstep
     const yaw = winner.yaw;
     const front = new THREE.Vector3(s.x + Math.cos(yaw) * C.VICTORY_DIST, s.y + Math.sin(yaw) * C.VICTORY_DIST, s.z + C.VICTORY_UP);
@@ -3101,9 +3101,9 @@ export class Renderer {
 
     // 플레이어
     this.victoryId = cam.victory || null;
-    // 판 끝 (결과 연출 동안 계속): 이긴 사람(팀전이면 이긴 팀)은 승리 포즈를 유지 (카메라 연출은 WIN_BANNER_MS 뿐)
+    // 판 끝 (결과 연출 동안 계속): 이긴 사람(팀전이면 이긴 팀)은 승리 포즈를 유지. 마지막 킬 슬로모션 동안(victoryHold)은 아직 — 클로즈업과 함께 포즈 시작 (카메라는 클로즈업 동안만)
     const rd = state && state.phase === 'over' && !state.practice ? state.round : null;
-    this.winners = rd ? new Set([...(rd.winnerIds || []), ...(rd.winnerTeam ? state.players.filter((q) => q.team === rd.winnerTeam).map((q) => q.id) : [])]) : null;
+    this.winners = rd && !cam.victoryHold ? new Set([...(rd.winnerIds || []), ...(rd.winnerTeam ? state.players.filter((q) => q.team === rd.winnerTeam).map((q) => q.id) : [])]) : null;
     const seen = new Set();
     // 위치: 스냅샷을 서버 시각으로 쌓아 두고 조금 늦은 시각의 위치를 두 스냅샷 사이에서 보간 (client/interp.js)
     if (Number.isFinite(state.time) && state.time !== this.snapTime) {

@@ -78,3 +78,23 @@ test('맵: 어느 블록 윗면이든 바닥에서 이웃 칸 2층 차이까지(
     for (let x = 0; x < W; x++) for (let y = 0; y < W; y++) assert.ok(ok[x][y], `${id} ${W} (${x},${y}) ${h[x][y]}층`);
   }
 });
+
+test('맵 이름 (2026-10-30 재혁 확정): 화면 이름은 shared/maps.js 한 곳, 로그 이름은 예전 그대로', async () => {
+  const { MAPS, mapName, MAP_RANDOM_NAME } = await import('../shared/maps.js');
+  const fs = await import('node:fs');
+  assert.deepEqual(Object.fromEntries(MAP_IDS.map((id) => [id, mapName(id)])), {
+    flat: '바람 들판', pyramid: '황금 피라미드', stairs: '자수정 동굴', bowl: '용암 분화구', spiral: '구름 위 성', pillars: '반딧불 버섯 숲', fortress: '횃불 요새',
+  });
+  assert.equal(mapName('random'), MAP_RANDOM_NAME);
+  assert.equal(MAP_RANDOM_NAME, '무작위');
+  // 서버 로그 '맵 X' 는 예전 이름 (npm run stats 맵별이 예전 로그와 이어짐)
+  assert.deepEqual(Object.fromEntries(MAP_IDS.map((id) => [id, MAPS[id].log])), {
+    flat: '평지', pyramid: '피라미드', stairs: '계단', bowl: '그릇', spiral: '나선 계단', pillars: '기둥 숲', fortress: '요새',
+  });
+  // 화면에 따로 박힌 이름 없음: 맵 고르기 칸은 main.js 가 채우고, MAP_KO 표는 없어짐
+  const html = fs.readFileSync(new URL('../client/index.html', import.meta.url), 'utf8');
+  const main = fs.readFileSync(new URL('../client/main.js', import.meta.url), 'utf8');
+  assert.ok(!/<select id="map-select">[^]*?<option/.test(html.split('</select>').find((x) => x.includes('id="map-select"')) || ''), 'index.html 맵 option 없음');
+  assert.ok(!main.includes('MAP_KO'));
+  for (const id of MAP_IDS) assert.ok(!html.includes(`value="${id}"`), id);
+});

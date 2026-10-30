@@ -12,6 +12,8 @@ import { KO } from '/ko.js';
 import { hitTier, hitStep } from '/hit-tier.js';
 import { portrait, setPortraitModels } from '/portrait.js';
 import { screenOf, wipeKind, wipePlan } from '/shared/wipe.js';
+import { victoryPlan, victoryStage } from '/shared/victory.js';
+import { MAP_IDS, mapName } from '/shared/maps.js';
 import { cardLayout, lobbyPlace } from '/shared/hud-layout.js';
 import { randomReel } from '/shared/char-select.js';
 import { CharStage } from '/char-stage.js';
@@ -867,6 +869,11 @@ function feelEvent(e) {
     }
     case 'finalKill':
       ko.final(e);
+      // 판 끝 상태가 먼저 왔으면: 클로즈업은 이 슬로모션이 끝난 뒤로
+      if (victory.plan && victory.id && state?.phase === 'over' && performance.now() - overAt < 500) {
+        victory.plan = victoryPlan({ star: true, slowLeftMs: koSlowLeft() + (performance.now() - overAt), reduced: reducedMotion() });
+        bigUntil = Math.max(bigUntil, overAt + victory.plan.resultsAt); // 승리 큰 글씨도 결과 표까지
+      }
       return;
     case 'death': {
       const t = playerById(e.who);
@@ -1084,7 +1091,7 @@ function renderRoomList() {
     const info = document.createElement('div');
     info.className = 'info';
     const bots = r.bots ? ` + 봇 ${r.bots} (${BOT_LEVEL_KO[r.botLevel] || r.botLevel})` : '';
-    info.textContent = `사람 ${r.humans}${bots} / ${r.max}명 · ${C.MODE_NAMES[r.mode] || '생존'} · 맵 ${MAP_KO[r.map] || r.map}${r.skyStairs ? ' · 하늘 계단' : ''} · ${r.teamMode ? '팀전' : '개인전'}`;
+    info.textContent = `사람 ${r.humans}${bots} / ${r.max}명 · ${C.MODE_NAMES[r.mode] || '생존'} · 맵 ${mapName(r.map)}${r.skyStairs ? ' · 하늘 계단' : ''} · ${r.teamMode ? '팀전' : '개인전'}`;
     const btn = document.createElement('button');
     btn.textContent = r.humans + r.bots >= r.max ? '꽉 참' : '들어가기';
     btn.disabled = r.humans + r.bots >= r.max;
@@ -1204,6 +1211,8 @@ document.addEventListener('keydown', (e) => {
 });
 $('add-bot').addEventListener('click', () => send({ type: 'addBot' }));
 $('remove-bot').addEventListener('click', () => send({ type: 'removeBot' }));
+// 맵 고르기 칸: 이름은 shared/maps.js 한 곳에서 (무작위 + MAP_IDS 순서)
+for (const id of ['random', ...MAP_IDS]) $('map-select').append(new Option(mapName(id), id));
 $('map-select').addEventListener('change', (e) => send({ type: 'setMap', map: e.target.value }));
 // 하늘 계단 (호스트, 판 사이): 맵 고르기 옆 체크 상자
 const skyLabel = document.createElement('label');
@@ -1226,7 +1235,6 @@ const MODE_DESC = {
   master: `블록 마스터: 한 명이 하늘에서 블록만 떨어뜨리고, 나머지는 ${C.MASTER_TIME_MS / 1000}초 버티기 (각자 도생, 죽으면 마스터 편, 마스터는 판마다 돌아감)`,
   kills: `킬 점수전: 죽어도 ${C.KILLS_RESPAWN_MS / 1000}초 뒤 부활. 킬 +1 · 자멸 -1, ${C.KILLS_TIME_MS / 60000}분 또는 ${C.KILLS_TARGET}킬 (팀 ${C.KILLS_TARGET_TEAM}킬)`,
 };
-const MAP_KO = { random: '무작위', flat: '평지', pyramid: '피라미드', stairs: '계단', bowl: '그릇', spiral: '나선 계단', pillars: '기둥 숲', fortress: '요새' };
 
 // 이름: 대기 화면 입력칸. 브라우저에 기억해 두고 접속할 때마다 보낸다 (판 사이에만 바뀜)
 const nameInput = $('name-input');
@@ -1471,7 +1479,7 @@ function me() {
 
 // ---------- 큰 글씨: 카운트다운 3·2·1·시작!, 판 끝 "P2 승리!" ----------
 const bigmsg = $('bigmsg');
-let victory = { id: null, until: 0 }; // 판 끝 승리 연출: 승자 id 와 끝나는 시각
+let victory = { id: null, plan: null }; // 판 끝 승리 연출: 승자 id 와 순서 (shared/victory.js: 슬로모션 → 클로즈업 → 결과, 판 끝 overAt 부터 ms)
 let bigUntil = 0; // 이 시각까지는 카운트다운이 덮어쓰지 않음 (시작!·승리 표시)
 let lastCount = null;
 function showBig(text, color = '#fff', ms = 800, small = false) {
@@ -1520,15 +1528,16 @@ function onState() {
     // 승리 연출 (모두의 카메라가 승자에게). 팀전이면 이긴 팀에서 살아 있는 사람 (없으면 아무 팀원)
     const ws = (state.round.winnerIds || []).map(playerById).filter(Boolean); // 승자가 여럿일 수 있음 (블록 마스터 생존자, 킬 점수전 동점)
     const star = wt ? state.players.find((x) => x.team === wt && x.alive) || state.players.find((x) => x.team === wt) : ws.find((x) => x.alive) || ws[0];
-    if (star) victory = { id: star.id, until: performance.now() + C.WIN_BANNER_MS };
-    overAt = performance.now(); // 결과 연출 시작 (RESULTS_HERO_MS 동안 대기실 판 대신 결과만)
+    overAt = performance.now(); // 판 끝 연출 시작: 슬로모션 → 승자 클로즈업 → 결과 (RESULTS_HERO_MS 동안 대기실 판 대신 결과만)
+    victory = { id: star ? star.id : null, plan: victoryPlan({ star: !!star, slowLeftMs: koSlowLeft(), reduced: reducedMotion() }) };
+    const bannerMs = Math.max(C.WIN_BANNER_MS, victory.plan.resultsAt); // 승리 큰 글씨는 결과 표가 나올 때까지
     const wasMaster = lastState.players.find((x) => x.master && !x.zombie);
-    if (wt) showBig(`${TEAM_KO[wt]}팀 승리!`, hex(TEAM_MAIN[wt]), C.WIN_BANNER_MS, true);
-    else if (ws.length > 1) showBig(state.mode === 'master' ? '생존자 승리!' : '공동 승리!', '#ffe14a', C.WIN_BANNER_MS, true);
-    else if (w && wasMaster && wasMaster.id === w.id) showBig(`마스터 ${shownName(w)} 승리!`, colorOf(w), C.WIN_BANNER_MS, true);
-    else if (w && state.mode === 'master') showBig(`${shownName(w)} 혼자 버팀!`, colorOf(w), C.WIN_BANNER_MS, true);
-    else if (w) showBig(`${shownName(w)} 승리!`, colorOf(w), C.WIN_BANNER_MS, true);
-    else showBig('무승부', '#ddd', C.WIN_BANNER_MS, true);
+    if (wt) showBig(`${TEAM_KO[wt]}팀 승리!`, hex(TEAM_MAIN[wt]), bannerMs, true);
+    else if (ws.length > 1) showBig(state.mode === 'master' ? '생존자 승리!' : '공동 승리!', '#ffe14a', bannerMs, true);
+    else if (w && wasMaster && wasMaster.id === w.id) showBig(`마스터 ${shownName(w)} 승리!`, colorOf(w), bannerMs, true);
+    else if (w && state.mode === 'master') showBig(`${shownName(w)} 혼자 버팀!`, colorOf(w), bannerMs, true);
+    else if (w) showBig(`${shownName(w)} 승리!`, colorOf(w), bannerMs, true);
+    else showBig('무승부', '#ddd', bannerMs, true);
   }
   if (state.phase === 'playing' && !p.alive && wasAlive) flashScreen('rgba(255,0,0,.45)');
   wasAlive = p.alive;
@@ -1611,7 +1620,21 @@ function resultsHero() {
 // 시간으로만 본 결과 연출 여부 (화면 전환 판단용 — 위의 '띠 덮기 전 그대로' 를 빼야 전환이 되풀이되지 않음)
 function resultsHeroNow() {
   if (debug.holdResults && state && state.phase === 'over' && overAt > 0) return true; // 확인용: 결과 연출을 붙잡아 둠 (gif 찍기)
-  return !!state && state.phase === 'over' && !inPractice() && performance.now() - overAt < C.RESULTS_HERO_MS;
+  return overStage() !== 'lobby';
+}
+// 판 끝 연출 단계 (shared/victory.js): 'slow' 마지막 킬 슬로모션 · 'closeup' 승자 클로즈업 · 'results' 결과 표 · 'lobby' 대기실 판
+function overStage() {
+  if (!state || state.phase !== 'over' || inPractice()) return 'lobby';
+  return victoryStage(victory.plan || victoryPlan({ star: false }), performance.now() - overAt);
+}
+// 결과 표 전 (슬로모션·클로즈업): 판 화면 그대로, 결과 표·대기실 판 없이
+function closeupNow() {
+  const st = overStage();
+  return st === 'slow' || st === 'closeup';
+}
+// 판이 끝난 순간 남은 마지막 킬 슬로모션 (ms)
+function koSlowLeft() {
+  return ko.slow ? Math.max(0, ko.slow.until - performance.now()) : 0;
 }
 // 아래 플레이어 판: 판 중 + 판 끝 결과 연출 동안 (그 뒤엔 대기실과 같은 모습 — 승수는 위 줄, 승자는 대기실 판 글)
 function cardsOn() {
@@ -1685,7 +1708,7 @@ function updatePlayers() {
 const resultsEl = $('results');
 let resultsKey = '';
 function updateResults() {
-  const on = resultsHero() && livePlayers().length >= 2;
+  const on = resultsHero() && !closeupNow() && livePlayers().length >= 2; // 승자 클로즈업이 끝난 뒤에 결과 표
   resultsEl.classList.toggle('hidden', !on);
   if (!on) {
     resultsKey = '';
@@ -1791,7 +1814,7 @@ function wipeSeek(t) {
   return wipeNow ? wipeNow.plan : null;
 }
 function updateScreen() {
-  const next = screenOf({ inRoom: !!(myId && state), phase: state && state.phase, hero: resultsHeroNow() });
+  const next = screenOf({ inRoom: !!(myId && state), phase: state && state.phase, hero: resultsHeroNow(), closeup: closeupNow() && !debug.holdResults });
   const kind = wipeKind(screenNow, next);
   if (kind) {
     wipeFrom = screenNow;
@@ -1958,7 +1981,7 @@ function drawHud() {
   modeInfo.textContent = MODE_DESC[state.mode] || '';
   const mapInfo = $('map-info');
   mapInfo.classList.toggle('hidden', !(state.map && !isHost && between));
-  if (state.map) mapInfo.textContent = `맵: ${MAP_KO[state.map.choice] || state.map.choice} · 모드: ${C.MODE_NAMES[state.mode] || state.mode}${state.skyStairs ? ' · 하늘 계단' : ''}`;
+  if (state.map) mapInfo.textContent = `맵: ${mapName(state.map.choice)} · 모드: ${C.MODE_NAMES[state.mode] || state.mode}${state.skyStairs ? ' · 하늘 계단' : ''}`;
   if (showBots) {
     $('add-bot').disabled = state.players.length >= Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length);
     $('remove-bot').disabled = !state.players.some((x) => x.isBot);
@@ -2696,11 +2719,12 @@ function frame(now) {
     updateGhostAim();
     if (state) music.setMood(state.phase === 'playing' || state.phase === 'countdown' ? (state.lava && state.lava.active ? 'lava' : 'battle') : 'calm');
     music.update(state); // 맵 테마별 곡
-    const vic = state && state.phase === 'over' && performance.now() < victory.until ? victory.id : null;
+    const stage = overStage();
+    const vic = stage === 'closeup' ? victory.id : null; // 승자 클로즈업 (슬로모션 뒤, 결과 표 전)
     const selfie = p && p.alive && p.emote >= 0 && !vic ? myId : null; // 내 이모트는 앞에서 보이게
     updateScreen(); // 시간으로 바뀌는 전환 (결과 연출 → 대기실 판)
     // 방 목록이 떠 있는 동안은 메뉴 3D 장면 그대로 (방에 들어가도 전환 띠가 다 덮을 때 진짜 장면으로 바뀜)
-    renderer.render(roomsEl.classList.contains('hidden') ? state : null, myId, dt, view, { yaw: input.yaw, pitch: input.pitch, follow: spectating() && !spec.overview ? spec.target : null, dist: spec.dist, overviewDist: spec.overviewDist, victory: vic, selfie });
+    renderer.render(roomsEl.classList.contains('hidden') ? state : null, myId, dt, view, { yaw: input.yaw, pitch: input.pitch, follow: spectating() && !spec.overview ? spec.target : null, dist: spec.dist, overviewDist: spec.overviewDist, victory: vic, victoryHold: stage === 'slow', victorySnap: reducedMotion(), selfie });
     sound.update(renderer.camera.matrixWorld.elements, state, dt); // 귀(카메라) 위치·방향 + 위험 액체 지속음
     updateHud();
   } catch (err) {
