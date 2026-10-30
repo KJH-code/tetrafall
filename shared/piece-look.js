@@ -4,7 +4,7 @@ import { CONFIG as C } from './config.js';
 
 export function pieceSpec(themeId) {
   const t = themeId && C.WORLD_THEMES[themeId] ? C.WORLD_THEMES[themeId].piece : null;
-  const base = { style: 'toy', segs: 2, fresnel: 0, crack: 0, band: null, opacity: 1, ...C.PIECE_LOOK, colors: { ...C.SHAPE_COLORS } };
+  const base = { style: 'toy', shape: 'round', segs: 2, fresnel: 0, crack: 0, accent: [0xffffff, 0xffffff], opacity: 1, ...C.PIECE_LOOK, colors: { ...C.SHAPE_COLORS } };
   if (!t) return base;
   return { ...base, ...t, colors: { ...base.colors, ...(t.colors || {}) } };
 }

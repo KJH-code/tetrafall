@@ -226,12 +226,19 @@ const PIECE_FACES = {
       ctx.bezierCurveTo(n * 0.3, y + (r() - 0.5) * 10, n * 0.7, y + (r() - 0.5) * 10, n, y + (r() - 0.5) * 6);
       ctx.stroke();
     }
-    const b = n * 0.14;
-    ctx.strokeStyle = 'rgba(255,255,255,.45)';
-    ctx.lineWidth = n * 0.04;
-    ctx.beginPath();
-    ctx.roundRect(b, b, n - 2 * b, n - 2 * b, n * 0.1);
-    ctx.stroke();
+    // 판자 셋 (사이 홈) + 못 자국. 건축가 상자와 달리 띠·쇠 모서리 없음
+    for (let i = 1; i < 3; i++) {
+      ctx.fillStyle = 'rgba(70,45,25,.55)';
+      ctx.fillRect(0, (i / 3) * n - n * 0.012, n, n * 0.024);
+      ctx.fillStyle = 'rgba(255,255,255,.3)';
+      ctx.fillRect(0, (i / 3) * n + n * 0.012, n, n * 0.012);
+    }
+    ctx.fillStyle = 'rgba(60,40,25,.5)';
+    for (let i = 0; i < 3; i++) for (const x of [0.08, 0.92]) {
+      ctx.beginPath();
+      ctx.arc(x * n, ((i + 0.5) / 3) * n, n * 0.018, 0, Math.PI * 2);
+      ctx.fill();
+    }
   },
   // 사암·테라코타: 가로 층 + 점 + 깨진 테
   sandstone(ctx, n) {
@@ -249,6 +256,27 @@ const PIECE_FACES = {
     ctx.strokeStyle = 'rgba(70,40,20,.45)';
     ctx.lineWidth = n * 0.035;
     ctx.strokeRect(n * 0.02, n * 0.02, n * 0.96, n * 0.96);
+    // 상형문자 새김 (눈·물결·앵크·새 발): 어두운 홈 + 아래 밝은 테
+    const glyphs = [
+      (x, y, u) => { ctx.beginPath(); ctx.ellipse(x, y, u, u * 0.5, 0, 0, Math.PI * 2); ctx.moveTo(x + u * 0.25, y); ctx.arc(x, y, u * 0.25, 0, Math.PI * 2); },
+      (x, y, u) => { ctx.beginPath(); ctx.moveTo(x - u, y); for (let k = 0; k < 4; k++) ctx.quadraticCurveTo(x - u + (k + 0.5) * u * 0.5, y + (k % 2 ? u : -u) * 0.4, x - u + (k + 1) * u * 0.5, y); },
+      (x, y, u) => { ctx.beginPath(); ctx.ellipse(x, y - u * 0.55, u * 0.35, u * 0.45, 0, 0, Math.PI * 2); ctx.moveTo(x, y - u * 0.1); ctx.lineTo(x, y + u); ctx.moveTo(x - u * 0.6, y + u * 0.15); ctx.lineTo(x + u * 0.6, y + u * 0.15); },
+      (x, y, u) => { ctx.beginPath(); ctx.moveTo(x, y - u); ctx.lineTo(x, y + u); ctx.moveTo(x, y); ctx.lineTo(x - u * 0.7, y + u * 0.6); ctx.moveTo(x, y); ctx.lineTo(x + u * 0.7, y + u * 0.6); },
+    ];
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 3; i++) {
+      const x = n * (0.2 + i * 0.3);
+      const y = n * (0.5 + (r() - 0.5) * 0.2);
+      const u = n * 0.09;
+      const gl = glyphs[Math.floor(r() * glyphs.length)];
+      ctx.lineWidth = n * 0.03;
+      ctx.strokeStyle = 'rgba(255,240,220,.35)';
+      gl(x, y + 1.5, u);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(60,35,15,.6)';
+      gl(x, y, u);
+      ctx.stroke();
+    }
   },
   // 보석: 대각 깎은 면 + 밝은 심
   gem(ctx, n) {

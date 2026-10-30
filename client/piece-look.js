@@ -1,8 +1,9 @@
 // 테트리미노 칸 모습 (떨어지는·쌓인·하늘 계단·유령·R 집기, 렌더러 밖에서도 씀 — 예: new PieceLook(pieceSpec(테마 id)) 로 로고 블록): 맵 테마마다 모양(둥근 상자 크기·모서리)·면 텍스처·조각 색·셰이더 결.
 // 값은 shared/piece-look.js pieceSpec (config PIECE_LOOK + WORLD_THEMES.*.piece). 그래픽 낮춤이면 모서리 한 단·빛 테·금 빛·금 테 끔 (제 색 빛남만)
-// 셰이더 결 (모두 조각 색 기준이라 인스턴스 색에도 맞음): glow 제 색으로 빛남 · crack 텍스처 밝은 금이 빛남 (흑요석) · fresnel 비스듬한 면 빛 테 (보석·버섯) · band 면 가장자리 금속 테 (대리석 금 테)
+// 모양 (shape: 보석·벽돌 층·버섯 갓·나무 상자·금 테 대리석) 은 piece-shapes.js — 부품마다 aAcc 로 조각 색 대신 accent 색 (흰 점·대·금·잎).
+// 셰이더 결 (조각 색 기준이라 인스턴스 색에도 맞음): glow 제 색으로 빛남 · crack 텍스처 밝은 금이 빛남 (흑요석) · fresnel 비스듬한 면 빛 테 (보석·버섯)
 import * as THREE from 'three';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { pieceGeometry } from '/piece-shapes.js';
 import { toon } from '/toon.js';
 import { pieceTexture } from '/textures.js';
 
@@ -13,7 +14,7 @@ export class PieceLook {
   constructor(spec, toyMap = null, low = false) {
     this.spec = spec;
     this.low = !!low;
-    this.geo = new RoundedBoxGeometry(spec.size, spec.size, spec.size, this.low ? 1 : spec.segs, spec.bevel);
+    this.geo = pieceGeometry(spec, this.low);
     this.map = pieceTexture(spec.style) || toyMap || pieceTexture('toy');
     this.mats = [];
   }
@@ -28,19 +29,24 @@ export class PieceLook {
     const m = toon({ map: this.map, ...params });
     const glow = (s.glow || 0) + extraGlow;
     const fx = !this.low;
-    const band = fx && s.band ? s.band : null;
-    const bandCol = band ? new THREE.Color(band[1]) : null;
+    const acc = (s.accent || [0xffffff, 0xffffff]).map((c) => new THREE.Color(c));
+    const v3 = (c) => `vec3(${f3(c.r)}, ${f3(c.g)}, ${f3(c.b)})`;
     m.onBeforeCompile = (sh) => {
-      if (band) {
-        sh.fragmentShader = sh.fragmentShader.replace(
-          '#include <color_fragment>',
-          `#include <color_fragment>
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute float aAcc;\nvarying float vAcc;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\n  vAcc = aAcc;');
+      // accent 부품은 조각 색 대신 정한 색 (면 텍스처는 조금만)
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vAcc;').replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+  { vec3 tfMapC = vec3(1.0);
 #ifdef USE_MAP
-  { vec2 tfE = min(vMapUv, 1.0 - vMapUv); float tfB = 1.0 - smoothstep(${f3(band[0])}, ${f3(band[0] + 0.03)}, min(tfE.x, tfE.y));
-    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(${f3(bandCol.r)}, ${f3(bandCol.g)}, ${f3(bandCol.b)}), tfB); }
-#endif`,
-        );
-      }
+    tfMapC = sampledDiffuseColor.rgb;
+#endif
+    vec3 tfTex = mix(vec3(1.0), tfMapC, 0.35);
+    diffuseColor.rgb = mix(diffuseColor.rgb, ${v3(acc[0])} * tfTex, 1.0 - step(0.5, abs(vAcc - 1.0)));
+    diffuseColor.rgb = mix(diffuseColor.rgb, ${v3(acc[1])} * tfTex, step(1.5, vAcc)); }`,
+      );
       sh.fragmentShader = sh.fragmentShader.replace(
         '#include <emissivemap_fragment>',
         `#include <emissivemap_fragment>
@@ -51,7 +57,7 @@ export class PieceLook {
   totalEmissiveRadiance += mix(diffuseColor.rgb, vec3(1.0), 0.4) * ${f3(fx ? s.fresnel : 0)} * pow(1.0 - abs(dot(normal, normalize(vViewPosition))), 2.5);`,
       );
     };
-    m.customProgramCacheKey = () => `tf-piece:${s.style}:${f3(glow)}:${fx ? `${f3(s.crack)}:${f3(s.fresnel)}:${band ? band.join() : ''}` : 'low'}`;
+    m.customProgramCacheKey = () => `tf-piece:${s.style}:${f3(glow)}:${(s.accent || []).join()}:${fx ? `${f3(s.crack)}:${f3(s.fresnel)}` : 'low'}`;
     this.mats.push(m);
     return m;
   }

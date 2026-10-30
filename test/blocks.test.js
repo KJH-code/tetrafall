@@ -190,3 +190,25 @@ test('테트리미노 칸 모습: 테마마다 재질·조각 색, 서로 구분
   }
   assert.equal(styles.size, Object.keys(C.WORLD_THEMES).length, '테마마다 다른 재질');
 });
+
+test('테마별 칸 모양: 칸 안에 들어가고, 부품 색 속성, 삼각형 수 한도, 그래픽 낮춤이면 둥근 상자', async () => {
+  const { pieceSpec } = await import('../shared/piece-look.js');
+  const { pieceGeometry, PIECE_SHAPES } = await import('../client/piece-shapes.js');
+  const shapes = new Set();
+  for (const id of [null, ...Object.keys(C.WORLD_THEMES)]) {
+    const s = pieceSpec(id);
+    assert.ok(PIECE_SHAPES.includes(s.shape), `${id}.shape`);
+    shapes.add(s.shape);
+    for (const low of [false, true]) {
+      const g = pieceGeometry(s, low);
+      for (const k of ['position', 'normal', 'uv', 'aAcc']) assert.ok(g.attributes[k], `${id} ${k}`);
+      const b = g.boundingBox;
+      assert.ok(b.min.x >= -0.5 && b.max.x <= 0.5 && b.min.y >= -0.5 && b.max.y <= 0.5 && b.min.z >= -0.5, `${id}: 칸 안 (${b.min.toArray()} ${b.max.toArray()})`);
+      assert.ok(b.max.z <= 0.62, `${id}: 위로 조금만 (잎 덤불)`);
+      const tris = g.attributes.position.count / 3;
+      assert.ok(tris <= (low ? 300 : 1200), `${id}: 삼각형 ${tris}`);
+      if (low) assert.ok(g.attributes.aAcc.array.every((v) => v === 0), `${id}: 낮춤이면 부품 없음`);
+    }
+  }
+  assert.ok(shapes.size >= 6, '테마마다 모양이 다름 (화산만 둥근 상자)');
+});
