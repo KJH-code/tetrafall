@@ -20,6 +20,8 @@ export const ACTIONS = [
   { id: 'pieceLeft', label: '블록 왼쪽', def: 'ArrowLeft', group: '블록' },
   { id: 'pieceRight', label: '블록 오른쪽', def: 'ArrowRight', group: '블록' },
   { id: 'drop', label: '블록 바로 낙하', def: 'Enter', group: '블록' },
+  { id: 'viewL', label: '하늘 시점 돌리기 ↺ (블록 마스터·조종)', def: 'KeyZ', group: '블록' },
+  { id: 'viewR', label: '하늘 시점 돌리기 ↻', def: 'KeyC', group: '블록' },
   { id: 'view', label: '1인칭 ↔ 3인칭', def: 'KeyV', group: '기타' },
   { id: 'emote', label: '이모트 바퀴 (누르고 있기)', def: 'KeyG', group: '기타' },
   { id: 'help', label: '조작법 보기 (누르고 있기)', def: 'KeyH', group: '기타' },
