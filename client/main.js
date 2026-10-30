@@ -15,7 +15,7 @@ import { portrait, setPortraitModels } from '/portrait.js';
 import { screenOf, wipeKind, wipePlan } from '/shared/wipe.js';
 import { victoryPlan, victoryStage } from '/shared/victory.js';
 import { MAP_IDS, mapName } from '/shared/maps.js';
-import { cardLayout, lobbyPlace } from '/shared/hud-layout.js';
+import { cardLayout, lobbyDock } from '/shared/hud-layout.js';
 import { randomReel } from '/shared/char-select.js';
 import { CharStage } from '/char-stage.js';
 import { leaveNeedsConfirm } from '/shared/leave.js';
@@ -1245,7 +1245,6 @@ $('bot-level').addEventListener('change', (e) => send({ type: 'botLevel', level:
 $('mode-select').addEventListener('change', (e) => send({ type: 'setMode', mode: e.target.value }));
 const BOT_LEVEL_KO = { easy: '쉬움', normal: '보통', hard: '어려움' };
 // 캐릭터 설명 (대기 화면). 수치는 config
-const charDesc = (c) => `${keyText('skill')} ${C.SKILL_NAMES[c]} · ${keyText('ult')} ${C.ULT_NAMES[c]}`; // 짧게 (2026-10-24 재혁: 글이 너무 많음), 키는 설정 따라
 
 const MODE_DESC = {
   survival: '생존: 마지막까지 살아남은 사람이 승',
@@ -1847,25 +1846,13 @@ function updateScreen() {
   }
 }
 
-// 대기실: 왼쪽 플레이어 관리 칸(8명이면 길어짐)과 가운데 판이 겹치면 판을 오른쪽으로 비키거나 줄임 (shared/hud-layout.js).
-// 크기를 재야 해서 화면 폭·인원·단계가 바뀔 때와 1초마다만 다시 잼
-const hostEl = $('host-players');
-let lobbyKey = '';
-let lobbyAt = 0;
+// 대기실 판: 오른쪽에 붙임, 폭은 화면 폭 따라 (shared/hud-layout.js lobbyDock). 판 중 '화면을 클릭하면…' 띠(.slim)는 가운데 그대로
+let lobbyW = '';
 function placeLobby() {
-  const host = !hostEl.classList.contains('hidden') && !centerEl.classList.contains('hidden');
-  const key = `${innerWidth}|${innerHeight}|${host}|${state.players.length}|${state.phase}`;
-  const now = performance.now();
-  if (key === lobbyKey && now - lobbyAt < 1000) return;
-  lobbyKey = key;
-  lobbyAt = now;
-  centerEl.style.left = '';
-  centerEl.style.maxWidth = '';
-  if (!host) return;
-  const hr = hostEl.getBoundingClientRect().right;
-  const p = lobbyPlace(innerWidth, centerEl.offsetWidth, hr);
-  if (p.cx !== innerWidth / 2) centerEl.style.left = `${p.cx}px`;
-  if (p.maxW) centerEl.style.maxWidth = `${p.maxW}px`;
+  const w = centerEl.classList.contains('slim') ? '' : `${lobbyDock(innerWidth).w}px`;
+  if (w === lobbyW) return;
+  lobbyW = w;
+  centerEl.style.width = w;
 }
 
 // ---------- HUD ----------
@@ -2210,7 +2197,7 @@ function updateRoomRow(show, isHost) {
   roomRowKey = key;
   $('room-code-text').textContent = room.code;
   $('room-name-text').textContent = room.name;
-  $('room-public-text').textContent = room.public ? '공개 (목록에 보임)' : '비공개 (코드·링크로만)';
+  $('room-public-text').textContent = room.public ? '공개 (목록에 보임)' : '비공개'; // 좁은 오른쪽 판: 짧게
   $('room-public').classList.toggle('hidden', !isHost);
   $('room-public').textContent = room.public ? '비공개로' : '공개로';
   $('room-link').textContent = roomLink(room.code);
@@ -2569,7 +2556,6 @@ function updateCharRow(p) {
   const on = !!p && !!p.char;
   $('char-label').classList.toggle('hidden', !on);
   charPickEl.classList.toggle('hidden', !on);
-  $('char-info').classList.toggle('hidden', !on);
   if (!on) {
     charStage.release();
     return;
@@ -2578,7 +2564,6 @@ function updateCharRow(p) {
   updateCharCards(p);
   updateCharStage(p);
   fillCharCard(p.char);
-  $('char-info').textContent = charDesc(p.char);
 }
 // 판이 시작하면 큰 3D 캐릭터의 렌더러를 놓음 (판 중엔 안 돎)
 function releaseCharStage() {

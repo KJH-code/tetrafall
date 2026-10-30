@@ -17,17 +17,12 @@ export function cardLayout(n, viewW) {
   return { w, gap, compact, scale: w / C.HUD_CARD_W, total: w * count + gap * (count - 1) };
 }
 
-// 대기실: 가운데 판(폭 centerW)이 왼쪽 플레이어 관리 칸(오른쪽 끝 hostRight)과 겹치면 오른쪽으로 비키고, 그래도 모자라면 폭을 줄임.
-// 반환: 가운데 판의 가운데 x (px) 와 최대 폭 (null = 그대로)
-export function lobbyPlace(viewW, centerW, hostRight) {
-  const m = C.HUD_CARD_MARGIN;
-  const want = viewW / 2; // 원래 자리: 화면 가운데
-  if (!(hostRight > 0)) return { cx: want, maxW: null };
-  const minLeft = hostRight + C.HUD_LOBBY_GAP;
-  const room = viewW - m - minLeft; // 관리 칸 오른쪽에 남는 폭
-  if (want - centerW / 2 >= minLeft) return { cx: want, maxW: null }; // 안 겹침
-  if (centerW <= room) return { cx: minLeft + centerW / 2, maxW: null }; // 비키면 들어감
-  return { cx: minLeft + room / 2, maxW: Math.floor(room) }; // 줄여서 넣음
+// 대기실 판은 오른쪽에 붙임 (2026-10-30 재혁: 가운데 맵 미리보기 섬·사람들이 보이게). 폭 = 화면 폭 × frac 을 [min, max] 로.
+// 반환: 판 폭·왼쪽 끝 (px). 화면 가운데는 늘 판 밖
+export function lobbyDock(viewW) {
+  const L = C.HUD_LOBBY_W;
+  const w = Math.round(Math.min(L.max, Math.max(L.min, viewW * L.frac)));
+  return { w, left: viewW - C.HUD_CARD_MARGIN - w };
 }
 
 // 머리 위 이름·% : 카메라에서 가까운 LABEL_FULL_N 명만 원래 크기, 나머지는 작고 흐리게. dists[i] → { scale, opacity }

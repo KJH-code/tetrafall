@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG as C } from '../shared/config.js';
-import { cardLayout, lobbyPlace, labelSizes } from '../shared/hud-layout.js';
+import { cardLayout, lobbyDock, labelSizes } from '../shared/hud-layout.js';
 
 test('아래 플레이어 판: 2~8명 × 1280·960·800·640 폭에서 한 줄로 화면 안', () => {
   for (const W of [1280, 960, 800, 640]) {
@@ -22,15 +22,14 @@ test('4명까지 큰 판 그대로 (1280·960), 5명부터 작은 판', () => {
   assert.ok(cardLayout(8, 960).w < C.HUD_CARD_W, '960 8명은 줄임');
 });
 
-test('대기실: 관리 칸과 안 겹치면 가운데 그대로, 겹치면 비킴, 모자라면 폭을 줄임 (화면 밖으로 안 나감)', () => {
-  assert.deepEqual(lobbyPlace(1280, 640, 223), { cx: 640, maxW: null });
-  assert.deepEqual(lobbyPlace(1280, 640, 0), { cx: 640, maxW: null }); // 관리 칸 없음 (호스트 아님)
-  for (const [W, cw, hr] of [[960, 520, 223], [800, 480, 223], [800, 600, 223], [640, 500, 200]]) {
-    const p = lobbyPlace(W, cw, hr);
-    const w = p.maxW ?? cw;
-    assert.ok(p.cx - w / 2 >= hr + C.HUD_LOBBY_GAP - 0.5, `${W}: 관리 칸 오른쪽으로`);
-    assert.ok(p.cx + w / 2 <= W - C.HUD_CARD_MARGIN + 0.5, `${W}: 오른쪽 화면 안`);
+test('대기실 판: 오른쪽에 붙어 화면 가운데(맵 섬·사람)를 안 가림, 화면 안, 폭은 min~max', () => {
+  for (const W of [1920, 1280, 1100, 960, 800]) {
+    const d = lobbyDock(W);
+    assert.ok(d.w >= C.HUD_LOBBY_W.min && d.w <= C.HUD_LOBBY_W.max, `${W}: 폭 ${d.w}`);
+    assert.equal(d.left + d.w, W - C.HUD_CARD_MARGIN, `${W}: 오른쪽 끝에 붙음`);
+    if (W >= 960) assert.ok(d.left > W / 2, `${W}: 가운데는 판 밖 (왼쪽 끝 ${d.left})`);
   }
+  assert.ok(lobbyDock(1280).w <= 1280 * 0.4, '1280: 화면 40% 이하');
 });
 
 test('머리 위 이름표: 가까운 LABEL_FULL_N 명만 원래 크기, 나머지 작고 흐리게', () => {
