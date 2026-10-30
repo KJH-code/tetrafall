@@ -1028,8 +1028,9 @@ export const CONFIG = {
   TITLE_CAM_SIDE: -3, // 옆으로 비켜 보기 (블록 옆면이 보이게)
   TITLE_CAM_SWAY: 1.2, // 천천히 옆으로 흔들림
   TITLE_CAM_PUSH: 0.1, // 쌓이는 동안 천천히 다가감 (거리 비율)
-  TITLE_OUTLINE: 0.1,
-  TITLE_BEVEL: 0.12, // 글자 블록 모서리 깎기 (블록 크기 비율, 칸이 살짝 보이게) // 빛 테두리 두께 (블록 크기 비율)
+  TITLE_OUTLINE: 0.1, // 빛 테두리 두께 (블록 크기 비율)
+  TITLE_PIECE_GLOW: 0.2, // 글자 블록 (테마 테트리미노 칸 PieceLook) 에 더하는 제 색 빛 (extraGlow) — 타이틀 빛은 따로 (TITLE_GLOW)
+  TITLE_LETTER_MIX: 0.5, // 테마 칸 색에 글자 색 (TITLE_THEMES.*.letter) 을 섞는 비율
   TITLE_DARK_MS: 1600, // 처음 캄캄 → 장면 빛이 천천히 밝아지는 시간
   TITLE_LIT_START: 0.12, // 처음 장면 밝기 (0~1)
   TITLE_GLOW: [0.15, 0.62], // 글자 스스로 빛남 [쌓이는 동안, 빛 터진 뒤]
@@ -1054,7 +1055,7 @@ export const CONFIG = {
   // 테마별 타이틀 장면 (맵 테마 id = WORLD_THEMES 키). 메뉴 섬은 그 테마의 맵 (WORLD_MAP_THEME 거꾸로)
   // bg 배경 · fog [색, 로고 뒤 이만큼부터, 이만큼에서 다 가림] · amb [색, 세기] · key [색, 세기] 로고 앞 빛 · back [색, 세기] 로고 뒤 빛
   // letter 글자 블록 색들 (조각마다 차례로) · glow 글자 빛 색 · edge 빛 테두리 색 · floor 바닥 색 · motes [색, 수, 크기, 위로 오름 빠르기] 떠다니는 빛 가루
-  // flare 렌즈 플레어 색 · sound { drone [Hz, Hz], hum 잡음 대역 Hz, ping 띄엄띄엄 소리 종류, land 블록 착지 재질, pitch 반짝 음 높이 }
+  // flare 렌즈 플레어 색 · pieceGlow 글자 블록 빛 더하기 (어두운 칸 재질 테마만) · sound { drone [Hz, Hz], hum 잡음 대역 Hz, ping 띄엄띄엄 소리 종류, land 블록 착지 재질, pitch 반짝 음 높이 }
   TITLE_THEMES: {
     crystal: {
       name: '자수정 동굴', bg: 0x07040d, fog: [0x10071c, 18, 75], amb: [0x6a3a9a, 0.55], key: [0xff8ae8, 1.4], back: [0xb04bff, 2.2],
@@ -1064,6 +1065,7 @@ export const CONFIG = {
       sound: { drone: [55, 82.4], hum: 380, ping: 'drip', land: 'crystal', pitch: 76 },
     },
     volcano: {
+      pieceGlow: 0.45, // 흑요석 칸이 어두워 글자 빛을 더 (1차 '빛나는 글자' 만큼)
       name: '화산', bg: 0x070202, fog: [0x1a0603, 20, 80], amb: [0x5a1a0a, 0.5], key: [0xffa060, 1.3], back: [0xff4a10, 2.4],
       letter: [0xffd2a0, 0xffbd80, 0xffe2b8], glow: 0xff5a14, edge: 0xff7a2a, floor: 0x120807,
       motes: [0xff7020, 220, 0.14, 1.1], flare: 0xffa050,

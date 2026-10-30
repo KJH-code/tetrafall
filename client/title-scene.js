@@ -6,7 +6,8 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { PieceLook } from '/piece-look.js';
+import { pieceSpec } from '/shared/piece-look.js';
 import { CONFIG as C } from '/shared/config.js';
 import { titleCells, titlePieces, dropSchedule, titleDoneAt, pieceLift, titleInterval, titleCamDist, titleLight, titleExit, landedBetween } from '/shared/title.js';
 import { TitleStage, glowSprite, glowTex } from '/title-world.js';
@@ -39,15 +40,18 @@ export class TitleScene {
     this.stage = new TitleStage(theme, { low, logoW, logoH, camDist: this.dist });
     const scene = (this.scene = this.stage.scene);
 
-    // 글자 블록: 모서리 깎은 매끈한 블록 + 테마 글자 색 (조각마다 차례로), 스스로 빛남 (테마 빛 색) + 닿을 때 번쩍 + 지나가는 빛 띠
+    // 글자 블록: 그 테마의 테트리미노 칸 모습 (B4 PieceLook — 모양·면 텍스처·결 셰이더) + 타이틀 빛: 스스로 빛남 (테마 빛 색) + 닿을 때 번쩍 + 지나가는 빛 띠
     const n = cells.length;
     this.flash = new Float32Array(n); // 블록마다 번쩍 (0~1, 줄어듦)
-    const geo = new RoundedBoxGeometry(1, 1, 1, 1, C.TITLE_BEVEL);
+    this.look = new PieceLook(pieceSpec(theme), null, low);
+    const geo = this.look.geo.clone(); // 인스턴스 속성을 붙이니 따로
     this.flashAttr = new THREE.InstancedBufferAttribute(this.flash, 1);
     geo.setAttribute('aFlash', this.flashAttr);
-    const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.28, metalness: 0.45 });
+    const mat = this.look.material({ color: 0xffffff }, C.TITLE_PIECE_GLOW + (this.T.pieceGlow || 0)); // 어두운 재질 (흑요석) 은 테마 pieceGlow 로 더
     this.u = { uGlow: { value: 0 }, uGlowCol: { value: new THREE.Color(this.T.glow) }, uSweepX: { value: -1e4 }, uSweepW: { value: C.TITLE_SWEEP_W } };
-    mat.onBeforeCompile = (sh) => {
+    const pieceShader = mat.onBeforeCompile;
+    mat.onBeforeCompile = (sh, rr) => {
+      pieceShader(sh, rr); // 테마 칸 결 먼저, 그 위에 타이틀 빛
       Object.assign(sh.uniforms, this.u);
       sh.vertexShader = sh.vertexShader
         .replace('#include <common>', '#include <common>\nattribute float aFlash;\nvarying float vFlash;\nvarying float vWX;')
@@ -58,10 +62,11 @@ export class TitleScene {
           '#include <emissivemap_fragment>',
           `#include <emissivemap_fragment>
           float sw = exp(-pow((vWX - uSweepX) / uSweepW, 2.0));
-          totalEmissiveRadiance += mix(diffuseColor.rgb, uGlowCol, 0.4) * uGlow + vec3(1.0) * (vFlash * 1.6 + sw * 0.55 * uGlow);`,
+          totalEmissiveRadiance += mix(diffuseColor.rgb, uGlowCol, 0.6) * uGlow + vec3(1.0) * (vFlash * 1.6 + sw * 0.55 * uGlow);`,
         );
     };
-    mat.customProgramCacheKey = () => 'tf-title-letter';
+    const pieceKey = mat.customProgramCacheKey;
+    mat.customProgramCacheKey = () => `tf-title-letter:${pieceKey()}`;
     this.mesh = new THREE.InstancedMesh(geo, mat, n);
     this.mesh.frustumCulled = false;
     // 빛 테두리: 뒤집은 껍데기 (테마 테두리 색, 글자 빛 따라 밝아짐)
@@ -71,7 +76,8 @@ export class TitleScene {
     let i = 0;
     this.slots = []; // 인스턴스 → [조각 번호, 칸]
     this.pieces.forEach((p, pi) => {
-      const col = new THREE.Color(this.T.letter[pi % this.T.letter.length]);
+      // 테마 칸 색에 글자 색을 조금 섞음 (빛나는 글자로 읽히게)
+      const col = new THREE.Color(this.look.color(p.shape)).lerp(new THREE.Color(this.T.letter[pi % this.T.letter.length]), C.TITLE_LETTER_MIX);
       for (const c of p.cells) {
         this.mesh.setColorAt(i, col);
         this.slots.push([pi, c]);
@@ -325,7 +331,7 @@ export class TitleScene {
   dispose() {
     this.scene.remove(this.mesh, this.shell);
     this.mesh.geometry.dispose();
-    this.mesh.material.dispose();
+    this.look.dispose(); // 칸 모양·재질 (글자 재질 포함)
     this.shell.material.dispose();
     this.mesh.dispose();
     this.shell.dispose();
