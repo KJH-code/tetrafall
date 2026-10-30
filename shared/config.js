@@ -985,7 +985,7 @@ export const CONFIG = {
   // 판 빛 (client/game-light.js, 2026-10-30 재혁: 타이틀 '빛 언어' 를 판에 섞되 밝기는 유지 — 블록·그림자·가장자리·상대가 잘 보이게). 그래픽 낮춤이면 'off'
   // grade [채도, 대비, 밝기] (캔버스 CSS 색 보정) · vignette [가장자리 어둠 세기, 어둠 시작 (화면 반지름 비율), 색 'r,g,b'] · rim 블록 빛 테두리 (프레넬)
   // halo [빛 무리 세기, 크기 (칸)] 떨어지는 블록·아이템 둘레 · flash 빛 터짐 크기 배수 (0 = 끔) · sky [하늘·안개 밝기 배수, 채도 더함] 판 중에만 (필드 조명은 그대로)
-  GAME_LIGHT: 'glow',
+  GAME_LIGHT: 'vivid', // 2026-10-30 재혁 고름 (C)
   GAME_LIGHT_PRESETS: {
     off: { grade: [1, 1, 1], vignette: [0, 0.6, '0,0,0'], rim: 0, halo: [0, 1], flash: 0, sky: null },
     rim: { grade: [1.15, 1.05, 1], vignette: [0.35, 0.58, '12,6,24'], rim: 0.5, halo: [0, 1], flash: 0, sky: [0.75, 0.08] }, // A: 색 진하게 + 하늘 어둡게 + 비네트 + 블록 빛 테두리
