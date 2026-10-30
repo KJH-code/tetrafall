@@ -242,3 +242,158 @@ export function makeTextures(floorRepeat) {
     floor: canvasTexture(tile, SIZE, floorRepeat),
   };
 }
+
+// ---- 테마별 테트리미노 칸 면 (client/piece-look.js, config WORLD_THEMES.*.piece.style). 밝은 회색조 → 조각 색이 곱해짐
+const PIECE_FACES = {
+  // 칠한 나무 장난감: 나뭇결 + 둥근 칠 판
+  wood(ctx, n) {
+    const r = rng(11);
+    ctx.fillStyle = gray(236);
+    ctx.fillRect(0, 0, n, n);
+    for (let i = 0; i < 14; i++) {
+      const y = r() * n;
+      ctx.strokeStyle = `rgba(120,90,60,${0.08 + r() * 0.1})`;
+      ctx.lineWidth = 1 + r() * 2;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.bezierCurveTo(n * 0.3, y + (r() - 0.5) * 10, n * 0.7, y + (r() - 0.5) * 10, n, y + (r() - 0.5) * 6);
+      ctx.stroke();
+    }
+    const b = n * 0.14;
+    ctx.strokeStyle = 'rgba(255,255,255,.45)';
+    ctx.lineWidth = n * 0.04;
+    ctx.beginPath();
+    ctx.roundRect(b, b, n - 2 * b, n - 2 * b, n * 0.1);
+    ctx.stroke();
+  },
+  // 사암·테라코타: 가로 층 + 점 + 깨진 테
+  sandstone(ctx, n) {
+    const r = rng(23);
+    ctx.fillStyle = gray(232);
+    ctx.fillRect(0, 0, n, n);
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = `rgba(${r() < 0.5 ? '255,255,255' : '90,60,40'},${0.06 + r() * 0.08})`;
+      ctx.fillRect(0, (i / 5) * n + r() * 6, n, n / 5 - 4);
+    }
+    for (let i = 0; i < 160; i++) {
+      ctx.fillStyle = `rgba(80,50,30,${r() * 0.25})`;
+      ctx.fillRect(r() * n, r() * n, 1.5, 1.5);
+    }
+    ctx.strokeStyle = 'rgba(70,40,20,.45)';
+    ctx.lineWidth = n * 0.035;
+    ctx.strokeRect(n * 0.02, n * 0.02, n * 0.96, n * 0.96);
+  },
+  // 보석: 대각 깎은 면 + 밝은 심
+  gem(ctx, n) {
+    ctx.fillStyle = gray(210);
+    ctx.fillRect(0, 0, n, n);
+    const c = n / 2;
+    const facets = [[0, 0, n, 0, 248], [n, 0, n, n, 200], [n, n, 0, n, 170], [0, n, 0, 0, 228]];
+    for (const [x1, y1, x2, y2, v] of facets) {
+      ctx.fillStyle = gray(v);
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.lineTo(c, c);
+      ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(255,255,255,.55)';
+    ctx.beginPath();
+    ctx.moveTo(c, n * 0.28);
+    ctx.lineTo(n * 0.72, c);
+    ctx.lineTo(c, n * 0.72);
+    ctx.lineTo(n * 0.28, c);
+    ctx.fill();
+  },
+  // 흑요석: 어두운 몸 + 밝은 금 (금이 조각 색으로 빛남 — piece-look crack)
+  obsidian(ctx, n) {
+    const r = rng(37);
+    ctx.fillStyle = gray(62);
+    ctx.fillRect(0, 0, n, n);
+    ctx.fillStyle = 'rgba(255,255,255,.08)';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(n * 0.7, 0);
+    ctx.lineTo(0, n * 0.7);
+    ctx.fill();
+    ctx.strokeStyle = gray(255);
+    ctx.lineCap = 'round';
+    for (let k = 0; k < 3; k++) {
+      let x = r() * n;
+      let y = r() < 0.5 ? 0 : n;
+      ctx.lineWidth = n * (0.035 - k * 0.008);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      for (let i = 0; i < 5; i++) {
+        x += (r() - 0.5) * n * 0.45;
+        y += (y < n / 2 ? 1 : -1) * n * (0.12 + r() * 0.1);
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+  },
+  // 대리석: 흰 바탕 + 회색 결 (금 테는 piece-look band)
+  marble(ctx, n) {
+    const r = rng(41);
+    ctx.fillStyle = gray(244);
+    ctx.fillRect(0, 0, n, n);
+    for (let k = 0; k < 4; k++) {
+      ctx.strokeStyle = `rgba(110,110,130,${0.12 + r() * 0.14})`;
+      ctx.lineWidth = 1 + r() * 2.5;
+      ctx.beginPath();
+      let x = r() * n;
+      let y = 0;
+      ctx.moveTo(x, y);
+      while (y < n) {
+        x += (r() - 0.5) * n * 0.3;
+        y += n * 0.12;
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+  },
+  // 버섯 갓: 말랑한 그라데이션 + 흰 점
+  jelly(ctx, n) {
+    const r = rng(53);
+    const g = ctx.createRadialGradient(n * 0.35, n * 0.3, n * 0.05, n * 0.5, n * 0.5, n * 0.75);
+    g.addColorStop(0, gray(255));
+    g.addColorStop(1, gray(200));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, n, n);
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = 'rgba(255,255,255,.85)';
+      ctx.beginPath();
+      ctx.ellipse(n * (0.15 + r() * 0.7), n * (0.15 + r() * 0.7), n * (0.05 + r() * 0.05), n * (0.04 + r() * 0.04), r() * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  },
+  // 깎은 돌: 끌 자국 + 테 홈
+  stone(ctx, n) {
+    const r = rng(67);
+    ctx.fillStyle = gray(222);
+    ctx.fillRect(0, 0, n, n);
+    for (let i = 0; i < 40; i++) {
+      ctx.strokeStyle = `rgba(${r() < 0.5 ? '255,255,255' : '40,40,50'},${0.08 + r() * 0.1})`;
+      ctx.lineWidth = 1.5;
+      const x = r() * n;
+      const y = r() * n;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + n * 0.08, y + n * 0.03);
+      ctx.stroke();
+    }
+    const b = n * 0.1;
+    ctx.strokeStyle = 'rgba(30,30,40,.35)';
+    ctx.lineWidth = n * 0.03;
+    ctx.strokeRect(b, b, n - 2 * b, n - 2 * b);
+    ctx.strokeStyle = 'rgba(255,255,255,.3)';
+    ctx.strokeRect(b + n * 0.03, b + n * 0.03, n - 2 * b, n - 2 * b);
+  },
+};
+export const PIECE_STYLES = Object.keys(PIECE_FACES);
+const pieceTexCache = new Map();
+export function pieceTexture(style) {
+  if (!PIECE_FACES[style]) return null;
+  if (!pieceTexCache.has(style)) pieceTexCache.set(style, canvasTexture(PIECE_FACES[style], 128));
+  return pieceTexCache.get(style);
+}

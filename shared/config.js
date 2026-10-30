@@ -967,6 +967,7 @@ export const CONFIG = {
   // 화면 색·조명 (2026-10-22 4단계, 화면만). 테트리미노는 모양마다 색, 쌓이면 BLOCK_LANDED_SHADE 만큼 어둡게
   SHAPE_COLORS: { I: 0x38c8e8, O: 0xf8e030, T: 0xa050e0, S: 0x50c850, Z: 0xe85050, J: 0x4070e8, L: 0xf08a30 },
   BLOCK_LANDED_SHADE: 0.88,
+  // 맵 테마마다 WORLD_THEMES.*.piece 가 덮어씀 (shared/piece-look.js): style 면 (toy|wood|sandstone|gem|obsidian|marble|jelly|stone) · segs 둥근 모서리 단 · colors 조각 색 · crack 밝은 금 빛 · fresnel 비스듬한 면 빛 테 · band [폭, 색] 면 가장자리 금속 테 · opacity 떨어지는 블록 비침
   PIECE_LOOK: { size: 0.94, bevel: 0.1, glow: 0.16 }, // 테트리미노 칸 모양 (떨어지는·쌓인·하늘 계단·유령): 크기 (칸 사이 틈), 둥근 모서리 반지름, 제 색으로 빛남 — 이어진 무광 지형과 구분
   TERRAIN_COLOR: 0x8c8a96, // 시작 지형 (돌)
   BUILD_COLOR: 0xa87448, // 쌓기 블록 (나무)
@@ -1086,6 +1087,7 @@ export const CONFIG = {
       fog: [0xd6ebf4, 45, 120],
       floor: { paint: 'grass', a: 0x88cc58, b: 0x7bbf4c, line: 'rgba(40,70,25,0.35)', rim: 0x6aa844 },
       terrain: { paint: 'grass', top: 0x86c857, side: 0x9a6b44, rim: 0x4c3420, block: { lip: 0.2, strata: [2.2, 0.035], tints: [0xa0d468, 0x78b44e, 0x9cb858], sprout: { kind: 'tuft', side: 0, top: 0.35, size: [0.9, 1.4] } } }, // 잔디 윗면이 흙 옆면으로 흘러내림
+      piece: { style: 'wood', bevel: 0.13, glow: 0.12, colors: { I: 0x4fb8e0, O: 0xf6c945, T: 0xb07ad8, S: 0x3fae8a, Z: 0xe8604c, J: 0x4a6ee0, L: 0xf09038 } }, // 칠한 나무 장난감 (잔디 초록과 안 겹치게 S 는 청록)
       cliff: [0x9a6b44, 0x8f8576, 0x81786a, 0x72695c, 0x645b50],
       rock: 0x8f8778,
       trunk: 0x7a5434,
@@ -1109,6 +1111,7 @@ export const CONFIG = {
       fog: [0xf2dcb0, 45, 120],
       floor: { paint: 'sand', a: 0xebcf8e, b: 0xe0c27e, line: 'rgba(120,80,30,0.35)', rim: 0xd2a964 },
       terrain: { paint: 'sandstone', top: 0xf0d49a, side: 0xd9a868, rim: 0x8a5a2c, block: { strata: [2.6, 0.12], height: [0.85, 6], mottle: 0.18, tints: [0xf2d49a, 0xe6bc7c, 0xf6dfb4], sprout: { kind: 'rubble', side: 0.14, top: 0, size: [0.9, 1.4], ground: true } } }, // 사암 층 + 벽 밑 무너진 사암 덩어리
+      piece: { style: 'sandstone', bevel: 0.05, glow: 0.1, colors: { I: 0x3aa6a0, O: 0xf2d060, T: 0x9c4f8c, S: 0x6f9a4c, Z: 0xc8502c, J: 0x2f5f9e, L: 0xe8902e } }, // 사암·테라코타 (각진 모서리, 사막 장신구 색: 터키석·사프란·자두·선인장·테라코타·청금석·황토)
       cliff: [0xc98a50, 0xa85e34, 0xd49a5c, 0x9a5230, 0x7c4426], // 붉은 사암 지층
       rock: 0xc08a56,
       trunk: 0x8a6440,
@@ -1132,6 +1135,7 @@ export const CONFIG = {
       fog: [0x2a2052, 40, 120],
       floor: { paint: 'stone', a: 0x5a5474, b: 0x524c6a, line: 'rgba(20,14,40,0.55)', rim: 0x4a4466 },
       terrain: { paint: 'crystal', top: 0x6c6290, side: 0x544a74, rim: 0x231c3a, glow: 0x6ef2ff, tints: [0x8a7cc0, 0x5a6ab0, 0x7a5aa8], decor: { kind: 'crystal', chance: 0.22, size: [0.32, 0.5] }, block: { segs: 2, disp: 0.07, step: 0.12, mottle: 0.42, veins: 0.4, veinScale: 0.9, sheen: 0.16, sprout: { kind: 'crystal', side: 0.32, top: 0.16, size: [1, 1.6] } } }, // 결정 면 (꼭짓점 흔들어 깎은 면 + 비스듬한 면 빛) + 수정 맥
+      piece: { style: 'gem', segs: 1, bevel: 0.16, glow: 0.3, fresnel: 0.6, opacity: 0.86, colors: { I: 0x5ef0ff, O: 0xffe066, T: 0xc070ff, S: 0x50f0a0, Z: 0xff5080, J: 0x5a7cff, L: 0xffa040 } }, // 보석 (깎은 면 모서리 한 단, 빛 테, 떨어질 땐 살짝 비침)
       cliff: [0x4a4268, 0x3c3458, 0x322b4c, 0x29233e, 0x201b32],
       rock: 0x4c4466,
       trunk: 0x3a3250,
@@ -1158,6 +1162,7 @@ export const CONFIG = {
       fog: [0x3c1410, 40, 115],
       floor: { paint: 'cracks', a: 0x4a4446, b: 0x423c3e, line: 'rgba(0,0,0,0.5)', rim: 0x302a2c, glow: 0xff6a1a },
       terrain: { paint: 'basalt', top: 0x585254, side: 0x464042, rim: 0x161214, glow: 0xff7a24, crust: 0x4a2e28, tints: [0x5a5050, 0x484244, 0x5a4840], decor: { kind: 'rubble', chance: 0.2, size: [0.45, 0.7] }, block: { top: 0x8e8080, side: 0x5a5052, topLift: 1.55, sideShade: 0.72, height: [0.8, 6], veins: 0.75, selfLight: 0.2, sprout: { kind: 'basalt', side: 0.24, top: 0.05, size: [1.1, 1.6] } } }, // 현무암 (어두운 하늘에 묻히지 않게 밝은 재빛 윗면) + 용암 금
+      piece: { style: 'obsidian', bevel: 0.07, glow: 0.08, crack: 1.4, colors: { I: 0x40d8ff, O: 0xffd040, T: 0xd060ff, S: 0x60ff80, Z: 0xff3a20, J: 0x4a70ff, L: 0xff8a20 } }, // 흑요석 + 조각 색으로 빛나는 금
       cliff: [0x3e3838, 0x322c2c, 0x2a2424, 0x221c1c, 0x1a1414],
       rock: 0x3a3434,
       trunk: 0x2a2220,
@@ -1184,6 +1189,7 @@ export const CONFIG = {
       fog: [0xffdca4, 45, 120],
       floor: { paint: 'marble', a: 0xf2ece0, b: 0xe6decc, line: 'rgba(150,120,60,0.4)', rim: 0xd8b860 },
       terrain: { paint: 'bricks', top: 0xf4efe4, side: 0xe2d9c6, rim: 0xc09a40, block: { step: 0.05, mottle: 0.12, brick: [0.62, 0.333, 0.035, 0.12], tints: [0xf4efe4, 0xeadfcb, 0xf8f3ea], sprout: { kind: 'brick', side: 0.25, top: 0, size: [1, 1] } } }, // 흰 돌벽돌
+      piece: { style: 'marble', bevel: 0.08, glow: 0.12, band: [0.07, 0xe8c050], colors: { I: 0x7cc8ec, O: 0xf4e070, T: 0xc49ae8, S: 0x8ad49a, Z: 0xe8708a, J: 0x7a86e0, L: 0xf2a860 } }, // 파스텔 대리석 + 금 테
       cliff: [0xe6dccb, 0xb8a8a4, 0xa09094, 0x8a7a84, 0x706070],
       rock: 0xc8bcb4,
       trunk: 0x8a6a4a,
@@ -1211,6 +1217,7 @@ export const CONFIG = {
       fog: [0x0e3030, 40, 115],
       floor: { paint: 'moss', a: 0x4a7840, b: 0x426e3a, line: 'rgba(10,30,10,0.5)', rim: 0x5a4430 },
       terrain: { paint: 'stump', top: 0xc8985e, side: 0x7a5434, rim: 0x2e1e12, block: { top: 0x6e9a4a, lip: 0.24, tints: [0x84aa54, 0x5e8a46, 0x9a9a52], sprout: { kind: 'mushroom', side: 0.14, top: 0.16, size: [1, 1.7] } } }, // 이끼 낀 흙 (셰이더 블록은 윗면 이끼, 예전 텍스처는 나무 그루터기)
+      piece: { style: 'jelly', bevel: 0.24, glow: 0.18, fresnel: 0.35, colors: { I: 0x5ae0d8, O: 0xffd25a, T: 0xb46cf0, S: 0xb0f060, Z: 0xff5a8a, J: 0x5a8aff, L: 0xff8f4a } }, // 말랑한 버섯 갓 (흰 점, 둥글게)
       cliff: [0x5a4030, 0x4a3a30, 0x3a3028, 0x2e2620, 0x241e1a],
       rock: 0x4a5048,
       trunk: 0xd8d0b8, // 버섯 대
@@ -1237,6 +1244,7 @@ export const CONFIG = {
       fog: [0xdceaea, 45, 120],
       floor: { paint: 'grass', a: 0x80c050, b: 0x74b446, line: 'rgba(40,70,25,0.35)', rim: 0x8a8a88 }, // 판 옆면 = 돌 테
       terrain: { paint: 'bricks', top: 0xb0b0ac, side: 0x9c9c9a, rim: 0x46464a, block: { step: 0.06, mottle: 0.2, brick: [0.8, 0.5, 0.04, 0.16], tints: [0xb0b0ac, 0xa2a89e, 0xbab4aa], sprout: { kind: 'brick', side: 0.28, top: 0, size: [1, 1] } } }, // 회색 돌벽돌
+      piece: { style: 'stone', bevel: 0.04, glow: 0.1, colors: { I: 0x4a90b8, O: 0xd8b040, T: 0x8a4a9a, S: 0x4a8a50, Z: 0xb83a3a, J: 0x34508c, L: 0xc8702c } }, // 깎아 칠한 돌 (문장 색)
       cliff: [0x8a8a88, 0x7a7268, 0x6e665c, 0x625a50, 0x544c44],
       rock: 0x8a8a86,
       trunk: 0x6a4a30,

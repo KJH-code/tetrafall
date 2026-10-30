@@ -1,9 +1,11 @@
 // 타이틀 화면 3D: 메뉴 섬 위 먼 하늘에 테트리미노 블록이 떨어져 쌓이며 로고 (shared/title.js 계산), 누르면 카메라가 메뉴 섬 자리로 확 내려옴.
-// Renderer 가 메뉴 장면(menu-scene.js)과 같이 그림 (render.js: this.title). 블록 텍스처·색은 게임 블록 그대로
+// Renderer 가 메뉴 장면(menu-scene.js)과 같이 그림 (render.js: this.title). 블록 모습·색은 타이틀 섬 테마(TITLE_MAP → 수정 동굴)의 테트리미노 칸 (piece-look.js)
 import * as THREE from 'three';
 import { CONFIG as C } from '/shared/config.js';
 import { titleCells, titlePieces, dropSchedule, titleDoneAt, pieceLift, titleInterval, titleCamDist } from '/shared/title.js';
-import { toon, noOutline } from '/toon.js';
+import { noOutline } from '/toon.js';
+import { PieceLook } from '/piece-look.js';
+import { pieceSpec } from '/shared/piece-look.js';
 
 const ease = (k) => (k < 0 ? 0 : k > 1 ? 1 : k * k * (3 - 2 * k));
 
@@ -27,12 +29,9 @@ export class TitleScene {
     this.center = new THREE.Vector3(r.W / 2, r.D / 2, 0).addScaledVector(d, C.TITLE_AHEAD).add(new THREE.Vector3(0, 0, C.TITLE_HEIGHT));
     const n = cells.length;
     // 밤 하늘에서도 튀게: 블록 색이 스스로 조금 빛남 (색 비례) + 검은 외곽선 (뒤집은 껍데기, 인스턴스 하나 더)
-    const mat = noOutline(toon({ color: 0xffffff, map: r.tex.tetris }));
-    mat.onBeforeCompile = (sh) => {
-      sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n totalEmissiveRadiance += diffuseColor.rgb * ${C.TITLE_GLOW.toFixed(3)};`);
-    };
-    mat.customProgramCacheKey = () => `tf-title-${C.TITLE_GLOW}`;
-    this.mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mat, n);
+    this.look = new PieceLook(pieceSpec(C.WORLD_MAP_THEME[C.TITLE_MAP] || null), r.tex.piece, r.lowGfx);
+    const mat = noOutline(this.look.material({ color: 0xffffff }, C.TITLE_GLOW));
+    this.mesh = new THREE.InstancedMesh(this.look.geo, mat, n);
     this.mesh.frustumCulled = false;
     this.shell = new THREE.InstancedMesh(this.mesh.geometry, noOutline(new THREE.MeshBasicMaterial({ color: C.TITLE_OUTLINE_COLOR, side: THREE.BackSide })), n);
     this.shell.frustumCulled = false;
@@ -41,7 +40,7 @@ export class TitleScene {
     this.slots = []; // 인스턴스 → [조각 번호, 칸]
     this.pieces.forEach((p, pi) => {
       for (const c of p.cells) {
-        col.set(C.SHAPE_COLORS[p.shape]);
+        col.set(this.look.color(p.shape));
         this.mesh.setColorAt(i, col);
         this.slots.push([pi, c]);
         i++;
@@ -106,8 +105,7 @@ export class TitleScene {
 
   dispose() {
     this.r.scene.remove(this.mesh, this.shell);
-    this.mesh.geometry.dispose();
-    this.mesh.material.dispose();
+    this.look.dispose(); // 모양·재질
     this.shell.material.dispose();
     this.mesh.dispose();
     this.shell.dispose();
