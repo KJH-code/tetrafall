@@ -2097,7 +2097,7 @@ let scoreboardKey = '';
 const scoreboardEl = $('scoreboard');
 const respawnEl = $('respawn');
 // 목표 킬: 서버가 스냅샷에 실어 주면 그 값 (A1: 곧 인원별로 바뀜, 필드 이름 정해지면 여기만), 없으면 config
-const killGoal = () => (Number.isInteger(state.killTarget) ? state.killTarget : state.teamMode ? C.KILLS_TARGET_TEAM : C.KILLS_TARGET);
+const killGoal = () => state.round?.killsTarget ?? '?'; // 판 시작 때 서버가 인원·팀전·체력전으로 정함 (KILLS_TARGET_BY_COUNT)
 const killsGame = () => !!state && state.mode === 'kills' && !inPractice() && ['countdown', 'playing', 'over'].includes(state.phase);
 function updateKillsHud() {
   // Tab 점수표: 등수·이름·킬·죽음·자멸·점수 (팀전은 팀끼리)
