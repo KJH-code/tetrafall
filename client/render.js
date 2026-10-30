@@ -28,9 +28,11 @@ import('/ragdoll.js')
   .catch((e) => console.warn('래그돌 끔: cannon-es 를 못 불러옴 (npm install 필요)', e));
 import { World } from '/world.js';
 import { Hazard } from '/hazard.js';
-import { MenuScene } from '/menu-scene.js';
 import { TitleScene } from '/title-scene.js';
-import { titleMapFor } from '/shared/title.js';
+import { LobbyDark } from '/lobby-dark.js';
+import { MAP_IDS, mapColumns } from '/shared/maps.js';
+import { lobbyTheme, lobbyFieldSize } from '/shared/title.js';
+import { sessionTheme, markTheme } from '/menu-theme.js';
 import { labelSizes } from '/shared/hud-layout.js';
 import { prof } from '/perf.js';
 
@@ -667,13 +669,62 @@ export class Renderer {
   }
 
   // 타이틀 화면 (title.js 가 부름): 테마 엔딩 장면 (title-scene.js, 자기 장면·카메라로 그림) + 블록 로고. instant = 떨어짐 없이 완성 로고.
-  // 뒤 메뉴 섬은 그 테마의 맵 (하얗게 덮인 동안 바뀜)
+  // Enter 뒤 그 장면이 그대로 메뉴 배경 (방에 들어갈 때 치움)
   startTitle(theme, instant = false) {
-    const map = titleMapFor(theme);
-    if (!this.menu || this.menu.mapId !== map) this.menu = new MenuScene(Math.random, this.lowGfx, map);
     this.endTitle();
     this.title = new TitleScene(this, theme, { instant, low: this.lowGfx });
     return this.title;
+  }
+
+  // 대기실 지형 미리보기 (재혁: 맵 바꾸면 곧바로 뒤 화면도): 고른 맵 (map.choice) 의 시작 지형을 클라에서 깔아 보여 줌
+  // (shared/maps.js mapColumns, 판 크기는 지금 대기실 판). 무작위·대기실 아님이면 끄고 서버 격자로. 판 시작하면 서버가 같은 맵을 깖
+  lobbyPreview(state, theme) {
+    const pick = theme ? this.previewPick(state) : null;
+    const key = pick && `${pick}:${this.W}x${this.D}x${this.H}`;
+    if (key === (this.preview?.key ?? null)) return;
+    if (!pick) {
+      this.preview = null;
+      this.gridVersion = -1; // 서버 격자를 다시 그림
+      return;
+    }
+    const grid = new Uint8Array(this.W * this.D * this.H);
+    const top = new Float32Array(this.W * this.D);
+    for (const [x, y, h] of mapColumns(pick, this.W, this.D)) {
+      if (x < 0 || y < 0 || x >= this.W || y >= this.D) continue;
+      for (let z = 0; z < Math.min(h, this.H); z++) grid[(z * this.D + y) * this.W + x] = CELL.TERRAIN;
+      top[y * this.W + x] = Math.max(top[y * this.W + x], h);
+    }
+    this.preview = { key, grid, top };
+    this.gridVersion = -1; // 아래에서 미리보기 격자를 그림
+  }
+
+  // 미리보기 판 크기 (대기실·고른 맵 있을 때만, 아니면 0)
+  previewPick(state) {
+    if (!lobbyTheme(state, sessionTheme())) return null;
+    const c = state.map && state.map.choice;
+    return c && c !== 'random' && MAP_IDS.includes(c) ? c : null;
+  }
+
+  previewSize(state) {
+    return this.previewPick(state) ? lobbyFieldSize(state) : 0;
+  }
+
+  // 미리보기 지형 높이: 몸 둘레 네 모서리 칸 중 가장 높은 윗면
+  previewTop(x, y) {
+    const P = this.preview;
+    const h = C.PLAYER_HALF;
+    let t = 0;
+    for (const [dx, dy] of [[-h, -h], [h, -h], [-h, h], [h, h]]) {
+      const gx = Math.floor(x + dx);
+      const gy = Math.floor(y + dy);
+      if (gx >= 0 && gy >= 0 && gx < this.W && gy < this.D) t = Math.max(t, P.top[gy * this.W + gx]);
+    }
+    return t;
+  }
+
+  // 지금 배경 테마 (메뉴 = 타이틀 장면, 대기실 = 방 맵 테마 장면) — 음악 앰비언트·HTML 판 색
+  get backdropTheme() {
+    return this.title?.theme ?? this.dark?.theme ?? null;
   }
 
   endTitle() {
@@ -687,7 +738,9 @@ export class Renderer {
     if (this.lowGfx === !!on) return;
     this.lowGfx = !!on;
     document.body.classList.toggle('low-gfx', this.lowGfx); // 메뉴 배경 흐림 끔 (index.html)
-    this.menu = null; // 메뉴 장면을 새 설정으로 (캐릭터 수)
+    if (this.title && this.title.menu) this.endTitle(); // 메뉴 배경을 새 설정으로 (다음 프레임에 다시 만듦)
+    this.dark?.dispose(); // 대기실 배경도
+    this.dark = null;
     this.renderer.setPixelRatio(on ? 1 : Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.world.setLow(on);
@@ -731,8 +784,11 @@ export class Renderer {
 
   draw(camera) {
     const t = prof.begin(); // 성능 표시 (F3): 렌더 구간
-    if (this.outlineOn) this.outline.render(this.scene, camera);
+    if (this.dark && this.dark.draw(camera)) {
+      // 대기실 어두운 장면: 블룸 (lobby-dark.js 가 외곽선까지 그림)
+    } else if (this.outlineOn) this.outline.render(this.scene, camera);
     else this.renderer.render(this.scene, camera);
+    this.dark?.drawFlash(this.renderer); // 대기실 맵 바꿈 번쩍
     this.hazard.drawOverlay(this.renderer); // 위험이 발 밑에 가까우면 화면 가장자리 색
     prof.end('render', t);
   }
@@ -3083,6 +3139,7 @@ export class Renderer {
     const gz = Math.floor(z);
     if (gx < 0 || gy < 0 || gx >= this.W || gy >= this.D) return false;
     if (gz < 0) return true;
+    if (this.preview) return gz < this.H && !!this.preview.grid[(gz * this.D + gy) * this.W + gx]; // 대기실 지형 미리보기
     if (gz >= this.H || !state.grid) return false;
     return !!state.grid[(gz * this.D + gy) * this.W + gx]; // 판 크기가 막 바뀌어 배열이 짧아도 빈칸
   }
@@ -3097,35 +3154,49 @@ export class Renderer {
 
   render(state, myId, dt, view, cam) {
     if (!state) {
-      // 메뉴(방 밖): 화면만의 가짜 대기 장면 (menu-scene.js). 방에 들어가면 버림
-      this.menu ||= new MenuScene(Math.random, this.lowGfx);
-      if (this.title) {
-        // 타이틀 (title-scene.js): 메뉴 장면 대신 테마 엔딩 장면만 그림 (하얗게 다 덮이면 title.js 가 endTitle → 메뉴 섬)
-        this.title.step(dt || 0);
-        const tp = prof.begin();
-        this.title.draw();
-        prof.end('render', tp);
-        return;
+      // 메뉴(방 밖): 타이틀 엔딩 장면이 그대로 배경 (title-scene.js). 타이틀을 안 거쳤으면 이번 창 테마로 메뉴 카메라부터
+      if (this.dark) {
+        this.dark.dispose(); // 방에서 나옴
+        this.dark = null;
       }
-      const f = this.menu.step(dt || 0);
-      // 섬이 가운데 메뉴 판에 가리지 않게 화면 왼쪽으로 비킴 (카메라 화면만 옆으로 밀기)
-      const shift = C.MENU_VIEW_SHIFT;
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-      this.camera.setViewOffset(w, h, w * shift, 0, w, h);
-      return this.render(f.state, null, dt, 'fps', f.cam);
+      this.title ||= new TitleScene(this, sessionTheme(), { menu: true, low: this.lowGfx });
+      markTheme(this.title.theme);
+      this.title.step(dt || 0);
+      const tp = prof.begin();
+      this.title.draw();
+      prof.end('render', tp);
+      return;
     }
-    if (this.menu && !state.menu) {
-      this.menu = null; // 진짜 판·대기실이 옴 → 가짜 몸은 아래 players 정리에서 지워짐
-      this.endTitle();
-      this.camera.clearViewOffset();
-    }
+    if (this.title) this.endTitle(); // 진짜 판·대기실이 옴
     this.curState = state;
-    if (state.field) this.setField(state.field.w, state.field.d, false, state.field.h || C.GRID_H);
+    // 대기실 지형 미리보기면 지금 인원의 판 크기로 그림 (서버 대기실 판은 작아서, 사람 위치는 가운데 맞춰 화면만 밀어 줌 — previewOff)
+    const pvSize = this.previewSize(state);
+    this.previewOff = pvSize && state.field ? (pvSize - state.field.w) / 2 : 0;
+    if (pvSize) this.setField(pvSize, pvSize, false, state.field?.h || C.GRID_H);
+    else if (state.field) this.setField(state.field.w, state.field.d, false, state.field.h || C.GRID_H);
     const tg = prof.begin(); // 성능 표시: 블록·지형 갱신
-    this.world.update(state, dt);
+    // 대기실 (판 전, 연습 아님): 섬 둘레를 고른 맵 테마의 어두운 엔딩 장면으로 (lobby-dark.js), 섬 바닥·블록도 그 테마 (맵 미리보기).
+    // 맵을 바꾸면 곧바로 그 장면으로 + 테마 빛 번쩍. 판이 시작되면 밝은 판
+    const dk = lobbyTheme(state, sessionTheme());
+    this.world.update(state, dt, dk);
+    let swapFrom = null;
+    if (this.dark && !this.dark.fits(dk)) {
+      swapFrom = dk ? this.dark.theme : null;
+      this.dark.dispose(!dk); // 다른 테마로 바로 바꾸면 밝은 판으로 되돌리지 않음
+      this.dark = null;
+    }
+    if (dk && !this.dark) this.dark = new LobbyDark(this, dk, !!swapFrom);
+    this.dark?.update();
+    markTheme(this.dark ? this.dark.theme : null);
     this.stepView(view, dt);
-    if (state.grid && state.grid.length === this.W * this.D * this.H && state.gridVersion !== this.gridVersion) {
+    this.lobbyPreview(state, dk);
+    if (this.preview) {
+      // 대기실 지형 미리보기 중: 서버 격자 대신 미리보기 격자 (테마가 바뀌어 다시 칠할 때도)
+      if (this.gridVersion !== 'preview') {
+        this.updateGrid(this.preview.grid);
+        this.gridVersion = 'preview';
+      }
+    } else if (state.grid && state.grid.length === this.W * this.D * this.H && state.gridVersion !== this.gridVersion) {
       this.updateGrid(state.grid);
       this.gridVersion = state.gridVersion;
     }
@@ -3163,7 +3234,10 @@ export class Renderer {
         // (갈고리에 끌려오는 쪽도: 갈고리가 닿을 때까지 제자리, 그 뒤 질질. to 가 없으면 서버 위치까지)
         const u = (performance.now() - slide.t0) / slide.ms;
         const to = slide.to || p;
-        if (u >= 1 || !p.alive) this.slides.delete(p.id);
+        if (u >= 1 || !p.alive) {
+          this.slides.delete(p.id);
+          Object.assign(s, { x: p.x, y: p.y, z: p.z });
+        }
         else {
           const e = u <= 0 ? 0 : 1 - (1 - u) * (1 - u);
           Object.assign(s, { x: slide.from.x + (to.x - slide.from.x) * e, y: slide.from.y + (to.y - slide.from.y) * e, z: slide.from.z + (p.z - slide.from.z) * e });
@@ -3174,6 +3248,12 @@ export class Renderer {
         if (at === null || !track || !sampleTrack(track, at, C.INTERP_EXTRAP_MS, s)) Object.assign(s, { x: p.x, y: p.y, z: p.z });
       }
       if (![s.x, s.y, s.z].every(Number.isFinite)) Object.assign(s, { x: p.x, y: p.y, z: p.z }); // 안전장치
+      if (this.preview) {
+        // 대기실 지형 미리보기: 큰 판 가운데로 밀고, 서버는 바닥에 서 있으니 화면만 그 칸 위로
+        s.x += this.previewOff; // s 는 매 프레임 서버 자리에서 새로 정해짐
+        s.y += this.previewOff;
+        if (p.alive) s.z = Math.max(s.z, this.previewTop(s.x, s.y));
+      }
       g.position.set(s.x, s.y, s.z);
       g.rotation.z = p.yaw;
       const firstPerson = view === 'fps' && this.skyBlend === 0 && !cam.victory && !cam.selfie && (!this.third || (this.tpDist ?? C.TP_DIST) < C.TP_HIDE_DIST); // 3인칭은 카메라가 머리 속으로 당겨졌을 때만 숨김

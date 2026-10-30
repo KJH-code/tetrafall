@@ -4,7 +4,6 @@ import assert from 'node:assert/strict';
 import { CONFIG as C } from '../shared/config.js';
 import { titleCells, titlePieces, dropSchedule, titleDoneAt, pieceLift, showTitle, titleInterval, titleCamDist, GLYPH_W, GLYPH_H } from '../shared/title.js';
 import { MAP_IDS } from '../shared/maps.js';
-import { MenuScene } from '../client/menu-scene.js';
 
 test('타이틀: 글자 → 5×7 칸, 글자 사이 1칸, 모르는 글자는 빈칸', () => {
   const t = titleCells('T');
@@ -104,7 +103,7 @@ test('타이틀: 카메라 거리 — 로고 폭이 화면 폭의 TITLE_FILL, �
   assert.ok(C.TITLE_FILL > 0.6 && C.TITLE_FILL < 0.95, '좌우 여백 적당히');
 });
 
-test('타이틀 테마: 맵 테마 7개 모두 엔딩 장면 값이 빠짐 없이, 켤 때마다 무작위 하나 (어느 테마든 나옴), 뒤 메뉴 섬은 그 테마의 맵', async () => {
+test('타이틀 테마: 맵 테마 7개 모두 엔딩 장면 값이 빠짐 없이, 켤 때마다 무작위 하나 (어느 테마든 나옴), 그 테마의 맵이 있음', async () => {
   const { pickTitleTheme, titleMapFor, TITLE_THEME_IDS } = await import('../shared/title.js');
   assert.deepEqual([...TITLE_THEME_IDS].sort(), Object.keys(C.WORLD_THEMES).sort(), '맵 테마 7개 = 타이틀 테마');
   assert.equal(TITLE_THEME_IDS.length, 7);
@@ -127,7 +126,6 @@ test('타이틀 테마: 맵 테마 7개 모두 엔딩 장면 값이 빠짐 없�
     const map = titleMapFor(id);
     assert.ok(MAP_IDS.includes(map), `${id} → 맵 ${map}`);
     assert.equal(C.WORLD_MAP_THEME[map], id);
-    assert.equal(new MenuScene(Math.random, false, map).mapId, map, '메뉴 장면이 그 맵으로');
   }
   assert.equal(C.TITLE_THEMES.crystal.sound.ping, 'drip', '수정 동굴 = 물방울·울림');
   // 무작위: 0~1 난수 칸마다 다른 테마, 다 나옴
@@ -137,7 +135,6 @@ test('타이틀 테마: 맵 테마 7개 모두 엔딩 장면 값이 빠짐 없�
   assert.ok(TITLE_THEME_IDS.includes(pickTitleTheme(() => 0.999999)));
   assert.ok(TITLE_THEME_IDS.includes(pickTitleTheme(Math.random)));
   assert.equal(titleMapFor('nope'), null);
-  assert.ok(MAP_IDS.includes(new MenuScene(Math.random, false, 'nope').mapId), '없는 맵이면 무작위');
 });
 
 test('타이틀 빛: 캄캄하게 시작해 밝아짐, 다 쌓인 순간 빛 터짐 (글자 빛 최대) → 가라앉아 잔잔히 빛남', async () => {
@@ -160,28 +157,73 @@ test('타이틀 빛: 캄캄하게 시작해 밝아짐, 다 쌓인 순간 빛 터
   for (let u = 0; u < C.TITLE_BURST_MS; u += 100) assert.ok(titleLight(done + u + 100, done).burst <= titleLight(done + u, done).burst, '터짐은 줄어들기만');
 });
 
-test('타이틀 나가기: Enter 뒤 카메라가 로고 위로 날아가는 게 먼저 보이고 (하얀 막 없음) → TITLE_EXIT_MS 에 하얗게 → 다 덮이면 메뉴로 바꿈 → TITLE_EXIT_FADE_MS 동안 걷힘', async () => {
+test('타이틀 → 메뉴: Enter 뒤 카메라가 로고 위로 날아가 메뉴 카메라로 (하얀 막 없음, 그 장면이 메뉴 배경), 판은 날아가는 끝 무렵에 들어옴', async () => {
   const { titleExit } = await import('../shared/title.js');
-  assert.deepEqual(titleExit(0), { push: 0, white: 0, swap: false, done: false });
-  let w = 0;
-  for (let ms = 0; ms < C.TITLE_EXIT_MS; ms += 50) {
+  assert.deepEqual(titleExit(0), { push: 0, white: 0, show: false, done: false });
+  let p = 0;
+  for (let ms = 0; ms <= C.TITLE_EXIT_MS; ms += 50) {
     const e = titleExit(ms);
-    assert.ok(e.white >= w && !e.swap);
-    w = e.white;
+    assert.equal(e.white, 0, '하얀 번쩍 없음');
+    assert.ok(e.push >= p);
+    p = e.push;
   }
-  const fly = C.TITLE_EXIT_MS * C.TITLE_EXIT_WHITE_AT;
-  assert.ok(fly >= 600 && fly <= 800, `날아가는 게 0.6~0.8초 보임 (${fly}ms)`);
-  assert.equal(titleExit(fly - 1).white, 0, '날아가는 동안 하얀 막 없음');
-  assert.ok(titleExit(fly).push > 0.5, '하얘지기 전에 카메라가 반 넘게 날아감');
-  assert.ok(titleExit(fly + 100).white > 0);
-  const at = titleExit(C.TITLE_EXIT_MS);
-  assert.equal(at.white, 1);
-  assert.equal(at.swap, true, '다 하얄 때 바꿈');
-  assert.ok(titleExit(C.TITLE_EXIT_MS + C.TITLE_EXIT_FADE_MS / 2).white < 1);
-  const end = titleExit(C.TITLE_EXIT_MS + C.TITLE_EXIT_FADE_MS);
-  assert.equal(end.white, 0);
-  assert.equal(end.done, true);
-  assert.ok(C.TITLE_EXIT_MS + C.TITLE_EXIT_FADE_MS < 2000, 'Enter 뒤 2초 안에 메뉴');
+  assert.equal(titleExit(C.TITLE_EXIT_MS).push, 1);
+  assert.equal(titleExit(C.TITLE_EXIT_MS).done, true);
+  assert.equal(titleExit(C.TITLE_EXIT_MS * C.TITLE_MENU_SHOW_AT - 1).show, false);
+  assert.equal(titleExit(C.TITLE_EXIT_MS * C.TITLE_MENU_SHOW_AT).show, true, '카메라가 자리 잡는 동안 판이 들어옴');
+  assert.ok(C.TITLE_EXIT_MS >= 800 && C.TITLE_EXIT_MS <= 1600, '날아가는 게 보이되 금방 메뉴');
+});
+
+test('타이틀 → 메뉴 (움직임 줄이기): 카메라는 안 날고 하얗게 됐다 걷힘, 가장 하얄 때 메뉴 카메라로', async () => {
+  const { titleExit } = await import('../shared/title.js');
+  const F = C.TITLE_EXIT_FADE_MS;
+  assert.equal(titleExit(F / 2, true).push, 0);
+  assert.ok(titleExit(F / 2, true).white > 0 && titleExit(F / 2, true).white < 1);
+  assert.equal(titleExit(F, true).push, 1);
+  assert.equal(titleExit(F, true).white, 1);
+  assert.equal(titleExit(F, true).show, true);
+  assert.equal(titleExit(F * 2, true).white, 0);
+  assert.equal(titleExit(F * 2, true).done, true);
+});
+
+test('메뉴 카메라 떠돌기: 날아간 직후 0 에서 천천히 들어오고, 정한 폭 안에서만', async () => {
+  const { menuDrift } = await import('../shared/title.js');
+  assert.deepEqual(menuDrift(0).map((v) => Math.abs(v)), [0, 0, 0]);
+  const D = C.MENU_DRIFT;
+  for (let u = 0; u < 120000; u += 777) {
+    const [x, z, yaw] = menuDrift(u);
+    assert.ok(Math.abs(x) <= D.side + 1e-9 && Math.abs(z) <= D.bob + 1e-9 && Math.abs(yaw) <= D.yaw + 1e-9);
+  }
+  assert.ok(Math.abs(menuDrift(100)[0]) < Math.abs(menuDrift(D.easeMs + 4000)[0]) + 1, '처음엔 작게');
+});
+
+test('대기실·메뉴 앰비언트: 메뉴 = 메뉴 테마, 대기실 (판 전) = 방 맵 테마, 판·결과·연습 = 곡', async () => {
+  const { Music } = await import('../client/music.js');
+  assert.equal(Music.ambientTheme(null, 'crystal'), 'crystal');
+  assert.equal(Music.ambientTheme({ phase: 'lobby', map: { id: 'bowl' } }, 'crystal'), 'volcano');
+  assert.equal(Music.ambientTheme({ phase: 'playing', map: { id: 'bowl' } }, 'crystal'), null);
+  assert.equal(Music.ambientTheme({ phase: 'over', map: { id: 'bowl' } }, 'crystal'), null);
+  assert.equal(Music.ambientTheme({ phase: 'lobby', practice: {}, map: { id: 'bowl' } }, 'crystal'), null);
+  for (const m of Object.keys(C.WORLD_MAP_THEME)) assert.ok(C.TITLE_THEMES[Music.ambientTheme({ phase: 'lobby', map: { id: m } })], `맵 ${m} 대기실 장면 테마`);
+  assert.equal(Music.ambientTheme({ phase: 'lobby', map: { choice: 'fortress', id: 'flat' } }), 'castle', '고른 맵 (미리보기) 우선');
+  assert.equal(Music.ambientTheme({ phase: 'lobby', map: { choice: 'random', id: 'flat' } }), 'meadow', '무작위 + 메뉴 테마 없음 = 지금 섬');
+  assert.equal(Music.ambientTheme({ phase: 'lobby', map: { choice: 'random', id: 'flat' } }, 'desert'), 'desert', '무작위면 이번 창 메뉴 테마');
+  // 앰비언트가 있으면 곡은 쉼, 없어지면 다시 곡
+  const made = [];
+  const m = new Music({ ready: () => false });
+  m.makeAmbient = (id) => {
+    const a = { theme: id, stopped: false, update() {}, stop() { this.stopped = true; } };
+    made.push(a);
+    return a;
+  };
+  m.update(null, 'desert');
+  assert.equal(m.ambient.theme, 'desert');
+  m.update({ phase: 'lobby', map: { id: 'flat' } }, 'desert');
+  assert.equal(m.ambient.theme, 'meadow');
+  assert.equal(made[0].stopped, true, '테마 바뀌면 이전 것 끔');
+  m.update({ phase: 'playing', map: { id: 'flat' } }, 'desert');
+  assert.equal(m.ambient, null);
+  assert.equal(made[1].stopped, true);
 });
 
 test('타이틀: 프레임을 어떻게 나눠도 조각마다 착지 (소리·번쩍) 는 꼭 한 번', async () => {
@@ -203,4 +245,15 @@ test('타이틀 그래픽 값: 블룸·불티는 그래픽 낮춤 값이 더 작
   assert.ok(C.TITLE_GLOW[0] < C.TITLE_GLOW[1]);
   for (const k of ['vol', 'land', 'burst', 'exit', 'echo']) assert.ok(C.TITLE_SOUND[k] > 0 && C.TITLE_SOUND[k] <= 1, k);
   assert.ok(C.TITLE_SOUND.pingEvery[0] < C.TITLE_SOUND.pingEvery[1]);
+});
+
+test('대기실 지형 미리보기 판 크기 = 판 시작 때 서버가 정할 크기 (인원·관전·블록 마스터)', async () => {
+  const { fieldSizeFor, lobbyFieldSize } = await import('../shared/title.js');
+  const { Game } = await import('../server/game.js');
+  const g = new Game(() => {});
+  for (let n = 0; n <= 9; n++) assert.equal(fieldSizeFor(n), g.fieldSizeFor(n), `인원 ${n}`);
+  const ps = (n, spec = 0) => Array.from({ length: n }, (_, i) => ({ id: i, spectator: i < spec }));
+  assert.equal(lobbyFieldSize({ players: ps(4) }), C.FIELD_SIZES[4]);
+  assert.equal(lobbyFieldSize({ players: ps(5, 1) }), C.FIELD_SIZES[4], '관전 빼고');
+  assert.equal(lobbyFieldSize({ players: ps(5), mode: 'master' }), C.FIELD_SIZES[4], '블록 마스터는 마스터 빼고');
 });

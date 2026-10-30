@@ -113,7 +113,7 @@ function stars(n, rnd, r = 150) {
     const a = rnd() * Math.PI * 2;
     const e = 0.05 + rnd() * 1.4;
     pos[i * 3] = Math.cos(a) * Math.cos(e) * r;
-    pos[i * 3 + 1] = Math.abs(Math.sin(a)) * Math.cos(e) * r + 20;
+    pos[i * 3 + 1] = (ringNow ? Math.sin(a) : Math.abs(Math.sin(a))) * Math.cos(e) * r + (ringNow ? 0 : 20); // 대기실이면 하늘 전체
     pos[i * 3 + 2] = Math.sin(e) * r * 0.8 - 10;
   }
   const g = new THREE.BufferGeometry();
@@ -130,8 +130,35 @@ function rockPlane(w, h, seg, amp, color, rnd, emissive = 0x000000) {
   return new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color, emissive, roughness: 0.95, metalness: 0, flatShading: true }));
 }
 
+// 대기실 둘레 모드 (TitleStage ring): 만드는 동안만 켜짐. 소품 자리를 가운데 둘레로 돌려 흩뿌리고 (360도), 섬 자리 (clear 반지름) 는 비움
+let ringNow = null;
+
+// 동굴 둘레 벽 (대기실): 안쪽을 보는 울퉁불퉁한 원통. r 반지름, h 높이, z0 밑
+function rockRing(r, h, color, rnd, z0) {
+  const g = new THREE.CylinderGeometry(r, r * 1.1, h, 48, 8, true).rotateX(Math.PI / 2);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const k = 1 + (rnd() - 0.5) * 0.12;
+    p.setXY(i, p.getX(i) * k, p.getY(i) * k);
+  }
+  g.computeVertexNormals();
+  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color, roughness: 1, flatShading: true, side: THREE.BackSide }));
+  m.position.z = z0 + h / 2;
+  return m;
+}
+
 // 인스턴스 모음: geo 하나를 [{ p, s, r, c }] 자리마다 (위치·크기 Vector3·돌림 Euler·색)
 function instanced(geo, mat, list) {
+  if (ringNow) {
+    const { clear, rnd } = ringNow;
+    list = list.filter((it) => Math.hypot(it.p.x, it.p.y) >= clear);
+    for (const it of list) {
+      const a = rnd() * Math.PI * 2;
+      const [x, y] = [it.p.x, it.p.y];
+      it.p.set(x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a), it.p.z);
+      if (it.r) it.r = new THREE.Euler(it.r.x, it.r.y, it.r.z + a, it.r.order);
+    }
+  }
   const m = new THREE.InstancedMesh(geo, mat, Math.max(1, list.length));
   const mx = new THREE.Matrix4();
   const q = new THREE.Quaternion();
@@ -159,17 +186,20 @@ function crystalCluster(list, at, dir, size, colors, rnd) {
   }
 }
 
-// 무대: theme = config TITLE_THEMES 키. low = 그래픽 낮춤 (반사 바닥·빛 줄임). logoW·logoH = 로고 크기 (게임 칸), camDist = 카메라 거리
+// 무대: theme = config TITLE_THEMES 키. low = 그래픽 낮춤 (반사 바닥·빛 줄임). logoW·logoH = 로고 크기 (게임 칸), camDist = 카메라 거리.
+// ring = 대기실 (방 섬 둘레): 소품을 사방으로, 가운데 clear 반지름은 비움, 바닥 높이 floorZ (없으면 로고 아래)
 export class TitleStage {
-  constructor(theme, { low = false, logoW = 50, logoH = 7, camDist = 40 } = {}) {
+  constructor(theme, { low = false, logoW = 50, logoH = 7, camDist = 40, ring = false, clear = 0, floorZ = null } = {}) {
     this.id = C.TITLE_THEMES[theme] ? theme : Object.keys(C.TITLE_THEMES)[0];
     const T = (this.T = C.TITLE_THEMES[this.id]);
     this.low = low;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(T.bg);
     this.scene.fog = new THREE.Fog(T.fog[0], camDist + T.fog[1], camDist + T.fog[2]);
-    this.floorZ = -logoH / 2 - C.TITLE_FLOOR_GAP;
+    this.floorZ = floorZ ?? -logoH / 2 - C.TITLE_FLOOR_GAP;
     this.logoW = logoW;
+    this.ring = ring;
+    this.clear = clear;
     this.lights = []; // [빛, 원래 세기] — 장면 밝기 lit 를 곱함
     this.updaters = []; // (t, lit) => {} 매 프레임
     this.disposables = [];
@@ -185,9 +215,15 @@ export class TitleStage {
     this.light(back, back.intensity);
     this.backLight = back;
     this.floor(T);
-    this[this.id]?.(T, rnd);
+    ringNow = ring ? { clear, rnd: rng(99) } : null;
+    try {
+      this[this.id]?.(T, rnd);
+    } finally {
+      ringNow = null;
+    }
     const n = Math.round(T.motes[1] * (low ? C.WORLD_LOW_DETAIL : 1));
-    const box = this.moteBox || [-logoW * 0.9, logoW * 0.9, -camDist * 0.6, 40, this.floorZ, this.floorZ + 18];
+    let box = this.moteBox || [-logoW * 0.9, logoW * 0.9, -camDist * 0.6, 40, this.floorZ, this.floorZ + 18];
+    if (ring) box = [-clear * 2, clear * 2, -clear * 2, clear * 2, box[4], box[5]]; // 대기실: 섬 둘레
     this.dust = motes(n, T.motes[0], T.motes[2], T.motes[3], box, rnd, this.id === 'meadow' ? 1 : 0);
     this.scene.add(this.dust);
   }
@@ -230,11 +266,16 @@ export class TitleStage {
     const ceilZ = 13;
     const ceil = rockPlane(260, 160, 60, 3.5, T.rock, rnd);
     ceil.rotation.x = Math.PI; // 아래를 봄
-    ceil.position.set(0, 40, ceilZ);
-    const wall = rockPlane(260, 60, 50, 5, T.rock, rnd);
-    wall.rotation.x = Math.PI / 2;
-    wall.position.set(0, 75, ceilZ - 25);
-    this.add(ceil, wall);
+    ceil.position.set(0, this.ring ? 0 : 40, ceilZ);
+    if (this.ring) {
+      ceil.scale.set(1.2, 1.9, 1); // 대기실: 머리 위 전체
+      this.add(ceil, rockRing(this.clear * 2.6, ceilZ - this.floorZ + 6, T.rock, rnd, this.floorZ - 3));
+    } else {
+      const wall = rockPlane(260, 60, 50, 5, T.rock, rnd);
+      wall.rotation.x = Math.PI / 2;
+      wall.position.set(0, 75, ceilZ - 25);
+      this.add(ceil, wall);
+    }
     // 천장 종유석
     const st = [];
     for (let i = 0; i < (this.low ? 30 : 70); i++) {
@@ -482,28 +523,57 @@ export class TitleStage {
     const wallMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 });
     const wallY = 22;
     const wallH = 24;
-    const w = new THREE.Mesh(new THREE.BoxGeometry(220, 6, wallH), wallMat);
-    w.position.set(0, wallY, this.floorZ + wallH / 2);
-    this.add(w);
-    const cren = [];
-    for (let x = -108; x <= 108; x += 5) cren.push({ p: new THREE.Vector3(x, wallY, this.floorZ + wallH + 1.2), s: new THREE.Vector3(2.6, 6, 2.4) });
     const tm = new THREE.MeshStandardMaterial({ color: T.wall, roughness: 1 });
-    this.add(instanced(new THREE.BoxGeometry(1, 1, 1), tm, cren));
-    for (const x of [-62, 62]) {
-      const t = new THREE.Mesh(new THREE.CylinderGeometry(8, 8, wallH + 14, 12).rotateX(Math.PI / 2), wallMat);
-      t.position.set(x, wallY - 3, this.floorZ + (wallH + 14) / 2);
-      this.add(t);
+    // 횃불 자리 [x, y, 벽 안쪽을 향한 방향 (라디안)]: 로고 뒤 일자 벽 / 대기실은 섬 둘레 둥근 성벽 (마당 안)
+    let spots;
+    if (this.ring) {
+      const R = this.clear * 1.5;
+      tex.repeat.set(40, 5);
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(R, R, wallH, 64, 1, true).rotateX(Math.PI / 2), wallMat.clone());
+      w.material.side = THREE.DoubleSide;
+      w.position.z = this.floorZ + wallH / 2;
+      this.add(w);
+      const cren = [];
+      const nc = Math.round((Math.PI * 2 * R) / 5);
+      for (let k = 0; k < nc; k++) {
+        const a = (k / nc) * Math.PI * 2;
+        cren.push({ p: new THREE.Vector3(Math.cos(a) * R, Math.sin(a) * R, this.floorZ + wallH + 1.2), s: new THREE.Vector3(6, 2.6, 2.4), r: new THREE.Euler(0, 0, a) });
+      }
+      ringNow = null; // 성벽 톱니는 제자리 (흩뿌리지 않음)
+      this.add(instanced(new THREE.BoxGeometry(1, 1, 1), tm, cren));
+      for (let k = 0; k < 4; k++) {
+        const a = Math.PI / 4 + (k * Math.PI) / 2;
+        const t = new THREE.Mesh(new THREE.CylinderGeometry(7, 7, wallH + 14, 12).rotateX(Math.PI / 2), wallMat);
+        t.position.set(Math.cos(a) * R, Math.sin(a) * R, this.floorZ + (wallH + 14) / 2);
+        this.add(t);
+      }
+      spots = Array.from({ length: 8 }, (_, k) => {
+        const a = (k / 8) * Math.PI * 2;
+        return [Math.cos(a) * (R - 3.3), Math.sin(a) * (R - 3.3), a];
+      });
+    } else {
+      const w = new THREE.Mesh(new THREE.BoxGeometry(220, 6, wallH), wallMat);
+      w.position.set(0, wallY, this.floorZ + wallH / 2);
+      this.add(w);
+      const cren = [];
+      for (let x = -108; x <= 108; x += 5) cren.push({ p: new THREE.Vector3(x, wallY, this.floorZ + wallH + 1.2), s: new THREE.Vector3(2.6, 6, 2.4) });
+      this.add(instanced(new THREE.BoxGeometry(1, 1, 1), tm, cren));
+      for (const x of [-62, 62]) {
+        const t = new THREE.Mesh(new THREE.CylinderGeometry(8, 8, wallH + 14, 12).rotateX(Math.PI / 2), wallMat);
+        t.position.set(x, wallY - 3, this.floorZ + (wallH + 14) / 2);
+        this.add(t);
+      }
+      spots = [-48, -32, -16, 16, 32, 48].map((x) => [x, wallY - 3.3, Math.PI / 2]);
     }
     // 횃불: 받침 + 일렁이는 불꽃 빛 (빛은 몇 개만)
     const flames = [];
-    const xs = [-48, -32, -16, 16, 32, 48];
-    xs.forEach((x, i) => {
+    spots.forEach(([x, y, a], i) => {
       const z = this.floorZ + 7;
       const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.18, 2.2, 6).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x2a1a10 }));
-      stick.position.set(x, wallY - 3.3, z);
+      stick.position.set(x, y, z);
       this.add(stick);
       const f = glowSprite(T.torch, 3.2, 4.4, 1);
-      f.position.set(x, wallY - 3.4, z + 1.8);
+      f.position.set(x - Math.cos(a) * 0.1, y - Math.sin(a) * 0.1, z + 1.8);
       const core = glowSprite(0xffe2a0, 1.4, 2, 1);
       core.position.copy(f.position);
       const halo = glowSprite(T.torch, 16, 16, 0.35);
@@ -512,7 +582,7 @@ export class TitleStage {
       flames.push([f, core, halo, rnd() * 10]);
       if (!this.low || i % 2 === 0) {
         const l = new THREE.PointLight(T.torch, 45, 30, 1.6);
-        l.position.set(x, wallY - 5, z + 2);
+        l.position.set(x - Math.cos(a) * 1.7, y - Math.sin(a) * 1.7, z + 2);
         this.light(l, 45);
         flames[flames.length - 1].push(l);
       }

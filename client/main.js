@@ -5,6 +5,7 @@ import { Input } from '/input.js';
 import { ACTIONS, DEFAULT_BINDS, keyLabel, groupLabel, normCode, saveBinds, conflicts } from '/keys.js';
 import { Sound } from '/sound.js';
 import { Music } from '/music.js';
+import { TitleSound } from '/title-sound.js';
 import { loadModels } from '/models.js';
 import { NetStatus } from '/net.js';
 import { seatToken, saveSeat, dropSeat } from '/seat.js';
@@ -63,6 +64,7 @@ function send(obj) {
 }
 const sound = new Sound();
 const music = new Music(sound);
+music.makeAmbient = (id) => new TitleSound(sound, id); // 타이틀·메뉴·대기실 테마 앰비언트 (title-sound.js)
 const fx = renderer.effects;
 // KO 연출 (client/ko.js): 스매시 줄기·마지막 킬 슬로모션·압사. 소리는 ko.on('smash'|'final'|'crush', cb)
 const ko = new KO(renderer.scene, fx, {
@@ -2735,7 +2737,7 @@ function frame(now) {
     updateSpectate();
     updateGhostAim();
     if (state) music.setMood(state.phase === 'playing' || state.phase === 'countdown' ? (state.lava && state.lava.active ? 'lava' : 'battle') : 'calm');
-    music.update(state); // 맵 테마별 곡
+    music.update(state, renderer.backdropTheme); // 맵 테마별 곡 (메뉴·대기실은 테마 앰비언트)
     const stage = overStage();
     const vic = stage === 'closeup' ? victory.id : null; // 승자 클로즈업 (슬로모션 뒤, 결과 표 전)
     const selfie = p && p.alive && p.emote >= 0 && !vic ? myId : null; // 내 이모트는 앞에서 보이게

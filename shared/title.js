@@ -165,18 +165,26 @@ export function titleLight(t, doneAt) {
   return { lit, burst, glow };
 }
 
-// Enter 뒤 ms: push = 카메라가 날아간 정도 0~1 (부드럽게 출발·도착, TITLE_EXIT_MS 동안), white = 하얀 정도 0~1
-// (TITLE_EXIT_WHITE_AT 까지는 0 — 날아가는 게 보임 — 그 뒤 TITLE_EXIT_MS 에 1), 그 뒤 TITLE_EXIT_FADE_MS 동안 1 → 0 (메뉴 섬이 보임).
-// swap = 타이틀 장면을 치우고 메뉴로 바꿀 때 (하얗게 다 덮임)
-export function titleExit(ms) {
-  const E = C.TITLE_EXIT_MS;
-  if (ms < E) {
-    const k = Math.max(0, ms) / E;
-    const w = (k - C.TITLE_EXIT_WHITE_AT) / (1 - C.TITLE_EXIT_WHITE_AT);
-    return { push: smooth(k), white: w <= 0 ? 0 : w * w, swap: false, done: false };
+// Enter 뒤 ms → 메뉴: push = 카메라가 로고 위로 날아간 정도 0~1 (부드럽게 출발·도착, TITLE_EXIT_MS), white = 하얀 막 (보통 0 —
+// 하얀 번쩍 없이 그 장면이 그대로 메뉴 배경, 2026-10-30 재혁 '메뉴도 타이틀처럼'). show = 메뉴 판을 띄울 때 (TITLE_MENU_SHOW_AT), done = 다 옴.
+// reduced (움직임 줄이기): 카메라 안 날고 하얀 페이드 (TITLE_EXIT_FADE_MS 올라갔다 내려옴) — 가장 하얄 때 메뉴 카메라로 바뀜 (push 0 → 1)
+export function titleExit(ms, reduced = false) {
+  if (reduced) {
+    const F = C.TITLE_EXIT_FADE_MS;
+    if (ms < F) return { push: 0, white: smooth(Math.max(0, ms) / F), show: false, done: false };
+    const f = (ms - F) / F;
+    return { push: 1, white: 1 - smooth(f), show: true, done: f >= 1 };
   }
-  const f = (ms - E) / C.TITLE_EXIT_FADE_MS;
-  return { push: 1, white: 1 - smooth(f), swap: true, done: f >= 1 };
+  const k = Math.min(1, Math.max(0, ms) / C.TITLE_EXIT_MS);
+  return { push: smooth(k), white: 0, show: k >= C.TITLE_MENU_SHOW_AT, done: k >= 1 };
+}
+
+// 메뉴 카메라가 떠도는 정도 (날아가기 끝난 뒤 u ms): 처음엔 0 에서 천천히 들어옴 (끝 자리에서 튀지 않게). [옆, 위, 바라보는 방향 돌림] 값
+export function menuDrift(u) {
+  const D = C.MENU_DRIFT;
+  const k = smooth(Math.max(0, u) / D.easeMs);
+  const t = Math.max(0, u) / 1000;
+  return [Math.sin(t * D.speed[0]) * D.side * k, Math.sin(t * D.speed[1]) * D.bob * k, Math.sin(t * D.speed[2]) * D.yaw * k];
 }
 
 // 이번 프레임에 닿은 조각 (t0 < 닿는 시각 <= t1): 착지 소리·번쩍
@@ -187,4 +195,28 @@ export function landedBetween(start, t0, t1, fallMs = C.TITLE_FALL_MS) {
     if (at > t0 && at <= t1) out.push(i);
   });
   return out;
+}
+
+// 대기실 배경 테마: 방에서 고른 맵 (map.choice, 맵 미리보기 — 바꾸면 곧바로 장면도). '무작위' 면 fallback (이번 창 메뉴 테마), 없으면 지금 섬 맵 (map.id).
+// 판·결과·연습이면 null (밝은 판)
+export function lobbyTheme(state, fallback = null) {
+  if (!state || state.phase !== 'lobby' || state.practice || !state.map) return null;
+  const pick = state.map.choice;
+  if (pick === 'random' && C.TITLE_THEMES[fallback]) return fallback;
+  const m = pick && pick !== 'random' ? pick : state.map.id;
+  const id = C.WORLD_MAP_THEME[m];
+  return C.TITLE_THEMES[id] ? id : null;
+}
+
+// 판 크기 표 (config FIELD_SIZES, 서버 game.fieldSizeFor 와 같은 방식): n 이하 가장 큰 칸, 없으면 가장 작은 칸
+export function fieldSizeFor(n) {
+  const keys = Object.keys(C.FIELD_SIZES).map(Number).sort((a, b) => a - b);
+  const k = keys.filter((x) => x <= n).pop() ?? keys[0];
+  return C.FIELD_SIZES[k];
+}
+
+// 대기실 지형 미리보기 판 크기: 지금 인원으로 판을 시작하면 될 크기 (관전 빼고, 블록 마스터는 마스터 빼고) — 판 시작 때 서버 지형과 같은 크기·모양
+export function lobbyFieldSize(state) {
+  const n = (state.players || []).filter((p) => !p.spectator).length - (state.mode === 'master' ? 1 : 0);
+  return fieldSizeFor(n);
 }
