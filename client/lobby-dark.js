@@ -28,8 +28,8 @@ class ScenePass extends Pass {
 }
 
 export class LobbyDark {
-  // r: Renderer, theme: TITLE_THEMES 키 (= 맵 테마 id)
-  constructor(r, theme) {
+  // r: Renderer, theme: TITLE_THEMES 키 (= 맵 테마 id), flash: 맵을 바꿔 들어옴 → 테마 빛으로 번쩍했다 가라앉음 (LOBBY_DARK.flashMs)
+  constructor(r, theme, flash = false) {
     this.r = r;
     this.theme = theme;
     this.T = C.TITLE_THEMES[theme];
@@ -55,7 +55,24 @@ export class LobbyDark {
       this.composer.addPass(new OutputPass());
       this.sizeKey = '';
     }
+    // 맵 바꿈 번쩍: 화면 전체 판 (테마 빛 색, 더하기)
+    this.flashAt = flash ? performance.now() : -Infinity;
+    this.flashScene = new THREE.Scene();
+    this.flashCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    this.flashMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(this.T.glow).lerp(new THREE.Color(0xffffff), 0.5), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false });
+    this.flashScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.flashMat));
     this.apply();
+  }
+
+  // 맵 바꿈 번쩍 (그린 뒤 위에): 처음 세게 → LOBBY_DARK.flashMs 동안 가라앉음
+  drawFlash(renderer) {
+    const k = 1 - (performance.now() - this.flashAt) / C.LOBBY_DARK.flashMs;
+    if (!(k > 0)) return;
+    this.flashMat.opacity = C.LOBBY_DARK.flash * k * k;
+    const ac = renderer.autoClear;
+    renderer.autoClear = false;
+    renderer.render(this.flashScene, this.flashCam);
+    renderer.autoClear = ac;
   }
 
   // 게임 장면 둘레를 어둡게 (매 프레임: 맵 테마가 다시 칠해도 덮어씀)
@@ -103,8 +120,8 @@ export class LobbyDark {
     return true;
   }
 
-  // 밝은 판으로 되돌림 (맵 테마 다시 칠하기)
-  dispose() {
+  // 치움. restore: 밝은 판으로 되돌림 (하늘 구·먼 섬·맵 테마 다시 칠하기) — 다른 테마 대기실로 바로 바꿀 땐 false
+  dispose(restore = true) {
     const { r } = this;
     r.scene.remove(this.stage.scene);
     this.stage.dispose();
@@ -112,6 +129,9 @@ export class LobbyDark {
       this.bloom.dispose();
       this.composer.dispose();
     }
+    this.flashMat.dispose();
+    this.flashScene.children[0].geometry.dispose();
+    if (!restore) return;
     r.dome.visible = true;
     r.world.group.visible = true;
     r.world.apply(r.world.id); // 하늘·안개·빛 원래대로

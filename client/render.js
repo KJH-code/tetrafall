@@ -709,6 +709,7 @@ export class Renderer {
       // 대기실 어두운 장면: 블룸 (lobby-dark.js 가 외곽선까지 그림)
     } else if (this.outlineOn) this.outline.render(this.scene, camera);
     else this.renderer.render(this.scene, camera);
+    this.dark?.drawFlash(this.renderer); // 대기실 맵 바꿈 번쩍
     this.hazard.drawOverlay(this.renderer); // 위험이 발 밑에 가까우면 화면 가장자리 색
     prof.end('render', t);
   }
@@ -3090,14 +3091,17 @@ export class Renderer {
     this.curState = state;
     if (state.field) this.setField(state.field.w, state.field.d, false, state.field.h || C.GRID_H);
     const tg = prof.begin(); // 성능 표시: 블록·지형 갱신
-    this.world.update(state, dt);
-    // 대기실 (판 전, 연습 아님): 섬 둘레를 그 맵 테마의 어두운 엔딩 장면으로 (lobby-dark.js). 판이 시작되면 밝은 판
-    const dk = lobbyTheme(state); // 고른 맵의 테마 (맵 미리보기)
+    // 대기실 (판 전, 연습 아님): 섬 둘레를 고른 맵 테마의 어두운 엔딩 장면으로 (lobby-dark.js), 섬 바닥·블록도 그 테마 (맵 미리보기).
+    // 맵을 바꾸면 곧바로 그 장면으로 + 테마 빛 번쩍. 판이 시작되면 밝은 판
+    const dk = lobbyTheme(state, sessionTheme());
+    this.world.update(state, dt, dk);
+    let swapFrom = null;
     if (this.dark && !this.dark.fits(dk)) {
-      this.dark.dispose();
+      swapFrom = dk ? this.dark.theme : null;
+      this.dark.dispose(!dk); // 다른 테마로 바로 바꾸면 밝은 판으로 되돌리지 않음
       this.dark = null;
     }
-    if (dk && !this.dark) this.dark = new LobbyDark(this, dk);
+    if (dk && !this.dark) this.dark = new LobbyDark(this, dk, !!swapFrom);
     this.dark?.update();
     markTheme(this.dark ? this.dark.theme : null);
     this.stepView(view, dt);

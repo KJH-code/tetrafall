@@ -209,7 +209,8 @@ test('대기실·메뉴 앰비언트: 메뉴 = 메뉴 테마, 대기실 (판 전
   assert.equal(Music.ambientTheme({ phase: 'lobby', practice: {}, map: { id: 'bowl' } }, 'crystal'), null);
   for (const m of Object.keys(C.WORLD_MAP_THEME)) assert.ok(C.TITLE_THEMES[Music.ambientTheme({ phase: 'lobby', map: { id: m } })], `맵 ${m} 대기실 장면 테마`);
   assert.equal(Music.ambientTheme({ phase: 'lobby', map: { choice: 'fortress', id: 'flat' } }), 'castle', '고른 맵 (미리보기) 우선');
-  assert.equal(Music.ambientTheme({ phase: 'lobby', map: { choice: 'random', id: 'flat' } }), 'meadow', '무작위면 지금 섬');
+  assert.equal(Music.ambientTheme({ phase: 'lobby', map: { choice: 'random', id: 'flat' } }), 'meadow', '무작위 + 메뉴 테마 없음 = 지금 섬');
+  assert.equal(Music.ambientTheme({ phase: 'lobby', map: { choice: 'random', id: 'flat' } }, 'desert'), 'desert', '무작위면 이번 창 메뉴 테마');
   // 앰비언트가 있으면 곡은 쉼, 없어지면 다시 곡
   const made = [];
   const m = new Music({ ready: () => false });

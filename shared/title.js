@@ -197,10 +197,13 @@ export function landedBetween(start, t0, t1, fallMs = C.TITLE_FALL_MS) {
   return out;
 }
 
-// 대기실 배경 테마: 방에서 고른 맵 (map.choice, 맵 미리보기) — '무작위' 면 지금 섬 맵 (map.id). 판·결과·연습이면 null (밝은 판)
-export function lobbyTheme(state) {
+// 대기실 배경 테마: 방에서 고른 맵 (map.choice, 맵 미리보기 — 바꾸면 곧바로 장면도). '무작위' 면 fallback (이번 창 메뉴 테마), 없으면 지금 섬 맵 (map.id).
+// 판·결과·연습이면 null (밝은 판)
+export function lobbyTheme(state, fallback = null) {
   if (!state || state.phase !== 'lobby' || state.practice || !state.map) return null;
-  const m = state.map.choice && state.map.choice !== 'random' ? state.map.choice : state.map.id;
+  const pick = state.map.choice;
+  if (pick === 'random' && C.TITLE_THEMES[fallback]) return fallback;
+  const m = pick && pick !== 'random' ? pick : state.map.id;
   const id = C.WORLD_MAP_THEME[m];
   return C.TITLE_THEMES[id] ? id : null;
 }

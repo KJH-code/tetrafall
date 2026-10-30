@@ -1118,7 +1118,7 @@ export const CONFIG = {
   MENU_DRIFT: { side: 5, bob: 0.8, yaw: 0.3, speed: [0.11, 0.17, 0.07], easeMs: 3000 },
   MENU_THEME_KEY: 'tf-menu-theme', // 이번 창 (sessionStorage) 메뉴·타이틀 테마 — 타이틀을 안 거친 메뉴도 같은 테마
   // 대기실 (방 안·판 전) 배경 = 그 방 맵 테마의 어두운 엔딩 장면 (client/lobby-dark.js): 섬·사람은 그대로, 둘레만. 판 시작하면 밝은 판
-  LOBBY_DARK: { drop: 6, clear: 0.85, fog: [8, 30], sun: 0.55, hemi: 0.8 }, // drop 섬 아래 거울 바닥 깊이 (칸) · clear 소품 안 두는 반지름 (판 크기 비율) · fog 안개 시작·끝 더하기 · sun·hemi 섬 빛 (테마 key·amb 세기 비율)
+  LOBBY_DARK: { drop: 6, clear: 0.85, fog: [8, 30], sun: 0.55, hemi: 0.8, flash: 0.85, flashMs: 600 }, // drop 섬 아래 거울 바닥 깊이 (칸) · clear 소품 안 두는 반지름 (판 크기 비율) · fog 안개 시작·끝 더하기 · sun·hemi 섬 빛 (테마 key·amb 세기 비율) · flash·flashMs 맵 바꿈 번쩍 세기·가라앉는 시간 (재혁: 맵 바꾸면 곧바로 장면도)
   // 메뉴(방 목록) 뒤 3D 대기 장면 (client/menu-scene.js, 화면만)
   MENU_CHARS: [4, 2], // 섬 위 캐릭터 수 [보통, 그래픽 낮춤]
   MENU_EMOTE_EVERY_MS: 7000, // 캐릭터마다 이모트 간격 (대충, 흔들림 있음)

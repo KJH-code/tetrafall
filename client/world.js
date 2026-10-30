@@ -817,8 +817,9 @@ export class World {
   }
 
   // 매 프레임: 맵이 바뀌면 테마를 갈아 끼우고, 먼 섬·구름을 천천히 돌리고, 떠다니는 빛을 움직임
-  update(state, dt) {
-    const id = (state && state.map && C.WORLD_MAP_THEME[state.map.id]) || null;
+  // theme: 테마를 정해서 (대기실 = 고른 맵의 테마, 바닥·블록도 미리보기). 없으면 지금 섬 맵의 테마
+  update(state, dt, theme = null) {
+    const id = theme || (state && state.map && C.WORLD_MAP_THEME[state.map.id]) || null;
     if (id !== this.id) this.apply(id);
     if (!this.look) return;
     this.drift.rotation.z += dt * C.WORLD_DRIFT_SPEED;

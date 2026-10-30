@@ -72,7 +72,7 @@ export class Music {
   // 지금 앰비언트를 틀 테마: 메뉴 (state 없음) = 메뉴 테마, 대기실 (판 전, 연습 아님) = 방 맵 테마, 그 밖 (판·결과) = 없음 (곡)
   static ambientTheme(state, menuTheme) {
     if (!state) return menuTheme || null;
-    return lobbyTheme(state);
+    return lobbyTheme(state, menuTheme);
   }
 
   // 설정의 음악 크기 (0~1, MUSIC_VOLUME 에 곱함). 0 이면 꺼서 예약도 안 함
