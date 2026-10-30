@@ -207,3 +207,16 @@ export function lobbyTheme(state, fallback = null) {
   const id = C.WORLD_MAP_THEME[m];
   return C.TITLE_THEMES[id] ? id : null;
 }
+
+// 판 크기 표 (config FIELD_SIZES, 서버 game.fieldSizeFor 와 같은 방식): n 이하 가장 큰 칸, 없으면 가장 작은 칸
+export function fieldSizeFor(n) {
+  const keys = Object.keys(C.FIELD_SIZES).map(Number).sort((a, b) => a - b);
+  const k = keys.filter((x) => x <= n).pop() ?? keys[0];
+  return C.FIELD_SIZES[k];
+}
+
+// 대기실 지형 미리보기 판 크기: 지금 인원으로 판을 시작하면 될 크기 (관전 빼고, 블록 마스터는 마스터 빼고) — 판 시작 때 서버 지형과 같은 크기·모양
+export function lobbyFieldSize(state) {
+  const n = (state.players || []).filter((p) => !p.spectator).length - (state.mode === 'master' ? 1 : 0);
+  return fieldSizeFor(n);
+}

@@ -246,3 +246,14 @@ test('타이틀 그래픽 값: 블룸·불티는 그래픽 낮춤 값이 더 작
   for (const k of ['vol', 'land', 'burst', 'exit', 'echo']) assert.ok(C.TITLE_SOUND[k] > 0 && C.TITLE_SOUND[k] <= 1, k);
   assert.ok(C.TITLE_SOUND.pingEvery[0] < C.TITLE_SOUND.pingEvery[1]);
 });
+
+test('대기실 지형 미리보기 판 크기 = 판 시작 때 서버가 정할 크기 (인원·관전·블록 마스터)', async () => {
+  const { fieldSizeFor, lobbyFieldSize } = await import('../shared/title.js');
+  const { Game } = await import('../server/game.js');
+  const g = new Game(() => {});
+  for (let n = 0; n <= 9; n++) assert.equal(fieldSizeFor(n), g.fieldSizeFor(n), `인원 ${n}`);
+  const ps = (n, spec = 0) => Array.from({ length: n }, (_, i) => ({ id: i, spectator: i < spec }));
+  assert.equal(lobbyFieldSize({ players: ps(4) }), C.FIELD_SIZES[4]);
+  assert.equal(lobbyFieldSize({ players: ps(5, 1) }), C.FIELD_SIZES[4], '관전 빼고');
+  assert.equal(lobbyFieldSize({ players: ps(5), mode: 'master' }), C.FIELD_SIZES[4], '블록 마스터는 마스터 빼고');
+});

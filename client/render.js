@@ -30,7 +30,7 @@ import { Hazard } from '/hazard.js';
 import { TitleScene } from '/title-scene.js';
 import { LobbyDark } from '/lobby-dark.js';
 import { MAP_IDS, mapColumns } from '/shared/maps.js';
-import { lobbyTheme } from '/shared/title.js';
+import { lobbyTheme, lobbyFieldSize } from '/shared/title.js';
 import { sessionTheme, markTheme } from '/menu-theme.js';
 import { labelSizes } from '/shared/hud-layout.js';
 import { prof } from '/perf.js';
@@ -676,7 +676,7 @@ export class Renderer {
   // 대기실 지형 미리보기 (재혁: 맵 바꾸면 곧바로 뒤 화면도): 고른 맵 (map.choice) 의 시작 지형을 클라에서 깔아 보여 줌
   // (shared/maps.js mapColumns, 판 크기는 지금 대기실 판). 무작위·대기실 아님이면 끄고 서버 격자로. 판 시작하면 서버가 같은 맵을 깖
   lobbyPreview(state, theme) {
-    const pick = theme && state.map && state.map.choice !== 'random' && MAP_IDS.includes(state.map.choice) ? state.map.choice : null;
+    const pick = theme ? this.previewPick(state) : null;
     const key = pick && `${pick}:${this.W}x${this.D}x${this.H}`;
     if (key === (this.preview?.key ?? null)) return;
     if (!pick) {
@@ -693,6 +693,17 @@ export class Renderer {
     }
     this.preview = { key, grid, top };
     this.gridVersion = -1; // 아래에서 미리보기 격자를 그림
+  }
+
+  // 미리보기 판 크기 (대기실·고른 맵 있을 때만, 아니면 0)
+  previewPick(state) {
+    if (!lobbyTheme(state, sessionTheme())) return null;
+    const c = state.map && state.map.choice;
+    return c && c !== 'random' && MAP_IDS.includes(c) ? c : null;
+  }
+
+  previewSize(state) {
+    return this.previewPick(state) ? lobbyFieldSize(state) : 0;
   }
 
   // 미리보기 지형 높이: 몸 둘레 네 모서리 칸 중 가장 높은 윗면
@@ -3096,6 +3107,7 @@ export class Renderer {
     const gz = Math.floor(z);
     if (gx < 0 || gy < 0 || gx >= this.W || gy >= this.D) return false;
     if (gz < 0) return true;
+    if (this.preview) return gz < this.H && !!this.preview.grid[(gz * this.D + gy) * this.W + gx]; // 대기실 지형 미리보기
     if (gz >= this.H || !state.grid) return false;
     return !!state.grid[(gz * this.D + gy) * this.W + gx]; // 판 크기가 막 바뀌어 배열이 짧아도 빈칸
   }
@@ -3125,7 +3137,11 @@ export class Renderer {
     }
     if (this.title) this.endTitle(); // 진짜 판·대기실이 옴
     this.curState = state;
-    if (state.field) this.setField(state.field.w, state.field.d, false, state.field.h || C.GRID_H);
+    // 대기실 지형 미리보기면 지금 인원의 판 크기로 그림 (서버 대기실 판은 작아서, 사람 위치는 가운데 맞춰 화면만 밀어 줌 — previewOff)
+    const pvSize = this.previewSize(state);
+    this.previewOff = pvSize && state.field ? (pvSize - state.field.w) / 2 : 0;
+    if (pvSize) this.setField(pvSize, pvSize, false, state.field?.h || C.GRID_H);
+    else if (state.field) this.setField(state.field.w, state.field.d, false, state.field.h || C.GRID_H);
     const tg = prof.begin(); // 성능 표시: 블록·지형 갱신
     // 대기실 (판 전, 연습 아님): 섬 둘레를 고른 맵 테마의 어두운 엔딩 장면으로 (lobby-dark.js), 섬 바닥·블록도 그 테마 (맵 미리보기).
     // 맵을 바꾸면 곧바로 그 장면으로 + 테마 빛 번쩍. 판이 시작되면 밝은 판
@@ -3186,7 +3202,10 @@ export class Renderer {
         // (갈고리에 끌려오는 쪽도: 갈고리가 닿을 때까지 제자리, 그 뒤 질질. to 가 없으면 서버 위치까지)
         const u = (performance.now() - slide.t0) / slide.ms;
         const to = slide.to || p;
-        if (u >= 1 || !p.alive) this.slides.delete(p.id);
+        if (u >= 1 || !p.alive) {
+          this.slides.delete(p.id);
+          Object.assign(s, { x: p.x, y: p.y, z: p.z });
+        }
         else {
           const e = u <= 0 ? 0 : 1 - (1 - u) * (1 - u);
           Object.assign(s, { x: slide.from.x + (to.x - slide.from.x) * e, y: slide.from.y + (to.y - slide.from.y) * e, z: slide.from.z + (p.z - slide.from.z) * e });
@@ -3197,7 +3216,12 @@ export class Renderer {
         if (at === null || !track || !sampleTrack(track, at, C.INTERP_EXTRAP_MS, s)) Object.assign(s, { x: p.x, y: p.y, z: p.z });
       }
       if (![s.x, s.y, s.z].every(Number.isFinite)) Object.assign(s, { x: p.x, y: p.y, z: p.z }); // 안전장치
-      if (this.preview && p.alive) s.z = Math.max(s.z, this.previewTop(s.x, s.y)); // 대기실 지형 미리보기: 서버는 바닥에 서 있으니 화면만 그 칸 위로
+      if (this.preview) {
+        // 대기실 지형 미리보기: 큰 판 가운데로 밀고, 서버는 바닥에 서 있으니 화면만 그 칸 위로
+        s.x += this.previewOff; // s 는 매 프레임 서버 자리에서 새로 정해짐
+        s.y += this.previewOff;
+        if (p.alive) s.z = Math.max(s.z, this.previewTop(s.x, s.y));
+      }
       g.position.set(s.x, s.y, s.z);
       g.rotation.z = p.yaw;
       const firstPerson = view === 'fps' && this.skyBlend === 0 && !cam.victory && !cam.selfie && (!this.third || (this.tpDist ?? C.TP_DIST) < C.TP_HIDE_DIST); // 3인칭은 카메라가 머리 속으로 당겨졌을 때만 숨김
