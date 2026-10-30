@@ -601,6 +601,7 @@ export class Game {
     const p = this.players.get(id);
     if (!p || this.inRound()) return false;
     const clean = String(raw ?? '')
+      .slice(0, C.TEXT_RAW_MAX) // 먼저 자름 (긴 문자열 통째로 정규식을 돌리면 틱이 멈춤, 2026-10-30 감사)
       .replace(/[\u0000-\u001f\u007f]/g, '')
       .replace(/\s+/g, ' ')
       .trim();
@@ -778,7 +779,8 @@ export class Game {
     // 모드 줄 (생존은 예전 로그와 같게 안 찍음). npm run stats 가 모드별로 셈
     if (this.mode === 'master') {
       this.roundEndsAt = this.time + C.MASTER_TIME_MS;
-      this.log(`  모드: ${C.MODE_NAMES.master} (마스터 ${this.master().name}, ${fmtTime(C.MASTER_TIME_MS)} 버티기)`);
+      const m = this.master(); // 카운트다운 중에 마스터가 나갔으면 없음 → 아래 checkRoundEnd 가 생존자 승으로 끝냄 (2026-10-30 감사: 예전엔 여기서 예외로 서버가 죽음)
+      this.log(`  모드: ${C.MODE_NAMES.master} (${m ? `마스터 ${m.name}` : '마스터가 나감'}, ${fmtTime(C.MASTER_TIME_MS)} 버티기)`); // '마스터 이름,' 모양은 npm run stats 가 읽음
     } else if (this.mode === 'kills') {
       this.roundEndsAt = this.time + C.KILLS_TIME_MS;
       this.log(`  모드: ${C.MODE_NAMES.kills} (${fmtTime(C.KILLS_TIME_MS)} 또는 ${this.teamMode ? `팀 ${C.KILLS_TARGET_TEAM}` : C.KILLS_TARGET}킬)`);
@@ -1103,7 +1105,7 @@ export class Game {
         else p.jumpQueuedUntil = this.time + C.JUMP_BUFFER_MS;
         return;
       case 'dash':
-        if (stunned || controlling || this.time < p.dashReadyAt) return; // 조종 중 대시 불가
+        if (stunned || controlling || p.amp || this.time < p.dashReadyAt) return; // 조종 중 대시 불가. 바드 앰프 연주 중도 (제자리 규칙, 2026-10-30 재혁 S2: 예전엔 대시로 0.75칸 움직였음. 광전사 회전 중 대시는 됨)
         if (!p.grounded && p.airDashes <= 0) return; // 공중 대시는 착지 전 AIR_DASHES 번까지
         this.dash(p);
         return;

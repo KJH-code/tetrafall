@@ -54,7 +54,15 @@ function resolveFile(urlPath) {
 }
 
 const server = http.createServer((req, res) => {
-  const urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+  let urlPath;
+  try {
+    urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+  } catch {
+    // 잘못된 % 인코딩 주소 (2026-10-30 감사: 예전엔 이 한 줄로 서버가 죽음)
+    res.writeHead(400);
+    res.end('bad request');
+    return;
+  }
   const file = resolveFile(urlPath);
   if (!file) {
     res.writeHead(403);
@@ -123,6 +131,7 @@ const rooms = new Rooms({
 // 스냅샷 압축 (permessage-deflate, 2026-10-28 8인): 8명 판 스냅샷 평균 9.6KB × 30Hz ≈ 2.35Mbps/명 → 약 0.5Mbps/명. 메시지마다 따로 압축 (연결마다 문맥 안 들고 있음: 메모리 적게)
 const wss = new WebSocketServer({
   server,
+  maxPayload: C.NET_MAX_PAYLOAD_BYTES, // 넘으면 그 연결만 끊김 (ws 기본 100MB)
   perMessageDeflate: {
     threshold: C.NET_DEFLATE_MIN_BYTES,
     zlibDeflateOptions: { level: C.NET_DEFLATE_LEVEL },
@@ -140,16 +149,26 @@ wss.on('connection', (ws) => {
     } catch {
       return;
     }
-    rooms.message(conn, msg);
+    rooms.message(conn, msg); // 방 안 예외는 rooms 가 그 방만 닫음
   });
   ws.on('close', () => rooms.disconnect(conn));
+  ws.on('error', (err) => console.log(`[${stamp()}] 접속 ${conn.id} 소켓 오류: ${err.message}`)); // 너무 큰 메시지 등 → 그 연결만 닫힘
 });
+
+// 마지막 방어: 여기까지 올라온 예외는 콘솔에 남기고 서버는 계속 (방마다 예외는 rooms.js crash 가 먼저 잡음)
+const guard = (where, fn) => () => {
+  try {
+    fn();
+  } catch (err) {
+    console.error(`[${stamp()}] ${where} 오류 (서버는 계속):`, err);
+  }
+};
 
 // 고정 틱 루프. setInterval 의 드리프트를 누적 시간으로 보정한다. 모든 방이 같은 틱
 const TICK_MS = 1000 / C.TICK_RATE;
 let last = performance.now();
 let acc = 0;
-setInterval(() => {
+setInterval(guard('틱 루프', () => {
   const now = performance.now();
   acc += now - last;
   last = now;
@@ -163,8 +182,8 @@ setInterval(() => {
   if (acc > TICK_MS * 5) acc = 0; // 너무 밀리면 버린다
   rooms.noteTick(performance.now() - now, behind); // 핑 화면에 서버 부하 (pong)
   if (steps > 0) rooms.broadcast();
-}, TICK_MS);
-setInterval(() => rooms.broadcastList(), C.ROOM_LIST_MS);
+}), TICK_MS);
+setInterval(guard('방 목록', () => rooms.broadcastList()), C.ROOM_LIST_MS);
 
 warmUpPlacement(); // 첫 판 첫 블록이 서버 틱을 막지 않게 (JIT 데우기)
 server.listen(PORT, '0.0.0.0', () => {

@@ -22,6 +22,7 @@ function send(ws, obj) {
 // 이름 정리: 제어 문자 빼고 공백 하나로, max 글자까지 (게임 이름과 같은 방식)
 function cleanText(raw, max) {
   const clean = String(raw ?? '')
+    .slice(0, C.TEXT_RAW_MAX) // 먼저 자름 (긴 문자열에 정규식을 통째로 돌리지 않게)
     .replace(/[\u0000-\u001f\u007f]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -31,7 +32,9 @@ function cleanText(raw, max) {
 export class Rooms {
   // openLog(code) → { log(msg), close() }: 방마다 로그 (서버는 파일, 테스트는 배열)
   // serverLog(msg): 방 밖 일 (방 만듦·없앰)
-  constructor({ openLog = () => ({ log() {}, close() {} }), serverLog = () => {}, rng = Math.random, countdownMs = 0 } = {}) {
+  // now(): 메시지 빈도 제한용 시계 (ms, 테스트는 가짜)
+  constructor({ openLog = () => ({ log() {}, close() {} }), serverLog = () => {}, rng = Math.random, countdownMs = 0, now = () => performance.now() } = {}) {
+    this.now = now;
     this.openLog = openLog;
     this.serverLog = serverLog;
     this.rng = rng;
@@ -50,7 +53,7 @@ export class Rooms {
 
   // ---------- 접속 ----------
   connect(ws) {
-    const conn = { id: this.nextId++, ws, room: null };
+    const conn = { id: this.nextId++, ws, room: null, bucket: C.NET_MSG_BURST, bucketAt: this.now(), dropped: 0 };
     this.conns.add(conn);
     this.sendList(conn);
     return conn;
@@ -59,6 +62,15 @@ export class Rooms {
   // 연결 끊김: 방 안이면 자리 유지 (setAway), 방 밖이면 그냥 지움
   disconnect(conn) {
     const room = conn.room;
+    try {
+      this.disconnectIn(conn, room);
+    } catch (err) {
+      if (room) this.crash(room, '접속 끊김', err);
+    }
+    this.conns.delete(conn);
+  }
+
+  disconnectIn(conn, room) {
     const seat = room && room.seats.get(conn.id);
     if (seat && seat.conn === conn) {
       seat.conn = null;
@@ -67,7 +79,44 @@ export class Rooms {
       conn.room = null;
       room.game.setAway(conn.id, true);
     } else if (room) this.leave(conn, null);
-    this.conns.delete(conn);
+  }
+
+  // 방 하나에서 난 예외 (2026-10-30 감사: 예전엔 방 하나의 예외가 서버 전체를 죽임): 그 방만 로그 남기고 닫음, 사람들은 방 밖 목록으로. 다른 방은 계속
+  crash(room, where, err) {
+    if (!this.rooms.has(room.code)) return;
+    const text = err && err.stack ? err.stack : String(err);
+    try {
+      room.out.log(`[오류] ${where}: ${text}`);
+    } catch {
+      // 로그도 못 쓰면 서버 콘솔에만
+    }
+    this.serverLog(`방 ${room.code} 오류로 닫음 (${where}: ${err && err.message ? err.message : err})`);
+    this.rooms.delete(room.code);
+    for (const c of room.conns.values()) {
+      c.room = null;
+      send(c.ws, { type: 'left', reason: '방에 오류가 나서 방을 닫았습니다 (서버는 그대로)' });
+      this.sendList(c);
+    }
+    room.conns.clear();
+    room.seats.clear();
+    try {
+      room.out.close();
+    } catch {
+      // 위와 같음
+    }
+  }
+
+  // 연결마다 1초에 NET_MSG_RATE 개 (잠깐 몰리면 NET_MSG_BURST 개까지). 넘는 메시지는 버림
+  allow(conn) {
+    const now = this.now();
+    conn.bucket = Math.min(C.NET_MSG_BURST, conn.bucket + ((now - conn.bucketAt) * C.NET_MSG_RATE) / 1000);
+    conn.bucketAt = now;
+    if (conn.bucket >= 1) {
+      conn.bucket -= 1;
+      return true;
+    }
+    if (conn.dropped++ === 0) this.serverLog(`접속 ${conn.id}: 메시지가 너무 많아 버림 (초당 ${C.NET_MSG_RATE}개까지)`);
+    return false;
   }
 
   // 토큰으로 같은 자리에 다시 붙기. 방·토큰이 안 맞거나 자리 유지 시간이 지났으면 rejoinError (화면은 보통 들어가기로 다시)
@@ -124,7 +173,17 @@ export class Rooms {
   }
 
   message(conn, msg) {
-    if (!msg || typeof msg !== 'object') return;
+    if (!msg || typeof msg !== 'object' || !this.allow(conn)) return;
+    const room = conn.room;
+    try {
+      this.messageIn(conn, msg);
+    } catch (err) {
+      if (room) this.crash(room, `메시지 ${String(msg.type).slice(0, 20)}`, err);
+      else this.serverLog(`방 밖 메시지 오류 (${String(msg.type).slice(0, 20)}): ${err && err.message}`);
+    }
+  }
+
+  messageIn(conn, msg) {
     // 핑: 보낸 시각 t 를 그대로 돌려줌 (왕복 시간은 화면이 잼) + 서버 틱 부하. 방 안·밖 둘 다
     if (msg.type === 'ping') {
       if (Number.isFinite(msg.t)) send(conn.ws, { type: 'pong', t: msg.t, workMs: Math.round(this.load.workMs * 10) / 10, behindMs: Math.round(this.load.behindMs), tickMs: 1000 / C.TICK_RATE });
@@ -346,18 +405,28 @@ export class Rooms {
   // ---------- 틱·보내기 ----------
   tick(dt) {
     for (const room of [...this.rooms.values()]) {
-      room.game.tick(dt);
-      this.expireSeats(room);
+      try {
+        room.game.tick(dt);
+        this.expireSeats(room);
+      } catch (err) {
+        this.crash(room, '틱', err);
+      }
     }
   }
 
   // 방마다 스냅샷 한 번 (이벤트는 보낼 때 비움)
   broadcast() {
-    for (const room of this.rooms.values()) {
-      const snap = room.game.snapshot(false);
-      snap.events = room.game.drainEvents();
-      snap.room = this.roomInfo(room);
-      const payload = JSON.stringify(snap);
+    for (const room of [...this.rooms.values()]) {
+      let payload;
+      try {
+        const snap = room.game.snapshot(false);
+        snap.events = room.game.drainEvents();
+        snap.room = this.roomInfo(room);
+        payload = JSON.stringify(snap);
+      } catch (err) {
+        this.crash(room, '스냅샷', err);
+        continue;
+      }
       for (const c of room.conns.values()) if (c.ws.readyState === c.ws.OPEN) c.ws.send(payload);
     }
   }
