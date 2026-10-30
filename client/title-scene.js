@@ -1,6 +1,7 @@
 // 타이틀 화면 3D (지오메트리 대시 엔딩 아트처럼): 테마 무대 (title-world.js, 켤 때마다 무작위) 가운데에 테트리미노 블록이 떨어져 쌓이며 로고
 // (shared/title.js 계산). 캄캄하게 시작 → 장면 빛이 천천히 → 블록이 닿을 때마다 번쩍 → 다 쌓이면 빛 터짐 (블룸·불티·렌즈 플레어) → 빛 띠·반짝임.
-// 누르면 카메라가 앞으로 빠져나가며 하얗게 (title.js 가 하얀 막을 씌우고 메뉴 섬으로 바꿈). 메뉴 장면과 따로 그림 (자기 THREE.Scene·카메라·블룸)
+// 누르면 카메라가 로고 위로 날아가 장면 안쪽을 보는 메뉴 카메라로 자리 잡고, 그 장면이 그대로 메뉴 배경 (천천히 떠돎, menuDrift).
+// 타이틀을 안 거친 메뉴는 menu: true 로 처음부터 메뉴 카메라. 게임 장면과 따로 그림 (자기 THREE.Scene·카메라·블룸)
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -9,12 +10,14 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { PieceLook } from '/piece-look.js';
 import { pieceSpec } from '/shared/piece-look.js';
 import { CONFIG as C } from '/shared/config.js';
-import { titleCells, titlePieces, dropSchedule, titleDoneAt, pieceLift, titleInterval, titleCamDist, titleLight, titleExit, landedBetween } from '/shared/title.js';
+import { titleCells, titlePieces, dropSchedule, titleDoneAt, pieceLift, titleInterval, titleCamDist, titleLight, titleExit, menuDrift, landedBetween } from '/shared/title.js';
 import { TitleStage, glowSprite, glowTex } from '/title-world.js';
 
 export class TitleScene {
   // r: Renderer (WebGLRenderer·블록 텍스처를 빌림). theme: config TITLE_THEMES 키. instant: 떨어짐 없이 완성 로고 (움직임 줄이기). low: 그래픽 낮춤 (블룸·반사 끔)
-  constructor(r, theme, { instant = false, low = false } = {}) {
+  // menu: 처음부터 메뉴 카메라 (타이틀 안 거친 메뉴 배경)
+  constructor(r, theme, { instant = false, low = false, menu = false } = {}) {
+    if (menu) instant = true;
     this.r = r;
     this.theme = theme;
     this.T = C.TITLE_THEMES[theme];
@@ -30,6 +33,12 @@ export class TitleScene {
     this.doneAt = instant ? 0 : titleDoneAt(this.start);
     if (instant) this.t = C.TITLE_DARK_MS + C.TITLE_BURST_MS; // 완성·다 밝은 모습
     this.burstFired = instant;
+    this.menuT = 0; // 메뉴 카메라로 자리 잡은 뒤 ms (떠돌기)
+    if (menu) {
+      this.fast = true;
+      this.exitT = C.TITLE_EXIT_MS + C.TITLE_EXIT_FADE_MS * 2; // 다 온 상태
+      this.quiet = true; // 빠져나가기 소리 없음
+    }
     this.size = [width, height];
     const s = C.TITLE_SCALE;
     const logoW = width * s;
@@ -211,9 +220,15 @@ export class TitleScene {
     this.fast = true;
   }
 
-  // 빠져나가기 진행 (shared/title.js titleExit): title.js 가 하얀 막·메뉴로 바꾸기에 씀
+  // 빠져나가기 진행 (shared/title.js titleExit): title.js 가 메뉴 판 띄우기·(움직임 줄이기) 하얀 막에 씀
   get exit() {
-    return this.exitT === null ? null : titleExit(this.exitT);
+    return this.exitT === null ? null : titleExit(this.exitT, this.instant);
+  }
+
+  // 메뉴 배경이 됨 (날아가기 끝)
+  get menu() {
+    const e = this.exit;
+    return !!(e && e.done);
   }
 
   // 한 프레임
@@ -225,10 +240,11 @@ export class TitleScene {
       this.t += ms;
       if (this.fast && this.exitT === null) {
         this.exitT = 0;
-        this.on.exit();
+        if (!this.quiet) this.on.exit();
       }
     }
     if (this.exitT !== null) this.exitT += ms;
+    if (this.menu) this.menuT += ms;
     // 닿은 조각: 그 블록 번쩍 + 소리
     if (!this.instant) {
       const landed = landedBetween(this.start, t0, Math.min(this.t, this.doneAt));
@@ -253,7 +269,7 @@ export class TitleScene {
 
     const L = titleLight(this.t, this.doneAt);
     const ex = this.exit;
-    const push = ex && !this.instant ? ex.push : 0; // 움직임 줄이기면 카메라는 그대로, 하얗게만
+    const push = ex ? ex.push : 0; // 움직임 줄이기면 하얀 막 뒤에서 한 번에 (titleExit)
     const wh = ex ? ex.white : 0; // 하얗게 되는 동안 빛도 같이 세짐
     this.u.uGlow.value = L.glow * (1 + wh * 2);
     const sweepU = this.t - this.doneAt - C.TITLE_BURST_MS * 0.7; // 빛 터짐이 가라앉은 뒤부터
@@ -261,9 +277,9 @@ export class TitleScene {
     const lw = this.size[0] * C.TITLE_SCALE;
     this.u.uSweepX.value = sweepU < 0 ? -1e4 : -lw * 0.8 + sweepP * lw * 2.4;
     this.shell.material.color.copy(this.edgeCol).multiplyScalar(Math.min(3, 0.3 + L.glow * 1.6));
-    this.halo.material.opacity = Math.min(1, L.burst * 0.18 + (this.t >= this.doneAt ? 0.04 : 0) + wh * 0.5);
+    this.halo.material.opacity = Math.min(1, L.burst * 0.18 + (this.t >= this.doneAt ? 0.04 : 0)) * (1 - push); // 로고를 지나치면 로고 빛은 꺼짐
     this.halo.scale.set(this.size[0] * C.TITLE_SCALE * (1.15 + L.burst * 0.3), this.size[1] * C.TITLE_SCALE * (1.8 + L.burst * 1.4), 1);
-    this.streak.material.opacity = Math.min(1, L.burst * 0.8 + (this.t >= this.doneAt ? 0.15 : 0));
+    this.streak.material.opacity = Math.min(1, L.burst * 0.8 + (this.t >= this.doneAt ? 0.15 : 0)) * (1 - push);
     this.stage.update(this.t / 1000, Math.min(1, L.lit + L.burst * 0.5), window.innerHeight * 0.5 * this.r.renderer.getPixelRatio());
 
     // 카메라: 로고를 살짝 아래·옆에서, 천천히 흔들리며 다가감. 터질 때 작게 흔들림. 빠져나가면 앞으로 (로고 위로) 확
@@ -280,18 +296,20 @@ export class TitleScene {
     const sway = Math.sin(ts * 0.5) * C.TITLE_CAM_SWAY;
     const shake = L.burst * L.burst * 0.25;
     // 빠져나가기: 로고 위로 솟으며 앞으로 날아가 (로고가 발 밑으로 지나감) 장면 안쪽 (동굴 깊은 곳·먼 산) 을 바라봄
-    const [fwd, up, ahead] = C.TITLE_EXIT_FLY;
+    const [fwd, up, ahead, lookZ] = C.TITLE_EXIT_FLY;
     const ey = -d + push * d * (1 - fwd);
     const ez = C.TITLE_CAM_UP + Math.sin(ts * 0.37) * 0.4 + push * up;
-    cam.position.set((C.TITLE_CAM_SIDE + sway) * (1 - push) + (Math.random() - 0.5) * shake, ey, ez + (Math.random() - 0.5) * shake);
-    cam.lookAt(0, push * d * ahead, push * up * 0.55);
+    const [dx, dz, dyaw] = menuDrift(this.menuT); // 메뉴: 천천히 떠돎
+    cam.position.set((C.TITLE_CAM_SIDE + sway) * (1 - push) + dx + (Math.random() - 0.5) * shake, ey, ez + dz + (Math.random() - 0.5) * shake);
+    const ly = push * d * ahead - ey; // 바라보는 곳까지 (앞으로)
+    cam.lookAt(cam.position.x * push + Math.sin(dyaw) * ly, ey + Math.cos(dyaw) * ly, push * lookZ); // 타이틀 = 로고 가운데, 메뉴 = 앞쪽
     const fov = C.TITLE_FOV + push * 18;
     if (cam.fov !== fov) {
       cam.fov = fov;
       cam.updateProjectionMatrix();
     }
     cam.updateMatrixWorld();
-    this.placeFlares(L.burst, this.t >= this.doneAt);
+    this.placeFlares(L.burst * (1 - push), this.t >= this.doneAt && push < 0.3);
     if (this.bloom) this.bloom.strength = C.TITLE_BLOOM[0] + (C.TITLE_BLOOM_BURST - C.TITLE_BLOOM[0]) * Math.max(L.burst, wh);
   }
 

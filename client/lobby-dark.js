@@ -1,0 +1,119 @@
+// 대기실 (방 안·판 전) 배경: 그 방 맵 테마의 어두운 '엔딩 아트' 장면 (타이틀·메뉴와 같은 느낌, 2026-10-30 재혁).
+// 방 섬·사람·블록은 게임 장면 그대로 두고 둘레만 바꿈: 하늘 구·먼 섬 숨김 → 테마 배경색·안개, 해·하늘빛을 테마 빛으로 낮춤,
+// 섬 둘레에 title-world.js 무대 (ring: 소품을 사방으로, 섬 자리는 비움) + 섬 아래 거울 호수. 보통 그래픽이면 블룸 (외곽선 그대로 위에).
+// 맵을 바꾸면 그 테마로 다시 만듦 (맵 미리보기). 판이 시작되면 render.js 가 restore → world.apply 로 밝은 판
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { Pass } from 'three/addons/postprocessing/Pass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { CONFIG as C } from '/shared/config.js';
+import { TitleStage } from '/title-world.js';
+
+// 게임 장면을 (외곽선 켜져 있으면 OutlineEffect 로) 렌더 타깃에 그리는 패스 — 블룸 앞 단계
+class ScenePass extends Pass {
+  constructor(r) {
+    super();
+    this.r = r;
+    this.camera = r.camera;
+    this.needsSwap = false; // RenderPass 처럼 readBuffer 에 그리고 다음 패스가 그걸 읽음
+  }
+
+  render(renderer, writeBuffer, readBuffer) {
+    renderer.setRenderTarget(this.renderToScreen ? null : readBuffer);
+    renderer.clear();
+    if (this.r.outlineOn) this.r.outline.render(this.r.scene, this.camera);
+    else renderer.render(this.r.scene, this.camera);
+  }
+}
+
+export class LobbyDark {
+  // r: Renderer, theme: TITLE_THEMES 키 (= 맵 테마 id)
+  constructor(r, theme) {
+    this.r = r;
+    this.theme = theme;
+    this.T = C.TITLE_THEMES[theme];
+    this.low = r.lowGfx;
+    this.W = r.W;
+    this.D = r.D;
+    const L = C.LOBBY_DARK;
+    const R = Math.max(r.W, r.D) * L.clear + 3;
+    this.stage = new TitleStage(theme, { low: this.low, logoW: 0, logoH: 0, camDist: R, ring: true, clear: R, floorZ: -L.drop });
+    this.stage.scene.position.set(r.W / 2, r.D / 2, 0); // 무대 가운데 = 섬 가운데
+    // 무대 빛: 로고용 앞 빛은 섬 위로
+    this.stage.lights[1]?.[0].position.set(-R * 0.4, -R * 0.6, 14);
+    this.stage.backLight.position.set(0, R * 0.5, 6);
+    r.scene.add(this.stage.scene);
+    if (!this.low) {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      this.composer = new EffectComposer(r.renderer);
+      this.composer.addPass(new ScenePass(r));
+      const [str, rad, thr] = C.TITLE_BLOOM;
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), str, rad, thr);
+      this.composer.addPass(this.bloom);
+      this.composer.addPass(new OutputPass());
+      this.sizeKey = '';
+    }
+    this.apply();
+  }
+
+  // 게임 장면 둘레를 어둡게 (매 프레임: 맵 테마가 다시 칠해도 덮어씀)
+  apply() {
+    const { r, T } = this;
+    const L = C.LOBBY_DARK;
+    r.scene.background = r.scene.background || new THREE.Color();
+    r.scene.background.set(T.bg);
+    r.scene.fog.color.set(T.fog[0]);
+    r.scene.fog.near = Math.max(this.W, this.D) + L.fog[0];
+    r.scene.fog.far = Math.max(this.W, this.D) + T.fog[2] + L.fog[1];
+    r.dome.visible = false;
+    r.world.group.visible = false;
+    r.hemi.color.set(T.amb[0]);
+    r.hemi.groundColor.set(T.bg);
+    r.hemi.intensity = T.amb[1] * L.hemi;
+    r.sun.color.set(T.key[0]);
+    r.sun.intensity = T.key[1] * L.sun;
+  }
+
+  // 매 프레임
+  update() {
+    this.apply();
+    this.stage.update(performance.now() / 1000, 1, window.innerHeight * 0.5 * this.r.renderer.getPixelRatio());
+  }
+
+  // 같은 테마·판 크기·그래픽 설정이면 그대로 씀
+  fits(theme) {
+    return theme === this.theme && this.W === this.r.W && this.D === this.r.D && this.low === this.r.lowGfx;
+  }
+
+  // 그리기 (블룸이면 composer, 아니면 null → render.js 가 예전대로)
+  draw(camera) {
+    if (!this.composer) return false;
+    const R = this.r.renderer;
+    const sz = R.getSize(new THREE.Vector2());
+    const key = `${sz.x}x${sz.y}x${R.getPixelRatio()}`;
+    if (key !== this.sizeKey) {
+      this.sizeKey = key;
+      this.composer.setPixelRatio(R.getPixelRatio());
+      this.composer.setSize(sz.x, sz.y);
+    }
+    this.composer.passes[0].camera = camera;
+    this.composer.render();
+    return true;
+  }
+
+  // 밝은 판으로 되돌림 (맵 테마 다시 칠하기)
+  dispose() {
+    const { r } = this;
+    r.scene.remove(this.stage.scene);
+    this.stage.dispose();
+    if (this.composer) {
+      this.bloom.dispose();
+      this.composer.dispose();
+    }
+    r.dome.visible = true;
+    r.world.group.visible = true;
+    r.world.apply(r.world.id); // 하늘·안개·빛 원래대로
+  }
+}

@@ -1046,10 +1046,10 @@ export const CONFIG = {
   TITLE_REFLECT: 0.45,
   TITLE_LIGHT: [9, 18, 22], // 빛 세기 배수 [앞 빛, 로고 뒤 빛, 테마 소품 빛] (× TITLE_THEMES key·back 세기) // 아래 바닥 반사 세기 (그래픽 낮춤이면 반사 대신 어두운 바닥)
   TITLE_FLOOR_GAP: 1.1, // 로고 밑에서 바닥까지 (게임 칸)
-  TITLE_EXIT_MS: 1150, // Enter 뒤: 카메라가 로고 위로 솟아 장면 안쪽으로 날아가고 → 하얗게 다 덮이기까지
-  TITLE_EXIT_WHITE_AT: 0.65, // 그중 이 비율까지는 날아가는 게 보이고 (하얀 막 없음, ~0.75초), 그 뒤 하얗게 (2026-10-30 재혁 '빠져나가기 더 보이게')
-  TITLE_EXIT_FLY: [0.15, 9, 0.7], // 날아가기 끝 카메라 [앞으로 (로고 거리 비율, 0 = 로고 바로 위), 위로 (칸), 바라보는 곳 앞쪽 (로고 거리 비율)]
-  TITLE_EXIT_FADE_MS: 650, // 하얀 화면이 걷히며 메뉴 섬이 보이는 시간
+  TITLE_EXIT_MS: 1150, // Enter 뒤: 카메라가 로고 위로 솟아 장면 안쪽으로 날아가 메뉴 카메라로 자리 잡기까지 (하얀 막 없이 그 장면이 메뉴 배경)
+  TITLE_MENU_SHOW_AT: 0.75, // 그중 이 비율에서 메뉴 판을 띄움 (카메라가 자리 잡는 동안 판이 들어옴)
+  TITLE_EXIT_FLY: [-0.08, 11, 1.1, 2], // 날아가기 끝 = 메뉴 카메라 [앞으로 (로고 거리 비율, 0 = 로고 바로 위, 음수 = 지나감), 위로 (칸), 바라보는 곳 앞쪽 (로고 거리 비율), 바라보는 곳 높이 (칸)]
+  TITLE_EXIT_FADE_MS: 350, // 움직임 줄이기: 하얗게 됐다 (이만큼) 걷히는 (이만큼) 시간 — 가장 하얄 때 메뉴 카메라로
   TITLE_HINT_DELAY_MS: 500, // 빛 터진 뒤 'Enter' 안내가 나오기까지
   TITLE_INPUT_DELAY_MS: 250, // 켜자마자 눌린 키는 무시
   // 테마별 타이틀 장면 (맵 테마 id = WORLD_THEMES 키). 메뉴 섬은 그 테마의 맵 (WORLD_MAP_THEME 거꾸로)
@@ -1114,6 +1114,11 @@ export const CONFIG = {
   // land 착지 크기 · landGap 착지 소리 최소 간격 (초, 겹쳐 떨어지면 묶음) · burst 로고 완성 반짝 크기 · exit 빠져나가기 쉭 크기
   TITLE_SOUND: { vol: 0.55, fadeIn: 2.5, echo: 0.45, echoDelay: 0.37, echoFeedback: 0.45, pingEvery: [1.4, 4.2], land: 0.55, landGap: 0.045, burst: 0.9, exit: 0.45 },
 
+  // 메뉴 배경 = 타이틀 엔딩 장면 그대로 (client/title-scene.js menu): 메뉴 카메라가 천천히 떠돎. side 옆 (칸) · bob 위아래 (칸) · yaw 바라보는 방향 돌림 (라디안) · speed [옆, 위아래, 돌림] 빠르기 · easeMs 날아간 뒤 떠돌기가 들어오는 시간
+  MENU_DRIFT: { side: 5, bob: 0.8, yaw: 0.3, speed: [0.11, 0.17, 0.07], easeMs: 3000 },
+  MENU_THEME_KEY: 'tf-menu-theme', // 이번 창 (sessionStorage) 메뉴·타이틀 테마 — 타이틀을 안 거친 메뉴도 같은 테마
+  // 대기실 (방 안·판 전) 배경 = 그 방 맵 테마의 어두운 엔딩 장면 (client/lobby-dark.js): 섬·사람은 그대로, 둘레만. 판 시작하면 밝은 판
+  LOBBY_DARK: { drop: 6, clear: 0.85, fog: [8, 30], sun: 0.55, hemi: 0.8 }, // drop 섬 아래 거울 바닥 깊이 (칸) · clear 소품 안 두는 반지름 (판 크기 비율) · fog 안개 시작·끝 더하기 · sun·hemi 섬 빛 (테마 key·amb 세기 비율)
   // 메뉴(방 목록) 뒤 3D 대기 장면 (client/menu-scene.js, 화면만)
   MENU_CHARS: [4, 2], // 섬 위 캐릭터 수 [보통, 그래픽 낮춤]
   MENU_EMOTE_EVERY_MS: 7000, // 캐릭터마다 이모트 간격 (대충, 흔들림 있음)

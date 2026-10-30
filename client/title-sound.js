@@ -6,10 +6,10 @@ import { CONFIG as C } from '/shared/config.js';
 const midiHz = (m) => 440 * Math.pow(2, (m - 69) / 12);
 
 export class TitleSound {
-  // sound: Sound (sound.js), music: Music (타이틀 동안 배경음악을 줄임, 없어도 됨), theme: TITLE_THEMES 키
-  constructor(sound, music, theme) {
+  // sound: Sound (sound.js), theme: TITLE_THEMES 키. 메뉴·대기실까지 이어질 땐 music.js 가 맡아 매 프레임 update (곡은 그동안 쉼)
+  constructor(sound, theme) {
     this.s = sound;
-    this.music = music;
+    this.theme = theme;
     this.S = C.TITLE_THEMES[theme].sound;
     this.nodes = [];
     this.out = null;
@@ -23,10 +23,6 @@ export class TitleSound {
     const s = this.s;
     if (this.stopped || !s.ready()) return;
     if (!this.out) this.build();
-    if (this.music?.gain && !this.ducked) {
-      this.ducked = true;
-      this.music.duck(3600, 0); // 타이틀 동안 대기실 음악 끔 (나가면 stop 이 되돌림)
-    }
     const now = s.ctx.currentTime;
     if (now >= this.nextPing) {
       if (this.nextPing) this.ping();
@@ -176,11 +172,10 @@ export class TitleSound {
     s.tone({ freq: midiHz(this.S.pitch + 12), freqEnd: midiHz(this.S.pitch + 24), dur: C.TITLE_EXIT_MS / 1000, type: 'sine', vol: C.TITLE_SOUND.exit * 0.3, out: this.fx });
   }
 
-  // 끝: 앰비언트 천천히 줄이고 노드 정리, 배경음악 되돌림
+  // 끝: 앰비언트 천천히 줄이고 노드 정리
   stop() {
     if (this.stopped) return;
     this.stopped = true;
-    if (this.ducked && this.music) this.music.duck(0, 1);
     if (!this.out) return;
     const ctx = this.s.ctx;
     const t = ctx.currentTime;

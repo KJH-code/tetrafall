@@ -27,9 +27,10 @@ import('/ragdoll.js')
   .catch((e) => console.warn('래그돌 끔: cannon-es 를 못 불러옴 (npm install 필요)', e));
 import { World } from '/world.js';
 import { Hazard } from '/hazard.js';
-import { MenuScene } from '/menu-scene.js';
 import { TitleScene } from '/title-scene.js';
-import { titleMapFor } from '/shared/title.js';
+import { LobbyDark } from '/lobby-dark.js';
+import { lobbyTheme } from '/shared/title.js';
+import { sessionTheme, markTheme } from '/menu-theme.js';
 import { labelSizes } from '/shared/hud-layout.js';
 import { prof } from '/perf.js';
 
@@ -664,13 +665,16 @@ export class Renderer {
   }
 
   // 타이틀 화면 (title.js 가 부름): 테마 엔딩 장면 (title-scene.js, 자기 장면·카메라로 그림) + 블록 로고. instant = 떨어짐 없이 완성 로고.
-  // 뒤 메뉴 섬은 그 테마의 맵 (하얗게 덮인 동안 바뀜)
+  // Enter 뒤 그 장면이 그대로 메뉴 배경 (방에 들어갈 때 치움)
   startTitle(theme, instant = false) {
-    const map = titleMapFor(theme);
-    if (!this.menu || this.menu.mapId !== map) this.menu = new MenuScene(Math.random, this.lowGfx, map);
     this.endTitle();
     this.title = new TitleScene(this, theme, { instant, low: this.lowGfx });
     return this.title;
+  }
+
+  // 지금 배경 테마 (메뉴 = 타이틀 장면, 대기실 = 방 맵 테마 장면) — 음악 앰비언트·HTML 판 색
+  get backdropTheme() {
+    return this.title?.theme ?? this.dark?.theme ?? null;
   }
 
   endTitle() {
@@ -684,7 +688,9 @@ export class Renderer {
     if (this.lowGfx === !!on) return;
     this.lowGfx = !!on;
     document.body.classList.toggle('low-gfx', this.lowGfx); // 메뉴 배경 흐림 끔 (index.html)
-    this.menu = null; // 메뉴 장면을 새 설정으로 (캐릭터 수)
+    if (this.title && this.title.menu) this.endTitle(); // 메뉴 배경을 새 설정으로 (다음 프레임에 다시 만듦)
+    this.dark?.dispose(); // 대기실 배경도
+    this.dark = null;
     this.renderer.setPixelRatio(on ? 1 : Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.world.setLow(on);
@@ -699,7 +705,9 @@ export class Renderer {
 
   draw(camera) {
     const t = prof.begin(); // 성능 표시 (F3): 렌더 구간
-    if (this.outlineOn) this.outline.render(this.scene, camera);
+    if (this.dark && this.dark.draw(camera)) {
+      // 대기실 어두운 장면: 블룸 (lobby-dark.js 가 외곽선까지 그림)
+    } else if (this.outlineOn) this.outline.render(this.scene, camera);
     else this.renderer.render(this.scene, camera);
     this.hazard.drawOverlay(this.renderer); // 위험이 발 밑에 가까우면 화면 가장자리 색
     prof.end('render', t);
@@ -3065,33 +3073,33 @@ export class Renderer {
 
   render(state, myId, dt, view, cam) {
     if (!state) {
-      // 메뉴(방 밖): 화면만의 가짜 대기 장면 (menu-scene.js). 방에 들어가면 버림
-      this.menu ||= new MenuScene(Math.random, this.lowGfx);
-      if (this.title) {
-        // 타이틀 (title-scene.js): 메뉴 장면 대신 테마 엔딩 장면만 그림 (하얗게 다 덮이면 title.js 가 endTitle → 메뉴 섬)
-        this.title.step(dt || 0);
-        const tp = prof.begin();
-        this.title.draw();
-        prof.end('render', tp);
-        return;
+      // 메뉴(방 밖): 타이틀 엔딩 장면이 그대로 배경 (title-scene.js). 타이틀을 안 거쳤으면 이번 창 테마로 메뉴 카메라부터
+      if (this.dark) {
+        this.dark.dispose(); // 방에서 나옴
+        this.dark = null;
       }
-      const f = this.menu.step(dt || 0);
-      // 섬이 가운데 메뉴 판에 가리지 않게 화면 왼쪽으로 비킴 (카메라 화면만 옆으로 밀기)
-      const shift = C.MENU_VIEW_SHIFT;
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-      this.camera.setViewOffset(w, h, w * shift, 0, w, h);
-      return this.render(f.state, null, dt, 'fps', f.cam);
+      this.title ||= new TitleScene(this, sessionTheme(), { menu: true, low: this.lowGfx });
+      markTheme(this.title.theme);
+      this.title.step(dt || 0);
+      const tp = prof.begin();
+      this.title.draw();
+      prof.end('render', tp);
+      return;
     }
-    if (this.menu && !state.menu) {
-      this.menu = null; // 진짜 판·대기실이 옴 → 가짜 몸은 아래 players 정리에서 지워짐
-      this.endTitle();
-      this.camera.clearViewOffset();
-    }
+    if (this.title) this.endTitle(); // 진짜 판·대기실이 옴
     this.curState = state;
     if (state.field) this.setField(state.field.w, state.field.d, false, state.field.h || C.GRID_H);
     const tg = prof.begin(); // 성능 표시: 블록·지형 갱신
     this.world.update(state, dt);
+    // 대기실 (판 전, 연습 아님): 섬 둘레를 그 맵 테마의 어두운 엔딩 장면으로 (lobby-dark.js). 판이 시작되면 밝은 판
+    const dk = lobbyTheme(state); // 고른 맵의 테마 (맵 미리보기)
+    if (this.dark && !this.dark.fits(dk)) {
+      this.dark.dispose();
+      this.dark = null;
+    }
+    if (dk && !this.dark) this.dark = new LobbyDark(this, dk);
+    this.dark?.update();
+    markTheme(this.dark ? this.dark.theme : null);
     this.stepView(view, dt);
     if (state.grid && state.grid.length === this.W * this.D * this.H && state.gridVersion !== this.gridVersion) {
       this.updateGrid(state.grid);

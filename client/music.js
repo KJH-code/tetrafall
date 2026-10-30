@@ -3,6 +3,7 @@
 // 분위기 'calm'(대기·판 종료) → 대기실 곡, 'battle'(판 중) → 맵 테마 곡, 'lava'(위험이 차오르는 중) → 맵 테마 긴장 버전.
 // 16분음표 한 칸씩 조금 앞서 예약해서(lookahead) 프레임이 끊겨도 박자가 안 밀린다.
 import { CONFIG as C } from '../shared/config.js'; // (상대 경로: 테스트가 node 에서도 불러옴)
+import { lobbyTheme } from '../shared/title.js';
 
 const STEPS = 16; // 한 마디 16칸
 const AHEAD_S = 0.2; // 이만큼 앞까지 예약
@@ -56,6 +57,22 @@ export class Music {
     this.timer = null;
     this.notes = 0; // 예약한 음 수 (헤드리스 확인용)
     this.motifs = new Map(); // 곡 이름 → 마디별 멜로디 (음계 칸 또는 null)
+    this.ambient = null; // 앰비언트 (title-sound.js TitleSound): 타이틀·메뉴·대기실은 곡 대신 테마 앰비언트
+    this.makeAmbient = null; // (테마 id) => TitleSound — main.js 가 넣음 (없으면 앰비언트 없이 예전 곡)
+  }
+
+  // 그 테마 앰비언트 (이미 같은 테마면 그대로, 다르면 바꿈). 타이틀이 착지·반짝 소리도 여기에 냄
+  ambientFor(theme) {
+    if (this.ambient && this.ambient.theme === theme) return this.ambient;
+    this.ambient?.stop();
+    this.ambient = theme && this.makeAmbient ? this.makeAmbient(theme) : null;
+    return this.ambient;
+  }
+
+  // 지금 앰비언트를 틀 테마: 메뉴 (state 없음) = 메뉴 테마, 대기실 (판 전, 연습 아님) = 방 맵 테마, 그 밖 (판·결과) = 없음 (곡)
+  static ambientTheme(state, menuTheme) {
+    if (!state) return menuTheme || null;
+    return lobbyTheme(state);
   }
 
   // 설정의 음악 크기 (0~1, MUSIC_VOLUME 에 곱함). 0 이면 꺼서 예약도 안 함
@@ -90,9 +107,19 @@ export class Music {
     return songFor(this.songKey(), this.mood === 'lava');
   }
 
-  // 매 프레임 불러도 됨: 오디오가 깨어나면 한 번만 준비하고 예약 타이머를 돌린다. state 로 맵 테마를 고름
-  update(state) {
+  // 매 프레임 불러도 됨: 오디오가 깨어나면 한 번만 준비하고 예약 타이머를 돌린다. state 로 맵 테마를 고름.
+  // menuTheme: 메뉴 배경 테마 (renderer.backdropTheme) — 메뉴·대기실은 곡 대신 테마 앰비언트 (판 시작하면 곡)
+  update(state, menuTheme = null) {
     if (state && state.map) this.theme = C.WORLD_MAP_THEME?.[state.map.id] || null;
+    if (this.makeAmbient) {
+      const want = Music.ambientTheme(state, menuTheme);
+      if (want) this.ambientFor(want);
+      else if (this.ambient) {
+        this.ambient.stop();
+        this.ambient = null;
+      }
+      this.ambient?.update();
+    }
     if (this.timer || !this.sound.ready()) return;
     this.build(this.sound.ctx, this.sound.ctx.destination);
     this.nextAt = this.sound.ctx.currentTime + 0.1;
@@ -124,8 +151,8 @@ export class Music {
 
   schedule() {
     const ctx = this.ctx;
-    if (!this.on) {
-      this.nextAt = ctx.currentTime + 0.1; // 꺼져 있는 동안은 예약 안 함 (켜면 바로 이어서)
+    if (!this.on || this.ambient) {
+      this.nextAt = ctx.currentTime + 0.1; // 꺼져 있거나 앰비언트 동안은 예약 안 함 (켜면 바로 이어서)
       return;
     }
     if (this.nextAt < ctx.currentTime) this.nextAt = ctx.currentTime + 0.05; // 탭이 멈췄다 돌아온 경우
