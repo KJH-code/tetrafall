@@ -169,13 +169,14 @@ function escapeHtml(s) {
 
 const KIND_KO = { push: '밀치기', projectile: '투사체', shock: '설치 블록 충격파', bomb: '폭탄', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', blockslam: '블록내려찍기', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기', quake: '솟는 땅', ghost: '유령블록', shell: '포탄', bigshell: '대형 포탄', groundshot: '발밑 포격', pounce: '추적 도약', execute: '처형 사격', leapwave: '광폭 도약', spin: '분노 소용돌이', note: '음파', riff: '리프', amp: '앰프 음파' }; // 캐릭터 무기 이름은 config SKILL_NAMES·ULT_NAMES 와 같게
 const ITEM_KO = { control: '조종권', knockback: '투사체', jump: '점프력 상승', ghost: '유령화', brick: '설치 블록', bomb: '폭탄', speed: '이속 증가' };
-const CAUSE_KO = { crush: '압사', fall: '낙사', lava: '용암' };
+const CAUSE_KO = { crush: '압사', fall: '낙사', lava: '용암', hp: '체력' }; // hp = 체력전 HP 0
 const WEAPON_KO = { push: '밀치기', projectile: '투사체', shock: '충격파', bomb: '폭탄', control: '조종 블록', thrown: '설치 블록', charge: '돌진', slam: '내려찍기', slash: '순간 베기', wall: '솟는 벽', hook: '갈고리', blockslam: '블록내려찍기', blast: '블록 폭발', bigbomb: '대폭발', wallkick: '벽차기', quake: '솟는 땅', ghost: '유령블록', glide: '낙하 음파', shell: '포탄', bigshell: '대형 포탄', groundshot: '발밑 포격', pounce: '추적 도약', execute: '처형 사격', leapwave: '광폭 도약', spin: '분노 소용돌이', note: '음파', riff: '리프', amp: '앰프 음파' };
 
 // 오른쪽 위 킬 피드: "죽인 사람 ▸ 죽은 사람 낙사 (망치)" + 연속 킬. 내 킬은 금빛, 내 죽음은 빨강
 // 판 동안 킬·죽음·자멸·연속 킬 세기 (shared/kills-hud.js — 서버 스냅샷에 그 필드가 오면 그것이 먼저)
 const killTally = new KillTally();
 let tallyRound = null;
+let killEvents = false; // 서버가 'kill' 이벤트 (killer·victim·streak) 를 보내면 킬 피드·세기는 그것으로, 아니면 예전 'death' 로
 const killfeedEl = $('killfeed');
 function killFeed(e, streak) {
   const victim = playerById(e.who);
@@ -786,8 +787,12 @@ function handleEvent(e) {
     case 'controlStart':
       if (e.who !== myId) toast(`${nameOf(e.who)} 블록 조종 시작. 그림자를 조심!`);
       break;
+    case 'kill': // 죽음마다 하나 (killer null = 자멸, streak = 죽지 않고 이어 낸 킬)
+      if (e.cause === 'disconnect') break;
+      killFeed({ who: e.victim, by: e.killer, byName: e.killerName, cause: e.cause, weapon: e.weapon }, killTally.add({ who: e.victim, by: e.killer, streak: e.streak }));
+      break;
     case 'death':
-      if (e.cause !== 'disconnect') killFeed(e, killTally.add(e));
+      if (e.cause !== 'disconnect' && !killEvents) killFeed(e, killTally.add(e));
       if (e.who === myId) {
         // 나를 죽인 사람부터 따라감 (없거나 이미 죽었으면 다음 사람)
         spec.killed = { cause: e.cause, by: e.by, byName: e.byName, weapon: e.weapon };
@@ -1042,6 +1047,7 @@ function connect() {
       }
       onState();
       updateScreen(); // 화면 전환은 스냅샷을 받는 즉시 시작 (다음 그리기 프레임이 무거워도 띠는 컴포지터에서 돎)
+      if (!killEvents && msg.events && msg.events.some((e) => e.type === 'kill')) killEvents = true; // 같은 묶음의 'death' 보다 먼저 알아야 두 줄이 안 뜸
       for (const e of msg.events || []) handleEvent(e);
     }
   };
@@ -1273,14 +1279,13 @@ skyLabel.append(skyBox, ' 하늘 계단');
 skyLabel.title = '떨어지는 블록이 하늘까지 쌓여 위로 올라갈 수 있음 (높이 2배)';
 $('bot-btns').append(skyLabel);
 skyBox.addEventListener('change', () => send({ type: 'skyStairs', on: skyBox.checked }));
-// 체력전 (호스트, 판 사이): 서버가 스냅샷에 hpMode 를 보낼 때만 보임 (A1 서버 쪽). 메시지 이름은 하늘 계단과 같은 꼴
+// 체력전 (호스트, 판 사이): 서버 메시지 {type:'hpMode', on}, 켜져 있으면 스냅샷 hpMode·hpMax·players[].hp
 const hpLabel = document.createElement('label');
 const hpBox = document.createElement('input');
 hpBox.type = 'checkbox';
 hpBox.id = 'hp-mode';
 hpLabel.append(hpBox, ' 체력전');
 hpLabel.title = '% 대신 체력: 다 닳으면 KO (아래 판에 HP 막대)';
-hpLabel.classList.add('hidden');
 $('bot-btns').append(hpLabel);
 hpBox.addEventListener('change', () => send({ type: 'hpMode', on: hpBox.checked }));
 $('bot-level').addEventListener('change', (e) => send({ type: 'botLevel', level: e.target.value }));
@@ -1650,17 +1655,18 @@ function updateScore() {
   scoreEl.classList.toggle('kills', kills);
   if (kills) {
     // 킬 점수전: 목표 킬까지 진행 막대. 개인전 1~3위 + 나, 팀전 팀 합계 (shared/kills-hud.js)
-    const tail = `<span class="sep">·</span><span class="goal">목표 ${state.teamMode ? C.KILLS_TARGET_TEAM : C.KILLS_TARGET}킬</span>${left ? `<span class="sep">·</span>${left}` : ''}`;
+    const goal = killGoal();
+    const tail = `<span class="sep">·</span><span class="goal">목표 ${goal}킬</span>${left ? `<span class="sep">·</span>${left}` : ''}`;
     const bar = (score, target, col) => `<i class="prog"><i style="width:${(progress(score, target) * 100).toFixed(1)}%;background:${col}"></i></i>`;
     if (state.teamMode) {
-      const T = C.KILLS_TARGET_TEAM;
+      const T = goal;
       scoreEl.innerHTML = `${team('red')} <b>${ts.red}</b>${bar(ts.red, T, hex(TEAM_MAIN.red))}<span class="sep">:</span>${bar(ts.blue, T, hex(TEAM_MAIN.blue))}<b>${ts.blue}</b> ${team('blue')}${tail}`;
     } else {
       scoreEl.innerHTML =
         topBar(ps, myId)
           .map((r) => {
             const p = playerById(r.id);
-            return `<span class="kc${r.me ? ' mine' : ''}${r.extra ? ' extra' : ''}"><em>${r.rank}</em>${name(p)} <b>${r.score}</b>${bar(r.score, C.KILLS_TARGET, colorOf(p))}</span>`;
+            return `<span class="kc${r.me ? ' mine' : ''}${r.extra ? ' extra' : ''}"><em>${r.rank}</em>${name(p)} <b>${r.score}</b>${bar(r.score, goal, colorOf(p))}</span>`;
           })
           .join('') + tail;
     }
@@ -1770,7 +1776,7 @@ function updatePlayers() {
     c.el.classList.toggle('dead', dead);
     c.el.classList.toggle('away', !!p.away); // 끊겨서 자리만 남음 (봇이 대신 조종) — 글자 + 살짝 흐리게
     c.el.classList.toggle('watch', spectating() && !spec.overview && spec.target === p.id); // 관전 중 보고 있는 사람
-    const hpf = state.hpMode ? hpFrac(p) : null; // 체력전: % 옆 HP 막대 (서버 hp·hpMax)
+    const hpf = state.hpMode ? hpFrac(p, state.hpMax) : null; // 체력전: % 아래 HP 막대 (서버 players[].hp · 스냅샷 hpMax)
     c.el.classList.toggle('has-hp', hpf !== null);
     if (hpf !== null) {
       c.hp.style.width = `${(hpf * 100).toFixed(1)}%`;
@@ -2043,8 +2049,7 @@ function drawHud() {
   const mapSel = $('map-select');
   if (state.map && document.activeElement !== mapSel) mapSel.value = state.map.choice;
   if (state.skyStairs !== undefined) skyBox.checked = !!state.skyStairs;
-  hpLabel.classList.toggle('hidden', state.hpMode === undefined);
-  if (state.hpMode !== undefined) hpBox.checked = !!state.hpMode;
+  if (document.activeElement !== hpBox) hpBox.checked = !!state.hpMode; // 끄면 스냅샷에 hpMode 가 없음
   const lvSel = $('bot-level');
   if (state.botLevel && document.activeElement !== lvSel) lvSel.value = state.botLevel;
   const modeSel = $('mode-select');
@@ -2083,6 +2088,8 @@ let scoresHeld = false; // 연습 창 키(기본 Tab)를 누르고 있는 중
 let scoreboardKey = '';
 const scoreboardEl = $('scoreboard');
 const respawnEl = $('respawn');
+// 목표 킬: 서버가 스냅샷에 실어 주면 그 값 (A1: 곧 인원별로 바뀜, 필드 이름 정해지면 여기만), 없으면 config
+const killGoal = () => (Number.isInteger(state.killTarget) ? state.killTarget : state.teamMode ? C.KILLS_TARGET_TEAM : C.KILLS_TARGET);
 const killsGame = () => !!state && state.mode === 'kills' && !inPractice() && ['countdown', 'playing', 'over'].includes(state.phase);
 function updateKillsHud() {
   // Tab 점수표: 등수·이름·킬·죽음·자멸·점수 (팀전은 팀끼리)
@@ -2093,7 +2100,7 @@ function updateKillsHud() {
     const key = JSON.stringify(rows) + myId;
     if (key !== scoreboardKey) {
       scoreboardKey = key;
-      const target = state.teamMode ? C.KILLS_TARGET_TEAM : C.KILLS_TARGET;
+      const target = killGoal();
       const ts = state.teamScores || { red: 0, blue: 0 };
       const head = state.teamMode
         ? `<span style="color:${hex(TEAM_MAIN.red)}">빨강 ${ts.red}</span> : <span style="color:${hex(TEAM_MAIN.blue)}">${ts.blue} 파랑</span> · 목표 ${target}킬`

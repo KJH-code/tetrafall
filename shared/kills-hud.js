@@ -81,8 +81,9 @@ export function scoreRows(players, tally, teamMode) {
 // 부활까지 큰 숫자 (올림 초, 0 이하면 0)
 export const respawnSecs = (ms) => (ms > 0 ? Math.ceil(ms / 1000) : 0);
 
-// 체력전 HP 비율 (hp·hpMax 가 없으면 null → 막대 안 그림)
-export function hpFrac(p) {
-  if (!p || !Number.isFinite(p.hp) || !(p.hpMax > 0)) return null;
-  return Math.max(0, Math.min(1, p.hp / p.hpMax));
+// 체력전 HP 비율: players[].hp ÷ hpMax (스냅샷 맨 위 hpMax, 사람마다 hpMax 가 있으면 그것). 없으면 null → 막대 안 그림
+export function hpFrac(p, hpMax) {
+  const max = p && p.hpMax > 0 ? p.hpMax : hpMax;
+  if (!p || !Number.isFinite(p.hp) || !(max > 0)) return null;
+  return Math.max(0, Math.min(1, p.hp / max));
 }

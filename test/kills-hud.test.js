@@ -70,4 +70,6 @@ test('부활 초는 올림, 체력전 HP 는 hp·hpMax 가 있을 때만 0~1', (
   assert.equal(hpFrac({ hp: -5, hpMax: 100 }), 0);
   assert.equal(hpFrac({ damage: 30 }), null, '체력전 아님');
   assert.equal(hpFrac(null), null);
+  assert.equal(hpFrac({ hp: 60 }, 120), 0.5, '스냅샷 맨 위 hpMax (A1 서버)');
+  assert.equal(hpFrac({ hp: 60 }), null, 'hpMax 없음');
 });
