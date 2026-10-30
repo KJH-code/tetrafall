@@ -65,7 +65,7 @@ export function startTitle({ renderer, reduced = false, unlock = () => {}, onDon
   const clock = () => {
     if (finished) return;
     const now = performance.now();
-    if (swapped) scene.exitT += now - last;
+    if (swapped) scene.exitT += Math.min(50, now - last); // 느린 컴퓨터에서도 걷히는 게 보이게 (한 프레임 최대 50ms)
     last = now;
     requestAnimationFrame(clock);
   };
