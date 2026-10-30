@@ -25,6 +25,7 @@ import { World } from '/world.js';
 import { Hazard } from '/hazard.js';
 import { MenuScene } from '/menu-scene.js';
 import { TitleScene } from '/title-scene.js';
+import { titleMapFor } from '/shared/title.js';
 import { labelSizes } from '/shared/hud-layout.js';
 import { prof } from '/perf.js';
 
@@ -642,11 +643,13 @@ export class Renderer {
     this.effects.ring(pos, 0xffffff, 1.4, 0.3, true);
   }
 
-  // 타이틀 화면 (title.js 가 부름): 메뉴 장면 하늘에 블록 로고. instant = 떨어짐 없이 완성 로고
-  startTitle(instant = false) {
-    if (!this.menu || this.menu.mapId !== C.TITLE_MAP) this.menu = new MenuScene(Math.random, this.lowGfx, C.TITLE_MAP); // 타이틀 섬 = 수정 동굴 고정, 내려온 메뉴도 같은 섬
+  // 타이틀 화면 (title.js 가 부름): 테마 엔딩 장면 (title-scene.js, 자기 장면·카메라로 그림) + 블록 로고. instant = 떨어짐 없이 완성 로고.
+  // 뒤 메뉴 섬은 그 테마의 맵 (하얗게 덮인 동안 바뀜)
+  startTitle(theme, instant = false) {
+    const map = titleMapFor(theme);
+    if (!this.menu || this.menu.mapId !== map) this.menu = new MenuScene(Math.random, this.lowGfx, map);
     this.endTitle();
-    this.title = new TitleScene(this, this.menu.camYaw, instant);
+    this.title = new TitleScene(this, theme, { instant, low: this.lowGfx });
     return this.title;
   }
 
@@ -3040,17 +3043,17 @@ export class Renderer {
     if (!state) {
       // 메뉴(방 밖): 화면만의 가짜 대기 장면 (menu-scene.js). 방에 들어가면 버림
       this.menu ||= new MenuScene(Math.random, this.lowGfx);
-      const f = this.menu.step(dt || 0, !this.title); // 타이틀 동안은 카메라가 안 돎 (내려온 자리 = 메뉴 카메라)
-      // 섬이 가운데 메뉴 판에 가리지 않게 화면 왼쪽으로 비킴 (카메라 화면만 옆으로 밀기)
-      let shift = C.MENU_VIEW_SHIFT;
       if (this.title) {
-        // 타이틀 (title-scene.js): 하늘의 로고를 보다가 누르면 메뉴 카메라 자리로 내려옴
-        const look = new THREE.Vector3(this.W / 2, this.D / 2, this.overviewZ ?? 2);
-        const e = orbitEye(look, f.cam.yaw, f.cam.pitch, f.cam.overviewDist);
-        const ts = this.title.step(dt || 0, { eye: new THREE.Vector3(e.x, e.y, Math.max(0.5, e.z)), look });
-        f.cam.pose = ts.pose;
-        shift = ts.shift;
+        // 타이틀 (title-scene.js): 메뉴 장면 대신 테마 엔딩 장면만 그림 (하얗게 다 덮이면 title.js 가 endTitle → 메뉴 섬)
+        this.title.step(dt || 0);
+        const tp = prof.begin();
+        this.title.draw();
+        prof.end('render', tp);
+        return;
       }
+      const f = this.menu.step(dt || 0);
+      // 섬이 가운데 메뉴 판에 가리지 않게 화면 왼쪽으로 비킴 (카메라 화면만 옆으로 밀기)
+      const shift = C.MENU_VIEW_SHIFT;
       const w = window.innerWidth;
       const h = window.innerHeight;
       this.camera.setViewOffset(w, h, w * shift, 0, w, h);

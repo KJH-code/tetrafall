@@ -1005,9 +1005,9 @@ export const CONFIG = {
   WORLD_BLOCK_JITTER: 0.08, // 칸마다 밝기 흔들림 (±)
   WORLD_BLOCK_BEVEL: 0.07, // 블록 모서리 깎은 반지름 (칸). 윗면 가운데는 평평 → 서는 자리 그대로
   WORLD_DECOR_MAX: 240, // 블록 소품 (결정 덩어리·깨진 돌) 최대 수. 그래픽 낮춤이면 없음 // 구름 바다 판: 이 거리부터 끝까지 투명해짐 (판 끝이 지평선에 곡선으로 안 보이게)
-  // 타이틀 화면 (shared/title.js 계산 · client/title-scene.js 3D · client/title.js 흐름). 처음 켤 때만, 링크로 오면 건너뜀
+  // 타이틀 화면 (shared/title.js 계산 · client/title-scene.js 3D · client/title-world.js 테마 장면 · client/title-sound.js 소리 · client/title.js 흐름). 처음 켤 때만, 링크로 오면 건너뜀.
+  // 2026-10-30 재혁: 지오메트리 대시 엔딩 아트처럼 — 켤 때마다 맵 테마 7개 중 무작위 하나의 어두운 '엔딩' 장면 (타이틀 전용, 판 맵은 그대로) + 빛나는 글자 + 빛 터짐
   TITLE_TEXT: 'TETRAFALL', // 로고 글자 (5×7 복셀 글꼴: 대문자·숫자·! -)
-  TITLE_MAP: 'stairs', // 타이틀 뒤 섬 = 수정 동굴 (자수정 하늘, 재혁 2026-10-29). 타이틀에서 내려온 메뉴도 이 섬, 타이틀 안 거친 메뉴는 무작위
   TITLE_BOLD: 2, // 글꼴 한 칸 = 2×2 칸 (획 2칸 두께, 10×14 글자)
   TITLE_GAP: 1, // 글자 사이 (글꼴 칸, ×TITLE_BOLD)
   TITLE_BUILD_MS: 3200, // 다 쌓이는 데 걸리는 시간 — 조각 수에서 출발 간격을 거꾸로 계산 (titleInterval)
@@ -1019,18 +1019,94 @@ export const CONFIG = {
   TITLE_BOUNCE: 0.25, // 튕김 높이 (글자 칸)
   TITLE_FAST: 6, // 누르면 남은 쌓기를 이만큼 빨리 감음
   TITLE_SCALE: 0.5, // 글자 칸 하나의 크기 (게임 칸)
-  TITLE_FILL: 0.8, // 로고 폭이 화면 폭의 이만큼 (카메라 거리를 화면 비율·시야각으로 계산)
-  TITLE_GLOW: 0.32, // 블록 색이 스스로 빛나는 정도 (밤 하늘에서도 튀게)
-  TITLE_OUTLINE: 0.16, // 검은 외곽선 두께 (블록 크기 비율)
-  TITLE_OUTLINE_COLOR: 0x0a0814,
-  TITLE_HEIGHT: 40, // 로고 높이 (섬 위, 칸)
-  TITLE_AHEAD: 24, // 로고가 섬 가운데에서 카메라가 보는 쪽으로 떨어진 거리
-  TITLE_CAM_UP: -4, // 그 카메라를 로고 가운데보다 조금 아래에 (올려다봄)
-  TITLE_CAM_SIDE: -2.5, // 옆으로 비켜 보기 (블록 옆면이 보이게)
-  TITLE_CAM_SWAY: 1.5, // 쌓이는 동안 옆으로 천천히 흔들림
-  TITLE_ZOOM_MS: 1100, // 누른 뒤 메뉴 섬 쪽으로 내려오는 시간
-  TITLE_WIPE_AT: 0.55, // 내려오기 이 비율에서 짧은 슬래시 시작
+  TITLE_FILL: 0.74, // 로고 폭이 화면 폭의 이만큼 (카메라 거리를 화면 비율·시야각으로 계산)
+  TITLE_FOV: 50, // 타이틀 카메라 세로 시야각 (영화처럼 좁게)
+  TITLE_CAM_UP: -1.6, // 카메라를 로고 가운데보다 조금 아래에 (올려다봄, 아래 반사가 보이게)
+  TITLE_CAM_SIDE: -3, // 옆으로 비켜 보기 (블록 옆면이 보이게)
+  TITLE_CAM_SWAY: 1.2, // 천천히 옆으로 흔들림
+  TITLE_CAM_PUSH: 0.1, // 쌓이는 동안 천천히 다가감 (거리 비율)
+  TITLE_OUTLINE: 0.1,
+  TITLE_BEVEL: 0.12, // 글자 블록 모서리 깎기 (블록 크기 비율, 칸이 살짝 보이게) // 빛 테두리 두께 (블록 크기 비율)
+  TITLE_DARK_MS: 1600, // 처음 캄캄 → 장면 빛이 천천히 밝아지는 시간
+  TITLE_LIT_START: 0.12, // 처음 장면 밝기 (0~1)
+  TITLE_GLOW: [0.15, 0.62], // 글자 스스로 빛남 [쌓이는 동안, 빛 터진 뒤]
+  TITLE_LAND_FLASH_MS: 380, // 블록이 닿을 때 번쩍 (그 블록만)
+  TITLE_BURST_MS: 1400, // 다 쌓인 순간 빛 터짐이 가라앉는 시간
+  TITLE_BURST_PEAK: 2.0, // 빛 터짐 때 글자 빛 배수 (가장 셀 때)
+  TITLE_SWEEP_MS: 2600, // 글자 위를 지나가는 빛 띠 주기 (빛 터진 뒤)
+  TITLE_SWEEP_W: 3, // 빛 띠 폭 (게임 칸)
+  TITLE_TWINKLE: 0.9, // 반짝임: 1초에 블록 몇 개가 반짝 (× 블록 수 / 100)
+  TITLE_BLOOM: [0.75, 0.5, 0.82], // 블룸 [세기, 퍼짐, 문턱 밝기] (그래픽 낮춤이면 끔)
+  TITLE_BLOOM_BURST: 1.25, // 빛 터짐 때 블룸 세기
+  TITLE_SPARKS: [140, 50], // 빛 터짐 불티 수 [보통, 그래픽 낮춤]
+  TITLE_REFLECT: 0.45,
+  TITLE_LIGHT: [9, 18, 22], // 빛 세기 배수 [앞 빛, 로고 뒤 빛, 테마 소품 빛] (× TITLE_THEMES key·back 세기) // 아래 바닥 반사 세기 (그래픽 낮춤이면 반사 대신 어두운 바닥)
+  TITLE_FLOOR_GAP: 1.1, // 로고 밑에서 바닥까지 (게임 칸)
+  TITLE_EXIT_MS: 950, // Enter 뒤: 카메라가 앞으로 빠져나가며 하얗게 되는 시간
+  TITLE_EXIT_FADE_MS: 750, // 하얀 화면이 걷히며 메뉴 섬이 보이는 시간
+  TITLE_HINT_DELAY_MS: 500, // 빛 터진 뒤 'Enter' 안내가 나오기까지
   TITLE_INPUT_DELAY_MS: 250, // 켜자마자 눌린 키는 무시
+  // 테마별 타이틀 장면 (맵 테마 id = WORLD_THEMES 키). 메뉴 섬은 그 테마의 맵 (WORLD_MAP_THEME 거꾸로)
+  // bg 배경 · fog [색, 로고 뒤 이만큼부터, 이만큼에서 다 가림] · amb [색, 세기] · key [색, 세기] 로고 앞 빛 · back [색, 세기] 로고 뒤 빛
+  // letter 글자 블록 색들 (조각마다 차례로) · glow 글자 빛 색 · edge 빛 테두리 색 · floor 바닥 색 · motes [색, 수, 크기, 위로 오름 빠르기] 떠다니는 빛 가루
+  // flare 렌즈 플레어 색 · sound { drone [Hz, Hz], hum 잡음 대역 Hz, ping 띄엄띄엄 소리 종류, land 블록 착지 재질, pitch 반짝 음 높이 }
+  TITLE_THEMES: {
+    crystal: {
+      name: '자수정 동굴', bg: 0x07040d, fog: [0x10071c, 18, 75], amb: [0x6a3a9a, 0.55], key: [0xff8ae8, 1.4], back: [0xb04bff, 2.2],
+      letter: [0xf6dcff, 0xe9c4ff, 0xffd6f1], glow: 0xff4fd8, edge: 0xff7be6, floor: 0x140a1f,
+      motes: [0xff7ae0, 260, 0.16, 0.05], flare: 0xff8af0,
+      crystals: [0xb24bff, 0xff5fd2, 0x8a5bff], rock: 0x241536,
+      sound: { drone: [55, 82.4], hum: 380, ping: 'drip', land: 'crystal', pitch: 76 },
+    },
+    volcano: {
+      name: '화산', bg: 0x070202, fog: [0x1a0603, 20, 80], amb: [0x5a1a0a, 0.5], key: [0xffa060, 1.3], back: [0xff4a10, 2.4],
+      letter: [0xffd2a0, 0xffbd80, 0xffe2b8], glow: 0xff5a14, edge: 0xff7a2a, floor: 0x120807,
+      motes: [0xff7020, 220, 0.14, 1.1], flare: 0xffa050,
+      lava: 0xff4a0a, rock: 0x1c1210,
+      sound: { drone: [41.2, 61.7], hum: 160, ping: 'ember', land: 'stone', pitch: 69 },
+    },
+    desert: {
+      mirror: false, // 거울 바닥 없음 (테마가 땅을 만듦)
+      name: '별빛 사막', bg: 0x04071a, fog: [0x0a1030, 30, 110], amb: [0x2a3a7a, 0.6], key: [0xffe6b0, 1.3], back: [0xffb640, 1.8],
+      letter: [0xffe9b8, 0xfff2d0, 0xffdc9a], glow: 0xffb030, edge: 0xffd070, floor: 0x161a34,
+      motes: [0xfff0c0, 120, 0.1, 0.02], flare: 0xffe0a0,
+      sand: 0x2a2c50, stone: 0x3a3456, cap: 0xffc040, moon: 0xdfe8ff,
+      sound: { drone: [49, 73.4], hum: 900, ping: 'wind', land: 'sand', pitch: 74 },
+    },
+    mushroom: {
+      name: '빛 버섯 숲', bg: 0x030a0c, fog: [0x061a1c, 16, 70], amb: [0x1a5a5a, 0.55], key: [0xa0fff0, 1.2], back: [0x30ffc8, 2.0],
+      letter: [0xd6fff4, 0xc4f6ff, 0xf0d6ff], glow: 0x30ffc8, edge: 0x60ffe0, floor: 0x081412,
+      motes: [0x80ffd8, 240, 0.12, 0.25], flare: 0x90ffe8,
+      caps: [0x30e8ff, 0xff4fd0, 0x7cff6a], stem: 0x2a3a3a,
+      sound: { drone: [52, 78], hum: 600, ping: 'bubble', land: 'soft', pitch: 79 },
+    },
+    skycastle: {
+      mirror: false, // 거울 바닥 없음 (테마가 땅을 만듦)
+      name: '밤 구름 위 성', bg: 0x050820, fog: [0x0c1238, 30, 120], amb: [0x3a4a9a, 0.6], key: [0xd8e6ff, 1.3], back: [0x7fb0ff, 2.0],
+      letter: [0xeef4ff, 0xdce8ff, 0xfff4dc], glow: 0x6fa8ff, edge: 0x9cc6ff, floor: 0x1a2048,
+      motes: [0xcfe0ff, 140, 0.1, 0.03], flare: 0xc0d8ff,
+      cloud: 0x2c3570, wall: 0x2a2f58, roof: 0x3a2f6a, window: 0xffd27a, moon: 0xeef4ff,
+      sound: { drone: [58.3, 87.3], hum: 1200, ping: 'chime', land: 'stone', pitch: 81 },
+    },
+    castle: {
+      name: '횃불 성벽', bg: 0x080504, fog: [0x140c08, 18, 75], amb: [0x4a2a18, 0.5], key: [0xffc890, 1.3], back: [0xff9a30, 2.0],
+      letter: [0xffe6c0, 0xfff0d8, 0xffd6a0], glow: 0xff9a30, edge: 0xffb050, floor: 0x16100c,
+      motes: [0xffa040, 120, 0.1, 0.9], flare: 0xffc070,
+      wall: 0x2e2620, torch: 0xff8a20,
+      sound: { drone: [46.2, 69.3], hum: 220, ping: 'torch', land: 'stone', pitch: 72 },
+    },
+    meadow: {
+      mirror: false, // 거울 바닥 없음 (테마가 땅을 만듦)
+      name: '반딧불 밤 초원', bg: 0x030810, fog: [0x061420, 22, 90], amb: [0x2a4a5a, 0.55], key: [0xe8ffd0, 1.2], back: [0xb8ff50, 1.7],
+      letter: [0xf2ffd8, 0xe6ffc4, 0xfff6d0], glow: 0xa8ff40, edge: 0xc8ff70, floor: 0x0a1810,
+      motes: [0xd8ff60, 90, 0.2, 0.05], flare: 0xe0ffb0,
+      grass: 0x12301c, tree: 0x0a1a12, moon: 0xf0f6ff,
+      sound: { drone: [61.7, 92.5], hum: 2400, ping: 'cricket', land: 'soft', pitch: 77 },
+    },
+  },  // 타이틀 소리 (client/title-sound.js, 합성): vol 앰비언트 크기 · fadeIn 켜질 때 천천히 (초) · echo·echoDelay·echoFeedback 울림 · pingEvery 띄엄띄엄 소리 간격 [최소, 최대] 초
+  // land 착지 크기 · landGap 착지 소리 최소 간격 (초, 겹쳐 떨어지면 묶음) · burst 로고 완성 반짝 크기 · exit 빠져나가기 쉭 크기
+  TITLE_SOUND: { vol: 0.55, fadeIn: 2.5, echo: 0.45, echoDelay: 0.37, echoFeedback: 0.45, pingEvery: [1.4, 4.2], land: 0.55, landGap: 0.045, burst: 0.9, exit: 0.45 },
+
   // 메뉴(방 목록) 뒤 3D 대기 장면 (client/menu-scene.js, 화면만)
   MENU_CHARS: [4, 2], // 섬 위 캐릭터 수 [보통, 그래픽 낮춤]
   MENU_EMOTE_EVERY_MS: 7000, // 캐릭터마다 이모트 간격 (대충, 흔들림 있음)

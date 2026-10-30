@@ -104,10 +104,98 @@ test('타이틀: 카메라 거리 — 로고 폭이 화면 폭의 TITLE_FILL, �
   assert.ok(C.TITLE_FILL > 0.6 && C.TITLE_FILL < 0.95, '좌우 여백 적당히');
 });
 
-test('타이틀: 섬 맵 고정 (config TITLE_MAP = 수정 동굴 계단), 메뉴 장면이 그 맵으로', () => {
-  assert.equal(C.TITLE_MAP, 'stairs');
-  assert.equal(C.WORLD_MAP_THEME[C.TITLE_MAP], 'crystal');
-  assert.ok(MAP_IDS.includes(C.TITLE_MAP));
-  assert.equal(new MenuScene(Math.random, false, C.TITLE_MAP).mapId, 'stairs');
+test('타이틀 테마: 맵 테마 7개 모두 엔딩 장면 값이 빠짐 없이, 켤 때마다 무작위 하나 (어느 테마든 나옴), 뒤 메뉴 섬은 그 테마의 맵', async () => {
+  const { pickTitleTheme, titleMapFor, TITLE_THEME_IDS } = await import('../shared/title.js');
+  assert.deepEqual([...TITLE_THEME_IDS].sort(), Object.keys(C.WORLD_THEMES).sort(), '맵 테마 7개 = 타이틀 테마');
+  assert.equal(TITLE_THEME_IDS.length, 7);
+  const num = (v) => typeof v === 'number' && Number.isFinite(v);
+  for (const id of TITLE_THEME_IDS) {
+    const T = C.TITLE_THEMES[id];
+    for (const k of ['bg', 'glow', 'edge', 'floor', 'flare']) assert.ok(num(T[k]), `${id}.${k}`);
+    for (const k of ['amb', 'key', 'back']) assert.ok(num(T[k][0]) && num(T[k][1]) && T[k][1] > 0, `${id}.${k}`);
+    assert.ok(T.fog.length === 3 && T.fog[1] < T.fog[2], `${id}.fog`);
+    assert.ok(T.letter.length >= 1 && T.letter.every(num), `${id}.letter`);
+    assert.ok(T.motes.length === 4 && T.motes[1] > 0, `${id}.motes`);
+    assert.ok(typeof T.name === 'string' && T.name.length > 0);
+    // 어두운 장면: 배경이 어두움 (밝기 < 0.12)
+    const lum = (((T.bg >> 16) & 255) * 0.3 + ((T.bg >> 8) & 255) * 0.59 + (T.bg & 255) * 0.11) / 255;
+    assert.ok(lum < 0.12, `${id} 배경 어둡게 (${lum.toFixed(3)})`);
+    const S = T.sound;
+    assert.ok(S.drone.length === 2 && S.drone.every(num) && num(S.hum) && num(S.pitch), `${id}.sound`);
+    assert.ok(['drip', 'ember', 'wind', 'bubble', 'chime', 'torch', 'cricket'].includes(S.ping), `${id} ping ${S.ping}`);
+    assert.ok(['crystal', 'stone', 'sand', 'soft'].includes(S.land), `${id} land ${S.land}`);
+    const map = titleMapFor(id);
+    assert.ok(MAP_IDS.includes(map), `${id} → 맵 ${map}`);
+    assert.equal(C.WORLD_MAP_THEME[map], id);
+    assert.equal(new MenuScene(Math.random, false, map).mapId, map, '메뉴 장면이 그 맵으로');
+  }
+  assert.equal(C.TITLE_THEMES.crystal.sound.ping, 'drip', '수정 동굴 = 물방울·울림');
+  // 무작위: 0~1 난수 칸마다 다른 테마, 다 나옴
+  const seen = new Set();
+  for (let k = 0; k < 7; k++) seen.add(pickTitleTheme(() => (k + 0.5) / 7));
+  assert.equal(seen.size, 7);
+  assert.ok(TITLE_THEME_IDS.includes(pickTitleTheme(() => 0.999999)));
+  assert.ok(TITLE_THEME_IDS.includes(pickTitleTheme(Math.random)));
+  assert.equal(titleMapFor('nope'), null);
   assert.ok(MAP_IDS.includes(new MenuScene(Math.random, false, 'nope').mapId), '없는 맵이면 무작위');
+});
+
+test('타이틀 빛: 캄캄하게 시작해 밝아짐, 다 쌓인 순간 빛 터짐 (글자 빛 최대) → 가라앉아 잔잔히 빛남', async () => {
+  const { titleLight } = await import('../shared/title.js');
+  const done = 3000;
+  const a = titleLight(0, done);
+  assert.equal(a.lit, C.TITLE_LIT_START);
+  assert.ok(a.lit < 0.3, '처음은 어둡게');
+  assert.equal(a.burst, 0);
+  assert.ok(titleLight(C.TITLE_DARK_MS / 2, done).lit > a.lit);
+  assert.equal(titleLight(C.TITLE_DARK_MS, done).lit, 1);
+  assert.equal(titleLight(done - 1, done).burst, 0, '다 쌓이기 전엔 안 터짐');
+  assert.equal(titleLight(done, done).burst, 1);
+  const peak = Math.max(...[0, 100, 200, 300, 400].map((u) => titleLight(done + u, done).glow));
+  const calm = titleLight(done + C.TITLE_BURST_MS + 100, done);
+  assert.equal(calm.burst, 0);
+  assert.ok(Math.abs(calm.glow - C.TITLE_GLOW[1]) < 1e-9, '가라앉으면 TITLE_GLOW[1]');
+  assert.ok(peak > calm.glow * 1.5, '터질 때 훨씬 밝음');
+  assert.ok(titleLight(done - 500, done).glow < calm.glow, '쌓이는 동안은 약하게');
+  for (let u = 0; u < C.TITLE_BURST_MS; u += 100) assert.ok(titleLight(done + u + 100, done).burst <= titleLight(done + u, done).burst, '터짐은 줄어들기만');
+});
+
+test('타이틀 나가기: Enter 뒤 TITLE_EXIT_MS 동안 하얗게 (카메라 앞으로) → 다 덮이면 메뉴로 바꿈 → TITLE_EXIT_FADE_MS 동안 걷힘', async () => {
+  const { titleExit } = await import('../shared/title.js');
+  assert.deepEqual(titleExit(0), { push: 0, white: 0, swap: false, done: false });
+  let w = 0;
+  for (let ms = 0; ms < C.TITLE_EXIT_MS; ms += 50) {
+    const e = titleExit(ms);
+    assert.ok(e.white >= w && !e.swap);
+    w = e.white;
+  }
+  const at = titleExit(C.TITLE_EXIT_MS);
+  assert.equal(at.white, 1);
+  assert.equal(at.swap, true, '다 하얄 때 바꿈');
+  assert.ok(titleExit(C.TITLE_EXIT_MS + C.TITLE_EXIT_FADE_MS / 2).white < 1);
+  const end = titleExit(C.TITLE_EXIT_MS + C.TITLE_EXIT_FADE_MS);
+  assert.equal(end.white, 0);
+  assert.equal(end.done, true);
+  assert.ok(C.TITLE_EXIT_MS + C.TITLE_EXIT_FADE_MS < 2500, '빠르게 메뉴로');
+});
+
+test('타이틀: 프레임을 어떻게 나눠도 조각마다 착지 (소리·번쩍) 는 꼭 한 번', async () => {
+  const { landedBetween } = await import('../shared/title.js');
+  const pieces = titlePieces(titleCells(C.TITLE_TEXT, C.TITLE_GAP, C.TITLE_BOLD).cells);
+  const start = dropSchedule(pieces, titleInterval(pieces.length));
+  const done = titleDoneAt(start);
+  for (const step of [16.7, 33, 7, 250]) {
+    const count = new Array(pieces.length).fill(0);
+    for (let t = 0; t < done; t += step) for (const i of landedBetween(start, t, Math.min(done, t + step))) count[i]++;
+    assert.ok(count.every((c) => c === 1), `프레임 ${step}ms`);
+  }
+});
+
+test('타이틀 그래픽 값: 블룸·불티는 그래픽 낮춤 값이 더 작고, 무대 소리 값 있음', () => {
+  assert.equal(C.TITLE_BLOOM.length, 3);
+  assert.ok(C.TITLE_BLOOM_BURST > C.TITLE_BLOOM[0]);
+  assert.ok(C.TITLE_SPARKS[1] < C.TITLE_SPARKS[0]);
+  assert.ok(C.TITLE_GLOW[0] < C.TITLE_GLOW[1]);
+  for (const k of ['vol', 'land', 'burst', 'exit', 'echo']) assert.ok(C.TITLE_SOUND[k] > 0 && C.TITLE_SOUND[k] <= 1, k);
+  assert.ok(C.TITLE_SOUND.pingEvery[0] < C.TITLE_SOUND.pingEvery[1]);
 });

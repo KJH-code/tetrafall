@@ -9,7 +9,7 @@ import { CELL } from '../shared/pieces.js';
 const ID0 = -9000;
 
 export class MenuScene {
-  // rnd: 0~1 난수 (테스트에서 고정), low: 그래픽 낮춤, mapId: 섬 맵 (없으면 무작위 — 타이틀은 config TITLE_MAP)
+  // rnd: 0~1 난수 (테스트에서 고정), low: 그래픽 낮춤, mapId: 섬 맵 (없으면 무작위 — 타이틀 뒤면 그 테마의 맵, shared/title.js titleMapFor)
   constructor(rnd = Math.random, low = false, mapId = null) {
     this.rnd = rnd;
     this.mapId = MAP_IDS.includes(mapId) ? mapId : MAP_IDS[Math.floor(rnd() * MAP_IDS.length)];

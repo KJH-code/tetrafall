@@ -126,18 +126,27 @@
     /* 접속 상태 (client/net.js): 오른쪽 아래 작은 띠. 핑 색 = 상태, 렉 알림은 그 위 빨간 띠 (글자만, 아이콘 없음) */
     /* ===== 화면 전환 슬래시 (메뉴→방, 판 시작, 결과 등장, 결과→대기실) =====
        띠(.band)는 JS 가 translateX 로 쓸고, 기울기·색은 여기. 앞 띠들은 노랑·주황 줄로 먼저 지나가고 마지막 남색 띠(.main)가 화면을 다 덮음 */
-    /* ===== 타이틀 (처음 켤 때, client/title.js): 3D 블록 로고는 캔버스에, 여기는 아래 안내 글씨만 ===== */
+    /* ===== 타이틀 (처음 켤 때, client/title.js): 3D 엔딩 장면·블록 로고는 캔버스에, 여기는 영화 띠·안내 글씨·하얀 막만 ===== */
     #title { position: fixed; inset: 0; z-index: 40; pointer-events: auto; cursor: pointer;
-      background: radial-gradient(ellipse at 50% 42%, transparent 0 45%, rgba(3,5,12,.55) 100%); }
-    #title .hint { position: absolute; left: 50%; bottom: 13%; transform: translateX(-50%); font-family: var(--disp); font-size: clamp(20px, 2.6vw, 34px);
-      color: var(--text); letter-spacing: 2px; white-space: nowrap; text-shadow: 0 4px 0 rgba(0,0,0,.55), 0 0 18px rgba(0,0,0,.6);
-      padding: 8px 26px; background: rgba(6,9,19,.55); clip-path: polygon(var(--cut) 0, 100% 0, calc(100% - var(--cut)) 100%, 0 100%);
-      animation: title-blink 1.6s ease-in-out infinite; }
-    #title .hint b { color: var(--accent); }
+      background: radial-gradient(ellipse at 50% 45%, transparent 0 50%, rgba(0,0,0,.6) 100%); }
+    #title::before, #title::after { content: ''; position: absolute; left: 0; right: 0; height: 7vh; background: #000; transition: transform .9s ease-in; }
+    #title::before { top: 0; }
+    #title::after { bottom: 0; }
+    #title.pressed::before { transform: translateY(-100%); }
+    #title.pressed::after { transform: translateY(100%); }
+    #title .hint { position: absolute; left: 50%; bottom: 14%; transform: translateX(-50%); font-family: var(--disp); font-size: clamp(18px, 2.2vw, 30px);
+      color: #fff; letter-spacing: 6px; white-space: nowrap; text-shadow: 0 0 14px var(--title-glow, #fff), 0 0 2px rgba(0,0,0,.8);
+      opacity: 0; transition: opacity .8s ease-out; }
+    #title .hint b { color: var(--title-glow, var(--accent)); }
+    #title.ready .hint { opacity: 1; animation: title-blink 2.2s ease-in-out .8s infinite; }
     #title.pressed .hint { animation: none; opacity: 0; transition: opacity .2s; }
+    #title .white { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+    #title.out { pointer-events: none; background: none; z-index: 70; }
+    #title.out::before, #title.out::after, #title.out .hint { display: none; }
     #title.reduced { animation: title-fade .5s ease-out both; }
     #title.reduced .hint { animation: none; }
-    @keyframes title-blink { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+    #title.reduced::before, #title.reduced::after { transition: none; }
+    @keyframes title-blink { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
     @keyframes title-fade { from { opacity: 0; } to { opacity: 1; } }
     body.title-on #rooms, body.title-on #status, body.title-on #tutorial, body.title-on #center, body.title-on #crosshair { visibility: hidden; }
     #wipe { position: fixed; inset: 0; z-index: 60; pointer-events: none; overflow: hidden; display: none; }
@@ -615,7 +624,7 @@
 블록 마스터: <span data-keys="pieceUp,pieceDown,pieceLeft,pieceRight">↑/↓/←/→</span> 블록 이동 · <span data-keys="rotL,rotR">Q/E</span> 회전 · <span data-key="drop">Enter</span> 하드드롭 · 키는 설정에서 바꿈</div>
   </div>
   <!-- 화면 전환 슬래시 (main.js playWipe, 시간은 config UI_WIPE·계산은 shared/wipe.js): 띠만 그리고 클릭은 통과 -->
-  <div id="title" class="hidden"><div class="hint"><b>Enter</b> / 클릭하여 시작</div></div>
+  <div id="title" class="hidden"><div class="hint"><b>Enter</b> / 클릭하여 시작</div><div class="white"></div></div>
   <div id="wipe" aria-hidden="true"></div>
   <!-- 성능 표시 (F3, client/perf.js): 오른쪽 위 핑 아래, 글자만 -->
   <div id="perf" class="hidden"><pre class="txt"></pre><button class="copy ghost">복사</button></div>

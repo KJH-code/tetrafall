@@ -2737,6 +2737,6 @@ const debug = {
 window.__tf = debug;
 // 타이틀 화면 (client/title.js): 처음 켤 때만. 링크(?room=)·재접속 자동 복귀면 건너뜀
 // 처음 켠 사람(튜토리얼 안 물어봄)은 타이틀이 끝나면 '튜토리얼 할래?'
-if (showTitle(location.search)) debug.title = startTitle({ renderer, playWipe, reduced: reducedMotion(), unlock: () => sound.unlock(), onDone: () => tutorialState() === null && !myId && tut.ask() });
+if (showTitle(location.search)) debug.title = startTitle({ renderer, sound, music, theme: new URLSearchParams(location.search).get('title'), reduced: reducedMotion(), unlock: () => sound.unlock(), onDone: () => tutorialState() === null && !myId && tut.ask() });
 else if (tutorialState() === null && !new URLSearchParams(location.search).get('room')) tut.ask();
 debug.tut = tut;

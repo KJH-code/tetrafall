@@ -1,55 +1,172 @@
-// 타이틀 화면 3D: 메뉴 섬 위 먼 하늘에 테트리미노 블록이 떨어져 쌓이며 로고 (shared/title.js 계산), 누르면 카메라가 메뉴 섬 자리로 확 내려옴.
-// Renderer 가 메뉴 장면(menu-scene.js)과 같이 그림 (render.js: this.title). 블록 텍스처·색은 게임 블록 그대로
+// 타이틀 화면 3D (지오메트리 대시 엔딩 아트처럼): 테마 무대 (title-world.js, 켤 때마다 무작위) 가운데에 테트리미노 블록이 떨어져 쌓이며 로고
+// (shared/title.js 계산). 캄캄하게 시작 → 장면 빛이 천천히 → 블록이 닿을 때마다 번쩍 → 다 쌓이면 빛 터짐 (블룸·불티·렌즈 플레어) → 빛 띠·반짝임.
+// 누르면 카메라가 앞으로 빠져나가며 하얗게 (title.js 가 하얀 막을 씌우고 메뉴 섬으로 바꿈). 메뉴 장면과 따로 그림 (자기 THREE.Scene·카메라·블룸)
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { CONFIG as C } from '/shared/config.js';
-import { titleCells, titlePieces, dropSchedule, titleDoneAt, pieceLift, titleInterval, titleCamDist } from '/shared/title.js';
-import { toon, noOutline } from '/toon.js';
-
-const ease = (k) => (k < 0 ? 0 : k > 1 ? 1 : k * k * (3 - 2 * k));
+import { titleCells, titlePieces, dropSchedule, titleDoneAt, pieceLift, titleInterval, titleCamDist, titleLight, titleExit, landedBetween } from '/shared/title.js';
+import { TitleStage, glowSprite, glowTex } from '/title-world.js';
 
 export class TitleScene {
-  // r: Renderer. yaw: 메뉴 카메라 방향 (로고는 그 앞 하늘에, 내려오면 그대로 메뉴 카메라로). instant: 떨어짐 없이 완성 로고 (그래픽 낮춤·움직임 줄이기)
-  constructor(r, yaw, instant = false) {
+  // r: Renderer (WebGLRenderer·블록 텍스처를 빌림). theme: config TITLE_THEMES 키. instant: 떨어짐 없이 완성 로고 (움직임 줄이기). low: 그래픽 낮춤 (블룸·반사 끔)
+  constructor(r, theme, { instant = false, low = false } = {}) {
     this.r = r;
+    this.theme = theme;
+    this.T = C.TITLE_THEMES[theme];
+    this.low = low;
     this.t = 0; // 로고 시계 (ms)
     this.fast = false; // 누름 → 빨리 감기
-    this.zoomT = null; // 내려오기 시작 뒤 ms (null = 아직)
+    this.exitT = null; // 빠져나가기 시작 뒤 ms (null = 아직)
     this.instant = instant;
+    this.on = { land: () => {}, burst: () => {}, exit: () => {} }; // 소리 훅 (title.js)
     const { cells, width, height } = titleCells(C.TITLE_TEXT, C.TITLE_GAP, C.TITLE_BOLD);
     this.pieces = titlePieces(cells);
     this.start = dropSchedule(this.pieces, titleInterval(this.pieces.length));
     this.doneAt = instant ? 0 : titleDoneAt(this.start);
+    if (instant) this.t = C.TITLE_DARK_MS + C.TITLE_BURST_MS; // 완성·다 밝은 모습
+    this.burstFired = instant;
     this.size = [width, height];
-    // 로고 자리: 섬 가운데에서 카메라가 보는 쪽으로 TITLE_AHEAD 칸, 위로 TITLE_HEIGHT 칸. 글자는 카메라 오른쪽으로 늘어섬
-    const d = new THREE.Vector3(Math.cos(yaw), Math.sin(yaw), 0);
-    this.dir = d;
-    this.right = new THREE.Vector3(d.y, -d.x, 0);
-    this.center = new THREE.Vector3(r.W / 2, r.D / 2, 0).addScaledVector(d, C.TITLE_AHEAD).add(new THREE.Vector3(0, 0, C.TITLE_HEIGHT));
+    const s = C.TITLE_SCALE;
+    const logoW = width * s;
+    const logoH = height * s;
+    this.camera = new THREE.PerspectiveCamera(C.TITLE_FOV, window.innerWidth / window.innerHeight, 0.1, 400);
+    this.camera.up.set(0, 0, 1);
+    this.dist = titleCamDist(logoW, C.TITLE_FOV, this.camera.aspect);
+    this.stage = new TitleStage(theme, { low, logoW, logoH, camDist: this.dist });
+    const scene = (this.scene = this.stage.scene);
+
+    // 글자 블록: 모서리 깎은 매끈한 블록 + 테마 글자 색 (조각마다 차례로), 스스로 빛남 (테마 빛 색) + 닿을 때 번쩍 + 지나가는 빛 띠
     const n = cells.length;
-    // 밤 하늘에서도 튀게: 블록 색이 스스로 조금 빛남 (색 비례) + 검은 외곽선 (뒤집은 껍데기, 인스턴스 하나 더)
-    const mat = noOutline(toon({ color: 0xffffff, map: r.tex.tetris }));
+    this.flash = new Float32Array(n); // 블록마다 번쩍 (0~1, 줄어듦)
+    const geo = new RoundedBoxGeometry(1, 1, 1, 1, C.TITLE_BEVEL);
+    this.flashAttr = new THREE.InstancedBufferAttribute(this.flash, 1);
+    geo.setAttribute('aFlash', this.flashAttr);
+    const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.28, metalness: 0.45 });
+    this.u = { uGlow: { value: 0 }, uGlowCol: { value: new THREE.Color(this.T.glow) }, uSweepX: { value: -1e4 }, uSweepW: { value: C.TITLE_SWEEP_W } };
     mat.onBeforeCompile = (sh) => {
-      sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n totalEmissiveRadiance += diffuseColor.rgb * ${C.TITLE_GLOW.toFixed(3)};`);
+      Object.assign(sh.uniforms, this.u);
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute float aFlash;\nvarying float vFlash;\nvarying float vWX;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFlash = aFlash;\nvWX = (modelMatrix * instanceMatrix * vec4(position, 1.0)).x;');
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform float uGlow, uSweepX, uSweepW;\nuniform vec3 uGlowCol;\nvarying float vFlash;\nvarying float vWX;')
+        .replace(
+          '#include <emissivemap_fragment>',
+          `#include <emissivemap_fragment>
+          float sw = exp(-pow((vWX - uSweepX) / uSweepW, 2.0));
+          totalEmissiveRadiance += mix(diffuseColor.rgb, uGlowCol, 0.4) * uGlow + vec3(1.0) * (vFlash * 1.6 + sw * 0.55 * uGlow);`,
+        );
     };
-    mat.customProgramCacheKey = () => `tf-title-${C.TITLE_GLOW}`;
-    this.mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mat, n);
+    mat.customProgramCacheKey = () => 'tf-title-letter';
+    this.mesh = new THREE.InstancedMesh(geo, mat, n);
     this.mesh.frustumCulled = false;
-    this.shell = new THREE.InstancedMesh(this.mesh.geometry, noOutline(new THREE.MeshBasicMaterial({ color: C.TITLE_OUTLINE_COLOR, side: THREE.BackSide })), n);
+    // 빛 테두리: 뒤집은 껍데기 (테마 테두리 색, 글자 빛 따라 밝아짐)
+    this.edgeCol = new THREE.Color(this.T.edge);
+    this.shell = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.BackSide, fog: false }), n);
     this.shell.frustumCulled = false;
-    const col = new THREE.Color();
     let i = 0;
     this.slots = []; // 인스턴스 → [조각 번호, 칸]
     this.pieces.forEach((p, pi) => {
+      const col = new THREE.Color(this.T.letter[pi % this.T.letter.length]);
       for (const c of p.cells) {
-        col.set(C.SHAPE_COLORS[p.shape]);
         this.mesh.setColorAt(i, col);
         this.slots.push([pi, c]);
         i++;
       }
     });
-    this.rot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.atan2(this.right.y, this.right.x));
-    r.scene.add(this.mesh, this.shell);
+    this.byPiece = this.pieces.map(() => []);
+    this.slots.forEach(([pi], k) => this.byPiece[pi].push(k));
+    scene.add(this.mesh, this.shell);
+
+    // 빛 터짐: 로고 뒤 큰 빛 + 가로 줄기 (렌즈 플레어 줄기) + 불티
+    this.halo = glowSprite(this.T.glow, logoW * 1.5, logoH * 4.5, 0);
+    this.halo.position.set(0, 3, 0);
+    this.streak = glowSprite(this.T.flare, logoW * 2.4, 1.6, 0);
+    this.streak.position.set(0, -1, 0);
+    scene.add(this.halo, this.streak);
+    this.sparks = this.makeSparks(C.TITLE_SPARKS[low ? 1 : 0]);
+    scene.add(this.sparks.points);
+    // 렌즈 플레어: 로고 왼쪽 위 빛 → 화면 가운데를 지나 반대쪽으로 늘어선 동그라미들 (화면에 맞춰 매 프레임 자리)
+    this.flareSrc = new THREE.Vector3(-logoW * 0.4, 8, logoH * 1.9);
+    this.flares = low
+      ? []
+      : [
+          [0, 1.4, 0.6],
+          [0.35, 0.5, 0.25],
+          [0.6, 0.3, 0.35],
+          [0.85, 0.9, 0.15],
+          [1.25, 0.4, 0.25],
+          [1.6, 1.4, 0.12],
+        ].map(([f, sz, a]) => {
+          const sp = glowSprite(this.T.flare, sz, sz, 0);
+          sp.material.depthTest = false;
+          sp.renderOrder = 10;
+          sp.userData = { f, sz, a };
+          scene.add(sp);
+          return sp;
+        });
+
+    // 블룸 (그래픽 낮춤이면 없이 바로 그림)
+    if (!low) {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      this.composer = new EffectComposer(r.renderer);
+      this.composer.addPass(new RenderPass(scene, this.camera));
+      const [str, rad, thr] = C.TITLE_BLOOM;
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), str, rad, thr);
+      this.composer.addPass(this.bloom);
+      this.composer.addPass(new OutputPass());
+      this.sizeKey = '';
+    }
     this.place();
+  }
+
+  // 불티: 빛 터질 때 글자 자리에서 사방으로 튐 (CPU 로 움직임, 수 적음)
+  makeSparks(n) {
+    const pos = new Float32Array(n * 3);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const m = new THREE.PointsMaterial({ color: new THREE.Color(this.T.edge).multiplyScalar(1.6), size: 0.35, map: glowTex(), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+    const points = new THREE.Points(g, m);
+    points.frustumCulled = false;
+    return { points, vel: new Float32Array(n * 3), n, age: Infinity };
+  }
+
+  fireSparks() {
+    const { points, vel, n } = this.sparks;
+    const p = points.geometry.attributes.position;
+    const s = C.TITLE_SCALE;
+    const [w, h] = this.size;
+    for (let i = 0; i < n; i++) {
+      const [, c] = this.slots[Math.floor(Math.random() * this.slots.length)];
+      p.setXYZ(i, (c.x - w / 2 + 0.5) * s, -0.4, (c.y - h / 2 + 0.5) * s);
+      const a = Math.random() * Math.PI * 2;
+      const sp = 3 + Math.random() * 9;
+      vel[i * 3] = Math.cos(a) * sp;
+      vel[i * 3 + 1] = -Math.random() * 4;
+      vel[i * 3 + 2] = Math.sin(a) * sp * 0.7 + 3;
+    }
+    p.needsUpdate = true;
+    this.sparks.age = 0;
+  }
+
+  stepSparks(dt) {
+    const S = this.sparks;
+    if (S.age === Infinity) return;
+    S.age += dt;
+    const p = S.points.geometry.attributes.position;
+    for (let i = 0; i < S.n; i++) {
+      S.vel[i * 3 + 2] -= 6 * dt;
+      for (let k = 0; k < 3; k++) S.vel[i * 3 + k] *= 1 - 1.4 * dt;
+      p.setXYZ(i, p.getX(i) + S.vel[i * 3] * dt, p.getY(i) + S.vel[i * 3 + 1] * dt, p.getZ(i) + S.vel[i * 3 + 2] * dt);
+    }
+    p.needsUpdate = true;
+    S.points.material.opacity = Math.max(0, 1 - S.age / 1.6);
+    if (S.age > 1.6) S.age = Infinity;
   }
 
   // 블록 자리 (지금 시계로)
@@ -58,16 +175,16 @@ export class TitleScene {
     const [w, h] = this.size;
     const m = new THREE.Matrix4();
     const pos = new THREE.Vector3();
+    const q = new THREE.Quaternion();
     const zero = new THREE.Vector3(0, 0, 0);
     const one = new THREE.Vector3(s * 0.97, s * 0.97, s * 0.97);
     const big = new THREE.Vector3(s * (1 + C.TITLE_OUTLINE), s * (1 + C.TITLE_OUTLINE), s * (1 + C.TITLE_OUTLINE));
     this.slots.forEach(([pi, c], i) => {
       const lift = this.instant ? 0 : pieceLift(this.t, this.start[pi]);
-      pos.copy(this.center).addScaledVector(this.right, (c.x - w / 2 + 0.5) * s);
-      pos.z += (c.y - h / 2 + 0.5 + (lift || 0)) * s;
-      m.compose(pos, this.rot, lift === null ? zero : one);
+      pos.set((c.x - w / 2 + 0.5) * s, 0, (c.y - h / 2 + 0.5 + (lift || 0)) * s);
+      m.compose(pos, q, lift === null ? zero : one);
       this.mesh.setMatrixAt(i, m);
-      m.compose(pos, this.rot, lift === null ? zero : big);
+      m.compose(pos, q, lift === null ? zero : big);
       this.shell.setMatrixAt(i, m);
     });
     this.mesh.instanceMatrix.needsUpdate = true;
@@ -78,38 +195,139 @@ export class TitleScene {
     return this.t >= this.doneAt;
   }
 
-  // 누름: 다 안 쌓였으면 빨리 감은 뒤, 다 쌓였으면 바로 내려오기
+  // 'Enter' 안내를 보일 때 (빛 터진 뒤 조금)
+  get ready() {
+    return this.instant || this.t >= this.doneAt + C.TITLE_HINT_DELAY_MS;
+  }
+
+  // 누름: 다 안 쌓였으면 빨리 감은 뒤, 다 쌓였으면 바로 빠져나가기
   press() {
     this.fast = true;
   }
 
-  // 한 프레임. 돌려주는 값: { pose: { eye, look }, shift: 화면 밀기 비율 (0 → 메뉴 값), k: 내려온 정도 0~1 }
-  step(dt, menuPose) {
+  // 빠져나가기 진행 (shared/title.js titleExit): title.js 가 하얀 막·메뉴로 바꾸기에 씀
+  get exit() {
+    return this.exitT === null ? null : titleExit(this.exitT);
+  }
+
+  // 한 프레임
+  step(dt) {
     const ms = dt * 1000;
+    const t0 = this.t;
     if (!this.done) this.t = Math.min(this.doneAt, this.t + ms * (this.fast ? C.TITLE_FAST : 1));
-    else if (this.fast && this.zoomT === null) this.zoomT = 0;
-    if (this.zoomT !== null) this.zoomT += ms;
+    else {
+      this.t += ms;
+      if (this.fast && this.exitT === null) {
+        this.exitT = 0;
+        this.on.exit();
+      }
+    }
+    if (this.exitT !== null) this.exitT += ms;
+    // 닿은 조각: 그 블록 번쩍 + 소리
+    if (!this.instant) {
+      const landed = landedBetween(this.start, t0, Math.min(this.t, this.doneAt));
+      for (const pi of landed) for (const k of this.byPiece[pi]) this.flash[k] = 1;
+      if (landed.length) this.on.land(landed.length);
+    }
+    if (!this.burstFired && this.t >= this.doneAt) {
+      this.burstFired = true;
+      this.fireSparks();
+      this.on.burst();
+    }
+    // 반짝임: 다 쌓인 뒤 아무 블록이나 가끔 번쩍
+    if (this.t > this.doneAt + C.TITLE_BURST_MS * 0.5) {
+      const want = C.TITLE_TWINKLE * (this.slots.length / 100) * dt;
+      for (let k = 0; k < 4; k++) if (Math.random() < want / 4) this.flash[Math.floor(Math.random() * this.flash.length)] = 0.7;
+    }
+    const fall = Math.exp(-dt * 1000 / C.TITLE_LAND_FLASH_MS * 3);
+    for (let k = 0; k < this.flash.length; k++) this.flash[k] *= fall;
+    this.flashAttr.needsUpdate = true;
     this.place();
-    // 로고를 살짝 아래·옆에서 (정면이면 블록이 납작한 그림처럼 보임) + 천천히 흔들려 입체가 보이게
-    const sway = Math.sin(this.t / 1000 * 0.7) * C.TITLE_CAM_SWAY;
-    // 거리는 로고 폭이 화면 폭의 TITLE_FILL 만큼 차게 (화면 비율·시야각 따라)
-    const cam = this.r.camera;
-    const dist = titleCamDist(this.size[0] * C.TITLE_SCALE, cam.fov, cam.aspect);
-    const titleEye = this.center.clone().addScaledVector(this.dir, -dist).addScaledVector(this.right, C.TITLE_CAM_SIDE + sway).add(new THREE.Vector3(0, 0, C.TITLE_CAM_UP));
-    const k = this.zoomT === null ? 0 : ease(this.zoomT / C.TITLE_ZOOM_MS);
-    // 내려오기: 처음엔 천천히 뒤로 빠졌다가 섬 쪽으로 확 (k 를 한 번 더 굽힘)
-    const kk = k * k;
-    const eye = titleEye.clone().lerp(menuPose.eye, kk);
-    const look = this.center.clone().lerp(menuPose.look, Math.min(1, k * 1.4));
-    return { pose: { eye, look }, shift: C.MENU_VIEW_SHIFT * kk, k };
+    this.stepSparks(dt);
+
+    const L = titleLight(this.t, this.doneAt);
+    const ex = this.exit;
+    const push = ex && !this.instant ? ex.push : 0; // 움직임 줄이기면 카메라는 그대로, 하얗게만
+    this.u.uGlow.value = L.glow * (1 + push * 2);
+    const sweepU = this.t - this.doneAt - C.TITLE_BURST_MS * 0.7; // 빛 터짐이 가라앉은 뒤부터
+    const sweepP = (((sweepU % C.TITLE_SWEEP_MS) + C.TITLE_SWEEP_MS) % C.TITLE_SWEEP_MS) / C.TITLE_SWEEP_MS;
+    const lw = this.size[0] * C.TITLE_SCALE;
+    this.u.uSweepX.value = sweepU < 0 ? -1e4 : -lw * 0.8 + sweepP * lw * 2.4;
+    this.shell.material.color.copy(this.edgeCol).multiplyScalar(Math.min(3, 0.3 + L.glow * 1.6));
+    this.halo.material.opacity = Math.min(1, L.burst * 0.3 + (this.t >= this.doneAt ? 0.1 : 0) + push * 0.5);
+    this.halo.scale.set(this.size[0] * C.TITLE_SCALE * (1.3 + L.burst * 0.6), this.size[1] * C.TITLE_SCALE * (4 + L.burst * 3), 1);
+    this.streak.material.opacity = Math.min(1, L.burst * 0.8 + (this.t >= this.doneAt ? 0.15 : 0));
+    this.stage.update(this.t / 1000, Math.min(1, L.lit + L.burst * 0.5), window.innerHeight * 0.5 * this.r.renderer.getPixelRatio());
+
+    // 카메라: 로고를 살짝 아래·옆에서, 천천히 흔들리며 다가감. 터질 때 작게 흔들림. 빠져나가면 앞으로 (로고 위로) 확
+    const cam = this.camera;
+    const aspect = window.innerWidth / window.innerHeight;
+    if (cam.aspect !== aspect) {
+      cam.aspect = aspect;
+      cam.updateProjectionMatrix();
+      this.dist = titleCamDist(lw, C.TITLE_FOV, aspect);
+    }
+    const ts = this.t / 1000;
+    const build = Math.min(1, this.t / Math.max(1, this.doneAt + C.TITLE_BURST_MS));
+    const d = this.dist * (1 + C.TITLE_CAM_PUSH * (1 - build));
+    const sway = Math.sin(ts * 0.5) * C.TITLE_CAM_SWAY;
+    const shake = L.burst * L.burst * 0.25;
+    cam.position.set(C.TITLE_CAM_SIDE + sway + (Math.random() - 0.5) * shake, -d + push * d * 1.05, C.TITLE_CAM_UP + Math.sin(ts * 0.37) * 0.4 + push * 6 + (Math.random() - 0.5) * shake);
+    cam.lookAt(0, 0, push * 4);
+    const fov = C.TITLE_FOV + push * 25;
+    if (cam.fov !== fov) {
+      cam.fov = fov;
+      cam.updateProjectionMatrix();
+    }
+    cam.updateMatrixWorld();
+    this.placeFlares(L.burst, this.t >= this.doneAt);
+    if (this.bloom) this.bloom.strength = C.TITLE_BLOOM[0] + (C.TITLE_BLOOM_BURST - C.TITLE_BLOOM[0]) * Math.max(L.burst, push);
+  }
+
+  // 렌즈 플레어: 빛 자리를 화면에 비춰, 화면 가운데를 지나 반대쪽으로 동그라미 (카메라 앞 일정 거리에 놓음)
+  placeFlares(burst, lit) {
+    if (!this.flares.length) return;
+    const cam = this.camera;
+    const sp = this.flareSrc.clone().project(cam);
+    const on = Math.min(1, burst * 1.3 + (lit ? 0.25 : 0));
+    const v = new THREE.Vector3();
+    const depth = 6;
+    const hh = Math.tan(((cam.fov * Math.PI) / 180) / 2) * depth;
+    for (const f of this.flares) {
+      const { f: k, sz, a } = f.userData;
+      v.set(sp.x * (1 - 2 * k), sp.y * (1 - 2 * k), 0.5).unproject(cam).sub(cam.position).normalize();
+      f.position.copy(cam.position).addScaledVector(v, depth);
+      const s = (sz * hh) / 8;
+      f.scale.set(s, s, 1);
+      f.material.opacity = on * a;
+    }
+  }
+
+  // 그리기: 블룸이면 composer, 아니면 바로
+  draw() {
+    const R = this.r.renderer;
+    if (!this.composer) return R.render(this.scene, this.camera);
+    const sz = R.getSize(new THREE.Vector2());
+    const key = `${sz.x}x${sz.y}x${R.getPixelRatio()}`;
+    if (key !== this.sizeKey) {
+      this.sizeKey = key;
+      this.composer.setPixelRatio(R.getPixelRatio());
+      this.composer.setSize(sz.x, sz.y);
+    }
+    this.composer.render();
   }
 
   dispose() {
-    this.r.scene.remove(this.mesh, this.shell);
+    this.scene.remove(this.mesh, this.shell);
     this.mesh.geometry.dispose();
     this.mesh.material.dispose();
     this.shell.material.dispose();
     this.mesh.dispose();
     this.shell.dispose();
+    this.stage.dispose();
+    if (this.composer) {
+      this.bloom.dispose();
+      this.composer.dispose();
+    }
   }
 }

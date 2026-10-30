@@ -139,3 +139,50 @@ export function pieceLift(t, start, fallMs = C.TITLE_FALL_MS, dropH = C.TITLE_DR
 export function showTitle(search) {
   return !new URLSearchParams(search || '').get('room');
 }
+
+// 타이틀 테마 (config TITLE_THEMES 키 = 맵 테마 id): 켤 때마다 무작위 하나. rnd = 0~1 난수 (테스트에서 고정)
+export const TITLE_THEME_IDS = Object.keys(C.TITLE_THEMES);
+export function pickTitleTheme(rnd = Math.random) {
+  return TITLE_THEME_IDS[Math.min(TITLE_THEME_IDS.length - 1, Math.floor(rnd() * TITLE_THEME_IDS.length))];
+}
+
+// 그 테마의 맵 (타이틀 뒤 메뉴 섬): WORLD_MAP_THEME 거꾸로. 없으면 null (메뉴가 무작위)
+export function titleMapFor(theme) {
+  return Object.keys(C.WORLD_MAP_THEME).find((m) => C.WORLD_MAP_THEME[m] === theme) || null;
+}
+
+const smooth = (k) => (k <= 0 ? 0 : k >= 1 ? 1 : k * k * (3 - 2 * k));
+
+// t ms 에 장면 빛: lit = 장면 밝기 (캄캄 TITLE_LIT_START → 1, TITLE_DARK_MS 동안), burst = 다 쌓인 순간 1 → 0 (TITLE_BURST_MS),
+// glow = 글자 빛 (쌓이는 동안 약하게, 터지면 TITLE_BURST_PEAK 배까지 갔다가 TITLE_GLOW[1]). doneAt = 다 쌓이는 시각
+export function titleLight(t, doneAt) {
+  const lit = C.TITLE_LIT_START + (1 - C.TITLE_LIT_START) * smooth(t / C.TITLE_DARK_MS);
+  const u = t - doneAt;
+  const burst = u < 0 ? 0 : Math.max(0, 1 - u / C.TITLE_BURST_MS) ** 2;
+  const [g0, g1] = C.TITLE_GLOW;
+  const after = u < 0 ? 0 : smooth(u / 250); // 터지는 순간 빠르게 오름
+  const glow = (g0 + (g1 - g0) * after) * (1 + (C.TITLE_BURST_PEAK - 1) * burst);
+  return { lit, burst, glow };
+}
+
+// Enter 뒤 ms: push = 카메라가 앞으로 빠져나간 정도 0~1 (점점 빠르게), white = 하얀 정도 0~1 (TITLE_EXIT_MS 에 1),
+// 그 뒤 TITLE_EXIT_FADE_MS 동안 1 → 0 (메뉴 섬이 보임). swap = 타이틀 장면을 치우고 메뉴로 바꿀 때 (하얗게 다 덮임)
+export function titleExit(ms) {
+  const E = C.TITLE_EXIT_MS;
+  if (ms < E) {
+    const k = Math.max(0, ms) / E;
+    return { push: k * k, white: k ** 2.2, swap: false, done: false };
+  }
+  const f = (ms - E) / C.TITLE_EXIT_FADE_MS;
+  return { push: 1, white: 1 - smooth(f), swap: true, done: f >= 1 };
+}
+
+// 이번 프레임에 닿은 조각 (t0 < 닿는 시각 <= t1): 착지 소리·번쩍
+export function landedBetween(start, t0, t1, fallMs = C.TITLE_FALL_MS) {
+  const out = [];
+  start.forEach((s, i) => {
+    const at = s + fallMs;
+    if (at > t0 && at <= t1) out.push(i);
+  });
+  return out;
+}
