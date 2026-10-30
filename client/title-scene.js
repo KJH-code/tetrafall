@@ -248,13 +248,14 @@ export class TitleScene {
     const L = titleLight(this.t, this.doneAt);
     const ex = this.exit;
     const push = ex && !this.instant ? ex.push : 0; // 움직임 줄이기면 카메라는 그대로, 하얗게만
-    this.u.uGlow.value = L.glow * (1 + push * 2);
+    const wh = ex ? ex.white : 0; // 하얗게 되는 동안 빛도 같이 세짐
+    this.u.uGlow.value = L.glow * (1 + wh * 2);
     const sweepU = this.t - this.doneAt - C.TITLE_BURST_MS * 0.7; // 빛 터짐이 가라앉은 뒤부터
     const sweepP = (((sweepU % C.TITLE_SWEEP_MS) + C.TITLE_SWEEP_MS) % C.TITLE_SWEEP_MS) / C.TITLE_SWEEP_MS;
     const lw = this.size[0] * C.TITLE_SCALE;
     this.u.uSweepX.value = sweepU < 0 ? -1e4 : -lw * 0.8 + sweepP * lw * 2.4;
     this.shell.material.color.copy(this.edgeCol).multiplyScalar(Math.min(3, 0.3 + L.glow * 1.6));
-    this.halo.material.opacity = Math.min(1, L.burst * 0.18 + (this.t >= this.doneAt ? 0.04 : 0) + push * 0.5);
+    this.halo.material.opacity = Math.min(1, L.burst * 0.18 + (this.t >= this.doneAt ? 0.04 : 0) + wh * 0.5);
     this.halo.scale.set(this.size[0] * C.TITLE_SCALE * (1.15 + L.burst * 0.3), this.size[1] * C.TITLE_SCALE * (1.8 + L.burst * 1.4), 1);
     this.streak.material.opacity = Math.min(1, L.burst * 0.8 + (this.t >= this.doneAt ? 0.15 : 0));
     this.stage.update(this.t / 1000, Math.min(1, L.lit + L.burst * 0.5), window.innerHeight * 0.5 * this.r.renderer.getPixelRatio());
@@ -272,16 +273,20 @@ export class TitleScene {
     const d = this.dist * (1 + C.TITLE_CAM_PUSH * (1 - build));
     const sway = Math.sin(ts * 0.5) * C.TITLE_CAM_SWAY;
     const shake = L.burst * L.burst * 0.25;
-    cam.position.set(C.TITLE_CAM_SIDE + sway + (Math.random() - 0.5) * shake, -d + push * d * 1.05, C.TITLE_CAM_UP + Math.sin(ts * 0.37) * 0.4 + push * 6 + (Math.random() - 0.5) * shake);
-    cam.lookAt(0, 0, push * 4);
-    const fov = C.TITLE_FOV + push * 25;
+    // 빠져나가기: 로고 위로 솟으며 앞으로 날아가 (로고가 발 밑으로 지나감) 장면 안쪽 (동굴 깊은 곳·먼 산) 을 바라봄
+    const [fwd, up, ahead] = C.TITLE_EXIT_FLY;
+    const ey = -d + push * d * (1 - fwd);
+    const ez = C.TITLE_CAM_UP + Math.sin(ts * 0.37) * 0.4 + push * up;
+    cam.position.set((C.TITLE_CAM_SIDE + sway) * (1 - push) + (Math.random() - 0.5) * shake, ey, ez + (Math.random() - 0.5) * shake);
+    cam.lookAt(0, push * d * ahead, push * up * 0.55);
+    const fov = C.TITLE_FOV + push * 18;
     if (cam.fov !== fov) {
       cam.fov = fov;
       cam.updateProjectionMatrix();
     }
     cam.updateMatrixWorld();
     this.placeFlares(L.burst, this.t >= this.doneAt);
-    if (this.bloom) this.bloom.strength = C.TITLE_BLOOM[0] + (C.TITLE_BLOOM_BURST - C.TITLE_BLOOM[0]) * Math.max(L.burst, push);
+    if (this.bloom) this.bloom.strength = C.TITLE_BLOOM[0] + (C.TITLE_BLOOM_BURST - C.TITLE_BLOOM[0]) * Math.max(L.burst, wh);
   }
 
   // 렌즈 플레어: 빛 자리를 화면에 비춰, 화면 가운데를 지나 반대쪽으로 동그라미 (카메라 앞 일정 거리에 놓음)

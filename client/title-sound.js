@@ -172,7 +172,7 @@ export class TitleSound {
   exit() {
     const s = this.s;
     if (this.stopped || !s.ready() || !this.out) return;
-    s.noise({ dur: C.TITLE_EXIT_MS / 1000 + 0.3, vol: C.TITLE_SOUND.exit, filter: 'bandpass', freq: 300, freqEnd: 4000, q: 1.2, out: this.fx });
+    s.noise({ dur: C.TITLE_EXIT_MS / 1000 + 0.2, vol: C.TITLE_SOUND.exit, filter: 'bandpass', freq: 300, freqEnd: 4000, q: 1.2, out: this.fx });
     s.tone({ freq: midiHz(this.S.pitch + 12), freqEnd: midiHz(this.S.pitch + 24), dur: C.TITLE_EXIT_MS / 1000, type: 'sine', vol: C.TITLE_SOUND.exit * 0.3, out: this.fx });
   }
 

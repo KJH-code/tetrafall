@@ -160,7 +160,7 @@ test('타이틀 빛: 캄캄하게 시작해 밝아짐, 다 쌓인 순간 빛 터
   for (let u = 0; u < C.TITLE_BURST_MS; u += 100) assert.ok(titleLight(done + u + 100, done).burst <= titleLight(done + u, done).burst, '터짐은 줄어들기만');
 });
 
-test('타이틀 나가기: Enter 뒤 TITLE_EXIT_MS 동안 하얗게 (카메라 앞으로) → 다 덮이면 메뉴로 바꿈 → TITLE_EXIT_FADE_MS 동안 걷힘', async () => {
+test('타이틀 나가기: Enter 뒤 카메라가 로고 위로 날아가는 게 먼저 보이고 (하얀 막 없음) → TITLE_EXIT_MS 에 하얗게 → 다 덮이면 메뉴로 바꿈 → TITLE_EXIT_FADE_MS 동안 걷힘', async () => {
   const { titleExit } = await import('../shared/title.js');
   assert.deepEqual(titleExit(0), { push: 0, white: 0, swap: false, done: false });
   let w = 0;
@@ -169,6 +169,11 @@ test('타이틀 나가기: Enter 뒤 TITLE_EXIT_MS 동안 하얗게 (카메라 �
     assert.ok(e.white >= w && !e.swap);
     w = e.white;
   }
+  const fly = C.TITLE_EXIT_MS * C.TITLE_EXIT_WHITE_AT;
+  assert.ok(fly >= 600 && fly <= 800, `날아가는 게 0.6~0.8초 보임 (${fly}ms)`);
+  assert.equal(titleExit(fly - 1).white, 0, '날아가는 동안 하얀 막 없음');
+  assert.ok(titleExit(fly).push > 0.5, '하얘지기 전에 카메라가 반 넘게 날아감');
+  assert.ok(titleExit(fly + 100).white > 0);
   const at = titleExit(C.TITLE_EXIT_MS);
   assert.equal(at.white, 1);
   assert.equal(at.swap, true, '다 하얄 때 바꿈');
@@ -176,7 +181,7 @@ test('타이틀 나가기: Enter 뒤 TITLE_EXIT_MS 동안 하얗게 (카메라 �
   const end = titleExit(C.TITLE_EXIT_MS + C.TITLE_EXIT_FADE_MS);
   assert.equal(end.white, 0);
   assert.equal(end.done, true);
-  assert.ok(C.TITLE_EXIT_MS + C.TITLE_EXIT_FADE_MS < 2500, '빠르게 메뉴로');
+  assert.ok(C.TITLE_EXIT_MS + C.TITLE_EXIT_FADE_MS < 2000, 'Enter 뒤 2초 안에 메뉴');
 });
 
 test('타이틀: 프레임을 어떻게 나눠도 조각마다 착지 (소리·번쩍) 는 꼭 한 번', async () => {

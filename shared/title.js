@@ -165,13 +165,15 @@ export function titleLight(t, doneAt) {
   return { lit, burst, glow };
 }
 
-// Enter 뒤 ms: push = 카메라가 앞으로 빠져나간 정도 0~1 (점점 빠르게), white = 하얀 정도 0~1 (TITLE_EXIT_MS 에 1),
-// 그 뒤 TITLE_EXIT_FADE_MS 동안 1 → 0 (메뉴 섬이 보임). swap = 타이틀 장면을 치우고 메뉴로 바꿀 때 (하얗게 다 덮임)
+// Enter 뒤 ms: push = 카메라가 날아간 정도 0~1 (부드럽게 출발·도착, TITLE_EXIT_MS 동안), white = 하얀 정도 0~1
+// (TITLE_EXIT_WHITE_AT 까지는 0 — 날아가는 게 보임 — 그 뒤 TITLE_EXIT_MS 에 1), 그 뒤 TITLE_EXIT_FADE_MS 동안 1 → 0 (메뉴 섬이 보임).
+// swap = 타이틀 장면을 치우고 메뉴로 바꿀 때 (하얗게 다 덮임)
 export function titleExit(ms) {
   const E = C.TITLE_EXIT_MS;
   if (ms < E) {
     const k = Math.max(0, ms) / E;
-    return { push: k * k, white: k ** 2.2, swap: false, done: false };
+    const w = (k - C.TITLE_EXIT_WHITE_AT) / (1 - C.TITLE_EXIT_WHITE_AT);
+    return { push: smooth(k), white: w <= 0 ? 0 : w * w, swap: false, done: false };
   }
   const f = (ms - E) / C.TITLE_EXIT_FADE_MS;
   return { push: 1, white: 1 - smooth(f), swap: true, done: f >= 1 };

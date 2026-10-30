@@ -1042,8 +1042,10 @@ export const CONFIG = {
   TITLE_REFLECT: 0.45,
   TITLE_LIGHT: [9, 18, 22], // 빛 세기 배수 [앞 빛, 로고 뒤 빛, 테마 소품 빛] (× TITLE_THEMES key·back 세기) // 아래 바닥 반사 세기 (그래픽 낮춤이면 반사 대신 어두운 바닥)
   TITLE_FLOOR_GAP: 1.1, // 로고 밑에서 바닥까지 (게임 칸)
-  TITLE_EXIT_MS: 950, // Enter 뒤: 카메라가 앞으로 빠져나가며 하얗게 되는 시간
-  TITLE_EXIT_FADE_MS: 750, // 하얀 화면이 걷히며 메뉴 섬이 보이는 시간
+  TITLE_EXIT_MS: 1150, // Enter 뒤: 카메라가 로고 위로 솟아 장면 안쪽으로 날아가고 → 하얗게 다 덮이기까지
+  TITLE_EXIT_WHITE_AT: 0.65, // 그중 이 비율까지는 날아가는 게 보이고 (하얀 막 없음, ~0.75초), 그 뒤 하얗게 (2026-10-30 재혁 '빠져나가기 더 보이게')
+  TITLE_EXIT_FLY: [0.15, 9, 0.7], // 날아가기 끝 카메라 [앞으로 (로고 거리 비율, 0 = 로고 바로 위), 위로 (칸), 바라보는 곳 앞쪽 (로고 거리 비율)]
+  TITLE_EXIT_FADE_MS: 650, // 하얀 화면이 걷히며 메뉴 섬이 보이는 시간
   TITLE_HINT_DELAY_MS: 500, // 빛 터진 뒤 'Enter' 안내가 나오기까지
   TITLE_INPUT_DELAY_MS: 250, // 켜자마자 눌린 키는 무시
   // 테마별 타이틀 장면 (맵 테마 id = WORLD_THEMES 키). 메뉴 섬은 그 테마의 맵 (WORLD_MAP_THEME 거꾸로)
