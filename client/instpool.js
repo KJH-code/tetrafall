@@ -39,6 +39,17 @@ export class InstancePool {
     return im;
   }
 
+  // 모양이 바뀌면 (맵 테마마다 다른 테트리미노 칸) 만든 메시를 다 버리고 새 모양으로
+  reset(geometry) {
+    for (const im of this.meshes.values()) {
+      this.scene.remove(im);
+      im.dispose();
+    }
+    this.meshes.clear();
+    this.by.clear();
+    this.geo = geometry;
+  }
+
   // slots: 자리 객체들 (visible 인 것만, 재질마다 모아 그림)
   flush(slots) {
     const by = this.by;

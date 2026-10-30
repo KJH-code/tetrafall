@@ -397,7 +397,7 @@ export const CONFIG = {
   ULT_NAMES: { tank: '내려찍기', ninja: '강화', builder: '대폭발', hook: '블록 내려찍기', hunter: '처형 사격', cannon: '대형 포탄', berserker: '분노 소용돌이', bard: '취약의 노래' },
   // 대기실 캐릭터 고르기 설명 카드 (2026-10-28 재혁: '스킬 보기' 를 눌러야 보임). 한 줄 소개 · F · R 짧게
   CHAR_INTRO: { tank: '덜 밀리는 방패 돌격대 — 처음이면 추천', ninja: '끊기지 않는 연타 — 떨어지는 블록을 밟으면 공중 점프가 돌아옴', builder: '블록을 깔고, 망치로 쳐서 터뜨린다', hook: '갈고리로 끌어와서 다시 친다', hunter: '표식을 남기면 끝까지 사냥한다', cannon: '피하면서 멀리서 포탄으로 저격', berserker: '밀릴수록 세진다 — 내 피해 % 만큼 더 멀리 날림', bard: '폼을 바꿔 싸운다 — 음유(원거리·둔화) ↔ 메탈(근접)' },
-  SKILL_DESC: { tank: '방패를 앞세워 약 3칸 돌진. 맞아도 안 멈춤', ninja: '보는 쪽으로 순간 이동하며 지나간 상대를 벰', builder: '바로 앞에 가로 3칸 벽을 솟게 해 위 사람을 띄움 (공중이면 발판)', hook: '갈고리를 던져 상대를 내 앞으로 끌어옴', hunter: '표식 있는 가까운 상대에게 도약해 덮침', cannon: '발밑에 포격 — 위로 크게 뛰며 주변을 밀침', berserker: '앞으로 크게 뛰어 착지 충격파 (떨어질 때 복귀기)', bard: '폼 전환 — 음유→메탈은 주변 밀침, 메탈→음유는 피해 % 회복' },
+  SKILL_DESC: { tank: '방패를 앞세워 약 3칸 돌진. 맞아도 안 멈춤', ninja: '보는 쪽으로 순간 이동하며 지나간 상대를 벰', builder: '바로 앞에 가로 3칸 벽을 솟게 해 위 사람을 띄움 (공중이면 발밑에 2칸 기둥을 세우고 그 위에 섬)', hook: '갈고리를 던져 상대를 내 앞으로 끌어옴', hunter: '표식 있는 가까운 상대에게 도약해 덮침', cannon: '발밑에 포격 — 위로 크게 뛰며 주변을 밀침', berserker: '앞으로 크게 뛰어 착지 충격파 (떨어질 때 복귀기)', bard: '폼 전환 — 음유→메탈은 주변 밀침, 메탈→음유는 피해 % 회복' },
   ULT_DESC: { tank: '떠올랐다가 쾅 — 넓은 충격파, 바깥 고리 땅이 솟음', ninja: '잠깐 동안 평타가 표창 2연발', builder: '앞에 큰 블록 묶음이 솟았다가 터짐 (망치로 치면 바로)', hook: '블록 덩어리를 뽑아 들어 내려찍음', hunter: '앞의 표식 대상 전부 처형 사격 (게이지 2배 필요)', cannon: '블록을 뚫고 가는 대형 포탄, 끝에서 폭발', berserker: '빙글빙글 돌며 밀치고 끝에 크게 날림', bard: '앞 상대가 잠깐 더 멀리 날아감 (메탈 폼이면 앰프 음파)' },
   CHAR_STAGE_SPIN: 0.5, // 대기실 큰 3D 캐릭터가 도는 빠르기 (라디안/초). 고르면 정면에서 도발 한 번(EMOTE_MS) 뒤 다시 돎
   CHAR_RANDOM_MS: 650, // '랜덤' 뽑기 연출 길이 (카드 불이 이만큼 돌다가 멈춤)
@@ -643,7 +643,8 @@ export const CONFIG = {
   BUILDER_WALL_DAMAGE: 10,
   BUILDER_BLOCK_MS: 8000, // 건축가 블록 수명
   BUILDER_THIRD_MAX: 3, // 3타 블록 동시 최대 (넘으면 제일 오래된 것부터 사라짐)
-  BUILDER_PAD_BOOST: 8, // 공중 F 발판: 위로 부스트 속도 (3타 띄움과 같은 세기, 약 1.6칸)
+  BUILDER_PAD_HEIGHT: 2, // 공중 F: 발밑에 세우는 기둥 칸 수 (2026-10-30 재혁: 1칸 발판 + 부스트 → 2칸 기둥 위에 섬. 봇 밸런스는 나중)
+  BUILDER_PAD_BOOST: 8, // 공중 F 에 기둥을 한 칸도 못 세울 때(필드 밖·바로 밑이 막힘) 위로 부스트 속도 (복귀기, 3타 띄움과 같은 세기, 약 1.6칸)
   BUILDER_BLAST_RANGE: 1, // 블록 폭발: 터지는 칸 가장자리에서 이 거리(칸) 안
   BUILDER_BLAST_HEIGHT: 1.5, // 블록 폭발이 닿는 높이 차
   BUILDER_BLAST_DAMAGE: 8, // 가까이 터진 칸 1칸당 피해 %
@@ -967,6 +968,8 @@ export const CONFIG = {
   // 화면 색·조명 (2026-10-22 4단계, 화면만). 테트리미노는 모양마다 색, 쌓이면 BLOCK_LANDED_SHADE 만큼 어둡게
   SHAPE_COLORS: { I: 0x38c8e8, O: 0xf8e030, T: 0xa050e0, S: 0x50c850, Z: 0xe85050, J: 0x4070e8, L: 0xf08a30 },
   BLOCK_LANDED_SHADE: 0.88,
+  // 맵 테마마다 WORLD_THEMES.*.piece 가 덮어씀 (shared/piece-look.js): style 면 텍스처 (toy|wood|sandstone|gem|obsidian|marble|jelly|stone) · shape 칸 모양 (round|gem|bricks|cap|crate|framed, client/piece-shapes.js, 그래픽 낮춤이면 round)
+  // rows·gap 벽돌 줄 수·줄눈 · segs 둥근 모서리 단 · colors 조각 색 · accent [색1, 색2] 부품 색 (흰 점·금 테·잎·버섯 대) · crack 밝은 금 빛 · fresnel 비스듬한 면 빛 테 · opacity 떨어지는 블록 비침
   PIECE_LOOK: { size: 0.94, bevel: 0.1, glow: 0.16 }, // 테트리미노 칸 모양 (떨어지는·쌓인·하늘 계단·유령): 크기 (칸 사이 틈), 둥근 모서리 반지름, 제 색으로 빛남 — 이어진 무광 지형과 구분
   TERRAIN_COLOR: 0x8c8a96, // 시작 지형 (돌)
   BUILD_COLOR: 0xa87448, // 쌓기 블록 (나무)
@@ -1164,6 +1167,7 @@ export const CONFIG = {
       fog: [0xd6ebf4, 45, 120],
       floor: { paint: 'grass', a: 0x88cc58, b: 0x7bbf4c, line: 'rgba(40,70,25,0.35)', rim: 0x6aa844 },
       terrain: { paint: 'grass', top: 0x86c857, side: 0x9a6b44, rim: 0x4c3420, block: { lip: 0.2, strata: [2.2, 0.035], tints: [0xa0d468, 0x78b44e, 0x9cb858], sprout: { kind: 'tuft', side: 0, top: 0.35, size: [0.9, 1.4] } } }, // 잔디 윗면이 흙 옆면으로 흘러내림
+      piece: { style: 'wood', shape: 'crate', bevel: 0.05, glow: 0.12, accent: [0x58b040, 0xffffff], colors: { I: 0x4fb8e0, O: 0xf6c945, T: 0xb07ad8, S: 0x3fae8a, Z: 0xe8604c, J: 0x4a6ee0, L: 0xf09038 } }, // 나무 상자 + 윗면 잎 덤불 (건축가 판자 상자와 달리 띠·쇠 모서리 없음, 잔디 초록과 안 겹치게 S 는 청록)
       cliff: [0x9a6b44, 0x8f8576, 0x81786a, 0x72695c, 0x645b50],
       rock: 0x8f8778,
       trunk: 0x7a5434,
@@ -1187,6 +1191,7 @@ export const CONFIG = {
       fog: [0xf2dcb0, 45, 120],
       floor: { paint: 'sand', a: 0xebcf8e, b: 0xe0c27e, line: 'rgba(120,80,30,0.35)', rim: 0xd2a964 },
       terrain: { paint: 'sandstone', top: 0xf0d49a, side: 0xd9a868, rim: 0x8a5a2c, block: { strata: [2.6, 0.12], height: [0.85, 6], mottle: 0.18, tints: [0xf2d49a, 0xe6bc7c, 0xf6dfb4], sprout: { kind: 'rubble', side: 0.14, top: 0, size: [0.9, 1.4], ground: true } } }, // 사암 층 + 벽 밑 무너진 사암 덩어리
+      piece: { style: 'sandstone', shape: 'bricks', rows: 3, gap: 0.045, bevel: 0.025, glow: 0.1, colors: { I: 0x3aa6a0, O: 0xf2d060, T: 0x9c4f8c, S: 0x6f9a4c, Z: 0xc8502c, J: 0x2f5f9e, L: 0xe8902e } }, // 사암 벽돌 층 (칸 안 3줄 어긋나 쌓기 + 상형문자 새김, 사막 장신구 색: 터키석·사프란·자두·선인장·테라코타·청금석·황토)
       cliff: [0xc98a50, 0xa85e34, 0xd49a5c, 0x9a5230, 0x7c4426], // 붉은 사암 지층
       rock: 0xc08a56,
       trunk: 0x8a6440,
@@ -1210,6 +1215,7 @@ export const CONFIG = {
       fog: [0x2a2052, 40, 120],
       floor: { paint: 'stone', a: 0x5a5474, b: 0x524c6a, line: 'rgba(20,14,40,0.55)', rim: 0x4a4466 },
       terrain: { paint: 'crystal', top: 0x6c6290, side: 0x544a74, rim: 0x231c3a, glow: 0x6ef2ff, tints: [0x8a7cc0, 0x5a6ab0, 0x7a5aa8], decor: { kind: 'crystal', chance: 0.22, size: [0.32, 0.5] }, block: { segs: 2, disp: 0.07, step: 0.12, mottle: 0.42, veins: 0.4, veinScale: 0.9, sheen: 0.16, sprout: { kind: 'crystal', side: 0.32, top: 0.16, size: [1, 1.6] } } }, // 결정 면 (꼭짓점 흔들어 깎은 면 + 비스듬한 면 빛) + 수정 맥
+      piece: { style: 'gem', shape: 'gem', bevel: 0.16, glow: 0.3, fresnel: 0.6, opacity: 0.86, colors: { I: 0x5ef0ff, O: 0xffe066, T: 0xc070ff, S: 0x50f0a0, Z: 0xff5080, J: 0x5a7cff, L: 0xffa040 } }, // 깎인 보석 (모서리 잘린 여러 면 + 면마다 낮은 피라미드, 빛 테, 떨어질 땐 살짝 비침)
       cliff: [0x4a4268, 0x3c3458, 0x322b4c, 0x29233e, 0x201b32],
       rock: 0x4c4466,
       trunk: 0x3a3250,
@@ -1236,6 +1242,7 @@ export const CONFIG = {
       fog: [0x3c1410, 40, 115],
       floor: { paint: 'cracks', a: 0x4a4446, b: 0x423c3e, line: 'rgba(0,0,0,0.5)', rim: 0x302a2c, glow: 0xff6a1a },
       terrain: { paint: 'basalt', top: 0x585254, side: 0x464042, rim: 0x161214, glow: 0xff7a24, crust: 0x4a2e28, tints: [0x5a5050, 0x484244, 0x5a4840], decor: { kind: 'rubble', chance: 0.2, size: [0.45, 0.7] }, block: { top: 0x8e8080, side: 0x5a5052, topLift: 1.55, sideShade: 0.72, height: [0.8, 6], veins: 0.75, selfLight: 0.2, sprout: { kind: 'basalt', side: 0.24, top: 0.05, size: [1.1, 1.6] } } }, // 현무암 (어두운 하늘에 묻히지 않게 밝은 재빛 윗면) + 용암 금
+      piece: { style: 'obsidian', bevel: 0.07, glow: 0.08, crack: 2.4, colors: { I: 0x40d8ff, O: 0xffd040, T: 0xd060ff, S: 0x60ff80, Z: 0xff3a20, J: 0x4a70ff, L: 0xff8a20 } }, // 흑요석 + 조각 색으로 밝게 빛나는 금
       cliff: [0x3e3838, 0x322c2c, 0x2a2424, 0x221c1c, 0x1a1414],
       rock: 0x3a3434,
       trunk: 0x2a2220,
@@ -1262,6 +1269,7 @@ export const CONFIG = {
       fog: [0xffdca4, 45, 120],
       floor: { paint: 'marble', a: 0xf2ece0, b: 0xe6decc, line: 'rgba(150,120,60,0.4)', rim: 0xd8b860 },
       terrain: { paint: 'bricks', top: 0xf4efe4, side: 0xe2d9c6, rim: 0xc09a40, block: { step: 0.05, mottle: 0.12, brick: [0.62, 0.333, 0.035, 0.12], tints: [0xf4efe4, 0xeadfcb, 0xf8f3ea], sprout: { kind: 'brick', side: 0.25, top: 0, size: [1, 1] } } }, // 흰 돌벽돌
+      piece: { style: 'marble', shape: 'framed', bevel: 0.08, glow: 0.12, accent: [0xf0c040, 0xffffff], colors: { I: 0x3a9ad0, O: 0xe8c838, T: 0x9a5ad8, S: 0x3aa860, Z: 0xd84060, J: 0x4a56c8, L: 0xe87a30 } }, // 진한 대리석 + 굵은 금 테·금 마름모 (크림 성벽과 안 섞이게)
       cliff: [0xe6dccb, 0xb8a8a4, 0xa09094, 0x8a7a84, 0x706070],
       rock: 0xc8bcb4,
       trunk: 0x8a6a4a,
@@ -1289,6 +1297,7 @@ export const CONFIG = {
       fog: [0x0e3030, 40, 115],
       floor: { paint: 'moss', a: 0x4a7840, b: 0x426e3a, line: 'rgba(10,30,10,0.5)', rim: 0x5a4430 },
       terrain: { paint: 'stump', top: 0xc8985e, side: 0x7a5434, rim: 0x2e1e12, block: { top: 0x6e9a4a, lip: 0.24, tints: [0x84aa54, 0x5e8a46, 0x9a9a52], sprout: { kind: 'mushroom', side: 0.14, top: 0.16, size: [1, 1.7] } } }, // 이끼 낀 흙 (셰이더 블록은 윗면 이끼, 예전 텍스처는 나무 그루터기)
+      piece: { style: 'jelly', shape: 'cap', bevel: 0.24, glow: 0.18, fresnel: 0.35, accent: [0xfffaf0, 0xf0e2c8], colors: { I: 0x5ae0d8, O: 0xffd25a, T: 0xb46cf0, S: 0xb0f060, Z: 0xff5a8a, J: 0x5a8aff, L: 0xff8f4a } }, // 버섯: 크림색 밑동 + 볼록한 갓 (조각 색) + 큰 흰 점
       cliff: [0x5a4030, 0x4a3a30, 0x3a3028, 0x2e2620, 0x241e1a],
       rock: 0x4a5048,
       trunk: 0xd8d0b8, // 버섯 대
@@ -1315,6 +1324,7 @@ export const CONFIG = {
       fog: [0xdceaea, 45, 120],
       floor: { paint: 'grass', a: 0x80c050, b: 0x74b446, line: 'rgba(40,70,25,0.35)', rim: 0x8a8a88 }, // 판 옆면 = 돌 테
       terrain: { paint: 'bricks', top: 0xb0b0ac, side: 0x9c9c9a, rim: 0x46464a, block: { step: 0.06, mottle: 0.2, brick: [0.8, 0.5, 0.04, 0.16], tints: [0xb0b0ac, 0xa2a89e, 0xbab4aa], sprout: { kind: 'brick', side: 0.28, top: 0, size: [1, 1] } } }, // 회색 돌벽돌
+      piece: { style: 'stone', shape: 'bricks', rows: 2, gap: 0.06, bevel: 0.04, glow: 0.1, colors: { I: 0x4a90b8, O: 0xd8b040, T: 0x8a4a9a, S: 0x4a8a50, Z: 0xb83a3a, J: 0x34508c, L: 0xc8702c } }, // 줄눈 있는 돌 벽돌 2줄 (문장 색으로 칠함)
       cliff: [0x8a8a88, 0x7a7268, 0x6e665c, 0x625a50, 0x544c44],
       rock: 0x8a8a86,
       trunk: 0x6a4a30,
@@ -1550,12 +1560,28 @@ export const CONFIG = {
   FIGURE_HIT_SPRING_DAMP: 7, // 휘청 스프링 감쇠 (클수록 빨리 멈춤)
   FIGURE_HIT_HEAVY: 1.5, // 무거운 공격 (망치·치명타·폭탄 등) 휘청 세기
   FIGURE_HIT_FINISH: 2.2, // 콤보 마무리 타 휘청 세기
-  // 건축가 블록 화면 (render.js updateBBlocks)
-  BB_BLINK_MS: 1500, // 사라지기 이만큼 전부터 깜빡임
+  // 건축가 블록 화면 (2026-10-30 재혁 시안 A '공사장 나무 상자'): client/bblocks.js 가 그리고, 칸 모양·연출 곡선 순수 계산은 shared/bblock-look.js
+  // 바탕(판자·쇠 모서리)은 고정 색, 공사 줄무늬 띠만 주인 색. 종류마다: 벽 = 가로 판자·대각 버팀목·가운데 띠, 발판 기둥 = 세로 판자·윗가장자리 띠,
+  // 3타 = 작은 상자·세로 띠, R = 어두운 나무·넓은 띠·위 주황 빛 판 (터질 때가 가까울수록 세짐). 크기는 칸 비율
+  BB_LOOK: {
+    box: { wall: 0.96, pad: 0.96, third: 0.84, big: 0.98 }, // 상자 한 변
+    corner: 0.11, // 쇠 모서리 굵기
+    band: { wall: { z: 0.62, h: 0.18 }, pad: { z: 0.9, h: 0.1 }, third: { w: 0.16 }, big: { z: 0.5, h: 0.32 } }, // 띠: z = 가운데 높이(상자 높이 비율), h = 두께, third 는 세로 띠 폭
+    plate: { size: 0.5, h: 0.06 }, // R 위 빛 판
+    wood: 0xc99a5c, woodPad: 0xb98a50, woodBig: 0x6e432a, steel: 0x4a4f5a,
+    plateCold: 0x8a2a0c, plateHot: 0xff7a20, plateWhite: 0xfff2c0, // R 빛 판: 평소 → 터지기 직전
+    stripeRepeat: [1.6, 0.3], // 띠 줄무늬 반복 (띠가 넓고 낮아 세로로 덜 눌리게)
+  },
+  BB_BLINK_MS: 1500, // 사라지기 이만큼 전부터 하얗게 깜빡임 (빨라짐)
+  BB_CRACK_MS: 3500, // 사라지기 이만큼 전부터 금이 가운데서 점점 퍼짐
+  BB_COLLAPSE_MS: 420, // 수명이 끝나면 이 동안 부서지며 내려앉음 (납작·기울며 가라앉음 + 판자 조각)
+  BB_SHARDS: { wall: 9, pad: 9, third: 7, big: 16, collapse: 6, max: 320, life: 1.2, speed: 5.5, size: [0.3, 0.08, 0.035] }, // 터질 때 판자 조각 (칸마다), 최대 동시, 수명 초, 빠르기, 크기
+  BB_LOW_FX: 0.4, // 그래픽 낮춤: 조각·먼지 수 비율
+  BB_BIG_TICKS: [0, 0.32, 0.55, 0.7, 0.81, 0.89, 0.95], // R 준비 동안 째깍 시각 (BUILDER_BIG_FUSE_MS 비율, 점점 빠르게)
   BB_POP_MS: 260, // 생길 때 바닥에서 솟아오르는 시간 (살짝 넘쳤다 돌아옴)
   BB_CHAIN_STEP_MS: 50, // 연쇄 폭발: 칸마다 이 간격으로 차례로 터짐
   BB_BIG_SWELL: 0.18, // 대폭발 블록이 터지기 직전까지 부푸는 비율
-  BB_TINT: 0.3, // 주인 색에 흰색을 섞는 비율 (금 간 무늬가 보이게)
+  BB_TINT: 0.08, // 띠 주인 색에 흰색을 섞는 비율 (어두운 색도 줄무늬가 보이게, 너무 섞으면 바래 보임)
   STAR_FLY_MS: 100, // 닌자 표창이 날아가 보이는 시간 (판정은 즉시, 맞는 효과는 표창이 닿을 때)
   EMPOWER_GLOW: 0x6a2ad0, // 닌자 R 강화 중 몸이 깜빡이는 빛 (보라)
   // 탱크 화면

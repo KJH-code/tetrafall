@@ -942,6 +942,7 @@ export class World {
       this.mats.push(floorTop, rim);
     }
     r.hazard.setLook(L ? L.hazard : null); // 상승하는 위험 모습 (hazard.js)
+    r.setPieceLook?.(L ? id : null); // 테트리미노 칸 모습·조각 색 (piece-look.js)
     r.gridVersion = -1; // 지형 블록 색 다시
     r.setField(r.W, r.D, true, r.H); // 해 위치·섬 크기
   }

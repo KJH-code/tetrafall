@@ -18,6 +18,7 @@ import { CharStage } from '/char-stage.js';
 import { leaveNeedsConfirm } from '/shared/leave.js';
 import { PerfPanel } from '/perf.js';
 import { showTitle } from '/shared/title.js';
+import { bigTicks } from '/shared/bblock-look.js';
 import { startTitle } from '/title.js';
 import { TutorialUI, tutorialState } from '/tutorial-ui.js';
 
@@ -79,9 +80,10 @@ ko.on('final', (i) => {
   music.duck(C.KO_FINAL_MS / 1000);
 });
 // 건축가 블록이 한 칸 터질 때 (연쇄는 칸마다 차례로): 소리 + 가까우면 흔들림
-renderer.onBlast = (pos, big) => {
+renderer.onBlast = (pos, big, wood = false) => {
   const d = distToMe(pos.x, pos.y, pos.z);
   sound.play('boom', { dist: d, pos });
+  if (wood) sound.play('bbBlast', { dist: d, pos, strong: big }); // 건축가 상자: 나무 와작
   if (d !== undefined && d < (big ? 7 : 4)) fx.shake(big ? 0.4 : 0.15, big ? 450 : 200);
 };
 renderer.onArrowStuck = (pos) => sound.play('land', { dist: distToMe(pos.x, pos.y, pos.z) }); // 화살이 블록에 박힘
@@ -468,16 +470,16 @@ function handleEvent(e) {
       renderer.markCells(e.cells, 0xffd23a, e.ms);
       break;
     case 'wallRise':
-      renderer.skillStrike(e.who, 'builderWall', true); // 3타 블록도 wallRise 가 옴 → 벽 준비 중일 때만
-      for (const [x, y, z] of e.cells) if (z === Math.min(...e.cells.map((c) => c[2]))) fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.1 }, null, 0xa87448, 6, 3, 0.1, 0.4);
-      sound.play('land', { dist: e.who === myId ? 0 : distToMe(e.cells[0][0], e.cells[0][1], e.cells[0][2]) });
+      renderer.skillStrike(e.who, 'builderWall', true); // 3타 블록도 wallRise 가 옴 → 벽 준비 중일 때만 (솟음·먼지·소리는 bblock)
       break;
-    // ---- 건축가 블록 (색·깜빡임은 render.js updateBBlocks 가 snapshot bblocks 로) ----
-    case 'bblock': // 생김: 바닥에서 솟음
+    // ---- 건축가 블록 (시안 A 공사장 나무 상자, render.js updateBBlocks → client/bblocks.js) ----
+    case 'bblock': // 생김: 바닥을 뚫고 솟음 + 흙먼지 + 나무 '퉁'
       renderer.bblockBorn(e.cells);
+      sound.play('bbRise', { dist: e.who === myId ? 0 : distToMe(e.cells[0][0] + 0.5, e.cells[0][1] + 0.5, e.cells[0][2]), big: e.kind === 'big' });
       break;
-    case 'bblockGone': // 수명 끝·오래된 3타 블록: 회색 먼지
-      for (const [x, y, z] of e.cells) fx.burst({ x: x + 0.5, y: y + 0.5, z: z + 0.5 }, null, 0x999999, 8, 2, 0.1, 0.5);
+    case 'bblockGone': // 수명 끝·오래된 3타 블록: 부서지며 내려앉음 + 판자 조각
+      renderer.bbCollapse(e.cells);
+      sound.play('bbBreak', { dist: distToMe(e.cells[0][0] + 0.5, e.cells[0][1] + 0.5, e.cells[0][2]) });
       break;
     case 'blast': {
       // 망치로 쳐서 폭발: cells 순서대로 차례로 펑 (치는 방향으로 파편)
@@ -486,11 +488,11 @@ function handleEvent(e) {
       break;
     }
     case 'bigBombWarn': {
-      // 대폭발 예고: 3×3 이 솟고 빨갛게 부풀며 째깍 (점점 빠르게)
+      // 대폭발 예고: 3×3 이 솟고 위 빛 판이 점점 세지며 부풂, 째깍 (점점 빠르게)
       renderer.bblockBorn(e.cells);
       renderer.skillMove(e.who, 'builderBig');
       const [cx, cy, cz] = e.cells[Math.floor(e.cells.length / 2)];
-      for (const t of [0, 0.35, 0.6, 0.78, 0.9]) setTimeout(() => sound.play('tick', { dist: distToMe(cx + 0.5, cy + 0.5, cz) }), t * e.ms);
+      bigTicks(e.ms).forEach((t, i, all) => setTimeout(() => sound.play('bbTick', { dist: distToMe(cx + 0.5, cy + 0.5, cz), strong: i === all.length - 1 }), t)); // 짹깍 점점 빠르게
       break;
     }
     case 'bigBomb': {

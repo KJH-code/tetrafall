@@ -161,3 +161,54 @@ test('벽 밑 덩어리 (ground): 바깥 아래 칸이 막힌 옆면에만, 옆�
     assert.equal(p.v, -0.5, '옆면 바닥');
   }
 });
+
+test('테트리미노 칸 모습: 테마마다 재질·조각 색, 서로 구분되고 지형 색과 안 겹침', async () => {
+  const { pieceSpec } = await import('../shared/piece-look.js');
+  const STYLES = ['toy', 'wood', 'sandstone', 'gem', 'obsidian', 'marble', 'jelly', 'stone'];
+  const rgb = (c) => [(c >> 16) & 255, (c >> 8) & 255, c & 255];
+  const dist = (a, b) => Math.hypot(...rgb(a).map((v, i) => v - rgb(b)[i]));
+  const base = pieceSpec(null);
+  assert.equal(base.style, 'toy', '테마 없으면 장난감 블록');
+  assert.deepEqual(base.colors, C.SHAPE_COLORS);
+  const styles = new Set();
+  for (const [id, t] of Object.entries(C.WORLD_THEMES)) {
+    assert.ok(t.piece, `${id}.piece`);
+    const s = pieceSpec(id);
+    assert.ok(STYLES.includes(s.style), `${id}.style`);
+    styles.add(s.style);
+    assert.ok(s.size < 1 && s.bevel > 0 && s.bevel < s.size / 2, `${id} 모양`);
+    assert.ok(s.opacity > 0.5 && s.opacity <= 1, `${id}.opacity`);
+    assert.ok(s.glow >= 0 && s.glow < 0.5 && s.crack >= 0 && s.fresnel >= 0, `${id} 빛`);
+    const shapes = Object.keys(C.SHAPE_COLORS);
+    assert.deepEqual(Object.keys(t.piece.colors).sort(), [...shapes].sort(), `${id}: 조각 7개 색 다 있음`);
+    for (let i = 0; i < shapes.length; i++) {
+      for (let j = i + 1; j < shapes.length; j++) assert.ok(dist(s.colors[shapes[i]], s.colors[shapes[j]]) > 50, `${id}: ${shapes[i]}·${shapes[j]} 구분`);
+      for (const tc of [t.terrain.top, t.terrain.side, t.terrain.block?.top].filter((v) => v != null)) {
+        assert.ok(dist(s.colors[shapes[i]], tc) > 40, `${id}: ${shapes[i]} 가 지형 색과 같지 않게`);
+      }
+    }
+  }
+  assert.equal(styles.size, Object.keys(C.WORLD_THEMES).length, '테마마다 다른 재질');
+});
+
+test('테마별 칸 모양: 칸 안에 들어가고, 부품 색 속성, 삼각형 수 한도, 그래픽 낮춤이면 둥근 상자', async () => {
+  const { pieceSpec } = await import('../shared/piece-look.js');
+  const { pieceGeometry, PIECE_SHAPES } = await import('../client/piece-shapes.js');
+  const shapes = new Set();
+  for (const id of [null, ...Object.keys(C.WORLD_THEMES)]) {
+    const s = pieceSpec(id);
+    assert.ok(PIECE_SHAPES.includes(s.shape), `${id}.shape`);
+    shapes.add(s.shape);
+    for (const low of [false, true]) {
+      const g = pieceGeometry(s, low);
+      for (const k of ['position', 'normal', 'uv', 'aAcc']) assert.ok(g.attributes[k], `${id} ${k}`);
+      const b = g.boundingBox;
+      assert.ok(b.min.x >= -0.5 && b.max.x <= 0.5 && b.min.y >= -0.5 && b.max.y <= 0.5 && b.min.z >= -0.5, `${id}: 칸 안 (${b.min.toArray()} ${b.max.toArray()})`);
+      assert.ok(b.max.z <= 0.62, `${id}: 위로 조금만 (잎 덤불)`);
+      const tris = g.attributes.position.count / 3;
+      assert.ok(tris <= (low ? 300 : 1200), `${id}: 삼각형 ${tris}`);
+      if (low) assert.ok(g.attributes.aAcc.array.every((v) => v === 0), `${id}: 낮춤이면 부품 없음`);
+    }
+  }
+  assert.ok(shapes.size >= 6, '테마마다 모양이 다름 (화산만 둥근 상자)');
+});

@@ -636,20 +636,36 @@ test('건축가 3타: 맞으면 상대 발밑, 빗나가면 앞 칸에 블록 (�
   assert.equal(g2.gridAt(3, 1, 0), 0);
 });
 
-test('건축가 F 공중: 발밑에 발판 + 위로 부스트, 지상 F 와 쿨 같이 씀. 필드 밖이면 칸 없이 부스트만', () => {
+test('건축가 F 공중 (2026-10-30): 발밑에 세로 2칸 기둥 + 그 위에 섬 (부스트 없음), 같은 묶음·8초 수명, 지상 F 와 쿨 같이 씀. 필드 밖이면 칸 없이 부스트만', () => {
   const { g, lines, p } = setupChars(['builder', 'ninja']);
   place(p(2), 9.5, 9.5);
   place(p(1), 4.5, 4.5, 0, 2.5);
   Object.assign(p(1), { grounded: false, vz: -3 });
   g.drainEvents();
   g.handleAction(1, { name: 'skill' });
+  assert.equal(C.BUILDER_PAD_HEIGHT, 2);
   assert.equal(g.gridAt(4, 4, 1), CELL.BUILD, '발밑 칸');
-  assert.equal(bb(g, 'pad').length, 1);
-  assert.equal(p(1).vz, C.BUILDER_PAD_BOOST);
-  assert.ok(g.drainEvents().some((e) => e.type === 'padBoost' && e.who === 1));
-  assert.ok(p(1).skillReadyAt > g.time);
-  run(g, 1000);
+  assert.equal(g.gridAt(4, 4, 0), CELL.BUILD, '그 아래 칸 (세로 2칸)');
+  const pads = bb(g, 'pad');
+  assert.equal(pads.length, 2);
+  assert.equal(new Set(pads.map((b) => b.group)).size, 1, '같은 묶음');
+  assert.ok(pads.every((b) => b.expiresAt === g.time + C.BUILDER_BLOCK_MS), '수명');
+  assert.equal(p(1).z, 2, '기둥 위에 섬');
+  assert.equal(p(1).vz, 0, '부스트 없음');
+  assert.ok(p(1).grounded);
+  const ev = g.drainEvents();
+  assert.ok(ev.some((e) => e.type === 'padBoost' && e.who === 1 && e.stand && e.cells.length === 2));
+  assert.ok(ev.some((e) => e.type === 'bblock' && e.kind === 'pad' && e.cells.length === 2));
+  assert.ok(p(1).skillReadyAt > g.time, '쿨');
+  run(g, 300);
+  assert.ok(p(1).grounded && Math.abs(p(1).z - 2) < 1e-6, `서 있음 z=${p(1).z}`);
+  assert.ok(lines.includes('  [스킬] P1 발판 기둥 2칸 (4,4,0~1)'), lines.join('\n'));
+  run(g, C.BUILDER_BLOCK_MS + 100);
+  assert.equal(bb(g, 'pad').length, 0, '8초 뒤 같이 사라짐');
+  assert.equal(g.gridAt(4, 4, 1), 0);
+  assert.equal(g.gridAt(4, 4, 0), 0);
   place(p(1), 2.5, 2.5, 0);
+  p(1).skillReadyAt = g.time + 1000;
   g.handleAction(1, { name: 'skill' });
   assert.equal(p(1).wallAt, 0, '쿨 같이 씀');
   // 필드 밖에서 떨어지는 중
@@ -769,23 +785,60 @@ test('봇 건축가: 떨어지면 공중 F 로 복귀, 내 블록 너머에 상�
   }
 });
 
-test('건축가 발판도 망치로 치면 터짐 (2026-10-25 재혁): 밟고 있던 발판을 쳐서 떨어짐, 패시브 게이지도 참', () => {
+test('건축가 발판 기둥도 망치로 치면 터짐 (2026-10-25 재혁): 같은 F 두 칸이 같이 (연쇄), 밟고 있던 기둥을 쳐서 떨어짐, 패시브 게이지도 참', () => {
   const { g, lines, p } = setupChars(['builder', 'ninja']);
   place(p(2), 9.5, 9.5);
   place(p(1), 4.5, 4.5, 0, 2.5);
   Object.assign(p(1), { grounded: false, vz: -3 });
-  g.handleAction(1, { name: 'skill' }); // 발판 (4,4,1)
-  run(g, 1500); // 부스트 뒤 발판 위에 내려섬
-  assert.ok(p(1).grounded && Math.abs(p(1).z - 2) < 1e-6, `발판 위 z=${p(1).z}`);
+  g.handleAction(1, { name: 'skill' }); // 기둥 (4,4,0~1), 위에 섬
+  run(g, 300);
+  assert.ok(p(1).grounded && Math.abs(p(1).z - 2) < 1e-6, `기둥 위 z=${p(1).z}`);
   p(1).ult = 0;
   p(1).chainN = 0;
   basic(g, 1);
-  assert.equal(g.gridAt(4, 4, 1), 0, '발판 터짐');
+  assert.equal(g.gridAt(4, 4, 1), 0, '윗칸 터짐');
+  assert.equal(g.gridAt(4, 4, 0), 0, '아랫칸도 (같은 묶음 연쇄)');
   assert.equal(bb(g, 'pad').length, 0);
-  assert.equal(p(1).ult, C.BUILDER_BLAST_ULT, '패시브 게이지');
-  assert.ok(lines.some((l) => l.startsWith('  [폭발] P1 발판 1칸')), lines.join('\n'));
+  assert.equal(p(1).ult, C.BUILDER_BLAST_ULT * 2, '패시브 게이지 (터진 칸마다, 벽과 같음)');
+  assert.ok(lines.some((l) => l.startsWith('  [폭발] P1 발판 2칸')), lines.join('\n'));
   run(g, 600);
   assert.ok(p(1).z < 2 - 0.5, `떨어짐 z=${p(1).z.toFixed(2)}`);
+});
+
+test('건축가 공중 F 기둥: 막힌 곳 — 바로 밑이 땅·블록이면 그만큼만 (1칸), 바로 밑 칸이 막히면 칸 없이 부스트, 밑에 다른 사람이 있으면 그 칸에서 멈춤', () => {
+  const { g, p } = setupChars(['builder', 'ninja']);
+  place(p(2), 9.5, 9.5);
+  // 땅(z 0) 바로 위 1.3 높이: 발밑 칸 0 만 비어 있음 → 1칸
+  place(p(1), 4.5, 4.5, 0, 1.3);
+  Object.assign(p(1), { grounded: false, vz: -3 });
+  g.handleAction(1, { name: 'skill' });
+  assert.equal(bb(g, 'pad').length, 1);
+  assert.equal(g.gridAt(4, 4, 0), CELL.BUILD);
+  assert.equal(p(1).z, 1);
+  // 밑에 블록 (z 1) → 그 위 칸 (z 2) 만
+  run(g, C.BUILDER_BLOCK_MS + 100);
+  g.grid[g.idx(6, 6, 1)] = CELL.TERRAIN;
+  g.grid[g.idx(6, 6, 0)] = CELL.TERRAIN;
+  place(p(1), 6.5, 6.5, 0, 3.4);
+  Object.assign(p(1), { grounded: false, vz: -3, skillReadyAt: 0 });
+  g.handleAction(1, { name: 'skill' });
+  assert.deepEqual(bb(g, 'pad').map((b) => b.z), [2], '막힌 칸 위까지만');
+  assert.equal(p(1).z, 3);
+  // 바로 밑 칸이 막힘 (발밑 칸에 블록이 이미 있음) → 부스트
+  run(g, C.BUILDER_BLOCK_MS + 100);
+  g.grid[g.idx(2, 2, 2)] = CELL.TERRAIN;
+  place(p(1), 2.5, 2.5, 0, 3.6);
+  Object.assign(p(1), { grounded: false, vz: -3, skillReadyAt: 0 });
+  g.handleAction(1, { name: 'skill' });
+  assert.equal(bb(g, 'pad').length, 0);
+  assert.equal(p(1).vz, C.BUILDER_PAD_BOOST, '칸 없이 부스트');
+  // 아래 칸에 다른 사람 → 그 사람 머리 위 칸까지만
+  place(p(2), 7.5, 2.5, 0, 0);
+  place(p(1), 7.5, 2.5, 0, 3.5);
+  Object.assign(p(1), { grounded: false, vz: -3, skillReadyAt: 0 });
+  g.handleAction(1, { name: 'skill' });
+  assert.ok(bb(g, 'pad').every((b) => b.z >= 1), '사람이 있는 칸엔 안 세움');
+  assert.ok(!bb(g, 'pad').some((b) => b.z === 0));
 });
 
 // ---------- 닌자 (2026-10-25, docs/characters.md 3.2) ----------

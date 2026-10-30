@@ -160,39 +160,6 @@ function sand(ctx, n) {
   ctx.strokeRect(1.5, 1.5, n - 3, n - 3);
 }
 
-// 건축가 블록: 금 간 벽돌 (주인 색이 곱해짐). 한가운데서 갈라진 굵은 금 + 모서리 쇠 리벳 → 쳐서 터뜨리는 블록이 보이게
-function cracked(ctx, n) {
-  const r = rng(47);
-  ctx.fillStyle = gray(240);
-  ctx.fillRect(0, 0, n, n);
-  for (let i = 0; i < 90; i++) {
-    ctx.fillStyle = gray(215 + Math.floor(r() * 35));
-    ctx.fillRect(r() * n, r() * n, 2, 2);
-  }
-  // 갈라진 금: 가운데에서 네 방향으로 지그재그
-  ctx.strokeStyle = gray(70);
-  ctx.lineWidth = 2.5;
-  ctx.lineJoin = 'bevel';
-  for (const [ex, ey] of [[0.05, 0.2], [0.95, 0.1], [0.85, 0.95], [0.1, 0.85]]) {
-    ctx.beginPath();
-    ctx.moveTo(n / 2, n / 2);
-    for (let k = 1; k <= 3; k++) {
-      const t = k / 3;
-      ctx.lineTo(n * (0.5 + (ex - 0.5) * t) + (r() - 0.5) * 7, n * (0.5 + (ey - 0.5) * t) + (r() - 0.5) * 7);
-    }
-    ctx.stroke();
-  }
-  ctx.fillStyle = gray(60);
-  for (const [x, y] of [[0.14, 0.14], [0.86, 0.14], [0.14, 0.86], [0.86, 0.86]]) {
-    ctx.beginPath();
-    ctx.arc(n * x, n * y, 3, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.strokeStyle = gray(50);
-  ctx.lineWidth = 4;
-  ctx.strokeRect(2, 2, n - 4, n - 4);
-}
-
 // 꼰 밧줄: 비스듬한 가닥 줄무늬 (밝은 삼베 + 어두운 홈). 길이 방향으로 반복해서 씀
 function rope(ctx, n) {
   ctx.fillStyle = gray(225);
@@ -237,8 +204,198 @@ export function makeTextures(floorRepeat) {
     stone: canvasTexture(stone),
     wood: canvasTexture(wood),
     sand: canvasTexture(sand),
-    cracked: canvasTexture(cracked),
     rope: canvasTexture(rope, 32, [1, 1]),
     floor: canvasTexture(tile, SIZE, floorRepeat),
   };
+}
+
+// ---- 테마별 테트리미노 칸 면 (client/piece-look.js, config WORLD_THEMES.*.piece.style). 밝은 회색조 → 조각 색이 곱해짐
+const PIECE_FACES = {
+  toy: piece, // 기본 둥근 장난감 블록 (테마 없음)
+  // 칠한 나무 장난감: 나뭇결 + 둥근 칠 판
+  wood(ctx, n) {
+    const r = rng(11);
+    ctx.fillStyle = gray(236);
+    ctx.fillRect(0, 0, n, n);
+    for (let i = 0; i < 14; i++) {
+      const y = r() * n;
+      ctx.strokeStyle = `rgba(120,90,60,${0.08 + r() * 0.1})`;
+      ctx.lineWidth = 1 + r() * 2;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.bezierCurveTo(n * 0.3, y + (r() - 0.5) * 10, n * 0.7, y + (r() - 0.5) * 10, n, y + (r() - 0.5) * 6);
+      ctx.stroke();
+    }
+    // 판자 셋 (사이 홈) + 못 자국. 건축가 상자와 달리 띠·쇠 모서리 없음
+    for (let i = 1; i < 3; i++) {
+      ctx.fillStyle = 'rgba(70,45,25,.55)';
+      ctx.fillRect(0, (i / 3) * n - n * 0.012, n, n * 0.024);
+      ctx.fillStyle = 'rgba(255,255,255,.3)';
+      ctx.fillRect(0, (i / 3) * n + n * 0.012, n, n * 0.012);
+    }
+    ctx.fillStyle = 'rgba(60,40,25,.5)';
+    for (let i = 0; i < 3; i++) for (const x of [0.08, 0.92]) {
+      ctx.beginPath();
+      ctx.arc(x * n, ((i + 0.5) / 3) * n, n * 0.018, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  },
+  // 사암·테라코타: 가로 층 + 점 + 깨진 테
+  sandstone(ctx, n) {
+    const r = rng(23);
+    ctx.fillStyle = gray(232);
+    ctx.fillRect(0, 0, n, n);
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = `rgba(${r() < 0.5 ? '255,255,255' : '90,60,40'},${0.06 + r() * 0.08})`;
+      ctx.fillRect(0, (i / 5) * n + r() * 6, n, n / 5 - 4);
+    }
+    for (let i = 0; i < 160; i++) {
+      ctx.fillStyle = `rgba(80,50,30,${r() * 0.25})`;
+      ctx.fillRect(r() * n, r() * n, 1.5, 1.5);
+    }
+    ctx.strokeStyle = 'rgba(70,40,20,.45)';
+    ctx.lineWidth = n * 0.035;
+    ctx.strokeRect(n * 0.02, n * 0.02, n * 0.96, n * 0.96);
+    // 상형문자 새김 (눈·물결·앵크·새 발): 어두운 홈 + 아래 밝은 테
+    const glyphs = [
+      (x, y, u) => { ctx.beginPath(); ctx.ellipse(x, y, u, u * 0.5, 0, 0, Math.PI * 2); ctx.moveTo(x + u * 0.25, y); ctx.arc(x, y, u * 0.25, 0, Math.PI * 2); },
+      (x, y, u) => { ctx.beginPath(); ctx.moveTo(x - u, y); for (let k = 0; k < 4; k++) ctx.quadraticCurveTo(x - u + (k + 0.5) * u * 0.5, y + (k % 2 ? u : -u) * 0.4, x - u + (k + 1) * u * 0.5, y); },
+      (x, y, u) => { ctx.beginPath(); ctx.ellipse(x, y - u * 0.55, u * 0.35, u * 0.45, 0, 0, Math.PI * 2); ctx.moveTo(x, y - u * 0.1); ctx.lineTo(x, y + u); ctx.moveTo(x - u * 0.6, y + u * 0.15); ctx.lineTo(x + u * 0.6, y + u * 0.15); },
+      (x, y, u) => { ctx.beginPath(); ctx.moveTo(x, y - u); ctx.lineTo(x, y + u); ctx.moveTo(x, y); ctx.lineTo(x - u * 0.7, y + u * 0.6); ctx.moveTo(x, y); ctx.lineTo(x + u * 0.7, y + u * 0.6); },
+    ];
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 3; i++) {
+      const x = n * (0.2 + i * 0.3);
+      const y = n * (0.5 + (r() - 0.5) * 0.2);
+      const u = n * 0.09;
+      const gl = glyphs[Math.floor(r() * glyphs.length)];
+      ctx.lineWidth = n * 0.03;
+      ctx.strokeStyle = 'rgba(255,240,220,.35)';
+      gl(x, y + 1.5, u);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(60,35,15,.6)';
+      gl(x, y, u);
+      ctx.stroke();
+    }
+  },
+  // 보석: 대각 깎은 면 + 밝은 심
+  gem(ctx, n) {
+    ctx.fillStyle = gray(210);
+    ctx.fillRect(0, 0, n, n);
+    const c = n / 2;
+    const facets = [[0, 0, n, 0, 248], [n, 0, n, n, 200], [n, n, 0, n, 170], [0, n, 0, 0, 228]];
+    for (const [x1, y1, x2, y2, v] of facets) {
+      ctx.fillStyle = gray(v);
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.lineTo(c, c);
+      ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(255,255,255,.55)';
+    ctx.beginPath();
+    ctx.moveTo(c, n * 0.28);
+    ctx.lineTo(n * 0.72, c);
+    ctx.lineTo(c, n * 0.72);
+    ctx.lineTo(n * 0.28, c);
+    ctx.fill();
+  },
+  // 흑요석: 어두운 몸 + 밝은 금 (금이 조각 색으로 빛남 — piece-look crack)
+  obsidian(ctx, n) {
+    const r = rng(37);
+    ctx.fillStyle = gray(62);
+    ctx.fillRect(0, 0, n, n);
+    ctx.fillStyle = 'rgba(255,255,255,.08)';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(n * 0.7, 0);
+    ctx.lineTo(0, n * 0.7);
+    ctx.fill();
+    // 금은 면마다 굵은 한 줄 (가장자리에서 가장자리로 3번 꺾임) + 짧은 가지 하나 — 재혁: 선이 너무 많지 않게
+    ctx.strokeStyle = gray(255);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    let x = n * (0.25 + r() * 0.5);
+    let y = 0;
+    const pts = [[x, y]];
+    for (let i = 0; i < 3; i++) {
+      x = Math.min(n * 0.85, Math.max(n * 0.15, x + (r() - 0.5) * n * 0.5));
+      y += n / 3;
+      pts.push([x, y]);
+    }
+    ctx.lineWidth = n * 0.07;
+    ctx.beginPath();
+    pts.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
+    ctx.stroke();
+    const [bx, by] = pts[1 + Math.floor(r() * 2)];
+    ctx.lineWidth = n * 0.04;
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(bx + (r() < 0.5 ? -1 : 1) * n * 0.22, by + n * 0.12);
+    ctx.stroke();
+  },
+  // 대리석: 흰 바탕 + 회색 결 (금 테는 piece-look band)
+  marble(ctx, n) {
+    const r = rng(41);
+    ctx.fillStyle = gray(244);
+    ctx.fillRect(0, 0, n, n);
+    for (let k = 0; k < 4; k++) {
+      ctx.strokeStyle = `rgba(110,110,130,${0.12 + r() * 0.14})`;
+      ctx.lineWidth = 1 + r() * 2.5;
+      ctx.beginPath();
+      let x = r() * n;
+      let y = 0;
+      ctx.moveTo(x, y);
+      while (y < n) {
+        x += (r() - 0.5) * n * 0.3;
+        y += n * 0.12;
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+  },
+  // 버섯 갓: 말랑한 그라데이션 + 흰 점
+  jelly(ctx, n) {
+    const r = rng(53);
+    const g = ctx.createRadialGradient(n * 0.35, n * 0.3, n * 0.05, n * 0.5, n * 0.5, n * 0.75);
+    g.addColorStop(0, gray(255));
+    g.addColorStop(1, gray(200));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, n, n);
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = 'rgba(255,255,255,.85)';
+      ctx.beginPath();
+      ctx.ellipse(n * (0.15 + r() * 0.7), n * (0.15 + r() * 0.7), n * (0.05 + r() * 0.05), n * (0.04 + r() * 0.04), r() * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  },
+  // 깎은 돌: 끌 자국 + 테 홈
+  stone(ctx, n) {
+    const r = rng(67);
+    ctx.fillStyle = gray(222);
+    ctx.fillRect(0, 0, n, n);
+    for (let i = 0; i < 40; i++) {
+      ctx.strokeStyle = `rgba(${r() < 0.5 ? '255,255,255' : '40,40,50'},${0.08 + r() * 0.1})`;
+      ctx.lineWidth = 1.5;
+      const x = r() * n;
+      const y = r() * n;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + n * 0.08, y + n * 0.03);
+      ctx.stroke();
+    }
+    const b = n * 0.1;
+    ctx.strokeStyle = 'rgba(30,30,40,.35)';
+    ctx.lineWidth = n * 0.03;
+    ctx.strokeRect(b, b, n - 2 * b, n - 2 * b);
+    ctx.strokeStyle = 'rgba(255,255,255,.3)';
+    ctx.strokeRect(b + n * 0.03, b + n * 0.03, n - 2 * b, n - 2 * b);
+  },
+};
+export const PIECE_STYLES = Object.keys(PIECE_FACES);
+const pieceTexCache = new Map();
+export function pieceTexture(style) {
+  if (!PIECE_FACES[style]) return null;
+  if (!pieceTexCache.has(style)) pieceTexCache.set(style, canvasTexture(PIECE_FACES[style], 128));
+  return pieceTexCache.get(style);
 }
