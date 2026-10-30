@@ -1137,6 +1137,8 @@ export const CONFIG = {
   MENU_CAM_DIST: 16, // 섬 가운데에서 카메라 거리 (칸)
   MENU_VIEW_SHIFT: 0.3, // 화면 너비 비율만큼 장면을 왼쪽으로 (가운데 메뉴 판에 섬이 안 가리게)
   // 상승하는 위험 모습 (client/hazard.js, 화면만 — 판정은 서버 lava.z). 테마마다 값은 WORLD_THEMES.*.hazard
+  HAZARD_LOOK: 'glow', // 표면 그리는 법: old 예전 (사인 파도) · glow A 스스로 빛나는 흐르는 빛 띠 · toon B 만화풍 색 층 + 뚜렷한 테 (2026-10-30 시안, client/hazard.js)
+  HAZARD_NOISE_WAVE: 1.6, // glow·toon 잡음 파도 높이 배수 (× 테마 wave[0])
   HAZARD_FALLBACK: 'volcano', // 테마 없는 화면(대기실)의 위험 모습
   HAZARD_DEEP: 8, // 몸통 바닥 깊이 (표면 아래 칸) · 필드 밖 깊이
   HAZARD_SEG: [120, 40], // 표면 격자 수 (정점 파도) [보통, 그래픽 낮춤]
@@ -1329,7 +1331,7 @@ export const CONFIG = {
       islets: 7,
       motes: { color: 0xfff27a, count: 70, size: 0.13 }, // 반딧불 (노랑 — 독늪 연두와 다르게)
       edgeOpacity: 0.06,
-      hazard: { style: 'swamp', deep: 0x1c5a08, mid: 0x7cff2a, shallow: 0xbcff78, foam: 0xdcff96, alpha: [0.95, 0.75], reflect: 0.25, wave: [0.035, 0.6], depthFade: 1.0, tint: 0x60d020, tintDepth: 0.6, band: [0x80ff40, 0.35, true], contact: 0xdcff96, ambient: 0.6, particleSpeed: 2, light: [0x8aff40, 1.0], particles: [0xc8ff60, 0x60ff20], splash: [0xc8ff60, 0x60ff20], vignette: 0x70ff30 },
+      hazard: { style: 'swamp', deep: 0x0a4a1c, mid: 0x2ee06a, shallow: 0x9cffb4, foam: 0xe4ffe8, alpha: [0.95, 0.75], reflect: 0.25, wave: [0.035, 0.6], depthFade: 1.0, tint: 0x60d020, tintDepth: 0.6, band: [0x80ff40, 0.35, true], contact: 0xdcff96, ambient: 0.6, particleSpeed: 2, light: [0x8aff40, 1.0], particles: [0xc8ff60, 0x60ff20], splash: [0xc8ff60, 0x60ff20], vignette: 0x70ff30 },
     },
     castle: { // 요새: 중세 성 · 맑은 오후 · 탁한 겨자빛 해자 독늪 · 성벽 돌
       seed: 79,
@@ -1356,7 +1358,7 @@ export const CONFIG = {
       clouds: 28,
       islets: 7,
       edgeOpacity: 0.05,
-      hazard: { style: 'swamp', deep: 0x3a2e08, mid: 0x9a8418, shallow: 0xccb444, foam: 0xf0e878, alpha: [0.96, 0.8], reflect: 0.25, wave: [0.035, 0.6], depthFade: 1.0, tint: 0x8a7a18, tintDepth: 0.6, band: [0x5a5030, 0.5, false], contact: 0xf0e878, ambient: 0.5, particleSpeed: 2, light: [0xc0a840, 0.5], particles: [0xe8d870, 0xa09030], splash: [0xe8d870, 0xa09030], vignette: 0x3a2a04 }, // 겨자빛 탁한 늪 (잔디 초록·버섯 숲 형광 연두와 다르게)
+      hazard: { style: 'swamp', deep: 0x06302c, mid: 0x109a78, shallow: 0x6ee8c0, foam: 0xd8fff0, alpha: [0.96, 0.8], reflect: 0.3, wave: [0.035, 0.6], depthFade: 1.0, tint: 0x0e8068, tintDepth: 0.6, band: [0x2a5a50, 0.5, false], contact: 0xd8fff0, ambient: 0.5, particleSpeed: 2, light: [0x40d0a8, 0.5], particles: [0xc0ffe8, 0x40c8a0], splash: [0xd8fff0, 0x40c8a0], vignette: 0x063a30 }, // 겨자빛 탁한 늪 (잔디 초록·버섯 숲 형광 연두와 다르게)
     },
   },
   HELD_MODEL_SIZE: 0.28,

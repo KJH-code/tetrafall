@@ -10,14 +10,17 @@ import { noOutline } from '/toon.js';
 import { hazardField, riseStep, vignetteStrength, farRings, HAZARD_MARGIN } from '/hazard-field.js';
 
 const STYLE = { water: 0, lava: 1, swamp: 2, energy: 3, storm: 4 };
+// 표면 그리는 법 (config HAZARD_LOOK, 2026-10-30 재혁 '액체 못생김' 시안): old 예전 · glow A 스스로 빛나는 흐르는 빛 띠 · toon B 만화풍 단색 층 + 뚜렷한 테·드문드문 물결 선.
+// glow·toon 은 파도를 사인파 대신 겹친 잡음 (다른 크기·방향·흐름) 으로
+const LOOKS = { old: 0, glow: 1, toon: 2 };
 
 // 표면 셰이더 (STYLE 로 질감 갈래). far = 필드 밖 지평선까지 큰 판 (가운데 구멍은 버리고, 파도 없이 평평 — 안쪽 판은 가장자리로 갈수록 파도가 잦아들어 이음매 없음).
 // shimmer = 먼 표면 반짝임·잔물결 법선 (그래픽 낮춤이면 끔)
-function surfaceMaterial(style, far = false, shimmer = true) {
+function surfaceMaterial(style, far = false, shimmer = true, look = 'old') {
   return noOutline(new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: true,
-    defines: { STYLE: STYLE[style] ?? 1, FAR: far ? 1 : 0, SHIMMER: shimmer ? 1 : 0, RINGS: C.HAZARD_FAR_RINGS },
+    defines: { STYLE: STYLE[style] ?? 1, FAR: far ? 1 : 0, SHIMMER: shimmer ? 1 : 0, RINGS: C.HAZARD_FAR_RINGS, LOOK: LOOKS[look] ?? 0 },
     uniforms: {
       uTime: { value: 0 },
       uZ: { value: 0 },
@@ -43,6 +46,16 @@ function surfaceMaterial(style, far = false, shimmer = true) {
     },
     vertexShader: `uniform float uTime; uniform vec2 uWave; uniform float uPulse; uniform vec4 uBulge; uniform vec4 uFieldRect; uniform float uMargin;
       varying vec3 vW; varying vec3 vN; varying vec2 vF;
+      float vh(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float vn(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(vh(i), vh(i + vec2(1.0, 0.0)), f.x), mix(vh(i + vec2(0.0, 1.0)), vh(i + vec2(1.0, 1.0)), f.x), f.y); }
+      // 잡음 파도: 크기·방향·흐름이 다른 세 겹 (반복이 안 보이게)
+      float wave(vec2 p, float t) {
+        vec2 a = p * 0.32 + vec2(t * 0.19, t * 0.11);
+        vec2 b = mat2(0.8, -0.6, 0.6, 0.8) * p * 0.71 - vec2(t * 0.15, -t * 0.22);
+        vec2 c = mat2(-0.5, 0.87, -0.87, -0.5) * p * 1.6 + vec2(t * 0.31, t * 0.07);
+        return (vn(a) - 0.5) * 2.0 + (vn(b) - 0.5) * 1.1 + (vn(c) - 0.5) * 0.45;
+      }
       void main() {
         vec4 w = modelMatrix * vec4(position, 1.0);
         vec2 p = w.xy;
@@ -63,8 +76,15 @@ function surfaceMaterial(style, far = false, shimmer = true) {
         float f1 = dot(d1, p) * 1.1 + t * 1.3;
         float f2 = dot(d2, p) * 1.6 - t * 1.1;
         float f3 = dot(d3, p) * 2.3 + t * 1.7;
+      #if LOOK == 0
         float h = a * (sin(f1) + 0.6 * sin(f2) + 0.3 * sin(f3));
         vec2 g = a * (cos(f1) * 1.1 * d1 + 0.6 * cos(f2) * 1.6 * d2 + 0.3 * cos(f3) * 2.3 * d3);
+      #else
+        float aw = a * ${C.HAZARD_NOISE_WAVE.toFixed(3)};
+        float h0 = wave(p, t);
+        float h = aw * h0;
+        vec2 g = aw * vec2(wave(p + vec2(0.2, 0.0), t) - h0, wave(p + vec2(0.0, 0.2), t) - h0) / 0.2;
+      #endif
         // 발 밑 들썩 (가까이 선 사람)
         vec2 bp = p - uBulge.xy;
         float bump = uBulge.z * exp(-dot(bp, bp) * 1.6) * (0.65 + 0.35 * sin(uTime * 7.0));
@@ -174,16 +194,60 @@ function surfaceMaterial(style, far = false, shimmer = true) {
         c += uFoam * flash * 0.2;
         glow = 0.5;
       #endif
+      #if LOOK > 0
+        // 휘감긴 잡음 (반복 없이 흐름): 색 층·빛 띠·물결 선이 다 이것에서
+        vec2 wq = q * 0.21 + vec2(noise(q * 0.13 + t * 0.04), noise(q * 0.13 - t * 0.035 + 5.2)) * 2.4;
+        float fb = noise(wq + t * 0.05) * 0.62 + noise(wq * 2.3 - t * 0.07) * 0.28 + noise(wq * 5.3 + t * 0.11) * 0.1;
+        float sparse = smoothstep(0.5, 0.72, noise(q * 0.27 + vec2(t * 0.03, -t * 0.02) + 11.0)); // 드문드문
+      #if LOOK == 1
+        // A 스스로 빛나는 표면: 맑은 두 색 + 흐르는 밝은 빛 띠 (등고선) + 반짝 (용암은 껍질·금 그대로 더 밝게)
+      #if STYLE != 1
+        c = mix(uDeep, uMid, smoothstep(0.22, 0.78, fb));
+        float rib = smoothstep(0.8, 0.97, abs(fract(fb * 3.2 - t * 0.06) - 0.5) * 2.0) * (0.3 + 0.7 * sparse); // 흐르는 빛 띠 (등고선)
+        c = mix(c, uShallow, rib * 0.85);
+        c += uFoam * pow(rib, 3.0) * 0.35;
+        c += uFoam * step(0.988, noise(q * 6.0 + t * 1.2)) * 0.5;
+      #else
+        c *= 1.15;
+      #endif
+        glow = max(glow, 0.8);
+      #else
+        // B 만화풍: 색 세 층 (뚜렷한 경계) + 드문드문 짧은 물결 선 (용암은 껍질·금을 층으로)
+      #if STYLE != 1
+        float lv = smoothstep(0.25, 0.75, fb);
+        c = lv < 0.33 ? mix(uDeep, uMid, 0.45) : lv < 0.7 ? uMid : mix(uMid, uShallow, 0.55); // 가장 어두운 층도 구멍처럼 까맣지 않게
+        float stroke = step(0.93, abs(fract(fb * 5.0 + t * 0.08) - 0.5) * 2.0); // 물결 선
+        c = mix(c, uFoam, stroke * step(0.62, sparse) * 0.95);
+      #else
+        c = floor(c * 5.0 + 0.5) / 5.0;
+      #endif
+        glow = max(glow, 0.6);
+      #endif
+      #endif
         // 얕은 곳 밝게
+      #if LOOK == 2
+        c = mix(c, uShallow, step(0.5, sh) * 0.5);
+      #else
         c = mix(c, uShallow, sh * 0.55 * (1.0 - glow * 0.5));
-        // 하늘 반사 + 햇빛 반짝임
+      #endif
+        // 하늘 반사 + 햇빛 반짝임 (만화풍은 반사도 한 단)
+      #if LOOK == 2
+        c = mix(c, uSky, step(0.45, fres) * uReflect * 0.6);
+      #else
         c = mix(c, uSky, fres * uReflect * (1.0 - glow * 0.6));
+      #endif
         c += pow(max(dot(reflect(-V, N), uSunDir), 0.0), 90.0) * uReflect * 0.9;
         // 닿는 곳 테 (거품·불꽃·증기): 출렁이며 끊기는 띠
         float wob = 0.1 * sin(q.x * 3.1 + t * 2.3) + 0.1 * sin(q.y * 2.7 - t * 1.9);
         float foam = 1.0 - smoothstep(0.05, 0.3 + wob + uPulse * 0.3, dist);
         foam *= mix(0.45, 1.0, smoothstep(0.3, 0.7, noise(q * 5.0 + t * 0.9)));
         float halo = (1.0 - smoothstep(0.3, 1.1, dist)) * 0.25; // 테 바깥 옅은 번짐
+      #if LOOK == 2
+        foam = step(0.45, foam); // 만화풍: 뚜렷한 밝은 테
+        halo = (1.0 - step(0.75, dist)) * 0.3;
+      #elif LOOK == 1
+        c += uShallow * halo * 0.8; // 빛나는 테 번짐
+      #endif
         c = mix(c, uFoam, foam + halo * (1.0 - foam));
         c += uFoam * uPulse * 0.3;
         // 먼 섬·산이 잠기는 곳 테 (거품·불꽃·김)
@@ -285,7 +349,8 @@ export class Hazard {
   setLook(h) {
     this.look = h || C.WORLD_THEMES[C.HAZARD_FALLBACK].hazard;
     const L = this.look;
-    if (this.style !== L.style || !this.surface || this.builtLow !== this.low) {
+    const mode = this.mode || C.HAZARD_LOOK;
+    if (this.style !== L.style || !this.surface || this.builtLow !== this.low || this.builtMode !== mode) {
       for (const m of [this.surface, this.far]) {
         if (!m) continue;
         this.r.scene.remove(m);
@@ -294,12 +359,13 @@ export class Hazard {
       }
       this.style = L.style;
       this.builtLow = this.low;
-      this.surface = new THREE.Mesh(this.surfaceGeometry(), surfaceMaterial(L.style, false, !this.low));
+      this.builtMode = mode;
+      this.surface = new THREE.Mesh(this.surfaceGeometry(), surfaceMaterial(L.style, false, !this.low, mode));
       this.surface.visible = false;
       this.surface.renderOrder = 1; // 투명: 블록 뒤에 그림
       // 지평선까지 바다: 필드 밖 큰 판 하나 (같은 uniform 을 나눠 씀 → 색·높이·시간이 늘 같음)
       const R = C.HAZARD_FAR_SIZE;
-      const farMat = surfaceMaterial(L.style, true, !this.low);
+      const farMat = surfaceMaterial(L.style, true, !this.low, mode);
       farMat.uniforms = this.surface.material.uniforms;
       this.far = new THREE.Mesh(new THREE.PlaneGeometry(2 * R, 2 * R, C.HAZARD_FAR_SEG, C.HAZARD_FAR_SEG), farMat);
       this.far.visible = false;
@@ -321,6 +387,12 @@ export class Hazard {
     this.vig.mat.uniforms.uColor.value.set(L.vignette);
     this.fieldKey = '';
     this.layout();
+  }
+
+  // 표면 그리는 법 바꾸기 (old·glow·toon, 확인용 __tf.renderer.hazard.setMode)
+  setMode(name) {
+    this.mode = name;
+    if (this.look) this.setLook(this.look);
   }
 
   surfaceGeometry() {

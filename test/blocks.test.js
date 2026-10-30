@@ -227,3 +227,14 @@ test('판 빛 안: 고른 안이 표에 있고, 판 밝기 유지 (어둡게 안
   }
   for (const k of ['land', 'ko', 'ult']) assert.ok(C.GAME_LIGHT_FLASH[k][1] <= 800, `${k} 빛 터짐은 짧게`);
 });
+
+test('위험 액체 그리는 법: 고른 값이 표에 있음, 탁한 누런 색 없음 (성 해자)', () => {
+  assert.ok(['old', 'glow', 'toon'].includes(C.HAZARD_LOOK));
+  assert.ok(C.HAZARD_NOISE_WAVE > 0 && C.HAZARD_NOISE_WAVE < 3);
+  // 탁한 누런 색 = 빨강·초록이 비슷하고 파랑이 아주 낮은 중간 밝기 (예전 성 해자 0x9a8418)
+  const muddy = (c) => { const r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255; return Math.abs(r - g) < 40 && b < 0.4 * Math.min(r, g) && r > 60 && r < 220; };
+  for (const [id, t] of Object.entries(C.WORLD_THEMES)) {
+    if (t.hazard.style === 'lava') continue;
+    for (const k of ['deep', 'mid', 'shallow']) assert.ok(!muddy(t.hazard[k]), `${id}.hazard.${k} 탁함`);
+  }
+});
