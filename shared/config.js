@@ -1137,8 +1137,7 @@ export const CONFIG = {
   MENU_CAM_DIST: 16, // 섬 가운데에서 카메라 거리 (칸)
   MENU_VIEW_SHIFT: 0.3, // 화면 너비 비율만큼 장면을 왼쪽으로 (가운데 메뉴 판에 섬이 안 가리게)
   // 상승하는 위험 모습 (client/hazard.js, 화면만 — 판정은 서버 lava.z). 테마마다 값은 WORLD_THEMES.*.hazard
-  HAZARD_LOOK: 'glow', // 표면 그리는 법: old 예전 (사인 파도) · glow A 스스로 빛나는 흐르는 빛 띠 · toon B 만화풍 색 층 + 뚜렷한 테 (2026-10-30 시안, client/hazard.js)
-  HAZARD_NOISE_WAVE: 1.6, // glow·toon 잡음 파도 높이 배수 (× 테마 wave[0])
+  HAZARD_NOISE_WAVE: 1.6, // 잡음 파도 높이 배수 (× 테마 wave[0]). 2026-10-30 재혁: 사인파 줄무늬 → 겹친 잡음 + 흐르는 빛 띠 (시안 A)
   HAZARD_FALLBACK: 'volcano', // 테마 없는 화면(대기실)의 위험 모습
   HAZARD_DEEP: 8, // 몸통 바닥 깊이 (표면 아래 칸) · 필드 밖 깊이
   HAZARD_SEG: [120, 40], // 표면 격자 수 (정점 파도) [보통, 그래픽 낮춤]
@@ -1249,7 +1248,7 @@ export const CONFIG = {
       islets: 7,
       motes: { color: 0x9ae8ff, count: 50, size: 0.16 },
       edgeOpacity: 0.06,
-      hazard: { style: 'energy', deep: 0x7a0a62, mid: 0xff3cb4, shallow: 0xffa8e4, foam: 0xffe4fa, alpha: [0.88, 0.6], reflect: 0.35, wave: [0.05, 1.3], depthFade: 1.0, tint: 0xff40c0, tintDepth: 0.5, band: [0xff50c8, 0.6, true], contact: 0xffc8f4, ambient: 0.8, particleSpeed: 4, light: [0xff4cc8, 1.0], particles: [0xffb4f0, 0xff40c0], splash: [0xffffff, 0xff50d0], vignette: 0xff3cb4 },
+      hazard: { style: 'energy', deep: 0x30186a, mid: 0x8a58d8, shallow: 0xc8acf4, foam: 0xf2ebff, alpha: [0.88, 0.6], reflect: 0.35, wave: [0.05, 1.3], depthFade: 1.0, tint: 0x7c52c8, tintDepth: 0.5, band: [0x9a70e8, 0.6, true], contact: 0xe4d8ff, ambient: 0.8, particleSpeed: 4, light: [0x9a6ef0, 1.0], particles: [0xe0d0ff, 0x9a6ae0], splash: [0xffffff, 0xa078f0], vignette: 0x7c52c8 } // 보라 빛 (2026-10-30 재혁: 형광 분홍 눈 아픔),
     },
     volcano: { // 그릇: 화산 분화구 · 밤 · 용암 · 현무암 블록 (빛나는 금)
       seed: 41,
