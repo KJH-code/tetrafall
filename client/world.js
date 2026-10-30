@@ -943,6 +943,7 @@ export class World {
     }
     r.hazard.setLook(L ? L.hazard : null); // 상승하는 위험 모습 (hazard.js)
     r.setPieceLook?.(L ? id : null); // 테트리미노 칸 모습·조각 색 (piece-look.js)
+    r.light?.themeApplied(); // 판 빛: 하늘·안개 원래 색 기억 (판 중에만 어둡게, game-light.js)
     r.gridVersion = -1; // 지형 블록 색 다시
     r.setField(r.W, r.D, true, r.H); // 해 위치·섬 크기
   }

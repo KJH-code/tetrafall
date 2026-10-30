@@ -212,3 +212,18 @@ test('테마별 칸 모양: 칸 안에 들어가고, 부품 색 속성, 삼각�
   }
   assert.ok(shapes.size >= 6, '테마마다 모양이 다름 (화산만 둥근 상자)');
 });
+
+test('판 빛 안: 고른 안이 표에 있고, 판 밝기 유지 (어둡게 안 함·가운데 그대로), off 는 지금 모습', () => {
+  const P = C.GAME_LIGHT_PRESETS;
+  assert.ok(P[C.GAME_LIGHT], 'GAME_LIGHT');
+  assert.deepEqual(P.off.grade, [1, 1, 1]);
+  assert.ok(P.off.vignette[0] === 0 && P.off.rim === 0 && P.off.halo[0] === 0 && P.off.flash === 0 && !P.off.sky);
+  for (const [k, p] of Object.entries(P)) {
+    assert.ok(p.grade[0] >= 1 && p.grade[0] <= 1.4 && p.grade[1] >= 1 && p.grade[1] <= 1.15, `${k} 색 보정`);
+    assert.ok(p.grade[2] >= 1, `${k}: 밝기는 안 낮춤`);
+    assert.ok(p.vignette[0] <= 0.55 && p.vignette[1] >= 0.45, `${k}: 가장자리만 어둡게`);
+    assert.ok(!p.sky || (p.sky[0] >= 0.5 && p.sky[0] <= 1), `${k}: 하늘만 조금`);
+    assert.ok(p.halo[0] <= 0.6 && p.rim <= 1, `${k} 빛`);
+  }
+  for (const k of ['land', 'ko', 'ult']) assert.ok(C.GAME_LIGHT_FLASH[k][1] <= 800, `${k} 빛 터짐은 짧게`);
+});

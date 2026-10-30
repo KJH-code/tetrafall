@@ -982,6 +982,21 @@ export const CONFIG = {
   SUN_COLOR: 0xffc890,
   FOG_NEAR: 28,
   FOG_FAR: 75,
+  // 판 빛 (client/game-light.js, 2026-10-30 재혁: 타이틀 '빛 언어' 를 판에 섞되 밝기는 유지 — 블록·그림자·가장자리·상대가 잘 보이게). 그래픽 낮춤이면 'off'
+  // grade [채도, 대비, 밝기] (캔버스 CSS 색 보정) · vignette [가장자리 어둠 세기, 어둠 시작 (화면 반지름 비율), 색 'r,g,b'] · rim 블록 빛 테두리 (프레넬)
+  // halo [빛 무리 세기, 크기 (칸)] 떨어지는 블록·아이템 둘레 · flash 빛 터짐 크기 배수 (0 = 끔) · sky [하늘·안개 밝기 배수, 채도 더함] 판 중에만 (필드 조명은 그대로)
+  GAME_LIGHT: 'glow',
+  GAME_LIGHT_PRESETS: {
+    off: { grade: [1, 1, 1], vignette: [0, 0.6, '0,0,0'], rim: 0, halo: [0, 1], flash: 0, sky: null },
+    rim: { grade: [1.15, 1.05, 1], vignette: [0.35, 0.58, '12,6,24'], rim: 0.5, halo: [0, 1], flash: 0, sky: [0.75, 0.08] }, // A: 색 진하게 + 하늘 어둡게 + 비네트 + 블록 빛 테두리
+    glow: { grade: [1.15, 1.06, 1], vignette: [0.38, 0.56, '12,6,24'], rim: 0.5, halo: [0.35, 2.4], flash: 1, sky: [0.7, 0.1] }, // B: A + 빛 무리 + 착지·KO·필살기 빛 터짐
+    vivid: { grade: [1.28, 1.1, 1.02], vignette: [0.5, 0.5, '14,6,28'], rim: 0.75, halo: [0.5, 2.8], flash: 1.5, sky: [0.5, 0.15] }, // C: B 를 세게 (하늘 많이 어둡게 — 타이틀에 가장 가까움)
+  },
+  GAME_LIGHT_MAX: 600, // 빛 무리·빛 터짐 사각형 최대 수 (InstancedMesh 하나)
+  GAME_LIGHT_FLASH_MAX: 48, // 동시에 남는 빛 터짐 수
+  GAME_LIGHT_FLASH: { land: [1.8, 280], ko: [5, 560], ult: [4, 460], color: 0xfff0c8 }, // 빛 터짐 [크기 (칸), ms], color 테마 빛이 없을 때
+  GAME_LIGHT_ITEM: 0xffe48a, // 아이템 빛 무리 색
+  GAME_LIGHT_SKY_SPEED: 0.8, // 하늘이 어두워지는·돌아오는 빠르기 (/초, 0→1)
   // 맵 테마 (client/world.js, 모습만). 표에 없는 맵은 위의 노을 그대로 → 새 맵 테마는 WORLD_THEMES 에 값을 넣고 WORLD_MAP_THEME 에 잇기만
   WORLD_MAP_THEME: { flat: 'meadow', pyramid: 'desert', stairs: 'crystal', bowl: 'volcano', spiral: 'skycastle', pillars: 'mushroom', fortress: 'castle' },
   WORLD_DRIFT_SPEED: 0.006, // 먼 섬·구름이 필드 둘레를 도는 빠르기 (라디안/초)

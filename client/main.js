@@ -320,6 +320,7 @@ function handleEvent(e) {
       const ult = e.type === 'ult';
       renderer.aura(e.who, ult);
       fx.burst({ x: a.x, y: a.y, z: a.z + 0.9 }, null, ult ? C.ULT_AURA_COLOR : C.SKILL_AURA_COLOR, ult ? 22 : 10, 4, 0.1, 0.45);
+      if (ult) renderer.lightBurst({ x: a.x, y: a.y, z: a.z + 1 }, 'ult', C.ULT_AURA_COLOR); // 판 빛 터짐 (game-light.js)
       sound.play(ult ? 'boom' : 'swing', { dist: e.who === myId ? 0 : distToMe(a.x, a.y, a.z) });
       break;
     }
@@ -857,6 +858,7 @@ function feelEvent(e) {
       }
       // 내려앉은 블록이 꾹 눌렸다 돌아옴 + 받친 블록도 살짝 (옅게: 그림자·시야 안 가림)
       renderer.blockPulse(e.cells, 0xffffff, { jolt: -C.LAND_JOLT, opacity: 0.35 });
+      renderer.lightLand(e.cells); // 착지 빛 (판 빛 안, game-light.js)
       renderer.blockPulse(renderer.blockNeighbors(e.cells).filter((c) => c[2] < cz), 0xffffff, { jolt: -C.LAND_JOLT, opacity: 0.2 });
       cx /= e.cells.length;
       cy /= e.cells.length;
@@ -874,6 +876,7 @@ function feelEvent(e) {
       const d = e.who === myId ? 0 : distToMe(t.x, t.y, t.z);
       const pos = { x: t.x, y: t.y, z: t.z + 0.8 };
       ko.death(e, null, e.who === myId, d);
+      if (e.cause === 'crush' || e.cause === 'fall') renderer.lightBurst(pos, 'ko'); // KO 빛 터짐 (테마 빛 색)
       if (e.who === myId) sound.play('lose', { dist: 0 });
       if (e.cause === 'crush') {
         renderer.crushFlat(e.who); // 납작하게 찌그러진 몸이 잠깐 남음

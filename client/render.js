@@ -15,6 +15,7 @@ import { CELL, SHAPE_NAMES } from '/shared/pieces.js';
 import { orbitEye, followDist, overviewScale } from '/shared/camera.js';
 import { itemModel } from '/models.js';
 import { PieceLook } from '/piece-look.js';
+import { GameLight } from '/game-light.js';
 import { pieceSpec } from '/shared/piece-look.js';
 import { makeTextures } from '/textures.js';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
@@ -173,7 +174,7 @@ export class Renderer {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true; // 실제로 그릴지는 setShadows (해가 그림자를 드리울 때만 그림자 패스를 돎)
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    canvasParent.appendChild(this.renderer.domElement);
+    canvasParent.insertBefore(this.renderer.domElement, canvasParent.firstChild); // 맨 앞: 판 빛 색 보정(CSS filter)이 캔버스를 쌓임 층으로 만들어도 HUD 가 위에 (game-light.js)
     this.outline = new OutlineEffect(this.renderer, { defaultThickness: C.OUTLINE_THICKNESS, defaultColor: [0.08, 0.05, 0.1], defaultAlpha: 1 });
     this.outlineOn = true;
     this.canvas = this.renderer.domElement;
@@ -297,6 +298,7 @@ export class Renderer {
 
     // 상승하는 위험 (용암 자리): 표면·몸통·빛·입자·화면 경고 (hazard.js). 표면 높이 = state.lava.z
     this.hazard = new Hazard(this);
+    this.light = new GameLight(this); // 판에 타이틀 빛 언어 (색 보정·비네트·빛 무리·빛 터짐, game-light.js)
     this.onHazardRise = null; // 소리 훅: ({ kind: 'start'|'step', z, style }) => …
     this.setField(C.GRID_W, C.GRID_D, true);
     // 맵 테마 (하늘·바닥·섬·먼 배경·위험 모습). 맵 id 로 고름, 표에 없는 맵은 위의 예전 모습 그대로
@@ -558,12 +560,13 @@ export class Renderer {
 
   // 맵 테마가 바뀌면 (world.apply) 테트리미노 칸 모습·조각 색을 그 테마 것으로. themeId null = 기본 장난감 블록
   setPieceLook(themeId) {
-    const key = `${themeId}:${!!this.lowGfx}`;
+    const key = `${themeId}:${!!this.lowGfx}:${this.light ? this.light.rim : 0}`;
     if (key === this.pieceLookKey) return;
     this.pieceLookKey = key;
     this.pieceLookTheme = themeId;
     const old = this.pieceLook;
     this.pieceLook = new PieceLook(pieceSpec(themeId), this.tex.piece, this.lowGfx);
+    this.pieceLook.rim = this.light ? this.light.rim : 0; // 빛 테두리 (GAME_LIGHT 안)
     this.pieceBox = this.pieceLook.geo;
     const landed = this.blockMeshes.shape;
     landed.geometry = this.pieceBox;
@@ -689,7 +692,36 @@ export class Renderer {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.world.setLow(on);
     this.hazard.setLow(on);
+    this.light.setLow(on);
     this.setPieceLook(this.pieceLookTheme ?? null);
+  }
+
+  // 판 빛 안 바꾸기 (config GAME_LIGHT_PRESETS 이름, 확인용 __tf.renderer.setGameLight)
+  setGameLight(name) {
+    this.light.setPreset(name);
+    this.setPieceLook(this.pieceLookTheme ?? null); // 빛 테두리 세기가 바뀌면 블록 재질 다시
+  }
+
+  // 테마 빛 색 (KO·필살기 빛): 테마 glow 첫 색, 없으면 따뜻한 흰빛
+  lightColor() {
+    const L = this.world.look;
+    return (L && ((L.glow && L.glow[0]) ?? L.terrain.glow)) ?? C.GAME_LIGHT_FLASH.color;
+  }
+
+  // 블록 착지 빛 (칸마다 그 블록 색으로)
+  lightLand(cells) {
+    const st = this.curState;
+    const [size, ms] = C.GAME_LIGHT_FLASH.land;
+    for (const [x, y, z] of cells) {
+      const v = st && st.grid ? st.grid[(z * this.D + y) * this.W + x] : 0;
+      this.light.flash(x + 0.5, y + 0.5, z + 0.5, v ? cellColor(v, this.pieceLook.spec.colors) : 0xffffff, size, ms);
+    }
+  }
+
+  // KO·필살기 빛 (what: 'ko' | 'ult')
+  lightBurst(pos, what, color) {
+    const [size, ms] = C.GAME_LIGHT_FLASH[what];
+    this.light.flash(pos.x, pos.y, pos.z, color ?? this.lightColor(), size, ms);
   }
 
   // 외곽선 켜기·끄기 (설정). 켜면 OutlineEffect 가 장면을 한 번 더 (뒤집힌 테두리로) 그린다
@@ -3490,6 +3522,18 @@ export class Renderer {
     else if (!(me && me.alive) && cam.follow != null && this.smooth.has(cam.follow)) subject = this.smooth.get(cam.follow);
     this.fadeOccluders(subject && !cam.victory ? eye : null, subject);
     this.piecePool.flush(this.pieceMeshes); // 떨어지는 블록 칸·그림자 칸: 재질마다 한 번에 그림
+    // 판 빛 (game-light.js): 떨어지는 블록·아이템 둘레 빛 무리 + 빛 터짐, 판 중일 때만
+    const lit = !state.menu && ['countdown', 'playing', 'over'].includes(state.phase);
+    const halos = [];
+    if (lit && this.light.on) {
+      for (const piece of pieces) {
+        if (piece.thrown) continue;
+        const col = piece.shape === 'ghost' ? 0xffffff : piece.controller !== null ? 0xd040d0 : this.pieceLook.color(piece.shape);
+        for (const [x, y, z] of piece.cells) halos.push([x + 0.5, y + 0.5, z + 0.5, col, piece.sky ? 0.7 : 1]);
+      }
+      for (const it of state.items) halos.push([it.x + 0.5, it.y + 0.5, it.z + 0.5, C.GAME_LIGHT_ITEM, 0.6]);
+    }
+    this.light.frame(lit, halos, dt);
     this.shadowPool.flush(this.shadowMeshes);
 
     const b = this.skyBlend;
