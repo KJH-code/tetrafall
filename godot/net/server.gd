@@ -16,11 +16,17 @@ var rounds_done := 0
 var max_rounds := 0
 var tick_us: Array = [] # 틱마다 (모든 방 tick + 스냅샷 보내기) 걸린 시간
 var quit_at := -1.0
+var bots_wanted := 0 # --bots N: 방 A 에 서버 봇 N명 (사람이 들어오기 전에도 판이 돎)
 
 
 func _ready() -> void:
 	var port := int(args.get("port", C.PORT))
 	max_rounds = int(args.get("rounds", 0))
+	bots_wanted = int(args.get("bots", 0))
+	if bots_wanted > 0:
+		var r := make_room("A")
+		for i in bots_wanted:
+			r.game.add_bot()
 	Engine.physics_ticks_per_second = C.TICK_RATE
 	Engine.max_physics_steps_per_frame = 4
 	var err := tcp.listen(port)
@@ -66,9 +72,7 @@ func on_message(c: Dictionary, m: Dictionary) -> void:
 				return
 			var code := str(m.get("room", "A")).substr(0, 8)
 			if not rooms.has(code):
-				rooms[code] = {"game": Game.new(func(s): print("[%s] %s" % [code, s])), "restart_at": -1.0, "last_gv": -1}
-				rooms[code].game.rng.randomize()
-				print("[서버] 방 %s 만듦" % code)
+				make_room(code)
 			var g: Game = rooms[code].game
 			var p = g.add_player(next_id, str(m.get("name", "")).substr(0, 16))
 			if p == null:
@@ -88,6 +92,15 @@ func on_message(c: Dictionary, m: Dictionary) -> void:
 				rooms[c.room].game.handle_action(c.id, str(m.get("name", "")))
 
 
+# 서버 방은 캐릭터 켬 (JS 판 방과 같음, 시제품은 모두 닌자)
+func make_room(code: String) -> Dictionary:
+	var g := Game.new(func(s): print("[%s] %s" % [code, s]), true)
+	g.rng.randomize()
+	rooms[code] = {"game": g, "restart_at": -1.0, "last_gv": -1}
+	print("[서버] 방 %s 만듦" % code)
+	return rooms[code]
+
+
 func drop(c: Dictionary) -> void:
 	conns.erase(c)
 	if c.id < 0 or not rooms.has(c.room):
@@ -95,8 +108,8 @@ func drop(c: Dictionary) -> void:
 	var r: Dictionary = rooms[c.room]
 	r.game.remove_player(c.id)
 	print("[서버] %d 나감 (방 %s)" % [c.id, c.room])
-	if r.game.players.is_empty():
-		rooms.erase(c.room)
+	if r.game.players.size() == r.game.bots.size():
+		rooms.erase(c.room) # 사람이 0명이면 방 삭제
 
 
 func step_room(code: String, r: Dictionary) -> void:

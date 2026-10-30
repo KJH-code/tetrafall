@@ -10,5 +10,17 @@
   "dash_dist": 0.901,
   "walk_1s": 4.5,
   "fall_death_ms": 1066.667,
-  "fall_death_cause": "fall"
+  "fall_death_cause": "fall",
+  "ninja_combo_damage": 20,
+  "ninja_combo_bx": 1.013,
+  "ninja_combo_bpeak": 1.478,
+  "ninja_combo_ax": 1.091,
+  "ninja_combo_ult": 20,
+  "ninja_blink_ax": 4.8,
+  "ninja_blink_bdamage": 8,
+  "ninja_blink_bx": 4.334,
+  "ninja_star_bdamage": 4,
+  "ninja_star_bx": 0.171,
+  "ninja_wallkick_ax": 4.7,
+  "ninja_wallkick_peak": 1.467
 }

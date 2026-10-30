@@ -157,3 +157,39 @@ func test_lava_kills_below_surface() -> void:
 	check(g.lava.active, "평균 높이가 넘으면 용암 시작")
 	run(g, C.LAVA_RISE_MS_PER_CELL * 1.2)
 	check(not g.players[1].alive and g.players[1].death_cause == "lava", "바닥에 있으면 용암에 죽음")
+
+
+func test_eight_players_field_and_spawns() -> void:
+	var expect := {2: 10, 3: 12, 4: 14, 5: 16, 6: 17, 7: 18, 8: 19}
+	for n in expect:
+		var g := Game.new()
+		for i in n:
+			g.add_player(i + 1)
+		g.start_round()
+		check(g.W == expect[n] and g.D == expect[n], "%d명 → %d×%d (FIELD_SIZES)" % [n, expect[n], expect[n]])
+		var seen := {}
+		for p in g.players.values():
+			var k := Vector2(p.x, p.y)
+			check(not seen.has(k), "%d명 시작 위치 겹침 없음" % n)
+			seen[k] = true
+			check(p.x > 0 and p.x < g.W and p.y > 0 and p.y < g.D, "시작 위치는 필드 안")
+	var g9 := Game.new()
+	for i in 8:
+		g9.add_player(i + 1)
+	check(g9.add_player(9) == null, "9번째는 거절 (MAX_PLAYERS 8)")
+
+
+# 봇 8명 (닌자, 자동 블록 자리 고르기) 판이 끝까지 돎 — 시드 여러 개
+func test_eight_bots_round_ends() -> void:
+	for seed_value in [1, 2, 3]:
+		var g := Game.new(Callable(), true)
+		g.rng.seed = seed_value
+		for i in 8:
+			g.add_bot()
+		g.start_round()
+		var t := 0.0
+		while g.phase == "playing" and t < 300000.0:
+			g.tick(TICK)
+			t += TICK
+		check(g.phase == "over", "시드 %d: 5분 안에 판이 끝남 (%.0f초)" % [seed_value, t / 1000.0])
+		check(g.deaths.size() >= 7, "시드 %d: 7명 이상 탈락 (%d)" % [seed_value, g.deaths.size()])

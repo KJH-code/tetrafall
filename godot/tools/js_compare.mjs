@@ -104,4 +104,79 @@ for (const [key, px] of [['piece_land_ms', 4], ['crush_ms', 2]]) {
   out.fall_death_cause = g.deaths[0]?.cause ?? null;
 }
 
+// ---- 닌자 (캐릭터 켬, 둘 다 닌자) ----
+function setupNinja() {
+  const g = new Game(() => {}, { characters: true });
+  g.rng = () => 0.5;
+  g.addPlayer(1);
+  g.addPlayer(2);
+  for (const p of g.players.values()) p.char = 'ninja';
+  g.startRound();
+  g.grid.fill(0);
+  g.gridChanged();
+  g.pieces = [];
+  g.refreshPieceCells();
+  g.nextSpawnAt = Infinity;
+  return { g, a: g.players.get(1), b: g.players.get(2) };
+}
+
+// 7. 닌자 지상 연타: 3틱마다 평타를 1.5초 누름 → 3초 뒤 B 피해·밀린 거리·최고 높이, A 앞으로 나간 거리
+{
+  const { g, a, b } = setupNinja();
+  Object.assign(a, { x: 3, y: 5, yaw: 0 });
+  Object.assign(b, { x: 4, y: 5, yaw: Math.PI });
+  let peak = 0;
+  for (let i = 0; i < 90; i++) {
+    if (i < 45 && i % 3 === 0) g.handleAction(1, { name: 'push' });
+    g.tick(TICK);
+    peak = Math.max(peak, b.z);
+  }
+  out.ninja_combo_damage = b.damage;
+  out.ninja_combo_bx = r3(b.x - 4);
+  out.ninja_combo_bpeak = r3(peak);
+  out.ninja_combo_ax = r3(a.x - 3);
+  out.ninja_combo_ult = r3(a.ult);
+}
+
+// 8. 닌자 F 순간 베기 (지상 → 150ms 준비): A(2,5) → B(4,5) 를 지나 뒤에 섬. 1초 뒤
+{
+  const { g, a, b } = setupNinja();
+  Object.assign(a, { x: 2, y: 5, yaw: 0 });
+  Object.assign(b, { x: 4, y: 5 });
+  g.handleAction(1, { name: 'skill' });
+  run(g, 1000);
+  out.ninja_blink_ax = r3(a.x);
+  out.ninja_blink_bdamage = b.damage;
+  out.ninja_blink_bx = r3(b.x);
+}
+
+// 9. 닌자 R 강화 → 평타 = 표창 2연발 (사거리 3): A(2,5) B(4.5,5). 1초 뒤 B 피해
+{
+  const { g, a, b } = setupNinja();
+  Object.assign(a, { x: 2, y: 5, yaw: 0, ult: 100 });
+  Object.assign(b, { x: 4.5, y: 5 });
+  g.handleAction(1, { name: 'ult' });
+  g.tick(TICK);
+  g.handleAction(1, { name: 'push' });
+  run(g, 1000);
+  out.ninja_star_bdamage = b.damage;
+  out.ninja_star_bx = r3(b.x - 4.5);
+}
+
+// 10. 닌자 F 벽 차기: 2칸 벽 (5,*) 앞에서 순간 베기 → 위로 튀는 최고 높이
+{
+  const { g, a } = setupNinja();
+  for (let y = 0; y < g.D; y++) for (let z = 0; z < 2; z++) g.grid[g.idx(5, y, z)] = 1;
+  g.gridChanged();
+  Object.assign(a, { x: 3.5, y: 5.5, yaw: 0 });
+  g.handleAction(1, { name: 'skill' });
+  let peak = 0;
+  for (let i = 0; i < 60; i++) {
+    g.tick(TICK);
+    peak = Math.max(peak, a.z);
+  }
+  out.ninja_wallkick_ax = r3(a.x);
+  out.ninja_wallkick_peak = r3(peak);
+}
+
 console.log(JSON.stringify(out, null, 2));

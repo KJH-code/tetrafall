@@ -6,6 +6,8 @@ extends RefCounted
 
 const C := preload("res://sim/config.gd")
 const Pieces := preload("res://sim/pieces.gd")
+const Scorer := preload("res://sim/placement.gd")
+const Bot := preload("res://sim/bot.gd")
 const EPS := 1e-6
 
 
@@ -41,6 +43,25 @@ class Player:
 	var last_hit := -1 # 마지막으로 나를 날린 사람 id (킬 판정)
 	var death_cause := ""
 	var wins := 0
+	# 캐릭터 (Game.characters 일 때만, 시제품은 닌자만)
+	var chr := ""
+	var ult := 0.0
+	var skill_ready_at := 0.0
+	var atk = null # 평타 준비 중 {n, def, air, chained, at}
+	var atk_queued := false
+	var atk_landed := false
+	var cast_queued := "" # 평타 중에 누른 F·R ('skill' | 'ult')
+	var chain_n := 0
+	var chain_until := 0.0
+	var air_n := 0
+	var launch_until := 0.0
+	var empower_until := 0.0
+	var star2 = null # 표창 둘째 발 {at, n, air, def, chained}
+	var touch_piece := 0
+	var windup = null # F 지상 준비 {at, yaw}
+	var streak := 0
+	var streak_until := 0.0
+	var counter_at := -1.0
 
 
 class Piece:
@@ -80,10 +101,16 @@ var winner_id := -1
 var deaths: Array = []
 var next_spawn_at := 0.0
 var spawn_points: Array = []
+var bots := {} # 봇 플레이어 id -> Bot (id 는 음수, JS 판과 같음)
+var bot_counter := 0
+var prof := {} # 구간별 누적 µs (profile 켜면, tests/bench.gd 가 씀)
+var profile := false
+var characters := false # 캐릭터(평타·F·R) 켬. 서버 방은 켬, 예전 규칙 테스트는 끔 (JS 판과 같음)
 
 
-func _init(log_callable: Callable = Callable()) -> void:
+func _init(log_callable: Callable = Callable(), with_characters := false) -> void:
 	log_fn = log_callable
+	characters = with_characters
 	rng.seed = 1
 	set_field_size(C.GRID_W)
 
@@ -194,11 +221,24 @@ func add_player(id: int, pname := "") -> Player:
 	p.y = sp.y
 	p.yaw = sp.yaw
 	p.alive = phase != "playing" # 판 중 난입은 관전
+	p.chr = C.CHAR_NINJA if characters else ""
 	players[id] = p
 	return p
 
 
+func add_bot() -> Player:
+	bot_counter += 1
+	var id := -bot_counter
+	var p := add_player(id)
+	if p == null:
+		return null
+	p.name += "(봇)"
+	bots[id] = Bot.new(id, rng.randi())
+	return p
+
+
 func remove_player(id: int) -> void:
+	bots.erase(id)
 	var p: Player = players.get(id)
 	if p == null:
 		return
@@ -252,6 +292,23 @@ func start_round() -> bool:
 		p.death_cause = ""
 		p.jump_queued_until = 0.0
 		p.air_jump_queued = false
+		p.ult = 0.0
+		p.skill_ready_at = 0.0
+		p.atk = null
+		p.atk_queued = false
+		p.atk_landed = false
+		p.cast_queued = ""
+		p.chain_n = 0
+		p.chain_until = 0.0
+		p.air_n = 0
+		p.launch_until = 0.0
+		p.empower_until = 0.0
+		p.star2 = null
+		p.touch_piece = 0
+		p.windup = null
+		p.streak = 0
+		p.streak_until = 0.0
+		p.counter_at = -1.0
 	phase = "playing"
 	round_start_time = time
 	next_spawn_at = time + C.FIRST_SPAWN_DELAY_MS
@@ -306,7 +363,14 @@ func tick(dt_ms: float) -> void:
 	time += dt_ms
 	if phase != "playing":
 		return
+	var t := Time.get_ticks_usec() if profile else 0
+	for id in bots:
+		var bp: Player = players.get(id)
+		if bp and bp.alive:
+			bots[id].update(self, bp)
+	t = _prof("bots", t)
 	update_pieces()
+	t = _prof("pieces", t)
 	var remaining := dt_ms / 1000.0
 	while remaining > 0.0:
 		var h := minf(remaining, C.MAX_STEP_DT)
@@ -314,14 +378,23 @@ func tick(dt_ms: float) -> void:
 			if on_field(p):
 				integrate_player(p, h)
 		remaining -= h
-	for p in players.values():
-		if p.combo_hits > 0 and time >= p.stun_until:
-			end_combo(p)
+	t = _prof("physics", t)
+	update_combat()
+	t = _prof("combat", t)
 	for p in players.values():
 		if on_field(p) and p.z < C.FALL_DEATH_Z:
 			kill(p, "fall")
 	update_lava(dt_ms)
+	t = _prof("lava", t)
 	check_round_end()
+
+
+func _prof(key: String, t0: int) -> int:
+	if not profile:
+		return 0
+	var t := Time.get_ticks_usec()
+	prof[key] = prof.get(key, 0) + t - t0
+	return t
 
 
 # ---------- 입력 ----------
@@ -354,9 +427,22 @@ func handle_action(id: int, action: String) -> void:
 				return
 			dash(p)
 		"push":
-			if stunned or time < p.push_ready_at:
+			if stunned:
+				return
+			if p.chr != "":
+				basic_press(p) # 캐릭터 평타
+				return
+			if time < p.push_ready_at:
 				return
 			push(p)
+		"skill": # F
+			if stunned or p.chr == "" or time < p.skill_ready_at:
+				return
+			cast(p, "skill")
+		"ult": # R: 게이지가 다 차면
+			if stunned or p.chr == "" or p.ult < C.ULT_MAX:
+				return
+			cast(p, "ult")
 
 
 # ---------- 플레이어 물리 ----------
@@ -382,8 +468,9 @@ func integrate_player(p: Player, dt: float) -> void:
 		p.air_dashes = C.AIR_DASHES
 	if not stunned:
 		var mv := move_dir(p)
-		ix = mv.x * C.MOVE_SPEED
-		iy = mv.y * C.MOVE_SPEED
+		var speed := C.MOVE_SPEED * (C.BASIC_FINISH_MOVE_MULT if p.atk != null and p.atk.def.get("finish", false) else 1.0) # 마무리 타 준비 중
+		ix = mv.x * speed
+		iy = mv.y * speed
 		if (p.in_jump or time < p.jump_queued_until) and p.grounded:
 			p.vz = C.JUMP_SPEED
 			p.grounded = false
@@ -527,21 +614,60 @@ func invulnerable(t: Player) -> bool:
 	return time < t.iframe_until
 
 
-# 맞기 전까지 쌓인 % 로 수평 넉백을 키우고 그다음에 쌓는다 (위로 튀는 속도는 그대로)
-func apply_knockback(t: Player, dx: float, dy: float, speed: float, up: float, stun_ms: float, gain: int, by: int) -> bool:
+func foe(p: Player, t: Player) -> bool:
+	return t != p and on_field(t)
+
+
+# 카운터히트 대상: 빗나간 평타의 후딜, F 준비 중
+func busy(t: Player) -> bool:
+	return (time < t.push_ready_at and t.atk == null and not t.atk_landed) or t.windup != null
+
+
+# 맞기 전까지 쌓인 % 로 수평 넉백을 키우고 그다음에 쌓는다 (위로 튀는 속도는 그대로).
+# heavy: 콤보 중에도 넉백을 안 줄임. fixed: 평타 중간 타 (넉백 고정). finish: 평타 마무리 타. chained: 연타를 이어 가는 타 (시간 마무리 아님)
+func apply_knockback(t: Player, dx: float, dy: float, speed: float, up: float, stun_ms: float, gain: int, by: int, heavy := false, fixed_kb := false, finish := false, chained := false) -> bool:
 	if invulnerable(t):
 		return false
 	t.combo_hits = t.combo_hits + 1 if time < t.stun_until and t.combo_hits > 0 else 1
 	if t.combo_hits == 1:
 		t.combo_start_at = time
-	var finisher := t.combo_hits >= 2 and time - t.combo_start_at >= C.COMBO_MS
-	speed *= C.COMBO_FINISH_KB if finisher else C.COMBO_LIGHT_KB
+	# 카운터히트: 맞는 쪽이 공격 동작 중 (이미 경직 중이면 아님)
+	var counter := by >= 0 and t.chr != "" and time >= t.stun_until and busy(t)
+	if counter:
+		stun_ms *= C.COUNTER_STUN_MULT
+		t.counter_at = time
+		emit({"type": "counter", "by": by, "target": t.id})
+		log_line("  [카운터] %s → %s" % [players[by].name if players.has(by) else "?", t.name])
+	var finisher := t.combo_hits >= 2 and (finish or (time - t.combo_start_at >= C.COMBO_MS and not chained))
+	var fixed := fixed_kb and not finisher
+	if not fixed:
+		speed *= C.COMBO_FINISH_KB if finisher else (1.0 if heavy else C.COMBO_LIGHT_KB)
 	if t.combo_hits >= 2:
 		emit({"type": "combo", "by": by, "target": t.id, "n": t.combo_hits, "finish": finisher})
+	# 맞아서 끊긴 공격: 안 나간 평타는 후딜 없음, 준비 중 F 는 쿨타임 안 씀
+	if t.atk != null:
+		emit({"type": "interrupt", "who": t.id, "kind": "basic"})
+		t.push_ready_at = time
+	if t.windup != null:
+		emit({"type": "interrupt", "who": t.id, "kind": "skill"})
+		t.skill_ready_at = time
+		t.windup = null
+	t.atk = null
+	t.star2 = null
+	t.streak = 0
+	t.atk_queued = false
+	t.cast_queued = ""
+	t.chain_n = 0
 	if by >= 0 and by != t.id:
 		t.last_hit = by
-	var mult := C.DAMAGE_KB_BASE + t.damage * C.DAMAGE_KB_PER_PERCENT
+		var hitter: Player = players.get(by)
+		if hitter:
+			hitter.streak = hitter.streak + 1 if time < hitter.streak_until else 1
+			hitter.streak_until = time + C.STREAK_MS
+	var taken := C.NINJA_KB_TAKEN if t.chr == C.CHAR_NINJA else 1.0 # 닌자 약점: 잘 밀림
+	var mult := 1.0 if fixed else (C.DAMAGE_KB_BASE + t.damage * C.DAMAGE_KB_PER_PERCENT) * taken
 	t.damage += gain
+	gain_ult(t, by, gain)
 	var l := sqrt(dx * dx + dy * dy)
 	if l == 0.0:
 		l = 1.0
@@ -551,10 +677,20 @@ func apply_knockback(t: Player, dx: float, dy: float, speed: float, up: float, s
 	t.grounded = false
 	t.wall_bounced = false
 	t.stun_until = time + stun_ms
-	t.freeze_until = time + C.HITSTOP_MS
+	t.freeze_until = time + C.HITSTOP_MS * (C.COUNTER_HITSTOP_MULT if counter else 1.0)
 	if finisher:
 		end_combo(t, t.stun_until, true)
 	return true
+
+
+# 필살기 게이지: 피해 % 를 주거나 받은 만큼
+func gain_ult(t: Player, by: int, gain: int) -> void:
+	if gain <= 0:
+		return
+	t.ult = minf(C.ULT_MAX, t.ult + gain * C.ULT_PER_DAMAGE)
+	if by >= 0 and by != t.id and players.has(by):
+		var b: Player = players[by]
+		b.ult = minf(C.ULT_MAX, b.ult + gain * C.ULT_PER_DAMAGE)
 
 
 func end_combo(t: Player, from := -1.0, finished := false) -> void:
@@ -564,6 +700,383 @@ func end_combo(t: Player, from := -1.0, finished := false) -> void:
 		log_line("  [콤보] → %s %d타%s" % [t.name, t.combo_hits, " 마무리" if finished else ""])
 	t.combo_hits = 0
 	t.iframe_until = from + C.COMBO_IFRAME_MS
+
+
+# ---------- 캐릭터: 평타·F·R (game-combat.js), 닌자 (char-ninja.js) ----------
+# 틱마다: 콤보 끝·평타 판정·표창 둘째 발·닌자 패시브·F 준비 끝·기억한 F/R·평타 선입력
+func update_combat() -> void:
+	for p in players.values():
+		if p.combo_hits > 0 and time >= p.stun_until:
+			end_combo(p)
+		if not on_field(p):
+			p.atk = null
+			p.atk_queued = false
+			p.cast_queued = ""
+			p.star2 = null
+			p.windup = null
+			continue
+		if p.atk != null and time >= p.atk.at:
+			basic_hit(p)
+		if p.star2 != null and time >= p.star2.at:
+			var s2: Dictionary = p.star2
+			p.star2 = null
+			if star_shot(p, s2.n, s2.air, s2.def, 2, s2.chained):
+				p.atk_landed = true
+				ninja_cd_cut(p)
+		if p.chr == C.CHAR_NINJA:
+			ninja_touch(p)
+		if p.windup != null and time >= p.windup.at:
+			fire_windup(p)
+		if p.cast_queued != "" and p.atk == null and (p.atk_landed or time >= p.push_ready_at):
+			cast_queued_now(p)
+		elif p.atk_queued and p.atk == null and time >= p.push_ready_at:
+			p.atk_queued = false
+			if time >= p.stun_until:
+				basic_start(p)
+
+
+# F·R 캔슬: 맞힌 평타의 후딜이면 끊고 바로, 평타 준비 중·빗나간 후딜이면 기억했다가
+func cast(p: Player, kind: String) -> void:
+	if p.atk != null or (time < p.push_ready_at and not p.atk_landed):
+		p.cast_queued = kind
+		p.atk_queued = false
+		return
+	if time < p.push_ready_at:
+		p.push_ready_at = time
+	if kind == "skill":
+		use_skill(p)
+	else:
+		use_ult(p)
+
+
+func cast_queued_now(p: Player) -> void:
+	var kind := p.cast_queued
+	p.cast_queued = ""
+	if time < p.stun_until or (time < p.skill_ready_at if kind == "skill" else p.ult < C.ULT_MAX):
+		emit({"type": "castDrop", "who": p.id, "kind": kind})
+		return
+	cast(p, kind)
+
+
+func basic_press(p: Player) -> void:
+	if p.atk != null or time < p.push_ready_at:
+		p.atk_queued = true
+		return
+	basic_start(p)
+
+
+# 몇 번째 타인지 정하고 준비 시작. 지상·공중 각각 이어 치기 창 안이면 다음 타, 아니면 1타
+func basic_start(p: Player) -> void:
+	var set_: Dictionary = C.BASIC_ATTACKS[p.chr]
+	var air := not p.grounded
+	var live := time < p.chain_until
+	var n: int
+	if air:
+		n = p.air_n + 1 if p.air_n > 0 and live and p.air_n < set_.air.size() else 1
+	else:
+		n = p.chain_n + 1 if p.chain_n > 0 and live and p.chain_n < set_.chain.size() else 1
+	var def: Dictionary = set_.air[n - 1] if air else set_.chain[n - 1]
+	# 닌자 R 강화: 지상 1~3타와 공중 평타가 표창 2연발 (4타 올려 차기는 그대로)
+	if p.chr == C.CHAR_NINJA and time < p.empower_until and (air or n <= 3):
+		def = def.duplicate()
+		def.name = "표창"
+		def.windup = C.NINJA_STAR.windup
+		def.step = 0
+		def.star = true
+	var chained: bool = ((p.air_n > 0 and live) or time < p.launch_until) if air else n > 1
+	p.atk = {"n": n, "def": def, "air": air, "chained": chained, "at": time + def.windup}
+	p.atk_landed = false
+	p.push_ready_at = time + def.windup + def.rec
+	emit({"type": "attack", "who": p.id, "n": n, "air": air, "name": def.name, "windup": def.windup, "finish": def.get("finish", false), "star": def.get("star", false)})
+	if def.windup <= 0:
+		basic_hit(p)
+
+
+# 판정: 앞으로 step 만큼 나가며 부채꼴 안을 침. 중간 타는 고정 넉백, 마무리 타는 % 배율
+func basic_hit(p: Player) -> void:
+	var a: Dictionary = p.atk
+	p.atk = null
+	var n: int = a.n
+	var def: Dictionary = a.def
+	var air: bool = a.air
+	var chained: bool = a.chained
+	var set_: Dictionary = C.BASIC_ATTACKS[p.chr]
+	if def.get("star", false):
+		star_volley(p, n, air, def, chained)
+		return
+	var fx := cos(p.yaw)
+	var fy := sin(p.yaw)
+	if def.step:
+		# 앞으로 나가되 앞 상대를 지나치지 않게 (BASIC_STEP_GAP 앞에서 멈춤)
+		var step: float = def.step
+		for t in players.values():
+			if not foe(p, t) or absf(t.z - p.z) > C.PLAYER_HEIGHT:
+				continue
+			var along: float = (t.x - p.x) * fx + (t.y - p.y) * fy
+			var side: float = absf((t.x - p.x) * fy - (t.y - p.y) * fx)
+			if along > 0 and side < C.BASIC_STEP_GAP:
+				step = minf(step, maxf(0.0, along - C.BASIC_STEP_GAP))
+		move_axis(p, 0, fx * step)
+		move_axis(p, 1, fy * step)
+	emit({"type": "swing", "who": p.id, "n": n})
+	var cos_half := cos(deg_to_rad(C.PUSH_HALF_ANGLE_DEG))
+	var falling := not p.grounded and p.vz < 0.0
+	var finish: bool = def.get("finish", false)
+	var single: bool = air and set_.air.size() == 1
+	var landed: Player = null
+	for t in players.values():
+		if t == p or not on_field(t):
+			continue
+		var dx: float = t.x - p.x
+		var dy: float = t.y - p.y
+		var dist := sqrt(dx * dx + dy * dy)
+		if dist > C.PUSH_RANGE or absf(t.z - p.z) > C.PLAYER_HEIGHT:
+			continue
+		if dist > C.BASIC_STEP_GAP and (dx * fx + dy * fy) / dist < cos_half:
+			continue # 몸이 붙어 있으면 방향 상관없이
+		var crit: bool = air and falling and p.z - t.z >= C.CRIT_MIN_HEIGHT # 치명타는 공중 평타만
+		var gain: int = roundi(def.dmg * C.CRIT_DAMAGE_MULT) if crit else int(def.dmg)
+		var speed: float = def.kb * (C.CRIT_KB_MULT if crit else 1.0)
+		var hit := apply_knockback(t, fx, fy, speed, def.up, def.stun, gain, p.id, finish, not single and not finish, finish, chained)
+		if hit:
+			var stop: float = (C.BASIC_FINISH_HITSTOP_MS if finish else (C.HITSTOP_MS if single else C.BASIC_HITSTOP_MS)) * (C.CRIT_HITSTOP_MULT if crit else 1.0) * (C.COUNTER_HITSTOP_MULT if t.counter_at == time else 1.0)
+			p.freeze_until = time + stop
+			t.freeze_until = time + stop
+			if landed == null:
+				landed = t
+		emit({"type": "hit", "by": p.id, "target": t.id, "ok": hit, "crit": hit and crit, "n": n, "air": air, "finish": finish})
+		log_line("  [평타] %s → %s %s %s" % [p.name, t.name, ("넉백%s (%s %d%%)" % [" 치명타" if crit else "", t.name, t.damage]) if hit else "무적이라 무시", def.name])
+	basic_chain(p, n, air, landed != null, def)
+
+
+# 평타 한 타가 끝난 뒤: 이어 치기 번호·창, 맞혔는지, 닌자 F 쿨 감소. 빗나가도 다음 타로 (허공 이어 치기)
+func basic_chain(p: Player, n: int, air: bool, landed: bool, def: Dictionary) -> void:
+	var set_: Dictionary = C.BASIC_ATTACKS[p.chr]
+	if not air and n == set_.chain.size() and not def.get("finish", false):
+		p.launch_until = time + def.rec + C.BASIC_CHAIN_WINDOW_MS # 띄우는 마지막 지상 타 뒤 공중 1타가 연타로 이어짐
+	if air:
+		p.air_n = n if n < set_.air.size() else 0
+		if p.air_n > 0 or p.chain_n > 0:
+			p.chain_until = time + C.BASIC_CHAIN_WINDOW_MS
+	elif n < set_.chain.size():
+		p.chain_n = n
+		p.chain_until = time + C.BASIC_CHAIN_WINDOW_MS
+	else:
+		p.chain_n = 0
+	p.atk_landed = landed
+	if landed:
+		ninja_cd_cut(p)
+
+
+# 닌자 적중 보상: 평타가 맞을 때마다 F 쿨 줄어듦
+func ninja_cd_cut(p: Player) -> void:
+	if p.chr == C.CHAR_NINJA:
+		p.skill_ready_at = maxf(time, p.skill_ready_at - C.NINJA_HIT_CD_CUT_MS)
+
+
+# 닌자 R 강화 표창 2연발: 첫 발은 지금, 둘째 발은 NINJA_STAR.gap 뒤. 즉시 판정
+func star_volley(p: Player, n: int, air: bool, def: Dictionary, chained: bool) -> void:
+	var landed := star_shot(p, n, air, def, 1, chained)
+	basic_chain(p, n, air, landed, def)
+	p.star2 = {"at": time + C.NINJA_STAR.gap, "n": n, "air": air, "def": def, "chained": chained}
+
+
+# 표창 한 발: 보는 방향 좁은 각 안 가장 가까운 상대 하나. 마무리 타 자리면 둘째 발이 그 타의 마무리
+func star_shot(p: Player, n: int, air: bool, def: Dictionary, shot: int, chained: bool) -> bool:
+	var S: Dictionary = C.NINJA_STAR
+	var fx := cos(p.yaw)
+	var fy := sin(p.yaw)
+	var cos_half := cos(deg_to_rad(S.angle))
+	var best: Player = null
+	var bd := INF
+	for t in players.values():
+		if t == p or not on_field(t):
+			continue
+		var dx: float = t.x - p.x
+		var dy: float = t.y - p.y
+		var dist := sqrt(dx * dx + dy * dy)
+		if dist > S.range or absf(t.z - p.z) > S.range or dist < EPS or (dx * fx + dy * fy) / dist < cos_half:
+			continue
+		if dist < bd:
+			bd = dist
+			best = t
+	var fin: bool = shot == 2 and def.get("finish", false)
+	emit({"type": "star", "who": p.id, "shot": shot, "target": best.id if best else -1})
+	if best == null:
+		return false
+	var falling := not p.grounded and p.vz < 0.0
+	var crit: bool = air and falling and p.z - best.z >= C.CRIT_MIN_HEIGHT
+	var dmg: int = def.dmg if fin else S.dmg
+	var gain: int = roundi(dmg * C.CRIT_DAMAGE_MULT) if crit else dmg
+	var hit := apply_knockback(best, fx, fy, (def.kb if fin else S.kb) * (C.CRIT_KB_MULT if crit else 1.0), def.up if fin else S.up, def.stun if fin else S.stun, gain, p.id, fin, not fin, fin, chained or shot == 2)
+	if hit:
+		best.freeze_until = time + (C.BASIC_FINISH_HITSTOP_MS if fin else C.BASIC_HITSTOP_MS) * (C.CRIT_HITSTOP_MULT if crit else 1.0) * (C.COUNTER_HITSTOP_MULT if best.counter_at == time else 1.0)
+	emit({"type": "hit", "by": p.id, "target": best.id, "ok": hit, "crit": hit and crit, "n": n, "air": air, "finish": fin, "star": true})
+	log_line("  [평타] %s → %s %s 표창" % [p.name, best.name, ("넉백 (%s %d%%)" % [best.name, best.damage]) if hit else "무적이라 무시"])
+	return hit
+
+
+func use_skill(p: Player) -> bool:
+	if p.windup != null:
+		return false
+	p.skill_ready_at = time + C.SKILL_CD_MS[p.chr]
+	if p.grounded and C.SKILL_WINDUP_CHARS.has(p.chr):
+		# 이동 스킬 지상 예고: SKILL_WINDUP_MS 뒤 누른 순간 방향으로
+		p.windup = {"at": time + C.SKILL_WINDUP_MS, "yaw": p.yaw}
+		emit({"type": "skillWindup", "who": p.id, "ms": C.SKILL_WINDUP_MS})
+		log_line("  [스킬] %s 닌자 F 준비" % p.name)
+		return true
+	return fire_skill(p)
+
+
+func fire_windup(p: Player) -> void:
+	var yaw := p.yaw
+	p.yaw = p.windup.yaw
+	p.windup = null
+	if not fire_skill(p):
+		log_line("  [스킬] %s 닌자 F 못 나감 (자리 없음, 쿨타임 안 씀)" % p.name)
+	p.yaw = yaw
+
+
+func fire_skill(p: Player) -> bool:
+	if not ninja_blink(p):
+		p.skill_ready_at = time
+		return false
+	if p.chain_n > 0 and time < p.chain_until:
+		p.chain_until = time + C.BASIC_CHAIN_WINDOW_MS # 평타 → 스킬 → 평타
+	emit({"type": "skill", "who": p.id, "x": p.x, "y": p.y, "z": p.z})
+	return true
+
+
+func use_ult(p: Player) -> bool:
+	if p.windup != null:
+		return false
+	ninja_empower(p)
+	p.ult = 0.0
+	emit({"type": "ult", "who": p.id})
+	return true
+
+
+# 순간 베기: 보는 방향으로 NINJA_BLINK_DIST 만큼 (블록 앞까지, 상대가 있으면 그 바로 뒤까지) 순간이동하며 지나간 길의 상대를 벰.
+# 블록에 막히면 벽 차기 (위로 튀어 오름 + 작은 충격파)
+func ninja_blink(p: Player) -> bool:
+	var fx := cos(p.yaw)
+	var fy := sin(p.yaw)
+	var from := Vector3(p.x, p.y, p.z)
+	var best := 0.0
+	var blocked := false
+	var d := 0.1
+	while d <= C.NINJA_BLINK_DIST + 1e-9:
+		var x := p.x + fx * d
+		var y := p.y + fy * d
+		var z := p.z + 0.05 # 발이 바닥에 살짝 안 걸리게
+		if not overlapping_solid(x - C.PLAYER_HALF, x + C.PLAYER_HALF, y - C.PLAYER_HALF, y + C.PLAYER_HALF, z, z + C.PLAYER_HEIGHT).is_empty():
+			blocked = true
+			break
+		best = d
+		d += 0.1
+	if best < 0.3 and not blocked:
+		return false
+	var wall := best
+	for t in players.values():
+		if not foe(p, t) or absf(t.z - p.z) > C.PLAYER_HEIGHT:
+			continue
+		var along := _on_path(from, fx, fy, t, best)
+		if along >= 0.0:
+			best = minf(best, along + C.NINJA_BLINK_BEHIND)
+	p.x += fx * best
+	p.y += fy * best
+	emit({"type": "blink", "who": p.id})
+	var n := 0
+	for t in players.values():
+		if not foe(p, t) or absf(t.z - p.z) > C.PLAYER_HEIGHT:
+			continue
+		if _on_path(from, fx, fy, t, best) < 0.0:
+			continue
+		var hit := apply_knockback(t, fx, fy, C.NINJA_SLASH_KB_SPEED, C.NINJA_SLASH_KB_UP, C.NINJA_SLASH_STUN_MS, C.NINJA_SLASH_DAMAGE, p.id)
+		if hit:
+			n += 1
+		emit({"type": "hit", "kind": "slash", "by": p.id, "target": t.id, "ok": hit})
+	var kicked := blocked and best >= wall - 1e-9 # 상대 뒤에서 먼저 멈췄으면 벽 차기 아님
+	log_line("  [스킬] %s 순간 베기 %.1f칸%s%s" % [p.name, best, (" (%d명)" % n) if n else "", " 벽 차기" if kicked else ""])
+	if kicked:
+		ninja_wall_kick(p, fx, fy)
+	return true
+
+
+# 지나갈 선분에서 NINJA_SLASH_WIDTH 안이면 선분 위 거리, 아니면 -1
+func _on_path(from: Vector3, fx: float, fy: float, t: Player, length: float) -> float:
+	var along := (t.x - from.x) * fx + (t.y - from.y) * fy
+	if along < 0.0 or along > length:
+		return -1.0
+	var ox := from.x + fx * along - t.x
+	var oy := from.y + fy * along - t.y
+	return along if sqrt(ox * ox + oy * oy) <= C.NINJA_SLASH_WIDTH else -1.0
+
+
+func ninja_wall_kick(p: Player, fx: float, fy: float) -> void:
+	p.vz = C.NINJA_WALLKICK_UP
+	p.grounded = false
+	p.kbx = 0.0
+	p.kby = 0.0
+	for t in players.values():
+		if not foe(p, t):
+			continue
+		var dx: float = t.x - p.x
+		var dy: float = t.y - p.y
+		var d := sqrt(dx * dx + dy * dy)
+		if d > C.NINJA_WALLKICK_RANGE or absf(t.z - p.z) > C.PLAYER_HEIGHT:
+			continue
+		var hit := apply_knockback(t, dx if d > 0.05 else -fx, dy if d > 0.05 else -fy, C.NINJA_WALLKICK_KB_SPEED, C.NINJA_WALLKICK_KB_UP, C.NINJA_WALLKICK_STUN_MS, C.NINJA_WALLKICK_DAMAGE, p.id)
+		emit({"type": "hit", "kind": "wallkick", "by": p.id, "target": t.id, "ok": hit})
+	emit({"type": "wallKick", "who": p.id})
+	log_line("  [스킬] %s 벽 차기" % p.name)
+
+
+# R 강화: NINJA_EMPOWER_MS 동안 지상 1~3타·공중 평타가 표창 2연발
+func ninja_empower(p: Player) -> void:
+	p.empower_until = time + C.NINJA_EMPOWER_MS
+	emit({"type": "empower", "who": p.id, "ms": C.NINJA_EMPOWER_MS})
+	log_line("  [필살] %s 강화 (%d초 표창)" % [p.name, int(C.NINJA_EMPOWER_MS / 1000)])
+
+
+# 패시브: 공중에서 떨어지는 블록에 닿으면 (밟거나 옆면) 공중 점프 회복. 한 블록에 한 번
+func ninja_touch(p: Player) -> void:
+	if p.grounded and not standing_on_piece(p):
+		p.touch_piece = 0
+		return
+	var pad := 0.06
+	var x0 := p.x - C.PLAYER_HALF - pad
+	var x1 := p.x + C.PLAYER_HALF + pad
+	var y0 := p.y - C.PLAYER_HALF - pad
+	var y1 := p.y + C.PLAYER_HALF + pad
+	var z0 := p.z - pad
+	var z1 := p.z + C.PLAYER_HEIGHT + pad
+	for pc in pieces:
+		if pc.id == p.touch_piece:
+			continue
+		var touch := false
+		for c in pc.cells:
+			var cx: int = pc.px + c.x
+			var cy: int = pc.py + c.y
+			if cx < x1 and cx + 1 > x0 and cy < y1 and cy + 1 > y0 and pc.pz < z1 and pc.pz + 1 > z0:
+				touch = true
+				break
+		if not touch:
+			continue
+		p.touch_piece = pc.id
+		p.air_jumps = C.AIR_JUMPS
+		emit({"type": "ninjaTouch", "who": p.id})
+		return
+
+
+func standing_on_piece(p: Player) -> bool:
+	var z := roundi(p.z) - 1
+	for x in range(floori(p.x - C.PLAYER_HALF), floori(p.x + C.PLAYER_HALF) + 1):
+		for y in range(floori(p.y - C.PLAYER_HALF), floori(p.y + C.PLAYER_HALF) + 1):
+			if piece_cells.has(Vector3i(x, y, z)):
+				return true
+	return false
 
 
 # ---------- 블록 ----------
@@ -637,33 +1150,74 @@ func target_concurrent() -> int:
 	return maxi(1, roundi(n * area_scale()))
 
 
-# 자동 블록 자리: 들어갈 수 있는 (회전, 위치) 중 무작위. 다른 블록과 같은 기둥은 피함.
-# JS 판의 층 클리어 유도 점수(CLEAR_BIAS, game-placement.js)는 시제품에서 뺌 → 균등 무작위
+# 자동 블록 자리: 들어갈 수 있는 (모양, 회전, 위치) 중 가중 무작위. 가중치 = exp(CLEAR_BIAS × 점수) (placement.gd).
+# 다른 블록과 같은 기둥은 피함 (그림자가 겹치지 않게). JS 와 같게 무작위 모양을 먼저 뽑음 (CLEAR_PICK_SHAPE 면 안 씀)
 func choose_auto_placement() -> Piece:
-	var shape: String = Pieces.SHAPE_NAMES[rng.randi_range(0, Pieces.SHAPE_NAMES.size() - 1)]
-	var busy := {}
-	for pc in pieces:
-		for c in pc.cells:
-			busy[Vector2i(pc.px + c.x, pc.py + c.y)] = true
-	var cands := []
-	for r in 4:
-		var cells := Pieces.rotated_cells(shape, r)
-		var f := Pieces.footprint(cells)
-		for px in range(0, W - f.x + 1):
-			for py in range(0, D - f.y + 1):
-				var land := 0
-				var hit := false
-				for c in cells:
-					if busy.has(Vector2i(px + c.x, py + c.y)):
-						hit = true
-					land = maxi(land, column_top(px + c.x, py + c.y))
-				if hit or land + 1 > H or land > C.PIECE_SPAWN_Z:
-					continue
-				cands.append([r, px, py])
+	var random_shape: String = Pieces.SHAPE_NAMES[floori(rng.randf() * Pieces.SHAPE_NAMES.size())]
+	var cands := auto_candidates(random_shape)
 	if cands.is_empty():
 		return null
-	var pick: Array = cands[rng.randi_range(0, cands.size() - 1)]
-	return make_piece(shape, pick[0], pick[1], pick[2], C.PIECE_SPAWN_Z)
+	var pick: Array = pick_candidate(cands, rng.randf())
+	return make_piece(pick[0], pick[1], pick[2], pick[3], C.PIECE_SPAWN_Z)
+
+
+func column_tops() -> PackedInt32Array:
+	var tops := PackedInt32Array()
+	tops.resize(W * D)
+	for y in D:
+		for x in W:
+			tops[y * W + x] = column_top(x, y)
+	return tops
+
+
+# 후보 [모양, 회전, px, py, 점수] (JS chooseAutoPlacement 와 같은 순서)
+func auto_candidates(random_shape: String) -> Array:
+	var shapes: Array = Pieces.SHAPE_NAMES if C.CLEAR_BIAS > 0 and C.CLEAR_PICK_SHAPE else [random_shape]
+	var sc := Scorer.new(W, D, column_tops())
+	var busy_cols := PackedByteArray()
+	busy_cols.resize(W * D)
+	for pc in pieces:
+		for c in pc.cells:
+			if in_xy(pc.px + c.x, pc.py + c.y):
+				busy_cols[(pc.py + c.y) * W + pc.px + c.x] = 1
+	var cands := []
+	for shape in shapes:
+		for r in 4:
+			var cells := Pieces.rotated_cells(shape, r)
+			var f := Pieces.footprint(cells)
+			for px in range(0, W - f.x + 1):
+				for py in range(0, D - f.y + 1):
+					var land := 0
+					var hit := false
+					for c in cells:
+						var i: int = (py + c.y) * W + px + c.x
+						if busy_cols[i]:
+							hit = true
+						land = maxi(land, sc.tops[i])
+					if land + 1 > H or land > C.PIECE_SPAWN_Z or hit:
+						continue
+					var score := sc.score(cells, px, py, land) if C.CLEAR_BIAS > 0 else 0
+					cands.append([shape, r, px, py, score])
+	return cands
+
+
+# u (0~1 무작위) 로 가중 뽑기
+func pick_candidate(cands: Array, u: float) -> Array:
+	var best := -INF
+	for c in cands:
+		best = maxf(best, c[4])
+	var ws := PackedFloat64Array()
+	ws.resize(cands.size())
+	var total := 0.0
+	for i in cands.size():
+		ws[i] = exp(C.CLEAR_BIAS * (cands[i][4] - best)) # best 기준으로 빼서 넘침 방지
+		total += ws[i]
+	var x := u * total
+	for i in cands.size():
+		x -= ws[i]
+		if x <= 0.0:
+			return cands[i]
+	return cands[-1]
 
 
 func update_spawning() -> void:
@@ -671,7 +1225,11 @@ func update_spawning() -> void:
 		return
 	if pieces.size() >= target_concurrent():
 		return
+	var t0 := Time.get_ticks_usec() if profile else 0
 	var pc := choose_auto_placement()
+	if profile:
+		prof["placement"] = prof.get("placement", 0) + Time.get_ticks_usec() - t0
+		prof["placement_n"] = prof.get("placement_n", 0) + 1
 	if pc:
 		add_falling(pc, auto_fall_step_ms())
 	next_spawn_at = time + auto_spawn_delay_ms()
@@ -828,7 +1386,7 @@ func update_lava(dt_ms: float) -> void:
 func snapshot() -> Dictionary:
 	var ps := []
 	for p in players.values():
-		ps.append([p.id, p.slot, p.name, snappedf(p.x, 0.001), snappedf(p.y, 0.001), snappedf(p.z, 0.001), snappedf(p.yaw, 0.001), p.alive, p.damage, time < p.stun_until, p.wins])
+		ps.append([p.id, p.slot, p.name, snappedf(p.x, 0.001), snappedf(p.y, 0.001), snappedf(p.z, 0.001), snappedf(p.yaw, 0.001), p.alive, p.damage, time < p.stun_until, p.wins, p.chr, int(p.ult)])
 	var pcs := []
 	for pc in pieces:
 		var cs := []

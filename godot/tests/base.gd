@@ -33,3 +33,13 @@ func check(cond: bool, msg: String) -> void:
 func near(a: float, b: float, tol: float, msg: String) -> void:
 	if absf(a - b) > tol:
 		errors.append("%s: %s, 기대 %s (±%s)" % [msg, a, b, tol])
+
+
+# 2인 닌자 (캐릭터 켬), 평지, 블록 안 떨어짐
+func setup_ninja() -> Game:
+	var g := Game.new(Callable(), true)
+	g.add_player(1)
+	g.add_player(2)
+	g.start_round()
+	g.next_spawn_at = INF
+	return g

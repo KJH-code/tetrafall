@@ -170,6 +170,8 @@ func _unhandled_input(e: InputEvent) -> void:
 			KEY_SPACE: send({"type": "action", "name": "jump"})
 			KEY_SHIFT: send({"type": "action", "name": "dash"})
 			KEY_J: send({"type": "action", "name": "push"})
+			KEY_F: send({"type": "action", "name": "skill"})
+			KEY_R: send({"type": "action", "name": "ult"})
 	elif e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 		send({"type": "action", "name": "push"})
 
@@ -201,6 +203,10 @@ func bot_update(now: int) -> void:
 		fwd = 1.0 if bd > 1.0 else 0.0
 		if bd < 1.6:
 			send({"type": "action", "name": "push"})
+		elif bd < 4.0 and randf() < 0.1:
+			send({"type": "action", "name": "skill"})
+		if me.size() > 12 and int(me[12]) >= 100:
+			send({"type": "action", "name": "ult"})
 	# 떨어지는 블록 밑이면 가운데 쪽으로 비킴
 	for pc in state.pieces:
 		for c in pc.c:
@@ -378,20 +384,20 @@ func draw_state() -> void:
 		var lab: Label3D = node.get_node("Label")
 		lab.text = "%s%s\n%d%%" % [p[2], " (나)" if id == my_id else "", int(p[8])]
 		lab.modulate = Color(1, 0.6, 0.6) if p[9] else Color.WHITE
-		lines.append("%s %d%% %s 승 %d" % [p[2], int(p[8]), "" if p[7] else "(탈락)", int(p[10])])
+		lines.append("%s %d%% %s 승 %d%s" % [p[2], int(p[8]), "" if p[7] else "(탈락)", int(p[10]), (" R %d" % int(p[12])) if p.size() > 12 else ""])
 	for id in player_nodes.keys():
 		if not seen.has(id):
 			player_nodes[id].queue_free()
 			player_nodes.erase(id)
 	var ph := str(state.phase)
-	var top := "판 %d | %s | %dx%d | 블록 %d" % [int(state.round), {"lobby": "대기 (2명부터 시작)", "playing": "진행 중", "over": "끝"}.get(ph, ph), W, D, pcs.size()]
+	var top := "판 %d | %s | %dx%d | 블록 %d | FPS %d" % [int(state.round), {"lobby": "대기 (2명부터 시작)", "playing": "진행 중", "over": "끝"}.get(ph, ph), W, D, pcs.size(), Engine.get_frames_per_second()]
 	if ph == "over":
 		var wn := "무승부"
 		for p in state.players:
 			if int(p[0]) == int(state.winner):
 				wn = str(p[2])
 		top += " | 승자 " + wn
-	hud.text = top + "\n" + "\n".join(lines) + "\nWASD 이동 | Space 점프(2단) | Shift 대시 | 클릭/J 밀치기"
+	hud.text = top + "\n" + "\n".join(lines) + "\nWASD 이동 | Space 점프(2단) | Shift 대시 | 클릭/J 평타 | F 순간 베기 | R 강화"
 
 
 func make_player(slot: int) -> Node3D:
