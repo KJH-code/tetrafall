@@ -576,7 +576,7 @@ export function formatReport(s) {
     out.push(table(head('판 길이'), rows([...B.byLen, B.all])));
     out.push('', table(head('맵'), rows(B.byMap)));
   }
-  if (s.byHp.length) out.push('', `== 체력전별 == (HP ${C.HP_MAX})`, table(['체력전', '판', '길이 중앙값', '압사 비율'], groupRows(s.byHp)));
+  if (s.byHp.length) out.push('', `== 체력전별 == (HP 킬 ${C.HP_MAX_BY_MODE.kills} · 생존 ${C.HP_MAX_BY_MODE.survival} · 마스터 ${C.HP_MAX_BY_MODE.master})`, table(['체력전', '판', '길이 중앙값', '압사 비율'], groupRows(s.byHp)));
   if (s.bySky.length) out.push('', `== 하늘 계단별 == (용암에 녹은 하늘 블록 ${s.melts})`, table(['하늘 계단', '판', '길이 중앙값', '압사 비율'], groupRows(s.bySky)));
   if (s.byChar.length) out.push('', '== 캐릭터별 ==', table(['캐릭터', '판', '승', '승률'], s.byChar.map((c) => [c.key, c.rounds, c.wins, pct(c.wins, c.rounds)])));
   if (s.combos.total) {

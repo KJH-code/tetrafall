@@ -185,17 +185,18 @@ test('킬 점수전: 킬 +1, 자멸 -1, 5초 뒤 피해 0% 로 부활, 부활 �
   assert.ok(g.applyKnockback(p(2), 1, 0, 5, 3, C.STUN_MS, 10, { by: 1, kind: 'push' }), '무적 끝나면 밀림');
 });
 
-test(`킬 점수전: 누가 ${C.KILLS_TARGET}킬에 닿으면 끝, 시간이 끝나면 최고 점수(동점이면 모두) 승`, () => {
+test(`킬 점수전: 누가 목표 킬 (인원별 KILLS_TARGET_BY_COUNT) 에 닿으면 끝, 시간이 끝나면 최고 점수(동점이면 모두) 승`, () => {
   const { g, lines, p } = setupMode('kills', 3);
   g.nextSpawnAt = Infinity;
-  g.scores.set(1, C.KILLS_TARGET - 1);
+  assert.equal(g.killsTarget, C.KILLS_TARGET_BY_COUNT.off[3], '3인·체력전 끔 목표');
+  g.scores.set(1, g.killsTarget - 1);
   p(2).lastHit = { by: 1, kind: 'push', name: 'P1' };
   fallOff(p(2));
   g.tick(TICK);
   assert.equal(g.phase, 'over');
   assert.deepEqual(g.winnerIds, [1]);
-  assert.ok(lines.includes(`  ${C.KILLS_TARGET}킬 → 판 끝`));
-  assert.ok(lines.some((l) => l === `  점수: P1 ${C.KILLS_TARGET} / P2 0 / P3 0`));
+  assert.ok(lines.includes(`  ${g.killsTarget}킬 → 판 끝`));
+  assert.ok(lines.some((l) => l === `  점수: P1 ${g.killsTarget} / P2 0 / P3 0`));
   // 다음 판: 점수 초기화, 시간 끝 동점
   startQuiet(g);
   g.nextSpawnAt = Infinity;
@@ -209,20 +210,21 @@ test(`킬 점수전: 누가 ${C.KILLS_TARGET}킬에 닿으면 끝, 시간이 끝
   assert.ok(lines.some((l) => /ROUND 2 종료 .*승자: P2 P3 =====/.test(l)));
 });
 
-test(`킬 점수전 팀전: 팀 점수 합계, 팀 ${C.KILLS_TARGET_TEAM}킬이면 그 팀 승`, () => {
+test(`킬 점수전 팀전: 팀 점수 합계, 팀 목표 킬 (인원별 KILLS_TARGET_TEAM_BY_COUNT) 이면 그 팀 승`, () => {
   const { g, lines, p } = setupMode('kills', 4, { start: false });
   g.setTeamMode(true);
   for (const [id, t] of [[1, 'red'], [2, 'blue'], [3, 'red'], [4, 'blue']]) g.setTeam(id, t);
   startQuiet(g);
   g.nextSpawnAt = Infinity;
-  g.teamScores.red = C.KILLS_TARGET_TEAM - 1;
+  assert.equal(g.killsTarget, C.KILLS_TARGET_TEAM_BY_COUNT.off[2], '4인 팀전·체력전 끔 목표');
+  g.teamScores.red = g.killsTarget - 1;
   p(2).lastHit = { by: 3, kind: 'push', name: 'P3' };
   fallOff(p(2));
   g.tick(TICK);
   assert.equal(g.phase, 'over');
   assert.equal(g.winnerTeam, 'red');
   assert.deepEqual([p(1).wins, p(2).wins, p(3).wins, p(4).wins], [1, 0, 1, 0]);
-  assert.ok(lines.includes(`  팀 점수: 빨강 ${C.KILLS_TARGET_TEAM} : 0 파랑`));
+  assert.ok(lines.includes(`  팀 점수: 빨강 ${g.killsTarget} : 0 파랑`));
 });
 
 test('킬 점수전: 용암 없음, 가장 높은 기둥이 KILLS_SINK_HEIGHT 에 닿으면 맨 아래 층을 지워 전체가 내려앉음', () => {

@@ -314,7 +314,7 @@ export class BotBrain {
       if (it.z - p.z > this.jumpReach(g, p) + 0.15 || p.z - it.z > 6) continue; // 못 올라가는 높이·너무 아래면 안 감
       const d = Math.hypot(it.x + 0.5 - p.x, it.y + 0.5 - p.y);
       const de = target ? Math.hypot(it.x + 0.5 - target.x, it.y + 0.5 - target.y) : Infinity;
-      if (d > de + 1) continue;
+      if (it.type !== 'counter' && d > de + 1) continue; // 블록 마스터 반격 아이템은 상대보다 멀어도 먹으러 감 (생존자 모두의 이득)
       if (d < bd) {
         bd = d;
         best = it;

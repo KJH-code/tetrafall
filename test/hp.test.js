@@ -29,10 +29,10 @@ const hit = (g, a, b, gain) => {
   assert.ok(g.applyKnockback(t, 1, 0, 0, 0, 0, gain, { by: a, kind: 'push' }, true), '맞음');
 };
 
-test('체력전 끔 (기본): 피해 % 가 HP_MAX 를 넘어도 안 죽고, 스냅샷에 hp 칸이 없음', () => {
+test('체력전 끔 (기본): 피해 % 가 HP 최대를 넘어도 안 죽고, 스냅샷에 hp 칸이 없음', () => {
   const { g, p } = setup({ hp: false });
   assert.equal(g.hpMode, false);
-  hit(g, 1, 2, C.HP_MAX + 50);
+  hit(g, 1, 2, C.HP_MAX_BY_MODE.survival + 50);
   g.tick(TICK);
   assert.ok(p(2).alive);
   const s = g.snapshot();
@@ -40,21 +40,21 @@ test('체력전 끔 (기본): 피해 % 가 HP_MAX 를 넘어도 안 죽고, 스�
   assert.equal(JSON.parse(JSON.stringify(s)).players[1].hp, undefined);
 });
 
-test('체력전 켬: HP = HP_MAX − 피해 %, 0 이하면 그 자리에서 KO (원인 체력, 막타 친 사람 킬), 로그·이벤트', () => {
-  assert.equal(C.HP_MAX, 120);
+test('체력전 켬 (생존): HP = HP_MAX_BY_MODE.survival − 피해 %, 0 이하면 그 자리에서 KO (원인 체력, 막타 친 사람 킬), 로그·이벤트', () => {
+  const max = C.HP_MAX_BY_MODE.survival;
   const { g, lines, p } = setup();
-  assert.ok(lines.includes(`  체력전: 켬 (HP ${C.HP_MAX})`));
+  assert.ok(lines.includes(`  체력전: 켬 (HP ${max})`));
   hit(g, 1, 2, 70);
   const s = g.snapshot();
   assert.equal(s.hpMode, true);
-  assert.equal(s.hpMax, C.HP_MAX);
-  assert.equal(s.players.find((x) => x.id === 2).hp, C.HP_MAX - 70);
+  assert.equal(s.hpMax, max);
+  assert.equal(s.players.find((x) => x.id === 2).hp, max - 70);
   g.tick(TICK);
   assert.ok(p(2).alive);
-  hit(g, 3, 2, 49); // 119
+  hit(g, 3, 2, max - 71); // HP 1
   g.tick(TICK);
   assert.ok(p(2).alive, 'HP 1 은 살아 있음');
-  hit(g, 1, 2, 1); // 120 → HP 0
+  hit(g, 1, 2, 1); // HP 0
   const { x, y, z } = p(2);
   g.drainEvents();
   g.tick(TICK);
@@ -69,13 +69,14 @@ test('체력전 켬: HP = HP_MAX − 피해 %, 0 이하면 그 자리에서 KO (
 
 test('체력전 킬 점수전: 체력 KO 도 킬 +1, 부활하면 HP 꽉 참', () => {
   const { g, p } = setup({ mode: 'kills' });
-  hit(g, 1, 2, C.HP_MAX);
+  assert.equal(g.snapshot().hpMax, C.HP_MAX_BY_MODE.kills);
+  hit(g, 1, 2, C.HP_MAX_BY_MODE.kills);
   g.tick(TICK);
   assert.equal(p(2).alive, false);
   assert.equal(g.scores.get(1), 1);
   for (let t = 0; t < C.KILLS_RESPAWN_MS + 500; t += TICK) g.tick(TICK);
   assert.ok(p(2).alive, '부활');
-  assert.equal(g.snapshot().players.find((x) => x.id === 2).hp, C.HP_MAX);
+  assert.equal(g.snapshot().players.find((x) => x.id === 2).hp, C.HP_MAX_BY_MODE.kills);
 });
 
 test('체력전 블록 마스터: 생존자만 (마스터는 필드 밖), 체력 KO 된 생존자는 마스터 편으로', () => {
@@ -86,7 +87,7 @@ test('체력전 블록 마스터: 생존자만 (마스터는 필드 밖), 체력
   g.tick(TICK);
   assert.ok(m.alive && m.master, '마스터는 안 죽음');
   const other = [1, 2, 3].find((id) => id !== m.id && id !== survivor);
-  hit(g, other, survivor, C.HP_MAX);
+  hit(g, other, survivor, C.HP_MAX_BY_MODE.master);
   g.tick(TICK);
   assert.ok(g.deaths.some((d) => d.name === p(survivor).name && d.cause === 'hp'), '체력 사망 기록');
   assert.ok(p(survivor).master || g.phase === 'over', '마스터 편 합류 (또는 판 끝)');
@@ -127,9 +128,9 @@ test('방: 호스트만 체력전을 켬, 공개 목록에 보임', () => {
 
 test('npm run stats: 체력 사망·체력전별 표', () => {
   const { g, lines } = setup();
-  hit(g, 1, 2, C.HP_MAX);
+  hit(g, 1, 2, C.HP_MAX_BY_MODE.survival);
   g.tick(TICK);
-  hit(g, 1, 3, C.HP_MAX);
+  hit(g, 1, 3, C.HP_MAX_BY_MODE.survival);
   g.tick(TICK);
   assert.equal(g.phase, 'over');
   const rounds = parseLog(lines.join('\n'));
@@ -138,5 +139,5 @@ test('npm run stats: 체력 사망·체력전별 표', () => {
   assert.equal(s.byCause.hp, 2);
   const rep = formatReport(s);
   assert.match(rep, /체력 2 \(100%\)/);
-  assert.match(rep, /== 체력전별 == \(HP 120\)/);
+  assert.match(rep, /== 체력전별 ==/);
 });

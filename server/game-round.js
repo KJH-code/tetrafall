@@ -15,6 +15,10 @@ export class RoundPart {
     this.skyChains = byCount(C.SKY_CHAINS, fielded);
     this.skyLavaMs = byCount(C.SKY_LAVA_TRIGGER_BY_COUNT, fielded);
     this.setFieldSize(this.fieldSizeFor(fielded));
+    const hpKey = this.hpMode ? 'hp' : 'off';
+    this.killsTarget = byCount((this.teamMode ? C.KILLS_TARGET_TEAM_BY_COUNT : C.KILLS_TARGET_BY_COUNT)[hpKey], this.participants().length); // 킬 점수전 목표 (인원·팀전·체력전)
+    this.masterDropStep = byCount(C.MASTER_DROP_STEP_BY_COUNT, this.participants().length); // 블록 마스터 하드드롭 빠르기 (인원)
+    this.masterStallUntil = 0;
     this.mapId = this.mapChoice === 'random' ? MAP_IDS[Math.floor(this.rng() * MAP_IDS.length)] : this.mapChoice;
     for (const [x, y, h] of mapColumns(this.mapId, this.W, this.D)) {
       for (let z = 0; z < h && z < this.H; z++) this.grid[this.idx(x, y, z)] = CELL.TERRAIN;
@@ -159,13 +163,14 @@ export class RoundPart {
     this.roundBotCount = ps.filter((p) => p.isBot).length;
     this.roundStartTime = this.time;
     this.nextSpawnAt = this.time + C.FIRST_SPAWN_DELAY_MS;
+    this.counterItemAt = this.time + C.MASTER_COUNTER_FIRST_MS; // 블록 마스터 반격 아이템
     this.controlItemNextAt = this.time + C.CONTROL_ITEM_RESPAWN_MS;
     this.powerItemNextAt = this.time + C.ITEM_FIRST_SPAWN_MS;
     const lv = ps.some((p) => p.isBot) ? `, 봇 ${BOT_LEVEL_KO[this.botLevel]}` : '';
     this.log(`===== ROUND ${this.roundNumber} 시작 (${ps.length}명: ${ps.sort((a, b) => a.slot - b.slot).map((p) => p.name).join(' ')}, 맵 ${MAPS[this.mapId].log}${lv}) =====`); // 참가자 목록은 npm run stats 가 구성별로 셀 때 씀. 맵은 예전 이름 (log) 그대로 — 화면 이름은 MAPS name
     if (this.teamMode) this.log(`  팀: ${this.teamLine()}`); // npm run stats 가 팀 승리를 사람별로 나눌 때 씀
     if (this.sky) this.log('  하늘 계단: 켬'); // npm run stats 가 켬/끔을 나눠 봄 (끔은 예전 로그와 같게 안 찍음)
-    if (this.hpMode) this.log(`  체력전: 켬 (HP ${C.HP_MAX})`); // npm run stats 가 켬/끔을 나눠 봄 (끔은 안 찍음)
+    if (this.hpMode) this.log(`  체력전: 켬 (HP ${this.hpMax()})`); // npm run stats 가 켬/끔을 나눠 봄 (끔은 안 찍음)
     if (this.characters) this.log(`  캐릭터: ${ps.map((p) => `${p.name} ${C.CHAR_NAMES[p.char]}`).join(' / ')}`); // npm run stats 캐릭터별 승률
     // 모드 줄 (생존은 예전 로그와 같게 안 찍음). npm run stats 가 모드별로 셈
     if (this.mode === 'master') {
@@ -174,7 +179,7 @@ export class RoundPart {
       this.log(`  모드: ${C.MODE_NAMES.master} (${m ? `마스터 ${m.name}` : '마스터가 나감'}, ${fmtTime(C.MASTER_TIME_MS)} 버티기)`); // '마스터 이름,' 모양은 npm run stats 가 읽음
     } else if (this.mode === 'kills') {
       this.roundEndsAt = this.time + C.KILLS_TIME_MS;
-      this.log(`  모드: ${C.MODE_NAMES.kills} (${fmtTime(C.KILLS_TIME_MS)} 또는 ${this.teamMode ? `팀 ${C.KILLS_TARGET_TEAM}` : C.KILLS_TARGET}킬)`);
+      this.log(`  모드: ${C.MODE_NAMES.kills} (${fmtTime(C.KILLS_TIME_MS)} 또는 ${this.teamMode ? `팀 ${this.killsTarget}` : this.killsTarget}킬)`);
     } else {
       this.roundEndsAt = 0;
     }
@@ -290,7 +295,7 @@ export class RoundPart {
     if (this.time >= this.roundEndsAt) reason = `시간 끝 (${fmtTime(C.KILLS_TIME_MS)})`;
     if (this.teamMode) {
       const { red, blue } = this.teamScores;
-      if (Math.max(red, blue) >= C.KILLS_TARGET_TEAM) reason = `팀 ${C.KILLS_TARGET_TEAM}킬`;
+      if (Math.max(red, blue) >= this.killsTarget) reason = `팀 ${this.killsTarget}킬`;
       if (!ps.some((p) => p.team === 'red') || !ps.some((p) => p.team === 'blue')) reason = '한 팀이 다 나감';
       if (!reason) return;
       this.log(`  ${reason} → 판 끝`);
@@ -298,7 +303,7 @@ export class RoundPart {
       return;
     }
     const top = Math.max(-Infinity, ...ps.map((p) => this.scores.get(p.id) || 0));
-    if (top >= C.KILLS_TARGET) reason = `${C.KILLS_TARGET}킬`;
+    if (top >= this.killsTarget) reason = `${this.killsTarget}킬`;
     if (ps.length < C.MIN_PLAYERS) reason = '상대가 다 나감';
     if (!reason) return;
     this.log(`  ${reason} → 판 끝`);
