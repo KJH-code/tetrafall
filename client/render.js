@@ -16,6 +16,8 @@ import { orbitEye, followDist, overviewScale } from '/shared/camera.js';
 import { itemModel } from '/models.js';
 import { PieceLook } from '/piece-look.js';
 import { GameLight } from '/game-light.js';
+import { SkyAids } from '/sky-aids.js';
+import { skyPose, easeYaw } from '/shared/sky-view.js';
 import { pieceSpec } from '/shared/piece-look.js';
 import { makeTextures } from '/textures.js';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
@@ -76,8 +78,8 @@ export function damageColor(d) {
   return `rgb(255,${g},${b})`;
 }
 
-// 머리 위 표시: 위에 이름(플레이어 색), 아래에 피해 %
-function drawLabel(canvas, name, color, d) {
+// 머리 위 표시: 위에 이름(플레이어 색), 아래에 피해 % (nameOnly: 하늘 시점 — 이름만, 덩어리지지 않게)
+function drawLabel(canvas, name, color, d, nameOnly = false) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.textAlign = 'center';
@@ -88,6 +90,7 @@ function drawLabel(canvas, name, color, d) {
   ctx.strokeText(name, 128, 26);
   ctx.fillStyle = color;
   ctx.fillText(name, 128, 26);
+  if (nameOnly) return;
   ctx.font = 'bold 44px system-ui, sans-serif';
   ctx.lineWidth = 7;
   ctx.strokeText(`${d}%`, 128, 80);
@@ -301,6 +304,7 @@ export class Renderer {
     // 상승하는 위험 (용암 자리): 표면·몸통·빛·입자·화면 경고 (hazard.js). 표면 높이 = state.lava.z
     this.hazard = new Hazard(this);
     this.light = new GameLight(this); // 판에 타이틀 빛 언어 (색 보정·비네트·빛 무리·빛 터짐, game-light.js)
+    this.skyAids = new SkyAids(this.scene); // 하늘 시점 착지 미리보기·생존자 표시 (sky-aids.js)
     this.onHazardRise = null; // 소리 훅: ({ kind: 'start'|'step', z, style }) => …
     this.setField(C.GRID_W, C.GRID_D, true);
     // 맵 테마 (하늘·바닥·섬·먼 배경·위험 모습). 맵 id 로 고름, 표에 없는 맵은 위의 예전 모습 그대로
@@ -1069,9 +1073,23 @@ export class Renderer {
     }
     const cam = this.camera.position;
     const sizes = labelSizes(vis.map((sp) => sp.getWorldPosition(_lv).distanceTo(cam)));
+    const sky = this.skyBlend > 0.5 && C.SKY_VIEW.oblique ? C.SKY_VIEW.label : 1; // 하늘 시점: 필드를 덜 가리게 작게 (생존자는 빛 기둥·삼각뿔로)
+    // 하늘 시점: 화면에서 가까이 겹치는 이름표는 먼저 놓인 것만 (생존자가 모여도 글자 덩어리 안 됨, 삼각뿔·기둥은 그대로)
+    const placed = [];
+    const W2 = window.innerWidth / 2;
+    const H2 = window.innerHeight / 2;
     vis.forEach((sp, i) => {
       const k = sizes[i];
-      sp.scale.set(LABEL_W * k.scale, LABEL_H * k.scale, 1);
+      sp.scale.set(LABEL_W * k.scale * sky, LABEL_H * k.scale * sky, 1);
+      if (sky !== 1) {
+        const v = sp.getWorldPosition(_lv).project(this.camera);
+        const px = [v.x * W2, v.y * H2];
+        if (placed.some((q) => Math.abs(q[0] - px[0]) < C.SKY_VIEW.labelGap[0] && Math.abs(q[1] - px[1]) < C.SKY_VIEW.labelGap[1])) {
+          sp.visible = false;
+          return;
+        }
+        placed.push(px);
+      }
       sp.material.opacity = k.opacity;
     });
   }
@@ -3442,9 +3460,10 @@ export class Renderer {
       const label = g.userData.label;
       const dmg = p.damage || 0;
       const name = p.nick || p.name;
-      const key = `${name}|${dmg}|${g.userData.color}`;
+      const skyLabel = this.skyBlend > 0.5 && C.SKY_VIEW.oblique;
+      const key = `${name}|${skyLabel ? '' : dmg}|${g.userData.color}`;
       if (label.shown !== key) {
-        drawLabel(label.canvas, name, `#${g.userData.color.toString(16).padStart(6, '0')}`, dmg);
+        drawLabel(label.canvas, name, `#${g.userData.color.toString(16).padStart(6, '0')}`, dmg, skyLabel);
         label.tex.needsUpdate = true;
         label.shown = key;
       }
@@ -3606,7 +3625,7 @@ export class Renderer {
     // 손에 든 것: 고른 핫바 칸에 뭐가 있으면 그 색 상자 (망치가 있으면 망치가 우선)
     const kind = me ? heldKind(me) : null;
     for (const [k, o] of Object.entries(this.viewHeld)) o.visible = k === kind; // 든 아이템 (건축가는 아이템을 들면 망치 대신)
-    this.effects.update(dt, this.skyBlend >= 1 ? this.skyCamera : this.camera);
+    this.effects.update(dt, this.skyBlend >= 1 && !C.SKY_VIEW.oblique ? this.skyCamera : this.camera);
     this.shards.update(Math.min(dt, 0.05));
     this.updateMarks();
     this.pieceMat.opacity = (this.skyBlend > 0.5 ? 0.55 : 1) * this.pieceLook.spec.opacity; // 하늘 시점에선 블록 너머로 착지 미리보기가 보이게 (보석 테마는 늘 살짝 비침)
@@ -3682,9 +3701,36 @@ export class Renderer {
     }
     this.light.frame(lit, halos, dt);
     this.shadowPool.flush(this.shadowMeshes);
+    // 하늘 시점 도우미: 내가 조종하는 블록의 착지 미리보기 + 생존자 머리 위 표시 (sky-aids.js)
+    const skyOn = this.skyBlend > 0.5;
+    const myPiece = skyOn ? pieces.find((pc) => pc.phase === 'control' && pc.controller === myId) || null : null;
+    const people = [];
+    if (skyOn) {
+      for (const pl of state.players) {
+        if (!pl.alive || pl.master || pl.id === myId) continue;
+        const sp = this.smooth.get(pl.id);
+        const g = this.playerMeshes.get(pl.id);
+        if (sp && g) people.push({ x: sp.x, y: sp.y, z: sp.z, color: g.userData.color ?? 0xffffff });
+      }
+    }
+    this.skyAids.update(skyOn, myPiece, people);
 
     const b = this.skyBlend;
-    const skyUp = new THREE.Vector3(Math.cos(this.skyYaw), Math.sin(this.skyYaw), 0);
+    // 하늘 화면 위쪽 방향: 회전 키(90도)로 바뀌면 부드럽게 돎
+    this.skyYawShown = this.skyYawShown === undefined || b === 0 ? this.skyYaw : easeYaw(this.skyYawShown, this.skyYaw, Math.min(1, (dt * 1000) / C.SKY_VIEW.turnMs * 3));
+    const skyUp = new THREE.Vector3(Math.cos(this.skyYawShown), Math.sin(this.skyYawShown), 0);
+    if (C.SKY_VIEW.oblique && b > 0) {
+      // 비스듬한 3D 하늘 시점 (shared/sky-view.js skyPose): 필드 전체가 들어오게 거리 자동, 전환 중엔 1인칭 자세에서 날아오름
+      const P = skyPose(this.W, this.D, this.skyYawShown, this.camera.aspect);
+      const t = b * b * (3 - 2 * b);
+      this.camera.fov = this.fov + (P.fov - this.fov) * t;
+      this.camera.updateProjectionMatrix();
+      this.camera.position.lerpVectors(eye, new THREE.Vector3(...P.pos), t);
+      this.camera.up.set(0, 0, 1);
+      this.camera.lookAt(new THREE.Vector3().lerpVectors(look, new THREE.Vector3(...P.look), t));
+      this.draw(this.camera);
+      return;
+    }
     if (b >= 1) {
       this.skyCamera.up.copy(skyUp);
       this.skyCamera.lookAt(this.W / 2, this.D / 2, 0);

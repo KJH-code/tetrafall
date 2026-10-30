@@ -441,6 +441,9 @@
     #center.slim { top: 28%; right: auto; left: 50%; transform: translate(-50%, -50%); animation: slide-in .2s ease-out;
       padding: 9px 22px 11px 26px; clip-path: polygon(14px 0, 100% 0, calc(100% - 14px) 100%, 0 100%); }
     #center.slim::before { display: none; }
+    /* 하늘 시점 (블록 마스터·조종): 필드 위쪽을 가리지 않게 화면 아래 초상 판 바로 위로, 작게 */
+    #center.slim.sky { top: auto; bottom: 150px; transform: translateX(-50%); padding: 6px 18px 8px 22px; }
+    #center.slim.sky #center-text { font-size: 15px; }
     #center.slim #center-text { font-size: 18px; }
     #center.slim .keys { margin-top: 6px; text-align: center; }
     #center-text { white-space: pre; font-family: var(--disp); font-size: 18px; line-height: 1.3; letter-spacing: .5px; color: #fff; text-shadow: var(--gtxt); }

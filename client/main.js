@@ -1,4 +1,5 @@
 // 클라이언트 진입점: WebSocket 연결, 상태 수신, 입력 전송, 렌더 루프, HUD.
+import { turnYaw } from '/shared/sky-view.js';
 import { CONFIG as C } from '/shared/config.js';
 import { Renderer, TEAM_MAIN, playerColor, damageColor } from '/render.js';
 import { Input } from '/input.js';
@@ -224,6 +225,12 @@ input.onUi = (id, down) => {
   if (id === 'practice' && down) setPracticeOpen(!practiceOpen); // 연습 방에서만 열림
   if (id === 'practice') scoresHeld = down; // 같은 키를 누르고 있는 동안 킬 점수전 점수표 (#scoreboard)
   if (id === 'perf' && down) perfPanel.toggle(); // 성능 표시 (기본 F3)
+  if ((id === 'viewL' || id === 'viewR') && down && input.sky) {
+    // 하늘 시점 90도 돌리기: 화면 위쪽 = 블록 이동 기준이라 input yaw 도 같이 (WASD·방향키가 늘 화면 기준)
+    const yaw = turnYaw(input.yaw, id === 'viewL' ? 1 : -1);
+    input.setYawPitch(yaw, input.pitch);
+    renderer.skyYaw = yaw;
+  }
   if (id === 'tutSkip' && down && state && state.tutorial && !state.tutorial.done) tut.skipStep(); // 튜토리얼 이 단계 넘기기 (기본 N)
   if (id === 'view' && down) {
     settings.third = !settings.third;
@@ -235,7 +242,7 @@ input.onUi = (id, down) => {
 
 // 화면에 보이는 키 글자: [data-key="skill"] → 그 행동의 키, [data-keys="fwd,left,back,right"] → 묶어서 (WASD)
 const keyText = (id) => keyLabel(input.binds[id]);
-const pieceKeysText = () => `${groupLabel(input.binds, ['pieceUp', 'pieceDown', 'pieceLeft', 'pieceRight'])} 이동 · ${groupLabel(input.binds, ['rotL', 'rotR'])} 회전 · ${keyText('drop')} 낙하`;
+const pieceKeysText = () => `${groupLabel(input.binds, ['pieceUp', 'pieceDown', 'pieceLeft', 'pieceRight'])} 이동 · ${groupLabel(input.binds, ['rotL', 'rotR'])} 회전 · ${keyText('drop')} 낙하${C.SKY_VIEW.oblique ? ` · ${groupLabel(input.binds, ['viewL', 'viewR'])} 시점` : ''}`;
 function refreshKeyLabels() {
   for (const el of document.querySelectorAll('[data-key]')) el.textContent = keyText(el.dataset.key);
   for (const el of document.querySelectorAll('[data-keys]')) el.textContent = groupLabel(input.binds, el.dataset.keys.split(','));
@@ -2029,6 +2036,7 @@ function drawHud() {
   if (state.phase === 'over' && (performance.now() < bigUntil || resultsHero())) center = null; // 승리 큰 글씨·결과 연출 동안은 대기실 판을 감춤 (그 뒤 미끄러져 들어옴)
   centerEl.classList.toggle('hidden', center === null);
   centerEl.classList.toggle('slim', state.phase !== 'lobby' && state.phase !== 'over'); // 판 중 '화면을 클릭하면…' 은 작은 띠로 (몸을 덜 가림)
+  centerEl.classList.toggle('sky', input.sky && state.phase !== 'lobby' && state.phase !== 'over'); // 하늘 시점: 필드를 안 가리게 화면 아래 (초상 판 위)
   centerText.textContent = center || '';
   startBtn.classList.toggle('hidden', !showStart);
   startBtn.textContent = state.phase === 'over' ? '재시작 (Enter)' : '시작 (Enter)';

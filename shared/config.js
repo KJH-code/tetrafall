@@ -895,6 +895,10 @@ export const CONFIG = {
   MOUSE_SENSITIVITY: 0.0022,
   FOV_DEFAULT: 75, // 1인칭 시야각 기본 (설정에서 60~100)
   SKY_CAMERA_HEIGHT: GRID_H + 14, // 하늘 시점 카메라 높이 (필드 중심 위)
+  // 하늘 시점 (블록 마스터·블록 조종, 2026-10-30 재혁: 비스듬한 3D + 착지 미리보기). shared/sky-view.js · client/sky-aids.js
+  // oblique 꺼짐 = 예전 수직 직교 · pitch 내려다보는 각 (도) · fov 세로 시야각 · fit 거리 배수 · margin 필드 둘레 여백 (칸) · lookZ 바라보는 높이 · turnMs 90도 돌기 시간
+  // ghost 착지 칸 비침 · pillar [굵기, 비침] 블록에서 착지 칸까지 빛 기둥 · beacon 생존자 머리 위 표시 [크기, 머리 위 높이, 오르내림, 기둥 굵기, 기둥 비침] · label 머리 위 이름표 크기 배수 (하늘 시점은 이름만) · labelGap 화면에서 이만큼(px 가로·세로) 안에 겹치면 뒤 이름표 숨김 · ok·bad 착지 칸 색 (놓을 수 있음·탑 제한)
+  SKY_VIEW: { oblique: true, pitch: 58, fov: 42, fit: 1.0, margin: 1, lookZ: 1, turnMs: 260, ghost: 0.4, pillar: [0.1, 0.35], beacon: [0.8, 1.9, 0.15, 0.13, 0.45], label: 0.5, labelGap: [120, 36], ok: 0xffc040, bad: 0xff2a2a },
   SKY_TRANSITION_MS: 700, // 1인칭 ↔ 하늘 시점 전환 애니메이션 길이
   // 3인칭 (V 로 1인칭과 바꿈, 폴가이즈처럼 내 캐릭터 뒤·위에서 봄). 이동·조준은 1인칭과 같은 yaw·pitch
   TP_DIST: 3.8, // 캐릭터에서 카메라까지 거리 (칸)
