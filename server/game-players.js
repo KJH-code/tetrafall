@@ -57,6 +57,7 @@ export class PlayersPart {
       ammo: 0,
       deathCause: null,
       lastHit: null, // 판 안에서 마지막으로 나를 날린 사람 { by, name, kind } — 킬 판정
+      killStreak: 0, // 죽지 않고 이어 낸 킬 수 (kill 이벤트 streak, 죽으면 0)
       team: this.smallerTeam(), // 팀전용. 들어올 때 사람이 적은 팀으로
       emote: -1, // 이모트 번호 (EMOTE_NAMES), -1 = 안 함
       emoteUntil: 0,

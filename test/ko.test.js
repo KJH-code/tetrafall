@@ -250,3 +250,32 @@ test('터널 링크: npm run online 이 IPC 로 보낸 주소를 서버 프로�
     stop();
   }
 });
+
+test('kill 이벤트 (킬피드·부활 화면): 죽음마다 killer·victim·cause·weapon·이름·streak (죽지 않고 이어 낸 킬, 죽으면 0), 자멸은 killer null', () => {
+  const g = new Game(() => {}, { countdownMs: 0 });
+  g.rng = () => 0.5;
+  for (const id of [1, 2, 3, 4]) g.addPlayer(id);
+  g.setMode('kills');
+  g.startRound();
+  g.nextSpawnAt = Infinity;
+  const kills = () => g.drainEvents().filter((e) => e.type === 'kill');
+  const hitThenFall = (a, b) => {
+    const t = g.players.get(b);
+    t.iframeUntil = 0;
+    t.shieldUntil = 0;
+    g.applyKnockback(t, 1, 0, 0, 0, 0, 10, { by: a, kind: 'push' }, true);
+    g.kill(t, 'fall');
+  };
+  g.drainEvents();
+  hitThenFall(1, 2);
+  assert.deepEqual(kills(), [{ type: 'kill', killer: 1, killerName: 'P1', victim: 2, victimName: 'P2', cause: 'fall', weapon: 'push', streak: 1 }]);
+  hitThenFall(1, 3);
+  assert.equal(kills()[0].streak, 2, '연속 킬');
+  g.kill(g.players.get(1), 'lava'); // 자멸
+  assert.deepEqual(kills(), [{ type: 'kill', killer: null, killerName: null, victim: 1, victimName: 'P1', cause: 'lava', weapon: null, streak: 0 }]);
+  assert.equal(g.players.get(1).killStreak, 0, '죽으면 0');
+  for (let t = 0; t < C.KILLS_RESPAWN_MS + 200; t += TICK) g.tick(TICK); // P1 부활
+  g.drainEvents();
+  hitThenFall(1, 4);
+  assert.equal(kills()[0].streak, 1, '죽은 뒤 킬은 1 부터 다시');
+});

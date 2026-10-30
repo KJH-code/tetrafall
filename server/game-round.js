@@ -80,6 +80,7 @@ export class RoundPart {
         ammo: 0,
         deathCause: null,
         lastHit: null,
+        killStreak: 0,
         emoteUntil: 0,
         emoteReadyAt: 0,
         master: false,
@@ -433,6 +434,11 @@ export class RoundPart {
     const out = cause === 'fall' ? this.outward(p) : null;
     this.lastDeath = { who: p.id, cause, by: credit ? credit.by : null, x: p.x, y: p.y, z: p.z, out, at: this.time };
     this.emit({ type: 'death', who: p.id, cause, by: credit ? credit.by : null, weapon: credit ? credit.kind : null, byName: credit ? credit.name : null, x: p.x, y: p.y, z: p.z, out });
+    // 킬 알림 (2026-10-30, 화면 킬피드·부활 화면): 죽음마다 하나. killer 가 null 이면 킬 없음 (자멸). streak = 그 킬러가 죽지 않고 이어 낸 킬 수
+    const killer = credit ? this.players.get(credit.by) || null : null;
+    p.killStreak = 0;
+    if (killer) killer.killStreak = (killer.killStreak || 0) + 1;
+    this.emit({ type: 'kill', killer: killer ? killer.id : null, killerName: credit ? credit.name : null, victim: p.id, victimName: p.name, cause, weapon: credit ? credit.kind : null, streak: killer ? killer.killStreak : 0 });
     const killText = credit ? `, 킬 ${credit.name} ${WEAPON_LOG[credit.kind]}` : ', 킬 없음'; // "킬 없음" 을 적어야 킬 기록이 없던 옛 로그와 구분됨
     // 밟은 칸: 죽기 전 마지막으로 서 있던 칸 (시작 지형 위 싸움인지, 블록이 바꾼 지형 위인지 → npm run stats)
     this.log(`  [사망] ${p.name} ${causeKo(cause)} @ ${fmtTime(t)} (위치 ${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}, 피해 ${p.damage}%${killText}, 밟은 칸 ${GROUND_LOG[p.lastGround ?? 'none']})`);
