@@ -1723,6 +1723,12 @@ export const CONFIG = {
   BEAM_RADIUS: 0.05, // 조종 빛줄기 굵기 (칸)
   BEAM_OPACITY: 0.35, // 조종 빛줄기 기본 불투명도
   BEAM_PULSE: 0.2, // 조종 빛줄기 깜빡임 폭
+  // 킬 점수전 화면 (shared/kills-hud.js, main.js): 위 점수 띠에 1~KILLS_TOP_N 위 + 나, 연속 킬 글자, 부활 빛
+  KILLS_TOP_N: 3,
+  KILLS_STREAK_MIN: 2, // 이 킬 수부터 '더블 킬' 같은 연속 킬 표시 (죽으면 0)
+  KILLS_STREAK_TEXT: { 2: '더블 킬', 3: '트리플 킬', 4: '쿼드라 킬', 5: '펜타 킬' }, // 그 위는 'N연속 킬'
+  KILLS_RESPAWN_FLASH_MS: 450, // 부활 순간 화면 가장자리 빛
+  HUD_HP_LOW: 0.3, // 체력전: 아래 판 HP 막대가 이 비율 아래면 빨강
   KILLFEED_MS: 6000, // 오른쪽 위 킬 알림이 떠 있는 시간
   KILLFEED_MAX: 5, // 킬 알림 최대 줄 수
   INPUT_SEND_RATE: 30, // 입력 전송 Hz

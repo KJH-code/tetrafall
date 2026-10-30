@@ -68,6 +68,7 @@ export class Input {
         this.onWheel(null);
       }
       this.onUi('help', false);
+      this.onUi('practice', false); // 킬 점수전 점수표 (누르고 있기) 닫기
     });
   }
 
@@ -104,7 +105,7 @@ export class Input {
         this.onWheel(null);
         if (n >= 0) this.sendAction({ name: 'emote', n });
       }
-      if (id === 'help' || id === 'view') this.onUi(id, false);
+      if (id === 'help' || id === 'view' || id === 'practice') this.onUi(id, false); // practice 뗌 = 킬 점수전 점수표 닫기
     }
   }
 

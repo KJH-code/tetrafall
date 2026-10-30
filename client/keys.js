@@ -23,7 +23,7 @@ export const ACTIONS = [
   { id: 'view', label: '1인칭 ↔ 3인칭', def: 'KeyV', group: '기타' },
   { id: 'emote', label: '이모트 바퀴 (누르고 있기)', def: 'KeyG', group: '기타' },
   { id: 'help', label: '조작법 보기 (누르고 있기)', def: 'KeyH', group: '기타' },
-  { id: 'practice', label: '연습 창 열기·닫기 (연습 방)', def: 'Tab', group: '기타' },
+  { id: 'practice', label: '연습 창 열기·닫기 (연습 방) · 점수표 (킬 점수전, 누르고 있기)', def: 'Tab', group: '기타' },
   { id: 'perf', label: '성능 표시 켜기·끄기 (FPS·구간 ms)', def: 'F3', group: '기타' },
   { id: 'tutSkip', label: '튜토리얼 이 단계 넘기기', def: 'KeyN', group: '기타' },
 ];
