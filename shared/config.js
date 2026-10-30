@@ -1010,8 +1010,6 @@ export const CONFIG = {
   TITLE_TEXT: 'TETRAFALL', // 로고 글자 (5×7 복셀 글꼴: 대문자·숫자·! -)
   TITLE_BOLD: 2, // 글꼴 한 칸 = 2×2 칸 (획 2칸 두께, 10×14 글자)
   TITLE_GAP: 1, // 글자 사이 (글꼴 칸, ×TITLE_BOLD)
-  TITLE_WEIGHT: 1, // 획 굵히기: 글꼴 칸마다 오른쪽·아래로 1칸 더 (획 3칸, 2026-10-30 재혁 '굵게')
-  TITLE_DEPTH: 2, // 로고 두께 (블록 겹 수, 앞뒤로) — 위·옆에서 보면 상자 옆면·윗면이 보임
   TITLE_BUILD_MS: 3200, // 다 쌓이는 데 걸리는 시간 — 조각 수에서 출발 간격을 거꾸로 계산 (titleInterval)
   TITLE_DROP_MIN_MS: 8, // 출발 간격 최소
   TITLE_DROP_INTERVAL_MS: 55, // 간격 기본값 (dropSchedule 를 그냥 부를 때)
@@ -1023,14 +1021,12 @@ export const CONFIG = {
   TITLE_SCALE: 0.5, // 글자 칸 하나의 크기 (게임 칸)
   TITLE_FILL: 0.74, // 로고 폭이 화면 폭의 이만큼 (카메라 거리를 화면 비율·시야각으로 계산)
   TITLE_FOV: 50, // 타이틀 카메라 세로 시야각 (영화처럼 좁게)
-  TITLE_CAM_UP: 13, // 카메라를 로고 가운데보다 위에 (내려다봄 → 블록 윗면이 보임, 2026-10-30 재혁 '3D')
-  TITLE_CAM_SIDE: -12, // 옆으로 비켜 보기 (블록 옆면이 보이게)
+  TITLE_CAM_UP: -1.6, // 카메라를 로고 가운데보다 조금 아래에 (올려다봄, 아래 반사가 보이게)
+  TITLE_CAM_SIDE: -3, // 옆으로 비켜 보기 (블록 옆면이 보이게)
   TITLE_CAM_SWAY: 1.2, // 천천히 옆으로 흔들림
   TITLE_CAM_PUSH: 0.1, // 쌓이는 동안 천천히 다가감 (거리 비율)
-  TITLE_OUTLINE: 0.08, // 빛 테두리 두께 (블록 크기 비율)
-  TITLE_BEVEL: 0.16, // 글자 블록 모서리 깎기 (블록 크기 비율, 칸이 상자로 보이게)
-  TITLE_BLOCK: 0.92, // 글자 블록 크기 (칸 비율, 틈이 보이게)
-  TITLE_FACE_GLOW: 0.6, // 글자 면 스스로 빛남 비율 (낮을수록 윗면·옆면 명암이 살아남)
+  TITLE_OUTLINE: 0.1,
+  TITLE_BEVEL: 0.12, // 글자 블록 모서리 깎기 (블록 크기 비율, 칸이 살짝 보이게) // 빛 테두리 두께 (블록 크기 비율)
   TITLE_DARK_MS: 1600, // 처음 캄캄 → 장면 빛이 천천히 밝아지는 시간
   TITLE_LIT_START: 0.12, // 처음 장면 밝기 (0~1)
   TITLE_GLOW: [0.15, 0.62], // 글자 스스로 빛남 [쌓이는 동안, 빛 터진 뒤]

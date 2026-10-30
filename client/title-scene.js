@@ -23,7 +23,7 @@ export class TitleScene {
     this.exitT = null; // 빠져나가기 시작 뒤 ms (null = 아직)
     this.instant = instant;
     this.on = { land: () => {}, burst: () => {}, exit: () => {} }; // 소리 훅 (title.js)
-    const { cells, width, height } = titleCells(C.TITLE_TEXT, C.TITLE_GAP, C.TITLE_BOLD, C.TITLE_WEIGHT);
+    const { cells, width, height } = titleCells(C.TITLE_TEXT, C.TITLE_GAP, C.TITLE_BOLD);
     this.pieces = titlePieces(cells);
     this.start = dropSchedule(this.pieces, titleInterval(this.pieces.length));
     this.doneAt = instant ? 0 : titleDoneAt(this.start);
@@ -40,7 +40,7 @@ export class TitleScene {
     const scene = (this.scene = this.stage.scene);
 
     // 글자 블록: 모서리 깎은 매끈한 블록 + 테마 글자 색 (조각마다 차례로), 스스로 빛남 (테마 빛 색) + 닿을 때 번쩍 + 지나가는 빛 띠
-    const n = cells.length * C.TITLE_DEPTH; // 칸마다 앞뒤로 TITLE_DEPTH 겹
+    const n = cells.length;
     this.flash = new Float32Array(n); // 블록마다 번쩍 (0~1, 줄어듦)
     const geo = new RoundedBoxGeometry(1, 1, 1, 1, C.TITLE_BEVEL);
     this.flashAttr = new THREE.InstancedBufferAttribute(this.flash, 1);
@@ -58,7 +58,7 @@ export class TitleScene {
           '#include <emissivemap_fragment>',
           `#include <emissivemap_fragment>
           float sw = exp(-pow((vWX - uSweepX) / uSweepW, 2.0));
-          totalEmissiveRadiance += mix(diffuseColor.rgb, uGlowCol, 0.4) * uGlow * ${C.TITLE_FACE_GLOW.toFixed(3)} + vec3(1.0) * (vFlash * 1.6 + sw * 0.55 * uGlow);`,
+          totalEmissiveRadiance += mix(diffuseColor.rgb, uGlowCol, 0.4) * uGlow + vec3(1.0) * (vFlash * 1.6 + sw * 0.55 * uGlow);`,
         );
     };
     mat.customProgramCacheKey = () => 'tf-title-letter';
@@ -73,11 +73,9 @@ export class TitleScene {
     this.pieces.forEach((p, pi) => {
       const col = new THREE.Color(this.T.letter[pi % this.T.letter.length]);
       for (const c of p.cells) {
-        for (let d = 0; d < C.TITLE_DEPTH; d++) {
-          this.mesh.setColorAt(i, d ? col.clone().multiplyScalar(0.8) : col);
-          this.slots.push([pi, c, d]);
-          i++;
-        }
+        this.mesh.setColorAt(i, col);
+        this.slots.push([pi, c]);
+        i++;
       }
     });
     this.byPiece = this.pieces.map(() => []);
@@ -179,11 +177,11 @@ export class TitleScene {
     const pos = new THREE.Vector3();
     const q = new THREE.Quaternion();
     const zero = new THREE.Vector3(0, 0, 0);
-    const one = new THREE.Vector3(s * C.TITLE_BLOCK, s * C.TITLE_BLOCK, s * C.TITLE_BLOCK);
+    const one = new THREE.Vector3(s * 0.97, s * 0.97, s * 0.97);
     const big = new THREE.Vector3(s * (1 + C.TITLE_OUTLINE), s * (1 + C.TITLE_OUTLINE), s * (1 + C.TITLE_OUTLINE));
-    this.slots.forEach(([pi, c, d], i) => {
+    this.slots.forEach(([pi, c], i) => {
       const lift = this.instant ? 0 : pieceLift(this.t, this.start[pi]);
-      pos.set((c.x - w / 2 + 0.5) * s, (d - (C.TITLE_DEPTH - 1) / 2) * s, (c.y - h / 2 + 0.5 + (lift || 0)) * s);
+      pos.set((c.x - w / 2 + 0.5) * s, 0, (c.y - h / 2 + 0.5 + (lift || 0)) * s);
       m.compose(pos, q, lift === null ? zero : one);
       this.mesh.setMatrixAt(i, m);
       m.compose(pos, q, lift === null ? zero : big);
@@ -255,7 +253,7 @@ export class TitleScene {
     const sweepP = (((sweepU % C.TITLE_SWEEP_MS) + C.TITLE_SWEEP_MS) % C.TITLE_SWEEP_MS) / C.TITLE_SWEEP_MS;
     const lw = this.size[0] * C.TITLE_SCALE;
     this.u.uSweepX.value = sweepU < 0 ? -1e4 : -lw * 0.8 + sweepP * lw * 2.4;
-    this.shell.material.color.copy(this.edgeCol).multiplyScalar(Math.min(2, 0.15 + L.glow * 0.7));
+    this.shell.material.color.copy(this.edgeCol).multiplyScalar(Math.min(3, 0.3 + L.glow * 1.6));
     this.halo.material.opacity = Math.min(1, L.burst * 0.18 + (this.t >= this.doneAt ? 0.04 : 0) + push * 0.5);
     this.halo.scale.set(this.size[0] * C.TITLE_SCALE * (1.15 + L.burst * 0.3), this.size[1] * C.TITLE_SCALE * (1.8 + L.burst * 1.4), 1);
     this.streak.material.opacity = Math.min(1, L.burst * 0.8 + (this.t >= this.doneAt ? 0.15 : 0));
