@@ -172,17 +172,10 @@ test('전체 보기 카메라: 큰 판은 판 크기만큼 멀리 (10×10 은 �
 
 test('스냅샷 압축: 서버가 permessage-deflate 를 켬, 큰 메시지(스냅샷)만 압축', async () => {
   assert.ok(C.NET_DEFLATE_MIN_BYTES > 200 && C.NET_DEFLATE_MIN_BYTES <= 4096);
-  const { spawn } = await import('node:child_process');
-  const path = await import('node:path');
-  const { fileURLToPath } = await import('node:url');
   const { default: WebSocket } = await import('ws');
-  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-  const port = String(30000 + Math.floor(Math.random() * 20000));
-  const srv = spawn(process.execPath, [path.join(root, 'server', 'index.js')], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PORT: port } });
-  let out = '';
-  srv.stdout.on('data', (b) => (out += b));
+  const { startServer } = await import('./server-process.js');
+  const { port, stop } = await startServer();
   try {
-    for (let t = 0; t < 5000 && !/실행 중/.test(out); t += 50) await new Promise((r) => setTimeout(r, 50));
     const ws = new WebSocket(`ws://localhost:${port}`);
     await new Promise((ok, bad) => {
       ws.on('open', ok);
@@ -198,6 +191,6 @@ test('스냅샷 압축: 서버가 permessage-deflate 를 켬, 큰 메시지(스�
     assert.equal(state.players.length, 8);
     ws.close();
   } finally {
-    srv.kill();
+    stop();
   }
 });
