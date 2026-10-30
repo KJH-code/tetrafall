@@ -902,7 +902,7 @@ export const CONFIG = {
   HUD_CARD_GAP: 10, // 판 사이 간격 (px)
   HUD_CARD_MARGIN: 12, // 화면 양 끝 여백 (px)
   HUD_CARD_COMPACT_FROM: 5, // 이 인원부터 작은 판 (캐릭터·승 줄 빼고 초상·이름·% 만)
-  HUD_LOBBY_GAP: 16, // 대기실: 왼쪽 플레이어 관리 칸과 가운데 판 사이 최소 간격 (px)
+  HUD_LOBBY_W: { min: 380, frac: 0.36, max: 470 }, // 대기실 판 폭 (오른쪽에 붙음, 화면 폭 × frac 을 min~max px 로) — 가운데 맵 섬·사람이 보이게
   LABEL_SIZE: [0.3, 0.13], // 머리 위 이름·% 판 크기 (화면 비율, 거리와 상관없이 같음)
   LABEL_FULL_N: 4, // 머리 위 이름·% 를 원래 크기로 그리는 사람 수 (카메라에서 가까운 순). 나머지는 작고 흐리게
   LABEL_FAR_SCALE: 0.68, // 그 나머지 크기 배율
