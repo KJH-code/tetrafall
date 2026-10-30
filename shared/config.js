@@ -1036,7 +1036,7 @@ export const CONFIG = {
   TITLE_SWEEP_MS: 2600, // 글자 위를 지나가는 빛 띠 주기 (빛 터진 뒤)
   TITLE_SWEEP_W: 3, // 빛 띠 폭 (게임 칸)
   TITLE_TWINKLE: 0.9, // 반짝임: 1초에 블록 몇 개가 반짝 (× 블록 수 / 100)
-  TITLE_BLOOM: [0.75, 0.5, 0.82], // 블룸 [세기, 퍼짐, 문턱 밝기] (그래픽 낮춤이면 끔)
+  TITLE_BLOOM: [0.75, 0.28, 0.82], // 블룸 [세기, 퍼짐, 문턱 밝기] (그래픽 낮춤이면 끔)
   TITLE_BLOOM_BURST: 1.25, // 빛 터짐 때 블룸 세기
   TITLE_SPARKS: [140, 50], // 빛 터짐 불티 수 [보통, 그래픽 낮춤]
   TITLE_REFLECT: 0.45,
@@ -1074,10 +1074,10 @@ export const CONFIG = {
       sound: { drone: [49, 73.4], hum: 900, ping: 'wind', land: 'sand', pitch: 74 },
     },
     mushroom: {
-      name: '빛 버섯 숲', bg: 0x030a0c, fog: [0x061a1c, 16, 70], amb: [0x1a5a5a, 0.55], key: [0xa0fff0, 1.2], back: [0x30ffc8, 2.0],
+      name: '빛 버섯 숲', bg: 0x030a0c, fog: [0x061a1c, 16, 70], amb: [0x1a5a5a, 0.4], key: [0xa0fff0, 1.0], back: [0x30ffc8, 1.5],
       letter: [0xd6fff4, 0xc4f6ff, 0xf0d6ff], glow: 0x30ffc8, edge: 0x60ffe0, floor: 0x081412,
       motes: [0x80ffd8, 240, 0.12, 0.25], flare: 0x90ffe8,
-      caps: [0x30e8ff, 0xff4fd0, 0x7cff6a], stem: 0x2a3a3a,
+      caps: [0x30e8ff, 0xff4fd0, 0x7cff6a], stem: 0x5a7a74,
       sound: { drone: [52, 78], hum: 600, ping: 'bubble', land: 'soft', pitch: 79 },
     },
     skycastle: {
@@ -1097,10 +1097,10 @@ export const CONFIG = {
     },
     meadow: {
       mirror: false, // 거울 바닥 없음 (테마가 땅을 만듦)
-      name: '반딧불 밤 초원', bg: 0x030810, fog: [0x061420, 22, 90], amb: [0x2a4a5a, 0.55], key: [0xe8ffd0, 1.2], back: [0xb8ff50, 1.7],
-      letter: [0xf2ffd8, 0xe6ffc4, 0xfff6d0], glow: 0xa8ff40, edge: 0xc8ff70, floor: 0x0a1810,
+      name: '반딧불 밤 초원', bg: 0x030810, fog: [0x061420, 22, 90], amb: [0x2a4a5a, 0.3], key: [0xe8ffd0, 0.8], back: [0xb8ff50, 1.0],
+      letter: [0xc8e0b0, 0xbcd8a0, 0xd6e4b8], glow: 0x7ee030, edge: 0xa8f050, floor: 0x0a1810,
       motes: [0xd8ff60, 90, 0.2, 0.05], flare: 0xe0ffb0,
-      grass: 0x12301c, tree: 0x0a1a12, moon: 0xf0f6ff,
+      grass: 0x0a2014, tree: 0x06120c, moon: 0xf0f6ff,
       sound: { drone: [61.7, 92.5], hum: 2400, ping: 'cricket', land: 'soft', pitch: 77 },
     },
   },  // 타이틀 소리 (client/title-sound.js, 합성): vol 앰비언트 크기 · fadeIn 켜질 때 천천히 (초) · echo·echoDelay·echoFeedback 울림 · pingEvery 띄엄띄엄 소리 간격 [최소, 최대] 초

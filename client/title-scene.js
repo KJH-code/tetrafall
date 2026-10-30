@@ -254,8 +254,8 @@ export class TitleScene {
     const lw = this.size[0] * C.TITLE_SCALE;
     this.u.uSweepX.value = sweepU < 0 ? -1e4 : -lw * 0.8 + sweepP * lw * 2.4;
     this.shell.material.color.copy(this.edgeCol).multiplyScalar(Math.min(3, 0.3 + L.glow * 1.6));
-    this.halo.material.opacity = Math.min(1, L.burst * 0.3 + (this.t >= this.doneAt ? 0.1 : 0) + push * 0.5);
-    this.halo.scale.set(this.size[0] * C.TITLE_SCALE * (1.3 + L.burst * 0.6), this.size[1] * C.TITLE_SCALE * (4 + L.burst * 3), 1);
+    this.halo.material.opacity = Math.min(1, L.burst * 0.18 + (this.t >= this.doneAt ? 0.04 : 0) + push * 0.5);
+    this.halo.scale.set(this.size[0] * C.TITLE_SCALE * (1.15 + L.burst * 0.3), this.size[1] * C.TITLE_SCALE * (1.8 + L.burst * 1.4), 1);
     this.streak.material.opacity = Math.min(1, L.burst * 0.8 + (this.t >= this.doneAt ? 0.15 : 0));
     this.stage.update(this.t / 1000, Math.min(1, L.lit + L.burst * 0.5), window.innerHeight * 0.5 * this.r.renderer.getPixelRatio());
 

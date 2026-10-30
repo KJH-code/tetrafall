@@ -370,7 +370,7 @@ export class TitleStage {
   }
 
   mushroom(T, rnd) {
-    const stem = new THREE.MeshStandardMaterial({ color: T.stem, roughness: 0.9 });
+    const stem = new THREE.MeshStandardMaterial({ color: T.stem, emissive: T.stem, emissiveIntensity: 0.25, roughness: 0.9 });
     const capGeo = new THREE.SphereGeometry(1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2);
     const capMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.9, roughness: 0.5 });
     capMat.onBeforeCompile = (sh) => {
@@ -538,9 +538,9 @@ export class TitleStage {
     const mg = glowSprite(T.moon, 45, 45, 0.2);
     mg.position.copy(moon.position);
     this.add(mg);
-    const moonLight = new THREE.DirectionalLight(T.moon, 0.7);
+    const moonLight = new THREE.DirectionalLight(T.moon, 0.3);
     moonLight.position.set(60, 130, 45);
-    this.light(moonLight, 0.7);
+    this.light(moonLight, 0.3);
     const ground = rockPlane(400, 400, 50, 1.2, T.grass, rnd);
     ground.position.z = this.floorZ - 0.3;
     this.add(ground);
