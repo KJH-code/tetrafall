@@ -1580,7 +1580,7 @@ export class Renderer {
     const yaw = winner.yaw;
     const front = new THREE.Vector3(s.x + Math.cos(yaw) * C.VICTORY_DIST, s.y + Math.sin(yaw) * C.VICTORY_DIST, s.z + C.VICTORY_UP);
     eye.lerp(front, t);
-    look.lerp(new THREE.Vector3(s.x, s.y, s.z + C.PLAYER_HEIGHT * 0.55), t);
+    look.lerp(new THREE.Vector3(s.x, s.y, s.z + C.PLAYER_HEIGHT * 0.55 + (cam.victory ? C.VICTORY_LOOK_UP : 0)), t); // 승리: 승자 머리 위를 봐서 승자가 화면 아래쪽에 (위 '승리!' 큰 글씨와 안 겹치게)
     if (!cam.victory) return;
     // 색종이: 승자 위에서 몇 번 터짐
     this.confettiAcc = (this.confettiAcc || 0) + dt * C.CONFETTI_RATE;

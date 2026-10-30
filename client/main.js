@@ -1636,10 +1636,10 @@ function closeupNow() {
 function koSlowLeft() {
   return ko.slow ? Math.max(0, ko.slow.until - performance.now()) : 0;
 }
-// 아래 플레이어 판: 판 중 + 판 끝 결과 연출 동안 (그 뒤엔 대기실과 같은 모습 — 승수는 위 줄, 승자는 대기실 판 글)
+// 아래 플레이어 판: 판 중 + 판 끝 마지막 킬 슬로모션 동안 (클로즈업·결과 표 동안·그 뒤엔 대기실과 같은 모습 — 승수는 위 줄, 승자는 대기실 판 글)
 function cardsOn() {
   if (!state || inPractice() || livePlayers().length < 2) return false;
-  return state.phase === 'countdown' || state.phase === 'playing' || resultsHero();
+  return state.phase === 'countdown' || state.phase === 'playing' || overStage() === 'slow'; // 마지막 킬 슬로모션까지만. 승자 클로즈업 (승자 다리를 가림)·결과 표 (겹침) 동안은 숨김
 }
 function updatePlayers() {
   const on = cardsOn();
@@ -1964,7 +1964,7 @@ function drawHud() {
   if (between) updateCharRow(p);
   else releaseCharStage();
   updateRoomRow(between, isHost);
-  updateHostPlayers(isHost && between);
+  updateHostPlayers(isHost && between && !resultsHero()); // 판 끝 클로즈업·결과 연출 동안은 숨김 (대기실 판과 같이 나옴)
   placeLobby();
   const showBots = isHost && between;
   $('bot-btns').classList.toggle('hidden', !showBots);

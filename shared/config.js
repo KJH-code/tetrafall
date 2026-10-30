@@ -1650,6 +1650,7 @@ export const CONFIG = {
   VICTORY_CLOSEUP_REDUCED_MS: 1500, // 움직임 줄이기·그래픽 낮춤: 카메라가 날아가지 않고 바로 승자 앞, 짧게
   VICTORY_DIST: 2.8, // 승자 앞 거리 (칸)
   VICTORY_UP: 1.4, // 발 위 높이 (칸)
+  VICTORY_LOOK_UP: 0.45, // 승리 카메라가 승자 가슴보다 이만큼 위를 봄 (칸): 승자가 화면 아래쪽 2/3 에 오고 머리 위가 '승리!' 큰 글씨 자리
   VICTORY_SPIN: 5, // 춤: 빙글 도는 빠르기 (라디안/초)
   VICTORY_HOP: 0.35, // 춤: 깡충 높이 (칸)
   VICTORY_HOP_FREQ: 7, // 춤: 깡충 빠르기
