@@ -31,9 +31,10 @@ export class CharStage {
     const key = new THREE.DirectionalLight(0xffffff, 1.5);
     key.position.set(3, -2, 4);
     this.scene.add(key);
-    const rim = new THREE.DirectionalLight(0x99bbff, 0.9);
-    rim.position.set(-3, 2, 1);
-    this.scene.add(rim);
+    this.rim = new THREE.DirectionalLight(0x99bbff, 0.9); // 테두리 빛: 대기실 장면 테마 빛 색 (tint)
+    this.rim.position.set(-3, 2, 1);
+    this.scene.add(this.rim);
+    this.theme = null;
     this.camera = new THREE.PerspectiveCamera(26, 1, 0.05, 60);
     this.camera.up.set(0, 0, 1); // 게임과 같은 z-up
     this.turn = new THREE.Group(); // 도는 받침
@@ -61,6 +62,15 @@ export class CharStage {
     if (taunt && this.key) this.pickedAt = performance.now();
     else if (!this.key) this.pickedAt = performance.now() - C.EMOTE_MS; // 처음: 도발 없이 바로 돌기 시작
     this.key = key;
+  }
+
+  // 테두리 빛을 테마 빛 색으로 (theme = config TITLE_THEMES 키 = body data-theme, 없으면 예전 하늘색)
+  tint(theme) {
+    if (!this.gl || theme === this.theme) return;
+    this.theme = theme;
+    const T = C.TITLE_THEMES[theme];
+    this.rim.color.setHex(T ? T.edge : 0x99bbff);
+    this.rim.intensity = T ? 1.3 : 0.9;
   }
 
   draw(now = performance.now()) {
