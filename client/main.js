@@ -1070,7 +1070,7 @@ function renderRoomList() {
   if (!roomList) return;
   const full = roomList.count >= roomList.max;
   $('room-create').disabled = full;
-  $('rooms-count').textContent = `(지금 열린 방 ${roomList.count}/${roomList.max}개${full ? ', 가득 참' : ''})`;
+  $('rooms-count').textContent = `${roomList.rooms.length}개${full ? ' · 서버 방 가득 참' : ''}`;
   const key = JSON.stringify(roomList.rooms);
   if (key === roomListKey) return;
   roomListKey = key;
@@ -1094,12 +1094,22 @@ function renderRoomList() {
     info.textContent = `사람 ${r.humans}${bots} / ${r.max}명 · ${C.MODE_NAMES[r.mode] || '생존'} · 맵 ${mapName(r.map)}${r.skyStairs ? ' · 하늘 계단' : ''} · ${r.teamMode ? '팀전' : '개인전'}`;
     const btn = document.createElement('button');
     btn.textContent = r.humans + r.bots >= r.max ? '꽉 참' : '들어가기';
+    btn.className = 'go';
     btn.disabled = r.humans + r.bots >= r.max;
     btn.addEventListener('click', () => joinRoom(r.code));
     row.append(name, btn, info);
     listEl.append(row);
   }
 }
+
+// 메뉴 큰 버튼: 누르면 그 아래 세부(방 이름·코드·공개 방 목록)가 펼쳐짐. 한 번에 하나, 다시 누르면 접힘
+function openMenu(which) {
+  for (const b of roomsEl.querySelectorAll('button.big[data-open]')) b.classList.toggle('on', b.dataset.open === which);
+  for (const p of roomsEl.querySelectorAll('.open[data-pane]')) p.classList.toggle('hidden', p.dataset.pane !== which);
+  const first = which && roomsEl.querySelector(`.open[data-pane="${which}"] input`);
+  if (first) first.focus();
+}
+for (const b of roomsEl.querySelectorAll('button.big[data-open]')) b.addEventListener('click', () => openMenu(b.classList.contains('on') ? null : b.dataset.open));
 
 function syncNick() {
   nameInput.value = roomsNick.value;
@@ -1122,6 +1132,9 @@ $('room-create').addEventListener('click', () => {
   send({ type: 'create', name: $('room-name').value, nick: roomsNick.value });
 });
 $('room-join').addEventListener('click', () => joinRoom(roomCodeInput.value));
+$('room-name').addEventListener('keydown', (e) => {
+  if (e.code === 'Enter') $('room-create').click();
+});
 roomCodeInput.addEventListener('keydown', (e) => {
   if (e.code === 'Enter') joinRoom(roomCodeInput.value);
 });
@@ -1216,7 +1229,6 @@ for (const id of ['random', ...MAP_IDS]) $('map-select').append(new Option(mapNa
 $('map-select').addEventListener('change', (e) => send({ type: 'setMap', map: e.target.value }));
 // 하늘 계단 (호스트, 판 사이): 맵 고르기 옆 체크 상자
 const skyLabel = document.createElement('label');
-skyLabel.style.cssText = 'font-size:15px;margin-left:8px';
 const skyBox = document.createElement('input');
 skyBox.type = 'checkbox';
 skyBox.id = 'sky-stairs';
@@ -1931,8 +1943,8 @@ function drawHud() {
   let showKeys = false;
   if (state.phase === 'lobby') {
     const n = state.players.length;
-    if (!state.canStart) center = `플레이어 대기 중 (${n}명, 최소 ${C.MIN_PLAYERS}명)${isHost ? "\n혼자면 '봇 추가'를 누르세요" : ''}`;
-    else if (isHost) center = `${n}명 접속 (최대 ${maxP}명)\n더 기다리거나 시작하세요`;
+    if (!state.canStart) center = `플레이어 대기 중 (${n}명, 최소 ${C.MIN_PLAYERS}명)${isHost ? " · 혼자면 '봇 추가'" : ''}`; // 한 줄 (대기실 판은 캐릭터 고르기·시작이 먼저 보이게)
+    else if (isHost) center = `${n}명 접속 (최대 ${maxP}명) · 더 기다리거나 시작`;
     else center = `${n}명 접속. 호스트가 시작하길 기다리는 중`;
     showStart = isHost && state.canStart;
     showKeys = true;
@@ -1960,6 +1972,7 @@ function drawHud() {
   keysEl.classList.toggle('hidden', !showKeys);
   // 봇 버튼: 호스트만, 판 사이에만
   const between = state.phase === 'lobby' || state.phase === 'over';
+  document.body.classList.toggle('ui-dark', between && !inPractice()); // 대기실·결과: 위 점수 띠도 빛 판 (index.html), 판 중엔 밝은 HUD
   $('name-row').classList.toggle('hidden', !between);
   if (between) updateCharRow(p);
   else releaseCharStage();
@@ -2543,6 +2556,7 @@ function updateCharStage(p) {
   }
   flat.classList.add('hidden');
   charStage.set(p.char, col, changed);
+  charStage.tint(document.body.dataset.theme);
   charStage.draw();
 }
 function updateCharRow(p) {
