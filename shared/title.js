@@ -49,21 +49,35 @@ export const GLYPH_H = 7;
 
 // 글자 → 칸 [{ x, y }] (x 는 왼쪽부터, y 는 아래부터 = 0). 글자 사이 gap 칸. 모르는 글자는 빈칸.
 // bold: 글꼴 한 칸을 bold×bold 칸으로 (2 = 획 2칸 두께, 10×14 글자, 글자 사이도 2배)
-export function titleCells(text, gap = 1, bold = 1) {
+// weight: 획 굵히기 — 글꼴 칸마다 오른쪽·아래로 weight 칸 더 칠함 (bold 2 + weight 1 = 획 3칸, 11×15 글자). 글자 사이 간격은 그대로
+export function titleCells(text, gap = 1, bold = 1, weight = 0) {
   const cells = [];
+  const seen = new Set();
   let ox = 0;
   const k = Math.max(1, Math.floor(bold));
+  const wt = Math.max(0, Math.floor(weight));
+  const gw = GLYPH_W * k + wt;
+  const gh = GLYPH_H * k + wt;
   for (const ch of String(text).toUpperCase()) {
     const g = FONT[ch] || FONT[' '];
     g.forEach((row, r) => {
       for (let c = 0; c < GLYPH_W; c++) {
         if (row[c] !== '#') continue;
-        for (let i = 0; i < k; i++) for (let j = 0; j < k; j++) cells.push({ x: ox + c * k + i, y: (GLYPH_H - 1 - r) * k + j });
+        for (let i = 0; i < k + wt; i++) {
+          for (let j = 0; j < k + wt; j++) {
+            const x = ox + c * k + i;
+            const y = gh - 1 - (r * k + j); // 위 줄부터 아래로 칠함 → y 는 아래부터
+            const key = `${x},${y}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            cells.push({ x, y });
+          }
+        }
       }
     });
-    ox += (GLYPH_W + gap) * k;
+    ox += gw + gap * k;
   }
-  return { cells, width: Math.max(0, ox - gap * k), height: GLYPH_H * k };
+  return { cells, width: Math.max(0, ox - gap * k), height: gh };
 }
 
 // 조각 n 개가 다 쌓이는 시간이 TITLE_BUILD_MS 쯤 되게 출발 간격 (ms). 조각이 많으면 짧게 (겹쳐 떨어짐), 최소 TITLE_DROP_MIN_MS

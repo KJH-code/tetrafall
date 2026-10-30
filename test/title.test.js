@@ -199,3 +199,19 @@ test('타이틀 그래픽 값: 블룸·불티는 그래픽 낮춤 값이 더 작
   for (const k of ['vol', 'land', 'burst', 'exit', 'echo']) assert.ok(C.TITLE_SOUND[k] > 0 && C.TITLE_SOUND[k] <= 1, k);
   assert.ok(C.TITLE_SOUND.pingEvery[0] < C.TITLE_SOUND.pingEvery[1]);
 });
+
+test('타이틀: 굵히기 (TITLE_WEIGHT) — 획 3칸, 글자 11×15, 칸 겹침 없음, 로고 두께 TITLE_DEPTH 겹', () => {
+  const b = titleCells('I', 1, 2, 1);
+  assert.equal(b.width, GLYPH_W * 2 + 1);
+  assert.equal(b.height, GLYPH_H * 2 + 1);
+  const keys = new Set(b.cells.map((c) => `${c.x},${c.y}`));
+  assert.equal(keys.size, b.cells.length, '겹침 없음');
+  // I 의 기둥 (글꼴 가운데 칸 x=2) 은 3칸 폭: x 4·5·6, 가운데 높이에서
+  for (const x of [4, 5, 6]) assert.ok(keys.has(`${x},7`), `기둥 ${x}`);
+  assert.ok(!keys.has('3,7') && !keys.has('7,7'));
+  assert.deepEqual(titleCells('TT', 1, 2, 0), titleCells('TT', 1, 2), '굵히기 0 = 예전');
+  const logo = titleCells(C.TITLE_TEXT, C.TITLE_GAP, C.TITLE_BOLD, C.TITLE_WEIGHT);
+  assert.equal(logo.width, C.TITLE_TEXT.length * (GLYPH_W * C.TITLE_BOLD + C.TITLE_WEIGHT) + (C.TITLE_TEXT.length - 1) * C.TITLE_GAP * C.TITLE_BOLD);
+  assert.ok(C.TITLE_WEIGHT >= 1 && C.TITLE_DEPTH >= 2, '굵고 두껍게 (재혁 2026-10-30)');
+  assert.ok(C.TITLE_CAM_UP > 0, '위에서 내려다봄 (윗면이 보이게)');
+});

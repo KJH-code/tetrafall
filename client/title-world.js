@@ -178,7 +178,7 @@ export class TitleStage {
     const amb = new THREE.HemisphereLight(T.amb[0], T.bg, T.amb[1]);
     this.light(amb, T.amb[1]);
     const key = new THREE.PointLight(T.key[0], T.key[1] * C.TITLE_LIGHT[0], 0, 1.4);
-    key.position.set(-logoW * 0.25, -camDist * 0.55, 10);
+    key.position.set(-logoW * 0.3, -camDist * 0.45, 22); // 위·왼쪽 앞에서 → 윗면 밝고 앞면·옆면 차례로 어두움
     this.light(key, key.intensity);
     const back = new THREE.PointLight(T.back[0], T.back[1] * C.TITLE_LIGHT[1], 0, 1.3);
     back.position.set(0, 9, 3);
