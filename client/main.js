@@ -1976,6 +1976,7 @@ function drawHud() {
   if (state.phase === 'over' && (performance.now() < bigUntil || resultsHero())) center = null; // 승리 큰 글씨·결과 연출 동안은 대기실 판을 감춤 (그 뒤 미끄러져 들어옴)
   centerEl.classList.toggle('hidden', center === null);
   centerEl.classList.toggle('slim', state.phase !== 'lobby' && state.phase !== 'over'); // 판 중 '화면을 클릭하면…' 은 작은 띠로 (몸을 덜 가림)
+  centerEl.classList.toggle('sky', input.sky && state.phase !== 'lobby' && state.phase !== 'over'); // 하늘 시점: 필드를 안 가리게 화면 아래 (초상 판 위)
   centerText.textContent = center || '';
   startBtn.classList.toggle('hidden', !showStart);
   startBtn.textContent = state.phase === 'over' ? '재시작 (Enter)' : '시작 (Enter)';

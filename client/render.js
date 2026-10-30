@@ -78,8 +78,8 @@ export function damageColor(d) {
   return `rgb(255,${g},${b})`;
 }
 
-// 머리 위 표시: 위에 이름(플레이어 색), 아래에 피해 %
-function drawLabel(canvas, name, color, d) {
+// 머리 위 표시: 위에 이름(플레이어 색), 아래에 피해 % (nameOnly: 하늘 시점 — 이름만, 덩어리지지 않게)
+function drawLabel(canvas, name, color, d, nameOnly = false) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.textAlign = 'center';
@@ -90,6 +90,7 @@ function drawLabel(canvas, name, color, d) {
   ctx.strokeText(name, 128, 26);
   ctx.fillStyle = color;
   ctx.fillText(name, 128, 26);
+  if (nameOnly) return;
   ctx.font = 'bold 44px system-ui, sans-serif';
   ctx.lineWidth = 7;
   ctx.strokeText(`${d}%`, 128, 80);
@@ -1073,9 +1074,22 @@ export class Renderer {
     const cam = this.camera.position;
     const sizes = labelSizes(vis.map((sp) => sp.getWorldPosition(_lv).distanceTo(cam)));
     const sky = this.skyBlend > 0.5 && C.SKY_VIEW.oblique ? C.SKY_VIEW.label : 1; // 하늘 시점: 필드를 덜 가리게 작게 (생존자는 빛 기둥·삼각뿔로)
+    // 하늘 시점: 화면에서 가까이 겹치는 이름표는 먼저 놓인 것만 (생존자가 모여도 글자 덩어리 안 됨, 삼각뿔·기둥은 그대로)
+    const placed = [];
+    const W2 = window.innerWidth / 2;
+    const H2 = window.innerHeight / 2;
     vis.forEach((sp, i) => {
       const k = sizes[i];
       sp.scale.set(LABEL_W * k.scale * sky, LABEL_H * k.scale * sky, 1);
+      if (sky !== 1) {
+        const v = sp.getWorldPosition(_lv).project(this.camera);
+        const px = [v.x * W2, v.y * H2];
+        if (placed.some((q) => Math.abs(q[0] - px[0]) < C.SKY_VIEW.labelGap[0] && Math.abs(q[1] - px[1]) < C.SKY_VIEW.labelGap[1])) {
+          sp.visible = false;
+          return;
+        }
+        placed.push(px);
+      }
       sp.material.opacity = k.opacity;
     });
   }
@@ -3446,9 +3460,10 @@ export class Renderer {
       const label = g.userData.label;
       const dmg = p.damage || 0;
       const name = p.nick || p.name;
-      const key = `${name}|${dmg}|${g.userData.color}`;
+      const skyLabel = this.skyBlend > 0.5 && C.SKY_VIEW.oblique;
+      const key = `${name}|${skyLabel ? '' : dmg}|${g.userData.color}`;
       if (label.shown !== key) {
-        drawLabel(label.canvas, name, `#${g.userData.color.toString(16).padStart(6, '0')}`, dmg);
+        drawLabel(label.canvas, name, `#${g.userData.color.toString(16).padStart(6, '0')}`, dmg, skyLabel);
         label.tex.needsUpdate = true;
         label.shown = key;
       }
