@@ -21,3 +21,7 @@
 | flow.png | gif 중 8칸 (0.5초·3초·4초·5.7초·Enter 뒤 0.6초·1초·메뉴) |
 | title_crystal_low.png | 그래픽 낮춤: 블룸·거울 반사·렌즈 플레어 끔, 완성 로고로 바로 |
 | title_crystal_reduced.png | 움직임 줄이기: 완성 로고로 바로 (블룸은 켬), Enter 면 하얀 페이드만 |
+
+## B4 테마 칸 모습 연결 (piece/)
+
+로고 블록 = 그 테마 PieceLook (모양·면 텍스처·결) + 타이틀 빛 (1차만큼). 코드 claude/tf-b3-world2 2eabc38
