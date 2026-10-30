@@ -8,7 +8,8 @@
     "start": "node server/index.js",
     "online": "node tools/online.js",
     "test": "node --test test/*.test.js",
-    "stats": "node tools/stats.js"
+    "stats": "node tools/stats.js",
+    "sim": "node tools/sim.js"
   },
   "dependencies": {
     "cannon-es": "0.20.0",
