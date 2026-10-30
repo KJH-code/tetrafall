@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CONFIG as C } from '../shared/config.js';
 
-const CAUSES = { 압사: 'crush', 낙사: 'fall', 용암: 'lava', '접속 끊김': 'disconnect' };
+const CAUSES = { 압사: 'crush', 낙사: 'fall', 용암: 'lava', 체력: 'hp', '접속 끊김': 'disconnect' }; // 체력: 체력전 KO (2026-10-30~)
 const isBot = (name) => name.includes('(봇)');
 
 // "1:17" → 77
@@ -90,6 +90,7 @@ export function parseLog(text) {
         botLevel: m[5] || null, // 봇 난이도 (넣기 전 로그엔 없음)
         mode: '생존', // 모드 줄이 없으면 생존 (예전 로그·생존 모드)
         sky: false, // 하늘 계단 (줄이 없으면 끔)
+        hp: false, // 체력전 (줄이 없으면 끔, 2026-10-30~)
         melts: 0, // 용암에 녹은 하늘 블록
         master: null, // 블록 마스터 판의 마스터
         names: m[3] ? m[3].split(' ') : null, // 옛 로그엔 참가자 목록이 없음 → 끝날 때 사망자 + 승자로 채움
@@ -119,7 +120,7 @@ export function parseLog(text) {
     } else if ((m = line.match(/^ {2}사망: (.*)$/)) && last) {
       // 접속 끊김은 [사망] 줄 없이 여기에만 나옴
       for (const part of m[1].split(', ')) {
-        const d = part.match(/^(\S+) (압사|낙사|용암|접속 끊김)@(\d+:\d+)$/);
+        const d = part.match(/^(\S+) (압사|낙사|용암|체력|접속 끊김)@(\d+:\d+)$/);
         if (!d || last.deaths.some((x) => x.name === d[1])) continue;
         last.deaths.push({ name: d[1], cause: CAUSES[d[2]], t: toSec(d[3]), damage: null });
         if (!last.conns.has(d[1])) {
@@ -130,7 +131,7 @@ export function parseLog(text) {
       last = null;
     } else if (!cur) {
       continue;
-    } else if ((m = line.match(/^ {2}\[사망\] (\S+) (압사|낙사|용암|접속 끊김) @ (\d+:\d+)(?:.*피해 (\d+)%)?(?:, 킬 (?:없음|(\S+) ([^\s),]+)))?(?:, 밟은 칸 (\S+?)\))?/))) {
+    } else if ((m = line.match(/^ {2}\[사망\] (\S+) (압사|낙사|용암|체력|접속 끊김) @ (\d+:\d+)(?:.*피해 (\d+)%)?(?:, 킬 (?:없음|(\S+) ([^\s),]+)))?(?:, 밟은 칸 (\S+?)\))?/))) {
       // 킬: 이름 = 그 사람, null = 킬 없음, undefined = 킬 기록이 없던 옛 로그
       const killed = /, 킬 /.test(line);
       cur.deaths.push({
@@ -164,6 +165,8 @@ export function parseLog(text) {
       cur.chars = new Map(m[1].split(' / ').map((x) => x.split(' ')));
     } else if (line === '  하늘 계단: 켬') {
       cur.sky = true;
+    } else if (/^ {2}체력전: 켬/.test(line)) {
+      cur.hp = true;
     } else if (line.startsWith('  [하늘] ') && line.includes('용암에 녹음')) {
       cur.melts++;
     } else if ((m = line.match(/^ {2}모드: (블록 마스터|킬 점수전)(?: \(마스터 (\S+?),)?/))) {
@@ -339,7 +342,7 @@ function sessionStats(rounds) {
 // 판 목록 → 표로 낼 숫자
 export function summarize(rounds) {
   const deaths = rounds.flatMap((r) => r.deaths);
-  const byCause = { crush: 0, fall: 0, lava: 0, disconnect: 0 };
+  const byCause = { crush: 0, fall: 0, lava: 0, hp: 0, disconnect: 0 };
   for (const d of deaths) byCause[d.cause]++;
 
   const group = (keyOf) => {
@@ -367,7 +370,7 @@ export function summarize(rounds) {
   for (const r of rounds) {
     for (const p of r.players) {
       if (!players.has(p.key)) {
-        players.set(p.key, { key: p.key, bot: p.bot, aliases: new Set(), rounds: 0, wins: 0, kills: 0, crush: 0, fall: 0, lava: 0, disconnect: 0, survive: [], deathDamage: [] });
+        players.set(p.key, { key: p.key, bot: p.bot, aliases: new Set(), rounds: 0, wins: 0, kills: 0, crush: 0, fall: 0, lava: 0, hp: 0, disconnect: 0, survive: [], deathDamage: [] });
       }
       const s = players.get(p.key);
       for (const a of p.aliases) if (a !== p.key) s.aliases.add(a);
@@ -427,6 +430,7 @@ export function summarize(rounds) {
     byComp: group(comp),
     byMap: group((r) => r.map),
     bySky: rounds.some((r) => r.sky) ? group((r) => (r.sky ? '켬' : '끔')) : [],
+    byHp: rounds.some((r) => r.hp) ? group((r) => (r.hp ? '켬' : '끔')) : [],
     melts: rounds.reduce((n, r) => n + r.melts, 0),
     blocks: blockStats(rounds),
     waits: waitStats(rounds),
@@ -543,10 +547,10 @@ export function formatReport(s) {
   if (!s.rounds) return '끝난 판이 없음';
   const out = [];
   const c = s.byCause;
-  const counted = c.crush + c.fall + c.lava;
+  const counted = c.crush + c.fall + c.lava + c.hp;
   out.push(`== 전체 ==`);
   out.push(`판 ${s.rounds} · 길이 중앙값 ${fmtSec(s.lenMedian)} · 평균 ${fmtSec(s.lenMean)} · 최대 ${fmtSec(s.lenMax)} · 용암이 올라온 판 ${s.lavaRounds}`);
-  out.push(`사망: 압사 ${c.crush} (${pct(c.crush, counted)}) · 낙사 ${c.fall} (${pct(c.fall, counted)}) · 용암 ${c.lava} (${pct(c.lava, counted)})${c.disconnect ? ` · 접속 끊김 ${c.disconnect} (비율에서 뺌)` : ''}`);
+  out.push(`사망: 압사 ${c.crush} (${pct(c.crush, counted)}) · 낙사 ${c.fall} (${pct(c.fall, counted)}) · 용암 ${c.lava} (${pct(c.lava, counted)})${c.hp ? ` · 체력 ${c.hp} (${pct(c.hp, counted)})` : ''}${c.disconnect ? ` · 접속 끊김 ${c.disconnect} (비율에서 뺌)` : ''}`);
   out.push(`압사 합격선 ${Math.round(C.PASS_CRUSH_SHARE * 100)}%`);
   const groupRows = (g) => g.map((x) => [x.key, x.rounds, fmtSec(x.lenMedian), `${pct(x.crush, x.deaths)} (${x.crush}/${x.deaths})`]);
   out.push('', '== 인원 구성별 ==', table(['구성', '판', '길이 중앙값', '압사 비율'], groupRows(s.byComp)));
@@ -572,6 +576,7 @@ export function formatReport(s) {
     out.push(table(head('판 길이'), rows([...B.byLen, B.all])));
     out.push('', table(head('맵'), rows(B.byMap)));
   }
+  if (s.byHp.length) out.push('', `== 체력전별 == (HP 킬 ${C.HP_MAX_BY_MODE.kills} · 생존 ${C.HP_MAX_BY_MODE.survival} · 마스터 ${C.HP_MAX_BY_MODE.master})`, table(['체력전', '판', '길이 중앙값', '압사 비율'], groupRows(s.byHp)));
   if (s.bySky.length) out.push('', `== 하늘 계단별 == (용암에 녹은 하늘 블록 ${s.melts})`, table(['하늘 계단', '판', '길이 중앙값', '압사 비율'], groupRows(s.bySky)));
   if (s.byChar.length) out.push('', '== 캐릭터별 ==', table(['캐릭터', '판', '승', '승률'], s.byChar.map((c) => [c.key, c.rounds, c.wins, pct(c.wins, c.rounds)])));
   if (s.combos.total) {

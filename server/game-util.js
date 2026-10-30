@@ -136,5 +136,6 @@ export function causeKo(cause) {
   if (cause === 'fall') return '낙사';
   if (cause === 'lava') return '용암';
   if (cause === 'disconnect') return '접속 끊김';
+  if (cause === 'hp') return '체력';
   return cause;
 }

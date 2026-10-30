@@ -30,7 +30,8 @@ export class Game {
   // countdownMs: 판 시작 전 카운트다운. 서버는 C.ROUND_COUNTDOWN_MS, 테스트는 기본 0 (바로 시작)
   // characters: 캐릭터(패시브·스킬·필살기)를 쓸지. 서버(방)는 켬, 예전 규칙 테스트는 끔 (모두 캐릭터 없음 = 예전 그대로)
   // skyStairs: 하늘 계단 (대기실 옵션). 서버(방)는 C.SKY_STAIRS_DEFAULT, 예전 규칙 테스트는 끔
-  constructor(log = () => {}, { countdownMs = 0, characters = false, skyStairs = false } = {}) {
+  // hpMode: 체력전 (대기실 옵션, HP_MAX). 기본 끔
+  constructor(log = () => {}, { countdownMs = 0, characters = false, skyStairs = false, hpMode = false } = {}) {
     // 콤보 마무리 줄은 그 타의 [평타]·[돌진] 줄 다음에 찍히게 미뤄 둠 (다음 로그 줄 뒤, 또는 틱 시작에)
     this.pendingLogs = [];
     this.log = (m) => {
@@ -43,6 +44,10 @@ export class Game {
     this.countdownMs = countdownMs;
     this.characters = characters;
     this.skyStairs = !!skyStairs; // 호스트 옵션 (판 사이에만 바꿈)
+    this.hpMode = !!hpMode; // 체력전: 호스트 옵션 (판 사이에만 바꿈)
+    this.killsTarget = 0; // 킬 점수전 목표 (판 시작 때 인원·팀전·체력전으로 정함, KILLS_TARGET_BY_COUNT)
+    this.masterStallUntil = 0; // 블록 마스터: 반격 아이템으로 마스터 편 다음 블록이 이때까지 안 나옴
+    this.counterItemAt = 0; // 블록 마스터: 다음 반격 아이템 시각
     this.sky = false; // 이번 판에 하늘 계단이 도는지 (판 시작 때 정함, 블록 마스터는 끔)
     this.H = C.GRID_H; // 격자 높이 (판 시작 때: 하늘 계단이면 SKY_GRID_H)
     this.skyTops = []; // 하늘 계단 사슬마다 맨 위 블록 id (새 블록은 이 옆에)
@@ -145,6 +150,7 @@ export class Game {
     }
     for (const p of this.players.values()) if (p.grounded && p.alive && this.onField(p)) p.lastGround = this.groundKind(p);
     this.updateCombat();
+    if (this.hpMode) this.hpKnockouts();
     for (const p of this.players.values()) {
       if (this.onField(p) && p.z < C.FALL_DEATH_Z) this.kill(p, 'fall');
     }

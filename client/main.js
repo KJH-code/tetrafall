@@ -1261,7 +1261,7 @@ const BOT_LEVEL_KO = { easy: '쉬움', normal: '보통', hard: '어려움' };
 const MODE_DESC = {
   survival: '생존: 마지막까지 살아남은 사람이 승',
   master: `블록 마스터: 한 명이 하늘에서 블록만 떨어뜨리고, 나머지는 ${C.MASTER_TIME_MS / 1000}초 버티기 (각자 도생, 죽으면 마스터 편, 마스터는 판마다 돌아감)`,
-  kills: `킬 점수전: 죽어도 ${C.KILLS_RESPAWN_MS / 1000}초 뒤 부활. 킬 +1 · 자멸 -1, ${C.KILLS_TIME_MS / 60000}분 또는 ${C.KILLS_TARGET}킬 (팀 ${C.KILLS_TARGET_TEAM}킬)`,
+  kills: `킬 점수전: 죽어도 ${C.KILLS_RESPAWN_MS / 1000}초 뒤 부활. 킬 +1 · 자멸 -1, ${C.KILLS_TIME_MS / 60000}분 또는 목표 킬 (인원따라)`,
 };
 
 // 이름: 대기 화면 입력칸. 브라우저에 기억해 두고 접속할 때마다 보낸다 (판 사이에만 바뀜)

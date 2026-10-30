@@ -240,6 +240,9 @@ export class ItemsPart {
       const type = C.ITEM_POOL[Math.floor(this.rng() * C.ITEM_POOL.length)];
       this.powerItemNextAt = this.time + (this.spawnItem(type) ? C.ITEM_RESPAWN_MS : 1000);
     }
+    if (this.mode === 'master' && this.phase === 'playing' && !this.items.some((it) => it.type === 'counter') && this.time >= this.counterItemAt) {
+      this.counterItemAt = this.time + (this.spawnItem('counter') ? C.MASTER_COUNTER_RESPAWN_MS : 1000); // 블록 마스터 반격 아이템 (한 번에 하나)
+    }
     this.pickupItems();
   }
 
@@ -291,6 +294,12 @@ export class ItemsPart {
     } else if (type === 'speed') {
       p.speedUntil = this.time + C.SPEED_MS;
       this.log(`  [아이템] ${p.name} 이속 증가 획득`);
+    } else if (type === 'counter') {
+      // 블록 마스터 반격: 마스터 편 전원의 다음 블록이 늦게 나옴 (겹쳐 먹으면 이어 붙음)
+      this.masterStallUntil = Math.max(this.masterStallUntil, this.time) + C.MASTER_COUNTER_STALL_MS;
+      this.counterItemAt = this.time + C.MASTER_COUNTER_RESPAWN_MS;
+      this.emit({ type: 'masterStall', who: p.id, until: this.masterStallUntil, ms: C.MASTER_COUNTER_STALL_MS });
+      this.log(`  [아이템] ${p.name} 반격 → 마스터 편 블록 ${C.MASTER_COUNTER_STALL_MS / 1000}초 멈춤`);
     }
   }
 

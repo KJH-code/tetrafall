@@ -159,7 +159,7 @@ export class PiecesPart {
     if (this.mode === 'master') {
       // 블록 마스터: 자동 블록 없이 마스터 편 각자의 블록만. 떨어뜨리면 MASTER_NEXT_PIECE_MS 뒤 다음 블록 (dropPiece 가 시계를 맞춤)
       for (const p of this.players.values()) {
-        if (p.master && p.alive && this.time >= p.nextPieceAt && !this.controlledPiece(p)) this.spawnControlled(p, true);
+        if (p.master && p.alive && this.time >= p.nextPieceAt && this.time >= this.masterStallUntil && !this.controlledPiece(p)) this.spawnControlled(p, true); // 반격 아이템을 먹은 동안은 안 나옴
       }
       return;
     }
@@ -216,8 +216,8 @@ export class PiecesPart {
     if (!piece || !piece.fits) return; // 그 자리엔 못 넣는다 (기둥이 꽉 참)
     const who = this.players.get(piece.controller);
     piece.phase = 'falling';
-    piece.stepMs = C.HARD_DROP_STEP_MS;
-    piece.nextStepAt = this.time + C.HARD_DROP_STEP_MS;
+    piece.stepMs = this.mode === 'master' && who && who.master ? this.masterDropStep : C.HARD_DROP_STEP_MS; // 블록 마스터 편은 인원별 빠르기
+    piece.nextStepAt = this.time + piece.stepMs;
     const name = who ? who.name : '?';
     if (this.mode === 'master' && who && who.master) who.nextPieceAt = this.time + C.MASTER_NEXT_PIECE_MS;
     const what = reason === 'hard' ? `하드드롭 by ${name}` : reason === 'timeout' ? `자동 낙하 (8초 초과, 조종자 ${name})` : `자동 낙하 (조종자 ${name} 사망·이탈)`;

@@ -57,6 +57,7 @@ export class PlayersPart {
       ammo: 0,
       deathCause: null,
       lastHit: null, // 판 안에서 마지막으로 나를 날린 사람 { by, name, kind } — 킬 판정
+      killStreak: 0, // 죽지 않고 이어 낸 킬 수 (kill 이벤트 streak, 죽으면 0)
       team: this.smallerTeam(), // 팀전용. 들어올 때 사람이 적은 팀으로
       emote: -1, // 이모트 번호 (EMOTE_NAMES), -1 = 안 함
       emoteUntil: 0,
@@ -269,6 +270,25 @@ export class PlayersPart {
     this.skyStairs = !!on;
     this.log(`[호스트] 하늘 계단 ${on ? '켬' : '끔'}`);
     return true;
+  }
+
+  // 체력전 켜고 끄기 (판 사이에만, 연습 방은 안 됨)
+  setHpMode(on) {
+    if (this.inRound() || this.mode === 'practice' || this.hpMode === !!on) return false;
+    this.hpMode = !!on;
+    this.log(`[호스트] 체력전 ${on ? '켬' : '끔'}`);
+    return true;
+  }
+
+  // 체력전 최대 HP: 모드별 (HP_MAX_BY_MODE)
+  hpMax() {
+    return C.HP_MAX_BY_MODE[this.mode] ?? C.HP_MAX_BY_MODE.survival;
+  }
+
+  // 체력전: HP (hpMax − 피해 %) 가 0 이하인 사람은 그 자리에서 KO (마지막으로 때린 사람 킬, lastHit). 틱마다 전투 뒤에
+  hpKnockouts() {
+    const max = this.hpMax();
+    for (const p of this.players.values()) if (p.alive && this.onField(p) && p.damage >= max) this.kill(p, 'hp');
   }
 
   // 캐릭터 고르기 (판 사이에만, 같은 캐릭터 여럿 됨)
