@@ -311,21 +311,28 @@ const PIECE_FACES = {
     ctx.lineTo(n * 0.7, 0);
     ctx.lineTo(0, n * 0.7);
     ctx.fill();
+    // 금은 면마다 굵은 한 줄 (가장자리에서 가장자리로 3번 꺾임) + 짧은 가지 하나 — 재혁: 선이 너무 많지 않게
     ctx.strokeStyle = gray(255);
     ctx.lineCap = 'round';
-    for (let k = 0; k < 3; k++) {
-      let x = r() * n;
-      let y = r() < 0.5 ? 0 : n;
-      ctx.lineWidth = n * (0.035 - k * 0.008);
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      for (let i = 0; i < 5; i++) {
-        x += (r() - 0.5) * n * 0.45;
-        y += (y < n / 2 ? 1 : -1) * n * (0.12 + r() * 0.1);
-        ctx.lineTo(x, y);
-      }
-      ctx.stroke();
+    ctx.lineJoin = 'round';
+    let x = n * (0.25 + r() * 0.5);
+    let y = 0;
+    const pts = [[x, y]];
+    for (let i = 0; i < 3; i++) {
+      x = Math.min(n * 0.85, Math.max(n * 0.15, x + (r() - 0.5) * n * 0.5));
+      y += n / 3;
+      pts.push([x, y]);
     }
+    ctx.lineWidth = n * 0.07;
+    ctx.beginPath();
+    pts.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
+    ctx.stroke();
+    const [bx, by] = pts[1 + Math.floor(r() * 2)];
+    ctx.lineWidth = n * 0.04;
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(bx + (r() < 0.5 ? -1 : 1) * n * 0.22, by + n * 0.12);
+    ctx.stroke();
   },
   // 대리석: 흰 바탕 + 회색 결 (금 테는 piece-look band)
   marble(ctx, n) {
