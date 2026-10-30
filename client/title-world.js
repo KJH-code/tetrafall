@@ -580,7 +580,7 @@ export class TitleStage {
       halo.position.copy(f.position);
       this.add(f, core, halo);
       flames.push([f, core, halo, rnd() * 10]);
-      if (!this.low || i % 2 === 0) {
+      if (this.ring ? i % 3 === 0 : !this.low || i % 2 === 0) { // 대기실 (ring) 은 3개만 (빛 수를 테마마다 같게, lobby-dark.js)
         const l = new THREE.PointLight(T.torch, 45, 30, 1.6);
         l.position.set(x - Math.cos(a) * 1.7, y - Math.sin(a) * 1.7, z + 2);
         this.light(l, 45);
