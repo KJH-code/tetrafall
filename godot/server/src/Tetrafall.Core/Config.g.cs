@@ -949,7 +949,7 @@ public static partial class C
     public static readonly Dictionary<string, TTutorialDoneText> TUTORIAL_DONE_TEXT = new() { ["all"] = new TTutorialDoneText() { title = "튜토리얼 완료!", text = "모든 단계를 해냈어요. 이제 진짜 판에서 밀고, 피하고, 살아남기!" }, ["some"] = new TTutorialDoneText() { title = "튜토리얼 끝!", text = "{ok}단계를 해냈어요. 넘긴 단계는 메뉴의 '튜토리얼' 에서 언제든 다시 해 볼 수 있어요." }, ["none"] = new TTutorialDoneText() { title = "튜토리얼 끝!", text = "넘긴 단계는 메뉴의 '튜토리얼' 에서 언제든 다시 해 볼 수 있어요. 바로 한 판 해 봐도 좋아요!" } };
 }
 
-public sealed class TAttack
+public sealed partial class TAttack
 {
     public string name;
     public double windup;
@@ -974,20 +974,20 @@ public sealed class TAttack
     public bool dive;
 }
 
-public sealed class TBasicAttacksMetal
+public sealed partial class TBasicAttacksMetal
 {
     public TAttack[] chain;
     public TAttack[] air;
 }
 
-public sealed class TBasicAttacks
+public sealed partial class TBasicAttacks
 {
     public TAttack[] chain;
     public TAttack[] air;
     public TBasicAttacksMetal? metal;
 }
 
-public sealed class TTutorialSteps
+public sealed partial class TTutorialSteps
 {
     public string id;
     public double part;
@@ -1010,7 +1010,7 @@ public sealed class TTutorialSteps
     public double[][]? stairs;
 }
 
-public sealed class TTutorialDoneText
+public sealed partial class TTutorialDoneText
 {
     public string title;
     public string text;

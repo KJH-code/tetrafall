@@ -88,7 +88,7 @@ function typeName(s, name) {
       const nul = opt && t !== 'bool' ? '?' : '';
       return `    public ${t}${nul} ${key};`;
     });
-    classes.push(`public sealed class ${name}\n{\n${fields.join('\n')}\n}`);
+    classes.push(`public sealed partial class ${name}\n{\n${fields.join('\n')}\n}`);
   }
   return s.name;
 }

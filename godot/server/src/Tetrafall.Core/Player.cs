@@ -2,7 +2,7 @@ namespace Tetrafall.Core;
 
 // 플레이어 (server/game-players.js addPlayer 의 필드, 같은 순서·이름). JS 처럼 숫자는 double (같은 계산).
 // JS 에서 null 로 두는 묶음 상태(leap·rush·atk …)는 아래 작은 클래스 (null = 없음). 각 묶음을 옮기는 세션이 필드를 더함 (이름은 JS 와 같게)
-public sealed class Player
+public sealed partial class Player
 {
     public int id;
     public int slot;
