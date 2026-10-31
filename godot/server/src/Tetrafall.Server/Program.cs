@@ -9,6 +9,7 @@ using Tetrafall.Server;
 // 실행: dotnet run --project godot/server/src/Tetrafall.Server   (포트: 환경 변수 PORT, 없으면 C.PORT = 3000)
 // 스레드: WebSocket 받기·보내기는 비동기, 게임(Rooms·Game)은 루프 스레드 하나에서만 (받은 메시지는 inbox 로 넘김) → JS 처럼 잠금 없음
 
+if (args.Length > 0 && args[0] == "load") Environment.Exit(LoadBench.Run(args)); // 서버 부하 재기 (tools/load.mjs 와 나란히)
 var root = FindRepoRoot();
 var envPort = Environment.GetEnvironmentVariable("PORT");
 int port = int.TryParse(envPort, out var ep) && ep >= 0 ? ep : (int)C.PORT;
@@ -151,7 +152,7 @@ loop.Start();
 
 app.Start(); // 포트 0 이면 운영체제가 빈 포트를 고름 (테스트) → 실제 포트를 시작 줄에
 port = new Uri(app.Urls.First()).Port;
-Console.WriteLine($"Tetrafall C# 서버 실행 중 (포트 {port}, 틱 {C.TICK_RATE}Hz, 방 최대 {C.ROOM_MAX}개) — 아직 대기실까지 (판은 godot/PLAN.md S1~S5)");
+Console.WriteLine($"Tetrafall C# 서버 실행 중 (포트 {port}, 틱 {C.TICK_RATE}Hz, 방 최대 {C.ROOM_MAX}개)");
 Console.WriteLine($"이 PC에서:        http://localhost:{port}");
 foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
 {
@@ -161,6 +162,7 @@ foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkI
 }
 Console.WriteLine($"화면 파일: {root}");
 Console.WriteLine($"로그: {Path.GetRelativePath(root, runDir)}/ 에 방마다 파일 (요약: npm run stats)");
+if (!Directory.Exists(Path.Combine(root, "node_modules", "cannon-es"))) Console.WriteLine("⚠ cannon-es 가 없음 → 몸 래그돌이 꺼짐. 레포 폴더에서 npm install 을 한 번 해 주세요 (Windows PowerShell 은 npm.cmd install)"); // index.js 와 같은 경고
 app.WaitForShutdown();
 
 static string FindRepoRoot()
