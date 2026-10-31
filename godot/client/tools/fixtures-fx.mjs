@@ -145,3 +145,16 @@ const PF = await import('../../../shared/perf.js');
   fs.writeFileSync(path.join(out, 'perf.json'), JSON.stringify({ frames, sums, worst: [[[], 0.01, PF.worstAvg([], 0.01)], [[5, 1, 9, 3], 0.01, PF.worstAvg([5, 1, 9, 3], 0.01)], [[5, 1, 9, 3, 7, 2], 0.5, PF.worstAvg([5, 1, 9, 3, 7, 2], 0.5)]], gpus: gpus.map((g) => [g, PF.shortGpu(g)]), lines: lines.map(([s, e]) => [s, e, PF.perfLine(s, e)]) }));
   console.log('perf.json');
 }
+
+// ---------- G6 튜토리얼 화면 (shared/tutorial.js) → tutorial_ui.json ----------
+{
+  const T = await import('../../../shared/tutorial.js');
+  const keyName = (id) => `<${id}>`;
+  const texts = [];
+  for (const st of C.TUTORIAL_STEPS) for (const ch of ['tank', 'bard', 'ninja']) texts.push([st.id, ch, T.stepText(st, { char: ch, keyName })]);
+  const prog = [];
+  for (let i = -1; i < 14; i++) prog.push([i, T.progressLabel(i)]);
+  const done = [[], ['ok'], ['ok', 'skip'], ['skip', 'skip'], ['ok', 'ok', 'ok'], null].map((r) => [r, T.doneMessage(r)]);
+  fs.writeFileSync(path.join(out, 'tutorial_ui.json'), JSON.stringify({ texts, prog, done }));
+  console.log('tutorial_ui.json');
+}
