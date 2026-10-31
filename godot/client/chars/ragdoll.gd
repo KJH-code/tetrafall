@@ -291,8 +291,8 @@ func _time_scale() -> void:
 	set_time_scale(float(view.time_scale) if view != null else 1.0)
 
 
-func set_time_scale(v: float) -> void:
-	var nts := clampf(v, K.RAGDOLL_TIME_MIN, 1.0)
+func set_time_scale(scale_v: float) -> void:
+	var nts := clampf(scale_v, K.RAGDOLL_TIME_MIN, 1.0)
 	if absf(nts - ts) < 1e-6:
 		return
 	var k := nts / ts
