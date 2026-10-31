@@ -26,6 +26,7 @@ uniform vec3 emissive : source_color = vec3(0.0);
 uniform float emissive_energy = 1.0;
 uniform vec3 toon_steps = vec3(0.43137, 0.68627, 1.0); // g3_config.TOON_STEPS
 uniform bool use_vertex_color = false;
+uniform bool vertex_color_linear = false; // COLOR 가 이미 선형 (world/scenery.gd 꼭짓점 색)
 uniform bool no_fog = false; // JS fog: false (먼 배경)
 uniform float color_glow = 0.0; // 제 색으로 빛남 (JS 결정·버섯 갓: 발광 += 색 × glow, 인스턴스 색 포함)
 
@@ -57,8 +58,9 @@ void vertex() {
 void fragment() {
 	vec4 c = albedo;
 	if (use_tex) c *= texture(albedo_tex, UV);
-	if (use_vertex_color) c *= COLOR;
+	if (use_vertex_color && !vertex_color_linear) c *= COLOR;
 	vec3 base = g3_lin(c.rgb);
+	if (use_vertex_color && vertex_color_linear) base *= COLOR.rgb;
 	vec3 hemi = toon_hemi(world_n);
 	v_base = base;
 	v_amb = base * hemi / PI + g3_lin(emissive) * emissive_energy + base * color_glow;
