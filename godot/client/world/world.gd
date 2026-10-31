@@ -15,6 +15,7 @@ const SkyAids := preload("res://world/sky_aids.gd")
 const ItemsView := preload("res://world/items_view.gd")
 const CamRig := preload("res://world/cam_rig.gd")
 const BBLOCKS := "res://world/bblocks.gd"
+const FX := "res://fx/fx.gd" # G5 효과 (있으면 fx_root 에 붙이고 setup(rig): 카메라 흔들림·KO 줌은 rig.hook)
 const G3_PATH := "res://shaders/g3.gd" # G3 툰·테마 (있으면 하늘·빛·안개·블록 재질을 G3 가 맡음)
 
 var env := Environment.new()
@@ -69,6 +70,10 @@ func _ready() -> void:
 	for n in [grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, rig, fx_root]:
 		add_child(n)
 	fx_root.name = "Fx"
+	if ResourceLoader.exists(FX):
+		var fx = load(FX).new()
+		fx_root.add_child(fx)
+		fx.setup(rig)
 	if ResourceLoader.exists(BBLOCKS):
 		bblocks = load(BBLOCKS).new()
 		add_child(bblocks)
@@ -150,8 +155,13 @@ func solid_at(x: float, y: float, z: float) -> bool:
 
 func _process(dt: float) -> void:
 	var st := Store.state
-	if headless or st.is_empty() or not st.has("field"):
+	# 방 밖 (메뉴): 판 노드를 숨김 (크기 안 정한 바닥·절벽 상자가 원점 카메라 앞을 가르던 것). 하늘·빛 (G3Env)·효과는 그대로
+	var live: bool = not st.is_empty() and st.has("field")
+	for n in [grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view]:
+		n.visible = live and (n != hazard_view or n.visible)
+	if headless or not live:
 		return
+	dt *= View.time_scale # KO 슬로모션 (G5 가 정함)
 	var now := Time.get_ticks_msec() * 1.0
 	var mid := str(st.get("map", {}).get("id", ""))
 	if mid != theme_id:

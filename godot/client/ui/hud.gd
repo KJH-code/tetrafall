@@ -100,7 +100,7 @@ func _ready() -> void:
 	board_text = RichTextLabel.new()
 	board_text.bbcode_enabled = true
 	board_text.fit_content = true
-	board_text.custom_minimum_size.x = 520
+	board_text.custom_minimum_size.x = 420 # 열은 expand 비율로 이 폭을 채움 (넓히면 오른쪽이 빔)
 	board_text.add_theme_font_size_override("normal_font_size", 15)
 	board.add_child(board_text)
 	board.visible = false
