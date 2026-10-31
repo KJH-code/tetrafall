@@ -33,6 +33,8 @@ var cur_act = null # 지금 공격 동작 (_act_for 결과, 1인칭 팔이 씀)
 var flap_s := {"x": 0.0, "v": 0.0}
 var form := ""
 var dizzy := 0.0 # 광전사 어지러움 남은 초 (spinEnd·끊긴 소용돌이, render.js setDizzy)
+var star_at := -1e9 # 표창 던진 시각 (ms, 1인칭)
+var cannon_kick_at := -1e9 # 대포 쏜 시각 (ms, 1인칭 반동)
 var rage_k := 0.0 # 광전사 분노 0~1 (피해 % / BERSERK_RAGE_PCT)
 var form_at := -1e9 # 바드 폼이 바뀐 시각 (초, 튀기기 연출)
 var opacity := 1.0 # 유령화·무적 반투명
@@ -1185,6 +1187,12 @@ func on_event(e: Dictionary) -> void:
 	var hit_me: bool = target != null and int(target) == pid
 	var ty: String = str(e.get("type", ""))
 	match ty:
+		"star": # 닌자 표창 한 발 (1인칭 왼손 표창이 잠깐 빔)
+			if mine:
+				star_at = Time.get_ticks_msec()
+		"shellFire": # 대포 반동 (1인칭 대포가 화면 쪽으로 툭)
+			if mine:
+				cannon_kick_at = Time.get_ticks_msec()
 		"attack":
 			if mine:
 				_attack_start(e, now)

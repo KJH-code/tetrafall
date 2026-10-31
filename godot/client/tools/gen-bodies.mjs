@@ -93,6 +93,7 @@ for (const ch of C.FIGURE_CHARS) {
       s: o.scale.toArray(),
     };
     if (!o.visible) e.hidden = true;
+    if (o.userData.dagger) e.dagger = true; // 닌자 왼손 단검 (1인칭은 표창으로 바꿈)
     if (o.isMesh) {
       e.geo = geoOf(o.geometry);
       e.mat = Array.isArray(o.material) ? matOf(o.material[0]) : matOf(o.material);
