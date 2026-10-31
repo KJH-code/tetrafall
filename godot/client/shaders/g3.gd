@@ -101,7 +101,8 @@ static func set_sun(sun: DirectionalLight3D, color, intensity: float, dir: Array
 # ===== 테마: 하늘·안개·해·하늘빛 (JS world.js apply + render.js 생성자의 노을) =====
 # world (G1 의 World Node3D) 아래 'G3Env' 하나에 WorldEnvironment·해 DirectionalLight3D·하늘 구를 만들어 둠 (있으면 값만 바꿈).
 # theme_id: config WORLD_MAP_THEME[map.id] (없으면 null = 예전 노을). low: 그래픽 낮춤 (지금은 같음)
-static func apply_theme(world: Node3D, theme_id, low := false) -> void:
+static func apply_theme(world: Node3D, theme_id, low_arg = null) -> void:
+	var low := _low(low_arg)
 	var env := _env_node(world)
 	var L = C.WORLD_THEMES.get(theme_id) if theme_id != null else null
 	var sky := {}
@@ -242,7 +243,8 @@ static func terrain_mesh(theme_id) -> Mesh:
 	return m
 
 
-static func terrain_material(theme_id, low := false) -> ShaderMaterial:
+static func terrain_material(theme_id, low_arg = null) -> ShaderMaterial:
+	var low := _low(low_arg)
 	var s = terrain_style(theme_id)
 	if s == null:
 		return null
@@ -266,6 +268,7 @@ static func terrain_material(theme_id, low := false) -> ShaderMaterial:
 	}
 	for k in p:
 		m.set_shader_parameter(k, p[k])
+	_track(m, func(l): return terrain_material(theme_id, l))
 	return m
 
 
@@ -290,8 +293,10 @@ static func sprout_node(theme_id) -> Node3D:
 	return n
 
 
-static func sprout_update(node: Node3D, grid: PackedByteArray, w: int, d: int, h: int, skip: Dictionary = {}, low := false) -> void:
+static func sprout_update(node: Node3D, grid: PackedByteArray, w: int, d: int, h: int, skip: Dictionary = {}, low_arg = null) -> void:
+	var low := _low(low_arg)
 	if node:
+		node.set_meta("g3_last", [grid, w, d, h, skip]) # set_low 이 다시 깔 때
 		node.refresh(grid, w, d, h, skip, low)
 
 
@@ -372,7 +377,8 @@ static func _piece_key(theme_id) -> String:
 	return theme_id if t != null and t.has("piece") else "toy"
 
 
-static func piece_mesh(theme_id, low := false) -> ArrayMesh:
+static func piece_mesh(theme_id, low_arg = null) -> ArrayMesh:
+	var low := _low(low_arg)
 	var key := "%s:%s" % [_piece_key(theme_id), low]
 	if _piece_meshes.has(key):
 		return _piece_meshes[key]
@@ -407,7 +413,8 @@ static func piece_mesh(theme_id, low := false) -> ArrayMesh:
 
 
 # opts: transparent (알파 = opacity × 인스턴스 색 a, 그림자 안 드리움), opacity, rim (판 빛 테두리, set_game_light 가 바꿈), extra_glow (타이틀), outline (불투명만, 기본 true)
-static func piece_material(theme_id, low := false, opts := {}) -> ShaderMaterial:
+static func piece_material(theme_id, low_arg = null, opts := {}) -> ShaderMaterial:
+	var low := _low(low_arg)
 	var s := piece_spec(theme_id)
 	var m := ShaderMaterial.new()
 	var tr: bool = opts.get("transparent", false) or float(s.opacity) < 1.0
@@ -422,6 +429,7 @@ static func piece_material(theme_id, low := false, opts := {}) -> ShaderMaterial
 	m.set_shader_parameter("opacity", float(opts.get("opacity", s.opacity)))
 	if not tr and opts.get("outline", true):
 		m.next_pass = outline_material()
+	_track(m, func(l): return piece_material(theme_id, l, opts))
 	return m
 
 
@@ -439,7 +447,8 @@ static func hazard_look(theme_id) -> Dictionary:
 	return t.hazard if t != null and t.has("hazard") else C.WORLD_THEMES[C.HAZARD_FALLBACK].hazard
 
 
-static func hazard_mesh(far: bool, low := false) -> PlaneMesh:
+static func hazard_mesh(far: bool, low_arg = null) -> PlaneMesh:
+	var low := _low(low_arg)
 	var m := PlaneMesh.new()
 	var seg: int = int(C.HAZARD_FAR_SEG) if far else int(C.HAZARD_SEG[1 if low else 0])
 	m.size = Vector2.ONE * (2.0 * C.HAZARD_FAR_SIZE if far else 1.0)
@@ -448,7 +457,8 @@ static func hazard_mesh(far: bool, low := false) -> PlaneMesh:
 	return m
 
 
-static func hazard_material(theme_id, low := false, far := false) -> ShaderMaterial:
+static func hazard_material(theme_id, low_arg = null, far := false) -> ShaderMaterial:
+	var low := _low(low_arg)
 	var L := hazard_look(theme_id)
 	var m := ShaderMaterial.new()
 	m.shader = HAZARD
@@ -469,6 +479,7 @@ static func hazard_material(theme_id, low := false, far := false) -> ShaderMater
 	m.set_shader_parameter("uMargin", float(HZ_MARGIN))
 	m.set_meta("hz_low", low)
 	m.set_meta("hz_theme", theme_id)
+	_track(m, func(l): return hazard_material(theme_id, l, far))
 	return m
 
 
@@ -544,5 +555,56 @@ static func game_light(world: Node3D) -> Node3D:
 		return n
 	n = GAME_LIGHT.new()
 	n.name = "G3Light"
+	n.low = low
 	world.add_child(n)
 	return n
+
+
+
+# ---- 그래픽 낮춤 한데 묶기 (설정 lowGfx 하나 = JS render.js setLowGfx): G3.low 가 기준, low 인자를 안 주면 이 값.
+# set_low(world, on): 이미 만든 G3 재질 (지형·칸·위험) 을 그 자리에서 낮은 판 값으로, 튀어나온 조각 비움/다시, 판 빛 끔, 그림자 끔.
+# 모양이 다른 것 (칸 모양 low = 둥근 상자·위험 판 격자 수) 은 G1 이 world 를 다시 깔 때 (apply_theme) 새로 받음 — JS 도 setPieceLook 으로 다시 만듦
+static var low := false
+static var _mats: Array = [] # [WeakRef 재질, Callable(low) → 같은 설정의 새 재질]
+static var _sprouts: Array = [] # WeakRef 조각 노드
+
+
+static func _low(arg) -> bool:
+	return low if arg == null else bool(arg)
+
+
+static func _track(m: ShaderMaterial, make: Callable) -> void:
+	_mats.append([weakref(m), make])
+
+
+static func set_low(world: Node3D, on: bool) -> void:
+	low = on
+	var keep := []
+	for e in _mats:
+		var m = e[0].get_ref()
+		if m == null:
+			continue
+		keep.append(e)
+		var fresh: ShaderMaterial = e[1].call(on)
+		var other: ShaderMaterial = e[1].call(not on)
+		_mats.pop_back() # 새로 만든 둘은 따라가지 않음 (방금 _track 에 들어감)
+		_mats.pop_back()
+		if fresh.shader != m.shader:
+			m.shader = fresh.shader
+		for u in fresh.shader.get_shader_uniform_list(): # 낮춤에 따라 다른 값만 (판마다 바뀌는 값 — 위험 표면 높이·거리 표 등 — 은 그대로)
+			var v = fresh.get_shader_parameter(u.name)
+			if v != other.get_shader_parameter(u.name):
+				m.set_shader_parameter(u.name, v)
+		for k in fresh.get_meta_list():
+			m.set_meta(k, fresh.get_meta(k))
+	_mats = keep
+	if world:
+		for n in world.find_children("G3Sprouts", "", true, false):
+			if n.has_meta("g3_last"):
+				var a: Array = n.get_meta("g3_last")
+				n.refresh(a[0], a[1], a[2], a[3], a[4], on)
+		var gl = world.get_node_or_null("G3Light")
+		if gl:
+			gl.low = on
+		if world.get_node_or_null("G3Env"):
+			set_shadows(world, not on)
