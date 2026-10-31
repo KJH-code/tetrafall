@@ -19,6 +19,7 @@ const LP := preload("res://world/lobby_preview.gd")
 const Marks := preload("res://world/marks.gd")
 const LightFx := preload("res://world/light_fx.gd")
 const Shots := preload("res://world/shots.gd")
+const HookFx := preload("res://world/hook_fx.gd")
 const CamRig := preload("res://world/cam_rig.gd")
 const BBLOCKS := "res://world/bblocks.gd"
 const FX := "res://fx/fx.gd" # G5 효과 (있으면 fx_root 에 붙이고 setup(rig): 카메라 흔들림·KO 줌은 rig.hook)
@@ -38,6 +39,7 @@ var scenery: Node3D
 var marks: Node3D # 판 쪽 연출 (잔상 줄·예고 칸·블록 출렁·솟는 땅·압사 납작 몸)
 var light_fx: Node3D # 판 빛 무리·빛 터짐 (game-light.js 3D 부분)
 var shots: Node3D # 폭탄·포탄·음표·표창·조준점·화살·조종 줄
+var hook_fx: Node3D # 갈고리 밧줄·R 덩어리, 끌려오는 몸 (slides)
 var last_phase := ""
 var marks_demo := false # 확인용 (명령줄 --marks-demo): 판 중 1.5초마다 내 앞에 가짜 잔상·예고·출렁·솟는 땅·빛
 var _demo_next := 0.0
@@ -91,8 +93,9 @@ func _ready() -> void:
 	marks = Marks.new()
 	light_fx = LightFx.new()
 	shots = Shots.new()
+	hook_fx = HookFx.new()
 	rig.ghost_aim = ghost_aim
-	for n in [scenery, grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, ghost_aim, marks, light_fx, shots, rig, fx_root]:
+	for n in [scenery, grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, ghost_aim, marks, light_fx, shots, hook_fx, rig, fx_root]:
 		add_child(n)
 	fx_root.name = "Fx"
 	if ResourceLoader.exists(FX):
@@ -111,6 +114,7 @@ func _ready() -> void:
 		bodies.make_mat = grid_view.make_mat
 		marks.make_mat = grid_view.make_mat
 		shots.make_mat = grid_view.make_mat
+		hook_fx.make_mat = grid_view.make_mat
 		# 섬·먼 배경: G3.scenery_material 이 있으면 그것 (안개 끄기·빛 안 받음 포함), 없으면 툰 + 기본 재질
 		if g3_has("scenery_material"):
 			scenery.make_mat = G3.scenery_material
@@ -145,10 +149,14 @@ func _ready() -> void:
 	shots.bodies = bodies
 	shots.marks = marks
 	shots.cam = rig.cam
+	hook_fx.bodies = bodies
+	hook_fx.marks = marks
+	hook_fx.my_view_on = func() -> bool: return View.mode == "first"
 	for n in fx_root.get_children(): # G5 파편·고리 (유령 투하 펑·녹음 불티)
 		if n.get("effects") != null:
 			marks.effects = n.effects
 			shots.effects = n.effects
+			hook_fx.effects = n.effects
 	View.changed.connect(func(k):
 		if k == "lowGfx":
 			set_shadows(not View.settings.lowGfx)
@@ -272,6 +280,13 @@ func grid() -> PackedByteArray:
 
 # 대기실 미리보기: 사람은 화면만 큰 판 가운데·그 칸 위로 (render.js render 의 previewOff·previewTop)
 func shown_pos(p: Dictionary, pos: Vector3) -> Vector3:
+	# 끌려오는·미끄러지는 몸 (render.js slides): from → 서버 자리 (또는 to) 로 ease-out
+	var sl = hook_fx.slides.get(int(p.id)) if hook_fx != null else null
+	if sl != null and p.alive:
+		var u: float = (Time.get_ticks_msec() - sl.t0) / sl.ms
+		var k := 0.0 if u <= 0 else 1 - (1 - u) * (1 - u)
+		var to: Vector3 = sl.to if sl.to != null else pos
+		pos = Vector3(lerpf(sl.from.x, to.x, k), lerpf(sl.from.y, to.y, k), lerpf(sl.from.z, pos.z, k))
 	if preview == null:
 		return pos
 	pos += Vector3(preview.off, preview.off, 0)
@@ -300,7 +315,7 @@ func _process(dt: float) -> void:
 	var st := Store.state
 	# 방 밖 (메뉴): 판 노드를 숨김 (크기 안 정한 바닥·절벽 상자가 원점 카메라 앞을 가르던 것). 하늘·빛 (G3Env)·효과는 그대로
 	var live: bool = not st.is_empty() and st.has("field")
-	for n in [scenery, grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, ghost_aim, marks, light_fx, shots]:
+	for n in [scenery, grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, ghost_aim, marks, light_fx, shots, hook_fx]:
 		n.visible = live and ((n != hazard_view and n != ghost_aim) or n.visible)
 	if not live and vm != null:
 		vm.update(null, false, dt) # 방 밖: 1인칭 팔 끔
@@ -357,6 +372,8 @@ func _process(dt: float) -> void:
 		_marks_demo()
 	marks.step()
 	shots.update(st, dt)
+	hook_fx.piece_colors = pieces_view.piece_colors
+	hook_fx.step()
 	light_fx.low = bool(View.settings.get("lowGfx", false))
 	var halos := []
 	var lit := ph == "countdown" or ph == "playing" or ph == "over"

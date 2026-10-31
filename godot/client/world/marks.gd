@@ -55,8 +55,10 @@ func on_event(e: Dictionary) -> void:
 			var tg := _p(e.get("target"))
 			if not a.is_empty() and not tg.is_empty():
 				trail(Vector3(a.x, a.y, a.z + 0.08), Vector3(tg.x, tg.y, tg.z + 0.08), 0xff3020, float(e.get("ms", 0)) + C.HUNTER_LEAP_MS)
-		"blink": # 닌자 순간 베기: 지나간 길에 흰 줄
+		"blink": # 닌자 순간 베기: 지나간 길에 흰 줄 (+ blinkSlide 의 바람 줄 셋)
 			trail(Vector3(e.from.x, e.from.y, e.to.z + 0.9), Vector3(e.to.x, e.to.y, e.to.z + 0.9), 0xffffff, 280)
+			for dz in [0.35, 0.9, 1.4]:
+				trail(Vector3(e.from.x, e.from.y, e.to.z + dz), Vector3(e.to.x, e.to.y, e.to.z + dz), 0xffffff, 260 + dz * 60)
 		"wallKick": # 닌자 벽 차기: 위로 솟는 줄
 			streak_up(Vector3(e.x, e.y, e.z + 0.2), 2.4, 0xffffff, 300)
 		"quakeRise":
