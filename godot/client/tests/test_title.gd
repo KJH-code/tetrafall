@@ -75,3 +75,32 @@ func test_cam_theme_match_js() -> void:
 		check(TC.pick_theme(r[0]) == r[1], "테마 고르기 %s: %s vs JS %s" % [r[0], TC.pick_theme(r[0]), r[1]])
 	for r in d.maps:
 		check(TC.map_for(r[0]) == r[1], "테마 맵 %s: %s vs JS %s" % [r[0], TC.map_for(r[0]), r[1]])
+
+
+# 타이틀 장면이 테마마다 만들어지고 한 바퀴 돎: 다 쌓이면 빛 터짐 한 번, 누르면 빠져나가 메뉴 카메라로 (소리 신호 순서)
+func test_scene_runs_all_themes() -> void:
+	var Scene = load("res://title/title_scene.gd")
+	for th in TC.theme_ids():
+		var sc = Scene.new()
+		sc.setup(th, {"low": true})
+		var got := []
+		sc.landed.connect(func(n): if not got.has("land"): got.append("land"))
+		sc.burst.connect(func(): got.append("burst"))
+		sc.exit_started.connect(func(): got.append("exit"))
+		var steps := 0
+		while not sc.is_done() and steps < 600:
+			sc.step(1.0 / 60.0)
+			steps += 1
+		sc.step(1.0 / 60.0)
+		check(sc.is_done() and steps < 600, "%s 로고가 다 쌓임 (%d 걸음)" % [th, steps])
+		sc.press()
+		for i in 120:
+			sc.step(1.0 / 60.0)
+		check(sc.in_menu(), "%s 누르면 메뉴 카메라로" % th)
+		check(got == ["land", "burst", "exit"], "%s 소리 신호 %s" % [th, got])
+		sc.free()
+	var m = Scene.new()
+	m.setup("crystal", {"menu": true, "low": true})
+	m.step(0.016)
+	check(m.in_menu() and m.is_done(), "menu 모드는 처음부터 메뉴 카메라")
+	m.free()

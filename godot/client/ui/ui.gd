@@ -106,6 +106,7 @@ func _show(screen: String) -> void:
 
 func _process(_d: float) -> void:
 	ping.text = Net.ping_text()
+	menu.visible = shown == "menu" and not View.title_on # 타이틀 동안은 메뉴 판 숨김 (title/title.gd)
 	_put_covers()
 	if not warmed and shown == "menu" and menu_since >= 0.0 and Time.get_ticks_msec() - menu_since >= C.PORTRAIT_WARM_MS and Portrait.inst != null:
 		warmed = true
