@@ -107,3 +107,17 @@ func test_prewarm_covers_shaders() -> void:
 		check(shaders.has("res://shaders/%s.gdshader" % s), "prewarm 에 %s 셰이더" % s)
 	check(kinds.multi >= 10 and kinds.mesh >= 10 and kinds.skin == 1, "보통·MultiMesh·SkinnedMesh 갈래 %s" % kinds)
 	world.free()
+
+
+
+# 재질별 빛 덮어쓰기 (1인칭 팔 노을 빛): 켜면 그 재질만 local_* (선형), 끄면 전역
+func test_toon_local_light() -> void:
+	var m := G3.toon_material(0xa3adb8)
+	G3.toon_local_light(m)
+	check(m.get_shader_parameter("local_light") == true, "켬")
+	var sun: Vector3 = m.get_shader_parameter("local_sun")
+	var want := Color.hex(int(C.SUN_COLOR) << 8 | 0xff).srgb_to_linear()
+	check(sun.is_equal_approx(Vector3(want.r, want.g, want.b) * 1.25), "해 = SUN_COLOR × 1.25 (선형) %s" % sun)
+	check(is_equal_approx(m.get_shader_parameter("local_hemi_energy"), 1.15), "하늘빛 세기 1.15")
+	G3.toon_local_light(m, false)
+	check(m.get_shader_parameter("local_light") == false, "끔")

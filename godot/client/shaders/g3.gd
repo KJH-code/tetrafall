@@ -701,3 +701,14 @@ static func prewarm(world: Node3D, theme_id = null, frames := 3) -> Node3D:
 	me[0] = tick
 	t.process_frame.connect(tick)
 	return root
+
+
+
+# ---- 재질별 빛 덮어쓰기 (B2 1인칭 팔: JS viewmodel 은 늘 노을 빛 — 하늘빛 0xffe2d2/0x8a90b8 ×1.15, 해 SUN_COLOR ×1.25). 인자 생략 = 그 노을 빛
+# mat: G3 툰 재질 (toon_material·batch_mesh 재질). on = false 면 전역 빛으로 되돌림
+static func toon_local_light(mat: ShaderMaterial, on := true, sky = K.SUNSET_HEMI[0], ground = K.SUNSET_HEMI[1], energy: float = K.SUNSET_HEMI[2], sun_color = C.SUN_COLOR, sun_energy: float = K.SUNSET_SUN) -> void:
+	mat.set_shader_parameter("local_light", on)
+	mat.set_shader_parameter("local_hemi_sky", _lin3(sky))
+	mat.set_shader_parameter("local_hemi_ground", _lin3(ground))
+	mat.set_shader_parameter("local_hemi_energy", energy)
+	mat.set_shader_parameter("local_sun", _lin3(sun_color) * sun_energy)

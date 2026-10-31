@@ -25,6 +25,12 @@ global uniform vec3 g3_hz_tint; // 선형
 global uniform vec3 g3_hz_band; // 선형
 global uniform float g3_hz_mode; // 1 = 띠가 빛남 (용암·에너지), 0 = 띠가 어두워짐 (젖음)
 uniform bool hz_tint = false;
+// 재질별 빛 덮어쓰기 (1인칭 팔: JS viewmodel 은 테마와 상관없이 늘 노을 빛) — 켜면 전역 하늘빛·해 색 대신 이것 (선형, 해 = 색 × 세기). 해 방향은 장면 해 그대로
+uniform bool local_light = false;
+uniform vec3 local_hemi_sky = vec3(1.0);
+uniform vec3 local_hemi_ground = vec3(0.5);
+uniform float local_hemi_energy = 1.0;
+uniform vec3 local_sun = vec3(1.0);
 
 uniform vec4 albedo : source_color = vec4(1.0);
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap, repeat_enable;
@@ -89,6 +95,10 @@ void fragment() {
 	vec3 base = g3_lin(c.rgb);
 	if (use_vertex_color && vertex_color_linear) base *= COLOR.rgb;
 	vec3 hemi = toon_hemi(world_n);
+	if (local_light) {
+		float lup = dot(normalize(world_n), vec3(0.0, 1.0, 0.0)) * 0.5 + 0.5;
+		hemi = mix(local_hemi_ground, local_hemi_sky, lup) * local_hemi_energy;
+	}
 	v_base = base;
 	v_amb = base * hemi / PI + g3_lin(skin ? skin_emissive : emissive) * emissive_energy + base * color_glow;
 	if (hz_tint) g3_hz_apply((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).y, v_base, v_amb);
@@ -106,5 +116,5 @@ void light() {
 	float g = u < 1.0 / 3.0 ? toon_steps.x : (u < 2.0 / 3.0 ? toon_steps.y : toon_steps.z);
 	// three 는 그림자 지도에 뒷면을 그려서 (shadowSide) 해 반대쪽 면은 제 그림자를 안 받고 3단 중 어두운 단만 — 고도는 그 면도 그림자라 어두워짐 → 그 면은 그림자 무시
 	float att = dot(NORMAL, LIGHT) > 0.0 ? ATTENUATION : 1.0;
-	DIFFUSE_LIGHT += v_base * g * att * g3_sun / PI + v_amb; // 선형 (고도가 sRGB 로)
+	DIFFUSE_LIGHT += v_base * g * att * (local_light ? local_sun : g3_sun) / PI + v_amb; // 선형 (고도가 sRGB 로)
 }
