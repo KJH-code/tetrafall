@@ -29,6 +29,8 @@ function scriptFor(ch, opp) {
   s.push({ t: 199, who: 1, set: { ult: 'max' } });
   act(200, 1, 'ult');
   [260, 268, 276].forEach((t) => act(t, 1, 'push'));
+  s.push({ t: 284, who: 1, set: { ult: 'max' } }); // 평타를 맞힌 뒤 필살기 한 번 더 (사냥꾼은 표식이 쌓인 뒤라야 쏨)
+  act(285, 1, 'ult');
   act(300, 2, 'push');
   act(310, 2, 'push');
   act(330, 2, 'skill');

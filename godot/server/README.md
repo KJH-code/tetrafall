@@ -7,6 +7,7 @@ JS 서버(`server/index.js`)를 옮기는 중. .NET 10 LTS, 고도 없음. 방·
 ```
 mkdir -p /opt/dotnet && curl -sSL https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.403/dotnet-sdk-10.0.403-linux-x64.tar.gz | tar xz -C /opt/dotnet
 ln -sf /opt/dotnet/dotnet /usr/local/bin/dotnet
+export DOTNET_ROOT=/opt/dotnet   # 만든 실행 파일 (Tetrafall.Trace 등) 을 바로 돌릴 때 필요 (dotnet run 은 없어도 됨)
 ```
 
 ## 실행·테스트 (이 폴더에서)

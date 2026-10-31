@@ -6,3 +6,9 @@ public sealed partial class Player
     public List<string>? comboBy; // 이 콤보를 넣은 사람 이름 (JS Set: 넣은 순서, 겹침 없음)
     public double? counterAt; // 마지막으로 카운터히트를 맞은 시각
 }
+
+// 사냥꾼 F 도약: 내릴 자리 (유도로 옮겨짐) · 처음 정한 자리 (유도 상한 기준)
+public sealed partial class Leap
+{
+    public XY? to, to0;
+}

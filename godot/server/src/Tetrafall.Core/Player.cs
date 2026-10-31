@@ -113,7 +113,7 @@ public sealed class Windup
 }
 
 // 사냥꾼 F: { at(도약 시작), target(id), endAt, vx, vy, yaw }
-public sealed class Leap
+public sealed partial class Leap
 {
     public double at, endAt, vx, vy, yaw;
     public int? target;

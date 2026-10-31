@@ -95,7 +95,9 @@ public sealed class Shell
     public bool big;
     public int owner;
     public double x, y, z;
-    public XY? dir;
+    public XYZ dir = null!; // 조준 방향 (높이 포함, JS { x, y, z })
+    public double speed, dieAt;
+    public HashSet<int> hit = new(); // 이미 맞힌 사람 (대형 포탄은 관통)
 }
 
 // 바드 음파 (S3)
@@ -104,7 +106,20 @@ public sealed class Note
     public int id;
     public int owner;
     public double x, y, z;
-    public XY? dir;
+    public XYZ dir = null!; // 조준 방향 (높이 포함)
+    public double dieAt;
+}
+
+// 방향·위치 (높이 포함, JS { x, y, z })
+public sealed class XYZ
+{
+    public double x, y, z;
+    public XYZ(double x, double y, double z)
+    {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+    }
 }
 
 // 사망 기록 (스냅샷 round.deaths 에 그대로). 접속 끊김은 { name, cause, t } 만 (killer·weapon 키 없음)
