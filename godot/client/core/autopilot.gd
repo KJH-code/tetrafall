@@ -8,7 +8,7 @@
 # 성능: --perf-log (찍는 순간 = --shot-after 에 그리기 수·물체 수·삼각형 수·FPS·프레임 ms 한 줄, 화면 없이도)
 # --auto practice|tutorial: 연습·튜토리얼 방 (G6, --char 캐릭터, 연습 창은 --practice-open)
 # 연기 시험 (B4): --team (팀전) · --sky (하늘 계단) · --char <id> (방장 캐릭터도) · --skills <초> (그 간격으로 F·R) ·
-#   --char2 <id> --char2-at <초> (연습: 판 중 캐릭터 바꾸기) · --tut-skip <초> (튜토리얼: 한 단계에 이만큼 머물면 넘기기 → 끝까지)
+#   --shot-round <N> (N판째 시작 뒤 --shot-after 초에 찍음) · --char2 <id> --char2-at <초> (연습: 판 중 캐릭터 바꾸기) · --tut-skip <초> (튜토리얼: 한 단계에 이만큼 머물면 넘기기 → 끝까지)
 # 화면 범인 찾기: --hide ui|world|audio (그 묶음을 숨기고 찍음) · --dump (찍을 때 보이는 Control·CanvasItem·3D 노드를 화면 사각형과 함께 출력)
 extends Node
 
@@ -41,6 +41,8 @@ var perf_rt := false
 var perf_split := [0.0, 0.0, 0.0, 0.0, 0] # 그리기 CPU · GPU · _process · 물리 (ms 합), 프레임 수
 var shot_at := "game"
 var over_ms := -1.0
+var round_no := 0 # --shot-round: 지금 몇 판째 (playing 이 될 때마다 +1)
+var round_ms := -1.0
 var mode_sent := false
 
 
@@ -125,6 +127,9 @@ func _on_state(st: Dictionary, _prev: Dictionary) -> void:
 		_log("판 %d 끝: 승자 %s, 스냅샷 %d개, 내가 움직인 거리 %.1f칸, 보간 위치 %d번" % [rounds, str(st.round.winnerId), snapshots, moved, interp_ok])
 		if role == "host" and rounds < int(args.get("quit-after-rounds", 1)):
 			Store.send_room({"type": "start"})
+	if ph == "playing" and last_phase != "playing":
+		round_no += 1
+		round_ms = Net.now_ms()
 	last_phase = ph
 	var me := Store.me()
 	if not me.is_empty():
@@ -201,6 +206,8 @@ func _process(_d: float) -> void:
 	if ui != null and shot_at == "settings" and ui.get("settings") is Control and el >= float(args.get("shot-after", 8)) - 1.0:
 		(ui.get("settings") as Control).visible = true
 	var shot_time := el >= float(args.get("shot-after", 8))
+	if args.has("shot-round"): # N판째 playing 이 된 뒤 --shot-after 초 (블록 마스터 2판째 = 생존자 화면)
+		shot_time = round_no == int(args["shot-round"]) and Store.phase() == "playing" and now - round_ms >= float(args.get("shot-after", 8)) * 1000.0
 	if shot_at == "results":
 		shot_time = over_ms >= 0.0 and now - over_ms >= float(args.get("shot-after", 1.5)) * 1000.0
 	if args.has("perf-log"):
