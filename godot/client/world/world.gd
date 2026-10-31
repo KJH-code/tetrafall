@@ -158,6 +158,7 @@ func _ready() -> void:
 	hook_fx.my_view_on = func() -> bool: return View.mode == "first"
 	body_fx.bodies = bodies
 	body_fx.marks = marks
+	body_fx.slides = hook_fx.slides
 	body_fx.third = func() -> bool: return View.mode != "first"
 	for n in fx_root.get_children(): # G5 파편·고리 (유령 투하 펑·녹음 불티)
 		if n.get("effects") != null:
