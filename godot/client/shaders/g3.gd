@@ -21,6 +21,7 @@ const FLOOR := preload("res://shaders/floor.gdshader")
 const PIECE := preload("res://shaders/piece.gdshader")
 const PIECE_ALPHA := preload("res://shaders/piece_alpha.gdshader")
 const HAZARD := preload("res://shaders/hazard.gdshader")
+const GAME_LIGHT := preload("res://shaders/game_light.gd")
 
 static var _globals := {} # 넣은 전역 셰이더 값 (RenderingServer 는 실행 중 읽기가 안 됨 — 테스트·확인용)
 
@@ -131,6 +132,7 @@ static func apply_theme(world: Node3D, theme_id, low := false) -> void:
 	m.set_shader_parameter("sun_dir", sd)
 	var we: WorldEnvironment = env.get_node("Env")
 	we.environment.background_color = _col(sky.bg)
+	env.set_meta("g3_theme_ver", int(env.get_meta("g3_theme_ver", 0)) + 1) # 판 빛 (game_light.gd) 이 원래 하늘 값을 다시 읽게
 	set_hemi(hemi[0], hemi[1], float(hemi[2]))
 	set_sun(env.get_node("Sun"), sun_col, sun_int, sun_dir)
 	set_fog(fog[0], float(fog[1]), float(fog[2]))
@@ -533,3 +535,14 @@ static func hazard_update(mats: Array, world: Node3D, p: Dictionary) -> void:
 		if tex:
 			m.set_shader_parameter("uField", tex)
 			m.set_shader_parameter("uFieldRect", Vector4(p.field.x0, p.field.y0, p.field.w, p.field.d))
+
+
+# ---- 판 빛 (JS game-light.js, game_light.gd): world 아래 "G3Light" 하나
+static func game_light(world: Node3D) -> Node3D:
+	var n = world.get_node_or_null("G3Light")
+	if n:
+		return n
+	n = GAME_LIGHT.new()
+	n.name = "G3Light"
+	world.add_child(n)
+	return n
