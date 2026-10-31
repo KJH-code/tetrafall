@@ -49,6 +49,7 @@ func build(body: Node3D, material: Material) -> void:
 		skin.add_bind(b, rel.affine_inverse())
 		var m = p.material_override if p.material_override else p.mesh.surface_get_material(0)
 		var col: Color = m.get_shader_parameter("albedo")
+		var skin_uv := Vector2(1, 0) if p.has_meta("tf_skin") else Vector2.ZERO # 피부 (플레이어 색) 조각: 툰 skin_tint·skin_emissive 가 이 정점만
 		for s in p.mesh.get_surface_count():
 			var arr := p.mesh.surface_get_arrays(s)
 			var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
@@ -56,7 +57,8 @@ func build(body: Node3D, material: Material) -> void:
 			var idx = arr[Mesh.ARRAY_INDEX]
 			var order: Array = range(vs.size()) if idx == null or idx.size() == 0 else Array(idx)
 			for i in order:
-				st.set_color(col) # sRGB 그대로 (툰이 COLOR 를 sRGB 로 보고 선형으로 바꿈)
+				st.set_color(col)
+				st.set_uv2(skin_uv) # sRGB 그대로 (툰이 COLOR 를 sRGB 로 보고 선형으로 바꿈)
 				if ns != null and ns.size() > i:
 					st.set_normal(rel.basis * ns[i])
 				st.set_bones(PackedInt32Array([b, 0, 0, 0]))
