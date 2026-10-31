@@ -111,3 +111,7 @@ func _terrain() -> void:
 	mi.multimesh = mm
 	mi.material_override = G3.terrain_material(theme)
 	add_child(mi)
+	var sp := G3.sprout_node(theme)
+	if sp:
+		add_child(sp)
+		G3.sprout_update(sp, grid, w, d, h)

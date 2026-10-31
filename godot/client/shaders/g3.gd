@@ -14,6 +14,7 @@ const OUTLINE := preload("res://shaders/outline.gdshader")
 const SKY := preload("res://shaders/sky.gdshader")
 const TERRAIN := preload("res://shaders/terrain.gdshader")
 const BS := preload("res://shaders/block_style.gd")
+const SPROUTS := preload("res://shaders/sprouts.gd")
 
 static var _globals := {} # 넣은 전역 셰이더 값 (RenderingServer 는 실행 중 읽기가 안 됨 — 테스트·확인용)
 
@@ -34,6 +35,7 @@ static func toon_material(color = Color.WHITE, opts := {}) -> ShaderMaterial:
 		m.set_shader_parameter("emissive", _col(opts.emissive))
 	m.set_shader_parameter("emissive_energy", opts.get("emissive_energy", 1.0))
 	m.set_shader_parameter("use_vertex_color", opts.get("vertex_color", false))
+	m.set_shader_parameter("color_glow", opts.get("color_glow", 0.0))
 	if a < 1.0:
 		m.render_priority = 1
 	if opts.get("outline", true) and a >= 1.0:
@@ -262,3 +264,21 @@ static func terrain_custom(grid: PackedByteArray, w: int, d: int, h: int, skip: 
 
 static func _v2(a) -> Vector2:
 	return Vector2(float(a[0]), float(a[1]))
+
+
+# ---- 튀어나온 조각 (JS BlockDecor, sprouts.gd). 테마에 sprout 없으면 null. 격자 바뀔 때마다 sprout_update (그래픽 낮춤이면 비움)
+static func sprout_node(theme_id) -> Node3D:
+	var s = terrain_style(theme_id)
+	if s == null or s.sprout == null:
+		return null
+	var t: Dictionary = C.WORLD_THEMES[theme_id]
+	var pal: Array = t.glow if t.get("glow") is Array else ([s.glow] if s.get("glow") != null else [])
+	var n = SPROUTS.new()
+	n.name = "G3Sprouts"
+	n.setup(s, pal, toon_material)
+	return n
+
+
+static func sprout_update(node: Node3D, grid: PackedByteArray, w: int, d: int, h: int, skip: Dictionary = {}, low := false) -> void:
+	if node:
+		node.refresh(grid, w, d, h, skip, low)
