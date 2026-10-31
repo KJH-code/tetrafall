@@ -23,6 +23,7 @@ var shown := "" # 지금 보이는 화면 (menu·lobby·game·results)
 var target := "" # 바뀌려는 화면 (슬래시가 덮으면 shown 이 됨)
 var menu_since := -1.0 # 메뉴가 뜬 시각 (PORTRAIT_WARM_MS 뒤 카드 초상 미리 그리기)
 var warmed := false
+var theme_seen = null # View.ui_theme 가 바뀌면 빛 색을 다시 칠함 (S.restyle)
 var covers_key := "" # View.covers 를 바뀔 때만 넣음
 
 
@@ -105,6 +106,9 @@ func _show(screen: String) -> void:
 
 
 func _process(_d: float) -> void:
+	if View.get("ui_theme") != theme_seen:
+		theme_seen = View.get("ui_theme")
+		S.restyle()
 	ping.text = Net.ping_text()
 	menu.visible = shown == "menu" and not View.title_on # 타이틀 동안은 메뉴 판 숨김 (title/title.gd)
 	_put_covers()

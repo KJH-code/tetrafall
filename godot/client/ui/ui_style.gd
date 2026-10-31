@@ -19,6 +19,46 @@ const HOT := Color("ff4426")
 const GOOD := Color("36d07a")
 const SKEW := 0.18 # 평행사변형 기울기 (CSS clip-path 9px / 높이 ~50px)
 
+# 테마 빛 색을 쓴 것 기억 (판 테마가 바뀌면 restyle 이 그 자리에서 다시 칠함 — 타이틀·대기실 맵 테마 View.ui_theme). [WeakRef, 종류, 인자]
+static var _reg: Array = []
+
+
+static func _keep(o: Object, kind: String, arg = null) -> void:
+	_reg.append([weakref(o), kind, arg])
+	if _reg.size() > 4000: # 다시 만든 목록 (방 목록·색 칸 등) 이 쌓이면 사라진 것만 버림
+		_reg = _reg.filter(func(r): return r[0].get_ref() != null)
+
+
+# View.ui_theme 가 바뀌면 (ui.gd 가 부름): 기억한 판·버튼·글자 빛·글자 칸·체크 상자를 새 테마 색으로
+static func restyle() -> void:
+	var gc := g()
+	var live: Array = []
+	for r in _reg:
+		var o = r[0].get_ref()
+		if o == null:
+			continue
+		live.append(r)
+		match r[1]:
+			"pane":
+				o.border_color = alpha(gc, 0.55)
+				o.shadow_color = alpha(gc, 0.18)
+			"btn":
+				var fresh := button_box(r[2][0], r[2][1], false)
+				o.bg_color = fresh.bg_color
+				o.border_color = fresh.border_color
+				o.shadow_color = fresh.shadow_color
+			"btn_font":
+				if r[2] != "go":
+					o.add_theme_color_override("font_outline_color", alpha(gc, 0.6))
+			"glow":
+				o.add_theme_color_override("font_outline_color", alpha(gc, 0.75))
+				o.add_theme_color_override("font_shadow_color", alpha(g2(), 0.5))
+			"edit":
+				o.border_color = gc if r[2] else alpha(gc, 0.22)
+			"check":
+				_check_icons(o)
+	_reg = live
+
 
 static func theme_id() -> String:
 	var t = View.get("ui_theme")
@@ -41,6 +81,7 @@ static func alpha(c: Color, a: float) -> Color:
 # 빛 판: 어두운 유리 + 빛 테두리 + 왼쪽 빛 띠 (#center·#results·창)
 static func pane(strip := true) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
+	_keep(s, "pane")
 	s.bg_color = Color(0.09, 0.06, 0.17, 0.88)
 	s.border_color = alpha(g(), 0.55)
 	s.set_border_width_all(1)
@@ -54,8 +95,10 @@ static func pane(strip := true) -> StyleBoxFlat:
 
 
 # 버튼: kind = "ghost" (빛 테두리만) | "go" (하양→빛 채움, 주 버튼) | "big" (메뉴 큰 버튼). state = normal·hover·pressed·disabled
-static func button_box(kind: String, state: String) -> StyleBoxFlat:
+static func button_box(kind: String, state: String, keep := true) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
+	if keep:
+		_keep(s, "btn", [kind, state])
 	s.skew = Vector2(SKEW, 0)
 	s.anti_aliasing = true
 	var gc := g()
@@ -101,6 +144,7 @@ static func style_button(b: Button, kind := "ghost", size := 16) -> Button:
 	b.add_theme_color_override("font_focus_color", fg)
 	b.add_theme_color_override("font_disabled_color", Color(0.7, 0.7, 0.75))
 	b.add_theme_font_size_override("font_size", size)
+	_keep(b, "btn_font", kind)
 	if kind != "go":
 		b.add_theme_color_override("font_outline_color", alpha(g(), 0.6))
 		b.add_theme_constant_override("outline_size", 4)
@@ -118,6 +162,7 @@ static func button(text: String, cb: Callable, kind := "ghost", size := 16) -> B
 # 글자 빛 (CSS text-shadow 빛): 외곽선을 빛 색으로 + 그림자
 static func glow_label(text: String, size := 20, color := Color.WHITE, glow := 6) -> Label:
 	var l := Label.new()
+	_keep(l, "glow")
 	l.text = text
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", color)
@@ -151,8 +196,10 @@ static func line_edit(placeholder: String, size := 16, max_len := 0) -> LineEdit
 	s.set_border_width_all(1)
 	s.set_content_margin_all(6)
 	e.add_theme_stylebox_override("normal", s)
+	_keep(s, "edit", false)
 	var f: StyleBoxFlat = s.duplicate()
 	f.border_color = g()
+	_keep(f, "edit", true)
 	e.add_theme_stylebox_override("focus", f)
 	return e
 
@@ -191,11 +238,16 @@ static func _check_icon(on: bool, off_alpha := 1.0) -> ImageTexture:
 	return ImageTexture.create_from_image(img)
 
 
-static func style_check(c: CheckBox, size := 13) -> CheckBox:
+static func _check_icons(c: CheckBox) -> void:
 	c.add_theme_icon_override("unchecked", _check_icon(false))
 	c.add_theme_icon_override("checked", _check_icon(true))
 	c.add_theme_icon_override("unchecked_disabled", _check_icon(false, 0.35))
 	c.add_theme_icon_override("checked_disabled", _check_icon(true, 0.35))
+
+
+static func style_check(c: CheckBox, size := 13) -> CheckBox:
+	_check_icons(c)
+	_keep(c, "check")
 	c.add_theme_font_size_override("font_size", size)
 	c.add_theme_color_override("font_color", TEXT)
 	c.add_theme_color_override("font_hover_color", Color.WHITE)
