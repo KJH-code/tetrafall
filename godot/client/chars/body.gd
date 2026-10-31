@@ -354,14 +354,21 @@ static func _plaid(fills: Array) -> Texture2D:
 
 # 자동 로드 Store (이름으로 직접 쓰면 '-s' 테스트 실행에선 컴파일이 안 됨 → 노드로 찾음, 없으면 null)
 static func _store():
+	return _autoload("Store")
+
+
+static func _autoload(name: String):
 	var ml = Engine.get_main_loop()
-	return ml.root.get_node_or_null("Store") if ml is SceneTree else null
+	return ml.root.get_node_or_null(name) if ml is SceneTree else null
 
 
 # ---------- 매 프레임 (World 가 부름) ----------
 func pose(p: Dictionary, now_ms: float) -> void:
 	pid = int(p.id)
 	var dt := 0.0 if last_ms == null else clampf((now_ms - last_ms) / 1000.0, 0.0, 0.1)
+	var view = _autoload("View")
+	if view != null:
+		dt *= float(view.time_scale) # KO 슬로모션·히트스톱 (JS main.js dt × ko.timeScale)
 	last_ms = now_ms
 	var store = _store()
 	var pos: Vector3 = store.view_pos(pid) if store != null else Vector3(float(p.get("x", 0.0)), float(p.get("y", 0.0)), float(p.get("z", 0.0)))
