@@ -171,6 +171,28 @@ static func hp_frac(p, hp_max = null):
 	return clampf(float(hp) / float(mx), 0.0, 1.0)
 
 
+# 체력전 화면 (kills-hud.js hpView, 2026-10-31 재혁 '% 대신 피'): 켜면 {hp (남은 HP 올림), max, frac, low}, 끔·HP 모름이면 null (예전 %)
+static func hp_view(p, st):
+	if p == null or st == null or not bool(st.get("hpMode", false)):
+		return null
+	var frac = hp_frac(p, st.get("hpMax"))
+	if frac == null:
+		return null
+	var mx = p.get("hpMax") if p.get("hpMax") != null and float(p.get("hpMax")) > 0.0 else st.get("hpMax")
+	return {"hp": maxf(0.0, ceilf(float(p.hp))), "max": float(mx), "frac": frac, "low": float(frac) < C.HUD_HP_LOW}
+
+
+# HP 글자색 [r, g, b] 0~255 (kills-hud.js hpColor): 가득 흰색 → 반 노랑 → 0 빨강
+static func hp_rgb(frac: float) -> Array:
+	var t := clampf(1.0 - frac, 0.0, 1.0)
+	return [255.0, 255.0 if t < 0.5 else float(floor(255.0 - (t - 0.5) * 2.0 * 215.0 + 0.5)), float(floor(255.0 - t * 2.0 * 255.0 + 0.5)) if t < 0.5 else 0.0]
+
+
+static func hp_color(frac: float) -> Color:
+	var c := hp_rgb(frac)
+	return Color8(int(c[0]), int(c[1]), int(c[2]))
+
+
 # ---------- wipe.js ----------
 
 # 화면: 'menu'(방 밖) · 'lobby' · 'game'(카운트다운·판 중·판 끝 클로즈업) · 'results'(판 끝 결과 연출)

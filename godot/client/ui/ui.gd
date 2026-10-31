@@ -22,6 +22,7 @@ var shown := "" # 지금 보이는 화면 (menu·lobby·game·results)
 var target := "" # 바뀌려는 화면 (슬래시가 덮으면 shown 이 됨)
 var menu_since := -1.0 # 메뉴가 뜬 시각 (PORTRAIT_WARM_MS 뒤 카드 초상 미리 그리기)
 var warmed := false
+var covers_key := "" # View.covers 를 바뀔 때만 넣음
 
 
 func _ready() -> void:
@@ -100,6 +101,7 @@ func _show(screen: String) -> void:
 
 func _process(_d: float) -> void:
 	ping.text = Net.ping_text()
+	_put_covers()
 	if not warmed and shown == "menu" and menu_since >= 0.0 and Time.get_ticks_msec() - menu_since >= C.PORTRAIT_WARM_MS and Portrait.inst != null:
 		warmed = true
 		Portrait.inst.warm(Coords.color(C.PLAYER_PALETTE[int(Prefs.get_value("color", 0)) % C.PLAYER_PALETTE.size()]))
@@ -136,3 +138,18 @@ func _unhandled_key_input(e: InputEvent) -> void:
 	if st.phase == "lobby" or st.phase == "over":
 		Store.send_room({"type": "start"})
 		get_viewport().set_input_as_handled()
+
+
+# 보이는 판의 화면 사각형 → View.covers (그 안의 3D 머리 위 이름표는 G1 이 숨김 — 대기실 이름표가 판과 겹치던 것).
+# 대기실 판·플레이어 관리·결과 판·설정 창·Tab 점수표·부활 판. 바뀔 때만 넣음. View 에 covers 가 없는 판이면 set 이 그냥 무시
+func _put_covers() -> void:
+	var rects: Array = []
+	var list: Array = [lobby, host_players, results, settings, hud.get("board"), hud.get("respawn")]
+	for c in list:
+		if c is Control and (c as Control).is_visible_in_tree():
+			rects.append((c as Control).get_global_rect())
+	var k := str(rects)
+	if k == covers_key:
+		return
+	covers_key = k
+	View.set("covers", rects)

@@ -79,6 +79,10 @@ func test_kills_hud() -> void:
 		expect(U.respawn_secs(row[0]), row[1], "respawn_secs(%s)" % str(row[0]))
 	for row in fx.get("hp", []):
 		expect(U.hp_frac(row[0], row[1]), row[2], "hp_frac(%s, %s)" % [str(row[0]), str(row[1])])
+	for row in fx.get("hpView", []):
+		expect(U.hp_view(row[0], row[1]), row[2], "hp_view(%s, %s)" % [str(row[0]), str(row[1])])
+	for row in fx.get("hpColor", []):
+		expect(U.hp_rgb(row[0]), row[1], "hp_rgb(%s)" % str(row[0]))
 
 
 func test_wipe() -> void:
