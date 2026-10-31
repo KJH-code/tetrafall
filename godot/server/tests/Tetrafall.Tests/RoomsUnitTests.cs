@@ -51,7 +51,7 @@ public class RoomsUnitTests
     [Fact]
     public void Bot_level_ids_are_js_bot_levels_keys()
     {
-        Assert.Equal(Fixtures.Load("jsvalue.json").GetProperty("botLevels").EnumerateArray().Select(e => e.GetString()), Game.BOT_LEVEL_IDS);
+        Assert.Equal(Fixtures.Load("jsvalue.json").GetProperty("botLevels").EnumerateArray().Select(e => e.GetString()), C.BOT_LEVELS.Keys);
     }
 
     [Fact]

@@ -3,52 +3,65 @@ using Tetrafall.Core.Js;
 namespace Tetrafall.Core;
 
 // 아직 안 옮긴 메서드 (부르면 NotImplementedException). 옮긴 묶음 세션이 여기서 지우고 Game.<묶음>.cs 에 진짜를 넣음.
-// 괄호 = 옮길 작업 (godot/PLAN.md 5절). 방(Rooms)이 부르는 것은 Game.Pending.cs (S6 이 만든 자리) — 같은 뜻
+// 괄호 = 옮길 작업 (godot/PLAN.md 5절)
+public sealed class Tutorial
+{
+    public void Skip() => throw new NotImplementedException("아직 안 옮김: tutorial.skip (S4) (godot/PLAN.md)"); // 튜토리얼: 이 단계 넘기기
+}
+
 public sealed partial class Game
 {
-    // S3 전투·캐릭터
-    // updateCombat (S3) 의 '아무도 공격·스킬을 안 쓴 판' 부분만 (각본 trace 시나리오용). 전투 상태가 하나라도 있으면 멈춤
-    public void UpdateCombat()
-    {
-        if (bblocks.Count > 0 || bigBombs.Count > 0 || holes.Count > 0 || quakes.Count > 0) throw Todo("updateCombat 건축가·탱크 (S3)");
-        foreach (var p in Players())
-        {
-            if (p.comboHits > 0 && time >= p.stunUntil) EndCombo(p);
-            if (!OnField(p))
-            {
-                p.chargeUntil = p.slamAt = p.wallAt = p.zipUntil = 0;
-                p.leap = null;
-                p.huntAim = null;
-                p.rush = null;
-                p.spin = null;
-                p.amp = null;
-                p.windup = null;
-                p.hookFly = null;
-                p.glideUntil = 0;
-                p.dive = null;
-                p.marks.Clear();
-                if (p.grab != null) HookGrabDrop(p);
-                p.atk = null;
-                p.atkQueued = false;
-                p.castQueued = null;
-                p.star2 = null;
-                continue;
-            }
-            if (p.atk != null || p.star2 != null || p.@char != null || p.marks.Count > 0 || p.windup != null || p.hookFly != null || p.leap != null || p.rush != null || p.spin != null || p.amp != null || p.dive != null || p.huntAim != null
-                || p.castQueued != null || p.atkQueued || time < p.chargeUntil || p.slamAt != 0 || p.wallAt != 0 || p.grab != null)
-                throw Todo("updateCombat 평타·스킬·캐릭터 (S3)");
-        }
-    }
-    public void EndCombo(Player t) => throw Todo("endCombo (S3)");
-    public void Dash(Player p) => throw Todo("dash (S3)");
-    public void BasicPress(Player p) => throw Todo("basicPress (S3)");
-    public void Push(Player p) => throw Todo("push (S3)");
-    public void Cast(Player p, string kind) => throw Todo("cast (S3)");
-    public void HookGrabDrop(Player p) => throw Todo("hookGrabDrop (S3)");
-    public void UpdateShells(double dt) => throw Todo("updateShells (S3)");
-    public void UpdateNotes(double dt) => throw Todo("updateNotes (S3)");
+    public Tutorial? tutorial; // 튜토리얼 진행 (S4, server/tutorial.js)
+
+    static Exception Todo(string what) => new NotImplementedException($"아직 안 옮김: {what} (godot/PLAN.md)");
+
+    // S3 전투·캐릭터 (아직 안 옮긴 캐릭터: 건축가·갈고리·사냥꾼·대포수·광전사·바드)
+    public void HookGrabDrop(Player p) => throw Todo("hookGrabDrop (S3 갈고리)");
+    public void UpdateShells(double dt) => throw Todo("updateShells (S3 대포수)");
+    public void UpdateNotes(double dt) => throw Todo("updateNotes (S3 바드)");
+    bool HammerBlocks(Player p, double range, double cosHalf) => false; // TODO(S3 건축가): 내 블록이 없으면 false 와 같음
+    void BasicRaise(Player p, Player? t) => throw Todo("basicRaise (S3 건축가)");
+    void CannonShot(Player p) => throw Todo("cannonShot (S3 대포수)");
+    void BardNote(Player p) => throw Todo("bardNote (S3 바드)");
+    bool BardGlideRing(Player p, double n, bool air, TAttack def, bool chained) => throw Todo("bardGlideRing (S3 바드)");
+    void BardGlide(Player p, double ms) => throw Todo("bardGlide (S3 바드)");
+    void BardDive(Player p, TAttack def) => throw Todo("bardDive (S3 바드)");
+    void AddMark(Player p, Player t) => throw Todo("addMark (S3 사냥꾼)");
+    void ExpireMarks(Player p) => throw Todo("expireMarks (S3 사냥꾼)");
+    void CannonReload(Player p) => throw Todo("cannonReload (S3 대포수)");
+    bool BuilderWall(Player p) => throw Todo("builderWall (S3 건축가)");
+    bool HunterLeap(Player p) => throw Todo("hunterLeap (S3 사냥꾼)");
+    bool CannonJump(Player p) => throw Todo("cannonJump (S3 대포수)");
+    bool BerserkerLeap(Player p) => throw Todo("berserkerLeap (S3 광전사)");
+    bool BardSwitch(Player p) => throw Todo("bardSwitch (S3 바드)");
+    bool HookPull(Player p) => throw Todo("hookPull (S3 갈고리)");
+    bool BuilderBigBomb(Player p) => throw Todo("builderBigBomb (S3 건축가)");
+    void CannonBig(Player p) => throw Todo("cannonBig (S3 대포수)");
+    void BerserkerSpin(Player p) => throw Todo("berserkerSpin (S3 광전사)");
+    void BardAmp(Player p) => throw Todo("bardAmp (S3 바드)");
+    void BardSong(Player p) => throw Todo("bardSong (S3 바드)");
+    bool HunterAim(Player p) => throw Todo("hunterAim (S3 사냥꾼)");
+    bool HookGrab(Player p) => throw Todo("hookGrab (S3 갈고리)");
+    void UpdateBBlocks() => throw Todo("updateBBlocks (S3 건축가)");
+    void HookLand(Player p) => throw Todo("hookLand (S3 갈고리)");
+    void HunterLeapUpdate(Player p) => throw Todo("hunterLeapUpdate (S3 사냥꾼)");
+    void BerserkerLeapUpdate(Player p) => throw Todo("berserkerLeapUpdate (S3 광전사)");
+    void BerserkerSpinUpdate(Player p) => throw Todo("berserkerSpinUpdate (S3 광전사)");
+    void BardAmpUpdate(Player p) => throw Todo("bardAmpUpdate (S3 바드)");
+    void BardDiveUpdate(Player p) => throw Todo("bardDiveUpdate (S3 바드)");
+    void HunterShoot(Player p) => throw Todo("hunterShoot (S3 사냥꾼)");
+    void BuilderWallRise(Player p) => throw Todo("builderWallRise (S3 건축가)");
+    void HookSlam(Player p) => throw Todo("hookSlam (S3 갈고리)");
 
     // S4 아이템·연습·튜토리얼
+    // 방(Rooms)이 부르는 것: 연습 방 시작·들어오기·토글·허수아비, 튜토리얼 시작. 받은 값은 JSON 그대로 (JS 와 같은 검사는 옮길 때)
+    public void StartPractice() => throw Todo("startPractice (S4)");
+    public void PracticeJoin(int id) => throw Todo("practiceJoin (S4)");
+    public bool PracticeSet(int id, string key, System.Text.Json.JsonElement? value) => throw Todo("practiceSet (S4)");
+    public Player? AddDummy(int id) => throw Todo("addDummy (S4)");
+    public bool RemoveDummy(double? id) => throw Todo("removeDummy (S4)");
+    public bool SetDummyDamage(double? id, System.Text.Json.JsonElement? damage) => throw Todo("setDummyDamage (S4)");
+    public void StartTutorial(int id) => throw Todo("startTutorial (S4)");
     public void BrickShock(Piece piece) => throw Todo("brickShock (S4)");
     bool PracticeNoBlocks() => throw Todo("practice.noBlocks (S4)");
     bool PracticeNoDeath() => throw Todo("practice.noDeath (S4)");

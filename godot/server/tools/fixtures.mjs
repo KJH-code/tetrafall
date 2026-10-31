@@ -6,6 +6,7 @@
 // - jsvalue.json: 받은 JSON 값의 String(x)·String(x ?? '')·!!x·Number(x) (C# JsValue), 이름 정리 (setNick·방 이름, C# JsText.Clean), BOT_LEVELS 키
 // - protocol-lobby.json: 방 만들기·들어가기·핑·나가기 각본에서 JS 서버(rooms.js)가 보낸 메시지·로그 글자 그대로 (C# Rooms 가 같은지)
 // - maps.json: 맵 7개 × 판 크기 10~19 시작 지형 (shared/maps.js mapColumns)
+// - combat-trace.json: trace-scripted.mjs 각본 (캐릭터 8명) 을 전투만 도는 틱으로 돌린 틱 줄 sha256 앞 16자
 // - trace-t0.json: 시나리오 0~32 (tools/game-hash.js) 의 trace 첫 줄 (판 시작 직후, 격자 포함) sha256 — C# 판 시작이 글자까지 같은지
 // - scripted.json: 각본 입력 판 8개 (scripted.mjs, 캐릭터 끔) 의 trace 줄 전체 sha256·틱 수 — C# 판 흐름·블록이 처음부터 끝까지 글자까지 같은지
 // - physics.json: 맵 7개 × 2·4·8인, 무작위 입력·넉백으로 물리만 300틱 (integratePlayer·groundKind) → 10틱마다 위치·속도
@@ -16,7 +17,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Rooms } from '../../../server/rooms.js';
 import { mulberry32 } from '../../../tools/sim.js';
-import { SCENARIOS, runJs } from './room-scenarios.mjs';
+import { SCENARIOS as ROOM_SCENARIOS, runJs } from './room-scenarios.mjs';
+import { SCRIPTS as COMBAT_SCRIPTS, runScript } from './trace-scripted.mjs';
 import { Game } from '../../../server/game.js';
 import { MAP_IDS, mapColumns } from '../../../shared/maps.js';
 import { SCRIPTED, setupScripted, driveScripted } from './scripted.mjs';
@@ -101,8 +103,9 @@ for (const raw of raws) {
 write('jsvalue.json', { values: jsvalue, clean, botLevels: Object.keys(C.BOT_LEVELS) });
 
 // 방 각본 (S6, room-scenarios.mjs): 재접속·방 안 설정·상한·예외 격리·빈도 제한
-const scen = SCENARIOS.map((sc) => ({ ...sc, ...runJs(sc) }));
+const scen = ROOM_SCENARIOS.map((sc) => ({ ...sc, ...runJs(sc) }));
 write('protocol-rooms.json', scen);
+
 // 시작 지형
 const maps = {};
 for (const id of MAP_IDS) for (let n = 10; n <= 19; n++) maps[`${id}:${n}`] = mapColumns(id, n, n);
@@ -189,5 +192,13 @@ const scripted = SCRIPTED.map((sc) => {
   return [sc.name, ticks, h.digest('hex')];
 });
 write('scripted.json', scripted);
-console.log(`maps ${Object.keys(maps).length}, physics ${phys.length}판, trace-t0 ${t0.length}판, 각본 ${scripted.map((x) => x[1]).join('·')}틱`);
+
+// 전투만 도는 각본 판 (S3, trace-scripted.mjs --combat): 캐릭터마다 틱 줄의 sha256 (C# CombatTraceTests 가 같은 각본을 돌림)
+const combat = COMBAT_SCRIPTS.map((sc) => {
+  const hashes = [];
+  runScript(sc, (line) => hashes.push(crypto.createHash('sha256').update(JSON.stringify(line)).digest('hex').slice(0, 16)), { combat: true });
+  return { ...sc, hashes };
+});
+write('combat-trace.json', combat);
+console.log(`maps ${Object.keys(maps).length}, physics ${phys.length}판, trace-t0 ${t0.length}판, 각본 ${scripted.map((x) => x[1]).join('·')}틱, 전투 각본 ${combat.length}개`);
 console.log(`jsmath ${math.length}, jsnumber ${nums.length}, 프로토콜 메시지 ${sent.length}개·로그 ${logs.length}줄, 방 각본 ${scen.length}개`);

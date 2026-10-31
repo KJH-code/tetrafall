@@ -458,10 +458,10 @@ public sealed class Rooms
         switch (type)
         {
             case "input":
-                game.HandleInput(id, msg);
+                game.HandleInput(id, InputOf(msg));
                 break;
             case "action":
-                game.HandleAction(id, msg);
+                game.HandleAction(id, ActionOf(msg));
                 break;
             case "leave":
                 Leave(conn, "");
@@ -556,6 +556,26 @@ public sealed class Rooms
                 break;
         }
     }
+
+    // 받은 입력 메시지 → InputMsg (JS handleInput 이 보는 대로: 숫자만 숫자, jump 는 !!)
+    static InputMsg InputOf(JsonElement msg) => new()
+    {
+        fwd = AsNumber(Field(msg, "fwd")),
+        strafe = AsNumber(Field(msg, "strafe")),
+        yaw = AsNumber(Field(msg, "yaw")),
+        pitch = AsNumber(Field(msg, "pitch")),
+        jump = Truthy(Field(msg, "jump")),
+    };
+
+    // 받은 행동 메시지 → ActionMsg (name 은 글자일 때만 맞음, n 은 숫자만 — Number.isInteger, dx·dy·dir 는 JS 처럼 Number() — `| 0`·`> 0`)
+    static ActionMsg ActionOf(JsonElement msg) => new()
+    {
+        name = AsString(Field(msg, "name")) ?? "",
+        n = AsNumber(Field(msg, "n")),
+        dx = ToNumber(Field(msg, "dx")), // 없으면 NaN (`| 0` → 0, `> 0` → 거짓)
+        dy = ToNumber(Field(msg, "dy")),
+        dir = ToNumber(Field(msg, "dir")),
+    };
 
     // ---------- 틱·보내기 ----------
     public void Tick(double dt)
