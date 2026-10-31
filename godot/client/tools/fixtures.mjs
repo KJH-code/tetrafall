@@ -532,3 +532,21 @@ console.log(`interp 프레임 ${frames.length}, net ${seq.length}, keys 바퀴 $
   }
   fs.writeFileSync(path.join(out, 'lobby.json'), JSON.stringify({ themes, sizes, cols, tops }));
 }
+{
+  // hunt_marks.json (G1): 사냥꾼 표식 알아보기 (shared/hunt-marks.js)
+  const H = await import('../../../shared/hunt-marks.js');
+  const r = mulberry32(161);
+  const picks = [];
+  for (let i = 0; i < 20; i++) {
+    const n = Math.floor(r() * 4);
+    const marks = Array.from({ length: n }, (_, k) => ({ by: 1 + Math.floor(r() * 4), n: 1 + Math.floor(r() * 3), left: Math.floor(r() * 9000) }));
+    const me = 1 + Math.floor(r() * 4);
+    picks.push([marks, me, H.pickMark(marks, me)]);
+  }
+  const pips = [-1, 0, 1, 2, 3, 4].map((n) => [n, H.markPips(n), H.pipText(n)]);
+  const pops = [-5, 0, 30, 100, 190, 300, 379, 380, 1000].map((a) => [a, H.popScale(a)]);
+  const edges = [];
+  for (const n of [0, 1, 2, 3]) for (const age of [0, 100, 499, 600, null]) for (const blink of [false, true]) edges.push([n, age, blink, H.edgeLevel(n, C.HUNTER_MARK_MAX, age === null ? Infinity : age, blink)]);
+  const blinks = [[5000, 280], [100, 140], [100, 280], [1199, 420]].map(([l, t]) => [l, t, H.markBlink(l, t)]);
+  fs.writeFileSync(path.join(out, 'hunt_marks.json'), JSON.stringify({ picks, pips, pops, edges, blinks }));
+}
