@@ -9,6 +9,7 @@ const U := preload("res://ui/ui_calc.gd")
 var menu: Control
 var lobby: PanelContainer
 var host_players: PanelContainer
+var hud: Control
 var wipe: Control
 var status: Label
 var ping: Label
@@ -28,6 +29,8 @@ func _ready() -> void:
 	root.add_child(lobby)
 	host_players = load("res://ui/host_players.gd").new()
 	root.add_child(host_players)
+	hud = load("res://ui/hud.gd").new()
+	root.add_child(hud)
 	status = S.label("연결 중...", 16, S.TEXT)
 	status.position = Vector2(16, 12)
 	root.add_child(status)
@@ -61,11 +64,12 @@ func _show(screen: String) -> void:
 	menu.visible = screen == "menu"
 	lobby.visible = screen == "lobby"
 	host_players.visible = false
-	status.visible = screen != "menu" and screen != "lobby"
+	hud.visible = screen == "game"
 
 
 func _process(_d: float) -> void:
 	ping.text = Net.ping_text()
+	status.visible = not Net.is_open() # 연결 중·끊김 글만 (판 시간은 HUD)
 	var now := _screen_now()
 	if now != target:
 		var kind = U.wipe_kind(target, now)
@@ -73,6 +77,8 @@ func _process(_d: float) -> void:
 		if kind == null or not wipe.play(kind, reduced()):
 			_show(now)
 	var st := Store.state
+	if shown == "game" and not st.is_empty():
+		hud.refresh(st)
 	if shown == "lobby" and not st.is_empty():
 		lobby.refresh(st)
 		var host: bool = st.get("hostId") == Store.my_id
