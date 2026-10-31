@@ -224,7 +224,7 @@ func _process(dt: float) -> void:
 		if G3 != null:
 			G3.set_field(self, fs.x, fs.y)
 		built_version = -2
-	scenery.build(C.WORLD_MAP_THEME.get(theme_id), fs.x, fs.y, bool(View.settings.get("lowGfx", false)))
+	scenery.build(C.WORLD_MAP_THEME.get(theme_id), fs.x, fs.y, bool(View.settings.get("lowGfx", false)), fs.z)
 	scenery.step(dt)
 	grid_view.cliff.visible = grid_view.cliff.visible and scenery.theme_id == null # 테마 섬이 있으면 상자 절벽 대신
 	if bblocks != null:

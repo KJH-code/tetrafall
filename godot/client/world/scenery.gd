@@ -384,9 +384,10 @@ func far_shapes(solid: Parts, glow: Parts, L: Dictionary, r: Rng, cx: float, cy:
 
 
 # 테마·판 크기가 바뀌면 다시 만듦 (world.js layout). theme_id null 이면 비움
-func build(id, w: int, d: int, low_gfx: bool) -> void:
+func build(id, w: int, d: int, low_gfx: bool, h: int = int(C.GRID_H)) -> void:
 	if id == theme_id and size == Vector2i(w, d) and low_gfx == low:
 		return
+	motes = {}
 	theme_id = id
 	size = Vector2i(w, d)
 	low = low_gfx
@@ -449,6 +450,39 @@ func build(id, w: int, d: int, low_gfx: bool) -> void:
 	far_shapes(fs, fg, L, rand, cx, cy, roundi(L.far.count * (0.6 if low else 1.0)))
 	_add(fs.mesh(), {"vertex_color": true, "outline": false, "no_fog": true}, self, false)
 	_add(fg.mesh(), {"vertex_color": true, "unshaded": true, "no_fog": true}, self, false)
+	# 떠다니는 빛: 필드 둘레 (반딧불은 떠돌고, 불씨는 위로) — world.js motes, 같은 난수 순서
+	if L.get("motes") != null:
+		var M: Dictionary = L.motes
+		var rise: bool = M.get("rise", false)
+		var n := roundi(M.count * k)
+		var base := []
+		for i in n:
+			var bx := cx + (rand.next() - 0.5) * (w + 10)
+			var by := cy + (rand.next() - 0.5) * (d + 10)
+			var bz := rand.next() * (h * 0.6 if rise else 7.0) + (0.0 if rise else 0.5)
+			base.append([bx, by, bz, rand.next()])
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		var q := QuadMesh.new()
+		q.size = Vector2.ONE * float(M.size)
+		mm.mesh = q
+		mm.instance_count = n
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		mat.no_depth_test = false
+		mat.disable_fog = true
+		mat.albedo_color = Co.color(M.color)
+		mat.albedo_texture = dot_texture()
+		var mi := MultiMeshInstance3D.new()
+		mi.multimesh = mm
+		mi.material_override = mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.extra_cull_margin = 1000.0
+		add_child(mi)
+		motes = {"mi": mi, "mat": mat, "base": base, "speed": float(M.get("speed", 1.0)), "rise": rise, "top": h * 0.6}
 
 
 # 구름 바다 판 (world.js seaMaterial: 1 - smoothstep(inner, outer, 거리) 를 고리마다 꼭짓점 알파로)
@@ -502,9 +536,43 @@ func _add(m: ArrayMesh, opts: Dictionary, parent: Node3D, shadow: bool) -> void:
 	parent.add_child(n)
 
 
-# 매 프레임: 먼 섬·구름을 천천히 돌림
+# 떠다니는 빛 한 점 그림: 가운데 밝은 동그라미 (world.js dotTexture)
+static func dot_texture() -> Texture2D:
+	var g := Gradient.new()
+	g.offsets = PackedFloat32Array([0.0, 0.35, 1.0])
+	g.colors = PackedColorArray([Color(1, 1, 1, 1), Color(1, 1, 1, 0.8), Color(1, 1, 1, 0)])
+	var t := GradientTexture2D.new()
+	t.gradient = g
+	t.fill = GradientTexture2D.FILL_RADIAL
+	t.fill_from = Vector2(0.5, 0.5)
+	t.fill_to = Vector2(1.0, 0.5)
+	t.width = 32
+	t.height = 32
+	return t
+
+
+var motes := {} # 떠다니는 빛 {mi, mat, base: [[x, y, z, 위상]], speed, rise, top}
+
+
+# 매 프레임: 먼 섬·구름을 천천히 돌리고, 떠다니는 빛을 움직임 (world.js update)
 func step(dt: float) -> void:
 	drift.rotation.y += dt * C.WORLD_DRIFT_SPEED
+	if motes.is_empty():
+		return
+	var t := Time.get_ticks_msec() / 1000.0
+	var mm: MultiMesh = motes.mi.multimesh
+	var top: float = motes.top
+	for i in motes.base.size():
+		var b: Array = motes.base[i]
+		var ph: float = b[3]
+		var p: Vector3
+		if motes.rise: # 불씨: 위로 올라가다 맨 위에서 아래로 다시
+			var z := fposmod(b[2] + t * motes.speed * (0.6 + ph), top) - 2.0
+			p = Vector3(b[0] + sin(t * 0.8 + ph * 9) * 0.4, b[1] + cos(t * 0.7 + ph * 7) * 0.4, z)
+		else:
+			p = Vector3(b[0] + sin(t * 0.5 + ph * 9) * 0.8, b[1] + cos(t * 0.43 + ph * 7) * 0.8, b[2] + sin(t * 0.9 + ph * 5) * 0.5)
+		mm.set_instance_transform(i, Transform3D(Basis(), Co.gpos(p)))
+	(motes.mat as StandardMaterial3D).albedo_color.a = 0.65 + 0.35 * sin(t * 2.3)
 
 
 # 위험 액체에 잠길 먼 섬·산 (world.js farObjects): 도는 섬은 지금 돈 각만큼 돌려 월드 자리로
