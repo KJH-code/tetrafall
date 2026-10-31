@@ -177,8 +177,8 @@ func test_bodies_merged() -> void:
 				drawn += 1
 		if b.merged_count > 0:
 			check(drawn * 2 < pieces, "%s 그리는 메시 %d / 조각 %d" % [ch, drawn, pieces])
-		if b.skel != null:
-			# 늘 보이는 관절은 뼈 → 보이는 메시 (조상까지 보이는 것) 가 몸 하나에 몇 개뿐
+		if b.batch != null:
+			# 툰 조각은 몸 한 메시 → 보이는 메시 (조상까지 보이는 것) 가 몸 하나에 몇 개뿐 (묶음 + 눈·체크 무늬·투명)
 			var shown := 0
 			for mi in b.find_children("*", "MeshInstance3D", true, false):
 				var n: Node = mi
@@ -188,19 +188,50 @@ func test_bodies_merged() -> void:
 					n = n.get_parent()
 				if vis:
 					shown += 1
-			check(shown <= 16, "%s 보이는 메시 %d (뼈 %d)" % [ch, shown, b.bone_nodes.size()])
-			check(b.bone_nodes.has(b.elbows[0]) and b.bone_nodes.has(b.neck), "%s 팔꿈치·목은 뼈" % ch)
-			# 뼈 자세 = 노드의 frame 기준 자리 (움직인 뒤에도)
-			b.elbows[0].rotation.y = 0.7
-			b._sync_bones()
-			var bi: int = b.bone_nodes.find(b.elbows[0])
-			var t := Transform3D.IDENTITY
-			var nn: Node = b.elbows[0]
-			while nn != b.frame:
-				t = (nn as Node3D).transform * t
-				nn = nn.get_parent()
-			check(b.skel.get_bone_pose(bi).origin.distance_to(t.origin) < 1e-4 and b.skel.get_bone_pose(bi).basis.x.distance_to(t.basis.x) < 1e-4, "%s 뼈 자세" % ch)
+			check(shown <= 16, "%s 보이는 메시 %d (묶은 조각 %d)" % [ch, shown, b.batch.pieces.size()])
 		b.free()
+
+
+# 묶은 몸 (K.SKIN): 대기실·초상 몸과 같은 길 (make_body → pose 여러 번, 장면 트리 밖) 뒤 아무 자세에서도 정점 자리 = 조각 그대로 (보이는 조각)
+func test_bodies_batch_pose() -> void:
+	for ch in C.FIGURE_CHARS:
+		var b = Chars.make_body(ch, Color(0.3, 0.7, 0.4))
+		if b.batch == null:
+			b.free()
+			continue
+		var p := {"id": -1, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0}
+		for i in 50:
+			b.pose(p, i * 16.0) # 초상 (ui/portrait.gd) 과 같이
+		_batch_same(b, "%s 초상 길" % ch)
+		p.emote = C.EMOTE_CHAR # 대기실 큰 캐릭터 (char_stage) 의 도발
+		for i in 30:
+			b.pose(p, 800.0 + i * 16.0)
+		b.elbows[0].rotation = Vector3(0.4, -1.2, 0.3)
+		b.neck.rotation.z = 0.8
+		b._sync_bones()
+		_batch_same(b, "%s 돌린 자세" % ch)
+		# 바드: 폼을 바꿔도 몸통은 묶음 밖 (재질이 바뀌는 조각)
+		if ch == "bard":
+			check(not b.batch.pieces.has(b.torso), "바드 몸통은 따로")
+		b.free()
+
+
+func _batch_same(b, msg: String) -> void:
+	var got: PackedVector3Array = b.batch.skinned_vertices()
+	var worst := 0.0
+	var k := 0
+	var n := 0
+	for p in b.batch.pieces:
+		var rel: Transform3D = b.batch.rel_of(p)
+		var vs: PackedVector3Array = p.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		var on: bool = b.batch.shown(p)
+		for v in vs:
+			if on and k < got.size():
+				worst = maxf(worst, got[k].distance_to(rel * v))
+				n += 1
+			k += 1
+	check(k == got.size() and n > 100, "%s: 정점 수 %d / %d (본 것 %d)" % [msg, got.size(), k, n])
+	check(worst < 1e-3, "%s: 가장 먼 차 %f" % [msg, worst])
 
 
 const VM := preload("res://chars/viewmodel.gd")

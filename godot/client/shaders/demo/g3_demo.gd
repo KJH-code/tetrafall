@@ -78,6 +78,8 @@ func _ready() -> void:
 				mi.mesh = cy
 		mi.position = Coords.gpos(t[1])
 		mi.material_override = G3.toon_material(t[3])
+		if t == things[0] and G3.floor_material(theme) != null:
+			mi.material_override = G3.floor_material(theme) # 바닥 판 (테마 무늬)
 		add_child(mi)
 	var cam := Camera3D.new()
 	cam.fov = 60

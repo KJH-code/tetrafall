@@ -16,6 +16,8 @@ const TERRAIN := preload("res://shaders/terrain.gdshader")
 const BS := preload("res://shaders/block_style.gd")
 const SPROUTS := preload("res://shaders/sprouts.gd")
 const BATCH := preload("res://shaders/batch.gd")
+const FLAT := preload("res://shaders/flat.gdshader")
+const FLOOR := preload("res://shaders/floor.gdshader")
 
 static var _globals := {} # 넣은 전역 셰이더 값 (RenderingServer 는 실행 중 읽기가 안 됨 — 테스트·확인용)
 
@@ -294,3 +296,41 @@ static func batch_mesh(body: Node3D, outline := true) -> Node3D:
 	body.add_child(b)
 	b.build(body, toon_material(Color.WHITE, {"vertex_color": true, "outline": outline}))
 	return b
+
+
+# ---- 떠 있는 섬·먼 배경 (G1 world/scenery.gd make_mat 이 부름): opts vertex_color (꼭짓점 색 선형), outline, emissive (선형 Color), unshaded, no_fog
+static func scenery_material(opts: Dictionary) -> Material:
+	if opts.get("unshaded", false):
+		var m := ShaderMaterial.new()
+		m.shader = FLAT
+		m.set_shader_parameter("use_vertex_color", opts.get("vertex_color", true))
+		m.set_shader_parameter("no_fog", opts.get("no_fog", false))
+		return m
+	var o := {"vertex_color": opts.get("vertex_color", false), "outline": opts.get("outline", true), "no_fog": opts.get("no_fog", false)}
+	var t := toon_material(Color.WHITE, o)
+	t.set_shader_parameter("vertex_color_linear", true)
+	if opts.has("emissive"):
+		t.set_shader_parameter("emissive", (opts.emissive as Color).linear_to_srgb())
+	return t
+
+
+# ---- 바닥 판 (JS floorTexture + 옆면 rim): BoxMesh 하나에 이것 하나 (윗면만 무늬). 테마 없으면 null
+const FLOOR_PAINT := {"grass": 0, "sand": 1, "stone": 2, "moss": 3, "cracks": 4, "marble": 5}
+
+
+static func floor_material(theme_id) -> ShaderMaterial:
+	var t = C.WORLD_THEMES.get(theme_id) if theme_id != null else null
+	if t == null or not t.has("floor"):
+		return null
+	var f: Dictionary = t.floor
+	var m := ShaderMaterial.new()
+	m.shader = FLOOR
+	m.set_shader_parameter("f_a", _lin3(f.a))
+	m.set_shader_parameter("f_b", _lin3(f.b))
+	m.set_shader_parameter("f_rim", _lin3(f.rim))
+	m.set_shader_parameter("f_glow", _lin3(f.get("glow", 0)))
+	m.set_shader_parameter("f_paint", FLOOR_PAINT.get(f.get("paint", "grass"), 0))
+	var rgba := String(f.line).replace("rgba(", "").replace(")", "").split(",")
+	var lc := Color(float(rgba[0]) / 255.0, float(rgba[1]) / 255.0, float(rgba[2]) / 255.0).srgb_to_linear()
+	m.set_shader_parameter("f_line", Vector4(lc.r, lc.g, lc.b, float(rgba[3])))
+	return m
