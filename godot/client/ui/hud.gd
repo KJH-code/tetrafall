@@ -9,6 +9,7 @@ const Portrait := preload("res://ui/portrait.gd")
 const U := preload("res://ui/ui_calc.gd")
 const Coords := preload("res://core/coords.gd")
 const Keys := preload("res://core/keys.gd")
+const HM := preload("res://world/hunt_marks.gd") # 사냥꾼 표식 계산 (B4, shared/hunt-marks.js)
 
 const CAUSE_KO := {"crush": "압사", "fall": "낙사", "lava": "용암", "hp": "체력"}
 const TEAM_KO := {"red": "빨강", "blue": "파랑"}
@@ -44,6 +45,11 @@ var ghost_hint: Label # 처음 죽었을 때 한 번만 (JS #ghost-hint, GHOST_H
 var ghost_hint_until := -1.0 # -1 = 아직 안 보여 줌
 var ghost_fill := 1.0
 var ghost_ready := true
+var my_marks: Label # 맞은 사람 화면 위 칸 ◆◆◇ (JS #my-marks)
+var mark_edge: TextureRect # 맞은 사람 화면 가장자리 빨강 (JS #mark-edge)
+var mark_hit: Label # 사냥꾼 히트마커 '표식 +1 ◆◆◇' (JS #mark-hit)
+var mark_hit_tw: Tween
+var mark_edge_at := -1.0e9 # 내게 표식이 붙은 시각 ms (가장자리 한 번 더·칸 커졌다 줄기)
 var rig = null # G1 카메라 (world/cam_rig.gd — 관전 전체 보기·하늘 시점·안 되는 투하 시각)
 var dash_was := 0.0
 var push_was := 0.0
@@ -102,6 +108,31 @@ func _ready() -> void:
 	ghost_ring.size = Vector2(30, 30)
 	ghost_ring.draw.connect(_draw_ghost)
 	add_child(ghost_ring)
+	# 사냥꾼 표식 (2026-10-31 재혁 '표식 불명확'): 가장자리 빨강 (CSS radial-gradient 55% 투명 → 끝 빨강 .9) · 위 칸 · 히트마커
+	mark_edge = TextureRect.new()
+	var gt := GradientTexture2D.new()
+	gt.fill = GradientTexture2D.FILL_RADIAL
+	gt.fill_from = Vector2(0.5, 0.5)
+	gt.fill_to = Vector2(1.0, 1.0)
+	var gr := Gradient.new()
+	gr.set_color(0, Color(1, 0.157, 0.118, 0.0))
+	gr.set_color(1, Color(1, 0.157, 0.118, 0.9))
+	gr.set_offset(0, 0.55)
+	gt.gradient = gr
+	mark_edge.texture = gt
+	mark_edge.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	mark_edge.stretch_mode = TextureRect.STRETCH_SCALE
+	mark_edge.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mark_edge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mark_edge.modulate.a = 0.0
+	add_child(mark_edge)
+	move_child(mark_edge, 0)
+	my_marks = _hud_label(26, false)
+	my_marks.add_theme_constant_override("outline_size", 6)
+	add_child(my_marks)
+	mark_hit = _hud_label(20, false)
+	mark_hit.modulate.a = 0.0
+	add_child(mark_hit)
 	ghost_hint = _hud_label(19, false)
 	ghost_hint.text = "클릭: 블록 떨어뜨리기"
 	ghost_hint.visible = false
@@ -242,6 +273,12 @@ func _on_event(e: Dictionary) -> void:
 				killed = {"by": e.get("by"), "byName": e.get("byName"), "cause": e.cause, "weapon": e.get("weapon")}
 			if e.get("cause") != "disconnect" and not kill_events:
 				_feed(e, tally.add(e))
+		"mark":
+			# 사냥꾼: 조준점 옆 '표식 +1 ◆◆◇' (꽉 차면 금색 'R 준비'), 맞은 사람: 가장자리 빨강이 한 번 진해짐 (JS handleEvent mark)
+			if e.get("by") == Store.my_id:
+				_show_mark_hit(int(e.get("n", 1)))
+			if e.get("target") == Store.my_id:
+				mark_edge_at = float(Time.get_ticks_msec())
 		"respawn":
 			if e.get("who") == Store.my_id and not Store.room.get("practice", false):
 				var tw := create_tween()
@@ -324,6 +361,7 @@ func refresh(st: Dictionary) -> void:
 	_skills(me, vp)
 	_kills_panels(st, me, vp)
 	_spectate(st, me, vp)
+	_my_marks(me, vp)
 	ring.queue_redraw()
 
 
@@ -412,6 +450,13 @@ func _cards(st: Dictionary, vp: Vector2) -> void:
 		c.pct.text = "KO" if dead else ("%d" % int(hv.hp) if hv != null else "%d%%" % int(p.damage))
 		c.pct.add_theme_color_override("font_color", S.HOT if dead else (U.hp_color(hv.frac) if hv != null else _damage_color(float(p.damage))))
 		c.panel.modulate = Color(0.6, 0.6, 0.6) if dead else Color.WHITE
+		var mkd = HM.pick_mark(p.get("marks"), Store.my_id) if not dead else null
+		var mk_text := ""
+		if mkd != null and float(mkd.n) > 0 and not HM.mark_blink(float(mkd.get("left", 1e9)), float(Time.get_ticks_msec())):
+			mk_text = HM.pip_text(mkd.n)
+		c.mk.text = mk_text
+		c.mk.add_theme_color_override("font_color", Color("ffd23a") if mkd != null and float(mkd.n) >= C.HUNTER_MARK_MAX else Color("ff3a2a"))
+		c.mk.add_theme_color_override("font_outline_color", Color.WHITE if mkd != null and mkd.mine else Color.BLACK)
 		c.sub.text = "%s%s %s" % ["%s팀 · " % TEAM_KO.get(str(p.get("team", "")), "") if st.get("teamMode", false) else "", C.CHAR_NAMES.get(str(p.get("char", "")), ""), ("킬 %d" % int(p.get("score", 0))) if kills else ("승 %d" % int(p.get("wins", 0)))]
 		c.hp.visible = hv != null and not dead # KO 면 막대 없이 KO 만
 		if hv != null:
@@ -471,7 +516,15 @@ func _make_card(p: Dictionary, L: Dictionary) -> Dictionary:
 	v.add_child(hp)
 	s.border_color = S.ACCENT if me else _player_color(p) # 아래 색 띠 = 그 사람 색 (위 띠는 내 판만)
 	cards_row.add_child(panel)
-	return {"panel": panel, "face": face, "face_img": face_img, "col": _player_color(p), "sub": sub, "pct": pct, "hp": hp, "hp_fill": hp_fill}
+	# 표식 칸 (B4 JS: 위 줄 오른쪽 끝, 이름과 같은 높이 — 큰 % 와 안 섞이게): 빨강, 내가 붙인 것이면 흰 테, 꽉 차면 금색
+	var mk := Label.new()
+	mk.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	mk.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mk.add_theme_font_size_override("font_size", 11)
+	mk.add_theme_constant_override("outline_size", 4)
+	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(mk)
+	return {"panel": panel, "face": face, "face_img": face_img, "col": _player_color(p), "sub": sub, "pct": pct, "hp": hp, "hp_fill": hp_fill, "mk": mk}
 
 
 # 피해 % 색 (JS damageColor): 흰 → 노랑 → 주황 → 빨강
@@ -621,3 +674,42 @@ func _draw_ghost() -> void:
 			ghost_ring.draw_colored_polygon(pts, Color(0.78, 0.78, 0.78, 0.55))
 	ghost_ring.draw_arc(c, 14.0, 0.0, TAU, 40, Color(1, 1, 1, 0.85) if ghost_ready else Color(0.63, 0.63, 0.63, 0.8), 2.0)
 	ghost_ring.draw_circle(c, 2.0, Color.WHITE)
+
+
+# 맞은 사람: 화면 위 칸 (빈 칸까지, 꽉 차면 금색, 붙은 순간 커졌다 줄기) + 가장자리 빨강 (개수만큼·붙은 순간 한 번 더) — JS updateMyMarks
+func _my_marks(me: Dictionary, vp: Vector2) -> void:
+	var m = null
+	if not me.is_empty() and me.get("alive", false):
+		for x in me.get("marks", []):
+			if m == null or float(x.n) > float(m.n):
+				m = x
+	var now := float(Time.get_ticks_msec())
+	var blink: bool = m != null and HM.mark_blink(float(m.get("left", 1e9)), now)
+	my_marks.text = HM.pip_text(m.n) if m != null and not blink else ""
+	var full: bool = m != null and float(m.n) >= C.HUNTER_MARK_MAX
+	my_marks.add_theme_color_override("font_color", Coords.color(C.HUNT_MARK_UI.full if full else C.HUNT_MARK_UI.on))
+	var k := HM.pop_scale(now - mark_edge_at)
+	my_marks.pivot_offset = my_marks.size / 2.0
+	my_marks.scale = Vector2(k, k)
+	my_marks.position = Vector2((vp.x - my_marks.size.x) / 2.0, vp.y * 0.13)
+	mark_edge.modulate.a = HM.edge_level(float(m.n), C.HUNTER_MARK_MAX, now - mark_edge_at, blink) if m != null else 0.0
+
+
+# 사냥꾼 히트마커: 조준점 오른쪽 아래 '표식 +1 ◆◆◇' (꽉 차면 금색 ' R 준비'), 커졌다 줄며 위로 사라짐 (HUNT_MARK_UI.hitMs)
+func _show_mark_hit(n: int) -> void:
+	var full := n >= int(C.HUNTER_MARK_MAX)
+	mark_hit.text = "표식 +1 %s%s" % [HM.pip_text(n), " R 준비" if full else ""]
+	mark_hit.add_theme_color_override("font_color", Coords.color(C.HUNT_MARK_UI.full if full else C.HUNT_MARK_UI.on))
+	var vp := get_viewport_rect().size
+	var at := vp / 2.0 + Vector2(22, 22)
+	if mark_hit_tw != null:
+		mark_hit_tw.kill()
+	mark_hit.position = at
+	mark_hit.modulate.a = 1.0
+	mark_hit.scale = Vector2(1.35, 1.35)
+	var ms: float = C.HUNT_MARK_UI.hitMs / 1000.0
+	mark_hit_tw = create_tween()
+	mark_hit_tw.tween_property(mark_hit, "scale", Vector2.ONE, ms * 0.25)
+	mark_hit_tw.parallel().tween_property(mark_hit, "position", at + Vector2(0, -4), ms * 0.25)
+	mark_hit_tw.tween_property(mark_hit, "position", at + Vector2(0, -14), ms * 0.75)
+	mark_hit_tw.parallel().tween_property(mark_hit, "modulate:a", 0.0, ms * 0.75)
