@@ -26,7 +26,7 @@ var mats: Array[Material] = []
 var nodes: Array[Node3D] = []
 var refs := {} # figure 의 특별 노드 표 (gen-bodies.mjs refs: flaps·shields·gun·bow·horns·formParts…)
 var torso: Node3D
-var skeleton: Skeleton3D # 합친 몸 (K.MERGE): 노드 i = 뼈 i
+var merged_count := 0 # 합친 메시 수 (K.MERGE)
 var piece_mat := {} # 노드 번호 → 재질 번호 (합칠 때)
 var parents: Array[int] = [] # 노드 번호 → 부모 번호 (1인칭 팔이 씀)
 var cur_act = null # 지금 공격 동작 (_act_for 결과, 1인칭 팔이 씀)
@@ -176,56 +176,51 @@ func build(char_id_: String, color: Color, merge: bool = K.MERGE) -> void:
 	P = Motion.rest_pose(d)
 	V = Motion.zero_pose(P)
 	_apply(0.0)
-	_sync_skeleton()
 
 
-# ---------- 합친 몸 (JS client/batch.js): 조각 Node3D 는 그대로 '뼈' 노릇 (동작 코드는 조각을 만짐), 그리는 건 Skeleton3D + 메시 하나 ----------
-# 재질 종류 (툰/basic·외곽선·발광·체크 무늬·그림자) 마다 표면 하나, 색은 정점 색. 투명 재질·바드 몸통 (폼마다 재질이 바뀜) 은 따로 그림
+# ---------- 합친 몸 (JS client/batch.js 와 같은 뜻, 방법은 다름) ----------
+# 움직이는 노드 (관절·천 자락·뿔·눈동자·보이기를 바꾸는 무기… = refs 에 나오는 노드 + 처음에 숨긴 노드) 마다, 그 아래 붙어 같이 움직이는 조각들을
+# 재질 종류 (툰/basic·외곽선·발광·체크 무늬·그림자) 마다 메시 하나로 합쳐 그 노드에 붙임. 색은 정점 색. 뼈 (skin) 없이 노드 그대로라 숨기기·자세가 예전처럼.
+# 투명 재질·바드 몸통 (폼마다 재질이 바뀜)·광전사 충혈 흰자 (색이 바뀜) 는 따로 그림
 func _merge(cd: Dictionary) -> void:
-	skeleton = Skeleton3D.new()
-	frame.add_child(skeleton)
-	var rest_g: Array[Transform3D] = []
+	var dyn := {}
+	_collect_nodes(refs, dyn)
 	for i in nodes.size():
-		var e: Dictionary = cd.nodes[i]
-		var parent: int = int(e.parent)
-		skeleton.add_bone("n%d" % i)
-		if parent >= 0:
-			skeleton.set_bone_parent(i, parent)
-		skeleton.set_bone_rest(i, nodes[i].transform)
-		rest_g.append(nodes[i].transform if parent < 0 else rest_g[parent] * nodes[i].transform)
-	var skin := Skin.new()
-	for i in nodes.size():
-		skin.add_bind(i, rest_g[i].affine_inverse())
+		if cd.nodes[i].get("hidden", false) or int(cd.nodes[i].parent) < 0:
+			dyn[i] = true
 	var keep_torso: bool = refs.has("formParts")
 	var rage_eye := -1
 	if refs.get("rage") is Dictionary and refs.rage.get("eyeMat") is Dictionary:
 		rage_eye = int(refs.rage.eyeMat.mat)
-	var groups := {} # 재질 종류 → {vs, ns, cs, us, bs, ws, mat}
+	var groups := {} # "주인 노드|재질 종류" → {owner, vs, ns, cs, us, m, shadow}
 	for i in piece_mat:
 		var mi := nodes[i] as MeshInstance3D
 		var m: Dictionary = cd.mats[piece_mat[i]]
 		if m.get("transparent", false) or (keep_torso and mi == torso) or int(piece_mat[i]) == rage_eye:
 			drawn.append({"mi": mi, "m": m, "merged": false})
-			continue # 따로 그림 (재질이 바뀜: 투명·바드 몸통·광전사 충혈 흰자)
-		var key := "%s|%s|%s|%s|%s" % [m.kind, m.get("outline", true), m.get("emissive", 0), JSON.stringify(m.get("plaid", [])), cd.nodes[i].get("noShadow", false)]
+			continue
+		# 주인 = 자기 또는 가장 가까운 움직이는 조상. 주인 기준 자리 = 그 사이 (안 움직이는) 노드들의 transform 곱
+		var owner: int = int(i)
+		var rel := Transform3D.IDENTITY
+		while not dyn.has(owner):
+			rel = nodes[owner].transform * rel
+			owner = parents[owner]
+		var key := "%d|%s|%s|%s|%s|%s" % [owner, m.kind, m.get("outline", true), m.get("emissive", 0), JSON.stringify(m.get("plaid", [])), cd.nodes[i].get("noShadow", false)]
 		if not groups.has(key):
-			groups[key] = {"vs": [], "ns": [], "cs": [], "us": [], "bs": [], "ws": [], "m": m, "shadow": not cd.nodes[i].get("noShadow", false)} # Array (참조) 에 모아 마지막에 Packed 로 (사전 안 Packed 배열은 꺼낼 때 복사됨)
+			groups[key] = {"owner": owner, "vs": [], "ns": [], "cs": [], "us": [], "m": m, "shadow": not cd.nodes[i].get("noShadow", false)} # Array 에 모아 마지막에 Packed 로
 		var gr: Dictionary = groups[key]
 		var col: Color = _mat_color(m, skin_color)
 		var arr := (mi.mesh as ArrayMesh).surface_get_arrays(0)
-		var xf: Transform3D = rest_g[i]
-		var nb := xf.basis.inverse().transposed()
+		var nb := rel.basis.inverse().transposed()
 		var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
 		var ns = arr[Mesh.ARRAY_NORMAL]
 		var us = arr[Mesh.ARRAY_TEX_UV]
 		for k in vs.size():
-			gr.vs.append(xf * vs[k])
+			gr.vs.append(rel * vs[k])
 			gr.ns.append((nb * ns[k]).normalized() if ns != null and ns.size() == vs.size() else Vector3.UP)
 			gr.us.append(us[k] if us != null and us.size() == vs.size() else Vector2.ZERO)
 			gr.cs.append(col)
-			gr.bs.append_array([i, 0, 0, 0])
-			gr.ws.append_array([1.0, 0.0, 0.0, 0.0])
-		mi.layers = 0 # 조각 자체는 안 그림 (뼈 노릇만)
+		mi.layers = 0 # 조각 자체는 안 그림 (자리만)
 	for key in groups:
 		var gr: Dictionary = groups[key]
 		var arr := []
@@ -234,18 +229,29 @@ func _merge(cd: Dictionary) -> void:
 		arr[Mesh.ARRAY_NORMAL] = PackedVector3Array(gr.ns)
 		arr[Mesh.ARRAY_COLOR] = PackedColorArray(gr.cs)
 		arr[Mesh.ARRAY_TEX_UV] = PackedVector2Array(gr.us)
-		arr[Mesh.ARRAY_BONES] = PackedInt32Array(gr.bs)
-		arr[Mesh.ARRAY_WEIGHTS] = PackedFloat32Array(gr.ws)
 		var am := ArrayMesh.new()
 		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 		var mi := MeshInstance3D.new()
 		mi.mesh = am
-		mi.skin = skin
 		mi.material_override = _merged_material(gr.m)
 		drawn.append({"mi": mi, "m": gr.m, "merged": true})
 		if not gr.shadow:
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		skeleton.add_child(mi) # skeleton 경로 기본값 '..' = 이 Skeleton3D
+		nodes[int(gr.owner)].add_child(mi)
+		merged_count += 1
+
+
+# refs 안의 {node: i} 를 다 모음
+static func _collect_nodes(v, out: Dictionary) -> void:
+	if v is Dictionary:
+		if v.has("node") and v.size() == 1:
+			out[int(v.node)] = true
+			return
+		for k in v:
+			_collect_nodes(v[k], out)
+	elif v is Array:
+		for x in v:
+			_collect_nodes(x, out)
 
 
 # 합친 표면 재질: 색은 정점 색 (흰 바탕 × 정점 색)
@@ -254,6 +260,7 @@ static func _merged_material(m: Dictionary) -> Material:
 		var b := StandardMaterial3D.new()
 		b.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		b.vertex_color_use_as_albedo = true
+		b.vertex_color_is_srgb = true # 정점 색은 sRGB 그대로 (Color 값)
 		if m.get("double", false):
 			b.cull_mode = BaseMaterial3D.CULL_DISABLED
 		return b
@@ -263,18 +270,6 @@ static func _merged_material(m: Dictionary) -> Material:
 	if m.has("plaid"):
 		opts.map = _plaid(m.plaid)
 	return G3.toon_material(Color.WHITE, opts)
-
-
-# 조각 노드 자세 → 뼈 자세 (매 프레임 끝). 숨긴 조각은 뼈를 거의 0 으로 줄임 (자식도 같이)
-func _sync_skeleton() -> void:
-	if skeleton == null:
-		return
-	for i in nodes.size():
-		var n := nodes[i]
-		var xf := n.transform
-		if not n.visible:
-			xf = Transform3D(xf.basis.scaled(Vector3.ONE * K.HIDE_SCALE), xf.origin)
-		skeleton.set_bone_pose(i, xf)
 
 
 # 노드 표 번호 {node: i} → 노드 (없으면 null)
@@ -410,7 +405,6 @@ func pose(p: Dictionary, now_ms: float) -> void:
 	var st := _anim_state(p, now_ms)
 	_figure_anim(st, dt)
 	_apply(dt)
-	_sync_skeleton()
 	_apply_opacity()
 	# 맞은 순간 찌그러짐 (G5 fx.squash_amount, render.js g.scale): 게임 (x, y 넓게, z 낮게) = 고도 (x, z 넓게, y 낮게)
 	var sq := _fx_amount("squash_amount")

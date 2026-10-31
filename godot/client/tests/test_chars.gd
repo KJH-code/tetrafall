@@ -165,19 +165,17 @@ func test_bodies_build_and_animate() -> void:
 		b.free()
 
 
-# 합친 몸 (chars_config MERGE): 몸 하나 그리는 메시 수가 적고, 뼈 수 = 조각 노드 수
+# 합친 몸 (chars_config MERGE): 몸 하나 그리는 메시 수가 조각 수보다 훨씬 적음
 func test_bodies_merged() -> void:
 	for ch in C.FIGURE_CHARS:
 		var b = Chars.make_body(ch, Color(0.2, 0.6, 0.9))
-		if b.skeleton == null:
-			b.free()
-			continue
+		var pieces: int = b.piece_mat.size()
 		var drawn := 0
 		for mi in b.find_children("*", "MeshInstance3D", true, false):
-			if mi.layers != 0 and mi.visible:
+			if mi.layers != 0:
 				drawn += 1
-		check(drawn <= 8, "%s 그리는 메시 %d" % [ch, drawn])
-		check(b.skeleton.get_bone_count() == b.nodes.size(), "%s 뼈 %d / 노드 %d" % [ch, b.skeleton.get_bone_count(), b.nodes.size()])
+		if b.merged_count > 0:
+			check(drawn * 2 < pieces, "%s 그리는 메시 %d / 조각 %d" % [ch, drawn, pieces])
 		b.free()
 
 

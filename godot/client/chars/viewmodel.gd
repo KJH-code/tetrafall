@@ -105,7 +105,7 @@ func _sync(body) -> void:
 	var w: int = twin.nodes.find(twin.waist)
 	# 허리 아래 (허리 제외) 노드 번호
 	var under := {w: true}
-	for i in twin.nodes.size():
+	for i: int in twin.nodes.size():
 		var p: int = twin.parents[i]
 		if p >= 0 and under.has(p):
 			under[i] = true
@@ -126,7 +126,7 @@ func _sync(body) -> void:
 		show[twin.nodes.find(r)] = true
 	for i in twin.nodes.size():
 		var shown := false
-		var k := i
+		var k: int = i
 		while k >= 0:
 			if show.has(k):
 				shown = true

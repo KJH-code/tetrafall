@@ -5,6 +5,7 @@
 # tab = 판 중 점수표 (킬 점수전에서만 보임 → --mode kills), settings = 설정 창, results = 판이 끝나고 --shot-after 초 (기본 1.5) 뒤.
 # --mode survival|master|kills 면 시작 전에 모드를 바꿈. 창 크기는 고도 --resolution 1280x720
 # 성능: --perf-log (찍는 순간 = --shot-after 에 그리기 수·물체 수·삼각형 수·FPS·프레임 ms 한 줄, 화면 없이도)
+# --auto practice|tutorial: 연습·튜토리얼 방 (G6, --char 캐릭터, 연습 창은 --practice-open)
 # 화면 범인 찾기: --hide ui|world|audio (그 묶음을 숨기고 찍음) · --dump (찍을 때 보이는 Control·CanvasItem·3D 노드를 화면 사각형과 함께 출력)
 extends Node
 
@@ -50,6 +51,9 @@ func _on_rooms(_list: Dictionary) -> void:
 	if role == "host" and shot_at != "menu" and not created and not Store.in_room() and Store.pending_code == "":
 		created = true
 		Store.create_room("", str(args.get("name", "고도")))
+	if role in ["practice", "tutorial"] and not created and not Store.in_room(): # G6 연습·튜토리얼 방 (혼자, 바로 판)
+		created = true
+		Net.send({"type": role, "nick": str(args.get("name", "고도")), "char": str(args.get("char", C.CHAR_DEFAULT))})
 
 
 func _on_joined(room: Dictionary, again: bool) -> void:
@@ -61,6 +65,8 @@ func _on_joined(room: Dictionary, again: bool) -> void:
 	if role == "host":
 		for i in int(args.get("bots", 1)):
 			Store.send_room({"type": "addBot"})
+	if role == "practice":
+		Store.send_room({"type": "dummyAdd"})
 
 
 func _on_state(st: Dictionary, _prev: Dictionary) -> void:
