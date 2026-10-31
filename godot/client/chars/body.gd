@@ -38,7 +38,12 @@ var form_at := -1e9 # 바드 폼이 바뀐 시각 (초, 튀기기 연출)
 var opacity := 1.0 # 유령화·무적 반투명
 var drawn: Array = [] # 그리는 메시 [{mi, m (재질 표), merged}] (반투명 바꾸기)
 var stars: Array[MeshInstance3D] = [] # 어지러움: 머리 위 노란 별 셋
-var fx_node = null # G5 효과 (squash_amount·punch_amount)
+var fx_node = null
+var bonk_at := -1e9 # 머리 박음 시각 (초, headBonk)
+var diving := false # 바드 기타 꽂기로 떨어지는 중 (dive ~ diveEnd)
+var dive_flip := 0.0 # 그동안 몸 전체를 앞으로 뒤집는 각 (따라감)
+var whirl_t0 = null # 광전사 소용돌이 시작 (초)
+var parts_z0 = null # parts 노드 처음 높이 (머리 박음 눌림) # G5 효과 (squash_amount·punch_amount)
 var loaded := false # 갈고리 장전 (스냅샷 loaded, 1인칭 팔이 씀)
 var frame: Node3D # 게임 좌표 → 고도
 var rig: Node3D # 몸 전체 기울임·공중제비·구르기 (render.js rig)
@@ -184,7 +189,25 @@ func build(char_id_: String, color: Color, merge: bool = K.MERGE) -> void:
 # 투명 재질·바드 몸통 (폼마다 재질이 바뀜)·광전사 충혈 흰자 (색이 바뀜) 는 따로 그림
 func _merge(cd: Dictionary) -> void:
 	var dyn := {}
-	_collect_nodes(refs, dyn)
+	# 움직이는 노드만 (figureAnim 이 돌리거나 보이기를 바꾸는 것). 손·발·몸통·코·악기 줄 등 refs 에 있어도 안 움직이는 건 주인 관절에 같이 합침
+	for key in ["rig", "hips", "waist", "neck", "shoulders", "elbows", "thighs", "knees", "pupils", "gun", "bow", "shields", "balls", "formParts", "mohawk", "hammer", "held", "waitMark", "cannon"]:
+		_collect_nodes(refs.get(key), dyn)
+	for f in refs.get("flaps", []):
+		_collect_nodes(f.get("obj"), dyn)
+	if refs.get("rage") is Dictionary:
+		for key in ["brows", "veins", "anger"]:
+			_collect_nodes(refs.rage.get(key), dyn)
+	if refs.has("formParts"):
+		_collect_nodes(refs.get("torso"), dyn) # 바드 몸통은 폼마다 재질이 바뀜
+	# 광전사 뿔은 늘 같은 곡선 (figureAnim 이 매 프레임 같은 각) → 미리 굽혀 두고 합침
+	if refs.get("horns") is Array:
+		var bend: float = C.FIGURE_HORN_CURL / (C.FIGURE_HORN_SEGS - 1.0)
+		for h in refs.horns:
+			var segs: Array = h.get("segs", [])
+			for k in segs.size():
+				var sn := _n(segs[k])
+				if sn != null:
+					sn.rotation.x = float(h.side) * (0.15 if k == 0 else bend)
 	for i in nodes.size():
 		if cd.nodes[i].get("hidden", false) or int(cd.nodes[i].parent) < 0:
 			dyn[i] = true
@@ -563,7 +586,7 @@ func _anim_state(p: Dictionary, now_ms: float) -> Dictionary:
 		"hit": _hit_for(p, now_ms), "act": _act_for(now_ms), "accF": acc_f, "accS": acc_s,
 		"tumble": tumble_amt, "recover": recover * recover_pow, "land": land * land_pow,
 		"flip": flip / C.FIGURE_FLIP_S if flip >= 0.0 else -1.0, "idle": idle_t, "airDash": air_dash_t / C.FIGURE_AIR_DASH.s,
-		"form": str(p.get("bard", {}).get("form", "")) if p.get("bard") is Dictionary else "", "dizzy": dizzy / C.BERSERK_DIZZY_S, "punch": _fx_amount("punch_amount"),
+		"form": str(p.get("bard", {}).get("form", "")) if p.get("bard") is Dictionary else "", "dizzy": dizzy / C.BERSERK_DIZZY_S, "punch": _fx_amount("punch_amount"), "whirl": _whirl_time(p), "glide": p.get("bard") is Dictionary and float(p.bard.get("glideLeft", 0.0)) > 0.0 and get_meta("air", false), "amp": p.get("bard") is Dictionary and float(p.bard.get("ampLeft", 0.0)) > 0.0,
 		"loaded": p.get("loaded", false) == true, "ammo": float(p.get("cannon", {}).get("ammo", 3)) if p.get("cannon") is Dictionary else 3.0,
 	}
 
@@ -747,6 +770,16 @@ func _figure_anim(st: Dictionary, dt: float) -> void:
 				Motion.pose_at(P, T, V, who, "victory", st.victory, INF)
 			elif st.emote == C.EMOTE_CHAR:
 				Motion.pose_at(P, T, V, who, "taunt", st.emoteT, C.EMOTE_MS / 1000.0)
+	if st.whirl >= 0.0 and not frozen:
+		# 광전사 R 분노 소용돌이: 도끼 든 팔을 쭉 뻗고 팽이처럼 (처음 0.25초에 빨라짐). 도끼 쪽으로 기울고 고개는 뒤로 젖혀짐
+		var w: float = st.whirl
+		var ramp := minf(1.0, w / 0.25)
+		spin = -PI * 2.0 * C.BERSERK_SPIN_TURNS_PER_S * ((w * w) / 0.5 if w < 0.25 else w - 0.125)
+		Motion.overlay(P, T, {"shOut": [1.55, 1.45], "shFwd": [0.35, 0.15], "elbow": [0.05, 0.35], "waistSide": -0.4, "waistPitch": -0.1, "neckPitch": -0.45, "thOut": [0.2, 0.3], "knee": [0.35, 0.2]}, ramp, V)
+	if st.glide and not frozen:
+		# 음유 천천히 낙하: 팔 벌리고 단풍 씨앗처럼 빙글빙글
+		spin = fmod(tt * PI * 2.0 * C.BARD_GLIDE_TURNS_PER_S, PI * 2.0)
+		Motion.overlay(P, T, {"shOut": [1.45, 1.45], "shFwd": [0.25, 0.25], "elbow": [0.15, 0.15], "thFwd": [0.25, 0.25], "knee": [0.4, 0.4], "neckPitch": -0.25}, 1.0, V)
 	# 도는 동작이 끝나면 가장 가까운 한 바퀴 각으로
 	if spin != 0.0:
 		spin_s = spin
@@ -797,7 +830,8 @@ func _apply(_dt: float) -> void:
 		var f := flip / C.FIGURE_FLIP_S
 		flip_angle = PI * 2 * f * f * (3.0 - 2.0 * f)
 	var dash: float = C.FIGURE_AIR_DASH.tilt * minf(1.0, (air_dash_t / C.FIGURE_AIR_DASH.s) * 4.0)
-	rig.rotation = Vector3(0, lean + flip_angle + dash, 0)
+	dive_flip += ((C.FIGURE_DIVE_FLIP if diving else 0.0) - dive_flip) * (1.0 - exp(-14.0 * _dt))
+	rig.rotation = Vector3(0, lean + flip_angle + dash + dive_flip, 0)
 	if tumble_spin != 0.0:
 		rig.basis = Basis(tumble_axis, tumble_spin) * rig.basis
 	var drop: float = drop_s if drop_s != null else 0.0
@@ -806,6 +840,15 @@ func _apply(_dt: float) -> void:
 	hips.rotation = Vector3(0, 0, spin_s + hip_twist)
 	waist.rotation = Vector3(-(P.waistSide + sw.y), P.waistPitch + sw.x, P.waistRoll - hip_twist)
 	neck.rotation = Vector3(sw.y * 0.5, P.neckPitch - sw.x * 0.5, 0)
+	# 머리 박음: 머리가 확 숙여지고 몸이 살짝 눌렸다 돌아옴 (압사 납작과 다르게 금방 펴짐)
+	var parts := _n(refs.get("parts"))
+	if parts != null:
+		if parts_z0 == null:
+			parts_z0 = parts.position.z
+		var bonk := 1.0 - (Time.get_ticks_msec() / 1000.0 - bonk_at) / (C.HEAD_BONK_FX_MS / 1000.0)
+		var kb := sin(PI * minf(1.0, (1.0 - bonk) * 3.0)) * bonk if bonk > 0.0 else 0.0
+		neck.rotation.y += C.HEAD_BONK_NOD * kb
+		parts.position.z = parts_z0 - C.HEAD_BONK_SQUASH * kb
 	for i in 2:
 		var side := 1.0 if i else -1.0 # 0 = 오른쪽(-y)
 		shoulders[i].rotation = Vector3(side * P.shOut[i], -P.shFwd[i], -side * P.shTwist[i])
@@ -816,17 +859,27 @@ func _apply(_dt: float) -> void:
 
 # ---------- 옷·무기가 바꾸는 자세 (figure.js figureAnim 의 fig.axe·forms·cannon·gun 부분) ----------
 func _costume_pose(T: Dictionary, st: Dictionary, actv, tt: float) -> void:
-	if refs.has("axe") and not st.stunned and actv == null and st.emote < 0 and not st.air and not (st.dizzy > 0.0):
+	if refs.has("axe") and not st.stunned and actv == null and st.emote < 0 and not st.air and not (st.dizzy > 0.0) and not (st.whirl >= 0.0):
 		# 도끼를 어깨에 걸침: 오른팔꿈치를 접어 자루가 어깨 위로 넘어감
 		T.shFwd[0] = 0.35
 		T.shOut[0] = 0.55
 		T.elbow[0] = 1.95
-	if refs.has("formParts") and not st.stunned and actv == null and st.emote < 0 and not st.air:
+	if refs.has("formParts") and not st.stunned and actv == null and st.emote < 0 and (not st.air or st.amp) and not st.glide:
 		# 바드: 악기를 가슴 앞에 들고 (왼손 목, 오른손 줄). 메탈은 대기 중 헤드뱅잉
 		T.shFwd = [0.45, 0.75]
 		T.shOut = [0.3, 0.05]
 		T.elbow = [1.6, 1.45]
-		if st.form == "metal" and not st.walking:
+		if st.amp:
+			# 앰프 연주: 다리 벌리고 버팀 + 미친 듯이 줄 긁기 + 크게 헤드뱅잉
+			var bang := maxf(0.0, sin(tt * C.BARD_HEADBANG_HZ * 1.6 * PI * 2.0))
+			T.neckPitch += bang * 0.8 - 0.2
+			T.waistPitch += bang * 0.2 + 0.1
+			T.elbow[0] += sin(tt * 30.0) * 0.35
+			T.thOut = [0.35, 0.35]
+			for i in 2:
+				T.knee[i] += 0.35
+				T.thFwd[i] += 0.2
+		elif st.form == "metal" and not st.walking:
 			var bang := maxf(0.0, sin(tt * C.BARD_HEADBANG_HZ * PI * 2.0))
 			T.neckPitch += bang * 0.55 - 0.1
 			T.waistPitch += bang * 0.12
@@ -1008,6 +1061,37 @@ func _fx_amount(fn: String) -> float:
 	return float(fx_node.call(fn, pid))
 
 
+# 광전사 소용돌이 경과 초 (render.js whirlTime: 스냅샷 berserker.spinLeft·spinMs), 아니면 -1
+func _whirl_time(p: Dictionary) -> float:
+	var bz = p.get("berserker")
+	if not (bz is Dictionary) or not (float(bz.get("spinLeft", 0.0)) > 0.0) or not p.get("alive", true):
+		whirl_t0 = null
+		return -1.0
+	var now := Time.get_ticks_msec() / 1000.0
+	if whirl_t0 == null:
+		whirl_t0 = now - (float(bz.get("spinMs", 0.0)) - float(bz.spinLeft)) / 1000.0
+	return minf(now - whirl_t0, float(bz.get("spinMs", 0.0)) / 1000.0)
+
+
+# 압사: 납작하게 찌그러진 몸이 잠깐 남음 (render.js crushFlat). 몸 노드는 죽으면 숨으니 몸 밖 (World 의 몸 자리) 에 복사본을 둠
+func _crush_flat() -> void:
+	var holder_parent := get_parent().get_parent() if get_parent() != null else null # bodies 노드
+	if holder_parent == null or not is_inside_tree():
+		return
+	var flat := frame.duplicate() as Node3D
+	var holder := Node3D.new()
+	holder_parent.add_child(holder)
+	holder.global_transform = global_transform
+	holder.add_child(flat)
+	flat.transform = Transform3D(frame.basis * Basis.from_scale(Vector3(1.5, 1.5, C.CRUSH_FLAT_Z)), Vector3(0, 0.02, 0))
+	for mi in flat.find_children("*", "MeshInstance3D", true, false):
+		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var tw := holder.create_tween()
+	tw.tween_interval(maxf(0.0, (C.CRUSH_FLAT_MS - 300.0) / 1000.0))
+	tw.tween_property(flat, "scale", Vector3(flat.scale.x, flat.scale.y, 0.01), 0.3) # 끝 0.3초에 종잇장처럼 얇아지며
+	tw.tween_callback(holder.queue_free)
+
+
 func _vis(r, on: bool) -> void:
 	var n := _n(r)
 	if n != null:
@@ -1063,6 +1147,28 @@ func on_event(e: Dictionary) -> void:
 		"airJump":
 			if mine:
 				flip = 0.0
+		"headBonk":
+			if mine:
+				bonk_at = now
+		"dive":
+			if mine:
+				diving = true
+				if act != null and act.move == "기타 꽂기" and act.broken == null:
+					act.hold = true
+					if act.struck == null:
+						act.struck = now
+				else:
+					act = _new_act("기타 꽂기", now, 0.0, now, 0.4, true)
+					act.hold = true
+		"diveEnd":
+			if mine:
+				diving = false
+				if act != null and act.get("hold", false):
+					act.hold = false
+					act.struck = now - C.FIGURE_STRIKE_S # 바로 회복으로
+		"death":
+			if mine and e.get("cause") == "crush":
+				_crush_flat()
 		"spinEnd":
 			if mine and refs.has("pupils"):
 				dizzy = C.BERSERK_DIZZY_S
@@ -1185,6 +1291,8 @@ func _act_for(_now_ms: float):
 			act = null
 			return null
 		return {"id": act.id, "move": act.move, "phase": "wind", "u": minf(1.0, age / act.windup) if act.windup > 0.0 else 1.0, "air": act.air}
+	if act.get("hold", false):
+		return {"id": act.id, "move": act.move, "phase": "strike", "u": 1.0, "air": act.air} # 기타 꽂기: 떨어지는 동안 타격 자세 그대로
 	var s: float = now - act.struck
 	if s < C.FIGURE_STRIKE_S:
 		return {"id": act.id, "move": act.move, "phase": "strike", "u": s / C.FIGURE_STRIKE_S, "air": act.air}
