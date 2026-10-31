@@ -42,6 +42,7 @@ var perf_rt := false
 var perf_split := [0.0, 0.0, 0.0, 0.0, 0] # 그리기 CPU · GPU · _process · 물리 (ms 합), 프레임 수
 var shot_at := "game"
 var over_ms := -1.0
+var restart_for := -1 # 이 판 끝 (rounds) 에 다음 판 시작을 보냈는지
 var was_host = null # 방장이 바뀌면 로그 (방장 나가면 넘김)
 var color_sent := -1.0 # --color 보낸 시각 (받아짐·거절 로그)
 var round_no := 0 # --shot-round: 지금 몇 판째 (playing 이 될 때마다 +1)
@@ -96,6 +97,8 @@ func _on_joined(room: Dictionary, again: bool) -> void:
 		return
 	PlayerInput.lock_mouse(true) # 헤드리스: 마우스 잡힌 셈 (입력이 나가게)
 	if role in ["host", "guest"]: # 대전 흐름 (B4): 캐릭터·색 고르기 (같은 색은 서버가 거절)
+		if args.has("name"): # 이름표·목록 이름 (대기실 이름 칸과 같은 setName)
+			Store.send_room({"type": "setName", "name": str(args["name"])})
 		if args.has("char"):
 			Store.send_room({"type": "setChar", "char": str(args["char"])})
 		if args.has("color"):
@@ -142,7 +145,13 @@ func _on_state(st: Dictionary, _prev: Dictionary) -> void:
 		over_ms = Net.now_ms()
 		_log("판 %d 끝: 승자 %s, 스냅샷 %d개, 내가 움직인 거리 %.1f칸, 보간 위치 %d번" % [rounds, str(st.round.winnerId), snapshots, moved, interp_ok])
 		if (role == "host" or is_host) and rounds < int(args.get("quit-after-rounds", 1)):
+			restart_for = rounds
 			Store.send_room({"type": "start"})
+	# 판 끝 (over) 에 방장을 넘겨받으면 (전 방장이 나감) 다음 판은 내가 시작
+	if is_host and ph == "over" and restart_for != rounds and rounds < int(args.get("quit-after-rounds", 1)) and Net.now_ms() - over_ms > 2000.0:
+		restart_for = rounds
+		Store.send_room({"type": "start"})
+		_log("다음 판 시작 (넘겨받은 방장)")
 	if ph == "playing" and last_phase != "playing":
 		round_no += 1
 		round_ms = Net.now_ms()
