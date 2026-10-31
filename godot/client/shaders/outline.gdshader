@@ -1,7 +1,7 @@
 // 툰 외곽선 (JS render.js OutlineEffect: 뒤집은 면을 화면 기준 일정 굵기로 밀어냄, 색 [0.08,0.05,0.1]).
 // three OutlineEffect calculateOutline 그대로: 클립 좌표에서 (점 - (점 - 법선) 끝 점) 방향으로 thickness × w
 shader_type spatial;
-render_mode unshaded, cull_front, shadows_disabled;
+render_mode unshaded, cull_front, shadows_disabled, depth_draw_never;
 
 global uniform vec3 g3_fog_color;
 global uniform float g3_fog_near;
