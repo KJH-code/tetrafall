@@ -422,6 +422,12 @@ func test_dummy_body() -> void:
 	for i in 60:
 		b.pose(p, 600.0 + i * 16.0)
 	check(absf(fmod(b.dummy_spin, TAU)) < 0.05 or absf(absf(fmod(b.dummy_spin, TAU)) - TAU) < 0.05, "멈추면 섬 %f" % b.dummy_spin)
+	# 표식 번쩍 (B4 가 glow_until·glow_color 를 켬) → 허수아비 묶음 재질도 발광
+	b.glow_until = Time.get_ticks_msec() + 500.0
+	b.glow_color = Color(1, 0, 0)
+	b.pose(p, 2000.0)
+	var bm: ShaderMaterial = b.batch.mi.material_override
+	check(bm.get_shader_parameter("emissive") == Color(1, 0, 0), "허수아비 표식 번쩍")
 	b.on_event({"type": "hit", "target": -5, "who": 1})
 	b.on_event({"type": "attack", "who": -5})
 	b.free()

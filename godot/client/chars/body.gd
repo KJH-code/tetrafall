@@ -1452,6 +1452,7 @@ func _dummy_pose(p: Dictionary, now_ms: float) -> void:
 	if rig != null:
 		rig.rotation = Vector3(0, minf(1.0, hs / C.MOVE_SPEED) * C.ANIM_LEAN + dummy_spin, 0)
 	_sync_bones()
+	_fx_colors(p) # 몸 색 효과도 (사냥꾼 표식 번쩍 glow_until 등 — render.js 는 허수아비도 mats 발광)
 	var sq := _fx_amount("squash_amount")
 	scale = Vector3(1.0 + 0.28 * sq, 1.0 - 0.32 * sq, 1.0 + 0.28 * sq)
 
