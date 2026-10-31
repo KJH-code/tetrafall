@@ -113,14 +113,16 @@ public sealed partial class Game
     // 다음 로그 줄 뒤에 찍을 줄 (콤보 마무리)
     public void LogLater(string m) => pendingLogs.Add(m);
 
-    // 이벤트 하나 = JSON 객체 글자. 예: Emit(o => o.P("type", "land").P("who", id)). 튜토리얼 판정은 S4 (JS emit 의 tutorial.onEvent)
+    // 이벤트 하나 = JSON 객체 글자. 예: Emit(o => o.P("type", "land").P("who", id))
     public void Emit(Action<JsonOut> write)
     {
         var o = new JsonOut();
         o.Obj();
         write(o);
         o.EndObj();
-        events.Add(o.ToString());
+        string json = o.ToString();
+        events.Add(json);
+        if (tutorial != null) tutorial.OnEvent(System.Text.Json.JsonDocument.Parse(json).RootElement); // 튜토리얼 완료 판정 (치명타·스킬·낙사 등)
     }
 
     public List<string> DrainEvents()

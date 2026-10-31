@@ -120,15 +120,16 @@ public class RoomsUnitTests
     }
 
     [Fact]
-    public void Practice_room_not_yet_ported_does_not_take_the_server_down()
+    public void Practice_room_works_next_to_other_rooms()
     {
-        // 연습·튜토리얼 판 (S4) 은 아직 → 방 밖 메시지 오류 로그만, 다른 방·접속은 그대로
+        // 연습 방 (S4 옮긴 뒤): 오류 없이 만들어지고, 다른 방·접속은 그대로
         var server = new List<string>();
         var rooms = new Rooms(serverLog: server.Add, rng: new Mulberry32(3).AsFunc());
         var s1 = new Sock();
         var c1 = rooms.Connect(s1);
         rooms.Message(c1, J("{\"type\":\"practice\",\"nick\":\"a\"}"));
-        Assert.Contains(server, l => l.StartsWith("방 밖 메시지 오류 (practice): 아직 안 옮김"));
+        Assert.DoesNotContain(server, l => l.Contains("오류"));
+        Assert.Equal(1, s1.Count("welcome"));
         var s2 = new Sock();
         var c2 = rooms.Connect(s2);
         rooms.Message(c2, J("{\"type\":\"create\"}"));
