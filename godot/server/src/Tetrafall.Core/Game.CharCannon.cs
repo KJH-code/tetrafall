@@ -7,7 +7,7 @@ namespace Tetrafall.Core;
 public sealed partial class Game
 {
     // 쌓인 블록 1칸 부숨 (격자 칸 또는 떨어지는 블록의 한 칸). 시작 지형·바닥은 안 부숨. 부쉈으면 true
-    bool BreakCell(int x, int y, int z)
+    public bool BreakCell(int x, int y, int z)
     {
         long key = CellKey(x, y, z);
         if (pieceCells.TryGetValue(key, out int pid))
@@ -31,7 +31,7 @@ public sealed partial class Game
     }
 
     // 시간 장전: 탄이 덜 찼으면 CANNON_RELOAD_MS 마다 한 발
-    void CannonReload(Player p)
+    public void CannonReload(Player p)
     {
         if (p.cannonAmmo >= C.CANNON_AMMO_MAX)
         {
@@ -48,7 +48,7 @@ public sealed partial class Game
     }
 
     // 조준 방향 (높이 포함): pitch 가 없으면 0
-    static XYZ AimDir(Player p)
+    public static XYZ AimDir(Player p)
     {
         double pitch = double.IsNaN(p.pitch) ? 0 : p.pitch; // JS p.pitch || 0
         double cp = JsMath.Cos(pitch);
@@ -85,7 +85,7 @@ public sealed partial class Game
     }
 
     // 평타 포탄: 탄 1발 쓰고 쏨
-    void CannonShot(Player p)
+    public void CannonShot(Player p)
     {
         p.cannonAmmo--;
         if (p.reloadAt == 0 || double.IsNaN(p.reloadAt)) p.reloadAt = time + C.CANNON_RELOAD_MS;
@@ -94,7 +94,7 @@ public sealed partial class Game
     }
 
     // F 발밑 포격: 위로 크게 + 발밑 범위 넉백
-    bool CannonJump(Player p)
+    public bool CannonJump(Player p)
     {
         p.vz = C.CANNON_JUMP_UP;
         p.grounded = false;
@@ -116,7 +116,7 @@ public sealed partial class Game
     }
 
     // R 대형 포탄
-    void CannonBig(Player p)
+    public void CannonBig(Player p)
     {
         FireShell(p, true);
         Log($"  [필살] {p.name} 대형 포탄 발사");
@@ -204,7 +204,7 @@ public sealed partial class Game
     }
 
     // 대형 포탄 끝 폭발: 둘레 사람을 바깥으로
-    void BigShellBlast(Shell sh)
+    public void BigShellBlast(Shell sh)
     {
         var owner = GetPlayer(sh.owner);
         int n = 0;

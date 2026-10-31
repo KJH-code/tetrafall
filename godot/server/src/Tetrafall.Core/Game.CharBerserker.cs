@@ -9,7 +9,7 @@ public sealed partial class Game
     public double RageMult(double damage) => 1 + damage * C.BERSERKER_RAGE_PER_PERCENT;
 
     // F 광폭 도약: 보는 방향으로 크게 뜀 → 땅에 닿으면 착지 충격파 (BerserkerLeapUpdate)
-    bool BerserkerLeap(Player p)
+    public bool BerserkerLeap(Player p)
     {
         double sec = C.BERSERKER_LEAP_MS / 1000;
         double v = C.BERSERKER_LEAP_DIST / sec;
@@ -30,7 +30,7 @@ public sealed partial class Game
         return true;
     }
 
-    void BerserkerLeapUpdate(Player p)
+    public void BerserkerLeapUpdate(Player p)
     {
         if (time < p.rush!.endAt) return;
         if (!p.grounded)
@@ -56,7 +56,7 @@ public sealed partial class Game
     }
 
     // R 분노 소용돌이: 피해 % 를 깎고 (최대 BERSERKER_RAGE_CUT), 깎은 뒤 피해 % 를 마지막 날림 분노로 기억
-    void BerserkerSpin(Player p)
+    public void BerserkerSpin(Player p)
     {
         double before = p.damage;
         double cut = Math.Min(C.BERSERKER_RAGE_CUT, p.damage);
@@ -67,7 +67,7 @@ public sealed partial class Game
         Log($"  [필살] {p.name} 분노 소용돌이 (분노 ×{JsNumber.ToFixed(RageMult(rage), 2)}, 피해 {JsNumber.ToJs(before)}% → {JsNumber.ToJs(p.damage)}%)");
     }
 
-    void BerserkerSpinUpdate(Player p)
+    public void BerserkerSpinUpdate(Player p)
     {
         var S = p.spin!;
         if (time >= S.nextTick && time < S.endAt)

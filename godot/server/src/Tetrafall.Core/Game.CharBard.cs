@@ -6,7 +6,7 @@ namespace Tetrafall.Core;
 public sealed partial class Game
 {
     // 류트 음파: 조준 방향으로 느린 음파를 날림 (UpdateNotes)
-    void BardNote(Player p)
+    public void BardNote(Player p)
     {
         var dir = AimDir(p);
         var nt = new Note
@@ -62,7 +62,7 @@ public sealed partial class Game
     }
 
     // 음유 공중 평타: 천천히 낙하 (IntegratePlayer 가 중력을 줄임)
-    void BardGlide(Player p, double ms)
+    public void BardGlide(Player p, double ms)
     {
         p.glideUntil = time + ms; // 이어 치면 다시 늘어남
         p.glideCount++;
@@ -71,7 +71,7 @@ public sealed partial class Game
     }
 
     // 천천히 낙하 음파 고리: 몸 둘레 def.range 안 상대를 바깥으로 작게 밀침 (고정 넉백). 맞힌 사람이 있으면 true
-    bool BardGlideRing(Player p, double n, bool air, TAttack def, bool chained)
+    public bool BardGlideRing(Player p, double n, bool air, TAttack def, bool chained)
     {
         var set = BasicSet(p.@char, p.form);
         string label = BasicLabel(set, n, air, def);
@@ -102,7 +102,7 @@ public sealed partial class Game
     }
 
     // 메탈 공중 평타 기타 꽂기 시작: 아래로 빠르게, 수평으로는 느리게
-    void BardDive(Player p, TAttack def)
+    public void BardDive(Player p, TAttack def)
     {
         p.dive = new Dive { until = time + C.BARD_DIVE_MAX_MS, def = def };
         p.diveUsed = true;
@@ -114,7 +114,7 @@ public sealed partial class Game
     }
 
     // 기타 꽂기 판정 (한 번): 내려가며 아래 상대에 닿으면 아래로 꽂음, 아니면 착지 때 발밑 충격
-    void BardDiveUpdate(Player p)
+    public void BardDiveUpdate(Player p)
     {
         var D = p.dive!;
         var def = D.def!;
@@ -161,7 +161,7 @@ public sealed partial class Game
     }
 
     // F 폼 전환: 음유 → 메탈 = 충격파 + 기타 리프, 메탈 → 음유 = 치유파
-    bool BardSwitch(Player p)
+    public bool BardSwitch(Player p)
     {
         p.glideUntil = 0;
         if (p.form != "metal")
@@ -206,7 +206,7 @@ public sealed partial class Game
     }
 
     // 음유 R 취약의 노래: 앞 넓은 범위 상대가 BARD_VULN_MS 동안 받는 넉백 ×BARD_VULN_MULT
-    void BardSong(Player p)
+    public void BardSong(Player p)
     {
         double fx = JsMath.Cos(p.yaw), fy = JsMath.Sin(p.yaw);
         double cosHalf = JsMath.Cos(C.BARD_SONG_ANGLE_DEG / 2 * Math.PI / 180);
@@ -230,7 +230,7 @@ public sealed partial class Game
     }
 
     // 메탈 R 앰프 음파 시작
-    void BardAmp(Player p)
+    public void BardAmp(Player p)
     {
         p.amp = new Amp { endAt = time + C.BARD_AMP_MS, nextTick = time, yaw = p.yaw };
         Emit(o => o.P("type", "amp").P("who", p.id).P("ms", C.BARD_AMP_MS).P("yaw", p.yaw).P("lockYaw", C.BARD_AMP_LOCK_YAW));
@@ -241,7 +241,7 @@ public sealed partial class Game
     public double AmpYaw(Player p) => C.BARD_AMP_LOCK_YAW && p.amp != null ? p.amp.yaw : p.yaw;
 
     // 앞 원뿔 안 상대 (앰프)
-    List<Player> AmpTargets(Player p, double yaw)
+    public List<Player> AmpTargets(Player p, double yaw)
     {
         double fx = JsMath.Cos(yaw), fy = JsMath.Sin(yaw);
         double cosHalf = JsMath.Cos(C.BARD_AMP_ANGLE_DEG / 2 * Math.PI / 180);
@@ -254,7 +254,7 @@ public sealed partial class Game
         }).ToList();
     }
 
-    void BardAmpUpdate(Player p)
+    public void BardAmpUpdate(Player p)
     {
         var A = p.amp!;
         double yaw = AmpYaw(p);

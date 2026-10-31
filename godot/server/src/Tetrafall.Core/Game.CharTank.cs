@@ -9,7 +9,7 @@ public sealed partial class Game
     public int quakeCounter; // 솟는 땅 id (quakeRise·quakeFall 짝)
 
     // 돌진: TANK_CHARGE_MS 동안 보는 방향으로 빠르게. 처음 부딪힌 상대를 치고 멈춤 (UpdateCombat)
-    bool TankCharge(Player p)
+    public bool TankCharge(Player p)
     {
         p.chargeUntil = time + C.TANK_CHARGE_MS;
         p.chargeDir = new XY(JsMath.Cos(p.yaw), JsMath.Sin(p.yaw));
@@ -18,7 +18,7 @@ public sealed partial class Game
         return true;
     }
 
-    void ChargeHit(Player p)
+    public void ChargeHit(Player p)
     {
         foreach (var t in Players().ToList())
         {
@@ -34,7 +34,7 @@ public sealed partial class Game
     }
 
     // 내려찍기: 떠올랐다가 TANK_SLAM_WINDUP_MS 뒤 쾅 (바닥에 범위 예고). 주변을 위로 띄움
-    void TankSlamStart(Player p)
+    public void TankSlamStart(Player p)
     {
         p.slamAt = time + C.TANK_SLAM_WINDUP_MS;
         p.vz = C.TANK_SLAM_JUMP;
@@ -43,7 +43,7 @@ public sealed partial class Game
         Log($"  [필살] {p.name} 내려찍기 준비");
     }
 
-    void TankSlam(Player p)
+    public void TankSlam(Player p)
     {
         p.slamAt = 0;
         p.vz = Math.Min(p.vz, -C.TANK_SLAM_JUMP); // 쾅 내려옴
@@ -65,7 +65,7 @@ public sealed partial class Game
     }
 
     // R 바깥 고리: 충격파 바깥 TANK_RING_WIDTH 칸 고리의 기둥 꼭대기에 블록 1층이 솟아 위 사람을 띄움 → TANK_RING_MS 뒤 가라앉음
-    int TankRing(Player p)
+    public int TankRing(Player p)
     {
         double r0 = C.TANK_SLAM_RANGE, r1 = r0 + C.TANK_RING_WIDTH;
         var cells = new List<int[]>();
@@ -105,7 +105,7 @@ public sealed partial class Game
     }
 
     // 솟은 땅이 가라앉음 (그 사이 다른 블록이 덮어쓴 칸은 그대로)
-    void UpdateQuakes()
+    public void UpdateQuakes()
     {
         foreach (var q in quakes.ToList())
         {
@@ -124,7 +124,7 @@ public sealed partial class Game
     }
 
     // [[x, y, z], …] 칸 목록
-    static void WriteCells(JsonOut o, string key, IEnumerable<int[]> cells)
+    public static void WriteCells(JsonOut o, string key, IEnumerable<int[]> cells)
     {
         o.Key(key).Arr();
         foreach (var c in cells)

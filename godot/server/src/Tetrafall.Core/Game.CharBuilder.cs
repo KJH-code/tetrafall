@@ -6,11 +6,11 @@ namespace Tetrafall.Core;
 // server/char-builder.js — 건축가 (S3). 건축가 블록: 격자에는 CELL.BUILD, 주인·종류·묶음·수명은 bblocks 에. 망치로 치면 폭발
 public sealed partial class Game
 {
-    static int Sign(double v) => v > 0 ? 1 : v < 0 ? -1 : 0; // JS Math.sign (±0 은 0)
+    public static int Sign(double v) => v > 0 ? 1 : v < 0 ? -1 : 0; // JS Math.sign (±0 은 0)
 
     // 지상 F: 솟는 벽 — 바로 앞(네 방향으로 맞춤) 줄에 가로 BUILDER_WALL_WIDTH × BUILDER_WALL_HEIGHT. 예고 → BUILDER_WALL_WARN_MS 뒤 솟음
     // 공중 F: 발판
-    bool BuilderWall(Player p)
+    public bool BuilderWall(Player p)
     {
         if (!p.grounded) return BuilderPad(p);
         double fx = JsMath.Cos(p.yaw), fy = JsMath.Sin(p.yaw);
@@ -39,7 +39,7 @@ public sealed partial class Game
         return true;
     }
 
-    void BuilderWallRise(Player p)
+    public void BuilderWallRise(Player p)
     {
         var cells = p.wallCells!;
         p.wallAt = 0;
@@ -75,7 +75,7 @@ public sealed partial class Game
     }
 
     // 공중 F: 발밑으로 BUILDER_PAD_HEIGHT 칸 기둥을 세우고 나는 그 위에 섬. 한 칸도 못 놓으면 위로 부스트 (복귀기)
-    bool BuilderPad(Player p)
+    public bool BuilderPad(Player p)
     {
         int x = (int)Math.Floor(p.x), y = (int)Math.Floor(p.y);
         int top = (int)Math.Floor(p.z); // 서게 될 높이 (발밑 칸 윗면)
@@ -119,7 +119,7 @@ public sealed partial class Game
     }
 
     // 건축가 블록 놓기 (빈 칸일 때만). 놓았으면 true
-    bool PlaceBBlock(Player p, int x, int y, int z, string kind, int group)
+    public bool PlaceBBlock(Player p, int x, int y, int z, string kind, int group)
     {
         if (!InXY(x, y) || z < 0 || z >= H || grid[Idx(x, y, z)] != 0 || pieceCells.ContainsKey(CellKey(x, y, z))) return false;
         grid[Idx(x, y, z)] = Pieces.CELL.BUILD;
@@ -128,7 +128,7 @@ public sealed partial class Game
         return true;
     }
 
-    void RemoveBBlock(BBlock b, string why)
+    public void RemoveBBlock(BBlock b, string why)
     {
         bblocks.Remove(CellKey(b.x, b.y, b.z));
         if (grid[Idx(b.x, b.y, b.z)] == Pieces.CELL.BUILD) grid[Idx(b.x, b.y, b.z)] = 0;
@@ -142,7 +142,7 @@ public sealed partial class Game
     }
 
     // R 대폭발: 앞 BUILDER_BIG_GAP 칸 띄우고 BUILDER_BIG_SIZE × BUILDER_BIG_SIZE 기둥 꼭대기에서 블록이 솟음 → BUILDER_BIG_FUSE_MS 뒤 자동 대폭발
-    bool BuilderBigBomb(Player p)
+    public bool BuilderBigBomb(Player p)
     {
         double fx = JsMath.Cos(p.yaw), fy = JsMath.Sin(p.yaw);
         int[] along = Math.Abs(fx) >= Math.Abs(fy) ? new[] { Sign(fx), 0 } : new[] { 0, Sign(fy) };
@@ -186,7 +186,7 @@ public sealed partial class Game
     }
 
     // 대폭발 터짐 (자동 또는 망치). 범위 안 사람 한 번씩 dir 쪽으로 날림, 범위 안 내 블록(벽·3타)도 같이 터짐
-    void ExplodeBig(BigBomb bomb, XY dir)
+    public void ExplodeBig(BigBomb bomb, XY dir)
     {
         bigBombs = bigBombs.Where(b => b != bomb).ToList();
         var p = GetPlayer(bomb.owner);
@@ -222,7 +222,7 @@ public sealed partial class Game
     }
 
     // 사람 몸(가로 상자)이 칸 가장자리에서 r 안, 높이 차 BUILDER_BLAST_HEIGHT 안
-    static bool NearCell(Player t, BBlock b, double r)
+    public static bool NearCell(Player t, BBlock b, double r)
     {
         double gx = Math.Max(Math.Max(b.x - (t.x + C.PLAYER_HALF), t.x - C.PLAYER_HALF - (b.x + 1)), 0);
         double gy = Math.Max(Math.Max(b.y - (t.y + C.PLAYER_HALF), t.y - C.PLAYER_HALF - (b.y + 1)), 0);
@@ -230,7 +230,7 @@ public sealed partial class Game
     }
 
     // 망치(평타) 판정이 닿은 내 블록을 터뜨림. 터뜨렸으면 true
-    bool HammerBlocks(Player p, double range, double cosHalf)
+    public bool HammerBlocks(Player p, double range, double cosHalf)
     {
         double fx = JsMath.Cos(p.yaw), fy = JsMath.Sin(p.yaw);
         var hitGroups = new HashSet<int>();
@@ -259,7 +259,7 @@ public sealed partial class Game
 
     // 벽·3타 블록·발판 폭발. 벽·발판 기둥은 같은 묶음끼리 이어진 칸으로 연쇄. 사람은 한 번씩, 가까운 터진 칸 수 × BUILDER_BLAST_DAMAGE.
     // 치는 방향(dir) 앞쪽 사람만 dir 쪽으로 날림, 건축가 자신은 안 맞음. 터진 칸 수를 돌려줌
-    int Blast(BBlock start, XY dir)
+    public int Blast(BBlock start, XY dir)
     {
         var p = GetPlayer(start.owner);
         var order = new List<BBlock> { start };
@@ -304,7 +304,7 @@ public sealed partial class Game
     }
 
     // 테스트 옵션: 터진 칸 바로 아래 바닥 1칸을 BUILDER_HOLE_MS 동안 구멍으로
-    void HoleUnder(List<BBlock> cells)
+    public void HoleUnder(List<BBlock> cells)
     {
         if (!C.BUILDER_BLAST_HOLE) return;
         foreach (var b in cells)
@@ -320,7 +320,7 @@ public sealed partial class Game
     }
 
     // 틱마다: 수명 끝난 건축가 블록 사라짐, 다른 이유로 없어진 칸은 기록에서 지움, 대폭발 시간, 구멍 메우기
-    void UpdateBBlocks()
+    public void UpdateBBlocks()
     {
         foreach (var b in bblocks.Values.ToList())
         {
@@ -341,7 +341,7 @@ public sealed partial class Game
 
     // 건축가 내려찍기: 맞힌 사람 발밑 (빗나가면 앞 1.5칸) 기둥 꼭대기에 건축가 블록 1칸 ('third', 최대 BUILDER_THIRD_MAX 개).
     // 내 몸과 겹치는 칸이면 앞으로 0.5칸씩 (game-combat.js basicRaise)
-    void BasicRaise(Player p, Player? t)
+    public void BasicRaise(Player p, Player? t)
     {
         double fx = JsMath.Cos(p.yaw), fy = JsMath.Sin(p.yaw);
         double bx = t != null ? t.x : p.x + fx * 1.5;
