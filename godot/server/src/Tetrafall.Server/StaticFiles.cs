@@ -2,8 +2,19 @@ namespace Tetrafall.Server;
 
 // URL → 디스크 경로 (server/index.js resolveFile 과 같음): client/, shared/, three.js·cannon-es 만 노출.
 // + /play/ → godot/client/build/web (고도 웹 빌드, 스레드 없는 판이라 COOP/COEP 헤더 필요 없음. 같은 호스트라 ?server= 없이 이 서버에 붙음)
+// 배포 폴더 (tools/package.mjs zip: 서버 exe 옆에 web/) 면 /play/ → <뿌리>/web, JS 화면이 없으니 / 는 /play/ 로 보냄 (방 링크 ?room= 그대로)
 public static class StaticFiles
 {
+    // 고도 웹 빌드 폴더: 배포 폴더 web/ 가 있으면 그것, 아니면 레포 godot/client/build/web
+    public static string WebDir(string root)
+    {
+        var release = Path.Combine(root, "web");
+        return Directory.Exists(release) ? release : Path.Combine(root, "godot", "client", "build", "web");
+    }
+
+    // 기존 JS 화면(client/index.html)이 있나 — 레포면 있음, 배포 폴더면 없음
+    public static bool HasJsClient(string root) => File.Exists(Path.Combine(root, "client", "index.html"));
+
     static readonly Dictionary<string, string> MIME = new()
     {
         [".html"] = "text/html; charset=utf-8",
@@ -60,10 +71,11 @@ public static class StaticFiles
         return sb.ToString();
     }
 
-    // /play (끝 / 없음) → /play/ 로 보냄 (쿼리 그대로). 아니면 HTML 안 상대 주소 index.js 가 /index.js (JS 화면) 로 풀려 고도가 안 뜸
-    public static string? Redirect(string urlPath, string rawTarget)
+    // /play (끝 / 없음) → /play/ 로 보냄 (쿼리 그대로). 아니면 HTML 안 상대 주소 index.js 가 /index.js (JS 화면) 로 풀려 고도가 안 뜸.
+    // jsClient 가 false (배포 폴더) 면 / 도 /play/ 로
+    public static string? Redirect(string urlPath, string rawTarget, bool jsClient = true)
     {
-        if (urlPath != "/play") return null;
+        if (urlPath != "/play" && !(!jsClient && (urlPath == "/" || urlPath == ""))) return null;
         int q = rawTarget.IndexOf('?');
         return "/play/" + (q >= 0 ? rawTarget[q..] : "");
     }
@@ -76,7 +88,7 @@ public static class StaticFiles
         string @base, rel;
         if (urlPath == "/play" || urlPath.StartsWith("/play/"))
         {
-            @base = Path.Combine(root, "godot", "client", "build", "web");
+            @base = WebDir(root);
             rel = urlPath.Length <= "/play/".Length ? "index.html" : urlPath["/play/".Length..];
         }
         else if (urlPath.StartsWith("/vendor/jsm/"))

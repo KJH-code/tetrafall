@@ -38,7 +38,7 @@ WEB_PORT=8060 xvfb-run -a node godot/client/tools/web_shot.cjs /tmp "?server=ws:
 
 - 템플릿: `~/.local/share/godot/export_templates/4.7.2.stable/` 에 `web_nothreads_release.zip`·`windows_release_x86_64.exe`·`linux_release.x86_64` (받기는 prototype README)
 - 크기 (2026-10-31): 웹 wasm 39.5MB (gzip 약 10MB) + pck 0.3MB, 윈도우 exe 110MB, 리눅스 74MB (pck 포함 한 파일). `build/` 는 커밋 안 함
-- 웹은 지금 게임 서버와 다른 포트에서 서빙 (`?server=`). 게임 서버가 웹 빌드도 같이 서빙하게 하는 건 C# 서버 S6 와 약속 (같은 호스트면 `?server=` 없이 붙음)
+- 웹은 C# 서버가 `/play/` 로 같이 서빙 (같은 호스트라 `?server=` 없이 붙음). 서버·웹·PC 클라 한 zip 은 `node godot/server/tools/package.mjs --godot <고도>` (godot/server/README.md G7, 재혁 PC 순서 docs/godot-play.md)
 - 재혁 PC (윈도우): `tetrafall.exe -- --server ws://<서버 IP>:3000` (또는 같은 PC 면 그냥 `tetrafall.exe`)
 
 ## 소리 (G5, `audio/`)
