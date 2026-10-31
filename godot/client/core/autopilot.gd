@@ -4,6 +4,7 @@
 # 화면 확인 (G4): --shot <png> --shot-at menu|lobby|game|tab|settings|results (기본 game). menu = 방 안 만듦, lobby = 시작 안 함,
 # tab = 판 중 점수표 (킬 점수전에서만 보임 → --mode kills), settings = 설정 창, results = 판이 끝나고 --shot-after 초 (기본 1.5) 뒤.
 # --mode survival|master|kills 면 시작 전에 모드를 바꿈. 창 크기는 고도 --resolution 1280x720
+# 성능 비교 (G3): --view first|third|spectate (third 는 설정 3인칭, spectate 는 방장이 관전) · --map <맵 id> · --perf-log 에 1% low·메모리 한 줄 더
 # 성능: --perf-log (찍는 순간 = --shot-after 에 그리기 수·물체 수·삼각형 수·FPS·프레임 ms 한 줄, 화면 없이도)
 # --auto practice|tutorial: 연습·튜토리얼 방 (G6, --char 캐릭터, 연습 창은 --practice-open)
 # 화면 범인 찾기: --hide ui|world|audio (그 묶음을 숨기고 찍음) · --dump (찍을 때 보이는 Control·CanvasItem·3D 노드를 화면 사각형과 함께 출력)
@@ -27,7 +28,10 @@ var interp_ok := 0
 var push_at := 0.0
 var shot_done := false
 var perf_done := false
-var frame_ms: Array = [] # --perf-log: 최근 프레임 시간 (ms)
+var frame_ms: Array = [] # --perf-log: 최근 프레임 시간 (ms, 벽시계)
+var last_us := 0
+var perf_rt := false
+var perf_split := [0.0, 0.0, 0.0, 0.0, 0] # 그리기 CPU · GPU · _process · 물리 (ms 합), 프레임 수
 var shot_at := "game"
 var over_ms := -1.0
 var mode_sent := false
@@ -37,6 +41,10 @@ func _ready() -> void:
 	role = str(args.get("auto", "host"))
 	shot_at = str(args.get("shot-at", "game"))
 	start_ms = Net.now_ms()
+	if args.has("view"):
+		View.settings["third"] = str(args["view"]) == "third"
+	if args.has("low"): # 성능 비교: 그래픽 낮춤으로
+		View.settings["lowGfx"] = true
 	Store.rooms_changed.connect(_on_rooms)
 	Store.joined.connect(_on_joined)
 	Store.state_changed.connect(_on_state)
@@ -63,6 +71,10 @@ func _on_joined(room: Dictionary, again: bool) -> void:
 		return
 	PlayerInput.lock_mouse(true) # 헤드리스: 마우스 잡힌 셈 (입력이 나가게)
 	if role == "host":
+		if args.has("map"): # 성능 비교 (G3): 같은 맵
+			Store.send_room({"type": "setMap", "map": str(args["map"])})
+		if str(args.get("view", "")) == "spectate": # 관전: 방장은 빠지고 봇만
+			Store.send_room({"type": "spectate"})
 		for i in int(args.get("bots", 1)):
 			Store.send_room({"type": "addBot"})
 	if role == "practice":
@@ -75,7 +87,7 @@ func _on_state(st: Dictionary, _prev: Dictionary) -> void:
 	if role == "host" and args.has("mode") and not mode_sent and ph == "lobby" and st.get("hostId") == Store.my_id:
 		mode_sent = true
 		Store.send_room({"type": "setMode", "mode": str(args["mode"])})
-	if role == "host" and shot_at != "lobby" and not started and ph == "lobby" and (not args.has("mode") or st.get("mode") == str(args["mode"])) and st.get("canStart", false) and Store.player(Store.my_id).size() > 0 and int(st.players.size()) >= int(args.get("wait-players", 2)):
+	if role == "host" and shot_at != "lobby" and not started and ph == "lobby" and (not args.has("mode") or st.get("mode") == str(args["mode"])) and st.get("canStart", false) and (Store.player(Store.my_id).size() > 0 or str(args.get("view", "")) == "spectate") and int(st.players.size()) >= int(args.get("wait-players", 2)):
 		started = true
 		Store.send_room({"type": "start"})
 		_log("시작 (%d명)" % st.players.size())
@@ -144,8 +156,21 @@ func _process(_d: float) -> void:
 	if shot_at == "results":
 		shot_time = over_ms >= 0.0 and now - over_ms >= float(args.get("shot-after", 1.5)) * 1000.0
 	if args.has("perf-log"):
-		frame_ms.append(_d * 1000.0)
-		if frame_ms.size() > 120:
+		if not perf_rt:
+			perf_rt = true
+			RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
+		if el >= float(args.get("shot-after", 8)) - float(args.get("perf-secs", 1e9)):
+			var vr := get_viewport().get_viewport_rid()
+			perf_split[0] += RenderingServer.viewport_get_measured_render_time_cpu(vr) + RenderingServer.get_frame_setup_time_cpu()
+			perf_split[1] += RenderingServer.viewport_get_measured_render_time_gpu(vr)
+			perf_split[2] += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+			perf_split[3] += Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
+			perf_split[4] += 1
+		var now_us := Time.get_ticks_usec() # 벽시계 (_process delta 는 느리면 물리 틱 수로 잘려 133ms 에서 멈춤)
+		if last_us > 0 and el >= float(args.get("shot-after", 8)) - float(args.get("perf-secs", 1e9)): # --perf-secs N: 찍기 전 N 초만 (판 시작·로딩 빼고)
+			frame_ms.append((now_us - last_us) / 1000.0)
+		last_us = now_us
+		if frame_ms.size() > (100000 if args.has("perf-secs") else 120):
 			frame_ms.pop_front()
 		if not perf_done and shot_time:
 			perf_done = true
@@ -155,6 +180,13 @@ func _process(_d: float) -> void:
 				avg += v
 				worst = maxf(worst, v)
 			avg /= maxf(1.0, frame_ms.size())
+			var sorted := frame_ms.duplicate()
+			sorted.sort()
+			var k := maxi(1, ceili(sorted.size() * 0.01))
+			var low := 0.0
+			for i in k:
+				low += sorted[sorted.size() - 1 - i]
+			_log("성능 표: 평균 %.2fms · 1%% low %.2fms · 그리기 %d · 메모리 %.1fMB (영상 %.1fMB) · 프레임 %d | 나눔 평균: 그리기 CPU %.1fms · GPU %.1fms · 스크립트 %.1fms · 물리 %.1fms" % [avg, low / k, Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0, Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0, sorted.size(), perf_split[0] / maxf(1, perf_split[4]), perf_split[1] / maxf(1, perf_split[4]), perf_split[2] / maxf(1, perf_split[4]), perf_split[3] / maxf(1, perf_split[4])])
 			_log("성능: 그리기 %d · 물체 %d · 삼각형 %d · FPS %d · 프레임 평균 %.1fms 최악 %.1fms (최근 %d프레임) | 나눠서: 보이는 %d · 그림자 %d · 몸 메시 %d" % [Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME), Engine.get_frames_per_second(), avg, worst, frame_ms.size(), get_viewport().get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME), get_viewport().get_render_info(Viewport.RENDER_INFO_TYPE_SHADOW, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME), _body_meshes(get_tree().root)])
 			var rw = get_tree().root.get_node_or_null("TfRagdolls")
 			if rw != null:
