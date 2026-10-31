@@ -22,6 +22,7 @@ const SUN_ENERGY := 1.0 / PI # 테마 sunIntensity 배율 (three.js 는 램버�
 const HEMI_ENERGY := 1.0 / PI # 테마 hemi 세기 배율 (같은 까닭)
 const OVER_POSE := [1.2, -0.75] # 확인용 --world-view over: 전체 보기 yaw·pitch
 const HAZARD_SURF := [0.35, 0.35] # 위험 표면 거칠기, 반사 세기
+const HAZARD_LIGHT_K := 1.0 # 위험 빛 (OmniLight) 세기 배수 — three 점광원 세기 → 고도 energy
 const HAZARD_GLOW := [0.4, 0.2] # 위험 표면 스스로 빛남 (용암, 물·기타)
 const FOAM_ALPHA := 0.85 # 닿는 곳 거품 띠 진하기
 const LABEL_LIFT := 0.2 # 이름표를 머리 위로 더 (두 줄 글자 가운데 자리)
