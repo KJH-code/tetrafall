@@ -56,6 +56,7 @@ public sealed partial class Game
     public List<BigBomb> bigBombs = new();
     public List<Hole> holes = new();
     public List<Quake> quakes = new();
+    public Profiler? prof; // 틱 구간 재기 (LoadBench, 보통 null)
     public List<Shell> shells = new();
     public List<Note> notes = new();
     public int shellCounter;
@@ -144,6 +145,7 @@ public sealed partial class Game
         time += dtMs;
         if (phase == "countdown" && time >= countdownEndsAt) BeginPlay();
         if (phase != "playing") return;
+        prof?.Begin();
         double dt = dtMs / 1000;
         foreach (var (id, brain) in bots.ToList())
         {
@@ -156,7 +158,9 @@ public sealed partial class Game
             var p = GetPlayer(id);
             if (p != null && p.alive && OnField(p)) brain.Update(this, p);
         }
+        prof?.Lap("bots");
         UpdatePieces();
+        prof?.Lap("pieces");
         double remaining = dt;
         while (remaining > 0)
         {
@@ -165,7 +169,9 @@ public sealed partial class Game
             remaining -= h;
         }
         foreach (var p in Players()) if (p.grounded && p.alive && OnField(p)) p.lastGround = GroundKind(p);
+        prof?.Lap("physics");
         UpdateCombat();
+        prof?.Lap("combat");
         if (hpMode) HpKnockouts();
         foreach (var p in Players().ToList())
         {
@@ -183,6 +189,7 @@ public sealed partial class Game
         if (shells.Count > 0) UpdateShells(dt);
         if (notes.Count > 0) UpdateNotes(dt);
         UpdateBombs();
+        prof?.Lap("rest");
         if (C.ROUND_TIME_LIMIT_MS > 0 && time - roundStartTime >= C.ROUND_TIME_LIMIT_MS)
         {
             Log("  시간 초과 → 무승부");
@@ -190,5 +197,6 @@ public sealed partial class Game
             return;
         }
         CheckRoundEnd();
+        prof?.Lap("rest");
     }
 }

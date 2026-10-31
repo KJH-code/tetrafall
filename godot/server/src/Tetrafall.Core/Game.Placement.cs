@@ -245,6 +245,46 @@ public sealed partial class Game
             }
             if (nr == 0) return; // 덩어리가 통째로 덮임
             int left = size[id] - coveredIn;
+            // 지름길: 남은 칸은 모두 둘레 칸을 거쳐 이어져 있었음 → 둘레 칸끼리 블록 둘레 상자 (한 칸 넓힘) 안에서 서로 이어지면 남은 칸은 한 조각 (아래 전체 BFS 와 같은 답)
+            int bx0 = int.MaxValue, by0 = int.MaxValue, bx1 = int.MinValue, by1 = int.MinValue;
+            foreach (var c in covered)
+            {
+                int cx = c % W_, cy = c / W_;
+                if (cx < bx0) bx0 = cx;
+                if (cx > bx1) bx1 = cx;
+                if (cy < by0) by0 = cy;
+                if (cy > by1) by1 = cy;
+            }
+            bx0--;
+            by0--;
+            bx1++;
+            by1++;
+            {
+                uint ls = ++stamp;
+                int head = 0, tail = 0, met = 0;
+                stack[tail++] = ring[0];
+                seen[ring[0]] = ls;
+                while (head < tail)
+                {
+                    int c = stack[head++];
+                    if (ringMark[c] == rs) met++;
+                    int cx = c % W_, cy = c / W_;
+                    for (int k = 0; k < 4; k++)
+                    {
+                        int q = Nb(c, k);
+                        if (q < 0 || comp[q] != id || cov[q] == covStamp || seen[q] == ls) continue;
+                        int qx = q % W_, qy = q / W_;
+                        if (qx < bx0 || qx > bx1 || qy < by0 || qy > by1) continue;
+                        seen[q] = ls;
+                        stack[tail++] = q;
+                    }
+                }
+                if (met == nr)
+                {
+                    out_.Add(left);
+                    return;
+                }
+            }
             uint ss = ++stamp;
             int found = 0;
             for (int r = 0; r < nr; r++)

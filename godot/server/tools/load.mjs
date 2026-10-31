@@ -40,4 +40,4 @@ for (let t = 0; t < TICKS; t++) {
 const steady = times.slice(WARM).sort((a, b) => a - b);
 const r3 = (x) => Math.round(x * 1000) / 1000;
 const avg = steady.reduce((a, b) => a + b, 0) / steady.length;
-console.log(JSON.stringify({ server: 'js', rooms: list.length, players: list.map((x) => x.room.game.players.size), ticks: TICKS, warm: WARM, rounds, avgMs: r3(avg), p50Ms: r3(steady[Math.floor(steady.length * 0.5)]), p99Ms: r3(steady[Math.floor(steady.length * 0.99)]), maxMs: r3(steady.at(-1)), maxWarmMs: r3(Math.max(...times.slice(0, WARM))), budgetMs: r3(TICK), sentMB: r3(bytes / 1e6) }));
+console.log(JSON.stringify({ server: 'js', rooms: list.length, players: list.map((x) => x.room.game.players.size), ticks: TICKS, warm: WARM, rounds, avgMs: r3(avg), p50Ms: r3(steady[Math.floor(steady.length * 0.5)]), p99Ms: r3(steady[Math.floor(steady.length * 0.99)]), maxMs: r3(steady.at(-1)), maxWarmMs: r3(Math.max(...times.slice(0, WARM))), over16: steady.filter((x) => x > 16).length, over33: steady.filter((x) => x > TICK).length, budgetMs: r3(TICK), sentMB: r3(bytes / 1e6) }));

@@ -101,6 +101,9 @@ public sealed class Rooms
     // 테스트용: 방 하나에서 예외가 나는 경우 (JS 테스트는 game.tick 등을 갈아 끼움). where = "틱" | "메시지" | "스냅샷"
     public Action<Room, string>? fault;
 
+    // 방마다 틱·스냅샷을 병렬로 (false 면 예전처럼 한 스레드에서 차례로 — 부하 비교용)
+    public bool parallel = true;
+
     static double MaxPlayers() => Math.Min(C.MAX_PLAYERS, 8); // shared/config.js SPAWN_POINTS 8곳
 
     // openLog(code) → 방마다 로그 (서버는 파일, 테스트는 목록), serverLog: 방 밖 일, now(): 메시지 빈도 제한용 시계 (ms),
@@ -578,33 +581,58 @@ public sealed class Rooms
     };
 
     // ---------- 틱·보내기 ----------
+    // 방마다 게임 틱은 병렬 (방끼리 공유 상태 없음: 게임·난수·로그가 방마다). 끊김 만료·방 닫기는 그 뒤 방 순서대로 이 스레드에서
     public void Tick(double dt)
     {
-        foreach (var room in rooms.Values())
+        var list = rooms.Values().ToList();
+        var errs = new Exception?[list.Count];
+        void One(int i)
         {
             try
             {
-                fault?.Invoke(room, "틱");
-                room.game.Tick(dt);
-                ExpireSeats(room);
+                fault?.Invoke(list[i], "틱");
+                list[i].game.Tick(dt);
             }
             catch (Exception err)
             {
-                Crash(room, "틱", err);
+                errs[i] = err;
             }
+        }
+        if (parallel && list.Count > 1) Parallel.For(0, list.Count, One);
+        else for (int i = 0; i < list.Count; i++) One(i);
+        for (int i = 0; i < list.Count; i++)
+        {
+            var room = list[i];
+            if (errs[i] == null)
+            {
+                try
+                {
+                    ExpireSeats(room);
+                    continue;
+                }
+                catch (Exception err)
+                {
+                    errs[i] = err;
+                }
+            }
+            Crash(room, "틱", errs[i]!);
         }
     }
 
     // 방마다 스냅샷 한 번 (이벤트는 보낼 때 비움)
+    // 스냅샷 글자는 방마다 병렬로 만들고, 보내기는 방 순서대로 이 스레드에서
     public void Broadcast()
     {
-        foreach (var room in rooms.Values())
+        var list = rooms.Values().ToList();
+        var payloads = new string?[list.Count];
+        var errs = new Exception?[list.Count];
+        void One(int i)
         {
-            string payload;
+            var room = list[i];
             try
             {
                 fault?.Invoke(room, "스냅샷");
-                payload = room.game.Snapshot(false, o =>
+                payloads[i] = room.game.Snapshot(false, o =>
                 {
                     o.Key("events").Arr();
                     foreach (var e in room.game.DrainEvents()) o.Raw(e);
@@ -614,10 +642,19 @@ public sealed class Rooms
             }
             catch (Exception err)
             {
-                Crash(room, "스냅샷", err);
+                errs[i] = err;
+            }
+        }
+        if (parallel && list.Count > 1) Parallel.For(0, list.Count, One);
+        else for (int i = 0; i < list.Count; i++) One(i);
+        for (int i = 0; i < list.Count; i++)
+        {
+            if (errs[i] != null)
+            {
+                Crash(list[i], "스냅샷", errs[i]!);
                 continue;
             }
-            foreach (var c in room.conns.Values()) if (c.ws.Open) c.ws.Send(payload);
+            foreach (var c in list[i].conns.Values()) if (c.ws.Open) c.ws.Send(payloads[i]!);
         }
     }
 
