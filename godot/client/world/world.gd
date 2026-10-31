@@ -40,6 +40,9 @@ var field := Vector3i.ZERO # 지금 판 크기 (w, d, h)
 var built_version := -2
 var headless := false
 var G3 = null
+var sprouts = null # G3 튀어나온 조각 노드 (테마마다)
+var vm = null # G2 1인칭 팔·무기 (chars/viewmodel.gd)
+const VIEWMODEL := "res://chars/viewmodel.gd"
 
 
 func _ready() -> void:
@@ -81,6 +84,9 @@ func _ready() -> void:
 		var fx = load(FX).new()
 		fx_root.add_child(fx)
 		fx.setup(rig)
+	if ResourceLoader.exists(VIEWMODEL):
+		vm = load(VIEWMODEL).new()
+		add_child(vm)
 	if ResourceLoader.exists(BBLOCKS):
 		bblocks = load(BBLOCKS).new()
 		add_child(bblocks)
@@ -111,7 +117,10 @@ func _ready() -> void:
 		if args.has("mode"):
 			Store.send_room({"type": "setMode", "mode": args.mode}))
 	Store.game_event.connect(bodies.on_event)
-	View.changed.connect(func(k): if k == "lowGfx": set_shadows(not View.settings.lowGfx))
+	View.changed.connect(func(k):
+		if k == "lowGfx":
+			set_shadows(not View.settings.lowGfx)
+			apply_theme(str(theme_id))) # 지형 셰이더·튀어나온 조각도 낮춤으로
 	set_shadows(not View.settings.get("lowGfx", false))
 
 
@@ -131,7 +140,15 @@ func apply_theme(map_id: String) -> void:
 	hazard_view.set_theme(theme)
 	built_version = -2 # 칸 색이 바뀜 → 다시 깖
 	if G3 != null:
-		G3.apply_theme(self, C.WORLD_MAP_THEME.get(map_id), bool(View.settings.get("lowGfx", false)))
+		var tid = C.WORLD_MAP_THEME.get(map_id)
+		var low := bool(View.settings.get("lowGfx", false))
+		G3.apply_theme(self, tid, low)
+		grid_view.set_terrain_look(G3.terrain_mesh(tid), G3.terrain_material(tid, low), G3.terrain_custom)
+		if sprouts != null:
+			sprouts.queue_free()
+		sprouts = G3.sprout_node(tid)
+		if sprouts != null:
+			grid_view.add_child(sprouts) # 판 밖 (메뉴) 에선 grid_view 와 같이 숨음
 		return
 	var sk: Dictionary = theme.get("sky", {})
 	sky_mat.sky_top_color = Co.color(sk.get("top", C.SKY_TOP))
@@ -174,6 +191,8 @@ func _process(dt: float) -> void:
 	var live: bool = not st.is_empty() and st.has("field")
 	for n in [scenery, grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, ghost_aim]:
 		n.visible = live and ((n != hazard_view and n != ghost_aim) or n.visible)
+	if not live and vm != null:
+		vm.update(null, false, dt) # 방 밖: 1인칭 팔 끔
 	if headless or not live:
 		return
 	dt *= View.time_scale # KO 슬로모션 (G5 가 정함)
@@ -198,6 +217,8 @@ func _process(dt: float) -> void:
 	if Store.grid_version != built_version and Store.grid.size() == fs.x * fs.y * fs.z:
 		grid_view.rebuild(Store.grid, fs.x, fs.y, fs.z)
 		built_version = Store.grid_version
+		if sprouts != null:
+			G3.sprout_update(sprouts, Store.grid, fs.x, fs.y, fs.z, grid_view.skip, bool(View.settings.get("lowGfx", false)))
 	rig.pre(dt)
 	var sky_on: bool = rig.sky_blend > 0.5
 	bodies.update(st, Store.my_id, rig.hide_me(), sky_on, now)
@@ -221,6 +242,9 @@ func _process(dt: float) -> void:
 	sky_aids.update(sky_on, my_piece, people, now)
 	rig.place(dt, bodies.shown, solid_at)
 	bodies.thin_labels(rig.cam, sky_on)
+	if vm != null: # 1인칭 팔·무기: 살아 있고 1인칭 (몸을 숨긴 때) 만
+		var mine = bodies.nodes.get(Store.my_id, {}).get("body") if Store.my_id != null else null
+		vm.update(mine, mine != null and rig.hide_me() and View.mode == "first" and not me.is_empty() and me.alive, dt)
 	var gcd = me.get("ghostCd") if not me.is_empty() else null
 	ghost_aim.update(rig.spectating() and gcd != null and rig.sky_blend == 0.0, rig.cam, Bodies.player_color(me, st) if not me.is_empty() else 0xffffff, gcd != null and float(gcd) == 0.0, field.x, field.y, solid_at, column_top, now)
 
