@@ -152,9 +152,10 @@ func test_bodies_build_and_animate() -> void:
 			{"walking": false, "air": false, "victory": 1.2},
 			{"walking": false, "air": false, "emote": int(C.EMOTE_CHAR), "emoteT": 0.6},
 			{"walking": false, "air": false, "hit": {"id": 3, "age": 0.01, "stop": 0.1, "dx": -1.0, "dy": 0.3, "pow": 1.5}},
+			{"walking": false, "air": false, "dizzy": 0.7, "punch": 0.6},
 		]
 		for s in states:
-			var st := {"air": false, "walking": false, "hs": 0.0, "walk": 0.0, "vz": 0.0, "t": 1.0, "stunned": false, "emote": -1, "emoteT": 0.0, "victory": -1.0, "hit": null, "act": null, "accF": 3.0, "accS": -2.0, "tumble": 0.0, "recover": 0.0, "land": 0.0, "flip": -1.0, "idle": 0.0, "airDash": 0.0, "form": "", "loaded": false, "ammo": 3.0}
+			var st := {"air": false, "walking": false, "hs": 0.0, "walk": 0.0, "vz": 0.0, "t": 1.0, "stunned": false, "emote": -1, "emoteT": 0.0, "victory": -1.0, "hit": null, "act": null, "accF": 3.0, "accS": -2.0, "tumble": 0.0, "recover": 0.0, "land": 0.0, "flip": -1.0, "idle": 0.0, "airDash": 0.0, "form": "", "loaded": false, "ammo": 3.0, "dizzy": 0.0, "punch": 0.0}
 			st.merge(s, true)
 			for k in 10:
 				b._figure_anim(st, 1.0 / 60.0)

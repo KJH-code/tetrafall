@@ -32,6 +32,13 @@ var parents: Array[int] = [] # 노드 번호 → 부모 번호 (1인칭 팔이 �
 var cur_act = null # 지금 공격 동작 (_act_for 결과, 1인칭 팔이 씀)
 var flap_s := {"x": 0.0, "v": 0.0}
 var form := ""
+var dizzy := 0.0 # 광전사 어지러움 남은 초 (spinEnd·끊긴 소용돌이, render.js setDizzy)
+var rage_k := 0.0 # 광전사 분노 0~1 (피해 % / BERSERK_RAGE_PCT)
+var form_at := -1e9 # 바드 폼이 바뀐 시각 (초, 튀기기 연출)
+var opacity := 1.0 # 유령화·무적 반투명
+var drawn: Array = [] # 그리는 메시 [{mi, m (재질 표), merged}] (반투명 바꾸기)
+var stars: Array[MeshInstance3D] = [] # 어지러움: 머리 위 노란 별 셋
+var fx_node = null # G5 효과 (squash_amount·punch_amount)
 var loaded := false # 갈고리 장전 (스냅샷 loaded, 1인칭 팔이 씀)
 var frame: Node3D # 게임 좌표 → 고도
 var rig: Node3D # 몸 전체 기울임·공중제비·구르기 (render.js rig)
@@ -149,6 +156,23 @@ func build(char_id_: String, color: Color, merge: bool = K.MERGE) -> void:
 		hammer.visible = char_id == "builder" # 건축가 무기
 	if merge:
 		_merge(cd)
+	else:
+		for i in piece_mat:
+			drawn.append({"mi": nodes[i], "m": cd.mats[piece_mat[i]], "merged": false})
+	# 어지러움 별 (처음엔 숨김)
+	if refs.has("pupils"):
+		var sm := StandardMaterial3D.new()
+		sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		sm.albedo_color = Color8(0xff, 0xe0, 0x40)
+		for k in 3:
+			var st := MeshInstance3D.new()
+			var pm := PrismMesh.new()
+			pm.size = Vector3.ONE * 0.1
+			st.mesh = pm
+			st.material_override = sm
+			st.visible = false
+			frame.add_child(st)
+			stars.append(st)
 	P = Motion.rest_pose(d)
 	V = Motion.zero_pose(P)
 	_apply(0.0)
@@ -173,12 +197,16 @@ func _merge(cd: Dictionary) -> void:
 	for i in nodes.size():
 		skin.add_bind(i, rest_g[i].affine_inverse())
 	var keep_torso: bool = refs.has("formParts")
+	var rage_eye := -1
+	if refs.get("rage") is Dictionary and refs.rage.get("eyeMat") is Dictionary:
+		rage_eye = int(refs.rage.eyeMat.mat)
 	var groups := {} # 재질 종류 → {vs, ns, cs, us, bs, ws, mat}
 	for i in piece_mat:
 		var mi := nodes[i] as MeshInstance3D
 		var m: Dictionary = cd.mats[piece_mat[i]]
-		if m.get("transparent", false) or (keep_torso and mi == torso):
-			continue # 따로 그림
+		if m.get("transparent", false) or (keep_torso and mi == torso) or int(piece_mat[i]) == rage_eye:
+			drawn.append({"mi": mi, "m": m, "merged": false})
+			continue # 따로 그림 (재질이 바뀜: 투명·바드 몸통·광전사 충혈 흰자)
 		var key := "%s|%s|%s|%s|%s" % [m.kind, m.get("outline", true), m.get("emissive", 0), JSON.stringify(m.get("plaid", [])), cd.nodes[i].get("noShadow", false)]
 		if not groups.has(key):
 			groups[key] = {"vs": [], "ns": [], "cs": [], "us": [], "bs": [], "ws": [], "m": m, "shadow": not cd.nodes[i].get("noShadow", false)} # Array (참조) 에 모아 마지막에 Packed 로 (사전 안 Packed 배열은 꺼낼 때 복사됨)
@@ -214,6 +242,7 @@ func _merge(cd: Dictionary) -> void:
 		mi.mesh = am
 		mi.skin = skin
 		mi.material_override = _merged_material(gr.m)
+		drawn.append({"mi": mi, "m": gr.m, "merged": true})
 		if not gr.shadow:
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		skeleton.add_child(mi) # skeleton 경로 기본값 '..' = 이 Skeleton3D
@@ -382,6 +411,10 @@ func pose(p: Dictionary, now_ms: float) -> void:
 	_figure_anim(st, dt)
 	_apply(dt)
 	_sync_skeleton()
+	_apply_opacity()
+	# 맞은 순간 찌그러짐 (G5 fx.squash_amount, render.js g.scale): 게임 (x, y 넓게, z 낮게) = 고도 (x, z 넓게, y 낮게)
+	var sq := _fx_amount("squash_amount")
+	scale = Vector3(1.0 + 0.28 * sq, 1.0 - 0.32 * sq, 1.0 + 0.28 * sq)
 
 
 # 속도·공중·걷기·착지·경직 회복·2단 점프·공중 대시·가만히 (render.js animate·figureFlight·figureHabits)
@@ -466,6 +499,16 @@ func _move_state(p: Dictionary, pos: Vector3, dt: float) -> void:
 	var busy := walking or air or stunned or act != null or float(p.get("emote", -1)) >= 0
 	idle_t = 0.0 if busy else idle_t + dt
 	t += dt
+	dizzy = maxf(0.0, dizzy - dt)
+	rage_k = clampf(float(p.get("damage", 0.0)) / C.BERSERK_RAGE_PCT, 0.0, 1.0) if char_id == "berserker" else 0.0
+	# 유령화: 반투명 느리게 일렁, 부활·콤보 뒤 무적은 빠르게 깜빡 (render.js)
+	var ms := Time.get_ticks_msec() * 1.0
+	if float(p.get("ghostLeft", 0.0)) > 0.0:
+		opacity = 0.35 + 0.1 * sin(ms / 120.0)
+	elif float(p.get("shieldLeft", 0.0)) > 0.0 or float(p.get("iframeLeft", 0.0)) > 0.0:
+		opacity = 0.45 + 0.25 * sin(ms / 60.0)
+	else:
+		opacity = 1.0
 	# 판 끝 승자: 승리 포즈 시간
 	var won := _is_winner(p)
 	vic_t = (vic_t + dt if vic_t >= 0.0 else 0.0) if won else -1.0
@@ -526,7 +569,7 @@ func _anim_state(p: Dictionary, now_ms: float) -> Dictionary:
 		"hit": _hit_for(p, now_ms), "act": _act_for(now_ms), "accF": acc_f, "accS": acc_s,
 		"tumble": tumble_amt, "recover": recover * recover_pow, "land": land * land_pow,
 		"flip": flip / C.FIGURE_FLIP_S if flip >= 0.0 else -1.0, "idle": idle_t, "airDash": air_dash_t / C.FIGURE_AIR_DASH.s,
-		"form": str(p.get("bard", {}).get("form", "")) if p.get("bard") is Dictionary else "",
+		"form": str(p.get("bard", {}).get("form", "")) if p.get("bard") is Dictionary else "", "dizzy": dizzy / C.BERSERK_DIZZY_S, "punch": _fx_amount("punch_amount"),
 		"loaded": p.get("loaded", false) == true, "ammo": float(p.get("cannon", {}).get("ammo", 3)) if p.get("cannon") is Dictionary else 3.0,
 	}
 
@@ -614,6 +657,17 @@ func _figure_anim(st: Dictionary, dt: float) -> void:
 			T.shOut[i] += 0.5 * l
 		T.waistPitch += 0.3 * C.FIGURE_LAND_KNEE * l
 		T.neckPitch -= 0.2 * C.FIGURE_LAND_KNEE * l
+	if st.dizzy > 0.0 and not st.stunned:
+		# 소용돌이 끝: 어지러워 비틀 — 허리·고개가 느리게 휘청, 무릎 풀리고 팔은 허우적
+		var z := minf(1.0, st.dizzy * 1.5)
+		T.waistSide += sin(tt * 4.5) * 0.35 * z
+		T.waistRoll += sin(tt * 2.9) * 0.4 * z
+		T.neckPitch += sin(tt * 3.7) * 0.3 * z - 0.15 * z
+		for i in 2:
+			T.knee[i] += (0.45 + sin(tt * 4.5 + i * 2) * 0.25) * z
+			T.thFwd[i] += 0.25 * z
+			T.shOut[i] += (0.7 + sin(tt * 6.0 + i * 1.7) * 0.4) * z
+			T.elbow[i] += 0.4 * z
 	_costume_pose(T, st, actv, tt)
 	if st.idle > C.FIGURE_IDLE_AFTER and not st.walking and not st.air and not st.stunned and actv == null and st.emote < 0 and not (st.victory >= 0.0):
 		# 평소 버릇: 가만히 있으면 몇 초마다 캐릭터별 짧은 동작
@@ -640,6 +694,12 @@ func _figure_anim(st: Dictionary, dt: float) -> void:
 		T.shOut[1] = 0.1
 		T.elbow[1] = 0.6 + sin(st.emoteT * 10.0) * 0.6
 		T.waistPitch = 0.1 + sin(st.emoteT * 8.0) * 0.12
+	if st.punch > 0.0:
+		# 밀치기: 오른팔을 앞으로 쭉, 몸을 살짝 비틂
+		T.shFwd[0] = PI / 2 * st.punch
+		T.shOut[0] = 0.1
+		T.elbow[0] = 0.05
+		T.waistRoll = 0.25 * st.punch
 	if frozen:
 		Motion.hit_pose(T, hit_.dx, hit_.dy, hit_.pow)
 	# 따라가기: 관절마다 스프링 (히트스톱은 바로 그 자세)
@@ -656,6 +716,11 @@ func _figure_anim(st: Dictionary, dt: float) -> void:
 			V.shOut[i] += (-sd if i else sd) * C.FIGURE_LAG_ARM
 		V.neckPitch -= f * C.FIGURE_LAG_NECK
 		Motion.spring_pose(P, V, T, dt, C.FIGURE_SPRING_FLIP if st.flip >= 0.0 else 1.0)
+	if st.punch > 0.0 and not frozen and actv == null:
+		# 밀치기 팔은 늦게 따라오면 안 보임 (0.22초짜리) → 바로 그 자세
+		for k in ["shFwd", "shOut", "elbow"]:
+			P[k][0] = T[k][0]
+			V[k][0] = 0.0
 	# 공격 동작: 따라가기를 건너뛰고 바로 덮어씀
 	var spin := 0.0
 	var a = actv if (actv != null and (actv.phase == "broken" or (not frozen and (not st.stunned or Moves.MOVES[actv.move].get("stunOk", false))))) else null
@@ -710,6 +775,7 @@ func _figure_anim(st: Dictionary, dt: float) -> void:
 		drop_s += (drop - drop_s) * (1.0 - exp(-C.FIGURE_DROP_FOLLOW * dt))
 	twist_k += ((1.0 if (a != null and a.phase != "broken") else 0.0) - twist_k) * (1.0 - exp(-C.FIGURE_HIP_TWIST_FOLLOW * dt))
 	_costume_parts(st, a, dt, tt)
+	_face(st, tt)
 	set_meta("pose_ok", _pose_ok())
 
 
@@ -756,7 +822,7 @@ func _apply(_dt: float) -> void:
 
 # ---------- 옷·무기가 바꾸는 자세 (figure.js figureAnim 의 fig.axe·forms·cannon·gun 부분) ----------
 func _costume_pose(T: Dictionary, st: Dictionary, actv, tt: float) -> void:
-	if refs.has("axe") and not st.stunned and actv == null and st.emote < 0 and not st.air:
+	if refs.has("axe") and not st.stunned and actv == null and st.emote < 0 and not st.air and not (st.dizzy > 0.0):
 		# 도끼를 어깨에 걸침: 오른팔꿈치를 접어 자루가 어깨 위로 넘어감
 		T.shFwd[0] = 0.35
 		T.shOut[0] = 0.55
@@ -810,6 +876,8 @@ func _costume_parts(st: Dictionary, a, dt: float, tt: float) -> void:
 	if refs.has("formParts"):
 		var f: String = "metal" if st.form == "metal" else "bard"
 		if f != form:
+			if form != "":
+				form_at = Time.get_ticks_msec() / 1000.0
 			form = f
 			for k in refs.formParts:
 				for r in refs.formParts[k]:
@@ -840,6 +908,110 @@ func _costume_parts(st: Dictionary, a, dt: float, tt: float) -> void:
 				var sn := _n(segs[k])
 				if sn != null:
 					sn.rotation.x = float(h.side) * (0.15 if k == 0 else bend)
+
+
+# 광전사 분노·어지러운 눈·별·바드 폼 튀기기 (figure.js figureAnim 끝부분, render.js 별)
+func _face(st: Dictionary, tt: float) -> void:
+	var rage = refs.get("rage")
+	if rage is Dictionary:
+		# 분노 (0~1): 눈썹이 안쪽 아래로 찌푸려지고, 흰자가 충혈, 0.35 넘으면 핏줄이 섬 (높으면 벌떡벌떡), 0.5 넘으면 빡침 표시
+		var k := rage_k
+		for b in rage.get("brows", []):
+			var bn := _n(b.get("mesh"))
+			if bn != null:
+				bn.rotation.x = float(b.side) * (0.15 + 0.6 * k)
+		if rage.get("eyeMat") is Dictionary:
+			var em = mats[int(rage.eyeMat.mat)]
+			if em is StandardMaterial3D:
+				(em as StandardMaterial3D).albedo_color = Color(1.0, 1.0 - 0.55 * k, 1.0 - 0.6 * k)
+		var beat := 1.0 + 0.25 * maxf(0.0, sin(tt * 9.0)) * k
+		for v in rage.get("veins", []):
+			var vn := _n(v)
+			if vn != null:
+				vn.visible = k > 0.35
+				vn.scale = Vector3(beat, beat, 1.0)
+		var an := _n(rage.get("anger"))
+		if an != null:
+			an.visible = k > 0.5
+			an.scale = Vector3.ONE * (0.8 + 0.5 * maxf(0.0, sin(tt * 9.0)))
+	# 어지러움: 눈동자가 흰자 안에서 빙글빙글 (두 눈이 반대로) + 머리 위 노란 별 셋
+	var pupils = refs.get("pupils")
+	if pupils is Array:
+		var on := minf(1.0, st.dizzy * 2.0) if st.dizzy > 0.0 else 0.0
+		var r: float = C.FIGURE_EYE * 0.45
+		for i in pupils.size():
+			var pn := _n(pupils[i])
+			if pn != null:
+				var ang := tt * 14.0 * (-1.0 if i else 1.0)
+				pn.position = Vector3(C.FIGURE_EYE * 0.88 * (1.0 - on * 0.15), cos(ang) * r * on, sin(ang) * r * on)
+	for i in stars.size():
+		stars[i].visible = st.dizzy > 0.0
+		if stars[i].visible:
+			var ang := Time.get_ticks_msec() / 180.0 + i * PI * 2.0 / 3.0
+			stars[i].position = Vector3(cos(ang) * 0.32, sin(ang) * 0.32, C.PLAYER_HEIGHT * C.FIGURE_SCALE + 0.15)
+			stars[i].rotation = Vector3(0, 0, ang * 2.0)
+	# 바드 폼 전환: 메탈은 모히칸이 머리에서 확 솟아오름 (넘쳤다 돌아옴), 음유시인은 모자가 툭 얹힘
+	if refs.has("formParts"):
+		var u := minf(1.0, (Time.get_ticks_msec() / 1000.0 - form_at) / (C.BARD_FORM_POP_MS / 1000.0))
+		var pop := sin(u * PI * 0.5) * (1.0 + 0.35 * sin(u * PI)) if u < 1.0 else 1.0
+		if form == "metal":
+			var mh := _n(refs.get("mohawk"))
+			if mh != null:
+				mh.scale = Vector3(1, 1, maxf(0.01, pop))
+		else:
+			var parts_b: Array = refs.formParts.get("bard", [])
+			if not parts_b.is_empty() and _n(parts_b[0]) != null:
+				_n(parts_b[0]).position.z = (1.0 - pop) * 0.15
+
+
+# 유령화·무적 반투명: 그리는 메시마다 투명 재질로 바꿔 끼움 (처음 한 번 만들어 둠)
+func _apply_opacity() -> void:
+	for dr in drawn:
+		var mi: MeshInstance3D = dr.mi
+		if not dr.has("solid"):
+			dr.solid = mi.material_override
+		if opacity >= 1.0:
+			if mi.material_override != dr.solid:
+				mi.material_override = dr.solid
+			continue
+		if not dr.has("alpha"):
+			var m: Dictionary = dr.m
+			if m.kind == "basic":
+				var b := (dr.solid as StandardMaterial3D).duplicate() as StandardMaterial3D
+				b.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+				dr.alpha = b
+			else:
+				var col := Color.WHITE if dr.merged else _mat_color(m, skin_color)
+				var opts := {"opacity": 0.5, "outline": false, "vertex_color": dr.merged}
+				if int(m.get("emissive", 0)) != 0:
+					opts.emissive = int(m.emissive)
+				if m.has("plaid"):
+					opts.map = _plaid(m.plaid)
+				dr.alpha = G3.toon_material(col, opts)
+				dr.col = col
+		var am: Material = dr.alpha
+		if am is StandardMaterial3D:
+			var c: Color = (am as StandardMaterial3D).albedo_color
+			(am as StandardMaterial3D).albedo_color = Color(c.r, c.g, c.b, opacity)
+		elif am is ShaderMaterial:
+			var c2: Color = dr.col
+			(am as ShaderMaterial).set_shader_parameter("albedo", Color(c2.r, c2.g, c2.b, opacity))
+		mi.material_override = am
+
+
+# G5 효과 값 (fx/effects.gd squash_amount·punch_amount). 효과 노드를 한 번 찾아 둠, 없으면 0
+func _fx_amount(fn: String) -> float:
+	if fx_node == null or not is_instance_valid(fx_node):
+		fx_node = null
+		if is_inside_tree():
+			var root := get_tree().root.find_child("Fx", true, false)
+			if root != null:
+				for c in root.get_children():
+					if c.has_method("squash_amount"):
+						fx_node = c
+	if fx_node == null or pid < 0:
+		return 0.0
+	return float(fx_node.call(fn, pid))
 
 
 func _vis(r, on: bool) -> void:
@@ -875,6 +1047,8 @@ func on_event(e: Dictionary) -> void:
 				seq += 1
 				act.id = seq
 				act.broken = now
+				if e.get("kind") == "ult" and refs.has("pupils"):
+					dizzy = C.BERSERK_DIZZY_S * 0.5 # 끊긴 소용돌이: 잠깐 어지러움
 		"combo":
 			if hit_me and e.get("finish", false):
 				finish_at = now
@@ -895,6 +1069,9 @@ func on_event(e: Dictionary) -> void:
 		"airJump":
 			if mine:
 				flip = 0.0
+		"spinEnd":
+			if mine and refs.has("pupils"):
+				dizzy = C.BERSERK_DIZZY_S
 		"form":
 			if mine:
 				_skill_move("bardRiff" if e.get("form") == "metal" else "bardHeal", 0.0, now)
