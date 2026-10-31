@@ -132,3 +132,33 @@ func test_moves_table() -> void:
 			check(Moves.POSES[who][kind].has("S"), "%s %s" % [who, kind])
 			if Moves.POSES[who][kind].loop:
 				check(not Motion.pose_loop(who, kind, 0.4).is_empty(), "%s %s loop 옮김" % [who, kind])
+
+
+const Chars := preload("res://chars/chars.gd")
+
+
+# 8명 몸이 만들어지고, 여러 상태 (걷기·공중·경직·공격·포즈) 로 몸 자세를 돌려도 값이 깨지지 않음 (Store 없이 _figure_anim·_apply 를 바로)
+func test_bodies_build_and_animate() -> void:
+	for ch in C.FIGURE_CHARS:
+		var b = Chars.make_body(ch, Color(0.8, 0.3, 0.2))
+		var meshes := b.find_children("*", "MeshInstance3D", true, false)
+		check(meshes.size() >= 20, "%s 조각 %d" % [ch, meshes.size()])
+		var states := [
+			{"walking": true, "air": false, "hs": 4.5, "walk": 1.3},
+			{"walking": false, "air": true, "vz": -4.0},
+			{"walking": false, "air": false, "stunned": true, "tumble": 0.7},
+			{"walking": false, "air": false, "idle": 3.5},
+			{"walking": false, "air": false, "act": {"id": 1, "move": "punch", "phase": "strike", "u": 0.5, "air": false}},
+			{"walking": false, "air": false, "victory": 1.2},
+			{"walking": false, "air": false, "emote": int(C.EMOTE_CHAR), "emoteT": 0.6},
+			{"walking": false, "air": false, "hit": {"id": 3, "age": 0.01, "stop": 0.1, "dx": -1.0, "dy": 0.3, "pow": 1.5}},
+		]
+		for s in states:
+			var st := {"air": false, "walking": false, "hs": 0.0, "walk": 0.0, "vz": 0.0, "t": 1.0, "stunned": false, "emote": -1, "emoteT": 0.0, "victory": -1.0, "hit": null, "act": null, "accF": 3.0, "accS": -2.0, "tumble": 0.0, "recover": 0.0, "land": 0.0, "flip": -1.0, "idle": 0.0, "airDash": 0.0, "form": ""}
+			st.merge(s, true)
+			for k in 10:
+				b._figure_anim(st, 1.0 / 60.0)
+				b._apply(1.0 / 60.0)
+			check(b._pose_ok(), "%s 자세 깨짐 %s" % [ch, str(s.keys())])
+			check(is_finite(b.hips.position.y) and is_finite(b.shoulders[0].rotation.y), "%s 관절 %s" % [ch, str(s.keys())])
+		b.free()
