@@ -155,8 +155,13 @@ func solid_at(x: float, y: float, z: float) -> bool:
 
 func _process(dt: float) -> void:
 	var st := Store.state
-	if headless or st.is_empty() or not st.has("field"):
+	# 방 밖 (메뉴): 판 노드를 숨김 (크기 안 정한 바닥·절벽 상자가 원점 카메라 앞을 가르던 것). 하늘·빛 (G3Env)·효과는 그대로
+	var live: bool = not st.is_empty() and st.has("field")
+	for n in [grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view]:
+		n.visible = live and (n != hazard_view or n.visible)
+	if headless or not live:
 		return
+	dt *= View.time_scale # KO 슬로모션 (G5 가 정함)
 	var now := Time.get_ticks_msec() * 1.0
 	var mid := str(st.get("map", {}).get("id", ""))
 	if mid != theme_id:
@@ -181,6 +186,8 @@ func _process(dt: float) -> void:
 	var me := Store.me()
 	pieces_view.update(st, Store.my_id, me, rig.sky_blend)
 	hazard_view.update(st, Store.grid, Store.grid_version, me)
+	# 위험 표면이 반투명이라 바닥 아래 절벽 상자가 비쳐 보임 → 차오르면 숨김 (JS 는 깊이 흐림 셰이더로 가림, G3 hazard_material 이 오면 다시 봄)
+	grid_view.cliff.visible = not hazard_view.visible
 	items_view.update(st, dt, now)
 	var my_piece := {}
 	var people := []
