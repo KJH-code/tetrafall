@@ -16,6 +16,7 @@ const World := preload("res://title/title_world.gd")
 const Cells := preload("res://world/cells.gd")
 const LETTER := preload("res://title/letter.gdshader")
 const SHELL := preload("res://title/shell.gdshader")
+const G3_PATH := "res://shaders/g3.gd"
 # 블룸: three UnrealBloomPass (선형 HDR) → 고도 Compatibility 글로 (LDR) 는 같은 값이면 약해서 배수로 맞춤 (JS 스샷과 나란히 비교)
 const GLOW_K := 3.0
 const GLOW_THR_K := 0.5
@@ -84,17 +85,29 @@ func setup(theme_id: String, opts := {}) -> void:
 	# 글자 블록: 그 테마의 칸 색에 글자 색을 섞음 + 스스로 빛남
 	var n: int = r.cells.size()
 	flash.resize(n)
+	letter_mat.shader = LETTER
+	letter_mat.set_shader_parameter("base_glow", C.TITLE_PIECE_GLOW + float(T.get("pieceGlow", 0.0)))
 	var cols := Cells.piece_colors(C.WORLD_THEMES.get(theme, {}))
-	var box := BoxMesh.new()
-	box.size = Vector3.ONE
+	var box: Mesh = BoxMesh.new()
+	(box as BoxMesh).size = Vector3.ONE
+	# 테마 칸 모양·면 그림 (B3 G3.piece_mesh·piece_spec — JS PieceLook): 있으면 그것, 없으면 상자 + 칸 테두리 홈
+	var G3 = load(G3_PATH) if ResourceLoader.exists(G3_PATH) else null
+	if G3 != null and G3.has_method("piece_mesh") and ResourceLoader.exists("res://assets/pieces/shapes.json"):
+		box = G3.piece_mesh(theme, low)
+		var spec: Dictionary = G3.piece_spec(theme)
+		letter_mat.set_shader_parameter("use_face", true)
+		letter_mat.set_shader_parameter("face_tex", load("res://assets/pieces/%s.png" % spec.style))
+		letter_mat.set_shader_parameter("accent0", Co.color(spec.accent[0]))
+		letter_mat.set_shader_parameter("accent1", Co.color(spec.accent[1]))
+		letter_mat.set_shader_parameter("crack", 0.0 if low else float(spec.crack))
+		letter_mat.set_shader_parameter("fresnel", 0.0 if low else float(spec.fresnel))
+		letter_mat.set_shader_parameter("base_glow", C.TITLE_PIECE_GLOW + float(T.get("pieceGlow", 0.0)) + float(spec.get("glow", 0.0)))
 	for m in [mm, shell_mm]:
 		m.transform_format = MultiMesh.TRANSFORM_3D
 		m.use_colors = true
 		m.use_custom_data = true
 		m.mesh = box
 		m.instance_count = n
-	letter_mat.shader = LETTER
-	letter_mat.set_shader_parameter("base_glow", C.TITLE_PIECE_GLOW + float(T.get("pieceGlow", 0.0)))
 	letter_mat.set_shader_parameter("glow_col", Co.color(T.glow))
 	letter_mat.set_shader_parameter("sweep_w", C.TITLE_SWEEP_W)
 	shell_mat.shader = SHELL
