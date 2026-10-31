@@ -12,6 +12,8 @@ const TOON := preload("res://shaders/toon.gdshader")
 const TOON_ALPHA := preload("res://shaders/toon_alpha.gdshader")
 const OUTLINE := preload("res://shaders/outline.gdshader")
 const SKY := preload("res://shaders/sky.gdshader")
+const TERRAIN := preload("res://shaders/terrain.gdshader")
+const BS := preload("res://shaders/block_style.gd")
 
 static var _globals := {} # 넣은 전역 셰이더 값 (RenderingServer 는 실행 중 읽기가 안 됨 — 테스트·확인용)
 
@@ -204,3 +206,59 @@ static func _col(c) -> Color:
 		return c
 	var i := int(c)
 	return Color8((i >> 16) & 0xff, (i >> 8) & 0xff, i & 0xff)
+
+
+# ---- 지형 블록 (JS client/blocks.js, world.js 의 tfOn 블록). G1 이 지형 칸 (값 1) 만 MultiMesh 하나로:
+#   mesh = G3.terrain_mesh(id), material_override = G3.terrain_material(id, low), use_custom_data = true,
+#   custom_data = G3.terrain_custom(grid, w, d, h, skip) 의 n 번째 (순서 z → y → x, 지형 칸만, skip 칸 뺌), 칸 자리 Co.gxyz(x+.5, y+.5, z+.5)
+# 테마에 지형 스타일이 없으면 셋 다 null (예전처럼 칸 색 블록)
+static func terrain_style(theme_id):
+	var t = C.WORLD_THEMES.get(theme_id) if theme_id != null else null
+	return BS.style(t.terrain) if t != null and t.has("terrain") else null
+
+
+static func terrain_mesh(theme_id) -> Mesh:
+	var s = terrain_style(theme_id)
+	if s == null:
+		return null
+	var m := BoxMesh.new()
+	var k := int(s.segs) - 1
+	m.subdivide_width = k
+	m.subdivide_height = k
+	m.subdivide_depth = k
+	return m
+
+
+static func terrain_material(theme_id, low := false) -> ShaderMaterial:
+	var s = terrain_style(theme_id)
+	if s == null:
+		return null
+	var m := ShaderMaterial.new()
+	m.shader = TERRAIN
+	var mean := Vector3.ZERO
+	for t in s.tints:
+		mean += _lin3(t) / 3.0
+	for i in 3:
+		var c := _lin3(s.tints[i])
+		m.set_shader_parameter("tf_tint%d" % i, Vector3(c.x / maxf(mean.x, 0.02), c.y / maxf(mean.y, 0.02), c.z / maxf(mean.z, 0.02)))
+	var brick: Array = s.brick if s.brick != null else [1, 1, 0, 0]
+	var p := {
+		"tf_top": _lin3(s.top), "tf_side": _lin3(s.side), "tf_rim": _lin3(s.rim), "tf_glow": _lin3(s.get("glow") if s.get("glow") != null else 0),
+		"tf_disp": 0.0 if low else float(s.disp), "tf_chamfer": _v2(s.chamfer), "tf_step": 0.0 if low else float(s.step),
+		"tf_blotch": _v2(s.blotch), "tf_edge": float(s.edge), "tf_height": _v2(s.height), "tf_vein": float(s.get("veins", 0.0)),
+		"tf_vein_scale": float(s.get("veinScale", 1.0)), "tf_mottle": float(s.get("mottle", 0.0)), "tf_wear": float(s.get("wear", 0.0)),
+		"tf_top_lift": float(s.get("topLift", 1.0)), "tf_grid": _v2(s.grid), "tf_lip": float(s.lip), "tf_strata": _v2(s.strata),
+		"tf_brick": Vector4(brick[0], brick[1], brick[2], brick[3]), "tf_sheen": float(s.sheen), "tf_side_shade": float(s.sideShade),
+		"tf_ao": float(s.ao), "tf_hi": float(s.hi), "tf_self": float(s.selfLight),
+	}
+	for k in p:
+		m.set_shader_parameter(k, p[k])
+	return m
+
+
+static func terrain_custom(grid: PackedByteArray, w: int, d: int, h: int, skip: Dictionary = {}) -> PackedColorArray:
+	return BS.cell_looks(grid, w, d, h, skip)
+
+
+static func _v2(a) -> Vector2:
+	return Vector2(float(a[0]), float(a[1]))
