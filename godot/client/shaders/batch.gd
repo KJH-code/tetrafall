@@ -89,7 +89,7 @@ func sync() -> void:
 func _parent_piece(p: Node3D) -> int:
 	var n := p.get_parent()
 	while n != null and n != root:
-		var i := pieces.find(n)
+		var i := pieces.find(n) if n is MeshInstance3D else -1
 		if i >= 0:
 			return i
 		n = n.get_parent()
