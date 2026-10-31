@@ -96,7 +96,7 @@ function value(v, s) {
   if (s.k === 'num') return num(v);
   if (s.k === 'str') return str(v);
   if (s.k === 'bool') return String(v);
-  if (s.k === 'any') return typeof v === 'number' ? `(object)${num(v)}` : str(v);
+  if (s.k === 'any') return typeof v === 'number' ? `(object)(double)(${num(v)})` : str(v); // 숫자는 double 로 (C# 정수 글자는 int 로 상자에 들어감)
   if (s.k === 'arr') return `new ${s.el ? typeName(s.el) : 'double'}[] { ${v.map((x) => value(x, s.el)).join(', ')} }`;
   if (s.k === 'dict') return `new() { ${Object.entries(v).map(([a, b]) => `[${str(a)}] = ${value(b, s.el)}`).join(', ')} }`;
   return `new ${s.name}() { ${Object.entries(v).map(([a, b]) => `${a} = ${value(b, s.f[a].s)}`).join(', ')} }`;

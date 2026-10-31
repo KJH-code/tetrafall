@@ -28,6 +28,23 @@ if (ti >= 0)
 if (a[0] == "trace")
 {
     string key = a.Count > 1 ? a[1] : "0";
+    if (key.StartsWith("tut:")) // 튜토리얼 판: trace tut:<캐릭터> (tools/tutorial-trace.mjs <캐릭터>)
+    {
+        string tp = a.Count > 2 ? a[2] : "cs.jsonl";
+        using var tw = new StreamWriter(tp, false, new UTF8Encoding(false)) { NewLine = "\n" };
+        try
+        {
+            var r = Scenarios.RunTutorial(key[4..], (t, logs, snap) => tw.WriteLine(Scenarios.TraceLine(t, logs, snap)), maxTicks);
+            Console.WriteLine($"튜토리얼 {key[4..]}: {r.ticks}틱 {(r.done ? "끝" : "못 끝냄")} [{string.Join(" ", r.results)}] → {tp}");
+        }
+        catch (NotImplementedException e)
+        {
+            tw.Flush();
+            Console.WriteLine($"튜토리얼 {key[4..]}: 여기서 멈춤 — {e.Message} → {tp} (그 앞까지)");
+            return 2;
+        }
+        return 0;
+    }
     bool scripted = key.Length > 1 && key[0] == 's' && key[1..].All(char.IsDigit);
     string name = scripted ? Scenarios.SCRIPTED[int.Parse(key[1..])].name : Scenarios.Find(key).name;
     string outPath = a.Count > 2 ? a[2] : "cs.jsonl";

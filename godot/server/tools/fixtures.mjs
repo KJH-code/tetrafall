@@ -9,10 +9,13 @@
 // - combat-trace.json: trace-scripted.mjs 각본 (캐릭터 8명) 을 전투만 도는 틱으로 돌린 틱 줄 sha256 앞 16자
 // - trace-t0.json: 시나리오 0~32 (tools/game-hash.js) 의 trace 첫 줄 (판 시작 직후, 격자 포함) sha256 — C# 판 시작이 글자까지 같은지
 // - scripted.json: 각본 입력 판 8개 (scripted.mjs, 캐릭터 끔) 의 trace 줄 전체 sha256·틱 수 — C# 판 흐름·블록이 처음부터 끝까지 글자까지 같은지
+// - game-hash.json: tools/game-hash.js 34판 판마다 해시·틱 수 (C# 가 그 판을 다 돌 수 있게 되면 같아야 함 — 봇 판은 S5 뒤)
+// - tutorial-trace.json: 캐릭터 8명 튜토리얼 자동 조종 판 (tutorial-trace.mjs) trace 줄 전체 sha256·틱 수·결과
 // - physics.json: 맵 7개 × 2·4·8인, 무작위 입력·넉백으로 물리만 300틱 (integratePlayer·groundKind) → 10틱마다 위치·속도
 import fs from 'node:fs';
 import crypto from 'node:crypto';
-import { SCENARIOS as HASH_SCENARIOS } from '../../../tools/game-hash.js';
+import { SCENARIOS as HASH_SCENARIOS, runScenario } from '../../../tools/game-hash.js';
+import { runTutorial } from './tutorial-trace.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Rooms } from '../../../server/rooms.js';
@@ -200,5 +203,18 @@ const combat = COMBAT_SCRIPTS.map((sc) => {
   return { ...sc, hashes };
 });
 write('combat-trace.json', combat);
+// 판 34개 해시 (node tools/game-hash.js --verbose 와 같음)
+const gameHash = HASH_SCENARIOS.map((sc) => {
+  const r = runScenario(sc);
+  return [sc.name, r.hash, r.ticks];
+});
+write('game-hash.json', gameHash);
+// 튜토리얼 판
+const tutorial = C.CHARACTERS.map((ch) => {
+  const h = crypto.createHash('sha256');
+  const r = runTutorial(ch, (line) => h.update(JSON.stringify(line) + '\n'));
+  return [ch, r.ticks, r.done, h.digest('hex')];
+});
+write('tutorial-trace.json', tutorial);
 console.log(`maps ${Object.keys(maps).length}, physics ${phys.length}판, trace-t0 ${t0.length}판, 각본 ${scripted.map((x) => x[1]).join('·')}틱, 전투 각본 ${combat.length}개`);
 console.log(`jsmath ${math.length}, jsnumber ${nums.length}, 프로토콜 메시지 ${sent.length}개·로그 ${logs.length}줄, 방 각본 ${scen.length}개`);

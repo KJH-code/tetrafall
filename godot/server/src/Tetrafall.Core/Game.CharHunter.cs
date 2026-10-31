@@ -39,7 +39,7 @@ public sealed partial class Game
     }
 
     // 표식 +1 (최대 HUNTER_MARK_MAX), 쌓인 시각 갱신
-    void AddMark(Player p, Player t)
+    public void AddMark(Player p, Player t)
     {
         var m = t.marks.TryGetValue(p.id, out var old) ? old : new Mark { n = 0, at = 0 };
         m.n = Math.Min(C.HUNTER_MARK_MAX, m.n + 1);

@@ -25,6 +25,40 @@ public static class Scenarios
         new("각본 6명 블록 마스터 하늘", 6, "master", false, true, false, "stairs", 7008),
     };
 
+    // tools/tutorial-trace.mjs runTutorial 그대로: 캐릭터마다 튜토리얼 자동 조종으로 끝까지
+    public static (int ticks, bool done, List<string?> results) RunTutorial(string ch, Action<int, List<string>, string> onLine, int maxTicks = int.MaxValue)
+    {
+        double TICK = 1000 / C.TICK_RATE;
+        var logs = new List<string>();
+        var g = new Game(line => logs.Add(line), characters: true, skyStairs: false, countdownMs: 0);
+        g.rng = new Mulberry32((uint)(8000 + Array.IndexOf(C.CHARACTERS, ch))).AsFunc();
+        g.AddPlayer(1);
+        g.SetChar(1, ch);
+        g.StartTutorial(1);
+        onLine(0, logs, g.Snapshot(true));
+        logs = new List<string>();
+        var pilot = new TutorialPilot();
+        int ticks = 0;
+        for (double t = 0; t < 240000 && !g.tutorial!.done && ticks < maxTicks; t += TICK)
+        {
+            var (input, actions) = pilot.Next(System.Text.Json.JsonDocument.Parse(g.Snapshot(false)).RootElement, 1);
+            g.HandleInput(1, input);
+            foreach (var a in actions) g.HandleAction(1, new ActionMsg { name = a });
+            g.Tick(TICK);
+            ticks++;
+            var events = g.DrainEvents();
+            string snap = g.Snapshot(ticks % 300 == 0, o =>
+            {
+                o.Key("events").Arr();
+                foreach (var e in events) o.Raw(e);
+                o.EndArr();
+            });
+            onLine(ticks, logs, snap);
+            logs = new List<string>();
+        }
+        return (ticks, g.tutorial!.done, g.tutorial.results);
+    }
+
     // tools/scripted.mjs setupScripted·driveScripted 그대로
     public static (int ticks, string phase) RunScripted(ScriptedScenario sc, Action<int, List<string>, string> onLine, int maxTicks = int.MaxValue)
     {
@@ -129,7 +163,7 @@ public static class Scenarios
 
     // 판 하나를 돌림. onLine(틱, 로그, 스냅샷 글자) 은 틱마다 (t=0 = 판 시작 직후 격자 포함 스냅샷, events 키 없음)
     // maxTicks: 이 틱까지만 (trace 일부만 비교할 때)
-    public static (int ticks, string phase) Run(Scenario sc, Action<int, List<string>, string> onLine, int maxTicks = int.MaxValue)
+    public static (int ticks, string phase) Run(Scenario sc, Action<int, List<string>, string> onLine, int maxTicks = int.MaxValue, bool firstSnapshot = true)
     {
         double TICK = 1000 / C.TICK_RATE;
         var rnd = new Mulberry32(sc.seed);
@@ -140,25 +174,36 @@ public static class Scenarios
         {
             g.AddPlayer(1);
             g.SetChar(1, "ninja");
-            throw new NotImplementedException("연습 시나리오 (S4: startPractice·addDummy)");
+            g.StartPractice();
+            g.AddDummy(1);
+            g.AddDummy(1);
         }
-        if (sc.away) g.AddPlayer(1);
-        for (int i = sc.away ? 1 : 0; i < sc.n; i++)
+        else
         {
-            var b = g.AddBot()!;
-            if (sc.characters) g.SetChar(b.id, C.CHARACTERS[(int)Math.Floor(rnd.Next() * C.CHARACTERS.Length)]);
+            if (sc.away) g.AddPlayer(1);
+            for (int i = sc.away ? 1 : 0; i < sc.n; i++)
+            {
+                var b = g.AddBot()!;
+                if (sc.characters) g.SetChar(b.id, C.CHARACTERS[(int)Math.Floor(rnd.Next() * C.CHARACTERS.Length)]);
+            }
+            if (sc.team) g.SetTeamMode(true);
+            if (sc.mode != "survival") g.SetMode(sc.mode);
+            g.SetMap(sc.map);
+            if (!g.StartRound()) throw new InvalidOperationException($"{sc.name}: 시작 못 함");
         }
-        if (sc.team) g.SetTeamMode(true);
-        if (sc.mode != "survival") g.SetMode(sc.mode);
-        g.SetMap(sc.map);
-        if (!g.StartRound()) throw new InvalidOperationException($"{sc.name}: 시작 못 함");
-        onLine(0, logs, g.Snapshot(true));
+        onLine(0, logs, firstSnapshot ? g.Snapshot(true) : ""); // game-hash 는 t=0 스냅샷을 안 만듦 (만들면 gridDirty 가 꺼져 1틱 스냅샷에 격자가 빠짐)
         logs = new List<string>();
         double t = 0;
         int ticks = 0;
         double cap = sc.mode == "practice" ? 20000 : CAP_MS;
         while (t < cap && g.phase != "over" && ticks < maxTicks)
         {
+            if (sc.mode == "practice" && ticks % 15 == 0)
+            {
+                // 연습: 내가 앞으로 가며 평타·대시 (허수아비 콤보 기록)
+                g.HandleInput(1, new InputMsg { fwd = 1, strafe = 0, jump = ticks % 90 == 0, yaw = (ticks / 200.0) % (2 * Math.PI), pitch = 0 });
+                g.HandleAction(1, new ActionMsg { name = ticks % 60 == 0 ? "dash" : "push" });
+            }
             if (sc.away && ticks == 0) g.SetAway(1, true);
             if (sc.away && ticks == 900) g.SetAway(1, false);
             g.Tick(TICK);
@@ -196,7 +241,7 @@ public static class Scenarios
         {
             foreach (var l in logs) h.AppendData(Encoding.UTF8.GetBytes($"L{l}\n"));
             if (t > 0) h.AppendData(Encoding.UTF8.GetBytes(snap));
-        });
+        }, firstSnapshot: false);
         return Convert.ToHexString(h.GetHashAndReset()).ToLowerInvariant();
     }
 }
