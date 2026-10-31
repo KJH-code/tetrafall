@@ -33,6 +33,12 @@ export class NetStatus {
     else if (msg.type === 'state') this.meter.onState(now);
   }
 
+  // main.js leftRoom: 방 밖에선 스냅샷이 안 오므로 끊김 알림을 멈춤
+  leftRoom() {
+    this.meter.leaveRoom();
+    this.draw();
+  }
+
   draw() {
     const v = this.meter.view(performance.now());
     this.pingEl.textContent = `핑 ${v.ping}${v.server >= C.NET_SERVER_SLOW_MS ? ` · 서버 ${v.server}ms` : ''}`;
