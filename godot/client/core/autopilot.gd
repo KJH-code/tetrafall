@@ -46,6 +46,17 @@ func _ready() -> void:
 		View.settings["third"] = str(args["view"]) == "third"
 	if args.has("perf-log"):
 		Prof.on = true
+	# 성능 실험 (엔진 설정): --phys-ticks N (물리 틱/초) · --phys-max N (프레임당 최대 물리 틱) · --shadow-size N (해 그림자 지도) · --shadow-filter 0..5 · --msaa 0|2|4
+	if args.has("phys-ticks"):
+		Engine.physics_ticks_per_second = int(args["phys-ticks"])
+	if args.has("phys-max"):
+		Engine.max_physics_steps_per_frame = int(args["phys-max"])
+	if args.has("shadow-size"):
+		RenderingServer.directional_shadow_atlas_set_size(int(args["shadow-size"]), true)
+	if args.has("shadow-filter"):
+		RenderingServer.directional_soft_shadow_filter_set_quality(int(args["shadow-filter"]))
+	if args.has("msaa"):
+		get_viewport().msaa_3d = int(args["msaa"])
 	if args.has("low"): # 성능 비교: 그래픽 낮춤으로
 		View.settings["lowGfx"] = true
 	Store.rooms_changed.connect(_on_rooms)
