@@ -57,6 +57,8 @@ var headless := false
 var G3 = null
 var preview = null # 대기실 지형 미리보기 {key, grid, top, w, d, h, off} (LP.build), 없으면 서버 격자
 var sprouts = null # G3 튀어나온 조각 노드 (테마마다)
+var _menu_since := -1.0 # 메뉴에 머문 시각 (prewarm)
+var _prewarmed = null # 셰이더 미리 데운 테마 (G3.prewarm)
 var dark = null # 대기실 어두운 무대 (lobby_dark.gd), 대기실 아니면 null
 var vm = null # G2 1인칭 팔·무기 (chars/viewmodel.gd)
 const VIEWMODEL := "res://chars/viewmodel.gd"
@@ -180,8 +182,12 @@ func _ready() -> void:
 			hazard_view.effects = n.effects
 	View.changed.connect(func(k):
 		if k == "lowGfx":
+			if g3_has("set_low"):
+				G3.set_low(self, View.settings.lowGfx) # B3: 이미 만든 지형·칸·위험 재질·튀어나온 조각·판 빛·그림자를 곧바로
 			set_shadows(not View.settings.lowGfx)
 			apply_theme(str(theme_id))) # 지형 셰이더·튀어나온 조각도 낮춤으로
+	if g3_has("set_low"):
+		G3.set_low(self, bool(View.settings.get("lowGfx", false)))
 	set_shadows(not View.settings.get("lowGfx", false))
 
 
@@ -350,6 +356,16 @@ func _process(dt: float) -> void:
 		n.visible = live and ((n != hazard_view and n != ghost_aim) or n.visible) and (n != scenery or dark == null) # 어두운 무대면 떠 있는 섬·먼 배경 숨김
 	if not live and vm != null:
 		vm.update(null, false, dt) # 방 밖: 1인칭 팔 끔
+	# 첫 진입 멈춤 줄이기 (render.js prewarmLobby): 메뉴에 LOBBY_DARK.prewarmMs 머문 뒤 이번 창 테마로 한 번 (B3 G3.prewarm)
+	if not live and _prewarmed == null and g3_has("prewarm"):
+		var tn := Time.get_ticks_msec() * 1.0
+		if _menu_since < 0:
+			_menu_since = tn
+		elif tn - _menu_since > float(C.LOBBY_DARK.prewarmMs):
+			_prewarmed = str(View.menu_theme)
+			G3.prewarm(self, View.menu_theme)
+	elif live:
+		_menu_since = -1.0
 	if headless or not live:
 		return
 	dt *= View.time_scale # KO 슬로모션 (G5 가 정함)
@@ -479,6 +495,9 @@ func _lobby_dark(st: Dictionary, fs: Vector3i) -> void:
 		dark = null
 		if dk == null:
 			G3.apply_theme(self, C.WORLD_MAP_THEME.get(theme_id), low) # 밝은 판 (하늘 구·안개·해 다시)
+	if dk != null and dark == null and str(dk) != str(_prewarmed) and g3_has("prewarm"):
+		_prewarmed = str(dk)
+		G3.prewarm(self, dk) # 대기실 맵 바꿈: 그 테마 셰이더 미리
 	if dk != null and dark == null:
 		dark = LobbyDark.new()
 		add_child(dark)

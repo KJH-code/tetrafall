@@ -6,6 +6,7 @@ const CHECKER := 0.94 # 이웃 칸 체커보드 명암 (render.js updateGrid)
 const FLOOR_THICK := 0.6 # 필드 바닥판 두께 (z 0 아래)
 const CLIFF_THICK := 5.0 # 바닥판 아래 섬 절벽 두께
 const SHADOW_LIFT := 0.03 # 그림자 칸을 착지 높이 위로 띄움
+const SKY_PIECE_ALPHA_SKYVIEW := 0.45 # 하늘 시점일 때 하늘 계단 블록 비침 (render.js skyMats opacity)
 const PIECE_SKY_ALPHA := 0.55 # 하늘 시점에선 블록 너머 착지 미리보기가 보이게
 const CONTROLLED_COLOR := 0xd040d0 # 누가 조종 중인 블록
 const PREVIEW_COLOR := [0xf0a030, 0xff2020, 0.35] # 내 블록 착지 그림자 (놓을 수 있음, 없음, 진하기)
