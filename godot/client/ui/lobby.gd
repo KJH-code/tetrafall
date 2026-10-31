@@ -39,6 +39,8 @@ var map_sel: OptionButton
 var sky_box: CheckBox
 var hp_box: CheckBox
 var mode_info: Label
+var map_info: Label # 방장 아닌 사람: 판 사이에 맵·모드 (JS #map-info)
+var team_note: Label # 팀전이면 색 칸 대신 '팀전은 팀 색' (JS #color-team-note)
 var code_label: Label
 var room_text: Label
 var public_btn: Button
@@ -131,6 +133,10 @@ func _ready() -> void:
 	swatches.alignment = BoxContainer.ALIGNMENT_CENTER
 	swatches.add_theme_constant_override("separation", 3)
 	col.add_child(swatches)
+	team_note = S.label("팀전은 팀 색", 12, Color("a49cbc"))
+	team_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	team_note.visible = false
+	col.add_child(team_note)
 
 	start_btn = S.button("시작 (Enter)", func(): Store.send_room({"type": "start"}), "go", 30)
 	start_btn.custom_minimum_size.y = 56
@@ -151,6 +157,10 @@ func _ready() -> void:
 	sky_box = _check("하늘 계단", func(on): Store.send_room({"type": "skyStairs", "on": on}))
 	hp_box = _check("체력전", func(on): Store.send_room({"type": "hpMode", "on": on}))
 	col.add_child(settings_box)
+	map_info = S.label("", 13, Color("cdd5ee"))
+	map_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	map_info.visible = false
+	col.add_child(map_info)
 	mode_info = S.label("", 12, Color("a49cbc"))
 	mode_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	mode_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -307,6 +317,12 @@ func refresh(st: Dictionary) -> void:
 	start_btn.visible = host and st.get("canStart", false)
 	start_btn.text = "재시작 (Enter)" if st.phase == "over" else "시작 (Enter)"
 	settings_box.visible = host
+	var mp = st.get("map")
+	map_info.visible = mp is Dictionary and not host
+	if mp is Dictionary:
+		var ch := str(mp.get("choice", "random"))
+		map_info.text = "맵: %s · 모드: %s%s" % ["무작위" if ch == "random" or not C.MAPS.has(ch) else str(C.MAPS[ch].name), str(C.MODE_NAMES.get(str(st.get("mode", "")), st.get("mode", ""))), " · 하늘 계단" if st.get("skyStairs", false) else ""]
+	team_note.visible = bool(st.get("teamMode", false))
 	add_bot.disabled = n >= min(C.MAX_PLAYERS, C.SPAWN_POINTS.size())
 	remove_bot.disabled = not st.players.any(func(p): return p.get("isBot", false))
 	_set_select(mode_sel, st.get("mode", "survival"))
