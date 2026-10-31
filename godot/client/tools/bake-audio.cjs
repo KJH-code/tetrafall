@@ -6,7 +6,8 @@
 // - 앰비언트 (client/title-sound.js): 테마 7 웅웅 고리 + 띄엄띄엄 소리 (메뉴·대기실)
 // 실행 (레포 뿌리, JS 서버가 client/ 를 서빙해야 함): PORT=3399 node server/index.js & node godot/client/tools/bake-audio.cjs [포트]
 // ffmpeg (libvorbis) 필요. 다시 구우면 녹음본 무작위가 바뀜 (소리 모양은 같음)
-// 일부만 (새 소리 하나 더할 때): node godot/client/tools/bake-audio.cjs [포트] --only mark.1,mark.2,mark.3 — 그 효과음만 굽고 나머지 녹음·manifest 는 그대로
+// 일부만 (새 소리 하나 더할 때): node godot/client/tools/bake-audio.cjs [포트] --only mark.1,mark.2,mark.3 — 그 효과음만 굽고 나머지 녹음·manifest 는 그대로 (타이틀 효과는 --only title)
+// - 타이틀 효과 (client/title-sound.js land·burst·exit): 테마 7 × (착지 3·빛 터짐·빠져나가기)
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
@@ -117,6 +118,20 @@ const ONLY = process.argv.includes('--only') ? new Set(process.argv[process.argv
         ts.out.gain.value = C.TITLE_SOUND.vol;
         return loopOf(await ctx.startRendering(), L);
       },
+      // 타이틀 효과 소리 (title-sound.js land·burst·exit): 웅웅 끄고 그 소리 + 메아리만. land 는 n = 1 (크기는 고도가 n 따라 곱함)
+      async titleFx(theme, what) {
+        const { ctx, s } = fresh(what === 'burst' ? 5 : 3.5);
+        s.ready = () => true;
+        const ts = new TitleSound(s, theme);
+        ts.build();
+        for (const n of ts.nodes) n.stop(0);
+        ts.out.gain.cancelScheduledValues(0);
+        ts.out.gain.value = C.TITLE_SOUND.vol;
+        ts.lastLand = -1;
+        if (what === 'land') ts.land(1);
+        else ts[what]();
+        return trim(await ctx.startRendering());
+      },
       async ping(theme) {
         const { ctx, s } = fresh(6);
         s.ready = () => true;
@@ -208,6 +223,18 @@ const ONLY = process.argv.includes('--only') ? new Set(process.argv[process.argv
     for (let i = 0; i < 4; i++) pings.push(save(`ambientPing.${theme}.${i}`, await page.evaluate((theme) => window.bake.ping(theme), theme)));
     manifest.ambient[theme] = { drone, pings };
     process.stdout.write('a');
+  }
+  // ---- 타이틀 효과 (착지 3개·빛 터짐·빠져나가기, 테마마다) ----
+  if (!ONLY || ONLY.has('title')) {
+    manifest.title = {};
+    for (const theme of Object.keys(C.TITLE_THEMES)) {
+      const land = [];
+      for (let i = 0; i < 3; i++) land.push(save(`title.${theme}.land.${i}`, await page.evaluate((theme) => window.bake.titleFx(theme, 'land'), theme)));
+      const burst = save(`title.${theme}.burst`, await page.evaluate((theme) => window.bake.titleFx(theme, 'burst'), theme));
+      const exit = save(`title.${theme}.exit`, await page.evaluate((theme) => window.bake.titleFx(theme, 'exit'), theme));
+      manifest.title[theme] = { land, burst, exit };
+      process.stdout.write('t');
+    }
   }
   fs.writeFileSync(path.join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 1));
   const size = fs.readdirSync(OUT).filter((f) => f.endsWith('.ogg')).reduce((a, f) => a + fs.statSync(path.join(OUT, f)).size, 0);

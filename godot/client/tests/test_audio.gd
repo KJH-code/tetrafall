@@ -90,3 +90,14 @@ func test_baked_manifest_complete() -> void:
 		var song: Dictionary = C.MUSIC_THEMES[k.split(".")[0]]
 		var bpm: float = song.bpm * (C.MUSIC_TENSION.bpm if k.ends_with(".tense") else 1.0)
 		check(absf(m.music[k].length - 16 * 16 * 60 / bpm / 4) < 1e-6, "곡 길이 " + k)
+
+
+# 타이틀 효과 녹음: 테마 7개마다 착지 3·빛 터짐·빠져나가기 (tools/bake-audio.cjs --only title)
+func test_title_fx_baked() -> void:
+	var m = JSON.parse_string(FileAccess.get_file_as_string("res://audio/baked/manifest.json"))
+	for th in C.TITLE_THEMES:
+		var t = m.get("title", {}).get(th)
+		check(t != null and t.land.size() == 3 and t.burst != null and t.exit != null, "타이틀 소리 %s" % th)
+		if t != null:
+			for rec in t.land + [t.burst, t.exit]:
+				check(ResourceLoader.exists("res://audio/baked/" + rec.file), "파일 %s" % rec.file)
