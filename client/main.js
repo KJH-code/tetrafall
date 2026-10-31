@@ -14,6 +14,7 @@ import { KO } from '/ko.js';
 import { hitTier, hitStep } from '/hit-tier.js';
 import { portrait, setPortraitModels, warmPortraits } from '/portrait.js';
 import { screenOf, wipeKind, wipePlan } from '/shared/wipe.js';
+import { pipText, popScale, edgeLevel, markBlink, pickMark } from '/shared/hunt-marks.js';
 import { victoryPlan, victoryStage } from '/shared/victory.js';
 import { MAP_IDS, mapName } from '/shared/maps.js';
 import { cardLayout, lobbyDock } from '/shared/hud-layout.js';
@@ -290,8 +291,11 @@ function handleEvent(e) {
     case 'mark': {
       // 표식 +1: 맞은 사람 머리 위에서 빨간 불꽃 (개수는 snapshot marks 로 머리 위에)
       const t = playerById(e.target);
-      if (t) fx.burst({ x: t.x, y: t.y, z: t.z + C.PLAYER_HEIGHT + 0.3 }, null, 0xff3a2a, 10 + e.n * 4, 2.5, 0.08, 0.4);
-      if (e.by === myId || e.target === myId) sound.play('pickup', { dist: 0 });
+      if (t) fx.burst({ x: t.x, y: t.y, z: t.z + C.PLAYER_HEIGHT + 0.3 }, null, e.n >= C.HUNTER_MARK_MAX ? C.HUNT_MARK_UI.full : 0xff3a2a, 10 + e.n * 4, 2.5, 0.08, 0.4);
+      renderer.markPop(e.target); // 머리 위 마름모가 커졌다 줄어듦 + 몸 빨갛게 번쩍 (2026-10-31 재혁: 붙은 순간이 안 느껴짐)
+      if (e.by === myId) showMarkHit(e.n); // 사냥꾼: 조준점 옆 '표식 +1 ◆◆◇'
+      if (e.target === myId) markEdgeAt = performance.now(); // 맞은 사람: 화면 가장자리 빨강이 한 번 진해짐
+      if (e.by === myId || e.target === myId) sound.play('mark', { dist: 0, n: e.n });
       return;
     }
     case 'markGone': {
@@ -1755,7 +1759,7 @@ function updatePlayers() {
       const el = document.createElement('div');
       el.className = 'pc';
       el.innerHTML =
-        '<div class="top"><div class="face"></div><div><div class="nm"></div><div class="sub"></div></div></div><div class="pct"></div><div class="hp"><i></i></div><div class="bar"></div><div class="away-tag">자리 비움</div>';
+        '<div class="top"><div class="face"></div><div><div class="nm"></div><div class="sub"></div></div></div><div class="pct"></div><div class="hp"><i></i></div><div class="bar"></div><div class="away-tag">자리 비움</div><div class="mk"></div>';
       const col = colorOf(p);
       el.style.setProperty('--pcol', col);
       el.classList.toggle('me', p.id === myId);
@@ -1763,7 +1767,7 @@ function updatePlayers() {
       if (img) el.querySelector('.face').style.backgroundImage = `url(${img})`;
       el.querySelector('.nm').textContent = shownName(p);
       playersEl.append(el);
-      playerCards.set(p.id, { el, sub: el.querySelector('.sub'), pct: el.querySelector('.pct'), hp: el.querySelector('.hp i') });
+      playerCards.set(p.id, { el, sub: el.querySelector('.sub'), pct: el.querySelector('.pct'), hp: el.querySelector('.hp i'), mk: el.querySelector('.mk') });
     }
   }
   // 인원·화면 폭 따라 판 크기 (8명이어도 한 줄·화면 안, 5명부터 작은 판)
@@ -1800,6 +1804,12 @@ function updatePlayers() {
     const pct = dead ? '<i>KO</i>' : `${p.damage}<u>%</u>`;
     if (c.pct.innerHTML !== pct) c.pct.innerHTML = pct;
     c.pct.style.color = dead ? '' : damageColor(p.damage);
+    // 사냥꾼 표식: 표식 달린 사람 판에 칸 (내가 붙인 것이면 테두리, 꽉 차면 금색) — 2026-10-31 재혁: 누가 달렸는지 안 보임
+    const mk = !dead ? pickMark(p.marks, myId) : null;
+    const mkText = mk && mk.n > 0 && !markBlink(mk.left, performance.now()) ? pipText(mk.n) : '';
+    if (c.mk.textContent !== mkText) c.mk.textContent = mkText;
+    c.mk.classList.toggle('mine', !!mk?.mine);
+    c.mk.classList.toggle('full', !!mk && mk.n >= C.HUNTER_MARK_MAX);
     const tag = state.teamMode ? `${TEAM_KO[p.team] || ''}팀 · ` : '';
     const sub = `${tag}${C.CHAR_NAMES[p.char] || ''} ${kills ? `킬 ${p.score}` : `승 ${p.wins}`}`;
     if (c.sub.textContent !== sub) c.sub.textContent = sub;
@@ -2526,12 +2536,37 @@ const myMarksEl = document.createElement('div');
 myMarksEl.id = 'my-marks';
 Object.assign(myMarksEl.style, { position: 'fixed', top: '13%', left: '50%', transform: 'translateX(-50%)', color: '#ff3a2a', fontSize: '26px', letterSpacing: '6px', textShadow: '0 0 4px #000, 0 0 2px #000', pointerEvents: 'none', zIndex: 5 });
 document.body.append(myMarksEl);
+// 맞은 사람 화면 가장자리 빨강 (표식이 많을수록 진하게, 새로 붙은 순간 한 번 더) — shared/hunt-marks.js edgeLevel
+const markEdgeEl = document.createElement('div');
+markEdgeEl.id = 'mark-edge';
+document.body.append(markEdgeEl);
+let markEdgeAt = -Infinity;
 function updateMyMarks(p) {
   const list = (p && p.alive && p.marks) || [];
   const m = list.reduce((a, b) => (!a || b.n > a.n ? b : a), null);
-  const blink = m && m.left < C.MARK_BLINK_MS && Math.floor(performance.now() / C.MARK_BLINK_PERIOD_MS) % 2 === 1;
-  const txt = m && !blink ? '◆'.repeat(Math.min(C.HUNTER_MARK_MAX, m.n)) : '';
+  const now = performance.now();
+  const blink = m && markBlink(m.left, now);
+  const txt = m && !blink ? pipText(m.n) : ''; // 빈 칸까지 (몇 개 남았는지)
   if (myMarksEl.textContent !== txt) myMarksEl.textContent = txt;
+  myMarksEl.style.color = m && m.n >= C.HUNTER_MARK_MAX ? hex(C.HUNT_MARK_UI.full) : hex(C.HUNT_MARK_UI.on);
+  myMarksEl.style.transform = `translateX(-50%) scale(${popScale(now - markEdgeAt)})`;
+  const lv = m ? edgeLevel(m.n, C.HUNTER_MARK_MAX, now - markEdgeAt, blink) : 0;
+  markEdgeEl.style.opacity = lv.toFixed(3);
+}
+// 사냥꾼 히트마커: 표식이 붙으면 조준점 오른쪽 아래에 '표식 +1 ◆◆◇' (꽉 차면 금색 'R 준비')
+const markHitEl = document.createElement('div');
+markHitEl.id = 'mark-hit';
+document.body.append(markHitEl);
+function showMarkHit(n) {
+  const full = n >= C.HUNTER_MARK_MAX;
+  markHitEl.textContent = `표식 +1 ${pipText(n)}${full ? ' R 준비' : ''}`;
+  markHitEl.style.color = hex(full ? C.HUNT_MARK_UI.full : C.HUNT_MARK_UI.on);
+  markHitEl.getAnimations().forEach((a) => a.cancel());
+  markHitEl.animate(
+    [{ opacity: 1, transform: 'translate(0, 0) scale(1.35)' }, { opacity: 1, transform: 'translate(0, -4px) scale(1)', offset: 0.25 }, { opacity: 0, transform: 'translate(0, -14px) scale(1)' }],
+    { duration: C.HUNT_MARK_UI.hitMs, easing: 'ease-out' },
+  );
+  showHitmarker();
 }
 // R 을 못 씀 (ultFail): 칸이 빨갛게 좌우로 흔들리고 이름 자리에 짧은 이유
 const ULT_FAIL_TEXT = { noBlock: '블록 없음', noSpace: '자리 없음', busy: '사용 중', noTarget: '대상 없음' };

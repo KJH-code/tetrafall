@@ -12,6 +12,7 @@ import { figureAnim, MOVES } from '/figure.js';
 import { gaitOf } from '/figure-pose.js';
 import { Effects } from '/effects.js';
 import { CELL, SHAPE_NAMES } from '/shared/pieces.js';
+import { pickMark, markPips, popScale, markBlink } from '/shared/hunt-marks.js';
 import { orbitEye, followDist, overviewScale } from '/shared/camera.js';
 import { itemModel } from '/models.js';
 import { PieceLook } from '/piece-look.js';
@@ -1965,50 +1966,69 @@ export class Renderer {
       });
       g.userData.bodyOrder = true;
     }
-    const list = p.marks || [];
-    const mine = list.find((m) => m.by === myId);
-    const m = mine || list.reduce((a, b) => (!a || b.n > a.n ? b : a), null);
+    const pick = pickMark(p.marks, myId);
+    const mine = pick && pick.mine ? pick : null;
+    const m = pick;
     let hm = g.userData.huntMarks;
     if (m && !hm) {
       const canvas = document.createElement('canvas');
-      canvas.width = 96;
+      canvas.width = 32 * C.HUNTER_MARK_MAX;
       canvas.height = 32;
       const tex = new THREE.CanvasTexture(canvas);
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false, transparent: true, sizeAttenuation: false }));
-      sprite.scale.set(0.09, 0.03, 1);
+      sprite.scale.set(C.HUNT_MARK_UI.pip * C.HUNTER_MARK_MAX, C.HUNT_MARK_UI.pip, 1);
       sprite.center.set(0.5, -1.4); // 이름표(같은 높이) 위로
       sprite.position.z = g.userData.labelZ ?? C.PLAYER_HEIGHT + 0.45;
       sprite.renderOrder = 12;
       g.add(sprite);
-      hm = g.userData.huntMarks = { sprite, canvas, tex, n: 0 };
+      hm = g.userData.huntMarks = { sprite, canvas, tex, n: -1, popAt: g.userData.markPopPending };
     }
     if (hm) {
+      // 칸: 최대치만큼 자리 (빈 칸 = 어두운 테두리), 찬 칸 빨강, 꽉 차면 금색 (2026-10-31 재혁: 몇 개인지 안 보임)
       const n = m && p.alive ? Math.min(C.HUNTER_MARK_MAX, m.n) : 0;
       if (n !== hm.n) {
+        const U = C.HUNT_MARK_UI;
+        const { pips, full } = markPips(n);
         const c = hm.canvas.getContext('2d');
-        c.clearRect(0, 0, 96, 32);
-        for (let i = 0; i < n; i++) {
-          const x = 48 + (i - (n - 1) / 2) * 30;
+        c.clearRect(0, 0, hm.canvas.width, 32);
+        const hex = (v) => `#${v.toString(16).padStart(6, '0')}`;
+        pips.forEach((on, i) => {
+          const x = 16 + i * 32;
           c.beginPath();
           c.moveTo(x, 3);
           c.lineTo(x + 11, 16);
           c.lineTo(x, 29);
           c.lineTo(x - 11, 16);
           c.closePath();
-          c.fillStyle = '#ff3a2a';
+          c.fillStyle = on ? hex(full ? U.full : U.on) : 'rgba(0,0,0,0.35)';
           c.fill();
           c.lineWidth = 3;
-          c.strokeStyle = '#300';
+          c.strokeStyle = on ? '#300' : hex(U.off);
           c.stroke();
-        }
+        });
         hm.tex.needsUpdate = true;
         hm.n = n;
       }
-      const blink = m && m.left < C.MARK_BLINK_MS && Math.floor(performance.now() / C.MARK_BLINK_PERIOD_MS) % 2 === 1;
+      const now = performance.now();
+      const blink = m && markBlink(m.left, now);
       hm.sprite.visible = n > 0 && !blink && !(p.id === myId && !this.third);
       hm.sprite.material.depthTest = !mine; // 내 표식은 블록 뒤에서도 보임
+      // 붙는 순간 커졌다 줄어듦 (markPop), 꽉 차면 살짝 숨 쉬듯
+      const pop = popScale(now - (hm.popAt ?? -Infinity));
+      const breathe = n >= C.HUNTER_MARK_MAX ? 1 + 0.08 * Math.sin(now / 120) : 1;
+      hm.sprite.scale.set(C.HUNT_MARK_UI.pip * C.HUNTER_MARK_MAX * pop * breathe, C.HUNT_MARK_UI.pip * pop * breathe, 1);
     }
     this.huntEye(g, !!mine && p.alive && p.id !== myId);
+  }
+
+  // 표식이 붙는 순간 (mark 이벤트): 대상 머리 위 마름모가 커졌다 줄어들고 몸이 빨갛게 번쩍
+  markPop(target) {
+    const g = this.playerMeshes.get(target);
+    if (!g) return;
+    if (g.userData.huntMarks) g.userData.huntMarks.popAt = performance.now();
+    else g.userData.markPopPending = performance.now();
+    g.userData.glowUntil = performance.now() + C.HUNT_MARK_UI.flashMs;
+    g.userData.glowColor = C.HUNT_MARK_UI.flashColor;
   }
 
   // R 게이지가 찬 상대: 발밑~몸 둘레에 옅은 하늘색 빛 (필살기 빛과 같은 계열, 압사 빨강·치명타 노랑과 다른 색). 은은하게 숨 쉬듯.
