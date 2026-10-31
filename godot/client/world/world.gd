@@ -118,6 +118,10 @@ func _ready() -> void:
 	if ResourceLoader.exists(BBLOCKS):
 		bblocks = load(BBLOCKS).new()
 		add_child(bblocks)
+	if g3_has("xray_skip_body") and g3_has("toon_stencil_write"):
+		# 사냥꾼의 눈: x-ray 는 사람 몸 (스텐실) 에 가린 곳엔 안 그림 — 블록·땅에 가린 곳만 (B3 스텐실)
+		G3.xray_skip_body(body_fx.xray_mat)
+		bodies.stencil_fn = func(m: ShaderMaterial): G3.toon_stencil_write(m, true)
 	if g3_has("game_light"):
 		# 판 빛 (B3 game_light.gd = game-light.js 전부: 색 보정·비네트·하늘 어둡게·빛 무리·빛 터짐) — 내 light_fx (3D 부분만) 대신
 		remove_child(light_fx)
