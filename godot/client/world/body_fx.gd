@@ -23,7 +23,6 @@ var ghosts := [] # 순간 베기 잔상 몸 {node, mat, t0} (G2 body.snapshot)
 var ghost_next := {} # id -> 다음 잔상 시각
 var slides = null # world/hook_fx.gd slides (미끄러지는 몸, to 가 있으면 순간 베기)
 var xray_mat: StandardMaterial3D # 사냥꾼의 눈: 블록에 가린 부분만 빨갛게 (깊이 반대)
-var flash_mat: StandardMaterial3D # 표식이 붙는 순간 몸 빨갛게 번쩍
 var _tex := {}
 
 
@@ -42,7 +41,6 @@ func _ready() -> void:
 	xray_mat.no_depth_test = false
 	xray_mat.render_priority = 1
 	xray_mat.cull_mode = BaseMaterial3D.CULL_BACK # 앞면만 (JS FrontSide) — 양면이면 뒷면이 늘 깊이 반대 검사를 통과해 몸 전체가 빨개짐
-	flash_mat = _flat(int(C.HUNT_MARK_UI.flashColor), 0.6)
 
 
 static func now_ms() -> float:
@@ -108,7 +106,11 @@ func on_event(e: Dictionary) -> void:
 				var d: Dictionary = per.get(int(id), {})
 				per[int(id)] = d
 				d.pop_at = now_ms()
-				d.flash_until = now_ms() + C.HUNT_MARK_UI.flashMs
+				# 몸이 빨갛게 번쩍 = 몸 재질 빛 (render.js markPop glowUntil·glowColor — 겹칠 재질이 아님: 이름표·남의 몸을 덮지 않게)
+				var n: Dictionary = bodies.nodes.get(int(id), {}) if bodies != null else {}
+				if not n.is_empty() and n.body.get("glow_until") != null:
+					n.body.glow_until = Time.get_ticks_msec() + float(C.HUNT_MARK_UI.flashMs)
+					n.body.glow_color = Co.color(C.HUNT_MARK_UI.flashColor)
 		"skill", "ult", "ultRefund":
 			aura(e.get("who"), t != "skill")
 		"glideRing": # 음유 천천히 낙하 음파 고리
@@ -415,11 +417,7 @@ func _hunt(d: Dictionary, p: Dictionary, s: Vector3, my_id, mine: bool, now: flo
 func _hunt_eye(d: Dictionary, p: Dictionary, eye: bool, now: float) -> void:
 	if bodies == null:
 		return
-	var want = null
-	if now < float(d.get("flash_until", 0.0)):
-		want = flash_mat
-	elif eye:
-		want = xray_mat
+	var want = xray_mat if eye else null
 	if d.get("overlay") == want and d.has("overlay"):
 		return
 	var n: Dictionary = bodies.nodes.get(int(p.id), {})
