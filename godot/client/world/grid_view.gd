@@ -15,6 +15,8 @@ var piece_colors: Dictionary = C.SHAPE_COLORS
 var skip := {} # 그리지 않을 칸 (건축가 블록이 따로 그림)
 var count := 0
 var make_mat = null # Callable(Color) -> Material: G3 툰 재질 (없으면 StandardMaterial3D)
+var terrain_mmi := MultiMeshInstance3D.new() # 테마 지형 칸 (값 1) 만: G3 지형 셰이더 (칸 크기 1, 이웃·그늘 비트는 custom data)
+var terrain_custom = null # Callable(grid, w, d, h, skip) -> PackedColorArray (G3.terrain_custom), null 이면 지형도 칸 색 블록
 
 
 func _ready() -> void:
@@ -30,10 +32,26 @@ func _ready() -> void:
 	m.roughness = WC.BLOCK_ROUGH[0]
 	mmi.material_override = m
 	add_child(mmi)
+	var tm := MultiMesh.new()
+	tm.transform_format = MultiMesh.TRANSFORM_3D
+	tm.use_custom_data = true
+	terrain_mmi.multimesh = tm
+	terrain_mmi.visible = false
+	add_child(terrain_mmi)
 	for n in [floor_mesh, cliff]:
 		n.mesh = BoxMesh.new()
 		n.material_override = StandardMaterial3D.new() # 바닥 판 무늬는 G3 floor_material 이 오면
 		add_child(n)
+
+
+# 테마 지형 셰이더 (G3 terrain_mesh·terrain_material·terrain_custom). mesh 가 null 이면 끔 (지형도 칸 색 블록)
+func set_terrain_look(mesh: Mesh, mat: Material, custom) -> void:
+	terrain_custom = custom if mesh != null else null
+	terrain_mmi.visible = mesh != null
+	if mesh != null:
+		terrain_mmi.multimesh.instance_count = 0
+		terrain_mmi.multimesh.mesh = mesh
+		terrain_mmi.material_override = mat
 
 
 # G3 툰 재질로 바꿈 (인스턴스 색 COLOR 를 곱하는 재질)
@@ -66,9 +84,24 @@ func set_field(w: int, d: int) -> void:
 func rebuild(grid: PackedByteArray, w: int, d: int, h: int) -> void:
 	var mm := mmi.multimesh
 	var cells := PackedInt32Array()
+	var terr := PackedInt32Array()
+	var shader_terrain: bool = terrain_custom != null
 	for i in grid.size():
 		if grid[i] != 0 and not skip.has(i):
-			cells.append(i)
+			if shader_terrain and grid[i] == Cells.TERRAIN:
+				terr.append(i)
+			else:
+				cells.append(i)
+	if shader_terrain:
+		# 순서 z → y → x (격자 번호 순) = terrain_custom 순서
+		var looks: PackedColorArray = terrain_custom.call(grid, w, d, h, skip)
+		var tm := terrain_mmi.multimesh
+		tm.instance_count = terr.size()
+		for k in terr.size():
+			var i: int = terr[k]
+			tm.set_instance_transform(k, Transform3D(Basis(), Co.gxyz(i % w + 0.5, (i / w) % d + 0.5, i / (w * d) + 0.5)))
+			if k < looks.size():
+				tm.set_instance_custom_data(k, looks[k])
 	count = cells.size()
 	mm.instance_count = count
 	for k in count:
