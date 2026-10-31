@@ -28,6 +28,7 @@ var pieces := false # --pieces: 테트리미노 칸 7색 (js_demo ?pieces 와 �
 var hazard := -99.0 # --hazard z: 위험 표면 (js_demo ?hazard=z 와 같음, 시각 3초)
 var light := false # --light: 판 빛 vivid (js_demo ?light 와 같음)
 var low_after := false # --low: 다 만든 뒤 G3.set_low(self, true) (그래픽 낮춤 켬을 그 자리에서)
+var alpha_pieces := false # --alpha: 칸을 반투명 재질 (하늘 블록·하늘 시점 0.55) 로
 var terrain := false # --terrain: 테마 지형 블록 (terrain_grids.json, js_demo ?terrain 과 같음)
 
 
@@ -51,6 +52,8 @@ func _ready() -> void:
 			light = true
 		if args[i] == "--low":
 			low_after = true
+		if args[i] == "--alpha":
+			alpha_pieces = true
 		if args[i] == "--terrain":
 			terrain = true
 	G3.apply_theme(self, theme)
@@ -181,7 +184,12 @@ func _pieces() -> void:
 		mm.set_instance_color(i, Coords.color(cols[c[3]]))
 	var mi := MultiMeshInstance3D.new()
 	mi.multimesh = mm
-	mi.material_override = G3.piece_material(theme, false, {"rim": C.GAME_LIGHT_PRESETS.vivid.rim if light else 0.0})
+	mi.material_override = G3.piece_material(theme, false, {"rim": C.GAME_LIGHT_PRESETS.vivid.rim if light else 0.0, "transparent": alpha_pieces})
+	if alpha_pieces:
+		for i in cells.size():
+			var c2 := mm.get_instance_color(i)
+			c2.a = 0.55
+			mm.set_instance_color(i, c2)
 	add_child(mi)
 	if light:
 		var gl := G3.game_light(self)
