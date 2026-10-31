@@ -231,7 +231,7 @@ func capture(b, st: Dictionary, hit, dt: float) -> void:
 	# 맞음·경직·낙사·일어나기 (모터 < 1) 면 깨움 (그 순간 목표 자세로 맞추고), 다 세진 뒤 K.RAGDOLL_SLEEP_MS 지나면 다시 쉼
 	var now := Time.get_ticks_msec() * 1.0
 	var new_hit: bool = hit != null and hit.id != rag.hit_id
-	if m.motor < 1.0 or new_hit:
+	if m.motor < K.RAGDOLL_WAKE_BELOW or new_hit:
 		rag.calm_at = now
 		if not rag.awake:
 			_set_awake(rag, true)

@@ -48,12 +48,12 @@ func _ready() -> void:
 	env.environment = Environment.new()
 	env.environment.background_mode = Environment.BG_CLEAR_COLOR
 	env.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.environment.ambient_light_color = Color(1.0, 0.89, 0.82)
-	env.environment.ambient_light_energy = 0.6
+	env.environment.ambient_light_color = Color.BLACK # 하늘빛·해 세기는 G3 툰 셰이더 전역 값 (필드와 같음) — 고도 주변광을 더하면 팔이 하얗게 날아감
+	env.environment.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	view.add_child(env)
 	var sun := DirectionalLight3D.new()
-	sun.light_color = Color(1, 0.95, 0.88)
-	sun.light_energy = 1.25
+	sun.light_color = Color.WHITE # 툰 셰이더는 방향만 씀 (색·세기는 g3_sun)
+	sun.light_energy = 1.0
 	sun.look_at_from_position(Vector3(-1, 2, 1), Vector3.ZERO)
 	cam.add_child(sun)
 	# 몸 좌표 (앞 +x, 왼쪽 +y, 위 +z) → 카메라 좌표 (앞 -z, 오른쪽 +x, 위 +y)
