@@ -62,6 +62,13 @@ export class NetMeter {
     if (gap > C.NET_SNAPSHOT_STALL_MS || this.gaps.length >= C.NET_GAP_REPEAT) this.setWarn(`끊김 ${Math.round(gap)}ms`, now);
   }
 
+  // 방을 나감: 스냅샷이 안 오는 게 정상이니 끊김 계산을 처음부터 (안 하면 메뉴에서 '끊김 Nms' 가 계속 뜸)
+  leaveRoom() {
+    this.lastStateAt = null;
+    this.gaps = [];
+    this.warn = null;
+  }
+
   setWarn(text, now) {
     this.warn = { text, until: now + C.NET_WARN_HOLD_MS };
   }

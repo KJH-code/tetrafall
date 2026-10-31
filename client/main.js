@@ -1200,12 +1200,20 @@ function leftRoom(reason) {
   renderer.gridVersion = -1; // 격자 버전은 방마다 0부터라, 다음 방 버전이 우연히 같으면 지형을 안 바꿈
   roomRowKey = '';
   if (document.pointerLockElement) document.exitPointerLock();
+  if (net) net.leftRoom(); // 방 밖엔 스냅샷이 없음 → 끊김 알림 멈춤
+  hideRoomPanels(); // state 가 없으면 drawHud 가 안 돌아 결과·점수표·부활 판이 메뉴 위에 남음
   setUrlRoom(null);
   // 메뉴로 짧은 슬래시: 방 목록은 띠가 다 덮을 때 (shared/wipe.js 'short')
   const plan = screenNow && screenNow !== 'menu' ? playWipe(wipeKind(screenNow, 'menu')) : null;
   screenNow = 'menu';
   if (plan) setTimeout(() => !myId && showRooms(reason || ''), plan.coverMs);
   else showRooms(reason || '');
+}
+
+function hideRoomPanels() {
+  resultsEl.classList.add('hidden');
+  resultsKey = '';
+  for (const el of [scoreboardEl, respawnEl]) el.classList.add('hidden');
 }
 
 // 방 나가기 (대기실 버튼·설정 창·연습 창 모두 같은 길): 자리 토큰·주소의 ?room= 를 먼저 지움 → 새로고침해도 메뉴

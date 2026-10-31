@@ -1,5 +1,7 @@
 # 인터넷 대전 (npm run online)
 
+> 고도 판 (C# 서버) 은 `Tetrafall.Server --online` 이 같은 일을 node 없이 한다 — 재혁 PC 순서는 [godot-play.md](godot-play.md).
+
 ## 지금 방식: Cloudflare 빠른 터널 (계정·도메인 필요 없음)
 
 ```

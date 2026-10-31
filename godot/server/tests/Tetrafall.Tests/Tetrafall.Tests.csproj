@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\src\Tetrafall.Core\Tetrafall.Core.csproj" />
     <ProjectReference Include="..\..\src\Tetrafall.Server\Tetrafall.Server.csproj" />
     <ProjectReference Include="..\..\src\Tetrafall.Trace\Tetrafall.Trace.csproj" />
+    <ProjectReference Include="..\..\src\Tetrafall.Sim\Tetrafall.Sim.csproj" />
   </ItemGroup>
 
 </Project>
