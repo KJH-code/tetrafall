@@ -26,6 +26,7 @@ var theme = null
 var batch := -1 # --body 0|1: 시험 몸 (tests/test_batch.gd) 을 조각대로 (0) / G3.batch_mesh 로 (1) — 화소가 같아야 함
 var pieces := false # --pieces: 테트리미노 칸 7색 (js_demo ?pieces 와 같음)
 var hazard := -99.0 # --hazard z: 위험 표면 (js_demo ?hazard=z 와 같음, 시각 3초)
+var light := false # --light: 판 빛 vivid (js_demo ?light 와 같음)
 var terrain := false # --terrain: 테마 지형 블록 (terrain_grids.json, js_demo ?terrain 과 같음)
 
 
@@ -42,6 +43,8 @@ func _ready() -> void:
 			pieces = true
 		if args[i] == "--hazard" and i + 1 < args.size():
 			hazard = float(args[i + 1])
+		if args[i] == "--light":
+			light = true
 		if args[i] == "--terrain":
 			terrain = true
 	G3.apply_theme(self, theme)
@@ -166,8 +169,16 @@ func _pieces() -> void:
 		mm.set_instance_color(i, Coords.color(cols[c[3]]))
 	var mi := MultiMeshInstance3D.new()
 	mi.multimesh = mm
-	mi.material_override = G3.piece_material(theme)
+	mi.material_override = G3.piece_material(theme, false, {"rim": C.GAME_LIGHT_PRESETS.vivid.rim if light else 0.0})
 	add_child(mi)
+	if light:
+		var gl := G3.game_light(self)
+		gl.set_preset("vivid")
+		var halos := []
+		for c in cells:
+			halos.append([c[0] + 0.5, c[1] + 0.5, c[2] + 0.5, cols[c[3]], 1])
+		for k in 20:
+			gl.frame(true, halos, 0.1)
 
 
 func _hazard(grid: PackedByteArray, w: int, d: int, h: int) -> void:

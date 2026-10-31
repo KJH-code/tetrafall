@@ -51,3 +51,12 @@ func test_light_globals() -> void:
 	var want := -preload("res://core/coords.gd").gxyz(C.SUN_DIR[0], C.SUN_DIR[1], C.SUN_DIR[2]).normalized()
 	check((-sun.transform.basis.z).is_equal_approx(want), "해 방향")
 	sun.free()
+
+
+# 판 빛 하늘 어둡게 = three Color.multiplyScalar(1 − (1 − dim) k).offsetHSL(0, sat k, 0) (값은 node three 로 뽑음)
+func test_game_light_sky() -> void:
+	var GL := preload("res://shaders/game_light.gd")
+	for r in [[0.2, 0.4, 0.8, 0.5, 0.15, 1, 0.0625, 0.1875, 0.4375], [0.9, 0.3, 0.1, 0.7, 0.1, 0.5, 0.78625, 0.244375, 0.06375], [0.05, 0.05, 0.06, 0.5, 0.15, 1, 0.020875, 0.020875, 0.034125], [0.6, 0.6, 0.6, 0.75, 0.08, 1, 0.486, 0.414, 0.414]]:
+		var got: Vector3 = GL._dimv(Vector3(r[0], r[1], r[2]), r[3], r[4], r[5])
+		check(got.distance_to(Vector3(r[6], r[7], r[8])) < 1e-4, "하늘 어둡게 %s → %s" % [r, got])
+	check(C.GAME_LIGHT_PRESETS.has(C.GAME_LIGHT), "기본 안 %s" % C.GAME_LIGHT)

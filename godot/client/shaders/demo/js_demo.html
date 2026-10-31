@@ -147,12 +147,21 @@ for (const [kind, p, s, c] of things) {
 if (PIECES) {
   things.length = 1;
   const look = new PieceLook(pieceSpec(Q.get('theme')), null, false);
+  if (Q.has('light')) look.rim = C.GAME_LIGHT_PRESETS.vivid.rim;
   const shapes = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
   const im = new THREE.InstancedMesh(look.geo, look.material({ color: 0xffffff }), 10);
   const cells = shapes.map((sh, i) => [1 + i, 2, 0, sh]).concat([[2, 3, 0, 'T'], [2, 3, 1, 'T'], [5, 3, 0, 'L']]);
   cells.forEach(([x, y, z, sh], i) => { im.setMatrixAt(i, new THREE.Matrix4().makeTranslation(x + 0.5, y + 0.5, z + 0.5)); im.setColorAt(i, new THREE.Color(look.color(sh))); });
   im.castShadow = im.receiveShadow = true;
   scene.add(im);
+  if (Q.has('light')) { // ?light: 판 빛 vivid — game-light.js GameLight 그대로 (하늘이 다 어두워질 때까지 frame 여러 번)
+    const { GameLight } = await import('/game-light.js');
+    const gl = new GameLight({ scene, renderer: R, dome });
+    gl.setPreset('vivid');
+    gl.themeApplied();
+    const halos = cells.map(([x, y, z, sh]) => [x + 0.5, y + 0.5, z + 0.5, look.color(sh), 1]);
+    for (let k = 0; k < 20; k++) gl.frame(true, halos, 0.1);
+  }
 }
 const cam = new THREE.PerspectiveCamera(60, 1280 / 720, 0.05, 200);
 cam.up.set(0, 0, 1); if (TERR) { cam.position.set(16, -5, 11); cam.lookAt(6, 6, 1); } else { cam.position.set(9, -5, 4); cam.lookAt(4, 8, 2.5); }
