@@ -10,6 +10,7 @@ const CHARS := "res://chars/chars.gd"
 
 var nodes := {} # id -> {root, body, label, char, color}
 var chars_script = null
+var pos_fn = null # Callable(p, pos) -> pos: 화면 위치 고치기 (World: 대기실 미리보기 판 가운데·지형 위)
 var make_mat = null # Callable(Color) -> Material: G3 툰 재질 (상자 몸, 없으면 StandardMaterial3D)
 var shown := {} # id -> 게임 좌표 화면 위치 (Vector3) — 카메라·하늘 도우미가 읽음
 
@@ -101,6 +102,8 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 			n = _make(p, color)
 			nodes[id] = n
 		var pos := Store.view_pos(id)
+		if pos_fn != null:
+			pos = pos_fn.call(p, pos)
 		shown[id] = pos
 		var root: Node3D = n.root
 		var mine: bool = my_id != null and id == int(my_id)

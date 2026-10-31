@@ -213,3 +213,22 @@ func test_ghost_pick_matches_js() -> void:
 			bad += 1
 	check(bad == 0, "조준 기둥 %d/%d 다름" % [bad, fx.rays.size()])
 	check(hits > 10, "닿는 시선이 충분 (%d)" % hits)
+
+
+func test_lobby_preview_matches_js() -> void:
+	const LP := preload("res://world/lobby_preview.gd")
+	var fx = load_json("lobby.json")
+	for t in fx.themes:
+		var got = LP.lobby_theme(t[0], t[1])
+		check(str(got) == str(t[2]), "lobbyTheme %s → %s ≠ %s" % [t[0].map, got, t[2]])
+		check(LP.lobby_field_size(t[0]) == int(t[3]), "lobbyFieldSize %d ≠ %d" % [LP.lobby_field_size(t[0]), t[3]])
+	for s in fx.sizes:
+		check(LP.field_size_for(int(s[0])) == int(s[1]), "fieldSizeFor %s" % [s])
+	for c in fx.cols: # world/map_columns.json = 지금 shared/maps.js mapColumns (맵 배치를 바꾸고 다시 안 뽑으면 실패)
+		check(str(LP.columns(c[0], int(c[1]))) == str(c[2]), "map_columns.json %s %d 다름 → node godot/client/tools/gen-map-columns.mjs" % [c[0], c[1]])
+	var built := {}
+	for t in fx.tops:
+		var key: String = "%s%d" % [t[0], t[1]]
+		if not built.has(key):
+			built[key] = LP.build(t[0], int(t[1]), int(C.GRID_H))
+		check(near(LP.top_at(built[key], t[2], t[3]), t[4]), "previewTop %s" % [t])

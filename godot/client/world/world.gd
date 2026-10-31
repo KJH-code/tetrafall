@@ -15,6 +15,7 @@ const SkyAids := preload("res://world/sky_aids.gd")
 const ItemsView := preload("res://world/items_view.gd")
 const GhostAim := preload("res://world/ghost_aim.gd")
 const Scenery := preload("res://world/scenery.gd")
+const LP := preload("res://world/lobby_preview.gd")
 const CamRig := preload("res://world/cam_rig.gd")
 const BBLOCKS := "res://world/bblocks.gd"
 const FX := "res://fx/fx.gd" # G5 효과 (있으면 fx_root 에 붙이고 setup(rig): 카메라 흔들림·KO 줌은 rig.hook)
@@ -37,9 +38,10 @@ var fx_root := Node3D.new() # G5 효과 노드가 붙을 자리
 var theme_id = null
 var theme := {}
 var field := Vector3i.ZERO # 지금 판 크기 (w, d, h)
-var built_version := -2
+var built_version = -2 # 마지막으로 깐 격자 (서버 gridVersion 또는 미리보기 key)
 var headless := false
 var G3 = null
+var preview = null # 대기실 지형 미리보기 {key, grid, top, w, d, h, off} (LP.build), 없으면 서버 격자
 var sprouts = null # G3 튀어나온 조각 노드 (테마마다)
 var vm = null # G2 1인칭 팔·무기 (chars/viewmodel.gd)
 const VIEWMODEL := "res://chars/viewmodel.gd"
@@ -71,6 +73,7 @@ func _ready() -> void:
 	pieces_view = PiecesView.new()
 	hazard_view = HazardView.new()
 	bodies = Bodies.new()
+	bodies.pos_fn = shown_pos
 	sky_aids = SkyAids.new()
 	items_view = ItemsView.new()
 	rig = CamRig.new()
@@ -186,6 +189,21 @@ func apply_theme(map_id: String) -> void:
 	sun.light_energy = float(theme.get("sunIntensity", 1.0)) * WC.SUN_ENERGY
 
 
+# 지금 그리는 격자: 대기실 미리보기면 그것, 아니면 서버 격자
+func grid() -> PackedByteArray:
+	return preview.grid if preview != null else Store.grid
+
+
+# 대기실 미리보기: 사람은 화면만 큰 판 가운데·그 칸 위로 (render.js render 의 previewOff·previewTop)
+func shown_pos(p: Dictionary, pos: Vector3) -> Vector3:
+	if preview == null:
+		return pos
+	pos += Vector3(preview.off, preview.off, 0)
+	if p.alive:
+		pos.z = maxf(pos.z, LP.top_at(preview, pos.x, pos.y))
+	return pos
+
+
 # 격자 칸이 단단한가 (게임 좌표, render.js solidAt): 필드 밖 = 빈칸, 바닥 아래 = 단단함
 func solid_at(x: float, y: float, z: float) -> bool:
 	var gx := floori(x)
@@ -198,7 +216,8 @@ func solid_at(x: float, y: float, z: float) -> bool:
 	if gz >= field.z:
 		return false
 	var i := (gz * field.y + gy) * field.x + gx
-	return i < Store.grid.size() and Store.grid[i] != 0
+	var g := grid()
+	return i < g.size() and g[i] != 0
 
 
 func _process(dt: float) -> void:
@@ -213,11 +232,23 @@ func _process(dt: float) -> void:
 		return
 	dt *= View.time_scale # KO 슬로모션 (G5 가 정함)
 	var now := Time.get_ticks_msec() * 1.0
-	var mid := str(st.get("map", {}).get("id", ""))
-	if mid != theme_id:
-		apply_theme(mid)
 	var f: Dictionary = st.field
 	var fs := Vector3i(int(f.w), int(f.d), int(f.get("h", C.GRID_H)))
+	# 대기실: 고른 맵의 시작 지형을 지금 인원 판 크기로 미리 깖 (render.js lobbyPreview), 테마도 그 맵
+	var pk = LP.pick(st, View.menu_theme)
+	var mid := str(pk) if pk != null else str(st.get("map", {}).get("id", ""))
+	if mid != theme_id:
+		apply_theme(mid)
+	if pk != null:
+		var n := LP.lobby_field_size(st)
+		var key := "%s:%d:%d" % [pk, n, fs.z]
+		if preview == null or preview.key != key:
+			preview = LP.build(pk, n, fs.z)
+			preview.key = key
+		preview.off = (n - fs.x) / 2.0
+		fs = Vector3i(n, n, fs.z)
+	else:
+		preview = null
 	if fs != field:
 		field = fs
 		grid_view.set_field(fs.x, fs.y)
@@ -230,14 +261,17 @@ func _process(dt: float) -> void:
 	if bblocks != null:
 		bblocks.update(st)
 		grid_view.skip = bblocks.skip()
-	if Store.grid_version != built_version and Store.grid.size() == fs.x * fs.y * fs.z:
-		grid_view.rebuild(Store.grid, fs.x, fs.y, fs.z)
-		built_version = Store.grid_version
+	var gkey = preview.key if preview != null else Store.grid_version
+	var g := grid()
+	if str(gkey) != str(built_version) and g.size() == fs.x * fs.y * fs.z:
+		grid_view.rebuild(g, fs.x, fs.y, fs.z)
+		built_version = gkey
 		if sprouts != null:
-			G3.sprout_update(sprouts, Store.grid, fs.x, fs.y, fs.z, grid_view.skip, bool(View.settings.get("lowGfx", false)))
+			G3.sprout_update(sprouts, g, fs.x, fs.y, fs.z, grid_view.skip, bool(View.settings.get("lowGfx", false)))
 	rig.pre(dt)
 	var sky_on: bool = rig.sky_blend > 0.5
 	bodies.update(st, Store.my_id, rig.hide_me(), sky_on, now)
+	rig.field_size = Vector2(fs.x, fs.y)
 	var me := Store.me()
 	pieces_view.update(st, Store.my_id, me, rig.sky_blend)
 	hazard_view.update(st, Store.grid, Store.grid_version, me)
@@ -269,6 +303,6 @@ func _process(dt: float) -> void:
 func column_top(x: int, y: int) -> int:
 	for z in range(field.z - 1, -1, -1):
 		var i := (z * field.y + y) * field.x + x
-		if i < Store.grid.size() and Store.grid[i] != 0:
+		if i < grid().size() and grid()[i] != 0:
 			return z + 1
 	return 0

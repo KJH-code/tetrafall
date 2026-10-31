@@ -50,6 +50,7 @@ func pull_in(at: Dictionary, to: Dictionary, solid: Callable) -> Dictionary:
 var last_phase := ""
 var ghost_aim = null # world/ghost_aim.gd 노드 (World 가 넣음)
 var ghost_refuse_at := -1e9 # 안 되는 투하를 누른 시각 (G4 조준 원 흔들림 자리)
+var field_size = null # 그리는 판 크기 (World 가 정함: 대기실 미리보기면 미리보기 판)
 var force := "" # 확인용 (명령줄 --world-view): "over" 늘 전체 보기 (WC.OVER_POSE), "third"·"first" 시점 고정
 
 
@@ -212,8 +213,8 @@ func hide_me() -> bool:
 func place(dt: float, shown: Dictionary, solid: Callable) -> void:
 	var st := Store.state
 	var f: Dictionary = st.get("field", {"w": C.GRID_W, "d": C.GRID_W})
-	var w: float = f.w
-	var d: float = f.d
+	var w: float = f.w if field_size == null else field_size.x
+	var d: float = f.d if field_size == null else field_size.y
 	var me := Store.me()
 	var yaw := PlayerInput.yaw
 	var pitch := PlayerInput.pitch
