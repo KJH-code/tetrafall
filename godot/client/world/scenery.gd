@@ -504,7 +504,7 @@ static func sea_mesh(c: Color, inner: float, outer: float) -> ArrayMesh:
 			var a1 := TAU * (i + 1) / seg
 			var p := [Vector2(cos(a0), sin(a0)) * r0, Vector2(cos(a1), sin(a1)) * r0, Vector2(cos(a0), sin(a0)) * r1, Vector2(cos(a1), sin(a1)) * r1]
 			var al := [alpha.call(r0), alpha.call(r0), alpha.call(r1), alpha.call(r1)]
-			for q in [[0, 2, 1], [1, 2, 3]]: # 게임 좌표에서 위 (z+) 가 앞면
+			for q in [[0, 1, 2], [1, 3, 2]]: # 위 (고도 +y) 에서 볼 때 시계 방향 = 고도 앞면 (예전 순서는 뒤집혀 위에서 안 보였음)
 				for j in q:
 					st.set_color(Color(c, al[j]))
 					st.set_normal(Vector3.UP)
