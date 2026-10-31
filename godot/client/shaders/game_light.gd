@@ -25,7 +25,7 @@ var base_key = null
 var env_root: Node3D # G3Env 를 가진 world
 
 
-func _ready() -> void:
+func _init() -> void: # 트리 밖에서도 바로 쓸 수 있게 (prewarm·테스트)
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = true
 	var q := QuadMesh.new()

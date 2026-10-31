@@ -82,3 +82,26 @@ func test_low_gfx_switch() -> void:
 	G3.set_low(world, false)
 	check(tm.get_shader_parameter("tf_disp") > 0.0 and pm.get_shader_parameter("rim") > 0.0 and hm.get_shader_parameter("SHIMMER") == 1 and not gl.low, "되돌림")
 	world.free()
+
+
+# 첫 진입 멈춤 줄이기: prewarm 이 G3 셰이더마다 보통 메시·MultiMesh 를 하나씩 + 몸 묶음 (SkinnedMesh) + 판 빛 무리를 그려 둠
+func test_prewarm_covers_shaders() -> void:
+	var world := Node3D.new()
+	(Engine.get_main_loop() as SceneTree).root.add_child(world)
+	var r := G3.prewarm(world, "crystal")
+	var shaders := {}
+	var kinds := {"mesh": 0, "multi": 0, "skin": 0}
+	for n in r.find_children("*", "GeometryInstance3D", true, false):
+		var m = n.material_override
+		if m is ShaderMaterial:
+			shaders[m.shader.resource_path] = true
+		if n is MultiMeshInstance3D:
+			kinds.multi += 1
+		elif n is MeshInstance3D and n.skin != null:
+			kinds.skin += 1
+		elif n is MeshInstance3D:
+			kinds.mesh += 1
+	for s in ["toon", "toon_alpha", "terrain", "floor", "piece", "piece_alpha", "hazard", "flat", "halo"]:
+		check(shaders.has("res://shaders/%s.gdshader" % s), "prewarm 에 %s 셰이더" % s)
+	check(kinds.multi >= 10 and kinds.mesh >= 10 and kinds.skin == 1, "보통·MultiMesh·SkinnedMesh 갈래 %s" % kinds)
+	world.free()

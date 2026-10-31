@@ -608,3 +608,78 @@ static func set_low(world: Node3D, on: bool) -> void:
 			gl.low = on
 		if world.get_node_or_null("G3Env"):
 			set_shadows(world, not on)
+
+
+# ---- 첫 진입 멈춤 줄이기 (JS render.js prewarmLobby): 고도는 처음 그릴 때 셰이더를 만듦 (Compatibility 는 미리 만들기 없음) →
+# 메뉴에서 쉴 때 G3 셰이더를 쓰는 모든 갈래 (보통 메시·MultiMesh (인스턴스 색·custom)·SkinnedMesh, 그림자 패스 포함) 를 카메라 앞에 아주 작게 한 번씩 그려 둠.
+# 만든 셰이더는 Shader 자원 (g3.gd preload) 에 남아 판에서 다시 안 만듦. frames 뒤 스스로 치움. 반환: 그 노드 (done 신호)
+static func prewarm(world: Node3D, theme_id = null, frames := 3) -> Node3D:
+	var cam := world.get_viewport().get_camera_3d() if world.is_inside_tree() else null
+	var root := Node3D.new()
+	root.name = "G3Prewarm"
+	world.add_child(root)
+	if cam:
+		root.global_transform = cam.global_transform.translated_local(Vector3(0, 0, -2.0))
+	var tid = theme_id if theme_id != null else "volcano"
+	var mats: Array = [
+		toon_material(Color.WHITE), toon_material(Color.WHITE, {"opacity": 0.5}), toon_material(Color.WHITE, {"vertex_color": true, "outline": false}),
+		toon_material(Color.WHITE, {"hz_tint": true}), terrain_material(tid), floor_material(tid), piece_material(tid), piece_material(null), piece_material(tid, null, {"transparent": true}), # 테마가 늘 투명이어도 (수정) 불투명 갈래까지
+		hazard_material(tid, null, false), scenery_material({"unshaded": true}), scenery_material({"vertex_color": true}),
+	]
+	var box := BoxMesh.new()
+	box.size = Vector3.ONE * 0.001
+	var i := 0
+	for m in mats:
+		if m == null:
+			continue
+		var mi := MeshInstance3D.new()
+		mi.mesh = box
+		mi.material_override = m
+		mi.position = Vector3(i * 0.002, 0, 0)
+		root.add_child(mi)
+		var mm := MultiMesh.new() # 인스턴스 갈래 (지형·칸·조각·판 빛은 이것)
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_colors = true
+		mm.use_custom_data = true
+		mm.mesh = box
+		mm.instance_count = 1
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		mmi.material_override = m
+		mmi.position = Vector3(i * 0.002, 0.002, 0)
+		root.add_child(mmi)
+		i += 1
+	# 몸 묶음 (SkinnedMesh 갈래)
+	var body := Node3D.new()
+	var piece := MeshInstance3D.new()
+	piece.mesh = box
+	piece.material_override = toon_material(Color.WHITE)
+	body.add_child(piece)
+	body.position = Vector3(0, -0.002, 0)
+	root.add_child(body)
+	batch_mesh(body)
+	var gl := game_light(world) # 판 빛 무리 (빈 프레임도 셰이더는 그림) 는 halos 하나로
+
+	var halo := MultiMeshInstance3D.new()
+	halo.multimesh = MultiMesh.new()
+	halo.multimesh.transform_format = MultiMesh.TRANSFORM_3D
+	halo.multimesh.use_colors = true
+	halo.multimesh.mesh = QuadMesh.new()
+	halo.multimesh.instance_count = 1
+	halo.material_override = gl.get_node("Halos").material_override
+	halo.scale = Vector3.ONE * 0.001
+	root.add_child(halo)
+	var t := Engine.get_main_loop() as SceneTree # 트리 밖 world 여도
+	var left := [frames]
+	var rid := root.get_instance_id() # 노드를 직접 잡지 않음 (먼저 지워져도 됨)
+	var tick := func(): pass
+	tick = func():
+		left[0] -= 1
+		if left[0] > 0:
+			return
+		t.process_frame.disconnect(tick)
+		var n = instance_from_id(rid)
+		if n != null:
+			n.queue_free()
+	t.process_frame.connect(tick)
+	return root

@@ -33,6 +33,9 @@ var terrain := false # --terrain: 테마 지형 블록 (terrain_grids.json, js_d
 
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
+	if OS.has_feature("web"): # 웹 판 확인: 주소 ?args=--theme+crystal+--terrain → 같은 인자 (tools/web_g3.cjs)
+		var q = JavaScriptBridge.eval("new URLSearchParams(location.search).get('args') || ''", true)
+		args = PackedStringArray(str(q).split(" ", false))
 	for i in args.size():
 		if args[i] == "--shot" and i + 1 < args.size():
 			shot = args[i + 1]
@@ -59,7 +62,7 @@ func _ready() -> void:
 		_terrain()
 	if batch >= 0:
 		things = [THINGS[0]]
-		var body: Node3D = load("res://tests/test_batch.gd").new()._body()
+		var body: Node3D = _body()
 		body.position = Coords.gxyz(4, 4, 1.2)
 		body.get_node("torso/arm").rotation = Vector3(1.1, -0.4, 0.8)
 		body.get_node("torso/arm").scale = Vector3(1, 1.3, 0.9)
@@ -111,6 +114,10 @@ func _ready() -> void:
 		cam.look_at_from_position(Coords.gxyz(9, -5, 4), Coords.gxyz(4, 8, 2.5), Vector3.UP)
 	if low_after:
 		G3.set_low(self, true)
+	if OS.has_feature("web"):
+		for i in 6:
+			await get_tree().process_frame
+		print("G3_READY") # 웹: 브라우저 쪽이 스샷
 	if shot != "":
 		for i in 6:
 			await get_tree().process_frame
@@ -201,3 +208,36 @@ func _hazard(grid: PackedByteArray, w: int, d: int, h: int) -> void:
 		add_child(mi)
 		mats.append(mi.material_override)
 	G3.hazard_update(mats, self, {"on": true, "time": 3.0, "z": hazard, "field": HF.field(grid, w, d, h, hazard)})
+
+
+# 시험 몸 (tests/test_batch.gd _body 와 같음 — 웹 판엔 tests/ 가 안 들어가서 여기 둠)
+func _body() -> Node3D:
+	var body := Node3D.new()
+	body.position = Vector3(3, 1, -2)
+	body.rotation = Vector3(0.2, 0.7, 0)
+	var torso := MeshInstance3D.new()
+	torso.name = "torso"
+	torso.mesh = BoxMesh.new()
+	torso.material_override = G3.toon_material(0xe0533a)
+	body.add_child(torso)
+	var arm := MeshInstance3D.new()
+	arm.name = "arm"
+	var cm := CylinderMesh.new()
+	cm.height = 0.8
+	arm.mesh = cm
+	arm.position = Vector3(0.7, 0.2, 0)
+	arm.material_override = G3.toon_material(0x3a7be0)
+	arm.set_meta("tf_skin", true)
+	torso.add_child(arm)
+	var hand := MeshInstance3D.new()
+	hand.name = "hand"
+	hand.mesh = SphereMesh.new()
+	hand.position = Vector3(0, -0.5, 0.1)
+	hand.material_override = G3.toon_material(0xf2c53d)
+	arm.add_child(hand)
+	var face := MeshInstance3D.new() # 그림 있는 조각: 안 묶음
+	face.name = "face"
+	face.mesh = QuadMesh.new()
+	face.material_override = G3.toon_material(0xffffff, {"map": PlaceholderTexture2D.new()})
+	torso.add_child(face)
+	return body
