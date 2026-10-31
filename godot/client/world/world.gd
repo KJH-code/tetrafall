@@ -16,6 +16,8 @@ const ItemsView := preload("res://world/items_view.gd")
 const GhostAim := preload("res://world/ghost_aim.gd")
 const Scenery := preload("res://world/scenery.gd")
 const LP := preload("res://world/lobby_preview.gd")
+const Marks := preload("res://world/marks.gd")
+const LightFx := preload("res://world/light_fx.gd")
 const CamRig := preload("res://world/cam_rig.gd")
 const BBLOCKS := "res://world/bblocks.gd"
 const FX := "res://fx/fx.gd" # G5 효과 (있으면 fx_root 에 붙이고 setup(rig): 카메라 흔들림·KO 줌은 rig.hook)
@@ -32,6 +34,11 @@ var sky_aids: Node3D
 var items_view: Node3D
 var ghost_aim: Node3D
 var scenery: Node3D
+var marks: Node3D # 판 쪽 연출 (잔상 줄·예고 칸·블록 출렁·솟는 땅·압사 납작 몸)
+var light_fx: Node3D # 판 빛 무리·빛 터짐 (game-light.js 3D 부분)
+var last_phase := ""
+var marks_demo := false # 확인용 (명령줄 --marks-demo): 판 중 1.5초마다 내 앞에 가짜 잔상·예고·출렁·솟는 땅·빛
+var _demo_next := 0.0
 var rig: Node3D
 var bblocks = null # G6 건축가 블록 (있으면 update(state)·skip() 을 부름)
 var fx_root := Node3D.new() # G5 효과 노드가 붙을 자리
@@ -79,8 +86,10 @@ func _ready() -> void:
 	rig = CamRig.new()
 	ghost_aim = GhostAim.new()
 	scenery = Scenery.new()
+	marks = Marks.new()
+	light_fx = LightFx.new()
 	rig.ghost_aim = ghost_aim
-	for n in [scenery, grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, ghost_aim, rig, fx_root]:
+	for n in [scenery, grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, ghost_aim, marks, light_fx, rig, fx_root]:
 		add_child(n)
 	fx_root.name = "Fx"
 	if ResourceLoader.exists(FX):
@@ -97,6 +106,7 @@ func _ready() -> void:
 		grid_view.set_material(G3.toon_material(Color.WHITE, {"vertex_color": true}))
 		grid_view.make_mat = func(c: Color): return G3.toon_material(c)
 		bodies.make_mat = grid_view.make_mat
+		marks.make_mat = grid_view.make_mat
 		# 섬·먼 배경: G3.scenery_material 이 있으면 그것 (안개 끄기·빛 안 받음 포함), 없으면 툰 + 기본 재질
 		if g3_has("scenery_material"):
 			scenery.make_mat = G3.scenery_material
@@ -117,12 +127,19 @@ func _ready() -> void:
 		if list[i].begins_with("--") and i + 1 < list.size() and not list[i + 1].begins_with("--"):
 			args[list[i].substr(2)] = list[i + 1]
 	rig.force = str(args.get("world-view", ""))
+	marks_demo = args.has("marks-demo") or OS.get_cmdline_user_args().has("--marks-demo")
 	Store.joined.connect(func(_room, _re):
 		if args.has("map"):
 			Store.send_room({"type": "setMap", "map": args.map})
 		if args.has("mode"):
 			Store.send_room({"type": "setMode", "mode": args.mode}))
 	Store.game_event.connect(bodies.on_event)
+	Store.game_event.connect(_light_event)
+	marks.solid = solid_at
+	marks.bodies = bodies
+	for n in fx_root.get_children(): # G5 파편·고리 (유령 투하 펑·녹음 불티)
+		if n.get("effects") != null:
+			marks.effects = n.effects
 	View.changed.connect(func(k):
 		if k == "lowGfx":
 			set_shadows(not View.settings.lowGfx)
@@ -189,6 +206,56 @@ func apply_theme(map_id: String) -> void:
 	sun.light_energy = float(theme.get("sunIntensity", 1.0)) * WC.SUN_ENERGY
 
 
+func _marks_demo() -> void:
+	var p := Store.me()
+	if p.is_empty():
+		return
+	var x := floori(p.x)
+	var y := floori(p.y)
+	var z := 0.0
+	marks.trail(Vector3(p.x, p.y, p.z + 0.9), Vector3(p.x + 3, p.y + 1, p.z + 0.9), 0xffffff, 1200)
+	marks.mark_circle(p.x + 2, p.y - 2, p.z, 1.5, 0xff3020, 1400)
+	marks.mark_cells([[x - 2, y + 2, int(p.z)], [x - 1, y + 2, int(p.z)], [x - 2, y + 3, int(p.z)]], 0xffd23a, 1400)
+	marks.streak_up(Vector3(p.x - 1, p.y - 1, p.z), 2.4, 0xffffff, 900)
+	var top := []
+	for dx in 3:
+		top.append([x + dx, y + 3, column_top(x + dx, y + 3) - 1])
+	marks.block_pulse(top, 0xffffff, 600, 0.3, 0.75)
+	marks.quake_rise([[x + 3, y - 1, int(p.z)], [x + 3, y, int(p.z)]], 1000, 999)
+	light_fx.flash(p.x + 1, p.y, p.z + 1, light_color(), 5, 560)
+
+
+# 판 빛 터짐 (main.js 의 renderer.lightLand·lightBurst 자리): 착지 = 칸마다 그 블록 색, KO (압사·낙사)·필살기 = 테마 빛 색
+func _light_event(e: Dictionary) -> void:
+	match str(e.get("type", "")):
+		"land":
+			var L: Array = C.GAME_LIGHT_FLASH.land
+			for c in e.get("cells", []):
+				var i := (int(c[2]) * field.y + int(c[1])) * field.x + int(c[0])
+				var v: int = Store.grid[i] if i >= 0 and i < Store.grid.size() else 0
+				light_fx.flash(c[0] + 0.5, c[1] + 0.5, c[2] + 0.5, Cells.cell_color(v, pieces_view.piece_colors) if v else 0xffffff, L[0], L[1])
+		"death":
+			var cause := str(e.get("cause", ""))
+			var t := Store.player(e.get("who"))
+			if (cause == "crush" or cause == "fall") and not t.is_empty():
+				var K: Array = C.GAME_LIGHT_FLASH.ko
+				light_fx.flash(t.x, t.y, t.z + 0.8, light_color(), K[0], K[1])
+		"ult":
+			var a := Store.player(e.get("who"))
+			if not a.is_empty():
+				var U: Array = C.GAME_LIGHT_FLASH.ult
+				light_fx.flash(a.x, a.y, a.z + 1, int(C.ULT_AURA_COLOR), U[0], U[1])
+
+
+# 테마 빛 색 (KO·필살기 빛, render.js lightColor): 테마 glow 첫 색, 없으면 따뜻한 흰빛
+func light_color() -> int:
+	var g = theme.get("glow")
+	if g is Array and not g.is_empty():
+		return int(g[0])
+	var tg = theme.get("terrain", {}).get("glow")
+	return int(tg) if tg != null else int(C.GAME_LIGHT_FLASH.color)
+
+
 # 지금 그리는 격자: 대기실 미리보기면 그것, 아니면 서버 격자
 func grid() -> PackedByteArray:
 	return preview.grid if preview != null else Store.grid
@@ -224,7 +291,7 @@ func _process(dt: float) -> void:
 	var st := Store.state
 	# 방 밖 (메뉴): 판 노드를 숨김 (크기 안 정한 바닥·절벽 상자가 원점 카메라 앞을 가르던 것). 하늘·빛 (G3Env)·효과는 그대로
 	var live: bool = not st.is_empty() and st.has("field")
-	for n in [scenery, grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, ghost_aim]:
+	for n in [scenery, grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, ghost_aim, marks, light_fx]:
 		n.visible = live and ((n != hazard_view and n != ghost_aim) or n.visible)
 	if not live and vm != null:
 		vm.update(null, false, dt) # 방 밖: 1인칭 팔 끔
@@ -272,6 +339,27 @@ func _process(dt: float) -> void:
 	var sky_on: bool = rig.sky_blend > 0.5
 	bodies.update(st, Store.my_id, rig.hide_me(), sky_on, now)
 	rig.field_size = Vector2(fs.x, fs.y)
+	var ph := str(st.get("phase", ""))
+	if ph != last_phase:
+		marks.phase_changed() # 판 시작·끝: 서버가 솟은 땅을 버림
+		last_phase = ph
+	if marks_demo and ph == "playing" and now >= _demo_next:
+		_demo_next = now + 1500.0
+		_marks_demo()
+	marks.step()
+	light_fx.low = bool(View.settings.get("lowGfx", false))
+	var halos := []
+	var lit := ph == "countdown" or ph == "playing" or ph == "over"
+	if lit:
+		for pc in st.get("pieces", []):
+			if pc.get("thrown", false):
+				continue
+			var col: int = 0xffffff if str(pc.get("shape", "")) == "ghost" else (WC.CONTROLLED_COLOR if pc.get("controller") != null else int(pieces_view.piece_colors.get(str(pc.get("shape", "")), 0xffffff)))
+			for c in pc.cells:
+				halos.append([c[0] + 0.5, c[1] + 0.5, c[2] + 0.5, col, 0.7 if pc.get("sky", false) else 1.0])
+		for it in st.get("items", []):
+			halos.append([it.x + 0.5, it.y + 0.5, it.z + 0.5, int(C.GAME_LIGHT_ITEM), 0.6])
+	light_fx.frame(lit, halos)
 	var me := Store.me()
 	pieces_view.update(st, Store.my_id, me, rig.sky_blend)
 	hazard_view.update(st, Store.grid, Store.grid_version, me)
