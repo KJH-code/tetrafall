@@ -95,7 +95,7 @@ func _process(_d: float) -> void:
 	var st := Store.state
 	var f: Dictionary = st.field
 	floor_mesh.mesh.size = Vector3(f.w, 0.5, f.d)
-	floor_mesh.position = Vector3(f.w / 2.0, -0.25, f.d / 2.0)
+	floor_mesh.position = Co.gxyz(f.w / 2.0, f.d / 2.0, -0.25)
 	lava.visible = st.lava.active
 	lava.position.y = st.lava.z
 	# 떨어지는 블록
@@ -140,8 +140,8 @@ func _process(_d: float) -> void:
 		cam.position = at - fwd * 4.0 + Vector3(0, 0.6, 0)
 		cam.look_at(at + fwd * 2.0)
 	else:
-		cam.position = Vector3(f.w / 2.0, f.w * 1.1, f.d * 1.4)
-		cam.look_at(Vector3(f.w / 2.0, 0, f.d / 2.0))
+		cam.position = Co.gxyz(f.w / 2.0, -f.d * 0.4, f.w * 1.1)
+		cam.look_at(Co.gxyz(f.w / 2.0, f.d / 2.0, 0))
 
 
 func _make_body(color_index: int) -> Node3D:
