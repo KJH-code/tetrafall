@@ -94,14 +94,17 @@ func _ready() -> void:
 		grid_view.set_material(G3.toon_material(Color.WHITE, {"vertex_color": true}))
 		grid_view.make_mat = func(c: Color): return G3.toon_material(c)
 		bodies.make_mat = grid_view.make_mat
-		# 섬·먼 배경: 빛 받는 것은 G3 툰 (꼭짓점 색), 스스로 빛나는 것 (unshaded) 은 기본 재질. 안개 끄기 (먼 배경) 는 G3 에 아직 없음
-		scenery.make_mat = func(o: Dictionary):
-			if o.get("unshaded", false):
-				return null
-			var opts := {"vertex_color": true, "outline": o.get("outline", true)}
-			if o.has("emissive"):
-				opts.emissive = o.emissive
-			return G3.toon_material(Color.WHITE, opts)
+		# 섬·먼 배경: G3.scenery_material 이 있으면 그것 (안개 끄기·빛 안 받음 포함), 없으면 툰 + 기본 재질
+		if g3_has("scenery_material"):
+			scenery.make_mat = G3.scenery_material
+		else:
+			scenery.make_mat = func(o: Dictionary):
+				if o.get("unshaded", false):
+					return null
+				var opts := {"vertex_color": true, "outline": o.get("outline", true)}
+				if o.has("emissive"):
+					opts.emissive = o.emissive
+				return G3.toon_material(Color.WHITE, opts)
 		pieces_view.mats = [G3.toon_material(Color.WHITE, {"vertex_color": true}), G3.toon_material(Color.WHITE, {"vertex_color": true, "opacity": WC.PIECE_SKY_ALPHA})]
 	apply_theme("")
 	# 확인용 명령줄 (-- 뒤): --world-view over|third|first · --map <맵 id> · --mode <모드> (방장이면 대기실에서 바꿈)
@@ -124,6 +127,16 @@ func _ready() -> void:
 	set_shadows(not View.settings.get("lowGfx", false))
 
 
+# G3 에 이 함수가 있나 (B3 가 차례로 올리는 재질: 합치는 순서가 달라도 됨)
+func g3_has(fn: String) -> bool:
+	if G3 == null:
+		return false
+	for m in G3.get_script_method_list():
+		if m.name == fn:
+			return true
+	return false
+
+
 func set_shadows(on: bool) -> void:
 	if G3 != null:
 		G3.set_shadows(self, on)
@@ -144,6 +157,9 @@ func apply_theme(map_id: String) -> void:
 		var low := bool(View.settings.get("lowGfx", false))
 		G3.apply_theme(self, tid, low)
 		grid_view.set_terrain_look(G3.terrain_mesh(tid), G3.terrain_material(tid, low), G3.terrain_custom)
+		var fm = G3.floor_material(tid) if g3_has("floor_material") else null
+		if fm != null:
+			grid_view.floor_mesh.material_override = fm # 바닥 판: 윗면 체크·칸 선·테마 무늬, 옆면 테두리
 		if sprouts != null:
 			sprouts.queue_free()
 		sprouts = G3.sprout_node(tid)

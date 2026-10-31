@@ -96,7 +96,17 @@ for (const [kind, p, s, c] of things) {
   if (kind === 'box') g = new THREE.BoxGeometry(...s);
   else if (kind === 'sphere') g = new THREE.SphereGeometry(s[0], 32, 16);
   else g = new THREE.CylinderGeometry(s[0], s[0], s[1], 24).rotateX(Math.PI / 2);
-  const m = new THREE.Mesh(g, toon({ color: c }));
+  let mat = toon({ color: c });
+  if (L && p === things[0][1]) { // 바닥 판 = world.js apply 그대로 (floorTexture 는 js_shot 이 world_demo.js 로 내보냄)
+    const { floorTexture } = await import('/world_demo.js');
+    const ft = floorTexture(L.floor);
+    ft.repeat.set(s[0] / 2, s[1] / 2);
+    if (ft.userData.glow) ft.userData.glow.repeat.set(s[0] / 2, s[1] / 2);
+    const top = toon(ft.userData.glow ? { map: ft, emissive: 0xffffff, emissiveMap: ft.userData.glow } : { map: ft });
+    const rim = toon({ color: L.floor.rim });
+    mat = [rim, rim, rim, rim, top, rim];
+  }
+  const m = new THREE.Mesh(g, mat);
   m.position.set(...p); m.castShadow = m.receiveShadow = true;
   scene.add(m);
 }
