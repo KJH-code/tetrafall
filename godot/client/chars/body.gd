@@ -48,6 +48,7 @@ var whirl_t0 = null # 광전사 소용돌이 시작 (초)
 var parts_z0 = null # parts 노드 처음 높이 (머리 박음 눌림) # G5 효과 (squash_amount·punch_amount)
 var loaded := false # 갈고리 장전 (스냅샷 loaded, 1인칭 팔이 씀)
 var frame: Node3D # 게임 좌표 → 고도
+var torso_mats := {} # K.SKIN 바드: 폼 → 몸통 전용 재질 (묶음 밖)
 var batch = null # K.SKIN: G3 batch.gd (툰 조각 전부 → SkinnedMesh 하나, 뼈 = 조각)
 var rig: Node3D # 몸 전체 기울임·공중제비·구르기 (render.js rig)
 var hips: Node3D
@@ -273,12 +274,19 @@ func _merge(cd: Dictionary) -> void:
 # K.SKIN: G3.batch_mesh (shaders/batch.gd, 테스트 test_batch) 로 툰 조각을 몸 한 메시 (툰 1 + 외곽선 1). 그림 (체크 무늬)·basic (눈)·투명 조각은 따로.
 # 바드 몸통은 폼마다 재질을 통째로 바꿔서 묶으면 안 따라감 → 그 재질만 정점 색 켬 (정점 색이 없는 메시라 흰색 = 모습 같음) = 묶음에서 빠짐
 func _batch(cd: Dictionary) -> void:
+	# 몸통 재질은 옷 재질과 같은 것이라 (소매 등) 몸통만 복사본을 씀 — 원본을 바꾸면 그 재질 조각이 다 묶음에서 빠짐
 	var tms = refs.get("torsoMat")
-	if tms is Dictionary:
+	if tms is Dictionary and torso is MeshInstance3D:
 		for f in tms:
 			var tm = mats[int(tms[f])]
 			if tm is ShaderMaterial:
-				(tm as ShaderMaterial).set_shader_parameter("use_vertex_color", true)
+				var c := (tm as ShaderMaterial).duplicate() as ShaderMaterial
+				c.set_shader_parameter("use_vertex_color", true)
+				torso_mats[f] = c
+		var cur: Material = (torso as MeshInstance3D).material_override
+		for f in tms:
+			if mats[int(tms[f])] == cur and torso_mats.has(f):
+				(torso as MeshInstance3D).material_override = torso_mats[f]
 	batch = G3.batch_mesh(frame)
 	batch.set_process(false) # 뼈 맞추기는 pose 안에서 (_sync_bones)
 	for i in piece_mat:
@@ -972,7 +980,7 @@ func _costume_parts(st: Dictionary, a, dt: float, tt: float) -> void:
 					_vis(r, k == f)
 			var tm = refs.get("torsoMat", {}).get(f)
 			if tm != null and torso is MeshInstance3D:
-				(torso as MeshInstance3D).material_override = mats[int(tm)]
+				(torso as MeshInstance3D).material_override = torso_mats.get(f, mats[int(tm)])
 	# 천 자락: 빨리 움직이거나 날아가면 뒤로 날리고 살랑임. 멈추면 앞으로 한 번 넘어갔다 내려옴 (스프링)
 	var flaps: Array = refs.get("flaps", [])
 	if not flaps.is_empty() and dt > 0.0:
