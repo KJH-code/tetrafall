@@ -22,6 +22,7 @@ const Shots := preload("res://world/shots.gd")
 const HookFx := preload("res://world/hook_fx.gd")
 const BodyFx := preload("res://world/body_fx.gd")
 const CamRig := preload("res://world/cam_rig.gd")
+const LobbyDark := preload("res://world/lobby_dark.gd")
 const BBLOCKS := "res://world/bblocks.gd"
 const FX := "res://fx/fx.gd" # G5 효과 (있으면 fx_root 에 붙이고 setup(rig): 카메라 흔들림·KO 줌은 rig.hook)
 const G3_PATH := "res://shaders/g3.gd" # G3 툰·테마 (있으면 하늘·빛·안개·블록 재질을 G3 가 맡음)
@@ -56,6 +57,7 @@ var headless := false
 var G3 = null
 var preview = null # 대기실 지형 미리보기 {key, grid, top, w, d, h, off} (LP.build), 없으면 서버 격자
 var sprouts = null # G3 튀어나온 조각 노드 (테마마다)
+var dark = null # 대기실 어두운 무대 (lobby_dark.gd), 대기실 아니면 null
 var vm = null # G2 1인칭 팔·무기 (chars/viewmodel.gd)
 const VIEWMODEL := "res://chars/viewmodel.gd"
 
@@ -213,6 +215,13 @@ func apply_theme(map_id: String) -> void:
 		sprouts = G3.sprout_node(tid)
 		if sprouts != null:
 			grid_view.add_child(sprouts) # 판 밖 (메뉴) 에선 grid_view 와 같이 숨음
+		if g3_has("piece_mesh"):
+			# 테트리미노 칸 (B3 PieceLook): 떨어지는 칸·쌓인 칸 모양·재질·조각 색, 빛 테두리 = GAME_LIGHT 안 rim (그래픽 낮춤이면 0)
+			var rim: float = 0.0 if low else float(light_fx.preset.get("rim", 0.0))
+			var pm: Mesh = G3.piece_mesh(tid, low)
+			var cols: Dictionary = G3.piece_colors(tid)
+			pieces_view.set_look(pm, [G3.piece_material(tid, low, {"rim": rim}), G3.piece_material(tid, low, {"rim": rim, "transparent": true, "opacity": 1.0})], cols)
+			grid_view.set_piece_look(pm, G3.piece_material(tid, low, {"rim": rim, "outline": false}), cols) # 쌓인 칸은 외곽선 없음 (render.js landed noOutline)
 		return
 	var sk: Dictionary = theme.get("sky", {})
 	sky_mat.sky_top_color = Co.color(sk.get("top", C.SKY_TOP))
@@ -327,7 +336,7 @@ func _process(dt: float) -> void:
 	# 방 밖 (메뉴): 판 노드를 숨김 (크기 안 정한 바닥·절벽 상자가 원점 카메라 앞을 가르던 것). 하늘·빛 (G3Env)·효과는 그대로
 	var live: bool = not st.is_empty() and st.has("field")
 	for n in [scenery, grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, ghost_aim, marks, light_fx, shots, hook_fx, body_fx]:
-		n.visible = live and ((n != hazard_view and n != ghost_aim) or n.visible)
+		n.visible = live and ((n != hazard_view and n != ghost_aim) or n.visible) and (n != scenery or dark == null) # 어두운 무대면 떠 있는 섬·먼 배경 숨김
 	if not live and vm != null:
 		vm.update(null, false, dt) # 방 밖: 1인칭 팔 끔
 	if headless or not live:
@@ -357,6 +366,7 @@ func _process(dt: float) -> void:
 		if G3 != null:
 			G3.set_field(self, fs.x, fs.y)
 		built_version = -2
+	_lobby_dark(st, fs)
 	scenery.build(C.WORLD_MAP_THEME.get(theme_id), fs.x, fs.y, bool(View.settings.get("lowGfx", false)), fs.z)
 	scenery.step(dt)
 	grid_view.cliff.visible = grid_view.cliff.visible and scenery.theme_id == null # 테마 섬이 있으면 상자 절벽 대신
@@ -445,3 +455,24 @@ func column_top(x: int, y: int) -> int:
 		if i < grid().size() and grid()[i] != 0:
 			return z + 1
 	return 0
+
+
+# 대기실 어두운 무대 (render.js 의 dark): 고른 맵 테마의 어두운 엔딩 장면, 맵 바꾸면 그 테마 + 빛 번쩍, 판 시작하면 밝은 판으로
+func _lobby_dark(st: Dictionary, fs: Vector3i) -> void:
+	if G3 == null:
+		return
+	var low := bool(View.settings.get("lowGfx", false))
+	var dk = LP.lobby_theme(st, View.menu_theme)
+	var swap := false
+	if dark != null and not dark.fits(dk, fs.x, fs.y, low):
+		swap = dk != null and dk != dark.theme
+		dark.dispose(self)
+		dark = null
+		if dk == null:
+			G3.apply_theme(self, C.WORLD_MAP_THEME.get(theme_id), low) # 밝은 판 (하늘 구·안개·해 다시)
+	if dk != null and dark == null:
+		dark = LobbyDark.new()
+		add_child(dark)
+		dark.setup(self, G3, dk, fs.x, fs.y, low, swap)
+	if dark != null:
+		dark.step(self, G3)

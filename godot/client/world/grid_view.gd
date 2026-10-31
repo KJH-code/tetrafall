@@ -15,6 +15,7 @@ var piece_colors: Dictionary = C.SHAPE_COLORS
 var skip := {} # 그리지 않을 칸 (건축가 블록이 따로 그림)
 var count := 0
 var make_mat = null # Callable(Color) -> Material: G3 툰 재질 (없으면 StandardMaterial3D)
+var piece_mmi := MultiMeshInstance3D.new() # 쌓인 테트리미노 칸 (모양 칸) 만: G3 PieceLook (set_piece_look), 없으면 mmi 에 같이
 var terrain_mmi := MultiMeshInstance3D.new() # 테마 지형 칸 (값 1) 만: G3 지형 셰이더 (칸 크기 1, 이웃·그늘 비트는 custom data)
 var terrain_custom = null # Callable(grid, w, d, h, skip) -> PackedColorArray (G3.terrain_custom), null 이면 지형도 칸 색 블록
 
@@ -36,12 +37,27 @@ func _ready() -> void:
 	tm.transform_format = MultiMesh.TRANSFORM_3D
 	tm.use_custom_data = true
 	terrain_mmi.multimesh = tm
+	var pmm := MultiMesh.new()
+	pmm.transform_format = MultiMesh.TRANSFORM_3D
+	pmm.use_colors = true
+	piece_mmi.multimesh = pmm
+	piece_mmi.visible = false
+	add_child(piece_mmi)
 	terrain_mmi.visible = false
 	add_child(terrain_mmi)
 	for n in [floor_mesh, cliff]:
 		n.mesh = BoxMesh.new()
 		n.material_override = StandardMaterial3D.new() # 바닥 판 무늬는 G3 floor_material 이 오면
 		add_child(n)
+
+
+# 쌓인 테트리미노 칸 모습 (G3 piece_mesh·piece_material, 조각 색). mesh 가 null 이면 끔 (칸 색 상자)
+func set_piece_look(mesh: Mesh, mat: Material, colors: Dictionary) -> void:
+	piece_mmi.visible = mesh != null
+	piece_mmi.multimesh.instance_count = 0
+	piece_mmi.multimesh.mesh = mesh
+	piece_mmi.material_override = mat
+	piece_colors = colors
 
 
 # 테마 지형 셰이더 (G3 terrain_mesh·terrain_material·terrain_custom). mesh 가 null 이면 끔 (지형도 칸 색 블록)
@@ -85,11 +101,15 @@ func rebuild(grid: PackedByteArray, w: int, d: int, h: int) -> void:
 	var mm := mmi.multimesh
 	var cells := PackedInt32Array()
 	var terr := PackedInt32Array()
+	var pcs := PackedInt32Array()
 	var shader_terrain: bool = terrain_custom != null
+	var piece_look: bool = piece_mmi.visible
 	for i in grid.size():
 		if grid[i] != 0 and not skip.has(i):
 			if shader_terrain and grid[i] == Cells.TERRAIN:
 				terr.append(i)
+			elif piece_look and grid[i] > Cells.THROWN:
+				pcs.append(i) # 모양 칸 (render.js blockMeshes.shape)
 			else:
 				cells.append(i)
 	if shader_terrain:
@@ -102,6 +122,19 @@ func rebuild(grid: PackedByteArray, w: int, d: int, h: int) -> void:
 			tm.set_instance_transform(k, Transform3D(Basis(), Co.gxyz(i % w + 0.5, (i / w) % d + 0.5, i / (w * d) + 0.5)))
 			if k < looks.size():
 				tm.set_instance_custom_data(k, looks[k])
+	var pm := piece_mmi.multimesh
+	pm.instance_count = pcs.size()
+	for k in pcs.size():
+		var i: int = pcs[k]
+		var x := i % w
+		var y := (i / w) % d
+		var z := i / (w * d)
+		pm.set_instance_transform(k, Transform3D(Basis(), Co.gxyz(x + 0.5, y + 0.5, z + 0.5)))
+		var c := Co.color(Cells.cell_color(grid[i], piece_colors))
+		if (x + y + z) % 2:
+			c = c * WC.CHECKER
+			c.a = 1.0
+		pm.set_instance_color(k, c)
 	count = cells.size()
 	mm.instance_count = count
 	for k in count:

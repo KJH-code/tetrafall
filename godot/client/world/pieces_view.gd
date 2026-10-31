@@ -1,5 +1,5 @@
 # 떨어지는 블록 칸 + 착지 그림자 칸: MultiMesh 둘 (render.js 의 pieceMeshes·shadowMeshes + instpool 자리)
-# 블록 모습은 단순 재질 (테마 PieceLook 셰이더는 G3 shaders/ 가 나오면 바꿈), 색은 테마 조각 색
+# 블록 모습: G3 PieceLook (piece_mesh·piece_material, set_look) 이 있으면 그것, 없으면 상자 + 툰/단순 재질. 색은 테마 조각 색
 extends Node3D
 
 const C := preload("res://core/config.gd")
@@ -41,6 +41,13 @@ func _ready() -> void:
 	shadow_mmi.material_override = smat
 	shadow_mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(shadow_mmi)
+
+
+# G3 칸 모양·재질 [불투명, 반투명 (알파 = 인스턴스 색 a)]·조각 색
+func set_look(mesh: Mesh, materials: Array, colors: Dictionary) -> void:
+	cells_mmi.multimesh.mesh = mesh
+	mats = materials
+	piece_colors = colors
 
 
 # 착지 예고 그림자 진하기 (render.js shadowFor: 5단계)
