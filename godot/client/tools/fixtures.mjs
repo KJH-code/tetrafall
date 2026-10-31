@@ -243,3 +243,62 @@ console.log(`interp 프레임 ${frames.length}, net ${seq.length}, keys 바퀴 $
   }
   fs.writeFileSync(path.join(out, 'labels.json'), JSON.stringify(cases));
 }
+
+// ui.json (G4): 화면 계산 — shared/hud-layout.js · kills-hud.js · wipe.js · char-select.js · leave.js
+{
+  const { cardLayout, lobbyDock, labelSizes } = await import('../../../shared/hud-layout.js');
+  const { KillTally, streakText, progress, topBar, scoreRows, respawnSecs, hpFrac } = await import('../../../shared/kills-hud.js');
+  const { screenOf, wipeKind, wipePlan } = await import('../../../shared/wipe.js');
+  const { stageYaw, tauntAt, randomReel } = await import('../../../shared/char-select.js');
+  const { leaveNeedsConfirm } = await import('../../../shared/leave.js');
+  const u = {};
+  u.cards = [];
+  for (const n of [1, 2, 3, 4, 5, 6, 7, 8]) for (const w of [640, 800, 960, 1100, 1280, 1920]) u.cards.push([n, w, cardLayout(n, w)]);
+  u.dock = [600, 800, 960, 1100, 1280, 1600, 1920, 2560].map((w) => [w, lobbyDock(w)]);
+  u.labels = [];
+  for (let k = 0; k < 20; k++) {
+    const d = Array.from({ length: 1 + Math.floor(r() * 8) }, () => Math.round(r() * 20 * 10) / 10);
+    u.labels.push([d, labelSizes(d)]);
+  }
+  // 킬 세기: 무작위 죽음 묶음 (id 1~5, by 없음·자기 자신 섞음, 가끔 서버 streak)
+  const t = new KillTally();
+  u.tally = [];
+  for (let k = 0; k < 80; k++) {
+    const who = 1 + Math.floor(r() * 5);
+    const x = r();
+    const by = x < 0.15 ? null : x < 0.2 ? who : 1 + Math.floor(r() * 5);
+    const e = { who, by };
+    if (r() < 0.1) e.streak = 1 + Math.floor(r() * 6);
+    u.tally.push([e, t.add(e)]);
+  }
+  const players = [1, 2, 3, 4, 5, 6].map((id, i) => ({ id, slot: i, score: Math.floor(r() * 9) - 2, team: i % 2 ? 'blue' : 'red', spectator: id === 6 }));
+  players.push({ id: 7, slot: 6, score: 9, dummy: true });
+  players[2].kills = 4; // 서버 필드가 있으면 그것
+  u.stats = players.map((p) => [p, t.stats(p)]);
+  u.top = [1, 2, 3, 4, 5, 9].map((me) => [me, topBar(players, me)]);
+  u.rows = [false, true].map((team) => [team, scoreRows(players, t, team)]);
+  u.streak = [0, 1, 2, 3, 4, 5, 6, 11].map((n) => [n, streakText(n)]);
+  u.progress = [[0, 7], [3, 7], [-2, 7], [9, 7], [5, 0]].map(([s, g]) => [s, g, progress(s, g)]);
+  u.respawn = [5000, 4001, 4000, 1, 0, -5, null].map((ms) => [ms, respawnSecs(ms)]);
+  u.hp = [[{ hp: 60 }, 120], [{ hp: -5 }, 120], [{ hp: 50, hpMax: 200 }, 120], [{ damage: 30 }, 120], [{ hp: 60 }, null]].map(([p, m]) => [p, m, hpFrac(p, m)]);
+  const screens = ['menu', 'lobby', 'game', 'results', null];
+  u.screens = [];
+  for (const inRoom of [false, true]) for (const phase of ['lobby', 'countdown', 'playing', 'over']) for (const hero of [false, true]) for (const closeup of [false, true]) u.screens.push([inRoom, phase, hero, closeup, screenOf({ inRoom, phase, hero, closeup })]);
+  u.kinds = [];
+  for (const a of screens) for (const b of screens) u.kinds.push([a, b, wipeKind(a, b)]);
+  u.plans = ['short', 'big', 'none', null].flatMap((k) => [false, true].map((red) => [k, red, wipePlan(k, red)]));
+  u.yaw = [0, 0.5, 1, 1.2, 2, 5, 10].map((s) => [s, stageYaw(s)]);
+  u.taunt = [-1, 0, 300, C.EMOTE_MS, C.EMOTE_MS + 1].map((ms) => [ms, tauntAt(ms)]);
+  // 랜덤 뽑기: 쓴 난수를 그대로 적어 고도가 같은 순서로 씀
+  u.reels = [];
+  for (let k = 0; k < 6; k++) {
+    const used = [];
+    const rnd = () => { const v = r(); used.push(v); return v; };
+    const cur = k === 5 ? 'zzz' : C.CHARACTERS[k];
+    u.reels.push([cur, used, randomReel(C.CHARACTERS, cur, rnd)]);
+  }
+  u.leave = [];
+  for (const phase of ['lobby', 'countdown', 'playing', 'over']) for (const practice of [false, true]) for (const alive of [true, false]) u.leave.push([phase, practice, alive, leaveNeedsConfirm({ phase, practice, alive })]);
+  fs.writeFileSync(path.join(out, 'ui.json'), JSON.stringify(u));
+  console.log(`ui 카드 ${u.cards.length}, 킬 ${u.tally.length}, 전환 ${u.kinds.length}, 랜덤 ${u.reels.length}`);
+}

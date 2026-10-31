@@ -1,6 +1,9 @@
 # 자동 조종 (헤드리스 확인용, main.gd --auto): host 는 방 만들고 봇 넣고 시작, guest 는 --room 으로 들어감.
 # 판 중에는 가장 가까운 상대 쪽으로 걸으며 평타 (PlayerInput.override). --drop-at 초에 연결을 일부러 끊어 재접속(같은 자리) 확인.
 # 끝에 한 줄 요약을 찍고 종료 코드 0 (확인 실패면 2)
+# 화면 확인 (G4): --shot <png> --shot-at menu|lobby|game|tab|settings|results (기본 game). menu = 방 안 만듦, lobby = 시작 안 함,
+# tab = 판 중 점수표 (킬 점수전에서만 보임 → --mode kills), settings = 설정 창, results = 판이 끝나고 --shot-after 초 (기본 1.5) 뒤.
+# --mode survival|master|kills 면 시작 전에 모드를 바꿈. 창 크기는 고도 --resolution 1280x720
 extends Node
 
 const C := preload("res://core/config.gd")
@@ -20,10 +23,14 @@ var dropped := false
 var interp_ok := 0
 var push_at := 0.0
 var shot_done := false
+var shot_at := "game"
+var over_ms := -1.0
+var mode_sent := false
 
 
 func _ready() -> void:
 	role = str(args.get("auto", "host"))
+	shot_at = str(args.get("shot-at", "game"))
 	start_ms = Net.now_ms()
 	Store.rooms_changed.connect(_on_rooms)
 	Store.joined.connect(_on_joined)
@@ -36,7 +43,7 @@ func _log(t: String) -> void:
 
 
 func _on_rooms(_list: Dictionary) -> void:
-	if role == "host" and not created and not Store.in_room() and Store.pending_code == "":
+	if role == "host" and shot_at != "menu" and not created and not Store.in_room() and Store.pending_code == "":
 		created = true
 		Store.create_room("", str(args.get("name", "고도")))
 
@@ -55,12 +62,16 @@ func _on_joined(room: Dictionary, again: bool) -> void:
 func _on_state(st: Dictionary, _prev: Dictionary) -> void:
 	snapshots += 1
 	var ph := str(st.phase)
-	if role == "host" and not started and ph == "lobby" and st.get("canStart", false) and Store.player(Store.my_id).size() > 0 and int(st.players.size()) >= int(args.get("wait-players", 2)):
+	if role == "host" and args.has("mode") and not mode_sent and ph == "lobby" and st.get("hostId") == Store.my_id:
+		mode_sent = true
+		Store.send_room({"type": "setMode", "mode": str(args["mode"])})
+	if role == "host" and shot_at != "lobby" and not started and ph == "lobby" and (not args.has("mode") or st.get("mode") == str(args["mode"])) and st.get("canStart", false) and Store.player(Store.my_id).size() > 0 and int(st.players.size()) >= int(args.get("wait-players", 2)):
 		started = true
 		Store.send_room({"type": "start"})
 		_log("시작 (%d명)" % st.players.size())
 	if ph == "over" and last_phase == "playing":
 		rounds += 1
+		over_ms = Net.now_ms()
 		_log("판 %d 끝: 승자 %s, 스냅샷 %d개, 내가 움직인 거리 %.1f칸, 보간 위치 %d번" % [rounds, str(st.round.winnerId), snapshots, moved, interp_ok])
 		if role == "host" and rounds < int(args.get("quit-after-rounds", 1)):
 			Store.send_room({"type": "start"})
@@ -102,14 +113,22 @@ func _process(_d: float) -> void:
 		dropped = true
 		_log("연결을 일부러 끊음 (재접속 확인)")
 		Net.drop_for_test()
-	if args.has("shot") and not shot_done and el >= float(args.get("shot-after", 8)) and DisplayServer.get_name() != "headless":
+	var ui := get_tree().root.find_child("UI", true, false) # G4 ui/ui.gd (없으면 dev_ui — 그땐 tab·settings 안 함)
+	if ui != null and shot_at == "tab" and ui.get("hud") is Object:
+		ui.get("hud").set("scores_held", Store.phase() == "playing")
+	if ui != null and shot_at == "settings" and ui.get("settings") is Control and el >= float(args.get("shot-after", 8)) - 1.0:
+		(ui.get("settings") as Control).visible = true
+	var shot_time := el >= float(args.get("shot-after", 8))
+	if shot_at == "results":
+		shot_time = over_ms >= 0.0 and now - over_ms >= float(args.get("shot-after", 1.5)) * 1000.0
+	if args.has("shot") and not shot_done and shot_time and DisplayServer.get_name() != "headless":
 		shot_done = true
 		get_viewport().get_texture().get_image().save_png(str(args.shot))
 		_log("화면 저장 %s" % args.shot)
 	var done_rounds := rounds >= int(args.get("quit-after-rounds", 999999))
 	var done_time := args.has("quit-after") and el >= float(args["quit-after"])
 	if done_rounds or done_time:
-		var ok := snapshots > 0 and (not args.has("drop-at") or rejoined) and (not args.has("quit-after-rounds") or done_rounds) and (not args.has("min-moved") or moved >= float(args["min-moved"]))
+		var ok := (snapshots > 0 or shot_at == "menu") and (not args.has("drop-at") or rejoined) and (not args.has("quit-after-rounds") or done_rounds) and (not args.has("min-moved") or moved >= float(args["min-moved"]))
 		var sfx := get_tree().root.find_child("Sfx", true, false)
 		var music := get_tree().root.find_child("Music", true, false)
 		var snd := (" | 효과음 %d번, 곡 %s" % [sfx.played, music.song_key]) if sfx != null and music != null else ""
