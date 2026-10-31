@@ -603,3 +603,46 @@ console.log(`interp 프레임 ${frames.length}, net ${seq.length}, keys 바퀴 $
   }
   fs.writeFileSync(path.join(out, 'ragdoll_math.json'), JSON.stringify({ motors, diffs, pds, roots, limbs }));
 }
+{
+  // figure_anim.json (G2): 몸 자세 전체 (client/figure.js figureAnim) — 8명 × 장면 (가만히·걷기·평타 1·2·3·캐릭터 스킬 동작·도발·승리·맞음·경직·공중)
+  // 프레임마다 관절 쿼터니언 (엉덩이·허리·목·어깨·팔꿈치·허벅지·무릎) + 엉덩이 높이. 고도 body.gd _figure_anim + _apply 와 비교 (tests/test_chars.gd)
+  globalThis.document ??= { createElement: () => ({ width: 0, height: 0, getContext: () => new Proxy({}, { get: () => () => {}, set: () => true }) }) };
+  const { buildFigure, figureAnim, MOVES } = await import('../../../client/figure.js');
+  const r = mulberry32(191);
+  const DT = 1 / 60;
+  const base = () => ({ air: false, walking: false, hs: 0, walk: 0, vz: 0, t: 0, stunned: false, dancing: false, emote: -1, emoteT: 0, victory: -1, punch: 0, holding: false, hit: null, act: null, accF: 0, accS: 0, tumble: 0, recover: 0, land: 0, flip: -1, rag: false, sniffAt: null, idle: 0, airDash: 0, bump: null, whirl: -1, dizzy: 0, glide: false, amp: false });
+  const actFrames = (move, n) => {
+    const out = [];
+    for (const [ph, k] of [['wind', 8], ['strike', 6], ['rec', 10]]) for (let i = 0; i < k; i++) out.push({ act: { id: n, move, phase: ph, u: (i + 1) / k, air: false } });
+    return out;
+  };
+  const cases = [];
+  const J = (fig) => [fig.hips, fig.waist, fig.neck, ...fig.shoulders, ...fig.elbows, ...fig.thighs, ...fig.knees];
+  for (const ch of C.FIGURE_CHARS) {
+    const set = C.BASIC_ATTACKS[ch];
+    const chain = set ? set.chain.map((a, i) => (ch === 'hook' && a.name === '주먹' ? 'hook:주먹' : MOVES[a.name] ? a.name : 'punch')) : ['punch'];
+    const scenes = { idle: Array.from({ length: 30 }, () => ({})), walk: Array.from({ length: 30 }, (_, i) => ({ walking: true, hs: 4.5, walk: i * 0.25 })) };
+    chain.slice(0, 3).forEach((m, i) => (scenes[`combo${i + 1}`] = actFrames(m, i + 1)));
+    for (const m of Object.keys(MOVES).filter((k) => k.startsWith(ch))) scenes[m] = actFrames(m, 9);
+    scenes.taunt = Array.from({ length: 30 }, (_, i) => ({ emote: C.EMOTE_CHAR, emoteT: (i + 1) * DT * 2 }));
+    scenes.victory = Array.from({ length: 30 }, (_, i) => ({ victory: (i + 1) * DT * 3 }));
+    scenes.hit = Array.from({ length: 30 }, (_, i) => ({ hit: { id: 5, age: i * DT, stop: 0.1, dx: -1, dy: 0.3 + r() * 0.01, pow: 1.4 } }));
+    scenes.stunned = Array.from({ length: 30 }, () => ({ stunned: true, tumble: 0.6 }));
+    scenes.air = Array.from({ length: 30 }, (_, i) => ({ air: true, vz: 4 - i * 0.3 }));
+    for (const [name, frames] of Object.entries(scenes)) {
+      const fig = buildFigure(0xffffff, ch, null).figure;
+      const steps = [];
+      let t = 1;
+      frames.forEach((f, k) => {
+        t += DT;
+        const st = { ...base(), t, ...f };
+        figureAnim(fig, st, DT);
+        const R5 = (x) => Math.round(x * 1e5) / 1e5;
+        if (k % 3 === 2) steps.push({ k, q: J(fig).map((j) => j.quaternion.toArray().map(R5)), hz: R5(fig.hips.position.z) });
+      });
+      cases.push({ ch, name, frames, steps }); // frames = base() 위에 덮을 값 (t = 1 + (k+1)·dt)
+    }
+  }
+  fs.writeFileSync(path.join(out, 'figure_anim.json'), JSON.stringify({ dt: DT, base: base(), cases }));
+  console.log('figure_anim', cases.length);
+}

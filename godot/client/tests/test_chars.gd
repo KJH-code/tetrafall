@@ -427,6 +427,49 @@ func test_dummy_body() -> void:
 	b.free()
 
 
+# 몸 자세 전체 = JS figureAnim (fixtures/figure_anim.json): 8명 × 장면 (가만히·걷기·평타 1·2·3·스킬 동작·도발·승리·맞음·경직·공중), 3 프레임마다 관절 쿼터니언·엉덩이 높이.
+# 장면마다 가장 큰 각 차이 (라디안) 를 메시지에 — 다른 곳 찾기 표
+func test_figure_anim_matches_js() -> void:
+	var fx = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/figure_anim.json"))
+	check(fx != null, "figure_anim.json")
+	if fx == null:
+		return
+	var dt: float = fx.dt
+	var bad := []
+	for c in fx.cases:
+		var b = Chars.make_body(c.ch, Color.WHITE)
+		var joints: Array = [b.hips, b.waist, b.neck, b.shoulders[0], b.shoulders[1], b.elbows[0], b.elbows[1], b.thighs[0], b.thighs[1], b.knees[0], b.knees[1]]
+		var names := ["엉덩이", "허리", "목", "어깨R", "어깨L", "팔꿈치R", "팔꿈치L", "허벅지R", "허벅지L", "무릎R", "무릎L"]
+		var worst := 0.0
+		var where := ""
+		var si := 0
+		for k in c.frames.size():
+			var st: Dictionary = fx.base.duplicate(true)
+			st.merge(c.frames[k], true)
+			st.t = 1.0 + (k + 1) * dt
+			st.merge({"form": "", "loaded": false, "ammo": 3.0}, false)
+			b._figure_anim(st, dt)
+			b._apply(dt)
+			if si < c.steps.size() and int(c.steps[si].k) == k:
+				var sp: Dictionary = c.steps[si]
+				si += 1
+				for j in joints.size():
+					var q: Quaternion = (joints[j] as Node3D).quaternion
+					var e: Array = sp.q[j]
+					var d := 2.0 * acos(clampf(absf(q.x * e[0] + q.y * e[1] + q.z * e[2] + q.w * e[3]), 0.0, 1.0))
+					if d > worst:
+						worst = d
+						where = "%s 프레임 %d" % [names[j], k]
+				var dz := absf(b.hips.position.z - float(sp.hz))
+				if dz * 10.0 > worst:
+					worst = dz * 10.0
+					where = "엉덩이 높이 %.3f 프레임 %d" % [dz, k]
+		if worst > 0.03:
+			bad.append("%s %s %.3f (%s)" % [c.ch, c.name, worst, where])
+		b.free()
+	check(bad.is_empty(), "JS figureAnim 과 다른 장면 %d개: %s" % [bad.size(), "; ".join(bad)])
+
+
 func test_viewmodel_follows() -> void:
 	for ch in C.FIGURE_CHARS:
 		var vm = VM.new()
