@@ -178,3 +178,26 @@ func test_bodies_merged() -> void:
 		check(drawn <= 8, "%s 그리는 메시 %d" % [ch, drawn])
 		check(b.skeleton.get_bone_count() == b.nodes.size(), "%s 뼈 %d / 노드 %d" % [ch, b.skeleton.get_bone_count(), b.nodes.size()])
 		b.free()
+
+
+const VM := preload("res://chars/viewmodel.gd")
+
+
+# 1인칭 팔: 8명 내 몸을 베껴 팔꿈치 아래·무기만 그리고, 한 프레임 따라가도 깨지지 않음 (화면 없이 _sync·_follow 를 바로)
+func test_viewmodel_follows() -> void:
+	for ch in C.FIGURE_CHARS:
+		var vm = VM.new()
+		vm._ready()
+		var b = Chars.make_body(ch, Color(0.9, 0.4, 0.2))
+		vm._sync(b)
+		check(vm.twin != null and vm.pairs.size() > 5, "%s 베낄 노드 %d" % [ch, vm.pairs.size()])
+		var drawn := 0
+		for mi in vm.anchor.find_children("*", "MeshInstance3D", true, false):
+			if mi.layers != 0:
+				drawn += 1
+		check(drawn > 0, "%s 1인칭에 그리는 조각 %d" % [ch, drawn])
+		vm._follow(1.0 / 60.0)
+		check(is_finite(vm.anchor.position.x) and is_finite(vm.twin.shoulders[0].rotation.y), "%s 자리" % ch)
+		vm.twin.free()
+		b.free()
+		vm.free()

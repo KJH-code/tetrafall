@@ -28,8 +28,11 @@ var refs := {} # figure 의 특별 노드 표 (gen-bodies.mjs refs: flaps·shiel
 var torso: Node3D
 var skeleton: Skeleton3D # 합친 몸 (K.MERGE): 노드 i = 뼈 i
 var piece_mat := {} # 노드 번호 → 재질 번호 (합칠 때)
+var parents: Array[int] = [] # 노드 번호 → 부모 번호 (1인칭 팔이 씀)
+var cur_act = null # 지금 공격 동작 (_act_for 결과, 1인칭 팔이 씀)
 var flap_s := {"x": 0.0, "v": 0.0}
 var form := ""
+var loaded := false # 갈고리 장전 (스냅샷 loaded, 1인칭 팔이 씀)
 var frame: Node3D # 게임 좌표 → 고도
 var rig: Node3D # 몸 전체 기울임·공중제비·구르기 (render.js rig)
 var hips: Node3D
@@ -93,7 +96,7 @@ var finish_at := -1e9
 var counter_at := -1e9
 
 
-func build(char_id_: String, color: Color) -> void:
+func build(char_id_: String, color: Color, merge: bool = K.MERGE) -> void:
 	char_id = char_id_
 	var data := _data()
 	var cd: Dictionary = data.chars.get(char_id, data.chars[C.FIGURE_CHARS[0]])
@@ -127,6 +130,7 @@ func build(char_id_: String, color: Color) -> void:
 		var parent: int = int(e.parent)
 		(frame if parent < 0 else nodes[parent]).add_child(n)
 		nodes.append(n)
+		parents.append(parent)
 	refs = cd.refs
 	rig = _n(refs.rig)
 	hips = _n(refs.hips)
@@ -143,7 +147,7 @@ func build(char_id_: String, color: Color) -> void:
 	var hammer := _n(refs.get("hammer"))
 	if hammer != null:
 		hammer.visible = char_id == "builder" # 건축가 무기
-	if K.MERGE:
+	if merge:
 		_merge(cd)
 	P = Motion.rest_pose(d)
 	V = Motion.zero_pose(P)
@@ -373,6 +377,7 @@ func pose(p: Dictionary, now_ms: float) -> void:
 	var store = _store()
 	var pos: Vector3 = store.view_pos(pid) if store != null else Vector3(float(p.get("x", 0.0)), float(p.get("y", 0.0)), float(p.get("z", 0.0)))
 	_move_state(p, pos, dt)
+	loaded = p.get("loaded", false) == true
 	var st := _anim_state(p, now_ms)
 	_figure_anim(st, dt)
 	_apply(dt)
@@ -541,6 +546,7 @@ func _figure_anim(st: Dictionary, dt: float) -> void:
 	if not frozen:
 		Motion.step_sway(sw, dt)
 	var actv = st.act
+	cur_act = actv
 	if st.walking:
 		Pose.gait_pose(T, d, st.hs, st.walk, Pose.gait_of(char_id))
 	else:
