@@ -66,6 +66,12 @@ func on() -> bool:
 	return not low and not preset.is_empty() and str(C.GAME_LIGHT) != "off"
 
 
+# 블록 빛 테두리 (PieceLook rim, G3 game_light 와 같은 이름)
+var rim: float:
+	get:
+		return float(preset.get("rim", 0.0)) if on() else 0.0
+
+
 # 짧은 빛 (착지·KO·필살기): size 칸, ms 동안 커지며 사라짐
 func flash(x: float, y: float, z: float, color: int, size: float, ms: float) -> void:
 	if not on() or not preset.get("flash", 0):
@@ -87,7 +93,7 @@ func _add(x: float, y: float, z: float, color: int, size: float, a: float) -> vo
 
 
 # 매 프레임: active = 판 중 (countdown·playing·over). halos = [[x, y, z, color, 크기 배수]]
-func frame(active: bool, halos: Array) -> void:
+func frame(active: bool, halos: Array, _dt := 0.0) -> void:
 	_n = 0
 	if active and on():
 		var h: Array = preset.get("halo", [0, 0])
