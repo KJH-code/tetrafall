@@ -8,6 +8,7 @@ const S := preload("res://ui/ui_style.gd")
 const Portrait := preload("res://ui/portrait.gd")
 const U := preload("res://ui/ui_calc.gd")
 const Coords := preload("res://core/coords.gd")
+const Keys := preload("res://core/keys.gd")
 
 const CAUSE_KO := {"crush": "압사", "fall": "낙사", "lava": "용암", "hp": "체력"}
 const TEAM_KO := {"red": "빨강", "blue": "파랑"}
@@ -38,6 +39,12 @@ var damage_label: Label
 var spec_label: Label
 var big: Label
 var ring: Control
+var ghost_ring: Control # 유령 투하 조준 원 (JS #ghost-cd): 쿨이면 회색이 시계 방향으로 차오름, 안 되는 걸 누르면 흔들림
+var ghost_hint: Label # 처음 죽었을 때 한 번만 (JS #ghost-hint, GHOST_HINT_MS)
+var ghost_hint_until := -1.0 # -1 = 아직 안 보여 줌
+var ghost_fill := 1.0
+var ghost_ready := true
+var rig = null # G1 카메라 (world/cam_rig.gd — 관전 전체 보기·하늘 시점·안 되는 투하 시각)
 var dash_was := 0.0
 var push_was := 0.0
 
@@ -90,6 +97,15 @@ func _ready() -> void:
 	spec_label = _hud_label(15, false)
 	spec_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(spec_label)
+	ghost_ring = Control.new()
+	ghost_ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ghost_ring.size = Vector2(30, 30)
+	ghost_ring.draw.connect(_draw_ghost)
+	add_child(ghost_ring)
+	ghost_hint = _hud_label(19, false)
+	ghost_hint.text = "클릭: 블록 떨어뜨리기"
+	ghost_hint.visible = false
+	add_child(ghost_hint)
 
 	board = PanelContainer.new()
 	var bs := StyleBoxFlat.new()
@@ -363,7 +379,9 @@ func _bar(frac: float, col: Color) -> Control:
 # 아래 사람마다 판: 초상 (G2 전엔 색 상자) · 이름 · 캐릭터·승/킬 · 큰 % · 체력전 HP 막대 · 색 띠. 판 크기는 card_layout
 func _cards(st: Dictionary, vp: Vector2) -> void:
 	var live: Array = st.players.filter(func(p): return not p.get("spectator", false) and not p.get("dummy", false))
-	var on: bool = live.size() >= 2 and not Store.room.get("practice", false) and str(st.phase) in ["countdown", "playing"]
+	# 판 중 + 판 끝 마지막 킬 슬로모션까지 (승자 클로즈업·결과 표 동안은 숨김 — JS cardsOn)
+	var slow: bool = str(st.phase) == "over" and str(View.victory_stage) == "slow"
+	var on: bool = live.size() >= 2 and not Store.room.get("practice", false) and (str(st.phase) in ["countdown", "playing"] or slow)
 	cards_row.visible = on
 	if not on:
 		return
@@ -540,9 +558,37 @@ func _cell(text: String, expand: int) -> String:
 	return "[cell expand=%d padding=10,2,10,2]%s[/cell]" % [max(expand, 1), body] if expand > 0 else "[cell padding=4,2,8,2]%s[/cell]" % text
 
 
+func _rig():
+	if rig == null or not is_instance_valid(rig):
+		var w := get_tree().root.find_child("World", true, false)
+		rig = w.get("rig") if w != null else null
+	return rig
+
+
 func _spectate(st: Dictionary, me: Dictionary, vp: Vector2) -> void:
 	var on: bool = not me.is_empty() and not me.get("alive", true) and st.phase == "playing"
 	spec_label.visible = on
+	var r = _rig()
+	# 유령 투하 되는 판 (스냅샷 ghostCd: 없음·null = 못 함, 0 = 됨, ms = 쿨)
+	var ghost_on: bool = on and me.get("ghostCd") != null
+	var aim_on: bool = ghost_on and (r == null or float(r.get("sky_blend")) == 0.0)
+	ghost_ring.visible = aim_on
+	if not aim_on:
+		ghost_hint.visible = false
+	else:
+		var cd := float(me.ghostCd)
+		ghost_ready = cd == 0.0
+		ghost_fill = 1.0 if ghost_ready else 1.0 - minf(1.0, cd / C.GHOST_DROP_CD_MS)
+		var at: Vector2 = vp / 2.0 if PlayerInput.locked else get_viewport().get_mouse_position()
+		var now := float(Time.get_ticks_msec())
+		var refuse: float = float(r.get("ghost_refuse_at")) if r != null else -1e9
+		var shake := sin(now / 20.0) * 4.0 if now - refuse < 250.0 else 0.0
+		ghost_ring.position = at - ghost_ring.size / 2.0 + Vector2(shake, 0)
+		ghost_ring.queue_redraw()
+		if ghost_hint_until < 0.0:
+			ghost_hint_until = now + C.GHOST_HINT_MS
+		ghost_hint.visible = now < ghost_hint_until
+		ghost_hint.position = Vector2((vp.x - ghost_hint.size.x) / 2.0, vp.y * 0.38)
 	if not on:
 		return
 	var head: String = "사망: %s" % CAUSE_KO.get(str(me.get("cause", "")), str(me.get("cause", "")))
@@ -550,6 +596,26 @@ func _spectate(st: Dictionary, me: Dictionary, vp: Vector2) -> void:
 		head = "관전 중 (호스트가 관전으로 바꿈)"
 	var t = View.spectate_target
 	var target := Store.player(t) if t != null else {}
-	spec_label.text = "%s\n%s · 마우스 돌리기 · 휠 거리 · 클릭/Space 다음 사람 · 우클릭 전체 보기" % [head, "%s 따라가는 중" % _name(target) if not target.is_empty() else "전체 보기"]
+	var overview: bool = r != null and bool(r.spec.get("overview", false))
+	var jump := Keys.key_label(str(PlayerInput.binds.get("jump", "Space")))
+	var next := ("%s 다음 사람 · 클릭 블록 떨어뜨리기" % jump) if ghost_on else ("클릭/%s 다음 사람" % jump) # JS 문구
+	spec_label.text = "%s\n%s · 마우스 돌리기 · 휠 거리 · %s · 우클릭 %s" % [head, "%s 따라가는 중" % _name(target) if not target.is_empty() and not overview else "전체 보기", next, "따라가기" if overview else "전체 보기"]
 	var cards_h: float = cards_row.size.y + 22 if cards_row.visible else 18
 	spec_label.position = Vector2((vp.x - spec_label.size.x) / 2.0, vp.y - cards_h - spec_label.size.y)
+
+
+# 조준 원: 흰 테두리 + 가운데 점, 쿨이면 회색 테두리 + 회색이 시계 방향으로 차오름 (JS #ghost-cd conic-gradient)
+func _draw_ghost() -> void:
+	var c := ghost_ring.size / 2.0
+	if ghost_ready:
+		ghost_ring.draw_circle(c, 14.0, Color(1, 1, 1, 0.12))
+	else:
+		ghost_ring.draw_circle(c, 14.0, Color(0, 0, 0, 0.25))
+		var pts := PackedVector2Array([c])
+		for i in 33:
+			var a := -PI / 2.0 + TAU * ghost_fill * float(i) / 32.0
+			pts.append(c + Vector2(cos(a), sin(a)) * 14.0)
+		if ghost_fill > 0.0:
+			ghost_ring.draw_colored_polygon(pts, Color(0.78, 0.78, 0.78, 0.55))
+	ghost_ring.draw_arc(c, 14.0, 0.0, TAU, 40, Color(1, 1, 1, 0.85) if ghost_ready else Color(0.63, 0.63, 0.63, 0.8), 2.0)
+	ghost_ring.draw_circle(c, 2.0, Color.WHITE)
