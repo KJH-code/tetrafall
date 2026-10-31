@@ -58,7 +58,7 @@ func _ready() -> void:
 
 
 func reduced() -> bool:
-	return bool(View.settings.get("lowGraphics", false)) or bool(View.settings.get("reducedMotion", false))
+	return bool(View.settings.get("lowGfx", false)) or bool(View.settings.get("reducedMotion", false))
 
 
 func _screen_now() -> String:

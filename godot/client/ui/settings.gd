@@ -19,6 +19,7 @@ var listening = null # 키를 기다리는 행동 id
 var leave_armed_at := -100000.0
 var sliders := {}
 var checks := {}
+var keys_scroll: ScrollContainer
 
 
 func _ready() -> void:
@@ -40,10 +41,15 @@ func _ready() -> void:
 	var h := S.glow_label("설정", 30, Color.WHITE, 6)
 	h.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(h)
-	_slider(v, "마우스 감도", "sensitivity", 0.3, 3.0, 0.1, func(x): return "%.1f배" % x)
-	_slider(v, "효과음", "volume", 0.0, 1.0, 0.05, func(x): return "%d%%" % int(round(x * 100)))
-	_slider(v, "음악", "music", 0.0, 1.0, 0.05, func(x): return "%d%%" % int(round(x * 100)))
-	_check(v, "그래픽 낮춤", "lowGraphics", "켜기 (해상도·배경 장식 줄임)")
+	# 이름·범위·글은 JS index.html #settings · main.js fields/checks 그대로 (View.settings 이름 = JS 이름)
+	_slider(v, "마우스 감도", "sens", 0.3, 3.0, 0.1, func(x): return "%.1f배" % x)
+	_slider(v, "효과음", "sfx", 0.0, 1.0, 0.05, func(x): return "%d%%" % int(round(x * 100)))
+	_slider(v, "음악", "music", 0.0, 1.0, 0.05, func(x): return "%d%%" % int(round(x * 100)) if x > 0 else "끔")
+	_slider(v, "시야각", "fov", 60.0, 100.0, 1.0, func(x): return "%d°" % int(round(x)))
+	_check(v, "그림자", "shadows", "켜기 (느리면 끄기)")
+	_check(v, "외곽선", "outline", "켜기 (느리면 끄기)")
+	_check(v, "그래픽 낮춤", "lowGfx", "켜기 (해상도·배경 장식 줄임)")
+	_check(v, "시점", "third", "3인칭 (%s 로 바꿈)" % Keys.key_label(PlayerInput.binds.get("view", "KeyV")))
 	_check(v, "움직임 줄이기", "reducedMotion", "켜기 (전환·반짝임 줄임)")
 	var kh := HBoxContainer.new()
 	kh.add_child(S.glow_label("조작 키", 16, Color.WHITE, 3))
@@ -51,7 +57,7 @@ func _ready() -> void:
 	v.add_child(kh)
 	v.add_child(S.label("칸을 누르고 바꿀 키나 마우스 버튼(옆 버튼도)을 누름 · Esc 취소", 13, Color("bbbbbb")))
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size.y = 220
+	keys_scroll = scroll
 	keys_grid = GridContainer.new()
 	keys_grid.columns = 2
 	keys_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -138,6 +144,8 @@ func _on_shown() -> void:
 	for key in checks:
 		checks[key].set_pressed_no_signal(bool(View.settings.get(key, false)))
 	leave_btn.visible = Store.in_room()
+	# 키 목록은 남는 높이만큼 (960×540 에서도 창이 화면 안)
+	keys_scroll.custom_minimum_size.y = clampf(get_viewport_rect().size.y - 480.0, 90.0, 260.0)
 	leave_note.visible = false
 	leave_armed_at = -100000.0
 	_show_binds()
@@ -204,11 +212,9 @@ func _reset_keys() -> void:
 
 
 func _reset_settings() -> void:
-	View.set_setting("sensitivity", 1.0)
-	View.set_setting("volume", 1.0)
-	View.set_setting("music", 0.6)
-	View.set_setting("lowGraphics", false)
-	View.set_setting("reducedMotion", false)
+	# JS SETTINGS_DEFAULT
+	for kv in [["sens", 1.0], ["sfx", 1.0], ["music", 1.0], ["fov", C.FOV_DEFAULT], ["shadows", true], ["outline", true], ["lowGfx", false], ["third", false], ["reducedMotion", false]]:
+		View.set_setting(kv[0], kv[1])
 	_on_shown()
 
 
