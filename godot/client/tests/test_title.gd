@@ -104,3 +104,22 @@ func test_scene_runs_all_themes() -> void:
 	m.step(0.016)
 	check(m.in_menu() and m.is_done(), "menu 모드는 처음부터 메뉴 카메라")
 	m.free()
+
+
+# 대기실 둘레 무대 (title_stage.gd, B4 lobby_dark 가 씀): 테마마다 만들어지고, 흩뿌릴 땐 섬 자리 (clear 반지름) 안 소품은 빼고 가운데 축으로 돌림
+func test_ring_stage() -> void:
+	var S = load("res://title/title_stage.gd")
+	var F = load("res://title/title_fx.gd")
+	for th in TC.theme_ids():
+		var st = S.new(th, {"low": true, "logoW": 0, "logoH": 0, "camDist": 30.0, "ring": true, "clear": 30.0, "floorZ": -8.0})
+		check(st is Node3D and st.back_light != null and st.lights.size() >= 2 and st.ring and is_equal_approx(st.floor_z, -8.0), "%s 무대" % th)
+		st.update(1.0, 1.0, 360.0)
+		if th == "crystal":
+			st.ring_rnd = F.Rng.new(99)
+			var list := [{"p": Vector3(5, 5, 0), "s": Vector3.ONE}, {"p": Vector3(40, 0, 1), "s": Vector3.ONE, "r": Basis()}, {"p": Vector3(0, -31, 2), "s": Vector3.ONE}]
+			var mi: MultiMeshInstance3D = st._inst(BoxMesh.new(), StandardMaterial3D.new(), list)
+			check(mi.multimesh.instance_count == 2, "섬 자리 안 소품 뺌 %d" % mi.multimesh.instance_count)
+			check(is_equal_approx(Vector2(list[1].p.x, list[1].p.y).length(), 40.0) and not list[1].p.is_equal_approx(Vector3(40, 0, 1)), "가운데 축으로 돌림 (반지름 그대로) %s" % list[1].p)
+			st.ring_rnd = null
+			mi.free()
+		st.free()

@@ -119,15 +119,15 @@ static func motes(n: int, color, size: float, rise: float, box: Array, rnd: Rng,
 	return mi
 
 
-# 하늘 별 (위쪽 반구, 지름 0.7 점)
-static func stars(n: int, rnd: Rng, r := 150.0) -> MultiMeshInstance3D:
+# 하늘 별 (위쪽 반구, 지름 0.7 점). full = 대기실 (하늘 전체)
+static func stars(n: int, rnd: Rng, r := 150.0, full := false) -> MultiMeshInstance3D:
 	var mi := motes(0, 0xffffff, 0.7, 0.0, [0, 0, 0, 0, 0, 1], rnd)
 	var mm := mi.multimesh
 	mm.instance_count = n
 	for i in n:
 		var a := rnd.next() * TAU
 		var e := 0.05 + rnd.next() * 1.4
-		var p := Vector3(cos(a) * cos(e) * r, absf(sin(a)) * cos(e) * r + 20.0, sin(e) * r * 0.8 - 10.0)
+		var p := Vector3(cos(a) * cos(e) * r, (sin(a) if full else absf(sin(a))) * cos(e) * r + (0.0 if full else 20.0), sin(e) * r * 0.8 - 10.0)
 		mm.set_instance_transform(i, Transform3D())
 		mm.set_instance_custom_data(i, Color(0.5, p.x, p.y, p.z))
 	var mat: ShaderMaterial = mi.material_override

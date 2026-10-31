@@ -300,7 +300,7 @@ func step(dt: float) -> void:
 	F.set_opacity(halo, minf(1.0, L.burst * 0.18 + (0.04 if t >= done_at else 0.0)) * (1.0 - push))
 	halo.scale = Vector3(size.x * C.TITLE_SCALE * (1.15 + L.burst * 0.3), size.y * C.TITLE_SCALE * (1.8 + L.burst * 1.4), 1)
 	F.set_opacity(streak, minf(1.0, (L.burst * 0.8 + (0.15 if t >= done_at else 0.0)) * LETTER_K) * (1.0 - push))
-	stage.update(t / 1000.0, minf(1.0, L.lit + L.burst * 0.5), cam.fov)
+	stage.update(t / 1000.0, minf(1.0, L.lit + L.burst * 0.5))
 	# 카메라 (게임 좌표로 계산, 마지막에 고도 좌표)
 	var vp := get_viewport().get_visible_rect().size if is_inside_tree() else Vector2(16, 9)
 	var a := vp.x / maxf(1.0, vp.y)
@@ -326,7 +326,7 @@ func step(dt: float) -> void:
 	cam.transform = Transform3D(Basis.looking_at(g_look - g_eye, Vector3.UP), g_eye)
 	_place_flares(L.burst * (1.0 - push), t >= done_at and push < 0.3)
 	if cam.is_inside_tree():
-		stage.mirror_update(cam)
+		stage.mirror_update(cam) # (update 는 카메라를 놓기 전에 불려서 여기서 한 번 더)
 	if stage.env.glow_enabled:
 		stage.env.glow_intensity = (C.TITLE_BLOOM[0] + (C.TITLE_BLOOM_BURST - C.TITLE_BLOOM[0]) * maxf(L.burst, wh)) * GLOW_K
 
