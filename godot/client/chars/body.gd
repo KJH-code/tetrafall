@@ -11,6 +11,7 @@ const Pose := preload("res://chars/figure_pose.gd")
 const Motion := preload("res://chars/figure_motion.gd")
 const Moves := preload("res://chars/moves.gd")
 const K := preload("res://chars/chars_config.gd")
+const Ragdoll := preload("res://chars/ragdoll.gd")
 
 # 스킬·필살기 이벤트 → 몸 동작 (main.js handleEvent 의 renderer.skillMove). [동작, 준비 ms 를 e.ms 에서 받음]
 const SKILL_START := {"leapWarn": ["hunterLeap", true], "aim": ["hunterAim", true], "blink": ["ninjaDash", false], "wallKick": ["ninjaWallKick", false], "charge": ["tankCharge", false], "slamWarn": ["tankSlam", true], "wallWarn": ["builderWall", true], "bigBombWarn": ["builderBig", false], "padBoost": ["builderPad", false], "song": ["bardSong", false], "rush": ["berserkerLeap", false], "rushLand": ["berserkerSlam", false], "groundShot": ["cannonJump", false], "blockGrab": ["hookSlam", true]}
@@ -55,6 +56,8 @@ var glow_color := Color.WHITE
 var windup_until := -1e9
 var armor_until := -1e9
 var armor_hit_at := -1e9
+var rag_was_stunned := false # 래그돌: 경직이 풀린 시각 (초, 일어나기)
+var rag_stun_end := -1.0
 var batch = null # K.SKIN: G3 batch.gd (툰 조각 전부 → SkinnedMesh 하나, 뼈 = 조각)
 var rig: Node3D # 몸 전체 기울임·공중제비·구르기 (render.js rig)
 var hips: Node3D
@@ -476,8 +479,14 @@ func pose(p: Dictionary, now_ms: float) -> void:
 	_move_state(p, pos, dt)
 	loaded = p.get("loaded", false) == true
 	var st := _anim_state(p, now_ms)
+	var rw = _ragdoll(p)
+	if rw != null:
+		rw.restore(self)
 	_figure_anim(st, dt)
 	_apply(dt)
+	if rw != null:
+		_ragdoll_capture(rw, p, st, pos, dt)
+		rw.apply(self)
 	_sync_bones()
 	_apply_opacity()
 	_fx_colors(p)
@@ -1155,6 +1164,49 @@ func _crush_flat() -> void:
 func _sync_bones() -> void:
 	if batch != null:
 		batch.sync()
+
+
+# ---------- 래그돌 (JS render.js ragdollCapture·RAGDOLL_CHARS, 물리는 chars/ragdoll.gd) ----------
+# 켜는 몸: RAGDOLL_CHARS 캐릭터, 판의 사람 (id ≥ 0 — 초상·큰 캐릭터 몸은 끔), 살아 있고 필드에 있음, 화면에 보임 (1인칭 내 몸은 World 가 숨김)
+func _ragdoll(p: Dictionary):
+	var on: bool = K.RAGDOLL and merged_count > 0 and pid >= 0 and char_id in C.RAGDOLL_CHARS and p.get("alive", true) == true \
+		and not p.get("master", false) and is_inside_tree() and is_visible_in_tree()
+	var rw = Ragdoll.of(self) if on else Ragdoll._inst
+	if rw == null or not is_instance_valid(rw):
+		return null
+	if not on:
+		rw.remove(self)
+		return null
+	if not rw.has(self):
+		rw.create(self)
+	return rw
+
+
+func _ragdoll_capture(rw, p: Dictionary, st: Dictionary, pos: Vector3, _dt: float) -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	var limp: bool = p.get("stunned", false) == true
+	if rag_was_stunned and not limp:
+		rag_stun_end = now
+	rag_was_stunned = limp
+	var h = st.get("hit")
+	var hi = null # 맞은 방향 (게임, 단위) — 서버가 준 방향, 없으면 몸 뒤쪽
+	if h != null:
+		var yaw: float = p.get("yaw", 0.0)
+		var hd := Vector2(-cos(yaw), -sin(yaw))
+		if hit != null and hit.get("dir") is Vector2 and (hit.dir as Vector2).length() > 1e-6:
+			hd = (hit.dir as Vector2).normalized()
+		hi = {"id": h.id, "x": hd.x, "y": hd.y, "pow": h["pow"]}
+	var act = st.get("act")
+	var phase = act.phase if act != null else ("pose" if int(p.get("emote", -1)) >= 0 or vic_t >= 0.0 else null)
+	rw.capture(self, {"stunned": limp, "sinceStun": now - rag_stun_end if rag_stun_end >= 0.0 else INF, "hitAge": h.age if h != null else null,
+		"falling": pos.z < C.RAGDOLL_FALL_Z, "act": phase}, hi, _dt)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_EXIT_TREE or what == NOTIFICATION_PREDELETE:
+		var rw = Ragdoll._inst
+		if rw != null and is_instance_valid(rw) and rw.has(self):
+			rw.remove(self)
 
 
 # ---------- 몸 색 효과 (render.js 의 bodyMat·mats 색 부분, B4 가 넘김) ----------
