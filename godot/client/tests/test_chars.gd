@@ -379,9 +379,14 @@ func test_ragdoll_bodies() -> void:
 		check(absf(v.x - 0.5) < 1e-4 and w.ts == 0.25, "%s 슬로모션 속도 %s" % [ch, str(v)])
 		w.set_time_scale(1.0)
 		check(absf((PhysicsServer3D.body_get_state(rb, PhysicsServer3D.BODY_STATE_LINEAR_VELOCITY) as Vector3).x - 2.0) < 1e-4, "%s 슬로모션 끝 속도 되돌림" % ch)
+		# 쉬기: 모터가 다 센 채로 RAGDOLL_SLEEP_MS 지나면 강체를 멈추고 figureAnim 자세 그대로, 경직이면 바로 깸
+		rag.calm_at = -1e9
+		b.pose(p, 8.0)
+		check(not rag.awake, "%s 평소엔 쉼" % ch)
 		p.stunned = true
 		b.pose(p, 16.0)
 		check(rag.motor == C.RAGDOLL_STUN_MOTOR, "%s 경직 힘 빠짐 %f" % [ch, rag.motor])
+		check(rag.awake, "%s 경직이면 깸" % ch)
 		b.visible = false # 1인칭 내 몸 (World 가 숨김)
 		b.pose(p, 32.0)
 		check(not w.has(b), "%s 숨기면 끔" % ch)

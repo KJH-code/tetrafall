@@ -28,7 +28,7 @@ var ground := {} # "x,y,z" → 정적 강체
 var rags := {} # 몸 (body.gd) → {segs, joints, motor, snap, hit_id, weight, fresh, root_v}
 var ts := 1.0 # 지금 물리 시간 배율 (View.time_scale: KO 슬로모션·히트스톱). 엔진 속도 = 실제 속도 × ts, 힘 × ts² → ts 배 느리게 흐름
 var made := 0 # 만든 래그돌 수 (확인용)
-var stats := {"ms": 0.0, "steps": 0, "n": 0} # 마지막 물리 틱 (perf-log)
+var stats := {"ms": 0.0, "steps": 0, "n": 0, "total": 0} # n = 깨어 있는 수, total = 래그돌 켠 몸 # 마지막 물리 틱 (perf-log)
 
 
 # 장면 트리 하나에 하나 (root 아래 TfRagdolls). 트리 밖이면 null
@@ -172,7 +172,7 @@ func create(b) -> void:
 		PhysicsServer3D.joint_disable_collisions_between_bodies(jr, true)
 		joints.append(jr)
 	made += 1
-	rags[b] = {"segs": segs, "joints": joints, "motor": 1.0, "snap": 0.0, "hit_id": null, "weight": weight, "fresh": true, "root_v": Vector3.ZERO}
+	rags[b] = {"segs": segs, "joints": joints, "motor": 1.0, "snap": 0.0, "hit_id": null, "weight": weight, "fresh": true, "root_v": Vector3.ZERO, "awake": true, "calm_at": Time.get_ticks_msec() * 1.0, "mask": -1}
 
 
 # X 축이 a 인 직교 기준틀
@@ -227,19 +227,40 @@ func capture(b, st: Dictionary, hit, dt: float) -> void:
 	var m := RM.motor(st)
 	rag.motor = m.motor
 	rag.snap = m.snap
-	var mask := GROUND if m.motor < C.RAGDOLL_COLLIDE_BELOW else 0 # 힘이 빠졌을 때만 바닥·블록과 부딪힘
-	for sg in rag.segs:
-		PhysicsServer3D.body_set_collision_mask(sg.body, mask)
-	if rag.fresh:
+	# 쉬기: 모터가 다 센 (평소·공격·포즈) 동안은 물리가 목표 자세를 거의 그대로 따라가니 강체를 멈춰 둠 (kinematic, 힘 계산·엔진 걸음 없음).
+	# 맞음·경직·낙사·일어나기 (모터 < 1) 면 깨움 (그 순간 목표 자세로 맞추고), 다 세진 뒤 K.RAGDOLL_SLEEP_MS 지나면 다시 쉼
+	var now := Time.get_ticks_msec() * 1.0
+	var new_hit: bool = hit != null and hit.id != rag.hit_id
+	if m.motor < 1.0 or new_hit:
+		rag.calm_at = now
+		if not rag.awake:
+			_set_awake(rag, true)
+	elif rag.awake and now - float(rag.calm_at) > K.RAGDOLL_SLEEP_MS:
+		_set_awake(rag, false)
+	var mask := GROUND if rag.awake and m.motor < C.RAGDOLL_COLLIDE_BELOW else 0 # 힘이 빠졌을 때만 바닥·블록과 부딪힘
+	if mask != int(rag.mask):
+		rag.mask = mask
+		for sg in rag.segs:
+			PhysicsServer3D.body_set_collision_mask(sg.body, mask)
+	if rag.fresh and rag.awake:
 		_snap_all(rag)
 	rag.fresh = false
-	if hit != null and hit.id != rag.hit_id:
+	if new_hit:
 		rag.hit_id = hit.id
 		# 맞음: 가슴·머리를 밀린 쪽으로 툭 (골반은 판정 위치를 따라가니 윗몸이 포개짐)
 		for k in [1, 2]:
 			var sg: Dictionary = rag.segs[k]
 			var jj: float = C.RAGDOLL_HIT_IMPULSE * float(hit.pow) * float(sg.mass) / float(rag.weight)
 			PhysicsServer3D.body_apply_central_impulse(sg.body, Co.gpos(Vector3(float(hit.x) * jj, float(hit.y) * jj, C.RAGDOLL_HIT_UP * jj)) * ts)
+
+
+# 깨우기 (강체로, 목표 자세에서 시작) / 쉬기 (움직이지 않는 강체)
+func _set_awake(rag: Dictionary, on: bool) -> void:
+	rag.awake = on
+	for sg in rag.segs:
+		PhysicsServer3D.body_set_mode(sg.body, PhysicsServer3D.BODY_MODE_RIGID if on else PhysicsServer3D.BODY_MODE_KINEMATIC)
+	if on:
+		_snap_all(rag)
 
 
 # 몸 전체를 목표 자세로 순간 맞춤 (처음·순간이동·너무 멀어짐)
@@ -253,8 +274,8 @@ func _snap_all(rag: Dictionary) -> void:
 # 물리 자세 → 관절 회전 (부모부터). snap 만큼 목표 자세 쪽으로 섞음
 func apply(b) -> void:
 	var rag = rags.get(b)
-	if rag == null:
-		return
+	if rag == null or not rag.awake:
+		return # 쉬는 몸은 figureAnim 자세 그대로
 	for sg in rag.segs:
 		var x: Transform3D = PhysicsServer3D.body_get_state(sg.body, PhysicsServer3D.BODY_STATE_TRANSFORM)
 		var wq := x.basis.get_rotation_quaternion()
@@ -277,17 +298,21 @@ func _physics_process(_delta: float) -> void:
 
 func _prof_physics_process(_delta: float) -> void:
 	var t0 := Time.get_ticks_usec()
-	stats.n = rags.size()
-	if rags.is_empty():
+	stats.total = rags.size()
+	stats.n = 0
+	for b in rags.keys():
+		if not is_instance_valid(b):
+			remove(b)
+		elif rags[b].awake:
+			stats.n += 1
+	if stats.n == 0:
 		stats.ms = 0.0
 		return
 	_update_ground()
 	_time_scale()
-	for b in rags.keys():
-		if not is_instance_valid(b):
-			remove(b)
-			continue
-		_drive(rags[b])
+	for rag in rags.values():
+		if rag.awake:
+			_drive(rag)
 	stats.steps = 1
 	stats.ms = (Time.get_ticks_usec() - t0) / 1000.0
 
@@ -368,6 +393,8 @@ func _update_ground() -> void:
 	var need := {}
 	var R := int(C.RAGDOLL_GROUND_REACH)
 	for rag in rags.values():
+		if not rag.awake:
+			continue
 		var p := Co.game((PhysicsServer3D.body_get_state(rag.segs[0].body, PhysicsServer3D.BODY_STATE_TRANSFORM) as Transform3D).origin)
 		var bx := floori(p.x)
 		var by := floori(p.y)

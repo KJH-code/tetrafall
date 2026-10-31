@@ -12,6 +12,7 @@ const Motion := preload("res://chars/figure_motion.gd")
 const Moves := preload("res://chars/moves.gd")
 const K := preload("res://chars/chars_config.gd")
 const Ragdoll := preload("res://chars/ragdoll.gd")
+const Prof := preload("res://core/prof.gd")
 
 # 스킬·필살기 이벤트 → 몸 동작 (main.js handleEvent 의 renderer.skillMove). [동작, 준비 ms 를 e.ms 에서 받음]
 const SKILL_START := {"leapWarn": ["hunterLeap", true], "aim": ["hunterAim", true], "blink": ["ninjaDash", false], "wallKick": ["ninjaWallKick", false], "charge": ["tankCharge", false], "slamWarn": ["tankSlam", true], "wallWarn": ["builderWall", true], "bigBombWarn": ["builderBig", false], "padBoost": ["builderPad", false], "song": ["bardSong", false], "rush": ["berserkerLeap", false], "rushLand": ["berserkerSlam", false], "groundShot": ["cannonJump", false], "blockGrab": ["hookSlam", true]}
@@ -60,7 +61,9 @@ var rag_why := "" # 래그돌이 안 켜진 까닭 (확인용)
 var rag_test := false # 테스트: 장면 트리 밖에서도 래그돌 켬
 var rag_was_stunned := false # 래그돌: 경직이 풀린 시각 (초, 일어나기)
 var rag_stun_end := -1.0
-var batch = null # K.SKIN: G3 batch.gd (툰 조각 전부 → SkinnedMesh 하나, 뼈 = 조각)
+var batch = null
+var bone_dyn: Array[int] = [] # 매 프레임 맞출 묶음 뼈 (나머지는 늘 같은 자세)
+var bone_hide := 1e-6 # K.SKIN: G3 batch.gd (툰 조각 전부 → SkinnedMesh 하나, 뼈 = 조각)
 var rig: Node3D # 몸 전체 기울임·공중제비·구르기 (render.js rig)
 var hips: Node3D
 var waist: Node3D
@@ -215,6 +218,22 @@ func build(char_id_: String, color: Color, merge: bool = K.MERGE) -> void:
 # 재질 종류 (툰/basic·외곽선·발광·체크 무늬·그림자) 마다 메시 하나로 합쳐 그 노드에 붙임. 색은 정점 색. 뼈 (skin) 없이 노드 그대로라 숨기기·자세가 예전처럼.
 # 투명 재질·바드 몸통 (폼마다 재질이 바뀜)·광전사 충혈 흰자 (색이 바뀜) 는 따로 그림
 func _merge(cd: Dictionary) -> void:
+	var dyn := _dyn_nodes(cd)
+	# 광전사 뿔은 늘 같은 곡선 (figureAnim 이 매 프레임 같은 각) → 미리 굽혀 두고 합침
+	if refs.get("horns") is Array:
+		var bend: float = C.FIGURE_HORN_CURL / (C.FIGURE_HORN_SEGS - 1.0)
+		for h in refs.horns:
+			var segs: Array = h.get("segs", [])
+			for k in segs.size():
+				var sn := _n(segs[k])
+				if sn != null:
+					sn.rotation.x = float(h.side) * (0.15 if k == 0 else bend)
+	var keep_torso: bool = refs.has("formParts")
+	_merge_groups(cd, dyn, keep_torso)
+
+
+# 움직이는 노드 (figureAnim 이 돌리거나 옮기거나 보이기를 바꾸는 것 + 처음에 숨긴 노드 + 맨 위)
+func _dyn_nodes(cd: Dictionary) -> Dictionary:
 	var dyn := {}
 	# 움직이는 노드만 (figureAnim 이 돌리거나 보이기를 바꾸는 것). 손·발·몸통·코·악기 줄 등 refs 에 있어도 안 움직이는 건 주인 관절에 같이 합침
 	for key in ["rig", "hips", "waist", "neck", "shoulders", "elbows", "thighs", "knees", "pupils", "gun", "bow", "shields", "balls", "formParts", "mohawk", "hammer", "held", "waitMark", "cannon"]:
@@ -226,19 +245,13 @@ func _merge(cd: Dictionary) -> void:
 			_collect_nodes(refs.rage.get(key), dyn)
 	if refs.has("formParts"):
 		_collect_nodes(refs.get("torso"), dyn) # 바드 몸통은 폼마다 재질이 바뀜
-	# 광전사 뿔은 늘 같은 곡선 (figureAnim 이 매 프레임 같은 각) → 미리 굽혀 두고 합침
-	if refs.get("horns") is Array:
-		var bend: float = C.FIGURE_HORN_CURL / (C.FIGURE_HORN_SEGS - 1.0)
-		for h in refs.horns:
-			var segs: Array = h.get("segs", [])
-			for k in segs.size():
-				var sn := _n(segs[k])
-				if sn != null:
-					sn.rotation.x = float(h.side) * (0.15 if k == 0 else bend)
 	for i in nodes.size():
 		if cd.nodes[i].get("hidden", false) or int(cd.nodes[i].parent) < 0:
 			dyn[i] = true
-	var keep_torso: bool = refs.has("formParts")
+	return dyn
+
+
+func _merge_groups(cd: Dictionary, dyn: Dictionary, keep_torso: bool) -> void:
 	var rage_eye := -1
 	if refs.get("rage") is Dictionary and refs.rage.get("eyeMat") is Dictionary:
 		rage_eye = int(refs.rage.eyeMat.mat)
@@ -312,6 +325,27 @@ func _batch(cd: Dictionary) -> void:
 			nodes[i].set_meta("tf_skin", true) # 묶음이 피부 정점 표시 (UV2.x = 1) 로 씀 → 툰 skin_tint·skin_emissive
 	batch = G3.batch_mesh(frame)
 	batch.set_process(false) # 뼈 맞추기는 pose 안에서 (_sync_bones)
+	# 매 프레임 다시 맞출 뼈만 고름: 조각 → 부모 조각 (없으면 frame) 사이에 움직이는 노드가 있는 뼈. 나머지 뼈는 자세가 늘 같음 (만들 때 batch 가 한 번 맞춤)
+	var dyn := _dyn_nodes(cd)
+	_collect_nodes(refs.get("parts"), dyn) # 머리 박음 눌림
+	_collect_nodes(refs.get("rig"), dyn)
+	for h in refs.get("horns", []):
+		_collect_nodes(h.get("segs"), dyn) # figureAnim 이 매 프레임 굽힘
+	var idx := {}
+	for i in nodes.size():
+		idx[nodes[i]] = i
+	var hide = batch.get_script().get_script_constant_map().get("HIDE_SCALE", 1e-6)
+	bone_hide = float(hide)
+	bone_dyn.clear()
+	for bi in batch.pieces.size():
+		var par: int = batch.skel.get_bone_parent(bi)
+		var stop: Node = batch.pieces[par] if par >= 0 else batch.root
+		var n: Node = batch.pieces[bi]
+		while n != null and n != stop:
+			if dyn.has(idx.get(n, -1)):
+				bone_dyn.append(bi)
+				break
+			n = n.get_parent()
 	for i in piece_mat:
 		var mi := nodes[i] as MeshInstance3D
 		if mi.layers != 0:
@@ -484,26 +518,38 @@ func pose(p: Dictionary, now_ms: float) -> void:
 	if dummy:
 		_dummy_pose(p, now_ms)
 		return
+	if not _parent_shown():
+		# 몸 자리가 숨음 (죽음·마스터): 자세 계산을 쉼. 다시 보이면 처음처럼 (몸 자체만 숨긴 1인칭 내 몸은 1인칭 팔이 관절을 베끼니 계속)
+		_ragdoll(p)
+		last_ms = null
+		prev_pos = null
+		return
 	var dt := 0.0 if last_ms == null else clampf((now_ms - last_ms) / 1000.0, 0.0, 0.1)
 	var view = _autoload("View")
 	if view != null:
 		dt *= float(view.time_scale) # KO 슬로모션·히트스톱 (JS main.js dt × ko.timeScale)
 	last_ms = now_ms
+	var t0 := Prof.now() # 성능 구간 (--perf-log 만)
 	var pos := _view_pos(p)
 	_move_state(p, pos, dt)
 	loaded = p.get("loaded", false) == true
 	var st := _anim_state(p, now_ms)
+	t0 = _prof("몸 움직임 상태", t0)
 	var rw = _ragdoll(p)
 	if rw != null:
 		rw.restore(self)
 	_figure_anim(st, dt)
 	_apply(dt)
+	t0 = _prof("몸 figureAnim", t0)
 	if rw != null:
 		_ragdoll_capture(rw, p, st, pos, dt)
 		rw.apply(self)
+	t0 = _prof("몸 래그돌 잡기·넣기", t0)
 	_sync_bones()
+	t0 = _prof("몸 묶음 뼈", t0)
 	_apply_opacity()
 	_fx_colors(p)
+	_prof("몸 재질 (투명·색 효과)", t0)
 	# 맞은 순간 찌그러짐 (G5 fx.squash_amount, render.js g.scale): 게임 (x, y 넓게, z 낮게) = 고도 (x, z 넓게, y 낮게)
 	var sq := _fx_amount("squash_amount")
 	scale = Vector3(1.0 + 0.28 * sq, 1.0 - 0.32 * sq, 1.0 + 0.28 * sq)
@@ -1175,9 +1221,18 @@ func _crush_flat() -> void:
 
 
 # 묶은 몸 뼈 자세 = 지금 조각 자리 (매 프레임 _apply 뒤에 바로 — 초상처럼 pose 뒤 곧바로 한 번 그리는 곳도 맞게)
+# 움직이는 뼈만 (G3 batch.gd sync 와 같은 셈 — 부모 조각 기준 자리, 안 보이면 크기 거의 0)
 func _sync_bones() -> void:
-	if batch != null:
-		batch.sync()
+	if batch == null:
+		return
+	var sk: Skeleton3D = batch.skel
+	for bi in bone_dyn:
+		var p: MeshInstance3D = batch.pieces[bi]
+		var par := sk.get_bone_parent(bi)
+		var t: Transform3D = batch.rel_of(p, batch.pieces[par] if par >= 0 else batch.root)
+		sk.set_bone_pose_position(bi, t.origin)
+		sk.set_bone_pose_rotation(bi, t.basis.get_rotation_quaternion())
+		sk.set_bone_pose_scale(bi, t.basis.get_scale() if p.visible else Vector3.ONE * bone_hide)
 
 
 # ---------- 래그돌 (JS render.js ragdollCapture·RAGDOLL_CHARS, 물리는 chars/ragdoll.gd) ----------
@@ -1187,7 +1242,7 @@ func _ragdoll(p: Dictionary):
 	var main_view: bool = rag_test or (is_inside_tree() and get_viewport() == get_tree().root)
 	var on: bool = K.RAGDOLL and merged_count > 0 and char_id in C.RAGDOLL_CHARS and p.get("alive", true) == true \
 		and not p.get("master", false) and main_view and _shown()
-	rag_why = "" if on else "끔: RAGDOLL %s 합침 %d id %d 캐릭터 %s 살아 %s 마스터 %s 판 화면 %s 보임 %s" % [K.RAGDOLL, merged_count, pid, char_id, p.get("alive"), p.get("master"), main_view, _shown()]
+	rag_why = "" if on or not Prof.on else "끔: RAGDOLL %s 합침 %d id %d 캐릭터 %s 살아 %s 마스터 %s 판 화면 %s 보임 %s" % [K.RAGDOLL, merged_count, pid, char_id, p.get("alive"), p.get("master"), main_view, _shown()]
 	var rw = Ragdoll.of(self) if on else Ragdoll._inst
 	if rw == null or not is_instance_valid(rw):
 		if on:
@@ -1201,6 +1256,23 @@ func _ragdoll(p: Dictionary):
 		if not rw.has(self):
 			rag_why = "만들기 실패"
 	return rw
+
+
+static func _prof(name: String, t0: int) -> int:
+	if not Prof.on:
+		return 0
+	Prof.add(name, t0)
+	return Prof.now()
+
+
+# 부모 쪽 (몸 노드 위) 이 다 보이는가
+func _parent_shown() -> bool:
+	var n: Node = get_parent()
+	while n is Node3D:
+		if not (n as Node3D).visible:
+			return false
+		n = n.get_parent()
+	return true
 
 
 # 보이는가 (부모 Node3D 까지 visible — 트리 밖에서도)
