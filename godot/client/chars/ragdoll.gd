@@ -23,6 +23,7 @@ var floor_shape := RID()
 var floor_key := ""
 var ground := {} # "x,y,z" → 정적 강체
 var rags := {} # 몸 (body.gd) → {segs, joints, motor, snap, hit_id, weight, fresh, root_v}
+var made := 0 # 만든 래그돌 수 (확인용)
 var stats := {"ms": 0.0, "steps": 0, "n": 0} # 마지막 물리 틱 (perf-log)
 
 
@@ -32,8 +33,7 @@ static func of(n: Node) -> Node:
 		return null
 	if _inst != null and is_instance_valid(_inst):
 		return _inst
-	var w := Node.new()
-	w.set_script(load("res://chars/ragdoll.gd"))
+	var w: Node = load("res://chars/ragdoll.gd").new() # new() 라야 _init (물리 공간) 이 돎
 	w.name = NAME
 	n.get_tree().root.add_child.call_deferred(w)
 	_inst = w
@@ -157,6 +157,7 @@ func create(b) -> void:
 			PhysicsServer3D.joint_make_pin(jr, pa.body, la, sg.body, lb)
 		PhysicsServer3D.joint_disable_collisions_between_bodies(jr, true)
 		joints.append(jr)
+	made += 1
 	rags[b] = {"segs": segs, "joints": joints, "motor": 1.0, "snap": 0.0, "hit_id": null, "weight": weight, "fresh": true, "root_v": Vector3.ZERO}
 
 

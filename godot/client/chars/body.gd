@@ -56,6 +56,7 @@ var glow_color := Color.WHITE
 var windup_until := -1e9
 var armor_until := -1e9
 var armor_hit_at := -1e9
+var rag_why := "" # 래그돌이 안 켜진 까닭 (확인용)
 var rag_was_stunned := false # 래그돌: 경직이 풀린 시각 (초, 일어나기)
 var rag_stun_end := -1.0
 var batch = null # K.SKIN: G3 batch.gd (툰 조각 전부 → SkinnedMesh 하나, 뼈 = 조각)
@@ -1171,14 +1172,19 @@ func _sync_bones() -> void:
 func _ragdoll(p: Dictionary):
 	var on: bool = K.RAGDOLL and merged_count > 0 and pid >= 0 and char_id in C.RAGDOLL_CHARS and p.get("alive", true) == true \
 		and not p.get("master", false) and is_inside_tree() and is_visible_in_tree()
+	rag_why = "" if on else "끔: RAGDOLL %s 합침 %d id %d 캐릭터 %s 살아 %s 마스터 %s 트리 %s 보임 %s" % [K.RAGDOLL, merged_count, pid, char_id, p.get("alive"), p.get("master"), is_inside_tree(), is_inside_tree() and is_visible_in_tree()]
 	var rw = Ragdoll.of(self) if on else Ragdoll._inst
 	if rw == null or not is_instance_valid(rw):
+		if on:
+			rag_why = "래그돌 세계 없음"
 		return null
 	if not on:
 		rw.remove(self)
 		return null
 	if not rw.has(self):
 		rw.create(self)
+		if not rw.has(self):
+			rag_why = "만들기 실패"
 	return rw
 
 

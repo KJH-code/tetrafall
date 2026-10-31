@@ -353,9 +353,13 @@ func test_ragdoll_bodies() -> void:
 		root.add_child(b)
 		var p := {"id": 3, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.4}
 		b.pose(p, 0.0)
-		check(w.has(b), "%s 래그돌 켬" % ch)
+		check(w.has(b), "%s 래그돌 켬 (%s, 만든 수 %d)" % [ch, b.rag_why, w.made])
 		var rag: Dictionary = w.rags.get(b, {})
 		check(rag.get("segs", []).size() == 11 and rag.get("joints", []).size() == 10, "%s 조각 11·관절 10" % ch)
+		if rag.is_empty():
+			root.remove_child(b)
+			b.free()
+			continue
 		# 처음 (fresh): 물리 자세 = 목표 → 관절 회전이 figureAnim 그대로
 		var want := []
 		for sg in rag.segs:
