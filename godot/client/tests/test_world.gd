@@ -162,3 +162,54 @@ func _same(a: Array, b: Array) -> bool:
 		if not near(a[i][0], b[i][0]) or not near(a[i][1], b[i][1]):
 			return false
 	return true
+
+
+func test_victory_matches_js() -> void:
+	const V := preload("res://world/victory.gd")
+	var fx = load_json("victory.json")
+	for p in fx.plans:
+		var slow: float = INF if p[1] == null else float(p[1])
+		if p[1] == null:
+			slow = INF
+		var got := V.plan(p[0], slow, p[2])
+		for k in ["closeupAt", "resultsAt", "endAt"]:
+			check(near(got[k], p[3][k]), "victoryPlan %s %s" % [p.slice(0, 3), k])
+		for s in p[4]:
+			check(V.stage(got, s[0]) == s[1], "victoryStage %s t %s → %s ≠ %s" % [p.slice(0, 3), s[0], V.stage(got, s[0]), s[1]])
+	for s in fx.stars:
+		var got = V.star_of(s[0])
+		check((got == null and s[1] == null) or (got != null and s[1] != null and got == int(s[1])), "승자 고르기 %s → %s ≠ %s" % [s[0], got, s[1]])
+
+
+func test_ghost_pick_matches_js() -> void:
+	const GA := preload("res://world/ghost_aim.gd")
+	var fx = load_json("ghost.json")
+	var g := grid_of(fx)
+	var w := int(fx.W)
+	var d := int(fx.D)
+	var h := int(fx.H)
+	var solid := func(x: float, y: float, z: float) -> bool:
+		var gx := floori(x)
+		var gy := floori(y)
+		var gz := floori(z)
+		if gx < 0 or gy < 0 or gx >= w or gy >= d:
+			return false
+		if gz < 0:
+			return true
+		return gz < h and g[(gz * d + gy) * w + gx] != 0
+	var top := func(x: int, y: int) -> int:
+		for z in range(h - 1, -1, -1):
+			if g[(z * d + y) * w + x] != 0:
+				return z + 1
+		return 0
+	var bad := 0
+	var hits := 0
+	for r in fx.rays:
+		var got = GA.pick(Vector3(r[0].x, r[0].y, r[0].z), Vector3(r[1].x, r[1].y, r[1].z), w, d, solid, top)
+		var want = r[2]
+		if want != null:
+			hits += 1
+		if (got == null) != (want == null) or (got != null and (got.x != int(want.x) or got.y != int(want.y) or got.z != int(want.z))):
+			bad += 1
+	check(bad == 0, "조준 기둥 %d/%d 다름" % [bad, fx.rays.size()])
+	check(hits > 10, "닿는 시선이 충분 (%d)" % hits)
