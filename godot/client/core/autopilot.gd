@@ -110,8 +110,16 @@ func _process(_d: float) -> void:
 				bd = d
 				best = p
 		var yaw: float = atan2(best.y - me.y, best.x - me.x) if best != null else me.yaw
+		var fwd := 1 if best != null and bd > 1.2 else 0 # 상대가 없으면 (튜토리얼 빈 단계·혼자 연습) 제자리 — 계속 걸으면 섬 밖으로 떨어짐
+		# 튜토리얼: 단계 목표 칸이 있으면 그리로 (shared/tutorial-pilot.js go(target) 만 — 화면 확인용)
+		var tut = Store.state.get("tutorial")
+		if best == null and tut is Dictionary and tut.get("target") is Dictionary and not tut.get("done", false):
+			var tx := float(tut.target.x)
+			var ty := float(tut.target.y)
+			yaw = atan2(ty - me.y, tx - me.x)
+			fwd = 1 if Vector2(tx - me.x, ty - me.y).length() > 0.15 else 0
 		PlayerInput.set_yaw_pitch(yaw, 0)
-		PlayerInput.override = {"type": "input", "fwd": 1 if bd > 1.2 else 0, "strafe": 0, "jump": false, "yaw": yaw, "pitch": 0}
+		PlayerInput.override = {"type": "input", "fwd": fwd, "strafe": 0, "jump": false, "yaw": yaw, "pitch": 0}
 		if bd < 1.7 and now >= push_at:
 			push_at = now + 300
 			PlayerInput.press("attack")
