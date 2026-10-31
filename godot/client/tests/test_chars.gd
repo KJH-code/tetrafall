@@ -162,3 +162,19 @@ func test_bodies_build_and_animate() -> void:
 			check(b._pose_ok(), "%s 자세 깨짐 %s" % [ch, str(s.keys())])
 			check(is_finite(b.hips.position.y) and is_finite(b.shoulders[0].rotation.y), "%s 관절 %s" % [ch, str(s.keys())])
 		b.free()
+
+
+# 합친 몸 (chars_config MERGE): 몸 하나 그리는 메시 수가 적고, 뼈 수 = 조각 노드 수
+func test_bodies_merged() -> void:
+	for ch in C.FIGURE_CHARS:
+		var b = Chars.make_body(ch, Color(0.2, 0.6, 0.9))
+		if b.skeleton == null:
+			b.free()
+			continue
+		var drawn := 0
+		for mi in b.find_children("*", "MeshInstance3D", true, false):
+			if mi.layers != 0 and mi.visible:
+				drawn += 1
+		check(drawn <= 8, "%s 그리는 메시 %d" % [ch, drawn])
+		check(b.skeleton.get_bone_count() == b.nodes.size(), "%s 뼈 %d / 노드 %d" % [ch, b.skeleton.get_bone_count(), b.nodes.size()])
+		b.free()

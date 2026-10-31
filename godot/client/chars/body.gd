@@ -10,6 +10,7 @@ const G3 := preload("res://shaders/g3.gd")
 const Pose := preload("res://chars/figure_pose.gd")
 const Motion := preload("res://chars/figure_motion.gd")
 const Moves := preload("res://chars/moves.gd")
+const K := preload("res://chars/chars_config.gd")
 
 # 스킬·필살기 이벤트 → 몸 동작 (main.js handleEvent 의 renderer.skillMove). [동작, 준비 ms 를 e.ms 에서 받음]
 const SKILL_START := {"leapWarn": ["hunterLeap", true], "aim": ["hunterAim", true], "blink": ["ninjaDash", false], "wallKick": ["ninjaWallKick", false], "charge": ["tankCharge", false], "slamWarn": ["tankSlam", true], "wallWarn": ["builderWall", true], "bigBombWarn": ["builderBig", false], "padBoost": ["builderPad", false], "song": ["bardSong", false], "rush": ["berserkerLeap", false], "rushLand": ["berserkerSlam", false], "groundShot": ["cannonJump", false], "blockGrab": ["hookSlam", true]}
@@ -25,6 +26,8 @@ var mats: Array[Material] = []
 var nodes: Array[Node3D] = []
 var refs := {} # figure 의 특별 노드 표 (gen-bodies.mjs refs: flaps·shields·gun·bow·horns·formParts…)
 var torso: Node3D
+var skeleton: Skeleton3D # 합친 몸 (K.MERGE): 노드 i = 뼈 i
+var piece_mat := {} # 노드 번호 → 재질 번호 (합칠 때)
 var flap_s := {"x": 0.0, "v": 0.0}
 var form := ""
 var frame: Node3D # 게임 좌표 → 고도
@@ -110,6 +113,7 @@ func build(char_id_: String, color: Color) -> void:
 			var mi := MeshInstance3D.new()
 			mi.mesh = _mesh(data, int(e.geo))
 			mi.material_override = mats[int(e.mat)]
+			piece_mat[nodes.size()] = int(e.mat)
 			if e.get("noShadow", false):
 				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			n = mi
@@ -139,9 +143,105 @@ func build(char_id_: String, color: Color) -> void:
 	var hammer := _n(refs.get("hammer"))
 	if hammer != null:
 		hammer.visible = char_id == "builder" # 건축가 무기
+	if K.MERGE:
+		_merge(cd)
 	P = Motion.rest_pose(d)
 	V = Motion.zero_pose(P)
 	_apply(0.0)
+	_sync_skeleton()
+
+
+# ---------- 합친 몸 (JS client/batch.js): 조각 Node3D 는 그대로 '뼈' 노릇 (동작 코드는 조각을 만짐), 그리는 건 Skeleton3D + 메시 하나 ----------
+# 재질 종류 (툰/basic·외곽선·발광·체크 무늬·그림자) 마다 표면 하나, 색은 정점 색. 투명 재질·바드 몸통 (폼마다 재질이 바뀜) 은 따로 그림
+func _merge(cd: Dictionary) -> void:
+	skeleton = Skeleton3D.new()
+	frame.add_child(skeleton)
+	var rest_g: Array[Transform3D] = []
+	for i in nodes.size():
+		var e: Dictionary = cd.nodes[i]
+		var parent: int = int(e.parent)
+		skeleton.add_bone("n%d" % i)
+		if parent >= 0:
+			skeleton.set_bone_parent(i, parent)
+		skeleton.set_bone_rest(i, nodes[i].transform)
+		rest_g.append(nodes[i].transform if parent < 0 else rest_g[parent] * nodes[i].transform)
+	var skin := Skin.new()
+	for i in nodes.size():
+		skin.add_bind(i, rest_g[i].affine_inverse())
+	var keep_torso: bool = refs.has("formParts")
+	var groups := {} # 재질 종류 → {vs, ns, cs, us, bs, ws, mat}
+	for i in piece_mat:
+		var mi := nodes[i] as MeshInstance3D
+		var m: Dictionary = cd.mats[piece_mat[i]]
+		if m.get("transparent", false) or (keep_torso and mi == torso):
+			continue # 따로 그림
+		var key := "%s|%s|%s|%s|%s" % [m.kind, m.get("outline", true), m.get("emissive", 0), JSON.stringify(m.get("plaid", [])), cd.nodes[i].get("noShadow", false)]
+		if not groups.has(key):
+			groups[key] = {"vs": [], "ns": [], "cs": [], "us": [], "bs": [], "ws": [], "m": m, "shadow": not cd.nodes[i].get("noShadow", false)} # Array (참조) 에 모아 마지막에 Packed 로 (사전 안 Packed 배열은 꺼낼 때 복사됨)
+		var gr: Dictionary = groups[key]
+		var col: Color = _mat_color(m, skin_color)
+		var arr := (mi.mesh as ArrayMesh).surface_get_arrays(0)
+		var xf: Transform3D = rest_g[i]
+		var nb := xf.basis.inverse().transposed()
+		var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var ns = arr[Mesh.ARRAY_NORMAL]
+		var us = arr[Mesh.ARRAY_TEX_UV]
+		for k in vs.size():
+			gr.vs.append(xf * vs[k])
+			gr.ns.append((nb * ns[k]).normalized() if ns != null and ns.size() == vs.size() else Vector3.UP)
+			gr.us.append(us[k] if us != null and us.size() == vs.size() else Vector2.ZERO)
+			gr.cs.append(col)
+			gr.bs.append_array([i, 0, 0, 0])
+			gr.ws.append_array([1.0, 0.0, 0.0, 0.0])
+		mi.layers = 0 # 조각 자체는 안 그림 (뼈 노릇만)
+	for key in groups:
+		var gr: Dictionary = groups[key]
+		var arr := []
+		arr.resize(Mesh.ARRAY_MAX)
+		arr[Mesh.ARRAY_VERTEX] = PackedVector3Array(gr.vs)
+		arr[Mesh.ARRAY_NORMAL] = PackedVector3Array(gr.ns)
+		arr[Mesh.ARRAY_COLOR] = PackedColorArray(gr.cs)
+		arr[Mesh.ARRAY_TEX_UV] = PackedVector2Array(gr.us)
+		arr[Mesh.ARRAY_BONES] = PackedInt32Array(gr.bs)
+		arr[Mesh.ARRAY_WEIGHTS] = PackedFloat32Array(gr.ws)
+		var am := ArrayMesh.new()
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		var mi := MeshInstance3D.new()
+		mi.mesh = am
+		mi.skin = skin
+		mi.material_override = _merged_material(gr.m)
+		if not gr.shadow:
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		skeleton.add_child(mi) # skeleton 경로 기본값 '..' = 이 Skeleton3D
+
+
+# 합친 표면 재질: 색은 정점 색 (흰 바탕 × 정점 색)
+static func _merged_material(m: Dictionary) -> Material:
+	if m.kind == "basic":
+		var b := StandardMaterial3D.new()
+		b.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		b.vertex_color_use_as_albedo = true
+		if m.get("double", false):
+			b.cull_mode = BaseMaterial3D.CULL_DISABLED
+		return b
+	var opts := {"outline": m.get("outline", true), "vertex_color": true}
+	if int(m.get("emissive", 0)) != 0:
+		opts.emissive = int(m.emissive)
+	if m.has("plaid"):
+		opts.map = _plaid(m.plaid)
+	return G3.toon_material(Color.WHITE, opts)
+
+
+# 조각 노드 자세 → 뼈 자세 (매 프레임 끝). 숨긴 조각은 뼈를 거의 0 으로 줄임 (자식도 같이)
+func _sync_skeleton() -> void:
+	if skeleton == null:
+		return
+	for i in nodes.size():
+		var n := nodes[i]
+		var xf := n.transform
+		if not n.visible:
+			xf = Transform3D(xf.basis.scaled(Vector3.ONE * K.HIDE_SCALE), xf.origin)
+		skeleton.set_bone_pose(i, xf)
 
 
 # 노드 표 번호 {node: i} → 노드 (없으면 null)
@@ -207,12 +307,16 @@ static func _mesh(data: Dictionary, gi: int) -> ArrayMesh:
 
 
 # 재질 하나 (gen-bodies.mjs mats 한 줄)
-static func _material(m: Dictionary, skin: Color) -> Material:
-	var col := Color.from_rgba8((int(m.color) >> 16) & 0xff, (int(m.color) >> 8) & 0xff, int(m.color) & 0xff)
+static func _mat_color(m: Dictionary, skin: Color) -> Color:
 	if m.get("skin", false):
-		col = skin
-	elif m.get("shade", false):
-		col = Color(skin.r * C.FIGURE_MUSCLE_SHADE, skin.g * C.FIGURE_MUSCLE_SHADE, skin.b * C.FIGURE_MUSCLE_SHADE)
+		return skin
+	if m.get("shade", false):
+		return Color(skin.r * C.FIGURE_MUSCLE_SHADE, skin.g * C.FIGURE_MUSCLE_SHADE, skin.b * C.FIGURE_MUSCLE_SHADE)
+	return Color.from_rgba8((int(m.color) >> 16) & 0xff, (int(m.color) >> 8) & 0xff, int(m.color) & 0xff)
+
+
+static func _material(m: Dictionary, skin: Color) -> Material:
+	var col := _mat_color(m, skin)
 	var alpha: float = m.opacity if m.get("transparent", false) else 1.0
 	if m.kind == "basic":
 		var b := StandardMaterial3D.new()
@@ -265,6 +369,7 @@ func pose(p: Dictionary, now_ms: float) -> void:
 	var st := _anim_state(p, now_ms)
 	_figure_anim(st, dt)
 	_apply(dt)
+	_sync_skeleton()
 
 
 # 속도·공중·걷기·착지·경직 회복·2단 점프·공중 대시·가만히 (render.js animate·figureFlight·figureHabits)
