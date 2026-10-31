@@ -114,6 +114,11 @@ func _ready() -> void:
 	if ResourceLoader.exists(BBLOCKS):
 		bblocks = load(BBLOCKS).new()
 		add_child(bblocks)
+	if g3_has("game_light"):
+		# 판 빛 (B3 game_light.gd = game-light.js 전부: 색 보정·비네트·하늘 어둡게·빛 무리·빛 터짐) — 내 light_fx (3D 부분만) 대신
+		remove_child(light_fx)
+		light_fx.queue_free()
+		light_fx = G3.game_light(self)
 	if G3 != null:
 		grid_view.set_material(G3.toon_material(Color.WHITE, {"vertex_color": true}))
 		grid_view.make_mat = func(c: Color): return G3.toon_material(c)
@@ -221,7 +226,8 @@ func apply_theme(map_id: String) -> void:
 			hazard_view.set_g3(G3, tid, low) # 위험 액체 (B3): 필드 판 + 지평선 바다, 물들임
 		if g3_has("piece_mesh"):
 			# 테트리미노 칸 (B3 PieceLook): 떨어지는 칸·쌓인 칸 모양·재질·조각 색, 빛 테두리 = GAME_LIGHT 안 rim (그래픽 낮춤이면 0)
-			var rim: float = 0.0 if low else float(light_fx.preset.get("rim", 0.0))
+			light_fx.low = low
+			var rim: float = light_fx.rim
 			var pm: Mesh = G3.piece_mesh(tid, low)
 			var cols: Dictionary = G3.piece_colors(tid)
 			pieces_view.set_look(pm, [G3.piece_material(tid, low, {"rim": rim}), G3.piece_material(tid, low, {"rim": rim, "transparent": true, "opacity": 1.0})], cols)
@@ -423,7 +429,7 @@ func _process(dt: float) -> void:
 				halos.append([c[0] + 0.5, c[1] + 0.5, c[2] + 0.5, col, 0.7 if pc.get("sky", false) else 1.0])
 		for it in st.get("items", []):
 			halos.append([it.x + 0.5, it.y + 0.5, it.z + 0.5, int(C.GAME_LIGHT_ITEM), 0.6])
-	light_fx.frame(lit, halos)
+	light_fx.frame(lit, halos, dt)
 	var me := Store.me()
 	pieces_view.update(st, Store.my_id, me, rig.sky_blend)
 	hazard_view.update(st, Store.grid, Store.grid_version, me, dt)
