@@ -7,6 +7,7 @@
 // - protocol-lobby.json: 방 만들기·들어가기·핑·나가기 각본에서 JS 서버(rooms.js)가 보낸 메시지·로그 글자 그대로 (C# Rooms 가 같은지)
 // - maps.json: 맵 7개 × 판 크기 10~19 시작 지형 (shared/maps.js mapColumns)
 // - combat-trace.json: trace-scripted.mjs 각본 (캐릭터 8명) 을 전투만 도는 틱으로 돌린 틱 줄 sha256 앞 16자
+// - blocks-trace.json: 같은 각본을 보통 틱 + 블록 낙하로 돌린 틱 줄 sha256 앞 16자
 // - trace-t0.json: 시나리오 0~32 (tools/game-hash.js) 의 trace 첫 줄 (판 시작 직후, 격자 포함) sha256 — C# 판 시작이 글자까지 같은지
 // - scripted.json: 각본 입력 판 8개 (scripted.mjs, 캐릭터 끔) 의 trace 줄 전체 sha256·틱 수 — C# 판 흐름·블록이 처음부터 끝까지 글자까지 같은지
 // - game-hash.json: tools/game-hash.js 34판 판마다 해시·틱 수 (C# 가 그 판을 다 돌 수 있게 되면 같아야 함 — 봇 판은 S5 뒤)
@@ -216,5 +217,12 @@ const tutorial = C.CHARACTERS.map((ch) => {
   return [ch, r.ticks, r.done, h.digest('hex')];
 });
 write('tutorial-trace.json', tutorial);
-console.log(`maps ${Object.keys(maps).length}, physics ${phys.length}판, trace-t0 ${t0.length}판, 각본 ${scripted.map((x) => x[1]).join('·')}틱, 전투 각본 ${combat.length}개`);
+// 같은 각본을 보통 틱 + 블록 낙하로 (S2·S3 합친 뒤: 갈고리 블록 잡기·층 지우기·압사까지, C# CombatTraceTests 의 blocks 판)
+const blocksTrace = COMBAT_SCRIPTS.map((sc) => {
+  const hashes = [];
+  runScript(sc, (line) => hashes.push(crypto.createHash('sha256').update(JSON.stringify(line)).digest('hex').slice(0, 16)), { blocks: true });
+  return { name: sc.name, hashes };
+});
+write('blocks-trace.json', blocksTrace);
+console.log(`maps ${Object.keys(maps).length}, physics ${phys.length}판, trace-t0 ${t0.length}판, 각본 ${scripted.map((x) => x[1]).join('·')}틱, 전투 각본 ${combat.length}개, 블록 각본 ${blocksTrace.length}개`);
 console.log(`jsmath ${math.length}, jsnumber ${nums.length}, 프로토콜 메시지 ${sent.length}개·로그 ${logs.length}줄, 방 각본 ${scen.length}개`);

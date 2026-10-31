@@ -87,7 +87,7 @@ public class S4Tests
             Assert.True(Convert.ToHexString(h.GetHashAndReset()).ToLowerInvariant() == row[3].GetString(), $"튜토리얼 {ch}: JS 와 다름 (tutorial-trace.mjs {ch} + Tetrafall.Trace trace tut:{ch})");
             ran++;
         }
-        Assert.True(ran >= 5, $"옮긴 캐릭터 튜토리얼 {ran}개");
+        Assert.Equal(8, ran); // 캐릭터 8명 다 (S3 끝)
     }
 
     // ---------- 연습 (test/practice.test.js) ----------
