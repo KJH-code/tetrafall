@@ -73,6 +73,9 @@ Tetrafall.Server --online          # 또는 dotnet run --project godot/server/sr
 | `dotnet run --project godot/server/src/Tetrafall.Trace -- trace <번호> cs.jsonl [--ticks N]` | 같은 판을 C# 로 같은 JSONL (아직 안 옮긴 메서드에 닿으면 거기까지 쓰고 멈춤) |
 | `dotnet run --project godot/server/src/Tetrafall.Trace -- hash [--verbose]` | `node tools/game-hash.js` 와 같은 해시 (34판 다 돌면 = 규칙 이식 끝) |
 | `node godot/server/tools/tutorial-trace.mjs <캐릭터> js.jsonl` | 튜토리얼 판 (자동 조종 `shared/tutorial-pilot.js` 으로 끝까지, S4 검증). C# 는 `Tetrafall.Trace trace tut:<캐릭터>` (`TutorialPilot.cs`) |
+| `node godot/server/tools/scenario-logs.mjs <폴더>` · `dotnet …Tetrafall.Trace.dll logs <폴더>` | 34판 로그를 방 로그 파일 모양으로 (양쪽 같은 파일 → `npm run stats -- <폴더>` 비교) |
+| `node godot/server/tools/load.mjs [틱]` · `dotnet …Tetrafall.Server.dll load [틱]` | 서버 부하: 진짜 Rooms·가짜 소켓, 방 4개 × 8명 (사람 1 + 봇 7) 의 서버 루프 한 번 (rooms.tick + broadcast) 시간 평균·중앙값·99%·최대 |
+| `xvfb-run -a node godot/server/tools/cs-e2e.cjs <스샷 폴더> [주소]` | 실전 확인: JS 화면을 서버에 붙여 8명 판 모드 3개 끝까지·결과·다음 판, 연습·튜토리얼 (페이지 에러 0) |
 | `node godot/server/tools/trace-diff.mjs js.jsonl cs.jsonl` | 두 기록에서 처음 갈라지는 틱·JSON 경로·ulp |
 | `xvfb-run -a node godot/server/tools/lobby_shot.cjs <폴더> [주소]` | 기존 JS 화면을 이 서버에 붙여 메뉴·대기실 스샷 |
 

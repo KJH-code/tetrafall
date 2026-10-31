@@ -11,6 +11,7 @@ using Tetrafall.Server;
 // 배포 폴더 (tools/package.mjs zip): 서버 exe 옆 web/ 를 /play/ 로, / 는 /play/ 로 넘겨줌 (JS 화면 없음)
 // 스레드: WebSocket 받기·보내기는 비동기, 게임(Rooms·Game)은 루프 스레드 하나에서만 (받은 메시지는 inbox 로 넘김) → JS 처럼 잠금 없음
 
+if (args.Length > 0 && args[0] == "load") Environment.Exit(LoadBench.Run(args)); // 서버 부하 재기 (tools/load.mjs 와 나란히)
 var root = FindRepoRoot();
 bool jsClient = StaticFiles.HasJsClient(root);
 bool online = args.Contains("--online") || Environment.GetEnvironmentVariable("TF_ONLINE") == "1";
@@ -169,6 +170,7 @@ foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkI
 Console.WriteLine($"화면 파일: {root}{(jsClient ? "" : " (고도 웹 빌드만: / → /play/)")}");
 if (!Directory.Exists(StaticFiles.WebDir(root))) Console.WriteLine($"고도 웹 빌드가 없음 ({StaticFiles.WebDir(root)}) — /play/ 는 404, PC 클라는 그대로 붙음");
 Console.WriteLine($"로그: {Path.GetRelativePath(root, runDir)}/ 에 방마다 파일{(jsClient ? " (요약: npm run stats)" : "")}");
+if (jsClient && !Directory.Exists(Path.Combine(root, "node_modules", "cannon-es"))) Console.WriteLine("⚠ cannon-es 가 없음 → 몸 래그돌이 꺼짐. 레포 폴더에서 npm install 을 한 번 해 주세요 (Windows PowerShell 은 npm.cmd install)"); // index.js 와 같은 경고
 if (online) StartTunnel();
 app.WaitForShutdown();
 
