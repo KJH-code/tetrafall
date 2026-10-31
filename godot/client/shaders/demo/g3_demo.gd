@@ -24,6 +24,7 @@ const THINGS := [
 var shot := ""
 var theme = null
 var batch := -1 # --body 0|1: 시험 몸 (tests/test_batch.gd) 을 조각대로 (0) / G3.batch_mesh 로 (1) — 화소가 같아야 함
+var pieces := false # --pieces: 테트리미노 칸 7색 (js_demo ?pieces 와 같음)
 var terrain := false # --terrain: 테마 지형 블록 (terrain_grids.json, js_demo ?terrain 과 같음)
 
 
@@ -36,6 +37,8 @@ func _ready() -> void:
 			theme = args[i + 1]
 		if args[i] == "--body" and i + 1 < args.size():
 			batch = int(args[i + 1])
+		if args[i] == "--pieces":
+			pieces = true
 		if args[i] == "--terrain":
 			terrain = true
 	G3.apply_theme(self, theme)
@@ -58,6 +61,9 @@ func _ready() -> void:
 			if batch == 2: # 피부만 하얗게 + 발광 (경직 깜빡 확인)
 				bm.mi.material_override.set_shader_parameter("skin_tint", Color(1, 1, 1, 0.8))
 				bm.mi.material_override.set_shader_parameter("skin_emissive", Color(0.4, 0.4, 0.0))
+	if pieces:
+		things = [THINGS[0]]
+		_pieces()
 	G3.set_field(self, cx * 2, cx * 2)
 	for t in things:
 		var mi := MeshInstance3D.new()
@@ -135,3 +141,25 @@ func _terrain() -> void:
 	if sp:
 		add_child(sp)
 		G3.sprout_update(sp, grid, w, d, h)
+
+
+func _pieces() -> void:
+	var cols := G3.piece_colors(theme)
+	var shapes := ["I", "O", "T", "S", "Z", "J", "L"]
+	var cells := []
+	for i in 7:
+		cells.append([1 + i, 2, 0, shapes[i]])
+	cells += [[2, 3, 0, "T"], [2, 3, 1, "T"], [5, 3, 0, "L"]]
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.mesh = G3.piece_mesh(theme)
+	mm.instance_count = cells.size()
+	for i in cells.size():
+		var c: Array = cells[i]
+		mm.set_instance_transform(i, Transform3D(Basis(), Coords.gxyz(c[0] + 0.5, c[1] + 0.5, c[2] + 0.5)))
+		mm.set_instance_color(i, Coords.color(cols[c[3]]))
+	var mi := MultiMeshInstance3D.new()
+	mi.multimesh = mm
+	mi.material_override = G3.piece_material(theme)
+	add_child(mi)

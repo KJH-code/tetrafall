@@ -7,9 +7,12 @@ import { CONFIG as C } from '/shared/config.js';
 import { toon } from '/toon.js';
 import { terrainGeometry, terrainMaterial, terrainCells, BlockDecor } from '/blocks.js';
 import { blockStyle } from '/shared/block-style.js';
+import { PieceLook } from '/piece-look.js';
+import { pieceSpec } from '/shared/piece-look.js';
 const Q = new URLSearchParams(location.search);
 const TERR = Q.has('terrain'); // ?terrain: 테마 지형 블록 (terrain_grids.json, g3_demo --terrain 과 같음)
 const CX = TERR ? 6 : 4;
+const PIECES = Q.has('pieces'); // ?pieces: 테트리미노 칸 7색 (g3_demo --pieces 와 같음)
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 const R = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 R.setSize(1280, 720); R.setPixelRatio(1);
@@ -91,6 +94,7 @@ if (TERR) {
   things.length = 0;
   things.push(['box', [6, 6, -0.15], [12, 12, 0.3], 0xa49aa0]);
 }
+if (PIECES) things.length = 1;
 for (const [kind, p, s, c] of things) {
   let g;
   if (kind === 'box') g = new THREE.BoxGeometry(...s);
@@ -109,6 +113,16 @@ for (const [kind, p, s, c] of things) {
   const m = new THREE.Mesh(g, mat);
   m.position.set(...p); m.castShadow = m.receiveShadow = true;
   scene.add(m);
+}
+if (PIECES) {
+  things.length = 1;
+  const look = new PieceLook(pieceSpec(Q.get('theme')), null, false);
+  const shapes = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
+  const im = new THREE.InstancedMesh(look.geo, look.material({ color: 0xffffff }), 10);
+  const cells = shapes.map((sh, i) => [1 + i, 2, 0, sh]).concat([[2, 3, 0, 'T'], [2, 3, 1, 'T'], [5, 3, 0, 'L']]);
+  cells.forEach(([x, y, z, sh], i) => { im.setMatrixAt(i, new THREE.Matrix4().makeTranslation(x + 0.5, y + 0.5, z + 0.5)); im.setColorAt(i, new THREE.Color(look.color(sh))); });
+  im.castShadow = im.receiveShadow = true;
+  scene.add(im);
 }
 const cam = new THREE.PerspectiveCamera(60, 1280 / 720, 0.05, 200);
 cam.up.set(0, 0, 1); if (TERR) { cam.position.set(16, -5, 11); cam.lookAt(6, 6, 1); } else { cam.position.set(9, -5, 4); cam.lookAt(4, 8, 2.5); }
