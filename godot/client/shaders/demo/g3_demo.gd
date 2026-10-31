@@ -30,6 +30,7 @@ var light := false # --light: 판 빛 vivid (js_demo ?light 와 같음)
 var low_after := false # --low: 다 만든 뒤 G3.set_low(self, true) (그래픽 낮춤 켬을 그 자리에서)
 var alpha_pieces := false # --alpha: 칸을 반투명 재질 (하늘 블록·하늘 시점 0.55) 로
 var local_light := false # --local: 물체마다 G3.toon_local_light (노을 빛, 1인칭 팔 확인)
+var stencil := -1 # --stencil 0|1: 사냥꾼의 눈 x-ray (벽 뒤 상대를 빨갛게) 앞에 내 몸 — 1 이면 스텐실로 몸 위엔 안 비침
 var terrain := false # --terrain: 테마 지형 블록 (terrain_grids.json, js_demo ?terrain 과 같음)
 
 
@@ -57,6 +58,8 @@ func _ready() -> void:
 			alpha_pieces = true
 		if args[i] == "--local":
 			local_light = true
+		if args[i] == "--stencil" and i + 1 < args.size():
+			stencil = int(args[i + 1])
 		if args[i] == "--terrain":
 			terrain = true
 	G3.apply_theme(self, theme)
@@ -82,6 +85,8 @@ func _ready() -> void:
 	if pieces:
 		things = [THINGS[0]]
 		_pieces()
+	if stencil >= 0:
+		_stencil_scene(stencil == 1)
 	G3.set_field(self, cx * 2, cx * 2)
 	for t in things:
 		var mi := MeshInstance3D.new()
@@ -254,3 +259,35 @@ func _body() -> Node3D:
 	face.material_override = G3.toon_material(0xffffff, {"map": PlaceholderTexture2D.new()})
 	torso.add_child(face)
 	return body
+
+
+# 벽 (툰) 뒤 상대 (툰 + x-ray: 깊이 반대 검사 빨강) + 카메라와 벽 사이 내 몸 (툰, 스텐실 쓰기). 카메라는 기본 (9,-5,4) → (4,8,2.5)
+func _stencil_scene(on: bool) -> void:
+	var add := func(pos: Vector3, size: Vector3, mat: Material) -> MeshInstance3D:
+		var mi := MeshInstance3D.new()
+		var b := BoxMesh.new()
+		b.size = Coords.gpos(size).abs()
+		mi.mesh = b
+		mi.position = Coords.gpos(pos)
+		mi.material_override = mat
+		add_child(mi)
+		return mi
+	add.call(Vector3(5.8, 4.2, 1.5), Vector3(3, 0.4, 3), G3.toon_material(0x8a8f9a)) # 벽
+	var enemy_mat := G3.toon_material(0x3a7be0)
+	var enemy: MeshInstance3D = add.call(Vector3(5.2, 6.0, 1.2), Vector3(0.8, 0.8, 2.0), enemy_mat) # 벽 뒤 상대
+	var x := StandardMaterial3D.new() # body_fx.gd xray_mat 과 같은 설정
+	x.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	x.albedo_color = Coords.color(C.HUNT_EYE_COLOR)
+	x.depth_test = BaseMaterial3D.DEPTH_TEST_INVERTED
+	x.cull_mode = BaseMaterial3D.CULL_BACK
+	x.render_priority = 1
+	if on:
+		G3.xray_skip_body(x)
+	var xr := MeshInstance3D.new()
+	xr.mesh = enemy.mesh
+	xr.material_override = x
+	enemy.add_child(xr)
+	var me_mat := G3.toon_material(0xe0533a)
+	if on:
+		G3.toon_stencil_write(me_mat)
+	add.call(Vector3(7.4, 0.2, 2.2), Vector3(0.7, 0.7, 1.6), me_mat) # 카메라 앞 내 몸 (x-ray 와 화면에서 겹침)

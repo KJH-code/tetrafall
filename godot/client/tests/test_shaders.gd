@@ -134,3 +134,17 @@ func test_hazard_low_lite() -> void:
 	var lo := G3.hazard_material("meadow", true)
 	var hi := G3.hazard_material("meadow", false)
 	check(lo.shader.code.contains("#define SHIMMER 0") and hi.shader.code.contains("#define SHIMMER 1"), "낮춤 = SHIMMER 0 갈래, 보통 = 1")
+
+
+# 스텐실 (사냥꾼의 눈 x-ray 가 3인칭 내 몸 위엔 안 비침): 내 몸 툰은 STENCIL_MY_BODY 쓰기, x-ray 는 그 값이 아닌 칸만
+func test_stencil_body_xray() -> void:
+	var m := G3.toon_material(0xe0533a)
+	G3.toon_stencil_write(m)
+	check(m.shader != G3.TOON and m.shader.code.contains("stencil_mode write, compare_always, %d" % K.STENCIL_MY_BODY), "몸 툰 = 스텐실 쓰기 갈래")
+	check(m.next_pass != null, "외곽선 그대로")
+	G3.toon_stencil_write(m, false)
+	check(m.shader == G3.TOON, "끄면 보통 툰")
+	var x := StandardMaterial3D.new()
+	G3.xray_skip_body(x)
+	check(x.stencil_mode == BaseMaterial3D.STENCIL_MODE_CUSTOM and x.stencil_flags == BaseMaterial3D.STENCIL_FLAG_READ and x.stencil_compare == BaseMaterial3D.STENCIL_COMPARE_NOT_EQUAL and x.stencil_reference == K.STENCIL_MY_BODY, "x-ray = 그 값 아닌 칸만")
+	check(x.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED, "x-ray 는 몸 다음에 그려짐 (투명 순서)")

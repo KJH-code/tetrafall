@@ -19,3 +19,4 @@ const SKY_DISC_SIZE := 0.0005
 # 해 그림자 거리 (판 대각선 반 + 여백, render.js reach = hypot(W, D) / 2 + 4)
 const SHADOW_REACH_PAD := 4.0
 const SHADOW_MAX_DISTANCE := 60.0
+const STENCIL_MY_BODY := 7 # 스텐실 값: 3인칭 내 몸 (사냥꾼의 눈 x-ray 가 이 값 위엔 안 그림 — JS 는 몸을 복사본 뒤에 그려 renderOrder 로 가름)

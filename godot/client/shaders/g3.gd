@@ -712,3 +712,35 @@ static func toon_local_light(mat: ShaderMaterial, on := true, sky = K.SUNSET_HEM
 	mat.set_shader_parameter("local_hemi_ground", _lin3(ground))
 	mat.set_shader_parameter("local_hemi_energy", energy)
 	mat.set_shader_parameter("local_sun", _lin3(sun_color) * sun_energy)
+
+
+# ---- 스텐실: 3인칭 내 몸에 가린 곳엔 x-ray 안 비침 (JS 사냥꾼의 눈: 몸을 x-ray 복사본 뒤에 그려 renderOrder 로 가름 — 고도 Compatibility 는
+# 깊이 미리 쓰기라 순서로 못 가름 → 스텐실). 내 몸 툰 재질은 스텐실 K.STENCIL_MY_BODY 를 쓰고, x-ray 재질은 그 값인 칸엔 안 그림.
+#   G3.toon_stencil_write(mat, on)  — 내 몸 (batch_mesh 재질·toon_material) 만. 불투명 툰만 (다른 셰이더면 그대로)
+#   G3.xray_skip_body(mat)           — x-ray 재질 (BaseMaterial3D) 에. 내 몸보다 뒤에 그려지게 투명 순서로 (색·알파 그대로)
+static var _stencil_toon: Shader = null
+
+
+static func toon_stencil_shader() -> Shader:
+	if _stencil_toon == null:
+		_stencil_toon = Shader.new()
+		_stencil_toon.code = "shader_type spatial;\nrender_mode diffuse_lambert, specular_disabled;\nstencil_mode write, compare_always, %d;\n#include \"res://shaders/toon_common.gdshaderinc\"\n" % K.STENCIL_MY_BODY
+	return _stencil_toon
+
+
+static func toon_stencil_write(mat: ShaderMaterial, on := true) -> void:
+	if mat == null:
+		return
+	if on and mat.shader == TOON:
+		mat.shader = toon_stencil_shader()
+	elif not on and mat.shader == _stencil_toon and _stencil_toon != null:
+		mat.shader = TOON
+
+
+static func xray_skip_body(mat: BaseMaterial3D) -> void:
+	mat.stencil_mode = BaseMaterial3D.STENCIL_MODE_CUSTOM
+	mat.stencil_flags = BaseMaterial3D.STENCIL_FLAG_READ
+	mat.stencil_compare = BaseMaterial3D.STENCIL_COMPARE_NOT_EQUAL
+	mat.stencil_reference = K.STENCIL_MY_BODY
+	if mat.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED:
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA # 불투명 몸 (스텐실 쓰기) 다음에 그려지게
