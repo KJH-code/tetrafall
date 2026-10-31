@@ -30,6 +30,23 @@ public static class StaticFiles
         [".svg"] = "image/svg+xml",
     };
 
+    // 미리 압축한 파일 (tools/package.mjs 가 web/ 에 <파일>.br·<파일>.gz 를 만들어 둠): 브라우저 Accept-Encoding 이 받으면 그것을, 아니면 날것.
+    // 돌려줌: (보낼 파일, Content-Encoding 또는 null). br 먼저 (wasm 39.5MB → 약 10MB). q=0 은 안 받는다는 뜻
+    public static (string file, string? encoding) Precompressed(string file, string? acceptEncoding)
+    {
+        var ok = new HashSet<string>();
+        foreach (var part in (acceptEncoding ?? "").Split(','))
+        {
+            var bits = part.Split(';');
+            var name = bits[0].Trim().ToLowerInvariant();
+            bool zero = bits.Skip(1).Any(b => b.Trim().Replace(" ", "") is var q && q.StartsWith("q=") && double.TryParse(q[2..], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) && v <= 0);
+            if (name.Length > 0 && !zero) ok.Add(name);
+        }
+        foreach (var (enc, ext) in new[] { ("br", ".br"), ("gzip", ".gz") })
+            if (ok.Contains(enc) && File.Exists(file + ext)) return (file + ext, enc);
+        return (file, null);
+    }
+
     public static string Mime(string file) => MIME.GetValueOrDefault(Path.GetExtension(file), "application/octet-stream");
 
     static readonly System.Text.UTF8Encoding StrictUtf8 = new(false, throwOnInvalidBytes: true);

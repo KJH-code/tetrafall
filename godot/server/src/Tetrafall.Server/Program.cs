@@ -48,9 +48,12 @@ app.Run(async ctx =>
     var file = StaticFiles.Resolve(root, path);
     if (file == null) { ctx.Response.StatusCode = 403; await ctx.Response.WriteAsync("forbidden"); return; }
     if (!File.Exists(file)) { ctx.Response.StatusCode = 404; await ctx.Response.WriteAsync("not found"); return; }
-    ctx.Response.ContentType = StaticFiles.Mime(file);
+    ctx.Response.ContentType = StaticFiles.Mime(file); // 형식은 날것 파일 이름으로 (.wasm.br 이어도 application/wasm)
     ctx.Response.Headers.CacheControl = "no-cache";
-    await ctx.Response.SendFileAsync(file);
+    var (send, encoding) = StaticFiles.Precompressed(file, ctx.Request.Headers.AcceptEncoding);
+    if (encoding != null || File.Exists(file + ".br") || File.Exists(file + ".gz")) ctx.Response.Headers.Vary = "Accept-Encoding";
+    if (encoding != null) ctx.Response.Headers.ContentEncoding = encoding;
+    await ctx.Response.SendFileAsync(send);
 });
 
 async Task Serve(WebSocket ws)

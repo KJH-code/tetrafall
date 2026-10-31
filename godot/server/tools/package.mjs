@@ -6,7 +6,7 @@
 //   --out <폴더>  : 기본 dist/
 // 결과: dist/tetrafall-win-x64/ (+ .zip), dist/tetrafall-linux-x64/ (+ .zip)
 //   Tetrafall.Server(.exe)   서버 (자기 완결형 한 파일)
-//   web/                     고도 웹 빌드 → 서버가 /play/ 로, / 는 /play/ 로 넘겨줌
+//   web/                     고도 웹 빌드 (+ 파일마다 .br·.gz 미리 압축) → 서버가 /play/ 로, / 는 /play/ 로 넘겨줌
 //   tetrafall(.exe / .x86_64) 고도 PC 클라 (기본 ws://127.0.0.1:3000 = 이 PC 서버)
 //   start-lan / start-online (.bat / .sh), README.txt, cloudflared(.exe) (--cloudflared 일 때)
 import { spawnSync } from 'node:child_process';
@@ -133,6 +133,33 @@ export function writeZip(dir, out) {
   return files.length;
 }
 
+// 웹 빌드 미리 압축: 파일마다 <파일>.br (brotli 최고) + <파일>.gz (gzip 9) 를 옆에. 서버 StaticFiles.Precompressed 가 Accept-Encoding 따라 골라 줌.
+// 작은 파일·이미 압축된 형식은 건너뜀. 돌려줌: 바이트 합 { raw, br, gz } (압축 안 한 파일은 날것 크기로 셈)
+export const PRECOMPRESS_EXT = new Set(['.wasm', '.pck', '.js', '.html', '.json', '.css', '.svg', '.txt']);
+export const PRECOMPRESS_MIN_BYTES = 1024;
+export function precompress(dir) {
+  const sum = { raw: 0, br: 0, gz: 0 };
+  for (const e of fs.readdirSync(dir, { withFileTypes: true, recursive: true })) {
+    if (!e.isFile()) continue;
+    const f = path.join(e.parentPath ?? e.path, e.name);
+    if (f.endsWith('.br') || f.endsWith('.gz')) continue;
+    const data = fs.readFileSync(f);
+    sum.raw += data.length;
+    if (!PRECOMPRESS_EXT.has(path.extname(f).toLowerCase()) || data.length < PRECOMPRESS_MIN_BYTES) {
+      sum.br += data.length;
+      sum.gz += data.length;
+      continue;
+    }
+    const br = zlib.brotliCompressSync(data, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11, [zlib.constants.BROTLI_PARAM_LGWIN]: 24, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: data.length } });
+    const gz = zlib.gzipSync(data, { level: 9 });
+    fs.writeFileSync(`${f}.br`, br);
+    fs.writeFileSync(`${f}.gz`, gz);
+    sum.br += br.length;
+    sum.gz += gz.length;
+  }
+  return sum;
+}
+
 async function download(url, to) {
   console.log(`받는 중: ${url}`);
   const res = await fetch(url);
@@ -177,7 +204,11 @@ async function main() {
     fs.mkdirSync(dir, { recursive: true });
     run('dotnet', ['publish', serverProject, '-c', 'Release', '-r', t.rid, '--self-contained', '-p:PublishSingleFile=true', '-p:DebugType=none', '-o', dir]);
     const web = path.join(clientDir, 'build', 'web');
-    if (fs.existsSync(path.join(web, 'index.html'))) fs.cpSync(web, path.join(dir, 'web'), { recursive: true });
+    if (fs.existsSync(path.join(web, 'index.html'))) {
+      fs.cpSync(web, path.join(dir, 'web'), { recursive: true });
+      const z = precompress(path.join(dir, 'web'));
+      console.log(`web/ 미리 압축: 날것 ${(z.raw / 1e6).toFixed(1)}MB → br ${(z.br / 1e6).toFixed(1)}MB · gz ${(z.gz / 1e6).toFixed(1)}MB`);
+    }
     else missing.push(`${name}: 웹 빌드 (godot/client/build/web)`);
     for (const c of t.client) {
       const src = path.join(clientDir, c);

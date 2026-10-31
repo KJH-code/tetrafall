@@ -121,4 +121,31 @@ public class TunnelTests
             Directory.Delete(root, recursive: true);
         }
     }
+
+    [Fact]
+    public void Precompressed_picks_br_then_gzip_by_accept_encoding()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "tf-pre-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var wasm = Path.Combine(dir, "tetrafall.wasm");
+            var js = Path.Combine(dir, "tetrafall.js");
+            foreach (var f in new[] { wasm, wasm + ".br", wasm + ".gz", js, js + ".gz" }) File.WriteAllText(f, "x");
+            Assert.Equal((wasm + ".br", "br"), StaticFiles.Precompressed(wasm, "gzip, deflate, br, zstd"));
+            Assert.Equal((wasm + ".gz", "gzip"), StaticFiles.Precompressed(wasm, "gzip, deflate"));
+            Assert.Equal((wasm + ".gz", "gzip"), StaticFiles.Precompressed(wasm, "br;q=0, gzip;q=0.8"));
+            Assert.Equal((wasm, (string?)null), StaticFiles.Precompressed(wasm, null));
+            Assert.Equal((wasm, (string?)null), StaticFiles.Precompressed(wasm, "identity"));
+            Assert.Equal((js + ".gz", "gzip"), StaticFiles.Precompressed(js, "br, gzip")); // .br 없으면 gz
+            var html = Path.Combine(dir, "index.html");
+            File.WriteAllText(html, "x");
+            Assert.Equal((html, (string?)null), StaticFiles.Precompressed(html, "br, gzip")); // 압축본 없으면 날것
+            Assert.Equal("application/wasm", StaticFiles.Mime(wasm)); // 형식은 날것 이름으로
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
 }
