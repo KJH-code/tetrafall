@@ -490,7 +490,7 @@ func _draw_ring() -> void:
 
 func _kills_panels(st: Dictionary, me: Dictionary, vp: Vector2) -> void:
 	# Tab 점수표
-	var show_board := scores_held and _kills_game(st) and not Store.room.get("practice", false)
+	var show_board: bool = scores_held and _kills_game(st) and not bool(Store.room.get("practice", false))
 	board.visible = show_board
 	if show_board:
 		var team: bool = st.get("teamMode", false)
@@ -527,7 +527,7 @@ func _spectate(st: Dictionary, me: Dictionary, vp: Vector2) -> void:
 	spec_label.visible = on
 	if not on:
 		return
-	var head := "사망: %s" % CAUSE_KO.get(str(me.get("cause", "")), str(me.get("cause", "")))
+	var head: String = "사망: %s" % CAUSE_KO.get(str(me.get("cause", "")), str(me.get("cause", "")))
 	if me.get("spectator", false):
 		head = "관전 중 (호스트가 관전으로 바꿈)"
 	var t = View.spectate_target
