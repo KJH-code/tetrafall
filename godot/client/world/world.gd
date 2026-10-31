@@ -94,6 +94,7 @@ func _ready() -> void:
 	rig = CamRig.new()
 	ghost_aim = GhostAim.new()
 	scenery = Scenery.new()
+	hazard_view.scenery = scenery # 먼 섬 잠김 테 (far_objects)
 	marks = Marks.new()
 	light_fx = LightFx.new()
 	shots = Shots.new()
@@ -170,6 +171,7 @@ func _ready() -> void:
 			shots.effects = n.effects
 			hook_fx.effects = n.effects
 			body_fx.effects = n.effects
+			hazard_view.effects = n.effects
 	View.changed.connect(func(k):
 		if k == "lowGfx":
 			set_shadows(not View.settings.lowGfx)
@@ -215,6 +217,8 @@ func apply_theme(map_id: String) -> void:
 		sprouts = G3.sprout_node(tid)
 		if sprouts != null:
 			grid_view.add_child(sprouts) # 판 밖 (메뉴) 에선 grid_view 와 같이 숨음
+		if g3_has("hazard_material"):
+			hazard_view.set_g3(G3, tid, low) # 위험 액체 (B3): 필드 판 + 지평선 바다, 물들임
 		if g3_has("piece_mesh"):
 			# 테트리미노 칸 (B3 PieceLook): 떨어지는 칸·쌓인 칸 모양·재질·조각 색, 빛 테두리 = GAME_LIGHT 안 rim (그래픽 낮춤이면 0)
 			var rim: float = 0.0 if low else float(light_fx.preset.get("rim", 0.0))
@@ -369,7 +373,6 @@ func _process(dt: float) -> void:
 	_lobby_dark(st, fs)
 	scenery.build(C.WORLD_MAP_THEME.get(theme_id), fs.x, fs.y, bool(View.settings.get("lowGfx", false)), fs.z)
 	scenery.step(dt)
-	grid_view.cliff.visible = grid_view.cliff.visible and scenery.theme_id == null # 테마 섬이 있으면 상자 절벽 대신
 	if bblocks != null:
 		bblocks.update(st)
 		grid_view.skip = bblocks.skip()
@@ -423,9 +426,8 @@ func _process(dt: float) -> void:
 	light_fx.frame(lit, halos)
 	var me := Store.me()
 	pieces_view.update(st, Store.my_id, me, rig.sky_blend)
-	hazard_view.update(st, Store.grid, Store.grid_version, me)
-	# 위험 표면이 반투명이라 바닥 아래 절벽 상자가 비쳐 보임 → 차오르면 숨김 (JS 는 깊이 흐림 셰이더로 가림, G3 hazard_material 이 오면 다시 봄)
-	grid_view.cliff.visible = not hazard_view.visible
+	hazard_view.update(st, Store.grid, Store.grid_version, me, dt)
+	grid_view.cliff.visible = scenery.theme_id == null and (hazard_view.G3 != null or not hazard_view.visible) # 테마 섬이 있으면 상자 절벽 대신 · 단순 위험 표면은 반투명이라 절벽이 비침 (G3 재질은 깊이로 가림)
 	items_view.update(st, dt, now)
 	var my_piece := {}
 	var people := []
