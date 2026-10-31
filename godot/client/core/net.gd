@@ -84,16 +84,27 @@ func _prof_process(_delta: float) -> void:
 			ping_at = now
 			_set_status("연결됨")
 			opened.emit(again)
+		# 프레임 사이 쌓인 스냅샷 (웹 프레임이 느리면 여럿): 앞의 것은 가볍게 (store 가 보간·격자·이벤트만), 무거운 처리·state 신호는 마지막 것 하나만.
+		# 다른 메시지는 순서 그대로 — 그 앞에 쌓인 스냅샷은 먼저 내보냄
+		var pending: Array = []
 		while ws.get_available_packet_count() > 0:
+			var _pj := Prof.now()
 			var m = JSON.parse_string(ws.get_packet().get_string_from_utf8())
+			Prof.add("net ·JSON 파싱", _pj)
 			if typeof(m) != TYPE_DICTIONARY:
 				continue
 			m["recvAt"] = now
 			if m.get("type") == "pong":
 				meter.on_pong(m, now)
+				_emit(m)
 			elif m.get("type") == "state":
 				meter.on_state(now)
-			message.emit(m)
+				pending.append(m)
+			else:
+				_flush(pending)
+				pending = []
+				_emit(m)
+		_flush(pending)
 		if now >= ping_at:
 			send(meter.ping(now))
 			ping_at = now + C.NET_PING_MS
@@ -115,6 +126,22 @@ func _prof_process(_delta: float) -> void:
 			ws = WebSocketPeer.new()
 			ws.inbound_buffer_size = 1 << 22
 			ws.connect_to_url(url)
+
+
+func _emit(m: Dictionary) -> void:
+	var _pe := Prof.now()
+	message.emit(m)
+	Prof.add("net ·메시지 처리 (store·신호 받는 쪽 전부)", _pe)
+
+
+# 쌓인 스냅샷: 마지막 것 말고는 light (store 가 state 신호 없이 보간 버퍼·격자·이벤트만)
+func _flush(list: Array) -> void:
+	for i in list.size():
+		if i < list.size() - 1:
+			list[i]["_light"] = true
+		_emit(list[i])
+	if Prof.on and not list.is_empty():
+		Prof.add_us("net ·받은 스냅샷 수", 1000 * list.size()) # ms 자리에 '개' (1000µs = 1)
 
 
 # 접속 상태 표시 (client/net.js draw 글자 그대로): "핑 12ms" (+ 서버 느림), 알림 글

@@ -141,7 +141,15 @@ func _on_message(m: Dictionary) -> void:
 			_on_state(m)
 
 
+# 한 프레임에 스냅샷이 여럿 오면 (net.gd _flush) 앞의 것은 light: 상태·보간 버퍼·격자·이벤트는 그대로, state_changed 만 마지막 것에서 한 번
+# (prev 는 그 프레임 첫 스냅샷 전 상태 — 판 시작·끝 같은 바뀜을 놓치지 않게)
+var _frame_prev = null
+
+
 func _on_state(m: Dictionary) -> void:
+	var light: bool = m.get("_light", false)
+	if light and _frame_prev == null:
+		_frame_prev = state
 	prev_state = state
 	if m.has("grid"):
 		var g: Array = m.grid
@@ -165,6 +173,23 @@ func _on_state(m: Dictionary) -> void:
 	for id in tracks.keys():
 		if not seen.has(id):
 			tracks.erase(id)
-	state_changed.emit(state, prev_state)
-	for e in m.get("events", []):
-		game_event.emit(e)
+	var _ps := Prof.now()
+	if not light:
+		if _frame_prev != null:
+			prev_state = _frame_prev
+			_frame_prev = null
+		state_changed.emit(state, prev_state)
+	Prof.add("store ·state 신호 받는 쪽", _ps)
+	_ps = Prof.now()
+	if Prof.on: # 재는 중이면 받는 쪽마다 따로 (같은 순서로 부름 — 동작 같음)
+		var conns := get_signal_connection_list("game_event")
+		for e in m.get("events", []):
+			for c in conns:
+				var _pc := Prof.now()
+				(c.callable as Callable).call(e)
+				var o = (c.callable as Callable).get_object()
+				Prof.add("이벤트→%s.%s" % [str(o.get_script().resource_path.get_file()) if o != null and o.get_script() != null else "?", (c.callable as Callable).get_method()], _pc)
+	else:
+		for e in m.get("events", []):
+			game_event.emit(e)
+	Prof.add("store ·이벤트 신호 받는 쪽", _ps)

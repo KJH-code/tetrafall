@@ -136,6 +136,25 @@ func _prof_process(_d: float) -> void:
 		if kind == null or not wipe.play(kind, reduced()):
 			_show(now)
 	var st := Store.state
+	# 판들은 새 스냅샷이 왔을 때·화면 크기·화면이 바뀌었을 때·REFRESH_MS 마다만 다시 계산 (웹은 매 프레임 다시 만드는 비용이 큼 — 스냅샷 30Hz 보다 자주 볼 게 없음)
+	var vp := get_viewport().get_visible_rect().size
+	var tnow := Time.get_ticks_msec()
+	if not is_same(st, _drawn_state) or vp != _drawn_vp or shown != _drawn_screen or tnow - _drawn_at >= REFRESH_MS:
+		_drawn_state = st
+		_drawn_vp = vp
+		_drawn_screen = shown
+		_drawn_at = tnow
+		_refresh_panels(st)
+
+
+const REFRESH_MS := 100
+var _drawn_state = null
+var _drawn_vp := Vector2.ZERO
+var _drawn_screen := ""
+var _drawn_at := 0
+
+
+func _refresh_panels(st: Dictionary) -> void:
 	if shown == "game" and not st.is_empty():
 		hud.refresh(st)
 		hud_extra.refresh(st)
