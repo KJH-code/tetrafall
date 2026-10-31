@@ -26,6 +26,7 @@ uniform vec3 emissive : source_color = vec3(0.0);
 uniform float emissive_energy = 1.0;
 uniform vec3 toon_steps = vec3(0.43137, 0.68627, 1.0); // g3_config.TOON_STEPS
 uniform bool use_vertex_color = false;
+uniform bool no_fog = false; // JS fog: false (먼 배경)
 uniform float color_glow = 0.0; // 제 색으로 빛남 (JS 결정·버섯 갓: 발광 += 색 × glow, 인스턴스 색 포함)
 
 varying vec3 world_n;
@@ -62,7 +63,7 @@ void fragment() {
 	v_base = base;
 	v_amb = base * hemi / PI + g3_lin(emissive) * emissive_energy + base * color_glow;
 	ALBEDO = vec3(1.0);
-	if (g3_fog_far > 0.0) FOG = vec4(g3_fog_color, smoothstep(g3_fog_near, g3_fog_far, -VERTEX.z)); // 고도가 선형으로 섞음 (더하기 패스는 1 - a 를 곱함)
+	if (g3_fog_far > 0.0 && !no_fog) FOG = vec4(g3_fog_color, smoothstep(g3_fog_near, g3_fog_far, -VERTEX.z)); // 고도가 선형으로 섞음 (더하기 패스는 1 - a 를 곱함)
 	EMISSION = g3_sun_on > 0.5 ? vec3(0.0) : g3_srgb(v_amb);
 #ifdef TOON_ALPHA
 	ALPHA = c.a; // 투명 재질만 (ALPHA 를 쓰면 고도는 투명으로 보고 그림자를 안 드리움)
