@@ -1,0 +1,60 @@
+; Tetrafall 고도 클라 (godot/PLAN.md G0~). 서버는 JS 서버 또는 C# 서버 (같은 프로토콜)
+config_version=5
+
+[application]
+config/name="Tetrafall"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+
+[autoload]
+Net="*res://core/net.gd"
+Store="*res://core/store.gd"
+PlayerInput="*res://core/player_input.gd"
+View="*res://core/view.gd"
+
+[display]
+window/size/viewport_width=1280
+window/size/viewport_height=720
+
+[gui]
+
+theme/custom_font="res://assets/fonts/ui_font.tres"
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+
+[shader_globals]
+
+g3_hemi_sky={
+"type": "vec3",
+"value": Vector3(1, 0.76, 0.65)
+}
+g3_hemi_ground={
+"type": "vec3",
+"value": Vector3(0.25, 0.28, 0.48)
+}
+g3_hemi_energy={
+"type": "float",
+"value": 1.15
+}
+g3_sun={
+"type": "vec3",
+"value": Vector3(1.25, 0.72, 0.35)
+}
+g3_sun_on={
+"type": "float",
+"value": 1.0
+}
+g3_fog_color={
+"type": "vec3",
+"value": Vector3(1, 0.42, 0.11)
+}
+g3_fog_near={
+"type": "float",
+"value": 28.0
+}
+g3_fog_far={
+"type": "float",
+"value": 0.0
+}
