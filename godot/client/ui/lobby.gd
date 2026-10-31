@@ -20,7 +20,8 @@ var hint: Label
 var stage: PanelContainer
 var stage_who: Label
 var stage_box: ColorRect
-var stage_img: TextureRect # 큰 캐릭터 초상 (256 온몸)
+var stage_img: TextureRect # 큰 캐릭터 초상 (256 온몸 — 그래픽 낮춤·헤드리스일 때)
+var stage_3d: SubViewportContainer # 큰 3D 캐릭터 (char_stage.gd)
 var cards: GridContainer
 var card_btns := {} # char id → Button ('random' 은 랜덤 칸)
 var skill_card: PanelContainer
@@ -85,6 +86,9 @@ func _ready() -> void:
 	sv.add_child(stage_box)
 	stage_img = _tex_rect()
 	stage_box.add_child(stage_img)
+	stage_3d = load("res://ui/char_stage.gd").new()
+	stage_3d.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	stage_box.add_child(stage_3d)
 	stage_who = S.glow_label("", 22, Color.WHITE, 5)
 	stage_who.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sv.add_child(stage_who)
@@ -317,9 +321,16 @@ func refresh(st: Dictionary) -> void:
 	stage_who.text = C.CHAR_NAMES.get(ch, "")
 	var my_col := Coords.color(C.PLAYER_PALETTE[int(me.get("color", me.get("slot", 0))) % C.PLAYER_PALETTE.size()])
 	# 초상 (Portrait — 다 그려지기 전·헤드리스면 null → 색 상자 그대로). 카드 = 내 색 128 온몸, 큰 캐릭터 = 256 온몸
-	var big := Portrait.tex(ch, my_col, 256, true)
+	# 큰 캐릭터: 도는 3D (그래픽 낮춤이면 정지 초상 — JS 와 같게)
+	var low := bool(View.settings.get("lowGfx", false))
+	stage_3d.visible = not low
+	if not low:
+		stage_3d.call("show_char", ch, my_col)
+	var live: bool = not low and stage_3d.call("active")
+	var big: Texture2D = Portrait.tex(ch, my_col, 256, true) if not live else null
 	stage_img.texture = big
-	stage_box.color = Color(0, 0, 0, 0) if big != null else my_col
+	stage_img.visible = not live
+	stage_box.color = Color(0, 0, 0, 0) if live or big != null else my_col
 	for id in C.CHARACTERS:
 		var b: Button = card_btns[str(id)]
 		var t := Portrait.tex(str(id), my_col, 128, true)
