@@ -8,8 +8,9 @@ namespace Tetrafall.Core;
 public sealed class BotBrain
 {
     // 판 크기: JS 의 모듈 변수 W·D (update·useSkills·ghostDrop 첫머리에서 그 게임 크기로). 테스트가 여러 스레드라 스레드마다
-    [ThreadStatic] static int W;
-    [ThreadStatic] static int D;
+    [ThreadStatic] static int w_, d_;
+    static int W { get => w_ == 0 ? (int)C.GRID_W : w_; set => w_ = value; } // JS 처음 값 GRID_W
+    static int D { get => d_ == 0 ? (int)C.GRID_D : d_; set => d_ = value; }
 
     static string PieceKey(Piece piece) => $"{piece.id}:{piece.px},{piece.py},{JsNumber.ToJs(piece.rot)},{JsNumber.ToJs(piece.stepMs)}";
 
@@ -978,8 +979,9 @@ public sealed class BotBrain
 
     // ---------- 위치·복귀 ----------
     // 거리 유지 이동 (원거리 캐릭터): 상대와 want 칸 거리를 두고 상대를 바라본 채 상대 둘레 원 위에서 가장자리·그림자를 등지지 않는 자리로
-    XY Kite(Game g, Player p, Player t, double want, List<int[]> avoid)
+    public XY Kite(Game g, Player p, Player t, double want, List<int[]>? avoidIn = null)
     {
+        var avoid = avoidIn ?? new List<int[]>();
         double dx0 = p.x - t.x, dy0 = p.y - t.y;
         double a0 = JsMath.Hypot(dx0, dy0) > 0.05 ? JsMath.Atan2(dy0, dx0) : JsMath.Atan2(D / 2.0 - t.y, W / 2.0 - t.x);
         double h0 = StandHeight(g, p);
@@ -1025,7 +1027,7 @@ public sealed class BotBrain
     }
 
     // 공중에서 필드 밖으로 떨어질 참인가
-    static bool FallingOff(Game g, Player p)
+    public static bool FallingOff(Game g, Player p)
     {
         if (p.grounded || !g.OnField(p)) return false;
         static bool InField(double x, double y) => x >= 0.05 && x <= W - 0.05 && y >= 0.05 && y <= D - 0.05;
@@ -1044,7 +1046,7 @@ public sealed class BotBrain
     }
 
     // 복귀: 안쪽으로 걸음 + 넉백이 밖으로 향하면 공중 대시 + 떨어지기 시작하면 2단 점프. 했으면 true
-    bool Recover(Game g, Player p)
+    public bool Recover(Game g, Player p)
     {
         if (!FallingOff(g, p) || g.time < p.stunUntil) return false;
         var to = RecoverPoint(p);
