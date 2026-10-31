@@ -167,5 +167,5 @@ godot/
 ### 커밋
 
 - 같은 통합 브랜치, 자기 폴더만. 공용 (core/·main·project.godot·run_tests FILES) 은 G0 이거나, 작게 고치고 커밋 메시지에 '공용:' 으로 표시
-- **합친 뒤 (rebase·merge) 꼭 `godot --headless --path godot/client -s res://tests/run_tests.gd`** — git 은 같은 파일 다른 줄을 조용히 합쳐서, 함수가 두 번 들어가는 식으로 컴파일이 깨질 수 있음 (2026-10-31 coords.gd 에서 실제로). 러너는 로드 실패·스크립트 오류 (없는 함수·null 접근)·없는 파일도 실패로 셈 (종료 코드 1)
+- **공용 파일을 고친 커밋은 합친 뒤 (rebase·merge) 꼭 `godot --headless --path godot/client -s res://tests/run_tests.gd` + `bash godot/client/tools/e2e.sh`** (헤드리스 클라 둘이 JS 서버 판을 끝까지·재접속) — git 은 같은 파일 다른 줄을 조용히 합쳐서, 함수가 두 번 들어가는 식으로 컴파일이 깨질 수 있음 (2026-10-31 coords.gd 에서 실제로). 러너는 로드 실패·스크립트 오류 (없는 함수·null 접근)·없는 파일도 실패로 셈 (종료 코드 1)
 - 자동 로드 추가·이름 바꾸기·프로토콜 바꾸기는 G0·총괄과 먼저 약속
