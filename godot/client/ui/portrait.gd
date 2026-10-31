@@ -77,22 +77,20 @@ func _draw_one(job: Array) -> void:
 	vp.msaa_3d = Viewport.MSAA_4X
 	vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	add_child(vp)
-	# 몸 색이 어두워도 윤곽이 보이게: 앞·위·뒤 고정 빛 (JS makeScene — 게임 좌표 (x, y, z) → 고도 (x, z, -y))
+	# 빛: G3 툰 셰이더는 ALBEDO = 1 로 두고 색·하늘빛·해 세기를 전역 값 (g3_hemi_*·g3_sun — 판 테마가 정함) 에서 가져옴.
+	# 그래서 고도 앰비언트는 검정이어야 하고 (G3Env 와 같게 — 아니면 하얀 실루엣), 빛은 방향만 주는 하나 (빛마다 해·하늘빛이 한 번 더 더해짐).
+	# 방향 = JS makeScene 의 앞 빛 (게임 (3, -2, 4) → 고도 (x, z, -y)). JS 의 파란 뒷빛은 툰 셰이더가 빛 색을 안 써서 뺌
 	var we := WorldEnvironment.new()
 	var env := Environment.new()
 	env.background_mode = Environment.BG_CLEAR_COLOR
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color.WHITE
-	env.ambient_light_energy = 1.05
+	env.ambient_light_color = Color.BLACK
 	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	we.environment = env
 	vp.add_child(we)
-	for l in [[Vector3(3, 4, 2), Color.WHITE, 1.5], [Vector3(-3, 1, -2), Color("99bbff"), 0.9]]:
-		var d := DirectionalLight3D.new()
-		d.light_color = l[1]
-		d.light_energy = l[2]
-		vp.add_child(d)
-		d.look_at_from_position(l[0], Vector3.ZERO, Vector3.UP)
+	var key := DirectionalLight3D.new()
+	vp.add_child(key)
+	key.look_at_from_position(Vector3(3, 4, 2), Vector3.ZERO, Vector3.UP)
 	var body = Chars.make_body(char_id, job[2])
 	vp.add_child(body)
 	# 가만히 선 자세 (숨쉬기 위상을 조금 줘서 팔이 굳어 보이지 않게 — JS t 0.8)
