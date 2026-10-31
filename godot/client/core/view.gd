@@ -29,6 +29,8 @@ var settings := {
 # 메뉴(방 밖) 배경 테마 id (TITLE_THEMES 키, JS menu-theme.js). 메뉴 3D 배경을 그리는 쪽이 정함, audio/ 가 메뉴 앰비언트로 읽음
 var menu_theme = null
 
+# 화면 시간 배율 (KO 마지막 킬 슬로모션·압사 히트스톱, JS ko.timeScale): G5 fx 가 프레임마다 정함, 화면 움직임 (G1·G2) 이 프레임 dt 에 곱함. 서버·보간과 상관없음
+var time_scale := 1.0
 # 화면 쪽 소리 신호 (판 그리기·KO 연출이 내고 audio/ 가 받음 — JS renderer.onBlast·onArrowStuck·onHazardRise·ko.on 자리):
 # "blast" {x,y,z,big,wood} · "arrowStuck" {x,y,z} · "hazardRise" {style,x,y,z} · "smash"·"koCrush" {x,y,z,me,near} · "final" {x,y,z} · "slowmo" {scale}
 signal sound_cue(kind: String, info: Dictionary)

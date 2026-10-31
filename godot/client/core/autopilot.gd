@@ -4,6 +4,7 @@
 # 화면 확인 (G4): --shot <png> --shot-at menu|lobby|game|tab|settings|results (기본 game). menu = 방 안 만듦, lobby = 시작 안 함,
 # tab = 판 중 점수표 (킬 점수전에서만 보임 → --mode kills), settings = 설정 창, results = 판이 끝나고 --shot-after 초 (기본 1.5) 뒤.
 # --mode survival|master|kills 면 시작 전에 모드를 바꿈. 창 크기는 고도 --resolution 1280x720
+# 화면 범인 찾기: --hide ui|world|audio (그 묶음을 숨기고 찍음) · --dump (찍을 때 보이는 Control·CanvasItem·3D 노드를 화면 사각형과 함께 출력)
 extends Node
 
 const C := preload("res://core/config.gd")
@@ -113,6 +114,10 @@ func _process(_d: float) -> void:
 		dropped = true
 		_log("연결을 일부러 끊음 (재접속 확인)")
 		Net.drop_for_test()
+	if args.has("hide"):
+		for n in get_tree().root.get_child(get_tree().root.get_child_count() - 1).get_children():
+			if n.name.to_lower().begins_with(str(args.hide)) and n.get("visible") != null:
+				n.set("visible", false)
 	var ui := get_tree().root.find_child("UI", true, false) # G4 ui/ui.gd (없으면 dev_ui — 그땐 tab·settings 안 함)
 	if ui != null and shot_at == "tab" and ui.get("hud") is Object:
 		ui.get("hud").set("scores_held", Store.phase() == "playing")
@@ -125,6 +130,8 @@ func _process(_d: float) -> void:
 		shot_done = true
 		get_viewport().get_texture().get_image().save_png(str(args.shot))
 		_log("화면 저장 %s" % args.shot)
+		if args.has("dump"):
+			_dump(get_tree().root, 0)
 	var done_rounds := rounds >= int(args.get("quit-after-rounds", 999999))
 	var done_time := args.has("quit-after") and el >= float(args["quit-after"])
 	if done_rounds or done_time:
@@ -132,5 +139,32 @@ func _process(_d: float) -> void:
 		var sfx := get_tree().root.find_child("Sfx", true, false)
 		var music := get_tree().root.find_child("Music", true, false)
 		var snd := (" | 효과음 %d번, 곡 %s" % [sfx.played, music.song_key]) if sfx != null and music != null else ""
+		var fxn := get_tree().get_first_node_in_group("fx")
+		if fxn != null:
+			snd += " | 효과 이벤트 %d번" % fxn.events
 		_log("끝: 판 %d번, 스냅샷 %d개, 움직인 거리 %.1f칸, 재접속 %s, %s%s" % [rounds, snapshots, moved, "같은 자리" if rejoined else "안 함", Net.ping_text(), snd])
 		get_tree().quit(0 if ok else 2)
+
+
+# --dump: 보이는 그림 노드 목록 (이름·종류·화면 사각형·색) — 메뉴에 남는 줄 같은 것 찾기
+func _dump(n: Node, depth: int) -> void:
+	if n is CanvasItem and not (n as CanvasItem).is_visible_in_tree():
+		return
+	if n is Node3D and not (n as Node3D).is_visible_in_tree():
+		return
+	var info := ""
+	if n is Control:
+		var c := n as Control
+		info = " rect=%s" % str(c.get_global_rect())
+		if n is ColorRect:
+			info += " color=%s" % str((n as ColorRect).color)
+	elif n is Node2D:
+		info = " pos=%s" % str((n as Node2D).global_position)
+	elif n is VisualInstance3D:
+		info = " pos=%s aabb=%s" % [str((n as Node3D).global_position), str((n as VisualInstance3D).get_aabb().size)]
+	elif n is CanvasLayer:
+		info = " layer=%d" % (n as CanvasLayer).layer
+	if info != "" or depth < 2:
+		print("%s%s [%s]%s" % ["  ".repeat(depth), n.name, n.get_class(), info])
+	for ch in n.get_children():
+		_dump(ch, depth + 1)

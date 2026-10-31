@@ -4,7 +4,7 @@
 # 하나라도 실패하면 종료 코드 1. 묶음마다 test_<묶음>.gd 를 만들고 FILES 에 한 줄 더함 (godot/PLAN.md 7절)
 extends SceneTree
 
-const FILES := ["res://tests/test_core.gd", "res://tests/test_ui.gd", "res://tests/test_audio.gd", "res://tests/test_world.gd", "res://tests/test_shaders.gd", "res://tests/test_chars.gd"]
+const FILES := ["res://tests/test_core.gd", "res://tests/test_ui.gd", "res://tests/test_audio.gd", "res://tests/test_world.gd", "res://tests/test_shaders.gd", "res://tests/test_fx.gd", "res://tests/test_chars.gd"]
 
 
 # 테스트 동안 난 오류를 모음 (경고는 뺌). 다른 스레드에서도 불릴 수 있어 잠금
@@ -30,7 +30,7 @@ class ErrorLog extends Logger:
 		return out
 
 
-func _init() -> void:
+func _initialize() -> void:
 	var log := ErrorLog.new()
 	OS.add_logger(log)
 	var passed := 0
