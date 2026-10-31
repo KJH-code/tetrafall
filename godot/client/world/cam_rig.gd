@@ -178,7 +178,7 @@ func reduced() -> bool:
 # 1인칭이면 내 몸 숨김 (3인칭은 카메라가 머리 속으로 당겨졌을 때만)
 func hide_me() -> bool:
 	var me := Store.me()
-	if me.is_empty() or not me.alive or sky_blend > 0.0 or close_id() != null:
+	if me.is_empty() or not me.alive or sky_blend > 0.0 or close_id() != null or force == "over":
 		return false
 	return not third() or (tp_dist if tp_dist != null else C.TP_DIST) < C.TP_HIDE_DIST
 
