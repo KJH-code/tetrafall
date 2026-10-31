@@ -48,6 +48,11 @@ var ult_fail_until := -1.0
 var ult_fail_text := ""
 var shake_until := -1.0
 var my_streak := 0
+var glint_at := -1.0e9 # R 칸 반짝 (JS .slot.glint 0.5초: 1.18배 + 하얀 빛) — 탱크 패시브·사냥꾼 ultRefund
+var blink_at := {"f": -1.0e9, "r": -1.0e9} # 기억해 둔 F·R 이 버려짐 (castDrop): 그 칸이 두 번 어두워짐 (CAST_DROP_BLINK_MS)
+var last_self = null # {ult, damage} — 탱크: 맞아서 게이지가 찼을 때만 반짝
+var ball_pop_at := -1.0e9 # 대포수 장전 순간 그 탄이 커졌다 줄어듦
+var ball_pop_i := -1
 var was_alive := true
 
 
@@ -325,6 +330,16 @@ func _on_event(e: Dictionary) -> void:
 				ult_fail_text = str(ULT_FAIL_TEXT.get(str(e.get("reason", "")), "못 씀"))
 				ult_fail_until = _now() + C.ULT_FAIL_MS
 				shake_until = _now() + C.ULT_FAIL_SHAKE_MS
+		"ultRefund": # 표식 3개 대상을 맞혀 R 게이지 돌려받음: 내 R 칸 반짝
+			if e.get("who") == me_id:
+				glint_at = _now()
+		"castDrop": # 기억해 둔 F·R 이 버려짐: 그 칸이 살짝 깜빡 (글자 없음)
+			if e.get("who") == me_id:
+				blink_at["r" if e.get("kind") == "ult" else "f"] = _now()
+		"reload": # 대포수 한 발 장전: 그 탄 칸이 커졌다 줄어듦
+			if e.get("who") == me_id and e.get("ammo") != null:
+				ball_pop_i = int(e.ammo) - 1
+				ball_pop_at = _now()
 		"aim": # 처형 사격 대상이면 붉게
 			if (e.get("targets", []) as Array).has(me_id):
 				flash_screen(Color(1, 0, 0, 0.22))
@@ -626,6 +641,26 @@ func _bottom(st: Dictionary, p: Dictionary, show: bool, vp: Vector2) -> void:
 		var panel := r_slot.get_parent() as Control
 		panel.modulate = Color(0.55, 0.55, 0.55) if dim else (Color(1.2, 1.1, 0.7) if full else Color.WHITE)
 		panel.position.x = (sin(now / 18.0) * 6.0 * (shake_until - now) / C.ULT_FAIL_SHAKE_MS) if now < shake_until else 0.0
+		# 탱크 패시브: 맞아서 필살기 게이지가 크게 찼을 때 칸이 반짝 (JS updateSkills glint)
+		if str(p.get("char", "")) == "tank" and last_self != null and float(p.get("ult", 0)) > float(last_self.ult) and float(p.get("damage", 0)) > float(last_self.damage):
+			glint_at = now
+		last_self = {"ult": p.get("ult", 0), "damage": p.get("damage", 0)}
+		var g := clampf((now - glint_at) / 500.0, 0.0, 1.0)
+		if g < 1.0:
+			panel.pivot_offset = panel.size / 2.0
+			panel.scale = Vector2.ONE * lerpf(1.18, 1.0, g)
+			panel.modulate = panel.modulate.lerp(Color(2, 2, 2), 1.0 - g)
+		else:
+			panel.scale = Vector2.ONE
+		# castDrop: 1 → .35 → 1 → .35 → 1 (CAST_DROP_BLINK_MS)
+		var f_slot: Label = hud.get("skill_f")
+		for k in ["f", "r"]:
+			var sl := (r_slot if k == "r" else f_slot).get_parent() as Control
+			var u := (now - float(blink_at[k])) / C.CAST_DROP_BLINK_MS
+			if u >= 0.0 and u < 1.0:
+				sl.modulate.a = 1.0 - 0.65 * absf(sin(u * TAU))
+			elif k == "f":
+				sl.modulate.a = 1.0
 		var rr := panel.get_global_rect()
 		ammo.position = Vector2(rr.end.x + 8, rr.position.y + (rr.size.y - 16) / 2.0)
 		ammo.queue_redraw()
@@ -645,6 +680,9 @@ func _draw_balls() -> void:
 	for i in n:
 		var ctr := Vector2(10 + i * 26, 10)
 		var full := i < ammo_n
+		var pop := clampf((_now() - ball_pop_at) / 300.0, 0.0, 1.0) if i == ball_pop_i else 1.0
+		if pop < 1.0:
+			balls.draw_circle(ctr, 8.0 * lerpf(1.5, 1.0, pop) + 2.0, Color(1, 0.82, 0.23, 0.6 * (1.0 - pop)))
 		if full:
 			balls.draw_circle(ctr, 8.0, Color("2a2c30"))
 			balls.draw_circle(ctr + Vector2(-2.5, -2.5), 3.0, Color("9a9ca4"))
