@@ -192,8 +192,9 @@ func build(char_id_: String, color: Color, merge: bool = K.MERGE) -> void:
 # 움직이는 노드 (관절·천 자락·뿔·눈동자·보이기를 바꾸는 무기… = refs 에 나오는 노드 + 처음에 숨긴 노드) 마다, 그 아래 붙어 같이 움직이는 조각들을
 # 재질 종류 (툰/basic·외곽선·발광·체크 무늬·그림자) 마다 메시 하나로 합쳐 그 노드에 붙임. 색은 정점 색. 뼈 (skin) 없이 노드 그대로라 숨기기·자세가 예전처럼.
 # 투명 재질·바드 몸통 (폼마다 재질이 바뀜)·광전사 충혈 흰자 (색이 바뀜) 는 따로 그림.
-# K.SKIN: 그중 보이기를 안 바꾸는 노드 (관절·천 자락·눈동자·대포·모히칸…) 는 노드마다 따로가 아니라 Skeleton3D 뼈 하나씩 + 재질 종류마다 몸 한 메시
-# (정점은 그 노드 기준 자리 그대로, 뼈 하나에 무게 1, 바인드 = 단위 → 뼈 자세 = 노드의 frame 기준 자리). 보이기를 바꾸는 무기·폼 부위·숨긴 노드는 예전처럼 노드에 붙임
+# K.SKIN: 움직이는 노드마다 따로가 아니라 Skeleton3D 뼈 하나씩 + 재질 종류마다 몸 한 메시 (툰 1 + 외곽선 1 + 눈 basic 1 …)
+# (정점은 그 노드 기준 자리 그대로, 뼈 하나에 무게 1, 바인드 = 단위 → 뼈 자세 = 노드의 frame 기준 자리). 보이기를 바꾸는 무기·폼 부위·분노 표시는
+# 뼈 크기 K.SKIN_HIDE (0 이면 돌림을 못 뽑음, G3 batch.gd 와 같은 방법) 로 숨김. 바드 몸통만 노드에 붙임 (폼마다 재질이 바뀜)
 func _merge(cd: Dictionary) -> void:
 	var dyn := {}
 	# 움직이는 노드만 (figureAnim 이 돌리거나 보이기를 바꾸는 것). 손·발·몸통·코·악기 줄 등 refs 에 있어도 안 움직이는 건 주인 관절에 같이 합침
@@ -222,25 +223,18 @@ func _merge(cd: Dictionary) -> void:
 	var rage_eye := -1
 	if refs.get("rage") is Dictionary and refs.rage.get("eyeMat") is Dictionary:
 		rage_eye = int(refs.rage.eyeMat.mat)
-	# 뼈로 그릴 주인: 보이기를 바꾸는 refs (_vis·폼·분노 표시) 와 숨긴 노드 (조상 포함) 가 아닌 것
+	# 뼈로 그릴 주인: 바드 몸통 말고 다. 안 쓰는 건축가 망치 (다른 캐릭터는 늘 숨김) 아래 조각은 아예 안 넣음
 	var bone_of := {}
+	var unused := {}
+	var hm := _n(refs.get("hammer"))
+	if hm != null and not hm.visible:
+		unused[nodes.find(hm)] = true
 	if K.SKIN:
-		var toggled := {}
-		for key in ["gun", "bow", "shields", "balls", "formParts", "held", "waitMark", "rage"]:
-			_collect_nodes(refs.get(key), toggled)
-		if refs.has("formParts"):
-			_collect_nodes(refs.get("torso"), toggled)
 		for o in dyn:
-			var ok := true
-			var a: int = int(o)
-			while a >= 0:
-				if toggled.has(a) or cd.nodes[a].get("hidden", false) or not nodes[a].visible:
-					ok = false
-					break
-				a = parents[a]
-			if ok:
-				bone_of[int(o)] = bone_nodes.size()
-				bone_nodes.append(nodes[int(o)])
+			if keep_torso and nodes[int(o)] == torso:
+				continue
+			bone_of[int(o)] = bone_nodes.size()
+			bone_nodes.append(nodes[int(o)])
 		if bone_nodes.size() > 0:
 			skel = Skeleton3D.new()
 			skel.name = "Skel"
@@ -264,10 +258,21 @@ func _merge(cd: Dictionary) -> void:
 			rel = nodes[owner].transform * rel
 			owner = parents[owner]
 		var bone: int = int(bone_of.get(owner, -1))
-		var key := "%d|%s|%s|%s|%s|%s" % [-1 if bone >= 0 else owner, m.kind, m.get("outline", true), m.get("emissive", 0), JSON.stringify(m.get("plaid", [])), cd.nodes[i].get("noShadow", false)]
+		var under_unused := false
+		var a: int = owner
+		while a >= 0 and not under_unused:
+			under_unused = unused.has(a)
+			a = parents[a]
+		if under_unused:
+			mi.layers = 0
+			continue
+		# 그림자는 묶음마다 (툰 조각 몇 개만 그림자를 안 드리움 → 같은 묶음에, 하나라도 드리우면 드리움)
+		var key := "%d|%s|%s|%s|%s" % [-1 if bone >= 0 else owner, m.kind, m.get("outline", true), m.get("emissive", 0), JSON.stringify(m.get("plaid", []))]
 		if not groups.has(key):
 			groups[key] = {"owner": -1 if bone >= 0 else owner, "vs": [], "ns": [], "cs": [], "us": [], "bs": [], "ws": [], "m": m, "shadow": not cd.nodes[i].get("noShadow", false)} # Array 에 모아 마지막에 Packed 로
 		var gr: Dictionary = groups[key]
+		if not cd.nodes[i].get("noShadow", false):
+			gr.shadow = true
 		var col: Color = _mat_color(m, skin_color)
 		var arr := (mi.mesh as ArrayMesh).surface_get_arrays(0)
 		var nb := rel.basis.inverse().transposed()
@@ -1164,9 +1169,13 @@ func _sync_bones() -> void:
 	for b in bone_nodes.size():
 		var t := Transform3D.IDENTITY
 		var n: Node = bone_nodes[b]
+		var shown := true
 		while n != frame and n != null:
+			shown = shown and (n as Node3D).visible
 			t = (n as Node3D).transform * t
 			n = n.get_parent()
+		if not shown:
+			t.basis = Basis.from_scale(Vector3.ONE * K.SKIN_HIDE) # 숨김: 한 점으로 (돌림은 버림)
 		skel.set_bone_pose(b, t)
 
 
