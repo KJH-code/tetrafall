@@ -11,6 +11,9 @@ JS `client/main.js`·`client/index.html` 의 화면을 옮김. 계산은 `ui_cal
 | `host_players.gd` | 플레이어 관리 (방장): 팀전·팀 섞기·관전·내보내기 (updateHostPlayers) |
 | `wipe.gd` | 전환 슬래시 (playWipe) |
 | `portrait.gd` | 초상: G2 몸을 화면 밖 SubViewport 에 한 번 그려 캐시 (아래 판 96·카드 128 온몸·큰 캐릭터 256 온몸·결과 승자 192), 한 프레임에 한 장, 메뉴 PORTRAIT_WARM_MS 뒤 카드 8장 미리 (client/portrait.js) |
+| `practice.gd` | (G6) 연습 방 창: 토글·내 피해·캐릭터·맵·허수아비·연습 나가기 + 허수아비 콤보 기록 (main.js updatePractice) |
+| `tutorial_ui.gd` · `tutorial_calc.gd` | (G6) 튜토리얼: 묻기·캐릭터 고르기·진행 띠·끝 화면, 띠 문구 계산 (client/tutorial-ui.js, shared/tutorial.js). 메뉴·설정 '튜토리얼' → View.open_panel |
+| `perf.gd` · `perf_calc.gd` | (G6) F3 성능 표시·계산 (client/perf.js, shared/perf.js), 켬 = View.settings.perf |
 | `ui_prefs.gd` | 기억 (tf-name·tf-color·tf-char·tf-tutorial → user://ui.json) |
 
 main.gd 가 `ui/ui.tscn` 을 자동으로 붙임 (2026-10-31 총괄이 고도로 돌려 스크립트 에러 0 확인). 화면 확인: `--auto host --bots 3 --shot <png> --shot-at menu|lobby|game|tab|settings|results` (core/autopilot.gd, tab 은 `--mode kills`).
