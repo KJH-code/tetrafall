@@ -279,3 +279,16 @@ test('kill 이벤트 (킬피드·부활 화면): 죽음마다 killer·victim·ca
   hitThenFall(1, 4);
   assert.equal(kills()[0].streak, 1, '죽은 뒤 킬은 1 부터 다시');
 });
+
+test('접속 표시: 방을 나가 스냅샷이 끊겨도 메뉴에선 끊김 알림 없음 (2026-10-31 재혁 결과 판 뒤 메뉴에 "끊김 4536ms")', async () => {
+  const { NetMeter } = await import('../shared/net.js');
+  const m = new NetMeter();
+  const tick = 1000 / C.TICK_RATE;
+  let now = 0;
+  for (let k = 0; k < 100; k++) m.onState((now += tick));
+  assert.equal(m.view(now + C.NET_SNAPSHOT_STALL_MS * 2).warn !== null, true); // 방 안에서 안 오면 끊김
+  m.leaveRoom();
+  assert.equal(m.view(now + C.NET_SNAPSHOT_STALL_MS * 4).warn, null);
+  m.onState(now + 10000); // 새 방 첫 스냅샷은 사이 0
+  assert.equal(m.view(now + 10010).warn, null);
+});

@@ -1,6 +1,7 @@
 // G5 효과 계산의 정답 자료 (JS client/effects.js·ko.js 를 시각을 고정해 돌림) → tests/fixtures/fx.json. 실행 (레포 뿌리): node godot/client/tools/fixtures-fx.mjs
 // shake: 흔들림 이어 받기 (센 것이 이김)·세기 · squash·punch: 찌그러짐·팔 뻗음 곡선 · timeScale: 압사 히트스톱·마지막 킬 슬로모션
 // plume: 스매시 줄기 크기·투명도 · smash: 줄기 자리 (필드 끝으로 자름)·방향 · cam: 마지막 킬 줌 (시야·보는 쪽) · edge: 화면 끝 번쩍 자리
+// bblocks.json: 건축가 블록 부품·솟기·금·깜빡임·R 준비·무너짐·조각 수 (shared/bblock-look.js)
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -106,3 +107,16 @@ for (const [sx, sy, sz] of [[0.2, 0.1, 0.5], [-0.9, 0.3, 0.5], [2.5, -0.4, 0.5],
 
 fs.writeFileSync(path.join(out, 'fx.json'), JSON.stringify(res));
 console.log('fx.json', Object.fromEntries(Object.entries(res).map(([k, v]) => [k, v.length])));
+
+// ---------- G6 건축가 블록 (shared/bblock-look.js) → bblocks.json ----------
+const BL = await import('../../../shared/bblock-look.js');
+const bb = { parts: {}, rise: [], crack: [], flash: [], big: [], collapse: [], shards: [] };
+for (const k of BL.BB_KINDS) bb.parts[k] = BL.bblockParts(k);
+for (let u = -0.1; u <= 1.1; u += 0.05) bb.rise.push([u, BL.riseScale(u)]);
+for (const l of [5000, 3500, 3499, 2000, 1000, 400, 0, -50]) bb.crack.push([l, BL.crackOf(l)]);
+for (const l of [2000, 1500, 1499, 1000, 499, 200, 0]) for (const now of [0, 69, 71, 139, 141, 210, 300]) bb.flash.push([l, now, BL.flashOf(l, now)]);
+for (const l of [900, 800, 600, 400, 200, 0]) for (const now of [0, 123, 456, 789]) bb.big.push([l, now, BL.bigPrep(l, now)]);
+for (let u = -0.2; u <= 1.2; u += 0.1) bb.collapse.push([u, BL.collapseAt(u)]);
+for (const k of [...BL.BB_KINDS, 'collapse']) for (const low of [false, true]) bb.shards.push([k, low, BL.shardCount(k, low)]);
+fs.writeFileSync(path.join(out, 'bblocks.json'), JSON.stringify(bb));
+console.log('bblocks.json');
