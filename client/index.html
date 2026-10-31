@@ -217,6 +217,12 @@
     #cd-ring .push { stroke: #fff; stroke-width: 3; opacity: .85; }
     #cd-ring .flash { stroke-width: 6; filter: drop-shadow(0 0 4px #fff); }
     #cd-ring .dash.spent { stroke: rgba(150,150,160,.6); }
+    /* 사냥꾼 표식 (2026-10-31): 맞은 사람 화면 가장자리 빨강 · 사냥꾼 히트마커 '표식 +1' · 아래 판 표식 칸 */
+    #mark-edge { position: fixed; inset: 0; pointer-events: none; z-index: 4; opacity: 0; background: radial-gradient(ellipse at center, rgba(255,40,30,0) 55%, rgba(255,40,30,.9) 100%); }
+    #mark-hit { position: fixed; top: calc(50% + 22px); left: calc(50% + 22px); pointer-events: none; z-index: 6; opacity: 0; font: 20px 'Black Han Sans', sans-serif; letter-spacing: 2px; text-shadow: 0 0 4px #000, 0 0 2px #000; white-space: nowrap; }
+    #players .pc .mk { position: absolute; bottom: 8px; right: 10px; font-size: 12px; letter-spacing: 3px; color: #ff3a2a; text-shadow: 0 0 3px #000, 0 0 2px #000; pointer-events: none; }
+    #players .pc .mk.mine { text-shadow: 0 0 3px #fff, 0 0 2px #000; }
+    #players .pc .mk.full { color: #ffd23a; }
     #hitmarker { position: absolute; top: 50%; left: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; opacity: 0; transition: opacity .15s; }
     #hitmarker::before, #hitmarker::after { content: ''; position: absolute; left: 13px; top: 0; width: 4px; height: 30px; background: #fff; box-shadow: 0 0 4px #000; }
     #hitmarker::before { transform: rotate(45deg); }

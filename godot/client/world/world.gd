@@ -383,6 +383,18 @@ func _process(dt: float) -> void:
 	shots.update(st, dt)
 	hook_fx.piece_colors = pieces_view.piece_colors
 	hook_fx.step()
+	if marks_demo and ph == "playing": # 확인용: 다른 사람마다 내 표식 (1.5초마다 하나씩 늘어남 → 꽉 차면 다시)
+		var k := int(now / 1500.0) % 4
+		var i := 0
+		for p in st.players:
+			if Store.my_id != null and int(p.id) == Store.my_id:
+				continue
+			var n := (k + i) % 4
+			var had: int = int(p.marks[0].n) if p.get("marks") is Array and not p.marks.is_empty() else 0
+			p.marks = [{"by": Store.my_id, "n": n, "left": 9000.0}] if n > 0 else []
+			if n > had:
+				body_fx.on_event({"type": "mark", "by": Store.my_id, "target": p.id, "n": n})
+			i += 1
 	body_fx.update(st, Store.my_id, dt)
 	light_fx.low = bool(View.settings.get("lowGfx", false))
 	var halos := []

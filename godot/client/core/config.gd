@@ -834,6 +834,7 @@ const WARN_TAIL_MS = 80.0
 const MARK_BLINK_MS = 1200.0
 const MARK_BLINK_PERIOD_MS = 140.0
 const HUNT_EYE_COLOR = 16728112.0
+const HUNT_MARK_UI = {"on": 16726570.0, "off": 5909034.0, "full": 16765498.0, "pip": 0.045, "popMs": 380.0, "popScale": 0.9, "flashMs": 260.0, "flashColor": 16722458.0, "hitMs": 700.0, "edge": [0.22, 0.42], "edgePulse": [0.35, 500.0]}
 const ARROW_FLY_MS = 90.0
 const ARROW_STUCK_MS = 1500.0
 const ARROW_TRAIL_MS = 220.0

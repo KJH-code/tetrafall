@@ -214,7 +214,7 @@ export class Sound {
 
   // name: 이벤트 소리. dist = 내 몸에서 거리 (0 = 내 소리), pos = 소리 난 곳 (있으면 내 귀 기준 거리·방향),
   // char = 그 소리를 낸 캐릭터 (무기 소리), strong = 내가 때림, form = 바드 폼, tier = 타격 세기 단계 (light·medium·heavy·crit, hitTier), step = 평타 콤보 순번 (1·2·3, hitStep)
-  play(name, { dist, pos, strong = false, big = false, char, form, tier, step } = {}) {
+  play(name, { dist, pos, strong = false, big = false, char, form, tier, step, n } = {}) {
     if (!this.ready()) return;
     this.det = (1 + (Math.random() * 2 - 1) * C.SFX_DETUNE) * this.slowRate;
     const o = this.bus(dist, pos, name === 'final' ? this.direct : this.master); // 마지막 킬 소리는 자기 슬로모션에 안 먹먹해지게
@@ -316,6 +316,14 @@ export class Sound {
           this.tone({ freq: 990, dur: 0.14, type: 'triangle', vol: 0.35, delay: 0.08, out: o });
         }
         break;
+      case 'mark': { // 사냥꾼 표식 +1: 짧은 쇠 '팅' (개수만큼 높아짐, 꽉 차면 두 번) — 2026-10-31 재혁: 붙은 순간이 안 느껴짐
+        const k = Math.max(1, Math.min(C.HUNTER_MARK_MAX, n || 1));
+        const f = 880 * Math.pow(1.26, k - 1);
+        this.tone({ freq: f, freqEnd: f * 1.02, dur: 0.12, type: 'triangle', vol: 0.4, out: o });
+        this.tone({ freq: f * 2.01, dur: 0.08, type: 'sine', vol: 0.18, out: o });
+        if (k >= C.HUNTER_MARK_MAX) this.tone({ freq: f * 1.5, dur: 0.16, type: 'triangle', vol: 0.35, delay: 0.09, out: o });
+        break;
+      }
       case 'latch': // 장전·갈고리 걸림: 철컥
         if (!this.sample('latch', { out: o })) this.tone({ freq: 1800, freqEnd: 900, dur: 0.05, type: 'square', vol: 0.15, out: o });
         break;

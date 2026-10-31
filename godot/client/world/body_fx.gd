@@ -6,6 +6,8 @@ extends Node3D
 
 const C := preload("res://core/config.gd")
 const Co := preload("res://core/coords.gd")
+const WC := preload("res://world/world_config.gd")
+const HM := preload("res://world/hunt_marks.gd")
 
 var effects = null # G5 fx/effects.gd
 var marks = null # world/marks.gd (trail·block_pulse·neighbors)
@@ -21,6 +23,7 @@ var ghosts := [] # 순간 베기 잔상 몸 {node, mat, t0} (G2 body.snapshot)
 var ghost_next := {} # id -> 다음 잔상 시각
 var slides = null # world/hook_fx.gd slides (미끄러지는 몸, to 가 있으면 순간 베기)
 var xray_mat: StandardMaterial3D # 사냥꾼의 눈: 블록에 가린 부분만 빨갛게 (깊이 반대)
+var flash_mat: StandardMaterial3D # 표식이 붙는 순간 몸 빨갛게 번쩍
 var _tex := {}
 
 
@@ -38,6 +41,7 @@ func _ready() -> void:
 	xray_mat.depth_test = BaseMaterial3D.DEPTH_TEST_INVERTED
 	xray_mat.no_depth_test = false
 	xray_mat.render_priority = 1
+	flash_mat = _flat(int(C.HUNT_MARK_UI.flashColor), 0.6)
 
 
 static func now_ms() -> float:
@@ -97,6 +101,13 @@ func _shown(id):
 func on_event(e: Dictionary) -> void:
 	var t := str(e.get("type", ""))
 	match t:
+		"mark": # 표식이 붙는 순간: 머리 위 칸이 커졌다 줄어들고 몸이 빨갛게 번쩍
+			var id = e.get("target")
+			if id != null:
+				var d: Dictionary = per.get(int(id), {})
+				per[int(id)] = d
+				d.pop_at = now_ms()
+				d.flash_until = now_ms() + C.HUNT_MARK_UI.flashMs
 		"skill", "ult", "ultRefund":
 			aura(e.get("who"), t != "skill")
 		"glideRing": # 음유 천천히 낙하 음파 고리
@@ -353,42 +364,68 @@ func _note() -> Node3D:
 	return g
 
 
-# 사냥꾼 표식: 머리 위 이름표 위에 빨간 마름모 1~3개, 사라지기 직전 깜빡. 내가 붙인 것이 있으면 그것 (블록 뒤에서도 보임), 없으면 가장 많은 것
+# 사냥꾼 표식 (2026-10-31 재혁: 몇 개인지·붙은 순간·누가 달렸는지 — shared/hunt-marks.js, world/hunt_marks.gd):
+# 머리 위 이름표 위에 최대치만큼 마름모 칸 (찬 칸 빨강·빈 칸 어두운 테두리, 꽉 차면 금색·숨쉬기), 붙는 순간 커졌다 줄어듦 (mark 이벤트),
+# 사라지기 직전 깜빡. 내가 붙인 것이 있으면 그것 (블록 뒤에서도 보임 + 사냥꾼의 눈), 없으면 가장 많은 것
 func _hunt(d: Dictionary, p: Dictionary, s: Vector3, my_id, mine: bool, now: float) -> void:
-	var list: Array = p.get("marks", [])
-	var m = null
-	var by_me := false
-	for x in list:
-		if my_id != null and x.get("by") != null and int(x.by) == int(my_id):
-			m = x
-			by_me = true
-	if m == null:
-		for x in list:
-			if m == null or x.n > m.n:
-				m = x
+	var m = HM.pick_mark(p.get("marks", []), my_id)
+	var by_me: bool = m != null and m.mine
 	if m == null and not d.has("hunt"):
+		_hunt_eye(d, p, false, now)
 		return
+	var U: Dictionary = C.HUNT_MARK_UI
+	var mx := int(C.HUNTER_MARK_MAX)
 	if not d.has("hunt"):
-		d.hunt = {"node": _label("", Color8(0xff, 0x3a, 0x2a), Color8(0x30, 0, 0), 0.0012)}
-	var l: Label3D = d.hunt.node
-	var n: int = mini(int(C.HUNTER_MARK_MAX), int(m.n)) if m != null and p.alive else 0
-	var blink: bool = m != null and float(m.get("left", 0)) < C.MARK_BLINK_MS and int(floor(now / C.MARK_BLINK_PERIOD_MS)) % 2 == 1
-	_hunt_eye(d, p, by_me and p.alive and not mine)
-	l.text = "◆".repeat(n)
-	l.visible = n > 0 and not blink and not (mine and not third.call())
-	l.no_depth_test = by_me
-	l.position = Co.gxyz(s.x, s.y, s.z + C.PLAYER_HEIGHT + C.LABEL_ABOVE_HEAD + 0.75)
+		var g := Node3D.new()
+		var labs := []
+		for i in mx:
+			var l := Label3D.new()
+			l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			l.fixed_size = true
+			l.font_size = 48
+			l.outline_size = 14
+			l.render_priority = 12
+			g.add_child(l)
+			labs.append(l)
+		add_child(g)
+		d.hunt = {"node": g, "labs": labs}
+	_hunt_eye(d, p, by_me and p.alive and not mine, now)
+	var n: int = mini(mx, int(m.n)) if m != null and p.alive else 0
+	var pp := HM.mark_pips(n)
+	var blink: bool = m != null and HM.mark_blink(float(m.get("left", 0)), now)
+	var g: Node3D = d.hunt.node
+	g.visible = n > 0 and not blink and not (mine and not third.call())
+	g.position = Co.gxyz(s.x, s.y, s.z + C.PLAYER_HEIGHT + C.LABEL_ABOVE_HEAD + 0.75)
+	var pop := HM.pop_scale(now - float(d.get("pop_at", -1e12)))
+	var breathe := 1 + 0.08 * sin(now / 120.0) if pp.full else 1.0
+	var px: float = WC.HUNT_PIP_PX * pop * breathe
+	for i in mx:
+		var l: Label3D = d.hunt.labs[i]
+		var on: bool = pp.pips[i]
+		l.text = "◆" if on else "◇"
+		l.modulate = Co.color(U.full if pp.full else U.on) if on else Co.color(U.off)
+		l.outline_modulate = Color(0.19, 0, 0) if on else Color(0, 0, 0, 0.6)
+		l.pixel_size = px
+		l.offset = Vector2((i - (mx - 1) / 2.0) * WC.HUNT_PIP_GAP, 0)
+		l.no_depth_test = by_me # 내 표식은 블록 뒤에서도 보임
 
 
-# 사냥꾼의 눈: 내가 표식을 붙인 대상 몸이 블록 너머에서 빨갛게 (몸 위 한 겹, G2 body.set_overlay). 바뀔 때만 부름
-func _hunt_eye(d: Dictionary, p: Dictionary, on: bool) -> void:
-	if d.get("eye", false) == on or bodies == null:
+# 몸 위 한 겹 (G2 body.set_overlay): 붙는 순간 빨간 번쩍 (flashMs) > 사냥꾼의 눈 (내 표식 대상, 블록에 가린 부분만 빨갛게) > 없음. 바뀔 때만 부름
+func _hunt_eye(d: Dictionary, p: Dictionary, eye: bool, now: float) -> void:
+	if bodies == null:
+		return
+	var want = null
+	if now < float(d.get("flash_until", 0.0)):
+		want = flash_mat
+	elif eye:
+		want = xray_mat
+	if d.get("overlay") == want and d.has("overlay"):
 		return
 	var n: Dictionary = bodies.nodes.get(int(p.id), {})
 	if n.is_empty() or not n.body.has_method("set_overlay"):
 		return
-	n.body.set_overlay(xray_mat if on else null)
-	d.eye = on
+	n.body.set_overlay(want)
+	d.overlay = want
 
 
 # 순간 베기 잔상: 미끄러지는 동안 BLINK_GHOST_MS 마다 지금 자세 복사본 (그 사람 색 반투명) 이 남아 BLINK_GHOST_FADE_MS 동안 사라짐
