@@ -72,3 +72,46 @@ const groups = [[['fwd', 'left', 'back', 'right'], groupLabel(DEFAULT_BINDS, ['f
 const clash = { ...DEFAULT_BINDS, skill: 'KeyR' };
 fs.writeFileSync(path.join(out, 'keys.json'), JSON.stringify({ labels, wheel, groups, defaults: DEFAULT_BINDS, conflicts: conflicts(clash) }));
 console.log(`interp 프레임 ${frames.length}, net ${seq.length}, keys 바퀴 ${wheel.length}`);
+
+// figure_pose.json (G2): 걸음걸이·공중·기울임·평소 버릇 목표 자세 (client/figure-pose.js). 빈 자세 T 에서 시작해 함수 하나 부른 뒤 T 전체
+{
+  const P = await import('../../../client/figure-pose.js');
+  const rest = () => ({ waistPitch: 0, waistRoll: 0, waistSide: 0, neckPitch: 0, hipsZ: 0, shFwd: [0, 0], shOut: [0.2, 0.2], elbow: [0.15, 0.15], thFwd: [0, 0], thOut: [0, 0], knee: [0, 0] });
+  const D = { hunch: 0.1, spread: 0.22 };
+  const cases = [];
+  for (const ch of C.FIGURE_CHARS) {
+    for (const [hs, walk] of [[C.MOVE_SPEED, 0], [C.MOVE_SPEED, 1], [C.MOVE_SPEED * 0.5, 2.5], [0, 1], [C.MOVE_SPEED * 2, 4.2]]) {
+      const T = rest();
+      P.gaitPose(T, D, { hs, walk }, P.gaitOf(ch));
+      cases.push({ fn: 'gait', char: ch, hs, walk, T });
+    }
+  }
+  for (const vz of [6, 2, 0, -1.5, -6, NaN]) {
+    for (const [t, attacking] of [[0.3, false], [1.7, false], [1.7, true]]) {
+      const T = rest();
+      P.airPose(T, D, { vz }, t, attacking);
+      cases.push({ fn: 'air', vz: Number.isFinite(vz) ? vz : null, t, attacking, T });
+    }
+  }
+  for (const [accF, accS] of [[10, -5], [1e6, -1e6], [-30, 40], [NaN, null]]) {
+    const T = rest();
+    P.accLean(T, { accF, accS });
+    cases.push({ fn: 'acc', accF: Number.isFinite(accF) ? accF : null, accS: Number.isFinite(accS) ? accS : null, T });
+  }
+  for (const w of [1, 0.5]) {
+    const T = rest();
+    P.overlayT(T, P.SUPERMAN, w);
+    cases.push({ fn: 'superman', w, T });
+  }
+  for (const h of Object.values(C.FIGURE_IDLE)) {
+    for (const u of [0, 0.2, 0.5, 0.7, 1]) {
+      for (const form of [null, 'metal']) {
+        const T = rest();
+        P.idlePose(T, h.kind, u, h.len * u, form);
+        cases.push({ fn: 'idle', kind: h.kind, u, s: h.len * u, form, T });
+      }
+    }
+  }
+  fs.writeFileSync(path.join(out, 'figure_pose.json'), JSON.stringify({ D, rest: rest(), cases }));
+  console.log(`figure_pose ${cases.length}`);
+}
