@@ -6,6 +6,7 @@
 // - 앰비언트 (client/title-sound.js): 테마 7 웅웅 고리 + 띄엄띄엄 소리 (메뉴·대기실)
 // 실행 (레포 뿌리, JS 서버가 client/ 를 서빙해야 함): PORT=3399 node server/index.js & node godot/client/tools/bake-audio.cjs [포트]
 // ffmpeg (libvorbis) 필요. 다시 구우면 녹음본 무작위가 바뀜 (소리 모양은 같음)
+// 일부만 (새 소리 하나 더할 때): node godot/client/tools/bake-audio.cjs [포트] --only mark.1,mark.2,mark.3 — 그 효과음만 굽고 나머지 녹음·manifest 는 그대로
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
@@ -15,10 +16,11 @@ const PORT = Number(process.argv[2] || 3399);
 const OUT = path.join(__dirname, '../audio/baked');
 const SR = 44100;
 const VARIANTS = 3;
+const ONLY = process.argv.includes('--only') ? new Set(process.argv[process.argv.indexOf('--only') + 1].split(',')) : null;
 
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
-  for (const f of fs.readdirSync(OUT)) if (f.endsWith('.ogg')) fs.unlinkSync(path.join(OUT, f));
+  if (!ONLY) for (const f of fs.readdirSync(OUT)) if (f.endsWith('.ogg')) fs.unlinkSync(path.join(OUT, f));
   const browser = await chromium.launch();
   const page = await browser.newPage();
   await page.goto(`http://127.0.0.1:${PORT}/bake-audio-origin`); // 404 쪽이어도 같은 출처면 모듈을 부를 수 있음
@@ -129,7 +131,7 @@ const VARIANTS = 3;
     };
   }, SR);
   const C = await page.evaluate(() => window.C);
-  const manifest = { sampleRate: SR, sfx: {}, hazard: {}, music: {}, ambient: {} };
+  const manifest = ONLY ? JSON.parse(fs.readFileSync(path.join(OUT, 'manifest.json'), 'utf8')) : { sampleRate: SR, sfx: {}, hazard: {}, music: {}, ambient: {} };
   const save = (file, r) => {
     const wav = path.join(OUT, `${file}.wav`);
     const buf = Buffer.alloc(44 + r.data.length * 2);
@@ -166,12 +168,14 @@ const VARIANTS = 3;
   add('final', 'final', {}, 1, 3);
   add('strum', 'strum', {});
   add('strum.metal', 'strum', { form: 'metal' });
+  for (let k = 1; k <= C.HUNTER_MARK_MAX; k++) add(`mark.${k}`, 'mark', { n: k }, 1); // 사냥꾼 표식 +1 '팅' (개수만큼 높게, 꽉 차면 두 번)
   const styles = Object.keys(C.SFX_HAZARD.vol);
   for (const st of styles) {
     add(`lavaDeath.${st}`, 'lavaDeath', { style: st }, 2, 2.5, 'hazard');
     add(`rise.${st}`, 'rise', { style: st }, 1, 3, 'hazard');
   }
   for (const j of jobs) {
+    if (ONLY && !ONLY.has(j.key)) continue;
     const files = [];
     for (let i = 0; i < j.n; i++) {
       const r = await page.evaluate(({ name, opts, seconds, setup }) => window.bake.sfx(name, opts, seconds, setup), j);
@@ -182,7 +186,7 @@ const VARIANTS = 3;
   }
   // ---- 위험 액체 ----
   const loopLen = { water: 9.0909, storm: 14.2857, energy: 5, lava: 4, swamp: 4 }; // 흔들림 주기의 배수 (water 0.22Hz ×2, storm 0.07Hz, energy 0.4Hz ×2)
-  for (const st of styles) {
+  for (const st of ONLY ? [] : styles) { // 일부만 구울 땐 위험·곡·앰비언트 건너뜀
     const loop = save(`hazard.${st}`, await page.evaluate(({ st, L }) => window.bake.hazardLoop(st, L), { st, L: loopLen[st] || 4 }));
     const pops = [];
     for (let i = 0; i < 4; i++) pops.push(save(`hazardPop.${st}.${i}`, await page.evaluate((st) => window.bake.hazardPop(st), st)));
@@ -190,7 +194,7 @@ const VARIANTS = 3;
     process.stdout.write('h');
   }
   // ---- 곡 ----
-  for (const key of Object.keys(C.MUSIC_THEMES)) {
+  for (const key of ONLY ? [] : Object.keys(C.MUSIC_THEMES)) {
     for (const tense of key === 'lobby' ? [false] : [false, true]) {
       const r = await page.evaluate(({ key, tense }) => window.bake.song(key, tense), { key, tense });
       manifest.music[`${key}${tense ? '.tense' : ''}`] = { ...save(`music.${key}${tense ? '.tense' : ''}`, r), length: r.length, bpm: r.bpm };
@@ -198,7 +202,7 @@ const VARIANTS = 3;
     }
   }
   // ---- 앰비언트 (메뉴·대기실) ----
-  for (const theme of Object.keys(C.TITLE_THEMES)) {
+  for (const theme of ONLY ? [] : Object.keys(C.TITLE_THEMES)) {
     const drone = save(`ambient.${theme}`, await page.evaluate(({ theme }) => window.bake.drone(theme, 11.1111), { theme }));
     const pings = [];
     for (let i = 0; i < 4; i++) pings.push(save(`ambientPing.${theme}.${i}`, await page.evaluate((theme) => window.bake.ping(theme), theme)));

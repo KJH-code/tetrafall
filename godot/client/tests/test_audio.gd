@@ -63,7 +63,7 @@ func test_hazard_level_and_ticks_match_js() -> void:
 func test_baked_manifest_complete() -> void:
 	var m = JSON.parse_string(FileAccess.get_file_as_string("res://audio/baked/manifest.json"))
 	check(m != null, "manifest.json")
-	var keys := ["tick", "go", "win", "lose", "danger", "land", "crush", "fall", "boom", "pickup", "latch", "tap", "tear", "shatter", "airJump", "crit", "hurt", "clear", "sizzle", "bbRise", "bbRise.big", "bbBreak", "bbTick", "bbTick.strong", "bbBlast", "bbBlast.strong", "smash", "smash.strong", "koCrush", "koCrush.strong", "final", "glideRing", "glideRing.strong", "strum", "strum.metal", "fire.none", "fire.hunter"]
+	var keys := ["tick", "go", "win", "lose", "danger", "land", "crush", "fall", "boom", "pickup", "latch", "tap", "tear", "shatter", "airJump", "crit", "hurt", "clear", "sizzle", "bbRise", "bbRise.big", "bbBreak", "bbTick", "bbTick.strong", "bbBlast", "bbBlast.strong", "smash", "smash.strong", "koCrush", "koCrush.strong", "final", "glideRing", "glideRing.strong", "strum", "strum.metal", "fire.none", "fire.hunter", "mark.1", "mark.2", "mark.3"]
 	for w in ["none"] + C.SFX_WEAPONS.keys():
 		keys.append("swing." + w)
 		for t in ["1", "2", "3", "heavy", "crit"]:

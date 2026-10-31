@@ -177,9 +177,9 @@ func _on_event(e: Dictionary) -> void:
 			sfx.play("rise." + SM.hazard_style(Store.state))
 		"clear":
 			sfx.play("clear")
-		"mark":
+		"mark": # 사냥꾼 표식 +1: 쇠 '팅' (개수만큼 높게, 꽉 차면 두 번) — 붙인 사람·붙은 사람만 (sound.js mark)
 			if _mine(e, "by") or _mine(e, "target"):
-				sfx.play("pickup", 0.0)
+				sfx.play("mark.%d" % clampi(int(e.get("n", 1)), 1, int(C.HUNTER_MARK_MAX)), 0.0)
 		"leap", "star", "rush":
 			sfx.play("swing.none", 0.0 if _mine(e) else _dist(e.from.x, e.from.y, e.from.z))
 		"aim":
