@@ -27,6 +27,7 @@ var syncing := false
 
 func _ready() -> void:
 	layer = 15
+	add_to_group("ui_blocker") # ui.gd 가 blocking() 을 보고 게임 키·마우스 잡기를 막음
 	win.add_theme_stylebox_override("panel", S.pane())
 	win.position = Vector2(16, 110)
 	win.custom_minimum_size = Vector2(300, 0)
@@ -108,9 +109,12 @@ func playing() -> bool:
 func set_open(on: bool) -> void:
 	open = on and playing()
 	win.visible = open
-	PlayerInput.ui_blocking = open
 	if open:
 		PlayerInput.lock_mouse(false) # 마우스로 고르게 (닫고 화면을 누르면 다시 조작)
+
+
+func blocking() -> bool:
+	return open
 
 
 static func _name_of(p: Dictionary) -> String:
@@ -163,19 +167,34 @@ func _process(_dt: float) -> void:
 		combo.remove_child(x)
 		x.queue_free()
 	while combo.get_child_count() < lines.size():
-		var l := S.label("", 18, S.TEXT)
-		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		var l := RichTextLabel.new()
+		l.bbcode_enabled = true
+		l.fit_content = true
+		l.autowrap_mode = TextServer.AUTOWRAP_OFF
+		l.scroll_active = false
+		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		l.add_theme_font_override("normal_font", load("res://assets/fonts/ui_font.tres"))
+		l.add_theme_font_size_override("normal_font_size", 13)
+		var bg := StyleBoxFlat.new()
+		bg.bg_color = Color(0.03, 0.05, 0.1, 0.6)
+		bg.content_margin_left = 12
+		bg.content_margin_right = 12
+		bg.content_margin_top = 3
+		bg.content_margin_bottom = 3
+		l.add_theme_stylebox_override("normal", bg)
+		l.size_flags_horizontal = Control.SIZE_SHRINK_END
 		combo.add_child(l)
 	for i in lines.size():
-		var l: Label = combo.get_child(i)
-		l.text = lines[i][0]
-		l.add_theme_color_override("font_color", lines[i][1])
+		var l: RichTextLabel = combo.get_child(i)
+		var live: bool = lines[i][1] == S.ACCENT # 진행 중 = 노란 타 수, 끝 = 흰 글씨
+		l.text = "[right]%s[/right]" % (lines[i][0] as String).replace("{b}", "[font_size=19][color=#%s]" % ("ffd23a" if live else "ffffff")).replace("{/b}", "[/color][/font_size]")
+		l.add_theme_color_override("default_color", S.TEXT if live else Color("d6dcf0"))
 		l.modulate.a = lines[i][2]
 
 
 static func _combo_text(x: Dictionary) -> String:
 	var h := float(x.get("height", 0))
-	return "%d타 %d%% · %.1f칸%s" % [int(x.get("hits", 0)), roundi(float(x.get("damage", 0))), float(x.get("dist", 0)), (" · 높이 %.1f" % h) if h >= C.PRACTICE_SHOW_HEIGHT else ""]
+	return "{b}%d타{/b} %d%% · %.1f칸%s" % [int(x.get("hits", 0)), roundi(float(x.get("damage", 0))), float(x.get("dist", 0)), (" · 높이 %.1f" % h) if h >= C.PRACTICE_SHOW_HEIGHT else ""]
 
 
 func _select(o: OptionButton, id) -> void:

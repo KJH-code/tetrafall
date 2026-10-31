@@ -8,6 +8,8 @@ const Keys := preload("res://core/keys.gd")
 const S := preload("res://ui/ui_style.gd")
 const Prefs := preload("res://ui/ui_prefs.gd")
 const TC := preload("res://ui/tutorial_calc.gd")
+const Portrait := preload("res://ui/portrait.gd")
+const Coords := preload("res://core/coords.gd")
 
 var modal := PanelContainer.new()
 var panes := {} # ask·pick·done -> VBoxContainer
@@ -29,6 +31,7 @@ var quick_pending := false # '봇 3명과 한 판': 새 방이 열리면 봇을 
 
 func _ready() -> void:
 	layer = 20
+	add_to_group("ui_blocker") # ui.gd 가 blocking() 을 봄
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -51,6 +54,10 @@ func _ready() -> void:
 	for ch in C.FIGURE_CHARS:
 		var b := S.button(str(C.CHAR_NAMES[ch]), choose.bind(ch), "ghost", 14)
 		b.toggle_mode = true
+		b.custom_minimum_size = Vector2(62, 96)
+		b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		b.expand_icon = true
 		chars_box.add_child(b)
 		char_btns[ch] = b
 	intro = _text("", 14, S.TEXT)
@@ -149,14 +156,17 @@ func show_pane(name: String) -> void:
 		panes[k].visible = k == name
 	if name == "pick":
 		choose(chosen)
-	PlayerInput.ui_blocking = true
+		_faces()
 	PlayerInput.lock_mouse(false)
 
 
 func close() -> void:
 	modal.visible = false
 	pane_name = ""
-	PlayerInput.ui_blocking = false
+
+
+func blocking() -> bool:
+	return modal.visible
 
 
 # 메뉴·설정 '튜토리얼': 방 안이면 나와서 바로 캐릭터 고르기
@@ -164,6 +174,18 @@ func open_pick() -> void:
 	if Store.in_room():
 		Store.leave()
 	show_pane("pick")
+
+
+# 캐릭터 카드 초상 (JS portrait 120 온몸, 내 색). 다 그려지기 전이면 다음 프레임에 다시
+func _faces() -> void:
+	var col := Coords.color(C.PLAYER_PALETTE[int(Prefs.get_value("color", 0)) % C.PLAYER_PALETTE.size()])
+	var missing := false
+	for ch in char_btns:
+		var t := Portrait.tex(ch, col, 120, true)
+		char_btns[ch].icon = t
+		missing = missing or t == null
+	if missing and modal.visible and pane_name == "pick":
+		get_tree().create_timer(0.3).timeout.connect(_faces)
 
 
 func choose(ch: String) -> void:

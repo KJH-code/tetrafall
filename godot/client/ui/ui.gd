@@ -112,7 +112,9 @@ func _process(_d: float) -> void:
 		Portrait.inst.warm(Coords.color(C.PLAYER_PALETTE[int(Prefs.get_value("color", 0)) % C.PLAYER_PALETTE.size()]))
 	# 메뉴·대기실·결과·설정이 떠 있거나 글자 칸에 커서가 있으면 게임 키·마우스 잡기를 막음 (판 중 HUD 는 안 막음)
 	var focus := get_viewport().gui_get_focus_owner()
-	PlayerInput.ui_blocking = settings.visible or shown in ["menu", "lobby", "results"] or focus is LineEdit
+	# 다른 화면 (연습 창·튜토리얼 창) 은 'ui_blocker' 무리 + blocking() — 여기서 한 번에 정해야 서로 덮어쓰지 않음
+	var others := get_tree().get_nodes_in_group("ui_blocker").any(func(n): return bool(n.call("blocking")))
+	PlayerInput.ui_blocking = settings.visible or shown in ["menu", "lobby", "results"] or focus is LineEdit or others
 	status.visible = not Net.is_open() # 연결 중·끊김 글만 (판 시간은 HUD)
 	var now := _screen_now()
 	if now != target:
