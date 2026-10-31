@@ -44,11 +44,19 @@ static func player_color(p: Dictionary, st: Dictionary) -> int:
 	return int(C.PLAYER_PALETTE[int(ci if ci != null else 0) % C.PLAYER_PALETTE.size()])
 
 
+# 몸 모양 이름 (render.js: 연습 방 허수아비는 'dummy' — 캐릭터 없는 허수아비 모양, B2 make_body 가 그림)
+static func look_of(p: Dictionary) -> String:
+	if p.get("dummy", false):
+		return "dummy"
+	var c = p.get("char")
+	return str(c) if c != null else ""
+
+
 func _make(p: Dictionary, color: int) -> Dictionary:
 	var root := Node3D.new()
 	var body: Node3D
 	if chars_script != null:
-		body = chars_script.make_body(str(p.get("char", "")), Co.color(color))
+		body = chars_script.make_body(look_of(p), Co.color(color))
 	else:
 		body = _box_body(color)
 	root.add_child(body)
@@ -70,7 +78,7 @@ func _make(p: Dictionary, color: int) -> Dictionary:
 		b.visible = false
 		root.add_child(b)
 	add_child(root)
-	return {"root": root, "body": body, "label": lab, "char": str(p.get("char", "")), "color": color, "bar_back": bar_back, "bar_fill": bar_fill}
+	return {"root": root, "body": body, "label": lab, "char": look_of(p), "color": color, "bar_back": bar_back, "bar_fill": bar_fill}
 
 
 func _bar_sprite(c: Color) -> Sprite3D:
@@ -149,7 +157,7 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 		seen[id] = true
 		var color := player_color(p, st)
 		var n: Dictionary = nodes.get(id, {})
-		if not n.is_empty() and (n.char != str(p.get("char", "")) or (chars_script == null and n.color != color)):
+		if not n.is_empty() and (n.char != look_of(p) or (chars_script == null and n.color != color)):
 			n.root.queue_free() # 캐릭터·색이 바뀜 → 몸 새로
 			n = {}
 		if n.is_empty():
