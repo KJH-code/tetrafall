@@ -8,3 +8,12 @@
 | `server/` | C# 서버 (JS 서버와 같은 프로토콜 — 기존 JS 화면이 그대로 붙음) | [`server/README.md`](server/README.md) |
 | `client/` | 고도 클라 (G0 뼈대: 접속·재접속·핑·보간·입력·키 설정, 내보내기) | [`client/README.md`](client/README.md) |
 | `prototype/` | 고도 시제품 (1·2단계 판단용, GDScript 규칙·측정) | [`prototype/README.md`](prototype/README.md) |
+
+## 웹 템플릿 직접 빌드 (보류, 2026-10-31)
+
+공식 웹 템플릿 wasm 은 39.5MB (br 6.9MB) — 웹 첫 실행 받기의 대부분. 안 쓰는 모듈을 빼고 직접 빌드하면 br 약 4–4.5MB 추정 (10Mbps 첫 화면 −2~2.5s). 클라우드 세션에선 github (고도 소스·emsdk) 받기가 막혀 보류.
+
+- 준비: 고도 4.7.2-stable 소스 + emsdk (고도 4.7 문서 '웹 컴파일' 의 emscripten 버전), Python scons
+- 편집기 프로젝트 → 도구 → 엔진 컴파일 구성 → '프로젝트에서 찾기' 로 `tetrafall.gdbuild` (쓰는 클래스만)
+- `scons platform=web target=template_release threads=no optimize=size_extra lto=full deprecated=no build_profile=tetrafall.gdbuild` + 안 쓰는 모듈 끔 (`module_<이름>_enabled=no`: navigation·csg·gridmap·openxr·enet·webrtc·mbedtls·theora·… ). 남길 것: GL Compatibility 3D·websocket·vorbis·QOA·text_server_adv (한글)·3D 물리 (래그돌)
+- 결과 `bin/godot.web.template_release.wasm32.nothreads.zip` → `export_presets.cfg` 웹 `custom_template/release`. 4코어 ~40–60분
