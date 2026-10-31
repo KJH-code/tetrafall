@@ -147,7 +147,7 @@ func _process(_d: float) -> void:
 				avg += v
 				worst = maxf(worst, v)
 			avg /= maxf(1.0, frame_ms.size())
-			_log("성능: 그리기 %d · 물체 %d · 삼각형 %d · FPS %d · 프레임 평균 %.1fms 최악 %.1fms (최근 %d프레임)" % [Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME), Engine.get_frames_per_second(), avg, worst, frame_ms.size()])
+			_log("성능: 그리기 %d · 물체 %d · 삼각형 %d · FPS %d · 프레임 평균 %.1fms 최악 %.1fms (최근 %d프레임) | 나눠서: 보이는 %d · 그림자 %d · 몸 메시 %d" % [Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME), Engine.get_frames_per_second(), avg, worst, frame_ms.size(), get_viewport().get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME), get_viewport().get_render_info(Viewport.RENDER_INFO_TYPE_SHADOW, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME), _body_meshes(get_tree().root)])
 	if args.has("shot") and not shot_done and shot_time and DisplayServer.get_name() != "headless":
 		shot_done = true
 		get_viewport().get_texture().get_image().save_png(str(args.shot))
@@ -166,6 +166,21 @@ func _process(_d: float) -> void:
 			snd += " | 효과 이벤트 %d번" % fxn.events
 		_log("끝: 판 %d번, 스냅샷 %d개, 움직인 거리 %.1f칸, 재접속 %s, %s%s" % [rounds, snapshots, moved, "같은 자리" if rejoined else "안 함", Net.ping_text(), snd])
 		get_tree().quit(0 if ok else 2)
+
+
+# --perf-log: 보이는 몸 메시 수 (chars/body.gd 의 drawn 중 조상까지 보이는 것)
+func _body_meshes(n: Node) -> int:
+	var c := 0
+	if n is Node3D and not (n as Node3D).is_visible_in_tree():
+		return 0
+	if n.get("drawn") is Array:
+		for dr in n.get("drawn"):
+			if (dr.mi as MeshInstance3D).is_visible_in_tree() and (dr.mi as MeshInstance3D).layers != 0:
+				c += 1
+		return c
+	for ch in n.get_children():
+		c += _body_meshes(ch)
+	return c
 
 
 # --dump: 보이는 그림 노드 목록 (이름·종류·화면 사각형·색) — 메뉴에 남는 줄 같은 것 찾기
