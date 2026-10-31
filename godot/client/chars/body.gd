@@ -63,6 +63,8 @@ var rag_was_stunned := false # 래그돌: 경직이 풀린 시각 (초, 일어�
 var rag_stun_end := -1.0
 var batch = null
 var bone_dyn: Array[int] = [] # 매 프레임 맞출 묶음 뼈 (나머지는 늘 같은 자세)
+var bone_chain: Array = [] # bone_dyn 마다 조각 → 부모 조각 사이 노드 (Array[Node3D])
+var bone_skel: Skeleton3D = null
 var bone_hide := 1e-6 # K.SKIN: G3 batch.gd (툰 조각 전부 → SkinnedMesh 하나, 뼈 = 조각)
 var rig: Node3D # 몸 전체 기울임·공중제비·구르기 (render.js rig)
 var hips: Node3D
@@ -325,6 +327,7 @@ func _batch(cd: Dictionary) -> void:
 			nodes[i].set_meta("tf_skin", true) # 묶음이 피부 정점 표시 (UV2.x = 1) 로 씀 → 툰 skin_tint·skin_emissive
 	batch = G3.batch_mesh(frame)
 	batch.set_process(false) # 뼈 맞추기는 pose 안에서 (_sync_bones)
+	batch.ready.connect(func(): batch.set_process(false), CONNECT_ONE_SHOT) # _process 가 있으면 고도가 ready 때 다시 켬 → 그 뒤에 끔
 	# 매 프레임 다시 맞출 뼈만 고름: 조각 → 부모 조각 (없으면 frame) 사이에 움직이는 노드가 있는 뼈. 나머지 뼈는 자세가 늘 같음 (만들 때 batch 가 한 번 맞춤)
 	var dyn := _dyn_nodes(cd)
 	_collect_nodes(refs.get("parts"), dyn) # 머리 박음 눌림
@@ -337,15 +340,21 @@ func _batch(cd: Dictionary) -> void:
 	var hide = batch.get_script().get_script_constant_map().get("HIDE_SCALE", 1e-6)
 	bone_hide = float(hide)
 	bone_dyn.clear()
+	bone_chain.clear()
+	bone_skel = batch.skel
 	for bi in batch.pieces.size():
 		var par: int = batch.skel.get_bone_parent(bi)
 		var stop: Node = batch.pieces[par] if par >= 0 else batch.root
+		var chain: Array[Node3D] = [] # 조각부터 부모 조각 바로 아래까지 (곱하는 순서)
+		var moving := false
 		var n: Node = batch.pieces[bi]
 		while n != null and n != stop:
-			if dyn.has(idx.get(n, -1)):
-				bone_dyn.append(bi)
-				break
+			chain.append(n as Node3D)
+			moving = moving or dyn.has(idx.get(n, -1))
 			n = n.get_parent()
+		if moving:
+			bone_dyn.append(bi)
+			bone_chain.append(chain)
 	for i in piece_mat:
 		var mi := nodes[i] as MeshInstance3D
 		if mi.layers != 0:
@@ -1222,17 +1231,25 @@ func _crush_flat() -> void:
 
 # 묶은 몸 뼈 자세 = 지금 조각 자리 (매 프레임 _apply 뒤에 바로 — 초상처럼 pose 뒤 곧바로 한 번 그리는 곳도 맞게)
 # 움직이는 뼈만 (G3 batch.gd sync 와 같은 셈 — 부모 조각 기준 자리, 안 보이면 크기 거의 0)
+# (사슬은 만들 때 미리 모아 둠 — 다른 스크립트 속성·함수를 매 뼈 부르면 느림)
 func _sync_bones() -> void:
-	if batch == null:
+	if bone_skel == null:
 		return
-	var sk: Skeleton3D = batch.skel
-	for bi in bone_dyn:
-		var p: MeshInstance3D = batch.pieces[bi]
-		var par := sk.get_bone_parent(bi)
-		var t: Transform3D = batch.rel_of(p, batch.pieces[par] if par >= 0 else batch.root)
-		sk.set_bone_pose_position(bi, t.origin)
-		sk.set_bone_pose_rotation(bi, t.basis.get_rotation_quaternion())
-		sk.set_bone_pose_scale(bi, t.basis.get_scale() if p.visible else Vector3.ONE * bone_hide)
+	var sk := bone_skel
+	var hb := Basis().scaled(Vector3.ONE * bone_hide)
+	for k in bone_dyn.size():
+		var chain: Array[Node3D] = bone_chain[k]
+		var p := chain[0]
+		var xf := p.transform
+		for j in range(1, chain.size()):
+			var n := chain[j]
+			if not n.visible:
+				xf = Transform3D(hb, Vector3.ZERO) * xf
+			xf = n.transform * xf
+		var bi := bone_dyn[k]
+		sk.set_bone_pose_position(bi, xf.origin)
+		sk.set_bone_pose_rotation(bi, xf.basis.get_rotation_quaternion())
+		sk.set_bone_pose_scale(bi, xf.basis.get_scale() if p.visible else Vector3.ONE * bone_hide)
 
 
 # ---------- 래그돌 (JS render.js ragdollCapture·RAGDOLL_CHARS, 물리는 chars/ragdoll.gd) ----------
