@@ -137,6 +137,7 @@ console.log(`interp 프레임 ${frames.length}, net ${seq.length}, keys 바퀴 $
 // camera.json: 관전 궤도 (shared/camera.js) — 격자에 막히는 경우 포함
 // sky.json: 하늘 시점 (shared/sky-view.js) · cells.json: 칸 색 (render.js cellColor 를 그대로 옮긴 식) · hazard.json: 위험 계산 (client/hazard-field.js)
 {
+  const r = mulberry32(131); // 묶음마다 따로 (앞 묶음이 난수를 더 써도 이 정답은 그대로)
   const { orbitEye, followDist, overviewScale } = await import('../../../shared/camera.js');
   const { skyPose, turnYaw, easeYaw, landingPreview } = await import('../../../shared/sky-view.js');
   const HF = await import('../../../client/hazard-field.js');
@@ -233,6 +234,7 @@ console.log(`interp 프레임 ${frames.length}, net ${seq.length}, keys 바퀴 $
   console.log(`world: 궤도 ${orbit.length}, 하늘 ${poses.length}, 칸 색 ${cells.length}, 위험 ${fields.length}`);
 }
 {
+  const r = mulberry32(137);
   // labels.json: 머리 위 이름표 크기 (shared/hud-layout.js labelSizes) — 같은 거리 포함
   const { labelSizes } = await import('../../../shared/hud-layout.js');
   const cases = [];
