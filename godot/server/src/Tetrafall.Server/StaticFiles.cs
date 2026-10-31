@@ -1,6 +1,7 @@
 namespace Tetrafall.Server;
 
-// URL → 디스크 경로 (server/index.js resolveFile 과 같음): client/, shared/, three.js·cannon-es 만 노출
+// URL → 디스크 경로 (server/index.js resolveFile 과 같음): client/, shared/, three.js·cannon-es 만 노출.
+// + /play/ → godot/client/build/web (고도 웹 빌드, 스레드 없는 판이라 COOP/COEP 헤더 필요 없음. 같은 호스트라 ?server= 없이 이 서버에 붙음)
 public static class StaticFiles
 {
     static readonly Dictionary<string, string> MIME = new()
@@ -13,6 +14,9 @@ public static class StaticFiles
         [".glb"] = "model/gltf-binary",
         [".ico"] = "image/x-icon",
         [".woff2"] = "font/woff2",
+        [".wasm"] = "application/wasm", // 고도 웹 빌드 (/play/)
+        [".pck"] = "application/octet-stream",
+        [".svg"] = "image/svg+xml",
     };
 
     public static string Mime(string file) => MIME.GetValueOrDefault(Path.GetExtension(file), "application/octet-stream");
@@ -62,7 +66,12 @@ public static class StaticFiles
         if (urlPath == "/vendor/three.module.js") return Path.Combine(root, "node_modules", "three", "build", "three.module.js");
         if (urlPath == "/vendor/cannon-es.js") return Path.Combine(root, "node_modules", "cannon-es", "dist", "cannon-es.js");
         string @base, rel;
-        if (urlPath.StartsWith("/vendor/jsm/"))
+        if (urlPath == "/play" || urlPath.StartsWith("/play/"))
+        {
+            @base = Path.Combine(root, "godot", "client", "build", "web");
+            rel = urlPath.Length <= "/play/".Length ? "index.html" : urlPath["/play/".Length..];
+        }
+        else if (urlPath.StartsWith("/vendor/jsm/"))
         {
             @base = Path.Combine(root, "node_modules", "three", "examples", "jsm");
             rel = urlPath["/vendor/jsm/".Length..];
@@ -83,9 +92,16 @@ public static class StaticFiles
     }
 }
 
-// 방마다 로그 파일: logs/<서버를 켠 시각>/<방을 연 시각>_<코드>.txt (JS 서버와 같은 모양 → npm run stats 가 그대로 읽음)
+// 방마다 로그 파일: logs/<서버를 켠 시각>/<방을 연 시각>_<코드>.txt, 줄마다 "[시각] 내용" (JS 서버와 같은 모양 → npm run stats 가 그대로 읽음).
+// 콘솔에는 같은 줄을 [코드] 를 붙여 찍음
 public sealed class FileRoomLog : IRoomLog
 {
+    // JS new Date().toLocaleTimeString('ko-KR', { hour12: false }) 와 같은 글자: "13시 5분 7초"
+    public static string Stamp(DateTime d) => $"{d.Hour}시 {d.Minute}분 {d.Second}초";
+
+    // 폴더·파일 이름 시각 (index.js fileStamp): 2026-10-31_13-05-07
+    public static string FileStamp(DateTime d) => d.ToString("yyyy-MM-dd_HH-mm-ss", System.Globalization.CultureInfo.InvariantCulture);
+
     readonly string code;
     StreamWriter? w;
 
@@ -95,7 +111,7 @@ public sealed class FileRoomLog : IRoomLog
         try
         {
             Directory.CreateDirectory(runDir);
-            w = new StreamWriter(Path.Combine(runDir, $"{DateTime.Now:yyyy-MM-dd_HH-mm-ss}_{code}.txt"), append: true) { AutoFlush = true };
+            w = new StreamWriter(Path.Combine(runDir, $"{FileStamp(DateTime.Now)}_{code}.txt"), append: true, new System.Text.UTF8Encoding(false)) { AutoFlush = true, NewLine = "\n" }; // 바로 씀: Ctrl+C 로 꺼도 마지막 줄까지
         }
         catch (Exception e)
         {
@@ -105,7 +121,7 @@ public sealed class FileRoomLog : IRoomLog
 
     public void Log(string msg)
     {
-        var st = DateTime.Now.ToString("HH:mm:ss");
+        var st = Stamp(DateTime.Now);
         Console.WriteLine($"[{st}] [{code}] {msg}");
         try { w?.WriteLine($"[{st}] {msg}"); } catch { w = null; }
     }

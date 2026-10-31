@@ -1,3 +1,6 @@
+using System.Text.Json;
+using Tetrafall.Core.Js;
+
 namespace Tetrafall.Core;
 
 // server/game-input.js — 입력·행동·이모트. 화면 메시지의 숫자는 JS 처럼 double? (없거나 숫자가 아니면 null = JS Number.isFinite 거짓)
@@ -7,17 +10,39 @@ public sealed class InputMsg
     public bool jump;
 }
 
-// 행동 { name, n, dx, dy, dir } (JS action 객체)
+// 행동 { name, n, dx, dy, dir } (JS action 객체). dx·dy·dir 은 JS Number(x) 값 (없으면 NaN: `| 0` → 0, `> 0` → 거짓)
 public sealed class ActionMsg
 {
-    public string name = "";
-    public object? n; // 이모트 번호 (JS Number.isInteger 검사 — 정수 double 만)
-    public double? dx, dy, dir;
+    public string? name = "";
+    public object? n; // 이모트 번호 (JS Number.isInteger 검사 — 숫자 double 만, 글자는 거절)
+    public double dx = double.NaN, dy = double.NaN, dir = double.NaN;
 }
 
 public sealed partial class Game
 {
     // ---------- 입력 ----------
+    // 받은 메시지 그대로 (rooms): 숫자 칸은 JS Number.isFinite 처럼 숫자만, jump 는 !!x
+    public void HandleInput(int id, JsonElement msg) => HandleInput(id, new InputMsg
+    {
+        fwd = JsValue.AsNumber(JsValue.Field(msg, "fwd")),
+        strafe = JsValue.AsNumber(JsValue.Field(msg, "strafe")),
+        yaw = JsValue.AsNumber(JsValue.Field(msg, "yaw")),
+        pitch = JsValue.AsNumber(JsValue.Field(msg, "pitch")),
+        jump = JsValue.Truthy(JsValue.Field(msg, "jump")),
+    });
+
+    public void HandleAction(int id, JsonElement msg)
+    {
+        HandleAction(id, new ActionMsg
+        {
+            name = JsValue.AsString(JsValue.Field(msg, "name")), // 글자가 아니면 null — 어느 행동과도 안 맞음 (JS 도 같음)
+            n = JsValue.AsNumber(JsValue.Field(msg, "n")),
+            dx = JsValue.ToNumber(JsValue.Field(msg, "dx")),
+            dy = JsValue.ToNumber(JsValue.Field(msg, "dy")),
+            dir = JsValue.ToNumber(JsValue.Field(msg, "dir")),
+        });
+    }
+
     public void HandleInput(int id, InputMsg input)
     {
         var p = GetPlayer(id);
@@ -84,7 +109,7 @@ public sealed partial class Game
                 return;
             case "pieceMove":
                 if (!controlling) return;
-                MovePiece(ControlledPiece(p)!, Js.JsMath.ToInt32(action.dx ?? 0), Js.JsMath.ToInt32(action.dy ?? 0));
+                MovePiece(ControlledPiece(p)!, JsMath.ToInt32(action.dx), JsMath.ToInt32(action.dy));
                 return;
             case "rotate":
                 if (!controlling)

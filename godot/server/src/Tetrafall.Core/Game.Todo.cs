@@ -3,17 +3,9 @@ using Tetrafall.Core.Js;
 namespace Tetrafall.Core;
 
 // 아직 안 옮긴 메서드 (부르면 NotImplementedException). 옮긴 묶음 세션이 여기서 지우고 Game.<묶음>.cs 에 진짜를 넣음.
-// 괄호 = 옮길 작업 (godot/PLAN.md 5절)
-public sealed class Tutorial
-{
-}
-
+// 괄호 = 옮길 작업 (godot/PLAN.md 5절). 방(Rooms)이 부르는 것은 Game.Pending.cs (S6 이 만든 자리) — 같은 뜻
 public sealed partial class Game
 {
-    public Tutorial? tutorial; // 튜토리얼 진행 (S4, server/tutorial.js)
-
-    static Exception Todo(string what) => new NotImplementedException($"아직 안 옮김: {what} (godot/PLAN.md)");
-
     // S2 판 흐름·블록
     public void UpdatePieces() => throw Todo("updatePieces (S2)");
     public void Kill(Player p, string cause) => throw Todo("kill (S2)");
