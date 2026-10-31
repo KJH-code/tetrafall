@@ -9,6 +9,7 @@ extends Node
 const C := preload("res://core/config.gd")
 const RM := preload("res://chars/ragdoll_math.gd")
 const Co := preload("res://core/coords.gd")
+const K := preload("res://chars/chars_config.gd")
 
 const GROUND := 1
 const PART := 2
@@ -23,6 +24,7 @@ var floor_shape := RID()
 var floor_key := ""
 var ground := {} # "x,y,z" → 정적 강체
 var rags := {} # 몸 (body.gd) → {segs, joints, motor, snap, hit_id, weight, fresh, root_v}
+var ts := 1.0 # 지금 물리 시간 배율 (View.time_scale: KO 슬로모션·히트스톱). 엔진 속도 = 실제 속도 × ts, 힘 × ts² → ts 배 느리게 흐름
 var made := 0 # 만든 래그돌 수 (확인용)
 var stats := {"ms": 0.0, "steps": 0, "n": 0} # 마지막 물리 틱 (perf-log)
 
@@ -235,14 +237,14 @@ func capture(b, st: Dictionary, hit, dt: float) -> void:
 		for k in [1, 2]:
 			var sg: Dictionary = rag.segs[k]
 			var jj: float = C.RAGDOLL_HIT_IMPULSE * float(hit.pow) * float(sg.mass) / float(rag.weight)
-			PhysicsServer3D.body_apply_central_impulse(sg.body, Co.gpos(Vector3(float(hit.x) * jj, float(hit.y) * jj, C.RAGDOLL_HIT_UP * jj)))
+			PhysicsServer3D.body_apply_central_impulse(sg.body, Co.gpos(Vector3(float(hit.x) * jj, float(hit.y) * jj, C.RAGDOLL_HIT_UP * jj)) * ts)
 
 
 # 몸 전체를 목표 자세로 순간 맞춤 (처음·순간이동·너무 멀어짐)
 func _snap_all(rag: Dictionary) -> void:
 	for sg in rag.segs:
 		PhysicsServer3D.body_set_state(sg.body, PhysicsServer3D.BODY_STATE_TRANSFORM, Transform3D(Basis(sg.tq), sg.tp))
-		PhysicsServer3D.body_set_state(sg.body, PhysicsServer3D.BODY_STATE_LINEAR_VELOCITY, rag.root_v)
+		PhysicsServer3D.body_set_state(sg.body, PhysicsServer3D.BODY_STATE_LINEAR_VELOCITY, rag.root_v * ts)
 		PhysicsServer3D.body_set_state(sg.body, PhysicsServer3D.BODY_STATE_ANGULAR_VELOCITY, Vector3.ZERO)
 
 
@@ -272,6 +274,7 @@ func _physics_process(_delta: float) -> void:
 		stats.ms = 0.0
 		return
 	_update_ground()
+	_time_scale()
 	for b in rags.keys():
 		if not is_instance_valid(b):
 			remove(b)
@@ -281,11 +284,32 @@ func _physics_process(_delta: float) -> void:
 	stats.ms = (Time.get_ticks_usec() - t0) / 1000.0
 
 
+# 슬로모션: 고도 물리 걸음은 그대로 두고 '느린 세계' 로 흉내 — 실제 시간 dt 의 세계를 엔진 dt 로 돌리려면 속도 × ts, 가속도 × ts²
+# (반암시 오일러 v += a·dt, x += v·dt 가 dt' = ts·dt 와 같아짐). ts 가 바뀌면 지금 엔진 속도를 새 배율로 다시 맞춤
+func _time_scale() -> void:
+	var view = Engine.get_main_loop().root.get_node_or_null("View") if Engine.get_main_loop() is SceneTree else null
+	set_time_scale(float(view.time_scale) if view != null else 1.0)
+
+
+func set_time_scale(v: float) -> void:
+	var nts := clampf(v, K.RAGDOLL_TIME_MIN, 1.0)
+	if absf(nts - ts) < 1e-6:
+		return
+	var k := nts / ts
+	for rag in rags.values():
+		for sg in rag.segs:
+			var v: Vector3 = PhysicsServer3D.body_get_state(sg.body, PhysicsServer3D.BODY_STATE_LINEAR_VELOCITY)
+			var w: Vector3 = PhysicsServer3D.body_get_state(sg.body, PhysicsServer3D.BODY_STATE_ANGULAR_VELOCITY)
+			PhysicsServer3D.body_set_state(sg.body, PhysicsServer3D.BODY_STATE_LINEAR_VELOCITY, v * k)
+			PhysicsServer3D.body_set_state(sg.body, PhysicsServer3D.BODY_STATE_ANGULAR_VELOCITY, w * k)
+	ts = nts
+
+
 # 걸음마다: 골반 끌어당김 + 조각 끌어당김 + 관절 모터 토크 + 중력 (모두 이 걸음 동안만)
 func _drive(rag: Dictionary) -> void:
 	var root: Dictionary = rag.segs[0]
 	var rx: Transform3D = PhysicsServer3D.body_get_state(root.body, PhysicsServer3D.BODY_STATE_TRANSFORM)
-	var rv: Vector3 = PhysicsServer3D.body_get_state(root.body, PhysicsServer3D.BODY_STATE_LINEAR_VELOCITY)
+	var rv: Vector3 = PhysicsServer3D.body_get_state(root.body, PhysicsServer3D.BODY_STATE_LINEAR_VELOCITY) / ts
 	var pull := RM.root_pull(Co.game(rx.origin), Co.game(rv), Co.game(root.tp), Co.game(rag.root_v), rag.motor)
 	if pull.snap:
 		_snap_all(rag)
@@ -297,19 +321,19 @@ func _drive(rag: Dictionary) -> void:
 		var rb: RID = sg.body
 		var m: float = sg.mass
 		var x: Transform3D = PhysicsServer3D.body_get_state(rb, PhysicsServer3D.BODY_STATE_TRANSFORM)
-		var v: Vector3 = PhysicsServer3D.body_get_state(rb, PhysicsServer3D.BODY_STATE_LINEAR_VELOCITY)
-		var w: Vector3 = PhysicsServer3D.body_get_state(rb, PhysicsServer3D.BODY_STATE_ANGULAR_VELOCITY)
+		var v: Vector3 = PhysicsServer3D.body_get_state(rb, PhysicsServer3D.BODY_STATE_LINEAR_VELOCITY) / ts # 실제 (느린 세계) 속도
+		var w: Vector3 = PhysicsServer3D.body_get_state(rb, PhysicsServer3D.BODY_STATE_ANGULAR_VELOCITY) / ts
 		var acc: Vector3
 		if int(sg.parent) < 0:
 			acc = pa
 		else:
 			acc = Co.gpos(RM.limb_pull(Co.game(x.origin), Co.game(v), Co.game(sg.tp), Co.game(sg.tv), rag.motor)) + pa * share
-		PhysicsServer3D.body_apply_central_force(rb, (acc + grav) * m)
+		PhysicsServer3D.body_apply_central_force(rb, (acc + grav) * m * ts * ts)
 		# 토크 = R · I · Rᵀ · 각가속도 (조각 관성 축 기준)
 		var q := x.basis.get_rotation_quaternion()
 		var a := RM.pd_angular(q, sg.tq, w, sg.tw, rag.motor)
 		var la: Vector3 = q.inverse() * a
-		PhysicsServer3D.body_apply_torque(rb, q * (la * (sg.inertia as Vector3)))
+		PhysicsServer3D.body_apply_torque(rb, q * (la * (sg.inertia as Vector3)) * ts * ts)
 
 
 # 판 바닥 상자 하나 + 래그돌 둘레의 단단한 칸만 정적 상자로

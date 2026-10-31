@@ -371,6 +371,14 @@ func test_ragdoll_bodies() -> void:
 			worst = maxf(worst, RM.quat_diff_vec(RagW._joint_q(rag.segs[i].joint), want[i]).length())
 		check(worst < 1e-3, "%s 처음 자세 그대로 %f" % [ch, worst])
 		check(rag.motor == 1.0, "%s 평소 모터 1" % ch)
+		# KO 슬로모션: 시간 배율이 바뀌면 엔진 속도도 그 배율로 (힘은 ×배율² — 걸음에서)
+		var rb: RID = rag.segs[1].body
+		PhysicsServer3D.body_set_state(rb, PhysicsServer3D.BODY_STATE_LINEAR_VELOCITY, Vector3(2, 0, 0))
+		w.set_time_scale(0.25)
+		var v: Vector3 = PhysicsServer3D.body_get_state(rb, PhysicsServer3D.BODY_STATE_LINEAR_VELOCITY)
+		check(absf(v.x - 0.5) < 1e-4 and w.ts == 0.25, "%s 슬로모션 속도 %s" % [ch, str(v)])
+		w.set_time_scale(1.0)
+		check(absf((PhysicsServer3D.body_get_state(rb, PhysicsServer3D.BODY_STATE_LINEAR_VELOCITY) as Vector3).x - 2.0) < 1e-4, "%s 슬로모션 끝 속도 되돌림" % ch)
 		p.stunned = true
 		b.pose(p, 16.0)
 		check(rag.motor == C.RAGDOLL_STUN_MOTOR, "%s 경직 힘 빠짐 %f" % [ch, rag.motor])
