@@ -93,3 +93,26 @@ static func edge_pos(sx: float, sy: float, behind: bool) -> Vector2:
 # 화면 끝 번쩍 세기 (k = 남은 비율)
 static func edge_alpha(k: float) -> float:
 	return minf(1.0, k * 1.5)
+
+
+# 효과 재질: 카메라에서 FX_NEAR_FADE[0] 안이면 안 보이고 [1] 까지 점점 보임. 3인칭 카메라 앞을 지나는 파편·고리·스매시 줄기 안쪽이
+# 화면 반을 덮는 큰 반투명 판으로 보이던 것 (2026-10-31 B4 스샷). JS 판엔 없는 고도 쪽 보정
+const FX_NEAR_FADE := [0.4, 1.6]
+
+
+static func near_fade(m: BaseMaterial3D) -> void:
+	m.distance_fade_mode = BaseMaterial3D.DISTANCE_FADE_PIXEL_ALPHA
+	m.distance_fade_min_distance = FX_NEAR_FADE[0]
+	m.distance_fade_max_distance = FX_NEAR_FADE[1]
+
+
+# 카메라가 스매시 줄기 (꼭짓점 = 원점, 축 axis, 길이 KO_SMASH_LEN × len_k, 끝 반지름 KO_SMASH_WIDTH × side_k) 안이면 옅게 (0.2), 가장자리 1칸 안쪽에서 점점.
+# 3인칭 카메라가 필드 끝에 있을 때 줄기가 화면 전체를 하얗게 덮던 것 (고도 쪽 보정, rel = 카메라 - 꼭짓점, 게임 좌표)
+static func plume_inside_fade(rel: Vector3, axis: Vector3, side_k: float, len_k: float) -> float:
+	var along := rel.dot(axis)
+	var length := C.KO_SMASH_LEN * len_k
+	if along <= 0.0 or along >= length:
+		return 1.0
+	var r := C.KO_SMASH_WIDTH * side_k * along / length
+	var off := (rel - axis * along).length()
+	return lerpf(0.2, 1.0, clampf((off - r) + 1.0, 0.0, 1.0))

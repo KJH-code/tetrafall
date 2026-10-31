@@ -41,6 +41,7 @@ func _init() -> void:
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.vertex_color_use_as_albedo = true
+	FM.near_fade(mat) # 카메라 바로 앞이면 흐려짐 (화면을 덮지 않게)
 	box.material = mat
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = true
@@ -69,6 +70,7 @@ func _init() -> void:
 		rm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		rm.cull_mode = BaseMaterial3D.CULL_DISABLED
 		rm.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+		FM.near_fade(rm) # 카메라 바로 앞이면 흐려짐 (화면을 덮지 않게)
 		m.material_override = rm
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		m.visible = false
