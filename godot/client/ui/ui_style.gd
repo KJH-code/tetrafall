@@ -92,7 +92,7 @@ static func button_box(kind: String, state: String) -> StyleBoxFlat:
 
 static func style_button(b: Button, kind := "ghost", size := 16) -> Button:
 	for st in ["normal", "hover", "pressed", "disabled", "focus"]:
-		var key := "normal" if st == "focus" else st
+		var key: String = "normal" if st == "focus" else str(st)
 		b.add_theme_stylebox_override(st, button_box(kind, key))
 	var fg := Color("12081c") if kind == "go" else Color.WHITE
 	b.add_theme_color_override("font_color", fg)
@@ -151,7 +151,7 @@ static func line_edit(placeholder: String, size := 16, max_len := 0) -> LineEdit
 	s.set_border_width_all(1)
 	s.set_content_margin_all(6)
 	e.add_theme_stylebox_override("normal", s)
-	var f := s.duplicate()
+	var f: StyleBoxFlat = s.duplicate()
 	f.border_color = g()
 	e.add_theme_stylebox_override("focus", f)
 	return e

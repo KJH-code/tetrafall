@@ -197,11 +197,10 @@ func _kills_game(st: Dictionary) -> bool:
 	return st.get("mode") == "kills" and str(st.get("phase")) in ["countdown", "playing", "over"]
 
 
+# 목표 킬: 판 시작 때 서버가 인원·팀전·체력전으로 정해 스냅샷 round.killsTarget 에 (JS main.js killGoal). 없으면 0 (막대는 progress 가 1 로 나눔)
 func _goal(st: Dictionary) -> int:
-	var t = st.get("killTarget")
-	if t != null:
-		return int(t)
-	return int(C.KILLS_TARGET_TEAM if st.get("teamMode", false) else C.KILLS_TARGET)
+	var t = st.get("round", {}).get("killsTarget")
+	return int(t) if t != null else 0
 
 
 func _on_state(st: Dictionary, prev: Dictionary) -> void:

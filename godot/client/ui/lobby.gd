@@ -330,7 +330,7 @@ func _mode_desc(mode: String) -> String:
 		"master":
 			return "블록 마스터: 한 명이 하늘에서 블록만 떨어뜨리고, 나머지는 %d초 버티기 (각자 도생, 죽으면 마스터 편, 마스터는 판마다 돌아감)" % int(C.MASTER_TIME_MS / 1000)
 		"kills":
-			return "킬 점수전: 죽어도 %d초 뒤 부활. 킬 +1 · 자멸 -1, %d분 또는 %d킬 (팀 %d킬)" % [int(C.KILLS_RESPAWN_MS / 1000), int(C.KILLS_TIME_MS / 60000), int(C.KILLS_TARGET), int(C.KILLS_TARGET_TEAM)]
+			return "킬 점수전: 죽어도 %d초 뒤 부활. 킬 +1 · 자멸 -1, %d분 또는 목표 킬 (인원따라)" % [int(C.KILLS_RESPAWN_MS / 1000), int(C.KILLS_TIME_MS / 60000)]
 	return "생존: 마지막까지 살아남은 사람이 승"
 
 
