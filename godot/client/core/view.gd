@@ -28,6 +28,8 @@ var settings := {
 }
 # 메뉴(방 밖) 배경 테마 id (TITLE_THEMES 키, JS menu-theme.js). 메뉴 3D 배경을 그리는 쪽이 정함, audio/ 가 메뉴 앰비언트로 읽음
 var menu_theme = null
+# 3D 이름표를 숨길 화면 사각형 (Rect2, 화면 px) — G4 UI 판 (대기실 플레이어 관리·방 판·결과 판 등) 이 보일 때 넣음, G1 (world/bodies.gd thin_labels) 이 읽음
+var covers: Array = []
 
 # 화면 시간 배율 (KO 마지막 킬 슬로모션·압사 히트스톱, JS ko.timeScale): G5 fx 가 프레임마다 정함, 화면 움직임 (G1·G2) 이 프레임 dt 에 곱함. 서버·보간과 상관없음
 var time_scale := 1.0
