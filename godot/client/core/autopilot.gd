@@ -148,6 +148,9 @@ func _process(_d: float) -> void:
 				worst = maxf(worst, v)
 			avg /= maxf(1.0, frame_ms.size())
 			_log("성능: 그리기 %d · 물체 %d · 삼각형 %d · FPS %d · 프레임 평균 %.1fms 최악 %.1fms (최근 %d프레임) | 나눠서: 보이는 %d · 그림자 %d · 몸 메시 %d" % [Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME), Engine.get_frames_per_second(), avg, worst, frame_ms.size(), get_viewport().get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME), get_viewport().get_render_info(Viewport.RENDER_INFO_TYPE_SHADOW, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME), _body_meshes(get_tree().root)])
+			var rw = get_tree().root.get_node_or_null("TfRagdolls")
+			if rw != null:
+				_log("래그돌: %d명 · 힘 계산 %.2fms/틱 · 물리 처리 (엔진 포함) %.2fms/틱 · 물리 틱 %d/초" % [rw.stats.n, rw.stats.ms, Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0, Engine.physics_ticks_per_second])
 	if args.has("shot") and not shot_done and shot_time and DisplayServer.get_name() != "headless":
 		shot_done = true
 		get_viewport().get_texture().get_image().save_png(str(args.shot))

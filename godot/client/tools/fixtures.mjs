@@ -550,3 +550,56 @@ console.log(`interp 프레임 ${frames.length}, net ${seq.length}, keys 바퀴 $
   const blinks = [[5000, 280], [100, 140], [100, 280], [1199, 420]].map(([l, t]) => [l, t, H.markBlink(l, t)]);
   fs.writeFileSync(path.join(out, 'hunt_marks.json'), JSON.stringify({ picks, pips, pops, edges, blinks }));
 }
+{
+  // ragdoll_math.json (G2): 액티브 래그돌 순수 계산 (client/ragdoll-math.js)
+  const RM = await import('../../../client/ragdoll-math.js');
+  const r = mulberry32(173);
+  const v3 = (s) => ({ x: (r() * 2 - 1) * s, y: (r() * 2 - 1) * s, z: (r() * 2 - 1) * s });
+  const qr = () => {
+    const a = v3(1);
+    const l = Math.hypot(a.x, a.y, a.z) || 1;
+    const ang = (r() * 2 - 1) * 3.4;
+    const s = Math.sin(ang / 2);
+    return { x: (a.x / l) * s, y: (a.y / l) * s, z: (a.z / l) * s, w: Math.cos(ang / 2) };
+  };
+  const motors = [];
+  const acts = [null, 'wind', 'strike', 'rec', 'pose', 'broken'];
+  for (let i = 0; i < 60; i++) {
+    const st = { stunned: r() < 0.2, sinceStun: r() < 0.5 ? r() * 1.2 : null, hitAge: r() < 0.5 ? r() * 1.2 : null, falling: r() < 0.15, act: acts[Math.floor(r() * acts.length)] };
+    motors.push([st, RM.ragdollMotor({ ...st, sinceStun: st.sinceStun ?? Infinity })]);
+  }
+  const diffs = [];
+  for (let i = 0; i < 40; i++) {
+    const q = qr();
+    const b = qr();
+    diffs.push([q, b, RM.quatDiffVec(q, b)]);
+  }
+  const pds = [];
+  for (let i = 0; i < 40; i++) {
+    const q = qr();
+    const t = qr();
+    const w = v3(4);
+    const tw = v3(4);
+    const m = r() * 1.8;
+    pds.push([q, t, w, tw, m, RM.pdAngular(q, t, w, tw, m)]);
+  }
+  const roots = [];
+  for (let i = 0; i < 60; i++) {
+    const p = v3(0.6);
+    const v = v3(3);
+    const t = v3(0.2);
+    const tv = v3(3);
+    const m = r() * 1.2;
+    roots.push([p, v, t, tv, m, { ...RM.rootPull(p, v, t, tv, m) }]);
+  }
+  const limbs = [];
+  for (let i = 0; i < 40; i++) {
+    const p = v3(1);
+    const v = v3(3);
+    const t = v3(1);
+    const tv = v3(3);
+    const m = r() * 1.8;
+    limbs.push([p, v, t, tv, m, RM.limbPull(p, v, t, tv, m)]);
+  }
+  fs.writeFileSync(path.join(out, 'ragdoll_math.json'), JSON.stringify({ motors, diffs, pds, roots, limbs }));
+}

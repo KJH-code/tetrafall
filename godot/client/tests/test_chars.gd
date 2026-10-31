@@ -285,6 +285,110 @@ func test_body_fx_colors() -> void:
 	b.free()
 
 
+const RM := preload("res://chars/ragdoll_math.gd")
+
+
+static func _v(o) -> Vector3:
+	return Vector3(o.x, o.y, o.z)
+
+
+static func _q(o) -> Quaternion:
+	return Quaternion(o.x, o.y, o.z, o.w)
+
+
+static func _near(a: Vector3, b: Vector3) -> bool:
+	return (a - b).length() <= 1e-3 * maxf(1.0, b.length())
+
+
+# 래그돌 순수 계산 = JS client/ragdoll-math.js (모터 세기·쿼터니언 차이·관절 모터·골반·팔다리 끌어당김)
+func test_ragdoll_math_matches_js() -> void:
+	var fx = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/ragdoll_math.json"))
+	check(fx != null, "ragdoll_math.json")
+	if fx == null:
+		return
+	var bad := 0
+	for c in fx.motors:
+		var st: Dictionary = c[0].duplicate()
+		if st.sinceStun == null:
+			st.sinceStun = INF
+		var m := RM.motor(st)
+		if absf(m.motor - c[1].motor) > 1e-6 or absf(m.snap - c[1].snap) > 1e-6:
+			bad += 1
+			check(false, "모터 %s → %s / JS %s" % [str(c[0]), str(m), str(c[1])])
+	for c in fx.diffs:
+		if not _near(RM.quat_diff_vec(_q(c[0]), _q(c[1])), _v(c[2])):
+			bad += 1
+			check(false, "쿼터니언 차이 %s" % str(c))
+	for c in fx.pds:
+		var a := RM.pd_angular(_q(c[0]), _q(c[1]), _v(c[2]), _v(c[3]), c[4])
+		if not _near(a, _v(c[5])):
+			bad += 1
+			check(false, "관절 모터 %s / JS %s" % [str(a), str(c[5])])
+	for c in fx.roots:
+		var r := RM.root_pull(_v(c[0]), _v(c[1]), _v(c[2]), _v(c[3]), c[4])
+		if r.snap != c[5].snap or (not r.snap and not _near(r.a, _v(c[5]))):
+			bad += 1
+			check(false, "골반 %s / JS %s" % [str(r), str(c[5])])
+	for c in fx.limbs:
+		var l := RM.limb_pull(_v(c[0]), _v(c[1]), _v(c[2]), _v(c[3]), c[4])
+		if not _near(l, _v(c[5])):
+			bad += 1
+			check(false, "팔다리 %s / JS %s" % [str(l), str(c[5])])
+	check(bad == 0 and fx.motors.size() == 60 and fx.roots.size() == 60, "래그돌 계산 %d 틀림" % bad)
+
+
+const RagW := preload("res://chars/ragdoll.gd")
+
+
+# 래그돌 (chars/ragdoll.gd): 판의 사람 몸만 켬 (초상·숨긴 몸은 끔), 조각 11·관절 10, 처음엔 목표 자세 그대로 (관절 회전 = figureAnim),
+# 맞음·경직이면 힘이 빠짐, 끄면 물리에서 빠짐. 물리 걸음은 고도 틱이라 여기선 안 돎 (자세 계산·연결만)
+func test_ragdoll_bodies() -> void:
+	var root: Window = (Engine.get_main_loop() as SceneTree).root
+	var w = RagW.new()
+	w.name = "TfRagdollsTest"
+	root.add_child(w)
+	RagW._inst = w
+	for ch in C.RAGDOLL_CHARS:
+		var b = Chars.make_body(ch, Color(0.5, 0.5, 0.9))
+		root.add_child(b)
+		var p := {"id": 3, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.4}
+		b.pose(p, 0.0)
+		check(w.has(b), "%s 래그돌 켬" % ch)
+		var rag: Dictionary = w.rags.get(b, {})
+		check(rag.get("segs", []).size() == 11 and rag.get("joints", []).size() == 10, "%s 조각 11·관절 10" % ch)
+		# 처음 (fresh): 물리 자세 = 목표 → 관절 회전이 figureAnim 그대로
+		var want := []
+		for sg in rag.segs:
+			want.append(RagW._joint_q(sg.joint))
+		w.apply(b)
+		var worst := 0.0
+		for i in rag.segs.size():
+			worst = maxf(worst, RM.quat_diff_vec(RagW._joint_q(rag.segs[i].joint), want[i]).length())
+		check(worst < 1e-3, "%s 처음 자세 그대로 %f" % [ch, worst])
+		check(rag.motor == 1.0, "%s 평소 모터 1" % ch)
+		p.stunned = true
+		b.pose(p, 16.0)
+		check(rag.motor == C.RAGDOLL_STUN_MOTOR, "%s 경직 힘 빠짐 %f" % [ch, rag.motor])
+		b.visible = false # 1인칭 내 몸 (World 가 숨김)
+		b.pose(p, 32.0)
+		check(not w.has(b), "%s 숨기면 끔" % ch)
+		b.visible = true
+		b.pose(p, 48.0)
+		check(w.has(b), "%s 다시 켬" % ch)
+		root.remove_child(b)
+		check(not w.has(b), "%s 트리에서 빠지면 끔" % ch)
+		b.free()
+	# 초상·큰 캐릭터 몸 (id -1) 은 안 켬
+	var pb = Chars.make_body("tank", Color.WHITE)
+	root.add_child(pb)
+	pb.pose({"id": -1, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0}, 0.0)
+	check(not w.has(pb), "초상 몸은 래그돌 아님")
+	pb.free()
+	check(w.rags.is_empty(), "남은 래그돌 없음")
+	RagW._inst = null
+	w.free()
+
+
 func test_viewmodel_follows() -> void:
 	for ch in C.FIGURE_CHARS:
 		var vm = VM.new()
