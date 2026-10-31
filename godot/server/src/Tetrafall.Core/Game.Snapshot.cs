@@ -152,7 +152,7 @@ public sealed partial class Game
         o.Key("aim");
         if (p.alive) AimPreview(o, p); else o.Null(); // 고른 칸으로 우클릭하면 어디에 무엇이 생기는지
         o.P("damage", p.damage);
-        if (hpMode) o.P("hp", Math.Max(0, HpMax() - p.damage)); // 체력전: 남은 HP (켰을 때만)
+        if (hpMode) o.P("hp", Math.Max(0, HpMax(p) - p.damage)).P("hpMax", HpMax(p)); // 체력전: 남은 HP·이 사람 최대 HP (캐릭터 배율, 켰을 때만)
         o.P("wins", p.wins).P("controlling", IsControlling(p)).P("cause", p.deathCause).P("master", p.master).P("zombie", p.zombie);
         o.P("char", p.@char).P("skillCd", Math.Max(0, p.skillReadyAt - time)).P("ult", Math.Floor(p.ult));
         o.P("iframeLeft", Math.Max(0, p.iframeUntil - time)).P("combo", time < p.stunUntil ? p.comboHits : 0).P("empower", Math.Max(0, p.empowerUntil - time));

@@ -420,6 +420,7 @@ const MASTER_MAX_RISE = 3.0
 const KILLS_TIME_MS = 180000.0
 const KILLS_TARGET_BY_COUNT = {"off": {"2": 2.0, "3": 3.0}, "hp": {"2": 4.0, "3": 6.0, "4": 7.0, "5": 8.0, "6": 9.0, "8": 10.0}}
 const KILLS_TARGET_TEAM_BY_COUNT = {"off": {"2": 3.0, "6": 4.0, "8": 5.0}, "hp": {"2": 9.0, "6": 14.0, "8": 20.0}}
+const HP_CHAR_MULT = {"tank": 0.7, "berserker": 0.8, "builder": 0.75, "cannon": 0.8, "hook": 1.55, "bard": 1.6, "hunter": 1.55, "ninja": 1.05}
 const HP_MAX_BY_MODE = {"kills": 120.0, "survival": 400.0, "master": 250.0}
 const KILLS_RESPAWN_MS = 5000.0
 const KILLS_SHIELD_MS = 2000.0

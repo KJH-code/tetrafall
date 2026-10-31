@@ -11,10 +11,13 @@
 // - trace-t0.json: 시나리오 0~32 (tools/game-hash.js) 의 trace 첫 줄 (판 시작 직후, 격자 포함) sha256 — C# 판 시작이 글자까지 같은지
 // - scripted.json: 각본 입력 판 8개 (scripted.mjs, 캐릭터 끔) 의 trace 줄 전체 sha256·틱 수 — C# 판 흐름·블록이 처음부터 끝까지 글자까지 같은지
 // - game-hash.json: tools/game-hash.js 34판 판마다 해시·틱 수 (C# 가 그 판을 다 돌 수 있게 되면 같아야 함 — 봇 판은 S5 뒤)
+// - hp-trace.json: 체력전 켠 봇 판 3개 (trace.mjs h9·h17·h19, 캐릭터별 HP) 의 trace 줄 전체 sha256·줄 수
 // - tutorial-trace.json: 캐릭터 8명 튜토리얼 자동 조종 판 (tutorial-trace.mjs) trace 줄 전체 sha256·틱 수·결과
 // - sim.json: tools/sim.js 작은 판 (2·3인 × 맵 7개, 28판 × 자리 바꿔 2번) summarizeSim·formatSim 결과 + 판 로그 sha256 (C# Tetrafall.Sim 이 같은지)
 // - physics.json: 맵 7개 × 2·4·8인, 무작위 입력·넉백으로 물리만 300틱 (integratePlayer·groundKind) → 10틱마다 위치·속도
 import fs from 'node:fs';
+import os from 'node:os';
+import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import { SCENARIOS as HASH_SCENARIOS, runScenario } from '../../../tools/game-hash.js';
 import { runTutorial } from './tutorial-trace.mjs';
@@ -218,6 +221,16 @@ const tutorial = C.CHARACTERS.map((ch) => {
   return [ch, r.ticks, r.done, h.digest('hex')];
 });
 write('tutorial-trace.json', tutorial);
+// 체력전 캐릭터별 HP 판 (trace.mjs h<번호> = 34판 중 그 판을 체력전 켜고): trace 줄 전체 sha256·줄 수
+const hpTrace = ['h9', 'h17', 'h19'].map((k) => {
+  const tmp = path.join(os.tmpdir(), `tf-hp-${k}-${process.pid}.jsonl`);
+  const r = spawnSync(process.execPath, [path.join(path.dirname(fileURLToPath(import.meta.url)), 'trace.mjs'), k, tmp], { encoding: 'utf8' });
+  if (r.status !== 0) throw new Error(`trace.mjs ${k}: ${r.stderr}`);
+  const text = fs.readFileSync(tmp, 'utf8');
+  fs.rmSync(tmp);
+  return [k, text.split('\n').length - 1, crypto.createHash('sha256').update(text).digest('hex')];
+});
+write('hp-trace.json', hpTrace);
 // 같은 각본을 보통 틱 + 블록 낙하로 (S2·S3 합친 뒤: 갈고리 블록 잡기·층 지우기·압사까지, C# CombatTraceTests 의 blocks 판)
 const blocksTrace = COMBAT_SCRIPTS.map((sc) => {
   const hashes = [];

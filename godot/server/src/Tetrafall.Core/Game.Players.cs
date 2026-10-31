@@ -219,14 +219,18 @@ public sealed partial class Game
         return true;
     }
 
-    // 체력전 최대 HP: 모드별 (HP_MAX_BY_MODE)
-    public double HpMax() => C.HP_MAX_BY_MODE.TryGetValue(mode, out var v) ? v : C.HP_MAX_BY_MODE["survival"];
+    // 체력전 최대 HP: 모드별 (HP_MAX_BY_MODE) × 캐릭터 배율 (HP_CHAR_MULT, 캐릭터 켰을 때만, 반올림). p 없으면 모드 값 그대로 (스냅샷 맨 위 hpMax·로그)
+    public double HpMax(Player? p = null)
+    {
+        double @base = C.HP_MAX_BY_MODE.TryGetValue(mode, out var v) ? v : C.HP_MAX_BY_MODE["survival"];
+        double mult = p != null && characters && p.@char != null ? C.HP_CHAR_MULT.GetValueOrDefault(p.@char, 1) : 1;
+        return mult == 1 ? @base : JsMath.Round(@base * mult);
+    }
 
     // 체력전: HP 가 0 이하인 사람은 그 자리에서 KO (틱마다 전투 뒤에)
     public void HpKnockouts()
     {
-        double max = HpMax();
-        foreach (var p in Players().ToList()) if (p.alive && OnField(p) && p.damage >= max) Kill(p, "hp");
+        foreach (var p in Players().ToList()) if (p.alive && OnField(p) && p.damage >= HpMax(p)) Kill(p, "hp");
     }
 
     // 캐릭터 고르기 (판 사이에만, 연습은 판 중에도)

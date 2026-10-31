@@ -40,7 +40,9 @@ if (/^s\d+$/.test(process.argv[2] ?? '')) {
   process.exit(0);
 }
 const key = process.argv[2] ?? '0';
-const sc = /^\d+$/.test(key) ? SCENARIOS[Number(key)] : SCENARIOS.find((s) => s.name.includes(key));
+// h<번호> = 그 판을 체력전 켜고 (34판 해시엔 안 들어감)
+const hk = /^h(\d+)$/.exec(key);
+const sc = hk ? { ...SCENARIOS[Number(hk[1])], name: `${SCENARIOS[Number(hk[1])].name} 체력전`, hp: true } : /^\d+$/.test(key) ? SCENARIOS[Number(key)] : SCENARIOS.find((s) => s.name.includes(key));
 if (!sc) throw new Error(`시나리오 없음: ${key}`);
 const outPath = process.argv[3] ?? 'js.jsonl';
 const TICK = 1000 / C.TICK_RATE;
@@ -51,7 +53,7 @@ Math.random = mulberry32(sc.seed ^ 0x5bd1e995);
 const fd = fs.openSync(outPath, 'w');
 let logs = [];
 try {
-  const g = new Game((line) => logs.push(line), { characters: sc.characters, skyStairs: sc.sky, countdownMs: 1500 });
+  const g = new Game((line) => logs.push(line), { characters: sc.characters, skyStairs: sc.sky, countdownMs: 1500, hpMode: !!sc.hp });
   g.rng = rnd;
   if (sc.mode === 'practice') {
     g.addPlayer(1);

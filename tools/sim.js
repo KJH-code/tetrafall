@@ -9,7 +9,8 @@
 //
 // 옵션: --rounds N (짝 하나당 판 수 합, 기본 504) · --players 2,3,4 · --maps all|flat,stairs · --chars all|... ·
 //       --level easy|normal|hard · --sky on|off (기본 config SKY_STAIRS_DEFAULT) · --seed N · --workers N ·
-//       --no-mirror (자리 바꾼 판 안 돌림) · --no-log · --out 폴더
+//       --no-mirror (자리 바꾼 판 안 돌림) · --no-log · --out 폴더 · --mode survival|kills|master · --hp on (체력전) ·
+//       --hp-mult tank=1.2,ninja=0.9 (체력전 캐릭터 배율 HP_CHAR_MULT 를 이 판들만 바꿈 — 맞추기용, 숫자 하나면 8명 모두)
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
@@ -40,8 +41,21 @@ function hashSeed(...parts) {
   return h >>> 0;
 }
 
+// --hp-mult: "1.1" (8명 모두) 또는 "tank=1.2,ninja=0.9" (나머지는 config 그대로)
+export function parseHpMult(v) {
+  if (/^[\d.]+$/.test(v)) return Object.fromEntries(C.CHARACTERS.map((c) => [c, Number(v)]));
+  const out = {};
+  for (const part of v.split(',')) {
+    const [c, x] = part.split('=');
+    if (!C.CHARACTERS.includes(c) || !(Number(x) > 0)) throw new Error(`--hp-mult ${part}: 캐릭터=배율`);
+    out[c] = Number(x);
+  }
+  return out;
+}
+
 export function parseArgs(argv) {
   const o = { rounds: 504, players: [2, 3, 4], maps: MAP_IDS, chars: C.CHARACTERS, level: C.BOT_LEVEL_DEFAULT, sky: C.SKY_STAIRS_DEFAULT, seed: 1, workers: Math.max(1, os.availableParallelism ? os.availableParallelism() : os.cpus().length), mirror: true, log: true, out: null, base: null };
+  let mode, hp, hpMult; // summary.json 키 순서를 옵션 순서와 상관없이 mode → hp → hpMult 로
   const list = (v, all) => (v === 'all' ? all : v.split(',').map((s) => s.trim()).filter(Boolean));
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -62,12 +76,18 @@ export function parseArgs(argv) {
     else if (a === '--no-log') o.log = false;
     else if (a === '--out') o.out = v();
     else if (a === '--base') o.base = v();
+    else if (a === '--mode') mode = v(); // 안 주면 키도 없음 (summary.json 예전 그대로)
+    else if (a === '--hp') hp = v() === 'on' || undefined;
+    else if (a === '--hp-mult') hpMult = parseHpMult(v());
     else throw new Error(`모르는 옵션 ${a}`);
   }
+  Object.assign(o, { mode, hp, hpMult });
+  for (const k of ['mode', 'hp', 'hpMult']) if (o[k] === undefined) delete o[k];
   if (!(o.rounds > 0)) throw new Error('--rounds 는 1 이상');
   for (const n of o.players) if (!(n >= 2 && n <= C.MAX_PLAYERS)) throw new Error(`--players ${n}: 2~${C.MAX_PLAYERS}`);
   for (const m of o.maps) if (!MAP_IDS.includes(m)) throw new Error(`--maps ${m}: ${MAP_IDS.join(',')} 중`);
   for (const c of o.chars) if (!C.CHARACTERS.includes(c)) throw new Error(`--chars ${c}: ${C.CHARACTERS.join(',')} 중`);
+  if (o.mode !== undefined && !Object.hasOwn(C.MODE_NAMES, o.mode)) throw new Error(`--mode ${o.mode}: ${Object.keys(C.MODE_NAMES).join(',')} 중`);
   if (!C.BOT_LEVELS[o.level]) throw new Error(`--level ${o.level}: ${Object.keys(C.BOT_LEVELS).join(',')} 중`);
   return o;
 }
@@ -104,6 +124,9 @@ export function runJob(job, o, log = () => {}) {
   g.rng = mulberry32(job.seed);
   g.setBotLevel(o.level);
   g.setMap(job.map);
+  if (o.hpMult) Object.assign(C.HP_CHAR_MULT, o.hpMult); // 워커마다 (같은 값이라 여러 번 해도 같음)
+  if (o.mode) g.setMode(o.mode);
+  if (o.hp) g.setHpMode(true);
   const bots = [];
   for (let i = 0; i < job.n; i++) bots.push(g.addBot());
   bots.forEach((p, i) => g.setChar(p.id, job.chars[i]));

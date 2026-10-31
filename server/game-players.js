@@ -280,15 +280,16 @@ export class PlayersPart {
     return true;
   }
 
-  // 체력전 최대 HP: 모드별 (HP_MAX_BY_MODE)
-  hpMax() {
-    return C.HP_MAX_BY_MODE[this.mode] ?? C.HP_MAX_BY_MODE.survival;
+  // 체력전 최대 HP: 모드별 (HP_MAX_BY_MODE) × 캐릭터 배율 (HP_CHAR_MULT, 캐릭터 켰을 때만, 반올림). p 없으면 모드 값 그대로 (스냅샷 맨 위 hpMax·로그)
+  hpMax(p = null) {
+    const base = C.HP_MAX_BY_MODE[this.mode] ?? C.HP_MAX_BY_MODE.survival;
+    const mult = p && this.characters && p.char ? (C.HP_CHAR_MULT[p.char] ?? 1) : 1;
+    return mult === 1 ? base : Math.round(base * mult);
   }
 
   // 체력전: HP (hpMax − 피해 %) 가 0 이하인 사람은 그 자리에서 KO (마지막으로 때린 사람 킬, lastHit). 틱마다 전투 뒤에
   hpKnockouts() {
-    const max = this.hpMax();
-    for (const p of this.players.values()) if (p.alive && this.onField(p) && p.damage >= max) this.kill(p, 'hp');
+    for (const p of this.players.values()) if (p.alive && this.onField(p) && p.damage >= this.hpMax(p)) this.kill(p, 'hp');
   }
 
   // 캐릭터 고르기 (판 사이에만, 같은 캐릭터 여럿 됨)
