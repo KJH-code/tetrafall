@@ -46,3 +46,15 @@ g3_sun_on={
 "type": "float",
 "value": 1.0
 }
+g3_fog_color={
+"type": "vec3",
+"value": Vector3(1, 0.42, 0.11)
+}
+g3_fog_near={
+"type": "float",
+"value": 28.0
+}
+g3_fog_far={
+"type": "float",
+"value": 0.0
+}

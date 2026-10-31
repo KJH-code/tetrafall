@@ -3,6 +3,10 @@
 shader_type spatial;
 render_mode unshaded, cull_front, shadows_disabled;
 
+global uniform vec3 g3_fog_color;
+global uniform float g3_fog_near;
+global uniform float g3_fog_far;
+
 uniform float thickness = 0.0065; // config OUTLINE_THICKNESS
 uniform vec4 line_color = vec4(0.08, 0.05, 0.1, 1.0); // three 와 같이 선형 값 (source_color 아님)
 
@@ -18,4 +22,5 @@ void fragment() {
 	vec3 c = max(line_color.rgb, vec3(0.0));
 	ALBEDO = mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
 	ALPHA = line_color.a;
+	if (g3_fog_far > 0.0) FOG = vec4(g3_fog_color, smoothstep(g3_fog_near, g3_fog_far, -VERTEX.z)); // three 외곽선도 안개
 }

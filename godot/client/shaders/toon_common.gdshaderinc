@@ -14,6 +14,10 @@ global uniform vec3 g3_hemi_ground;
 global uniform float g3_hemi_energy;
 global uniform vec3 g3_sun; // 해 색 × 세기 (선형)
 global uniform float g3_sun_on; // 1 = 해 있음 (light() 가 다 그림), 0 = EMISSION 이 하늘빛만
+// 안개 (three Fog: 카메라 깊이로 smoothstep(near, far) 만큼 안개 색과 선형으로 섞음). far <= 0 이면 없음
+global uniform vec3 g3_fog_color;
+global uniform float g3_fog_near;
+global uniform float g3_fog_far;
 
 uniform vec4 albedo : source_color = vec4(1.0);
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap, repeat_enable;
@@ -50,6 +54,7 @@ void fragment() {
 	v_base = base;
 	v_amb = base * hemi / PI + g3_lin(emissive) * emissive_energy;
 	ALBEDO = vec3(1.0);
+	if (g3_fog_far > 0.0) FOG = vec4(g3_fog_color, smoothstep(g3_fog_near, g3_fog_far, -VERTEX.z)); // 고도가 선형으로 섞음 (더하기 패스는 1 - a 를 곱함)
 	EMISSION = g3_sun_on > 0.5 ? vec3(0.0) : g3_srgb(v_amb);
 #ifdef TOON_ALPHA
 	ALPHA = c.a; // 투명 재질만 (ALPHA 를 쓰면 고도는 투명으로 보고 그림자를 안 드리움)

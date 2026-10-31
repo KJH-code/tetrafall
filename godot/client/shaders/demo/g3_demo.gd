@@ -16,9 +16,13 @@ const THINGS := [
 	["box", Vector3(3.5, 2.5, 1.5), Vector3(1, 1, 1), 0x58c06a],
 	["sphere", Vector3(2.5, 5, 0.7), Vector3(0.7, 0, 0), 0xf2c53d],
 	["cyl", Vector3(5.5, 4.5, 1), Vector3(0.5, 2, 0), 0xb06ad8],
+	["box", Vector3(14, 22, 2), Vector3(3, 3, 4), 0x8a8f9a],
+	["box", Vector3(-6, 40, 4), Vector3(5, 5, 8), 0x8a8f9a],
+	["box", Vector3(30, 60, 6), Vector3(8, 8, 12), 0x8a8f9a],
 ]
 
 var shot := ""
+var theme = null
 
 
 func _ready() -> void:
@@ -26,20 +30,10 @@ func _ready() -> void:
 	for i in args.size():
 		if args[i] == "--shot" and i + 1 < args.size():
 			shot = args[i + 1]
-	var env := WorldEnvironment.new()
-	var e := Environment.new()
-	e.background_mode = Environment.BG_COLOR
-	e.background_color = Coords.color(C.SKY_HORIZON)
-	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color.BLACK # 하늘빛은 툰 셰이더 (g3_hemi_*)
-	e.tonemap_mode = Environment.TONE_MAPPER_LINEAR
-	env.environment = e
-	add_child(env)
-	G3.set_hemi(K.SUNSET_HEMI[0], K.SUNSET_HEMI[1], K.SUNSET_HEMI[2])
-	var sun := DirectionalLight3D.new()
-	sun.shadow_enabled = true
-	add_child(sun)
-	G3.set_sun(sun, C.SUN_COLOR, K.SUNSET_SUN, C.SUN_DIR)
+		if args[i] == "--theme" and i + 1 < args.size():
+			theme = args[i + 1]
+	G3.apply_theme(self, theme)
+	G3.set_field(self, 8, 8)
 	for t in THINGS:
 		var mi := MeshInstance3D.new()
 		match t[0]:
@@ -66,8 +60,10 @@ func _ready() -> void:
 		add_child(mi)
 	var cam := Camera3D.new()
 	cam.fov = 60
+	cam.near = 0.05 # render.js 카메라
+	cam.far = 200.0
 	add_child(cam)
-	cam.look_at_from_position(Coords.gxyz(8, -4, 6), Coords.gxyz(3, 3, 0.5), Vector3.UP)
+	cam.look_at_from_position(Coords.gxyz(9, -5, 4), Coords.gxyz(4, 8, 2.5), Vector3.UP)
 	if shot != "":
 		for i in 6:
 			await get_tree().process_frame

@@ -11,3 +11,11 @@ const SUNSET_SUN := 1.25
 # 해 그림자: three (render.js bias -0.0008) 와 단위가 달라 고도 값으로 맞춤 — 빛을 비스듬히 받는 옆면이 제 그림자로 어두워지지 않게 (JS 와 나란히 재서 정함)
 const SUN_SHADOW_BIAS := 0.1
 const SUN_SHADOW_NORMAL_BIAS := 2.0
+# 하늘 구 (render.js skyDome): 반지름, 노을 기본 해 번짐·원반 색 (선형 Vector3 그대로)·원반 크기
+const SKY_RADIUS := 150.0
+const SKY_GLOW := Vector3(1.0, 0.65, 0.35)
+const SKY_DISC := Vector3(1.0, 0.93, 0.75)
+const SKY_DISC_SIZE := 0.0005
+# 해 그림자 거리 (판 대각선 반 + 여백, render.js reach = hypot(W, D) / 2 + 4)
+const SHADOW_REACH_PAD := 4.0
+const SHADOW_MAX_DISTANCE := 60.0

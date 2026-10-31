@@ -10,6 +10,7 @@ const K := preload("res://shaders/g3_config.gd")
 const TOON := preload("res://shaders/toon.gdshader")
 const TOON_ALPHA := preload("res://shaders/toon_alpha.gdshader")
 const OUTLINE := preload("res://shaders/outline.gdshader")
+const SKY := preload("res://shaders/sky.gdshader")
 
 static var _globals := {} # 넣은 전역 셰이더 값 (RenderingServer 는 실행 중 읽기가 안 됨 — 테스트·확인용)
 
@@ -80,6 +81,111 @@ static func set_sun(sun: DirectionalLight3D, color, intensity: float, dir: Array
 	sun.look_at_from_position(Vector3.ZERO, -d, Vector3.UP if absf(d.y) < 0.99 else Vector3.FORWARD)
 	sun.shadow_bias = K.SUN_SHADOW_BIAS
 	sun.shadow_normal_bias = K.SUN_SHADOW_NORMAL_BIAS
+
+
+# ===== 테마: 하늘·안개·해·하늘빛 (JS world.js apply + render.js 생성자의 노을) =====
+# world (G1 의 World Node3D) 아래 'G3Env' 하나에 WorldEnvironment·해 DirectionalLight3D·하늘 구를 만들어 둠 (있으면 값만 바꿈).
+# theme_id: config WORLD_MAP_THEME[map.id] (없으면 null = 예전 노을). low: 그래픽 낮춤 (지금은 같음)
+static func apply_theme(world: Node3D, theme_id, low := false) -> void:
+	var env := _env_node(world)
+	var L = C.WORLD_THEMES.get(theme_id) if theme_id != null else null
+	var sky := {}
+	var sun_dir: Array = C.SUN_DIR
+	var sun_col = C.SUN_COLOR
+	var sun_int: float = K.SUNSET_SUN
+	var hemi: Array = K.SUNSET_HEMI
+	var fog: Array = [C.SKY_HORIZON, C.FOG_NEAR, C.FOG_FAR]
+	if L == null:
+		# 예전 노을 (render.js skyDome 기본값)
+		sky = {"top": _lin3(C.SKY_TOP), "mid": _lin3(C.SKY_MID), "horizon": _lin3(C.SKY_HORIZON), "below": _lin3(C.SKY_HORIZON) * 0.55,
+			"glow": K.SKY_GLOW, "disc": K.SKY_DISC, "disc_size": K.SKY_DISC_SIZE, "stars": 0.0, "bg": C.SKY_HORIZON}
+	else:
+		var S: Dictionary = L.sky
+		sky = {"top": _lin3(S.top), "mid": _lin3(S.mid), "horizon": _lin3(S.horizon), "below": _lin3(S.below),
+			"glow": _lin3(S.glow) if S.has("glow") else K.SKY_GLOW, "disc": _lin3(S.disc) if S.has("disc") else K.SKY_DISC,
+			"disc_size": float(S.get("discSize", K.SKY_DISC_SIZE)), "stars": float(S.get("stars", 0.0)), "bg": S.horizon}
+		sun_dir = L.sunDir
+		sun_col = L.sunColor
+		sun_int = L.sunIntensity
+		hemi = L.hemi
+		fog = L.fog
+	var dome: MeshInstance3D = env.get_node("Sky")
+	var m: ShaderMaterial = dome.material_override
+	for k in ["top", "mid", "horizon", "below", "glow", "disc", "disc_size", "stars"]:
+		m.set_shader_parameter(k, sky[k])
+	var sd := Vector3(float(sun_dir[0]), float(sun_dir[1]), float(sun_dir[2])).normalized()
+	m.set_shader_parameter("sun_dir", sd)
+	var we: WorldEnvironment = env.get_node("Env")
+	we.environment.background_color = _col(sky.bg)
+	set_hemi(hemi[0], hemi[1], float(hemi[2]))
+	set_sun(env.get_node("Sun"), sun_col, sun_int, sun_dir)
+	set_fog(fog[0], float(fog[1]), float(fog[2]))
+	env.set_meta("theme", theme_id)
+
+
+# 안개 (three Fog(color, near, far)) — 툰·외곽선 셰이더 전역 값. far <= 0 이면 끔
+static func set_fog(color, near: float, far: float) -> void:
+	_set_global("g3_fog_color", _lin3(color))
+	_set_global("g3_fog_near", near)
+	_set_global("g3_fog_far", far)
+
+
+# 판 크기가 바뀌면 (G1): 하늘 구 가운데·그림자 거리 (JS render.js setField: 하늘 구는 판 가운데, 그림자 상자는 판 대각선 + 여백)
+static func set_field(world: Node3D, w: float, d: float) -> void:
+	var env := _env_node(world)
+	env.get_node("Sky").position = Vector3(w / 2.0, 0.0, d / 2.0)
+	var sun: DirectionalLight3D = env.get_node("Sun")
+	sun.directional_shadow_max_distance = sqrt(w * w + d * d) / 2.0 + K.SHADOW_REACH_PAD * 4.0
+
+
+# 그림자 켜기·끄기 (JS 대기 화면 설정 '그림자', render.js setShadows)
+static func set_shadows(world: Node3D, on: bool) -> void:
+	(_env_node(world).get_node("Sun") as DirectionalLight3D).shadow_enabled = on
+
+
+static func _env_node(world: Node3D) -> Node3D:
+	var env: Node3D = world.get_node_or_null("G3Env")
+	if env:
+		return env
+	env = Node3D.new()
+	env.name = "G3Env"
+	world.add_child(env)
+	var we := WorldEnvironment.new()
+	we.name = "Env"
+	var e := Environment.new()
+	e.background_mode = Environment.BG_COLOR
+	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	e.ambient_light_color = Color.BLACK # 하늘빛은 툰 셰이더 (g3_hemi_*)
+	e.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+	e.fog_enabled = false # 안개는 툰 셰이더 (three 와 같은 smoothstep)
+	we.environment = e
+	env.add_child(we)
+	var sun := DirectionalLight3D.new()
+	sun.name = "Sun"
+	sun.shadow_enabled = true
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+	sun.directional_shadow_max_distance = K.SHADOW_MAX_DISTANCE
+	env.add_child(sun)
+	var dome := MeshInstance3D.new()
+	dome.name = "Sky"
+	var sm := SphereMesh.new()
+	sm.radius = K.SKY_RADIUS
+	sm.height = K.SKY_RADIUS * 2.0
+	sm.radial_segments = 32
+	sm.rings = 16
+	dome.mesh = sm
+	var mat := ShaderMaterial.new()
+	mat.shader = SKY
+	mat.render_priority = -100
+	dome.material_override = mat
+	dome.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	env.add_child(dome)
+	return env
+
+
+static func _lin3(c) -> Vector3:
+	var l := _col(c).srgb_to_linear()
+	return Vector3(l.r, l.g, l.b)
 
 
 # 전역 셰이더 값 (project.godot [shader_globals] 에 g3_* 로 등록됨)
