@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 자동 확인: 헤드리스 서버 + 헤드리스 봇 클라 2개가 접속해 ROUNDS 판을 돌고 모두 정상 종료하는지.
-# 실행: bash godot/tools/e2e.sh [판 수]   (GODOT 환경 변수로 실행 파일 지정, 기본 godot)
+# 실행: bash godot/prototype/tools/e2e.sh [판 수]   (GODOT 환경 변수로 실행 파일 지정, 기본 godot)
 set -u
 cd "$(dirname "$0")/.."
 GODOT=${GODOT:-godot}

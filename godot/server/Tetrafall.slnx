@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Tetrafall.Core/Tetrafall.Core.csproj" />
+    <Project Path="src/Tetrafall.Server/Tetrafall.Server.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Tetrafall.Tests/Tetrafall.Tests.csproj" />
+  </Folder>
+</Solution>

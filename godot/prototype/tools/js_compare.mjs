@@ -1,7 +1,7 @@
 // JS 판(server/game.js)에서 비교 숫자를 뽑는다. 고도 테스트(tests/test_compare.gd)가 같은 장면을 돌려 이 값과 비교.
-// 실행: node godot/tools/js_compare.mjs  (JS 파일은 읽기만 함)
-import { Game } from '../../server/game.js';
-import { CONFIG as C } from '../../shared/config.js';
+// 실행: node godot/prototype/tools/js_compare.mjs  (JS 파일은 읽기만 함)
+import { Game } from '../../../server/game.js';
+import { CONFIG as C } from '../../../shared/config.js';
 
 const TICK = 1000 / C.TICK_RATE;
 

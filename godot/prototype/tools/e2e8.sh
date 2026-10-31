@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 8명 판 자동 확인: 헤드리스 서버 (서버 봇 7명) + 헤드리스 봇 클라 1개 → ROUNDS 판. 서버 틱 시간도 찍힘
-# 실행: bash godot/tools/e2e8.sh [판 수]
+# 실행: bash godot/prototype/tools/e2e8.sh [판 수]
 set -u
 cd "$(dirname "$0")/.."
 GODOT=${GODOT:-godot}

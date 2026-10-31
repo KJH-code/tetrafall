@@ -1,0 +1,118 @@
+namespace Tetrafall.Server;
+
+// URL → 디스크 경로 (server/index.js resolveFile 과 같음): client/, shared/, three.js·cannon-es 만 노출
+public static class StaticFiles
+{
+    static readonly Dictionary<string, string> MIME = new()
+    {
+        [".html"] = "text/html; charset=utf-8",
+        [".js"] = "text/javascript; charset=utf-8",
+        [".css"] = "text/css; charset=utf-8",
+        [".json"] = "application/json",
+        [".png"] = "image/png",
+        [".glb"] = "model/gltf-binary",
+        [".ico"] = "image/x-icon",
+        [".woff2"] = "font/woff2",
+    };
+
+    public static string Mime(string file) => MIME.GetValueOrDefault(Path.GetExtension(file), "application/octet-stream");
+
+    static readonly System.Text.UTF8Encoding StrictUtf8 = new(false, throwOnInvalidBytes: true);
+
+    // decodeURIComponent 처럼: %XX 가 아니거나 UTF-8 이 깨졌으면 null (→ 400)
+    public static string? StrictDecode(string s)
+    {
+        if (!s.Contains('%')) return s;
+        var bytes = new List<byte>();
+        var sb = new System.Text.StringBuilder();
+        void Flush()
+        {
+            if (bytes.Count == 0) return;
+            sb.Append(StrictUtf8.GetString(bytes.ToArray()));
+            bytes.Clear();
+        }
+        try
+        {
+            for (int i = 0; i < s.Length; i++)
+            {
+                if (s[i] == '%')
+                {
+                    if (i + 2 >= s.Length || !Uri.IsHexDigit(s[i + 1]) || !Uri.IsHexDigit(s[i + 2])) return null;
+                    bytes.Add(Convert.ToByte(s.Substring(i + 1, 2), 16));
+                    i += 2;
+                }
+                else
+                {
+                    Flush();
+                    sb.Append(s[i]);
+                }
+            }
+            Flush();
+        }
+        catch (System.Text.DecoderFallbackException)
+        {
+            return null;
+        }
+        return sb.ToString();
+    }
+
+    public static string? Resolve(string root, string urlPath)
+    {
+        if (urlPath == "/" || urlPath == "") return Path.Combine(root, "client", "index.html");
+        if (urlPath == "/vendor/three.module.js") return Path.Combine(root, "node_modules", "three", "build", "three.module.js");
+        if (urlPath == "/vendor/cannon-es.js") return Path.Combine(root, "node_modules", "cannon-es", "dist", "cannon-es.js");
+        string @base, rel;
+        if (urlPath.StartsWith("/vendor/jsm/"))
+        {
+            @base = Path.Combine(root, "node_modules", "three", "examples", "jsm");
+            rel = urlPath["/vendor/jsm/".Length..];
+        }
+        else if (urlPath.StartsWith("/shared/"))
+        {
+            @base = Path.Combine(root, "shared");
+            rel = urlPath["/shared/".Length..];
+        }
+        else
+        {
+            @base = Path.Combine(root, "client");
+            rel = urlPath[1..];
+        }
+        var full = Path.GetFullPath(Path.Combine(@base, rel));
+        if (!full.StartsWith(@base + Path.DirectorySeparatorChar)) return null; // 경로 탈출 방지
+        return full;
+    }
+}
+
+// 방마다 로그 파일: logs/<서버를 켠 시각>/<방을 연 시각>_<코드>.txt (JS 서버와 같은 모양 → npm run stats 가 그대로 읽음)
+public sealed class FileRoomLog : IRoomLog
+{
+    readonly string code;
+    StreamWriter? w;
+
+    public FileRoomLog(string runDir, string code)
+    {
+        this.code = code;
+        try
+        {
+            Directory.CreateDirectory(runDir);
+            w = new StreamWriter(Path.Combine(runDir, $"{DateTime.Now:yyyy-MM-dd_HH-mm-ss}_{code}.txt"), append: true) { AutoFlush = true };
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"[{code}] 로그 파일을 못 엶 (콘솔에만 남김): {e.Message}");
+        }
+    }
+
+    public void Log(string msg)
+    {
+        var st = DateTime.Now.ToString("HH:mm:ss");
+        Console.WriteLine($"[{st}] [{code}] {msg}");
+        try { w?.WriteLine($"[{st}] {msg}"); } catch { w = null; }
+    }
+
+    public void Close()
+    {
+        w?.Dispose();
+        w = null;
+    }
+}

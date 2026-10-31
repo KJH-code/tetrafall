@@ -1,7 +1,7 @@
 // 서버 틱 시간 비교 (JS 쪽): tests/bench.gd 와 같은 각본 (설명은 그 파일). 서버 방처럼 캐릭터 켬 (모두 닌자), 자동 블록 자리 고르기 CLEAR_BIAS.
-// 틱마다 game.tick + 스냅샷 JSON 만들기 시간을 잼. 실행: node godot/tools/js_tick_bench.mjs [틱 수] [인원] [--no-chars]
-import { Game } from '../../server/game.js';
-import { CONFIG as C } from '../../shared/config.js';
+// 틱마다 game.tick + 스냅샷 JSON 만들기 시간을 잼. 실행: node godot/prototype/tools/js_tick_bench.mjs [틱 수] [인원] [--no-chars]
+import { Game } from '../../../server/game.js';
+import { CONFIG as C } from '../../../shared/config.js';
 
 const nums = process.argv.slice(2).filter((a) => /^\d+$/.test(a)).map(Number);
 const N = nums[0] || 18000;

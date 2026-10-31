@@ -1,6 +1,6 @@
-// 자동 블록 자리 고르기 한 번 시간 (JS 쪽, tests/bench_placement.gd 와 같은 격자). 실행: node godot/tools/js_placement_bench.mjs
+// 자동 블록 자리 고르기 한 번 시간 (JS 쪽, tests/bench_placement.gd 와 같은 격자). 실행: node godot/prototype/tools/js_placement_bench.mjs
 import fs from 'node:fs';
-import { Game } from '../../server/game.js';
+import { Game } from '../../../server/game.js';
 
 const cases = JSON.parse(fs.readFileSync(new URL('../tests/js_placement.json', import.meta.url)));
 function make(size, tops) {

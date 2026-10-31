@@ -2,7 +2,7 @@
 # 인원 N명 (기본 8, 닌자, 자동 블록 자리 고르기 CLEAR_BIAS) 이 각본대로 움직임: 가장 가까운 상대 쪽으로 걷고, 가까우면 6틱마다 평타,
 # 90틱마다 F, 게이지 차면 R, 45틱마다 점프. 판이 끝나면 다시. 틱마다 game.tick + 스냅샷 JSON 만들기 시간을 잼.
 # --bots 면 각본 대신 sim/bot.gd 봇 (봇 생각 시간 포함)
-# 실행: godot --headless --path godot -s res://tests/bench.gd -- [틱 수] [인원] [--bots] [--no-chars]
+# 실행: godot --headless --path godot/prototype -s res://tests/bench.gd -- [틱 수] [인원] [--bots] [--no-chars]
 extends SceneTree
 
 const Game := preload("res://sim/game.gd")

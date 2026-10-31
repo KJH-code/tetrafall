@@ -1,5 +1,5 @@
 # 자동 블록 자리 고르기 한 번 시간 (판 크기별): 평지 / tests/js_placement.json 의 울퉁불퉁한 격자.
-# 실행: godot --headless --path godot -s res://tests/bench_placement.gd   (JS 쪽: node godot/tools/js_placement_bench.mjs)
+# 실행: godot --headless --path godot/prototype -s res://tests/bench_placement.gd   (JS 쪽: node godot/prototype/tools/js_placement_bench.mjs)
 extends SceneTree
 
 const Game := preload("res://sim/game.gd")

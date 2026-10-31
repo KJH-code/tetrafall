@@ -1,5 +1,5 @@
 # JS 판과 비교: tools/js_compare.mjs 가 뽑은 tests/js_expected.json 과 같은 장면을 돌려 숫자를 맞춤
-# (JS 값을 다시 뽑으려면: node godot/tools/js_compare.mjs > godot/tests/js_expected.json)
+# (JS 값을 다시 뽑으려면: node godot/prototype/tools/js_compare.mjs > godot/prototype/tests/js_expected.json)
 extends "res://tests/base.gd"
 
 

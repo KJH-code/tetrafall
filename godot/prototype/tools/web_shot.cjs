@@ -1,6 +1,6 @@
 // 브라우저(Playwright 크로미움)로 웹 내보내기를 열어 서버에 붙고: 첫 로딩 시간을 재고 화면을 찍음.
-// 미리: 고도 서버 (--server --port 3101) + node godot/tools/serve_web.mjs 8060 (+ 원하면 헤드리스 봇 클라)
-// 실행: WEB_GL=mesa xvfb-run -a node godot/tools/web_shot.cjs [저장 폴더]  (기본 SwiftShader 는 고도 화면이 깨져 보임)
+// 미리: 고도 서버 (--server --port 3101) + node godot/prototype/tools/serve_web.mjs 8060 (+ 원하면 헤드리스 봇 클라)
+// 실행: WEB_GL=mesa xvfb-run -a node godot/prototype/tools/web_shot.cjs [저장 폴더]  (기본 SwiftShader 는 고도 화면이 깨져 보임)
 const { chromium } = require('playwright');
 const path = require('path');
 

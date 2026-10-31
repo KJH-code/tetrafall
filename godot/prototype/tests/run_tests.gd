@@ -1,4 +1,4 @@
-# 헤드리스 테스트 러너 (GUT 없이): godot --headless --path godot -s res://tests/run_tests.gd
+# 헤드리스 테스트 러너 (GUT 없이): godot --headless --path godot/prototype -s res://tests/run_tests.gd
 # test_*.gd 의 test_ 로 시작하는 함수를 전부 돌림. 하나라도 실패하면 종료 코드 1
 extends SceneTree
 

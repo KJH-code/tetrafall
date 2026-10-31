@@ -1,5 +1,5 @@
 // 웹 내보내기(build/web) 정적 서빙 (gzip). 고도 웹 단일 스레드 판이라 COOP/COEP 헤더는 필요 없음.
-// 실행: node godot/tools/serve_web.mjs [포트 8060]
+// 실행: node godot/prototype/tools/serve_web.mjs [포트 8060]
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';

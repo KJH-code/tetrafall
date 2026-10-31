@@ -1,0 +1,10 @@
+<Project>
+  <!-- 모든 프로젝트 공통: .NET 10 LTS, null 검사, 경고는 그대로 (고칠 때 보이게) -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+</Project>

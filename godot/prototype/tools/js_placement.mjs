@@ -1,9 +1,9 @@
 // 자동 블록 자리 점수 비교 (JS 쪽): 여러 격자(기둥 높이)마다 모든 후보의 점수와 무작위 값별 고른 자리를 뽑음.
 // 고도 tests/test_compare.gd 가 같은 격자로 auto_candidates·pick_candidate 를 돌려 같은지 봄.
-// 실행: node godot/tools/js_placement.mjs > godot/tests/js_placement.json
-import { Game } from '../../server/game.js';
-import { CONFIG as C } from '../../shared/config.js';
-import { SHAPE_NAMES, rotatedCells, footprint } from '../../shared/pieces.js';
+// 실행: node godot/prototype/tools/js_placement.mjs > godot/prototype/tests/js_placement.json
+import { Game } from '../../../server/game.js';
+import { CONFIG as C } from '../../../shared/config.js';
+import { SHAPE_NAMES, rotatedCells, footprint } from '../../../shared/pieces.js';
 
 let s = 777;
 const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32);
