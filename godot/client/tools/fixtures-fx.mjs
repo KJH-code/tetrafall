@@ -158,3 +158,26 @@ const PF = await import('../../../shared/perf.js');
   fs.writeFileSync(path.join(out, 'tutorial_ui.json'), JSON.stringify({ texts, prog, done }));
   console.log('tutorial_ui.json');
 }
+
+// ---------- 타이틀 (shared/title.js) → title.json ----------
+{
+  const TL = await import('../../../shared/title.js');
+  const { cells, width, height } = TL.titleCells(C.TITLE_TEXT, C.TITLE_GAP, C.TITLE_BOLD);
+  const pieces = TL.titlePieces(cells);
+  const iv = TL.titleInterval(pieces.length);
+  const start = TL.dropSchedule(pieces, iv);
+  const done = TL.titleDoneAt(start);
+  const lifts = [];
+  for (const t of [0, 100, 300, 520, 600, 700, 781, 1500, 2500]) lifts.push([t, start[3], TL.pieceLift(t, start[3])]);
+  const lights = [];
+  for (let t = 0; t <= done + 2000; t += 137) lights.push([t, TL.titleLight(t, done)]);
+  const exits = [];
+  for (const ms of [-10, 0, 200, 575, 862, 1000, 1150, 1500]) exits.push([ms, false, TL.titleExit(ms, false)]);
+  for (const ms of [0, 100, 349, 351, 500, 700, 900]) exits.push([ms, true, TL.titleExit(ms, true)]);
+  const drift = [];
+  for (const u of [-5, 0, 500, 1500, 3000, 9000, 20000]) drift.push([u, TL.menuDrift(u)]);
+  const landed = [[0, 600], [600, 700], [700, 1200], [1200, done]].map(([a, b]) => [a, b, TL.landedBetween(start, a, b)]);
+  const other = { cells2: TL.titleCells('AB-1', 1, 1), camDist: [[50, 50, 16 / 9], [30, 60, 4 / 3]].map((a) => [a, TL.titleCamDist(...a)]), picks: [0, 0.1, 0.5, 0.99, 0.999999].map((r) => [r, TL.pickTitleTheme(() => r)]), maps: TL.TITLE_THEME_IDS.map((t) => [t, TL.titleMapFor(t)]) };
+  fs.writeFileSync(path.join(out, 'title.json'), JSON.stringify({ cells, width, height, pieces, iv, start, done, lifts, lights, exits, drift, landed, ...other }));
+  console.log('title.json', pieces.length, '조각');
+}
