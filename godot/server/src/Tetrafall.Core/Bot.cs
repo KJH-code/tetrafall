@@ -1212,9 +1212,11 @@ public sealed class BotBrain
             {
                 for (int py = 0; py <= D - d; py++)
                 {
-                    var world = cells.Select(c => new[] { px + c[0], py + c[1] }).ToList();
-                    int cover = world.Count(c => tCells.Contains(c[0] * 100 + c[1]));
+                    // 상대 칸을 덮는 자리만 (대부분 여기서 걸러짐 — 칸 목록을 만들기 전에 셈)
+                    int cover = 0;
+                    foreach (var c in cells) if (tCells.Contains((px + c[0]) * 100 + py + c[1])) cover++;
                     if (cover == 0) continue;
+                    var world = cells.Select(c => new[] { px + c[0], py + c[1] }).ToList();
                     if (OverlapsCells(p, world)) continue;
                     int landZ = world.Max(c => g.ColumnTop(c[0], c[1]));
                     if (landZ + 1 > C.GRID_H) continue;

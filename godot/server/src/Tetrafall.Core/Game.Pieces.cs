@@ -292,6 +292,7 @@ public sealed partial class Game
     public void UpdatePieces()
     {
         UpdateSpawning();
+        prof?.Lap("spawn");
         foreach (var piece in pieces.ToList())
         {
             if (piece.phase == "control")
@@ -320,7 +321,9 @@ public sealed partial class Game
             {
                 if (piece.pz <= piece.landZ)
                 {
+                    prof?.Lap("fall");
                     LandPiece(piece);
+                    prof?.Lap("land");
                     break;
                 }
                 piece.nextStepAt += piece.stepMs;
@@ -335,11 +338,14 @@ public sealed partial class Game
                 }
                 if (piece.pz <= piece.landZ)
                 {
+                    prof?.Lap("fall");
                     LandPiece(piece);
+                    prof?.Lap("land");
                     break;
                 }
             }
         }
+        prof?.Lap("fall");
     }
 
     // 하늘 블록은 용암이 켜진 뒤 아래면이 용암 표면에 닿으면 녹는다

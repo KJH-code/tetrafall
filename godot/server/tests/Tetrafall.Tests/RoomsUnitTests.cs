@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.Json;
 using Tetrafall.Core;
 using Tetrafall.Core.Js;
@@ -54,6 +53,45 @@ public class RoomsUnitTests
         Assert.Equal(Fixtures.Load("jsvalue.json").GetProperty("botLevels").EnumerateArray().Select(e => e.GetString()), C.BOT_LEVELS.Keys);
     }
 
+    // 방마다 틱·스냅샷 병렬 (Rooms.parallel): 방 4개 × 8명 (사람 1 + 봇 7) 을 병렬·차례로 돌려 소켓마다 받은 글자가 똑같음 (방끼리 공유 상태 없음)
+    [Fact]
+    public void Parallel_rooms_send_exactly_what_serial_rooms_send()
+    {
+        List<string> RunRooms(bool parallel)
+        {
+            int tok = 0;
+            var rooms = new Rooms(rng: new Mulberry32(1).AsFunc(), newToken: () => $"t{++tok}") { parallel = parallel }; // 자리 토큰도 정해진 값
+            var socks = new List<Sock>();
+            string[] modes = { "survival", "kills", "master", "survival" };
+            for (int r = 0; r < modes.Length; r++)
+            {
+                var ws = new Sock();
+                socks.Add(ws);
+                var conn = rooms.Connect(ws);
+                rooms.Message(conn, J($"{{\"type\":\"create\",\"nick\":\"P{r}\"}}"));
+                conn.room!.game.rng = new Mulberry32((uint)(100 + r)).AsFunc();
+                for (int i = 0; i < 7; i++) rooms.Message(conn, J("{\"type\":\"addBot\"}"));
+                rooms.Message(conn, J($"{{\"type\":\"setMode\",\"mode\":\"{modes[r]}\"}}"));
+                rooms.Message(conn, J("{\"type\":\"start\"}"));
+            }
+            for (int t = 0; t < 900; t++)
+            {
+                rooms.Tick(1000 / C.TICK_RATE);
+                rooms.Broadcast();
+            }
+            return socks.Select(s => string.Join("\n", s.msgs)).ToList();
+        }
+        var a = RunRooms(false);
+        var b = RunRooms(true);
+        for (int r = 0; r < a.Count; r++)
+        {
+            int k = 0;
+            while (k < Math.Min(a[r].Length, b[r].Length) && a[r][k] == b[r][k]) k++;
+            Assert.True(a[r] == b[r], $"방 {r}: 병렬이 다름 ({k}번째 글자: …{a[r][Math.Max(0, k - 80)..Math.Min(a[r].Length, k + 40)]} / …{b[r][Math.Max(0, k - 80)..Math.Min(b[r].Length, k + 40)]})");
+        }
+        Assert.All(a, m => Assert.Contains("\"phase\":\"playing\"", m));
+    }
+
     [Fact]
     public void Ten_million_char_names_are_cut_first_and_do_not_stall()
     {
@@ -64,10 +102,11 @@ public class RoomsUnitTests
         var opt = new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
         var create = J(JsonSerializer.Serialize(new { type = "create", name = huge, nick = huge }, opt));
         var rename = J(JsonSerializer.Serialize(new { type = "setName", name = huge }, opt));
-        var sw = Stopwatch.StartNew();
+        // 시간 대신 (느린 기계·CPU 를 같이 쓸 때 흔들림) 정규식이 실제로 본 가장 긴 글자 수로 판정 (JS test/safety.test.js 와 같음)
+        JsText.longestRegexInput = 0;
         rooms.Message(x, create);
         rooms.Message(x, rename);
-        Assert.True(sw.ElapsedMilliseconds < 1000, $"{sw.ElapsedMilliseconds}ms"); // 정규식은 TEXT_RAW_MAX 글자만 봄 (긴 글자를 꺼내는 데만 시간)
+        Assert.InRange(JsText.longestRegexInput, 1, (int)C.TEXT_RAW_MAX);
         Assert.Equal(C.NAME_MAX_LEN, x.room!.game.players[x.id].nick.Length);
         Assert.Equal(C.ROOM_NAME_MAX_LEN, x.room.name.Length);
     }
