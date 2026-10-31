@@ -37,6 +37,7 @@ WEB_PORT=8060 xvfb-run -a node godot/client/tools/web_shot.cjs /tmp "?server=ws:
 ```
 
 - 템플릿: `~/.local/share/godot/export_templates/4.7.2.stable/` 에 `web_nothreads_release.zip`·`windows_release_x86_64.exe`·`linux_release.x86_64` (받기는 prototype README)
+- 웹 곡 따로 (2026-10-31): 웹 내보내기는 곡 녹음본 15개 (`audio/baked/music.*.ogg`, 3.7MB) 를 pck 에서 빼고 `build/web/music/` 에 복사 (`addons/web_music` 내보내기 플러그인, project.godot 에서 켬). 화면은 방에 들어가면 대기실 곡 → 지금 맵 곡 → 긴장 곡 → 나머지 순으로 받고 (`audio/music_fetch.gd`), 못 받은 곡은 곡 없이. PC 판은 pck 안 그대로. 웹 빌드 폴더를 옮길 땐 `music/` 도 같이
 - 크기 (2026-10-31): 웹 wasm 39.5MB (gzip 약 10MB) + pck 0.3MB, 윈도우 exe 110MB, 리눅스 74MB (pck 포함 한 파일). `build/` 는 커밋 안 함
 - 웹은 C# 서버가 `/play/` 로 같이 서빙 (같은 호스트라 `?server=` 없이 붙음). 서버·웹·PC 클라 한 zip 은 `node godot/server/tools/package.mjs --godot <고도>` (godot/server/README.md G7, 재혁 PC 순서 docs/godot-play.md)
 - 재혁 PC (윈도우): `tetrafall.exe -- --server ws://<서버 IP>:3000` (또는 같은 PC 면 그냥 `tetrafall.exe`)

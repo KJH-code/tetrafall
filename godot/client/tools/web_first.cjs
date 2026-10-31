@@ -13,7 +13,7 @@ const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.wasm': 'applica
   const [dir, mbps = '10', secs = '12', query = ''] = process.argv.slice(2);
   // .br 미리 만들기 (tools/package.mjs 와 같은 설정)
   for (const f of fs.readdirSync(dir)) {
-    if (/\.(br|gz|import)$/.test(f) || fs.existsSync(path.join(dir, f + '.br')) && fs.statSync(path.join(dir, f + '.br')).mtimeMs >= fs.statSync(path.join(dir, f)).mtimeMs) continue;
+    if (fs.statSync(path.join(dir, f)).isDirectory() || /\.(br|gz|import)$/.test(f) || fs.existsSync(path.join(dir, f + '.br')) && fs.statSync(path.join(dir, f + '.br')).mtimeMs >= fs.statSync(path.join(dir, f)).mtimeMs) continue;
     const d = fs.readFileSync(path.join(dir, f));
     fs.writeFileSync(path.join(dir, f + '.br'), zlib.brotliCompressSync(d, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11, [zlib.constants.BROTLI_PARAM_LGWIN]: 24, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: d.length } }));
   }

@@ -16,6 +16,10 @@ View="*res://core/view.gd"
 window/size/viewport_width=1280
 window/size/viewport_height=720
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/web_music/plugin.cfg")
+
 [gui]
 
 theme/custom_font="res://assets/fonts/ui_font.tres"

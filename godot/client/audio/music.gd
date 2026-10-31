@@ -6,6 +6,7 @@ extends Node
 const C := preload("res://core/config.gd")
 const SM := preload("res://audio/sound_math.gd")
 const FADE := 0.35 # 곡 바꿈 엇갈림 (초)
+const Fetch := preload("res://audio/music_fetch.gd")
 
 var sfx # sfx.gd (녹음본·버스)
 var music_bus := -1
@@ -24,9 +25,13 @@ var hz_pop: AudioStreamPlayer
 var volume := 1.0
 var duck_until := 0.0
 var duck_gain := 1.0
+var fetch: Fetch # 곡 녹음본 (웹은 따로 받음)
 
 
 func _ready() -> void:
+	fetch = Fetch.new()
+	fetch.sfx = sfx
+	add_child(fetch)
 	music_bus = sfx._bus("Music", "Master")
 	song_a = sfx._player("Music")
 	song_b = sfx._player("Music")
@@ -65,7 +70,7 @@ func duck(seconds: float) -> void:
 
 func _loop_stream(file: String) -> AudioStream:
 	var s: AudioStream = sfx.stream(file)
-	if s is AudioStreamOggVorbis:
+	if s != null and s is AudioStreamOggVorbis:
 		s.loop = true
 	return s
 
@@ -83,6 +88,8 @@ func update(state: Dictionary, dt: float, ear_z) -> void:
 	# 앰비언트 (메뉴·대기실) — 있으면 곡은 쉼
 	var at = SM.ambient_theme(state, View.menu_theme)
 	_ambient(at, now)
+	if not state.is_empty():
+		fetch.prefetch(sfx.manifest.get("music", {}), state) # 웹: 방에 들어가면 곡 미리 받기
 	if at != null:
 		if song_a.playing:
 			song_paused_at = _pos_ratio(song_a)
@@ -103,6 +110,11 @@ func _song(key: String) -> void:
 	var rec = sfx.manifest.get("music", {}).get(key)
 	if rec == null:
 		return
+	var st = fetch.stream(rec.file)
+	if st == null:
+		return # 웹에서 아직 못 받은 곡 — 곡 없이 (받으면 다음 프레임에 틂)
+	if st is AudioStreamOggVorbis:
+		st.loop = true
 	var ratio := 0.0
 	if song_a.playing:
 		ratio = _pos_ratio(song_a)
@@ -115,7 +127,6 @@ func _song(key: String) -> void:
 	song_b = old
 	_fade_out(song_b)
 	song_key = key
-	var st := _loop_stream(rec.file)
 	song_a.stream = st
 	var target := linear_to_db(float(rec.gain))
 	song_a.volume_db = target - 30

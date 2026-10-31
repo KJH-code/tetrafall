@@ -101,3 +101,40 @@ func test_title_fx_baked() -> void:
 		if t != null:
 			for rec in t.land + [t.burst, t.exit]:
 				check(ResourceLoader.exists("res://audio/baked/" + rec.file), "파일 %s" % rec.file)
+
+
+# 웹 곡 따로 받기 (audio/music_fetch.gd · addons/web_music): 받는 순서, 못 받은 곡은 조용히 넘어감, 내보내기에서 빼는 파일
+func test_web_music_fetch() -> void:
+	const Fetch := preload("res://audio/music_fetch.gd")
+	const Export := preload("res://addons/web_music/export.gd")
+	var m = JSON.parse_string(FileAccess.get_file_as_string("res://audio/baked/manifest.json"))
+	var st := {"phase": "lobby", "map": {"id": "volcano"}}
+	var o: Array = Fetch.order(m.music, st)
+	check(o.size() == m.music.size(), "순서에 곡 전부 (%d / %d)" % [o.size(), m.music.size()])
+	var th = C.WORLD_MAP_THEME.get("volcano")
+	var key: String = th if th != null and C.MUSIC_THEMES.has(th) else C.MUSIC_THEME_DEFAULT
+	check(o.slice(0, 3) == ["lobby", key, key + ".tense"], "대기실 → 맵 곡 → 긴장 곡 먼저: %s" % [o.slice(0, 3)])
+	# 웹 (remote) 인데 주소가 없어 못 받음 → null, 다시 물어도 줄은 하나
+	var f := Fetch.new()
+	f.remote = true
+	check(f.stream("music.lobby.ogg") == null, "못 받은 곡 null")
+	f.stream("music.lobby.ogg")
+	check(f.queue.count("music.lobby.ogg") == 1, "같은 곡 줄에 하나")
+	f.free()
+	# 음악: 곡이 없으면 틀지 않고 넘어감 (에러 없음)
+	const Sfx := preload("res://audio/sfx.gd")
+	const MusicNode := preload("res://audio/music.gd")
+	var sfx := Sfx.new()
+	sfx.manifest = m
+	var mu := MusicNode.new()
+	mu.sfx = sfx
+	mu.fetch = Fetch.new()
+	mu.fetch.remote = true
+	mu.song_a = AudioStreamPlayer.new()
+	mu.song_b = AudioStreamPlayer.new()
+	mu._song("lobby")
+	check(mu.song_key == "" and mu.song_a.stream == null, "못 받은 곡은 안 틂")
+	for n in [mu.song_a, mu.song_b, mu.fetch, mu, sfx]:
+		n.free()
+	check(Export.is_song("res://audio/baked/music.lobby.ogg") and Export.is_song("res://audio/baked/music.volcano.tense.ogg"), "곡은 웹 pck 에서 뺌")
+	check(not Export.is_song("res://audio/baked/ambient.volcano.ogg") and not Export.is_song("res://audio/baked/hit.0.wav") and not Export.is_song("res://audio/baked/manifest.json"), "곡 말고는 그대로")
