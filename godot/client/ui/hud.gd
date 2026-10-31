@@ -516,14 +516,14 @@ func _make_card(p: Dictionary, L: Dictionary) -> Dictionary:
 	v.add_child(hp)
 	s.border_color = S.ACCENT if me else _player_color(p) # 아래 색 띠 = 그 사람 색 (위 띠는 내 판만)
 	cards_row.add_child(panel)
-	# 표식 칸 (오른쪽 아래, JS .pc .mk): 빨강, 내가 붙인 것이면 흰 테, 꽉 차면 금색
+	# 표식 칸 (B4 JS: 위 줄 오른쪽 끝, 이름과 같은 높이 — 큰 % 와 안 섞이게): 빨강, 내가 붙인 것이면 흰 테, 꽉 차면 금색
 	var mk := Label.new()
-	mk.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	mk.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	mk.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	mk.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	mk.add_theme_font_size_override("font_size", 12)
+	mk.add_theme_font_size_override("font_size", 11)
 	mk.add_theme_constant_override("outline_size", 4)
-	panel.add_child(mk)
+	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(mk)
 	return {"panel": panel, "face": face, "face_img": face_img, "col": _player_color(p), "sub": sub, "pct": pct, "hp": hp, "hp_fill": hp_fill, "mk": mk}
 
 
