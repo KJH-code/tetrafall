@@ -34,10 +34,10 @@ static func key_of(char_id: String, color: Color, size: int, full: bool) -> Stri
 static func tex(char_id, color: Color, size: int, full := false) -> Texture2D:
 	if inst == null or char_id == null or str(char_id) == "":
 		return null
-	return inst._get(str(char_id), color, size, full)
+	return inst._lookup(str(char_id), color, size, full)
 
 
-func _get(char_id: String, color: Color, size: int, full: bool) -> Texture2D:
+func _lookup(char_id: String, color: Color, size: int, full: bool) -> Texture2D:
 	var k := key_of(char_id, color, size, full)
 	if cache.has(k):
 		return cache[k]
@@ -53,7 +53,7 @@ func _get(char_id: String, color: Color, size: int, full: bool) -> Texture2D:
 # 메뉴에 오래 있으면 카드 8장을 미리 (JS warmPortraits)
 func warm(color: Color) -> void:
 	for c in C.CHARACTERS:
-		_get(str(c), color, 128, true)
+		_lookup(str(c), color, 128, true)
 
 
 func _process(_d: float) -> void:
