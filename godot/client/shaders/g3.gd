@@ -15,6 +15,7 @@ const SKY := preload("res://shaders/sky.gdshader")
 const TERRAIN := preload("res://shaders/terrain.gdshader")
 const BS := preload("res://shaders/block_style.gd")
 const SPROUTS := preload("res://shaders/sprouts.gd")
+const BATCH := preload("res://shaders/batch.gd")
 
 static var _globals := {} # 넣은 전역 셰이더 값 (RenderingServer 는 실행 중 읽기가 안 됨 — 테스트·확인용)
 
@@ -284,3 +285,12 @@ static func sprout_node(theme_id) -> Node3D:
 static func sprout_update(node: Node3D, grid: PackedByteArray, w: int, d: int, h: int, skip: Dictionary = {}, low := false) -> void:
 	if node:
 		node.refresh(grid, w, d, h, skip, low)
+
+
+# ---- 몸 묶기 (JS batch.js, batch.gd): body 아래 G3 툰 조각을 SkinnedMesh 하나로 (툰 1 + 외곽선 1). outline: 외곽선 붙임
+static func batch_mesh(body: Node3D, outline := true) -> Node3D:
+	var b = BATCH.new()
+	b.name = "G3Batch"
+	body.add_child(b)
+	b.build(body, toon_material(Color.WHITE, {"vertex_color": true, "outline": outline}))
+	return b
