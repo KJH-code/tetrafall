@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
 import { CONFIG as C } from '/shared/config.js';
 import { toon } from '/toon.js';
-import { terrainGeometry, terrainMaterial, terrainCells } from '/blocks.js';
+import { terrainGeometry, terrainMaterial, terrainCells, BlockDecor } from '/blocks.js';
 import { blockStyle } from '/shared/block-style.js';
 const Q = new URLSearchParams(location.search);
 const TERR = Q.has('terrain'); // ?terrain: 테마 지형 블록 (terrain_grids.json, g3_demo --terrain 과 같음)
@@ -87,6 +87,7 @@ if (TERR) {
   terrainCells(geo.attributes.aCell, grid, j.W, j.D, j.H, null);
   im.castShadow = im.receiveShadow = true;
   scene.add(im);
+  if (st.sprout) new BlockDecor(scene, st, L.glow || (L.terrain.glow != null ? [L.terrain.glow] : null)).update(grid, j.W, j.D, j.H, null, false);
   things.length = 0;
   things.push(['box', [6, 6, -0.15], [12, 12, 0.3], 0xa49aa0]);
 }
