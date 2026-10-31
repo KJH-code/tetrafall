@@ -28,6 +28,7 @@ func _body() -> Node3D:
 	arm.mesh = cm
 	arm.position = Vector3(0.7, 0.2, 0)
 	arm.material_override = G3.toon_material(0x3a7be0)
+	arm.set_meta("tf_skin", true)
 	torso.add_child(arm)
 	var hand := MeshInstance3D.new()
 	hand.name = "hand"
@@ -103,4 +104,10 @@ func test_batch_pose_color_hide() -> void:
 	check(body.get_node("torso/face").layers != 0, "그림 조각은 따로 그림")
 	var mat: ShaderMaterial = b.mi.material_override
 	check(mat.get_shader_parameter("use_vertex_color") == true and mat.next_pass != null, "정점 색 툰 + 외곽선 하나")
+	var uv2: PackedVector2Array = arr[Mesh.ARRAY_TEX_UV2]
+	var skin_bad := 0
+	for i in uv2.size():
+		if (uv2[i].x > 0.5) != (bones[i * 4] == 1):
+			skin_bad += 1
+	check(uv2.size() == cols.size() and skin_bad == 0, "피부 조각 (tf_skin) 정점만 UV2.x = 1 (%d 틀림)" % skin_bad)
 	body.free()

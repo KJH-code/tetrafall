@@ -27,7 +27,10 @@ uniform float emissive_energy = 1.0;
 uniform vec3 toon_steps = vec3(0.43137, 0.68627, 1.0); // g3_config.TOON_STEPS
 uniform bool use_vertex_color = false;
 uniform bool vertex_color_linear = false; // COLOR 가 이미 선형 (world/scenery.gd 꼭짓점 색)
-uniform bool no_fog = false; // JS fog: false (먼 배경)
+uniform bool no_fog = false;
+// 피부 조각 (batch.gd: UV2.x = 1 인 정점, 정점 색 재질만): 색을 skin_tint 로 섞고 (a = 섞는 양), 발광은 emissive 대신 skin_emissive (JS render.js bodyMat 효과: 경직 깜빡·발광)
+uniform vec3 skin_emissive : source_color = vec3(0.0);
+uniform vec4 skin_tint : source_color = vec4(0.0); // JS fog: false (먼 배경)
 uniform float color_glow = 0.0; // 제 색으로 빛남 (JS 결정·버섯 갓: 발광 += 색 × glow, 인스턴스 색 포함)
 
 varying vec3 world_n;
@@ -58,12 +61,14 @@ void vertex() {
 void fragment() {
 	vec4 c = albedo;
 	if (use_tex) c *= texture(albedo_tex, UV);
+	bool skin = use_vertex_color && UV2.x > 0.5;
 	if (use_vertex_color && !vertex_color_linear) c *= COLOR;
+	if (skin) c.rgb = mix(c.rgb, skin_tint.rgb, skin_tint.a);
 	vec3 base = g3_lin(c.rgb);
 	if (use_vertex_color && vertex_color_linear) base *= COLOR.rgb;
 	vec3 hemi = toon_hemi(world_n);
 	v_base = base;
-	v_amb = base * hemi / PI + g3_lin(emissive) * emissive_energy + base * color_glow;
+	v_amb = base * hemi / PI + g3_lin(skin ? skin_emissive : emissive) * emissive_energy + base * color_glow;
 	ALBEDO = vec3(1.0);
 	if (g3_fog_far > 0.0 && !no_fog) FOG = vec4(g3_fog_color, smoothstep(g3_fog_near, g3_fog_far, -VERTEX.z)); // 고도가 선형으로 섞음 (더하기 패스는 1 - a 를 곱함)
 	EMISSION = g3_sun_on > 0.5 ? vec3(0.0) : g3_srgb(v_amb);

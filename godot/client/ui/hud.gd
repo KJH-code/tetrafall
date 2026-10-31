@@ -407,15 +407,16 @@ func _cards(st: Dictionary, vp: Vector2) -> void:
 			if ft != null:
 				c.face_img.texture = ft
 				c.face.color = Color(c.col.r, c.col.g, c.col.b, 0.35)
-		c.pct.text = "KO" if dead else "%d%%" % int(p.damage)
-		c.pct.add_theme_color_override("font_color", S.HOT if dead else _damage_color(float(p.damage)))
+		# 체력전: 큰 % 자리에 남은 HP (글자색도 HP 비율), 그 아래 막대. 끄면 예전 % (JS updatePlayers)
+		var hv = U.hp_view(p, st)
+		c.pct.text = "KO" if dead else ("%d" % int(hv.hp) if hv != null else "%d%%" % int(p.damage))
+		c.pct.add_theme_color_override("font_color", S.HOT if dead else (U.hp_color(hv.frac) if hv != null else _damage_color(float(p.damage))))
 		c.panel.modulate = Color(0.6, 0.6, 0.6) if dead else Color.WHITE
 		c.sub.text = "%s%s %s" % ["%s팀 · " % TEAM_KO.get(str(p.get("team", "")), "") if st.get("teamMode", false) else "", C.CHAR_NAMES.get(str(p.get("char", "")), ""), ("킬 %d" % int(p.get("score", 0))) if kills else ("승 %d" % int(p.get("wins", 0)))]
-		var hp = U.hp_frac(p, st.get("hpMax")) if st.get("hpMode", false) else null
-		c.hp.visible = hp != null
-		if hp != null:
-			c.hp_fill.size.x = c.hp.size.x * hp
-			c.hp_fill.color = Color("e0300c") if hp < C.HUD_HP_LOW else Color("2fbf5a")
+		c.hp.visible = hv != null and not dead # KO 면 막대 없이 KO 만
+		if hv != null:
+			c.hp_fill.size.x = c.hp.size.x * float(hv.frac)
+			c.hp_fill.color = Color("e0300c") if hv.low else Color("2fbf5a")
 
 
 func _make_card(p: Dictionary, L: Dictionary) -> Dictionary:
@@ -497,8 +498,9 @@ func _skills(me: Dictionary, vp: Vector2) -> void:
 		skill_r.get_parent().modulate = Color(1.2, 1.1, 0.7) if full else Color.WHITE
 		skills.position = Vector2((vp.x - skills.size.x) / 2.0, vp.y - cards_h - skills.size.y)
 	if damage_label.visible:
-		damage_label.text = "%d%%" % int(me.get("damage", 0))
-		damage_label.add_theme_color_override("font_color", _damage_color(float(me.get("damage", 0))))
+		var hv = U.hp_view(me, Store.state) # 체력전이면 % 대신 남은 HP
+		damage_label.text = ("HP %d" % int(hv.hp)) if hv != null else "%d%%" % int(me.get("damage", 0))
+		damage_label.add_theme_color_override("font_color", U.hp_color(hv.frac) if hv != null else _damage_color(float(me.get("damage", 0))))
 		damage_label.position = Vector2((vp.x - damage_label.size.x) / 2.0, vp.y - cards_h - skills.size.y - damage_label.size.y - 6)
 
 

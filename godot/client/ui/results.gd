@@ -5,6 +5,7 @@ extends PanelContainer
 const C := preload("res://core/config.gd")
 const S := preload("res://ui/ui_style.gd")
 const Portrait := preload("res://ui/portrait.gd")
+const U := preload("res://ui/ui_calc.gd")
 const Coords := preload("res://core/coords.gd")
 
 const CAUSE_KO := {"crush": "압사", "fall": "낙사", "lava": "용암", "hp": "체력"}
@@ -64,7 +65,8 @@ func refresh(st: Dictionary) -> void:
 	for id in ids:
 		winners[id] = true
 	var kills: bool = st.get("mode") == "kills"
-	var k := "%s|%s|%s" % [str(st.round.n), str(ids), JSON.stringify(ps.map(func(p): return [p.id, p.get("wins"), p.get("score"), p.damage, p.alive, p.get("cause")]))]
+	var hp_on: bool = bool(st.get("hpMode", false)) # 체력전: '피해' 열 → '남은 HP'
+	var k := "%s|%s|%s|%s" % [str(st.round.n), str(ids), JSON.stringify(ps.map(func(p): return [p.id, p.get("wins"), p.get("score"), p.damage, p.get("hp"), p.alive, p.get("cause")])), hp_on]
 	var vp := get_viewport_rect().size
 	position = Vector2(vp.x - size.x - 12, (vp.y - size.y) / 2.0 + 22)
 	if star_who != null and star_img.texture == null:
@@ -106,12 +108,13 @@ func refresh(st: Dictionary) -> void:
 		return a.slot < b.slot)
 	for c in table.get_children():
 		c.free()
-	for h in ["이름", "캐릭터", "킬" if kills else "승", "피해", "결과"]:
+	for h in ["이름", "캐릭터", "킬" if kills else "승", "남은 HP" if hp_on else "피해", "결과"]:
 		table.add_child(S.label(h, 12, Color("a49cbc")))
 	for p in ps:
 		var row_col := Color(1, 0.82, 0.23) if winners.has(p.id) else S.TEXT
 		table.add_child(S.label(_name(p), 18, _color(p)))
 		table.add_child(S.label(C.CHAR_NAMES.get(str(p.get("char", "")), "—"), 15, row_col))
 		table.add_child(S.label("%d" % int(p.get("score", 0) if kills else p.get("wins", 0)), 15, row_col))
-		table.add_child(S.label("%d%%" % int(p.damage), 15, row_col))
+		var hv = U.hp_view(p, st) if hp_on else null
+		table.add_child(S.label(("%d" % (int(hv.hp) if p.alive else 0)) if hv != null else "%d%%" % int(p.damage), 15, row_col))
 		table.add_child(S.label("생존" if p.alive else CAUSE_KO.get(str(p.get("cause", "")), "탈락"), 15, row_col))

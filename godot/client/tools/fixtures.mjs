@@ -249,7 +249,7 @@ console.log(`interp 프레임 ${frames.length}, net ${seq.length}, keys 바퀴 $
 // ui.json (G4): 화면 계산 — shared/hud-layout.js · kills-hud.js · wipe.js · char-select.js · leave.js
 {
   const { cardLayout, lobbyDock, labelSizes } = await import('../../../shared/hud-layout.js');
-  const { KillTally, streakText, progress, topBar, scoreRows, respawnSecs, hpFrac } = await import('../../../shared/kills-hud.js');
+  const { KillTally, streakText, progress, topBar, scoreRows, respawnSecs, hpFrac, hpView, hpColor } = await import('../../../shared/kills-hud.js');
   const { screenOf, wipeKind, wipePlan } = await import('../../../shared/wipe.js');
   const { stageYaw, tauntAt, randomReel } = await import('../../../shared/char-select.js');
   const { leaveNeedsConfirm } = await import('../../../shared/leave.js');
@@ -282,6 +282,9 @@ console.log(`interp 프레임 ${frames.length}, net ${seq.length}, keys 바퀴 $
   u.streak = [0, 1, 2, 3, 4, 5, 6, 11].map((n) => [n, streakText(n)]);
   u.progress = [[0, 7], [3, 7], [-2, 7], [9, 7], [5, 0]].map(([s, g]) => [s, g, progress(s, g)]);
   u.respawn = [5000, 4001, 4000, 1, 0, -5, null].map((ms) => [ms, respawnSecs(ms)]);
+  const hst = { hpMode: true, hpMax: 120 };
+  u.hpView = [[{ hp: 86.2 }, hst], [{ hp: 300, hpMax: 400 }, hst], [{ hp: -4 }, hst], [{ hp: 20 }, hst], [{ hp: 60 }, { hpMax: 120 }], [{ damage: 30 }, hst], [null, hst], [{ hp: 60 }, null]].map(([p, s]) => [p, s, hpView(p, s)]);
+  u.hpColor = [1, 0.75, 0.5, 0.31, 0.2, 0, -1, 1.5].map((f) => [f, hpColor(f)]);
   u.hp = [[{ hp: 60 }, 120], [{ hp: -5 }, 120], [{ hp: 50, hpMax: 200 }, 120], [{ damage: 30 }, 120], [{ hp: 60 }, null]].map(([p, m]) => [p, m, hpFrac(p, m)]);
   const screens = ['menu', 'lobby', 'game', 'results', null];
   u.screens = [];

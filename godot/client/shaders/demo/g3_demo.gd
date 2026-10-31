@@ -52,8 +52,12 @@ func _ready() -> void:
 		body.get_node("torso/arm").rotation = Vector3(1.1, -0.4, 0.8)
 		body.get_node("torso/arm").scale = Vector3(1, 1.3, 0.9)
 		add_child(body)
-		if batch == 1:
-			G3.batch_mesh(body)
+		if batch >= 1:
+			body.get_node("torso/arm").set_meta("tf_skin", true)
+			var bm = G3.batch_mesh(body)
+			if batch == 2: # 피부만 하얗게 + 발광 (경직 깜빡 확인)
+				bm.mi.material_override.set_shader_parameter("skin_tint", Color(1, 1, 1, 0.8))
+				bm.mi.material_override.set_shader_parameter("skin_emissive", Color(0.4, 0.4, 0.0))
 	G3.set_field(self, cx * 2, cx * 2)
 	for t in things:
 		var mi := MeshInstance3D.new()

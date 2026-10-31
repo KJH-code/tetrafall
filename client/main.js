@@ -18,7 +18,7 @@ import { pipText, popScale, edgeLevel, markBlink, pickMark } from '/shared/hunt-
 import { victoryPlan, victoryStage } from '/shared/victory.js';
 import { MAP_IDS, mapName } from '/shared/maps.js';
 import { cardLayout, lobbyDock } from '/shared/hud-layout.js';
-import { KillTally, streakText, progress, topBar, scoreRows, respawnSecs, hpFrac } from '/shared/kills-hud.js';
+import { KillTally, streakText, progress, topBar, scoreRows, respawnSecs, hpFrac, hpView, hpColor } from '/shared/kills-hud.js';
 import { randomReel } from '/shared/char-select.js';
 import { CharStage } from '/char-stage.js';
 import { leaveNeedsConfirm } from '/shared/leave.js';
@@ -1795,15 +1795,16 @@ function updatePlayers() {
     c.el.classList.toggle('dead', dead);
     c.el.classList.toggle('away', !!p.away); // 끊겨서 자리만 남음 (봇이 대신 조종) — 글자 + 살짝 흐리게
     c.el.classList.toggle('watch', spectating() && !spec.overview && spec.target === p.id); // 관전 중 보고 있는 사람
-    const hpf = state.hpMode ? hpFrac(p, state.hpMax) : null; // 체력전: % 아래 HP 막대 (서버 players[].hp · 스냅샷 hpMax)
-    c.el.classList.toggle('has-hp', hpf !== null);
-    if (hpf !== null) {
-      c.hp.style.width = `${(hpf * 100).toFixed(1)}%`;
-      c.hp.classList.toggle('low', hpf < C.HUD_HP_LOW);
+    // 체력전: 큰 % 자리에 남은 HP + 그 아래 막대 (서버 players[].hp · 사람마다 hpMax, 없으면 스냅샷 hpMax), 글자색도 HP 비율로. 끄면 예전 %
+    const hv = hpView(p, state);
+    c.el.classList.toggle('has-hp', hv !== null && !dead); // KO 면 막대 없이 KO 만
+    if (hv) {
+      c.hp.style.width = `${(hv.frac * 100).toFixed(1)}%`;
+      c.hp.classList.toggle('low', hv.low);
     }
-    const pct = dead ? '<i>KO</i>' : `${p.damage}<u>%</u>`;
+    const pct = dead ? '<i>KO</i>' : hv ? String(hv.hp) : `${p.damage}<u>%</u>`;
     if (c.pct.innerHTML !== pct) c.pct.innerHTML = pct;
-    c.pct.style.color = dead ? '' : damageColor(p.damage);
+    c.pct.style.color = dead ? '' : hv ? `rgb(${hpColor(hv.frac).join(',')})` : damageColor(p.damage);
     // 사냥꾼 표식: 표식 달린 사람 판에 칸 (내가 붙인 것이면 테두리, 꽉 차면 금색) — 2026-10-31 재혁: 누가 달렸는지 안 보임
     const mk = !dead ? pickMark(p.marks, myId) : null;
     const mkText = mk && mk.n > 0 && !markBlink(mk.left, performance.now()) ? pipText(mk.n) : '';
@@ -1819,6 +1820,12 @@ function updatePlayers() {
 // ---------- 판 끝: 승자 초상 + 결과 표 (이미 있는 숫자만). 끝나고 RESULTS_HERO_MS 동안 가운데 크게, 그 뒤 대기실 판 ----------
 const resultsEl = $('results');
 let resultsKey = '';
+// 피해 칸 글: 체력전이면 남은 HP (죽었으면 0), 아니면 피해 %
+function hurtText(p, hpOn = !!(state && state.hpMode)) {
+  if (!hpOn) return `${p.damage}%`;
+  const hv = hpView(p, state);
+  return hv ? String(p.alive ? hv.hp : 0) : `${p.damage}%`;
+}
 function updateResults() {
   const on = resultsHero() && !closeupNow() && livePlayers().length >= 2; // 승자 클로즈업이 끝난 뒤에 결과 표
   resultsEl.classList.toggle('hidden', !on);
@@ -1829,7 +1836,8 @@ function updateResults() {
   const ps = livePlayers();
   const winners = new Set(state.round.winnerIds && state.round.winnerIds.length ? state.round.winnerIds : [state.round.winnerId].filter(Boolean));
   const kills = state.mode === 'kills';
-  const key = `${state.round.n}|${state.mode}|${state.teamMode}|${[...winners].join(',')}|` + ps.map((p) => `${p.id}:${p.wins}:${p.score}:${p.damage}:${p.alive}:${p.cause}`).join(',');
+  const hpOn = !!state.hpMode; // 체력전: '피해' 열 → '남은 HP'
+  const key = `${state.round.n}|${state.mode}|${state.teamMode}|${hpOn}|${[...winners].join(',')}|` + ps.map((p) => `${p.id}:${p.wins}:${p.score}:${p.damage}:${p.hp}:${p.alive}:${p.cause}`).join(',');
   if (key === resultsKey) return;
   resultsKey = key;
   const star = ps.find((p) => winners.has(p.id));
@@ -1847,7 +1855,7 @@ function updateResults() {
       const img = p.char ? portrait(p.char, playerColor(p, state), 64) : '';
       const face = `<span class="face" style="--pcol:${colorOf(p)}${img ? `;background-image:url(${img})` : ''}"></span>`;
       const how = p.alive ? '생존' : CAUSE_KO[p.cause] || '탈락';
-      return `<tr class="${winners.has(p.id) ? 'win' : ''}"><td class="n" style="color:${colorOf(p)}">${face}${escapeHtml(shownName(p))}</td><td>${C.CHAR_NAMES[p.char] || '—'}</td><td class="big">${kills ? p.score : p.wins}</td><td class="big">${p.damage}%</td><td>${how}</td></tr>`;
+      return `<tr class="${winners.has(p.id) ? 'win' : ''}"><td class="n" style="color:${colorOf(p)}">${face}${escapeHtml(shownName(p))}</td><td>${C.CHAR_NAMES[p.char] || '—'}</td><td class="big">${kills ? p.score : p.wins}</td><td class="big">${hurtText(p, hpOn)}</td><td>${how}</td></tr>`;
     })
     .join('');
   resultsEl.innerHTML =
@@ -1855,7 +1863,7 @@ function updateResults() {
     `<div class="who">` +
     (big ? `<div class="star" style="background-image:url(${big});border-bottom-color:${star ? colorOf(star) : '#888'}"></div>` : '') +
     `<div class="head" style="color:${star ? colorOf(star) : 'var(--accent)'}">${escapeHtml(head)}</div></div>` +
-    `<table><tr><th>이름</th><th>캐릭터</th><th>${kills ? '킬' : '승'}</th><th>피해</th><th>결과</th></tr>${rows}</table>`;
+    `<table><tr><th>이름</th><th>캐릭터</th><th>${kills ? '킬' : '승'}</th><th>${hpOn ? '남은 HP' : '피해'}</th><th>결과</th></tr>${rows}</table>`;
 }
 
 // ---------- 화면 전환 슬래시 (스매시식, shared/wipe.js) ----------
@@ -2206,7 +2214,7 @@ function updateSpectate() {
   // 살아 있는 사람 목록 (지금 보는 사람은 ▶)
   const alive = aliveOthers();
   // 살아 있는 사람·피해 % 는 아래 플레이어 판이 보여 준다 (보는 사람 판에 ▶) → 판이 없을 때만 글로
-  const list = cardsOn() ? '' : alive.map((x) => `${!spec.overview && x.id === spec.target ? '▶ ' : ''}${shownName(x)} ${x.damage}%`).join('   ');
+  const list = cardsOn() ? '' : alive.map((x) => `${!spec.overview && x.id === spec.target ? '▶ ' : ''}${shownName(x)} ${hurtText(x)}`).join('   ');
   const next = ghostOn() ? `${keyText('jump')} 다음 사람 · 클릭 블록 떨어뜨리기` : `클릭/${keyText('jump')} 다음 사람`;
   const text = `${head}\n${watching} · 마우스 돌리기 · 휠 거리 · ${next} · 우클릭 ${spec.overview ? '따라가기' : '전체 보기'}${list ? `\n살아 있음: ${list}` : ''}`;
   if (specEl.textContent !== text) specEl.textContent = text;
@@ -2427,6 +2435,7 @@ const stunEl = $('stun');
 const vignetteEl = $('vignette');
 const itemSlotEl = $('item-slot');
 let shownDamage = null;
+let shownKey = null; // 글이 바뀔 때만 다시 씀 (체력전이면 남은 HP)
 let bottomKey = '';
 function updateBottom(p) {
   const show = !!p && p.alive && !p.master && (state.phase === 'playing' || state.phase === 'countdown'); // 마스터는 몸이 없어 아이템·피해 % 없음
@@ -2437,14 +2446,17 @@ function updateBottom(p) {
   stunEl.classList.toggle('hidden', !stunned);
   vignetteEl.classList.toggle('on', stunned);
   if (!show) return;
-  if (shownDamage !== p.damage) {
+  const hv = hpView(p, state); // 체력전이면 % 대신 남은 HP
+  const dmgKey = hv ? `hp${hv.hp}` : String(p.damage);
+  if (shownKey !== dmgKey) {
     if (shownDamage !== null && p.damage > shownDamage) {
       damageEl.classList.add('pop'); // 맞으면 잠깐 커졌다 줄어듦
       setTimeout(() => damageEl.classList.remove('pop'), 140);
     }
     shownDamage = p.damage;
-    damageEl.textContent = `${p.damage}%`;
-    damageEl.style.color = damageColor(p.damage);
+    shownKey = dmgKey;
+    damageEl.textContent = hv ? `HP ${hv.hp}` : `${p.damage}%`;
+    damageEl.style.color = hv ? `rgb(${hpColor(hv.frac).join(',')})` : damageColor(p.damage);
   }
   const buffs = [];
   if (p.jumpLeft > 0) buffs.push(`점프↑ ${(p.jumpLeft / 1000).toFixed(1)}s`);
