@@ -61,8 +61,8 @@ public class S4Tests
             Assert.True(hx == row[1].GetString(), $"{sc.name}: 판 해시가 JS 와 다름 (Tetrafall.Trace trace + trace-diff)");
             ran++;
         }
-        Assert.True(ran >= 1, "연습 판은 돌아야 함");
-        Assert.Contains("연습 허수아비", Scenarios.ALL.Select(s => s.name).Except(notYet));
+        Assert.Empty(notYet); // S5 (봇) 뒤: 34판 전부 = 규칙 이식 끝
+        Assert.Equal(34, ran);
     }
 
     [Fact]

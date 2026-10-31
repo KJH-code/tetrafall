@@ -7,7 +7,7 @@ namespace Tetrafall.Core;
 public sealed partial class Game
 {
     // 갈고리가 닿은 블록 칸 { x, y, z, d(수평 거리) }
-    sealed record HookHit(int x, int y, int z, double d);
+    public sealed record HookHit(int x, int y, int z, double d);
 
     // 보는 방향 HOOK_RANGE 안 (반각 HOOK_HALF_ANGLE_DEG, 높이 차 2칸 안) 가장 가까운 상대
     Player? HookTarget(Player p)
@@ -33,7 +33,7 @@ public sealed partial class Game
 
     // 갈고리가 닿는 첫 블록 (격자 칸 또는 떨어지는 블록, 필드 바닥은 아님). 조준 방향(yaw + pitch) 3D 직선을 눈 높이에서 HOOK_RANGE 만큼.
     // 놓치면 보조로 발 층·한 칸 위 층을 수평으로. skip(x, y, z): 이 칸은 없는 셈 (R: 조종 중인 블록)
-    HookHit? HookRayBlock(Player p, double yaw, double pitch, Func<int, int, int, bool>? skip = null)
+    public HookHit? HookRayBlock(Player p, double yaw, double pitch, Func<int, int, int, bool>? skip = null)
     {
         bool Solid(int x, int y, int z) => z >= 0 && z < H && ((InXY(x, y) && grid[Idx(x, y, z)] != 0) || pieceCells.ContainsKey(CellKey(x, y, z))) && !(skip != null && skip(x, y, z));
         double cp = JsMath.Cos(pitch);
