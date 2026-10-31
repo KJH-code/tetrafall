@@ -5,6 +5,7 @@ extends Control
 
 const C := preload("res://core/config.gd")
 const S := preload("res://ui/ui_style.gd")
+const Portrait := preload("res://ui/portrait.gd")
 const U := preload("res://ui/ui_calc.gd")
 const Coords := preload("res://core/coords.gd")
 
@@ -383,6 +384,11 @@ func _cards(st: Dictionary, vp: Vector2) -> void:
 		if c.is_empty():
 			continue
 		var dead: bool = not p.alive and not p.get("master", false)
+		if c.face_img.texture == null:
+			var ft := Portrait.tex(p.get("char"), c.col, 96)
+			if ft != null:
+				c.face_img.texture = ft
+				c.face.color = Color(c.col.r, c.col.g, c.col.b, 0.35)
 		c.pct.text = "KO" if dead else "%d%%" % int(p.damage)
 		c.pct.add_theme_color_override("font_color", S.HOT if dead else _damage_color(float(p.damage)))
 		c.panel.modulate = Color(0.6, 0.6, 0.6) if dead else Color.WHITE
@@ -417,6 +423,11 @@ func _make_card(p: Dictionary, L: Dictionary) -> Dictionary:
 	var face := ColorRect.new() # 초상 자리 (G2 몸 SubViewport)
 	face.color = _player_color(p)
 	face.custom_minimum_size = Vector2(38, 38) * (0.85 if L.compact else 1.0)
+	var face_img := TextureRect.new()
+	face_img.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	face_img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	face_img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	face.add_child(face_img)
 	top.add_child(face)
 	var names := VBoxContainer.new()
 	var nm := _chip(_name(p), S.TEXT, 13 if not me else 14)
@@ -441,7 +452,7 @@ func _make_card(p: Dictionary, L: Dictionary) -> Dictionary:
 	v.add_child(hp)
 	s.border_color = S.ACCENT if me else _player_color(p) # 아래 색 띠 = 그 사람 색 (위 띠는 내 판만)
 	cards_row.add_child(panel)
-	return {"panel": panel, "face": face, "sub": sub, "pct": pct, "hp": hp, "hp_fill": hp_fill}
+	return {"panel": panel, "face": face, "face_img": face_img, "col": _player_color(p), "sub": sub, "pct": pct, "hp": hp, "hp_fill": hp_fill}
 
 
 # 피해 % 색 (JS damageColor): 흰 → 노랑 → 주황 → 빨강

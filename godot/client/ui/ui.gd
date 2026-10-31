@@ -5,6 +5,9 @@ extends CanvasLayer
 const C := preload("res://core/config.gd")
 const S := preload("res://ui/ui_style.gd")
 const U := preload("res://ui/ui_calc.gd")
+const Portrait := preload("res://ui/portrait.gd")
+const Coords := preload("res://core/coords.gd")
+const Prefs := preload("res://ui/ui_prefs.gd")
 
 var menu: Control
 var lobby: PanelContainer
@@ -18,10 +21,13 @@ var status: Label
 var ping: Label
 var shown := "" # 지금 보이는 화면 (menu·lobby·game·results)
 var target := "" # 바뀌려는 화면 (슬래시가 덮으면 shown 이 됨)
+var menu_since := -1.0 # 메뉴가 뜬 시각 (PORTRAIT_WARM_MS 뒤 카드 초상 미리 그리기)
+var warmed := false
 
 
 func _ready() -> void:
 	layer = 10
+	add_child(Portrait.new()) # 초상 그리기 (Portrait.inst)
 	var root := Control.new()
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -81,6 +87,8 @@ func _on_state(st: Dictionary, prev: Dictionary) -> void:
 
 
 func _show(screen: String) -> void:
+	if screen == "menu" and shown != "menu":
+		menu_since = Time.get_ticks_msec()
 	shown = screen
 	target = screen
 	menu.visible = screen == "menu"
@@ -92,6 +100,9 @@ func _show(screen: String) -> void:
 
 func _process(_d: float) -> void:
 	ping.text = Net.ping_text()
+	if not warmed and shown == "menu" and menu_since >= 0.0 and Time.get_ticks_msec() - menu_since >= C.PORTRAIT_WARM_MS and Portrait.inst != null:
+		warmed = true
+		Portrait.inst.warm(Coords.color(C.PLAYER_PALETTE[int(Prefs.get_value("color", 0)) % C.PLAYER_PALETTE.size()]))
 	# 메뉴·대기실·결과·설정이 떠 있거나 글자 칸에 커서가 있으면 게임 키·마우스 잡기를 막음 (판 중 HUD 는 안 막음)
 	var focus := get_viewport().gui_get_focus_owner()
 	PlayerInput.ui_blocking = settings.visible or shown in ["menu", "lobby", "results"] or focus is LineEdit
