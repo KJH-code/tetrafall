@@ -34,3 +34,4 @@ const SEA_RINGS := 8 # 구름 바다 판 끝 투명해지는 고리 수
 const CAM_ABOVE_HAZARD := 0.8 # 승자·셀카 카메라를 위험 표면 위 이만큼 이상으로
 const VICTORY_PULL := [0.3, 0.6] # 승자 카메라가 막히면: 막힌 칸 앞 여백, 승자에서 가장 가까운 거리
 const MARK_CELL := 0.94 # 스킬 예고 칸 판 크기 (render.js markBox)
+const LABEL_GAP := [96.0, 40.0] # 보통 시점 이름표 겹침 판정 크기 (화면 px, 가까운 4명 크기 기준 — 먼 것은 LABEL_FAR_SCALE 배)

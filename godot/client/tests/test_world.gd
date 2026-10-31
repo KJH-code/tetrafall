@@ -232,3 +232,16 @@ func test_lobby_preview_matches_js() -> void:
 		if not built.has(key):
 			built[key] = LP.build(t[0], int(t[1]), int(C.GRID_H))
 		check(near(LP.top_at(built[key], t[2], t[3]), t[4]), "previewTop %s" % [t])
+
+
+func test_label_thinning() -> void:
+	const L := preload("res://world/labels.gd")
+	var it := func(x, y, d): return {"px": Vector2(x, y), "dist": d, "gap": Vector2(100, 40)}
+	# 가까운 것이 이김: 겹치는 둘 중 먼 것 숨김, 떨어진 것은 그대로
+	var got := L.thin([it.call(100, 100, 5.0), it.call(130, 110, 2.0), it.call(400, 100, 9.0)])
+	check(got == [false, true, true], "겹침 숨김 %s" % [got])
+	# 같은 거리면 앞 순서
+	check(L.thin([it.call(0, 0, 1.0), it.call(10, 0, 1.0)]) == [true, false], "같은 거리")
+	# UI 판 안이면 숨김 (가려진 것은 자리도 차지하지 않음)
+	got = L.thin([it.call(50, 50, 1.0), it.call(60, 60, 3.0)], [Rect2(0, 0, 55, 55)])
+	check(got == [false, true], "UI 판 뒤 %s" % [got])

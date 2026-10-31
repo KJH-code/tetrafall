@@ -136,24 +136,22 @@ func thin_labels(cam: Camera3D, sky: bool) -> void:
 		dists.append(l.global_position.distance_to(cam.global_position))
 	var sizes := Labels.label_sizes(dists)
 	var k := float(C.SKY_VIEW.label) if sky else 1.0
-	var gap: Array = C.SKY_VIEW.labelGap
-	var placed := []
+	# 화면에서 겹치면 가까운 것만 (하늘 시점은 SKY_VIEW.labelGap, 보통은 이름표 크기 × 배율), UI 판 (View.covers) 뒤면 숨김
+	var items := []
+	var idx := []
 	for i in vis.size():
 		var l := vis[i]
 		l.pixel_size = WC.LABEL_PIXEL * sizes[i][0] * k
 		l.modulate.a = sizes[i][1]
-		if sky:
-			if cam.is_position_behind(l.global_position):
-				continue
-			var px := cam.unproject_position(l.global_position)
-			var hit := false
-			for q in placed:
-				if absf(q.x - px.x) < gap[0] and absf(q.y - px.y) < gap[1]:
-					hit = true
-			if hit:
-				l.visible = false
-				continue
-			placed.append(px)
+		if cam.is_position_behind(l.global_position):
+			continue
+		var g: Vector2 = Vector2(C.SKY_VIEW.labelGap[0], C.SKY_VIEW.labelGap[1]) if sky else Vector2(WC.LABEL_GAP[0], WC.LABEL_GAP[1]) * sizes[i][0]
+		items.append({"px": cam.unproject_position(l.global_position), "dist": dists[i], "gap": g})
+		idx.append(i)
+	var shown := Labels.thin(items, View.covers)
+	for j in idx.size():
+		if not shown[j]:
+			vis[idx[j]].visible = false
 
 
 func on_event(e: Dictionary) -> void:
