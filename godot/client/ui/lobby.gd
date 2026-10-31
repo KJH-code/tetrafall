@@ -51,6 +51,7 @@ var colors_key := ""
 
 
 func _ready() -> void:
+	visibility_changed.connect(func(): if visible: _place())
 	add_theme_stylebox_override("panel", S.pane())
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	var col := VBoxContainer.new()
@@ -84,6 +85,7 @@ func _ready() -> void:
 	skill_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	sv.add_child(skill_btn)
 	stage_box = ColorRect.new() # G2 몸 SubViewport 자리
+	stage_box.color = Color(0, 0, 0, 0) # 그리기 전엔 빈칸 (ColorRect 기본 흰색이 하얀 네모로 보이던 것)
 	stage_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	stage_box.custom_minimum_size = Vector2(60, 120)
 	sv.add_child(stage_box)
@@ -348,7 +350,7 @@ func refresh(st: Dictionary) -> void:
 	var big: Texture2D = Portrait.tex(ch, my_col, 256, true) if not live else null
 	stage_img.texture = big
 	stage_img.visible = not live
-	stage_box.color = Color(0, 0, 0, 0) if live or big != null else my_col
+	stage_box.color = Color(0, 0, 0, 0) # 3D·초상 그리기 전엔 빈칸 (색 상자 안 씀)
 	for id in C.CHARACTERS:
 		var b: Button = card_btns[str(id)]
 		var t := Portrait.tex(str(id), my_col, 128, true)
@@ -364,13 +366,22 @@ func refresh(st: Dictionary) -> void:
 	room_text.text = "· %s · %s" % [str(Store.room.get("name", "")), "공개 (목록에 보임)" if Store.room.get("public", false) else "비공개"]
 	public_btn.visible = host
 	public_btn.text = "비공개로" if Store.room.get("public", false) else "공개로"
-	# 폭: 오른쪽에 붙임
+	_place()
+
+
+# 폭: 오른쪽에 붙임 (lobby_dock). 보이는 첫 프레임부터 (스냅샷이 오기 전에도) — 첫 1~2초 왼쪽에 좁게 붙던 것
+func _place() -> void:
 	var vw := get_viewport_rect().size
 	var dock := U.lobby_dock(vw.x)
 	custom_minimum_size.x = dock.w
 	size.x = dock.w
 	position.x = dock.left
 	position.y = max(84.0, (vw.y - size.y) / 2.0 + 28.0)
+
+
+func _process(_d: float) -> void:
+	if visible:
+		_place()
 
 
 func _set_select(o: OptionButton, id) -> void:

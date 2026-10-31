@@ -42,9 +42,20 @@ func set_volume(v: float) -> void:
 	_apply_bus()
 
 
+var _bus_db := INF
+var _bus_mute = null
+
+
+# 버스 크기: 바뀔 때만 오디오 서버에 (웹은 오디오 서버 부르기가 비쌈 — 매 프레임 부르지 않게)
 func _apply_bus() -> void:
-	AudioServer.set_bus_volume_db(music_bus, linear_to_db(maxf(0.00001, C.MUSIC_VOLUME * volume * duck_gain)))
-	AudioServer.set_bus_mute(music_bus, volume <= 0)
+	var db := linear_to_db(maxf(0.00001, C.MUSIC_VOLUME * volume * duck_gain))
+	if absf(db - _bus_db) > 0.05:
+		_bus_db = db
+		AudioServer.set_bus_volume_db(music_bus, db)
+	var mute := volume <= 0
+	if mute != _bus_mute:
+		_bus_mute = mute
+		AudioServer.set_bus_mute(music_bus, mute)
 
 
 # 잠깐 줄임 (KO 마지막 킬 슬로모션)
@@ -64,8 +75,11 @@ func update(state: Dictionary, dt: float, ear_z) -> void:
 	# 음악 줄임 (duck): 슬로모션 동안 musicDuck 배, 뒤에 천천히 원래대로
 	var now := Time.get_ticks_msec() / 1000.0
 	var want_duck: float = C.SFX_KO.musicDuck if now < duck_until else 1.0
-	duck_gain += (want_duck - duck_gain) * minf(1.0, dt / (0.05 if want_duck < duck_gain else 0.35))
-	_apply_bus()
+	if duck_gain != want_duck:
+		duck_gain += (want_duck - duck_gain) * minf(1.0, dt / (0.05 if want_duck < duck_gain else 0.35))
+		if absf(duck_gain - want_duck) < 0.001:
+			duck_gain = want_duck
+		_apply_bus()
 	# 앰비언트 (메뉴·대기실) — 있으면 곡은 쉼
 	var at = SM.ambient_theme(state, View.menu_theme)
 	_ambient(at, now)
@@ -171,7 +185,9 @@ func _hazard(state: Dictionary, dt: float, ear_z) -> void:
 	if not hz.playing:
 		hz.stream = _loop_stream(rec.loop.file)
 		hz.play(randf() * hz.stream.get_length())
-	hz.volume_db = linear_to_db(maxf(0.00001, float(rec.loop.gain) * hz_level))
+	var hz_db := linear_to_db(maxf(0.00001, float(rec.loop.gain) * hz_level))
+	if absf(hz.volume_db - hz_db) > 0.05: # 바뀔 때만 (웹 오디오 서버 부르기 줄임)
+		hz.volume_db = hz_db
 	if randf() < float(C.SFX_HAZARD.pops.get(style, 0)) * dt and not hz_pop.playing:
 		var pop: Dictionary = rec.pops[randi() % rec.pops.size()]
 		hz_pop.stream = sfx.stream(pop.file)

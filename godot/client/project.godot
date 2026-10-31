@@ -20,6 +20,10 @@ window/size/viewport_height=720
 
 theme/custom_font="res://assets/fonts/ui_font.tres"
 
+[physics]
+
+common/max_physics_steps_per_frame=3
+
 [rendering]
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"

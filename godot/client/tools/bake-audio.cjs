@@ -1,4 +1,4 @@
-// 소리 굽기 (G5): JS 화면의 합성 소리를 크로미움 OfflineAudioContext 로 그대로 녹음 → audio/baked/*.ogg + manifest.json.
+// 소리 굽기 (G5): JS 화면의 합성 소리를 크로미움 OfflineAudioContext 로 그대로 녹음 → audio/baked/*.wav (짧은 소리) · *.ogg (긴 반복) + manifest.json.
 // 고도는 녹음본만 틀어서 (실행 중 합성 없음) JS 와 같은 소리가 웹에서도 가볍게. 매번 다른 높낮이는 녹음본 여러 개 + 재생할 때 높낮이 흔들기.
 // - 효과음 (client/sound.js play): 이름·무기·세기·폼별, 녹음본 VARIANTS 개
 // - 위험 액체 지속음 (buildHazard) 5종 이어지는 고리 + 튀는 소리 (hazardPop)
@@ -21,7 +21,7 @@ const ONLY = process.argv.includes('--only') ? new Set(process.argv[process.argv
 
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
-  if (!ONLY) for (const f of fs.readdirSync(OUT)) if (f.endsWith('.ogg')) fs.unlinkSync(path.join(OUT, f));
+  if (!ONLY) for (const f of fs.readdirSync(OUT)) if (f.endsWith('.ogg') || f.endsWith('.wav')) fs.unlinkSync(path.join(OUT, f));
   const browser = await chromium.launch();
   const page = await browser.newPage();
   await page.goto(`http://127.0.0.1:${PORT}/bake-audio-origin`); // 404 쪽이어도 같은 출처면 모듈을 부를 수 있음
@@ -147,7 +147,8 @@ const ONLY = process.argv.includes('--only') ? new Set(process.argv[process.argv
   }, SR);
   const C = await page.evaluate(() => window.C);
   const manifest = ONLY ? JSON.parse(fs.readFileSync(path.join(OUT, 'manifest.json'), 'utf8')) : { sampleRate: SR, sfx: {}, hazard: {}, music: {}, ambient: {} };
-  const save = (file, r) => {
+  // 긴 반복 (음악·위험 반복·앰비언트 웅웅) 만 ogg, 짧은 소리는 wav (고도가 QOA 로 들여옴 — ogg 는 틀 때마다 디코더를 새로 만들어 웹에서 느림)
+  const save = (file, r, ogg = false) => {
     const wav = path.join(OUT, `${file}.wav`);
     const buf = Buffer.alloc(44 + r.data.length * 2);
     buf.write('RIFF', 0); buf.writeUInt32LE(36 + r.data.length * 2, 4); buf.write('WAVEfmt ', 8);
@@ -156,9 +157,11 @@ const ONLY = process.argv.includes('--only') ? new Set(process.argv[process.argv
     const norm = r.peak > 0 ? 0.95 / r.peak : 1; // 크게 맞춰 굽고 (양자화 잡음 적게), 고도는 gain 으로 원래 크기
     r.data.forEach((v, i) => buf.writeInt16LE(Math.max(-32767, Math.min(32767, Math.round(v * norm * 32767))), 44 + i * 2));
     fs.writeFileSync(wav, buf);
-    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', wav, '-c:a', 'libvorbis', '-q:a', '3', path.join(OUT, `${file}.ogg`)]);
-    fs.unlinkSync(wav);
-    return { file: `${file}.ogg`, gain: r.peak > 0 ? r.peak / 0.95 : 1, sec: +(r.data.length / SR).toFixed(3) };
+    if (ogg) {
+      execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', wav, '-c:a', 'libvorbis', '-q:a', '3', path.join(OUT, `${file}.ogg`)]);
+      fs.unlinkSync(wav);
+    }
+    return { file: `${file}.${ogg ? 'ogg' : 'wav'}`, gain: r.peak > 0 ? r.peak / 0.95 : 1, sec: +(r.data.length / SR).toFixed(3) };
   };
   // ---- 효과음 ----
   const weapons = [null, ...Object.keys(C.SFX_WEAPONS)];
@@ -202,7 +205,7 @@ const ONLY = process.argv.includes('--only') ? new Set(process.argv[process.argv
   // ---- 위험 액체 ----
   const loopLen = { water: 9.0909, storm: 14.2857, energy: 5, lava: 4, swamp: 4 }; // 흔들림 주기의 배수 (water 0.22Hz ×2, storm 0.07Hz, energy 0.4Hz ×2)
   for (const st of ONLY ? [] : styles) { // 일부만 구울 땐 위험·곡·앰비언트 건너뜀
-    const loop = save(`hazard.${st}`, await page.evaluate(({ st, L }) => window.bake.hazardLoop(st, L), { st, L: loopLen[st] || 4 }));
+    const loop = save(`hazard.${st}`, await page.evaluate(({ st, L }) => window.bake.hazardLoop(st, L), { st, L: loopLen[st] || 4 }), true);
     const pops = [];
     for (let i = 0; i < 4; i++) pops.push(save(`hazardPop.${st}.${i}`, await page.evaluate((st) => window.bake.hazardPop(st), st)));
     manifest.hazard[st] = { loop, pops };
@@ -212,13 +215,13 @@ const ONLY = process.argv.includes('--only') ? new Set(process.argv[process.argv
   for (const key of ONLY ? [] : Object.keys(C.MUSIC_THEMES)) {
     for (const tense of key === 'lobby' ? [false] : [false, true]) {
       const r = await page.evaluate(({ key, tense }) => window.bake.song(key, tense), { key, tense });
-      manifest.music[`${key}${tense ? '.tense' : ''}`] = { ...save(`music.${key}${tense ? '.tense' : ''}`, r), length: r.length, bpm: r.bpm };
+      manifest.music[`${key}${tense ? '.tense' : ''}`] = { ...save(`music.${key}${tense ? '.tense' : ''}`, r, true), length: r.length, bpm: r.bpm };
       process.stdout.write('m');
     }
   }
   // ---- 앰비언트 (메뉴·대기실) ----
   for (const theme of ONLY ? [] : Object.keys(C.TITLE_THEMES)) {
-    const drone = save(`ambient.${theme}`, await page.evaluate(({ theme }) => window.bake.drone(theme, 11.1111), { theme }));
+    const drone = save(`ambient.${theme}`, await page.evaluate(({ theme }) => window.bake.drone(theme, 11.1111), { theme }), true);
     const pings = [];
     for (let i = 0; i < 4; i++) pings.push(save(`ambientPing.${theme}.${i}`, await page.evaluate((theme) => window.bake.ping(theme), theme)));
     manifest.ambient[theme] = { drone, pings };
@@ -237,7 +240,7 @@ const ONLY = process.argv.includes('--only') ? new Set(process.argv[process.argv
     }
   }
   fs.writeFileSync(path.join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 1));
-  const size = fs.readdirSync(OUT).filter((f) => f.endsWith('.ogg')).reduce((a, f) => a + fs.statSync(path.join(OUT, f)).size, 0);
-  console.log(`\n녹음 ${fs.readdirSync(OUT).filter((f) => f.endsWith('.ogg')).length}개, ${(size / 1e6).toFixed(2)}MB`);
+  const size = fs.readdirSync(OUT).filter((f) => /\.(ogg|wav)$/.test(f)).reduce((a, f) => a + fs.statSync(path.join(OUT, f)).size, 0);
+  console.log(`\n녹음 ${fs.readdirSync(OUT).filter((f) => /\.(ogg|wav)$/.test(f)).length}개, ${(size / 1e6).toFixed(2)}MB`);
   await browser.close();
 })();

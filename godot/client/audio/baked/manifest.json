@@ -3,1428 +3,1428 @@
  "sfx": {
   "swing.none": [
    {
-    "file": "swing.none.0.ogg",
+    "file": "swing.none.0.wav",
     "gain": 0.41149751136177465,
     "sec": 0.179
    },
    {
-    "file": "swing.none.1.ogg",
+    "file": "swing.none.1.wav",
     "gain": 0.4148981759422704,
     "sec": 0.179
    },
    {
-    "file": "swing.none.2.ogg",
+    "file": "swing.none.2.wav",
     "gain": 0.4271446089995535,
     "sec": 0.178
    }
   ],
   "hit.none.1": [
    {
-    "file": "hit.none.1.0.ogg",
+    "file": "hit.none.1.0.wav",
     "gain": 0.28622119050276906,
     "sec": 0.383
    },
    {
-    "file": "hit.none.1.1.ogg",
+    "file": "hit.none.1.1.wav",
     "gain": 0.2771816128178647,
     "sec": 0.315
    }
   ],
   "hit.none.2": [
    {
-    "file": "hit.none.2.0.ogg",
+    "file": "hit.none.2.0.wav",
     "gain": 0.38039728214866236,
     "sec": 0.345
    },
    {
-    "file": "hit.none.2.1.ogg",
+    "file": "hit.none.2.1.wav",
     "gain": 0.3669254403365286,
     "sec": 0.396
    }
   ],
   "hit.none.3": [
    {
-    "file": "hit.none.3.0.ogg",
+    "file": "hit.none.3.0.wav",
     "gain": 0.47706124029661484,
     "sec": 0.621
    },
    {
-    "file": "hit.none.3.1.ogg",
+    "file": "hit.none.3.1.wav",
     "gain": 0.45253342703769084,
     "sec": 0.553
    }
   ],
   "hit.none.heavy": [
    {
-    "file": "hit.none.heavy.0.ogg",
+    "file": "hit.none.heavy.0.wav",
     "gain": 0.7407610039961966,
     "sec": 0.721
    },
    {
-    "file": "hit.none.heavy.1.ogg",
+    "file": "hit.none.heavy.1.wav",
     "gain": 0.7779256293648168,
     "sec": 0.66
    }
   ],
   "hit.none.crit": [
    {
-    "file": "hit.none.crit.0.ogg",
+    "file": "hit.none.crit.0.wav",
     "gain": 0.6331707929310046,
     "sec": 1.028
    },
    {
-    "file": "hit.none.crit.1.ogg",
+    "file": "hit.none.crit.1.wav",
     "gain": 0.5271048922287791,
     "sec": 1.024
    }
   ],
   "swing.tank": [
    {
-    "file": "swing.tank.0.ogg",
+    "file": "swing.tank.0.wav",
     "gain": 0.48831732649552195,
     "sec": 0.18
    },
    {
-    "file": "swing.tank.1.ogg",
+    "file": "swing.tank.1.wav",
     "gain": 0.5218112468719482,
     "sec": 0.179
    },
    {
-    "file": "swing.tank.2.ogg",
+    "file": "swing.tank.2.wav",
     "gain": 0.5252015590667725,
     "sec": 0.179
    }
   ],
   "hit.tank.1": [
    {
-    "file": "hit.tank.1.0.ogg",
+    "file": "hit.tank.1.0.wav",
     "gain": 0.33072540634556824,
     "sec": 0.362
    },
    {
-    "file": "hit.tank.1.1.ogg",
+    "file": "hit.tank.1.1.wav",
     "gain": 0.28983498874463537,
     "sec": 0.528
    }
   ],
   "hit.tank.2": [
    {
-    "file": "hit.tank.2.0.ogg",
+    "file": "hit.tank.2.0.wav",
     "gain": 0.37337293750361394,
     "sec": 0.414
    },
    {
-    "file": "hit.tank.2.1.ogg",
+    "file": "hit.tank.2.1.wav",
     "gain": 0.39258056565334926,
     "sec": 0.493
    }
   ],
   "hit.tank.3": [
    {
-    "file": "hit.tank.3.0.ogg",
+    "file": "hit.tank.3.0.wav",
     "gain": 0.43688215707477773,
     "sec": 0.736
    },
    {
-    "file": "hit.tank.3.1.ogg",
+    "file": "hit.tank.3.1.wav",
     "gain": 0.4367153895528693,
     "sec": 0.738
    }
   ],
   "hit.tank.heavy": [
    {
-    "file": "hit.tank.heavy.0.ogg",
+    "file": "hit.tank.heavy.0.wav",
     "gain": 0.8924060746243125,
     "sec": 0.848
    },
    {
-    "file": "hit.tank.heavy.1.ogg",
+    "file": "hit.tank.heavy.1.wav",
     "gain": 0.5655641304819208,
     "sec": 0.78
    }
   ],
   "hit.tank.crit": [
    {
-    "file": "hit.tank.crit.0.ogg",
+    "file": "hit.tank.crit.0.wav",
     "gain": 0.7365951412602475,
     "sec": 1.017
    },
    {
-    "file": "hit.tank.crit.1.ogg",
+    "file": "hit.tank.crit.1.wav",
     "gain": 1.0555533358925269,
     "sec": 1.005
    }
   ],
   "swing.ninja": [
    {
-    "file": "swing.ninja.0.ogg",
+    "file": "swing.ninja.0.wav",
     "gain": 0.4284240383850901,
     "sec": 0.179
    },
    {
-    "file": "swing.ninja.1.ogg",
+    "file": "swing.ninja.1.wav",
     "gain": 0.5068373052697432,
     "sec": 0.179
    },
    {
-    "file": "swing.ninja.2.ogg",
+    "file": "swing.ninja.2.wav",
     "gain": 0.5286736864792674,
     "sec": 0.179
    }
   ],
   "hit.ninja.1": [
    {
-    "file": "hit.ninja.1.0.ogg",
+    "file": "hit.ninja.1.0.wav",
     "gain": 0.2773503253334447,
     "sec": 0.487
    },
    {
-    "file": "hit.ninja.1.1.ogg",
+    "file": "hit.ninja.1.1.wav",
     "gain": 0.2773411964115344,
     "sec": 0.493
    }
   ],
   "hit.ninja.2": [
    {
-    "file": "hit.ninja.2.0.ogg",
+    "file": "hit.ninja.2.0.wav",
     "gain": 0.38401453118575246,
     "sec": 0.498
    },
    {
-    "file": "hit.ninja.2.1.ogg",
+    "file": "hit.ninja.2.1.wav",
     "gain": 0.3752481309991134,
     "sec": 0.462
    }
   ],
   "hit.ninja.3": [
    {
-    "file": "hit.ninja.3.0.ogg",
+    "file": "hit.ninja.3.0.wav",
     "gain": 0.6052793954548084,
     "sec": 0.598
    },
    {
-    "file": "hit.ninja.3.1.ogg",
+    "file": "hit.ninja.3.1.wav",
     "gain": 0.43282970001823023,
     "sec": 0.562
    }
   ],
   "hit.ninja.heavy": [
    {
-    "file": "hit.ninja.heavy.0.ogg",
+    "file": "hit.ninja.heavy.0.wav",
     "gain": 0.9318844895613821,
     "sec": 0.704
    },
    {
-    "file": "hit.ninja.heavy.1.ogg",
+    "file": "hit.ninja.heavy.1.wav",
     "gain": 0.5134180972450658,
     "sec": 0.719
    }
   ],
   "hit.ninja.crit": [
    {
-    "file": "hit.ninja.crit.0.ogg",
+    "file": "hit.ninja.crit.0.wav",
     "gain": 0.9884581440373471,
     "sec": 1
    },
    {
-    "file": "hit.ninja.crit.1.ogg",
+    "file": "hit.ninja.crit.1.wav",
     "gain": 0.931940329702277,
     "sec": 0.954
    }
   ],
   "swing.builder": [
    {
-    "file": "swing.builder.0.ogg",
+    "file": "swing.builder.0.wav",
     "gain": 0.5247209887755545,
     "sec": 0.178
    },
    {
-    "file": "swing.builder.1.ogg",
+    "file": "swing.builder.1.wav",
     "gain": 0.4784115050968371,
     "sec": 0.179
    },
    {
-    "file": "swing.builder.2.ogg",
+    "file": "swing.builder.2.wav",
     "gain": 0.4795457187451815,
     "sec": 0.179
    }
   ],
   "hit.builder.1": [
    {
-    "file": "hit.builder.1.0.ogg",
+    "file": "hit.builder.1.0.wav",
     "gain": 0.27324601223594264,
     "sec": 0.361
    },
    {
-    "file": "hit.builder.1.1.ogg",
+    "file": "hit.builder.1.1.wav",
     "gain": 0.26931398793270717,
     "sec": 0.368
    }
   ],
   "hit.builder.2": [
    {
-    "file": "hit.builder.2.0.ogg",
+    "file": "hit.builder.2.0.wav",
     "gain": 0.36242732876225525,
     "sec": 0.37
    },
    {
-    "file": "hit.builder.2.1.ogg",
+    "file": "hit.builder.2.1.wav",
     "gain": 0.369952540648611,
     "sec": 0.4
    }
   ],
   "hit.builder.3": [
    {
-    "file": "hit.builder.3.0.ogg",
+    "file": "hit.builder.3.0.wav",
     "gain": 0.44562396250273056,
     "sec": 0.582
    },
    {
-    "file": "hit.builder.3.1.ogg",
+    "file": "hit.builder.3.1.wav",
     "gain": 0.44057118265252365,
     "sec": 0.551
    }
   ],
   "hit.builder.heavy": [
    {
-    "file": "hit.builder.heavy.0.ogg",
+    "file": "hit.builder.heavy.0.wav",
     "gain": 0.8365845680236816,
     "sec": 0.834
    },
    {
-    "file": "hit.builder.heavy.1.ogg",
+    "file": "hit.builder.heavy.1.wav",
     "gain": 0.6466135225797954,
     "sec": 0.717
    }
   ],
   "hit.builder.crit": [
    {
-    "file": "hit.builder.crit.0.ogg",
+    "file": "hit.builder.crit.0.wav",
     "gain": 1.0999508907920437,
     "sec": 0.995
    },
    {
-    "file": "hit.builder.crit.1.ogg",
+    "file": "hit.builder.crit.1.wav",
     "gain": 0.630370629461188,
     "sec": 0.984
    }
   ],
   "swing.hook": [
    {
-    "file": "swing.hook.0.ogg",
+    "file": "swing.hook.0.wav",
     "gain": 0.4996897358643381,
     "sec": 0.179
    },
    {
-    "file": "swing.hook.1.ogg",
+    "file": "swing.hook.1.wav",
     "gain": 0.46728137292360006,
     "sec": 0.179
    },
    {
-    "file": "swing.hook.2.ogg",
+    "file": "swing.hook.2.wav",
     "gain": 0.43808984129052414,
     "sec": 0.179
    }
   ],
   "hit.hook.1": [
    {
-    "file": "hit.hook.1.0.ogg",
+    "file": "hit.hook.1.0.wav",
     "gain": 0.2914386987686157,
     "sec": 0.319
    },
    {
-    "file": "hit.hook.1.1.ogg",
+    "file": "hit.hook.1.1.wav",
     "gain": 0.3044629724402177,
     "sec": 0.307
    }
   ],
   "hit.hook.2": [
    {
-    "file": "hit.hook.2.0.ogg",
+    "file": "hit.hook.2.0.wav",
     "gain": 0.36934780447106613,
     "sec": 0.399
    },
    {
-    "file": "hit.hook.2.1.ogg",
+    "file": "hit.hook.2.1.wav",
     "gain": 0.3696387065084357,
     "sec": 0.397
    }
   ],
   "hit.hook.3": [
    {
-    "file": "hit.hook.3.0.ogg",
+    "file": "hit.hook.3.0.wav",
     "gain": 0.49832067991557877,
     "sec": 0.622
    },
    {
-    "file": "hit.hook.3.1.ogg",
+    "file": "hit.hook.3.1.wav",
     "gain": 0.5166143806357133,
     "sec": 0.564
    }
   ],
   "hit.hook.heavy": [
    {
-    "file": "hit.hook.heavy.0.ogg",
+    "file": "hit.hook.heavy.0.wav",
     "gain": 0.929883593007138,
     "sec": 0.602
    },
    {
-    "file": "hit.hook.heavy.1.ogg",
+    "file": "hit.hook.heavy.1.wav",
     "gain": 0.7913164716017874,
     "sec": 0.759
    }
   ],
   "hit.hook.crit": [
    {
-    "file": "hit.hook.crit.0.ogg",
+    "file": "hit.hook.crit.0.wav",
     "gain": 0.6701129361202842,
     "sec": 0.942
    },
    {
-    "file": "hit.hook.crit.1.ogg",
+    "file": "hit.hook.crit.1.wav",
     "gain": 1.1011635629754317,
     "sec": 0.979
    }
   ],
   "swing.hunter": [
    {
-    "file": "swing.hunter.0.ogg",
+    "file": "swing.hunter.0.wav",
     "gain": 0.43753366721303844,
     "sec": 0.179
    },
    {
-    "file": "swing.hunter.1.ogg",
+    "file": "swing.hunter.1.wav",
     "gain": 0.4456507845928795,
     "sec": 0.179
    },
    {
-    "file": "swing.hunter.2.ogg",
+    "file": "swing.hunter.2.wav",
     "gain": 0.4304226448661403,
     "sec": 0.179
    }
   ],
   "hit.hunter.1": [
    {
-    "file": "hit.hunter.1.0.ogg",
+    "file": "hit.hunter.1.0.wav",
     "gain": 0.27993086137269674,
     "sec": 0.379
    },
    {
-    "file": "hit.hunter.1.1.ogg",
+    "file": "hit.hunter.1.1.wav",
     "gain": 0.28966451946057775,
     "sec": 0.378
    }
   ],
   "hit.hunter.2": [
    {
-    "file": "hit.hunter.2.0.ogg",
+    "file": "hit.hunter.2.0.wav",
     "gain": 0.3619091134322317,
     "sec": 0.399
    },
    {
-    "file": "hit.hunter.2.1.ogg",
+    "file": "hit.hunter.2.1.wav",
     "gain": 0.3687873325849834,
     "sec": 0.353
    }
   ],
   "hit.hunter.3": [
    {
-    "file": "hit.hunter.3.0.ogg",
+    "file": "hit.hunter.3.0.wav",
     "gain": 0.4635488673260338,
     "sec": 0.732
    },
    {
-    "file": "hit.hunter.3.1.ogg",
+    "file": "hit.hunter.3.1.wav",
     "gain": 0.48483641524063914,
     "sec": 0.713
    }
   ],
   "hit.hunter.heavy": [
    {
-    "file": "hit.hunter.heavy.0.ogg",
+    "file": "hit.hunter.heavy.0.wav",
     "gain": 0.8404943817540219,
     "sec": 0.741
    },
    {
-    "file": "hit.hunter.heavy.1.ogg",
+    "file": "hit.hunter.heavy.1.wav",
     "gain": 0.5611479909796464,
     "sec": 0.839
    }
   ],
   "hit.hunter.crit": [
    {
-    "file": "hit.hunter.crit.0.ogg",
+    "file": "hit.hunter.crit.0.wav",
     "gain": 0.9309960666455721,
     "sec": 1.011
    },
    {
-    "file": "hit.hunter.crit.1.ogg",
+    "file": "hit.hunter.crit.1.wav",
     "gain": 0.6366412263167532,
     "sec": 0.946
    }
   ],
   "swing.cannon": [
    {
-    "file": "swing.cannon.0.ogg",
+    "file": "swing.cannon.0.wav",
     "gain": 0.5251374056464747,
     "sec": 0.179
    },
    {
-    "file": "swing.cannon.1.ogg",
+    "file": "swing.cannon.1.wav",
     "gain": 0.4885174098767733,
     "sec": 0.179
    },
    {
-    "file": "swing.cannon.2.ogg",
+    "file": "swing.cannon.2.wav",
     "gain": 0.48853748723080287,
     "sec": 0.179
    }
   ],
   "hit.cannon.1": [
    {
-    "file": "hit.cannon.1.0.ogg",
+    "file": "hit.cannon.1.0.wav",
     "gain": 0.6226936139558491,
     "sec": 0.504
    },
    {
-    "file": "hit.cannon.1.1.ogg",
+    "file": "hit.cannon.1.1.wav",
     "gain": 0.2876880608106914,
     "sec": 0.431
    }
   ],
   "hit.cannon.2": [
    {
-    "file": "hit.cannon.2.0.ogg",
+    "file": "hit.cannon.2.0.wav",
     "gain": 0.7690242089723286,
     "sec": 0.466
    },
    {
-    "file": "hit.cannon.2.1.ogg",
+    "file": "hit.cannon.2.1.wav",
     "gain": 0.39818145726856435,
     "sec": 0.375
    }
   ],
   "hit.cannon.3": [
    {
-    "file": "hit.cannon.3.0.ogg",
+    "file": "hit.cannon.3.0.wav",
     "gain": 0.41533994047265305,
     "sec": 0.581
    },
    {
-    "file": "hit.cannon.3.1.ogg",
+    "file": "hit.cannon.3.1.wav",
     "gain": 0.883003222314935,
     "sec": 0.625
    }
   ],
   "hit.cannon.heavy": [
    {
-    "file": "hit.cannon.heavy.0.ogg",
+    "file": "hit.cannon.heavy.0.wav",
     "gain": 0.8049095304388749,
     "sec": 0.681
    },
    {
-    "file": "hit.cannon.heavy.1.ogg",
+    "file": "hit.cannon.heavy.1.wav",
     "gain": 0.8437411408675345,
     "sec": 0.582
    }
   ],
   "hit.cannon.crit": [
    {
-    "file": "hit.cannon.crit.0.ogg",
+    "file": "hit.cannon.crit.0.wav",
     "gain": 1.0157785917583266,
     "sec": 1.012
    },
    {
-    "file": "hit.cannon.crit.1.ogg",
+    "file": "hit.cannon.crit.1.wav",
     "gain": 0.9208822250366211,
     "sec": 0.978
    }
   ],
   "swing.berserker": [
    {
-    "file": "swing.berserker.0.ogg",
+    "file": "swing.berserker.0.wav",
     "gain": 0.4807754253086291,
     "sec": 0.179
    },
    {
-    "file": "swing.berserker.1.ogg",
+    "file": "swing.berserker.1.wav",
     "gain": 0.5240892422826667,
     "sec": 0.179
    },
    {
-    "file": "swing.berserker.2.ogg",
+    "file": "swing.berserker.2.wav",
     "gain": 0.4805974897585417,
     "sec": 0.179
    }
   ],
   "hit.berserker.1": [
    {
-    "file": "hit.berserker.1.0.ogg",
+    "file": "hit.berserker.1.0.wav",
     "gain": 0.2913900739268253,
     "sec": 0.377
    },
    {
-    "file": "hit.berserker.1.1.ogg",
+    "file": "hit.berserker.1.1.wav",
     "gain": 0.2942225180174175,
     "sec": 0.364
    }
   ],
   "hit.berserker.2": [
    {
-    "file": "hit.berserker.2.0.ogg",
+    "file": "hit.berserker.2.0.wav",
     "gain": 0.3776423554671438,
     "sec": 0.371
    },
    {
-    "file": "hit.berserker.2.1.ogg",
+    "file": "hit.berserker.2.1.wav",
     "gain": 0.3907827327125951,
     "sec": 0.368
    }
   ],
   "hit.berserker.3": [
    {
-    "file": "hit.berserker.3.0.ogg",
+    "file": "hit.berserker.3.0.wav",
     "gain": 0.5835209394756117,
     "sec": 0.604
    },
    {
-    "file": "hit.berserker.3.1.ogg",
+    "file": "hit.berserker.3.1.wav",
     "gain": 0.5986027341139945,
     "sec": 0.758
    }
   ],
   "hit.berserker.heavy": [
    {
-    "file": "hit.berserker.heavy.0.ogg",
+    "file": "hit.berserker.heavy.0.wav",
     "gain": 0.5365135795191714,
     "sec": 0.743
    },
    {
-    "file": "hit.berserker.heavy.1.ogg",
+    "file": "hit.berserker.heavy.1.wav",
     "gain": 0.549117828670301,
     "sec": 0.687
    }
   ],
   "hit.berserker.crit": [
    {
-    "file": "hit.berserker.crit.0.ogg",
+    "file": "hit.berserker.crit.0.wav",
     "gain": 1.151516688497443,
     "sec": 0.942
    },
    {
-    "file": "hit.berserker.crit.1.ogg",
+    "file": "hit.berserker.crit.1.wav",
     "gain": 1.2911372435720343,
     "sec": 0.977
    }
   ],
   "swing.bard": [
    {
-    "file": "swing.bard.0.ogg",
+    "file": "swing.bard.0.wav",
     "gain": 0.4363315356405158,
     "sec": 0.179
    },
    {
-    "file": "swing.bard.1.ogg",
+    "file": "swing.bard.1.wav",
     "gain": 0.4358419932817158,
     "sec": 0.179
    },
    {
-    "file": "swing.bard.2.ogg",
+    "file": "swing.bard.2.wav",
     "gain": 0.44100482212869746,
     "sec": 0.179
    }
   ],
   "hit.bard.1": [
    {
-    "file": "hit.bard.1.0.ogg",
+    "file": "hit.bard.1.0.wav",
     "gain": 0.2773342007084897,
     "sec": 0.578
    },
    {
-    "file": "hit.bard.1.1.ogg",
+    "file": "hit.bard.1.1.wav",
     "gain": 0.32227193054399994,
     "sec": 0.579
    }
   ],
   "hit.bardMetal.1": [
    {
-    "file": "hit.bardMetal.1.0.ogg",
+    "file": "hit.bardMetal.1.0.wav",
     "gain": 0.6358624132055986,
     "sec": 0.684
    },
    {
-    "file": "hit.bardMetal.1.1.ogg",
+    "file": "hit.bardMetal.1.1.wav",
     "gain": 0.5212254900681346,
     "sec": 0.685
    }
   ],
   "hit.bard.2": [
    {
-    "file": "hit.bard.2.0.ogg",
+    "file": "hit.bard.2.0.wav",
     "gain": 0.39487961091493307,
     "sec": 0.578
    },
    {
-    "file": "hit.bard.2.1.ogg",
+    "file": "hit.bard.2.1.wav",
     "gain": 0.4282697250968532,
     "sec": 0.575
    }
   ],
   "hit.bardMetal.2": [
    {
-    "file": "hit.bardMetal.2.0.ogg",
+    "file": "hit.bardMetal.2.0.wav",
     "gain": 0.6697354818645277,
     "sec": 0.686
    },
    {
-    "file": "hit.bardMetal.2.1.ogg",
+    "file": "hit.bardMetal.2.1.wav",
     "gain": 0.6684798315951699,
     "sec": 0.684
    }
   ],
   "hit.bard.3": [
    {
-    "file": "hit.bard.3.0.ogg",
+    "file": "hit.bard.3.0.wav",
     "gain": 0.5330597099504973,
     "sec": 0.578
    },
    {
-    "file": "hit.bard.3.1.ogg",
+    "file": "hit.bard.3.1.wav",
     "gain": 0.5012634239698711,
     "sec": 0.651
    }
   ],
   "hit.bardMetal.3": [
    {
-    "file": "hit.bardMetal.3.0.ogg",
+    "file": "hit.bardMetal.3.0.wav",
     "gain": 0.7590181576578241,
     "sec": 0.686
    },
    {
-    "file": "hit.bardMetal.3.1.ogg",
+    "file": "hit.bardMetal.3.1.wav",
     "gain": 0.8056954961074027,
     "sec": 0.679
    }
   ],
   "hit.bard.heavy": [
    {
-    "file": "hit.bard.heavy.0.ogg",
+    "file": "hit.bard.heavy.0.wav",
     "gain": 0.5206109034387689,
     "sec": 0.687
    },
    {
-    "file": "hit.bard.heavy.1.ogg",
+    "file": "hit.bard.heavy.1.wav",
     "gain": 0.8721133909727398,
     "sec": 0.686
    }
   ],
   "hit.bardMetal.heavy": [
    {
-    "file": "hit.bardMetal.heavy.0.ogg",
+    "file": "hit.bardMetal.heavy.0.wav",
     "gain": 0.7956586386028089,
     "sec": 0.699
    },
    {
-    "file": "hit.bardMetal.heavy.1.ogg",
+    "file": "hit.bardMetal.heavy.1.wav",
     "gain": 1.098993326488294,
     "sec": 0.755
    }
   ],
   "hit.bard.crit": [
    {
-    "file": "hit.bard.crit.0.ogg",
+    "file": "hit.bard.crit.0.wav",
     "gain": 0.637054443359375,
     "sec": 1.013
    },
    {
-    "file": "hit.bard.crit.1.ogg",
+    "file": "hit.bard.crit.1.wav",
     "gain": 0.6862340475383558,
     "sec": 0.984
    }
   ],
   "hit.bardMetal.crit": [
    {
-    "file": "hit.bardMetal.crit.0.ogg",
+    "file": "hit.bardMetal.crit.0.wav",
     "gain": 1.3479239062259072,
     "sec": 0.947
    },
    {
-    "file": "hit.bardMetal.crit.1.ogg",
+    "file": "hit.bardMetal.crit.1.wav",
     "gain": 1.4286712596290991,
     "sec": 0.936
    }
   ],
   "fire.none": [
    {
-    "file": "fire.none.0.ogg",
+    "file": "fire.none.0.wav",
     "gain": 0.2376727524556612,
     "sec": 0.124
    },
    {
-    "file": "fire.none.1.ogg",
+    "file": "fire.none.1.wav",
     "gain": 0.20988818846250837,
     "sec": 0.125
    },
    {
-    "file": "fire.none.2.ogg",
+    "file": "fire.none.2.wav",
     "gain": 0.22582077666332848,
     "sec": 0.124
    }
   ],
   "fire.hunter": [
    {
-    "file": "fire.hunter.0.ogg",
+    "file": "fire.hunter.0.wav",
     "gain": 0.28943159078296865,
     "sec": 0.188
    },
    {
-    "file": "fire.hunter.1.ogg",
+    "file": "fire.hunter.1.wav",
     "gain": 0.2554707307564585,
     "sec": 0.201
    },
    {
-    "file": "fire.hunter.2.ogg",
+    "file": "fire.hunter.2.wav",
     "gain": 0.25693491885536596,
     "sec": 0.145
    }
   ],
   "tear": [
    {
-    "file": "tear.0.ogg",
+    "file": "tear.0.wav",
     "gain": 0.27676676449022797,
     "sec": 0.631
    },
    {
-    "file": "tear.1.ogg",
+    "file": "tear.1.wav",
     "gain": 0.27710293468676117,
     "sec": 0.601
    },
    {
-    "file": "tear.2.ogg",
+    "file": "tear.2.wav",
     "gain": 0.2775789562024568,
     "sec": 0.637
    }
   ],
   "shatter": [
    {
-    "file": "shatter.0.ogg",
+    "file": "shatter.0.wav",
     "gain": 0.5050731960095858,
     "sec": 0.866
    },
    {
-    "file": "shatter.1.ogg",
+    "file": "shatter.1.wav",
     "gain": 0.4517022245808652,
     "sec": 0.866
    },
    {
-    "file": "shatter.2.ogg",
+    "file": "shatter.2.wav",
     "gain": 0.4391650777114065,
     "sec": 0.871
    }
   ],
   "tap": [
    {
-    "file": "tap.0.ogg",
+    "file": "tap.0.wav",
     "gain": 0.2804294699116757,
     "sec": 0.114
    },
    {
-    "file": "tap.1.ogg",
+    "file": "tap.1.wav",
     "gain": 0.2813027720702322,
     "sec": 0.134
    },
    {
-    "file": "tap.2.ogg",
+    "file": "tap.2.wav",
     "gain": 0.28107756062557826,
     "sec": 0.115
    }
   ],
   "crit": [
    {
-    "file": "crit.0.ogg",
+    "file": "crit.0.wav",
     "gain": 0.2152082167173687,
     "sec": 0.542
    },
    {
-    "file": "crit.1.ogg",
+    "file": "crit.1.wav",
     "gain": 0.2107969083284077,
     "sec": 0.509
    },
    {
-    "file": "crit.2.ogg",
+    "file": "crit.2.wav",
     "gain": 0.209555563173796,
     "sec": 0.481
    }
   ],
   "hurt": [
    {
-    "file": "hurt.0.ogg",
+    "file": "hurt.0.wav",
     "gain": 0.5801982628671747,
     "sec": 0.617
    },
    {
-    "file": "hurt.1.ogg",
+    "file": "hurt.1.wav",
     "gain": 0.5253905057907104,
     "sec": 0.805
    },
    {
-    "file": "hurt.2.ogg",
+    "file": "hurt.2.wav",
     "gain": 0.45536119686929805,
     "sec": 0.636
    }
   ],
   "danger": [
    {
-    "file": "danger.0.ogg",
+    "file": "danger.0.wav",
     "gain": 0.11337294390327053,
     "sec": 0.193
    }
   ],
   "airJump": [
    {
-    "file": "airJump.0.ogg",
+    "file": "airJump.0.wav",
     "gain": 0.20394896206102875,
     "sec": 0.503
    },
    {
-    "file": "airJump.1.ogg",
+    "file": "airJump.1.wav",
     "gain": 0.10386245815377487,
     "sec": 0.323
    },
    {
-    "file": "airJump.2.ogg",
+    "file": "airJump.2.wav",
     "gain": 0.10318229072972349,
     "sec": 0.322
    }
   ],
   "land": [
    {
-    "file": "land.0.ogg",
+    "file": "land.0.wav",
     "gain": 0.45460459433103867,
     "sec": 0.463
    },
    {
-    "file": "land.1.ogg",
+    "file": "land.1.wav",
     "gain": 0.3671940690592716,
     "sec": 0.453
    },
    {
-    "file": "land.2.ogg",
+    "file": "land.2.wav",
     "gain": 0.4588015455948679,
     "sec": 0.498
    }
   ],
   "crush": [
    {
-    "file": "crush.0.ogg",
+    "file": "crush.0.wav",
     "gain": 0.7948401727174458,
     "sec": 0.624
    },
    {
-    "file": "crush.1.ogg",
+    "file": "crush.1.wav",
     "gain": 0.7552543439363179,
     "sec": 0.627
    },
    {
-    "file": "crush.2.ogg",
+    "file": "crush.2.wav",
     "gain": 0.8696207247282329,
     "sec": 0.587
    }
   ],
   "fall": [
    {
-    "file": "fall.0.ogg",
+    "file": "fall.0.wav",
     "gain": 0.20112064323927228,
     "sec": 0.62
    },
    {
-    "file": "fall.1.ogg",
+    "file": "fall.1.wav",
     "gain": 0.19733640708421407,
     "sec": 0.617
    },
    {
-    "file": "fall.2.ogg",
+    "file": "fall.2.wav",
     "gain": 0.19331852072163633,
     "sec": 0.614
    }
   ],
   "pickup": [
    {
-    "file": "pickup.0.ogg",
+    "file": "pickup.0.wav",
     "gain": 0.18914468978580676,
     "sec": 0.332
    },
    {
-    "file": "pickup.1.ogg",
+    "file": "pickup.1.wav",
     "gain": 0.18915899490055285,
     "sec": 0.328
    },
    {
-    "file": "pickup.2.ogg",
+    "file": "pickup.2.wav",
     "gain": 0.18914258793780678,
     "sec": 0.327
    }
   ],
   "latch": [
    {
-    "file": "latch.0.ogg",
+    "file": "latch.0.wav",
     "gain": 0.09247748475325736,
     "sec": 0.393
    },
    {
-    "file": "latch.1.ogg",
+    "file": "latch.1.wav",
     "gain": 0.0838215100137811,
     "sec": 0.401
    },
    {
-    "file": "latch.2.ogg",
+    "file": "latch.2.wav",
     "gain": 0.2549332850857785,
     "sec": 0.272
    }
   ],
   "boom": [
    {
-    "file": "boom.0.ogg",
+    "file": "boom.0.wav",
     "gain": 0.48972612933108683,
     "sec": 1.244
    },
    {
-    "file": "boom.1.ogg",
+    "file": "boom.1.wav",
     "gain": 0.5984884186794883,
     "sec": 1.052
    },
    {
-    "file": "boom.2.ogg",
+    "file": "boom.2.wav",
     "gain": 0.5921501234958046,
     "sec": 1.022
    }
   ],
   "tick": [
    {
-    "file": "tick.0.ogg",
+    "file": "tick.0.wav",
     "gain": 0.1137941997302206,
     "sec": 0.122
    }
   ],
   "go": [
    {
-    "file": "go.0.ogg",
+    "file": "go.0.wav",
     "gain": 0.17293603796707957,
     "sec": 0.317
    }
   ],
   "win": [
    {
-    "file": "win.0.ogg",
+    "file": "win.0.wav",
     "gain": 0.2640419257314582,
     "sec": 1.417
    }
   ],
   "lose": [
    {
-    "file": "lose.0.ogg",
+    "file": "lose.0.wav",
     "gain": 0.18339696683381734,
     "sec": 0.975
    }
   ],
   "bbBreak": [
    {
-    "file": "bbBreak.0.ogg",
+    "file": "bbBreak.0.wav",
     "gain": 0.27730060251135574,
     "sec": 0.362
    },
    {
-    "file": "bbBreak.1.ogg",
+    "file": "bbBreak.1.wav",
     "gain": 0.2831513317007768,
     "sec": 0.376
    },
    {
-    "file": "bbBreak.2.ogg",
+    "file": "bbBreak.2.wav",
     "gain": 0.2767475341495715,
     "sec": 0.349
    }
   ],
   "clear": [
    {
-    "file": "clear.0.ogg",
+    "file": "clear.0.wav",
     "gain": 0.1537977237450449,
     "sec": 0.356
    }
   ],
   "sizzle": [
    {
-    "file": "sizzle.0.ogg",
+    "file": "sizzle.0.wav",
     "gain": 0.17648420835796155,
     "sec": 0.408
    },
    {
-    "file": "sizzle.1.ogg",
+    "file": "sizzle.1.wav",
     "gain": 0.1406564367444892,
     "sec": 0.394
    },
    {
-    "file": "sizzle.2.ogg",
+    "file": "sizzle.2.wav",
     "gain": 0.1363664708639446,
     "sec": 0.43
    }
   ],
   "smash": [
    {
-    "file": "smash.0.ogg",
+    "file": "smash.0.wav",
     "gain": 0.5776008806730571,
     "sec": 1.653
    },
    {
-    "file": "smash.1.ogg",
+    "file": "smash.1.wav",
     "gain": 0.6193179833261591,
     "sec": 0.974
    },
    {
-    "file": "smash.2.ogg",
+    "file": "smash.2.wav",
     "gain": 0.6239878503899825,
     "sec": 1.005
    }
   ],
   "smash.strong": [
    {
-    "file": "smash.strong.0.ogg",
+    "file": "smash.strong.0.wav",
     "gain": 0.6158398327074553,
     "sec": 1.49
    },
    {
-    "file": "smash.strong.1.ogg",
+    "file": "smash.strong.1.wav",
     "gain": 0.6004928287706878,
     "sec": 1.055
    },
    {
-    "file": "smash.strong.2.ogg",
+    "file": "smash.strong.2.wav",
     "gain": 0.6229105121211002,
     "sec": 1.418
    }
   ],
   "koCrush": [
    {
-    "file": "koCrush.0.ogg",
+    "file": "koCrush.0.wav",
     "gain": 0.7546621247341758,
     "sec": 1.209
    },
    {
-    "file": "koCrush.1.ogg",
+    "file": "koCrush.1.wav",
     "gain": 0.7021222616496839,
     "sec": 1.113
    },
    {
-    "file": "koCrush.2.ogg",
+    "file": "koCrush.2.wav",
     "gain": 0.7865120235242342,
     "sec": 1.19
    }
   ],
   "koCrush.strong": [
    {
-    "file": "koCrush.strong.0.ogg",
+    "file": "koCrush.strong.0.wav",
     "gain": 0.8873236179351807,
     "sec": 1.159
    },
    {
-    "file": "koCrush.strong.1.ogg",
+    "file": "koCrush.strong.1.wav",
     "gain": 0.9210415890342312,
     "sec": 1.12
    },
    {
-    "file": "koCrush.strong.2.ogg",
+    "file": "koCrush.strong.2.wav",
     "gain": 0.7370129384492573,
     "sec": 1.122
    }
   ],
   "glideRing": [
    {
-    "file": "glideRing.0.ogg",
+    "file": "glideRing.0.wav",
     "gain": 0.24301546184640183,
     "sec": 0.539
    },
    {
-    "file": "glideRing.1.ogg",
+    "file": "glideRing.1.wav",
     "gain": 0.2258008875344929,
     "sec": 0.541
    },
    {
-    "file": "glideRing.2.ogg",
+    "file": "glideRing.2.wav",
     "gain": 0.24547292997962553,
     "sec": 0.539
    }
   ],
   "glideRing.strong": [
    {
-    "file": "glideRing.strong.0.ogg",
+    "file": "glideRing.strong.0.wav",
     "gain": 0.2643063821290669,
     "sec": 0.55
    },
    {
-    "file": "glideRing.strong.1.ogg",
+    "file": "glideRing.strong.1.wav",
     "gain": 0.21920439444090192,
     "sec": 0.548
    },
    {
-    "file": "glideRing.strong.2.ogg",
+    "file": "glideRing.strong.2.wav",
     "gain": 0.2559668766824823,
     "sec": 0.54
    }
   ],
   "bbTick": [
    {
-    "file": "bbTick.0.ogg",
+    "file": "bbTick.0.wav",
     "gain": 0.1024021914130763,
     "sec": 0.08
    },
    {
-    "file": "bbTick.1.ogg",
+    "file": "bbTick.1.wav",
     "gain": 0.1024021914130763,
     "sec": 0.08
    },
    {
-    "file": "bbTick.2.ogg",
+    "file": "bbTick.2.wav",
     "gain": 0.1024021914130763,
     "sec": 0.08
    }
   ],
   "bbTick.strong": [
    {
-    "file": "bbTick.strong.0.ogg",
+    "file": "bbTick.strong.0.wav",
     "gain": 0.15353296932421234,
     "sec": 0.08
    },
    {
-    "file": "bbTick.strong.1.ogg",
+    "file": "bbTick.strong.1.wav",
     "gain": 0.15353296932421234,
     "sec": 0.08
    },
    {
-    "file": "bbTick.strong.2.ogg",
+    "file": "bbTick.strong.2.wav",
     "gain": 0.15353296932421234,
     "sec": 0.08
    }
   ],
   "bbBlast": [
    {
-    "file": "bbBlast.0.ogg",
+    "file": "bbBlast.0.wav",
     "gain": 0.37777103875812734,
     "sec": 0.31
    },
    {
-    "file": "bbBlast.1.ogg",
+    "file": "bbBlast.1.wav",
     "gain": 0.3786171737470125,
     "sec": 0.332
    },
    {
-    "file": "bbBlast.2.ogg",
+    "file": "bbBlast.2.wav",
     "gain": 0.37694153032804795,
     "sec": 0.321
    }
   ],
   "bbBlast.strong": [
    {
-    "file": "bbBlast.strong.0.ogg",
+    "file": "bbBlast.strong.0.wav",
     "gain": 0.3781055149279143,
     "sec": 0.426
    },
    {
-    "file": "bbBlast.strong.1.ogg",
+    "file": "bbBlast.strong.1.wav",
     "gain": 0.3778099700024254,
     "sec": 0.467
    },
    {
-    "file": "bbBlast.strong.2.ogg",
+    "file": "bbBlast.strong.2.wav",
     "gain": 0.37802369971024363,
     "sec": 0.457
    }
   ],
   "bbRise": [
    {
-    "file": "bbRise.0.ogg",
+    "file": "bbRise.0.wav",
     "gain": 0.40043520300011887,
     "sec": 0.218
    },
    {
-    "file": "bbRise.1.ogg",
+    "file": "bbRise.1.wav",
     "gain": 0.40089365683103867,
     "sec": 0.218
    },
    {
-    "file": "bbRise.2.ogg",
+    "file": "bbRise.2.wav",
     "gain": 0.3909489669297871,
     "sec": 0.233
    }
   ],
   "bbRise.big": [
    {
-    "file": "bbRise.big.0.ogg",
+    "file": "bbRise.big.0.wav",
     "gain": 0.4815096604196649,
     "sec": 0.261
    },
    {
-    "file": "bbRise.big.1.ogg",
+    "file": "bbRise.big.1.wav",
     "gain": 0.4858996993617008,
     "sec": 0.262
    },
    {
-    "file": "bbRise.big.2.ogg",
+    "file": "bbRise.big.2.wav",
     "gain": 0.5070531681964272,
     "sec": 0.26
    }
   ],
   "final": [
    {
-    "file": "final.0.ogg",
+    "file": "final.0.wav",
     "gain": 0.5460057760539808,
     "sec": 2.787
    }
   ],
   "strum": [
    {
-    "file": "strum.0.ogg",
+    "file": "strum.0.wav",
     "gain": 0.267953308005082,
     "sec": 0.573
    },
    {
-    "file": "strum.1.ogg",
+    "file": "strum.1.wav",
     "gain": 0.2169204542511388,
     "sec": 0.574
    },
    {
-    "file": "strum.2.ogg",
+    "file": "strum.2.wav",
     "gain": 0.2279574620096307,
     "sec": 0.59
    }
   ],
   "strum.metal": [
    {
-    "file": "strum.metal.0.ogg",
+    "file": "strum.metal.0.wav",
     "gain": 0.5054811741176405,
     "sec": 0.685
    },
    {
-    "file": "strum.metal.1.ogg",
+    "file": "strum.metal.1.wav",
     "gain": 0.5066514328906411,
     "sec": 0.686
    },
    {
-    "file": "strum.metal.2.ogg",
+    "file": "strum.metal.2.wav",
     "gain": 0.5091999392760428,
     "sec": 0.685
    }
   ],
   "lavaDeath.water": [
    {
-    "file": "lavaDeath.water.0.ogg",
+    "file": "lavaDeath.water.0.wav",
     "gain": 0.2761105487221166,
     "sec": 0.547
    },
    {
-    "file": "lavaDeath.water.1.ogg",
+    "file": "lavaDeath.water.1.wav",
     "gain": 0.27497304113287674,
     "sec": 0.503
    }
   ],
   "rise.water": [
    {
-    "file": "rise.water.0.ogg",
+    "file": "rise.water.0.wav",
     "gain": 0.0951410124176427,
     "sec": 1.128
    }
   ],
   "lavaDeath.lava": [
    {
-    "file": "lavaDeath.lava.0.ogg",
+    "file": "lavaDeath.lava.0.wav",
     "gain": 0.2801651703683954,
     "sec": 0.692
    },
    {
-    "file": "lavaDeath.lava.1.ogg",
+    "file": "lavaDeath.lava.1.wav",
     "gain": 0.28017022107776846,
     "sec": 0.684
    }
   ],
   "rise.lava": [
    {
-    "file": "rise.lava.0.ogg",
+    "file": "rise.lava.0.wav",
     "gain": 0.33872322032326146,
     "sec": 1.697
    }
   ],
   "lavaDeath.swamp": [
    {
-    "file": "lavaDeath.swamp.0.ogg",
+    "file": "lavaDeath.swamp.0.wav",
     "gain": 0.2788825097836946,
     "sec": 0.503
    },
    {
-    "file": "lavaDeath.swamp.1.ogg",
+    "file": "lavaDeath.swamp.1.wav",
     "gain": 0.2799549228266666,
     "sec": 0.52
    }
   ],
   "rise.swamp": [
    {
-    "file": "rise.swamp.0.ogg",
+    "file": "rise.swamp.0.wav",
     "gain": 0.3510836864772596,
     "sec": 1.697
    }
   ],
   "lavaDeath.energy": [
    {
-    "file": "lavaDeath.energy.0.ogg",
+    "file": "lavaDeath.energy.0.wav",
     "gain": 0.28195927017613465,
     "sec": 0.51
    },
    {
-    "file": "lavaDeath.energy.1.ogg",
+    "file": "lavaDeath.energy.1.wav",
     "gain": 0.27822836449271754,
     "sec": 0.551
    }
   ],
   "rise.energy": [
    {
-    "file": "rise.energy.0.ogg",
+    "file": "rise.energy.0.wav",
     "gain": 0.13584146374150327,
     "sec": 1.133
    }
   ],
   "lavaDeath.storm": [
    {
-    "file": "lavaDeath.storm.0.ogg",
+    "file": "lavaDeath.storm.0.wav",
     "gain": 0.2817548576154207,
     "sec": 0.531
    },
    {
-    "file": "lavaDeath.storm.1.ogg",
+    "file": "lavaDeath.storm.1.wav",
     "gain": 0.279162839839333,
     "sec": 0.538
    }
   ],
   "rise.storm": [
    {
-    "file": "rise.storm.0.ogg",
+    "file": "rise.storm.0.wav",
     "gain": 0.4169351803629022,
     "sec": 1.33
    }
   ],
   "mark.1": [
    {
-    "file": "mark.1.0.ogg",
+    "file": "mark.1.0.wav",
     "gain": 0.29015531665400457,
     "sec": 0.124
    }
   ],
   "mark.2": [
    {
-    "file": "mark.2.0.ogg",
+    "file": "mark.2.0.wav",
     "gain": 0.29015531665400457,
     "sec": 0.126
    }
   ],
   "mark.3": [
    {
-    "file": "mark.3.0.ogg",
+    "file": "mark.3.0.wav",
     "gain": 0.29015531665400457,
     "sec": 0.244
    }
@@ -1439,22 +1439,22 @@
    },
    "pops": [
     {
-     "file": "hazardPop.water.0.ogg",
+     "file": "hazardPop.water.0.wav",
      "gain": 0.08669254026914898,
      "sec": 0.221
     },
     {
-     "file": "hazardPop.water.1.ogg",
+     "file": "hazardPop.water.1.wav",
      "gain": 0.06379267494929465,
      "sec": 0.23
     },
     {
-     "file": "hazardPop.water.2.ogg",
+     "file": "hazardPop.water.2.wav",
      "gain": 0.08756525422397413,
      "sec": 0.226
     },
     {
-     "file": "hazardPop.water.3.ogg",
+     "file": "hazardPop.water.3.wav",
      "gain": 0.0816882676199863,
      "sec": 0.225
     }
@@ -1468,22 +1468,22 @@
    },
    "pops": [
     {
-     "file": "hazardPop.lava.0.ogg",
+     "file": "hazardPop.lava.0.wav",
      "gain": 0.2527515511763723,
      "sec": 0.122
     },
     {
-     "file": "hazardPop.lava.1.ogg",
+     "file": "hazardPop.lava.1.wav",
      "gain": 0.2527515511763723,
      "sec": 0.123
     },
     {
-     "file": "hazardPop.lava.2.ogg",
+     "file": "hazardPop.lava.2.wav",
      "gain": 0.2527515511763723,
      "sec": 0.122
     },
     {
-     "file": "hazardPop.lava.3.ogg",
+     "file": "hazardPop.lava.3.wav",
      "gain": 0.2527515511763723,
      "sec": 0.124
     }
@@ -1497,22 +1497,22 @@
    },
    "pops": [
     {
-     "file": "hazardPop.swamp.0.ogg",
+     "file": "hazardPop.swamp.0.wav",
      "gain": 0.17252567567323385,
      "sec": 0.084
     },
     {
-     "file": "hazardPop.swamp.1.ogg",
+     "file": "hazardPop.swamp.1.wav",
      "gain": 0.17252567567323385,
      "sec": 0.085
     },
     {
-     "file": "hazardPop.swamp.2.ogg",
+     "file": "hazardPop.swamp.2.wav",
      "gain": 0.17252567567323385,
      "sec": 0.084
     },
     {
-     "file": "hazardPop.swamp.3.ogg",
+     "file": "hazardPop.swamp.3.wav",
      "gain": 0.17252567567323385,
      "sec": 0.084
     }
@@ -1526,22 +1526,22 @@
    },
    "pops": [
     {
-     "file": "hazardPop.energy.0.ogg",
+     "file": "hazardPop.energy.0.wav",
      "gain": 0.06203556531354001,
      "sec": 0.104
     },
     {
-     "file": "hazardPop.energy.1.ogg",
+     "file": "hazardPop.energy.1.wav",
      "gain": 0.06203556531354001,
      "sec": 0.104
     },
     {
-     "file": "hazardPop.energy.2.ogg",
+     "file": "hazardPop.energy.2.wav",
      "gain": 0.06203556531354001,
      "sec": 0.104
     },
     {
-     "file": "hazardPop.energy.3.ogg",
+     "file": "hazardPop.energy.3.wav",
      "gain": 0.06203556531354001,
      "sec": 0.103
     }
@@ -1555,22 +1555,22 @@
    },
    "pops": [
     {
-     "file": "hazardPop.storm.0.ogg",
+     "file": "hazardPop.storm.0.wav",
      "gain": 0.266031120952807,
      "sec": 1.3
     },
     {
-     "file": "hazardPop.storm.1.ogg",
+     "file": "hazardPop.storm.1.wav",
      "gain": 0.25519320839329773,
      "sec": 1.303
     },
     {
-     "file": "hazardPop.storm.2.ogg",
+     "file": "hazardPop.storm.2.wav",
      "gain": 0.23909863672758405,
      "sec": 1.304
     },
     {
-     "file": "hazardPop.storm.3.ogg",
+     "file": "hazardPop.storm.3.wav",
      "gain": 0.26377486555199875,
      "sec": 1.305
     }
@@ -1693,22 +1693,22 @@
    },
    "pings": [
     {
-     "file": "ambientPing.crystal.0.ogg",
+     "file": "ambientPing.crystal.0.wav",
      "gain": 0.13717961938757647,
      "sec": 3.394
     },
     {
-     "file": "ambientPing.crystal.1.ogg",
+     "file": "ambientPing.crystal.1.wav",
      "gain": 0.13717961938757647,
      "sec": 3.762
     },
     {
-     "file": "ambientPing.crystal.2.ogg",
+     "file": "ambientPing.crystal.2.wav",
      "gain": 0.13717961938757647,
      "sec": 3.39
     },
     {
-     "file": "ambientPing.crystal.3.ogg",
+     "file": "ambientPing.crystal.3.wav",
      "gain": 0.13717961938757647,
      "sec": 3.389
     }
@@ -1722,22 +1722,22 @@
    },
    "pings": [
     {
-     "file": "ambientPing.volcano.0.ogg",
+     "file": "ambientPing.volcano.0.wav",
      "gain": 0.19921566310681796,
      "sec": 2.723
     },
     {
-     "file": "ambientPing.volcano.1.ogg",
+     "file": "ambientPing.volcano.1.wav",
      "gain": 0.19354032842736496,
      "sec": 2.643
     },
     {
-     "file": "ambientPing.volcano.2.ogg",
+     "file": "ambientPing.volcano.2.wav",
      "gain": 0.2125997449222364,
      "sec": 2.726
     },
     {
-     "file": "ambientPing.volcano.3.ogg",
+     "file": "ambientPing.volcano.3.wav",
      "gain": 0.20444920188502264,
      "sec": 2.643
     }
@@ -1751,22 +1751,22 @@
    },
    "pings": [
     {
-     "file": "ambientPing.desert.0.ogg",
+     "file": "ambientPing.desert.0.wav",
      "gain": 0.01817624623838224,
      "sec": 2.146
     },
     {
-     "file": "ambientPing.desert.1.ogg",
+     "file": "ambientPing.desert.1.wav",
      "gain": 0.01870650602014441,
      "sec": 2.134
     },
     {
-     "file": "ambientPing.desert.2.ogg",
+     "file": "ambientPing.desert.2.wav",
      "gain": 0.015267157240917808,
      "sec": 2.1
     },
     {
-     "file": "ambientPing.desert.3.ogg",
+     "file": "ambientPing.desert.3.wav",
      "gain": 0.016035875795703185,
      "sec": 2.077
     }
@@ -1780,22 +1780,22 @@
    },
    "pings": [
     {
-     "file": "ambientPing.mushroom.0.ogg",
+     "file": "ambientPing.mushroom.0.wav",
      "gain": 0.08143079123998943,
      "sec": 2.859
     },
     {
-     "file": "ambientPing.mushroom.1.ogg",
+     "file": "ambientPing.mushroom.1.wav",
      "gain": 0.08143079123998943,
      "sec": 2.859
     },
     {
-     "file": "ambientPing.mushroom.2.ogg",
+     "file": "ambientPing.mushroom.2.wav",
      "gain": 0.08143079123998943,
      "sec": 2.859
     },
     {
-     "file": "ambientPing.mushroom.3.ogg",
+     "file": "ambientPing.mushroom.3.wav",
      "gain": 0.08143079123998943,
      "sec": 2.859
     }
@@ -1809,22 +1809,22 @@
    },
    "pings": [
     {
-     "file": "ambientPing.skycastle.0.ogg",
+     "file": "ambientPing.skycastle.0.wav",
      "gain": 0.09474184168012519,
      "sec": 4.142
     },
     {
-     "file": "ambientPing.skycastle.1.ogg",
+     "file": "ambientPing.skycastle.1.wav",
      "gain": 0.09035152040029827,
      "sec": 3.514
     },
     {
-     "file": "ambientPing.skycastle.2.ogg",
+     "file": "ambientPing.skycastle.2.wav",
      "gain": 0.08513143188075016,
      "sec": 3.691
     },
     {
-     "file": "ambientPing.skycastle.3.ogg",
+     "file": "ambientPing.skycastle.3.wav",
      "gain": 0.09340436835038035,
      "sec": 3.782
     }
@@ -1838,22 +1838,22 @@
    },
    "pings": [
     {
-     "file": "ambientPing.castle.0.ogg",
+     "file": "ambientPing.castle.0.wav",
      "gain": 0.08450849275839957,
      "sec": 2.541
     },
     {
-     "file": "ambientPing.castle.1.ogg",
+     "file": "ambientPing.castle.1.wav",
      "gain": 0.08313207249892386,
      "sec": 2.587
     },
     {
-     "file": "ambientPing.castle.2.ogg",
+     "file": "ambientPing.castle.2.wav",
      "gain": 0.0934459033765291,
      "sec": 2.329
     },
     {
-     "file": "ambientPing.castle.3.ogg",
+     "file": "ambientPing.castle.3.wav",
      "gain": 0.08795277068489477,
      "sec": 2.563
     }
@@ -1867,22 +1867,22 @@
    },
    "pings": [
     {
-     "file": "ambientPing.meadow.0.ogg",
+     "file": "ambientPing.meadow.0.wav",
      "gain": 0.014102368762618618,
      "sec": 2.192
     },
     {
-     "file": "ambientPing.meadow.1.ogg",
+     "file": "ambientPing.meadow.1.wav",
      "gain": 0.014102368762618618,
      "sec": 2.192
     },
     {
-     "file": "ambientPing.meadow.2.ogg",
+     "file": "ambientPing.meadow.2.wav",
      "gain": 0.014102368762618618,
      "sec": 2.192
     },
     {
-     "file": "ambientPing.meadow.3.ogg",
+     "file": "ambientPing.meadow.3.wav",
      "gain": 0.014102368762618618,
      "sec": 2.192
     }
@@ -1893,28 +1893,28 @@
   "crystal": {
    "land": [
     {
-     "file": "title.crystal.land.0.ogg",
+     "file": "title.crystal.land.0.wav",
      "gain": 0.13823782142839935,
      "sec": 3.025
     },
     {
-     "file": "title.crystal.land.1.ogg",
+     "file": "title.crystal.land.1.wav",
      "gain": 0.1605004072189331,
      "sec": 3.023
     },
     {
-     "file": "title.crystal.land.2.ogg",
+     "file": "title.crystal.land.2.wav",
      "gain": 0.14229131372351397,
      "sec": 3.049
     }
    ],
    "burst": {
-    "file": "title.crystal.burst.ogg",
+    "file": "title.crystal.burst.wav",
     "gain": 0.24314295304448982,
     "sec": 4.021
    },
    "exit": {
-    "file": "title.crystal.exit.ogg",
+    "file": "title.crystal.exit.wav",
     "gain": 0.058685443118998884,
     "sec": 3.052
    }
@@ -1922,28 +1922,28 @@
   "volcano": {
    "land": [
     {
-     "file": "title.volcano.land.0.ogg",
+     "file": "title.volcano.land.0.wav",
      "gain": 0.09439986003072638,
      "sec": 2.641
     },
     {
-     "file": "title.volcano.land.1.ogg",
+     "file": "title.volcano.land.1.wav",
      "gain": 0.08849336912757473,
      "sec": 2.639
     },
     {
-     "file": "title.volcano.land.2.ogg",
+     "file": "title.volcano.land.2.wav",
      "gain": 0.07566462221898532,
      "sec": 2.644
     }
    ],
    "burst": {
-    "file": "title.volcano.burst.ogg",
+    "file": "title.volcano.burst.wav",
     "gain": 0.25011547301944936,
     "sec": 3.861
    },
    "exit": {
-    "file": "title.volcano.exit.ogg",
+    "file": "title.volcano.exit.wav",
     "gain": 0.052814138563055744,
     "sec": 2.717
    }
@@ -1951,28 +1951,28 @@
   "desert": {
    "land": [
     {
-     "file": "title.desert.land.0.ogg",
+     "file": "title.desert.land.0.wav",
      "gain": 0.0810188839310094,
      "sec": 2.646
     },
     {
-     "file": "title.desert.land.1.ogg",
+     "file": "title.desert.land.1.wav",
      "gain": 0.07585954509283367,
      "sec": 2.648
     },
     {
-     "file": "title.desert.land.2.ogg",
+     "file": "title.desert.land.2.wav",
      "gain": 0.08827936492468182,
      "sec": 2.65
     }
    ],
    "burst": {
-    "file": "title.desert.burst.ogg",
+    "file": "title.desert.burst.wav",
     "gain": 0.27748042031338344,
     "sec": 4.106
    },
    "exit": {
-    "file": "title.desert.exit.ogg",
+    "file": "title.desert.exit.wav",
     "gain": 0.06252087260547437,
     "sec": 2.746
    }
@@ -1980,28 +1980,28 @@
   "mushroom": {
    "land": [
     {
-     "file": "title.mushroom.land.0.ogg",
+     "file": "title.mushroom.land.0.wav",
      "gain": 0.08738631480618528,
      "sec": 2.641
     },
     {
-     "file": "title.mushroom.land.1.ogg",
+     "file": "title.mushroom.land.1.wav",
      "gain": 0.10410635879165249,
      "sec": 2.641
     },
     {
-     "file": "title.mushroom.land.2.ogg",
+     "file": "title.mushroom.land.2.wav",
      "gain": 0.10384284352001391,
      "sec": 2.641
     }
    ],
    "burst": {
-    "file": "title.mushroom.burst.ogg",
+    "file": "title.mushroom.burst.wav",
     "gain": 0.26176463616521733,
     "sec": 4.036
    },
    "exit": {
-    "file": "title.mushroom.exit.ogg",
+    "file": "title.mushroom.exit.wav",
     "gain": 0.05740559806949214,
     "sec": 3.082
    }
@@ -2009,28 +2009,28 @@
   "skycastle": {
    "land": [
     {
-     "file": "title.skycastle.land.0.ogg",
+     "file": "title.skycastle.land.0.wav",
      "gain": 0.08120419163452952,
      "sec": 2.641
     },
     {
-     "file": "title.skycastle.land.1.ogg",
+     "file": "title.skycastle.land.1.wav",
      "gain": 0.08057010016943279,
      "sec": 2.64
     },
     {
-     "file": "title.skycastle.land.2.ogg",
+     "file": "title.skycastle.land.2.wav",
      "gain": 0.09930717317681564,
      "sec": 2.642
     }
    ],
    "burst": {
-    "file": "title.skycastle.burst.ogg",
+    "file": "title.skycastle.burst.wav",
     "gain": 0.2436506748199463,
     "sec": 3.693
    },
    "exit": {
-    "file": "title.skycastle.exit.ogg",
+    "file": "title.skycastle.exit.wav",
     "gain": 0.05856622990808989,
     "sec": 3.071
    }
@@ -2038,28 +2038,28 @@
   "castle": {
    "land": [
     {
-     "file": "title.castle.land.0.ogg",
+     "file": "title.castle.land.0.wav",
      "gain": 0.08899629900329992,
      "sec": 2.642
     },
     {
-     "file": "title.castle.land.1.ogg",
+     "file": "title.castle.land.1.wav",
      "gain": 0.090399831533432,
      "sec": 2.645
     },
     {
-     "file": "title.castle.land.2.ogg",
+     "file": "title.castle.land.2.wav",
      "gain": 0.08915990591049194,
      "sec": 2.641
     }
    ],
    "burst": {
-    "file": "title.castle.burst.ogg",
+    "file": "title.castle.burst.wav",
     "gain": 0.25651443945734126,
     "sec": 3.85
    },
    "exit": {
-    "file": "title.castle.exit.ogg",
+    "file": "title.castle.exit.wav",
     "gain": 0.058228565674079094,
     "sec": 2.724
    }
@@ -2067,28 +2067,28 @@
   "meadow": {
    "land": [
     {
-     "file": "title.meadow.land.0.ogg",
+     "file": "title.meadow.land.0.wav",
      "gain": 0.10081469228393154,
      "sec": 2.64
     },
     {
-     "file": "title.meadow.land.1.ogg",
+     "file": "title.meadow.land.1.wav",
      "gain": 0.08727078375063445,
      "sec": 2.641
     },
     {
-     "file": "title.meadow.land.2.ogg",
+     "file": "title.meadow.land.2.wav",
      "gain": 0.0896321786077399,
      "sec": 2.64
     }
    ],
    "burst": {
-    "file": "title.meadow.burst.ogg",
+    "file": "title.meadow.burst.wav",
     "gain": 0.2407876911916231,
     "sec": 4.022
    },
    "exit": {
-    "file": "title.meadow.exit.ogg",
+    "file": "title.meadow.exit.wav",
     "gain": 0.05727017004238932,
     "sec": 3.067
    }

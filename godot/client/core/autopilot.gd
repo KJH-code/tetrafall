@@ -93,6 +93,8 @@ func _on_joined(room: Dictionary, again: bool) -> void:
 			Store.send_room({"type": "addBot"})
 	if role == "practice":
 		Store.send_room({"type": "dummyAdd"})
+		if args.has("map"): # 화면 대조 (B4): 연습 방도 같은 맵 (연습 방은 누구나 setMap)
+			Store.send_room({"type": "setMap", "map": str(args["map"])})
 
 
 func _on_state(st: Dictionary, _prev: Dictionary) -> void:
