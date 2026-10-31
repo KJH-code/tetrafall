@@ -1,0 +1,28 @@
+# 게임 좌표 ↔ 고도 좌표, 색 (모든 묶음 공용, G0 가 가짐).
+# 게임: x, y 바닥 격자 · z 위 · 한 칸 = 1 · yaw 0 = +x, 반시계 (JS 판 그대로). 고도: y 위 → Vector3(x, z, y)
+# 주의: 고도 Vector3 는 32비트 float. 서버 시각(ms)·누적 값은 float 변수(64비트)로
+extends RefCounted
+
+
+static func gpos(v: Vector3) -> Vector3:
+	return Vector3(v.x, v.z, v.y)
+
+
+static func gxyz(x: float, y: float, z: float) -> Vector3:
+	return Vector3(x, z, y)
+
+
+# 게임 yaw → 고도 Node3D rotation.y (+x 를 보던 몸이 yaw 방향을 봄)
+static func rot_y(yaw: float) -> float:
+	return -yaw
+
+
+# 게임 방향 (yaw, pitch) → 고도 단위 벡터
+static func dir(yaw: float, pitch: float = 0.0) -> Vector3:
+	return Vector3(cos(yaw) * cos(pitch), sin(pitch), sin(yaw) * cos(pitch))
+
+
+# config 의 0xRRGGBB 숫자 (PLAYER_PALETTE·테마 색) → Color
+static func color(c) -> Color:
+	var i := int(c)
+	return Color8((i >> 16) & 0xff, (i >> 8) & 0xff, i & 0xff)

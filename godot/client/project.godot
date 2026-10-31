@@ -1,0 +1,25 @@
+; Tetrafall 고도 클라 (godot/PLAN.md G0~). 서버는 JS 서버 또는 C# 서버 (같은 프로토콜)
+config_version=5
+
+[application]
+config/name="Tetrafall"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+
+[autoload]
+Net="*res://core/net.gd"
+Store="*res://core/store.gd"
+PlayerInput="*res://core/player_input.gd"
+View="*res://core/view.gd"
+
+[display]
+window/size/viewport_width=1280
+window/size/viewport_height=720
+
+[gui]
+
+theme/custom_font="res://assets/fonts/ui_font.tres"
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"

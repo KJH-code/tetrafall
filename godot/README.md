@@ -6,5 +6,5 @@
 | 폴더 | 내용 | 안내 |
 | --- | --- | --- |
 | `server/` | C# 서버 (JS 서버와 같은 프로토콜 — 기존 JS 화면이 그대로 붙음) | [`server/README.md`](server/README.md) |
-| `client/` | (다음) 고도 클라 | — |
+| `client/` | 고도 클라 (G0 뼈대: 접속·재접속·핑·보간·입력·키 설정, 내보내기) | [`client/README.md`](client/README.md) |
 | `prototype/` | 고도 시제품 (1·2단계 판단용, GDScript 규칙·측정) | [`prototype/README.md`](prototype/README.md) |

@@ -81,14 +81,14 @@ godot/
 
 | id | 작업 | 원본 (JS 줄) | 크기 | 먼저 | 끝 기준 |
 | --- | --- | --- | --- | --- | --- |
-| G0 | 뼈대: `godot/client` 프로젝트, 네트워크(같은 프로토콜·재접속 토큰 `seat.js`)·스냅샷 저장·보간(`interp.js`)·입력·키 설정(`keys.js`, `input.js`)·핑(`net.js`) | net 85, interp 69, input 173, keys 96, seat 27, shared/net 81 | 2 | — | JS 서버 방에 들어가 움직이고 판이 돎 (상자 그림) |
+| G0 | **끝 (2026-10-31)** 뼈대: `godot/client` 프로젝트, 네트워크(같은 프로토콜·재접속 토큰 `seat.js`)·스냅샷 저장·보간(`interp.js`)·입력·키 설정(`keys.js`, `input.js`)·핑(`net.js`) | net 85, interp 69, input 173, keys 96, seat 27, shared/net 81 | 2 | — | JS 서버 방에 들어가 움직이고 판이 돎 (상자 그림) |
 | G1 | 판 그리기: 격자 블록(블록 모습 단순판)·떨어지는 블록·그림자·위험(용암) 기본·카메라 1·3인칭·관전(`camera.js`)·하늘 시점(`sky-view`, `sky-aids`) | render 일부, blocks 401, piece-look, hazard 605 일부, camera 36, sky 128 | 3 | G0 | 8명 판이 보임, 30fps+ |
 | G2 | 캐릭터 몸: 8명 체형(`FIGURE_BODIES`)·공격 동작 `MOVES`·포즈·걸음·버릇 (`figure.js`·`figure-pose.js`·`character.js`), 1인칭 팔 (`viewmodel.js`) | figure 2233, figure-pose 118, character 360, viewmodel 357 | 5 (몸 만들기 / 동작 둘로 나눌 수 있음) | G0 | 8명이 JS 판과 같은 모양·동작 (나란히 스샷) |
 | G3 | 툰·외곽선 셰이더·테마 색 (`toon.js`, `textures.js` 핵심, `WORLD_THEMES` 색만) | toon 47, textures 401 일부, world 일부 | 2 | G1 | JS 판과 나란히 비슷 |
 | G4 | HUD·대기실·메뉴·결과 (빛 사선 스타일, 스매시식 % 판, 캐릭터 고르기·초상, 킬 점수전·체력전 HUD, 설정·키 설정, 전환 슬래시) | main 2917, index.html 791, hud-layout, kills-hud, char-select, wipe, portrait 128, char-stage 124 | 5 (메뉴·대기실 / 판 HUD·결과 둘로) | G0 | JS 판 화면 순서·기능 그대로 |
 | G5 | 효과·소리: 타격 파편·KO 연출(`ko.js`)·효과음 파일(`sound.js`)·합성 음악(`music.js` → AudioStreamGenerator) | effects 185, ko 177, sound 586, music 385, hit-tier | 3 | G1·G2 | 소리·KO 연출 같음 |
 | G6 | 연습·튜토리얼 화면·건축가 블록 모습(`bblocks.js`)·성능 표시(F3) | tutorial-ui 164, bblocks 281, perf 137 | 2 | G4 | 튜토리얼 끝까지 |
-| G7 | 내보내기: 웹 (서버가 같이 서빙) + 윈도우·리눅스 실행 파일 | — | 1 | G0 | 재혁 PC 에서 실행 |
+| G7 | **설정 끝 (2026-10-31, 웹은 따로 서빙 `?server=`)** 내보내기: 웹 (서버가 같이 서빙 — S6 와) + 윈도우·리눅스 실행 파일 | — | 1 | G0 | 재혁 PC 에서 실행 |
 | (다음) | 타이틀·래그돌·테마 꾸밈(섬·무대·판 빛·대기실 어두운 장면) | title* 1300, ragdoll 400, world 1158, lobby-dark, game-light | 6+ | 첫 목표 뒤 | — |
 
 클라 합계 (첫 목표까지) 약 **23 세션·일**, G1·G2·G4 를 동시에 하면 달력으로 약 8~10일.
@@ -119,3 +119,52 @@ godot/
 | JS 판이 얼어 있는 동안 버그 고침이 들어옴 | JS 고침 = C# 에도 같은 고침 + fixtures·trace 다시 뽑기. JS 고침 커밋 메시지에 'C# 도' 표시 |
 | 고도 웹 크기 (gzip 약 10MB) | 첫 목표엔 PC 실행 파일이 주, 웹은 그대로 (시제품 측정) |
 | 헤드리스 크로미움 SwiftShader 에서 고도 웹이 깨져 보임 | 스샷은 Mesa (`WEB_GL=mesa xvfb-run`) — 시제품 README |
+
+## 7. 고도 클라 나누기 규칙 (G0, 2026-10-31) — G1·G2·G4 … 가 동시에 붙을 때
+
+`godot/client/` 하나의 고도 프로젝트. 묶음마다 **폴더 하나를 가지고, 남의 폴더 파일은 안 고침**. 공용 파일은 G0 (core/) 가 가짐.
+
+### 누가 무엇을 가짐
+
+| 묶음 | 폴더 | 씬 루트 (누가 붙임) | 비고 |
+| --- | --- | --- | --- |
+| G0 뼈대 | `core/`, `main.gd`·`main.tscn`, `project.godot`, `tools/`, `tests/test_core.gd` | `Main` (시작 씬) | 자동 로드 `Net`·`Store`·`PlayerInput`·`View`. 개발용 `core/dev_view.gd`·`dev_ui.gd` 는 아래 씬이 생기면 안 쓰임 |
+| G1 판 그리기 | `world/` | `world/world.tscn` (Node3D `World`) — main 이 있으면 붙임 | 카메라·격자·블록·위험·관전·하늘 시점. 사람 몸은 G2 함수를 불러 만들고 위치·방향만 둠 |
+| G2 캐릭터 | `chars/` | 씬 없음 → `chars/chars.gd` 의 `static func make_body(char_id, color) -> Node3D` + 몸 노드의 `pose(p: Dictionary, now_ms)`·`on_event(e)` | World 가 사람마다 부름. 1인칭 팔(`viewmodel`)도 여기, World 카메라에 붙이는 건 G1 |
+| G3 툰·셰이더 | `shaders/` | 없음 (재질·셰이더 파일) | G1·G2 가 `preload("res://shaders/…")` |
+| G4 HUD·메뉴·대기실 | `ui/` | `ui/ui.tscn` (CanvasLayer `UI`) — main 이 붙임 | 테마 `ui/theme.tres` (빛 사선). 글자 칸에 포커스면 `PlayerInput.ui_blocking = true` |
+| G5 효과·소리 | `fx/`, `audio/` | `audio/audio.tscn` — main 이 붙임. 효과는 `fx/` 노드를 World 가 붙임 (G1 과 자리 약속) | 이벤트로 움직임 |
+| G6 연습·튜토리얼·건축가 블록·F3 | `ui/practice*`·`ui/tutorial*`·`world/bblocks*`·`ui/perf*` | G4·G1 폴더 안 파일 이름으로 나눔 | 그 폴더 주인과 이름만 약속 |
+| G7 내보내기 | `export_presets.cfg`, `tools/serve_web.mjs`·`web_shot.cjs` | — | |
+
+### 공용 상태 (읽기는 누구나, 쓰기는 정해진 곳만)
+
+- **서버 상태**: `Store.state` (스냅샷 JSON 그대로 — 키는 JS 와 같음, 숫자는 전부 float), `Store.me()`, `Store.player(id)`, `Store.grid` (PackedByteArray, `(z*d+y)*w+x`)·`Store.grid_version`, `Store.room`, `Store.my_id`. **쓰기는 core/ 만.**
+- **그릴 위치**: `Store.view_pos(id)` (보간된 게임 좌표, client/interp.js 와 같은 지연). 스냅샷 x·y·z 를 바로 쓰지 말 것 (뚝뚝 끊김)
+- **신호**: `Store.state_changed(state, prev)` · `Store.game_event(e)` (스냅샷의 events 하나씩, `match e.type` 으로 자기 것만) · `Store.grid_changed` · `joined`·`left_room`·`rooms_changed`·`join_error` · `PlayerInput.ui_action(id, pressed)` (도움말·시점·연습·성능·튜토리얼 넘기기·하늘 시점 돌리기) · `PlayerInput.wheel_changed` · `View.changed(key)`
+- **서버로 보내기**: 조작 (이동·평타·스킬…) 은 `PlayerInput` 만. 방 메시지 (addBot·start·setChar·setName·setColor·setMap·setMode·kick…, `server/rooms.js` roomMessage 의 type 그대로) 는 `Store.send_room({...})`, 방 만들기·들어가기·나가기는 `Store.create_room`·`join`·`leave`
+- **화면끼리 공유 (서버가 모르는 것)**: `View` — 시점 `mode`·관전 대상·설정 (`lowGraphics`·`reducedMotion`·감도·음량·`perf`, user://settings.json). 필드를 더할 땐 view.gd 에 한 줄 + 주석 (쓰는 쪽·읽는 쪽), 커밋 메시지에 'View 필드 추가'. 묶음끼리 노드 경로(`get_node("/root/Main/UI/…")`)로 부르지 않음
+- **좌표·색**: `core/coords.gd` — `gpos(게임 Vector3)`·`gxyz(x, y, z)` → 고도 (x, z, y), `rot_y(yaw)`, `dir(yaw, pitch)`, `color(0xRRGGBB)`. **고도 Vector3 는 32비트 float** → 서버 시각(ms)·누적 값은 `float` 변수(64비트)에
+
+### config
+
+- `core/config.gd` = `node godot/client/tools/gen-config.mjs` 가 `shared/config.js`·`shared/maps.js` 에서 만든 파일 (값 972개 — 표·테마·`TITLE_THEMES`·`WORLD_THEMES` 까지 전부, 함수만 빠짐). **손으로 고치지 않음**. JS config 를 바꾸면 다시 만듦
+- 쓰기: `const C := preload("res://core/config.gd")` → `C.WORLD_THEMES["meadow"]…`. 숫자는 전부 float (`1000 / C.TICK_RATE` 가 정수 나눗셈이 안 되게), 첨자로 쓸 땐 `int()`
+- 고도에만 필요한 수치 (셰이더 세기 등) 는 묶음 폴더의 `<묶음>_config.gd` 에 (예: `world/world_config.gd`) — 코드에 숫자 박지 않기는 같음
+
+### 이벤트·순서
+
+- `state_changed` 다음에 그 스냅샷의 이벤트들이 `game_event` 로 하나씩 (JS main.js 와 같은 순서: onState → handleEvent)
+- 이벤트 종류는 JS `client/main.js` handleEvent 의 `case` 들 (attack·swing·hit·blink·land·death·…). 어느 묶음이 받는지 겹치면 둘 다 받아도 됨 (몸 동작은 G2, 파편·소리는 G5, 글자는 G4)
+
+### 확인·테스트
+
+- 테스트: `tests/test_<묶음>.gd` 를 만들고 `tests/run_tests.gd` 의 FILES 에 한 줄 더함 (그 줄만 고침). 실행 `godot --headless --path godot/client -s res://tests/run_tests.gd`
+- JS 계산을 옮긴 곳은 정답 자료로: `tools/fixtures.mjs` 에 뽑는 부분을 더하고 `tests/fixtures/` (보간·핑·키가 이렇게 되어 있음)
+- 화면 확인: JS 서버 (`PORT=3000 npm start`) + `xvfb-run -a godot --path godot/client --rendering-driver opengl3 -- --auto host --bots 7 --wait-players 8 --shot 파일.png --shot-after 12 --quit-after 13` (8명 판 스샷). 연결·재접속 자동 확인 `bash godot/client/tools/e2e.sh`
+- 브라우저 확인은 Mesa (`WEB_GL=mesa`) — SwiftShader 는 고도 웹이 깨져 보임
+
+### 커밋
+
+- 같은 통합 브랜치, 자기 폴더만. 공용 (core/·main·project.godot·run_tests FILES) 은 G0 이거나, 작게 고치고 커밋 메시지에 '공용:' 으로 표시
+- 자동 로드 추가·이름 바꾸기·프로토콜 바꾸기는 G0·총괄과 먼저 약속
