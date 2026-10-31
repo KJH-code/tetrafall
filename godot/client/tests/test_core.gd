@@ -131,3 +131,19 @@ func test_coords_roundtrip_and_yaw() -> void:
 		check((body.basis * Vector3.RIGHT).is_equal_approx(Co.dir(yaw)), "rot_y: +x 를 보던 몸이 dir(yaw) 를 봄 (yaw %s)" % yaw)
 		n.free()
 		body.free()
+
+
+# 좌표 거울 고침 (x, z, -y) 과 입력이 맞는지: 마우스를 오른쪽으로 (yaw 줄어듦) = 카메라 오른쪽으로 돎, 오른쪽 이동 (strafe) = 화면 오른쪽
+func test_input_yaw_matches_camera() -> void:
+	const Co := preload("res://core/coords.gd")
+	for yaw in [0.0, 0.9, 2.5, -2.0]:
+		var cam := Node3D.new()
+		cam.look_at_from_position(Vector3.ZERO, Co.dir(yaw), Vector3.UP)
+		var right := cam.transform.basis.x # 카메라 화면 오른쪽
+		# 서버 moveDir: strafe +1 = 게임 (sin yaw, -cos yaw)
+		var strafe := Co.gpos(Vector3(sin(yaw), -cos(yaw), 0))
+		check(strafe.is_equal_approx(right), "strafe 오른쪽 = 카메라 오른쪽 (yaw %s): %s / %s" % [yaw, strafe, right])
+		# 마우스 오른쪽 → yaw -= dx·감도 → 보는 쪽이 카메라 오른쪽으로 감
+		var turned := Co.dir(yaw - 0.1)
+		check(turned.dot(right) > 0, "마우스 오른쪽이면 오른쪽으로 돎 (yaw %s)" % yaw)
+		cam.free()
