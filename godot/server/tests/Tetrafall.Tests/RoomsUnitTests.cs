@@ -147,6 +147,12 @@ public class StaticFilesTests
         var web = Path.Combine(root, "godot", "client", "build", "web");
         Assert.Equal(Path.Combine(web, "index.html"), StaticFiles.Resolve(root, "/play/"));
         Assert.Equal(Path.Combine(web, "index.html"), StaticFiles.Resolve(root, "/play"));
+        // /play 는 /play/ 로 보냄 (쿼리 그대로) — 상대 주소 index.js 가 /play/index.js 로 풀리게
+        Assert.Equal("/play/", StaticFiles.Redirect("/play", "/play"));
+        Assert.Equal("/play/?room=ABCD&x=1", StaticFiles.Redirect("/play", "/play?room=ABCD&x=1"));
+        Assert.Null(StaticFiles.Redirect("/play/", "/play/?room=ABCD"));
+        Assert.Null(StaticFiles.Redirect("/playground", "/playground"));
+        Assert.Null(StaticFiles.Redirect("/", "/"));
         Assert.Equal(Path.Combine(web, "tetrafall.wasm"), StaticFiles.Resolve(root, "/play/tetrafall.wasm"));
         Assert.Null(StaticFiles.Resolve(root, "/play/../../../secret.txt"));
         Assert.Equal(Path.Combine(root, "client", "player.js"), StaticFiles.Resolve(root, "/player.js")); // /play 로 시작해도 /play/ 가 아니면 예전대로

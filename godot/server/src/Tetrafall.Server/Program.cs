@@ -40,6 +40,7 @@ app.Run(async ctx =>
     var raw = ctx.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpRequestFeature>()?.RawTarget ?? ctx.Request.Path.Value ?? "/";
     var path = StaticFiles.StrictDecode(raw.Split('?', 2)[0]);
     if (path == null) { ctx.Response.StatusCode = 400; await ctx.Response.WriteAsync("bad request"); return; }
+    if (StaticFiles.Redirect(path, raw) is string to) { ctx.Response.StatusCode = 301; ctx.Response.Headers.Location = to; return; }
     var file = StaticFiles.Resolve(root, path);
     if (file == null) { ctx.Response.StatusCode = 403; await ctx.Response.WriteAsync("forbidden"); return; }
     if (!File.Exists(file)) { ctx.Response.StatusCode = 404; await ctx.Response.WriteAsync("not found"); return; }

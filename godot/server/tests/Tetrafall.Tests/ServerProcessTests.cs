@@ -69,15 +69,24 @@ public class ServerProcessTests
     }
 
     // HttpClient 는 주소를 고쳐 보내서 (%A → %25A) 날 요청을 소켓으로
-    static async Task<int> RawGet(int port, string target)
+    static async Task<int> RawGet(int port, string target) => int.Parse((await RawHead(port, target)).Split(' ')[1]);
+
+    // 응답 머리 (상태 줄 + 헤더) 글자
+    static async Task<string> RawHead(int port, string target)
     {
         using var tcp = new TcpClient();
         await tcp.ConnectAsync("127.0.0.1", port);
         var s = tcp.GetStream();
         await s.WriteAsync(Encoding.ASCII.GetBytes($"GET {target} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"));
-        var buf = new byte[64];
-        int n = await s.ReadAsync(buf);
-        return int.Parse(Encoding.ASCII.GetString(buf, 0, n).Split(' ')[1]);
+        var ms = new MemoryStream();
+        var buf = new byte[1024];
+        int n;
+        while ((n = await s.ReadAsync(buf)) > 0)
+        {
+            ms.Write(buf, 0, n);
+            if (Encoding.ASCII.GetString(ms.ToArray()).Contains("\r\n\r\n")) break;
+        }
+        return Encoding.ASCII.GetString(ms.ToArray()).Split("\r\n\r\n")[0];
     }
 
     static async Task<ClientWebSocket> Open(int port)
@@ -121,6 +130,9 @@ public class ServerProcessTests
         Assert.Equal(400, await RawGet(srv.port, "/%ZZ"));
         Assert.Equal(200, await RawGet(srv.port, "/"));
         Assert.Equal(404, await RawGet(srv.port, "/nope.js"));
+        var head = await RawHead(srv.port, "/play?room=ABCD");
+        Assert.StartsWith("HTTP/1.1 301", head);
+        Assert.Contains("\r\nLocation: /play/?room=ABCD", head);
         var big = await Open(srv.port);
         var other = await Open(srv.port);
         await SendText(big, JsonSerializer.Serialize(new { type = "setName", name = new string('x', (int)C.NET_MAX_PAYLOAD_BYTES + 10) }));
