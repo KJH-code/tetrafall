@@ -17,6 +17,10 @@ var auras := [] # {node, mat, t0, ms, grow, id}
 var sparks := {} # id -> until (필살기 반짝이)
 var waves := [] # {node, mat, t0}
 var danger: MeshInstance3D
+var ghosts := [] # 순간 베기 잔상 몸 {node, mat, t0} (G2 body.snapshot)
+var ghost_next := {} # id -> 다음 잔상 시각
+var slides = null # world/hook_fx.gd slides (미끄러지는 몸, to 가 있으면 순간 베기)
+var xray_mat: StandardMaterial3D # 사냥꾼의 눈: 블록에 가린 부분만 빨갛게 (깊이 반대)
 var _tex := {}
 
 
@@ -30,6 +34,10 @@ func _ready() -> void:
 	danger.material_override = dm
 	danger.visible = false
 	add_child(danger)
+	xray_mat = _flat(int(C.HUNT_EYE_COLOR))
+	xray_mat.depth_test = BaseMaterial3D.DEPTH_TEST_INVERTED
+	xray_mat.no_depth_test = false
+	xray_mat.render_priority = 1
 
 
 static func now_ms() -> float:
@@ -226,6 +234,7 @@ func update(st: Dictionary, my_id, dt: float) -> void:
 		var sc: float = 0.4 + u * (C.BARD_AMP_RANGE - 0.4)
 		w.node.scale = Vector3(sc, 1, sc)
 		w.mat.albedo_color.a = 0.8 * (1 - u)
+	_ghosts(st, now)
 	# 내 발밑 위험 고리: 떨어지는 블록이 내 머리 위 (me.danger)
 	var me := Store.me()
 	var ms = _shown(my_id) if my_id != null else null
@@ -364,10 +373,52 @@ func _hunt(d: Dictionary, p: Dictionary, s: Vector3, my_id, mine: bool, now: flo
 	var l: Label3D = d.hunt.node
 	var n: int = mini(int(C.HUNTER_MARK_MAX), int(m.n)) if m != null and p.alive else 0
 	var blink: bool = m != null and float(m.get("left", 0)) < C.MARK_BLINK_MS and int(floor(now / C.MARK_BLINK_PERIOD_MS)) % 2 == 1
+	_hunt_eye(d, p, by_me and p.alive and not mine)
 	l.text = "◆".repeat(n)
 	l.visible = n > 0 and not blink and not (mine and not third.call())
 	l.no_depth_test = by_me
 	l.position = Co.gxyz(s.x, s.y, s.z + C.PLAYER_HEIGHT + C.LABEL_ABOVE_HEAD + 0.75)
+
+
+# 사냥꾼의 눈: 내가 표식을 붙인 대상 몸이 블록 너머에서 빨갛게 (몸 위 한 겹, G2 body.set_overlay). 바뀔 때만 부름
+func _hunt_eye(d: Dictionary, p: Dictionary, on: bool) -> void:
+	if d.get("eye", false) == on or bodies == null:
+		return
+	var n: Dictionary = bodies.nodes.get(int(p.id), {})
+	if n.is_empty() or not n.body.has_method("set_overlay"):
+		return
+	n.body.set_overlay(xray_mat if on else null)
+	d.eye = on
+
+
+# 순간 베기 잔상: 미끄러지는 동안 BLINK_GHOST_MS 마다 지금 자세 복사본 (그 사람 색 반투명) 이 남아 BLINK_GHOST_FADE_MS 동안 사라짐
+func _ghosts(st: Dictionary, now: float) -> void:
+	if slides != null and bodies != null:
+		for id in slides:
+			var sl: Dictionary = slides[id]
+			if sl.get("to") == null:
+				continue # 갈고리에 끌려오는 몸은 잔상 없음
+			if now < ghost_next.get(id, 0.0):
+				continue
+			ghost_next[id] = now + C.BLINK_GHOST_MS
+			var n: Dictionary = bodies.nodes.get(int(id), {})
+			if n.is_empty() or not n.body.has_method("snapshot"):
+				continue
+			var p := Store.player(id)
+			var mat := _flat(bodies.player_color(p, st) if not p.is_empty() else 0xffffff, 0.4)
+			mat.no_depth_test = false
+			var g: Node3D = n.body.snapshot(mat)
+			add_child(g)
+			g.global_transform = n.body.global_transform
+			ghosts.append({"node": g, "mat": mat, "t0": now})
+	for i in range(ghosts.size() - 1, -1, -1):
+		var gh: Dictionary = ghosts[i]
+		var u: float = (now - gh.t0) / C.BLINK_GHOST_FADE_MS
+		if u >= 1:
+			gh.node.queue_free()
+			ghosts.remove_at(i)
+			continue
+		gh.mat.albedo_color.a = 0.4 * (1 - u)
 
 
 # 취약: 머리 위 분홍 음표 통통 / 둔화: 발밑 옅은 파란 소용돌이
