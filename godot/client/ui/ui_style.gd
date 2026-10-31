@@ -57,6 +57,10 @@ static func restyle() -> void:
 				o.border_color = gc if r[2] else alpha(gc, 0.22)
 			"check":
 				_check_icons(o)
+			"tint":
+				o.add_theme_color_override("font_color", gc.lerp(r[2][0], r[2][1]))
+			"border":
+				o.border_color = alpha(gc, r[2])
 	_reg = live
 
 
@@ -76,6 +80,20 @@ static func g2() -> Color:
 
 static func alpha(c: Color, a: float) -> Color:
 	return Color(c.r, c.g, c.b, a)
+
+
+# 글자색 = 테마 빛 색을 mix 쪽으로 amount 만큼 (테마가 바뀌면 restyle 이 다시 칠함)
+static func tint(c: Control, mix: Color = Color.WHITE, amount := 0.5) -> Control:
+	c.add_theme_color_override("font_color", g().lerp(mix, amount))
+	_keep(c, "tint", [mix, amount])
+	return c
+
+
+# 테두리 = 테마 빛 색 (투명도 a), 테마가 바뀌면 다시 칠함
+static func theme_border(s: StyleBoxFlat, a := 1.0) -> StyleBoxFlat:
+	s.border_color = alpha(g(), a)
+	_keep(s, "border", a)
+	return s
 
 
 # 빛 판: 어두운 유리 + 빛 테두리 + 왼쪽 빛 띠 (#center·#results·창)

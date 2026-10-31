@@ -74,7 +74,7 @@ func _ready() -> void:
 	stage.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var sbox := StyleBoxFlat.new()
 	sbox.bg_color = Color(1, 1, 1, 0.035)
-	sbox.border_color = S.alpha(S.g(), 0.22)
+	S.theme_border(sbox, 0.22)
 	sbox.set_border_width_all(1)
 	sbox.skew = Vector2(S.SKEW * 0.5, 0)
 	stage.add_theme_stylebox_override("panel", sbox)
@@ -146,7 +146,7 @@ func _ready() -> void:
 	settings_box = HFlowContainer.new()
 	settings_box.alignment = FlowContainer.ALIGNMENT_CENTER
 	settings_box.add_theme_constant_override("h_separation", 8)
-	settings_box.add_child(S.glow_label("방 설정", 13, S.g().lerp(Color.WHITE, 0.5), 2))
+	settings_box.add_child(S.tint(S.glow_label("방 설정", 13, Color.WHITE, 2)))
 	add_bot = S.button("봇 추가", func(): Store.send_room({"type": "addBot"}), "ghost", 13)
 	remove_bot = S.button("봇 빼기", func(): Store.send_room({"type": "removeBot"}), "ghost", 13)
 	settings_box.add_child(add_bot)
@@ -410,7 +410,10 @@ func _render_colors(st: Dictionary, me: Dictionary) -> void:
 		s.bg_color = Coords.color(C.PLAYER_PALETTE[i])
 		s.skew = Vector2(S.SKEW, 0)
 		var mine: bool = me.get("color") != null and int(me.color) == i
-		s.border_color = S.g() if mine else Color(1, 1, 1, 0.22)
+		if mine:
+			S.theme_border(s)
+		else:
+			s.border_color = Color(1, 1, 1, 0.22)
 		s.set_border_width_all(2)
 		for stn in ["normal", "hover", "pressed", "disabled"]:
 			b.add_theme_stylebox_override(stn, s)

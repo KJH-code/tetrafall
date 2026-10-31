@@ -67,7 +67,7 @@ func _ready() -> void:
 	for a in Keys.ACTIONS:
 		if a.group != group:
 			group = a.group
-			keys_grid.add_child(S.glow_label(group, 14, S.g().lerp(Color.WHITE, 0.5), 2))
+			keys_grid.add_child(S.tint(S.glow_label(group, 14, Color.WHITE, 2)))
 			keys_grid.add_child(Control.new())
 		var l := S.label(a.label, 13, S.TEXT)
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL

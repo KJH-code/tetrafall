@@ -51,13 +51,14 @@ func _ready() -> void:
 	logo_box.resized.connect(func():
 		logo.size = Vector2(maxf(logo.get_combined_minimum_size().x, logo_box.size.x), logo_box.size.y)
 		logo.position = Vector2((logo_box.size.x - logo.size.x) / 2.0, 0))
-	var sub := S.label("떨어지는 블록 위에서 밀어 떨어뜨리는 3D 대전", 15, S.g().lerp(Color.WHITE, 0.5))
+	var sub := S.label("떨어지는 블록 위에서 밀어 떨어뜨리는 3D 대전", 15)
+	S.tint(sub)
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(sub)
 
 	var nick_row := HBoxContainer.new()
 	nick_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	nick_row.add_child(S.glow_label("내 이름", 18, S.g().lerp(Color.WHITE, 0.5), 3))
+	nick_row.add_child(S.tint(S.glow_label("내 이름", 18, Color.WHITE, 3)))
 	nick = S.line_edit("머리 위에 보임", 22, int(C.NAME_MAX_LEN))
 	nick.custom_minimum_size.x = 200
 	nick.alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -66,7 +67,8 @@ func _ready() -> void:
 	nick_row.add_child(nick)
 	col.add_child(nick_row)
 
-	msg = S.label("", 15, S.g().lerp(Color("ffd0a0"), 0.65))
+	msg = S.label("", 15)
+	S.tint(msg, Color("ffd0a0"), 0.65)
 	msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(msg)
