@@ -47,7 +47,7 @@ func test_light_globals() -> void:
 	var s: Vector3 = G3.global_value("g3_sun")
 	check(s.is_equal_approx(Vector3(1.25, 1.25, 1.25)), "해 색 × 세기 %s" % s)
 	check(G3.global_value("g3_sun_on") == 1.0, "해 켬")
-	# 해가 있는 쪽 = 게임 SUN_DIR (x, y, z위) → 고도 (x, z, y): 빛은 그 반대로 비춤
-	var want := -Vector3(C.SUN_DIR[0], C.SUN_DIR[2], C.SUN_DIR[1]).normalized()
+	# 해가 있는 쪽 = 게임 SUN_DIR (x, y, z위) → 고도 coords.gxyz: 빛은 그 반대로 비춤
+	var want := -preload("res://core/coords.gd").gxyz(C.SUN_DIR[0], C.SUN_DIR[1], C.SUN_DIR[2]).normalized()
 	check((-sun.transform.basis.z).is_equal_approx(want), "해 방향")
 	sun.free()
