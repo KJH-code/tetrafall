@@ -151,6 +151,9 @@ func _process(_d: float) -> void:
 			var rw = get_tree().root.get_node_or_null("TfRagdolls")
 			if rw != null:
 				_log("래그돌: %d명 · 힘 계산 %.2fms/틱 · 물리 처리 (엔진 포함) %.2fms/틱 · 물리 틱 %d/초" % [rw.stats.n, rw.stats.ms, Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0, Engine.physics_ticks_per_second])
+				var why := {}
+				_rag_why(get_tree().root, why)
+				_log("래그돌 만든 수 %d · 안 켠 몸 %s" % [rw.made, str(why)])
 	if args.has("shot") and not shot_done and shot_time and DisplayServer.get_name() != "headless":
 		shot_done = true
 		get_viewport().get_texture().get_image().save_png(str(args.shot))
@@ -184,6 +187,16 @@ func _body_meshes(n: Node) -> int:
 	for ch in n.get_children():
 		c += _body_meshes(ch)
 	return c
+
+
+# --perf-log: 래그돌이 안 켜진 몸과 까닭 (chars/body.gd rag_why)
+func _rag_why(n: Node, out: Dictionary) -> void:
+	if n.get("rag_why") is String:
+		if n.get("rag_why") != "":
+			out[str(n.get("char_id")) + "#" + str(n.get("pid"))] = n.get("rag_why")
+		return
+	for ch in n.get_children():
+		_rag_why(ch, out)
 
 
 # --dump: 보이는 그림 노드 목록 (이름·종류·화면 사각형·색) — 메뉴에 남는 줄 같은 것 찾기
