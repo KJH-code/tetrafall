@@ -19,6 +19,8 @@ var create_btn: Button
 var bigs := {} # 이름 → Button
 var panes := {} # 이름 → 펼친 세부 Control
 var list_key := ""
+var col: VBoxContainer
+var logo: Label
 
 
 func _ready() -> void:
@@ -33,14 +35,22 @@ func _ready() -> void:
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
-	var col := VBoxContainer.new()
+	col = VBoxContainer.new()
 	col.custom_minimum_size.x = 600
 	col.add_theme_constant_override("separation", 10)
 	center.add_child(col)
 
-	var logo := S.glow_label("TETRAFALL", 112, Color.WHITE, 10)
+	# 로고는 판 폭(600)을 넘쳐도 판을 넓히지 않음 (JS h2 가 .menu 밖으로 넘침) — 컨테이너 아닌 Control 안에 가운데로
+	var logo_box := Control.new()
+	logo_box.custom_minimum_size.y = 120
+	col.add_child(logo_box)
+	logo = S.glow_label("TETRAFALL", 112, Color.WHITE, 10)
 	logo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	col.add_child(logo)
+	logo.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	logo_box.add_child(logo)
+	logo_box.resized.connect(func():
+		logo.size = Vector2(maxf(logo.get_combined_minimum_size().x, logo_box.size.x), logo_box.size.y)
+		logo.position = Vector2((logo_box.size.x - logo.size.x) / 2.0, 0))
 	var sub := S.label("떨어지는 블록 위에서 밀어 떨어뜨리는 3D 대전", 15, S.g().lerp(Color.WHITE, 0.5))
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(sub)
@@ -112,6 +122,10 @@ func _ready() -> void:
 		row.add_child(b)
 	col.add_child(row)
 
+	# JS: .menu 폭 min(600px, 100vw − 32px), 로고 글자 clamp(64px, 9.2vw, 124px)
+	resized.connect(func():
+		col.custom_minimum_size.x = minf(600.0, size.x - 32.0)
+		logo.add_theme_font_size_override("font_size", int(clampf(size.x * 0.092, 64.0, 124.0))))
 	Store.rooms_changed.connect(func(_l): _render_list())
 	Store.join_error.connect(func(r): msg.text = str(r))
 	Store.left_room.connect(func(r): msg.text = "" if str(r) == "" else str(r))
