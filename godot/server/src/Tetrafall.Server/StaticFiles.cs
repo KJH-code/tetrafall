@@ -1,6 +1,7 @@
 namespace Tetrafall.Server;
 
-// URL → 디스크 경로 (server/index.js resolveFile 과 같음): client/, shared/, three.js·cannon-es 만 노출
+// URL → 디스크 경로 (server/index.js resolveFile 과 같음): client/, shared/, three.js·cannon-es 만 노출.
+// + /play/ → godot/client/build/web (고도 웹 빌드, 스레드 없는 판이라 COOP/COEP 헤더 필요 없음. 같은 호스트라 ?server= 없이 이 서버에 붙음)
 public static class StaticFiles
 {
     static readonly Dictionary<string, string> MIME = new()
@@ -13,6 +14,9 @@ public static class StaticFiles
         [".glb"] = "model/gltf-binary",
         [".ico"] = "image/x-icon",
         [".woff2"] = "font/woff2",
+        [".wasm"] = "application/wasm", // 고도 웹 빌드 (/play/)
+        [".pck"] = "application/octet-stream",
+        [".svg"] = "image/svg+xml",
     };
 
     public static string Mime(string file) => MIME.GetValueOrDefault(Path.GetExtension(file), "application/octet-stream");
@@ -62,7 +66,12 @@ public static class StaticFiles
         if (urlPath == "/vendor/three.module.js") return Path.Combine(root, "node_modules", "three", "build", "three.module.js");
         if (urlPath == "/vendor/cannon-es.js") return Path.Combine(root, "node_modules", "cannon-es", "dist", "cannon-es.js");
         string @base, rel;
-        if (urlPath.StartsWith("/vendor/jsm/"))
+        if (urlPath == "/play" || urlPath.StartsWith("/play/"))
+        {
+            @base = Path.Combine(root, "godot", "client", "build", "web");
+            rel = urlPath.Length <= "/play/".Length ? "index.html" : urlPath["/play/".Length..];
+        }
+        else if (urlPath.StartsWith("/vendor/jsm/"))
         {
             @base = Path.Combine(root, "node_modules", "three", "examples", "jsm");
             rel = urlPath["/vendor/jsm/".Length..];

@@ -137,3 +137,20 @@ public class RoomsUnitTests
         Assert.Equal(2, s2.Count("state")); // 들어갈 때 전체 스냅샷 + 틱 뒤 스냅샷
     }
 }
+
+public class StaticFilesTests
+{
+    [Fact]
+    public void Play_serves_godot_web_build_with_wasm_and_pck_types()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "tfroot");
+        var web = Path.Combine(root, "godot", "client", "build", "web");
+        Assert.Equal(Path.Combine(web, "index.html"), StaticFiles.Resolve(root, "/play/"));
+        Assert.Equal(Path.Combine(web, "index.html"), StaticFiles.Resolve(root, "/play"));
+        Assert.Equal(Path.Combine(web, "tetrafall.wasm"), StaticFiles.Resolve(root, "/play/tetrafall.wasm"));
+        Assert.Null(StaticFiles.Resolve(root, "/play/../../../secret.txt"));
+        Assert.Equal(Path.Combine(root, "client", "player.js"), StaticFiles.Resolve(root, "/player.js")); // /play 로 시작해도 /play/ 가 아니면 예전대로
+        Assert.Equal("application/wasm", StaticFiles.Mime("a.wasm"));
+        Assert.Equal("application/octet-stream", StaticFiles.Mime("a.pck"));
+    }
+}

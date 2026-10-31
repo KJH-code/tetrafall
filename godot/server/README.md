@@ -35,5 +35,5 @@ JS 화면 파일은 레포 뿌리 `client/`·`shared/`·`node_modules/three` 에
 ## 구조
 
 - `src/Tetrafall.Core/` — 규칙 (`Game.cs` + 묶음 `Game.<묶음>.cs` partial, `Player.cs`), `Js/` = JS 와 같은 숫자 부품 (`JsMath` V8 수학, `JsNumber` 숫자 글자·toFixed, `JsonOut` JSON.stringify, `Mulberry32`)
-- `src/Tetrafall.Server/` — `Program.cs` (Kestrel·정적 파일·잘못된 주소 400·WebSocket (NET_MAX_PAYLOAD_BYTES 넘으면 그 연결만 1009)·30Hz 루프 스레드 하나·표준 입력 터널 주소), `Rooms.cs` (rooms.js 전부, `OrderedMap` = JS Map 순서), `WsSocket.cs`, `StaticFiles.cs` (resolveFile·방 로그 파일)
+- `src/Tetrafall.Server/` — `Program.cs` (Kestrel·정적 파일 (+ `/play/` = 고도 웹 빌드 godot/client/build/web)·잘못된 주소 400·WebSocket (NET_MAX_PAYLOAD_BYTES 넘으면 그 연결만 1009)·30Hz 루프 스레드 하나·표준 입력 터널 주소), `Rooms.cs` (rooms.js 전부, `OrderedMap` = JS Map 순서), `WsSocket.cs`, `StaticFiles.cs` (resolveFile·방 로그 파일)
 - `tests/Tetrafall.Tests/` — `JsCompatTests`, `ProtocolTests` (JS rooms.js 와 같은 각본 → 같은 메시지 25개·로그 12줄), `RoomScenarioTests` (`tools/room-scenarios.mjs` 각본 5개 — 재접속·방 안 설정·상한·예외 격리·빈도 제한 — 를 C# 로 돌려 JS 와 메시지·로그 글자까지 같음), `RoomsUnitTests` (JS 값 바꾸기·이름 정리·긴 글자·빈도·토큰), `ServerProcessTests` (진짜 프로세스: 잘못된 주소 400·큰 메시지 1009·터널 주소·로그 파일 줄 모양)
