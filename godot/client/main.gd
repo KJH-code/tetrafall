@@ -23,6 +23,8 @@ func _ready() -> void:
 				args[k] = q[k] if str(q[k]) != "" else true
 	add_child(_scene_or("res://world/world.tscn", "res://core/dev_view.gd"))
 	add_child(_scene_or("res://ui/ui.tscn", "res://core/dev_ui.gd"))
+	if ResourceLoader.exists("res://ui/perf.gd"):
+		add_child(load("res://ui/perf.gd").new()) # F3 성능 표시 (G6)
 	if ResourceLoader.exists("res://audio/audio.tscn"):
 		add_child(load("res://audio/audio.tscn").instantiate())
 	Seat.profile = str(args.get("profile", ""))

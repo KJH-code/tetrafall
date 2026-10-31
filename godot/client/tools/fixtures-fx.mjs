@@ -120,3 +120,28 @@ for (let u = -0.2; u <= 1.2; u += 0.1) bb.collapse.push([u, BL.collapseAt(u)]);
 for (const k of [...BL.BB_KINDS, 'collapse']) for (const low of [false, true]) bb.shards.push([k, low, BL.shardCount(k, low)]);
 fs.writeFileSync(path.join(out, 'bblocks.json'), JSON.stringify(bb));
 console.log('bblocks.json');
+
+// ---------- G6 성능 표시 (shared/perf.js) → perf.json ----------
+const PF = await import('../../../shared/perf.js');
+{
+  const { mulberry32 } = await import('../../../tools/sim.js');
+  const r = mulberry32(5);
+  const w = new PF.PerfWindow();
+  const frames = [];
+  const sums = [];
+  let t = 0;
+  for (let i = 0; i < 700; i++) {
+    const ms = 14 + r() * 6 + (i % 97 === 0 ? 60 : 0);
+    t += ms;
+    const sec = { ragdoll: r() * 2, grid: r(), render: 3 + r() * 2 };
+    if (i % 5 === 0) sec.hazard = 0.5;
+    const work = ms * 0.6;
+    frames.push([t, ms, sec, work]);
+    w.push(t, ms, sec, work);
+    if (i % 50 === 49) sums.push([i, w.summary(t)]);
+  }
+  const gpus = ['ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002504) Direct3D11 vs_5_0 ps_5_0, D3D11)', 'ANGLE (Intel, Intel(R) UHD Graphics 620 (0x00005917) Direct3D11 vs_5_0 ps_5_0, D3D11)', 'Mesa Intel(R) UHD Graphics (CML GT2)', 'NVIDIA GeForce GTX 1050/PCIe/SSE2', 'AMD Radeon Pro 5500M OpenGL Engine', 'Apple M1', '', 'ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)'];
+  const lines = [[sums[sums.length - 1][1], {}], [sums[3][1], { draws: 120, tris: 45678, players: 8, rag: 8, low: false, size: '1280×720', gpu: 'Apple M1', ping: '30ms' }], [sums[5][1], { draws: 7, tris: 999, players: 2, low: true }]];
+  fs.writeFileSync(path.join(out, 'perf.json'), JSON.stringify({ frames, sums, worst: [[[], 0.01, PF.worstAvg([], 0.01)], [[5, 1, 9, 3], 0.01, PF.worstAvg([5, 1, 9, 3], 0.01)], [[5, 1, 9, 3, 7, 2], 0.5, PF.worstAvg([5, 1, 9, 3, 7, 2], 0.5)]], gpus: gpus.map((g) => [g, PF.shortGpu(g)]), lines: lines.map(([s, e]) => [s, e, PF.perfLine(s, e)]) }));
+  console.log('perf.json');
+}
