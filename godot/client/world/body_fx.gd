@@ -41,6 +41,7 @@ func _ready() -> void:
 	xray_mat.depth_test = BaseMaterial3D.DEPTH_TEST_INVERTED
 	xray_mat.no_depth_test = false
 	xray_mat.render_priority = 1
+	xray_mat.cull_mode = BaseMaterial3D.CULL_BACK # 앞면만 (JS FrontSide) — 양면이면 뒷면이 늘 깊이 반대 검사를 통과해 몸 전체가 빨개짐
 	flash_mat = _flat(int(C.HUNT_MARK_UI.flashColor), 0.6)
 
 

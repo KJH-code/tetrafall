@@ -8,6 +8,7 @@
 # 성능: --perf-log (찍는 순간 = --shot-after 에 그리기 수·물체 수·삼각형 수·FPS·프레임 ms 한 줄, 화면 없이도)
 # --auto practice|tutorial: 연습·튜토리얼 방 (G6, --char 캐릭터, 연습 창은 --practice-open)
 # 연기 시험 (B4): --team (팀전) · --sky (하늘 계단) · --char <id> (방장 캐릭터도) · --skills <초> (그 간격으로 F·R) ·
+#   --color <팔레트 번호> (host·guest, 받아짐/거절 로그) · 방장이 나가 넘겨받으면 로그 + 판 시작도 맡음 ·
 #   --shot-round <N> (N판째 시작 뒤 --shot-after 초에 찍음) · --char2 <id> --char2-at <초> (연습: 판 중 캐릭터 바꾸기) · --tut-skip <초> (튜토리얼: 한 단계에 이만큼 머물면 넘기기 → 끝까지)
 # 화면 범인 찾기: --hide ui|world|audio (그 묶음을 숨기고 찍음) · --dump (찍을 때 보이는 Control·CanvasItem·3D 노드를 화면 사각형과 함께 출력)
 extends Node
@@ -41,6 +42,9 @@ var perf_rt := false
 var perf_split := [0.0, 0.0, 0.0, 0.0, 0] # 그리기 CPU · GPU · _process · 물리 (ms 합), 프레임 수
 var shot_at := "game"
 var over_ms := -1.0
+var restart_for := -1 # 이 판 끝 (rounds) 에 다음 판 시작을 보냈는지
+var was_host = null # 방장이 바뀌면 로그 (방장 나가면 넘김)
+var color_sent := -1.0 # --color 보낸 시각 (받아짐·거절 로그)
 var round_no := 0 # --shot-round: 지금 몇 판째 (playing 이 될 때마다 +1)
 var round_ms := -1.0
 var mode_sent := false
@@ -92,13 +96,19 @@ func _on_joined(room: Dictionary, again: bool) -> void:
 		rejoined = true
 		return
 	PlayerInput.lock_mouse(true) # 헤드리스: 마우스 잡힌 셈 (입력이 나가게)
+	if role in ["host", "guest"]: # 대전 흐름 (B4): 캐릭터·색 고르기 (같은 색은 서버가 거절)
+		if args.has("name"): # 이름표·목록 이름 (대기실 이름 칸과 같은 setName)
+			Store.send_room({"type": "setName", "name": str(args["name"])})
+		if args.has("char"):
+			Store.send_room({"type": "setChar", "char": str(args["char"])})
+		if args.has("color"):
+			Store.send_room({"type": "setColor", "color": int(args["color"])})
+			color_sent = Net.now_ms()
 	if role == "host":
 		if args.has("team"):
 			Store.send_room({"type": "teamMode", "on": true})
 		if args.has("sky"):
 			Store.send_room({"type": "skyStairs", "on": true})
-		if args.has("char"):
-			Store.send_room({"type": "setChar", "char": str(args["char"])})
 		if args.has("map"): # 성능 비교 (G3): 같은 맵
 			Store.send_room({"type": "setMap", "map": str(args["map"])})
 		if str(args.get("view", "")) == "spectate": # 관전: 방장은 빠지고 봇만
@@ -117,7 +127,16 @@ func _on_state(st: Dictionary, _prev: Dictionary) -> void:
 	if role == "host" and args.has("mode") and not mode_sent and ph == "lobby" and st.get("hostId") == Store.my_id:
 		mode_sent = true
 		Store.send_room({"type": "setMode", "mode": str(args["mode"])})
-	if role == "host" and shot_at != "lobby" and not started and ph == "lobby" and (not args.has("mode") or st.get("mode") == str(args["mode"])) and st.get("canStart", false) and (Store.player(Store.my_id).size() > 0 or str(args.get("view", "")) == "spectate") and int(st.players.size()) >= int(args.get("wait-players", 2)):
+	var is_host: bool = st.get("hostId") != null and Store.my_id != null and int(st.hostId) == int(Store.my_id)
+	if was_host != null and is_host and not was_host:
+		_log("방장 됨 (방장이 나가서 넘겨받음)")
+	was_host = is_host
+	if color_sent >= 0 and Net.now_ms() - color_sent > 1500 and not Store.me().is_empty():
+		var want := int(args["color"])
+		var got := int(Store.me().get("color", -1))
+		_log("색 %d %s (지금 %d)" % [want, "받아짐" if got == want else "거절", got])
+		color_sent = -1.0
+	if (role == "host" or is_host) and shot_at != "lobby" and not started and ph == "lobby" and (not args.has("mode") or st.get("mode") == str(args["mode"])) and st.get("canStart", false) and (Store.player(Store.my_id).size() > 0 or str(args.get("view", "")) == "spectate") and int(st.players.size()) >= int(args.get("wait-players", 2)):
 		started = true
 		Store.send_room({"type": "start"})
 		_log("시작 (%d명)" % st.players.size())
@@ -125,8 +144,14 @@ func _on_state(st: Dictionary, _prev: Dictionary) -> void:
 		rounds += 1
 		over_ms = Net.now_ms()
 		_log("판 %d 끝: 승자 %s, 스냅샷 %d개, 내가 움직인 거리 %.1f칸, 보간 위치 %d번" % [rounds, str(st.round.winnerId), snapshots, moved, interp_ok])
-		if role == "host" and rounds < int(args.get("quit-after-rounds", 1)):
+		if (role == "host" or is_host) and rounds < int(args.get("quit-after-rounds", 1)):
+			restart_for = rounds
 			Store.send_room({"type": "start"})
+	# 판 끝 (over) 에 방장을 넘겨받으면 (전 방장이 나감) 다음 판은 내가 시작
+	if is_host and ph == "over" and restart_for != rounds and rounds < int(args.get("quit-after-rounds", 1)) and Net.now_ms() - over_ms > 2000.0:
+		restart_for = rounds
+		Store.send_room({"type": "start"})
+		_log("다음 판 시작 (넘겨받은 방장)")
 	if ph == "playing" and last_phase != "playing":
 		round_no += 1
 		round_ms = Net.now_ms()
