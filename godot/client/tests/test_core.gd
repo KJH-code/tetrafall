@@ -115,3 +115,35 @@ func test_event_codes() -> void:
 	for a in Keys.ACTIONS:
 		var c: String = a.def
 		check(c.begins_with("Mouse") or c.begins_with("Key") or c in Keys.NAMED or c.begins_with("F"), "기본 키 %s 를 고도에서 만들 수 있음" % c)
+
+
+# 좌표: 게임 ↔ 고도 왕복, 고도 카메라가 게임 yaw 쪽을 보면 yaw_of 가 그 yaw (소리 좌우가 화면과 맞게)
+func test_coords_roundtrip_and_yaw() -> void:
+	const Co := preload("res://core/coords.gd")
+	var v := Vector3(3.5, -2.25, 1.5)
+	check(Co.game(Co.gpos(v)).is_equal_approx(v), "game(gpos(v)) = v")
+	for yaw in [0.0, 0.7, 2.0, -1.2, 3.0]:
+		var n := Node3D.new()
+		n.look_at_from_position(Vector3.ZERO, Co.dir(yaw), Vector3.UP)
+		check(absf(wrapf(Co.yaw_of(n) - yaw, -PI, PI)) < 1e-4, "yaw_of(카메라가 dir(%s) 를 봄) = %s" % [yaw, Co.yaw_of(n)])
+		var body := Node3D.new()
+		body.rotation.y = Co.rot_y(yaw)
+		check((body.basis * Vector3.RIGHT).is_equal_approx(Co.dir(yaw)), "rot_y: +x 를 보던 몸이 dir(yaw) 를 봄 (yaw %s)" % yaw)
+		n.free()
+		body.free()
+
+
+# 좌표 거울 고침 (x, z, -y) 과 입력이 맞는지: 마우스를 오른쪽으로 (yaw 줄어듦) = 카메라 오른쪽으로 돎, 오른쪽 이동 (strafe) = 화면 오른쪽
+func test_input_yaw_matches_camera() -> void:
+	const Co := preload("res://core/coords.gd")
+	for yaw in [0.0, 0.9, 2.5, -2.0]:
+		var cam := Node3D.new()
+		cam.look_at_from_position(Vector3.ZERO, Co.dir(yaw), Vector3.UP)
+		var right := cam.transform.basis.x # 카메라 화면 오른쪽
+		# 서버 moveDir: strafe +1 = 게임 (sin yaw, -cos yaw)
+		var strafe := Co.gpos(Vector3(sin(yaw), -cos(yaw), 0))
+		check(strafe.is_equal_approx(right), "strafe 오른쪽 = 카메라 오른쪽 (yaw %s): %s / %s" % [yaw, strafe, right])
+		# 마우스 오른쪽 → yaw -= dx·감도 → 보는 쪽이 카메라 오른쪽으로 감
+		var turned := Co.dir(yaw - 0.1)
+		check(turned.dot(right) > 0, "마우스 오른쪽이면 오른쪽으로 돎 (yaw %s)" % yaw)
+		cam.free()

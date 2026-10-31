@@ -18,6 +18,12 @@ static func game(v: Vector3) -> Vector3:
 	return Vector3(v.x, -v.z, v.y)
 
 
+# 고도 카메라 (Node3D) 가 바라보는 쪽 → 게임 yaw (dir 의 반대: 고도 (x, ·, z) = 게임 (x, -y))
+static func yaw_of(n: Node3D) -> float:
+	var f := -(n.global_transform if n.is_inside_tree() else n.transform).basis.z
+	return atan2(-f.z, f.x)
+
+
 # 게임 yaw → 고도 Node3D rotation.y (+x 를 보던 몸이 yaw 방향을 봄)
 static func rot_y(yaw: float) -> float:
 	return yaw

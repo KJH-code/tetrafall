@@ -8,6 +8,7 @@ const Keys := preload("res://core/keys.gd")
 
 signal ui_action(id: String, pressed: bool)
 signal wheel_changed(slot: int) # -2 = 닫힘, -1 = 열림·안 고름, 0~ = 고른 칸
+signal action_sent(action: Dictionary) # 서버로 보낸 단발 행동 (내 평타 휘두름 소리·몸을 서버 응답 전에 바로 — JS onLocalAction)
 
 var binds := {}
 var by_code := {}
@@ -171,6 +172,7 @@ func up(code: String) -> void:
 func _act(a: Dictionary) -> void:
 	a["type"] = "action"
 	Net.send(a)
+	action_sent.emit(a)
 
 
 func press(id: String) -> void:

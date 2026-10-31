@@ -3,6 +3,8 @@
 # 설정은 user://settings.json 에 기억 (JS 판 localStorage tf-* 자리)
 extends Node
 
+const C := preload("res://core/config.gd")
+
 signal changed(key: String)
 
 const PATH := "user://settings.json"
@@ -11,15 +13,25 @@ const PATH := "user://settings.json"
 var mode := "third"
 # 관전 대상 플레이어 id (G1 이 정함, G4 가 이름 표시)
 var spectate_target = null
-# 설정 (G4 설정 창이 바꿈, 전부 읽음). 이름은 JS 판 설정과 같게
+# 설정 (G4 설정 창이 바꿈, 전부 읽음). 이름·기본값은 JS 판 설정 (main.js SETTINGS_DEFAULT, tf-settings) 과 같게
 var settings := {
-	"lowGraphics": false, # 그래픽 낮춤 (G1·G3·G5)
-	"reducedMotion": false, # 움직임 줄이기 (G4·G5)
-	"sensitivity": 1.0, # 마우스 감도 배수 (PlayerInput)
-	"volume": 1.0, # 효과음 (G5)
-	"music": 0.6, # 음악 (G5)
-	"perf": false, # F3 성능 표시 (G6)
+	"sens": 1.0, # 마우스 감도 배수 (PlayerInput)
+	"sfx": 1.0, # 효과음 크기 0~1 (audio/)
+	"music": 1.0, # 음악 크기 0~1 (audio/)
+	"fov": C.FOV_DEFAULT, # 시야각 (G1 카메라)
+	"shadows": true, # 그림자 (G1)
+	"outline": true, # 외곽선 (G3)
+	"lowGfx": false, # 그래픽 낮춤 (G1·G3·G5)
+	"third": false, # 3인칭 시작 (G1)
+	"reducedMotion": false, # 움직임 줄이기 (G4·G5, JS 는 브라우저 설정)
+	"perf": false, # F3 성능 표시 (G6, JS tf-perf)
 }
+# 메뉴(방 밖) 배경 테마 id (TITLE_THEMES 키, JS menu-theme.js). 메뉴 3D 배경을 그리는 쪽이 정함, audio/ 가 메뉴 앰비언트로 읽음
+var menu_theme = null
+
+# 화면 쪽 소리 신호 (판 그리기·KO 연출이 내고 audio/ 가 받음 — JS renderer.onBlast·onArrowStuck·onHazardRise·ko.on 자리):
+# "blast" {x,y,z,big,wood} · "arrowStuck" {x,y,z} · "hazardRise" {style,x,y,z} · "smash"·"koCrush" {x,y,z,me,near} · "final" {x,y,z} · "slowmo" {scale}
+signal sound_cue(kind: String, info: Dictionary)
 
 
 func _ready() -> void:
@@ -28,7 +40,7 @@ func _ready() -> void:
 		if typeof(d) == TYPE_DICTIONARY:
 			for k in d:
 				settings[k] = d[k]
-	PlayerInput.sensitivity = float(settings.sensitivity)
+	PlayerInput.sensitivity = float(settings.sens)
 
 
 func set_mode(m: String) -> void:
@@ -39,7 +51,7 @@ func set_mode(m: String) -> void:
 
 func set_setting(key: String, value) -> void:
 	settings[key] = value
-	if key == "sensitivity":
+	if key == "sens":
 		PlayerInput.sensitivity = float(value)
 	var f := FileAccess.open(PATH, FileAccess.WRITE)
 	if f:

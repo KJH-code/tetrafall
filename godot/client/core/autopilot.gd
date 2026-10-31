@@ -110,5 +110,8 @@ func _process(_d: float) -> void:
 	var done_time := args.has("quit-after") and el >= float(args["quit-after"])
 	if done_rounds or done_time:
 		var ok := snapshots > 0 and (not args.has("drop-at") or rejoined) and (not args.has("quit-after-rounds") or done_rounds) and (not args.has("min-moved") or moved >= float(args["min-moved"]))
-		_log("끝: 판 %d번, 스냅샷 %d개, 움직인 거리 %.1f칸, 재접속 %s, %s" % [rounds, snapshots, moved, "같은 자리" if rejoined else "안 함", Net.ping_text()])
+		var sfx := get_tree().root.find_child("Sfx", true, false)
+		var music := get_tree().root.find_child("Music", true, false)
+		var snd := (" | 효과음 %d번, 곡 %s" % [sfx.played, music.song_key]) if sfx != null and music != null else ""
+		_log("끝: 판 %d번, 스냅샷 %d개, 움직인 거리 %.1f칸, 재접속 %s, %s%s" % [rounds, snapshots, moved, "같은 자리" if rejoined else "안 함", Net.ping_text(), snd])
 		get_tree().quit(0 if ok else 2)
