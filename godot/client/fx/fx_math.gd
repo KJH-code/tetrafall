@@ -115,4 +115,5 @@ static func plume_inside_fade(rel: Vector3, axis: Vector3, side_k: float, len_k:
 		return 1.0
 	var r := C.KO_SMASH_WIDTH * side_k * along / length
 	var off := (rel - axis * along).length()
-	return lerpf(0.2, 1.0, clampf((off - r) + 1.0, 0.0, 1.0))
+	var edge := minf(1.0, r) # 가장자리에서 안쪽으로 이만큼 들어가면 다 옅게 (가는 꼭짓점 쪽은 반지름만큼)
+	return lerpf(0.2, 1.0, clampf((off - (r - edge)) / maxf(edge, 1e-6), 0.0, 1.0))
