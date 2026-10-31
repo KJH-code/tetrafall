@@ -12,3 +12,17 @@ public sealed partial class Leap
 {
     public XY? to, to0;
 }
+
+// 갈고리 R 뽑은 덩어리: 칸마다 { x, y, z, v(칸 값), meta(건축가 블록이면 그 속성) }, 1칸 건축가 블록이면 meta
+public sealed partial class Grab
+{
+    public List<GrabCell> cells = new();
+    public BBlock? meta;
+}
+
+public sealed class GrabCell
+{
+    public int x, y, z;
+    public byte v;
+    public BBlock? meta;
+}

@@ -172,7 +172,7 @@ public sealed class Star2
 }
 
 // 갈고리 R 뽑은 블록 (S3 가 필드를 채움): { at, cells, meta, from, dir }
-public sealed class Grab
+public sealed partial class Grab
 {
     public double at;
     public double[] from = Array.Empty<double>();

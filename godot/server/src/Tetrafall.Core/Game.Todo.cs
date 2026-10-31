@@ -30,28 +30,21 @@ public sealed partial class Game
     public void RotatePiece(Piece pc, int dir) => throw Todo("rotatePiece (S2)");
     public void DropPiece(Piece pc) => throw Todo("dropPiece (S2)");
 
-    // S3 전투·캐릭터 (아직 안 옮긴 캐릭터: 건축가·갈고리·바드)
-    public void HookGrabDrop(Player p) => throw Todo("hookGrabDrop (S3 갈고리)");
-    public void UpdateNotes(double dt) => throw Todo("updateNotes (S3 바드)");
-    bool HammerBlocks(Player p, double range, double cosHalf) => false; // TODO(S3 건축가): 내 블록이 없으면 false 와 같음
-    void BasicRaise(Player p, Player? t) => throw Todo("basicRaise (S3 건축가)");
-    void BardNote(Player p) => throw Todo("bardNote (S3 바드)");
-    bool BardGlideRing(Player p, double n, bool air, TAttack def, bool chained) => throw Todo("bardGlideRing (S3 바드)");
-    void BardGlide(Player p, double ms) => throw Todo("bardGlide (S3 바드)");
-    void BardDive(Player p, TAttack def) => throw Todo("bardDive (S3 바드)");
-    bool BuilderWall(Player p) => throw Todo("builderWall (S3 건축가)");
-    bool BardSwitch(Player p) => throw Todo("bardSwitch (S3 바드)");
-    bool HookPull(Player p) => throw Todo("hookPull (S3 갈고리)");
-    bool BuilderBigBomb(Player p) => throw Todo("builderBigBomb (S3 건축가)");
-    void BardAmp(Player p) => throw Todo("bardAmp (S3 바드)");
-    void BardSong(Player p) => throw Todo("bardSong (S3 바드)");
-    bool HookGrab(Player p) => throw Todo("hookGrab (S3 갈고리)");
-    void UpdateBBlocks() => throw Todo("updateBBlocks (S3 건축가)");
-    void HookLand(Player p) => throw Todo("hookLand (S3 갈고리)");
-    void BardAmpUpdate(Player p) => throw Todo("bardAmpUpdate (S3 바드)");
-    void BardDiveUpdate(Player p) => throw Todo("bardDiveUpdate (S3 바드)");
-    void BuilderWallRise(Player p) => throw Todo("builderWallRise (S3 건축가)");
-    void HookSlam(Player p) => throw Todo("hookSlam (S3 갈고리)");
+    // S2 (game-pieces.js clearLayers): 꽉 찬 층이 없으면 아무 일도 없음 (건축가·갈고리가 블록을 놓은 뒤 부름). 꽉 찬 층을 지우는 dropLayers 는 S2.
+    // 진짜를 옮기는 세션 (A1) 이 Game.Pieces.cs 에 넣으면 여기서 지움
+    public void ClearLayers()
+    {
+        int layerSize = W * D;
+        var full = new List<int>();
+        for (int z = 0; z < H; z++)
+        {
+            bool ok = true;
+            for (int i = 0; i < layerSize && ok; i++) if (grid[z * layerSize + i] == 0) ok = false;
+            if (ok) full.Add(z);
+        }
+        if (full.Count == 0) return;
+        throw Todo("clearLayers → dropLayers (S2)");
+    }
 
     // S2 (game-pieces.js): 떨어지는 블록 칸이 다 부서짐 (대포수 breakCell 이 부름)
     public void RemovePiece(Piece pc) => throw Todo("removePiece (S2)");
