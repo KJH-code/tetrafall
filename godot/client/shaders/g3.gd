@@ -182,6 +182,7 @@ static func _env_node(world: Node3D) -> Node3D:
 	sun.name = "Sun"
 	sun.shadow_enabled = true
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+	RenderingServer.directional_shadow_atlas_set_size(int(C.SHADOW_MAP_SIZE), true) # JS 그림자 해상도 (고도 기본 4096 = 16배 칠하기)
 	sun.directional_shadow_max_distance = K.SHADOW_MAX_DISTANCE
 	env.add_child(sun)
 	var dome := MeshInstance3D.new()
