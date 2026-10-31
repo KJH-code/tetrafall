@@ -6,6 +6,7 @@ using Tetrafall.Trace;
 // C# 판 기록 (JS godot/server/tools/trace.mjs · tools/game-hash.js 와 같은 판):
 //   dotnet run --project src/Tetrafall.Trace -- --list
 //   dotnet run --project src/Tetrafall.Trace -- trace <번호|이름 일부|s각본번호> cs.jsonl [--ticks N]   → node tools/trace-diff.mjs js.jsonl cs.jsonl
+//   dotnet run --project src/Tetrafall.Trace -- logs <폴더>                                  → 34판 로그를 방 로그 파일 모양으로 (tools/scenario-logs.mjs 와 같은 파일, npm run stats 비교)
 //   dotnet run --project src/Tetrafall.Trace -- hash [--verbose]                             → node tools/game-hash.js 와 같은 해시면 34판 동등
 var a = args.ToList();
 if (a.Count == 0 || a[0] == "--list")
@@ -61,6 +62,19 @@ if (a[0] == "trace")
         Console.WriteLine($"{name}: 여기서 멈춤 — {e.Message} → {outPath} (그 앞까지)");
         return 2;
     }
+    return 0;
+}
+if (a[0] == "logs")
+{
+    string dir = a.Count > 1 ? a[1] : "cs-logs";
+    Directory.CreateDirectory(dir);
+    for (int i = 0; i < Scenarios.ALL.Count; i++)
+    {
+        var lines = new StringBuilder();
+        Scenarios.Run(Scenarios.ALL[i], (t, logs, snap) => { foreach (var l in logs) lines.Append("[0시 0분 0초] ").Append(l).Append('\n'); });
+        File.WriteAllText(Path.Combine(dir, $"{i:00}_S{i:000}.txt"), lines.ToString(), new UTF8Encoding(false));
+    }
+    Console.WriteLine($"{Scenarios.ALL.Count}판 → {dir}");
     return 0;
 }
 if (a[0] == "hash")

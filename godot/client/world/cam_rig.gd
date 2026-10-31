@@ -22,7 +22,31 @@ var eye := {"x": 0.0, "y": 0.0, "z": 0.0} # 이번 프레임 카메라 (게임 �
 var hook = null # KO 연출 등이 카메라를 덮어씀: Callable(cam: Camera3D) (render.js camHook)
 var over_at = null # 판 끝 시각 (ms, 연습이면 null)
 var vic_plan = null # Vic.plan (슬로모션이 이어지는 동안 클로즈업 시작을 뒤로 밂)
-var vic_t := 0.0 # 승자·셀카 카메라가 날아간 시간 (초)
+var vic_t := 0.0 # 바라볼 점 at 에서 카메라 자리 to 쪽으로 걸으며 처음 막히는 곳 (격자 칸·떨어지는 블록 칸) 앞에 카메라 (camera.js orbitEye 처럼)
+# — 승자가 벽·블록을 보고 서 있으면 카메라가 칸 속에 들어가 화면이 한 색이 되던 것
+func pull_in(at: Dictionary, to: Dictionary, solid: Callable) -> Dictionary:
+	var cells := {}
+	for pc in Store.state.get("pieces", []):
+		for c in pc.cells:
+			cells[Vector3i(int(c[0]), int(c[1]), int(c[2]))] = true
+	var dv := Vector3(to.x - at.x, to.y - at.y, to.z - at.z)
+	var dist := dv.length()
+	if dist < 1e-6:
+		return to
+	var dir := dv / dist
+	var t := WC.VICTORY_PULL[1]
+	while t <= dist:
+		var x: float = at.x + dir.x * t
+		var y: float = at.y + dir.y * t
+		var z: float = at.z + dir.z * t
+		if solid.call(x, y, z) or cells.has(Vector3i(floori(x), floori(y), floori(z))):
+			var d := maxf(WC.VICTORY_PULL[1], t - WC.VICTORY_PULL[0])
+			return {"x": at.x + dir.x * d, "y": at.y + dir.y * d, "z": at.z + dir.z * d}
+		t += 0.1
+	return to
+
+
+# 승자·셀카 카메라가 날아간 시간 (초)
 var last_phase := ""
 var ghost_aim = null # world/ghost_aim.gd 노드 (World 가 넣음)
 var ghost_refuse_at := -1e9 # 안 되는 투하를 누른 시각 (G4 조준 원 흔들림 자리)
@@ -178,7 +202,7 @@ func reduced() -> bool:
 # 1인칭이면 내 몸 숨김 (3인칭은 카메라가 머리 속으로 당겨졌을 때만)
 func hide_me() -> bool:
 	var me := Store.me()
-	if me.is_empty() or not me.alive or sky_blend > 0.0 or close_id() != null:
+	if me.is_empty() or not me.alive or sky_blend > 0.0 or close_id() != null or force == "over":
 		return false
 	return not third() or (tp_dist if tp_dist != null else C.TP_DIST) < C.TP_HIDE_DIST
 
@@ -235,7 +259,7 @@ func place(dt: float, shown: Dictionary, solid: Callable) -> void:
 		eye = {"x": e.x, "y": e.y, "z": maxf(0.5, e.z)}
 	if not (not me.is_empty() and me.alive and third()):
 		tp_dist = null
-	victory_camera(dt, shown, look)
+	victory_camera(dt, shown, look, solid)
 	var fov: float = float(View.settings.get("fov", C.FOV_DEFAULT))
 	var at := Co.gxyz(eye.x, eye.y, eye.z)
 	var to := Co.gxyz(look.x, look.y, look.z)
@@ -267,7 +291,7 @@ func close_id():
 
 
 # 승자·셀카 카메라 (render.js victoryCamera): 대상 앞 VICTORY_DIST·VICTORY_UP 으로 VICTORY_FLY_S 동안 날아감 (움직임 줄이기면 바로)
-func victory_camera(dt: float, shown: Dictionary, look: Dictionary) -> void:
+func victory_camera(dt: float, shown: Dictionary, look: Dictionary, solid: Callable) -> void:
 	var id = close_id()
 	var p := Store.player(id)
 	if id == null or p.is_empty() or not shown.has(int(id)):
@@ -279,8 +303,12 @@ func victory_camera(dt: float, shown: Dictionary, look: Dictionary) -> void:
 	var t := k * k * (3.0 - 2.0 * k)
 	var yaw: float = p.yaw
 	var front := {"x": s.x + cos(yaw) * C.VICTORY_DIST, "y": s.y + sin(yaw) * C.VICTORY_DIST, "z": s.z + C.VICTORY_UP}
+	var lava: Dictionary = Store.state.get("lava", {})
+	if lava.get("active", false): # 위험이 차오른 판: 카메라가 표면 아래로 들어가지 않게 (표면 판 밑이면 화면이 한 색)
+		front.z = maxf(front.z, float(lava.z) + WC.CAM_ABOVE_HAZARD)
 	var up: float = C.VICTORY_LOOK_UP if View.victory_stage == "closeup" and id == View.victory_id else 0.0
 	var at := {"x": s.x, "y": s.y, "z": s.z + C.PLAYER_HEIGHT * 0.55 + up}
+	front = pull_in(at, front, solid)
 	for a in ["x", "y", "z"]:
 		eye[a] = lerpf(eye[a], front[a], t)
 		look[a] = lerpf(look[a], at[a], t)

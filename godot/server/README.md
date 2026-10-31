@@ -39,25 +39,50 @@ dotnet publish godot/server/src/Tetrafall.Server -c Release -r linux-x64 --self-
 
 실행은 레포 뿌리에서 (화면 파일 `client/`·`shared/`·`node_modules/three` 를 위로 찾음, 아니면 `TF_ROOT=레포 경로`). `PORT=3000` 이 기본
 
+## 배포 묶음 (G7): 서버 + 고도 웹 + 고도 PC 클라 zip
+
+```
+node godot/server/tools/package.mjs --godot <고도 4.7.2> [--targets win,linux] [--cloudflared]   # → dist/tetrafall-win-x64.zip, dist/tetrafall-linux-x64.zip
+```
+
+- 폴더: `Tetrafall.Server(.exe)` + `web/` (고도 웹 빌드) + `tetrafall.exe`/`tetrafall.x86_64` (PC 클라) + `start-lan`·`start-online` (.bat/.sh) + `README.txt` (+ `cloudflared` 를 `--cloudflared` 로 GitHub 에서 받아 넣음)
+- 서버는 exe 옆에 `web/index.html` 이 있으면 그 폴더가 뿌리 (배포 폴더): `/play/` = `web/`, JS 화면이 없으니 `/` → `/play/` (302, `?room=` 그대로). 레포·배포 어느 쪽도 아니면 exe 폴더로 뜸 (웹소켓만, PC 클라용)
+- 웹 미리 압축: `web/` 파일마다 `.br` (brotli 11, 창 24) + `.gz` (gzip 9) → 서버 `StaticFiles.Precompressed` 가 Accept-Encoding 따라 br > gzip > 날것 (`Content-Encoding`·`Vary: Accept-Encoding`, 형식은 날것 이름). 엔진 wasm 39.5MB → br 6.9MB · gz 10.2MB (압축 약 1분 40초)
+- 서버 한 파일 약 52MB (`PUBLISH_FLAGS`: 안에서 압축·InvariantGlobalization, 트리밍 안 함 — ASP.NET), IIS 용 aspnetcorev2_inprocess.dll·web.config·staticwebassets.endpoints.json 은 뺌, web/ 에 고도 `*.import` 안 넣음, zip 파일 날짜 = 묶은 시각
+- `--no-godot` = 이미 내보낸 `godot/client/build/` 를 씀. zip 은 node 만으로 씀 (유닉스 실행 비트 유지)
+- 재혁 PC 순서: [docs/godot-play.md](../../docs/godot-play.md)
+
+## 인터넷 대전: `--online` (node 없이)
+
+```
+Tetrafall.Server --online          # 또는 dotnet run --project godot/server/src/Tetrafall.Server -- --online,  TF_ONLINE=1 도 같음
+```
+
+`Tunnel.cs` = `tools/online.js` 터널 지키기의 C# 판 (cloudflared 켜기 → 주소 찾기 → HTTP 첫 화면 'Tetrafall' + 웹소켓이 열릴 때까지 기다림 → 대기실 링크·클립보드·안내 상자, 열린 뒤에도 `TUNNEL_HEALTH_MS` 마다 확인하고 죽으면 다시 켬, 수치 config `TUNNEL_*`). cloudflared 는 `CLOUDFLARED` 환경 변수 > exe 옆 > PATH. `tools/online-cs.mjs` (node 판) 도 그대로 둠
+
 ## 도구 (`tools/`, node — 레포 뿌리에서)
 
 | 명령 | 하는 일 |
 | --- | --- |
 | `node godot/server/tools/gen-config.mjs` | `shared/config.js`·`shared/maps.js` → `Config.g.cs`·`Maps.g.cs` (값 934개 + 서버가 쓰는 표 6개 — 모양은 값에서 짐작해 클래스 `T<이름>`, 평타 칸은 모두 `TAttack`. 화면 전용 표 29개는 안 만듦, 함수 `spawnPointsFor` 는 `ConfigFns.cs`) |
 | `node godot/server/tools/fixtures.mjs` | 테스트 정답 자료 (`tests/Tetrafall.Tests/fixtures/`) 를 JS 에서 다시 뽑음 (방 각본은 `room-scenarios.mjs`) |
+| `node godot/server/tools/package.mjs` | 배포 zip (위 G7) |
 | `node godot/server/tools/online-cs.mjs` | C# 서버 + 터널 (`tools/online.js` 의 터널 지키기를 그대로 씀, dll 이 있으면 `bin/Release`, 없으면 `dotnet run`) |
 | `node godot/server/tools/trace.mjs <번호> js.jsonl` | JS 판 시나리오 하나를 틱마다 기록 (`--list` 로 34개 목록, `tools/game-hash.js` 와 같은 판). `s0`~`s7` = 각본 입력 판 (`tools/scripted.mjs`: 사람만·캐릭터 끔, 봇(S5) 전에 판 흐름·블록을 맞추는 판) |
 | `node godot/server/tools/trace-scripted.mjs <캐릭터> js.jsonl` | 봇 없는 각본 판 (S3 전투·캐릭터 검증): 캐릭터마다 사람 둘이 정해진 틱에 평타·스킬·필살기·점프·대시, 킬 점수전·블록 없음, 600틱. `--list`, `--dump scripts.json` (C# 가 같은 각본을 돌릴 자료) |
 | `dotnet run --project godot/server/src/Tetrafall.Trace -- trace <번호> cs.jsonl [--ticks N]` | 같은 판을 C# 로 같은 JSONL (아직 안 옮긴 메서드에 닿으면 거기까지 쓰고 멈춤) |
 | `dotnet run --project godot/server/src/Tetrafall.Trace -- hash [--verbose]` | `node tools/game-hash.js` 와 같은 해시 (34판 다 돌면 = 규칙 이식 끝) |
 | `node godot/server/tools/tutorial-trace.mjs <캐릭터> js.jsonl` | 튜토리얼 판 (자동 조종 `shared/tutorial-pilot.js` 으로 끝까지, S4 검증). C# 는 `Tetrafall.Trace trace tut:<캐릭터>` (`TutorialPilot.cs`) |
+| `node godot/server/tools/scenario-logs.mjs <폴더>` · `dotnet …Tetrafall.Trace.dll logs <폴더>` | 34판 로그를 방 로그 파일 모양으로 (양쪽 같은 파일 → `npm run stats -- <폴더>` 비교) |
+| `node godot/server/tools/load.mjs [틱]` · `dotnet …Tetrafall.Server.dll load [틱]` | 서버 부하: 진짜 Rooms·가짜 소켓, 방 4개 × 8명 (사람 1 + 봇 7) 의 서버 루프 한 번 (rooms.tick + broadcast) 시간 평균·중앙값·99%·최대 |
+| `xvfb-run -a node godot/server/tools/cs-e2e.cjs <스샷 폴더> [주소]` | 실전 확인: JS 화면을 서버에 붙여 8명 판 모드 3개 끝까지·결과·다음 판, 연습·튜토리얼 (페이지 에러 0) |
 | `node godot/server/tools/trace-diff.mjs js.jsonl cs.jsonl` | 두 기록에서 처음 갈라지는 틱·JSON 경로·ulp |
 | `xvfb-run -a node godot/server/tools/lobby_shot.cjs <폴더> [주소]` | 기존 JS 화면을 이 서버에 붙여 메뉴·대기실 스샷 |
 
 ## 구조
 
 - `src/Tetrafall.Core/` — 규칙 (`Game.cs` + 묶음 `Game.<묶음>.cs` partial, `Player.cs`), `Js/` = JS 와 같은 숫자 부품 (`JsMath` V8 수학, `JsNumber` 숫자 글자·toFixed, `JsonOut` JSON.stringify, `Mulberry32`)
-- `src/Tetrafall.Server/` — `Program.cs` (Kestrel·정적 파일 (+ `/play/` = 고도 웹 빌드 godot/client/build/web)·잘못된 주소 400·WebSocket (NET_MAX_PAYLOAD_BYTES 넘으면 그 연결만 1009)·30Hz 루프 스레드 하나·표준 입력 터널 주소), `Rooms.cs` (rooms.js 전부, `OrderedMap` = JS Map 순서), `WsSocket.cs`, `StaticFiles.cs` (resolveFile·방 로그 파일)
+- `src/Tetrafall.Server/` — `Program.cs` (Kestrel·정적 파일 (+ `/play/` = 고도 웹 빌드 godot/client/build/web)·잘못된 주소 400·WebSocket (NET_MAX_PAYLOAD_BYTES 넘으면 그 연결만 1009)·30Hz 루프 스레드 하나·표준 입력 터널 주소), `Rooms.cs` (rooms.js 전부, `OrderedMap` = JS Map 순서), `WsSocket.cs`, `StaticFiles.cs` (resolveFile·배포 폴더 `web/`·방 로그 파일), `Tunnel.cs` (`--online` 터널)
 - `src/Tetrafall.Sim/` — 봇 판 시뮬레이션 (`Sim.cs` = tools/sim.js planJobs·runJob·runParallel·summarizeSim·formatSim, summary.json 은 JSON.stringify(…, null, 1) 모양)
 - `src/Tetrafall.Trace/` — 판 기록기: `Scenarios.cs` (game-hash.js 시나리오 34개·runScenario 그대로), trace JSONL·해시
 - 아직 안 옮긴 메서드는 `Game.Todo.cs` (부르면 NotImplementedException, 괄호 = 작업 id). 옮기면 거기서 지우고 묶음 파일에
