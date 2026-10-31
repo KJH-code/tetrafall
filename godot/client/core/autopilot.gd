@@ -7,6 +7,8 @@
 # 성능 비교 (G3): --view first|third|spectate (third 는 설정 3인칭, spectate 는 방장이 관전) · --map <맵 id> · --perf-log 에 1% low·메모리 한 줄 더
 # 성능: --perf-log (찍는 순간 = --shot-after 에 그리기 수·물체 수·삼각형 수·FPS·프레임 ms 한 줄, 화면 없이도)
 # --auto practice|tutorial: 연습·튜토리얼 방 (G6, --char 캐릭터, 연습 창은 --practice-open)
+# 연기 시험 (B4): --team (팀전) · --sky (하늘 계단) · --char <id> (방장 캐릭터도) · --skills <초> (그 간격으로 F·R) ·
+#   --char2 <id> --char2-at <초> (연습: 판 중 캐릭터 바꾸기) · --tut-skip <초> (튜토리얼: 한 단계에 이만큼 머물면 넘기기 → 끝까지)
 # 화면 범인 찾기: --hide ui|world|audio (그 묶음을 숨기고 찍음) · --dump (찍을 때 보이는 Control·CanvasItem·3D 노드를 화면 사각형과 함께 출력)
 extends Node
 
@@ -24,6 +26,10 @@ var last_phase := ""
 var moved := 0.0
 var last_pos = null
 var rejoined := false
+var skill_at := 0.0 # --skills: 다음 F·R 시각 (ms)
+var char2_sent := false
+var tut_step := -1
+var tut_since := 0.0
 var dropped := false
 var interp_ok := 0
 var push_at := 0.0
@@ -85,6 +91,12 @@ func _on_joined(room: Dictionary, again: bool) -> void:
 		return
 	PlayerInput.lock_mouse(true) # 헤드리스: 마우스 잡힌 셈 (입력이 나가게)
 	if role == "host":
+		if args.has("team"):
+			Store.send_room({"type": "teamMode", "on": true})
+		if args.has("sky"):
+			Store.send_room({"type": "skyStairs", "on": true})
+		if args.has("char"):
+			Store.send_room({"type": "setChar", "char": str(args["char"])})
 		if args.has("map"): # 성능 비교 (G3): 같은 맵
 			Store.send_room({"type": "setMap", "map": str(args["map"])})
 		if str(args.get("view", "")) == "spectate": # 관전: 방장은 빠지고 봇만
@@ -151,10 +163,30 @@ func _process(_d: float) -> void:
 		if bd < 1.7 and now >= push_at:
 			push_at = now + 300
 			PlayerInput.press("attack")
+		if args.has("skills") and now >= skill_at: # 연기 시험: F·R 번갈아
+			skill_at = now + float(args["skills"]) * 1000.0
+			PlayerInput.press("skill")
+			PlayerInput.press("ult")
 		if Store.view_pos(Store.my_id) != Vector3.ZERO:
 			interp_ok += 1
 	else:
 		PlayerInput.override = null
+	if role == "practice" and args.has("char2") and not char2_sent and el >= float(args.get("char2-at", 6)):
+		char2_sent = true
+		Store.send_room({"type": "setChar", "char": str(args["char2"])})
+		_log("캐릭터 바꿈 → %s" % args["char2"])
+	var tut = Store.state.get("tutorial") if role == "tutorial" else null
+	if tut is Dictionary and args.has("tut-skip") and not tut.get("done", false):
+		if int(tut.get("i", -1)) != tut_step:
+			tut_step = int(tut.get("i", -1))
+			tut_since = now
+			_log("튜토리얼 %d/%d %s" % [tut_step + 1, int(tut.get("n", 0)), str(tut.get("id", ""))])
+		elif now - tut_since > float(args["tut-skip"]) * 1000.0:
+			tut_since = now
+			Store.send_room({"type": "tutorialSkip"})
+	if tut is Dictionary and tut.get("done", false) and tut_step != 999:
+		tut_step = 999
+		_log("튜토리얼 끝")
 	if args.has("drop-at") and not dropped and el >= float(args["drop-at"]):
 		dropped = true
 		_log("연결을 일부러 끊음 (재접속 확인)")
