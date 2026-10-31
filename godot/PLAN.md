@@ -86,7 +86,7 @@ godot/
 | G2 | 캐릭터 몸: 8명 체형(`FIGURE_BODIES`)·공격 동작 `MOVES`·포즈·걸음·버릇 (`figure.js`·`figure-pose.js`·`character.js`), 1인칭 팔 (`viewmodel.js`) | figure 2233, figure-pose 118, character 360, viewmodel 357 | 5 (몸 만들기 / 동작 둘로 나눌 수 있음) | G0 | 8명이 JS 판과 같은 모양·동작 (나란히 스샷) |
 | G3 | 툰·외곽선 셰이더·테마 색 (`toon.js`, `textures.js` 핵심, `WORLD_THEMES` 색만) | toon 47, textures 401 일부, world 일부 | 2 | G1 | JS 판과 나란히 비슷 |
 | G4 | HUD·대기실·메뉴·결과 (빛 사선 스타일, 스매시식 % 판, 캐릭터 고르기·초상, 킬 점수전·체력전 HUD, 설정·키 설정, 전환 슬래시) | main 2917, index.html 791, hud-layout, kills-hud, char-select, wipe, portrait 128, char-stage 124 | 5 (메뉴·대기실 / 판 HUD·결과 둘로) | G0 | JS 판 화면 순서·기능 그대로 |
-| G5 | 효과·소리: 타격 파편·KO 연출(`ko.js`)·효과음 파일(`sound.js`)·합성 음악(`music.js` → AudioStreamGenerator) | effects 185, ko 177, sound 586, music 385, hit-tier | 3 | G1·G2 | 소리·KO 연출 같음 |
+| G5 | **소리 끝 (2026-10-31, audio/, 구운 녹음)** 효과·소리: 타격 파편·KO 연출(`ko.js`)·효과음 파일(`sound.js`)·합성 음악(`music.js` → AudioStreamGenerator) | effects 185, ko 177, sound 586, music 385, hit-tier | 3 | G1·G2 | 소리·KO 연출 같음 |
 | G6 | 연습·튜토리얼 화면·건축가 블록 모습(`bblocks.js`)·성능 표시(F3) | tutorial-ui 164, bblocks 281, perf 137 | 2 | G4 | 튜토리얼 끝까지 |
 | G7 | **설정 끝 (2026-10-31, 웹은 따로 서빙 `?server=`)** 내보내기: 웹 (서버가 같이 서빙 — S6 와) + 윈도우·리눅스 실행 파일 | — | 1 | G0 | 재혁 PC 에서 실행 |
 | (다음) | 타이틀·래그돌·테마 꾸밈(섬·무대·판 빛·대기실 어두운 장면) | title* 1300, ragdoll 400, world 1158, lobby-dark, game-light | 6+ | 첫 목표 뒤 | — |
