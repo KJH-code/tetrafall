@@ -138,7 +138,7 @@ static func label(text: String, size := 14, color := DIM) -> Label:
 	return l
 
 
-# 글자 칸: 어두운 바탕 + 빛 테두리, 포커스면 게임 키를 막음 (PlayerInput.ui_blocking)
+# 글자 칸: 어두운 바탕 + 빛 테두리 (포커스면 게임 키를 막는 건 ui.gd 가 한 곳에서 — PlayerInput.ui_blocking)
 static func line_edit(placeholder: String, size := 16, max_len := 0) -> LineEdit:
 	var e := LineEdit.new()
 	e.placeholder_text = placeholder
@@ -154,8 +154,6 @@ static func line_edit(placeholder: String, size := 16, max_len := 0) -> LineEdit
 	var f := s.duplicate()
 	f.border_color = g()
 	e.add_theme_stylebox_override("focus", f)
-	e.focus_entered.connect(func(): PlayerInput.ui_blocking = true)
-	e.focus_exited.connect(func(): PlayerInput.ui_blocking = false)
 	return e
 
 

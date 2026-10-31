@@ -10,6 +10,9 @@ var menu: Control
 var lobby: PanelContainer
 var host_players: PanelContainer
 var hud: Control
+var results: PanelContainer
+var settings: Control
+var over_at := -1.0 # 판이 끝난 시각 (결과 연출 RESULTS_HERO_MS)
 var wipe: Control
 var status: Label
 var ping: Label
@@ -31,6 +34,8 @@ func _ready() -> void:
 	root.add_child(host_players)
 	hud = load("res://ui/hud.gd").new()
 	root.add_child(hud)
+	results = load("res://ui/results.gd").new()
+	root.add_child(results)
 	status = S.label("연결 중...", 16, S.TEXT)
 	status.position = Vector2(16, 12)
 	root.add_child(status)
@@ -40,8 +45,13 @@ func _ready() -> void:
 	ping.size.x = 108
 	ping.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	root.add_child(ping)
+	settings = load("res://ui/settings.gd").new()
+	root.add_child(settings)
+	menu.open_settings.connect(func(): settings.visible = true)
+	lobby.open_settings.connect(func(): settings.visible = true)
 	wipe = load("res://ui/wipe.gd").new()
 	root.add_child(wipe)
+	Store.state_changed.connect(_on_state)
 	wipe.covered.connect(func(): _show(target))
 	Net.status_changed.connect(func(t): status.text = t)
 	_show(_screen_now())
@@ -55,7 +65,15 @@ func _screen_now() -> String:
 	var st := Store.state
 	if not Store.in_room() or st.is_empty():
 		return "menu"
-	return U.screen_of(true, str(st.phase), false, false) # 결과 연출(hero)·클로즈업은 결과 단계에서
+	var hero: bool = st.phase == "over" and over_at >= 0.0 and Time.get_ticks_msec() - over_at < C.RESULTS_HERO_MS and not Store.room.get("practice", false)
+	return U.screen_of(true, str(st.phase), hero, false) # 승자 클로즈업 (shared/victory.js) 은 G5 KO 연출과 같이
+
+
+func _on_state(st: Dictionary, prev: Dictionary) -> void:
+	if prev.get("phase") == "playing" and st.get("phase") == "over":
+		over_at = Time.get_ticks_msec()
+	elif st.get("phase") != "over":
+		over_at = -1.0
 
 
 func _show(screen: String) -> void:
@@ -65,10 +83,14 @@ func _show(screen: String) -> void:
 	lobby.visible = screen == "lobby"
 	host_players.visible = false
 	hud.visible = screen == "game"
+	results.visible = screen == "results"
 
 
 func _process(_d: float) -> void:
 	ping.text = Net.ping_text()
+	# 메뉴·대기실·결과·설정이 떠 있거나 글자 칸에 커서가 있으면 게임 키·마우스 잡기를 막음 (판 중 HUD 는 안 막음)
+	var focus := get_viewport().gui_get_focus_owner()
+	PlayerInput.ui_blocking = settings.visible or shown in ["menu", "lobby", "results"] or focus is LineEdit
 	status.visible = not Net.is_open() # 연결 중·끊김 글만 (판 시간은 HUD)
 	var now := _screen_now()
 	if now != target:
@@ -79,6 +101,8 @@ func _process(_d: float) -> void:
 	var st := Store.state
 	if shown == "game" and not st.is_empty():
 		hud.refresh(st)
+	if shown == "results" and not st.is_empty():
+		results.refresh(st)
 	if shown == "lobby" and not st.is_empty():
 		lobby.refresh(st)
 		var host: bool = st.get("hostId") == Store.my_id
@@ -92,7 +116,7 @@ func _unhandled_key_input(e: InputEvent) -> void:
 	if not (e is InputEventKey and e.pressed and not e.echo and e.keycode == KEY_ENTER):
 		return
 	var st := Store.state
-	if PlayerInput.ui_blocking or st.is_empty() or st.get("hostId") != Store.my_id or not st.get("canStart", false):
+	if get_viewport().gui_get_focus_owner() is LineEdit or settings.visible or st.is_empty() or st.get("hostId") != Store.my_id or not st.get("canStart", false):
 		return
 	if st.phase == "lobby" or st.phase == "over":
 		Store.send_room({"type": "start"})
