@@ -19,6 +19,7 @@ var settings := {
 	"volume": 1.0, # 효과음 (G5)
 	"music": 0.6, # 음악 (G5)
 	"perf": false, # F3 성능 표시 (G6)
+	"third": false, # 3인칭 (G1 카메라가 읽고 시점 키로 바꿈, G4 설정 창)
 }
 
 
