@@ -245,3 +245,25 @@ func test_label_thinning() -> void:
 	# UI 판 안이면 숨김 (가려진 것은 자리도 차지하지 않음)
 	got = L.thin([it.call(50, 50, 1.0), it.call(60, 60, 3.0)], [Rect2(0, 0, 55, 55)])
 	check(got == [false, true], "UI 판 뒤 %s" % [got])
+
+
+func test_hunt_marks_match_js() -> void:
+	const H := preload("res://world/hunt_marks.gd")
+	var fx = load_json("hunt_marks.json")
+	for p in fx.picks:
+		var got = H.pick_mark(p[0], p[1])
+		var want = p[2]
+		check((got == null) == (want == null), "pickMark 있음 %s" % [p])
+		if got != null and want != null:
+			check(int(got.by) == int(want.by) and int(got.n) == int(want.n) and got.mine == want.mine, "pickMark %s → %s ≠ %s" % [p[0], got, want])
+	for p in fx.pips:
+		var got := H.mark_pips(int(p[0]))
+		check(str(got.pips) == str(p[1].pips) and got.full == p[1].full and got.n == int(p[1].n), "markPips %s" % p[0])
+		check(H.pip_text(int(p[0])) == p[2], "pipText %s" % p[0])
+	for p in fx.pops:
+		check(near(H.pop_scale(p[0]), p[1]), "popScale %s" % [p])
+	for e in fx.edges:
+		var age: float = INF if e[1] == null else float(e[1])
+		check(near(H.edge_level(e[0], C.HUNTER_MARK_MAX, age, e[2]), e[3]), "edgeLevel %s" % [e])
+	for b in fx.blinks:
+		check(H.mark_blink(b[0], b[1]) == b[2], "markBlink %s" % [b])

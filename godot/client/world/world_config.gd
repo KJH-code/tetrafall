@@ -35,3 +35,5 @@ const CAM_ABOVE_HAZARD := 0.8 # 승자·셀카 카메라를 위험 표면 위 �
 const VICTORY_PULL := [0.3, 0.6] # 승자 카메라가 막히면: 막힌 칸 앞 여백, 승자에서 가장 가까운 거리
 const MARK_CELL := 0.94 # 스킬 예고 칸 판 크기 (render.js markBox)
 const LABEL_GAP := [96.0, 40.0] # 보통 시점 이름표 겹침 판정 크기 (화면 px, 가까운 4명 크기 기준 — 먼 것은 LABEL_FAR_SCALE 배)
+const HUNT_PIP_PX := 0.0016 # 머리 위 표식 마름모 글자 크기 (fixed_size, JS HUNT_MARK_UI.pip 0.045 화면 칸 쯤)
+const HUNT_PIP_GAP := 34.0 # 마름모 칸 사이 (화면 px)
