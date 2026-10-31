@@ -29,10 +29,10 @@ var stats := {"ms": 0.0, "steps": 0, "n": 0} # 마지막 물리 틱 (perf-log)
 
 # 장면 트리 하나에 하나 (root 아래 TfRagdolls). 트리 밖이면 null
 static func of(n: Node) -> Node:
-	if not n.is_inside_tree():
-		return null
 	if _inst != null and is_instance_valid(_inst):
 		return _inst
+	if not n.is_inside_tree():
+		return null
 	var w: Node = load("res://chars/ragdoll.gd").new() # new() 라야 _init (물리 공간) 이 돎
 	w.name = NAME
 	n.get_tree().root.add_child.call_deferred(w)
@@ -87,16 +87,26 @@ static func seg_defs(b) -> Array:
 
 # 관절 노드의 전역 회전 (크기 뺀) · 조각 가운데 자리
 static func _joint_q(j: Node3D) -> Quaternion:
-	return j.global_transform.basis.orthonormalized().get_rotation_quaternion()
+	return glob(j).basis.orthonormalized().get_rotation_quaternion()
 
 
 static func _seg_pos(j: Node3D, cz: float) -> Vector3:
-	return j.global_transform * Vector3(0, 0, cz)
+	return glob(j) * Vector3(0, 0, cz)
+
+
+# 전역 자리 (부모 Node3D 를 따라 곱함 — 장면 트리 밖에서도 됨)
+static func glob(n: Node3D) -> Transform3D:
+	var t := n.transform
+	var p := n.get_parent() as Node3D
+	while p != null:
+		t = p.transform * t
+		p = p.get_parent() as Node3D
+	return t
 
 
 func create(b) -> void:
 	var weight: float = C.RAGDOLL_WEIGHT.get(C.FIGURE_BODY.get(b.char_id, ""), 1.0)
-	var S: float = b.hips.global_transform.basis.get_scale().x # 몸 전체 크기 (FIGURE_SCALE × 몸 노드)
+	var S: float = glob(b.hips).basis.get_scale().x # 몸 전체 크기 (FIGURE_SCALE × 몸 노드)
 	var segs: Array = []
 	for def in seg_defs(b):
 		var j: Node3D = def[1]
@@ -130,7 +140,7 @@ func create(b) -> void:
 		if int(sg.parent) < 0:
 			continue
 		var pa: Dictionary = segs[int(sg.parent)]
-		var pivot: Vector3 = (sg.joint as Node3D).global_position
+		var pivot: Vector3 = glob(sg.joint).origin
 		var xa := Transform3D(Basis(pa.tq), pa.tp)
 		var xb := Transform3D(Basis(sg.tq), sg.tp)
 		var la: Vector3 = xa.affine_inverse() * pivot
@@ -251,7 +261,7 @@ func apply(b) -> void:
 			wq = wq.slerp(sg.tq, rag.snap)
 		sg.wq = wq
 		var j: Node3D = sg.joint
-		var pq := (j.get_parent() as Node3D).global_transform.basis.orthonormalized().get_rotation_quaternion()
+		var pq := glob(j.get_parent() as Node3D).basis.orthonormalized().get_rotation_quaternion()
 		j.quaternion = (pq.inverse() * wq).normalized()
 
 

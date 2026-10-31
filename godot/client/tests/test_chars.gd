@@ -350,8 +350,9 @@ func test_ragdoll_bodies() -> void:
 	RagW._inst = w
 	for ch in C.RAGDOLL_CHARS:
 		var b = Chars.make_body(ch, Color(0.5, 0.5, 0.9))
+		b.rag_test = true # 테스트 러너 (_initialize) 에선 root 에 넣어도 트리 안이 아님
 		root.add_child(b)
-		var p := {"id": 3, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.4}
+		var p := {"id": -2, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.4}
 		b.pose(p, 0.0)
 		check(w.has(b), "%s 래그돌 켬 (%s, 만든 수 %d)" % [ch, b.rag_why, w.made])
 		var rag: Dictionary = w.rags.get(b, {})
@@ -380,14 +381,15 @@ func test_ragdoll_bodies() -> void:
 		b.pose(p, 48.0)
 		check(w.has(b), "%s 다시 켬" % ch)
 		root.remove_child(b)
-		check(not w.has(b), "%s 트리에서 빠지면 끔" % ch)
 		b.free()
-	# 초상·큰 캐릭터 몸 (id -1) 은 안 켬
+		check(w.rags.is_empty(), "%s 몸을 지우면 끔" % ch)
+	# 초상·큰 캐릭터 몸 (자기 SubViewport, rag_test 아님) 은 안 켬
 	var pb = Chars.make_body("tank", Color.WHITE)
-	root.add_child(pb)
+	var sv := SubViewport.new()
+	sv.add_child(pb)
 	pb.pose({"id": -1, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0}, 0.0)
-	check(not w.has(pb), "초상 몸은 래그돌 아님")
-	pb.free()
+	check(not w.has(pb), "초상 몸은 래그돌 아님 (%s)" % pb.rag_why)
+	sv.free()
 	check(w.rags.is_empty(), "남은 래그돌 없음")
 	RagW._inst = null
 	w.free()

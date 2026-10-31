@@ -57,6 +57,7 @@ var windup_until := -1e9
 var armor_until := -1e9
 var armor_hit_at := -1e9
 var rag_why := "" # 래그돌이 안 켜진 까닭 (확인용)
+var rag_test := false # 테스트: 장면 트리 밖에서도 래그돌 켬
 var rag_was_stunned := false # 래그돌: 경직이 풀린 시각 (초, 일어나기)
 var rag_stun_end := -1.0
 var batch = null # K.SKIN: G3 batch.gd (툰 조각 전부 → SkinnedMesh 하나, 뼈 = 조각)
@@ -81,7 +82,8 @@ var drop_s = null
 var twist_k := 0.0
 
 # 움직임 상태 (render.js animate 의 a.*)
-var pid := -1
+var pid := -1 # 플레이어 id (봇은 음수)
+var posed := false # pose 를 한 번이라도 받음 (= pid 가 정해짐)
 var last_ms = null
 var prev_pos = null
 var hs := 0.0
@@ -470,6 +472,7 @@ static func _autoload(name: String):
 # ---------- 매 프레임 (World 가 부름) ----------
 func pose(p: Dictionary, now_ms: float) -> void:
 	pid = int(p.id)
+	posed = true
 	var dt := 0.0 if last_ms == null else clampf((now_ms - last_ms) / 1000.0, 0.0, 0.1)
 	var view = _autoload("View")
 	if view != null:
@@ -1125,7 +1128,7 @@ func _fx_amount(fn: String) -> float:
 				for c in root.get_children():
 					if c.has_method("squash_amount"):
 						fx_node = c
-	if fx_node == null or pid < 0:
+	if fx_node == null or not _has_id():
 		return 0.0
 	return float(fx_node.call(fn, pid))
 
@@ -1168,11 +1171,13 @@ func _sync_bones() -> void:
 
 
 # ---------- 래그돌 (JS render.js ragdollCapture·RAGDOLL_CHARS, 물리는 chars/ragdoll.gd) ----------
-# 켜는 몸: RAGDOLL_CHARS 캐릭터, 판의 사람 (id ≥ 0 — 초상·큰 캐릭터 몸은 끔), 살아 있고 필드에 있음, 화면에 보임 (1인칭 내 몸은 World 가 숨김)
+# 켜는 몸: RAGDOLL_CHARS 캐릭터, 살아 있고 필드에 있음 (마스터 아님), 보이는 몸 (1인칭 내 몸은 World 가 숨김), 판 화면 (메인 뷰포트) 의 몸 —
+# 초상·큰 캐릭터 몸은 자기 SubViewport 라 끔 (봇 id 가 음수라 id 로는 못 가림). rag_test: 테스트가 트리 밖 몸을 켬
 func _ragdoll(p: Dictionary):
-	var on: bool = K.RAGDOLL and merged_count > 0 and pid >= 0 and char_id in C.RAGDOLL_CHARS and p.get("alive", true) == true \
-		and not p.get("master", false) and is_inside_tree() and is_visible_in_tree()
-	rag_why = "" if on else "끔: RAGDOLL %s 합침 %d id %d 캐릭터 %s 살아 %s 마스터 %s 트리 %s 보임 %s" % [K.RAGDOLL, merged_count, pid, char_id, p.get("alive"), p.get("master"), is_inside_tree(), is_inside_tree() and is_visible_in_tree()]
+	var main_view: bool = rag_test or (is_inside_tree() and get_viewport() == get_tree().root)
+	var on: bool = K.RAGDOLL and merged_count > 0 and char_id in C.RAGDOLL_CHARS and p.get("alive", true) == true \
+		and not p.get("master", false) and main_view and _shown()
+	rag_why = "" if on else "끔: RAGDOLL %s 합침 %d id %d 캐릭터 %s 살아 %s 마스터 %s 판 화면 %s 보임 %s" % [K.RAGDOLL, merged_count, pid, char_id, p.get("alive"), p.get("master"), main_view, _shown()]
 	var rw = Ragdoll.of(self) if on else Ragdoll._inst
 	if rw == null or not is_instance_valid(rw):
 		if on:
@@ -1186,6 +1191,16 @@ func _ragdoll(p: Dictionary):
 		if not rw.has(self):
 			rag_why = "만들기 실패"
 	return rw
+
+
+# 보이는가 (부모 Node3D 까지 visible — 트리 밖에서도)
+func _shown() -> bool:
+	var n: Node = self
+	while n is Node3D:
+		if not (n as Node3D).visible:
+			return false
+		n = n.get_parent()
+	return true
 
 
 func _ragdoll_capture(rw, p: Dictionary, st: Dictionary, pos: Vector3, _dt: float) -> void:
@@ -1318,9 +1333,14 @@ func _vis(r, on: bool) -> void:
 		n.visible = on
 
 
+# pid 가 정해졌나 (봇 id 는 음수라 pid ≥ 0 으로는 못 봄)
+func _has_id() -> bool:
+	return posed or pid != -1
+
+
 # ---------- 서버 이벤트 (main.js handleEvent → renderer 의 몸 부분) ----------
 func on_event(e: Dictionary) -> void:
-	if pid < 0:
+	if not _has_id():
 		return
 	var now := Time.get_ticks_msec() / 1000.0
 	var who = e.get("who")
