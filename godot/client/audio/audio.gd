@@ -3,6 +3,8 @@
 # 화면 쪽 소리 (건축가 폭발·화살 박힘·위험 차오름·KO 스매시·마지막 킬·슬로모션) 는 View.sound_cue 신호로 받음
 extends Node
 
+const Prof := preload("res://core/prof.gd")
+
 const C := preload("res://core/config.gd")
 const SM := preload("res://audio/sound_math.gd")
 const Co := preload("res://core/coords.gd")
@@ -37,6 +39,12 @@ func _apply_settings() -> void:
 
 
 func _process(dt: float) -> void:
+	var _pt := Prof.now() # 성능 구간 (--perf-log 만, core/prof.gd)
+	_prof_process(dt)
+	Prof.add("audio", _pt)
+
+
+func _prof_process(dt: float) -> void:
 	# 내 귀 = 지금 카메라 (G1 이 그림). 없으면 내 몸
 	var cam := get_viewport().get_camera_3d()
 	var ear_z = null

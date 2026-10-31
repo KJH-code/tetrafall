@@ -6,6 +6,8 @@
 #   var b := G3.batch_mesh(body_root)   # body_root 아래 조각 다 모음 → body_root 에 "G3Batch" 자식으로 붙음
 extends Node3D
 
+const Prof := preload("res://core/prof.gd")
+
 const HIDE_SCALE := 1e-6 # 안 보이는 조각 뼈 크기 (0 이면 돌림을 못 뽑음)
 const TOON := preload("res://shaders/toon.gdshader")
 
@@ -123,6 +125,12 @@ func shown(n: Node3D) -> bool:
 
 
 func _process(_d: float) -> void:
+	var _pt := Prof.now() # 성능 구간 (--perf-log 만, core/prof.gd)
+	_prof_process(_d)
+	Prof.add("몸 묶음 sync (8명 합)", _pt)
+
+
+func _prof_process(_d: float) -> void:
 	sync()
 
 

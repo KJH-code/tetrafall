@@ -11,6 +11,7 @@
 extends Node
 
 const C := preload("res://core/config.gd")
+const Prof := preload("res://core/prof.gd")
 
 var args := {}
 var role := "host"
@@ -43,6 +44,8 @@ func _ready() -> void:
 	start_ms = Net.now_ms()
 	if args.has("view"):
 		View.settings["third"] = str(args["view"]) == "third"
+	if args.has("perf-log"):
+		Prof.on = true
 	if args.has("low"): # 성능 비교: 그래픽 낮춤으로
 		View.settings["lowGfx"] = true
 	Store.rooms_changed.connect(_on_rooms)
@@ -166,6 +169,8 @@ func _process(_d: float) -> void:
 			perf_split[2] += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
 			perf_split[3] += Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
 			perf_split[4] += 1
+		elif Prof.on:
+			Prof.reset() # 재기 전 구간 합은 버림
 		var now_us := Time.get_ticks_usec() # 벽시계 (_process delta 는 느리면 물리 틱 수로 잘려 133ms 에서 멈춤)
 		if last_us > 0 and el >= float(args.get("shot-after", 8)) - float(args.get("perf-secs", 1e9)): # --perf-secs N: 찍기 전 N 초만 (판 시작·로딩 빼고)
 			frame_ms.append((now_us - last_us) / 1000.0)
@@ -187,6 +192,7 @@ func _process(_d: float) -> void:
 			for i in k:
 				low += sorted[sorted.size() - 1 - i]
 			_log("성능 표: 평균 %.2fms · 1%% low %.2fms · 그리기 %d · 메모리 %.1fMB (영상 %.1fMB) · 프레임 %d | 나눔 평균: 그리기 CPU %.1fms · GPU %.1fms · 스크립트 %.1fms · 물리 %.1fms" % [avg, low / k, Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0, Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0, sorted.size(), perf_split[0] / maxf(1, perf_split[4]), perf_split[1] / maxf(1, perf_split[4]), perf_split[2] / maxf(1, perf_split[4]), perf_split[3] / maxf(1, perf_split[4])])
+			_log("성능 구간 (프레임당): %s" % Prof.report(int(perf_split[4])))
 			_log("성능: 그리기 %d · 물체 %d · 삼각형 %d · FPS %d · 프레임 평균 %.1fms 최악 %.1fms (최근 %d프레임) | 나눠서: 보이는 %d · 그림자 %d · 몸 메시 %d" % [Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME), Engine.get_frames_per_second(), avg, worst, frame_ms.size(), get_viewport().get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME), get_viewport().get_render_info(Viewport.RENDER_INFO_TYPE_SHADOW, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME), _body_meshes(get_tree().root)])
 			var rw = get_tree().root.get_node_or_null("TfRagdolls")
 			if rw != null:

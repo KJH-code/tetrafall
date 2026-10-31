@@ -2,6 +2,8 @@
 # 지금 화면 = ui_calc.screen_of (JS shared/wipe.js screenOf), 바뀌면 슬래시가 다 덮는 순간 뒤 화면을 바꿈 (JS updateScreen)
 extends CanvasLayer
 
+const Prof := preload("res://core/prof.gd")
+
 const C := preload("res://core/config.gd")
 const S := preload("res://ui/ui_style.gd")
 const U := preload("res://ui/ui_calc.gd")
@@ -106,6 +108,12 @@ func _show(screen: String) -> void:
 
 
 func _process(_d: float) -> void:
+	var _pt := Prof.now() # 성능 구간 (--perf-log 만, core/prof.gd)
+	_prof_process(_d)
+	Prof.add("ui (HUD)", _pt)
+
+
+func _prof_process(_d: float) -> void:
 	if View.get("ui_theme") != theme_seen:
 		theme_seen = View.get("ui_theme")
 		S.restyle()

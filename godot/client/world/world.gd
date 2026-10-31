@@ -16,6 +16,7 @@ const ItemsView := preload("res://world/items_view.gd")
 const GhostAim := preload("res://world/ghost_aim.gd")
 const Scenery := preload("res://world/scenery.gd")
 const LP := preload("res://world/lobby_preview.gd")
+const Prof := preload("res://core/prof.gd") # 성능 구간 재기 (--perf-log 만)
 const Marks := preload("res://world/marks.gd")
 const LightFx := preload("res://world/light_fx.gd")
 const Shots := preload("res://world/shots.gd")
@@ -369,6 +370,7 @@ func _process(dt: float) -> void:
 	if headless or not live:
 		return
 	dt *= View.time_scale # KO 슬로모션 (G5 가 정함)
+	Prof.begin()
 	var now := Time.get_ticks_msec() * 1.0
 	var f: Dictionary = st.field
 	var fs := Vector3i(int(f.w), int(f.d), int(f.get("h", C.GRID_H)))
@@ -396,6 +398,7 @@ func _process(dt: float) -> void:
 	_lobby_dark(st, fs)
 	scenery.build(C.WORLD_MAP_THEME.get(theme_id), fs.x, fs.y, bool(View.settings.get("lowGfx", false)), fs.z)
 	scenery.step(dt)
+	Prof.lap("world 섬·대기실")
 	if bblocks != null:
 		bblocks.update(st)
 		grid_view.skip = bblocks.skip()
@@ -406,9 +409,11 @@ func _process(dt: float) -> void:
 		built_version = gkey
 		if sprouts != null:
 			G3.sprout_update(sprouts, g, fs.x, fs.y, fs.z, grid_view.skip, bool(View.settings.get("lowGfx", false)))
+	Prof.lap("world 격자·건축 블록")
 	rig.pre(dt)
 	var sky_on: bool = rig.sky_blend > 0.5
 	bodies.update(st, Store.my_id, rig.hide_me(), sky_on, now)
+	Prof.lap("world bodies.update (몸 자세)")
 	rig.field_size = Vector2(fs.x, fs.y)
 	var ph := str(st.get("phase", ""))
 	if ph != last_phase:
@@ -421,6 +426,7 @@ func _process(dt: float) -> void:
 	shots.update(st, dt)
 	hook_fx.piece_colors = pieces_view.piece_colors
 	hook_fx.step()
+	Prof.lap("world 표식·투사체·갈고리")
 	if marks_demo and ph == "playing": # 확인용: 다른 사람마다 내 표식 (1.5초마다 하나씩 늘어남 → 꽉 차면 다시)
 		var k := int(now / 1500.0) % 4
 		var i := 0
@@ -434,6 +440,7 @@ func _process(dt: float) -> void:
 				body_fx.on_event({"type": "mark", "by": Store.my_id, "target": p.id, "n": n})
 			i += 1
 	body_fx.update(st, Store.my_id, dt)
+	Prof.lap("world body_fx")
 	light_fx.low = bool(View.settings.get("lowGfx", false))
 	var halos := []
 	var lit := ph == "countdown" or ph == "playing" or ph == "over"
@@ -447,11 +454,15 @@ func _process(dt: float) -> void:
 		for it in st.get("items", []):
 			halos.append([it.x + 0.5, it.y + 0.5, it.z + 0.5, int(C.GAME_LIGHT_ITEM), 0.6])
 	light_fx.frame(lit, halos, dt)
+	Prof.lap("world 판 빛")
 	var me := Store.me()
 	pieces_view.update(st, Store.my_id, me, rig.sky_blend)
+	Prof.lap("world 떨어지는 칸")
 	hazard_view.update(st, Store.grid, Store.grid_version, me, dt)
+	Prof.lap("world 위험")
 	grid_view.cliff.visible = scenery.theme_id == null and (hazard_view.G3 != null or not hazard_view.visible) # 테마 섬이 있으면 상자 절벽 대신 · 단순 위험 표면은 반투명이라 절벽이 비침 (G3 재질은 깊이로 가림)
 	items_view.update(st, dt, now)
+	Prof.lap("world 아이템")
 	var my_piece := {}
 	var people := []
 	if sky_on:
@@ -464,13 +475,17 @@ func _process(dt: float) -> void:
 			var s: Vector3 = bodies.shown.get(int(p.id), Vector3(p.x, p.y, p.z))
 			people.append({"x": s.x, "y": s.y, "z": s.z, "color": Co.color(Bodies.player_color(p, st))})
 	sky_aids.update(sky_on, my_piece, people, now)
+	Prof.lap("world 하늘 도우미")
 	rig.place(dt, bodies.shown, solid_at)
+	Prof.lap("world 카메라")
 	bodies.thin_labels(rig.cam, sky_on)
+	Prof.lap("world 이름표")
 	if vm != null: # 1인칭 팔·무기: 살아 있고 1인칭 (몸을 숨긴 때) 만
 		var mine = bodies.nodes.get(Store.my_id, {}).get("body") if Store.my_id != null else null
 		vm.update(mine, mine != null and rig.hide_me() and View.mode == "first" and not me.is_empty() and me.alive, dt)
 	var gcd = me.get("ghostCd") if not me.is_empty() else null
 	ghost_aim.update(rig.spectating() and gcd != null and rig.sky_blend == 0.0, rig.cam, Bodies.player_color(me, st) if not me.is_empty() else 0xffffff, gcd != null and float(gcd) == 0.0, field.x, field.y, solid_at, column_top, now)
+	Prof.lap("world 1인칭 팔·유령 조준")
 
 
 # 칸 (x, y) 기둥 꼭대기 높이 (render.js columnTopAt)

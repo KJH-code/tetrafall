@@ -3,6 +3,8 @@
 # 끊기면 NET_RECONNECT_MS 마다 다시 붙어 보고 (NET_RECONNECT_TRIES 번), 붙으면 reconnected → Store 가 자리 토큰으로 rejoin
 extends Node
 
+const Prof := preload("res://core/prof.gd")
+
 const C := preload("res://core/config.gd")
 const NetMeter := preload("res://core/net_meter.gd")
 
@@ -60,6 +62,12 @@ func _set_status(t: String) -> void:
 
 
 func _process(_delta: float) -> void:
+	var _pt := Prof.now() # 성능 구간 (--perf-log 만, core/prof.gd)
+	_prof_process(_delta)
+	Prof.add("net (스냅샷 받기·JSON·state 신호)", _pt)
+
+
+func _prof_process(_delta: float) -> void:
 	var now := now_ms()
 	meter.on_frame(now)
 	if url == "":

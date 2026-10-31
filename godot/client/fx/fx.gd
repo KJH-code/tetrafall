@@ -4,6 +4,8 @@
 # 다른 묶음이 읽는 것: View.time_scale (KO 슬로모션·히트스톱, 프레임 dt 에 곱함) · effects.squash_amount(id)·punch_amount(id) (몸)
 extends Node3D
 
+const Prof := preload("res://core/prof.gd")
+
 const C := preload("res://core/config.gd")
 const FM := preload("res://fx/fx_math.gd")
 const Effects := preload("res://fx/effects.gd")
@@ -47,6 +49,12 @@ func setup(cam_rig) -> void:
 
 
 func _process(dt: float) -> void:
+	var _pt := Prof.now() # 성능 구간 (--perf-log 만, core/prof.gd)
+	_prof_process(dt)
+	Prof.add("fx 효과", _pt)
+
+
+func _prof_process(dt: float) -> void:
 	var s: float = ko.time_scale()
 	View.time_scale = s
 	if s != last_scale:

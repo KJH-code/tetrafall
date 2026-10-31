@@ -3,6 +3,8 @@
 # 서버로 보내기는 Store 의 함수 (create_room·join·send_room 등) 또는 PlayerInput (조작). 프로토콜 글자는 JS 화면과 같음
 extends Node
 
+const Prof := preload("res://core/prof.gd")
+
 const C := preload("res://core/config.gd")
 const Interp := preload("res://core/interp.gd")
 const Seat := preload("res://core/seat.gd")
@@ -87,6 +89,12 @@ func view_pos(id) -> Vector3:
 
 
 func _process(delta: float) -> void:
+	var _pt := Prof.now() # 성능 구간 (--perf-log 만, core/prof.gd)
+	_prof_process(delta)
+	Prof.add("store 시계", _pt)
+
+
+func _prof_process(delta: float) -> void:
 	view_time = clock.advance(Net.now_ms(), delta * 1000.0)
 
 

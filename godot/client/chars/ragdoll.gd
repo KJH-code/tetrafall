@@ -6,6 +6,8 @@
 # 바닥·블록은 힘이 빠졌을 때만 부딪힘 (RAGDOLL_COLLIDE_BELOW): 판 크기 바닥 상자 하나 + 래그돌 둘레 RAGDOLL_GROUND_REACH 칸 안 단단한 칸
 extends Node
 
+const Prof := preload("res://core/prof.gd")
+
 const C := preload("res://core/config.gd")
 const RM := preload("res://chars/ragdoll_math.gd")
 const Co := preload("res://core/coords.gd")
@@ -268,6 +270,12 @@ func apply(b) -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	var _pt := Prof.now() # 성능 구간 (--perf-log 만, core/prof.gd)
+	_prof_physics_process(_delta)
+	Prof.add("래그돌 물리 (_physics)", _pt)
+
+
+func _prof_physics_process(_delta: float) -> void:
 	var t0 := Time.get_ticks_usec()
 	stats.n = rags.size()
 	if rags.is_empty():

@@ -39,8 +39,9 @@ static func _solid(grid: PackedByteArray, w: int, d: int, h: int, x: int, y: int
 
 
 # 지형 칸마다 이웃이 빈 방향 비트 (1 +x · 2 −x · 4 +y · 8 −y · 16 +z · 32 −z), 순서 z → y → x (지형 칸만)
-static func open_bits(grid: PackedByteArray, w: int, d: int, h: int, skip: Dictionary = {}) -> PackedInt32Array:
+static func open_bits(grid: PackedByteArray, w: int, d: int, h: int, skip: Dictionary = {}, full_h := -1) -> PackedInt32Array:
 	var out := PackedInt32Array()
+	var hh := h if full_h < 0 else full_h # 격자 높이 (h 는 도는 층 수)
 	for z in h:
 		for y in d:
 			for x in w:
@@ -48,12 +49,12 @@ static func open_bits(grid: PackedByteArray, w: int, d: int, h: int, skip: Dicti
 				if grid[i] != TERRAIN or skip.has(i):
 					continue
 				var m := 0
-				if not _at(grid, w, d, h, skip, x + 1, y, z): m |= 1
-				if not _at(grid, w, d, h, skip, x - 1, y, z): m |= 2
-				if not _at(grid, w, d, h, skip, x, y + 1, z): m |= 4
-				if not _at(grid, w, d, h, skip, x, y - 1, z): m |= 8
-				if not _at(grid, w, d, h, skip, x, y, z + 1): m |= 16
-				if z > 0 and not _at(grid, w, d, h, skip, x, y, z - 1): m |= 32
+				if not _at(grid, w, d, hh, skip, x + 1, y, z): m |= 1
+				if not _at(grid, w, d, hh, skip, x - 1, y, z): m |= 2
+				if not _at(grid, w, d, hh, skip, x, y + 1, z): m |= 4
+				if not _at(grid, w, d, hh, skip, x, y - 1, z): m |= 8
+				if not _at(grid, w, d, hh, skip, x, y, z + 1): m |= 16
+				if z > 0 and not _at(grid, w, d, hh, skip, x, y, z - 1): m |= 32
 				out.append(m)
 	return out
 
@@ -72,24 +73,64 @@ static func cell_rand(x: int, y: int, z: int, k: int = 0) -> float:
 	return float(h ^ (h >> 16)) / 4294967296.0
 
 
+# 지형 칸이 있는 맨 위 층 + 1 까지만 보면 됨 (지형 값은 그 위 칸에 안 기댐: 열린 방향·그늘은 바로 위 한 칸까지) → 그 높이와 그 아래 격자 조각의 해시
+static func terrain_top(grid: PackedByteArray, w: int, d: int) -> int:
+	var i := grid.rfind(TERRAIN)
+	return -1 if i < 0 else i / (w * d)
+
+
+static func region_key(grid: PackedByteArray, w: int, d: int, h: int, skip: Dictionary) -> String:
+	var top := terrain_top(grid, w, d)
+	var n := mini(h, top + 2) * w * d
+	return "%d|%d|%d|%d|%d|%s" % [w, d, h, top, hash(grid.slice(0, n)), str(skip.keys())]
+
+
 # 칸마다 셰이더 값: Color(open, ao, lift, 0) — MultiMesh custom_data (INSTANCE_CUSTOM). 순서 = open_bits
+# 같은 지형 둘레 (region_key) 면 지난 값 그대로 (떨어진 블록이 지형 위 높은 곳에 쌓일 때마다 격자 전체를 다시 돌지 않게)
+static var _looks_key := ""
+static var _looks: PackedColorArray
+
+
 static func cell_looks(grid: PackedByteArray, w: int, d: int, h: int, skip: Dictionary = {}) -> PackedColorArray:
-	var open := open_bits(grid, w, d, h, skip)
+	var key := region_key(grid, w, d, h, skip)
+	if key == _looks_key:
+		return _looks
+	_looks_key = key
+	_looks = _cell_looks(grid, w, d, mini(h, terrain_top(grid, w, d) + 2), skip, h)
+	return _looks
+
+
+static func _cell_looks(grid: PackedByteArray, w: int, d: int, h: int, skip: Dictionary, full_h: int) -> PackedColorArray:
+	# 이웃 보기를 함수 부르기 없이 번호 셈으로 (GDScript 는 함수 부르기가 비쌈) — 값은 open_bits·_solid 와 같음
+	var wd := w * d
 	var out := PackedColorArray()
-	out.resize(open.size())
-	var n := 0
+	var no_skip := skip.is_empty()
 	for z in h:
 		for y in d:
 			for x in w:
-				var i := (z * d + y) * w + x
-				if grid[i] != TERRAIN or skip.has(i):
+				var i := z * wd + y * w + x
+				if grid[i] != TERRAIN or (not no_skip and skip.has(i)):
 					continue
+				var m := 0
+				# 열린 방향 (지형 칸이 아니거나 skip 이면 열림, 격자 밖도 열림, 바닥 아래는 막힘)
+				if x + 1 >= w or grid[i + 1] != TERRAIN or (not no_skip and skip.has(i + 1)): m |= 1
+				if x == 0 or grid[i - 1] != TERRAIN or (not no_skip and skip.has(i - 1)): m |= 2
+				if y + 1 >= d or grid[i + w] != TERRAIN or (not no_skip and skip.has(i + w)): m |= 4
+				if y == 0 or grid[i - w] != TERRAIN or (not no_skip and skip.has(i - w)): m |= 8
+				if z + 1 >= full_h or grid[i + wd] != TERRAIN or (not no_skip and skip.has(i + wd)): m |= 16
+				if z > 0 and (grid[i - wd] != TERRAIN or (not no_skip and skip.has(i - wd))): m |= 32
+				# 그늘 (아무 블록이나 막힘, 바닥 아래도 막힘)
 				var a := 0
 				for k in 4:
-					if _solid(grid, w, d, h, x + DIRS[k][0], y + DIRS[k][1], z + 1): a |= 1 << k
-					if _solid(grid, w, d, h, x + DIRS[k][0], y + DIRS[k][1], z - 1): a |= 16 << k
-				out[n] = Color(open[n], a, cell_rand(x, y, z, 1) - 0.5, 0.0)
-				n += 1
+					var nx: int = x + DIRS[k][0]
+					var ny: int = y + DIRS[k][1]
+					if nx < 0 or ny < 0 or nx >= w or ny >= d:
+						if z - 1 < 0: a |= 16 << k
+						continue
+					var j := ny * w + nx
+					if z + 1 < full_h and grid[(z + 1) * wd + j] != 0: a |= 1 << k
+					if z - 1 < 0 or grid[(z - 1) * wd + j] != 0: a |= 16 << k
+				out.append(Color(m, a, cell_rand(x, y, z, 1) - 0.5, 0.0))
 	return out
 
 
@@ -108,7 +149,9 @@ static func _all_sprouts(grid: PackedByteArray, w: int, d: int, h: int, skip: Di
 	var out := []
 	if sp == null:
 		return out
-	var looks := open_bits(grid, w, d, h, skip)
+	var hh := h
+	h = mini(h, terrain_top(grid, w, d) + 2) # 지형 맨 위 층 + 1 까지만 돎 (결과 같음)
+	var looks := open_bits(grid, w, d, h, skip, hh)
 	var n := 0
 	var s0: float = sp.size[0]
 	var s1: float = sp.size[1]
@@ -126,7 +169,7 @@ static func _all_sprouts(grid: PackedByteArray, w: int, d: int, h: int, skip: Di
 				for f in 4:
 					if not (m & (1 << f)) or cell_rand(x, y, z, 10 + f) >= side:
 						continue
-					if ground and not _solid(grid, w, d, h, x + DIRS[f][0], y + DIRS[f][1], z - 1):
+					if ground and not _solid(grid, w, d, hh, x + DIRS[f][0], y + DIRS[f][1], z - 1):
 						continue
 					var v := -0.5 if ground else (cell_rand(x, y, z, 30 + f) - 0.5) * 0.5
 					out.append({"x": x, "y": y, "z": z, "face": f, "u": (cell_rand(x, y, z, 20 + f) - 0.5) * 0.6, "v": v, "s": s0 + cell_rand(x, y, z, 40 + f) * (s1 - s0), "spin": cell_rand(x, y, z, 50 + f)})

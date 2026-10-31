@@ -6,6 +6,7 @@
 extends RefCounted
 
 const C := preload("res://core/config.gd")
+const Prof := preload("res://core/prof.gd")
 const Co := preload("res://core/coords.gd")
 const K := preload("res://shaders/g3_config.gd")
 const TOON := preload("res://shaders/toon.gdshader")
@@ -273,7 +274,10 @@ static func terrain_material(theme_id, low_arg = null) -> ShaderMaterial:
 
 
 static func terrain_custom(grid: PackedByteArray, w: int, d: int, h: int, skip: Dictionary = {}) -> PackedColorArray:
-	return BS.cell_looks(grid, w, d, h, skip)
+	var t := Prof.now()
+	var r := BS.cell_looks(grid, w, d, h, skip)
+	Prof.add("G3 지형 칸 값 (cell_looks)", t)
+	return r
 
 
 static func _v2(a) -> Vector2:
@@ -296,8 +300,10 @@ static func sprout_node(theme_id) -> Node3D:
 static func sprout_update(node: Node3D, grid: PackedByteArray, w: int, d: int, h: int, skip: Dictionary = {}, low_arg = null) -> void:
 	var low := _low(low_arg)
 	if node:
+		var t := Prof.now()
 		node.set_meta("g3_last", [grid, w, d, h, skip]) # set_low 이 다시 깔 때
 		node.refresh(grid, w, d, h, skip, low)
+		Prof.add("G3 튀어나온 조각 다시 깔기", t)
 
 
 # ---- 몸 묶기 (JS batch.js, batch.gd): body 아래 G3 툰 조각을 SkinnedMesh 하나로 (툰 1 + 외곽선 1). outline: 외곽선 붙임

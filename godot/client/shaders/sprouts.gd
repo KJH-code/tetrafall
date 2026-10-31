@@ -153,7 +153,14 @@ func setup(style: Dictionary, palette: Array, toon: Callable) -> void:
 		mms.append(mm)
 
 
+var _key := ""
+
+
 func refresh(grid: PackedByteArray, w: int, d: int, h: int, skip: Dictionary, low: bool) -> void:
+	var key := "%s|%s" % [low, BS.region_key(grid, w, d, h, skip)] # 지형 둘레가 같으면 자리도 같음 → 그대로
+	if key == _key:
+		return
+	_key = key
 	var spots := [] if low else BS.sprout_spots(grid, w, d, h, skip, s.sprout, int(C.BLOCK_SPROUT_MAX))
 	var up := Vector3(0, 0, 1)
 	var step: float = s.step

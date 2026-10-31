@@ -3,6 +3,8 @@
 # 화면 묶음이 쓰는 것: yaw·pitch (카메라), ui_action 신호 (도움말·시점·연습·성능·튜토리얼 넘기기·하늘 시점 돌리기), wheel_changed (이모트 바퀴)
 extends Node
 
+const Prof := preload("res://core/prof.gd")
+
 const C := preload("res://core/config.gd")
 const Keys := preload("res://core/keys.gd")
 
@@ -80,6 +82,12 @@ func _on_state(st: Dictionary, _prev: Dictionary) -> void:
 
 
 func _process(delta: float) -> void:
+	var _pt := Prof.now() # 성능 구간 (--perf-log 만, core/prof.gd)
+	_prof_process(delta)
+	Prof.add("입력", _pt)
+
+
+func _prof_process(delta: float) -> void:
 	var ph := Store.phase()
 	if ph != "playing" and ph != "countdown":
 		_send_acc = 0.0
