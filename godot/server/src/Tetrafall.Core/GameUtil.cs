@@ -40,6 +40,44 @@ public static class GameUtil
         return d2 < 0 ? 0 : (C.MOVE_SPEED * (v + Math.Sqrt(d2))) / g;
     }
 
+    // 착지한 블록의 격자 값 (색): 유령 투하 = GHOST_BASE + 떨어뜨린 사람 색 번호, 설치 블록, 그 밖은 모양
+    public static byte PieceCellValue(Piece pc)
+    {
+        if (pc.ghostBy is int g && g != 0) return (byte)(Pieces.CELL.GHOST_BASE + pc.ghostColor);
+        return pc.thrownBy is int t && t != 0 ? Pieces.CELL.THROWN : Pieces.CellOfShape(pc.shape);
+    }
+
+    // 블록 칸들의 테두리 상자 (x0·y0 = 가장 작은 칸, x1·y1 = 가장 큰 칸 + 1)
+    public static (double x0, double y0, double x1, double y1) CellBox(Piece pc)
+    {
+        double x0 = double.PositiveInfinity, y0 = double.PositiveInfinity, x1 = double.NegativeInfinity, y1 = double.NegativeInfinity;
+        foreach (var c in pc.cells)
+        {
+            x0 = Math.Min(x0, pc.px + c[0]);
+            y0 = Math.Min(y0, pc.py + c[1]);
+            x1 = Math.Max(x1, pc.px + c[0] + 1);
+            y1 = Math.Max(y1, pc.py + c[1] + 1);
+        }
+        return (x0, y0, x1, y1);
+    }
+
+    // 두 블록 칸 사이 가장 가까운 수평 거리 (칸 모서리끼리, 붙어 있으면 0)
+    public static double CellGap(Piece a, Piece b)
+    {
+        double best = double.PositiveInfinity;
+        foreach (var ac in a.cells)
+        {
+            foreach (var bc in b.cells)
+            {
+                double dx = Math.Max(0, Math.Abs(a.px + ac[0] - (b.px + bc[0])) - 1);
+                double dy = Math.Max(0, Math.Abs(a.py + ac[1] - (b.py + bc[1])) - 1);
+                double d2 = dx * dx + dy * dy;
+                if (d2 < best) best = d2;
+            }
+        }
+        return Math.Sqrt(best);
+    }
+
     // 인원별 표 ({ 인원: 값 }) 에서 n 이하 가장 큰 칸 (없으면 가장 작은 칸)
     public static T ByCount<T>(Dictionary<string, T> table, double n)
     {

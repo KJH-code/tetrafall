@@ -7,6 +7,7 @@
 // - protocol-lobby.json: 방 만들기·들어가기·핑·나가기 각본에서 JS 서버(rooms.js)가 보낸 메시지·로그 글자 그대로 (C# Rooms 가 같은지)
 // - maps.json: 맵 7개 × 판 크기 10~19 시작 지형 (shared/maps.js mapColumns)
 // - trace-t0.json: 시나리오 0~32 (tools/game-hash.js) 의 trace 첫 줄 (판 시작 직후, 격자 포함) sha256 — C# 판 시작이 글자까지 같은지
+// - scripted.json: 각본 입력 판 8개 (scripted.mjs, 캐릭터 끔) 의 trace 줄 전체 sha256·틱 수 — C# 판 흐름·블록이 처음부터 끝까지 글자까지 같은지
 // - physics.json: 맵 7개 × 2·4·8인, 무작위 입력·넉백으로 물리만 300틱 (integratePlayer·groundKind) → 10틱마다 위치·속도
 import fs from 'node:fs';
 import crypto from 'node:crypto';
@@ -18,6 +19,7 @@ import { mulberry32 } from '../../../tools/sim.js';
 import { SCENARIOS, runJs } from './room-scenarios.mjs';
 import { Game } from '../../../server/game.js';
 import { MAP_IDS, mapColumns } from '../../../shared/maps.js';
+import { SCRIPTED, setupScripted, driveScripted } from './scripted.mjs';
 import { CONFIG as C } from '../../../shared/config.js';
 
 const out = path.join(path.dirname(fileURLToPath(import.meta.url)), '../tests/Tetrafall.Tests/fixtures');
@@ -167,5 +169,25 @@ HASH_SCENARIOS.forEach((sc, i) => {
   t0.push([i, crypto.createHash('sha256').update(line).digest('hex')]);
 });
 write('trace-t0.json', t0);
-console.log(`maps ${Object.keys(maps).length}, physics ${phys.length}판, trace-t0 ${t0.length}판`);
+// 각본 입력 판 (trace.mjs s0 … 와 같은 줄)
+const scripted = SCRIPTED.map((sc) => {
+  const h = crypto.createHash('sha256');
+  let logs = [];
+  const { g, rr } = setupScripted(Game, sc, (l) => logs.push(l));
+  h.update(JSON.stringify({ t: 0, logs, snap: JSON.stringify(g.snapshot(true)) }) + '\n');
+  logs = [];
+  let ticks = 0;
+  for (let t = 0; t < 120000 && g.phase !== 'over'; t += TICK) {
+    driveScripted(g, rr, ticks);
+    g.tick(TICK);
+    ticks++;
+    const snap = g.snapshot(ticks % 300 === 0);
+    snap.events = g.drainEvents();
+    h.update(JSON.stringify({ t: ticks, logs, snap: JSON.stringify(snap) }) + '\n');
+    logs = [];
+  }
+  return [sc.name, ticks, h.digest('hex')];
+});
+write('scripted.json', scripted);
+console.log(`maps ${Object.keys(maps).length}, physics ${phys.length}판, trace-t0 ${t0.length}판, 각본 ${scripted.map((x) => x[1]).join('·')}틱`);
 console.log(`jsmath ${math.length}, jsnumber ${nums.length}, 프로토콜 메시지 ${sent.length}개·로그 ${logs.length}줄, 방 각본 ${scen.length}개`);

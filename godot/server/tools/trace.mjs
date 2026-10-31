@@ -6,9 +6,37 @@ import { SCENARIOS } from '../../../tools/game-hash.js';
 import { Game } from '../../../server/game.js';
 import { CONFIG as C } from '../../../shared/config.js';
 import { mulberry32 } from '../../../tools/sim.js';
+import { SCRIPTED, setupScripted, driveScripted } from './scripted.mjs';
 
 if (process.argv[2] === '--list') {
   SCENARIOS.forEach((s, i) => console.log(`${i}\t${s.name}\t맵 ${s.map}\t시드 ${s.seed}`));
+  SCRIPTED.forEach((s, i) => console.log(`s${i}\t${s.name}\t맵 ${s.map}\t시드 ${s.seed}`));
+  process.exit(0);
+}
+const TICK0 = 1000 / C.TICK_RATE;
+// 각본 입력 판 (s0, s1 …): scripted.mjs
+if (/^s\d+$/.test(process.argv[2] ?? '')) {
+  const sc = SCRIPTED[Number(process.argv[2].slice(1))];
+  const outPath = process.argv[3] ?? 'js.jsonl';
+  const fd = fs.openSync(outPath, 'w');
+  let logs = [];
+  const { g, rr } = setupScripted(Game, sc, (line) => logs.push(line));
+  fs.writeSync(fd, JSON.stringify({ t: 0, logs, snap: JSON.stringify(g.snapshot(true)) }) + '\n');
+  logs = [];
+  let t = 0;
+  let ticks = 0;
+  while (t < 120000 && g.phase !== 'over') {
+    driveScripted(g, rr, ticks);
+    g.tick(TICK0);
+    t += TICK0;
+    ticks++;
+    const snap = g.snapshot(ticks % 300 === 0);
+    snap.events = g.drainEvents();
+    fs.writeSync(fd, JSON.stringify({ t: ticks, logs, snap: JSON.stringify(snap) }) + '\n');
+    logs = [];
+  }
+  fs.closeSync(fd);
+  console.log(`${sc.name}: ${ticks}틱 ${g.phase} → ${outPath}`);
   process.exit(0);
 }
 const key = process.argv[2] ?? '0';

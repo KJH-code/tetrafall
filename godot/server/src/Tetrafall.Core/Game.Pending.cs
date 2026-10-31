@@ -6,9 +6,6 @@ namespace Tetrafall.Core;
 // (같은 이름이 두 곳이면 컴파일 에러 → 지울 곳을 알려 줌). 부르면 NotImplementedException → Rooms 가 그 방만 닫음 (서버는 계속)
 public sealed partial class Game
 {
-    // S2 (game-pieces.js): 유령 투하. x·y 는 받은 값 그대로 (숫자 아닐 수 있음)
-    public bool GhostDrop(int id, JsonElement? x, JsonElement? y) => throw Todo("ghostDrop (S2)");
-
     // S4 연습 (game-practice.js)
     public void StartPractice() => throw Todo("startPractice (S4 연습)");
     public void PracticeJoin(int id) => throw Todo("practiceJoin (S4 연습)");
