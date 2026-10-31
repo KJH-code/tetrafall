@@ -35,7 +35,7 @@ func setup(world: Node3D, G3, theme_id: String, w: int, d: int, low_gfx: bool, f
 			add_child(stage)
 			stage.position = Co.gxyz(w / 2.0, d / 2.0, 0) # 무대 가운데 = 섬 가운데
 			if stage.get("back_light") != null:
-				stage.back_light.position = Co.gxyz(0, R * 0.5, 6)
+				stage.back_light.position = Vector3(0, R * 0.5, 6) # 무대 안 = 게임 좌표 (무대 뿌리가 돌림)
 	# 맵 바꿈 번쩍: 화면 전체 판 (테마 빛 색, 더하기)
 	flash_layer = CanvasLayer.new()
 	flash_layer.layer = 0
