@@ -20,7 +20,7 @@ static var _globals := {} # 넣은 전역 셰이더 값 (RenderingServer 는 실
 
 
 # 툰 재질 (three toon({...})). color: Color 또는 0xRRGGBB. opts: map (Texture2D), emissive (Color/숫자), emissive_energy,
-# opacity (1 미만이면 투명), vertex_color (bool), outline (기본 true — 외곽선을 next_pass 로)
+# opacity (1 미만이면 투명), vertex_color (bool), outline (기본 true — 외곽선을 next_pass 로), no_fog (안개 안 받음), color_glow
 static func toon_material(color = Color.WHITE, opts := {}) -> ShaderMaterial:
 	var m := ShaderMaterial.new()
 	var c := _col(color)
@@ -36,10 +36,12 @@ static func toon_material(color = Color.WHITE, opts := {}) -> ShaderMaterial:
 	m.set_shader_parameter("emissive_energy", opts.get("emissive_energy", 1.0))
 	m.set_shader_parameter("use_vertex_color", opts.get("vertex_color", false))
 	m.set_shader_parameter("color_glow", opts.get("color_glow", 0.0))
+	m.set_shader_parameter("no_fog", opts.get("no_fog", false)) # JS fog: false
 	if a < 1.0:
 		m.render_priority = 1
 	if opts.get("outline", true) and a >= 1.0:
 		m.next_pass = outline_material()
+		m.next_pass.set_shader_parameter("no_fog", opts.get("no_fog", false))
 	return m
 
 
