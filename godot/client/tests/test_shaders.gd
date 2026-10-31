@@ -121,3 +121,16 @@ func test_toon_local_light() -> void:
 	check(is_equal_approx(m.get_shader_parameter("local_hemi_energy"), 1.15), "하늘빛 세기 1.15")
 	G3.toon_local_light(m, false)
 	check(m.get_shader_parameter("local_light") == false, "끔")
+
+
+# 위험 액체 그래픽 낮춤 가벼운 판 (2026-10-31 재혁 실험2): 낮춤 갈래 (SHIMMER 0) 에서만 빛 띠 겹·비틀기·드문드문·반짝·거품 떨림·먼 섬 테·바탕 둘째 겹·종류 질감 (용암 빼고) 끔, 보통은 JS 그대로
+func test_hazard_low_lite() -> void:
+	var inc := FileAccess.get_file_as_string("res://shaders/hazard.gdshaderinc")
+	for key in ["float fb = noise(wq + t * 0.05);", "float n = noise(q * 0.7 + t * 0.12) * 1.5;", "#if SHIMMER == 0 && STYLE != 1"]:
+		check(inc.contains(key), "낮춤 갈래 있음: %s" % key)
+	# 보통 갈래 (SHIMMER 1) 는 JS 식 그대로: 세 겹 빛 띠·비틀기·두 겹 바탕·먼 섬 테
+	for key in ["noise(wq * 2.3 - t * 0.07) * 0.28 + noise(wq * 5.3 + t * 0.11) * 0.1", "vec2(noise(q * 0.13 + t * 0.04), noise(q * 0.13 - t * 0.035 + 5.2)) * 2.4", "0.5 * noise(q * 1.9 - t * 0.2)", "for (int i = 0; i < 16; i++)"]:
+		check(inc.contains(key), "보통 갈래 그대로: %s" % key)
+	var lo := G3.hazard_material("meadow", true)
+	var hi := G3.hazard_material("meadow", false)
+	check(lo.shader.code.contains("#define SHIMMER 0") and hi.shader.code.contains("#define SHIMMER 1"), "낮춤 = SHIMMER 0 갈래, 보통 = 1")
