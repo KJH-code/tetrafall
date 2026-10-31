@@ -41,6 +41,16 @@ WEB_PORT=8060 xvfb-run -a node godot/client/tools/web_shot.cjs /tmp "?server=ws:
 - 웹은 지금 게임 서버와 다른 포트에서 서빙 (`?server=`). 게임 서버가 웹 빌드도 같이 서빙하게 하는 건 C# 서버 S6 와 약속 (같은 호스트면 `?server=` 없이 붙음)
 - 재혁 PC (윈도우): `tetrafall.exe -- --server ws://<서버 IP>:3000` (또는 같은 PC 면 그냥 `tetrafall.exe`)
 
+## 소리 (G5, `audio/`)
+
+JS 화면의 합성 소리·곡을 **크로미움에서 그대로 녹음해 구움** (`tools/bake-audio.cjs` → `audio/baked/*.ogg` 314개 7.5MB + `manifest.json`). 고도는 녹음본만 틀어서 실행 중 합성이 없음 → JS 와 같은 소리, 웹에서도 가벼움.
+
+- 왜 굽나 (2026-10-31): GDScript 로 직접 합성하면 데스크톱에선 목소리 8개 1초에 34ms (실시간의 3%) 로 되지만, WebAudio 와 같은 소리를 내려면 필터·띠 제한 파형·엔벌로프를 다 다시 만들어야 하고 웹(wasm)에선 몇 배 느림. 굽는 쪽이 같은 소리 + 비용 0
+- 매번 다른 높낮이: 녹음본 여러 개 (효과음 3개, 타격 2개) + 재생할 때 ±SFX_DETUNE/2
+- 다시 굽기 (JS 소리를 바꾸면): `PORT=3399 node server/index.js & node godot/client/tools/bake-audio.cjs 3399` (ffmpeg libvorbis, 약 8분)
+- `audio/sound_math.gd` 거리·좌우·타격 세기·곡·앰비언트 테마 계산 (JS 와 같은지 tests/test_audio.gd) · `audio/sfx.gd` 재생기·버스 (SFX·SFXDirect·Music·좌우 버스) · `audio/music.gd` 곡 (맵 테마·긴장, 바뀌면 위치 이어서)·앰비언트 (메뉴·대기실)·위험 액체 지속음 · `audio/audio.gd` 이벤트 → 소리 (main.js 의 sound.play 줄 그대로)
+- 화면 쪽 소리 (건축가 폭발·화살 박힘·위험 차오름·KO·슬로모션) 는 그리는 쪽이 `View.sound_cue.emit("blast", {x, y, z, big, wood})` 처럼
+
 ## 구조 (G0 = core/)
 
 | 파일 | 내용 (JS 원본) |

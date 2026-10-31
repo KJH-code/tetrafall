@@ -9,6 +9,9 @@ import { SnapClock, pushTrack, sampleTrack } from '../../../client/interp.js';
 import { NetMeter } from '../../../shared/net.js';
 import { mulberry32 } from '../../../tools/sim.js';
 import { CONFIG as C } from '../../../shared/config.js';
+import { register } from 'node:module';
+
+register('../../../test/support/client-loader.mjs', import.meta.url); // client/ 의 '/shared/…' 주소를 파일로 (sound.js)
 
 const out = path.join(path.dirname(fileURLToPath(import.meta.url)), '../tests/fixtures');
 fs.mkdirSync(out, { recursive: true });
@@ -71,6 +74,63 @@ for (let i = 0; i < 60; i++) {
 const groups = [[['fwd', 'left', 'back', 'right'], groupLabel(DEFAULT_BINDS, ['fwd', 'left', 'back', 'right'])], [['rotL', 'rotR'], groupLabel(DEFAULT_BINDS, ['rotL', 'rotR'])], [['pieceUp', 'pieceDown', 'pieceLeft', 'pieceRight'], groupLabel(DEFAULT_BINDS, ['pieceUp', 'pieceDown', 'pieceLeft', 'pieceRight'])]];
 const clash = { ...DEFAULT_BINDS, skill: 'KeyR' };
 fs.writeFileSync(path.join(out, 'keys.json'), JSON.stringify({ labels, wheel, groups, defaults: DEFAULT_BINDS, conflicts: conflicts(clash) }));
+// 소리 계산 (audio/sound_math.gd): 거리·좌우 (sound.js bus·falloff), 타격 단계, 앰비언트·곡·위험 지속음 크기, 째깍 시각
+const { Sound } = await import('../../../client/sound.js');
+const { hitTier, hitStep } = await import('../../../client/hit-tier.js');
+const { Music } = await import('../../../client/music.js');
+const { lobbyTheme } = await import('../../../shared/title.js');
+const { bigTicks } = await import('../../../shared/bblock-look.js');
+const listens = [];
+const fakeCtx = { createGain: () => ({ gain: {}, connect(x) { return x; } }), createStereoPanner: () => ({ pan: {}, connect(x) { return x; } }) };
+for (let i = 0; i < 200; i++) {
+  const s = new Sound();
+  s.ctx = fakeCtx;
+  let pan = 0;
+  s.ctx.createStereoPanner = () => ({ pan: { set value(v) { pan = v; } }, connect(x) { return x; } });
+  let gain = null;
+  s.ctx.createGain = () => ({ gain: { set value(v) { gain = v; } }, connect(x) { return x; } });
+  s.listener = i % 10 === 0 ? null : { x: r() * 19, y: r() * 19, z: r() * 6, yaw: (r() - 0.5) * 7 };
+  const dist = i % 7 === 0 ? undefined : i % 5 === 0 ? 0 : r() * 20;
+  const pos = i % 3 === 0 ? undefined : { x: r() * 19, y: r() * 19, z: r() * 5 };
+  pan = 0;
+  s.bus(dist, pos, {});
+  listens.push([s.listener, dist ?? null, pos ?? null, gain, pan]);
+}
+const kinds = ['push', 'blast', 'projectile', 'glide', 'slash', 'execute', 'note', undefined];
+const hits = [];
+for (let i = 0; i < 80; i++) {
+  const e = { crit: r() < 0.15, finish: r() < 0.15, star: r() < 0.1, kind: kinds[Math.floor(r() * kinds.length)], n: r() < 0.5 ? Math.floor(r() * 5) : undefined, streak: r() < 0.5 ? Math.floor(r() * 6) : undefined };
+  hits.push([e, hitTier(e), hitStep(e)]);
+}
+const states = [
+  null,
+  { phase: 'lobby', practice: null, map: { choice: 'random', id: 'flat' } },
+  { phase: 'lobby', practice: null, map: { choice: 'pyramid', id: 'flat' } },
+  { phase: 'lobby', practice: { x: 1 }, map: { choice: 'pyramid', id: 'pyramid' } },
+  { phase: 'playing', practice: null, map: { choice: 'random', id: 'bowl' }, lava: { active: false, z: -1 } },
+  { phase: 'playing', practice: null, map: { choice: 'random', id: 'spiral' }, lava: { active: true, z: 2 } },
+  { phase: 'countdown', practice: null, map: { choice: 'random', id: 'nope' }, lava: { active: false, z: -1 } },
+  { phase: 'over', practice: null, map: { choice: 'stairs', id: 'stairs' }, lava: { active: true, z: 3 } },
+];
+const themes = states.map((st) => {
+  const amb = [];
+  for (const menu of [null, 'crystal', 'nope']) amb.push([menu, Music.ambientTheme(st, menu), lobbyTheme(st, menu)]);
+  const m = new Music({ ready: () => false });
+  const mood = st ? (st.phase === 'playing' || st.phase === 'countdown' ? (st.lava && st.lava.active ? 'lava' : 'battle') : 'calm') : 'calm';
+  m.setMood(mood);
+  m.update(st, null);
+  const key = m.songKey() + (mood === 'lava' && m.songKey() !== 'lobby' ? '.tense' : '');
+  const theme = st && st.map && C.WORLD_MAP_THEME?.[st.map.id];
+  const style = (theme && C.WORLD_THEMES?.[theme]?.hazard?.style) || C.SFX_HAZARD.fallback;
+  return [st, amb, mood, key, style];
+});
+const H = C.SFX_HAZARD;
+const levels = [];
+for (const style of [...Object.keys(H.vol), 'nope']) for (const dist of [0, 2.5, 8, 30, Infinity]) {
+  const near = Math.max(H.min, 1 - dist / H.range);
+  levels.push([style, dist === Infinity ? null : dist, (H.vol[style] ?? 0.3) * (Number.isFinite(dist) ? near : 0)]);
+}
+fs.writeFileSync(path.join(out, 'audio.json'), JSON.stringify({ listens, hits, themes, levels, ticks: [[4000, bigTicks(4000)], [2500, bigTicks(2500)]] }));
 console.log(`interp 프레임 ${frames.length}, net ${seq.length}, keys 바퀴 ${wheel.length}`);
 
 // figure_pose.json (G2): 걸음걸이·공중·기울임·평소 버릇 목표 자세 (client/figure-pose.js). 빈 자세 T 에서 시작해 함수 하나 부른 뒤 T 전체
