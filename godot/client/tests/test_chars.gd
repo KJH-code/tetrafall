@@ -142,7 +142,7 @@ func test_bodies_build_and_animate() -> void:
 	for ch in C.FIGURE_CHARS:
 		var b = Chars.make_body(ch, Color(0.8, 0.3, 0.2))
 		var meshes := b.find_children("*", "MeshInstance3D", true, false)
-		check(meshes.size() >= 20, "%s 조각 %d" % [ch, meshes.size()])
+		check(meshes.size() >= 60, "%s 조각 %d (옷·무기 포함)" % [ch, meshes.size()])
 		var states := [
 			{"walking": true, "air": false, "hs": 4.5, "walk": 1.3},
 			{"walking": false, "air": true, "vz": -4.0},
@@ -154,7 +154,7 @@ func test_bodies_build_and_animate() -> void:
 			{"walking": false, "air": false, "hit": {"id": 3, "age": 0.01, "stop": 0.1, "dx": -1.0, "dy": 0.3, "pow": 1.5}},
 		]
 		for s in states:
-			var st := {"air": false, "walking": false, "hs": 0.0, "walk": 0.0, "vz": 0.0, "t": 1.0, "stunned": false, "emote": -1, "emoteT": 0.0, "victory": -1.0, "hit": null, "act": null, "accF": 3.0, "accS": -2.0, "tumble": 0.0, "recover": 0.0, "land": 0.0, "flip": -1.0, "idle": 0.0, "airDash": 0.0, "form": ""}
+			var st := {"air": false, "walking": false, "hs": 0.0, "walk": 0.0, "vz": 0.0, "t": 1.0, "stunned": false, "emote": -1, "emoteT": 0.0, "victory": -1.0, "hit": null, "act": null, "accF": 3.0, "accS": -2.0, "tumble": 0.0, "recover": 0.0, "land": 0.0, "flip": -1.0, "idle": 0.0, "airDash": 0.0, "form": "", "loaded": false, "ammo": 3.0}
 			st.merge(s, true)
 			for k in 10:
 				b._figure_anim(st, 1.0 / 60.0)

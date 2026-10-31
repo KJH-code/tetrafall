@@ -1,7 +1,8 @@
 # 캐릭터 몸 하나 (client/figure.js buildFigure·figureAnim + render.js 몸 애니 부분 옮김). chars.gd make_body 가 만듦
-# 관절 (엉덩이·허리·목·어깨·팔꿈치·손·허벅지·무릎·발) 은 Node3D, 조각은 그 아래 MeshInstance3D.
+# 몸 모양 (맨몸 + 옷·무기·소품, 노드 나무·정점·재질) 은 tools/gen-bodies.mjs 가 JS buildFigure 를 실제로 돌려 뽑은 chars/data/bodies.json 그대로 → JS 와 같은 모양
+# 관절 (엉덩이·허리·목·어깨·팔꿈치·손·허벅지·무릎·발) 과 특별 노드 (천 자락·방패·총·활·뿔·바드 폼…) 는 그 자료의 refs 표로 찾음
 # 몸 안은 게임 좌표 그대로 (앞 +x, 왼쪽 +y, 위 +z, three.js 와 같은 XYZ 회전 순서) — 맨 위 'frame' 노드 하나가 고도 (x, z, -y) 로 돌림 (core/coords.gd 와 같은 돌림)
-# 1단계 (이 파일): 8명 체형 (FIGURE_BODIES) 맨몸 + 눈 + 동작 전부 (걸음·공중·버릇·공격·포즈·맞음). 옷·무기 (figure.js dress*) 는 다음 단계
+# 아직: 광전사 분노 표시 (눈 충혈·핏줄)·어지러움 눈동자·바드 폼 전환 튀기기·유령화 반투명·체크 무늬 반복 수·그리기 수 줄이기
 extends Node3D
 
 const C := preload("res://core/config.gd")
@@ -19,7 +20,13 @@ const HEAVY_HITS := ["bomb", "shock", "projectile", "slam", "wall", "blast", "bi
 
 var char_id := ""
 var d := {} # 체형 (FIGURE_BODIES 한 줄)
-var skin_mat: Material
+var skin_color := Color.WHITE
+var mats: Array[Material] = []
+var nodes: Array[Node3D] = []
+var refs := {} # figure 의 특별 노드 표 (gen-bodies.mjs refs: flaps·shields·gun·bow·horns·formParts…)
+var torso: Node3D
+var flap_s := {"x": 0.0, "v": 0.0}
+var form := ""
 var frame: Node3D # 게임 좌표 → 고도
 var rig: Node3D # 몸 전체 기울임·공중제비·구르기 (render.js rig)
 var hips: Node3D
@@ -85,136 +92,160 @@ var counter_at := -1e9
 
 func build(char_id_: String, color: Color) -> void:
 	char_id = char_id_
+	var data := _data()
+	var cd: Dictionary = data.chars.get(char_id, data.chars[C.FIGURE_CHARS[0]])
 	var body_kind: String = C.FIGURE_BODY.get(char_id, "lean")
 	d = C.FIGURE_BODIES.get(body_kind, C.FIGURE_BODIES.lean)
-	skin_mat = G3.toon_material(color)
+	skin_color = color
 	frame = Node3D.new()
-	frame.basis = Basis(Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, 1, 0)) # 게임 x→x, y→-z, z→y
+	frame.basis = Basis(Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, 1, 0)) # 게임 x→x, y→-z, z→y (coords.gd 와 같은 돌림)
 	add_child(frame)
-	rig = _joint(frame, 0, 0, C.PLAYER_HEIGHT / 2)
-	var parts := _joint(rig, 0, 0, -C.PLAYER_HEIGHT / 2)
-	var body := _joint(parts, 0, 0, 0)
-	body.scale = Vector3.ONE * C.FIGURE_SCALE
-	var depth: float = d.get("depth", 0.75)
-	# 엉덩이 → 허리(몸통) → 목(머리)
-	var hip_z: float = d.foot + d.shin + d.thigh
-	hips = _joint(body, 0, 0, hip_z)
-	var pel := _cyl(hips, 1.0, 1.08, 0.14, 8)
-	pel.position.z = 0.02
-	pel.scale = Vector3(d.waistR * depth, maxf(d.waistR, d.hipY + d.legR), 1.0)
-	waist = _joint(hips, 0, 0, 0.04)
-	var cap := _cyl(waist, d.waistR * 0.97, d.waistR * 0.9, 0.09, 8)
-	cap.position.z = -0.035
-	cap.scale = Vector3(depth, 1, 1)
-	if d.get("barrel", false):
-		var tor := _ball(waist, 1.0, 8, 4)
-		tor.scale = Vector3(d.chestR * depth, d.chestR, d.torso / 2)
-		tor.position.z = d.torso / 2
-	else:
-		var tor := _cyl(waist, d.chestR, d.waistR, d.torso, 8)
-		tor.position.z = d.torso / 2
-		tor.scale = Vector3(depth, 1, 1)
-	neck = _joint(waist, 0, 0, d.torso - d.sink)
-	var head := _ball(neck, 0.5, 8, 4)
-	head.scale = Vector3(d.headW, d.headW * 0.97, d.head)
-	head.position.z = d.head / 2
-	_eyes(neck, d.headW * 0.44, 0.05, d.head * 0.5, C.FIGURE_EYE)
-	# 팔: 어깨 → 팔꿈치 → 손. 0 = 오른팔(-y), 1 = 왼팔(+y)
-	for side in [-1.0, 1.0]:
-		var sh := _joint(waist, 0, side * d.shoulderY, d.torso - d.armR * 1.6)
-		_limb(sh, d.upper, d.armR, d.armR * 0.85)
-		var el := _joint(sh, 0, 0, -d.upper)
-		_limb(el, d.lower, d.foreR, d.foreR * 0.8)
-		var hand := _joint(el, 0, 0, -d.lower)
-		_ball(hand, d.hand, 6, 3)
-		shoulders.append(sh)
-		elbows.append(el)
-		hands.append(hand)
-	# 다리: 엉덩이 관절 → 무릎 → 발
-	for side in [-1.0, 1.0]:
-		var th := _joint(hips, 0, side * d.hipY, 0)
-		_limb(th, d.thigh, d.legR, d.legR * 0.8)
-		var kn := _joint(th, 0, 0, -d.thigh)
-		_limb(kn, d.shin, d.legR * 0.8, d.legR * 0.65)
-		var foot := _joint(kn, 0, 0, -d.shin)
-		var fb := MeshInstance3D.new()
-		var bm := BoxMesh.new()
-		bm.size = Vector3(d.legR * 3, d.legR * 1.5, d.foot)
-		fb.mesh = bm
-		fb.material_override = skin_mat
-		fb.position = Vector3(d.legR * 0.6, 0, -d.foot / 2)
-		foot.add_child(fb)
-		thighs.append(th)
-		knees.append(kn)
-		feet.append(foot)
+	# 재질 (figure.js flat·costume·eyeWhiteMat…): 피부 = 플레이어 색, 근육 홈 = 피부 × FIGURE_MUSCLE_SHADE, 나머지는 옷 색 그대로
+	for m in cd.mats:
+		mats.append(_material(m, color))
+	# 노드 나무: 몸 안 게임 좌표 그대로 (three.js 와 같은 XYZ 회전 순서)
+	for e in cd.nodes:
+		var n: Node3D
+		if e.has("geo"):
+			var mi := MeshInstance3D.new()
+			mi.mesh = _mesh(data, int(e.geo))
+			mi.material_override = mats[int(e.mat)]
+			if e.get("noShadow", false):
+				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			n = mi
+		else:
+			n = Node3D.new()
+		n.rotation_order = EULER_ORDER_XYZ
+		n.position = Vector3(e.p[0], e.p[1], e.p[2])
+		n.quaternion = Quaternion(e.q[0], e.q[1], e.q[2], e.q[3])
+		n.scale = Vector3(e.s[0], e.s[1], e.s[2])
+		n.visible = not e.get("hidden", false)
+		var parent: int = int(e.parent)
+		(frame if parent < 0 else nodes[parent]).add_child(n)
+		nodes.append(n)
+	refs = cd.refs
+	rig = _n(refs.rig)
+	hips = _n(refs.hips)
+	waist = _n(refs.waist)
+	neck = _n(refs.neck)
+	torso = _n(refs.torso)
+	for i in 2:
+		shoulders.append(_n(refs.shoulders[i]))
+		elbows.append(_n(refs.elbows[i]))
+		hands.append(_n(refs.hands[i]))
+		thighs.append(_n(refs.thighs[i]))
+		knees.append(_n(refs.knees[i]))
+		feet.append(_n(refs.feet[i]))
+	var hammer := _n(refs.get("hammer"))
+	if hammer != null:
+		hammer.visible = char_id == "builder" # 건축가 무기
 	P = Motion.rest_pose(d)
 	V = Motion.zero_pose(P)
 	_apply(0.0)
 
 
-# ---------- 도형 (figure.js joint·limbGeo·ringGeo·IcosahedronGeometry) ----------
-func _joint(parent: Node3D, x: float, y: float, z: float) -> Node3D:
-	var j := Node3D.new()
-	j.rotation_order = EULER_ORDER_XYZ # three.js 와 같은 순서
-	j.position = Vector3(x, y, z)
-	parent.add_child(j)
-	return j
+# 노드 표 번호 {node: i} → 노드 (없으면 null)
+func _n(r) -> Node3D:
+	if r is Dictionary and r.has("node"):
+		return nodes[int(r.node)]
+	return null
 
 
-# z 축 원기둥 (가운데가 원점, 위 = +z 반지름 r_top). 돌려주는 건 자리 노드 (위치·크기는 게임 축 그대로), 그 안의 메시만 y→z 로 돌림
-func _cyl(parent: Node3D, r_top: float, r_bot: float, h: float, seg: int) -> Node3D:
-	var holder := Node3D.new()
-	parent.add_child(holder)
-	var m := MeshInstance3D.new()
-	var cm := CylinderMesh.new()
-	cm.top_radius = r_top
-	cm.bottom_radius = r_bot
-	cm.height = h
-	cm.radial_segments = seg
-	cm.rings = 1
-	m.mesh = cm
-	m.material_override = skin_mat
-	m.rotation.x = PI / 2 # 원기둥 축 y → z (위 끝이 +z)
-	holder.add_child(m)
-	return holder
+# ---------- 만든 몸 자료 (tools/gen-bodies.mjs 가 client/figure.js 에서 뽑은 chars/data/bodies.json) ----------
+static var _cache := {}
 
 
-# 팔다리 마디: 위 끝이 원점, -z 로 length
-func _limb(parent: Node3D, length: float, r_top: float, r_bot: float) -> void:
-	var c := _cyl(parent, r_top, r_bot, length, 6)
-	c.position.z = -length / 2
+static func _data() -> Dictionary:
+	if not _cache.has("data"):
+		_cache.data = JSON.parse_string(FileAccess.get_file_as_string("res://chars/data/bodies.json"))
+		_cache.meshes = {}
+		_cache.plaid = {}
+	return _cache.data
 
 
-func _ball(parent: Node3D, r: float, seg: int, rings: int) -> MeshInstance3D:
-	var m := MeshInstance3D.new()
-	var sm := SphereMesh.new()
-	sm.radius = r
-	sm.height = r * 2
-	sm.radial_segments = seg
-	sm.rings = rings
-	m.mesh = sm
-	m.material_override = skin_mat
-	parent.add_child(m)
-	return m
+static func _floats(s) -> PackedFloat32Array:
+	return Marshalls.base64_to_raw(s).to_float32_array() if s != null else PackedFloat32Array()
 
 
-# 왕눈알: 흰자 + 검은 눈동자 (외곽선 없음)
-func _eyes(parent: Node3D, x: float, y: float, z: float, r: float) -> void:
-	var white := StandardMaterial3D.new()
-	white.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	white.albedo_color = Color.WHITE
-	var black := StandardMaterial3D.new()
-	black.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	black.albedo_color = Color(0.067, 0.067, 0.067)
-	for side in [-1.0, 1.0]:
-		var w := _ball(parent, r, 12, 6)
-		w.material_override = white
-		w.position = Vector3(x, side * y, z)
-		w.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var pu := _ball(w, r * 0.45, 10, 5)
-		pu.material_override = black
-		pu.position = Vector3(r * 0.88, 0, 0)
-		pu.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+# 정점 묶음 → ArrayMesh (몸끼리 같이 씀). three 는 반시계가 앞면, 고도는 시계가 앞면 → 삼각형 두 점을 바꿈. uv 의 v 는 뒤집음
+static func _mesh(data: Dictionary, gi: int) -> ArrayMesh:
+	if _cache.meshes.has(gi):
+		return _cache.meshes[gi]
+	var g: Dictionary = data.geos[gi]
+	var pos := _floats(g.pos)
+	var nor := _floats(g.get("nor"))
+	var uvs := _floats(g.get("uv"))
+	var n := int(g.n)
+	var vs := PackedVector3Array()
+	var ns := PackedVector3Array()
+	var us := PackedVector2Array()
+	vs.resize(n)
+	if nor.size() == n * 3:
+		ns.resize(n)
+	if uvs.size() == n * 2:
+		us.resize(n)
+	for tri in range(0, n - 2, 3):
+		for k in 3:
+			var src: int = tri + k
+			var dst: int = tri + [0, 2, 1][k]
+			vs[dst] = Vector3(pos[src * 3], pos[src * 3 + 1], pos[src * 3 + 2])
+			if ns.size() == n:
+				ns[dst] = Vector3(nor[src * 3], nor[src * 3 + 1], nor[src * 3 + 2])
+			if us.size() == n:
+				us[dst] = Vector2(uvs[src * 2], 1.0 - uvs[src * 2 + 1])
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = vs
+	if ns.size() == n:
+		arr[Mesh.ARRAY_NORMAL] = ns
+	if us.size() == n:
+		arr[Mesh.ARRAY_TEX_UV] = us
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	_cache.meshes[gi] = am
+	return am
+
+
+# 재질 하나 (gen-bodies.mjs mats 한 줄)
+static func _material(m: Dictionary, skin: Color) -> Material:
+	var col := Color.from_rgba8((int(m.color) >> 16) & 0xff, (int(m.color) >> 8) & 0xff, int(m.color) & 0xff)
+	if m.get("skin", false):
+		col = skin
+	elif m.get("shade", false):
+		col = Color(skin.r * C.FIGURE_MUSCLE_SHADE, skin.g * C.FIGURE_MUSCLE_SHADE, skin.b * C.FIGURE_MUSCLE_SHADE)
+	var alpha: float = m.opacity if m.get("transparent", false) else 1.0
+	if m.kind == "basic":
+		var b := StandardMaterial3D.new()
+		b.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		b.albedo_color = Color(col.r, col.g, col.b, alpha)
+		if alpha < 1.0:
+			b.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		if m.get("double", false):
+			b.cull_mode = BaseMaterial3D.CULL_DISABLED
+		return b
+	var opts := {"outline": m.get("outline", true), "opacity": alpha}
+	if int(m.get("emissive", 0)) != 0:
+		opts.emissive = int(m.emissive)
+	if m.has("plaid"):
+		opts.map = _plaid(m.plaid)
+	return G3.toon_material(col, opts)
+
+
+# 체크 무늬 천 (figure.js plaidTexture: 32×32 에 칠한 사각형을 그 투명도로 겹침)
+static func _plaid(fills: Array) -> Texture2D:
+	var key := JSON.stringify(fills)
+	if _cache.plaid.has(key):
+		return _cache.plaid[key]
+	var img := Image.create_empty(32, 32, false, Image.FORMAT_RGBA8)
+	for f in fills:
+		var c := Color.html(str(f[0]))
+		var a: float = f[1]
+		for y in range(int(f[3]), mini(32, int(f[3]) + int(f[5]))):
+			for x in range(int(f[2]), mini(32, int(f[2]) + int(f[4]))):
+				img.set_pixel(x, y, img.get_pixel(x, y).lerp(Color(c.r, c.g, c.b, 1.0), a))
+	var tex := ImageTexture.create_from_image(img)
+	_cache.plaid[key] = tex
+	return tex
 
 
 # 자동 로드 Store (이름으로 직접 쓰면 '-s' 테스트 실행에선 컴파일이 안 됨 → 노드로 찾음, 없으면 null)
@@ -379,6 +410,7 @@ func _anim_state(p: Dictionary, now_ms: float) -> Dictionary:
 		"tumble": tumble_amt, "recover": recover * recover_pow, "land": land * land_pow,
 		"flip": flip / C.FIGURE_FLIP_S if flip >= 0.0 else -1.0, "idle": idle_t, "airDash": air_dash_t / C.FIGURE_AIR_DASH.s,
 		"form": str(p.get("bard", {}).get("form", "")) if p.get("bard") is Dictionary else "",
+		"loaded": p.get("loaded", false) == true, "ammo": float(p.get("cannon", {}).get("ammo", 3)) if p.get("cannon") is Dictionary else 3.0,
 	}
 
 
@@ -464,6 +496,7 @@ func _figure_anim(st: Dictionary, dt: float) -> void:
 			T.shOut[i] += 0.5 * l
 		T.waistPitch += 0.3 * C.FIGURE_LAND_KNEE * l
 		T.neckPitch -= 0.2 * C.FIGURE_LAND_KNEE * l
+	_costume_pose(T, st, actv, tt)
 	if st.idle > C.FIGURE_IDLE_AFTER and not st.walking and not st.air and not st.stunned and actv == null and st.emote < 0 and not (st.victory >= 0.0):
 		# 평소 버릇: 가만히 있으면 몇 초마다 캐릭터별 짧은 동작
 		var hb = C.FIGURE_IDLE.get(char_id)
@@ -471,7 +504,11 @@ func _figure_anim(st: Dictionary, dt: float) -> void:
 			var ph := fmod(st.idle - C.FIGURE_IDLE_AFTER, hb.every)
 			if ph < hb.len:
 				Pose.idle_pose(T, hb.kind, ph / hb.len, ph, st.form)
-	if st.emote == 0:
+	if st.emote == 1:
+		T.shOut = [2.3 + sin(tt * 12.0) * 0.5, 2.3 - sin(tt * 12.0) * 0.5] # 춤: 양팔을 번갈아 위로 펌프
+		T.elbow = [0.6, 0.6]
+		T.thFwd = [0.2 * sin(tt * 12.0), -0.2 * sin(tt * 12.0)]
+	elif st.emote == 0:
 		T.shOut[0] = 2.7 # 손 흔들기
 		T.elbow[0] = 0.5 + sin(st.emoteT * 12.0) * 0.5
 	elif st.emote == 2:
@@ -554,6 +591,7 @@ func _figure_anim(st: Dictionary, dt: float) -> void:
 	else:
 		drop_s += (drop - drop_s) * (1.0 - exp(-C.FIGURE_DROP_FOLLOW * dt))
 	twist_k += ((1.0 if (a != null and a.phase != "broken") else 0.0) - twist_k) * (1.0 - exp(-C.FIGURE_HIP_TWIST_FOLLOW * dt))
+	_costume_parts(st, a, dt, tt)
 	set_meta("pose_ok", _pose_ok())
 
 
@@ -596,6 +634,100 @@ func _apply(_dt: float) -> void:
 		elbows[i].rotation = Vector3(0, -P.elbow[i], 0)
 		thighs[i].rotation = Vector3(side * P.thOut[i], -P.thFwd[i], 0)
 		knees[i].rotation = Vector3(0, P.knee[i], 0)
+
+
+# ---------- 옷·무기가 바꾸는 자세 (figure.js figureAnim 의 fig.axe·forms·cannon·gun 부분) ----------
+func _costume_pose(T: Dictionary, st: Dictionary, actv, tt: float) -> void:
+	if refs.has("axe") and not st.stunned and actv == null and st.emote < 0 and not st.air:
+		# 도끼를 어깨에 걸침: 오른팔꿈치를 접어 자루가 어깨 위로 넘어감
+		T.shFwd[0] = 0.35
+		T.shOut[0] = 0.55
+		T.elbow[0] = 1.95
+	if refs.has("formParts") and not st.stunned and actv == null and st.emote < 0 and not st.air:
+		# 바드: 악기를 가슴 앞에 들고 (왼손 목, 오른손 줄). 메탈은 대기 중 헤드뱅잉
+		T.shFwd = [0.45, 0.75]
+		T.shOut = [0.3, 0.05]
+		T.elbow = [1.6, 1.45]
+		if st.form == "metal" and not st.walking:
+			var bang := maxf(0.0, sin(tt * C.BARD_HEADBANG_HZ * PI * 2.0))
+			T.neckPitch += bang * 0.55 - 0.1
+			T.waistPitch += bang * 0.12
+			T.elbow[0] += sin(tt * C.BARD_HEADBANG_HZ * PI * 4.0) * 0.25 # 줄 긁기
+	if refs.has("cannon") and not st.stunned and st.emote < 0:
+		# 대포를 어깨에 멘 자세: 오른손은 대포를 받치고, 왼손은 허리에 척 (걸으면 왼팔만 흔들림)
+		T.shFwd[0] = 0.25
+		T.shOut[0] = 1.75
+		T.elbow[0] = 1.7
+		if not st.walking:
+			T.shFwd[1] = -0.35
+			T.shOut[1] = 0.75
+			T.elbow[1] = 2.0
+	if refs.has("gun") and st.loaded and not st.stunned and not st.air and st.emote < 0:
+		# 장전된 권총을 든 오른손: 팔꿈치를 굽혀 총을 앞으로 (걸을 땐 흔들림 반만)
+		T.elbow[0] = 1.5
+		T.shFwd[0] = 0.2 + T.shFwd[0] * 0.3 if st.walking else 0.25
+		T.shOut[0] = 0.15
+
+
+# 옷·무기 보이기·흔들림 (figure.js figureAnim 끝부분: 총·활·방패 손에, 천 자락, 뿔, 바드 폼, 남은 포탄)
+func _costume_parts(st: Dictionary, a, dt: float, tt: float) -> void:
+	var move: Dictionary = Moves.MOVES.get(a.move, {}) if a != null else {}
+	var acting: bool = a != null and a.phase != "broken"
+	if refs.has("gun") and refs.gun is Dictionary:
+		var in_hand: bool = (acting and move.get("gun", false)) or st.loaded
+		_vis(refs.gun.get("inHand"), in_hand)
+		_vis(refs.gun.get("holster"), not in_hand)
+		_vis(refs.gun.get("spark"), st.loaded and int(Time.get_ticks_msec() / 90.0) % 3 != 0)
+	if refs.has("bow") and refs.bow is Dictionary:
+		var bow_in: bool = acting and move.get("bow", false)
+		_vis(refs.bow.get("inHand"), bow_in)
+		_vis(refs.bow.get("back"), not bow_in)
+	if refs.has("shields") and refs.shields is Dictionary:
+		var front: bool = acting and move.get("shield", false)
+		_vis(refs.shields.get("front"), front)
+		_vis(refs.shields.get("back"), not front)
+	if refs.has("balls") and refs.balls is Array:
+		for i in refs.balls.size():
+			_vis(refs.balls[i], i < st.ammo)
+	if refs.has("formParts"):
+		var f: String = "metal" if st.form == "metal" else "bard"
+		if f != form:
+			form = f
+			for k in refs.formParts:
+				for r in refs.formParts[k]:
+					_vis(r, k == f)
+			var tm = refs.get("torsoMat", {}).get(f)
+			if tm != null and torso is MeshInstance3D:
+				(torso as MeshInstance3D).material_override = mats[int(tm)]
+	# 천 자락: 빨리 움직이거나 날아가면 뒤로 날리고 살랑임. 멈추면 앞으로 한 번 넘어갔다 내려옴 (스프링)
+	var flaps: Array = refs.get("flaps", [])
+	if not flaps.is_empty() and dt > 0.0:
+		var sp: float = 1.0 if st.stunned else (minf(1.0, st.hs / C.MOVE_SPEED) if (st.walking or st.air) else 0.0)
+		var fw: float = C.FIGURE_FLAP_SPRING.w
+		var steps := maxi(1, ceili(dt / C.FIGURE_SPRING_STEP))
+		for j in steps:
+			flap_s.v += (fw * fw * (sp - flap_s.x) - 2.0 * C.FIGURE_FLAP_SPRING.damp * fw * flap_s.v) * (dt / steps)
+			flap_s.x += flap_s.v * (dt / steps)
+		for i in flaps.size():
+			var fl: Dictionary = flaps[i]
+			var o := _n(fl.get("obj"))
+			if o != null:
+				o.rotation.y = float(fl.base) + flap_s.x * float(fl.lift) + sin(tt * 9.0 + i * 1.7) * float(fl.flutter) * (0.3 + maxf(0.0, flap_s.x))
+	# 광전사 뿔: 마디마다 같은 각으로 위로 꺾여 매끈한 C 자
+	if refs.has("horns") and refs.horns is Array:
+		var bend: float = C.FIGURE_HORN_CURL / (C.FIGURE_HORN_SEGS - 1.0)
+		for h in refs.horns:
+			var segs: Array = h.get("segs", [])
+			for k in segs.size():
+				var sn := _n(segs[k])
+				if sn != null:
+					sn.rotation.x = float(h.side) * (0.15 if k == 0 else bend)
+
+
+func _vis(r, on: bool) -> void:
+	var n := _n(r)
+	if n != null:
+		n.visible = on
 
 
 # ---------- 서버 이벤트 (main.js handleEvent → renderer 의 몸 부분) ----------
