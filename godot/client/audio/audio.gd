@@ -318,10 +318,25 @@ func _hit(e: Dictionary) -> void:
 
 
 # ---------- 화면 쪽 소리 (View.sound_cue) ----------
+var title_land_at := -1.0
+
+
 func _on_cue(kind: String, i: Dictionary) -> void:
 	var pos = Vector3(i.x, i.y, i.get("z", 0.0)) if i.has("x") else null
 	var d = _dist(i.x, i.y, i.get("z", 0.0)) if i.has("x") else null
 	match kind:
+		"titleLand", "titleBurst", "titleExit": # 타이틀 (title-sound.js land·burst·exit, 메아리 포함 구운 소리) — 테마 = 메뉴 테마
+			var tt: Dictionary = sfx.manifest.get("title", {}).get(str(View.menu_theme), {})
+			if kind == "titleLand":
+				var now := Time.get_ticks_msec() / 1000.0
+				if now - title_land_at < C.TITLE_SOUND.landGap:
+					return
+				title_land_at = now
+				sfx.play_list(tt.get("land", []), null, null, minf(1.6, 0.8 + float(i.get("n", 1)) * 0.2)) # 구울 땐 n = 1 (크기 1)
+			else:
+				var rec = tt.get("burst" if kind == "titleBurst" else "exit")
+				if rec != null:
+					sfx.play_list([rec])
 		"ui":
 			sfx.play(str(i.get("key", "")))
 		"blast":

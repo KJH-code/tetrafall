@@ -81,7 +81,11 @@ func has(key: String) -> bool:
 
 # 구운 소리 key 를 틈. dist = 내 몸에서 거리 (0 = 내 소리, null = 모름), pos = 소리 난 곳 (게임 좌표 Vector3), vol 배율, delay 초
 func play(key: String, dist = null, pos = null, vol := 1.0, delay := 0.0, direct := false) -> void:
-	var list: Array = manifest.get("sfx", {}).get(key, [])
+	play_list(manifest.get("sfx", {}).get(key, []), dist, pos, vol, delay, direct)
+
+
+# 녹음 목록 [{file, gain}] 중 하나 (manifest 의 sfx 밖 묶음 — 타이틀 효과 등)
+func play_list(list: Array, dist = null, pos = null, vol := 1.0, delay := 0.0, direct := false) -> void:
 	if list.is_empty():
 		return
 	var rec: Dictionary = list[randi() % list.size()]

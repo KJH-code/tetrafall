@@ -1888,5 +1888,210 @@
     }
    ]
   }
+ },
+ "title": {
+  "crystal": {
+   "land": [
+    {
+     "file": "title.crystal.land.0.ogg",
+     "gain": 0.13823782142839935,
+     "sec": 3.025
+    },
+    {
+     "file": "title.crystal.land.1.ogg",
+     "gain": 0.1605004072189331,
+     "sec": 3.023
+    },
+    {
+     "file": "title.crystal.land.2.ogg",
+     "gain": 0.14229131372351397,
+     "sec": 3.049
+    }
+   ],
+   "burst": {
+    "file": "title.crystal.burst.ogg",
+    "gain": 0.24314295304448982,
+    "sec": 4.021
+   },
+   "exit": {
+    "file": "title.crystal.exit.ogg",
+    "gain": 0.058685443118998884,
+    "sec": 3.052
+   }
+  },
+  "volcano": {
+   "land": [
+    {
+     "file": "title.volcano.land.0.ogg",
+     "gain": 0.09439986003072638,
+     "sec": 2.641
+    },
+    {
+     "file": "title.volcano.land.1.ogg",
+     "gain": 0.08849336912757473,
+     "sec": 2.639
+    },
+    {
+     "file": "title.volcano.land.2.ogg",
+     "gain": 0.07566462221898532,
+     "sec": 2.644
+    }
+   ],
+   "burst": {
+    "file": "title.volcano.burst.ogg",
+    "gain": 0.25011547301944936,
+    "sec": 3.861
+   },
+   "exit": {
+    "file": "title.volcano.exit.ogg",
+    "gain": 0.052814138563055744,
+    "sec": 2.717
+   }
+  },
+  "desert": {
+   "land": [
+    {
+     "file": "title.desert.land.0.ogg",
+     "gain": 0.0810188839310094,
+     "sec": 2.646
+    },
+    {
+     "file": "title.desert.land.1.ogg",
+     "gain": 0.07585954509283367,
+     "sec": 2.648
+    },
+    {
+     "file": "title.desert.land.2.ogg",
+     "gain": 0.08827936492468182,
+     "sec": 2.65
+    }
+   ],
+   "burst": {
+    "file": "title.desert.burst.ogg",
+    "gain": 0.27748042031338344,
+    "sec": 4.106
+   },
+   "exit": {
+    "file": "title.desert.exit.ogg",
+    "gain": 0.06252087260547437,
+    "sec": 2.746
+   }
+  },
+  "mushroom": {
+   "land": [
+    {
+     "file": "title.mushroom.land.0.ogg",
+     "gain": 0.08738631480618528,
+     "sec": 2.641
+    },
+    {
+     "file": "title.mushroom.land.1.ogg",
+     "gain": 0.10410635879165249,
+     "sec": 2.641
+    },
+    {
+     "file": "title.mushroom.land.2.ogg",
+     "gain": 0.10384284352001391,
+     "sec": 2.641
+    }
+   ],
+   "burst": {
+    "file": "title.mushroom.burst.ogg",
+    "gain": 0.26176463616521733,
+    "sec": 4.036
+   },
+   "exit": {
+    "file": "title.mushroom.exit.ogg",
+    "gain": 0.05740559806949214,
+    "sec": 3.082
+   }
+  },
+  "skycastle": {
+   "land": [
+    {
+     "file": "title.skycastle.land.0.ogg",
+     "gain": 0.08120419163452952,
+     "sec": 2.641
+    },
+    {
+     "file": "title.skycastle.land.1.ogg",
+     "gain": 0.08057010016943279,
+     "sec": 2.64
+    },
+    {
+     "file": "title.skycastle.land.2.ogg",
+     "gain": 0.09930717317681564,
+     "sec": 2.642
+    }
+   ],
+   "burst": {
+    "file": "title.skycastle.burst.ogg",
+    "gain": 0.2436506748199463,
+    "sec": 3.693
+   },
+   "exit": {
+    "file": "title.skycastle.exit.ogg",
+    "gain": 0.05856622990808989,
+    "sec": 3.071
+   }
+  },
+  "castle": {
+   "land": [
+    {
+     "file": "title.castle.land.0.ogg",
+     "gain": 0.08899629900329992,
+     "sec": 2.642
+    },
+    {
+     "file": "title.castle.land.1.ogg",
+     "gain": 0.090399831533432,
+     "sec": 2.645
+    },
+    {
+     "file": "title.castle.land.2.ogg",
+     "gain": 0.08915990591049194,
+     "sec": 2.641
+    }
+   ],
+   "burst": {
+    "file": "title.castle.burst.ogg",
+    "gain": 0.25651443945734126,
+    "sec": 3.85
+   },
+   "exit": {
+    "file": "title.castle.exit.ogg",
+    "gain": 0.058228565674079094,
+    "sec": 2.724
+   }
+  },
+  "meadow": {
+   "land": [
+    {
+     "file": "title.meadow.land.0.ogg",
+     "gain": 0.10081469228393154,
+     "sec": 2.64
+    },
+    {
+     "file": "title.meadow.land.1.ogg",
+     "gain": 0.08727078375063445,
+     "sec": 2.641
+    },
+    {
+     "file": "title.meadow.land.2.ogg",
+     "gain": 0.0896321786077399,
+     "sec": 2.64
+    }
+   ],
+   "burst": {
+    "file": "title.meadow.burst.ogg",
+    "gain": 0.2407876911916231,
+    "sec": 4.022
+   },
+   "exit": {
+    "file": "title.meadow.exit.ogg",
+    "gain": 0.05727017004238932,
+    "sec": 3.067
+   }
+  }
  }
 }
