@@ -1,9 +1,11 @@
-// client/figure.js buildFigure 를 node 에서 실제로 돌려 8명 몸 (맨몸 + 옷·무기·소품) 을 그대로 뽑음 → chars/data/bodies.json (만든 파일, 손으로 고치지 않음)
-// 노드 나무 (부모·위치·회전 쿼터니언·크기·보이기) + 메시 정점 (위치·법선·uv, base64 float32) + 재질 (색·발광·투명·양면·외곽선·피부 여부·체크 무늬) +
+// client/figure.js buildFigure 를 node 에서 실제로 돌려 8명 몸 (맨몸 + 옷·무기·소품) 을 그대로 뽑음 → chars/data/bodies.bin (만든 파일, 손으로 고치지 않음)
+// 파일 = [u32 풀린 크기] + gzip( [u32 표 길이] [표 JSON, 4바이트 맞춤] [float32 정점 덩어리] ) — 예전 bodies.json (base64) 2.5MB → 약 0.27MB, 고도는 PackedByteArray.decompress 로 품
+// 표: 노드 나무 (부모·위치·회전 쿼터니언·크기·보이기) + 메시 정점 (위치·법선·uv = 덩어리 안 [float 시작, 개수]) + 재질 (색·발광·투명·양면·외곽선·피부 여부·체크 무늬) +
 // figure 의 특별 노드 표 (hips·waist…·flaps·shields·gun·bow·horns·rage·forms… → 노드 번호). 좌표는 몸 안 게임 좌표 그대로 (chars/body.gd 의 frame 이 고도로 돌림)
 // 실행 (레포 뿌리): node godot/client/tools/gen-bodies.mjs
 import { register } from 'node:module';
 import fs from 'node:fs';
+import zlib from 'node:zlib';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -29,17 +31,25 @@ const THREE = await import('three');
 const { CONFIG: C } = await import('../../../shared/config.js');
 const { buildFigure } = await import('../../../client/figure.js');
 
-const b64 = (arr) => Buffer.from(new Float32Array(arr).buffer).toString('base64');
+const blob = []; // float32 덩어리 조각들
+let blobN = 0;
+const put = (arr) => {
+  const f = new Float32Array(arr);
+  blob.push(Buffer.from(f.buffer));
+  blobN += f.length;
+  return [blobN - f.length, f.length];
+};
+const b64 = (arr) => Buffer.from(new Float32Array(arr).buffer).toString('base64'); // 같은 모양 찾기 열쇠
 const geos = []; // 정점 묶음 (같은 BufferGeometry 는 한 번만)
 const geoIdx = new Map();
 const geoKey = new Map();
 function geoOf(g) {
   if (geoIdx.has(g)) return geoIdx.get(g);
   const ng = g.index ? g.toNonIndexed() : g;
-  const out = { pos: b64(ng.attributes.position.array), nor: ng.attributes.normal ? b64(ng.attributes.normal.array) : null, uv: ng.attributes.uv ? b64(ng.attributes.uv.array) : null, n: ng.attributes.position.count };
-  const key = `${out.pos}|${out.nor}|${out.uv}`; // 모양이 같은 조각 (왼팔·오른팔 등) 은 한 번만
+  const a = ng.attributes;
+  const key = `${b64(a.position.array)}|${a.normal ? b64(a.normal.array) : ''}|${a.uv ? b64(a.uv.array) : ''}`; // 모양이 같은 조각 (왼팔·오른팔 등) 은 한 번만
   if (!geoKey.has(key)) {
-    geos.push(out);
+    geos.push({ pos: put(a.position.array), nor: a.normal ? put(a.normal.array) : null, uv: a.uv ? put(a.uv.array) : null, n: a.position.count });
     geoKey.set(key, geos.length - 1);
   }
   geoIdx.set(g, geoKey.get(key));
@@ -137,8 +147,15 @@ for (const ch of C.FIGURE_CHARS) {
   out.chars[ch] = { nodes, mats, refs };
 }
 out.geos = geos;
-const file = path.join(path.dirname(fileURLToPath(import.meta.url)), '../chars/data/bodies.json');
+const file = path.join(path.dirname(fileURLToPath(import.meta.url)), '../chars/data/bodies.bin');
 fs.mkdirSync(path.dirname(file), { recursive: true });
-fs.writeFileSync(file, JSON.stringify(out));
+let json = Buffer.from(JSON.stringify(out), 'utf8');
+json = Buffer.concat([json, Buffer.alloc((4 - (json.length % 4)) % 4, 0x20)]); // 덩어리가 4바이트 맞춤에서 시작
+const head = Buffer.alloc(4);
+head.writeUInt32LE(json.length);
+const raw = Buffer.concat([head, json, ...blob]);
+const size = Buffer.alloc(4);
+size.writeUInt32LE(raw.length);
+fs.writeFileSync(file, Buffer.concat([size, zlib.gzipSync(raw, { level: 9 })]));
 const nodesN = Object.values(out.chars).reduce((a, c) => a + c.nodes.length, 0);
-console.log(`bodies.json: ${Object.keys(out.chars).length}명, 노드 ${nodesN}, 정점 묶음 ${geos.length}, ${(fs.statSync(file).size / 1024).toFixed(0)}KB`);
+console.log(`bodies.bin: ${Object.keys(out.chars).length}명, 노드 ${nodesN}, 정점 묶음 ${geos.length}, ${(fs.statSync(file).size / 1024).toFixed(0)}KB`);
