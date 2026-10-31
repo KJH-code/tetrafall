@@ -1,0 +1,45 @@
+<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;overflow:hidden}</style>
+<script type="importmap">{ "imports": { "three": "/vendor/three.module.js", "three/addons/": "/vendor/jsm/" } }</script></head><body>
+<script type="module">
+import * as THREE from 'three';
+import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
+import { CONFIG as C } from '/shared/config.js';
+import { toon } from '/toon.js';
+THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
+const R = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+R.setSize(1280, 720); R.setPixelRatio(1);
+R.shadowMap.enabled = true; R.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(R.domElement);
+const outline = new OutlineEffect(R, { defaultThickness: C.OUTLINE_THICKNESS, defaultColor: [0.08, 0.05, 0.1], defaultAlpha: 1 });
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(C.SKY_HORIZON);
+scene.add(new THREE.HemisphereLight(0xffe2d2, 0x8a90b8, 1.15));
+const sun = new THREE.DirectionalLight(C.SUN_COLOR, 1.25);
+sun.position.set(4, 4, 0).addScaledVector(new THREE.Vector3(...C.SUN_DIR).normalize(), 30);
+sun.target.position.set(4, 4, 0);
+sun.castShadow = true;
+Object.assign(sun.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12, near: 5, far: 60 });
+sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0008;
+scene.add(sun, sun.target);
+const things = [
+  ['box', [4, 4, -0.15], [8, 8, 0.3], 0xa49aa0],
+  ['box', [1.5, 1.5, 0.5], [1, 1, 1], 0xe0533a],
+  ['box', [3.5, 2.5, 0.5], [1, 1, 1], 0x3a7be0],
+  ['box', [3.5, 2.5, 1.5], [1, 1, 1], 0x58c06a],
+  ['sphere', [2.5, 5, 0.7], [0.7], 0xf2c53d],
+  ['cyl', [5.5, 4.5, 1], [0.5, 2], 0xb06ad8],
+];
+for (const [kind, p, s, c] of things) {
+  let g;
+  if (kind === 'box') g = new THREE.BoxGeometry(...s);
+  else if (kind === 'sphere') g = new THREE.SphereGeometry(s[0], 32, 16);
+  else g = new THREE.CylinderGeometry(s[0], s[0], s[1], 24).rotateX(Math.PI / 2);
+  const m = new THREE.Mesh(g, toon({ color: c }));
+  m.position.set(...p); m.castShadow = m.receiveShadow = true;
+  scene.add(m);
+}
+const cam = new THREE.PerspectiveCamera(60, 1280 / 720, 0.05, 200);
+cam.up.set(0, 0, 1); cam.position.set(8, -4, 6); cam.lookAt(3, 3, 0.5);
+outline.render(scene, cam);
+window.done = true;
+</script></body></html>
