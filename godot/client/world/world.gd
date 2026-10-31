@@ -180,8 +180,12 @@ func _ready() -> void:
 			hazard_view.effects = n.effects
 	View.changed.connect(func(k):
 		if k == "lowGfx":
+			if g3_has("set_low"):
+				G3.set_low(self, View.settings.lowGfx) # B3: 이미 만든 지형·칸·위험 재질·튀어나온 조각·판 빛·그림자를 곧바로
 			set_shadows(not View.settings.lowGfx)
 			apply_theme(str(theme_id))) # 지형 셰이더·튀어나온 조각도 낮춤으로
+	if g3_has("set_low"):
+		G3.set_low(self, bool(View.settings.get("lowGfx", false)))
 	set_shadows(not View.settings.get("lowGfx", false))
 
 
