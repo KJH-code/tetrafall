@@ -9,6 +9,7 @@ const Keys := preload("res://core/keys.gd")
 const Cam := preload("res://world/cam_math.gd")
 const SkyV := preload("res://world/sky_view.gd")
 const WC := preload("res://world/world_config.gd")
+const Vic := preload("res://world/victory.gd")
 
 var cam := Camera3D.new()
 var sky_blend := 0.0 # 0 = 1·3인칭, 1 = 하늘 (SKY_TRANSITION_MS 동안 섞임)
@@ -19,6 +20,12 @@ var overview_z = null
 var spec := {"target": null, "overview": false, "round": null, "dist": C.SPECTATE_DIST, "overview_dist": C.SPECTATE_OVERVIEW_DIST}
 var eye := {"x": 0.0, "y": 0.0, "z": 0.0} # 이번 프레임 카메라 (게임 좌표) — 확인용
 var hook = null # KO 연출 등이 카메라를 덮어씀: Callable(cam: Camera3D) (render.js camHook)
+var over_at = null # 판 끝 시각 (ms, 연습이면 null)
+var vic_plan = null # Vic.plan (슬로모션이 이어지는 동안 클로즈업 시작을 뒤로 밂)
+var vic_t := 0.0 # 승자·셀카 카메라가 날아간 시간 (초)
+var last_phase := ""
+var ghost_aim = null # world/ghost_aim.gd 노드 (World 가 넣음)
+var ghost_refuse_at := -1e9 # 안 되는 투하를 누른 시각 (G4 조준 원 흔들림 자리)
 var force := "" # 확인용 (명령줄 --world-view): "over" 늘 전체 보기 (WC.OVER_POSE), "third"·"first" 시점 고정
 
 
@@ -84,8 +91,13 @@ func _unhandled_input(e: InputEvent) -> void:
 		match e.button_index:
 			MOUSE_BUTTON_LEFT:
 				var cd = Store.me().get("ghostCd")
-				if cd == null and PlayerInput.locked: # 유령 투하 판이면 클릭은 투하 (조준은 다음 단계)
-					next_target(1)
+				if cd == null:
+					if PlayerInput.locked:
+						next_target(1)
+				elif ghost_aim != null and ghost_aim.aim != null and float(cd) == 0.0:
+					Store.send_room({"type": "ghostDrop", "x": ghost_aim.aim.x, "y": ghost_aim.aim.y}) # 유령 투하 판: 클릭 = 조준한 칸에 떨어뜨리기 (다음 사람은 점프 키)
+				else:
+					ghost_refuse_at = Time.get_ticks_msec() * 1.0
 			MOUSE_BUTTON_RIGHT:
 				spec.overview = not spec.overview
 			MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN:
@@ -126,6 +138,7 @@ func pre(dt: float) -> void:
 	var step := dt * 1000.0 / C.SKY_TRANSITION_MS
 	sky_blend = minf(1.0, sky_blend + step) if sky else maxf(0.0, sky_blend - step)
 	update_spectate()
+	update_victory()
 	var mode := "spectate"
 	if sky:
 		mode = "sky"
@@ -134,10 +147,38 @@ func pre(dt: float) -> void:
 	View.set_mode(mode)
 
 
+# 판 끝 연출 단계 (client/main.js 판 끝 + overStage): playing → over 에 승자 고르기, 마지막 킬 슬로모션 (View.time_scale < 1) 이 이어지면 클로즈업을 그 뒤로
+func update_victory() -> void:
+	var st := Store.state
+	var ph := Store.phase()
+	var now := Time.get_ticks_msec() * 1.0
+	if last_phase == "playing" and ph == "over" and st.get("practice") == null:
+		over_at = now
+		View.victory_id = Vic.star_of(st)
+		vic_plan = Vic.plan(View.victory_id != null, 0.0, reduced())
+	last_phase = ph
+	if ph != "over" or over_at == null:
+		over_at = null
+		vic_plan = null
+		View.victory_id = null
+		View.victory_stage = "lobby"
+		return
+	var t: float = now - over_at
+	var stg := Vic.stage(vic_plan, t)
+	if View.time_scale < 1.0 and (stg == "slow" or stg == "closeup"):
+		vic_plan = Vic.plan(View.victory_id != null, t + 1.0, reduced()) # 아직 슬로모션: 클로즈업은 끝난 뒤
+		stg = Vic.stage(vic_plan, t)
+	View.victory_stage = stg
+
+
+func reduced() -> bool:
+	return bool(View.settings.get("reducedMotion", false)) or bool(View.settings.get("lowGfx", false))
+
+
 # 1인칭이면 내 몸 숨김 (3인칭은 카메라가 머리 속으로 당겨졌을 때만)
 func hide_me() -> bool:
 	var me := Store.me()
-	if me.is_empty() or not me.alive or sky_blend > 0.0:
+	if me.is_empty() or not me.alive or sky_blend > 0.0 or close_id() != null:
 		return false
 	return not third() or (tp_dist if tp_dist != null else C.TP_DIST) < C.TP_HIDE_DIST
 
@@ -194,6 +235,7 @@ func place(dt: float, shown: Dictionary, solid: Callable) -> void:
 		eye = {"x": e.x, "y": e.y, "z": maxf(0.5, e.z)}
 	if not (not me.is_empty() and me.alive and third()):
 		tp_dist = null
+	victory_camera(dt, shown, look)
 	var fov: float = float(View.settings.get("fov", C.FOV_DEFAULT))
 	var at := Co.gxyz(eye.x, eye.y, eye.z)
 	var to := Co.gxyz(look.x, look.y, look.z)
@@ -210,5 +252,35 @@ func place(dt: float, shown: Dictionary, solid: Callable) -> void:
 	if not at.is_equal_approx(to):
 		var dirv := (to - at).normalized()
 		cam.look_at(to, Vector3.UP if absf(dirv.y) < 0.999 else Vector3.FORWARD)
-	if hook != null:
+	if hook != null and close_id() == null:
 		hook.call(cam)
+
+
+# 클로즈업 대상: 판 끝 승자 (closeup 동안) 또는 내 이모트 셀카 (살아서 이모트 중, 하늘 시점 아님)
+func close_id():
+	if View.victory_stage == "closeup" and View.victory_id != null:
+		return View.victory_id
+	var me := Store.me()
+	if not me.is_empty() and me.alive and int(me.get("emote", -1)) >= 0 and sky_blend == 0.0 and force == "":
+		return Store.my_id
+	return null
+
+
+# 승자·셀카 카메라 (render.js victoryCamera): 대상 앞 VICTORY_DIST·VICTORY_UP 으로 VICTORY_FLY_S 동안 날아감 (움직임 줄이기면 바로)
+func victory_camera(dt: float, shown: Dictionary, look: Dictionary) -> void:
+	var id = close_id()
+	var p := Store.player(id)
+	if id == null or p.is_empty() or not shown.has(int(id)):
+		vic_t = 0.0
+		return
+	vic_t += dt
+	var s: Vector3 = shown[int(id)]
+	var k := 1.0 if reduced() else minf(1.0, vic_t / C.VICTORY_FLY_S)
+	var t := k * k * (3.0 - 2.0 * k)
+	var yaw: float = p.yaw
+	var front := {"x": s.x + cos(yaw) * C.VICTORY_DIST, "y": s.y + sin(yaw) * C.VICTORY_DIST, "z": s.z + C.VICTORY_UP}
+	var up: float = C.VICTORY_LOOK_UP if View.victory_stage == "closeup" and id == View.victory_id else 0.0
+	var at := {"x": s.x, "y": s.y, "z": s.z + C.PLAYER_HEIGHT * 0.55 + up}
+	for a in ["x", "y", "z"]:
+		eye[a] = lerpf(eye[a], front[a], t)
+		look[a] = lerpf(look[a], at[a], t)
