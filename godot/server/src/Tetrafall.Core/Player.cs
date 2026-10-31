@@ -2,7 +2,7 @@ namespace Tetrafall.Core;
 
 // 플레이어 (server/game-players.js addPlayer 의 필드). JS 처럼 숫자는 double (같은 계산)
 // 뼈대: 대기실 스냅샷에 나오는 필드만. 각 묶음을 옮기는 세션이 그 묶음 필드를 더함 (이름은 JS 와 같게)
-public sealed class Player
+public sealed partial class Player
 {
     public int id;
     public int slot;
@@ -37,12 +37,4 @@ public sealed class Player
     public string form = "bard";
     public bool away;
     public bool dummy;
-    public PlayerInput input = new(); // TODO(S1 입력): 나머지 입력 필드
-}
-
-// 지금 누르고 있는 이동 입력 (JS p.input)
-public sealed class PlayerInput
-{
-    public double fwd, strafe;
-    public bool jump;
 }
