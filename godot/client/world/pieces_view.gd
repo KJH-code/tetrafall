@@ -11,6 +11,7 @@ var cells_mmi := MultiMeshInstance3D.new()
 var shadow_mmi := MultiMeshInstance3D.new()
 var piece_mat := StandardMaterial3D.new()
 var piece_colors: Dictionary = C.SHAPE_COLORS
+var mats = null # G3 툰 재질 [불투명, 반투명] (없으면 piece_mat 의 transparency 를 바꿈)
 
 
 func _ready() -> void:
@@ -73,7 +74,10 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 		mm.instance_count = n + 8
 		sm.instance_count = n + 8
 	var alpha := WC.PIECE_SKY_ALPHA if sky_blend > 0.5 else 1.0
-	piece_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if alpha < 1.0 else BaseMaterial3D.TRANSPARENCY_DISABLED
+	if mats != null:
+		cells_mmi.material_override = mats[1] if alpha < 1.0 else mats[0]
+	else:
+		piece_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if alpha < 1.0 else BaseMaterial3D.TRANSPARENCY_DISABLED
 	var warned: bool = not me.is_empty() and me.alive and me.get("danger") != null
 	var k := 0
 	var s := 0

@@ -15,6 +15,7 @@ const SkyAids := preload("res://world/sky_aids.gd")
 const ItemsView := preload("res://world/items_view.gd")
 const CamRig := preload("res://world/cam_rig.gd")
 const BBLOCKS := "res://world/bblocks.gd"
+const G3_PATH := "res://shaders/g3.gd" # G3 툰·테마 (있으면 하늘·빛·안개·블록 재질을 G3 가 맡음)
 
 var env := Environment.new()
 var sky_mat := ProceduralSkyMaterial.new()
@@ -33,10 +34,13 @@ var theme := {}
 var field := Vector3i.ZERO # 지금 판 크기 (w, d, h)
 var built_version := -2
 var headless := false
+var G3 = null
 
 
 func _ready() -> void:
 	headless = DisplayServer.get_name() == "headless"
+	if ResourceLoader.exists(G3_PATH):
+		G3 = load(G3_PATH)
 	var we := WorldEnvironment.new()
 	env.background_mode = Environment.BG_SKY
 	env.sky = Sky.new()
@@ -46,10 +50,15 @@ func _ready() -> void:
 	env.fog_enabled = true
 	env.fog_mode = Environment.FOG_MODE_DEPTH
 	we.environment = env
-	add_child(we)
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 60.0
-	add_child(sun)
+	if G3 == null:
+		add_child(we)
+		add_child(sun)
+	else:
+		we.free() # 하늘·빛·안개는 G3 의 'G3Env'
+		sun.free()
+		sun = null
 	grid_view = GridView.new()
 	pieces_view = PiecesView.new()
 	hazard_view = HazardView.new()
@@ -63,6 +72,11 @@ func _ready() -> void:
 	if ResourceLoader.exists(BBLOCKS):
 		bblocks = load(BBLOCKS).new()
 		add_child(bblocks)
+	if G3 != null:
+		grid_view.set_material(G3.toon_material(Color.WHITE, {"vertex_color": true}))
+		grid_view.make_mat = func(c: Color): return G3.toon_material(c)
+		bodies.make_mat = grid_view.make_mat
+		pieces_view.mats = [G3.toon_material(Color.WHITE, {"vertex_color": true}), G3.toon_material(Color.WHITE, {"vertex_color": true, "opacity": WC.PIECE_SKY_ALPHA})]
 	apply_theme("")
 	# 확인용 명령줄 (-- 뒤): --world-view over|third|first · --map <맵 id> · --mode <모드> (방장이면 대기실에서 바꿈)
 	var args := {}
@@ -77,14 +91,28 @@ func _ready() -> void:
 		if args.has("mode"):
 			Store.send_room({"type": "setMode", "mode": args.mode}))
 	Store.game_event.connect(bodies.on_event)
-	View.changed.connect(func(k): if k == "lowGraphics": sun.shadow_enabled = not View.settings.lowGraphics)
-	sun.shadow_enabled = not View.settings.get("lowGraphics", false)
+	View.changed.connect(func(k): if k == "lowGraphics": set_shadows(not View.settings.lowGraphics))
+	set_shadows(not View.settings.get("lowGraphics", false))
+
+
+func set_shadows(on: bool) -> void:
+	if G3 != null:
+		G3.set_shadows(self, on)
+	else:
+		sun.shadow_enabled = on
 
 
 # 맵 id → 테마 (WORLD_MAP_THEME·WORLD_THEMES 색만, 꾸밈은 G3). 표에 없는 맵은 예전 노을 (SKY_*·FOG_*)
 func apply_theme(map_id: String) -> void:
 	theme = Cells.theme_of(map_id)
 	theme_id = map_id
+	grid_view.set_theme(theme)
+	pieces_view.piece_colors = Cells.piece_colors(theme)
+	hazard_view.set_theme(theme)
+	built_version = -2 # 칸 색이 바뀜 → 다시 깖
+	if G3 != null:
+		G3.apply_theme(self, C.WORLD_MAP_THEME.get(map_id), bool(View.settings.get("lowGraphics", false)))
+		return
 	var sk: Dictionary = theme.get("sky", {})
 	sky_mat.sky_top_color = Co.color(sk.get("top", C.SKY_TOP))
 	sky_mat.sky_horizon_color = Co.color(sk.get("horizon", C.SKY_HORIZON))
@@ -103,10 +131,6 @@ func apply_theme(map_id: String) -> void:
 	sun.transform = Transform3D(Basis.looking_at(-to_sun, Vector3.UP if absf(to_sun.y) < 0.99 else Vector3.FORWARD), Vector3.ZERO)
 	sun.light_color = Co.color(theme.get("sunColor", 0xfff0d8))
 	sun.light_energy = float(theme.get("sunIntensity", 1.0)) * WC.SUN_ENERGY
-	grid_view.set_theme(theme)
-	pieces_view.piece_colors = Cells.piece_colors(theme)
-	hazard_view.set_theme(theme)
-	built_version = -2 # 칸 색이 바뀜 → 다시 깖
 
 
 # 격자 칸이 단단한가 (게임 좌표, render.js solidAt): 필드 밖 = 빈칸, 바닥 아래 = 단단함
@@ -137,6 +161,8 @@ func _process(dt: float) -> void:
 	if fs != field:
 		field = fs
 		grid_view.set_field(fs.x, fs.y)
+		if G3 != null:
+			G3.set_field(self, fs.x, fs.y)
 		built_version = -2
 	if bblocks != null:
 		bblocks.update(st)

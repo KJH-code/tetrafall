@@ -10,6 +10,7 @@ const CHARS := "res://chars/chars.gd"
 
 var nodes := {} # id -> {root, body, label, char, color}
 var chars_script = null
+var make_mat = null # Callable(Color) -> Material: G3 툰 재질 (상자 몸, 없으면 StandardMaterial3D)
 var shown := {} # id -> 게임 좌표 화면 위치 (Vector3) — 카메라·하늘 도우미가 읽음
 
 
@@ -60,8 +61,12 @@ func _make(p: Dictionary, color: int) -> Dictionary:
 
 func _box_body(color: int) -> Node3D:
 	var root := Node3D.new()
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Co.color(color)
+	var mat: Material
+	if make_mat != null:
+		mat = make_mat.call(Co.color(color))
+	else:
+		mat = StandardMaterial3D.new()
+		mat.albedo_color = Co.color(color)
 	var body := MeshInstance3D.new()
 	var cm := CapsuleMesh.new()
 	cm.radius = C.PLAYER_HALF

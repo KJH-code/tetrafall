@@ -29,3 +29,4 @@ const LABEL_LIGHTEN := 0.35 # 이름표 글자 색을 몸 색보다 밝게
 const CAM_CLIP := [0.05, 900.0] # 카메라 가까운·먼 자름
 const BLOCK_ROUGH := [0.9, 0.6] # 쌓인 칸, 떨어지는 칸 거칠기
 const ITEM_GLOW := 0.4 # 아이템 스스로 빛남
+const CLIFF_COLOR := 0x6a5a4a # 테마 없을 때 섬 절벽

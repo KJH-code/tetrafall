@@ -14,6 +14,7 @@ var terrain_color = null # 테마 지형 색 (없으면 TERRAIN_COLOR)
 var piece_colors: Dictionary = C.SHAPE_COLORS
 var skip := {} # 그리지 않을 칸 (건축가 블록이 따로 그림)
 var count := 0
+var make_mat = null # Callable(Color) -> Material: G3 툰 재질 (없으면 StandardMaterial3D)
 
 
 func _ready() -> void:
@@ -31,16 +32,28 @@ func _ready() -> void:
 	add_child(mmi)
 	for n in [floor_mesh, cliff]:
 		n.mesh = BoxMesh.new()
-		n.material_override = StandardMaterial3D.new()
+		n.material_override = StandardMaterial3D.new() # 바닥 판 무늬는 G3 floor_material 이 오면
 		add_child(n)
+
+
+# G3 툰 재질로 바꿈 (인스턴스 색 COLOR 를 곱하는 재질)
+func set_material(m: Material) -> void:
+	mmi.material_override = m
 
 
 func set_theme(theme: Dictionary) -> void:
 	terrain_color = theme.get("terrain", {}).get("top", null)
 	piece_colors = Cells.piece_colors(theme)
 	var fl: Dictionary = theme.get("floor", {})
-	(floor_mesh.material_override as StandardMaterial3D).albedo_color = Co.color(fl.get("a", C.TERRAIN_COLOR))
-	(cliff.material_override as StandardMaterial3D).albedo_color = Co.color(theme.get("terrain", {}).get("side", fl.get("rim", 0x6a5a4a)))
+	_paint(floor_mesh, Co.color(fl.get("a", C.TERRAIN_COLOR)))
+	_paint(cliff, Co.color(theme.get("terrain", {}).get("side", fl.get("rim", WC.CLIFF_COLOR))))
+
+
+func _paint(n: MeshInstance3D, c: Color) -> void:
+	if make_mat != null:
+		n.material_override = make_mat.call(c)
+	else:
+		(n.material_override as StandardMaterial3D).albedo_color = c
 
 
 func set_field(w: int, d: int) -> void:
