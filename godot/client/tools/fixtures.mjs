@@ -491,3 +491,41 @@ console.log(`interp 프레임 ${frames.length}, net ${seq.length}, keys 바퀴 $
   }
   fs.writeFileSync(path.join(out, 'ghost.json'), JSON.stringify({ W, D, H, grid, rays }));
 }
+{
+  // lobby.json (G1): 대기실 미리보기 — shared/title.js lobbyTheme·lobbyFieldSize·fieldSizeFor + mapColumns 표본 + previewTop (render.js 식 그대로)
+  const r = mulberry32(151);
+  const { lobbyTheme, lobbyFieldSize, fieldSizeFor } = await import('../../../shared/title.js');
+  const { mapColumns, MAP_IDS } = await import('../../../shared/maps.js');
+  const P = (spectator = false) => ({ spectator });
+  const states = [];
+  for (let i = 0; i < 40; i++) {
+    const n = 1 + Math.floor(r() * 9);
+    const players = Array.from({ length: n }, () => P(r() < 0.15));
+    const choice = r() < 0.2 ? 'random' : r() < 0.1 ? null : MAP_IDS[Math.floor(r() * MAP_IDS.length)];
+    const phase = r() < 0.8 ? 'lobby' : 'playing';
+    states.push({ phase, practice: r() < 0.1 ? {} : null, mode: r() < 0.3 ? 'master' : 'survival', players, map: { choice, id: MAP_IDS[Math.floor(r() * MAP_IDS.length)] } });
+  }
+  const fallbacks = [null, 'crystal', 'nope'];
+  const themes = states.map((s, i) => [s, fallbacks[i % 3], lobbyTheme(s, fallbacks[i % 3]), lobbyFieldSize(s)]);
+  const sizes = [-1, 0, 1, 2, 3, 5, 8, 9, 12].map((n) => [n, fieldSizeFor(n)]);
+  const cols = [];
+  for (const id of MAP_IDS) for (const n of [10, 14, 19]) cols.push([id, n, mapColumns(id, n, n)]);
+  const tops = [];
+  for (const [id, n] of [['stairs', 12], ['pyramid', 16]]) {
+    const top = new Float32Array(n * n);
+    for (const [x, y, h] of mapColumns(id, n, n)) top[y * n + x] = Math.max(top[y * n + x], h);
+    for (let k = 0; k < 30; k++) {
+      const x = r() * (n + 2) - 1;
+      const y = r() * (n + 2) - 1;
+      let t = 0;
+      const hh = C.PLAYER_HALF;
+      for (const [dx, dy] of [[-hh, -hh], [hh, -hh], [-hh, hh], [hh, hh]]) {
+        const gx = Math.floor(x + dx);
+        const gy = Math.floor(y + dy);
+        if (gx >= 0 && gy >= 0 && gx < n && gy < n) t = Math.max(t, top[gy * n + gx]);
+      }
+      tops.push([id, n, x, y, t]);
+    }
+  }
+  fs.writeFileSync(path.join(out, 'lobby.json'), JSON.stringify({ themes, sizes, cols, tops }));
+}
