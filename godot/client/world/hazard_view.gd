@@ -34,6 +34,8 @@ var _amb_acc := 0.0
 var _contact_acc := 0.0
 var _alive := {}
 var _off_sent := false
+var bodies = null # 잠기는 몸 (nodes[id].root·shown[id])
+var sinks := {} # id -> {t0, x, y, z, zs}
 
 
 func _ready() -> void:
@@ -152,6 +154,7 @@ func _update_g3(st: Dictionary, grid: PackedByteArray, grid_version: int, me: Di
 		_was = false
 		step = -1
 		_track_deaths(st, zs, false)
+		_step_sinks()
 		if not _off_sent:
 			G3.hazard_update(mats, get_parent(), {"on": false, "time": t, "z": zs}) # 물들임·하늘 아래 색 끔
 			_off_sent = true
@@ -217,6 +220,7 @@ func _update_g3(st: Dictionary, grid: PackedByteArray, grid_version: int, me: Di
 	if not me.is_empty() and me.alive and not me.get("master", false):
 		vignette = HF.vignette_strength(float(me.z) - zs, pulse)
 	_track_deaths(st, zs, true)
+	_step_sinks()
 
 
 # 차오름 한 번: 번쩍·가까우면 흔들림·닿는 곳 거품 (hazard.js rise)
@@ -236,7 +240,7 @@ func _rise(start: bool, z: float, me: Dictionary) -> void:
 		effects.burst(Vector3(c.x, c.y, z + 0.05), null, int(look.contact), 3, float(look.particleSpeed), 0.08, 0.7)
 
 
-# 위험에 죽은 사람 (지난 프레임 살아 있었고 지금 죽었고 표면 근처): 튀김 (hazard.js trackDeaths·splash, 잠기는 몸은 아직)
+# 위험에 죽은 사람 (지난 프레임 살아 있었고 지금 죽었고 표면 근처): 튀김 + 잠기는 몸 (hazard.js trackDeaths·splash)
 func _track_deaths(st: Dictionary, zs: float, on: bool) -> void:
 	for pl in st.get("players", []):
 		var id := int(pl.id)
@@ -245,6 +249,8 @@ func _track_deaths(st: Dictionary, zs: float, on: bool) -> void:
 		if not on or not was or pl.alive or pl.get("master", false) or float(pl.z) > zs + 0.6:
 			continue
 		pulse = maxf(pulse, 0.6)
+		var sp = bodies.shown.get(id) if bodies != null else null
+		sinks[id] = {"t0": t, "x": float(sp.x if sp != null else pl.x), "y": float(sp.y if sp != null else pl.y), "z": zs - 0.35, "zs": zs}
 		if effects == null:
 			continue
 		var pos := Vector3(float(pl.x), float(pl.y), zs + 0.1)
@@ -252,3 +258,24 @@ func _track_deaths(st: Dictionary, zs: float, on: bool) -> void:
 		effects.burst(pos, null, int(look.splash[1]), 8 if low else 22, float(look.particleSpeed) * 1.1, 0.13, 1.3)
 		effects.ring(Vector3(pl.x, pl.y, zs + 0.06), int(look.foam), 3.2, 0.7, true)
 		effects.ring(Vector3(pl.x, pl.y, zs + 0.06), int(look.splash[0]), 2.0, 0.45, true)
+
+
+# 잠기는 몸: bodies 가 죽은 몸을 숨긴 뒤 HAZARD_SINK_MS 동안 다시 보이게 하고 아래로 (hazard.js stepSinks — 처음엔 표면에 걸려 허우적, 그다음 천천히 가라앉음)
+func _step_sinks() -> void:
+	for id in sinks.keys():
+		var s: Dictionary = sinks[id]
+		var n: Dictionary = bodies.nodes.get(id, {}) if bodies != null else {}
+		var k: float = (t - s.t0) * 1000.0 / C.HAZARD_SINK_MS
+		if n.is_empty() or k >= 1.0:
+			sinks.erase(id)
+			continue
+		var u := maxf(0.0, (k - C.HAZARD_SINK_FLOAT) / (1.0 - C.HAZARD_SINK_FLOAT))
+		var e := u * u * (3 - 2 * u)
+		var root: Node3D = n.root
+		root.visible = true
+		root.position = Co.gxyz(s.x, s.y, s.z + sin(k * 22) * 0.05 * (1 - u) - e * C.HAZARD_SINK_DEPTH)
+		# 게임 x·y 축 흔들림 (three rotation.x·y), 방향 (yaw) 은 그대로
+		var yaw := root.rotation.y
+		root.basis = Basis(Vector3.RIGHT, sin(k * 11) * 0.22 * (1 - k)) * Basis(Vector3.FORWARD, cos(k * 8) * 0.15 * (1 - k)) * Basis(Vector3.UP, yaw)
+		if effects != null and randf() < 0.3:
+			effects.burst(Vector3(s.x, s.y, s.zs + 0.05), null, int(look.contact), 1, 2, 0.08, 0.6)

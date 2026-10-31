@@ -95,6 +95,7 @@ func _ready() -> void:
 	ghost_aim = GhostAim.new()
 	scenery = Scenery.new()
 	hazard_view.scenery = scenery # 먼 섬 잠김 테 (far_objects)
+	hazard_view.bodies = bodies # 잠기는 몸
 	marks = Marks.new()
 	light_fx = LightFx.new()
 	shots = Shots.new()
