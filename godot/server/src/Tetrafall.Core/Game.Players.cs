@@ -1,16 +1,13 @@
+using System.Text;
 using Tetrafall.Core.Js;
+using static Tetrafall.Core.GameUtil;
 
 namespace Tetrafall.Core;
 
-// server/game-players.js. 대기실 부분 (S6, 2026-10-31): 넣기·빼기·방장·색·봇·끊김(setAway)·봇 난이도·맵·모드·하늘 계단·체력전·캐릭터·팀전·관전·이름.
-// 판 안 일 (판 중 나가기 사망·연습 맵·판 중 캐릭터 바꾸기·onField·tooTall·spawnZ·hpKnockouts) 은 그 묶음 (S2·S4) 이 더함
+// server/game-players.js — 플레이어 관리·대기실 설정·팀전·끊김 (봇 대리)
 public sealed partial class Game
 {
-    const int SPAWN_POINT_COUNT = 8; // shared/config.js spawnPoints 8곳
-    static double MaxPlayers() => Math.Min(C.MAX_PLAYERS, SPAWN_POINT_COUNT);
-
-    public bool InRound() => phase == "countdown" || phase == "playing";
-
+    // ---------- 플레이어 관리 ----------
     public Player? AddPlayer(int id, bool isBot = false)
     {
         var used = new HashSet<int>(Players().Select(p => p.slot));
@@ -24,7 +21,8 @@ public sealed partial class Game
             }
         }
         if (slot < 0) return null;
-        var sp = SpawnPoint(slot);
+        var sp = spawnPoints[slot % spawnPoints.Length];
+        // 필드 순서는 JS 객체와 같게 (rng 를 부르는 char 는 color·team 다음)
         var p = new Player
         {
             id = id,
@@ -35,50 +33,15 @@ public sealed partial class Game
             x = sp.x,
             y = sp.y,
             yaw = sp.yaw,
-            alive = !InRound(),
-            team = SmallerTeam(),
+            alive = !InRound(), // 진행 중(카운트다운 포함) 난입은 관전 (죽은 상태)
         };
-        if (characters) p.@char = isBot ? C.CHARACTERS[(int)Math.Floor(rng() * C.CHARACTERS.Length)] : C.CHAR_DEFAULT; // 봇은 무작위
+        p.team = SmallerTeam();
+        p.@char = characters ? (isBot ? C.CHARACTERS[(int)Math.Floor(rng() * C.CHARACTERS.Length)] : C.CHAR_DEFAULT) : null; // 봇은 무작위
         players[id] = p;
-        order.Add(id);
         if (hostId == null && !isBot) hostId = id;
         Log($"{p.name} 접속 (slot {slot}){(hostId == id ? " — 호스트" : "")}");
         return p;
     }
-
-    // 시작 위치 (shared/config.js spawnPoints 그대로, 지금 판 크기)
-    public (double x, double y, double yaw) SpawnPoint(int slot)
-    {
-        double inset = C.SPAWN_INSET;
-        var pts = new (double, double)[] { (inset, inset), (W - inset, D - inset), (W - inset, inset), (inset, D - inset), (W / 2, inset), (W / 2, D - inset), (inset, D / 2), (W - inset, D / 2) };
-        var (x, y) = pts[slot % pts.Length];
-        return (x, y, Js.JsMath.Atan2(D / 2 - y, W / 2 - x));
-    }
-
-    string SmallerTeam()
-    {
-        int red = Players().Count(p => p.team == "red"), blue = Players().Count(p => p.team == "blue");
-        return red <= blue ? "red" : "blue";
-    }
-
-    public int HumanCount() => Players().Count(p => !p.isBot);
-
-    public bool IsHost(int id) => hostId == id;
-
-    public List<Player> Participants() => Players().Where(p => !p.spectator).ToList();
-
-    public bool CanStart()
-    {
-        var ps = Participants();
-        if (mode == "practice") return ps.Count >= 1 && !InRound();
-        if (teamMode && !(ps.Any(p => p.team == "red") && ps.Any(p => p.team == "blue"))) return false;
-        return ps.Count >= C.MIN_PLAYERS && !InRound();
-    }
-
-    // 봇 플레이어 id (넣은 순서, JS this.bots Map 의 키). 봇 id 는 음수. TODO(S5 봇): BotBrain 을 같이 들고 틱마다 생각
-    public readonly List<int> bots = new();
-    // 접속이 끊긴 사람 id (넣은 순서, JS this.proxies Map 의 키) — 판 중엔 봇이 대신 조종. TODO(S5 봇): BotBrain
-    public readonly List<int> proxies = new();
 
     // 방에서 아무도 안 쓰는 색 중 가장 앞 번호
     int FreeColor()
@@ -88,11 +51,11 @@ public sealed partial class Game
         return 0;
     }
 
-    // 색 고르기: 판 사이에만, 팔레트 안 번호 (정수만 — null·문자열·소수는 거절), 다른 사람이 쓰는 색은 안 됨. 되면 true
-    public bool SetColor(int id, double? raw)
+    // 색 고르기: 판 사이에만, 팔레트 안 번호, 방에서 다른 사람이 쓰는 색은 안 됨. raw 는 JS 값 (정수 double 만)
+    public bool SetColor(int id, object? raw)
     {
-        players.TryGetValue(id, out var p);
-        if (p == null || InRound() || raw is not { } c || c != Math.Floor(c) || double.IsInfinity(c) || c < 0 || c >= C.PLAYER_PALETTE.Length) return false;
+        var p = GetPlayer(id);
+        if (p == null || InRound() || raw is not double c || c != Math.Floor(c) || !double.IsFinite(c) || c < 0 || c >= C.PLAYER_PALETTE.Length) return false;
         if (c == p.color) return true;
         if (Players().Any(o => o != p && o.color == c)) return false;
         p.color = (int)c;
@@ -100,13 +63,13 @@ public sealed partial class Game
         return true;
     }
 
-    // 봇 추가 (판 진행 중에는 안 됨). 성공하면 플레이어, 자리가 없으면 null
+    // 봇 추가 (판 진행 중에는 안 됨)
     public Player? AddBot()
     {
         if (InRound()) return null;
         int id = -++botCounter;
         var p = AddPlayer(id, true);
-        if (p != null) bots.Add(id);
+        if (p != null) bots[id] = new BotBrain(() => rng(), () => botLevel);
         return p;
     }
 
@@ -114,24 +77,24 @@ public sealed partial class Game
     public bool RemoveBot()
     {
         if (InRound() || bots.Count == 0) return false;
-        RemovePlayer(bots.Min()); // 음수라 가장 작은 게 가장 최근
+        RemovePlayer(bots.Keys.Min()); // 음수라 가장 작은 게 가장 최근
         return true;
     }
 
     public void RemoveAllBots()
     {
-        foreach (var id in bots.ToList()) RemovePlayer(id);
+        foreach (var id in bots.Keys.ToList()) RemovePlayer(id);
     }
 
-    // 접속 끊김·복귀 (Rooms 가 부름): 자리는 그대로, 끊긴 동안 봇이 대신 조종. 돌아오면 바로 돌려받고 입력은 멈춤
+    // 접속 끊김·복귀 (rooms 가 부름): 자리는 그대로, 끊긴 동안 봇이 대신 조종
     public bool SetAway(int id, bool on)
     {
-        players.TryGetValue(id, out var p);
+        var p = GetPlayer(id);
         if (p == null || p.isBot || p.away == on) return false;
         p.away = on;
         if (on)
         {
-            proxies.Add(id);
+            proxies[id] = new BotBrain(() => rng(), () => botLevel);
             Log($"  [끊김] {p.name} 자리 유지 {JsNumber.ToJs(C.RECONNECT_GRACE_MS / 1000)}초{(InRound() ? " (봇 대리)" : "")}");
         }
         else
@@ -145,11 +108,13 @@ public sealed partial class Game
         return true;
     }
 
+    public int HumanCount() => Players().Count(p => !p.isBot);
+
     public void RemovePlayer(int id)
     {
-        if (!players.TryGetValue(id, out var p)) return;
+        var p = GetPlayer(id);
+        if (p == null) return;
         players.Remove(id);
-        order.Remove(id);
         bots.Remove(id);
         proxies.Remove(id);
         Log($"{p.name} {(p.isBot ? "빠짐" : "접속 종료")}");
@@ -158,21 +123,66 @@ public sealed partial class Game
             var next = Players().FirstOrDefault(o => !o.isBot);
             hostId = next?.id;
         }
-        // TODO(S2 판 흐름): 조종하던 블록 놓기, 판 중이면 접속 끊김 사망 (deaths·checkRoundEnd)
-        if (InRound() && p.alive && !p.zombie) throw new NotImplementedException("판 중 나가기는 판 흐름 묶음 (S2) 에서");
+        foreach (var pc in pieces) if (pc.controller == id) pc.controller = null;
+        if (InRound() && p.alive && !p.zombie)
+        {
+            // 카운트다운 중에 나가도 사망 목록에 남긴다 (판 시계는 아직 0)
+            deaths.Add(new Death { name = p.name, cause = "disconnect", t = phase == "playing" ? time - roundStartTime : 0 });
+            CheckRoundEnd();
+        }
     }
-
-    // 봇 난이도 이름 (shared/config.js BOT_LEVELS 의 키 — 표라 생성기가 아직 안 만듦, 테스트가 JS 와 같은지 봄)
-    public static readonly string[] BOT_LEVEL_IDS = { "easy", "normal", "hard" };
-    static readonly Dictionary<string, string> BOT_LEVEL_KO = new() { ["easy"] = "쉬움", ["normal"] = "보통", ["hard"] = "어려움" };
-    static readonly Dictionary<string, string> TEAM_KO = new() { ["red"] = "빨강", ["blue"] = "파랑" };
 
     // 봇 난이도: 판 사이에만
     public bool SetBotLevel(string level)
     {
-        if (InRound() || !BOT_LEVEL_IDS.Contains(level) || level == botLevel) return false;
+        if (InRound() || !C.BOT_LEVELS.ContainsKey(level) || level == botLevel) return false;
         botLevel = level;
         Log($"[호스트] 봇 난이도: {BOT_LEVEL_KO[level]}");
+        return true;
+    }
+
+    public bool SetMap(string choice)
+    {
+        if (choice != "random" && !Maps.MAP_IDS.Contains(choice)) return false;
+        if (mode == "practice" && InRound()) return PracticeMap(choice); // 연습은 판 중에도 바로
+        if (InRound()) return false;
+        mapChoice = choice;
+        return true;
+    }
+
+    // 연습: 지형을 바로 바꿈
+    public bool PracticeMap(string choice)
+    {
+        mapChoice = choice;
+        string id = choice == "random" ? Maps.MAP_IDS[(int)Math.Floor(rng() * Maps.MAP_IDS.Length)] : choice;
+        var cells = new List<(int x, int y, int z, byte v)>();
+        foreach (var (x, y, h) in Maps.MapColumns(id, W, D))
+            for (int z = 0; z < h; z++) cells.Add((x, y, z, Pieces.CELL.TERRAIN));
+        return ResetArena(id, cells);
+    }
+
+    // 연습·튜토리얼: 지형을 cells 로 새로 깔고 나머지(블록·아이템·용암 등)는 치움, 모두 제자리로
+    public bool ResetArena(string newMapId, List<(int x, int y, int z, byte v)> cells)
+    {
+        mapId = newMapId;
+        grid = new byte[W * D * H];
+        gridPiece = new int[grid.Length];
+        foreach (var (x, y, z, v) in cells) if (InXY(x, y) && z >= 0 && z < H) grid[Idx(x, y, z)] = v;
+        baseAvgHeight = AvgHeight();
+        pieces = new List<Piece>();
+        RefreshPieceCells();
+        bblocks = new OrderedDictionary<long, BBlock>();
+        bigBombs = new List<BigBomb>();
+        foreach (var q in quakes) Emit(o => o.P("type", "quakeFall").P("id", q.id).Key("gone").Arr().EndArr().Key("cells").Arr().EndArr()); // 버리는 솟는 땅
+        quakes = new List<Quake>();
+        holes = new List<Hole>();
+        items = new List<Item>();
+        bombs = new List<Bomb>();
+        lava = new Lava();
+        gridVersion++;
+        gridDirty = true;
+        foreach (var p in Participants()) if (p.alive || p.dummy) PracticeReset(p, null);
+        Emit(o => o.P("type", "mapChange").P("map", mapId));
         return true;
     }
 
@@ -190,7 +200,6 @@ public sealed partial class Game
         return true;
     }
 
-    // 하늘 계단 켜고 끄기 (판 사이에만)
     public bool SetSkyStairs(bool on)
     {
         if (InRound() || skyStairs == on) return false;
@@ -208,19 +217,123 @@ public sealed partial class Game
         return true;
     }
 
-    // 캐릭터 고르기 (판 사이에만, 같은 캐릭터 여럿 됨). TODO(S4 연습): 연습 판 중 바로 바꾸기 (live)
+    // 체력전 최대 HP: 모드별 (HP_MAX_BY_MODE)
+    public double HpMax() => C.HP_MAX_BY_MODE.TryGetValue(mode, out var v) ? v : C.HP_MAX_BY_MODE["survival"];
+
+    // 체력전: HP 가 0 이하인 사람은 그 자리에서 KO (틱마다 전투 뒤에)
+    public void HpKnockouts()
+    {
+        double max = HpMax();
+        foreach (var p in Players().ToList()) if (p.alive && OnField(p) && p.damage >= max) Kill(p, "hp");
+    }
+
+    // 캐릭터 고르기 (판 사이에만, 연습은 판 중에도)
     public bool SetChar(int id, string c)
     {
-        players.TryGetValue(id, out var p);
+        var p = GetPlayer(id);
         bool live = mode == "practice" && InRound();
         if (p == null || !characters || p.dummy || (InRound() && !live) || !C.CHARACTERS.Contains(c) || p.@char == c) return false;
         p.@char = c;
         Log($"{p.name} 캐릭터: {C.CHAR_NAMES[c]}");
-        if (live && p.alive) throw new NotImplementedException("연습 판 중 캐릭터 바꾸기는 연습 묶음 (S4) 에서");
+        if (live && p.alive)
+        {
+            // 캐릭터별 상태를 되살아날 때처럼 새로, 위치·피해 % 는 그대로
+            var (x, y, z, yaw, pitch, vz, kbx, kby, grounded, damage) = (p.x, p.y, p.z, p.yaw, p.pitch, p.vz, p.kbx, p.kby, p.grounded, p.damage);
+            if (p.grab != null) HookGrabDrop(p);
+            Respawn(p);
+            (p.x, p.y, p.z, p.yaw, p.pitch, p.vz, p.kbx, p.kby, p.grounded, p.damage) = (x, y, z, yaw, pitch, vz, kbx, kby, grounded, damage);
+            p.shieldUntil = 0;
+            p.skillReadyAt = 0;
+            p.ult = 0;
+            Emit(o => o.P("type", "charChange").P("who", p.id).P("char", c));
+        }
         return true;
     }
 
+    // 손에 든 아이템 (하나만)
+    public string? HeldItem(Player p) => p.ammo > 0 ? "knockback" : p.bricks > 0 ? "brick" : p.bombs > 0 ? "bomb" : null;
+
+    // 필드 위에 있는 사람: 살아 있고 블록 마스터의 마스터가 아님
+    public bool OnField(Player p) => p.alive && !p.master;
+
+    // 블록 마스터 판의 처음 마스터 (죽어서 넘어간 마스터 편은 빼고)
+    public Player? Master() => Players().FirstOrDefault(p => p.master && !p.zombie);
+
+    // 블록 마스터: 죽은 생존자는 하늘로 올라가 마스터 편이 됨
+    public void JoinMasterSide(Player p)
+    {
+        p.alive = true;
+        p.master = true;
+        p.zombie = true;
+        p.x = W / 2.0;
+        p.y = D / 2.0;
+        p.z = H + 4;
+        p.vz = 0;
+        p.kbx = 0;
+        p.kby = 0;
+        p.stunUntil = 0;
+        p.ghostUntil = 0;
+        p.hasControl = false;
+        p.nextPieceAt = time + C.MASTER_NEXT_PIECE_MS;
+        Emit(o => o.P("type", "zombie").P("who", p.id));
+        Log($"  [마스터 편] {p.name} → 하늘에서 블록");
+    }
+
+    // 블록 마스터 탑 방지: 놓인 뒤 높이가 둘레 가장 높은 기둥보다 MASTER_MAX_RISE 넘게 높으면 true
+    public bool TooTall(IEnumerable<(int x, int y)> cellsXY, int landZ)
+    {
+        var list = cellsXY.ToList();
+        var own = new HashSet<int>(list.Select(c => c.x * 100 + c.y));
+        int ring = 0;
+        foreach (var (x, y) in list)
+        {
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    int nx = x + dx, ny = y + dy;
+                    if (own.Contains(nx * 100 + ny) || !InXY(nx, ny)) continue;
+                    ring = Math.Max(ring, ColumnTop(nx, ny));
+                }
+            }
+        }
+        return landZ + 1 - ring > C.MASTER_MAX_RISE;
+    }
+
+    // 시작 위치에서 발이 놓일 높이: 플레이어가 걸치는 칸들 중 가장 높은 기둥 위
+    public int SpawnZ(double x, double y)
+    {
+        int top = 0;
+        foreach (var ox in new[] { -C.PLAYER_HALF, C.PLAYER_HALF })
+        {
+            foreach (var oy in new[] { -C.PLAYER_HALF, C.PLAYER_HALF })
+            {
+                int cx = (int)Math.Floor(x + ox), cy = (int)Math.Floor(y + oy);
+                if (InXY(cx, cy)) top = Math.Max(top, ColumnTop(cx, cy));
+            }
+        }
+        return top;
+    }
+
+    public bool IsHost(int id) => hostId == id;
+
+    public bool CanStart()
+    {
+        var ps = Participants();
+        if (mode == "practice") return ps.Count >= 1 && !InRound(); // 연습: 혼자도
+        if (teamMode && !(ps.Any(p => p.team == "red") && ps.Any(p => p.team == "blue"))) return false; // 팀마다 한 명 이상
+        return ps.Count >= C.MIN_PLAYERS && !InRound();
+    }
+
     // ---------- 팀전 ----------
+    public bool SameTeam(Player? a, Player? b) => teamMode && a != null && b != null && a != b && a.team == b.team;
+
+    string SmallerTeam()
+    {
+        var ps = Players().ToList();
+        return ps.Count(p => p.team == "red") <= ps.Count(p => p.team == "blue") ? "red" : "blue";
+    }
+
     public bool SetTeamMode(bool on)
     {
         if (InRound() || teamMode == on) return false;
@@ -232,7 +345,7 @@ public sealed partial class Game
 
     public bool SetTeam(int id, string team)
     {
-        players.TryGetValue(id, out var p);
+        var p = GetPlayer(id);
         if (p == null || InRound() || (team != "red" && team != "blue")) return false;
         p.team = team;
         Log($"[호스트] {p.name} {TEAM_KO[team]}팀으로");
@@ -254,16 +367,19 @@ public sealed partial class Game
         return true;
     }
 
-    string TeamLine()
+    public string TeamLine()
     {
-        var ps = Participants().OrderBy(p => p.slot).ToList(); // 안정 정렬 (JS sort 와 같게)
+        var ps = Participants().OrderBy(p => p.slot).ToList();
         return string.Join(" / ", new[] { "red", "blue" }.Select(t => $"{TEAM_KO[t]} {string.Join(" ", ps.Where(p => p.team == t).Select(p => p.name))}"));
     }
+
+    // 판에 참가하는 사람 (관전자 빼고)
+    public List<Player> Participants() => Players().Where(p => !p.spectator).ToList();
 
     // 호스트가 관전 ↔ 참가 전환 (판 사이에만)
     public bool SetSpectator(int id, bool on)
     {
-        players.TryGetValue(id, out var p);
+        var p = GetPlayer(id);
         if (p == null || InRound()) return false;
         p.spectator = on;
         p.alive = !p.spectator;
@@ -271,23 +387,23 @@ public sealed partial class Game
         return true;
     }
 
-    // 이름 바꾸기: 판 사이에만. 제어 문자 빼고 공백 하나로, NAME_MAX_LEN 글자까지 (rooms 의 이름 정리와 같은 방식)
-    public bool SetNick(int id, string raw)
+    // 이름 바꾸기: 판 사이에만. 제어 문자 빼고 공백 하나로, NAME_MAX_LEN 글자까지 (코드 포인트 단위, JS Array.from)
+    public bool SetNick(int id, object? raw)
     {
-        players.TryGetValue(id, out var p);
+        var p = GetPlayer(id);
         if (p == null || InRound()) return false;
-        var nick = JsText.Clean(raw, C.NAME_MAX_LEN);
+        string s = JsText.String(raw);
+        if (s.Length > C.TEXT_RAW_MAX) s = s.Substring(0, (int)C.TEXT_RAW_MAX); // 먼저 자름 (UTF-16 단위, JS slice)
+        var sb = new StringBuilder();
+        foreach (char ch in s) if (!(ch <= '\u001f' || ch == '\u007f')) sb.Append(ch);
+        string clean = JsText.Trim(JsText.CollapseSpace(sb.ToString()));
+        string nick = string.Concat(JsText.CodePoints(clean).Take((int)C.NAME_MAX_LEN));
         if (nick == p.nick) return true;
         p.nick = nick;
-        Log($"{p.name} 이름: {(nick != "" ? nick : "(없음)")}");
+        Log($"{p.name} 이름: {(nick.Length > 0 ? nick : "(없음)")}");
         return true;
     }
 
-    public bool SetMap(string choice)
-    {
-        if (choice != "random" && !Maps.MAP_IDS.Contains(choice)) return false;
-        if (InRound()) return false;
-        mapChoice = choice;
-        return true;
-    }
+    // 판 진행 중 (카운트다운 포함)
+    public bool InRound() => phase == "playing" || phase == "countdown";
 }
