@@ -15,7 +15,6 @@ var host_players: PanelContainer
 var hud: Control
 var results: PanelContainer
 var settings: Control
-var over_at := -1.0 # 판이 끝난 시각 (결과 연출 RESULTS_HERO_MS)
 var wipe: Control
 var status: Label
 var ping: Label
@@ -61,7 +60,6 @@ func _ready() -> void:
 		View.open_panel.emit("tutorial"))
 	wipe = load("res://ui/wipe.gd").new()
 	root.add_child(wipe)
-	Store.state_changed.connect(_on_state)
 	wipe.covered.connect(func(): _show(target))
 	Net.status_changed.connect(func(t): status.text = t)
 	_show(_screen_now())
@@ -75,15 +73,17 @@ func _screen_now() -> String:
 	var st := Store.state
 	if not Store.in_room() or st.is_empty():
 		return "menu"
-	var hero: bool = st.phase == "over" and over_at >= 0.0 and Time.get_ticks_msec() - over_at < C.RESULTS_HERO_MS and not Store.room.get("practice", false)
-	return U.screen_of(true, str(st.phase), hero, false) # 승자 클로즈업 (shared/victory.js) 은 G5 KO 연출과 같이
+	# 판 끝 연출 단계 (shared/victory.js — G1 카메라가 View.victory_stage 에 넣음): slow·closeup 동안은 판 화면 그대로 (승자 클로즈업을 안 가림),
+	# results 부터 결과 표, lobby 면 대기실 판 (JS overStage·resultsHeroNow·closeupNow)
+	var stage := over_stage()
+	return U.screen_of(true, str(st.phase), stage != "lobby", stage == "slow" or stage == "closeup")
 
 
-func _on_state(st: Dictionary, prev: Dictionary) -> void:
-	if prev.get("phase") == "playing" and st.get("phase") == "over":
-		over_at = Time.get_ticks_msec()
-	elif st.get("phase") != "over":
-		over_at = -1.0
+static func over_stage() -> String:
+	var st := Store.state
+	if st.is_empty() or st.get("phase") != "over" or Store.room.get("practice", false):
+		return "lobby"
+	return str(View.victory_stage)
 
 
 func _show(screen: String) -> void:

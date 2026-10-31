@@ -23,6 +23,7 @@ const THINGS := [
 
 var shot := ""
 var theme = null
+var batch := -1 # --body 0|1: 시험 몸 (tests/test_batch.gd) 을 조각대로 (0) / G3.batch_mesh 로 (1) — 화소가 같아야 함
 var terrain := false # --terrain: 테마 지형 블록 (terrain_grids.json, js_demo ?terrain 과 같음)
 
 
@@ -33,6 +34,8 @@ func _ready() -> void:
 			shot = args[i + 1]
 		if args[i] == "--theme" and i + 1 < args.size():
 			theme = args[i + 1]
+		if args[i] == "--body" and i + 1 < args.size():
+			batch = int(args[i + 1])
 		if args[i] == "--terrain":
 			terrain = true
 	G3.apply_theme(self, theme)
@@ -42,6 +45,15 @@ func _ready() -> void:
 		cx = 6.0
 		things = [["box", Vector3(6, 6, -0.15), Vector3(12, 12, 0.3), 0xa49aa0]]
 		_terrain()
+	if batch >= 0:
+		things = [THINGS[0]]
+		var body: Node3D = load("res://tests/test_batch.gd").new()._body()
+		body.position = Coords.gxyz(4, 4, 1.2)
+		body.get_node("torso/arm").rotation = Vector3(1.1, -0.4, 0.8)
+		body.get_node("torso/arm").scale = Vector3(1, 1.3, 0.9)
+		add_child(body)
+		if batch == 1:
+			G3.batch_mesh(body)
 	G3.set_field(self, cx * 2, cx * 2)
 	for t in things:
 		var mi := MeshInstance3D.new()
@@ -81,6 +93,8 @@ func _ready() -> void:
 			await get_tree().process_frame
 		await RenderingServer.frame_post_draw
 		get_viewport().get_texture().get_image().save_png(shot)
+		var vp := get_viewport().get_viewport_rid()
+		print("그리기 보이는/그림자: ", RenderingServer.viewport_get_render_info(vp, RenderingServer.VIEWPORT_RENDER_INFO_TYPE_VISIBLE, RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME), " / ", RenderingServer.viewport_get_render_info(vp, RenderingServer.VIEWPORT_RENDER_INFO_TYPE_SHADOW, RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME))
 		get_tree().quit()
 
 

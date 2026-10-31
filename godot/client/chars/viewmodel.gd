@@ -6,6 +6,7 @@ extends Node
 
 const C := preload("res://core/config.gd")
 const Body := preload("res://chars/body.gd")
+const G3 := preload("res://shaders/g3.gd")
 
 const HALF_PI := PI / 2
 
@@ -22,6 +23,10 @@ var char_id := ""
 var hold := false # 두 손으로 무기를 잡는 캐릭터 (VM_HOLD: 바드·대포수)
 var spin := false # 몸 전체 돌기를 그대로 (VM_SPIN)
 var on := false
+var star: Node3D = null # 닌자: 왼손에 부채꼴로 쥔 표창 3개 (단검 대신)
+var pips: Array = [] # 대포수: 대포 등에 남은 포탄 수만큼 쇠공 [[쇠공, 원본 포탄 노드]]
+var veins: Array = [] # 광전사: 분노가 차면 아래팔 핏줄 (팔마다 묶음)
+static var _star_mesh: ArrayMesh = null
 
 
 func _ready() -> void:
@@ -137,6 +142,92 @@ func _sync(body) -> void:
 			(n as MeshInstance3D).layers = 1 if shown else 0
 	hold = char_id in C.VM_HOLD
 	spin = char_id in C.VM_SPIN
+	_props()
+
+
+# 캐릭터별 1인칭 소품 (viewmodel.js sync 끝)
+func _props() -> void:
+	star = null
+	pips.clear()
+	veins.clear()
+	if char_id == "ninja":
+		# 왼손엔 단검 대신 부채꼴로 쥔 표창 3개 (던지면 잠깐 비었다가 다시 쥠)
+		var cd: Dictionary = Body._data().chars[char_id]
+		for i in twin.nodes.size():
+			if cd.nodes[i].get("dagger", false) and twin.nodes[i] is MeshInstance3D:
+				(twin.nodes[i] as MeshInstance3D).layers = 0
+		star = Node3D.new()
+		var mat := G3.toon_material(0xc8d0dc)
+		for i in 3:
+			var m := MeshInstance3D.new()
+			m.mesh = _star()
+			m.material_override = mat
+			m.rotation_order = EULER_ORDER_XYZ
+			m.position = Vector3(0.01 * i, 0, -0.02 * i)
+			m.rotation = Vector3(PI / 2, 0.5 * (i - 1), 0)
+			star.add_child(m)
+		star.position = Vector3(0.02, 0, -float(twin.d.hand) * 1.4)
+		twin.hands[1].add_child(star)
+	var cannon = twin._n(twin.refs.get("cannon"))
+	if cannon != null and twin.refs.get("balls") is Array:
+		# 대포 등에 남은 포탄 수만큼 쇠공 (허리 뒤 포탄은 1인칭에서 안 보여서)
+		var balls: Array = twin.refs.balls
+		for i in balls.size():
+			var b = twin._n(balls[i])
+			if not (b is MeshInstance3D):
+				continue
+			var m := MeshInstance3D.new()
+			m.mesh = (b as MeshInstance3D).mesh
+			m.material_override = (b as MeshInstance3D).material_override
+			m.scale = Vector3.ONE * C.VM_PIP_SCALE
+			m.position = Vector3(0.05 + i * 0.13, 0, 0.14)
+			cannon.add_child(m)
+			pips.append([m, src._n(src.refs.balls[i])])
+	if twin.refs.get("rage") is Dictionary:
+		# 분노가 차면 아래팔에도 핏줄 (머리 핏줄과 같이 벌떡벌떡): 갈라지는 한 가닥 (줄기 + 양쪽 가지), 팔꿈치 쪽
+		var mat: Material = null
+		var vs = twin.refs.rage.get("veins")
+		if vs is Array and vs.size() > 0 and twin._n(vs[0]) is MeshInstance3D:
+			mat = (twin._n(vs[0]) as MeshInstance3D).material_override
+		if mat == null:
+			mat = G3.toon_material(0x9a1020)
+		for el in twin.elbows:
+			var g := Node3D.new()
+			for v in [[0.0, 0.06, 0.08, 0.0], [0.012, 0.11, 0.04, 0.6], [-0.012, 0.12, 0.04, -0.6]]:
+				var m := MeshInstance3D.new()
+				var bm := BoxMesh.new()
+				bm.size = Vector3(0.008, 0.008, v[2])
+				m.mesh = bm
+				m.material_override = mat
+				m.position = Vector3(float(twin.d.foreR), v[0], -v[1])
+				m.rotation.x = v[3]
+				g.add_child(m)
+			el.add_child(g)
+			veins.append(g)
+
+
+# 손에 쥔 표창 (네 날 별, 두께 0.01 — three ExtrudeGeometry 와 같은 모양). 고도는 시계 방향이 앞면
+static func _star() -> ArrayMesh:
+	if _star_mesh != null:
+		return _star_mesh
+	var pts: Array[Vector2] = []
+	for i in 8:
+		var r := 0.025 if i % 2 == 1 else 0.085
+		var ang := i / 8.0 * TAU
+		pts.append(Vector2(cos(ang), sin(ang)) * r)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var z1 := 0.01
+	for i in 8:
+		var a := pts[i]
+		var b := pts[(i + 1) % 8]
+		for tri in [[Vector3.ZERO + Vector3(0, 0, z1), Vector3(b.x, b.y, z1), Vector3(a.x, a.y, z1)], [Vector3.ZERO, Vector3(a.x, a.y, 0), Vector3(b.x, b.y, 0)],
+				[Vector3(a.x, a.y, z1), Vector3(b.x, b.y, z1), Vector3(b.x, b.y, 0)], [Vector3(a.x, a.y, z1), Vector3(b.x, b.y, 0), Vector3(a.x, a.y, 0)]]:
+			for p in tri:
+				st.add_vertex(p)
+	st.generate_normals()
+	_star_mesh = st.commit()
+	return _star_mesh
 
 
 # 매 프레임: 관절 베끼기 + 어깨 각 바꾸기 + 걷기·숨쉬기 흔들림 (viewmodel.js update)
@@ -158,6 +249,20 @@ func _follow(_dt: float) -> void:
 			sh.scale *= C.VM_SHIELD[0]
 			sh.position += Vector3(0, C.VM_SHIELD[1], C.VM_SHIELD[2])
 			sh.rotation.z += C.VM_SHIELD[3]
+	var now := Time.get_ticks_msec() * 1.0
+	for pp in pips:
+		(pp[0] as Node3D).visible = pp[1] != null and (pp[1] as Node3D).visible
+	if veins.size() > 0:
+		var r: float = src.rage_k
+		var beat := 1.0 + 0.3 * maxf(0.0, sin(float(src.t) * 9.0)) * r
+		for g in veins:
+			(g as Node3D).visible = r > 0.35
+			(g as Node3D).scale = Vector3(beat, beat, 1.0)
+	if star != null:
+		# 던진 직후 잠깐 빈손, 그 뒤 다시 쥠 (작게 튀어나옴)
+		var su: float = (now - float(src.star_at)) / C.VM_STAR_HIDE_MS
+		star.visible = su >= 1.0
+		star.scale = Vector3.ONE * (minf(1.0, 0.4 + (su - 1.0) * 3.0) if su >= 1.0 else 0.01)
 	var k: float = C.VM_BODY_FOLLOW
 	var w: Vector3 = src.waist.rotation
 	var hip_twist: float = src.P.waistRoll * C.FIGURE_HIP_TWIST * src.twist_k
@@ -273,13 +378,15 @@ func _bard_hold(act, t: float) -> Array:
 	return [yaw, pitch, 0.0, dx, 0.0, roll]
 
 
-# 대포수: 어깨에 멘 대포를 두 손으로 (오른손 뒤 손잡이·왼손 앞 받침). 탄 없음 후려치기 = 대포째 휘두름
+# 대포수: 어깨에 멘 대포를 두 손으로 (오른손 뒤 손잡이·왼손 앞 받침). 쏘면 대포·두 손이 같이 뒤로 튐, 탄 없음 후려치기 = 대포째 휘두름
 func _cannon_hold(act, cannon: Node3D) -> Array:
 	var P: Dictionary = C.VM_GRIP.cannon
 	_reach(0, _waist_point(cannon, P.rear))
 	_reach(1, _waist_point(cannon, P.front))
+	var kick := maxf(0.0, 1.0 - (Time.get_ticks_msec() - float(src.cannon_kick_at)) / maxf(1.0, C.CANNON_KICK_MS))
+	var pitch: float = C.VM_CANNON_KICK_PITCH * kick * kick # 반동: 대포 끝이 들림 (anchor 는 sw[2] × VM_CANNON_KICK_BACK 만큼 화면 쪽으로)
 	var yaw := 0.0
 	if act != null and act.move == "후려치기" and act.phase != "broken":
 		var u: float = act.u
 		yaw = -0.6 * _e(u) if act.phase == "wind" else (-0.6 + 1.6 * _e(u) if act.phase == "strike" else 1.0 * (1.0 - _e(u)))
-	return [yaw, 0.0, 0.0, 0.0, 0.0, 0.0]
+	return [yaw, pitch, kick, 0.0, 0.0, 0.0]

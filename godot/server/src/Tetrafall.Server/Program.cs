@@ -7,9 +7,14 @@ using Tetrafall.Server;
 
 // Tetrafall C# 서버 (server/index.js 자리): 정적 파일 (기존 JS 화면 client/·shared/·three.js) + WebSocket + 고정 틱 게임 루프.
 // 실행: dotnet run --project godot/server/src/Tetrafall.Server   (포트: 환경 변수 PORT, 없으면 C.PORT = 3000)
+//   --online (또는 TF_ONLINE=1): Cloudflare 터널도 켜서 친구용 https 주소 (Tunnel.cs, node 필요 없음)
+// 배포 폴더 (tools/package.mjs zip): 서버 exe 옆 web/ 를 /play/ 로, / 는 /play/ 로 넘겨줌 (JS 화면 없음)
 // 스레드: WebSocket 받기·보내기는 비동기, 게임(Rooms·Game)은 루프 스레드 하나에서만 (받은 메시지는 inbox 로 넘김) → JS 처럼 잠금 없음
 
+if (args.Length > 0 && args[0] == "load") Environment.Exit(LoadBench.Run(args)); // 서버 부하 재기 (tools/load.mjs 와 나란히)
 var root = FindRepoRoot();
+bool jsClient = StaticFiles.HasJsClient(root);
+bool online = args.Contains("--online") || Environment.GetEnvironmentVariable("TF_ONLINE") == "1";
 var envPort = Environment.GetEnvironmentVariable("PORT");
 int port = int.TryParse(envPort, out var ep) && ep >= 0 ? ep : (int)C.PORT;
 var runDir = Path.Combine(Environment.GetEnvironmentVariable("TF_LOG_DIR") is { Length: > 0 } ld ? ld : Path.Combine(root, "logs"), FileRoomLog.FileStamp(DateTime.Now)); // TF_LOG_DIR: 테스트
@@ -40,13 +45,16 @@ app.Run(async ctx =>
     var raw = ctx.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpRequestFeature>()?.RawTarget ?? ctx.Request.Path.Value ?? "/";
     var path = StaticFiles.StrictDecode(raw.Split('?', 2)[0]);
     if (path == null) { ctx.Response.StatusCode = 400; await ctx.Response.WriteAsync("bad request"); return; }
-    if (StaticFiles.Redirect(path, raw) is string to) { ctx.Response.StatusCode = 301; ctx.Response.Headers.Location = to; return; }
+    if (StaticFiles.Redirect(path, raw, jsClient) is string to) { ctx.Response.StatusCode = path == "/play" ? 301 : 302; ctx.Response.Headers.Location = to; return; } // / → /play/ (배포 폴더) 는 302: 브라우저가 기억하지 않게
     var file = StaticFiles.Resolve(root, path);
     if (file == null) { ctx.Response.StatusCode = 403; await ctx.Response.WriteAsync("forbidden"); return; }
     if (!File.Exists(file)) { ctx.Response.StatusCode = 404; await ctx.Response.WriteAsync("not found"); return; }
-    ctx.Response.ContentType = StaticFiles.Mime(file);
+    ctx.Response.ContentType = StaticFiles.Mime(file); // 형식은 날것 파일 이름으로 (.wasm.br 이어도 application/wasm)
     ctx.Response.Headers.CacheControl = "no-cache";
-    await ctx.Response.SendFileAsync(file);
+    var (send, encoding) = StaticFiles.Precompressed(file, ctx.Request.Headers.AcceptEncoding);
+    if (encoding != null || File.Exists(file + ".br") || File.Exists(file + ".gz")) ctx.Response.Headers.Vary = "Accept-Encoding";
+    if (encoding != null) ctx.Response.Headers.ContentEncoding = encoding;
+    await ctx.Response.SendFileAsync(send);
 });
 
 async Task Serve(WebSocket ws)
@@ -159,18 +167,55 @@ foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkI
     foreach (var a in ni.GetIPProperties().UnicastAddresses)
         if (a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork && !System.Net.IPAddress.IsLoopback(a.Address)) Console.WriteLine($"다른 PC에서 ({ni.Name}): http://{a.Address}:{port}");
 }
-Console.WriteLine($"화면 파일: {root}");
-Console.WriteLine($"로그: {Path.GetRelativePath(root, runDir)}/ 에 방마다 파일 (요약: npm run stats)");
+Console.WriteLine($"화면 파일: {root}{(jsClient ? "" : " (고도 웹 빌드만: / → /play/)")}");
+if (!Directory.Exists(StaticFiles.WebDir(root))) Console.WriteLine($"고도 웹 빌드가 없음 ({StaticFiles.WebDir(root)}) — /play/ 는 404, PC 클라는 그대로 붙음");
+Console.WriteLine($"로그: {Path.GetRelativePath(root, runDir)}/ 에 방마다 파일{(jsClient ? " (요약: npm run stats)" : "")}");
+if (jsClient && !Directory.Exists(Path.Combine(root, "node_modules", "cannon-es"))) Console.WriteLine("⚠ cannon-es 가 없음 → 몸 래그돌이 꺼짐. 레포 폴더에서 npm install 을 한 번 해 주세요 (Windows PowerShell 은 npm.cmd install)"); // index.js 와 같은 경고
+if (online) StartTunnel();
 app.WaitForShutdown();
+
+// --online: cloudflared 를 서버가 직접 켜고 지킴 (tools/online.js TunnelKeeper 와 같은 흐름). 서버가 꺼지면 cloudflared 도 끔
+void StartTunnel()
+{
+    var exe = CloudflaredProc.Find();
+    var page = jsClient ? "/" : "/play/";
+    TunnelKeeper? keeper = null;
+    keeper = new TunnelKeeper
+    {
+        SpawnTunnel = () =>
+        {
+            var c = CloudflaredProc.Start(exe, port);
+            if (c == null) Console.WriteLine($"\n{TunnelProbe.INSTALL}");
+            return c;
+        },
+        Probe = url => TunnelProbe.Check(url, page),
+        OnStatus = (kind, text, output) =>
+        {
+            Console.WriteLine($"[터널] {text}");
+            if (kind == "give-up" && output != null) Console.WriteLine(output.Length > 800 ? output[^800..] : output);
+        },
+        OnReady = url =>
+        {
+            inbox.Enqueue(() => rooms.SetPublicUrl(url));
+            Console.WriteLine(TunnelProbe.Banner(url, TunnelProbe.Copy(url)));
+        },
+    };
+    app.Lifetime.ApplicationStopping.Register(() => keeper.Stop());
+    AppDomain.CurrentDomain.ProcessExit += (_, _) => keeper.Stop();
+    _ = Task.Run(keeper.Run);
+}
 
 static string FindRepoRoot()
 {
     var env = Environment.GetEnvironmentVariable("TF_ROOT");
     if (!string.IsNullOrEmpty(env)) return Path.GetFullPath(env);
+    var exeDir = Path.TrimEndingDirectorySeparator(Path.GetFullPath(AppContext.BaseDirectory));
+    if (File.Exists(Path.Combine(exeDir, "web", "index.html"))) return exeDir; // 배포 폴더 먼저
     foreach (var start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
     {
         for (var d = new DirectoryInfo(start); d != null; d = d.Parent)
             if (File.Exists(Path.Combine(d.FullName, "client", "index.html")) && File.Exists(Path.Combine(d.FullName, "shared", "config.js"))) return d.FullName;
     }
-    throw new InvalidOperationException("레포 뿌리(client/index.html)를 못 찾음 — TF_ROOT 환경 변수로 알려 주세요");
+    // 배포 폴더: 서버 exe 옆 (web/ 고도 웹 빌드). 없어도 웹소켓 서버는 뜸 (PC 클라용)
+    return exeDir;
 }

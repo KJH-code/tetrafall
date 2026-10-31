@@ -15,12 +15,13 @@ const SKY := preload("res://shaders/sky.gdshader")
 const TERRAIN := preload("res://shaders/terrain.gdshader")
 const BS := preload("res://shaders/block_style.gd")
 const SPROUTS := preload("res://shaders/sprouts.gd")
+const BATCH := preload("res://shaders/batch.gd")
 
 static var _globals := {} # 넣은 전역 셰이더 값 (RenderingServer 는 실행 중 읽기가 안 됨 — 테스트·확인용)
 
 
 # 툰 재질 (three toon({...})). color: Color 또는 0xRRGGBB. opts: map (Texture2D), emissive (Color/숫자), emissive_energy,
-# opacity (1 미만이면 투명), vertex_color (bool), outline (기본 true — 외곽선을 next_pass 로)
+# opacity (1 미만이면 투명), vertex_color (bool), outline (기본 true — 외곽선을 next_pass 로), no_fog (안개 안 받음), color_glow
 static func toon_material(color = Color.WHITE, opts := {}) -> ShaderMaterial:
 	var m := ShaderMaterial.new()
 	var c := _col(color)
@@ -36,10 +37,12 @@ static func toon_material(color = Color.WHITE, opts := {}) -> ShaderMaterial:
 	m.set_shader_parameter("emissive_energy", opts.get("emissive_energy", 1.0))
 	m.set_shader_parameter("use_vertex_color", opts.get("vertex_color", false))
 	m.set_shader_parameter("color_glow", opts.get("color_glow", 0.0))
+	m.set_shader_parameter("no_fog", opts.get("no_fog", false)) # JS fog: false
 	if a < 1.0:
 		m.render_priority = 1
 	if opts.get("outline", true) and a >= 1.0:
 		m.next_pass = outline_material()
+		m.next_pass.set_shader_parameter("no_fog", opts.get("no_fog", false))
 	return m
 
 
@@ -282,3 +285,12 @@ static func sprout_node(theme_id) -> Node3D:
 static func sprout_update(node: Node3D, grid: PackedByteArray, w: int, d: int, h: int, skip: Dictionary = {}, low := false) -> void:
 	if node:
 		node.refresh(grid, w, d, h, skip, low)
+
+
+# ---- 몸 묶기 (JS batch.js, batch.gd): body 아래 G3 툰 조각을 SkinnedMesh 하나로 (툰 1 + 외곽선 1). outline: 외곽선 붙임
+static func batch_mesh(body: Node3D, outline := true) -> Node3D:
+	var b = BATCH.new()
+	b.name = "G3Batch"
+	body.add_child(b)
+	b.build(body, toon_material(Color.WHITE, {"vertex_color": true, "outline": outline}))
+	return b
