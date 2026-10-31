@@ -1,5 +1,5 @@
 # 캐릭터 몸 하나 (client/figure.js buildFigure·figureAnim + render.js 몸 애니 부분 옮김). chars.gd make_body 가 만듦
-# 몸 모양 (맨몸 + 옷·무기·소품, 노드 나무·정점·재질) 은 tools/gen-bodies.mjs 가 JS buildFigure 를 실제로 돌려 뽑은 chars/data/bodies.json 그대로 → JS 와 같은 모양
+# 몸 모양 (맨몸 + 옷·무기·소품, 노드 나무·정점·재질) 은 tools/gen-bodies.mjs 가 JS buildFigure 를 실제로 돌려 뽑은 chars/data/bodies.bin 그대로 → JS 와 같은 모양
 # 관절 (엉덩이·허리·목·어깨·팔꿈치·손·허벅지·무릎·발) 과 특별 노드 (천 자락·방패·총·활·뿔·바드 폼…) 는 그 자료의 refs 표로 찾음
 # 몸 안은 게임 좌표 그대로 (앞 +x, 왼쪽 +y, 위 +z, three.js 와 같은 XYZ 회전 순서) — 맨 위 'frame' 노드 하나가 고도 (x, z, -y) 로 돌림 (core/coords.gd 와 같은 돌림)
 # 아직: 광전사 분노 표시 (눈 충혈·핏줄)·어지러움 눈동자·바드 폼 전환 튀기기·유령화 반투명·체크 무늬 반복 수·그리기 수 줄이기
@@ -302,20 +302,28 @@ func _n(r) -> Node3D:
 	return null
 
 
-# ---------- 만든 몸 자료 (tools/gen-bodies.mjs 가 client/figure.js 에서 뽑은 chars/data/bodies.json) ----------
+# ---------- 만든 몸 자료 (tools/gen-bodies.mjs 가 client/figure.js 에서 뽑은 chars/data/bodies.bin) ----------
+# 파일 = [u32 풀린 크기] + gzip( [u32 표 길이] [표 JSON] [float32 정점 덩어리] ), 정점은 덩어리 안 [float 시작, 개수]
 static var _cache := {}
 
 
 static func _data() -> Dictionary:
 	if not _cache.has("data"):
-		_cache.data = JSON.parse_string(FileAccess.get_file_as_string("res://chars/data/bodies.json"))
+		var f := FileAccess.get_file_as_bytes("res://chars/data/bodies.bin")
+		var raw := f.slice(4).decompress(f.decode_u32(0), FileAccess.COMPRESSION_GZIP)
+		var jl := raw.decode_u32(0)
+		_cache.data = JSON.parse_string(raw.slice(4, 4 + jl).get_string_from_utf8())
+		_cache.blob = raw.slice(4 + jl).to_float32_array()
 		_cache.meshes = {}
 		_cache.plaid = {}
 	return _cache.data
 
 
-static func _floats(s) -> PackedFloat32Array:
-	return Marshalls.base64_to_raw(s).to_float32_array() if s != null else PackedFloat32Array()
+static func _floats(r) -> PackedFloat32Array:
+	if r == null:
+		return PackedFloat32Array()
+	var b: PackedFloat32Array = _cache.blob
+	return b.slice(int(r[0]), int(r[0]) + int(r[1]))
 
 
 # 정점 묶음 → ArrayMesh (몸끼리 같이 씀). three 는 반시계가 앞면, 고도는 시계가 앞면 → 삼각형 두 점을 바꿈. uv 의 v 는 뒤집음
