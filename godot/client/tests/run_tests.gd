@@ -2,7 +2,7 @@
 # test_*.gd 의 test_ 로 시작하는 함수를 전부 돌림. 하나라도 실패하면 종료 코드 1
 extends SceneTree
 
-const FILES := ["res://tests/test_core.gd", "res://tests/test_ui.gd"]
+const FILES := ["res://tests/test_core.gd", "res://tests/test_ui.gd", "res://tests/test_audio.gd"]
 
 
 func _init() -> void:
