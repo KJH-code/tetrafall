@@ -30,43 +30,31 @@ public sealed partial class Game
     public void RotatePiece(Piece pc, int dir) => throw Todo("rotatePiece (S2)");
     public void DropPiece(Piece pc) => throw Todo("dropPiece (S2)");
 
-    // S3 전투·캐릭터 (아직 안 옮긴 캐릭터: 건축가·갈고리·사냥꾼·대포수·광전사·바드)
+    // S3 전투·캐릭터 (아직 안 옮긴 캐릭터: 건축가·갈고리·바드)
     public void HookGrabDrop(Player p) => throw Todo("hookGrabDrop (S3 갈고리)");
-    public void UpdateShells(double dt) => throw Todo("updateShells (S3 대포수)");
     public void UpdateNotes(double dt) => throw Todo("updateNotes (S3 바드)");
     bool HammerBlocks(Player p, double range, double cosHalf) => false; // TODO(S3 건축가): 내 블록이 없으면 false 와 같음
     void BasicRaise(Player p, Player? t) => throw Todo("basicRaise (S3 건축가)");
-    void CannonShot(Player p) => throw Todo("cannonShot (S3 대포수)");
     void BardNote(Player p) => throw Todo("bardNote (S3 바드)");
     bool BardGlideRing(Player p, double n, bool air, TAttack def, bool chained) => throw Todo("bardGlideRing (S3 바드)");
     void BardGlide(Player p, double ms) => throw Todo("bardGlide (S3 바드)");
     void BardDive(Player p, TAttack def) => throw Todo("bardDive (S3 바드)");
-    void AddMark(Player p, Player t) => throw Todo("addMark (S3 사냥꾼)");
-    void ExpireMarks(Player p) => throw Todo("expireMarks (S3 사냥꾼)");
-    void CannonReload(Player p) => throw Todo("cannonReload (S3 대포수)");
     bool BuilderWall(Player p) => throw Todo("builderWall (S3 건축가)");
-    bool HunterLeap(Player p) => throw Todo("hunterLeap (S3 사냥꾼)");
-    bool CannonJump(Player p) => throw Todo("cannonJump (S3 대포수)");
-    bool BerserkerLeap(Player p) => throw Todo("berserkerLeap (S3 광전사)");
     bool BardSwitch(Player p) => throw Todo("bardSwitch (S3 바드)");
     bool HookPull(Player p) => throw Todo("hookPull (S3 갈고리)");
     bool BuilderBigBomb(Player p) => throw Todo("builderBigBomb (S3 건축가)");
-    void CannonBig(Player p) => throw Todo("cannonBig (S3 대포수)");
-    void BerserkerSpin(Player p) => throw Todo("berserkerSpin (S3 광전사)");
     void BardAmp(Player p) => throw Todo("bardAmp (S3 바드)");
     void BardSong(Player p) => throw Todo("bardSong (S3 바드)");
-    bool HunterAim(Player p) => throw Todo("hunterAim (S3 사냥꾼)");
     bool HookGrab(Player p) => throw Todo("hookGrab (S3 갈고리)");
     void UpdateBBlocks() => throw Todo("updateBBlocks (S3 건축가)");
     void HookLand(Player p) => throw Todo("hookLand (S3 갈고리)");
-    void HunterLeapUpdate(Player p) => throw Todo("hunterLeapUpdate (S3 사냥꾼)");
-    void BerserkerLeapUpdate(Player p) => throw Todo("berserkerLeapUpdate (S3 광전사)");
-    void BerserkerSpinUpdate(Player p) => throw Todo("berserkerSpinUpdate (S3 광전사)");
     void BardAmpUpdate(Player p) => throw Todo("bardAmpUpdate (S3 바드)");
     void BardDiveUpdate(Player p) => throw Todo("bardDiveUpdate (S3 바드)");
-    void HunterShoot(Player p) => throw Todo("hunterShoot (S3 사냥꾼)");
     void BuilderWallRise(Player p) => throw Todo("builderWallRise (S3 건축가)");
     void HookSlam(Player p) => throw Todo("hookSlam (S3 갈고리)");
+
+    // S2 (game-pieces.js): 떨어지는 블록 칸이 다 부서짐 (대포수 breakCell 이 부름)
+    public void RemovePiece(Piece pc) => throw Todo("removePiece (S2)");
 
     // S2 (game-pieces.js): 유령 투하 — 방(Rooms)이 받은 x·y 값 그대로 (숫자 아닐 수 있음, JS 와 같은 검사는 옮길 때)
     public bool GhostDrop(int id, System.Text.Json.JsonElement? x, System.Text.Json.JsonElement? y) => throw Todo("ghostDrop (S2)");

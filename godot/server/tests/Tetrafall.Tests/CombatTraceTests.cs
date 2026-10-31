@@ -15,7 +15,7 @@ public class CombatTraceTests
     const double TICK = 1000.0 / 30;
 
     // 옮긴 캐릭터 (각본이 끝까지 같아야 함). 나머지는 옮기는 묶음에서 여기에 더함
-    static readonly HashSet<string> Ported = new() { "tank", "ninja" };
+    static readonly HashSet<string> Ported = new() { "tank", "ninja", "hunter", "cannon", "berserker" };
 
     // trace-scripted.mjs combatTick 과 같은 순서
     public static void CombatTick(Game g, double dtMs)

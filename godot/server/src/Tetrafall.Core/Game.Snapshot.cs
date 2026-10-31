@@ -69,7 +69,7 @@ public sealed partial class Game
         foreach (var sh in shells)
         {
             o.Obj().P("id", sh.id).P("owner", sh.owner).P("big", sh.big).P("x", sh.x).P("y", sh.y).P("z", sh.z);
-            WriteXY(o.Key("dir"), sh.dir);
+            o.Key("dir").Obj().P("x", sh.dir.x).P("y", sh.dir.y).P("z", sh.dir.z).EndObj();
             o.EndObj();
         }
         o.EndArr();
@@ -77,7 +77,7 @@ public sealed partial class Game
         foreach (var nt in notes)
         {
             o.Obj().P("id", nt.id).P("owner", nt.owner).P("x", nt.x).P("y", nt.y).P("z", nt.z);
-            WriteXY(o.Key("dir"), nt.dir);
+            o.Key("dir").Obj().P("x", nt.dir.x).P("y", nt.dir.y).P("z", nt.dir.z).EndObj();
             o.EndObj();
         }
         o.EndArr();
