@@ -21,6 +21,9 @@ public sealed class SimOptions
     public bool log = true;
     public string? @out;
     public string? @base;
+    public string? mode; // --mode (안 주면 summary.json 에 키 없음 — JS 와 같게)
+    public bool hp; // --hp on (체력전)
+    public Dictionary<string, double>? hpMult; // --hp-mult (체력전 캐릭터 배율을 이 판들만 — ParseArgs 가 C.HP_CHAR_MULT 에 넣음)
 
     // JSON.stringify({ ...o, base: undefined }) 와 같은 키 순서
     public void Write(JsonOut o)
@@ -31,7 +34,16 @@ public sealed class SimOptions
         foreach (var m in maps) o.Str(m);
         o.EndArr().Key("chars").Arr();
         foreach (var c in chars) o.Str(c);
-        o.EndArr().P("level", level).P("sky", sky).P("seed", seed).P("workers", workers).P("mirror", mirror).P("log", log).P("out", @out).EndObj();
+        o.EndArr().P("level", level).P("sky", sky).P("seed", seed).P("workers", workers).P("mirror", mirror).P("log", log).P("out", @out);
+        if (mode != null) o.P("mode", mode);
+        if (hp) o.P("hp", true);
+        if (hpMult != null)
+        {
+            o.Key("hpMult").Obj();
+            foreach (var (c, x) in hpMult) o.P(c, x);
+            o.EndObj();
+        }
+        o.EndObj();
     }
 }
 
@@ -50,6 +62,20 @@ public static class BotSim
         string s = string.Join("|", parts.Select(x => x is double d ? JsNumber.ToJs(d) : x.ToString()));
         foreach (char ch in s) h = unchecked((h ^ ch) * 16777619u);
         return h;
+    }
+
+    // --hp-mult: "1.1" (8명 모두) 또는 "tank=1.2,ninja=0.9" (tools/sim.js parseHpMult 와 같음)
+    public static Dictionary<string, double> ParseHpMult(string v)
+    {
+        if (System.Text.RegularExpressions.Regex.IsMatch(v, @"^[\d.]+$")) return C.CHARACTERS.ToDictionary(c => c, _ => double.Parse(v, System.Globalization.CultureInfo.InvariantCulture));
+        var outp = new Dictionary<string, double>();
+        foreach (var part in v.Split(','))
+        {
+            var kv = part.Split('=');
+            if (kv.Length != 2 || !C.CHARACTERS.Contains(kv[0]) || !double.TryParse(kv[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x) || !(x > 0)) throw new ArgumentException($"--hp-mult {part}: 캐릭터=배율");
+            outp[kv[0]] = x;
+        }
+        return outp;
     }
 
     public static SimOptions ParseArgs(string[] argv)
@@ -74,6 +100,9 @@ public static class BotSim
                 case "--no-log": o.log = false; break;
                 case "--out": o.@out = V(); break;
                 case "--base": o.@base = V(); break;
+                case "--mode": o.mode = V(); break;
+                case "--hp": o.hp = V() == "on"; break;
+                case "--hp-mult": o.hpMult = ParseHpMult(V()); break;
                 default: throw new ArgumentException($"모르는 옵션 {a}");
             }
         }
@@ -81,6 +110,8 @@ public static class BotSim
         foreach (var n in o.players) if (!(n >= 2 && n <= C.MAX_PLAYERS)) throw new ArgumentException($"--players {n}: 2~{C.MAX_PLAYERS}");
         foreach (var m in o.maps) if (!Maps.MAP_IDS.Contains(m)) throw new ArgumentException($"--maps {m}: {string.Join(",", Maps.MAP_IDS)} 중");
         foreach (var c in o.chars) if (!C.CHARACTERS.Contains(c)) throw new ArgumentException($"--chars {c}: {string.Join(",", C.CHARACTERS)} 중");
+        if (o.mode != null && !C.MODE_NAMES.ContainsKey(o.mode)) throw new ArgumentException($"--mode {o.mode}: {string.Join(",", C.MODE_NAMES.Keys)} 중");
+        if (o.hpMult != null) foreach (var (c, x) in o.hpMult) C.HP_CHAR_MULT[c] = x; // 판 돌리기 전에 한 번 (스레드 시작 전)
         if (!C.BOT_LEVELS.ContainsKey(o.level)) throw new ArgumentException($"--level {o.level}: {string.Join(",", C.BOT_LEVELS.Keys)} 중");
         return o;
     }
@@ -123,6 +154,8 @@ public static class BotSim
         g.rng = new Mulberry32(job.seed).AsFunc();
         g.SetBotLevel(o.level);
         g.SetMap(job.map);
+        if (o.mode != null) g.SetMode(o.mode);
+        if (o.hp) g.SetHpMode(true);
         var bots = new List<Player>();
         for (int i = 0; i < job.n; i++) bots.Add(g.AddBot()!);
         for (int i = 0; i < bots.Count; i++) g.SetChar(bots[i].id, job.chars[i]);

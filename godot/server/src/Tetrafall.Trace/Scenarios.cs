@@ -6,7 +6,7 @@ using Tetrafall.Core.Js;
 namespace Tetrafall.Trace;
 
 // tools/game-hash.js SCENARIOS·runScenario 와 같은 판 (같은 순서·시드). trace.mjs 와 같은 JSONL, game-hash 와 같은 sha256
-public sealed record Scenario(string name, int n, string mode, bool team, bool characters, bool sky, string map, uint seed, bool away = false);
+public sealed record Scenario(string name, int n, string mode, bool team, bool characters, bool sky, string map, uint seed, bool away = false, bool hp = false);
 
 // 각본 입력 판 (tools/scripted.mjs SCRIPTED 와 같은 순서): 사람 n 명, 캐릭터 끔
 public sealed record ScriptedScenario(string name, int n, string mode, bool team, bool sky, bool hp, string map, uint seed);
@@ -156,8 +156,10 @@ public static class Scenarios
         return list;
     }
 
+    // h<번호> = 그 판을 체력전 켜고 (trace.mjs 와 같음, 34판 해시엔 안 들어감)
     public static Scenario Find(string key) =>
-        int.TryParse(key, out var i) ? ALL[i] : ALL.FirstOrDefault(s => s.name.Contains(key)) ?? throw new ArgumentException($"시나리오 없음: {key}");
+        key.Length > 1 && key[0] == 'h' && int.TryParse(key[1..], out var h) ? ALL[h] with { name = ALL[h].name + " 체력전", hp = true }
+        : int.TryParse(key, out var i) ? ALL[i] : ALL.FirstOrDefault(s => s.name.Contains(key)) ?? throw new ArgumentException($"시나리오 없음: {key}");
 
     const double CAP_MS = 120000;
 
@@ -168,7 +170,7 @@ public static class Scenarios
         double TICK = 1000 / C.TICK_RATE;
         var rnd = new Mulberry32(sc.seed);
         var logs = new List<string>();
-        var g = new Game(line => logs.Add(line), characters: sc.characters, skyStairs: sc.sky, countdownMs: 1500);
+        var g = new Game(line => logs.Add(line), characters: sc.characters, skyStairs: sc.sky, countdownMs: 1500, hpMode: sc.hp);
         g.rng = rnd.AsFunc();
         if (sc.mode == "practice")
         {

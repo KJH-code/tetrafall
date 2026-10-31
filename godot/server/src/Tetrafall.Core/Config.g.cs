@@ -420,6 +420,7 @@ public static partial class C
     public const double MASTER_COUNTER_STALL_MS = 6000;
     public const double MASTER_MAX_RISE = 3;
     public const double KILLS_TIME_MS = 180000;
+    public static readonly Dictionary<string, double> HP_CHAR_MULT = new() { ["tank"] = 0.7, ["berserker"] = 0.8, ["builder"] = 0.75, ["cannon"] = 0.8, ["hook"] = 1.55, ["bard"] = 1.6, ["hunter"] = 1.55, ["ninja"] = 1.05 };
     public static readonly Dictionary<string, double> HP_MAX_BY_MODE = new() { ["kills"] = 120, ["survival"] = 400, ["master"] = 250 };
     public const double KILLS_RESPAWN_MS = 5000;
     public const double KILLS_SHIELD_MS = 2000;

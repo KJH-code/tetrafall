@@ -141,3 +141,54 @@ test('npm run stats: 체력 사망·체력전별 표', () => {
   assert.match(rep, /체력 2 \(100%\)/);
   assert.match(rep, /== 체력전별 ==/);
 });
+
+test('체력전 캐릭터별 HP: 모드 값 × HP_CHAR_MULT (반올림), 사람마다 스냅샷 hpMax, 맨 위 hpMax 는 모드 값 그대로', () => {
+  for (const mode of ['survival', 'kills', 'master']) {
+    const g = new Game(() => {}, { hpMode: true, characters: true });
+    g.rng = () => 0.5;
+    C.CHARACTERS.forEach((c, i) => {
+      g.addPlayer(i + 1);
+      g.setChar(i + 1, c);
+    });
+    if (mode !== 'survival') g.setMode(mode);
+    assert.ok(g.startRound());
+    const base = C.HP_MAX_BY_MODE[mode];
+    const s = JSON.parse(JSON.stringify(g.snapshot()));
+    assert.equal(s.hpMax, base, '맨 위는 모드 값 (예전 화면 호환)');
+    for (const sp of s.players) {
+      const want = Math.round(base * C.HP_CHAR_MULT[sp.char]);
+      assert.equal(sp.hpMax, want, `${mode} ${sp.char}`);
+      assert.equal(sp.hp, want);
+    }
+  }
+  assert.equal(Math.round(C.HP_MAX_BY_MODE.survival * C.HP_CHAR_MULT.tank), new Game(() => {}, { hpMode: true, characters: true }).hpMax({ char: 'tank' }));
+  for (const c of C.CHARACTERS) assert.ok(C.HP_CHAR_MULT[c] > 0, `${c} 배율`);
+});
+
+test('체력전 캐릭터별 HP: KO 문턱이 사람마다 (높은 배율은 더 버팀), 캐릭터 끄면 모두 모드 값', () => {
+  const g = new Game(() => {}, { hpMode: true, characters: true });
+  g.rng = () => 0.5;
+  const hi = C.CHARACTERS.reduce((a, b) => (C.HP_CHAR_MULT[a] >= C.HP_CHAR_MULT[b] ? a : b));
+  const lo = C.CHARACTERS.reduce((a, b) => (C.HP_CHAR_MULT[a] <= C.HP_CHAR_MULT[b] ? a : b));
+  [hi, lo, 'builder'].forEach((c, i) => {
+    g.addPlayer(i + 1);
+    g.setChar(i + 1, c);
+  });
+  assert.ok(g.startRound());
+  g.nextSpawnAt = Infinity;
+  const [a, b] = [g.players.get(1), g.players.get(2)];
+  const loMax = g.hpMax(b);
+  assert.ok(g.hpMax(a) > loMax);
+  a.damage = loMax;
+  b.damage = loMax - 1;
+  g.tick(TICK);
+  assert.ok(a.alive && b.alive, '높은 배율은 낮은 쪽 최대에서도 삶');
+  b.damage = loMax;
+  g.tick(TICK);
+  assert.equal(b.alive, false);
+  assert.equal(b.deathCause, 'hp');
+  const off = new Game(() => {}, { hpMode: true });
+  off.addPlayer(1);
+  off.players.get(1).char = 'tank';
+  assert.equal(off.hpMax(off.players.get(1)), C.HP_MAX_BY_MODE.survival, '캐릭터 끔 → 배율 없음');
+});

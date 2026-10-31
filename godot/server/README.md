@@ -25,7 +25,7 @@ JS 화면 파일은 레포 뿌리 `client/`·`shared/`·`node_modules/three` 에
 ## 봇 판 시뮬레이션 (`npm run sim` 의 C# 판, S7)
 
 ```
-dotnet run -c Release --project godot/server/src/Tetrafall.Sim -- --rounds 200 --players 2,4   # 옵션은 tools/sim.js 와 같음 (--maps --chars --level --sky --seed --workers --no-mirror --no-log --out --base)
+dotnet run -c Release --project godot/server/src/Tetrafall.Sim -- --rounds 200 --players 2,4   # 옵션은 tools/sim.js 와 같음 (--maps --chars --level --sky --seed --workers --no-mirror --no-log --out --base --mode --hp --hp-mult)
 ```
 
 같은 옵션·시드면 JS 와 같은 판·같은 summary.json (`out` 칸만 다름)·같은 워커 로그 (워커 수도 같으면) — `npm run stats -- sim-logs/<시각>` 그대로. 4코어에서 JS 의 약 1.8배 빠름 (252판: JS 20.3초 / C# 11.1초)
@@ -68,7 +68,7 @@ Tetrafall.Server --online          # 또는 dotnet run --project godot/server/sr
 | `node godot/server/tools/fixtures.mjs` | 테스트 정답 자료 (`tests/Tetrafall.Tests/fixtures/`) 를 JS 에서 다시 뽑음 (방 각본은 `room-scenarios.mjs`) |
 | `node godot/server/tools/package.mjs` | 배포 zip (위 G7) |
 | `node godot/server/tools/online-cs.mjs` | C# 서버 + 터널 (`tools/online.js` 의 터널 지키기를 그대로 씀, dll 이 있으면 `bin/Release`, 없으면 `dotnet run`) |
-| `node godot/server/tools/trace.mjs <번호> js.jsonl` | JS 판 시나리오 하나를 틱마다 기록 (`--list` 로 34개 목록, `tools/game-hash.js` 와 같은 판). `s0`~`s7` = 각본 입력 판 (`tools/scripted.mjs`: 사람만·캐릭터 끔, 봇(S5) 전에 판 흐름·블록을 맞추는 판) |
+| `node godot/server/tools/trace.mjs <번호> js.jsonl` | JS 판 시나리오 하나를 틱마다 기록 (`--list` 로 34개 목록, `tools/game-hash.js` 와 같은 판). `h<번호>` = 그 판을 체력전 켜고 (캐릭터별 HP 검증, 34판 해시엔 안 들어감). `s0`~`s7` = 각본 입력 판 (`tools/scripted.mjs`: 사람만·캐릭터 끔, 봇(S5) 전에 판 흐름·블록을 맞추는 판) |
 | `node godot/server/tools/trace-scripted.mjs <캐릭터> js.jsonl` | 봇 없는 각본 판 (S3 전투·캐릭터 검증): 캐릭터마다 사람 둘이 정해진 틱에 평타·스킬·필살기·점프·대시, 킬 점수전·블록 없음, 600틱. `--list`, `--dump scripts.json` (C# 가 같은 각본을 돌릴 자료) |
 | `dotnet run --project godot/server/src/Tetrafall.Trace -- trace <번호> cs.jsonl [--ticks N]` | 같은 판을 C# 로 같은 JSONL (아직 안 옮긴 메서드에 닿으면 거기까지 쓰고 멈춤) |
 | `dotnet run --project godot/server/src/Tetrafall.Trace -- hash [--verbose]` | `node tools/game-hash.js` 와 같은 해시 (34판 다 돌면 = 규칙 이식 끝) |
