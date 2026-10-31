@@ -15,43 +15,6 @@ public sealed partial class Game
 
     static Exception Todo(string what) => new NotImplementedException($"아직 안 옮김: {what} (godot/PLAN.md)");
 
-    // S2 판 흐름·블록
-    public void UpdatePieces() => throw Todo("updatePieces (S2)");
-    public void Kill(Player p, string cause) => throw Todo("kill (S2)");
-    public void Respawn(Player p) => throw Todo("respawn (S2)");
-    public void EndRound(Player? winner) => throw Todo("endRound (S2)");
-    public void CheckRoundEnd()
-    {
-        if (phase != "playing") return;
-        throw Todo("checkRoundEnd (S2)");
-    }
-    public void UpdateLava(double dtMs) => throw Todo("updateLava (S2)");
-    public void MovePiece(Piece pc, int dx, int dy) => throw Todo("movePiece (S2)");
-    public void RotatePiece(Piece pc, int dir) => throw Todo("rotatePiece (S2)");
-    public void DropPiece(Piece pc) => throw Todo("dropPiece (S2)");
-
-    // S2 (game-pieces.js clearLayers): 꽉 찬 층이 없으면 아무 일도 없음 (건축가·갈고리가 블록을 놓은 뒤 부름). 꽉 찬 층을 지우는 dropLayers 는 S2.
-    // 진짜를 옮기는 세션 (A1) 이 Game.Pieces.cs 에 넣으면 여기서 지움
-    public void ClearLayers()
-    {
-        int layerSize = W * D;
-        var full = new List<int>();
-        for (int z = 0; z < H; z++)
-        {
-            bool ok = true;
-            for (int i = 0; i < layerSize && ok; i++) if (grid[z * layerSize + i] == 0) ok = false;
-            if (ok) full.Add(z);
-        }
-        if (full.Count == 0) return;
-        throw Todo("clearLayers → dropLayers (S2)");
-    }
-
-    // S2 (game-pieces.js): 떨어지는 블록 칸이 다 부서짐 (대포수 breakCell 이 부름)
-    public void RemovePiece(Piece pc) => throw Todo("removePiece (S2)");
-
-    // S2 (game-pieces.js): 유령 투하 — 방(Rooms)이 받은 x·y 값 그대로 (숫자 아닐 수 있음, JS 와 같은 검사는 옮길 때)
-    public bool GhostDrop(int id, System.Text.Json.JsonElement? x, System.Text.Json.JsonElement? y) => throw Todo("ghostDrop (S2)");
-
     // S4 아이템·연습·튜토리얼
     // 방(Rooms)이 부르는 것: 연습 방 시작·들어오기·토글·허수아비, 튜토리얼 시작. 받은 값은 JSON 그대로 (JS 와 같은 검사는 옮길 때)
     public void StartPractice() => throw Todo("startPractice (S4)");
@@ -61,7 +24,9 @@ public sealed partial class Game
     public bool RemoveDummy(double? id) => throw Todo("removeDummy (S4)");
     public bool SetDummyDamage(double? id, System.Text.Json.JsonElement? damage) => throw Todo("setDummyDamage (S4)");
     public void StartTutorial(int id) => throw Todo("startTutorial (S4)");
-    public void UpdateItems() => throw Todo("updateItems (S4)");
+    public void BrickShock(Piece piece) => throw Todo("brickShock (S4)");
+    bool PracticeNoBlocks() => throw Todo("practice.noBlocks (S4)");
+    bool PracticeNoDeath() => throw Todo("practice.noDeath (S4)");
     public void UpdateProjectiles(double dt)
     {
         if (projectiles.Count > 0) throw Todo("updateProjectiles (S4)");

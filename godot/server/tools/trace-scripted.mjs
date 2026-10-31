@@ -1,6 +1,6 @@
 // 각본 판 기록 (S3 전투·캐릭터 검증용, 봇 없이): 캐릭터마다 사람 둘이 정해진 틱에 입력·행동을 넣는 판을 틱마다 한 줄 JSONL 로 — trace.mjs 와 같은 형식
 // {"t":틱,"logs":[...],"snap":스냅샷 글자}. 킬 점수전 (떨어져도 부활), 블록·아이템은 끔 (nextSpawnAt·아이템 시각 = Infinity) → 전투·캐릭터만. C# 쪽은 같은 각본 자료를 돌려 trace-diff.mjs 로 비교.
-// 실행: node godot/server/tools/trace-scripted.mjs <캐릭터|번호> <출력.jsonl> [--combat (전투만 도는 틱)]   ·  --list (각본 목록) · --dump <파일.json> (각본 자료 — C# 가 읽음)
+// 실행: node godot/server/tools/trace-scripted.mjs <캐릭터|번호> <출력.jsonl> [--combat (전투만 도는 틱) | --blocks (보통 틱 + 블록 낙하)]   ·  --list (각본 목록) · --dump <파일.json> (각본 자료 — C# 가 읽음)
 //
 // 각본 단계 (틱 t 에, 틱을 돌리기 전에): { t, who, input: { fwd, strafe, jump, pitch } } — yaw 는 상대 쪽 (face: true) 또는 값
 //                                       { t, who, action: { name, ... } } · { t, who, set: { ult: 'max' } } (필살기 게이지 채우기)
@@ -78,8 +78,8 @@ export function combatTick(g, dtMs) {
   if (g.notes.length) g.updateNotes(dt);
 }
 
-// 한 판 기록. onLine(줄 객체) 로 내보냄. combat: 전투만 도는 틱 (combatTick)
-export function runScript(sc, onLine, { combat = false } = {}) {
+// 한 판 기록. onLine(줄 객체) 로 내보냄. combat: 전투만 도는 틱 (combatTick). blocks: 보통 틱 + 블록 낙하 켬 (갈고리 잡기·층 지우기까지, 아이템은 끔)
+export function runScript(sc, onLine, { combat = false, blocks = false } = {}) {
   const rnd = mulberry32(sc.seed);
   const realRandom = Math.random;
   Math.random = mulberry32(sc.seed ^ 0x5bd1e995);
@@ -96,7 +96,7 @@ export function runScript(sc, onLine, { combat = false } = {}) {
     g.setMode(sc.mode); // 킬 점수전: 떨어져도 부활 → 각본 끝까지 (생존이면 첫 낙사에 판이 끝남)
     if (!g.startRound()) throw new Error('시작 못 함');
     if (combat) g.phase = 'playing';
-    g.nextSpawnAt = Infinity;
+    if (!blocks) g.nextSpawnAt = Infinity;
     g.controlItemNextAt = Infinity;
     g.powerItemNextAt = Infinity;
     onLine({ t: 0, logs, snap: JSON.stringify(g.snapshot(true)) });
@@ -140,6 +140,7 @@ if (process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(new 
     fs.writeFileSync(process.argv[3] ?? 'scripts.json', JSON.stringify(SCRIPTS));
   } else {
     const combat = process.argv.includes('--combat');
+    const blocks = process.argv.includes('--blocks');
     const sc = /^\d+$/.test(arg ?? '') ? SCRIPTS[Number(arg)] : SCRIPTS.find((s) => s.name === arg);
     if (!sc) throw new Error(`각본 없음: ${arg} (--list)`);
     const out = process.argv[3] ?? 'js.jsonl';
@@ -149,7 +150,7 @@ if (process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(new 
       runScript(sc, (line) => {
         fs.writeSync(fd, JSON.stringify(line) + '\n');
         n++;
-      }, { combat });
+      }, { combat, blocks });
     } finally {
       fs.closeSync(fd);
     }

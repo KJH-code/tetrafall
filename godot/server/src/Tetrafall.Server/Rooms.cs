@@ -572,9 +572,9 @@ public sealed class Rooms
     {
         name = AsString(Field(msg, "name")) ?? "",
         n = AsNumber(Field(msg, "n")),
-        dx = Field(msg, "dx") == null ? null : ToNumber(Field(msg, "dx")),
-        dy = Field(msg, "dy") == null ? null : ToNumber(Field(msg, "dy")),
-        dir = Field(msg, "dir") == null ? null : ToNumber(Field(msg, "dir")),
+        dx = ToNumber(Field(msg, "dx")), // 없으면 NaN (`| 0` → 0, `> 0` → 거짓)
+        dy = ToNumber(Field(msg, "dy")),
+        dir = ToNumber(Field(msg, "dir")),
     };
 
     // ---------- 틱·보내기 ----------

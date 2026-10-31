@@ -1,4 +1,3 @@
-using System.Text;
 using Tetrafall.Core.Js;
 using static Tetrafall.Core.GameUtil;
 
@@ -131,6 +130,9 @@ public sealed partial class Game
             CheckRoundEnd();
         }
     }
+
+    // 봇 난이도 이름 (BOT_LEVELS 키 순서)
+    public static readonly string[] BOT_LEVEL_IDS = C.BOT_LEVELS.Keys.ToArray();
 
     // 봇 난이도: 판 사이에만
     public bool SetBotLevel(string level)
@@ -387,17 +389,12 @@ public sealed partial class Game
         return true;
     }
 
-    // 이름 바꾸기: 판 사이에만. 제어 문자 빼고 공백 하나로, NAME_MAX_LEN 글자까지 (코드 포인트 단위, JS Array.from)
+    // 이름 바꾸기: 판 사이에만. 제어 문자 빼고 공백 하나로, NAME_MAX_LEN 글자까지 (코드 포인트 단위)
     public bool SetNick(int id, object? raw)
     {
         var p = GetPlayer(id);
         if (p == null || InRound()) return false;
-        string s = JsText.String(raw);
-        if (s.Length > C.TEXT_RAW_MAX) s = s.Substring(0, (int)C.TEXT_RAW_MAX); // 먼저 자름 (UTF-16 단위, JS slice)
-        var sb = new StringBuilder();
-        foreach (char ch in s) if (!(ch <= '\u001f' || ch == '\u007f')) sb.Append(ch);
-        string clean = JsText.Trim(JsText.CollapseSpace(sb.ToString()));
-        string nick = string.Concat(JsText.CodePoints(clean).Take((int)C.NAME_MAX_LEN));
+        string nick = JsText.Clean(JsText.String(raw), C.NAME_MAX_LEN); // TEXT_RAW_MAX 로 먼저 자르고 제어 문자·공백 정리 (rooms 이름 정리와 같음)
         if (nick == p.nick) return true;
         p.nick = nick;
         Log($"{p.name} 이름: {(nick.Length > 0 ? nick : "(없음)")}");

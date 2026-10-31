@@ -45,3 +45,118 @@ public sealed partial class Game
         }
     }
 }
+
+// game-items.js 의 필드 아이템 (S2 가 같이 옮김: 블록 마스터 반격 아이템이 판 흐름에 들어가서)
+public sealed partial class Game
+{
+    // ---------- 아이템 ----------
+    public bool SpawnItem(string type)
+    {
+        for (int i = 0; i < C.SPAWN_TRIES; i++)
+        {
+            int x = (int)Math.Floor(rng() * W);
+            int y = (int)Math.Floor(rng() * D);
+            int z = ColumnTop(x, y);
+            if (z >= H) continue;
+            if (lava.active && z < lava.z + 1) continue; // 용암에 잠길 자리는 피함
+            if (items.Any(it => it.x == x && it.y == y)) continue;
+            items.Add(new Item { type = type, x = x, y = y, z = z });
+            return true;
+        }
+        return false;
+    }
+
+    public void UpdateItems()
+    {
+        if (tutorial != null)
+        {
+            PickupItems(); // 튜토리얼: 단계가 놓은 아이템만
+            return;
+        }
+        if (ControlItemOn() && !ControlInPlay() && time >= controlItemNextAt)
+        {
+            if (!SpawnItem("control")) controlItemNextAt = time + 1000;
+        }
+        int powerCount = items.Count(it => it.type != "control");
+        if (C.ITEMS_ENABLED && powerCount < ItemMax() && time >= powerItemNextAt)
+        {
+            string type = C.ITEM_POOL[(int)Math.Floor(rng() * C.ITEM_POOL.Length)];
+            powerItemNextAt = time + (SpawnItem(type) ? C.ITEM_RESPAWN_MS : 1000);
+        }
+        if (mode == "master" && phase == "playing" && !items.Any(it => it.type == "counter") && time >= counterItemAt)
+            counterItemAt = time + (SpawnItem("counter") ? C.MASTER_COUNTER_RESPAWN_MS : 1000); // 블록 마스터 반격 아이템 (한 번에 하나)
+        PickupItems();
+    }
+
+    // 필드 아이템 줍기 (닿으면)
+    public void PickupItems()
+    {
+        for (int i = items.Count - 1; i >= 0; i--)
+        {
+            var it = items[i];
+            it.z = ColumnTop(it.x, it.y);
+            foreach (var p in Players().ToList())
+            {
+                if (!OnField(p)) continue;
+                double dx = p.x - (it.x + 0.5), dy = p.y - (it.y + 0.5);
+                if (JsMath.Hypot(dx, dy) > C.ITEM_PICK_RADIUS) continue;
+                if (Math.Abs(p.z - it.z) > C.ITEM_HEIGHT_TOL) continue;
+                if (C.HELD_ITEMS.Contains(it.type) && HeldItem(p) != null) continue; // 손 아이템은 하나만
+                items.RemoveAt(i);
+                if (it.type == "control")
+                {
+                    p.hasControl = true;
+                    Emit(o => o.P("type", "pickup").P("who", p.id).P("item", "control"));
+                    Log($"  [아이템] {p.name} 조종권 획득");
+                    StartControlNow(p);
+                }
+                else
+                {
+                    GivePower(p, it.type);
+                    powerItemNextAt = Math.Max(powerItemNextAt, time + C.ITEM_RESPAWN_MS);
+                    Emit(o => o.P("type", "pickup").P("who", p.id).P("item", it.type));
+                }
+                break;
+            }
+        }
+    }
+
+    public void GivePower(Player p, string type)
+    {
+        switch (type)
+        {
+            case "knockback":
+                p.ammo += C.KNOCKBACK_AMMO;
+                Log($"  [아이템] {p.name} 넉백 아이템 획득 (탄 {JsNumber.ToJs(p.ammo)})");
+                break;
+            case "jump":
+                p.jumpUntil = time + C.JUMP_BOOST_MS;
+                Log($"  [아이템] {p.name} 점프력 상승 획득");
+                break;
+            case "ghost":
+                p.ghostUntil = time + C.GHOST_MS;
+                Log($"  [아이템] {p.name} 유령화 획득");
+                break;
+            case "brick":
+                p.bricks = C.BRICK_USES;
+                p.brickSide = false;
+                Log($"  [아이템] {p.name} 설치 블록 1×2 획득 ({JsNumber.ToJs(p.bricks)}개)");
+                break;
+            case "bomb":
+                p.bombs = C.BOMB_USES;
+                Log($"  [아이템] {p.name} 폭탄 획득");
+                break;
+            case "speed":
+                p.speedUntil = time + C.SPEED_MS;
+                Log($"  [아이템] {p.name} 이속 증가 획득");
+                break;
+            case "counter":
+                // 블록 마스터 반격: 마스터 편 전원의 다음 블록이 늦게 나옴 (겹쳐 먹으면 이어 붙음)
+                masterStallUntil = Math.Max(masterStallUntil, time) + C.MASTER_COUNTER_STALL_MS;
+                counterItemAt = time + C.MASTER_COUNTER_RESPAWN_MS;
+                Emit(o => o.P("type", "masterStall").P("who", p.id).P("until", masterStallUntil).P("ms", C.MASTER_COUNTER_STALL_MS));
+                Log($"  [아이템] {p.name} 반격 → 마스터 편 블록 {JsNumber.ToJs(C.MASTER_COUNTER_STALL_MS / 1000)}초 멈춤");
+                break;
+        }
+    }
+}

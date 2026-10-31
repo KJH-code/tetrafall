@@ -5,7 +5,7 @@ using Tetrafall.Trace;
 
 // C# 판 기록 (JS godot/server/tools/trace.mjs · tools/game-hash.js 와 같은 판):
 //   dotnet run --project src/Tetrafall.Trace -- --list
-//   dotnet run --project src/Tetrafall.Trace -- trace <번호|이름 일부> cs.jsonl [--ticks N]   → node tools/trace-diff.mjs js.jsonl cs.jsonl
+//   dotnet run --project src/Tetrafall.Trace -- trace <번호|이름 일부|s각본번호> cs.jsonl [--ticks N]   → node tools/trace-diff.mjs js.jsonl cs.jsonl
 //   dotnet run --project src/Tetrafall.Trace -- hash [--verbose]                             → node tools/game-hash.js 와 같은 해시면 34판 동등
 var a = args.ToList();
 if (a.Count == 0 || a[0] == "--list")
@@ -15,6 +15,7 @@ if (a.Count == 0 || a[0] == "--list")
         var s = Scenarios.ALL[i];
         Console.WriteLine($"{i}\t{s.name}\t맵 {s.map}\t시드 {s.seed}");
     }
+    for (int i = 0; i < Scenarios.SCRIPTED.Count; i++) Console.WriteLine($"s{i}\t{Scenarios.SCRIPTED[i].name}\t맵 {Scenarios.SCRIPTED[i].map}\t시드 {Scenarios.SCRIPTED[i].seed}");
     return 0;
 }
 int maxTicks = int.MaxValue;
@@ -26,18 +27,21 @@ if (ti >= 0)
 }
 if (a[0] == "trace")
 {
-    var sc = Scenarios.Find(a.Count > 1 ? a[1] : "0");
+    string key = a.Count > 1 ? a[1] : "0";
+    bool scripted = key.Length > 1 && key[0] == 's' && key[1..].All(char.IsDigit);
+    string name = scripted ? Scenarios.SCRIPTED[int.Parse(key[1..])].name : Scenarios.Find(key).name;
     string outPath = a.Count > 2 ? a[2] : "cs.jsonl";
     using var w = new StreamWriter(outPath, false, new UTF8Encoding(false)) { NewLine = "\n" };
+    Action<int, List<string>, string> line = (t, logs, snap) => w.WriteLine(Scenarios.TraceLine(t, logs, snap));
     try
     {
-        var (ticks, _) = Scenarios.Run(sc, (t, logs, snap) => w.WriteLine(Scenarios.TraceLine(t, logs, snap)), maxTicks);
-        Console.WriteLine($"{sc.name}: {ticks}틱 → {outPath}");
+        var (ticks, phase) = scripted ? Scenarios.RunScripted(Scenarios.SCRIPTED[int.Parse(key[1..])], line, maxTicks) : Scenarios.Run(Scenarios.Find(key), line, maxTicks);
+        Console.WriteLine($"{name}: {ticks}틱 {phase} → {outPath}");
     }
     catch (NotImplementedException e)
     {
         w.Flush();
-        Console.WriteLine($"{sc.name}: 여기서 멈춤 — {e.Message} → {outPath} (그 앞까지)");
+        Console.WriteLine($"{name}: 여기서 멈춤 — {e.Message} → {outPath} (그 앞까지)");
         return 2;
     }
     return 0;

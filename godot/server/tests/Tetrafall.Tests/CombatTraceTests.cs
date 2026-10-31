@@ -38,10 +38,11 @@ public class CombatTraceTests
     }
 
     // 각본 하나를 C# 로 (runScript 와 같은 순서). onLine(틱 줄 JSON 글자)
-    public static void Run(JsonElement sc, Action<string> onLine)
+    // blocks: 보통 틱 (Game.Tick) + 블록 낙하 (runScript { blocks: true }), 아니면 전투만 도는 틱
+    public static void Run(JsonElement sc, Action<string> onLine, bool blocks = false)
     {
         var logs = new List<string>();
-        var g = new Game(l => logs.Add(l), characters: true, skyStairs: false, countdownMs: 1); // 전투만: trace-scripted.mjs 와 같이 카운트다운 1ms + 바로 playing
+        var g = new Game(l => logs.Add(l), characters: true, skyStairs: false, countdownMs: blocks ? 0 : 1); // 전투만: trace-scripted.mjs 와 같이 카운트다운 1ms + 바로 playing
         g.rng = new Mulberry32((uint)sc.GetProperty("seed").GetDouble()).AsFunc();
         var chars = sc.GetProperty("chars").EnumerateArray().Select(e => e.GetString()!).ToArray();
         g.AddPlayer(1);
@@ -51,8 +52,8 @@ public class CombatTraceTests
         g.SetMap("flat");
         g.SetMode(sc.GetProperty("mode").GetString()!);
         if (!g.StartRound()) throw new InvalidOperationException("시작 못 함");
-        g.phase = "playing";
-        g.nextSpawnAt = double.PositiveInfinity;
+        if (!blocks) g.phase = "playing";
+        if (!blocks) g.nextSpawnAt = double.PositiveInfinity;
         g.controlItemNextAt = double.PositiveInfinity;
         g.powerItemNextAt = double.PositiveInfinity;
         onLine(Scenarios.TraceLine(0, logs, g.Snapshot(true)));
@@ -90,7 +91,8 @@ public class CombatTraceTests
                     }
                 }
             }
-            CombatTick(g, TICK);
+            if (blocks) g.Tick(TICK);
+            else CombatTick(g, TICK);
             ticks++;
             var events = g.DrainEvents();
             string snap = g.Snapshot(ticks % 300 == 0, w =>
@@ -110,15 +112,23 @@ public class CombatTraceTests
 
     [Theory]
     [MemberData(nameof(Names))]
-    public void Combat_script_matches_js(string name)
+    public void Combat_script_matches_js(string name) => Check(name, false);
+
+    // 같은 각본을 보통 틱 + 블록 낙하로: 갈고리 블록 잡기·내려찍기, 층 지우기, 압사·부활까지 (S2 와 합친 판)
+    [Theory]
+    [MemberData(nameof(Names))]
+    public void Blocks_script_matches_js(string name) => Check(name, true);
+
+    static void Check(string name, bool blocks)
     {
         var sc = Fixtures.Load("combat-trace.json").EnumerateArray().First(e => e.GetProperty("name").GetString() == name);
-        var want = sc.GetProperty("hashes").EnumerateArray().Select(e => e.GetString()!).ToList();
+        var want = Fixtures.Load(blocks ? "blocks-trace.json" : "combat-trace.json").EnumerateArray().First(e => e.GetProperty("name").GetString() == name)
+            .GetProperty("hashes").EnumerateArray().Select(e => e.GetString()!).ToList();
         var lines = new List<string>();
         Exception? err = null;
         try
         {
-            Run(sc, lines.Add);
+            Run(sc, lines.Add, blocks);
         }
         catch (NotImplementedException e)
         {
@@ -128,7 +138,7 @@ public class CombatTraceTests
         while (same < Math.Min(lines.Count, want.Count) && Sha16(lines[same]) == want[same]) same++;
         if (!Ported.Contains(name)) return; // 아직 안 옮긴 캐릭터: 돌아가는 데까지만 (끝까지 같을 필요 없음)
         if (same == want.Count && lines.Count == want.Count && err == null) return;
-        var path = Path.Combine(Path.GetTempPath(), $"cs-combat-{name}.jsonl");
+        var path = Path.Combine(Path.GetTempPath(), $"cs-{(blocks ? "blocks" : "combat")}-{name}.jsonl");
         File.WriteAllLines(path, lines);
         Assert.Fail($"{name}: 틱 {same} 부터 다름 (JS {want.Count}줄, C# {lines.Count}줄{(err != null ? $", 멈춤: {err.Message}" : "")}) → C# 기록 {path}");
     }
