@@ -1,6 +1,7 @@
 // three.js 렌더링. 단색 블록, 최소한의 비주얼. 좌표계는 게임과 같은 z-up.
 import * as THREE from 'three';
 import { CONFIG as C } from '/shared/config.js';
+import { hpView } from '/shared/kills-hud.js';
 import { toon, noOutline } from '/toon.js';
 import { buildCharacter, charAccessory } from '/character.js';
 import { cloneBatched, paintBatched } from '/batch.js';
@@ -78,8 +79,9 @@ export function damageColor(d) {
   return `rgb(255,${g},${b})`;
 }
 
-// 머리 위 표시: 위에 이름(플레이어 색), 아래에 피해 % (nameOnly: 하늘 시점 — 이름만, 덩어리지지 않게)
-function drawLabel(canvas, name, color, d, nameOnly = false) {
+// 머리 위 표시: 위에 이름(플레이어 색), 아래에 피해 % (nameOnly: 하늘 시점 — 이름만, 덩어리지지 않게).
+// hv (체력전, kills-hud hpView): % 대신 작은 HP 막대 (낮으면 빨강)
+function drawLabel(canvas, name, color, d, nameOnly = false, hv = null) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.textAlign = 'center';
@@ -91,6 +93,19 @@ function drawLabel(canvas, name, color, d, nameOnly = false) {
   ctx.fillStyle = color;
   ctx.fillText(name, 128, 26);
   if (nameOnly) return;
+  if (hv) {
+    const w = 150;
+    const h = 16;
+    const x = 128 - w / 2;
+    const y = 66;
+    ctx.fillStyle = 'rgba(0,0,0,.7)';
+    ctx.fillRect(x - 3, y - 3, w + 6, h + 6);
+    ctx.fillStyle = 'rgba(255,255,255,.14)';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = hv.low ? '#e0300c' : '#2fbf5a';
+    ctx.fillRect(x, y, w * hv.frac, h);
+    return;
+  }
   ctx.font = 'bold 44px system-ui, sans-serif';
   ctx.lineWidth = 7;
   ctx.strokeText(`${d}%`, 128, 80);
@@ -3461,9 +3476,10 @@ export class Renderer {
       const dmg = p.damage || 0;
       const name = p.nick || p.name;
       const skyLabel = this.skyBlend > 0.5 && C.SKY_VIEW.oblique;
-      const key = `${name}|${skyLabel ? '' : dmg}|${g.userData.color}`;
+      const hv = hpView(p, state); // 체력전: % 대신 HP 막대
+      const key = `${name}|${skyLabel ? '' : hv ? `hp${Math.round(hv.frac * 150)}${hv.low ? 'l' : ''}` : dmg}|${g.userData.color}`;
       if (label.shown !== key) {
-        drawLabel(label.canvas, name, `#${g.userData.color.toString(16).padStart(6, '0')}`, dmg, skyLabel);
+        drawLabel(label.canvas, name, `#${g.userData.color.toString(16).padStart(6, '0')}`, dmg, skyLabel, hv);
         label.tex.needsUpdate = true;
         label.shown = key;
       }

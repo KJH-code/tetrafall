@@ -87,3 +87,18 @@ export function hpFrac(p, hpMax) {
   if (!p || !Number.isFinite(p.hp) || !(max > 0)) return null;
   return Math.max(0, Math.min(1, p.hp / max));
 }
+
+// 체력전 화면 (2026-10-31 재혁 '체력전이면 % 대신 피'): 큰 % 자리에 남은 HP, 이름표엔 작은 HP 막대, 결과 표는 '남은 HP'.
+// 체력전 끔 (state.hpMode 없음)·HP 모름이면 null → 예전 % 그대로. 최대 HP 는 사람마다 (players[].hpMax), 없으면 스냅샷 맨 위 hpMax
+export function hpView(p, state) {
+  if (!state || !state.hpMode || !p) return null;
+  const frac = hpFrac(p, state.hpMax);
+  if (frac === null) return null;
+  return { hp: Math.max(0, Math.ceil(p.hp)), max: p.hpMax > 0 ? p.hpMax : state.hpMax, frac, low: frac < C.HUD_HP_LOW };
+}
+
+// HP 글자색 [r, g, b] (0~255): 가득 흰색 → 반 노랑 → 0 빨강 (피해 % 색 render.js damageColor 를 HP 비율로 거꾸로)
+export function hpColor(frac) {
+  const t = Math.min(1, Math.max(0, 1 - frac));
+  return [255, t < 0.5 ? 255 : Math.round(255 - (t - 0.5) * 2 * 215), t < 0.5 ? Math.round(255 - t * 2 * 255) : 0];
+}

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG as C } from '../shared/config.js';
-import { KillTally, streakText, progress, topBar, scoreRows, respawnSecs, hpFrac } from '../shared/kills-hud.js';
+import { KillTally, streakText, progress, topBar, scoreRows, respawnSecs, hpFrac, hpView, hpColor } from '../shared/kills-hud.js';
 
 test('킬·죽음·자멸·연속 킬: 죽으면 연속 0, 킬 없음·자기 자신은 자멸, 서버 필드가 있으면 그것', () => {
   const t = new KillTally();
@@ -72,4 +72,28 @@ test('부활 초는 올림, 체력전 HP 는 hp·hpMax 가 있을 때만 0~1', (
   assert.equal(hpFrac(null), null);
   assert.equal(hpFrac({ hp: 60 }, 120), 0.5, '스냅샷 맨 위 hpMax (A1 서버)');
   assert.equal(hpFrac({ hp: 60 }), null, 'hpMax 없음');
+});
+
+test('체력전 화면: 켜면 남은 HP (올림, 0 아래 없음)·사람마다 최대·낮음, 끄면 null (예전 %)', () => {
+  const st = { hpMode: true, hpMax: 120 };
+  assert.deepEqual(hpView({ hp: 86.2, damage: 33.8 }, st), { hp: 87, max: 120, frac: 86.2 / 120, low: false });
+  assert.equal(hpView({ hp: 300, hpMax: 400 }, st).max, 400, '사람마다 hpMax 먼저');
+  assert.equal(hpView({ hp: 300, hpMax: 400 }, st).frac, 0.75);
+  assert.equal(hpView({ hp: -4 }, st).hp, 0);
+  assert.equal(hpView({ hp: 20 }, st).low, 20 / 120 < C.HUD_HP_LOW);
+  assert.equal(hpView({ hp: 60 }, { hpMax: 120 }), null, '체력전 끔');
+  assert.equal(hpView({ damage: 30 }, st), null, 'HP 모름');
+  assert.equal(hpView(null, st), null);
+  assert.equal(hpView({ hp: 60 }, null), null);
+});
+
+test('HP 글자색: 가득 흰색 → 반 노랑 → 0 빨강, 범위 밖은 잘림', () => {
+  assert.deepEqual(hpColor(1), [255, 255, 255]);
+  assert.deepEqual(hpColor(0.5), [255, 255, 0]);
+  assert.deepEqual(hpColor(0), [255, 40, 0]);
+  assert.deepEqual(hpColor(1.5), [255, 255, 255]);
+  assert.deepEqual(hpColor(-1), [255, 40, 0]);
+  const [, g1] = hpColor(0.4);
+  const [, g2] = hpColor(0.2);
+  assert.ok(g1 > g2, '낮을수록 빨강 쪽');
 });
