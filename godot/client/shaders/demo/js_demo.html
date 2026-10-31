@@ -5,6 +5,11 @@ import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
 import { CONFIG as C } from '/shared/config.js';
 import { toon } from '/toon.js';
+import { terrainGeometry, terrainMaterial, terrainCells, BlockDecor } from '/blocks.js';
+import { blockStyle } from '/shared/block-style.js';
+const Q = new URLSearchParams(location.search);
+const TERR = Q.has('terrain'); // ?terrain: 테마 지형 블록 (terrain_grids.json, g3_demo --terrain 과 같음)
+const CX = TERR ? 6 : 4;
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 const R = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 R.setSize(1280, 720); R.setPixelRatio(1);
@@ -13,14 +18,14 @@ document.body.appendChild(R.domElement);
 const outline = new OutlineEffect(R, { defaultThickness: C.OUTLINE_THICKNESS, defaultColor: [0.08, 0.05, 0.1], defaultAlpha: 1 });
 const scene = new THREE.Scene();
 // 테마 (world.js apply 와 같은 값): ?theme=crystal 등, 없으면 예전 노을 (render.js 생성자)
-const L = C.WORLD_THEMES[new URLSearchParams(location.search).get('theme')] || null;
+const L = C.WORLD_THEMES[Q.get('theme')] || null;
 const SKY = L ? L.sky : { top: C.SKY_TOP, mid: C.SKY_MID, horizon: C.SKY_HORIZON };
 scene.background = new THREE.Color(SKY.horizon);
 scene.fog = L ? new THREE.Fog(L.fog[0], L.fog[1], L.fog[2]) : new THREE.Fog(C.SKY_HORIZON, C.FOG_NEAR, C.FOG_FAR);
 scene.add(L ? new THREE.HemisphereLight(L.hemi[0], L.hemi[1], L.hemi[2]) : new THREE.HemisphereLight(0xffe2d2, 0x8a90b8, 1.15));
 const SUN_DIR = L ? L.sunDir : C.SUN_DIR;
 const sun = new THREE.DirectionalLight(L ? L.sunColor : C.SUN_COLOR, L ? L.sunIntensity : 1.25);
-sun.position.set(4, 4, 0).addScaledVector(new THREE.Vector3(...SUN_DIR).normalize(), 30);
+sun.position.set(CX, CX, 0).addScaledVector(new THREE.Vector3(...SUN_DIR).normalize(), 30);
 // 하늘 구 (render.js skyDome 그대로 복사)
 const domeMat = new THREE.ShaderMaterial({
   side: THREE.BackSide, depthWrite: false, fog: false,
@@ -52,9 +57,9 @@ const domeMat = new THREE.ShaderMaterial({
 });
 domeMat.userData.outlineParameters = { visible: false };
 const dome = new THREE.Mesh(new THREE.SphereGeometry(150, 32, 16), domeMat);
-dome.position.set(4, 4, 0); dome.renderOrder = -1;
+dome.position.set(CX, CX, 0); dome.renderOrder = -1;
 scene.add(dome);
-sun.target.position.set(4, 4, 0);
+sun.target.position.set(CX, CX, 0);
 sun.castShadow = true;
 Object.assign(sun.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12, near: 5, far: 60 });
 sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0008;
@@ -70,6 +75,22 @@ const things = [
   ['box', [-6, 40, 4], [5, 5, 8], 0x8a8f9a],
   ['box', [30, 60, 6], [8, 8, 12], 0x8a8f9a],
 ];
+if (TERR) {
+  const j = await (await fetch('/terrain_grids.json')).json();
+  const grid = j.grids[Q.get('theme')];
+  const st = blockStyle(L.terrain);
+  const cells = [];
+  for (let z = 0; z < j.H; z++) for (let y = 0; y < j.D; y++) for (let x = 0; x < j.W; x++) if (grid[(z * j.D + y) * j.W + x] === 1) cells.push([x, y, z]);
+  const geo = terrainGeometry(cells.length, st.segs);
+  const im = new THREE.InstancedMesh(geo, terrainMaterial(st, false), cells.length);
+  cells.forEach(([x, y, z], i) => im.setMatrixAt(i, new THREE.Matrix4().makeTranslation(x + 0.5, y + 0.5, z + 0.5)));
+  terrainCells(geo.attributes.aCell, grid, j.W, j.D, j.H, null);
+  im.castShadow = im.receiveShadow = true;
+  scene.add(im);
+  if (st.sprout) new BlockDecor(scene, st, L.glow || (L.terrain.glow != null ? [L.terrain.glow] : null)).update(grid, j.W, j.D, j.H, null, false);
+  things.length = 0;
+  things.push(['box', [6, 6, -0.15], [12, 12, 0.3], 0xa49aa0]);
+}
 for (const [kind, p, s, c] of things) {
   let g;
   if (kind === 'box') g = new THREE.BoxGeometry(...s);
@@ -80,7 +101,7 @@ for (const [kind, p, s, c] of things) {
   scene.add(m);
 }
 const cam = new THREE.PerspectiveCamera(60, 1280 / 720, 0.05, 200);
-cam.up.set(0, 0, 1); cam.position.set(9, -5, 4); cam.lookAt(4, 8, 2.5);
+cam.up.set(0, 0, 1); if (TERR) { cam.position.set(16, -5, 11); cam.lookAt(6, 6, 1); } else { cam.position.set(9, -5, 4); cam.lookAt(4, 8, 2.5); }
 outline.render(scene, cam);
 window.done = true;
 </script></body></html>

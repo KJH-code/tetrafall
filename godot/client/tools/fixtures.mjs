@@ -137,6 +137,7 @@ console.log(`interp 프레임 ${frames.length}, net ${seq.length}, keys 바퀴 $
 // camera.json: 관전 궤도 (shared/camera.js) — 격자에 막히는 경우 포함
 // sky.json: 하늘 시점 (shared/sky-view.js) · cells.json: 칸 색 (render.js cellColor 를 그대로 옮긴 식) · hazard.json: 위험 계산 (client/hazard-field.js)
 {
+  const r = mulberry32(131); // 묶음마다 따로 (앞 묶음이 난수를 더 써도 이 정답은 그대로)
   const { orbitEye, followDist, overviewScale } = await import('../../../shared/camera.js');
   const { skyPose, turnYaw, easeYaw, landingPreview } = await import('../../../shared/sky-view.js');
   const HF = await import('../../../client/hazard-field.js');
@@ -233,6 +234,7 @@ console.log(`interp 프레임 ${frames.length}, net ${seq.length}, keys 바퀴 $
   console.log(`world: 궤도 ${orbit.length}, 하늘 ${poses.length}, 칸 색 ${cells.length}, 위험 ${fields.length}`);
 }
 {
+  const r = mulberry32(137);
   // labels.json: 머리 위 이름표 크기 (shared/hud-layout.js labelSizes) — 같은 거리 포함
   const { labelSizes } = await import('../../../shared/hud-layout.js');
   const cases = [];
@@ -429,4 +431,63 @@ console.log(`interp 프레임 ${frames.length}, net ${seq.length}, keys 바퀴 $
   }
   fs.writeFileSync(path.join(out, 'figure_motion.json'), JSON.stringify({ cases }));
   console.log(`figure_motion ${cases.length}`);
+}
+{
+  // victory.json (G1): 판 끝 연출 순서 (shared/victory.js) + 승자 고르기 (client/main.js 판 끝의 star 식을 그대로)
+  const { victoryPlan, victoryStage } = await import('../../../shared/victory.js');
+  const plans = [];
+  for (const star of [true, false]) for (const slow of [0, 900, Infinity, -5]) for (const reduced of [false, true]) {
+    const p = victoryPlan({ star, slowLeftMs: slow, reduced });
+    plans.push([star, Number.isFinite(slow) ? slow : null, reduced, p, [-1, 0, 500, 1200, 3000, 4000, 9000].map((t) => [t, victoryStage(p, t)])]);
+  }
+  const starOf = (state) => {
+    const playerById = (id) => state.players.find((x) => x.id === id);
+    const wt = state.round.winnerTeam;
+    const ws = (state.round.winnerIds || []).map(playerById).filter(Boolean);
+    const star = wt ? state.players.find((x) => x.team === wt && x.alive) || state.players.find((x) => x.team === wt) : ws.find((x) => x.alive) || ws[0];
+    return star ? star.id : null;
+  };
+  const P = (id, alive, team) => ({ id, alive, team });
+  const stars = [
+    { players: [P(1, true), P(2, false)], round: { winnerIds: [1] } },
+    { players: [P(1, false), P(2, true), P(3, true)], round: { winnerIds: [1, 3] } },
+    { players: [P(1, false), P(2, false)], round: { winnerIds: [2, 1] } },
+    { players: [P(1, true)], round: { winnerIds: [] } },
+    { players: [P(1, true, 'red'), P(2, false, 'blue'), P(3, true, 'blue')], round: { winnerTeam: 'blue', winnerIds: [2, 3] } },
+    { players: [P(1, true, 'red'), P(2, false, 'blue')], round: { winnerTeam: 'blue' } },
+    { players: [P(1, true)], round: { winnerIds: [9] } },
+  ].map((s) => [s, starOf(s)]);
+  fs.writeFileSync(path.join(out, 'victory.json'), JSON.stringify({ plans, stars }));
+}
+{
+  // ghost.json (G1): 유령 투하 조준 기둥 고르기 — render.js pickColumn 의 시선 걷기 (카메라 unproject 뒤) 를 그대로, 시선은 무작위
+  const r = mulberry32(141);
+  const W = 9, D = 8, H = 6;
+  const grid = new Array(W * D * H).fill(0);
+  for (let y = 0; y < D; y++) for (let x = 0; x < W; x++) for (let z = 0; z < (x * 3 + y * 5) % 4; z++) grid[(z * D + y) * W + x] = 1;
+  const solidAt = (x, y, z) => {
+    const gx = Math.floor(x), gy = Math.floor(y), gz = Math.floor(z);
+    if (gx < 0 || gy < 0 || gx >= W || gy >= D) return false;
+    if (gz < 0) return true;
+    return gz < H && !!grid[(gz * D + gy) * W + gx];
+  };
+  const top = (x, y) => { for (let z = H - 1; z >= 0; z--) if (grid[(z * D + y) * W + x]) return z + 1; return 0; };
+  const pick = (o, d) => {
+    for (let t = 0.3; t < C.GHOST_AIM_RANGE; t += 0.05) {
+      const x = o.x + d.x * t, y = o.y + d.y * t, z = o.z + d.z * t;
+      if (z < -0.5) break;
+      const gx = Math.floor(x), gy = Math.floor(y);
+      if (gx < 0 || gy < 0 || gx >= W || gy >= D) continue;
+      if (z <= 0 || solidAt(x, y, z)) return { x: gx, y: gy, z: top(gx, gy) };
+    }
+    return null;
+  };
+  const rays = [];
+  for (let i = 0; i < 60; i++) {
+    const o = { x: -4 + r() * (W + 8), y: -4 + r() * (D + 8), z: 2 + r() * 10 };
+    const a = r() * Math.PI * 2, el = -0.1 - r() * 1.4;
+    const d = { x: Math.cos(a) * Math.cos(el), y: Math.sin(a) * Math.cos(el), z: Math.sin(el) };
+    rays.push([o, d, pick(o, d)]);
+  }
+  fs.writeFileSync(path.join(out, 'ghost.json'), JSON.stringify({ W, D, H, grid, rays }));
 }

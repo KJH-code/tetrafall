@@ -1,8 +1,9 @@
-[gd_resource type="FontVariation" load_steps=3 format=3]
+[gd_resource type="FontVariation" load_steps=4 format=3]
 
 [ext_resource type="FontFile" path="res://assets/fonts/black-han-sans-korean.woff2" id="1"]
 [ext_resource type="FontFile" path="res://assets/fonts/black-han-sans-latin.woff2" id="2"]
+[ext_resource type="FontFile" path="res://assets/fonts/dejavu-sans-bold-symbols.woff2" id="3"]
 
 [resource]
-fallbacks = Array[Font]([ExtResource("2")])
+fallbacks = Array[Font]([ExtResource("2"), ExtResource("3")])
 base_font = ExtResource("1")

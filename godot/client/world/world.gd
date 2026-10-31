@@ -13,6 +13,8 @@ const HazardView := preload("res://world/hazard_view.gd")
 const Bodies := preload("res://world/bodies.gd")
 const SkyAids := preload("res://world/sky_aids.gd")
 const ItemsView := preload("res://world/items_view.gd")
+const GhostAim := preload("res://world/ghost_aim.gd")
+const Scenery := preload("res://world/scenery.gd")
 const CamRig := preload("res://world/cam_rig.gd")
 const BBLOCKS := "res://world/bblocks.gd"
 const FX := "res://fx/fx.gd" # G5 효과 (있으면 fx_root 에 붙이고 setup(rig): 카메라 흔들림·KO 줌은 rig.hook)
@@ -27,6 +29,8 @@ var hazard_view: Node3D
 var bodies: Node3D
 var sky_aids: Node3D
 var items_view: Node3D
+var ghost_aim: Node3D
+var scenery: Node3D
 var rig: Node3D
 var bblocks = null # G6 건축가 블록 (있으면 update(state)·skip() 을 부름)
 var fx_root := Node3D.new() # G5 효과 노드가 붙을 자리
@@ -67,7 +71,10 @@ func _ready() -> void:
 	sky_aids = SkyAids.new()
 	items_view = ItemsView.new()
 	rig = CamRig.new()
-	for n in [grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, rig, fx_root]:
+	ghost_aim = GhostAim.new()
+	scenery = Scenery.new()
+	rig.ghost_aim = ghost_aim
+	for n in [scenery, grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, ghost_aim, rig, fx_root]:
 		add_child(n)
 	fx_root.name = "Fx"
 	if ResourceLoader.exists(FX):
@@ -81,6 +88,14 @@ func _ready() -> void:
 		grid_view.set_material(G3.toon_material(Color.WHITE, {"vertex_color": true}))
 		grid_view.make_mat = func(c: Color): return G3.toon_material(c)
 		bodies.make_mat = grid_view.make_mat
+		# 섬·먼 배경: 빛 받는 것은 G3 툰 (꼭짓점 색), 스스로 빛나는 것 (unshaded) 은 기본 재질. 안개 끄기 (먼 배경) 는 G3 에 아직 없음
+		scenery.make_mat = func(o: Dictionary):
+			if o.get("unshaded", false):
+				return null
+			var opts := {"vertex_color": true, "outline": o.get("outline", true)}
+			if o.has("emissive"):
+				opts.emissive = o.emissive
+			return G3.toon_material(Color.WHITE, opts)
 		pieces_view.mats = [G3.toon_material(Color.WHITE, {"vertex_color": true}), G3.toon_material(Color.WHITE, {"vertex_color": true, "opacity": WC.PIECE_SKY_ALPHA})]
 	apply_theme("")
 	# 확인용 명령줄 (-- 뒤): --world-view over|third|first · --map <맵 id> · --mode <모드> (방장이면 대기실에서 바꿈)
@@ -155,8 +170,13 @@ func solid_at(x: float, y: float, z: float) -> bool:
 
 func _process(dt: float) -> void:
 	var st := Store.state
-	if headless or st.is_empty() or not st.has("field"):
+	# 방 밖 (메뉴): 판 노드를 숨김 (크기 안 정한 바닥·절벽 상자가 원점 카메라 앞을 가르던 것). 하늘·빛 (G3Env)·효과는 그대로
+	var live: bool = not st.is_empty() and st.has("field")
+	for n in [scenery, grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, ghost_aim]:
+		n.visible = live and ((n != hazard_view and n != ghost_aim) or n.visible)
+	if headless or not live:
 		return
+	dt *= View.time_scale # KO 슬로모션 (G5 가 정함)
 	var now := Time.get_ticks_msec() * 1.0
 	var mid := str(st.get("map", {}).get("id", ""))
 	if mid != theme_id:
@@ -169,6 +189,9 @@ func _process(dt: float) -> void:
 		if G3 != null:
 			G3.set_field(self, fs.x, fs.y)
 		built_version = -2
+	scenery.build(C.WORLD_MAP_THEME.get(theme_id), fs.x, fs.y, bool(View.settings.get("lowGfx", false)))
+	scenery.step(dt)
+	grid_view.cliff.visible = grid_view.cliff.visible and scenery.theme_id == null # 테마 섬이 있으면 상자 절벽 대신
 	if bblocks != null:
 		bblocks.update(st)
 		grid_view.skip = bblocks.skip()
@@ -181,6 +204,8 @@ func _process(dt: float) -> void:
 	var me := Store.me()
 	pieces_view.update(st, Store.my_id, me, rig.sky_blend)
 	hazard_view.update(st, Store.grid, Store.grid_version, me)
+	# 위험 표면이 반투명이라 바닥 아래 절벽 상자가 비쳐 보임 → 차오르면 숨김 (JS 는 깊이 흐림 셰이더로 가림, G3 hazard_material 이 오면 다시 봄)
+	grid_view.cliff.visible = not hazard_view.visible
 	items_view.update(st, dt, now)
 	var my_piece := {}
 	var people := []
@@ -196,3 +221,14 @@ func _process(dt: float) -> void:
 	sky_aids.update(sky_on, my_piece, people, now)
 	rig.place(dt, bodies.shown, solid_at)
 	bodies.thin_labels(rig.cam, sky_on)
+	var gcd = me.get("ghostCd") if not me.is_empty() else null
+	ghost_aim.update(rig.spectating() and gcd != null and rig.sky_blend == 0.0, rig.cam, Bodies.player_color(me, st) if not me.is_empty() else 0xffffff, gcd != null and float(gcd) == 0.0, field.x, field.y, solid_at, column_top, now)
+
+
+# 칸 (x, y) 기둥 꼭대기 높이 (render.js columnTopAt)
+func column_top(x: int, y: int) -> int:
+	for z in range(field.z - 1, -1, -1):
+		var i := (z * field.y + y) * field.x + x
+		if i < Store.grid.size() and Store.grid[i] != 0:
+			return z + 1
+	return 0

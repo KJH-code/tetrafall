@@ -20,6 +20,7 @@ var edge_at = null # 게임 좌표 Vector3
 var edge_color := Color.WHITE
 var edge_until := 0.0
 var cone: Mesh
+var cam: Camera3D = null # 지금 카메라 (fx.gd 가 넣음): 카메라가 줄기 안에 있으면 줄기를 옅게
 
 const EDGE_SHADER := """
 shader_type canvas_item;
@@ -90,6 +91,7 @@ func smash(p: Vector3, out: Dictionary, color: int, me: bool, near: bool) -> voi
 	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	FM.near_fade(mat) # 카메라 바로 앞이면 흐려짐 (화면을 덮지 않게)
 	var c := Co.color(color)
 	c.a = 0.9
 	mat.albedo_color = c
@@ -192,4 +194,7 @@ func update(dt: float) -> void:
 			pl.node.queue_free()
 			plumes.erase(pl)
 			continue
-		_plume_pose(pl, FM.plume(t))
+		var sh := FM.plume(t)
+		if cam != null and cam.is_inside_tree():
+			sh.z *= FM.plume_inside_fade(Co.game(cam.global_position - pl.node.global_position), Co.game(pl.dir).normalized(), sh.x, sh.y)
+		_plume_pose(pl, sh)

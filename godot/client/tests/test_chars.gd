@@ -142,7 +142,7 @@ func test_bodies_build_and_animate() -> void:
 	for ch in C.FIGURE_CHARS:
 		var b = Chars.make_body(ch, Color(0.8, 0.3, 0.2))
 		var meshes := b.find_children("*", "MeshInstance3D", true, false)
-		check(meshes.size() >= 20, "%s 조각 %d" % [ch, meshes.size()])
+		check(meshes.size() >= 60, "%s 조각 %d (옷·무기 포함)" % [ch, meshes.size()])
 		var states := [
 			{"walking": true, "air": false, "hs": 4.5, "walk": 1.3},
 			{"walking": false, "air": true, "vz": -4.0},
@@ -152,9 +152,11 @@ func test_bodies_build_and_animate() -> void:
 			{"walking": false, "air": false, "victory": 1.2},
 			{"walking": false, "air": false, "emote": int(C.EMOTE_CHAR), "emoteT": 0.6},
 			{"walking": false, "air": false, "hit": {"id": 3, "age": 0.01, "stop": 0.1, "dx": -1.0, "dy": 0.3, "pow": 1.5}},
+			{"walking": false, "air": false, "dizzy": 0.7, "punch": 0.6},
+			{"walking": false, "air": true, "whirl": 0.4, "glide": true, "amp": true},
 		]
 		for s in states:
-			var st := {"air": false, "walking": false, "hs": 0.0, "walk": 0.0, "vz": 0.0, "t": 1.0, "stunned": false, "emote": -1, "emoteT": 0.0, "victory": -1.0, "hit": null, "act": null, "accF": 3.0, "accS": -2.0, "tumble": 0.0, "recover": 0.0, "land": 0.0, "flip": -1.0, "idle": 0.0, "airDash": 0.0, "form": ""}
+			var st := {"air": false, "walking": false, "hs": 0.0, "walk": 0.0, "vz": 0.0, "t": 1.0, "stunned": false, "emote": -1, "emoteT": 0.0, "victory": -1.0, "hit": null, "act": null, "accF": 3.0, "accS": -2.0, "tumble": 0.0, "recover": 0.0, "land": 0.0, "flip": -1.0, "idle": 0.0, "airDash": 0.0, "form": "", "loaded": false, "ammo": 3.0, "dizzy": 0.0, "punch": 0.0, "whirl": -1.0, "glide": false, "amp": false}
 			st.merge(s, true)
 			for k in 10:
 				b._figure_anim(st, 1.0 / 60.0)
@@ -162,3 +164,40 @@ func test_bodies_build_and_animate() -> void:
 			check(b._pose_ok(), "%s 자세 깨짐 %s" % [ch, str(s.keys())])
 			check(is_finite(b.hips.position.y) and is_finite(b.shoulders[0].rotation.y), "%s 관절 %s" % [ch, str(s.keys())])
 		b.free()
+
+
+# 합친 몸 (chars_config MERGE): 몸 하나 그리는 메시 수가 조각 수보다 훨씬 적음
+func test_bodies_merged() -> void:
+	for ch in C.FIGURE_CHARS:
+		var b = Chars.make_body(ch, Color(0.2, 0.6, 0.9))
+		var pieces: int = b.piece_mat.size()
+		var drawn := 0
+		for mi in b.find_children("*", "MeshInstance3D", true, false):
+			if mi.layers != 0:
+				drawn += 1
+		if b.merged_count > 0:
+			check(drawn * 2 < pieces, "%s 그리는 메시 %d / 조각 %d" % [ch, drawn, pieces])
+		b.free()
+
+
+const VM := preload("res://chars/viewmodel.gd")
+
+
+# 1인칭 팔: 8명 내 몸을 베껴 팔꿈치 아래·무기만 그리고, 한 프레임 따라가도 깨지지 않음 (화면 없이 _sync·_follow 를 바로)
+func test_viewmodel_follows() -> void:
+	for ch in C.FIGURE_CHARS:
+		var vm = VM.new()
+		vm._ready()
+		var b = Chars.make_body(ch, Color(0.9, 0.4, 0.2))
+		vm._sync(b)
+		check(vm.twin != null and vm.pairs.size() > 5, "%s 베낄 노드 %d" % [ch, vm.pairs.size()])
+		var drawn := 0
+		for mi in vm.anchor.find_children("*", "MeshInstance3D", true, false):
+			if mi.layers != 0:
+				drawn += 1
+		check(drawn > 0, "%s 1인칭에 그리는 조각 %d" % [ch, drawn])
+		vm._follow(1.0 / 60.0)
+		check(is_finite(vm.anchor.position.x) and is_finite(vm.twin.shoulders[0].rotation.y), "%s 자리" % ch)
+		vm.twin.free()
+		b.free()
+		vm.free()

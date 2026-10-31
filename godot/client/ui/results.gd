@@ -4,6 +4,7 @@ extends PanelContainer
 
 const C := preload("res://core/config.gd")
 const S := preload("res://ui/ui_style.gd")
+const Portrait := preload("res://ui/portrait.gd")
 const Coords := preload("res://core/coords.gd")
 
 const CAUSE_KO := {"crush": "압사", "fall": "낙사", "lava": "용암", "hp": "체력"}
@@ -11,6 +12,8 @@ const TEAM_KO := {"red": "빨강", "blue": "파랑"}
 
 var title: Label
 var star: ColorRect
+var star_img: TextureRect # 승자 초상 (192 얼굴)
+var star_who = null # [char, color] — 그려지면 넣음
 var head: Label
 var table: GridContainer
 var key := ""
@@ -27,6 +30,11 @@ func _ready() -> void:
 	who.add_theme_constant_override("separation", 14)
 	star = ColorRect.new() # 승자 초상 자리 (G2 몸 SubViewport)
 	star.custom_minimum_size = Vector2(128, 128)
+	star_img = TextureRect.new()
+	star_img.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	star_img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	star_img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	star.add_child(star_img)
 	who.add_child(star)
 	head = S.glow_label("", 34, Color.WHITE, 6)
 	head.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -59,6 +67,8 @@ func refresh(st: Dictionary) -> void:
 	var k := "%s|%s|%s" % [str(st.round.n), str(ids), JSON.stringify(ps.map(func(p): return [p.id, p.get("wins"), p.get("score"), p.damage, p.alive, p.get("cause")]))]
 	var vp := get_viewport_rect().size
 	position = Vector2(vp.x - size.x - 12, (vp.y - size.y) / 2.0 + 22)
+	if star_who != null and star_img.texture == null:
+		star_img.texture = Portrait.tex(star_who[0], star_who[1], 192)
 	if k == key:
 		return
 	key = k
@@ -79,8 +89,11 @@ func refresh(st: Dictionary) -> void:
 		head.text = "무승부"
 	head.add_theme_color_override("font_color", _color(top) if top != null else S.ACCENT)
 	star.visible = top != null
+	star_img.texture = null
+	star_who = null
 	if top != null:
 		star.color = _color(top)
+		star_who = [top.get("char"), _color(top)]
 	ps.sort_custom(func(a, b):
 		var wa := 1 if winners.has(a.id) else 0
 		var wb := 1 if winners.has(b.id) else 0

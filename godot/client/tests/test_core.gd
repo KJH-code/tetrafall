@@ -147,3 +147,29 @@ func test_input_yaw_matches_camera() -> void:
 		var turned := Co.dir(yaw - 0.1)
 		check(turned.dot(right) > 0, "마우스 오른쪽이면 오른쪽으로 돎 (yaw %s)" % yaw)
 		cam.free()
+
+
+# 화면 글에 쓰는 글자가 다 프로젝트 글꼴에 있음 (웹엔 시스템 글꼴 대체가 없어 빠진 글자는 빈 칸 — 2026-10-31 웹 관전 안내의 '·').
+# 스크립트 (tests 빼고) 의 "…" 글 안 글자를 모아 ui_font (Black Han Sans 한글·라틴 + DejaVu 기호 조각) 에 있는지 봄
+func test_ui_font_has_all_chars() -> void:
+	var font: Font = load("res://assets/fonts/ui_font.tres")
+	var re := RegEx.create_from_string("\"([^\"\\n]*)\"")
+	var missing := {}
+	var files := []
+	var dirs := ["res://"]
+	while not dirs.is_empty():
+		var d: String = dirs.pop_back()
+		for sub in DirAccess.get_directories_at(d):
+			if not sub.begins_with(".") and sub != "tests" and sub != "build":
+				dirs.append(d.path_join(sub))
+		for f in DirAccess.get_files_at(d):
+			if f.ends_with(".gd"):
+				files.append(d.path_join(f))
+	for path in files:
+		for m in re.search_all(FileAccess.get_file_as_string(path)):
+			for ch in m.get_string(1):
+				var o := ch.unicode_at(0)
+				if o > 32 and not missing.has(ch) and not font.has_char(o):
+					missing[ch] = path
+	check(files.size() > 30, "스크립트 %d개" % files.size())
+	check(missing.is_empty(), "글꼴에 없는 글자: %s" % [missing])
