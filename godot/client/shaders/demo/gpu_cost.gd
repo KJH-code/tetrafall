@@ -2,6 +2,8 @@
 #   xvfb-run -a godot --path godot/client --rendering-driver opengl3 --resolution 1280x720 res://shaders/demo/gpu_cost.tscn -- --theme desert --terrain --hazard 1.4
 extends Node3D
 
+const G3 := preload("res://shaders/g3.gd")
+
 const N := 20
 var game: Node3D
 var cases: Array = [] # [이름, 숨길 셰이더 경로 목록]
@@ -14,6 +16,8 @@ var hidden: Array = []
 func _ready() -> void:
 	game = load("res://shaders/demo/g3_demo.tscn").instantiate()
 	add_child(game)
+	if OS.get_cmdline_user_args().has("--cost-low"): # 그래픽 낮춤으로 재기
+		G3.set_low(game, true)
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	cases = [["전부", []], ["지형 빼고", ["terrain"]], ["위험 빼고", ["hazard"]], ["바닥 빼고", ["floor"]], ["툰 (조각) 빼고", ["toon"]], ["하늘 빼고", ["sky"]], ["외곽선 끔", ["@outline"]], ["그림자 끔", ["@shadow"]]]
 

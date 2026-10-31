@@ -29,6 +29,7 @@ var hazard := -99.0 # --hazard z: 위험 표면 (js_demo ?hazard=z 와 같음, �
 var light := false # --light: 판 빛 vivid (js_demo ?light 와 같음)
 var low_after := false # --low: 다 만든 뒤 G3.set_low(self, true) (그래픽 낮춤 켬을 그 자리에서)
 var alpha_pieces := false # --alpha: 칸을 반투명 재질 (하늘 블록·하늘 시점 0.55) 로
+var local_light := false # --local: 물체마다 G3.toon_local_light (노을 빛, 1인칭 팔 확인)
 var terrain := false # --terrain: 테마 지형 블록 (terrain_grids.json, js_demo ?terrain 과 같음)
 
 
@@ -54,6 +55,8 @@ func _ready() -> void:
 			low_after = true
 		if args[i] == "--alpha":
 			alpha_pieces = true
+		if args[i] == "--local":
+			local_light = true
 		if args[i] == "--terrain":
 			terrain = true
 	G3.apply_theme(self, theme)
@@ -103,6 +106,8 @@ func _ready() -> void:
 				mi.mesh = cy
 		mi.position = Coords.gpos(t[1])
 		mi.material_override = G3.toon_material(t[3])
+		if local_light:
+			G3.toon_local_light(mi.material_override)
 		if t == things[0] and G3.floor_material(theme) != null:
 			mi.material_override = G3.floor_material(theme) # 바닥 판 (테마 무늬)
 		add_child(mi)
