@@ -49,6 +49,12 @@ var parts_z0 = null # parts 노드 처음 높이 (머리 박음 눌림) # G5 효
 var loaded := false # 갈고리 장전 (스냅샷 loaded, 1인칭 팔이 씀)
 var frame: Node3D # 게임 좌표 → 고도
 var torso_mats := {} # K.SKIN 바드: 폼 → 몸통 전용 재질 (묶음 밖)
+# 몸 색 효과 (render.js 매 프레임 bodyMat·mats 색): 시각 ms
+var glow_until := -1e9
+var glow_color := Color.WHITE
+var windup_until := -1e9
+var armor_until := -1e9
+var armor_hit_at := -1e9
 var batch = null # K.SKIN: G3 batch.gd (툰 조각 전부 → SkinnedMesh 하나, 뼈 = 조각)
 var rig: Node3D # 몸 전체 기울임·공중제비·구르기 (render.js rig)
 var hips: Node3D
@@ -287,6 +293,9 @@ func _batch(cd: Dictionary) -> void:
 		for f in tms:
 			if mats[int(tms[f])] == cur and torso_mats.has(f):
 				(torso as MeshInstance3D).material_override = torso_mats[f]
+	for i in piece_mat:
+		if cd.mats[piece_mat[i]].get("skin", false):
+			nodes[i].set_meta("tf_skin", true) # 묶음이 피부 정점 표시 (UV2.x = 1) 로 씀 → 툰 skin_tint·skin_emissive
 	batch = G3.batch_mesh(frame)
 	batch.set_process(false) # 뼈 맞추기는 pose 안에서 (_sync_bones)
 	for i in piece_mat:
@@ -471,6 +480,7 @@ func pose(p: Dictionary, now_ms: float) -> void:
 	_apply(dt)
 	_sync_bones()
 	_apply_opacity()
+	_fx_colors(p)
 	# 맞은 순간 찌그러짐 (G5 fx.squash_amount, render.js g.scale): 게임 (x, y 넓게, z 낮게) = 고도 (x, z 넓게, y 낮게)
 	var sq := _fx_amount("squash_amount")
 	scale = Vector3(1.0 + 0.28 * sq, 1.0 - 0.32 * sq, 1.0 + 0.28 * sq)
@@ -1147,6 +1157,103 @@ func _sync_bones() -> void:
 		batch.sync()
 
 
+# ---------- 몸 색 효과 (render.js 의 bodyMat·mats 색 부분, B4 가 넘김) ----------
+# 피부만: 경직 하얗게 깜빡 (70ms) · 발광 경직 0x664400 / 조종권 0x005566 / 점프 강화 0x1a5a1a / 닌자 강화 깜빡 EMPOWER_GLOW.
+# 몸 전체 (옷 포함): 스킬·필살기 빛 · 지상 F 준비 하얗게 · 탱크 아머 금속 번쩍 (버틴 순간 하양)
+func _fx_event(ty: String, e: Dictionary) -> void:
+	var now := Time.get_ticks_msec() * 1.0
+	match ty:
+		"skill", "ult", "ultRefund":
+			var ult := ty != "skill"
+			glow_until = now + (C.ULT_AURA_MS if ult else C.SKILL_GLOW_MS)
+			glow_color = _hex(C.ULT_AURA_COLOR if ult else C.SKILL_AURA_COLOR)
+		"skillWindup":
+			windup_until = now + float(e.get("ms", C.SKILL_WINDUP_MS))
+		"charge":
+			armor_until = now + C.TANK_CHARGE_MS + 120.0
+		"slamWarn":
+			armor_until = now + float(e.get("ms", 0.0)) + 150.0
+		"slam", "armorBreak":
+			armor_until = -1e9
+		"armor":
+			armor_hit_at = now
+
+
+static func _hex(v) -> Color:
+	return Color.hex((int(v) << 8) | 0xff)
+
+
+# 지금 프레임 색: [피부 색, 피부 발광, 나머지 발광]
+func fx_colors(p: Dictionary, now: float) -> Array:
+	var stunned: bool = p.get("stunned", false) == true
+	var skin := Color.WHITE if stunned and int(now / 70.0) % 2 == 0 else skin_color
+	var se := Color(0, 0, 0)
+	if stunned:
+		se = _hex(0x664400)
+	elif p.get("hasControl", false) == true:
+		se = _hex(0x005566)
+	if float(p.get("jumpLeft", 0.0)) > 0.0 and not stunned:
+		se = _hex(0x1a5a1a)
+	var emp := float(p.get("empower", 0.0))
+	if emp > 0.0 and int(now / (70.0 if emp < 1500.0 else 160.0)) % 2 == 1:
+		se = _hex(C.EMPOWER_GLOW)
+	var oe := Color(0, 0, 0)
+	if now < glow_until:
+		oe = glow_color
+		se = glow_color
+	var wu := windup_until - now
+	if wu > 0.0:
+		var v := 0.55 + 0.45 * clampf(1.0 - wu / C.SKILL_WINDUP_MS, 0.0, 1.0)
+		oe = Color(v, v, v)
+		se = oe
+	if now < armor_until:
+		var c := Color.WHITE if now - armor_hit_at < 90.0 else _hex(C.ARMOR_SHINE) * (0.5 + 0.5 * absf(sin(now / 70.0)))
+		oe = Color(c.r, c.g, c.b)
+		se = oe
+	return [skin, se, oe]
+
+
+# 재질에 넣기: 묶은 몸 = 묶음 재질 하나 (emissive = 나머지, skin_tint·skin_emissive = 피부 정점만 — G3 툰이 받음, 정점 표시는 조각 meta tf_skin),
+# 따로 그리는 조각은 제 재질 (피부 재질은 색·발광 둘 다)
+func _fx_colors(p: Dictionary) -> void:
+	var f := fx_colors(p, Time.get_ticks_msec() * 1.0)
+	var skin: Color = f[0]
+	for dr in drawn:
+		var m = (dr.mi as MeshInstance3D).material_override
+		if not (m is ShaderMaterial):
+			continue
+		if int(dr.m.get("emissive", 0)) != 0:
+			continue # 제 발광이 있는 조각은 그대로
+		var sm := m as ShaderMaterial
+		var is_skin: bool = not dr.merged and dr.m.get("skin", false)
+		sm.set_shader_parameter("emissive", f[1] if is_skin else f[2])
+		if is_skin:
+			sm.set_shader_parameter("albedo", Color(skin.r, skin.g, skin.b, 1.0))
+		elif dr.mi == (batch.mi if batch != null else null):
+			sm.set_shader_parameter("skin_emissive", f[1])
+			sm.set_shader_parameter("skin_tint", Color(skin.r, skin.g, skin.b, 1.0 if skin != skin_color else 0.0))
+
+
+# ---------- 몸 복제 (B4: 순간 베기 잔상·사냥꾼의 눈) ----------
+# 지금 자세 그대로 굳은 복사본 (보이는 메시는 다 material 로). 돌려받은 노드를 원하는 곳에 add_child 하고 global_transform = 몸의 global_transform
+func snapshot(material: Material) -> Node3D:
+	var holder := Node3D.new()
+	var f := frame.duplicate() as Node3D
+	holder.add_child(f)
+	for mi in f.find_children("*", "MeshInstance3D", true, false):
+		var g := mi as MeshInstance3D
+		g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if g.layers != 0:
+			g.material_override = material
+	return holder
+
+
+# 살아 움직이는 몸 위에 한 겹 더 (GeometryInstance3D.material_overlay — 묶은 몸도 같은 뼈로). null 이면 끔
+func set_overlay(material: Material) -> void:
+	for dr in drawn:
+		(dr.mi as MeshInstance3D).material_overlay = material
+
+
 func _vis(r, on: bool) -> void:
 	var n := _n(r)
 	if n != null:
@@ -1163,6 +1270,8 @@ func on_event(e: Dictionary) -> void:
 	var target = e.get("target")
 	var hit_me: bool = target != null and int(target) == pid
 	var ty: String = str(e.get("type", ""))
+	if mine:
+		_fx_event(ty, e)
 	match ty:
 		"star": # 닌자 표창 한 발 (1인칭 왼손 표창이 잠깐 빔)
 			if mine:

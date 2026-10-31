@@ -238,6 +238,53 @@ const VM := preload("res://chars/viewmodel.gd")
 
 
 # 1인칭 팔: 8명 내 몸을 베껴 팔꿈치 아래·무기만 그리고, 한 프레임 따라가도 깨지지 않음 (화면 없이 _sync·_follow 를 바로)
+# 몸 색 효과 (render.js bodyMat·mats 색): 피부만 (경직·조종권·점프·강화) / 몸 전체 (스킬 빛·F 준비·탱크 아머) + 묶음 재질에 들어감, 몸 복제
+func test_body_fx_colors() -> void:
+	var b = Chars.make_body("tank", Color(0.2, 0.4, 0.9))
+	b.pid = 5
+	var now := 100000.0
+	var f: Array = b.fx_colors({"stunned": false}, now)
+	check(f[0] == b.skin_color and f[1] == Color(0, 0, 0) and f[2] == Color(0, 0, 0), "평소 %s" % str(f))
+	f = b.fx_colors({"stunned": true}, 70.0 * 10)
+	check(f[0] == Color.WHITE and f[1].is_equal_approx(b._hex(0x664400)), "경직 하얗게 + 발광 %s" % str(f))
+	f = b.fx_colors({"hasControl": true}, now)
+	check(f[1].is_equal_approx(b._hex(0x005566)) and f[2] == Color(0, 0, 0), "조종권 = 피부만")
+	f = b.fx_colors({"jumpLeft": 2.0}, now)
+	check(f[1].is_equal_approx(b._hex(0x1a5a1a)), "점프 강화 초록")
+	b.on_event({"type": "ult", "who": 5})
+	f = b.fx_colors({}, Time.get_ticks_msec() * 1.0)
+	check(f[2].is_equal_approx(b._hex(C.ULT_AURA_COLOR)) and f[1] == f[2], "필살기 빛 = 몸 전체")
+	b.glow_until = -1e9
+	b.on_event({"type": "charge", "who": 5})
+	b.on_event({"type": "armor", "who": 5})
+	f = b.fx_colors({}, Time.get_ticks_msec() * 1.0)
+	check(f[2] == Color.WHITE, "아머 버틴 순간 하양")
+	b.on_event({"type": "slam", "who": 5})
+	b.on_event({"type": "skillWindup", "who": 5, "ms": 150})
+	f = b.fx_colors({}, Time.get_ticks_msec() * 1.0)
+	check(f[2].r > 0.5 and f[2].r == f[2].b, "F 준비 하얗게 %s" % str(f[2]))
+	b.on_event({"type": "ult", "who": 6}) # 남의 이벤트는 안 받음
+	b.windup_until = -1e9
+	b._fx_colors({"hasControl": true})
+	if b.batch != null:
+		var bm: ShaderMaterial = b.batch.mi.material_override
+		check(bm.get_shader_parameter("skin_emissive").is_equal_approx(b._hex(0x005566)) and bm.get_shader_parameter("emissive") == Color(0, 0, 0), "묶음 재질: 피부 발광만")
+	# 복제: 굳은 복사본 (보이는 메시는 다 준 재질) · 한 겹 더
+	var mat := StandardMaterial3D.new()
+	var snap: Node3D = b.snapshot(mat)
+	var n := 0
+	for mi in snap.find_children("*", "MeshInstance3D", true, false):
+		if mi.layers != 0:
+			check(mi.material_override == mat, "복사본 재질")
+			n += 1
+	check(n > 0, "복사본 메시 %d" % n)
+	b.set_overlay(mat)
+	check(b.drawn.all(func(dr): return dr.mi.material_overlay == mat), "한 겹 더")
+	b.set_overlay(null)
+	snap.free()
+	b.free()
+
+
 func test_viewmodel_follows() -> void:
 	for ch in C.FIGURE_CHARS:
 		var vm = VM.new()
