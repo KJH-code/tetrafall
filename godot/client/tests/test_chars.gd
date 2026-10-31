@@ -177,6 +177,29 @@ func test_bodies_merged() -> void:
 				drawn += 1
 		if b.merged_count > 0:
 			check(drawn * 2 < pieces, "%s 그리는 메시 %d / 조각 %d" % [ch, drawn, pieces])
+		if b.skel != null:
+			# 늘 보이는 관절은 뼈 → 보이는 메시 (조상까지 보이는 것) 가 몸 하나에 몇 개뿐
+			var shown := 0
+			for mi in b.find_children("*", "MeshInstance3D", true, false):
+				var n: Node = mi
+				var vis: bool = mi.layers != 0
+				while vis and n != null:
+					vis = (n as Node3D).visible if n is Node3D else true
+					n = n.get_parent()
+				if vis:
+					shown += 1
+			check(shown <= 16, "%s 보이는 메시 %d (뼈 %d)" % [ch, shown, b.bone_nodes.size()])
+			check(b.bone_nodes.has(b.elbows[0]) and b.bone_nodes.has(b.neck), "%s 팔꿈치·목은 뼈" % ch)
+			# 뼈 자세 = 노드의 frame 기준 자리 (움직인 뒤에도)
+			b.elbows[0].rotation.y = 0.7
+			b._sync_bones()
+			var bi: int = b.bone_nodes.find(b.elbows[0])
+			var t := Transform3D.IDENTITY
+			var nn: Node = b.elbows[0]
+			while nn != b.frame:
+				t = (nn as Node3D).transform * t
+				nn = nn.get_parent()
+			check(b.skel.get_bone_pose(bi).origin.distance_to(t.origin) < 1e-4 and b.skel.get_bone_pose(bi).basis.x.distance_to(t.basis.x) < 1e-4, "%s 뼈 자세" % ch)
 		b.free()
 
 
@@ -198,6 +221,19 @@ func test_viewmodel_follows() -> void:
 		check(drawn > 0, "%s 1인칭에 그리는 조각 %d" % [ch, drawn])
 		vm._follow(1.0 / 60.0)
 		check(is_finite(vm.anchor.position.x) and is_finite(vm.twin.shoulders[0].rotation.y), "%s 자리" % ch)
+		# 캐릭터별 1인칭 소품: 닌자 표창 3개 (단검은 숨김) · 대포수 포탄 · 광전사 아래팔 핏줄
+		check((vm.star != null) == (ch == "ninja"), "%s 표창" % ch)
+		if ch == "ninja":
+			check(vm.star.get_child_count() == 3 and (vm.star.get_child(0) as MeshInstance3D).mesh.get_faces().size() == 8 * 4 * 3, "닌자 표창 3개·모양")
+			b.star_at = Time.get_ticks_msec()
+			vm._follow(1.0 / 60.0)
+			check(not vm.star.visible, "닌자 던진 직후 빈손")
+		check((vm.pips.size() > 0) == (ch == "cannon"), "%s 포탄 %d" % [ch, vm.pips.size()])
+		check((vm.veins.size() == 2) == (ch == "berserker"), "%s 핏줄 %d" % [ch, vm.veins.size()])
+		if ch == "cannon":
+			b.cannon_kick_at = Time.get_ticks_msec()
+			var sw: Array = vm._cannon_hold(null, vm.twin._n(vm.twin.refs.cannon))
+			check(sw[1] > 0.1 and sw[2] > 0.9, "대포 반동 %s" % str(sw))
 		vm.twin.free()
 		b.free()
 		vm.free()

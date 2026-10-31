@@ -33,6 +33,8 @@ var cur_act = null # 지금 공격 동작 (_act_for 결과, 1인칭 팔이 씀)
 var flap_s := {"x": 0.0, "v": 0.0}
 var form := ""
 var dizzy := 0.0 # 광전사 어지러움 남은 초 (spinEnd·끊긴 소용돌이, render.js setDizzy)
+var star_at := -1e9 # 표창 던진 시각 (ms, 1인칭)
+var cannon_kick_at := -1e9 # 대포 쏜 시각 (ms, 1인칭 반동)
 var rage_k := 0.0 # 광전사 분노 0~1 (피해 % / BERSERK_RAGE_PCT)
 var form_at := -1e9 # 바드 폼이 바뀐 시각 (초, 튀기기 연출)
 var opacity := 1.0 # 유령화·무적 반투명
@@ -46,6 +48,8 @@ var whirl_t0 = null # 광전사 소용돌이 시작 (초)
 var parts_z0 = null # parts 노드 처음 높이 (머리 박음 눌림) # G5 효과 (squash_amount·punch_amount)
 var loaded := false # 갈고리 장전 (스냅샷 loaded, 1인칭 팔이 씀)
 var frame: Node3D # 게임 좌표 → 고도
+var skel: Skeleton3D = null # 늘 보이는 관절 (K.SKIN): 뼈 i = bone_nodes[i] 의 frame 기준 자리, 몸 한 메시
+var bone_nodes: Array[Node3D] = []
 var rig: Node3D # 몸 전체 기울임·공중제비·구르기 (render.js rig)
 var hips: Node3D
 var waist: Node3D
@@ -181,12 +185,16 @@ func build(char_id_: String, color: Color, merge: bool = K.MERGE) -> void:
 	P = Motion.rest_pose(d)
 	V = Motion.zero_pose(P)
 	_apply(0.0)
+	_sync_bones()
 
 
 # ---------- 합친 몸 (JS client/batch.js 와 같은 뜻, 방법은 다름) ----------
 # 움직이는 노드 (관절·천 자락·뿔·눈동자·보이기를 바꾸는 무기… = refs 에 나오는 노드 + 처음에 숨긴 노드) 마다, 그 아래 붙어 같이 움직이는 조각들을
 # 재질 종류 (툰/basic·외곽선·발광·체크 무늬·그림자) 마다 메시 하나로 합쳐 그 노드에 붙임. 색은 정점 색. 뼈 (skin) 없이 노드 그대로라 숨기기·자세가 예전처럼.
-# 투명 재질·바드 몸통 (폼마다 재질이 바뀜)·광전사 충혈 흰자 (색이 바뀜) 는 따로 그림
+# 투명 재질·바드 몸통 (폼마다 재질이 바뀜)·광전사 충혈 흰자 (색이 바뀜) 는 따로 그림.
+# K.SKIN: 움직이는 노드마다 따로가 아니라 Skeleton3D 뼈 하나씩 + 재질 종류마다 몸 한 메시 (툰 1 + 외곽선 1 + 눈 basic 1 …)
+# (정점은 그 노드 기준 자리 그대로, 뼈 하나에 무게 1, 바인드 = 단위 → 뼈 자세 = 노드의 frame 기준 자리). 보이기를 바꾸는 무기·폼 부위·분노 표시는
+# 뼈 크기 K.SKIN_HIDE (0 이면 돌림을 못 뽑음, G3 batch.gd 와 같은 방법) 로 숨김. 바드 몸통만 노드에 붙임 (폼마다 재질이 바뀜)
 func _merge(cd: Dictionary) -> void:
 	var dyn := {}
 	# 움직이는 노드만 (figureAnim 이 돌리거나 보이기를 바꾸는 것). 손·발·몸통·코·악기 줄 등 refs 에 있어도 안 움직이는 건 주인 관절에 같이 합침
@@ -215,7 +223,28 @@ func _merge(cd: Dictionary) -> void:
 	var rage_eye := -1
 	if refs.get("rage") is Dictionary and refs.rage.get("eyeMat") is Dictionary:
 		rage_eye = int(refs.rage.eyeMat.mat)
-	var groups := {} # "주인 노드|재질 종류" → {owner, vs, ns, cs, us, m, shadow}
+	# 뼈로 그릴 주인: 바드 몸통 말고 다. 안 쓰는 건축가 망치 (다른 캐릭터는 늘 숨김) 아래 조각은 아예 안 넣음
+	var bone_of := {}
+	var unused := {}
+	var hm := _n(refs.get("hammer"))
+	if hm != null and not hm.visible:
+		unused[nodes.find(hm)] = true
+	if K.SKIN:
+		for o in dyn:
+			if keep_torso and nodes[int(o)] == torso:
+				continue
+			bone_of[int(o)] = bone_nodes.size()
+			bone_nodes.append(nodes[int(o)])
+		if bone_nodes.size() > 0:
+			skel = Skeleton3D.new()
+			skel.name = "Skel"
+			var skin := Skin.new()
+			for b in bone_nodes.size():
+				skel.add_bone("b%d" % b)
+				skin.add_bind(b, Transform3D.IDENTITY)
+			frame.add_child(skel)
+			skel.set_meta("skin", skin)
+	var groups := {} # "주인 노드|재질 종류" → {owner, vs, ns, cs, us, m, shadow} (뼈 주인은 owner -1 로 모두 한 묶음 + bs·ws)
 	for i in piece_mat:
 		var mi := nodes[i] as MeshInstance3D
 		var m: Dictionary = cd.mats[piece_mat[i]]
@@ -228,10 +257,22 @@ func _merge(cd: Dictionary) -> void:
 		while not dyn.has(owner):
 			rel = nodes[owner].transform * rel
 			owner = parents[owner]
-		var key := "%d|%s|%s|%s|%s|%s" % [owner, m.kind, m.get("outline", true), m.get("emissive", 0), JSON.stringify(m.get("plaid", [])), cd.nodes[i].get("noShadow", false)]
+		var bone: int = int(bone_of.get(owner, -1))
+		var under_unused := false
+		var a: int = owner
+		while a >= 0 and not under_unused:
+			under_unused = unused.has(a)
+			a = parents[a]
+		if under_unused:
+			mi.layers = 0
+			continue
+		# 그림자는 묶음마다 (툰 조각 몇 개만 그림자를 안 드리움 → 같은 묶음에, 하나라도 드리우면 드리움)
+		var key := "%d|%s|%s|%s|%s" % [-1 if bone >= 0 else owner, m.kind, m.get("outline", true), m.get("emissive", 0), JSON.stringify(m.get("plaid", []))]
 		if not groups.has(key):
-			groups[key] = {"owner": owner, "vs": [], "ns": [], "cs": [], "us": [], "m": m, "shadow": not cd.nodes[i].get("noShadow", false)} # Array 에 모아 마지막에 Packed 로
+			groups[key] = {"owner": -1 if bone >= 0 else owner, "vs": [], "ns": [], "cs": [], "us": [], "bs": [], "ws": [], "m": m, "shadow": not cd.nodes[i].get("noShadow", false)} # Array 에 모아 마지막에 Packed 로
 		var gr: Dictionary = groups[key]
+		if not cd.nodes[i].get("noShadow", false):
+			gr.shadow = true
 		var col: Color = _mat_color(m, skin_color)
 		var arr := (mi.mesh as ArrayMesh).surface_get_arrays(0)
 		var nb := rel.basis.inverse().transposed()
@@ -243,6 +284,9 @@ func _merge(cd: Dictionary) -> void:
 			gr.ns.append((nb * ns[k]).normalized() if ns != null and ns.size() == vs.size() else Vector3.UP)
 			gr.us.append(us[k] if us != null and us.size() == vs.size() else Vector2.ZERO)
 			gr.cs.append(col)
+			if bone >= 0:
+				gr.bs.append_array([bone, 0, 0, 0])
+				gr.ws.append_array([1.0, 0.0, 0.0, 0.0])
 		mi.layers = 0 # 조각 자체는 안 그림 (자리만)
 	for key in groups:
 		var gr: Dictionary = groups[key]
@@ -252,15 +296,25 @@ func _merge(cd: Dictionary) -> void:
 		arr[Mesh.ARRAY_NORMAL] = PackedVector3Array(gr.ns)
 		arr[Mesh.ARRAY_COLOR] = PackedColorArray(gr.cs)
 		arr[Mesh.ARRAY_TEX_UV] = PackedVector2Array(gr.us)
+		var skinned: bool = int(gr.owner) < 0
+		if skinned:
+			arr[Mesh.ARRAY_BONES] = PackedInt32Array(gr.bs)
+			arr[Mesh.ARRAY_WEIGHTS] = PackedFloat32Array(gr.ws)
 		var am := ArrayMesh.new()
 		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		if skinned:
+			am.custom_aabb = K.SKIN_AABB # 정점은 뼈 기준 자리라 메시 자체 상자는 엉뚱함 → 몸 전체 상자 (frame 기준)
 		var mi := MeshInstance3D.new()
 		mi.mesh = am
 		mi.material_override = _merged_material(gr.m)
 		drawn.append({"mi": mi, "m": gr.m, "merged": true})
 		if not gr.shadow:
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		nodes[int(gr.owner)].add_child(mi)
+		if skinned:
+			mi.skin = skel.get_meta("skin")
+			skel.add_child(mi) # skeleton 경로 기본값 '..' = skel
+		else:
+			nodes[int(gr.owner)].add_child(mi)
 		merged_count += 1
 
 
@@ -436,6 +490,7 @@ func pose(p: Dictionary, now_ms: float) -> void:
 	var st := _anim_state(p, now_ms)
 	_figure_anim(st, dt)
 	_apply(dt)
+	_sync_bones()
 	_apply_opacity()
 	# 맞은 순간 찌그러짐 (G5 fx.squash_amount, render.js g.scale): 게임 (x, y 넓게, z 낮게) = 고도 (x, z 넓게, y 낮게)
 	var sq := _fx_amount("squash_amount")
@@ -549,6 +604,13 @@ func _is_winner(p: Dictionary) -> bool:
 	var st: Dictionary = store.state
 	if st.get("phase") != "over" or st.get("practice", false):
 		return false
+	# 마지막 킬 슬로모션 동안 (View.victory_stage 'slow') 은 아직 — 클로즈업과 함께 포즈 시작 (render.js winners·victoryHold)
+	var view = _autoload("View")
+	if view != null:
+		if str(view.victory_stage) == "slow":
+			return false
+		if view.victory_id != null and int(view.victory_id) == pid:
+			return true
 	var rd: Dictionary = st.get("round", {})
 	for w in rd.get("winnerIds", []):
 		if int(w) == pid:
@@ -1100,6 +1162,23 @@ func _crush_flat() -> void:
 	tw.tween_callback(holder.queue_free)
 
 
+# 뼈 자세 = 노드의 frame 기준 자리 (매 프레임 _apply 뒤). 노드는 frame 아래에 있으니 transform 을 frame 까지 곱함
+func _sync_bones() -> void:
+	if skel == null:
+		return
+	for b in bone_nodes.size():
+		var t := Transform3D.IDENTITY
+		var n: Node = bone_nodes[b]
+		var shown := true
+		while n != frame and n != null:
+			shown = shown and (n as Node3D).visible
+			t = (n as Node3D).transform * t
+			n = n.get_parent()
+		if not shown:
+			t.basis = Basis.from_scale(Vector3.ONE * K.SKIN_HIDE) # 숨김: 한 점으로 (돌림은 버림)
+		skel.set_bone_pose(b, t)
+
+
 func _vis(r, on: bool) -> void:
 	var n := _n(r)
 	if n != null:
@@ -1117,6 +1196,12 @@ func on_event(e: Dictionary) -> void:
 	var hit_me: bool = target != null and int(target) == pid
 	var ty: String = str(e.get("type", ""))
 	match ty:
+		"star": # 닌자 표창 한 발 (1인칭 왼손 표창이 잠깐 빔)
+			if mine:
+				star_at = Time.get_ticks_msec()
+		"shellFire": # 대포 반동 (1인칭 대포가 화면 쪽으로 툭)
+			if mine:
+				cannon_kick_at = Time.get_ticks_msec()
 		"attack":
 			if mine:
 				_attack_start(e, now)
