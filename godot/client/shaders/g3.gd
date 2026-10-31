@@ -461,11 +461,8 @@ static func hazard_material(theme_id, low_arg = null, far := false) -> ShaderMat
 	var low := _low(low_arg)
 	var L := hazard_look(theme_id)
 	var m := ShaderMaterial.new()
-	m.shader = HAZARD
+	m.shader = hazard_shader(HZ_STYLE.get(L.style, 1), far, not low)
 	m.render_priority = 1 # JS renderOrder 1: 블록 뒤에
-	m.set_shader_parameter("STYLE", HZ_STYLE.get(L.style, 1))
-	m.set_shader_parameter("FAR", 1 if far else 0)
-	m.set_shader_parameter("SHIMMER", 0 if low else 1)
 	m.set_shader_parameter("HZ_CURVE_FROM", C.HAZARD_CURVE_FROM)
 	m.set_shader_parameter("HZ_CURVE", C.HAZARD_CURVE)
 	m.set_shader_parameter("HZ_NOISE_WAVE", C.HAZARD_NOISE_WAVE)
@@ -481,6 +478,19 @@ static func hazard_material(theme_id, low_arg = null, far := false) -> ShaderMat
 	m.set_meta("hz_theme", theme_id)
 	_track(m, func(l): return hazard_material(theme_id, l, far))
 	return m
+
+
+# 갈래마다 셰이더 하나 (STYLE·FAR·SHIMMER #define, 한 번 만들면 다시 씀)
+static var _hz_shaders := {}
+
+
+static func hazard_shader(style: int, far: bool, shimmer: bool) -> Shader:
+	var key := "%d%d%d" % [style, int(far), int(shimmer)]
+	if not _hz_shaders.has(key):
+		var sh := Shader.new()
+		sh.code = "shader_type spatial;\n#define STYLE %d\n#define FAR %d\n#define SHIMMER %d\n#include \"res://shaders/hazard.gdshaderinc\"\n" % [style, int(far), int(shimmer)]
+		_hz_shaders[key] = sh
+	return _hz_shaders[key]
 
 
 # 닿는 곳 거리 표 (world/hazard_field.gd field() 결과) → 그림 (r = 거리/3, g = (바닥+10)/40, JS uploadField 그대로)
