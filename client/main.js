@@ -1759,7 +1759,7 @@ function updatePlayers() {
       const el = document.createElement('div');
       el.className = 'pc';
       el.innerHTML =
-        '<div class="top"><div class="face"></div><div><div class="nm"></div><div class="sub"></div></div></div><div class="pct"></div><div class="hp"><i></i></div><div class="bar"></div><div class="away-tag">자리 비움</div><div class="mk"></div>';
+        '<div class="top"><div class="face"></div><div><div class="nm"></div><div class="sub"></div></div><div class="mk"></div></div><div class="pct"></div><div class="hp"><i></i></div><div class="bar"></div><div class="away-tag">자리 비움</div>';
       const col = colorOf(p);
       el.style.setProperty('--pcol', col);
       el.classList.toggle('me', p.id === myId);
