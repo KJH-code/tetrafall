@@ -9,6 +9,7 @@ const Labels := preload("res://world/labels.gd")
 const UI_CALC := "res://ui/ui_calc.gd" # G4 hp_view (체력전 HP)
 const CHARS := "res://chars/chars.gd"
 
+var stencil_fn = null # Callable(ShaderMaterial): 몸 재질이 스텐실을 씀 (사냥꾼의 눈 x-ray 가 몸에 가린 곳엔 안 나오게, G3.toon_stencil_write)
 var nodes := {} # id -> {root, body, label, char, color}
 var chars_script = null
 var ui_calc = null # G4 ui/ui_calc.gd (hp_view·hp_color) — 없으면 체력전도 %
@@ -60,6 +61,10 @@ func _make(p: Dictionary, color: int) -> Dictionary:
 	else:
 		body = _box_body(color)
 	root.add_child(body)
+	if stencil_fn != null and body.get("drawn") is Array: # render.js bodyOrder: 사람 몸은 x-ray 복사본보다 앞
+		for dr in body.drawn:
+			if dr.get("mi") is GeometryInstance3D and dr.mi.material_override is ShaderMaterial:
+				stencil_fn.call(dr.mi.material_override)
 	var lab := Label3D.new()
 	lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	lab.fixed_size = true
