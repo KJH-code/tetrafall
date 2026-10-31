@@ -6,6 +6,7 @@ extends Node3D
 
 const C := preload("res://core/config.gd")
 const Co := preload("res://core/coords.gd")
+const WC := preload("res://world/world_config.gd")
 const Cells := preload("res://world/cells.gd")
 
 var effects = null # G5 fx/effects.gd
@@ -16,6 +17,8 @@ var piece_colors: Dictionary = C.SHAPE_COLORS
 var my_view_on := func() -> bool: return false # 내 1인칭 (덩어리를 높이·반투명)
 var ropes := [] # {who, target, block, miss, t0, fly_ms, land_at, caught, land_from, tip, chain}
 var grabs := {} # who -> {node, mats, from, t0, ms, size, slam, chain, pulled}
+var spins := [] # 갈고리 스핀 평타: 갈고리 끝이 그리는 흰 원호 {who, arc, mat, head, t0, start, last, sweep} (render.js spinArc)
+var spin_pend := {} # who -> 준비 중인 평타가 갈고리 스핀 (attack 의 windup 있음 → swing 에 원호)
 var slides := {} # id -> {from, to, t0, ms} 끌려오는 몸 (World.shown_pos 가 읽음)
 var _rope_mat: Material
 var _head_mat: Material
@@ -46,6 +49,13 @@ func on_event(e: Dictionary) -> void:
 		"interrupt":
 			if str(e.get("kind", "")) == "skill":
 				hook_cancel(e.get("who"))
+		"attack": # render.js attackStart: 준비가 있는 갈고리 스핀만 swing 순간 원호
+			if e.get("who") != null:
+				spin_pend[int(e.who)] = str(e.get("name", "")) == "갈고리 스핀" and float(e.get("windup", 0)) > 0
+		"swing":
+			if e.get("who") != null and spin_pend.get(int(e.who), false):
+				spin_pend.erase(int(e.who))
+				spin_arc(e.who)
 		"blockGrab":
 			block_grab(e)
 		"blockSlam":
@@ -272,8 +282,67 @@ func _burst(p: Vector3, dir, color: int, n: int, speed: float, size: float, life
 
 
 # ---------- 매 프레임 ----------
+# ---------- 갈고리 스핀 원호 (render.js spinArc·updateSpinArcs) ----------
+func spin_arc(who) -> void:
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.albedo_color = Color(Co.color(WC.SPIN_ARC_COLOR), 0.85)
+	mat.render_priority = 6
+	var arc := MeshInstance3D.new()
+	arc.mesh = ImmediateMesh.new()
+	arc.material_override = mat
+	arc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(arc)
+	var c := make_chain() # 갈고리 머리만 씀 (밧줄 메시는 비워 둠)
+	spins.append({"who": who, "arc": arc, "mat": mat, "chain": c, "t0": now_ms(), "start": null, "last": null, "sweep": 0.0})
+
+
+func _step_spins(now: float) -> void:
+	for i in range(spins.size() - 1, -1, -1):
+		var sp: Dictionary = spins[i]
+		var u: float = (now - sp.t0) / C.SPIN_ARC_MS
+		var s = bodies.shown.get(int(sp.who)) if bodies != null else null
+		var h = hand(sp.who)
+		if u >= 1.0 or s == null or h == null:
+			sp.arc.queue_free()
+			drop_chain(sp.chain)
+			spins.remove_at(i)
+			continue
+		# 손이 가리키는 방향으로 팔 길이보다 멀리 = 갈고리 끝. 처음 각에서 지금 각까지 원호
+		var R: float = C.PUSH_RANGE * 0.9
+		var z: float = s.z + 1.0
+		var ang := atan2(h.y - s.y, h.x - s.x)
+		if sp.start == null:
+			sp.start = ang
+		var sweep: float = ang - float(sp.start)
+		if sp.last != null and sweep < sp.sweep - PI:
+			sweep += TAU # 한 바퀴 넘어가면 이어서
+		if sp.last != null and sweep > sp.sweep + PI:
+			sweep -= TAU
+		sp.last = ang
+		sp.sweep = sweep
+		var a0: float = minf(sp.start, sp.start + sweep)
+		var ln: float = clampf(absf(sweep), 0.05, TAU)
+		var im: ImmediateMesh = sp.arc.mesh
+		im.clear_surfaces()
+		im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+		var seg := 40
+		for k in seg + 1:
+			var a := a0 + ln * k / float(seg)
+			im.surface_add_vertex(Co.gxyz(s.x + cos(a) * (R - 0.06), s.y + sin(a) * (R - 0.06), z))
+			im.surface_add_vertex(Co.gxyz(s.x + cos(a) * (R + 0.06), s.y + sin(a) * (R + 0.06), z))
+		im.surface_end()
+		sp.mat.albedo_color.a = 0.85 * (1.0 - u)
+		var head: Node3D = sp.chain.head
+		head.position = Co.gxyz(s.x + cos(ang) * R, s.y + sin(ang) * R, z)
+		head.rotation = Vector3(0, Co.rot_y(ang), 0)
+
+
 func step() -> void:
 	var now := now_ms()
+	_step_spins(now)
 	for id in slides.keys():
 		if now - slides[id].t0 >= slides[id].ms:
 			slides.erase(id)
