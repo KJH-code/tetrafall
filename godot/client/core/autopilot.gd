@@ -4,6 +4,7 @@
 # 화면 확인 (G4): --shot <png> --shot-at menu|lobby|game|tab|settings|results (기본 game). menu = 방 안 만듦, lobby = 시작 안 함,
 # tab = 판 중 점수표 (킬 점수전에서만 보임 → --mode kills), settings = 설정 창, results = 판이 끝나고 --shot-after 초 (기본 1.5) 뒤.
 # --mode survival|master|kills 면 시작 전에 모드를 바꿈. 창 크기는 고도 --resolution 1280x720
+# 성능: --perf-log (찍는 순간 = --shot-after 에 그리기 수·물체 수·삼각형 수·FPS·프레임 ms 한 줄, 화면 없이도)
 # --auto practice|tutorial: 연습·튜토리얼 방 (G6, --char 캐릭터, 연습 창은 --practice-open)
 # 화면 범인 찾기: --hide ui|world|audio (그 묶음을 숨기고 찍음) · --dump (찍을 때 보이는 Control·CanvasItem·3D 노드를 화면 사각형과 함께 출력)
 extends Node
@@ -25,6 +26,8 @@ var dropped := false
 var interp_ok := 0
 var push_at := 0.0
 var shot_done := false
+var perf_done := false
+var frame_ms: Array = [] # --perf-log: 최근 프레임 시간 (ms)
 var shot_at := "game"
 var over_ms := -1.0
 var mode_sent := false
@@ -132,6 +135,19 @@ func _process(_d: float) -> void:
 	var shot_time := el >= float(args.get("shot-after", 8))
 	if shot_at == "results":
 		shot_time = over_ms >= 0.0 and now - over_ms >= float(args.get("shot-after", 1.5)) * 1000.0
+	if args.has("perf-log"):
+		frame_ms.append(_d * 1000.0)
+		if frame_ms.size() > 120:
+			frame_ms.pop_front()
+		if not perf_done and shot_time:
+			perf_done = true
+			var avg := 0.0
+			var worst := 0.0
+			for v in frame_ms:
+				avg += v
+				worst = maxf(worst, v)
+			avg /= maxf(1.0, frame_ms.size())
+			_log("성능: 그리기 %d · 물체 %d · 삼각형 %d · FPS %d · 프레임 평균 %.1fms 최악 %.1fms (최근 %d프레임)" % [Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME), Engine.get_frames_per_second(), avg, worst, frame_ms.size()])
 	if args.has("shot") and not shot_done and shot_time and DisplayServer.get_name() != "headless":
 		shot_done = true
 		get_viewport().get_texture().get_image().save_png(str(args.shot))
