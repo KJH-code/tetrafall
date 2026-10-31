@@ -39,7 +39,7 @@ func _ready() -> void:
 		match t[0]:
 			"box":
 				var b := BoxMesh.new()
-				b.size = Coords.gpos(t[2])
+				b.size = Coords.gpos(t[2]).abs()
 				mi.mesh = b
 			"sphere":
 				var s := SphereMesh.new()

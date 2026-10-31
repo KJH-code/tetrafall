@@ -6,6 +6,7 @@
 extends RefCounted
 
 const C := preload("res://core/config.gd")
+const Co := preload("res://core/coords.gd")
 const K := preload("res://shaders/g3_config.gd")
 const TOON := preload("res://shaders/toon.gdshader")
 const TOON_ALPHA := preload("res://shaders/toon_alpha.gdshader")
@@ -77,7 +78,7 @@ static func set_sun(sun: DirectionalLight3D, color, intensity: float, dir: Array
 	_set_global("g3_sun_on", 1.0 if intensity > 0.0 and sun.visible else 0.0)
 	sun.light_color = Color.WHITE
 	sun.light_energy = 1.0
-	var d := Vector3(float(dir[0]), float(dir[2]), float(dir[1])).normalized() # 게임 (x, y, z위) → 고도 (x, z위, y)
+	var d := Co.gxyz(float(dir[0]), float(dir[1]), float(dir[2])).normalized()
 	sun.look_at_from_position(Vector3.ZERO, -d, Vector3.UP if absf(d.y) < 0.99 else Vector3.FORWARD)
 	sun.shadow_bias = K.SUN_SHADOW_BIAS
 	sun.shadow_normal_bias = K.SUN_SHADOW_NORMAL_BIAS

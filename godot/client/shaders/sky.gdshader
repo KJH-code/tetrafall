@@ -21,7 +21,7 @@ void vertex() {
 }
 
 void fragment() {
-	vec3 d = normalize(vec3(v_dir.x, v_dir.z, v_dir.y)); // 고도 (x, y위, z) → 게임 (x, y, z위)
+	vec3 d = normalize(vec3(v_dir.x, -v_dir.z, v_dir.y)); // 고도 → 게임 (core/coords.gd game())
 	float h = clamp(d.z, -1.0, 1.0);
 	vec3 c = h < 0.25 ? mix(horizon, mid, smoothstep(0.0, 0.25, h)) : mix(mid, top, smoothstep(0.25, 0.85, h));
 	if (h < 0.0) c = mix(horizon, below, smoothstep(0.0, -0.4, h));
