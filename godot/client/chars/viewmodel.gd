@@ -143,6 +143,25 @@ func _sync(body) -> void:
 	hold = char_id in C.VM_HOLD
 	spin = char_id in C.VM_SPIN
 	_props()
+	_local_light(anchor) # 허리 아래는 anchor 로 옮겨 붙음
+
+
+# 1인칭 팔은 필드 테마와 상관없이 JS viewmodel 의 노을 빛 (G3.toon_local_light — 인자 없으면 그 빛). 복제 몸 재질은 몸마다 따로라 필드 몸은 그대로.
+# G3 에 그 함수가 아직 없으면 (통합 전) 넘어감
+func _local_light(root: Node) -> void:
+	if not _has_local_light():
+		return
+	for mi in root.find_children("*", "MeshInstance3D", true, false):
+		var m = (mi as MeshInstance3D).material_override
+		if m is ShaderMaterial:
+			G3.call("toon_local_light", m)
+
+
+static func _has_local_light() -> bool:
+	for f in (G3 as Script).get_script_method_list():
+		if f.name == "toon_local_light":
+			return true
+	return false
 
 
 # 캐릭터별 1인칭 소품 (viewmodel.js sync 끝)
