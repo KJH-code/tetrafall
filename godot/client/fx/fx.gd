@@ -56,6 +56,7 @@ func _process(dt: float) -> void:
 		demo_next = Effects.now_ms() + 1200.0
 		_demo()
 	var sdt := minf(0.1, dt) * s
+	ko.cam = rig.cam if rig != null else get_viewport().get_camera_3d()
 	ko.update(sdt)
 	effects.update(sdt, rig.cam if rig != null else get_viewport().get_camera_3d())
 

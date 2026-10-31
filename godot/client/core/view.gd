@@ -35,8 +35,10 @@ var time_scale := 1.0
 var victory_stage := "lobby"
 var victory_id = null
 # 화면 쪽 소리 신호 (판 그리기·KO 연출이 내고 audio/ 가 받음 — JS renderer.onBlast·onArrowStuck·onHazardRise·ko.on 자리):
-# "blast" {x,y,z,big,wood} · "arrowStuck" {x,y,z} · "hazardRise" {style,x,y,z} · "smash"·"koCrush" {x,y,z,me,near} · "final" {x,y,z} · "slowmo" {scale}
+# "ui" {key} (화면 소리 그대로: 튜토리얼 해냄 clear·끝 win) · "blast" {x,y,z,big,wood} · "arrowStuck" {x,y,z} · "hazardRise" {style,x,y,z} · "smash"·"koCrush" {x,y,z,me,near} · "final" {x,y,z} · "slowmo" {scale}
 signal sound_cue(kind: String, info: Dictionary)
+# 화면 창 열기 요청 (G4 메뉴·설정의 버튼 → 그 창을 가진 묶음): "tutorial" (G6 ui/tutorial_ui.gd)
+signal open_panel(name: String)
 
 
 func _ready() -> void:

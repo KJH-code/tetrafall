@@ -145,3 +145,18 @@ func test_events_to_fx() -> void:
 	Store._players_by_id = keep_by
 	Store.my_id = keep_me
 	View.time_scale = 1.0
+
+
+# 카메라 바로 앞 효과가 화면을 덮지 않게 (2026-10-31 B4 스샷 '큰 반투명 판'): 파편·고리·줄기 재질은 가까우면 흐려짐, 카메라가 줄기 안이면 옅게
+func test_near_camera_fades() -> void:
+	var fx := Effects.new()
+	var ring_mat: StandardMaterial3D = fx.rings[0].material_override
+	var box_mat: StandardMaterial3D = fx.mm.mesh.material
+	for m in [ring_mat, box_mat]:
+		check(m.distance_fade_mode == BaseMaterial3D.DISTANCE_FADE_PIXEL_ALPHA and m.distance_fade_max_distance > m.distance_fade_min_distance, "가까우면 흐려짐 %s" % m)
+	fx.free()
+	var ax := Vector3(-1, 0, 0)
+	check(near(FM.plume_inside_fade(Vector3(-4, 0, 0), ax, 1.0, 1.0), 0.2), "줄기 축 위 = 옅게")
+	check(near(FM.plume_inside_fade(Vector3(4, 0, 0), ax, 1.0, 1.0), 1.0), "줄기 뒤 = 그대로")
+	check(near(FM.plume_inside_fade(Vector3(-4, 5, 0), ax, 1.0, 1.0), 1.0), "줄기 밖 = 그대로")
+	check(near(FM.plume_inside_fade(Vector3(-20, 0, 0), ax, 1.0, 1.0), 1.0), "줄기 끝 너머 = 그대로")

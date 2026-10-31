@@ -1,5 +1,6 @@
 // 만든 파일 — 고치지 말 것. node godot/server/tools/gen-config.mjs 가 shared/config.js 에서 만듦
-#pragma warning disable CS1591
+#nullable enable
+#pragma warning disable CS1591, CS8618
 namespace Tetrafall.Core;
 
 public static partial class Maps
