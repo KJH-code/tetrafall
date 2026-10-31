@@ -48,6 +48,7 @@ var ult_fail_until := -1.0
 var ult_fail_text := ""
 var shake_until := -1.0
 var my_streak := 0
+var shaking := false
 var glint_at := -1.0e9 # R 칸 반짝 (JS .slot.glint 0.5초: 1.18배 + 하얀 빛) — 탱크 패시브·사냥꾼 ultRefund
 var blink_at := {"f": -1.0e9, "r": -1.0e9} # 기억해 둔 F·R 이 버려짐 (castDrop): 그 칸이 두 번 어두워짐 (CAST_DROP_BLINK_MS)
 var last_self = null # {ult, damage} — 탱크: 맞아서 게이지가 찼을 때만 반짝
@@ -652,7 +653,18 @@ func _bottom(st: Dictionary, p: Dictionary, show: bool, vp: Vector2) -> void:
 		var dim: bool = full and typeof(p.get("ultTarget")) == TYPE_BOOL and not bool(p.ultTarget) # 사냥꾼: 쏠 표식 대상 없음
 		var panel := r_slot.get_parent() as Control
 		panel.modulate = Color(0.55, 0.55, 0.55) if dim else (Color(1.2, 1.1, 0.7) if full else Color.WHITE)
-		panel.position.x = (sin(now / 18.0) * 6.0 * (shake_until - now) / C.ULT_FAIL_SHAKE_MS) if now < shake_until else 0.0
+		# 흔들림: 칸 자리는 HBox 가 정하므로 흔드는 동안만 옮기고, 끝나면 HBox 가 다시 놓게 (늘 0 으로 두면 R 칸이 F 칸 위로 겹쳐 F 가 안 보임)
+		if now < shake_until:
+			var base := 0.0
+			for ch in skills.get_children():
+				if ch == panel:
+					break
+				base += (ch as Control).size.x + float(skills.get_theme_constant("separation"))
+			panel.position.x = base + sin(now / 18.0) * 6.0 * (shake_until - now) / C.ULT_FAIL_SHAKE_MS
+			shaking = true
+		elif shaking:
+			shaking = false
+			skills.queue_sort()
 		# 탱크 패시브: 맞아서 필살기 게이지가 크게 찼을 때 칸이 반짝 (JS updateSkills glint)
 		if str(p.get("char", "")) == "tank" and last_self != null and float(p.get("ult", 0)) > float(last_self.ult) and float(p.get("damage", 0)) > float(last_self.damage):
 			glint_at = now

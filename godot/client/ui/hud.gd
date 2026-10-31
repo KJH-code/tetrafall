@@ -554,7 +554,13 @@ func _skills(me: Dictionary, vp: Vector2) -> void:
 		var hv = U.hp_view(me, Store.state) # 체력전이면 % 대신 남은 HP
 		damage_label.text = ("HP %d" % int(hv.hp)) if hv != null else "%d%%" % int(me.get("damage", 0))
 		damage_label.add_theme_color_override("font_color", U.hp_color(hv.frac) if hv != null else _damage_color(float(me.get("damage", 0))))
-		damage_label.position = Vector2((vp.x - damage_label.size.x) / 2.0, vp.y - cards_h - skills.size.y - damage_label.size.y - 6)
+		# 3인칭이면 왼쪽 아래 구석 (JS #damage.corner — 가운데면 내 발에 겹침), 1인칭이면 F·R 위 가운데
+		var third := str(View.mode) == "third" # G1 카메라가 정한 지금 시점
+		damage_label.add_theme_font_size_override("font_size", 44 if third else 54)
+		if third:
+			damage_label.position = Vector2(22, vp.y - damage_label.size.y - 18)
+		else:
+			damage_label.position = Vector2((vp.x - damage_label.size.x) / 2.0, vp.y - cards_h - skills.size.y - damage_label.size.y - 6)
 
 
 # 조준점 + 둘레 쿨 (바깥 하늘색 = 대시, 안쪽 흰색 = 밀치기)
@@ -713,3 +719,11 @@ func _show_mark_hit(n: int) -> void:
 	mark_hit_tw.parallel().tween_property(mark_hit, "position", at + Vector2(0, -4), ms * 0.25)
 	mark_hit_tw.tween_property(mark_hit, "position", at + Vector2(0, -14), ms * 0.75)
 	mark_hit_tw.parallel().tween_property(mark_hit, "modulate:a", 0.0, ms * 0.75)
+
+
+# 대기실에서 아래 판 초상 (96 얼굴) 을 미리 그려 둠 — 판 시작 직후 8명 판에서 P4~ 가 한참 색 네모이던 것 (JS warmPortraits 같은 자리)
+func warm_faces(st: Dictionary) -> void:
+	for p in st.get("players", []):
+		if p.get("spectator", false) or p.get("dummy", false) or p.get("char") == null:
+			continue
+		Portrait.tex(p.get("char"), _player_color(p), 96)

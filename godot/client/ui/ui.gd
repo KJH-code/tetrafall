@@ -162,6 +162,7 @@ func _refresh_panels(st: Dictionary) -> void:
 		results.refresh(st)
 	if shown == "lobby" and not st.is_empty():
 		lobby.refresh(st)
+		hud.warm_faces(st)
 		var host: bool = st.get("hostId") == Store.my_id
 		host_players.visible = host
 		if host:
