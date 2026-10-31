@@ -24,6 +24,7 @@ var ok_lab: Label
 var chosen: String = C.CHAR_DEFAULT
 var shown_key := ""
 var done_shown := false
+var ask_pending := false
 var quick_pending := false # '봇 3명과 한 판': 새 방이 열리면 봇을 넣고 바로 시작
 
 
@@ -95,7 +96,7 @@ func _ready() -> void:
 	# 처음 켠 사람 (아직 안 물어봄): 메뉴에서 묻기. 자동 조종·방 주소로 들어오면 안 물음
 	var args := OS.get_cmdline_user_args()
 	if Prefs.get_value("tutorial") == null and not args.has("--auto") and not args.has("--room"):
-		show_pane("ask")
+		ask_pending = true # 타이틀이 끝나 메뉴가 보이면 (View.title_on 이 꺼지면) 물음 (JS startTitle onDone → tut.ask)
 
 
 func _pane(name: String, parent: Control, title: String) -> VBoxContainer:
@@ -257,3 +258,10 @@ func _on_event(e: Dictionary) -> void:
 		View.sound_cue.emit("ui", {"key": "clear"})
 	elif e.get("type") == "tutorialDone":
 		View.sound_cue.emit("ui", {"key": "win"})
+
+
+func _process(_dt: float) -> void:
+	if ask_pending and not View.title_on:
+		ask_pending = false
+		if not Store.in_room():
+			show_pane("ask")

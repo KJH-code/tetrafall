@@ -28,6 +28,10 @@ var settings := {
 }
 # 메뉴(방 밖) 배경 테마 id (TITLE_THEMES 키, JS menu-theme.js). 메뉴 3D 배경을 그리는 쪽이 정함, audio/ 가 메뉴 앰비언트로 읽음
 var menu_theme = null
+# 화면 판 빛 색 테마 (JS menu-theme.js markTheme — body data-theme): 메뉴 = 메뉴 테마, 대기실 = 고른 맵 테마. title/title.gd 가 정함, G4 ui_style 이 읽음 (없으면 자수정)
+var ui_theme = null
+# 타이틀 화면이 떠 있음 (Enter 전·날아가는 동안): G4 ui 가 메뉴 판을 숨김. title/title.gd 가 정함
+var title_on := false
 # 3D 이름표를 숨길 화면 사각형 (Rect2, 화면 px) — G4 UI 판 (대기실 플레이어 관리·방 판·결과 판 등) 이 보일 때 넣음, G1 (world/bodies.gd thin_labels) 이 읽음
 var covers: Array = []
 

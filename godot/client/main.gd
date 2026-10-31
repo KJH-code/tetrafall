@@ -21,7 +21,15 @@ func _ready() -> void:
 		if typeof(q) == TYPE_DICTIONARY:
 			for k in q:
 				args[k] = q[k] if str(q[k]) != "" else true
-	add_child(_scene_or("res://world/world.tscn", "res://core/dev_view.gd"))
+	var world := _scene_or("res://world/world.tscn", "res://core/dev_view.gd")
+	add_child(world)
+	if ResourceLoader.exists("res://title/title.gd"): # 타이틀 + 메뉴 3D 배경: 켜져 있는 동안 판 (world) 은 숨김 (빛·안개가 섞이지 않게)
+		var title: Node = load("res://title/title.gd").new()
+		title.active_changed.connect(func(on): world.visible = not on)
+		title.skip = args.has("room") or (args.has("auto") and not args.has("title")) # 확인용: --auto … --title <테마> 면 타이틀부터
+		title.fixed_theme = str(args.get("title", ""))
+		title.auto_press = float(args.get("title-press", -1))
+		add_child(title)
 	add_child(_scene_or("res://ui/ui.tscn", "res://core/dev_ui.gd"))
 	for g6 in ["res://ui/perf.gd", "res://ui/practice.gd", "res://ui/tutorial_ui.gd", "res://world/tutorial_mark.gd"]: # G6: F3 성능 표시·연습 창·튜토리얼 (띠·목표 칸 빛)
 		if ResourceLoader.exists(g6):
@@ -30,7 +38,7 @@ func _ready() -> void:
 		add_child(load("res://audio/audio.tscn").instantiate())
 	Seat.profile = str(args.get("profile", ""))
 	if args.has("room"):
-		Store.pending_code = str(args.room).to_upper()
+		Store.pending_code = str(args.room).to_upper() # (타이틀은 --room 이면 건너뜀)
 	if args.has("auto"):
 		var ap := AutoPilot.new()
 		ap.args = args
