@@ -60,3 +60,25 @@ func test_game_light_sky() -> void:
 		var got: Vector3 = GL._dimv(Vector3(r[0], r[1], r[2]), r[3], r[4], r[5])
 		check(got.distance_to(Vector3(r[6], r[7], r[8])) < 1e-4, "하늘 어둡게 %s → %s" % [r, got])
 	check(C.GAME_LIGHT_PRESETS.has(C.GAME_LIGHT), "기본 안 %s" % C.GAME_LIGHT)
+
+
+# 그래픽 낮춤 한데 묶기: G3.low 가 기준 (인자 없으면), set_low 이 이미 만든 재질을 그 자리에서 바꾸고 되돌림
+func test_low_gfx_switch() -> void:
+	G3.low = false
+	var tm := G3.terrain_material("crystal")
+	var pm := G3.piece_material("volcano", null, {"rim": 0.75})
+	var hm := G3.hazard_material("volcano", null, false)
+	var world := Node3D.new()
+	var gl = G3.game_light(world)
+	check(tm.get_shader_parameter("tf_disp") > 0.0 and pm.get_shader_parameter("crack") > 0.0 and pm.get_shader_parameter("rim") > 0.0 and hm.get_shader_parameter("SHIMMER") == 1, "보통 값")
+	hm.set_shader_parameter("uZ", 2.5) # 판마다 바뀌는 값은 낮춤이 건드리지 않음
+	G3.set_low(world, true)
+	check(hm.get_shader_parameter("uZ") == 2.5, "위험 표면 높이 그대로")
+	check(G3.low and tm.get_shader_parameter("tf_disp") == 0.0 and tm.get_shader_parameter("tf_step") == 0.0, "지형 낮춤 (흔들기·높낮이 끔)")
+	check(pm.get_shader_parameter("crack") == 0.0 and pm.get_shader_parameter("fresnel") == 0.0 and pm.get_shader_parameter("rim") == 0.0, "칸 낮춤 (금·빛 테·테두리 끔)")
+	check(hm.get_shader_parameter("SHIMMER") == 0 and hm.get_meta("hz_low") == true, "위험 낮춤 (반짝임 끔·파도 반)")
+	check(gl.low and not gl.is_on(), "판 빛 끔")
+	check(G3.terrain_material("crystal").get_shader_parameter("tf_disp") == 0.0 and G3.piece_mesh("crystal") == G3.piece_mesh("crystal", true), "인자 없으면 G3.low")
+	G3.set_low(world, false)
+	check(tm.get_shader_parameter("tf_disp") > 0.0 and pm.get_shader_parameter("rim") > 0.0 and hm.get_shader_parameter("SHIMMER") == 1 and not gl.low, "되돌림")
+	world.free()

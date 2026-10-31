@@ -27,6 +27,7 @@ var batch := -1 # --body 0|1: 시험 몸 (tests/test_batch.gd) 을 조각대로 
 var pieces := false # --pieces: 테트리미노 칸 7색 (js_demo ?pieces 와 같음)
 var hazard := -99.0 # --hazard z: 위험 표면 (js_demo ?hazard=z 와 같음, 시각 3초)
 var light := false # --light: 판 빛 vivid (js_demo ?light 와 같음)
+var low_after := false # --low: 다 만든 뒤 G3.set_low(self, true) (그래픽 낮춤 켬을 그 자리에서)
 var terrain := false # --terrain: 테마 지형 블록 (terrain_grids.json, js_demo ?terrain 과 같음)
 
 
@@ -45,6 +46,8 @@ func _ready() -> void:
 			hazard = float(args[i + 1])
 		if args[i] == "--light":
 			light = true
+		if args[i] == "--low":
+			low_after = true
 		if args[i] == "--terrain":
 			terrain = true
 	G3.apply_theme(self, theme)
@@ -106,6 +109,8 @@ func _ready() -> void:
 		cam.look_at_from_position(Coords.gxyz(16, -5, 11), Coords.gxyz(6, 6, 1), Vector3.UP)
 	else:
 		cam.look_at_from_position(Coords.gxyz(9, -5, 4), Coords.gxyz(4, 8, 2.5), Vector3.UP)
+	if low_after:
+		G3.set_low(self, true)
 	if shot != "":
 		for i in 6:
 			await get_tree().process_frame
