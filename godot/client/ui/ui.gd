@@ -49,6 +49,10 @@ func _ready() -> void:
 	root.add_child(settings)
 	menu.open_settings.connect(func(): settings.visible = true)
 	lobby.open_settings.connect(func(): settings.visible = true)
+	menu.open_tutorial.connect(func(): View.open_panel.emit("tutorial")) # G6 ui/tutorial_ui.gd
+	settings.open_tutorial.connect(func():
+		settings.visible = false
+		View.open_panel.emit("tutorial"))
 	wipe = load("res://ui/wipe.gd").new()
 	root.add_child(wipe)
 	Store.state_changed.connect(_on_state)

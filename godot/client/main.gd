@@ -23,8 +23,9 @@ func _ready() -> void:
 				args[k] = q[k] if str(q[k]) != "" else true
 	add_child(_scene_or("res://world/world.tscn", "res://core/dev_view.gd"))
 	add_child(_scene_or("res://ui/ui.tscn", "res://core/dev_ui.gd"))
-	if ResourceLoader.exists("res://ui/perf.gd"):
-		add_child(load("res://ui/perf.gd").new()) # F3 성능 표시 (G6)
+	for g6 in ["res://ui/perf.gd", "res://ui/practice.gd", "res://ui/tutorial_ui.gd", "res://world/tutorial_mark.gd"]: # G6: F3 성능 표시·연습 창·튜토리얼 (띠·목표 칸 빛)
+		if ResourceLoader.exists(g6):
+			add_child(load(g6).new())
 	if ResourceLoader.exists("res://audio/audio.tscn"):
 		add_child(load("res://audio/audio.tscn").instantiate())
 	Seat.profile = str(args.get("profile", ""))

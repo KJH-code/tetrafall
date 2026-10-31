@@ -322,6 +322,8 @@ func _on_cue(kind: String, i: Dictionary) -> void:
 	var pos = Vector3(i.x, i.y, i.get("z", 0.0)) if i.has("x") else null
 	var d = _dist(i.x, i.y, i.get("z", 0.0)) if i.has("x") else null
 	match kind:
+		"ui":
+			sfx.play(str(i.get("key", "")))
 		"blast":
 			sfx.play("boom", d, pos)
 			if i.get("wood", false):
