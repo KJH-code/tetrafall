@@ -90,6 +90,35 @@ if (TERR) {
   terrainCells(geo.attributes.aCell, grid, j.W, j.D, j.H, null);
   im.castShadow = im.receiveShadow = true;
   scene.add(im);
+  if (Q.has('hazard')) { // ?hazard=z: 위험 표면 (hazard.js 그대로, 시각 3초 고정) + 잠긴 블록 물들임
+    const HZ = await import('/hazard_demo.js');
+    const { hazardField, HAZARD_MARGIN } = await import('/hazard-field.js');
+    const zs = Number(Q.get('hazard'));
+    const HL = L.hazard;
+    const near = new THREE.Mesh(new THREE.PlaneGeometry(1, 1, C.HAZARD_SEG[0], C.HAZARD_SEG[0]), HZ.surfaceMaterial(HL.style, false, true));
+    const far = new THREE.Mesh(new THREE.PlaneGeometry(2 * C.HAZARD_FAR_SIZE, 2 * C.HAZARD_FAR_SIZE, C.HAZARD_FAR_SEG, C.HAZARD_FAR_SEG), HZ.surfaceMaterial(HL.style, true, true));
+    far.material.uniforms = near.material.uniforms;
+    near.scale.set(j.W + 2 * HAZARD_MARGIN, j.D + 2 * HAZARD_MARGIN, 1);
+    near.position.set(j.W / 2, j.D / 2, zs); far.position.set(j.W / 2, j.D / 2, zs);
+    near.renderOrder = far.renderOrder = 1; far.frustumCulled = false;
+    const f = hazardField(grid, j.W, j.D, j.H, zs);
+    const data = new Uint8Array(f.nx * f.ny * 4);
+    for (let i = 0; i < f.nx * f.ny; i++) { data[i * 4] = Math.round((f.dist[i] / 3) * 255); data[i * 4 + 1] = Math.round(Math.max(0, Math.min(1, (f.ground[i] + 10) / 40)) * 255); data[i * 4 + 3] = 255; }
+    const tex = new THREE.DataTexture(data, f.nx, f.ny, THREE.RGBAFormat); tex.magFilter = tex.minFilter = THREE.LinearFilter; tex.needsUpdate = true;
+    const u = near.material.uniforms;
+    for (const k of ['Deep', 'Mid', 'Shallow', 'Foam']) u[`u${k}`].value.set(HL[k.toLowerCase()]);
+    u.uAlpha.value.set(...HL.alpha); u.uReflect.value = HL.reflect; u.uDepthFade.value = HL.depthFade;
+    u.uField.value = tex; u.uFieldRect.value.set(f.x0, f.y0, f.w, f.d); u.uMargin.value = HAZARD_MARGIN;
+    u.uFog.value.copy(scene.fog.color); u.uFogRange.value.set(scene.fog.near, scene.fog.far, C.HAZARD_FAR_SIZE);
+    const du = domeMat.uniforms;
+    u.uHorizon.value.copy(du.horizon.value); u.uSky.value.copy(du.mid.value).lerp(du.horizon.value, 0.5); u.uSunDir.value.copy(du.sunDir.value);
+    u.uTime.value = 3; u.uZ.value = zs; u.uWave.value.set(HL.wave[0], HL.wave[1]);
+    du.below.value.lerp(new THREE.Color(HL.deep).lerp(scene.fog.color, C.HAZARD_FOG_MIX), 0.9);
+    scene.add(near, far);
+    const tintU = { uHz: { value: new THREE.Vector4(zs, HL.tintDepth, HL.band[1] * (0.85 + 0.15 * Math.sin(3 * 5)), 1) }, uHzTint: { value: new THREE.Color(HL.tint) }, uHzBand: { value: new THREE.Color(HL.band[0]) }, uHzMode: { value: HL.band[2] ? 1 : 0 } };
+    HZ.Hazard.prototype.tint.call({ tintU }, im.material);
+    window.hzTint = (m) => HZ.Hazard.prototype.tint.call({ tintU }, m);
+  }
   if (st.sprout) new BlockDecor(scene, st, L.glow || (L.terrain.glow != null ? [L.terrain.glow] : null)).update(grid, j.W, j.D, j.H, null, false);
   things.length = 0;
   things.push(['box', [6, 6, -0.15], [12, 12, 0.3], 0xa49aa0]);
@@ -109,6 +138,7 @@ for (const [kind, p, s, c] of things) {
     const top = toon(ft.userData.glow ? { map: ft, emissive: 0xffffff, emissiveMap: ft.userData.glow } : { map: ft });
     const rim = toon({ color: L.floor.rim });
     mat = [rim, rim, rim, rim, top, rim];
+    if (window.hzTint) for (const m of [rim, top]) window.hzTint(m);
   }
   const m = new THREE.Mesh(g, mat);
   m.position.set(...p); m.castShadow = m.receiveShadow = true;

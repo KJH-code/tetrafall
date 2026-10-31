@@ -20,6 +20,7 @@ const FLAT := preload("res://shaders/flat.gdshader")
 const FLOOR := preload("res://shaders/floor.gdshader")
 const PIECE := preload("res://shaders/piece.gdshader")
 const PIECE_ALPHA := preload("res://shaders/piece_alpha.gdshader")
+const HAZARD := preload("res://shaders/hazard.gdshader")
 
 static var _globals := {} # 넣은 전역 셰이더 값 (RenderingServer 는 실행 중 읽기가 안 됨 — 테스트·확인용)
 
@@ -42,6 +43,7 @@ static func toon_material(color = Color.WHITE, opts := {}) -> ShaderMaterial:
 	m.set_shader_parameter("use_vertex_color", opts.get("vertex_color", false))
 	m.set_shader_parameter("color_glow", opts.get("color_glow", 0.0))
 	m.set_shader_parameter("no_fog", opts.get("no_fog", false)) # JS fog: false
+	m.set_shader_parameter("hz_tint", opts.get("hz_tint", false)) # 위험에 잠기면 물들임 (블록·바닥 재질만)
 	if a < 1.0:
 		m.render_priority = 1
 	if opts.get("outline", true) and a >= 1.0:
@@ -419,3 +421,115 @@ static func piece_material(theme_id, low := false, opts := {}) -> ShaderMaterial
 	if not tr and opts.get("outline", true):
 		m.next_pass = outline_material()
 	return m
+
+
+# ---- 상승하는 위험 (JS client/hazard.js). G1 world/hazard_view.gd 가 부름:
+#   표면 두 판: near = MeshInstance (mesh = hazard_mesh(false, low), 자리 = 필드 가운데 표면 높이, 크기 = 필드 + 둘레 HZ_MARGIN×2 로 scale)
+#              far  = MeshInstance (mesh = hazard_mesh(true, low), 자리 = 필드 가운데 표면 높이, scale 1)
+#   재질 = hazard_material(theme_id, low, far) 둘 — 매 프레임 hazard_update([near_mat, far_mat], world, {...}) 로 같은 값
+#   잠긴 블록 물들임은 전역 값이라 hazard_update 가 함께 (지형·바닥·칸 재질은 늘, toon_material 은 opts hz_tint = true 인 것만)
+const HZ_STYLE := {"water": 0, "lava": 1, "swamp": 2, "energy": 3, "storm": 4}
+const HZ_MARGIN := 6 # world/hazard_field.gd MARGIN (JS HAZARD_MARGIN)
+
+
+static func hazard_look(theme_id) -> Dictionary:
+	var t = C.WORLD_THEMES.get(theme_id) if theme_id != null else null
+	return t.hazard if t != null and t.has("hazard") else C.WORLD_THEMES[C.HAZARD_FALLBACK].hazard
+
+
+static func hazard_mesh(far: bool, low := false) -> PlaneMesh:
+	var m := PlaneMesh.new()
+	var seg: int = int(C.HAZARD_FAR_SEG) if far else int(C.HAZARD_SEG[1 if low else 0])
+	m.size = Vector2.ONE * (2.0 * C.HAZARD_FAR_SIZE if far else 1.0)
+	m.subdivide_width = seg - 1
+	m.subdivide_depth = seg - 1
+	return m
+
+
+static func hazard_material(theme_id, low := false, far := false) -> ShaderMaterial:
+	var L := hazard_look(theme_id)
+	var m := ShaderMaterial.new()
+	m.shader = HAZARD
+	m.render_priority = 1 # JS renderOrder 1: 블록 뒤에
+	m.set_shader_parameter("STYLE", HZ_STYLE.get(L.style, 1))
+	m.set_shader_parameter("FAR", 1 if far else 0)
+	m.set_shader_parameter("SHIMMER", 0 if low else 1)
+	m.set_shader_parameter("HZ_CURVE_FROM", C.HAZARD_CURVE_FROM)
+	m.set_shader_parameter("HZ_CURVE", C.HAZARD_CURVE)
+	m.set_shader_parameter("HZ_NOISE_WAVE", C.HAZARD_NOISE_WAVE)
+	m.set_shader_parameter("HZ_SHIMMER_N", C.HAZARD_SHIMMER_NORMAL)
+	m.set_shader_parameter("HZ_FOG_MIX", C.HAZARD_FOG_MIX)
+	for k in ["deep", "mid", "shallow", "foam"]:
+		m.set_shader_parameter("u" + k.capitalize(), _lin3(L[k]))
+	m.set_shader_parameter("uAlpha", _v2(L.alpha))
+	m.set_shader_parameter("uReflect", float(L.reflect))
+	m.set_shader_parameter("uDepthFade", float(L.depthFade))
+	m.set_shader_parameter("uMargin", float(HZ_MARGIN))
+	m.set_meta("hz_low", low)
+	m.set_meta("hz_theme", theme_id)
+	return m
+
+
+# 닿는 곳 거리 표 (world/hazard_field.gd field() 결과) → 그림 (r = 거리/3, g = (바닥+10)/40, JS uploadField 그대로)
+static func hazard_field_texture(f: Dictionary) -> ImageTexture:
+	var nx: int = f.nx
+	var ny: int = f.ny
+	var data := PackedByteArray()
+	data.resize(nx * ny * 4)
+	for i in nx * ny:
+		data[i * 4] = roundi(f.dist[i] / 3.0 * 255.0)
+		data[i * 4 + 1] = roundi(clampf((f.ground[i] + 10.0) / 40.0, 0.0, 1.0) * 255.0)
+		data[i * 4 + 3] = 255
+	return ImageTexture.create_from_image(Image.create_from_data(nx, ny, false, Image.FORMAT_RGBA8, data))
+
+
+# 매 프레임. p: {on, time (초, 화면 시계), z (표면), pulse (0..1, 차오름 번쩍 — JS HAZARD_PULSE_DECAY 로 줄임),
+#   bulge: Vector4 (발 밑 들썩 x, y, 세기, 0 — 게임 좌표), field: field() 결과 (바뀔 때만 주면 됨), rings: far_rings() 결과 [{x, y, r}]}
+static func hazard_update(mats: Array, world: Node3D, p: Dictionary) -> void:
+	var on: bool = p.get("on", false)
+	var theme_id = mats[0].get_meta("hz_theme") if mats.size() else null
+	var L := hazard_look(theme_id)
+	var t: float = p.get("time", 0.0)
+	var zs: float = p.get("z", -99.0)
+	# 잠긴 블록 물들임 (전역)
+	_set_global("g3_hz", Vector4(zs, float(L.tintDepth), float(L.band[1]) * (0.85 + 0.15 * sin(t * 5.0)), 1.0 if on else 0.0))
+	_set_global("g3_hz_tint", _lin3(L.tint))
+	_set_global("g3_hz_band", _lin3(L.band[0]))
+	_set_global("g3_hz_mode", 1.0 if L.band[2] else 0.0)
+	# 하늘 지평선 아래도 액체 색으로 (JS dome below), 꺼지면 되돌림
+	var env := world.get_node_or_null("G3Env")
+	var sky: ShaderMaterial = env.get_node("Sky").material_override if env else null
+	if sky:
+		if on:
+			if not sky.has_meta("below0"):
+				sky.set_meta("below0", sky.get_shader_parameter("below"))
+			var fog: Vector3 = global_value("g3_fog_color")
+			var liq := _lin3(L.deep).lerp(fog if fog != null else Vector3.ZERO, C.HAZARD_FOG_MIX)
+			sky.set_shader_parameter("below", (sky.get_meta("below0") as Vector3).lerp(liq, 0.9))
+		elif sky.has_meta("below0"):
+			sky.set_shader_parameter("below", sky.get_meta("below0"))
+			sky.remove_meta("below0")
+	if not on:
+		return
+	var tex = hazard_field_texture(p.field) if p.has("field") else null
+	var rings: Array = p.get("rings", [])
+	var ring_v: Array[Vector4] = []
+	for i in 16:
+		ring_v.append(Vector4(rings[i].x, rings[i].y, rings[i].r, 1.0) if i < rings.size() else Vector4.ZERO)
+	for m: ShaderMaterial in mats:
+		var low: bool = m.get_meta("hz_low", false)
+		m.set_shader_parameter("uTime", t)
+		m.set_shader_parameter("uZ", zs)
+		m.set_shader_parameter("uPulse", p.get("pulse", 0.0))
+		m.set_shader_parameter("uWave", Vector2(float(L.wave[0]) * (0.5 if low else 1.0), float(L.wave[1])))
+		m.set_shader_parameter("uBulge", p.get("bulge", Vector4.ZERO))
+		m.set_shader_parameter("uRings", ring_v if not low else [])
+		m.set_shader_parameter("uFog", global_value("g3_fog_color"))
+		m.set_shader_parameter("uFogRange", Vector3(global_value("g3_fog_near"), global_value("g3_fog_far"), C.HAZARD_FAR_SIZE))
+		if sky:
+			m.set_shader_parameter("uHorizon", sky.get_shader_parameter("horizon"))
+			m.set_shader_parameter("uSky", (sky.get_shader_parameter("mid") as Vector3).lerp(sky.get_shader_parameter("horizon"), 0.5))
+			m.set_shader_parameter("uSunDir", sky.get_shader_parameter("sun_dir"))
+		if tex:
+			m.set_shader_parameter("uField", tex)
+			m.set_shader_parameter("uFieldRect", Vector4(p.field.x0, p.field.y0, p.field.w, p.field.d))

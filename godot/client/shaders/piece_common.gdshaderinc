@@ -31,6 +31,7 @@ void fragment() {
 		+ mix(d, vec3(1.0), 0.6) * rim * pow(nv, 3.0);
 	v_base = d;
 	v_amb = d * toon_hemi(world_n) / PI + e + g3_lin(emissive) * emissive_energy;
+	g3_hz_apply((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).y, v_base, v_amb); // 잠긴 블록 물들임
 	ALBEDO = vec3(1.0);
 	if (g3_fog_far > 0.0 && !no_fog) FOG = vec4(g3_fog_color, smoothstep(g3_fog_near, g3_fog_far, -VERTEX.z));
 	EMISSION = g3_sun_on > 0.5 ? vec3(0.0) : g3_srgb(v_amb);

@@ -25,6 +25,7 @@ var shot := ""
 var theme = null
 var batch := -1 # --body 0|1: 시험 몸 (tests/test_batch.gd) 을 조각대로 (0) / G3.batch_mesh 로 (1) — 화소가 같아야 함
 var pieces := false # --pieces: 테트리미노 칸 7색 (js_demo ?pieces 와 같음)
+var hazard := -99.0 # --hazard z: 위험 표면 (js_demo ?hazard=z 와 같음, 시각 3초)
 var terrain := false # --terrain: 테마 지형 블록 (terrain_grids.json, js_demo ?terrain 과 같음)
 
 
@@ -39,6 +40,8 @@ func _ready() -> void:
 			batch = int(args[i + 1])
 		if args[i] == "--pieces":
 			pieces = true
+		if args[i] == "--hazard" and i + 1 < args.size():
+			hazard = float(args[i + 1])
 		if args[i] == "--terrain":
 			terrain = true
 	G3.apply_theme(self, theme)
@@ -137,6 +140,8 @@ func _terrain() -> void:
 	mi.multimesh = mm
 	mi.material_override = G3.terrain_material(theme)
 	add_child(mi)
+	if hazard > -99.0:
+		_hazard(grid, w, d, h)
 	var sp := G3.sprout_node(theme)
 	if sp:
 		add_child(sp)
@@ -163,3 +168,20 @@ func _pieces() -> void:
 	mi.multimesh = mm
 	mi.material_override = G3.piece_material(theme)
 	add_child(mi)
+
+
+func _hazard(grid: PackedByteArray, w: int, d: int, h: int) -> void:
+	var HF = load("res://world/hazard_field.gd")
+	var mats := []
+	for far in [false, true]:
+		var mi := MeshInstance3D.new()
+		mi.mesh = G3.hazard_mesh(far)
+		mi.material_override = G3.hazard_material(theme, false, far)
+		mi.position = Coords.gxyz(w / 2.0, d / 2.0, hazard)
+		if not far:
+			mi.scale = Vector3(w + 2 * G3.HZ_MARGIN, 1, d + 2 * G3.HZ_MARGIN)
+		mi.extra_cull_margin = 1000.0
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mi)
+		mats.append(mi.material_override)
+	G3.hazard_update(mats, self, {"on": true, "time": 3.0, "z": hazard, "field": HF.field(grid, w, d, h, hazard)})

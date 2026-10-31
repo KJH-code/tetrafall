@@ -19,6 +19,13 @@ global uniform vec3 g3_fog_color;
 global uniform float g3_fog_near;
 global uniform float g3_fog_far;
 
+// 위험에 잠긴 블록 물들임 (JS hazard.js tint: 블록·바닥 재질만, hz_tint 켠 재질). g3_hz = (표면 z, 깊이당 섞기, 닿는 선 띠 세기, 켬)
+global uniform vec4 g3_hz;
+global uniform vec3 g3_hz_tint; // 선형
+global uniform vec3 g3_hz_band; // 선형
+global uniform float g3_hz_mode; // 1 = 띠가 빛남 (용암·에너지), 0 = 띠가 어두워짐 (젖음)
+uniform bool hz_tint = false;
+
 uniform vec4 albedo : source_color = vec4(1.0);
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap, repeat_enable;
 uniform bool use_tex = false;
@@ -46,6 +53,21 @@ vec3 g3_srgb(vec3 c) {
 	return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
 }
 
+// 잠긴 부분은 위험 색으로 섞고 (최종 색 = (1-k) 빛 + k 색 → 바탕·하늘빛 몫을 줄이고 그만큼 더함), 닿는 선 바로 위는 띠. gz = 게임 높이 (고도 월드 y)
+void g3_hz_apply(float gz, inout vec3 base, inout vec3 amb) {
+	if (g3_hz.w < 0.5) return;
+	float d = g3_hz.x - gz;
+	if (d > 0.0) {
+		float k = clamp(0.35 + d * g3_hz.y, 0.0, 0.85);
+		base *= 1.0 - k;
+		amb = amb * (1.0 - k) + g3_hz_tint * k;
+	} else {
+		float hb = (1.0 - smoothstep(0.0, 0.5, -d)) * g3_hz.z;
+		if (g3_hz_mode > 0.5) amb += g3_hz_band * hb;
+		else { vec3 m = mix(vec3(1.0), g3_hz_band, hb); base *= m; amb *= m; }
+	}
+}
+
 // 하늘빛 (선형): 월드 법선 wn (고도 좌표)
 vec3 toon_hemi(vec3 wn) {
 	float up = dot(normalize(wn), vec3(0.0, 1.0, 0.0)) * 0.5 + 0.5;
@@ -69,6 +91,7 @@ void fragment() {
 	vec3 hemi = toon_hemi(world_n);
 	v_base = base;
 	v_amb = base * hemi / PI + g3_lin(skin ? skin_emissive : emissive) * emissive_energy + base * color_glow;
+	if (hz_tint) g3_hz_apply((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).y, v_base, v_amb);
 	ALBEDO = vec3(1.0);
 	if (g3_fog_far > 0.0 && !no_fog) FOG = vec4(g3_fog_color, smoothstep(g3_fog_near, g3_fog_far, -VERTEX.z)); // 고도가 선형으로 섞음 (더하기 패스는 1 - a 를 곱함)
 	EMISSION = g3_sun_on > 0.5 ? vec3(0.0) : g3_srgb(v_amb);

@@ -58,3 +58,19 @@ g3_fog_far={
 "type": "float",
 "value": 0.0
 }
+g3_hz={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
+g3_hz_tint={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
+g3_hz_band={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
+g3_hz_mode={
+"type": "float",
+"value": 0.0
+}
