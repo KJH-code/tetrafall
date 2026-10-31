@@ -13,6 +13,7 @@ var menu: Control
 var lobby: PanelContainer
 var host_players: PanelContainer
 var hud: Control
+var hud_extra: Control # 판 HUD 나머지 (배너·경고·알림·콤보·이모트 바퀴·도움말·버프·아이템 칸 …)
 var results: PanelContainer
 var settings: Control
 var wipe: Control
@@ -40,6 +41,9 @@ func _ready() -> void:
 	root.add_child(host_players)
 	hud = load("res://ui/hud.gd").new()
 	root.add_child(hud)
+	hud_extra = load("res://ui/hud_extra.gd").new()
+	hud_extra.hud = hud
+	root.add_child(hud_extra)
 	results = load("res://ui/results.gd").new()
 	root.add_child(results)
 	status = S.label("연결 중...", 16, S.TEXT)
@@ -96,6 +100,7 @@ func _show(screen: String) -> void:
 	lobby.visible = screen == "lobby"
 	host_players.visible = false
 	hud.visible = screen == "game"
+	hud_extra.visible = screen == "game"
 	results.visible = screen == "results"
 
 
@@ -118,6 +123,7 @@ func _process(_d: float) -> void:
 	var st := Store.state
 	if shown == "game" and not st.is_empty():
 		hud.refresh(st)
+		hud_extra.refresh(st)
 	if shown == "results" and not st.is_empty():
 		results.refresh(st)
 	if shown == "lobby" and not st.is_empty():

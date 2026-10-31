@@ -5,6 +5,7 @@ extends PanelContainer
 
 const C := preload("res://core/config.gd")
 const S := preload("res://ui/ui_style.gd")
+const Keys := preload("res://core/keys.gd")
 const Portrait := preload("res://ui/portrait.gd")
 const U := preload("res://ui/ui_calc.gd")
 const Coords := preload("res://core/coords.gd")
@@ -38,6 +39,8 @@ var map_sel: OptionButton
 var sky_box: CheckBox
 var hp_box: CheckBox
 var mode_info: Label
+var map_info: Label # 방장 아닌 사람: 판 사이에 맵·모드 (JS #map-info)
+var team_note: Label # 팀전이면 색 칸 대신 '팀전은 팀 색' (JS #color-team-note)
 var code_label: Label
 var room_text: Label
 var public_btn: Button
@@ -130,6 +133,10 @@ func _ready() -> void:
 	swatches.alignment = BoxContainer.ALIGNMENT_CENTER
 	swatches.add_theme_constant_override("separation", 3)
 	col.add_child(swatches)
+	team_note = S.label("팀전은 팀 색", 12, Color("a49cbc"))
+	team_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	team_note.visible = false
+	col.add_child(team_note)
 
 	start_btn = S.button("시작 (Enter)", func(): Store.send_room({"type": "start"}), "go", 30)
 	start_btn.custom_minimum_size.y = 56
@@ -150,6 +157,10 @@ func _ready() -> void:
 	sky_box = _check("하늘 계단", func(on): Store.send_room({"type": "skyStairs", "on": on}))
 	hp_box = _check("체력전", func(on): Store.send_room({"type": "hpMode", "on": on}))
 	col.add_child(settings_box)
+	map_info = S.label("", 13, Color("cdd5ee"))
+	map_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	map_info.visible = false
+	col.add_child(map_info)
 	mode_info = S.label("", 12, Color("a49cbc"))
 	mode_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	mode_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -302,9 +313,16 @@ func refresh(st: Dictionary) -> void:
 		text = "라운드 %d 종료" % int(st.round.n)
 	status.text = text
 	hint.visible = str(Prefs.get_value("tutorial", "")) != "done"
+	_key_texts(bool(st.get("itemsEnabled", C.ITEMS_ENABLED)))
 	start_btn.visible = host and st.get("canStart", false)
 	start_btn.text = "재시작 (Enter)" if st.phase == "over" else "시작 (Enter)"
 	settings_box.visible = host
+	var mp = st.get("map")
+	map_info.visible = mp is Dictionary and not host
+	if mp is Dictionary:
+		var ch := str(mp.get("choice", "random"))
+		map_info.text = "맵: %s · 모드: %s%s" % ["무작위" if ch == "random" or not C.MAPS.has(ch) else str(C.MAPS[ch].name), str(C.MODE_NAMES.get(str(st.get("mode", "")), st.get("mode", ""))), " · 하늘 계단" if st.get("skyStairs", false) else ""]
+	team_note.visible = bool(st.get("teamMode", false))
 	add_bot.disabled = n >= min(C.MAX_PLAYERS, C.SPAWN_POINTS.size())
 	remove_bot.disabled = not st.players.any(func(p): return p.get("isBot", false))
 	_set_select(mode_sel, st.get("mode", "survival"))
@@ -403,3 +421,22 @@ func _render_colors(st: Dictionary, me: Dictionary) -> void:
 			Prefs.set_value("color", idx)
 			Store.send_room({"type": "setColor", "color": idx}))
 		swatches.add_child(b)
+
+
+# 대기실 '처음이면' 한 줄·'조작법' 글: 지금 키 설정 이름으로 (JS data-key / data-keys, refreshKeyLabels)
+func _key_texts(items: bool) -> void:
+	var b: Dictionary = PlayerInput.binds
+	var k := func(id): return Keys.key_label(str(b.get(id, "")))
+	var move := Keys.group_label(b, ["fwd", "left", "back", "right"])
+	hint.text = "처음이면  %s 이동 · %s 점프 (공중에서 한 번 더) · %s 대시 · %s 밀기 · %s 스킬 · %s 필살기 — 밀어서 떨어뜨리기" % [move, k.call("jump"), k.call("dash"), k.call("attack"), k.call("skill"), k.call("ult")]
+	var t := "%s 이동 · %s 점프 (공중에서 한 번 더) · %s 대시 · %s 캐릭터 스킬 · %s 필살기 (때리거나 맞으면 게이지가 참)\n%s 평타 (가까운 상대를 바라보는 쪽으로 밀어냄)\n" % [move, k.call("jump"), k.call("dash"), k.call("skill"), k.call("ult"), k.call("attack")]
+	if items:
+		t += "%s 든 아이템 쓰기 — 아이템은 하나만 들 수 있음 (들고 있으면 다른 걸 못 주움)\n  투사체(빨간 공) · 설치 블록(노란 상자, 조준한 곳에 1×2 를 떨어뜨림, %s 방향) · 폭탄(검은 공, 블록을 부숨)\n" % [k.call("item"), Keys.group_label(b, ["rotL", "rotR"])]
+	t += "맞을수록 머리 위 피해 % 가 쌓이고 더 멀리 날아감 (대난투식)\n"
+	if items:
+		t += "먹자마자 효과: 초록 = 점프력 상승 · 흰 고리 = 유령화 (블록 통과, 안 깔림) · 노랑 번개 = 이속 증가\n"
+	t += "블록 마스터의 마스터: %s 이동 · %s 회전 · %s 낙하\n" % [Keys.group_label(b, ["pieceUp", "pieceDown", "pieceLeft", "pieceRight"]), Keys.group_label(b, ["rotL", "rotR"]), k.call("drop")]
+	t += "공중에서 떨어지면서 위에서 공중 평타를 맞히면 치명타 (피해 ×%s, 더 멀리)\n" % (str(int(C.CRIT_DAMAGE_MULT)) if float(C.CRIT_DAMAGE_MULT) == floorf(C.CRIT_DAMAGE_MULT) else str(C.CRIT_DAMAGE_MULT))
+	t += "상대를 블록에 깔리게(압사) 하거나 밖으로 떨어뜨리면(낙사) 승리. 블록이 쌓이면 용암이 올라온다 — 위로!\n"
+	t += "판 중에는 %s 를 누르고 있으면 조작법이 보임 · %s 1인칭 ↔ 3인칭 · 키는 설정에서 바꿈" % [k.call("help"), k.call("view")]
+	keys_text.text = t
