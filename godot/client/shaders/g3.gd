@@ -134,7 +134,7 @@ static func set_fog(color, near: float, far: float) -> void:
 # 판 크기가 바뀌면 (G1): 하늘 구 가운데·그림자 거리 (JS render.js setField: 하늘 구는 판 가운데, 그림자 상자는 판 대각선 + 여백)
 static func set_field(world: Node3D, w: float, d: float) -> void:
 	var env := _env_node(world)
-	env.get_node("Sky").position = Vector3(w / 2.0, 0.0, d / 2.0)
+	env.get_node("Sky").position = Co.gxyz(w / 2.0, d / 2.0, 0.0)
 	var sun: DirectionalLight3D = env.get_node("Sun")
 	sun.directional_shadow_max_distance = sqrt(w * w + d * d) / 2.0 + K.SHADOW_REACH_PAD * 4.0
 
