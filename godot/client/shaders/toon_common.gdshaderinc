@@ -40,6 +40,14 @@ vec3 g3_srgb(vec3 c) {
 	return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
 }
 
+// 하늘빛 (선형): 월드 법선 wn (고도 좌표)
+vec3 toon_hemi(vec3 wn) {
+	float up = dot(normalize(wn), vec3(0.0, 1.0, 0.0)) * 0.5 + 0.5;
+	return mix(g3_hemi_ground, g3_hemi_sky, up) * g3_hemi_energy;
+}
+
+// TOON_CUSTOM: 셰이더가 vertex()·fragment() 를 직접 씀 (terrain.gdshader) — v_base·v_amb·world_n·ALBEDO·FOG·EMISSION 을 아래처럼 채우고 light() 는 이것
+#ifndef TOON_CUSTOM
 void vertex() {
 	world_n = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
@@ -49,8 +57,7 @@ void fragment() {
 	if (use_tex) c *= texture(albedo_tex, UV);
 	if (use_vertex_color) c *= COLOR;
 	vec3 base = g3_lin(c.rgb);
-	float up = dot(normalize(world_n), vec3(0.0, 1.0, 0.0)) * 0.5 + 0.5;
-	vec3 hemi = mix(g3_hemi_ground, g3_hemi_sky, up) * g3_hemi_energy;
+	vec3 hemi = toon_hemi(world_n);
 	v_base = base;
 	v_amb = base * hemi / PI + g3_lin(emissive) * emissive_energy;
 	ALBEDO = vec3(1.0);
@@ -60,6 +67,7 @@ void fragment() {
 	ALPHA = c.a; // 투명 재질만 (ALPHA 를 쓰면 고도는 투명으로 보고 그림자를 안 드리움)
 #endif
 }
+#endif
 
 void light() {
 	float u = dot(NORMAL, LIGHT) * 0.5 + 0.5;
