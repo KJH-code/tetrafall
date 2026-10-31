@@ -489,8 +489,7 @@ func pose(p: Dictionary, now_ms: float) -> void:
 	if view != null:
 		dt *= float(view.time_scale) # KO 슬로모션·히트스톱 (JS main.js dt × ko.timeScale)
 	last_ms = now_ms
-	var store = _store()
-	var pos: Vector3 = store.view_pos(pid) if store != null else Vector3(float(p.get("x", 0.0)), float(p.get("y", 0.0)), float(p.get("z", 0.0)))
+	var pos := _view_pos(p)
 	_move_state(p, pos, dt)
 	loaded = p.get("loaded", false) == true
 	var st := _anim_state(p, now_ms)
@@ -1351,8 +1350,7 @@ func _dummy_pose(p: Dictionary, now_ms: float) -> void:
 	if view != null:
 		dt *= float(view.time_scale)
 	last_ms = now_ms
-	var store = _store()
-	var pos: Vector3 = store.view_pos(pid) if store != null else Vector3(float(p.get("x", 0.0)), float(p.get("y", 0.0)), float(p.get("z", 0.0)))
+	var pos := _view_pos(p)
 	if prev_pos != null and dt > 0.0:
 		var pp: Vector3 = prev_pos
 		var v := Vector2(pos.x - pp.x, pos.y - pp.y).length() / maxf(dt, 1e-3)
@@ -1367,6 +1365,15 @@ func _dummy_pose(p: Dictionary, now_ms: float) -> void:
 	_sync_bones()
 	var sq := _fx_amount("squash_amount")
 	scale = Vector3(1.0 + 0.28 * sq, 1.0 - 0.32 * sq, 1.0 + 0.28 * sq)
+
+
+# 화면 (보간) 자리: Store.view_pos, 그 사람이 없으면 (0 벡터 — 초상·테스트) 스냅샷 자리 그대로
+func _view_pos(p: Dictionary) -> Vector3:
+	var store = _store()
+	var vp: Vector3 = store.view_pos(pid) if store != null else Vector3.ZERO
+	if vp == Vector3.ZERO:
+		vp = Vector3(float(p.get("x", 0.0)), float(p.get("y", 0.0)), float(p.get("z", 0.0)))
+	return vp
 
 
 # pid 가 정해졌나 (봇 id 는 음수라 pid ≥ 0 으로는 못 봄)
