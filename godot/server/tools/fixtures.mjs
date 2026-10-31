@@ -2,12 +2,17 @@
 // - jsmath.json: Math.sin·cos·exp·atan2·hypot·round 의 입력·출력 비트 (C# JsMath 가 V8 과 비트까지 같은지)
 // - jsnumber.json: 숫자 → JSON.stringify 글자 (C# JsNumber·JsonOut)
 // - mulberry32.json: 시드별 처음 값들 (tools/sim.js mulberry32)
+// - protocol-rooms.json: room-scenarios.mjs 각본마다 단계·JS 가 보낸 메시지·로그 (C# RoomScenarioTests 가 같은 각본을 돌림)
+// - jsvalue.json: 받은 JSON 값의 String(x)·String(x ?? '')·!!x·Number(x) (C# JsValue), 이름 정리 (setNick·방 이름, C# JsText.Clean), BOT_LEVELS 키
 // - protocol-lobby.json: 방 만들기·들어가기·핑·나가기 각본에서 JS 서버(rooms.js)가 보낸 메시지·로그 글자 그대로 (C# Rooms 가 같은지)
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Rooms } from '../../../server/rooms.js';
 import { mulberry32 } from '../../../tools/sim.js';
+import { SCENARIOS, runJs } from './room-scenarios.mjs';
+import { Game } from '../../../server/game.js';
+import { CONFIG as C } from '../../../shared/config.js';
 
 const out = path.join(path.dirname(fileURLToPath(import.meta.url)), '../tests/Tetrafall.Tests/fixtures');
 const bits = (x) => Buffer.from(new Float64Array([x]).buffer).toString('hex');
@@ -65,4 +70,29 @@ rooms.broadcastList(true);
 rooms.message(c1, { type: 'leave' });
 rooms.broadcastList();
 write('protocol-lobby.json', { sent, logs });
-console.log(`jsmath ${math.length}, jsnumber ${nums.length}, 프로토콜 메시지 ${sent.length}개·로그 ${logs.length}줄`);
+
+// 받은 값 → JS 값 바꾸기 (rooms.js 가 msg.x 에 하는 것) + 이름 정리
+const vals = ['null', 'true', 'false', '0', '-0', '1', '2.5', '1e21', '1e-7', '"12"', '" 12 "', '""', '"abc"', '"0x1f"', '"0o17"', '"0b101"', '"1e3"', '".5"', '"5."', '"Infinity"', '"-Infinity"', '"+3"', '"1_000"', '"١٢"', '"\\u00a012\\u3000"', '[]', '[5]', '[1,[2,null],"a"]', '[null]', '{}', '{"a":1}', '"0x"', '"-0x10"', '"  "'];
+const bitsOrNull = (x) => bits(x);
+const jsvalue = vals.map((t) => {
+  const v = JSON.parse(t);
+  return [t, String(v), String(v ?? ''), !!v, bitsOrNull(Number(v))];
+});
+const raws = ['  재혁\u0001  최고 ', 'a b  c﻿', '\t\n\r ', '😀😀😀😀😀😀😀😀😀😀', 'ㄱ'.repeat(255) + '😀', 'x'.repeat(300), 'ab\u007fcd\u0000', '\u0085x᠎', '  a  b  ', 'abcdefghijklmnopqrstu'];
+const g = new Game(() => {});
+g.addPlayer(1);
+const clean = [];
+for (const raw of raws) {
+  g.setNick(1, raw);
+  clean.push([raw, C.NAME_MAX_LEN, g.players.get(1).nick]);
+  const r = new Rooms({ rng: mulberry32(1) });
+  const c = r.connect({ readyState: 1, OPEN: 1, send() {} });
+  r.message(c, { type: 'create', name: raw, nick: 'n' });
+  clean.push([raw, C.ROOM_NAME_MAX_LEN, c.room.name === 'n의 방' && raw.trim() === '' ? '' : c.room.name]);
+}
+write('jsvalue.json', { values: jsvalue, clean, botLevels: Object.keys(C.BOT_LEVELS) });
+
+// 방 각본 (S6, room-scenarios.mjs): 재접속·방 안 설정·상한·예외 격리·빈도 제한
+const scen = SCENARIOS.map((sc) => ({ ...sc, ...runJs(sc) }));
+write('protocol-rooms.json', scen);
+console.log(`jsmath ${math.length}, jsnumber ${nums.length}, 프로토콜 메시지 ${sent.length}개·로그 ${logs.length}줄, 방 각본 ${scen.length}개`);

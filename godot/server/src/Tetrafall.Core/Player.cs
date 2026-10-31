@@ -37,4 +37,12 @@ public sealed class Player
     public string form = "bard";
     public bool away;
     public bool dummy;
+    public PlayerInput input = new(); // TODO(S1 입력): 나머지 입력 필드
+}
+
+// 지금 누르고 있는 이동 입력 (JS p.input)
+public sealed class PlayerInput
+{
+    public double fwd, strafe;
+    public bool jump;
 }

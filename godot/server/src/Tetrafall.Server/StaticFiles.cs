@@ -83,9 +83,16 @@ public static class StaticFiles
     }
 }
 
-// 방마다 로그 파일: logs/<서버를 켠 시각>/<방을 연 시각>_<코드>.txt (JS 서버와 같은 모양 → npm run stats 가 그대로 읽음)
+// 방마다 로그 파일: logs/<서버를 켠 시각>/<방을 연 시각>_<코드>.txt, 줄마다 "[시각] 내용" (JS 서버와 같은 모양 → npm run stats 가 그대로 읽음).
+// 콘솔에는 같은 줄을 [코드] 를 붙여 찍음
 public sealed class FileRoomLog : IRoomLog
 {
+    // JS new Date().toLocaleTimeString('ko-KR', { hour12: false }) 와 같은 글자: "13시 5분 7초"
+    public static string Stamp(DateTime d) => $"{d.Hour}시 {d.Minute}분 {d.Second}초";
+
+    // 폴더·파일 이름 시각 (index.js fileStamp): 2026-10-31_13-05-07
+    public static string FileStamp(DateTime d) => d.ToString("yyyy-MM-dd_HH-mm-ss", System.Globalization.CultureInfo.InvariantCulture);
+
     readonly string code;
     StreamWriter? w;
 
@@ -95,7 +102,7 @@ public sealed class FileRoomLog : IRoomLog
         try
         {
             Directory.CreateDirectory(runDir);
-            w = new StreamWriter(Path.Combine(runDir, $"{DateTime.Now:yyyy-MM-dd_HH-mm-ss}_{code}.txt"), append: true) { AutoFlush = true };
+            w = new StreamWriter(Path.Combine(runDir, $"{FileStamp(DateTime.Now)}_{code}.txt"), append: true, new System.Text.UTF8Encoding(false)) { AutoFlush = true, NewLine = "\n" }; // 바로 씀: Ctrl+C 로 꺼도 마지막 줄까지
         }
         catch (Exception e)
         {
@@ -105,7 +112,7 @@ public sealed class FileRoomLog : IRoomLog
 
     public void Log(string msg)
     {
-        var st = DateTime.Now.ToString("HH:mm:ss");
+        var st = Stamp(DateTime.Now);
         Console.WriteLine($"[{st}] [{code}] {msg}");
         try { w?.WriteLine($"[{st}] {msg}"); } catch { w = null; }
     }
