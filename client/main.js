@@ -135,13 +135,22 @@ function distToMe(x, y, z) {
 
 // ---------- 알림 ----------
 function toast(text, kind = '') {
+  // 같은 글이 아직 떠 있으면 새로 쌓지 않고 그 줄 시간만 늘림 (같은 알림이 겹쳐 두 줄 뜨던 것)
+  const same = [...toasts.children].find((x) => x.textContent === text && x.style.opacity !== '0');
+  if (same) {
+    clearTimeout(same.fadeT);
+    clearTimeout(same.rmT);
+    same.fadeT = setTimeout(() => (same.style.opacity = 0), C.TOAST_MS);
+    same.rmT = setTimeout(() => same.remove(), C.TOAST_MS + 450);
+    return;
+  }
   const el = document.createElement('div');
   el.className = `toast ${kind}`;
   el.textContent = text;
   toasts.appendChild(el);
   while (toasts.children.length > 4) toasts.firstChild.remove();
-  setTimeout(() => (el.style.opacity = 0), C.TOAST_MS);
-  setTimeout(() => el.remove(), C.TOAST_MS + 450);
+  el.fadeT = setTimeout(() => (el.style.opacity = 0), C.TOAST_MS);
+  el.rmT = setTimeout(() => el.remove(), C.TOAST_MS + 450);
 }
 
 function flashScreen(color) {
@@ -796,7 +805,7 @@ function handleEvent(e) {
       if (e.who === myId) toast(`${ITEM_KO[e.item] || e.item}!`, 'good');
       break;
     case 'controlStart':
-      if (e.who !== myId) toast(`${nameOf(e.who)} 블록 조종 시작. 그림자를 조심!`);
+      if (e.who !== myId && state?.mode !== 'master') toast(`${nameOf(e.who)} 블록 조종 시작. 그림자를 조심!`); // 블록 마스터는 블록마다 오고 위 띠가 이미 알려 줌
       break;
     case 'kill': // 죽음마다 하나 (killer null = 자멸, streak = 죽지 않고 이어 낸 킬)
       if (e.cause === 'disconnect') break;

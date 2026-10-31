@@ -283,13 +283,25 @@ func toast(text: String, kind := "") -> void:
 		bg = Color("b53a10")
 	elif kind == "good":
 		bg = Color("13804a")
-	var l := _box_label(17, bg)
-	l.text = text
-	l.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	toasts.add_child(l)
+	# 같은 글이 아직 떠 있으면 새로 쌓지 않고 그 줄 시간만 다시 (같은 알림이 겹쳐 두 줄 뜨던 것)
+	var l: Label = null
+	for x in toasts.get_children():
+		if x is Label and (x as Label).text == text and not x.is_queued_for_deletion():
+			l = x
+	if l != null:
+		var old = l.get_meta("tw", null)
+		if old is Tween:
+			(old as Tween).kill()
+		l.modulate.a = 1.0
+	else:
+		l = _box_label(17, bg)
+		l.text = text
+		l.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		toasts.add_child(l)
 	while toasts.get_child_count() > 4:
 		toasts.get_child(0).free()
 	var tw := l.create_tween()
+	l.set_meta("tw", tw)
 	tw.tween_interval(C.TOAST_MS / 1000.0)
 	tw.tween_property(l, "modulate:a", 0.0, 0.45)
 	tw.tween_callback(l.queue_free)
@@ -381,7 +393,7 @@ func _on_event(e: Dictionary) -> void:
 			if e.get("who") == me_id:
 				toast("%s!" % str(ITEM_KO.get(str(e.get("item", "")), str(e.get("item", "")))), "good")
 		"controlStart":
-			if e.get("who") != me_id:
+			if e.get("who") != me_id and Store.state.get("mode") != "master": # 블록 마스터는 블록마다 오고 위 띠가 이미 알려 줌
 				toast("%s 블록 조종 시작. 그림자를 조심!" % _name(Store.player(e.get("who"))))
 		"lava":
 			toast("용암! 위로", "me")
