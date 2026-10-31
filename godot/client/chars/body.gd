@@ -217,12 +217,19 @@ func _eyes(parent: Node3D, x: float, y: float, z: float, r: float) -> void:
 		pu.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
+# 자동 로드 Store (이름으로 직접 쓰면 '-s' 테스트 실행에선 컴파일이 안 됨 → 노드로 찾음, 없으면 null)
+static func _store():
+	var ml = Engine.get_main_loop()
+	return ml.root.get_node_or_null("Store") if ml is SceneTree else null
+
+
 # ---------- 매 프레임 (World 가 부름) ----------
 func pose(p: Dictionary, now_ms: float) -> void:
 	pid = int(p.id)
 	var dt := 0.0 if last_ms == null else clampf((now_ms - last_ms) / 1000.0, 0.0, 0.1)
 	last_ms = now_ms
-	var pos: Vector3 = Store.view_pos(pid)
+	var store = _store()
+	var pos: Vector3 = store.view_pos(pid) if store != null else Vector3(float(p.get("x", 0.0)), float(p.get("y", 0.0)), float(p.get("z", 0.0)))
 	_move_state(p, pos, dt)
 	var st := _anim_state(p, now_ms)
 	_figure_anim(st, dt)
@@ -320,7 +327,10 @@ func _move_state(p: Dictionary, pos: Vector3, dt: float) -> void:
 
 
 func _is_winner(p: Dictionary) -> bool:
-	var st: Dictionary = Store.state
+	var store = _store()
+	if store == null:
+		return false
+	var st: Dictionary = store.state
 	if st.get("phase") != "over" or st.get("practice", false):
 		return false
 	var rd: Dictionary = st.get("round", {})
@@ -335,7 +345,11 @@ func _is_winner(p: Dictionary) -> bool:
 func _feet_on_ground(s: Vector3) -> bool:
 	if s.z <= 0.03 and s.z > -0.3:
 		return true
-	var f: Dictionary = Store.state.get("field", {})
+	var store = _store()
+	if store == null:
+		return true
+	var f: Dictionary = store.state.get("field", {})
+	var grid: PackedByteArray = store.grid
 	if f.is_empty():
 		return true
 	var w := int(f.w)
@@ -351,7 +365,7 @@ func _feet_on_ground(s: Vector3) -> bool:
 		if gz < 0:
 			return true
 		var i := (gz * dd + gy) * w + gx
-		if i < Store.grid.size() and Store.grid[i] != 0:
+		if i < grid.size() and grid[i] != 0:
 			return true
 	return false
 
@@ -651,8 +665,11 @@ func on_event(e: Dictionary) -> void:
 func _dir_from(by):
 	if by == null:
 		return null
-	var me := Store.player(pid)
-	var a := Store.player(int(by))
+	var store = _store()
+	if store == null:
+		return null
+	var me: Dictionary = store.player(pid)
+	var a: Dictionary = store.player(int(by))
 	if me.is_empty() or a.is_empty():
 		return null
 	var v := Vector2(float(me.x) - float(a.x), float(me.y) - float(a.y))
