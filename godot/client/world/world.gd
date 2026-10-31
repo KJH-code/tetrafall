@@ -176,6 +176,8 @@ func _process(dt: float) -> void:
 	var me := Store.me()
 	pieces_view.update(st, Store.my_id, me, rig.sky_blend)
 	hazard_view.update(st, Store.grid, Store.grid_version, me)
+	# 위험 표면이 반투명이라 바닥 아래 절벽 상자가 비쳐 보임 → 차오르면 숨김 (JS 는 깊이 흐림 셰이더로 가림, G3 hazard_material 이 오면 다시 봄)
+	grid_view.cliff.visible = not hazard_view.visible
 	items_view.update(st, dt, now)
 	var my_piece := {}
 	var people := []
