@@ -4,30 +4,7 @@
 # 하나라도 실패하면 종료 코드 1. 묶음마다 test_<묶음>.gd 를 만들고 FILES 에 한 줄 더함 (godot/PLAN.md 7절)
 extends SceneTree
 
-const FILES := ["res://tests/test_core.gd", "res://tests/test_audio.gd", "res://tests/test_world.gd"]
-
-
-# 테스트 동안 난 오류를 모음 (경고는 뺌). 다른 스레드에서도 불릴 수 있어 잠금
-class ErrorLog extends Logger:
-	var lines: Array = []
-	var lock := Mutex.new()
-
-	func _log_error(function: String, file: String, line: int, code: String, rationale: String, _editor_notify: bool, error_type: int, _backtraces: Array) -> void:
-		if error_type == ERROR_TYPE_WARNING:
-			return
-		lock.lock()
-		lines.append("%s (%s:%d %s)" % [rationale if rationale != "" else code, file, line, function])
-		lock.unlock()
-
-	func _log_message(_message: String, _error: bool) -> void:
-		pass
-
-	func take() -> Array:
-		lock.lock()
-		var out := lines
-		lines = []
-		lock.unlock()
-		return out
+const FILES := ["res://tests/test_core.gd", "res://tests/test_audio.gd", "res://tests/test_world.gd", "res://tests/test_shaders.gd"]
 
 
 func _init() -> void:
