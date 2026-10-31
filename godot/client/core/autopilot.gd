@@ -4,6 +4,8 @@
 # 화면 확인 (G4): --shot <png> --shot-at menu|lobby|game|tab|settings|results (기본 game). menu = 방 안 만듦, lobby = 시작 안 함,
 # tab = 판 중 점수표 (킬 점수전에서만 보임 → --mode kills), settings = 설정 창, results = 판이 끝나고 --shot-after 초 (기본 1.5) 뒤.
 # --mode survival|master|kills 면 시작 전에 모드를 바꿈. 창 크기는 고도 --resolution 1280x720
+# 성능: --perf-log (찍는 순간 = --shot-after 에 그리기 수·물체 수·삼각형 수·FPS·프레임 ms 한 줄, 화면 없이도)
+# --auto practice|tutorial: 연습·튜토리얼 방 (G6, --char 캐릭터, 연습 창은 --practice-open)
 # 화면 범인 찾기: --hide ui|world|audio (그 묶음을 숨기고 찍음) · --dump (찍을 때 보이는 Control·CanvasItem·3D 노드를 화면 사각형과 함께 출력)
 extends Node
 
@@ -24,6 +26,8 @@ var dropped := false
 var interp_ok := 0
 var push_at := 0.0
 var shot_done := false
+var perf_done := false
+var frame_ms: Array = [] # --perf-log: 최근 프레임 시간 (ms)
 var shot_at := "game"
 var over_ms := -1.0
 var mode_sent := false
@@ -47,6 +51,9 @@ func _on_rooms(_list: Dictionary) -> void:
 	if role == "host" and shot_at != "menu" and not created and not Store.in_room() and Store.pending_code == "":
 		created = true
 		Store.create_room("", str(args.get("name", "고도")))
+	if role in ["practice", "tutorial"] and not created and not Store.in_room(): # G6 연습·튜토리얼 방 (혼자, 바로 판)
+		created = true
+		Net.send({"type": role, "nick": str(args.get("name", "고도")), "char": str(args.get("char", C.CHAR_DEFAULT))})
 
 
 func _on_joined(room: Dictionary, again: bool) -> void:
@@ -58,6 +65,8 @@ func _on_joined(room: Dictionary, again: bool) -> void:
 	if role == "host":
 		for i in int(args.get("bots", 1)):
 			Store.send_room({"type": "addBot"})
+	if role == "practice":
+		Store.send_room({"type": "dummyAdd"})
 
 
 func _on_state(st: Dictionary, _prev: Dictionary) -> void:
@@ -126,6 +135,19 @@ func _process(_d: float) -> void:
 	var shot_time := el >= float(args.get("shot-after", 8))
 	if shot_at == "results":
 		shot_time = over_ms >= 0.0 and now - over_ms >= float(args.get("shot-after", 1.5)) * 1000.0
+	if args.has("perf-log"):
+		frame_ms.append(_d * 1000.0)
+		if frame_ms.size() > 120:
+			frame_ms.pop_front()
+		if not perf_done and shot_time:
+			perf_done = true
+			var avg := 0.0
+			var worst := 0.0
+			for v in frame_ms:
+				avg += v
+				worst = maxf(worst, v)
+			avg /= maxf(1.0, frame_ms.size())
+			_log("성능: 그리기 %d · 물체 %d · 삼각형 %d · FPS %d · 프레임 평균 %.1fms 최악 %.1fms (최근 %d프레임) | 나눠서: 보이는 %d · 그림자 %d · 몸 메시 %d" % [Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME), Engine.get_frames_per_second(), avg, worst, frame_ms.size(), get_viewport().get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME), get_viewport().get_render_info(Viewport.RENDER_INFO_TYPE_SHADOW, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME), _body_meshes(get_tree().root)])
 	if args.has("shot") and not shot_done and shot_time and DisplayServer.get_name() != "headless":
 		shot_done = true
 		get_viewport().get_texture().get_image().save_png(str(args.shot))
@@ -144,6 +166,21 @@ func _process(_d: float) -> void:
 			snd += " | 효과 이벤트 %d번" % fxn.events
 		_log("끝: 판 %d번, 스냅샷 %d개, 움직인 거리 %.1f칸, 재접속 %s, %s%s" % [rounds, snapshots, moved, "같은 자리" if rejoined else "안 함", Net.ping_text(), snd])
 		get_tree().quit(0 if ok else 2)
+
+
+# --perf-log: 보이는 몸 메시 수 (chars/body.gd 의 drawn 중 조상까지 보이는 것)
+func _body_meshes(n: Node) -> int:
+	var c := 0
+	if n is Node3D and not (n as Node3D).is_visible_in_tree():
+		return 0
+	if n.get("drawn") is Array:
+		for dr in n.get("drawn"):
+			if (dr.mi as MeshInstance3D).is_visible_in_tree() and (dr.mi as MeshInstance3D).layers != 0:
+				c += 1
+		return c
+	for ch in n.get_children():
+		c += _body_meshes(ch)
+	return c
 
 
 # --dump: 보이는 그림 노드 목록 (이름·종류·화면 사각형·색) — 메뉴에 남는 줄 같은 것 찾기

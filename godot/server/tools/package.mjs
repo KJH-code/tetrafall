@@ -67,6 +67,11 @@ export function readme(t) {
   ].join(win ? '\r\n' : '\n');
 }
 
+// 서버 한 파일: 자기 완결 + 안에서 압축 + 문화권 자료 빼기 (규칙은 문화권 안 씀 — 숫자·시각 글자는 직접 만듦). ASP.NET 이라 트리밍(PublishTrimmed)은 안 함
+export const PUBLISH_FLAGS = ['--self-contained', '-p:PublishSingleFile=true', '-p:EnableCompressionInSingleFile=true', '-p:InvariantGlobalization=true', '-p:DebugType=none', '-p:IsTransformWebConfigDisabled=true'];
+// Kestrel 혼자 도니 필요 없는 것: IIS 모듈·web.config·정적 웹 자산 목록
+export const PUBLISH_DROP = ['aspnetcorev2_inprocess.dll', 'web.config', 'Tetrafall.Server.staticwebassets.endpoints.json'];
+
 function run(cmd, args, opts = {}) {
   console.log(`> ${cmd} ${args.join(' ')}`);
   const r = spawnSync(cmd, args, { stdio: 'inherit', ...opts });
@@ -75,7 +80,15 @@ function run(cmd, args, opts = {}) {
 }
 
 // 아주 작은 zip 쓰기 (deflate, 유닉스 권한 비트 — 리눅스 실행 파일이 풀어도 실행되게). 폴더 이름을 zip 안 맨 위 폴더로
-export function writeZip(dir, out) {
+// zip 의 MS-DOS 날짜·시각 (2초 단위, 현지 시각) — 날짜 위 16비트, 시각 아래 16비트
+export function dosTime(d) {
+  const date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  const time = (d.getHours() << 11) | (d.getMinutes() << 5) | Math.floor(d.getSeconds() / 2);
+  return ((date << 16) | time) >>> 0;
+}
+
+export function writeZip(dir, out, when = new Date()) {
+  const dos = dosTime(when);
   const files = [];
   const walk = (d) => {
     for (const e of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
@@ -100,7 +113,7 @@ export function writeZip(dir, out) {
     local.writeUInt16LE(20, 4);
     local.writeUInt16LE(0x0800, 6); // 이름 UTF-8
     local.writeUInt16LE(8, 8); // deflate
-    local.writeUInt32LE(0, 10); // 시각 (0 = 1980)
+    local.writeUInt32LE(dos, 10); // 시각 (묶은 때)
     local.writeUInt32LE(crc, 14);
     local.writeUInt32LE(comp.length, 18);
     local.writeUInt32LE(data.length, 22);
@@ -111,6 +124,7 @@ export function writeZip(dir, out) {
     cen.writeUInt16LE(20, 6);
     cen.writeUInt16LE(0x0800, 8);
     cen.writeUInt16LE(8, 10);
+    cen.writeUInt32LE(dos, 12);
     cen.writeUInt32LE(crc, 16);
     cen.writeUInt32LE(comp.length, 20);
     cen.writeUInt32LE(data.length, 24);
@@ -202,10 +216,11 @@ async function main() {
     const dir = path.join(o.out, `tetrafall-${t.rid}`);
     fs.rmSync(dir, { recursive: true, force: true });
     fs.mkdirSync(dir, { recursive: true });
-    run('dotnet', ['publish', serverProject, '-c', 'Release', '-r', t.rid, '--self-contained', '-p:PublishSingleFile=true', '-p:DebugType=none', '-o', dir]);
+    run('dotnet', ['publish', serverProject, '-c', 'Release', '-r', t.rid, ...PUBLISH_FLAGS, '-o', dir]);
+    for (const f of PUBLISH_DROP) fs.rmSync(path.join(dir, f), { force: true });
     const web = path.join(clientDir, 'build', 'web');
     if (fs.existsSync(path.join(web, 'index.html'))) {
-      fs.cpSync(web, path.join(dir, 'web'), { recursive: true });
+      fs.cpSync(web, path.join(dir, 'web'), { recursive: true, filter: (src) => !src.endsWith('.import') }); // 고도 *.import 는 편집기 것
       const z = precompress(path.join(dir, 'web'));
       console.log(`web/ 미리 압축: 날것 ${(z.raw / 1e6).toFixed(1)}MB → br ${(z.br / 1e6).toFixed(1)}MB · gz ${(z.gz / 1e6).toFixed(1)}MB`);
     }

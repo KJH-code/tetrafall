@@ -7,7 +7,8 @@ const here = path.dirname(new URL(import.meta.url).pathname); // JS 판 비교 �
 const page = process.argv[2] || 'demo.html', out = process.argv[3], q = process.argv[4] || '';
 const srv = http.createServer((req, res) => {
   let u = decodeURIComponent(req.url.split('?')[0]);
-  let f = u === '/' + page ? path.join(here, page) : u.startsWith('/vendor/jsm/') ? path.join(root, 'node_modules/three/examples/jsm', u.slice(12)) : u === '/vendor/three.module.js' ? path.join(root, 'node_modules/three/build/three.module.js') : u.startsWith('/shared/') ? path.join(root, u) : path.join(root, 'client', u);
+  let f = fs.existsSync(path.join(here, u)) && u.length > 1 ? path.join(here, u) : u.startsWith('/vendor/jsm/') ? path.join(root, 'node_modules/three/examples/jsm', u.slice(12)) : u === '/vendor/three.module.js' ? path.join(root, 'node_modules/three/build/three.module.js') : u.startsWith('/shared/') ? path.join(root, u) : path.join(root, 'client', u);
+  if (u === '/world_demo.js') { res.writeHead(200, { 'content-type': 'text/javascript' }); return res.end(fs.readFileSync(path.join(root, 'client/world.js'), 'utf8') + '\nexport { floorTexture };'); }
   if (!fs.existsSync(f)) { res.writeHead(404); return res.end(); }
   res.writeHead(200, { 'content-type': f.endsWith('.js') ? 'text/javascript' : 'text/html' }); fs.createReadStream(f).pipe(res);
 }).listen(0);

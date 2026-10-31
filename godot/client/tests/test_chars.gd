@@ -142,7 +142,7 @@ func test_bodies_build_and_animate() -> void:
 	for ch in C.FIGURE_CHARS:
 		var b = Chars.make_body(ch, Color(0.8, 0.3, 0.2))
 		var meshes := b.find_children("*", "MeshInstance3D", true, false)
-		check(meshes.size() >= 20, "%s 조각 %d" % [ch, meshes.size()])
+		check(meshes.size() >= 60, "%s 조각 %d (옷·무기 포함)" % [ch, meshes.size()])
 		var states := [
 			{"walking": true, "air": false, "hs": 4.5, "walk": 1.3},
 			{"walking": false, "air": true, "vz": -4.0},
@@ -152,9 +152,11 @@ func test_bodies_build_and_animate() -> void:
 			{"walking": false, "air": false, "victory": 1.2},
 			{"walking": false, "air": false, "emote": int(C.EMOTE_CHAR), "emoteT": 0.6},
 			{"walking": false, "air": false, "hit": {"id": 3, "age": 0.01, "stop": 0.1, "dx": -1.0, "dy": 0.3, "pow": 1.5}},
+			{"walking": false, "air": false, "dizzy": 0.7, "punch": 0.6},
+			{"walking": false, "air": true, "whirl": 0.4, "glide": true, "amp": true},
 		]
 		for s in states:
-			var st := {"air": false, "walking": false, "hs": 0.0, "walk": 0.0, "vz": 0.0, "t": 1.0, "stunned": false, "emote": -1, "emoteT": 0.0, "victory": -1.0, "hit": null, "act": null, "accF": 3.0, "accS": -2.0, "tumble": 0.0, "recover": 0.0, "land": 0.0, "flip": -1.0, "idle": 0.0, "airDash": 0.0, "form": ""}
+			var st := {"air": false, "walking": false, "hs": 0.0, "walk": 0.0, "vz": 0.0, "t": 1.0, "stunned": false, "emote": -1, "emoteT": 0.0, "victory": -1.0, "hit": null, "act": null, "accF": 3.0, "accS": -2.0, "tumble": 0.0, "recover": 0.0, "land": 0.0, "flip": -1.0, "idle": 0.0, "airDash": 0.0, "form": "", "loaded": false, "ammo": 3.0, "dizzy": 0.0, "punch": 0.0, "whirl": -1.0, "glide": false, "amp": false}
 			st.merge(s, true)
 			for k in 10:
 				b._figure_anim(st, 1.0 / 60.0)
@@ -162,3 +164,107 @@ func test_bodies_build_and_animate() -> void:
 			check(b._pose_ok(), "%s 자세 깨짐 %s" % [ch, str(s.keys())])
 			check(is_finite(b.hips.position.y) and is_finite(b.shoulders[0].rotation.y), "%s 관절 %s" % [ch, str(s.keys())])
 		b.free()
+
+
+# 합친 몸 (chars_config MERGE): 몸 하나 그리는 메시 수가 조각 수보다 훨씬 적음
+func test_bodies_merged() -> void:
+	for ch in C.FIGURE_CHARS:
+		var b = Chars.make_body(ch, Color(0.2, 0.6, 0.9))
+		var pieces: int = b.piece_mat.size()
+		var drawn := 0
+		for mi in b.find_children("*", "MeshInstance3D", true, false):
+			if mi.layers != 0:
+				drawn += 1
+		if b.merged_count > 0:
+			check(drawn * 2 < pieces, "%s 그리는 메시 %d / 조각 %d" % [ch, drawn, pieces])
+		if b.batch != null:
+			# 툰 조각은 몸 한 메시 → 보이는 메시 (조상까지 보이는 것) 가 몸 하나에 몇 개뿐 (묶음 + 눈·체크 무늬·투명)
+			var shown := 0
+			for mi in b.find_children("*", "MeshInstance3D", true, false):
+				var n: Node = mi
+				var vis: bool = mi.layers != 0
+				while vis and n != null:
+					vis = (n as Node3D).visible if n is Node3D else true
+					n = n.get_parent()
+				if vis:
+					shown += 1
+			check(shown <= 16, "%s 보이는 메시 %d (묶은 조각 %d)" % [ch, shown, b.batch.pieces.size()])
+		b.free()
+
+
+# 묶은 몸 (K.SKIN): 대기실·초상 몸과 같은 길 (make_body → pose 여러 번, 장면 트리 밖) 뒤 아무 자세에서도 정점 자리 = 조각 그대로 (보이는 조각)
+func test_bodies_batch_pose() -> void:
+	for ch in C.FIGURE_CHARS:
+		var b = Chars.make_body(ch, Color(0.3, 0.7, 0.4))
+		if b.batch == null:
+			b.free()
+			continue
+		var p := {"id": -1, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0}
+		for i in 50:
+			b.pose(p, i * 16.0) # 초상 (ui/portrait.gd) 과 같이
+		_batch_same(b, "%s 초상 길" % ch)
+		p.emote = C.EMOTE_CHAR # 대기실 큰 캐릭터 (char_stage) 의 도발
+		for i in 30:
+			b.pose(p, 800.0 + i * 16.0)
+		b.elbows[0].rotation = Vector3(0.4, -1.2, 0.3)
+		b.neck.rotation.z = 0.8
+		b._sync_bones()
+		_batch_same(b, "%s 돌린 자세" % ch)
+		# 바드: 폼을 바꿔도 몸통은 묶음 밖 (재질이 바뀌는 조각)
+		if ch == "bard":
+			check(not b.batch.pieces.has(b.torso), "바드 몸통은 따로")
+		b.free()
+
+
+func _batch_same(b, msg: String) -> void:
+	var got: PackedVector3Array = b.batch.skinned_vertices()
+	var worst := 0.0
+	var k := 0
+	var n := 0
+	for p in b.batch.pieces:
+		var rel: Transform3D = b.batch.rel_of(p)
+		var vs: PackedVector3Array = p.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		var on: bool = b.batch.shown(p)
+		for v in vs:
+			if on and k < got.size():
+				worst = maxf(worst, got[k].distance_to(rel * v))
+				n += 1
+			k += 1
+	check(k == got.size() and n > 100, "%s: 정점 수 %d / %d (본 것 %d)" % [msg, got.size(), k, n])
+	check(worst < 1e-3, "%s: 가장 먼 차 %f" % [msg, worst])
+
+
+const VM := preload("res://chars/viewmodel.gd")
+
+
+# 1인칭 팔: 8명 내 몸을 베껴 팔꿈치 아래·무기만 그리고, 한 프레임 따라가도 깨지지 않음 (화면 없이 _sync·_follow 를 바로)
+func test_viewmodel_follows() -> void:
+	for ch in C.FIGURE_CHARS:
+		var vm = VM.new()
+		vm._ready()
+		var b = Chars.make_body(ch, Color(0.9, 0.4, 0.2))
+		vm._sync(b)
+		check(vm.twin != null and vm.pairs.size() > 5, "%s 베낄 노드 %d" % [ch, vm.pairs.size()])
+		var drawn := 0
+		for mi in vm.anchor.find_children("*", "MeshInstance3D", true, false):
+			if mi.layers != 0:
+				drawn += 1
+		check(drawn > 0, "%s 1인칭에 그리는 조각 %d" % [ch, drawn])
+		vm._follow(1.0 / 60.0)
+		check(is_finite(vm.anchor.position.x) and is_finite(vm.twin.shoulders[0].rotation.y), "%s 자리" % ch)
+		# 캐릭터별 1인칭 소품: 닌자 표창 3개 (단검은 숨김) · 대포수 포탄 · 광전사 아래팔 핏줄
+		check((vm.star != null) == (ch == "ninja"), "%s 표창" % ch)
+		if ch == "ninja":
+			check(vm.star.get_child_count() == 3 and (vm.star.get_child(0) as MeshInstance3D).mesh.get_faces().size() == 8 * 4 * 3, "닌자 표창 3개·모양")
+			b.star_at = Time.get_ticks_msec()
+			vm._follow(1.0 / 60.0)
+			check(not vm.star.visible, "닌자 던진 직후 빈손")
+		check((vm.pips.size() > 0) == (ch == "cannon"), "%s 포탄 %d" % [ch, vm.pips.size()])
+		check((vm.veins.size() == 2) == (ch == "berserker"), "%s 핏줄 %d" % [ch, vm.veins.size()])
+		if ch == "cannon":
+			b.cannon_kick_at = Time.get_ticks_msec()
+			var sw: Array = vm._cannon_hold(null, vm.twin._n(vm.twin.refs.cannon))
+			check(sw[1] > 0.1 and sw[2] > 0.9, "대포 반동 %s" % str(sw))
+		vm.twin.free()
+		b.free()
+		vm.free()

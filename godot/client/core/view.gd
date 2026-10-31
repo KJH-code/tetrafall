@@ -31,9 +31,14 @@ var menu_theme = null
 
 # 화면 시간 배율 (KO 마지막 킬 슬로모션·압사 히트스톱, JS ko.timeScale): G5 fx 가 프레임마다 정함, 화면 움직임 (G1·G2) 이 프레임 dt 에 곱함. 서버·보간과 상관없음
 var time_scale := 1.0
+# 판 끝 연출 단계 (shared/victory.js): "slow" | "closeup" | "results" | "lobby" 와 클로즈업 승자 id. G1 카메라가 정함, G4 (승리 큰 글씨·결과 표 시각)·G2 (승리 포즈) 가 읽음
+var victory_stage := "lobby"
+var victory_id = null
 # 화면 쪽 소리 신호 (판 그리기·KO 연출이 내고 audio/ 가 받음 — JS renderer.onBlast·onArrowStuck·onHazardRise·ko.on 자리):
-# "blast" {x,y,z,big,wood} · "arrowStuck" {x,y,z} · "hazardRise" {style,x,y,z} · "smash"·"koCrush" {x,y,z,me,near} · "final" {x,y,z} · "slowmo" {scale}
+# "ui" {key} (화면 소리 그대로: 튜토리얼 해냄 clear·끝 win) · "blast" {x,y,z,big,wood} · "arrowStuck" {x,y,z} · "hazardRise" {style,x,y,z} · "smash"·"koCrush" {x,y,z,me,near} · "final" {x,y,z} · "slowmo" {scale}
 signal sound_cue(kind: String, info: Dictionary)
+# 화면 창 열기 요청 (G4 메뉴·설정의 버튼 → 그 창을 가진 묶음): "tutorial" (G6 ui/tutorial_ui.gd)
+signal open_panel(name: String)
 
 
 func _ready() -> void:

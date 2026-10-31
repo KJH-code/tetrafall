@@ -26,6 +26,9 @@ uniform vec3 emissive : source_color = vec3(0.0);
 uniform float emissive_energy = 1.0;
 uniform vec3 toon_steps = vec3(0.43137, 0.68627, 1.0); // g3_config.TOON_STEPS
 uniform bool use_vertex_color = false;
+uniform bool vertex_color_linear = false; // COLOR 가 이미 선형 (world/scenery.gd 꼭짓점 색)
+uniform bool no_fog = false; // JS fog: false (먼 배경)
+uniform float color_glow = 0.0; // 제 색으로 빛남 (JS 결정·버섯 갓: 발광 += 색 × glow, 인스턴스 색 포함)
 
 varying vec3 world_n;
 varying vec3 v_base; // 선형 바탕색
@@ -40,6 +43,14 @@ vec3 g3_srgb(vec3 c) {
 	return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
 }
 
+// 하늘빛 (선형): 월드 법선 wn (고도 좌표)
+vec3 toon_hemi(vec3 wn) {
+	float up = dot(normalize(wn), vec3(0.0, 1.0, 0.0)) * 0.5 + 0.5;
+	return mix(g3_hemi_ground, g3_hemi_sky, up) * g3_hemi_energy;
+}
+
+// TOON_CUSTOM: 셰이더가 vertex()·fragment() 를 직접 씀 (terrain.gdshader) — v_base·v_amb·world_n·ALBEDO·FOG·EMISSION 을 아래처럼 채우고 light() 는 이것
+#ifndef TOON_CUSTOM
 void vertex() {
 	world_n = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
@@ -47,19 +58,20 @@ void vertex() {
 void fragment() {
 	vec4 c = albedo;
 	if (use_tex) c *= texture(albedo_tex, UV);
-	if (use_vertex_color) c *= COLOR;
+	if (use_vertex_color && !vertex_color_linear) c *= COLOR;
 	vec3 base = g3_lin(c.rgb);
-	float up = dot(normalize(world_n), vec3(0.0, 1.0, 0.0)) * 0.5 + 0.5;
-	vec3 hemi = mix(g3_hemi_ground, g3_hemi_sky, up) * g3_hemi_energy;
+	if (use_vertex_color && vertex_color_linear) base *= COLOR.rgb;
+	vec3 hemi = toon_hemi(world_n);
 	v_base = base;
-	v_amb = base * hemi / PI + g3_lin(emissive) * emissive_energy;
+	v_amb = base * hemi / PI + g3_lin(emissive) * emissive_energy + base * color_glow;
 	ALBEDO = vec3(1.0);
-	if (g3_fog_far > 0.0) FOG = vec4(g3_fog_color, smoothstep(g3_fog_near, g3_fog_far, -VERTEX.z)); // 고도가 선형으로 섞음 (더하기 패스는 1 - a 를 곱함)
+	if (g3_fog_far > 0.0 && !no_fog) FOG = vec4(g3_fog_color, smoothstep(g3_fog_near, g3_fog_far, -VERTEX.z)); // 고도가 선형으로 섞음 (더하기 패스는 1 - a 를 곱함)
 	EMISSION = g3_sun_on > 0.5 ? vec3(0.0) : g3_srgb(v_amb);
 #ifdef TOON_ALPHA
 	ALPHA = c.a; // 투명 재질만 (ALPHA 를 쓰면 고도는 투명으로 보고 그림자를 안 드리움)
 #endif
 }
+#endif
 
 void light() {
 	float u = dot(NORMAL, LIGHT) * 0.5 + 0.5;

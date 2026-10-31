@@ -5,6 +5,7 @@ extends PanelContainer
 
 const C := preload("res://core/config.gd")
 const S := preload("res://ui/ui_style.gd")
+const Portrait := preload("res://ui/portrait.gd")
 const U := preload("res://ui/ui_calc.gd")
 const Coords := preload("res://core/coords.gd")
 const Prefs := preload("res://ui/ui_prefs.gd")
@@ -19,6 +20,8 @@ var hint: Label
 var stage: PanelContainer
 var stage_who: Label
 var stage_box: ColorRect
+var stage_img: TextureRect # 큰 캐릭터 초상 (256 온몸 — 그래픽 낮춤·헤드리스일 때)
+var stage_3d: SubViewportContainer # 큰 3D 캐릭터 (char_stage.gd)
 var cards: GridContainer
 var card_btns := {} # char id → Button ('random' 은 랜덤 칸)
 var skill_card: PanelContainer
@@ -81,6 +84,11 @@ func _ready() -> void:
 	stage_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	stage_box.custom_minimum_size = Vector2(60, 120)
 	sv.add_child(stage_box)
+	stage_img = _tex_rect()
+	stage_box.add_child(stage_img)
+	stage_3d = load("res://ui/char_stage.gd").new()
+	stage_3d.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	stage_box.add_child(stage_3d)
 	stage_who = S.glow_label("", 22, Color.WHITE, 5)
 	stage_who.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sv.add_child(stage_who)
@@ -173,6 +181,15 @@ func _ready() -> void:
 	col.add_child(keys_text)
 
 	Store.joined.connect(func(_r, _re): _on_joined())
+
+
+func _tex_rect() -> TextureRect:
+	var t := TextureRect.new()
+	t.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	t.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return t
 
 
 func _card(text: String, cb: Callable) -> Button:
@@ -302,7 +319,23 @@ func refresh(st: Dictionary) -> void:
 	if not rolling:
 		_light(ch)
 	stage_who.text = C.CHAR_NAMES.get(ch, "")
-	stage_box.color = Coords.color(C.PLAYER_PALETTE[int(me.get("color", me.get("slot", 0))) % C.PLAYER_PALETTE.size()])
+	var my_col := Coords.color(C.PLAYER_PALETTE[int(me.get("color", me.get("slot", 0))) % C.PLAYER_PALETTE.size()])
+	# 초상 (Portrait — 다 그려지기 전·헤드리스면 null → 색 상자 그대로). 카드 = 내 색 128 온몸, 큰 캐릭터 = 256 온몸
+	# 큰 캐릭터: 도는 3D (그래픽 낮춤이면 정지 초상 — JS 와 같게)
+	var low := bool(View.settings.get("lowGfx", false))
+	stage_3d.visible = not low
+	if not low:
+		stage_3d.call("show_char", ch, my_col)
+	var live: bool = not low and stage_3d.call("active")
+	var big: Texture2D = Portrait.tex(ch, my_col, 256, true) if not live else null
+	stage_img.texture = big
+	stage_img.visible = not live
+	stage_box.color = Color(0, 0, 0, 0) if live or big != null else my_col
+	for id in C.CHARACTERS:
+		var b: Button = card_btns[str(id)]
+		var t := Portrait.tex(str(id), my_col, 128, true)
+		if b.icon != t:
+			b.icon = t
 	if ch != "":
 		skill_text.text = "[font_size=20][b]%s[/b][/font_size]\n%s\n[b]F[/b] %s — %s\n[b]R[/b] %s — %s" % [C.CHAR_NAMES[ch], C.CHAR_INTRO.get(ch, ""), C.SKILL_NAMES[ch], C.SKILL_DESC.get(ch, ""), C.ULT_NAMES[ch], C.ULT_DESC.get(ch, "")]
 	if not name_edit.has_focus():

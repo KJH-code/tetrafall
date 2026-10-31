@@ -48,6 +48,7 @@ node godot/server/tools/package.mjs --godot <고도 4.7.2> [--targets win,linux]
 - 폴더: `Tetrafall.Server(.exe)` + `web/` (고도 웹 빌드) + `tetrafall.exe`/`tetrafall.x86_64` (PC 클라) + `start-lan`·`start-online` (.bat/.sh) + `README.txt` (+ `cloudflared` 를 `--cloudflared` 로 GitHub 에서 받아 넣음)
 - 서버는 exe 옆에 `web/index.html` 이 있으면 그 폴더가 뿌리 (배포 폴더): `/play/` = `web/`, JS 화면이 없으니 `/` → `/play/` (302, `?room=` 그대로). 레포·배포 어느 쪽도 아니면 exe 폴더로 뜸 (웹소켓만, PC 클라용)
 - 웹 미리 압축: `web/` 파일마다 `.br` (brotli 11, 창 24) + `.gz` (gzip 9) → 서버 `StaticFiles.Precompressed` 가 Accept-Encoding 따라 br > gzip > 날것 (`Content-Encoding`·`Vary: Accept-Encoding`, 형식은 날것 이름). 엔진 wasm 39.5MB → br 6.9MB · gz 10.2MB (압축 약 1분 40초)
+- 서버 한 파일 약 52MB (`PUBLISH_FLAGS`: 안에서 압축·InvariantGlobalization, 트리밍 안 함 — ASP.NET), IIS 용 aspnetcorev2_inprocess.dll·web.config·staticwebassets.endpoints.json 은 뺌, web/ 에 고도 `*.import` 안 넣음, zip 파일 날짜 = 묶은 시각
 - `--no-godot` = 이미 내보낸 `godot/client/build/` 를 씀. zip 은 node 만으로 씀 (유닉스 실행 비트 유지)
 - 재혁 PC 순서: [docs/godot-play.md](../../docs/godot-play.md)
 

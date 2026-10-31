@@ -13,6 +13,8 @@ const HazardView := preload("res://world/hazard_view.gd")
 const Bodies := preload("res://world/bodies.gd")
 const SkyAids := preload("res://world/sky_aids.gd")
 const ItemsView := preload("res://world/items_view.gd")
+const GhostAim := preload("res://world/ghost_aim.gd")
+const Scenery := preload("res://world/scenery.gd")
 const CamRig := preload("res://world/cam_rig.gd")
 const BBLOCKS := "res://world/bblocks.gd"
 const FX := "res://fx/fx.gd" # G5 효과 (있으면 fx_root 에 붙이고 setup(rig): 카메라 흔들림·KO 줌은 rig.hook)
@@ -27,6 +29,8 @@ var hazard_view: Node3D
 var bodies: Node3D
 var sky_aids: Node3D
 var items_view: Node3D
+var ghost_aim: Node3D
+var scenery: Node3D
 var rig: Node3D
 var bblocks = null # G6 건축가 블록 (있으면 update(state)·skip() 을 부름)
 var fx_root := Node3D.new() # G5 효과 노드가 붙을 자리
@@ -36,6 +40,9 @@ var field := Vector3i.ZERO # 지금 판 크기 (w, d, h)
 var built_version := -2
 var headless := false
 var G3 = null
+var sprouts = null # G3 튀어나온 조각 노드 (테마마다)
+var vm = null # G2 1인칭 팔·무기 (chars/viewmodel.gd)
+const VIEWMODEL := "res://chars/viewmodel.gd"
 
 
 func _ready() -> void:
@@ -67,13 +74,19 @@ func _ready() -> void:
 	sky_aids = SkyAids.new()
 	items_view = ItemsView.new()
 	rig = CamRig.new()
-	for n in [grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, rig, fx_root]:
+	ghost_aim = GhostAim.new()
+	scenery = Scenery.new()
+	rig.ghost_aim = ghost_aim
+	for n in [scenery, grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, ghost_aim, rig, fx_root]:
 		add_child(n)
 	fx_root.name = "Fx"
 	if ResourceLoader.exists(FX):
 		var fx = load(FX).new()
 		fx_root.add_child(fx)
 		fx.setup(rig)
+	if ResourceLoader.exists(VIEWMODEL):
+		vm = load(VIEWMODEL).new()
+		add_child(vm)
 	if ResourceLoader.exists(BBLOCKS):
 		bblocks = load(BBLOCKS).new()
 		add_child(bblocks)
@@ -81,6 +94,17 @@ func _ready() -> void:
 		grid_view.set_material(G3.toon_material(Color.WHITE, {"vertex_color": true}))
 		grid_view.make_mat = func(c: Color): return G3.toon_material(c)
 		bodies.make_mat = grid_view.make_mat
+		# 섬·먼 배경: G3.scenery_material 이 있으면 그것 (안개 끄기·빛 안 받음 포함), 없으면 툰 + 기본 재질
+		if g3_has("scenery_material"):
+			scenery.make_mat = G3.scenery_material
+		else:
+			scenery.make_mat = func(o: Dictionary):
+				if o.get("unshaded", false):
+					return null
+				var opts := {"vertex_color": true, "outline": o.get("outline", true)}
+				if o.has("emissive"):
+					opts.emissive = o.emissive
+				return G3.toon_material(Color.WHITE, opts)
 		pieces_view.mats = [G3.toon_material(Color.WHITE, {"vertex_color": true}), G3.toon_material(Color.WHITE, {"vertex_color": true, "opacity": WC.PIECE_SKY_ALPHA})]
 	apply_theme("")
 	# 확인용 명령줄 (-- 뒤): --world-view over|third|first · --map <맵 id> · --mode <모드> (방장이면 대기실에서 바꿈)
@@ -96,8 +120,21 @@ func _ready() -> void:
 		if args.has("mode"):
 			Store.send_room({"type": "setMode", "mode": args.mode}))
 	Store.game_event.connect(bodies.on_event)
-	View.changed.connect(func(k): if k == "lowGfx": set_shadows(not View.settings.lowGfx))
+	View.changed.connect(func(k):
+		if k == "lowGfx":
+			set_shadows(not View.settings.lowGfx)
+			apply_theme(str(theme_id))) # 지형 셰이더·튀어나온 조각도 낮춤으로
 	set_shadows(not View.settings.get("lowGfx", false))
+
+
+# G3 에 이 함수가 있나 (B3 가 차례로 올리는 재질: 합치는 순서가 달라도 됨)
+func g3_has(fn: String) -> bool:
+	if G3 == null:
+		return false
+	for m in G3.get_script_method_list():
+		if m.name == fn:
+			return true
+	return false
 
 
 func set_shadows(on: bool) -> void:
@@ -116,7 +153,18 @@ func apply_theme(map_id: String) -> void:
 	hazard_view.set_theme(theme)
 	built_version = -2 # 칸 색이 바뀜 → 다시 깖
 	if G3 != null:
-		G3.apply_theme(self, C.WORLD_MAP_THEME.get(map_id), bool(View.settings.get("lowGfx", false)))
+		var tid = C.WORLD_MAP_THEME.get(map_id)
+		var low := bool(View.settings.get("lowGfx", false))
+		G3.apply_theme(self, tid, low)
+		grid_view.set_terrain_look(G3.terrain_mesh(tid), G3.terrain_material(tid, low), G3.terrain_custom)
+		var fm = G3.floor_material(tid) if g3_has("floor_material") else null
+		if fm != null:
+			grid_view.floor_mesh.material_override = fm # 바닥 판: 윗면 체크·칸 선·테마 무늬, 옆면 테두리
+		if sprouts != null:
+			sprouts.queue_free()
+		sprouts = G3.sprout_node(tid)
+		if sprouts != null:
+			grid_view.add_child(sprouts) # 판 밖 (메뉴) 에선 grid_view 와 같이 숨음
 		return
 	var sk: Dictionary = theme.get("sky", {})
 	sky_mat.sky_top_color = Co.color(sk.get("top", C.SKY_TOP))
@@ -155,8 +203,15 @@ func solid_at(x: float, y: float, z: float) -> bool:
 
 func _process(dt: float) -> void:
 	var st := Store.state
-	if headless or st.is_empty() or not st.has("field"):
+	# 방 밖 (메뉴): 판 노드를 숨김 (크기 안 정한 바닥·절벽 상자가 원점 카메라 앞을 가르던 것). 하늘·빛 (G3Env)·효과는 그대로
+	var live: bool = not st.is_empty() and st.has("field")
+	for n in [scenery, grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, ghost_aim]:
+		n.visible = live and ((n != hazard_view and n != ghost_aim) or n.visible)
+	if not live and vm != null:
+		vm.update(null, false, dt) # 방 밖: 1인칭 팔 끔
+	if headless or not live:
 		return
+	dt *= View.time_scale # KO 슬로모션 (G5 가 정함)
 	var now := Time.get_ticks_msec() * 1.0
 	var mid := str(st.get("map", {}).get("id", ""))
 	if mid != theme_id:
@@ -169,18 +224,25 @@ func _process(dt: float) -> void:
 		if G3 != null:
 			G3.set_field(self, fs.x, fs.y)
 		built_version = -2
+	scenery.build(C.WORLD_MAP_THEME.get(theme_id), fs.x, fs.y, bool(View.settings.get("lowGfx", false)))
+	scenery.step(dt)
+	grid_view.cliff.visible = grid_view.cliff.visible and scenery.theme_id == null # 테마 섬이 있으면 상자 절벽 대신
 	if bblocks != null:
 		bblocks.update(st)
 		grid_view.skip = bblocks.skip()
 	if Store.grid_version != built_version and Store.grid.size() == fs.x * fs.y * fs.z:
 		grid_view.rebuild(Store.grid, fs.x, fs.y, fs.z)
 		built_version = Store.grid_version
+		if sprouts != null:
+			G3.sprout_update(sprouts, Store.grid, fs.x, fs.y, fs.z, grid_view.skip, bool(View.settings.get("lowGfx", false)))
 	rig.pre(dt)
 	var sky_on: bool = rig.sky_blend > 0.5
 	bodies.update(st, Store.my_id, rig.hide_me(), sky_on, now)
 	var me := Store.me()
 	pieces_view.update(st, Store.my_id, me, rig.sky_blend)
 	hazard_view.update(st, Store.grid, Store.grid_version, me)
+	# 위험 표면이 반투명이라 바닥 아래 절벽 상자가 비쳐 보임 → 차오르면 숨김 (JS 는 깊이 흐림 셰이더로 가림, G3 hazard_material 이 오면 다시 봄)
+	grid_view.cliff.visible = not hazard_view.visible
 	items_view.update(st, dt, now)
 	var my_piece := {}
 	var people := []
@@ -196,3 +258,17 @@ func _process(dt: float) -> void:
 	sky_aids.update(sky_on, my_piece, people, now)
 	rig.place(dt, bodies.shown, solid_at)
 	bodies.thin_labels(rig.cam, sky_on)
+	if vm != null: # 1인칭 팔·무기: 살아 있고 1인칭 (몸을 숨긴 때) 만
+		var mine = bodies.nodes.get(Store.my_id, {}).get("body") if Store.my_id != null else null
+		vm.update(mine, mine != null and rig.hide_me() and View.mode == "first" and not me.is_empty() and me.alive, dt)
+	var gcd = me.get("ghostCd") if not me.is_empty() else null
+	ghost_aim.update(rig.spectating() and gcd != null and rig.sky_blend == 0.0, rig.cam, Bodies.player_color(me, st) if not me.is_empty() else 0xffffff, gcd != null and float(gcd) == 0.0, field.x, field.y, solid_at, column_top, now)
+
+
+# 칸 (x, y) 기둥 꼭대기 높이 (render.js columnTopAt)
+func column_top(x: int, y: int) -> int:
+	for z in range(field.z - 1, -1, -1):
+		var i := (z * field.y + y) * field.x + x
+		if i < Store.grid.size() and Store.grid[i] != 0:
+			return z + 1
+	return 0

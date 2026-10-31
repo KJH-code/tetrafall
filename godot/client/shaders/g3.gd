@@ -12,12 +12,18 @@ const TOON := preload("res://shaders/toon.gdshader")
 const TOON_ALPHA := preload("res://shaders/toon_alpha.gdshader")
 const OUTLINE := preload("res://shaders/outline.gdshader")
 const SKY := preload("res://shaders/sky.gdshader")
+const TERRAIN := preload("res://shaders/terrain.gdshader")
+const BS := preload("res://shaders/block_style.gd")
+const SPROUTS := preload("res://shaders/sprouts.gd")
+const BATCH := preload("res://shaders/batch.gd")
+const FLAT := preload("res://shaders/flat.gdshader")
+const FLOOR := preload("res://shaders/floor.gdshader")
 
 static var _globals := {} # 넣은 전역 셰이더 값 (RenderingServer 는 실행 중 읽기가 안 됨 — 테스트·확인용)
 
 
 # 툰 재질 (three toon({...})). color: Color 또는 0xRRGGBB. opts: map (Texture2D), emissive (Color/숫자), emissive_energy,
-# opacity (1 미만이면 투명), vertex_color (bool), outline (기본 true — 외곽선을 next_pass 로)
+# opacity (1 미만이면 투명), vertex_color (bool), outline (기본 true — 외곽선을 next_pass 로), no_fog (안개 안 받음), color_glow
 static func toon_material(color = Color.WHITE, opts := {}) -> ShaderMaterial:
 	var m := ShaderMaterial.new()
 	var c := _col(color)
@@ -32,10 +38,13 @@ static func toon_material(color = Color.WHITE, opts := {}) -> ShaderMaterial:
 		m.set_shader_parameter("emissive", _col(opts.emissive))
 	m.set_shader_parameter("emissive_energy", opts.get("emissive_energy", 1.0))
 	m.set_shader_parameter("use_vertex_color", opts.get("vertex_color", false))
+	m.set_shader_parameter("color_glow", opts.get("color_glow", 0.0))
+	m.set_shader_parameter("no_fog", opts.get("no_fog", false)) # JS fog: false
 	if a < 1.0:
 		m.render_priority = 1
 	if opts.get("outline", true) and a >= 1.0:
 		m.next_pass = outline_material()
+		m.next_pass.set_shader_parameter("no_fog", opts.get("no_fog", false))
 	return m
 
 
@@ -204,3 +213,124 @@ static func _col(c) -> Color:
 		return c
 	var i := int(c)
 	return Color8((i >> 16) & 0xff, (i >> 8) & 0xff, i & 0xff)
+
+
+# ---- 지형 블록 (JS client/blocks.js, world.js 의 tfOn 블록). G1 이 지형 칸 (값 1) 만 MultiMesh 하나로:
+#   mesh = G3.terrain_mesh(id), material_override = G3.terrain_material(id, low), use_custom_data = true,
+#   custom_data = G3.terrain_custom(grid, w, d, h, skip) 의 n 번째 (순서 z → y → x, 지형 칸만, skip 칸 뺌), 칸 자리 Co.gxyz(x+.5, y+.5, z+.5)
+# 테마에 지형 스타일이 없으면 셋 다 null (예전처럼 칸 색 블록)
+static func terrain_style(theme_id):
+	var t = C.WORLD_THEMES.get(theme_id) if theme_id != null else null
+	return BS.style(t.terrain) if t != null and t.has("terrain") else null
+
+
+static func terrain_mesh(theme_id) -> Mesh:
+	var s = terrain_style(theme_id)
+	if s == null:
+		return null
+	var m := BoxMesh.new()
+	var k := int(s.segs) - 1
+	m.subdivide_width = k
+	m.subdivide_height = k
+	m.subdivide_depth = k
+	return m
+
+
+static func terrain_material(theme_id, low := false) -> ShaderMaterial:
+	var s = terrain_style(theme_id)
+	if s == null:
+		return null
+	var m := ShaderMaterial.new()
+	m.shader = TERRAIN
+	var mean := Vector3.ZERO
+	for t in s.tints:
+		mean += _lin3(t) / 3.0
+	for i in 3:
+		var c := _lin3(s.tints[i])
+		m.set_shader_parameter("tf_tint%d" % i, Vector3(c.x / maxf(mean.x, 0.02), c.y / maxf(mean.y, 0.02), c.z / maxf(mean.z, 0.02)))
+	var brick: Array = s.brick if s.brick != null else [1, 1, 0, 0]
+	var p := {
+		"tf_top": _lin3(s.top), "tf_side": _lin3(s.side), "tf_rim": _lin3(s.rim), "tf_glow": _lin3(s.get("glow") if s.get("glow") != null else 0),
+		"tf_disp": 0.0 if low else float(s.disp), "tf_chamfer": _v2(s.chamfer), "tf_step": 0.0 if low else float(s.step),
+		"tf_blotch": _v2(s.blotch), "tf_edge": float(s.edge), "tf_height": _v2(s.height), "tf_vein": float(s.get("veins", 0.0)),
+		"tf_vein_scale": float(s.get("veinScale", 1.0)), "tf_mottle": float(s.get("mottle", 0.0)), "tf_wear": float(s.get("wear", 0.0)),
+		"tf_top_lift": float(s.get("topLift", 1.0)), "tf_grid": _v2(s.grid), "tf_lip": float(s.lip), "tf_strata": _v2(s.strata),
+		"tf_brick": Vector4(brick[0], brick[1], brick[2], brick[3]), "tf_sheen": float(s.sheen), "tf_side_shade": float(s.sideShade),
+		"tf_ao": float(s.ao), "tf_hi": float(s.hi), "tf_self": float(s.selfLight),
+	}
+	for k in p:
+		m.set_shader_parameter(k, p[k])
+	return m
+
+
+static func terrain_custom(grid: PackedByteArray, w: int, d: int, h: int, skip: Dictionary = {}) -> PackedColorArray:
+	return BS.cell_looks(grid, w, d, h, skip)
+
+
+static func _v2(a) -> Vector2:
+	return Vector2(float(a[0]), float(a[1]))
+
+
+# ---- 튀어나온 조각 (JS BlockDecor, sprouts.gd). 테마에 sprout 없으면 null. 격자 바뀔 때마다 sprout_update (그래픽 낮춤이면 비움)
+static func sprout_node(theme_id) -> Node3D:
+	var s = terrain_style(theme_id)
+	if s == null or s.sprout == null:
+		return null
+	var t: Dictionary = C.WORLD_THEMES[theme_id]
+	var pal: Array = t.glow if t.get("glow") is Array else ([s.glow] if s.get("glow") != null else [])
+	var n = SPROUTS.new()
+	n.name = "G3Sprouts"
+	n.setup(s, pal, toon_material)
+	return n
+
+
+static func sprout_update(node: Node3D, grid: PackedByteArray, w: int, d: int, h: int, skip: Dictionary = {}, low := false) -> void:
+	if node:
+		node.refresh(grid, w, d, h, skip, low)
+
+
+# ---- 몸 묶기 (JS batch.js, batch.gd): body 아래 G3 툰 조각을 SkinnedMesh 하나로 (툰 1 + 외곽선 1). outline: 외곽선 붙임
+static func batch_mesh(body: Node3D, outline := true) -> Node3D:
+	var b = BATCH.new()
+	b.name = "G3Batch"
+	body.add_child(b)
+	b.build(body, toon_material(Color.WHITE, {"vertex_color": true, "outline": outline}))
+	return b
+
+
+# ---- 떠 있는 섬·먼 배경 (G1 world/scenery.gd make_mat 이 부름): opts vertex_color (꼭짓점 색 선형), outline, emissive (선형 Color), unshaded, no_fog
+static func scenery_material(opts: Dictionary) -> Material:
+	if opts.get("unshaded", false):
+		var m := ShaderMaterial.new()
+		m.shader = FLAT
+		m.set_shader_parameter("use_vertex_color", opts.get("vertex_color", true))
+		m.set_shader_parameter("no_fog", opts.get("no_fog", false))
+		return m
+	var o := {"vertex_color": opts.get("vertex_color", false), "outline": opts.get("outline", true), "no_fog": opts.get("no_fog", false)}
+	var t := toon_material(Color.WHITE, o)
+	t.set_shader_parameter("vertex_color_linear", true)
+	if opts.has("emissive"):
+		t.set_shader_parameter("emissive", (opts.emissive as Color).linear_to_srgb())
+	return t
+
+
+# ---- 바닥 판 (JS floorTexture + 옆면 rim): BoxMesh 하나에 이것 하나 (윗면만 무늬). 테마 없으면 null
+const FLOOR_PAINT := {"grass": 0, "sand": 1, "stone": 2, "moss": 3, "cracks": 4, "marble": 5}
+
+
+static func floor_material(theme_id) -> ShaderMaterial:
+	var t = C.WORLD_THEMES.get(theme_id) if theme_id != null else null
+	if t == null or not t.has("floor"):
+		return null
+	var f: Dictionary = t.floor
+	var m := ShaderMaterial.new()
+	m.shader = FLOOR
+	m.set_shader_parameter("f_a", _lin3(f.a))
+	m.set_shader_parameter("f_b", _lin3(f.b))
+	m.set_shader_parameter("f_rim", _lin3(f.rim))
+	m.set_shader_parameter("f_glow", _lin3(f.get("glow", 0)))
+	m.set_shader_parameter("f_paint", FLOOR_PAINT.get(f.get("paint", "grass"), 0))
+	var rgba := String(f.line).replace("rgba(", "").replace(")", "").split(",")
+	var lc := Color(float(rgba[0]) / 255.0, float(rgba[1]) / 255.0, float(rgba[2]) / 255.0).srgb_to_linear()
+	m.set_shader_parameter("f_line", Vector4(lc.r, lc.g, lc.b, float(rgba[3])))
+	return m

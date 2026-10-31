@@ -30,3 +30,6 @@ const CAM_CLIP := [0.05, 900.0] # 카메라 가까운·먼 자름
 const BLOCK_ROUGH := [0.9, 0.6] # 쌓인 칸, 떨어지는 칸 거칠기
 const ITEM_GLOW := 0.4 # 아이템 스스로 빛남
 const CLIFF_COLOR := 0x6a5a4a # 테마 없을 때 섬 절벽
+const SEA_RINGS := 8 # 구름 바다 판 끝 투명해지는 고리 수
+const CAM_ABOVE_HAZARD := 0.8 # 승자·셀카 카메라를 위험 표면 위 이만큼 이상으로
+const VICTORY_PULL := [0.3, 0.6] # 승자 카메라가 막히면: 막힌 칸 앞 여백, 승자에서 가장 가까운 거리
