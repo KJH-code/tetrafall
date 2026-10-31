@@ -12,6 +12,7 @@
 // - scripted.json: 각본 입력 판 8개 (scripted.mjs, 캐릭터 끔) 의 trace 줄 전체 sha256·틱 수 — C# 판 흐름·블록이 처음부터 끝까지 글자까지 같은지
 // - game-hash.json: tools/game-hash.js 34판 판마다 해시·틱 수 (C# 가 그 판을 다 돌 수 있게 되면 같아야 함 — 봇 판은 S5 뒤)
 // - tutorial-trace.json: 캐릭터 8명 튜토리얼 자동 조종 판 (tutorial-trace.mjs) trace 줄 전체 sha256·틱 수·결과
+// - sim.json: tools/sim.js 작은 판 (2·3인 × 맵 7개, 28판 × 자리 바꿔 2번) summarizeSim·formatSim 결과 + 판 로그 sha256 (C# Tetrafall.Sim 이 같은지)
 // - physics.json: 맵 7개 × 2·4·8인, 무작위 입력·넉백으로 물리만 300틱 (integratePlayer·groundKind) → 10틱마다 위치·속도
 import fs from 'node:fs';
 import crypto from 'node:crypto';
@@ -20,7 +21,7 @@ import { runTutorial } from './tutorial-trace.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Rooms } from '../../../server/rooms.js';
-import { mulberry32 } from '../../../tools/sim.js';
+import { mulberry32, parseArgs as simArgs, planJobs, runJob, summarizeSim, formatSim } from '../../../tools/sim.js';
 import { SCENARIOS as ROOM_SCENARIOS, runJs } from './room-scenarios.mjs';
 import { SCRIPTS as COMBAT_SCRIPTS, runScript } from './trace-scripted.mjs';
 import { Game } from '../../../server/game.js';
@@ -224,5 +225,11 @@ const blocksTrace = COMBAT_SCRIPTS.map((sc) => {
   return { name: sc.name, hashes };
 });
 write('blocks-trace.json', blocksTrace);
+// 봇 판 시뮬레이션 (워커 없이 한 줄로: 결과는 워커 수와 상관없음)
+const simO = simArgs(['--rounds', '28', '--players', '2,3', '--workers', '1']);
+const simLog = crypto.createHash('sha256');
+const simResults = planJobs(simO).map((job) => runJob(job, simO, (m) => simLog.update(`${m}\n`)));
+const simSum = summarizeSim(simResults);
+write('sim.json', { summary: JSON.stringify(simSum), text: formatSim(simSum), logSha: simLog.digest('hex'), jobs: simResults.length });
 console.log(`maps ${Object.keys(maps).length}, physics ${phys.length}판, trace-t0 ${t0.length}판, 각본 ${scripted.map((x) => x[1]).join('·')}틱, 전투 각본 ${combat.length}개, 블록 각본 ${blocksTrace.length}개`);
 console.log(`jsmath ${math.length}, jsnumber ${nums.length}, 프로토콜 메시지 ${sent.length}개·로그 ${logs.length}줄, 방 각본 ${scen.length}개`);

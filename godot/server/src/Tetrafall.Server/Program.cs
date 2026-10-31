@@ -151,7 +151,7 @@ loop.Start();
 
 app.Start(); // 포트 0 이면 운영체제가 빈 포트를 고름 (테스트) → 실제 포트를 시작 줄에
 port = new Uri(app.Urls.First()).Port;
-Console.WriteLine($"Tetrafall C# 서버 실행 중 (포트 {port}, 틱 {C.TICK_RATE}Hz, 방 최대 {C.ROOM_MAX}개) — 아직 대기실까지 (판은 godot/PLAN.md S1~S5)");
+Console.WriteLine($"Tetrafall C# 서버 실행 중 (포트 {port}, 틱 {C.TICK_RATE}Hz, 방 최대 {C.ROOM_MAX}개)");
 Console.WriteLine($"이 PC에서:        http://localhost:{port}");
 foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
 {

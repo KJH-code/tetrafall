@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Tetrafall.Core/Tetrafall.Core.csproj" />
     <Project Path="src/Tetrafall.Server/Tetrafall.Server.csproj" />
+    <Project Path="src/Tetrafall.Sim/Tetrafall.Sim.csproj" />
     <Project Path="src/Tetrafall.Trace/Tetrafall.Trace.csproj" />
   </Folder>
   <Folder Name="/tests/">
