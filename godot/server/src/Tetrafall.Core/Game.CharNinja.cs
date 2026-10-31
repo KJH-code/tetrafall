@@ -7,12 +7,12 @@ namespace Tetrafall.Core;
 public sealed partial class Game
 {
     // 플레이어 몸 상자를 (x, y, z) 에 둔 것 (JS aabb({ x, y, z }))
-    static (double x0, double x1, double y0, double y1, double z0, double z1) AabbAt(double x, double y, double z) =>
+    public static (double x0, double x1, double y0, double y1, double z0, double z1) AabbAt(double x, double y, double z) =>
         (x - C.PLAYER_HALF, x + C.PLAYER_HALF, y - C.PLAYER_HALF, y + C.PLAYER_HALF, z, z + C.PLAYER_HEIGHT);
 
     // 순간 베기: 보는 방향으로 NINJA_BLINK_DIST 만큼 (블록 앞까지, 상대가 있으면 그 바로 뒤까지) 순간이동하며 지나간 길의 상대를 벰.
     // 공중에서도 됨. 블록에 막히면 벽 차기: 위로 튀어 오름 + 작은 충격파
-    bool NinjaBlink(Player p)
+    public bool NinjaBlink(Player p)
     {
         double fx = JsMath.Cos(p.yaw), fy = JsMath.Sin(p.yaw);
         double fromX = p.x, fromY = p.y, fromZ = p.z;
@@ -66,7 +66,7 @@ public sealed partial class Game
     }
 
     // 벽 차기: 블록을 차고 위로 + 둘레 상대를 바깥으로 (피해 작게, 넉백만)
-    void NinjaWallKick(Player p, double fx, double fy)
+    public void NinjaWallKick(Player p, double fx, double fy)
     {
         p.vz = C.NINJA_WALLKICK_UP;
         p.grounded = false;
@@ -88,7 +88,7 @@ public sealed partial class Game
     }
 
     // R 강화: NINJA_EMPOWER_MS 동안 지상 1~3타·공중 평타가 표창 2연발
-    void NinjaEmpower(Player p)
+    public void NinjaEmpower(Player p)
     {
         p.empowerUntil = time + C.NINJA_EMPOWER_MS;
         Emit(o => o.P("type", "empower").P("who", p.id).P("ms", C.NINJA_EMPOWER_MS));
@@ -96,7 +96,7 @@ public sealed partial class Game
     }
 
     // 패시브: 공중에서 떨어지는 블록에 닿으면 (밟거나 옆면) 공중 점프 회복. 한 블록에 한 번
-    void NinjaTouch(Player p)
+    public void NinjaTouch(Player p)
     {
         if (p.grounded && !StandingOnPiece(p))
         {
@@ -117,7 +117,7 @@ public sealed partial class Game
         }
     }
 
-    bool StandingOnPiece(Player p)
+    public bool StandingOnPiece(Player p)
     {
         int z = (int)JsMath.Round(p.z) - 1;
         for (int x = (int)Math.Floor(p.x - C.PLAYER_HALF); x <= Math.Floor(p.x + C.PLAYER_HALF); x++)

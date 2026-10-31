@@ -60,6 +60,14 @@ public static class StaticFiles
         return sb.ToString();
     }
 
+    // /play (끝 / 없음) → /play/ 로 보냄 (쿼리 그대로). 아니면 HTML 안 상대 주소 index.js 가 /index.js (JS 화면) 로 풀려 고도가 안 뜸
+    public static string? Redirect(string urlPath, string rawTarget)
+    {
+        if (urlPath != "/play") return null;
+        int q = rawTarget.IndexOf('?');
+        return "/play/" + (q >= 0 ? rawTarget[q..] : "");
+    }
+
     public static string? Resolve(string root, string urlPath)
     {
         if (urlPath == "/" || urlPath == "") return Path.Combine(root, "client", "index.html");

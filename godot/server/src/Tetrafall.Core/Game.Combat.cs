@@ -46,8 +46,8 @@ public sealed partial class Game
     public static string BasicLabel(BasicSetT set, double n, bool air, TAttack def) =>
         air ? $"공중 {(set.air.Length > 1 ? $"{JsNumber.ToJs(n)}타 " : "")}{def.name}" : $"{JsNumber.ToJs(n)}타 {def.name}";
 
-    static bool Truthy(double? v) => v is double d && d != 0 && !double.IsNaN(d);
-    static double U(double? v) => v ?? double.NaN; // JS undefined 를 셈에 쓰면 NaN
+    public static bool Truthy(double? v) => v is double d && d != 0 && !double.IsNaN(d);
+    public static double U(double? v) => v ?? double.NaN; // JS undefined 를 셈에 쓰면 NaN
 
     // ---------- 전투 ----------
     public void Dash(Player p)
@@ -119,7 +119,7 @@ public sealed partial class Game
     }
 
     // 기억한 F·R 을 지금 쓸 수 있으면 씀 (맞힌 평타 판정 직후 또는 후딜 끝)
-    void CastQueuedNow(Player p)
+    public void CastQueuedNow(Player p)
     {
         var kind = p.castQueued!;
         p.castQueued = null;
@@ -144,7 +144,7 @@ public sealed partial class Game
     }
 
     // 몇 번째 타인지 정하고 준비 시작. 지상·공중 각각 이어 치기 창 안이면 다음 타, 아니면 1타
-    void BasicStart(Player p)
+    public void BasicStart(Player p)
     {
         var set = BasicSet(p.@char, p.form);
         bool air = !p.grounded;
@@ -178,7 +178,7 @@ public sealed partial class Game
     }
 
     // 판정: 앞으로 step 만큼 나가며 부채꼴 안을 침. 중간 타는 고정 넉백, 마무리 타·공중 평타는 % 배율
-    void BasicHit(Player p)
+    public void BasicHit(Player p)
     {
         var atk = p.atk!;
         double n = atk.n;
@@ -262,7 +262,7 @@ public sealed partial class Game
     }
 
     // 평타 한 타가 끝난 뒤: 이어 치기 번호·창, 맞혔는지, 닌자 F 쿨 감소
-    void BasicChain(Player p, double n, bool air, bool landed, TAttack def)
+    public void BasicChain(Player p, double n, bool air, bool landed, TAttack def)
     {
         var set = BasicSet(p.@char, p.form);
         // 띄우는 마지막 지상 타(마무리 아님) 뒤에는 후딜 + 이어 치기 창 동안 공중 1타가 연타로 이어짐
@@ -284,13 +284,13 @@ public sealed partial class Game
     }
 
     // 닌자 적중 보상: 평타가 맞을 때마다 F 쿨 NINJA_HIT_CD_CUT_MS 줄어듦
-    void NinjaCdCut(Player p)
+    public void NinjaCdCut(Player p)
     {
         if (p.@char == "ninja") p.skillReadyAt = Math.Max(time, p.skillReadyAt - C.NINJA_HIT_CD_CUT_MS);
     }
 
     // 닌자 R 강화 표창 2연발: 첫 발은 지금, 둘째 발은 NINJA_STAR.gap 뒤 (UpdateCombat). 즉시 판정
-    void StarVolley(Player p, double n, bool air, TAttack def, bool chained)
+    public void StarVolley(Player p, double n, bool air, TAttack def, bool chained)
     {
         bool landed = StarShot(p, n, air, def, 1, chained);
         BasicChain(p, n, air, landed, def);
@@ -298,7 +298,7 @@ public sealed partial class Game
     }
 
     // 표창 한 발: 보는 방향 좁은 각 NINJA_STAR.range 안 가장 가까운 상대 하나. 마무리 타 자리면 둘째 발이 그 타의 마무리
-    bool StarShot(Player p, double n, bool air, TAttack def, int shot, bool chained = false)
+    public bool StarShot(Player p, double n, bool air, TAttack def, int shot, bool chained = false)
     {
         var S = C.NINJA_STAR;
         var set = BasicSet(p.@char, p.form);
@@ -347,9 +347,9 @@ public sealed partial class Game
     }
 
     // ---------- 캐릭터 스킬·필살기 ----------
-    bool OtherMoveActive(Player p) => Truthy(p.slamAt) || Truthy(p.wallAt) || p.grab != null || p.leap != null || p.windup != null || p.hookFly != null || p.huntAim != null || p.rush != null || p.spin != null || p.amp != null || time < p.chargeUntil;
+    public bool OtherMoveActive(Player p) => Truthy(p.slamAt) || Truthy(p.wallAt) || p.grab != null || p.leap != null || p.windup != null || p.hookFly != null || p.huntAim != null || p.rush != null || p.spin != null || p.amp != null || time < p.chargeUntil;
 
-    bool UseSkill(Player p)
+    public bool UseSkill(Player p)
     {
         if (OtherMoveActive(p)) return false; // 다른 기술 발동 중
         p.skillReadyAt = time + C.SKILL_CD_MS[p.@char!]; // 먼저 걸어 둠
@@ -365,7 +365,7 @@ public sealed partial class Game
     }
 
     // 이동 스킬 예고가 끝남: 누른 순간 방향으로 나감 (지금 보는 방향은 나간 뒤 돌려 둠)
-    void FireWindup(Player p)
+    public void FireWindup(Player p)
     {
         double yaw = p.yaw;
         p.yaw = p.windup!.yaw;
@@ -375,7 +375,7 @@ public sealed partial class Game
     }
 
     // F 를 실제로 냄 (쿨타임은 UseSkill 이 걸어 둠)
-    bool FireSkill(Player p)
+    public bool FireSkill(Player p)
     {
         bool ok = p.@char switch
         {
@@ -398,7 +398,7 @@ public sealed partial class Game
         return true;
     }
 
-    bool UseUlt(Player p)
+    public bool UseUlt(Player p)
     {
         if (OtherMoveActive(p)) return false;
         if (p.@char == "tank") TankSlamStart(p);

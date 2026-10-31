@@ -50,7 +50,7 @@ public sealed partial class Game
     }
 
     // 마지막으로 쌓인 뒤 HUNTER_MARK_MS 지난 표식은 사라짐
-    void ExpireMarks(Player t)
+    public void ExpireMarks(Player t)
     {
         foreach (var (by, m) in t.marks.ToList())
         {
@@ -61,7 +61,7 @@ public sealed partial class Game
     }
 
     // F 추적 도약: 예고 HUNTER_LEAP_WINDUP_MS 뒤 표식 있는 가장 가까운 상대에게 (없으면 보는 방향 HUNTER_LEAP_DIST)
-    bool HunterLeap(Player p)
+    public bool HunterLeap(Player p)
     {
         Player? target = null;
         double bd = double.PositiveInfinity;
@@ -82,7 +82,7 @@ public sealed partial class Game
         return true;
     }
 
-    void HunterLeapUpdate(Player p)
+    public void HunterLeapUpdate(Player p)
     {
         var L = p.leap!;
         if (L.endAt == 0)
@@ -135,7 +135,7 @@ public sealed partial class Game
     }
 
     // 도약 유도: 내릴 자리를 대상 쪽으로 옮기고 (처음 자리에서 최대 HUNTER_LEAP_HOMING_MAX), 남은 시간에 맞춰 속도
-    void HunterLeapHome(Player p, Leap L)
+    public void HunterLeapHome(Player p, Leap L)
     {
         var t = L.target != null ? GetPlayer(L.target) : null;
         double left = (L.endAt - time) / 1000;
@@ -161,7 +161,7 @@ public sealed partial class Game
     }
 
     // R 처형 사격 조준: 대상이 하나도 없으면 안 쓰임 (게이지 그대로)
-    bool HunterAim(Player p)
+    public bool HunterAim(Player p)
     {
         var ts = ShotTargets(p).Where(t => !LineBlocked(p, t)).ToList();
         if (ts.Count == 0) return false;
@@ -177,7 +177,7 @@ public sealed partial class Game
     }
 
     // 쏨 (즉시 판정): 지금 보는 방향 안 표식 대상 전부. 블록이 가리면 막힘. 표식 수만큼 세게, 표식 소모. 최대 표식 대상을 맞히면 게이지 돌려받음
-    void HunterShoot(Player p)
+    public void HunterShoot(Player p)
     {
         p.huntAim = null;
         var shots = new List<(int target, double marks, bool blocked, bool? ok, double x, double y, double z)>();

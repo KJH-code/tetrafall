@@ -10,7 +10,7 @@ public sealed partial class Game
     public sealed record HookHit(int x, int y, int z, double d);
 
     // 보는 방향 HOOK_RANGE 안 (반각 HOOK_HALF_ANGLE_DEG, 높이 차 2칸 안) 가장 가까운 상대
-    Player? HookTarget(Player p)
+    public Player? HookTarget(Player p)
     {
         double fx = JsMath.Cos(p.yaw), fy = JsMath.Sin(p.yaw);
         double cosHalf = JsMath.Cos(C.HOOK_HALF_ANGLE_DEG * Math.PI / 180);
@@ -56,10 +56,10 @@ public sealed partial class Game
         return null;
     }
 
-    static double Pitch0(Player p) => double.IsNaN(p.pitch) ? 0 : p.pitch; // JS p.pitch || 0
+    public static double Pitch0(Player p) => double.IsNaN(p.pitch) ? 0 : p.pitch; // JS p.pitch || 0
 
     // R 보조 판정: 보는 방향 반각 HOOK_GRAB_CONE_DEG, 수평 HOOK_RANGE 안, 발 층 -1 ~ +2 층의 블록 중 가장 가까운 것 (같으면 높은 칸)
-    HookHit? HookConeBlock(Player p, Func<int, int, int, bool>? skip = null)
+    public HookHit? HookConeBlock(Player p, Func<int, int, int, bool>? skip = null)
     {
         double fx = JsMath.Cos(p.yaw), fy = JsMath.Sin(p.yaw);
         double cosHalf = JsMath.Cos(C.HOOK_GRAB_CONE_DEG * Math.PI / 180);
@@ -84,7 +84,7 @@ public sealed partial class Game
     }
 
     // 상대를 내 앞 HOOK_PULL_TO 거리까지 끌어옴 (블록에 막히면 거기까지). 콤보 한 타 (넉백 없이 경직 + 피해)
-    bool PullTo(Player p, Player t, double stunMs, double gain, string kind)
+    public bool PullTo(Player p, Player t, double stunMs, double gain, string kind)
     {
         if (Invulnerable(t)) return false;
         double dx = p.x - t.x, dy = p.y - t.y;
@@ -100,7 +100,7 @@ public sealed partial class Game
     }
 
     // F: 갈고리를 던짐. 판정은 HOOK_FLY_MS 뒤 갈고리가 닿는 순간 (HookLand). 빗나가도 쿨타임
-    bool HookPull(Player p)
+    public bool HookPull(Player p)
     {
         p.hookFly = new Windup { at = time + C.HOOK_FLY_MS, yaw = p.yaw };
         Emit(o => o.P("type", "hookThrow").P("who", p.id).P("yaw", p.yaw).P("ms", C.HOOK_FLY_MS));
@@ -108,7 +108,7 @@ public sealed partial class Game
     }
 
     // 갈고리가 닿는 순간: 던진 방향, 지금 내 위치에서 상대·블록 판정
-    void HookLand(Player p)
+    public void HookLand(Player p)
     {
         double yaw = p.yaw;
         p.yaw = p.hookFly!.yaw;
@@ -117,7 +117,7 @@ public sealed partial class Game
         p.yaw = yaw;
     }
 
-    bool HookResolve(Player p)
+    public bool HookResolve(Player p)
     {
         var t = HookTarget(p);
         var block = HookRayBlock(p, p.yaw, Pitch0(p));
@@ -157,14 +157,14 @@ public sealed partial class Game
     }
 
     // game-util.js pieceCellValue: 떨어지는 블록 칸의 격자 값
-    static byte PieceCellValue(Piece pc)
+    public static byte PieceCellValue(Piece pc)
     {
         if (pc.ghostBy is int gb && gb != 0) return (byte)(Pieces.CELL.GHOST_BASE + pc.ghostColor);
         return pc.thrownBy is int tb && tb != 0 ? Pieces.CELL.THROWN : Pieces.CellOfShape(pc.shape);
     }
 
     // R 으로 뽑을 덩어리: 떨어지는 블록이면 통째로, 쌓인 블록이면 같은 블록 id·같은 색으로 6방향 이어진 칸 전부, 시작 지형·건축가 블록·id 없는 칸은 1칸
-    (Piece? piece, List<GrabCell> cells) HookGroup(HookHit b)
+    public (Piece? piece, List<GrabCell> cells) HookGroup(HookHit b)
     {
         long key = CellKey(b.x, b.y, b.z);
         if (pieceCells.TryGetValue(key, out int pid))
@@ -200,7 +200,7 @@ public sealed partial class Game
     }
 
     // R 블록 내려찍기 1단계: 보는 방향 첫 블록의 덩어리를 뽑음 (격자에서 빠짐). 없으면 false (게이지 그대로)
-    bool HookGrab(Player p)
+    public bool HookGrab(Player p)
     {
         bool Skip(int x, int y, int z) => ControlledCell(x, y, z); // 조종 중인 블록은 안 잡음
         var b = HookRayBlock(p, p.yaw, Pitch0(p), Skip) ?? HookConeBlock(p, Skip);
@@ -230,14 +230,14 @@ public sealed partial class Game
     }
 
     // 조종 중인 블록의 칸인가
-    bool ControlledCell(int x, int y, int z)
+    public bool ControlledCell(int x, int y, int z)
     {
         if (!pieceCells.TryGetValue(CellKey(x, y, z), out int id)) return false;
         var pc = pieces.FirstOrDefault(q => q.id == id);
         return pc != null && pc.controller != null;
     }
 
-    void HookSlam(Player p)
+    public void HookSlam(Player p)
     {
         var g = p.grab!;
         p.grab = null;
