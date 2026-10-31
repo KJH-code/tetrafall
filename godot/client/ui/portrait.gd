@@ -138,7 +138,7 @@ func _draw_one(job: Array) -> void:
 
 
 # 아래 MeshInstance3D 들의 전역 상자 (고도 좌표)
-func _bounds(n: Node) -> AABB:
+static func _bounds(n: Node) -> AABB:
 	var out := AABB()
 	var first := true
 	for mi in n.find_children("*", "MeshInstance3D", true, false):
