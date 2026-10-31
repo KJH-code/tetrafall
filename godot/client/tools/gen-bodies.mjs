@@ -30,6 +30,7 @@ globalThis.document ??= {
 const THREE = await import('three');
 const { CONFIG: C } = await import('../../../shared/config.js');
 const { buildFigure } = await import('../../../client/figure.js');
+const { buildCharacter } = await import('../../../client/character.js');
 
 const blob = []; // float32 덩어리 조각들
 let blobN = 0;
@@ -57,8 +58,9 @@ function geoOf(g) {
 }
 
 const out = { scale: C.FIGURE_SCALE, chars: {} };
-for (const ch of C.FIGURE_CHARS) {
-  const r = buildFigure(0xffffff, ch, null);
+// 8명 + 연습 방 허수아비 'dummy' (client/character.js buildDummy — figure 관절 없음, 묶음 SkinnedMesh 는 뺌)
+for (const ch of [...C.FIGURE_CHARS, 'dummy']) {
+  const r = ch === 'dummy' ? buildCharacter(0xffffff, null, 'dummy') : buildFigure(0xffffff, ch, null);
   const skin = r.bodyMaterial;
   const nodes = [];
   const nodeIdx = new Map();
@@ -75,7 +77,7 @@ for (const ch of C.FIGURE_CHARS) {
       double: m.side === THREE.DoubleSide,
       outline: !(m.userData.outlineParameters && m.userData.outlineParameters.visible === false) && !m.isMeshBasicMaterial,
       skin: m === skin,
-      shade: !!(r.figure.shade && r.figure.shade.mat === m),
+      shade: !!(r.figure?.shade && r.figure.shade.mat === m),
     };
     if (m.map && m.map.image && m.map.image.fills) {
       o.plaid = m.map.image.fills; // [색, 투명도, x, y, w, h] (32×32 캔버스에 차례로)
@@ -85,7 +87,12 @@ for (const ch of C.FIGURE_CHARS) {
     matIdx.set(m, mats.length - 1);
     return mats.length - 1;
   }
+  const skip = new Set(); // character.js 가 붙인 묶음 SkinnedMesh (고도는 G3 batch 로 다시 묶음)
   r.group.traverse((o) => {
+    if (o.isSkinnedMesh || o.isBone || (o.parent && skip.has(o.parent))) {
+      skip.add(o);
+      return;
+    }
     const e = {
       parent: o.parent && nodeIdx.has(o.parent) ? nodeIdx.get(o.parent) : -1,
       p: o.position.toArray(),
@@ -120,7 +127,7 @@ for (const ch of C.FIGURE_CHARS) {
     }
     return o;
   };
-  const f = r.figure;
+  const f = r.figure || {};
   const refs = {};
   for (const [k, v] of Object.entries(f)) if (!['d', 'char', 'pose'].includes(k)) {
     const y = ref(v);

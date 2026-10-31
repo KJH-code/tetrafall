@@ -84,6 +84,8 @@ var twist_k := 0.0
 # 움직임 상태 (render.js animate 의 a.*)
 var pid := -1 # 플레이어 id (봇은 음수)
 var posed := false # pose 를 한 번이라도 받음 (= pid 가 정해짐)
+var dummy := false # 연습 방 허수아비 몸 (char 'dummy')
+var dummy_spin := 0.0 # 허수아비 구르기 각
 var last_ms = null
 var prev_pos = null
 var hs := 0.0
@@ -128,6 +130,7 @@ func build(char_id_: String, color: Color, merge: bool = K.MERGE) -> void:
 	char_id = char_id_
 	var data := _data()
 	var cd: Dictionary = data.chars.get(char_id, data.chars[C.FIGURE_CHARS[0]])
+	dummy = char_id == "dummy"
 	var body_kind: String = C.FIGURE_BODY.get(char_id, "lean")
 	d = C.FIGURE_BODIES.get(body_kind, C.FIGURE_BODIES.lean)
 	skin_color = color
@@ -161,6 +164,11 @@ func build(char_id_: String, color: Color, merge: bool = K.MERGE) -> void:
 		parents.append(parent)
 	refs = cd.refs
 	rig = _n(refs.rig)
+	if dummy:
+		# 연습 방 허수아비 (character.js buildDummy): 나무 기둥·가로 막대 팔·자루 머리, 관절 없음 — 움직임은 rig 기울기·구르기만
+		if merge and K.SKIN:
+			_batch(cd)
+		return
 	hips = _n(refs.hips)
 	waist = _n(refs.waist)
 	neck = _n(refs.neck)
@@ -473,6 +481,9 @@ static func _autoload(name: String):
 func pose(p: Dictionary, now_ms: float) -> void:
 	pid = int(p.id)
 	posed = true
+	if dummy:
+		_dummy_pose(p, now_ms)
+		return
 	var dt := 0.0 if last_ms == null else clampf((now_ms - last_ms) / 1000.0, 0.0, 0.1)
 	var view = _autoload("View")
 	if view != null:
@@ -1333,6 +1344,31 @@ func _vis(r, on: bool) -> void:
 		n.visible = on
 
 
+# 허수아비 (render.js animate 의 figure 없는 몸): 밀리면 앞으로 기울고 (ANIM_LEAN), 경직 중 빨리 날아가면 구름 → 멈추면 바로 섬. 맞으면 찌그러짐
+func _dummy_pose(p: Dictionary, now_ms: float) -> void:
+	var dt := 0.0 if last_ms == null else clampf((now_ms - last_ms) / 1000.0, 0.0, 0.1)
+	var view = _autoload("View")
+	if view != null:
+		dt *= float(view.time_scale)
+	last_ms = now_ms
+	var store = _store()
+	var pos: Vector3 = store.view_pos(pid) if store != null else Vector3(float(p.get("x", 0.0)), float(p.get("y", 0.0)), float(p.get("z", 0.0)))
+	if prev_pos != null and dt > 0.0:
+		var pp: Vector3 = prev_pos
+		var v := Vector2(pos.x - pp.x, pos.y - pp.y).length() / maxf(dt, 1e-3)
+		hs += (v - hs) * (1.0 - exp(-C.ANIM_SMOOTH * dt))
+	prev_pos = pos
+	if p.get("stunned", false) == true and hs > C.ANIM_TUMBLE_MIN_SPEED:
+		dummy_spin -= dt * C.ANIM_TUMBLE_SPEED
+	else:
+		dummy_spin += (roundf(dummy_spin / TAU) * TAU - dummy_spin) * (1.0 - exp(-C.ANIM_SMOOTH * dt))
+	if rig != null:
+		rig.rotation = Vector3(0, minf(1.0, hs / C.MOVE_SPEED) * C.ANIM_LEAN + dummy_spin, 0)
+	_sync_bones()
+	var sq := _fx_amount("squash_amount")
+	scale = Vector3(1.0 + 0.28 * sq, 1.0 - 0.32 * sq, 1.0 + 0.28 * sq)
+
+
 # pid 가 정해졌나 (봇 id 는 음수라 pid ≥ 0 으로는 못 봄)
 func _has_id() -> bool:
 	return posed or pid != -1
@@ -1340,7 +1376,7 @@ func _has_id() -> bool:
 
 # ---------- 서버 이벤트 (main.js handleEvent → renderer 의 몸 부분) ----------
 func on_event(e: Dictionary) -> void:
-	if not _has_id():
+	if not _has_id() or dummy:
 		return
 	var now := Time.get_ticks_msec() / 1000.0
 	var who = e.get("who")

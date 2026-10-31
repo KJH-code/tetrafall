@@ -403,6 +403,25 @@ func test_ragdoll_bodies() -> void:
 	w.free()
 
 
+# 연습 방 허수아비 몸 (character.js buildDummy): 관절 없이 나무·자루·짚, 목 손수건 = 플레이어 색, 묶음 하나, 움직임은 기울기·구르기만, 이벤트는 무시
+func test_dummy_body() -> void:
+	var b = Chars.make_body("dummy", Color(0.9, 0.2, 0.2))
+	check(b.dummy and b.hips == null and b.rig != null, "허수아비 몸")
+	check(b.nodes.size() >= 30 and b.batch != null, "허수아비 조각 %d·묶음" % b.nodes.size())
+	var p := {"id": -5, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0, "stunned": true}
+	for i in 30:
+		p.x = i * 0.2
+		b.pose(p, i * 16.0)
+	check(b.dummy_spin < -0.5, "경직 중 빨리 날아가면 구름 %f" % b.dummy_spin)
+	p.stunned = false
+	for i in 60:
+		b.pose(p, 600.0 + i * 16.0)
+	check(absf(fmod(b.dummy_spin, TAU)) < 0.05 or absf(absf(fmod(b.dummy_spin, TAU)) - TAU) < 0.05, "멈추면 섬 %f" % b.dummy_spin)
+	b.on_event({"type": "hit", "target": -5, "who": 1})
+	b.on_event({"type": "attack", "who": -5})
+	b.free()
+
+
 func test_viewmodel_follows() -> void:
 	for ch in C.FIGURE_CHARS:
 		var vm = VM.new()
