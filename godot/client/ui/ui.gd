@@ -23,7 +23,7 @@ var target := "" # 바뀌려는 화면 (슬래시가 덮으면 shown 이 됨)
 func _ready() -> void:
 	layer = 10
 	var root := Control.new()
-	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(root)
 	menu = load("res://ui/menu.gd").new()

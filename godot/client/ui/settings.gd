@@ -22,13 +22,13 @@ var checks := {}
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var shade := ColorRect.new()
 	shade.color = Color(0, 0, 0, 0.6)
-	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(shade)
 	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
 	box = PanelContainer.new()
 	box.add_theme_stylebox_override("panel", S.pane())
@@ -121,7 +121,7 @@ func _check(parent: Node, text: String, key: String, note: String) -> void:
 	row.add_child(l)
 	var c := CheckBox.new()
 	c.text = note
-	c.focus_mode = Control.FOCUS_NONE
+	S.style_check(c, 14)
 	c.toggled.connect(func(on): View.set_setting(key, on))
 	row.add_child(c)
 	checks[key] = c

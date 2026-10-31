@@ -42,7 +42,7 @@ var push_was := 0.0
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	timer_label = _hud_label(26, true)
 	timer_label.position = Vector2(14, 12)
@@ -82,7 +82,7 @@ func _ready() -> void:
 
 	ring = Control.new()
 	ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	ring.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ring.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	ring.draw.connect(_draw_ring)
 	add_child(ring)
 
@@ -100,7 +100,7 @@ func _ready() -> void:
 	board_text = RichTextLabel.new()
 	board_text.bbcode_enabled = true
 	board_text.fit_content = true
-	board_text.custom_minimum_size.x = 420
+	board_text.custom_minimum_size.x = 520
 	board_text.add_theme_font_size_override("normal_font_size", 15)
 	board.add_child(board_text)
 	board.visible = false
@@ -130,7 +130,7 @@ func _ready() -> void:
 
 	flash = ColorRect.new()
 	flash.color = Color(0.47, 0.9, 1.0, 0.0)
-	flash.set_anchors_preset(Control.PRESET_FULL_RECT)
+	flash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(flash)
 
@@ -497,7 +497,8 @@ func _kills_panels(st: Dictionary, me: Dictionary, vp: Vector2) -> void:
 		var ts: Dictionary = st.get("teamScores", {"red": 0, "blue": 0})
 		var head := "[color=#ffd23a][font_size=22]점수표[/font_size][/color]  [color=#9fabcd]%s목표 %d킬[/color]\n" % ["빨강 %d : %d 파랑 · " % [int(ts.red), int(ts.blue)] if team else "", _goal(st)]
 		var rows := "[table=%d]" % (7 if team else 6)
-		rows += "[cell][/cell]%s[cell]이름[/cell][cell]킬[/cell][cell]죽음[/cell][cell]자멸[/cell][cell]점수[/cell]" % ("[cell]팀[/cell]" if team else "")
+		# 열 너비: 이름 칸 넓게, 숫자 칸 고르게 (expand 비율 + 좌우 여백) — JS #scoreboard 표
+		rows += _cell("", 0) + (_cell("팀", 1) if team else "") + _cell("이름", 5) + _cell("킬", 1) + _cell("죽음", 1) + _cell("자멸", 1) + _cell("점수", 1)
 		var i := 0
 		for r in U.score_rows(st.players, tally, team):
 			i += 1
@@ -505,7 +506,7 @@ func _kills_panels(st: Dictionary, me: Dictionary, vp: Vector2) -> void:
 			var nm := "[color=#%s]%s[/color]" % [_player_color(p).to_html(false), _name(p)]
 			if r.id == Store.my_id:
 				nm = "[bgcolor=#ffd23a33]%s[/bgcolor]" % nm
-			rows += "[cell]%d[/cell]%s[cell]%s[/cell][cell]%d[/cell][cell]%d[/cell][cell]%d[/cell][cell][color=#ffd23a]%d[/color][/cell]" % [i, ("[cell]%s[/cell]" % TEAM_KO.get(str(r.team), "")) if team else "", nm, r.kills, r.deaths, r.self, int(r.score)]
+			rows += _cell(str(i), 0) + (_cell(str(TEAM_KO.get(str(r.team), "")), 1) if team else "") + _cell(nm, 5) + _cell(str(int(r.kills)), 1) + _cell(str(int(r.deaths)), 1) + _cell(str(int(r.self)), 1) + _cell("[color=#ffd23a]%d[/color]" % int(r.score), 1)
 		board_text.text = head + rows + "[/table]"
 		board.position = (vp - board.size) / 2.0 + Vector2(0, -vp.y * 0.04)
 	# 부활 대기
@@ -520,6 +521,12 @@ func _kills_panels(st: Dictionary, me: Dictionary, vp: Vector2) -> void:
 		respawn_why.text = "%s%s%s" % [who, CAUSE_KO.get(str(me.get("cause", killed.get("cause", ""))), ""), " · 자멸 -1" if by == null or by == Store.my_id else ""]
 		respawn_num.text = str(U.respawn_secs(me.respawnIn))
 		respawn.position = Vector2((vp.x - respawn.size.x) / 2.0, vp.y * 0.22)
+
+
+# 점수표 칸: expand 0 = 내용만큼 (순위), 나머지는 비율. 숫자 칸은 가운데
+func _cell(text: String, expand: int) -> String:
+	var body := text if expand >= 5 else "[center]%s[/center]" % text
+	return "[cell expand=%d padding=10,2,10,2]%s[/cell]" % [max(expand, 1), body] if expand > 0 else "[cell padding=4,2,8,2]%s[/cell]" % text
 
 
 func _spectate(st: Dictionary, me: Dictionary, vp: Vector2) -> void:

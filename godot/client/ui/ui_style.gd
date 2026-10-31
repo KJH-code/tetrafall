@@ -170,3 +170,36 @@ static func hud_box(accent_left := false) -> StyleBoxFlat:
 	s.content_margin_top = 3
 	s.content_margin_bottom = 3
 	return s
+
+
+# 체크 상자: 기본 테마 표시가 어두운 판에서 안 보여서 직접 그림 (빈 칸 = 빛 테두리, 켬 = 빛 채움 + 하얀 속)
+static func _check_icon(on: bool, off_alpha := 1.0) -> ImageTexture:
+	var n := 18
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var gc := g()
+	for y in n:
+		for x in n:
+			var edge: bool = x < 2 or y < 2 or x >= n - 2 or y >= n - 2
+			if edge:
+				img.set_pixel(x, y, alpha(gc, off_alpha))
+			elif on:
+				var inner: bool = x >= 5 and y >= 5 and x < n - 5 and y < n - 5
+				img.set_pixel(x, y, Color.WHITE if inner else alpha(gc, 0.85))
+			else:
+				img.set_pixel(x, y, Color(0, 0, 0, 0.45))
+	return ImageTexture.create_from_image(img)
+
+
+static func style_check(c: CheckBox, size := 13) -> CheckBox:
+	c.add_theme_icon_override("unchecked", _check_icon(false))
+	c.add_theme_icon_override("checked", _check_icon(true))
+	c.add_theme_icon_override("unchecked_disabled", _check_icon(false, 0.35))
+	c.add_theme_icon_override("checked_disabled", _check_icon(true, 0.35))
+	c.add_theme_font_size_override("font_size", size)
+	c.add_theme_color_override("font_color", TEXT)
+	c.add_theme_color_override("font_hover_color", Color.WHITE)
+	c.add_theme_color_override("font_pressed_color", Color.WHITE)
+	c.add_theme_constant_override("h_separation", 6)
+	c.focus_mode = Control.FOCUS_NONE
+	return c

@@ -190,7 +190,10 @@ func _card(text: String, cb: Callable) -> Button:
 
 
 func _select(label_text: String, ids: Array, name_of: Callable, on_pick: Callable) -> OptionButton:
-	settings_box.add_child(S.label(label_text, 13, Color("b9b0d2")))
+	# 이름표와 고르기를 한 묶음으로 (줄이 넘어가도 둘이 떨어지지 않게)
+	var pair := HBoxContainer.new()
+	pair.add_theme_constant_override("separation", 3)
+	pair.add_child(S.label(label_text, 13, Color("b9b0d2")))
 	var o := OptionButton.new()
 	o.focus_mode = Control.FOCUS_NONE
 	o.add_theme_font_size_override("font_size", 13)
@@ -198,15 +201,15 @@ func _select(label_text: String, ids: Array, name_of: Callable, on_pick: Callabl
 		o.add_item(name_of.call(ids[i]), i)
 		o.set_item_metadata(i, ids[i])
 	o.item_selected.connect(func(i): on_pick.call(o.get_item_metadata(i)))
-	settings_box.add_child(o)
+	pair.add_child(o)
+	settings_box.add_child(pair)
 	return o
 
 
 func _check(text: String, on_toggle: Callable) -> CheckBox:
 	var b := CheckBox.new()
 	b.text = text
-	b.focus_mode = Control.FOCUS_NONE
-	b.add_theme_font_size_override("font_size", 13)
+	S.style_check(b, 13)
 	b.toggled.connect(on_toggle)
 	settings_box.add_child(b)
 	return b

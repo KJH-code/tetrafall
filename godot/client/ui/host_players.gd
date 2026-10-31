@@ -36,8 +36,7 @@ func refresh(st: Dictionary) -> void:
 		grid.add_child(Control.new())
 	var team := CheckBox.new()
 	team.text = "팀전 (빨강 vs 파랑)"
-	team.focus_mode = Control.FOCUS_NONE
-	team.add_theme_font_size_override("font_size", 13)
+	S.style_check(team, 13)
 	team.button_pressed = bool(st.get("teamMode", false))
 	team.disabled = st.get("mode") == "master" # 블록 마스터는 1 대 다
 	team.toggled.connect(func(on): Store.send_room({"type": "teamMode", "on": on}))
