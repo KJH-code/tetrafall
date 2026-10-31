@@ -215,6 +215,13 @@ func apply_theme(map_id: String) -> void:
 		sprouts = G3.sprout_node(tid)
 		if sprouts != null:
 			grid_view.add_child(sprouts) # 판 밖 (메뉴) 에선 grid_view 와 같이 숨음
+		if g3_has("piece_mesh"):
+			# 테트리미노 칸 (B3 PieceLook): 떨어지는 칸·쌓인 칸 모양·재질·조각 색, 빛 테두리 = GAME_LIGHT 안 rim (그래픽 낮춤이면 0)
+			var rim: float = 0.0 if low else float(light_fx.preset.get("rim", 0.0))
+			var pm: Mesh = G3.piece_mesh(tid, low)
+			var cols: Dictionary = G3.piece_colors(tid)
+			pieces_view.set_look(pm, [G3.piece_material(tid, low, {"rim": rim}), G3.piece_material(tid, low, {"rim": rim, "transparent": true, "opacity": 1.0})], cols)
+			grid_view.set_piece_look(pm, G3.piece_material(tid, low, {"rim": rim, "outline": false}), cols) # 쌓인 칸은 외곽선 없음 (render.js landed noOutline)
 		return
 	var sk: Dictionary = theme.get("sky", {})
 	sky_mat.sky_top_color = Co.color(sk.get("top", C.SKY_TOP))
