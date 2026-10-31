@@ -18,6 +18,8 @@ const SPROUTS := preload("res://shaders/sprouts.gd")
 const BATCH := preload("res://shaders/batch.gd")
 const FLAT := preload("res://shaders/flat.gdshader")
 const FLOOR := preload("res://shaders/floor.gdshader")
+const PIECE := preload("res://shaders/piece.gdshader")
+const PIECE_ALPHA := preload("res://shaders/piece_alpha.gdshader")
 
 static var _globals := {} # 넣은 전역 셰이더 값 (RenderingServer 는 실행 중 읽기가 안 됨 — 테스트·확인용)
 
@@ -333,4 +335,87 @@ static func floor_material(theme_id) -> ShaderMaterial:
 	var rgba := String(f.line).replace("rgba(", "").replace(")", "").split(",")
 	var lc := Color(float(rgba[0]) / 255.0, float(rgba[1]) / 255.0, float(rgba[2]) / 255.0).srgb_to_linear()
 	m.set_shader_parameter("f_line", Vector4(lc.r, lc.g, lc.b, float(rgba[3])))
+	return m
+
+
+# ---- 테트리미노 칸 (JS piece-look.js PieceLook + shared/piece-look.js pieceSpec). 모양·면 그림은 JS 에서 뽑은 자산 (tools/piece_assets.mjs)
+#   mm.mesh = G3.piece_mesh(theme_id, low) · material_override = G3.piece_material(theme_id, low, {transparent, opacity, rim})
+#   칸 색은 인스턴스 색 (MultiMesh use_colors, sRGB, 알파는 transparent 일 때 곱함) = G3.piece_colors(theme_id)[모양 글자]
+# theme_id 가 null 이거나 테마에 piece 가 없으면 기본 장난감 블록 ('toy')
+static var _piece_shapes = null
+static var _piece_meshes := {}
+
+
+static func piece_spec(theme_id) -> Dictionary:
+	var s := {"style": "toy", "shape": "round", "segs": 2, "fresnel": 0.0, "crack": 0.0, "accent": [0xffffff, 0xffffff], "opacity": 1.0}
+	s.merge(C.PIECE_LOOK, true)
+	s.colors = C.SHAPE_COLORS.duplicate()
+	var t = C.WORLD_THEMES.get(theme_id) if theme_id != null else null
+	if t != null and t.has("piece"):
+		var cols: Dictionary = s.colors
+		s.merge(t.piece, true)
+		cols.merge(t.piece.get("colors", {}), true)
+		s.colors = cols
+	return s
+
+
+static func piece_colors(theme_id) -> Dictionary:
+	return piece_spec(theme_id).colors
+
+
+static func _piece_key(theme_id) -> String:
+	var t = C.WORLD_THEMES.get(theme_id) if theme_id != null else null
+	return theme_id if t != null and t.has("piece") else "toy"
+
+
+static func piece_mesh(theme_id, low := false) -> ArrayMesh:
+	var key := "%s:%s" % [_piece_key(theme_id), low]
+	if _piece_meshes.has(key):
+		return _piece_meshes[key]
+	if _piece_shapes == null:
+		_piece_shapes = JSON.parse_string(FileAccess.get_file_as_string("res://assets/pieces/shapes.json"))
+	var g: Dictionary = _piece_shapes[_piece_key(theme_id)]["low" if low else "normal"]
+	var n: int = g.pos.size() / 3
+	var pos := PackedVector3Array()
+	var nrm := PackedVector3Array()
+	var uv := PackedVector2Array()
+	var uv2 := PackedVector2Array()
+	pos.resize(n)
+	nrm.resize(n)
+	uv.resize(n)
+	uv2.resize(n)
+	for i in n:
+		var j: int = i - i % 3 + [0, 2, 1][i % 3] # 고도 앞면은 시계 방향 → 삼각형 2·3번 꼭짓점 바꿈
+		pos[i] = Co.gxyz(g.pos[j * 3], g.pos[j * 3 + 1], g.pos[j * 3 + 2])
+		nrm[i] = Co.gxyz(g.nrm[j * 3], g.nrm[j * 3 + 1], g.nrm[j * 3 + 2])
+		uv[i] = Vector2(g.uv[j * 2], 1.0 - g.uv[j * 2 + 1]) # three 그림은 아래가 v 0
+		uv2[i] = Vector2(g.acc[j], 0.0)
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = pos
+	arr[Mesh.ARRAY_NORMAL] = nrm
+	arr[Mesh.ARRAY_TEX_UV] = uv
+	arr[Mesh.ARRAY_TEX_UV2] = uv2
+	var m := ArrayMesh.new()
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	_piece_meshes[key] = m
+	return m
+
+
+# opts: transparent (알파 = opacity × 인스턴스 색 a, 그림자 안 드리움), opacity, rim (판 빛 테두리, set_game_light 가 바꿈), extra_glow (타이틀), outline (불투명만, 기본 true)
+static func piece_material(theme_id, low := false, opts := {}) -> ShaderMaterial:
+	var s := piece_spec(theme_id)
+	var m := ShaderMaterial.new()
+	var tr: bool = opts.get("transparent", false) or float(s.opacity) < 1.0
+	m.shader = PIECE_ALPHA if tr else PIECE
+	m.set_shader_parameter("face_tex", load("res://assets/pieces/%s.png" % s.style))
+	m.set_shader_parameter("accent0", _col(s.accent[0]))
+	m.set_shader_parameter("accent1", _col(s.accent[1]))
+	m.set_shader_parameter("glow", float(s.get("glow", 0.0)) + float(opts.get("extra_glow", 0.0)))
+	m.set_shader_parameter("crack", 0.0 if low else float(s.crack))
+	m.set_shader_parameter("fresnel", 0.0 if low else float(s.fresnel))
+	m.set_shader_parameter("rim", 0.0 if low else float(opts.get("rim", 0.0)))
+	m.set_shader_parameter("opacity", float(opts.get("opacity", s.opacity)))
+	if not tr and opts.get("outline", true):
+		m.next_pass = outline_material()
 	return m
