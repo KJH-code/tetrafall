@@ -1,0 +1,206 @@
+# G3 툰·외곽선·테마 (godot/PLAN.md 7절: shaders/ 는 G3, G1·G2 는 preload 해서 부름).
+#   const G3 := preload("res://shaders/g3.gd")
+#   mesh.material_override = G3.toon_material(Color(...))          # 툰 + 외곽선 (next_pass)
+#   G3.set_hemi(...) / G3.add_sun(...)                             # 빛 (테마는 apply_theme 이 부름)
+# JS 원본: client/toon.js (툰), render.js OutlineEffect (외곽선), 빛 세기는 three 값 그대로 받아 고도 값으로 바꿈 (/PI, toon.gdshader 주석)
+extends RefCounted
+
+const C := preload("res://core/config.gd")
+const Co := preload("res://core/coords.gd")
+const K := preload("res://shaders/g3_config.gd")
+const TOON := preload("res://shaders/toon.gdshader")
+const TOON_ALPHA := preload("res://shaders/toon_alpha.gdshader")
+const OUTLINE := preload("res://shaders/outline.gdshader")
+const SKY := preload("res://shaders/sky.gdshader")
+
+static var _globals := {} # 넣은 전역 셰이더 값 (RenderingServer 는 실행 중 읽기가 안 됨 — 테스트·확인용)
+
+
+# 툰 재질 (three toon({...})). color: Color 또는 0xRRGGBB. opts: map (Texture2D), emissive (Color/숫자), emissive_energy,
+# opacity (1 미만이면 투명), vertex_color (bool), outline (기본 true — 외곽선을 next_pass 로)
+static func toon_material(color = Color.WHITE, opts := {}) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	var c := _col(color)
+	var a: float = opts.get("opacity", 1.0)
+	m.shader = TOON if a >= 1.0 else TOON_ALPHA
+	m.set_shader_parameter("albedo", Color(c.r, c.g, c.b, a))
+	m.set_shader_parameter("toon_steps", K.TOON_STEPS)
+	if opts.has("map"):
+		m.set_shader_parameter("albedo_tex", opts.map)
+		m.set_shader_parameter("use_tex", true)
+	if opts.has("emissive"):
+		m.set_shader_parameter("emissive", _col(opts.emissive))
+	m.set_shader_parameter("emissive_energy", opts.get("emissive_energy", 1.0))
+	m.set_shader_parameter("use_vertex_color", opts.get("vertex_color", false))
+	if a < 1.0:
+		m.render_priority = 1
+	if opts.get("outline", true) and a >= 1.0:
+		m.next_pass = outline_material()
+	return m
+
+
+# 외곽선만 (three OutlineEffect 의 뒤집은 껍데기). 다른 셰이더 재질 next_pass 로 붙여도 됨
+static func outline_material(thickness: float = C.OUTLINE_THICKNESS) -> ShaderMaterial:
+	var o := ShaderMaterial.new()
+	o.shader = OUTLINE
+	o.set_shader_parameter("thickness", thickness)
+	o.set_shader_parameter("line_color", K.OUTLINE_COLOR)
+	return o
+
+
+# 외곽선 끄기 (JS noOutline: 하늘·용암·그림자 판·파편 등)
+static func no_outline(m: Material) -> Material:
+	m.next_pass = null
+	return m
+
+
+# 외곽선 켜기·끄기 (설정 '외곽선'): 재질들에 한 번에
+static func set_outline(mats: Array, on: bool) -> void:
+	for m in mats:
+		if m is ShaderMaterial and (m.shader == TOON or m.shader == TOON_ALPHA):
+			m.next_pass = outline_material() if on else null
+
+
+# 하늘빛 (three HemisphereLight(sky, ground, intensity)) — 툰 셰이더 전역 값
+static func set_hemi(sky, ground, intensity: float) -> void:
+	var s := _col(sky).srgb_to_linear()
+	var g := _col(ground).srgb_to_linear()
+	_set_global("g3_hemi_sky", Vector3(s.r, s.g, s.b))
+	_set_global("g3_hemi_ground", Vector3(g.r, g.g, g.b))
+	_set_global("g3_hemi_energy", intensity)
+
+
+# 해 (three DirectionalLight(color, intensity), 게임 좌표 방향 dir = 해가 있는 쪽). 색·세기는 툰 셰이더 전역 값 g3_sun (선형),
+# 고도 빛은 방향·그림자만 (세기 1 — 툰 셰이더는 LIGHT_COLOR 를 안 씀, 색 공간 주석 toon_common.gdshaderinc)
+static func set_sun(sun: DirectionalLight3D, color, intensity: float, dir: Array) -> void:
+	var c := _col(color).srgb_to_linear()
+	_set_global("g3_sun", Vector3(c.r, c.g, c.b) * intensity)
+	_set_global("g3_sun_on", 1.0 if intensity > 0.0 and sun.visible else 0.0)
+	sun.light_color = Color.WHITE
+	sun.light_energy = 1.0
+	var d := Co.gxyz(float(dir[0]), float(dir[1]), float(dir[2])).normalized()
+	sun.look_at_from_position(Vector3.ZERO, -d, Vector3.UP if absf(d.y) < 0.99 else Vector3.FORWARD)
+	sun.shadow_bias = K.SUN_SHADOW_BIAS
+	sun.shadow_normal_bias = K.SUN_SHADOW_NORMAL_BIAS
+
+
+# ===== 테마: 하늘·안개·해·하늘빛 (JS world.js apply + render.js 생성자의 노을) =====
+# world (G1 의 World Node3D) 아래 'G3Env' 하나에 WorldEnvironment·해 DirectionalLight3D·하늘 구를 만들어 둠 (있으면 값만 바꿈).
+# theme_id: config WORLD_MAP_THEME[map.id] (없으면 null = 예전 노을). low: 그래픽 낮춤 (지금은 같음)
+static func apply_theme(world: Node3D, theme_id, low := false) -> void:
+	var env := _env_node(world)
+	var L = C.WORLD_THEMES.get(theme_id) if theme_id != null else null
+	var sky := {}
+	var sun_dir: Array = C.SUN_DIR
+	var sun_col = C.SUN_COLOR
+	var sun_int: float = K.SUNSET_SUN
+	var hemi: Array = K.SUNSET_HEMI
+	var fog: Array = [C.SKY_HORIZON, C.FOG_NEAR, C.FOG_FAR]
+	if L == null:
+		# 예전 노을 (render.js skyDome 기본값)
+		sky = {"top": _lin3(C.SKY_TOP), "mid": _lin3(C.SKY_MID), "horizon": _lin3(C.SKY_HORIZON), "below": _lin3(C.SKY_HORIZON) * 0.55,
+			"glow": K.SKY_GLOW, "disc": K.SKY_DISC, "disc_size": K.SKY_DISC_SIZE, "stars": 0.0, "bg": C.SKY_HORIZON}
+	else:
+		var S: Dictionary = L.sky
+		sky = {"top": _lin3(S.top), "mid": _lin3(S.mid), "horizon": _lin3(S.horizon), "below": _lin3(S.below),
+			"glow": _lin3(S.glow) if S.has("glow") else K.SKY_GLOW, "disc": _lin3(S.disc) if S.has("disc") else K.SKY_DISC,
+			"disc_size": float(S.get("discSize", K.SKY_DISC_SIZE)), "stars": float(S.get("stars", 0.0)), "bg": S.horizon}
+		sun_dir = L.sunDir
+		sun_col = L.sunColor
+		sun_int = L.sunIntensity
+		hemi = L.hemi
+		fog = L.fog
+	var dome: MeshInstance3D = env.get_node("Sky")
+	var m: ShaderMaterial = dome.material_override
+	for k in ["top", "mid", "horizon", "below", "glow", "disc", "disc_size", "stars"]:
+		m.set_shader_parameter(k, sky[k])
+	var sd := Vector3(float(sun_dir[0]), float(sun_dir[1]), float(sun_dir[2])).normalized()
+	m.set_shader_parameter("sun_dir", sd)
+	var we: WorldEnvironment = env.get_node("Env")
+	we.environment.background_color = _col(sky.bg)
+	set_hemi(hemi[0], hemi[1], float(hemi[2]))
+	set_sun(env.get_node("Sun"), sun_col, sun_int, sun_dir)
+	set_fog(fog[0], float(fog[1]), float(fog[2]))
+	env.set_meta("theme", theme_id)
+
+
+# 안개 (three Fog(color, near, far)) — 툰·외곽선 셰이더 전역 값. far <= 0 이면 끔
+static func set_fog(color, near: float, far: float) -> void:
+	_set_global("g3_fog_color", _lin3(color))
+	_set_global("g3_fog_near", near)
+	_set_global("g3_fog_far", far)
+
+
+# 판 크기가 바뀌면 (G1): 하늘 구 가운데·그림자 거리 (JS render.js setField: 하늘 구는 판 가운데, 그림자 상자는 판 대각선 + 여백)
+static func set_field(world: Node3D, w: float, d: float) -> void:
+	var env := _env_node(world)
+	env.get_node("Sky").position = Vector3(w / 2.0, 0.0, d / 2.0)
+	var sun: DirectionalLight3D = env.get_node("Sun")
+	sun.directional_shadow_max_distance = sqrt(w * w + d * d) / 2.0 + K.SHADOW_REACH_PAD * 4.0
+
+
+# 그림자 켜기·끄기 (JS 대기 화면 설정 '그림자', render.js setShadows)
+static func set_shadows(world: Node3D, on: bool) -> void:
+	(_env_node(world).get_node("Sun") as DirectionalLight3D).shadow_enabled = on
+
+
+static func _env_node(world: Node3D) -> Node3D:
+	var env: Node3D = world.get_node_or_null("G3Env")
+	if env:
+		return env
+	env = Node3D.new()
+	env.name = "G3Env"
+	world.add_child(env)
+	var we := WorldEnvironment.new()
+	we.name = "Env"
+	var e := Environment.new()
+	e.background_mode = Environment.BG_COLOR
+	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	e.ambient_light_color = Color.BLACK # 하늘빛은 툰 셰이더 (g3_hemi_*)
+	e.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+	e.fog_enabled = false # 안개는 툰 셰이더 (three 와 같은 smoothstep)
+	we.environment = e
+	env.add_child(we)
+	var sun := DirectionalLight3D.new()
+	sun.name = "Sun"
+	sun.shadow_enabled = true
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+	sun.directional_shadow_max_distance = K.SHADOW_MAX_DISTANCE
+	env.add_child(sun)
+	var dome := MeshInstance3D.new()
+	dome.name = "Sky"
+	var sm := SphereMesh.new()
+	sm.radius = K.SKY_RADIUS
+	sm.height = K.SKY_RADIUS * 2.0
+	sm.radial_segments = 32
+	sm.rings = 16
+	dome.mesh = sm
+	var mat := ShaderMaterial.new()
+	mat.shader = SKY
+	mat.render_priority = -100
+	dome.material_override = mat
+	dome.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	env.add_child(dome)
+	return env
+
+
+static func _lin3(c) -> Vector3:
+	var l := _col(c).srgb_to_linear()
+	return Vector3(l.r, l.g, l.b)
+
+
+# 전역 셰이더 값 (project.godot [shader_globals] 에 g3_* 로 등록됨)
+static func _set_global(name: String, value) -> void:
+	_globals[name] = value
+	RenderingServer.global_shader_parameter_set(name, value)
+
+
+static func global_value(name: String):
+	return _globals.get(name)
+
+
+static func _col(c) -> Color:
+	if c is Color:
+		return c
+	var i := int(c)
+	return Color8((i >> 16) & 0xff, (i >> 8) & 0xff, i & 0xff)
