@@ -1,23 +1,20 @@
 # 효과음 재생 (client/sound.js 자리): 구운 녹음본 (audio/baked, tools/bake-audio.cjs) 을 재생기 묶음으로 틈.
-# 버스: SFX (슬로모션 저역 필터·크기) · SFXDirect (마지막 킬 소리, 필터 안 거침) · 좌우가 있는 소리는 재생기마다 자기 Pan 버스 (패너) → SFX.
+# 버스: SFX (슬로모션 저역 필터·크기) · SFXDirect (마지막 킬 소리, 필터 안 거침) · 좌우가 있는 소리는 좌우 칸 (PAN_STEPS, 0.1 단위) 버스 (패너) → SFX.
+# 재생은 버스마다 AudioStreamPolyphonic 하나 (play_stream 이 AudioStreamPlayer.play() 보다 ~14배 가벼움 — 웹 프레임 비용, 2026-10-31)
 # 크기 = 녹음 gain (굽기 전 원래 크기) × 거리 감쇠 × vol, 버스 = SFX_VOLUME × 설정 sfx. 높낮이는 녹음본 여러 개 + ±SFX_DETUNE/2 흔들기
 extends Node
 
 const C := preload("res://core/config.gd")
 const SM := preload("res://audio/sound_math.gd")
 
-const PAN_VOICES := 16 # 좌우가 있는 소리 동시에
-const FLAT_VOICES := 16 # 좌우 없는 소리 동시에
+const PAN_STEPS := 10 # 좌우 칸: -1 ~ 1 을 0.1 씩 (21 버스)
+const VOICES := 32 # 버스마다 동시에
 const BAKED := "res://audio/baked/"
 
 var manifest := {}
 var streams := {} # 파일 이름 -> AudioStream (처음 쓸 때 부름)
-var pan_players: Array = []
-var pan_effects: Array = []
-var flat_players: Array = []
+var pan_players: Array = [] # 좌우 칸마다 폴리포닉 재생기 (가운데 = PAN_STEPS 번)
 var direct_player: AudioStreamPlayer
-var next_pan := 0
-var next_flat := 0
 var listener = null # Vector4(x, y, z, yaw) 내 귀 (카메라, 게임 좌표)
 var slow_rate := 1.0
 var slow_on := false
@@ -33,16 +30,33 @@ func _ready() -> void:
 	lowpass.cutoff_hz = 20000
 	AudioServer.add_bus_effect(sfx_bus, lowpass)
 	_bus("SFXDirect", "Master")
-	for i in PAN_VOICES:
+	for i in PAN_STEPS * 2 + 1:
+		var pan := float(i - PAN_STEPS) / PAN_STEPS
+		if i == PAN_STEPS:
+			pan_players.append(_poly("SFX")) # 가운데는 패너 없이
+			continue
 		var b := _bus("SFXPan%d" % i, "SFX")
-		var pe := AudioEffectPanner.new()
-		AudioServer.add_bus_effect(b, pe)
-		pan_effects.append(pe)
-		pan_players.append(_player("SFXPan%d" % i))
-	for i in FLAT_VOICES:
-		flat_players.append(_player("SFX"))
-	direct_player = _player("SFXDirect")
+		if AudioServer.get_bus_effect_count(b) == 0:
+			var pe := AudioEffectPanner.new()
+			pe.pan = pan
+			AudioServer.add_bus_effect(b, pe)
+		pan_players.append(_poly("SFXPan%d" % i))
+	direct_player = _poly("SFXDirect")
 	set_volume(1.0)
+
+
+func _poly(bus: String) -> AudioStreamPlayer:
+	var p := _player(bus)
+	var ps := AudioStreamPolyphonic.new()
+	ps.polyphony = VOICES
+	p.stream = ps
+	return p
+
+
+func _voice(p: AudioStreamPlayer) -> AudioStreamPlaybackPolyphonic:
+	if not p.playing:
+		p.play()
+	return p.get_stream_playback() as AudioStreamPlaybackPolyphonic
 
 
 static func _bus(name: String, send: String) -> int:
@@ -90,24 +104,15 @@ func play_list(list: Array, dist = null, pos = null, vol := 1.0, delay := 0.0, d
 		return
 	var rec: Dictionary = list[randi() % list.size()]
 	var lp := SM.listen(dist, pos, listener)
-	var p: AudioStreamPlayer
-	if direct:
-		p = direct_player
-	elif lp.y != 0.0:
-		p = pan_players[next_pan]
-		pan_effects[next_pan].pan = lp.y
-		next_pan = (next_pan + 1) % PAN_VOICES
-	else:
-		p = flat_players[next_flat]
-		next_flat = (next_flat + 1) % FLAT_VOICES
-	p.stream = stream(rec.file)
-	p.volume_db = linear_to_db(maxf(0.00001, float(rec.gain) * lp.x * vol))
-	p.pitch_scale = (1.0 + randf_range(-1, 1) * C.SFX_DETUNE * 0.5) * (1.0 if direct else slow_rate)
+	var p: AudioStreamPlayer = direct_player if direct else pan_players[clampi(roundi(lp.y * PAN_STEPS), -PAN_STEPS, PAN_STEPS) + PAN_STEPS]
+	var st := stream(rec.file)
+	var db := linear_to_db(maxf(0.00001, float(rec.gain) * lp.x * vol))
+	var pitch := (1.0 + randf_range(-1, 1) * C.SFX_DETUNE * 0.5) * (1.0 if direct else slow_rate)
 	played += 1
 	if delay > 0:
-		get_tree().create_timer(delay).timeout.connect(p.play)
+		get_tree().create_timer(delay).timeout.connect(func(): _voice(p).play_stream(st, 0.0, db, pitch))
 	else:
-		p.play()
+		_voice(p).play_stream(st, 0.0, db, pitch)
 
 
 # 화면 시간 배율 (KO 슬로모션): 슬로모션이면 효과음 먹먹하고 낮게 (sound.js slowmo)
