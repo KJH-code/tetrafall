@@ -1,5 +1,6 @@
 // 만든 파일 — 고치지 말 것. node godot/server/tools/gen-config.mjs 가 shared/config.js 에서 만듦
-#pragma warning disable CS1591
+#nullable enable
+#pragma warning disable CS1591, CS8618
 namespace Tetrafall.Core;
 
 public static partial class C
@@ -938,6 +939,82 @@ public static partial class C
     public const double RECONNECT_TOKEN_BYTES = 16;
     public const double NET_RECONNECT_MS = 2000;
     public const double NET_RECONNECT_TRIES = 30;
+
+    // ---- 표 (서버 규칙이 쓰는 것) ----
+    public static readonly Dictionary<string, TBasicAttacks> BASIC_ATTACKS = new() { ["tank"] = new TBasicAttacks() { chain = new TAttack[] { new TAttack() { name = "주먹", windup = 120, rec = 300, stun = 550, dmg = 5, kb = 1.5, up = 2, step = 0.4 }, new TAttack() { name = "어깨 박치기", windup = 150, rec = 350, stun = 750, dmg = 6, kb = 2, up = 1, step = 0.8 }, new TAttack() { name = "방패 올려치기", windup = 300, rec = 500, stun = 900, dmg = 8, kb = 0.5, up = 8, step = 0.3 } }, air = new TAttack[] { new TAttack() { name = "방패 내려치기", windup = 150, rec = 400, stun = 600, dmg = 10, kb = 3.8, up = 1, step = 0, finish = true } } }, ["ninja"] = new TBasicAttacks() { chain = new TAttack[] { new TAttack() { name = "찌르기", windup = 60, rec = 150, stun = 330, dmg = 3, kb = 0.8, up = 1, step = 0.3 }, new TAttack() { name = "반대 찌르기", windup = 60, rec = 150, stun = 340, dmg = 3, kb = 0.8, up = 1, step = 0.3 }, new TAttack() { name = "앞차기", windup = 70, rec = 170, stun = 400, dmg = 3, kb = 0.8, up = 1, step = 0.3 }, new TAttack() { name = "올려 차기", windup = 120, rec = 350, stun = 900, dmg = 5, kb = 0.5, up = 8, step = 0.2 } }, air = new TAttack[] { new TAttack() { name = "공중 베기", windup = 60, rec = 150, stun = 400, dmg = 3, kb = 0.8, up = 3, step = 0 }, new TAttack() { name = "내려 차기", windup = 100, rec = 450, stun = 500, dmg = 5, kb = 4.6, up = 1, step = 0, finish = true } } }, ["builder"] = new TBasicAttacks() { chain = new TAttack[] { new TAttack() { name = "옆치기", windup = 120, rec = 300, stun = 550, dmg = 6, kb = 1.2, up = 2, step = 0.4 }, new TAttack() { name = "반대 치기", windup = 120, rec = 350, stun = 800, dmg = 6, kb = 1.2, up = 2, step = 0.4 }, new TAttack() { name = "내려찍기", windup = 350, rec = 450, stun = 700, dmg = 10, kb = 2.5, up = 8, step = 0.3, finish = true, raise = true } }, air = new TAttack[] { new TAttack() { name = "망치 내려찍기", windup = 200, rec = 450, stun = 500, dmg = 9, kb = 3, up = 2, step = 0 } } }, ["hook"] = new TBasicAttacks() { chain = new TAttack[] { new TAttack() { name = "갈고리 휘두르기", windup = 150, rec = 300, stun = 550, dmg = 6, kb = 2, up = 3, step = 0 }, new TAttack() { name = "주먹", windup = 150, rec = 300, stun = 600, dmg = 6, kb = 1.5, up = 2, step = 0.4 }, new TAttack() { name = "갈고리 내려치기", windup = 200, rec = 450, stun = 500, dmg = 6, kb = 3, up = 2, step = 0.3, finish = true, loaded = new TAttack() { name = "탕", windup = 200, rec = 500, stun = 600, dmg = 12, kb = 7, up = 3, step = 0, range = 2, angle = 75, finish = true, shot = true } } }, air = new TAttack[] { new TAttack() { name = "갈고리 스핀", windup = 150, rec = 400, stun = 500, dmg = 6, kb = 3, up = 2, step = 0, angle = 180 } } }, ["hunter"] = new TBasicAttacks() { chain = new TAttack[] { new TAttack() { name = "베기", windup = 100, rec = 250, stun = 450, dmg = 5, kb = 1.2, up = 2, step = 0.3 }, new TAttack() { name = "반대 베기", windup = 100, rec = 250, stun = 550, dmg = 5, kb = 1.2, up = 2, step = 0.3 }, new TAttack() { name = "찔러 넣기", windup = 200, rec = 450, stun = 850, dmg = 8, kb = 1.5, up = 2, step = 0.4, mark = true } }, air = new TAttack[] { new TAttack() { name = "내려 베기", windup = 150, rec = 400, stun = 600, dmg = 7, kb = 3.8, up = 1, step = 0, finish = true } } }, ["cannon"] = new TBasicAttacks() { chain = new TAttack[] { new TAttack() { name = "후려치기", windup = 150, rec = 400, stun = 500, dmg = 5, kb = 3.5, up = 2, step = 0.2, finish = true, ammo = new TAttack() { name = "포탄", windup = 150, rec = 350, shell = true } } }, air = new TAttack[] { new TAttack() { name = "후려치기", windup = 150, rec = 400, stun = 500, dmg = 5, kb = 3.5, up = 2, step = 0, ammo = new TAttack() { name = "포탄", windup = 150, rec = 350, shell = true } } } }, ["berserker"] = new TBasicAttacks() { chain = new TAttack[] { new TAttack() { name = "가로 베기", windup = 150, rec = 300, stun = 650, dmg = 7, kb = 1.5, up = 1, step = 0.3, range = 2.1 }, new TAttack() { name = "내려찍기", windup = 250, rec = 450, stun = 700, dmg = 10, kb = 4.4, up = 3, step = 0.3, finish = true } }, air = new TAttack[] { new TAttack() { name = "회전 베기", windup = 150, rec = 400, stun = 550, dmg = 8, kb = 3.5, up = 2, step = 0, angle = 180, radial = true } } }, ["bard"] = new TBasicAttacks() { chain = new TAttack[] { new TAttack() { name = "류트 음파", windup = 150, rec = 350, stun = 300, dmg = 3, kb = 1, up = 0.5, step = 0, note = true } }, air = new TAttack[] { new TAttack() { name = "천천히 낙하", windup = 100, rec = 300, stun = 300, dmg = 3, kb = 1.5, up = 1, step = 0, range = 1.2, glide = true } }, metal = new TBasicAttacksMetal() { chain = new TAttack[] { new TAttack() { name = "기타 후려치기", windup = 150, rec = 300, stun = 650, dmg = 6, kb = 1.5, up = 1, step = 0.3 }, new TAttack() { name = "기타 내려치기", windup = 250, rec = 450, stun = 700, dmg = 10, kb = 4.6, up = 3, step = 0.3, finish = true } }, air = new TAttack[] { new TAttack() { name = "기타 꽂기", windup = 150, rec = 400, stun = 600, dmg = 9, kb = 3.8, up = -4, step = 0, angle = 180, finish = true, dive = true } } } } };
+    public static readonly Dictionary<string, Dictionary<string, double>> KILLS_TARGET_BY_COUNT = new() { ["off"] = new() { ["2"] = 2, ["3"] = 3 }, ["hp"] = new() { ["2"] = 4, ["3"] = 6, ["4"] = 7, ["5"] = 8, ["6"] = 9, ["8"] = 10 } };
+    public static readonly Dictionary<string, Dictionary<string, double>> KILLS_TARGET_TEAM_BY_COUNT = new() { ["off"] = new() { ["2"] = 3, ["6"] = 4, ["8"] = 5 }, ["hp"] = new() { ["2"] = 9, ["6"] = 14, ["8"] = 20 } };
+    public static readonly Dictionary<string, Dictionary<string, double>> BOT_LEVELS = new() { ["easy"] = new() { ["DODGE_CHANCE"] = 0.25, ["CHAIN_DELAY_MS"] = 2.5, ["REACTION_MS"] = 1.7, ["AIM_ERROR_RAD"] = 2, ["SHELL_AIM_ERROR_RAD"] = 2, ["DROP_DELAY_MS"] = 3, ["PUSH_INTERVAL_MS"] = 1.8, ["BRICK_AIM_ERROR"] = 1.6, ["CONTROL_AIM_ERROR"] = 1.5 }, ["normal"] = new() { ["CONTROL_AIM_ERROR"] = 0 }, ["hard"] = new() { ["DODGE_CHANCE"] = 1.4, ["CHAIN_DELAY_MS"] = 0.5, ["REACTION_MS"] = 0.6, ["AIM_ERROR_RAD"] = 0.5, ["SHELL_AIM_ERROR_RAD"] = 0.5, ["DROP_DELAY_MS"] = 0.6, ["PUSH_INTERVAL_MS"] = 0.65, ["BRICK_AIM_ERROR"] = 0.6, ["CONTROL_AIM_ERROR"] = 0 } };
+    public static readonly TTutorialSteps[] TUTORIAL_STEPS = new TTutorialSteps[] { new TTutorialSteps() { id = "move", part = 1, kind = "reach", keys = new string[] { "fwd", "left", "back", "right" }, text = "빛나는 칸까지 걸어가기 · {fwd}{left}{back}{right}", start = new double[] { -3, -2, 0.6 }, target = new double[] { 2, 2 } }, new TTutorialSteps() { id = "jump", part = 1, kind = "reach", minZ = 2, keys = new string[] { "jump" }, text = "2칸 벽 위로 · {jump} 점프 → 공중에서 {jump} 한 번 더 = 2단 점프", start = new double[] { -3, 0, 0 }, target = new double[] { 3, 0 }, blocks = new double[][] { new double[] { 1, -5, 4, 4, 2 } } }, new TTutorialSteps() { id = "dash", part = 1, kind = "dash", keys = new string[] { "dash" }, text = "대시 · {dash} — 순간 빠르게 (공중에서도 한 번)", start = new double[] { -3, 0, 0 } }, new TTutorialSteps() { id = "push", part = 2, kind = "damage", pct = 30, keys = new string[] { "attack" }, text = "허수아비 밀기 · {attack} — 맞을수록 피해 % 가 쌓여 더 멀리 날아감 (30% 까지)", start = new double[] { -1.5, 0, 0 }, dummies = new double[][] { new double[] { 0.5, 0, 0 } } }, new TTutorialSteps() { id = "ringout", part = 2, kind = "ringout", keys = new string[] { "attack" }, text = "허수아비를 섬 밖으로 떨어뜨리기 (낙사) · {attack} — 피해 % 가 높으면 멀리 날아감", start = new double[] { 1.4, 0, 0 }, dummies = new double[][] { new double[] { 3, 0, 90 } } }, new TTutorialSteps() { id = "crit", part = 2, kind = "crit", keys = new string[] { "jump", "attack" }, text = "치명타 · {jump} 점프, 떨어지는 중에 {attack} — 위에서 치면 더 세게", start = new double[] { -1.5, 0, 0 }, dummies = new double[][] { new double[] { 0.5, 0, 0 } }, skipChars = new string[] { "bard" } }, new TTutorialSteps() { id = "skill", part = 3, kind = "skill", keys = new string[] { "skill" }, text = "스킬 {skill} · {skillDesc}", start = new double[] { -2, 0, 0 }, dummies = new double[][] { new double[] { 0.5, 0, 0 } }, noCooldown = true, marks = 1 }, new TTutorialSteps() { id = "ult", part = 3, kind = "ult", keys = new string[] { "ult" }, text = "필살기 {ult} (게이지가 차면) · {ultDesc}", start = new double[] { -2, 0, 0 }, dummies = new double[][] { new double[] { 0.5, 0, 0 } }, blocks = new double[][] { new double[] { -1, 1, -1, 1, 2 } }, noCooldown = true, fullUlt = true, marks = 3 }, new TTutorialSteps() { id = "item", part = 3, kind = "item", keys = new string[] { "item" }, text = "아이템 주워서 쓰기 · {item} (손 아이템은 하나만)", start = new double[] { -3, 0, 0 }, items = new object[][] { new object[] { (object)-1, (object)0, "knockback" } }, dummies = new double[][] { new double[] { 2, 0, 0 } } }, new TTutorialSteps() { id = "dodge", part = 4, kind = "dodge", n = 3, keys = new string[] {  }, text = "블록 피하기 · 바닥 그림자 = 블록이 떨어질 자리 (3개)", start = new double[] { 0, 0, 0 } }, new TTutorialSteps() { id = "climb", part = 4, kind = "climb", z = 5, keys = new string[] { "jump" }, text = "용암 위로 · 쌓인 블록을 {jump} 점프로 타고 맨 위까지", start = new double[] { -4, 0, 0 }, stairs = new double[][] { new double[] { -3, -1, 1, 1 }, new double[] { -2, -1, 1, 2 }, new double[] { -1, -1, 1, 3 }, new double[] { 0, -1, 1, 4 }, new double[] { 1, -1, 1, 5 }, new double[] { 2, -1, 1, 5 } } } };
+    public static readonly Dictionary<string, TTutorialDoneText> TUTORIAL_DONE_TEXT = new() { ["all"] = new TTutorialDoneText() { title = "튜토리얼 완료!", text = "모든 단계를 해냈어요. 이제 진짜 판에서 밀고, 피하고, 살아남기!" }, ["some"] = new TTutorialDoneText() { title = "튜토리얼 끝!", text = "{ok}단계를 해냈어요. 넘긴 단계는 메뉴의 '튜토리얼' 에서 언제든 다시 해 볼 수 있어요." }, ["none"] = new TTutorialDoneText() { title = "튜토리얼 끝!", text = "넘긴 단계는 메뉴의 '튜토리얼' 에서 언제든 다시 해 볼 수 있어요. 바로 한 판 해 봐도 좋아요!" } };
 }
 
-// 아직 안 만든 값 (표·함수 등, 37개): BASIC_ATTACKS KILLS_TARGET_BY_COUNT KILLS_TARGET_TEAM_BY_COUNT SPAWN_POINTS spawnPointsFor BOT_LEVELS SFX_BANKS SFX_WEAPONS SFX_HIT_COMBO SFX_HIT_BODY SFX_HIT_TIERS SFX_HAZARD MUSIC_THEMES MUSIC_TENSION SKY_VIEW TUTORIAL_STEPS TUTORIAL_MARK TUTORIAL_DONE_TEXT UI_WIPE GAME_LIGHT_PRESETS GAME_LIGHT_FLASH WORLD_FAR WORLD_BLOCK_STYLES TITLE_THEMES TITLE_SOUND MENU_DRIFT LOBBY_DARK WORLD_THEMES FIGURE_BODIES VM_POS VM_GRIP FIGURE_SPRING RAGDOLL_LIMITS FIGURE_GAIT FIGURE_IDLE BB_LOOK BB_SHARDS
+public sealed class TAttack
+{
+    public string name;
+    public double windup;
+    public double rec;
+    public double? stun;
+    public double? dmg;
+    public double? kb;
+    public double? up;
+    public double? step;
+    public bool finish;
+    public bool raise;
+    public TAttack? loaded;
+    public bool mark;
+    public TAttack? ammo;
+    public double? range;
+    public bool note;
+    public double? angle;
+    public bool shot;
+    public bool shell;
+    public bool radial;
+    public bool glide;
+    public bool dive;
+}
+
+public sealed class TBasicAttacksMetal
+{
+    public TAttack[] chain;
+    public TAttack[] air;
+}
+
+public sealed class TBasicAttacks
+{
+    public TAttack[] chain;
+    public TAttack[] air;
+    public TBasicAttacksMetal? metal;
+}
+
+public sealed class TTutorialSteps
+{
+    public string id;
+    public double part;
+    public string kind;
+    public string[] keys;
+    public string text;
+    public double[] start;
+    public double[]? target;
+    public double? minZ;
+    public double[][]? blocks;
+    public double? pct;
+    public double[][]? dummies;
+    public string[]? skipChars;
+    public bool noCooldown;
+    public double? marks;
+    public bool fullUlt;
+    public object[][]? items;
+    public double? n;
+    public double? z;
+    public double[][]? stairs;
+}
+
+public sealed class TTutorialDoneText
+{
+    public string title;
+    public string text;
+}
+
+// 손으로 옮긴 값 (함수): SPAWN_POINTS spawnPointsFor → ConfigFns.cs
+// 화면 전용이라 안 만든 값 (29개): SFX_BANKS SFX_WEAPONS SFX_HIT_COMBO SFX_HIT_BODY SFX_HIT_TIERS SFX_HAZARD MUSIC_THEMES MUSIC_TENSION SKY_VIEW TUTORIAL_MARK UI_WIPE GAME_LIGHT_PRESETS GAME_LIGHT_FLASH WORLD_FAR WORLD_BLOCK_STYLES TITLE_THEMES TITLE_SOUND MENU_DRIFT LOBBY_DARK WORLD_THEMES FIGURE_BODIES VM_POS VM_GRIP FIGURE_SPRING RAGDOLL_LIMITS FIGURE_GAIT FIGURE_IDLE BB_LOOK BB_SHARDS

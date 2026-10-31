@@ -3,11 +3,19 @@
 // - jsnumber.json: 숫자 → JSON.stringify 글자 (C# JsNumber·JsonOut)
 // - mulberry32.json: 시드별 처음 값들 (tools/sim.js mulberry32)
 // - protocol-lobby.json: 방 만들기·들어가기·핑·나가기 각본에서 JS 서버(rooms.js)가 보낸 메시지·로그 글자 그대로 (C# Rooms 가 같은지)
+// - maps.json: 맵 7개 × 판 크기 10~19 시작 지형 (shared/maps.js mapColumns)
+// - trace-t0.json: 시나리오 0~32 (tools/game-hash.js) 의 trace 첫 줄 (판 시작 직후, 격자 포함) sha256 — C# 판 시작이 글자까지 같은지
+// - physics.json: 맵 7개 × 2·4·8인, 무작위 입력·넉백으로 물리만 300틱 (integratePlayer·groundKind) → 10틱마다 위치·속도
 import fs from 'node:fs';
+import crypto from 'node:crypto';
+import { SCENARIOS } from '../../../tools/game-hash.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Rooms } from '../../../server/rooms.js';
 import { mulberry32 } from '../../../tools/sim.js';
+import { Game } from '../../../server/game.js';
+import { MAP_IDS, mapColumns } from '../../../shared/maps.js';
+import { CONFIG as C } from '../../../shared/config.js';
 
 const out = path.join(path.dirname(fileURLToPath(import.meta.url)), '../tests/Tetrafall.Tests/fixtures');
 const bits = (x) => Buffer.from(new Float64Array([x]).buffer).toString('hex');
@@ -65,4 +73,71 @@ rooms.broadcastList(true);
 rooms.message(c1, { type: 'leave' });
 rooms.broadcastList();
 write('protocol-lobby.json', { sent, logs });
+// 시작 지형
+const maps = {};
+for (const id of MAP_IDS) for (let n = 10; n <= 19; n++) maps[`${id}:${n}`] = mapColumns(id, n, n);
+write('maps.json', maps);
+
+// 물리만 (판 흐름·블록 없이): 틱마다 game.js tick 의 물리 부분과 같은 순서
+const phys = [];
+let pk = 0;
+for (const id of MAP_IDS) {
+  for (const n of [2, 4, 8]) {
+    const rr = mulberry32(500 + pk++);
+    const g = new Game(() => {}, { countdownMs: 1 });
+    g.rng = rr;
+    for (let i = 1; i <= n; i++) g.addPlayer(i);
+    g.setMap(id);
+    g.startRound();
+    g.phase = 'playing';
+    const frames = [];
+    for (let k = 0; k < 300; k++) {
+      for (const p of g.players.values()) {
+        if (k % 10 === 0) g.handleInput(p.id, { fwd: Math.floor(rr() * 3) - 1, strafe: Math.floor(rr() * 3) - 1, jump: rr() < 0.3, yaw: (rr() - 0.5) * 8, pitch: 0 });
+        if (rr() < 0.04) g.handleAction(p.id, { name: 'jump' });
+        if (rr() < 0.02) {
+          p.kbx = (rr() - 0.5) * 30;
+          p.kby = (rr() - 0.5) * 30;
+          p.vz = rr() * 6;
+          p.stunUntil = g.time + 400;
+          p.wallBounced = false;
+          p.grounded = false;
+        }
+      }
+      g.time += TICK;
+      let remaining = TICK / 1000;
+      while (remaining > 0) {
+        const h = Math.min(remaining, C.MAX_STEP_DT);
+        for (const p of g.players.values()) if (g.onField(p)) g.integratePlayer(p, h);
+        remaining -= h;
+      }
+      for (const p of g.players.values()) if (p.grounded && p.alive && g.onField(p)) p.lastGround = g.groundKind(p);
+      if (k % 10 === 9) frames.push([...g.players.values()].map((p) => [p.x, p.y, p.z, p.vz, p.kbx, p.kby, p.grounded, p.lastGround ?? null, p.airJumps])); // 숫자는 JSON 글자 그대로 (되읽으면 비트까지 같음)
+    }
+    phys.push({ map: id, n, frames, events: g.drainEvents().length });
+  }
+}
+write('physics.json', phys);
+// 판 시작 (trace.mjs 첫 줄과 같은 만들기)
+const t0 = [];
+SCENARIOS.forEach((sc, i) => {
+  if (sc.mode === 'practice') return;
+  const rnd = mulberry32(sc.seed);
+  const logs = [];
+  const g = new Game((l) => logs.push(l), { characters: sc.characters, skyStairs: sc.sky, countdownMs: 1500 });
+  g.rng = rnd;
+  if (sc.away) g.addPlayer(1);
+  for (let k = sc.away ? 1 : 0; k < sc.n; k++) {
+    const b = g.addBot();
+    if (sc.characters) g.setChar(b.id, C.CHARACTERS[Math.floor(rnd() * C.CHARACTERS.length)]);
+  }
+  if (sc.team) g.setTeamMode(true);
+  if (sc.mode !== 'survival') g.setMode(sc.mode);
+  g.setMap(sc.map);
+  g.startRound();
+  const line = JSON.stringify({ t: 0, logs, snap: JSON.stringify(g.snapshot(true)) });
+  t0.push([i, crypto.createHash('sha256').update(line).digest('hex')]);
+});
+write('trace-t0.json', t0);
+console.log(`maps ${Object.keys(maps).length}, physics ${phys.length}판`);
 console.log(`jsmath ${math.length}, jsnumber ${nums.length}, 프로토콜 메시지 ${sent.length}개·로그 ${logs.length}줄`);
