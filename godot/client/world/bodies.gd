@@ -6,10 +6,13 @@ const C := preload("res://core/config.gd")
 const Co := preload("res://core/coords.gd")
 const WC := preload("res://world/world_config.gd")
 const Labels := preload("res://world/labels.gd")
+const UI_CALC := "res://ui/ui_calc.gd" # G4 hp_view (체력전 HP)
 const CHARS := "res://chars/chars.gd"
 
 var nodes := {} # id -> {root, body, label, char, color}
 var chars_script = null
+var ui_calc = null # G4 ui/ui_calc.gd (hp_view·hp_color) — 없으면 체력전도 %
+static var _white: ImageTexture
 var pos_fn = null # Callable(p, pos) -> pos: 화면 위치 고치기 (World: 대기실 미리보기 판 가운데·지형 위)
 var make_mat = null # Callable(Color) -> Material: G3 툰 재질 (상자 몸, 없으면 StandardMaterial3D)
 var shown := {} # id -> 게임 좌표 화면 위치 (Vector3) — 카메라·하늘 도우미가 읽음
@@ -18,6 +21,8 @@ var shown := {} # id -> 게임 좌표 화면 위치 (Vector3) — 카메라·하
 func _ready() -> void:
 	if ResourceLoader.exists(CHARS):
 		chars_script = load(CHARS)
+	if ResourceLoader.exists(UI_CALC):
+		ui_calc = load(UI_CALC)
 
 
 # 팀전이면 팀 계열 (팀 안 자리 순 명암), 아니면 고른 색 (render.js playerColor)
@@ -56,8 +61,57 @@ func _make(p: Dictionary, color: int) -> Dictionary:
 	lab.no_depth_test = true
 	lab.position.y = C.PLAYER_HEIGHT + C.LABEL_ABOVE_HEAD + WC.LABEL_LIFT
 	root.add_child(lab)
+	# 체력전: 이름 아래 작은 HP 막대 (뒤판 + 채움, 화면 크기 고정)
+	var bar_back := _bar_sprite(Color(0, 0, 0, 0.7))
+	var bar_fill := _bar_sprite(Color.WHITE)
+	bar_fill.render_priority = 1
+	for b in [bar_back, bar_fill]:
+		b.position.y = lab.position.y
+		b.visible = false
+		root.add_child(b)
 	add_child(root)
-	return {"root": root, "body": body, "label": lab, "char": str(p.get("char", "")), "color": color}
+	return {"root": root, "body": body, "label": lab, "char": str(p.get("char", "")), "color": color, "bar_back": bar_back, "bar_fill": bar_fill}
+
+
+func _bar_sprite(c: Color) -> Sprite3D:
+	if _white == null:
+		var img := Image.create(4, 4, false, Image.FORMAT_RGBA8)
+		img.fill(Color.WHITE)
+		_white = ImageTexture.create_from_image(img)
+	var s := Sprite3D.new()
+	s.texture = _white
+	s.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	s.fixed_size = true
+	s.no_depth_test = true
+	s.shaded = false
+	s.modulate = c
+	return s
+
+
+# 체력전 머리 위 HP 막대 (hv = G4 ui_calc.hp_view: {hp, max, frac, low}, null 이면 숨김). 이름 바로 아래, 크기는 이름표 크기를 따라감
+func _hp_bar(n: Dictionary, hv, lab: Label3D) -> void:
+	var back: Sprite3D = n.bar_back
+	var fill: Sprite3D = n.bar_fill
+	var on: bool = hv != null and lab.visible
+	back.visible = on
+	fill.visible = on
+	if not on:
+		return
+	var k: float = lab.pixel_size / WC.LABEL_PIXEL # 이름표 크기 (가까운 4명 / 먼 사람·하늘)
+	var w: float = WC.HP_BAR[0]
+	var h: float = WC.HP_BAR[1]
+	var frac := clampf(float(hv.frac), 0.0, 1.0)
+	# 4px 텍스처 → pixel_size 로 화면 px 크기 (fixed_size): 폭 w·높이 h px
+	back.pixel_size = WC.LABEL_PIXEL * k
+	fill.pixel_size = back.pixel_size
+	back.scale = Vector3(w / 4.0, h / 4.0, 1)
+	fill.scale = Vector3(maxf(0.001, w * frac) / 4.0, (h - 2) / 4.0, 1)
+	var dy: float = WC.HP_BAR[2] # 이름 아래로 (px, 이름표 글자 기준)
+	back.offset = Vector2(0, -dy / (h / 4.0)) # offset 은 텍스처 px (scale 전) 단위
+	fill.offset = Vector2((-(w - w * frac) / 2.0) / maxf(0.001, w * frac) * 4.0, -dy / ((h - 2) / 4.0))
+	fill.modulate = ui_calc.hp_color(frac) if ui_calc.has_method("hp_color") else Color.WHITE
+	back.modulate.a = lab.modulate.a * 0.7
+	fill.modulate.a = lab.modulate.a
 
 
 func _box_body(color: int) -> Node3D:
@@ -115,7 +169,9 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 			n.body.pose(p, now_ms)
 		var lab: Label3D = n.label
 		var name := str(p.get("nick", "")) if str(p.get("nick", "")) != "" else str(p.get("name", ""))
-		lab.text = name if sky else "%s\n%d%%" % [name, int(p.get("damage", 0))]
+		var hv = ui_calc.hp_view(p, st) if ui_calc != null and not sky else null
+		lab.text = name if sky or hv != null else "%s\n%d%%" % [name, int(p.get("damage", 0))]
+		_hp_bar(n, hv, lab)
 		lab.modulate = Co.color(color).lightened(WC.LABEL_LIGHTEN)
 		lab.visible = p.alive and not (mine and not sky) # 내 % 는 화면 아래 HUD
 	for id in nodes.keys():

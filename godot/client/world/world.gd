@@ -132,7 +132,7 @@ func _ready() -> void:
 				return G3.toon_material(Color.WHITE, opts)
 		pieces_view.mats = [G3.toon_material(Color.WHITE, {"vertex_color": true}), G3.toon_material(Color.WHITE, {"vertex_color": true, "opacity": WC.PIECE_SKY_ALPHA})]
 	apply_theme("")
-	# 확인용 명령줄 (-- 뒤): --world-view over|third|first · --map <맵 id> · --mode <모드> (방장이면 대기실에서 바꿈)
+	# 확인용 명령줄 (-- 뒤): --world-view over|third|first · --map <맵 id> · --mode <모드> · --hp (체력전) (방장이면 대기실에서 바꿈)
 	var args := {}
 	var list := OS.get_cmdline_user_args()
 	for i in list.size():
@@ -144,7 +144,9 @@ func _ready() -> void:
 		if args.has("map"):
 			Store.send_room({"type": "setMap", "map": args.map})
 		if args.has("mode"):
-			Store.send_room({"type": "setMode", "mode": args.mode}))
+			Store.send_room({"type": "setMode", "mode": args.mode})
+		if list.has("--hp"):
+			Store.send_room({"type": "hpMode", "on": true}))
 	Store.game_event.connect(bodies.on_event)
 	Store.game_event.connect(_light_event)
 	marks.solid = solid_at
