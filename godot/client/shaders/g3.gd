@@ -682,14 +682,15 @@ static func prewarm(world: Node3D, theme_id = null, frames := 3) -> Node3D:
 	var t := Engine.get_main_loop() as SceneTree # 트리 밖 world 여도
 	var left := [frames]
 	var rid := root.get_instance_id() # 노드를 직접 잡지 않음 (먼저 지워져도 됨)
-	var tick := func(): pass
-	tick = func():
+	var me := [null] # 람다는 지역 변수를 값으로 잡음 → 자기 자신은 배열로 (B4 찾음)
+	var tick := func():
 		left[0] -= 1
 		if left[0] > 0:
 			return
-		t.process_frame.disconnect(tick)
+		t.process_frame.disconnect(me[0])
 		var n = instance_from_id(rid)
 		if n != null:
 			n.queue_free()
+	me[0] = tick
 	t.process_frame.connect(tick)
 	return root
