@@ -157,7 +157,7 @@ public sealed partial class Game
     }
 
     // game-util.js pieceCellValue: 떨어지는 블록 칸의 격자 값
-    static byte PieceCellValue(Piece pc)
+    public static byte PieceCellValue(Piece pc)
     {
         if (pc.ghostBy is int gb && gb != 0) return (byte)(Pieces.CELL.GHOST_BASE + pc.ghostColor);
         return pc.thrownBy is int tb && tb != 0 ? Pieces.CELL.THROWN : Pieces.CellOfShape(pc.shape);

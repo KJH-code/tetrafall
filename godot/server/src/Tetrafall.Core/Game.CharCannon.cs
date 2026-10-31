@@ -56,7 +56,7 @@ public sealed partial class Game
     }
 
     // 포탄 (big = R 대형 포탄) 을 조준 방향으로 쏨 + 반동
-    Shell FireShell(Player p, bool big)
+    public Shell FireShell(Player p, bool big)
     {
         var dir = AimDir(p);
         double speed = big ? C.CANNON_R_SPEED : C.CANNON_SHELL_SPEED;
