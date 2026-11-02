@@ -12,6 +12,59 @@ static func js_round(x: float) -> float:
 	return floor(x + 0.5)
 
 
+# ---------- 화면 공통 (W4 JS 대조) ----------
+
+# JS index.html '작은 창' @media (max-height: 620px), (max-width: 1100px): 글씨·판을 줄여 화면을 덜 가림 (960×540 은 작은 창, 1280×720 은 아님)
+static func small(vp: Vector2) -> bool:
+	return vp.y <= 620.0 or vp.x <= 1100.0
+
+
+# 피해 % 글자색 (render.js damageColor): 0% 흰색 → 50% 노랑 → 100% 이상 빨강 [r, g, b] 0~255
+static func damage_rgb(d: float) -> Array:
+	var t := minf(1.0, d / 100.0)
+	var g := 255.0 if t < 0.5 else js_round(255.0 - (t - 0.5) * 2.0 * 215.0)
+	var b := js_round(255.0 - t * 2.0 * 255.0) if t < 0.5 else 0.0
+	return [255.0, g, b]
+
+
+static func damage_color(d: float) -> Color:
+	var c := damage_rgb(d)
+	return Color8(int(c[0]), int(c[1]), int(c[2]))
+
+
+# 시간 글자 (main.js fmt): 초는 버림
+static func fmt_time(ms: float) -> String:
+	var s := int(floor(ms / 1000.0))
+	return "%d:%02d" % [s / 60, s % 60]
+
+
+# 죽음 원인·무기 이름 (main.js CAUSE_KO·WEAPON_KO) — 킬 피드 '낙사 (망치)'·부활 대기·관전 안내
+const CAUSE_KO := {"crush": "압사", "fall": "낙사", "lava": "용암", "hp": "체력"}
+const WEAPON_KO := {"push": "밀치기", "projectile": "투사체", "shock": "충격파", "bomb": "폭탄", "control": "조종 블록", "thrown": "설치 블록", "charge": "돌진", "slam": "내려찍기", "slash": "순간 베기", "wall": "솟는 벽", "hook": "갈고리", "blockslam": "블록내려찍기", "blast": "블록 폭발", "bigbomb": "대폭발", "wallkick": "벽차기", "quake": "솟는 땅", "ghost": "유령블록", "glide": "낙하 음파", "shell": "포탄", "bigshell": "대형 포탄", "groundshot": "발밑 포격", "pounce": "추적 도약", "execute": "처형 사격", "leapwave": "광폭 도약", "spin": "분노 소용돌이", "note": "음파", "riff": "리프", "amp": "앰프 음파"}
+
+
+static func weapon_ko(w) -> String:
+	return "" if w == null or str(w) == "" else str(WEAPON_KO.get(str(w), str(w)))
+
+
+# 킬 피드 원인 칸 (main.js killFeed how): '낙사 (망치)'
+static func cause_text(cause, weapon) -> String:
+	var c := str(CAUSE_KO.get(str(cause), str(cause)))
+	var w := weapon_ko(weapon)
+	return c + (" (%s)" % w if w != "" else "")
+
+
+# 핑 칸 색 (index.html #netPing[data-level]): 보통 = 흐린 글 + 어두운 칸, warn = 검정 글 + 노랑 (#ffe98a→#ffb400), bad = 흰 글 + 빨강 (#ff4426→#a81405).
+# 고도 칸은 한 색이라 그라데이션 가운데 색
+static func net_look(level: String) -> Dictionary:
+	match level:
+		"warn":
+			return {"fg": Color("1a1300"), "bg": Color("ffe98a").lerp(Color("ffb400"), 0.5)}
+		"bad":
+			return {"fg": Color.WHITE, "bg": Color("ff4426").lerp(Color("a81405"), 0.5)}
+	return {"fg": Color("9fabcd"), "bg": Color8(8, 12, 26, 153)}
+
+
 # ---------- hud-layout.js ----------
 
 # 아래 플레이어 판 n 장을 폭 view_w 화면에 한 줄로: 판 폭·간격·작은 판 여부·글자 배율
@@ -252,7 +305,46 @@ static func wipe_plan(kind, reduced := false):
 	return {"kind": kind, "fade": false, "ms": k.ms, "coverMs": main.delay + reach * dur, "bands": bands}
 
 
-# 띠 하나의 t(ms) 때 x (vw): 키프레임 사이 직선 (JS 는 WAAPI cubic-bezier(.6,0,.3,1) — 화면에선 ease 를 따로 씀)
+# CSS cubic-bezier(x1, y1, x2, y2) 시간 곡선: 진행 u (0~1) → 바뀐 진행. x(s) = u 를 뉴턴 + 이분법으로 풀고 y(s)
+static func cubic_bezier(u: float, x1: float, y1: float, x2: float, y2: float) -> float:
+	if u <= 0.0 or u >= 1.0:
+		return clampf(u, 0.0, 1.0)
+	var bx := func(s: float) -> float: return ((1.0 - 3.0 * x2 + 3.0 * x1) * s + (3.0 * x2 - 6.0 * x1)) * s * s + 3.0 * x1 * s
+	var s := u
+	for i in 8:
+		var dx: float = bx.call(s) - u
+		var d: float = (3.0 * (1.0 - 3.0 * x2 + 3.0 * x1) * s + 2.0 * (3.0 * x2 - 6.0 * x1)) * s + 3.0 * x1
+		if absf(dx) < 1e-7:
+			break
+		if absf(d) < 1e-6:
+			break
+		s = clampf(s - dx / d, 0.0, 1.0)
+	if absf(bx.call(s) - u) > 1e-5: # 뉴턴이 안 모이면 이분법
+		var lo := 0.0
+		var hi := 1.0
+		for i in 40:
+			s = (lo + hi) / 2.0
+			if bx.call(s) < u:
+				lo = s
+			else:
+				hi = s
+	return ((1.0 - 3.0 * y2 + 3.0 * y1) * s + (3.0 * y2 - 6.0 * y1)) * s * s + 3.0 * y1 * s
+
+
+# 띠 하나의 화면 x (vw): JS 는 띠마다 WAAPI { easing: 'cubic-bezier(.6,0,.3,1)' } — 효과 전체 진행에 곡선을 씌운 뒤 키프레임 사이 직선
+static func band_x_eased(band: Dictionary, t: float) -> float:
+	var u: float = clampf((t - band.delay) / band.ms, 0.0, 1.0)
+	return band_x(band, band.delay + cubic_bezier(u, 0.6, 0.0, 0.3, 1.0) * band.ms)
+
+
+# 페이드 (그래픽 낮춤·움직임 줄이기): 0 → 1 (UI_WIPE_IN) → 0, 전체 진행에 ease-out (cubic-bezier(0,0,.58,1))
+static func fade_alpha(t: float, ms: float) -> float:
+	var u := cubic_bezier(clampf(t / ms, 0.0, 1.0), 0.0, 0.0, 0.58, 1.0)
+	var a: float = u / C.UI_WIPE_IN if u < C.UI_WIPE_IN else 1.0 - (u - C.UI_WIPE_IN) / (1.0 - C.UI_WIPE_IN)
+	return clampf(a, 0.0, 1.0)
+
+
+# 띠 하나의 t(ms) 때 x (vw): 키프레임 사이 직선 (곡선 전 — 정답 자료 shared/wipe.js 와 비교용, 화면은 band_x_eased)
 static func band_x(band: Dictionary, t: float) -> float:
 	var u: float = clampf((t - band.delay) / band.ms, 0.0, 1.0)
 	var f: Array = band.frames

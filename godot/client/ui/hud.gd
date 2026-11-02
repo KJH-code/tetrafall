@@ -11,9 +11,12 @@ const Coords := preload("res://core/coords.gd")
 const Keys := preload("res://core/keys.gd")
 const HM := preload("res://world/hunt_marks.gd") # 사냥꾼 표식 계산 (B4, shared/hunt-marks.js)
 
-const CAUSE_KO := {"crush": "압사", "fall": "낙사", "lava": "용암", "hp": "체력"}
+const CAUSE_KO := U.CAUSE_KO
 const TEAM_KO := {"red": "빨강", "blue": "파랑"}
 const TEAM_COL := {"red": Color("ff5a4a"), "blue": Color("4aa8ff")}
+
+# 부활 빛: 화면 가장자리에서 안쪽으로 (CSS inset box-shadow 0 0 120px 40px ≈ 가장자리 거리 d 에서 .75·(1 - smoothstep(-80, 160, d))) + 안쪽 4px 흰 테 .8
+const FLASH_SHADER := "shader_type canvas_item;\nuniform vec2 px = vec2(1280.0, 720.0);\nvoid fragment() {\n\tvec2 p = UV * px;\n\tfloat d = min(min(p.x, px.x - p.x), min(p.y, px.y - p.y));\n\tvec4 glow = vec4(0.47, 0.9, 1.0, 0.75 * (1.0 - smoothstep(-80.0, 160.0, d)));\n\tCOLOR = d < 4.0 ? mix(glow, vec4(1.0), 0.8) : glow;\n}\n"
 
 var tally := U.KillTally.new()
 var tally_round = null
@@ -23,6 +26,10 @@ var killed := {} # 나를 죽인 것 {by, byName, cause, weapon}
 
 var timer_label: Label
 var score_bar: HBoxContainer
+var score_key := "" # 점수 띠 내용 열쇠 (JS scoreKey) — 같으면 다시 안 만듦 (예전엔 스냅샷마다 30Hz 로 노드를 다 지우고 새로 만듦)
+var score_panel: PanelContainer # 위 점수 띠 (JS #score). ui.gd 가 화면 뿌리로 옮겨 대기실·결과에도 씀 (score_band)
+var score_box_light: StyleBoxFlat
+var score_box_dark: StyleBoxFlat
 var cards_row: HBoxContainer
 var cards := {} # id → {panel, face, name, sub, pct, hp, bar}
 var cards_key := ""
@@ -32,7 +39,9 @@ var board_text: RichTextLabel
 var respawn: PanelContainer
 var respawn_num: Label
 var respawn_why: Label
-var flash: ColorRect
+var flash: ColorRect # 부활 순간 가장자리 빛 (JS #respawn-flash: inset 0 0 120px 40px rgba(120,230,255,.75) + 안쪽 4px 흰 테)
+var shown_pct := {} # id → 마지막 피해 % (오르면 % 흔들림 — JS shownPct·.hurt)
+var spec_box: PanelContainer
 var skills: HBoxContainer
 var skill_f: Label
 var skill_r: Label
@@ -63,8 +72,20 @@ func _ready() -> void:
 	add_child(timer_label)
 	score_bar = HBoxContainer.new()
 	score_bar.add_theme_constant_override("separation", 6)
-	var score_panel := PanelContainer.new()
-	score_panel.add_theme_stylebox_override("panel", S.hud_box())
+	score_panel = PanelContainer.new()
+	score_box_light = S.hud_box() # JS #score: padding 4 20
+	score_box_light.content_margin_left = 20
+	score_box_light.content_margin_right = 20
+	score_box_light.content_margin_top = 4
+	score_box_light.content_margin_bottom = 4
+	score_box_dark = score_box_light.duplicate() # body.ui-dark #score: rgba(10,6,22,.72) + 안쪽 1px ga + 바깥 빛 14px gc
+	score_box_dark.bg_color = Color8(10, 6, 22, 184)
+	score_box_dark.set_border_width_all(1)
+	S.theme_border(score_box_dark, 0.55)
+	score_box_dark.shadow_color = S.alpha(S.g(), 0.1)
+	score_box_dark.shadow_size = 14
+	score_panel.add_theme_stylebox_override("panel", score_box_light)
+	score_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	score_panel.add_child(score_bar)
 	score_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 	score_panel.position.y = 12
@@ -101,8 +122,21 @@ func _ready() -> void:
 	add_child(ring)
 
 	spec_label = _hud_label(15, false)
+	S.body(spec_label) # JS #spec system-ui
 	spec_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	add_child(spec_label)
+	spec_box = PanelContainer.new() # JS #spec: rgba(8,12,26,.8) · padding 7 20 · 사선
+	spec_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sps := StyleBoxFlat.new()
+	sps.bg_color = Color8(8, 12, 26, 204)
+	sps.skew = Vector2(S.SKEW * 0.5, 0)
+	sps.content_margin_left = 20
+	sps.content_margin_right = 20
+	sps.content_margin_top = 7
+	sps.content_margin_bottom = 7
+	spec_box.add_theme_stylebox_override("panel", sps)
+	spec_box.add_child(spec_label)
+	spec_box.visible = false
+	add_child(spec_box)
 	ghost_ring = Control.new()
 	ghost_ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ghost_ring.size = Vector2(30, 30)
@@ -167,6 +201,15 @@ func _ready() -> void:
 	rv.add_child(respawn_num)
 	respawn_why = _center(_hud_label(17, false), "")
 	respawn_why.add_theme_color_override("font_color", Color("ffd6cc"))
+	var ws := StyleBoxFlat.new() # JS .why: 빨강 칸 rgba(90,22,10,.85) · 사선 · 비면 숨김
+	ws.bg_color = Color8(90, 22, 10, 217)
+	ws.skew = Vector2(S.SKEW * 0.6, 0)
+	ws.content_margin_left = 16
+	ws.content_margin_right = 16
+	ws.content_margin_top = 4
+	ws.content_margin_bottom = 4
+	respawn_why.add_theme_stylebox_override("normal", ws)
+	respawn_why.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	rv.add_child(respawn_why)
 	respawn.add_child(rv)
 	respawn.visible = false
@@ -177,10 +220,16 @@ func _ready() -> void:
 	add_child(big)
 
 	flash = ColorRect.new()
-	flash.color = Color(0.47, 0.9, 1.0, 0.0)
+	var fsh := Shader.new()
+	fsh.code = FLASH_SHADER
+	var fm := ShaderMaterial.new()
+	fm.shader = fsh
+	flash.material = fm
 	flash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	flash.modulate.a = 0.0
 	add_child(flash)
+	flash.resized.connect(func(): fm.set_shader_parameter("px", flash.size))
 
 	Store.game_event.connect(_on_event)
 	Store.state_changed.connect(_on_state)
@@ -223,11 +272,33 @@ func _slot() -> Label:
 	s.content_margin_bottom = 5
 	p.add_theme_stylebox_override("panel", s)
 	p.custom_minimum_size.x = 118
+	# 채움 막대 (JS #skills .fill: 노랑→주황 반투명, 폭 = F 쿨 진행 / R 게이지): 같은 기울기 상자를 폭만 줄여 판 위·글자 아래에 그림
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = Color(1, 0.7, 0.18, 0.38)
+	fill.skew = s.skew
+	p.set_meta("fill", 0.0)
+	p.draw.connect(func():
+		var f: float = p.get_meta("fill", 0.0)
+		if f > 0.0:
+			fill.draw(p.get_canvas_item(), Rect2(2, 2, (p.size.x - 4) * f, p.size.y - 4)))
 	var l := Label.new()
 	l.add_theme_font_size_override("font_size", 15)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	p.add_child(l)
 	return l
+
+
+# 스킬 칸 채움·준비 빛 (JS .slot.ready: 노랑 테두리 + 0 0 14px 빛)
+static func slot_state(l: Label, fill: float, ready: bool) -> void:
+	var p := l.get_parent() as PanelContainer
+	var f := clampf(fill, 0.0, 1.0)
+	if absf(float(p.get_meta("fill", 0.0)) - f) > 0.001:
+		p.set_meta("fill", f)
+		p.queue_redraw()
+	var s := p.get_theme_stylebox("panel") as StyleBoxFlat
+	s.border_color = S.ACCENT if ready else Color("3c4a78")
+	s.shadow_color = Color(1, 0.82, 0.23, 0.75) if ready else Color(0, 0, 0, 0)
+	s.shadow_size = 14 if ready else 0
 
 
 func _player_color(p: Dictionary) -> Color:
@@ -282,8 +353,8 @@ func _on_event(e: Dictionary) -> void:
 		"respawn":
 			if e.get("who") == Store.my_id and not Store.room.get("practice", false):
 				var tw := create_tween()
-				flash.color.a = 0.6
-				tw.tween_property(flash, "color:a", 0.0, C.KILLS_RESPAWN_FLASH_MS / 1000.0)
+				flash.modulate.a = 0.95
+				tw.tween_property(flash, "modulate:a", 0.0, C.KILLS_RESPAWN_FLASH_MS / 1000.0).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
 
 
 # 킬 피드 한 줄: "A ▸ B 원인 (무기)" + 연속 킬. 내 킬 금빛·내 죽음 빨강
@@ -314,7 +385,7 @@ func _feed(e: Dictionary, streak: int) -> void:
 		var kn: String = _name(killer) if not killer.is_empty() else str(e.get("byName", "?"))
 		var kc := _player_color(killer) if not killer.is_empty() else S.TEXT
 		txt += "[color=#%s]%s[/color] [color=#9fabcd]▸[/color] " % [kc.to_html(false), kn]
-	txt += "[color=#%s]%s[/color] [color=#9fabcd][font_size=13]%s[/font_size][/color]" % [_player_color(victim).to_html(false), _name(victim), CAUSE_KO.get(str(e.cause), str(e.cause))]
+	txt += "[color=#%s]%s[/color] [color=#9fabcd][font=%s][font_size=13]%s[/font_size][/font][/color]" % [_player_color(victim).to_html(false), _name(victim), S.BODY_PATH, U.cause_text(e.cause, e.get("weapon"))]
 	var st_text := U.streak_text(streak)
 	if st_text != "":
 		txt += " [bgcolor=#ffd23a][color=#1a1300][font_size=12] %s [/font_size][/color][/bgcolor]" % st_text
@@ -339,8 +410,7 @@ func _big(text: String, col: Color, secs: float) -> void:
 
 
 func _fmt(ms: float) -> String:
-	var s := int(ceil(ms / 1000.0))
-	return "%d:%02d" % [s / 60, s % 60]
+	return U.fmt_time(ms) # JS fmt: 초는 버림 (예전엔 올림이라 1초 많게)
 
 
 # 매 프레임 (ui.gd 가 판 화면일 때 부름)
@@ -350,14 +420,18 @@ func refresh(st: Dictionary) -> void:
 	# 위 왼쪽: 남은 시간 (블록 마스터·킬 점수전) 또는 판 시간
 	var left = st.round.get("left")
 	timer_label.text = " " + (_fmt(left) if left != null else _fmt(float(st.round.get("elapsed", 0)))) + " "
+	timer_label.visible = st.phase == "playing" # JS #status: 판 중에만 (카운트다운·판 끝엔 숨김)
+	var small := U.small(vp)
+	big.add_theme_font_size_override("font_size", 88 if small else 118) # JS #bigmsg (작은 창 88)
+	respawn_num.add_theme_font_size_override("font_size", 72 if small else 96)
 	# 카운트다운 큰 숫자
 	if st.phase == "countdown":
-		big.text = str(int(ceil(float(st.round.countdownLeft) / 1000.0)))
+		big.text = str(maxi(1, int(ceil(float(st.round.countdownLeft) / 1000.0))))
 		big.add_theme_color_override("font_color", Color.WHITE)
 		big.visible = true
 	big.position = Vector2((vp.x - big.size.x) / 2.0, vp.y * 0.3 - big.size.y / 2.0)
-	_score_bar(st, vp)
 	_cards(st, vp)
+	score_band(st, vp, false)
 	_skills(me, vp)
 	_kills_panels(st, me, vp)
 	_spectate(st, me, vp)
@@ -365,33 +439,119 @@ func refresh(st: Dictionary) -> void:
 	ring.queue_redraw()
 
 
-func _score_bar(st: Dictionary, vp: Vector2) -> void:
+# 위 점수 띠 (JS updateScore): 대기실·결과 (between = body.ui-dark 빛 판) 엔 승수 'A 1 : 0 B' · 셋 이상 'A 1 · B 0 · C 0' · 팀전 '빨강 1 : 0 파랑',
+# 판 중엔 아래 판과 겹치는 개인전 승수는 숨기고 팀전·킬 점수전만. 킬 점수전 (판 중·판 끝) 은 1~N위 + 나 + 목표까지 막대 + 남은 시간
+func score_band(st: Dictionary, vp: Vector2, between: bool) -> void:
+	var ps: Array = st.players.filter(func(p): return not p.get("spectator", false) and not p.get("dummy", false))
+	ps.sort_custom(func(a, b): return a.slot < b.slot)
+	var panel := score_panel
+	var kills: bool = st.get("mode") == "kills" and st.get("phase") != "lobby"
+	var team: bool = st.get("teamMode", false)
+	var dup: bool = not between and cards_row.visible and not team and not kills
+	var show: bool = ps.size() >= 2 and not dup and not bool(Store.room.get("practice", false))
+	var small := U.small(vp)
+	# JS updateScore scoreKey: 판 끝 남은 시간 (글자)·승수·점수·이름·팀·색·자리 비움·나·팀 합계 + 고도는 화면 크기·판 사이 (빛 판)·테마 빛 색·목표 킬도
+	var tw0: Dictionary = st.get("teamWins", {"red": 0, "blue": 0})
+	var ts0: Dictionary = st.get("teamScores", {"red": 0, "blue": 0})
+	var left_txt := _fmt(float(st.round.left)) if kills and st.get("round", {}).get("left") != null else ""
+	var key := "%s|%s|%s|%s|%s|%s|%s|%s|%s|%s:%s|%s:%s|%s|%s" % [show, kills, left_txt, dup, between, vp, S.theme_id(),
+		",".join(ps.map(func(p): return "%s:%s:%s:%s:%s:%s:%s:%s:%s" % [p.id, p.get("wins"), p.get("score"), p.get("nick"), p.get("name"), p.get("team"), p.get("color"), p.slot, p.get("away", false)])),
+		Store.my_id, tw0.get("red"), tw0.get("blue"), ts0.get("red"), ts0.get("blue"), team, _goal(st) if kills else 0]
+	if key == score_key and panel.visible == show: # 밖 (ui.gd 메뉴 화면) 에서 숨겼으면 다시 그림
+		return
+	score_key = key
 	for c in score_bar.get_children():
 		c.free()
-	var ps: Array = st.players.filter(func(p): return not p.get("spectator", false) and not p.get("dummy", false))
-	var panel := get_node("ScorePanel") as PanelContainer
-	var kills := _kills_game(st)
-	panel.visible = ps.size() >= 2 and (kills or st.get("teamMode", false))
+	panel.visible = show
+	panel.add_theme_stylebox_override("panel", score_box_dark if between else score_box_light)
+	panel.position.y = 12
 	if not panel.visible:
 		return
+	if not kills:
+		var f := 16 if small else 20 # JS #score 20px (작은 창 16)
+		var sep := func(t: String) -> Label:
+			var l := _chip(t, Color("67739a"), f)
+			return l
+		var me_team = Store.me().get("team")
+		var name_chip := func(p: Dictionary) -> Control:
+			var l := _chip(_name(p) + (" 자리 비움" if p.get("away", false) else ""), _player_color(p), f)
+			if p.get("away", false):
+				l.modulate.a = 0.6
+			if p.id == Store.my_id:
+				_underline(l, between)
+			return l
+		if team:
+			var tw: Dictionary = st.get("teamWins", {"red": 0, "blue": 0})
+			var r := _chip("빨강", TEAM_COL.red, f)
+			var b := _chip("파랑", TEAM_COL.blue, f)
+			if me_team == "red":
+				_underline(r, between)
+			elif me_team == "blue":
+				_underline(b, between)
+			for n in [r, _chip(" %d" % int(tw.get("red", 0)), Color.WHITE, f), sep.call(":"), _chip("%d " % int(tw.get("blue", 0)), Color.WHITE, f), b]:
+				score_bar.add_child(n)
+		elif ps.size() == 2:
+			for n in [name_chip.call(ps[0]), _chip(" %d" % int(ps[0].get("wins", 0)), Color.WHITE, f), sep.call(":"), _chip("%d " % int(ps[1].get("wins", 0)), Color.WHITE, f), name_chip.call(ps[1])]:
+				score_bar.add_child(n)
+		else:
+			for i in ps.size():
+				if i > 0:
+					score_bar.add_child(sep.call("·"))
+				score_bar.add_child(name_chip.call(ps[i]))
+				score_bar.add_child(_chip(" %d" % int(ps[i].get("wins", 0)), Color.WHITE, f))
+		panel.reset_size()
+		panel.position.x = (vp.x - panel.size.x) / 2.0
+		return
+	var big_f := 15 if small else 18 # JS #score.kills 18 (작은 창 15)
+	var bar_w := 30.0 if small else 46.0
 	if kills and not st.get("teamMode", false):
 		for r in U.top_bar(ps, Store.my_id):
 			var p := Store.player(r.id)
-			score_bar.add_child(_chip("%d" % int(r.rank), S.DIM, 13))
-			score_bar.add_child(_chip(_name(p), _player_color(p), 18))
-			score_bar.add_child(_chip("%d" % int(r.score), Color.WHITE, 18))
-			score_bar.add_child(_bar(U.progress(r.score, _goal(st)), _player_color(p)))
+			# JS .kc: 내 칸은 노랑 바탕 .12 + 아래 2px 노랑, 4위 아래 '나' 칸은 왼쪽 2px 선
+			var kc := PanelContainer.new()
+			var ks := StyleBoxFlat.new()
+			ks.bg_color = Color(1, 0.82, 0.23, 0.12) if r.get("me", false) else Color(0, 0, 0, 0)
+			ks.border_width_bottom = 2 if r.get("me", false) else 0
+			ks.border_width_left = 2 if r.get("extra", false) else 0
+			ks.border_color = S.ACCENT if r.get("me", false) else Color("3c4a78")
+			ks.content_margin_left = 5 if small else 8
+			ks.content_margin_right = 5 if small else 8
+			kc.add_theme_stylebox_override("panel", ks)
+			var kb := HBoxContainer.new()
+			kb.add_theme_constant_override("separation", 5)
+			kb.add_child(_chip("%d" % int(r.rank), S.DIM, 13))
+			kb.add_child(_chip(_name(p), _player_color(p), big_f))
+			kb.add_child(_chip("%d" % int(r.score), Color.WHITE, big_f))
+			kb.add_child(_bar(U.progress(r.score, _goal(st)), _player_color(p), bar_w))
+			kc.add_child(kb)
+			score_bar.add_child(kc)
 	else:
+		# JS: '빨강 3 : 1 파랑' (팀 이름만 팀 색), 킬 점수전은 '빨강 3 ▬ : ▬ 1 파랑'
 		var ts: Dictionary = st.get("teamScores", {"red": 0, "blue": 0}) if kills else st.get("teamWins", {"red": 0, "blue": 0})
-		score_bar.add_child(_chip("빨강 %d" % int(ts.get("red", 0)), TEAM_COL.red, 18))
+		score_bar.add_child(_chip("빨강", TEAM_COL.red, big_f))
+		score_bar.add_child(_chip("%d" % int(ts.get("red", 0)), Color.WHITE, big_f))
 		if kills:
-			score_bar.add_child(_bar(U.progress(ts.get("red", 0), _goal(st)), TEAM_COL.red))
-			score_bar.add_child(_chip(":", S.DIM, 18))
-			score_bar.add_child(_bar(U.progress(ts.get("blue", 0), _goal(st)), TEAM_COL.blue))
-		score_bar.add_child(_chip("%d 파랑" % int(ts.get("blue", 0)), TEAM_COL.blue, 18))
+			score_bar.add_child(_bar(U.progress(ts.get("red", 0), _goal(st)), TEAM_COL.red, bar_w))
+		score_bar.add_child(_chip(":", Color("67739a"), big_f))
+		if kills:
+			score_bar.add_child(_bar(U.progress(ts.get("blue", 0), _goal(st)), TEAM_COL.blue, bar_w))
+		score_bar.add_child(_chip("%d" % int(ts.get("blue", 0)), Color.WHITE, big_f))
+		score_bar.add_child(_chip("파랑", TEAM_COL.blue, big_f))
 	if kills:
 		score_bar.add_child(_chip("· 목표 %d킬" % _goal(st), S.DIM, 13))
+		if st.round.get("left") != null:
+			score_bar.add_child(_chip("· %s" % _fmt(float(st.round.left)), Color.WHITE, big_f)) # JS: 남은 시간도 띠 끝에
+	panel.reset_size()
 	panel.position.x = (vp.x - panel.size.x) / 2.0
+
+
+# 내 이름·내 팀 밑줄 (JS #score .me border-bottom 3px — 판 중 노랑, 대기실·결과 테마 빛)
+func _underline(l: Label, dark: bool) -> void:
+	var u := StyleBoxFlat.new()
+	u.bg_color = Color(0, 0, 0, 0)
+	u.border_width_bottom = 3
+	u.border_color = S.g() if dark else S.ACCENT
+	l.add_theme_stylebox_override("normal", u)
 
 
 func _chip(text: String, col: Color, size: int) -> Label:
@@ -402,14 +562,14 @@ func _chip(text: String, col: Color, size: int) -> Label:
 	return l
 
 
-func _bar(frac: float, col: Color) -> Control:
+func _bar(frac: float, col: Color, w := 46.0) -> Control:
 	var back := ColorRect.new()
 	back.color = Color(1, 1, 1, 0.12)
-	back.custom_minimum_size = Vector2(46, 6)
+	back.custom_minimum_size = Vector2(w, 6)
 	back.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var fill := ColorRect.new()
 	fill.color = col
-	fill.size = Vector2(46 * frac, 6)
+	fill.size = Vector2(w * frac, 6)
 	back.add_child(fill)
 	return back
 
@@ -444,12 +604,32 @@ func _cards(st: Dictionary, vp: Vector2) -> void:
 			var ft := Portrait.tex(p.get("char"), c.col, 96)
 			if ft != null:
 				c.face_img.texture = ft
-				c.face.color = Color(c.col.r, c.col.g, c.col.b, 0.35)
+				c.face.color = Color(0, 0, 0, 0.35) # JS .face 바탕 rgba(0,0,0,.35) (초상 전엔 그 사람 색 상자)
+		# 맞으면 % 가 흔들림 (JS .hurt .pct: shake .3s)
+		var was = shown_pct.get(p.id)
+		if was != null and float(p.damage) > float(was) and p.alive:
+			_hurt(c.pct_row)
+		shown_pct[p.id] = float(p.damage)
 		# 체력전: 큰 % 자리에 남은 HP (글자색도 HP 비율), 그 아래 막대. 끄면 예전 % (JS updatePlayers)
 		var hv = U.hp_view(p, st)
-		c.pct.text = "KO" if dead else ("%d" % int(hv.hp) if hv != null else "%d%%" % int(p.damage))
-		c.pct.add_theme_color_override("font_color", S.HOT if dead else (U.hp_color(hv.frac) if hv != null else _damage_color(float(p.damage))))
+		c.pct.text = "KO" if dead else ("%d" % int(hv.hp) if hv != null else "%d" % int(p.damage))
+		c.unit.visible = not dead and hv == null # JS <u>%</u> 20px
+		c.pct.add_theme_font_size_override("font_size", 27 if dead else int(c.pct_size)) # JS .pct i (KO) 27px
+		c.pct.add_theme_color_override("font_color", S.HOT if dead else (U.hp_color(hv.frac) if hv != null else U.damage_color(float(p.damage))))
+		c.unit.add_theme_color_override("font_color", U.damage_color(float(p.damage)))
+		# 죽음 회색 (JS grayscale .8 brightness .66 — 고도는 밝기만), 자리 비움 .62 + 태그, 관전 중 보는 사람 ▶ + 노랑 테
+		var away: bool = bool(p.get("away", false))
 		c.panel.modulate = Color(0.6, 0.6, 0.6) if dead else Color.WHITE
+		c.panel.modulate.a = 0.62 if away else 1.0
+		c.away.visible = away
+		var r = _rig()
+		var watch: bool = r != null and r.spectating() and not bool(r.spec.get("overview", false)) and View.spectate_target != null and int(View.spectate_target) == int(p.id)
+		if watch != c.panel.get_meta("watch", false):
+			c.panel.set_meta("watch", watch)
+			c.panel.queue_redraw()
+		c.watch.visible = watch
+		if watch:
+			c.watch.global_position = c.panel.global_position + Vector2((c.panel.size.x - c.watch.size.x) / 2.0, -15.0 - c.watch.size.y / 2.0)
 		var mkd = HM.pick_mark(p.get("marks"), Store.my_id) if not dead else null
 		var mk_text := ""
 		if mkd != null and float(mkd.n) > 0 and not HM.mark_blink(float(mkd.get("left", 1e9)), float(Time.get_ticks_msec())):
@@ -484,9 +664,11 @@ func _make_card(p: Dictionary, L: Dictionary) -> Dictionary:
 	panel.add_child(v)
 	var top := HBoxContainer.new()
 	top.alignment = BoxContainer.ALIGNMENT_CENTER
+	top.add_theme_constant_override("separation", 4 if L.compact else 5)
 	var face := ColorRect.new() # 초상 자리 (G2 몸 SubViewport)
 	face.color = _player_color(p)
-	face.custom_minimum_size = Vector2(38, 38) * (0.85 if L.compact else 1.0)
+	var fs: float = 30.0 * float(L.scale) + 2.0 if L.compact else 38.0 # JS .face 38, 작은 판 30×배율+2
+	face.custom_minimum_size = Vector2(fs, fs)
 	var face_img := TextureRect.new()
 	face_img.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	face_img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -494,18 +676,29 @@ func _make_card(p: Dictionary, L: Dictionary) -> Dictionary:
 	face.add_child(face_img)
 	top.add_child(face)
 	var names := VBoxContainer.new()
-	var nm := _chip(_name(p), S.TEXT, 13 if not me else 14)
+	var nm := _chip(_name(p), S.TEXT, 12 if L.compact else (14 if me else 13))
+	nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS # JS .nm 넘치면 말줄임 (긴 이름이 판을 넓히지 않게)
 	names.add_child(nm)
 	var sub := _chip("", S.DIM, 11)
+	S.body(sub) # JS #players .pc .sub system-ui
 	sub.visible = not L.compact
 	names.add_child(sub)
 	top.add_child(names)
 	v.add_child(top)
-	var pct := _chip("", S.TEXT, int((42 if me else 34) * L.scale))
-	pct.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var pct_size := int((42 if me else 34) * L.scale)
+	var pct := _chip("", S.TEXT, pct_size)
 	pct.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.55))
 	pct.add_theme_constant_override("shadow_offset_y", 3)
-	v.add_child(pct)
+	var unit := _chip("%", S.TEXT, 20) # JS .pct u: % 는 20px 고정
+	unit.size_flags_vertical = Control.SIZE_SHRINK_END
+	unit.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.55))
+	unit.add_theme_constant_override("shadow_offset_y", 2)
+	var pct_row := HBoxContainer.new()
+	pct_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	pct_row.add_theme_constant_override("separation", 0)
+	pct_row.add_child(pct)
+	pct_row.add_child(unit)
+	v.add_child(pct_row)
 	var hp := ColorRect.new()
 	hp.color = Color(1, 1, 1, 0.14)
 	hp.custom_minimum_size.y = 6
@@ -514,8 +707,44 @@ func _make_card(p: Dictionary, L: Dictionary) -> Dictionary:
 	hp.add_child(hp_fill)
 	hp.visible = false
 	v.add_child(hp)
-	s.border_color = S.ACCENT if me else _player_color(p) # 아래 색 띠 = 그 사람 색 (위 띠는 내 판만)
+	s.border_color = _player_color(p) # 아래 색 띠 = 그 사람 색 (내 판도 — 위 노랑 띠는 아래 덧그림)
+	s.border_width_top = 0
+	# 위 노랑 띠 (내 판) · 관전 중 보는 사람 노랑 테 (JS .pc.me border-top 4px · .pc.watch outline 2px): 같은 기울기 상자를 판 위에 덧그림
+	var over_top := StyleBoxFlat.new()
+	over_top.draw_center = false
+	over_top.skew = s.skew
+	over_top.border_width_top = 4
+	over_top.border_color = S.ACCENT
+	var over_watch := StyleBoxFlat.new()
+	over_watch.draw_center = false
+	over_watch.skew = s.skew
+	over_watch.set_border_width_all(2)
+	over_watch.border_color = S.ACCENT
+	panel.draw.connect(func():
+		if me:
+			over_top.draw(panel.get_canvas_item(), Rect2(Vector2.ZERO, panel.size))
+		if panel.get_meta("watch", false):
+			over_watch.draw(panel.get_canvas_item(), Rect2(Vector2.ZERO, panel.size)))
+	if me:
+		s.content_margin_top = 6 # JS .pc.me padding-top 2 + 띠 4
 	cards_row.add_child(panel)
+	# 자리 비움 태그 (JS .away-tag: 왼쪽 위 10px 노랑 칸) · 관전 ▶ (판 위 가운데)
+	var away := _chip("자리 비움", Color("1a1300"), 10)
+	var aws := StyleBoxFlat.new()
+	aws.bg_color = S.ACCENT
+	aws.skew = Vector2(S.SKEW, 0)
+	aws.content_margin_left = 8
+	aws.content_margin_right = 8
+	away.add_theme_stylebox_override("normal", aws)
+	away.position = Vector2(-2, -4)
+	away.z_index = 1
+	away.visible = false
+	face.add_child(away)
+	var watch := _chip("▶", S.ACCENT, 12)
+	watch.rotation = PI / 2.0
+	watch.pivot_offset = Vector2(6, 8)
+	watch.visible = false
+	face.add_child(watch)
 	# 표식 칸 (B4 JS: 위 줄 오른쪽 끝, 이름과 같은 높이 — 큰 % 와 안 섞이게): 빨강, 내가 붙인 것이면 흰 테, 꽉 차면 금색
 	var mk := Label.new()
 	mk.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
@@ -524,43 +753,48 @@ func _make_card(p: Dictionary, L: Dictionary) -> Dictionary:
 	mk.add_theme_constant_override("outline_size", 4)
 	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(mk)
-	return {"panel": panel, "face": face, "face_img": face_img, "col": _player_color(p), "sub": sub, "pct": pct, "hp": hp, "hp_fill": hp_fill, "mk": mk}
+	return {"panel": panel, "face": face, "face_img": face_img, "col": _player_color(p), "sub": sub, "pct": pct, "pct_size": pct_size, "unit": unit, "pct_row": pct_row, "away": away, "watch": watch, "hp": hp, "hp_fill": hp_fill, "mk": mk}
 
 
-# 피해 % 색 (JS damageColor): 흰 → 노랑 → 주황 → 빨강
+# % 흔들림 (JS @keyframes shake .3s: 10%·90% -2px, 30%·70% +3px, 50% -4px). 줄은 VBox 안이라 x 0 이 제자리
+func _hurt(row: Control) -> void:
+	var tw := row.create_tween()
+	for k in [[-2.0, 0.03], [3.0, 0.06], [-4.0, 0.06], [3.0, 0.06], [-2.0, 0.06], [0.0, 0.03]]:
+		tw.tween_property(row, "position:x", k[0], k[1])
+
+
+# 피해 % 색: JS damageColor 그대로 (0% 흰 → 50% 노랑 → 100% 빨강 rgb(255,40,0)) — 예전엔 40·90·150% 마디의 다른 곡선이라 100% 가 주황
 func _damage_color(d: float) -> Color:
-	if d < 40:
-		return Color.WHITE.lerp(Color("ffe14a"), d / 40.0)
-	if d < 90:
-		return Color("ffe14a").lerp(Color("ff8a1f"), (d - 40) / 50.0)
-	return Color("ff8a1f").lerp(Color("ff3020"), clampf((d - 90) / 60.0, 0, 1))
+	return U.damage_color(d)
 
 
 func _skills(me: Dictionary, vp: Vector2) -> void:
 	var playing: bool = Store.phase() in ["countdown", "playing"] and not me.is_empty() and me.get("alive", false) and not me.get("master", false)
 	skills.visible = playing and me.get("char") != null
 	damage_label.visible = playing and not cards_row.visible
-	var cards_h: float = cards_row.size.y + 18 if cards_row.visible else 16
+	# 자리는 hud_extra._bottom 이 아래 묶음 (버프 → 내 % → F·R → 아이템, JS #bottom) 으로 한 번에 놓음
 	if skills.visible:
 		var ch := str(me.char)
 		var cd := float(me.get("skillCd", 0))
-		skill_f.text = "F  %s %s" % [C.SKILL_NAMES[ch], "%.1fs" % (cd / 1000.0) if cd > 0 else ""]
+		var kf := Keys.key_label(str(PlayerInput.binds.get("skill", "KeyF"))) # JS data-key: 지금 키 설정 글자
+		var kr := Keys.key_label(str(PlayerInput.binds.get("ult", "KeyR")))
+		skill_f.text = "%s  %s %s" % [kf, C.SKILL_NAMES[ch], "%.1fs" % (cd / 1000.0) if cd > 0 else ""]
+		var cd_total := float(C.SKILL_CD_MS.get(ch, 1.0))
+		slot_state(skill_f, 1.0 - cd / cd_total if cd > 0 else 1.0, cd <= 0)
 		var ult_max := float(me.get("ultMax", C.ULT_MAX))
 		var full := float(me.get("ult", 0)) >= ult_max
-		skill_r.text = "R  %s %s" % [C.ULT_NAMES[ch], "준비!" if full else "%d%%" % int(floor(float(me.get("ult", 0)) / ult_max * 100))]
-		skill_r.get_parent().modulate = Color(1.2, 1.1, 0.7) if full else Color.WHITE
-		skills.position = Vector2((vp.x - skills.size.x) / 2.0, vp.y - cards_h - skills.size.y)
+		skill_r.text = "%s  %s %s" % [kr, C.ULT_NAMES[ch], "준비!" if full else "%d%%" % int(floor(float(me.get("ult", 0)) / ult_max * 100))]
+		slot_state(skill_r, float(me.get("ult", 0)) / ult_max, full and not (typeof(me.get("ultTarget")) == TYPE_BOOL and not bool(me.ultTarget)))
 	if damage_label.visible:
 		var hv = U.hp_view(me, Store.state) # 체력전이면 % 대신 남은 HP
 		damage_label.text = ("HP %d" % int(hv.hp)) if hv != null else "%d%%" % int(me.get("damage", 0))
 		damage_label.add_theme_color_override("font_color", U.hp_color(hv.frac) if hv != null else _damage_color(float(me.get("damage", 0))))
 		# 3인칭이면 왼쪽 아래 구석 (JS #damage.corner — 가운데면 내 발에 겹침), 1인칭이면 F·R 위 가운데
 		var third := str(View.mode) == "third" # G1 카메라가 정한 지금 시점
-		damage_label.add_theme_font_size_override("font_size", 44 if third else 54)
+		var small := U.small(vp)
+		damage_label.add_theme_font_size_override("font_size", (36 if small else 44) if third else (42 if small else 54))
 		if third:
 			damage_label.position = Vector2(22, vp.y - damage_label.size.y - 18)
-		else:
-			damage_label.position = Vector2((vp.x - damage_label.size.x) / 2.0, vp.y - cards_h - skills.size.y - damage_label.size.y - 6)
 
 
 # 조준점 + 둘레 쿨 (바깥 하늘색 = 대시, 안쪽 흰색 = 밀치기)
@@ -608,8 +842,15 @@ func _kills_panels(st: Dictionary, me: Dictionary, vp: Vector2) -> void:
 		if by != null and by != Store.my_id:
 			var k := Store.player(by)
 			who = "%s에게 · " % (_name(k) if not k.is_empty() else str(killed.get("byName", "?")))
-		respawn_why.text = "%s%s%s" % [who, CAUSE_KO.get(str(me.get("cause", killed.get("cause", ""))), ""), " · 자멸 -1" if by == null or by == Store.my_id else ""]
-		respawn_num.text = str(U.respawn_secs(me.respawnIn))
+		var wk := U.weapon_ko(killed.get("weapon"))
+		respawn_why.text = "%s%s%s%s" % [who, CAUSE_KO.get(str(me.get("cause", killed.get("cause", ""))), ""), " (%s)" % wk if wk != "" else "", " · 자멸 -1" if by == null or by == Store.my_id else ""]
+		respawn_why.visible = respawn_why.text != ""
+		var n := str(U.respawn_secs(me.respawnIn))
+		if respawn_num.text != n: # 숫자가 바뀔 때마다 톡 (JS num-tick .3s 1.3 → 1)
+			respawn_num.text = n
+			respawn_num.pivot_offset = respawn_num.size / 2.0
+			respawn_num.scale = Vector2(1.3, 1.3)
+			respawn_num.create_tween().tween_property(respawn_num, "scale", Vector2.ONE, 0.3).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
 		respawn.position = Vector2((vp.x - respawn.size.x) / 2.0, vp.y * 0.22)
 
 
@@ -628,7 +869,7 @@ func _rig():
 
 func _spectate(st: Dictionary, me: Dictionary, vp: Vector2) -> void:
 	var on: bool = not me.is_empty() and not me.get("alive", true) and st.phase == "playing"
-	spec_label.visible = on
+	spec_box.visible = on
 	var r = _rig()
 	# 유령 투하 되는 판 (스냅샷 ghostCd: 없음·null = 못 함, 0 = 됨, ms = 쿨)
 	var ghost_on: bool = on and me.get("ghostCd") != null
@@ -652,17 +893,32 @@ func _spectate(st: Dictionary, me: Dictionary, vp: Vector2) -> void:
 		ghost_hint.position = Vector2((vp.x - ghost_hint.size.x) / 2.0, vp.y * 0.38)
 	if not on:
 		return
+	# JS updateSpectate 문구: 사망 원인 — 킬러의 무기, 다음 판부터 참가, 부활까지 N초 (킬 점수전은 가운데 큰 숫자), 판이 없으면 살아 있는 사람
 	var head: String = "사망: %s" % CAUSE_KO.get(str(me.get("cause", "")), str(me.get("cause", "")))
+	if killed.get("by") != null:
+		var kp := Store.player(killed.by)
+		head += " — %s의 %s" % [_name(kp) if not kp.is_empty() else str(killed.get("byName", "?")), U.weapon_ko(killed.get("weapon"))]
 	if me.get("spectator", false):
 		head = "관전 중 (호스트가 관전으로 바꿈)"
+	elif me.get("cause") == null or str(me.get("cause", "")) == "":
+		head = "이번 판은 관전 (다음 판부터 참가)"
+	if me.get("respawnIn") != null and st.get("mode") != "kills":
+		head += " · 부활까지 %d초" % int(ceil(float(me.respawnIn) / 1000.0))
 	var t = View.spectate_target
 	var target := Store.player(t) if t != null else {}
 	var overview: bool = r != null and bool(r.spec.get("overview", false))
 	var jump := Keys.key_label(str(PlayerInput.binds.get("jump", "Space")))
 	var next := ("%s 다음 사람 · 클릭 블록 떨어뜨리기" % jump) if ghost_on else ("클릭/%s 다음 사람" % jump) # JS 문구
-	spec_label.text = "%s\n%s · 마우스 돌리기 · 휠 거리 · %s · 우클릭 %s" % [head, "%s 따라가는 중" % _name(target) if not target.is_empty() and not overview else "전체 보기", next, "따라가기" if overview else "전체 보기"]
+	var alive_txt := ""
+	if not cards_row.visible: # 살아 있는 사람·피해 % 는 아래 판이 보여 줌 → 판이 없을 때만 글로
+		var names := []
+		for x in (r.alive_others() if r != null else []):
+			names.append("%s%s %d%%" % ["▶ " if not overview and t != null and int(x.id) == int(t) else "", _name(x), int(x.get("damage", 0))])
+		alive_txt = "   ".join(names)
+	spec_label.text = "%s\n%s · 마우스 돌리기 · 휠 거리 · %s · 우클릭 %s%s" % [head, "%s 따라가는 중" % _name(target) if not target.is_empty() and not overview else "전체 보기", next, "따라가기" if overview else "전체 보기", "\n살아 있음: %s" % alive_txt if alive_txt != "" else ""]
 	var cards_h: float = cards_row.size.y + 22 if cards_row.visible else 18
-	spec_label.position = Vector2((vp.x - spec_label.size.x) / 2.0, vp.y - cards_h - spec_label.size.y)
+	spec_box.reset_size()
+	spec_box.position = Vector2((vp.x - spec_box.size.x) / 2.0, vp.y - cards_h - spec_box.size.y)
 
 
 # 조준 원: 흰 테두리 + 가운데 점, 쿨이면 회색 테두리 + 회색이 시계 방향으로 차오름 (JS #ghost-cd conic-gradient)

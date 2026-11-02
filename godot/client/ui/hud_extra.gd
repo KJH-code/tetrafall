@@ -14,6 +14,10 @@ const TEAM_KO := {"red": "빨강", "blue": "파랑"}
 const TEAM_MAIN := {"red": Color("ff5a4a"), "blue": Color("4aa8ff")}
 const ULT_FAIL_TEXT := {"noBlock": "블록 없음", "noSpace": "자리 없음", "busy": "사용 중", "noTarget": "대상 없음"}
 const TIMER_LOOK := {"control": [Color("20e0e0"), "조종권"], "power": [Color("ffb040"), "아이템"]}
+const U := preload("res://ui/ui_calc.gd")
+# 압사 경고 줄무늬 (JS repeating-linear-gradient(-62deg, #ff4426 0 16px, #d92a0c 16px 32px)): 판 바탕 빨강 (#ff4426) 자리만 줄무늬로 바꿈 (글자·노랑 끝은 그대로)
+# + 판 전체 밝기 깜빡임 (danger-blink)
+const STRIPE_SHADER := "shader_type canvas_item;\nvoid fragment() {\n\tvec4 c = COLOR;\n\tif (distance(c.rgb, vec3(1.0, 0.267, 0.149)) < 0.02) {\n\t\tfloat k = mod(FRAGCOORD.x * 0.4695 + FRAGCOORD.y * 0.8829, 32.0);\n\t\tc.rgb = k < 16.0 ? vec3(1.0, 0.267, 0.149) : vec3(0.851, 0.165, 0.047);\n\t}\n\tc.rgb *= mod(TIME, 0.32) < 0.16 ? 1.18 : 0.9;\n\tCOLOR = c;\n}\n"
 
 var hud: Control # hud.gd (아래 판·F·R 칸 자리를 읽음)
 var top_box: VBoxContainer
@@ -38,7 +42,8 @@ var wheel: Control
 var wheel_items: Array[Label] = []
 var help: Label
 var bottom: VBoxContainer
-var buffs: Label
+var buffs: HBoxContainer # 버프 알약 줄 (JS #buffs .buff)
+var danger_sec: Label # 압사 경고 오른쪽 남은 초 칸 (JS #danger .sec)
 var item_slot: Label
 var ammo: Control
 var balls: Control
@@ -102,10 +107,43 @@ func _ready() -> void:
 	banner.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	banner.visible = false
 	top_box.add_child(banner)
-	danger = _box_label(24, Color("e0300c"))
-	danger.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	danger.visible = false
-	top_box.add_child(danger)
+	# 압사 경고 (JS #danger): 빨강 사선 줄무늬 + 양끝 노랑 14px, 오른쪽 어두운 칸에 남은 초 (노랑 20px), .32s 밝기 깜빡임
+	danger = _box_label(24, Color("ff4426"))
+	danger.text = "머리 위 블록!"
+	var dsb: StyleBoxFlat = danger.get_theme_stylebox("normal")
+	dsb.skew = Vector2(S.SKEW, 0)
+	dsb.border_width_left = 14
+	dsb.border_color = S.ACCENT
+	dsb.content_margin_left = 28 + 14
+	dsb.content_margin_right = 14
+	dsb.content_margin_top = 7
+	dsb.content_margin_bottom = 7
+	var dsh := Shader.new()
+	dsh.code = STRIPE_SHADER
+	var dm := ShaderMaterial.new()
+	dm.shader = dsh
+	danger.material = dm # 줄무늬 + 깜빡임 (danger-blink .32s steps(2): 밝기 1.18 ↔ .9)
+	danger_sec = _box_label(20, Color8(8, 12, 26, 217))
+	danger_sec.add_theme_color_override("font_color", S.ACCENT)
+	var dss: StyleBoxFlat = danger_sec.get_theme_stylebox("normal")
+	dss.skew = Vector2(S.SKEW, 0)
+	dss.border_width_right = 14
+	dss.border_color = S.ACCENT
+	dss.content_margin_left = 14
+	dss.content_margin_right = 28 + 14
+	dss.content_margin_top = 7
+	dss.content_margin_bottom = 7
+	danger_sec.size_flags_vertical = Control.SIZE_FILL
+	danger_sec.material = dm
+	danger_sec.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var drow := HBoxContainer.new()
+	drow.add_theme_constant_override("separation", -6)
+	drow.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	drow.add_child(danger)
+	drow.add_child(danger_sec)
+	drow.visible = false
+	drow.name = "Danger"
+	top_box.add_child(drow)
 	toasts = VBoxContainer.new()
 	toasts.add_theme_constant_override("separation", 6)
 	toasts.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -122,19 +160,25 @@ func _ready() -> void:
 	counter.visible = false
 	add_child(counter)
 	stun = _label(46, S.HOT)
-	stun.text = "STUN"
+	stun.text = "경직!" # JS #stun
 	stun.visible = false
 	add_child(stun)
 	center = _label(18)
 	center.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# JS #center.slim: 빛 판 (--pane + 안쪽 1px ga) · padding 9 22 11 26 · 14px 사선, 글자 빛 (--gtxt)
 	var cs := StyleBoxFlat.new()
 	cs.bg_color = Color(0.09, 0.06, 0.17, 0.88)
-	cs.skew = Vector2(S.SKEW * 0.5, 0)
-	cs.content_margin_left = 22
-	cs.content_margin_right = 18
-	cs.content_margin_top = 6
-	cs.content_margin_bottom = 8
+	cs.set_border_width_all(1)
+	S.theme_border(cs, 0.55)
+	cs.skew = Vector2(0.3, 0)
+	cs.anti_aliasing = true
+	cs.content_margin_left = 26
+	cs.content_margin_right = 22
+	cs.content_margin_top = 9
+	cs.content_margin_bottom = 11
 	center.add_theme_stylebox_override("normal", cs)
+	center.add_theme_color_override("font_outline_color", S.alpha(S.g(), 0.6))
+	center.add_theme_constant_override("outline_size", 4)
 	center.visible = false
 	add_child(center)
 	hitmarker = Control.new()
@@ -168,13 +212,21 @@ func _ready() -> void:
 		wheel.add_child(l)
 		wheel_items.append(l)
 	var hint := _label(13, Color("ccccdd"))
+	S.body(hint) # JS #emote-wheel .hint system-ui
 	hint.text = "마우스로 고르고\n%s 를 놓기" % Keys.key_label(str(PlayerInput.binds.get("emote", "KeyG")))
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	wheel.add_child(hint)
 	hint.position = Vector2(150, 150) - Vector2(60, 18)
 	hint.size = Vector2(120, 36)
 	# 도움말 (#help): 오른쪽 위, H 누르는 동안
-	help = _label(12, S.DIM)
+	help = _box_label(12, Color8(8, 12, 26, 153)) # JS #help: top 10 right 12, rgba(8,12,26,.6), padding 7 10, 사선
+	help.add_theme_color_override("font_color", S.DIM)
+	S.body(help) # JS #help system-ui
+	var hsb: StyleBoxFlat = help.get_theme_stylebox("normal")
+	hsb.content_margin_left = 10
+	hsb.content_margin_right = 10
+	hsb.content_margin_top = 7
+	hsb.content_margin_bottom = 7
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	help.visible = false
 	add_child(help)
@@ -183,13 +235,20 @@ func _ready() -> void:
 	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bottom.add_theme_constant_override("separation", 4)
 	add_child(bottom)
-	buffs = _label(14)
-	buffs.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	bottom.add_child(buffs)
+	buffs = HBoxContainer.new()
+	buffs.add_theme_constant_override("separation", 6)
+	buffs.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(buffs)
+	# 아이템 칸 (JS #item-slot .slot: min-width 118, 테두리 2px #3c4a78, 키 글자 노랑) — F·R 칸 아래
 	item_slot = _box_label(15, Color(0.03, 0.05, 0.1, 0.78))
 	item_slot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	item_slot.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	bottom.add_child(item_slot)
+	item_slot.custom_minimum_size.x = 118
+	var isb: StyleBoxFlat = item_slot.get_theme_stylebox("normal")
+	isb.set_border_width_all(2)
+	isb.border_color = Color("3c4a78")
+	isb.content_margin_left = 12
+	isb.content_margin_right = 12
+	add_child(item_slot)
 	ammo = Control.new()
 	ammo.size = Vector2(16, 16)
 	ammo.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -493,15 +552,18 @@ func refresh(st: Dictionary) -> void:
 	var p := Store.me()
 	var playing: bool = st.get("phase") == "playing"
 	var alive: bool = not p.is_empty() and bool(p.get("alive", false))
-	top_box.position = Vector2((vp.x - top_box.size.x) / 2.0, 62)
+	# JS #top (top 12 세로 줄): 점수 띠가 있으면 그 아래, 없으면 (생존·개인전) 맨 위부터 — 예전엔 늘 62 라 튜토리얼 띠와 겹침
+	var sp: Control = hud.get("score_panel") if hud != null else null
+	top_box.position = Vector2((vp.x - top_box.size.x) / 2.0, 12.0 + (sp.size.y + 6.0 if sp != null and sp.visible else 0.0))
 	top_box.size.x = minf(vp.x - 40, 760)
 	_item_timers(st)
 	_banner(st, p)
 	# 압사 경고: 내 머리 위로 떨어지는 블록이 곧 깔 때 (서버가 계산한 남은 시간)
 	var dg = p.get("danger") if alive and playing else null
-	danger.visible = dg != null
+	var drow := danger.get_parent() as Control
+	drow.visible = dg != null
 	if dg != null:
-		danger.text = "머리 위 블록!   %.1f초" % (float(dg) / 1000.0)
+		danger_sec.text = "%.1f초" % (float(dg) / 1000.0)
 	# 승리 큰 글씨: 결과 표 전까지 (View.victory_stage — slow·closeup 동안)
 	var stage := str(View.victory_stage)
 	win_big.visible = st.get("phase") == "over" and win_until > 0 and (now < win_until or stage in ["slow", "closeup"])
@@ -540,6 +602,7 @@ func refresh(st: Dictionary) -> void:
 	center.text = center_text
 	center.visible = center_text != ""
 	var sky: bool = str(View.mode) == "sky"
+	center.add_theme_font_size_override("font_size", 15 if sky or U.small(vp) else 18) # JS .sky 15px, 작은 창 #center 14~15
 	center.position = Vector2((vp.x - center.size.x) / 2.0, (vp.y - 150 - center.size.y) if sky else (vp.y * 0.28 - center.size.y / 2.0))
 	# 이모트 바퀴·도움말 자리
 	wheel.position = vp / 2.0 - wheel.size / 2.0
@@ -548,7 +611,7 @@ func refresh(st: Dictionary) -> void:
 		var a := -PI / 2.0 + TAU * float(i) / float(n)
 		var l := wheel_items[i]
 		l.position = Vector2(150, 150) + Vector2(cos(a), sin(a)) * 108.0 - l.size / 2.0
-	help.position = Vector2(vp.x - help.size.x - 12, 40)
+	help.position = Vector2(vp.x - help.size.x - 12, 10)
 	# 아래: 버프·아이템 칸, 갈고리 탄·대포수 탄 (F·R 칸 옆)
 	_bottom(st, p, show_me, vp)
 
@@ -615,8 +678,28 @@ func _banner(st: Dictionary, p: Dictionary) -> void:
 		s.bg_color = col
 
 
+# 아래 가운데 묶음 (JS #bottom 세로 줄, gap 6, 아래 16px — 아래 판이 있으면 그 위 18px): 위에서부터 버프 → 내 % → F·R → 아이템.
+# 예전엔 버프·아이템이 F·R 위에 있어 내 % (아래 판이 없는 판) 와 같은 자리에 겹쳤음
+func _stack(vp: Vector2) -> void:
+	var cards: Control = hud.get("cards_row") if hud != null else null
+	var y: float = vp.y - ((cards.size.y + 18.0) if cards != null and cards.visible else 16.0)
+	var dmg: Label = hud.get("damage_label") if hud != null else null
+	var skills: Control = hud.get("skills") if hud != null else null
+	var corner: bool = str(View.mode) == "third"
+	for n in [item_slot, skills, dmg if not corner else null, buffs]:
+		if n == null or not (n as Control).visible or (n == buffs and not buffs.get_children().any(func(c): return c.visible)):
+			continue
+		var c := n as Control
+		c.reset_size()
+		y -= c.size.y
+		c.position = Vector2((vp.x - c.size.x) / 2.0, y)
+		y -= 6.0
+
+
 func _bottom(st: Dictionary, p: Dictionary, show: bool, vp: Vector2) -> void:
 	bottom.visible = show
+	buffs.visible = show
+	item_slot.visible = show
 	var skills: Control = hud.get("skills") if hud != null else null
 	var r_slot: Label = hud.get("skill_r") if hud != null else null
 	ammo.visible = show and str(p.get("char", "")) == "hook"
@@ -628,7 +711,19 @@ func _bottom(st: Dictionary, p: Dictionary, show: bool, vp: Vector2) -> void:
 		var v := float(p.get(kv[0], 0))
 		if v > 0:
 			b.append("%s %.1fs" % [kv[1], v / 1000.0])
-	buffs.text = "   ".join(b)
+	while buffs.get_child_count() < b.size():
+		var pill := _box_label(14, Color8(8, 12, 26, 204)) # JS .buff: padding 2 11, 사선
+		var psb: StyleBoxFlat = pill.get_theme_stylebox("normal")
+		psb.content_margin_left = 11
+		psb.content_margin_right = 11
+		psb.content_margin_top = 2
+		psb.content_margin_bottom = 2
+		buffs.add_child(pill)
+	for i in buffs.get_child_count():
+		var pill := buffs.get_child(i) as Label
+		pill.visible = i < b.size()
+		if pill.visible:
+			pill.text = b[i]
 	var item := "아이템 —"
 	if float(p.get("ammo", 0)) > 0:
 		item = "투사체 ×%d" % int(p.ammo)
@@ -639,8 +734,7 @@ func _bottom(st: Dictionary, p: Dictionary, show: bool, vp: Vector2) -> void:
 	item_slot.text = "%s  %s" % [Keys.key_label(str(PlayerInput.binds.get("item", ""))), item]
 	item_slot.modulate.a = 0.5 if item.ends_with("—") else 1.0
 	item_slot.visible = bool(st.get("itemsEnabled", C.ITEMS_ENABLED))
-	var top_y: float = skills.position.y if skills != null and skills.visible else vp.y - 150.0
-	bottom.position = Vector2((vp.x - bottom.size.x) / 2.0, top_y - bottom.size.y - 6)
+	_stack(vp)
 	# R 칸: 못 씀 이유·흔들림, 사냥꾼 대상 없음이면 회색, 바드 메탈 폼 이름 (hud.gd 가 쓴 글을 덮어씀)
 	if r_slot != null and skills != null and skills.visible:
 		var now := _now()
@@ -652,7 +746,7 @@ func _bottom(st: Dictionary, p: Dictionary, show: bool, vp: Vector2) -> void:
 		r_slot.add_theme_color_override("font_color", Color("ff5050") if now < ult_fail_until else S.TEXT)
 		var dim: bool = full and typeof(p.get("ultTarget")) == TYPE_BOOL and not bool(p.ultTarget) # 사냥꾼: 쏠 표식 대상 없음
 		var panel := r_slot.get_parent() as Control
-		panel.modulate = Color(0.55, 0.55, 0.55) if dim else (Color(1.2, 1.1, 0.7) if full else Color.WHITE)
+		panel.modulate = Color(0.55, 0.55, 0.55) if dim else Color.WHITE # 준비 빛은 hud.slot_state (테두리 + 빛), 사냥꾼 대상 없음이면 회색 (JS grayscale brightness .7)
 		# 흔들림: 칸 자리는 HBox 가 정하므로 흔드는 동안만 옮기고, 끝나면 HBox 가 다시 놓게 (늘 0 으로 두면 R 칸이 F 칸 위로 겹쳐 F 가 안 보임)
 		if now < shake_until:
 			var base := 0.0

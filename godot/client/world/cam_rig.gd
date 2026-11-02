@@ -276,8 +276,9 @@ func place(dt: float, shown: Dictionary, solid: Callable) -> void:
 	cam.position = at
 	if not at.is_equal_approx(to):
 		var dirv := (to - at).normalized()
-		cam.look_at(to, Vector3.UP if absf(dirv.y) < 0.999 else Vector3.FORWARD)
-	if hook != null and close_id() == null:
+		cam.look_at_from_position(at, to, Vector3.UP if absf(dirv.y) < 0.999 else Vector3.FORWARD) # 트리 밖 (테스트) 에서도 됨
+	# 흔들림·마지막 킬 줌·화면 끝 KO 빛 (render.js: 승자 클로즈업·셀카 중에도 camHook). 하늘 시점이면 fx 가 안 함
+	if hook != null:
 		hook.call(cam)
 
 

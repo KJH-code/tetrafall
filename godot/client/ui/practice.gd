@@ -28,26 +28,42 @@ var syncing := false
 func _ready() -> void:
 	layer = 15
 	add_to_group("ui_blocker") # ui.gd 가 blocking() 을 보고 게임 키·마우스 잡기를 막음
-	win.add_theme_stylebox_override("panel", S.pane())
-	win.position = Vector2(16, 110)
-	win.custom_minimum_size = Vector2(300, 0)
+	# JS #practice: 남색 판 (rgba(26,35,71,.94)→rgba(9,14,30,.95), 테마 빛 테두리 없음) + 잘린 모서리 16px, left 14 top 70, 폭 252, padding 12 16
+	var wb := StyleBoxFlat.new()
+	wb.bg_color = Color8(18, 25, 51, 241)
+	wb.corner_radius_top_right = 16
+	wb.corner_radius_bottom_left = 16
+	wb.corner_detail = 1
+	wb.anti_aliasing = true
+	wb.shadow_color = Color(0, 0, 0, 0.35)
+	wb.shadow_size = 1
+	wb.shadow_offset = Vector2(0, 5)
+	wb.content_margin_left = 16
+	wb.content_margin_right = 16
+	wb.content_margin_top = 12
+	wb.content_margin_bottom = 12
+	win.add_theme_stylebox_override("panel", wb)
+	win.position = Vector2(14, 70)
+	win.custom_minimum_size = Vector2(252, 0)
 	add_child(win)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 6)
 	win.add_child(v)
 	var head := HBoxContainer.new()
-	head.add_child(S.glow_label("연습", 22, Color.WHITE, 4))
+	var title := S.label("연습", 18, S.ACCENT) # JS h4: 18px 노랑 자간 1
+	title.add_theme_font_override("font", S.spaced(1))
+	head.add_child(title)
 	var sp := Control.new()
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(sp)
 	head.add_child(S.button("연습 나가기", func():
 		set_open(false)
-		Store.leave(), "ghost", 12))
+		Store.leave(), "leave", 12)) # JS #pr-leave .leave (빨강 빛 테두리)
 	close_btn = S.button("닫기", func(): set_open(false), "ghost", 12)
 	head.add_child(close_btn)
 	v.add_child(head)
 	for t in TOGGLES:
-		var c := S.style_check(CheckBox.new(), 14)
+		var c: CheckBox = S.body(S.style_check(CheckBox.new(), 14)) # JS #practice label system-ui
 		c.text = t[1]
 		c.toggled.connect(func(on): if not syncing: Store.send_room({"type": "practiceSet", "key": t[0], "value": on}))
 		checks[t[0]] = c
@@ -74,13 +90,20 @@ func _ready() -> void:
 	v.add_child(_row("허수아비", add_btn))
 	v.add_child(dummies_box)
 	win.visible = false
-	hint = S.label("", 13, S.TEXT)
-	hint.position = Vector2(16, 110)
+	hint = S.body_label("", 12, S.DIM) # JS #practice-hint: left 14 top 70, 12px 흐림, rgba(8,12,26,.5), padding 3 10, 사선
+	var hb := StyleBoxFlat.new()
+	hb.bg_color = Color8(8, 12, 26, 128)
+	hb.skew = Vector2(0.3, 0)
+	hb.content_margin_left = 10
+	hb.content_margin_right = 10
+	hb.content_margin_top = 3
+	hb.content_margin_bottom = 3
+	hint.add_theme_stylebox_override("normal", hb)
+	hint.position = Vector2(14, 70)
 	add_child(hint)
-	combo.set_anchors_and_offsets_preset(Control.PRESET_CENTER_RIGHT)
-	combo.position = Vector2(-300, -40)
-	combo.custom_minimum_size.x = 284
-	combo.alignment = BoxContainer.ALIGNMENT_END
+	combo.custom_minimum_size.x = 284 # JS #pcombo: right 16, top 32%, 줄 사이 4
+	combo.alignment = BoxContainer.ALIGNMENT_BEGIN
+	combo.add_theme_constant_override("separation", 4)
 	add_child(combo)
 	PlayerInput.ui_action.connect(func(id, pressed): if id == "practice" and pressed: set_open(not open))
 	Store.game_event.connect(func(e):
@@ -92,7 +115,7 @@ func _ready() -> void:
 
 func _row(label: String, c: Control) -> HBoxContainer:
 	var h := HBoxContainer.new()
-	var l := S.label(label, 14, S.TEXT)
+	var l := S.body_label(label, 13, S.TEXT) # JS #practice 13px system-ui
 	l.custom_minimum_size.x = 80
 	h.add_child(l)
 	c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -151,7 +174,9 @@ func _process(_dt: float) -> void:
 		add_btn.disabled = dummies.size() >= C.PRACTICE_DUMMY_MAX
 		close_btn.text = "닫기 (%s)" % Keys.key_label(str(PlayerInput.binds.get("practice", "Tab")))
 		_dummy_rows(dummies)
-	# 콤보 기록
+	# 콤보 기록 (자리: 오른쪽 16, 위 32%)
+	var vp := get_viewport().get_visible_rect().size
+	combo.position = Vector2(vp.x - 16.0 - combo.custom_minimum_size.x, vp.y * 0.32)
 	var now := Time.get_ticks_msec()
 	var lines := []
 	for d in dummies:
@@ -173,10 +198,11 @@ func _process(_dt: float) -> void:
 		l.autowrap_mode = TextServer.AUTOWRAP_OFF
 		l.scroll_active = false
 		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		l.add_theme_font_override("normal_font", load("res://assets/fonts/ui_font.tres"))
+		l.add_theme_font_override("normal_font", S.BODY) # JS #pcombo system-ui (타 수 b 만 disp)
 		l.add_theme_font_size_override("normal_font_size", 13)
 		var bg := StyleBoxFlat.new()
 		bg.bg_color = Color(0.03, 0.05, 0.1, 0.6)
+		bg.skew = Vector2(0.3, 0) # JS .c clip-path 8px 사선
 		bg.content_margin_left = 12
 		bg.content_margin_right = 12
 		bg.content_margin_top = 3
@@ -187,7 +213,7 @@ func _process(_dt: float) -> void:
 	for i in lines.size():
 		var l: RichTextLabel = combo.get_child(i)
 		var live: bool = lines[i][1] == S.ACCENT # 진행 중 = 노란 타 수, 끝 = 흰 글씨
-		l.text = "[right]%s[/right]" % (lines[i][0] as String).replace("{b}", "[font_size=19][color=#%s]" % ("ffd23a" if live else "ffffff")).replace("{/b}", "[/color][/font_size]")
+		l.text = "[right]%s[/right]" % (lines[i][0] as String).replace("{b}", "[font=%s][font_size=19][color=#%s]" % [S.FONT_PATH, "ffd23a" if live else "ffffff"]).replace("{/b}", "[/color][/font_size][/font]")
 		l.add_theme_color_override("default_color", S.TEXT if live else Color("d6dcf0"))
 		l.modulate.a = lines[i][2]
 
@@ -215,7 +241,7 @@ func _dummy_rows(dummies: Array) -> void:
 		for d in dummies:
 			var row := HBoxContainer.new()
 			row.set_meta("id", int(d.id))
-			var n := S.label(_name_of(Store.player(d.id)), 13, S.TEXT)
+			var n := S.body_label(_name_of(Store.player(d.id)), 13, S.TEXT)
 			n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			row.add_child(n)
 			var pct := SpinBox.new()
