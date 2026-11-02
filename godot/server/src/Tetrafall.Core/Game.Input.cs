@@ -20,6 +20,9 @@ public sealed class ActionMsg
 
 public sealed partial class Game
 {
+    // 받은 dx·dy → -1·0·1 (숫자 아니면 0)
+    static int StepOf(double v) => double.IsFinite(v) ? Math.Sign(v) : 0;
+
     // ---------- 입력 ----------
     // 받은 메시지 그대로 (rooms): 숫자 칸은 JS Number.isFinite 처럼 숫자만, jump 는 !!x
     public void HandleInput(int id, JsonElement msg) => HandleInput(id, new InputMsg
@@ -109,7 +112,14 @@ public sealed partial class Game
                 return;
             case "pieceMove":
                 if (!controlling) return;
-                MovePiece(ControlledPiece(p)!, JsMath.ToInt32(action.dx), JsMath.ToInt32(action.dy));
+                // 한 번에 한 칸(-1·0·1)씩, 한 틱에 PIECE_MOVE_PER_TICK 번까지
+                if (p.pieceMoveAt != time)
+                {
+                    p.pieceMoveAt = time;
+                    p.pieceMoves = 0;
+                }
+                if (++p.pieceMoves > C.PIECE_MOVE_PER_TICK) return;
+                MovePiece(ControlledPiece(p)!, StepOf(action.dx), StepOf(action.dy));
                 return;
             case "rotate":
                 if (!controlling)

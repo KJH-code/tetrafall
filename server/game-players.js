@@ -61,6 +61,8 @@ export class PlayersPart {
       team: this.smallerTeam(), // 팀전용. 들어올 때 사람이 적은 팀으로
       emote: -1, // 이모트 번호 (EMOTE_NAMES), -1 = 안 함
       emoteUntil: 0,
+      pieceMoveAt: -1, // 조종 블록 이동 횟수 제한 (handleAction pieceMove): 마지막으로 받은 서버 시각·그 틱에 받은 횟수
+      pieceMoves: 0,
       emoteReadyAt: 0,
       master: false, // 블록 마스터 판의 마스터 편: 살아 있지만 필드에 없음 (하늘에서 블록만 조종)
       zombie: false, // 블록 마스터: 죽어서 마스터 편이 된 생존자 (처음 마스터는 false)

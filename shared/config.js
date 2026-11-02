@@ -700,6 +700,7 @@ export const CONFIG = {
   GHOST_DROP_BOTS: false, // 죽은 봇도 떨어뜨릴지 (봇 판 비교용, 기본 끔)
 
   // ---- 연습 모드 (2026-10-26 재혁: 혼자 쓰는 방, 판이 안 끝남, 허수아비) ----
+  PIECE_MOVE_PER_TICK: 2, // 조종 블록 pieceMove 를 한 틱(같은 서버 시각)에 받아 주는 횟수 (넘는 건 버림, 한 번에 가는 칸은 -1·0·1 — 2026-10-30 감사 S3)
   PRACTICE_DUMMY_MAX: 3, // 허수아비 최대 (사람 + 허수아비 ≤ MAX_PLAYERS 자리)
   PRACTICE_DUMMY_DIST: 2, // 허수아비를 내 앞 이 거리(칸)에 놓음
   PRACTICE_DAMAGE_MAX: 999, // 피해 % 설정 상한 (허수아비·내 피해 %)

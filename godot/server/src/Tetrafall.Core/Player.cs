@@ -33,6 +33,8 @@ public sealed partial class Player
     public double killStreak;
     public string team = "red";
     public double emote = -1, emoteUntil, emoteReadyAt;
+    public double pieceMoveAt = -1; // 조종 블록 이동 횟수 제한 (HandleAction pieceMove): 마지막으로 받은 서버 시각·그 틱에 받은 횟수
+    public int pieceMoves;
     public bool master, zombie;
     public double nextPieceAt; // 블록 마스터: 마스터 편 각자의 다음 블록 시각
     public double respawnAt, shieldUntil;

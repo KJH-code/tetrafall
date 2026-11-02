@@ -41,3 +41,39 @@ test('S1 갈고리 R 로 블록을 뽑는 400ms 안에 나가면 뽑던 칸이 �
   g.removePlayer(1);
   assert.equal(g.grid[g.idx(5, 4, 0)], CELL.THROWN, '나가면 제자리로');
 });
+
+// 조종 블록 하나 잡은 게임 (조종권 아이템으로 p1 이 조종)
+function controlling() {
+  const g = new Game(() => {});
+  g.addPlayer(1);
+  g.addPlayer(2);
+  g.startRound();
+  g.players.get(1).hasControl = true;
+  g.nextSpawnAt = g.time;
+  g.tick(TICK);
+  assert.ok(g.isControlling(g.players.get(1)));
+  return g;
+}
+
+test('S3 pieceMove: dx·dy 크기는 -1·0·1 로, 한 틱에 PIECE_MOVE_PER_TICK 번까지만', () => {
+  assert.equal(C.PIECE_MOVE_PER_TICK, 2);
+  const g = controlling();
+  const pc = g.controlledPiece(g.players.get(1));
+  pc.px = 3;
+  pc.py = 3;
+  g.handleAction(1, { name: 'pieceMove', dx: 99, dy: 0 });
+  assert.equal(pc.px, 4, '큰 dx 도 한 칸');
+  g.handleAction(1, { name: 'pieceMove', dx: -50, dy: 1e9 });
+  assert.equal([pc.px, pc.py].join(), '3,4', '-1·+1 칸');
+  g.handleAction(1, { name: 'pieceMove', dx: 1, dy: 0 });
+  assert.equal(pc.px, 3, '한 틱에 세 번째는 버림');
+  g.tick(TICK);
+  const pc2 = g.controlledPiece(g.players.get(1));
+  const [x0, y0] = [pc2.px, pc2.py];
+  g.handleAction(1, { name: 'pieceMove', dx: 'x', dy: NaN });
+  g.handleAction(1, { name: 'pieceMove', dx: Infinity, dy: undefined });
+  assert.equal([pc2.px, pc2.py].join(), [x0, y0].join(), '숫자가 아니면 0');
+  g.tick(TICK);
+  g.handleAction(1, { name: 'pieceMove', dx: 1, dy: 0 });
+  assert.equal(g.controlledPiece(g.players.get(1)).px, x0 + 1, '다음 틱엔 다시 받음');
+});
