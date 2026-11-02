@@ -12,6 +12,48 @@ static func js_round(x: float) -> float:
 	return floor(x + 0.5)
 
 
+# ---------- 화면 공통 (W4 JS 대조) ----------
+
+# JS index.html '작은 창' @media (max-height: 620px), (max-width: 1100px): 글씨·판을 줄여 화면을 덜 가림 (960×540 은 작은 창, 1280×720 은 아님)
+static func small(vp: Vector2) -> bool:
+	return vp.y <= 620.0 or vp.x <= 1100.0
+
+
+# 피해 % 글자색 (render.js damageColor): 0% 흰색 → 50% 노랑 → 100% 이상 빨강 [r, g, b] 0~255
+static func damage_rgb(d: float) -> Array:
+	var t := minf(1.0, d / 100.0)
+	var g := 255.0 if t < 0.5 else js_round(255.0 - (t - 0.5) * 2.0 * 215.0)
+	var b := js_round(255.0 - t * 2.0 * 255.0) if t < 0.5 else 0.0
+	return [255.0, g, b]
+
+
+static func damage_color(d: float) -> Color:
+	var c := damage_rgb(d)
+	return Color8(int(c[0]), int(c[1]), int(c[2]))
+
+
+# 시간 글자 (main.js fmt): 초는 버림
+static func fmt_time(ms: float) -> String:
+	var s := int(floor(ms / 1000.0))
+	return "%d:%02d" % [s / 60, s % 60]
+
+
+# 죽음 원인·무기 이름 (main.js CAUSE_KO·WEAPON_KO) — 킬 피드 '낙사 (망치)'·부활 대기·관전 안내
+const CAUSE_KO := {"crush": "압사", "fall": "낙사", "lava": "용암", "hp": "체력"}
+const WEAPON_KO := {"push": "밀치기", "projectile": "투사체", "shock": "충격파", "bomb": "폭탄", "control": "조종 블록", "thrown": "설치 블록", "charge": "돌진", "slam": "내려찍기", "slash": "순간 베기", "wall": "솟는 벽", "hook": "갈고리", "blockslam": "블록내려찍기", "blast": "블록 폭발", "bigbomb": "대폭발", "wallkick": "벽차기", "quake": "솟는 땅", "ghost": "유령블록", "glide": "낙하 음파", "shell": "포탄", "bigshell": "대형 포탄", "groundshot": "발밑 포격", "pounce": "추적 도약", "execute": "처형 사격", "leapwave": "광폭 도약", "spin": "분노 소용돌이", "note": "음파", "riff": "리프", "amp": "앰프 음파"}
+
+
+static func weapon_ko(w) -> String:
+	return "" if w == null or str(w) == "" else str(WEAPON_KO.get(str(w), str(w)))
+
+
+# 킬 피드 원인 칸 (main.js killFeed how): '낙사 (망치)'
+static func cause_text(cause, weapon) -> String:
+	var c := str(CAUSE_KO.get(str(cause), str(cause)))
+	var w := weapon_ko(weapon)
+	return c + (" (%s)" % w if w != "" else "")
+
+
 # ---------- hud-layout.js ----------
 
 # 아래 플레이어 판 n 장을 폭 view_w 화면에 한 줄로: 판 폭·간격·작은 판 여부·글자 배율
