@@ -177,3 +177,23 @@ func test_w3_js_diffs() -> void:
 	# 사냥꾼 표식 꽉 참 = 금빛 (main.js mark)
 	var FX := load("res://fx/fx.gd")
 	check(FX.mark_color(C.HUNTER_MARK_MAX) == int(C.HUNT_MARK_UI.full) and FX.mark_color(1) == 0xff3a2a, "표식 불꽃 색 (꽉 차면 HUNT_MARK_UI.full)")
+
+
+func test_w3_skill_fx_like_js() -> void:
+	# W3 JS 대조: 지상 F 준비 발밑 흰 고리 (render.js skillWindup) · 바드 diveEnd 파편·고리 (render.js diveEnd) · 대형 포탄 빛 (bigShellMat emissive)
+	var Effects := preload("res://fx/effects.gd")
+	var BF := preload("res://world/body_fx.gd")
+	var bf = BF.new()
+	var fx = Effects.new()
+	bf.effects = fx
+	bf.on_event({"type": "diveEnd", "what": "hit", "x": 1.0, "y": 2.0, "z": 1.0})
+	check(fx.pi == 32 and fx.ri == 1, "diveEnd 맞힘: 파편 18+14, 고리 1 (얻음 %d·%d)" % [fx.pi, fx.ri])
+	bf.on_event({"type": "diveEnd", "what": "land", "x": 1.0, "y": 2.0, "z": 0.0, "r": 2.0})
+	check(fx.pi == 54 and fx.ri == 3, "diveEnd 땅: 흙 22, 고리 2")
+	var src := FileAccess.get_file_as_string("res://world/body_fx.gd")
+	check(src.contains("\"skillWindup\":") and src.contains("0xffffff, 1.8, float(e.get(\"ms\", C.SKILL_WINDUP_MS)) / 1000.0, true"), "준비 고리 (흰, 1.8, ms)")
+	check(src.contains("r.visible = slow and not (mine and not third.call())"), "둔화 고리: 내 1인칭이면 숨김")
+	check(FileAccess.get_file_as_string("res://chars/body.gd").contains("windup_until = -1e9"), "준비 중 끊기면 하얀 번쩍 끔")
+	check(FileAccess.get_file_as_string("res://world/shots.gd").contains("{\"emissive\": 0x501000}"), "대형 포탄 빛")
+	fx.free()
+	bf.free()

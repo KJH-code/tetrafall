@@ -113,6 +113,21 @@ func on_event(e: Dictionary) -> void:
 					n.body.glow_color = Co.color(C.HUNT_MARK_UI.flashColor)
 		"skill", "ult", "ultRefund":
 			aura(e.get("who"), t != "skill")
+		"skillWindup": # 지상 F 준비 (닌자·탱크·갈고리): 발밑 흰 고리 (render.js skillWindup — 몸 하얘짐은 chars/body.gd)
+			var s = _shown(e.get("who"))
+			if s != null:
+				_ring(Vector3(s.x, s.y, s.z + 0.05), 0xffffff, 1.8, float(e.get("ms", C.SKILL_WINDUP_MS)) / 1000.0, true)
+		"diveEnd": # 바드 메탈 기타 꽂기 끝 (render.js diveEnd): 맞힘 = 흰·빨강 파편 + 빨강 고리, 땅 = 빨강·흙 고리 + 흙 (흔들림은 fx.gd)
+			var p := Vector3(float(e.get("x", 0)), float(e.get("y", 0)), float(e.get("z", 0)))
+			if e.get("what") == "hit":
+				_burst(p - Vector3(0, 0, 0.2), null, 0xffffff, 18, 6, 0.12, 0.5)
+				_burst(p - Vector3(0, 0, 0.2), null, 0xff3040, 14, 5, 0.14, 0.6)
+				_ring(p - Vector3(0, 0, 0.3), 0xff3040, 1.6, 0.3, true)
+			elif e.get("what") == "land":
+				var r := float(e.get("r", 1.5))
+				_ring(p + Vector3(0, 0, 0.08), 0xff3040, r, 0.4, true)
+				_ring(p + Vector3(0, 0, 0.05), 0xc0a880, r * 1.3, 0.5, true)
+				_burst(p, {"x": 0, "y": 0}, 0x9a8a78, 22, 5, 0.14, 0.6)
 		"glideRing": # 음유 천천히 낙하 음파 고리
 			var p := Vector3(e.x, e.y, e.z + 0.9)
 			var r := float(e.get("r", 1.5))
@@ -474,8 +489,8 @@ func _status(d: Dictionary, p: Dictionary, s: Vector3, mine: bool, now: float) -
 		l.position = Co.gxyz(s.x, s.y, s.z + C.PLAYER_HEIGHT + C.LABEL_ABOVE_HEAD + 0.75 + 0.25 * absf(sin(now / 160.0)))
 		l.rotation.y = now / 500.0
 	var r: MeshInstance3D = d.slow.node
-	r.visible = slow
-	if slow:
+	r.visible = slow and not (mine and not third.call()) # JS 는 몸 그룹 자식이라 내 1인칭이면 같이 숨음
+	if r.visible:
 		r.position = Co.gxyz(s.x, s.y, s.z + 0.04)
 		r.rotation.y = Co.rot_y(-now / 300.0)
 

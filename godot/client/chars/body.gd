@@ -1491,6 +1491,8 @@ func on_event(e: Dictionary) -> void:
 					act = _new_act("punch", now, 0.0, now, 0.3)
 		"interrupt":
 			if mine:
+				if e.get("kind") == "skill":
+					windup_until = -1e9 # 준비 중 끊김: 하얀 번쩍도 바로 끔 (main.js windupUntil.delete)
 				if act == null:
 					act = _new_act("punch", now, 0.0, null, 0.3)
 				seq += 1
