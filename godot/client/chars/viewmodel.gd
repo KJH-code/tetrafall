@@ -107,6 +107,7 @@ func _sync(body) -> void:
 	char_id = body.char_id
 	twin = Body.new()
 	twin.build(char_id, body.skin_color, false) # 합치지 않음 (조각마다 보이기)
+	twin.set_hz_light(false) # 자기 SubViewport 장면 — 판의 위험 빛 안 받음 (JS viewmodel 은 따로 된 scene)
 	view.add_child(twin)
 	twin.visible = false # 몸 자체는 안 그림 — 허리만 떼어 anchor 에 붙임
 	var w: int = twin.nodes.find(twin.waist)
@@ -148,12 +149,14 @@ func _sync(body) -> void:
 	_local_light(anchor) # 허리 아래는 anchor 로 옮겨 붙음
 
 
-# 1인칭 팔은 필드 테마와 상관없이 JS viewmodel 의 노을 빛 (G3.toon_local_light — 인자 없으면 그 빛). 복제 몸 재질은 몸마다 따로라 필드 몸은 그대로.
+# 1인칭 팔은 필드 테마와 상관없이 JS viewmodel 의 노을 빛 (G3.toon_local_light — 인자 없으면 그 빛), 위험 빛도 안 받음 (소품 포함).
+# 복제 몸 재질은 몸마다 따로라 필드 몸은 그대로.
 func _local_light(root: Node) -> void:
 	for mi in root.find_children("*", "MeshInstance3D", true, false):
 		var m = (mi as MeshInstance3D).material_override
 		if m is ShaderMaterial:
 			G3.toon_local_light(m)
+			G3.toon_hazard_light(m, false)
 
 
 

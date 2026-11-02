@@ -51,6 +51,7 @@ var parts_z0 = null # parts 노드 처음 높이 (머리 박음 눌림) # G5 효
 var loaded := false # 갈고리 장전 (스냅샷 loaded, 1인칭 팔이 씀)
 var frame: Node3D # 게임 좌표 → 고도
 var torso_mats := {} # K.SKIN 바드: 폼 → 몸통 전용 재질 (묶음 밖)
+var hz_light := true # 위험 빛 받음 — 자기 SubViewport 몸 (1인칭 팔·초상·대기실 큰 캐릭터) 은 set_hz_light(false)
 # 몸 색 효과 (render.js 매 프레임 bodyMat·mats 색): 시각 ms
 var glow_until := -1e9
 var glow_color := Color.WHITE
@@ -1180,6 +1181,7 @@ func _apply_opacity() -> void:
 				if m.has("plaid"):
 					_plaid_opts(opts, m.plaid)
 				dr.alpha = G3.toon_material(col, opts)
+				G3.toon_hazard_light(dr.alpha, hz_light)
 				dr.col = col
 		var am: Material = dr.alpha
 		if am is StandardMaterial3D:
@@ -1189,6 +1191,18 @@ func _apply_opacity() -> void:
 			var c2: Color = dr.col
 			(am as ShaderMaterial).set_shader_parameter("albedo", Color(c2.r, c2.g, c2.b, opacity))
 		mi.material_override = am
+
+
+# 위험 빛 받기 (W3): 전역 위험 빛이 자기 SubViewport 장면에도 걸려서 그 몸만 끔. 지금 붙은 재질·바드 폼 몸통·반투명 재질 다 (나중에 만드는 반투명도 따름)
+func set_hz_light(on: bool) -> void:
+	hz_light = on
+	G3.hazard_light_under(self, on)
+	for m in torso_mats.values():
+		G3.toon_hazard_light(m, on)
+	for dr in drawn:
+		for k in ["solid", "alpha"]:
+			if dr.has(k):
+				G3.toon_hazard_light(dr[k], on)
 
 
 # G5 효과 노드: group "fx" 노드 (fx/fx.gd, World 의 Fx 아래) 의 effects (fx/effects.gd) — Fx 바로 아래만 찾으면 fx.gd 라 못 찾아 늘 0 이던 것

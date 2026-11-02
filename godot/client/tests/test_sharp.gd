@@ -169,3 +169,48 @@ func test_leave_room_clears_hazard() -> void:
 	w.sun.free() # _ready 없이 만든 World: 붙이지 않은 해·효과 자리도
 	w.fx_root.free()
 	w.free()
+
+
+# W3 검수: 위험 빛은 전역 셰이더 값이라 자기 SubViewport 장면 (1인칭 팔·초상·대기실 큰 캐릭터, own_world_3d) 에도 걸림 — JS viewmodel·portrait 는 따로 된 scene 이라 안 받음.
+# → 그 몸들 재질만 hz_light = false (hz_light.gdshaderinc), 판 몸은 그대로 받음
+func _shader_mats(root: Node) -> Array:
+	var out := []
+	for mi in root.find_children("*", "MeshInstance3D", true, false):
+		if (mi as MeshInstance3D).material_override is ShaderMaterial:
+			out.append((mi as MeshInstance3D).material_override)
+	return out
+
+
+func test_own_scene_bodies_skip_hazard_light() -> void:
+	const Chars := preload("res://chars/chars.gd")
+	const VM := preload("res://chars/viewmodel.gd")
+	const Portrait := preload("res://ui/portrait.gd")
+	var names := []
+	for u in G3.toon_material(Color.WHITE).shader.get_shader_uniform_list():
+		names.append(u.name)
+	check(names.has("hz_light"), "툰 셰이더에 재질별 hz_light")
+	for ch in C.FIGURE_CHARS:
+		var col := Color(0.9, 0.4, 0.2)
+		var b = Chars.make_body(ch, col) # 판 몸
+		var field_mats := _shader_mats(b)
+		check(field_mats.size() > 0 and field_mats.all(func(m): return m.get_shader_parameter("hz_light") != false), "%s 판 몸은 위험 빛 받음" % ch)
+		# 초상·대기실 큰 캐릭터 (portrait.gd·char_stage.gd 가 같이 씀)
+		var s = Portrait.still_body(Chars, ch, col)
+		var sm := _shader_mats(s)
+		check(sm.size() > 0 and sm.all(func(m): return m.get_shader_parameter("hz_light") == false), "%s 초상 몸 재질 %d개 위험 빛 끔" % [ch, sm.size()])
+		check(s.torso_mats.values().all(func(m): return m.get_shader_parameter("hz_light") == false), "%s 초상 바드 폼 몸통도" % ch)
+		s.opacity = 0.5
+		s._apply_opacity() # 나중에 만드는 반투명 재질도 따름
+		check(_shader_mats(s).all(func(m): return m.get_shader_parameter("hz_light") == false), "%s 초상 반투명 재질도" % ch)
+		s.free()
+		# 1인칭 팔: 복제 몸·소품 (닌자 표창·대포 포탄·광전사 핏줄) 다
+		var vm = VM.new()
+		vm._ready()
+		vm._sync(b)
+		var am := _shader_mats(vm.anchor)
+		check(am.size() > 0 and am.all(func(m): return m.get_shader_parameter("hz_light") == false), "%s 1인칭 팔 재질 %d개 위험 빛 끔" % [ch, am.size()])
+		check(vm.twin.torso_mats.values().all(func(m): return m.get_shader_parameter("hz_light") == false), "%s 1인칭 바드 폼 몸통도" % ch)
+		check(_shader_mats(b).all(func(m): return m.get_shader_parameter("hz_light") != false), "%s 1인칭 팔을 만들어도 판 몸은 그대로" % ch)
+		vm.twin.free()
+		vm.free()
+		b.free()

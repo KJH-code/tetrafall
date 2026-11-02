@@ -50,6 +50,14 @@ func _lookup(char_id: String, color: Color, size: int, full: bool) -> Texture2D:
 	return null
 
 
+# 초상·대기실 큰 캐릭터 (char_stage) 몸: 자기 SubViewport 장면이라 판의 위험 빛 (전역 값 g3_hz_lp) 을 안 받게 끔 (JS portrait·char-stage 는 따로 된 scene)
+static func still_body(chars, char_id: String, color: Color) -> Node3D:
+	var body = chars.make_body(char_id, color)
+	if body.has_method("set_hz_light"):
+		body.set_hz_light(false)
+	return body
+
+
 # 메뉴에 오래 있으면 카드 8장을 미리 (JS warmPortraits)
 func warm(color: Color) -> void:
 	for c in C.CHARACTERS:
@@ -91,7 +99,7 @@ func _draw_one(job: Array) -> void:
 	var key := DirectionalLight3D.new()
 	vp.add_child(key)
 	key.look_at_from_position(Vector3(3, 4, 2), Vector3.ZERO, Vector3.UP)
-	var body = Chars.make_body(char_id, job[2])
+	var body = still_body(Chars, char_id, job[2])
 	vp.add_child(body)
 	# 가만히 선 자세 (숨쉬기 위상을 조금 줘서 팔이 굳어 보이지 않게 — JS t 0.8)
 	if body.has_method("pose"):

@@ -716,6 +716,19 @@ static func toon_local_light(mat: ShaderMaterial, on := true, sky = K.SUNSET_HEM
 	mat.set_shader_parameter("local_sun", _lin3(sun_color) * sun_energy)
 
 
+# ---- 위험 빛 끄기 (W3): 위험 빛은 전역 값 (g3_hz_lp, hz_light.gdshaderinc) 이라 자기 SubViewport 장면 (1인칭 팔·초상·대기실 큰 캐릭터) 에도 걸림
+# → 그 재질만 hz_light = false. mat 이 G3 툰 계열 ShaderMaterial 이 아니면 그대로
+static func toon_hazard_light(mat: Material, on: bool) -> void:
+	if mat is ShaderMaterial:
+		(mat as ShaderMaterial).set_shader_parameter("hz_light", on)
+
+
+# root 아래 모든 메시의 재질 (material_override) 에 toon_hazard_light
+static func hazard_light_under(root: Node, on: bool) -> void:
+	for mi in root.find_children("*", "MeshInstance3D", true, false):
+		toon_hazard_light((mi as MeshInstance3D).material_override, on)
+
+
 # ---- 스텐실: 3인칭 내 몸에 가린 곳엔 x-ray 안 비침 (JS 사냥꾼의 눈: 몸을 x-ray 복사본 뒤에 그려 renderOrder 로 가름 — 고도 Compatibility 는
 # 깊이 미리 쓰기라 순서로 못 가름 → 스텐실). 내 몸 툰 재질은 스텐실 K.STENCIL_MY_BODY 를 쓰고, x-ray 재질은 그 값인 칸엔 안 그림.
 #   G3.toon_stencil_write(mat, on)  — 내 몸 (batch_mesh 재질·toon_material) 만. 불투명 툰만 (다른 셰이더면 그대로)
