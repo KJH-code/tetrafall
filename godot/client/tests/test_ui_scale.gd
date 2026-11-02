@@ -138,6 +138,30 @@ func test_apply_to_window() -> void:
 	var ps = ProjectSettings
 	check(str(ps.get_setting("display/window/stretch/mode")) == "canvas_items" and str(ps.get_setting("display/window/stretch/aspect")) == "expand", "project.godot: canvas_items + expand")
 	check(int(ps.get_setting("display/window/size/viewport_width")) == 1280 and int(ps.get_setting("display/window/size/viewport_height")) == 720 and bool(ps.get_setting("display/window/dpi/allow_hidpi")), "기준 1280×720 · hidpi")
+
+
+# 설정 창 'UI 크기': 자동·80~200% 칸, 고른 칸만 주 버튼 모양, 기본값이 자동으로 되돌림
+func test_settings_row() -> void:
+	var keep = View.settings.get("uiScale", "auto")
+	var s = load("res://ui/settings.gd").new()
+	s._ready()
+	check(s.scale_btns.keys() == ["자동", "80%", "100%", "125%", "150%", "200%"], "칸 %s" % str(s.scale_btns.keys()))
+	View.settings.uiScale = 1.25 # (set_setting 은 설정 파일을 씀 → 값만)
+	s._show_scale()
+	check(s.scale_btns["125%"].get_meta("kind") == "go" and s.scale_btns["자동"].get_meta("kind") == "ghost", "고른 칸 = 주 버튼")
+	View.settings.uiScale = "auto"
+	s._show_scale()
+	check(s.scale_btns["자동"].get_meta("kind") == "go" and s.scale_btns["125%"].get_meta("kind") == "ghost", "자동으로 바꾸면 그 칸")
+	check(_src("res://ui/settings.gd").contains("[\"uiScale\", \"auto\"]"), "기본값 = 자동")
+	check(s.KEYS_ROOM == 510.0 and s.KEYS_MIN == 60.0, "키 목록 높이에서 UI 크기 줄 만큼 더 뺌 (960×540 에서 설정 창 높이 예전 그대로)")
+	s.keys_scroll.custom_minimum_size.y = s.KEYS_MIN
+	var h_small: float = s.box.get_combined_minimum_size().y
+	check(h_small <= 470.0, "작은 창 설정 창 최소 높이 %.0f (예전 468 — 키 목록 90 일 때)" % h_small)
+	View.settings.uiScale = keep
+	s.free()
+	check(_src("res://core/view.gd").contains("\"uiScale\": \"auto\""), "View 기본 설정 uiScale = auto (user://settings.json 에 저장·복원)")
+
+
 # 마우스 시선·이모트 바퀴: 창 픽셀 (relative 는 UI 배율로 나뉘어 창 크기마다 감도가 바뀜)
 func test_mouse_uses_screen_relative() -> void:
 	var src := _src("res://core/player_input.gd")
