@@ -24,7 +24,7 @@ var look := {} # G3.hazard_look (입자·빛 색)
 var low := false
 var scenery = null # far_objects() (먼 섬 잠김 테)
 var effects = null # G5 파편·고리·흔들림
-var light := OmniLight3D.new()
+var light_color := Color.BLACK # 위험 빛 색 (look.light[0]) — 빛은 툰 셰이더 전역 값 g3_hz_l* (hz_light.gdshaderinc, set_light)
 var pulse := 0.0
 var t := 0.0
 var _was := false
@@ -59,11 +59,17 @@ func _ready() -> void:
 	foam.material_override = foam_mat
 	foam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(foam)
-	light.omni_range = C.LAVA_LIGHT_RANGE
-	light.light_energy = 0.0
-	light.shadow_enabled = false
-	add_child(light)
 	visible = false
+
+
+# 위험 빛 (hazard.js PointLight(색, 세기, LAVA_LIGHT_RANGE, 1.4)): 세기 = three 값, at = 고도 자리. 툰 셰이더들이 전역 값으로 직접 셈 (hz_light.gdshaderinc)
+func set_light(intensity: float, at: Vector3) -> void:
+	if G3 == null:
+		return
+	var c := light_color.srgb_to_linear()
+	G3._set_global("g3_hz_lp", Vector4(at.x, at.y, at.z, intensity))
+	G3._set_global("g3_hz_lc", Vector4(c.r, c.g, c.b, C.LAVA_LIGHT_RANGE))
+	G3._set_global("g3_hz_ld", WC.HAZARD_LIGHT_DECAY)
 
 
 # G3 위험 재질로 (맵 테마마다·그래픽 낮춤 바뀔 때). g3 null 이면 예전 단순 모습
@@ -95,7 +101,7 @@ func set_g3(g3, theme_id, low_gfx: bool) -> void:
 			far_mi = mi
 		else:
 			near_mi = mi
-	light.light_color = Co.color(look.light[0])
+	light_color = Co.color(look.light[0])
 
 
 func set_theme(theme: Dictionary) -> void:
@@ -150,7 +156,7 @@ func _update_g3(st: Dictionary, grid: PackedByteArray, grid_version: int, me: Di
 	pulse = maxf(0.0, pulse - dt * C.HAZARD_PULSE_DECAY)
 	var zs: float = float(st.lava.z) if on else -99.0
 	if not on:
-		light.light_energy = 0.0
+		set_light(0.0, Vector3.ZERO)
 		_was = false
 		step = -1
 		_track_deaths(st, zs, false)
@@ -200,8 +206,7 @@ func _update_g3(st: Dictionary, grid: PackedByteArray, grid_version: int, me: Di
 	p.bulge = Vector4(bulge.x, bulge.y, C.HAZARD_BULGE_AMP * (1.0 - maxf(0.0, bulge.gap) / C.HAZARD_BULGE_DIST), 0) if bulge != null else Vector4.ZERO
 	G3.hazard_update(mats, get_parent(), p)
 	# 빛: 일렁임 + 번쩍
-	light.light_energy = C.LAVA_LIGHT_INTENSITY * float(look.light[1]) * (0.85 + 0.15 * sin(t * 7) * sin(t * 2.3)) * (1 + pulse) * WC.HAZARD_LIGHT_K
-	light.position = Co.gxyz(cx, cy, zs + 1.2)
+	set_light(C.LAVA_LIGHT_INTENSITY * float(look.light[1]) * (0.85 + 0.15 * sin(t * 7) * sin(t * 2.3)) * (1 + pulse), Co.gxyz(cx, cy, zs + 1.2))
 	# 떠다니는 입자: 표면 아무 데서나 + 닿는 곳 (증기·거품·불꽃)
 	if effects != null:
 		var k: float = C.WORLD_LOW_DETAIL if low else 1.0

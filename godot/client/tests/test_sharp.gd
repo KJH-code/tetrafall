@@ -75,3 +75,28 @@ func test_game_light_grade_is_css_filter() -> void:
 	var gl = GL.new()
 	check(gl.preset_name == C.GAME_LIGHT, "기본 프리셋 = config GAME_LIGHT")
 	gl.free()
+
+
+func test_hazard_light_like_three_point_light() -> void:
+	# W3: 위험 빛 = hazard.js PointLight(색, 세기, LAVA_LIGHT_RANGE, 1.4) — 고도 OmniLight 대신 툰 셰이더 전역 값 (빛 패스 없이, light() 가 하늘빛을 겹쳐 더하지 않게)
+	var inc := _src("res://shaders/hz_light.gdshaderinc")
+	check(inc.contains("w * w / max(pow(dist, g3_hz_ld), 0.01)"), "three getDistanceAttenuation (1/max(d^decay,0.01) × 창)")
+	for f in ["res://shaders/toon_common.gdshaderinc", "res://world/bblock.gdshader"]:
+		check(_src(f).contains("#include \"res://shaders/hz_light.gdshaderinc\""), "위험 빛 include %s" % f)
+	for f in ["res://shaders/toon_common.gdshaderinc", "res://shaders/floor.gdshader", "res://shaders/piece_common.gdshaderinc", "res://shaders/terrain.gdshader", "res://world/bblock.gdshader"]:
+		check(_src(f).contains("g3_hz_light((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz"), "위험 빛 받음 %s" % f)
+	check(WC.HAZARD_LIGHT_DECAY == 1.4, "감쇠 1.4 (hazard.js)")
+	for g in ["g3_hz_lp", "g3_hz_lc", "g3_hz_ld"]:
+		check(ProjectSettings.has_setting("shader_globals/" + g), "전역 셰이더 값 %s" % g)
+	var src := _src("res://world/hazard_view.gd")
+	check(not src.contains("OmniLight3D"), "고도 OmniLight 안 씀")
+	var HV := preload("res://world/hazard_view.gd")
+	var hv = HV.new()
+	hv.G3 = G3
+	hv.light_color = Color8(0xff, 0x6a, 0x20)
+	hv.set_light(3.0, Vector3(1, 2, 3))
+	check(G3.global_value("g3_hz_lp") == Vector4(1, 2, 3, 3.0), "빛 자리·세기 (three 값 그대로)")
+	var lc: Vector4 = G3.global_value("g3_hz_lc")
+	check(is_equal_approx(lc.w, C.LAVA_LIGHT_RANGE) and is_equal_approx(lc.x, 1.0) and absf(lc.y - Color8(0, 0x6a, 0).srgb_to_linear().g) < 1e-4, "빛 색 선형·거리")
+	hv.set_light(0.0, Vector3.ZERO)
+	hv.free()

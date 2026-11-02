@@ -21,6 +21,7 @@ uniform bool use_crack = false;
 uniform bool use_vertex_color = false;
 uniform bool unlit = false; // 빛 판 (MeshBasicMaterial)
 uniform vec3 toon_steps = vec3(0.43137, 0.68627, 1.0);
+#include "res://shaders/hz_light.gdshaderinc"
 
 varying vec3 world_n;
 varying vec3 v_base;
@@ -51,6 +52,7 @@ void fragment() {
 	vec3 hemi = mix(g3_hemi_ground, g3_hemi_sky, up) * g3_hemi_energy;
 	v_base = base;
 	v_amb = base * hemi / PI + vec3(v_cf.y);
+	v_amb += base * g3_hz_light((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz, world_n); // 위험 빛
 	ALBEDO = unlit ? vec3(0.0) : vec3(1.0);
 	if (g3_fog_far > 0.0) FOG = vec4(g3_fog_color, smoothstep(g3_fog_near, g3_fog_far, -VERTEX.z));
 	EMISSION = unlit ? c.rgb : (g3_sun_on > 0.5 ? vec3(0.0) : g3_srgb(v_amb));

@@ -82,3 +82,15 @@ g3_hz_mode={
 "type": "float",
 "value": 0.0
 }
+g3_hz_lp={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
+g3_hz_lc={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 1)
+}
+g3_hz_ld={
+"type": "float",
+"value": 1.4
+}
