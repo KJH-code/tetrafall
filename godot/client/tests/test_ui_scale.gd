@@ -162,6 +162,19 @@ func test_settings_row() -> void:
 	check(_src("res://core/view.gd").contains("\"uiScale\": \"auto\""), "View 기본 설정 uiScale = auto (user://settings.json 에 저장·복원)")
 
 
+# 선명도: 초상은 UI 배율만큼 크게 그림 (0.25 단위, 최대 768), 큰 캐릭터·1인칭 팔·거울은 화면 픽셀
+func test_sharp_offscreen() -> void:
+	var P = load("res://ui/portrait.gd")
+	check(P.render_px(96, 1.0) == 96 and P.render_px(128, 0.75) == 128, "배율 1 이하면 그대로")
+	check(P.render_px(96, 2.5) == 240 and P.render_px(256, 2.5) == 640 and P.render_px(128, 1.5) == 192, "배율만큼")
+	check(P.render_px(128, 1.42) == 192, "0.25 단위로 올림 (1.42 → 1.5)")
+	check(P.render_px(512, 2.5) == 768, "최대 768")
+	var CS = load("res://ui/char_stage.gd")
+	check(CS.pixel_size(Vector2(200, 300), 2.5) == Vector2i(500, 750), "큰 캐릭터 = 칸 × 화면 배율")
+	check(_src("res://chars/viewmodel.gd").contains("pixel_size(get_viewport())") and _src("res://chars/viewmodel.gd").contains("EXPAND_IGNORE_SIZE"), "1인칭 팔 = 창 픽셀, 화면 크기 그대로")
+	check(_src("res://title/title_world.gd").contains("get_final_transform().get_scale()"), "타이틀 거울 = 창 픽셀의 반 (예전과 같음)")
+
+
 # 마우스 시선·이모트 바퀴: 창 픽셀 (relative 는 UI 배율로 나뉘어 창 크기마다 감도가 바뀜)
 func test_mouse_uses_screen_relative() -> void:
 	var src := _src("res://core/player_input.gd")

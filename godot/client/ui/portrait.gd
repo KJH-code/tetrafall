@@ -30,11 +30,21 @@ static func key_of(char_id: String, color: Color, size: int, full: bool) -> Stri
 	return "%s|%s|%d|%d" % [char_id, color.to_html(false), size, 1 if full else 0]
 
 
-# 있으면 텍스처, 없으면 null (그리기를 줄에 세움)
+# 있으면 텍스처, 없으면 null (그리기를 줄에 세움). size = UI 좌표 크기 — 실제로는 UI 배율만큼 크게 그림 (render_px, W9)
 static func tex(char_id, color: Color, size: int, full := false) -> Texture2D:
 	if inst == null or char_id == null or str(char_id) == "":
 		return null
-	return inst._lookup(str(char_id), color, size, full)
+	return inst._lookup(str(char_id), color, render_px(size, float(View.ui_scale)), full)
+
+
+# 그릴 픽셀 크기: UI 크기 × UI 배율 (0.25 단위로 올림 — 창 크기를 끌 때마다 새로 그리지 않게, 1 아래면 그대로, 최대 RENDER_MAX)
+# 초상을 보이는 칸은 전부 EXPAND_IGNORE_SIZE·expand_icon 이라 텍스처 크기가 배치를 안 바꿈
+const RENDER_MAX := 768
+
+
+static func render_px(size: int, ui_scale: float) -> int:
+	var k := maxf(1.0, ceilf(ui_scale * 4.0 - 0.001) / 4.0)
+	return mini(maxi(size, RENDER_MAX), roundi(size * k))
 
 
 func _lookup(char_id: String, color: Color, size: int, full: bool) -> Texture2D:
@@ -61,7 +71,7 @@ static func still_body(chars, char_id: String, color: Color) -> Node3D:
 # 메뉴에 오래 있으면 카드 8장을 미리 (JS warmPortraits)
 func warm(color: Color) -> void:
 	for c in C.CHARACTERS:
-		_lookup(str(c), color, 128, true)
+		_lookup(str(c), color, render_px(128, float(View.ui_scale)), true)
 
 
 func _process(_d: float) -> void:
