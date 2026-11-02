@@ -176,10 +176,22 @@ export function precompress(dir) {
 
 async function download(url, to) {
   console.log(`받는 중: ${url}`);
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${url} → ${res.status}`);
-  fs.writeFileSync(to, Buffer.from(await res.arrayBuffer()));
-  fs.chmodSync(to, 0o755);
+  // 네트워크가 한 번 끊겨도 긴 묶기가 통째로 죽지 않게 (Actions 에서 'fetch failed' 가 난 적 있음) 몇 번 다시 시도
+  let last;
+  for (let i = 0; i < 4; i++) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`${url} → ${res.status}`);
+      fs.writeFileSync(to, Buffer.from(await res.arrayBuffer()));
+      fs.chmodSync(to, 0o755);
+      return;
+    } catch (e) {
+      last = e;
+      console.log(`  받기 실패 (${i + 1}/4): ${e.message}${e.cause ? ' · ' + e.cause.message : ''}`);
+      await new Promise((r) => setTimeout(r, 2000 * 2 ** i));
+    }
+  }
+  throw last;
 }
 
 function parseArgs(argv) {
