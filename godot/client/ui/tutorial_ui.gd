@@ -67,7 +67,7 @@ func _ready() -> void:
 	# 끝
 	var done := _pane("done", stack, "튜토리얼 끝!")
 	done_title = done.get_child(0)
-	done_sum = _text("", 16, S.TEXT)
+	done_sum = _text("", 16, S.TEXT, true)
 	done.add_child(done_sum)
 	done.add_child(_text("이제 진짜 판: 블록이 떨어지고, 밀고, 살아남기", 13))
 	done.add_child(_btns([["메뉴로", _to_menu, "ghost"], ["봇 3명과 한 판", _quick_match, "go"]]))
@@ -127,8 +127,8 @@ func _pane(name: String, parent: Control, title: String) -> VBoxContainer:
 	return v
 
 
-func _text(t: String, size := 14, color := S.DIM) -> Label:
-	var l := S.label(t, size, color)
+func _text(t: String, size := 14, color := S.DIM, disp := false) -> Label:
+	var l := S.label(t, size, color) if disp else S.body_label(t, size, color) # JS #tutorial .box system-ui (#tut-sum 만 disp)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.custom_minimum_size.x = 520
 	return l

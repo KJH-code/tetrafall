@@ -158,13 +158,13 @@ func refresh(st: Dictionary) -> void:
 	win_rows = []
 	faces = []
 	var fs := 13 if small_was else 15
-	var cell := func(t: String, size: int, col: Color, left := false) -> Label:
-		var l := S.label(t, size, col)
+	var cell := func(t: String, size: int, col: Color, left := false, disp := false) -> Label:
+		var l := S.label(t, size, col) if disp else S.body_label(t, size, col) # JS td system-ui (머리 줄 th·이름 td.n 은 disp)
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if left else HORIZONTAL_ALIGNMENT_RIGHT # JS td text-align right (이름만 왼쪽)
 		l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		return l
 	for h in ["이름", "캐릭터", "킬" if kills else "승", "남은 HP" if hp_on else "피해", "결과"]:
-		table.add_child(cell.call(h, 12, Color("a49cbc"), h == "이름"))
+		table.add_child(cell.call(h, 12, Color("a49cbc"), h == "이름", true))
 	for p in ps:
 		var row_col := Color("e6e0f4") # JS #results 글자색 (승자 줄은 바탕 gb 로)
 		# 이름 칸: 초상 32 (아래 2px 그 사람 색) + 이름 18 (JS td.n .face)
@@ -184,7 +184,7 @@ func refresh(st: Dictionary) -> void:
 		face.add_child(fimg)
 		faces.append([fimg, p.get("char"), _color(p)])
 		nm.add_child(face)
-		nm.add_child(cell.call(_name(p), 15 if small_was else 18, _color(p), true))
+		nm.add_child(cell.call(_name(p), 15 if small_was else 18, _color(p), true, true))
 		table.add_child(nm)
 		if winners.has(p.id):
 			win_rows.append(nm)

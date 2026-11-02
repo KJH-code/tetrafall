@@ -204,3 +204,59 @@ func test_net_sizes() -> void:
 	check(_fs(u.net_warn) == 15 and _m(_sb(u.net_warn)) == [16, 4, 16, 4], "알림 칸 15px · padding 4 16")
 	nb.free()
 	u.free()
+
+
+# 본문 글꼴 부분 집합 (tools/subset-body-font.mjs) 에 스크립트 글의 글자가 다 있음 — 게임 문구를 바꾸고 도구를 안 돌리면 여기서 걸림
+# (Noto Sans KR 에 없는 기호는 대체 글꼴 Black Han Sans·DejaVu 로 — NOT_IN_NOTO)
+const NOT_IN_NOTO := "▸↺↻" # Noto Sans KR 에 없음 → DejaVu 기호 조각 (ui_font 검사 test_core 가 있는지 봄)
+
+
+func test_body_font_subset_has_script_chars() -> void:
+	var noto: FontFile = load("res://assets/fonts/noto-sans-kr-body.woff2")
+	var body: Font = S.BODY
+	check(noto != null and body is FontVariation and (body as FontVariation).base_font == noto, "본문 글꼴 = Noto 부분 집합 + 대체")
+	var re := RegEx.create_from_string("\"([^\"\\n]*)\"")
+	var missing := {}
+	var dirs := ["res://"]
+	var n := 0
+	while not dirs.is_empty():
+		var d: String = dirs.pop_back()
+		for sub in DirAccess.get_directories_at(d):
+			if not sub.begins_with(".") and not sub in ["tests", "build", "addons"]:
+				dirs.append(d.path_join(sub))
+		for f in DirAccess.get_files_at(d):
+			if not f.ends_with(".gd"):
+				continue
+			n += 1
+			for m in re.search_all(FileAccess.get_file_as_string(d.path_join(f))):
+				for ch in m.get_string(1):
+					var o := ch.unicode_at(0)
+					if o > 32 and not noto.has_char(o) and not NOT_IN_NOTO.contains(ch):
+						missing[ch] = d.path_join(f)
+	check(n > 30, "스크립트 %d개" % n)
+	check(missing.is_empty(), "본문 글꼴에 없는 글자 (node godot/client/tools/subset-body-font.mjs 다시): %s" % [missing])
+	var bytes := FileAccess.get_file_as_bytes("res://assets/fonts/noto-sans-kr-body.woff2").size()
+	check(bytes < 512 * 1024, "본문 글꼴 %dKB (목표 0.5MB 이하)" % (bytes / 1024))
+
+
+# JS 에서 system-ui 인 자리만 본문 글꼴 (설명·표 숫자·안내·체크 글·이름표), 제목·버튼·이름·방 코드는 그대로 Black Han Sans
+func test_body_font_where_js_system_ui() -> void:
+	var keep = Store.my_id
+	Store.my_id = 1
+	var l = _make("res://ui/lobby.gd")
+	var bf := func(c: Control, nm := "font") -> bool: return c.get_theme_font(nm) == S.BODY
+	check(bf.call(l.room_text) and bf.call(l.mode_info) and bf.call(l.keys_text) and bf.call(l.sky_box) and bf.call(l.hint), "대기실: 방 이름·모드 설명·조작법·체크 글·첫 안내 = 본문")
+	check(not bf.call(l.code_label) and not bf.call(l.add_bot) and not bf.call(l.status) and not bf.call(l.stage_who), "대기실: 방 코드·버튼·상태·큰 캐릭터 이름 = 제목 글꼴")
+	check(bf.call(l.skill_text, "normal_font"), "스킬 카드 설명 = 본문 (이름·키는 [font])")
+	l.free()
+	var h = _make("res://ui/host_players.gd")
+	h.build({"teamMode": false, "mode": "survival", "players": [_player(1, 0, 0), _player(2, 1, 0)]}, false)
+	check(bf.call(h.grid.get_child(0)) and not bf.call(h.head.get_child(0)), "플레이어 관리: 이름 = 본문, 제목 = 제목 글꼴")
+	h.free()
+	var s = _make("res://ui/settings.gd")
+	check(bf.call(s.dup_label) and bf.call(s.checks.values()[0]) and not bf.call(s.key_btns.values()[0]), "설정: 안내·체크 = 본문, 키 칸 = 제목 글꼴")
+	s.free()
+	var p = _make("res://ui/practice.gd")
+	check(bf.call(p.hint) and bf.call(p.checks.values()[0]), "연습: Tab 안내·체크 = 본문")
+	p.free()
+	Store.my_id = keep

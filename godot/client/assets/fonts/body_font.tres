@@ -1,0 +1,12 @@
+[gd_resource type="FontVariation" load_steps=5 format=3]
+
+[ext_resource type="FontFile" path="res://assets/fonts/noto-sans-kr-body.woff2" id="1"]
+[ext_resource type="FontFile" path="res://assets/fonts/black-han-sans-korean.woff2" id="2"]
+[ext_resource type="FontFile" path="res://assets/fonts/black-han-sans-latin.woff2" id="3"]
+[ext_resource type="FontFile" path="res://assets/fonts/dejavu-sans-bold-symbols.woff2" id="4"]
+
+[resource]
+fallbacks = Array[Font]([ExtResource("2"), ExtResource("3"), ExtResource("4")])
+base_font = ExtResource("1")
+spacing_top = -1
+spacing_bottom = -1

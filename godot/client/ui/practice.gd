@@ -63,7 +63,7 @@ func _ready() -> void:
 	head.add_child(close_btn)
 	v.add_child(head)
 	for t in TOGGLES:
-		var c := S.style_check(CheckBox.new(), 14)
+		var c: CheckBox = S.body(S.style_check(CheckBox.new(), 14)) # JS #practice label system-ui
 		c.text = t[1]
 		c.toggled.connect(func(on): if not syncing: Store.send_room({"type": "practiceSet", "key": t[0], "value": on}))
 		checks[t[0]] = c
@@ -90,7 +90,7 @@ func _ready() -> void:
 	v.add_child(_row("허수아비", add_btn))
 	v.add_child(dummies_box)
 	win.visible = false
-	hint = S.label("", 12, S.DIM) # JS #practice-hint: left 14 top 70, 12px 흐림, rgba(8,12,26,.5), padding 3 10, 사선
+	hint = S.body_label("", 12, S.DIM) # JS #practice-hint: left 14 top 70, 12px 흐림, rgba(8,12,26,.5), padding 3 10, 사선
 	var hb := StyleBoxFlat.new()
 	hb.bg_color = Color8(8, 12, 26, 128)
 	hb.skew = Vector2(0.3, 0)
@@ -115,7 +115,7 @@ func _ready() -> void:
 
 func _row(label: String, c: Control) -> HBoxContainer:
 	var h := HBoxContainer.new()
-	var l := S.label(label, 13, S.TEXT) # JS #practice 13px
+	var l := S.body_label(label, 13, S.TEXT) # JS #practice 13px system-ui
 	l.custom_minimum_size.x = 80
 	h.add_child(l)
 	c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -198,7 +198,7 @@ func _process(_dt: float) -> void:
 		l.autowrap_mode = TextServer.AUTOWRAP_OFF
 		l.scroll_active = false
 		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		l.add_theme_font_override("normal_font", load("res://assets/fonts/ui_font.tres"))
+		l.add_theme_font_override("normal_font", S.BODY) # JS #pcombo system-ui (타 수 b 만 disp)
 		l.add_theme_font_size_override("normal_font_size", 13)
 		var bg := StyleBoxFlat.new()
 		bg.bg_color = Color(0.03, 0.05, 0.1, 0.6)
@@ -213,7 +213,7 @@ func _process(_dt: float) -> void:
 	for i in lines.size():
 		var l: RichTextLabel = combo.get_child(i)
 		var live: bool = lines[i][1] == S.ACCENT # 진행 중 = 노란 타 수, 끝 = 흰 글씨
-		l.text = "[right]%s[/right]" % (lines[i][0] as String).replace("{b}", "[font_size=19][color=#%s]" % ("ffd23a" if live else "ffffff")).replace("{/b}", "[/color][/font_size]")
+		l.text = "[right]%s[/right]" % (lines[i][0] as String).replace("{b}", "[font=%s][font_size=19][color=#%s]" % [S.FONT_PATH, "ffd23a" if live else "ffffff"]).replace("{/b}", "[/color][/font_size][/font]")
 		l.add_theme_color_override("default_color", S.TEXT if live else Color("d6dcf0"))
 		l.modulate.a = lines[i][2]
 
@@ -241,7 +241,7 @@ func _dummy_rows(dummies: Array) -> void:
 		for d in dummies:
 			var row := HBoxContainer.new()
 			row.set_meta("id", int(d.id))
-			var n := S.label(_name_of(Store.player(d.id)), 13, S.TEXT)
+			var n := S.body_label(_name_of(Store.player(d.id)), 13, S.TEXT)
 			n.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			row.add_child(n)
 			var pct := SpinBox.new()

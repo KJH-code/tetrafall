@@ -122,6 +122,7 @@ func _ready() -> void:
 	add_child(ring)
 
 	spec_label = _hud_label(15, false)
+	S.body(spec_label) # JS #spec system-ui
 	spec_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	spec_box = PanelContainer.new() # JS #spec: rgba(8,12,26,.8) · padding 7 20 · 사선
 	spec_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -384,7 +385,7 @@ func _feed(e: Dictionary, streak: int) -> void:
 		var kn: String = _name(killer) if not killer.is_empty() else str(e.get("byName", "?"))
 		var kc := _player_color(killer) if not killer.is_empty() else S.TEXT
 		txt += "[color=#%s]%s[/color] [color=#9fabcd]▸[/color] " % [kc.to_html(false), kn]
-	txt += "[color=#%s]%s[/color] [color=#9fabcd][font_size=13]%s[/font_size][/color]" % [_player_color(victim).to_html(false), _name(victim), U.cause_text(e.cause, e.get("weapon"))]
+	txt += "[color=#%s]%s[/color] [color=#9fabcd][font=%s][font_size=13]%s[/font_size][/font][/color]" % [_player_color(victim).to_html(false), _name(victim), S.BODY_PATH, U.cause_text(e.cause, e.get("weapon"))]
 	var st_text := U.streak_text(streak)
 	if st_text != "":
 		txt += " [bgcolor=#ffd23a][color=#1a1300][font_size=12] %s [/font_size][/color][/bgcolor]" % st_text
@@ -679,6 +680,7 @@ func _make_card(p: Dictionary, L: Dictionary) -> Dictionary:
 	nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS # JS .nm 넘치면 말줄임 (긴 이름이 판을 넓히지 않게)
 	names.add_child(nm)
 	var sub := _chip("", S.DIM, 11)
+	S.body(sub) # JS #players .pc .sub system-ui
 	sub.visible = not L.compact
 	names.add_child(sub)
 	top.add_child(names)

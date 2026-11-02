@@ -212,6 +212,7 @@ func _ready() -> void:
 		wheel.add_child(l)
 		wheel_items.append(l)
 	var hint := _label(13, Color("ccccdd"))
+	S.body(hint) # JS #emote-wheel .hint system-ui
 	hint.text = "마우스로 고르고\n%s 를 놓기" % Keys.key_label(str(PlayerInput.binds.get("emote", "KeyG")))
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	wheel.add_child(hint)
@@ -220,6 +221,7 @@ func _ready() -> void:
 	# 도움말 (#help): 오른쪽 위, H 누르는 동안
 	help = _box_label(12, Color8(8, 12, 26, 153)) # JS #help: top 10 right 12, rgba(8,12,26,.6), padding 7 10, 사선
 	help.add_theme_color_override("font_color", S.DIM)
+	S.body(help) # JS #help system-ui
 	var hsb: StyleBoxFlat = help.get_theme_stylebox("normal")
 	hsb.content_margin_left = 10
 	hsb.content_margin_right = 10

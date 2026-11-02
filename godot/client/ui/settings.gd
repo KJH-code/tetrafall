@@ -61,7 +61,7 @@ func _ready() -> void:
 	kh.add_child(S.glow_label("조작 키", 16, Color.WHITE, 3))
 	kh.add_child(S.button("키 기본값", _reset_keys, "ghost", 13))
 	v.add_child(kh)
-	v.add_child(S.label("칸을 누르고 바꿀 키나 마우스 버튼(옆 버튼도)을 누름 · Esc 취소", 13, Color("bbbbbb")))
+	v.add_child(S.body_label("칸을 누르고 바꿀 키나 마우스 버튼(옆 버튼도)을 누름 · Esc 취소", 13, Color("bbbbbb")))
 	var scroll := ScrollContainer.new()
 	keys_scroll = scroll
 	keys_grid = GridContainer.new()
@@ -75,7 +75,7 @@ func _ready() -> void:
 			group = a.group
 			keys_grid.add_child(S.tint(S.glow_label(group, 14, Color.WHITE, 2)))
 			keys_grid.add_child(Control.new())
-		var l := S.label(a.label, 13, S.TEXT)
+		var l := S.body_label(a.label, 13, S.TEXT) # JS #keybinds 이름 system-ui (묶음 이름·키 칸은 disp)
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		keys_grid.add_child(l)
 		var id: String = a.id
@@ -89,7 +89,7 @@ func _ready() -> void:
 			kb.content_margin_bottom = 2
 		key_btns[id] = b
 		keys_grid.add_child(b)
-	dup_label = S.label("", 13, Color("ff8a78"))
+	dup_label = S.body_label("", 13, Color("ff8a78"))
 	v.add_child(dup_label)
 	var btns := HBoxContainer.new()
 	btns.alignment = BoxContainer.ALIGNMENT_END
@@ -102,7 +102,7 @@ func _ready() -> void:
 	btns.add_child(S.button("기본값", _reset_settings, "ghost", 16))
 	btns.add_child(S.button("닫기", func(): visible = false, "ghost", 16))
 	v.add_child(btns)
-	leave_note = S.label("판 중엔 나가면 이 판은 패배 — 한 번 더 누르면 나감", 13, Color("ff9a84"))
+	leave_note = S.body_label("판 중엔 나가면 이 판은 패배 — 한 번 더 누르면 나감", 13, Color("ff9a84"))
 	leave_note.visible = false
 	v.add_child(leave_note)
 	visible = false
@@ -111,7 +111,7 @@ func _ready() -> void:
 
 func _slider(parent: Node, text: String, key: String, lo: float, hi: float, step: float, fmt: Callable) -> void:
 	var row := HBoxContainer.new()
-	var l := S.label(text, 15, S.TEXT)
+	var l := S.body_label(text, 15, S.TEXT) # JS #settings .box 15px system-ui
 	l.custom_minimum_size.x = 110
 	row.add_child(l)
 	var sl := HSlider.new()
@@ -122,7 +122,7 @@ func _slider(parent: Node, text: String, key: String, lo: float, hi: float, step
 	sl.focus_mode = Control.FOCUS_NONE
 	S.style_slider(sl) # JS input[type=range] accent-color: g (예전엔 기본 회색)
 	row.add_child(sl)
-	var val := S.label("", 14, S.TEXT)
+	var val := S.body_label("", 14, S.TEXT)
 	val.custom_minimum_size.x = 56
 	row.add_child(val)
 	sl.value_changed.connect(func(x):
@@ -134,12 +134,12 @@ func _slider(parent: Node, text: String, key: String, lo: float, hi: float, step
 
 func _check(parent: Node, text: String, key: String, note: String) -> void:
 	var row := HBoxContainer.new()
-	var l := S.label(text, 15, S.TEXT)
+	var l := S.body_label(text, 15, S.TEXT)
 	l.custom_minimum_size.x = 110
 	row.add_child(l)
 	var c := CheckBox.new()
 	c.text = note
-	S.style_check(c, 14)
+	S.body(S.style_check(c, 14))
 	c.toggled.connect(func(on): View.set_setting(key, on))
 	row.add_child(c)
 	checks[key] = c

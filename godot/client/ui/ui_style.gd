@@ -6,6 +6,11 @@ extends RefCounted
 const C := preload("res://core/config.gd")
 const Coords := preload("res://core/coords.gd")
 const FONT := preload("res://assets/fonts/ui_font.tres")
+# 본문 글꼴 (JS body system-ui 자리 — 설명·표 숫자·안내·키 칸 이름·체크 글 등): Noto Sans KR Regular 부분 집합 (tools/subset-body-font.mjs) + 대체 Black Han Sans·DejaVu 기호.
+# 제목·버튼·이름·큰 숫자 (JS var(--disp)) 는 FONT 그대로
+const BODY := preload("res://assets/fonts/body_font.tres")
+const BODY_PATH := "res://assets/fonts/body_font.tres"
+const FONT_PATH := "res://assets/fonts/ui_font.tres"
 
 # JS index.html :root 토큰
 const INK := Color("060913")
@@ -193,13 +198,14 @@ static func slanted(slant: float) -> FontVariation:
 
 
 static var _spaced := {}
-static func spaced(px: int) -> FontVariation:
-	if not _spaced.has(px):
+static func spaced(px: int, body := false) -> FontVariation:
+	var k := "%d%s" % [px, "b" if body else ""]
+	if not _spaced.has(k):
 		var f := FontVariation.new()
-		f.base_font = FONT
+		f.base_font = BODY if body else FONT
 		f.spacing_glyph = px
-		_spaced[px] = f
-	return _spaced[px]
+		_spaced[k] = f
+	return _spaced[k]
 
 
 static func _glow_col(kind: String) -> Color:
@@ -422,6 +428,18 @@ static func glow_label(text: String, size := 20, color := Color.WHITE, glow := 6
 	l.add_theme_constant_override("shadow_outline_size", glow * 2)
 	l.add_theme_constant_override("shadow_offset_x", 0)
 	l.add_theme_constant_override("shadow_offset_y", 0)
+	return l
+
+
+# 본문 글꼴로 (JS system-ui 자리): Label·CheckBox·Button 은 font, RichTextLabel 은 normal_font
+static func body(c: Control) -> Control:
+	c.add_theme_font_override("normal_font" if c is RichTextLabel else "font", BODY)
+	return c
+
+
+static func body_label(text: String, size := 14, color := DIM) -> Label:
+	var l := label(text, size, color)
+	l.add_theme_font_override("font", BODY)
 	return l
 
 

@@ -85,7 +85,7 @@ func build(st: Dictionary, small: bool) -> void:
 		team_row.add_child(btn.call("팀 섞기", func(): Store.send_room({"type": "shuffleTeams"})))
 	for p in ps:
 		var nm := str(p.get("nick", "")) if str(p.get("nick", "")) != "" else str(p.name)
-		var who := S.label("%s%s%s%s" % [nm, " (나)" if p.id == Store.my_id else "", " · 관전" if p.get("spectator", false) else "", " · 자리 비움" if p.get("away", false) else ""], fs, Coords.color(C.PLAYER_PALETTE[int(p.get("color", p.slot)) % C.PLAYER_PALETTE.size()]))
+		var who := S.body_label("%s%s%s%s" % [nm, " (나)" if p.id == Store.my_id else "", " · 관전" if p.get("spectator", false) else "", " · 자리 비움" if p.get("away", false) else ""], fs, Coords.color(C.PLAYER_PALETTE[int(p.get("color", p.slot)) % C.PLAYER_PALETTE.size()]))
 		if p.get("away", false):
 			who.modulate.a = 0.6
 		grid.add_child(who)

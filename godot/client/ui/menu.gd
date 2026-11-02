@@ -75,7 +75,7 @@ func _ready() -> void:
 	logo_box.add_child(logo)
 	logo_box.resized.connect(_place_logo.bind(logo_box))
 	sub = S.label("떨어지는 블록 위에서 밀어 떨어뜨리는 3D 대전", 15)
-	sub.add_theme_font_override("font", S.spaced(3)) # JS .sub letter-spacing 3px, 색 gl, 흐림 .85
+	sub.add_theme_font_override("font", S.spaced(3, true)) # JS .sub system-ui · letter-spacing 3px, 색 gl, 흐림 .85
 	S.tint(sub)
 	sub.modulate.a = 0.85
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -94,7 +94,7 @@ func _ready() -> void:
 	nick_row.add_child(nick)
 	top_col.add_child(nick_row)
 
-	msg = S.label("", 15)
+	msg = S.body_label("", 15) # JS #rooms-msg system-ui
 	S.tint(msg, Color("ffd0a0"), 0.65)
 	msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -143,7 +143,7 @@ func _ready() -> void:
 	list_box.add_theme_constant_override("separation", 6)
 	scroll.add_child(list_box)
 	_item(col, "list", "공개 방", scroll)
-	count_label = S.label("", 15, Color(1, 1, 1, 0.75)) # JS button.big small: 글 바로 뒤 margin-left 10 (자리는 _place_count)
+	count_label = S.body_label("", 15, Color(1, 1, 1, 0.75)) # JS button.big small: 글 바로 뒤 margin-left 10 (자리는 _place_count)
 	bigs.list.add_child(count_label)
 	bigs.list.resized.connect(_place_count)
 
@@ -216,7 +216,7 @@ func _place_count() -> void:
 
 
 func _note(text: String) -> Label:
-	var l := S.label(text, 13, Color("a49cbc"))
+	var l := S.body_label(text, 13, Color("a49cbc")) # JS .open .note system-ui
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	return l
 
@@ -307,7 +307,7 @@ func _render_list() -> void:
 		var bots := " + 봇 %d (%s)" % [int(r.bots), Lobby.BOT_LEVEL_KO.get(str(r.get("botLevel", "")), str(r.get("botLevel", "")))] if float(r.get("bots", 0)) > 0 else "" # JS: 봇 수 + 난이도
 		var mode: String = C.MODE_NAMES.get(str(r.get("mode", "survival")), "생존")
 		var map_name: String = C.MAPS[str(r.map)].name if C.MAPS.has(str(r.get("map", ""))) else ("무작위" if str(r.get("map", "")) == "random" else str(r.get("map", "")))
-		info.add_child(S.label("사람 %d%s / %d명 · %s · 맵 %s%s · %s" % [int(r.humans), bots, int(r.max), mode, map_name, " · 하늘 계단" if r.get("skyStairs", false) else "", "팀전" if r.get("teamMode", false) else "개인전"], 12, Color("a49cbc")))
+		info.add_child(S.body_label("사람 %d%s / %d명 · %s · 맵 %s%s · %s" % [int(r.humans), bots, int(r.max), mode, map_name, " · 하늘 계단" if r.get("skyStairs", false) else "", "팀전" if r.get("teamMode", false) else "개인전"], 12, Color("a49cbc")))
 		row.add_child(info)
 		var is_full: bool = float(r.humans) + float(r.get("bots", 0)) >= float(r.max)
 		var code_s := str(r.code)

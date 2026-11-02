@@ -87,7 +87,7 @@ func _ready() -> void:
 	status = S.glow_label("", 18, Color.WHITE, 5)
 	status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(status)
-	hint = S.label("처음이면  WASD 이동 · Space 점프 (공중에서 한 번 더) · Shift 대시 · 좌클릭 밀기 · F 스킬 · R 필살기 — 밀어서 떨어뜨리기", 11, S.TEXT)
+	hint = S.body_label("처음이면  WASD 이동 · Space 점프 (공중에서 한 번 더) · Shift 대시 · 좌클릭 밀기 · F 스킬 · R 필살기 — 밀어서 떨어뜨리기", 11, S.TEXT)
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var hb := StyleBoxFlat.new() # JS #first-hint: rgba(0,0,0,.4) + 왼쪽 3px g + 사선, padding 4 14
@@ -186,6 +186,7 @@ func _ready() -> void:
 	skill_text.fit_content = false
 	skill_text.scroll_active = true
 	skill_text.add_theme_font_size_override("normal_font_size", 13)
+	S.body(skill_text) # JS #char-card .intro·.sk .d system-ui (이름·키·스킬 이름은 [font] 로 disp)
 	skill_text.add_theme_font_size_override("bold_font_size", 13)
 	skill_card.add_child(skill_text)
 	var close := S.button("닫기", func(): _toggle_card(false), "ghost", 12)
@@ -198,7 +199,7 @@ func _ready() -> void:
 	# 이름 · 색
 	var name_row := HBoxContainer.new()
 	name_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	name_row.add_child(S.label("이름", 13, Color("a49cbc")))
+	name_row.add_child(S.body_label("이름", 13, Color("a49cbc"))) # JS #color-row label system-ui
 	name_edit = S.line_edit("머리 위에 보임", 14, int(C.NAME_MAX_LEN))
 	name_edit.custom_minimum_size.x = 105 # JS #name-input 7.5em
 	for stn in ["normal", "focus"]: # JS #name-input padding 3 6 + 테두리 2 → 높이 26
@@ -213,7 +214,7 @@ func _ready() -> void:
 	swatches.alignment = BoxContainer.ALIGNMENT_CENTER
 	swatches.add_theme_constant_override("separation", 3)
 	_add(swatches, "swatches")
-	team_note = S.label("팀전은 팀 색", 12, Color("a49cbc"))
+	team_note = S.body_label("팀전은 팀 색", 12, Color("a49cbc"))
 	team_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	team_note.visible = false
 	_add(team_note, "team_note")
@@ -256,11 +257,11 @@ func _ready() -> void:
 	sky_box = _check("하늘 계단", func(on): Store.send_room({"type": "skyStairs", "on": on}))
 	hp_box = _check("체력전", func(on): Store.send_room({"type": "hpMode", "on": on}))
 	_add(settings_wrap, "settings")
-	map_info = S.label("", 13, Color("cdd5ee"))
+	map_info = S.body_label("", 13, Color("cdd5ee"))
 	map_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	map_info.visible = false
 	_add(map_info, "map_info")
-	mode_info = S.label("", 12, Color("a49cbc"))
+	mode_info = S.body_label("", 12, Color("a49cbc"))
 	mode_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	mode_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_add(mode_info, "mode_info")
@@ -270,18 +271,18 @@ func _ready() -> void:
 	room_row.alignment = FlowContainer.ALIGNMENT_CENTER
 	room_row.add_theme_constant_override("h_separation", 6)
 	room_row.add_theme_constant_override("v_separation", 6) # JS #room-row gap 6 (줄 사이도)
-	room_row.add_child(S.label("방", 13, Color("a49cbc")))
+	room_row.add_child(S.body_label("방", 13, Color("a49cbc"))) # JS #room-row system-ui (방 코드만 disp)
 	code_label = S.glow_label("", 19, Color.WHITE, 4)
 	code_label.add_theme_font_override("font", S.spaced(3)) # JS #room-row .code letter-spacing 3px
 	room_row.add_child(code_label)
-	room_text = S.label("", 13, Color("a49cbc"))
+	room_text = S.body_label("", 13, Color("a49cbc"))
 	room_row.add_child(room_text)
 	public_btn = S.pad(S.button("공개로", func(): Store.send_room({"type": "setPublic", "on": not Store.room.get("public", false)}), "ghost", 13), ROW_BTN_PAD[0], ROW_BTN_PAD[1])
 	room_row.add_child(public_btn)
 	room_row.add_child(S.pad(S.button("링크 복사", _copy_link, "ghost", 13), ROW_BTN_PAD[0], ROW_BTN_PAD[1]))
 	room_row.add_child(S.pad(S.button("방 나가기", func(): Store.leave(), "ghost", 13), ROW_BTN_PAD[0], ROW_BTN_PAD[1]))
 	_add(room_row, "room")
-	room_link = S.label("", 11, Color("7d7896"))
+	room_link = S.body_label("", 11, Color("7d7896"))
 	room_link.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	room_link.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
 	_add(room_link, "room_link")
@@ -292,7 +293,7 @@ func _ready() -> void:
 	var keys_btn := S.pad(S.button("조작법", func(): keys_text.visible = not keys_text.visible, "ghost", 13), KEYS_BTN_PAD[0], KEYS_BTN_PAD[1])
 	keys_row.add_child(keys_btn)
 	_add(keys_row, "keys")
-	keys_text = S.label("WASD 이동 · Space 점프 (공중에서 한 번 더) · Shift 대시 · F 스킬 · R 필살기 · 좌클릭 평타 · 우클릭 아이템 · Q/E 방향 · G 이모트 · V 시점 · H 조작법", 12, Color("cdd5ee"))
+	keys_text = S.body_label("WASD 이동 · Space 점프 (공중에서 한 번 더) · Shift 대시 · F 스킬 · R 필살기 · 좌클릭 평타 · 우클릭 아이템 · Q/E 방향 · G 이모트 · V 시점 · H 조작법", 12, Color("cdd5ee"))
 	keys_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	keys_text.visible = false
 	_add(keys_text, "keys_text")
@@ -352,7 +353,7 @@ func _select(label_text: String, ids: Array, name_of: Callable, on_pick: Callabl
 	# 이름표와 고르기를 한 묶음으로 (줄이 넘어가도 둘이 떨어지지 않게)
 	var pair := HBoxContainer.new()
 	pair.add_theme_constant_override("separation", 3)
-	pair.add_child(S.label(label_text, 13, Color("b9b0d2")))
+	pair.add_child(S.body_label(label_text, 13, Color("b9b0d2"))) # JS #bot-btns label system-ui
 	var o := OptionButton.new()
 	o.focus_mode = Control.FOCUS_NONE
 	o.add_theme_font_size_override("font_size", 13)
@@ -385,7 +386,7 @@ func _select(label_text: String, ids: Array, name_of: Callable, on_pick: Callabl
 func _check(text: String, on_toggle: Callable) -> CheckBox:
 	var b := CheckBox.new()
 	b.text = text
-	S.style_check(b, 13)
+	S.body(S.style_check(b, 13))
 	b.toggled.connect(on_toggle)
 	settings_box.add_child(b)
 	return b
@@ -519,8 +520,8 @@ func refresh(st: Dictionary) -> void:
 		var nm_fs := 18 if small else 22
 		var fs := 12 if small else 13
 		var row := func(k: String, nm: String, d: String) -> String:
-			return "[cell padding=0,1,10,1][color=#%s]%s[/color][/cell][cell][color=#f4f6ff]%s[/color]\n[color=#c4bdd8]%s[/color][/cell]" % [gl, k, nm, d]
-		skill_text.text = "[font_size=%d]%s[/font_size]\n[font_size=%d][color=#ddd8ee]%s[/color][/font_size]\n[font_size=%d][table=2]%s%s[/table][/font_size]" % [nm_fs, C.CHAR_NAMES[ch], fs, C.CHAR_INTRO.get(ch, ""), fs,
+			return "[cell padding=0,1,10,1][font=%s][color=#%s]%s[/color][/font][/cell][cell][font=%s][color=#f4f6ff]%s[/color][/font]\n[color=#c4bdd8]%s[/color][/cell]" % [S.FONT_PATH, gl, k, S.FONT_PATH, nm, d]
+		skill_text.text = "[font=%s][font_size=%d]%s[/font_size][/font]\n[font_size=%d][color=#ddd8ee]%s[/color][/font_size]\n[font_size=%d][table=2]%s%s[/table][/font_size]" % [S.FONT_PATH, nm_fs, C.CHAR_NAMES[ch], fs, C.CHAR_INTRO.get(ch, ""), fs,
 			row.call(Keys.key_label(str(PlayerInput.binds.get("skill", "KeyF"))), C.SKILL_NAMES[ch], C.SKILL_DESC.get(ch, "")),
 			row.call(Keys.key_label(str(PlayerInput.binds.get("ult", "KeyR"))), C.ULT_NAMES[ch], C.ULT_DESC.get(ch, ""))]
 	if not name_edit.has_focus():
@@ -611,7 +612,7 @@ func _render_colors(st: Dictionary, me: Dictionary) -> void:
 	for c in swatches.get_children():
 		c.queue_free()
 	swatches.visible = not st.get("teamMode", false)
-	swatches.add_child(S.label("색", 13, Color("a49cbc")))
+	swatches.add_child(S.body_label("색", 13, Color("a49cbc")))
 	for i in C.PLAYER_PALETTE.size():
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(18, 18)
