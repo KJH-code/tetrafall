@@ -54,7 +54,7 @@ export function parseLog(text) {
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.replace(/^\[[^\]]*\]\s?/, ''); // 앞의 [시각] 떼기
     let m;
-    const rc = cur || last; // 재접속 줄을 셀 판 (판 중이면 그 판, 판 사이면 바로 앞 판)
+    const rc = cur || ended; // 재접속 줄을 셀 판 (판 중이면 그 판, 판 사이면 바로 앞 판 — 다음 판이 시작할 때까지. 예전엔 last 라 '  사망:' 줄 뒤의 판 사이 재접속이 0 으로 빠졌음, S11)
     if ((m = line.match(/^\s*\[끊김\] \S+ 자리 유지 \d+초( \(봇 대리\))?$/))) {
       if (rc) {
         rc.reconnect.away++;
@@ -121,7 +121,8 @@ export function parseLog(text) {
       // 접속 끊김은 [사망] 줄 없이 여기에만 나옴
       for (const part of m[1].split(', ')) {
         const d = part.match(/^(\S+) (압사|낙사|용암|체력|접속 끊김)@(\d+:\d+)$/);
-        if (!d || last.deaths.some((x) => x.name === d[1])) continue;
+        // 이미 [사망] 줄로 읽은 죽음은 건너뜀. 이름만 보면 킬 점수전에서 한 번 죽고 나간 사람의 접속 끊김이 빠짐 (S11) → 이름·원인·시각이 같은 것만
+        if (!d || last.deaths.some((x) => x.name === d[1] && x.cause === CAUSES[d[2]] && x.t === toSec(d[3]))) continue;
         last.deaths.push({ name: d[1], cause: CAUSES[d[2]], t: toSec(d[3]), damage: null });
         if (!last.conns.has(d[1])) {
           last.names.push(d[1]);
@@ -233,15 +234,22 @@ export function parseLog(text) {
   // P 번호 → 이름 (사람만)
   for (const r of rounds) {
     const who = (name) => (isBot(name) ? name : r.conns.get(name)?.key || name);
-    r.players = r.names.map((name) => ({ name, key: who(name), bot: isBot(name), aliases: [...(r.conns.get(name)?.aliases || [])] }));
+    // gid: 같은 사람인지 가르는 속이 — 사람은 '사람:' 봇은 '봇:' 접두어 (닉네임이 봇 이름 'P3(봇)' 과 같아도 합쳐지지 않게, S11). key 는 화면에 내는 이름 그대로
+    const gid = (name) => (isBot(name) ? `봇:${name}` : `사람:${who(name)}`);
+    r.players = r.names.map((name) => ({ name, key: who(name), gid: gid(name), bot: isBot(name), aliases: [...(r.conns.get(name)?.aliases || [])] }));
     const team = r.winner && r.teams ? r.teams[r.winner.replace(/팀$/, '')] : null;
     r.winnerKeys = team ? team.map(who) : r.winner ? r.winner.split(' ').map(who) : []; // 팀전이면 그 팀 전원, 블록 마스터 생존자·킬 점수전 동점은 공백으로 여럿
+    r.winnerGids = team ? team.map(gid) : r.winner ? r.winner.split(' ').map(gid) : [];
     r.masterKey = r.master ? who(r.master) : null;
+    r.masterGid = r.master ? gid(r.master) : null;
     for (const d of r.deaths) {
       d.key = who(d.name);
+      d.gid = gid(d.name);
       d.killerKey = d.killer ? who(d.killer) : d.killer;
+      d.killerGid = d.killer ? gid(d.killer) : null;
     }
     r.useByKey = new Map([...r.use].map(([name, u]) => [who(name), u]));
+    r.useByGid = new Map([...r.use].map(([name, u]) => [gid(name), u]));
   }
   return rounds;
 }
@@ -369,26 +377,26 @@ export function summarize(rounds) {
   const players = new Map();
   for (const r of rounds) {
     for (const p of r.players) {
-      if (!players.has(p.key)) {
-        players.set(p.key, { key: p.key, bot: p.bot, aliases: new Set(), rounds: 0, wins: 0, kills: 0, crush: 0, fall: 0, lava: 0, hp: 0, disconnect: 0, survive: [], deathDamage: [] });
+      if (!players.has(p.gid)) {
+        players.set(p.gid, { key: p.key, bot: p.bot, aliases: new Set(), rounds: 0, wins: 0, kills: 0, crush: 0, fall: 0, lava: 0, hp: 0, disconnect: 0, survive: [], deathDamage: [] });
       }
-      const s = players.get(p.key);
+      const s = players.get(p.gid);
       for (const a of p.aliases) if (a !== p.key) s.aliases.add(a);
       s.rounds++;
-      if (r.winnerKeys.includes(p.key)) s.wins++;
+      if (r.winnerGids.includes(p.gid)) s.wins++;
       // 킬 점수전은 한 판에 여러 번 죽음 → 원인은 전부 세고, 버틴 시간은 안 셈 (부활하니까). 블록 마스터의 마스터도 버틴 시간 없음
-      const ds = r.deaths.filter((x) => x.key === p.key);
+      const ds = r.deaths.filter((x) => x.gid === p.gid);
       for (const d of ds) {
         s[d.cause]++;
         if (d.damage !== null && d.cause !== 'disconnect') s.deathDamage.push(d.damage);
       }
-      if (r.mode !== '킬 점수전' && p.key !== r.masterKey) {
+      if (r.mode !== '킬 점수전' && p.gid !== r.masterGid) {
         const d = ds[0];
         if (!d) s.survive.push(r.len);
         else if (d.cause !== 'disconnect') s.survive.push(d.t);
       }
     }
-    for (const d of r.deaths) if (d.killerKey && players.has(d.killerKey)) players.get(d.killerKey).kills++;
+    for (const d of r.deaths) if (d.killerGid && players.has(d.killerGid)) players.get(d.killerGid).kills++;
   }
 
   // 무엇이 판을 끝내나: 킬을 낸 공격 종류 (킬 기록이 있는 사망만)
@@ -413,7 +421,7 @@ export function summarize(rounds) {
     for (const p of r.players) {
       if (p.bot) continue;
       items.humanRounds++;
-      const u = r.useByKey.get(p.key);
+      const u = r.useByGid.get(p.gid);
       if (!u) continue;
       for (const k of ['build', 'bombs', 'bombHits', 'bricks', 'crushes', 'shocks', 'shots', 'shotHits', 'crits']) items[k] += u[k] || 0;
     }
@@ -446,7 +454,7 @@ export function summarize(rounds) {
           const k = `${c}${p.bot ? ' (봇)' : ''}`;
           if (!t.has(k)) t.set(k, { key: k, rounds: 0, wins: 0 });
           t.get(k).rounds++;
-          if (r.winnerKeys.includes(p.key)) t.get(k).wins++;
+          if (r.winnerGids.includes(p.gid)) t.get(k).wins++;
         }
       }
       return [...t.values()].sort((a, b) => a.key.localeCompare(b.key));
@@ -519,7 +527,7 @@ export function summarize(rounds) {
     })(),
     byMode: group((r) => r.mode).map((g) => {
       const rs = rounds.filter((r) => r.mode === g.key);
-      const masterWins = rs.filter((r) => r.masterKey && r.winnerKeys.includes(r.masterKey)).length;
+      const masterWins = rs.filter((r) => r.masterGid && r.winnerGids.includes(r.masterGid)).length;
       const note = g.key === '블록 마스터' ? `마스터 승 ${masterWins}/${rs.length}` : g.key === '킬 점수전' ? `판당 사망 ${(g.deaths / rs.length).toFixed(1)}` : '';
       return { ...g, note };
     }),

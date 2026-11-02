@@ -453,3 +453,65 @@ test('통계: 킬 점수전·블록 마스터 판은 기다린 시간에서 뺌 
   ].join('\n');
   assert.equal(summarize(parseLog(text)).waits, null);
 });
+
+// ---------- 2026-10-30 감사 S11 ----------
+test('통계 S11: 판 끝 "사망:" 줄 뒤의 판 사이 재접속도 바로 앞 판에 셈', () => {
+  const text = [
+    'P1 접속 (slot 0) — 호스트',
+    'P1 이름: 재혁',
+    'P2 접속 (slot 1)',
+    '===== ROUND 1 시작 (2명: P1 P2, 맵 평지) =====',
+    '  [사망] P2 낙사 @ 0:10 (위치 1.0, 2.0, -4.0, 피해 80%, 킬 P1 밀치기)',
+    '===== ROUND 1 종료 | 길이 0:10 | 승자: P1 =====',
+    '  사망: P2 낙사@0:10',
+    '  블록: 자동 1',
+    '  [끊김] P2 자리 유지 60초',
+    '  (복귀까지 4.0초)',
+    '  [끊김] P2 자리 유지 60초',
+    '  [끊김 만료] P2 60초 안에 안 돌아옴',
+    '===== ROUND 2 시작 (2명: P1 P2, 맵 평지) =====',
+    '  [끊김] P2 자리 유지 60초 (봇 대리)',
+    '  (복귀까지 2.0초)',
+    '  [사망] P2 낙사 @ 0:20 (위치 1.0, 2.0, -4.0, 피해 80%, 킬 P1 밀치기)',
+    '===== ROUND 2 종료 | 길이 0:20 | 승자: P1 =====',
+    '  사망: P2 낙사@0:20',
+  ].join('\n');
+  const s = summarize(parseLog(text));
+  assert.deepEqual(s.reconnect, { away: 3, proxied: 1, back: 2, expired: 1, backMedian: 3 });
+});
+
+test('통계 S11: 킬 점수전에서 한 번 죽고 나간 사람의 접속 끊김도 셈 (이름만 같다고 건너뛰지 않음)', () => {
+  const text = [
+    'P1 이름: 재혁',
+    '===== ROUND 1 시작 (2명: P1 P2, 맵 평지) =====',
+    '  모드: 킬 점수전 (3:00 또는 7킬)',
+    '  [사망] P2 낙사 @ 0:10 (위치 1.0, 2.0, -4.0, 피해 50%, 킬 P1 밀치기)',
+    '  [사망] P2 낙사 @ 0:40 (위치 1.0, 2.0, -4.0, 피해 70%, 킬 P1 밀치기)',
+    'P2 접속 종료',
+    '===== ROUND 1 종료 | 길이 1:20 | 승자: P1 =====',
+    '  사망: P2 낙사@0:10, P2 낙사@0:40, P2 접속 끊김@1:20',
+  ].join('\n');
+  const s = summarize(parseLog(text));
+  assert.deepEqual(s.byCause, { crush: 0, fall: 2, lava: 0, hp: 0, disconnect: 1 });
+  assert.equal(s.players.find((p) => p.key === 'P2').disconnect, 1);
+});
+
+test('통계 S11: 닉네임이 봇 이름("P2(봇)")과 같은 사람은 그 봇과 합쳐지지 않음', () => {
+  const text = [
+    'P1 접속 (slot 0) — 호스트',
+    'P1 이름: P2(봇)',
+    'P2(봇) 접속 (slot 1)',
+    '===== ROUND 1 시작 (2명: P1 P2(봇), 맵 평지) =====',
+    '  [사망] P2(봇) 낙사 @ 0:10 (위치 1.0, 2.0, -4.0, 피해 80%, 킬 P1 밀치기)',
+    '===== ROUND 1 종료 | 길이 0:10 | 승자: P1 =====',
+    '  사망: P2(봇) 낙사@0:10',
+  ].join('\n');
+  const rounds = parseLog(text);
+  assert.deepEqual(rounds[0].players.map((p) => [p.key, p.bot]), [['P2(봇)', false], ['P2(봇)', true]]);
+  const s = summarize(rounds);
+  assert.equal(s.players.length, 2, '사람과 봇이 따로');
+  const human = s.players.find((p) => !p.bot);
+  const bot = s.players.find((p) => p.bot);
+  assert.deepEqual([human.rounds, human.wins, human.kills, human.fall], [1, 1, 1, 0]);
+  assert.deepEqual([bot.rounds, bot.wins, bot.kills, bot.fall], [1, 0, 0, 1]);
+});
