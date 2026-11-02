@@ -215,7 +215,7 @@ func _floor() -> void:
 func mirror_update(cam: Camera3D) -> void:
 	if mirror_cam == null:
 		return
-	var vp := cam.get_viewport().get_visible_rect().size
+	var vp := cam.get_viewport().get_visible_rect().size * cam.get_viewport().get_final_transform().get_scale() # 창 픽셀 (visible_rect 는 UI 배율로 나눈 UI 좌표, W9)
 	var k := WC.mirror_scale(cam.get_viewport().scaling_3d_scale)
 	var want := Vector2i(maxi(1, int(vp.x * k)), maxi(1, int(vp.y * k)))
 	if mirror_vp.size != want:

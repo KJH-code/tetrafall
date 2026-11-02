@@ -1,7 +1,8 @@
 # 대기실 큰 3D 캐릭터 (JS client/char-stage.js): 내 캐릭터를 내 색으로 크게, 고르면 정면에서 전용 도발 한 번 (EMOTE_MS) → 천천히 돎 (CHAR_STAGE_SPIN).
 # 자기 SubViewport (own_world) 에 G2 몸 하나 + 앞 빛 하나 (G3 툰 — 앰비언트 검정, portrait.gd 주석). 방향·도발 시간은 ui_calc.stage_yaw·taunt_at.
 # 대기실 판이 안 보이면 몸을 놓음 (JS release). 헤드리스면 안 만듦 (lobby 는 정지 초상·색 상자)
-extends SubViewportContainer
+# SubViewport 는 화면 픽셀 크기 (UI 좌표 × UI 배율, core/ui_scale.gd) 로 그려 TextureRect 로 이 칸에 맞춤 — SubViewportContainer stretch 는 UI 좌표 크기로 그려 배율이 크면 흐림 (W9)
+extends Control
 
 const C := preload("res://core/config.gd")
 const U := preload("res://ui/ui_calc.gd")
@@ -11,6 +12,7 @@ const CHARS_PATH := "res://chars/chars.gd"
 const FOV := 26.0
 
 var vp: SubViewport
+var img: TextureRect # vp 를 이 칸 크기로 그림
 var turn: Node3D # 도는 받침 (게임 z 축 = 고도 y 축)
 var cam: Camera3D
 var body = null
@@ -20,7 +22,6 @@ var Chars = null
 
 
 func _ready() -> void:
-	stretch = true
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if ResourceLoader.exists(CHARS_PATH):
 		Chars = load(CHARS_PATH)
@@ -30,6 +31,14 @@ func _ready() -> void:
 	vp.msaa_3d = Viewport.MSAA_4X if not bool(View.settings.get("lowGfx", false)) else WC.MSAA_LOW # 작은 판이라 보통 화질도 4× 그대로, 낮음이면 끔 (W6)
 	vp.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
 	add_child(vp)
+	img = TextureRect.new()
+	img.texture = vp.get_texture()
+	img.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	img.stretch_mode = TextureRect.STRETCH_SCALE
+	img.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(img)
+	resized.connect(_fit)
 	var we := WorldEnvironment.new()
 	var env := Environment.new()
 	env.background_mode = Environment.BG_CLEAR_COLOR
@@ -52,6 +61,17 @@ func _ready() -> void:
 	visibility_changed.connect(func():
 		if not is_visible_in_tree():
 			release())
+
+
+# 칸 크기 × 화면 배율 (UI 좌표 → 화면 픽셀): 대기실 판 크기·UI 배율이 바뀔 때
+func _fit() -> void:
+	var want := pixel_size(size, get_viewport().get_final_transform().get_scale().x if is_inside_tree() else 1.0)
+	if want != vp.size:
+		vp.size = want
+
+
+static func pixel_size(ui: Vector2, px: float) -> Vector2i:
+	return Vector2i(maxi(1, roundi(ui.x * px)), maxi(1, roundi(ui.y * px)))
 
 
 func active() -> bool:
@@ -93,6 +113,7 @@ func _pose(age: float, now: float) -> void:
 func _process(_d: float) -> void:
 	if body == null or not is_visible_in_tree():
 		return
+	_fit() # UI 배율이 바뀌어도 (칸 크기는 그대로라 resized 가 안 옴)
 	var now := float(Time.get_ticks_msec())
 	var age := now - picked_at
 	turn.rotation.y = U.stage_yaw(age / 1000.0) # 게임 z 축 돌기 = 고도 y 축 (x→(x, z, -y) 이라 각이 같음)

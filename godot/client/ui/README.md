@@ -19,3 +19,14 @@ JS `client/main.js`·`client/index.html` 의 화면을 옮김. 계산은 `ui_cal
 
 main.gd 가 `ui/ui.tscn` 을 자동으로 붙임 (2026-10-31 총괄이 고도로 돌려 스크립트 에러 0 확인). 화면 확인: `--auto host --bots 3 --shot <png> --shot-at menu|lobby|game|tab|settings|results` (core/autopilot.gd, tab 은 `--mode kills`).
 초상은 portrait.gd (다 그려지기 전·헤드리스면 색 상자).  3D 메뉴·대기실 배경은 범위 밖 — 빛 색은 `View.ui_theme` 가 생기면 그 테마, 없으면 자수정.
+
+## UI 배율 (W9, 2026-11-02 재혁 'UI 가 너무 작다')
+
+화면 판·글자는 기준 화면 1280×720 으로 만들고 창 크기에 맞춰 키움 (`core/ui_scale.gd`, project.godot `window/stretch` = canvas_items + expand). 3D 는 창 픽셀 그대로.
+- 자동: 논리 크기 (창 픽셀 / 화면 배율 k — 윈도우 150%·200%, 브라우저 devicePixelRatio. JS 의 CSS 픽셀) 에서 기준 1280×720 이 다 들어가는 배율 min(폭/1280, 높이/720) × k.
+  16:9 는 창 높이 / 720 (1080 → 1.5배), 16:10 은 폭 기준 (재혁 노트북 2880×1800 200% → 2.25배, UI 1280×800). 논리 1280×720 보다 작은 창은 1 × k (960×540 = W4 작은 창 배치 그대로, 웹 DPR 2 도 JS 처럼),
+  960×540 도 안 들어가면 줄임, 최소 0.75 · 최대 2.5. 설정 'UI 크기' 80~200% 고정 = 그 값 × k (JS 브라우저 확대 자리, `View.settings.uiScale`)
+- 판 코드가 읽는 `get_viewport_rect()`·`get_visible_rect()`·마우스 위치·`unproject_position` 은 전부 UI 좌표 (= 창 픽셀 / 배율) → '작은 창' (`ui_calc.small`) 도 UI 좌표로
+- 화면 밖에 그리는 것 (초상·대기실 큰 캐릭터·1인칭 팔·타이틀 거울) 은 UI 좌표 × 배율 = 창 픽셀 크기로 (`UiScale.pixel_size`, `Portrait.render_px`) — 아니면 배율만큼 흐림
+- 마우스 시선은 `screen_relative` (창 픽셀) — `relative` 는 배율로 나뉘어 창 크기마다 감도가 바뀜
+- 화면 배율 k: 윈도우는 고도 screen_get_scale 이 1 이라 DPI / 96, 웹·macOS 는 screen_get_scale. PC 는 처음 창도 1280×720 × k (화면에 맞춰) 로 키움 (안 그러면 200% 화면에 논리 640×360 창). 웹은 캔버스가 CSS × DPR (allow_hidpi)

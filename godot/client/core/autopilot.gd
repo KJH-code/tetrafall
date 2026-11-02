@@ -59,6 +59,12 @@ func _ready() -> void:
 		View.settings["third"] = str(args["view"]) == "third"
 	if args.has("perf-log"):
 		Prof.on = true
+	# UI 크기 (W9): --ui-scale auto|0.8|1|1.25|1.5|2 → 설정 창에서 고른 것처럼 (user://settings.json 에 저장), 설정 창 칸 누르기는 --ui-pick. 시작할 때 저장된 값을 한 줄
+	_log("UI 크기 설정 (저장된 값) %s" % str(View.settings.get("uiScale", "auto")))
+	if args.has("ui-scale"):
+		View.set_setting("uiScale", "auto" if str(args["ui-scale"]) == "auto" else float(args["ui-scale"]))
+	_log_scale("시작")
+	View.changed.connect(func(k): if k == "uiScale": _log_scale("다시")) # 창 크기를 바꾸면 (웹 Playwright 확인)
 	# 성능 실험 (엔진 설정): --phys-ticks N (물리 틱/초) · --phys-max N (프레임당 최대 물리 틱) · --shadow-size N (해 그림자 지도) · --shadow-filter 0..5 · --msaa 0|2|4
 	if args.has("phys-ticks"):
 		Engine.physics_ticks_per_second = int(args["phys-ticks"])
@@ -77,6 +83,10 @@ func _ready() -> void:
 	Store.joined.connect(_on_joined)
 	Store.state_changed.connect(_on_state)
 	Store.join_error.connect(func(r): _log("들어가기 실패: %s" % r))
+
+
+func _log_scale(why: String) -> void:
+	_log("UI 크기 %s %.3f · UI 좌표 %s · 창 %s · 화면 %.2f" % [why, View.ui_scale, str(get_viewport().get_visible_rect().size), str(get_window().size), DisplayServer.screen_get_scale()])
 
 
 func _log(t: String) -> void:
@@ -232,6 +242,11 @@ func _process(_d: float) -> void:
 		ui.get("hud").set("scores_held", Store.phase() == "playing")
 	if ui != null and shot_at == "settings" and ui.get("settings") is Control and el >= float(args.get("shot-after", 8)) - 1.0:
 		(ui.get("settings") as Control).visible = true
+		# --ui-pick <글자> (W9): 설정 창 'UI 크기' 의 그 칸을 누름 (자동·80%·…·200%) — 찍기 0.5초 전
+		var sb = ui.get("settings").get("scale_btns")
+		if args.has("ui-pick") and sb is Dictionary and sb.has(str(args["ui-pick"])) and el >= float(args.get("shot-after", 8)) - 0.5 and not get_meta("ui_picked", false):
+			set_meta("ui_picked", true)
+			(sb[str(args["ui-pick"])] as Button).pressed.emit()
 	var shot_time := el >= float(args.get("shot-after", 8))
 	if args.has("shot-round"): # N판째 playing 이 된 뒤 --shot-after 초 (블록 마스터 2판째 = 생존자 화면)
 		shot_time = round_no == int(args["shot-round"]) and Store.phase() == "playing" and now - round_ms >= float(args.get("shot-after", 8)) * 1000.0
@@ -284,8 +299,9 @@ func _process(_d: float) -> void:
 				_log("래그돌 만든 수 %d · 안 켠 몸 %s" % [rw.made, str(why)])
 	if args.has("shot") and not shot_done and shot_time and DisplayServer.get_name() != "headless":
 		shot_done = true
-		get_viewport().get_texture().get_image().save_png(str(args.shot))
-		_log("화면 저장 %s" % args.shot)
+		var shot_img := get_viewport().get_texture().get_image()
+		shot_img.save_png(str(args.shot))
+		_log("화면 저장 %s (%dx%d) · UI 크기 %.3f · UI 좌표 %s · 창 %s" % [args.shot, shot_img.get_width(), shot_img.get_height(), View.ui_scale, str(get_viewport().get_visible_rect().size), str(get_window().size)])
 		if args.has("dump"):
 			_dump(get_tree().root, 0)
 	var done_rounds := rounds >= int(args.get("quit-after-rounds", 999999))

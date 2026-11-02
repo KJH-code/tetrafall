@@ -9,6 +9,7 @@ const Keys := preload("res://core/keys.gd")
 const WC := preload("res://world/world_config.gd")
 const Gfx := preload("res://world/gfx.gd")
 const GC := preload("res://world/gfx_calc.gd")
+const UiScale := preload("res://core/ui_scale.gd")
 
 signal open_tutorial
 
@@ -25,6 +26,10 @@ var checks := {}
 var keys_scroll: ScrollContainer
 var gfx_btns := {} # 화질 선택 (W6): "auto"·"high"·"medium"·"low" → Button
 var gfx_note: Label # 지금 실제 화질 (자동이면 무엇으로 정했는지)
+const KEYS_ROOM := 510.0 # 설정 창에서 키 목록 밖 높이 (예전 480 + UI 크기 줄 30)
+const KEYS_MIN := 60.0 # 키 목록 최소 높이 (예전 90 − UI 크기 줄 30: 960×540 에서 창 높이가 예전 그대로 540)
+var fit_h := -1.0 # 키 목록 높이를 맞춘 UI 좌표 높이 (UI 크기·창 크기가 바뀌면 다시)
+var scale_btns := {} # UI 크기 선택 (UiScale.label) → Button
 
 
 func _ready() -> void:
@@ -62,6 +67,7 @@ func _ready() -> void:
 	_gfx_row(v) # 예전 '그래픽 낮춤' 체크 자리: 화질 자동·높음·보통·낮음 (낮음 = 그래픽 낮춤)
 	_check(v, "시점", "third", "3인칭 (%s 로 바꿈)" % Keys.key_label(PlayerInput.binds.get("view", "KeyV")))
 	_check(v, "움직임 줄이기", "reducedMotion", "켜기 (전환·반짝임 줄임)")
+	_scale_row(v)
 	var kh := HBoxContainer.new()
 	kh.add_child(S.glow_label("조작 키", 16, Color.WHITE, 3))
 	kh.add_child(S.button("키 기본값", _reset_keys, "ghost", 13))
@@ -181,6 +187,47 @@ func _show_gfx() -> void:
 	gfx_note.text = ("지금 " + GC.level_text(pick, Gfx.plan)) if not Gfx.plan.is_empty() else ""
 
 
+# UI 크기 (W9, core/ui_scale.gd — JS 의 브라우저 확대 자리): 자동 (창 크기에 맞춤) · 80~200% 고정. 누르면 바로 바뀌고 저장
+func _scale_row(parent: Node) -> void:
+	var row := HBoxContainer.new()
+	var l := S.body_label("UI 크기", 15, S.TEXT)
+	l.custom_minimum_size.x = 110
+	row.add_child(l)
+	var opts := HBoxContainer.new()
+	opts.add_theme_constant_override("separation", 4)
+	for c in UiScale.CHOICES:
+		var choice = c
+		var b := S.button(UiScale.label(c), func(): _pick_scale(choice), "ghost", 13)
+		b.focus_mode = Control.FOCUS_NONE
+		scale_btns[UiScale.label(c)] = b
+		opts.add_child(b)
+	row.add_child(opts)
+	parent.add_child(row)
+
+
+func _pick_scale(choice) -> void:
+	View.set_setting("uiScale", choice)
+	_show_scale() # (UI 좌표 높이가 바뀌면 키 목록은 _process 가 다시 맞춤)
+
+
+# 고른 칸 = 주 버튼 채움 (키 칸 기다림과 같은 모양), 나머지 ghost. padding 2 8 (키 칸처럼 줄 높이를 늘리지 않게)
+func _show_scale() -> void:
+	var now := UiScale.label(View.settings.get("uiScale", "auto"))
+	for k in scale_btns:
+		var b: Button = scale_btns[k]
+		var kind := "go" if k == now else "ghost"
+		if b.get_meta("kind", "") == kind:
+			continue
+		b.set_meta("kind", kind)
+		S.style_button(b, kind, 13)
+		for stn in ["normal", "hover", "pressed", "focus"]:
+			var kb: StyleBoxFlat = b.get_theme_stylebox(stn)
+			kb.content_margin_left = 8
+			kb.content_margin_right = 8
+			kb.content_margin_top = 2
+			kb.content_margin_bottom = 2
+
+
 func _on_shown() -> void:
 	if not visible:
 		listening = null
@@ -192,10 +239,16 @@ func _on_shown() -> void:
 		checks[key].set_pressed_no_signal(bool(View.settings.get(key, false)))
 	leave_btn.visible = Store.in_room()
 	_show_gfx()
-	# 키 목록은 남는 높이만큼 (960×540 에서도 창이 화면 안)
-	keys_scroll.custom_minimum_size.y = clampf(get_viewport_rect().size.y - 480.0, 90.0, 260.0)
+	_show_scale()
+	_fit_keys()
 	_disarm()
 	_show_binds()
+
+
+# 키 목록은 남는 높이만큼 (960×540 에서도 창이 화면 안 — UI 좌표, UI 크기 줄 만큼 더 뺌)
+func _fit_keys() -> void:
+	fit_h = get_viewport_rect().size.y
+	keys_scroll.custom_minimum_size.y = clampf(fit_h - KEYS_ROOM, KEYS_MIN, 260.0)
 
 
 # '정말 나가기' 풀기 (JS disarmLeave: LEAVE_CONFIRM_MS 지나면·창을 다시 열면)
@@ -207,6 +260,8 @@ func _disarm() -> void:
 
 
 func _process(_d: float) -> void:
+	if visible and get_viewport_rect().size.y != fit_h:
+		_fit_keys()
 	if leave_armed_at > 0.0 and Time.get_ticks_msec() - leave_armed_at > C.LEAVE_CONFIRM_MS:
 		_disarm()
 	if leave_armed_at > 0.0: # JS danger-blink .32s steps(2): 밝기 1.18 ↔ .9
@@ -288,7 +343,7 @@ func _reset_keys() -> void:
 
 func _reset_settings() -> void:
 	# JS SETTINGS_DEFAULT
-	for kv in [["sens", 1.0], ["sfx", 1.0], ["music", 1.0], ["fov", C.FOV_DEFAULT], ["shadows", true], ["outline", true], ["gfx", "auto"], ["third", false], ["reducedMotion", false]]:
+	for kv in [["sens", 1.0], ["sfx", 1.0], ["music", 1.0], ["fov", C.FOV_DEFAULT], ["shadows", true], ["outline", true], ["gfx", "auto"], ["third", false], ["reducedMotion", false], ["uiScale", "auto"]]:
 		View.set_setting(kv[0], kv[1])
 	_on_shown()
 

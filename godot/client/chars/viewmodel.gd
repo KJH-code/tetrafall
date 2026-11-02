@@ -70,6 +70,7 @@ func _ready() -> void:
 	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
 	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	rect.stretch_mode = TextureRect.STRETCH_SCALE
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE # 텍스처 (창 픽셀) 가 UI 좌표보다 커도 화면 크기 그대로 (W9)
 	layer.add_child(rect)
 	_set_on(false)
 
@@ -98,9 +99,9 @@ func update(body, first_person: bool, dt: float) -> void:
 	_set_on(first_person and twin != null)
 	if not on:
 		return
-	var size := get_viewport().get_visible_rect().size
-	if Vector2i(size) != view.size:
-		view.size = Vector2i(size)
+	var size: Vector2i = load("res://core/ui_scale.gd").pixel_size(get_viewport()) # 창 픽셀 (UI 배율이 커도 선명하게, W9 — visible_rect 는 UI 좌표)
+	if size != view.size:
+		view.size = size
 	_follow(dt)
 
 
