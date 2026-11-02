@@ -6,22 +6,10 @@ import { Game } from '../server/game.js';
 import { Rooms } from '../server/rooms.js';
 import { CONFIG as C } from '../shared/config.js';
 import { parseLog } from '../tools/stats.js';
+import { TICK } from './support/tick.js';
+import { fakeWs } from './support/fake-ws.js';
+import { lcg } from './support/rng.js';
 
-const TICK = 1000 / C.TICK_RATE;
-
-function fakeWs() {
-  return {
-    OPEN: 1,
-    readyState: 1,
-    msgs: [],
-    send(text) {
-      this.msgs.push(JSON.parse(text));
-    },
-    last(type) {
-      return [...this.msgs].reverse().find((m) => m.type === type);
-    },
-  };
-}
 
 function setup() {
   const logs = {};
@@ -33,10 +21,7 @@ function setup() {
       return { log: (m) => logs[code].push(m), close() {} };
     },
     serverLog: (m) => server.push(m),
-    rng: (() => {
-      let s = 7;
-      return () => ((s = (s * 1664525 + 1013904223) >>> 0), s / 2 ** 32);
-    })(),
+    rng: lcg(7),
     now: () => clock,
   });
   const join = () => {

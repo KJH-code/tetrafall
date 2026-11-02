@@ -5,20 +5,13 @@ import { Game, skyReach, cellGap, warmUpPlacement } from '../server/game.js';
 import { Rooms } from '../server/rooms.js';
 import { CONFIG as C } from '../shared/config.js';
 import { CELL, SHAPE_NAMES, rotatedCells, footprint } from '../shared/pieces.js';
+import { TICK, run } from './support/tick.js';
+import { lcg } from './support/rng.js';
+import { fakeWs } from './support/fake-ws.js';
 
-const TICK = 1000 / C.TICK_RATE;
 
-function seeded(seed) {
-  let s = seed >>> 0;
-  return () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 4294967296;
-  };
-}
+const seeded = lcg;
 
-function run(g, ms) {
-  for (let t = 0; t < ms; t += TICK) g.tick(TICK);
-}
 
 // 2명 판 (사람 둘은 가장자리 근처에 가만히). 아이템은 안 나오게
 function setup({ sky = true, seed = 1, n = 2 } = {}) {
@@ -189,7 +182,7 @@ test('하늘 계단: 판 사이에만 바꿈, 방은 기본 켬이고 호스트�
   g.startRound();
   assert.equal(g.setSkyStairs(false), false, '판 중엔 못 바꿈');
 
-  const ws = () => ({ OPEN: 1, readyState: 1, msgs: [], send(t) { this.msgs.push(JSON.parse(t)); } });
+  const ws = fakeWs;
   const rooms = new Rooms({ openLog: () => ({ log() {}, close() {} }), rng: seeded(1) });
   const a = rooms.connect(ws());
   const b = rooms.connect(ws());

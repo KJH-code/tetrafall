@@ -5,8 +5,8 @@ import assert from 'node:assert/strict';
 import { Game } from '../server/game.js';
 import { CONFIG as C } from '../shared/config.js';
 import { CELL } from '../shared/pieces.js';
+import { TICK } from './support/tick.js';
 
-const TICK = 1000 / C.TICK_RATE;
 
 function setup() {
   const g = new Game(() => {}, { characters: true });

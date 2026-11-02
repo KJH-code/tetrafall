@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { SnapClock, pushTrack, sampleTrack } from '../client/interp.js';
 import { CONFIG as C } from '../shared/config.js';
+import { lcg } from './support/rng.js';
 
 test('두 스냅샷 사이는 선형 보간, 앞은 첫 값', () => {
   const tr = [];
@@ -35,8 +36,7 @@ test('순간이동·시각이 뒤로 가면 기록을 새로 시작 (이어 그�
 
 // 30Hz 스냅샷이 들쭉날쭉 도착 (0~12ms 늦음, 가끔 두 틱 묶음), 60fps 로 그림 → 일정한 속도로 달리는 몸의 프레임마다 화면 속도
 function simulate(seed) {
-  let s = seed;
-  const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const rnd = lcg(seed);
   const snaps = [];
   for (let k = 0; k < 120; k++) {
     if (rnd() < 0.1) continue; // 이 틱은 다음 틱과 묶여 감

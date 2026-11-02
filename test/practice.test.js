@@ -3,37 +3,21 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Rooms } from '../server/rooms.js';
 import { CONFIG as C } from '../shared/config.js';
+import { TICK } from './support/tick.js';
+import { fakeWs } from './support/fake-ws.js';
+import { lcg } from './support/rng.js';
 
-const TICK = 1000 / C.TICK_RATE;
-
-function fakeWs() {
-  return {
-    OPEN: 1,
-    readyState: 1,
-    msgs: [],
-    send(text) {
-      this.msgs.push(JSON.parse(text));
-    },
-    last(type) {
-      return [...this.msgs].reverse().find((m) => m.type === type);
-    },
-  };
-}
 
 function setup() {
   const logs = {};
   const server = [];
-  let s = 1;
   const rooms = new Rooms({
     openLog: (code) => {
       logs[code] = [];
       return { log: (m) => logs[code].push(m), close() {} };
     },
     serverLog: (m) => server.push(m),
-    rng: () => {
-      s = (s * 1664525 + 1013904223) >>> 0;
-      return s / 4294967296;
-    },
+    rng: lcg(1),
   });
   const join = () => {
     const ws = fakeWs();

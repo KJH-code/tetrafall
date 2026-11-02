@@ -4,11 +4,8 @@ import assert from 'node:assert/strict';
 import { Game } from '../server/game.js';
 import { CONFIG as C } from '../shared/config.js';
 import { CELL } from '../shared/pieces.js';
+import { TICK, run } from './support/tick.js';
 
-const TICK = 1000 / C.TICK_RATE;
-function run(g, ms) {
-  for (let t = 0; t < ms; t += TICK) g.tick(TICK);
-}
 
 // 사람 3명 (P1 죽음, P2·P3 살아 있음), 블록·아이템 없이
 function setup({ sky = false, mode = null, team = false } = {}) {

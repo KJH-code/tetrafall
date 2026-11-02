@@ -6,11 +6,9 @@ import { Rooms } from '../server/rooms.js';
 import { CONFIG as C, maxPlayers } from '../shared/config.js';
 import { CELL } from '../shared/pieces.js';
 import { fakeWs } from './support/fake-ws.js';
+import { TICK, run } from './support/tick.js';
+import { lcg } from './support/rng.js';
 
-const TICK = 1000 / C.TICK_RATE;
-const run = (g, ms) => {
-  for (let t = 0; t < ms; t += TICK) g.tick(TICK);
-};
 
 function chars(list) {
   const g = new Game(() => {}, { characters: true });
@@ -207,8 +205,7 @@ test('S5 방 코드는 crypto 난수 (Math.random 을 안 씀), 판 시드(game.
   // 판 시드: 방 코드를 몇 번 뽑든 같은 시드의 판은 똑같이 재현됨
   const play = () => {
     const g = new Game(() => {});
-    let s = 5;
-    g.rng = () => ((s = (s * 1664525 + 1013904223) >>> 0), s / 2 ** 32);
+    g.rng = lcg(5);
     g.addPlayer(1);
     g.addBot();
     g.startRound();

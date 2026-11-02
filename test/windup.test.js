@@ -4,11 +4,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Game } from '../server/game.js';
 import { CONFIG as C } from '../shared/config.js';
+import { TICK, run } from './support/tick.js';
 
-const TICK = 1000 / C.TICK_RATE;
-function run(g, ms) {
-  for (let t = 0; t < ms; t += TICK) g.tick(TICK);
-}
 
 function setupChars(chars) {
   const lines = [];

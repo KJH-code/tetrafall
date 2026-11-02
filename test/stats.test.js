@@ -9,8 +9,9 @@ import path from 'node:path';
 import { Rooms } from '../server/rooms.js';
 import { CELL } from '../shared/pieces.js';
 import { parseLog, summarize, formatReport, latestRun } from '../tools/stats.js';
+import { TICK } from './support/tick.js';
+import { fakeWs } from './support/fake-ws.js';
 
-const TICK = 1000 / C.TICK_RATE;
 
 // 봇끼리 몇 판 돌려 서버와 같은 형식의 로그를 만든다 (앞에 [시각] 도 붙여서)
 function botGames(rounds) {
@@ -152,7 +153,7 @@ test('통계: 방마다 따로 남긴 로그를 방별로 읽어 합친다', () 
       return { log: (m) => logs[code].push(`[12시 0분 0초] ${m}`), close() {} };
     },
   });
-  const ws = () => ({ OPEN: 1, readyState: 1, send() {} });
+  const ws = fakeWs;
   const a = rooms.connect(ws());
   const b = rooms.connect(ws());
   rooms.message(a, { type: 'create', nick: '재혁' });

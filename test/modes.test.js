@@ -4,12 +4,9 @@ import assert from 'node:assert/strict';
 import { Game } from '../server/game.js';
 import { CONFIG as C } from '../shared/config.js';
 import { footprint } from '../shared/pieces.js';
+import { TICK, run } from './support/tick.js';
 
-const TICK = 1000 / C.TICK_RATE;
 
-function run(g, ms) {
-  for (let t = 0; t < ms; t += TICK) g.tick(TICK);
-}
 
 // n명 판. 아이템은 안 나오게 (테스트가 직접 제어)
 function setupMode(mode, n = 3, { start = true } = {}) {

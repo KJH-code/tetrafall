@@ -3,33 +3,20 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Rooms } from '../server/rooms.js';
 import { CONFIG as C } from '../shared/config.js';
+import { TICK } from './support/tick.js';
+import { fakeWs } from './support/fake-ws.js';
+import { lcg } from './support/rng.js';
 
-const TICK = 1000 / C.TICK_RATE;
 const SEED0 = Number(process.env.TEST_SEED || 1);
-
-function fakeWs() {
-  return {
-    OPEN: 1,
-    readyState: 1,
-    msgs: [],
-    send(text) {
-      this.msgs.push(JSON.parse(text));
-    },
-    last(type) {
-      return [...this.msgs].reverse().find((m) => m.type === type);
-    },
-  };
-}
 
 function setup(seed = SEED0) {
   const logs = {};
-  let s = seed >>> 0;
   const rooms = new Rooms({
     openLog: (code) => {
       logs[code] = [];
       return { log: (m) => logs[code].push(m), close() {} };
     },
-    rng: () => ((s = (s * 1664525 + 1013904223) >>> 0), s / 2 ** 32),
+    rng: lcg(seed),
   });
   const connect = () => {
     const ws = fakeWs();
@@ -47,10 +34,7 @@ function twoInRoom(seed) {
   const b = env.connect();
   env.rooms.message(b.conn, { type: 'join', code });
   const room = env.rooms.rooms.get(code);
-  room.game.rng = (() => {
-    let s = (seed * 7919) >>> 0;
-    return () => ((s = (s * 1664525 + 1013904223) >>> 0), s / 2 ** 32);
-  })();
+  room.game.rng = lcg(seed * 7919);
   return { ...env, a, b, code, room, game: room.game };
 }
 

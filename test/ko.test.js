@@ -4,8 +4,10 @@ import assert from 'node:assert/strict';
 import { Game } from '../server/game.js';
 import { Rooms } from '../server/rooms.js';
 import { CONFIG as C } from '../shared/config.js';
+import { TICK } from './support/tick.js';
+import { fakeWs } from './support/fake-ws.js';
+import { lcg } from './support/rng.js';
 
-const TICK = 1000 / C.TICK_RATE;
 
 function setupN(n) {
   const g = new Game(() => {});
@@ -66,20 +68,6 @@ test('KO: 판을 끝낸 죽음은 finalKill (누가·어떻게·자리·이긴 �
 });
 
 // 가짜 소켓
-function fakeWs() {
-  return {
-    OPEN: 1,
-    readyState: 1,
-    msgs: [],
-    send(text) {
-      this.msgs.push(JSON.parse(text));
-    },
-    last(type) {
-      return [...this.msgs].reverse().find((m) => m.type === type);
-    },
-  };
-}
-
 test('접속: ping → pong 은 보낸 시각을 그대로 + 서버 틱 부하 (방 안·밖 둘 다), 잘못된 ping 은 무시', () => {
   const rooms = new Rooms({ rng: () => 0.5 });
   const ws = fakeWs();
@@ -181,8 +169,7 @@ test('접속 표시: 느린 화면 (프레임 90ms, 헤드리스) 에서 pong·�
   const { NetMeter } = await import('../shared/net.js');
   const m = new NetMeter();
   const frame = 90;
-  let s = 7;
-  const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0), s / 2 ** 32);
+  const rnd = lcg(7);
   let worst = 'ok';
   for (let now = 0, k = 0; now < 30000; k++) {
     now += frame * (0.8 + 0.4 * rnd());

@@ -6,27 +6,13 @@ import { Rooms } from '../server/rooms.js';
 import { CONFIG as C } from '../shared/config.js';
 import { MAP_IDS, mapColumns, baseColumns } from '../shared/maps.js';
 import { overviewScale } from '../shared/camera.js';
+import { TICK } from './support/tick.js';
+import { fakeWs } from './support/fake-ws.js';
+import { lcg } from './support/rng.js';
 
-const TICK = 1000 / C.TICK_RATE;
 const SEED0 = Number(process.env.TEST_SEED || 1);
-function seeded(k) {
-  let s = (SEED0 * 7919 + k * 104729) >>> 0;
-  return () => ((s = (s * 1664525 + 1013904223) >>> 0), s / 2 ** 32);
-}
+const seeded = (k) => lcg((SEED0 * 7919 + k * 104729) >>> 0);
 
-function fakeWs() {
-  return {
-    OPEN: 1,
-    readyState: 1,
-    msgs: [],
-    send(text) {
-      this.msgs.push(JSON.parse(text));
-    },
-    last(type) {
-      return [...this.msgs].reverse().find((m) => m.type === type);
-    },
-  };
-}
 function rooms() {
   const r = new Rooms({ rng: seeded(1) });
   const join = () => {

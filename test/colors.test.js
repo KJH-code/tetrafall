@@ -5,6 +5,7 @@ import { Game } from '../server/game.js';
 import { Rooms } from '../server/rooms.js';
 import { CONFIG as C } from '../shared/config.js';
 import { CELL } from '../shared/pieces.js';
+import { fakeWs } from './support/fake-ws.js';
 
 function game() {
   const g = new Game(() => {}, { countdownMs: 0 });
@@ -79,7 +80,7 @@ test('팀전: 색 고르기는 그대로 받아 둠 (몸 색은 화면이 팀 �
 
 test('방 메시지 setColor: 받으면 바꾸고, 남의 색이면 그대로', () => {
   const rooms = new Rooms();
-  const ws = () => ({ OPEN: 1, readyState: 1, msgs: [], send(t) { this.msgs.push(JSON.parse(t)); } });
+  const ws = fakeWs;
   const a = rooms.connect(ws());
   rooms.message(a, { type: 'create', name: 'r' });
   const code = a.room.code;
