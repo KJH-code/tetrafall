@@ -95,7 +95,13 @@ func _process(delta: float) -> void:
 
 
 func _prof_process(delta: float) -> void:
-	view_time = clock.advance(Net.now_ms(), delta * 1000.0)
+	# 화면 시계는 프레임 dt 로 흐름: 0.1초까지만, KO 슬로모션·히트스톱이면 느리게 (main.js dt = min(0.1, …) × ko.timeScale → render 의 snapClock.advance).
+	# 예전엔 실제 시간 그대로라 마지막 킬 슬로모션에도 사람 위치는 제 빠르기로 움직였음 (몸 동작만 느림)
+	view_time = clock.advance(Net.now_ms(), clock_dt_ms(delta, View.time_scale))
+
+
+static func clock_dt_ms(delta: float, time_scale: float) -> float:
+	return minf(0.1, delta) * time_scale * 1000.0
 
 
 # ---------- 받기 ----------

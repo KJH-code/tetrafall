@@ -4,6 +4,7 @@ extends RefCounted
 
 const C := preload("res://core/config.gd")
 const PI_ := preload("res://core/player_input.gd")
+const StoreS := preload("res://core/store.gd")
 
 var errors: Array = []
 
@@ -115,3 +116,10 @@ func test_aim_resets_like_js() -> void:
 	Store._players_by_id = keep[1]
 	Store.my_id = keep[2]
 	PlayerInput.set_yaw_pitch(keep[3], keep[4])
+
+
+# 보간 화면 시계 (main.js dt = min(0.1, 프레임) × ko.timeScale): 슬로모션이면 사람 위치도 느리게, 긴 멈춤은 0.1초까지만
+func test_interp_clock_dt_like_js() -> void:
+	check(absf(StoreS.clock_dt_ms(0.016, 1.0) - 16.0) < 1e-9, "보통 프레임 16ms")
+	check(absf(StoreS.clock_dt_ms(0.016, C.KO_FINAL_SCALE) - 4.0) < 1e-9, "마지막 킬 슬로모션 ×%s" % C.KO_FINAL_SCALE)
+	check(absf(StoreS.clock_dt_ms(0.5, 1.0) - 100.0) < 1e-9, "긴 멈춤은 100ms 까지")
