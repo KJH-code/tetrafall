@@ -7,14 +7,19 @@ const C := preload("res://core/config.gd")
 const Co := preload("res://core/coords.gd")
 const HF := preload("res://world/hazard_field.gd")
 const WC := preload("res://world/world_config.gd")
+const VIG := preload("res://world/hazard_vignette.gdshader")
 
 var surface := MeshInstance3D.new()
 var foam := MultiMeshInstance3D.new()
 var surf_mat := StandardMaterial3D.new()
 var foam_mat := StandardMaterial3D.new()
 var _key := "" # 거품 자리를 다시 계산할 때 (격자 판·표면 높이 단계)
-var step := -1 # 차오름 단계 (riseStep) — 바뀌면 rose 신호 자리
-var vignette := 0.0 # 화면 가장자리 경고 세기 (G4 HUD 가 읽어 감, vignetteStrength)
+var step := -1 # 차오름 단계 (riseStep) — 바뀌면 rose 신호 자리. 음수도 진짜 단계 (LAVA_START_Z -1 → -2, -1, 0 …)
+var has_step := false # step 이 있음 (hazard.js this.step !== null — 예전 step >= 0 확인은 0 아래 단계의 번쩍·거품 둘을 놓침)
+var vignette := 0.0 # 화면 가장자리 경고 목표 세기 (vignetteStrength) — vig_k 가 부드럽게 따라가 vig 에 그림
+var vig_k := 0.0 # 그리는 세기 (hazard.js vigK: += (목표 - vigK) × (1 - e^(-6 dt)))
+var vig_layer := CanvasLayer.new() # 위험 가장자리 경고 (hazard.js overlay — 3D 다음, 판 빛 비네트·HUD 아래)
+var vig := ColorRect.new()
 # G3 재질 (set_g3) — 없으면 null
 var G3 = null
 var near_mi: MeshInstance3D = null
@@ -36,6 +41,17 @@ var _alive := {}
 var _off_sent := false
 var bodies = null # 잠기는 몸 (nodes[id].root·shown[id])
 var sinks := {} # id -> {t0, x, y, z, zs}
+
+
+func _init() -> void: # 가장자리 경고 (트리 밖에서도 — 테스트)
+	vig_layer.layer = -2 # 3D 바로 위, 판 빛 비네트 (game_light -1) 아래 — JS 는 캔버스 안 (CSS 비네트 아래)
+	vig.set_anchors_preset(Control.PRESET_FULL_RECT)
+	vig.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vig.material = ShaderMaterial.new()
+	vig.material.shader = VIG
+	vig.visible = false
+	vig_layer.add_child(vig)
+	add_child(vig_layer)
 
 
 func _ready() -> void:
@@ -60,6 +76,17 @@ func _ready() -> void:
 	foam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(foam)
 	visible = false
+
+
+# 가장자리 경고 그리기: want 로 부드럽게 (reset 이면 바로 0 — hazard.js 꺼짐), 0.01 아래면 안 그림
+func _draw_vig(want: float, dt: float, reset := false) -> void:
+	vig_k = 0.0 if reset else vig_k + (want - vig_k) * (1.0 - exp(-6.0 * dt))
+	vig.visible = vig_k >= 0.01
+	if vig.visible:
+		vig.material.set_shader_parameter("k", vig_k)
+		vig.material.set_shader_parameter("time", t)
+		var c := Co.color(look.get("vignette", 0xff4010))
+		vig.material.set_shader_parameter("color", Vector3(c.r, c.g, c.b))
 
 
 # 위험 빛 (hazard.js PointLight(색, 세기, LAVA_LIGHT_RANGE, 1.4)): 세기 = three 값, at = 고도 자리. 툰 셰이더들이 전역 값으로 직접 셈 (hz_light.gdshaderinc)
@@ -157,8 +184,10 @@ func _update_g3(st: Dictionary, grid: PackedByteArray, grid_version: int, me: Di
 	var zs: float = float(st.lava.z) if on else -99.0
 	if not on:
 		set_light(0.0, Vector3.ZERO)
+		_draw_vig(0.0, 0.0, true)
 		_was = false
 		step = -1
+		has_step = false
 		_track_deaths(st, zs, false)
 		_step_sinks()
 		if not _off_sent:
@@ -183,10 +212,11 @@ func _update_g3(st: Dictionary, grid: PackedByteArray, grid_version: int, me: Di
 	var s := HF.rise_step(zs)
 	if not _was:
 		_rise(true, zs, me)
-	elif step >= 0 and s > step:
+	elif has_step and s > step:
 		_rise(false, zs, me)
 	_was = true
 	step = s
+	has_step = true
 	near_mi.position = Co.gxyz(cx, cy, zs)
 	near_mi.scale = Vector3(w + 2 * G3.HZ_MARGIN, 1, d + 2 * G3.HZ_MARGIN)
 	far_mi.position = Co.gxyz(cx, cy, zs)
@@ -224,6 +254,7 @@ func _update_g3(st: Dictionary, grid: PackedByteArray, grid_version: int, me: Di
 				effects.burst(Vector3(c.x + c.ny * a + c.nx * 0.12, c.y + c.nx * a + c.ny * 0.12, zs + 0.04), null, int(look.contact), 1, float(look.particleSpeed) * 0.5, 0.07, 0.9)
 	if not me.is_empty() and me.alive and not me.get("master", false):
 		vignette = HF.vignette_strength(float(me.z) - zs, pulse)
+	_draw_vig(vignette, dt)
 	_track_deaths(st, zs, true)
 	_step_sinks()
 

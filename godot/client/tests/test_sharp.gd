@@ -100,3 +100,22 @@ func test_hazard_light_like_three_point_light() -> void:
 	check(is_equal_approx(lc.w, C.LAVA_LIGHT_RANGE) and is_equal_approx(lc.x, 1.0) and absf(lc.y - Color8(0, 0x6a, 0).srgb_to_linear().g) < 1e-4, "빛 색 선형·거리")
 	hv.set_light(0.0, Vector3.ZERO)
 	hv.free()
+
+
+func test_hazard_vignette_and_steps() -> void:
+	# W3: 위험 화면 가장자리 경고 (hazard.js overlay·vigK) — 예전엔 값만 세고 그리는 곳이 없었음
+	var HV := preload("res://world/hazard_view.gd")
+	var hv = HV.new()
+	hv.look = {"vignette": 0xff4010}
+	hv._draw_vig(0.5, 1.0 / 60.0)
+	check(is_equal_approx(hv.vig_k, 0.5 * (1.0 - exp(-6.0 / 60.0))), "vigK 부드럽게 따라감 (1 - e^(-6dt))")
+	check(hv.vig.visible, "세기 0.01 넘으면 그림")
+	hv._draw_vig(0.0, 0.0, true)
+	check(hv.vig_k == 0.0 and not hv.vig.visible, "꺼지면 바로 0 (hazard.js vigK = 0)")
+	var sh := _src("res://world/hazard_vignette.gdshader")
+	check(sh.contains("vec2(1.25, 1.0)") and sh.contains("smoothstep(0.42, 0.8, length(d))") and sh.contains("* 0.35") and sh.contains("4.0 + k * 6.0"), "경고 모양 = hazard.js overlay")
+	# 차오름 단계: 0 아래 (-2 → -1 → 0) 도 단계 (예전 step >= 0 확인은 놓침)
+	check(not _src("res://world/hazard_view.gd").contains("elif step >= 0 and") and _src("res://world/hazard_view.gd").contains("elif has_step and s > step:"), "단계 '없음' 은 has_step 으로")
+	hv.free()
+	# 쌓인 칸 (건축·던진 칸) 재질: 물들임 받고 외곽선 없음 (render.js blockMeshes)
+	check(_src("res://world/world.gd").contains("{\"vertex_color\": true, \"hz_tint\": true, \"outline\": false}"), "격자 칸 재질 hz_tint·외곽선 없음")
