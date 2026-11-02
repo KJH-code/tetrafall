@@ -242,6 +242,11 @@ func _feel(e: Dictionary, t: String) -> bool:
 	return false
 
 
+# 사냥꾼 표식 +1 불꽃 색 (main.js mark: 꽉 차면 HUNT_MARK_UI.full 금빛, 아니면 빨강)
+static func mark_color(n) -> int:
+	return int(C.HUNT_MARK_UI.full) if float(n) >= C.HUNTER_MARK_MAX else 0xff3a2a
+
+
 # main.js handleEvent: 캐릭터 스킬·아이템 등 이벤트별 파편·고리·흔들림
 func _skill(e: Dictionary, t: String) -> bool:
 	var fx = effects
@@ -252,7 +257,7 @@ func _skill(e: Dictionary, t: String) -> bool:
 			if tp.is_empty():
 				return false
 			if t == "mark":
-				fx.burst(_at(tp, C.PLAYER_HEIGHT + 0.3), null, 0xff3a2a, 10 + int(e.get("n", 0)) * 4, 2.5, 0.08, 0.4)
+				fx.burst(_at(tp, C.PLAYER_HEIGHT + 0.3), null, mark_color(e.get("n", 0)), 10 + int(e.get("n", 0)) * 4, 2.5, 0.08, 0.4)
 			else:
 				fx.burst(_at(tp, C.PLAYER_HEIGHT + 0.3), null, 0x886666, 5, 1.2, 0.06, 0.3)
 		"leapWarn":

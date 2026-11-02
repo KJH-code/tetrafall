@@ -67,6 +67,7 @@ const VIEWMODEL := "res://chars/viewmodel.gd"
 
 func _ready() -> void:
 	headless = DisplayServer.get_name() == "headless"
+	set_msaa(bool(View.settings.get("lowGfx", false))) # 모서리 계단 없앰 (JS antialias). 확인용 --msaa 는 자동 조종이 뒤에 덮어씀
 	if ResourceLoader.exists(G3_PATH):
 		G3 = load(G3_PATH)
 	var we := WorldEnvironment.new()
@@ -128,7 +129,7 @@ func _ready() -> void:
 		light_fx.queue_free()
 		light_fx = G3.game_light(self)
 	if G3 != null:
-		grid_view.set_material(G3.toon_material(Color.WHITE, {"vertex_color": true}))
+		grid_view.set_material(grid_material(G3))
 		grid_view.make_mat = func(c: Color): return G3.toon_material(c)
 		bodies.make_mat = grid_view.make_mat
 		marks.make_mat = grid_view.make_mat
@@ -190,10 +191,26 @@ func _ready() -> void:
 			if g3_has("set_low"):
 				G3.set_low(self, View.settings.lowGfx) # B3: 이미 만든 지형·칸·위험 재질·튀어나온 조각·판 빛·그림자를 곧바로
 			set_shadows(not View.settings.lowGfx)
+			set_msaa(View.settings.lowGfx)
 			apply_theme(str(theme_id))) # 지형 셰이더·튀어나온 조각도 낮춤으로
 	if g3_has("set_low"):
 		G3.set_low(self, bool(View.settings.get("lowGfx", false)))
 	set_shadows(not View.settings.get("lowGfx", false))
+
+
+# 판 화면 다중 샘플: 보통 WC.MSAA_3D_PC·WC.MSAA_3D_WEB (JS antialias), 그래픽 낮춤이면 WC.MSAA_LOW (JS 는 낮춤에서 픽셀 비율 1 로 비용을 줄임 — 고도는 다중 샘플을 끔)
+func set_msaa(low: bool) -> void:
+	if get_viewport() != null:
+		get_viewport().msaa_3d = msaa_for(low)
+
+
+# 쌓인 칸 (건축·던진 칸 — 격자 칸) 재질: render.js blockMeshes = 위험 물들임 받음 (hazard.js tint), 외곽선 없음 (noOutline)
+static func grid_material(g3) -> Material:
+	return g3.toon_material(Color.WHITE, {"vertex_color": true, "hz_tint": true, "outline": false})
+
+
+static func msaa_for(low: bool, web: bool = OS.has_feature("web")) -> Viewport.MSAA:
+	return WC.msaa_3d(low, web)
 
 
 # G3 에 이 함수가 있나 (B3 가 차례로 올리는 재질: 합치는 순서가 달라도 됨)
@@ -371,6 +388,8 @@ func _process(dt: float) -> void:
 			G3.prewarm(self, View.menu_theme)
 	elif live:
 		_menu_since = -1.0
+	if not live:
+		hazard_view.clear() # 판 중에 나가면 위험 경고·전역 위험 빛·물들임이 메뉴에 남던 것 (update 가 더 안 불림)
 	if headless or not live:
 		return
 	dt *= View.time_scale # KO 슬로모션 (G5 가 정함)

@@ -59,7 +59,7 @@ func _init() -> void:
 	var st: Array = L.stripeRepeat
 	_pool("band", mk.call({"albedo_tex": Tex.stripes(), "use_tex": true, "uv_scale": Vector2(3.0 * st[0], 2.0 * st[1]), "use_vertex_color": true}))
 	_pool("plate", mk.call({"unlit": true, "use_vertex_color": true}), false)
-	_pool("strap", mk.call({"albedo": Co.color(0x3a3a44), "_no_outline": true}), false)
+	_pool("strap", mk.call({"albedo": Co.color(0x3a3a44)}), false) # 외곽선 있음 (bblocks.js strap = toon, noOutline 아님)
 	for k in BL.KINDS:
 		part_list[k] = BL.parts(k)
 	# 판자 조각 (client/shards.js): MultiMesh 하나, 칸마다 색
@@ -143,7 +143,7 @@ static func _key(x, y, z) -> String:
 func _tint(owner, st: Dictionary) -> Color:
 	var p := Store.player(owner) if owner != null else {}
 	var c := Co.color(Bodies.player_color(p, st)) if not p.is_empty() else Co.color(0xc08040)
-	return c.lerp(Color.WHITE, C.BB_TINT)
+	return BL.lerp_lin(c, Color.WHITE, C.BB_TINT)
 
 
 func update(st: Dictionary) -> void:
@@ -239,7 +239,7 @@ func draw(items: Array, straps: Array) -> void:
 				"corner":
 					_add("corner", M, Color.WHITE, 0.0, flash)
 				"band":
-					_add("band", M, (b.color as Color).lerp(Color.WHITE, flash) if flash > 0 else b.color)
+					_add("band", M, BL.lerp_lin(b.color, Color.WHITE, flash) if flash > 0 else b.color)
 				"plate":
 					_add("plate", M, BL.plate_color(b.get("glow", 0.0)))
 	for s in straps:
@@ -283,6 +283,11 @@ func on_event(e: Dictionary) -> void:
 			for i in cells.size():
 				var c: Array = cells[i]
 				pop({"x": c[0], "y": c[1], "z": c[2], "dir": e.get("dir")}, i == cells.size() / 2)
+
+
+func _marks():
+	var w := get_parent()
+	return w.get("marks") if w != null else null
 
 
 func _fx():
@@ -330,7 +335,7 @@ func blast_chain(e: Dictionary) -> void:
 	var now := now_ms()
 	var o := Store.player(e.get("who")) if e.get("who") != null else {}
 	var hex: int = Bodies.player_color(o, Store.state) if not o.is_empty() else 0xc08040
-	var tint := Co.color(hex).lerp(Color.WHITE, C.BB_TINT)
+	var tint := BL.lerp_lin(Co.color(hex), Color.WHITE, C.BB_TINT)
 	var cells: Array = e.get("cells", [])
 	for i in cells.size():
 		var c: Array = cells[i]
@@ -353,6 +358,13 @@ func pop(gh: Dictionary, big := false) -> void:
 		fx.burst(pos, null, 0x8a8478, roundi((16 if big else 7) * (C.BB_LOW_FX if _low() else 1.0)), 4.0, 0.12, 0.7)
 		fx.burst(pos, dir, 0xffc040, 3 if _low() else 8, 8.0, 0.1, 0.3)
 		fx.ring(pos, 0xffd080, 5.0 if big else 2.6, 0.3)
+	# 터진 칸이 번쩍 + 붙어 있던 블록이 들썩 (render.js bbPop blockPulse 두 번)
+	var mk = _marks()
+	if mk != null:
+		var c := [int(gh.x), int(gh.y), int(gh.z)]
+		mk.block_pulse([c], 0xffe0a0, C.BLOCK_PULSE_MS * 0.8, 0.0, 0.9)
+		mk.block_pulse(mk.neighbors([c]), 0xffd080, C.BLOCK_PULSE_MS, C.BLOCK_JOLT * (1.5 if big else 1.0), 0.45)
+	if fx != null:
 		var me := Store.me()
 		if not me.is_empty():
 			var d := pos.distance_to(Vector3(me.x, me.y, me.z))

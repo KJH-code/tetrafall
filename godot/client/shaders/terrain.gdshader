@@ -122,6 +122,7 @@ void fragment() {
 	NORMAL = normalize((VIEW_MATRIX * vec4(wn, 0.0)).xyz);
 	v_base = base;
 	v_amb = base * toon_hemi(wn) / PI + tf_glow * (glow_amt * tf_vein + sheen) + base * tf_self;
+	v_amb += base * g3_hz_light((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz, wn); // 위험 빛
 	g3_hz_apply((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).y, v_base, v_amb); // 잠긴 블록 물들임
 	ALBEDO = vec3(1.0);
 	if (g3_fog_far > 0.0) FOG = vec4(g3_fog_color, smoothstep(g3_fog_near, g3_fog_far, -VERTEX.z));

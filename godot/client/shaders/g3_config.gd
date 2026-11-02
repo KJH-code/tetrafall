@@ -20,3 +20,4 @@ const SKY_DISC_SIZE := 0.0005
 const SHADOW_REACH_PAD := 4.0
 const SHADOW_MAX_DISTANCE := 60.0
 const STENCIL_MY_BODY := 7 # 스텐실 값: 3인칭 내 몸 (사냥꾼의 눈 x-ray 가 이 값 위엔 안 그림 — JS 는 몸을 복사본 뒤에 그려 renderOrder 로 가름)
+const GRADE_LUT := 32 # 판 빛 색 보정 LUT 한 변 (game_light.gd grade_lut: CSS saturate·contrast·brightness 를 구움, 32³ RGB8 = 96KB)

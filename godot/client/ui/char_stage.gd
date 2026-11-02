@@ -67,7 +67,7 @@ func show_char(char_id: String, color: Color) -> void:
 	var first := key == ""
 	if body != null:
 		body.queue_free()
-	body = Chars.make_body(char_id, color)
+	body = Portrait.still_body(Chars, char_id, color) # 판 위험 빛 안 받음
 	turn.add_child(body)
 	turn.rotation = Vector3.ZERO
 	_pose(0.0, 0.0)

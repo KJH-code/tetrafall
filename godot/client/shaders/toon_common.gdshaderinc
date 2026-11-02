@@ -35,9 +35,12 @@ uniform vec3 local_sun = vec3(1.0);
 uniform vec4 albedo : source_color = vec4(1.0);
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap, repeat_enable;
 uniform bool use_tex = false;
+uniform vec2 uv_scale = vec2(1.0); // three texture.repeat (figure.js 체크 무늬 FIGURE_PLAID_REPEAT)
+uniform bool tex_nearest_mag = false; // three magFilter = NearestFilter (가까이서 크게 볼 때 칸이 또렷하게, 작게 볼 땐 밉맵 그대로)
 uniform vec3 emissive : source_color = vec3(0.0);
 uniform float emissive_energy = 1.0;
 uniform vec3 toon_steps = vec3(0.43137, 0.68627, 1.0); // g3_config.TOON_STEPS
+#include "res://shaders/hz_light.gdshaderinc"
 uniform bool use_vertex_color = false;
 uniform bool vertex_color_linear = false; // COLOR 가 이미 선형 (world/scenery.gd 꼭짓점 색)
 uniform bool no_fog = false;
@@ -88,7 +91,15 @@ void vertex() {
 
 void fragment() {
 	vec4 c = albedo;
-	if (use_tex) c *= texture(albedo_tex, UV);
+	if (use_tex) {
+		vec2 uv = UV * uv_scale;
+		if (tex_nearest_mag) {
+			vec2 ts = vec2(textureSize(albedo_tex, 0));
+			vec2 fw = fwidth(uv * ts);
+			if (max(fw.x, fw.y) < 1.0) uv = (floor(uv * ts) + 0.5) / ts; // 확대 중: 글자 칸 가운데를 집음 = 가장 가까운 칸 (선형이라도 한 칸 색)
+		}
+		c *= texture(albedo_tex, uv);
+	}
 	bool skin = use_vertex_color && UV2.x > 0.5;
 	if (use_vertex_color && !vertex_color_linear) c *= COLOR;
 	if (skin) c.rgb = mix(c.rgb, skin_tint.rgb, skin_tint.a);
@@ -101,6 +112,7 @@ void fragment() {
 	}
 	v_base = base;
 	v_amb = base * hemi / PI + g3_lin(skin ? skin_emissive : emissive) * emissive_energy + base * color_glow;
+	v_amb += base * g3_hz_light((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz, world_n);
 	if (hz_tint) g3_hz_apply((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).y, v_base, v_amb);
 	ALBEDO = vec3(1.0);
 	if (g3_fog_far > 0.0 && !no_fog) FOG = vec4(g3_fog_color, smoothstep(g3_fog_near, g3_fog_far, -VERTEX.z)); // 고도가 선형으로 섞음 (더하기 패스는 1 - a 를 곱함)

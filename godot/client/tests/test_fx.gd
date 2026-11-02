@@ -7,6 +7,7 @@ const FM := preload("res://fx/fx_math.gd")
 const Effects := preload("res://fx/effects.gd")
 const KO := preload("res://fx/ko.gd")
 const FX := preload("res://fx/fx.gd")
+const G3 := preload("res://shaders/g3.gd")
 
 var errors: Array = []
 
@@ -160,3 +161,103 @@ func test_near_camera_fades() -> void:
 	check(near(FM.plume_inside_fade(Vector3(4, 0, 0), ax, 1.0, 1.0), 1.0), "줄기 뒤 = 그대로")
 	check(near(FM.plume_inside_fade(Vector3(-4, 5, 0), ax, 1.0, 1.0), 1.0), "줄기 밖 = 그대로")
 	check(near(FM.plume_inside_fade(Vector3(-20, 0, 0), ax, 1.0, 1.0), 1.0), "줄기 끝 너머 = 그대로")
+
+
+# 효과 기록 (body_fx·marks 가 부르는 effects.ring·burst 인자)
+class FxRec:
+	var rings := []
+	var bursts := []
+
+	func ring(p: Vector3, color := 0xffffff, grow := 2.2, life := 0.28, horizontal := false) -> void:
+		rings.append([p, color, grow, life, horizontal])
+
+	func burst(p, dir, color, n, speed, size, life) -> void:
+		bursts.append([p, dir, color, n, speed, size, life])
+
+
+# marks.gd 의 납작 몸 만들기만 기록 (몸 복제는 트리 안이어야 함)
+class MarksRec extends "res://world/marks.gd":
+	var flats_for := []
+
+	func crush_flat(who) -> void:
+		flats_for.append(who)
+
+
+func test_w3_js_diffs() -> void:
+	# W3 2026-11-02 JS 대조: 몸 찌그러짐·밀치기 팔 값은 group fx 노드의 effects 에서 (Fx 바로 아래만 찾아 늘 0 이던 것)
+	var Body := preload("res://chars/body.gd")
+	var F = load("res://fx/fx.gd").new()
+	var e = Body.fx_effects(F)
+	check(e != null and e == F.effects, "몸이 찾는 효과 노드 = fx.gd 의 effects")
+	check(Body.fx_effects(null) == null, "fx 없으면 null")
+	F.free()
+	# 납작 몸은 marks.gd 하나만 (body.gd 에서도 만들면 둘이 겹침)
+	var holder := Node3D.new()
+	var b = load("res://chars/chars.gd").make_body("tank", Color(0.5, 0.5, 0.9))
+	b.pid = 3
+	holder.add_child(b)
+	var before := holder.find_children("*", "", true, false).size()
+	b.on_event({"type": "death", "cause": "crush", "who": 3})
+	check(holder.find_children("*", "", true, false).size() == before, "몸 (body.gd) 은 압사 납작 몸을 안 만듦")
+	holder.free()
+	var mk := MarksRec.new()
+	mk.on_event({"type": "death", "cause": "crush", "who": 3})
+	mk.on_event({"type": "death", "cause": "fall", "who": 4})
+	check(mk.flats_for == [3], "marks.gd 가 death crush 로만 만듦 %s" % [mk.flats_for])
+	mk.free()
+	# 사냥꾼 표식 꽉 참 = 금빛 (main.js mark)
+	var FX := load("res://fx/fx.gd")
+	check(FX.mark_color(C.HUNTER_MARK_MAX) == int(C.HUNT_MARK_UI.full) and FX.mark_color(1) == 0xff3a2a, "표식 불꽃 색 (꽉 차면 HUNT_MARK_UI.full)")
+
+
+func test_w3_skill_fx_like_js() -> void:
+	# W3 JS 대조: 지상 F 준비 발밑 흰 고리 (render.js skillWindup) · 바드 diveEnd 파편·고리 (render.js diveEnd) · 대형 포탄 빛 (bigShellMat emissive)
+	var Effects := preload("res://fx/effects.gd")
+	var BF := preload("res://world/body_fx.gd")
+	var bf = BF.new()
+	var fx = Effects.new()
+	bf.effects = fx
+	bf.on_event({"type": "diveEnd", "what": "hit", "x": 1.0, "y": 2.0, "z": 1.0})
+	check(fx.pi == 32 and fx.ri == 1, "diveEnd 맞힘: 파편 18+14, 고리 1 (얻음 %d·%d)" % [fx.pi, fx.ri])
+	bf.on_event({"type": "diveEnd", "what": "land", "x": 1.0, "y": 2.0, "z": 0.0, "r": 2.0})
+	check(fx.pi == 54 and fx.ri == 3, "diveEnd 땅: 흙 22, 고리 2")
+	fx.free()
+	# 지상 F 준비: 그 사람 발밑 (화면 위치) 흰 고리, 커짐 1.8, 준비 시간 동안, 눕힘
+	var rec := FxRec.new()
+	bf.effects = rec
+	bf.bodies = {"shown": {5: Vector3(1, 2, 3)}}
+	bf.on_event({"type": "skillWindup", "who": 5, "ms": 400})
+	check(rec.rings == [[Vector3(1, 2, 3.05), 0xffffff, 1.8, 0.4, true]], "준비 고리 (흰, 1.8, ms) %s" % [rec.rings])
+	rec.rings.clear()
+	bf.on_event({"type": "skillWindup", "who": 5})
+	check(rec.rings.size() == 1 and is_equal_approx(rec.rings[0][3], C.SKILL_WINDUP_MS / 1000.0), "ms 없으면 SKILL_WINDUP_MS")
+	# 둔화 고리: 남은 둔화가 있으면 보임, 내 몸 1인칭이면 숨김 (JS 는 몸 그룹 자식)
+	var d := {}
+	var slow := {"alive": true, "slowLeft": 500}
+	bf.third = func() -> bool: return false
+	bf._status(d, slow, Vector3.ZERO, true, 0.0)
+	check(not d.slow.node.visible, "둔화 고리: 내 1인칭이면 숨김")
+	bf._status(d, slow, Vector3.ZERO, false, 0.0)
+	check(d.slow.node.visible, "둔화 고리: 남은 보임")
+	bf.third = func() -> bool: return true
+	bf._status(d, slow, Vector3.ZERO, true, 0.0)
+	check(d.slow.node.visible, "둔화 고리: 내 3인칭이면 보임")
+	bf._status(d, {"alive": true, "slowLeft": 0}, Vector3.ZERO, false, 0.0)
+	check(not d.slow.node.visible, "둔화 끝나면 숨김")
+	bf.free()
+	# 준비 중 끊기면 하얀 번쩍 바로 끔 (main.js windupUntil.delete), 평타 끊김은 그대로
+	var b = load("res://chars/chars.gd").make_body("ninja", Color(0.5, 0.5, 0.9))
+	b.pid = 4
+	b.on_event({"type": "skillWindup", "who": 4, "ms": 400})
+	check(b.windup_until > 0.0, "준비 시작")
+	b.on_event({"type": "interrupt", "kind": "attack", "who": 4})
+	check(b.windup_until > 0.0, "평타 끊김은 준비 번쩍 그대로")
+	b.on_event({"type": "interrupt", "kind": "skill", "who": 4})
+	check(b.windup_until == -1e9, "준비 중 끊기면 하얀 번쩍 끔")
+	b.free()
+	# 대형 포탄 몸통 스스로 빛남 (render.js bigShellMat emissive 0x501000)
+	var sh = load("res://world/shots.gd").new()
+	sh.make_mat = func(c: Color): return G3.toon_material(c)
+	var m: ShaderMaterial = sh._big_shell_mat()
+	check((m.get_shader_parameter("emissive") as Color).is_equal_approx(Color8(0x50, 0x10, 0x00)), "대형 포탄 빛 0x501000")
+	sh.free()

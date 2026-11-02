@@ -72,7 +72,12 @@ static func shard_count(kind: String, low := false) -> int:
 # R 빛 판 색: 차가움 → 뜨거움 → (0.7 넘으면) 하양
 static func plate_color(glow: float) -> Color:
 	var L: Dictionary = C.BB_LOOK
-	var c := Color.hex((int(L.plateCold) << 8) | 0xff).lerp(Color.hex((int(L.plateHot) << 8) | 0xff), minf(1.0, glow * 1.4))
+	var c := lerp_lin(Color.hex((int(L.plateCold) << 8) | 0xff), Color.hex((int(L.plateHot) << 8) | 0xff), minf(1.0, glow * 1.4))
 	if glow > 0.7:
-		c = c.lerp(Color.hex((int(L.plateWhite) << 8) | 0xff), (glow - 0.7) / 0.3)
+		c = lerp_lin(c, Color.hex((int(L.plateWhite) << 8) | 0xff), (glow - 0.7) / 0.3)
 	return c
+
+
+# 색 섞기 (sRGB 색 → 선형에서 섞고 → sRGB): three Color.lerp 는 선형 값끼리 (r152+ 색 관리) — 띠 주인 색 BB_TINT·깜빡임·빛 판
+static func lerp_lin(a: Color, b: Color, t: float) -> Color:
+	return a.srgb_to_linear().lerp(b.srgb_to_linear(), t).linear_to_srgb()

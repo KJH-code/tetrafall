@@ -45,6 +45,13 @@ static func _flat(color: int, a := 1.0) -> StandardMaterial3D:
 	return m
 
 
+# 대형 포탄 몸통: 스스로 빛남 0x501000 (render.js bigShellMat)
+func _big_shell_mat() -> Material:
+	if not _cache.has("bigShell"):
+		_cache["bigShell"] = load("res://shaders/g3.gd").toon_material(Co.color(0x3a2a26), {"emissive": 0x501000}) if make_mat != null else _toon(0x3a2a26)
+	return _cache["bigShell"]
+
+
 func _toon(color: int) -> Material:
 	if not _cache.has(color):
 		if make_mat != null:
@@ -329,7 +336,7 @@ func _shells(list: Array, dt: float, now: float) -> void:
 			ico.rings = 4
 			ico.radius = 1.0
 			ico.height = 2.0
-			var n := _mesh_node(ico, _toon(0x3a2a26 if big else 0x2a2c30))
+			var n := _mesh_node(ico, _big_shell_mat() if big else _toon(0x2a2c30))
 			n.scale = Vector3.ONE * (C.SHELL_BIG_SIZE if big else C.SHELL_SIZE)
 			if big:
 				var band := TorusMesh.new()

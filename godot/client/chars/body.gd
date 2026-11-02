@@ -51,6 +51,7 @@ var parts_z0 = null # parts 노드 처음 높이 (머리 박음 눌림) # G5 효
 var loaded := false # 갈고리 장전 (스냅샷 loaded, 1인칭 팔이 씀)
 var frame: Node3D # 게임 좌표 → 고도
 var torso_mats := {} # K.SKIN 바드: 폼 → 몸통 전용 재질 (묶음 밖)
+var hz_light := true # 위험 빛 받음 — 자기 SubViewport 몸 (1인칭 팔·초상·대기실 큰 캐릭터) 은 set_hz_light(false)
 # 몸 색 효과 (render.js 매 프레임 bodyMat·mats 색): 시각 ms
 var glow_until := -1e9
 var glow_color := Color.WHITE
@@ -390,7 +391,7 @@ static func _merged_material(m: Dictionary) -> Material:
 	if int(m.get("emissive", 0)) != 0:
 		opts.emissive = int(m.emissive)
 	if m.has("plaid"):
-		opts.map = _plaid(m.plaid)
+		_plaid_opts(opts, m.plaid)
 	return G3.toon_material(Color.WHITE, opts)
 
 
@@ -489,8 +490,15 @@ static func _material(m: Dictionary, skin: Color) -> Material:
 	if int(m.get("emissive", 0)) != 0:
 		opts.emissive = int(m.emissive)
 	if m.has("plaid"):
-		opts.map = _plaid(m.plaid)
+		_plaid_opts(opts, m.plaid)
 	return G3.toon_material(col, opts)
+
+
+# 체크 무늬 재질 값 (figure.js plaidTexture: repeat FIGURE_PLAID_REPEAT, magFilter Nearest — 밉맵은 three 기본처럼 만듦)
+static func _plaid_opts(opts: Dictionary, fills: Array) -> void:
+	opts.map = _plaid(fills)
+	opts.map_repeat = C.FIGURE_PLAID_REPEAT
+	opts.map_nearest = true
 
 
 # 체크 무늬 천 (figure.js plaidTexture: 32×32 에 칠한 사각형을 그 투명도로 겹침)
@@ -505,6 +513,7 @@ static func _plaid(fills: Array) -> Texture2D:
 		for y in range(int(f[3]), mini(32, int(f[3]) + int(f[5]))):
 			for x in range(int(f[2]), mini(32, int(f[2]) + int(f[4]))):
 				img.set_pixel(x, y, img.get_pixel(x, y).lerp(Color(c.r, c.g, c.b, 1.0), a))
+	img.generate_mipmaps() # three CanvasTexture 기본 (minFilter LinearMipmapLinear)
 	var tex := ImageTexture.create_from_image(img)
 	_cache.plaid[key] = tex
 	return tex
@@ -1170,8 +1179,9 @@ func _apply_opacity() -> void:
 				if int(m.get("emissive", 0)) != 0:
 					opts.emissive = int(m.emissive)
 				if m.has("plaid"):
-					opts.map = _plaid(m.plaid)
+					_plaid_opts(opts, m.plaid)
 				dr.alpha = G3.toon_material(col, opts)
+				G3.toon_hazard_light(dr.alpha, hz_light)
 				dr.col = col
 		var am: Material = dr.alpha
 		if am is StandardMaterial3D:
@@ -1183,16 +1193,29 @@ func _apply_opacity() -> void:
 		mi.material_override = am
 
 
+# 위험 빛 받기 (W3): 전역 위험 빛이 자기 SubViewport 장면에도 걸려서 그 몸만 끔. 지금 붙은 재질·바드 폼 몸통·반투명 재질 다 (나중에 만드는 반투명도 따름)
+func set_hz_light(on: bool) -> void:
+	hz_light = on
+	G3.hazard_light_under(self, on)
+	for m in torso_mats.values():
+		G3.toon_hazard_light(m, on)
+	for dr in drawn:
+		for k in ["solid", "alpha"]:
+			if dr.has(k):
+				G3.toon_hazard_light(dr[k], on)
+
+
+# G5 효과 노드: group "fx" 노드 (fx/fx.gd, World 의 Fx 아래) 의 effects (fx/effects.gd) — Fx 바로 아래만 찾으면 fx.gd 라 못 찾아 늘 0 이던 것
+static func fx_effects(f):
+	return f.effects if f != null and f.get("effects") != null and f.effects.has_method("squash_amount") else null
+
+
 # G5 효과 값 (fx/effects.gd squash_amount·punch_amount). 효과 노드를 한 번 찾아 둠, 없으면 0
 func _fx_amount(fn: String) -> float:
 	if fx_node == null or not is_instance_valid(fx_node):
 		fx_node = null
 		if is_inside_tree():
-			var root := get_tree().root.find_child("Fx", true, false)
-			if root != null:
-				for c in root.get_children():
-					if c.has_method("squash_amount"):
-						fx_node = c
+			fx_node = fx_effects(get_tree().get_first_node_in_group("fx"))
 	if fx_node == null or not _has_id():
 		return 0.0
 	return float(fx_node.call(fn, pid))
@@ -1208,25 +1231,6 @@ func _whirl_time(p: Dictionary) -> float:
 	if whirl_t0 == null:
 		whirl_t0 = now - (float(bz.get("spinMs", 0.0)) - float(bz.spinLeft)) / 1000.0
 	return minf(now - whirl_t0, float(bz.get("spinMs", 0.0)) / 1000.0)
-
-
-# 압사: 납작하게 찌그러진 몸이 잠깐 남음 (render.js crushFlat). 몸 노드는 죽으면 숨으니 몸 밖 (World 의 몸 자리) 에 복사본을 둠
-func _crush_flat() -> void:
-	var holder_parent := get_parent().get_parent() if get_parent() != null else null # bodies 노드
-	if holder_parent == null or not is_inside_tree():
-		return
-	var flat := frame.duplicate() as Node3D
-	var holder := Node3D.new()
-	holder_parent.add_child(holder)
-	holder.global_transform = global_transform
-	holder.add_child(flat)
-	flat.transform = Transform3D(frame.basis * Basis.from_scale(Vector3(1.5, 1.5, C.CRUSH_FLAT_Z)), Vector3(0, 0.02, 0))
-	for mi in flat.find_children("*", "MeshInstance3D", true, false):
-		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var tw := holder.create_tween()
-	tw.tween_interval(maxf(0.0, (C.CRUSH_FLAT_MS - 300.0) / 1000.0))
-	tw.tween_property(flat, "scale", Vector3(flat.scale.x, flat.scale.y, 0.01), 0.3) # 끝 0.3초에 종잇장처럼 얇아지며
-	tw.tween_callback(holder.queue_free)
 
 
 # 묶은 몸 뼈 자세 = 지금 조각 자리 (매 프레임 _apply 뒤에 바로 — 초상처럼 pose 뒤 곧바로 한 번 그리는 곳도 맞게)
@@ -1501,6 +1505,8 @@ func on_event(e: Dictionary) -> void:
 					act = _new_act("punch", now, 0.0, now, 0.3)
 		"interrupt":
 			if mine:
+				if e.get("kind") == "skill":
+					windup_until = -1e9 # 준비 중 끊김: 하얀 번쩍도 바로 끔 (main.js windupUntil.delete)
 				if act == null:
 					act = _new_act("punch", now, 0.0, null, 0.3)
 				seq += 1
@@ -1547,9 +1553,7 @@ func on_event(e: Dictionary) -> void:
 				if act != null and act.get("hold", false):
 					act.hold = false
 					act.struck = now - C.FIGURE_STRIKE_S # 바로 회복으로
-		"death":
-			if mine and e.get("cause") == "crush":
-				_crush_flat()
+		# death crush: 납작 몸은 world/marks.gd crush_flat 하나만 (render.js crushFlat 곡선 그대로 — 여기서도 만들면 둘이 겹쳐 그려짐)
 		"spinEnd":
 			if mine and refs.has("pupils"):
 				dizzy = C.BERSERK_DIZZY_S

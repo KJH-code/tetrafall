@@ -10,6 +10,7 @@ const C := preload("res://core/config.gd")
 const Co := preload("res://core/coords.gd")
 const HALO := preload("res://shaders/halo.gdshader")
 const VIG := preload("res://shaders/vignette.gdshader")
+const K := preload("res://shaders/g3_config.gd")
 
 var low := false
 var preset_name := "off"
@@ -23,6 +24,7 @@ var sky_k := -1.0
 var base: Dictionary = {} # 테마 하늘 원래 값
 var base_key = null
 var env_root: Node3D # G3Env 를 가진 world
+var lut: ImageTexture3D = null # 지금 프리셋의 색 보정 (grade_lut, 처음 쓸 때 만듦)
 
 
 func _init() -> void: # 트리 밖에서도 바로 쓸 수 있게 (prewarm·테스트)
@@ -57,6 +59,7 @@ func _init() -> void: # 트리 밖에서도 바로 쓸 수 있게 (prewarm·테�
 func set_preset(n: String) -> void:
 	preset_name = n if C.GAME_LIGHT_PRESETS.has(n) else "off"
 	p = C.GAME_LIGHT_PRESETS[preset_name]
+	lut = null
 	var v: Array = p.vignette
 	var rgb := String(v[2]).split(",")
 	vig.material.set_shader_parameter("color", Color(float(rgb[0]) / 255.0, float(rgb[1]) / 255.0, float(rgb[2]) / 255.0, float(v[0])))
@@ -97,10 +100,12 @@ func frame(active: bool, halos: Array, dt := 1.0 / 60.0) -> void:
 	if env:
 		var e: Environment = env.get_node("Env").environment
 		var g: Array = p.grade
+		# 고도 adjustment_saturation 은 평균 기준이라 CSS saturate (휘도 가중 행렬) 와 초록 +14·파랑 −9 다름 → CSS 세 단계를 3D LUT 로 구워 color_correction 에 (밝기·대비·채도 값은 1)
 		e.adjustment_enabled = on and (g[0] != 1.0 or g[1] != 1.0 or g[2] != 1.0)
-		e.adjustment_saturation = float(g[0])
-		e.adjustment_contrast = float(g[1])
-		e.adjustment_brightness = float(g[2])
+		e.adjustment_saturation = 1.0
+		e.adjustment_contrast = 1.0
+		e.adjustment_brightness = 1.0
+		e.adjustment_color_correction = _grade_lut() if e.adjustment_enabled else null
 	vig.visible = on and float(p.vignette[0]) > 0.0
 	sky_t = clampf(sky_t + (1.0 if on else -1.0) * C.GAME_LIGHT_SKY_SPEED * minf(dt, 0.1), 0.0, 1.0)
 	_paint_sky(sky_t if p.sky != null else 0.0)
@@ -118,6 +123,51 @@ func frame(active: bool, halos: Array, dt := 1.0 / 60.0) -> void:
 	else:
 		flashes.clear()
 	mm.visible_instance_count = n
+
+
+# JS 캔버스 CSS filter `saturate(g0) contrast(g1) brightness(g2)` 를 sRGB 한 색에 (크롬처럼 단계마다 0..1 로 자름).
+# saturate = Filter Effects feColorMatrix saturate 행렬 (휘도 0.213·0.715·0.072)
+static func css_grade(c: Color, g: Array) -> Color:
+	var s := float(g[0])
+	var v := Vector3(
+		(0.213 + 0.787 * s) * c.r + (0.715 - 0.715 * s) * c.g + (0.072 - 0.072 * s) * c.b,
+		(0.213 - 0.213 * s) * c.r + (0.715 + 0.285 * s) * c.g + (0.072 - 0.072 * s) * c.b,
+		(0.213 - 0.213 * s) * c.r + (0.715 - 0.715 * s) * c.g + (0.072 + 0.928 * s) * c.b).clampf(0.0, 1.0)
+	v = ((v - Vector3.ONE * 0.5) * float(g[1]) + Vector3.ONE * 0.5).clampf(0.0, 1.0)
+	v = (v * float(g[2])).clampf(0.0, 1.0)
+	return Color(v.x, v.y, v.z)
+
+
+# css_grade 를 n³ LUT 로. 고도 color_correction 은 sRGB 색으로 texture(lut, c) 를 그대로 읽어 (반 텍셀 보정 없음) 칸 i 에 (i + 0.5) / n 의 값을 둠
+# — 크롬 CSS 와 픽셀 ±3 (W3 2026-11-02 잼, 예전 adjustment 3개는 초록 ±14)
+static func grade_lut(g: Array, n: int = K.GRADE_LUT) -> ImageTexture3D:
+	var t := ImageTexture3D.new()
+	t.create(Image.FORMAT_RGB8, n, n, n, false, grade_images(g, n))
+	return t
+
+
+# LUT 층 n 장 (z = 파랑)
+static func grade_images(g: Array, n: int) -> Array[Image]:
+	var imgs: Array[Image] = []
+	for z in n:
+		var data := PackedByteArray()
+		data.resize(n * n * 3)
+		var i := 0
+		for y in n:
+			for x in n:
+				var o := css_grade(Color((x + 0.5) / n, (y + 0.5) / n, (z + 0.5) / n), g)
+				data[i] = int(round(o.r * 255.0))
+				data[i + 1] = int(round(o.g * 255.0))
+				data[i + 2] = int(round(o.b * 255.0))
+				i += 3
+		imgs.append(Image.create_from_data(n, n, false, Image.FORMAT_RGB8, data))
+	return imgs
+
+
+func _grade_lut() -> ImageTexture3D:
+	if lut == null:
+		lut = grade_lut(p.grade)
+	return lut
 
 
 func _g3():

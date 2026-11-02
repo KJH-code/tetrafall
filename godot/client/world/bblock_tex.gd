@@ -85,8 +85,8 @@ static func stripes() -> ImageTexture:
 	var dark := Color8(0x16, 0x16, 0x1a)
 	for y in N:
 		for x in N:
-			# 평행사변형 (x, n)-(x+10, n)-(x+10+n, 0)-(x+n, 0): 사선 위 x + (N - y) 쪽으로 10 폭, 20 마다
-			var u := fposmod(float(x) + 0.5 - (N - (y + 0.5)), 20.0)
+			# 평행사변형 (x, n)-(x+10, n)-(x+10+n, 0)-(x+n, 0), x = -n, -n+20, …: 사선 위 x + (N - y) 쪽으로 10 폭, 20 마다
+			var u := fposmod(float(x) + 0.5 - (N - (y + 0.5)) + N, 20.0) # + N: JS 는 x = -n 부터 20 마다 (64 는 20 의 배수가 아님)
 			if u < 10.0:
 				img.set_pixel(x, y, dark)
 	return _tex(img)
