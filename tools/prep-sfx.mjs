@@ -5,6 +5,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // 팩 (전부 OpenGameArt, 페이지 라이선스 CC0)
 export const SOURCES = {
@@ -48,7 +49,8 @@ function peakDb(file, filters) {
   return Number((out.match(/max_volume: (-?[\d.]+) dB/) || [])[1] ?? 0);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// 경로에 공백·한글이 있으면 import.meta.url (퍼센트 인코딩) 과 `file://${argv[1]}` 이 달라 아무것도 안 하고 0 으로 끝났음 (2026-10-30 감사 T1) → online.js 처럼 경로로 비교
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const [src, out = 'client/assets/sfx'] = process.argv.slice(2);
   if (!src) {
     console.error('사용법: node tools/prep-sfx.mjs <원본 폴더> [출력 폴더]');

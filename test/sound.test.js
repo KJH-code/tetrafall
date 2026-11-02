@@ -134,3 +134,21 @@ test('퍽퍽퍽 (2026-10-28 재혁): 약·중타는 예전 Kenney impactPunch \'
   // 휘두름은 e1b310b 의 짧은 '휙' 그대로
   assert.ok(C.SFX_SWING.rate > 1 && C.SFX_SWING.cut > 0 && C.SFX_SWING.cut < 0.25);
 });
+
+test('prep-sfx: 경로에 공백이 있어도 실행됨 (예전엔 아무것도 안 하고 0 으로 끝남, 감사 T1)', async () => {
+  const { mkdtempSync, copyFileSync, mkdirSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { spawnSync } = await import('node:child_process');
+  const dir = mkdtempSync(join(tmpdir(), 'tf prep sfx '));
+  try {
+    mkdirSync(join(dir, 'a b'));
+    const script = join(dir, 'a b', 'prep-sfx.mjs');
+    copyFileSync(new URL('../tools/prep-sfx.mjs', import.meta.url), script);
+    const r = spawnSync(process.execPath, [script], { encoding: 'utf8' });
+    assert.equal(r.status, 1, '인자 없이 부르면 사용법을 찍고 1 로 끝남');
+    assert.match(r.stderr, /사용법/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
