@@ -6,6 +6,7 @@ extends SubViewportContainer
 const C := preload("res://core/config.gd")
 const U := preload("res://ui/ui_calc.gd")
 const Portrait := preload("res://ui/portrait.gd")
+const WC := preload("res://world/world_config.gd")
 const CHARS_PATH := "res://chars/chars.gd"
 const FOV := 26.0
 
@@ -26,7 +27,7 @@ func _ready() -> void:
 	vp = SubViewport.new()
 	vp.own_world_3d = true
 	vp.transparent_bg = true
-	vp.msaa_3d = Viewport.MSAA_4X
+	vp.msaa_3d = Viewport.MSAA_4X if not bool(View.settings.get("lowGfx", false)) else WC.MSAA_LOW # 작은 판이라 보통 화질도 4× 그대로, 낮음이면 끔 (W6)
 	vp.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
 	add_child(vp)
 	var we := WorldEnvironment.new()

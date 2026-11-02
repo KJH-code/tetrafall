@@ -21,7 +21,8 @@ var settings := {
 	"fov": C.FOV_DEFAULT, # 시야각 (G1 카메라)
 	"shadows": true, # 그림자 (G1)
 	"outline": true, # 외곽선 (G3)
-	"lowGfx": false, # 그래픽 낮춤 (G1·G3·G5)
+	"lowGfx": false, # 그래픽 낮춤 (G1·G3·G5). W6 부터는 화질 (gfx) 이 낮음이면 켬 — world/gfx.gd 가 씀
+	"gfx": "", # 화질 "auto"|"high"|"medium"|"low" (G4 설정 창이 씀, world/gfx.gd 가 읽어 lowGfx·3D 배율·MSAA 를 정함). 빈 값 = 예전 파일: lowGfx 켬이면 낮음, 아니면 자동
 	"third": false, # 3인칭 시작 (G1)
 	"reducedMotion": false, # 움직임 줄이기 (G4·G5, JS 는 브라우저 설정)
 	"perf": false, # F3 성능 표시 (G6, JS tf-perf)

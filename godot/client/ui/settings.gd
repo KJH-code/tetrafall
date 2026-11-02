@@ -1,4 +1,4 @@
-# 설정 창 (JS #settings): 마우스 감도·효과음·음악 (View.settings), 그래픽 낮춤·움직임 줄이기, 조작 키 (core/keys.gd — 칸을 누르고 키·마우스 버튼, Esc 취소,
+# 설정 창 (JS #settings): 마우스 감도·효과음·음악 (View.settings), 화질 (W6: 자동·높음·보통·낮음 — 낮음 = JS 그래픽 낮춤)·움직임 줄이기, 조작 키 (core/keys.gd — 칸을 누르고 키·마우스 버튼, Esc 취소,
 # 겹치면 빨강), 키 기본값·기본값·닫기, 방 안이면 '방 나가기' (판 중이면 한 번 더 — ui_calc.leave_needs_confirm, LEAVE_CONFIRM_MS)
 extends Control
 
@@ -6,6 +6,9 @@ const C := preload("res://core/config.gd")
 const S := preload("res://ui/ui_style.gd")
 const U := preload("res://ui/ui_calc.gd")
 const Keys := preload("res://core/keys.gd")
+const WC := preload("res://world/world_config.gd")
+const Gfx := preload("res://world/gfx.gd")
+const GC := preload("res://world/gfx_calc.gd")
 
 signal open_tutorial
 
@@ -20,6 +23,8 @@ var leave_armed_at := -100000.0
 var sliders := {}
 var checks := {}
 var keys_scroll: ScrollContainer
+var gfx_btns := {} # 화질 선택 (W6): "auto"·"high"·"medium"·"low" → Button
+var gfx_note: Label # 지금 실제 화질 (자동이면 무엇으로 정했는지)
 
 
 func _ready() -> void:
@@ -54,7 +59,7 @@ func _ready() -> void:
 	_slider(v, "시야각", "fov", 60.0, 100.0, 1.0, func(x): return "%d°" % int(round(x)))
 	_check(v, "그림자", "shadows", "켜기 (느리면 끄기)")
 	_check(v, "외곽선", "outline", "켜기 (느리면 끄기)")
-	_check(v, "그래픽 낮춤", "lowGfx", "켜기 (해상도·배경 장식 줄임)")
+	_gfx_row(v) # 예전 '그래픽 낮춤' 체크 자리: 화질 자동·높음·보통·낮음 (낮음 = 그래픽 낮춤)
 	_check(v, "시점", "third", "3인칭 (%s 로 바꿈)" % Keys.key_label(PlayerInput.binds.get("view", "KeyV")))
 	_check(v, "움직임 줄이기", "reducedMotion", "켜기 (전환·반짝임 줄임)")
 	var kh := HBoxContainer.new()
@@ -146,6 +151,36 @@ func _check(parent: Node, text: String, key: String, note: String) -> void:
 	parent.add_child(row)
 
 
+# 화질 (W6): 자동·높음·보통·낮음 버튼 + 지금 실제 화질 (자동이면 내장 그래픽·창 크기로 정한 것). 고르면 View.settings.gfx → world/gfx.gd 가 적용
+func _gfx_row(parent: Node) -> void:
+	var row := HBoxContainer.new()
+	var l := S.body_label("화질", 15, S.TEXT)
+	l.custom_minimum_size.x = 110
+	row.add_child(l)
+	for c in WC.GFX_CHOICES:
+		var id: String = c
+		var b := S.button(WC.GFX_LABEL[c], func(): View.set_setting("gfx", id), "ghost", 13)
+		gfx_btns[c] = b
+		row.add_child(b)
+	gfx_note = S.body_label("", 12, Color("bbbbbb"))
+	gfx_note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	gfx_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row.add_child(gfx_note)
+	parent.add_child(row)
+	View.changed.connect(func(k): if k in ["gfx", "lowGfx"] and is_inside_tree(): _show_gfx.call_deferred())
+	_show_gfx()
+
+
+func _show_gfx() -> void:
+	var pick := GC.migrate(View.settings)
+	for c in gfx_btns:
+		var kind := "go" if c == pick else "ghost"
+		if gfx_btns[c].get_meta("kind", "") != kind:
+			gfx_btns[c].set_meta("kind", kind)
+			S.style_button(gfx_btns[c], kind, 13)
+	gfx_note.text = ("지금 " + GC.level_text(pick, Gfx.plan)) if not Gfx.plan.is_empty() else ""
+
+
 func _on_shown() -> void:
 	if not visible:
 		listening = null
@@ -156,6 +191,7 @@ func _on_shown() -> void:
 	for key in checks:
 		checks[key].set_pressed_no_signal(bool(View.settings.get(key, false)))
 	leave_btn.visible = Store.in_room()
+	_show_gfx()
 	# 키 목록은 남는 높이만큼 (960×540 에서도 창이 화면 안)
 	keys_scroll.custom_minimum_size.y = clampf(get_viewport_rect().size.y - 480.0, 90.0, 260.0)
 	_disarm()
@@ -252,7 +288,7 @@ func _reset_keys() -> void:
 
 func _reset_settings() -> void:
 	# JS SETTINGS_DEFAULT
-	for kv in [["sens", 1.0], ["sfx", 1.0], ["music", 1.0], ["fov", C.FOV_DEFAULT], ["shadows", true], ["outline", true], ["lowGfx", false], ["third", false], ["reducedMotion", false]]:
+	for kv in [["sens", 1.0], ["sfx", 1.0], ["music", 1.0], ["fov", C.FOV_DEFAULT], ["shadows", true], ["outline", true], ["gfx", "auto"], ["third", false], ["reducedMotion", false]]:
 		View.set_setting(kv[0], kv[1])
 	_on_shown()
 

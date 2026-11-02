@@ -5,7 +5,8 @@
 # tab = 판 중 점수표 (킬 점수전에서만 보임 → --mode kills), settings = 설정 창, results = 판이 끝나고 --shot-after 초 (기본 1.5) 뒤.
 # --mode survival|master|kills 면 시작 전에 모드를 바꿈. 창 크기는 고도 --resolution 1280x720
 # 성능 비교 (G3): --view first|third|spectate (third 는 설정 3인칭, spectate 는 방장이 관전) · --map <맵 id> · --perf-log 에 1% low·메모리 한 줄 더
-# 성능: --perf-log (찍는 순간 = --shot-after 에 그리기 수·물체 수·삼각형 수·FPS·프레임 ms 한 줄, 화면 없이도)
+# 성능: --perf-log (찍는 순간 = --shot-after 에 그리기 수·물체 수·삼각형 수·FPS·프레임 ms 한 줄, 화면 없이도). --perf 도 주면 F3 '복사' 한 줄도 (W6)
+# 화질 (W6, world/gfx.gd): --gfx auto|high|medium|low · --fake-gpu "<GPU 이름>" · --fake-gpu-others "<다른 GPU>" (하이브리드 안내 확인)
 # --auto practice|tutorial: 연습·튜토리얼 방 (G6, --char 캐릭터, 연습 창은 --practice-open)
 # 연기 시험 (B4): --team (팀전) · --sky (하늘 계단) · --char <id> (방장 캐릭터도) · --skills <초> (그 간격으로 F·R) ·
 #   --color <팔레트 번호> (host·guest, 받아짐/거절 로그) · 방장이 나가 넘겨받으면 로그 + 판 시작도 맡음 ·
@@ -69,8 +70,9 @@ func _ready() -> void:
 		RenderingServer.directional_soft_shadow_filter_set_quality(int(args["shadow-filter"]))
 	if args.has("msaa"):
 		get_viewport().msaa_3d = int(args["msaa"])
-	if args.has("low"): # 성능 비교: 그래픽 낮춤으로
-		View.settings["lowGfx"] = true
+	if args.has("low"): # 성능 비교: 그래픽 낮춤으로 (W6: = 화질 낮음, 설정 파일엔 안 남김)
+		View.settings["gfx"] = "low"
+		View.changed.emit("gfx")
 	Store.rooms_changed.connect(_on_rooms)
 	Store.joined.connect(_on_joined)
 	Store.state_changed.connect(_on_state)
@@ -270,6 +272,9 @@ func _process(_d: float) -> void:
 				low += sorted[sorted.size() - 1 - i]
 			_log("성능 표: 평균 %.2fms · 1%% low %.2fms · 그리기 %d · 메모리 %.1fMB (영상 %.1fMB) · 프레임 %d | 나눔 평균: 그리기 CPU %.1fms · GPU %.1fms · 스크립트 %.1fms · 물리 %.1fms" % [avg, low / k, Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0, Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0, sorted.size(), perf_split[0] / maxf(1, perf_split[4]), perf_split[1] / maxf(1, perf_split[4]), perf_split[2] / maxf(1, perf_split[4]), perf_split[3] / maxf(1, perf_split[4])])
 			_log("성능 구간 (프레임당): %s" % Prof.report(int(perf_split[4])))
+			var pf := get_tree().root.find_child("Perf", true, false) # F3 (ui/perf.gd, --perf 로 켬): 재혁 PC 에서 '복사' 하는 그 한 줄
+			if pf != null and pf.has_method("line") and OS.get_cmdline_user_args().has("--perf"):
+				_log("F3 한 줄: %s" % pf.line())
 			_log("성능: 그리기 %d · 물체 %d · 삼각형 %d · FPS %d · 프레임 평균 %.1fms 최악 %.1fms (최근 %d프레임) | 나눠서: 보이는 %d · 그림자 %d · 몸 메시 %d" % [Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME), Engine.get_frames_per_second(), avg, worst, frame_ms.size(), get_viewport().get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME), get_viewport().get_render_info(Viewport.RENDER_INFO_TYPE_SHADOW, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME), _body_meshes(get_tree().root)])
 			var rw = get_tree().root.get_node_or_null("TfRagdolls")
 			if rw != null:
