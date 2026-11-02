@@ -103,7 +103,9 @@ public sealed class TunnelKeeper
     {
         Fails++;
         c.Kill();
-        OnStatus("restart", $"{(wasOpen ? "열려 있던 " : "")}터널 문제 ({why}) → 다시 켭니다 ({Fails}/{C.TUNNEL_MAX_RESTARTS})", c.Output);
+        // 다시 켜는 횟수만 셈: n/MAX 는 n번째 다시 켬. 마지막 실패(MAX+1번째)는 다시 켜지 않고 곧 포기하니 '6/5' 처럼 안 찍음 (감사 T3)
+        var note = Fails <= C.TUNNEL_MAX_RESTARTS ? $"→ 다시 켭니다 ({Fails}/{C.TUNNEL_MAX_RESTARTS})" : "→ 더 다시 켜지 않습니다";
+        OnStatus("restart", $"{(wasOpen ? "열려 있던 " : "")}터널 문제 ({why}) {note}", c.Output);
     }
 }
 

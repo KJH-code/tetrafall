@@ -71,6 +71,7 @@ export class TunnelKeeper {
     this.fails = 0; // 연속 실패 (열리면 0)
     this.child = null;
     this.url = null; // 지금 열린 주소
+    this.lastOut = ''; // 마지막으로 켠 cloudflared 의 끝 출력 (포기 안내에 같이 찍음 — 예전엔 give-up 에 out 을 안 넘겨 '마지막 출력' 분기가 죽어 있었음, 2026-10-30 감사 T3)
   }
 
   stop() {
@@ -81,7 +82,7 @@ export class TunnelKeeper {
   async run() {
     while (!this.stopped) {
       if (this.fails > C.TUNNEL_MAX_RESTARTS) {
-        this.onStatus('give-up', `터널을 ${C.TUNNEL_MAX_RESTARTS + 1}번 켰는데 안 열립니다. 서버는 켜져 있어 같은 Wi-Fi 에서는 됩니다. 잠시 뒤 npm run online 을 다시 해 보세요`);
+        this.onStatus('give-up', `터널을 ${C.TUNNEL_MAX_RESTARTS + 1}번 켰는데 안 열립니다. 서버는 켜져 있어 같은 Wi-Fi 에서는 됩니다. 잠시 뒤 npm run online 을 다시 해 보세요`, this.lastOut);
         return false;
       }
       const child = this.spawnTunnel();
@@ -142,12 +143,15 @@ export class TunnelKeeper {
 
   fail(child, why, out, wasOpen = false) {
     this.fails++;
+    this.lastOut = out;
     try {
       child.kill();
     } catch {
       // 이미 꺼짐
     }
-    this.onStatus('restart', `${wasOpen ? '열려 있던 ' : ''}터널 문제 (${why}) → 다시 켭니다 (${this.fails}/${C.TUNNEL_MAX_RESTARTS})`, out);
+    // 다시 켜는 횟수만 셈: n/MAX 는 n번째 다시 켬. 마지막 실패(MAX+1번째)는 다시 켜지 않고 곧 포기하니 '6/5' 처럼 안 찍음
+    const note = this.fails <= C.TUNNEL_MAX_RESTARTS ? `→ 다시 켭니다 (${this.fails}/${C.TUNNEL_MAX_RESTARTS})` : '→ 더 다시 켜지 않습니다';
+    this.onStatus('restart', `${wasOpen ? '열려 있던 ' : ''}터널 문제 (${why}) ${note}`, out);
   }
 }
 
