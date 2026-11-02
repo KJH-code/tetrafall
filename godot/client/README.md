@@ -52,6 +52,7 @@ xvfb-run -a godot --path godot/client --rendering-driver opengl3 --resolution 12
 
 - 기계를 나눠 쓰면 벽시계 프레임이 ±15% 흔들림 → 비용 차이는 `perf_ab` (같은 판 안 비율) 로, 큰 표는 `perf_cmp` 를 번갈아 여러 번. 종류 목록은 `world/perf_ab.gd` 머리
 - 웹은 다중 샘플 끔 (`world_config.gd` MSAA_3D_WEB): llvmpipe 에서 4× 가 프레임 약 2배, 2× 도 4× 와 같은 비용. PC 는 4×
+- 잰 값 (W5, 3인칭 피라미드 8명, 번갈아 3번): JS 웹 평균 180·192·193ms · 고도 웹 전 (4×) 290·298·301ms (JS 의 1.57배) → 후 (끔) 127·118·141ms (0.69배). 1% low JS 267~767 · 전 400~417 · 후 192~217ms
 
 ## 소리 (G5, `audio/`)
 

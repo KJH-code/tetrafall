@@ -105,6 +105,6 @@ function cpuTimes() {
   if (target === 'web') await page.waitForTimeout(8000); // 고도 자동 조종이 성능 줄을 찍을 때까지
   if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT });
   if (process.env.LOGS) console.error(logs.filter((l) => /자동|ERROR|error|SCRIPT/.test(l)).slice(0, 30).join('\n'));
-  console.log(JSON.stringify({ target, view, map, ...r, godot: logs.filter((l) => l.includes('성능 표') || l.includes('성능 구간')).slice(-2).join(' || ') || null }));
+  console.log(JSON.stringify({ target, view, map, ...r, godot: logs.filter((l) => l.includes('성능 표') || l.includes('성능 구간') || l.includes('] 성능: 그리기')).slice(-3).join(' || ') || null }));
   await browser.close();
 })();
