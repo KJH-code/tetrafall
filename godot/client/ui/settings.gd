@@ -172,7 +172,7 @@ func _gfx_row(parent: Node) -> void:
 
 
 func _show_gfx() -> void:
-	var pick := GC.migrate(View.settings)
+	var pick := Gfx.choice if not Gfx.plan.is_empty() else GC.migrate(View.settings) # 적용 노드가 정한 선택 (확인용 --gfx 포함)
 	for c in gfx_btns:
 		var kind := "go" if c == pick else "ghost"
 		if gfx_btns[c].get_meta("kind", "") != kind:
