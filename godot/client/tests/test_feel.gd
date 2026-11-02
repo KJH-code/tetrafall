@@ -17,6 +17,19 @@ func root() -> Node:
 	return (Engine.get_main_loop() as SceneTree).root
 
 
+# shared/config.js spawnPointsFor: 기본 판은 SPAWN_POINTS 그대로, 큰 판은 같은 안쪽 거리로 가운데를 봄
+func test_spawn_points_for_matches_js() -> void:
+	var pts: Array = PI_.spawn_points_for(C.GRID_W, C.GRID_D)
+	check(pts.size() == C.SPAWN_POINTS.size(), "자리 수 %d" % pts.size())
+	for i in pts.size():
+		var a: Dictionary = pts[i]
+		var b: Dictionary = C.SPAWN_POINTS[i]
+		check(absf(a.x - b.x) < 1e-9 and absf(a.y - b.y) < 1e-9 and absf(a.yaw - b.yaw) < 1e-12, "자리 %d %s / JS %s" % [i, a, b])
+	var big: Array = PI_.spawn_points_for(13, 13)
+	check(absf(big[0].yaw - PI / 4.0) < 1e-12 and big[0].x == 2.5, "13칸 첫 자리 %s" % big[0])
+	check(absf(big[4].yaw - PI / 2.0) < 1e-12 and big[4].x == 6.5 and big[4].y == 2.5, "13칸 다섯째 자리 %s" % big[4])
+
+
 # input.js releaseAll: 마우스가 풀리면 (Esc) 눌린 키 + 이모트 바퀴 + 도움말·점수표까지 닫음
 func test_unlock_releases_wheel_and_held_panels() -> void:
 	var keep_locked := PlayerInput.locked
@@ -75,3 +88,30 @@ func test_blocked_input_still_releases() -> void:
 	PlayerInput.ui_blocking = keep[0]
 	PlayerInput.typing = keep[1]
 	PlayerInput.set_binds(keep[2])
+
+
+# main.js: 들어오면 내 자리 방향 (welcome.slot), 판 번호가 바뀌면 그 판 크기의 시작 방향, 튜토리얼 단계 처음엔 서버가 준 방향
+func test_aim_resets_like_js() -> void:
+	var keep := [Store.state, Store._players_by_id, Store.my_id, PlayerInput.yaw, PlayerInput.pitch]
+	PlayerInput._on_message({"type": "welcome", "id": 5, "slot": 2, "room": {}})
+	check(absf(PlayerInput.yaw - C.SPAWN_POINTS[2].yaw) < 1e-12 and PlayerInput.pitch == 0.0, "들어옴: 자리 2 방향 %s" % PlayerInput.yaw)
+	PlayerInput._on_message({"type": "welcome", "id": 5, "slot": 3, "room": {}, "rejoined": true})
+	check(absf(PlayerInput.yaw - C.SPAWN_POINTS[2].yaw) < 1e-12, "재접속은 스냅샷 방향 (welcome 으로 안 바꿈)")
+	var me := {"id": 5, "slot": 4, "alive": true, "yaw": 0.3, "x": 1.0, "y": 1.0, "z": 0.0}
+	Store.my_id = 5
+	Store._players_by_id = {5: me}
+	var st1 := {"phase": "lobby", "round": {"n": 0}, "field": {"w": 13, "d": 13}, "players": [me]}
+	var st2 := {"phase": "countdown", "round": {"n": 1}, "field": {"w": 13, "d": 13}, "players": [me]}
+	PlayerInput.set_yaw_pitch(2.0, 0.4)
+	PlayerInput._on_state(st1, st1)
+	check(PlayerInput.yaw == 2.0 and PlayerInput.pitch == 0.4, "같은 판이면 그대로")
+	PlayerInput._on_state(st2, st1)
+	check(absf(PlayerInput.yaw - PI / 2.0) < 1e-12 and PlayerInput.pitch == 0.0, "새 판: 13칸 자리 4 방향 π/2 (%s)" % PlayerInput.yaw)
+	PlayerInput._on_event({"type": "tutorialStep", "who": 5, "yaw": -1.25})
+	check(PlayerInput.yaw == -1.25, "튜토리얼 단계 방향 %s" % PlayerInput.yaw)
+	PlayerInput._on_event({"type": "tutorialStep", "who": 6, "yaw": 0.5})
+	check(PlayerInput.yaw == -1.25, "남의 단계는 무시")
+	Store.state = keep[0]
+	Store._players_by_id = keep[1]
+	Store.my_id = keep[2]
+	PlayerInput.set_yaw_pitch(keep[3], keep[4])

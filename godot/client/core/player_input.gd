@@ -32,6 +32,8 @@ func _ready() -> void:
 	set_binds(Keys.load_binds())
 	Store.state_changed.connect(_on_state)
 	Store.joined.connect(func(_room, rejoined): _on_joined(rejoined))
+	Net.message.connect(_on_message)
+	Store.game_event.connect(_on_event)
 
 
 func set_binds(b: Dictionary) -> void:
@@ -72,25 +74,52 @@ func release_all() -> void:
 	ui_action.emit("practice", false)
 
 
-# 들어오면 시작 자리 방향을 봄, 재접속이면 다음 스냅샷의 내 방향
+# 판 크기별 시작 자리 (shared/config.js spawnPointsFor = spawnPoints(W, D, SPAWN_INSET)). 안쪽 거리는 기본 판 첫 자리 x 와 같음
+static func spawn_points_for(w: float, d: float) -> Array:
+	var inset: float = C.SPAWN_POINTS[0].x
+	var out := []
+	for xy in [[inset, inset], [w - inset, d - inset], [w - inset, inset], [inset, d - inset], [w / 2.0, inset], [w / 2.0, d - inset], [inset, d / 2.0], [w - inset, d / 2.0]]:
+		out.append({"x": xy[0], "y": xy[1], "yaw": atan2(d / 2.0 - xy[1], w / 2.0 - xy[0])})
+	return out
+
+
+# 들어오면 시작 자리 방향을 봄 (welcome.slot, main.js), 재접속이면 다음 스냅샷의 내 방향
 var _aim_from_state := false
 
 
 func _on_joined(rejoined: bool) -> void:
 	_aim_from_state = rejoined
-	if not rejoined:
-		var p := Store.me()
-		if not p.is_empty():
-			set_yaw_pitch(p.yaw, 0)
 
 
-func _on_state(st: Dictionary, _prev: Dictionary) -> void:
+func _on_message(m: Dictionary) -> void:
+	if str(m.get("type", "")) == "welcome" and not m.get("rejoined", false) and m.get("slot") != null:
+		var sp: Dictionary = C.SPAWN_POINTS[int(m.slot) % C.SPAWN_POINTS.size()]
+		set_yaw_pitch(sp.yaw, 0)
+
+
+func _on_state(st: Dictionary, prev: Dictionary) -> void:
 	var p := Store.me()
 	if _aim_from_state and not p.is_empty():
 		set_yaw_pitch(p.yaw, p.get("pitch", 0.0))
 		_aim_from_state = false
 	var ph := str(st.get("phase", ""))
 	enabled = (ph == "playing" or ph == "countdown") and not p.is_empty() and p.alive
+	# 판이 새로 시작되면 시점을 스폰 방향으로 (main.js onState) — 예전엔 판이 바뀌어도 전 판 끝에 보던 쪽 그대로
+	if not p.is_empty() and not prev.is_empty() and _round_n(prev) != _round_n(st):
+		var f: Dictionary = st.get("field", {})
+		var pts: Array = spawn_points_for(float(f.w), float(f.d)) if f.has("w") else C.SPAWN_POINTS
+		set_yaw_pitch(pts[int(p.slot) % pts.size()].yaw, 0)
+
+
+static func _round_n(st: Dictionary):
+	var rd = st.get("round")
+	return rd.get("n") if rd is Dictionary else null
+
+
+# 튜토리얼 단계 처음: 그 자리에서 볼 쪽으로 (main.js handleEvent tutorialStep)
+func _on_event(e: Dictionary) -> void:
+	if str(e.get("type", "")) == "tutorialStep" and Store.my_id != null and e.get("who") != null and int(e.who) == Store.my_id and e.has("yaw"):
+		set_yaw_pitch(float(e.yaw), 0)
 
 
 func _process(delta: float) -> void:
