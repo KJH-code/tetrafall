@@ -340,17 +340,16 @@ test('T5 손으로 따로 적던 값을 한 곳에서: 시작 위치 안쪽 칸�
   assert.deepEqual(C.RAGDOLL_CHARS, C.CHARACTERS);
   assert.notEqual(C.FIGURE_CHARS, C.CHARACTERS, '복사본 (한쪽을 고쳐도 다른 쪽이 안 변함)');
   assert.equal(maxPlayers(), 8);
-  // 최대 인원 식은 shared/config.js 한 곳 — 서버·도구에는 따로 안 적음. 화면(client/main.js) 두 곳은 같은 식 그대로 (client 는 이번 일의 범위 밖)
+  // 최대 인원 식은 shared/config.js 한 곳 — 서버·도구에는 따로 안 적음. 화면(client/main.js) 도 maxPlayers() 를 씀
   const fs = await import('node:fs');
   const path = await import('node:path');
   const root = path.join(path.dirname(new URL(import.meta.url).pathname), '..');
   const expr = 'Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length)';
-  for (const dir of ['server', 'tools']) {
+  for (const dir of ['server', 'tools', 'client']) {
     for (const f of fs.readdirSync(path.join(root, dir)).filter((n) => n.endsWith('.js') || n.endsWith('.mjs'))) {
       assert.ok(!fs.readFileSync(path.join(root, dir, f), 'utf8').includes(expr), `${dir}/${f}`);
     }
   }
-  assert.equal(fs.readFileSync(path.join(root, 'client', 'main.js'), 'utf8').split(expr).length - 1, 2, '화면 쪽은 같은 식 두 곳');
 });
 
 // ---------- T7·T8: 문서·패키지 ----------

@@ -1,6 +1,6 @@
 // 클라이언트 진입점: WebSocket 연결, 상태 수신, 입력 전송, 렌더 루프, HUD.
 import { turnYaw } from '/shared/sky-view.js';
-import { CONFIG as C } from '/shared/config.js';
+import { CONFIG as C, maxPlayers } from '/shared/config.js';
 import { Renderer, TEAM_MAIN, playerColor, damageColor } from '/render.js';
 import { Input } from '/input.js';
 import { ACTIONS, DEFAULT_BINDS, keyLabel, groupLabel, normCode, saveBinds, conflicts } from '/keys.js';
@@ -2010,7 +2010,7 @@ function drawHud() {
   if (!state || closed) return;
   const p = me();
   const isHost = state.hostId === myId;
-  const maxP = Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length);
+  const maxP = maxPlayers();
   // 왼쪽 위: 판 중에만 시간 하나 (남은 시간이 있는 모드는 남은 시간)
   const timeShown = state.phase === 'playing' ? fmt(state.round.left ?? state.round.elapsed) : null;
   statusEl.classList.toggle('hidden', timeShown === null);
@@ -2131,7 +2131,7 @@ function drawHud() {
   mapInfo.classList.toggle('hidden', !(state.map && !isHost && between));
   if (state.map) setText(mapInfo, `맵: ${mapName(state.map.choice)} · 모드: ${C.MODE_NAMES[state.mode] || state.mode}${state.skyStairs ? ' · 하늘 계단' : ''}`);
   if (showBots) {
-    $('add-bot').disabled = state.players.length >= Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length);
+    $('add-bot').disabled = state.players.length >= maxPlayers();
     $('remove-bot').disabled = !state.players.some((x) => x.isBot);
   }
 
