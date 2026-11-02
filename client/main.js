@@ -28,6 +28,8 @@ import { bigTicks } from '/shared/bblock-look.js';
 import { startTitle } from '/title.js';
 import { TutorialUI, tutorialState } from '/tutorial-ui.js';
 import { createLater } from '/shared/later.js';
+import { createErrorReporter, runEach } from '/shared/err-report.js';
+const errors = createErrorReporter();
 const roomLater = createLater(); // 방 안 효과 예약 — leftRoom 이 한꺼번에 취소
 const later = roomLater.later;
 
@@ -1071,7 +1073,7 @@ function connect() {
       onState();
       updateScreen(); // 화면 전환은 스냅샷을 받는 즉시 시작 (다음 그리기 프레임이 무거워도 띠는 컴포지터에서 돎)
       if (!killEvents && msg.events && msg.events.some((e) => e.type === 'kill')) killEvents = true; // 같은 묶음의 'death' 보다 먼저 알아야 두 줄이 안 뜸
-      for (const e of msg.events || []) handleEvent(e);
+      runEach(msg.events, handleEvent, (e, err) => errors.report(`이벤트 에러 (${e && e.type}, 나머지는 계속 처리):`, err));
     }
   };
   ws.onclose = () => {
@@ -2923,7 +2925,6 @@ setInterval(() => {
 }, 1000 / C.INPUT_SEND_RATE);
 
 let last = performance.now();
-let frameErrorShown = false;
 function frame(now) {
   perfPanel.frameStart(now);
   const dt = Math.min(0.1, (now - last) / 1000) * ko.timeScale(now); // KO 슬로모션·히트스톱 (화면만)
@@ -2958,8 +2959,7 @@ function frame(now) {
     sound.update(renderer.camera.matrixWorld.elements, state, dt); // 귀(카메라) 위치·방향 + 위험 액체 지속음
     updateHud();
   } catch (err) {
-    if (!frameErrorShown) console.error('프레임 에러 (계속 그림):', err);
-    frameErrorShown = true;
+    errors.report('프레임 에러 (계속 그림):', err); // 글이 바뀔 때마다 찍음
   }
   perfPanel.frameEnd(now);
   requestAnimationFrame(frame);
