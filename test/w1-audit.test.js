@@ -77,3 +77,17 @@ test('S3 pieceMove: dx·dy 크기는 -1·0·1 로, 한 틱에 PIECE_MOVE_PER_TIC
   g.handleAction(1, { name: 'pieceMove', dx: 1, dy: 0 });
   assert.equal(g.controlledPiece(g.players.get(1)).px, x0 + 1, '다음 틱엔 다시 받음');
 });
+
+test('S7 호스트가 나가면 방장은 연결된 사람에게 먼저 (끊겨 자리만 남은 사람은 마지막)', () => {
+  const g = new Game(() => {});
+  for (const id of [1, 2, 3]) g.addPlayer(id);
+  g.setAway(2, true);
+  assert.equal(g.hostId, 1);
+  g.removePlayer(1);
+  assert.equal(g.hostId, 3, '끊긴 2 가 아니라 연결된 3');
+  g.removePlayer(3);
+  assert.equal(g.hostId, 2, '연결된 사람이 없으면 끊긴 사람에게라도');
+  g.removePlayer(2);
+  assert.equal(g.hostId, null);
+});
+

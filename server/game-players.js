@@ -195,7 +195,9 @@ export class PlayersPart {
     this.proxies.delete(id);
     this.log(`${p.name} ${p.isBot ? '빠짐' : '접속 종료'}`);
     if (this.hostId === id) {
-      const next = [...this.players.values()].find((o) => !o.isBot);
+      // 연결이 살아 있는 사람 먼저 (끊겨 자리만 남은 사람은 마지막)
+      const humans = [...this.players.values()].filter((o) => !o.isBot);
+      const next = humans.find((o) => !o.away) || humans[0];
       this.hostId = next ? next.id : null;
     }
     for (const pc of this.pieces) if (pc.controller === id) pc.controller = null;

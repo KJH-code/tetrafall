@@ -65,4 +65,25 @@ public class AuditTests
         Move(g, 1, 0);
         Assert.Equal(x0 + 1, g.ControlledPiece(g.players[1])!.px);
     }
+
+    [Fact]
+    public void S7_호스트가_나가면_방장은_연결된_사람에게_먼저()
+    {
+        var g = new Game(_ => { });
+        foreach (var id in new[] { 1, 2, 3 }) g.AddPlayer(id);
+        g.SetAway(2, true);
+        Assert.Equal(1, g.hostId);
+        g.RemovePlayer(1);
+        Assert.Equal(3, g.hostId); // 끊긴 2 가 아니라 연결된 3
+        g.RemovePlayer(3);
+        Assert.Equal(2, g.hostId); // 연결된 사람이 없으면 끊긴 사람에게라도
+        g.RemovePlayer(2);
+        Assert.Null(g.hostId);
+    }
+
+
+    static void Run(Game g, double ms)
+    {
+        for (double t = 0; t < ms; t += TICK) g.Tick(TICK);
+    }
 }

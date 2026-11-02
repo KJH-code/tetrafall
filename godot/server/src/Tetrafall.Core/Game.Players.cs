@@ -120,7 +120,9 @@ public sealed partial class Game
         Log($"{p.name} {(p.isBot ? "빠짐" : "접속 종료")}");
         if (hostId == id)
         {
-            var next = Players().FirstOrDefault(o => !o.isBot);
+            // 연결이 살아 있는 사람 먼저 (끊겨 자리만 남은 사람은 마지막)
+            var humans = Players().Where(o => !o.isBot).ToList();
+            var next = humans.FirstOrDefault(o => !o.away) ?? humans.FirstOrDefault();
             hostId = next?.id;
         }
         foreach (var pc in pieces) if (pc.controller == id) pc.controller = null;
