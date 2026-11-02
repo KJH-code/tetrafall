@@ -318,3 +318,39 @@ test('T5 손으로 따로 적던 값을 한 곳에서: 시작 위치 안쪽 칸�
   }
   assert.equal(fs.readFileSync(path.join(root, 'client', 'main.js'), 'utf8').split(expr).length - 1, 2, '화면 쪽은 같은 식 두 곳');
 });
+
+// ---------- T7·T8: 문서·패키지 ----------
+test('T7 없는 docs/characters.md 를 가리키는 곳이 없음, CLAUDE.md 에 shared/victory.js, CREDITS.md 에 cannon-es(MIT)', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const root = path.join(path.dirname(new URL(import.meta.url).pathname), '..');
+  assert.ok(!fs.existsSync(path.join(root, 'docs', 'characters.md')), '문서가 없으니 가리키면 안 됨');
+  const skip = new Set(['node_modules', '.git', 'bin', 'obj', 'logs', 'sim-logs', 'dist', '.godot']);
+  const walk = (dir, out = []) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (skip.has(e.name)) continue;
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p, out);
+      else if (/\.(js|mjs|cjs|md|cs|gd|json|html)$/.test(e.name) && !p.endsWith('w1-audit.test.js')) out.push(p);
+    }
+    return out;
+  };
+  const bad = walk(root).filter((p) => fs.readFileSync(p, 'utf8').includes('docs/characters.md'));
+  assert.deepEqual(bad.map((p) => path.relative(root, p)), []);
+  assert.match(fs.readFileSync(path.join(root, 'CLAUDE.md'), 'utf8'), /`shared\/victory\.js`/);
+  assert.ok(fs.existsSync(path.join(root, 'shared', 'victory.js')));
+  const credits = fs.readFileSync(path.join(root, 'client', 'assets', 'CREDITS.md'), 'utf8');
+  assert.match(credits, /cannon-es[^\n]*MIT/);
+});
+
+test('T8 package.json engines.node 는 >=20.6 (package-lock 도 같음)', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const root = path.join(path.dirname(new URL(import.meta.url).pathname), '..');
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  const lock = JSON.parse(fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8'));
+  assert.equal(pkg.engines.node, '>=20.6');
+  assert.equal(lock.packages[''].engines.node, '>=20.6');
+  const [maj, min] = process.versions.node.split('.').map(Number);
+  assert.ok(maj > 20 || (maj === 20 && min >= 6), '지금 쓰는 node 도 조건을 만족');
+});

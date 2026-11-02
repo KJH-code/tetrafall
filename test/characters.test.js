@@ -536,7 +536,7 @@ test('봇: 돌진·순간 베기 길에 피할 칸(내가 던진 블록 그림�
   }
 });
 
-// ---------- 건축가 (2026-10-25, docs/characters.md 3.1) ----------
+// ---------- 건축가 (2026-10-25, DevVault Projects/Tetrafall/Characters 3.1) ----------
 
 const bb = (g, kind, owner = 1) => [...g.bblocks.values()].filter((b) => b.kind === kind && b.owner === owner);
 
@@ -838,7 +838,7 @@ test('건축가 공중 F 기둥: 막힌 곳 — 바로 밑이 땅·블록이면 
   assert.ok(!bb(g, 'pad').some((b) => b.z === 0));
 });
 
-// ---------- 닌자 (2026-10-25, docs/characters.md 3.2) ----------
+// ---------- 닌자 (2026-10-25, DevVault Projects/Tetrafall/Characters 3.2) ----------
 
 test('닌자 평타: 지상 4타(올려 차기는 마무리 아님, 띄움) → 점프 → 공중 2타(내려 차기 마무리)가 한 콤보, 매 틱 누르면 이어짐', () => {
   const { chain, air } = C.BASIC_ATTACKS.ninja;
@@ -1013,7 +1013,7 @@ test('봇 닌자: 필드 밖으로 떨어지면 안쪽으로 공중 F (바닥 �
   assert.ok(b.empowerUntil > g.time);
 });
 
-// ---------- 탱크 (2026-10-25, docs/characters.md 3.3) ----------
+// ---------- 탱크 (2026-10-25, DevVault Projects/Tetrafall/Characters 3.3) ----------
 
 test('탱크 평타: 평평평(방패 올려치기는 마무리 아님, 띄움) → 점프 → 공중 방패 내려치기(마무리)가 한 콤보', () => {
   const { chain, air } = C.BASIC_ATTACKS.tank;
@@ -1193,7 +1193,7 @@ test('점프 선입력: 땅에서 누른 점프(action)는 JUMP_BUFFER_MS 동안
   assert.ok(p(1).z < 0.05, '버퍼 지나면 안 뜀');
 });
 
-// ---------- 갈고리 (2026-10-25, docs/characters.md 3.4) ----------
+// ---------- 갈고리 (2026-10-25, DevVault Projects/Tetrafall/Characters 3.4) ----------
 
 test('갈고리 평타: 휘두르기 → 주먹 → 장전이면 탕 (사거리 2, 넉백 큼, 빈 총이 됨) / 빈 총이면 갈고리 내려치기 (약함). 패시브 사거리 없음', () => {
   const { g, lines, p } = setupChars(['hook', 'builder']);
@@ -1607,7 +1607,7 @@ test('갈고리 R 한 번 누르면 나감 (2026-10-26 재혁: 두 번 눌러야
   assert.ok(q.g.drainEvents().some((e) => e.type === 'castDrop' && e.who === 1 && e.kind === 'ult'));
 });
 
-// ---------- 사냥꾼 (2026-10-26, docs/characters.md 3.5) ----------
+// ---------- 사냥꾼 (2026-10-26, DevVault Projects/Tetrafall/Characters 3.5) ----------
 
 test('사냥꾼 표식: 지상 평타 마무리(찔러 넣기)가 맞을 때만 +1 (최대 3, 사냥꾼마다 따로), 공중 평타로는 안 쌓임, 마지막으로 쌓인 뒤 5초면 사라짐. snapshot marks', () => {
   const { g, lines, p } = setupChars(['hunter', 'tank', 'hunter']);
@@ -1846,7 +1846,7 @@ test('사냥꾼 R: 콘 안에 표식 있는 사람·없는 사람이 섞이면 �
   assert.equal(g.snapshot().players.find((x) => x.id === 2).ultTarget, undefined, '사냥꾼만');
 });
 
-// ---------- 대포수 (2026-10-26, docs/characters.md 3.6) ----------
+// ---------- 대포수 (2026-10-26, DevVault Projects/Tetrafall/Characters 3.6) ----------
 
 test('대포수 장전: 최대 3발, 판 시작에 가득, 쏘면 줄고 2.5초마다 한 발. 탄이 없으면 평타는 후려치기. snapshot cannon', () => {
   const { g, p } = setupChars(['cannon', 'tank']);

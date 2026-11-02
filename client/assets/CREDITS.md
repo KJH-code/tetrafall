@@ -43,3 +43,9 @@ OpenGameArt CC0 원본을 `tools/prep-sfx.mjs` 로 역할별로 다듬음 (앞 �
 | `hitHeavy_2·3` | 37 hits/punches — independent.nu ljudbank — https://opengameart.org/content/37-hitspunches | CC0 1.0 |
 | `swishBlade_1~3` | 20 Sword Sound Effects — StarNinjas — https://opengameart.org/content/20-sword-sound-effects-attacks-and-clashes | CC0 1.0 |
 | `swishMid_1~4`, `swishHeavy_1~3` | Swishes Sound Pack — https://opengameart.org/content/swishes-sound-pack | CC0 1.0 |
+
+# 라이브러리 출처 (npm, 서버가 `/vendor/` 로 서빙)
+
+| 라이브러리 | 출처 | 라이선스 |
+|---|---|---|
+| `cannon-es` 0.20.0 (`client/ragdoll.js` 몸 래그돌 물리, `/vendor/cannon-es.js`) | https://github.com/pmndrs/cannon-es (cannon.js 후속, Copyright (c) 2015 cannon.js Authors) | MIT |

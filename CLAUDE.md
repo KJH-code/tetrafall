@@ -29,6 +29,7 @@ Windows PowerShell 에서 npm 이 막히면 `npm.cmd`.
 - `shared/config.js` — **튜닝 수치는 전부 여기.** 코드에 숫자를 박지 않는다
 - `shared/pieces.js` — 테트리미노 모양·회전
 - `shared/camera.js` — 관전 궤도 카메라 (three.js 없는 순수 계산, `render.js` 가 씀)
+- `shared/victory.js` — 판 끝 연출 순서 (마지막 킬 슬로모션 → 승자 클로즈업 → 결과 표 → 대기실 판, three.js 없는 순수 계산, `main.js` 가 씀, 시간 config `VICTORY_*`·`RESULTS_HERO_MS`, 테스트 `test/wipe.test.js`)
 - `client/ragdoll.js` — 액티브 래그돌 (cannon-es): figure 관절마다 몸 조각, 관절 모터가 figureAnim 자세를 따라가고 맞음·경직·낙사엔 힘이 빠져 쓰러졌다 일어남 (골반이 `RAGDOLL_SLUMP` 까지 처짐). 골반은 판정(보간) 위치를 따라감. 관절 각도 제한 `RAGDOLL_LIMITS`, 체형별 무게 `RAGDOLL_WEIGHT`. 1인칭 내 몸은 끔. 순수 계산(모터 세기·PD·끌어당김)은 `client/ragdoll-math.js`
 - `client/interp.js` — 플레이어 화면 위치 보간 (three.js 없는 순수 계산, `render.js` 가 씀). 스냅샷을 서버 시각(`state.time`)으로 쌓고 조금 늦은 시각(남 `INTERP_DELAY_MS`, 나 `INTERP_DELAY_SELF_MS`)을 두 스냅샷 사이에서 보간
 - `server/game.js` — 게임 상태 `Game`: 생성자·`emit`·`tick` 만 여기, 메서드는 묶음 파일에 나눠 두고 `Game.prototype` 에 붙임 (같은 이름이 두 파일에 있으면 시작할 때 에러). 메서드를 찾을 땐 이름으로 grep:

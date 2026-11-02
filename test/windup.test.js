@@ -1,4 +1,4 @@
-// 이동 스킬 예고 (2026-10-26 재혁, docs/characters.md 2절): 닌자·탱크·갈고리 F 는 지상이면 준비 SKILL_WINDUP_MS, 공중이면 바로.
+// 이동 스킬 예고 (2026-10-26 재혁, DevVault Projects/Tetrafall/Characters 2절): 닌자·탱크·갈고리 F 는 지상이면 준비 SKILL_WINDUP_MS, 공중이면 바로.
 // 갈고리 F 판정은 갈고리가 닿는 순간 (HOOK_FLY_MS 뒤)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
