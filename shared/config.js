@@ -1817,12 +1817,12 @@ export const CONFIG = {
   NET_RECONNECT_TRIES: RECONNECT_GRACE_MS / NET_RECONNECT_MS, // 이만큼 해도 안 되면 그만 (30 × 2초 = 자리 유지 RECONNECT_GRACE_MS 와 같게, 나눗셈으로 맞춤. 터널 주소가 바뀌었으면 새 링크가 필요)
 };
 
-// 캐릭터의 평타 세트 (바드는 메탈 폼이면 metal 세트)
-// 방에 들어올 수 있는 최대 인원 (사람 + 봇): MAX_PLAYERS 와 시작 위치 수 중 작은 쪽. 서버·방·화면이 이 함수 하나를 씀 (감사 T5)
+// 방에 들어올 수 있는 최대 인원 (사람 + 봇): MAX_PLAYERS 와 시작 위치 수 중 작은 쪽. 서버·방(server/·C# Rooms)이 이 함수 하나를 씀 (감사 T5). 화면 client/main.js 는 아직 같은 식 Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length) 을 2곳에 따로 적음 (통합 때 이 함수로)
 export function maxPlayers() {
   return Math.min(CONFIG.MAX_PLAYERS, CONFIG.SPAWN_POINTS.length);
 }
 
+// 캐릭터의 평타 세트 (바드는 메탈 폼이면 metal 세트)
 export function basicSet(char, form) {
   const set = CONFIG.BASIC_ATTACKS[char];
   return set && set.metal && form === 'metal' ? set.metal : set;
