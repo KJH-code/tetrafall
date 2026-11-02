@@ -1225,6 +1225,9 @@ function leftRoom(reason) {
   roomLater.cancelAll(); // 이전 방 효과 예약 (킬 피드 줄·표창 늦은 맞음·소리 째깍)
   for (const t of [hitmarkerTimer, comboTimer, counterTimer]) clearTimeout(t);
   setUrlRoom(null);
+  hitmarker.style.transition = 'none';
+  hitmarker.style.opacity = 0; // 맞힌 직후 나가도 X 가 메뉴에 남지 않게
+  document.body.classList.remove('cards');
   // 메뉴로 짧은 슬래시: 방 목록은 띠가 다 덮을 때 (shared/wipe.js 'short')
   const plan = screenNow && screenNow !== 'menu' ? playWipe(wipeKind(screenNow, 'menu')) : null;
   screenNow = 'menu';
