@@ -21,6 +21,8 @@ var settings: Control
 var wipe: Control
 var status: Label
 var ping: Label
+var net_warn: Label # 렉·끊김 알림 (JS #netWarn: 핑 아래 빨강 칸)
+var net_box: VBoxContainer
 var shown := "" # 지금 보이는 화면 (menu·lobby·game·results)
 var target := "" # 바뀌려는 화면 (슬래시가 덮으면 shown 이 됨)
 var menu_since := -1.0 # 메뉴가 뜬 시각 (PORTRAIT_WARM_MS 뒤 카드 초상 미리 그리기)
@@ -47,17 +49,15 @@ func _ready() -> void:
 	hud_extra = load("res://ui/hud_extra.gd").new()
 	hud_extra.hud = hud
 	root.add_child(hud_extra)
+	# 위 점수 띠는 화면 뿌리로 (판 HUD 가 숨는 대기실·결과에도 보임 — JS #score 는 판 사이에도 승수, body.ui-dark 빛 판)
+	hud.score_panel.reparent(root)
+	hud.score_panel.visible = false
 	results = load("res://ui/results.gd").new()
 	root.add_child(results)
 	status = S.label("연결 중...", 16, S.TEXT)
 	status.position = Vector2(16, 12)
 	root.add_child(status)
-	ping = S.label("", 12, S.DIM)
-	ping.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	ping.position = Vector2(-120, 52)
-	ping.size.x = 108
-	ping.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	root.add_child(ping)
+	root.add_child(make_net())
 	settings = load("res://ui/settings.gd").new()
 	root.add_child(settings)
 	menu.open_settings.connect(func(): settings.visible = true)
@@ -65,6 +65,8 @@ func _ready() -> void:
 	menu.open_tutorial.connect(func(): View.open_panel.emit("tutorial")) # G6 ui/tutorial_ui.gd
 	settings.open_tutorial.connect(func():
 		settings.visible = false
+		if Store.in_room():
+			Store.leave() # JS settings-tutorial: 방 안이면 나와서 (튜토리얼은 따로 혼자 방)
 		View.open_panel.emit("tutorial"))
 	wipe = load("res://ui/wipe.gd").new()
 	root.add_child(wipe)
@@ -105,6 +107,59 @@ func _show(screen: String) -> void:
 	hud.visible = screen == "game"
 	hud_extra.visible = screen == "game"
 	results.visible = screen == "results"
+	if screen == "menu":
+		hud.score_panel.visible = false
+
+
+# 접속 표시 (JS #net: 오른쪽 12 · 위 52, 세로 줄 gap 4, 오른쪽 맞춤): 핑 칸 (어두운 사선 칸, 렉이면 노랑·빨강) + 알림 칸. 테스트도 부름
+func make_net() -> VBoxContainer:
+	net_box = VBoxContainer.new()
+	net_box.add_theme_constant_override("separation", 4)
+	net_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	net_box.z_index = 5
+	ping = S.label("", 12, S.DIM)
+	ping.size_flags_horizontal = Control.SIZE_SHRINK_END
+	ping.add_theme_stylebox_override("normal", _net_box(12, 2))
+	net_box.add_child(ping)
+	net_warn = S.label("", 15, Color.WHITE)
+	net_warn.size_flags_horizontal = Control.SIZE_SHRINK_END
+	var wb := _net_box(16, 4)
+	wb.bg_color = U.net_look("bad").bg
+	net_warn.add_theme_stylebox_override("normal", wb)
+	net_warn.visible = false
+	net_box.add_child(net_warn)
+	return net_box
+
+
+# 핑 칸 (JS #netPing: padding 2 12, 7px 사선) · 알림 칸 (#netWarn: padding 4 16)
+func _net_box(side: int, tb: int) -> StyleBoxFlat:
+	var b := StyleBoxFlat.new()
+	b.bg_color = U.net_look("ok").bg
+	b.skew = Vector2(S.SKEW, 0)
+	b.content_margin_left = side
+	b.content_margin_right = side
+	b.content_margin_top = tb
+	b.content_margin_bottom = tb
+	return b
+
+
+# client/net.js draw (+ reconnect 동안 '연결 끊김 · 다시 연결 중 n'): 핑 글·색 단계, 알림 글
+func _net_draw() -> void:
+	var v: Dictionary = Net.meter.view(Net.now_ms())
+	ping.text = Net.ping_text()
+	var look := U.net_look(str(v.level))
+	ping.add_theme_color_override("font_color", look.fg)
+	(ping.get_theme_stylebox("normal") as StyleBoxFlat).bg_color = look.bg
+	var w := Net.warn_text()
+	if Net.reconnecting:
+		w = "연결 끊김 · 다시 연결 중 %d" % Net.tries
+	elif Net.ever_open and not Net.is_open():
+		w = "연결 끊김"
+	net_warn.text = w
+	net_warn.visible = w != ""
+	var vp := get_viewport().get_visible_rect().size
+	net_box.reset_size()
+	net_box.position = Vector2(vp.x - 12.0 - net_box.size.x, 52)
 
 
 func _process(_d: float) -> void:
@@ -117,7 +172,7 @@ func _prof_process(_d: float) -> void:
 	if View.get("ui_theme") != theme_seen:
 		theme_seen = View.get("ui_theme")
 		S.restyle()
-	ping.text = Net.ping_text()
+	_net_draw()
 	menu.visible = shown == "menu" and not View.title_on # 타이틀 동안은 메뉴 판 숨김 (title/title.gd)
 	_put_covers()
 	if not warmed and shown == "menu" and menu_since >= 0.0 and Time.get_ticks_msec() - menu_since >= C.PORTRAIT_WARM_MS and Portrait.inst != null:
@@ -128,6 +183,7 @@ func _prof_process(_d: float) -> void:
 	# 다른 화면 (연습 창·튜토리얼 창) 은 'ui_blocker' 무리 + blocking() — 여기서 한 번에 정해야 서로 덮어쓰지 않음
 	var others := get_tree().get_nodes_in_group("ui_blocker").any(func(n): return bool(n.call("blocking")))
 	PlayerInput.ui_blocking = settings.visible or shown in ["menu", "lobby", "results"] or focus is LineEdit or others
+	PlayerInput.typing = focus is LineEdit or focus is TextEdit
 	status.visible = not Net.is_open() # 연결 중·끊김 글만 (판 시간은 HUD)
 	var now := _screen_now()
 	if now != target:
@@ -160,6 +216,8 @@ func _refresh_panels(st: Dictionary) -> void:
 		hud_extra.refresh(st)
 	if shown == "results" and not st.is_empty():
 		results.refresh(st)
+	if (shown == "results" or shown == "lobby") and not st.is_empty():
+		hud.score_band(st, get_viewport().get_visible_rect().size, true) # 판 사이 위 점수 띠 (JS body.ui-dark #score)
 	if shown == "lobby" and not st.is_empty():
 		lobby.refresh(st)
 		hud.warm_faces(st)

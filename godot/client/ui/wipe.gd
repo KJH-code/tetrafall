@@ -62,7 +62,14 @@ func _segments(i: int, last: bool) -> Array:
 	if last:
 		var dark := Color("0b0616") if short else S.PANEL2
 		var mid := Color("1b1030") if short else S.PANEL
-		return [[0.0, 0.8, b], [0.8, 2.0, Color.WHITE if short else S.ACCENT], [2.0, 50.0, dark], [50.0, 97.6, mid], [97.6, 100.0, a]]
+		# JS: dark 2–30% → (그라데이션) mid 70% → (그라데이션) dark 97.6% — 그라데이션 구간은 칸을 잘게 나눠 칠함
+		var segs := [[0.0, 0.8, b], [0.8, 2.0, Color.WHITE if short else S.ACCENT], [2.0, 30.0, dark]]
+		for j in 8:
+			segs.append([30.0 + 5.0 * j, 30.0 + 5.0 * (j + 1), dark.lerp(mid, (j + 0.5) / 8.0)])
+		for j in 8:
+			segs.append([70.0 + 3.45 * j, 70.0 + 3.45 * (j + 1), mid.lerp(dark, (j + 0.5) / 8.0)])
+		segs.append([97.6, 100.0, a])
+		return segs
 	if i == 0:
 		return [[86.0, 97.0, a], [97.0, 100.0, Color.WHITE if short else Color("fff3b0")]]
 	return [[91.0, 100.0, b]]
@@ -76,9 +83,7 @@ func _draw() -> void:
 	var vh := vp.y / 100.0
 	var t := Time.get_ticks_msec() - t0
 	if plan.fade:
-		var u: float = clampf(t / plan.ms, 0.0, 1.0)
-		var a: float = u / C.UI_WIPE_IN if u < C.UI_WIPE_IN else 1.0 - (u - C.UI_WIPE_IN) / (1.0 - C.UI_WIPE_IN)
-		draw_rect(Rect2(Vector2.ZERO, vp), S.alpha(S.INK, clampf(a, 0.0, 1.0)))
+		draw_rect(Rect2(Vector2.ZERO, vp), S.alpha(S.INK, U.fade_alpha(t, plan.ms))) # JS easing ease-out
 		return
 	var k := tan(deg_to_rad(SKEW_DEG))
 	var y0 := TOP * vh
@@ -86,7 +91,7 @@ func _draw() -> void:
 	var cy := (y0 + y1) / 2.0
 	var bands: Array = plan.bands
 	for i in bands.size():
-		var x0: float = U.band_x(bands[i], t) * vw
+		var x0: float = U.band_x_eased(bands[i], t) * vw # JS WAAPI cubic-bezier(.6,0,.3,1) — 예전엔 직선이라 띠가 고른 빠르기로 지나감
 		for seg in _segments(i, i == bands.size() - 1):
 			var l: float = x0 + seg[0] / 100.0 * BAND_W * vw
 			var r: float = x0 + seg[1] / 100.0 * BAND_W * vw

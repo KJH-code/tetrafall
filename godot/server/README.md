@@ -50,6 +50,7 @@ node godot/server/tools/package.mjs --godot <고도 4.7.2> [--targets win,linux]
 - 웹 미리 압축: `web/` 파일마다 `.br` (brotli 11, 창 24) + `.gz` (gzip 9) → 서버 `StaticFiles.Precompressed` 가 Accept-Encoding 따라 br > gzip > 날것 (`Content-Encoding`·`Vary: Accept-Encoding`, 형식은 날것 이름). 엔진 wasm 39.5MB → br 6.9MB · gz 10.2MB (압축 약 1분 40초)
 - 서버 한 파일 약 52MB (`PUBLISH_FLAGS`: 안에서 압축·InvariantGlobalization, 트리밍 안 함 — ASP.NET), IIS 용 aspnetcorev2_inprocess.dll·web.config·staticwebassets.endpoints.json 은 뺌, web/ 에 고도 `*.import` 안 넣음, zip 파일 날짜 = 묶은 시각
 - `--no-godot` = 이미 내보낸 `godot/client/build/` 를 씀. zip 은 node 만으로 씀 (유닉스 실행 비트 유지)
+- GitHub Release: `.github/workflows/release.yml` 이 같은 묶음을 Actions 에서 만들어 Release 에 zip 두 개를 올림. 태그 `v*` 를 push 하거나, 아무 브랜치에 커밋 메시지로 `[release v0.1.0]` 를 넣어 push (태그는 GitHub 쪽에서 그 커밋에 만들어짐), 또는 main 에 이 파일이 있으면 Actions 탭 'Run workflow'. 이름에 `-` 가 있으면 미리보기(prerelease). 약 10분
 - 재혁 PC 순서: [docs/godot-play.md](../../docs/godot-play.md)
 
 ## 인터넷 대전: `--online` (node 없이)

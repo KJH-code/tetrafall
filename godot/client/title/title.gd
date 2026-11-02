@@ -41,6 +41,10 @@ func _ready() -> void:
 	layer.add_child(white)
 	hint.text = "Enter / 클릭하여 시작"
 	hint.add_theme_font_size_override("font_size", 22)
+	var hf := FontVariation.new() # JS #title .hint letter-spacing 6px
+	hf.base_font = load("res://assets/fonts/ui_font.tres")
+	hf.spacing_glyph = 6
+	hint.add_theme_font_override("font", hf)
 	hint.add_theme_color_override("font_color", Color(1, 1, 1, 0.92))
 	hint.add_theme_color_override("font_outline_color", Co.color(C.TITLE_THEMES[theme].edge))
 	hint.add_theme_constant_override("outline_size", 6)
@@ -105,7 +109,12 @@ func _process(dt: float) -> void:
 	if title_mode:
 		hint.visible = scene.ready_hint() and not pressed
 		if hint.visible:
-			hint.modulate.a = 0.6 + 0.4 * sin(Time.get_ticks_msec() / 400.0)
+			# JS #title .hint: 글자 clamp(18px, 2.2vw, 30px), 아래 14%, title-blink 2.2s 1 ↔ .4 (예전 22px 고정·아래 120·2.5초 .2 ↔ 1)
+			var vp := hint.get_viewport_rect().size
+			hint.add_theme_font_size_override("font_size", int(clampf(vp.x * 0.022, 18.0, 30.0)))
+			hint.reset_size()
+			hint.position = Vector2((vp.x - hint.size.x) / 2.0, vp.y * 0.86 - hint.size.y)
+			hint.modulate.a = 0.7 + 0.3 * cos(TAU * Time.get_ticks_msec() / 2200.0)
 		var ex = scene.exit_state()
 		if ex != null:
 			white.color.a = ex.white
