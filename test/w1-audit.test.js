@@ -144,39 +144,73 @@ function roomsSetup(opts = {}) {
   return { rooms, logs, server, join };
 }
 
-test('S4 판을 한 번도 안 한 방은 연결이 0명이 되면 바로 닫음 (ROOM_MAX 고갈 막기). 한 판 한 방·다른 연결이 남은 방은 자리 유지', () => {
+test('S4 판을 한 번도 안 한 방은 연결 0명이면 짧은 유예(ROOM_EMPTY_LOBBY_GRACE_MS) 뒤 닫힘 — 그 안에 토큰으로 오면 같은 자리, 반복해도 ROOM_MAX 가 오래 안 참', () => {
   const { rooms, logs, join } = roomsSetup();
-  for (let i = 0; i < C.ROOM_MAX; i++) {
-    const a = join();
-    rooms.message(a.conn, { type: 'create' });
-    rooms.disconnect(a.conn); // 만들고 바로 끊기
-  }
-  assert.equal(rooms.rooms.size, 0, '자리 유지 60초를 안 기다리고 바로 닫힘');
+  const ticks = (ms) => {
+    for (let t = 0; t < ms; t += TICK) rooms.tick(TICK);
+  };
+  assert.ok(C.ROOM_EMPTY_LOBBY_GRACE_MS > 0 && C.ROOM_EMPTY_LOBBY_GRACE_MS < C.RECONNECT_GRACE_MS);
+  // 유예 안 재접속 성공: 같은 방·같은 자리
   const a = join();
   rooms.message(a.conn, { type: 'create' });
-  assert.ok(a.ws.last('welcome'), '방이 다시 만들어짐');
   const code = a.ws.last('welcome').room.code;
-  assert.ok(logs[code]);
-  // 둘이 있는 방: 하나 끊겨도 방 유지, 마지막 하나가 끊기면 닫힘
-  const b = join();
-  rooms.message(b.conn, { type: 'join', code });
+  const token = a.ws.last('welcome').token;
+  const id = a.ws.last('welcome').id;
   rooms.disconnect(a.conn);
-  assert.ok(rooms.rooms.has(code), '연결이 남아 있으면 방 유지');
-  rooms.disconnect(b.conn);
-  assert.ok(!rooms.rooms.has(code), '연결 0명 → 닫힘');
-  assert.ok(logs[code].at(-1).includes('닫음'));
-  // 한 판 한 방은 예전처럼 자리 유지
+  ticks(C.ROOM_EMPTY_LOBBY_GRACE_MS - 1000);
+  assert.ok(rooms.rooms.has(code), '유예 안에는 방 유지');
+  const a2 = join();
+  rooms.message(a2.conn, { type: 'rejoin', code, token });
+  assert.equal(a2.ws.last('welcome').rejoined, true);
+  assert.equal(a2.ws.last('welcome').id, id, '같은 자리');
+  ticks(C.ROOM_EMPTY_LOBBY_GRACE_MS * 2);
+  assert.ok(rooms.rooms.has(code), '돌아왔으면 방 유지');
+  // 유예 지나면 닫힘 (로그에도 남음)
+  rooms.disconnect(a2.conn);
+  ticks(C.ROOM_EMPTY_LOBBY_GRACE_MS + 1000);
+  assert.ok(!rooms.rooms.has(code), '유예 지나면 닫힘');
+  assert.ok(logs[code].some((l) => l.includes('끊김 만료')));
+  const late = join();
+  rooms.message(late.conn, { type: 'rejoin', code, token });
+  assert.ok(late.ws.last('rejoinError'), '닫힌 뒤엔 못 돌아옴');
+  // 만들고 끊기 반복: ROOM_MAX 를 채워도 유예 뒤엔 다시 만들 수 있음 (60초까지 안 기다림)
+  for (let i = 0; i < C.ROOM_MAX; i++) {
+    const x = join();
+    rooms.message(x.conn, { type: 'create' });
+    rooms.disconnect(x.conn);
+  }
+  assert.equal(rooms.rooms.size, C.ROOM_MAX);
+  ticks(C.ROOM_EMPTY_LOBBY_GRACE_MS + 1000);
+  assert.equal(rooms.rooms.size, 0, '유예 뒤 모두 닫힘');
+  const b = join();
+  rooms.message(b.conn, { type: 'create' });
+  assert.ok(b.ws.last('welcome'), '방이 다시 만들어짐');
+  // 둘이 있는 방: 하나 끊겨도 방 유지, 남은 하나도 끊기면 유예 뒤 닫힘
+  const code1 = b.ws.last('welcome').room.code;
   const c = join();
-  rooms.message(c.conn, { type: 'create' });
-  const code2 = c.ws.last('welcome').room.code;
-  rooms.rooms.get(code2).game.totals.rounds = 1;
+  rooms.message(c.conn, { type: 'join', code: code1 });
+  rooms.disconnect(b.conn);
+  ticks(C.ROOM_EMPTY_LOBBY_GRACE_MS + 1000);
+  assert.ok(rooms.rooms.has(code1), '연결이 남아 있으면 유예 없이 유지(끊긴 자리는 RECONNECT_GRACE_MS)');
   rooms.disconnect(c.conn);
-  assert.ok(rooms.rooms.has(code2), '한 판 한 방은 자리 유지');
-  // 연습 방은 이 규칙 밖 (새로고침해도 돌아올 수 있음)
+  ticks(C.RECONNECT_GRACE_MS); // b 의 끊긴 자리도 만료
+  assert.ok(!rooms.rooms.has(code1));
+  // 한 판 한 방은 예전처럼 RECONNECT_GRACE_MS
   const d = join();
-  rooms.message(d.conn, { type: 'practice' });
-  const code3 = d.ws.last('welcome').room.code;
+  rooms.message(d.conn, { type: 'create' });
+  const code2 = d.ws.last('welcome').room.code;
+  rooms.rooms.get(code2).game.totals.rounds = 1;
   rooms.disconnect(d.conn);
+  ticks(C.ROOM_EMPTY_LOBBY_GRACE_MS + 1000);
+  assert.ok(rooms.rooms.has(code2), '한 판 한 방은 예전 자리 유지');
+  ticks(C.RECONNECT_GRACE_MS);
+  assert.ok(!rooms.rooms.has(code2));
+  // 연습 방은 이 규칙 밖
+  const e = join();
+  rooms.message(e.conn, { type: 'practice' });
+  const code3 = e.ws.last('welcome').room.code;
+  rooms.disconnect(e.conn);
+  ticks(C.ROOM_EMPTY_LOBBY_GRACE_MS + 1000);
   assert.ok(rooms.rooms.has(code3));
 });
 

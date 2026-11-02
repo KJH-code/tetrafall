@@ -82,8 +82,6 @@ export class Rooms {
       room.conns.delete(conn.id);
       conn.room = null;
       room.game.setAway(conn.id, true);
-      // 판을 한 번도 안 한 방은 연결이 0명이면 바로 닫음 (S4: 방 만들고 바로 끊기를 되풀이해 자리 유지 60초씩 ROOM_MAX 를 채우는 것 막기)
-      if (!room.practice && room.conns.size === 0 && room.game.totals.rounds === 0 && !room.game.inRound()) this.close(room, '연결 0명, 한 판도 안 한 방');
     } else if (room) this.leave(conn, null);
   }
 
@@ -166,12 +164,19 @@ export class Rooms {
     return token;
   }
 
+  // 자리 유지 시간: 판을 한 번도 안 한 방이 연결 0명이면 짧게 (S4: 만들고 끊기를 되풀이해 60초씩 ROOM_MAX 를 채우는 것 막기, 그래도 터널 재시작 같은 잠깐 끊김은 버팀), 아니면 RECONNECT_GRACE_MS
+  graceMs(room) {
+    const idle = !room.practice && room.conns.size === 0 && room.game.totals.rounds === 0 && !room.game.inRound();
+    return idle ? C.ROOM_EMPTY_LOBBY_GRACE_MS : C.RECONNECT_GRACE_MS;
+  }
+
   // 끊긴 자리 중 유지 시간이 지난 것: 예전처럼 나감 (판 중이면 접속 끊김 사망), 사람이 0명이면 방도 없앰
   expireSeats(room) {
+    const grace = this.graceMs(room);
     for (const [id, seat] of room.seats) {
-      if (seat.awayAt === null || room.game.time - seat.awayAt < C.RECONNECT_GRACE_MS) continue;
+      if (seat.awayAt === null || room.game.time - seat.awayAt < grace) continue;
       const p = room.game.players.get(id);
-      room.game.log(`  [끊김 만료] ${p ? p.name : id} ${C.RECONNECT_GRACE_MS / 1000}초 안에 안 돌아옴`);
+      room.game.log(`  [끊김 만료] ${p ? p.name : id} ${grace / 1000}초 안에 안 돌아옴`);
       room.seats.delete(id);
       room.game.removePlayer(id);
     }

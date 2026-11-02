@@ -54,6 +54,7 @@ export const CONFIG = {
   // 방: 2026-10-22 6단계 (인터넷 대전). 서버 하나에 방 여러 개, 방마다 게임 하나
   // 방 하나(봇 4) ≈ CPU 한 코어의 4%. 사람 하나에 보내는 양 (2026-10-28 잰 값, 압축 후): 4명 판 ≈ 0.4Mbps, 8명 판 ≈ 0.65Mbps (압축 전 1.5·3.4, 하늘 사슬 3개) → 8명 방 하나 ≈ 업로드 5Mbps
   ROOM_MAX: 8, // 서버 하나에 동시에 열 수 있는 방
+  ROOM_EMPTY_LOBBY_GRACE_MS: 10000, // 판을 한 번도 안 한 방이 연결 0명이 되면 자리를 이만큼만 둠 (그 안에 토큰으로 오면 같은 자리 — 터널 재시작·잠깐 끊김. 지나면 닫음, 만들고 끊기 반복으로 ROOM_MAX 가 오래 차는 것 막음). 연습 방·한 판 한 방은 RECONNECT_GRACE_MS
   ROOM_CODE_LEN: 4, // 방 코드 글자 수
   ROOM_CODE_CHARS: 'ABCDEFGHJKLMNPQRSTUVWXYZ', // 헷갈리는 I·O 뺌
   ROOM_NAME_MAX_LEN: 16, // 방 이름 글자 수

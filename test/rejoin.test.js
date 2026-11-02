@@ -200,7 +200,7 @@ test('판 중 끊기고 60초 안 옴: 예전처럼 접속 끊김 사망 (살아
 test('사람이 다 끊겨도 방은 60초 뒤에 없어짐, 그 안에 돌아오면 방 그대로', () => {
   const { rooms, a, b, code } = twoInRoom(7);
   const tb = b.ws.last('welcome').token;
-  rooms.rooms.get(code).game.totals.rounds = 1; // 한 판 한 방으로 침 (한 판도 안 한 방은 연결이 0명이면 바로 닫힘 — S4)
+  rooms.rooms.get(code).game.totals.rounds = 1; // 한 판 한 방으로 침 (한 판도 안 한 방은 ROOM_EMPTY_LOBBY_GRACE_MS 로 짧음 — S4)
   rooms.disconnect(a.conn);
   rooms.disconnect(b.conn);
   ticks(rooms, 30000);

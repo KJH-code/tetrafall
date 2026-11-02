@@ -125,7 +125,6 @@ test('방: 사람이 다 나가면 봇이 있어도 방을 바로 없애고 로�
   assert.equal(a.ws.msgs.at(-1).type, 'rooms', '나간 뒤 목록을 받음');
   assert.ok(rooms.rooms.has(code), '사람이 남아 있으면 방 유지');
   assert.ok(rooms.rooms.get(code).game.isHost(b.conn.id), '호스트는 남은 사람에게');
-  rooms.rooms.get(code).game.totals.rounds = 1; // 한 판 한 방으로 침 (한 판도 안 한 방은 연결이 0명이면 바로 닫힘 — S4)
   rooms.disconnect(b.conn); // 창 닫기
   assert.ok(rooms.rooms.has(code), '끊겨도 자리 유지 동안은 방이 남음 (재접속)');
   expireAway(rooms, code);
