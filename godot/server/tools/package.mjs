@@ -8,7 +8,7 @@
 //   Tetrafall.Server(.exe)   서버 (자기 완결형 한 파일)
 //   web/                     고도 웹 빌드 (+ 파일마다 .br·.gz 미리 압축) → 서버가 /play/ 로, / 는 /play/ 로 넘겨줌
 //   tetrafall(.exe / .x86_64) 고도 PC 클라 (기본 ws://127.0.0.1:3000 = 이 PC 서버)
-//   start-lan / start-online (.bat / .sh), README.txt, cloudflared(.exe) (--cloudflared 일 때)
+//   start-lan / start-online (.bat / .sh — 윈도우 .bat 은 처음에 tetrafall.exe 를 고성능 GPU 로 등록), README.txt, cloudflared(.exe) (--cloudflared 일 때)
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -20,6 +20,27 @@ const root = path.resolve(here, '../../..');
 const clientDir = path.join(root, 'godot', 'client');
 const serverProject = path.join(root, 'godot', 'server', 'src', 'Tetrafall.Server');
 
+// 하이브리드 그래픽 노트북 (W6 2026-11-02, 재혁 PC: Core Ultra 내장 + RTX 5070 에서 tetrafall.exe 가 내장으로 돌아 랙): Windows 는 exe 마다 GPU 를 고름.
+// HKCU\Software\Microsoft\DirectX\UserGpuPreferences 에 'exe 전체 경로' = 'GpuPreference=2;' (고성능) 를 쓰면 Windows 설정 > 그래픽 에서 고른 것과 같음 (관리자 권한 필요 없음).
+// start 스크립트가 처음 켜질 때 쓰고, 이미 값이 있으면 (재혁이 직접 고른 것 포함) 건드리지 않음. 폴더를 옮기면 새 경로로 다시 씀.
+// .bat 은 ASCII 만 (cmd 는 .bat 을 OEM 코드 페이지로 읽음 — 한글 글자를 넣으면 깨짐). 경로는 %~dp0 (실행 중 펼침 — 한글·공백 경로 그대로) 을 늘 따옴표 안에.
+// 괄호 블록을 안 씀 (경로에 ')' 가 있으면 블록이 깨짐) → goto
+export const GPU_PREF_KEY = 'HKCU\\Software\\Microsoft\\DirectX\\UserGpuPreferences';
+export const GPU_PREF_VALUE = 'GpuPreference=2;';
+export function gpuPrefLines(exe = 'tetrafall.exe') {
+  const at = `"%~dp0${exe}"`;
+  return [
+    `rem Hybrid laptop GPU: run ${exe} on the high-performance GPU (same as Windows Settings - Graphics). Skipped if already set.`,
+    `if not exist ${at} goto run`,
+    `reg query "${GPU_PREF_KEY}" /v ${at} >nul 2>&1`,
+    `if errorlevel 1 reg add "${GPU_PREF_KEY}" /v ${at} /t REG_SZ /d "${GPU_PREF_VALUE}" /f >nul && echo [GPU] ${exe} set to high-performance GPU`,
+    ':run',
+  ];
+}
+export function winScript(serverArgs = '') {
+  return ['@echo off', 'cd /d "%~dp0"', ...gpuPrefLines(), `Tetrafall.Server.exe${serverArgs ? ' ' + serverArgs : ''}`, 'pause', ''].join('\r\n');
+}
+
 export const TARGETS = {
   win: {
     rid: 'win-x64',
@@ -28,8 +49,8 @@ export const TARGETS = {
     client: ['build/windows/tetrafall.exe'],
     cloudflared: { url: 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe', name: 'cloudflared.exe' },
     scripts: {
-      'start-lan.bat': '@echo off\r\ncd /d "%~dp0"\r\nTetrafall.Server.exe\r\npause\r\n',
-      'start-online.bat': '@echo off\r\ncd /d "%~dp0"\r\nTetrafall.Server.exe --online\r\npause\r\n',
+      'start-lan.bat': winScript(),
+      'start-online.bat': winScript('--online'),
     },
   },
   linux: {
@@ -63,6 +84,13 @@ export function readme(t) {
     '끄기: 서버 창을 닫거나 Ctrl+C. 판 기록은 logs/ 폴더',
     '포트 바꾸기: 환경 변수 PORT (기본 3000)',
     'cloudflared: Cloudflare (Apache-2.0) https://github.com/cloudflare/cloudflared',
+    ...(win
+      ? [
+          '',
+          `게임이 느리면:      노트북 (내장+외장 그래픽) 은 start-lan·start-online 이 처음 켜질 때 ${pc} 를 Windows 고성능 GPU 로 등록함 (관리자 권한 없이, 이미 정했으면 그대로).`,
+          `                    ${pc} 만 따로 쓰면 Windows 설정 > 시스템 > 디스플레이 > 그래픽 에서 ${pc} 를 '고성능'. 게임 설정 '화질' 자동·높음·보통·낮음, F3 = 성능 표시 (Ctrl+C 복사)`,
+        ]
+      : []),
     '',
   ].join(win ? '\r\n' : '\n');
 }
