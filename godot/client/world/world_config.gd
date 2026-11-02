@@ -1,13 +1,12 @@
 # 고도 판 그리기 (G1) 에만 필요한 수치. 게임 수치는 core/config.gd (shared/config.js) 를 씀
 extends RefCounted
 
-# 판 화면·1인칭 팔 다중 샘플 (render.js WebGLRenderer({ antialias: true }) — 크롬 기본 4×). 웹·PC 따로 정함 (재혁 2026-11-02: PC 4× 그대로,
-# 웹은 웹 성능 작업이 정함). 고르기는 msaa_3d
+# 판 화면·1인칭 팔 다중 샘플 (render.js WebGLRenderer({ antialias: true }) — 크롬 기본 4×). 웹·PC 따로 정할 수 있게 값 둘 (재혁 2026-11-02: PC 4× 그대로). 고르기는 msaa_3d
 const MSAA_3D_PC := Viewport.MSAA_4X
-# 웹은 끔 (W5 2026-11-02 잼, 같은 기계 llvmpipe 크로미움 8명 판, 한 판 안에서 2초마다 번갈아): 4× → 끔 프레임 0.49~0.53배, 2× 는 4× 와 같은 비용
-# (0.95~1.17배 — 소프트웨어 GL 은 샘플 수와 상관없이 다중 샘플 길이 비쌈) → 2× 는 얻는 게 없어 4× 아니면 끔. 4× 그대로면 JS 웹의 약 1.5배.
-# 대가: 모서리 계단 (같은 프레임 4× ↔ 끔 화소 2~8% 다름, 거의 외곽선·모서리). FXAA 흉내 (화면 후처리) 는 4× 와 더 멀어져 (10~16%) 안 씀
-const MSAA_3D_WEB := Viewport.MSAA_DISABLED
+# 웹도 4× (재혁 2026-11-02 W5 뒤 결정: 끄지 않음 — JS 웹도 실제로 4× 를 받음). W5 잰 값 (같은 기계 llvmpipe 크로미움 8명 판): 웹 4× = JS 웹의 약 1.57배,
+# 끄면 0.69배 (4× → 끔 프레임 0.49~0.53배, 2× 는 4× 와 같은 비용). 소프트웨어 GL 이라 다중 샘플이 유난히 비쌈 — 실 GPU 에선 훨씬 작음, 실 PC 브라우저 F3 숫자로 확인할 것.
+# 끄는 길은 그래픽 낮춤 (MSAA_LOW)
+const MSAA_3D_WEB := Viewport.MSAA_4X
 const MSAA_LOW := Viewport.MSAA_DISABLED # 그래픽 낮춤: 끔 (웹·PC 둘 다. JS 는 낮춤에서 setPixelRatio(1) 로 비용을 줄임. 소프트웨어 GL 8명 판 4× = 프레임 약 2.4배)
 const CELL_SIZE := 0.98 # 쌓인 칸·떨어지는 칸 상자 크기 (칸 사이 살짝 틈)
 const CHECKER := 0.94 # 이웃 칸 체커보드 명암 (render.js updateGrid)

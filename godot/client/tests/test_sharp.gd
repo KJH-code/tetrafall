@@ -21,9 +21,9 @@ func _src(path: String) -> String:
 
 
 func test_msaa_like_js_antialias() -> void:
-	# 재혁 2026-11-02: PC 4× 그대로 (낮춤이면 끔), 웹은 따로 — W5 웹 성능 작업이 잰 값: 웹은 끔 (world_config 주석)
+	# 재혁 2026-11-02: PC 4× 그대로 (낮춤이면 끔), 웹도 4× (W5 잰 값을 보고 끄지 않기로 — world_config 주석). 웹·PC 값은 따로 둠
 	check(WC.MSAA_3D_PC == Viewport.MSAA_4X, "PC 판 화면 4× 다중 샘플 (JS antialias)")
-	check(WC.MSAA_3D_WEB == Viewport.MSAA_DISABLED, "웹은 끔 (소프트웨어 GL 에서 4×·2× 가 프레임 약 2배)")
+	check(WC.MSAA_3D_WEB == Viewport.MSAA_4X, "웹도 4× (JS 웹도 antialias 4×, 재혁 유지 결정)")
 	check(WC.MSAA_LOW == Viewport.MSAA_DISABLED, "그래픽 낮춤이면 끔")
 	check(WC.msaa_3d(false, false) == WC.MSAA_3D_PC and WC.msaa_3d(false, true) == WC.MSAA_3D_WEB, "웹·PC 가 각자 값")
 	check(WC.msaa_3d(true, false) == WC.MSAA_LOW and WC.msaa_3d(true, true) == WC.MSAA_LOW, "낮춤은 웹·PC 둘 다 끔")
