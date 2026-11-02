@@ -10,6 +10,8 @@ const TEAM_MAIN := {"red": Color("ff5a4a"), "blue": Color("4aa8ff")}
 const U := preload("res://ui/ui_calc.gd")
 
 var grid: GridContainer
+var box: VBoxContainer # 제목·팀전 줄 (JS .title grid-column 1 / -1 — 표 전체 폭) + 표
+var head: VBoxContainer
 var key := ""
 
 
@@ -21,11 +23,15 @@ func _ready() -> void:
 	add_theme_stylebox_override("panel", pane_box)
 	position = Vector2(14, 96)
 	visibility_changed.connect(func(): if visible and not S.reduced(): S.slide_in(self, -30.0)) # JS slide-left .2s
+	box = VBoxContainer.new()
+	add_child(box)
+	head = VBoxContainer.new()
+	box.add_child(head)
 	grid = GridContainer.new()
 	grid.columns = 4
 	grid.add_theme_constant_override("h_separation", 7)
 	grid.add_theme_constant_override("v_separation", 5)
-	add_child(grid)
+	box.add_child(grid)
 
 
 func refresh(st: Dictionary) -> void:
@@ -42,6 +48,8 @@ func refresh(st: Dictionary) -> void:
 	pane_box.content_margin_right = 10 if small else 14
 	grid.add_theme_constant_override("h_separation", 5 if small else 7)
 	grid.add_theme_constant_override("v_separation", 4 if small else 5)
+	box.add_theme_constant_override("separation", 4 if small else 5) # JS grid gap 5 7 (작은 창 4 5) — 제목 줄도 표의 줄
+	head.add_theme_constant_override("separation", 4 if small else 5)
 	var fs := 12 if small else 13
 	var bs := 11 if small else 12
 	# 버튼 (JS #host-players button: 12px · padding 2 9, 작은 창 11px · 2 7)
@@ -54,25 +62,23 @@ func refresh(st: Dictionary) -> void:
 			sb.content_margin_top = 2
 			sb.content_margin_bottom = 2
 		return b
-	for c in grid.get_children():
-		c.queue_free()
+	for c in grid.get_children() + head.get_children():
+		c.free() # 바로 지움 (queue_free 면 한 프레임 동안 옛 칸까지 재서 판이 넓어짐)
+	# 제목·팀전 줄은 표 밖 (JS .title grid-column 1 / -1: 표 전체 폭) — 예전엔 표 첫 칸이라 이름 열이 제목 폭 (128) 으로 넓어져 판 265 (JS 177)
 	var title := S.glow_label("플레이어 관리 (호스트)", 14, Color.WHITE, 3)
-	grid.add_child(title)
-	for i in 3:
-		grid.add_child(Control.new())
+	head.add_child(title)
+	var team_row := HBoxContainer.new()
+	team_row.add_theme_constant_override("separation", 8) # JS 팀 섞기 marginLeft 8
+	head.add_child(team_row)
 	var team := CheckBox.new()
 	team.text = "팀전 (빨강 vs 파랑)"
-	S.style_check(team, fs)
+	S.style_check(team, 14) # JS .title 14px 글꼴 disp
 	team.button_pressed = bool(st.get("teamMode", false))
 	team.disabled = st.get("mode") == "master" # 블록 마스터는 1 대 다
 	team.toggled.connect(func(on): Store.send_room({"type": "teamMode", "on": on}))
-	grid.add_child(team)
+	team_row.add_child(team)
 	if st.get("teamMode", false):
-		grid.add_child(btn.call("팀 섞기", func(): Store.send_room({"type": "shuffleTeams"})))
-	else:
-		grid.add_child(Control.new())
-	grid.add_child(Control.new())
-	grid.add_child(Control.new())
+		team_row.add_child(btn.call("팀 섞기", func(): Store.send_room({"type": "shuffleTeams"})))
 	for p in ps:
 		var nm := str(p.get("nick", "")) if str(p.get("nick", "")) != "" else str(p.name)
 		var who := S.label("%s%s%s%s" % [nm, " (나)" if p.id == Store.my_id else "", " · 관전" if p.get("spectator", false) else "", " · 자리 비움" if p.get("away", false) else ""], fs, Coords.color(C.PLAYER_PALETTE[int(p.get("color", p.slot)) % C.PLAYER_PALETTE.size()]))
@@ -93,3 +99,4 @@ func refresh(st: Dictionary) -> void:
 			grid.add_child(btn.call("내보내기", func(): Store.send_room({"type": "kick", "target": id})))
 		else:
 			grid.add_child(Control.new())
+	reset_size() # 판 폭 = 내용 (줄어들 때도)

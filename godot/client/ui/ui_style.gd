@@ -390,6 +390,18 @@ static func style_button(b: Button, kind := "ghost", size := 16) -> Button:
 	return b
 
 
+# 버튼 안 여백 (JS padding 세로 v · 가로 h): 모든 상태 stylebox 에
+static func pad(b: Button, h: int, v: int) -> Button:
+	for st in ["normal", "hover", "pressed", "disabled", "focus"]:
+		var sb = b.get_theme_stylebox(st)
+		if sb is StyleBoxFlat:
+			sb.content_margin_left = h
+			sb.content_margin_right = h
+			sb.content_margin_top = v
+			sb.content_margin_bottom = v
+	return b
+
+
 static func button(text: String, cb: Callable, kind := "ghost", size := 16) -> Button:
 	var b := Button.new()
 	b.text = text
@@ -458,8 +470,11 @@ static func hud_box(accent_left := false) -> StyleBoxFlat:
 
 
 # 체크 상자: 기본 테마 표시가 어두운 판에서 안 보여서 직접 그림 (빈 칸 = 빛 테두리, 켬 = 빛 채움 + 하얀 속)
+const CHECK_PX := 15 # JS input[type=checkbox] 15×15 (margin 3 3 3 4)
+
+
 static func _check_icon(on: bool, off_alpha := 1.0) -> ImageTexture:
-	var n := 18
+	var n := CHECK_PX
 	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
 	var gc := g()
@@ -469,7 +484,7 @@ static func _check_icon(on: bool, off_alpha := 1.0) -> ImageTexture:
 			if edge:
 				img.set_pixel(x, y, alpha(gc, off_alpha))
 			elif on:
-				var inner: bool = x >= 5 and y >= 5 and x < n - 5 and y < n - 5
+				var inner: bool = x >= 4 and y >= 4 and x < n - 4 and y < n - 4
 				img.set_pixel(x, y, Color.WHITE if inner else alpha(gc, 0.85))
 			else:
 				img.set_pixel(x, y, Color(0, 0, 0, 0.45))
@@ -490,6 +505,12 @@ static func style_check(c: CheckBox, size := 13) -> CheckBox:
 	c.add_theme_color_override("font_color", TEXT)
 	c.add_theme_color_override("font_hover_color", Color.WHITE)
 	c.add_theme_color_override("font_pressed_color", Color.WHITE)
-	c.add_theme_constant_override("h_separation", 6)
+	c.add_theme_constant_override("h_separation", 7) # JS 체크 오른쪽 margin 3 + label gap 4
+	var sb := StyleBoxEmpty.new() # JS 체크 margin 3 3 3 4 → 왼쪽 4, 위아래 3 (높이 = 글 17 + 4 = 21, 기본 테마 25)
+	sb.content_margin_left = 4
+	sb.content_margin_top = 2
+	sb.content_margin_bottom = 2
+	for st in ["normal", "hover", "pressed", "disabled", "focus", "hover_pressed"]:
+		c.add_theme_stylebox_override(st, sb)
 	c.focus_mode = Control.FOCUS_NONE
 	return c

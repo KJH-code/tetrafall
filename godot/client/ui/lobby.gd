@@ -55,6 +55,16 @@ var small_was = null
 var picked_at := -100000.0 # 캐릭터 고른 시각 (ms) — 큰 캐릭터 도발·돎 (G2 몸이 오면)
 var rolling := false
 var colors_key := ""
+var gaps := {} # 줄 사이 틈 (JS margin — 줄마다 다름): 이름 → [틈 Control, 1280 px, 작은 창 px]
+
+# 줄 사이 틈 [1280, 작은 창] — JS 대기실 요소 사각형 (Playwright getBoundingClientRect, 1280×720·960×540) 에서 잰 앞 줄 끝 → 다음 줄 위
+const GAP := {"hint": [4, 4], "pick": [7, 5], "name": [9, 4], "swatches": [3, 2], "team_note": [3, 2], "start": [12, 7], "settings": [12, 8],
+	"map_info": [5, 5], "mode_info": [5, 5], "room": [6, 6], "room_link": [0, 0], "keys": [6, 4], "keys_text": [4, 4]}
+const CARD := [Vector2(72, 63), Vector2(62, 49)] # JS .cc 폭 72 (작은 창 62), 높이 = padding 3+4 + 얼굴 42 (30) + 이름 12×1.2 (11×1.1)
+const ROW_BTN_PAD := [11, 3] # JS #bot-btns button · #room-row button: 13px, padding 3 11 (두 크기 같음)
+const KEYS_BTN_PAD := [12, 3] # JS #center .keys > button: 13px, padding 3 12
+const SET_PAD := [[12, 7], [10, 5]] # JS #bot-btns padding 7 12 (작은 창 5 10)
+const SELECT_EXTRA := 30 # JS select 폭 = 가장 긴 글 + padding 4·4 + 테두리 1·1 + 화살표 칸 ~20 (모드 89 = 글 59 + 30)
 
 
 func _ready() -> void:
@@ -70,7 +80,7 @@ func _ready() -> void:
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	add_child(scroll)
 	col = VBoxContainer.new()
-	col.add_theme_constant_override("separation", 8)
+	col.add_theme_constant_override("separation", 0) # 줄 사이는 _gap (JS 줄마다 margin 이 다름)
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(col)
 
@@ -90,14 +100,14 @@ func _ready() -> void:
 	hb.content_margin_top = 4
 	hb.content_margin_bottom = 4
 	hint.add_theme_stylebox_override("normal", hb)
-	col.add_child(hint)
+	_add(hint, "hint")
 
 	# 캐릭터 고르기: 왼쪽 큰 캐릭터 (누르면 스킬 카드), 오른쪽 3×3 카드 (8명 + 랜덤)
 	var pick := HBoxContainer.new()
 	pick.add_theme_constant_override("separation", 10)
 	var pick_holder := MarginContainer.new() # 고르기 + 그 위를 덮는 스킬 카드 (JS #char-card position absolute inset 0)
 	pick_holder.add_child(pick)
-	col.add_child(pick_holder)
+	_add(pick_holder, "pick")
 	stage = PanelContainer.new()
 	stage.custom_minimum_size = Vector2(130, 200)
 	stage.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -191,18 +201,22 @@ func _ready() -> void:
 	name_row.add_child(S.label("이름", 13, Color("a49cbc")))
 	name_edit = S.line_edit("머리 위에 보임", 14, int(C.NAME_MAX_LEN))
 	name_edit.custom_minimum_size.x = 105 # JS #name-input 7.5em
+	for stn in ["normal", "focus"]: # JS #name-input padding 3 6 + 테두리 2 → 높이 26
+		var ne: StyleBoxFlat = name_edit.get_theme_stylebox(stn)
+		ne.content_margin_top = 5
+		ne.content_margin_bottom = 4
 	name_edit.text_submitted.connect(func(_t): _submit_name())
 	name_edit.focus_exited.connect(_submit_name)
 	name_row.add_child(name_edit)
-	col.add_child(name_row)
+	_add(name_row, "name")
 	swatches = HBoxContainer.new()
 	swatches.alignment = BoxContainer.ALIGNMENT_CENTER
 	swatches.add_theme_constant_override("separation", 3)
-	col.add_child(swatches)
+	_add(swatches, "swatches")
 	team_note = S.label("팀전은 팀 색", 12, Color("a49cbc"))
 	team_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	team_note.visible = false
-	col.add_child(team_note)
+	_add(team_note, "team_note")
 
 	start_btn = S.button("시작 (Enter)", func(): Store.send_room({"type": "start"}), "go", 30) # JS #start-btn: 30px · 자간 6 · padding 10 0 · 폭 92% · 사선 18px
 	start_btn.custom_minimum_size.y = 56
@@ -210,7 +224,7 @@ func _ready() -> void:
 	start_btn.add_theme_font_override("font", S.spaced(6))
 	for stn in ["normal", "hover", "pressed", "focus", "disabled"]:
 		(start_btn.get_theme_stylebox(stn) as StyleBoxFlat).skew = Vector2(0.32, 0)
-	col.add_child(start_btn)
+	_add(start_btn, "start")
 
 	# 방 설정 (호스트): 작은 글씨 한 묶음 (JS #bot-btns: 판 + '방 설정' gl 13px 자간 1)
 	settings_wrap = PanelContainer.new()
@@ -219,10 +233,10 @@ func _ready() -> void:
 	swb.set_border_width_all(1)
 	S.theme_border(swb, 0.1)
 	swb.skew = Vector2(0.09, 0)
-	swb.content_margin_left = 12
-	swb.content_margin_right = 12
-	swb.content_margin_top = 7
-	swb.content_margin_bottom = 7
+	swb.content_margin_left = SET_PAD[0][0]
+	swb.content_margin_right = SET_PAD[0][0]
+	swb.content_margin_top = SET_PAD[0][1]
+	swb.content_margin_bottom = SET_PAD[0][1]
 	settings_wrap.add_theme_stylebox_override("panel", swb)
 	settings_box = HFlowContainer.new()
 	settings_box.alignment = FlowContainer.ALIGNMENT_CENTER
@@ -232,8 +246,8 @@ func _ready() -> void:
 	var st_lab := S.label("방 설정", 13, Color.WHITE)
 	st_lab.add_theme_font_override("font", S.spaced(1))
 	settings_box.add_child(S.tint(st_lab))
-	add_bot = S.button("봇 추가", func(): Store.send_room({"type": "addBot"}), "ghost", 13)
-	remove_bot = S.button("봇 빼기", func(): Store.send_room({"type": "removeBot"}), "ghost", 13)
+	add_bot = S.pad(S.button("봇 추가", func(): Store.send_room({"type": "addBot"}), "ghost", 13), ROW_BTN_PAD[0], ROW_BTN_PAD[1])
+	remove_bot = S.pad(S.button("봇 빼기", func(): Store.send_room({"type": "removeBot"}), "ghost", 13), ROW_BTN_PAD[0], ROW_BTN_PAD[1])
 	settings_box.add_child(add_bot)
 	settings_box.add_child(remove_bot)
 	mode_sel = _select("모드", ["survival", "master", "kills"], func(id): return C.MODE_NAMES[id], func(id): Store.send_room({"type": "setMode", "mode": id}))
@@ -241,47 +255,61 @@ func _ready() -> void:
 	map_sel = _select("맵", ["random"] + Array(C.MAP_IDS), func(id): return "무작위" if id == "random" else C.MAPS[id].name, func(id): Store.send_room({"type": "setMap", "map": id}))
 	sky_box = _check("하늘 계단", func(on): Store.send_room({"type": "skyStairs", "on": on}))
 	hp_box = _check("체력전", func(on): Store.send_room({"type": "hpMode", "on": on}))
-	col.add_child(settings_wrap)
+	_add(settings_wrap, "settings")
 	map_info = S.label("", 13, Color("cdd5ee"))
 	map_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	map_info.visible = false
-	col.add_child(map_info)
+	_add(map_info, "map_info")
 	mode_info = S.label("", 12, Color("a49cbc"))
 	mode_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	mode_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	col.add_child(mode_info)
+	_add(mode_info, "mode_info")
 
 	# 방 코드 줄
 	var room_row := HFlowContainer.new()
 	room_row.alignment = FlowContainer.ALIGNMENT_CENTER
 	room_row.add_theme_constant_override("h_separation", 6)
+	room_row.add_theme_constant_override("v_separation", 6) # JS #room-row gap 6 (줄 사이도)
 	room_row.add_child(S.label("방", 13, Color("a49cbc")))
 	code_label = S.glow_label("", 19, Color.WHITE, 4)
 	code_label.add_theme_font_override("font", S.spaced(3)) # JS #room-row .code letter-spacing 3px
 	room_row.add_child(code_label)
 	room_text = S.label("", 13, Color("a49cbc"))
 	room_row.add_child(room_text)
-	public_btn = S.button("공개로", func(): Store.send_room({"type": "setPublic", "on": not Store.room.get("public", false)}), "ghost", 13)
+	public_btn = S.pad(S.button("공개로", func(): Store.send_room({"type": "setPublic", "on": not Store.room.get("public", false)}), "ghost", 13), ROW_BTN_PAD[0], ROW_BTN_PAD[1])
 	room_row.add_child(public_btn)
-	room_row.add_child(S.button("링크 복사", _copy_link, "ghost", 13))
-	room_row.add_child(S.button("방 나가기", func(): Store.leave(), "ghost", 13))
-	col.add_child(room_row)
+	room_row.add_child(S.pad(S.button("링크 복사", _copy_link, "ghost", 13), ROW_BTN_PAD[0], ROW_BTN_PAD[1]))
+	room_row.add_child(S.pad(S.button("방 나가기", func(): Store.leave(), "ghost", 13), ROW_BTN_PAD[0], ROW_BTN_PAD[1]))
+	_add(room_row, "room")
 	room_link = S.label("", 11, Color("7d7896"))
 	room_link.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	room_link.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
-	col.add_child(room_link)
+	_add(room_link, "room_link")
 
 	var keys_row := HBoxContainer.new()
-	keys_row.add_child(S.button("설정", func(): open_settings.emit(), "ghost", 13))
-	var keys_btn := S.button("조작법", func(): keys_text.visible = not keys_text.visible, "ghost", 13)
+	keys_row.add_theme_constant_override("separation", 10) # JS .keys 버튼 사이 (설정 586+46 → 조작법 642)
+	keys_row.add_child(S.pad(S.button("설정", func(): open_settings.emit(), "ghost", 13), KEYS_BTN_PAD[0], KEYS_BTN_PAD[1]))
+	var keys_btn := S.pad(S.button("조작법", func(): keys_text.visible = not keys_text.visible, "ghost", 13), KEYS_BTN_PAD[0], KEYS_BTN_PAD[1])
 	keys_row.add_child(keys_btn)
-	col.add_child(keys_row)
+	_add(keys_row, "keys")
 	keys_text = S.label("WASD 이동 · Space 점프 (공중에서 한 번 더) · Shift 대시 · F 스킬 · R 필살기 · 좌클릭 평타 · 우클릭 아이템 · Q/E 방향 · G 이모트 · V 시점 · H 조작법", 12, Color("cdd5ee"))
 	keys_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	keys_text.visible = false
-	col.add_child(keys_text)
+	_add(keys_text, "keys_text")
 
 	Store.joined.connect(func(_r, _re): _on_joined())
+
+
+# 줄 하나 더함 + 그 위 틈 (JS margin-top). 줄이 숨으면 틈도 숨음
+func _add(c: Control, gap_key: String) -> void:
+	var sp := Control.new()
+	sp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	sp.custom_minimum_size.y = GAP[gap_key][0]
+	col.add_child(sp)
+	col.add_child(c)
+	gaps[gap_key] = sp
+	sp.visible = c.visible
+	c.visibility_changed.connect(func(): sp.visible = c.visible)
 
 
 func _toggle_card(on = null) -> void:
@@ -341,9 +369,13 @@ func _select(label_text: String, ids: Array, name_of: Callable, on_pick: Callabl
 		o.add_theme_stylebox_override(stn, ob)
 	o.add_theme_constant_override("arrow_margin", 3)
 	o.add_theme_constant_override("h_separation", 2)
+	o.fit_to_longest_item = false # 고도는 가장 긴 글을 기본 글자 크기 (16) 로 재서 넓음 → 직접 (JS select 폭)
+	var longest := 0.0
 	for i in ids.size():
 		o.add_item(name_of.call(ids[i]), i)
 		o.set_item_metadata(i, ids[i])
+		longest = maxf(longest, S.FONT.get_string_size(str(name_of.call(ids[i])), HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x)
+	o.custom_minimum_size.x = ceilf(longest) + SELECT_EXTRA
 	o.item_selected.connect(func(i): on_pick.call(o.get_item_metadata(i)))
 	pair.add_child(o)
 	settings_box.add_child(pair)
@@ -525,17 +557,25 @@ func _small_sizes(small: bool) -> void:
 	pane_box.content_margin_bottom = 6 if small else 10
 	pane_box.content_margin_left = 18 if small else 22
 	pane_box.content_margin_right = 12 if small else 16
-	status.add_theme_font_size_override("font_size", 16 if small else 18)
 	stage.custom_minimum_size = Vector2(120 if small else 130, 120 if small else 200)
 	stage_box.custom_minimum_size.y = 90 if small else 120
 	stage_who.add_theme_font_size_override("font_size", 16 if small else 22)
 	cards.add_theme_constant_override("h_separation", 4 if small else 5)
 	cards.add_theme_constant_override("v_separation", 4 if small else 5)
 	for id in card_btns:
-		card_btns[id].custom_minimum_size = Vector2(62, 52) if small else Vector2(72, 66)
+		card_btns[id].custom_minimum_size = CARD[1] if small else CARD[0]
 		card_btns[id].add_theme_font_size_override("font_size", 11 if small else 12)
 	start_btn.add_theme_font_size_override("font_size", 22 if small else 30)
 	start_btn.custom_minimum_size.y = 36 if small else 56
+	status.add_theme_font_size_override("font_size", 15 if small else 18) # JS #center-text 15px !important (작은 창)
+	var sp: Array = SET_PAD[1] if small else SET_PAD[0]
+	var swb: StyleBoxFlat = settings_wrap.get_theme_stylebox("panel")
+	swb.content_margin_left = sp[0]
+	swb.content_margin_right = sp[0]
+	swb.content_margin_top = sp[1]
+	swb.content_margin_bottom = sp[1]
+	for k in gaps:
+		gaps[k].custom_minimum_size.y = GAP[k][1] if small else GAP[k][0]
 
 
 func _process(_d: float) -> void:
