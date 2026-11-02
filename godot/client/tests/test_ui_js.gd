@@ -61,3 +61,15 @@ func test_wipe_easing_like_js() -> void:
 	var mid_t: float = band.delay + band.ms * 0.1
 	check(absf(U.band_x_eased(band, mid_t) - U.band_x(band, band.delay + band.ms * U.cubic_bezier(0.1, 0.6, 0.0, 0.3, 1.0))) < 1e-9, "곡선 진행으로 키프레임 보간")
 	check(U.fade_alpha(0.0, 300.0) == 0.0 and U.fade_alpha(300.0, 300.0) == 0.0, "페이드 처음·끝 0")
+
+
+# 화면 스크립트가 다 읽힘 (문법·타입 오류는 화면을 띄워야 보여서 — 2026-11-02 menu.gd 파싱 오류를 스샷에서야 봄)
+func test_ui_scripts_load() -> void:
+	var n := 0
+	for f in DirAccess.get_files_at("res://ui"):
+		if not f.ends_with(".gd"):
+			continue
+		var sc = load("res://ui/" + f)
+		check(sc != null and sc.can_instantiate(), "읽기 실패: ui/%s" % f)
+		n += 1
+	check(n >= 15, "ui 스크립트 %d개" % n)

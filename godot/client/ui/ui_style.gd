@@ -17,7 +17,13 @@ const ACCENT := Color("ffd23a")
 const ACCENT_D := Color("8a5c00")
 const HOT := Color("ff4426")
 const GOOD := Color("36d07a")
-const SKEW := 0.18 # 평행사변형 기울기 (CSS clip-path 9px / 높이 ~50px)
+const SKEW := 0.18 # 평행사변형 기울기 (판 중 HUD 칸들) — StyleBoxFlat 기울기 = 높이 × 이 값
+const SKEW_BTN := 0.27 # 창 버튼 (JS --par 9px / 버튼 높이 ~33px)
+const SKEW_BIG := 0.29 # 메뉴 큰 버튼 (JS clip-path 18px / 높이 62px)
+const CUT := 20 # 빛 판 잘린 모서리 (JS --cut2: 오른쪽 위·왼쪽 아래 20px)
+const LOGO_SLANT := 0.355 # 로고 기울기 (JS font-style: italic (브라우저 가짜 기울임 ¼) + skewX(-6deg) tan 0.105)
+# 로고 빛 겹 [외곽선 굵기, 색 (g = 테마 빛, g2 = 넓은 빛, w = 흰), 진하기] — JS text-shadow 0 0 4px #fff, 18px g, 46px g2, 90px g2 50% 를 겹겹이
+const LOGO_GLOW := [[44, "g2", 0.08], [30, "g2", 0.12], [18, "g", 0.22], [9, "g", 0.4], [4, "w", 0.7]] # 외곽선은 너무 굵으면 글꼴 래스터가 깨져 44 까지
 
 # 테마 빛 색을 쓴 것 기억 (판 테마가 바뀌면 restyle 이 그 자리에서 다시 칠함 — 타이틀·대기실 맵 테마 View.ui_theme). [WeakRef, 종류, 인자]
 static var _reg: Array = []
@@ -59,6 +65,12 @@ static func restyle() -> void:
 				_check_icons(o)
 			"tint":
 				o.add_theme_color_override("font_color", gc.lerp(r[2][0], r[2][1]))
+			"layer":
+				o.add_theme_color_override("font_outline_color", alpha(_glow_col(r[2][0]), r[2][1]))
+			"streak":
+				o.texture = _streak_tex()
+			"under":
+				o.border_color = alpha(gc, 0.55)
 			"border":
 				o.border_color = alpha(gc, r[2])
 	_reg = live
@@ -96,7 +108,8 @@ static func theme_border(s: StyleBoxFlat, a := 1.0) -> StyleBoxFlat:
 	return s
 
 
-# 빛 판: 어두운 유리 + 빛 테두리 + 왼쪽 빛 띠 (#center·#results·창)
+# 빛 판: 어두운 유리 + 빛 테두리 + 왼쪽 빛 띠 (#center·#results·창). JS --cut2: 오른쪽 위·왼쪽 아래 20px 잘린 모서리 (둥글기 1단 = 깎은 모서리),
+# 빛은 판 안쪽으로만 (inset) — 예전엔 바깥 그림자 14px 로 판 밖이 빛났음
 static func pane(strip := true) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
 	_keep(s, "pane")
@@ -105,11 +118,145 @@ static func pane(strip := true) -> StyleBoxFlat:
 	s.set_border_width_all(1)
 	if strip:
 		s.border_width_left = 5
-	s.shadow_color = alpha(g(), 0.18)
-	s.shadow_size = 14
+	s.shadow_size = 0
+	s.corner_radius_top_right = CUT
+	s.corner_radius_bottom_left = CUT
+	s.corner_detail = 1
+	s.anti_aliasing = true
 	s.set_content_margin_all(16)
 	s.content_margin_left = 22
 	return s
+
+
+# 메뉴 펼친 세부 (JS #rooms .open): rgba(4,3,10,.78) + 안쪽 1px gb (22%) + 잘린 모서리, padding 12 18, margin 6px 10px 0
+static func open_pane() -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = Color8(4, 3, 10, 199)
+	s.set_border_width_all(1)
+	theme_border(s, 0.22)
+	s.corner_radius_top_right = CUT
+	s.corner_radius_bottom_left = CUT
+	s.corner_detail = 1
+	s.anti_aliasing = true
+	s.content_margin_left = 18
+	s.content_margin_right = 18
+	s.content_margin_top = 12
+	s.content_margin_bottom = 12
+	s.expand_margin_left = -10 # margin 0 10px (판보다 양쪽 10 안)
+	s.expand_margin_right = -10
+	return s
+
+
+# 공개 방 한 줄 (JS #room-list .room): rgba(255,255,255,.035) + 안쪽 1px gc (10%), padding 8 12, 9px 사선
+static func room_row() -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = Color(1, 1, 1, 0.035)
+	s.set_border_width_all(1)
+	theme_border(s, 0.1)
+	s.skew = Vector2(0.17, 0)
+	s.anti_aliasing = true
+	s.content_margin_left = 12
+	s.content_margin_right = 12
+	s.content_margin_top = 8
+	s.content_margin_bottom = 8
+	return s
+
+
+# 가장자리 어둡게 (CSS radial-gradient(ellipse at cx% cy%, inner 0 inner_stop, outer 100%)): 화면 전체 TextureRect
+static func radial_shade(center: Vector2, inner_stop: float, inner: Color, outer: Color) -> TextureRect:
+	var t := TextureRect.new()
+	var gt := GradientTexture2D.new()
+	gt.fill = GradientTexture2D.FILL_RADIAL
+	gt.fill_from = center
+	gt.fill_to = Vector2(1.0, 1.0) # 가장 먼 모서리까지 (farthest-corner)
+	var gr := Gradient.new()
+	gr.set_color(0, inner)
+	gr.set_offset(0, inner_stop)
+	gr.set_color(1, outer)
+	gt.gradient = gr
+	t.texture = gt
+	t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	t.stretch_mode = TextureRect.STRETCH_SCALE
+	t.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return t
+
+
+# 글꼴 변형: 기울임 (FontVariation 변환 — CSS italic·skewX), 자간 (letter-spacing px)
+static func slanted(slant: float) -> FontVariation:
+	var f := FontVariation.new()
+	f.base_font = FONT
+	f.variation_transform = Transform2D(Vector2(1.0, slant), Vector2(0.0, 1.0), Vector2.ZERO) # 고도 문서의 기울임 꼴 (x 축 = (1, slant))
+	return f
+
+
+static var _spaced := {}
+static func spaced(px: int) -> FontVariation:
+	if not _spaced.has(px):
+		var f := FontVariation.new()
+		f.base_font = FONT
+		f.spacing_glyph = px
+		_spaced[px] = f
+	return _spaced[px]
+
+
+static func _glow_col(kind: String) -> Color:
+	return Color.WHITE if kind == "w" else (g2() if kind == "g2" else g())
+
+
+# 빛 겹 하나 (글자는 투명, 외곽선만 빛 색 · 진하기)
+static func glow_layer(l: Label, kind: String, a: float) -> void:
+	l.add_theme_color_override("font_outline_color", alpha(_glow_col(kind), a))
+	_keep(l, "layer", [kind, a])
+
+
+# 로고 가운데 빛 줄 (JS h2::after: 3px, 투명 → g 30% → 흰 50% → g 70% → 투명, 흐림 1px, 진하기 .7)
+static func _streak_tex() -> GradientTexture2D:
+	var gt := GradientTexture2D.new()
+	gt.width = 256
+	gt.height = 4
+	var gr := Gradient.new()
+	gr.offsets = PackedFloat32Array([0.0, 0.3, 0.5, 0.7, 1.0])
+	gr.colors = PackedColorArray([alpha(g(), 0.0), alpha(g(), 0.7), Color(1, 1, 1, 0.7), alpha(g(), 0.7), alpha(g(), 0.0)])
+	gt.gradient = gr
+	return gt
+
+
+static func streak() -> TextureRect:
+	var t := TextureRect.new()
+	t.texture = _streak_tex()
+	t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	t.stretch_mode = TextureRect.STRETCH_SCALE
+	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_keep(t, "streak")
+	return t
+
+
+# 메뉴 이름 칸 (JS .nick input): 테두리 없이 아래 2px 빛 줄 (ga 55%), 바탕 rgba(0,0,0,.35), padding 4 8
+static func underline_edit(e: LineEdit) -> void:
+	for st in ["normal", "focus"]:
+		var s := StyleBoxFlat.new()
+		s.bg_color = Color(0, 0, 0, 0.35)
+		s.border_width_bottom = 2
+		s.border_color = alpha(g(), 0.55)
+		_keep(s, "under")
+		s.content_margin_left = 8
+		s.content_margin_right = 8
+		s.content_margin_top = 4
+		s.content_margin_bottom = 4
+		e.add_theme_stylebox_override(st, s)
+
+
+# 움직임 줄이기·그래픽 낮춤 (등장 애니 끔)
+static func reduced() -> bool:
+	return bool(View.settings.get("reducedMotion", false)) or bool(View.settings.get("lowGfx", false))
+
+
+# 등장 애니: 나타남 (JS open-down .22s ease-out — 위치는 컨테이너가 정해 투명도만)
+static func pop_down(c: CanvasItem) -> void:
+	c.modulate.a = 0.0
+	var tw := c.create_tween()
+	tw.tween_property(c, "modulate:a", 1.0, 0.22).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
 
 
 # 버튼: kind = "ghost" (빛 테두리만) | "go" (하양→빛 채움, 주 버튼) | "big" (메뉴 큰 버튼). state = normal·hover·pressed·disabled
@@ -117,7 +264,7 @@ static func button_box(kind: String, state: String, keep := true) -> StyleBoxFla
 	var s := StyleBoxFlat.new()
 	if keep:
 		_keep(s, "btn", [kind, state])
-	s.skew = Vector2(SKEW, 0)
+	s.skew = Vector2(SKEW_BIG if kind == "big" else SKEW_BTN, 0)
 	s.anti_aliasing = true
 	var gc := g()
 	match kind:
@@ -128,12 +275,12 @@ static func button_box(kind: String, state: String, keep := true) -> StyleBoxFla
 			s.shadow_color = alpha(gc, 0.6)
 			s.shadow_size = 10 if state != "hover" else 16
 		"big":
-			s.bg_color = Color(0.12, 0.07, 0.2, 0.84) if state == "normal" else gc.darkened(0.55)
+			# JS button.big: 바탕 rgba(30,18,52,.8)→rgba(8,5,18,.86) (가운데 색), 안쪽 1px ga, 바깥 빛 없음. hover·열림은 g 36% 섞음 + 테두리 g
+			s.bg_color = Color8(19, 11, 35, 212) if state == "normal" else alpha(gc.lerp(Color8(18, 12, 34), 0.64), 0.86)
 			s.border_color = alpha(gc, 0.55) if state == "normal" else gc
 			s.set_border_width_all(1)
 			s.border_width_left = 4
-			s.shadow_color = alpha(gc, 0.25 if state == "normal" else 0.45)
-			s.shadow_size = 8
+			s.shadow_size = 0
 		_:
 			s.bg_color = Color(0.04, 0.02, 0.09, 0.6) if state == "normal" else alpha(gc.darkened(0.6), 0.85)
 			s.border_color = alpha(gc, 0.55)
