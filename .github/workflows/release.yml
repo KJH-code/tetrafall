@@ -1,0 +1,74 @@
+# 고도판 배포 묶음 → GitHub Release
+# 태그 v* 를 push 하거나, Actions 탭에서 'Run workflow' (태그 이름을 넣음) 로 실행.
+# 묶음: godot/server/tools/package.mjs (서버 + 고도 웹 + 고도 PC 클라 + cloudflared, win·linux zip)
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '릴리스 태그 (예: v0.1.0-godot)'
+        required: true
+      prerelease:
+        description: '미리보기(prerelease)로'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+env:
+  GODOT_VERSION: 4.7.2
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: npm install
+        run: npm ci || npm install
+
+      - name: 고도 + 내보내기 템플릿
+        run: |
+          set -e
+          V=$GODOT_VERSION
+          base=https://github.com/godotengine/godot/releases/download/$V-stable
+          mkdir -p ~/godot && cd ~/godot
+          curl -sSLO $base/Godot_v$V-stable_linux.x86_64.zip
+          unzip -q Godot_v$V-stable_linux.x86_64.zip
+          curl -sSLO $base/Godot_v$V-stable_export_templates.tpz
+          T=~/.local/share/godot/export_templates/$V.stable
+          mkdir -p $T
+          unzip -q -j Godot_v$V-stable_export_templates.tpz \
+            templates/web_nothreads_release.zip templates/windows_release_x86_64.exe \
+            templates/linux_release.x86_64 templates/version.txt -d $T
+          rm Godot_v$V-stable_export_templates.tpz
+          echo "GODOT=$HOME/godot/Godot_v$V-stable_linux.x86_64" >> $GITHUB_ENV
+
+      - name: 묶기
+        run: node godot/server/tools/package.mjs --godot "$GODOT" --targets win,linux --cloudflared
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          files: |
+            dist/tetrafall-win-x64.zip
+            dist/tetrafall-linux-x64.zip
