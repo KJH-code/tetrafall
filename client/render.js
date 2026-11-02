@@ -882,6 +882,7 @@ export class Renderer {
   // 지오메트리·재질·텍스처를 놓음. 공유 자원 (모델 원본·궁 빛기둥 그림·남은 사람 몸이 쓰는 것) 은 놔둠
   removePlayerMesh(id, g) {
     const ud = g.userData;
+    if (this.vm && this.vm.src === g) this.vm.sync(null); // 1인칭 팔 복제가 옛 몸 자원을 붙잡지 않게 먼저 놓음
     const extra = [];
     if (ud.whirlFx) extra.push(ud.whirlFx.ring, ud.whirlFx.trail);
     for (const m of ud.dizzyStars || []) extra.push(m);
@@ -889,7 +890,7 @@ export class Renderer {
     if (ud.ampFx) extra.push(ud.ampFx.cab);
     const others = [];
     for (const [k, v] of this.playerMeshes) if (k !== id && v !== g) others.push(v);
-    if (this.vm && this.vm.anchor) others.push(this.vm.anchor); // 1인칭 팔이 같은 그림을 씀
+    if (this.vm && this.vm.anchor) others.push(this.vm.anchor); // 지금 몸의 1인칭 팔 (옛 몸 것은 위에서 이미 비움)
     const models = this.models ? [this.models.robot && this.models.robot.scene, ...Object.values(this.models.items || {})].filter(Boolean) : [];
     const protect = protectSet([...models, ...others], [this.ultAuraTex, this.ultFloorTex].filter(Boolean));
     for (const o of [...extra, g]) {

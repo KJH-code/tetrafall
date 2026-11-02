@@ -54,10 +54,17 @@ export class ViewModel {
     this.on = false;
   }
 
+  // 복제 때 vm 이 새로 만든 자원 (광전사 핏줄 BoxGeometry·몸에 핏줄 재질이 없을 때 만든 재질). 복제본의 모양·재질은 원본 것이라 안 놓음
+  releaseOwn() {
+    for (const r of this.own || []) r.dispose();
+    this.own = [];
+  }
+
   // g: 내 3인칭 몸 (render.js playerMeshes). 바뀌면(캐릭터 바꿈·다시 들어옴) 다시 복제
   sync(g) {
     if (this.src === g) return;
     this.src = g;
+    this.releaseOwn(); // 옛 몸을 복제하며 따로 만든 것 (핏줄 상자·재질) 을 놓음
     this.anchor.clear();
     this.pairs = [];
     this.fig = null;
@@ -130,11 +137,14 @@ export class ViewModel {
     if (fig.rage) {
       // 광전사: 분노가 차면 아래팔에도 핏줄 (머리 핏줄과 같이 벌떡벌떡)
       const mat = fig.rage.veins[0]?.material || toon({ color: 0x9a1020 });
+      if (!fig.rage.veins[0]?.material) this.own.push(mat);
       this.veins = fig.elbows.map((el) => {
         const g = new THREE.Group();
         // 갈라지는 핏줄 한 가닥 (줄기 + 양쪽 가지). 팔꿈치 쪽 (가운데는 가죽 팔목 보호대)
         for (const [y, z, len, rot] of [[0, 0.06, 0.08, 0], [0.012, 0.11, 0.04, 0.6], [-0.012, 0.12, 0.04, -0.6]]) {
-          const v = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.008, len), mat);
+          const geo = new THREE.BoxGeometry(0.008, 0.008, len);
+          this.own.push(geo);
+          const v = new THREE.Mesh(geo, mat);
           v.position.set(fig.d.foreR * 1.0, y, -z);
           v.rotation.x = rot;
           v.layers.set(LAYER);
