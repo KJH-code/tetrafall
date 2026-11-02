@@ -142,7 +142,8 @@ func test_bodies_build_and_animate() -> void:
 	for ch in C.FIGURE_CHARS:
 		var b = Chars.make_body(ch, Color(0.8, 0.3, 0.2))
 		var meshes := b.find_children("*", "MeshInstance3D", true, false)
-		check(meshes.size() >= 60, "%s 조각 %d (옷·무기 포함)" % [ch, meshes.size()])
+		var pieces: int = int(b.cd.stats.jsMeshes) if b.baked else meshes.size() # 구운 몸은 조각을 합쳐 둠 → JS 조각 수 (manifest)
+		check(pieces >= 60, "%s 조각 %d (옷·무기 포함)" % [ch, pieces])
 		var states := [
 			{"walking": true, "air": false, "hs": 4.5, "walk": 1.3},
 			{"walking": false, "air": true, "vz": -4.0},
@@ -170,7 +171,7 @@ func test_bodies_build_and_animate() -> void:
 func test_bodies_merged() -> void:
 	for ch in C.FIGURE_CHARS:
 		var b = Chars.make_body(ch, Color(0.2, 0.6, 0.9))
-		var pieces: int = b.piece_mat.size()
+		var pieces: int = int(b.cd.stats.jsMeshes) if b.baked else b.piece_mat.size() # 구운 몸은 조각을 미리 합쳐 둠 → JS 조각 수
 		var drawn := 0
 		for mi in b.find_children("*", "MeshInstance3D", true, false):
 			if mi.layers != 0:
@@ -196,7 +197,7 @@ func test_bodies_merged() -> void:
 func test_bodies_batch_pose() -> void:
 	for ch in C.FIGURE_CHARS:
 		var b = Chars.make_body(ch, Color(0.3, 0.7, 0.4))
-		if b.batch == null:
+		if b.batch == null or b.baked: # 구운 몸 (W7) 은 tests/test_baked.gd 가 예전 조립과 정점·색을 비교
 			b.free()
 			continue
 		var p := {"id": -1, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0}

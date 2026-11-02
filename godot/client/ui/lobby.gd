@@ -22,7 +22,7 @@ var stage: PanelContainer
 var stage_who: Label
 var stage_box: ColorRect
 var stage_img: TextureRect # 큰 캐릭터 초상 (256 온몸 — 그래픽 낮춤·헤드리스일 때)
-var stage_3d: SubViewportContainer # 큰 3D 캐릭터 (char_stage.gd)
+var stage_3d: Control # 큰 3D 캐릭터 (char_stage.gd)
 var cards: GridContainer
 var card_btns := {} # char id → Button ('random' 은 랜덤 칸)
 var skill_card: PanelContainer

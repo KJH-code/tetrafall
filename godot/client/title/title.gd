@@ -53,6 +53,10 @@ func _ready() -> void:
 	hint.position.y -= 120
 	hint.visible = false
 	layer.add_child(hint)
+	View.changed.connect(func(k): # 화질 (W6): 메뉴에서 낮음 ↔ 다른 화질이면 배경 장면을 그 화질로 다시 (거울·블룸·장식)
+		if k == "lowGfx" and scene != null and not title_mode:
+			_drop()
+			_make(true))
 	if not headless and not skip:
 		title_mode = true
 		View.title_on = true

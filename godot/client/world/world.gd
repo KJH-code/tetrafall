@@ -25,6 +25,7 @@ const BodyFx := preload("res://world/body_fx.gd")
 const CamRig := preload("res://world/cam_rig.gd")
 const LobbyDark := preload("res://world/lobby_dark.gd")
 const PerfAB := preload("res://world/perf_ab.gd") # 성능·모습 짝 비교 (--ab · --abshot 일 때만)
+const Gfx := preload("res://world/gfx.gd") # 화질 (W6): 설정 화질·창 크기·GPU → lowGfx·3D 배율·MSAA
 const BBLOCKS := "res://world/bblocks.gd"
 const FX := "res://fx/fx.gd" # G5 효과 (있으면 fx_root 에 붙이고 setup(rig): 카메라 흔들림·KO 줌은 rig.hook)
 const G3_PATH := "res://shaders/g3.gd" # G3 툰·테마 (있으면 하늘·빛·안개·블록 재질을 G3 가 맡음)
@@ -68,6 +69,9 @@ const VIEWMODEL := "res://chars/viewmodel.gd"
 
 func _ready() -> void:
 	headless = DisplayServer.get_name() == "headless"
+	var gfx := Gfx.new() # 맨 먼저: 아래·타이틀이 읽는 lowGfx 를 화질로 정함
+	gfx.world = self
+	add_child(gfx)
 	set_msaa(bool(View.settings.get("lowGfx", false))) # 모서리 계단 없앰 (JS antialias). 확인용 --msaa 는 자동 조종이 뒤에 덮어씀
 	if ResourceLoader.exists(G3_PATH):
 		G3 = load(G3_PATH)
@@ -117,6 +121,7 @@ func _ready() -> void:
 	if ResourceLoader.exists(VIEWMODEL):
 		vm = load(VIEWMODEL).new()
 		add_child(vm)
+		gfx.sync_vm() # 화질 (W6): 팔 SubViewport 도 판과 같은 3D 배율
 	if ResourceLoader.exists(BBLOCKS):
 		bblocks = load(BBLOCKS).new()
 		add_child(bblocks)

@@ -4,6 +4,7 @@
 extends Node
 
 const C := preload("res://core/config.gd")
+const UiScale := preload("res://core/ui_scale.gd")
 
 signal changed(key: String)
 
@@ -21,11 +22,15 @@ var settings := {
 	"fov": C.FOV_DEFAULT, # 시야각 (G1 카메라)
 	"shadows": true, # 그림자 (G1)
 	"outline": true, # 외곽선 (G3)
-	"lowGfx": false, # 그래픽 낮춤 (G1·G3·G5)
+	"lowGfx": false, # 그래픽 낮춤 (G1·G3·G5). W6 부터는 화질 (gfx) 이 낮음이면 켬 — world/gfx.gd 가 씀
+	"gfx": "", # 화질 "auto"|"high"|"medium"|"low" (G4 설정 창이 씀, world/gfx.gd 가 읽어 lowGfx·3D 배율·MSAA 를 정함). 빈 값 = 예전 파일: lowGfx 켬이면 낮음, 아니면 자동
 	"third": false, # 3인칭 시작 (G1)
 	"reducedMotion": false, # 움직임 줄이기 (G4·G5, JS 는 브라우저 설정)
 	"perf": false, # F3 성능 표시 (G6, JS tf-perf)
+	"uiScale": "auto", # UI 크기 (W9): "auto" (창 크기에 맞춤) 또는 0.8·1·1.25·1.5·2 (JS 브라우저 확대 자리) — core/ui_scale.gd, 설정 창이 바꿈
 }
+# 지금 UI 배율 (W9, core/ui_scale.gd — View 가 창 크기·설정으로 정함). 화면 픽셀 = UI 좌표 × ui_scale. 초상 (ui/portrait.gd) 이 선명하게 그릴 크기로 읽음
+var ui_scale := 1.0
 # 메뉴(방 밖) 배경 테마 id (TITLE_THEMES 키, JS menu-theme.js). 메뉴 3D 배경을 그리는 쪽이 정함, audio/ 가 메뉴 앰비언트로 읽음
 var menu_theme = null
 # 화면 판 빛 색 테마 (JS menu-theme.js markTheme — body data-theme): 메뉴 = 메뉴 테마, 대기실 = 고른 맵 테마. title/title.gd 가 정함, G4 ui_style 이 읽음 (없으면 자수정)
@@ -53,7 +58,38 @@ func _ready() -> void:
 		if typeof(d) == TYPE_DICTIONARY:
 			for k in d:
 				settings[k] = d[k]
+	settings.uiScale = UiScale.normalize(settings.get("uiScale", "auto"))
 	PlayerInput.sensitivity = float(settings.sens)
+	_startup_window()
+	get_window().size_changed.connect(apply_ui_scale)
+	apply_ui_scale()
+
+
+# UI 배율 적용 (core/ui_scale.gd): 창 크기가 바뀔 때·설정 'UI 크기' 가 바뀔 때. 재시작 없이 바로
+func apply_ui_scale() -> void:
+	var s := UiScale.apply(get_window(), settings.get("uiScale", "auto"))
+	if absf(ui_scale - s) > 1e-4:
+		ui_scale = s
+		changed.emit("uiScale")
+
+
+# 처음 창 크기 (W9): 윈도우 화면 배율 150%·200% 면 1280×720 창을 그만큼 키움 (UI 자동 배율도 따라 커짐). 웹·전체 화면·--resolution 이면 안 함
+func _startup_window() -> void:
+	if OS.has_feature("web") or DisplayServer.get_name() == "headless" or OS.has_feature("editor"):
+		return
+	var w := get_window()
+	if w.mode != Window.MODE_WINDOWED:
+		return
+	for a in OS.get_cmdline_args():
+		if a in ["--resolution", "-f", "--fullscreen", "-m", "--maximized", "-w", "--windowed", "--position"]:
+			return
+	var scr := w.current_screen
+	var k := UiScale.screen_scale(DisplayServer.screen_get_scale(scr), DisplayServer.screen_get_dpi(scr), OS.has_feature("windows"))
+	var usable := DisplayServer.screen_get_usable_rect(scr)
+	var want := UiScale.startup_window(w.size, k, usable.size)
+	if want != w.size:
+		w.size = want
+		w.position = usable.position + (usable.size - want) / 2
 
 
 func set_mode(m: String) -> void:
@@ -66,6 +102,10 @@ func set_setting(key: String, value) -> void:
 	settings[key] = value
 	if key == "sens":
 		PlayerInput.sensitivity = float(value)
+	if key == "uiScale":
+		settings[key] = UiScale.normalize(value)
+		if is_inside_tree():
+			apply_ui_scale()
 	var f := FileAccess.open(PATH, FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify(settings))

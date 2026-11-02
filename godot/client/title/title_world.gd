@@ -7,6 +7,7 @@ extends Node3D
 const C := preload("res://core/config.gd")
 const Co := preload("res://core/coords.gd")
 const F := preload("res://title/title_fx.gd")
+const WC := preload("res://world/world_config.gd") # 화질 (W6): 거울 크기 배율
 
 const TB := Basis(Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, 1, 0)) # 게임 (x, y, z 위) → 고도 (x, z, -y)
 const LIGHT_K := 1.0 / PI # three 점광원 세기 (칸델라, 물리 단위 — 램버트 1/π) → 고도 OmniLight 에너지 (감쇠식은 둘이 같음)
@@ -210,12 +211,13 @@ func _floor() -> void:
 	o.layers = 1 << (MIRROR_LAYER - 1)
 
 
-# 거울 카메라: 보는 카메라를 바닥 면에 비춘 자리·방향 (좌우는 셰이더가 뒤집음). 화면 크기의 반
+# 거울 카메라: 보는 카메라를 바닥 면에 비춘 자리·방향 (좌우는 셰이더가 뒤집음). 크기 = 화면 × 화질 배율 (높음 반, 보통 WC.MIRROR_SCALE, 3D 배율도 곱함)
 func mirror_update(cam: Camera3D) -> void:
 	if mirror_cam == null:
 		return
-	var vp := cam.get_viewport().get_visible_rect().size
-	var want := Vector2i(maxi(1, int(vp.x * 0.5)), maxi(1, int(vp.y * 0.5)))
+	var vp := cam.get_viewport().get_visible_rect().size * cam.get_viewport().get_final_transform().get_scale() # 창 픽셀 (visible_rect 는 UI 배율로 나눈 UI 좌표, W9)
+	var k := WC.mirror_scale(cam.get_viewport().scaling_3d_scale)
+	var want := Vector2i(maxi(1, int(vp.x * k)), maxi(1, int(vp.y * k)))
 	if mirror_vp.size != want:
 		mirror_vp.size = want
 	var fy := (global_transform * Vector3(0, 0, floor_z)).y # 바닥 면 높이 (고도 y)
