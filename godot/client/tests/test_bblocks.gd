@@ -91,3 +91,27 @@ func test_blast_and_collapse() -> void:
 	bb.update(_state(0))
 	check(bb.collapses.size() == 1 and bb.pools.wood.n == 1, "무너지는 칸 %d, 그린 판자 %d" % [bb.collapses.size(), bb.pools.wood.n])
 	bb.free()
+
+
+func test_colors_linear_like_three() -> void:
+	# W3: three Color.lerp 는 선형 값끼리 (r152+) — 띠 주인 색 BB_TINT 0.08 이면 0x30 → 0x5c (sRGB 로 섞으면 0x40)
+	var c := BL.lerp_lin(Color8(0x30, 0x30, 0x30), Color.WHITE, C.BB_TINT)
+	check(absi(c.r8 - 0x5c) <= 1, "띠 주인 색 섞기 선형 (0x30 → 0x%x)" % c.r8)
+	check(BL.plate_color(0.0).is_equal_approx(Color.hex((int(C.BB_LOOK.plateCold) << 8) | 0xff)) and BL.plate_color(1.0).is_equal_approx(Color.hex((int(C.BB_LOOK.plateWhite) << 8) | 0xff)), "빛 판 양 끝 색")
+	var mid := BL.plate_color(0.5 / 1.4)
+	var want := BL.lerp_lin(Color.hex((int(C.BB_LOOK.plateCold) << 8) | 0xff), Color.hex((int(C.BB_LOOK.plateHot) << 8) | 0xff), 0.5)
+	check(mid.is_equal_approx(want), "빛 판 가운데 = 선형 섞기")
+	var sh := FileAccess.get_file_as_string("res://world/bblock.gdshader")
+	check(sh.find("base *= 0.22") > sh.find("vec3 base = g3_lin(c.rgb);"), "금 0.22 는 선형 색에 (three diffuseColor)")
+	var src := FileAccess.get_file_as_string("res://world/bblocks.gd")
+	check(not src.contains("\"_no_outline\": true"), "쇠 띠도 외곽선 (bblocks.js strap = toon)")
+	check(src.contains("mk.block_pulse(mk.neighbors([c])"), "터지면 이웃 블록 들썩 (render.js bbPop)")
+
+
+func test_stripes_phase_like_canvas() -> void:
+	# bblocks.js stripesTexture: x0 = -64 + 20k 평행사변형, 줄 y 의 왼쪽 끝 = x0 + (64 - (y + 0.5)) → 맨 아래 줄 (y 63) 은 x0 + 0.5 ≡ 16.5 (mod 20) 부터 10 칸: x 0..5·16..19
+	var img: Image = preload("res://world/bblock_tex.gd").stripes().get_image()
+	var row := []
+	for x in 20:
+		row.append(1 if img.get_pixel(x, 63).r < 0.5 else 0)
+	check(row == [1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1], "줄무늬 위상 (아래 줄) %s" % [row])

@@ -45,8 +45,8 @@ void fragment() {
 	vec4 c = albedo;
 	if (use_tex) c *= texture(albedo_tex, UV * uv_scale);
 	if (use_vertex_color) c *= COLOR;
-	if (use_crack && texture(crack_tex, UV * vec2(3.0, 2.0)).r < v_cf.x * 0.97) c.rgb *= 0.22; // 0.97: 바탕 (흰 1.0) 은 금이 다 퍼져도 안 어두워짐
 	vec3 base = g3_lin(c.rgb);
+	if (use_crack && texture(crack_tex, UV * vec2(3.0, 2.0)).r < v_cf.x * 0.97) base *= 0.22; // 선형 색에 (three diffuseColor) — 0.97: 바탕 (흰 1.0) 은 금이 다 퍼져도 안 어두워짐
 	float up = dot(normalize(world_n), vec3(0.0, 1.0, 0.0)) * 0.5 + 0.5;
 	vec3 hemi = mix(g3_hemi_ground, g3_hemi_sky, up) * g3_hemi_energy;
 	v_base = base;
