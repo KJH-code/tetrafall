@@ -1,6 +1,8 @@
 // 배포 묶음 (G7): C# 서버 + 고도 웹 빌드 + 고도 PC 클라를 한 폴더로 → zip. 받는 PC 에는 .NET·node·고도 필요 없음.
-// 실행 (레포 뿌리에서): node godot/server/tools/package.mjs [--godot <고도 4.7.2 실행 파일>] [--targets win,linux] [--cloudflared] [--no-godot]
+// 실행 (레포 뿌리에서): node godot/server/tools/package.mjs [--godot <고도 4.7.2 실행 파일>] [--targets win,linux] [--cloudflared] [--no-godot] [--web-template <zip>]
 //   --godot       : 고도 실행 파일 (없으면 환경 변수 GODOT). 웹·PC 클라를 내보냄 (템플릿: godot/client/README.md G7)
+//   --web-template: 웹 내보내기에 쓸 직접 빌드한 템플릿 zip (godot/client/tools/build-web-template.sh 결과, 없으면 환경 변수 GODOT_WEB_TEMPLATE).
+//                   내보내는 동안만 export_presets.cfg 웹 custom_template/release 를 그 경로로 바꾸고 끝나면 (실패해도) 되돌림. 안 주면 공식 템플릿
 //   --no-godot    : 내보내기 건너뛰고 이미 있는 godot/client/build/ 를 씀 (없는 건 빠짐 — 안내만)
 //   --cloudflared : cloudflared 를 GitHub 에서 받아 서버 옆에 넣음 (그러면 --online 이 설치 없이 됨)
 //   --out <폴더>  : 기본 dist/
@@ -99,6 +101,72 @@ export function readme(t) {
 export const PUBLISH_FLAGS = ['--self-contained', '-p:PublishSingleFile=true', '-p:EnableCompressionInSingleFile=true', '-p:InvariantGlobalization=true', '-p:DebugType=none', '-p:IsTransformWebConfigDisabled=true'];
 // Kestrel 혼자 도니 필요 없는 것: IIS 모듈·web.config·정적 웹 자산 목록
 export const PUBLISH_DROP = ['aspnetcorev2_inprocess.dll', 'web.config', 'Tetrafall.Server.staticwebassets.endpoints.json'];
+
+// export_presets.cfg 글에서 이름이 preset 인 묶음의 custom_template/release 만 zip 경로로 바꾼 글 (나머지 글자는 그대로).
+// 경로는 / 로 (고도 cfg 문자열에서 \ 는 이스케이프라 윈도우 경로도 / 로 씀). 그 묶음·줄이 없으면 오류
+export function withReleaseTemplate(cfg, preset, zip) {
+  const nl = cfg.includes('\r\n') ? '\r\n' : '\n';
+  const lines = cfg.split(nl);
+  const nameAt = lines.findIndex((l, i) => l === `name="${preset}"` && lines.slice(0, i).reverse().find((h) => h.startsWith('['))?.match(/^\[preset\.\d+\]$/));
+  if (nameAt < 0) throw new Error(`export_presets.cfg 에 '${preset}' 내보내기 설정이 없음`);
+  const id = lines.slice(0, nameAt).reverse().find((h) => h.startsWith('[')).slice(1, -1);
+  const optAt = lines.indexOf(`[${id}.options]`);
+  if (optAt < 0) throw new Error(`export_presets.cfg 에 [${id}.options] 가 없음`);
+  let end = lines.findIndex((l, i) => i > optAt && l.startsWith('['));
+  if (end < 0) end = lines.length;
+  const at = lines.findIndex((l, i) => i > optAt && i < end && l.startsWith('custom_template/release='));
+  if (at < 0) throw new Error(`[${id}.options] 에 custom_template/release 가 없음`);
+  lines[at] = `custom_template/release=${JSON.stringify(path.resolve(zip).split(path.sep).join('/'))}`;
+  return lines.join(nl);
+}
+
+// 웹 템플릿 zip 확인: 있는 파일이고 고도 웹 템플릿 (안에 godot.wasm·godot.js) 인지 — 잘못 주면 내보내기 전에 멈춤
+export function checkWebTemplate(zip) {
+  if (!fs.existsSync(zip) || !fs.statSync(zip).isFile()) throw new Error(`웹 템플릿 zip 이 없음: ${zip}`);
+  const names = zipNames(fs.readFileSync(zip));
+  for (const need of ['godot.wasm', 'godot.js']) if (!names.includes(need)) throw new Error(`웹 템플릿 zip 안에 ${need} 가 없음: ${zip}`);
+}
+
+// zip 중앙 목록의 파일 이름들 (끝 레코드에서 찾음, zip64 안 봄)
+export function zipNames(buf) {
+  let e = buf.length - 22;
+  while (e >= 0 && buf.readUInt32LE(e) !== 0x06054b50) e--;
+  if (e < 0) throw new Error('zip 이 아님');
+  const n = buf.readUInt16LE(e + 10);
+  let p = buf.readUInt32LE(e + 16);
+  const names = [];
+  for (let i = 0; i < n; i++) {
+    if (buf.readUInt32LE(p) !== 0x02014b50) throw new Error('zip 중앙 목록이 깨짐');
+    const len = buf.readUInt16LE(p + 28);
+    names.push(buf.toString('utf8', p + 46, p + 46 + len));
+    p += 46 + len + buf.readUInt16LE(p + 30) + buf.readUInt16LE(p + 32);
+  }
+  return names;
+}
+
+// fn 을 도는 동안만 export_presets.cfg 의 preset 템플릿을 zip 으로 (zip 이 없으면 그냥 fn). 끝나면 원래 글 그대로 되돌림.
+// 원래 글은 <cfg>.orig 에도 둠 — 내보내기 중 Ctrl+C 로 node 가 바로 죽어 finally 를 못 돌면 다음 실행이 먼저 그것으로 되돌림 (restorePresets)
+export const PRESETS_ORIG = '.orig';
+export function restorePresets(cfgPath) {
+  const orig = cfgPath + PRESETS_ORIG;
+  if (!fs.existsSync(orig)) return false;
+  fs.writeFileSync(cfgPath, fs.readFileSync(orig));
+  fs.rmSync(orig);
+  return true;
+}
+export function withPresetTemplate(cfgPath, preset, zip, fn) {
+  if (restorePresets(cfgPath)) console.log(`지난번 끊긴 내보내기의 ${path.basename(cfgPath)} 를 되돌림`);
+  if (!zip) return fn();
+  const before = fs.readFileSync(cfgPath, 'utf8');
+  const changed = withReleaseTemplate(before, preset, zip);
+  fs.writeFileSync(cfgPath + PRESETS_ORIG, before);
+  fs.writeFileSync(cfgPath, changed);
+  try {
+    return fn();
+  } finally {
+    restorePresets(cfgPath);
+  }
+}
 
 function run(cmd, args, opts = {}) {
   console.log(`> ${cmd} ${args.join(' ')}`);
@@ -222,8 +290,8 @@ async function download(url, to) {
   throw last;
 }
 
-function parseArgs(argv) {
-  const o = { targets: ['win', 'linux'], out: path.join(root, 'dist'), godot: process.env.GODOT || null, exportGodot: true, cloudflared: false };
+export function parseArgs(argv) {
+  const o = { targets: ['win', 'linux'], out: path.join(root, 'dist'), godot: process.env.GODOT || null, exportGodot: true, cloudflared: false, webTemplate: process.env.GODOT_WEB_TEMPLATE || null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--godot') o.godot = argv[++i];
@@ -231,22 +299,30 @@ function parseArgs(argv) {
     else if (a === '--out') o.out = path.resolve(argv[++i]);
     else if (a === '--no-godot') o.exportGodot = false;
     else if (a === '--cloudflared') o.cloudflared = true;
+    else if (a === '--web-template') o.webTemplate = argv[++i];
     else throw new Error(`모르는 옵션: ${a}`);
   }
   for (const t of o.targets) if (!TARGETS[t]) throw new Error(`모르는 대상: ${t} (win, linux)`);
   if (o.exportGodot && !o.godot) throw new Error('고도 실행 파일을 --godot 또는 GODOT 로 알려 주세요 (이미 내보냈으면 --no-godot)');
+  if (o.webTemplate) o.webTemplate = path.resolve(o.webTemplate);
   return o;
 }
 
 async function main() {
   const o = parseArgs(process.argv.slice(2));
   if (o.exportGodot) {
+    if (o.webTemplate) {
+      checkWebTemplate(o.webTemplate);
+      console.log(`웹 템플릿: ${o.webTemplate} (${(fs.statSync(o.webTemplate).size / 1e6).toFixed(1)}MB)`);
+    } else console.log('웹 템플릿: 공식 (export_templates)');
     run(o.godot, ['--headless', '--path', clientDir, '--import']);
     const presets = ['Web', ...o.targets.map((t) => TARGETS[t].preset)];
     for (const p of presets) {
       const target = { Web: 'build/web', Windows: 'build/windows', Linux: 'build/linux' }[p];
       fs.mkdirSync(path.join(clientDir, target), { recursive: true });
-      run(o.godot, ['--headless', '--path', clientDir, '--export-release', p]);
+      const exp = () => run(o.godot, ['--headless', '--path', clientDir, '--export-release', p]);
+      if (p === 'Web') withPresetTemplate(path.join(clientDir, 'export_presets.cfg'), 'Web', o.webTemplate, exp);
+      else exp();
     }
   }
   fs.mkdirSync(o.out, { recursive: true });
