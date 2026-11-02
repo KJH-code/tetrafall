@@ -305,7 +305,46 @@ static func wipe_plan(kind, reduced := false):
 	return {"kind": kind, "fade": false, "ms": k.ms, "coverMs": main.delay + reach * dur, "bands": bands}
 
 
-# 띠 하나의 t(ms) 때 x (vw): 키프레임 사이 직선 (JS 는 WAAPI cubic-bezier(.6,0,.3,1) — 화면에선 ease 를 따로 씀)
+# CSS cubic-bezier(x1, y1, x2, y2) 시간 곡선: 진행 u (0~1) → 바뀐 진행. x(s) = u 를 뉴턴 + 이분법으로 풀고 y(s)
+static func cubic_bezier(u: float, x1: float, y1: float, x2: float, y2: float) -> float:
+	if u <= 0.0 or u >= 1.0:
+		return clampf(u, 0.0, 1.0)
+	var bx := func(s: float) -> float: return ((1.0 - 3.0 * x2 + 3.0 * x1) * s + (3.0 * x2 - 6.0 * x1)) * s * s + 3.0 * x1 * s
+	var s := u
+	for i in 8:
+		var dx: float = bx.call(s) - u
+		var d: float = (3.0 * (1.0 - 3.0 * x2 + 3.0 * x1) * s + 2.0 * (3.0 * x2 - 6.0 * x1)) * s + 3.0 * x1
+		if absf(dx) < 1e-7:
+			break
+		if absf(d) < 1e-6:
+			break
+		s = clampf(s - dx / d, 0.0, 1.0)
+	if absf(bx.call(s) - u) > 1e-5: # 뉴턴이 안 모이면 이분법
+		var lo := 0.0
+		var hi := 1.0
+		for i in 40:
+			s = (lo + hi) / 2.0
+			if bx.call(s) < u:
+				lo = s
+			else:
+				hi = s
+	return ((1.0 - 3.0 * y2 + 3.0 * y1) * s + (3.0 * y2 - 6.0 * y1)) * s * s + 3.0 * y1 * s
+
+
+# 띠 하나의 화면 x (vw): JS 는 띠마다 WAAPI { easing: 'cubic-bezier(.6,0,.3,1)' } — 효과 전체 진행에 곡선을 씌운 뒤 키프레임 사이 직선
+static func band_x_eased(band: Dictionary, t: float) -> float:
+	var u: float = clampf((t - band.delay) / band.ms, 0.0, 1.0)
+	return band_x(band, band.delay + cubic_bezier(u, 0.6, 0.0, 0.3, 1.0) * band.ms)
+
+
+# 페이드 (그래픽 낮춤·움직임 줄이기): 0 → 1 (UI_WIPE_IN) → 0, 전체 진행에 ease-out (cubic-bezier(0,0,.58,1))
+static func fade_alpha(t: float, ms: float) -> float:
+	var u := cubic_bezier(clampf(t / ms, 0.0, 1.0), 0.0, 0.0, 0.58, 1.0)
+	var a: float = u / C.UI_WIPE_IN if u < C.UI_WIPE_IN else 1.0 - (u - C.UI_WIPE_IN) / (1.0 - C.UI_WIPE_IN)
+	return clampf(a, 0.0, 1.0)
+
+
+# 띠 하나의 t(ms) 때 x (vw): 키프레임 사이 직선 (곡선 전 — 정답 자료 shared/wipe.js 와 비교용, 화면은 band_x_eased)
 static func band_x(band: Dictionary, t: float) -> float:
 	var u: float = clampf((t - band.delay) / band.ms, 0.0, 1.0)
 	var f: Array = band.frames

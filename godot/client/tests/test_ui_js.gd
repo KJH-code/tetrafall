@@ -46,3 +46,18 @@ func test_net_ping_levels() -> void:
 	check(ok.fg == Color("9fabcd") and is_equal_approx(ok.bg.a, 0.6), "보통: 흐린 글 + rgba(8,12,26,.6)")
 	check(w.fg == Color("1a1300") and w.bg.r > 0.99 and w.bg.g > 0.8 and w.bg.b < 0.4, "warn 노랑 %s" % w.bg)
 	check(b.fg == Color.WHITE and b.bg.r > 0.8 and b.bg.g < 0.2, "bad 빨강 %s" % b.bg)
+
+
+# 전환 슬래시 시간 곡선 (main.js playWipe: 띠 cubic-bezier(.6,0,.3,1), 페이드 ease-out) — CSS 곡선 값 (브라우저 계산과 같은 식)
+func test_wipe_easing_like_js() -> void:
+	check(U.cubic_bezier(0.0, 0.6, 0.0, 0.3, 1.0) == 0.0 and U.cubic_bezier(1.0, 0.6, 0.0, 0.3, 1.0) == 1.0, "끝점")
+	# 정답: 이분법 60번으로 푼 값 (node, 2026-11-02)
+	for kv in [[0.25, 0.08765322155179213], [0.5, 0.6026803188313119], [0.75, 0.941474642813966]]:
+		check(absf(U.cubic_bezier(kv[0], 0.6, 0.0, 0.3, 1.0) - kv[1]) < 1e-6, "cubic-bezier(.6,0,.3,1) %s → %s (%s)" % [kv[0], kv[1], U.cubic_bezier(kv[0], 0.6, 0.0, 0.3, 1.0)])
+	check(absf(U.cubic_bezier(0.5, 0.0, 0.0, 0.58, 1.0) - 0.6846431874274606) < 1e-6, "ease-out 0.5 (%s)" % U.cubic_bezier(0.5, 0.0, 0.0, 0.58, 1.0))
+	var plan: Dictionary = U.wipe_plan("big")
+	var band: Dictionary = plan.bands[0]
+	check(U.band_x_eased(band, band.delay) == band.frames[0].x and U.band_x_eased(band, band.delay + band.ms) == band.frames[-1].x, "띠 처음·끝 자리는 그대로")
+	var mid_t: float = band.delay + band.ms * 0.1
+	check(absf(U.band_x_eased(band, mid_t) - U.band_x(band, band.delay + band.ms * U.cubic_bezier(0.1, 0.6, 0.0, 0.3, 1.0))) < 1e-9, "곡선 진행으로 키프레임 보간")
+	check(U.fade_alpha(0.0, 300.0) == 0.0 and U.fade_alpha(300.0, 300.0) == 0.0, "페이드 처음·끝 0")
