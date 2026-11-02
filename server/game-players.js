@@ -187,6 +187,7 @@ export class PlayersPart {
   removePlayer(id) {
     const p = this.players.get(id);
     if (!p) return;
+    if (p.grab) this.hookGrabDrop(p); // 갈고리 R 로 뽑는 중에 나가면 뽑던 블록은 제자리로 (안 그러면 그 칸이 격자에서 사라짐)
     this.players.delete(id);
     this.bots.delete(id);
     this.proxies.delete(id);

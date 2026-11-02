@@ -113,6 +113,7 @@ public sealed partial class Game
     {
         var p = GetPlayer(id);
         if (p == null) return;
+        if (p.grab != null) HookGrabDrop(p); // 갈고리 R 로 뽑는 중에 나가면 뽑던 블록은 제자리로 (안 그러면 그 칸이 격자에서 사라짐)
         players.Remove(id);
         bots.Remove(id);
         proxies.Remove(id);
