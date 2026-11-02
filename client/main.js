@@ -119,6 +119,7 @@ const input = new Input(renderer.canvas, (action) => {
 
 const hitmarker = $('hitmarker');
 let hitmarkerTimer = 0;
+let bannerShown = '';
 function showHitmarker() {
   hitmarker.style.transition = 'none';
   hitmarker.style.opacity = 1;
@@ -2063,7 +2064,10 @@ function drawHud() {
   banner.classList.toggle('hidden', bannerText === null);
   if (bannerText !== null) {
     setText(banner, bannerText);
-    if (banner.style.background !== bannerColor) banner.style.background = bannerColor;
+    if (bannerShown !== bannerColor) {
+      banner.style.background = bannerColor;
+      bannerShown = bannerColor; // 브라우저가 값을 rgba(0, 140, ...) 로 바꿔 돌려주므로 style 과 비교하지 않고 마지막에 쓴 값을 기억
+    }
   }
 
   // 가운데 안내
