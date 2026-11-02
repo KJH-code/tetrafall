@@ -8,6 +8,7 @@ const C := preload("res://core/config.gd")
 const Body := preload("res://chars/body.gd")
 const G3 := preload("res://shaders/g3.gd")
 const K := preload("res://chars/chars_config.gd")
+const WC := preload("res://world/world_config.gd")
 
 const HALF_PI := PI / 2
 
@@ -37,7 +38,8 @@ func _ready() -> void:
 	view = SubViewport.new()
 	view.transparent_bg = true
 	view.own_world_3d = true
-	view.msaa_3d = K.VM_MSAA # JS 는 팔도 판과 같은 캔버스 (antialias)
+	set_msaa() # JS 는 팔도 판과 같은 캔버스 (antialias) — 판 화면과 같은 값, 그래픽 낮춤을 바꾸면 곧바로
+	View.changed.connect(_on_view)
 	view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(view)
 	cam = Camera3D.new()
@@ -70,6 +72,15 @@ func _ready() -> void:
 	rect.stretch_mode = TextureRect.STRETCH_SCALE
 	layer.add_child(rect)
 	_set_on(false)
+
+
+func set_msaa() -> void:
+	view.msaa_3d = WC.msaa_3d(bool(View.settings.get("lowGfx", false)))
+
+
+func _on_view(k: String) -> void:
+	if k == "lowGfx":
+		set_msaa()
 
 
 func _set_on(v: bool) -> void:

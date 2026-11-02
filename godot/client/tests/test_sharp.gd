@@ -5,7 +5,6 @@ extends RefCounted
 const C := preload("res://core/config.gd")
 const G3 := preload("res://shaders/g3.gd")
 const WC := preload("res://world/world_config.gd")
-const KC := preload("res://chars/chars_config.gd")
 const Body := preload("res://chars/body.gd")
 const HF := preload("res://world/hazard_field.gd")
 
@@ -22,12 +21,30 @@ func _src(path: String) -> String:
 
 
 func test_msaa_like_js_antialias() -> void:
-	check(WC.MSAA_3D == Viewport.MSAA_4X, "판 화면 4× 다중 샘플 (JS antialias)")
-	check(KC.VM_MSAA == Viewport.MSAA_4X, "1인칭 팔 SubViewport 도 4×")
+	# 재혁 2026-11-02: PC 4× 그대로 (낮춤이면 끔), 웹은 따로 정할 수 있게 값 둘 — 웹 기본은 PC 와 같음 (웹 성능 작업이 정함)
+	check(WC.MSAA_3D_PC == Viewport.MSAA_4X, "PC 판 화면 4× 다중 샘플 (JS antialias)")
+	check(WC.MSAA_3D_WEB == WC.MSAA_3D_PC, "웹 기본 = PC 와 같음")
 	check(WC.MSAA_LOW == Viewport.MSAA_DISABLED, "그래픽 낮춤이면 끔")
+	check(WC.msaa_3d(false, false) == WC.MSAA_3D_PC and WC.msaa_3d(false, true) == WC.MSAA_3D_WEB, "웹·PC 가 각자 값")
+	check(WC.msaa_3d(true, false) == WC.MSAA_LOW and WC.msaa_3d(true, true) == WC.MSAA_LOW, "낮춤은 웹·PC 둘 다 끔")
+	check(WC.msaa_3d(false) == (WC.MSAA_3D_WEB if OS.has_feature("web") else WC.MSAA_3D_PC), "기본 = 지금 실행 (웹 내보내기인가)")
 	var W := preload("res://world/world.gd")
-	check(W.msaa_for(false) == Viewport.MSAA_4X and W.msaa_for(true) == Viewport.MSAA_DISABLED, "World.msaa_for: 보통 4×, 낮춤 끔")
-	check(_src("res://world/world.gd").contains("set_msaa(View.settings.lowGfx)"), "그래픽 낮춤을 바꾸면 곧바로")
+	check(W.msaa_for(false, false) == WC.MSAA_3D_PC and W.msaa_for(false, true) == WC.MSAA_3D_WEB and W.msaa_for(true) == WC.MSAA_LOW, "World.msaa_for = WC.msaa_3d")
+	check(_src("res://world/world.gd").contains("set_msaa(View.settings.lowGfx)"), "그래픽 낮춤을 바꾸면 곧바로 (World._ready 연결 — 테스트 러너에선 트리 밖이라 글자로)")
+	# 1인칭 팔 SubViewport 도 판 화면과 같은 값, 그래픽 낮춤을 바꾸면 곧바로
+	var VM := preload("res://chars/viewmodel.gd")
+	var vm = VM.new()
+	var keep = View.settings.get("lowGfx", false)
+	View.settings.lowGfx = false # set_setting 은 설정 파일을 씀 → 값만 바꾸고 신호
+	vm._ready()
+	check(vm.view.msaa_3d == WC.msaa_3d(false), "1인칭 팔 = 판 화면 값")
+	View.settings.lowGfx = true
+	View.changed.emit("lowGfx")
+	check(vm.view.msaa_3d == WC.MSAA_LOW, "1인칭 팔: 낮춤이면 곧바로 끔")
+	View.settings.lowGfx = keep
+	View.changed.emit("lowGfx")
+	check(vm.view.msaa_3d == WC.msaa_3d(bool(keep)), "되돌림")
+	vm.free()
 
 
 func test_piece_textures_mipmapped_anisotropic() -> void:

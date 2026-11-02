@@ -198,7 +198,7 @@ func _ready() -> void:
 	set_shadows(not View.settings.get("lowGfx", false))
 
 
-# 판 화면 다중 샘플: 보통 WC.MSAA_3D (JS antialias), 그래픽 낮춤이면 WC.MSAA_LOW (JS 는 낮춤에서 픽셀 비율 1 로 비용을 줄임 — 고도는 다중 샘플을 끔)
+# 판 화면 다중 샘플: 보통 WC.MSAA_3D_PC·WC.MSAA_3D_WEB (JS antialias), 그래픽 낮춤이면 WC.MSAA_LOW (JS 는 낮춤에서 픽셀 비율 1 로 비용을 줄임 — 고도는 다중 샘플을 끔)
 func set_msaa(low: bool) -> void:
 	if get_viewport() != null:
 		get_viewport().msaa_3d = msaa_for(low)
@@ -209,8 +209,8 @@ static func grid_material(g3) -> Material:
 	return g3.toon_material(Color.WHITE, {"vertex_color": true, "hz_tint": true, "outline": false})
 
 
-static func msaa_for(low: bool) -> Viewport.MSAA:
-	return WC.MSAA_LOW if low else WC.MSAA_3D
+static func msaa_for(low: bool, web: bool = OS.has_feature("web")) -> Viewport.MSAA:
+	return WC.msaa_3d(low, web)
 
 
 # G3 에 이 함수가 있나 (B3 가 차례로 올리는 재질: 합치는 순서가 달라도 됨)

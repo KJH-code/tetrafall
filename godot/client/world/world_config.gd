@@ -1,8 +1,11 @@
 # 고도 판 그리기 (G1) 에만 필요한 수치. 게임 수치는 core/config.gd (shared/config.js) 를 씀
 extends RefCounted
 
-const MSAA_3D := Viewport.MSAA_4X # 판 화면 다중 샘플 (render.js WebGLRenderer({ antialias: true }) — 크롬 기본 4×)
-const MSAA_LOW := Viewport.MSAA_DISABLED # 그래픽 낮춤: 끔 (JS 는 낮춤에서 setPixelRatio(1) 로 비용을 줄임. 소프트웨어 GL 8명 판 4× = 프레임 약 2.4배)
+# 판 화면·1인칭 팔 다중 샘플 (render.js WebGLRenderer({ antialias: true }) — 크롬 기본 4×). 웹·PC 따로 정함 (재혁 2026-11-02: PC 4× 그대로,
+# 웹은 지금 PC 와 같은 값 — 웹 성능 작업이 정함). 고르기는 msaa_3d
+const MSAA_3D_PC := Viewport.MSAA_4X
+const MSAA_3D_WEB := Viewport.MSAA_4X
+const MSAA_LOW := Viewport.MSAA_DISABLED # 그래픽 낮춤: 끔 (웹·PC 둘 다. JS 는 낮춤에서 setPixelRatio(1) 로 비용을 줄임. 소프트웨어 GL 8명 판 4× = 프레임 약 2.4배)
 const CELL_SIZE := 0.98 # 쌓인 칸·떨어지는 칸 상자 크기 (칸 사이 살짝 틈)
 const CHECKER := 0.94 # 이웃 칸 체커보드 명암 (render.js updateGrid)
 const FLOOR_THICK := 0.6 # 필드 바닥판 두께 (z 0 아래)
@@ -43,3 +46,10 @@ const HUNT_PIP_PX := 0.00085 # 머리 위 표식 마름모 글자 크기 (fixed_
 const HUNT_PIP_GAP := 50.0 # 마름모 칸 사이 (글자 px, pixel_size 와 같이 줄어듦 — JS 칸 21px ÷ 마름모 17px 비율)
 const HP_BAR := [130.0, 16.0, 64.0] # 체력전 머리 위 HP 막대: 폭·높이·이름 아래로 (이름표 글자 px 단위 — 화면에선 약 절반)
 const SPIN_ARC_COLOR := 0xe8ecf4 # 갈고리 스핀 원호 색 (render.js spinArc)
+
+
+# 다중 샘플 고르기: 그래픽 낮춤 → MSAA_LOW, 아니면 웹이면 MSAA_3D_WEB, PC 면 MSAA_3D_PC (web 기본 = 지금 실행이 웹 내보내기인가)
+static func msaa_3d(low: bool, web: bool = OS.has_feature("web")) -> Viewport.MSAA:
+	if low:
+		return MSAA_LOW
+	return MSAA_3D_WEB if web else MSAA_3D_PC
