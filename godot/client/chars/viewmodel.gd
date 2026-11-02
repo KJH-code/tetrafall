@@ -128,7 +128,8 @@ func _sync(body) -> void:
 		var p: int = twin.parents[i]
 		if p >= 0 and under.has(p):
 			under[i] = true
-			pairs.append(i)
+			if i < body.nodes.size(): # 구운 몸: 판 몸 (묶음) 은 묶음에 들어간 잎이 없음 — 잎은 안 움직여서 베낄 것도 없음
+				pairs.append(i)
 	var waist: Node3D = twin.waist
 	waist.get_parent().remove_child(waist)
 	anchor.add_child(waist)
@@ -178,7 +179,7 @@ func _props() -> void:
 	veins.clear()
 	if char_id == "ninja":
 		# 왼손엔 단검 대신 부채꼴로 쥔 표창 3개 (던지면 잠깐 비었다가 다시 쥠)
-		var cd: Dictionary = Body._data().chars[char_id]
+		var cd: Dictionary = twin.cd # 예전 조립이면 bodies.bin 한 줄, 구운 몸이면 manifest (같은 번호)
 		for i in twin.nodes.size():
 			if cd.nodes[i].get("dagger", false) and twin.nodes[i] is MeshInstance3D:
 				(twin.nodes[i] as MeshInstance3D).layers = 0
