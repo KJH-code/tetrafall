@@ -91,3 +91,27 @@ test('S7 호스트가 나가면 방장은 연결된 사람에게 먼저 (끊겨 
   assert.equal(g.hostId, null);
 });
 
+test('S9 연습·튜토리얼에서 끊기면 대리 봇 없이 입력만 0 (생존 판은 예전처럼 봇 대리)', () => {
+  const lines = [];
+  const g = new Game((s) => lines.push(s), { characters: true });
+  g.addPlayer(1);
+  g.startPractice();
+  g.addDummy(1);
+  g.handleInput(1, { fwd: 1, strafe: 1, jump: true });
+  assert.ok(g.setAway(1, true));
+  assert.equal(g.proxies.size, 0, '대리 봇 없음');
+  assert.deepEqual([g.players.get(1).input.fwd, g.players.get(1).input.strafe, g.players.get(1).input.jump], [0, 0, false]);
+  assert.ok(lines.some((l) => l.includes('[끊김]') && !l.includes('봇 대리')));
+  const [x, y] = [g.players.get(1).x, g.players.get(1).y];
+  run(g, 3000);
+  assert.equal([g.players.get(1).x, g.players.get(1).y].join(), [x, y].join(), '가만히 있음');
+  g.setAway(1, false);
+  const g2 = new Game((s) => lines.push(s));
+  g2.addPlayer(1);
+  g2.addPlayer(2);
+  g2.startRound();
+  g2.setAway(1, true);
+  assert.equal(g2.proxies.size, 1, '생존 판은 봇 대리');
+  assert.ok(lines.some((l) => l.includes('(봇 대리)')));
+});
+

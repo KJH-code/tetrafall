@@ -93,8 +93,16 @@ public sealed partial class Game
         p.away = on;
         if (on)
         {
-            proxies[id] = new BotBrain(() => rng(), () => botLevel);
-            Log($"  [끊김] {p.name} 자리 유지 {JsNumber.ToJs(C.RECONNECT_GRACE_MS / 1000)}초{(InRound() ? " (봇 대리)" : "")}");
+            // 연습·튜토리얼 방은 봇이 대신 조종하지 않음 (허수아비와 싸우며 60초 노는 것 방지) — 입력만 0
+            bool proxy = mode != "practice";
+            if (proxy) proxies[id] = new BotBrain(() => rng(), () => botLevel);
+            else
+            {
+                p.input.fwd = 0;
+                p.input.strafe = 0;
+                p.input.jump = false;
+            }
+            Log($"  [끊김] {p.name} 자리 유지 {JsNumber.ToJs(C.RECONNECT_GRACE_MS / 1000)}초{(proxy && InRound() ? " (봇 대리)" : "")}");
         }
         else
         {

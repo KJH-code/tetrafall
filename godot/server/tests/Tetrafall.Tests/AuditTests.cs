@@ -81,6 +81,32 @@ public class AuditTests
         Assert.Null(g.hostId);
     }
 
+    [Fact]
+    public void S9_연습에서_끊기면_대리_봇_없이_입력만_0_생존_판은_봇_대리()
+    {
+        var lines = new List<string>();
+        var g = new Game(lines.Add, characters: true);
+        g.AddPlayer(1);
+        g.StartPractice();
+        g.AddDummy(1);
+        g.HandleInput(1, new InputMsg { fwd = 1, strafe = 1, jump = true });
+        Assert.True(g.SetAway(1, true));
+        Assert.Empty(g.proxies);
+        var p = g.players[1];
+        Assert.Equal((0.0, 0.0, false), (p.input.fwd, p.input.strafe, p.input.jump));
+        Assert.Contains(lines, l => l.Contains("[끊김]") && !l.Contains("봇 대리"));
+        var (x, y) = (p.x, p.y);
+        Run(g, 3000);
+        Assert.Equal((x, y), (p.x, p.y));
+        var g2 = new Game(lines.Add);
+        g2.AddPlayer(1);
+        g2.AddPlayer(2);
+        g2.StartRound();
+        g2.SetAway(1, true);
+        Assert.Single(g2.proxies);
+        Assert.Contains(lines, l => l.Contains("(봇 대리)"));
+    }
+
 
     static void Run(Game g, double ms)
     {

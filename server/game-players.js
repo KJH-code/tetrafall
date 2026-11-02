@@ -170,8 +170,15 @@ export class PlayersPart {
     if (!p || p.isBot || !!p.away === !!on) return false;
     p.away = !!on;
     if (on) {
-      this.proxies.set(id, new BotBrain(() => this.rng(), () => this.botLevel));
-      this.log(`  [끊김] ${p.name} 자리 유지 ${C.RECONNECT_GRACE_MS / 1000}초${this.inRound() ? ' (봇 대리)' : ''}`);
+      // 연습·튜토리얼 방은 봇이 대신 조종하지 않음 (허수아비와 싸우며 60초 노는 것 방지) — 입력만 0
+      const proxy = this.mode !== 'practice';
+      if (proxy) this.proxies.set(id, new BotBrain(() => this.rng(), () => this.botLevel));
+      else {
+        p.input.fwd = 0;
+        p.input.strafe = 0;
+        p.input.jump = false;
+      }
+      this.log(`  [끊김] ${p.name} 자리 유지 ${C.RECONNECT_GRACE_MS / 1000}초${proxy && this.inRound() ? ' (봇 대리)' : ''}`);
     } else {
       this.proxies.delete(id);
       p.input.fwd = 0;
