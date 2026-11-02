@@ -140,7 +140,10 @@ func test_cam_hook_runs_during_selfie() -> void:
 	check(rig.close_id() == 5, "이모트 중이면 셀카 카메라")
 	rig.place(0.016, {5: Vector3(3, 3, 0)}, func(_x, _y, _z): return false)
 	check(calls[0] == 1, "셀카 중 camHook %d번" % calls[0])
+	var cam: Camera3D = rig.cam
 	rig.free()
+	if is_instance_valid(cam) and cam.get_parent() == null:
+		cam.free() # 러너 (_initialize) 동안엔 root 가 아직 트리 밖이라 _ready 가 안 불려 카메라가 rig 의 자식이 아님 → 따로 지움 (종료 시 Camera RID 누수)
 	Store.state = keep[0]
 	Store._players_by_id = keep[1]
 	Store.my_id = keep[2]
