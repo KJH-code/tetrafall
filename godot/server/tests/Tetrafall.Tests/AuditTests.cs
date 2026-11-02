@@ -107,6 +107,19 @@ public class AuditTests
         Assert.Contains(lines, l => l.Contains("(봇 대리)"));
     }
 
+    [Fact]
+    public void S10_ColumnTop은_판_밖_칸이면_0()
+    {
+        var g = new Game(_ => { });
+        g.AddPlayer(1);
+        g.AddPlayer(2);
+        g.StartRound();
+        g.grid[g.Idx(0, 1, 3)] = 1;
+        g.grid[g.Idx(g.W - 1, 0, 2)] = 1; // x=-1,y=1 이 새던 번호
+        Assert.True(g.ColumnTop(0, 1) >= 4);
+        foreach (var (x, y) in new[] { (-1, 1), (g.W, 0), (0, g.D), (0, -1), (g.W + 5, g.D + 5) }) Assert.Equal(0, g.ColumnTop(x, y));
+        Assert.True(g.ColumnTop(g.W - 1, 0) >= 3);
+    }
 
     static void Run(Game g, double ms)
     {

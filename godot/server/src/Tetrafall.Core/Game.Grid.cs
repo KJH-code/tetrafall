@@ -44,6 +44,7 @@ public sealed partial class Game
     // 그 기둥에서 가장 높은 블록 바로 위 z (블록 없으면 0)
     public int ColumnTop(int cx, int cy)
     {
+        if (!InXY(cx, cy)) return 0; // 판 밖은 블록 없음 (격자 번호가 옆 칸으로 새지 않게)
         for (int z = H - 1; z >= 0; z--)
         {
             if (grid[Idx(cx, cy, z)] != 0) return z + 1;

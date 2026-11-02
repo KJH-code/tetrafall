@@ -790,7 +790,7 @@ public sealed class BotBrain
             }
         }
         int ax = (int)Math.Floor(p.x + ux * 0.55), ay = (int)Math.Floor(p.y + uy * 0.55);
-        int top = g.InXY(ax, ay) ? g.ColumnTop(ax, ay) : ColumnTopJs(g, ax, ay);
+        int top = g.ColumnTop(ax, ay);
         // 용암이 켜졌으면 용암 가까운 낮은 칸으로 내려가지 않는다
         if (g.lava.active && top < StandHeight(g, p) - 0.5 && top < g.lava.z + C.BOT_LAVA_MARGIN)
         {
@@ -807,17 +807,6 @@ public sealed class BotBrain
             if (top > p.z + 0.05 && top <= p.z + JumpReach(g, p)) input.jump = true;
         }
         else if (top > p.z + 0.05 && p.airJumps > 0 && p.vz < C.BOT_AIR_JUMP_VZ) Act(g, p, "jump"); // 2단 점프
-    }
-
-    // JS columnTop 은 필드 밖 칸도 grid 배열을 그대로 읽음 (idx 가 다른 칸이나 배열 밖 → undefined = 0). 같은 값을 내려고 그대로 흉내
-    static int ColumnTopJs(Game g, int cx, int cy)
-    {
-        for (int z = g.H - 1; z >= 0; z--)
-        {
-            int i = (z * g.D + cy) * g.W + cx;
-            if (i >= 0 && i < g.grid.Length && g.grid[i] != 0) return z + 1;
-        }
-        return 0;
     }
 
     // ---------- 조종 ----------

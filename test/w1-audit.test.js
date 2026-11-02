@@ -115,3 +115,14 @@ test('S9 연습·튜토리얼에서 끊기면 대리 봇 없이 입력만 0 (생
   assert.ok(lines.some((l) => l.includes('(봇 대리)')));
 });
 
+test('S10 columnTop: 판 밖 칸은 0 (격자 번호가 옆 칸으로 새지 않음)', () => {
+  const g = new Game(() => {});
+  g.addPlayer(1);
+  g.addPlayer(2);
+  g.startRound();
+  g.grid[g.idx(0, 1, 3)] = 1; // x=-1 이 (0,1) 쪽 번호로 새던 칸
+  g.grid[g.idx(g.W - 1, 0, 2)] = 1;
+  assert.equal(g.columnTop(0, 1) >= 4, true);
+  for (const [x, y] of [[-1, 1], [g.W, 0], [0, g.D], [0, -1], [g.W + 5, g.D + 5]]) assert.equal(g.columnTop(x, y), 0, `${x},${y}`);
+  assert.equal(g.columnTop(g.W - 1, 0) >= 3, true, '판 안은 그대로');
+});

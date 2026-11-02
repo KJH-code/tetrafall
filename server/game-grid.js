@@ -50,6 +50,7 @@ export class GridPart {
 
   // 그 기둥에서 가장 높은 블록 바로 위 z (블록 없으면 0)
   columnTop(cx, cy) {
+    if (!this.inXY(cx, cy)) return 0; // 판 밖은 블록 없음 (격자 번호가 옆 칸으로 새지 않게)
     for (let z = this.H - 1; z >= 0; z--) {
       if (this.grid[this.idx(cx, cy, z)]) return z + 1;
     }
