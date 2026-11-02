@@ -15,5 +15,6 @@
 
 - `bash godot/client/tools/build-web-template.sh <작업 폴더>` — 고도 4.7.2-stable 소스 + emsdk 4.0.11 (고도 CI `web_builds.yml` EM_VERSION) + scons, `production=yes optimize=size threads=no`, 끄는 모듈 목록은 스크립트 안. 4코어 약 25분
 - 쓰기: 웹 내보내기 전에 `export_presets.cfg` 웹 `custom_template/release` 에 결과 zip 절대 경로 (커밋 안 함 — 없는 기계에선 내보내기 실패) 또는 `~/.local/share/godot/export_templates/4.7.2.stable/web_nothreads_release.zip` 을 바꿔 넣음
+- 배포 묶음: `node godot/server/tools/package.mjs --godot <고도> --web-template <zip>` (또는 환경 변수 `GODOT_WEB_TEMPLATE`) — 웹 내보내기 동안만 `custom_template/release` 를 바꾸고 끝나면 (실패해도) 되돌림, 안 주면 공식 템플릿. GitHub Release (`.github/workflows/release.yml`) 는 `web-template` job 이 이 스크립트로 빌드해 넘김 (캐시 키 = 고도·emsdk 버전 + 스크립트 해시, 첫 빌드 40~60분, 실패하면 공식 템플릿으로 묶음). 버전은 환경 변수 `GODOT_VERSION`·`EM_VERSION` (기본 4.7.2·4.0.11)
 - 더 줄이려면: 클래스 단위 build profile (편집기 → 도구 → 엔진 컴파일 구성 → '프로젝트에서 찾기', 헤드리스 명령 없음 — 편집기에서 만들어 `build_profile=` 로). `optimize=size_extra`·`deprecated=no` 는 안 써 봄 (wasm 실행 속도·옛 API)
 - pck 쪼개기 (보류, W5): 첫 pck (br 6.04MB) 의 소리 녹음 중 판 효과음 262개 = br 2.12MB (10Mbps 약 1.7초), 타이틀·앰비언트 녹음 7테마 몫 = br 2.64MB (그 판에 쓰는 한 테마만 먼저면 약 2.3MB 더). 뒤로 미루려면 `audio/sfx.gd` 가 아직 없는 녹음을 건너뛰고 따로 받은 팩을 `ProjectSettings.load_resource_pack` 해야 함 (audio 는 W5 범위 밖)

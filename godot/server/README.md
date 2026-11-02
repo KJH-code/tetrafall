@@ -42,15 +42,16 @@ dotnet publish godot/server/src/Tetrafall.Server -c Release -r linux-x64 --self-
 ## 배포 묶음 (G7): 서버 + 고도 웹 + 고도 PC 클라 zip
 
 ```
-node godot/server/tools/package.mjs --godot <고도 4.7.2> [--targets win,linux] [--cloudflared]   # → dist/tetrafall-win-x64.zip, dist/tetrafall-linux-x64.zip
+node godot/server/tools/package.mjs --godot <고도 4.7.2> [--targets win,linux] [--cloudflared] [--web-template <zip>]   # → dist/tetrafall-win-x64.zip, dist/tetrafall-linux-x64.zip
 ```
 
 - 폴더: `Tetrafall.Server(.exe)` + `web/` (고도 웹 빌드) + `tetrafall.exe`/`tetrafall.x86_64` (PC 클라) + `start-lan`·`start-online` (.bat/.sh) + `README.txt` (+ `cloudflared` 를 `--cloudflared` 로 GitHub 에서 받아 넣음)
 - 서버는 exe 옆에 `web/index.html` 이 있으면 그 폴더가 뿌리 (배포 폴더): `/play/` = `web/`, JS 화면이 없으니 `/` → `/play/` (302, `?room=` 그대로). 레포·배포 어느 쪽도 아니면 exe 폴더로 뜸 (웹소켓만, PC 클라용)
 - 웹 미리 압축: `web/` 파일마다 `.br` (brotli 11, 창 24) + `.gz` (gzip 9) → 서버 `StaticFiles.Precompressed` 가 Accept-Encoding 따라 br > gzip > 날것 (`Content-Encoding`·`Vary: Accept-Encoding`, 형식은 날것 이름). 엔진 wasm 39.5MB → br 6.9MB · gz 10.2MB (압축 약 1분 40초)
 - 서버 한 파일 약 52MB (`PUBLISH_FLAGS`: 안에서 압축·InvariantGlobalization, 트리밍 안 함 — ASP.NET), IIS 용 aspnetcorev2_inprocess.dll·web.config·staticwebassets.endpoints.json 은 뺌, web/ 에 고도 `*.import` 안 넣음, zip 파일 날짜 = 묶은 시각
+- `--web-template <zip>` (또는 `GODOT_WEB_TEMPLATE`) = 직접 빌드한 웹 템플릿 (`godot/client/tools/build-web-template.sh`, wasm br 6.9 → 5.4MB): 웹 내보내기 동안만 `export_presets.cfg` 웹 `custom_template/release` 를 바꾸고 되돌림 (Ctrl+C 로 끊기면 옆의 `.orig` 를 다음 실행이 먼저 되돌림). 안 주면 공식 템플릿
 - `--no-godot` = 이미 내보낸 `godot/client/build/` 를 씀. zip 은 node 만으로 씀 (유닉스 실행 비트 유지)
-- GitHub Release: `.github/workflows/release.yml` 이 같은 묶음을 Actions 에서 만들어 Release 에 zip 두 개를 올림. 태그 `v*` 를 push 하거나, 아무 브랜치에 커밋 메시지로 `[release v0.1.0]` 를 넣어 push (태그는 GitHub 쪽에서 그 커밋에 만들어짐), 또는 main 에 이 파일이 있으면 Actions 탭 'Run workflow'. 이름에 `-` 가 있으면 미리보기(prerelease). 약 10분
+- GitHub Release: `.github/workflows/release.yml` 이 같은 묶음을 Actions 에서 만들어 Release 에 zip 두 개를 올림. 태그 `v*` 를 push 하거나, 아무 브랜치에 커밋 메시지로 `[release v0.1.0]` 를 넣어 push (태그는 GitHub 쪽에서 그 커밋에 만들어짐), 또는 main 에 이 파일이 있으면 Actions 탭 'Run workflow'. 이름에 `-` 가 있으면 미리보기(prerelease). 약 10분 + 웹 템플릿 직접 빌드 (`web-template` job, 캐시가 없을 때만 40~60분 — 캐시는 그 브랜치·main 것만 보임, 빌드가 실패하면 공식 템플릿으로 묶음)
 - 재혁 PC 순서: [docs/godot-play.md](../../docs/godot-play.md)
 
 ## 인터넷 대전: `--online` (node 없이)

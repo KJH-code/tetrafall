@@ -2,6 +2,10 @@
 # 실행 방법 셋: ① 태그 v* 를 push ② Actions 탭 'Run workflow' (main 에 이 파일이 있을 때) ③ 아무 브랜치에
 # 커밋 메시지에 [release <태그>] 를 넣어 push (예: [release v0.1.0-godot-preview]) — 태그를 직접 못 올릴 때. 태그는 이 커밋에 만들어짐.
 # 묶음: godot/server/tools/package.mjs (서버 + 고도 웹 + 고도 PC 클라 + cloudflared, win·linux zip)
+# 웹 템플릿 (W5 2026-11-02 재혁: 직접 빌드한 웹 템플릿을 배포에도 — wasm br 6.9 → 5.4MB): web-template job 이 godot/client/tools/build-web-template.sh 로
+# 빌드해 artifact 로 package 에 넘김. 캐시 키 = 고도·emsdk 버전 + 스크립트 해시 → 두 번째부터는 빌드 건너뜀 (첫 빌드 40~60분).
+# 캐시는 그 브랜치와 기본 브랜치 (main) 것만 보임 — 새 브랜치의 [release ...] 첫 실행은 main 에 캐시가 없으면 다시 빌드.
+# 템플릿 빌드가 실패하면 (continue-on-error) package 는 공식 템플릿으로 묶음 — 릴리스가 템플릿 때문에 막히지 않게
 name: release
 
 on:
@@ -23,10 +27,67 @@ permissions:
 
 env:
   GODOT_VERSION: 4.7.2
+  EM_VERSION: 4.0.11 # 고도 4.7.2 CI web_builds.yml 의 EM_VERSION
+  WEB_TEMPLATE_ZIP: godot.web.template_release.wasm32.nothreads.zip
 
 jobs:
-  package:
+  web-template:
     if: github.event_name != 'push' || startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '[release ')
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: 캐시에서 템플릿
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/web-template
+          key: web-template-godot${{ env.GODOT_VERSION }}-em${{ env.EM_VERSION }}-${{ hashFiles('godot/client/tools/build-web-template.sh') }}
+
+      - uses: actions/setup-python@v5
+        if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          python-version: '3.12'
+
+      - name: 템플릿 빌드 (캐시 없을 때만, 40~60분)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          pip install scons
+          bash godot/client/tools/build-web-template.sh "$RUNNER_TEMP/wt"
+          mkdir -p ~/web-template
+          cp "$RUNNER_TEMP/wt/godot/bin/$WEB_TEMPLATE_ZIP" ~/web-template/
+
+      - name: 템플릿 확인
+        run: |
+          set -e
+          f=~/web-template/$WEB_TEMPLATE_ZIP
+          unzip -l "$f" | grep -q ' godot\.wasm$'
+          unzip -l "$f" | grep -q ' godot\.js$'
+          ls -la "$f"
+
+      - name: 캐시에 템플릿
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/web-template
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-template
+          path: ~/web-template/${{ env.WEB_TEMPLATE_ZIP }}
+          retention-days: 1
+          compression-level: 0
+
+  package:
+    needs: web-template
+    # 템플릿 job 이 실패해도 돎 (!cancelled) — 그땐 공식 템플릿
+    if: ${{ !cancelled() && (github.event_name != 'push' || startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '[release ')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -75,7 +136,26 @@ jobs:
           rm Godot_v$V-stable_export_templates.tpz
           echo "GODOT=$HOME/godot/Godot_v$V-stable_linux.x86_64" >> $GITHUB_ENV
 
+      - name: 직접 빌드한 웹 템플릿 받기
+        if: needs.web-template.result == 'success'
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: web-template
+          path: ${{ runner.temp }}/web-template
+
+      - name: 웹 템플릿 고르기
+        run: |
+          f="$RUNNER_TEMP/web-template/$WEB_TEMPLATE_ZIP"
+          if [ -f "$f" ] && unzip -l "$f" | grep -q ' godot\.wasm$'; then
+            echo "GODOT_WEB_TEMPLATE=$f" >> "$GITHUB_ENV"
+            echo "웹 템플릿: 직접 빌드 ($(du -h "$f" | cut -f1))" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "웹 템플릿: 공식 (직접 빌드 job 결과 ${{ needs.web-template.result }})" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: 묶기
+        # GODOT_WEB_TEMPLATE 가 있으면 package.mjs 가 웹 내보내기에 그 템플릿을 씀 (없으면 공식)
         run: node godot/server/tools/package.mjs --godot "$GODOT" --targets win,linux --cloudflared
 
       - name: Release
