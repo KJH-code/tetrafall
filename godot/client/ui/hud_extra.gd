@@ -165,14 +165,20 @@ func _ready() -> void:
 	add_child(stun)
 	center = _label(18)
 	center.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# JS #center.slim: 빛 판 (--pane + 안쪽 1px ga) · padding 9 22 11 26 · 14px 사선, 글자 빛 (--gtxt)
 	var cs := StyleBoxFlat.new()
 	cs.bg_color = Color(0.09, 0.06, 0.17, 0.88)
-	cs.skew = Vector2(S.SKEW * 0.5, 0)
-	cs.content_margin_left = 22
-	cs.content_margin_right = 18
-	cs.content_margin_top = 6
-	cs.content_margin_bottom = 8
+	cs.set_border_width_all(1)
+	S.theme_border(cs, 0.55)
+	cs.skew = Vector2(0.3, 0)
+	cs.anti_aliasing = true
+	cs.content_margin_left = 26
+	cs.content_margin_right = 22
+	cs.content_margin_top = 9
+	cs.content_margin_bottom = 11
 	center.add_theme_stylebox_override("normal", cs)
+	center.add_theme_color_override("font_outline_color", S.alpha(S.g(), 0.6))
+	center.add_theme_constant_override("outline_size", 4)
 	center.visible = false
 	add_child(center)
 	hitmarker = Control.new()
