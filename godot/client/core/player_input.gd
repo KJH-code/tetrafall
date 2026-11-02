@@ -145,14 +145,15 @@ func _input(e: InputEvent) -> void:
 		_input_blocked(e)
 		return
 	if e is InputEventMouseMotion:
+		# screen_relative = 창 픽셀 (relative 는 UI 배율 (core/ui_scale.gd) 로 나눈 UI 좌표라 창 크기마다 감도가 바뀜, W9)
 		if wheel != null:
-			wheel += e.relative
+			wheel += e.screen_relative
 			wheel_changed.emit(wheel_pick())
 			return
 		if not locked or sky:
 			return
-		yaw -= e.relative.x * C.MOUSE_SENSITIVITY * sensitivity
-		pitch -= e.relative.y * C.MOUSE_SENSITIVITY * sensitivity
+		yaw -= e.screen_relative.x * C.MOUSE_SENSITIVITY * sensitivity
+		pitch -= e.screen_relative.y * C.MOUSE_SENSITIVITY * sensitivity
 		var lim := PI / 2 - 0.05
 		pitch = clampf(pitch, -lim, lim)
 		return
