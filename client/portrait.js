@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { CONFIG as C } from '/shared/config.js';
 import { buildCharacter } from '/character.js';
 import { figureAnim } from '/figure.js';
+import { protectSet, disposeObject } from '/dispose.js';
 
 const LEFT_SIDE = ['cannon']; // 오른손·오른어깨 무기가 커서 왼쪽(+y)에서 봐야 얼굴이 보이는 캐릭터
 const cache = new Map(); // `${char}|${color}|${size}|${full}` → dataURL
@@ -62,6 +63,12 @@ export function warmPortraits(list) {
   idle(step);
 }
 
+// 초상·큰 캐릭터 몸의 GPU 자원 놓기: 모델 원본 (몸이 복제해 같이 쓰는 지오메트리·그림) 은 놔둠
+export function disposeBody(group) {
+  const m = models ? [models.robot && models.robot.scene, ...Object.values(models.items || {})].filter(Boolean) : [];
+  return disposeObject(group, protectSet(m));
+}
+
 // 가만히 선 자세 한 프레임 (숨쉬기 위상 t 를 조금 줘서 팔이 굳어 보이지 않게)
 function pose(ch) {
   if (!ch.figure) return;
@@ -113,6 +120,7 @@ export function portrait(char, color, size = 96, full = false) {
     g.render(scene, cam);
     url = g.domElement.toDataURL('image/png');
     ch.group.removeFromParent();
+    disposeBody(ch.group); // 한 장 그리고 나면 몸은 필요 없음 (안 놓으면 그린 장수만큼 지오메트리가 렌더러에 쌓임, C3)
   } catch (e) {
     url = ''; // 초상을 못 그려도 화면은 글자·색으로 돌아간다
   }
