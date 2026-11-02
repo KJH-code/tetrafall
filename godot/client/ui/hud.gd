@@ -26,6 +26,7 @@ var killed := {} # 나를 죽인 것 {by, byName, cause, weapon}
 
 var timer_label: Label
 var score_bar: HBoxContainer
+var score_key := "" # 점수 띠 내용 열쇠 (JS scoreKey) — 같으면 다시 안 만듦 (예전엔 스냅샷마다 30Hz 로 노드를 다 지우고 새로 만듦)
 var score_panel: PanelContainer # 위 점수 띠 (JS #score). ui.gd 가 화면 뿌리로 옮겨 대기실·결과에도 씀 (score_band)
 var score_box_light: StyleBoxFlat
 var score_box_dark: StyleBoxFlat
@@ -440,20 +441,31 @@ func refresh(st: Dictionary) -> void:
 # 위 점수 띠 (JS updateScore): 대기실·결과 (between = body.ui-dark 빛 판) 엔 승수 'A 1 : 0 B' · 셋 이상 'A 1 · B 0 · C 0' · 팀전 '빨강 1 : 0 파랑',
 # 판 중엔 아래 판과 겹치는 개인전 승수는 숨기고 팀전·킬 점수전만. 킬 점수전 (판 중·판 끝) 은 1~N위 + 나 + 목표까지 막대 + 남은 시간
 func score_band(st: Dictionary, vp: Vector2, between: bool) -> void:
-	for c in score_bar.get_children():
-		c.free()
 	var ps: Array = st.players.filter(func(p): return not p.get("spectator", false) and not p.get("dummy", false))
 	ps.sort_custom(func(a, b): return a.slot < b.slot)
 	var panel := score_panel
 	var kills: bool = st.get("mode") == "kills" and st.get("phase") != "lobby"
 	var team: bool = st.get("teamMode", false)
 	var dup: bool = not between and cards_row.visible and not team and not kills
-	panel.visible = ps.size() >= 2 and not dup and not bool(Store.room.get("practice", false))
+	var show: bool = ps.size() >= 2 and not dup and not bool(Store.room.get("practice", false))
+	var small := U.small(vp)
+	# JS updateScore scoreKey: 판 끝 남은 시간 (글자)·승수·점수·이름·팀·색·자리 비움·나·팀 합계 + 고도는 화면 크기·판 사이 (빛 판)·테마 빛 색·목표 킬도
+	var tw0: Dictionary = st.get("teamWins", {"red": 0, "blue": 0})
+	var ts0: Dictionary = st.get("teamScores", {"red": 0, "blue": 0})
+	var left_txt := _fmt(float(st.round.left)) if kills and st.get("round", {}).get("left") != null else ""
+	var key := "%s|%s|%s|%s|%s|%s|%s|%s|%s|%s:%s|%s:%s|%s|%s" % [show, kills, left_txt, dup, between, vp, S.theme_id(),
+		",".join(ps.map(func(p): return "%s:%s:%s:%s:%s:%s:%s:%s:%s" % [p.id, p.get("wins"), p.get("score"), p.get("nick"), p.get("name"), p.get("team"), p.get("color"), p.slot, p.get("away", false)])),
+		Store.my_id, tw0.get("red"), tw0.get("blue"), ts0.get("red"), ts0.get("blue"), team, _goal(st) if kills else 0]
+	if key == score_key and panel.visible == show: # 밖 (ui.gd 메뉴 화면) 에서 숨겼으면 다시 그림
+		return
+	score_key = key
+	for c in score_bar.get_children():
+		c.free()
+	panel.visible = show
 	panel.add_theme_stylebox_override("panel", score_box_dark if between else score_box_light)
 	panel.position.y = 12
 	if not panel.visible:
 		return
-	var small := U.small(vp)
 	if not kills:
 		var f := 16 if small else 20 # JS #score 20px (작은 창 16)
 		var sep := func(t: String) -> Label:
