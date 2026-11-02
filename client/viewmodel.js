@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { CONFIG as C } from '/shared/config.js';
 import { toon } from '/toon.js';
+import { screenClock } from '/shared/screen-clock.js';
 
 const LAYER = 2; // 뷰모델 카메라는 이 층만 그림 (복제한 몸 중 팔·무기만 이 층)
 const HALF_PI = Math.PI / 2;
@@ -238,7 +239,7 @@ export class ViewModel {
     this.reach(0, this.waistPoint(this.cannon, P.rear));
     this.reach(1, this.waistPoint(this.cannon, P.front));
     const e = (u) => u * u * (3 - 2 * u);
-    const kick = this.fig.cannonKickAt ? Math.max(0, 1 - (performance.now() - this.fig.cannonKickAt) / (C.CANNON_KICK_MS || 1)) : 0;
+    const kick = this.fig.cannonKickAt ? Math.max(0, 1 - (screenClock.now() - this.fig.cannonKickAt) / (C.CANNON_KICK_MS || 1)) : 0;
     let yaw = 0;
     let pitch = C.VM_CANNON_KICK_PITCH * kick * kick; // 반동: 대포 끝이 들림
     if (act && act.move === '후려치기' && act.phase !== 'broken') {
@@ -309,7 +310,7 @@ export class ViewModel {
     }
     if (this.star) {
       // 표창: 던진 직후 잠깐 빈손, 그 뒤 다시 쥠 (작게 튀어나옴)
-      const u = (performance.now() - this.thrownAt) / C.VM_STAR_HIDE_MS;
+      const u = (screenClock.now() - this.thrownAt) / C.VM_STAR_HIDE_MS;
       this.star.visible = u >= 1;
       this.star.scale.setScalar(u >= 1 ? Math.min(1, 0.4 + (u - 1) * 3) : 0.01);
     }
@@ -331,7 +332,7 @@ export class ViewModel {
 
   // 내가 표창을 던짐 (render.js starShot)
   starThrown() {
-    this.thrownAt = performance.now();
+    this.thrownAt = screenClock.now();
   }
 
   // 필드를 그린 뒤 위에 겹쳐 그림 (깊이만 지움)

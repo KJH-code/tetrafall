@@ -40,6 +40,7 @@ import { sessionTheme, markTheme } from '/menu-theme.js';
 import { labelSizes } from '/shared/hud-layout.js';
 import { prof } from '/perf.js';
 import { protectSet, disposeObject } from '/dispose.js';
+import { screenClock } from '/shared/screen-clock.js';
 
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
@@ -1724,7 +1725,7 @@ export class Renderer {
     const fig = g?.userData.figure;
     const sm = this.smooth.get(e.who);
     const air = !!(sm && this.curState && !this.feetOnGround(this.curState, sm));
-    if (fig) fig.cannonKickAt = performance.now();
+    if (fig) fig.cannonKickAt = screenClock.now();
     if (air && fig) {
       const a = g.userData.anim;
       a.flip = 0;
@@ -3285,6 +3286,7 @@ export class Renderer {
   }
 
   render(state, myId, dt, view, cam) {
+    screenClock.advance(dt); // 화면 시계: KO 슬로모션이면 dt 가 줄어 연출 (대포 반동·바드 폼·표창 다시 쥐기·떠다니는 빛) 도 같이 느려짐 (shared/screen-clock.js)
     if (!state) {
       // 메뉴(방 밖): 타이틀 엔딩 장면이 그대로 배경 (title-scene.js). 타이틀을 안 거쳤으면 이번 창 테마로 메뉴 카메라부터
       if (this.dark) {

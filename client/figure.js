@@ -7,6 +7,7 @@ import { toon, noOutline } from '/toon.js';
 import { heldItems } from '/character.js';
 import { itemModel } from '/models.js';
 import { gaitOf, gaitPose, airPose, accLean, idlePose, overlayT, SUPERMAN } from '/figure-pose.js';
+import { screenClock } from '/shared/screen-clock.js';
 
 // 눈알은 외곽선을 안 그림 (흰자 둘레에 검은 테가 생겨 부자연스러움)
 const eyeWhiteMat = noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff }));
@@ -1457,7 +1458,7 @@ function dressBard(fig, costume, cloth) {
     if (fig.form === form) return;
     const first = fig.form === null;
     fig.form = form;
-    fig.formAt = first ? -1e9 : performance.now(); // 처음엔 연출 없이
+    fig.formAt = first ? -1e9 : screenClock.now(); // 처음엔 연출 없이
     for (const [k, grp] of Object.entries(forms)) for (const g of grp.userData.parts) g.visible = k === form;
     fig.torso.material = torsoMat[form]; // 몸통 = 튜닉 리넨 / 검정 티 (맨살 몸통이 옷 틈으로 안 보이게)
   };
@@ -1995,7 +1996,7 @@ export function figureAnim(fig, st, dt, retry = false) {
   }
   if (fig.cannon) {
     // 쏜 순간 대포가 어깨 위에서 뒤로 툭 밀렸다 돌아옴
-    const k = fig.cannonKickAt ? Math.max(0, 1 - (performance.now() - fig.cannonKickAt) / (C.CANNON_KICK_MS || 1)) : 0;
+    const k = fig.cannonKickAt ? Math.max(0, 1 - (screenClock.now() - fig.cannonKickAt) / (C.CANNON_KICK_MS || 1)) : 0;
     fig.cannon.position.x = (fig.cannonBaseX ??= fig.cannon.position.x) - C.CANNON_KICK * k * k;
   }
   if (fig.cannon && !st.stunned && st.emote < 0) {
@@ -2228,7 +2229,7 @@ export function figureAnim(fig, st, dt, retry = false) {
   }
   if (fig.forms) {
     // 폼 전환: 메탈은 모히칸이 머리에서 확 솟아오름 (넘쳤다 돌아옴), 음유시인은 모자가 툭 얹힘
-    const u = Math.min(1, (performance.now() - fig.formAt) / C.BARD_FORM_POP_MS);
+    const u = Math.min(1, (screenClock.now() - fig.formAt) / C.BARD_FORM_POP_MS);
     const pop = u < 1 ? Math.sin(u * Math.PI * 0.5) * (1 + 0.35 * Math.sin(u * Math.PI)) : 1;
     if (fig.form === 'metal') fig.mohawk.scale.set(1, 1, Math.max(0.01, pop));
     else fig.forms.bard.userData.parts[0].position.z = (1 - pop) * 0.15;
