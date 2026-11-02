@@ -27,6 +27,9 @@ import { showTitle } from '/shared/title.js';
 import { bigTicks } from '/shared/bblock-look.js';
 import { startTitle } from '/title.js';
 import { TutorialUI, tutorialState } from '/tutorial-ui.js';
+import { createLater } from '/shared/later.js';
+const roomLater = createLater(); // 방 안 효과 예약 — leftRoom 이 한꺼번에 취소
+const later = roomLater.later;
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $('status');
@@ -221,8 +224,8 @@ function killFeed(e, streak) {
   }
   killfeedEl.appendChild(row);
   while (killfeedEl.children.length > C.KILLFEED_MAX) killfeedEl.firstChild.remove();
-  setTimeout(() => (row.style.opacity = 0), C.KILLFEED_MS);
-  setTimeout(() => row.remove(), C.KILLFEED_MS + 600);
+  later(() => (row.style.opacity = 0), C.KILLFEED_MS);
+  later(() => row.remove(), C.KILLFEED_MS + 600);
 }
 
 // 대기 화면 '조작법' 버튼: 긴 설명은 눌렀을 때만
@@ -288,7 +291,7 @@ function handleEvent(e) {
   if (e.type === 'tutorialStep' && e.who === myId) input.setYawPitch(e.yaw, 0); // 단계 처음 자리에서 볼 쪽으로
   // 닌자 표창에 맞음: 판정은 즉시지만 맞는 효과는 표창이 날아가 닿을 때 (STAR_FLY_MS 뒤)
   if (e.type === 'hit' && e.star && !e.late) {
-    setTimeout(() => handleEvent({ ...e, late: true }), C.STAR_FLY_MS);
+    later(() => handleEvent({ ...e, late: true }), C.STAR_FLY_MS);
     return;
   }
   feelEvent(e);
@@ -325,7 +328,7 @@ function handleEvent(e) {
       renderer.skillStrike(e.who, 'hunterLeap');
       fx.burst({ x: e.from.x, y: e.from.y, z: e.from.z + 0.1 }, null, 0xc0a070, 14, 3.5, 0.11, 0.45);
       sound.play('swing', { dist: e.who === myId ? 0 : distToMe(e.from.x, e.from.y, e.from.z) });
-      setTimeout(() => fx.burst({ x: e.to.x, y: e.to.y, z: e.to.z + 0.1 }, null, 0xc0a070, 12, 3, 0.1, 0.4), e.ms);
+      later(() => fx.burst({ x: e.to.x, y: e.to.y, z: e.to.z + 0.1 }, null, 0xc0a070, 12, 3, 0.1, 0.4), e.ms);
       break;
     case 'aim': {
       // 처형 사격 조준: 석궁을 꺼내 겨눔 + 대상마다 빨간 조준점. 내가 대상이면 화면 가장자리가 붉게 + 째깍
@@ -489,7 +492,7 @@ function handleEvent(e) {
         // 솟을 고리 땅이 떨림: 예고 동안 고리 자리에서 흙먼지가 톡톡 + 가까우면 화면이 살짝 떨림
         const steps = Math.max(1, Math.floor(e.ms / 90));
         for (let k = 0; k < steps; k++) {
-          setTimeout(() => {
+          later(() => {
             for (let n = 0; n < 4; n++) {
               const ang = Math.random() * Math.PI * 2;
               const rr = e.r + Math.random() * C.TANK_RING_WIDTH;
@@ -537,7 +540,7 @@ function handleEvent(e) {
       renderer.bblockBorn(e.cells);
       renderer.skillMove(e.who, 'builderBig');
       const [cx, cy, cz] = e.cells[Math.floor(e.cells.length / 2)];
-      bigTicks(e.ms).forEach((t, i, all) => setTimeout(() => sound.play('bbTick', { dist: distToMe(cx + 0.5, cy + 0.5, cz), strong: i === all.length - 1 }), t)); // 짹깍 점점 빠르게
+      bigTicks(e.ms).forEach((t, i, all) => later(() => sound.play('bbTick', { dist: distToMe(cx + 0.5, cy + 0.5, cz), strong: i === all.length - 1 }), t)); // 짹깍 점점 빠르게
       break;
     }
     case 'bigBomb': {
@@ -1215,12 +1218,26 @@ function leftRoom(reason) {
   if (document.pointerLockElement) document.exitPointerLock();
   if (net) net.leftRoom(); // 방 밖엔 스냅샷이 없음 → 끊김 알림 멈춤
   hideRoomPanels(); // state 가 없으면 drawHud 가 안 돌아 결과·점수표·부활 판이 메뉴 위에 남음
+  hideRoomHud(); // 위 승수·가운데 판·호스트 관리·아래 판 등 방 HUD 도 (같은 이유)
+  roomLater.cancelAll(); // 이전 방 효과 예약 (킬 피드 줄·표창 늦은 맞음·소리 째깍)
+  for (const t of [hitmarkerTimer, comboTimer, counterTimer]) clearTimeout(t);
   setUrlRoom(null);
   // 메뉴로 짧은 슬래시: 방 목록은 띠가 다 덮을 때 (shared/wipe.js 'short')
   const plan = screenNow && screenNow !== 'menu' ? playWipe(wipeKind(screenNow, 'menu')) : null;
   screenNow = 'menu';
   if (plan) setTimeout(() => !myId && showRooms(reason || ''), plan.coverMs);
   else showRooms(reason || '');
+}
+
+// 방 HUD 한꺼번에 숨김 (방을 나갈 때). drawHud 는 state 가 있어야 돌아서 여기서 따로 비움
+const ROOM_HUD_IDS = ['score', 'banner', 'bigmsg', 'spec', 'bottom', 'players', 'host-players', 'center', 'name-row', 'room-row', 'keys', 'bot-btns', 'map-info', 'mode-info', 'first-hint', 'danger', 'crosshair', 'combo', 'counter', 'status'];
+function hideRoomHud() {
+  for (const id of ROOM_HUD_IDS) document.getElementById(id)?.classList.add('hidden');
+  startBtn.classList.add('hidden');
+  killfeedEl.replaceChildren(); // 남은 줄 (취소된 예약이 지워 주지 못함)
+  document.body.classList.remove('ui-dark');
+  lastDanger = null;
+  bigUntil = 0;
 }
 
 function hideRoomPanels() {
