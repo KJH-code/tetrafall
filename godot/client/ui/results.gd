@@ -75,6 +75,17 @@ func _ready() -> void:
 	v.add_child(table)
 
 
+# JS 작은 창: padding 11 16 12 22, 초상 96, 승리 글 30, 표 13, 이름 15, 얼굴 26 (표 글자는 refresh 가 small_was 로)
+func apply_small(small: bool) -> void:
+	small_was = small
+	pane_box.content_margin_top = 11 if small else 16
+	pane_box.content_margin_right = 16 if small else 22
+	pane_box.content_margin_bottom = 12 if small else 18
+	pane_box.content_margin_left = 22 if small else 28
+	star.custom_minimum_size = Vector2.ONE * (96 if small else 128)
+	head.add_theme_font_size_override("font_size", 30 if small else 34)
+
+
 func _color(p: Dictionary) -> Color:
 	return Coords.color(C.PLAYER_PALETTE[int(p.get("color", p.get("slot", 0))) % C.PLAYER_PALETTE.size()])
 
@@ -97,15 +108,9 @@ func refresh(st: Dictionary) -> void:
 	var vp := get_viewport_rect().size
 	visible = ps.size() >= 2 # JS livePlayers().length >= 2
 	var small := U.small(vp)
-	if small != small_was: # JS 작은 창: padding 11 16 12 22, 초상 96, 승리 글 30, 표 13, 이름 15, 얼굴 26
-		small_was = small
+	if small != small_was:
 		key = ""
-		pane_box.content_margin_top = 11 if small else 16
-		pane_box.content_margin_right = 16 if small else 22
-		pane_box.content_margin_bottom = 12 if small else 18
-		pane_box.content_margin_left = 22 if small else 28
-		star.custom_minimum_size = Vector2.ONE * (96 if small else 128)
-		head.add_theme_font_size_override("font_size", 30 if small else 34)
+		apply_small(small)
 	reset_size()
 	position = Vector2(vp.x - size.x - 12, (vp.y - size.y) / 2.0 + 22)
 	if star_who != null and star_img.texture == null:

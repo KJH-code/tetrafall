@@ -59,3 +59,148 @@ func test_score_band_rebuilds_only_on_change() -> void:
 	hud.free()
 	Store.my_id = keep[0]
 	Store.room = keep[1]
+
+
+func _sb(c: Control, st := "normal") -> StyleBoxFlat:
+	return c.get_theme_stylebox(st) as StyleBoxFlat
+
+
+func _fs(c: Control, nm := "font_size") -> int:
+	return c.get_theme_font_size(nm)
+
+
+# 안 여백 [왼, 위, 오른, 아래]
+func _m(s: StyleBox) -> Array:
+	return [int(s.content_margin_left), int(s.content_margin_top), int(s.content_margin_right), int(s.content_margin_bottom)]
+
+
+# 메뉴 (JS #rooms): 로고 clamp(64, 9.2vw, 124) · 작은 창 clamp(48, 9vh, 80), 부제 15/13, 큰 버튼 30·62 / 24·46, 아래 줄 24·50 / 20·38, 간격 10/7
+func test_menu_sizes() -> void:
+	var m = _make("res://ui/menu.gd")
+	m.set_anchors_preset(Control.PRESET_TOP_LEFT) # 화면 가득 앵커면 크기를 못 정함
+	m.size = Vector2(960, 540)
+	m._layout()
+	check(_fs(m.logo) == 48, "960 로고 %d (JS clamp(48, 9vh=48.6, 80))" % _fs(m.logo))
+	check(_fs(m.sub) == 13 and m.col.get_theme_constant("separation") == 7, "960 부제 13 · 간격 7")
+	for id in m.bigs:
+		check(_fs(m.bigs[id]) == 24 and m.bigs[id].custom_minimum_size.y == 46, "960 큰 버튼 %s 24px·46" % id)
+	for b in m.mrow_btns:
+		check(_fs(b) == 20 and b.custom_minimum_size.y == 38, "960 아래 줄 버튼 20px·38")
+	m.size = Vector2(1280, 720)
+	m._layout()
+	check(_fs(m.logo) == 117, "1280 로고 %d (JS 9.2vw = 117.8)" % _fs(m.logo))
+	check(_fs(m.sub) == 15 and m.col.get_theme_constant("separation") == 10, "1280 부제 15 · 간격 10")
+	for id in m.bigs:
+		check(_fs(m.bigs[id]) == 30 and m.bigs[id].custom_minimum_size.y == 62, "1280 큰 버튼 %s 30px·62" % id)
+	for b in m.mrow_btns:
+		check(_fs(b) == 24 and b.custom_minimum_size.y == 50, "1280 아래 줄 버튼 24px·50")
+	check(is_equal_approx(_sb(m.bigs.values()[0]).skew.x, S.SKEW_BIG), "큰 버튼 사선 %s (JS 18px / 62)" % S.SKEW_BIG)
+	m.free()
+
+
+# 대기실 판 (JS #center): 작은 창·1280 줄 사이·카드·시작·방 설정·버튼 여백·고르기 칸 폭 — 960×540 에서 '링크 복사'·'방 나가기' 줄이 판 안에 들어오게 고친 값
+func test_lobby_sizes() -> void:
+	var l = _make("res://ui/lobby.gd")
+	l._small_sizes(true)
+	check(_m(l.pane_box) == [18, 6, 12, 6], "작은 창 판 여백 %s (JS 6 12 6 18)" % str(_m(l.pane_box)))
+	check(_fs(l.status) == 15, "작은 창 상태 %d (JS 15px !important)" % _fs(l.status))
+	check(l.card_btns.tank.custom_minimum_size == Vector2(62, 49), "작은 창 카드 %s (JS 62×49)" % str(l.card_btns.tank.custom_minimum_size))
+	check(_fs(l.start_btn) == 22, "작은 창 시작 22px")
+	check(_m(l.settings_wrap.get_theme_stylebox("panel")) == [10, 5, 10, 5], "작은 창 방 설정 판 padding 5 10")
+	var small_gaps := {}
+	for k in l.gaps:
+		small_gaps[k] = int(l.gaps[k].custom_minimum_size.y)
+	check(small_gaps.pick == 5 and small_gaps.name == 4 and small_gaps.swatches == 2 and small_gaps.start == 7 and small_gaps.settings == 8 and small_gaps.room == 6 and small_gaps.keys == 4, "작은 창 줄 사이 %s" % str(small_gaps))
+	l._small_sizes(false)
+	check(_m(l.pane_box) == [22, 10, 16, 10], "1280 판 여백 %s (JS 10 16 10 22)" % str(_m(l.pane_box)))
+	check(_fs(l.status) == 18 and _fs(l.start_btn) == 30, "1280 상태 18 · 시작 30")
+	check(l.card_btns.tank.custom_minimum_size == Vector2(72, 63), "1280 카드 %s (JS 72×63)" % str(l.card_btns.tank.custom_minimum_size))
+	check(_m(l.settings_wrap.get_theme_stylebox("panel")) == [12, 7, 12, 7], "1280 방 설정 판 padding 7 12")
+	check(int(l.gaps.pick.custom_minimum_size.y) == 7 and int(l.gaps.start.custom_minimum_size.y) == 12 and int(l.gaps.settings.custom_minimum_size.y) == 12, "1280 줄 사이")
+	# 두 크기 같은 값: 방 설정·방 코드 줄 버튼 13px padding 3 11, 체크 15px (높이 21), 고르기 칸 폭 = JS select (모드 89 · 봇 63 · 맵 103), 이름 칸 높이 26
+	for b in [l.add_bot, l.remove_bot, l.public_btn]:
+		check(_fs(b) == 13 and _m(_sb(b)) == [11, 3, 11, 3], "버튼 %s 13px · padding 3 11 (%s)" % [b.text, str(_m(_sb(b)))])
+	check([int(l.mode_sel.custom_minimum_size.x), int(l.level_sel.custom_minimum_size.x), int(l.map_sel.custom_minimum_size.x)] == [89, 63, 103], "고르기 칸 폭 %s (JS 89·63·103)" % str([l.mode_sel.custom_minimum_size.x, l.level_sel.custom_minimum_size.x, l.map_sel.custom_minimum_size.x]))
+	check(not l.mode_sel.fit_to_longest_item, "고르기 칸 폭은 직접 (고도 기본은 글자 16 으로 재서 넓음)")
+	# 높이는 글꼴 줄 높이 (17) + 여백 — 트리 밖에선 글꼴 줄 높이가 달라 여백으로 봄 (화면에선 체크 21 · 이름 칸 26, out-W4 덤프)
+	check(_m(l.sky_box.get_theme_stylebox("normal")) == [4, 2, 0, 2] and l.sky_box.get_theme_icon("unchecked").get_size() == Vector2(15, 15), "체크 15px · margin 2 0 2 4 (높이 17 + 4 = JS 21)")
+	check(_m(_sb(l.name_edit)) == [6, 5, 6, 4], "이름 칸 padding %s (17 + 9 = JS 26)" % str(_m(_sb(l.name_edit))))
+	l.free()
+
+
+# 플레이어 관리 (JS #host-players): 제목·팀전 줄은 표 밖 (grid-column 1 / -1), 작은 창 글 12·버튼 11 padding 2 7·판 8 10·간격 4 5, 1280 13·12·2 9·10 14 10 18·5 7
+func test_host_players_sizes() -> void:
+	var keep = Store.my_id
+	Store.my_id = 1
+	var h = _make("res://ui/host_players.gd")
+	var st := {"teamMode": false, "mode": "survival", "players": [_player(1, 0, 0), _player(2, 1, 0), _player(3, 2, 0), _player(4, 3, 0)]}
+	h.build(st, true)
+	check(_m(h.pane_box) == [10, 8, 10, 8], "작은 창 판 여백 %s (JS 8 10)" % str(_m(h.pane_box)))
+	check(h.grid.get_theme_constant("h_separation") == 5 and h.grid.get_theme_constant("v_separation") == 4, "작은 창 간격 4 5")
+	check(h.head.get_child(0) is Label and h.grid.get_child_count() == 16, "제목·팀전은 표 밖, 표 = 4명 × 4칸 (%d)" % h.grid.get_child_count())
+	var b: Button = h.grid.get_child(2)
+	check(_fs(b) == 11 and _m(_sb(b)) == [7, 2, 7, 2], "작은 창 버튼 11px · padding 2 7")
+	check(_fs(h.grid.get_child(0)) == 12, "작은 창 이름 12px")
+	var w: float = h.get_combined_minimum_size().x
+	check(w <= 190.0, "작은 창 판 폭 %d (JS 177, 예전 265)" % w)
+	h.build(st, false)
+	check(_m(h.pane_box) == [18, 10, 14, 10], "1280 판 여백 %s (JS 10 14 10 18)" % str(_m(h.pane_box)))
+	b = h.grid.get_child(2)
+	check(_fs(b) == 12 and _m(_sb(b)) == [9, 2, 9, 2] and _fs(h.grid.get_child(0)) == 13, "1280 버튼 12px · padding 2 9 · 이름 13")
+	check(h.get_combined_minimum_size().x <= 226.0, "1280 판 폭 %d (JS 213)" % h.get_combined_minimum_size().x)
+	h.free()
+	Store.my_id = keep
+
+
+# 결과 판 (JS #results): padding 16 22 18 28 · 초상 128 · 승리 글 34, 작은 창 11 16 12 22 · 96 · 30
+func test_results_sizes() -> void:
+	var r = _make("res://ui/results.gd")
+	r.apply_small(true)
+	check(_m(r.pane_box) == [22, 11, 16, 12] and r.star.custom_minimum_size == Vector2(96, 96) and _fs(r.head) == 30, "작은 창 결과 %s" % str(_m(r.pane_box)))
+	r.apply_small(false)
+	check(_m(r.pane_box) == [28, 16, 22, 18] and r.star.custom_minimum_size == Vector2(128, 128) and _fs(r.head) == 34, "1280 결과 %s" % str(_m(r.pane_box)))
+	check(_fs(r.title) == 20 and r.star_box.border_width_bottom == 6, "제목 20 · 초상 아래 6px 승자 색")
+	r.free()
+
+
+# 설정 창 (JS #settings .box padding 20 28 22 32, h3 30px, 키 칸 13px · padding 2 9 · 9.5em)
+func test_settings_sizes() -> void:
+	var s = _make("res://ui/settings.gd")
+	check(_m(s.box.get_theme_stylebox("panel")) == [32, 20, 28, 22], "설정 판 여백 %s" % str(_m(s.box.get_theme_stylebox("panel"))))
+	var kb: Button = s.key_btns.values()[0]
+	check(_fs(kb) == 13 and _m(_sb(kb)) == [9, 2, 9, 2] and kb.custom_minimum_size.x == 124, "키 칸 13px · padding 2 9 · 폭 124")
+	check(_fs(s.leave_btn) == 16, "아래 버튼 16px")
+	s.free()
+
+
+# 튜토리얼 띠 (JS #tut-band): 진행 칸 padding 9 18 9 16 · 문구 19px padding 9 26 · 해냄 9 20, 겹침 −12, 사선 12px
+func test_tutorial_band_sizes() -> void:
+	var t = _make("res://ui/tutorial_ui.gd")
+	check(t.band.get_theme_constant("separation") == -12, "칸끼리 −12 겹침")
+	var pb: StyleBoxFlat = t.prog.get_parent().get_theme_stylebox("panel")
+	check(_m(pb) == [16, 9, 18, 9] and is_equal_approx(pb.skew.x, 0.29), "진행 칸 padding %s" % str(_m(pb)))
+	check(_fs(t.txt, "normal_font_size") == 19 and _fs(t.prog) == 19, "문구·진행 19px")
+	check(_m(t.ok_lab.get_parent().get_theme_stylebox("panel")) == [20, 9, 20, 9], "해냄 칸 padding 9 20")
+	check(_m(t.txt.get_parent().get_theme_stylebox("panel")) == [26, 9, 26, 9], "문구 칸 padding 9 26")
+	t.free()
+
+
+# 연습 창 (JS #practice): left 14 top 70, 폭 252, padding 12 16, 잘린 모서리 16, 제목 18px, 안내 칸 12px padding 3 10
+func test_practice_sizes() -> void:
+	var p = _make("res://ui/practice.gd")
+	var wb: StyleBoxFlat = p.win.get_theme_stylebox("panel")
+	check(p.win.position == Vector2(14, 70) and p.win.custom_minimum_size.x == 252, "연습 창 자리·폭")
+	check(_m(wb) == [16, 12, 16, 12] and wb.corner_radius_top_right == 16 and wb.corner_radius_bottom_left == 16, "연습 창 padding %s · 모서리 16" % str(_m(wb)))
+	check(_fs(p.hint) == 12 and _m(_sb(p.hint)) == [10, 3, 10, 3] and p.hint.position == Vector2(14, 70), "Tab 안내 칸")
+	p.free()
+
+
+# 접속 표시 (JS #net: 세로 gap 4, #netPing 12px padding 2 12, #netWarn 15px padding 4 16)
+func test_net_sizes() -> void:
+	var u = load("res://ui/ui.gd").new()
+	var nb: VBoxContainer = u.make_net()
+	check(nb.get_theme_constant("separation") == 4, "핑·알림 사이 4")
+	check(_fs(u.ping) == 12 and _m(_sb(u.ping)) == [12, 2, 12, 2], "핑 칸 12px · padding 2 12")
+	check(_fs(u.net_warn) == 15 and _m(_sb(u.net_warn)) == [16, 4, 16, 4], "알림 칸 15px · padding 4 16")
+	nb.free()
+	u.free()

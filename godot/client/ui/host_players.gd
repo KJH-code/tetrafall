@@ -35,9 +35,13 @@ func _ready() -> void:
 
 
 func refresh(st: Dictionary) -> void:
+	build(st, U.small(get_viewport_rect().size))
+
+
+# 표 만들기 (작은 창 = JS @media) — 테스트도 부름 (트리 밖)
+func build(st: Dictionary, small: bool) -> void:
 	var ps: Array = st.players.duplicate()
 	ps.sort_custom(func(a, b): return a.slot < b.slot)
-	var small := U.small(get_viewport_rect().size)
 	var k := JSON.stringify(ps.map(func(p): return [p.id, p.get("spectator"), p.get("nick"), p.get("team"), p.get("color"), p.get("away")])) + "|%s|%s|%s" % [str(st.get("teamMode")), str(st.get("mode")), small]
 	if k == key:
 		return

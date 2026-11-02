@@ -57,23 +57,7 @@ func _ready() -> void:
 	status = S.label("연결 중...", 16, S.TEXT)
 	status.position = Vector2(16, 12)
 	root.add_child(status)
-	# 접속 표시 (JS #net: 오른쪽 12 · 위 52, 세로 줄 gap 4, 오른쪽 맞춤): 핑 칸 (어두운 사선 칸, 렉이면 노랑·빨강) + 알림 칸
-	net_box = VBoxContainer.new()
-	net_box.add_theme_constant_override("separation", 4)
-	net_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	net_box.z_index = 5
-	root.add_child(net_box)
-	ping = S.label("", 12, S.DIM)
-	ping.size_flags_horizontal = Control.SIZE_SHRINK_END
-	ping.add_theme_stylebox_override("normal", _net_box(12, 2))
-	net_box.add_child(ping)
-	net_warn = S.label("", 15, Color.WHITE)
-	net_warn.size_flags_horizontal = Control.SIZE_SHRINK_END
-	var wb := _net_box(16, 4)
-	wb.bg_color = U.net_look("bad").bg
-	net_warn.add_theme_stylebox_override("normal", wb)
-	net_warn.visible = false
-	net_box.add_child(net_warn)
+	root.add_child(make_net())
 	settings = load("res://ui/settings.gd").new()
 	root.add_child(settings)
 	menu.open_settings.connect(func(): settings.visible = true)
@@ -125,6 +109,26 @@ func _show(screen: String) -> void:
 	results.visible = screen == "results"
 	if screen == "menu":
 		hud.score_panel.visible = false
+
+
+# 접속 표시 (JS #net: 오른쪽 12 · 위 52, 세로 줄 gap 4, 오른쪽 맞춤): 핑 칸 (어두운 사선 칸, 렉이면 노랑·빨강) + 알림 칸. 테스트도 부름
+func make_net() -> VBoxContainer:
+	net_box = VBoxContainer.new()
+	net_box.add_theme_constant_override("separation", 4)
+	net_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	net_box.z_index = 5
+	ping = S.label("", 12, S.DIM)
+	ping.size_flags_horizontal = Control.SIZE_SHRINK_END
+	ping.add_theme_stylebox_override("normal", _net_box(12, 2))
+	net_box.add_child(ping)
+	net_warn = S.label("", 15, Color.WHITE)
+	net_warn.size_flags_horizontal = Control.SIZE_SHRINK_END
+	var wb := _net_box(16, 4)
+	wb.bg_color = U.net_look("bad").bg
+	net_warn.add_theme_stylebox_override("normal", wb)
+	net_warn.visible = false
+	net_box.add_child(net_warn)
+	return net_box
 
 
 # 핑 칸 (JS #netPing: padding 2 12, 7px 사선) · 알림 칸 (#netWarn: padding 4 16)

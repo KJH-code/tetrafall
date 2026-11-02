@@ -508,6 +508,7 @@ static func style_check(c: CheckBox, size := 13) -> CheckBox:
 	c.add_theme_constant_override("h_separation", 7) # JS 체크 오른쪽 margin 3 + label gap 4
 	var sb := StyleBoxEmpty.new() # JS 체크 margin 3 3 3 4 → 왼쪽 4, 위아래 3 (높이 = 글 17 + 4 = 21, 기본 테마 25)
 	sb.content_margin_left = 4
+	sb.content_margin_right = 0
 	sb.content_margin_top = 2
 	sb.content_margin_bottom = 2
 	for st in ["normal", "hover", "pressed", "disabled", "focus", "hover_pressed"]:
