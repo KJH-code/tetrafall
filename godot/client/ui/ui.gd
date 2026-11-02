@@ -21,6 +21,8 @@ var settings: Control
 var wipe: Control
 var status: Label
 var ping: Label
+var net_warn: Label # 렉·끊김 알림 (JS #netWarn: 핑 아래 빨강 칸)
+var net_box: VBoxContainer
 var shown := "" # 지금 보이는 화면 (menu·lobby·game·results)
 var target := "" # 바뀌려는 화면 (슬래시가 덮으면 shown 이 됨)
 var menu_since := -1.0 # 메뉴가 뜬 시각 (PORTRAIT_WARM_MS 뒤 카드 초상 미리 그리기)
@@ -52,12 +54,23 @@ func _ready() -> void:
 	status = S.label("연결 중...", 16, S.TEXT)
 	status.position = Vector2(16, 12)
 	root.add_child(status)
+	# 접속 표시 (JS #net: 오른쪽 12 · 위 52, 세로 줄 gap 4, 오른쪽 맞춤): 핑 칸 (어두운 사선 칸, 렉이면 노랑·빨강) + 알림 칸
+	net_box = VBoxContainer.new()
+	net_box.add_theme_constant_override("separation", 4)
+	net_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	net_box.z_index = 5
+	root.add_child(net_box)
 	ping = S.label("", 12, S.DIM)
-	ping.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	ping.position = Vector2(-120, 52)
-	ping.size.x = 108
-	ping.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	root.add_child(ping)
+	ping.size_flags_horizontal = Control.SIZE_SHRINK_END
+	ping.add_theme_stylebox_override("normal", _net_box(12, 2))
+	net_box.add_child(ping)
+	net_warn = S.label("", 15, Color.WHITE)
+	net_warn.size_flags_horizontal = Control.SIZE_SHRINK_END
+	var wb := _net_box(16, 4)
+	wb.bg_color = U.net_look("bad").bg
+	net_warn.add_theme_stylebox_override("normal", wb)
+	net_warn.visible = false
+	net_box.add_child(net_warn)
 	settings = load("res://ui/settings.gd").new()
 	root.add_child(settings)
 	menu.open_settings.connect(func(): settings.visible = true)
@@ -107,6 +120,37 @@ func _show(screen: String) -> void:
 	results.visible = screen == "results"
 
 
+# 핑 칸 (JS #netPing: padding 2 12, 7px 사선) · 알림 칸 (#netWarn: padding 4 16)
+func _net_box(side: int, tb: int) -> StyleBoxFlat:
+	var b := StyleBoxFlat.new()
+	b.bg_color = U.net_look("ok").bg
+	b.skew = Vector2(S.SKEW, 0)
+	b.content_margin_left = side
+	b.content_margin_right = side
+	b.content_margin_top = tb
+	b.content_margin_bottom = tb
+	return b
+
+
+# client/net.js draw (+ reconnect 동안 '연결 끊김 · 다시 연결 중 n'): 핑 글·색 단계, 알림 글
+func _net_draw() -> void:
+	var v: Dictionary = Net.meter.view(Net.now_ms())
+	ping.text = Net.ping_text()
+	var look := U.net_look(str(v.level))
+	ping.add_theme_color_override("font_color", look.fg)
+	(ping.get_theme_stylebox("normal") as StyleBoxFlat).bg_color = look.bg
+	var w := Net.warn_text()
+	if Net.reconnecting:
+		w = "연결 끊김 · 다시 연결 중 %d" % Net.tries
+	elif Net.ever_open and not Net.is_open():
+		w = "연결 끊김"
+	net_warn.text = w
+	net_warn.visible = w != ""
+	var vp := get_viewport().get_visible_rect().size
+	net_box.reset_size()
+	net_box.position = Vector2(vp.x - 12.0 - net_box.size.x, 52)
+
+
 func _process(_d: float) -> void:
 	var _pt := Prof.now() # 성능 구간 (--perf-log 만, core/prof.gd)
 	_prof_process(_d)
@@ -117,7 +161,7 @@ func _prof_process(_d: float) -> void:
 	if View.get("ui_theme") != theme_seen:
 		theme_seen = View.get("ui_theme")
 		S.restyle()
-	ping.text = Net.ping_text()
+	_net_draw()
 	menu.visible = shown == "menu" and not View.title_on # 타이틀 동안은 메뉴 판 숨김 (title/title.gd)
 	_put_covers()
 	if not warmed and shown == "menu" and menu_since >= 0.0 and Time.get_ticks_msec() - menu_since >= C.PORTRAIT_WARM_MS and Portrait.inst != null:

@@ -36,3 +36,13 @@ func test_time_and_cause_text() -> void:
 	check(U.cause_text("crush", null) == "압사" and U.cause_text("lava", "") == "용암", "무기 없으면 원인만")
 	check(U.cause_text("fall", "newthing") == "낙사 (newthing)", "모르는 무기는 이름 그대로")
 	check(U.WEAPON_KO.size() == 28 and U.WEAPON_KO.amp == "앰프 음파" and U.WEAPON_KO.blockslam == "블록내려찍기", "무기 이름 28개 (main.js WEAPON_KO)")
+
+
+# 핑 칸 색 단계 (index.html #netPing[data-level]): warn 노랑 + 검정 글, bad 빨강 + 흰 글
+func test_net_ping_levels() -> void:
+	var ok := U.net_look("ok")
+	var w := U.net_look("warn")
+	var b := U.net_look("bad")
+	check(ok.fg == Color("9fabcd") and is_equal_approx(ok.bg.a, 0.6), "보통: 흐린 글 + rgba(8,12,26,.6)")
+	check(w.fg == Color("1a1300") and w.bg.r > 0.99 and w.bg.g > 0.8 and w.bg.b < 0.4, "warn 노랑 %s" % w.bg)
+	check(b.fg == Color.WHITE and b.bg.r > 0.8 and b.bg.g < 0.2, "bad 빨강 %s" % b.bg)

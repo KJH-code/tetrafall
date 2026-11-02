@@ -54,6 +54,17 @@ static func cause_text(cause, weapon) -> String:
 	return c + (" (%s)" % w if w != "" else "")
 
 
+# 핑 칸 색 (index.html #netPing[data-level]): 보통 = 흐린 글 + 어두운 칸, warn = 검정 글 + 노랑 (#ffe98a→#ffb400), bad = 흰 글 + 빨강 (#ff4426→#a81405).
+# 고도 칸은 한 색이라 그라데이션 가운데 색
+static func net_look(level: String) -> Dictionary:
+	match level:
+		"warn":
+			return {"fg": Color("1a1300"), "bg": Color("ffe98a").lerp(Color("ffb400"), 0.5)}
+		"bad":
+			return {"fg": Color.WHITE, "bg": Color("ff4426").lerp(Color("a81405"), 0.5)}
+	return {"fg": Color("9fabcd"), "bg": Color8(8, 12, 26, 153)}
+
+
 # ---------- hud-layout.js ----------
 
 # 아래 플레이어 판 n 장을 폭 view_w 화면에 한 줄로: 판 폭·간격·작은 판 여부·글자 배율
