@@ -7,6 +7,7 @@ const G3 := preload("res://shaders/g3.gd")
 const WC := preload("res://world/world_config.gd")
 const KC := preload("res://chars/chars_config.gd")
 const Body := preload("res://chars/body.gd")
+const HF := preload("res://world/hazard_field.gd")
 
 var errors: Array = []
 
@@ -80,19 +81,26 @@ func test_game_light_grade_is_css_filter() -> void:
 func test_hazard_light_like_three_point_light() -> void:
 	# W3: 위험 빛 = hazard.js PointLight(색, 세기, LAVA_LIGHT_RANGE, 1.4) — 고도 OmniLight 대신 툰 셰이더 전역 값 (빛 패스 없이, light() 가 하늘빛을 겹쳐 더하지 않게)
 	var inc := _src("res://shaders/hz_light.gdshaderinc")
-	check(inc.contains("w * w / max(pow(dist, g3_hz_ld), 0.01)"), "three getDistanceAttenuation (1/max(d^decay,0.01) × 창)")
-	for f in ["res://shaders/toon_common.gdshaderinc", "res://world/bblock.gdshader"]:
-		check(_src(f).contains("#include \"res://shaders/hz_light.gdshaderinc\""), "위험 빛 include %s" % f)
+	check(inc.contains("w * w / max(pow(dist, g3_hz_ld), 0.01)"), "three getDistanceAttenuation (1/max(d^decay,0.01) × 창)") # 셰이더 계산식 (헤드리스는 그리지 못해 글자로)
+	# 판 재질 셰이더가 다 위험 빛 include 를 가짐 (재질별 hz_light 매개변수 = hz_light.gdshaderinc 에만 있음) + 그 셰이더가 실제로 g3_hz_light 를 부름
+	var bb = preload("res://world/bblocks.gd").new()
+	var mats := {"toon": G3.toon_material(Color.WHITE), "floor": G3.floor_material("volcano"), "piece": G3.piece_material("volcano", false), "terrain": G3.terrain_material("volcano", false), "bblock": bb.pools.wood.mm.mesh.material}
+	for k in mats:
+		var names := []
+		for u in (mats[k] as ShaderMaterial).shader.get_shader_uniform_list():
+			names.append(u.name)
+		check(names.has("hz_light"), "위험 빛 include %s" % k)
+	bb.free()
 	for f in ["res://shaders/toon_common.gdshaderinc", "res://shaders/floor.gdshader", "res://shaders/piece_common.gdshaderinc", "res://shaders/terrain.gdshader", "res://world/bblock.gdshader"]:
-		check(_src(f).contains("g3_hz_light((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz"), "위험 빛 받음 %s" % f)
+		check(_src(f).contains("g3_hz_light((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz"), "위험 빛 받음 %s" % f) # fragment 안 부름 (글자로)
 	check(WC.HAZARD_LIGHT_DECAY == 1.4, "감쇠 1.4 (hazard.js)")
 	for g in ["g3_hz_lp", "g3_hz_lc", "g3_hz_ld"]:
 		check(ProjectSettings.has_setting("shader_globals/" + g), "전역 셰이더 값 %s" % g)
-	var src := _src("res://world/hazard_view.gd")
-	check(not src.contains("OmniLight3D"), "고도 OmniLight 안 씀")
 	var HV := preload("res://world/hazard_view.gd")
 	var hv = HV.new()
-	hv.G3 = G3
+	hv.set_g3(G3, "volcano", false)
+	hv._ready()
+	check(hv.find_children("*", "Light3D", true, false).is_empty(), "고도 빛 노드 (OmniLight) 안 씀")
 	hv.light_color = Color8(0xff, 0x6a, 0x20)
 	hv.set_light(3.0, Vector3(1, 2, 3))
 	check(G3.global_value("g3_hz_lp") == Vector4(1, 2, 3, 3.0), "빛 자리·세기 (three 값 그대로)")
@@ -112,13 +120,32 @@ func test_hazard_vignette_and_steps() -> void:
 	check(hv.vig.visible, "세기 0.01 넘으면 그림")
 	hv._draw_vig(0.0, 0.0, true)
 	check(hv.vig_k == 0.0 and not hv.vig.visible, "꺼지면 바로 0 (hazard.js vigK = 0)")
-	var sh := _src("res://world/hazard_vignette.gdshader")
+	var sh := _src("res://world/hazard_vignette.gdshader") # 셰이더 모양 (헤드리스는 그리지 못해 글자로)
 	check(sh.contains("vec2(1.25, 1.0)") and sh.contains("smoothstep(0.42, 0.8, length(d))") and sh.contains("* 0.35") and sh.contains("4.0 + k * 6.0"), "경고 모양 = hazard.js overlay")
-	# 차오름 단계: 0 아래 (-2 → -1 → 0) 도 단계 (예전 step >= 0 확인은 놓침)
-	check(not _src("res://world/hazard_view.gd").contains("elif step >= 0 and") and _src("res://world/hazard_view.gd").contains("elif has_step and s > step:"), "단계 '없음' 은 has_step 으로")
 	hv.free()
+	# 차오름 단계: 0 아래 (-2 → -1 → 0) 도 단계마다 번쩍 (예전 step >= 0 확인은 -2 → -1 → 0 을 놓침)
+	for g in [["g3_fog_color", Vector3.ZERO], ["g3_fog_near", 0.0], ["g3_fog_far", 0.0]]: # 테마를 안 깐 테스트 (G3.apply_theme 이 정하는 값)
+		if G3.global_value(g[0]) == null:
+			G3._set_global(g[0], g[1])
+	var w := Node3D.new()
+	hv = HV.new()
+	hv.set_g3(G3, "volcano", false)
+	w.add_child(hv)
+	var grid := PackedByteArray()
+	grid.resize(10 * 10 * C.GRID_H)
+	var st := {"field": {"w": 10, "d": 10, "h": C.GRID_H}, "lava": {"active": true, "z": -1.8}, "players": []}
+	var seen := []
+	for z in [-1.8, -1.6, -0.8, -0.6, 0.2, 1.2]:
+		st.lava.z = z
+		hv.pulse = 0.0
+		hv.update(st, grid, 1, {}, 0.0)
+		seen.append([HF.rise_step(z), hv.pulse == 1.0])
+	check(seen.filter(func(a): return a[1]).size() == 4, "차오름 번쩍 = 시작 + 단계 바뀔 때 (0 아래 포함) %s" % [seen])
+	check(seen[0][1] and not seen[1][1] and seen[2][1] and not seen[3][1] and seen[4][1] and seen[5][1], "번쩍 자리 %s" % [seen])
+	w.free()
 	# 쌓인 칸 (건축·던진 칸) 재질: 물들임 받고 외곽선 없음 (render.js blockMeshes)
-	check(_src("res://world/world.gd").contains("{\"vertex_color\": true, \"hz_tint\": true, \"outline\": false}"), "격자 칸 재질 hz_tint·외곽선 없음")
+	var gm: ShaderMaterial = preload("res://world/world.gd").grid_material(G3)
+	check(gm.get_shader_parameter("hz_tint") == true and gm.get_shader_parameter("use_vertex_color") == true and gm.next_pass == null, "격자 칸 재질 hz_tint·정점 색·외곽선 없음")
 
 
 # W3 검수: 판 중에 방을 나가면 (Store.state = {}) World 가 판 갱신을 멈춰 위험 update 가 더 안 불림 → 경고 판 (CanvasLayer 라 Node3D 를 숨겨도 그려짐)·

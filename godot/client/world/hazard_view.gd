@@ -55,6 +55,14 @@ func _init() -> void: # 가장자리 경고 (트리 밖에서도 — 테스트)
 	add_child(vig_layer)
 
 
+# _ready 전에 지워지면 (트리에 안 넣은 채 — 테스트) 아직 안 붙인 표면·거품 노드도 같이
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		for n in [surface, foam]:
+			if is_instance_valid(n) and n.get_parent() == null:
+				n.free()
+
+
 func _ready() -> void:
 	var pm := PlaneMesh.new()
 	pm.size = Vector2.ONE * WC.SEA_SIZE

@@ -129,7 +129,7 @@ func _ready() -> void:
 		light_fx.queue_free()
 		light_fx = G3.game_light(self)
 	if G3 != null:
-		grid_view.set_material(G3.toon_material(Color.WHITE, {"vertex_color": true, "hz_tint": true, "outline": false})) # render.js blockMeshes: 위험 물들임 받음 (hazard.js tint), 외곽선 없음 (noOutline)
+		grid_view.set_material(grid_material(G3))
 		grid_view.make_mat = func(c: Color): return G3.toon_material(c)
 		bodies.make_mat = grid_view.make_mat
 		marks.make_mat = grid_view.make_mat
@@ -202,6 +202,11 @@ func _ready() -> void:
 func set_msaa(low: bool) -> void:
 	if get_viewport() != null:
 		get_viewport().msaa_3d = msaa_for(low)
+
+
+# 쌓인 칸 (건축·던진 칸 — 격자 칸) 재질: render.js blockMeshes = 위험 물들임 받음 (hazard.js tint), 외곽선 없음 (noOutline)
+static func grid_material(g3) -> Material:
+	return g3.toon_material(Color.WHITE, {"vertex_color": true, "hz_tint": true, "outline": false})
 
 
 static func msaa_for(low: bool) -> Viewport.MSAA:

@@ -93,6 +93,27 @@ func test_blast_and_collapse() -> void:
 	bb.free()
 
 
+# 판 연출 (marks.gd) 기록: pop 이 부르는 block_pulse·neighbors
+class MarksRec:
+	var pulses := []
+
+	func neighbors(cells: Array) -> Array:
+		return [["이웃", cells]]
+
+	func block_pulse(cells: Array, color: int, ms: float, jolt: float, k: float) -> void:
+		pulses.append([cells, color, ms, jolt, k])
+
+
+class PopRec extends "res://world/bblocks.gd":
+	var mk := MarksRec.new()
+	var pulses: Array:
+		get:
+			return mk.pulses
+
+	func _marks():
+		return mk
+
+
 func test_colors_linear_like_three() -> void:
 	# W3: three Color.lerp 는 선형 값끼리 (r152+) — 띠 주인 색 BB_TINT 0.08 이면 0x30 → 0x5c (sRGB 로 섞으면 0x40)
 	var c := BL.lerp_lin(Color8(0x30, 0x30, 0x30), Color.WHITE, C.BB_TINT)
@@ -103,9 +124,22 @@ func test_colors_linear_like_three() -> void:
 	check(mid.is_equal_approx(want), "빛 판 가운데 = 선형 섞기")
 	var sh := FileAccess.get_file_as_string("res://world/bblock.gdshader")
 	check(sh.find("base *= 0.22") > sh.find("vec3 base = g3_lin(c.rgb);"), "금 0.22 는 선형 색에 (three diffuseColor)")
-	var src := FileAccess.get_file_as_string("res://world/bblocks.gd")
-	check(not src.contains("\"_no_outline\": true"), "쇠 띠도 외곽선 (bblocks.js strap = toon)")
-	check(src.contains("mk.block_pulse(mk.neighbors([c])"), "터지면 이웃 블록 들썩 (render.js bbPop)")
+	var bb := BB.new()
+	var mat := func(k: String) -> Material: return bb.pools[k].mm.mesh.material
+	check(mat.call("strap").next_pass != null, "쇠 띠도 외곽선 (bblocks.js strap = toon)")
+	check(mat.call("plate").next_pass == null and mat.call("wood").next_pass != null, "빛 판 (unlit) 만 외곽선 없음")
+	bb.free()
+	# 터지면 그 칸 번쩍 + 붙어 있던 블록 들썩 (render.js bbPop blockPulse 두 번)
+	var pb := PopRec.new()
+	pb.pop({"x": 2, "y": 3, "z": 1})
+	check(pb.pulses.size() == 2, "block_pulse 두 번 %s" % [pb.pulses])
+	if pb.pulses.size() == 2:
+		check(pb.pulses[0][0] == [[2, 3, 1]] and pb.pulses[0][3] == 0.0, "터진 칸 번쩍 (들썩 없음)")
+		check(pb.pulses[1][0] == [["이웃", [[2, 3, 1]]]] and is_equal_approx(pb.pulses[1][3], C.BLOCK_JOLT), "이웃 블록 들썩 BLOCK_JOLT")
+	pb.pulses.clear()
+	pb.pop({"x": 2, "y": 3, "z": 1}, true)
+	check(pb.pulses.size() == 2 and is_equal_approx(pb.pulses[1][3], C.BLOCK_JOLT * 1.5), "대형은 들썩 1.5배")
+	pb.free()
 
 
 func test_stripes_phase_like_canvas() -> void:
