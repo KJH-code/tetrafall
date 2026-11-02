@@ -119,3 +119,53 @@ func test_hazard_vignette_and_steps() -> void:
 	hv.free()
 	# 쌓인 칸 (건축·던진 칸) 재질: 물들임 받고 외곽선 없음 (render.js blockMeshes)
 	check(_src("res://world/world.gd").contains("{\"vertex_color\": true, \"hz_tint\": true, \"outline\": false}"), "격자 칸 재질 hz_tint·외곽선 없음")
+
+
+# W3 검수: 판 중에 방을 나가면 (Store.state = {}) World 가 판 갱신을 멈춰 위험 update 가 더 안 불림 → 경고 판 (CanvasLayer 라 Node3D 를 숨겨도 그려짐)·
+# 전역 위험 빛 g3_hz_lp·물들임 g3_hz 가 메뉴에 남던 것. World._process 가 방 밖이면 hazard_view.clear()
+func test_leave_room_clears_hazard() -> void:
+	const W := preload("res://world/world.gd")
+	const HV := preload("res://world/hazard_view.gd")
+	var w = W.new()
+	var hv = HV.new()
+	hv.set_g3(G3, "volcano", false)
+	w.hazard_view = hv
+	w.add_child(hv)
+	for n in ["scenery", "grid_view", "pieces_view", "bodies", "sky_aids", "items_view", "ghost_aim", "marks", "light_fx", "shots", "hook_fx", "body_fx"]:
+		var dummy := Node3D.new()
+		w.set(n, dummy)
+		w.add_child(dummy)
+	for g in [["g3_fog_color", Vector3.ZERO], ["g3_fog_near", 0.0], ["g3_fog_far", 0.0]]: # 테마를 안 깐 테스트 (G3.apply_theme 이 정하는 값)
+		if G3.global_value(g[0]) == null:
+			G3._set_global(g[0], g[1])
+	# 판 중: 용암이 차올라 내 발 바로 아래 → 경고·빛·물들임 켬
+	var fw := 10
+	var grid := PackedByteArray()
+	grid.resize(fw * fw * C.GRID_H)
+	var st := {"phase": "playing", "field": {"w": fw, "d": fw, "h": C.GRID_H}, "lava": {"active": true, "z": 2.0}, "players": [{"id": 1, "alive": true, "x": 5.0, "y": 5.0, "z": 2.3}]}
+	for i in 30:
+		hv.update(st, grid, 1, st.players[0], 0.1)
+	check(hv.vig.visible and hv.vig_k > 0.01, "판 중 가장자리 경고 그림 (vig_k %.3f)" % hv.vig_k)
+	check((G3.global_value("g3_hz_lp") as Vector4).w > 0.0, "판 중 위험 빛 세기 > 0")
+	check((G3.global_value("g3_hz") as Vector4).w == 1.0, "판 중 물들임 켬")
+	# 방을 나감 → World 한 프레임
+	var keep_state := Store.state
+	Store.state = {}
+	w._process(1.0 / 60.0)
+	check(not hv.vig.visible and hv.vig_k == 0.0, "나간 뒤 가장자리 경고 안 그림")
+	check((G3.global_value("g3_hz_lp") as Vector4).w == 0.0, "나간 뒤 전역 위험 빛 세기 0")
+	check((G3.global_value("g3_hz") as Vector4).w == 0.0, "나간 뒤 물들임 끔")
+	check(hv.sinks.is_empty() and not hv.has_step and hv.pulse == 0.0, "잠기는 몸·차오름 단계 버림")
+	# 메뉴에서 매 프레임 불려도 한 번만 (전역 값을 다시 쓰지 않음), 판에 다시 들어가면 update 가 다시 켬
+	G3._set_global("g3_hz_lp", Vector4(0, 0, 0, 7.0))
+	w._process(1.0 / 60.0)
+	check((G3.global_value("g3_hz_lp") as Vector4).w == 7.0, "clear 는 한 번만")
+	hv.update(st, grid, 1, st.players[0], 0.1)
+	check((G3.global_value("g3_hz_lp") as Vector4).w > 0.0 and (G3.global_value("g3_hz") as Vector4).w == 1.0, "다시 판이면 켬")
+	Store.state = {}
+	w._process(1.0 / 60.0)
+	check((G3.global_value("g3_hz_lp") as Vector4).w == 0.0, "두 번째로 나가도 끔")
+	Store.state = keep_state
+	w.sun.free() # _ready 없이 만든 World: 붙이지 않은 해·효과 자리도
+	w.fx_root.free()
+	w.free()

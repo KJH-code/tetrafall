@@ -383,6 +383,8 @@ func _process(dt: float) -> void:
 			G3.prewarm(self, View.menu_theme)
 	elif live:
 		_menu_since = -1.0
+	if not live:
+		hazard_view.clear() # 판 중에 나가면 위험 경고·전역 위험 빛·물들임이 메뉴에 남던 것 (update 가 더 안 불림)
 	if headless or not live:
 		return
 	dt *= View.time_scale # KO 슬로모션 (G5 가 정함)

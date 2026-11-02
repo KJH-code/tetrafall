@@ -519,7 +519,7 @@ static func hazard_field_texture(f: Dictionary) -> ImageTexture:
 #   bulge: Vector4 (발 밑 들썩 x, y, 세기, 0 — 게임 좌표), field: field() 결과 (바뀔 때만 주면 됨), rings: far_rings() 결과 [{x, y, r}]}
 static func hazard_update(mats: Array, world: Node3D, p: Dictionary) -> void:
 	var on: bool = p.get("on", false)
-	var theme_id = mats[0].get_meta("hz_theme") if mats.size() else null
+	var theme_id = mats[0].get_meta("hz_theme", null) if mats.size() else null # 테마 없음 (메뉴의 예전 노을) 이면 meta 가 null 로 지워져 있음
 	var L := hazard_look(theme_id)
 	var t: float = p.get("time", 0.0)
 	var zs: float = p.get("z", -99.0)

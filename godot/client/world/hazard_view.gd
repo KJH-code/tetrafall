@@ -39,6 +39,7 @@ var _amb_acc := 0.0
 var _contact_acc := 0.0
 var _alive := {}
 var _off_sent := false
+var _cleared := false # clear() 를 했고 그 뒤 update 가 없었음
 var bodies = null # 잠기는 몸 (nodes[id].root·shown[id])
 var sinks := {} # id -> {t0, x, y, z, zs}
 
@@ -147,6 +148,7 @@ func set_theme(theme: Dictionary) -> void:
 
 
 func update(st: Dictionary, grid: PackedByteArray, grid_version: int, me: Dictionary, dt := 0.0) -> void:
+	_cleared = false
 	var lava: Dictionary = st.get("lava", {})
 	var on: bool = lava.get("active", false)
 	visible = on
@@ -183,16 +185,9 @@ func _update_g3(st: Dictionary, grid: PackedByteArray, grid_version: int, me: Di
 	pulse = maxf(0.0, pulse - dt * C.HAZARD_PULSE_DECAY)
 	var zs: float = float(st.lava.z) if on else -99.0
 	if not on:
-		set_light(0.0, Vector3.ZERO)
-		_draw_vig(0.0, 0.0, true)
-		_was = false
-		step = -1
-		has_step = false
+		_off()
 		_track_deaths(st, zs, false)
 		_step_sinks()
-		if not _off_sent:
-			G3.hazard_update(mats, get_parent(), {"on": false, "time": t, "z": zs}) # 물들임·하늘 아래 색 끔
-			_off_sent = true
 		return
 	_off_sent = false
 	var f: Dictionary = st.field
@@ -257,6 +252,33 @@ func _update_g3(st: Dictionary, grid: PackedByteArray, grid_version: int, me: Di
 	_draw_vig(vignette, dt)
 	_track_deaths(st, zs, true)
 	_step_sinks()
+
+
+# 위험 꺼짐: 빛 (전역 g3_hz_lp 세기 0)·가장자리 경고 (바로 0)·물들임과 하늘 아래 색 (G3.hazard_update on false, 한 번만)
+func _off() -> void:
+	set_light(0.0, Vector3.ZERO)
+	_draw_vig(0.0, 0.0, true)
+	_was = false
+	step = -1
+	has_step = false
+	pulse = 0.0
+	if G3 != null and not _off_sent:
+		G3.hazard_update(mats, get_parent(), {"on": false, "time": t, "z": -99.0}) # 물들임·하늘 아래 색 끔
+		_off_sent = true
+
+
+# 방 밖 (메뉴): World 가 판 갱신을 멈추기 전에 부름 — 판 중에 나가면 update 가 더 안 불려 경고 판 (CanvasLayer 라 Node3D 를 숨겨도 그려짐)·
+# 전역 위험 빛·물들임이 메뉴에 남던 것 (W3). 잠기는 몸·지난 생존 기억도 버림. 메뉴에선 매 프레임 불려도 한 번만 함 (update 가 다시 열 때까지)
+func clear() -> void:
+	if _cleared:
+		return
+	_cleared = true
+	_off()
+	sinks.clear()
+	_alive.clear()
+	_field_key = ""
+	_key = ""
+	vignette = 0.0
 
 
 # 차오름 한 번: 번쩍·가까우면 흔들림·닿는 곳 거품 (hazard.js rise)
