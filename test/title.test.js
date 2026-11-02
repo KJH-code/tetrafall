@@ -257,3 +257,9 @@ test('대기실 지형 미리보기 판 크기 = 판 시작 때 서버가 정할
   assert.equal(lobbyFieldSize({ players: ps(5, 1) }), C.FIELD_SIZES[4], '관전 빼고');
   assert.equal(lobbyFieldSize({ players: ps(5), mode: 'master' }), C.FIELD_SIZES[4], '블록 마스터는 마스터 빼고');
 });
+
+test('isTitleTheme: 표의 자기 키만 (?title=constructor 같은 주소는 거절)', async () => {
+  const { isTitleTheme, TITLE_THEME_IDS } = await import('../shared/title.js');
+  for (const id of TITLE_THEME_IDS) assert.equal(isTitleTheme(id), true);
+  for (const bad of ['constructor', '__proto__', 'toString', 'hasOwnProperty', '', null, undefined, 3]) assert.equal(isTitleTheme(bad), false, String(bad));
+});
