@@ -128,6 +128,7 @@ func _prof_process(_d: float) -> void:
 	# 다른 화면 (연습 창·튜토리얼 창) 은 'ui_blocker' 무리 + blocking() — 여기서 한 번에 정해야 서로 덮어쓰지 않음
 	var others := get_tree().get_nodes_in_group("ui_blocker").any(func(n): return bool(n.call("blocking")))
 	PlayerInput.ui_blocking = settings.visible or shown in ["menu", "lobby", "results"] or focus is LineEdit or others
+	PlayerInput.typing = focus is LineEdit or focus is TextEdit
 	status.visible = not Net.is_open() # 연결 중·끊김 글만 (판 시간은 HUD)
 	var now := _screen_now()
 	if now != target:

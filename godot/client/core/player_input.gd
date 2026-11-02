@@ -23,6 +23,7 @@ var sky := false # 하늘 시점: 마우스 회전 무시
 var sensitivity := 1.0
 var wheel = null # 이모트 바퀴: 연 뒤 마우스 이동량 Vector2
 var ui_blocking := false # 메뉴·글자 칸이 열려 있으면 화면 묶음이 true (게임 키 안 받음)
+var typing := false # 글자 칸에 커서 (ui.gd 가 정함). 막혀 있어도 글자 칸이 아니면 성능 표시 키는 됨 (JS 는 글 칠 때만 키를 안 받음 — F3 은 메뉴·대기실에서도)
 var override = null # 시험·자동 조종: 이 dict 를 input 대신 보냄 (client debug.inputOverride)
 var _send_acc := 0.0
 
@@ -57,7 +58,18 @@ func lock_mouse(on: bool) -> void:
 	if DisplayServer.get_name() != "headless":
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if on else Input.MOUSE_MODE_VISIBLE
 	if not on:
-		keys.clear()
+		release_all()
+
+
+# 눌린 키 전부 놓음 + 누르고 있어야 열려 있는 것 (이모트 바퀴·도움말·킬 점수전 점수표) 닫기 (input.js releaseAll).
+# 창이 포커스를 잃거나 마우스가 풀릴 때 — 예전엔 Esc 로 풀면 keys 만 비워 G 바퀴가 열린 채 남고, 다시 잡아도 바퀴가 마우스를 가로채 시점이 안 돎
+func release_all() -> void:
+	keys.clear()
+	if wheel != null:
+		wheel = null
+		wheel_changed.emit(-2)
+	ui_action.emit("help", false)
+	ui_action.emit("practice", false)
 
 
 # 들어오면 시작 자리 방향을 봄, 재접속이면 다음 스냅샷의 내 방향
@@ -101,6 +113,7 @@ func _prof_process(delta: float) -> void:
 
 func _input(e: InputEvent) -> void:
 	if ui_blocking:
+		_input_blocked(e)
 		return
 	if e is InputEventMouseMotion:
 		if wheel != null:
@@ -141,14 +154,24 @@ func _input(e: InputEvent) -> void:
 			up(code)
 
 
+# 창·글자 칸이 떠 있을 때: 뗌은 그대로 받음 (JS keyup·mouseup 은 글 칠 때도 받음 — 누른 채 창이 열리면 키가 눌린 채로 남아 계속 걷던 것),
+# 글자 칸이 아니면 성능 표시 키도 (JS F3 은 메뉴·대기실에서도 됨)
+func _input_blocked(e: InputEvent) -> void:
+	if e is InputEventMouseButton and not e.pressed:
+		up(Keys.event_code(e))
+	elif e is InputEventKey and not e.echo:
+		var code := Keys.norm_code(Keys.event_code(e))
+		if not e.pressed:
+			up(code)
+		elif not typing and "perf" in by_code.get(code, []):
+			ui_action.emit("perf", true)
+			if get_viewport() != null:
+				get_viewport().set_input_as_handled()
+
+
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
-		keys.clear()
-		if wheel != null:
-			wheel = null
-			wheel_changed.emit(-2)
-		ui_action.emit("help", false)
-		ui_action.emit("practice", false)
+		release_all()
 
 
 # 코드를 누름 → 묶인 행동들 실행. 행동이 하나라도 있으면 true
