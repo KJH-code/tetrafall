@@ -267,3 +267,20 @@ func test_hunt_marks_match_js() -> void:
 		check(near(H.edge_level(e[0], C.HUNTER_MARK_MAX, age, e[2]), e[3]), "edgeLevel %s" % [e])
 	for b in fx.blinks:
 		check(H.mark_blink(b[0], b[1]) == b[2], "markBlink %s" % [b])
+
+
+# W5 짝 비교 도구 (world/perf_ab.gd): 화소 차 셈 · 옵션 없으면 안 붙음 · 'none' 은 아무것도 안 바꿈
+func test_perf_ab_diff_and_args() -> void:
+	const PerfAB := preload("res://world/perf_ab.gd")
+	var a := Image.create(4, 2, false, Image.FORMAT_RGB8)
+	a.fill(Color8(100, 100, 100))
+	var b := a.duplicate()
+	var d: Array = PerfAB.diff(a.duplicate(), b.duplicate())
+	check(d[0] == 0.0 and d[1] == 0.0 and d[2] == 0.0 and d[3] == 0, "같은 그림이면 차 0")
+	b.set_pixel(1, 0, Color8(103, 100, 100))
+	b.set_pixel(2, 1, Color8(100, 100, 120))
+	d = PerfAB.diff(a.duplicate(), b.duplicate())
+	check(is_equal_approx(d[0], 25.0) and is_equal_approx(d[1], 12.5) and d[3] == 20, "8 화소 중 2개 다름, 8/255 넘는 건 1개, 최대 20: %s" % str(d))
+	check(is_equal_approx(d[2], 23.0 / 24.0), "평균 차 = 차 합 / (화소 × 3): %s" % str(d[2]))
+	check(not PerfAB.wanted({}) and not PerfAB.wanted({"auto": "host"}) and PerfAB.wanted({"ab": "msaa0"}) and PerfAB.wanted({"abshot": "msaa0"}), "--ab·--abshot 일 때만")
+	check(FileAccess.get_file_as_string("res://world/world.gd").contains("if PerfAB.wanted(ab_args)"), "world 는 옵션 있을 때만 붙임")

@@ -24,6 +24,7 @@ const HookFx := preload("res://world/hook_fx.gd")
 const BodyFx := preload("res://world/body_fx.gd")
 const CamRig := preload("res://world/cam_rig.gd")
 const LobbyDark := preload("res://world/lobby_dark.gd")
+const PerfAB := preload("res://world/perf_ab.gd") # 성능·모습 짝 비교 (--ab · --abshot 일 때만)
 const BBLOCKS := "res://world/bblocks.gd"
 const FX := "res://fx/fx.gd" # G5 효과 (있으면 fx_root 에 붙이고 setup(rig): 카메라 흔들림·KO 줌은 rig.hook)
 const G3_PATH := "res://shaders/g3.gd" # G3 툰·테마 (있으면 하늘·빛·안개·블록 재질을 G3 가 맡음)
@@ -196,6 +197,12 @@ func _ready() -> void:
 	if g3_has("set_low"):
 		G3.set_low(self, bool(View.settings.get("lowGfx", false)))
 	set_shadows(not View.settings.get("lowGfx", false))
+	var ab_args := PerfAB.read_args()
+	if PerfAB.wanted(ab_args): # 확인용: 설정 하나를 한 판 안에서 번갈아 재기·같은 프레임 화소 차 (world/perf_ab.gd)
+		var ab = PerfAB.new()
+		ab.args = ab_args
+		ab.world = self
+		add_child(ab)
 
 
 # 판 화면 다중 샘플: 보통 WC.MSAA_3D_PC·WC.MSAA_3D_WEB (JS antialias), 그래픽 낮춤이면 WC.MSAA_LOW (JS 는 낮춤에서 픽셀 비율 1 로 비용을 줄임 — 고도는 다중 샘플을 끔)

@@ -8,7 +8,7 @@ import zlib from 'node:zlib';
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../build/web');
 const port = Number(process.argv[2] || 8060);
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.wasm': 'application/wasm', '.pck': 'application/octet-stream', '.png': 'image/png' };
-const cache = new Map(); // 파일 → gzip (한 번만 압축)
+const cache = new Map(); // 파일·고친 시각 → gzip (한 번만 압축. 시각까지 열쇠라 서빙 중에 다시 내보내도 새 파일)
 
 http
   .createServer((req, res) => {
@@ -20,8 +20,9 @@ http
     }
     const headers = { 'Content-Type': types[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' };
     if (/\bgzip\b/.test(req.headers['accept-encoding'] || '')) {
-      if (!cache.has(file)) cache.set(file, zlib.gzipSync(fs.readFileSync(file), { level: 9 }));
-      res.writeHead(200, { ...headers, 'Content-Encoding': 'gzip' }).end(cache.get(file));
+      const key = `${file}:${fs.statSync(file).mtimeMs}`;
+      if (!cache.has(key)) cache.set(key, zlib.gzipSync(fs.readFileSync(file), { level: 9 }));
+      res.writeHead(200, { ...headers, 'Content-Encoding': 'gzip' }).end(cache.get(key));
     } else {
       res.writeHead(200, headers).end(fs.readFileSync(file));
     }
