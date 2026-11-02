@@ -181,7 +181,8 @@ function buildDummy(color, models) {
 }
 
 // 손에 든 것: 아이템 모델 (없으면 단색 도형)
-export function heldItems(models) {
+// own: 재질을 복사해 따로 씀 (모델 원본 재질은 모두가 같이 쓰므로, 한 사람의 반투명·발광이 번지지 않게)
+export function heldItems(models, own = false) {
   const fallback = {
     brick: () => new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.17, 0.17), toon({ color: 0xf0d060 })),
     ball: () => new THREE.Mesh(new THREE.SphereGeometry(0.14, 14, 10), toon({ color: 0xe02020 })),
@@ -189,7 +190,7 @@ export function heldItems(models) {
   };
   const type = { brick: 'brick', ball: 'knockback', bomb: 'bomb' };
   const out = {};
-  for (const k of Object.keys(fallback)) out[k] = (type[k] && itemModel(models, type[k], C.HELD_MODEL_SIZE)) || fallback[k]();
+  for (const k of Object.keys(fallback)) out[k] = (type[k] && itemModel(models, type[k], C.HELD_MODEL_SIZE, own)) || fallback[k]();
   return out;
 }
 

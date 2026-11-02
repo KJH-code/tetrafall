@@ -7,7 +7,7 @@ import { CONFIG as C } from '/shared/config.js';
 import { buildCharacter } from '/character.js';
 import { figureAnim } from '/figure.js';
 import { stageYaw, tauntAt } from '/shared/char-select.js';
-import { sharedGL } from '/portrait.js';
+import { sharedGL, disposeBody } from '/portrait.js';
 
 export class CharStage {
   // box: 캔버스를 넣을 칸
@@ -49,7 +49,10 @@ export class CharStage {
     const key = `${char}|${color}`;
     if (key === this.key) return;
     this.init();
-    if (this.ch) this.turn.remove(this.ch.group);
+    if (this.ch) {
+      this.turn.remove(this.ch.group);
+      disposeBody(this.ch.group); // 캐릭터를 고를 때마다 몸이 쌓이지 않게 (C3)
+    }
     this.ch = buildCharacter(color, this.models, char);
     this.turn.add(this.ch.group);
     // 몸 크기에 맞춰 카메라 (portrait.js 전신과 같은 방식, 정면에서)
@@ -109,7 +112,10 @@ export class CharStage {
   // 판이 시작하면: 몸을 놓아 판 중엔 아무것도 안 돎 (대기실로 오면 set 이 다시 만듦). 렌더러는 초상과 같이 쓰므로 그대로 둠
   release() {
     if (!this.gl) return;
-    if (this.ch) this.turn.remove(this.ch.group);
+    if (this.ch) {
+      this.turn.remove(this.ch.group);
+      disposeBody(this.ch.group);
+    }
     this.ch = null;
     this.key = '';
     this.gl = null;

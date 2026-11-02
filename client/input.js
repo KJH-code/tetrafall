@@ -29,7 +29,7 @@ export class Input {
     });
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === canvas;
-      if (!this.locked) this.keys.clear();
+      if (!this.locked) this.releaseAll(); // Esc 로 락이 풀리면 G(이모트 바퀴)·H(도움말)를 누른 채여도 blur 와 똑같이 정리
     });
     document.addEventListener('mousemove', (e) => {
       if (this.wheel) {
@@ -61,15 +61,19 @@ export class Input {
       if (this.down(normCode(e.code))) e.preventDefault(); // 방향키·Space 가 화면을 굴리지 않게
     });
     document.addEventListener('keyup', (e) => this.up(normCode(e.code)));
-    window.addEventListener('blur', () => {
-      this.keys.clear();
-      if (this.wheel) {
-        this.wheel = null;
-        this.onWheel(null);
-      }
-      this.onUi('help', false);
-      this.onUi('practice', false); // 킬 점수전 점수표 (누르고 있기) 닫기
-    });
+    window.addEventListener('blur', () => this.releaseAll());
+  }
+
+  // 눌린 키 전부 놓음 + 누르고 있어야 열려 있는 것(이모트 바퀴·도움말·점수표) 닫기. 창이 포커스를 잃거나 포인터 락이 풀릴 때
+  // (keys 만 비우면 이후 keyup 이 '안 눌린 키' 로 무시돼 바퀴가 안 닫히고, 다시 잡아도 wheel 이 마우스를 가로채 시점이 안 돎)
+  releaseAll() {
+    this.keys.clear();
+    if (this.wheel) {
+      this.wheel = null;
+      this.onWheel(null);
+    }
+    this.onUi('help', false);
+    this.onUi('practice', false); // 킬 점수전 점수표 (누르고 있기) 닫기
   }
 
   // 키 설정 바꾸기 (설정 창). binds: { 행동 id: 코드 }

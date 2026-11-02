@@ -1,7 +1,7 @@
 // 이번 창의 메뉴 테마 (타이틀·메뉴 배경·앰비언트가 같이 씀): sessionStorage (config MENU_THEME_KEY) 에 한 번 고른 테마.
 // 타이틀이 고르면 그걸 저장, 타이틀을 안 거친 메뉴 (링크로 와서 방에서 나옴) 는 처음 물을 때 무작위로 골라 저장 → 창을 닫기 전까지 같은 장면
 import { CONFIG as C } from '/shared/config.js';
-import { pickTitleTheme } from '/shared/title.js';
+import { pickTitleTheme, isTitleTheme } from '/shared/title.js';
 
 let cached = null;
 
@@ -11,13 +11,13 @@ export function sessionTheme() {
   try {
     id = sessionStorage.getItem(C.MENU_THEME_KEY);
   } catch {}
-  cached = C.TITLE_THEMES[id] ? id : pickTitleTheme();
+  cached = isTitleTheme(id) ? id : pickTitleTheme();
   setSessionTheme(cached);
   return cached;
 }
 
 export function setSessionTheme(id) {
-  if (!C.TITLE_THEMES[id]) return;
+  if (!isTitleTheme(id)) return;
   cached = id;
   try {
     sessionStorage.setItem(C.MENU_THEME_KEY, id);

@@ -27,6 +27,12 @@ import { showTitle } from '/shared/title.js';
 import { bigTicks } from '/shared/bblock-look.js';
 import { startTitle } from '/title.js';
 import { TutorialUI, tutorialState } from '/tutorial-ui.js';
+import { setText, setAttr } from '/dom-diff.js';
+import { createLater } from '/shared/later.js';
+import { createErrorReporter, runEach } from '/shared/err-report.js';
+const errors = createErrorReporter();
+const roomLater = createLater(); // 방 안 효과 예약 — leftRoom 이 한꺼번에 취소
+const later = roomLater.later;
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $('status');
@@ -113,6 +119,7 @@ const input = new Input(renderer.canvas, (action) => {
 
 const hitmarker = $('hitmarker');
 let hitmarkerTimer = 0;
+let bannerShown = '';
 function showHitmarker() {
   hitmarker.style.transition = 'none';
   hitmarker.style.opacity = 1;
@@ -221,8 +228,8 @@ function killFeed(e, streak) {
   }
   killfeedEl.appendChild(row);
   while (killfeedEl.children.length > C.KILLFEED_MAX) killfeedEl.firstChild.remove();
-  setTimeout(() => (row.style.opacity = 0), C.KILLFEED_MS);
-  setTimeout(() => row.remove(), C.KILLFEED_MS + 600);
+  later(() => (row.style.opacity = 0), C.KILLFEED_MS);
+  later(() => row.remove(), C.KILLFEED_MS + 600);
 }
 
 // 대기 화면 '조작법' 버튼: 긴 설명은 눌렀을 때만
@@ -288,7 +295,7 @@ function handleEvent(e) {
   if (e.type === 'tutorialStep' && e.who === myId) input.setYawPitch(e.yaw, 0); // 단계 처음 자리에서 볼 쪽으로
   // 닌자 표창에 맞음: 판정은 즉시지만 맞는 효과는 표창이 날아가 닿을 때 (STAR_FLY_MS 뒤)
   if (e.type === 'hit' && e.star && !e.late) {
-    setTimeout(() => handleEvent({ ...e, late: true }), C.STAR_FLY_MS);
+    later(() => handleEvent({ ...e, late: true }), C.STAR_FLY_MS);
     return;
   }
   feelEvent(e);
@@ -325,7 +332,7 @@ function handleEvent(e) {
       renderer.skillStrike(e.who, 'hunterLeap');
       fx.burst({ x: e.from.x, y: e.from.y, z: e.from.z + 0.1 }, null, 0xc0a070, 14, 3.5, 0.11, 0.45);
       sound.play('swing', { dist: e.who === myId ? 0 : distToMe(e.from.x, e.from.y, e.from.z) });
-      setTimeout(() => fx.burst({ x: e.to.x, y: e.to.y, z: e.to.z + 0.1 }, null, 0xc0a070, 12, 3, 0.1, 0.4), e.ms);
+      later(() => fx.burst({ x: e.to.x, y: e.to.y, z: e.to.z + 0.1 }, null, 0xc0a070, 12, 3, 0.1, 0.4), e.ms);
       break;
     case 'aim': {
       // 처형 사격 조준: 석궁을 꺼내 겨눔 + 대상마다 빨간 조준점. 내가 대상이면 화면 가장자리가 붉게 + 째깍
@@ -489,7 +496,7 @@ function handleEvent(e) {
         // 솟을 고리 땅이 떨림: 예고 동안 고리 자리에서 흙먼지가 톡톡 + 가까우면 화면이 살짝 떨림
         const steps = Math.max(1, Math.floor(e.ms / 90));
         for (let k = 0; k < steps; k++) {
-          setTimeout(() => {
+          later(() => {
             for (let n = 0; n < 4; n++) {
               const ang = Math.random() * Math.PI * 2;
               const rr = e.r + Math.random() * C.TANK_RING_WIDTH;
@@ -537,7 +544,7 @@ function handleEvent(e) {
       renderer.bblockBorn(e.cells);
       renderer.skillMove(e.who, 'builderBig');
       const [cx, cy, cz] = e.cells[Math.floor(e.cells.length / 2)];
-      bigTicks(e.ms).forEach((t, i, all) => setTimeout(() => sound.play('bbTick', { dist: distToMe(cx + 0.5, cy + 0.5, cz), strong: i === all.length - 1 }), t)); // 짹깍 점점 빠르게
+      bigTicks(e.ms).forEach((t, i, all) => later(() => sound.play('bbTick', { dist: distToMe(cx + 0.5, cy + 0.5, cz), strong: i === all.length - 1 }), t)); // 짹깍 점점 빠르게
       break;
     }
     case 'bigBomb': {
@@ -1068,7 +1075,7 @@ function connect() {
       onState();
       updateScreen(); // 화면 전환은 스냅샷을 받는 즉시 시작 (다음 그리기 프레임이 무거워도 띠는 컴포지터에서 돎)
       if (!killEvents && msg.events && msg.events.some((e) => e.type === 'kill')) killEvents = true; // 같은 묶음의 'death' 보다 먼저 알아야 두 줄이 안 뜸
-      for (const e of msg.events || []) handleEvent(e);
+      runEach(msg.events, handleEvent, (e, err) => errors.report(`이벤트 에러 (${e && e.type}, 나머지는 계속 처리):`, err));
     }
   };
   ws.onclose = () => {
@@ -1215,12 +1222,29 @@ function leftRoom(reason) {
   if (document.pointerLockElement) document.exitPointerLock();
   if (net) net.leftRoom(); // 방 밖엔 스냅샷이 없음 → 끊김 알림 멈춤
   hideRoomPanels(); // state 가 없으면 drawHud 가 안 돌아 결과·점수표·부활 판이 메뉴 위에 남음
+  hideRoomHud(); // 위 승수·가운데 판·호스트 관리·아래 판 등 방 HUD 도 (같은 이유)
+  roomLater.cancelAll(); // 이전 방 효과 예약 (킬 피드 줄·표창 늦은 맞음·소리 째깍)
+  for (const t of [hitmarkerTimer, comboTimer, counterTimer]) clearTimeout(t);
   setUrlRoom(null);
+  hitmarker.style.transition = 'none';
+  hitmarker.style.opacity = 0; // 맞힌 직후 나가도 X 가 메뉴에 남지 않게
+  document.body.classList.remove('cards');
   // 메뉴로 짧은 슬래시: 방 목록은 띠가 다 덮을 때 (shared/wipe.js 'short')
   const plan = screenNow && screenNow !== 'menu' ? playWipe(wipeKind(screenNow, 'menu')) : null;
   screenNow = 'menu';
   if (plan) setTimeout(() => !myId && showRooms(reason || ''), plan.coverMs);
   else showRooms(reason || '');
+}
+
+// 방 HUD 한꺼번에 숨김 (방을 나갈 때). drawHud 는 state 가 있어야 돌아서 여기서 따로 비움
+const ROOM_HUD_IDS = ['score', 'banner', 'bigmsg', 'spec', 'bottom', 'players', 'host-players', 'center', 'name-row', 'room-row', 'keys', 'bot-btns', 'map-info', 'mode-info', 'first-hint', 'danger', 'crosshair', 'combo', 'counter', 'status'];
+function hideRoomHud() {
+  for (const id of ROOM_HUD_IDS) document.getElementById(id)?.classList.add('hidden');
+  startBtn.classList.add('hidden');
+  killfeedEl.replaceChildren(); // 남은 줄 (취소된 예약이 지워 주지 못함)
+  document.body.classList.remove('ui-dark');
+  lastDanger = null;
+  bigUntil = 0;
 }
 
 function hideRoomPanels() {
@@ -1951,7 +1975,7 @@ function updateScreen() {
     playWipe(kind);
   }
   screenNow = next;
-  if (!uiHold()) document.body.classList.remove('wipe-hold');
+  if (!uiHold()) document.body.classList.toggle('wipe-hold', false);
   // 방에 들어감: 방 목록·메뉴 장면은 띠가 다 덮을 때 치움
   if (next !== 'menu' && roomsEl.classList.contains('leaving') && !uiHold()) {
     roomsEl.classList.add('hidden');
@@ -1990,7 +2014,7 @@ function drawHud() {
   // 왼쪽 위: 판 중에만 시간 하나 (남은 시간이 있는 모드는 남은 시간)
   const timeShown = state.phase === 'playing' ? fmt(state.round.left ?? state.round.elapsed) : null;
   statusEl.classList.toggle('hidden', timeShown === null);
-  statusEl.textContent = timeShown || '';
+  setText(statusEl, timeShown || '');
 
   updateScore();
   updatePlayers();
@@ -2004,7 +2028,7 @@ function drawHud() {
   if (danger !== null && danger !== undefined) {
     // 글자만 (아이콘 없음): "머리 위 블록!" + 남은 초는 옆 작은 칸. 모양은 index.html #danger
     if (!dangerEl.firstElementChild) dangerEl.innerHTML = '<span class="msg">머리 위 블록!</span><span class="sec"></span>';
-    dangerEl.lastElementChild.textContent = `${(danger / 1000).toFixed(1)}초`;
+    setText(dangerEl.lastElementChild, `${(danger / 1000).toFixed(1)}초`);
     if (lastDanger === null) sound.play('danger');
   }
   lastDanger = danger ?? null;
@@ -2039,8 +2063,11 @@ function drawHud() {
   }
   banner.classList.toggle('hidden', bannerText === null);
   if (bannerText !== null) {
-    banner.textContent = bannerText;
-    banner.style.background = bannerColor;
+    setText(banner, bannerText);
+    if (bannerShown !== bannerColor) {
+      banner.style.background = bannerColor;
+      bannerShown = bannerColor; // 브라우저가 값을 rgba(0, 140, ...) 로 바꿔 돌려주므로 style 과 비교하지 않고 마지막에 쓴 값을 기억
+    }
   }
 
   // 가운데 안내
@@ -2072,9 +2099,9 @@ function drawHud() {
   centerEl.classList.toggle('hidden', center === null);
   centerEl.classList.toggle('slim', state.phase !== 'lobby' && state.phase !== 'over'); // 판 중 '화면을 클릭하면…' 은 작은 띠로 (몸을 덜 가림)
   centerEl.classList.toggle('sky', input.sky && state.phase !== 'lobby' && state.phase !== 'over'); // 하늘 시점: 필드를 안 가리게 화면 아래 (초상 판 위)
-  centerText.textContent = center || '';
+  setText(centerText, center || '');
   startBtn.classList.toggle('hidden', !showStart);
-  startBtn.textContent = state.phase === 'over' ? '재시작 (Enter)' : '시작 (Enter)';
+  setText(startBtn, state.phase === 'over' ? '재시작 (Enter)' : '시작 (Enter)');
   $('first-hint').classList.toggle('hidden', !(state.phase === 'lobby' && tutorialState() !== 'done' && !inPractice())); // 튜토리얼 안 한 사람: 대기실에 핵심 키 한 줄
   keysEl.classList.toggle('hidden', !showKeys);
   // 봇 버튼: 호스트만, 판 사이에만
@@ -2099,10 +2126,10 @@ function drawHud() {
   if (state.mode && document.activeElement !== modeSel) modeSel.value = state.mode;
   const modeInfo = $('mode-info');
   modeInfo.classList.toggle('hidden', !between);
-  modeInfo.textContent = MODE_DESC[state.mode] || '';
+  setText(modeInfo, MODE_DESC[state.mode] || '');
   const mapInfo = $('map-info');
   mapInfo.classList.toggle('hidden', !(state.map && !isHost && between));
-  if (state.map) mapInfo.textContent = `맵: ${mapName(state.map.choice)} · 모드: ${C.MODE_NAMES[state.mode] || state.mode}${state.skyStairs ? ' · 하늘 계단' : ''}`;
+  if (state.map) setText(mapInfo, `맵: ${mapName(state.map.choice)} · 모드: ${C.MODE_NAMES[state.mode] || state.mode}${state.skyStairs ? ' · 하늘 계단' : ''}`);
   if (showBots) {
     $('add-bot').disabled = state.players.length >= Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length);
     $('remove-bot').disabled = !state.players.some((x) => x.isBot);
@@ -2120,7 +2147,7 @@ function drawHud() {
   crosshair.classList.toggle('armed', armed || brick || bomb);
   crosshair.classList.toggle('brick', brick);
   crosshair.classList.toggle('bomb', bomb);
-  crosshair.dataset.ammo = '';
+  if (crosshair.dataset.ammo !== '') crosshair.dataset.ammo = '';
 }
 
 // ---------- 관전: 죽었거나 관전자면 살아 있는 사람을 3인칭으로 따라감 ----------
@@ -2256,7 +2283,7 @@ function updateGhostAim() {
   if (!on) {
     ghost.aim = null;
     renderer.setGhostAim(null);
-    ghostHintEl.classList.add('hidden');
+    ghostHintEl.classList.toggle('hidden', true);
     return;
   }
   const p = me();
@@ -2333,7 +2360,7 @@ function updateCooldowns(p, show) {
     a.el.classList.toggle('spent', spent);
     a.el.style.display = on ? '' : 'none';
     a.track.style.display = cd > 0 && !spent ? '' : 'none';
-    a.el.setAttribute('stroke-dasharray', `${a.len * fill} ${a.len}`);
+    setAttr(a.el, 'stroke-dasharray', `${a.len * fill} ${a.len}`);
     a.el.classList.toggle('flash', flashing);
   }
 }
@@ -2464,7 +2491,7 @@ function updateBottom(p) {
     }
     shownDamage = p.damage;
     shownKey = dmgKey;
-    damageEl.textContent = hv ? `HP ${hv.hp}` : `${p.damage}%`;
+    setText(damageEl, hv ? `HP ${hv.hp}` : `${p.damage}%`);
     damageEl.style.color = hv ? `rgb(${hpColor(hv.frac).join(',')})` : damageColor(p.damage);
   }
   const buffs = [];
@@ -2483,7 +2510,7 @@ function updateBottom(p) {
   if (key === bottomKey) return;
   bottomKey = key;
   buffsEl.innerHTML = buffs.map((b) => `<span class="buff">${b}</span>`).join('');
-  itemSlotEl.querySelector('.name').textContent = item;
+  setText(itemSlotEl.querySelector('.name'), item);
   itemSlotEl.classList.toggle('empty', item.endsWith('—'));
 }
 
@@ -2495,7 +2522,7 @@ function updateSkills(p) {
   const f = $('skill-f');
   const r = $('skill-r');
   const cdTotal = C.SKILL_CD_MS[p.char];
-  f.querySelector('.name').textContent = `${C.SKILL_NAMES[p.char]} ${p.skillCd > 0 ? `${(p.skillCd / 1000).toFixed(1)}s` : ''}`;
+  setText(f.querySelector('.name'), `${C.SKILL_NAMES[p.char]} ${p.skillCd > 0 ? `${(p.skillCd / 1000).toFixed(1)}s` : ''}`);
   f.querySelector('.fill').style.width = `${p.skillCd > 0 ? (1 - p.skillCd / cdTotal) * 100 : 100}%`;
   f.classList.toggle('ready', p.skillCd <= 0);
   const ultMax = p.ultMax || C.ULT_MAX; // 사냥꾼은 2배
@@ -2504,7 +2531,7 @@ function updateSkills(p) {
   // 사냥꾼: 게이지가 찼어도 지금 쏠 표식 대상이 없으면 회색 (서버 판정 ultTarget, 다른 캐릭터는 undefined)
   const dim = full && p.ultTarget === false;
   const ultName = p.char === 'bard' && p.bard?.form === 'metal' ? C.BARD_METAL_ULT_NAME : C.ULT_NAMES[p.char]; // 바드는 폼 따라
-  r.querySelector('.name').textContent = performance.now() < ultFailUntil ? ultFailText : `${ultName} ${full ? '준비!' : `${pct}%`}`;
+  setText(r.querySelector('.name'), performance.now() < ultFailUntil ? ultFailText : `${ultName} ${full ? '준비!' : `${pct}%`}`);
   r.querySelector('.fill').style.width = `${Math.min(100, (p.ult / ultMax) * 100)}%`;
   r.classList.toggle('ready', full && !dim);
   r.style.filter = dim ? 'grayscale(1) brightness(.7)' : '';
@@ -2906,7 +2933,6 @@ setInterval(() => {
 }, 1000 / C.INPUT_SEND_RATE);
 
 let last = performance.now();
-let frameErrorShown = false;
 function frame(now) {
   perfPanel.frameStart(now);
   const dt = Math.min(0.1, (now - last) / 1000) * ko.timeScale(now); // KO 슬로모션·히트스톱 (화면만)
@@ -2941,8 +2967,7 @@ function frame(now) {
     sound.update(renderer.camera.matrixWorld.elements, state, dt); // 귀(카메라) 위치·방향 + 위험 액체 지속음
     updateHud();
   } catch (err) {
-    if (!frameErrorShown) console.error('프레임 에러 (계속 그림):', err);
-    frameErrorShown = true;
+    errors.report('프레임 에러 (계속 그림):', err); // 글이 바뀔 때마다 찍음
   }
   perfPanel.frameEnd(now);
   requestAnimationFrame(frame);

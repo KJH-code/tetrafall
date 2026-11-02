@@ -39,6 +39,8 @@ import { lobbyTheme, lobbyFieldSize } from '/shared/title.js';
 import { sessionTheme, markTheme } from '/menu-theme.js';
 import { labelSizes } from '/shared/hud-layout.js';
 import { prof } from '/perf.js';
+import { protectSet, disposeObject } from '/dispose.js';
+import { screenClock } from '/shared/screen-clock.js';
 
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
@@ -737,8 +739,7 @@ export class Renderer {
       this.prewarming = false;
       for (const id of ids) {
         const g = this.playerMeshes.get(id);
-        if (g) this.scene.remove(g);
-        this.playerMeshes.delete(id);
+        if (g) this.removePlayerMesh(id, g);
         this.smooth.delete(id);
         this.tracks.delete(id);
         if (this.ragdoll?.has(id)) this.ragdoll.remove(id);
@@ -877,13 +878,34 @@ export class Renderer {
     this.sun.castShadow = !!on;
   }
 
+  // 몸 하나를 치움 (사람이 나갔거나 캐릭터를 바꿈, C3·C4): 씬에 따로 붙인 효과 (광전사 소용돌이·어지럼 별·궁 빛기둥·바드 앰프) 도 같이 떼고
+  // 지오메트리·재질·텍스처를 놓음. 공유 자원 (모델 원본·궁 빛기둥 그림·남은 사람 몸이 쓰는 것) 은 놔둠
+  removePlayerMesh(id, g) {
+    const ud = g.userData;
+    if (this.vm && this.vm.src === g) this.vm.sync(null); // 1인칭 팔 복제가 옛 몸 자원을 붙잡지 않게 먼저 놓음
+    const extra = [];
+    if (ud.whirlFx) extra.push(ud.whirlFx.ring, ud.whirlFx.trail);
+    for (const m of ud.dizzyStars || []) extra.push(m);
+    if (ud.ultAura) extra.push(ud.ultAura.grp);
+    if (ud.ampFx) extra.push(ud.ampFx.cab);
+    const others = [];
+    for (const [k, v] of this.playerMeshes) if (k !== id && v !== g) others.push(v);
+    if (this.vm && this.vm.anchor) others.push(this.vm.anchor); // 지금 몸의 1인칭 팔 (옛 몸 것은 위에서 이미 비움)
+    const models = this.models ? [this.models.robot && this.models.robot.scene, ...Object.values(this.models.items || {})].filter(Boolean) : [];
+    const protect = protectSet([...models, ...others], [this.ultAuraTex, this.ultFloorTex].filter(Boolean));
+    for (const o of [...extra, g]) {
+      this.scene.remove(o);
+      disposeObject(o, protect);
+    }
+    if (this.playerMeshes.get(id) === g) this.playerMeshes.delete(id);
+  }
+
   getPlayerMesh(p) {
     let g = this.playerMeshes.get(p.id);
     // 캐릭터마다 몸이 다르면(TABS 식) 캐릭터를 바꿨을 때 다시 만든다
     const look = p.dummy ? 'dummy' : C.FIGURE_CHARS.includes(p.char) ? p.char : 'robot'; // 연습 방 허수아비는 캐릭터 없는 허수아비 모양
     if (g && g.userData.look !== look) {
-      this.scene.remove(g);
-      this.playerMeshes.delete(p.id);
+      this.removePlayerMesh(p.id, g); // 몸·씬에 따로 붙인 효과(궁 빛기둥 등)·GPU 자원까지 (캐릭터를 바꾸면 새 몸 + 새 효과)
       g = null;
     }
     if (!g) {
@@ -1704,7 +1726,7 @@ export class Renderer {
     const fig = g?.userData.figure;
     const sm = this.smooth.get(e.who);
     const air = !!(sm && this.curState && !this.feetOnGround(this.curState, sm));
-    if (fig) fig.cannonKickAt = performance.now();
+    if (fig) fig.cannonKickAt = screenClock.now();
     if (air && fig) {
       const a = g.userData.anim;
       a.flip = 0;
@@ -3265,6 +3287,7 @@ export class Renderer {
   }
 
   render(state, myId, dt, view, cam) {
+    screenClock.advance(dt); // 화면 시계: KO 슬로모션이면 dt 가 줄어 연출 (대포 반동·바드 폼·표창 다시 쥐기·떠다니는 빛) 도 같이 느려짐 (shared/screen-clock.js)
     if (!state) {
       // 메뉴(방 밖): 타이틀 엔딩 장면이 그대로 배경 (title-scene.js). 타이틀을 안 거쳤으면 이번 창 테마로 메뉴 카메라부터
       if (this.dark) {
@@ -3524,13 +3547,7 @@ export class Renderer {
     }
     for (const [id, g] of this.playerMeshes) {
       if (!seen.has(id)) {
-        const w = g.userData.whirlFx; // 씬에 따로 붙인 광전사 효과도 치움
-        if (w) this.scene.remove(w.ring, w.trail);
-        for (const m of g.userData.dizzyStars || []) this.scene.remove(m);
-        if (g.userData.ultAura) this.scene.remove(g.userData.ultAura.grp);
-        if (g.userData.ampFx) this.scene.remove(g.userData.ampFx.cab);
-        this.scene.remove(g);
-        this.playerMeshes.delete(id);
+        this.removePlayerMesh(id, g);
         this.smooth.delete(id);
         this.tracks.delete(id);
       }

@@ -10,6 +10,7 @@ import { toon, noOutline } from '/toon.js';
 import { CELL } from '/shared/pieces.js';
 import { terrainGeometry, terrainMaterial, terrainCells, BlockDecor } from '/blocks.js';
 import { blockStyle } from '/shared/block-style.js';
+import { screenClock } from '/shared/screen-clock.js';
 
 // 같은 모양이 매번 같게 (새로고침마다 배경이 바뀌지 않게)
 function rng(seed) {
@@ -825,7 +826,7 @@ export class World {
     this.drift.rotation.z += dt * C.WORLD_DRIFT_SPEED;
     const m = this.motes;
     if (m) {
-      const t = performance.now() / 1000;
+      const t = screenClock.now() / 1000;
       const p = m.points.geometry.attributes.position;
       const top = this.r.H * 0.6;
       for (let i = 0; i < p.count; i++) {

@@ -7,6 +7,7 @@ import { toon, noOutline } from '/toon.js';
 import { heldItems } from '/character.js';
 import { itemModel } from '/models.js';
 import { gaitOf, gaitPose, airPose, accLean, idlePose, overlayT, SUPERMAN } from '/figure-pose.js';
+import { screenClock } from '/shared/screen-clock.js';
 
 // 눈알은 외곽선을 안 그림 (흰자 둘레에 검은 테가 생겨 부자연스러움)
 const eyeWhiteMat = noOutline(new THREE.MeshBasicMaterial({ color: 0xffffff }));
@@ -194,10 +195,15 @@ export function buildFigure(color, char, models) {
   }
 
   const fig = { d, char, hips, waist, torso, neck, shoulders, elbows, hands, thighs, knees, feet, flaps: [], pose: null };
-  dressUp(char, fig, costume, skin);
+  eyeSink = mats;
+  try {
+    dressUp(char, fig, costume, skin);
+  } finally {
+    eyeSink = null;
+  }
 
   // 망치는 오른손 (건축가 무기, render.js 가 건축가만 보임): 손잡이를 쥐고 머리가 주먹 앞쪽으로 (모델은 손잡이가 z 축, 머리가 +z 끝)
-  const hammer = itemModel(models, 'weapon', C.HELD_MODEL_SIZE * 1.4);
+  const hammer = itemModel(models, 'weapon', C.HELD_MODEL_SIZE * 1.4, true); // 재질은 복사 (모델 원본을 모두가 쓰면 한 사람 반투명이 다 같이 번짐)
   if (hammer) {
     hammer.rotation.y = Math.PI / 2; // 머리(+z) → 앞(+x)
     hammer.position.x = C.HELD_MODEL_SIZE * 1.4 * 0.35; // 손잡이 아래쪽을 쥠
@@ -205,13 +211,15 @@ export function buildFigure(color, char, models) {
   const hammerObj = hammer || mesh(new THREE.BoxGeometry(0.26, 0.2, 0.2), toon({ color: 0xff8a10 }));
   hammerObj.visible = false;
   hands[0].add(hammerObj);
-  const held = heldItems(models);
+  const held = heldItems(models, true);
   for (const m of Object.values(held)) {
     m.position.set(0, 0, -d.hand * 1.5);
     m.scale.multiplyScalar(C.FIGURE_HELD_SCALE); // 로봇보다 작게
     m.visible = false;
     hands[1].add(m);
   }
+  // 들고 있는 것(망치·벽돌·공·폭탄)도 몸 재질 목록에: 유령화·무적 반투명을 같이 따라감 (켜질 때만 보이는 물건이라 평소엔 불투명 1 그대로)
+  for (const o of [hammerObj, ...Object.values(held)]) o.traverse((m) => m.isMesh && !mats.includes(m.material) && mats.push(m.material));
 
   const waitMark = new THREE.Mesh(new THREE.OctahedronGeometry(0.12), new THREE.MeshBasicMaterial({ color: 0x20e0e0 }));
   waitMark.position.z = C.PLAYER_HEIGHT + 0.2;
@@ -229,13 +237,23 @@ export function buildFigure(color, char, models) {
 
 // 왕눈알: 크게 튀어나온 흰자 + 앞을 보는 검은 눈동자. x 는 머리(또는 투구) 앞면에 맞춰 줌
 // sides: 그릴 눈 (-1 오른쪽, 1 왼쪽). 안대 찬 해적은 [1]. whiteMat: 흰자 재질 (광전사는 분노로 충혈되게 따로)
+// 눈 재질은 캐릭터마다 복사해 몸 재질 목록(eyeSink = buildFigure 의 mats)에 넣음: 공유 재질 하나를 모두가 쓰면 한 사람이 유령화·무적으로 반투명해질 때
+// 눈알만 불투명하게 남음 (render.js 가 몸 재질 목록에 opacity 를 씀). 광전사처럼 따로 만든 흰자 재질은 복사 없이 그대로 목록에만 넣음
+let eyeSink = null;
+const ownEye = (m, shared) => {
+  const own = m === shared ? m.clone() : m;
+  if (eyeSink) eyeSink.push(own);
+  return own;
+};
 function addEyes(neck, x, y, z, r, sides = [-1, 1], whiteMat = eyeWhiteMat) {
   const pupils = [];
+  whiteMat = ownEye(whiteMat, eyeWhiteMat);
+  const pupilM = ownEye(pupilMat, pupilMat);
   for (const side of sides) {
     const white = mesh(new THREE.SphereGeometry(r, 12, 8), whiteMat, x, side * y, z);
     white.castShadow = false;
     neck.add(white);
-    const pupil = mesh(new THREE.SphereGeometry(r * 0.45, 10, 6), pupilMat, r * 0.88, 0, 0);
+    const pupil = mesh(new THREE.SphereGeometry(r * 0.45, 10, 6), pupilM, r * 0.88, 0, 0);
     pupil.castShadow = false;
     white.add(pupil);
     pupils.push(pupil);
@@ -1440,7 +1458,7 @@ function dressBard(fig, costume, cloth) {
     if (fig.form === form) return;
     const first = fig.form === null;
     fig.form = form;
-    fig.formAt = first ? -1e9 : performance.now(); // 처음엔 연출 없이
+    fig.formAt = first ? -1e9 : screenClock.now(); // 처음엔 연출 없이
     for (const [k, grp] of Object.entries(forms)) for (const g of grp.userData.parts) g.visible = k === form;
     fig.torso.material = torsoMat[form]; // 몸통 = 튜닉 리넨 / 검정 티 (맨살 몸통이 옷 틈으로 안 보이게)
   };
@@ -1978,7 +1996,7 @@ export function figureAnim(fig, st, dt, retry = false) {
   }
   if (fig.cannon) {
     // 쏜 순간 대포가 어깨 위에서 뒤로 툭 밀렸다 돌아옴
-    const k = fig.cannonKickAt ? Math.max(0, 1 - (performance.now() - fig.cannonKickAt) / (C.CANNON_KICK_MS || 1)) : 0;
+    const k = fig.cannonKickAt ? Math.max(0, 1 - (screenClock.now() - fig.cannonKickAt) / (C.CANNON_KICK_MS || 1)) : 0;
     fig.cannon.position.x = (fig.cannonBaseX ??= fig.cannon.position.x) - C.CANNON_KICK * k * k;
   }
   if (fig.cannon && !st.stunned && st.emote < 0) {
@@ -2211,7 +2229,7 @@ export function figureAnim(fig, st, dt, retry = false) {
   }
   if (fig.forms) {
     // 폼 전환: 메탈은 모히칸이 머리에서 확 솟아오름 (넘쳤다 돌아옴), 음유시인은 모자가 툭 얹힘
-    const u = Math.min(1, (performance.now() - fig.formAt) / C.BARD_FORM_POP_MS);
+    const u = Math.min(1, (screenClock.now() - fig.formAt) / C.BARD_FORM_POP_MS);
     const pop = u < 1 ? Math.sin(u * Math.PI * 0.5) * (1 + 0.35 * Math.sin(u * Math.PI)) : 1;
     if (fig.form === 'metal') fig.mohawk.scale.set(1, 1, Math.max(0.01, pop));
     else fig.forms.bard.userData.parts[0].position.z = (1 - pop) * 0.15;

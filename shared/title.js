@@ -142,6 +142,8 @@ export function showTitle(search) {
 
 // 타이틀 테마 (config TITLE_THEMES 키 = 맵 테마 id): 켤 때마다 무작위 하나. rnd = 0~1 난수 (테스트에서 고정)
 export const TITLE_THEME_IDS = Object.keys(C.TITLE_THEMES);
+// 테마 id 인지 (자기 키만 — 'constructor'·'__proto__' 같은 주소·저장값이 표 조회를 통과하면 안 됨)
+export const isTitleTheme = (id) => typeof id === 'string' && Object.hasOwn(C.TITLE_THEMES, id);
 export function pickTitleTheme(rnd = Math.random) {
   return TITLE_THEME_IDS[Math.min(TITLE_THEME_IDS.length - 1, Math.floor(rnd() * TITLE_THEME_IDS.length))];
 }
