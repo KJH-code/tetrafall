@@ -1191,16 +1191,17 @@ func _apply_opacity() -> void:
 		mi.material_override = am
 
 
+# G5 효과 노드: group "fx" 노드 (fx/fx.gd, World 의 Fx 아래) 의 effects (fx/effects.gd) — Fx 바로 아래만 찾으면 fx.gd 라 못 찾아 늘 0 이던 것
+static func fx_effects(f):
+	return f.effects if f != null and f.get("effects") != null and f.effects.has_method("squash_amount") else null
+
+
 # G5 효과 값 (fx/effects.gd squash_amount·punch_amount). 효과 노드를 한 번 찾아 둠, 없으면 0
 func _fx_amount(fn: String) -> float:
 	if fx_node == null or not is_instance_valid(fx_node):
 		fx_node = null
 		if is_inside_tree():
-			var root := get_tree().root.find_child("Fx", true, false)
-			if root != null:
-				for c in root.get_children():
-					if c.has_method("squash_amount"):
-						fx_node = c
+			fx_node = fx_effects(get_tree().get_first_node_in_group("fx"))
 	if fx_node == null or not _has_id():
 		return 0.0
 	return float(fx_node.call(fn, pid))
@@ -1216,25 +1217,6 @@ func _whirl_time(p: Dictionary) -> float:
 	if whirl_t0 == null:
 		whirl_t0 = now - (float(bz.get("spinMs", 0.0)) - float(bz.spinLeft)) / 1000.0
 	return minf(now - whirl_t0, float(bz.get("spinMs", 0.0)) / 1000.0)
-
-
-# 압사: 납작하게 찌그러진 몸이 잠깐 남음 (render.js crushFlat). 몸 노드는 죽으면 숨으니 몸 밖 (World 의 몸 자리) 에 복사본을 둠
-func _crush_flat() -> void:
-	var holder_parent := get_parent().get_parent() if get_parent() != null else null # bodies 노드
-	if holder_parent == null or not is_inside_tree():
-		return
-	var flat := frame.duplicate() as Node3D
-	var holder := Node3D.new()
-	holder_parent.add_child(holder)
-	holder.global_transform = global_transform
-	holder.add_child(flat)
-	flat.transform = Transform3D(frame.basis * Basis.from_scale(Vector3(1.5, 1.5, C.CRUSH_FLAT_Z)), Vector3(0, 0.02, 0))
-	for mi in flat.find_children("*", "MeshInstance3D", true, false):
-		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var tw := holder.create_tween()
-	tw.tween_interval(maxf(0.0, (C.CRUSH_FLAT_MS - 300.0) / 1000.0))
-	tw.tween_property(flat, "scale", Vector3(flat.scale.x, flat.scale.y, 0.01), 0.3) # 끝 0.3초에 종잇장처럼 얇아지며
-	tw.tween_callback(holder.queue_free)
 
 
 # 묶은 몸 뼈 자세 = 지금 조각 자리 (매 프레임 _apply 뒤에 바로 — 초상처럼 pose 뒤 곧바로 한 번 그리는 곳도 맞게)
@@ -1555,9 +1537,7 @@ func on_event(e: Dictionary) -> void:
 				if act != null and act.get("hold", false):
 					act.hold = false
 					act.struck = now - C.FIGURE_STRIKE_S # 바로 회복으로
-		"death":
-			if mine and e.get("cause") == "crush":
-				_crush_flat()
+		# death crush: 납작 몸은 world/marks.gd crush_flat 하나만 (render.js crushFlat 곡선 그대로 — 여기서도 만들면 둘이 겹쳐 그려짐)
 		"spinEnd":
 			if mine and refs.has("pupils"):
 				dizzy = C.BERSERK_DIZZY_S

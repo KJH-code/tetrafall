@@ -160,3 +160,20 @@ func test_near_camera_fades() -> void:
 	check(near(FM.plume_inside_fade(Vector3(4, 0, 0), ax, 1.0, 1.0), 1.0), "줄기 뒤 = 그대로")
 	check(near(FM.plume_inside_fade(Vector3(-4, 5, 0), ax, 1.0, 1.0), 1.0), "줄기 밖 = 그대로")
 	check(near(FM.plume_inside_fade(Vector3(-20, 0, 0), ax, 1.0, 1.0), 1.0), "줄기 끝 너머 = 그대로")
+
+
+func test_w3_js_diffs() -> void:
+	# W3 2026-11-02 JS 대조: 몸 찌그러짐·밀치기 팔 값은 group fx 노드의 effects 에서 (Fx 바로 아래만 찾아 늘 0 이던 것)
+	var Body := preload("res://chars/body.gd")
+	var F = load("res://fx/fx.gd").new()
+	var e = Body.fx_effects(F)
+	check(e != null and e == F.effects, "몸이 찾는 효과 노드 = fx.gd 의 effects")
+	check(Body.fx_effects(null) == null, "fx 없으면 null")
+	F.free()
+	# 납작 몸은 marks.gd 하나만 (body.gd 에서도 만들면 둘이 겹침)
+	var src := FileAccess.get_file_as_string("res://chars/body.gd")
+	check(not src.contains("_crush_flat()"), "body.gd 는 압사 납작 몸을 안 만듦")
+	check(FileAccess.get_file_as_string("res://world/marks.gd").contains("crush_flat(e.get(\"who\"))"), "marks.gd 가 death crush 로 만듦")
+	# 사냥꾼 표식 꽉 참 = 금빛 (main.js mark)
+	var FX := load("res://fx/fx.gd")
+	check(FX.mark_color(C.HUNTER_MARK_MAX) == int(C.HUNT_MARK_UI.full) and FX.mark_color(1) == 0xff3a2a, "표식 불꽃 색 (꽉 차면 HUNT_MARK_UI.full)")
