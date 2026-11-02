@@ -200,3 +200,27 @@ public class AuditTests
         Assert.NotNull(rooms.Get(code3));
     }
 
+    [Fact]
+    public void S5_방_코드는_암호용_난수_rng_를_넣으면_그대로_따름()
+    {
+        var rooms = new Rooms();
+        var codes = new HashSet<string>();
+        for (int i = 0; i < 20; i++)
+        {
+            var (c, ws) = Open(rooms);
+            rooms.Message(c, J("{\"type\":\"create\"}"));
+            codes.Add(Code(ws));
+            rooms.Message(c, J("{\"type\":\"leave\"}"));
+        }
+        Assert.True(codes.Count > 10, $"코드가 골고루 나옴 ({codes.Count}종)");
+        foreach (var code in codes)
+        {
+            Assert.Equal((int)C.ROOM_CODE_LEN, code.Length);
+            Assert.All(code, ch => Assert.Contains(ch, C.ROOM_CODE_CHARS));
+        }
+        var fixedRooms = new Rooms(rng: () => 0);
+        var (f, wf) = Open(fixedRooms);
+        fixedRooms.Message(f, J("{\"type\":\"create\"}"));
+        Assert.Equal(new string(C.ROOM_CODE_CHARS[0], (int)C.ROOM_CODE_LEN), Code(wf));
+    }
+

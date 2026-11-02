@@ -4,7 +4,7 @@
 // 재접속 (2026-10-28): 들어오면 자리 토큰 (welcome.token). 연결이 끊기면 자리를 RECONNECT_GRACE_MS 동안 유지 (판 중이면 봇 대리),
 // 그 안에 { type: 'rejoin', code, token } 으로 오면 같은 자리 (같은 플레이어 id). 지나면 예전처럼 나감. 같은 토큰이 또 오면 새 접속이 자리를 가져감.
 // 소켓은 { readyState, OPEN, send(text) } 만 쓴다 (테스트는 가짜 소켓).
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 import { CONFIG as C } from '../shared/config.js';
 import { Game } from './game.js';
 
@@ -31,9 +31,11 @@ function cleanText(raw, max) {
 
 export class Rooms {
   // openLog(code) → { log(msg), close() }: 방마다 로그 (서버는 파일, 테스트는 배열)
+  // rng: 방 코드 뽑기용 난수 (테스트가 정해진 코드를 받으려고 넣음). 없으면 crypto.randomInt (2026-10-30 감사 S5: 코드를 Math.random 으로 추측하기 쉬웠음).
+  //      게임 안 난수 game.rng (시드로 판 재현) 와는 따로
   // serverLog(msg): 방 밖 일 (방 만듦·없앰)
   // now(): 메시지 빈도 제한용 시계 (ms, 테스트는 가짜)
-  constructor({ openLog = () => ({ log() {}, close() {} }), serverLog = () => {}, rng = Math.random, countdownMs = 0, now = () => performance.now() } = {}) {
+  constructor({ openLog = () => ({ log() {}, close() {} }), serverLog = () => {}, rng = null, countdownMs = 0, now = () => performance.now() } = {}) {
     this.now = now;
     this.openLog = openLog;
     this.serverLog = serverLog;
@@ -206,7 +208,7 @@ export class Rooms {
   newCode() {
     for (;;) {
       let code = '';
-      for (let i = 0; i < C.ROOM_CODE_LEN; i++) code += C.ROOM_CODE_CHARS[Math.floor(this.rng() * C.ROOM_CODE_CHARS.length)];
+      for (let i = 0; i < C.ROOM_CODE_LEN; i++) code += C.ROOM_CODE_CHARS[this.rng ? Math.floor(this.rng() * C.ROOM_CODE_CHARS.length) : randomInt(C.ROOM_CODE_CHARS.length)];
       if (!this.rooms.has(code)) return code;
     }
   }

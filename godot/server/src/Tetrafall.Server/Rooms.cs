@@ -87,7 +87,7 @@ public sealed class Rooms
 {
     readonly Func<string, IRoomLog> openLog;
     readonly Action<string> serverLog;
-    readonly Func<double> rng;
+    readonly Func<double>? rng; // 방 코드 뽑기용 (테스트가 정해진 코드를 받으려고 넣음). null 이면 암호용 난수 (S5) — 게임 안 난수 game.rng 와는 따로
     readonly double countdownMs;
     readonly Func<double> now;
     readonly Func<string> newToken;
@@ -112,7 +112,7 @@ public sealed class Rooms
     {
         this.openLog = openLog ?? (_ => new NullLog());
         this.serverLog = serverLog ?? (_ => { });
-        this.rng = rng ?? Random.Shared.NextDouble;
+        this.rng = rng;
         this.countdownMs = countdownMs;
         var sw = System.Diagnostics.Stopwatch.StartNew();
         this.now = now ?? (() => sw.Elapsed.TotalMilliseconds);
@@ -340,7 +340,7 @@ public sealed class Rooms
         for (; ; )
         {
             var code = "";
-            for (int i = 0; i < C.ROOM_CODE_LEN; i++) code += C.ROOM_CODE_CHARS[(int)Math.Floor(rng() * C.ROOM_CODE_CHARS.Length)];
+            for (int i = 0; i < C.ROOM_CODE_LEN; i++) code += C.ROOM_CODE_CHARS[rng != null ? (int)Math.Floor(rng() * C.ROOM_CODE_CHARS.Length) : System.Security.Cryptography.RandomNumberGenerator.GetInt32(C.ROOM_CODE_CHARS.Length)];
             if (!rooms.Has(code)) return code;
         }
     }

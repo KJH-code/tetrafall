@@ -182,3 +182,47 @@ test('S4 판을 한 번도 안 한 방은 연결이 0명이 되면 바로 닫음
   assert.ok(rooms.rooms.has(code3));
 });
 
+test('S5 방 코드는 crypto 난수 (Math.random 을 안 씀), 판 시드(game.rng)와 무관', () => {
+  const { rooms, join } = roomsSetup();
+  const real = Math.random;
+  let calls = 0;
+  Math.random = () => {
+    calls++;
+    return 0;
+  };
+  const codes = new Set();
+  try {
+    for (let i = 0; i < 20; i++) {
+      const a = join();
+      rooms.message(a.conn, { type: 'create' });
+      codes.add(a.ws.last('welcome').room.code);
+      rooms.message(a.conn, { type: 'leave' });
+    }
+  } finally {
+    Math.random = real;
+  }
+  assert.equal(calls, 0, 'Math.random 호출 없음');
+  assert.ok(codes.size > 10, `코드가 골고루 나옴 (${codes.size}종)`);
+  for (const code of codes) assert.match(code, new RegExp(`^[${C.ROOM_CODE_CHARS}]{${C.ROOM_CODE_LEN}}$`));
+  // 판 시드: 방 코드를 몇 번 뽑든 같은 시드의 판은 똑같이 재현됨
+  const play = () => {
+    const g = new Game(() => {});
+    let s = 5;
+    g.rng = () => ((s = (s * 1664525 + 1013904223) >>> 0), s / 2 ** 32);
+    g.addPlayer(1);
+    g.addBot();
+    g.startRound();
+    run(g, 2000);
+    return JSON.stringify(g.snapshot(true));
+  };
+  const first = play();
+  const a = join();
+  rooms.message(a.conn, { type: 'create' });
+  assert.equal(play(), first);
+  // 정해진 rng 를 넣으면 (테스트용) 그대로 따름
+  const fixed = roomsSetup({ rng: () => 0 });
+  const f = fixed.join();
+  fixed.rooms.message(f.conn, { type: 'create' });
+  assert.equal(f.ws.last('welcome').room.code, C.ROOM_CODE_CHARS[0].repeat(C.ROOM_CODE_LEN));
+});
+
