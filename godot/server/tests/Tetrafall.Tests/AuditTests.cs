@@ -1,4 +1,6 @@
+using System.Text.Json;
 using Tetrafall.Core;
+using Tetrafall.Server;
 using static Tetrafall.Tests.CharKit;
 
 namespace Tetrafall.Tests;
@@ -125,4 +127,76 @@ public class AuditTests
     {
         for (double t = 0; t < ms; t += TICK) g.Tick(TICK);
     }
-}
+
+    // ---------- 방 (Rooms.cs) ----------
+    sealed class Sock : ISocket
+    {
+        public readonly List<string> msgs = new();
+        public bool Open => true;
+        public void Send(string text) => msgs.Add(text);
+        public JsonElement? Last(string type)
+        {
+            for (int i = msgs.Count - 1; i >= 0; i--)
+            {
+                var e = JsonDocument.Parse(msgs[i]).RootElement;
+                if (e.GetProperty("type").GetString() == type) return e;
+            }
+            return null;
+        }
+    }
+
+    sealed class ListLog(string code, Dictionary<string, List<string>> logs) : IRoomLog
+    {
+        public void Log(string msg) { if (!logs.TryGetValue(code, out var l)) logs[code] = l = new(); l.Add(msg); }
+        public void Close() { }
+    }
+
+    static JsonElement J(string json) => JsonDocument.Parse(json).RootElement;
+
+    static (Conn conn, Sock ws) Open(Rooms rooms)
+    {
+        var ws = new Sock();
+        return (rooms.Connect(ws), ws);
+    }
+
+    static string Code(Sock ws) => ws.Last("welcome")!.Value.GetProperty("room").GetProperty("code").GetString()!;
+
+    [Fact]
+    public void S4_한_판도_안_한_방은_연결_0명이면_바로_닫힘()
+    {
+        var logs = new Dictionary<string, List<string>>();
+        var rooms = new Rooms(openLog: c => new ListLog(c, logs));
+        var old = new List<string>();
+        for (int i = 0; i < (int)C.ROOM_MAX; i++)
+        {
+            var (c, ws) = Open(rooms);
+            rooms.Message(c, J("{\"type\":\"create\"}"));
+            old.Add(Code(ws));
+            rooms.Disconnect(c); // 만들고 바로 끊기
+        }
+        Assert.All(old, code => Assert.Null(rooms.Get(code)));
+        var (a, wa) = Open(rooms);
+        rooms.Message(a, J("{\"type\":\"create\"}"));
+        var code = Code(wa);
+        var (b, _) = Open(rooms);
+        rooms.Message(b, J($"{{\"type\":\"join\",\"code\":\"{code}\"}}"));
+        rooms.Disconnect(a);
+        Assert.NotNull(rooms.Get(code)); // 연결이 남아 있으면 유지
+        rooms.Disconnect(b);
+        Assert.Null(rooms.Get(code));
+        Assert.Contains("닫음", logs[code][^1]);
+        // 한 판 한 방은 자리 유지
+        var (c2, w2) = Open(rooms);
+        rooms.Message(c2, J("{\"type\":\"create\"}"));
+        var code2 = Code(w2);
+        rooms.Get(code2)!.game.totals["rounds"] = 1;
+        rooms.Disconnect(c2);
+        Assert.NotNull(rooms.Get(code2));
+        // 연습 방은 규칙 밖
+        var (d, wd) = Open(rooms);
+        rooms.Message(d, J("{\"type\":\"practice\"}"));
+        var code3 = Code(wd);
+        rooms.Disconnect(d);
+        Assert.NotNull(rooms.Get(code3));
+    }
+

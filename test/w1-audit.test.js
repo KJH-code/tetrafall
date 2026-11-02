@@ -126,3 +126,59 @@ test('S10 columnTop: 판 밖 칸은 0 (격자 번호가 옆 칸으로 새지 않
   for (const [x, y] of [[-1, 1], [g.W, 0], [0, g.D], [0, -1], [g.W + 5, g.D + 5]]) assert.equal(g.columnTop(x, y), 0, `${x},${y}`);
   assert.equal(g.columnTop(g.W - 1, 0) >= 3, true, '판 안은 그대로');
 });
+
+// ---------- 방 (rooms.js) ----------
+function roomsSetup(opts = {}) {
+  const logs = {};
+  const server = [];
+  const rooms = new Rooms({
+    openLog: (code) => {
+      logs[code] = [];
+      return { log: (m) => logs[code].push(m), close() {} };
+    },
+    serverLog: (m) => server.push(m),
+    ...opts,
+  });
+  const join = () => {
+    const ws = fakeWs();
+    return { ws, conn: rooms.connect(ws) };
+  };
+  return { rooms, logs, server, join };
+}
+
+test('S4 판을 한 번도 안 한 방은 연결이 0명이 되면 바로 닫음 (ROOM_MAX 고갈 막기). 한 판 한 방·다른 연결이 남은 방은 자리 유지', () => {
+  const { rooms, logs, join } = roomsSetup();
+  for (let i = 0; i < C.ROOM_MAX; i++) {
+    const a = join();
+    rooms.message(a.conn, { type: 'create' });
+    rooms.disconnect(a.conn); // 만들고 바로 끊기
+  }
+  assert.equal(rooms.rooms.size, 0, '자리 유지 60초를 안 기다리고 바로 닫힘');
+  const a = join();
+  rooms.message(a.conn, { type: 'create' });
+  assert.ok(a.ws.last('welcome'), '방이 다시 만들어짐');
+  const code = a.ws.last('welcome').room.code;
+  assert.ok(logs[code]);
+  // 둘이 있는 방: 하나 끊겨도 방 유지, 마지막 하나가 끊기면 닫힘
+  const b = join();
+  rooms.message(b.conn, { type: 'join', code });
+  rooms.disconnect(a.conn);
+  assert.ok(rooms.rooms.has(code), '연결이 남아 있으면 방 유지');
+  rooms.disconnect(b.conn);
+  assert.ok(!rooms.rooms.has(code), '연결 0명 → 닫힘');
+  assert.ok(logs[code].at(-1).includes('닫음'));
+  // 한 판 한 방은 예전처럼 자리 유지
+  const c = join();
+  rooms.message(c.conn, { type: 'create' });
+  const code2 = c.ws.last('welcome').room.code;
+  rooms.rooms.get(code2).game.totals.rounds = 1;
+  rooms.disconnect(c.conn);
+  assert.ok(rooms.rooms.has(code2), '한 판 한 방은 자리 유지');
+  // 연습 방은 이 규칙 밖 (새로고침해도 돌아올 수 있음)
+  const d = join();
+  rooms.message(d.conn, { type: 'practice' });
+  const code3 = d.ws.last('welcome').room.code;
+  rooms.disconnect(d.conn);
+  assert.ok(rooms.rooms.has(code3));
+});
+

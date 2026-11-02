@@ -78,6 +78,8 @@ export class Rooms {
       room.conns.delete(conn.id);
       conn.room = null;
       room.game.setAway(conn.id, true);
+      // 판을 한 번도 안 한 방은 연결이 0명이면 바로 닫음 (S4: 방 만들고 바로 끊기를 되풀이해 자리 유지 60초씩 ROOM_MAX 를 채우는 것 막기)
+      if (!room.practice && room.conns.size === 0 && room.game.totals.rounds === 0 && !room.game.inRound()) this.close(room, '연결 0명, 한 판도 안 한 방');
     } else if (room) this.leave(conn, null);
   }
 
@@ -294,9 +296,9 @@ export class Rooms {
     }
   }
 
-  close(room) {
+  close(room, why = '사람 0명') {
     room.game.removeAllBots();
-    room.out.log(`방 ${room.code} 닫음 (사람 0명)`);
+    room.out.log(`방 ${room.code} 닫음 (${why})`);
     room.out.close();
     this.rooms.delete(room.code);
     this.serverLog(`방 ${room.code} 닫음 (방 ${this.rooms.size}개)`);
