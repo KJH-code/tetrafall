@@ -76,9 +76,13 @@ static func f1(v: float) -> String:
 	return "%.1f" % (round(v * 10.0) / 10.0)
 
 
-# 복사용 한 줄. extra: {draws, tris, players, rag, low, size, gpu, ping}
+# 복사용 한 줄. extra: {draws, tris, players, rag, low, size, gpu, ping} (JS 와 같은 칸) + 고도만 (W6, 있을 때만 — JS 칸 글은 그대로):
+#   screen (맨 앞: 타이틀·메뉴·대기실·판…), script·phys (GDScript _process·_physics_process ms), rcpu·rgpu (렌더 CPU·GPU ms), objs (물체), svp (SubViewport 글),
+#   vram (영상 메모리 MB), gfx (화질 글), renderer (드라이버·방식), vendor, hint (하이브리드 안내)
 static func perf_line(s: Dictionary, extra := {}) -> String:
 	var parts := ["FPS %d" % roundi(s.fps), "프레임 평균 %sms" % f1(s.avg), "1%% low %sms" % f1(s.low), "JS %sms" % f1(s.work)]
+	if str(extra.get("screen", "")) != "":
+		parts.push_front(str(extra.screen))
 	for k in C.PERF_SECTIONS:
 		parts.append("%s %s" % [C.PERF_SECTIONS[k], f1(s.sections.get(k, 0.0))])
 	parts.append("기타 JS %s" % f1(s.other))
@@ -97,7 +101,65 @@ static func perf_line(s: Dictionary, extra := {}) -> String:
 		parts.append("GPU %s" % extra.gpu)
 	if str(extra.get("ping", "")) != "":
 		parts.append("핑 %s" % extra.ping)
+	for kv in [["script", "스크립트 %sms"], ["phys", "물리 %sms"], ["rcpu", "렌더 CPU %sms"], ["rgpu", "렌더 GPU %sms"]]:
+		if extra.get(kv[0]) != null:
+			parts.append(kv[1] % f1(float(extra[kv[0]])))
+	if extra.get("objs") != null:
+		parts.append("물체 %d" % int(extra.objs))
+	if str(extra.get("svp", "")) != "":
+		parts.append("SubViewport %s" % extra.svp)
+	if extra.get("vram") != null:
+		parts.append("영상 메모리 %dMB" % roundi(float(extra.vram)))
+	for kv in [["gfx", "화질 %s"], ["renderer", "렌더러 %s"], ["vendor", "제조사 %s"], ["hint", "안내 %s"]]:
+		if str(extra.get(kv[0], "")) != "":
+			parts.append(kv[1] % str(extra[kv[0]]))
 	return " · ".join(parts)
+
+
+# 화면 상태 (복사 줄 맨 앞·F3): 타이틀 → 메뉴 → 대기실 → 판 (연습·튜토리얼은 따로)
+static func screen_name(title_on: bool, in_room: bool, phase: String, practice := false, tutorial := false) -> String:
+	if title_on:
+		return "첫 화면" # 타이틀 (본문 글꼴 부분 집합에 '틀' 이 없어 이 말로)
+	if not in_room:
+		return "메뉴"
+	if tutorial:
+		return "튜토리얼"
+	if practice:
+		return "연습"
+	if phase == "lobby" or phase == "":
+		return "대기실"
+	return "판 (%s)" % phase
+
+
+# 지금 그리는 SubViewport 글: [[w, h, msaa 배수], …] → "2 (1280×720 4×, 640×360)" (없으면 "0")
+static func svp_text(list: Array) -> String:
+	if list.is_empty():
+		return "0"
+	var each := list.map(func(v): return "%d×%d%s" % [int(v[0]), int(v[1]), (" %d×" % int(v[2])) if int(v[2]) > 1 else ""])
+	return "%d (%s)" % [list.size(), ", ".join(each)]
+
+
+# 최근 window ms 안 표본 평균: samples = [[t, a, b, …], …] → [a 평균, b 평균, …] (없으면 0)
+static func recent_mean(samples: Array, now: float, window: float, cols: int) -> Array:
+	var out := []
+	out.resize(cols)
+	out.fill(0.0)
+	var n := 0
+	for r in samples:
+		if r[0] < now - window:
+			continue
+		n += 1
+		for i in cols:
+			out[i] += float(r[i + 1])
+	if n > 0:
+		for i in cols:
+			out[i] /= n
+	return out
+
+
+# F3 복사 단축키: 판이 떠 있을 때 Ctrl+C (글자 칸에 포커스면 글자 복사 그대로)
+static func is_copy_key(keycode: int, ctrl: bool, pressed: bool, echo: bool, typing: bool) -> bool:
+	return pressed and not echo and ctrl and keycode == KEY_C and not typing
 
 
 # 짧은 GPU 이름: "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002504) Direct3D11 vs_5_0 ps_5_0, D3D11)" → "NVIDIA GeForce RTX 3060"
