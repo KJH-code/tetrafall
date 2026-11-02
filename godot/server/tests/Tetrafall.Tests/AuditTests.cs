@@ -225,6 +225,27 @@ public class AuditTests
     }
 
     [Fact]
+    public void S5_방_코드_글자는_기본이_암호용_난수고_비암호_난수_호출이_없음()
+    {
+        // 기본 뽑기는 CryptoPick, 넣은 뽑기는 방 코드 글자마다 정확히 한 번씩 지남 (Random.Shared 로 되돌리면 호출 0 → 실패)
+        Assert.Same(Rooms.CryptoPick, new Rooms().CodePick);
+        int calls = 0;
+        var rooms = new Rooms(codePick: n => { calls++; return calls % n; });
+        var (c, ws) = Open(rooms);
+        rooms.Message(c, J("{\"type\":\"create\"}"));
+        Assert.Equal((int)C.ROOM_CODE_LEN, calls);
+        Assert.Equal(new string(Enumerable.Range(1, (int)C.ROOM_CODE_LEN).Select(i => C.ROOM_CODE_CHARS[i]).ToArray()), Code(ws));
+        // 서버 소스에 비암호 난수 (System.Random) 가 없음 — JS 의 'Math.random 호출 0' 과 같은 뜻
+        var dir = Path.GetDirectoryName(ThisFile())!;
+        var src = Path.GetFullPath(Path.Combine(dir, "..", "..", "src", "Tetrafall.Server", "Rooms.cs"));
+        var text = File.ReadAllText(src);
+        Assert.DoesNotContain("Random.Shared", text);
+        Assert.DoesNotContain("new Random(", text);
+    }
+
+    static string ThisFile([System.Runtime.CompilerServices.CallerFilePath] string path = "") => path;
+
+    [Fact]
     public void S6_join_rejoin_에러_문구에는_코드를_ROOM_CODE_LEN_글자까지만()
     {
         var rooms = new Rooms();

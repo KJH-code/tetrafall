@@ -88,6 +88,9 @@ public sealed class Rooms
     readonly Func<string, IRoomLog> openLog;
     readonly Action<string> serverLog;
     readonly Func<double>? rng; // 방 코드 뽑기용 (테스트가 정해진 코드를 받으려고 넣음). null 이면 암호용 난수 (S5) — 게임 안 난수 game.rng 와는 따로
+    // 방 코드 글자 뽑기 (0..n-1). 기본은 암호용 난수 CryptoPick (S5). 테스트가 갈아끼워 '정말 이걸 지나는지' 확인함
+    public static readonly Func<int, int> CryptoPick = n => System.Security.Cryptography.RandomNumberGenerator.GetInt32(n);
+    public Func<int, int> CodePick { get; }
     readonly double countdownMs;
     readonly Func<double> now;
     readonly Func<string> newToken;
@@ -108,8 +111,9 @@ public sealed class Rooms
 
     // openLog(code) → 방마다 로그 (서버는 파일, 테스트는 목록), serverLog: 방 밖 일, now(): 메시지 빈도 제한용 시계 (ms),
     // newToken(): 자리 토큰 (기본 RECONNECT_TOKEN_BYTES 바이트 난수의 16진수, 테스트는 정해진 값)
-    public Rooms(Func<string, IRoomLog>? openLog = null, Action<string>? serverLog = null, Func<double>? rng = null, double countdownMs = 0, Func<double>? now = null, Func<string>? newToken = null)
+    public Rooms(Func<string, IRoomLog>? openLog = null, Action<string>? serverLog = null, Func<double>? rng = null, double countdownMs = 0, Func<double>? now = null, Func<string>? newToken = null, Func<int, int>? codePick = null)
     {
+        CodePick = codePick ?? CryptoPick;
         this.openLog = openLog ?? (_ => new NullLog());
         this.serverLog = serverLog ?? (_ => { });
         this.rng = rng;
@@ -343,7 +347,7 @@ public sealed class Rooms
         for (; ; )
         {
             var code = "";
-            for (int i = 0; i < C.ROOM_CODE_LEN; i++) code += C.ROOM_CODE_CHARS[rng != null ? (int)Math.Floor(rng() * C.ROOM_CODE_CHARS.Length) : System.Security.Cryptography.RandomNumberGenerator.GetInt32(C.ROOM_CODE_CHARS.Length)];
+            for (int i = 0; i < C.ROOM_CODE_LEN; i++) code += C.ROOM_CODE_CHARS[rng != null ? (int)Math.Floor(rng() * C.ROOM_CODE_CHARS.Length) : CodePick(C.ROOM_CODE_CHARS.Length)];
             if (!rooms.Has(code)) return code;
         }
     }
