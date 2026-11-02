@@ -54,7 +54,7 @@ static func restyle() -> void:
 				o.border_color = fresh.border_color
 				o.shadow_color = fresh.shadow_color
 			"btn_font":
-				if r[2] != "go":
+				if r[2] == "ghost" or r[2] == "big":
 					o.add_theme_color_override("font_outline_color", alpha(gc, 0.6))
 			"glow":
 				o.add_theme_color_override("font_outline_color", alpha(gc, 0.75))
@@ -73,6 +73,8 @@ static func restyle() -> void:
 				o.border_color = alpha(gc, 0.55)
 			"border":
 				o.border_color = alpha(gc, r[2])
+			"border_bg":
+				o.bg_color = gc
 	_reg = live
 
 
@@ -278,6 +280,34 @@ static func radial_glow(center: Vector2, reach: float, a: float) -> TextureRect:
 	return t
 
 
+# 슬라이더 (CSS accent-color: g): 지난 칸 = 빛 색, 남은 칸 = 어두운 회색, 손잡이 = 빛 색 원
+static func style_slider(sl: HSlider) -> void:
+	var track := StyleBoxFlat.new()
+	track.bg_color = Color(1, 1, 1, 0.18)
+	track.set_corner_radius_all(3)
+	track.content_margin_top = 3
+	track.content_margin_bottom = 3
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = g()
+	fill.set_corner_radius_all(3)
+	fill.content_margin_top = 3
+	fill.content_margin_bottom = 3
+	_keep(fill, "border_bg")
+	sl.add_theme_stylebox_override("slider", track)
+	sl.add_theme_stylebox_override("grabber_area", fill)
+	sl.add_theme_stylebox_override("grabber_area_highlight", fill)
+	var n := 16
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	var gc := g()
+	for y in n:
+		for x in n:
+			var d := Vector2(x + 0.5 - n / 2.0, y + 0.5 - n / 2.0).length()
+			img.set_pixel(x, y, Color(gc.r, gc.g, gc.b, clampf(n / 2.0 - d, 0.0, 1.0)))
+	var tex := ImageTexture.create_from_image(img)
+	sl.add_theme_icon_override("grabber", tex)
+	sl.add_theme_icon_override("grabber_highlight", tex)
+
+
 # 등장 애니: 나타남 (JS open-down .22s ease-out — 위치는 컨테이너가 정해 투명도만)
 static func pop_down(c: CanvasItem) -> void:
 	c.modulate.a = 0.0
@@ -307,6 +337,18 @@ static func button_box(kind: String, state: String, keep := true) -> StyleBoxFla
 			s.set_border_width_all(1)
 			s.border_width_left = 4
 			s.shadow_size = 0
+		"leave": # JS button.leave: rgba(40,6,4,.55) + 안쪽 1px rgba(255,90,70,.75)
+			s.bg_color = Color8(40, 6, 4, 140) if state == "normal" else Color8(70, 14, 8, 190)
+			s.border_color = Color8(255, 90, 70, 191)
+			s.set_border_width_all(1)
+		"armed": # JS .leave.armed: #ffd0c4 → #ff5a3a 채움 (가운데 색)
+			s.bg_color = Color("ffd0c4").lerp(Color("ff5a3a"), 0.5)
+			s.border_color = Color("ff5a3a")
+			s.set_border_width_all(1)
+		"dup": # 겹친 키 (JS .kb-btn.dup: 안쪽 2px hot)
+			s.bg_color = Color(0.04, 0.02, 0.09, 0.6) if state == "normal" else alpha(gc.darkened(0.6), 0.85)
+			s.border_color = HOT
+			s.set_border_width_all(2)
 		_:
 			s.bg_color = Color(0.04, 0.02, 0.09, 0.6) if state == "normal" else alpha(gc.darkened(0.6), 0.85)
 			s.border_color = alpha(gc, 0.55)
@@ -328,7 +370,7 @@ static func style_button(b: Button, kind := "ghost", size := 16) -> Button:
 	for st in ["normal", "hover", "pressed", "disabled", "focus"]:
 		var key: String = "normal" if st == "focus" else str(st)
 		b.add_theme_stylebox_override(st, button_box(kind, key))
-	var fg := Color("12081c") if kind == "go" else Color.WHITE
+	var fg: Color = Color("12081c") if kind == "go" else ({"leave": Color("ffd6cc"), "armed": Color("3a0a00"), "dup": Color("ffb0a4")}.get(kind, Color.WHITE))
 	b.add_theme_color_override("font_color", fg)
 	b.add_theme_color_override("font_hover_color", fg)
 	b.add_theme_color_override("font_pressed_color", fg)
@@ -336,9 +378,14 @@ static func style_button(b: Button, kind := "ghost", size := 16) -> Button:
 	b.add_theme_color_override("font_disabled_color", Color(0.7, 0.7, 0.75))
 	b.add_theme_font_size_override("font_size", size)
 	_keep(b, "btn_font", kind)
-	if kind != "go":
+	if kind == "leave":
+		b.add_theme_color_override("font_outline_color", Color8(255, 80, 60, 110))
+		b.add_theme_constant_override("outline_size", 4)
+	elif kind != "go" and kind != "armed":
 		b.add_theme_color_override("font_outline_color", alpha(g(), 0.6))
 		b.add_theme_constant_override("outline_size", 4)
+	else:
+		b.add_theme_constant_override("outline_size", 0)
 	b.focus_mode = Control.FOCUS_NONE
 	return b
 

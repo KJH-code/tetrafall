@@ -81,6 +81,8 @@ func _ready() -> void:
 	menu.open_tutorial.connect(func(): View.open_panel.emit("tutorial")) # G6 ui/tutorial_ui.gd
 	settings.open_tutorial.connect(func():
 		settings.visible = false
+		if Store.in_room():
+			Store.leave() # JS settings-tutorial: 방 안이면 나와서 (튜토리얼은 따로 혼자 방)
 		View.open_panel.emit("tutorial"))
 	wipe = load("res://ui/wipe.gd").new()
 	root.add_child(wipe)

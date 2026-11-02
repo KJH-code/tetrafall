@@ -24,21 +24,27 @@ var keys_scroll: ScrollContainer
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var shade := ColorRect.new()
-	shade.color = Color(0, 0, 0, 0.6)
-	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# JS #settings: radial-gradient(ellipse at 50% 45%, rgba(4,2,10,.35), rgba(0,0,0,.78)) — 예전엔 고른 .6
+	var shade := S.radial_shade(Vector2(0.5, 0.45), 0.0, Color8(4, 2, 10, 89), Color(0, 0, 0, 0.78))
+	shade.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(shade)
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
 	box = PanelContainer.new()
-	box.add_theme_stylebox_override("panel", S.pane())
+	var bb := S.pane() # JS #settings .box padding 20 28 22 32
+	bb.content_margin_top = 20
+	bb.content_margin_right = 28
+	bb.content_margin_bottom = 22
+	bb.content_margin_left = 32
+	box.add_theme_stylebox_override("panel", bb)
 	center.add_child(box)
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 6)
 	v.custom_minimum_size.x = 460
 	box.add_child(v)
 	var h := S.glow_label("설정", 30, Color.WHITE, 6)
+	h.add_theme_font_override("font", S.spaced(3)) # JS h3 letter-spacing 3px
 	h.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(h)
 	# 이름·범위·글은 JS index.html #settings · main.js fields/checks 그대로 (View.settings 이름 = JS 이름)
@@ -74,22 +80,27 @@ func _ready() -> void:
 		keys_grid.add_child(l)
 		var id: String = a.id
 		var b := S.button("", func(): _listen(id), "ghost", 13)
-		b.custom_minimum_size.x = 140
+		b.custom_minimum_size.x = 124 # JS 9.5em, 13px · padding 2 9
+		for stn in ["normal", "hover", "pressed", "focus"]:
+			var kb: StyleBoxFlat = b.get_theme_stylebox(stn)
+			kb.content_margin_left = 9
+			kb.content_margin_right = 9
+			kb.content_margin_top = 2
+			kb.content_margin_bottom = 2
 		key_btns[id] = b
 		keys_grid.add_child(b)
 	dup_label = S.label("", 13, Color("ff8a78"))
 	v.add_child(dup_label)
 	var btns := HBoxContainer.new()
 	btns.alignment = BoxContainer.ALIGNMENT_END
-	leave_btn = S.button("방 나가기", _leave, "ghost", 15)
-	leave_btn.add_theme_color_override("font_color", Color("ffd6cc"))
+	leave_btn = S.button("방 나가기", _leave, "leave", 16) # JS button.leave: 빨강 빛 테두리 (판 중엔 한 번 더 — '정말 나가기')
 	btns.add_child(leave_btn)
 	var gap := Control.new()
 	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	btns.add_child(gap)
-	btns.add_child(S.button("튜토리얼", func(): open_tutorial.emit(), "ghost", 15))
-	btns.add_child(S.button("기본값", _reset_settings, "ghost", 15))
-	btns.add_child(S.button("닫기", func(): visible = false, "ghost", 15))
+	btns.add_child(S.button("튜토리얼", func(): open_tutorial.emit(), "ghost", 16)) # JS 16px
+	btns.add_child(S.button("기본값", _reset_settings, "ghost", 16))
+	btns.add_child(S.button("닫기", func(): visible = false, "ghost", 16))
 	v.add_child(btns)
 	leave_note = S.label("판 중엔 나가면 이 판은 패배 — 한 번 더 누르면 나감", 13, Color("ff9a84"))
 	leave_note.visible = false
@@ -109,6 +120,7 @@ func _slider(parent: Node, text: String, key: String, lo: float, hi: float, step
 	sl.step = step
 	sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sl.focus_mode = Control.FOCUS_NONE
+	S.style_slider(sl) # JS input[type=range] accent-color: g (예전엔 기본 회색)
 	row.add_child(sl)
 	var val := S.label("", 14, S.TEXT)
 	val.custom_minimum_size.x = 56
@@ -146,21 +158,48 @@ func _on_shown() -> void:
 	leave_btn.visible = Store.in_room()
 	# 키 목록은 남는 높이만큼 (960×540 에서도 창이 화면 안)
 	keys_scroll.custom_minimum_size.y = clampf(get_viewport_rect().size.y - 480.0, 90.0, 260.0)
+	_disarm()
+	_show_binds()
+
+
+# '정말 나가기' 풀기 (JS disarmLeave: LEAVE_CONFIRM_MS 지나면·창을 다시 열면)
+func _disarm() -> void:
 	leave_note.visible = false
 	leave_armed_at = -100000.0
-	_show_binds()
+	leave_btn.text = "방 나가기"
+	S.style_button(leave_btn, "leave", 16)
+
+
+func _process(_d: float) -> void:
+	if leave_armed_at > 0.0 and Time.get_ticks_msec() - leave_armed_at > C.LEAVE_CONFIRM_MS:
+		_disarm()
+	if leave_armed_at > 0.0: # JS danger-blink .32s steps(2): 밝기 1.18 ↔ .9
+		leave_btn.modulate = Color(1.18, 1.18, 1.18) if int(Time.get_ticks_msec() / 160) % 2 == 0 else Color(0.9, 0.9, 0.9)
+	else:
+		leave_btn.modulate = Color.WHITE
 
 
 func _show_binds() -> void:
 	var dup := Keys.conflicts(PlayerInput.binds)
 	for id in key_btns:
 		var b: Button = key_btns[id]
-		b.text = "키를 누르세요…" if listening == id else Keys.key_label(PlayerInput.binds.get(id, ""))
-		b.modulate = Color(1, 0.6, 0.55) if dup.has(PlayerInput.binds.get(id, "")) else Color.WHITE
+		b.text = "키를 누르세요 (Esc 취소)" if listening == id else Keys.key_label(PlayerInput.binds.get(id, "")) # JS showBinds
+		# 기다리는 칸 = 주 버튼 채움 (JS .kb-btn.wait), 겹친 키 = 빨강 2px 테 + 글자 #ffb0a4 (.dup)
+		var kind: String = "go" if listening == id else ("dup" if dup.has(PlayerInput.binds.get(id, "")) else "ghost")
+		if b.get_meta("kind", "ghost") != kind: # 모양이 바뀔 때만 다시 칠함
+			b.set_meta("kind", kind)
+			S.style_button(b, kind, 13)
+			for stn in ["normal", "hover", "pressed", "focus"]:
+				var kb: StyleBoxFlat = b.get_theme_stylebox(stn)
+				kb.content_margin_left = 9
+				kb.content_margin_right = 9
+				kb.content_margin_top = 2
+				kb.content_margin_bottom = 2
 	var lines := []
 	for code in dup:
 		lines.append("%s: %s" % [Keys.key_label(code), " · ".join(dup[code].map(func(i): return _label_of(i)))])
-	dup_label.text = "\n".join(lines)
+	dup_label.text = ("겹치는 키 (둘 다 실행됨) — %s" % " / ".join(lines)) if not lines.is_empty() else "" # JS #key-dup 한 줄
+	dup_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 
 func _label_of(id: String) -> String:
@@ -171,7 +210,7 @@ func _label_of(id: String) -> String:
 
 
 func _listen(id: String) -> void:
-	listening = id
+	listening = null if listening == id else id # JS: 기다리는 칸을 다시 누르면 취소
 	_show_binds()
 
 
@@ -226,6 +265,9 @@ func _leave() -> void:
 	if need and now - leave_armed_at > C.LEAVE_CONFIRM_MS:
 		leave_armed_at = now
 		leave_note.visible = true
+		leave_btn.text = "정말 나가기" # JS .leave.armed: 글 바뀜 + 빨강 채움 + 깜빡임
+		S.style_button(leave_btn, "armed", 16)
 		return
+	_disarm()
 	visible = false
 	Store.leave()
