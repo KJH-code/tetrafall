@@ -27,6 +27,7 @@ import { showTitle } from '/shared/title.js';
 import { bigTicks } from '/shared/bblock-look.js';
 import { startTitle } from '/title.js';
 import { TutorialUI, tutorialState } from '/tutorial-ui.js';
+import { setText, setAttr } from '/dom-diff.js';
 import { createLater } from '/shared/later.js';
 import { createErrorReporter, runEach } from '/shared/err-report.js';
 const errors = createErrorReporter();
@@ -1970,7 +1971,7 @@ function updateScreen() {
     playWipe(kind);
   }
   screenNow = next;
-  if (!uiHold()) document.body.classList.remove('wipe-hold');
+  if (!uiHold()) document.body.classList.toggle('wipe-hold', false);
   // 방에 들어감: 방 목록·메뉴 장면은 띠가 다 덮을 때 치움
   if (next !== 'menu' && roomsEl.classList.contains('leaving') && !uiHold()) {
     roomsEl.classList.add('hidden');
@@ -2009,7 +2010,7 @@ function drawHud() {
   // 왼쪽 위: 판 중에만 시간 하나 (남은 시간이 있는 모드는 남은 시간)
   const timeShown = state.phase === 'playing' ? fmt(state.round.left ?? state.round.elapsed) : null;
   statusEl.classList.toggle('hidden', timeShown === null);
-  statusEl.textContent = timeShown || '';
+  setText(statusEl, timeShown || '');
 
   updateScore();
   updatePlayers();
@@ -2023,7 +2024,7 @@ function drawHud() {
   if (danger !== null && danger !== undefined) {
     // 글자만 (아이콘 없음): "머리 위 블록!" + 남은 초는 옆 작은 칸. 모양은 index.html #danger
     if (!dangerEl.firstElementChild) dangerEl.innerHTML = '<span class="msg">머리 위 블록!</span><span class="sec"></span>';
-    dangerEl.lastElementChild.textContent = `${(danger / 1000).toFixed(1)}초`;
+    setText(dangerEl.lastElementChild, `${(danger / 1000).toFixed(1)}초`);
     if (lastDanger === null) sound.play('danger');
   }
   lastDanger = danger ?? null;
@@ -2058,8 +2059,8 @@ function drawHud() {
   }
   banner.classList.toggle('hidden', bannerText === null);
   if (bannerText !== null) {
-    banner.textContent = bannerText;
-    banner.style.background = bannerColor;
+    setText(banner, bannerText);
+    if (banner.style.background !== bannerColor) banner.style.background = bannerColor;
   }
 
   // 가운데 안내
@@ -2091,9 +2092,9 @@ function drawHud() {
   centerEl.classList.toggle('hidden', center === null);
   centerEl.classList.toggle('slim', state.phase !== 'lobby' && state.phase !== 'over'); // 판 중 '화면을 클릭하면…' 은 작은 띠로 (몸을 덜 가림)
   centerEl.classList.toggle('sky', input.sky && state.phase !== 'lobby' && state.phase !== 'over'); // 하늘 시점: 필드를 안 가리게 화면 아래 (초상 판 위)
-  centerText.textContent = center || '';
+  setText(centerText, center || '');
   startBtn.classList.toggle('hidden', !showStart);
-  startBtn.textContent = state.phase === 'over' ? '재시작 (Enter)' : '시작 (Enter)';
+  setText(startBtn, state.phase === 'over' ? '재시작 (Enter)' : '시작 (Enter)');
   $('first-hint').classList.toggle('hidden', !(state.phase === 'lobby' && tutorialState() !== 'done' && !inPractice())); // 튜토리얼 안 한 사람: 대기실에 핵심 키 한 줄
   keysEl.classList.toggle('hidden', !showKeys);
   // 봇 버튼: 호스트만, 판 사이에만
@@ -2118,10 +2119,10 @@ function drawHud() {
   if (state.mode && document.activeElement !== modeSel) modeSel.value = state.mode;
   const modeInfo = $('mode-info');
   modeInfo.classList.toggle('hidden', !between);
-  modeInfo.textContent = MODE_DESC[state.mode] || '';
+  setText(modeInfo, MODE_DESC[state.mode] || '');
   const mapInfo = $('map-info');
   mapInfo.classList.toggle('hidden', !(state.map && !isHost && between));
-  if (state.map) mapInfo.textContent = `맵: ${mapName(state.map.choice)} · 모드: ${C.MODE_NAMES[state.mode] || state.mode}${state.skyStairs ? ' · 하늘 계단' : ''}`;
+  if (state.map) setText(mapInfo, `맵: ${mapName(state.map.choice)} · 모드: ${C.MODE_NAMES[state.mode] || state.mode}${state.skyStairs ? ' · 하늘 계단' : ''}`);
   if (showBots) {
     $('add-bot').disabled = state.players.length >= Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length);
     $('remove-bot').disabled = !state.players.some((x) => x.isBot);
@@ -2139,7 +2140,7 @@ function drawHud() {
   crosshair.classList.toggle('armed', armed || brick || bomb);
   crosshair.classList.toggle('brick', brick);
   crosshair.classList.toggle('bomb', bomb);
-  crosshair.dataset.ammo = '';
+  if (crosshair.dataset.ammo !== '') crosshair.dataset.ammo = '';
 }
 
 // ---------- 관전: 죽었거나 관전자면 살아 있는 사람을 3인칭으로 따라감 ----------
@@ -2275,7 +2276,7 @@ function updateGhostAim() {
   if (!on) {
     ghost.aim = null;
     renderer.setGhostAim(null);
-    ghostHintEl.classList.add('hidden');
+    ghostHintEl.classList.toggle('hidden', true);
     return;
   }
   const p = me();
@@ -2352,7 +2353,7 @@ function updateCooldowns(p, show) {
     a.el.classList.toggle('spent', spent);
     a.el.style.display = on ? '' : 'none';
     a.track.style.display = cd > 0 && !spent ? '' : 'none';
-    a.el.setAttribute('stroke-dasharray', `${a.len * fill} ${a.len}`);
+    setAttr(a.el, 'stroke-dasharray', `${a.len * fill} ${a.len}`);
     a.el.classList.toggle('flash', flashing);
   }
 }
@@ -2483,7 +2484,7 @@ function updateBottom(p) {
     }
     shownDamage = p.damage;
     shownKey = dmgKey;
-    damageEl.textContent = hv ? `HP ${hv.hp}` : `${p.damage}%`;
+    setText(damageEl, hv ? `HP ${hv.hp}` : `${p.damage}%`);
     damageEl.style.color = hv ? `rgb(${hpColor(hv.frac).join(',')})` : damageColor(p.damage);
   }
   const buffs = [];
@@ -2502,7 +2503,7 @@ function updateBottom(p) {
   if (key === bottomKey) return;
   bottomKey = key;
   buffsEl.innerHTML = buffs.map((b) => `<span class="buff">${b}</span>`).join('');
-  itemSlotEl.querySelector('.name').textContent = item;
+  setText(itemSlotEl.querySelector('.name'), item);
   itemSlotEl.classList.toggle('empty', item.endsWith('—'));
 }
 
@@ -2514,7 +2515,7 @@ function updateSkills(p) {
   const f = $('skill-f');
   const r = $('skill-r');
   const cdTotal = C.SKILL_CD_MS[p.char];
-  f.querySelector('.name').textContent = `${C.SKILL_NAMES[p.char]} ${p.skillCd > 0 ? `${(p.skillCd / 1000).toFixed(1)}s` : ''}`;
+  setText(f.querySelector('.name'), `${C.SKILL_NAMES[p.char]} ${p.skillCd > 0 ? `${(p.skillCd / 1000).toFixed(1)}s` : ''}`);
   f.querySelector('.fill').style.width = `${p.skillCd > 0 ? (1 - p.skillCd / cdTotal) * 100 : 100}%`;
   f.classList.toggle('ready', p.skillCd <= 0);
   const ultMax = p.ultMax || C.ULT_MAX; // 사냥꾼은 2배
@@ -2523,7 +2524,7 @@ function updateSkills(p) {
   // 사냥꾼: 게이지가 찼어도 지금 쏠 표식 대상이 없으면 회색 (서버 판정 ultTarget, 다른 캐릭터는 undefined)
   const dim = full && p.ultTarget === false;
   const ultName = p.char === 'bard' && p.bard?.form === 'metal' ? C.BARD_METAL_ULT_NAME : C.ULT_NAMES[p.char]; // 바드는 폼 따라
-  r.querySelector('.name').textContent = performance.now() < ultFailUntil ? ultFailText : `${ultName} ${full ? '준비!' : `${pct}%`}`;
+  setText(r.querySelector('.name'), performance.now() < ultFailUntil ? ultFailText : `${ultName} ${full ? '준비!' : `${pct}%`}`);
   r.querySelector('.fill').style.width = `${Math.min(100, (p.ult / ultMax) * 100)}%`;
   r.classList.toggle('ready', full && !dim);
   r.style.filter = dim ? 'grayscale(1) brightness(.7)' : '';
