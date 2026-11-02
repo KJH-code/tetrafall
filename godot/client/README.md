@@ -42,6 +42,17 @@ WEB_PORT=8060 xvfb-run -a node godot/client/tools/web_shot.cjs /tmp "?server=ws:
 - 웹은 C# 서버가 `/play/` 로 같이 서빙 (같은 호스트라 `?server=` 없이 붙음). 서버·웹·PC 클라 한 zip 은 `node godot/server/tools/package.mjs --godot <고도>` (godot/server/README.md G7, 재혁 PC 순서 docs/godot-play.md)
 - 재혁 PC (윈도우): `tetrafall.exe -- --server ws://<서버 IP>:3000` (또는 같은 PC 면 그냥 `tetrafall.exe`)
 
+## 성능 재기 (웹·JS 같은 기계, W5 2026-11-02)
+
+```
+GAME_PORT=3000 WEB_PORT=8060 xvfb-run -a node godot/client/tools/perf_cmp.cjs js|web third pyramid 12 35   # 평균 프레임·1% low·그리기·CPU ms/프레임 (GPU·렌더러 프로세스)
+GAME_PORT=3000 WEB_PORT=8060 xvfb-run -a node godot/client/tools/perf_ab.cjs msaa0                          # 한 판 안에서 설정 A/B 번갈아 → 'AB msaa0: A …ms · B …ms · B/A …'
+xvfb-run -a godot --path godot/client --rendering-driver opengl3 --resolution 1280x720 -- --auto host --bots 7 --wait-players 8 --abshot msaa0 --abshot-dir /tmp --abshot-quit   # 같은 프레임 A/B 스샷·화소 차
+```
+
+- 기계를 나눠 쓰면 벽시계 프레임이 ±15% 흔들림 → 비용 차이는 `perf_ab` (같은 판 안 비율) 로, 큰 표는 `perf_cmp` 를 번갈아 여러 번. 종류 목록은 `world/perf_ab.gd` 머리
+- 웹은 다중 샘플 끔 (`world_config.gd` MSAA_3D_WEB): llvmpipe 에서 4× 가 프레임 약 2배, 2× 도 4× 와 같은 비용. PC 는 4×
+
 ## 소리 (G5, `audio/`)
 
 JS 화면의 합성 소리·곡을 **크로미움에서 그대로 녹음해 구움** (`tools/bake-audio.cjs` → `audio/baked/*.ogg` 314개 7.5MB + `manifest.json`). 고도는 녹음본만 틀어서 실행 중 합성이 없음 → JS 와 같은 소리, 웹에서도 가벼움.
