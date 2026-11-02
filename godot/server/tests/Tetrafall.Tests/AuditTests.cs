@@ -224,3 +224,23 @@ public class AuditTests
         Assert.Equal(new string(C.ROOM_CODE_CHARS[0], (int)C.ROOM_CODE_LEN), Code(wf));
     }
 
+    [Fact]
+    public void S6_join_rejoin_에러_문구에는_코드를_ROOM_CODE_LEN_글자까지만()
+    {
+        var rooms = new Rooms();
+        var (a, wa) = Open(rooms);
+        var huge = new string('x', 5000);
+        rooms.Message(a, J($"{{\"type\":\"join\",\"code\":\"{huge}\"}}"));
+        var reason = wa.Last("joinError")!.Value.GetProperty("reason").GetString()!;
+        Assert.StartsWith("XXXX: ", reason);
+        Assert.True(reason.Length < 100);
+        rooms.Message(a, J($"{{\"type\":\"rejoin\",\"code\":\"{new string('y', 5000)}\",\"token\":\"t\"}}"));
+        Assert.Equal("YYYY", wa.Last("rejoinError")!.Value.GetProperty("code").GetString());
+        rooms.Message(a, J("{\"type\":\"join\",\"code\":\"   \"}"));
+        Assert.StartsWith("빈 코드", wa.Last("joinError")!.Value.GetProperty("reason").GetString());
+        var (h, wh) = Open(rooms);
+        rooms.Message(h, J("{\"type\":\"create\"}"));
+        rooms.Message(a, J($"{{\"type\":\"join\",\"code\":\" {Code(wh).ToLowerInvariant()} \"}}"));
+        Assert.NotNull(wa.Last("welcome"));
+    }
+

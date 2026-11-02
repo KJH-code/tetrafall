@@ -29,6 +29,10 @@ function cleanText(raw, max) {
   return Array.from(clean).slice(0, max).join('');
 }
 
+// 받은 방 코드: 앞뒤 공백 빼고 대문자로. 방 코드는 ROOM_CODE_LEN 글자라 더 긴 건 어차피 없는 방 → 에러 문구엔 ROOM_CODE_LEN 글자까지만 (S6: 긴 글자를 그대로 되돌려 보내지 않음)
+const codeOf = (raw) => String(raw ?? '').trim().toUpperCase();
+const shownCode = (code) => code.slice(0, C.ROOM_CODE_LEN);
+
 export class Rooms {
   // openLog(code) → { log(msg), close() }: 방마다 로그 (서버는 파일, 테스트는 배열)
   // rng: 방 코드 뽑기용 난수 (테스트가 정해진 코드를 받으려고 넣음). 없으면 crypto.randomInt (2026-10-30 감사 S5: 코드를 Math.random 으로 추측하기 쉬웠음).
@@ -125,11 +129,11 @@ export class Rooms {
 
   // 토큰으로 같은 자리에 다시 붙기. 방·토큰이 안 맞거나 자리 유지 시간이 지났으면 rejoinError (화면은 보통 들어가기로 다시)
   rejoin(conn, rawCode, token) {
-    const code = String(rawCode ?? '').trim().toUpperCase();
+    const code = codeOf(rawCode);
     const room = this.rooms.get(code);
     const found = room && typeof token === 'string' ? [...room.seats.entries()].find(([, s]) => s.token === token) : null;
     if (!found) {
-      send(conn.ws, { type: 'rejoinError', code, reason: '자리가 없습니다 (시간이 지났거나 방이 없어짐)' });
+      send(conn.ws, { type: 'rejoinError', code: shownCode(code), reason: '자리가 없습니다 (시간이 지났거나 방이 없어짐)' });
       return false;
     }
     const [id, seat] = found;
@@ -263,10 +267,10 @@ export class Rooms {
   }
 
   join(conn, rawCode) {
-    const code = String(rawCode ?? '').trim().toUpperCase();
+    const code = codeOf(rawCode);
     const room = this.rooms.get(code);
     if (!room) {
-      send(conn.ws, { type: 'joinError', reason: `${code || '빈 코드'}: 그런 방이 없습니다 (코드 확인, 사람이 다 나가면 방이 없어짐)` });
+      send(conn.ws, { type: 'joinError', reason: `${shownCode(code) || '빈 코드'}: 그런 방이 없습니다 (코드 확인, 사람이 다 나가면 방이 없어짐)` });
       return false;
     }
     const player = room.game.addPlayer(conn.id);

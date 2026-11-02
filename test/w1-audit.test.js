@@ -226,3 +226,22 @@ test('S5 방 코드는 crypto 난수 (Math.random 을 안 씀), 판 시드(game.
   assert.equal(f.ws.last('welcome').room.code, C.ROOM_CODE_CHARS[0].repeat(C.ROOM_CODE_LEN));
 });
 
+test('S6 join·rejoin 에러 문구에는 받은 코드를 ROOM_CODE_LEN 글자까지만', () => {
+  const { rooms, join } = roomsSetup();
+  const a = join();
+  rooms.message(a.conn, { type: 'join', code: 'x'.repeat(5000) });
+  const e = a.ws.last('joinError');
+  assert.ok(e.reason.startsWith('XXXX: '), e.reason.slice(0, 20));
+  assert.ok(e.reason.length < 100);
+  rooms.message(a.conn, { type: 'rejoin', code: 'y'.repeat(5000), token: 't' });
+  assert.equal(a.ws.last('rejoinError').code, 'YYYY');
+  rooms.message(a.conn, { type: 'join', code: '   ' });
+  assert.ok(a.ws.last('joinError').reason.startsWith('빈 코드'));
+  // 진짜 방은 앞뒤 공백·소문자여도 들어감
+  const h = join();
+  rooms.message(h.conn, { type: 'create' });
+  const code = h.ws.last('welcome').room.code;
+  rooms.message(a.conn, { type: 'join', code: ` ${code.toLowerCase()} ` });
+  assert.ok(a.ws.last('welcome'));
+});
+

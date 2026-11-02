@@ -226,6 +226,9 @@ public sealed class Rooms
     }
 
     // 토큰으로 같은 자리에 다시 붙기. 방·토큰이 안 맞거나 자리 유지 시간이 지났으면 rejoinError (화면은 보통 들어가기로 다시)
+    // 받은 방 코드 (S6): 방 코드는 ROOM_CODE_LEN 글자라 더 긴 건 어차피 없는 방 → 에러 문구엔 ROOM_CODE_LEN 글자까지만
+    static string ShownCode(string code) => code.Length > (int)C.ROOM_CODE_LEN ? code[..(int)C.ROOM_CODE_LEN] : code;
+
     public bool Rejoin(Conn conn, JsonElement? rawCode, JsonElement? rawToken)
     {
         var code = JsText.Trim(StrOrEmpty(rawCode)).ToUpperInvariant();
@@ -234,7 +237,7 @@ public sealed class Rooms
         var found = room != null && token != null ? room.seats.Entries().FirstOrDefault(e => e.Value.token == token) : default;
         if (room == null || found.Value == null)
         {
-            Send(conn.ws, o => o.P("type", "rejoinError").P("code", code).P("reason", "자리가 없습니다 (시간이 지났거나 방이 없어짐)"));
+            Send(conn.ws, o => o.P("type", "rejoinError").P("code", ShownCode(code)).P("reason", "자리가 없습니다 (시간이 지났거나 방이 없어짐)"));
             return false;
         }
         var (id, seat) = (found.Key, found.Value);
@@ -407,7 +410,7 @@ public sealed class Rooms
         var room = rooms.Get(code);
         if (room == null)
         {
-            Send(conn.ws, o => o.P("type", "joinError").P("reason", $"{(code != "" ? code : "빈 코드")}: 그런 방이 없습니다 (코드 확인, 사람이 다 나가면 방이 없어짐)"));
+            Send(conn.ws, o => o.P("type", "joinError").P("reason", $"{(code != "" ? ShownCode(code) : "빈 코드")}: 그런 방이 없습니다 (코드 확인, 사람이 다 나가면 방이 없어짐)"));
             return false;
         }
         var player = room.game.AddPlayer(conn.id);
