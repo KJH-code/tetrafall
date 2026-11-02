@@ -209,6 +209,11 @@ func test_leave_room_clears_hazard() -> void:
 	Store.state = {}
 	w._process(1.0 / 60.0)
 	check((G3.global_value("g3_hz_lp") as Vector4).w == 0.0, "두 번째로 나가도 끔")
+	# 테마 없음 (앱을 켠 메뉴 = 예전 노을, set_g3 테마 null) 에서도 오류 없이
+	hv.set_g3(G3, null, false)
+	hv.update(st, grid, 1, st.players[0], 0.1)
+	w._process(1.0 / 60.0)
+	check((G3.global_value("g3_hz") as Vector4).w == 0.0, "테마 없음: 나간 뒤 물들임 끔")
 	Store.state = keep_state
 	w.sun.free() # _ready 없이 만든 World: 붙이지 않은 해·효과 자리도
 	w.fx_root.free()
