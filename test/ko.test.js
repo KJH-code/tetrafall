@@ -152,11 +152,10 @@ test('접속 표시 계산 (shared/net.js): 핑 = 왕복 시간, 연속으로 �
 test('접속 표시: 로컬 흔들림 (핑 5ms, 가끔 화면이 멈칫해 pong 하나·스냅샷 사이 하나가 늦음) 에는 1분 동안 노랑이 안 뜸', async () => {
   const { NetMeter } = await import('../shared/net.js');
   const m = new NetMeter();
-  const tick = 1000 / C.TICK_RATE;
   let worst = 'ok';
   for (let now = 0, k = 0; now < 60000; k++) {
     const stall = k % 150 === 75 ? C.NET_SNAPSHOT_GAP_MS + 80 : 0; // 5초마다 한 번 멈칫
-    now += tick + stall;
+    now += TICK + stall;
     m.onState(now);
     if (k % 30 === 0) m.onPong({ type: 'pong', t: now - 5 - stall, workMs: 2, behindMs: 0 }, now);
     const v = m.view(now + 5);
@@ -270,9 +269,8 @@ test('kill 이벤트 (킬피드·부활 화면): 죽음마다 killer·victim·ca
 test('접속 표시: 방을 나가 스냅샷이 끊겨도 메뉴에선 끊김 알림 없음 (2026-10-31 재혁 결과 판 뒤 메뉴에 "끊김 4536ms")', async () => {
   const { NetMeter } = await import('../shared/net.js');
   const m = new NetMeter();
-  const tick = 1000 / C.TICK_RATE;
   let now = 0;
-  for (let k = 0; k < 100; k++) m.onState((now += tick));
+  for (let k = 0; k < 100; k++) m.onState((now += TICK));
   assert.equal(m.view(now + C.NET_SNAPSHOT_STALL_MS * 2).warn !== null, true); // 방 안에서 안 오면 끊김
   m.leaveRoom();
   assert.equal(m.view(now + C.NET_SNAPSHOT_STALL_MS * 4).warn, null);
