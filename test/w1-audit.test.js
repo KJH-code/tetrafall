@@ -245,3 +245,20 @@ test('S6 join·rejoin 에러 문구에는 받은 코드를 ROOM_CODE_LEN 글자�
   assert.ok(a.ws.last('welcome'));
 });
 
+test('S8 튜토리얼 방에는 손님이 못 들어감 (연습 방은 예전처럼 같이 연습)', () => {
+  const { rooms, join } = roomsSetup();
+  const a = join();
+  rooms.message(a.conn, { type: 'tutorial', char: 'tank' });
+  const code = a.ws.last('welcome').room.code;
+  const b = join();
+  rooms.message(b.conn, { type: 'join', code });
+  assert.ok(b.ws.last('joinError'));
+  assert.equal(b.ws.last('welcome'), undefined);
+  assert.equal(rooms.rooms.get(code).game.players.size, 1);
+  const p = join();
+  rooms.message(p.conn, { type: 'practice' });
+  const pcode = p.ws.last('welcome').room.code;
+  const q = join();
+  rooms.message(q.conn, { type: 'join', code: pcode });
+  assert.ok(q.ws.last('welcome'), '연습 방은 같이');
+});

@@ -244,3 +244,22 @@ public class AuditTests
         Assert.NotNull(wa.Last("welcome"));
     }
 
+    [Fact]
+    public void S8_튜토리얼_방에는_손님이_못_들어감()
+    {
+        var rooms = new Rooms();
+        var (a, wa) = Open(rooms);
+        rooms.Message(a, J("{\"type\":\"tutorial\",\"char\":\"tank\"}"));
+        var code = Code(wa);
+        var (b, wb) = Open(rooms);
+        rooms.Message(b, J($"{{\"type\":\"join\",\"code\":\"{code}\"}}"));
+        Assert.NotNull(wb.Last("joinError"));
+        Assert.Null(wb.Last("welcome"));
+        Assert.Single(rooms.Get(code)!.game.players);
+        var (p, wp) = Open(rooms);
+        rooms.Message(p, J("{\"type\":\"practice\"}"));
+        var (q, wq) = Open(rooms);
+        rooms.Message(q, J($"{{\"type\":\"join\",\"code\":\"{Code(wp)}\"}}"));
+        Assert.NotNull(wq.Last("welcome")); // 연습 방은 같이
+    }
+}

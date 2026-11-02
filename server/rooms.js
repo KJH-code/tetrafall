@@ -273,6 +273,11 @@ export class Rooms {
       send(conn.ws, { type: 'joinError', reason: `${shownCode(code) || '빈 코드'}: 그런 방이 없습니다 (코드 확인, 사람이 다 나가면 방이 없어짐)` });
       return false;
     }
+    if (room.tutorial) {
+      // 튜토리얼 방은 혼자 하는 방 (S8: 손님이 들어와 단계 판정을 어지럽히지 못하게)
+      send(conn.ws, { type: 'joinError', reason: '튜토리얼 방은 혼자 하는 방이라 들어갈 수 없습니다' });
+      return false;
+    }
     const player = room.game.addPlayer(conn.id);
     if (!player) {
       send(conn.ws, { type: 'joinError', reason: `방이 꽉 찼습니다 (최대 ${maxPlayers()}명)` });
