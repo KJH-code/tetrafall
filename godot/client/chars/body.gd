@@ -390,7 +390,7 @@ static func _merged_material(m: Dictionary) -> Material:
 	if int(m.get("emissive", 0)) != 0:
 		opts.emissive = int(m.emissive)
 	if m.has("plaid"):
-		opts.map = _plaid(m.plaid)
+		_plaid_opts(opts, m.plaid)
 	return G3.toon_material(Color.WHITE, opts)
 
 
@@ -489,8 +489,15 @@ static func _material(m: Dictionary, skin: Color) -> Material:
 	if int(m.get("emissive", 0)) != 0:
 		opts.emissive = int(m.emissive)
 	if m.has("plaid"):
-		opts.map = _plaid(m.plaid)
+		_plaid_opts(opts, m.plaid)
 	return G3.toon_material(col, opts)
+
+
+# 체크 무늬 재질 값 (figure.js plaidTexture: repeat FIGURE_PLAID_REPEAT, magFilter Nearest — 밉맵은 three 기본처럼 만듦)
+static func _plaid_opts(opts: Dictionary, fills: Array) -> void:
+	opts.map = _plaid(fills)
+	opts.map_repeat = C.FIGURE_PLAID_REPEAT
+	opts.map_nearest = true
 
 
 # 체크 무늬 천 (figure.js plaidTexture: 32×32 에 칠한 사각형을 그 투명도로 겹침)
@@ -505,6 +512,7 @@ static func _plaid(fills: Array) -> Texture2D:
 		for y in range(int(f[3]), mini(32, int(f[3]) + int(f[5]))):
 			for x in range(int(f[2]), mini(32, int(f[2]) + int(f[4]))):
 				img.set_pixel(x, y, img.get_pixel(x, y).lerp(Color(c.r, c.g, c.b, 1.0), a))
+	img.generate_mipmaps() # three CanvasTexture 기본 (minFilter LinearMipmapLinear)
 	var tex := ImageTexture.create_from_image(img)
 	_cache.plaid[key] = tex
 	return tex
@@ -1170,7 +1178,7 @@ func _apply_opacity() -> void:
 				if int(m.get("emissive", 0)) != 0:
 					opts.emissive = int(m.emissive)
 				if m.has("plaid"):
-					opts.map = _plaid(m.plaid)
+					_plaid_opts(opts, m.plaid)
 				dr.alpha = G3.toon_material(col, opts)
 				dr.col = col
 		var am: Material = dr.alpha

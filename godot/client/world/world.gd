@@ -67,6 +67,7 @@ const VIEWMODEL := "res://chars/viewmodel.gd"
 
 func _ready() -> void:
 	headless = DisplayServer.get_name() == "headless"
+	get_viewport().msaa_3d = WC.MSAA_3D # 모서리 계단 없앰 (JS antialias). 확인용 --msaa 는 자동 조종이 뒤에 덮어씀
 	if ResourceLoader.exists(G3_PATH):
 		G3 = load(G3_PATH)
 	var we := WorldEnvironment.new()

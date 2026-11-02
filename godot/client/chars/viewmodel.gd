@@ -7,6 +7,7 @@ extends Node
 const C := preload("res://core/config.gd")
 const Body := preload("res://chars/body.gd")
 const G3 := preload("res://shaders/g3.gd")
+const K := preload("res://chars/chars_config.gd")
 
 const HALF_PI := PI / 2
 
@@ -36,6 +37,7 @@ func _ready() -> void:
 	view = SubViewport.new()
 	view.transparent_bg = true
 	view.own_world_3d = true
+	view.msaa_3d = K.VM_MSAA # JS 는 팔도 판과 같은 캔버스 (antialias)
 	view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(view)
 	cam = Camera3D.new()

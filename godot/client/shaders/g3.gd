@@ -28,7 +28,7 @@ static var _globals := {} # 넣은 전역 셰이더 값 (RenderingServer 는 실
 
 
 # 툰 재질 (three toon({...})). color: Color 또는 0xRRGGBB. opts: map (Texture2D), emissive (Color/숫자), emissive_energy,
-# opacity (1 미만이면 투명), vertex_color (bool), outline (기본 true — 외곽선을 next_pass 로), no_fog (안개 안 받음), color_glow
+# map_repeat (three texture.repeat, 기본 1), map_nearest (three magFilter Nearest), opacity (1 미만이면 투명), vertex_color (bool), outline (기본 true — 외곽선을 next_pass 로), no_fog (안개 안 받음), color_glow
 static func toon_material(color = Color.WHITE, opts := {}) -> ShaderMaterial:
 	var m := ShaderMaterial.new()
 	var c := _col(color)
@@ -39,6 +39,8 @@ static func toon_material(color = Color.WHITE, opts := {}) -> ShaderMaterial:
 	if opts.has("map"):
 		m.set_shader_parameter("albedo_tex", opts.map)
 		m.set_shader_parameter("use_tex", true)
+		m.set_shader_parameter("uv_scale", Vector2.ONE * float(opts.get("map_repeat", 1.0)))
+		m.set_shader_parameter("tex_nearest_mag", opts.get("map_nearest", false))
 	if opts.has("emissive"):
 		m.set_shader_parameter("emissive", _col(opts.emissive))
 	m.set_shader_parameter("emissive_energy", opts.get("emissive_energy", 1.0))

@@ -3,7 +3,7 @@
 #define TOON_CUSTOM
 #include "res://shaders/toon_common.gdshaderinc"
 
-uniform sampler2D face_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D face_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable; // textures.js anisotropy 4 + 밉맵 (고도 기본 이방성 단계 2 = 4×)
 uniform vec3 accent0 : source_color = vec3(1.0);
 uniform vec3 accent1 : source_color = vec3(1.0);
 uniform float glow = 0.0;

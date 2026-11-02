@@ -13,7 +13,7 @@ global uniform float g3_fog_near;
 global uniform float g3_fog_far;
 
 uniform vec4 albedo : source_color = vec4(1.0);
-uniform sampler2D albedo_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D albedo_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable; // bblocks.js anisotropy 4 (고도 기본 이방성 단계 2 = 4×)
 uniform bool use_tex = false;
 uniform vec2 uv_scale = vec2(3.0, 2.0); // 고도 BoxMesh 는 면 6개가 3×2 로 나눠 가짐 → 면마다 텍스처 한 장 (three BoxGeometry 처럼)
 uniform sampler2D crack_tex : filter_linear, repeat_enable;
