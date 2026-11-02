@@ -21,7 +21,7 @@ var done_title: Label
 var done_sum: Label
 var band := HBoxContainer.new()
 var prog: Label
-var txt := HBoxContainer.new()
+var txt := RichTextLabel.new() # 단계 문구 (JS .txt: 19px, 키 글자 노랑, max-width 640 에서 줄바꿈 — 예전엔 글 조각을 한 줄로 이어 960 에서 화면 밖)
 var ok_lab: Label
 var chosen: String = C.CHAR_DEFAULT
 var shown_key := ""
@@ -78,18 +78,30 @@ func _ready() -> void:
 	top.position.y = 58
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(top)
-	band.add_theme_constant_override("separation", 0)
+	band.add_theme_constant_override("separation", -12) # JS .prog margin-right -12 · .ok margin-left -12 (사선끼리 겹침)
 	top.add_child(band)
-	prog = _chip("", Color("ffd23a"), Color("171b2c"))
+	prog = _chip("", Color("ffe98a").lerp(Color("ffc21e"), 0.5), Color("171b2c"), [16, 18]) # JS #ffe98a→#ffc21e, padding 9 18 9 16
 	band.add_child(prog.get_parent())
 	var tp := PanelContainer.new()
-	tp.add_theme_stylebox_override("panel", _box(Color("1b2448")))
+	var tb := _box(Color("1b2448"), [26, 26]) # JS .txt padding 9 26
+	tp.add_theme_stylebox_override("panel", tb)
+	txt.bbcode_enabled = true
+	txt.fit_content = true
+	txt.scroll_active = false
+	txt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	txt.add_theme_font_size_override("normal_font_size", 19)
+	txt.add_theme_color_override("default_color", S.TEXT)
+	txt.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tp.add_child(txt)
 	band.add_child(tp)
-	ok_lab = _chip("해냄!", Color("36d07a"), Color("062611"))
+	ok_lab = _chip("해냄!", Color("5ef09a").lerp(Color("1fa85a"), 0.5), Color("062611"), [20, 20])
 	band.add_child(ok_lab.get_parent())
+	var gap := Control.new() # JS #tut-skip-step margin-left 8 (+ 겹침 12 되돌림)
+	gap.custom_minimum_size.x = 20
+	band.add_child(gap)
 	var skip := S.button("", func(): Store.send_room({"type": "tutorialSkip"}), "ghost", 13)
 	skip.name = "SkipStep"
+	skip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	band.add_child(skip)
 	band.visible = false
 	chosen = str(Prefs.get_value("char", C.CHAR_DEFAULT))
@@ -131,20 +143,26 @@ func _btns(list: Array) -> HBoxContainer:
 	return h
 
 
-func _box(c: Color) -> StyleBoxFlat:
+# 띠 칸: JS clip-path polygon(12px 0, 100% 0, calc(100% − 12px) 100%, 0 100%) = 다른 HUD 칸과 같은 '/' 사선 12px (높이 ~42 → 0.29) + 그림자 0 5px 0 (.45).
+# 예전엔 -SKEW 라 튜토리얼 띠만 반대로 기울었음
+func _box(c: Color, lr := [18, 18]) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
 	s.bg_color = c
-	s.content_margin_left = 18
-	s.content_margin_right = 18
-	s.content_margin_top = 8
-	s.content_margin_bottom = 8
-	s.skew = Vector2(-S.SKEW, 0)
+	s.content_margin_left = lr[0]
+	s.content_margin_right = lr[1]
+	s.content_margin_top = 9
+	s.content_margin_bottom = 9
+	s.skew = Vector2(0.29, 0)
+	s.anti_aliasing = true
+	s.shadow_color = Color(0, 0, 0, 0.45)
+	s.shadow_size = 1
+	s.shadow_offset = Vector2(0, 5)
 	return s
 
 
-func _chip(t: String, bg: Color, fg: Color) -> Label:
+func _chip(t: String, bg: Color, fg: Color, lr := [18, 18]) -> Label:
 	var p := PanelContainer.new()
-	p.add_theme_stylebox_override("panel", _box(bg))
+	p.add_theme_stylebox_override("panel", _box(bg, lr))
 	var l := S.label(t, 19, fg)
 	p.add_child(l)
 	return l
@@ -264,11 +282,18 @@ func update(st: Dictionary) -> void:
 		return
 	shown_key = key
 	prog.text = TC.progress_label(int(t.get("i", 0)), int(t.get("n", C.TUTORIAL_STEPS.size())))
-	for c in txt.get_children():
-		c.queue_free()
+	var bb := ""
+	var plain := ""
 	for part in TC.step_parts(str(step.text), ch, _key_name, func(ids): return Keys.group_label(PlayerInput.binds, ids)):
-		var l := S.label(part.text, 19, S.ACCENT if part.key else S.TEXT)
-		txt.add_child(l)
+		var tx := str(part.text).replace("[", "[lb]")
+		bb += ("[color=#%s] %s [/color]" % [S.ACCENT.to_html(false), tx]) if part.key else tx # JS .k: 노랑, padding 0 3px
+		plain += (" %s " % part.text) if part.key else str(part.text)
+	txt.text = bb
+	# 폭: 글 한 줄 폭, 최대 640 (JS max-width) 이고 띠 전체가 화면 − 40 안 (JS #tut-band max-width calc(100vw − 40px))
+	var vw: float = get_viewport().get_visible_rect().size.x if get_viewport() != null else 1280.0
+	var one: float = txt.get_theme_font("normal_font").get_string_size(plain, HORIZONTAL_ALIGNMENT_LEFT, -1, 19).x + 4.0
+	var others: float = prog.get_parent().get_combined_minimum_size().x + 300.0 # 진행 칸 + 해냄 + 넘기기 자리
+	txt.custom_minimum_size.x = clampf(minf(one, 640.0 - 52.0), 120.0, maxf(120.0, vw - 40.0 - others))
 	(band.get_node("SkipStep") as Button).text = "이 단계 넘기기 (%s)" % _key_name("tutSkip")
 
 
