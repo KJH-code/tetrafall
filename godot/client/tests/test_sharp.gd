@@ -53,3 +53,22 @@ func test_outline_like_three() -> void:
 	var s := _src("res://shaders/outline.gdshader")
 	check(s.contains("vec4 n = normalize(pos - pos2);") and s.contains("POSITION = pos + n * thickness * pos.w;"), "외곽선 = three calculateOutline (vec4 정규화)")
 
+
+func test_game_light_grade_is_css_filter() -> void:
+	# JS game-light.js: 캔버스 CSS filter saturate(1.28) contrast(1.1) brightness(1.02) (vivid). 정답 = CSS 행렬을 sRGB 에서 (python 으로 계산)
+	var GL := preload("res://shaders/game_light.gd")
+	var g: Array = C.GAME_LIGHT_PRESETS["vivid"].grade
+	check(g == [1.28, 1.1, 1.02], "vivid grade 값")
+	var cases := [[[200, 60, 40], [246, 45, 17]], [[60, 180, 70], [27, 199, 41]], [[40, 70, 200], [22, 65, 251]], [[128, 128, 128], [131, 131, 131]], [[230, 220, 90], [250, 236, 49]]]
+	for cs in cases:
+		var o: Color = GL.css_grade(Color8(cs[0][0], cs[0][1], cs[0][2]), g)
+		var got := [int(round(o.r * 255)), int(round(o.g * 255)), int(round(o.b * 255))]
+		check(absi(got[0] - cs[1][0]) <= 1 and absi(got[1] - cs[1][1]) <= 1 and absi(got[2] - cs[1][2]) <= 1, "CSS 색 보정 %s → %s (얻음 %s)" % [cs[0], cs[1], got])
+	var t: ImageTexture3D = GL.grade_lut(g, 4)
+	check(t.get_width() == 4 and t.get_depth() == 4, "LUT 크기")
+	var c0: Color = GL.grade_images(g, 4)[1].get_pixel(2, 3) # 칸 (2,3,1) = 색 ((2.5, 3.5, 1.5) / 4) 의 보정 (반 텍셀 가운데)
+	var want: Color = GL.css_grade(Color(2.5 / 4, 3.5 / 4, 1.5 / 4), g)
+	check(absf(c0.r - want.r) < 0.01 and absf(c0.g - want.g) < 0.01 and absf(c0.b - want.b) < 0.01, "LUT 칸 = 텍셀 가운데 색의 CSS 보정")
+	var gl = GL.new()
+	check(gl.preset_name == C.GAME_LIGHT, "기본 프리셋 = config GAME_LIGHT")
+	gl.free()
