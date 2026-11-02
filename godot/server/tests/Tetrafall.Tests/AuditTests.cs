@@ -161,42 +161,78 @@ public class AuditTests
 
     static string Code(Sock ws) => ws.Last("welcome")!.Value.GetProperty("room").GetProperty("code").GetString()!;
 
+    static void Ticks(Rooms rooms, double ms)
+    {
+        for (double t = 0; t < ms; t += TICK) rooms.Tick(TICK);
+    }
+
     [Fact]
-    public void S4_한_판도_안_한_방은_연결_0명이면_바로_닫힘()
+    public void S4_한_판도_안_한_방은_연결_0명이면_짧은_유예_뒤_닫힘()
     {
         var logs = new Dictionary<string, List<string>>();
         var rooms = new Rooms(openLog: c => new ListLog(c, logs));
-        var old = new List<string>();
-        for (int i = 0; i < (int)C.ROOM_MAX; i++)
-        {
-            var (c, ws) = Open(rooms);
-            rooms.Message(c, J("{\"type\":\"create\"}"));
-            old.Add(Code(ws));
-            rooms.Disconnect(c); // 만들고 바로 끊기
-        }
-        Assert.All(old, code => Assert.Null(rooms.Get(code)));
+        Assert.InRange(C.ROOM_EMPTY_LOBBY_GRACE_MS, 1, C.RECONNECT_GRACE_MS - 1);
+        // 유예 안 재접속 성공: 같은 방·같은 자리
         var (a, wa) = Open(rooms);
         rooms.Message(a, J("{\"type\":\"create\"}"));
         var code = Code(wa);
-        var (b, _) = Open(rooms);
-        rooms.Message(b, J($"{{\"type\":\"join\",\"code\":\"{code}\"}}"));
+        var w = wa.Last("welcome")!.Value;
+        var token = w.GetProperty("token").GetString()!;
+        var id = w.GetProperty("id").GetInt32();
         rooms.Disconnect(a);
-        Assert.NotNull(rooms.Get(code)); // 연결이 남아 있으면 유지
-        rooms.Disconnect(b);
+        Ticks(rooms, C.ROOM_EMPTY_LOBBY_GRACE_MS - 1000);
+        Assert.NotNull(rooms.Get(code));
+        var (a2, wa2) = Open(rooms);
+        rooms.Message(a2, J($"{{\"type\":\"rejoin\",\"code\":\"{code}\",\"token\":\"{token}\"}}"));
+        var w2 = wa2.Last("welcome")!.Value;
+        Assert.True(w2.GetProperty("rejoined").GetBoolean());
+        Assert.Equal(id, w2.GetProperty("id").GetInt32());
+        Ticks(rooms, C.ROOM_EMPTY_LOBBY_GRACE_MS * 2);
+        Assert.NotNull(rooms.Get(code)); // 돌아왔으면 유지
+        // 유예 지나면 닫힘
+        rooms.Disconnect(a2);
+        Ticks(rooms, C.ROOM_EMPTY_LOBBY_GRACE_MS + 1000);
         Assert.Null(rooms.Get(code));
-        Assert.Contains("닫음", logs[code][^1]);
-        // 한 판 한 방은 자리 유지
-        var (c2, w2) = Open(rooms);
+        Assert.Contains(logs[code], l => l.Contains("끊김 만료"));
+        var (late, wl) = Open(rooms);
+        rooms.Message(late, J($"{{\"type\":\"rejoin\",\"code\":\"{code}\",\"token\":\"{token}\"}}"));
+        Assert.NotNull(wl.Last("rejoinError"));
+        // 만들고 끊기 반복: ROOM_MAX 가 차도 유예 뒤엔 풀림
+        for (int i = 0; i < (int)C.ROOM_MAX; i++)
+        {
+            var (x, _) = Open(rooms);
+            rooms.Message(x, J("{\"type\":\"create\"}"));
+            rooms.Disconnect(x);
+        }
+        Assert.Equal((int)C.ROOM_MAX, rooms.Count);
+        Ticks(rooms, C.ROOM_EMPTY_LOBBY_GRACE_MS + 1000);
+        Assert.Equal(0, rooms.Count);
+        // 연결이 남은 방은 유예 없이 유지, 한 판 한 방은 예전 자리 유지, 연습 방은 규칙 밖
+        var (b, wb) = Open(rooms);
+        rooms.Message(b, J("{\"type\":\"create\"}"));
+        var code1 = Code(wb);
+        var (c1, _) = Open(rooms);
+        rooms.Message(c1, J($"{{\"type\":\"join\",\"code\":\"{code1}\"}}"));
+        rooms.Disconnect(b);
+        Ticks(rooms, C.ROOM_EMPTY_LOBBY_GRACE_MS + 1000);
+        Assert.NotNull(rooms.Get(code1));
+        rooms.Disconnect(c1);
+        Ticks(rooms, C.RECONNECT_GRACE_MS);
+        Assert.Null(rooms.Get(code1));
+        var (c2, w2b) = Open(rooms);
         rooms.Message(c2, J("{\"type\":\"create\"}"));
-        var code2 = Code(w2);
+        var code2 = Code(w2b);
         rooms.Get(code2)!.game.totals["rounds"] = 1;
         rooms.Disconnect(c2);
+        Ticks(rooms, C.ROOM_EMPTY_LOBBY_GRACE_MS + 1000);
         Assert.NotNull(rooms.Get(code2));
-        // 연습 방은 규칙 밖
+        Ticks(rooms, C.RECONNECT_GRACE_MS);
+        Assert.Null(rooms.Get(code2));
         var (d, wd) = Open(rooms);
         rooms.Message(d, J("{\"type\":\"practice\"}"));
         var code3 = Code(wd);
         rooms.Disconnect(d);
+        Ticks(rooms, C.ROOM_EMPTY_LOBBY_GRACE_MS + 1000);
         Assert.NotNull(rooms.Get(code3));
     }
 

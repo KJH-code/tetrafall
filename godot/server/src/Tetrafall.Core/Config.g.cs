@@ -11,6 +11,7 @@ public static partial class C
     public static readonly double[] PLAYER_PALETTE = { 14700624, 5292112, 11559136, 14729296, 15790320, 4247744, 16744624, 9067056, 11067488, 8006232, 2894904, 10532048, 13660224, 2121808 };
     public const double MIN_PLAYERS = 2;
     public const double ROOM_MAX = 8;
+    public const double ROOM_EMPTY_LOBBY_GRACE_MS = 10000;
     public const double ROOM_CODE_LEN = 4;
     public const string ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ";
     public const double ROOM_NAME_MAX_LEN = 16;
