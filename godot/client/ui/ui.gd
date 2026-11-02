@@ -49,6 +49,9 @@ func _ready() -> void:
 	hud_extra = load("res://ui/hud_extra.gd").new()
 	hud_extra.hud = hud
 	root.add_child(hud_extra)
+	# 위 점수 띠는 화면 뿌리로 (판 HUD 가 숨는 대기실·결과에도 보임 — JS #score 는 판 사이에도 승수, body.ui-dark 빛 판)
+	hud.score_panel.reparent(root)
+	hud.score_panel.visible = false
 	results = load("res://ui/results.gd").new()
 	root.add_child(results)
 	status = S.label("연결 중...", 16, S.TEXT)
@@ -118,6 +121,8 @@ func _show(screen: String) -> void:
 	hud.visible = screen == "game"
 	hud_extra.visible = screen == "game"
 	results.visible = screen == "results"
+	if screen == "menu":
+		hud.score_panel.visible = false
 
 
 # 핑 칸 (JS #netPing: padding 2 12, 7px 사선) · 알림 칸 (#netWarn: padding 4 16)
@@ -205,6 +210,8 @@ func _refresh_panels(st: Dictionary) -> void:
 		hud_extra.refresh(st)
 	if shown == "results" and not st.is_empty():
 		results.refresh(st)
+	if (shown == "results" or shown == "lobby") and not st.is_empty():
+		hud.score_band(st, get_viewport().get_visible_rect().size, true) # 판 사이 위 점수 띠 (JS body.ui-dark #score)
 	if shown == "lobby" and not st.is_empty():
 		lobby.refresh(st)
 		hud.warm_faces(st)

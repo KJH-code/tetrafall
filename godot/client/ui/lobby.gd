@@ -45,18 +45,34 @@ var code_label: Label
 var room_text: Label
 var public_btn: Button
 var keys_text: Label
+var scroll: ScrollContainer # JS #center max-height calc(100vh − 92px) · overflow-y auto
+var col: VBoxContainer
+var skill_btn: Button
+var room_link: Label # JS #room-link (11px, 작은 창이면 숨김)
+var settings_wrap: PanelContainer # '방 설정' 묶음 판 (JS #bot-btns: rgba(0,0,0,.28) + 안쪽 1px gc + 사선)
+var pane_box: StyleBoxFlat
+var small_was = null
 var picked_at := -100000.0 # 캐릭터 고른 시각 (ms) — 큰 캐릭터 도발·돎 (G2 몸이 오면)
 var rolling := false
 var colors_key := ""
 
 
 func _ready() -> void:
-	visibility_changed.connect(func(): if visible: _place())
-	add_theme_stylebox_override("panel", S.pane())
+	visibility_changed.connect(func():
+		if visible:
+			_place()
+			if not S.reduced():
+				S.slide_in(self, 30.0)) # JS dock-in .22s (오른쪽 30px 에서)
+	pane_box = S.pane()
+	add_theme_stylebox_override("panel", pane_box)
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	var col := VBoxContainer.new()
+	scroll = ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	add_child(scroll)
+	col = VBoxContainer.new()
 	col.add_theme_constant_override("separation", 8)
-	add_child(col)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(col)
 
 	status = S.glow_label("", 18, Color.WHITE, 5)
 	status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -64,12 +80,24 @@ func _ready() -> void:
 	hint = S.label("처음이면  WASD 이동 · Space 점프 (공중에서 한 번 더) · Shift 대시 · 좌클릭 밀기 · F 스킬 · R 필살기 — 밀어서 떨어뜨리기", 11, S.TEXT)
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var hb := StyleBoxFlat.new() # JS #first-hint: rgba(0,0,0,.4) + 왼쪽 3px g + 사선, padding 4 14
+	hb.bg_color = Color(0, 0, 0, 0.4)
+	hb.border_width_left = 3
+	S.theme_border(hb)
+	hb.skew = Vector2(0.17, 0)
+	hb.content_margin_left = 14
+	hb.content_margin_right = 14
+	hb.content_margin_top = 4
+	hb.content_margin_bottom = 4
+	hint.add_theme_stylebox_override("normal", hb)
 	col.add_child(hint)
 
 	# 캐릭터 고르기: 왼쪽 큰 캐릭터 (누르면 스킬 카드), 오른쪽 3×3 카드 (8명 + 랜덤)
 	var pick := HBoxContainer.new()
 	pick.add_theme_constant_override("separation", 10)
-	col.add_child(pick)
+	var pick_holder := MarginContainer.new() # 고르기 + 그 위를 덮는 스킬 카드 (JS #char-card position absolute inset 0)
+	pick_holder.add_child(pick)
+	col.add_child(pick_holder)
 	stage = PanelContainer.new()
 	stage.custom_minimum_size = Vector2(130, 200)
 	stage.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -77,18 +105,23 @@ func _ready() -> void:
 	sbox.bg_color = Color(1, 1, 1, 0.035)
 	S.theme_border(sbox, 0.22)
 	sbox.set_border_width_all(1)
-	sbox.skew = Vector2(S.SKEW * 0.5, 0)
+	sbox.skew = Vector2(0.045, 0) # JS --par 9px / 높이 200
 	stage.add_theme_stylebox_override("panel", sbox)
 	var sv := VBoxContainer.new()
 	stage.add_child(sv)
-	var skill_btn := S.button("스킬 보기", func(): skill_card.visible = not skill_card.visible, "ghost", 12)
-	skill_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	sv.add_child(skill_btn)
+	skill_btn = S.button("스킬 보기", func(): _toggle_card(), "ghost", 12) # JS #char-info-btn: 큰 캐릭터 왼쪽 위 6·6 에 겹침, padding 2 12
+	for stn in ["normal", "hover", "pressed", "focus"]:
+		var sb2: StyleBoxFlat = skill_btn.get_theme_stylebox(stn)
+		sb2.content_margin_left = 12
+		sb2.content_margin_right = 12
+		sb2.content_margin_top = 2
+		sb2.content_margin_bottom = 2
 	stage_box = ColorRect.new() # G2 몸 SubViewport 자리
 	stage_box.color = Color(0, 0, 0, 0) # 그리기 전엔 빈칸 (ColorRect 기본 흰색이 하얀 네모로 보이던 것)
 	stage_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	stage_box.custom_minimum_size = Vector2(60, 120)
 	sv.add_child(stage_box)
+	stage_box.add_child(S.radial_glow(Vector2(0.5, 0.88), 0.6, 0.42)) # JS #char-stage 아래 둥근 빛 (g 42% → 투명 60%)
 	stage_img = _tex_rect()
 	stage_box.add_child(stage_img)
 	stage_3d = load("res://ui/char_stage.gd").new()
@@ -97,9 +130,11 @@ func _ready() -> void:
 	stage_who = S.glow_label("", 22, Color.WHITE, 5)
 	stage_who.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sv.add_child(stage_who)
+	stage_box.add_child(skill_btn)
+	skill_btn.position = Vector2(6, 6)
 	stage.gui_input.connect(func(e):
 		if e is InputEventMouseButton and e.pressed:
-			skill_card.visible = not skill_card.visible)
+			_toggle_card())
 	pick.add_child(stage)
 	cards = GridContainer.new()
 	cards.columns = 3
@@ -109,24 +144,53 @@ func _ready() -> void:
 	for c in C.CHARACTERS:
 		var id := str(c)
 		card_btns[id] = _card(C.CHAR_NAMES[id], func(): _choose(id))
-	card_btns["random"] = _card("랜덤", _roll_random)
+	card_btns["random"] = _card("아무나", _roll_random) # JS .cc.random: 얼굴 자리 '랜덤' 17px 빛 글자 + 사선 줄무늬, 이름 '아무나'
+	var rnd_face := S.glow_label("랜덤", 17, Color.WHITE, 3)
+	rnd_face.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	rnd_face.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	rnd_face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card_btns.random.add_child(rnd_face)
+	card_btns.random.text = "" # 버튼 글은 세로 가운데라 '아무나' 는 아래에 따로
+	var rnd_nm := S.label("아무나", 12, Color("b9b0d2"))
+	rnd_nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	rnd_nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card_btns.random.add_child(rnd_nm)
+	rnd_face.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	rnd_face.offset_top = 3
+	rnd_face.offset_bottom = -20
+	rnd_nm.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	rnd_nm.offset_top = -20
+	rnd_nm.offset_bottom = -2
 
+	# 스킬 카드: 고르기 판 위를 덮음 (JS #char-card: 이름 22 · 소개 13 · [키 | 이름 / 설명] 표 · '닫기')
 	skill_card = PanelContainer.new()
-	skill_card.add_theme_stylebox_override("panel", S.pane(false))
+	var sc := S.pane(false)
+	sc.bg_color = Color8(18, 11, 33, 250)
+	sc.content_margin_left = 14
+	sc.content_margin_right = 14
+	sc.content_margin_top = 10
+	sc.content_margin_bottom = 10
+	skill_card.add_theme_stylebox_override("panel", sc)
 	skill_text = RichTextLabel.new()
 	skill_text.bbcode_enabled = true
-	skill_text.fit_content = true
+	skill_text.fit_content = false
+	skill_text.scroll_active = true
 	skill_text.add_theme_font_size_override("normal_font_size", 13)
+	skill_text.add_theme_font_size_override("bold_font_size", 13)
 	skill_card.add_child(skill_text)
+	var close := S.button("닫기", func(): _toggle_card(false), "ghost", 12)
+	close.size_flags_horizontal = Control.SIZE_SHRINK_END
+	close.size_flags_vertical = Control.SIZE_SHRINK_END
+	skill_card.add_child(close)
 	skill_card.visible = false
-	col.add_child(skill_card)
+	pick_holder.add_child(skill_card)
 
 	# 이름 · 색
 	var name_row := HBoxContainer.new()
 	name_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	name_row.add_child(S.label("이름", 14, Color("b9b0d2")))
+	name_row.add_child(S.label("이름", 13, Color("a49cbc")))
 	name_edit = S.line_edit("머리 위에 보임", 14, int(C.NAME_MAX_LEN))
-	name_edit.custom_minimum_size.x = 150
+	name_edit.custom_minimum_size.x = 105 # JS #name-input 7.5em
 	name_edit.text_submitted.connect(func(_t): _submit_name())
 	name_edit.focus_exited.connect(_submit_name)
 	name_row.add_child(name_edit)
@@ -140,15 +204,34 @@ func _ready() -> void:
 	team_note.visible = false
 	col.add_child(team_note)
 
-	start_btn = S.button("시작 (Enter)", func(): Store.send_room({"type": "start"}), "go", 30)
+	start_btn = S.button("시작 (Enter)", func(): Store.send_room({"type": "start"}), "go", 30) # JS #start-btn: 30px · 자간 6 · padding 10 0 · 폭 92% · 사선 18px
 	start_btn.custom_minimum_size.y = 56
+	start_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	start_btn.add_theme_font_override("font", S.spaced(6))
+	for stn in ["normal", "hover", "pressed", "focus", "disabled"]:
+		(start_btn.get_theme_stylebox(stn) as StyleBoxFlat).skew = Vector2(0.32, 0)
 	col.add_child(start_btn)
 
-	# 방 설정 (호스트): 작은 글씨 한 묶음
+	# 방 설정 (호스트): 작은 글씨 한 묶음 (JS #bot-btns: 판 + '방 설정' gl 13px 자간 1)
+	settings_wrap = PanelContainer.new()
+	var swb := StyleBoxFlat.new()
+	swb.bg_color = Color(0, 0, 0, 0.28)
+	swb.set_border_width_all(1)
+	S.theme_border(swb, 0.1)
+	swb.skew = Vector2(0.09, 0)
+	swb.content_margin_left = 12
+	swb.content_margin_right = 12
+	swb.content_margin_top = 7
+	swb.content_margin_bottom = 7
+	settings_wrap.add_theme_stylebox_override("panel", swb)
 	settings_box = HFlowContainer.new()
 	settings_box.alignment = FlowContainer.ALIGNMENT_CENTER
 	settings_box.add_theme_constant_override("h_separation", 8)
-	settings_box.add_child(S.tint(S.glow_label("방 설정", 13, Color.WHITE, 2)))
+	settings_box.add_theme_constant_override("v_separation", 5)
+	settings_wrap.add_child(settings_box)
+	var st_lab := S.label("방 설정", 13, Color.WHITE)
+	st_lab.add_theme_font_override("font", S.spaced(1))
+	settings_box.add_child(S.tint(st_lab))
 	add_bot = S.button("봇 추가", func(): Store.send_room({"type": "addBot"}), "ghost", 13)
 	remove_bot = S.button("봇 빼기", func(): Store.send_room({"type": "removeBot"}), "ghost", 13)
 	settings_box.add_child(add_bot)
@@ -158,7 +241,7 @@ func _ready() -> void:
 	map_sel = _select("맵", ["random"] + Array(C.MAP_IDS), func(id): return "무작위" if id == "random" else C.MAPS[id].name, func(id): Store.send_room({"type": "setMap", "map": id}))
 	sky_box = _check("하늘 계단", func(on): Store.send_room({"type": "skyStairs", "on": on}))
 	hp_box = _check("체력전", func(on): Store.send_room({"type": "hpMode", "on": on}))
-	col.add_child(settings_box)
+	col.add_child(settings_wrap)
 	map_info = S.label("", 13, Color("cdd5ee"))
 	map_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	map_info.visible = false
@@ -174,6 +257,7 @@ func _ready() -> void:
 	room_row.add_theme_constant_override("h_separation", 6)
 	room_row.add_child(S.label("방", 13, Color("a49cbc")))
 	code_label = S.glow_label("", 19, Color.WHITE, 4)
+	code_label.add_theme_font_override("font", S.spaced(3)) # JS #room-row .code letter-spacing 3px
 	room_row.add_child(code_label)
 	room_text = S.label("", 13, Color("a49cbc"))
 	room_row.add_child(room_text)
@@ -182,6 +266,10 @@ func _ready() -> void:
 	room_row.add_child(S.button("링크 복사", _copy_link, "ghost", 13))
 	room_row.add_child(S.button("방 나가기", func(): Store.leave(), "ghost", 13))
 	col.add_child(room_row)
+	room_link = S.label("", 11, Color("7d7896"))
+	room_link.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	room_link.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
+	col.add_child(room_link)
 
 	var keys_row := HBoxContainer.new()
 	keys_row.add_child(S.button("설정", func(): open_settings.emit(), "ghost", 13))
@@ -194,6 +282,19 @@ func _ready() -> void:
 	col.add_child(keys_text)
 
 	Store.joined.connect(func(_r, _re): _on_joined())
+
+
+func _toggle_card(on = null) -> void:
+	var show: bool = (not skill_card.visible) if on == null else bool(on)
+	skill_card.visible = show
+	skill_btn.text = "스킬 닫기" if show else "스킬 보기" # JS toggleCharCard
+	if show and not S.reduced():
+		S.slide_in(skill_card, -30.0)
+
+
+func _link() -> String:
+	var code := str(Store.room.get("code", ""))
+	return str(Store.room.get("link", "")) if Store.room.get("link") else "%s?room=%s" % [Net.url.replace("ws://", "http://").replace("wss://", "https://").trim_suffix("/") + "/", code]
 
 
 func _tex_rect() -> TextureRect:
@@ -227,6 +328,19 @@ func _select(label_text: String, ids: Array, name_of: Callable, on_pick: Callabl
 	var o := OptionButton.new()
 	o.focus_mode = Control.FOCUS_NONE
 	o.add_theme_font_size_override("font_size", 13)
+	# JS select: 13px, padding 2 4, 바탕 rgba(0,0,0,.45) + 1px gb — 기본 테마 (넓은 여백·회색) 대신
+	for stn in ["normal", "hover", "pressed", "focus", "disabled"]:
+		var ob := StyleBoxFlat.new()
+		ob.bg_color = Color(0, 0, 0, 0.45) if stn != "hover" else Color(0.08, 0.05, 0.14, 0.7)
+		ob.set_border_width_all(1)
+		S.theme_border(ob, 0.22 if stn != "hover" else 0.55)
+		ob.content_margin_left = 4
+		ob.content_margin_right = 4
+		ob.content_margin_top = 2
+		ob.content_margin_bottom = 2
+		o.add_theme_stylebox_override(stn, ob)
+	o.add_theme_constant_override("arrow_margin", 3)
+	o.add_theme_constant_override("h_separation", 2)
 	for i in ids.size():
 		o.add_item(name_of.call(ids[i]), i)
 		o.set_item_metadata(i, ids[i])
@@ -292,9 +406,7 @@ func _light(c: String) -> void:
 
 
 func _copy_link() -> void:
-	var code := str(Store.room.get("code", ""))
-	var link := str(Store.room.get("link", "")) if Store.room.get("link") else "%s?room=%s" % [Net.url.replace("ws://", "http://").replace("wss://", "https://"), code]
-	DisplayServer.clipboard_set(link)
+	DisplayServer.clipboard_set(_link())
 
 
 # 매 프레임 (ui.gd 가 부름): 스냅샷을 보고 판 내용 맞춤
@@ -312,13 +424,23 @@ func refresh(st: Dictionary) -> void:
 		else:
 			text = "%d명 접속. 호스트가 시작하길 기다리는 중" % n
 	else:
-		text = "라운드 %d 종료" % int(st.round.n)
+		var wt = st.round.get("winnerTeam")
+		var names := []
+		for wid in st.round.get("winnerIds", []):
+			var wp := Store.player(wid)
+			if not wp.is_empty():
+				names.append(str(wp.get("nick", "")) if str(wp.get("nick", "")) != "" else str(wp.get("name", "?")))
+		text = "라운드 %d 종료\n승자: %s" % [int(st.round.n), ("%s팀" % TEAM_KO.get(str(wt), "")) if wt != null and str(wt) != "" else (", ".join(names) if not names.is_empty() else "무승부")] # JS: 승자 줄
 	status.text = text
-	hint.visible = str(Prefs.get_value("tutorial", "")) != "done"
+	var small := U.small(get_viewport_rect().size)
+	hint.visible = st.phase == "lobby" and str(Prefs.get_value("tutorial", "")) != "done" and not small # JS: 대기실에서만, 작은 창이면 숨김
+	if small != small_was:
+		small_was = small
+		_small_sizes(small)
 	_key_texts(bool(st.get("itemsEnabled", C.ITEMS_ENABLED)))
 	start_btn.visible = host and st.get("canStart", false)
 	start_btn.text = "재시작 (Enter)" if st.phase == "over" else "시작 (Enter)"
-	settings_box.visible = host
+	settings_wrap.visible = host
 	var mp = st.get("map")
 	map_info.visible = mp is Dictionary and not host
 	if mp is Dictionary:
@@ -334,6 +456,9 @@ func refresh(st: Dictionary) -> void:
 	sky_box.set_pressed_no_signal(bool(st.get("skyStairs", false)))
 	hp_box.set_pressed_no_signal(bool(st.get("hpMode", false)))
 	mode_info.text = _mode_desc(str(st.get("mode", "survival")))
+	mode_info.visible = not small # JS 작은 창: 모드 설명은 고르는 칸으로
+	room_link.text = _link()
+	room_link.visible = not small
 	# 캐릭터
 	var ch := str(me.get("char", ""))
 	if not rolling:
@@ -357,7 +482,15 @@ func refresh(st: Dictionary) -> void:
 		if b.icon != t:
 			b.icon = t
 	if ch != "":
-		skill_text.text = "[font_size=20][b]%s[/b][/font_size]\n%s\n[b]F[/b] %s — %s\n[b]R[/b] %s — %s" % [C.CHAR_NAMES[ch], C.CHAR_INTRO.get(ch, ""), C.SKILL_NAMES[ch], C.SKILL_DESC.get(ch, ""), C.ULT_NAMES[ch], C.ULT_DESC.get(ch, "")]
+		# JS fillCharCard: 이름 22 (작은 창 18) · 소개 13 #ddd8ee · 표 [키 (gl) | 이름 / 설명 #c4bdd8], 키는 설정 따라
+		var gl := S.g().lerp(Color.WHITE, 0.5).to_html(false)
+		var nm_fs := 18 if small else 22
+		var fs := 12 if small else 13
+		var row := func(k: String, nm: String, d: String) -> String:
+			return "[cell padding=0,1,10,1][color=#%s]%s[/color][/cell][cell][color=#f4f6ff]%s[/color]\n[color=#c4bdd8]%s[/color][/cell]" % [gl, k, nm, d]
+		skill_text.text = "[font_size=%d]%s[/font_size]\n[font_size=%d][color=#ddd8ee]%s[/color][/font_size]\n[font_size=%d][table=2]%s%s[/table][/font_size]" % [nm_fs, C.CHAR_NAMES[ch], fs, C.CHAR_INTRO.get(ch, ""), fs,
+			row.call(Keys.key_label(str(PlayerInput.binds.get("skill", "KeyF"))), C.SKILL_NAMES[ch], C.SKILL_DESC.get(ch, "")),
+			row.call(Keys.key_label(str(PlayerInput.binds.get("ult", "KeyR"))), C.ULT_NAMES[ch], C.ULT_DESC.get(ch, ""))]
 	if not name_edit.has_focus():
 		name_edit.text = str(me.get("nick", ""))
 	_render_colors(st, me)
@@ -376,7 +509,33 @@ func _place() -> void:
 	custom_minimum_size.x = dock.w
 	size.x = dock.w
 	position.x = dock.left
-	position.y = max(84.0, (vw.y - size.y) / 2.0 + 28.0)
+	# JS #center: 가운데 + 28px, 최대 높이 100vh − 92px (넘치면 판 안에서 스크롤) — 예전엔 높이 제한이 없어 960×540 에서 아래로 넘침
+	var pad: float = pane_box.content_margin_top + pane_box.content_margin_bottom
+	scroll.custom_minimum_size.y = minf(col.get_combined_minimum_size().y, vw.y - 92.0 - pad)
+	reset_size()
+	size.x = dock.w
+	position.y = (vw.y - size.y) / 2.0 + 28.0
+	position.y = clampf(position.y, 46.0, maxf(46.0, vw.y - size.y - 18.0))
+	start_btn.custom_minimum_size.x = (dock.w - pane_box.content_margin_left - pane_box.content_margin_right) * 0.92 # JS width 92%
+
+
+# 작은 창 (JS @media): 판 여백 6 12 6 18, 상태 16, 큰 캐릭터 최소 120·이름 16, 카드 62 (얼굴 30·이름 11·간격 4), 시작 22px·padding 6
+func _small_sizes(small: bool) -> void:
+	pane_box.content_margin_top = 6 if small else 10
+	pane_box.content_margin_bottom = 6 if small else 10
+	pane_box.content_margin_left = 18 if small else 22
+	pane_box.content_margin_right = 12 if small else 16
+	status.add_theme_font_size_override("font_size", 16 if small else 18)
+	stage.custom_minimum_size = Vector2(120 if small else 130, 120 if small else 200)
+	stage_box.custom_minimum_size.y = 90 if small else 120
+	stage_who.add_theme_font_size_override("font_size", 16 if small else 22)
+	cards.add_theme_constant_override("h_separation", 4 if small else 5)
+	cards.add_theme_constant_override("v_separation", 4 if small else 5)
+	for id in card_btns:
+		card_btns[id].custom_minimum_size = Vector2(62, 52) if small else Vector2(72, 66)
+		card_btns[id].add_theme_font_size_override("font_size", 11 if small else 12)
+	start_btn.add_theme_font_size_override("font_size", 22 if small else 30)
+	start_btn.custom_minimum_size.y = 36 if small else 56
 
 
 func _process(_d: float) -> void:

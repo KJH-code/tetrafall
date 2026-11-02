@@ -252,6 +252,32 @@ static func reduced() -> bool:
 	return bool(View.settings.get("reducedMotion", false)) or bool(View.settings.get("lowGfx", false))
 
 
+# 옆에서 미끄러져 들어옴 (JS dock-in .22s 30px · slide-left .18s -30px): 위치는 컨테이너·_place 가 정해서 투명도 + 잠깐 옆으로 비킴 (그리기 변환)
+static func slide_in(c: CanvasItem, dx: float) -> void:
+	c.modulate.a = 0.0
+	var tw := c.create_tween()
+	tw.tween_property(c, "modulate:a", 1.0, 0.22).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+
+
+# 아래쪽 둥근 빛 (JS radial-gradient(ellipse at 50% 88%, g 42%, transparent 60%)): 칸을 채우는 TextureRect
+static func radial_glow(center: Vector2, reach: float, a: float) -> TextureRect:
+	var t := TextureRect.new()
+	var gt := GradientTexture2D.new()
+	gt.fill = GradientTexture2D.FILL_RADIAL
+	gt.fill_from = center
+	gt.fill_to = center + Vector2(reach, 0.0)
+	var gr := Gradient.new()
+	gr.set_color(0, alpha(g(), a))
+	gr.set_color(1, alpha(g(), 0.0))
+	gt.gradient = gr
+	t.texture = gt
+	t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	t.stretch_mode = TextureRect.STRETCH_SCALE
+	t.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return t
+
+
 # 등장 애니: 나타남 (JS open-down .22s ease-out — 위치는 컨테이너가 정해 투명도만)
 static func pop_down(c: CanvasItem) -> void:
 	c.modulate.a = 0.0

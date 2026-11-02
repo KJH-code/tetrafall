@@ -545,7 +545,7 @@ func refresh(st: Dictionary) -> void:
 	var playing: bool = st.get("phase") == "playing"
 	var alive: bool = not p.is_empty() and bool(p.get("alive", false))
 	# JS #top (top 12 세로 줄): 점수 띠가 있으면 그 아래, 없으면 (생존·개인전) 맨 위부터 — 예전엔 늘 62 라 튜토리얼 띠와 겹침
-	var sp: Control = hud.get_node_or_null("ScorePanel") if hud != null else null
+	var sp: Control = hud.get("score_panel") if hud != null else null
 	top_box.position = Vector2((vp.x - top_box.size.x) / 2.0, 12.0 + (sp.size.y + 6.0 if sp != null and sp.visible else 0.0))
 	top_box.size.x = minf(vp.x - 40, 760)
 	_item_timers(st)

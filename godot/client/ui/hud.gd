@@ -26,6 +26,9 @@ var killed := {} # 나를 죽인 것 {by, byName, cause, weapon}
 
 var timer_label: Label
 var score_bar: HBoxContainer
+var score_panel: PanelContainer # 위 점수 띠 (JS #score). ui.gd 가 화면 뿌리로 옮겨 대기실·결과에도 씀 (score_band)
+var score_box_light: StyleBoxFlat
+var score_box_dark: StyleBoxFlat
 var cards_row: HBoxContainer
 var cards := {} # id → {panel, face, name, sub, pct, hp, bar}
 var cards_key := ""
@@ -68,8 +71,20 @@ func _ready() -> void:
 	add_child(timer_label)
 	score_bar = HBoxContainer.new()
 	score_bar.add_theme_constant_override("separation", 6)
-	var score_panel := PanelContainer.new()
-	score_panel.add_theme_stylebox_override("panel", S.hud_box())
+	score_panel = PanelContainer.new()
+	score_box_light = S.hud_box() # JS #score: padding 4 20
+	score_box_light.content_margin_left = 20
+	score_box_light.content_margin_right = 20
+	score_box_light.content_margin_top = 4
+	score_box_light.content_margin_bottom = 4
+	score_box_dark = score_box_light.duplicate() # body.ui-dark #score: rgba(10,6,22,.72) + 안쪽 1px ga + 바깥 빛 14px gc
+	score_box_dark.bg_color = Color8(10, 6, 22, 184)
+	score_box_dark.set_border_width_all(1)
+	S.theme_border(score_box_dark, 0.55)
+	score_box_dark.shadow_color = S.alpha(S.g(), 0.1)
+	score_box_dark.shadow_size = 14
+	score_panel.add_theme_stylebox_override("panel", score_box_light)
+	score_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	score_panel.add_child(score_bar)
 	score_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 	score_panel.position.y = 12
@@ -413,8 +428,8 @@ func refresh(st: Dictionary) -> void:
 		big.add_theme_color_override("font_color", Color.WHITE)
 		big.visible = true
 	big.position = Vector2((vp.x - big.size.x) / 2.0, vp.y * 0.3 - big.size.y / 2.0)
-	_score_bar(st, vp)
 	_cards(st, vp)
+	score_band(st, vp, false)
 	_skills(me, vp)
 	_kills_panels(st, me, vp)
 	_spectate(st, me, vp)
@@ -422,16 +437,58 @@ func refresh(st: Dictionary) -> void:
 	ring.queue_redraw()
 
 
-func _score_bar(st: Dictionary, vp: Vector2) -> void:
+# 위 점수 띠 (JS updateScore): 대기실·결과 (between = body.ui-dark 빛 판) 엔 승수 'A 1 : 0 B' · 셋 이상 'A 1 · B 0 · C 0' · 팀전 '빨강 1 : 0 파랑',
+# 판 중엔 아래 판과 겹치는 개인전 승수는 숨기고 팀전·킬 점수전만. 킬 점수전 (판 중·판 끝) 은 1~N위 + 나 + 목표까지 막대 + 남은 시간
+func score_band(st: Dictionary, vp: Vector2, between: bool) -> void:
 	for c in score_bar.get_children():
 		c.free()
 	var ps: Array = st.players.filter(func(p): return not p.get("spectator", false) and not p.get("dummy", false))
-	var panel := get_node("ScorePanel") as PanelContainer
-	var kills := _kills_game(st)
-	panel.visible = ps.size() >= 2 and (kills or st.get("teamMode", false))
+	ps.sort_custom(func(a, b): return a.slot < b.slot)
+	var panel := score_panel
+	var kills: bool = st.get("mode") == "kills" and st.get("phase") != "lobby"
+	var team: bool = st.get("teamMode", false)
+	var dup: bool = not between and cards_row.visible and not team and not kills
+	panel.visible = ps.size() >= 2 and not dup and not bool(Store.room.get("practice", false))
+	panel.add_theme_stylebox_override("panel", score_box_dark if between else score_box_light)
+	panel.position.y = 12
 	if not panel.visible:
 		return
 	var small := U.small(vp)
+	if not kills:
+		var f := 16 if small else 20 # JS #score 20px (작은 창 16)
+		var sep := func(t: String) -> Label:
+			var l := _chip(t, Color("67739a"), f)
+			return l
+		var me_team = Store.me().get("team")
+		var name_chip := func(p: Dictionary) -> Control:
+			var l := _chip(_name(p) + (" 자리 비움" if p.get("away", false) else ""), _player_color(p), f)
+			if p.get("away", false):
+				l.modulate.a = 0.6
+			if p.id == Store.my_id:
+				_underline(l, between)
+			return l
+		if team:
+			var tw: Dictionary = st.get("teamWins", {"red": 0, "blue": 0})
+			var r := _chip("빨강", TEAM_COL.red, f)
+			var b := _chip("파랑", TEAM_COL.blue, f)
+			if me_team == "red":
+				_underline(r, between)
+			elif me_team == "blue":
+				_underline(b, between)
+			for n in [r, _chip(" %d" % int(tw.get("red", 0)), Color.WHITE, f), sep.call(":"), _chip("%d " % int(tw.get("blue", 0)), Color.WHITE, f), b]:
+				score_bar.add_child(n)
+		elif ps.size() == 2:
+			for n in [name_chip.call(ps[0]), _chip(" %d" % int(ps[0].get("wins", 0)), Color.WHITE, f), sep.call(":"), _chip("%d " % int(ps[1].get("wins", 0)), Color.WHITE, f), name_chip.call(ps[1])]:
+				score_bar.add_child(n)
+		else:
+			for i in ps.size():
+				if i > 0:
+					score_bar.add_child(sep.call("·"))
+				score_bar.add_child(name_chip.call(ps[i]))
+				score_bar.add_child(_chip(" %d" % int(ps[i].get("wins", 0)), Color.WHITE, f))
+		panel.reset_size()
+		panel.position.x = (vp.x - panel.size.x) / 2.0
+		return
 	var big_f := 15 if small else 18 # JS #score.kills 18 (작은 창 15)
 	var bar_w := 30.0 if small else 46.0
 	if kills and not st.get("teamMode", false):
@@ -471,7 +528,17 @@ func _score_bar(st: Dictionary, vp: Vector2) -> void:
 		score_bar.add_child(_chip("· 목표 %d킬" % _goal(st), S.DIM, 13))
 		if st.round.get("left") != null:
 			score_bar.add_child(_chip("· %s" % _fmt(float(st.round.left)), Color.WHITE, big_f)) # JS: 남은 시간도 띠 끝에
+	panel.reset_size()
 	panel.position.x = (vp.x - panel.size.x) / 2.0
+
+
+# 내 이름·내 팀 밑줄 (JS #score .me border-bottom 3px — 판 중 노랑, 대기실·결과 테마 빛)
+func _underline(l: Label, dark: bool) -> void:
+	var u := StyleBoxFlat.new()
+	u.bg_color = Color(0, 0, 0, 0)
+	u.border_width_bottom = 3
+	u.border_color = S.g() if dark else S.ACCENT
+	l.add_theme_stylebox_override("normal", u)
 
 
 func _chip(text: String, col: Color, size: int) -> Label:
