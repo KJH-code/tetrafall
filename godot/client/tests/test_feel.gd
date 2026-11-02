@@ -5,6 +5,7 @@ extends RefCounted
 const C := preload("res://core/config.gd")
 const PI_ := preload("res://core/player_input.gd")
 const StoreS := preload("res://core/store.gd")
+const CamRig := preload("res://world/cam_rig.gd")
 
 var errors: Array = []
 
@@ -123,3 +124,23 @@ func test_interp_clock_dt_like_js() -> void:
 	check(absf(StoreS.clock_dt_ms(0.016, 1.0) - 16.0) < 1e-9, "보통 프레임 16ms")
 	check(absf(StoreS.clock_dt_ms(0.016, C.KO_FINAL_SCALE) - 4.0) < 1e-9, "마지막 킬 슬로모션 ×%s" % C.KO_FINAL_SCALE)
 	check(absf(StoreS.clock_dt_ms(0.5, 1.0) - 100.0) < 1e-9, "긴 멈춤은 100ms 까지")
+
+
+# render.js: 셀카 (내 이모트)·승자 클로즈업 중에도 camHook (흔들림·마지막 킬 줌·화면 끝 KO 빛) — 예전엔 건너뛰어 끝 빛이 멈춘 채 남음
+func test_cam_hook_runs_during_selfie() -> void:
+	var keep := [Store.state, Store._players_by_id, Store.my_id]
+	var me := {"id": 5, "slot": 0, "alive": true, "yaw": 0.0, "x": 3.0, "y": 3.0, "z": 0.0, "emote": 1}
+	Store.my_id = 5
+	Store._players_by_id = {5: me}
+	Store.state = {"phase": "playing", "round": {"n": 1}, "field": {"w": 10, "d": 10}, "players": [me], "pieces": []}
+	var rig = CamRig.new()
+	root().add_child(rig)
+	var calls := [0]
+	rig.hook = func(_cam): calls[0] += 1
+	check(rig.close_id() == 5, "이모트 중이면 셀카 카메라")
+	rig.place(0.016, {5: Vector3(3, 3, 0)}, func(_x, _y, _z): return false)
+	check(calls[0] == 1, "셀카 중 camHook %d번" % calls[0])
+	rig.free()
+	Store.state = keep[0]
+	Store._players_by_id = keep[1]
+	Store.my_id = keep[2]
