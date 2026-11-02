@@ -89,7 +89,8 @@ function stamp() {
 }
 // 방마다 로그 파일: logs/<서버를 켠 시각>/<방을 연 시각>_<코드>.txt (플레이테스트 분석: npm run stats)
 // 콘솔에는 같은 줄을 [코드] 를 붙여 찍는다
-const LOG_DIR = path.join(ROOT, 'logs');
+// 환경 변수 LOG_DIR 이 있으면 그 폴더 (테스트가 임시 폴더를 줌 — 예전엔 npm test 가 레포 logs/ 에 폴더를 남겼음, 2026-10-30 감사 T2). C# 서버의 TF_LOG_DIR 와 같은 구실
+const LOG_DIR = (process.env.LOG_DIR ?? '').trim() !== '' ? path.resolve(process.env.LOG_DIR) : path.join(ROOT, 'logs');
 const pad = (n) => String(n).padStart(2, '0');
 const fileStamp = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
 const RUN_DIR = path.join(LOG_DIR, fileStamp(new Date()));

@@ -262,3 +262,30 @@ test('S8 튜토리얼 방에는 손님이 못 들어감 (연습 방은 예전처
   rooms.message(q.conn, { type: 'join', code: pcode });
   assert.ok(q.ws.last('welcome'), '연습 방은 같이');
 });
+
+test('T2 서버 프로세스: LOG_DIR 의 임시 폴더에만 로그를 남김 (레포 logs/ 안 건드림)', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const { default: WebSocket } = await import('ws');
+  const { startServer } = await import('./server-process.js');
+  const repoLogs = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'logs');
+  const before = fs.existsSync(repoLogs) ? fs.readdirSync(repoLogs).sort().join() : null;
+  const { port, logDir, stop } = await startServer();
+  try {
+    const ws = await new Promise((res, rej) => {
+      const w = new WebSocket(`ws://localhost:${port}`);
+      w.on('open', () => res(w));
+      w.on('error', rej);
+    });
+    const joined = new Promise((res) => ws.on('message', (raw) => JSON.parse(raw).type === 'welcome' && res(true)));
+    ws.send(JSON.stringify({ type: 'create', nick: '로그' }));
+    assert.ok(await joined);
+    const files = fs.readdirSync(logDir).flatMap((d) => fs.readdirSync(path.join(logDir, d)));
+    assert.ok(files.some((f) => f.endsWith('.txt')), `임시 로그 폴더에 방 로그: ${files}`);
+    ws.close();
+  } finally {
+    stop();
+  }
+  assert.ok(!fs.existsSync(logDir), 'stop 이 임시 폴더를 지움');
+  assert.equal(fs.existsSync(repoLogs) ? fs.readdirSync(repoLogs).sort().join() : null, before, '레포 logs/ 는 그대로');
+});
