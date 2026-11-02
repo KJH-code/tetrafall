@@ -171,7 +171,7 @@ func test_bodies_build_and_animate() -> void:
 func test_bodies_merged() -> void:
 	for ch in C.FIGURE_CHARS:
 		var b = Chars.make_body(ch, Color(0.2, 0.6, 0.9))
-		var pieces: int = b.piece_mat.size()
+		var pieces: int = int(b.cd.stats.jsMeshes) if b.baked else b.piece_mat.size() # 구운 몸은 조각을 미리 합쳐 둠 → JS 조각 수
 		var drawn := 0
 		for mi in b.find_children("*", "MeshInstance3D", true, false):
 			if mi.layers != 0:

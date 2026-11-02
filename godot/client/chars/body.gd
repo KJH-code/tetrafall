@@ -27,7 +27,7 @@ const HEAVY_HITS := ["bomb", "shock", "projectile", "slam", "wall", "blast", "bi
 var char_id := ""
 var cd := {} # 몸 자료 (bodies.bin 의 캐릭터 한 줄, 구운 몸이면 manifest — 같은 모양: nodes·mats·refs)
 var baked := false # 구운 몸 (.glb) 으로 만듦
-static var use_glb := K.GLB # 구운 몸이 있으면 씀 (테스트가 예전 조립과 둘 다 봄)
+static var use_glb: bool = K.GLB and not OS.get_cmdline_user_args().has("--no-glb") # 구운 몸이 있으면 씀 (테스트가 예전 조립과 둘 다 봄, 확인용 실행 인자 --no-glb 면 예전 조립)
 var d := {} # 체형 (FIGURE_BODIES 한 줄)
 var skin_color := Color.WHITE
 var mats: Array[Material] = []
@@ -603,6 +603,8 @@ static func _plaid_opts(opts: Dictionary, fills: Array) -> void:
 # 체크 무늬 천 (figure.js plaidTexture: 32×32 에 칠한 사각형을 그 투명도로 겹침)
 static func _plaid(fills: Array) -> Texture2D:
 	var key := JSON.stringify(fills)
+	if not _cache.has("plaid"):
+		_cache.plaid = {} # 구운 몸 (.glb) 만 쓰면 bodies.bin 을 안 읽어 캐시가 아직 없음
 	if _cache.plaid.has(key):
 		return _cache.plaid[key]
 	var img := Image.create_empty(32, 32, false, Image.FORMAT_RGBA8)
