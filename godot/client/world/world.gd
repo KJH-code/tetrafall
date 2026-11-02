@@ -67,7 +67,7 @@ const VIEWMODEL := "res://chars/viewmodel.gd"
 
 func _ready() -> void:
 	headless = DisplayServer.get_name() == "headless"
-	get_viewport().msaa_3d = WC.MSAA_3D # 모서리 계단 없앰 (JS antialias). 확인용 --msaa 는 자동 조종이 뒤에 덮어씀
+	set_msaa(bool(View.settings.get("lowGfx", false))) # 모서리 계단 없앰 (JS antialias). 확인용 --msaa 는 자동 조종이 뒤에 덮어씀
 	if ResourceLoader.exists(G3_PATH):
 		G3 = load(G3_PATH)
 	var we := WorldEnvironment.new()
@@ -191,10 +191,21 @@ func _ready() -> void:
 			if g3_has("set_low"):
 				G3.set_low(self, View.settings.lowGfx) # B3: 이미 만든 지형·칸·위험 재질·튀어나온 조각·판 빛·그림자를 곧바로
 			set_shadows(not View.settings.lowGfx)
+			set_msaa(View.settings.lowGfx)
 			apply_theme(str(theme_id))) # 지형 셰이더·튀어나온 조각도 낮춤으로
 	if g3_has("set_low"):
 		G3.set_low(self, bool(View.settings.get("lowGfx", false)))
 	set_shadows(not View.settings.get("lowGfx", false))
+
+
+# 판 화면 다중 샘플: 보통 WC.MSAA_3D (JS antialias), 그래픽 낮춤이면 WC.MSAA_LOW (JS 는 낮춤에서 픽셀 비율 1 로 비용을 줄임 — 고도는 다중 샘플을 끔)
+func set_msaa(low: bool) -> void:
+	if get_viewport() != null:
+		get_viewport().msaa_3d = msaa_for(low)
+
+
+static func msaa_for(low: bool) -> Viewport.MSAA:
+	return WC.MSAA_LOW if low else WC.MSAA_3D
 
 
 # G3 에 이 함수가 있나 (B3 가 차례로 올리는 재질: 합치는 순서가 달라도 됨)

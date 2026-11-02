@@ -23,7 +23,10 @@ func _src(path: String) -> String:
 func test_msaa_like_js_antialias() -> void:
 	check(WC.MSAA_3D == Viewport.MSAA_4X, "판 화면 4× 다중 샘플 (JS antialias)")
 	check(KC.VM_MSAA == Viewport.MSAA_4X, "1인칭 팔 SubViewport 도 4×")
-	check(_src("res://world/world.gd").contains("get_viewport().msaa_3d = WC.MSAA_3D"), "World 가 주 화면에 켬")
+	check(WC.MSAA_LOW == Viewport.MSAA_DISABLED, "그래픽 낮춤이면 끔")
+	var W := preload("res://world/world.gd")
+	check(W.msaa_for(false) == Viewport.MSAA_4X and W.msaa_for(true) == Viewport.MSAA_DISABLED, "World.msaa_for: 보통 4×, 낮춤 끔")
+	check(_src("res://world/world.gd").contains("set_msaa(View.settings.lowGfx)"), "그래픽 낮춤을 바꾸면 곧바로")
 
 
 func test_piece_textures_mipmapped_anisotropic() -> void:

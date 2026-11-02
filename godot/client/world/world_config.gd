@@ -1,7 +1,8 @@
 # 고도 판 그리기 (G1) 에만 필요한 수치. 게임 수치는 core/config.gd (shared/config.js) 를 씀
 extends RefCounted
 
-const MSAA_3D := Viewport.MSAA_4X # 판 화면 다중 샘플 (render.js WebGLRenderer({ antialias: true }) — 크롬 기본 4×, 그래픽 낮춤에서도 켬 = JS 와 같음)
+const MSAA_3D := Viewport.MSAA_4X # 판 화면 다중 샘플 (render.js WebGLRenderer({ antialias: true }) — 크롬 기본 4×)
+const MSAA_LOW := Viewport.MSAA_DISABLED # 그래픽 낮춤: 끔 (JS 는 낮춤에서 setPixelRatio(1) 로 비용을 줄임. 소프트웨어 GL 8명 판 4× = 프레임 약 2.4배)
 const CELL_SIZE := 0.98 # 쌓인 칸·떨어지는 칸 상자 크기 (칸 사이 살짝 틈)
 const CHECKER := 0.94 # 이웃 칸 체커보드 명암 (render.js updateGrid)
 const FLOOR_THICK := 0.6 # 필드 바닥판 두께 (z 0 아래)
