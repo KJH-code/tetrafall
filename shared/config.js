@@ -20,6 +20,11 @@ function spawnPoints(W, D, inset) {
 const GRID_W = 10;
 const GRID_D = 10;
 const GRID_H = 16;
+const SKY_GRID_H = 32; // 하늘 계단 켬일 때 격자 높이. 블록 윗면 상한 SKY_TOP_Z 도 이 값 (한 곳에서 — 2026-10-30 감사 T5)
+const SPAWN_INSET = 2.5; // 시작 위치: 가장자리에서 이만큼 안쪽 (SPAWN_POINTS·spawnPointsFor 둘 다)
+const CHARACTERS = ['tank', 'ninja', 'builder', 'hook', 'hunter', 'cannon', 'berserker', 'bard']; // FIGURE_CHARS·RAGDOLL_CHARS 의 처음 값도 이 목록
+const RECONNECT_GRACE_MS = 60000; // 끊긴 자리 유지 시간. 화면의 다시 붙기 횟수 NET_RECONNECT_TRIES 가 이걸 NET_RECONNECT_MS 로 나눈 값
+const NET_RECONNECT_MS = 2000;
 
 export const CONFIG = {
   // ---- 네트워크 / 루프 ----
@@ -97,22 +102,23 @@ export const CONFIG = {
   // 끄면 예전 규칙 그대로 (격자 높이 GRID_H, AUTO_FALL 낙하·동시 수). 블록 마스터는 자동 블록이 없어서 무시
   // 닿는 거리 R(h) = MOVE_SPEED × 공중 시간 (꼭대기에서 공중 점프, h = 올라갈 높이): h=0 → 5.8칸, 1 → 5.3, 2 → 4.7
   SKY_STAIRS_DEFAULT: true, // 방(대기실) 기본값. new Game() 기본은 끔 (예전 테스트 그대로)
-  SKY_GRID_H: 32, // 켬일 때 격자 높이 (판마다 game.H, snapshot field.h)
+  SKY_GRID_H, // 켬일 때 격자 높이 (판마다 game.H, snapshot field.h)
   SKY_COUNT: 7, // 사슬 하나에 떠 있는 블록 수 (착지·녹으면 그 사슬 맨 위에 새로)
   // 인원별 사슬 수 (2026-10-28 재혁 "블록 더 많이": 사슬 하나는 착지 빠르기가 정해져 있어 큰 판일수록 블록이 드물었음 → 5명 이상 판은 압사 9~14%).
   // 판 시작 때 필드에 나가는 인원으로 (FIELD_SIZES 와 같은 방식). 사슬마다 SKY_COUNT 개, 따로 계단. 떨어지는 빠르기·그림자(경고) 시간은 그대로
   // 봇 판 (2026-10-28, 인원마다 245판): 사슬 1개면 압사 6명 11% · 8명 8% → 이 표로 6명 22% · 8명 23% (4명 17% 와 비슷), 판 길이 6명 94 → 92초 · 8명 100 → 96초. 2~4명은 그대로
   SKY_CHAINS: { 2: 1, 3: 1, 4: 1, 5: 2, 6: 2, 7: 3, 8: 3 },
   SKY_SPAWN_PER_TICK: 1, // 한 틱에 놓는 하늘 블록 수 (자리 고르기가 무거워서 나눔: 판 시작 사슬 7개 = 7틱 약 0.23초)
-  SKY_TOP_Z: 32, // 블록 윗면 최고 높이 (상한)
+  SKY_TOP_Z: SKY_GRID_H, // 블록 윗면 최고 높이 (상한)
   SKY_RISE_MIN: 1, // 새 블록 = 맨 위 블록 지금 높이 + 이 범위의 칸 (정수 무작위)
   SKY_RISE_MAX: 2, // 2단 점프 최고 약 2.8칸이라 여유 있게
   SKY_GAP_MIN: 1, // 이웃 블록 칸 사이 최소 거리 (붙으면 머리 부딪힘·한 덩어리로 보임)
   SKY_REACH_SAFETY: 0.5, // 틈은 R(높이차) × 이 값까지 → 높이차 1 이면 약 2.6칸, 2 면 약 2.3칸
   SKY_FALL_STEP_MS: 2500, // 하늘 블록 1칸 내려오는 간격, 판 내내 고정 (예전 AUTO_FALL 500→300)
   // 그림자(경고)는 착지까지 남은 칸 수로: 예전 SHADOW_LEAD_MS(착지 3초 전)는 한 칸 2.5초면 깔리기 0.5초 전이라 못 피함 (봇 판 압사 28% → 55%)
-  SKY_LAVA_TRIGGER_MS: 60000, // 켬 판은 판 시작 후 이 시간이 지나면 평균 높이와 상관없이 용암 시작 (2026-10-26 재혁: 착지가 느려 용암이 거의 안 옴, 봇 504판 중 2판)
-  // 인원별 (2026-10-28): 사슬이 늘면 계단이 많아져 판이 길어짐 (8명 3사슬 106초) → 5명 이상은 용암을 조금 일찍. 2~4명은 SKY_LAVA_TRIGGER_MS 그대로
+  // 켬 판은 판 시작 후 이 시간이 지나면 평균 높이와 상관없이 용암 시작 (2026-10-26 재혁: 착지가 느려 용암이 거의 안 옴, 봇 504판 중 2판).
+  // 인원별 (2026-10-28): 사슬이 늘면 계단이 많아져 판이 길어짐 (8명 3사슬 106초) → 5명 이상은 용암을 조금 일찍. 2~4명은 60초
+  // (예전 단일 값 SKY_LAVA_TRIGGER_MS 는 이 표가 다 덮어써서 효과가 없었음 — 2026-10-30 감사 T4 에서 지움)
   SKY_LAVA_TRIGGER_BY_COUNT: { 2: 60000, 5: 55000, 7: 50000 },
   SKY_SHADOW_CELLS: 3, // 착지 높이 + 이 칸 안으로 내려오면 그림자 (머리 위 약 1.4칸, 깔리기 약 5초 전)
   SKY_BASE_UP: 6, // 사슬 첫 블록 높이: 그 아래 기둥(착지 높이)보다 이만큼 위
@@ -390,7 +396,7 @@ export const CONFIG = {
   MAP_DEFAULT: 'random', // 서버 켤 때 맵 선택: 'random' 또는 server/maps.js 의 MAP_IDS (flat·pyramid·stairs·bowl·spiral·pillars·fortress). 호스트가 대기 화면에서 바꿀 수 있음
 
   // ---- 캐릭터 (2026-10-24 7단계 재혁: 친구들이 '스킬/고유기 넣어서'. 캐릭터마다 패시브 + 스킬 F(쿨) + 필살기 R(게이지)) ----
-  CHARACTERS: ['tank', 'ninja', 'builder', 'hook', 'hunter', 'cannon', 'berserker', 'bard'], // 사냥꾼·대포수·광전사·바드 2026-10-26 (docs/characters.md 3.5~3.8)
+  CHARACTERS, // 사냥꾼·대포수·광전사·바드 2026-10-26 (docs/characters.md 3.5~3.8)
   CHAR_NAMES: { tank: '탱크', ninja: '닌자', builder: '건축가', hook: '갈고리', hunter: '사냥꾼', cannon: '대포수', berserker: '광전사', bard: '바드' },
   // 2026-10-24 재혁: 스킬이 직접 피해·넉백을 주고 콤보로 이어지게 (닌자 = 콤보 캐릭터). 남이 쓰는 것도 보이게 예고·효과
   SKILL_NAMES: { tank: '돌진', ninja: '순간 베기', builder: '솟는 벽', hook: '갈고리', hunter: '추적 도약', cannon: '발밑 포격', berserker: '광폭 도약', bard: '폼 전환' },
@@ -578,7 +584,6 @@ export const CONFIG = {
   BERSERKER_SPIN_END_STUN_MS: 800,
   BERSERKER_RAGE_CUT: 20, // 2026-10-26 재혁 40 → 20
   // 바드 (2026-10-26 재혁 확정, docs/characters.md 3.8). 폼 form: 'bard'(음유시인, 판 시작·부활) / 'metal'. F = 폼 전환 (쿨 SKILL_CD_MS.bard), R = 지금 폼의 R
-  BARD_FORM_NAMES: { bard: '음유시인', metal: '메탈' },
   BARD_METAL_ULT_NAME: '앰프 음파',
   // 류트 음파 (음유 평타): 보이는 느린 투사체, 사람에 닿으면 약한 넉백 + 둔화, 블록에 닿으면 사라짐
   BARD_NOTE_SPEED: 10,
@@ -742,9 +747,9 @@ export const CONFIG = {
   KILLS_SHIELD_MS: 2000, // 부활 직후 무적: 안 밀리고 안 깔림 (떨어지면 죽음)
   KILLS_SINK_HEIGHT: 9, // 킬 점수전은 용암이 없음. 가장 높은 기둥이 이 높이에 닿으면 맨 아래 층을 지워 전체를 한 칸 내림
   // 가장자리에서 2.5칸 안쪽 = 칸 중심 (밀치기 한 방 약 1.5칸이라 시작하자마자 한 방에 안 떨어진다)
-  SPAWN_POINTS: spawnPoints(GRID_W, GRID_D, 2.5),
-  SPAWN_INSET: 2.5,
-  spawnPointsFor: (W, D) => spawnPoints(W, D, 2.5), // 판 크기별 시작 위치
+  SPAWN_POINTS: spawnPoints(GRID_W, GRID_D, SPAWN_INSET),
+  SPAWN_INSET,
+  spawnPointsFor: (W, D) => spawnPoints(W, D, SPAWN_INSET), // 판 크기별 시작 위치
 
   // ---- AI 봇 (서버에서 돎, 사람과 같은 입력만 씀) ----
   BOT_THINK_MS: 100, // 판단 주기
@@ -806,7 +811,6 @@ export const CONFIG = {
     tapL: { files: ['impactGeneric_light_000', 'impactGeneric_light_001', 'impactGeneric_light_002'], gain: 0.6 }, // 작은 탁
     softH: { files: ['impactSoft_heavy_000', 'impactSoft_heavy_001', 'impactSoft_heavy_002'], gain: 1 }, // 몸이 깔림·쓰러짐
     metalM: { files: ['impactMetal_medium_000', 'impactMetal_medium_001', 'impactMetal_medium_003'], gain: 0.55 }, // 갈고리·아머 쨍
-    metalL: { files: ['impactMetal_light_001', 'impactMetal_light_004'], gain: 0.5 }, // 가벼운 금속
     glassH: { files: ['impactGlass_heavy_000', 'impactGlass_heavy_002'], gain: 0.35 }, // 수정·와장창 높은 겹
     chop: { files: ['chop'], gain: 0.75 }, // 도끼 (광전사)
     slice: { files: ['knifeSlice', 'knifeSlice2'], gain: 0.55 }, // 단검 베기 (닌자)
@@ -1386,7 +1390,7 @@ export const CONFIG = {
   ROBOT_EYE_PUPIL: 0.3, // 로봇 눈동자 반지름 (같은 비율)
   ROBOT_RUN_SPEED: 3.2, // 이 속도(칸/초)보다 빠르면 로봇이 달리기 동작
   ROBOT_FADE_S: 0.15, // 로봇 동작이 바뀔 때 섞는 시간
-  FIGURE_CHARS: ['tank', 'ninja', 'builder', 'hook', 'hunter', 'cannon', 'berserker', 'bard'], // TABS 식 몸(client/figure.js)으로 그리는 캐릭터 (2026-10-24). 캐릭터 없으면 로봇
+  FIGURE_CHARS: [...CHARACTERS], // TABS 식 몸(client/figure.js)으로 그리는 캐릭터 (2026-10-24). 캐릭터 없으면 로봇
   // 체형 (칸, client/figure.js). foot 발 두께, shin·thigh 다리 마디, torso 몸통 높이, chestR·waistR 가슴·허리 반지름, depth 앞뒤 납작함,
   // barrel 이면 몸통이 둥근 통, head·headW 머리 높이·폭, sink 머리가 어깨에 묻히는 깊이, upper·lower 팔 마디, armR·foreR 팔 굵기,
   // legR 다리 굵기, hand 손 크기, shoulderY 어깨 관절 옆 거리, hipY 다리 사이, hunch 구부정한 각, bend 가만히 설 때 무릎 굽힘(없으면 0), spread 팔 벌린 각
@@ -1512,7 +1516,7 @@ export const CONFIG = {
   FIGURE_SETTLE: 10, // 도는 동작이 끝나고 가장 가까운 한 바퀴 각으로 돌아가는 빠르기 (/초)
   // 액티브 래그돌 (2026-10-27 시범, client/ragdoll.js · ragdoll-math.js · cannon-es). 판정은 서버 AABB 그대로, 몸 모습만 클라 물리.
   // 평소·공격: 관절 모터가 지금 자세(figureAnim)를 세게 따라감 / 맞음·기절·낙사: 모터 힘이 빠져 흐물흐물 (TABS)
-  RAGDOLL_CHARS: ['tank', 'ninja', 'builder', 'hook', 'hunter', 'cannon', 'berserker', 'bard'], // 래그돌로 그리는 캐릭터 (빈 배열이면 끔). 1인칭 내 몸은 늘 끔 (viewmodel 이 관절을 베낌). 2026-10-27 재혁: 8명 전부
+  RAGDOLL_CHARS: [...CHARACTERS], // 래그돌로 그리는 캐릭터 (빈 배열이면 끔). 1인칭 내 몸은 늘 끔 (viewmodel 이 관절을 베낌). 2026-10-27 재혁: 8명 전부
   RAGDOLL_STEP: 1 / 120, // 물리 고정 걸음 (초)
   RAGDOLL_MAX_STEPS: 6, // 한 프레임에 최대 걸음 수 (느린 프레임에서 따라잡기 상한)
   RAGDOLL_GRAVITY: 20, // 몸 물리 중력 (칸/초², 서버 GRAVITY 와 같게)
@@ -1553,7 +1557,6 @@ export const CONFIG = {
   RAGDOLL_DAMPING: 0.05, // 조각마다 공기 저항 (선·각 모두)
   RAGDOLL_FRICTION: 0.6, // 바닥·블록 마찰
   RAGDOLL_GROUND_REACH: 2, // 래그돌 둘레 이 칸 안의 단단한 칸만 물리 상자로 (가까운 것만)
-  FIGURE_ARM_SPREAD: 0.22, // 가만히 있을 때 팔을 옆으로 벌린 각 (라디안)
   FIGURE_WALK_LEG: 0.7, // 걸을 때 허벅지를 앞뒤로 드는 최대 각
   FIGURE_WALK_KNEE: 0.9, // 걸을 때 무릎을 굽히는 최대 각
   FIGURE_WALK_ARM: 0.6, // 걸을 때 팔을 앞뒤로 흔드는 최대 각
@@ -1808,13 +1811,18 @@ export const CONFIG = {
   TUNNEL_MAX_RESTARTS: 5, // 연속 실패 상한 (넘으면 포기하고 안내)
   // 재접속 (2026-10-28 재혁): 끊긴 사람 자리를 이만큼 유지 (같은 자리·이름·색·캐릭터·팀·승수·피해 %). 판 중이면 그동안 봇이 대신 조종, 돌아오면 바로 돌려받음.
   // 지나면 예전처럼 나간 걸로 (판 중이면 '접속 끊김' 사망). 대기실도 같음 (방장이면 방장 유지, 사람이 다 끊겨도 방은 이 시간 뒤에 없어짐)
-  RECONNECT_GRACE_MS: 60000,
+  RECONNECT_GRACE_MS,
   RECONNECT_TOKEN_BYTES: 16, // 자리 토큰 (방 코드와 같이 보냄) 길이: 16바이트 = 추측 불가
-  NET_RECONNECT_MS: 2000, // 화면: 서버 연결이 끊기면 이 간격으로 다시 붙어 봄 (붙으면 새로고침 → 저장한 토큰으로 같은 자리)
-  NET_RECONNECT_TRIES: 30, // 이만큼 해도 안 되면 그만 (30 × 2초 = 자리 유지 RECONNECT_GRACE_MS 와 같게. 터널 주소가 바뀌었으면 새 링크가 필요)
+  NET_RECONNECT_MS, // 화면: 서버 연결이 끊기면 이 간격으로 다시 붙어 봄 (붙으면 새로고침 → 저장한 토큰으로 같은 자리)
+  NET_RECONNECT_TRIES: RECONNECT_GRACE_MS / NET_RECONNECT_MS, // 이만큼 해도 안 되면 그만 (30 × 2초 = 자리 유지 RECONNECT_GRACE_MS 와 같게, 나눗셈으로 맞춤. 터널 주소가 바뀌었으면 새 링크가 필요)
 };
 
 // 캐릭터의 평타 세트 (바드는 메탈 폼이면 metal 세트)
+// 방에 들어올 수 있는 최대 인원 (사람 + 봇): MAX_PLAYERS 와 시작 위치 수 중 작은 쪽. 서버·방·화면이 이 함수 하나를 씀 (감사 T5)
+export function maxPlayers() {
+  return Math.min(CONFIG.MAX_PLAYERS, CONFIG.SPAWN_POINTS.length);
+}
+
 export function basicSet(char, form) {
   const set = CONFIG.BASIC_ATTACKS[char];
   return set && set.metal && form === 'metal' ? set.metal : set;

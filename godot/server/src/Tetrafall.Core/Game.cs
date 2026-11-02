@@ -21,7 +21,7 @@ public sealed partial class Game
     public int H = (int)C.GRID_H;
     public List<int> skyTops = new(); // 하늘 계단 사슬마다 맨 위 블록 id
     public double skyChains = 1;
-    public double skyLavaMs = C.SKY_LAVA_TRIGGER_MS;
+    public double skyLavaMs = GameUtil.ByCount(C.SKY_LAVA_TRIGGER_BY_COUNT, C.MIN_PLAYERS); // 판 시작 때 인원별로 다시 정함
     public Func<double> rng = Random.Shared.NextDouble; // 서버 난수는 전부 여기 (해시·sim 은 Mulberry32)
     public double time; // 게임 시간 (ms)
     public string phase = "lobby"; // lobby | countdown | playing | over

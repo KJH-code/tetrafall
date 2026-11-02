@@ -48,7 +48,6 @@ public static partial class C
     public const double SKY_GAP_MIN = 1;
     public const double SKY_REACH_SAFETY = 0.5;
     public const double SKY_FALL_STEP_MS = 2500;
-    public const double SKY_LAVA_TRIGGER_MS = 60000;
     public static readonly Dictionary<string, double> SKY_LAVA_TRIGGER_BY_COUNT = new() { ["2"] = 60000, ["5"] = 55000, ["7"] = 50000 };
     public const double SKY_SHADOW_CELLS = 3;
     public const double SKY_BASE_UP = 6;
@@ -313,7 +312,6 @@ public static partial class C
     public const double BERSERKER_SPIN_END_KB_UP = 5;
     public const double BERSERKER_SPIN_END_STUN_MS = 800;
     public const double BERSERKER_RAGE_CUT = 20;
-    public static readonly Dictionary<string, string> BARD_FORM_NAMES = new() { ["bard"] = "음유시인", ["metal"] = "메탈" };
     public const string BARD_METAL_ULT_NAME = "앰프 음파";
     public const double BARD_NOTE_SPEED = 10;
     public const double BARD_NOTE_RANGE = 6;
@@ -747,7 +745,6 @@ public static partial class C
     public const double RAGDOLL_DAMPING = 0.05;
     public const double RAGDOLL_FRICTION = 0.6;
     public const double RAGDOLL_GROUND_REACH = 2;
-    public const double FIGURE_ARM_SPREAD = 0.22;
     public const double FIGURE_WALK_LEG = 0.7;
     public const double FIGURE_WALK_KNEE = 0.9;
     public const double FIGURE_WALK_ARM = 0.6;

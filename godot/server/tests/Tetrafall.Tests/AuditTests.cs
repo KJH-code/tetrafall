@@ -262,4 +262,20 @@ public class AuditTests
         rooms.Message(q, J($"{{\"type\":\"join\",\"code\":\"{Code(wp)}\"}}"));
         Assert.NotNull(wq.Last("welcome")); // 연습 방은 같이
     }
+
+    [Fact]
+    public void T4_T5_config_한_곳에서_계산한_값()
+    {
+        Assert.Equal(C.SPAWN_INSET, C.SPAWN_POINTS[0].x);
+        Assert.Equal(C.SPAWN_INSET, C.spawnPointsFor(C.GRID_W, C.GRID_D)[0].x);
+        Assert.Equal(13 - C.SPAWN_INSET, C.spawnPointsFor(13, 13)[1].x);
+        Assert.Equal(C.SKY_GRID_H, C.SKY_TOP_Z);
+        Assert.Equal(C.RECONNECT_GRACE_MS, C.NET_RECONNECT_TRIES * C.NET_RECONNECT_MS);
+        Assert.Equal(C.CHARACTERS, C.FIGURE_CHARS);
+        Assert.Equal(C.CHARACTERS, C.RAGDOLL_CHARS);
+        Assert.Equal(8, GameUtil.MaxPlayers());
+        Assert.Equal(C.SKY_LAVA_TRIGGER_BY_COUNT["2"], new Game(_ => { }).skyLavaMs);
+        var names = typeof(C).GetFields().Select(f => f.Name).ToHashSet();
+        foreach (var gone in new[] { "BARD_FORM_NAMES", "FIGURE_ARM_SPREAD", "SKY_LAVA_TRIGGER_MS" }) Assert.DoesNotContain(gone, names);
+    }
 }

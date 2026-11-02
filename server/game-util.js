@@ -96,9 +96,7 @@ export function byCount(table, n) {
   return table[k];
 }
 
-export function maxPlayers() {
-  return Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length);
-}
+export { maxPlayers } from '../shared/config.js'; // 최대 인원 식은 shared/config.js 한 곳
 
 export function shareText(t) {
   const deaths = t.crush + t.fall + (t.lava || 0);

@@ -239,13 +239,14 @@ test('하늘 계단: 봇은 용암이 다가오면 점프로 닿는 하늘 블�
   }
 });
 
-test('하늘 계단: 켬 판은 SKY_LAVA_TRIGGER_MS 가 지나면 쌓인 높이와 상관없이 용암 시작, 끔 판은 예전 그대로 (높이만)', () => {
-  assert.equal(C.SKY_LAVA_TRIGGER_MS, 60000);
+test('하늘 계단: 켬 판은 SKY_LAVA_TRIGGER_BY_COUNT 시간이 지나면 쌓인 높이와 상관없이 용암 시작, 끔 판은 예전 그대로 (높이만)', () => {
+  assert.equal(C.SKY_LAVA_TRIGGER_BY_COUNT[2], 60000);
+  assert.equal(C.SKY_LAVA_TRIGGER_MS, undefined, '효과 없던 단일 값은 지움');
   for (const sky of [true, false]) {
     const { g, lines } = setup({ sky, n: 3 });
     g.updateSpawning = () => {}; // 블록 없이 (쌓인 높이 0) 시간만 보냄
     for (const p of g.players.values()) p.shieldUntil = Infinity;
-    run(g, C.SKY_LAVA_TRIGGER_MS - 500);
+    run(g, C.SKY_LAVA_TRIGGER_BY_COUNT[2] - 500);
     assert.equal(g.lava.active, false, `${sky}: 아직`);
     run(g, 1000);
     assert.equal(g.lava.active, sky, sky ? '켬: 시간이 지나 시작' : '끔: 쌓인 게 없으면 안 옴');
@@ -353,7 +354,7 @@ test('하늘 계단 인원별 (2026-10-28 "블록 더 많이"): 2~4명은 사슬
   for (const n of [2, 3, 4]) {
     assert.equal(C.SKY_CHAINS[n], 1, `${n}명 사슬`);
     const lava = Object.entries(C.SKY_LAVA_TRIGGER_BY_COUNT).filter(([k]) => +k <= n).pop()[1];
-    assert.equal(lava, C.SKY_LAVA_TRIGGER_MS, `${n}명 용암`);
+    assert.equal(lava, C.SKY_LAVA_TRIGGER_BY_COUNT[2], `${n}명 용암`);
   }
   let prev = 1;
   for (let n = 5; n <= C.MAX_PLAYERS; n++) {

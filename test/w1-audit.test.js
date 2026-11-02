@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Game } from '../server/game.js';
 import { Rooms } from '../server/rooms.js';
-import { CONFIG as C } from '../shared/config.js';
+import { CONFIG as C, maxPlayers } from '../shared/config.js';
 import { CELL } from '../shared/pieces.js';
 import { fakeWs } from './support/fake-ws.js';
 
@@ -288,4 +288,36 @@ test('T2 서버 프로세스: LOG_DIR 의 임시 폴더에만 로그를 남김 (
   }
   assert.ok(!fs.existsSync(logDir), 'stop 이 임시 폴더를 지움');
   assert.equal(fs.existsSync(repoLogs) ? fs.readdirSync(repoLogs).sort().join() : null, before, '레포 logs/ 는 그대로');
+});
+
+// ---------- T4·T5: config 정리 ----------
+test('T4 안 쓰던 config 키를 지움 (BARD_FORM_NAMES·FIGURE_ARM_SPREAD·SKY_LAVA_TRIGGER_MS·SFX_BANKS.metalL)', () => {
+  for (const k of ['BARD_FORM_NAMES', 'FIGURE_ARM_SPREAD', 'SKY_LAVA_TRIGGER_MS']) assert.ok(!(k in C), k);
+  assert.ok(!('metalL' in C.SFX_BANKS));
+  assert.deepEqual(Object.keys(C.SKY_LAVA_TRIGGER_BY_COUNT), ['2', '5', '7'], '용암 시작 시각은 인원별 표 하나');
+  const g = new Game(() => {});
+  assert.equal(g.skyLavaMs, C.SKY_LAVA_TRIGGER_BY_COUNT[2]);
+});
+
+test('T5 손으로 따로 적던 값을 한 곳에서: 시작 위치 안쪽 칸·하늘 높이·재접속 시도 횟수·캐릭터 목록·최대 인원', async () => {
+  assert.equal(C.SPAWN_POINTS[0].x, C.SPAWN_INSET);
+  assert.equal(C.spawnPointsFor(C.GRID_W, C.GRID_D)[0].x, C.SPAWN_INSET);
+  assert.equal(C.spawnPointsFor(13, 13)[1].x, 13 - C.SPAWN_INSET);
+  assert.equal(C.SKY_TOP_Z, C.SKY_GRID_H);
+  assert.equal(C.NET_RECONNECT_TRIES * C.NET_RECONNECT_MS, C.RECONNECT_GRACE_MS, '화면이 다시 붙어 보는 시간 = 서버가 자리를 지키는 시간');
+  assert.deepEqual(C.FIGURE_CHARS, C.CHARACTERS);
+  assert.deepEqual(C.RAGDOLL_CHARS, C.CHARACTERS);
+  assert.notEqual(C.FIGURE_CHARS, C.CHARACTERS, '복사본 (한쪽을 고쳐도 다른 쪽이 안 변함)');
+  assert.equal(maxPlayers(), 8);
+  // 최대 인원 식은 shared/config.js 한 곳 — 서버·도구에는 따로 안 적음. 화면(client/main.js) 두 곳은 같은 식 그대로 (client 는 이번 일의 범위 밖)
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const root = path.join(path.dirname(new URL(import.meta.url).pathname), '..');
+  const expr = 'Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length)';
+  for (const dir of ['server', 'tools']) {
+    for (const f of fs.readdirSync(path.join(root, dir)).filter((n) => n.endsWith('.js') || n.endsWith('.mjs'))) {
+      assert.ok(!fs.readFileSync(path.join(root, dir, f), 'utf8').includes(expr), `${dir}/${f}`);
+    }
+  }
+  assert.equal(fs.readFileSync(path.join(root, 'client', 'main.js'), 'utf8').split(expr).length - 1, 2, '화면 쪽은 같은 식 두 곳');
 });

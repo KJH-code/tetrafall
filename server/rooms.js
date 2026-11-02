@@ -5,10 +5,8 @@
 // 그 안에 { type: 'rejoin', code, token } 으로 오면 같은 자리 (같은 플레이어 id). 지나면 예전처럼 나감. 같은 토큰이 또 오면 새 접속이 자리를 가져감.
 // 소켓은 { readyState, OPEN, send(text) } 만 쓴다 (테스트는 가짜 소켓).
 import { randomBytes, randomInt } from 'node:crypto';
-import { CONFIG as C } from '../shared/config.js';
+import { CONFIG as C, maxPlayers } from '../shared/config.js';
 import { Game } from './game.js';
-
-const maxPlayers = () => Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length);
 
 // 방 주소: 터널 주소 + ?room=코드 (tools/online.js 콘솔 안내와 같은 모양)
 export function roomLinkOf(base, code) {

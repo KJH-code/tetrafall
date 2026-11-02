@@ -104,7 +104,7 @@ public sealed class Rooms
     // 방마다 틱·스냅샷을 병렬로 (false 면 예전처럼 한 스레드에서 차례로 — 부하 비교용)
     public bool parallel = true;
 
-    static double MaxPlayers() => Math.Min(C.MAX_PLAYERS, 8); // shared/config.js SPAWN_POINTS 8곳
+    static double MaxPlayers() => GameUtil.MaxPlayers(); // shared/config.js maxPlayers() — 시작 위치 수와 MAX_PLAYERS 중 작은 쪽
 
     // openLog(code) → 방마다 로그 (서버는 파일, 테스트는 목록), serverLog: 방 밖 일, now(): 메시지 빈도 제한용 시계 (ms),
     // newToken(): 자리 토큰 (기본 RECONNECT_TOKEN_BYTES 바이트 난수의 16진수, 테스트는 정해진 값)
