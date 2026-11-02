@@ -96,6 +96,18 @@ func test_gfx_node_applies() -> void:
 		var want := GC.plan(lv, root.size, OS.has_feature("web"))
 		check(WC.level == lv and Gfx.plan.get("level") == lv and root.msaa_3d == want.msaa and is_equal_approx(root.scaling_3d_scale, want.scale), "%s 적용: 수준 %s MSAA %d 배율 %s" % [lv, WC.level, root.msaa_3d, root.scaling_3d_scale])
 		check(bool(View.settings.lowGfx) == (lv == "low"), "%s: lowGfx = 낮음일 때만" % lv)
+	# 1인칭 팔 SubViewport: 화질 MSAA + 판과 같은 3D 배율 (World 대신 사전 — world.get("vm"))
+	var vm = preload("res://chars/viewmodel.gd").new()
+	vm._ready()
+	g.world = {"vm": vm}
+	g.forced = "medium"
+	g.apply(false, root)
+	check(vm.view.msaa_3d == Viewport.MSAA_2X, "팔: 보통 2×")
+	Gfx.plan = {"scale": 0.75}
+	g.sync_vm()
+	check(is_equal_approx(vm.view.scaling_3d_scale, 0.75) and vm.view.scaling_3d_mode == Viewport.SCALING_3D_MODE_BILINEAR, "팔: 판 3D 배율")
+	g.world = null
+	vm.free()
 	g.forced = ""
 	View.settings["gfx"] = "low"
 	g.apply(false, root)

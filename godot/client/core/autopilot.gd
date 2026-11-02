@@ -270,7 +270,7 @@ func _process(_d: float) -> void:
 			var low := 0.0
 			for i in k:
 				low += sorted[sorted.size() - 1 - i]
-			_log("성능 표: 평균 %.2fms · 1%% low %.2fms · 그리기 %d · 메모리 %.1fMB (영상 %.1fMB) · 프레임 %d | 나눔 평균: 그리기 CPU %.1fms · GPU %.1fms · 스크립트 %.1fms · 물리 %.1fms" % [avg, low / k, Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0, Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0, sorted.size(), perf_split[0] / maxf(1, perf_split[4]), perf_split[1] / maxf(1, perf_split[4]), perf_split[2] / maxf(1, perf_split[4]), perf_split[3] / maxf(1, perf_split[4])])
+			_log("성능 표: 평균 %.2fms · 1%% low %.2fms · 그리기 %d · 메모리 %.1fMB (영상 %.1fMB) · 프레임 %d | 나눔 평균: 그리기 CPU %.1fms · GPU %.1fms · TIME_PROCESS (스크립트 + 그리기 — 고도 4.7 은 draw 까지 들어감, 스크립트만은 F3 줄) %.1fms · 물리 %.1fms" % [avg, low / k, Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0, Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0, sorted.size(), perf_split[0] / maxf(1, perf_split[4]), perf_split[1] / maxf(1, perf_split[4]), perf_split[2] / maxf(1, perf_split[4]), perf_split[3] / maxf(1, perf_split[4])])
 			_log("성능 구간 (프레임당): %s" % Prof.report(int(perf_split[4])))
 			var pf := get_tree().root.find_child("Perf", true, false) # F3 (ui/perf.gd, --perf 로 켬): 재혁 PC 에서 '복사' 하는 그 한 줄
 			if pf != null and pf.has_method("line") and OS.get_cmdline_user_args().has("--perf"):

@@ -1,5 +1,5 @@
 # 화질 적용 (W6 2026-11-02, 재혁 PC 랙): 설정 '화질' (View.settings.gfx: 자동·높음·보통·낮음) + 창 크기 + GPU 어댑터 → (계산 world/gfx_calc.gd)
-#   View.settings.lowGfx (예전 '그래픽 낮춤' = 낮음 — 그림자·블룸·거울·장식은 예전처럼 lowGfx 를 듣는 쪽이 끔), 판 3D 해상도 배율·MSAA, 1인칭 팔 MSAA, 거울 크기 (WC.level)
+#   View.settings.lowGfx (예전 '그래픽 낮춤' = 낮음 — 그림자·블룸·거울·장식은 예전처럼 lowGfx 를 듣는 쪽이 끔), 판 3D 해상도 배율·MSAA, 1인칭 팔 MSAA·3D 배율, 거울 크기 (WC.level)
 # World 가 _ready 맨 처음에 붙임 (그 뒤 world·타이틀이 lowGfx 를 읽음). 창 크기가 바뀌면 다시 (자동이면 높음 ↔ 보통, 배율)
 # 하이브리드 노트북 안내: Windows 에서 내장 그래픽으로 돌면 'reg query' 로 이 PC 의 다른 GPU 를 찾음 (스레드 — 타이틀을 안 멈춤) → hint (F3·화면 구석이 읽음)
 # 확인용: --gfx auto|high|medium|low (설정에 안 남김) · --fake-gpu "<이름>" (어댑터 이름 흉내) · --fake-gpu-others "<이름>" (다른 GPU 흉내, reg 안 부름)
@@ -65,8 +65,20 @@ func apply(emit: bool, win: Window = null) -> void:
 			View.set_setting("lowGfx", p.low) # 듣는 쪽 (world·g3·타이틀·효과) 이 예전 '그래픽 낮춤' 처럼 바꿈
 		else:
 			View.settings["lowGfx"] = p.low
-	if world != null and world.get("vm") != null and world.vm.has_method("set_msaa"):
-		world.vm.set_msaa() # 1인칭 팔 SubViewport (WC.msaa_3d 가 WC.level 을 봄)
+	sync_vm()
+
+
+# 1인칭 팔 SubViewport (chars/viewmodel.gd — 창 크기 그대로, 1인칭이면 매 프레임): MSAA (WC.msaa_3d 가 WC.level 을 봄) + 판과 같은 3D 배율. World 가 팔을 만든 뒤에도 부름
+func sync_vm() -> void:
+	var vm = world.get("vm") if world != null else null
+	if vm == null:
+		return
+	if vm.has_method("set_msaa"):
+		vm.set_msaa()
+	var sv = vm.get("view")
+	if sv is SubViewport:
+		(sv as SubViewport).scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+		(sv as SubViewport).scaling_3d_scale = float(plan.get("scale", 1.0))
 
 
 func _find_others() -> void:

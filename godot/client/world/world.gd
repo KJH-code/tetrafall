@@ -120,6 +120,7 @@ func _ready() -> void:
 	if ResourceLoader.exists(VIEWMODEL):
 		vm = load(VIEWMODEL).new()
 		add_child(vm)
+		gfx.sync_vm() # 화질 (W6): 팔 SubViewport 도 판과 같은 3D 배율
 	if ResourceLoader.exists(BBLOCKS):
 		bblocks = load(BBLOCKS).new()
 		add_child(bblocks)
