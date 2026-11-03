@@ -13,10 +13,15 @@ uniform vec4 line_color = vec4(0.08, 0.05, 0.1, 1.0); // three 와 같이 선형
 uniform bool no_fog = false;
 
 void vertex() {
+	// 해 그림자 지도 (직교 투영) 엔 껍질을 안 그림 (W15): 고도는 next_pass 도 그림자 패스에 그려서 몸·블록 그림자가 껍질 두께만큼 (직교라 그림자 범위의 0.65%) 커지고
+	// 그림자 지도에 삼각형이 한 벌 더 들어가던 것. JS OutlineEffect 는 그림자와 따로라 그림자에 외곽선이 없음. 게임 카메라는 다 원근 (직교 카메라 없음)
 	vec4 pos = PROJECTION_MATRIX * MODELVIEW_MATRIX * vec4(VERTEX, 1.0);
 	vec4 pos2 = PROJECTION_MATRIX * MODELVIEW_MATRIX * vec4(VERTEX - NORMAL, 1.0); // three 는 뒤 면이라 법선을 뒤집어 씀 (outlineNormal = -objectNormal)
 	vec4 n = normalize(pos - pos2);
 	POSITION = pos + n * thickness * pos.w;
+	if (PROJECTION_MATRIX[3][3] > 0.5) {
+		POSITION = vec4(2.0, 2.0, 2.0, 1.0); // 클립 밖 한 점 → 삼각형이 다 납작해져 안 그려짐
+	}
 }
 
 void fragment() {
