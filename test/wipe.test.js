@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG as C } from '../shared/config.js';
-import { screenOf, wipeKind, wipePlan } from '../shared/wipe.js';
+import { hudSnapshot, screenOf, wipeKind, wipePlan } from '../shared/wipe.js';
 
 test('화면 분류: 방 밖 · 대기실 · 판 · 결과 연출 (결과가 끝난 판 끝은 대기실)', () => {
   assert.equal(screenOf({ inRoom: false, phase: 'playing', hero: false }), 'menu');
@@ -107,4 +107,15 @@ test('판 끝: 승자 클로즈업 뒤 결과, 슬로모션이 남았으면 그 
   // 클로즈업 동안은 판 화면 그대로 (결과 슬래시는 그 뒤: game → results)
   assert.equal(screenOf({ inRoom: true, phase: 'over', hero: false, closeup: true }), 'game');
   assert.equal(wipeKind('game', 'results'), 'big');
+});
+
+// 2026-11 재혁 보고: 결과를 본 뒤 방을 나가면 결과 판·위 점수 띠가 메뉴 위에 남음.
+// 메뉴로 가는 띠가 덮기 전 (hold) 에 지난 전환 스냅샷 (결과) 으로 HUD 를 다시 그려 켜고, 띠 뒤엔 state 가 없어 아무도 숨기지 않았음
+test('띠가 덮기 전 HUD 스냅샷: 방 안에서만 전환 직전 스냅샷, 방을 나가면 지난 스냅샷을 안 씀', () => {
+  const held = { phase: 'over' };
+  const now = { phase: 'lobby' };
+  assert.equal(hudSnapshot({ hold: true, held, state: now, inRoom: true }), held, '방 안 전환: 덮기 전엔 직전 스냅샷');
+  assert.equal(hudSnapshot({ hold: false, held, state: now, inRoom: true }), now, '덮은 뒤엔 지금 state');
+  assert.equal(hudSnapshot({ hold: true, held: null, state: now, inRoom: true }), now);
+  assert.equal(hudSnapshot({ hold: true, held, state: null, inRoom: false }), null, '방을 나가는 띠: 결과 스냅샷으로 다시 그리지 않음');
 });
