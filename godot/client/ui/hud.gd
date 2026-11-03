@@ -298,10 +298,11 @@ static func slot_state(l: Label, fill: float, ready: bool) -> void:
 		p.queue_redraw()
 	var s := p.get_theme_stylebox("panel") as StyleBoxFlat
 	var bc := S.ACCENT if ready else Color("3c4a78")
-	if s.border_color != bc: # 같은 값도 StyleBox changed → 칸 다시 그림 (W16: F·R 칸이 매 갱신 다시 그려지던 것)
+	var sc := Color(1, 0.82, 0.23, 0.75) if ready else Color(0, 0, 0, 0)
+	if s.border_color != bc or s.shadow_color != sc: # 같은 값도 StyleBox changed → 칸 다시 그림 (W16: F·R 칸이 매 갱신 다시 그려지던 것)
 		s.border_color = bc
-	s.shadow_color = Color(1, 0.82, 0.23, 0.75) if ready else Color(0, 0, 0, 0)
-	s.shadow_size = 14 if ready else 0
+		s.shadow_color = sc
+		s.shadow_size = 14 if ready else 0
 
 
 func _player_color(p: Dictionary) -> Color:
