@@ -1,6 +1,6 @@
 # 렌더러별 셰이더 확인 (W12 2026-11-03): 우리 .gdshader 전부를 그 렌더러로 실제로 그려 컴파일 오류를 찾음 (화면이 있어야 함 — xvfb).
 #   xvfb-run -a <godot> --path godot/client --rendering-method forward_plus --rendering-driver vulkan -s tools/shader_check.gd
-#   (mobile 도 같음, 기본 gl_compatibility 는 --rendering-driver opengl3). 오류는 고도가 'SHADER ERROR' 로 찍음 → 끝 줄 '셰이더 확인: …'
+#   (mobile 도 같음, 기본 gl_compatibility 는 --rendering-driver opengl3). 오류는 고도가 'SHADER ERROR' 로 찍음 → 끝 줄 'shader check: …'
 # 툰·블록 재질은 G3 가 만든 재질 (전역 값·next_pass 외곽선·투명 변형) 도 같이 그림. 코드 안 셰이더 (hud·ko) 는 판·재연을 그 렌더러로 돌려 확인
 extends SceneTree
 
@@ -27,7 +27,7 @@ func _initialize() -> void:
 	for f in files:
 		var sh: Shader = load(f)
 		if sh == null:
-			printerr("셰이더 못 읽음 %s" % f)
+			printerr("shader load fail %s" % f)
 			continue
 		var m := ShaderMaterial.new()
 		m.shader = sh
@@ -61,7 +61,7 @@ func _initialize() -> void:
 	for i in 4:
 		await process_frame
 	await RenderingServer.frame_post_draw
-	print("셰이더 확인: 렌더러 %s · 장치 %s · 파일 %d개 + G3 재질 %d개 그림" % [RenderingServer.get_current_rendering_method(), RenderingServer.get_video_adapter_name(), n, made])
+	print("shader check: 렌더러 %s · 장치 %s · 파일 %d개 + G3 재질 %d개 그림" % [RenderingServer.get_current_rendering_method(), RenderingServer.get_video_adapter_name(), n, made])
 	quit(0)
 
 
