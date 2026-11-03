@@ -18,6 +18,7 @@ JS `client/main.js`·`client/index.html` 의 화면을 옮김. 계산은 `ui_cal
 | `perf.gd` · `perf_calc.gd` | (G6) F3 성능 표시·계산 (client/perf.js, shared/perf.js), 켬 = View.settings.perf |
 | `char_stage.gd` | 대기실 큰 3D 캐릭터: 고르면 정면 도발 한 번 → 천천히 돎, 판 시작하면 놓음, 그래픽 낮춤이면 정지 초상 (client/char-stage.js) |
 | `ui_prefs.gd` | 기억 (tf-name·tf-color·tf-char·tf-tutorial → user://ui.json) |
+| `baked_panel.gd` | (W16) 그림만 굽는 판: 대기실·플레이어 관리·설정 창을 SubViewport 에 바뀔 때만 그려 텍스처 한 장으로 (아래 'W16 2D 판 굽기') |
 
 main.gd 가 `ui/ui.tscn` 을 자동으로 붙임 (2026-10-31 총괄이 고도로 돌려 스크립트 에러 0 확인). 화면 확인: `--auto host --bots 3 --shot <png> --shot-at menu|lobby|game|tab|settings|results` (core/autopilot.gd, tab 은 `--mode kills`).
 초상은 portrait.gd (다 그려지기 전·헤드리스면 색 상자).  3D 메뉴·대기실 배경은 범위 밖 — 빛 색은 `View.ui_theme` 가 생기면 그 테마, 없으면 자수정.
@@ -49,3 +50,15 @@ main.gd 가 `ui/ui.tscn` 을 자동으로 붙임 (2026-10-31 총괄이 고도로
 | 큰 버튼 6개 꾸밈 | +6 (반짝일 때 +1씩) | — | — | 반짝임 없음 |
 | 빛 안개 | +1 + 화면 복사·밉맵 | — | 1 (밉 5 단계 17곳 읽기) | 끔 |
 | 타이틀 전체 (전 → 후, 위 겹 포함) | 29 → 42 | 거울 그대로 | 0 → 1 | 끔 |
+
+## W16 2D 판 굽기 (2026-11-03) — `baked_panel.gd`
+
+대기실이 판보다 무거운 건 2D 화면 판이었음 (W15: 창 2D 그리기 210). 판 모습은 그대로 두고 **그리기만** 옮김:
+
+- 판 노드는 트리에서 그대로 `ui.gd` 의 자리 (감싼 칸 아래 `CanvasLayer`) 에 있고, 그 층의 `custom_viewport` 가 SubViewport → 판은 SubViewport 에 그려지고 창에는 텍스처 한 장 (그리기 1). 층 변환은 항등이라 **클릭·hover·초점·글자 칸·스크롤·고르기 목록 (팝업 창)·툴팁은 창 gui 가 예전 자리 그대로 받음** (`core/ui_check.gd` 로 확인)
+- 다시 굽는 때 (UPDATE_ONCE): 판 안 CanvasItem 의 `draw` 신호 (글·상자·hover·눌림·커서 깜빡임 — 고도가 다시 그릴 때마다), Control 자리·크기, 보임, 자식 들어옴·나감, 판 자리·UI 배율·판 투명도, 빛 색 바뀜 (`S.style_gen`), 등장 애니 동안 (`S.slide_in`·`pop_down` → `S.animating()`). 아무것도 안 바뀌면 0번 (재연 대기실 60프레임 0번)
+- **판 안 노드의 `modulate` 를 직접 바꾸면 모름** (draw 신호가 없음) → 바꾸는 곳은 `queue_redraw()` 를 같이 (설정 '방 나가기' 깜빡임처럼). 트윈은 `S.slide_in`·`pop_down` 으로
+- 창 픽셀 그대로: SubViewport 크기 = 판 사각형 (+40 여유) × UI 배율, `global_canvas_transform` 에 배율·화소 칸에 맞춘 원점, 글꼴 `oversampling_override` = 배율. 텍스처는 `_draw` 사각형으로 (Control 자리는 gui 화소 맞춤으로 UI 좌표 정수가 돼 2.25배면 1화소 밀림 — 실측), 화소 1:1 (NEAREST), 반투명은 SubViewport 에 미리 곱한 색으로 쌓여 `PREMULT_ALPHA` 로 섞음 → 판 부분 화소 차 0% (>8/255)
+- 산 칸 (`live`): 판 안이지만 매 프레임 바뀌는 그림 = 대기실 큰 3D 캐릭터 (`char_stage`) 와 그 위 '스킬 보기' 는 굽지 않고 RenderingServer 에서 감싼 칸의 자식 칸으로 옮겨 그림 (변환·투명도·스크롤 잘림 따라감, 스킬 카드가 덮으면 숨김)
+- 안 구운 것: 판 HUD 아래 판 (맞을 때 % 흔들림·죽음 회색이 판 중 거의 매 프레임 → 구워도 매 프레임 다시 — 재연 120번/초), 메뉴 (큰 버튼 반짝임이 늘 돎, 2D 43), 결과 (55)
+- 끄기: 실행 인자 `--no-bake` (A/B·문제 확인)
