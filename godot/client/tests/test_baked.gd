@@ -235,6 +235,57 @@ func test_baked_same_as_pieces() -> void:
 		o.free()
 
 
+# 캐릭터별 부품 (manifest refs 로 이은 노드): 코드가 보이기·자세·재질을 바꾸는 부품을 다 켜도, 상태 (바드 메탈 폼·광전사 분노·포탄 수·갈고리 장전·어지러움) 를 바꿔도
+# 판 몸 (묶음) 과 조각 몸 모두 예전 조립과 같은 정점·색. 매 프레임 뼈 맞추기 (_sync_bones) 만으로 묶음에 반영됨
+const STATES := [
+	["bard", {"bard": {"form": "metal"}}],
+	["bard", {"bard": {"form": "bard"}}],
+	["berserker", {"damage": 999.0}],
+	["cannon", {"cannon": {"ammo": 1}}],
+	["cannon", {"cannon": {"ammo": 0}}],
+	["hook", {"loaded": true}],
+]
+
+
+static func _show_parts(b) -> int:
+	var dyn: Dictionary = b._dyn_nodes(b.cd)
+	var n := 0
+	for i in dyn:
+		if not b.nodes[i].visible:
+			b.nodes[i].visible = true
+			n += 1
+	b._sync_bones()
+	return n
+
+
+func test_baked_special_parts() -> void:
+	for ch in baked_chars():
+		for merge in [true, false]:
+			var g = _body(ch, Color(0.8, 0.5, 0.2), merge, true)
+			var o = _body(ch, Color(0.8, 0.5, 0.2), merge, false)
+			var ng := _show_parts(g)
+			var no := _show_parts(o)
+			check(ng == no and ng > 0, "%s 숨긴 부품 수 %d / 예전 %d" % [ch, ng, no])
+			_same(g, o, "%s 부품 다 보임 (%s)" % [ch, "판" if merge else "조각"])
+			g.free()
+			o.free()
+		for s in STATES:
+			if s[0] != ch:
+				continue
+			for merge in [true, false]:
+				var g = _body(ch, Color(0.8, 0.5, 0.2), merge, true)
+				var o = _body(ch, Color(0.8, 0.5, 0.2), merge, false)
+				var p: Dictionary = {"id": -1, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.3}
+				p.merge(s[1], true)
+				for i in 40:
+					for b in [g, o]:
+						b.dizzy = C.BERSERK_DIZZY_S
+						b.pose(p, i * 16.0)
+				_same(g, o, "%s %s (%s)" % [ch, JSON.stringify(s[1]), "판" if merge else "조각"])
+				g.free()
+				o.free()
+
+
 # 노드·그리는 메시·뼈가 예전 조립보다 적음, 묶음 메시는 몸끼리 같이 씀, 재질 (툰 피부색·외곽선)
 func test_baked_lighter() -> void:
 	for ch in baked_chars():
