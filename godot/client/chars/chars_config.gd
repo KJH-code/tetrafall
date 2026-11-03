@@ -34,3 +34,14 @@ const VM_SHIELD_PUSH := {
 	"방패 내려치기": {"W": [-0.05, 0.0, 0.08, 0.0, 0.35], "S": [0.07, 0.0, -0.08, -0.1, -0.45]},
 	"tankCharge": {"W": [0.0, 0.0, 0.0, 0.0, 0.0], "S": [0.06, 0.0, 0.0, -0.15, 0.0]},
 }
+
+# W14 외부 뼈대 모델 (assets/models/ext/<캐릭터>.glb, chars/external.gd, 안내 chars/EXTERNAL.md): 있으면 그 모델 (→ 없으면 구운 몸 → 코드 조립).
+# 지금 들어 있는 건 시험용 로봇 하나 (탱크 자리) 라 기본은 끔 — 실행 인자 --ext 로 켬 (테스트는 Body.use_ext)
+const EXT := false
+# 조정 값 기본 (모델마다 assets/models/ext/<캐릭터>.json 이 덮음): bones 뼈 이름 덮어쓰기 {우리 관절: 모델 뼈} · yaw 앞 방향 (도, glTF 앞 +Z → 게임 앞 = 90) ·
+# height 키 배율 (PLAYER_HEIGHT × FIGURE_SCALE 기준) · offset 몸 기준 옮김 [x, y, z] (고도 좌표, m) · tint 몸 색 "keep" 텍스처 그대로 / "band" + 허리 플레이어 색 띠 / "tint" 곱함 (tint_k) ·
+# band 띠 [반지름, 두께, 뼈 따라 올림] (모델 키 비율) · band_joint 띠를 붙일 관절 · keep 안쪽 몸에서 남길 소품 (refs 키, 예 "shields") · attach 따로 받은 물건 [{glb, joint, pos, rot, scale}] ·
+# vm_from 1인칭 팔에 남길 부분 ("elbow" 팔꿈치 아래 = 예전 1인칭과 같음, "shoulder") · vm_snap 1인칭에서 우리 관절 자리에 붙일 관절 (팔꿈치 → 손이 예전 1인칭 자리) · clips 동작 이름 → 모델 클립 이름 (play_clip 예)
+const EXT_DEFAULTS := {"bones": {}, "yaw": 90.0, "height": 1.0, "offset": [0, 0, 0], "tint": "band", "tint_k": 0.6, "band": [0.17, 0.035, 0.0], "band_joint": "waist",
+	"keep": [], "attach": [], "vm_from": "elbow", "vm_snap": ["elbow"], "clips": {}}
+const EXT_FLASH := 0.55 # 경직 하얀 깜빡임 (외부 모델은 피부 부위를 몰라서 몸 전체 하얀 발광으로)
