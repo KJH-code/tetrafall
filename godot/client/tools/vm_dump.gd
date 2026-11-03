@@ -1,4 +1,7 @@
 # 1인칭 팔 (chars/viewmodel.gd) 숫자 뽑기 (W11, tools/vm_dump.mjs 와 같은 장면): godot --headless --path godot/client -s res://tools/vm_dump.gd -- [캐릭터] [out.json]
+# 결과 (W11, 2026-11-03): seq 157프레임·동작마다 96프레임 모두 JS 와 방패·어깨·팔꿈치 차 0.000. 판 중 (--vm-log, --no-glb 예전 조립 포함 476프레임) 도
+#   같은 동작·단계의 가장 가까운 u 와 방패 자리·회전 차 최대 0.13 (프레임 간격 탓) — 3·4타 방패는 허리에 붙은 채 허리 회전 × VM_BODY_FOLLOW 만 따라감 (JS 도 같음).
+#   보이기도 같음 (1·2타 숨김, 3·4타 보임). 이 환경 (llvmpipe, Compatibility) 에서는 증상 재현 못 함.
 extends SceneTree
 
 const C := preload("res://core/config.gd")
