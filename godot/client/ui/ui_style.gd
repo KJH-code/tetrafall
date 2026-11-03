@@ -36,6 +36,17 @@ const LOGO_BLUR_LOW := [[14, "g", 1.0]]
 
 # 테마 빛 색을 쓴 것 기억 (판 테마가 바뀌면 restyle 이 그 자리에서 다시 칠함 — 타이틀·대기실 맵 테마 View.ui_theme). [WeakRef, 종류, 인자]
 static var _reg: Array = []
+# (W16) 구운 판 (ui/baked_panel.gd) 이 다시 굽는 때: 빛 색이 바뀐 횟수 · 등장 애니가 도는 동안 (ms 시각까지)
+static var style_gen := 0
+static var anim_until := 0
+
+
+static func animating() -> bool:
+	return Time.get_ticks_msec() < anim_until
+
+
+static func _anim(sec: float) -> void:
+	anim_until = maxi(anim_until, Time.get_ticks_msec() + int(sec * 1000.0) + 40)
 
 
 static func _keep(o: Object, kind: String, arg = null) -> void:
@@ -46,6 +57,7 @@ static func _keep(o: Object, kind: String, arg = null) -> void:
 
 # View.ui_theme 가 바뀌면 (ui.gd 가 부름): 기억한 판·버튼·글자 빛·글자 칸·체크 상자를 새 테마 색으로
 static func restyle() -> void:
+	style_gen += 1
 	var gc := g()
 	var live: Array = []
 	for r in _reg:
@@ -281,6 +293,7 @@ static func reduced() -> bool:
 
 # 옆에서 미끄러져 들어옴 (JS dock-in .22s 30px · slide-left .18s -30px): 위치는 컨테이너·_place 가 정해서 투명도 + 잠깐 옆으로 비킴 (그리기 변환)
 static func slide_in(c: CanvasItem, dx: float) -> void:
+	_anim(0.22)
 	c.modulate.a = 0.0
 	var tw := c.create_tween()
 	tw.tween_property(c, "modulate:a", 1.0, 0.22).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
@@ -335,6 +348,7 @@ static func style_slider(sl: HSlider) -> void:
 
 # 등장 애니: 나타남 (JS open-down .22s ease-out — 위치는 컨테이너가 정해 투명도만)
 static func pop_down(c: CanvasItem) -> void:
+	_anim(0.22)
 	c.modulate.a = 0.0
 	var tw := c.create_tween()
 	tw.tween_property(c, "modulate:a", 1.0, 0.22).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)

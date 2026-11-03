@@ -9,6 +9,7 @@ extends Node
 
 const Prof := preload("res://core/prof.gd")
 const Probe := preload("res://ui/perf.gd").Probe
+const UiCensus := preload("res://core/ui_census.gd")
 
 var args := {}
 var fps := 120.0
@@ -243,6 +244,10 @@ func _process(_d: float) -> void:
 	Net.virt = v + 1000.0 / fps
 	if not measuring and Net.virt >= t_start:
 		measuring = true
+		if args.has("replay-open"): # W16: 재기 전에 창을 띄움 (settings — 설정 창)
+			var ui = get_tree().root.find_children("*", "CanvasLayer", true, false).filter(func(n): return n.get("settings") is Control)
+			if not ui.is_empty():
+				ui[0].get(str(args["replay-open"])).visible = true
 		Prof.reset()
 	if measuring:
 		frames += 1
@@ -288,6 +293,7 @@ func _report() -> void:
 		print("[재연] 그리기 %d · 물체 %d · 삼각형 %d · 영상 메모리 %.1fMB" % [Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME), Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0])
 	if args.has("census"):
 		census(get_tree().root)
+		await UiCensus.run(get_tree(), "재연 %.1f초" % ((Net.virt - t_start) / 1000.0))
 	if args.has("shot") and DisplayServer.get_name() != "headless":
 		await RenderingServer.frame_post_draw
 		var img := get_viewport().get_texture().get_image()

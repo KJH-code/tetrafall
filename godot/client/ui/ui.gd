@@ -10,6 +10,7 @@ const U := preload("res://ui/ui_calc.gd")
 const Portrait := preload("res://ui/portrait.gd")
 const Coords := preload("res://core/coords.gd")
 const Prefs := preload("res://ui/ui_prefs.gd")
+const Baked := preload("res://ui/baked_panel.gd")
 
 var menu: Control
 var lobby: PanelContainer
@@ -40,10 +41,15 @@ func _ready() -> void:
 	add_child(root)
 	menu = load("res://ui/menu.gd").new()
 	root.add_child(menu)
+	# (W16) 내용이 드물게 바뀌는 큰 판은 그림만 구움 (ui/baked_panel.gd — 입력·초점은 그대로), --no-bake 면 예전처럼
+	Baked.enabled = not OS.get_cmdline_user_args().has("--no-bake")
 	lobby = load("res://ui/lobby.gd").new()
-	root.add_child(lobby)
+	var lb := Baked.wrap(lobby)
+	root.add_child(lb)
+	if lb != lobby: # 큰 3D 캐릭터·그 위 '스킬 보기' 는 매 프레임 바뀌어 굽지 않음 (스킬 카드가 덮으면 숨김)
+		lb.live([lobby.stage_3d, lobby.skill_btn], func(): return lobby.skill_card.visible)
 	host_players = load("res://ui/host_players.gd").new()
-	root.add_child(host_players)
+	root.add_child(Baked.wrap(host_players))
 	hud = load("res://ui/hud.gd").new()
 	root.add_child(hud)
 	hud_extra = load("res://ui/hud_extra.gd").new()
@@ -59,7 +65,7 @@ func _ready() -> void:
 	root.add_child(status)
 	root.add_child(make_net())
 	settings = load("res://ui/settings.gd").new()
-	root.add_child(settings)
+	root.add_child(Baked.wrap(settings))
 	menu.open_settings.connect(func(): settings.visible = true)
 	lobby.open_settings.connect(func(): settings.visible = true)
 	menu.open_tutorial.connect(func(): View.open_panel.emit("tutorial")) # G6 ui/tutorial_ui.gd

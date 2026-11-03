@@ -524,7 +524,7 @@ func refresh(st: Dictionary) -> void:
 		skill_text.text = "[font=%s][font_size=%d]%s[/font_size][/font]\n[font_size=%d][color=#ddd8ee]%s[/color][/font_size]\n[font_size=%d][table=2]%s%s[/table][/font_size]" % [S.FONT_PATH, nm_fs, C.CHAR_NAMES[ch], fs, C.CHAR_INTRO.get(ch, ""), fs,
 			row.call(Keys.key_label(str(PlayerInput.binds.get("skill", "KeyF"))), C.SKILL_NAMES[ch], C.SKILL_DESC.get(ch, "")),
 			row.call(Keys.key_label(str(PlayerInput.binds.get("ult", "KeyR"))), C.ULT_NAMES[ch], C.ULT_DESC.get(ch, ""))]
-	if not name_edit.has_focus():
+	if not name_edit.has_focus() and name_edit.text != str(me.get("nick", "")): # 같은 글을 다시 넣어도 LineEdit 는 다시 그림 (W16)
 		name_edit.text = str(me.get("nick", ""))
 	_render_colors(st, me)
 	# 방 코드

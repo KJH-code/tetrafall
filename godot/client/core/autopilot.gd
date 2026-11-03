@@ -328,9 +328,13 @@ func _process(_d: float) -> void:
 		_log("화면 저장 %s (%dx%d) · UI 크기 %.3f · UI 좌표 %s · 창 %s" % [args.shot, shot_img.get_width(), shot_img.get_height(), View.ui_scale, str(get_viewport().get_visible_rect().size), str(get_window().size)])
 		if args.has("dump"):
 			_dump(get_tree().root, 0)
+		if args.has("ui-census"): # W16: 2D 화면 판 요소별 그리기 (core/ui_census.gd) — 끝날 때까지 나가기를 미룸
+			set_meta("ui_census_busy", true)
+			await preload("res://core/ui_census.gd").run(get_tree(), "자동 조종 %s" % shot_at)
+			set_meta("ui_census_busy", false)
 	var done_rounds := rounds >= int(args.get("quit-after-rounds", 999999))
 	var done_time := args.has("quit-after") and el >= float(args["quit-after"])
-	if done_rounds or done_time:
+	if (done_rounds or done_time) and not get_meta("ui_census_busy", false):
 		var ok := (snapshots > 0 or shot_at in ["menu", "title"]) and (not args.has("drop-at") or rejoined) and (not args.has("quit-after-rounds") or done_rounds) and (not args.has("min-moved") or moved >= float(args["min-moved"]))
 		var sfx := get_tree().root.find_child("Sfx", true, false)
 		var music := get_tree().root.find_child("Music", true, false)
