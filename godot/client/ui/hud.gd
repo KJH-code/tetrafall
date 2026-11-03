@@ -2,6 +2,7 @@
 # 밝은 예전 모양 (노랑·남색, ui_style hud_box). 아래 사람마다 초상 + 큰 % (+ 체력전 HP 막대), 위 시간·점수 띠 (킬 점수전은 목표까지 막대),
 # 오른쪽 위 킬 피드, Tab(연습 창 키) 점수표, 부활 카운트다운, 스킬 F·R 칸, 조준점 둘레 대시·밀치기 쿨, 관전 안내, 카운트다운 큰 숫자
 extends Control
+const HProf := preload("res://core/prof.gd")
 
 const C := preload("res://core/config.gd")
 const S := preload("res://ui/ui_style.gd")
@@ -430,13 +431,19 @@ func refresh(st: Dictionary) -> void:
 		big.add_theme_color_override("font_color", Color.WHITE)
 		big.visible = true
 	big.position = Vector2((vp.x - big.size.x) / 2.0, vp.y * 0.3 - big.size.y / 2.0)
+	HProf.begin() # 성능 구간 (W12, --prof 만)
 	_cards(st, vp)
+	HProf.lap("HUD ·아래 판")
 	score_band(st, vp, false)
+	HProf.lap("HUD ·점수 띠")
 	_skills(me, vp)
+	HProf.lap("HUD ·스킬")
 	_kills_panels(st, me, vp)
 	_spectate(st, me, vp)
+	HProf.lap("HUD ·킬·관전")
 	_my_marks(me, vp)
 	ring.queue_redraw()
+	HProf.lap("HUD ·표식")
 
 
 # 위 점수 띠 (JS updateScore): 대기실·결과 (between = body.ui-dark 빛 판) 엔 승수 'A 1 : 0 B' · 셋 이상 'A 1 · B 0 · C 0' · 팀전 '빨강 1 : 0 파랑',
