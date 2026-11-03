@@ -10,6 +10,9 @@
 # --auto practice|tutorial: 연습·튜토리얼 방 (G6, --char 캐릭터, 연습 창은 --practice-open)
 # 연기 시험 (B4): --team (팀전) · --sky (하늘 계단) · --char <id> (방장 캐릭터도) · --skills <초> (그 간격으로 F·R) ·
 #   --color <팔레트 번호> (host·guest, 받아짐/거절 로그) · 방장이 나가 넘겨받으면 로그 + 판 시작도 맡음 ·
+#   --combo <ms> (상대를 무시하고 제자리에서 그 간격으로 평타) · --act-shots <폴더> (내 공격 동작 동안 프레임마다 화면 저장 <순번>_<동작>_<단계>_<u>.png, 최대 --act-shots-max 장 (기본 240), 1인칭 팔 확인 W11) ·
+#   --air-after <동작 이름> (내 동작이 그 동작의 회복 단계면 점프하고 공중 평타 — 탱크 4타 공중 방패 내려치기는 '방패 올려치기') ·
+#   --act-freeze "<동작>/<단계>/<u>;…" (판 중 내 몸 동작을 그 단계에 차례로 --freeze-ms (기본 1500) 씩 멈춰 두고 끝에 --act-shots 폴더에 freeze_<번호>.png — JS 와 같은 순간 대조) ·
 #   --shot-round <N> (N판째 시작 뒤 --shot-after 초에 찍음) · --char2 <id> --char2-at <초> (연습: 판 중 캐릭터 바꾸기) · --tut-skip <초> (튜토리얼: 한 단계에 이만큼 머물면 넘기기 → 끝까지)
 # 화면 범인 찾기: --hide ui|world|audio (그 묶음을 숨기고 찍음) · --dump (찍을 때 보이는 Control·CanvasItem·3D 노드를 화면 사각형과 함께 출력)
 extends Node
@@ -191,7 +194,13 @@ func _process(_d: float) -> void:
 			if d < bd:
 				bd = d
 				best = p
+		if args.has("combo") or args.has("act-freeze"): # --combo <ms>: 상대를 무시하고 제자리에서 그 간격으로 평타 (콤보 화면 확인, 시선은 처음 방향). --act-freeze 는 제자리만
+			best = null
+			bd = 0.0 if args.has("combo") else INF
 		var yaw: float = atan2(best.y - me.y, best.x - me.x) if best != null else me.yaw
+		if args.has("combo") or args.has("act-freeze"):
+			yaw = float(get_meta("yaw0", me.yaw))
+			set_meta("yaw0", yaw)
 		var fwd := 1 if best != null and bd > 1.2 else 0 # 상대가 없으면 (튜토리얼 빈 단계·혼자 연습) 제자리 — 계속 걸으면 섬 밖으로 떨어짐
 		# 튜토리얼: 단계 목표 칸이 있으면 그리로 (shared/tutorial-pilot.js go(target) 만 — 화면 확인용)
 		var tut = Store.state.get("tutorial")
@@ -202,8 +211,9 @@ func _process(_d: float) -> void:
 			fwd = 1 if Vector2(tx - me.x, ty - me.y).length() > 0.15 else 0
 		PlayerInput.set_yaw_pitch(yaw, 0)
 		PlayerInput.override = {"type": "input", "fwd": fwd, "strafe": 0, "jump": false, "yaw": yaw, "pitch": 0}
+		_combo_air(now)
 		if bd < 1.7 and now >= push_at:
-			push_at = now + 300
+			push_at = now + float(args.get("combo", 300))
 			PlayerInput.press("attack")
 		if args.has("skills") and now >= skill_at: # 연기 시험: F·R 번갈아
 			skill_at = now + float(args["skills"]) * 1000.0
@@ -247,6 +257,7 @@ func _process(_d: float) -> void:
 		if args.has("ui-pick") and sb is Dictionary and sb.has(str(args["ui-pick"])) and el >= float(args.get("shot-after", 8)) - 0.5 and not get_meta("ui_picked", false):
 			set_meta("ui_picked", true)
 			(sb[str(args["ui-pick"])] as Button).pressed.emit()
+	_act_shot()
 	var shot_time := el >= float(args.get("shot-after", 8))
 	if args.has("shot-round"): # N판째 playing 이 된 뒤 --shot-after 초 (블록 마스터 2판째 = 생존자 화면)
 		shot_time = round_no == int(args["shot-round"]) and Store.phase() == "playing" and now - round_ms >= float(args.get("shot-after", 8)) * 1000.0
@@ -365,3 +376,85 @@ func _dump(n: Node, depth: int) -> void:
 		print("%s%s [%s]%s" % ["  ".repeat(depth), n.name, n.get_class(), info])
 	for ch in n.get_children():
 		_dump(ch, depth + 1)
+
+
+# 내 몸 (World bodies, 1인칭이면 숨긴 몸 — 1인칭 팔이 관절을 베끼는 그 몸). 없으면 null
+func _my_body():
+	var w := get_tree().root.find_child("World", true, false)
+	if w == null or w.get("bodies") == null or Store.my_id == null:
+		return null
+	return w.bodies.nodes.get(Store.my_id, {}).get("body")
+
+
+# --air-after: 그 동작의 회복 단계가 되면 점프 (한 번) → 0.15초 뒤 공중 평타
+func _combo_air(now: float) -> void:
+	if not args.has("air-after"):
+		return
+	var b = _my_body()
+	var a = b.get("cur_act") if b != null else null
+	if a is Dictionary and str(a.move) == str(args["air-after"]) and str(a.phase) == "rec" and int(a.id) != int(get_meta("air_for", -1)):
+		set_meta("air_for", int(a.id))
+		set_meta("air_at", now)
+		PlayerInput.press("jump")
+		_log("점프 (%s 회복)" % a.move)
+	var at := float(get_meta("air_at", -1.0))
+	if at >= 0.0 and now - at < 120.0:
+		PlayerInput.override.jump = true
+	elif at >= 0.0 and now - at >= 150.0:
+		set_meta("air_at", -1.0)
+		push_at = now + 300
+		PlayerInput.press("attack")
+		_log("공중 평타")
+
+
+# --act-shots: 내 공격 동작 동안 프레임마다 화면 저장 (--act-freeze 면 멈춘 단계마다 한 장)
+func _act_shot() -> void:
+	if not args.has("act-shots") or DisplayServer.get_name() == "headless":
+		return
+	if args.has("act-freeze"):
+		_act_freeze()
+		return
+	var n := int(get_meta("act_shots", 0))
+	if n >= int(args.get("act-shots-max", 240)):
+		return
+	var b = _my_body()
+	var a = b.get("cur_act") if b != null else null
+	if not (a is Dictionary):
+		return
+	set_meta("act_shots", n + 1)
+	var path := "%s/%03d_%s_%s_%.2f.png" % [str(args["act-shots"]), n, str(a.move).replace(" ", ""), str(a.phase), float(a.u)]
+	get_viewport().get_texture().get_image().save_png(path)
+
+
+# --act-freeze: 내 몸 act 기록을 매 프레임 그 단계·u 가 되게 다시 씀 (body.gd _act_for 가 읽는 t0·struck). 판 중 처음 본 때부터
+func _act_freeze() -> void:
+	var b = _my_body()
+	if b == null or Store.phase() != "playing":
+		return
+	var list: Array = str(args["act-freeze"]).split(";", false)
+	var now := Net.now_ms()
+	if not has_meta("freeze_t0"):
+		set_meta("freeze_t0", now)
+	var hold := float(args.get("freeze-ms", 1500))
+	var i := int((now - float(get_meta("freeze_t0"))) / hold)
+	if i >= list.size():
+		return
+	var f: Array = str(list[i]).split("/")
+	var u := float(f[2])
+	var t := Time.get_ticks_msec() / 1000.0
+	var windup := 0.3
+	var rec := 0.5
+	var a := {"id": 9000 + i, "move": f[0], "t0": t, "windup": windup, "struck": null, "rec": rec, "broken": null, "air": false}
+	match str(f[1]):
+		"wind":
+			a.t0 = t - u * windup
+		"strike":
+			a.struck = t - u * C.FIGURE_STRIKE_S
+		_:
+			a.struck = t - C.FIGURE_STRIKE_S - u * rec
+	b.act = a
+	if now - float(get_meta("freeze_t0")) >= (i + 0.75) * hold and int(get_meta("freeze_shot", -1)) < i:
+		set_meta("freeze_shot", i)
+		var path := "%s/freeze_%02d_%s_%s_%.2f.png" % [str(args["act-shots"]), i, str(f[0]).replace(" ", ""), f[1], u]
+		get_viewport().get_texture().get_image().save_png(path)
+		_log("멈춘 단계 %d %s" % [i, str(list[i])])
