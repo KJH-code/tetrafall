@@ -711,7 +711,7 @@ class Ext extends Node3D:
 		ba.bone_name = sk.get_bone_name(bi)
 		sk.add_child(ba)
 		var bm: Array = cfg.get("band", [0.17, 0.035, 0.0]) # 반지름·두께 (모델 키 비율)·뼈 따라 올림
-		var h: float = (info.box as AABB).size.y
+		var h: float = (info.box as AABB).size.y / (info.sk_rel as Transform3D).basis.get_scale().x # 뼈대 공간 (모델 뿌리 아래 크기 배율을 뺌)
 		var tm := TorusMesh.new()
 		tm.inner_radius = float(bm[0]) * h
 		tm.outer_radius = (float(bm[0]) + float(bm[1])) * h
@@ -739,7 +739,7 @@ class Ext extends Node3D:
 			ba.bone_name = sk.get_bone_name(bi)
 			sk.add_child(ba)
 			var prop := (load(gp) as PackedScene).instantiate() as Node3D
-			var h: float = (info.box as AABB).size.y
+			var h: float = (info.box as AABB).size.y / (info.sk_rel as Transform3D).basis.get_scale().x # 뼈대 공간 (모델 뿌리 아래 크기 배율을 뺌)
 			var p: Array = a.get("pos", [0, 0, 0])
 			var r: Array = a.get("rot", [0, 0, 0])
 			prop.position = Vector3(float(p[0]), float(p[1]), float(p[2])) * h
