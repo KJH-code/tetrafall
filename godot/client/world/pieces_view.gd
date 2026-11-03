@@ -100,6 +100,7 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 	_key_sky = sky_on
 	_key_cols = piece_colors
 	_key_me = my_id
+	writes += 1
 	var pieces: Array = st.get("pieces", [])
 	var n := 0
 	for pc in pieces:
@@ -168,6 +169,7 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 	sm.visible_instance_count = s
 
 
+var writes := 0 # 칸을 다 다시 쓴 번 수 (확인용)
 var _key_st = null # 지난번 그린 스냅샷·시점·색 표·내 id
 var _key_sky := false
 var _key_cols = null

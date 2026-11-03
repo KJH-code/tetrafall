@@ -9,6 +9,8 @@ const PC := preload("res://ui/perf_calc.gd")
 const DISCRETE_RE := "(?i)(nvidia|geforce|quadro|rtx|gtx|radeon\\s*(\\(tm\\)\\s*)?(rx|pro)\\b|arc(\\(tm\\))?\\s*(pro\\s*)?[ab]\\d{2,3}\\b)"
 # 내장 그래픽: 인텔 (UHD·Iris·HD Graphics·Core Ultra 의 'Arc(TM) Graphics'·'Arc 140V'), AMD APU (Radeon(TM) Graphics·Vega 8·780M), 퀄컴 Adreno
 const INTEGRATED_RE := "(?i)(intel|radeon\\s*(\\(tm\\)\\s*)?(graphics|vega|\\d{3}m\\b)|vega\\s*\\d+\\s*graphics|adreno)"
+# 고성능 외장 (W15): NVIDIA RTX (2050~ 노트북 포함)·AMD Radeon RX 네 자리 (RX 5000~). 자동 화질에서 큰 창도 높음을 GFX_BIG_PX_FAST 까지 (GTX·Quadro·옛 RX 480 등은 예전 기준)
+const FAST_RE := "(?i)(\\brtx\\b|radeon\\s*(\\(tm\\)\\s*)?rx\\s*\\d{4})"
 # 소프트웨어·가상 (개발 확인용 llvmpipe, 원격·기본 드라이버) — 내장으로 치지 않음 (자동이 낮추지 않음, 다른 GPU 로도 안 셈)
 const SOFTWARE_RE := "(?i)(llvmpipe|softpipe|swiftshader|software|basic render|basic display|virtual|parsec|vmware|remote\\s+display|\\bidd)"
 
@@ -44,11 +46,17 @@ static func discrete_in_reg(text: String) -> Array:
 	return out
 
 
-# 자동 화질: 내장 그래픽 → 낮음, 창 픽셀 > GFX_BIG_PX → 보통, 아니면 높음
+# → 고성능 외장인가 (자동 화질이 큰 창도 높음으로)
+static func is_fast(adapter: String, vendor := "") -> bool:
+	var n := PC.short_gpu(adapter)
+	return n != "" and not is_integrated(n, vendor) and not is_software(n) and _m(FAST_RE, n)
+
+
+# 자동 화질: 내장 그래픽 → 낮음, 창 픽셀 > GFX_BIG_PX (고성능 외장이면 GFX_BIG_PX_FAST) → 보통, 아니면 높음
 static func auto_level(adapter: String, vendor: String, size: Vector2i) -> String:
 	if is_integrated(adapter, vendor):
 		return "low"
-	if size.x * size.y > WC.GFX_BIG_PX:
+	if size.x * size.y > (WC.GFX_BIG_PX_FAST if is_fast(adapter, vendor) else WC.GFX_BIG_PX):
 		return "medium"
 	return "high"
 

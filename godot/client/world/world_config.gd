@@ -58,10 +58,11 @@ const SPIN_ARC_COLOR := 0xe8ecf4 # 갈고리 스핀 원호 색 (render.js spinAr
 # ---- 화질 (W6 2026-11-02, 재혁 PC 랙): 설정 '화질' 자동·높음·보통·낮음 (View.settings.gfx). 계산은 world/gfx_calc.gd, 적용은 world/gfx.gd
 # 높음 = 예전 그대로 (MSAA 4×, 3D 해상도 1). 보통 = 모습은 거의 같음 (MSAA 2×, 거울 반사 작게, 창이 아주 크면 3D 해상도를 GFX_MAX_PX 까지).
 # 낮음 = 예전 '그래픽 낮춤' (lowGfx: MSAA 끔·그림자·블룸·거울·장식 줄임) + 3D 해상도를 GFX_MAX_PX.low 까지 (JS 낮춤 setPixelRatio(1) 자리)
-# 자동: 내장 그래픽 (Intel·AMD APU 등) 이면 낮음, 창 픽셀이 GFX_BIG_PX 보다 많으면 보통, 아니면 높음 (소프트웨어 GL 은 개발 확인용이라 높음 그대로)
+# 자동: 내장 그래픽 (Intel·AMD APU 등) 이면 낮음, 창 픽셀이 GFX_BIG_PX (고성능 외장이면 GFX_BIG_PX_FAST) 보다 많으면 보통, 아니면 높음 (소프트웨어 GL 은 개발 확인용이라 높음 그대로)
 const GFX_CHOICES := ["auto", "high", "medium", "low"]
 const GFX_LABEL := {"auto": "자동", "high": "높음", "medium": "보통", "low": "낮음"}
 const GFX_BIG_PX := 2560 * 1440 # 자동: 이보다 큰 창이면 보통
+const GFX_BIG_PX_FAST := 3200 * 2000 # (W15) 자동, 고성능 외장 (gfx_calc FAST_RE: NVIDIA RTX·Radeon RX) 이면 이 픽셀까지 높음 — 2880×1800 (5.2M)·3024×1964 는 높음, 4K (8.3M) 는 보통
 const GFX_MAX_PX := {"high": 0, "medium": 2560 * 1440, "low": 1920 * 1080} # 3D 를 그리는 픽셀 상한 (0 = 창 그대로). 넘으면 scaling_3d_scale 로 줄여 늘림
 const GFX_MIN_SCALE := {"high": 1.0, "medium": 0.75, "low": 0.5} # 3D 해상도 배율 하한 (보통은 흐려 보이지 않게 0.75 까지만)
 const MSAA_MEDIUM := Viewport.MSAA_2X # 보통: 판·1인칭 팔 다중 샘플 (4× 의 반 — 모서리 모습은 거의 같음)

@@ -171,6 +171,86 @@ func test_pose_lod_rule() -> void:
 	check(L.due(5.0, null, 50.0, 8.0), "처음은 셈")
 
 
+# W15 둘째 단: far2 밖은 far2_hz (기본 WC.POSE_LOD 10m 밖 30Hz — 120fps 면 4프레임에 한 번, 60fps 면 2프레임에 한 번). far2 없는 표는 예전 그대로
+func test_pose_lod_far2() -> void:
+	var L = load("res://world/pose_lod.gd")
+	var WC = load("res://world/world_config.gd")
+	var lod: Dictionary = WC.POSE_LOD
+	check(float(lod.far2) == 10.0 and float(lod.far2_hz) == 30.0 and float(lod.near) == 3.0, "기본 3m 매 프레임 · 10m 까지 60Hz · 밖 30Hz")
+	check(L.interval_ms(2.0, true, false, lod) == 0.0, "3m 안 매 프레임")
+	check(near(L.interval_ms(9.9, true, false, lod), 1000.0 / 60.0), "10m 안 60Hz")
+	check(near(L.interval_ms(10.5, true, false, lod), 1000.0 / 30.0), "10m 밖 30Hz")
+	check(near(L.interval_ms(10.5, false, false, lod), 50.0), "화면 밖은 20Hz 그대로")
+	check(L.interval_ms(30.0, true, true, lod) == 0.0, "내 몸은 늘 매 프레임")
+	check(near(L.interval_ms(30.0, true, false, {"near": 3.0, "far_hz": 60.0, "off_hz": 20.0, "margin": 2.5}), 1000.0 / 60.0), "far2 없는 표 = 예전 (멀어도 60Hz)")
+	for row in [[120.0, 30], [60.0, 30], [144.0, 29]]:
+		var fms: float = 1000.0 / row[0]
+		var last = null
+		var n := 0
+		for i in int(row[0]):
+			if L.due(i * fms, last, 1000.0 / 30.0, fms):
+				last = i * fms
+				n += 1
+		check(absi(n - int(row[1])) <= 1, "%.0ffps 30Hz → 초당 %d번" % [row[0], n])
+
+
+# W15 SubViewport 다시 그리기 (거울·대기실 큰 캐릭터): 한 프레임에 한 번 정하고 (여러 번 불러도 같은 답), 60fps 이하면 매 프레임, 120fps 면 한 프레임 걸러
+func test_subview_rate() -> void:
+	var L = load("res://world/pose_lod.gd")
+	var WC = load("res://world/world_config.gd")
+	check(float(WC.SUBVIEW_HZ) == 60.0, "상한 60Hz")
+	for row in [[120.0, 60], [60.0, 60], [30.0, 30], [144.0, 72], [240.0, 60]]:
+		var fms: float = 1000.0 / row[0]
+		var st := {}
+		var n := 0
+		for i in int(row[0]):
+			var a: bool = L.frame_due(st, i, i * fms, fms, WC.SUBVIEW_HZ)
+			var b: bool = L.frame_due(st, i, i * fms + 0.3, fms, WC.SUBVIEW_HZ) # 같은 프레임 두 번째 (title_scene 이 거울 카메라를 한 번 더 맞춤)
+			check(a == b, "같은 프레임은 같은 답")
+			if a:
+				n += 1
+		check(n == int(row[1]), "%.0ffps → 초당 %d번 그림 (기대 %d)" % [row[0], n, row[1]])
+
+
+# W15 같은 스냅샷이면 다시 안 씀: 떨어지는 칸 (하늘 블록이면 반짝임 색만), 판 빛 무리 목록
+func test_same_snapshot_skips() -> void:
+	var PV = load("res://world/pieces_view.gd")
+	var pv = PV.new()
+	pv._ready()
+	var st := {"pieces": [{"shape": "T", "cells": [[1, 1, 5], [2, 1, 5]], "sky": false}, {"shape": "I", "cells": [[4, 4, 9]], "sky": true}]}
+	pv.update(st, 1, {}, 0.0)
+	var mm: MultiMesh = pv.cells_mmi.multimesh
+	var km: MultiMesh = pv.sky_mmi.multimesh
+	check(mm.visible_instance_count == 2 and km.visible_instance_count == 1, "칸 2 + 하늘 칸 1")
+	check(pv.writes == 1 and pv._sky_base.size() == 1, "처음 한 번 다 씀, 하늘 칸 색 기억")
+	pv.update(st, 1, {}, 0.0)
+	check(pv.writes == 1, "같은 스냅샷: 칸 다시 안 씀 (하늘 블록 반짝임 색만)")
+	var st2 := st.duplicate(true)
+	pv.update(st2, 1, {}, 0.0)
+	check(pv.writes == 2, "새 스냅샷이면 다시")
+	pv.update(st2, 1, {}, 0.9)
+	check(pv.writes == 3, "하늘 시점으로 바뀌면 다시")
+	pv.update(st2, 2, {}, 0.9)
+	check(pv.writes == 4, "내 id 가 바뀌면 다시")
+	pv.free()
+	var W = load("res://world/world.gd")
+	var h: Array = W.halos_of({"pieces": [{"shape": "T", "cells": [[1, 2, 3]]}, {"shape": "ghost", "cells": [[0, 0, 0]], "thrown": true}], "items": [{"x": 4, "y": 5, "z": 6}]}, {"T": 0x123456})
+	check(h.size() == 2 and h[0] == [1.5, 2.5, 3.5, 0x123456, 1.0] and h[1][4] == 0.6, "빛 무리: 칸 + 아이템 (던진 칸 빼고) %s" % str(h))
+
+
+# W15 투명할 땐 화면 전체 판을 안 그림 (색 a = 0 은 modulate 와 달리 그리기를 안 건너뜀): 타이틀 하얀 막·판 번쩍
+func test_clear_overlays_hidden() -> void:
+	var T = load("res://title/title.gd")
+	var t = T.new()
+	t._white(0.4)
+	check(t.white.visible and is_equal_approx(t.white.color.a, 0.4), "나가기 동안 보임")
+	t._white(0.0)
+	check(not t.white.visible, "끝나면 숨김")
+	for n in [t.white, t.haze, t.hint, t.layer, t.haze_layer]: # _ready 전이라 아직 자식이 아님
+		n.free()
+	t.free()
+
+
 # 화면 안 판정: 실제 카메라 시야 면 — 앞은 안, 뒤·옆 멀리는 밖, 가장자리 바로 밖은 여유 (margin) 로 안
 func test_pose_lod_in_view() -> void:
 	var L = load("res://world/pose_lod.gd")

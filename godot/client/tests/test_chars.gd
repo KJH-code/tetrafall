@@ -384,8 +384,17 @@ func test_ragdoll_bodies() -> void:
 		rag.calm_at = -1e9
 		b.pose(p, 8.0)
 		check(not rag.awake, "%s 평소엔 쉼" % ch)
+		# W15: 쉬는 동안은 골반만 목표를 셈 (팔다리 목표는 깰 때) — 움직여도 팔 조각 목표 그대로, 골반은 따라감
+		var arm_q: Quaternion = rag.segs[3].tq
+		var hip_p: Vector3 = rag.segs[0].tp
+		p.x = 0.5
+		b.pose(p, 12.0)
+		check(not rag.awake and rag.stale and rag.segs[3].tq == arm_q and rag.segs[0].tp != hip_p, "%s 쉬는 몸은 골반만 (%s)" % [ch, rag.get("stale")])
 		p.stunned = true
 		b.pose(p, 16.0)
+		# 깨는 프레임: 팔다리 목표 = 지금 관절, 목표 속도 0 (쉬던 동안 안 셈), 그 뒤 예전처럼
+		check(RM.quat_diff_vec(rag.segs[3].tq, RagW._joint_q(rag.segs[3].joint)).length() < 1e-3 or rag.snap > 0.0, "%s 깰 때 팔 목표 = 지금 자세" % ch)
+		check(rag.segs[3].tw == Vector3.ZERO and rag.segs[3].tv == Vector3.ZERO and not rag.stale, "%s 깨는 프레임 팔 목표 속도 0" % ch)
 		check(rag.motor == C.RAGDOLL_STUN_MOTOR, "%s 경직 힘 빠짐 %f" % [ch, rag.motor])
 		check(rag.awake, "%s 경직이면 깸" % ch)
 		b.visible = false # 1인칭 내 몸 (World 가 숨김)
