@@ -144,6 +144,36 @@ basic (눈 등) 양면은 고도 재질이 원래 CULL_DISABLED 라 그대로.
 
 합계 약 3~4 세션·일 (1~4 = 2~2.5, 5·6 = 1, 7 은 따로).
 
+## 7. 외부 .glb (AI 3D 생성 — Meshy·Tripo 뼈대 모델) 를 넣는 방법
+
+두 길이 있음. **권장 = W14 외부 모델 길** (`chars/external.gd`, 안내서 `chars/EXTERNAL.md`, `assets/models/ext/<id>.glb`): 모델 뼈대를 그대로 두고 뼈 이름을 우리 관절에 자동 매핑, 크기·발바닥·맞춤 회전·툰 재질을 입힘. body.gd 가 외부 → 구운 → 코드 조립 순서로 고름. 아래는 **구운 몸 길** (이 문서) 에 외부 모델을 넣을 때 지켜야 할 것 — 손질한 JS 몸이나, 뼈 하나에 조각이 딱 붙는 (가중치 1) 로우폴리 모델에 맞음.
+
+### 애니메이션은 코드가 함
+`figure_motion.gd`·`figure_pose.gd`·`moves.gd` 가 매 프레임 **관절 노드** (이름으로 찾은 Node3D) 의 rotation·position·visible 을 바꿈 → `_sync_bones` 가 묶음 뼈에 옮김. .glb 안 애니메이션은 안 씀 (import 에서 끔). 그래서 외부 모델은 (1) 관절 노드가 있고 (2) 쉼 자세 = JS 쉼 자세 (팔 내림·차렷, 앞 +x — T/A 포즈면 관절마다 쉼 회전을 굽기 때 노드 transform 에 넣어 둬야 함, 안 그러면 모든 동작이 T 포즈 기준으로 틀어짐) 이어야 함.
+
+### 관절 이름 (manifest·노드 이름 = body.gd refs, [0] = 오른쪽)
+
+| 우리 노드 | 하는 일 | Mixamo 꼴 이름 (Meshy·Tripo 자동 뼈대도 대개 이 꼴 — 실제 파일로 확인) |
+| --- | --- | --- |
+| `rig` / `parts` | 몸 전체 기울기·구르기 / 머리 박음 눌림 | (없음 — 뿌리 위에 빈 노드 둘) |
+| `hips` | 골반 (높이·돌기, 래그돌 골반) | Hips |
+| `waist` | 윗몸 비틂·숙임 | Spine |
+| `torso` | 몸통 메시 (바드 폼 재질 바꿈) | Spine1 / Spine2 (가슴) |
+| `neck` | 머리 끄덕임·돌림 (머리 조각은 이 아래) | Neck (+ Head 는 neck 아래 고정) |
+| `shoulder_R` · `shoulder_L` | 어깨 = 위팔 돌림 (래그돌 upperR/L) | RightArm · LeftArm (Shoulder = 쇄골 아님) |
+| `elbow_R` · `elbow_L` | 팔꿈치 | RightForeArm · LeftForeArm |
+| `hand_R` · `hand_L` | 손 (무기·든 아이템 붙는 자리) | RightHand · LeftHand |
+| `thigh_R` · `thigh_L` | 허벅지 | RightUpLeg · LeftUpLeg |
+| `knee_R` · `knee_L` | 무릎 | RightLeg · LeftLeg |
+| `foot_R` · `foot_L` | 발 | RightFoot · LeftFoot |
+| `flaps_<n>_obj`·`shields_*`·`gun`·`bow`·`formParts_*`·`horns_*`… | 캐릭터 부품 (refs 경로 이름) | 모델엔 보통 없음 → 따로 .glb 로 받아 손·몸 노드에 붙임 |
+
+### 필요한 노드·파일 (`_build_glb` 가 보는 것)
+- 장면 뿌리 아래 `frame` (게임 → 고도 돌림 x 축 −90°) → `body` → `rig` → `parts` → … `hips` → 위 관절 나무. 이름이 장면 전체에서 겹치지 않을 것 (고도 import 가 겹치면 바꿈)
+- 판 몸 묶음: `frame/Skeleton3D` (뼈 이름 `B_<manifest 노드 번호>`, 부모 뼈 = 가장 가까운 조상 뼈) + 그 아래 SkinnedMesh 하나 (정점 색 = 재질 sRGB 를 선형으로 바꿔 넣은 값, 피부 정점은 흰색 + UV2.x = 1, 정점마다 뼈 하나 가중치 1). 가중치가 여러 뼈에 섞인 모델 (AI 자동 뼈대는 거의 다) 은 `_sync_bones` (뼈 = 노드 자리) 로는 되지만 1인칭 쌍둥이 (조각 몸 — 관절마다 잘린 메시) 를 만들 수 없음 → 이 경우 W14 길
+- manifest `<id>.json`: `nodes` (이름·부모·숨김·재질·batch 순서), `mats`, `refs` (위 이름의 노드 번호), `bones`, `batchStart`·`leafStart` — 지금은 `tools/bake-bodies.mjs` 가 JS 에서 만듦. 외부 .glb 로 하려면 .glb 노드 이름에서 manifest 를 다시 만드는 도구가 필요 (남은 일 7)
+- 맞는지 확인: `test_baked` 의 `test_baked_files` (이름·뼈·메시 여부) 는 그대로 쓰이고, '예전 조립과 같음' 비교는 JS 와 모양이 달라지면 빼야 함. 이름이 하나라도 안 맞으면 `_build_glb` 가 경고 후 예전 조립으로 돌아감 (`test_baked_fallback`), `--no-glb` 로 늘 예전 조립
+
 ## 6. 위험
 
 | 위험 | 대응 |
