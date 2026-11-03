@@ -8,6 +8,7 @@ const C := preload("res://core/config.gd")
 const U := preload("res://ui/ui_calc.gd")
 const Portrait := preload("res://ui/portrait.gd")
 const WC := preload("res://world/world_config.gd")
+const Lod := preload("res://world/pose_lod.gd")
 const CHARS_PATH := "res://chars/chars.gd"
 const FOV := 26.0
 
@@ -19,6 +20,7 @@ var body = null
 var key := "" # "char|색"
 var picked_at := -1.0e9 # 고른 시각 ms (도발·정면 기준)
 var Chars = null
+var _rate := {} # 다시 그리기 빈도 (world/pose_lod.gd frame_due)
 
 
 func _ready() -> void:
@@ -115,6 +117,11 @@ func _process(_d: float) -> void:
 		return
 	_fit() # UI 배율이 바뀌어도 (칸 크기는 그대로라 resized 가 안 옴)
 	var now := float(Time.get_ticks_msec())
+	# 자세·다시 그리기는 WC.SUBVIEW_HZ 까지만 (W15: 천천히 도는 작은 칸 — 120fps 면 한 프레임 걸러 그려도 같아 보임)
+	var draw := Lod.frame_due(_rate, Engine.get_process_frames(), now, _d * 1000.0, WC.SUBVIEW_HZ)
+	vp.render_target_update_mode = SubViewport.UPDATE_ONCE if draw else SubViewport.UPDATE_DISABLED
+	if not draw:
+		return
 	var age := now - picked_at
 	turn.rotation.y = U.stage_yaw(age / 1000.0) # 게임 z 축 돌기 = 고도 y 축 (x→(x, z, -y) 이라 각이 같음)
 	_pose(age, now)

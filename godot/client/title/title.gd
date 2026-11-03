@@ -66,6 +66,7 @@ func _ready() -> void:
 	haze.visible = false
 	haze_layer.add_child(haze)
 	white.color = Color(1, 1, 1, 0)
+	white.visible = false # 투명할 땐 안 그림 (W15: 투명한 화면 전체 판도 매 프레임 한 장 덮어 그리던 것 — 메뉴·대기실·판 내내)
 	white.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	white.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	layer.add_child(white)
@@ -190,18 +191,24 @@ func _process(dt: float) -> void:
 		var ex = scene.exit_state()
 		_place_bars(vp, ex != null and ex.show)
 		if ex != null:
-			white.color.a = ex.white
+			_white(ex.white)
 			if ex.show:
 				View.title_on = false # 메뉴 판이 들어옴 (카메라가 자리 잡는 동안)
 			if ex.done:
 				_finish()
 
 
+# 하얀 막 (나가기): 0 이면 숨김
+func _white(a: float) -> void:
+	white.color.a = a
+	white.visible = a > 0.0
+
+
 func _finish() -> void:
 	title_mode = false
 	View.title_on = false
 	hint.visible = false
-	white.color.a = 0.0
+	_white(0.0)
 	shade.visible = false
 	for b in bars:
 		b.visible = false

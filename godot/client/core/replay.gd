@@ -122,6 +122,92 @@ func _ready() -> void:
 	print("[재연] %s · 글자 %d개 · %.0ffps · 재기 %.1f~%.1f초" % [args.replay, lines.size(), fps, (t_start - lines[0][0]) / 1000.0, (t_end - lines[0][0]) / 1000.0])
 
 
+# --census (W15): 보이는 3D 물체를 무리별로 (가장 가까운 스크립트 붙은 조상 + 노드 이름 앞부분) 세어 많은 순서 — 대기실·판 물체 수 줄이기 근거.
+#   [무리, 물체 수, 외곽선 다음 패스 있는 수, 삼각형 (메시 표면 색인/3 × MultiMesh 보이는 수)] + 뷰포트 (SubViewport 갱신 모드·크기)
+static func census(root: Node) -> void:
+	var rows := {}
+	var stack: Array[Node] = [root]
+	var vps := []
+	var c2d := {}
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is Viewport:
+			var vp := n as Viewport
+			var ri := func(ty: int, what: int) -> int: return vp.get_render_info(ty, what)
+			var V := Viewport.RENDER_INFO_TYPE_VISIBLE
+			var SH := Viewport.RENDER_INFO_TYPE_SHADOW
+			var CV := Viewport.RENDER_INFO_TYPE_CANVAS
+			var D := Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME
+			var O := Viewport.RENDER_INFO_OBJECTS_IN_FRAME
+			var P := Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME
+			var info := "3D 그리기 %d + 그림자 %d + 2D %d · 물체 %d + %d + 2D %d · 삼각형 %d + %d + 2D %d" % [ri.call(V, D), ri.call(SH, D), ri.call(CV, D), ri.call(V, O), ri.call(SH, O), ri.call(CV, O), ri.call(V, P), ri.call(SH, P), ri.call(CV, P)]
+			if n is SubViewport:
+				var sv := n as SubViewport
+				vps.append("%s %s %s (%s)" % [sv.name, sv.size, ["off", "once", "visible", "parent", "always"][sv.render_target_update_mode], info])
+			else:
+				vps.append("창 %s (%s)" % [vp.get_visible_rect().size, info])
+		if n is Node3D and not (n as Node3D).is_visible_in_tree():
+			continue
+		if n is CanvasItem and not (n as CanvasItem).is_visible_in_tree():
+			continue
+		for c in n.get_children():
+			stack.append(c)
+		if n is CanvasItem:
+			var a2: Node = n.get_parent()
+			while a2 != null and a2.get_script() == null:
+				a2 = a2.get_parent()
+			var k2 := "2D %s/%s" % [a2.get_script().resource_path.get_file() if a2 != null else "-", n.get_class()]
+			c2d[k2] = int(c2d.get(k2, 0)) + 1
+		if not (n is GeometryInstance3D):
+			continue
+		var gi := n as GeometryInstance3D
+		var a: Node = n
+		while a != null and a.get_script() == null:
+			a = a.get_parent()
+		var key := "%s/%s" % [a.get_script().resource_path.get_file() if a != null else "-", String(n.name).rstrip("0123456789@_").left(18)]
+		var r: Array = rows.get(key, [0, 0, 0])
+		r[0] += 1
+		var tris := 0
+		var mesh: Mesh = null
+		var k := 1
+		if n is MeshInstance3D:
+			mesh = (n as MeshInstance3D).mesh
+		elif n is MultiMeshInstance3D and (n as MultiMeshInstance3D).multimesh != null:
+			var mm := (n as MultiMeshInstance3D).multimesh
+			mesh = mm.mesh
+			k = mm.visible_instance_count if mm.visible_instance_count >= 0 else mm.instance_count
+		if mesh != null:
+			for si in mesh.get_surface_count():
+				var arr := mesh.surface_get_arrays(si) if mesh is ArrayMesh or mesh is PrimitiveMesh else []
+				if arr.size() > Mesh.ARRAY_INDEX and arr[Mesh.ARRAY_INDEX] != null and (arr[Mesh.ARRAY_INDEX] as PackedInt32Array).size() > 0:
+					tris += (arr[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
+				elif arr.size() > 0 and arr[Mesh.ARRAY_VERTEX] != null:
+					tris += (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() / 3
+				var sm: Material = gi.material_override if gi.material_override else mesh.surface_get_material(si)
+				if sm != null and sm.next_pass != null:
+					r[1] += 1
+		r[2] += tris * k
+		rows[key] = r
+	var list := []
+	for key in rows:
+		list.append([key] + rows[key])
+	list.sort_custom(func(x, y): return x[1] > y[1])
+	var tot := [0, 0, 0]
+	for row in list:
+		for i in 3:
+			tot[i] += row[i + 1]
+	print("[재연] 물체 무리 (보이는 GeometryInstance3D %d · 외곽선 패스 %d · 삼각형 %d):" % tot)
+	for row in list.slice(0, 40):
+		print("  %-40s %4d · 외곽선 %4d · 삼각형 %7d" % row)
+	var l2 := c2d.keys()
+	l2.sort_custom(func(x, y): return c2d[x] > c2d[y])
+	var t2 := 0
+	for k2 in l2:
+		t2 += c2d[k2]
+	print("[재연] 보이는 2D 노드 %d: %s" % [t2, ", ".join(l2.slice(0, 30).map(func(k2): return "%s %d" % [k2, c2d[k2]]))])
+	print("[재연] viewport:\n  %s" % "\n  ".join(vps))
+
+
 # "outline=false,gfx=medium,fov=80" → {outline: false, gfx: "medium", fov: 80.0}
 static func parse_sets(txt: String) -> Dictionary:
 	var out := {}
@@ -200,6 +286,8 @@ func _report() -> void:
 			print("[재연] 느린 프레임 %.1fms (재기 %.2f초): %s" % [sp[0] / 1000.0, sp[1], sp[2]])
 	if args.has("replay-render"):
 		print("[재연] 그리기 %d · 물체 %d · 삼각형 %d · 영상 메모리 %.1fMB" % [Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME), Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0])
+	if args.has("census"):
+		census(get_tree().root)
 	if args.has("shot") and DisplayServer.get_name() != "headless":
 		await RenderingServer.frame_post_draw
 		var img := get_viewport().get_texture().get_image()

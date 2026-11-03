@@ -73,6 +73,7 @@ func _ready() -> void:
 	flash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	flash.color = Color(1, 1, 1, 0)
+	flash.visible = false # 번쩍일 때만 (W15: 투명한 화면 전체 판을 판 내내 그리던 것 — 글자 색 a = 0 은 modulate 와 달리 그리기를 안 건너뜀)
 	add_child(flash)
 	# 위 묶음 (#top): 시계 · 배너 · 경고 · 알림 — 점수 띠 아래 가운데
 	top_box = VBoxContainer.new()
@@ -369,8 +370,10 @@ func toast(text: String, kind := "") -> void:
 
 func flash_screen(col: Color) -> void:
 	flash.color = col
+	flash.visible = true
 	var tw := flash.create_tween()
 	tw.tween_property(flash, "color:a", 0.0, 0.4)
+	tw.tween_callback(func(): flash.visible = flash.color.a > 0.0)
 
 
 func show_combo(n: int, taken: bool, finish: bool) -> void:

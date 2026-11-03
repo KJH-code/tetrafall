@@ -8,6 +8,7 @@ const C := preload("res://core/config.gd")
 const Co := preload("res://core/coords.gd")
 const F := preload("res://title/title_fx.gd")
 const WC := preload("res://world/world_config.gd") # 화질 (W6): 거울 크기 배율
+const Lod := preload("res://world/pose_lod.gd") # (W15) SubViewport 다시 그리기 빈도
 
 const TB := Basis(Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, 1, 0)) # 게임 (x, y, z 위) → 고도 (x, z, -y)
 const LIGHT_K := 1.0 / PI # three 점광원 세기 (칸델라, 물리 단위 — 램버트 1/π) → 고도 OmniLight 에너지 (감쇠식은 둘이 같음)
@@ -33,6 +34,7 @@ var ring_rnd = null # 만드는 동안만 (JS ringNow): 소품마다 돌릴 각
 var back_light: OmniLight3D = null # 로고 뒤 빛 (대기실은 B4 가 자리 바꿈)
 var mirror_vp: SubViewport = null
 var mirror_cam: Camera3D = null
+var _mirror_rate := {} # 거울 다시 그리기 빈도 (world/pose_lod.gd frame_due)
 const MIRROR := preload("res://title/mirror.gdshader")
 const MIRROR_LAYER := 20
 
@@ -214,6 +216,11 @@ func _floor() -> void:
 # 거울 카메라: 보는 카메라를 바닥 면에 비춘 자리·방향 (좌우는 셰이더가 뒤집음). 크기 = 화면 × 화질 배율 (높음 반, 보통 WC.MIRROR_SCALE, 3D 배율도 곱함)
 func mirror_update(cam: Camera3D) -> void:
 	if mirror_cam == null:
+		return
+	# 다시 그리기는 WC.SUBVIEW_HZ 까지만 (W15: 120fps 면 한 프레임 걸러 — 반사는 흐리게 덮여 한 프레임 늦어도 안 보임). 안 그리는 프레임은 카메라도 그대로
+	var draw := Lod.frame_due(_mirror_rate, Engine.get_process_frames(), Time.get_ticks_msec() * 1.0, get_process_delta_time() * 1000.0, WC.SUBVIEW_HZ)
+	mirror_vp.render_target_update_mode = SubViewport.UPDATE_ONCE if draw else SubViewport.UPDATE_DISABLED
+	if not draw:
 		return
 	var vp := cam.get_viewport().get_visible_rect().size * cam.get_viewport().get_final_transform().get_scale() # 창 픽셀 (visible_rect 는 UI 배율로 나눈 UI 좌표, W9)
 	var k := WC.mirror_scale(cam.get_viewport().scaling_3d_scale)

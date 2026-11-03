@@ -96,6 +96,7 @@ func step(world: Node3D, G3) -> void:
 		stage.update(Time.get_ticks_msec() / 1000.0, 1.0, get_viewport().get_visible_rect().size.y * 0.5)
 	var k: float = 1.0 - (Time.get_ticks_msec() - flash_at) / float(C.LOBBY_DARK.flashMs)
 	flash_rect.color.a = float(C.LOBBY_DARK.flash) * k * k if k > 0 else 0.0
+	flash_rect.visible = flash_rect.color.a > 0.0 # 번쩍이 끝나면 안 그림 (W15: 투명한 화면 전체 더하기 판을 대기실 내내 그리던 것)
 
 
 # 치움. restore: 밝은 판으로 (하늘 구·맵 테마 다시 칠하기 — G3.apply_theme 은 World 가). 블룸은 예전 값으로

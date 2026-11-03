@@ -31,3 +31,15 @@ static func in_view(planes: Array, c: Vector3, r: float) -> bool:
 		if (pl as Plane).distance_to(c) > r:
 			return false
 	return true
+
+
+# 한 프레임에 한 번 정하는 '이번 프레임에 다시 그릴까' (W15: 거울·큰 캐릭터 SubViewport). st = {frame, last, draw} (호출하는 쪽이 들고 있음).
+# 같은 프레임에 여러 번 불려도 처음 답 그대로. hz 간격 − 반 프레임 지났으면 그림 (due 와 같은 규칙)
+static func frame_due(st: Dictionary, frame: int, now_ms: float, frame_ms: float, hz: float) -> bool:
+	if st.get("frame", -1) == frame:
+		return st.draw
+	st.frame = frame
+	st.draw = due(now_ms, st.get("last"), 1000.0 / hz if hz > 0.0 else 0.0, frame_ms)
+	if st.draw:
+		st.last = now_ms
+	return st.draw
