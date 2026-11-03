@@ -191,6 +191,8 @@ export class RoundPart {
   endRound(winner, winnerTeam = null, winners = null) {
     for (const p of this.players.values()) if (p.comboHits >= 2) this.endCombo(p); // 판이 끝날 때 이어지던 콤보도 로그에 (통계)
     this.phase = 'over';
+    // 바드는 판이 끝나면 음유시인 폼으로 (대기실·결과에서 늘 류트 모습, 2026-11 재혁: 메탈 1인칭 기타가 대기실에 남아 이상해 보임). 다음 판 시작 때도 되돌림
+    for (const p of this.players.values()) p.form = 'bard';
     // 판을 끝낸 죽음 (화면: 마지막 킬 슬로모션). FINAL_KILL_WINDOW_MS 안의 죽음만 (판정·서버 시간과 상관없는 화면 연출용)
     const d = this.lastDeath;
     if (d && this.time - d.at <= C.FINAL_KILL_WINDOW_MS) this.emit({ type: 'finalKill', ...d, winners: (winners || (winner ? [winner] : [])).map((p) => p.id), winnerTeam });

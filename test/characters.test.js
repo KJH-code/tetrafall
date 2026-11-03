@@ -2832,3 +2832,19 @@ test('봇 원거리 거리 두기 (A2 kite 연결): 대포수·바드 음유는 
     assert.ok(shots >= 1, `${c}: 쏨 ${shots}`);
   }
 });
+
+// 2026-11 재혁: 메탈 폼이 판 끝 뒤 대기실까지 남아 1인칭 기타가 이상해 보임 → 판이 끝나면 음유시인으로
+test('바드: 판 중 메탈 폼은 그대로, 판이 끝나는 순간 음유시인 폼으로', () => {
+  const { g, p } = setupChars(['bard', 'tank']);
+  place(p(1), 4, 5, 0);
+  place(p(2), 8, 8);
+  g.handleAction(1, { name: 'skill' });
+  assert.equal(p(1).form, 'metal');
+  run(g, 3000);
+  assert.equal(g.phase, 'playing');
+  assert.equal(p(1).form, 'metal', '판 중엔 메탈 유지');
+  g.endRound(p(1));
+  assert.equal(g.phase, 'over');
+  assert.equal(p(1).form, 'bard', '판 끝 = 음유시인');
+  assert.equal(g.snapshot().players.find((q) => q.id === 1).bard.form, 'bard', '스냅샷도 음유시인');
+});

@@ -173,6 +173,24 @@ public class CharTestsC
 
     // ---------- 바드 ----------
 
+    // 2026-11 재혁: 메탈 폼이 판 끝 뒤 대기실까지 남음 → 판이 끝나면 음유시인 (JS test/characters.test.js 끝 테스트와 같음)
+    [Fact]
+    public void Bard_metal_kept_during_round_reset_to_bard_on_round_end()
+    {
+        var (g, _, p) = Setup("bard", "tank");
+        Place(p(1), 4, 5, 0);
+        Place(p(2), 8, 8);
+        Act(g, 1, "skill");
+        Assert.Equal("metal", p(1).form);
+        Run(g, 3000);
+        Assert.Equal("playing", g.phase);
+        Assert.Equal("metal", p(1).form);
+        g.EndRound(p(1));
+        Assert.Equal("over", g.phase);
+        Assert.Equal("bard", p(1).form);
+        Assert.Equal("bard", SnapP(g, 1).GetProperty("bard").GetProperty("form").GetString());
+    }
+
     [Fact]
     public void Bard_form_switch_riff_heal_cooldown_basic_per_form()
     {
