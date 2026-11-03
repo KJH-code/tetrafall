@@ -3,6 +3,7 @@
 #   재연: --replay <파일> [--replay-fps 120] [--replay-warm 3] [--replay-secs 10] [--replay-render] [--prof] [--shot <png>]
 #     가상 시계 (Net.virt) 가 프레임마다 1000/fps ms 씩 흐름 → 프레임마다 받는 스냅샷 수가 실제 120fps 와 같음 (llvmpipe 4fps 에서 재면 한 프레임에 스냅샷 7개라 JSON·신호가 7배로 잡히던 것).
 #     처음 'playing' 스냅샷 + warm 초부터 secs 초 동안 잼. 기본은 그리기 끔 (RenderingServer.render_loop_enabled — 스크립트만, 빠름), --replay-render 면 그리며 그리기·물체·삼각형도.
+#     --set 키=값,키=값 (View.settings 를 바꿔 알림만 — 설정 파일엔 안 남김, 예: outline=false,shadows=false) : 외곽선·그림자 비용을 같은 판에서 A/B
 #     끝에 한 줄: 프레임 · 스냅샷 · 스크립트 (_process 합, 탐침) ms/프레임 · 물리 ms/틱 · 120fps 환산 (스크립트 + 물리 × 틱/프레임) — --prof 면 구간 (core/prof.gd)
 extends Node
 
@@ -116,7 +117,28 @@ func _ready() -> void:
 				_spike(s_us)
 	get_tree().root.add_child.call_deferred(first)
 	get_tree().root.add_child.call_deferred(tail)
+	if args.has("set"):
+		_apply_sets.call_deferred(parse_sets(str(args.set)))
 	print("[재연] %s · 글자 %d개 · %.0ffps · 재기 %.1f~%.1f초" % [args.replay, lines.size(), fps, (t_start - lines[0][0]) / 1000.0, (t_end - lines[0][0]) / 1000.0])
+
+
+# "outline=false,gfx=medium,fov=80" → {outline: false, gfx: "medium", fov: 80.0}
+static func parse_sets(txt: String) -> Dictionary:
+	var out := {}
+	for kv in txt.split(",", false):
+		var i := kv.find("=")
+		if i <= 0:
+			continue
+		var v := kv.substr(i + 1)
+		out[kv.substr(0, i)] = true if v == "true" else (false if v == "false" else (float(v) if v.is_valid_float() else v))
+	return out
+
+
+func _apply_sets(sets: Dictionary) -> void:
+	for k in sets:
+		View.settings[k] = sets[k]
+		View.changed.emit(k)
+	print("[재연] 설정 %s" % str(sets))
 
 
 func _physics_process(_d: float) -> void:

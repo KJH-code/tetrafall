@@ -187,3 +187,35 @@ func test_pose_lod_in_view() -> void:
 	# 오른쪽 가장자리 바로 밖 (수평 시야 반각 ≈ 45.7°, 거리 ~11 에서 폭 ~11.5): 여유 없으면 밖, 2.5m 여유면 안
 	var edge := Vector3(13.0, 0, 0)
 	check(not L.in_view(planes, edge, 0.0) and L.in_view(planes, edge, 2.5), "가장자리 여유")
+
+
+# 재연 --set: 글자 → 설정 값 (참·거짓·숫자·글자)
+func test_replay_sets() -> void:
+	var R = load("res://core/replay.gd")
+	var got: Dictionary = R.parse_sets("outline=false,shadows=true,fov=80,gfx=medium,bad")
+	check(got == {"outline": false, "shadows": true, "fov": 80.0, "gfx": "medium"}, "설정: %s" % str(got))
+
+
+# 설정 '외곽선' (W12): 만든 재질 (툰·블록 칸·건축 블록) 의 외곽선을 곧바로 떼고 다시 붙임, 끈 동안 만든 재질도 켜면 붙음. 외곽선 재질은 나눠 씀
+func test_outline_setting_toggles() -> void:
+	var G3 = load("res://shaders/g3.gd")
+	var a: ShaderMaterial = G3.toon_material(Color.RED)
+	var b: ShaderMaterial = G3.toon_material(Color.BLUE)
+	var nf: ShaderMaterial = G3.toon_material(Color.BLUE, {"no_fog": true})
+	var pc: ShaderMaterial = G3.piece_material(null, false)
+	check(a.next_pass != null and a.next_pass == b.next_pass, "같은 외곽선 재질 하나를 나눠 씀")
+	check(nf.next_pass != a.next_pass and nf.next_pass.get_shader_parameter("no_fog") == true and a.next_pass.get_shader_parameter("no_fog") == false, "안개 안 받음은 따로")
+	G3.set_outline_on(false)
+	var c: ShaderMaterial = G3.toon_material(Color.GREEN)
+	check(a.next_pass == null and pc.next_pass == null and c.next_pass == null, "끄면 이미 만든 것·새로 만든 것 모두 없음")
+	G3.set_outline_on(true)
+	check(a.next_pass != null and pc.next_pass != null and c.next_pass != null and nf.next_pass.get_shader_parameter("no_fog") == true, "켜면 다시 (안개 값 그대로)")
+	check(G3.toon_material(Color.WHITE, {"opacity": 0.5}).next_pass == null and G3.toon_material(Color.WHITE, {"outline": false}).next_pass == null, "반투명·outline false 는 그대로 없음")
+
+
+# 설정 '그림자': 켬 + 그래픽 낮춤 아님일 때만
+func test_shadows_setting() -> void:
+	var W = load("res://world/world.gd")
+	check(W.shadows_wanted({"shadows": true, "lowGfx": false}), "켬")
+	check(not W.shadows_wanted({"shadows": false, "lowGfx": false}), "설정 끔")
+	check(not W.shadows_wanted({"shadows": true, "lowGfx": true}), "낮음")

@@ -21,11 +21,17 @@ var make_mat = null # Callable(Color) -> Material: G3 툰 재질 (상자 몸, �
 var shown := {} # id -> 게임 좌표 화면 위치 (Vector3) — 카메라·하늘 도우미가 읽음
 var cam: Camera3D = null # 몸 자세 LOD (W12, world/pose_lod.gd): 판 카메라 (지난 프레임 자리) — 없으면 모두 매 프레임
 var lod_on := true # 확인용 (--no-pose-lod)
+var lod := WC.POSE_LOD # 확인용 --pose-lod-near <m> 로 near 만 바꿈
 var _last_now = null
 
 
 func _ready() -> void:
-	lod_on = not OS.get_cmdline_user_args().has("--no-pose-lod")
+	var a := OS.get_cmdline_user_args()
+	lod_on = not a.has("--no-pose-lod")
+	var ni := a.find("--pose-lod-near")
+	if ni >= 0 and ni + 1 < a.size():
+		lod = WC.POSE_LOD.duplicate()
+		lod.near = float(a[ni + 1])
 	if ResourceLoader.exists(CHARS):
 		chars_script = load(CHARS)
 	if ResourceLoader.exists(UI_CALC):
@@ -196,7 +202,7 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 			var iv := 0.0
 			if use_lod and root.visible and not mine:
 				var c := root.global_position + Vector3(0, C.PLAYER_HEIGHT * 0.5, 0)
-				iv = Lod.interval_ms(c.distance_to(cpos), Lod.in_view(planes, c, float(WC.POSE_LOD.margin)), false)
+				iv = Lod.interval_ms(c.distance_to(cpos), Lod.in_view(planes, c, float(lod.margin)), false, lod)
 			if Lod.due(now_ms, n.get("posed_at"), iv, frame_ms):
 				n.body.pose(p, now_ms)
 				n["posed_at"] = now_ms

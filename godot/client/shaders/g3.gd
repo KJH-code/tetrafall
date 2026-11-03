@@ -24,6 +24,9 @@ const PIECE_ALPHA := preload("res://shaders/piece_alpha.gdshader")
 const HAZARD := preload("res://shaders/hazard.gdshader")
 const GAME_LIGHT := preload("res://shaders/game_light.gd")
 
+static var outline_on := true # 설정 '외곽선' (W12): 끄면 툰·블록 재질의 외곽선 next_pass 를 뗌 — 외곽선 그리기 (재질마다 한 번 더) 가 빠짐
+static var _outlined: Array = [] # [WeakRef(재질), 붙일 외곽선 재질] — 켜고 끌 때 다시 붙일 목록 (없어진 재질은 그때 뺌)
+static var _outline_cache := {} # "굵기|안개 안 받음" → 외곽선 재질 하나 (재질마다 따로 만들던 것을 나눠 씀 — 값이 같음)
 static var _globals := {} # 넣은 전역 셰이더 값 (RenderingServer 는 실행 중 읽기가 안 됨 — 테스트·확인용)
 
 
@@ -51,8 +54,7 @@ static func toon_material(color = Color.WHITE, opts := {}) -> ShaderMaterial:
 	if a < 1.0:
 		m.render_priority = 1
 	if opts.get("outline", true) and a >= 1.0:
-		m.next_pass = outline_material()
-		m.next_pass.set_shader_parameter("no_fog", opts.get("no_fog", false))
+		attach_outline(m, shared_outline(C.OUTLINE_THICKNESS, opts.get("no_fog", false)))
 	return m
 
 
@@ -65,9 +67,42 @@ static func outline_material(thickness: float = C.OUTLINE_THICKNESS) -> ShaderMa
 	return o
 
 
+# 나눠 쓰는 외곽선 재질 (굵기·안개마다 하나)
+static func shared_outline(thickness: float = C.OUTLINE_THICKNESS, no_fog := false) -> ShaderMaterial:
+	var key := "%f|%s" % [thickness, no_fog]
+	if not _outline_cache.has(key):
+		var o := outline_material(thickness)
+		o.set_shader_parameter("no_fog", no_fog)
+		_outline_cache[key] = o
+	return _outline_cache[key]
+
+
+# 재질에 외곽선을 붙임 (설정 '외곽선' 이 꺼져 있으면 붙일 것만 기억) — set_outline_on 이 나중에 켜고 끔
+static func attach_outline(m: Material, o: Material) -> void:
+	m.next_pass = o if outline_on else null
+	_outlined.append([weakref(m), o])
+
+
+# 설정 '외곽선' (View.settings.outline, World 가 부름): 만든 재질 전부에 곧바로
+static func set_outline_on(on: bool) -> void:
+	outline_on = on
+	var keep := []
+	for e in _outlined:
+		var m = e[0].get_ref()
+		if m == null:
+			continue
+		(m as Material).next_pass = e[1] if on else null
+		keep.append(e)
+	_outlined = keep
+
+
 # 외곽선 끄기 (JS noOutline: 하늘·용암·그림자 판·파편 등)
 static func no_outline(m: Material) -> Material:
 	m.next_pass = null
+	for e in _outlined:
+		if e[0].get_ref() == m:
+			_outlined.erase(e)
+			break
 	return m
 
 
@@ -437,7 +472,7 @@ static func piece_material(theme_id, low_arg = null, opts := {}) -> ShaderMateri
 	m.set_shader_parameter("rim", 0.0 if low else float(opts.get("rim", 0.0)))
 	m.set_shader_parameter("opacity", float(opts.get("opacity", s.opacity)))
 	if not tr and opts.get("outline", true):
-		m.next_pass = outline_material()
+		attach_outline(m, shared_outline())
 	_track(m, func(l): return piece_material(theme_id, l, opts))
 	return m
 
