@@ -232,7 +232,7 @@ func test_renderer_web_pinned() -> void:
 
 # HUD 글자 색·크기 (W12): 같은 값이면 덮어쓰지 않음 → '테마 바뀜' 알림 (글자 모양 다시 잡기·다시 배치) 이 값이 바뀔 때만
 func test_hud_override_only_on_change() -> void:
-	var H = load("res://ui/hud.gd")
+	var H = load("res://ui/ui_style.gd")
 	var ml = Engine.get_main_loop()
 	var l := Label.new()
 	var host: Node = ml.root if ml is SceneTree else null

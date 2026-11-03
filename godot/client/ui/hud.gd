@@ -414,18 +414,6 @@ func _fmt(ms: float) -> String:
 	return U.fmt_time(ms) # JS fmt: 초는 버림 (예전엔 올림이라 1초 많게)
 
 
-# 매 프레임 쓰는 글자 색·크기 (W12 성능): 같은 값이면 안 씀 — add_theme_*_override 는 같은 값이어도 '테마 바뀜' 알림 →
-# 글자 모양 다시 잡기·최소 크기·다시 배치 (판 중 아래 판 8명 × 5번 + 큰 글자·내 % 가 프레임마다). 테스트 tests/test_perf.gd
-static func ov_color(c: Control, name: StringName, v: Color) -> void:
-	if not c.has_theme_color_override(name) or c.get_theme_color(name) != v:
-		c.add_theme_color_override(name, v)
-
-
-static func ov_font_size(c: Control, name: StringName, v: int) -> void:
-	if not c.has_theme_font_size_override(name) or c.get_theme_font_size(name) != v:
-		c.add_theme_font_size_override(name, v)
-
-
 # 매 프레임 (ui.gd 가 판 화면일 때 부름)
 func refresh(st: Dictionary) -> void:
 	var vp := get_viewport_rect().size
@@ -435,12 +423,12 @@ func refresh(st: Dictionary) -> void:
 	timer_label.text = " " + (_fmt(left) if left != null else _fmt(float(st.round.get("elapsed", 0)))) + " "
 	timer_label.visible = st.phase == "playing" # JS #status: 판 중에만 (카운트다운·판 끝엔 숨김)
 	var small := U.small(vp)
-	ov_font_size(big, "font_size", 88 if small else 118) # JS #bigmsg (작은 창 88)
-	ov_font_size(respawn_num, "font_size", 72 if small else 96)
+	S.ov_font_size(big, "font_size", 88 if small else 118) # JS #bigmsg (작은 창 88)
+	S.ov_font_size(respawn_num, "font_size", 72 if small else 96)
 	# 카운트다운 큰 숫자
 	if st.phase == "countdown":
 		big.text = str(maxi(1, int(ceil(float(st.round.countdownLeft) / 1000.0))))
-		ov_color(big, "font_color", Color.WHITE)
+		S.ov_color(big, "font_color", Color.WHITE)
 		big.visible = true
 	big.position = Vector2((vp.x - big.size.x) / 2.0, vp.y * 0.3 - big.size.y / 2.0)
 	HProf.begin() # 성능 구간 (W12, --prof 만)
@@ -633,9 +621,9 @@ func _cards(st: Dictionary, vp: Vector2) -> void:
 		var hv = U.hp_view(p, st)
 		c.pct.text = "KO" if dead else ("%d" % int(hv.hp) if hv != null else "%d" % int(p.damage))
 		c.unit.visible = not dead and hv == null # JS <u>%</u> 20px
-		ov_font_size(c.pct, "font_size", 27 if dead else int(c.pct_size)) # JS .pct i (KO) 27px
-		ov_color(c.pct, "font_color", S.HOT if dead else (U.hp_color(hv.frac) if hv != null else U.damage_color(float(p.damage))))
-		ov_color(c.unit, "font_color", U.damage_color(float(p.damage)))
+		S.ov_font_size(c.pct, "font_size", 27 if dead else int(c.pct_size)) # JS .pct i (KO) 27px
+		S.ov_color(c.pct, "font_color", S.HOT if dead else (U.hp_color(hv.frac) if hv != null else U.damage_color(float(p.damage))))
+		S.ov_color(c.unit, "font_color", U.damage_color(float(p.damage)))
 		# 죽음 회색 (JS grayscale .8 brightness .66 — 고도는 밝기만), 자리 비움 .62 + 태그, 관전 중 보는 사람 ▶ + 노랑 테
 		var away: bool = bool(p.get("away", false))
 		c.panel.modulate = Color(0.6, 0.6, 0.6) if dead else Color.WHITE
@@ -654,8 +642,8 @@ func _cards(st: Dictionary, vp: Vector2) -> void:
 		if mkd != null and float(mkd.n) > 0 and not HM.mark_blink(float(mkd.get("left", 1e9)), float(Time.get_ticks_msec())):
 			mk_text = HM.pip_text(mkd.n)
 		c.mk.text = mk_text
-		ov_color(c.mk, "font_color", Color("ffd23a") if mkd != null and float(mkd.n) >= C.HUNTER_MARK_MAX else Color("ff3a2a"))
-		ov_color(c.mk, "font_outline_color", Color.WHITE if mkd != null and mkd.mine else Color.BLACK)
+		S.ov_color(c.mk, "font_color", Color("ffd23a") if mkd != null and float(mkd.n) >= C.HUNTER_MARK_MAX else Color("ff3a2a"))
+		S.ov_color(c.mk, "font_outline_color", Color.WHITE if mkd != null and mkd.mine else Color.BLACK)
 		c.sub.text = "%s%s %s" % ["%s팀 · " % TEAM_KO.get(str(p.get("team", "")), "") if st.get("teamMode", false) else "", C.CHAR_NAMES.get(str(p.get("char", "")), ""), ("킬 %d" % int(p.get("score", 0))) if kills else ("승 %d" % int(p.get("wins", 0)))]
 		c.hp.visible = hv != null and not dead # KO 면 막대 없이 KO 만
 		if hv != null:
@@ -807,11 +795,11 @@ func _skills(me: Dictionary, vp: Vector2) -> void:
 	if damage_label.visible:
 		var hv = U.hp_view(me, Store.state) # 체력전이면 % 대신 남은 HP
 		damage_label.text = ("HP %d" % int(hv.hp)) if hv != null else "%d%%" % int(me.get("damage", 0))
-		ov_color(damage_label, "font_color", U.hp_color(hv.frac) if hv != null else _damage_color(float(me.get("damage", 0))))
+		S.ov_color(damage_label, "font_color", U.hp_color(hv.frac) if hv != null else _damage_color(float(me.get("damage", 0))))
 		# 3인칭이면 왼쪽 아래 구석 (JS #damage.corner — 가운데면 내 발에 겹침), 1인칭이면 F·R 위 가운데
 		var third := str(View.mode) == "third" # G1 카메라가 정한 지금 시점
 		var small := U.small(vp)
-		ov_font_size(damage_label, "font_size", (36 if small else 44) if third else (42 if small else 54))
+		S.ov_font_size(damage_label, "font_size", (36 if small else 44) if third else (42 if small else 54))
 		if third:
 			damage_label.position = Vector2(22, vp.y - damage_label.size.y - 18)
 
@@ -968,7 +956,7 @@ func _my_marks(me: Dictionary, vp: Vector2) -> void:
 	var blink: bool = m != null and HM.mark_blink(float(m.get("left", 1e9)), now)
 	my_marks.text = HM.pip_text(m.n) if m != null and not blink else ""
 	var full: bool = m != null and float(m.n) >= C.HUNTER_MARK_MAX
-	ov_color(my_marks, "font_color", Coords.color(C.HUNT_MARK_UI.full if full else C.HUNT_MARK_UI.on))
+	S.ov_color(my_marks, "font_color", Coords.color(C.HUNT_MARK_UI.full if full else C.HUNT_MARK_UI.on))
 	var k := HM.pop_scale(now - mark_edge_at)
 	my_marks.pivot_offset = my_marks.size / 2.0
 	my_marks.scale = Vector2(k, k)

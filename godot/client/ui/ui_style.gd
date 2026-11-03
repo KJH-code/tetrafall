@@ -533,3 +533,15 @@ static func style_check(c: CheckBox, size := 13) -> CheckBox:
 		c.add_theme_stylebox_override(st, sb)
 	c.focus_mode = Control.FOCUS_NONE
 	return c
+
+
+# 매 프레임 쓰는 글자 색·크기 (W12 성능): 같은 값이면 안 씀 — add_theme_*_override 는 같은 값이어도 '테마 바뀜' 알림 →
+# 글자 모양 다시 잡기·최소 크기·다시 배치 (판 중 아래 판 8명 × 5번 + 큰 글자·내 % 가 프레임마다). ui/hud.gd·hud_extra.gd 가 씀, 테스트 tests/test_perf.gd
+static func ov_color(c: Control, name: StringName, v: Color) -> void:
+	if not c.has_theme_color_override(name) or c.get_theme_color(name) != v:
+		c.add_theme_color_override(name, v)
+
+
+static func ov_font_size(c: Control, name: StringName, v: int) -> void:
+	if not c.has_theme_font_size_override(name) or c.get_theme_font_size(name) != v:
+		c.add_theme_font_size_override(name, v)
