@@ -236,7 +236,8 @@ func test_baked_same_as_pieces() -> void:
 
 
 # 캐릭터별 부품 (manifest refs 로 이은 노드): 코드가 보이기·자세·재질을 바꾸는 부품을 다 켜도, 상태 (바드 메탈 폼·광전사 분노·포탄 수·갈고리 장전·어지러움) 를 바꿔도
-# 판 몸 (묶음) 과 조각 몸 모두 예전 조립과 같은 정점·색. 매 프레임 뼈 맞추기 (_sync_bones) 만으로 묶음에 반영됨
+# 판 몸 (묶음) 과 조각 몸 모두 예전 조립과 같은 정점·색. 매 프레임 뼈 맞추기 (_sync_bones) 만으로 묶음에 반영됨.
+# 기준은 예전 '조각' 몸 (bodies.bin 노드 그대로): 예전 G3 묶음은 처음 숨긴 부품 (탱크 앞 방패·사냥꾼 손 활 등) 을 나중에 보이면 자리가 틀어짐 (G3 batch 의 기존 결함, 구운 몸엔 없음)
 const STATES := [
 	["bard", {"bard": {"form": "metal"}}],
 	["bard", {"bard": {"form": "bard"}}],
@@ -262,7 +263,7 @@ func test_baked_special_parts() -> void:
 	for ch in baked_chars():
 		for merge in [true, false]:
 			var g = _body(ch, Color(0.8, 0.5, 0.2), merge, true)
-			var o = _body(ch, Color(0.8, 0.5, 0.2), merge, false)
+			var o = _body(ch, Color(0.8, 0.5, 0.2), false, false)
 			var ng := _show_parts(g)
 			var no := _show_parts(o)
 			check(ng == no and ng > 0, "%s 숨긴 부품 수 %d / 예전 %d" % [ch, ng, no])
@@ -274,7 +275,7 @@ func test_baked_special_parts() -> void:
 				continue
 			for merge in [true, false]:
 				var g = _body(ch, Color(0.8, 0.5, 0.2), merge, true)
-				var o = _body(ch, Color(0.8, 0.5, 0.2), merge, false)
+				var o = _body(ch, Color(0.8, 0.5, 0.2), false, false)
 				var p: Dictionary = {"id": -1, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.3}
 				p.merge(s[1], true)
 				for i in 40:
