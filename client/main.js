@@ -13,7 +13,7 @@ import { seatToken, saveSeat, dropSeat } from '/seat.js';
 import { KO } from '/ko.js';
 import { hitTier, hitStep } from '/hit-tier.js';
 import { portrait, setPortraitModels, warmPortraits } from '/portrait.js';
-import { screenOf, wipeKind, wipePlan } from '/shared/wipe.js';
+import { hudSnapshot, screenOf, wipeKind, wipePlan } from '/shared/wipe.js';
 import { pipText, popScale, edgeLevel, markBlink, pickMark } from '/shared/hunt-marks.js';
 import { victoryPlan, victoryStage } from '/shared/victory.js';
 import { MAP_IDS, mapName } from '/shared/maps.js';
@@ -1215,6 +1215,7 @@ function leftRoom(reason) {
   room = null;
   state = null;
   lastState = null;
+  wipeHoldState = null; // 지난 전환의 스냅샷 (결과 등) 으로 메뉴로 가는 띠 동안 HUD 를 다시 그리지 않게
   wasAlive = true;
   input.enabled = false;
   renderer.gridVersion = -1; // 격자 버전은 방마다 0부터라, 다음 방 버전이 우연히 같으면 지형을 안 바꿈
@@ -1995,9 +1996,10 @@ function placeLobby() {
 // ---------- HUD ----------
 // 화면 전환 띠가 다 덮기 전엔 HUD 를 전환 직전 스냅샷으로 그림 (대기실 판 등이 띠 밑에서 바뀌게). 게임 진행·입력은 진짜 state 그대로
 function updateHud() {
-  if (uiHold() && wipeHoldState) {
+  const shown = hudSnapshot({ hold: uiHold(), held: wipeHoldState, state, inRoom: !!myId });
+  if (shown !== state) {
     const real = state;
-    state = wipeHoldState;
+    state = shown;
     try {
       drawHud();
     } finally {
