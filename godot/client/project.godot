@@ -34,6 +34,7 @@ common/max_physics_steps_per_frame=3
 [rendering]
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+renderer/rendering_method.web="gl_compatibility"
 
 [shader_globals]
 

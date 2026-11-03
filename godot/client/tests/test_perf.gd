@@ -219,3 +219,12 @@ func test_shadows_setting() -> void:
 	check(W.shadows_wanted({"shadows": true, "lowGfx": false}), "켬")
 	check(not W.shadows_wanted({"shadows": false, "lowGfx": false}), "설정 끔")
 	check(not W.shadows_wanted({"shadows": true, "lowGfx": true}), "낮음")
+
+
+# 렌더러 (W12): PC 기본은 아직 GL Compatibility (재혁 PC 숫자 뒤 결정) · 웹은 따로 GL Compatibility 로 못 박음 —
+# PC 기본을 Forward+·Mobile 로 바꿔도 웹 내보내기는 그대로 (웹은 WebGL2 만)
+func test_renderer_web_pinned() -> void:
+	var cf := ConfigFile.new()
+	check(cf.load("res://project.godot") == OK, "project.godot 읽기")
+	check(str(cf.get_value("rendering", "renderer/rendering_method", "")) == "gl_compatibility", "PC 기본 렌더러 = gl_compatibility (시험은 start-lan-forward·mobile.bat)")
+	check(str(cf.get_value("rendering", "renderer/rendering_method.web", "")) == "gl_compatibility", "웹 렌더러 = gl_compatibility 고정")
