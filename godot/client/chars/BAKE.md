@@ -98,6 +98,7 @@ basic (눈 등) 양면은 고도 재질이 원래 CULL_DISABLED 라 그대로.
 ## 3. 스크린샷 (확인용, 레포 밖)
 
 `/tmp/claude-0/-home-user/8deab670-0f99-5600-9c8d-a97e79b14e53/scratchpad/out-W7/`: `compare-tank.png` (대기실 큰 캐릭터·판 3인칭: JS / 고도 예전 / 고도 .glb), `still-compare.png` (같은 자세 예전 / .glb / 차이 ×8), `js-*.png`·`gd-*-{old,glb}.png` 원본, `gd-game-first-glb.png` (1인칭).
+W13 (8명): `out-W13/shots/compare-lobby-<캐릭터>.png` = 대기실 큰 캐릭터 칸 JS / 고도 예전 (`--no-glb`) / 고도 .glb (원본 `js-lobby-*`·`gd-lobby-*-{old,glb}.png`). JS 는 큰 캐릭터가 계속 돌아서 각이 다름 — 같은 순간 비교는 아래 화소 표.
 대기실 큰 캐릭터가 JS 보다 어둡고 푸르게 보이는 건 고도 예전·.glb 둘 다 같음 → 굽기와 상관없는 `ui/char_stage` 빛 차이 (G4 쪽 일).
 
 ### 같은 자세·같은 카메라 화소 비교 (W13, 8명, 640×640, 툰 + 외곽선, 예전 조립 / .glb, 차이 > 8 인 화소 ÷ 몸 화소)
