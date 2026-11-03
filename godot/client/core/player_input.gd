@@ -32,6 +32,7 @@ func _ready() -> void:
 	set_binds(Keys.load_binds())
 	Store.state_changed.connect(_on_state)
 	Store.joined.connect(func(_room, rejoined): _on_joined(rejoined))
+	Store.left_room.connect(_on_left_room)
 	Net.message.connect(_on_message)
 	Store.game_event.connect(_on_event)
 
@@ -91,6 +92,11 @@ func _on_joined(rejoined: bool) -> void:
 	_aim_from_state = rejoined
 
 
+# 방을 나가면 마우스 풀기 (main.js leftRoom 의 exitPointerLock) — 안 풀면 메뉴에서 커서가 안 보임
+func _on_left_room(_reason: String) -> void:
+	lock_mouse(false)
+
+
 func _on_message(m: Dictionary) -> void:
 	if str(m.get("type", "")) == "welcome" and not m.get("rejoined", false) and m.get("slot") != null:
 		var sp: Dictionary = C.SPAWN_POINTS[int(m.slot) % C.SPAWN_POINTS.size()]
@@ -104,6 +110,9 @@ func _on_state(st: Dictionary, prev: Dictionary) -> void:
 		_aim_from_state = false
 	var ph := str(st.get("phase", ""))
 	enabled = (ph == "playing" or ph == "countdown") and not p.is_empty() and p.alive
+	# 판 사이 (결과·대기실) 에는 마우스를 풀어 커서가 보이게: 잡은 채로 대기실에 오면 버튼을 누를 수 없고 커서도 안 보임. 다시 잡는 건 '화면 클릭' (연습 방은 판이 안 끝남)
+	if locked and not Store.room.get("practice", false) and (ph == "over" or ph == "lobby" or ph == ""):
+		lock_mouse(false)
 	# 판이 새로 시작되면 시점을 스폰 방향으로 (main.js onState) — 예전엔 판이 바뀌어도 전 판 끝에 보던 쪽 그대로
 	if not p.is_empty() and not prev.is_empty() and _round_n(prev) != _round_n(st):
 		var f: Dictionary = st.get("field", {})

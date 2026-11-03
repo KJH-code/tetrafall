@@ -52,6 +52,29 @@ func test_unlock_releases_wheel_and_held_panels() -> void:
 	PlayerInput.locked = keep_locked
 
 
+# 마우스를 잡은 채 판이 끝나거나 방을 나가면 풀림 (안 풀면 대기실·메뉴에서 커서가 안 보임). 판 중·연습 방은 그대로
+func test_mouse_released_between_rounds_and_on_leave() -> void:
+	var keep_locked := PlayerInput.locked
+	var keep_room: Dictionary = Store.room
+	Store.room = {"code": "TEST", "practice": false}
+	for ph in ["over", "lobby"]:
+		PlayerInput.locked = true
+		PlayerInput._on_state({"phase": ph}, {})
+		check(not PlayerInput.locked, "판 사이(%s)에 마우스 풀림" % ph)
+	PlayerInput.locked = true
+	PlayerInput._on_state({"phase": "playing"}, {})
+	check(PlayerInput.locked, "판 중엔 그대로 잡힘")
+	Store.room = {"code": "PRACT", "practice": true}
+	PlayerInput.locked = true
+	PlayerInput._on_state({"phase": "lobby"}, {})
+	check(PlayerInput.locked, "연습 방은 풀지 않음")
+	PlayerInput.locked = true
+	PlayerInput._on_left_room("")
+	check(not PlayerInput.locked, "방을 나가면 마우스 풀림")
+	Store.room = keep_room
+	PlayerInput.locked = keep_locked
+
+
 func _key(k: Key, pressed: bool) -> InputEventKey:
 	var e := InputEventKey.new()
 	e.physical_keycode = k
