@@ -144,3 +144,50 @@ func test_replay_retime() -> void:
 	check(at == [10.0, 50.0, 50.0, 83.5, 116.5, 116.5], "펼친 시각: %s" % str(at))
 	check(got.map(func(l): return l[1]) == lines.map(func(l): return l[1]), "글자·순서 그대로")
 	check(R.server_time("{\"type\":\"pong\",\"time\":5}") == null and R.server_time("{\"type\":\"state\",\"time\":1e3,") == 1000.0, "스냅샷만·숫자")
+
+
+# W12 몸 자세 LOD (world/pose_lod.gd): 가까움·내 몸 = 매 프레임, 멀면 60Hz (120fps 면 한 프레임 걸러, 60fps 면 매 프레임), 화면 밖 20Hz
+func test_pose_lod_rule() -> void:
+	var L = load("res://world/pose_lod.gd")
+	var lod := {"near": 9.0, "far_hz": 60.0, "off_hz": 20.0, "margin": 2.5}
+	check(L.interval_ms(3.0, true, false, lod) == 0.0, "가까움 매 프레임")
+	check(L.interval_ms(30.0, false, true, lod) == 0.0, "내 몸은 화면 밖·멀어도 매 프레임")
+	check(near(L.interval_ms(12.0, true, false, lod), 1000.0 / 60.0), "멀면 60Hz")
+	check(near(L.interval_ms(3.0, false, false, lod), 50.0), "화면 밖 20Hz")
+	# 프레임 빠르기마다 실제로 세는 빈도 (1초)
+	for row in [[120.0, 1000.0 / 60.0, 60], [60.0, 1000.0 / 60.0, 120], [120.0, 50.0, 20], [60.0, 50.0, 20], [144.0, 0.0, 144], [30.0, 1000.0 / 60.0, 30]]:
+		var fms: float = 1000.0 / row[0]
+		var last = null
+		var n := 0
+		var f := 0
+		for i in int(row[0]):
+			var now := i * fms
+			if L.due(now, last, row[1], fms):
+				last = now
+				n += 1
+			f += 1
+		var want: int = row[2] if row[2] != 120 else 60
+		check(n == want, "%.0ffps 간격 %.1fms → 초당 %d번 (기대 %d)" % [row[0], row[1], n, want])
+	check(L.due(5.0, null, 50.0, 8.0), "처음은 셈")
+
+
+# 화면 안 판정: 실제 카메라 시야 면 — 앞은 안, 뒤·옆 멀리는 밖, 가장자리 바로 밖은 여유 (margin) 로 안
+func test_pose_lod_in_view() -> void:
+	var L = load("res://world/pose_lod.gd")
+	var root := Node3D.new()
+	var vp := SubViewport.new()
+	vp.size = Vector2i(1280, 720)
+	var cam := Camera3D.new()
+	cam.fov = 60.0
+	vp.add_child(cam)
+	root.add_child(vp)
+	(Engine.get_main_loop() as SceneTree).root.add_child(root)
+	cam.look_at_from_position(Vector3(0, 5, 10), Vector3.ZERO)
+	var planes: Array = cam.get_frustum()
+	check(L.in_view(planes, Vector3.ZERO, 0.5), "바라보는 곳")
+	check(not L.in_view(planes, Vector3(0, 5, 20), 2.5), "카메라 뒤")
+	check(not L.in_view(planes, Vector3(40, 0, 0), 2.5), "옆 멀리")
+	# 오른쪽 가장자리 바로 밖 (수평 시야 반각 ≈ 45.7°, 거리 ~11 에서 폭 ~11.5): 여유 없으면 밖, 2.5m 여유면 안
+	var edge := Vector3(13.0, 0, 0)
+	check(not L.in_view(planes, edge, 0.0) and L.in_view(planes, edge, 2.5), "가장자리 여유")
+	root.queue_free()

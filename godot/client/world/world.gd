@@ -177,6 +177,7 @@ func _ready() -> void:
 	shots.bodies = bodies
 	shots.marks = marks
 	shots.cam = rig.cam
+	bodies.cam = rig.cam # 몸 자세 LOD (W12)
 	hook_fx.bodies = bodies
 	hook_fx.marks = marks
 	hook_fx.my_view_on = func() -> bool: return View.mode == "first"
