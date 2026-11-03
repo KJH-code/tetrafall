@@ -42,7 +42,7 @@ node godot/server/tools/package.mjs --godot "C:\Godot\Godot_v4.7.2-stable_win64_
 - **같은 Wi-Fi 친구**: `start-lan.bat` 창의 `다른 PC에서 (…): http://192.168.x.x:3000` 주소를 보낸다.
 - **친구가 PC 클라로**: `tetrafall.exe -- --server wss://단어-단어-….trycloudflare.com` 으로 연다. 같은 Wi-Fi 면 `ws://192.168.x.x:3000`.
 
-## 화면이 작거나 느릴 때 (v0.1.1 부터)
+## 화면이 작거나 느릴 때 (v0.1.1-godot-preview 부터)
 
 - **UI 가 작다**: 설정 > 'UI 크기' 에서 자동·80~200% 를 고른다. 자동은 창 크기 (기준 1280×720) 와 윈도우 화면 배율에 맞춘다.
 - **느리다**: 설정 > '화질' 에서 자동·높음·보통·낮음. 자동은 내장 그래픽이면 낮음, 창이 2560×1440 보다 크면 보통. 느리면 '낮음' 을 직접 눌러 본다.
