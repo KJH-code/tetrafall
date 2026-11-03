@@ -7,6 +7,8 @@ JS `client/main.js`·`client/index.html` 의 화면을 옮김. 계산은 `ui_cal
 | `ui.gd` · `ui.tscn` | 뿌리 CanvasLayer: 화면 고르기 (screenOf)·전환 슬래시·접속 글·핑·Enter 시작 (main.js updateScreen) |
 | `ui_style.gd` | '빛 사선' 모양: 빛 판·평행사변형 버튼·주 버튼·글자 빛·글자 칸, 판 중 HUD 밝은 모양 (index.html CSS) |
 | `menu.gd` | 메뉴: 빛 로고·이름·큰 버튼 펼침·공개 방 목록·연습 (index.html #rooms, main.js openMenu·renderRoomList) |
+| `big_btn.gd` | (W8) 메뉴 큰 버튼 꾸밈: 사선을 칸 안으로 (StyleBoxFlat skew 넘침을 expand_margin 으로), 세로 그라데이션 바탕·안쪽 빛·왼쪽 아래 빛 세모 (뒤 겹), 빛 줄기 반짝임 5.5초 (앞 겹, 움직임 줄이기·그래픽 낮춤이면 없음) — index.html `#rooms button.big` |
+| `text_glow.gd` | (W8) 글자 흐린 빛 (CSS text-shadow 흉내): 글자를 SubViewport 에 반 크기로 한 번 그려 반씩 줄였다 키워 흐린 판 → 더하기 섞기 TextureRect. 메뉴 로고 18·46·90px (`S.LOGO_BLUR`). 고도 Label 의 외곽선·그림자는 흐리지 못해 굵은 외곽선 겹은 얇은 띠로 보임 |
 | `lobby.gd` | 대기실 판 (오른쪽, lobby_dock): 상태·캐릭터 카드 3×3·랜덤·스킬 카드·이름·색·시작·방 설정·방 코드 (main.js drawHud 대기실 부분) |
 | `host_players.gd` | 플레이어 관리 (방장): 팀전·팀 섞기·관전·내보내기 (updateHostPlayers) |
 | `wipe.gd` | 전환 슬래시 (playWipe) |
