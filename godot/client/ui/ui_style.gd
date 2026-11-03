@@ -29,7 +29,10 @@ const CUT := 20 # 빛 판 잘린 모서리 (JS --cut2: 오른쪽 위·왼쪽 아
 const BIG_TXT_GLOW := [14, 0.22] # 큰 버튼 글자 넓은 빛 [그림자 외곽선 굵기, 진하기] (W8)
 const LOGO_SLANT := 0.355 # 로고 기울기 (JS font-style: italic (브라우저 가짜 기울임 ¼) + skewX(-6deg) tan 0.105)
 # 로고 빛 겹 [외곽선 굵기, 색 (g = 테마 빛, g2 = 넓은 빛, w = 흰), 진하기] — JS text-shadow 0 0 4px #fff, 18px g, 46px g2, 90px g2 50% 를 겹겹이
-const LOGO_GLOW := [[44, "g2", 0.08], [30, "g2", 0.12], [18, "g", 0.22], [9, "g", 0.4], [4, "w", 0.7]] # 외곽선은 너무 굵으면 글꼴 래스터가 깨져 44 까지
+const LOGO_GLOW := [[9, "g", 0.4], [4, "w", 0.7]] # 가까운 빛만 외곽선 (W8: 넓은 빛 44·30·18 외곽선 겹은 흐리지 못해 얇은 띠로 보여 → LOGO_BLUR)
+# 로고 흐린 빛 [CSS 흐림 px, 색, 세기 (더하기 섞기라 색 × 세기, 1 넘어도 됨)] (ui/text_glow.gd 가 한 번 구움): JS 0 0 18px g, 46px g2, 90px g2 50%. 그래픽 낮춤 (JS body.low-gfx h2) 은 14px g 하나
+const LOGO_BLUR := [[18, "g", 0.6], [46, "g2", 0.5], [90, "g2", 0.45]]
+const LOGO_BLUR_LOW := [[14, "g", 1.0]]
 
 # 테마 빛 색을 쓴 것 기억 (판 테마가 바뀌면 restyle 이 그 자리에서 다시 칠함 — 타이틀·대기실 맵 테마 View.ui_theme). [WeakRef, 종류, 인자]
 static var _reg: Array = []
@@ -77,6 +80,8 @@ static func restyle() -> void:
 				o.add_theme_color_override("font_outline_color", alpha(_glow_col(r[2][0]), r[2][1]))
 			"streak":
 				o.texture = _streak_tex()
+			"glowtex":
+				o.self_modulate = gain(_glow_col(r[2][0]), r[2][1])
 			"under":
 				o.border_color = alpha(gc, 0.55)
 			"border":
@@ -98,6 +103,11 @@ static func g() -> Color:
 
 static func g2() -> Color:
 	return Coords.color(C.TITLE_THEMES[theme_id()].glow)
+
+
+# 더하기 섞기 빛 색: rgb × k (1 넘어도 됨), 불투명
+static func gain(c: Color, k: float) -> Color:
+	return Color(c.r * k, c.g * k, c.b * k, 1.0)
 
 
 static func alpha(c: Color, a: float) -> Color:
@@ -219,6 +229,12 @@ static func _glow_col(kind: String) -> Color:
 static func glow_layer(l: Label, kind: String, a: float) -> void:
 	l.add_theme_color_override("font_outline_color", alpha(_glow_col(kind), a))
 	_keep(l, "layer", [kind, a])
+
+
+# 흐린 빛 판 색 (테마가 바뀌면 다시 칠함)
+static func glow_tex_tint(t: CanvasItem, kind: String, a: float) -> void:
+	t.self_modulate = gain(_glow_col(kind), a)
+	_keep(t, "glowtex", [kind, a])
 
 
 # 로고 가운데 빛 줄 (JS h2::after: 3px, 투명 → g 30% → 흰 50% → g 70% → 투명, 흐림 1px, 진하기 .7)

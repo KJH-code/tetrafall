@@ -123,6 +123,30 @@ func test_menu_big_button_look() -> void:
 	m.free()
 
 
+# 로고 흐린 빛 (W8, ui/text_glow.gd = JS h2 text-shadow 18·46·90px): 흐림은 크기 그대로·멀리 번짐·넓을수록 더 멀리, 굽기는 트리 밖이면 안 함.
+# 세기는 JS 스샷 (자수정 메뉴 로고 위 23px 픽셀 68,18,79) 에 맞춘 값
+func test_logo_blur_glow() -> void:
+	var TG = load("res://ui/text_glow.gd")
+	check(TG.halvings(9.0) == 4 and TG.halvings(23.0) == 5 and TG.halvings(45.0) == 6, "반씩 줄이는 횟수 %d·%d·%d" % [TG.halvings(9.0), TG.halvings(23.0), TG.halvings(45.0)])
+	var img := Image.create(128, 64, false, Image.FORMAT_RGB8)
+	img.fill_rect(Rect2i(60, 28, 8, 8), Color.WHITE)
+	var near: Image = TG.blur(img, 9.0)
+	var far: Image = TG.blur(img, 45.0)
+	check(near.get_size() == img.get_size() and far.get_size() == img.get_size(), "흐려도 크기 그대로")
+	check(img.get_pixel(64, 12).r == 0.0 and near.get_pixel(64, 12).r > 0.0, "흐리면 글자 밖으로 번짐")
+	check(far.get_pixel(20, 32).r > near.get_pixel(20, 32).r, "넓은 흐림이 더 멀리")
+	check(S.LOGO_BLUR.size() == 3 and S.LOGO_BLUR[2][0] == 90 and S.LOGO_BLUR_LOW.size() == 1, "로고 빛 겹: 보통 18·46·90, 그래픽 낮춤 14 하나")
+	check(S.LOGO_GLOW.size() == 2, "굵은 외곽선 빛 겹은 뺌 (9·4 만)")
+	var gc: Color = S.gain(Color(1, 0.5, 0.2), 0.5)
+	check(is_equal_approx(gc.r, 0.5) and is_equal_approx(gc.b, 0.1) and gc.a == 1.0, "더하기 빛 색 = rgb × 세기")
+	var m = _make("res://ui/menu.gd")
+	m.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	m.size = Vector2(1280, 720)
+	m._layout()
+	check(m.blur_rects.is_empty(), "트리 밖이면 굽지 않음")
+	m.free()
+
+
 # 대기실 판 (JS #center): 작은 창·1280 줄 사이·카드·시작·방 설정·버튼 여백·고르기 칸 폭 — 960×540 에서 '링크 복사'·'방 나가기' 줄이 판 안에 들어오게 고친 값
 func test_lobby_sizes() -> void:
 	var l = _make("res://ui/lobby.gd")
