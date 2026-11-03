@@ -568,7 +568,8 @@ class Ext extends Node3D:
 				A = Quaternion.IDENTITY
 			align[j] = A
 			var m := {"joint": jn, "bone": bi, "qref_inv": (jr as Transform3D).basis.get_rotation_quaternion().inverse(),
-				"C": Basis(qwi * A * qw) * (rg[bi] as Transform3D).basis, "jref": (jr as Transform3D).origin, "prest": bpos, "root": false, "anchor": -1, "off": Transform3D.IDENTITY}
+				"C": Basis(qwi * A * qw) * (rg[bi] as Transform3D).basis, "jref": (jr as Transform3D).origin, "prest": bpos, "root": false, "anchor": -1, "off": Transform3D.IDENTITY,
+				"snap": not third and base in info.cfg.get("vm_snap", ["elbow"])}
 			# 자리: 처음 닿는 관절 = 뿌리 (관절 이동을 키 비율로), 나머지는 우리 부모 관절의 뼈에 쉬는 자세 상대 자리로
 			var anc := -1
 			var pp = pj
@@ -601,7 +602,9 @@ class Ext extends Node3D:
 			var d: Quaternion = jt.basis.get_rotation_quaternion() * m.qref_inv
 			var bas := Basis(qwi * d * qw) * (m.C as Basis)
 			var pos: Vector3
-			if m.root:
+			if m.snap: # 1인칭 팔: 팔꿈치 뼈를 우리 팔꿈치 관절 자리에 (viewmodel 이 맞춘 화면 구석 자리 — 모델 팔 길이·어깨 자리가 달라도)
+				pos = Wi * jt.origin
+			elif m.root:
 				pos = Wi * ((m.prest as Vector3) + (jt.origin - (m.jref as Vector3)) * root_k)
 			elif int(m.anchor) >= 0:
 				pos = (glob[int(m.anchor)] * (m.off as Transform3D)).origin
