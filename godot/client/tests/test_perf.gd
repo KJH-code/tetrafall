@@ -228,3 +228,27 @@ func test_renderer_web_pinned() -> void:
 	check(cf.load("res://project.godot") == OK, "project.godot 읽기")
 	check(str(cf.get_value("rendering", "renderer/rendering_method", "")) == "gl_compatibility", "PC 기본 렌더러 = gl_compatibility (시험은 start-lan-forward·mobile.bat)")
 	check(str(cf.get_value("rendering", "renderer/rendering_method.web", "")) == "gl_compatibility", "웹 렌더러 = gl_compatibility 고정")
+
+
+# HUD 글자 색·크기 (W12): 같은 값이면 덮어쓰지 않음 → '테마 바뀜' 알림 (글자 모양 다시 잡기·다시 배치) 이 값이 바뀔 때만
+func test_hud_override_only_on_change() -> void:
+	var H = load("res://ui/hud.gd")
+	var ml = Engine.get_main_loop()
+	var l := Label.new()
+	var host: Node = ml.root if ml is SceneTree else null
+	if host != null:
+		host.add_child(l)
+	var n := [0]
+	l.theme_changed.connect(func(): n[0] += 1)
+	l.add_theme_color_override("font_color", Color.RED)
+	l.add_theme_color_override("font_color", Color.RED)
+	var raw: int = n[0]
+	n[0] = 0
+	for i in 5:
+		H.ov_color(l, "font_color", Color.BLUE)
+		H.ov_font_size(l, "font_size", 30)
+	check(l.get_theme_color("font_color") == Color.BLUE and l.get_theme_font_size("font_size") == 30, "값은 바뀜")
+	if raw >= 2: # 트리 안이라 알림이 오는 경우: 그냥 덮어쓰기는 같은 값도 알림, ov_ 는 바뀔 때 한 번씩만
+		check(n[0] == 2, "같은 값 5번 = 알림 2번 (색·크기 한 번씩), 실제 %d" % n[0])
+	# 러너는 트리 밖 (알림 없음) 이라 값만 봄. 트리 안 확인 (W12 손 측정): 그냥 덮어쓰기 같은 값 5번 = 알림 5번, ov_ = 2번 · 한 번 11µs → 0.6µs
+	l.free()
