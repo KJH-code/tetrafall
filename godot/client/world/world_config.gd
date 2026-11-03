@@ -26,7 +26,7 @@ const ITEM_BOB := [0.45, 0.06, 300.0, 2.0] # 높이, 출렁임, 주기 ms, 도�
 #   (3인칭 카메라는 내 몸 뒤 ~5m 라 9m 로 두면 8명 판에서 7명이 매 프레임 — 재연 몸 자세 3.7ms. 3m = 화면에 아주 크게 보일 때만 → 2.1ms)
 #   off_hz: 화면 밖이면 초당 이만큼 · margin: 화면 안 판정 공 반지름 (m, 몸 크기 + 그림자·카메라 한 프레임 늦음 여유)
 #   내 몸 (1인칭 팔이 관절을 베낌) 은 늘 매 프레임
-const POSE_LOD := {"near": 3.0, "far_hz": 60.0, "off_hz": 20.0, "margin": 2.5}
+const POSE_LOD := {"near": 3.0, "far_hz": 60.0, "far2": 10.0, "far2_hz": 30.0, "off_hz": 20.0, "margin": 2.5} # W15: 10m 밖 30Hz (둘째 단)
 const LABEL_PIXEL := 0.0011 # 머리 위 이름표 글자 크기 (fixed_size 화면 크기)
 const LABEL_FONT := [40, 10] # 글자 크기, 외곽선
 const AMBIENT_DEFAULT := [0x8090c0, 0.7] # 테마 없을 때 주변광

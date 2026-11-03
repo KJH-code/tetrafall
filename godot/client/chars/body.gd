@@ -639,9 +639,18 @@ static func _store():
 	return _autoload("Store")
 
 
+static var _al := {} # 찾은 자동 로드 (W15: 몸마다 프레임마다 5번 get_node 하던 것)
+
+
 static func _autoload(name: String):
+	var n = _al.get(name)
+	if n != null and is_instance_valid(n):
+		return n
 	var ml = Engine.get_main_loop()
-	return ml.root.get_node_or_null(name) if ml is SceneTree else null
+	n = ml.root.get_node_or_null(name) if ml is SceneTree else null
+	if n != null:
+		_al[name] = n
+	return n
 
 
 # ---------- 매 프레임 (World 가 부름) ----------
@@ -812,6 +821,9 @@ func _is_winner(p: Dictionary) -> bool:
 	return wt != null and p.get("team") == wt
 
 
+const _CORNERS: Array[Vector2] = [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]
+
+
 # 발밑 (네 모서리) 바로 아래가 바닥·블록인가 (render.js feetOnGround)
 func _feet_on_ground(s: Vector3) -> bool:
 	if s.z <= 0.03 and s.z > -0.3:
@@ -827,9 +839,9 @@ func _feet_on_ground(s: Vector3) -> bool:
 	var dd := int(f.d)
 	var hh := int(f.get("h", C.GRID_H))
 	var h: float = C.PLAYER_HALF
-	for c in [[-h, -h], [h, -h], [-h, h], [h, h]]:
-		var gx := floori(s.x + c[0])
-		var gy := floori(s.y + c[1])
+	for c in _CORNERS:
+		var gx := floori(s.x + c.x * h)
+		var gy := floori(s.y + c.y * h)
 		var gz := floori(s.z - 0.08)
 		if gx < 0 or gy < 0 or gx >= w or gy >= dd or gz >= hh:
 			continue
@@ -1525,6 +1537,11 @@ func _fx_colors(p: Dictionary) -> void:
 			continue
 		if int(dr.m.get("emissive", 0)) != 0:
 			continue # 제 발광이 있는 조각은 그대로
+		# 값·재질이 지난번과 같으면 건너뜀 (W15: set_shader_parameter 는 같은 값이어도 재질을 다시 올림 — 몸마다 프레임마다 2~3번)
+		if dr.get("fx_m") == m and dr.get("fx_v") == f:
+			continue
+		dr.fx_m = m
+		dr.fx_v = f
 		var sm := m as ShaderMaterial
 		var is_skin: bool = not dr.merged and dr.m.get("skin", false)
 		sm.set_shader_parameter("emissive", f[1] if is_skin else f[2])

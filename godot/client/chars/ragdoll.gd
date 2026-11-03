@@ -98,8 +98,10 @@ static func _seg_pos(j: Node3D, cz: float) -> Vector3:
 	return glob(j) * Vector3(0, 0, cz)
 
 
-# 전역 자리 (부모 Node3D 를 따라 곱함 — 장면 트리 밖에서도 됨)
+# 전역 자리 (부모 Node3D 를 따라 곱함 — 장면 트리 밖에서도 됨). 트리 안이면 엔진 global_transform (같은 값, W15: GDScript 사슬 곱이 래그돌 잡기의 대부분이던 것)
 static func glob(n: Node3D) -> Transform3D:
+	if n.is_inside_tree():
+		return n.global_transform
 	var t := n.transform
 	var p := n.get_parent() as Node3D
 	while p != null:
@@ -201,7 +203,7 @@ func remove(b) -> void:
 # figureAnim 전에: 관절 회전을 처음 값으로 (지난 프레임 물리 회전이 남지 않게)
 func restore(b) -> void:
 	var rag = rags.get(b)
-	if rag != null:
+	if rag != null and rag.awake: # 쉬는 몸은 apply 가 관절을 안 건드림 → figureAnim (_apply) 이 어차피 다 덮어씀 (W15)
 		for sg in rag.segs:
 			(sg.joint as Node3D).quaternion = sg.rest
 
@@ -211,11 +213,19 @@ func capture(b, st: Dictionary, hit, dt: float) -> void:
 	var rag = rags.get(b)
 	if rag == null:
 		return
-	for sg in rag.segs:
-		var j: Node3D = sg.joint
-		var q := _joint_q(j)
-		var tp := _seg_pos(j, sg.cz)
-		if rag.fresh or dt <= 0.0:
+	var m := RM.motor(st)
+	var now := Time.get_ticks_msec() * 1.0
+	var new_hit: bool = hit != null and hit.id != rag.hit_id
+	var wake: bool = m.motor < K.RAGDOLL_WAKE_BELOW or new_hit
+	# 쉬는 몸 (W15): 목표 자세는 깰 때만 쓰임 (apply·_drive 는 깬 몸만) → 쉬는 동안은 골반 (root_v — 깰 때 몸 전체 속도) 만 셈.
+	# 쉬다 깨는 프레임은 골반 밖 조각의 목표 속도 (tw·tv) 가 0 (처음 만든 몸과 같음) — 다음 프레임부터 예전과 같음
+	var full: bool = rag.awake or wake or rag.fresh
+	for k in (rag.segs.size() if full else 1):
+		var sg: Dictionary = rag.segs[k]
+		var g := glob(sg.joint as Node3D) # 한 번만 (예전 _joint_q·_seg_pos 가 따로 두 번)
+		var q := g.basis.orthonormalized().get_rotation_quaternion()
+		var tp := g * Vector3(0, 0, sg.cz)
+		if rag.fresh or dt <= 0.0 or (k > 0 and rag.get("stale", false)):
 			sg.tw = Vector3.ZERO
 			sg.tv = Vector3.ZERO
 		else:
@@ -223,15 +233,13 @@ func capture(b, st: Dictionary, hit, dt: float) -> void:
 			sg.tv = (tp - sg.tp) / dt
 		sg.tq = q
 		sg.tp = tp
+	rag.stale = not full
 	rag.root_v = rag.segs[0].tv
-	var m := RM.motor(st)
 	rag.motor = m.motor
 	rag.snap = m.snap
 	# 쉬기: 모터가 다 센 (평소·공격·포즈) 동안은 물리가 목표 자세를 거의 그대로 따라가니 강체를 멈춰 둠 (kinematic, 힘 계산·엔진 걸음 없음).
 	# 맞음·경직·낙사·일어나기 (모터 < 1) 면 깨움 (그 순간 목표 자세로 맞추고), 다 세진 뒤 K.RAGDOLL_SLEEP_MS 지나면 다시 쉼
-	var now := Time.get_ticks_msec() * 1.0
-	var new_hit: bool = hit != null and hit.id != rag.hit_id
-	if m.motor < K.RAGDOLL_WAKE_BELOW or new_hit:
+	if wake:
 		rag.calm_at = now
 		if not rag.awake:
 			_set_awake(rag, true)

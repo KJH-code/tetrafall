@@ -135,8 +135,8 @@ func _hp_bar(n: Dictionary, hv, lab: Label3D) -> void:
 	back.offset = Vector2(0, -dy / (h / 4.0)) # offset 은 텍스처 px (scale 전) 단위
 	fill.offset = Vector2((-(w - w * frac) / 2.0) / maxf(0.001, w * frac) * 4.0, -dy / ((h - 2) / 4.0))
 	fill.modulate = ui_calc.hp_color(frac) if ui_calc.has_method("hp_color") else Color.WHITE
-	back.modulate.a = lab.modulate.a * 0.7
-	fill.modulate.a = lab.modulate.a
+	back.modulate.a = 0.7 # (예전 lab.modulate.a × 0.7 — 그땐 여기서 늘 a = 1 이라 실제로 0.7·1, W15 에 이름표 투명도를 프레임마다 1 로 되돌리지 않게 바꾼 뒤에도 같은 모습)
+	fill.modulate.a = 1.0
 
 
 func _box_body(color: int) -> Node3D:
@@ -213,9 +213,15 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 		var lab: Label3D = n.label
 		var name := str(p.get("nick", "")) if str(p.get("nick", "")) != "" else str(p.get("name", ""))
 		var hv = ui_calc.hp_view(p, st) if ui_calc != null and not sky else null
-		lab.text = name if sky or hv != null else "%s\n%d%%" % [name, int(p.get("damage", 0))]
+		var txt: String = name if sky or hv != null else "%s\n%d%%" % [name, int(p.get("damage", 0))]
+		if lab.text != txt:
+			lab.text = txt
 		_hp_bar(n, hv, lab)
-		lab.modulate = Co.color(color).lightened(WC.LABEL_LIGHTEN)
+		# 색은 바뀔 때만, 투명도는 thin_labels 가 정한 값 그대로 (W15: 예전엔 여기서 a = 1 → thin_labels 가 다시 흐리게 — 이름표마다 프레임마다 두 번 다시 그림)
+		var lc := Co.color(color).lightened(WC.LABEL_LIGHTEN)
+		lc.a = lab.modulate.a
+		if lab.modulate != lc:
+			lab.modulate = lc
 		lab.visible = p.alive and not (mine and not sky) # 내 % 는 화면 아래 HUD
 	for id in nodes.keys():
 		if not seen.has(id):
@@ -240,8 +246,11 @@ func thin_labels(cam: Camera3D, sky: bool) -> void:
 	var idx := []
 	for i in vis.size():
 		var l := vis[i]
-		l.pixel_size = WC.LABEL_PIXEL * sizes[i][0] * k
-		l.modulate.a = sizes[i][1]
+		var px: float = WC.LABEL_PIXEL * sizes[i][0] * k
+		if not is_equal_approx(l.pixel_size, px): # (Label3D 값은 float32 — 그냥 != 면 늘 다름)
+			l.pixel_size = px
+		if not is_equal_approx(l.modulate.a, float(sizes[i][1])):
+			l.modulate.a = sizes[i][1]
 		if cam.is_position_behind(l.global_position):
 			continue
 		var g: Vector2 = Vector2(C.SKY_VIEW.labelGap[0], C.SKY_VIEW.labelGap[1]) if sky else Vector2(WC.LABEL_GAP[0], WC.LABEL_GAP[1]) * sizes[i][0]

@@ -48,4 +48,4 @@ static func report(frames: int) -> String:
 	for k in sums:
 		rows.append([k, sums[k][0] / 1000.0 / maxf(1, frames)])
 	rows.sort_custom(func(a, b): return a[1] > b[1])
-	return " · ".join(rows.map(func(r): return "%s %.1fms" % [r[0], r[1]]))
+	return " · ".join(rows.map(func(r): return "%s %.2fms" % [r[0], r[1]]))

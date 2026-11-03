@@ -11,6 +11,8 @@ static func interval_ms(dist: float, on_screen: bool, always: bool, lod := WC.PO
 		return 0.0
 	if not on_screen:
 		return 1000.0 / float(lod.off_hz)
+	if dist > float(lod.get("far2", INF)): # W15 둘째 단: 아주 멀면 30Hz
+		return 1000.0 / float(lod.far2_hz)
 	if dist > float(lod.near):
 		return 1000.0 / float(lod.far_hz)
 	return 0.0
