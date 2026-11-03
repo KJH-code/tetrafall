@@ -32,7 +32,7 @@ var _draw_rect := Rect2()
 
 # 판을 감싸 돌려줌 (판 대신 부모에 넣음). 끄면 판 그대로
 static func wrap(p: Control) -> Control:
-	if not enabled or DisplayServer.get_name() == "headless":
+	if not enabled:
 		return p
 	var b = load("res://ui/baked_panel.gd").new()
 	b.setup(p)

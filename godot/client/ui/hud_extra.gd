@@ -678,7 +678,8 @@ func _banner(st: Dictionary, p: Dictionary) -> void:
 	if text != null:
 		banner.text = text
 		var s: StyleBoxFlat = banner.get_theme_stylebox("normal")
-		s.bg_color = col
+		if s.bg_color != col:
+			s.bg_color = col
 
 
 # 아래 가운데 묶음 (JS #bottom 세로 줄, gap 6, 아래 16px — 아래 판이 있으면 그 위 18px): 위에서부터 버프 → 내 % → F·R → 아이템.

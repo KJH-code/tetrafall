@@ -129,7 +129,7 @@ static func run(tree: SceneTree, what: String, depth := 6) -> void:
 	await RenderingServer.frame_post_draw
 	var tot := _canvas(vp)
 	var rows := []
-	var baked := tree.root.find_children("Baked_*", "TextureRect", true, false)
+	var baked := tree.root.find_children("Baked_*", "", true, false)
 	var r0 := baked.map(func(b): return int(b.renders))
 	var redraw := await redraws(tree, vp, 60)
 	print("[UI 세기] 구운 판 다시 구움 (60프레임): %s" % ", ".join(range(baked.size()).map(func(i): return "%s %d (보임 %s)" % [baked[i].name, int(baked[i].renders) - r0[i], baked[i].visible])))
@@ -151,4 +151,4 @@ static func run(tree: SceneTree, what: String, depth := 6) -> void:
 		var s := sv as SubViewport
 		var d := _canvas(s)
 		if d[0] > 0 and s.render_target_update_mode != SubViewport.UPDATE_DISABLED:
-			print("  [SubViewport %s %s 갱신 %s] 2D 그리기 %d · 물체 %d" % [label_of(s.get_parent()), s.size, ["off", "once", "visible", "parent", "always"][s.render_target_update_mode], d[0], d[1]])
+			print("  [SubViewport %s %s 모드 %s] 2D 그리기 %d · 물체 %d" % [label_of(s.get_parent()), s.size, ["off", "once", "visible", "parent", "always"][s.render_target_update_mode], d[0], d[1]])

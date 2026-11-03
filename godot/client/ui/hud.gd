@@ -104,7 +104,7 @@ func _ready() -> void:
 	cards_row = HBoxContainer.new()
 	cards_row.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	cards_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	add_child(cards_row)
+	add_child(preload("res://ui/baked_panel.gd").wrap(cards_row)) # (W16) 아래 판은 그림만 구움 — 피해 %·상태가 바뀔 때만 다시
 
 	skills = HBoxContainer.new()
 	skills.add_theme_constant_override("separation", 8)
@@ -297,7 +297,9 @@ static func slot_state(l: Label, fill: float, ready: bool) -> void:
 		p.set_meta("fill", f)
 		p.queue_redraw()
 	var s := p.get_theme_stylebox("panel") as StyleBoxFlat
-	s.border_color = S.ACCENT if ready else Color("3c4a78")
+	var bc := S.ACCENT if ready else Color("3c4a78")
+	if s.border_color != bc: # 같은 값도 StyleBox changed → 칸 다시 그림 (W16: F·R 칸이 매 갱신 다시 그려지던 것)
+		s.border_color = bc
 	s.shadow_color = Color(1, 0.82, 0.23, 0.75) if ready else Color(0, 0, 0, 0)
 	s.shadow_size = 14 if ready else 0
 

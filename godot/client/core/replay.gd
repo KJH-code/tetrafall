@@ -244,6 +244,7 @@ func _process(_d: float) -> void:
 	Net.virt = v + 1000.0 / fps
 	if not measuring and Net.virt >= t_start:
 		measuring = true
+		_bake0 = _bakes()
 		if args.has("replay-open"): # W16: 재기 전에 창을 띄움 (settings — 설정 창)
 			var ui = get_tree().root.find_children("*", "CanvasLayer", true, false).filter(func(n): return n.get("settings") is Control)
 			if not ui.is_empty():
@@ -275,8 +276,23 @@ func _spike(us: int) -> void:
 	_prev_sums = cur
 
 
+# (W16) 구운 판 (ui/baked_panel.gd) 이 다시 구운 수 — 재는 동안 (가상 시간) 초당
+var _bake0 := {}
+
+
+func _bakes() -> Dictionary:
+	var out := {}
+	for b in get_tree().root.find_children("Baked_*", "", true, false):
+		out[str(b.name)] = int(b.get("renders"))
+	return out
+
+
 func _report() -> void:
 	var n := maxi(1, frames)
+	var b1 := _bakes()
+	if not b1.is_empty():
+		var secs := maxf(0.001, (t_end - t_start) / 1000.0)
+		print("[재연] 구운 판 다시 굽기 (초당, 가상 시간): %s" % ", ".join(b1.keys().map(func(k): return "%s %.1f" % [k, (b1[k] - int(_bake0.get(k, 0))) / secs])))
 	var s_ms := script_us / 1000.0 / n
 	var tick_ms := phys_us / 1000.0 / maxf(1, phys_ticks)
 	var ticks_per_frame := 60.0 / fps # 실제 기계에서 물리 60Hz
@@ -294,6 +310,8 @@ func _report() -> void:
 	if args.has("census"):
 		census(get_tree().root)
 		await UiCensus.run(get_tree(), "재연 %.1f초" % ((Net.virt - t_start) / 1000.0))
+	if args.has("ui-check"): # W16: 구운 판 위 입력 (core/ui_check.gd)
+		await preload("res://core/ui_check.gd").run(get_tree())
 	if args.has("shot") and DisplayServer.get_name() != "headless":
 		await RenderingServer.frame_post_draw
 		var img := get_viewport().get_texture().get_image()
