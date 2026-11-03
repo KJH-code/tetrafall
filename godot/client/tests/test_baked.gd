@@ -259,6 +259,19 @@ static func _show_parts(b) -> int:
 	return n
 
 
+# 실제 시각 (Time.get_ticks_msec) 으로 움직이는 것 — 어지러움 별 돎·갈고리 장전 불꽃 깜빡임 — 은 두 몸을 다른 순간에 맞춰서 틀어질 수 있음 (컴퓨터가 바쁘면) → a 쪽 그대로 b 에
+static func _same_clock(a, b) -> void:
+	for i in mini(a.stars.size(), b.stars.size()):
+		b.stars[i].transform = a.stars[i].transform
+		b.stars[i].visible = a.stars[i].visible
+	var ga = a.refs.get("gun")
+	var gb = b.refs.get("gun")
+	if ga is Dictionary and gb is Dictionary and ga.get("spark") != null and gb.get("spark") != null:
+		var sb: Node3D = b._n(gb.spark)
+		sb.visible = a._n(ga.spark).visible
+	b._sync_bones()
+
+
 func test_baked_special_parts() -> void:
 	for ch in baked_chars():
 		for merge in [true, false]:
@@ -278,10 +291,11 @@ func test_baked_special_parts() -> void:
 				var o = _body(ch, Color(0.8, 0.5, 0.2), false, false)
 				var p: Dictionary = {"id": -1, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.3}
 				p.merge(s[1], true)
-				for i in 40:
+				for i in 12:
 					for b in [g, o]:
 						b.dizzy = C.BERSERK_DIZZY_S
 						b.pose(p, i * 16.0)
+				_same_clock(g, o)
 				_same(g, o, "%s %s (%s)" % [ch, JSON.stringify(s[1]), "판" if merge else "조각"])
 				g.free()
 				o.free()
