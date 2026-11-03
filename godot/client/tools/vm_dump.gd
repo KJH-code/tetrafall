@@ -2,8 +2,6 @@
 extends SceneTree
 
 const C := preload("res://core/config.gd")
-const Chars := preload("res://chars/chars.gd")
-const VM := preload("res://chars/viewmodel.gd")
 
 
 func _r(x: float) -> float:
@@ -32,6 +30,8 @@ func _v(v: Vector3) -> Array:
 
 
 func _initialize() -> void:
+	var Chars = load("res://chars/chars.gd") # 실행 때 읽음 (preload 면 autoload 이름 View 를 못 찾음)
+	var VM = load("res://chars/viewmodel.gd")
 	var a := OS.get_cmdline_user_args()
 	var ch: String = a[0] if a.size() > 0 else "tank"
 	var path: String = a[1] if a.size() > 1 else "user://vm.json"
