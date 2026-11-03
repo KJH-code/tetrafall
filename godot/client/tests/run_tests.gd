@@ -35,7 +35,10 @@ func _initialize() -> void:
 	OS.add_logger(log)
 	var passed := 0
 	var failed := 0
+	var only := OS.get_environment("TF_TESTS") # 확인용: 이 글자가 든 파일만 (예: TF_TESTS=perf)
 	for path in FILES:
+		if only != "" and not path.contains(only):
+			continue
 		log.take()
 		var script = load(path) if ResourceLoader.exists(path) else null
 		var load_errs := log.take()

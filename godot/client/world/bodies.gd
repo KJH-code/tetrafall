@@ -201,9 +201,9 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 				n.body.pose(p, now_ms)
 				n["posed_at"] = now_ms
 				if Prof.on:
-					Prof.add_us("몸 LOD 매번 셈 (번)", 1000)
+					Prof.add_us("몸 LOD 자세 함 (번)", 1000)
 			elif Prof.on:
-				Prof.add_us("몸 LOD 건너뜀 (번)", 1000)
+				Prof.add_us("몸 LOD 자세 안 함 (번)", 1000)
 		var lab: Label3D = n.label
 		var name := str(p.get("nick", "")) if str(p.get("nick", "")) != "" else str(p.get("name", ""))
 		var hv = ui_calc.hp_view(p, st) if ui_calc != null and not sky else null

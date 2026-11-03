@@ -174,20 +174,16 @@ func test_pose_lod_rule() -> void:
 # 화면 안 판정: 실제 카메라 시야 면 — 앞은 안, 뒤·옆 멀리는 밖, 가장자리 바로 밖은 여유 (margin) 로 안
 func test_pose_lod_in_view() -> void:
 	var L = load("res://world/pose_lod.gd")
-	var root := Node3D.new()
-	var vp := SubViewport.new()
-	vp.size = Vector2i(1280, 720)
-	var cam := Camera3D.new()
-	cam.fov = 60.0
-	vp.add_child(cam)
-	root.add_child(vp)
-	(Engine.get_main_loop() as SceneTree).root.add_child(root)
-	cam.look_at_from_position(Vector3(0, 5, 10), Vector3.ZERO)
-	var planes: Array = cam.get_frustum()
+	# Camera3D.get_frustum 과 같은 계산 (러너 동안 root 가 트리 밖이라 카메라를 못 씀): 세로 시야 60°·16:9 원근 + 카메라 자리
+	var tr := Transform3D(Basis.looking_at(Vector3.ZERO - Vector3(0, 5, 10), Vector3.UP), Vector3(0, 5, 10))
+	var hv := deg_to_rad(30.0)
+	var hh := atan(tan(hv) * 1280.0 / 720.0)
+	var planes: Array = []
+	for pl in [Plane(Vector3(0, 0, 1), -0.05), Plane(Vector3(0, 0, -1), 4000.0), Plane(Vector3(-cos(hh), 0, sin(hh)), 0.0), Plane(Vector3(cos(hh), 0, sin(hh)), 0.0), Plane(Vector3(0, cos(hv), sin(hv)), 0.0), Plane(Vector3(0, -cos(hv), sin(hv)), 0.0)]:
+		planes.append(tr * pl)
 	check(L.in_view(planes, Vector3.ZERO, 0.5), "바라보는 곳")
 	check(not L.in_view(planes, Vector3(0, 5, 20), 2.5), "카메라 뒤")
 	check(not L.in_view(planes, Vector3(40, 0, 0), 2.5), "옆 멀리")
 	# 오른쪽 가장자리 바로 밖 (수평 시야 반각 ≈ 45.7°, 거리 ~11 에서 폭 ~11.5): 여유 없으면 밖, 2.5m 여유면 안
 	var edge := Vector3(13.0, 0, 0)
 	check(not L.in_view(planes, edge, 0.0) and L.in_view(planes, edge, 2.5), "가장자리 여유")
-	root.queue_free()
