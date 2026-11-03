@@ -92,12 +92,12 @@ static func _ui(tree: SceneTree) -> Node:
 static func run(tree: SceneTree) -> void:
 	var ui := _ui(tree)
 	if ui == null:
-		_check(false, "화면 뿌리 없음")
+		_check(false, "ui.gd 없음")
 		return
 	var lobby: Control = ui.lobby
 	var baked := lobby.get_parent() is CanvasLayer and (lobby.get_parent() as CanvasLayer).custom_viewport != null
 	var bk: Node = lobby.get_parent().get_parent() if baked else null
-	print("[UI 확인] 창 %s · UI 배율 %.3f · UI 좌표 %s · 굽기 %s" % [tree.root.size, tree.root.get_final_transform().get_scale().x, tree.root.get_visible_rect().size, "켬" if baked else "끔"])
+	print("[UI 확인] 창 %s · UI 크기 %.3f · UI 좌표 %s · bake %s" % [tree.root.size, tree.root.get_final_transform().get_scale().x, tree.root.get_visible_rect().size, "켬" if baked else "끔"])
 	_check(lobby.is_visible_in_tree(), "대기실 판 보임")
 	# hover: 버튼에 마우스를 올리면 다시 구움 (hover 모습)
 	var keys_btn: Button = null
@@ -109,7 +109,7 @@ static func run(tree: SceneTree) -> void:
 	await _move(tree, keys_btn.get_global_rect().get_center())
 	_check(keys_btn.is_hovered(), "'조작법' 위 hover")
 	if bk != null:
-		_check(int(bk.renders) > r0, "hover 하면 다시 구움 (%d → %d)" % [r0, int(bk.renders)])
+		_check(int(bk.renders) > r0, "hover 하면 다시 그림 (%d → %d)" % [r0, int(bk.renders)])
 	# 클릭: '조작법' → 조작법 글 보임
 	var was: bool = lobby.keys_text.visible
 	await click(tree, keys_btn)
@@ -119,7 +119,7 @@ static func run(tree: SceneTree) -> void:
 	# 큰 캐릭터 (산 칸 — 굽지 않음) 클릭 → 스킬 카드
 	# (큰 캐릭터 가운데 클릭은 굽기 전에도 안 열림 — stage_box ColorRect 가 클릭을 막음, W16 에 남긴 기존 문제)
 	await click(tree, lobby.skill_btn)
-	_check(lobby.skill_card.visible, "'스킬 보기' (산 칸 — 굽지 않음) 클릭 → 스킬 카드")
+	_check(lobby.skill_card.visible, "'스킬 보기' (산 칸) 클릭 → 스킬 카드")
 	for b in lobby.skill_card.find_children("*", "Button", true, false): # 카드 '닫기'
 		await click(tree, b)
 	_check(not lobby.skill_card.visible, "스킬 카드 닫기")
@@ -148,7 +148,7 @@ static func run(tree: SceneTree) -> void:
 		await _frames(tree)
 		var v0: int = lobby.scroll.scroll_vertical
 		await wheel(tree, lobby.scroll)
-		_check(lobby.scroll.scroll_vertical > v0, "판 스크롤 (휠, %d → %d)" % [v0, lobby.scroll.scroll_vertical])
+		_check(lobby.scroll.scroll_vertical > v0, "판 휠 (scroll, %d → %d)" % [v0, lobby.scroll.scroll_vertical])
 		lobby.scroll.scroll_vertical = 0
 		await _frames(tree)
 	# 플레이어 관리 판 (방장): 팀전 체크 칸 위치에 hover

@@ -294,13 +294,13 @@ func _report() -> void:
 	var b1 := _bakes()
 	if not b1.is_empty():
 		var secs := maxf(0.001, (t_end - t_start) / 1000.0)
-		print("[재연] 구운 판 다시 굽기 (초당, 가상 시간): %s" % ", ".join(b1.keys().map(func(k): return "%s %.1f" % [k, (b1[k] - int(_bake0.get(k, 0))) / secs])))
+		print("[재연] 구운 판 다시 그림 (초당, 가상 시간): %s" % ", ".join(b1.keys().map(func(k): return "%s %.1f" % [k, (b1[k] - int(_bake0.get(k, 0))) / secs])))
 		if args.has("bake-why"):
 			for b in get_tree().root.find_children("Baked_*", "", true, false):
 				var w: Dictionary = b.get("why")
 				var ks := w.keys()
 				ks.sort_custom(func(x, y): return w[x] > w[y])
-				print("[재연] %s 다시 굽는 까닭: %s" % [b.name, ", ".join(ks.slice(0, 8).map(func(x): return "%s %d" % [x, w[x]]))])
+				print("[재연] %s 다시 그린 이유: %s" % [b.name, ", ".join(ks.slice(0, 8).map(func(x): return "%s %d" % [x, w[x]]))])
 	var s_ms := script_us / 1000.0 / n
 	var tick_ms := phys_us / 1000.0 / maxf(1, phys_ticks)
 	var ticks_per_frame := 60.0 / fps # 실제 기계에서 물리 60Hz
