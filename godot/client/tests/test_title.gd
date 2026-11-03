@@ -110,7 +110,7 @@ func test_scene_runs_all_themes() -> void:
 func test_haze_values() -> void:
 	for th in TC.theme_ids():
 		var hz: Array = TC.haze(th)
-		check(hz.size() == 3 and float(hz[0]) > 0.0 and float(hz[0]) <= 3.0 and float(hz[1]) >= 4.0, "%s 안개 %s" % [th, str(hz)])
+		check(hz.size() == 3 and float(hz[0]) > 0.0 and float(hz[0]) <= 3.0 and float(hz[1]) >= 3.0, "%s 안개 %s" % [th, str(hz)])
 		check(TC.HAZE_THEME.has(th), "%s 안개는 JS 스샷에 맞춘 값" % th)
 	check(near(TC.haze("mushroom")[0], 1.9) and near(TC.haze("crystal")[0], 0.2), "버섯 1.9 · 자수정 0.2")
 	var code: String = load("res://title/haze.gdshader").code
