@@ -7,6 +7,8 @@ JS `client/main.js`·`client/index.html` 의 화면을 옮김. 계산은 `ui_cal
 | `ui.gd` · `ui.tscn` | 뿌리 CanvasLayer: 화면 고르기 (screenOf)·전환 슬래시·접속 글·핑·Enter 시작 (main.js updateScreen) |
 | `ui_style.gd` | '빛 사선' 모양: 빛 판·평행사변형 버튼·주 버튼·글자 빛·글자 칸, 판 중 HUD 밝은 모양 (index.html CSS) |
 | `menu.gd` | 메뉴: 빛 로고·이름·큰 버튼 펼침·공개 방 목록·연습 (index.html #rooms, main.js openMenu·renderRoomList) |
+| `big_btn.gd` | (W8) 메뉴 큰 버튼 꾸밈: 사선을 칸 안으로 (StyleBoxFlat skew 넘침을 expand_margin 으로), 세로 그라데이션 바탕·안쪽 빛·왼쪽 아래 빛 세모 (뒤 겹), 빛 줄기 반짝임 5.5초 (앞 겹, 움직임 줄이기·그래픽 낮춤이면 없음) — index.html `#rooms button.big` |
+| `text_glow.gd` | (W8) 글자 흐린 빛 (CSS text-shadow 흉내): 글자를 SubViewport 에 반 크기로 한 번 그려 반씩 줄였다 키워 흐린 판 → 더하기 섞기 TextureRect. 메뉴 로고 18·46·90px (`S.LOGO_BLUR`). 고도 Label 의 외곽선·그림자는 흐리지 못해 굵은 외곽선 겹은 얇은 띠로 보임 |
 | `lobby.gd` | 대기실 판 (오른쪽, lobby_dock): 상태·캐릭터 카드 3×3·랜덤·스킬 카드·이름·색·시작·방 설정·방 코드 (main.js drawHud 대기실 부분) |
 | `host_players.gd` | 플레이어 관리 (방장): 팀전·팀 섞기·관전·내보내기 (updateHostPlayers) |
 | `wipe.gd` | 전환 슬래시 (playWipe) |
@@ -30,3 +32,20 @@ main.gd 가 `ui/ui.tscn` 을 자동으로 붙임 (2026-10-31 총괄이 고도로
 - 화면 밖에 그리는 것 (초상·대기실 큰 캐릭터·1인칭 팔·타이틀 거울) 은 UI 좌표 × 배율 = 창 픽셀 크기로 (`UiScale.pixel_size`, `Portrait.render_px`) — 아니면 배율만큼 흐림
 - 마우스 시선은 `screen_relative` (창 픽셀) — `relative` 는 배율로 나뉘어 창 크기마다 감도가 바뀜
 - 화면 배율 k: 윈도우는 고도 screen_get_scale 이 1 이라 DPI / 96, 웹·macOS 는 screen_get_scale. PC 는 처음 창도 1280×720 × k (화면에 맞춰) 로 키움 (안 그러면 200% 화면에 논리 640×360 창). 웹은 캔버스가 CSS × DPR (allow_hidpi)
+
+## W8 타이틀·메뉴 '맛' (JS 와 나란히, 2026-11-03)
+
+7개 테마 × (JS `?title=` · 고도 전 bb07ed2 · 고도 후) 를 1280×720 에서 찍어 대조 (타이틀 = 로고 완성 + 3.5초, 메뉴 = 메뉴 카메라 + 4초, `--shot-at title|menu --title <테마>`).
+고친 것: 메뉴 로고 흐린 빛 (`text_glow.gd`) · 큰 버튼 (`big_btn.gd`: 칸 안 사선·그라데이션·안쪽 빛·빛 세모·반짝임·글자 빛) · 3D 넓은 빛 안개 (`title/haze.gdshader`,
+고도 Compatibility 글로는 `glow_levels` 세기를 무시해 JS UnrealBloom 처럼 넓게 못 번짐 — 실측) · 버섯 갓 밑 뚫기 (`title_fx.hemi_open`) · 타이틀 위 겹 (검은 띠·가장자리·Enter 빛).
+화면 평균 밝기 (rgb, 위아래 60px 뺌) 전 → 후 / JS: 버섯 타이틀 21,41,38 → 49,84,78 / 59,92,83 · 화산 31,8,2 → 59,16,4 / 58,19,8 · 하늘 성 23,25,40 → 43,48,73 / 44,48,71.
+
+비용 (버섯, 1280×720, xvfb llvmpipe — 시간은 소프트웨어 GPU 라 참고만, 그리기 수가 기준):
+
+| 효과 | 그리기 수 | SubViewport | 전체 화면 패스 | 그래픽 낮춤 |
+|---|---|---|---|---|
+| 메뉴 전체 (전 → 후) | 53 → 63 | 0 → 0 (굽기 때 한 프레임만 1) | 0 → 1 (안개) | 안개·반짝임 없음, 로고 빛 1장 |
+| 로고 흐린 빛 3장 | +3 | 굽기 1번 (글자 크기 바뀔 때만), 바로 버림 | — | 14px 1장 |
+| 큰 버튼 6개 꾸밈 | +6 (반짝일 때 +1씩) | — | — | 반짝임 없음 |
+| 빛 안개 | +1 + 화면 복사·밉맵 | — | 1 (밉 5 단계 17곳 읽기) | 끔 |
+| 타이틀 전체 (전 → 후, 위 겹 포함) | 29 → 42 | 거울 그대로 | 0 → 1 | 끔 |

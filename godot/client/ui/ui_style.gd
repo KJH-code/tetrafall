@@ -26,9 +26,13 @@ const SKEW := 0.18 # 평행사변형 기울기 (판 중 HUD 칸들) — StyleBox
 const SKEW_BTN := 0.27 # 창 버튼 (JS --par 9px / 버튼 높이 ~33px)
 const SKEW_BIG := 0.29 # 메뉴 큰 버튼 (JS clip-path 18px / 높이 62px)
 const CUT := 20 # 빛 판 잘린 모서리 (JS --cut2: 오른쪽 위·왼쪽 아래 20px)
+const BIG_TXT_GLOW := [14, 0.22] # 큰 버튼 글자 넓은 빛 [그림자 외곽선 굵기, 진하기] (W8)
 const LOGO_SLANT := 0.355 # 로고 기울기 (JS font-style: italic (브라우저 가짜 기울임 ¼) + skewX(-6deg) tan 0.105)
 # 로고 빛 겹 [외곽선 굵기, 색 (g = 테마 빛, g2 = 넓은 빛, w = 흰), 진하기] — JS text-shadow 0 0 4px #fff, 18px g, 46px g2, 90px g2 50% 를 겹겹이
-const LOGO_GLOW := [[44, "g2", 0.08], [30, "g2", 0.12], [18, "g", 0.22], [9, "g", 0.4], [4, "w", 0.7]] # 외곽선은 너무 굵으면 글꼴 래스터가 깨져 44 까지
+const LOGO_GLOW := [[9, "g", 0.4], [4, "w", 0.7]] # 가까운 빛만 외곽선 (W8: 넓은 빛 44·30·18 외곽선 겹은 흐리지 못해 얇은 띠로 보여 → LOGO_BLUR)
+# 로고 흐린 빛 [CSS 흐림 px, 색, 세기 (더하기 섞기라 색 × 세기, 1 넘어도 됨)] (ui/text_glow.gd 가 한 번 구움): JS 0 0 18px g, 46px g2, 90px g2 50%. 그래픽 낮춤 (JS body.low-gfx h2) 은 14px g 하나
+const LOGO_BLUR := [[18, "g", 0.6], [46, "g2", 0.5], [90, "g2", 0.45]]
+const LOGO_BLUR_LOW := [[14, "g", 1.0]]
 
 # 테마 빛 색을 쓴 것 기억 (판 테마가 바뀌면 restyle 이 그 자리에서 다시 칠함 — 타이틀·대기실 맵 테마 View.ui_theme). [WeakRef, 종류, 인자]
 static var _reg: Array = []
@@ -61,6 +65,8 @@ static func restyle() -> void:
 			"btn_font":
 				if r[2] == "ghost" or r[2] == "big":
 					o.add_theme_color_override("font_outline_color", alpha(gc, 0.6))
+				if r[2] == "big":
+					o.add_theme_color_override("font_shadow_color", alpha(g2(), BIG_TXT_GLOW[1]))
 			"glow":
 				o.add_theme_color_override("font_outline_color", alpha(gc, 0.75))
 				o.add_theme_color_override("font_shadow_color", alpha(g2(), 0.5))
@@ -74,6 +80,8 @@ static func restyle() -> void:
 				o.add_theme_color_override("font_outline_color", alpha(_glow_col(r[2][0]), r[2][1]))
 			"streak":
 				o.texture = _streak_tex()
+			"glowtex":
+				o.self_modulate = gain(_glow_col(r[2][0]), r[2][1])
 			"under":
 				o.border_color = alpha(gc, 0.55)
 			"border":
@@ -95,6 +103,11 @@ static func g() -> Color:
 
 static func g2() -> Color:
 	return Coords.color(C.TITLE_THEMES[theme_id()].glow)
+
+
+# 더하기 섞기 빛 색: rgb × k (1 넘어도 됨), 불투명
+static func gain(c: Color, k: float) -> Color:
+	return Color(c.r * k, c.g * k, c.b * k, 1.0)
 
 
 static func alpha(c: Color, a: float) -> Color:
@@ -218,6 +231,12 @@ static func glow_layer(l: Label, kind: String, a: float) -> void:
 	_keep(l, "layer", [kind, a])
 
 
+# 흐린 빛 판 색 (테마가 바뀌면 다시 칠함)
+static func glow_tex_tint(t: CanvasItem, kind: String, a: float) -> void:
+	t.self_modulate = gain(_glow_col(kind), a)
+	_keep(t, "glowtex", [kind, a])
+
+
 # 로고 가운데 빛 줄 (JS h2::after: 3px, 투명 → g 30% → 흰 50% → g 70% → 투명, 흐림 1px, 진하기 .7)
 static func _streak_tex() -> GradientTexture2D:
 	var gt := GradientTexture2D.new()
@@ -337,11 +356,10 @@ static func button_box(kind: String, state: String, keep := true) -> StyleBoxFla
 			s.shadow_color = alpha(gc, 0.6)
 			s.shadow_size = 10 if state != "hover" else 16
 		"big":
-			# JS button.big: 바탕 rgba(30,18,52,.8)→rgba(8,5,18,.86) (가운데 색), 안쪽 1px ga, 바깥 빛 없음. hover·열림은 g 36% 섞음 + 테두리 g
-			s.bg_color = Color8(19, 11, 35, 212) if state == "normal" else alpha(gc.lerp(Color8(18, 12, 34), 0.64), 0.86)
+			# JS button.big: 테두리 안쪽 1px ga (hover·열림은 g) 만 여기. 세로 그라데이션 바탕·안쪽 빛·왼쪽 아래 빛 세모·반짝임은 ui/big_btn.gd (W8 — 예전엔 가운데 색 한 장 + 사선 전체 4px 띠)
+			s.bg_color = Color(0, 0, 0, 0)
 			s.border_color = alpha(gc, 0.55) if state == "normal" else gc
 			s.set_border_width_all(1)
-			s.border_width_left = 4
 			s.shadow_size = 0
 		"leave": # JS button.leave: rgba(40,6,4,.55) + 안쪽 1px rgba(255,90,70,.75)
 			s.bg_color = Color8(40, 6, 4, 140) if state == "normal" else Color8(70, 14, 8, 190)
@@ -390,6 +408,11 @@ static func style_button(b: Button, kind := "ghost", size := 16) -> Button:
 	elif kind != "go" and kind != "armed":
 		b.add_theme_color_override("font_outline_color", alpha(g(), 0.6))
 		b.add_theme_constant_override("outline_size", 4)
+		if kind == "big": # JS --gtxt 의 넓은 빛 (0 0 20px g2 60%): 흐림 대신 굵은 그림자 외곽선 옅게 (W8)
+			b.add_theme_color_override("font_shadow_color", alpha(g2(), BIG_TXT_GLOW[1]))
+			b.add_theme_constant_override("shadow_outline_size", int(BIG_TXT_GLOW[0]))
+			b.add_theme_constant_override("shadow_offset_x", 0)
+			b.add_theme_constant_override("shadow_offset_y", 0)
 	else:
 		b.add_theme_constant_override("outline_size", 0)
 	b.focus_mode = Control.FOCUS_NONE

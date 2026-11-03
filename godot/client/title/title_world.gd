@@ -386,7 +386,7 @@ func _mushroom() -> void:
 		if h > 14 and big.size() < 3:
 			big.append([x, y, h, c])
 	add_child(_inst(F.cyl(0.7, 1, 1, 8), stem, stems, F.rot_x(PI / 2)))
-	add_child(_inst(F.sphere(1, 20, 10, true), F.glow_inst(0.9, 0.5), caps, F.rot_x(PI / 2)))
+	add_child(_inst(F.hemi_open(1, 20, 10), F.glow_inst(0.9, 0.5), caps, F.rot_x(PI / 2))) # 밑이 뚫린 갓 (W8)
 	add_child(_inst(F.sphere(1, 8, 6), F.basic(0xffffff), spots))
 	for b in big:
 		point(b[3], 90, 40, 1.5, Vector3(b[0], b[1], floor_z + b[2] - 1))

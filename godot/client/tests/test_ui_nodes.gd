@@ -98,6 +98,55 @@ func test_menu_sizes() -> void:
 	m.free()
 
 
+# 메뉴 큰 버튼 꾸밈 (W8, ui/big_btn.gd = JS #rooms button.big): 평행사변형이 칸 안 (clip-path 18px), 왼쪽 빛 띠는 왼쪽 아래 세모만,
+# 반짝임 5.5초 중 70% 쉼 → -60% 에서 130% 로, 아래 줄 버튼 사이가 겹치지 않음 (StyleBoxFlat skew 넘침을 expand_margin 으로 되돌림)
+func test_menu_big_button_look() -> void:
+	var Big = load("res://ui/big_btn.gd")
+	var p: PackedVector2Array = Big.shape(600, 62, 18)
+	check(p[0] == Vector2(18, 0) and p[1] == Vector2(600, 0) and p[2] == Vector2(582, 62) and p[3] == Vector2(0, 62), "평행사변형 %s" % str(p))
+	var t: PackedVector2Array = Big.strip(62, 18)
+	check(t.size() == 3 and is_equal_approx(t[0].y, 62.0 * (1.0 - 4.0 / 18.0)) and t[1] == Vector2(4, 62) and t[2] == Vector2(0, 62), "빛 띠 세모 %s" % str(t))
+	check(Big.sheen_x(0.0) == null and Big.sheen_x(5500.0 * 0.69) == null, "반짝임 앞 70% 는 쉼")
+	check(is_equal_approx(Big.sheen_x(5500.0 * 0.7), -0.6) and is_equal_approx(Big.sheen_x(5500.0 * 0.85), 0.35), "반짝임 -60% → 130%")
+	var m = _make("res://ui/menu.gd")
+	m.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	m.size = Vector2(1280, 720)
+	m._layout()
+	var b: Button = m.bigs.values()[0]
+	var sb: StyleBoxFlat = b.get_theme_stylebox("normal")
+	check(is_equal_approx(sb.expand_margin_left, -S.SKEW_BIG * 31.0) and is_equal_approx(sb.expand_margin_right, -S.SKEW_BIG * 31.0), "큰 버튼 사선 넘침 되돌림 %s" % sb.expand_margin_left)
+	check(sb.bg_color.a == 0.0 and sb.border_width_left == 1, "큰 버튼 stylebox 는 1px 테두리만 (바탕은 big_btn)")
+	check(b.get_node_or_null("BigBack") != null and b.get_node("BigBack").show_behind_parent, "큰 버튼 뒤 겹")
+	var mb: Button = m.mrow_btns[0]
+	check(is_equal_approx(mb.get_theme_stylebox("hover").expand_margin_left, -S.SKEW_BIG * 25.0), "아래 줄 버튼 사선 넘침 되돌림")
+	check(b.get_theme_constant("shadow_outline_size") == int(S.BIG_TXT_GLOW[0]), "큰 버튼 글자 넓은 빛")
+	m.free()
+
+
+# 로고 흐린 빛 (W8, ui/text_glow.gd = JS h2 text-shadow 18·46·90px): 흐림은 크기 그대로·멀리 번짐·넓을수록 더 멀리, 굽기는 트리 밖이면 안 함.
+# 세기는 JS 스샷 (자수정 메뉴 로고 위 23px 픽셀 68,18,79) 에 맞춘 값
+func test_logo_blur_glow() -> void:
+	var TG = load("res://ui/text_glow.gd")
+	check(TG.halvings(9.0) == 4 and TG.halvings(23.0) == 5 and TG.halvings(45.0) == 6, "반씩 줄이는 횟수 %d·%d·%d" % [TG.halvings(9.0), TG.halvings(23.0), TG.halvings(45.0)])
+	var img := Image.create(128, 64, false, Image.FORMAT_RGB8)
+	img.fill_rect(Rect2i(60, 28, 8, 8), Color.WHITE)
+	var near: Image = TG.blur(img, 9.0)
+	var far: Image = TG.blur(img, 45.0)
+	check(near.get_size() == img.get_size() and far.get_size() == img.get_size(), "흐려도 크기 그대로")
+	check(img.get_pixel(64, 12).r == 0.0 and near.get_pixel(64, 12).r > 0.0, "흐리면 글자 밖으로 번짐")
+	check(far.get_pixel(20, 32).r > near.get_pixel(20, 32).r, "넓은 흐림이 더 멀리")
+	check(S.LOGO_BLUR.size() == 3 and S.LOGO_BLUR[2][0] == 90 and S.LOGO_BLUR_LOW.size() == 1, "로고 빛 겹: 보통 18·46·90, 그래픽 낮춤 14 하나")
+	check(S.LOGO_GLOW.size() == 2, "굵은 외곽선 빛 겹은 뺌 (9·4 만)")
+	var gc: Color = S.gain(Color(1, 0.5, 0.2), 0.5)
+	check(is_equal_approx(gc.r, 0.5) and is_equal_approx(gc.b, 0.1) and gc.a == 1.0, "더하기 빛 색 = rgb × 세기")
+	var m = _make("res://ui/menu.gd")
+	m.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	m.size = Vector2(1280, 720)
+	m._layout()
+	check(m.blur_rects.is_empty(), "트리 밖이면 굽지 않음")
+	m.free()
+
+
 # 대기실 판 (JS #center): 작은 창·1280 줄 사이·카드·시작·방 설정·버튼 여백·고르기 칸 폭 — 960×540 에서 '링크 복사'·'방 나가기' 줄이 판 안에 들어오게 고친 값
 func test_lobby_sizes() -> void:
 	var l = _make("res://ui/lobby.gd")

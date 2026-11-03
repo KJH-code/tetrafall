@@ -7,6 +7,8 @@ const S := preload("res://ui/ui_style.gd")
 const Prefs := preload("res://ui/ui_prefs.gd")
 const U := preload("res://ui/ui_calc.gd")
 const Lobby := preload("res://ui/lobby.gd")
+const Big := preload("res://ui/big_btn.gd")
+const TG := preload("res://ui/text_glow.gd")
 
 signal open_settings
 signal open_tutorial
@@ -25,6 +27,8 @@ var col: VBoxContainer
 var logo: Label
 var logo_glow: Array = [] # 로고 뒤 빛 겹 (CSS text-shadow 4·18·46·90px 흐림 흉내: 외곽선 굵기·진하기를 겹겹이)
 var streak: TextureRect # 로고 가운데 빛 줄 (h2::after)
+var blur_rects: Array = [] # 로고 흐린 빛 판 (TextureRect, 굽기 결과 {pad, scale} 는 meta)
+var blur_fs := 0 # 지금 판을 구운 글자 크기 (바뀌면 다시 구움)
 var sub: Label
 var mrow: HBoxContainer
 var mrow_btns: Array = []
@@ -155,6 +159,7 @@ func _ready() -> void:
 		b.custom_minimum_size.y = 50
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.add_theme_font_override("font", S.spaced(3)) # JS .mrow button.big letter-spacing 3px
+		Big.attach(b, 3, S.reduced()) # 반짝임 늦춤 .75초 (JS .mrow button.big::after)
 		mrow.add_child(b)
 		mrow_btns.append(b)
 	mrow_btns[0].tooltip_text = "혼자, 허수아비 · 친구도 코드로 들어옴" # JS #practice-btn title
@@ -185,12 +190,16 @@ func _layout() -> void:
 	for id in bigs:
 		bigs[id].add_theme_font_size_override("font_size", 24 if small else 30)
 		bigs[id].custom_minimum_size.y = 46 if small else 62
+		Big.fit(bigs[id], 46 if small else 62) # 사선을 칸 안으로 (JS clip-path)
 	for b in mrow_btns:
 		b.add_theme_font_size_override("font_size", 20 if small else 24)
 		b.custom_minimum_size.y = 38 if small else 50
+		Big.fit(b, 38 if small else 50)
 	mrow.add_theme_constant_override("separation", 10)
 	_place_logo(logo_box)
 	_place_count()
+	if int(fs) != blur_fs:
+		_bake_blur(int(fs))
 
 
 func _place_logo(box: Control) -> void:
@@ -204,6 +213,35 @@ func _place_logo(box: Control) -> void:
 	var tw := logo.get_theme_font("font").get_string_size(logo.text, HORIZONTAL_ALIGNMENT_LEFT, -1, logo.get_theme_font_size("font_size")).x
 	streak.size = Vector2(tw * 1.24, 3)
 	streak.position = Vector2((box.size.x - streak.size.x) / 2.0, box.size.y * 0.54)
+	# 흐린 빛 판: 구운 글자 왼쪽 위 = 로고 글자 왼쪽 위 (Label 가운데 맞춤)
+	var origin := logo.position + Vector2((logo.size.x - logo.get_combined_minimum_size().x) / 2.0, 0.0)
+	for r in blur_rects:
+		var t := r as TextureRect
+		var pad: float = t.get_meta("pad")
+		t.position = origin - Vector2(pad, pad)
+		t.size = Vector2(t.texture.get_size()) * float(t.get_meta("scale"))
+
+
+# 로고 흐린 빛 굽기 (W8, text_glow.gd): 한 번 (글자 크기가 바뀔 때만 다시). 트리 밖 (테스트) 이면 안 함
+func _bake_blur(fs: int) -> void:
+	blur_fs = fs
+	var layers: Array = S.LOGO_BLUR_LOW if bool(View.settings.get("lowGfx", false)) else S.LOGO_BLUR
+	var baked: Array = await TG.bake(self, logo.text, logo.get_theme_font("font"), fs, layers)
+	if baked.is_empty() or fs != blur_fs:
+		return
+	for r in blur_rects:
+		r.queue_free()
+	blur_rects.clear()
+	var box := logo.get_parent() as Control
+	for i in baked.size():
+		var t := TG.rect(baked[i].tex)
+		t.set_meta("pad", baked[i].pad)
+		t.set_meta("scale", baked[i].scale)
+		S.glow_tex_tint(t, layers[i][1], layers[i][2])
+		box.add_child(t)
+		box.move_child(t, 0) # 빛 줄·외곽선 겹·글자 뒤
+		blur_rects.append(t)
+	_place_logo(box)
 
 
 # '공개 방' 글 바로 뒤에 방 수 (JS <small> margin-left 10)
@@ -227,6 +265,7 @@ func _item(parent: Node, id: String, text: String, body: Control) -> void:
 	b.toggle_mode = true
 	b.custom_minimum_size.y = 62
 	b.add_theme_font_override("font", S.spaced(4)) # JS button.big letter-spacing 4px
+	Big.attach(b, bigs.size(), S.reduced()) # 바탕·안쪽 빛·빛 세모·반짝임 (JS .mi:nth-child 마다 .25초 늦게)
 	parent.add_child(b)
 	bigs[id] = b
 	var pane := PanelContainer.new()
