@@ -204,6 +204,8 @@ public sealed partial class Game
     {
         foreach (var p in Players()) if (p.comboHits >= 2) EndCombo(p); // 판이 끝날 때 이어지던 콤보도 로그에
         phase = "over";
+        // 바드는 판이 끝나면 음유시인 폼으로 (대기실·결과에서 늘 류트 모습). 다음 판 시작 때도 되돌림
+        foreach (var p in Players()) p.form = "bard";
         // 판을 끝낸 죽음 (화면: 마지막 킬 슬로모션). FINAL_KILL_WINDOW_MS 안의 죽음만
         var list = winners ?? (winner != null ? new List<Player> { winner } : new List<Player>());
         var d0 = lastDeath;
