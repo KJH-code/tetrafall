@@ -113,3 +113,142 @@ func test_script_time_probe() -> void:
 	check(b.phys_us == 0, "프레임마다 물리 합 비움")
 	a.free()
 	b.free()
+
+
+# W12 성능 재연 (core/replay.gd): 녹화 줄 "시각\t글자" 읽기 · 재기 시작 = 처음 playing 스냅샷 + warm 초
+func test_replay_file_and_start() -> void:
+	var R = load("res://core/replay.gd")
+	var path := "user://w12_replay_test.rec"
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_line("100.0\t{\"type\":\"welcome\"}")
+	f.store_line("150.5\t{\"type\":\"state\",\"phase\":\"lobby\"}")
+	f.store_line("깨진 줄")
+	f.store_line("300.0\t{\"type\":\"state\",\"phase\":\"playing\",\"a\":\"x\ty\"}")
+	f.close()
+	var lines: Array = R.load_file(path)
+	check(lines.size() == 3, "깨진 줄은 뺌: %d" % lines.size())
+	check(lines[1][0] == 150.5 and str(lines[2][1]).ends_with("\"x\ty\"}"), "시각·글자 (탭은 첫 칸만 자름): %s" % str(lines))
+	check(R.start_at(lines, 2.0) == 2300.0, "playing + 2초: %s" % R.start_at(lines, 2.0))
+	check(R.start_at(lines.slice(0, 2), 1.0) == 1100.0, "playing 없으면 첫 줄 + warm")
+	check(R.start_at([], 1.0) == 0.0, "빈 파일 0")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+
+# 재연 시각 다시 매기기: 한 시각에 몰린 스냅샷을 서버 시각 간격으로 펼침, 다른 메시지는 바로 앞 시각·순서 그대로
+func test_replay_retime() -> void:
+	var R = load("res://core/replay.gd")
+	var lines := [[10.0, "{\"type\":\"rooms\"}"], [50.0, "{\"type\":\"state\",\"time\":0,\"phase\":\"lobby\"}"], [50.0, "{\"type\":\"pong\",\"t\":3}"],
+		[400.0, "{\"type\":\"state\",\"time\":33.5,\"phase\":\"playing\"}"], [400.0, "{\"type\":\"state\",\"time\":66.5}"], [400.0, "{\"type\":\"event\"}"]]
+	var got: Array = R.retime(lines)
+	var at := got.map(func(l): return l[0])
+	check(at == [10.0, 50.0, 50.0, 83.5, 116.5, 116.5], "펼친 시각: %s" % str(at))
+	check(got.map(func(l): return l[1]) == lines.map(func(l): return l[1]), "글자·순서 그대로")
+	check(R.server_time("{\"type\":\"pong\",\"time\":5}") == null and R.server_time("{\"type\":\"state\",\"time\":1e3,") == 1000.0, "스냅샷만·숫자")
+
+
+# W12 몸 자세 LOD (world/pose_lod.gd): 가까움·내 몸 = 매 프레임, 멀면 60Hz (120fps 면 한 프레임 걸러, 60fps 면 매 프레임), 화면 밖 20Hz
+func test_pose_lod_rule() -> void:
+	var L = load("res://world/pose_lod.gd")
+	var lod := {"near": 9.0, "far_hz": 60.0, "off_hz": 20.0, "margin": 2.5}
+	check(L.interval_ms(3.0, true, false, lod) == 0.0, "가까움 매 프레임")
+	check(L.interval_ms(30.0, false, true, lod) == 0.0, "내 몸은 화면 밖·멀어도 매 프레임")
+	check(near(L.interval_ms(12.0, true, false, lod), 1000.0 / 60.0), "멀면 60Hz")
+	check(near(L.interval_ms(3.0, false, false, lod), 50.0), "화면 밖 20Hz")
+	# 프레임 빠르기마다 실제로 세는 빈도 (1초)
+	for row in [[120.0, 1000.0 / 60.0, 60], [60.0, 1000.0 / 60.0, 120], [120.0, 50.0, 20], [60.0, 50.0, 20], [144.0, 0.0, 144], [30.0, 1000.0 / 60.0, 30]]:
+		var fms: float = 1000.0 / row[0]
+		var last = null
+		var n := 0
+		var f := 0
+		for i in int(row[0]):
+			var now := i * fms
+			if L.due(now, last, row[1], fms):
+				last = now
+				n += 1
+			f += 1
+		var want: int = row[2] if row[2] != 120 else 60
+		check(n == want, "%.0ffps 간격 %.1fms → 초당 %d번 (기대 %d)" % [row[0], row[1], n, want])
+	check(L.due(5.0, null, 50.0, 8.0), "처음은 셈")
+
+
+# 화면 안 판정: 실제 카메라 시야 면 — 앞은 안, 뒤·옆 멀리는 밖, 가장자리 바로 밖은 여유 (margin) 로 안
+func test_pose_lod_in_view() -> void:
+	var L = load("res://world/pose_lod.gd")
+	# Camera3D.get_frustum 과 같은 계산 (러너 동안 root 가 트리 밖이라 카메라를 못 씀): 세로 시야 60°·16:9 원근 + 카메라 자리
+	var tr := Transform3D(Basis.looking_at(Vector3.ZERO - Vector3(0, 5, 10), Vector3.UP), Vector3(0, 5, 10))
+	var hv := deg_to_rad(30.0)
+	var hh := atan(tan(hv) * 1280.0 / 720.0)
+	var planes: Array = []
+	for pl in [Plane(Vector3(0, 0, 1), -0.05), Plane(Vector3(0, 0, -1), 4000.0), Plane(Vector3(-cos(hh), 0, sin(hh)), 0.0), Plane(Vector3(cos(hh), 0, sin(hh)), 0.0), Plane(Vector3(0, cos(hv), sin(hv)), 0.0), Plane(Vector3(0, -cos(hv), sin(hv)), 0.0)]:
+		planes.append(tr * pl)
+	check(L.in_view(planes, Vector3.ZERO, 0.5), "바라보는 곳")
+	check(not L.in_view(planes, Vector3(0, 5, 20), 2.5), "카메라 뒤")
+	check(not L.in_view(planes, Vector3(40, 0, 0), 2.5), "옆 멀리")
+	# 오른쪽 가장자리 바로 밖 (수평 시야 반각 ≈ 45.7°, 거리 ~11 에서 폭 ~11.5): 여유 없으면 밖, 2.5m 여유면 안
+	var edge := Vector3(13.0, 0, 0)
+	check(not L.in_view(planes, edge, 0.0) and L.in_view(planes, edge, 2.5), "가장자리 여유")
+
+
+# 재연 --set: 글자 → 설정 값 (참·거짓·숫자·글자)
+func test_replay_sets() -> void:
+	var R = load("res://core/replay.gd")
+	var got: Dictionary = R.parse_sets("outline=false,shadows=true,fov=80,gfx=medium,bad")
+	check(got == {"outline": false, "shadows": true, "fov": 80.0, "gfx": "medium"}, "설정: %s" % str(got))
+
+
+# 설정 '외곽선' (W12): 만든 재질 (툰·블록 칸·건축 블록) 의 외곽선을 곧바로 떼고 다시 붙임, 끈 동안 만든 재질도 켜면 붙음. 외곽선 재질은 나눠 씀
+func test_outline_setting_toggles() -> void:
+	var G3 = load("res://shaders/g3.gd")
+	var a: ShaderMaterial = G3.toon_material(Color.RED)
+	var b: ShaderMaterial = G3.toon_material(Color.BLUE)
+	var nf: ShaderMaterial = G3.toon_material(Color.BLUE, {"no_fog": true})
+	var pc: ShaderMaterial = G3.piece_material(null, false)
+	check(a.next_pass != null and a.next_pass == b.next_pass, "같은 외곽선 재질 하나를 나눠 씀")
+	check(nf.next_pass != a.next_pass and nf.next_pass.get_shader_parameter("no_fog") == true and a.next_pass.get_shader_parameter("no_fog") == false, "안개 안 받음은 따로")
+	G3.set_outline_on(false)
+	var c: ShaderMaterial = G3.toon_material(Color.GREEN)
+	check(a.next_pass == null and pc.next_pass == null and c.next_pass == null, "끄면 이미 만든 것·새로 만든 것 모두 없음")
+	G3.set_outline_on(true)
+	check(a.next_pass != null and pc.next_pass != null and c.next_pass != null and nf.next_pass.get_shader_parameter("no_fog") == true, "켜면 다시 (안개 값 그대로)")
+	check(G3.toon_material(Color.WHITE, {"opacity": 0.5}).next_pass == null and G3.toon_material(Color.WHITE, {"outline": false}).next_pass == null, "반투명·outline false 는 그대로 없음")
+
+
+# 설정 '그림자': 켬 + 그래픽 낮춤 아님일 때만
+func test_shadows_setting() -> void:
+	var W = load("res://world/world.gd")
+	check(W.shadows_wanted({"shadows": true, "lowGfx": false}), "켬")
+	check(not W.shadows_wanted({"shadows": false, "lowGfx": false}), "설정 끔")
+	check(not W.shadows_wanted({"shadows": true, "lowGfx": true}), "낮음")
+
+
+# 렌더러 (W12): PC 기본은 아직 GL Compatibility (재혁 PC 숫자 뒤 결정) · 웹은 따로 GL Compatibility 로 못 박음 —
+# PC 기본을 Forward+·Mobile 로 바꿔도 웹 내보내기는 그대로 (웹은 WebGL2 만)
+func test_renderer_web_pinned() -> void:
+	var cf := ConfigFile.new()
+	check(cf.load("res://project.godot") == OK, "project.godot 읽기")
+	check(str(cf.get_value("rendering", "renderer/rendering_method", "")) == "gl_compatibility", "PC 기본 렌더러 = gl_compatibility (시험은 start-lan-forward·mobile.bat)")
+	check(str(cf.get_value("rendering", "renderer/rendering_method.web", "")) == "gl_compatibility", "웹 렌더러 = gl_compatibility 고정")
+
+
+# HUD 글자 색·크기 (W12): 같은 값이면 덮어쓰지 않음 → '테마 바뀜' 알림 (글자 모양 다시 잡기·다시 배치) 이 값이 바뀔 때만
+func test_hud_override_only_on_change() -> void:
+	var H = load("res://ui/ui_style.gd")
+	var ml = Engine.get_main_loop()
+	var l := Label.new()
+	var host: Node = ml.root if ml is SceneTree else null
+	if host != null:
+		host.add_child(l)
+	var n := [0]
+	l.theme_changed.connect(func(): n[0] += 1)
+	l.add_theme_color_override("font_color", Color.RED)
+	l.add_theme_color_override("font_color", Color.RED)
+	var raw: int = n[0]
+	n[0] = 0
+	for i in 5:
+		H.ov_color(l, "font_color", Color.BLUE)
+		H.ov_font_size(l, "font_size", 30)
+	check(l.get_theme_color("font_color") == Color.BLUE and l.get_theme_font_size("font_size") == 30, "값은 바뀜")
+	if raw >= 2: # 트리 안이라 알림이 오는 경우: 그냥 덮어쓰기는 같은 값도 알림, ov_ 는 바뀔 때 한 번씩만
+		check(n[0] == 2, "같은 값 5번 = 알림 2번 (색·크기 한 번씩), 실제 %d" % n[0])
+	# 러너는 트리 밖 (알림 없음) 이라 값만 봄. 트리 안 확인 (W12 손 측정): 그냥 덮어쓰기 같은 값 5번 = 알림 5번, ov_ = 2번 · 한 번 11µs → 0.6µs
+	l.free()

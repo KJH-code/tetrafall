@@ -2,6 +2,7 @@
 # 밝은 예전 모양 (노랑·남색, ui_style hud_box). 아래 사람마다 초상 + 큰 % (+ 체력전 HP 막대), 위 시간·점수 띠 (킬 점수전은 목표까지 막대),
 # 오른쪽 위 킬 피드, Tab(연습 창 키) 점수표, 부활 카운트다운, 스킬 F·R 칸, 조준점 둘레 대시·밀치기 쿨, 관전 안내, 카운트다운 큰 숫자
 extends Control
+const HProf := preload("res://core/prof.gd")
 
 const C := preload("res://core/config.gd")
 const S := preload("res://ui/ui_style.gd")
@@ -422,21 +423,27 @@ func refresh(st: Dictionary) -> void:
 	timer_label.text = " " + (_fmt(left) if left != null else _fmt(float(st.round.get("elapsed", 0)))) + " "
 	timer_label.visible = st.phase == "playing" # JS #status: 판 중에만 (카운트다운·판 끝엔 숨김)
 	var small := U.small(vp)
-	big.add_theme_font_size_override("font_size", 88 if small else 118) # JS #bigmsg (작은 창 88)
-	respawn_num.add_theme_font_size_override("font_size", 72 if small else 96)
+	S.ov_font_size(big, "font_size", 88 if small else 118) # JS #bigmsg (작은 창 88)
+	S.ov_font_size(respawn_num, "font_size", 72 if small else 96)
 	# 카운트다운 큰 숫자
 	if st.phase == "countdown":
 		big.text = str(maxi(1, int(ceil(float(st.round.countdownLeft) / 1000.0))))
-		big.add_theme_color_override("font_color", Color.WHITE)
+		S.ov_color(big, "font_color", Color.WHITE)
 		big.visible = true
 	big.position = Vector2((vp.x - big.size.x) / 2.0, vp.y * 0.3 - big.size.y / 2.0)
+	HProf.begin() # 성능 구간 (W12, --prof 만)
 	_cards(st, vp)
+	HProf.lap("HUD ·아래 판")
 	score_band(st, vp, false)
+	HProf.lap("HUD ·점수판")
 	_skills(me, vp)
+	HProf.lap("HUD ·스킬")
 	_kills_panels(st, me, vp)
 	_spectate(st, me, vp)
+	HProf.lap("HUD ·킬·관전")
 	_my_marks(me, vp)
 	ring.queue_redraw()
+	HProf.lap("HUD ·표식")
 
 
 # 위 점수 띠 (JS updateScore): 대기실·결과 (between = body.ui-dark 빛 판) 엔 승수 'A 1 : 0 B' · 셋 이상 'A 1 · B 0 · C 0' · 팀전 '빨강 1 : 0 파랑',
@@ -614,9 +621,9 @@ func _cards(st: Dictionary, vp: Vector2) -> void:
 		var hv = U.hp_view(p, st)
 		c.pct.text = "KO" if dead else ("%d" % int(hv.hp) if hv != null else "%d" % int(p.damage))
 		c.unit.visible = not dead and hv == null # JS <u>%</u> 20px
-		c.pct.add_theme_font_size_override("font_size", 27 if dead else int(c.pct_size)) # JS .pct i (KO) 27px
-		c.pct.add_theme_color_override("font_color", S.HOT if dead else (U.hp_color(hv.frac) if hv != null else U.damage_color(float(p.damage))))
-		c.unit.add_theme_color_override("font_color", U.damage_color(float(p.damage)))
+		S.ov_font_size(c.pct, "font_size", 27 if dead else int(c.pct_size)) # JS .pct i (KO) 27px
+		S.ov_color(c.pct, "font_color", S.HOT if dead else (U.hp_color(hv.frac) if hv != null else U.damage_color(float(p.damage))))
+		S.ov_color(c.unit, "font_color", U.damage_color(float(p.damage)))
 		# 죽음 회색 (JS grayscale .8 brightness .66 — 고도는 밝기만), 자리 비움 .62 + 태그, 관전 중 보는 사람 ▶ + 노랑 테
 		var away: bool = bool(p.get("away", false))
 		c.panel.modulate = Color(0.6, 0.6, 0.6) if dead else Color.WHITE
@@ -635,8 +642,8 @@ func _cards(st: Dictionary, vp: Vector2) -> void:
 		if mkd != null and float(mkd.n) > 0 and not HM.mark_blink(float(mkd.get("left", 1e9)), float(Time.get_ticks_msec())):
 			mk_text = HM.pip_text(mkd.n)
 		c.mk.text = mk_text
-		c.mk.add_theme_color_override("font_color", Color("ffd23a") if mkd != null and float(mkd.n) >= C.HUNTER_MARK_MAX else Color("ff3a2a"))
-		c.mk.add_theme_color_override("font_outline_color", Color.WHITE if mkd != null and mkd.mine else Color.BLACK)
+		S.ov_color(c.mk, "font_color", Color("ffd23a") if mkd != null and float(mkd.n) >= C.HUNTER_MARK_MAX else Color("ff3a2a"))
+		S.ov_color(c.mk, "font_outline_color", Color.WHITE if mkd != null and mkd.mine else Color.BLACK)
 		c.sub.text = "%s%s %s" % ["%s팀 · " % TEAM_KO.get(str(p.get("team", "")), "") if st.get("teamMode", false) else "", C.CHAR_NAMES.get(str(p.get("char", "")), ""), ("킬 %d" % int(p.get("score", 0))) if kills else ("승 %d" % int(p.get("wins", 0)))]
 		c.hp.visible = hv != null and not dead # KO 면 막대 없이 KO 만
 		if hv != null:
@@ -788,11 +795,11 @@ func _skills(me: Dictionary, vp: Vector2) -> void:
 	if damage_label.visible:
 		var hv = U.hp_view(me, Store.state) # 체력전이면 % 대신 남은 HP
 		damage_label.text = ("HP %d" % int(hv.hp)) if hv != null else "%d%%" % int(me.get("damage", 0))
-		damage_label.add_theme_color_override("font_color", U.hp_color(hv.frac) if hv != null else _damage_color(float(me.get("damage", 0))))
+		S.ov_color(damage_label, "font_color", U.hp_color(hv.frac) if hv != null else _damage_color(float(me.get("damage", 0))))
 		# 3인칭이면 왼쪽 아래 구석 (JS #damage.corner — 가운데면 내 발에 겹침), 1인칭이면 F·R 위 가운데
 		var third := str(View.mode) == "third" # G1 카메라가 정한 지금 시점
 		var small := U.small(vp)
-		damage_label.add_theme_font_size_override("font_size", (36 if small else 44) if third else (42 if small else 54))
+		S.ov_font_size(damage_label, "font_size", (36 if small else 44) if third else (42 if small else 54))
 		if third:
 			damage_label.position = Vector2(22, vp.y - damage_label.size.y - 18)
 
@@ -949,7 +956,7 @@ func _my_marks(me: Dictionary, vp: Vector2) -> void:
 	var blink: bool = m != null and HM.mark_blink(float(m.get("left", 1e9)), now)
 	my_marks.text = HM.pip_text(m.n) if m != null and not blink else ""
 	var full: bool = m != null and float(m.n) >= C.HUNTER_MARK_MAX
-	my_marks.add_theme_color_override("font_color", Coords.color(C.HUNT_MARK_UI.full if full else C.HUNT_MARK_UI.on))
+	S.ov_color(my_marks, "font_color", Coords.color(C.HUNT_MARK_UI.full if full else C.HUNT_MARK_UI.on))
 	var k := HM.pop_scale(now - mark_edge_at)
 	my_marks.pivot_offset = my_marks.size / 2.0
 	my_marks.scale = Vector2(k, k)

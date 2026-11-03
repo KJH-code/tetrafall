@@ -177,6 +177,7 @@ func _ready() -> void:
 	shots.bodies = bodies
 	shots.marks = marks
 	shots.cam = rig.cam
+	bodies.cam = rig.cam # 몸 자세 LOD (W12)
 	hook_fx.bodies = bodies
 	hook_fx.marks = marks
 	hook_fx.my_view_on = func() -> bool: return View.mode == "first"
@@ -195,12 +196,24 @@ func _ready() -> void:
 		if k == "lowGfx":
 			if g3_has("set_low"):
 				G3.set_low(self, View.settings.lowGfx) # B3: 이미 만든 지형·칸·위험 재질·튀어나온 조각·판 빛·그림자를 곧바로
-			set_shadows(not View.settings.lowGfx)
+			set_shadows(shadows_wanted())
 			set_msaa(View.settings.lowGfx)
-			apply_theme(str(theme_id))) # 지형 셰이더·튀어나온 조각도 낮춤으로
+			apply_theme(str(theme_id)) # 지형 셰이더·튀어나온 조각도 낮춤으로
+		elif k == "shadows": # 설정 '그림자'·'외곽선' (W12: 예전엔 듣는 쪽이 없어 체크가 아무것도 안 바꿈)
+			set_shadows(shadows_wanted())
+		elif k == "outline" and G3 != null:
+			G3.set_outline_on(View.settings.get("outline", true) != false))
 	if g3_has("set_low"):
 		G3.set_low(self, bool(View.settings.get("lowGfx", false)))
-	set_shadows(not View.settings.get("lowGfx", false))
+	set_shadows(shadows_wanted())
+	if G3 != null and G3.outline_on != (View.settings.get("outline", true) != false):
+		G3.set_outline_on(View.settings.get("outline", true) != false)
+
+
+# 해 그림자: 설정 '그림자' 켬이고 그래픽 낮춤 (화질 낮음) 이 아닐 때
+static func shadows_wanted(settings: Dictionary = {}) -> bool:
+	var s: Dictionary = settings if not settings.is_empty() else View.settings
+	return not bool(s.get("lowGfx", false)) and s.get("shadows", true) != false
 
 
 # 판 화면 다중 샘플: 보통 WC.MSAA_3D_PC·WC.MSAA_3D_WEB (JS antialias), 그래픽 낮춤이면 WC.MSAA_LOW (JS 는 낮춤에서 픽셀 비율 1 로 비용을 줄임 — 고도는 다중 샘플을 끔)
@@ -399,7 +412,7 @@ func _process(dt: float) -> void:
 		return
 	dt *= View.time_scale # KO 슬로모션 (G5 가 정함)
 	Prof.begin()
-	var now := Time.get_ticks_msec() * 1.0
+	var now: float = Net.now_ms() # (= 고도 시작부터 ms, 재연이면 가상 시계 — core/replay.gd)
 	var f: Dictionary = st.field
 	var fs := Vector3i(int(f.w), int(f.d), int(f.get("h", C.GRID_H)))
 	# 대기실: 고른 맵의 시작 지형을 지금 인원 판 크기로 미리 깖 (render.js lobbyPreview), 테마도 그 맵

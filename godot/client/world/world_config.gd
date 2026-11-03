@@ -21,6 +21,12 @@ const SEA_SIZE := 600.0 # 위험 표면 판 한 변 (필드 밖 지평선까지 
 const FOAM_SIZE := [1.0, 0.22] # 닿는 곳 거품 띠 칸 (길이, 폭)
 const ITEM_SIZE := 0.42 # 아이템 자리 상자 (모델은 나중)
 const ITEM_BOB := [0.45, 0.06, 300.0, 2.0] # 높이, 출렁임, 주기 ms, 도는 빠르기 (/초)
+# 몸 자세 LOD (W12 성능, world/pose_lod.gd): 자세 (figureAnim·래그돌·묶음 뼈) 를 다시 셈하는 최소 간격. 자리·방향은 매 프레임 그대로.
+#   near: 카메라에서 이 거리 (m) 안이면 매 프레임 · far_hz: 그보다 멀면 초당 이만큼 (120fps 면 2프레임에 한 번, 60fps 면 매 프레임)
+#   (3인칭 카메라는 내 몸 뒤 ~5m 라 9m 로 두면 8명 판에서 7명이 매 프레임 — 재연 몸 자세 3.7ms. 3m = 화면에 아주 크게 보일 때만 → 2.1ms)
+#   off_hz: 화면 밖이면 초당 이만큼 · margin: 화면 안 판정 공 반지름 (m, 몸 크기 + 그림자·카메라 한 프레임 늦음 여유)
+#   내 몸 (1인칭 팔이 관절을 베낌) 은 늘 매 프레임
+const POSE_LOD := {"near": 3.0, "far_hz": 60.0, "off_hz": 20.0, "margin": 2.5}
 const LABEL_PIXEL := 0.0011 # 머리 위 이름표 글자 크기 (fixed_size 화면 크기)
 const LABEL_FONT := [40, 10] # 글자 크기, 외곽선
 const AMBIENT_DEFAULT := [0x8090c0, 0.7] # 테마 없을 때 주변광

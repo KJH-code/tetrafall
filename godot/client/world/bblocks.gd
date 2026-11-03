@@ -41,7 +41,7 @@ func _init() -> void:
 	var L: Dictionary = C.BB_LOOK
 	var crack := Tex.crack_mask()
 	wood_tex = Tex.planks(int(L.wood))
-	var outline = G3.outline_material() if G3 != null else null
+	var outline = G3.shared_outline() if G3 != null else null
 	var mk := func(opts: Dictionary) -> ShaderMaterial:
 		var m := ShaderMaterial.new()
 		m.shader = SHADER
@@ -50,7 +50,7 @@ func _init() -> void:
 		if G3 != null:
 			m.set_shader_parameter("toon_steps", load("res://shaders/g3_config.gd").TOON_STEPS)
 			if not opts.get("unlit", false) and not opts.has("_no_outline"):
-				m.next_pass = outline
+				G3.attach_outline(m, outline) # 설정 '외곽선' 이 켜고 끔
 		return m
 	_pool("wood", mk.call({"albedo_tex": wood_tex, "use_tex": true, "crack_tex": crack, "use_crack": true}))
 	_pool("woodPad", mk.call({"albedo_tex": Tex.planks(int(L.woodPad), true, false, 11), "use_tex": true, "crack_tex": crack, "use_crack": true}))

@@ -602,7 +602,7 @@ func refresh(st: Dictionary) -> void:
 	center.text = center_text
 	center.visible = center_text != ""
 	var sky: bool = str(View.mode) == "sky"
-	center.add_theme_font_size_override("font_size", 15 if sky or U.small(vp) else 18) # JS .sky 15px, 작은 창 #center 14~15
+	S.ov_font_size(center, "font_size", 15 if sky or U.small(vp) else 18) # JS .sky 15px, 작은 창 #center 14~15
 	center.position = Vector2((vp.x - center.size.x) / 2.0, (vp.y - 150 - center.size.y) if sky else (vp.y * 0.28 - center.size.y / 2.0))
 	# 이모트 바퀴·도움말 자리
 	wheel.position = vp / 2.0 - wheel.size / 2.0
@@ -632,7 +632,7 @@ func _item_timers(st: Dictionary) -> void:
 		l.text = "%s %ds" % [look[1], int(ceil(float(left) / 1000.0))]
 		l.set_meta("frac", frac)
 		l.queue_redraw()
-		l.add_theme_color_override("font_color", look[0])
+		S.ov_color(l, "font_color", look[0])
 
 
 func _banner(st: Dictionary, p: Dictionary) -> void:
@@ -743,7 +743,7 @@ func _bottom(st: Dictionary, p: Dictionary, show: bool, vp: Vector2) -> void:
 		var bard = p.get("bard")
 		var ult_name := str(C.BARD_METAL_ULT_NAME) if str(p.get("char", "")) == "bard" and bard is Dictionary and bard.get("form") == "metal" else str(C.ULT_NAMES.get(str(p.get("char", "")), ""))
 		r_slot.text = "R  %s" % (ult_fail_text if now < ult_fail_until else "%s %s" % [ult_name, "준비!" if full else "%d%%" % int(floor(float(p.get("ult", 0)) / ult_max * 100))])
-		r_slot.add_theme_color_override("font_color", Color("ff5050") if now < ult_fail_until else S.TEXT)
+		S.ov_color(r_slot, "font_color", Color("ff5050") if now < ult_fail_until else S.TEXT)
 		var dim: bool = full and typeof(p.get("ultTarget")) == TYPE_BOOL and not bool(p.ultTarget) # 사냥꾼: 쏠 표식 대상 없음
 		var panel := r_slot.get_parent() as Control
 		panel.modulate = Color(0.55, 0.55, 0.55) if dim else Color.WHITE # 준비 빛은 hud.slot_state (테두리 + 빛), 사냥꾼 대상 없음이면 회색 (JS grayscale brightness .7)

@@ -41,6 +41,23 @@ export function winScript(serverArgs = '') {
   return ['@echo off', 'cd /d "%~dp0"', ...gpuPrefLines(), `Tetrafall.Server.exe${serverArgs ? ' ' + serverArgs : ''}`, 'pause', ''].join('\r\n');
 }
 
+// 렌더러 시험 (W12 2026-11-03, 고도판 성능): 기본은 GL Compatibility (웹과 같음). PC 만 Forward+·Mobile (Vulkan) 로 켜 보는 시험용 —
+// 서버를 켜면서 tetrafall.exe 를 그 렌더러로 같이 켬 (고도 실행 인자 --rendering-method·--rendering-driver, 내보낸 exe 에도 먹음).
+// 재혁 PC 에서 각각 F3 (Ctrl+C 복사) 숫자를 받아 기본값을 정함. compat 은 같은 흐름 (스크립트가 클라를 켬) 의 비교 기준.
+export const RENDER_TRIALS = { compat: ['gl_compatibility', 'opengl3'], forward: ['forward_plus', 'vulkan'], mobile: ['mobile', 'vulkan'] };
+export function winTryScript(method, driver) {
+  return [
+    '@echo off',
+    'cd /d "%~dp0"',
+    `rem Renderer trial: ${method} (${driver}). Normal play (start-lan.bat) uses GL Compatibility. Compare FPS with F3 (Ctrl+C copies the numbers).`,
+    ...gpuPrefLines(),
+    `start "" "%~dp0tetrafall.exe" --rendering-method ${method} --rendering-driver ${driver}`,
+    'Tetrafall.Server.exe',
+    'pause',
+    '',
+  ].join('\r\n');
+}
+
 export const TARGETS = {
   win: {
     rid: 'win-x64',
@@ -51,6 +68,7 @@ export const TARGETS = {
     scripts: {
       'start-lan.bat': winScript(),
       'start-online.bat': winScript('--online'),
+      ...Object.fromEntries(Object.entries(RENDER_TRIALS).map(([k, [m, d]]) => [`start-lan-${k}.bat`, winTryScript(m, d)])),
     },
   },
   linux: {
@@ -89,6 +107,9 @@ export function readme(t) {
           '',
           `게임이 느리면:      노트북 (내장+외장 그래픽) 은 start-lan·start-online 이 처음 켜질 때 ${pc} 를 Windows 고성능 GPU 로 등록함 (관리자 권한 없이, 이미 정했으면 그대로).`,
           `                    ${pc} 만 따로 쓰면 Windows 설정 > 시스템 > 디스플레이 > 그래픽 에서 ${pc} 를 '고성능'. 게임 설정 '화질' 자동·높음·보통·낮음, F3 = 성능 표시 (Ctrl+C 복사)`,
+          '',
+          '렌더러 시험 (성능 비교용):  start-lan-compat.bat (지금 기본) · start-lan-forward.bat (Forward+) · start-lan-mobile.bat (Mobile)',
+          `                    서버와 ${pc} 를 그 렌더러로 같이 켬. 각각 8명 판에서 F3 를 켜고 Ctrl+C 로 복사한 숫자를 보내 주세요 (색이 조금 다를 수 있음 — 시험용)`,
         ]
       : []),
     '',

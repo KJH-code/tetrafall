@@ -8,6 +8,8 @@ const WC := preload("res://world/world_config.gd")
 const Labels := preload("res://world/labels.gd")
 const UI_CALC := "res://ui/ui_calc.gd" # G4 hp_view (체력전 HP)
 const CHARS := "res://chars/chars.gd"
+const Lod := preload("res://world/pose_lod.gd")
+const Prof := preload("res://core/prof.gd")
 
 var stencil_fn = null # Callable(ShaderMaterial): 몸 재질이 스텐실을 씀 (사냥꾼의 눈 x-ray 가 몸에 가린 곳엔 안 나오게, G3.toon_stencil_write)
 var nodes := {} # id -> {root, body, label, char, color}
@@ -17,9 +19,19 @@ static var _white: ImageTexture
 var pos_fn = null # Callable(p, pos) -> pos: 화면 위치 고치기 (World: 대기실 미리보기 판 가운데·지형 위)
 var make_mat = null # Callable(Color) -> Material: G3 툰 재질 (상자 몸, 없으면 StandardMaterial3D)
 var shown := {} # id -> 게임 좌표 화면 위치 (Vector3) — 카메라·하늘 도우미가 읽음
+var cam: Camera3D = null # 몸 자세 LOD (W12, world/pose_lod.gd): 판 카메라 (지난 프레임 자리) — 없으면 모두 매 프레임
+var lod_on := true # 확인용 (--no-pose-lod)
+var lod := WC.POSE_LOD # 확인용 --pose-lod-near <m> 로 near 만 바꿈
+var _last_now = null
 
 
 func _ready() -> void:
+	var a := OS.get_cmdline_user_args()
+	lod_on = not a.has("--no-pose-lod")
+	var ni := a.find("--pose-lod-near")
+	if ni >= 0 and ni + 1 < a.size():
+		lod = WC.POSE_LOD.duplicate()
+		lod.near = float(a[ni + 1])
 	if ResourceLoader.exists(CHARS):
 		chars_script = load(CHARS)
 	if ResourceLoader.exists(UI_CALC):
@@ -157,6 +169,14 @@ func _box_body(color: int) -> Node3D:
 func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> void:
 	var seen := {}
 	shown.clear()
+	var frame_ms: float = 0.0 if _last_now == null else maxf(0.0, now_ms - float(_last_now))
+	_last_now = now_ms
+	var planes: Array = []
+	var cpos := Vector3.ZERO
+	var use_lod: bool = lod_on and cam != null and cam.is_inside_tree()
+	if use_lod:
+		planes = cam.get_frustum()
+		cpos = cam.global_position
 	for p in st.get("players", []):
 		var id := int(p.id)
 		seen[id] = true
@@ -179,7 +199,17 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 		root.rotation = Vector3(0, Co.rot_y(p.yaw), 0)
 		(n.body as Node3D).visible = not (mine and hide_me)
 		if n.body.has_method("pose"):
-			n.body.pose(p, now_ms)
+			var iv := 0.0
+			if use_lod and root.visible and not mine:
+				var c := root.global_position + Vector3(0, C.PLAYER_HEIGHT * 0.5, 0)
+				iv = Lod.interval_ms(c.distance_to(cpos), Lod.in_view(planes, c, float(lod.margin)), false, lod)
+			if Lod.due(now_ms, n.get("posed_at"), iv, frame_ms):
+				n.body.pose(p, now_ms)
+				n["posed_at"] = now_ms
+				if Prof.on:
+					Prof.add_us("몸 LOD 자세 함 (번)", 1000)
+			elif Prof.on:
+				Prof.add_us("몸 LOD 자세 안 함 (번)", 1000)
 		var lab: Label3D = n.label
 		var name := str(p.get("nick", "")) if str(p.get("nick", "")) != "" else str(p.get("name", ""))
 		var hv = ui_calc.hp_view(p, st) if ui_calc != null and not sky else null

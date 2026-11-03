@@ -59,3 +59,19 @@ test('README: 윈도우만 GPU 안내 한 줄 (+ 설정 화질·F3)', () => {
   assert.ok(!l.includes('고성능 GPU') && !l.includes('\r'), '리눅스는 안내 없음·LF');
   assert.ok(TARGETS.linux.scripts['start-lan.sh'].startsWith('#!/bin/sh'), '리눅스 .sh 그대로');
 });
+
+// W12 렌더러 시험 .bat: 서버 + 클라를 그 렌더러로 같이, 기본 start-lan.bat 은 그대로 (클라를 안 켬)
+test('start-lan-compat·forward·mobile .bat: 렌더러만 다름', () => {
+  const want = { compat: 'gl_compatibility --rendering-driver opengl3', forward: 'forward_plus --rendering-driver vulkan', mobile: 'mobile --rendering-driver vulkan' };
+  for (const [k, args] of Object.entries(want)) {
+    const s = bat(`start-lan-${k}.bat`);
+    const lines = s.split('\r\n');
+    assert.ok(/^[\x00-\x7f]*$/.test(s) && s.endsWith('\r\n'), `${k}: ASCII·CRLF`);
+    assert.ok(!/\(\r\n/.test(s), `${k}: 괄호 블록 없음`);
+    const at = lines.findIndex((l) => l.startsWith('start ""'));
+    assert.equal(lines[at], `start "" "%~dp0tetrafall.exe" --rendering-method ${args}`);
+    assert.ok(at > lines.indexOf(':run') && lines[at + 1] === 'Tetrafall.Server.exe' && lines[at + 2] === 'pause', `${k}: GPU 등록 → 클라 → 서버`);
+  }
+  assert.ok(!bat('start-lan.bat').includes('tetrafall.exe" --'), '기본 start-lan 은 그대로');
+  assert.ok(readme(TARGETS.win).includes('start-lan-forward.bat'), 'README 안내');
+});
