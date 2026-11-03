@@ -474,7 +474,7 @@ func _vm_log() -> void:
 		return
 	var vm = w.vm
 	var D = load("res://tools/vm_dump.gd")
-	var row := {"move": a.move, "phase": a.phase, "u": D._r(float(a.u)), "air": a.get("air", false), "ms": Time.get_ticks_msec()}
+	var row := {"move": a.move, "phase": a.phase, "u": D._r(float(a.u)), "air": a.get("air", false), "ms": Time.get_ticks_msec(), "k": D._r(vm.shield_k)}
 	var sh = vm.twin._n(vm.twin.refs.shields.get("front")) if vm.twin.refs.get("shields") is Dictionary else null
 	if sh != null:
 		row.shieldVis = sh.visible
