@@ -17,7 +17,7 @@ const RAGDOLL_WAKE_BELOW := 0.95 # 모터가 이보다 약할 때만 깨어 있�
 # W7 구운 몸 (assets/models/<캐릭터>.glb, 레포 뿌리 tools/bake-bodies.mjs): 있으면 그 파일로 몸을 만듦 (조립·묶기 없음). false 면 늘 예전 조립 (chars/data/bodies.bin)
 const GLB := true
 
-# W11 탱크 1인칭 방패를 왼손에 쥠 (재혁 2026-11-03 "3/4타 때 1인칭에서 방패가 손에 없고 그냥 붙어 있음" — JS viewmodel 은 허리에 붙은 채, 고도만 고침).
+# W11 탱크 1인칭 방패를 왼손에 쥠 (재혁 2026-11-03: 3·4타 때 1인칭에서 방패가 손에 없이 몸에 고정됨 — JS viewmodel 은 허리에 붙은 채, 고도만 고침).
 # 방패 자리·방향을 정하고 왼손을 방패 안쪽 손잡이로 IK (viewmodel.gd _hold_shield). false 면 예전 (허리에 붙음, JS 와 같음)
 const VM_SHIELD_HAND := true
 const VM_SHIELD_GRIP := [0.16, 0.0, 0.0] # 손잡이 점 (방패 좌표, 크기 VM_SHIELD[0] 곱하기 전): 바깥면 (돌기) 이 -x 라 안쪽 +x — 판 반 두께 + 주먹 반지름
