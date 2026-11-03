@@ -104,7 +104,7 @@ func _ready() -> void:
 	cards_row = HBoxContainer.new()
 	cards_row.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	cards_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	add_child(preload("res://ui/baked_panel.gd").wrap(cards_row)) # (W16) 아래 판은 그림만 구움 — 피해 %·상태가 바뀔 때만 다시
+	add_child(cards_row) # (W16) 굽지 않음: 맞을 때 % 흔들림 (_hurt 위치 트윈)·죽음 회색 (modulate) 이 판 중 거의 매 프레임이라 구워도 매 프레임 다시 구움 (재연 120회/초)
 
 	skills = HBoxContainer.new()
 	skills.add_theme_constant_override("separation", 8)
@@ -444,7 +444,11 @@ func refresh(st: Dictionary) -> void:
 	_spectate(st, me, vp)
 	HProf.lap("HUD ·킬·관전")
 	_my_marks(me, vp)
-	ring.queue_redraw()
+	# 조준 고리: 그리는 값 (보임·대시·밀기 쿨·화면 크기) 이 바뀔 때만 다시 그림 (W16 — 예전엔 갱신마다)
+	var rk := [not me.is_empty() and me.get("alive", false) and Store.phase() == "playing" and PlayerInput.locked, me.get("dashCd", 0), me.get("pushCd", 0), vp]
+	if rk != _ring_key:
+		_ring_key = rk
+		ring.queue_redraw()
 	HProf.lap("HUD ·표식")
 
 
@@ -807,6 +811,9 @@ func _skills(me: Dictionary, vp: Vector2) -> void:
 
 
 # 조준점 + 둘레 쿨 (바깥 하늘색 = 대시, 안쪽 흰색 = 밀치기)
+var _ring_key := []
+
+
 func _draw_ring() -> void:
 	var me := Store.me()
 	if me.is_empty() or not me.get("alive", false) or Store.phase() != "playing" or not PlayerInput.locked:

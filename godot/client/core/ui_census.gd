@@ -108,7 +108,8 @@ static func redraws(tree: SceneTree, root: Node, frames := 60) -> Dictionary:
 			while a != null and a.get_script() == null:
 				a = a.get_parent()
 			var key := (a.get_script() as Script).resource_path.get_file().get_basename() if a != null else "-"
-			var who := key + "/" + label_of(n) + " @" + str(n.get_path()).get_slice("/", str(n.get_path()).get_slice_count("/") - 2) + "/" + str(n.get_index())
+			var dm := (n as CanvasItem).get_signal_connection_list("draw").map(func(c): return str((c.callable as Callable).get_method())).filter(func(m): return m != "_touch")
+			var who := key + "/" + label_of(n) + (" " + ",".join(dm) if not dm.is_empty() else "") + " @" + str(n.get_path()).get_slice("/", str(n.get_path()).get_slice_count("/") - 2) + "/" + str(n.get_index())
 			var cb := func():
 				counts[key] = int(counts.get(key, 0)) + 1
 				counts[who] = int(counts.get(who, 0)) + 1

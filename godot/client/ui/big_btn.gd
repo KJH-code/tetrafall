@@ -75,6 +75,14 @@ static func attach(b: Button, i: int, reduced: bool) -> void:
 	# 반짝이는 동안만 다시 그림 (쉬는 70% 는 안 그림)
 	var tw := front.create_tween().set_loops()
 	tw.tween_method(_tick.bind(front), 0.0, 1.0, 0.1)
+	# (W16) 메뉴가 안 보이면 (타이틀·대기실·판 내내) 멈춤 — 예전엔 버튼 6개 트윈이 판 중에도 프레임마다 돌았음
+	front.visibility_changed.connect(func():
+		if front.is_visible_in_tree():
+			tw.play()
+		else:
+			tw.pause())
+	if not front.is_visible_in_tree() and front.is_inside_tree():
+		tw.pause()
 
 
 static func _tick(_v: float, front: Control) -> void:

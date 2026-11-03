@@ -264,10 +264,13 @@ func _process(_d: float) -> void:
 		_fit_keys()
 	if leave_armed_at > 0.0 and Time.get_ticks_msec() - leave_armed_at > C.LEAVE_CONFIRM_MS:
 		_disarm()
-	if leave_armed_at > 0.0: # JS danger-blink .32s steps(2): 밝기 1.18 ↔ .9
-		leave_btn.modulate = Color(1.18, 1.18, 1.18) if int(Time.get_ticks_msec() / 160) % 2 == 0 else Color(0.9, 0.9, 0.9)
-	else:
-		leave_btn.modulate = Color.WHITE
+	# JS danger-blink .32s steps(2): 밝기 1.18 ↔ .9. 바뀔 때만 쓰고 다시 그림 알림 (W16: 구운 창은 투명도·밝기 바뀜을 draw 신호로만 앎)
+	var lm := Color.WHITE
+	if leave_armed_at > 0.0:
+		lm = Color(1.18, 1.18, 1.18) if int(Time.get_ticks_msec() / 160) % 2 == 0 else Color(0.9, 0.9, 0.9)
+	if leave_btn.modulate != lm:
+		leave_btn.modulate = lm
+		leave_btn.queue_redraw()
 
 
 func _show_binds() -> void:

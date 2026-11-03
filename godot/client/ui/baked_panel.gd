@@ -17,6 +17,8 @@ const S := preload("res://ui/ui_style.gd")
 const PAD := 40.0 # 판 사각형 밖으로 그리는 것 (그림자·글자 빛·사선 넘침·미끄러짐) 여유 (UI 좌표)
 
 static var enabled := true
+static var why_on := false # (세기용) 무엇 때문에 다시 굽나 — why 에 셈
+var why := {}
 
 var panel: Control
 var layer: CanvasLayer
@@ -106,10 +108,10 @@ func _watch(n: Node) -> void:
 		return
 	n.set_meta("_baked_watch", true)
 	if n is CanvasItem:
-		(n as CanvasItem).draw.connect(_touch)
-		(n as CanvasItem).visibility_changed.connect(_touch)
+		(n as CanvasItem).draw.connect(_touch.bind(n, "draw"))
+		(n as CanvasItem).visibility_changed.connect(_touch.bind(n, "visible"))
 	if n is Control:
-		(n as Control).item_rect_changed.connect(_touch)
+		(n as Control).item_rect_changed.connect(_touch.bind(n, "rect"))
 	n.child_entered_tree.connect(_on_child)
 	n.child_exiting_tree.connect(_on_gone)
 	for c in n.get_children():
@@ -125,8 +127,11 @@ func _on_gone(_c: Node) -> void:
 	dirty = true
 
 
-func _touch() -> void:
+func _touch(n: Node, what: String) -> void:
 	dirty = true
+	if why_on:
+		var k := "%s %s %s" % [what, n.get_class(), str(n.get("text")).left(12) if n.get("text") is String else n.name]
+		why[k] = int(why.get(k, 0)) + 1
 
 
 func _process(_d: float) -> void:
