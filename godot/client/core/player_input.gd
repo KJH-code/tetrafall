@@ -110,6 +110,12 @@ func _on_state(st: Dictionary, prev: Dictionary) -> void:
 		_aim_from_state = false
 	var ph := str(st.get("phase", ""))
 	enabled = (ph == "playing" or ph == "countdown") and not p.is_empty() and p.alive
+	# 마인크래프트처럼: 판이 시작될 때 (카운트다운·들어올 때 이미 판 중) 마우스를 자동으로 잡음. 화면 클릭을 기다리지 않음.
+	# Esc 로 푼 뒤엔 다음 판 시작 또는 화면 클릭 때까지 그대로 (판 중간엔 다시 안 잡음)
+	var active := ph == "playing" or ph == "countdown"
+	var was_active := str(prev.get("phase", "")) in ["playing", "countdown"]
+	if active and not was_active and not locked and _can_auto_capture():
+		lock_mouse(true)
 	# 판 사이 (결과·대기실) 에는 마우스를 풀어 커서가 보이게: 잡은 채로 대기실에 오면 버튼을 누를 수 없고 커서도 안 보임. 다시 잡는 건 '화면 클릭' (연습 방은 판이 안 끝남)
 	if locked and not Store.room.get("practice", false) and (ph == "over" or ph == "lobby" or ph == ""):
 		lock_mouse(false)
@@ -118,6 +124,15 @@ func _on_state(st: Dictionary, prev: Dictionary) -> void:
 		var f: Dictionary = st.get("field", {})
 		var pts: Array = spawn_points_for(float(f.w), float(f.d)) if f.has("w") else C.SPAWN_POINTS
 		set_yaw_pitch(pts[int(p.slot) % pts.size()].yaw, 0)
+
+
+# 자동으로 잡아도 되는 때: 방 안, 창이 켜져 있고 포커스가 있음, 설정·글자 칸 같은 메뉴가 안 열려 있음
+func _can_auto_capture() -> bool:
+	if not Store.in_room() or ui_blocking:
+		return false
+	if DisplayServer.get_name() == "headless":
+		return true
+	return DisplayServer.window_is_focused()
 
 
 static func _round_n(st: Dictionary):

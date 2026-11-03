@@ -75,6 +75,37 @@ func test_mouse_released_between_rounds_and_on_leave() -> void:
 	PlayerInput.locked = keep_locked
 
 
+# 마인크래프트처럼: 판이 시작되면 마우스를 자동으로 잡음 (클릭 안 해도). 메뉴·글자 칸이 열려 있거나 방 밖이면 안 잡음, 판 중간엔 다시 안 잡음
+func test_mouse_auto_captured_at_round_start() -> void:
+	var keep_locked := PlayerInput.locked
+	var keep_room: Dictionary = Store.room
+	var keep_block := PlayerInput.ui_blocking
+	var keep_id = Store.my_id
+	Store.my_id = 1 # 방 안 (in_room)
+	Store.room = {"code": "TEST", "practice": false}
+	PlayerInput.ui_blocking = false
+	PlayerInput.locked = false
+	PlayerInput._on_state({"phase": "countdown"}, {"phase": "lobby"})
+	check(PlayerInput.locked, "카운트다운 시작에 자동으로 잡힘")
+	PlayerInput.lock_mouse(false) # Esc
+	PlayerInput._on_state({"phase": "playing"}, {"phase": "countdown"})
+	check(not PlayerInput.locked, "판 중간 (카운트다운→플레이) 엔 다시 안 잡음")
+	PlayerInput._on_state({"phase": "playing"}, {})
+	check(PlayerInput.locked, "들어올 때 이미 판 중이면 잡음")
+	PlayerInput.lock_mouse(false)
+	PlayerInput.ui_blocking = true
+	PlayerInput._on_state({"phase": "countdown"}, {"phase": "lobby"})
+	check(not PlayerInput.locked, "설정·글자 칸이 열려 있으면 안 잡음")
+	PlayerInput.ui_blocking = false
+	Store.my_id = null # 방 밖
+	PlayerInput._on_state({"phase": "countdown"}, {"phase": "lobby"})
+	check(not PlayerInput.locked, "방 밖에서는 안 잡음")
+	Store.room = keep_room
+	Store.my_id = keep_id
+	PlayerInput.ui_blocking = keep_block
+	PlayerInput.locked = keep_locked
+
+
 func _key(k: Key, pressed: bool) -> InputEventKey:
 	var e := InputEventKey.new()
 	e.physical_keycode = k
