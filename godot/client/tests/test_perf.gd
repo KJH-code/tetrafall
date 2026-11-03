@@ -332,3 +332,14 @@ func test_hud_override_only_on_change() -> void:
 		check(n[0] == 2, "같은 값 5번 = 알림 2번 (색·크기 한 번씩), 실제 %d" % n[0])
 	# 러너는 트리 밖 (알림 없음) 이라 값만 봄. 트리 안 확인 (W12 손 측정): 그냥 덮어쓰기 같은 값 5번 = 알림 5번, ov_ = 2번 · 한 번 11µs → 0.6µs
 	l.free()
+
+
+# W15 외곽선 껍질은 해 그림자 지도 (직교 투영) 에 안 그림 — 셰이더가 직교면 클립 밖으로 (게임 카메라는 다 원근)
+func test_outline_not_in_shadow_map() -> void:
+	var code: String = (load("res://shaders/outline.gdshader") as Shader).code
+	check(code.contains("PROJECTION_MATRIX[3][3] > 0.5") and code.contains("POSITION = vec4(2.0, 2.0, 2.0, 1.0)"), "직교 투영이면 껍질 납작")
+	var bad := []
+	for f in ["res://world/cam_rig.gd", "res://chars/viewmodel.gd", "res://ui/char_stage.gd", "res://ui/portrait.gd", "res://title/title_scene.gd", "res://title/title_world.gd"]:
+		if FileAccess.get_file_as_string(f).contains("PROJECTION_ORTHOGONAL"):
+			bad.append(f)
+	check(bad.is_empty(), "직교 카메라를 쓰면 외곽선이 안 보임: %s" % str(bad))
