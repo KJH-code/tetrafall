@@ -16,6 +16,7 @@ const Ragdoll := preload("res://chars/ragdoll.gd")
 const Prof := preload("res://core/prof.gd")
 const Baked := preload("res://chars/baked.gd")
 const BakedBatch := preload("res://chars/baked_batch.gd")
+const External := preload("res://chars/external.gd")
 
 # 스킬·필살기 이벤트 → 몸 동작 (main.js handleEvent 의 renderer.skillMove). [동작, 준비 ms 를 e.ms 에서 받음]
 const SKILL_START := {"leapWarn": ["hunterLeap", true], "aim": ["hunterAim", true], "blink": ["ninjaDash", false], "wallKick": ["ninjaWallKick", false], "charge": ["tankCharge", false], "slamWarn": ["tankSlam", true], "wallWarn": ["builderWall", true], "bigBombWarn": ["builderBig", false], "padBoost": ["builderPad", false], "song": ["bardSong", false], "rush": ["berserkerLeap", false], "rushLand": ["berserkerSlam", false], "groundShot": ["cannonJump", false], "blockGrab": ["hookSlam", true]}
@@ -27,6 +28,8 @@ const HEAVY_HITS := ["bomb", "shock", "projectile", "slam", "wall", "blast", "bi
 var char_id := ""
 var cd := {} # 몸 자료 (bodies.bin 의 캐릭터 한 줄, 구운 몸이면 manifest — 같은 모양: nodes·mats·refs)
 var baked := false # 구운 몸 (.glb) 으로 만듦
+static var use_ext: bool = K.EXT or OS.get_cmdline_user_args().has("--ext") # W14 외부 뼈대 모델이 있으면 씀 (chars/external.gd)
+var ext = null # 붙은 외부 모델 (External.Ext) — 있으면 안쪽 몸 (조각) 은 관절만, 그리는 건 외부 모델
 static var use_glb: bool = K.GLB and not OS.get_cmdline_user_args().has("--no-glb") # 구운 몸이 있으면 씀 (테스트가 예전 조립과 둘 다 봄, 확인용 실행 인자 --no-glb 면 예전 조립)
 var d := {} # 체형 (FIGURE_BODIES 한 줄)
 var skin_color := Color.WHITE
@@ -146,6 +149,11 @@ func build(char_id_: String, color: Color, merge: bool = K.MERGE) -> void:
 	skin_color = color
 	var glb = Baked.load_char(char_id) if use_glb else null
 	var baked_batch = null
+	# W14: 외부 모델이 있으면 안쪽 몸은 조각 몸 (merge 끔 — 관절 노드만 쓰고 안 그림), 그 위에 외부 모델 (3단: 외부 → 구운 → 코드 조립)
+	var third := merge
+	var want_ext: bool = use_ext and not dummy and External.has_char(char_id)
+	if want_ext:
+		merge = false
 	if glb != null:
 		cd = glb.manifest
 		# 재질 (figure.js flat·costume·eyeWhiteMat…): 피부 = 플레이어 색, 근육 홈 = 피부 × FIGURE_MUSCLE_SHADE, 나머지는 옷 색 그대로
@@ -166,6 +174,8 @@ func build(char_id_: String, color: Color, merge: bool = K.MERGE) -> void:
 		_build_pieces(color)
 	refs = cd.refs
 	_after_build(merge, baked_batch)
+	if want_ext:
+		ext = External.attach(self, third)
 
 
 # 예전 조립: bodies.bin 의 노드 표대로 노드·메시를 하나씩 만듦
@@ -665,6 +675,8 @@ func pose(p: Dictionary, now_ms: float) -> void:
 		rw.apply(self)
 	t0 = _prof("몸 래그돌 잡기·넣기", t0)
 	_sync_bones()
+	if ext != null:
+		ext.sync()
 	t0 = _prof("몸 묶음 뼈", t0)
 	_apply_opacity()
 	_fx_colors(p)
@@ -1261,6 +1273,8 @@ func _face(st: Dictionary, tt: float) -> void:
 # 유령화·무적 반투명: 그리는 메시마다 투명 재질로 바꿔 끼움 (처음 한 번 만들어 둠)
 func _apply_opacity() -> void:
 	for dr in drawn:
+		if dr.get("ext", false):
+			continue # 외부 모델은 ext.fx 가
 		var mi: MeshInstance3D = dr.mi
 		if not dr.has("solid"):
 			dr.solid = mi.material_override
@@ -1497,7 +1511,11 @@ func fx_colors(p: Dictionary, now: float) -> Array:
 func _fx_colors(p: Dictionary) -> void:
 	var f := fx_colors(p, Time.get_ticks_msec() * 1.0)
 	var skin: Color = f[0]
+	if ext != null:
+		ext.fx(f, opacity)
 	for dr in drawn:
+		if dr.get("ext", false):
+			continue
 		var m = (dr.mi as MeshInstance3D).material_override
 		if not (m is ShaderMaterial):
 			continue
