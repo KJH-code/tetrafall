@@ -435,7 +435,7 @@ func refresh(st: Dictionary) -> void:
 	_cards(st, vp)
 	HProf.lap("HUD ·아래 판")
 	score_band(st, vp, false)
-	HProf.lap("HUD ·점수 띠")
+	HProf.lap("HUD ·점수판")
 	_skills(me, vp)
 	HProf.lap("HUD ·스킬")
 	_kills_panels(st, me, vp)

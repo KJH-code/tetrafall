@@ -26,7 +26,7 @@ const GAME_LIGHT := preload("res://shaders/game_light.gd")
 
 static var outline_on := true # 설정 '외곽선' (W12): 끄면 툰·블록 재질의 외곽선 next_pass 를 뗌 — 외곽선 그리기 (재질마다 한 번 더) 가 빠짐
 static var _outlined: Array = [] # [WeakRef(재질), 붙일 외곽선 재질] — 켜고 끌 때 다시 붙일 목록 (없어진 재질은 그때 뺌)
-static var _outline_cache := {} # "굵기|안개 안 받음" → 외곽선 재질 하나 (재질마다 따로 만들던 것을 나눠 씀 — 값이 같음)
+static var _outline_cache := {} # 키 = 굵기|안개 안 받음 → 외곽선 재질 하나 (재질마다 따로 만들던 것을 나눠 씀 — 값이 같음)
 static var _globals := {} # 넣은 전역 셰이더 값 (RenderingServer 는 실행 중 읽기가 안 됨 — 테스트·확인용)
 
 
