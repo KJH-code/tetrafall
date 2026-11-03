@@ -171,8 +171,9 @@ func _same(a, b, msg: String) -> void:
 			plain.erase("contrast")
 			var was: Color = Body._mat_color(plain, b.skin_color)
 			var now: Color = Body._mat_color(m, a.skin_color)
-			for q in pb:
-				if (q[1] as Color).is_equal_approx(was):
+			for q in pb: # 예전 묶음은 정점 색 (8비트) 으로 넣어서 오차 안에서
+				var c: Color = q[1]
+				if absf(c.r - was.r) + absf(c.g - was.g) + absf(c.b - was.b) < 0.02:
 					q[1] = now
 	var m1 := _misses(pa, pb, 2e-3)
 	var m2 := _misses(pb, pa, 2e-3)
