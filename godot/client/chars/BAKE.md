@@ -144,7 +144,7 @@ basic (눈 등) 양면은 고도 재질이 원래 CULL_DISABLED 라 그대로.
 
 합계 약 3~4 세션·일 (1~4 = 2~2.5, 5·6 = 1, 7 은 따로).
 
-## 7. 외부 .glb (AI 3D 생성 — Meshy·Tripo 뼈대 모델) 를 넣는 방법
+## 6. 외부 .glb (AI 3D 생성 — Meshy·Tripo 뼈대 모델) 를 넣는 방법
 
 두 길이 있음. **권장 = W14 외부 모델 길** (`chars/external.gd`, 안내서 `chars/EXTERNAL.md`, `assets/models/ext/<id>.glb`): 모델 뼈대를 그대로 두고 뼈 이름을 우리 관절에 자동 매핑, 크기·발바닥·맞춤 회전·툰 재질을 입힘. body.gd 가 외부 → 구운 → 코드 조립 순서로 고름. 아래는 **구운 몸 길** (이 문서) 에 외부 모델을 넣을 때 지켜야 할 것 — 손질한 JS 몸이나, 뼈 하나에 조각이 딱 붙는 (가중치 1) 로우폴리 모델에 맞음.
 
@@ -174,7 +174,7 @@ basic (눈 등) 양면은 고도 재질이 원래 CULL_DISABLED 라 그대로.
 - manifest `<id>.json`: `nodes` (이름·부모·숨김·재질·batch 순서), `mats`, `refs` (위 이름의 노드 번호), `bones`, `batchStart`·`leafStart` — 지금은 `tools/bake-bodies.mjs` 가 JS 에서 만듦. 외부 .glb 로 하려면 .glb 노드 이름에서 manifest 를 다시 만드는 도구가 필요 (남은 일 7)
 - 맞는지 확인: `test_baked` 의 `test_baked_files` (이름·뼈·메시 여부) 는 그대로 쓰이고, '예전 조립과 같음' 비교는 JS 와 모양이 달라지면 빼야 함. 이름이 하나라도 안 맞으면 `_build_glb` 가 경고 후 예전 조립으로 돌아감 (`test_baked_fallback`), `--no-glb` 로 늘 예전 조립
 
-## 6. 위험
+## 7. 위험
 
 | 위험 | 대응 |
 | --- | --- |
