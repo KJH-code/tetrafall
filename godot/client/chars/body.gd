@@ -579,7 +579,11 @@ static func _mat_color(m: Dictionary, skin: Color) -> Color:
 	if m.get("skin", false):
 		return skin
 	if m.get("shade", false):
-		return Color(skin.r * C.FIGURE_MUSCLE_SHADE, skin.g * C.FIGURE_MUSCLE_SHADE, skin.b * C.FIGURE_MUSCLE_SHADE)
+		# 근육 홈 = 피부 × FIGURE_MUSCLE_SHADE. 구운 몸 manifest 는 건축가 안전모 테 값도 (figure.js fig.shade k·contrast: 모자 × FIGURE_HAT_TRIM, 어두운 모자면 흰색 쪽으로)
+		if m.get("contrast", false) and skin.r * 0.3 + skin.g * 0.59 + skin.b * 0.11 < C.FIGURE_TRIM_DARK:
+			return skin.lerp(Color.WHITE, C.FIGURE_TRIM_LIGHTEN)
+		var k: float = float(m.get("shadeK", C.FIGURE_MUSCLE_SHADE))
+		return Color(skin.r * k, skin.g * k, skin.b * k)
 	return Color.from_rgba8((int(m.color) >> 16) & 0xff, (int(m.color) >> 8) & 0xff, int(m.color) & 0xff)
 
 

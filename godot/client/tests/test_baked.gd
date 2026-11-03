@@ -163,6 +163,18 @@ static func _misses(a: Array, b: Array, tol: float) -> int:
 func _same(a, b, msg: String) -> void:
 	var pa := _points(a)
 	var pb := _points(b)
+	# 건축가 안전모 테: 구운 몸은 JS 값 (FIGURE_HAT_TRIM·contrast, manifest mats shadeK·contrast), 예전 조립 (bodies.bin) 은 근육 홈 값 → 예전 색을 JS 값으로 바꿔 비교
+	for m in a.cd.mats:
+		if m.get("shade", false) and (m.has("shadeK") or m.has("contrast")):
+			var plain: Dictionary = m.duplicate()
+			plain.erase("shadeK")
+			plain.erase("contrast")
+			var was: Color = Body._mat_color(plain, b.skin_color)
+			var now: Color = Body._mat_color(m, a.skin_color)
+			for q in pb: # 예전 묶음은 정점 색 (8비트) 으로 넣어서 오차 안에서
+				var c: Color = q[1]
+				if absf(c.r - was.r) + absf(c.g - was.g) + absf(c.b - was.b) < 0.02:
+					q[1] = now
 	var m1 := _misses(pa, pb, 2e-3)
 	var m2 := _misses(pb, pa, 2e-3)
 	check(pa.size() > 1000 and pb.size() > 1000, "%s: 정점 %d / %d" % [msg, pa.size(), pb.size()])
@@ -221,6 +233,72 @@ func test_baked_same_as_pieces() -> void:
 		_same(g, o, "%s 조각 몸" % ch)
 		g.free()
 		o.free()
+
+
+# 캐릭터별 부품 (manifest refs 로 이은 노드): 코드가 보이기·자세·재질을 바꾸는 부품을 다 켜도, 상태 (바드 메탈 폼·광전사 분노·포탄 수·갈고리 장전·어지러움) 를 바꿔도
+# 판 몸 (묶음) 과 조각 몸 모두 예전 조립과 같은 정점·색. 매 프레임 뼈 맞추기 (_sync_bones) 만으로 묶음에 반영됨.
+# 기준은 예전 '조각' 몸 (bodies.bin 노드 그대로): 예전 G3 묶음은 처음 숨긴 부품 (탱크 앞 방패·사냥꾼 손 활 등) 을 나중에 보이면 자리가 틀어짐 (G3 batch 의 기존 결함, 구운 몸엔 없음)
+const STATES := [
+	["bard", {"bard": {"form": "metal"}}],
+	["bard", {"bard": {"form": "bard"}}],
+	["berserker", {"damage": 999.0}],
+	["cannon", {"cannon": {"ammo": 1}}],
+	["cannon", {"cannon": {"ammo": 0}}],
+	["hook", {"loaded": true}],
+]
+
+
+static func _show_parts(b) -> int:
+	var dyn: Dictionary = b._dyn_nodes(b.cd)
+	var n := 0
+	for i in dyn:
+		if not b.nodes[i].visible:
+			b.nodes[i].visible = true
+			n += 1
+	b._sync_bones()
+	return n
+
+
+# 실제 시각 (Time.get_ticks_msec) 으로 움직이는 것 — 어지러움 별 돎·갈고리 장전 불꽃 깜빡임 — 은 두 몸을 다른 순간에 맞춰서 틀어질 수 있음 (컴퓨터가 바쁘면) → a 쪽 그대로 b 에
+static func _same_clock(a, b) -> void:
+	for i in mini(a.stars.size(), b.stars.size()):
+		b.stars[i].transform = a.stars[i].transform
+		b.stars[i].visible = a.stars[i].visible
+	var ga = a.refs.get("gun")
+	var gb = b.refs.get("gun")
+	if ga is Dictionary and gb is Dictionary and ga.get("spark") != null and gb.get("spark") != null:
+		var sb: Node3D = b._n(gb.spark)
+		sb.visible = a._n(ga.spark).visible
+	b._sync_bones()
+
+
+func test_baked_special_parts() -> void:
+	for ch in baked_chars():
+		for merge in [true, false]:
+			var g = _body(ch, Color(0.8, 0.5, 0.2), merge, true)
+			var o = _body(ch, Color(0.8, 0.5, 0.2), false, false)
+			var ng := _show_parts(g)
+			var no := _show_parts(o)
+			check(ng == no and ng > 0, "%s 숨긴 부품 수 %d / 예전 %d" % [ch, ng, no])
+			_same(g, o, "%s 부품 다 보임 (%s)" % [ch, "판" if merge else "조각"])
+			g.free()
+			o.free()
+		for s in STATES:
+			if s[0] != ch:
+				continue
+			for merge in [true, false]:
+				var g = _body(ch, Color(0.8, 0.5, 0.2), merge, true)
+				var o = _body(ch, Color(0.8, 0.5, 0.2), false, false)
+				var p: Dictionary = {"id": -1, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.3}
+				p.merge(s[1], true)
+				for i in 12:
+					for b in [g, o]:
+						b.dizzy = C.BERSERK_DIZZY_S
+						b.pose(p, i * 16.0)
+				_same_clock(g, o)
+				_same(g, o, "%s %s (%s)" % [ch, JSON.stringify(s[1]), "판" if merge else "조각"])
+				g.free()
+				o.free()
 
 
 # 노드·그리는 메시·뼈가 예전 조립보다 적음, 묶음 메시는 몸끼리 같이 씀, 재질 (툰 피부색·외곽선)
