@@ -65,6 +65,9 @@ function extract(ch) {
       skin: m === skin,
       shade: !!(r.figure?.shade && r.figure.shade.mat === m),
     };
+    // 건축가 안전모 테 (fig.shade: k = FIGURE_HAT_TRIM, contrast — 어두운 모자면 밝게). 광전사 근육 홈은 k 없음 (= FIGURE_MUSCLE_SHADE) → 고도 body.gd _mat_color
+    if (o.shade && r.figure.shade.k !== undefined) o.shadeK = r.figure.shade.k;
+    if (o.shade && r.figure.shade.contrast) o.contrast = true;
     if (m.map && m.map.image && m.map.image.fills) {
       o.plaid = m.map.image.fills;
       o.repeat = [m.map.repeat.x, m.map.repeat.y];
@@ -158,9 +161,20 @@ function nameOf(at) {
   return at.join('_');
 }
 
-// 묶음 (SkinnedMesh) 에 넣는 재질: 불투명 툰, 그림·발광 없음, 외곽선 있음, 한 면 (G3 batch.gd _batchable + JS batch.js 처럼 양면·외곽선 없는 건 따로), 근육 홈 (피부 × 어둡게 — 사람마다 색) 빼고
+// 묶음 (SkinnedMesh) 에 넣는 재질: 불투명 툰, 그림·발광 없음, 외곽선 있음 (G3 batch.gd _batchable), 근육 홈 (피부 × 어둡게 — 사람마다 색) 빼고.
+// 양면 툰 (갈고리 망토 자락·바드 메탈 폼 — three DoubleSide) 도 묶음: 삼각형을 뒤집은 사본 (법선 반대) 을 같이 구움 (twoSided) → 한 면 재질 그대로 뒷면이 보임
 function batchable(m) {
-  return m.kind === 'toon' && !m.transparent && !m.plaid && !m.emissive && m.outline && !m.double && !m.shade;
+  return m.kind === 'toon' && !m.transparent && !m.plaid && !m.emissive && m.outline && !m.shade;
+}
+
+// 양면 툰 조각: 뒤집은 사본 (삼각형 순서 반대·법선 반대) 을 덧붙임 — three DoubleSide 가 뒷면에서 법선을 뒤집어 칠하는 것과 같음.
+// 셰이더·재질·그리기 호출은 그대로 (cull_disabled 재질을 따로 두면 묶음이 둘로 갈라지고 스텐실·반투명 재질도 따로 필요). basic (눈 등) 은 고도 재질이 CULL_DISABLED 라 그대로
+function twoSided(ga, m) {
+  if (!m.double || m.kind !== 'toon') return ga;
+  const n = ga.n;
+  const out = { pos: [...ga.pos, ...ga.pos], nor: ga.nor ? [...ga.nor, ...ga.nor.map((x) => -x)] : null, uv: ga.uv ? [...ga.uv, ...ga.uv] : null, idx: [...ga.idx], n: n * 2 };
+  for (let t = 0; t < ga.idx.length; t += 3) out.idx.push(n + ga.idx[t], n + ga.idx[t + 2], n + ga.idx[t + 1]);
+  return out;
 }
 
 // 정점 묶음 → {pos, nor, uv, idx} (색인 그대로 — 고도 import 가 정점을 다시 나누지 않게)
@@ -252,7 +266,7 @@ function bake(ch) {
       o.mat = e.mat;
       if (e.noShadow) o.noShadow = true;
       if (inBatch(i)) o.batch = true;
-      meshes.push([out.length, geoArrays(e.geo), e.mat]);
+      meshes.push([out.length, twoSided(geoArrays(e.geo), mats[e.mat]), e.mat]);
     }
     out.push(o);
   }
@@ -274,7 +288,7 @@ function bake(ch) {
     const o = { name: uniq(`${out[newIdx.get(g.owner)].name}__m${g.mat}${g.noShadow ? '_ns' : ''}`), parent: newIdx.get(g.owner), mat: g.mat };
     if (g.noShadow) o.noShadow = true;
     if (g.batch) o.batch = true;
-    meshes.push([out.length, g.geo, g.mat]);
+    meshes.push([out.length, twoSided(g.geo, mats[g.mat]), g.mat]);
     out.push(o);
   }
   const batchStart = out.findIndex((o, k) => k >= leafStart && o.batch);

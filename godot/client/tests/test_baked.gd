@@ -163,6 +163,17 @@ static func _misses(a: Array, b: Array, tol: float) -> int:
 func _same(a, b, msg: String) -> void:
 	var pa := _points(a)
 	var pb := _points(b)
+	# 건축가 안전모 테: 구운 몸은 JS 값 (FIGURE_HAT_TRIM·contrast, manifest mats shadeK·contrast), 예전 조립 (bodies.bin) 은 근육 홈 값 → 예전 색을 JS 값으로 바꿔 비교
+	for m in a.cd.mats:
+		if m.get("shade", false) and (m.has("shadeK") or m.has("contrast")):
+			var plain: Dictionary = m.duplicate()
+			plain.erase("shadeK")
+			plain.erase("contrast")
+			var was: Color = Body._mat_color(plain, b.skin_color)
+			var now: Color = Body._mat_color(m, a.skin_color)
+			for q in pb:
+				if (q[1] as Color).is_equal_approx(was):
+					q[1] = now
 	var m1 := _misses(pa, pb, 2e-3)
 	var m2 := _misses(pb, pa, 2e-3)
 	check(pa.size() > 1000 and pb.size() > 1000, "%s: 정점 %d / %d" % [msg, pa.size(), pb.size()])
