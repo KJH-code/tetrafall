@@ -117,6 +117,28 @@ func test_haze_values() -> void:
 	check(code.contains("hint_screen_texture") and code.contains("filter_linear_mipmap") and code.contains("blend_add"), "안개 셰이더: 화면 밉맵 + 더하기")
 
 
+# 버섯 갓 = 열린 반구 (W8, three SphereGeometry 위 반쪽): 모든 점이 y ≥ 0, 바닥 뚜껑 없음 (y = 0 인 점은 테두리 고리뿐), 삼각형 수 = seg × (2·rings − 1)
+func test_open_hemisphere() -> void:
+	var F = load("res://title/title_fx.gd")
+	var m: ArrayMesh = F.hemi_open(1.0, 20, 10)
+	var arr := m.surface_get_arrays(0)
+	var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var ids: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+	var low := 0
+	for p in v:
+		check(p.y >= -1e-5, "반구 아래로 나간 점 %s" % str(p))
+		if absf(p.y) < 1e-5:
+			low += 1
+	check(low == 21, "바닥 높이 점은 테두리 고리 21개뿐 (%d)" % low)
+	check(ids.size() / 3 == 20 * (2 * 10 - 1), "삼각형 %d" % (ids.size() / 3))
+	# 앞면 (고도 시계 방향) 이 바깥을 봄: 첫 옆 삼각형의 면 법선 · 중심 방향 > 0
+	var a: Vector3 = v[ids[60]]
+	var b: Vector3 = v[ids[61]]
+	var c: Vector3 = v[ids[62]]
+	var n := (c - a).cross(b - a) # 고도: 시계 방향 = 앞면 → (c−a)×(b−a) 가 바깥
+	check(n.dot((a + b + c) / 3.0) > 0.0, "반구 앞면이 바깥")
+
+
 # 대기실 둘레 무대 (title_stage.gd, B4 lobby_dark 가 씀): 테마마다 만들어지고, 흩뿌릴 땐 섬 자리 (clear 반지름) 안 소품은 빼고 가운데 축으로 돌림
 func test_ring_stage() -> void:
 	var S = load("res://title/title_stage.gd")

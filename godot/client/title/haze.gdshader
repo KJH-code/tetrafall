@@ -19,5 +19,8 @@ void fragment() {
 		acc += textureLod(screen_tex, SCREEN_UV + d, lod).rgb * 0.06;
 		acc += textureLod(screen_tex, SCREEN_UV + d * 2.0, lod).rgb * 0.04;
 	}
-	COLOR = vec4(max(acc - vec3(thr), vec3(0.0)) * strength, 1.0);
+	// 스크린 섞기 (밝은 곳은 덜 더함: 결과 = 바탕 + 안개 × (1 − 바탕)) — 가까운 버섯 갓처럼 이미 밝은 곳이 하얗게 타지 않게
+	vec3 src = textureLod(screen_tex, SCREEN_UV, 0.0).rgb;
+	vec3 hz = max(acc - vec3(thr), vec3(0.0)) * strength;
+	COLOR = vec4(hz * clamp(vec3(1.0) - src, 0.0, 1.0), 1.0);
 }
