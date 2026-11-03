@@ -27,22 +27,29 @@ const dec = (m) => {
   return { p: p.toArray().map(R), q: q.toArray().map(R), s: s.toArray().map(R) };
 };
 const out = [];
+// seq: 한 몸으로 1타 → 끝 타를 이어서 (실제 준비·타격·회복 시간, 60fps) — 동작 사이 자세 이어짐까지 대조. 아니면 동작마다 새 몸
+const seq = process.argv[3] === 'seq';
+const all = [...set.chain, ...set.air];
+const frames = (mi) => (seq ? [['wind', Math.ceil(all[mi].windup / 1000 / DT)], ['strike', Math.ceil(C.FIGURE_STRIKE_S / DT)], ['rec', Math.ceil(all[mi].rec / 1000 / DT)]] : [['wind', 8], ['strike', 6], ['rec', 10]]);
+let built, g, vm, t;
 moves.forEach((move, mi) => {
-  const built = buildFigure(0xffffff, ch, null);
-  const g = built.group;
-  g.userData.look = ch;
-  g.userData.figure = built.figure;
-  g.userData.anim = { hs: 0, walk: 0, t: 0 };
-  const vm = new ViewModel();
-  vm.sync(g);
-  vm.on = true;
+  if (!seq || mi === 0) built = buildFigure(0xffffff, ch, null);
+  if (!seq || mi === 0) {
+    g = built.group;
+    g.userData.look = ch;
+    g.userData.figure = built.figure;
+    g.userData.anim = { hs: 0, walk: 0, t: 0 };
+    vm = new ViewModel();
+    vm.sync(g);
+    vm.on = true;
+    t = 1;
+  }
   const fig = built.figure;
-  let t = 1;
-  for (const [ph, k] of [['wind', 8], ['strike', 6], ['rec', 10]]) {
+  for (const [ph, k] of frames(mi)) {
     for (let i = 0; i < k; i++) {
       t += DT;
       const act = { id: mi + 1, move, phase: ph, u: (i + 1) / k, air: mi >= set.chain.length };
-      figureAnim(fig, { ...base(), t, act }, DT);
+      figureAnim(fig, { ...base(), t, act, air: seq && act.air }, DT);
       g.userData.anim.t = 0; // 숨쉬기 끔 (비교용)
       vm.update(DT, act);
       const row = { move, phase: ph, u: R(act.u) };

@@ -258,6 +258,7 @@ func _process(_d: float) -> void:
 			set_meta("ui_picked", true)
 			(sb[str(args["ui-pick"])] as Button).pressed.emit()
 	_act_shot()
+	_vm_log()
 	var shot_time := el >= float(args.get("shot-after", 8))
 	if args.has("shot-round"): # N판째 playing 이 된 뒤 --shot-after 초 (블록 마스터 2판째 = 생존자 화면)
 		shot_time = round_no == int(args["shot-round"]) and Store.phase() == "playing" and now - round_ms >= float(args.get("shot-after", 8)) * 1000.0
@@ -458,3 +459,40 @@ func _act_freeze() -> void:
 		var path := "%s/freeze_%02d_%s_%s_%.2f.png" % [str(args["act-shots"]), i, str(f[0]).replace(" ", ""), f[1], u]
 		get_viewport().get_texture().get_image().save_png(path)
 		_log("멈춘 단계 %d %s" % [i, str(list[i])])
+
+
+# --vm-log <파일>: 판 중 내 공격 동작 동안 프레임마다 1인칭 팔 숫자 (tools/vm_dump.gd 와 같은 칸) 를 JSON 한 줄씩 (W11 — 판에서만 다른지)
+func _vm_log() -> void:
+	if not args.has("vm-log"):
+		return
+	var w := get_tree().root.find_child("World", true, false)
+	var b = _my_body()
+	if w == null or b == null or w.get("vm") == null or w.vm.twin == null or not w.vm.on:
+		return
+	var a = b.get("cur_act")
+	if not (a is Dictionary):
+		return
+	var vm = w.vm
+	var D = load("res://tools/vm_dump.gd")
+	var row := {"move": a.move, "phase": a.phase, "u": D._r(float(a.u)), "air": a.get("air", false), "ms": Time.get_ticks_msec()}
+	var sh = vm.twin._n(vm.twin.refs.shields.get("front")) if vm.twin.refs.get("shields") is Dictionary else null
+	if sh != null:
+		row.shieldVis = sh.visible
+		row.shield = D._dec(D._rel(sh, vm.anchor))
+		var ss = b._n(b.refs.shields.get("front"))
+		row.srcShield = D._dec(ss.transform)
+	row.waist = D._dec(D._rel(vm.twin.waist, vm.anchor))
+	row.shoulders = [D._dec(D._rel(vm.twin.shoulders[0], vm.anchor)), D._dec(D._rel(vm.twin.shoulders[1], vm.anchor))]
+	row.elbows = [D._dec(D._rel(vm.twin.elbows[0], vm.anchor)), D._dec(D._rel(vm.twin.elbows[1], vm.anchor))]
+	row.srcWaist = D._v(b.waist.rotation)
+	row.srcSh = [D._v(b.shoulders[0].rotation), D._v(b.shoulders[1].rotation)]
+	row.srcEl = [D._v(b.elbows[0].rotation), D._v(b.elbows[1].rotation)]
+	var f: FileAccess
+	if FileAccess.file_exists(str(args["vm-log"])) and has_meta("vm_log_open"):
+		f = FileAccess.open(str(args["vm-log"]), FileAccess.READ_WRITE)
+		f.seek_end()
+	else:
+		f = FileAccess.open(str(args["vm-log"]), FileAccess.WRITE)
+		set_meta("vm_log_open", true)
+	f.store_line(JSON.stringify(row))
+	f.close()
