@@ -23,10 +23,15 @@ var tries := 0
 var retry_at := 0.0
 var ping_at := 0.0
 var status := ""
+# 성능 재연 (W12, core/replay.gd): rec = 받은 글자를 파일에 (시각\t글자), replay = 파일의 글자를 가상 시계로 (서버 없이 같은 판을 다시)
+var rec: FileAccess = null
+var replay: Array = [] # [[ms, 글자], ...] (rec 파일)
+var replay_i := 0
+static var virt = null # 재연 가상 시계 (ms) — 있으면 now_ms 가 이것
 
 
 static func now_ms() -> float:
-	return Time.get_ticks_usec() / 1000.0
+	return virt if virt != null else Time.get_ticks_usec() / 1000.0
 
 
 # 서버 주소: 명령줄 --server ws://… > 웹이면 페이지 주소 (?server= 또는 같은 호스트) > ws://127.0.0.1:PORT
@@ -48,11 +53,11 @@ func start(server_url: String) -> void:
 
 
 func is_open() -> bool:
-	return ws.get_ready_state() == WebSocketPeer.STATE_OPEN
+	return not replay.is_empty() or ws.get_ready_state() == WebSocketPeer.STATE_OPEN
 
 
 func send(obj: Dictionary) -> void:
-	if is_open():
+	if replay.is_empty() and is_open():
 		ws.send_text(JSON.stringify(obj))
 
 
@@ -70,6 +75,13 @@ func _process(_delta: float) -> void:
 func _prof_process(_delta: float) -> void:
 	var now := now_ms()
 	meter.on_frame(now)
+	if not replay.is_empty(): # 재연: 가상 시계까지의 글자를 받은 것처럼 (보내기는 버림)
+		var pending: Array = []
+		while replay_i < replay.size() and float(replay[replay_i][0]) <= now:
+			pending = _take(str(replay[replay_i][1]), now, pending)
+			replay_i += 1
+		_flush(pending)
+		return
 	if url == "":
 		return
 	ws.poll()
@@ -88,22 +100,10 @@ func _prof_process(_delta: float) -> void:
 		# 다른 메시지는 순서 그대로 — 그 앞에 쌓인 스냅샷은 먼저 내보냄
 		var pending: Array = []
 		while ws.get_available_packet_count() > 0:
-			var _pj := Prof.now()
-			var m = JSON.parse_string(ws.get_packet().get_string_from_utf8())
-			Prof.add("net ·JSON 파싱", _pj)
-			if typeof(m) != TYPE_DICTIONARY:
-				continue
-			m["recvAt"] = now
-			if m.get("type") == "pong":
-				meter.on_pong(m, now)
-				_emit(m)
-			elif m.get("type") == "state":
-				meter.on_state(now)
-				pending.append(m)
-			else:
-				_flush(pending)
-				pending = []
-				_emit(m)
+			var text := ws.get_packet().get_string_from_utf8()
+			if rec != null:
+				rec.store_line("%.1f\t%s" % [now, text])
+			pending = _take(text, now, pending)
 		_flush(pending)
 		if now >= ping_at:
 			send(meter.ping(now))
@@ -126,6 +126,27 @@ func _prof_process(_delta: float) -> void:
 			ws = WebSocketPeer.new()
 			ws.inbound_buffer_size = 1 << 22
 			ws.connect_to_url(url)
+
+
+# 받은 글자 하나: 스냅샷은 pending 에 모으고 (프레임 끝에 _flush), 다른 메시지는 그 앞 스냅샷을 먼저 내보낸 뒤 바로. 돌려주는 값 = 새 pending
+func _take(text: String, now: float, pending: Array) -> Array:
+	var _pj := Prof.now()
+	var m = JSON.parse_string(text)
+	Prof.add("net ·JSON 파싱", _pj)
+	if typeof(m) != TYPE_DICTIONARY:
+		return pending
+	m["recvAt"] = now
+	if m.get("type") == "pong":
+		meter.on_pong(m, now)
+		_emit(m)
+	elif m.get("type") == "state":
+		meter.on_state(now)
+		pending.append(m)
+	else:
+		_flush(pending)
+		pending = []
+		_emit(m)
+	return pending
 
 
 func _emit(m: Dictionary) -> void:

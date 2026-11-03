@@ -1,0 +1,186 @@
+# 성능 재연 (W12 2026-11-02): 같은 판을 서버 없이 다시 돌려 스크립트 시간을 같은 조건으로 잼 (A/B — 기계를 다른 워커와 나눠 써 판마다 흔들리던 것).
+#   녹화: --rec <파일> (자동 조종 판과 같이: 받은 글자를 "시각\t글자" 줄로, core/net.gd)
+#   재연: --replay <파일> [--replay-fps 120] [--replay-warm 3] [--replay-secs 10] [--replay-render] [--prof] [--shot <png>]
+#     가상 시계 (Net.virt) 가 프레임마다 1000/fps ms 씩 흐름 → 프레임마다 받는 스냅샷 수가 실제 120fps 와 같음 (llvmpipe 4fps 에서 재면 한 프레임에 스냅샷 7개라 JSON·신호가 7배로 잡히던 것).
+#     처음 'playing' 스냅샷 + warm 초부터 secs 초 동안 잼. 기본은 그리기 끔 (RenderingServer.render_loop_enabled — 스크립트만, 빠름), --replay-render 면 그리며 그리기·물체·삼각형도.
+#     끝에 한 줄: 프레임 · 스냅샷 · 스크립트 (_process 합, 탐침) ms/프레임 · 물리 ms/틱 · 120fps 환산 (스크립트 + 물리 × 틱/프레임) — --prof 면 구간 (core/prof.gd)
+extends Node
+
+const Prof := preload("res://core/prof.gd")
+const Probe := preload("res://ui/perf.gd").Probe
+
+var args := {}
+var fps := 120.0
+var t_start := 0.0 # 재기 시작 (가상 ms)
+var t_end := 0.0
+var frames := 0
+var snaps := 0
+var script_us := 0
+var phys_us := 0
+var phys_ticks := 0
+var first: Probe
+var tail: Probe
+var measuring := false
+var done := false
+var frame_us: Array = [] # 프레임마다 스크립트 µs (중앙값·최악)
+var spikes: Array = [] # --prof: 가장 느린 프레임 [µs, 가상 초, 그 프레임 구간 큰 순서 글자]
+var _prev_sums := {}
+
+
+static func load_file(path: String) -> Array:
+	var out := []
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return out
+	while not f.eof_reached():
+		var line := f.get_line()
+		var tab := line.find("\t")
+		if tab > 0:
+			out.append([float(line.substr(0, tab)), line.substr(tab + 1)])
+	return out
+
+
+# 녹화 시각 다시 매기기: 녹화한 기계가 느리면 (llvmpipe 4fps) 스냅샷 여럿이 한 프레임에 같은 시각으로 찍힘 → 재연 때도 한 프레임에 몰려
+# 실제 120fps 와 달라짐. 스냅샷은 서버 시각 (state.time) 간격 그대로 (첫 스냅샷 받은 시각 기준), 다른 메시지는 바로 앞 줄 시각 (순서 그대로)
+static func retime(lines: Array) -> Array:
+	var out := []
+	var base = null # [받은 시각, 서버 시각]
+	var last := 0.0
+	for l in lines:
+		var at := float(l[0])
+		var txt := str(l[1])
+		var st = server_time(txt)
+		if st != null:
+			if base == null:
+				base = [at, st]
+			at = base[0] + (st - base[1])
+		elif base != null:
+			at = last
+		at = maxf(at, last)
+		last = at
+		out.append([at, txt])
+	return out
+
+
+# 스냅샷 글자의 서버 시각 (ms) — JSON 을 다 풀지 않고 "time": 숫자만. 스냅샷 아니면 null
+static func server_time(txt: String):
+	if not txt.begins_with("{\"type\":\"state\""):
+		return null
+	var i := txt.find("\"time\":")
+	if i < 0:
+		return null
+	var j := i + 7
+	var k := j
+	while k < txt.length() and "0123456789.-e+".contains(txt[k]):
+		k += 1
+	return float(txt.substr(j, k - j)) if k > j else null
+
+
+# 재기 시작 시각: 처음 판 (phase playing) 스냅샷 + warm 초
+static func start_at(lines: Array, warm_s: float) -> float:
+	for l in lines:
+		if str(l[1]).contains("\"phase\":\"playing\""):
+			return float(l[0]) + warm_s * 1000.0
+	return float(lines[0][0]) + warm_s * 1000.0 if not lines.is_empty() else 0.0
+
+
+func _ready() -> void:
+	process_priority = -999999 # 가상 시계를 맨 먼저 흘림 (Net·Store 보다 앞)
+	if args.has("rec"):
+		Net.rec = FileAccess.open(str(args.rec), FileAccess.WRITE)
+		print("[재연] 기록 → %s" % args.rec)
+		return
+	var lines := retime(load_file(str(args.replay)))
+	if lines.is_empty():
+		print("[재연] 파일 없음·글자 없음 %s" % args.replay)
+		get_tree().quit(2)
+		return
+	fps = float(args.get("replay-fps", 120))
+	t_start = start_at(lines, float(args.get("replay-warm", 3)))
+	t_end = t_start + float(args.get("replay-secs", 10)) * 1000.0
+	Net.replay = lines
+	Net.replay_i = 0
+	Net.virt = float(lines[0][0])
+	Prof.on = args.has("prof")
+	if not args.has("replay-render"):
+		RenderingServer.render_loop_enabled = false
+	first = Probe.new(false)
+	tail = Probe.new(true)
+	tail.peer = first
+	tail.sink = func(s_us: int, p_us: int):
+		if measuring:
+			script_us += s_us
+			frame_us.append(s_us)
+			phys_us += p_us
+			if Prof.on:
+				_spike(s_us)
+	get_tree().root.add_child.call_deferred(first)
+	get_tree().root.add_child.call_deferred(tail)
+	print("[재연] %s · 글자 %d개 · %.0ffps · 재기 %.1f~%.1f초" % [args.replay, lines.size(), fps, (t_start - lines[0][0]) / 1000.0, (t_end - lines[0][0]) / 1000.0])
+
+
+func _physics_process(_d: float) -> void:
+	if measuring:
+		phys_ticks += 1
+
+
+func _process(_d: float) -> void:
+	if Net.replay.is_empty() or done:
+		return
+	var v: float = Net.virt
+	# 재기 전까지는 크게 건너뜀 (대기실·판 시작) — 단 재기 2초 전부터는 제 빠르기 (몸·효과가 자리 잡게)
+	if v < t_start - 2000.0:
+		Net.virt = minf(t_start - 2000.0, v + 250.0)
+		return
+	Net.virt = v + 1000.0 / fps
+	if not measuring and Net.virt >= t_start:
+		measuring = true
+		Prof.reset()
+	if measuring:
+		frames += 1
+	if measuring and Net.virt >= t_end:
+		done = true
+		measuring = false
+		_report()
+
+
+# 느린 프레임 (튐) 이 무엇 때문인지: 이번 프레임 구간 합 - 지난 프레임 구간 합
+func _spike(us: int) -> void:
+	var cur := {}
+	for k in Prof.sums:
+		cur[k] = Prof.sums[k][0]
+	if spikes.size() < 6 or us > spikes[-1][0]:
+		var rows := []
+		for k in cur:
+			var dlt: int = cur[k] - int(_prev_sums.get(k, 0))
+			if dlt > 200:
+				rows.append([k, dlt])
+		rows.sort_custom(func(a, b): return a[1] > b[1])
+		spikes.append([us, (Net.virt - t_start) / 1000.0, ", ".join(rows.slice(0, 5).map(func(r): return "%s %.1f" % [r[0], r[1] / 1000.0]))])
+		spikes.sort_custom(func(a, b): return a[0] > b[0])
+		spikes = spikes.slice(0, 6)
+	_prev_sums = cur
+
+
+func _report() -> void:
+	var n := maxi(1, frames)
+	var s_ms := script_us / 1000.0 / n
+	var tick_ms := phys_us / 1000.0 / maxf(1, phys_ticks)
+	var ticks_per_frame := 60.0 / fps # 실제 기계에서 물리 60Hz
+	var sorted := frame_us.duplicate()
+	sorted.sort()
+	var med: float = sorted[sorted.size() / 2] / 1000.0 if not sorted.is_empty() else 0.0
+	var p99: float = sorted[mini(sorted.size() - 1, int(sorted.size() * 0.99))] / 1000.0 if not sorted.is_empty() else 0.0
+	print("[재연] 결과: 프레임 %d · 스크립트 %.2fms/프레임 (50%% %.2f · 99%% %.2f) · 물리 %.2fms/틱 (%d틱) · %.0ffps 환산 %.2fms" % [frames, s_ms, med, p99, tick_ms, phys_ticks, fps, s_ms + tick_ms * ticks_per_frame])
+	if Prof.on:
+		print("[재연] 구간 (프레임당): %s" % Prof.report(n))
+		for sp in spikes:
+			print("[재연] 느린 프레임 %.1fms (재기 %.2f초): %s" % [sp[0] / 1000.0, sp[1], sp[2]])
+	if args.has("replay-render"):
+		print("[재연] 그리기 %d · 물체 %d · 삼각형 %d · 영상 메모리 %.1fMB" % [Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME), Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0])
+	if args.has("shot") and DisplayServer.get_name() != "headless":
+		await RenderingServer.frame_post_draw
+		var img := get_viewport().get_texture().get_image()
+		img.save_png(str(args.shot))
+		print("[재연] 화면 저장 %s" % args.shot)
+	get_tree().quit(0)

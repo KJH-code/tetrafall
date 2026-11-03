@@ -3,6 +3,7 @@
 #   ui/ui.tscn (G4 메뉴·HUD) 이 있으면 그것, 없으면 core/dev_ui.gd (개발용 버튼)
 #   audio/audio.tscn (G5 소리) 이 있으면 붙임
 # 옵션: --server ws://주소 (기본 ws://127.0.0.1:3000, 웹은 페이지 주소) · --room 코드 (바로 들어감) · --name 이름 · --profile 이름 (자리 토큰 저장 나눔)
+#   성능 재연 (W12): --rec <파일> (판을 녹화) · --replay <파일> (서버 없이 같은 판을 다시 돌려 잼, core/replay.gd)
 #   자동 확인: --auto host|guest [--bots N] [--drop-at 초] [--quit-after-rounds N] [--quit-after 초] [--shot 파일.png --shot-after 초]
 extends Node
 
@@ -26,7 +27,7 @@ func _ready() -> void:
 	if ResourceLoader.exists("res://title/title.gd"): # 타이틀 + 메뉴 3D 배경: 켜져 있는 동안 판 (world) 은 숨김 (빛·안개가 섞이지 않게)
 		var title: Node = load("res://title/title.gd").new()
 		title.active_changed.connect(func(on): world.visible = not on)
-		title.skip = args.has("room") or (args.has("auto") and not args.has("title")) # 확인용: --auto … --title <테마> 면 타이틀부터
+		title.skip = args.has("room") or args.has("replay") or (args.has("auto") and not args.has("title")) # 확인용: --auto … --title <테마> 면 타이틀부터
 		title.fixed_theme = str(args.get("title", ""))
 		title.auto_press = float(args.get("title-press", -1))
 		add_child(title)
@@ -43,6 +44,12 @@ func _ready() -> void:
 		var ap := AutoPilot.new()
 		ap.args = args
 		add_child(ap)
+	if args.has("rec") or args.has("replay"): # 성능 재연 (W12, core/replay.gd): 녹화는 판과 같이, 재연은 서버 없이
+		var rp: Node = load("res://core/replay.gd").new()
+		rp.args = args
+		add_child(rp)
+		if args.has("replay"):
+			return
 	Net.start(Net.default_url(args))
 
 

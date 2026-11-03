@@ -113,3 +113,34 @@ func test_script_time_probe() -> void:
 	check(b.phys_us == 0, "프레임마다 물리 합 비움")
 	a.free()
 	b.free()
+
+
+# W12 성능 재연 (core/replay.gd): 녹화 줄 "시각\t글자" 읽기 · 재기 시작 = 처음 playing 스냅샷 + warm 초
+func test_replay_file_and_start() -> void:
+	var R = load("res://core/replay.gd")
+	var path := "user://w12_replay_test.rec"
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_line("100.0\t{\"type\":\"welcome\"}")
+	f.store_line("150.5\t{\"type\":\"state\",\"phase\":\"lobby\"}")
+	f.store_line("깨진 줄")
+	f.store_line("300.0\t{\"type\":\"state\",\"phase\":\"playing\",\"a\":\"x\ty\"}")
+	f.close()
+	var lines: Array = R.load_file(path)
+	check(lines.size() == 3, "깨진 줄은 뺌: %d" % lines.size())
+	check(lines[1][0] == 150.5 and str(lines[2][1]).ends_with("\"x\ty\"}"), "시각·글자 (탭은 첫 칸만 자름): %s" % str(lines))
+	check(R.start_at(lines, 2.0) == 2300.0, "playing + 2초: %s" % R.start_at(lines, 2.0))
+	check(R.start_at(lines.slice(0, 2), 1.0) == 1100.0, "playing 없으면 첫 줄 + warm")
+	check(R.start_at([], 1.0) == 0.0, "빈 파일 0")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+
+# 재연 시각 다시 매기기: 한 시각에 몰린 스냅샷을 서버 시각 간격으로 펼침, 다른 메시지는 바로 앞 시각·순서 그대로
+func test_replay_retime() -> void:
+	var R = load("res://core/replay.gd")
+	var lines := [[10.0, "{\"type\":\"rooms\"}"], [50.0, "{\"type\":\"state\",\"time\":0,\"phase\":\"lobby\"}"], [50.0, "{\"type\":\"pong\",\"t\":3}"],
+		[400.0, "{\"type\":\"state\",\"time\":33.5,\"phase\":\"playing\"}"], [400.0, "{\"type\":\"state\",\"time\":66.5}"], [400.0, "{\"type\":\"event\"}"]]
+	var got: Array = R.retime(lines)
+	var at := got.map(func(l): return l[0])
+	check(at == [10.0, 50.0, 50.0, 83.5, 116.5, 116.5], "펼친 시각: %s" % str(at))
+	check(got.map(func(l): return l[1]) == lines.map(func(l): return l[1]), "글자·순서 그대로")
+	check(R.server_time("{\"type\":\"pong\",\"time\":5}") == null and R.server_time("{\"type\":\"state\",\"time\":1e3,") == 1000.0, "스냅샷만·숫자")

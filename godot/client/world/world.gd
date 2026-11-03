@@ -399,7 +399,7 @@ func _process(dt: float) -> void:
 		return
 	dt *= View.time_scale # KO 슬로모션 (G5 가 정함)
 	Prof.begin()
-	var now := Time.get_ticks_msec() * 1.0
+	var now: float = Net.now_ms() # (= 고도 시작부터 ms, 재연이면 가상 시계 — core/replay.gd)
 	var f: Dictionary = st.field
 	var fs := Vector3i(int(f.w), int(f.d), int(f.get("h", C.GRID_H)))
 	# 대기실: 고른 맵의 시작 지형을 지금 인원 판 크기로 미리 깖 (render.js lobbyPreview), 테마도 그 맵
