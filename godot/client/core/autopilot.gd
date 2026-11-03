@@ -458,7 +458,7 @@ func _act_freeze() -> void:
 		set_meta("freeze_shot", i)
 		var path := "%s/freeze_%02d_%s_%s_%.2f.png" % [str(args["act-shots"]), i, str(f[0]).replace(" ", ""), f[1], u]
 		get_viewport().get_texture().get_image().save_png(path)
-		_log("멈춘 단계 %d %s" % [i, str(list[i])])
+		_log("멈춤 %d: %s" % [i, str(list[i])])
 
 
 # --vm-log <파일>: 판 중 내 공격 동작 동안 프레임마다 1인칭 팔 숫자 (tools/vm_dump.gd 와 같은 칸) 를 JSON 한 줄씩 (W11 — 판에서만 다른지)
