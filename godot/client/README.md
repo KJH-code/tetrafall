@@ -69,3 +69,26 @@ JS 화면의 합성 소리·곡을 **크로미움에서 그대로 녹음해 구�
 ## 몸 굽기 (W7, 2026-11-02 시제품)
 
 JS 몸을 .glb 로 구워 파일로 불러옴 (지금 탱크만, 나머지는 예전 조립 `chars/data/bodies.bin`): `node tools/bake-bodies.mjs tank` (레포 뿌리) → `assets/models/tank.glb` + `tank.json` → `--import`. 구조·숫자·남은 일은 [`chars/BAKE.md`](chars/BAKE.md). 비교 실행 인자 `--no-glb` (예전 조립)
+
+## 성능 재기 (W6·W12)
+
+GPU 가 없는 클라우드 컨테이너에선 렌더 ms·FPS 는 소프트웨어 (llvmpipe) 라 근거가 못 됨 → **스크립트 ms·그리기·물체·삼각형·SubViewport** 를 같은 판으로 A/B. 재혁 PC 는 F3 → Ctrl+C 한 줄.
+
+```
+# 판 기록 (자동 조종 8명 판, 받은 글자를 '시각\t글자' 줄로) — 한 번
+xvfb-run -a godot --path godot/client --rendering-driver opengl3 -- --auto host --bots 7 --wait-players 8 --server ws://127.0.0.1:3000 --rec /tmp/game8.rec --quit-after 20
+# 재연 (서버 없이 같은 판, 가상 시계 1/120초씩): 처음 playing + 3초부터 10초 동안 스크립트·물리 ms/프레임
+xvfb-run -a godot --path godot/client --rendering-driver opengl3 -- --replay /tmp/game8.rec --profile replay [--prof] [--replay-render] [--set gfx=medium,third=true] [--shot a.png]
+```
+
+- `--prof`: 구간별 ms/프레임 (`core/prof.gd` — world·몸·HUD·net 구간, 느린 프레임 6개). 꺼져 있으면 비용 거의 0 (테스트 `test_prof_off_is_free`)
+- `--replay-render`: 그리기 끔 대신 실제로 그리고 마지막에 그리기·물체·삼각형·영상 메모리 · `--set 키=값` 설정을 바꿔 알림만 (파일엔 안 남음 — 외곽선·그림자·화질 A/B)
+- `--replay-warm -4 --replay-secs 0.5` 처럼 음수면 판 시작 전 (대기실) 을 잼·찍음
+- 같은 판·같은 가상 시각이라 전/후 스크린샷을 화소로 비교할 수 있음 (래그돌 물리만 실제 시간 — 흔들림 바닥은 같은 빌드 두 번)
+- 부하 평균이 높은 컨테이너 (다른 일 동시) 에선 한 번 숫자가 ±20% 흔들림 → 전/후를 번갈아 여러 번
+
+### 규칙 (테스트로 고정, `tests/test_perf.gd`)
+
+- **몸 자세 LOD** (`world/pose_lod.gd`, 수치 `world_config.gd POSE_LOD`): 자세 (figureAnim·래그돌 잡기·묶음 뼈) 만 덜 자주. 자리·방향·이름표는 매 프레임. 카메라 3m 안 = 매 프레임, 그보다 멀면 60Hz (120fps 면 한 프레임 걸러), 화면 밖 20Hz, 내 몸 (1인칭 팔이 관절을 베낌) 은 늘 매 프레임. 끄기 `--no-pose-lod`, 근거리 바꾸기 `--pose-lod-near <m>`
+- **HUD 글자 색·크기는 바뀔 때만** (`ui_style.gd ov_color·ov_font_size`): `add_theme_*_override` 는 같은 값이어도 '테마 바뀜' 알림 → 글자 모양 다시 잡기·다시 배치. 판 중 매 프레임 ~45번 (아래 판 8명 × 5 + 큰 글자·내 %·아이템 시간·R 칸) 이 값이 바뀔 때만으로. 한 번 11µs → 0.6µs
+- **설정 '외곽선'·'그림자'** 가 실제로 바뀜 (W12 전엔 듣는 쪽이 없었음): `G3.set_outline_on` (만든 재질 전부 next_pass 를 빼고 끼움, 외곽선 재질 하나를 나눠 씀), `world.shadows_wanted`
