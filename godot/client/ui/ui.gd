@@ -146,20 +146,31 @@ func _net_box(side: int, tb: int) -> StyleBoxFlat:
 # client/net.js draw (+ reconnect 동안 '연결 끊김 · 다시 연결 중 n'): 핑 글·색 단계, 알림 글
 func _net_draw() -> void:
 	var v: Dictionary = Net.meter.view(Net.now_ms())
-	ping.text = Net.ping_text()
+	var pt := Net.ping_text()
 	var look := U.net_look(str(v.level))
-	ping.add_theme_color_override("font_color", look.fg)
-	(ping.get_theme_stylebox("normal") as StyleBoxFlat).bg_color = look.bg
 	var w := Net.warn_text()
 	if Net.reconnecting:
 		w = "연결 끊김 · 다시 연결 중 %d" % Net.tries
 	elif Net.ever_open and not Net.is_open():
 		w = "연결 끊김"
+	var vp := get_viewport().get_visible_rect().size
+	# 바뀔 때만 (W15: 글자 색 덮어쓰기·칸 바탕색·reset_size 를 프레임마다 — 테마 바뀜 알림·다시 배치가 판 중 HUD 비용의 절반이던 것)
+	var key := [pt, look.fg, look.bg, w, vp]
+	if key == _net_key:
+		return
+	_net_key = key
+	ping.text = pt
+	S.ov_color(ping, "font_color", look.fg)
+	var sb := ping.get_theme_stylebox("normal") as StyleBoxFlat
+	if sb.bg_color != look.bg:
+		sb.bg_color = look.bg
 	net_warn.text = w
 	net_warn.visible = w != ""
-	var vp := get_viewport().get_visible_rect().size
 	net_box.reset_size()
 	net_box.position = Vector2(vp.x - 12.0 - net_box.size.x, 52)
+
+
+var _net_key := []
 
 
 func _process(_d: float) -> void:

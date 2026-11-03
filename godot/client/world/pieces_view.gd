@@ -84,6 +84,22 @@ func piece_color(pc: Dictionary) -> Color:
 
 # sky_blend: 하늘 시점 섞임 (0..1). me: 내 플레이어 (위험 그림자)
 func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
+	# 칸 자리·색은 스냅샷 값 그대로 → 같은 스냅샷·같은 시점·같은 색 표·하늘 블록 없음 (반짝임이 시간에 따라 바뀜) 이면 지난 프레임 그대로 (W15)
+	var sky_on := sky_blend > 0.5
+	if is_same(st, _key_st) and sky_on == _key_sky and is_same(piece_colors, _key_cols) and my_id == _key_me:
+		if not _sky_base.is_empty(): # 하늘 블록 반짝임만 (색 = 하얗게 섞은 모양 색 + 시간에 따라 하늘빛)
+			var g := Color(0.12, 0.22, 0.3, 0.0) * (0.55 + 0.45 * sin(Time.get_ticks_msec() / 500.0))
+			var km0 := sky_mmi.multimesh
+			for i in _sky_base.size():
+				var c: Color = _sky_base[i] + g
+				c.a = _sky_a
+				km0.set_instance_color(i, c)
+		return
+	_sky_base.clear()
+	_key_st = st
+	_key_sky = sky_on
+	_key_cols = piece_colors
+	_key_me = my_id
 	var pieces: Array = st.get("pieces", [])
 	var n := 0
 	for pc in pieces:
@@ -113,9 +129,12 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 		var col := piece_color(pc)
 		col.a = alpha
 		var sky: bool = pc.get("sky", false) and str(pc.get("shape", "")) != "ghost" and not pc.get("thrown", false) and pc.get("controller") == null
+		var base := col
 		if sky:
-			col = col.lerp(Color.WHITE, C.SKY_PIECE_WHITEN) + sky_glow
+			base = col.lerp(Color.WHITE, C.SKY_PIECE_WHITEN)
+			col = base + sky_glow
 			col.a = sky_a
+			_sky_a = sky_a
 		var mine: bool = str(pc.get("phase", "")) == "control" and pc.get("controller") != null and my_id != null and int(pc.controller) == int(my_id)
 		var show_shadow: bool = pc.get("shadowVisible", false) or mine
 		for i in pc.cells.size():
@@ -124,6 +143,7 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 			if sky:
 				km.set_instance_transform(q, xf)
 				km.set_instance_color(q, col)
+				_sky_base.append(base)
 				q += 1
 			else:
 				mm.set_instance_transform(k, xf)
@@ -146,3 +166,11 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 	mm.visible_instance_count = k
 	km.visible_instance_count = q
 	sm.visible_instance_count = s
+
+
+var _key_st = null # 지난번 그린 스냅샷·시점·색 표·내 id
+var _key_sky := false
+var _key_cols = null
+var _key_me = null
+var _sky_base: Array[Color] = [] # 지난번 하늘 블록 칸마다 반짝임 전 색 (같은 스냅샷이면 반짝임만 다시)
+var _sky_a := 1.0

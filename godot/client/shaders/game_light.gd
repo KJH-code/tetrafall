@@ -25,6 +25,10 @@ var base: Dictionary = {} # 테마 하늘 원래 값
 var base_key = null
 var env_root: Node3D # G3Env 를 가진 world
 var lut: ImageTexture3D = null # 지금 프리셋의 색 보정 (grade_lut, 처음 쓸 때 만듦)
+var _keep_n := -1 # 지난 프레임 빛 무리 그대로 쓸 수 있음 (그때 수, -1 = 아니)
+var _keep_halos = null
+var _keep_p = null
+var _env_set := [] # 색 보정을 넣은 [환경, 켬, 프리셋]
 
 
 func _init() -> void: # 트리 밖에서도 바로 쓸 수 있게 (prewarm·테스트)
@@ -100,15 +104,17 @@ func frame(active: bool, halos: Array, dt := 1.0 / 60.0) -> void:
 	if env:
 		var e: Environment = env.get_node("Env").environment
 		var g: Array = p.grade
-		# 고도 adjustment_saturation 은 평균 기준이라 CSS saturate (휘도 가중 행렬) 와 초록 +14·파랑 −9 다름 → CSS 세 단계를 3D LUT 로 구워 color_correction 에 (밝기·대비·채도 값은 1)
-		e.adjustment_enabled = on and (g[0] != 1.0 or g[1] != 1.0 or g[2] != 1.0)
-		e.adjustment_saturation = 1.0
-		e.adjustment_contrast = 1.0
-		e.adjustment_brightness = 1.0
-		e.adjustment_color_correction = _grade_lut() if e.adjustment_enabled else null
+		var want := [e, on, p] # 같은 환경·켬·프리셋이면 그대로 (W15: Environment 값 5개를 프레임마다 다시 넣던 것)
+		if want != _env_set:
+			_env_set = want
+			_set_adjust(e, on, g)
 	vig.visible = on and float(p.vignette[0]) > 0.0
 	sky_t = clampf(sky_t + (1.0 if on else -1.0) * C.GAME_LIGHT_SKY_SPEED * minf(dt, 0.1), 0.0, 1.0)
 	_paint_sky(sky_t if p.sky != null else 0.0)
+	# 빛 무리 목록이 같은 배열 (world.gd 가 스냅샷이 바뀔 때만 새로 만듦)·빛 터짐 없음·켬 그대로면 지난 프레임 인스턴스 그대로 (W15)
+	if on and flashes.is_empty() and _keep_n >= 0 and is_same(halos, _keep_halos) and is_same(_keep_p, p):
+		return
+	_keep_n = -1
 	var n := 0
 	if on:
 		var h: Array = p.halo
@@ -123,6 +129,19 @@ func frame(active: bool, halos: Array, dt := 1.0 / 60.0) -> void:
 	else:
 		flashes.clear()
 	mm.visible_instance_count = n
+	if on and flashes.is_empty():
+		_keep_n = n
+		_keep_halos = halos
+		_keep_p = p
+
+
+# 고도 adjustment_saturation 은 평균 기준이라 CSS saturate (휘도 가중 행렬) 와 초록 +14·파랑 −9 다름 → CSS 세 단계를 3D LUT 로 구워 color_correction 에 (밝기·대비·채도 값은 1)
+func _set_adjust(e: Environment, on: bool, g: Array) -> void:
+	e.adjustment_enabled = on and (g[0] != 1.0 or g[1] != 1.0 or g[2] != 1.0)
+	e.adjustment_saturation = 1.0
+	e.adjustment_contrast = 1.0
+	e.adjustment_brightness = 1.0
+	e.adjustment_color_correction = _grade_lut() if e.adjustment_enabled else null
 
 
 # JS 캔버스 CSS filter `saturate(g0) contrast(g1) brightness(g2)` 를 sRGB 한 색에 (크롬처럼 단계마다 0..1 로 자름).

@@ -63,6 +63,9 @@ var _menu_since := -1.0 # 메뉴에 머문 시각 (prewarm)
 var _prewarmed = null # 셰이더 미리 데운 테마 (G3.prewarm)
 var dark = null # 대기실 어두운 무대 (lobby_dark.gd), 대기실 아니면 null
 var vm = null # G2 1인칭 팔·무기 (chars/viewmodel.gd)
+var _halo_st = null # 판 빛 무리를 만든 스냅샷 (같으면 _halos 그대로)
+var _halo_lit := false
+var _halos: Array = []
 const VIEWMODEL := "res://chars/viewmodel.gd"
 
 
@@ -483,17 +486,13 @@ func _process(dt: float) -> void:
 	body_fx.update(st, Store.my_id, dt)
 	Prof.lap("world body_fx")
 	light_fx.low = bool(View.settings.get("lowGfx", false))
-	var halos := []
 	var lit := ph == "countdown" or ph == "playing" or ph == "over"
-	if lit:
-		for pc in st.get("pieces", []):
-			if pc.get("thrown", false):
-				continue
-			var col: int = 0xffffff if str(pc.get("shape", "")) == "ghost" else (WC.CONTROLLED_COLOR if pc.get("controller") != null else int(pieces_view.piece_colors.get(str(pc.get("shape", "")), 0xffffff)))
-			for c in pc.cells:
-				halos.append([c[0] + 0.5, c[1] + 0.5, c[2] + 0.5, col, 0.7 if pc.get("sky", false) else 1.0])
-		for it in st.get("items", []):
-			halos.append([it.x + 0.5, it.y + 0.5, it.z + 0.5, int(C.GAME_LIGHT_ITEM), 0.6])
+	# 빛 무리 목록은 스냅샷 (떨어지는 칸·아이템 자리 = 스냅샷 값 그대로) 이 바뀔 때만 다시 (W15: 120fps 면 같은 목록을 4번씩 만들던 것)
+	if not (is_same(st, _halo_st) and lit == _halo_lit):
+		_halo_st = st
+		_halo_lit = lit
+		_halos = halos_of(st, pieces_view.piece_colors) if lit else []
+	var halos: Array = _halos
 	light_fx.frame(lit, halos, dt)
 	Prof.lap("world 판 빛")
 	var me := Store.me()
@@ -527,6 +526,20 @@ func _process(dt: float) -> void:
 	var gcd = me.get("ghostCd") if not me.is_empty() else null
 	ghost_aim.update(rig.spectating() and gcd != null and rig.sky_blend == 0.0, rig.cam, Bodies.player_color(me, st) if not me.is_empty() else 0xffffff, gcd != null and float(gcd) == 0.0, field.x, field.y, solid_at, column_top, now)
 	Prof.lap("world 1인칭 팔·유령 조준")
+
+
+# 판 빛 무리: 떨어지는 블록 칸·아이템마다 [x, y, z, 색, 크기 배수] (game-light.js)
+static func halos_of(st: Dictionary, piece_colors: Dictionary) -> Array:
+	var halos := []
+	for pc in st.get("pieces", []):
+		if pc.get("thrown", false):
+			continue
+		var col: int = 0xffffff if str(pc.get("shape", "")) == "ghost" else (WC.CONTROLLED_COLOR if pc.get("controller") != null else int(piece_colors.get(str(pc.get("shape", "")), 0xffffff)))
+		for c in pc.cells:
+			halos.append([c[0] + 0.5, c[1] + 0.5, c[2] + 0.5, col, 0.7 if pc.get("sky", false) else 1.0])
+	for it in st.get("items", []):
+		halos.append([it.x + 0.5, it.y + 0.5, it.z + 0.5, int(C.GAME_LIGHT_ITEM), 0.6])
+	return halos
 
 
 # 칸 (x, y) 기둥 꼭대기 높이 (render.js columnTopAt)
