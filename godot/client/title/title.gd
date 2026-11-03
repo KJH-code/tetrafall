@@ -13,6 +13,7 @@ const TC := preload("res://title/title_calc.gd")
 const Scene := preload("res://title/title_scene.gd")
 const LP := preload("res://world/lobby_preview.gd")
 const S := preload("res://ui/ui_style.gd")
+const HAZE := preload("res://title/haze.gdshader")
 const U := preload("res://ui/ui_calc.gd")
 # 타이틀 위 겹 (JS index.html #title): 위아래 검은 띠 7vh (누르면 .9s ease-in 으로 화면 밖), 가장자리 어둡게
 # radial-gradient(ellipse at 50% 45%, transparent 0 50%, rgba(0,0,0,.6) 100%), 안내 글 text-shadow 0 0 14px 테마 빛 + 'Enter' 테마 빛 색
@@ -35,6 +36,8 @@ var bars: Array = [] # 위·아래 검은 띠
 var shade: TextureRect
 var press_ms := -1.0 # 누른 뒤 ms (띠가 빠짐)
 var white := ColorRect.new()
+var haze_layer := CanvasLayer.new() # 넓은 빛 안개 (W8, haze.gdshader) — 3D 바로 위·타이틀 겹 아래
+var haze := ColorRect.new()
 var headless := false
 var prev_cam: Camera3D = null
 var skip := false # main.gd 가 정함: 방 주소 (--room, 웹 ?room=)·자동 조종이면 타이틀 없이 메뉴 배경
@@ -53,6 +56,15 @@ func _ready() -> void:
 	View.ui_theme = theme
 	layer.layer = 9 # 메뉴 판 (G4 ui = 10) 아래
 	add_child(layer)
+	haze_layer.layer = -1
+	add_child(haze_layer)
+	var hm := ShaderMaterial.new()
+	hm.shader = HAZE
+	haze.material = hm
+	haze.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	haze.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	haze.visible = false
+	haze_layer.add_child(haze)
 	white.color = Color(1, 1, 1, 0)
 	white.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	white.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -119,7 +131,19 @@ func _make(menu: bool) -> void:
 	scene.exit_started.connect(func(): View.sound_cue.emit("titleExit", {}))
 	prev_cam = get_viewport().get_camera_3d()
 	scene.cam.make_current()
+	_haze_on()
 	active_changed.emit(true)
+
+
+# 빛 안개: 장면이 떠 있고 그래픽 낮춤이 아닐 때만 (세기·밉 단계는 테마별 C.TITLE_HAZE)
+func _haze_on() -> void:
+	var on := scene != null and not bool(View.settings.get("lowGfx", false))
+	haze.visible = on
+	if on:
+		var hz: Array = TC.haze(theme)
+		haze.material.set_shader_parameter("strength", hz[0])
+		haze.material.set_shader_parameter("lod", hz[1])
+		haze.material.set_shader_parameter("thr", hz[2])
 
 
 func _drop() -> void:
@@ -127,6 +151,7 @@ func _drop() -> void:
 		return
 	scene.queue_free()
 	scene = null
+	haze.visible = false
 	if prev_cam != null and is_instance_valid(prev_cam):
 		prev_cam.make_current()
 	active_changed.emit(false)

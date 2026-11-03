@@ -209,3 +209,21 @@ static func landed_between(start: Array, t0: float, t1: float, fall_ms := C.TITL
 		if at > t0 and at <= t1:
 			out.append(i)
 	return out
+
+
+# 넓은 빛 안개 (W8, title/haze.gdshader) [세기, 밉 단계, 문턱]: JS UnrealBloom 가장 넓은 단계 몫. 테마별로 JS 스샷 화면 평균 밝기에 맞춤 (없는 테마는 기본)
+# 맞춘 법: 안개 1.5 로 7개 찍어 (화면 평균 rgb 합) 세기 = 1.5 × (JS − 안개 없음) / (1.5 − 안개 없음). 예: 버섯 JS 234 · 없음 100 · 1.5 204 → 1.9
+const HAZE := [1.0, 6.0, 0.0]
+const HAZE_THEME := {
+	"crystal": [0.2, 6.0, 0.0],
+	"volcano": [1.3, 6.0, 0.0],
+	"desert": [0.5, 6.0, 0.0],
+	"mushroom": [1.9, 6.0, 0.0],
+	"skycastle": [1.3, 6.0, 0.0],
+	"castle": [0.4, 6.0, 0.0],
+	"meadow": [0.6, 6.0, 0.0],
+}
+
+
+static func haze(theme: String) -> Array:
+	return HAZE_THEME.get(theme, HAZE)
