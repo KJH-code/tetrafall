@@ -16,3 +16,21 @@ const RAGDOLL_WAKE_BELOW := 0.95 # 모터가 이보다 약할 때만 깨어 있�
 # 1인칭 팔 SubViewport 다중 샘플 = 판 화면과 같음 (JS viewmodel 은 판과 같은 캔버스 = antialias) → world/world_config.gd msaa_3d (웹·PC·그래픽 낮춤)
 # W7 구운 몸 (assets/models/<캐릭터>.glb, 레포 뿌리 tools/bake-bodies.mjs): 있으면 그 파일로 몸을 만듦 (조립·묶기 없음). false 면 늘 예전 조립 (chars/data/bodies.bin)
 const GLB := true
+
+# W11 탱크 1인칭 방패를 왼손에 쥠 (재혁 2026-11-03: 3·4타 때 1인칭에서 방패가 손에 없이 몸에 고정됨 — JS viewmodel 은 허리에 붙은 채, 고도만 고침).
+# 방패 자리·방향을 정하고 왼손을 방패 안쪽 손잡이로 IK (viewmodel.gd _hold_shield). false 면 예전 (허리에 붙음, JS 와 같음)
+const VM_SHIELD_HAND := true
+const VM_SHIELD_GRIP := [0.16, 0.0, 0.0] # 손잡이 점 (방패 좌표, 크기 VM_SHIELD[0] 곱하기 전): 바깥면 (돌기) 이 -x 라 안쪽 +x — 판 반 두께 + 주먹 반지름
+# 방패 가운데 (허리 좌표: 앞 +x, 왼쪽 +y, 위 +z, 어깨 높이 z 0.604) · 바깥면 방향 [돌림 (앞에서 왼쪽 +), 들림 (위로 +)]
+const VM_SHIELD_GUARD := [0.4, 0.28, 0.57, 0.6, -0.25] # 쥐고 든 자세 (화면 왼쪽 아래 비스듬히 — 예전 자리, 안쪽 면이 카메라 쪽)
+const VM_SHIELD_LOW := [0.14, 0.36, 0.17, 0.6, -0.6] # 꺼내기 전·넣은 뒤 (팔을 내린 화면 밖 아래)
+const VM_SHIELD_IN_S := 0.18 # 방패 동작이 시작되면 이만큼 동안 손을 내려 방패를 쥐고 들어 올림 (앞 VM_SHIELD_REACH 몫은 빈손으로 내려감)
+const VM_SHIELD_OUT_S := 0.2 # 방패 동작이 끝나면 이만큼 동안 방패를 내려 넣고 손이 원래 자리로
+const VM_SHIELD_REACH := 0.4
+const VM_SHIELD_ARM_SLACK := 0.005 # 팔 길이 (윗팔 + 아래팔) 보다 이만큼 안쪽까지만 (IK 가 늘 닿게)
+# 동작별 밀치기 (준비 = W 로 당김, 타격 = W → S 로 밀침, 회복 = S → 0 으로 복귀): [앞, 왼쪽, 위, 돌림, 들림] 을 쥔 자세에 더함
+const VM_SHIELD_PUSH := {
+	"방패 올려치기": {"W": [-0.08, 0.02, -0.06, 0.0, -0.2], "S": [0.07, 0.0, 0.08, -0.1, 0.5]},
+	"방패 내려치기": {"W": [-0.05, 0.0, 0.08, 0.0, 0.35], "S": [0.07, 0.0, -0.08, -0.1, -0.45]},
+	"tankCharge": {"W": [0.0, 0.0, 0.0, 0.0, 0.0], "S": [0.06, 0.0, 0.0, -0.15, 0.0]},
+}

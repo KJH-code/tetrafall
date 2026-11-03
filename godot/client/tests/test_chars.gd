@@ -507,3 +507,118 @@ func test_viewmodel_follows() -> void:
 		vm.twin.free()
 		b.free()
 		vm.free()
+
+
+# W11 1인칭 탱크 방패를 왼손에 쥠: 한 몸으로 평타 1타 → 4타 → 1타 → 3타 (동작 번호 0~6) 를 실제 시간 (60fps) 으로 이어 칠 때 vm 의 매 프레임
+# [동작 번호, 단계, u, 방패 보임, 방패 변환 (허리 좌표), 왼손목 (허리 좌표), 어깨·팔꿈치 회전 [오른·왼]]. hand = Viewmodel.shield_hand
+func _vm_combo(ch: String, hand: bool) -> Array:
+	var keep: bool = VM.shield_hand
+	VM.shield_hand = hand
+	var b = Chars.make_body(ch, Color(0.9, 0.4, 0.2))
+	var vm = VM.new()
+	vm._ready()
+	vm._sync(b)
+	var sets: Dictionary = C.BASIC_ATTACKS[ch]
+	var all: Array = sets.chain + sets.air + sets.chain
+	var dt := 1.0 / 60.0
+	var t := 1.0
+	var sh = vm.twin._n(vm.twin.refs.shields.front) if vm.twin.refs.get("shields") is Dictionary else null
+	var out := []
+	for mi in all.size():
+		var air: bool = mi >= sets.chain.size() and mi < sets.chain.size() + sets.air.size()
+		for ph in [["wind", ceili(all[mi].windup / 1000.0 / dt)], ["strike", ceili(C.FIGURE_STRIKE_S / dt)], ["rec", ceili(all[mi].rec / 1000.0 / dt)]]:
+			for i in ph[1]:
+				t += dt
+				var act := {"id": mi + 1, "move": all[mi].name, "phase": ph[0], "u": (i + 1.0) / ph[1], "air": air}
+				b._figure_anim({"air": air, "walking": false, "hs": 0.0, "walk": 0.0, "vz": 0.0, "t": t, "stunned": false, "emote": -1, "emoteT": 0.0, "victory": -1.0, "hit": null, "act": act,
+					"accF": 0.0, "accS": 0.0, "tumble": 0.0, "recover": 0.0, "land": 0.0, "flip": -1.0, "idle": 0.0, "airDash": 0.0, "form": "", "dizzy": 0.0, "punch": 0.0, "whirl": -1.0, "glide": false, "amp": false, "loaded": false, "ammo": 3.0}, dt)
+				b._apply(dt)
+				vm._follow(dt)
+				out.append([mi, ph[0], act.u, sh != null and sh.visible, sh.transform if sh != null else Transform3D(), vm._waist_point(vm.twin.hands[1], [0.0, 0.0, 0.0]),
+					[vm.twin.shoulders[0].transform, vm.twin.shoulders[1].transform, vm.twin.elbows[0].transform, vm.twin.elbows[1].transform], vm.shield_k])
+	vm.twin.free()
+	b.free()
+	vm.free()
+	VM.shield_hand = keep
+	return out
+
+
+func test_viewmodel_tank_shield_in_hand() -> void:
+	var K := preload("res://chars/chars_config.gd")
+	check(K.VM_SHIELD_HAND and VM.shield_hand, "탱크 1인칭 방패를 손에 쥠 (기본)")
+	var fr := _vm_combo("tank", true)
+	var old := _vm_combo("tank", false)
+	var worst := 0.0
+	var seen := {}
+	var first_vis = null
+	var in_reach := true
+	var b = Chars.make_body("tank", Color.WHITE)
+	var arm: float = float(b.d.upper) + float(b.d.lower)
+	var shy: float = b.shoulders[1].position.y * C.VM_NARROW
+	var shz: float = b.shoulders[1].position.z
+	b.free()
+	for k in fr.size():
+		var f: Array = fr[k]
+		if f[3]:
+			var grip: Vector3 = VM.shield_grip(f[4])
+			worst = maxf(worst, grip.distance_to(f[5]))
+			seen[f[0]] = true
+			if first_vis == null:
+				first_vis = k
+			if grip.distance_to(Vector3(0, shy, shz)) > arm:
+				in_reach = false
+	# 방패가 보이는 모든 프레임에서 왼손목 = 손잡이 점 (1cm 안), 팔 길이 안
+	check(worst <= 0.01, "방패 손잡이와 왼손 사이 가장 먼 거리 %.4f (1cm 안이어야)" % worst)
+	check(in_reach, "손잡이가 팔 길이 안")
+	# 방패는 3타 (올려치기)·4타 (내려치기) 에만 + 그 뒤 1타 초반에 내려 넣는 동안, 1·2타 (처음·다시) 엔 없음
+	check(seen.has(2) and seen.has(3) and not seen.has(0) and not seen.has(1) and not seen.has(5), "방패 보인 동작 %s" % str(seen.keys()))
+	# 1·2타 (방패 꺼내기 전) 는 예전 (JS) 과 같은 팔: 어깨·팔꿈치 변환 그대로
+	var same := true
+	for k in fr.size():
+		if fr[k][0] >= 2:
+			break
+		for j in 4:
+			if not (fr[k][6][j] as Transform3D).is_equal_approx(old[k][6][j]):
+				same = false
+	check(same, "1·2타 팔은 예전과 같음")
+	# 꺼내기: 처음 보이는 방패는 화면 밖 아래 (쥔 자세보다 0.2 넘게 낮음) 에서 올라옴, 넣기: 다음 1타 동안 다시 내려가 사라짐
+	var guard_z: float = K.VM_SHIELD_GUARD[2]
+	check(first_vis != null and (fr[first_vis][4] as Transform3D).origin.z < guard_z - 0.2, "방패가 아래에서 올라옴 %s" % (str((fr[first_vis][4] as Transform3D).origin) if first_vis != null else "-"))
+	var last_vis := -1
+	for k in fr.size():
+		if fr[k][3] and fr[k][0] <= 4: # 4타 뒤 1타 (동작 4) 까지 — 동작 6 은 다시 올려치기
+			last_vis = k
+	check(last_vis > 0 and fr[last_vis][0] == 4 and (fr[last_vis][4] as Transform3D).origin.z < guard_z - 0.2, "방패를 아래로 내려 넣음 (마지막 %d 동작 %s %s)" % [last_vis, str(fr[last_vis][0]) if last_vis >= 0 else "-", str((fr[last_vis][4] as Transform3D).origin) if last_vis >= 0 else "-"])
+	# 밀치기: 3타 준비 끝보다 타격 끝에 앞 (+x) 으로, 4타 타격 끝은 준비 끝보다 아래로
+	var at := func(mi: int, ph: String) -> Transform3D:
+		var x := Transform3D()
+		for f in fr:
+			if f[0] == mi and f[1] == ph:
+				x = f[4]
+		return x
+	check(at.call(2, "strike").origin.x > at.call(2, "wind").origin.x + 0.1, "3타 방패 밀침 (앞으로) %s → %s" % [at.call(2, "wind").origin, at.call(2, "strike").origin])
+	check(at.call(3, "strike").origin.z < at.call(3, "wind").origin.z - 0.1, "4타 방패 내려침 %s → %s" % [at.call(3, "wind").origin, at.call(3, "strike").origin])
+	check(absf(at.call(2, "rec").origin.x - float(K.VM_SHIELD_GUARD[0])) < 0.03, "3타 회복 끝 = 쥔 자세로 복귀")
+	# 손이 쥐는 쪽 = 방패 안쪽 (바깥면 돌기 -x 반대): 손잡이 점이 방패 가운데보다 몸 쪽 (뒤)
+	var g0: Transform3D = at.call(2, "rec")
+	check(VM.shield_grip(g0).x < g0.origin.x, "손잡이는 방패 안쪽 (몸 쪽)")
+
+
+# W11: 방패 쥐기는 탱크만 — 다른 7명은 쥐기를 켜도 끄도 1인칭 팔 변환이 같음
+func test_viewmodel_shield_hand_tank_only() -> void:
+	var diff := []
+	for ch in C.FIGURE_CHARS:
+		if ch == "tank":
+			continue
+		var a := _vm_combo(ch, true)
+		var o := _vm_combo(ch, false)
+		var same := a.size() == o.size()
+		for k in mini(a.size(), o.size()):
+			for j in 4:
+				if not (a[k][6][j] as Transform3D).is_equal_approx(o[k][6][j]):
+					same = false
+			if not (a[k][5] as Vector3).is_equal_approx(o[k][5]):
+				same = false
+		if not same:
+			diff.append(ch)
+	check(diff.is_empty(), "방패 쥐기가 바꾼 다른 캐릭터 %s" % str(diff))

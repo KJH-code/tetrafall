@@ -28,7 +28,9 @@ var on := false
 var star: Node3D = null # 닌자: 왼손에 부채꼴로 쥔 표창 3개 (단검 대신)
 var pips: Array = [] # 대포수: 대포 등에 남은 포탄 수만큼 쇠공 [[쇠공, 원본 포탄 노드]]
 var veins: Array = [] # 광전사: 분노가 차면 아래팔 핏줄 (팔마다 묶음)
+var shield_k := 0.0 # 탱크 방패를 쥔 정도 (W11): 0 = 빈손 (방패 넣음), VM_SHIELD_REACH 까지 = 손을 내림, 1 = 쥐고 든 자세
 static var _star_mesh: ArrayMesh = null
+static var shield_hand: bool = K.VM_SHIELD_HAND # 탱크 방패를 왼손에 쥠 (W11). 확인 도구 (tools/vm_shots.gd old) 가 예전 모습을 찍을 때 끔
 
 
 func _ready() -> void:
@@ -114,6 +116,7 @@ func _sync(body) -> void:
 	for c in anchor.get_children():
 		c.queue_free()
 	pairs.clear()
+	shield_k = 0.0
 	if body == null or not (body is Body):
 		return
 	char_id = body.char_id
@@ -273,7 +276,7 @@ func _follow(_dt: float) -> void:
 	var shields = twin.refs.get("shields")
 	if shields is Dictionary:
 		var sh = twin._n(shields.get("front"))
-		if sh != null and twin.nodes.find(sh) in pairs:
+		if sh != null and twin.nodes.find(sh) in pairs and not shield_hand: # 예전 (JS): 허리에 붙은 채. 쥐면 아래 _hold_shield
 			sh.scale *= C.VM_SHIELD[0]
 			sh.position += Vector3(0, C.VM_SHIELD[1], C.VM_SHIELD[2])
 			sh.rotation.z += C.VM_SHIELD[3]
@@ -313,6 +316,8 @@ func _follow(_dt: float) -> void:
 	if twin.refs.has("gun") and src.loaded and -src.shoulders[0].rotation.y < 0.6:
 		twin.shoulders[0].rotation.y = -C.VM_GUN_AIM[0]
 		twin.elbows[0].rotation.y = -C.VM_GUN_AIM[1]
+	if shield_hand:
+		_hold_shield(_dt)
 	var sw := [0.0, 0.0, 0.0, 0.0, 0.0, 0.0] # [yaw, pitch, kick, dx, lift, roll]
 	if hold and twin.refs.has("formParts"):
 		sw = _bard_hold(src.cur_act, src.t)
@@ -328,6 +333,71 @@ func _follow(_dt: float) -> void:
 		pos[0] + sw[3] + sin(src.walk) * C.VM_BOB * 0.6 * amp,
 		pos[1] + sw[4] - absf(cos(src.walk)) * C.VM_BOB * amp + sin(t * 2.0) * C.VM_BREATH,
 		pos[2] + sw[2] * C.VM_CANNON_KICK_BACK)
+
+
+# 탱크 앞 방패를 왼손에 쥠 (W11, JS 는 허리에 붙은 채): 원본 앞 방패가 보이면 (방패 동작) 손을 내려 방패를 쥐고 들어 올림 →
+# 쥔 자세 + 동작별 밀치기 (당김 → 밀침 → 복귀) → 끝나면 내려 넣고 손이 원래 자리로. 방패가 보이는 동안 왼손 (손목) 은 늘 손잡이 점 (IK _reach)
+func _hold_shield(dt: float) -> void:
+	var shields = twin.refs.get("shields")
+	if not (shields is Dictionary):
+		return
+	var sh = twin._n(shields.get("front"))
+	if sh == null or not (twin.nodes.find(sh) in pairs):
+		return
+	var want: bool = sh.visible # 원본 앞 방패 보이기 (위에서 베낌)
+	shield_k = minf(1.0, shield_k + dt / K.VM_SHIELD_IN_S) if want else maxf(0.0, shield_k - dt / K.VM_SHIELD_OUT_S)
+	sh.visible = false
+	if shield_k <= 0.0:
+		return
+	var ra: float = K.VM_SHIELD_REACH
+	var low := shield_xf(K.VM_SHIELD_LOW)
+	if shield_k < ra: # 빈손으로 방패 쪽 (화면 밖 아래) 으로 내려감 / 넣은 뒤 원래 자리로
+		var free := _waist_point(twin.hands[1], [0.0, 0.0, 0.0])
+		_reach(1, free.lerp(shield_grip(low), _e(shield_k / ra)))
+		return
+	var held: Array = K.VM_SHIELD_GUARD.duplicate()
+	var off := shield_push(src.cur_act)
+	for i in 5:
+		held[i] += off[i]
+	var s := _e((shield_k - ra) / (1.0 - ra))
+	var p: Array = []
+	for i in 5:
+		p.append(lerpf(float(K.VM_SHIELD_LOW[i]), float(held[i]), s))
+	var xf := shield_xf(p)
+	# 팔이 닿는 데까지만: 손잡이가 어깨에서 팔 길이보다 멀면 방패째 어깨 쪽으로
+	var shp: Vector3 = twin.shoulders[1].position
+	var g := shield_grip(xf) - shp
+	var far := float(twin.d.upper) + float(twin.d.lower) - K.VM_SHIELD_ARM_SLACK
+	if g.length() > far:
+		xf.origin -= g.normalized() * (g.length() - far)
+	sh.transform = xf
+	sh.visible = true
+	_reach(1, shield_grip(xf))
+
+
+# 방패 변환 (허리 좌표): p = [앞, 왼쪽, 위, 돌림, 들림]. 바깥면 (돌기, 방패 -x) 이 앞에서 돌림만큼 왼쪽·들림만큼 위를 봄, 크기 VM_SHIELD[0]
+static func shield_xf(p: Array) -> Transform3D:
+	var b := Basis(Vector3(0, 0, 1), float(p[3])) * Basis(Vector3(0, 1, 0), -float(p[4])) * Basis(Vector3(0, 0, 1), PI)
+	return Transform3D(b * Basis.from_scale(Vector3.ONE * C.VM_SHIELD[0]), Vector3(p[0], p[1], p[2]))
+
+
+# 손잡이 점 (허리 좌표)
+static func shield_grip(xf: Transform3D) -> Vector3:
+	return xf * Vector3(K.VM_SHIELD_GRIP[0], K.VM_SHIELD_GRIP[1], K.VM_SHIELD_GRIP[2])
+
+
+# 동작별 밀치기 [앞, 왼쪽, 위, 돌림, 들림]: 준비 0 → W (당김), 타격 W → S (밀침), 회복 S → 0 (복귀)
+static func shield_push(act) -> Array:
+	var out := [0.0, 0.0, 0.0, 0.0, 0.0]
+	if act == null or act.phase == "broken" or not K.VM_SHIELD_PUSH.has(act.move):
+		return out
+	var m: Dictionary = K.VM_SHIELD_PUSH[act.move]
+	var u := _e(clampf(float(act.u), 0.0, 1.0))
+	for i in 5:
+		var w: float = m.W[i]
+		var st: float = m.S[i]
+		out[i] = w * u if act.phase == "wind" else (w + (st - w) * u if act.phase == "strike" else st * (1.0 - u))
+	return out
 
 
 # 화면 기준 추가 회전 (어깨 높이 기준점을 축으로): yaw 좌우로 휩쓸기, pitch 위아래, roll 기울기 (three Euler 'YXZ')
