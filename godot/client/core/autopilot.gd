@@ -94,7 +94,7 @@ func _log(t: String) -> void:
 
 
 func _on_rooms(_list: Dictionary) -> void:
-	if role == "host" and shot_at != "menu" and not created and not Store.in_room() and Store.pending_code == "":
+	if role == "host" and not shot_at in ["menu", "title"] and not created and not Store.in_room() and Store.pending_code == "":
 		created = true
 		Store.create_room("", str(args.get("name", "고도")))
 	if role in ["practice", "tutorial"] and not created and not Store.in_room(): # G6 연습·튜토리얼 방 (혼자, 바로 판)
@@ -252,6 +252,18 @@ func _process(_d: float) -> void:
 		shot_time = round_no == int(args["shot-round"]) and Store.phase() == "playing" and now - round_ms >= float(args.get("shot-after", 8)) * 1000.0
 	if shot_at == "results":
 		shot_time = over_ms >= 0.0 and now - over_ms >= float(args.get("shot-after", 1.5)) * 1000.0
+	# 타이틀 (W8, --title <테마> 와 같이): 시간을 타이틀 시계로 — 느린 xvfb 에서도 JS 스샷 (로고 완성 + 3.5초 · 메뉴 들어오고 4초) 과 같은 순간
+	#   --shot-at title: 로고 완성 뒤 --title-ms (기본 3500) · --shot-at menu: 완성 + 3500 에 Enter → 메뉴 카메라 자리 잡고 --menu-ms (기본 4000)
+	var tn := get_tree().root.find_child("Title", true, false)
+	if args.has("title") and tn != null and tn.get("scene") != null:
+		var sc = tn.scene
+		var after := float(sc.t) - float(sc.done_at)
+		if shot_at == "title":
+			shot_time = after >= float(args.get("title-ms", 3500))
+		elif shot_at == "menu":
+			if tn.title_mode and not tn.pressed and after >= 3500.0:
+				tn._go()
+			shot_time = sc.in_menu() and float(sc.menu_t) >= float(args.get("menu-ms", 4000))
 	if args.has("perf-log"):
 		if not perf_rt:
 			perf_rt = true
@@ -307,7 +319,7 @@ func _process(_d: float) -> void:
 	var done_rounds := rounds >= int(args.get("quit-after-rounds", 999999))
 	var done_time := args.has("quit-after") and el >= float(args["quit-after"])
 	if done_rounds or done_time:
-		var ok := (snapshots > 0 or shot_at == "menu") and (not args.has("drop-at") or rejoined) and (not args.has("quit-after-rounds") or done_rounds) and (not args.has("min-moved") or moved >= float(args["min-moved"]))
+		var ok := (snapshots > 0 or shot_at in ["menu", "title"]) and (not args.has("drop-at") or rejoined) and (not args.has("quit-after-rounds") or done_rounds) and (not args.has("min-moved") or moved >= float(args["min-moved"]))
 		var sfx := get_tree().root.find_child("Sfx", true, false)
 		var music := get_tree().root.find_child("Music", true, false)
 		var snd := (" | 효과음 %d번, 곡 %s" % [sfx.played, music.song_key]) if sfx != null and music != null else ""
