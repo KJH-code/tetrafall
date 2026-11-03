@@ -7,6 +7,7 @@ const S := preload("res://ui/ui_style.gd")
 const Prefs := preload("res://ui/ui_prefs.gd")
 const U := preload("res://ui/ui_calc.gd")
 const Lobby := preload("res://ui/lobby.gd")
+const Big := preload("res://ui/big_btn.gd")
 
 signal open_settings
 signal open_tutorial
@@ -155,6 +156,7 @@ func _ready() -> void:
 		b.custom_minimum_size.y = 50
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.add_theme_font_override("font", S.spaced(3)) # JS .mrow button.big letter-spacing 3px
+		Big.attach(b, 3, S.reduced()) # 반짝임 늦춤 .75초 (JS .mrow button.big::after)
 		mrow.add_child(b)
 		mrow_btns.append(b)
 	mrow_btns[0].tooltip_text = "혼자, 허수아비 · 친구도 코드로 들어옴" # JS #practice-btn title
@@ -185,9 +187,11 @@ func _layout() -> void:
 	for id in bigs:
 		bigs[id].add_theme_font_size_override("font_size", 24 if small else 30)
 		bigs[id].custom_minimum_size.y = 46 if small else 62
+		Big.fit(bigs[id], 46 if small else 62) # 사선을 칸 안으로 (JS clip-path)
 	for b in mrow_btns:
 		b.add_theme_font_size_override("font_size", 20 if small else 24)
 		b.custom_minimum_size.y = 38 if small else 50
+		Big.fit(b, 38 if small else 50)
 	mrow.add_theme_constant_override("separation", 10)
 	_place_logo(logo_box)
 	_place_count()
@@ -227,6 +231,7 @@ func _item(parent: Node, id: String, text: String, body: Control) -> void:
 	b.toggle_mode = true
 	b.custom_minimum_size.y = 62
 	b.add_theme_font_override("font", S.spaced(4)) # JS button.big letter-spacing 4px
+	Big.attach(b, bigs.size(), S.reduced()) # 바탕·안쪽 빛·빛 세모·반짝임 (JS .mi:nth-child 마다 .25초 늦게)
 	parent.add_child(b)
 	bigs[id] = b
 	var pane := PanelContainer.new()

@@ -98,6 +98,31 @@ func test_menu_sizes() -> void:
 	m.free()
 
 
+# 메뉴 큰 버튼 꾸밈 (W8, ui/big_btn.gd = JS #rooms button.big): 평행사변형이 칸 안 (clip-path 18px), 왼쪽 빛 띠는 왼쪽 아래 세모만,
+# 반짝임 5.5초 중 70% 쉼 → -60% 에서 130% 로, 아래 줄 버튼 사이가 겹치지 않음 (StyleBoxFlat skew 넘침을 expand_margin 으로 되돌림)
+func test_menu_big_button_look() -> void:
+	var Big = load("res://ui/big_btn.gd")
+	var p: PackedVector2Array = Big.shape(600, 62, 18)
+	check(p[0] == Vector2(18, 0) and p[1] == Vector2(600, 0) and p[2] == Vector2(582, 62) and p[3] == Vector2(0, 62), "평행사변형 %s" % str(p))
+	var t: PackedVector2Array = Big.strip(62, 18)
+	check(t.size() == 3 and is_equal_approx(t[0].y, 62.0 * (1.0 - 4.0 / 18.0)) and t[1] == Vector2(4, 62) and t[2] == Vector2(0, 62), "빛 띠 세모 %s" % str(t))
+	check(Big.sheen_x(0.0) == null and Big.sheen_x(5500.0 * 0.69) == null, "반짝임 앞 70% 는 쉼")
+	check(is_equal_approx(Big.sheen_x(5500.0 * 0.7), -0.6) and is_equal_approx(Big.sheen_x(5500.0 * 0.85), 0.35), "반짝임 -60% → 130%")
+	var m = _make("res://ui/menu.gd")
+	m.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	m.size = Vector2(1280, 720)
+	m._layout()
+	var b: Button = m.bigs.values()[0]
+	var sb: StyleBoxFlat = b.get_theme_stylebox("normal")
+	check(is_equal_approx(sb.expand_margin_left, -S.SKEW_BIG * 31.0) and is_equal_approx(sb.expand_margin_right, -S.SKEW_BIG * 31.0), "큰 버튼 사선 넘침 되돌림 %s" % sb.expand_margin_left)
+	check(sb.bg_color.a == 0.0 and sb.border_width_left == 1, "큰 버튼 stylebox 는 1px 테두리만 (바탕은 big_btn)")
+	check(b.get_node_or_null("BigBack") != null and b.get_node("BigBack").show_behind_parent, "큰 버튼 뒤 겹")
+	var mb: Button = m.mrow_btns[0]
+	check(is_equal_approx(mb.get_theme_stylebox("hover").expand_margin_left, -S.SKEW_BIG * 25.0), "아래 줄 버튼 사선 넘침 되돌림")
+	check(b.get_theme_constant("shadow_outline_size") == int(S.BIG_TXT_GLOW[0]), "큰 버튼 글자 넓은 빛")
+	m.free()
+
+
 # 대기실 판 (JS #center): 작은 창·1280 줄 사이·카드·시작·방 설정·버튼 여백·고르기 칸 폭 — 960×540 에서 '링크 복사'·'방 나가기' 줄이 판 안에 들어오게 고친 값
 func test_lobby_sizes() -> void:
 	var l = _make("res://ui/lobby.gd")
