@@ -78,7 +78,7 @@ static func read_cfg(char_id: String) -> Dictionary:
 			for k in j:
 				cfg[k] = j[k]
 		else:
-			push_warning("외부 모델 조정 파일 %s 를 못 읽음 (JSON)" % jp)
+			push_warning("외부 .glb 조정 파일 %s: JSON 오류" % jp)
 	return cfg
 
 
@@ -144,7 +144,7 @@ static func match_bones(names: PackedStringArray, overrides: Dictionary = {}, pa
 			var want := str(overrides[j])
 			var bi := names.find(want)
 			if want != "" and bi < 0:
-				push_warning("외부 모델 뼈 덮어쓰기 %s → '%s' 가 없음" % [j, want])
+				push_warning("외부 .glb 뼈 덮어쓰기 %s → '%s' 가 없음" % [j, want])
 			if bi >= 0:
 				out[j] = bi
 				used[bi] = true
@@ -235,7 +235,7 @@ static func model_info(scene: PackedScene, cfg: Dictionary):
 	var root := scene.instantiate()
 	var sk := _skeleton(root)
 	if sk == null or not (root is Node3D):
-		push_warning("외부 모델에 Skeleton3D 가 없음")
+		push_warning("외부 .glb 에 Skeleton3D 가 없음")
 		root.free()
 		return null
 	var nb := sk.get_bone_count()
@@ -250,7 +250,7 @@ static func model_info(scene: PackedScene, cfg: Dictionary):
 		if not map.has(j):
 			missing.append(j)
 	if not missing.is_empty():
-		push_warning("외부 모델 뼈를 못 찾음: %s (<id>.json 'bones' 로 덮어쓰기)" % [missing])
+		push_warning("외부 .glb 에 없는 뼈: %s (<id>.json 'bones' 로 덮어쓰기)" % [missing])
 		root.free()
 		return null
 	var order: Array[int] = []
@@ -309,7 +309,7 @@ static func model_info(scene: PackedScene, cfg: Dictionary):
 					binds.append(bb if bb >= 0 else sk.find_bone(m.skin.get_bind_name(k)))
 			surfs.append({"path": root.get_path_to(m), "surf": si, "mesh": _one_surface(m.mesh, si), "color": col, "tex": tex, "skinned": skinned, "bone": bone, "binds": binds})
 	if first:
-		push_warning("외부 모델에 메시가 없음")
+		push_warning("외부 .glb 에 메시가 없음")
 		root.free()
 		return null
 	var info := {"scene": scene, "cfg": cfg, "names": names, "parents": parents, "map": map, "order": order, "rest_local": rest_local, "rest_global": rest_global,
@@ -736,7 +736,7 @@ class Ext extends Node3D:
 			var bi: int = int(info.map.get(str(a.get("joint", "hand_R")), -1))
 			var gp: String = str(a.get("glb", ""))
 			if bi < 0 or gp == "" or not ResourceLoader.exists(gp):
-				push_warning("외부 모델 붙이기 %s 를 못 함" % [a])
+				push_warning("외부 .glb attach %s 안 됨" % [a])
 				continue
 			var ba := BoneAttachment3D.new()
 			ba.bone_name = sk.get_bone_name(bi)
