@@ -111,16 +111,34 @@ static func _draw_back(c: Control, b: Button) -> void:
 	var top := TOP if not hot else Color(g.lerp(Color8(18, 12, 34), 1.0 - HOT_TOP_MIX), 0.8)
 	var bot := BOT if not hot else HOT_BOT
 	var p := shape(w, h, k)
-	c.draw_polygon(p, PackedColorArray([top, top, bot, bot]))
-	# 안쪽 빛: 바깥 평행사변형 → GLOW_PX 안쪽 평행사변형, 띠 4개 (바깥 g·GLOW_A → 안 투명)
+	# 바탕·안쪽 빛 띠 4개·빛 세모를 삼각형 한 묶음으로 (그리기 1번 — 따로 그리면 버튼마다 6번, 메뉴 8개면 +40)
 	var ga := Color(g, GLOW_A * (2.2 if hot else 1.0))
 	var g0 := Color(g, 0.0)
 	var d := GLOW_PX
 	var q := PackedVector2Array([p[0] + Vector2(d, d), p[1] + Vector2(-d, d), p[2] + Vector2(-d, -d), p[3] + Vector2(d, -d)])
+	# 사각형 5개 (바탕 + 빛 띠 4) — 꼭짓점·색을 차례로 (PackedArray 는 값 복사라 람다·함수에 넘기지 않고 여기서 채움)
+	var quads := [[[p[0], p[1], p[2], p[3]], [top, top, bot, bot]]]
 	for e in 4:
 		var n := (e + 1) % 4
-		c.draw_polygon(PackedVector2Array([p[e], p[n], q[n], q[e]]), PackedColorArray([ga, ga, g0, g0]))
-	c.draw_colored_polygon(strip(h, k), Color.WHITE if hot else g)
+		quads.append([[p[e], p[n], q[n], q[e]], [ga, ga, g0, g0]])
+	var pts := PackedVector2Array()
+	var cols := PackedColorArray()
+	var ids := PackedInt32Array()
+	for qd in quads:
+		var o := pts.size()
+		for i in 4:
+			pts.append(qd[0][i])
+			cols.append(qd[1][i])
+		ids.append_array(PackedInt32Array([o, o + 1, o + 2, o, o + 2, o + 3]))
+	var sc := Color.WHITE if hot else g
+	var tri := strip(h, k)
+	var o2 := pts.size()
+	for v in tri:
+		pts.append(v)
+		cols.append(sc)
+	for i in range(1, tri.size() - 1):
+		ids.append_array(PackedInt32Array([o2, o2 + i, o2 + i + 1]))
+	RenderingServer.canvas_item_add_triangle_array(c.get_canvas_item(), ids, pts, cols)
 
 
 static func _draw_sheen(c: Control, b: Button) -> void:
@@ -137,6 +155,9 @@ static func _draw_sheen(c: Control, b: Button) -> void:
 	# 세 세로 줄 (투명 · 흰 · 투명) 을 위·아래 줄에서 평행사변형 안으로 잘라 두 사다리꼴
 	var xs := [x0, x0 + bw / 2.0, x0 + bw]
 	var col := [Color(1, 1, 1, 0), Color(1, 1, 1, SHEEN_A), Color(1, 1, 1, 0)]
+	var pts := PackedVector2Array()
+	var cols := PackedColorArray()
+	var ids := PackedInt32Array()
 	for s in 2:
 		var tl := _clip_x(xs[s] + lean, 0.0, w, h, k)
 		var tr := _clip_x(xs[s + 1] + lean, 0.0, w, h, k)
@@ -144,4 +165,9 @@ static func _draw_sheen(c: Control, b: Button) -> void:
 		var bl := _clip_x(xs[s], h, w, h, k)
 		if tr - tl < 0.5 and br - bl < 0.5:
 			continue
-		c.draw_polygon(PackedVector2Array([Vector2(tl, 0), Vector2(tr, 0), Vector2(br, h), Vector2(bl, h)]), PackedColorArray([col[s], col[s + 1], col[s + 1], col[s]]))
+		var o := pts.size()
+		pts.append_array(PackedVector2Array([Vector2(tl, 0), Vector2(tr, 0), Vector2(br, h), Vector2(bl, h)]))
+		cols.append_array(PackedColorArray([col[s], col[s + 1], col[s + 1], col[s]]))
+		ids.append_array(PackedInt32Array([o, o + 1, o + 2, o, o + 2, o + 3]))
+	if not ids.is_empty(): # 두 사다리꼴을 한 번에 그림
+		RenderingServer.canvas_item_add_triangle_array(c.get_canvas_item(), ids, pts, cols)
