@@ -81,6 +81,7 @@ xvfb-run -a godot --path godot/client --rendering-driver opengl3 -- --auto host 
 xvfb-run -a godot --path godot/client --rendering-driver opengl3 -- --replay /tmp/game8.rec --profile replay [--prof] [--replay-render] [--set gfx=medium,third=true] [--shot a.png]
 ```
 
+- `--frame-log <tsv>` (W17): 재는 동안 프레임마다 벽시계 ms·스크립트 ms·위험 켬·그리기·물체 한 줄 — 한 프레임만 튀는지 (셰이더 첫 컴파일) 보기
 - `--census` (W15): 끝에 무리별 3D 물체·외곽선·삼각형, 보이는 2D 노드, viewport 마다 3D·그림자·2D 그리기
 - `--prof`: 구간별 ms/프레임 (`core/prof.gd` — world·몸·HUD·net 구간, 느린 프레임 6개). 꺼져 있으면 비용 거의 0 (테스트 `test_prof_off_is_free`)
 - `--replay-render`: 그리기 끔 대신 실제로 그리고 마지막에 그리기·물체·삼각형·영상 메모리 · `--set 키=값` 설정을 바꿔 알림만 (파일엔 안 남음 — 외곽선·그림자·화질 A/B)
@@ -231,3 +232,17 @@ SubViewport 는 그대로: 판 1인칭 1 (팔, 3인칭이면 꺼짐) · 대기�
 3. **외곽선 패스** — 화면 쪽은 삼각형의 ~15% (그림자 쪽은 W15 에 뺌). 먼 몸 생략·화면 공간 한 패스는 모습이 바뀜 (위). 남은 길: 떨어지는 칸 모양 (테마 칸 메시) 삼각형 줄이기
 4. HUD 0.17 · net 0.23 (JSON 파싱 0.11 = 엔진) · 표식·투사체·갈고리 0.12 · 격자·건축 블록 0.10 — 작음
 5. 렌더러: Forward+·Mobile 숫자는 재혁 PC (`start-lan-forward/mobile.bat`, `../README.md`)
+
+### W17 (2026-11-04) — 용암 (위험 액체) 이 나올 때 랙
+
+재연 기록 `lava8.rec` (8명·bowl 화산 맵, 서버 `LAVA_TRIGGER_AVG_HEIGHT` 를 0.12 로 낮춘 복사본으로 판 21초에 용암), `--replay-render --replay-fps 30 --frame-log`, 640×360, 3번씩:
+
+| | 용암 첫 프레임 벽시계 (중앙 프레임 대비) | 그 프레임 스크립트 |
+| --- | --- | --- |
+| 기준 (`a6dc963`) | 196 · 174 · 178ms (1.8~2.0배, +~85ms) | 29~31ms (world 위험 12.3 · audio 4.6) |
+| 지금 | 118 · 116 · 113ms (1.16~1.19배) | 17ms |
+| 표만 고치고 미리 그리기 끔 | 216ms (2.2배) | 17ms |
+
+원인: (1) 위험 셰이더 갈래 (near·far, 테마 STYLE·낮춤 SHIMMER) 와 가장자리 경고 셰이더가 처음 나오는 프레임에 컴파일 — 메뉴 G3.prewarm 은 메뉴 테마의 near 만 · (2) 닿는 곳 거리 표 (`hazard_field.gd field`, 19칸 판 화소 15k 두 번 훑기 + 그림 바이트) 가 한 번 12ms, 위험 중 칸이 떨어질 때마다 (격자 버전) 다시 셈 · (3) 위험 소리 파일을 그 프레임에 읽음. 스냅샷 크기는 그대로 (중앙 13.4k → 13.5k 글자), 위험 셰이더에 화면 복사 없음.
+고침: `hazard_view` 가 set_g3 (테마·낮춤이 정해질 때) 뒤 위험이 꺼진 동안 2프레임 같은 재질을 카메라 앞 1mm 상자로·경고 판을 세기 0 으로 그림, 처음 표 (zs < 0 은 격자와 무관) 를 미리 셈·올림, 칸 값 (`HF.columns`) 이 같으면 표를 다시 안 셈 (위험 위에 쌓이는 칸) · `field` 는 뚫린/먼 칸을 칸 단위로 Image 로 늘리고 사이 칸 화소만 훑음 (값 비트 그대로 — `test_hazard_field_fast_same_as_ref`, 11.8 → 2.3~3.7ms) · `music.gd` 가 테마가 정해질 때 위험 소리를 미리 불러 둠.
+모습: 같은 가상 시각 (용암 위, 3인칭 1280×720) 차 > 8/255 화소 기준↔기준 1.07% · 지금↔지금 1.30% · 기준↔지금 0.66~2.73% (래그돌 흔들림 안).
