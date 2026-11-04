@@ -17,12 +17,15 @@ extends RefCounted
 # shake_hit·shake_hurt = JS 흔들림 (FX_SHAKE_HIT·FX_SHAKE_HURT) 에 곱함. medium 1·heavy (때림 2·맞음 1.6) 은 JS 그대로
 const HIT_TIERS := {
 	"light": {"flash": [0.8, 90.0, 0.6, 0], "shock": [0.0, 0.0], "sparks": [3, 6.0, 0.22, 140.0], "dust": [0, 0.0], "stop": 0.0, "kick": 0.35, "fov": 0.0, "vm": 0.012, "body": 0.0, "shake_hit": 0.6, "shake_hurt": 0.7},
-	"medium": {"flash": [1.25, 110.0, 0.8, 1], "shock": [1.6, 170.0], "sparks": [6, 8.0, 0.32, 180.0], "dust": [0, 0.0], "stop": 0.0, "kick": 0.8, "fov": 0.0, "vm": 0.022, "body": 60.0, "shake_hit": 1.0, "shake_hurt": 1.0},
-	"heavy": {"flash": [1.9, 150.0, 1.0, 1], "shock": [2.6, 220.0], "sparks": [11, 11.0, 0.5, 240.0], "dust": [4, 0.55], "stop": 45.0, "kick": 1.6, "fov": 0.025, "vm": 0.035, "body": 90.0, "shake_hit": 2.0, "shake_hurt": 1.6},
-	"crit": {"flash": [2.7, 190.0, 1.0, 1], "shock": [3.6, 260.0], "sparks": [16, 13.0, 0.62, 280.0], "dust": [6, 0.7], "stop": 70.0, "kick": 2.4, "fov": 0.045, "vm": 0.05, "body": 120.0, "shake_hit": 2.6, "shake_hurt": 2.0},
+	"medium": {"flash": [1.5, 120.0, 0.85, 1], "shock": [1.6, 170.0], "sparks": [6, 8.0, 0.32, 180.0], "dust": [0, 0.0], "stop": 0.0, "kick": 0.8, "fov": 0.0, "vm": 0.022, "body": 60.0, "shake_hit": 1.0, "shake_hurt": 1.0},
+	"heavy": {"flash": [2.3, 160.0, 1.0, 1], "shock": [2.6, 220.0], "sparks": [11, 11.0, 0.6, 240.0], "dust": [4, 0.55], "stop": 45.0, "kick": 1.6, "fov": 0.025, "vm": 0.035, "body": 90.0, "shake_hit": 2.0, "shake_hurt": 1.6},
+	"crit": {"flash": [3.2, 200.0, 1.0, 1], "shock": [3.6, 260.0], "sparks": [16, 13.0, 0.8, 280.0], "dust": [6, 0.7], "stop": 70.0, "kick": 2.4, "fov": 0.045, "vm": 0.05, "body": 120.0, "shake_hit": 2.6, "shake_hurt": 2.0},
 }
 const HIT_SPARK_COLOR := {"light": 0xfff2c0, "medium": 0xffe08a, "heavy": 0xffa040, "crit": 0xffd030}
-const HIT_FLASH_COLOR := {"light": 0xfff8e0, "medium": 0xfff4d0, "heavy": 0xffd090, "crit": 0xffe060}
+const HIT_FLASH_COLOR := {"light": 0xfff2c8, "medium": 0xffe6a0, "heavy": 0xffa848, "crit": 0xffc020}
+# 빛 모양별 가림 (0 = 순수 가산 — 어두운 데선 같지만 밝은 잔디·하늘 위에선 거의 안 보임, 1 = 뒤를 덮음): 둥근·별·고리·줄
+const GLOW_OCCLUDE := [0.45, 0.55, 0.3, 0.35]
+const HIT_FLASH_FRONT := 0.7 # 맞은 가슴 번쩍을 카메라 쪽으로 이만큼 (칸) — 몸 가운데라 몸에 가려 가장자리만 보이던 것
 const HIT_DUST_COLOR := 0xb8ad9c
 const HIT_BODY_COLOR := 0xffffff # 맞은 몸 번쩍 (치명은 HIT_FLASH_COLOR.crit 쪽으로 섞음)
 const HIT_IGNORED_FLASH := [0.6, 80.0, 0.4] # 무적이라 무시된 타: 작은 회색 빛 (크기·ms·세기)

@@ -65,6 +65,9 @@ func _front(dist := 5.0) -> Vector3:
 	var cam := get_viewport().get_camera_3d()
 	var Co := preload("res://core/coords.gd")
 	var p := Co.game(cam.global_position)
+	var me := Store.me()
+	if not me.is_empty(): # 3인칭이면 내 몸 앞 (카메라와 사이에 내 몸이 안 끼게)
+		p = Vector3(float(me.x), float(me.y), float(me.z))
 	var f := Co.game(-cam.global_basis.z)
 	var v := Vector2(f.x, f.y).normalized() * dist
 	var x := p.x + v.x

@@ -61,6 +61,8 @@ var g_pow := PackedFloat64Array()
 var g_grav := PackedFloat64Array()
 var g_rot := PackedFloat64Array()
 var g_hot := PackedFloat64Array()
+var g_occ := PackedFloat64Array()
+var g_front := PackedFloat64Array() # 카메라 쪽으로 당김 (칸): 몸 가운데 번쩍이 몸에 가리지 않게
 var g_kind := PackedByteArray()
 var g_flat := PackedByteArray()
 var gi := 0
@@ -176,7 +178,7 @@ func _init() -> void:
 		g_pos.append(Vector3.ZERO)
 		g_vel.append(Vector3.ZERO)
 		g_color.append(Color.WHITE)
-	for arr in [g_life, g_max, g_s0, g_s1, g_pow, g_grav, g_rot, g_hot]:
+	for arr in [g_life, g_max, g_s0, g_s1, g_pow, g_grav, g_rot, g_hot, g_occ, g_front]:
 		arr.resize(MAX_GLOW)
 	g_max.fill(1.0)
 	g_kind.resize(MAX_GLOW)
@@ -299,6 +301,8 @@ func glow(pos: Vector3, color: int, size: float, ms: float, a := 1.0, kind := RO
 	g_grav[k] = float(o.get("grav", 0.0))
 	g_rot[k] = float(o.get("rot", randf() * TAU))
 	g_hot[k] = float(o.get("hot", 0.6))
+	g_occ[k] = float(o.get("occ", FXC.GLOW_OCCLUDE[kind]))
+	g_front[k] = float(o.get("front", 0.0))
 	g_kind[k] = kind
 	g_flat[k] = 1 if o.get("flat", false) else 0
 
@@ -369,8 +373,9 @@ func impact(pos: Vector3, dir, tier_name: String) -> void:
 	var T := FXC.tier(tier_name)
 	var f: Array = T.flash
 	var fc := int(FXC.HIT_FLASH_COLOR.get(tier_name, 0xffffff))
-	glow(pos, fc, f[0], f[1], f[2], int(f[3]), {"grow": 1.35, "hot": 1.0, "pw": 2.0})
-	glow(pos, 0xffffff, f[0] * 0.45, f[1] * 0.6, f[2], ROUND, {"hot": 1.0})
+	var fr := float(FXC.HIT_FLASH_FRONT)
+	glow(pos, fc, f[0], f[1], f[2], int(f[3]), {"grow": 1.35, "hot": 1.0, "pw": 2.0, "front": fr})
+	glow(pos, 0xffffff, f[0] * 0.6, f[1] * 0.5, f[2], ROUND, {"hot": 1.0, "front": fr}) # 첫 프레임 하얀 핵
 	var s: Array = T.shock
 	if s[0] > 0.0:
 		glow(pos, fc, 0.3, s[1], 0.85, SHOCK, {"grow": s[0] / 0.3, "pw": 1.4, "hot": 0.3})
@@ -383,7 +388,7 @@ func impact(pos: Vector3, dir, tier_name: String) -> void:
 
 
 # 폭발: 불덩이 + 번쩍 + 바닥 빛 고리 + 연기 + 조각 + 불꽃 줄. k = 크기 (FXC.BOOM_K), dir = {x,y} 또는 null
-func explode(pos: Vector3, k := 1.0, dir = null, ground_z = null) -> void:
+func explode(pos: Vector3, k := 1.0, dir = null, ground_z = null, with_chunks := true) -> void:
 	var B := FXC.BOOM
 	var fl: Array = B.flash
 	glow(pos, 0xfff0c0, fl[0] * k, fl[1], 1.0, STAR, {"grow": 1.3, "hot": 1.0})
@@ -398,7 +403,8 @@ func explode(pos: Vector3, k := 1.0, dir = null, ground_z = null) -> void:
 	var sm: Array = B.smoke
 	smoke(pos + Vector3(0, 0, 0.2), int(B.smoke_color), FXC.count(sm[0] * (0.6 + 0.4 * k), lv), sm[1] * k, sm[2], sm[3], 0.9 * k, 0.7)
 	var ch: Array = B.chunks
-	chunks(pos, dir, int(B.chunk_color), FXC.count(ch[0] * k, lv), ch[1] * (0.7 + 0.3 * k), ch[2])
+	if with_chunks:
+		chunks(pos, dir, int(B.chunk_color), FXC.count(ch[0] * k, lv), ch[1] * (0.7 + 0.3 * k), ch[2])
 	var sp: Array = B.sparks
 	sparks(pos, Vector3(0, 0, 0.6), int(B.spark_color), FXC.count(sp[0] * k, lv), sp[1] * (0.7 + 0.3 * k), sp[2], sp[3], 1.0)
 
@@ -590,17 +596,17 @@ func _update_glow(dt: float, cb: Basis) -> void:
 				along = cb.x
 			along = along.normalized()
 			var side := cz.cross(along).normalized()
-			var w := s * 0.16
+			var w := s * 0.22
 			tr = Transform3D(Basis(along * s, side * w, cz), gp - along * (s * 0.5))
 		elif g_flat[k]:
 			tr = Transform3D(flat.scaled_local(Vector3(s, s, s)), gp)
 		else:
-			tr = Transform3D(cb.scaled_local(Vector3(s, s, s)), gp)
+			tr = Transform3D(cb.scaled_local(Vector3(s, s, s)), gp + cz * g_front[k])
 		glow_mm.set_instance_transform(n, tr)
 		var c := g_color[k]
 		c.a *= pow(1.0 - t, g_pow[k])
 		glow_mm.set_instance_color(n, c)
-		glow_mm.set_instance_custom_data(n, Color(g_kind[k], g_rot[k], g_hot[k], 0.0))
+		glow_mm.set_instance_custom_data(n, Color(g_kind[k], g_rot[k], g_hot[k], g_occ[k]))
 		n += 1
 	glow_mm.visible_instance_count = n
 	glow_mmi.visible = n > 0
