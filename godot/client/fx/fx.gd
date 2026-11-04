@@ -310,6 +310,11 @@ func _skill(e: Dictionary, t: String) -> bool:
 				return false
 			if t == "mark":
 				fx.burst(_at(tp, C.PLAYER_HEIGHT + 0.3), null, mark_color(e.get("n", 0)), 10 + int(e.get("n", 0)) * 4, 2.5, 0.08, 0.4)
+				var full := float(e.get("n", 0)) >= C.HUNTER_MARK_MAX # W18 꽉 찬 순간: 금빛 번쩍 + 빛 고리 (표식 폭발)
+				fx.glow(_at(tp, C.PLAYER_HEIGHT + 0.3), mark_color(e.get("n", 0)), 2.2 if full else 0.8, 220.0 if full else 120.0, 1.0, fx.STAR if full else fx.ROUND, {"grow": 1.3, "hot": 0.8})
+				if full:
+					fx.glow(_at(tp, 1.0), mark_color(e.get("n", 0)), 0.4, 300.0, 0.9, fx.SHOCK, {"grow": 9.0, "pw": 1.3})
+					fx.sparks(_at(tp, 1.0), Vector3.ZERO, mark_color(e.get("n", 0)), FXC.count(10, fx.lv), 8.0, 0.4, 260.0, 1.0)
 			else:
 				fx.burst(_at(tp, C.PLAYER_HEIGHT + 0.3), null, 0x886666, 5, 1.2, 0.06, 0.3)
 		"leapWarn":
@@ -330,6 +335,7 @@ func _skill(e: Dictionary, t: String) -> bool:
 		"blink":
 			fx.burst(Vector3(e.from.x, e.from.y, e.to.z + 0.8), null, 0x404060, 10, 2.0, 0.1, 0.4)
 			fx.burst(_at(e.to, 0.8), null, 0x404060, 10, 2.0, 0.1, 0.4)
+			fx.glow(_at(e.to, 0.9), 0xc8d0ff, 1.4, 160.0, 0.8, fx.STAR, {"grow": 1.4, "hot": 1.0}) # W18 베고 나온 자리 번쩍
 		"wallKick":
 			var wall := Vector3(e.x + e.dir.x * 0.5, e.y + e.dir.y * 0.5, e.z + 0.6)
 			fx.ring(wall, 0xffffff, 3.0, 0.3)
@@ -347,6 +353,8 @@ func _skill(e: Dictionary, t: String) -> bool:
 			fx.burst(pos, null, 0xd8f0ff, 30, 9.0, 0.11, 0.6)
 			fx.burst(pos, null, 0x9ab8d0, 16, 6.0, 0.08, 0.5)
 			fx.ring(pos, 0xd8f0ff, 3.4, 0.3)
+			fx.glow(pos, 0xd8f0ff, 2.6, 200.0, 1.0, fx.STAR, {"grow": 1.4, "hot": 1.0}) # W18 유리처럼 깨짐: 번쩍 + 하늘빛 조각 불꽃
+			fx.sparks(pos, Vector3.ZERO, 0xd8f0ff, FXC.count(14, fx.lv), 9.0, 0.35, 320.0, 1.0)
 		"quakeRise":
 			var cells: Array = e.get("cells", [])
 			if cells.is_empty():
@@ -355,9 +363,13 @@ func _skill(e: Dictionary, t: String) -> bool:
 			for c in cells:
 				fx.burst(_cell(c, 0.1), null, int(C.QUAKE_COLOR), 6, 4.0, 0.12, 0.5)
 				fx.burst(_cell(c, 0.6), {"x": 0, "y": 0}, 0x6a5e52, 2, 5.0, 0.16, 0.5) # 튀는 흙덩이
+				var QR: Dictionary = FXC.QUAKE_RISE # W18 칸마다 솟는 흙먼지 기둥 + 튀는 돌
+				fx.smoke(_cell(c, 0.2), int(FXC.QUAKE.dust_color), FXC.count(QR.dust[0], fx.lv), QR.dust[1], QR.dust[2], QR.dust[3], 0.3, 0.65)
+				fx.chunks(_cell(c, 0.5), null, int(C.QUAKE_COLOR), FXC.count(QR.chunks[0], fx.lv), QR.chunks[1], QR.chunks[2])
 				sum += Vector3(c[0], c[1], c[2])
 			sum /= cells.size()
 			fx.ring(Vector3(sum.x + 0.5, sum.y + 0.5, sum.z + 0.05), int(C.QUAKE_COLOR), 6.0, 0.35, true)
+			fx.glow(Vector3(sum.x + 0.5, sum.y + 0.5, sum.z + 0.06), int(FXC.QUAKE.glow_color), 0.4, 420.0, 0.8, fx.SHOCK, {"grow": 16.0, "flat": true, "pw": 1.3}) # W18 바닥 빛 고리
 			if _near(_dist(sum.x + 0.5, sum.y + 0.5, sum.z), 8.0):
 				fx.shake(0.28, 350.0)
 		"quakeFall":
@@ -384,6 +396,7 @@ func _skill(e: Dictionary, t: String) -> bool:
 		"slam":
 			fx.ring(_at(e, 0.1), 0xc0b090, float(e.r) * 2, 0.4, true)
 			fx.burst(_at(e, 0.2), null, 0xc0b090, 28, 7.0, 0.14, 0.6)
+			fx.quake(_at(e), float(e.r)) # W18 땅 충격
 			var m := Store.me()
 			if not m.is_empty() and Vector2(m.x - e.x, m.y - e.y).length() < float(e.r) * 2:
 				fx.shake(0.25, 350.0)
@@ -402,6 +415,7 @@ func _skill(e: Dictionary, t: String) -> bool:
 			fx.burst(muzzle, {"x": f.x, "y": f.y}, 0xffffe0, 10, 6.0, 0.16, 0.12)
 			fx.burst(muzzle, {"x": f.x * 0.3, "y": f.y * 0.3}, 0x8a8a8a, 16, 1.5, 0.16, 1.4)
 			fx.ring(muzzle, 0xffd080, 2.4, 0.18)
+			fx.glow(muzzle, 0xffe8a0, 1.5, 110.0, 1.0, fx.STAR, {"grow": 1.3, "hot": 1.0, "rot": e.yaw}) # W18 포구 번쩍
 			if _near(0.0 if me else _dist(e.x, e.y, e.z), 4.0):
 				fx.shake(0.18 if me else 0.1, 200.0)
 		"noteFire":
@@ -451,6 +465,7 @@ func _at_player(e: Dictionary, t: String) -> bool:
 	match t:
 		"empower":
 			fx.burst(_at(a, 1.0), null, int(C.EMPOWER_GLOW), 24, 5.0, 0.1, 0.6)
+			fx.glow(_at(a, 1.0), int(C.EMPOWER_GLOW), 2.4, 260.0, 0.9, fx.STAR, {"grow": 1.4, "hot": 0.7}) # W18
 		"armor":
 			fx.burst(_at(a, 1.0), null, 0xfff0a0, 14, 6.0, 0.06, 0.3)
 		"amp":

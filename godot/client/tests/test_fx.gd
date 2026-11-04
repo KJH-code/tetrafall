@@ -404,3 +404,65 @@ func test_w18_body_flash_and_star_delay() -> void:
 	b.on_event({"type": "hit", "by": 9, "target": 4, "ok": true, "star": true, "late": true})
 	check(b.hit != null, "표창이 닿으면 (late) 몸짓")
 	b.free()
+
+
+# W18 묶음 효과 수 (화질 높음): 폭발·땅 충격·타격 — 수가 fx_config 값대로, 보통은 × 0.7
+func test_w18_combo_counts() -> void:
+	var fx := Effects.new()
+	fx.lv = FXC.LEVELS.high
+	var B: Dictionary = FXC.BOOM
+	fx.explode(Vector3(3, 3, 1), 1.0)
+	check(fx.gi == 1 + int(B.fire[0]) + 1 + int(B.sparks[0]), "폭발 빛 = 번쩍 1 + 불덩이 + 바닥 고리 1 + 불꽃 줄 (%d)" % fx.gi)
+	check(fx.si == int(B.smoke[0]) and fx.ci == int(B.chunks[0]), "폭발 연기 %d · 조각 %d" % [fx.si, fx.ci])
+	fx.explode(Vector3(3, 3, 1), 1.0, null, null, false)
+	check(fx.ci == int(B.chunks[0]), "건축가 폭파는 판자 조각이 따로라 돌 조각 없음")
+	var g0: int = fx.gi
+	fx.impact(Vector3(3, 3, 1), {"x": 1, "y": 0}, "crit")
+	var T := FXC.tier("crit")
+	check(fx.gi - g0 == 3 + int(T.sparks[0]), "치명 = 번쩍 2 + 빛 고리 1 + 불꽃 줄 (%d)" % (fx.gi - g0))
+	g0 = fx.gi
+	fx.impact(Vector3(3, 3, 1), null, "light")
+	check(fx.gi - g0 == 2 + int(FXC.tier("light").sparks[0]), "약타 = 번쩍 2 + 불꽃 줄, 빛 고리 없음 (%d)" % (fx.gi - g0))
+	var s0: int = fx.si
+	fx.quake(Vector3(3, 3, 0), 2.0)
+	check(fx.si - s0 == int(FXC.QUAKE.dust[0]), "땅 충격 흙먼지 %d" % (fx.si - s0))
+	fx.lv = FXC.LEVELS.medium
+	g0 = fx.gi
+	fx.impact(Vector3(3, 3, 1), null, "crit")
+	check(fx.gi - g0 == 3 + roundi(T.sparks[0] * 0.7), "보통 = 불꽃 줄 × 0.7 (%d)" % (fx.gi - g0))
+	fx.free()
+
+
+# W3 남은 것 (render.js): 광전사 분노 김 · 닌자 강화 손 불티 · 바드 꽂기 속도선 + W18 낙사 잔상은 낮음이면 없음
+func test_w18_char_fx_like_js() -> void:
+	var BF := preload("res://world/body_fx.gd")
+	var bf = BF.new()
+	var fx := Effects.new()
+	fx.lv = FXC.LEVELS.high
+	bf.effects = fx
+	bf.bodies = {"shown": {5: Vector3(1, 2, 0)}, "nodes": {}}
+	var calm := {"id": 5, "alive": true, "char": "berserker", "damage": 0}
+	for i in 200:
+		bf._char_fx(calm, Vector3(1, 2, 0), false, 0.05)
+	check(fx.pi == 0 and fx.gi == 0, "분노 없으면 김 없음")
+	var rage := {"id": 5, "alive": true, "char": "berserker", "damage": C.BERSERK_RAGE_PCT}
+	for i in 200:
+		bf._char_fx(rage, Vector3(1, 2, 0), false, 0.05)
+	check(fx.pi > 50 and fx.gi > 20, "분노 꽉 차면 김 (JS 파편, %d) + 붉은 기운 (%d)" % [fx.pi, fx.gi])
+	var p0: int = fx.pi
+	var emp := {"id": 5, "alive": true, "char": "ninja", "empower": 3000}
+	for i in 100:
+		bf._char_fx(emp, Vector3(1, 2, 0), false, 0.02)
+	check(fx.pi - p0 > 20, "닌자 강화 손 불티 (초당 25, %d)" % (fx.pi - p0))
+	var g0: int = fx.gi
+	bf.on_event({"type": "dive", "who": 5})
+	check(bf.dives.has(5), "기타 꽂기 시작")
+	bf._dives(null, 0.1, BF.now_ms())
+	check(fx.gi - g0 == int(C.DIVE_LINE_RATE * 0.1), "속도선 DIVE_LINE_RATE 개/초 (%d)" % (fx.gi - g0))
+	bf.on_event({"type": "diveEnd", "who": 5, "what": "land", "x": 1.0, "y": 2.0, "z": 0.0})
+	check(not bf.dives.has(5), "꽂기 끝")
+	fx.lv = FXC.LEVELS.low
+	bf.fall_ghost(5, {"x": 1, "y": 0})
+	check(bf.ghosts.is_empty(), "낮음이면 낙사 잔상 없음")
+	fx.free()
+	bf.free()

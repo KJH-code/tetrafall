@@ -5,6 +5,7 @@
 extends Node3D
 
 const C := preload("res://core/config.gd")
+const FXC := preload("res://fx/fx_config.gd")
 const Co := preload("res://core/coords.gd")
 const WC := preload("res://world/world_config.gd")
 
@@ -98,6 +99,9 @@ func on_event(e: Dictionary) -> void:
 			_burst(p, {"x": d.x * 1.2, "y": d.y * 1.2}, 0xffd040, 22 if big else 12, 7 if big else 5, 0.15 if big else 0.1, 0.25)
 			_burst(p, {"x": d.x * 0.6, "y": d.y * 0.6}, 0x888888, 26 if big else 14, 3.5 if big else 2.5, 0.2 if big else 0.14, 0.8)
 			_ring(p, 0xffe0a0, 2.6 if big else 1.4, 0.2)
+			if effects != null and effects.has_method("glow"): # W18 포구 번쩍 + 연기 뭉치
+				effects.glow(p, 0xffe8a0, 2.2 if big else 1.4, 120.0, 1.0, effects.STAR, {"grow": 1.3, "hot": 1.0})
+				effects.smoke(p + Vector3(d.x * 0.4, d.y * 0.4, 0), 0x8a8a8a, 3 if big else 2, 0.6 if big else 0.4, 900.0, 0.4, 0.3, 0.5)
 		"shellEnd": # 닿은 것에 따라: expire = 연기만, 보통 포탄 = 터짐 (대형은 bigShellBlast)
 			var p := Vector3(e.x, e.y, e.z)
 			if str(e.get("what", "")) == "expire":
@@ -106,6 +110,8 @@ func on_event(e: Dictionary) -> void:
 				_burst(p, null, 0xffb040, 12, 5, 0.1, 0.3)
 				_burst(p, null, 0x777777, 12, 3, 0.14, 0.6)
 				_ring(p, 0xffd080, 2, 0.25)
+				if effects != null and effects.has_method("explode"): # W18 작은 폭발
+					effects.explode(p, FXC.BOOM_K.shell)
 		"blockBreak": # 부서진 칸마다 번쩍 + 돌 파편 + 옆 블록 들썩
 			var cells: Array = e.get("cells", [])
 			if cells.is_empty():
@@ -124,6 +130,8 @@ func on_event(e: Dictionary) -> void:
 			_ring(p, 0xffc080, float(e.get("r", 1.8)) * 2, 0.35, true)
 			_burst(p, null, 0xffb040, 16, 6, 0.12, 0.3)
 			_burst(p, null, 0x9a8a78, 20, 4, 0.15, 0.7)
+			if effects != null and effects.has_method("explode"): # W18 발밑 폭발 (바닥 빛 고리·흙먼지·조각)
+				effects.explode(p + Vector3(0, 0, 0.3), FXC.BOOM_K.groundShot, null, p.z)
 		"bigShellBlast": # 대포수 R 끝 폭발
 			var p := Vector3(e.x, e.y, e.z)
 			var r := float(e.get("r", 2.2))
@@ -131,6 +139,8 @@ func on_event(e: Dictionary) -> void:
 			_ring(Vector3(e.x, e.y, maxf(0.05, e.z - 0.5)), 0xffd080, r * 2, 0.45, true)
 			_burst(p, null, 0xff8020, 40, 9, 0.16, 0.5)
 			_burst(p, null, 0x666666, 30, 4, 0.22, 1.0)
+			if effects != null and effects.has_method("explode"): # W18 큰 폭발 (불덩이·충격파·연기·잔해)
+				effects.explode(p, FXC.BOOM_K.bigShell, null, maxf(0.05, e.z - 0.5))
 		"star": # 닌자 표창 한 발: 아주 빠르게 직진 (판정은 즉시)
 			star_shot(e)
 		"aim": # 사냥꾼 R 조준: 대상마다 빨간 조준점이 조여 듦
@@ -162,6 +172,9 @@ func star_shot(e: Dictionary) -> void:
 	var t := Vector3(e.to.x, e.to.y, e.to.z)
 	n.position = Co.gpos(f)
 	stars.append({"node": n, "from": f, "to": t, "t0": now_ms()})
+	# W18 표창 궤적: 표창과 같이 날아가는 빛 줄 (빛 MultiMesh — 그리기 0)
+	if effects != null and effects.has_method("glow") and (t - f).length() > 0.1:
+		effects.glow(f, 0xd8f0ff, 0.9, C.STAR_FLY_MS, 0.8, effects.STREAK, {"vel": (t - f) / (C.STAR_FLY_MS / 1000.0), "pw": 1.0, "hot": 1.0, "rot": 0.0})
 
 
 # ---------- 사냥꾼 조준·화살 ----------
