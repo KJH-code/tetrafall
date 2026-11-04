@@ -173,6 +173,18 @@ func _ambient(theme, now: float) -> void:
 	amb_ping.play()
 
 
+# W17: 위험 소리 (지속음·튀는 소리·차오름·잠겨 죽음) 를 맵 테마가 정해질 때 (대기실·카운트다운) 미리 불러 둠 — 예전엔 위험이 처음 나오는 프레임에 파일을 읽어 (그 프레임 audio ~5ms)
+func _prefetch_hazard(style: String) -> void:
+	var rec = sfx.manifest.get("hazard", {}).get(style)
+	if rec != null:
+		sfx.stream(rec.loop.file)
+		for pop in rec.get("pops", []):
+			sfx.stream(pop.file)
+	for key in ["rise." + style, "lavaDeath." + style]:
+		for r in sfx.manifest.get("sfx", {}).get(key, []):
+			sfx.stream(r.file)
+
+
 # 위험 액체 지속음: 판 중 위험이 켜져 있으면 표면까지 높이로 크기, 튀는 소리는 초당 pops[종류] 번 (sound.js hazard)
 func _hazard(state: Dictionary, dt: float, ear_z) -> void:
 	var style := SM.hazard_style(state)
@@ -185,6 +197,7 @@ func _hazard(state: Dictionary, dt: float, ear_z) -> void:
 		hz_style = style
 		hz.stop()
 		hz_level = 0.0
+		_prefetch_hazard(style)
 	var rec = sfx.manifest.get("hazard", {}).get(style)
 	if rec == null:
 		return
