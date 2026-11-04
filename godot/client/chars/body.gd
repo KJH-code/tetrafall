@@ -17,6 +17,8 @@ const Prof := preload("res://core/prof.gd")
 const Baked := preload("res://chars/baked.gd")
 const BakedBatch := preload("res://chars/baked_batch.gd")
 const External := preload("res://chars/external.gd")
+const FXC := preload("res://fx/fx_config.gd")
+const SM := preload("res://audio/sound_math.gd")
 
 # 스킬·필살기 이벤트 → 몸 동작 (main.js handleEvent 의 renderer.skillMove). [동작, 준비 ms 를 e.ms 에서 받음]
 const SKILL_START := {"leapWarn": ["hunterLeap", true], "aim": ["hunterAim", true], "blink": ["ninjaDash", false], "wallKick": ["ninjaWallKick", false], "charge": ["tankCharge", false], "slamWarn": ["tankSlam", true], "wallWarn": ["builderWall", true], "bigBombWarn": ["builderBig", false], "padBoost": ["builderPad", false], "song": ["bardSong", false], "rush": ["berserkerLeap", false], "rushLand": ["berserkerSlam", false], "groundShot": ["cannonJump", false], "blockGrab": ["hookSlam", true]}
@@ -64,6 +66,9 @@ var hz_light := true # 위험 빛 받음 — 자기 SubViewport 몸 (1인칭 팔
 # 몸 색 효과 (render.js 매 프레임 bodyMat·mats 색): 시각 ms
 var glow_until := -1e9
 var glow_color := Color.WHITE
+var hit_flash_at := -1e9 # W18 맞은 몸 하얗게 번쩍 (ms, fx_config HIT_TIERS.body)
+var hit_flash_ms := 0.0
+var hit_flash_color := Color.WHITE
 var windup_until := -1e9
 var armor_until := -1e9
 var armor_hit_at := -1e9
@@ -1510,6 +1515,11 @@ func fx_colors(p: Dictionary, now: float) -> Array:
 	if now < glow_until:
 		oe = glow_color
 		se = glow_color
+	var hf := now - hit_flash_at
+	if hf >= 0.0 and hf < hit_flash_ms:
+		var k := 1.0 - hf / hit_flash_ms
+		oe = oe.lerp(hit_flash_color, k * k)
+		se = se.lerp(hit_flash_color, k * k)
 	var wu := windup_until - now
 	if wu > 0.0:
 		var v := 0.55 + 0.45 * clampf(1.0 - wu / C.SKILL_WINDUP_MS, 0.0, 1.0)
@@ -1664,8 +1674,15 @@ func on_event(e: Dictionary) -> void:
 				counter_at = now
 		"hit":
 			if hit_me and e.get("ok", false):
+				# 닌자 표창: 판정은 즉시지만 맞는 몸짓은 표창이 닿을 때 (main.js handleEvent STAR_FLY_MS — fx.gd·audio.gd 와 같은 때)
+				if star_wait(e) and is_inside_tree():
+					var late := e.duplicate()
+					late.late = true
+					get_tree().create_timer(C.STAR_FLY_MS / 1000.0).timeout.connect(on_event.bind(late))
+					return
 				var heavy: bool = e.get("crit", false) or e.get("kind") == "blast" or e.get("kind") == "bigbomb"
 				_hit_react(_dir_from(e.get("by")), heavy, e.get("crit", false), str(e.get("kind", "")), now)
+				hit_flash(SM.hit_tier(e))
 		"hook":
 			if hit_me:
 				var dv = _dir_from(who)
@@ -1778,6 +1795,21 @@ func _hit_react(dir, heavy: bool, crit: bool, kind: String, now: float) -> void:
 	hit = {"id": seq, "t0": now, "stop": stop, "dir": dir, "pow": power}
 	if act != null and act.broken == null:
 		act = null
+
+
+# 표창 맞음은 표창이 닿을 때까지 기다림 (fx.gd·audio.gd 와 같은 규칙, late = 다시 부른 것)
+static func star_wait(e: Dictionary) -> bool:
+	return e.get("star", false) and not e.get("late", false)
+
+
+# W18 맞은 몸 번쩍: 단계별 ms (0 = 없음), 치명은 금빛 섞음. 스킬 빛·준비·아머 번쩍보다 앞 (짧음)
+func hit_flash(tier: String) -> void:
+	var ms := float(FXC.tier(tier).body)
+	if ms <= 0.0:
+		return
+	hit_flash_at = Time.get_ticks_msec() * 1.0
+	hit_flash_ms = ms
+	hit_flash_color = _hex(FXC.HIT_BODY_COLOR).lerp(_hex(FXC.HIT_FLASH_COLOR.crit), 0.5 if tier == "crit" else 0.0)
 
 
 # figureAnim 에 넘길 맞은 것 (몸 기준 밀린 방향). 오래되면 버림

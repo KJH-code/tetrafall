@@ -125,6 +125,10 @@ func _ready() -> void:
 	get_tree().root.add_child.call_deferred(tail)
 	if args.has("set"):
 		_apply_sets.call_deferred(parse_sets(str(args.set)))
+	if args.has("fx-probe"): # W18: 정한 순간에 가짜 효과 이벤트 + 연속 프레임 (core/fx_probe.gd)
+		var pr = load("res://core/fx_probe.gd").new()
+		pr.replay = self
+		get_tree().root.add_child.call_deferred(pr)
 	if args.has("frame-log"):
 		flog = FileAccess.open(str(args["frame-log"]), FileAccess.WRITE)
 		flog.store_line("frame\tvirt_s\twall_ms\tscript_ms\tlava\tdraws\tobjects")
