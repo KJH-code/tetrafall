@@ -541,6 +541,8 @@ static func hazard_shader(style: int, far: bool, shimmer: bool) -> Shader:
 static func hazard_field_texture(f: Dictionary) -> ImageTexture:
 	var nx: int = f.nx
 	var ny: int = f.ny
+	if f.has("bytes"): # W17: field() 가 같은 값을 미리 만들어 둠 (화소 15k 를 GDScript 로 돌던 4ms)
+		return ImageTexture.create_from_image(Image.create_from_data(nx, ny, false, Image.FORMAT_RGBA8, f.bytes))
 	var data := PackedByteArray()
 	data.resize(nx * ny * 4)
 	for i in nx * ny:
@@ -678,7 +680,7 @@ static func prewarm(world: Node3D, theme_id = null, frames := 3) -> Node3D:
 	var mats: Array = [
 		toon_material(Color.WHITE), toon_material(Color.WHITE, {"opacity": 0.5}), toon_material(Color.WHITE, {"vertex_color": true, "outline": false}),
 		toon_material(Color.WHITE, {"hz_tint": true}), terrain_material(tid), floor_material(tid), piece_material(tid), piece_material(null), piece_material(tid, null, {"transparent": true}), # 테마가 늘 투명이어도 (수정) 불투명 갈래까지
-		hazard_material(tid, null, false), scenery_material({"unshaded": true}), scenery_material({"vertex_color": true}),
+		hazard_material(tid, null, false), hazard_material(tid, null, true), scenery_material({"unshaded": true}), scenery_material({"vertex_color": true}),
 	]
 	var box := BoxMesh.new()
 	box.size = Vector3.ONE * 0.001
