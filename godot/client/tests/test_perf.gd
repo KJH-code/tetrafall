@@ -343,3 +343,107 @@ func test_outline_not_in_shadow_map() -> void:
 		if FileAccess.get_file_as_string(f).contains("PROJECTION_ORTHOGONAL"):
 			bad.append(f)
 	check(bad.is_empty(), "직교 카메라를 쓰면 외곽선이 안 보임: %s" % str(bad))
+
+
+# ---- W17 (용암이 나올 때 랙): 위험 셰이더 미리 그리기 · 거리 표 빠르게·안 바뀌면 그대로 · 나오는 프레임 일 상한
+func _hz_grid(w: int, d: int, h: int, seed: int) -> PackedByteArray:
+	var g := PackedByteArray()
+	g.resize(w * d * h)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed
+	for x in w:
+		for y in d:
+			for z in rng.randi_range(0, 5):
+				g[(z * d + y) * w + x] = 1
+	return g
+
+
+func test_hazard_field_fast_same_as_ref() -> void:
+	const HF := preload("res://world/hazard_field.gd")
+	const G3 := preload("res://shaders/g3.gd")
+	for n in [10, 19]:
+		var g := _hz_grid(n, n, 32, n)
+		for zs in [-1.0, 0.0, 0.4, 1.5, 2.7, 4.2, 9.0]:
+			var a := HF.field(g, n, n, 32, zs)
+			var b := HF.field_ref(g, n, n, 32, zs)
+			check(a.dist == b.dist and a.ground == b.ground and str(a.contacts) == str(b.contacts), "새 거리 표 = 예전 표 (판 %d, zs %s)" % [n, zs])
+			var ta := G3.hazard_field_texture(a).get_image().get_data()
+			b.erase("bytes")
+			check(ta == G3.hazard_field_texture(b).get_image().get_data(), "셰이더 그림 바이트 같음 (판 %d, zs %s)" % [n, zs])
+		var r1 := HF.field(g, n, n, 32, 1.5, 1)
+		check(r1.nx == n + 12 and str(r1.contacts) == str(HF.field_ref(g, n, n, 32, 1.5, 1).contacts), "res 1 (단순 모습 거품)")
+	# 빠르기: 8명 판 (19) 거리 표 + 그림이 예전의 반 아래 (컨테이너 7.7 + 4.1ms → 2.3~3.7 + 0.01ms)
+	var g := _hz_grid(19, 19, 32, 3)
+	var best_new := INF
+	var best_old := INF
+	for i in 3:
+		var t0 := Time.get_ticks_usec()
+		G3.hazard_field_texture(HF.field(g, 19, 19, 32, 1.3))
+		var t1 := Time.get_ticks_usec()
+		var o := HF.field_ref(g, 19, 19, 32, 1.3)
+		G3.hazard_field_texture(o)
+		var t2 := Time.get_ticks_usec()
+		best_new = minf(best_new, t1 - t0)
+		best_old = minf(best_old, t2 - t1)
+	check(best_new * 2.0 < best_old, "거리 표 빠르게 (지금 %.2fms · 예전 %.2fms)" % [best_new / 1000.0, best_old / 1000.0])
+
+
+func _hz_state(n: int, z: float, on: bool) -> Dictionary:
+	return {"phase": "playing", "field": {"w": n, "d": n, "h": 32}, "lava": {"active": on, "z": z}, "players": [{"id": 1, "alive": true, "x": 3.0, "y": 3.0, "z": 6.0}]}
+
+
+func test_hazard_first_frame_light() -> void:
+	const HV := preload("res://world/hazard_view.gd")
+	const G3 := preload("res://shaders/g3.gd")
+	const HF := preload("res://world/hazard_field.gd")
+	var world := Node3D.new()
+	var cam := Camera3D.new()
+	world.add_child(cam)
+	var hv = HV.new()
+	world.add_child(hv)
+	hv.warm_cam = cam # 테스트 러너 (_initialize) 에선 root 에 넣어도 트리 안이 아님
+	cam.position = Vector3(3, 4, 5)
+	for gv in [["g3_fog_color", Vector3.ZERO], ["g3_fog_near", 0.0], ["g3_fog_far", 0.0]]: # 테마를 안 깐 테스트 (G3.apply_theme 이 정하는 값)
+		if G3.global_value(gv[0]) == null:
+			G3._set_global(gv[0], gv[1])
+	hv.set_g3(G3, "volcano", false)
+	var n := 19
+	var g := _hz_grid(n, n, 32, 5)
+	# 위험 전 (판 중): 셰이더 미리 그리기 — near·far 재질 그대로를 world 아래 카메라 앞 작은 상자로, 경고 판은 세기 0
+	hv.update(_hz_state(n, -1.0, false), g, 1, {}, 0.016)
+	var warm = world.get_node_or_null("HazardWarm")
+	check(warm != null and warm.get_child_count() == 2, "위험 전 미리 그리기 노드 (near·far)")
+	if warm != null:
+		var shs: Array = warm.get_children().map(func(c): return c.material_override.shader)
+		check(shs.has(hv.near_mi.material_override.shader) and shs.has(hv.far_mi.material_override.shader), "판에 쓸 갈래 셰이더 그대로 (near %s · far)" % hv.near_mi.material_override.shader)
+		var at: Vector3 = warm.transform * warm.get_child(0).position
+		var fwd := -cam.transform.basis.z
+		check(warm.visible and warm.get_parent() == world and (at - cam.position).length() < 3.0 and fwd.dot(at - cam.position) > cam.near, "보이는 자리 (숨은 위험 노드 밖, 카메라 앞 시야 안)")
+	check(hv.vig.visible and float(hv.vig.material.get_shader_parameter("k")) == 0.0, "가장자리 경고 셰이더도 세기 0 (투명) 으로 그림")
+	check(hv.field_builds == 1, "처음 나올 때 (zs < 0) 거리 표를 미리 셈 (%d)" % hv.field_builds)
+	for i in HV.WARM_FRAMES + 1:
+		hv.update(_hz_state(n, -1.0, false), g, 1 + i, {}, 0.016)
+	check(world.get_node_or_null("HazardWarm") == null or world.get_node("HazardWarm").is_queued_for_deletion(), "미리 그리기 끝나면 치움")
+	check(not hv.vig.visible, "경고 판 다시 숨김")
+	check(hv.warm_done == HV.WARM_FRAMES, "미리 그린 프레임 %d" % hv.warm_done)
+	# 위험이 처음 나오는 프레임: 거리 표를 다시 세지 않음 (미리 셈, 격자와 무관), 그 프레임 위험 처리 시간 상한
+	var b0: int = hv.field_builds
+	var t0 := Time.get_ticks_usec()
+	hv.update(_hz_state(n, -1.0, true), g, 9, {}, 0.016)
+	var us := Time.get_ticks_usec() - t0
+	check(hv.field_builds == b0, "나오는 프레임에 거리 표 안 셈")
+	check(us < 3000, "나오는 프레임 위험 처리 %.2fms < 3ms (예전 12ms+)" % (us / 1000.0))
+	check(hv.near_mi.material_override.get_shader_parameter("uField") != null, "미리 만든 거리 표 그림이 재질에 있음")
+	# 위험 위에 칸이 쌓임 (격자 바뀜, 칸 값 같음) → 다시 안 셈. 위험 아래로 칸이 바뀌거나 표면 칸이 바뀌면 셈
+	hv.update(_hz_state(n, 1.5, true), g, 10, {}, 0.016)
+	var b1: int = hv.field_builds
+	var g2 := g.duplicate()
+	g2[(20 * n + 4) * n + 4] = 1 # 표면 (z 1) 훨씬 위
+	hv.update(_hz_state(n, 1.5, true), g2, 11, {}, 0.016)
+	check(hv.field_builds == b1 and hv.field_skips >= 1, "위험 위 칸 → 표 그대로")
+	var g3 := g2.duplicate()
+	for x in n:
+		g3[(1 * n + 2) * n + x] = 1 - g3[(1 * n + 2) * n + x] # 표면 칸 (z 1) 줄 하나 뒤집음
+	hv.update(_hz_state(n, 1.5, true), g3, 12, {}, 0.016)
+	check(hv.field_builds == b1 + 1 and str(hv._field.contacts) == str(HF.field_ref(g3, n, n, 32, 1.5).contacts), "표면 칸이 바뀌면 새로 셈")
+	world.free()
