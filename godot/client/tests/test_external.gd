@@ -1,5 +1,5 @@
 # W14 외부 뼈대 모델 (chars/external.gd, 안내 chars/EXTERNAL.md):
-# ① 뼈 이름 자동 매칭 (Mixamo·Quaternius/Rigify·언리얼·Biped·Meshy/Tripo 식) + 덮어쓰기 + 골반 고침 ② 시험 로봇 (assets/models/ext/tank.glb) 정보
+# ① 뼈 이름 자동 매칭 (Mixamo·Quaternius/Rigify·언리얼·Biped·Meshy/Tripo 식) + 덮어쓰기 + 골반 고침 ② 시험 로봇 (assets/models/ext/robot_test.glb — W19 부터 탱크 자리에 끼워 봄) 정보
 # ③ 판 몸: 외부 모델이 붙고 안쪽 몸은 안 그림, 키·발바닥, 관절을 돌리면 뼈 방향이 우리 팔다리 방향을 따라감 (스킨 메시 하나짜리 합성 모델로도)
 # ④ 3단: 외부 → 구운 → 코드 조립 (외부를 끄거나 없는 캐릭터면 예전 그대로, 구운 몸을 꺼도 외부가 붙음)
 # ⑤ 반투명·번쩍·한 겹 더 ⑥ 1인칭 팔 쌍둥이 (팔 메시만, 허리 아래에 붙음) ⑦ 래그돌이 켜지고 뼈가 래그돌 자세를 따라감 ⑧ 클립 재생
@@ -17,6 +17,15 @@ var errors: Array = []
 func check(cond: bool, msg: String) -> void:
 	if not cond:
 		errors.append(msg)
+
+
+# 시험 로봇 (robot_test.glb) 을 탱크 자리에 끼워 몸을 만듦 (W19 부터 tank.glb = Blender 탱크)
+func _robot_body(merge := true, ext := true, glb := true):
+	var prev = Ext.load_char("tank")
+	Ext._cache["tank"] = Ext.load_char("robot_test")
+	var b = _body("tank", merge, ext, glb)
+	Ext._cache["tank"] = prev
+	return b
 
 
 func _body(ch: String, merge := true, ext := true, glb := true):
@@ -101,8 +110,8 @@ func test_match_override_and_pelvis() -> void:
 
 
 func test_robot_info() -> void:
-	var info = Ext.load_char("tank")
-	check(info != null, "시험 로봇 tank.glb 읽음")
+	var info = Ext.load_char("robot_test")
+	check(info != null, "시험 로봇 robot_test.glb 읽음")
 	if info == null:
 		return
 	for j in Ext.JOINTS:
@@ -111,7 +120,7 @@ func test_robot_info() -> void:
 	check((info.box as AABB).size.y > 0.0 and info.surfs.size() >= 14, "상자·표면 %d" % info.surfs.size())
 	check(info.anims.has("Wave") and info.anims.has("Dance"), "로봇 클립")
 	check(Ext.load_char("dummy") == null and Ext.load_char("없는캐릭터") == null and not Ext.has_char("ninja"), "없는 캐릭터는 null")
-	check(info.cfg.get("keep") == ["shields"] and info.cfg.get("tint") == "band" and float(info.cfg.yaw) == 90.0, "tank.json 덮음 + 기본 값")
+	check(info.cfg.get("keep") == ["shields"] and info.cfg.get("tint") == "band" and float(info.cfg.yaw) == 90.0, "robot_test.json 덮음 + 기본 값")
 
 
 # 뼈 b 의 몸 (body) 기준 전역 자리
@@ -163,7 +172,7 @@ func _check_follow(b, tag: String) -> void:
 
 
 func test_body_ext() -> void:
-	var b = _body("tank")
+	var b = _robot_body()
 	check(b.ext != null and b.ext.get_parent() == b.frame, "외부 모델 붙음 (frame 아래)")
 	if b.ext == null:
 		b.free()
@@ -217,7 +226,7 @@ func test_three_tiers() -> void:
 	var no = _body("ninja", true, true)
 	check(no.ext == null, "외부 모델 없는 캐릭터는 그대로")
 	no.free()
-	var pieces = _body("tank", true, true, false)
+	var pieces = _robot_body(true, true, false)
 	check(pieces.ext != null and not pieces.baked, "구운 몸 끔 → 코드 조립 위에 외부")
 	if pieces.ext != null:
 		_check_follow(pieces, "조립 위 로봇")
@@ -319,7 +328,7 @@ func test_synthetic_skinned() -> void:
 
 
 func test_ext_fx() -> void:
-	var b = _body("tank")
+	var b = _robot_body()
 	if b.ext == null:
 		check(false, "외부 모델 없음")
 		b.free()
@@ -346,7 +355,7 @@ func test_ext_fx() -> void:
 
 
 func test_ext_viewmodel_twin() -> void:
-	var t = _body("tank", false)
+	var t = _robot_body(false)
 	check(t.ext != null and t.ext.get_parent() == t.waist and not t.ext.third, "1인칭 쌍둥이: 허리 관절 아래")
 	if t.ext == null:
 		t.free()
@@ -376,7 +385,7 @@ func test_ext_ragdoll() -> void:
 	w.name = "TfRagdollsExtTest"
 	root.add_child(w)
 	RagW._inst = w
-	var b = _body("tank")
+	var b = _robot_body()
 	b.rag_test = true
 	root.add_child(b)
 	var p := {"id": -2, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0}
@@ -398,7 +407,7 @@ func test_ext_ragdoll() -> void:
 
 
 func test_ext_clip() -> void:
-	var b = _body("tank")
+	var b = _robot_body()
 	if b.ext == null:
 		check(false, "외부 모델 없음")
 		b.free()
@@ -415,3 +424,145 @@ func test_ext_clip() -> void:
 	b.ext.stop_clip()
 	check(b.ext.clip == "" and sk.get_bone_pose_rotation(bi).is_equal_approx(q0), "클립 끝 → 다시 관절 따라감")
 	b.free()
+
+
+# ---------- W19 Blender 탱크 (tools/blender/build_character.py tank → assets/models/ext/tank.glb·tank_shield.glb·tank.json) ----------
+
+func test_matches_our_names() -> void:
+	# 우리 관절 이름 그대로인 뼈대: 이름이 같은 뼈를 먼저 (별칭 표에 shoulder·waist 가 없어도)
+	var ours := PackedStringArray(Ext.JOINTS)
+	var got := _names(Array(ours))
+	for j in Ext.JOINTS:
+		check(got.get(j) == j, "우리 이름 그대로 %s (얻음 %s)" % [j, got.get(j)])
+	# Rigify 처럼 'torso' 조종 뼈가 있어도 우리 이름 모델이 아니면 예전 별칭 순서 (chest 먼저)
+	var rig := _names(["hips", "spine", "chest", "torso", "neck", "upper_arm.L", "forearm.L", "hand.L", "upper_arm.R", "forearm.R", "hand.R", "thigh.L", "shin.L", "foot.L", "thigh.R", "shin.R", "foot.R"])
+	check(rig.get("torso") == "chest", "Rigify 식은 그대로 (torso → chest, 얻음 %s)" % rig.get("torso"))
+
+
+func test_blender_tank_info() -> void:
+	var info = Ext.load_char("tank")
+	check(info != null, "Blender 탱크 tank.glb 읽음")
+	if info == null:
+		return
+	for j in Ext.JOINTS:
+		check(info.map.has(j) and info.names[info.map[j]] == j, "뼈 이름 = 우리 관절 %s" % j)
+	check(info.names.size() == 16, "뼈 16개 (손가락 없음, 얻음 %d)" % info.names.size())
+	check(info.surfs.size() == 1 and info.surfs[0].skinned and info.surfs[0].vcolor, "스킨 메시 하나·재질 하나·꼭짓점 색")
+	var arr: Array = (info.surfs[0].mesh as ArrayMesh).surface_get_arrays(0)
+	var tris: int = (arr[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
+	check(tris <= 10000, "몸 삼각형 1만 이하 (%d)" % tris)
+	var uv2 = arr[Mesh.ARRAY_TEX_UV2]
+	var cols = arr[Mesh.ARRAY_COLOR]
+	check(uv2 != null and cols != null and (uv2 as PackedVector2Array).size() == (cols as PackedColorArray).size(), "몸 색 칸 UV2 + 꼭짓점 색")
+	if uv2 == null or cols == null:
+		return
+	# 몸 색 칸 = 하양 (skin_tint 가 칠함), 나머지 칸에 JS dressTank 쇠 색 (sRGB a3adb8) 이 그대로 들어옴 (Blender 내보내기가 고도 import 의 sRGB→선형을 미리 되돌림)
+	var skin_n := 0
+	var steel := false
+	var skin_white := true
+	for i in (cols as PackedColorArray).size():
+		var c: Color = cols[i]
+		if uv2[i].x > 0.5:
+			skin_n += 1
+			skin_white = skin_white and c.is_equal_approx(Color.WHITE)
+		elif absf(c.r - 0xa3 / 255.0) < 0.01 and absf(c.g - 0xad / 255.0) < 0.01 and absf(c.b - 0xb8 / 255.0) < 0.01:
+			steel = true
+	check(skin_n > 100 and skin_white, "몸 색 칸 정점 %d 개 하양" % skin_n)
+	check(steel, "쇠 색 꼭짓점 (sRGB a3adb8) 그대로")
+	check(info.cfg.tint == "mask" and (info.cfg.attach as Array).size() == 3, "tank.json: mask·방패 attach 3")
+
+
+# 쉬는 자세: 크기 1 (모델 키 = Blender 키), 뼈 자리 = 우리 관절 자리 (Blender 가 ref/tank_rig.json 자리에 뼈를 세움)
+func test_blender_tank_body() -> void:
+	var b = _body("tank")
+	check(b.ext != null, "Blender 탱크 붙음")
+	if b.ext == null:
+		b.free()
+		return
+	var sc: float = b.ext.transform.basis.get_scale().x
+	check(absf(sc - 1.0) < 1e-3, "크기 1 (얻음 %.4f)" % sc)
+	var worst := 0.0
+	for j in Ext.JOINTS:
+		if j == "torso":
+			continue
+		worst = maxf(worst, _bone_pos(b, b.ext.info.map[j]).distance_to(_jpos(b, b.ext._joint(j))))
+	check(worst < 0.01, "뼈 자리 = 우리 관절 자리 (가장 먼 %.4f m)" % worst)
+	_check_follow(b, "Blender 탱크")
+	# 그리는 것: 몸 1 + 방패 2 (등·앞), 안쪽 몸 메시는 없음, 띠 없음 (mask)
+	var ext_n := 0
+	for dr in b.drawn:
+		ext_n += 1 if dr.get("ext", false) else 0
+	check(ext_n == 3 and b.drawn.size() == 3 and b.ext.band == null, "그리는 메시 3 (몸·등 방패·앞 방패, 얻음 %d/%d)" % [ext_n, b.drawn.size()])
+	var m: ShaderMaterial = b.ext.parts[0].mi.material_override
+	check(m.get_shader_parameter("use_vertex_color") == true and (m.get_shader_parameter("skin_tint") as Color).is_equal_approx(Color(0.2, 0.5, 1.0, 1.0)) and m.next_pass != null, "꼭짓점 색 툰 + 몸 색 칸 = 플레이어 색 + 외곽선")
+	b.free()
+
+
+# 방패: 안쪽 몸 방패 노드 (shields.back/front) 아래 — 그 노드 보이기를 따라감, 자리·크기 = 예전 코드 방패
+func test_blender_tank_shield() -> void:
+	var b = _body("tank")
+	if b.ext == null:
+		check(false, "외부 모델 없음")
+		b.free()
+		return
+	var back: Node3D = b._n(b.refs.shields.back)
+	var front: Node3D = b._n(b.refs.shields.front)
+	var pb := back.get_node_or_null("ext_shields_back") as Node3D
+	var pf := front.get_node_or_null("ext_shields_front") as Node3D
+	check(pb != null and pf != null, "방패 소품이 등·앞 방패 노드 아래")
+	if pb == null or pf == null:
+		b.free()
+		return
+	# 방패 상자 (방패 노드 기준): 예전 코드 방패 (JS 원판 반지름 sr = max(0.28, chestR × 1.15), 두께 x) 와 비슷
+	var box := AABB()
+	var first := true
+	for mi in pb.find_children("*", "MeshInstance3D", true, false):
+		var ab: AABB = (pb.transform * (mi as MeshInstance3D).transform) * (mi as MeshInstance3D).mesh.get_aabb()
+		box = ab if first else box.merge(ab)
+		first = false
+	var sr: float = maxf(0.28, float(b.d.chestR) * 1.15)
+	check(absf(box.size.y - 2.0 * (sr + 0.032)) < 0.03 and absf(box.size.z - 2.0 * (sr + 0.032)) < 0.03 and box.size.x < 0.25, "방패 크기 %s (원판 %.3f)" % [box.size, sr])
+	check(box.position.x < -0.08, "돌기 = 방패 -x (JS·viewmodel 과 같은 쪽, %.3f)" % box.position.x)
+	check(pf.transform.basis.x.dot(Vector3(-1, 0, 0)) > 0.99 or pf.transform.basis.y.dot(Vector3(0, 0, 1)) > 0.99, "앞 방패는 z 180° (돌기가 바깥)")
+	# 방패 동작 → 앞 방패 노드가 보임 (body._costume_parts) → 소품도
+	check(back.visible and not front.visible, "평소: 등 방패")
+	b.free()
+
+
+func test_blender_tank_fx_twin() -> void:
+	var b = _body("tank")
+	if b.ext == null:
+		check(false, "외부 모델 없음")
+		b.free()
+		return
+	var mi: MeshInstance3D = b.ext.parts[0].mi
+	var solid = mi.material_override
+	b.ext.fx([Color.WHITE, Color(0, 0, 0), Color(0, 0, 0)], 1.0)
+	check((mi.material_override as ShaderMaterial).get_shader_parameter("skin_tint").is_equal_approx(Color.WHITE), "경직 하얀 깜빡임 = 몸 색 칸 하양 (구운 몸과 같은 길)")
+	b.ext.fx([b.skin_color, Color(0.4, 0.2, 0), Color(0.1, 0.1, 0)], 1.0)
+	var sm := mi.material_override as ShaderMaterial
+	check(sm.get_shader_parameter("skin_emissive").is_equal_approx(Color(0.4, 0.2, 0)) and sm.get_shader_parameter("emissive").is_equal_approx(Color(0.1, 0.1, 0)), "피부 발광·나머지 발광 나눔")
+	b.ext.fx([b.skin_color, Color(0, 0, 0), Color(0, 0, 0)], 0.5)
+	var am := mi.material_override as ShaderMaterial
+	check(am != solid and am.get_shader_parameter("albedo").a == 0.5 and am.get_shader_parameter("use_vertex_color") == true, "반투명도 꼭짓점 색")
+	b.ext.fx([b.skin_color, Color(0, 0, 0), Color(0, 0, 0)], 1.0)
+	check(mi.material_override == solid, "반투명 끝")
+	b.free()
+	# 1인칭 쌍둥이: 팔꿈치 아래 삼각형만 + 앞 방패만 (등 방패 없음)
+	var t = _body("tank", false)
+	check(t.ext != null and not t.ext.third, "1인칭 쌍둥이")
+	if t.ext != null:
+		var arm_tri := 0
+		for pt in t.ext.parts:
+			if (pt.mi as MeshInstance3D).get_parent() is BoneAttachment3D or String((pt.mi as MeshInstance3D).name).begins_with("ext_"):
+				continue
+		var vm = t.ext.info.surfs[0].vm_mesh
+		arm_tri = (vm as ArrayMesh).surface_get_arrays(0)[Mesh.ARRAY_INDEX].size() / 3 if vm != null else 0
+		check(arm_tri > 300 and arm_tri < 3000, "1인칭 팔 삼각형 %d (장갑·주먹·팔꿈치)" % arm_tri)
+		var back: Node3D = t._n(t.refs.shields.back)
+		var front: Node3D = t._n(t.refs.shields.front)
+		check(back.get_node_or_null("ext_shields_back") == null and front.get_node_or_null("ext_shields_front") != null, "1인칭: 앞 방패만 (viewmodel 이 왼손에 쥠)")
+		var pf: Node3D = front.get_node_or_null("ext_shields_front")
+		if pf != null:
+			check(pf.transform.basis.is_equal_approx(Ext.Ext.GLTF_TO_GAME_), "1인칭 앞 방패는 돌림 없음 (viewmodel 이 돌기 = -x 로 맞춤)")
+	t.free()

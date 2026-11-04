@@ -14,6 +14,8 @@ import math
 import os
 import sys
 import importlib.util
+
+sys.dont_write_bytecode = True  # chars/<id>.py 를 부를 때 __pycache__ 를 레포에 안 남김
 from mathutils import Vector, Matrix, Euler, Quaternion
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -377,16 +379,16 @@ def set_skin_preview(objs, on):
 
 
 def to_godot_colors(objs, forward=True):
-    """고도 glTF import 는 COLOR_0 를 sRGB 로 보고 선형으로 바꿔 넣음 (BAKE.md) → 셰이더가 sRGB 값을 받게 파일엔 sRGB(sRGB) 를.
-    Blender 안 값 = 선형 → sRGB 값 s = lin_to_srgb(c) → 파일 = lin_to_srgb(s). forward=False 면 되돌림"""
+    """툰 셰이더는 COLOR 를 sRGB 값으로 곱함 (toon_common c *= COLOR, 재질 색과 같은 공간). Blender 4.5 내보내기 → 고도 4.7 import 를 거치면
+    COLOR = 이 속성 값 그대로라 (테스트 test_blender_tank_info 가 쇠 색 a3adb8 로 확인) 내보내기 전에 선형 → sRGB 로 바꿔 둠. forward=False 면 되돌림"""
     for ob in objs:
         attr = ob.data.color_attributes["Col"]
         for d in attr.data:
             c = list(d.color)
             if forward:
-                d.color = [lin_to_srgb(lin_to_srgb(x)) for x in c[:3]] + [c[3]]
+                d.color = [lin_to_srgb(x) for x in c[:3]] + [c[3]]
             else:
-                d.color = [srgb_to_lin(srgb_to_lin(x)) for x in c[:3]] + [c[3]]
+                d.color = [srgb_to_lin(x) for x in c[:3]] + [c[3]]
 
 
 def export_glb(path, objs):

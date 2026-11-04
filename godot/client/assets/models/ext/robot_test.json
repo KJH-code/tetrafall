@@ -1,0 +1,6 @@
+{
+	"_": "W14 시험 로봇 (robot_test.glb — W19 에 tank.glb 에서 옮김, 테스트만 씀) 조정 값 — 키는 chars/chars_config.gd EXT_DEFAULTS 설명. 뼈는 자동 매칭으로 다 맞아 bones 덮어쓰기 없음 (손 = Palm2.L/R)",
+	"tint": "band",
+	"keep": ["shields"],
+	"clips": {"victory": "Dance", "wave": "Wave"}
+}

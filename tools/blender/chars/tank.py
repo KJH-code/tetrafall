@@ -17,7 +17,7 @@ SHIELD_GLB = "res://assets/models/ext/tank_shield.glb"
 # 판 3인칭 앞 방패만 돌기가 바깥을 보게 z 180° (JS 는 등 방패를 복제해서 앞 방패 돌기가 몸 쪽 — 1인칭은 viewmodel 이 돌기 = -x 로 맞춤)
 CFG = {
     "attach": [
-        {"glb": SHIELD_GLB, "ref": "shields.back"},
+        {"glb": SHIELD_GLB, "ref": "shields.back", "vm": False},
         {"glb": SHIELD_GLB, "ref": "shields.front", "rot": [0, 0, 180], "vm": False},
         {"glb": SHIELD_GLB, "ref": "shields.front", "third": False},
     ],
@@ -109,7 +109,7 @@ def build(k):
     # 얼굴 앞 (눈 높이 아래) 만 뚫고 볼·뒤통수까지 덮음
     k.shell("helmet", hc, HR, STEEL, "neck", keep=lambda p: p.z > -0.7 and not (p.x > 0.42 and p.z < 0.3) and not (p.x > 0.7 and p.z < 0.45),
             thick=0.028, seg=22, rings=12)
-    k.torus("brow", hc + Vector((0, 0, HR[2] * 0.32)), 1.0, 0.024 / 0.18, DARK, "neck", scale=(HR[0] * 0.96 + 0.02, HR[1] * 0.96 + 0.02, 0.18), seg=20, ring=5)
+    k.torus("brow", hc + Vector((0, 0, HR[2] * 0.32)), 1.0, 0.024 / 0.18, DARK, "neck", scale=(HR[0] * 0.95 + 0.01, HR[1] * 0.95 + 0.01, 0.18), seg=20, ring=5)
     k.rbox("nose_guard", hc + Vector((HR[0] * 0.98, 0, -0.03)), (0.03, 0.026, 0.11), DARK, "neck", bevel=0.4)
     # 볏: 투구 꼭대기를 앞에서 뒤로 덮는 몸 색 덩어리 줄 (뒤로 갈수록 크게) + 금 받침
     k.rbox("crest_base", hc + Vector((0, 0, HR[2] + 0.01)), (0.2, 0.05, 0.04), GOLD, "neck", bevel=0.4)

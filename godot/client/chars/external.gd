@@ -39,6 +39,8 @@ const ALIASES := {
 	"knee": ["lowerleg", "calf", "shin", "leg", "knee", "loleg", "leglower"],
 	"foot": ["foot", "ankle"],
 }
+# 꼭 있어야 하는 관절 (없으면 외부 모델 안 씀)
+const REQUIRED := ["hips", "shoulder_R", "shoulder_L", "elbow_R", "elbow_L", "thigh_R", "thigh_L", "knee_R", "knee_L"]
 const JUNK := ["mixamorig", "bip", "bip01", "bip001", "def", "org", "jnt", "joint", "bn", "armature", "skeleton", "sk", "rig", "character", "ctrl"]
 
 static var _cache := {} # 캐릭터 → 모델 정보 (없으면 null)
@@ -139,7 +141,17 @@ static func match_bones(names: PackedStringArray, overrides: Dictionary = {}, pa
 		norm.append(normalize(n))
 	var used := {}
 	var out := {}
+	# W19: 꼭 있어야 하는 관절이 모두 우리 이름 그대로 (shoulder_R …, tools/blender) 인 모델이면 이름이 같은 뼈를 먼저 (Rigify 'torso' 같은 조종 뼈와 안 섞이게 그때만)
+	var ours := true
+	for j in REQUIRED:
+		if names.find(j) < 0:
+			ours = false
+			break
 	for j in JOINTS:
+		if ours and not overrides.has(j) and names.find(j) >= 0 and not used.has(names.find(j)):
+			out[j] = names.find(j)
+			used[names.find(j)] = true
+			continue
 		if overrides.has(j):
 			var want := str(overrides[j])
 			var bi := names.find(want)
@@ -246,7 +258,7 @@ static func model_info(scene: PackedScene, cfg: Dictionary):
 		parents.append(sk.get_bone_parent(i))
 	var map := match_bones(names, cfg.get("bones", {}), parents)
 	var missing := []
-	for j in ["hips", "shoulder_R", "shoulder_L", "elbow_R", "elbow_L", "thigh_R", "thigh_L", "knee_R", "knee_L"]:
+	for j in REQUIRED:
 		if not map.has(j):
 			missing.append(j)
 	if not missing.is_empty():
@@ -307,7 +319,9 @@ static func model_info(scene: PackedScene, cfg: Dictionary):
 				for k in m.skin.get_bind_count():
 					var bb: int = m.skin.get_bind_bone(k)
 					binds.append(bb if bb >= 0 else sk.find_bone(m.skin.get_bind_name(k)))
-			surfs.append({"path": root.get_path_to(m), "surf": si, "mesh": _one_surface(m.mesh, si), "color": col, "tex": tex, "skinned": skinned, "bone": bone, "binds": binds})
+			var one := _one_surface(m.mesh, si)
+			surfs.append({"path": root.get_path_to(m), "surf": si, "mesh": one, "color": col, "tex": tex, "skinned": skinned, "bone": bone, "binds": binds,
+				"vcolor": Ext.vertex_colored(one, 0, mat, str(cfg.get("tint", "band")))})
 	if first:
 		push_warning("외부 .glb 에 메시가 없음")
 		root.free()
@@ -413,9 +427,30 @@ class Ext extends Node3D:
 	const G3_ := preload("res://shaders/g3.gd")
 	const C_ := preload("res://core/config.gd")
 	const K_ := preload("res://chars/chars_config.gd")
+	# 소품 .glb (glTF Y 위·앞 +Z) → 게임 좌표 (앞 +x, 왼쪽 +y, 위 +z): attach "ref" 소품은 게임 좌표로 만든 것 (tools/blender — Blender (X, Y, Z) = (y, -x, z))
+	const GLTF_TO_GAME_ := Basis(Vector3(0, 1, 0), Vector3(0, 0, 1), Vector3(1, 0, 0))
 	const JOINTS_ := ["hips", "waist", "torso", "neck", "shoulder_R", "elbow_R", "hand_R", "shoulder_L", "elbow_L", "hand_L", "thigh_R", "knee_R", "foot_R", "thigh_L", "knee_L", "foot_L"]
 	const PARENT_ := {"waist": "hips", "torso": "waist", "neck": "torso", "shoulder": "torso", "elbow": "shoulder", "hand": "elbow", "thigh": "hips", "knee": "thigh", "foot": "knee"}
 	const CHILD_ := {"waist": "neck", "torso": "neck", "shoulder": "elbow", "elbow": "hand", "thigh": "knee", "knee": "foot"}
+
+	# 꼭짓점 색을 쓸 표면: 정점 색이 있고 (tint "mask" 거나 원래 재질이 꼭짓점 색을 알베도로 씀)
+	static func vertex_colored(mesh: Mesh, si: int, mat, tint: String) -> bool:
+		if mesh == null or not (mesh is ArrayMesh) or ((mesh as ArrayMesh).surface_get_format(si) & Mesh.ARRAY_FORMAT_COLOR) == 0:
+			return false
+		return tint == "mask" or (mat is BaseMaterial3D and (mat as BaseMaterial3D).vertex_color_use_as_albedo)
+
+
+	# 툰 재질 (외부 모델·소품 표면): 꼭짓점 색이면 정점 색 × 알베도, tint "mask" 면 몸 색 칸 (UV2.x = 1, tools/blender) 을 플레이어 색으로 (skin_tint — 구운 몸과 같은 길)
+	static func toon_for(col: Color, tex, vcolor: bool, mask: bool, skin: Color, extra := {}) -> ShaderMaterial:
+		var opts := extra.duplicate()
+		if tex != null:
+			opts.map = tex
+		if vcolor:
+			opts.vertex_color = true
+		var m := G3_.toon_material(col, opts)
+		if vcolor and mask:
+			m.set_shader_parameter("skin_tint", Color(skin.r, skin.g, skin.b, 1.0))
+		return m
 
 	var body: Node3D
 	var info: Dictionary
@@ -458,7 +493,7 @@ class Ext extends Node3D:
 		_hide_inner()
 		if third:
 			_band()
-			_attach_props()
+		_attach_props()
 		anim = null
 		for ap in model.find_children("*", "AnimationPlayer", true, false):
 			anim = ap
@@ -655,12 +690,11 @@ class Ext extends Node3D:
 			var col: Color = sf.color
 			if mode == "tint":
 				col = col * Color.WHITE.lerp(body.skin_color, tk)
-			var opts := {}
-			if sf.tex != null:
-				opts.map = sf.tex
-			var m := G3_.toon_material(col, opts)
+			var vc: bool = sf.get("vcolor", false)
+			var mask: bool = vc and mode == "mask"
+			var m := toon_for(col, sf.tex, vc, mask, body.skin_color)
 			mi.material_override = m
-			parts.append({"mi": mi, "color": col, "tex": sf.tex, "solid": m})
+			parts.append({"mi": mi, "color": col, "tex": sf.tex, "solid": m, "vcolor": vc, "mask": mask})
 			body.drawn.append({"mi": mi, "m": {"kind": "toon"}, "merged": false, "ext": true})
 		for o in olds:
 			(o as Node).get_parent().remove_child(o)
@@ -730,9 +764,16 @@ class Ext extends Node3D:
 		parts.append({"mi": band, "color": body.skin_color, "tex": null, "solid": m, "band": true})
 		body.drawn.append({"mi": band, "m": {"kind": "toon"}, "merged": false, "ext": true})
 
-	# 따로 받은 물건 (.glb) 을 뼈에 붙임: cfg.attach = [{glb, joint, pos [x,y,z] (모델 키 비율), rot [도], scale}]
+	# 따로 받은 물건 (.glb) 을 뼈에 붙임: cfg.attach = [{glb, joint, pos [x,y,z] (모델 키 비율), rot [도], scale}] (판 몸만)
+	# W19 "ref": 뼈 대신 안쪽 몸 소품 노드 (refs 경로, 예 "shields.back") 아래에 붙임 — 그 노드의 보이기·자리 (등 ↔ 앞 방패, 1인칭 viewmodel 쥐기) 를 그대로 따라감.
+	#   소품 .glb 는 그 노드 좌표 (게임 축, 부모 크기 FIGURE_SCALE 전) 로 만든 것 → GLTF_TO_GAME, pos [m]·rot [도, 게임 축 XYZ]·scale 은 그 노드 기준. "third"/"vm" = 판 몸·1인칭 쌍둥이에 붙일지 (기본 둘 다)
 	func _attach_props() -> void:
 		for a in info.cfg.get("attach", []):
+			if str(a.get("ref", "")) != "":
+				_attach_ref(a)
+				continue
+			if not third:
+				continue
 			var bi: int = int(info.map.get(str(a.get("joint", "hand_R")), -1))
 			var gp: String = str(a.get("glb", ""))
 			if bi < 0 or gp == "" or not ResourceLoader.exists(gp):
@@ -758,14 +799,55 @@ class Ext extends Node3D:
 				parts.append({"mi": mi, "color": m.get_shader_parameter("albedo"), "tex": null, "solid": m})
 				body.drawn.append({"mi": mi, "m": {"kind": "toon"}, "merged": false, "ext": true})
 
+	func _attach_ref(a: Dictionary) -> void:
+		if not bool(a.get("third" if third else "vm", true)):
+			return
+		var path: PackedStringArray = str(a.ref).split(".")
+		var r = body.refs.get(path[0])
+		for i in range(1, path.size()):
+			r = r.get(path[i]) if r is Dictionary else null
+		var host: Node3D = body._n(r) if r != null else null
+		var gp: String = str(a.get("glb", ""))
+		if host == null or gp == "" or not ResourceLoader.exists(gp):
+			push_warning("외부 .glb attach %s 안 됨" % [a])
+			return
+		var prop := (load(gp) as PackedScene).instantiate() as Node3D
+		var p: Array = a.get("pos", [0, 0, 0])
+		var rr: Array = a.get("rot", [0, 0, 0])
+		var rot := Basis.from_euler(Vector3(deg_to_rad(float(rr[0])), deg_to_rad(float(rr[1])), deg_to_rad(float(rr[2]))), EULER_ORDER_XYZ)
+		prop.transform = Transform3D((rot * GLTF_TO_GAME_).scaled(Vector3.ONE * float(a.get("scale", 1.0))), Vector3(float(p[0]), float(p[1]), float(p[2])))
+		prop.name = "ext_" + str(a.ref).replace(".", "_")
+		host.add_child(prop)
+		var mode: String = str(info.cfg.get("tint", "band"))
+		for mi in prop.find_children("*", "MeshInstance3D", true, false):
+			var me := (mi as MeshInstance3D).mesh
+			if me == null:
+				continue
+			var sm = (mi as MeshInstance3D).get_surface_override_material(0)
+			if sm == null:
+				sm = me.surface_get_material(0)
+			var col: Color = (sm as BaseMaterial3D).albedo_color if sm is BaseMaterial3D else Color.WHITE
+			var tex = (sm as BaseMaterial3D).albedo_texture if sm is BaseMaterial3D else null
+			var vc := vertex_colored(me, 0, sm, mode)
+			var m := toon_for(col, tex, vc, vc and mode == "mask", body.skin_color)
+			(mi as MeshInstance3D).material_override = m
+			if not third:
+				(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			parts.append({"mi": mi, "color": col, "tex": tex, "solid": m, "vcolor": vc, "mask": vc and mode == "mask"})
+			body.drawn.append({"mi": mi, "m": {"kind": "toon"}, "merged": false, "ext": true})
+
 	# 몸 색 효과 (body.fx_colors: [피부 색, 피부 발광, 나머지 발광]) + 반투명 (body.opacity). 부위 구분이 없으니 피부 발광을 몸 전체에,
 	# 경직 하얀 깜빡임 (피부 색이 하양) 은 하얀 발광으로
+	# tint "mask" 표면은 구운 몸처럼 몸 색 칸만 피부 색·피부 발광 (skin_tint·skin_emissive), 나머지는 나머지 발광 — 하얀 깜빡임도 몸 색 칸이 하얘짐
 	func fx(f: Array, op: float) -> void:
 		var skin: Color = f[0]
 		var e: Color = f[1]
 		if skin == Color.WHITE and body.skin_color != Color.WHITE:
 			e = Color(maxf(e.r, K_.EXT_FLASH), maxf(e.g, K_.EXT_FLASH), maxf(e.b, K_.EXT_FLASH))
 		for pt in parts:
+			if pt.get("mask", false):
+				_fx_mask(pt, f, op)
+				continue
 			var mi: MeshInstance3D = pt.mi
 			if op >= 1.0:
 				if mi.material_override != pt.solid:
@@ -784,6 +866,30 @@ class Ext extends Node3D:
 			if sm != null:
 				sm.set_shader_parameter("emissive", Color(0, 0, 0) if pt.get("band", false) and e == f[1] and e == Color(0, 0, 0) else e)
 		opacity = op
+
+	func _fx_mask(pt: Dictionary, f: Array, op: float) -> void:
+		var mi: MeshInstance3D = pt.mi
+		var want: Material = pt.solid
+		if op < 1.0:
+			if not pt.has("alpha"):
+				pt.alpha = toon_for(pt.color, pt.tex, true, true, body.skin_color, {"opacity": 0.5, "outline": false})
+				G3_.toon_hazard_light(pt.alpha, body.hz_light)
+			want = pt.alpha
+		if mi.material_override != want:
+			mi.material_override = want
+		var key := [f, op]
+		if pt.get("fx_m") == want and pt.get("fx_v") == key: # 같은 값이면 안 올림 (W15)
+			return
+		pt.fx_m = want
+		pt.fx_v = key
+		var sm := want as ShaderMaterial
+		var skin: Color = f[0]
+		sm.set_shader_parameter("skin_tint", Color(skin.r, skin.g, skin.b, 1.0))
+		sm.set_shader_parameter("skin_emissive", f[1])
+		sm.set_shader_parameter("emissive", f[2])
+		if op < 1.0:
+			var c: Color = pt.color
+			sm.set_shader_parameter("albedo", Color(c.r, c.g, c.b, op))
 
 	# ⑥ 모델에 든 클립 하나 재생 (이름 = AnimationPlayer 목록, 예: 로봇 "Wave"). 재생 동안 뼈 맞추기 쉼, stop_clip 으로 돌아옴
 	func play_clip(nm: String) -> bool:

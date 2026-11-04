@@ -1,6 +1,51 @@
 {
-	"_": "W14 시험 로봇 (tank.glb) 조정 값 — 키는 chars/chars_config.gd EXT_DEFAULTS 설명. 뼈는 자동 매칭으로 다 맞아 bones 덮어쓰기 없음 (손 = Palm2.L/R)",
-	"tint": "band",
-	"keep": ["shields"],
-	"clips": {"victory": "Dance", "wave": "Wave"}
+	"_": "W19 Blender 로 만든 몸 (tools/blender/build_character.py tank) — 다시 만들면 덮어씀. 키는 chars/chars_config.gd EXT_DEFAULTS",
+	"height": 1.06204,
+	"offset": [
+		0.01702,
+		0.0,
+		-0.0
+	],
+	"tint": "mask",
+	"attach": [
+		{
+			"glb": "res://assets/models/ext/tank_shield.glb",
+			"ref": "shields.back",
+			"vm": false
+		},
+		{
+			"glb": "res://assets/models/ext/tank_shield.glb",
+			"ref": "shields.front",
+			"rot": [
+				0,
+				0,
+				180
+			],
+			"vm": false
+		},
+		{
+			"glb": "res://assets/models/ext/tank_shield.glb",
+			"ref": "shields.front",
+			"third": false
+		}
+	],
+	"stats": {
+		"tris": 9848,
+		"prop_tris": {
+			"shield": 1592
+		},
+		"bones": 16,
+		"verts": 5014,
+		"box_min": [
+			-0.3555,
+			-0.7646,
+			0.0
+		],
+		"box_max": [
+			0.3895,
+			0.7646,
+			1.9542
+		],
+		"auto_weight_fail": []
+	}
 }
