@@ -27,6 +27,10 @@ var done := false
 var frame_us: Array = [] # 프레임마다 스크립트 µs (중앙값·최악)
 var spikes: Array = [] # --prof: 가장 느린 프레임 [µs, 가상 초, 그 프레임 구간 큰 순서 글자]
 var _prev_sums := {}
+# --frame-log <파일> (W17): 재는 동안 프레임마다 한 줄 (벽시계 프레임 ms·스크립트 ms·위험 켬·그리기·물체) — 위험이 처음 나오는 프레임만 튀는지 (셰이더 첫 컴파일) 보기
+var flog: FileAccess = null
+var _wall0 := 0
+var _last_s_us := 0
 
 
 static func load_file(path: String) -> Array:
@@ -113,6 +117,7 @@ func _ready() -> void:
 		if measuring:
 			script_us += s_us
 			frame_us.append(s_us)
+			_last_s_us = s_us
 			phys_us += p_us
 			if Prof.on:
 				_spike(s_us)
@@ -120,6 +125,9 @@ func _ready() -> void:
 	get_tree().root.add_child.call_deferred(tail)
 	if args.has("set"):
 		_apply_sets.call_deferred(parse_sets(str(args.set)))
+	if args.has("frame-log"):
+		flog = FileAccess.open(str(args["frame-log"]), FileAccess.WRITE)
+		flog.store_line("frame\tvirt_s\twall_ms\tscript_ms\tlava\tdraws\tobjects")
 	print("[재연] %s · 글자 %d개 · %.0ffps · 재기 %.1f~%.1f초" % [args.replay, lines.size(), fps, (t_start - lines[0][0]) / 1000.0, (t_end - lines[0][0]) / 1000.0])
 
 
@@ -254,10 +262,20 @@ func _process(_d: float) -> void:
 		Prof.reset()
 	if measuring:
 		frames += 1
+		_frame_line()
 	if measuring and Net.virt >= t_end:
 		done = true
 		measuring = false
 		_report()
+
+
+# 지난 프레임 한 줄 (이 노드가 맨 먼저 돌아 지난 _process 부터 지금까지 = 지난 프레임 전체: 스크립트·그리기·셰이더 컴파일)
+func _frame_line() -> void:
+	var now := Time.get_ticks_usec()
+	if flog != null and _wall0 > 0:
+		var lava: bool = Store.state.get("lava", {}).get("active", false) if Store.state is Dictionary else false
+		flog.store_line("%d\t%.3f\t%.2f\t%.2f\t%d\t%d\t%d" % [frames - 1, (Net.virt - t_start) / 1000.0, (now - _wall0) / 1000.0, _last_s_us / 1000.0, int(lava), Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)])
+	_wall0 = now
 
 
 # 느린 프레임 (튐) 이 무엇 때문인지: 이번 프레임 구간 합 - 지난 프레임 구간 합
@@ -290,6 +308,8 @@ func _bakes() -> Dictionary:
 
 
 func _report() -> void:
+	if flog != null:
+		flog.close()
 	var n := maxi(1, frames)
 	var b1 := _bakes()
 	if not b1.is_empty():
