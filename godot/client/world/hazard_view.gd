@@ -119,6 +119,9 @@ func set_g3(g3, theme_id, low_gfx: bool) -> void:
 	far_mi = null
 	mats = []
 	_field_key = ""
+	_field = null # 새 재질엔 거리 표 그림이 없음 → 다시 셈·올림
+	_cols = []
+	_end_warm()
 	if G3 == null:
 		surface.visible = true
 		return
@@ -138,6 +141,7 @@ func set_g3(g3, theme_id, low_gfx: bool) -> void:
 		else:
 			near_mi = mi
 	light_color = Co.color(look.light[0])
+	warm_left = WARM_FRAMES # 이번 갈래 셰이더를 위험이 나오기 전에 (_prepare)
 
 
 func set_theme(theme: Dictionary) -> void:
@@ -196,20 +200,20 @@ func _update_g3(st: Dictionary, grid: PackedByteArray, grid_version: int, me: Di
 		_off()
 		_track_deaths(st, zs, false)
 		_step_sinks()
+		_prepare(st, grid, grid_version)
 		return
 	_off_sent = false
+	if _warm != null:
+		_end_warm()
 	var f: Dictionary = st.field
 	var w := int(f.w)
 	var d := int(f.d)
 	var h := int(f.get("h", C.GRID_H))
 	var cx := w / 2.0
 	var cy := d / 2.0
-	# 닿는 곳 거리 표 (격자나 표면 칸이 바뀔 때만)
+	# 닿는 곳 거리 표 (격자나 표면 칸이 바뀔 때만 — 그래도 칸 값 (뚫림·바닥) 이 같으면 그대로, _field_for)
 	var p := {"on": true, "time": t, "z": zs}
-	var key := "%d|%d|%s|%d|%d|%d" % [grid_version, floori(zs), zs < 0, w, d, h]
-	if key != _field_key and grid.size() == w * d * h:
-		_field_key = key
-		_field = HF.field(grid, w, d, h, zs)
+	if _field_for(grid, grid_version, w, d, h, zs):
 		p.field = _field
 	# 차오름: 처음 시작 / 단계마다
 	var s := HF.rise_step(zs)
@@ -260,6 +264,103 @@ func _update_g3(st: Dictionary, grid: PackedByteArray, grid_version: int, me: Di
 	_draw_vig(vignette, dt)
 	_track_deaths(st, zs, true)
 	_step_sinks()
+
+
+# 닿는 곳 거리 표를 지금 격자·표면에 맞춤. 새 표면 true (셰이더 그림도 바꿀 것).
+# W17: 예전엔 격자가 바뀔 때마다 (칸이 떨어질 때마다) 화소 15k 표를 다시 셈 (한 번 12ms — 위험 중 히치). 칸 값 (HF.columns) 이 같으면 (위험 위에 쌓인 칸) 그대로,
+# 표면이 바닥 아래 (zs < 0, 처음 나올 때) 면 격자와 무관 (다 뚫림) 이라 판 크기만 같으면 그대로 — 위험이 나오기 전에 _prepare 가 미리 만들어 둠
+func _field_for(grid: PackedByteArray, grid_version: int, w: int, d: int, h: int, zs: float) -> bool:
+	var key := "neg|%d|%d|%d" % [w, d, h] if zs < 0 else "%d|%d|%d|%d|%d" % [grid_version, floori(zs), w, d, h]
+	if key == _field_key or grid.size() != w * d * h:
+		return false
+	_field_key = key
+	var cols := HF.columns(grid, w, d, h, zs)
+	if _field != null and _cols.size() == 2 and _cols[0] == cols[0] and _cols[1] == cols[1] and _field_size == Vector3i(w, d, h):
+		field_skips += 1
+		return false
+	_cols = cols
+	_field_size = Vector3i(w, d, h)
+	_field = HF.field(grid, w, d, h, zs, int(C.HAZARD_FIELD_RES), C.HAZARD_FOAM_DIST, cols)
+	field_builds += 1
+	_field_tex = null
+	return true
+
+
+# 위험이 꺼진 판 중 (대기실·카운트다운·위험 전): 처음 나올 때 쓸 표 (zs < 0) 와 셰이더 (warm) 를 미리 — 나오는 프레임에 몰리던 일 (W17)
+func _prepare(st: Dictionary, grid: PackedByteArray, grid_version: int) -> void:
+	_warm_step()
+	var f = st.get("field")
+	if not (f is Dictionary) or not st.has("lava"):
+		return
+	var w := int(f.w)
+	var d := int(f.d)
+	var h := int(f.get("h", C.GRID_H))
+	if _field_for(grid, grid_version, w, d, h, minf(-0.01, float(C.LAVA_START_Z))):
+		_upload_field()
+
+
+# 거리 표 그림을 재질에 (보통은 G3.hazard_update 가 p.field 로 — 미리 만든 표는 여기서, 나오는 프레임에 그림 만들기·올리기가 없게)
+func _upload_field() -> void:
+	if _field == null or mats.is_empty():
+		return
+	_field_tex = G3.hazard_field_texture(_field)
+	for m: ShaderMaterial in mats:
+		m.set_shader_parameter("uField", _field_tex)
+		m.set_shader_parameter("uFieldRect", Vector4(_field.x0, _field.y0, _field.w, _field.d))
+
+
+# 위험 셰이더 미리 만들기 (W17): 고도 Compatibility 는 셰이더를 처음 그릴 때 만듦 (한 프레임 수백 ms — 위험이 처음 나오는 프레임).
+# set_g3 (판 테마·그래픽 낮춤이 정해질 때 — 대기실·카운트다운) 뒤 위험이 꺼져 있는 동안 WARM_FRAMES 프레임:
+# 같은 재질 (near·far = 이번 판의 갈래) 을 카메라 앞 아주 작은 상자로 그리고 가장자리 경고도 세기 0 (투명) 으로 그림 → 판 중엔 다시 안 만듦.
+# 위험 노드 (이 노드) 는 꺼져 있으면 숨어 있어 그 아래 노드는 안 그려짐 → 상자는 부모 (world) 아래
+const WARM_FRAMES := 2
+var warm_left := 0
+var warm_done := 0 # 미리 그린 번 (테스트·확인용)
+var _warm: Node3D = null
+var warm_cam: Camera3D = null # 테스트용 (트리 밖) — 없으면 화면 카메라
+var field_builds := 0 # 거리 표를 새로 센 번 (테스트·확인용)
+var field_skips := 0 # 격자는 바뀌었지만 칸 값이 같아 그대로 쓴 번
+var _cols := []
+var _field_size := Vector3i.ZERO
+var _field_tex = null
+
+
+func _warm_step() -> void:
+	if warm_left <= 0 or mats.is_empty():
+		_end_warm()
+		return
+	var par := get_parent()
+	var cam: Camera3D = warm_cam if warm_cam != null else (get_viewport().get_camera_3d() if is_inside_tree() else null)
+	if par == null or cam == null:
+		return
+	if _warm == null:
+		_warm = Node3D.new()
+		_warm.name = "HazardWarm"
+		var box := BoxMesh.new()
+		box.size = Vector3.ONE * 0.001
+		for i in mats.size():
+			var mi := MeshInstance3D.new()
+			mi.mesh = box
+			mi.material_override = mats[i]
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mi.position = Vector3(i * 0.002, 0, 0)
+			_warm.add_child(mi)
+		par.add_child(_warm)
+	if _warm.is_inside_tree():
+		_warm.global_transform = cam.global_transform.translated_local(Vector3(0, 0, -2.0))
+	else: # 테스트 (트리 밖): 카메라와 같은 부모 아래라 보고
+		_warm.transform = cam.transform.translated_local(Vector3(0, 0, -2.0))
+	vig.material.set_shader_parameter("k", 0.0) # 셰이더가 알파 0 을 냄 — 안 보임
+	vig.visible = true
+	warm_left -= 1
+	warm_done += 1
+
+
+# 미리 그리기 끝 (그다음 프레임 — 마지막 미리 그린 프레임이 다 그려진 뒤): 상자 치움. 가장자리 경고는 _draw_vig·_off 가 매 프레임 다시 정함
+func _end_warm() -> void:
+	if _warm != null:
+		_warm.queue_free()
+		_warm = null
 
 
 # 위험 꺼짐: 빛 (전역 g3_hz_lp 세기 0)·가장자리 경고 (바로 0)·물들임과 하늘 아래 색 (G3.hazard_update on false, 한 번만)
