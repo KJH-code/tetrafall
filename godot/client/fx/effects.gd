@@ -94,6 +94,7 @@ var c_max := PackedFloat64Array()
 var c_size := PackedFloat64Array()
 var c_bounced := PackedByteArray()
 var ci := 0
+var _new := 0 # 비트: 이번 프레임에 새로 낸 풀 (1 고리 · 2 빛 · 4 연기 · 8 조각) — 비어 있고 새것도 없으면 훑지 않음
 var solid := func(_x: float, _y: float, z: float) -> bool: return z < 0.0 # 조각이 닿는 땅 (fx.gd 가 world.solid_at 로 바꿈)
 
 var sh := {"amp": 0.0, "ms": 1.0, "until": 0.0}
@@ -108,8 +109,12 @@ var kick := {"t0": -1e9, "ms": 1.0, "pitch": 0.0, "yaw": 0.0, "roll": 0.0, "fov"
 var vm := {"t0": -1e9, "ms": 1.0, "off": Vector3.ZERO} # 1인칭 팔 반동 (카메라 좌표 칸)
 
 
+# 시각 (ms). 확인 도구 (core/fx_probe.gd) 만 재연 가상 시계로 바꿈 — 느린 xvfb 에서도 반동·히트스톱이 프레임마다 찍히게
+static var time_src = null
+
+
 static func now_ms() -> float:
-	return Time.get_ticks_usec() / 1000.0
+	return time_src.call() if time_src != null else Time.get_ticks_usec() / 1000.0
 
 
 static func _pool_mmi(m: MultiMeshInstance3D, mmesh: MultiMesh, mesh: Mesh, n: int, custom: bool) -> void:
@@ -268,6 +273,7 @@ func ring(pos: Vector3, color := 0xffffff, grow := 2.2, life := 0.28, horizontal
 	var c := Co.color(color)
 	c.a = 0.9
 	r_color[k] = c
+	_new |= 1
 
 
 func alive_rings() -> int:
@@ -304,6 +310,7 @@ func glow(pos: Vector3, color: int, size: float, ms: float, a := 1.0, kind := RO
 	g_occ[k] = float(o.get("occ", FXC.GLOW_OCCLUDE[kind]))
 	g_front[k] = float(o.get("front", 0.0))
 	g_kind[k] = kind
+	_new |= 2
 	g_flat[k] = 1 if o.get("flat", false) else 0
 
 
@@ -341,6 +348,7 @@ func smoke(pos: Vector3, color: int, n: int, size: float, ms: float, rise := 0.6
 		s_rot[k] = randf() * TAU
 		s_spin[k] = randf_range(-1.2, 1.2)
 		s_seed[k] = randf()
+	_new |= 4
 
 
 # 돌·흙 조각 n 개: dir ({x,y} 또는 null) 쪽으로 튀어 한 번 튀고 멈춘 뒤 작아짐
@@ -365,6 +373,7 @@ func chunks(pos: Vector3, dir, color: int, n: int, speed: float, size: float, li
 		c_size[k] = size * (0.6 + randf() * 0.8)
 		c_bounced[k] = 0
 		c_color[k] = col.darkened(randf() * 0.25)
+	_new |= 8
 
 
 # ---------- W18 묶음 (타격·폭발·땅 충격) ----------
@@ -541,10 +550,15 @@ func update(dt: float, camera: Camera3D) -> void:
 		n += 1
 	mm.visible_instance_count = n
 	mmi.visible = n > 0
-	_update_rings(dt, cb)
-	_update_glow(dt, cb)
-	_update_smoke(dt, cb)
-	_update_chunks(dt)
+	if ring_mm.visible_instance_count > 0 or _new & 1:
+		_update_rings(dt, cb)
+	if glow_mm.visible_instance_count > 0 or _new & 2:
+		_update_glow(dt, cb)
+	if smoke_mm.visible_instance_count > 0 or _new & 4:
+		_update_smoke(dt, cb)
+	if chunk_mm.visible_instance_count > 0 or _new & 8:
+		_update_chunks(dt)
+	_new = 0
 
 
 func _update_rings(dt: float, cb: Basis) -> void:

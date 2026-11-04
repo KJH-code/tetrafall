@@ -23,6 +23,9 @@ func _ready() -> void:
 	if a.has("fx-frames"):
 		frames = Array(str(a["fx-frames"]).split(",")).map(func(x): return int(x))
 	process_priority = 1000
+	var E = load("res://fx/effects.gd")
+	if E.source_code.contains("static var time_src"): # W18 효과 시각 = 재연 가상 시계 (반동·히트스톱·찌그러짐이 프레임마다 같은 간격으로 찍힘)
+		E.time_src = func(): return Net.virt
 
 
 func _process(_d: float) -> void:
@@ -61,7 +64,7 @@ func _world():
 
 
 # 카메라 앞 dist 칸 바닥 (게임 좌표)
-func _front(dist := 5.0) -> Vector3:
+func _front(dist := 9.0) -> Vector3:
 	var cam := get_viewport().get_camera_3d()
 	var Co := preload("res://core/coords.gd")
 	var p := Co.game(cam.global_position)

@@ -69,8 +69,8 @@ const QUAKE := {"shock": [2.2, 360.0], "dust": [8, 0.9, 1100.0], "chunks": [8, 6
 # 탱크 R 솟는 땅: 칸마다 흙 기둥 (아래에서 솟는 먼지) + 돌 조각
 const QUAKE_RISE := {"dust": [2, 0.75, 900.0, 2.4], "chunks": [2, 5.0, 0.16]}
 
-# KO: 낙사 스매시 (줄기 밑동 빛 + 바깥으로 불꽃 줄) · 압사 (먼지 구름 + 블록 조각) · 낙사 잔상 (사라지는 몸)
-const KO_FX := {"smash_flash": [5.0, 260.0], "smash_sparks": [18, 16.0, 0.8, 380.0], "crush_smoke": [9, 1.2, 1400.0], "crush_chunks": [12, 7.0, 0.2], "fall_ghost_ms": 520.0, "fall_ghost_alpha": 0.55}
+# KO: 낙사 스매시 (줄기 밑동 빛 + 바깥으로 불꽃 줄) · 압사 (먼지 구름 + 블록 조각) · 낙사 잔상 (사라지는 몸) · 마지막 킬 번쩍 [크기, ms] (슬로모션 화면 시계)
+const KO_FX := {"smash_flash": [5.0, 260.0], "smash_sparks": [18, 16.0, 0.8, 380.0], "crush_smoke": [9, 1.2, 1400.0], "crush_chunks": [12, 7.0, 0.2], "fall_ghost_ms": 520.0, "fall_ghost_alpha": 0.55, "final": [3.5, 500.0]}
 
 # 캐릭터 상시 효과 (JS render.js 에 있던 것, W3 남은 목록): 광전사 분노 김 · 닌자 강화 손 불티 · 바드 꽂기 속도선
 # JS 값 (config.gd BERSERK_STEAM_RATE·DIVE_LINE_*) 을 그대로 쓰고, 여기엔 고도 쪽 덧칠만

@@ -158,6 +158,11 @@ func crush(p: Vector3, me: bool, near: bool) -> void:
 func final(e: Dictionary) -> void:
 	var now := now_ms()
 	slow = {"start": now, "until": now + C.KO_FINAL_MS, "x": float(e.get("x", 0)), "y": float(e.get("y", 0)), "z": float(e.get("z", 0))}
+	# W18: 마지막 킬 자리에 하얀 번쩍 + 그 사람 색 빛 고리 (슬로모션 화면 시계로 흘러 천천히 퍼짐 — fx_config KO_FX.final)
+	var F: Array = FXC.KO_FX.final
+	var at := Vector3(slow.x, slow.y, slow.z + 0.8)
+	fx.glow(at, 0xffffff, F[0], F[1], 1.0, fx.STAR, {"grow": 1.5, "hot": 1.0, "front": 0.5})
+	fx.glow(at, color_of.call(e.get("who")), 0.5, F[1] * 1.4, 0.9, fx.SHOCK, {"grow": F[0] * 2.0 / 0.5, "pw": 1.2})
 	View.sound_cue.emit("final", {"who": e.get("who"), "by": e.get("by"), "x": slow.x, "y": slow.y, "z": slow.z, "color": color_of.call(e.get("who"))})
 
 
