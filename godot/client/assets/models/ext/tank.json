@@ -1,12 +1,23 @@
 {
 	"_": "W19 Blender 로 만든 몸 (tools/blender/build_character.py tank) — 다시 만들면 덮어씀. 키는 chars/chars_config.gd EXT_DEFAULTS",
-	"height": 1.06204,
+	"height": 1.15779,
 	"offset": [
-		0.01702,
-		0.0,
-		-0.0
+		0.02002,
+		0.00059,
+		0.0
 	],
 	"tint": "mask",
+	"lods": {
+		"stage": "tank_lod0",
+		"high": "tank_lod1",
+		"medium": "tank_lod2",
+		"low": "tank_lod3"
+	},
+	"faces": {
+		"idle": "res://assets/models/ext/tank_face_idle.png",
+		"hit": "res://assets/models/ext/tank_face_hit.png",
+		"attack": "res://assets/models/ext/tank_face_attack.png"
+	},
 	"attach": [
 		{
 			"glb": "res://assets/models/ext/tank_shield.glb",
@@ -29,22 +40,39 @@
 			"third": false
 		}
 	],
+	"toon_steps": [
+		0.66,
+		0.84,
+		1.0
+	],
+	"outline": 0.45,
+	"rim": [
+		0.35,
+		3.0
+	],
 	"stats": {
-		"tris": 9792,
+		"tris": {
+			"lod0": 38000,
+			"lod1": 17000,
+			"lod2": 10000,
+			"lod3": 6000
+		},
+		"full_tris": 60008,
 		"prop_tris": {
-			"shield": 1592
+			"shield": 6784
 		},
 		"bones": 16,
-		"verts": 5002,
+		"atlas": 1024,
+		"face_px": 512,
 		"box_min": [
-			-0.3555,
-			-0.7646,
-			0.0
+			-0.3432,
+			-0.7619,
+			0.0006
 		],
 		"box_max": [
-			0.3895,
-			0.7646,
-			1.9542
+			0.3832,
+			0.7619,
+			2.1309
 		],
 		"auto_weight_fail": []
 	}
