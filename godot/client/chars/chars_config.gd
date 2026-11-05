@@ -46,6 +46,11 @@ const EXT := false
 # faces {idle, hit, attack} 표정 텍스처 (이름이 <id>_face 인 재질에 끼움 — 맞음·경직 = hit, 공격 동작 = attack) · toon_steps 툰 3단 (칠한 그늘이 있으면 부드럽게) ·
 # label_lift 머리 위 이름표 올림 (m, 모델이 코드 몸보다 클 때) · face_glow 얼굴 재질이 제 색으로 빛남 (가림형: 투구 안 어둠의 눈) · outline 외곽선 굵기 배율 (C.OUTLINE_THICKNESS ×, 얼굴엔 안 그림) · rim [세기, 거듭제곱] 가장자리 빛 · tint "mask" 면 몸 색 칸 (UV2.x = 1) 만 플레이어 색을 곱함
 const EXT_DEFAULTS := {"bones": {}, "yaw": 90.0, "height": 1.0, "offset": [0, 0, 0], "tint": "band", "tint_k": 0.6, "band": [0.17, 0.035, 0.0], "band_joint": "waist",
-	"keep": [], "attach": [], "vm_from": "elbow", "vm_snap": ["elbow"], "vm_node": "", "clips": {}, "lods": {}, "faces": {}, "outline": 1.0, "rim": [0.0, 3.0]}
+	"keep": [], "attach": [], "vm_from": "elbow", "vm_snap": ["elbow"], "vm_node": "", "clips": {}, "cloth": [], "lods": {}, "faces": {}, "outline": 1.0, "rim": [0.0, 3.0]}
+# W23 동작 클립 (chars/ext_clips.gd): 클립 층 섞기 — 들어갈 때·나갈 때 속도 (/초, cw 가 0↔1), 래그돌 모터가 이보다 약하면 코드 (물리) 로, 클립 바뀔 때 크로스페이드 초
+const EXT_CLIP_IN := 14.0
+const EXT_CLIP_OUT := 30.0
+const EXT_CLIP_MOTOR_MIN := 0.9
+const EXT_CLIP_FADE_S := 0.10
 const EXT_HIT_FACE_S := 0.45 # 맞은 뒤 이만큼 (초) '맞음' 표정
 const EXT_FLASH := 0.55 # 경직 하얀 깜빡임 (외부 모델은 피부 부위를 몰라서 몸 전체 하얀 발광으로)

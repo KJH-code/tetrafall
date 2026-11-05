@@ -694,7 +694,7 @@ func pose(p: Dictionary, now_ms: float) -> void:
 	t0 = _prof("몸 래그돌 잡기·넣기", t0)
 	_sync_bones()
 	if ext != null:
-		ext.sync()
+		ext.sync(st)
 	t0 = _prof("몸 묶음 뼈", t0)
 	_apply_opacity()
 	_fx_colors(p)

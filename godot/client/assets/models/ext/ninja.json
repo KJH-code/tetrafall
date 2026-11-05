@@ -56,5 +56,53 @@
 			"scale": 1.0,
 			"vm": false
 		}
+	],
+	"vm_node": "ninja_vm",
+	"clips": {
+		"file": "res://assets/models/ext/ninja_anim.glb",
+		"marks": [
+			0.3,
+			0.4,
+			0.8
+		],
+		"idle": "idle",
+		"walk": "walk",
+		"run": "run",
+		"jump": "jump",
+		"fall": "fall",
+		"land": "land",
+		"run_speed": 4.5,
+		"run_from": 0.55,
+		"ground": [
+			"mixamorig_LeftFoot",
+			"mixamorig_RightFoot",
+			"mixamorig_LeftToeBase",
+			"mixamorig_RightToeBase"
+		],
+		"moves": {
+			"찌르기": "atk1",
+			"반대 찌르기": "atk2",
+			"앞차기": "atk3",
+			"올려 차기": "atk4",
+			"공중 베기": "air1",
+			"내려 차기": "air2",
+			"ninjaDash": "dash",
+			"표창": "star",
+			"표창2": "star",
+			"공중 표창": "airstar"
+		}
+	},
+	"cloth": [
+		{
+			"bones": [
+				"mixamorig_Scarf1",
+				"mixamorig_Scarf2",
+				"mixamorig_Scarf3"
+			],
+			"rest": 0.1,
+			"damp": 0.94,
+			"gravity": 20.0,
+			"drag": 0.0
+		}
 	]
 }

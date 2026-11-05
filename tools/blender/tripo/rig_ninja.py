@@ -14,6 +14,8 @@ sys.path.insert(0, HERE)
 sys.dont_write_bytecode = True
 import rigkit as K  # noqa: E402
 import rig_tank as R  # noqa: E402  (빨강 판정·상수 재사용)
+import ninja_vm as VM  # noqa: E402  (1인칭 닫힌 팔)
+import ninja_scarf as SC  # noqa: E402  (목도리 꼬리 뼈)
 
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 SRC = os.path.join(HERE, "src", "ninja_tripo_rigged.glb")
@@ -170,12 +172,14 @@ def build(args):
             seen.add(k)
             fixed += 1
     print("TF 목도리 가중치 고침 꼭짓점", fixed)
+    SC.add_scarf(ob, arm, ring, key)
     R.weld_normals(me)  # 이음선 법선 합침 (외곽선 껍질·meshopt 줄이기)
     tot = sum(p.area for p in me.polygons)
     u2d = me.uv_layers["UV2"].data
     mk = sum(p.area for p in me.polygons if sum(u2d[li].uv[0] > 0.5 for li in p.loop_indices) * 2 > len(p.loop_indices))
     print("TF 몸 색 칸 넓이 %.1f%%" % (mk / tot * 100))
-    return ob, arm
+    vm = VM.make_vm(ob, arm)
+    return ob, arm, vm
 
 
 def export(path, objs):
@@ -235,8 +239,8 @@ def main():
     if "--dagger" in a:  # 소품 (손에 쥔 단검) 만: --dagger <출력.glb>
         make_dagger(a[a.index("--dagger") + 1])
         return
-    ob, arm = build(a)
-    export(os.path.join(out, "ninja_rigged.glb"), [ob, arm])
+    ob, arm, vm = build(a)
+    export(os.path.join(out, "ninja_rigged.glb"), [ob, vm, arm])
     print("TF 내보냄", out)
 
 
