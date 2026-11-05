@@ -573,3 +573,84 @@ func test_blender_tank_fx_twin() -> void:
 		if pf != null:
 			check(pf.transform.basis.is_equal_approx(Ext.Ext.GLTF_TO_GAME_), "1인칭 앞 방패는 돌림 없음 (viewmodel 이 돌기 = -x 로 맞춤)")
 	t.free()
+
+
+# 꼭짓점 색 몸 메시의 넓이 가중 평균 색 (몸 색 칸 빼고) · 몸 색 칸 넓이 비율
+func _albedo_stats(mesh: Mesh) -> Array:
+	var arr: Array = mesh.surface_get_arrays(0)
+	var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var c: PackedColorArray = arr[Mesh.ARRAY_COLOR]
+	var u2: PackedVector2Array = arr[Mesh.ARRAY_TEX_UV2]
+	var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+	var s := Vector3.ZERO
+	var area_sum := 0.0
+	var skin := 0.0
+	for t in range(0, idx.size(), 3):
+		var i0 := idx[t]
+		var i1 := idx[t + 1]
+		var i2 := idx[t + 2]
+		var area := (v[i1] - v[i0]).cross(v[i2] - v[i0]).length() * 0.5
+		if u2[i0].x > 0.5:
+			skin += area
+			continue
+		var col: Color = (c[i0] + c[i1] + c[i2]) / 3.0
+		s += Vector3(col.r, col.g, col.b) * area
+		area_sum += area
+	return [s / maxf(1e-9, area_sum), skin / maxf(1e-9, skin + area_sum)]
+
+
+# 밝기 (W19 재혁 '어둡고 탁함'): Blender 탱크 몸 (몸 색 칸 뺀 쇠·가죽·금) 의 넓이 평균 색이 구운 탱크와 비슷 (밝기 0.92~1.1 배) — 같은 툰 셰이더라 알베도가 같으면 화면 밝기도 같음
+func test_blender_tank_brightness() -> void:
+	var baked = _body("tank", true, false)
+	var ext = _body("tank")
+	var bm: Mesh = null
+	for dr in baked.drawn:
+		if (dr.mi as MeshInstance3D).mesh != null and (dr.mi as MeshInstance3D).mesh.surface_get_format(0) & Mesh.ARRAY_FORMAT_COLOR:
+			bm = (dr.mi as MeshInstance3D).mesh
+	var em: Mesh = null if ext.ext == null else (ext.ext.parts[0].mi as MeshInstance3D).mesh
+	check(bm != null and em != null, "구운 몸·Blender 몸 꼭짓점 색 메시")
+	if bm != null and em != null:
+		var a := _albedo_stats(bm)
+		var b := _albedo_stats(em)
+		var la: float = (a[0] as Vector3).dot(Vector3(0.2126, 0.7152, 0.0722))
+		var lb: float = (b[0] as Vector3).dot(Vector3(0.2126, 0.7152, 0.0722))
+		check(lb / la > 0.92 and lb / la < 1.1, "몸 평균 밝기 구운 몸 대비 %.3f (구운 %.3f, Blender %.3f)" % [lb / la, la, lb])
+		check(b[1] > 0.15, "몸 색 칸 넓이 %.0f%% (구운 %.0f%%)" % [b[1] * 100.0, a[1] * 100.0])
+	baked.free()
+	ext.free()
+
+
+# 눈 (W19 재혁 '눈알이 투구 위로 떠 있음'): 눈 흰자 정점이 전부 투구 바깥 타원 (tools/blender/chars/tank.py hc·HR) 안 → 어느 방향에서 봐도 투구 밖으로 안 삐져나옴
+func test_blender_tank_eyes_in_helmet() -> void:
+	var info = Ext.load_char("tank")
+	if info == null or info.surfs.size() < 2:
+		check(false, "Blender 탱크 눈 표면")
+		return
+	var neck := Vector3(0.032, 0.0, 1.437) # 게임 좌표 (tools/blender/ref/tank_rig.json)
+	var hc := neck + Vector3(-0.01, 0.0, 0.19)
+	var hr := Vector3(0.2, 0.2, 0.185)
+	var arr: Array = (info.surfs[1].mesh as ArrayMesh).surface_get_arrays(0)
+	var worst := 0.0
+	for p in (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array):
+		var g := Vector3(p.z, p.x, p.y) # glTF (X, Y, Z) = 게임 (y, z, x)
+		var d := (g - hc) / hr
+		worst = maxf(worst, d.length())
+	check(worst < 1.0, "눈 흰자가 투구 안 (가장 바깥 %.3f < 1)" % worst)
+
+
+# 무대 빛 (대기실 큰 캐릭터·초상, ui/portrait.gd stage_light): 구운 몸·Blender 몸 모두 툰 재질이 전역 (대기실 어두운 장면) 빛 대신 JS 무대 흰 빛
+func test_stage_light() -> void:
+	var P = load("res://ui/portrait.gd")
+	for ext in [false, true]:
+		var b = _body("tank", true, ext)
+		P.stage_light(b)
+		var n := 0
+		var on := 0
+		for mi in b.find_children("*", "MeshInstance3D", true, false):
+			var m = (mi as MeshInstance3D).material_override
+			if (mi as MeshInstance3D).mesh != null and m is ShaderMaterial and P._has_local_light((m as ShaderMaterial).shader):
+				n += 1
+				if m.get_shader_parameter("local_light") == true and is_equal_approx(float(m.get_shader_parameter("local_hemi_energy")), 1.05):
+					on += 1
+		check(n > 0 and on == n, "%s 툰 재질 %d 개 모두 무대 빛 (%d)" % ["Blender" if ext else "구운", n, on])
+		b.free()

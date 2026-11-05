@@ -8,6 +8,10 @@ const OUTLINE_COLOR := Color(0.08, 0.05, 0.1, 1.0)
 # 테마 없는 화면 (예전 노을, render.js 생성자): 하늘빛 위·아래·세기, 해 세기 (색·방향은 C.SUN_COLOR·C.SUN_DIR)
 const SUNSET_HEMI := [0xffe2d2, 0x8a90b8, 1.15]
 const SUNSET_SUN := 1.25
+# 대기실 큰 캐릭터·초상 무대 빛 (JS client/char-stage.js·portrait.js: AmbientLight 0xffffff 1.05 + 앞 DirectionalLight 0xffffff 1.5 — 판·대기실 테마와 상관없이 늘 같은 밝기).
+# 고도는 툰 셰이더 빛이 전역 값이라 그대로 두면 대기실 어두운 장면 (lobby_dark) 빛을 받아 어둡고 탁해짐 (W19 재혁 캡처) → 재질마다 이 빛 (toon_local_light)
+const STAGE_HEMI := [0xffffff, 0xffffff, 1.05]
+const STAGE_SUN := [0xffffff, 1.5]
 # 해 그림자: three (render.js bias -0.0008) 와 단위가 달라 고도 값으로 맞춤 — 빛을 비스듬히 받는 옆면이 제 그림자로 어두워지지 않게 (JS 와 나란히 재서 정함)
 const SUN_SHADOW_BIAS := 0.1
 const SUN_SHADOW_NORMAL_BIAS := 2.0

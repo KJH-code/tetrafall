@@ -65,7 +65,28 @@ static func still_body(chars, char_id: String, color: Color) -> Node3D:
 	var body = chars.make_body(char_id, color)
 	if body.has_method("set_hz_light"):
 		body.set_hz_light(false)
+	stage_light(body)
 	return body
+
+
+# 무대 빛 (JS 초상·큰 캐릭터와 같은 흰 빛, G3K.STAGE_*): 몸 재질 (구운 몸·외부 모델·소품 모두 몸마다 따로) 을 전역 테마 빛 대신 이 빛으로
+static func stage_light(body: Node) -> void:
+	var G3 = load("res://shaders/g3.gd")
+	var K = load("res://shaders/g3_config.gd")
+	for mi in body.find_children("*", "MeshInstance3D", true, false):
+		var m = (mi as MeshInstance3D).material_override
+		if m is ShaderMaterial and _has_local_light((m as ShaderMaterial).shader):
+			G3.toon_local_light(m, true, K.STAGE_HEMI[0], K.STAGE_HEMI[1], K.STAGE_HEMI[2], K.STAGE_SUN[0], K.STAGE_SUN[1])
+
+
+# G3 툰 계열 셰이더 (toon_common 을 쓰는 것 — 툰·투명 툰·스텐실 툰 등) 인지: local_light 유니폼이 있음
+static func _has_local_light(sh: Shader) -> bool:
+	if sh == null:
+		return false
+	for u in sh.get_shader_uniform_list():
+		if str(u.get("name", "")) == "local_light":
+			return true
+	return false
 
 
 # 메뉴에 오래 있으면 카드 8장을 미리 (JS warmPortraits)

@@ -87,8 +87,8 @@ def build(k):
         k.sphere("knee_" + side, kn + Vector((0.03, 0, 0)), (0.1, 0.11, 0.1), STEEL, "knee_" + side, seg=12, rings=7)
         k.capsule("greave_" + side, kn + Vector((0, 0, -0.05)), ft + Vector((0, 0, 0.09)), 0.1, 0.115, STEEL,
                   "knee_" + side, seg=12, rings=3)
-        k.rbox("boot_" + side, (ft.x + 0.06, ft.y, 0.085), (0.36, 0.22, 0.17), DARK, "foot_" + side, bevel=0.4)
-        k.rbox("toe_" + side, (ft.x + 0.2, ft.y, 0.07), (0.1, 0.2, 0.1), STEEL, "foot_" + side, bevel=0.4)
+        k.rbox("boot_" + side, (ft.x + 0.06, ft.y, 0.085), (0.36, 0.22, 0.17), STEEL, "foot_" + side, bevel=0.4)
+        k.rbox("toe_" + side, (ft.x + 0.2, ft.y, 0.07), (0.1, 0.2, 0.1), DARK, "foot_" + side, bevel=0.4)
 
     k.mirror(leg)
 
@@ -107,16 +107,18 @@ def build(k):
         k.sphere("elbow_" + side, el, (0.09, 0.09, 0.09), DARK, "elbow_" + side, seg=12, rings=7)
         k.capsule("gauntlet_" + side, el + fwd * 0.05, hd - fwd * 0.03, 0.09, 0.105, STEEL, "elbow_" + side, seg=12, rings=3)
         k.torus("cuff_" + side, hd - fwd * 0.06, 0.105, 0.025, DARK, "elbow_" + side, rot=_rot_to(fwd), seg=14, ring=5)
-        k.rbox("fist_" + side, hd + fwd * 0.05, (0.15, 0.14, 0.15), DARK, "hand_" + side, rot=_rot_to(fwd), bevel=0.4)
+        k.rbox("fist_" + side, hd + fwd * 0.05, (0.15, 0.14, 0.15), STEEL, "hand_" + side, rot=_rot_to(fwd), bevel=0.4)
 
     k.mirror(arm)
 
     # ---- 머리: 몸 색 얼굴 + 왕눈알 (JS addEyes 자리·크기) + 둥근 투구 (얼굴 앞만 뚫림) + 이마 띠 + 코 가드 + 몸 색 볏 ----
     k.capsule("neck", N + Vector((0, 0, -0.06)), N + Vector((0.01, 0, 0.08)), 0.085, 0.085, WHITE, "neck", seg=10, rings=2, skin=True)
     k.sphere("face", N + Vector((0.005, 0, 0.16)), (0.155, 0.16, 0.16), WHITE, "neck", seg=14, rings=9, skin=True)
-    eye_r = 0.062 * k.rig["figure_scale"]
+    # 눈: 투구 얼굴 구멍 안에 쏙 (JS addEyes 자리보다 조금 작고 뒤로) — 투구 앞 (얼굴 앞 x ≈ 0.19) 보다 안 나오게 해서
+    # 옆·3/4 에서 눈알이 투구 밖으로 삐져나와 떠 보이지 않게 (2026-11-05 재혁 대기실 캡처)
+    eye_r = 0.056 * k.rig["figure_scale"]
     for sign in (-1, 1):
-        e = N + Vector((0.117, sign * 0.0805, 0.1615))
+        e = N + Vector((0.094, sign * 0.07, 0.158))
         k.sphere("eye_%d" % sign, e, (eye_r,) * 3, WHITE, "neck", seg=12, rings=8, unlit=True)
         k.sphere("pupil_%d" % sign, e + Vector((eye_r * 0.88, 0, 0)), (eye_r * 0.45,) * 3, PUPIL, "neck", seg=10, rings=6)
     hc = N + Vector((-0.01, 0, 0.19))
