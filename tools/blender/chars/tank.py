@@ -14,7 +14,7 @@ SUB = 0
 
 B.look("steel", 0x99a3b1, "metal", band=0.22, edge=0.38, hi=0xffffff, edge_from=0.5, edge_to=0.56, ao_dist=0.06, ao_min=0.42)
 B.look("steel_bright", 0xb0b9c6, "metal", band=0.26, edge=0.42, hi=0xffffff, edge_from=0.5, edge_to=0.56, ao_dist=0.06, ao_min=0.42)  # 어깨·투구 (밝게)
-B.look("steel_warm", 0xa29f9c, "metal", band=0.2, edge=0.36, hi=0xfff4e8, edge_from=0.5, edge_to=0.56, ao_dist=0.06, ao_min=0.42)  # 정강이·장갑 (따뜻한 회색)
+B.look("steel_warm", 0x9ea1a6, "metal", band=0.2, edge=0.36, hi=0xfff4e8, edge_from=0.5, edge_to=0.56, ao_dist=0.06, ao_min=0.42)  # 정강이·장갑 (따뜻한 회색)
 B.look("tint_dark", 0xeeeeee, "tint", tint_base=0xb4b4b4, edge=0.2, hi=0xffffff, ao_min=0.6)  # 깃 줄기 명암 둘째 단
 B.look("steel_dark", 0x535c6c, "metal", band=0.18, edge=0.32, hi=0xe8f0ff, edge_from=0.5, edge_to=0.56)
 B.look("gold", 0xd9a033, "metal", band=0.3, edge=0.4, hi=0xfff4c8, ao_min=0.6, edge_from=0.5, edge_to=0.56)
