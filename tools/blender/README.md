@@ -157,3 +157,22 @@ blender -b --factory-startup -P tools/blender/tripo/rig_ninja.py -- --dagger <ex
 - 확인 그림: `stage_shot.gd`·`move_shot.gd` 에 `SHOT_CHAR=ninja` (동작 목록 `SHOT_MOVES`, 확대 `SHOT_FOV`) 환경 변수.
 - 알려진 한계: 목도리 꼬리가 몸통에 붙은 채 늘 뒤로 날린 모양 그대로 (자세에 안 흔들림), 코드 몸과 팔·다리 길이가 달라 서버 판정 위치 (주먹·칼 끝) 와 보이는 칼이 조금 다름, glb 3.4 MB.
 
+
+## 10. W24 — 자동 리깅 사냥꾼 (2026-11-05, `tools/blender/tripo/rig_hunter.py`)
+
+원본 `tripo/src/hunter_tripo_rigged.glb` (스킨 메시 하나 18,519 삼각형, Mixamo 식 뼈 65, 알베도 4096, 애니메이션 없음, 소총이 몸에 붙음). 닌자 (8절)·탱크와 같은 길.
+
+```
+blender -b --factory-startup -P tools/blender/tripo/rig_hunter.py -- --out <폴더>          # → <폴더>/hunter_rigged.glb (hunter_lod0 + hunter_vm + 뼈대)
+LOD_LOCK=1 node tools/blender/tripo/lods.mjs <폴더>/hunter_rigged.glb <폴더>/hunter.glb hunter 5000,4000,3000   # 판 LOD 3개 (4991·3995·2999)
+```
+
+- **뼈대 노드 올림**: 닌자·탱크와 같은 세계 좌표 굽기.
+- **좌우 뒤집기 안 함**: 소총은 원본에서 Mixamo `Left*` 쪽에 보이지만 (뼈 이름만 보면 왼팔) 게임에서는 `탕`·조준 때 코드가 뻗는 R 관절 팔을 그대로 따라감 (뒤집으면 뻗은 팔은 빈손, 소총은 내린 팔에 매달림 — 눈으로 확인). `MIRROR=1` 로만 뒤집음.
+- **몸 색 칸** (`tint: "mask"`, 9.5%): 붉은 목수건 (큰 덩어리 34 꼭짓점) + **모자 전체** (`HAT_Z` = 0.82 m 위 꼭짓점 804개, 챙·위·깃털·띠 — 위에서 내려다보는 판 카메라에 가장 잘 보임, 목수건은 작고 앞에서만 보임). 두 자리는 따로 밝기를 맞춰 회백 (`GRAY`) + UV2.x = 1 + 꼭짓점 색 흰. 0.80 이하는 털 목깃에 번짐. 망토 (초록)·털·가죽은 원래 색.
+- 알베도 밝기 `LIFT` = 0.8, 알베도만 (법선·ORM 뺌), 4096 → 2048 jpg.
+- **LOD**: 이 모델은 UV 이음선이 덜 잘려 있어 (닌자 8500·탱크 8940 과 달리) 판 LOD 를 5000·4000·3000 세 개로 만들어도 (`LOD_LOCK=1`) 구멍·갈라짐 없음 (앞·쪼그림·베기 자세 확인). stage 18,519 (대기실·초상). glb 2.1 MB.
+- **1인칭**: 팔꿈치 아래 가르기를 그대로 쓰면 소총이 화면 가운데를 대각선으로 가로질러 조준을 가림 → glb 안에 `hunter_vm` (stage 몸에서 아래팔·손 뼈가 센 꼭짓점 중 뼈 선분 `VM_R` 안인 것만, 1,645 삼각형, 소총 꼭짓점 뺌) 를 따로 넣고 `hunter.json` `vm_node`. 1인칭에서는 소총이 안 보이고 두 주먹만 보임 (코드 총은 외부 몸이라 안 남김).
+- 3인칭 동작 확인 (`SHOT_CHAR=hunter` `stage_shot.gd`·`move_shot.gd`): 베기 3종·탕·조준·추적 도약·쪼그림·점프에서 갈라짐·가시 없음. 알려진 한계: 코드 평타가 칼 베기라 소총 든 손으로 휘두르는 모습, 반동 (탕 S) 에서 소총이 머리 위로 치솟음, 망토는 큰 자세에서 안감이 비침, 코드 몸과 팔 길이가 달라 서버 판정 위치와 보이는 소총 끝이 조금 다름.
+- `posecheck.py` 는 W22 와 같은 파일 (자세별 앞·옆·뒤 그림).
+
