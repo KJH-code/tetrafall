@@ -69,7 +69,7 @@ def split(ob):
     return isl, cls, nrm, c0
 
 
-def keep_only(ob, isl, cls, want, name):
+def keep_only(ob, isl, cls, want, name, fill=False):
     """ob 를 복사해 want 종류 조각만 남김"""
     K.select([ob])
     bpy.ops.object.duplicate()
@@ -82,6 +82,8 @@ def keep_only(ob, isl, cls, want, name):
     bm.verts.ensure_lookup_table()
     kill = [v for v in bm.verts if cls[isl[v.index]] != want]
     bmesh.ops.delete(bm, geom=kill, context="VERTS")
+    if fill:
+        print("TF 막은 구멍", K.fill_holes(bm, 600))
     bm.to_mesh(o.data)
     bm.free()
     return o
@@ -96,8 +98,26 @@ def transform_prop(o, R, scale, anchor):
         me.flip_normals()
 
 
+def plate_mode(a):
+    """--plate <줄인 방패.glb> <출력.glb>: 줄인 방패 (meshopt 가 평평한 판을 찌그러뜨리므로 줄인 뒤에) 에 뒷판을 더함"""
+    src, dst = a[a.index("--plate") + 1], a[a.index("--plate") + 2]
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy.ops.import_scene.gltf(filepath=src)
+    o = [x for x in bpy.context.scene.objects if x.type == "MESH"][0]
+    mt = o.data.materials[0]
+    img = [n for n in mt.node_tree.nodes if n.type == "TEX_IMAGE"][0].image
+    o.parent = None
+    o.matrix_world = Matrix.Identity(4)
+    add_back_plate(o, img)
+    export(dst, [o])
+    print("TF 뒷판 더함", dst)
+
+
 def main():
     a = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    if "--plate" in a:
+        plate_mode(a)
+        return
     out = a[a.index("--out") + 1]
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=SRC)
@@ -166,6 +186,42 @@ def main():
         o.parent = None
         export(os.path.join(out, nm), [o])
     print("TF 끝", out)
+
+
+def add_back_plate(o, img):
+    """방패 뒷면 (손잡이 쪽, 팔이 겹쳐 있던 자리에 구멍) 을 얇은 뒷판 한 장으로 막음: 뒤쪽 테두리 꼭짓점의 볼록 껍질을 조금 줄여 뒷면 평면에. 색 = 방패 안쪽 강철 텍셀"""
+    import bmesh
+    from mathutils.geometry import convex_hull_2d
+    import numpy as np
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    ymin = min(v.co.y for v in bm.verts)
+    back = list(bm.verts)  # 방패 전체 윤곽의 볼록 껍질
+    pts = [Vector((v.co.x, v.co.z)) for v in back]
+    hull = convex_hull_2d(pts)
+    cx = sum(p.x for p in pts) / len(pts)
+    cz = sum(p.y for p in pts) / len(pts)
+    ring = [bm.verts.new((cx + (pts[i].x - cx) * 0.97, ymin + 0.012, cz + (pts[i].y - cz) * 0.97)) for i in hull]
+    f = bm.faces.new(list(reversed(ring)))  # 법선 -y (뒤쪽)
+    uvl = bm.loops.layers.uv.active
+    W, H = img.size
+    px = np.array(img.pixels[:], dtype=np.float32).reshape(H, W, 4)
+    # 어두운 강철 텍셀: 모든 꼭짓점 중 밝기 하위 25% 지점
+    cand = []
+    for fc in bm.faces:
+        if fc is f:
+            continue
+        for l in fc.loops[:1]:
+            u = l[uvl].uv
+            c = px[min(H - 1, max(0, int(u[1] * H))), min(W - 1, max(0, int(u[0] * W))), :3]
+            if max(c) - min(c) < 0.15:
+                cand.append((float(c @ np.array([0.2126, 0.7152, 0.0722])), (u[0], u[1])))
+    cand.sort()
+    uv = cand[int(len(cand) * 0.3)][1]
+    for l in f.loops:
+        l[uvl].uv = uv
+    bm.to_mesh(o.data)
+    bm.free()
 
 
 def K_tri(o):

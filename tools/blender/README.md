@@ -119,7 +119,8 @@ blender -b --factory-startup -P tools/blender/tripo/rig_tank.py -- --out <폴더
 node tools/blender/tripo/lods.mjs <폴더>/tank_rigged.glb <폴더>/tank.glb        # npm i @gltf-transform/core@4 @gltf-transform/functions@4 meshoptimizer@0.22 (레포 밖, NODE_PATH)
 # 소품: 방패·망치 (src/cellB_60k.glb 에서 UV 덩어리를 방패 판 평면 거리·위치로 골라 떼어 냄) → 줄이기
 blender -b --factory-startup -P tools/blender/tripo/rig_props.py -- --out <폴더>
-node tools/blender/tripo/lods.mjs prop <폴더>/tank_shield_hi.glb <폴더>/tank_shield.glb 1500   # 망치 900
+node tools/blender/tripo/lods.mjs prop <폴더>/tank_shield_hi.glb <폴더>/tank_shield_s.glb 1500   # 망치 900 (tank_hammer.glb)
+blender -b --factory-startup -P tools/blender/tripo/rig_props.py -- --plate <폴더>/tank_shield_s.glb <폴더>/tank_shield.glb   # 방패 뒷판
 # 자세별 확인 (걷기·팔 들기·쪼그림·점프, 앞·옆·뒤)
 blender -b --factory-startup -P tools/blender/tripo/verify_glb.py -- <tank.glb> <폴더> lod0,lod2
 ```
@@ -129,4 +130,8 @@ blender -b --factory-startup -P tools/blender/tripo/verify_glb.py -- <tank.glb> 
 - 망토 = 몸통 뼈 (아래는 허리·골반으로 섞임), 망토와 팔을 잇는 삼각형은 팔을 들 때 가시처럼 늘어나서 뗌 (`CUT`).
 - 텍스처 알베도 한 장 (원본 4096 → 2048 jpg, 법선·금속 그림 뺌). 표정·얼굴 재질 없음 (닫힌 투구가 텍스처에 구워짐) → `tank.json` 에 `faces` 없음.
 - LOD: stage = 원본 1.49만, 판 높음·보통·낮음 = 5000·4000·3000 (`lods.mjs` `TARGETS`). 방패 2500·망치 900 (소품은 meshopt 한계로 목표보다 큼).
-- 알려진 한계: **1인칭 팔** (`vm_from` 팔꿈치 아래 삼각형 가르기) 이 이 몸에선 깨져 보임 — 붙은 한 덩어리 메시를 뼈로 가른 열린 껍질이라 외곽선 가시·늘어진 삼각형. 전용 닫힌 1인칭 팔 메시가 필요함. 방패 뒷면 (손잡이 쪽) 에 팔이 겹쳐 있던 구멍이 있음 (바깥 면은 온전). 망치 (`tank_hammer.glb`) 는 파일만 있고 게임에 붙이지 않음.
+- **1인칭 팔** (`vm_node: "tank_vm"`): 원본 팔을 가르는 방식은 열린 껍질·가시가 나와서 버리고, `rig_tank.py` `make_vm_arms` 가 닫힌 팔 메시 (8각 앞팔 보호대 + 금 띠 + 주먹 + 손등판, 두 팔 160 삼각형, 뼈 elbow·hand 에 단단히) 를 glb 안에 `tank_vm` 노드로 따로 만듦. 색은 원본 팔 텍스처의 텍셀 한 점씩 (`VM_STEEL_PCT`·`VM_GLOVE_PCT`). 로더 (`external.gd`) 는 `vm_node` 가 있으면 1인칭에서 그 메시만 그리고 판 몸에선 안 그림.
+- **해머**: `tank.json` attach 2개 (`joint: hand_R`) — 판 몸 (scale 0.526 = 1/키) 과 1인칭 (`vm: true`, `third: false`, scale 0.3). 오른손 뼈를 따라 들리고 휘두름. 확인 `tools/blender/move_shot.gd` (동작별 자세 나란히).
+- **방패 뒷판**: 방패를 줄인 뒤 (`lods.mjs prop`) `rig_props.py --plate <줄인.glb> <출력.glb>` 가 뒷면 윤곽 볼록 껍질 한 장을 더함 (원본 뒷면에 쥔 팔이 가렸던 구멍을 막음, meshopt 가 평평한 판을 찌그러뜨려서 줄인 뒤에 더함).
+- **다리 갈라짐**: `smooth_leg_weights` (z < 0.78 가중치를 이웃과 4번 섞음) 로 쪼그림·점프에서 판 조각이 따로 노는 것이 줄었지만 정강이 가장자리가 들쭉날쭉함은 남음.
+- 알려진 한계: 주먹·앞팔은 상자꼴로 단순화됨 (원본 갑옷 모양 아님). 1인칭에서 방패는 뒷판 (어두운 평면) 만 보임. 쪼그림·점프 때 정강이 가장자리가 거칠다.

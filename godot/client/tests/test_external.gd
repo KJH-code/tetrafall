@@ -484,7 +484,7 @@ func test_blender_tank_info() -> void:
 			var st := _albedo_stats(sf.mesh, sf.tex)
 			check(st[1] > 0.02 and st[1] < 0.40, "몸 색 칸 넓이 %.0f%% (2~40%% — 망토·앞 천·목도리)" % (st[1] * 100.0))
 	check((info.cfg.get("faces", {}) as Dictionary).is_empty(), "표정 텍스처 없음 (닫힌 투구)")
-	check(info.cfg.tint == "mask" and (info.cfg.attach as Array).size() == 3, "tank.json: mask·방패 attach 3")
+	check(info.cfg.tint == "mask" and (info.cfg.attach as Array).size() == 5 and str(info.cfg.get("vm_node", "")) == "tank_vm", "tank.json: mask·방패 3 + 해머 2 (판·1인칭)·vm_node")
 
 
 # 쉬는 자세: 크기 1, 뼈 자리 = 우리 관절 자리, 판 몸 = high LOD 하나만 + 얼굴 + 방패 2, 재질 손질 (몸 색 칸 곱하기·얇은 외곽선·얼굴 외곽선 없음)
@@ -511,7 +511,7 @@ func test_blender_tank_body() -> void:
 	var ext_n := 0
 	for dr in b.drawn:
 		ext_n += 1 if dr.get("ext", false) else 0
-	check(ext_n == 3 and b.drawn.size() == 3 and b.ext.band == null, "그리는 메시 3 (몸·등 방패·앞 방패, 얻음 %d/%d)" % [ext_n, b.drawn.size()])
+	check(ext_n == 4 and b.drawn.size() == 4 and b.ext.band == null, "그리는 메시 4 (몸·등 방패·앞 방패·해머, 얻음 %d/%d)" % [ext_n, b.drawn.size()])
 	check(b.ext.lod == str(b.ext.info.cfg.lods.high), "판 몸 = high LOD (얻음 %s)" % b.ext.lod)
 	var lods_seen := {}
 	for mi in b.ext.find_children("*", "MeshInstance3D", true, false):
@@ -618,13 +618,13 @@ func test_blender_tank_fx_twin() -> void:
 	b.free()
 	# 1인칭 쌍둥이: stage LOD 의 팔꿈치 아래 삼각형만 + 앞 방패만 (등 방패 없음)
 	var t = _body("tank", false)
-	check(t.ext != null and not t.ext.third and t.ext.lod == str(t.ext.info.cfg.lods.stage), "1인칭 쌍둥이 = stage LOD")
+	check(t.ext != null and not t.ext.third and t.ext.lod == "tank_vm", "1인칭 쌍둥이 = 닫힌 팔 메시 (vm_node)")
 	if t.ext != null:
 		var arm_tri := 0
 		for sf in _lod_surfs(t.ext.info, t.ext.lod):
 			if sf.vm_mesh != null:
 				arm_tri += _tris(sf.vm_mesh)
-		check(arm_tri > 300 and arm_tri < 9000, "1인칭 팔 삼각형 %d (팔 보호대·장갑·팔꿈치)" % arm_tri)
+		check(arm_tri > 100 and arm_tri < 600, "1인칭 팔 삼각형 %d (닫힌 앞팔 보호대·금 띠·주먹·손등판 두 팔)" % arm_tri)
 		var back: Node3D = t._n(t.refs.shields.back)
 		var front: Node3D = t._n(t.refs.shields.front)
 		check(back.get_node_or_null("ext_shields_back") == null and front.get_node_or_null("ext_shields_front") != null, "1인칭: 앞 방패만 (viewmodel 이 왼손에 쥠)")

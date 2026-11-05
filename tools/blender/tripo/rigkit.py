@@ -125,3 +125,32 @@ def albedo_only(mat):
         if im.users == 0:
             bpy.data.images.remove(im)
     return nt.nodes[keep].image if keep is not None else None
+
+
+def fill_holes(bm, max_sides):
+    """열린 가장자리 고리를 면으로 막음. 새 면의 UV·UV2·꼭짓점 색은 꼭짓점의 옛 모서리 값 (이웃 면) 을 베낌. 막은 고리 수"""
+    _bm = bmesh
+    before = set(f for f in bm.faces)
+    edges = [e for e in bm.edges if e.is_boundary]
+    if not edges:
+        return 0
+    r = _bm.ops.holes_fill(bm, edges=edges, sides=max_sides)
+    new = [f for f in r["faces"]]
+    uvl = bm.loops.layers.uv
+    cols = bm.loops.layers.color
+    for f in new:
+        for l in f.loops:
+            src = None
+            for o in l.vert.link_loops:
+                if o.face in before:
+                    src = o
+                    break
+            if src is None:
+                continue
+            for layer in uvl.values():
+                l[layer].uv = src[layer].uv
+            for layer in cols.values():
+                l[layer] = src[layer]
+    return len(new)
+
+

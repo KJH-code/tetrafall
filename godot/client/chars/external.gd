@@ -337,8 +337,13 @@ static func model_info(scene: PackedScene, cfg: Dictionary):
 		info.anims = Array((ap as AnimationPlayer).get_animation_list())
 		break
 	info.vm_bones = _vm_bones(info)
+	var vm_node: String = str(cfg.get("vm_node", ""))
 	for sf in surfs:
-		sf.vm_mesh = _arm_mesh(sf, info.vm_bones)
+		# W20 vm_node: 1인칭 팔 = glb 안에 따로 만든 닫힌 팔 메시 (노드 이름) 통째로. 없으면 예전 (팔꿈치 아래 삼각형 가르기)
+		if vm_node != "":
+			sf.vm_mesh = sf.mesh if str(sf.node) == vm_node else null
+		else:
+			sf.vm_mesh = _arm_mesh(sf, info.vm_bones)
 	root.free()
 	return info
 
@@ -433,6 +438,8 @@ static func pick_lod(cfg: Dictionary, third: bool, on_stage: bool) -> String:
 	var lods: Dictionary = cfg.get("lods", {})
 	if lods.is_empty():
 		return ""
+	if not third and str(cfg.get("vm_node", "")) != "":
+		return str(cfg.vm_node)
 	if not third or on_stage:
 		return str(lods.get("stage", lods.get("high", "")))
 	var Gfx = load("res://world/gfx.gd") # preload 하면 -s 도구 (자동 로드 View 전) 에서 컴파일이 깨짐
@@ -866,7 +873,9 @@ class Ext extends Node3D:
 			if str(a.get("ref", "")) != "":
 				_attach_ref(a)
 				continue
-			if not third:
+			if not third and not bool(a.get("vm", false)): # 1인칭 쌍둥이에는 "vm": true 인 것만 (W20 해머)
+				continue
+			if third and not bool(a.get("third", true)): # "third": false = 판 몸에는 안 붙임 (1인칭만)
 				continue
 			var bi: int = int(info.map.get(str(a.get("joint", "hand_R")), -1))
 			var gp: String = str(a.get("glb", ""))
@@ -890,6 +899,8 @@ class Ext extends Node3D:
 				if sm is BaseMaterial3D:
 					m = G3_.toon_material((sm as BaseMaterial3D).albedo_color, {"map": (sm as BaseMaterial3D).albedo_texture} if (sm as BaseMaterial3D).albedo_texture != null else {})
 				(mi as MeshInstance3D).material_override = m
+				if not third:
+					(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				parts.append({"mi": mi, "color": m.get_shader_parameter("albedo"), "tex": null, "solid": m})
 				body.drawn.append({"mi": mi, "m": {"kind": "toon"}, "merged": false, "ext": true})
 

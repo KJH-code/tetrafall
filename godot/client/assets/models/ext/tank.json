@@ -43,6 +43,38 @@
 			"glb": "res://assets/models/ext/tank_shield.glb",
 			"ref": "shields.front",
 			"third": false
+		},
+		{
+			"glb": "res://assets/models/ext/tank_hammer.glb",
+			"joint": "hand_R",
+			"pos": [
+				0,
+				0,
+				0
+			],
+			"rot": [
+				0,
+				0,
+				0
+			],
+			"scale": 0.5263
+		},
+		{
+			"glb": "res://assets/models/ext/tank_hammer.glb",
+			"joint": "hand_R",
+			"pos": [
+				0,
+				0,
+				0
+			],
+			"rot": [
+				0,
+				0,
+				0
+			],
+			"scale": 0.3,
+			"vm": true,
+			"third": false
 		}
 	],
 	"toon_steps": [
@@ -59,5 +91,6 @@
 	"vm_from": "elbow",
 	"vm_snap": [
 		"elbow"
-	]
+	],
+	"vm_node": "tank_vm"
 }

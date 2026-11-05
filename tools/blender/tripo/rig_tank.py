@@ -53,6 +53,13 @@ CAPS = {
 }
 TAU = 0.025  # 경계 부드러움 폭 (m)
 MAXB = 3
+SMOOTH_ITERS = 4  # 다리 가중치 이웃 섞기 횟수 (0 = 끔)
+SMOOTH_K = 0.5
+SMOOTH_Z = 0.78  # 이 높이 아래만
+VM_STEEL_PCT = 0.9  # 1인칭 팔 색: 팔 텍스처 저채도 텍셀의 밝기 백분위
+VM_GLOVE_PCT = 0.65
+VM_MIN_FACES = 60  # 1인칭 팔: 이보다 작은 조각은 버림
+VM_HOLE_SIDES = 400  # 1인칭 팔: 이 변 수 이하 구멍은 막음
 CUT = True  # 망토-팔 잇는 삼각형 떼기
 LOOSE_HUE = 14  # 느슨한 빨강 색조 폭 (도)
 GRAY = 0.8  # 몸 색 칸 회백 밝기 (가장 밝은 주름 = 이 값, 플레이어 색을 곱함)
@@ -228,6 +235,7 @@ def build(args):
             else:
                 w = weights_for(v.co, C)
             wcache[k] = w
+    smooth_leg_weights(wcache, nbr)
     # 망토와 팔·다리를 잇는 삼각형 (원본이 한 덩어리로 붙어 있음) 은 팔을 들면 가시처럼 늘어나서 뗌 — 망토 안쪽·팔 뒤라 쉬는 자세에선 거의 안 보임
     limb = ("shoulder", "elbow", "hand")
     domin = {}
@@ -251,6 +259,16 @@ def build(args):
     loose = [vv for vv in bm.verts if not vv.link_faces]
     bmesh.ops.delete(bm, geom=loose, context="VERTS")
     print("TF 잇는 삼각형 뗌", len(kill))
+    domin_key = {}
+    for k, w in wcache.items():
+        domin_key[k] = max(w, key=w.get)
+    samples = []
+    for li, l in enumerate(me.loops):
+        v = me.vertices[l.vertex_index]
+        dk = domin_key.get(tuple(round(c * 1e4) for c in v.co), "")
+        if dk.startswith("elbow") or dk.startswith("hand"):
+            samples.append((tuple(uvs[li]), dk))
+    vmob = make_vm_arms(samples, J, arm, list(me.materials), px, W, H)
     bm.to_mesh(me)
     bm.free()
     weld_normals(me)
@@ -266,7 +284,119 @@ def build(args):
     tot = sum(p.area for p in me.polygons)
     mk = sum(p.area for p in me.polygons if sum(u2d[li].uv[0] > 0.5 for li in p.loop_indices) * 2 > len(p.loop_indices))
     print("TF 몸 색 칸 넓이 %.1f%%" % (mk / tot * 100))
-    return ob, arm, img
+    return ob, arm, img, vmob
+
+
+
+def smooth_leg_weights(wcache, nbr, iters=SMOOTH_ITERS):
+    """엉덩이~발 (z < SMOOTH_Z) 꼭짓점 가중치를 이웃과 섞어서 (라플라시안) 떠 있는 판 조각이 따로 놀아 갈라지는 것을 줄임. 팔·몸통·망토는 그대로"""
+    keys = [k for k in wcache if k[2] / 1e4 < SMOOTH_Z and abs(k[0] / 1e4) > 0.1]
+    for _ in range(iters):
+        new = {}
+        for k in keys:
+            ns = [n for n in nbr.get(k, ()) if n in wcache and n[2] / 1e4 < SMOOTH_Z + 0.05]
+            if not ns:
+                continue
+            acc = {}
+            for n in ns:
+                for b, val in wcache[n].items():
+                    acc[b] = acc.get(b, 0.0) + val / len(ns)
+            mix = {}
+            for b in set(acc) | set(wcache[k]):
+                mix[b] = SMOOTH_K * wcache[k].get(b, 0.0) + (1 - SMOOTH_K) * acc.get(b, 0.0)
+            top = sorted(mix.items(), key=lambda t: -t[1])[:MAXB]
+            tot = sum(v for _, v in top)
+            new[k] = {b: v / tot for b, v in top if v / tot > 0.03}
+        wcache.update(new)
+
+
+def _texel(px, W, H, uv):
+    x = min(W - 1, max(0, int(uv[0] * W)))
+    y = min(H - 1, max(0, int(uv[1] * H)))
+    return px[y, x, :3]
+
+
+def pick_uv(samples, px, W, H, score):
+    """samples: [(uv, key)] → 점수 (텍셀 색) 가 가장 높은 uv"""
+    best, bs = None, -1e9
+    for uv, _k in samples:
+        c = _texel(px, W, H, uv)
+        sc = score(c)
+        if sc > bs:
+            best, bs = uv, sc
+    return best
+
+
+def make_vm_arms(arm_samples, J, arm, mats, px, W, H):
+    """1인칭 전용 닫힌 팔 메시 'tank_vm' (손으로 만든 닫힌 덩어리): 팔꿈치 아래 = 앞팔 보호대 (8각 관) + 금 띠 + 주먹 덩어리 + 손등판.
+    색은 원본 팔 조각 텍스처에서 고른 텍셀 (강철·금·가죽 장갑) 한 점씩 — 꼭짓점 UV 를 그 점에 모음. 뼈: 보호대·띠 = elbow, 주먹·손등 = hand (단단히)."""
+    import numpy as np
+    mean = np.mean([_texel(px, W, H, uv) for uv, _k in arm_samples], axis=0)
+
+    def sat(c):
+        mx, mn = float(max(c)), float(min(c))
+        return (mx - mn) / max(mx, 1e-5)
+    low = []
+    for uv, k in arm_samples:
+        c = _texel(px, W, H, uv)
+        if sat(c) < 0.28:
+            low.append((float(c @ np.array([0.2126, 0.7152, 0.0722])), uv, k))
+    low.sort(key=lambda t: t[0])
+
+    def pct(p_):
+        return low[min(len(low) - 1, int(len(low) * p_))][1]
+    steel = pct(VM_STEEL_PCT)   # 앞팔 보호대: 중간 밝기 강철
+    plate = pct(0.97)           # 손등판: 밝은 강철
+    glove = pct(VM_GLOVE_PCT)   # 주먹: 어두운 장갑
+    gold = pick_uv(arm_samples, px, W, H, lambda c: sat(c) * float(c.max()) if (c[0] > c[1] > c[2]) else -1)
+    bm = bmesh.new()
+    uvl = bm.loops.layers.uv.new("UVMap")
+    bm.loops.layers.uv.new("UV2")
+    groups = {}
+
+    def part(geom_fn, bone, uvp):
+        before = set(bm.verts)
+        geom_fn()
+        for v in bm.verts:
+            if v not in before:
+                groups[v] = bone
+        bm.verts.index_update()
+        newf = [f for f in bm.faces if all(v not in before for v in f.verts)]
+        for f in newf:
+            for l in f.loops:
+                l[uvl].uv = uvp
+    for side, sg in (("L", 1), ("R", -1)):
+        el, ha = J["elbow_" + side], J["hand_" + side]
+        mid_x = (el.x + ha.x) / 2
+
+        def cone(r1, r2, z0, z1, x0, x1, y=0.12):
+            m = Matrix.Translation(((x0 + x1) / 2, y, (z0 + z1) / 2))
+            bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=8, radius1=r1, radius2=r2, depth=abs(z1 - z0), matrix=m)
+
+        def cube(cx, cy, cz, sx, sy, sz):
+            m = Matrix.Translation((cx, cy, cz)) @ Matrix.Diagonal((sx, sy, sz, 1))
+            bmesh.ops.create_cube(bm, size=1.0, matrix=m)
+        part(lambda: cone(0.15, 0.18, 0.84, 1.10, ha.x, el.x), "elbow_" + side, steel)  # 앞팔 보호대 (아래 좁고 위 넓게: cone radius1 = 아래)
+        part(lambda: cone(0.19, 0.205, 0.935, 1.03, mid_x + 0.01 * sg, mid_x + 0.012 * sg), "elbow_" + side, gold)  # 금 띠
+        part(lambda: cube(ha.x, ha.y - 0.02, 0.665, 0.26, 0.27, 0.27), "hand_" + side, glove)  # 주먹
+        part(lambda: cube(ha.x, ha.y - 0.15, 0.72, 0.28, 0.07, 0.16), "hand_" + side, plate)  # 손등판 (앞 = -Y)
+    me = bpy.data.meshes.new("tank_vm")
+    bm.to_mesh(me)
+    vm = bpy.data.objects.new("tank_vm", me)
+    bpy.context.scene.collection.objects.link(vm)
+    for n in K.JOINTS:
+        vm.vertex_groups.new(name=n)
+    bm.verts.ensure_lookup_table()
+    for v in bm.verts:
+        vm.vertex_groups[groups[v]].add([v.index], 1.0, "REPLACE")
+    bm.free()
+    for mt in mats:
+        me.materials.append(mt)
+    vm.parent = arm
+    md = vm.modifiers.new("rig", "ARMATURE")
+    md.object = arm
+    print("TF 1인칭 팔 삼각형", sum(len(p.vertices) - 2 for p in me.polygons))
+    return vm
 
 
 def debug_colors(ob):
@@ -376,10 +506,10 @@ def main():
     """몸 하나 (lod0) 리깅해서 <out>/tank_rigged.glb 로. LOD 3개는 lods.mjs 가 더함 (README 참고)."""
     a = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     args = {"out": a[a.index("--out") + 1] if "--out" in a else None, "preview": a[a.index("--preview") + 1] if "--preview" in a else None}
-    ob, arm, img = build(args)
+    ob, arm, img, vmob = build(args)
     print("TF 삼각형", tri_count(ob))
     out = args["out"] or os.path.join(REPO, "godot", "client", "assets", "models", "ext")
-    export_glb(os.path.join(out, "tank_rigged.glb"), [ob, arm])
+    export_glb(os.path.join(out, "tank_rigged.glb"), [ob, vmob, arm])
     print("TF 내보냄", out)
     if args["preview"]:
         os.makedirs(args["preview"], exist_ok=True)
