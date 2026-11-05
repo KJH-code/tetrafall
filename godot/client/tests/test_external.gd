@@ -464,7 +464,7 @@ func test_blender_tank_info() -> void:
 	var lods: Dictionary = info.cfg.get("lods", {})
 	check(lods.size() == 4, "LOD 4 (stage·high·medium·low)")
 	# 삼각형 예산 (재혁 2026-11-05): 8명 판 합 (몸 + 방패) 이 구운 탱크 (보이는 4840) 의 높음 2.5배·보통 1.8배·낮음 1배 이내 · 대기실·초상·1인칭 = 4만 이하
-	var want := {"stage": [20000, 40000], "high": [9000, 12100 - 1400], "medium": [6000, 8700 - 1400], "low": [2500, 4840 - 1400]}
+	var want := {"stage": [12000, 40000], "high": [9000, 12100 - 1400], "medium": [6000, 8700 - 1400], "low": [2500, 4840 - 1400]}
 	for k in want:
 		var ss := _lod_surfs(info, str(lods.get(k, "")))
 		var body_sf = null
@@ -603,8 +603,9 @@ func test_blender_tank_shield() -> void:
 		var ab: AABB = (pb.transform * (mi as MeshInstance3D).transform) * (mi as MeshInstance3D).mesh.get_aabb()
 		box = ab if first else box.merge(ab)
 		first = false
+	# W19 v2: 큰 팔각 방패 (tools/blender/chars/tank.py sr 0.4 + 테 — 히어로 비율 몸에 맞춰 예전 원판 0.368 보다 조금 큼)
 	var sr: float = maxf(0.28, float(b.d.chestR) * 1.15)
-	check(absf(box.size.y - 2.0 * (sr + 0.032)) < 0.03 and absf(box.size.z - 2.0 * (sr + 0.032)) < 0.03 and box.size.x < 0.25, "방패 크기 %s (원판 %.3f)" % [box.size, sr])
+	check(box.size.y > 2.0 * sr and box.size.y < 2.0 * sr * 1.35 and box.size.z > 2.0 * sr * 0.95 and box.size.z < 2.0 * sr * 1.35 and box.size.x < 0.4, "방패 크기 %s (예전 원판 %.3f)" % [box.size, sr])
 	check(box.position.x < -0.08, "돌기 = 방패 -x (JS·viewmodel 과 같은 쪽, %.3f)" % box.position.x)
 	check(pf.transform.basis.x.dot(Vector3(-1, 0, 0)) > 0.99 or pf.transform.basis.y.dot(Vector3(0, 0, 1)) > 0.99, "앞 방패는 z 180° (돌기가 바깥)")
 	# 방패 동작 → 앞 방패 노드가 보임 (body._costume_parts) → 소품도

@@ -86,6 +86,7 @@ class Kit:
         self.J = {j: Vector(rig["joints"][j]["pos"]) for j in JOINTS}
         self.parts = []  # [{obj, bone, blend, look, prop, face}]
         self.props = {}
+        self.hard = False
 
     def j(self, name):
         return self.J[name].copy()
@@ -99,11 +100,10 @@ class Kit:
         bpy.context.scene.collection.objects.link(ob)
         return ob
 
-    def _finish(self, name, bm, look_, bone, sub=None, thick=None, fit=None, blend=None, prop=None, face=None, crease=None):
+    def _finish(self, name, bm, look_, bone, sub=None, thick=None, fit=None, blend=None, prop=None, face=None, crease=None, bevel=None, smooth=None):
+        """hard (하드서피스 — chars/<id>.py HARD = True): 서브디비전 대신 각진 면 + 작은 베벨 (모서리 각 30° 넘는 곳만), 평면 음영 (면이 보임).
+        sub 를 직접 주면 그 부품만 서브디비전 (리벳 같은 둥근 작은 것)"""
         ob = self._obj(name, bm)
-        if crease:
-            # 날카롭게 남길 모서리 (서브디비전 주름): bmesh 에서 표시한 edge 의 crease 속성
-            pass
         if thick:
             m = ob.modifiers.new("solid", "SOLIDIFY")
             m.thickness = thick
@@ -111,6 +111,17 @@ class Kit:
             m.use_even_offset = True
             m.use_rim = True
         lv = self.sub if sub is None else sub
+        hard = self.hard and sub is None
+        if hard:
+            bw = 0.007 if bevel is None else bevel
+            if bw > 0:
+                m = ob.modifiers.new("bevel", "BEVEL")
+                m.width = bw
+                m.segments = 1
+                m.limit_method = "ANGLE"
+                m.angle_limit = math.radians(30)
+                m.use_clamp_overlap = True
+            lv = 0
         if lv > 0:
             m = ob.modifiers.new("sub", "SUBSURF")
             m.levels = lv
@@ -128,8 +139,9 @@ class Kit:
             for v in ob.data.vertices:
                 d = v.co - mid
                 v.co = mid + Vector((d.x * want.x / max(1e-6, have.x), d.y * want.y / max(1e-6, have.y), d.z * want.z / max(1e-6, have.z)))
+        sm = (not hard) if smooth is None else smooth
         for p in ob.data.polygons:
-            p.use_smooth = True
+            p.use_smooth = sm
         rec = {"obj": ob, "bone": bone, "blend": blend, "look": look_, "prop": prop, "face": face}
         if prop is None:
             self.parts.append(rec)
@@ -262,7 +274,8 @@ class Kit:
         dead = [f for f in bm.faces if not keep(f.calc_center_median().normalized())]
         bmesh.ops.delete(bm, geom=dead, context="FACES")
         # 서브디비전이 줄이는 만큼 우리를 키움
-        bm.transform(G2B @ self._xf(pos, rot, tuple(r * 1.06 for r in radii)))
+        k_ = 1.0 if (self.hard and kw.get("sub") is None) else 1.06
+        bm.transform(G2B @ self._xf(pos, rot, tuple(r * k_ for r in radii)))
         return self._finish(name, bm, look_, bone, thick=thick, **kw)
 
     def panel(self, name, center, z_top, length, r_top, r_bot, ang, width, look_, bone, depth=1.0, thick=0.025,
@@ -311,7 +324,9 @@ class Kit:
             bm.faces.new((top[j], top[i], bot[i], bot[j]))
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
         bm.transform(G2B @ self._xf(pos, rot, (1, 1, 1)))
-        return self._finish(name, bm, look_, bone, sub=1, **kw)
+        if "sub" not in kw and not self.hard:
+            kw["sub"] = 1
+        return self._finish(name, bm, look_, bone, **kw)
 
     def mirror(self, fn):
         for side, sign in (("R", -1), ("L", 1)):
@@ -954,8 +969,9 @@ def main():
     rig = json.load(open(os.path.join(HERE, "ref", cid + "_rig.json")))
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene
-    k = Kit(cid, rig)
     mod = load_char_module(cid)
+    k = Kit(cid, rig, sub=getattr(mod, "SUB", 2))
+    k.hard = getattr(mod, "HARD", False)
     mod.build(k)
     if args["parts"]:
         rows = sorted(((tri_count(r["obj"]), r["obj"].name) for r in k.parts), reverse=True)

@@ -180,7 +180,7 @@ EYE_GLOW = np.array([1.0, 0.97, 0.86])
 EYE_HALO = np.array([0.55, 0.75, 1.0])
 
 
-def paint_visor(kind, n=256, eye_x=0.3, eye_y=0.04):
+def paint_visor(kind, n=256, eye_x=0.3, eye_y=0.08):
     """kind = idle | hit | attack → 어두운 바탕에 작은 눈 둘 (기본: 둥근 빛 점 · 맞음: > < · 기합: 눈꼬리 올라간 가는 눈, 더 밝게)"""
     c = Canvas(n, VISOR_BG)
     # 안쪽 어둠도 아래로 조금 밝게 (평평한 검정이 아니게)
