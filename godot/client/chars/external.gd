@@ -778,7 +778,7 @@ class Ext extends Node3D:
 				continue
 			if sf.get("face", false): # 얼굴: 표정 텍스처, 외곽선 없음
 				var ft = face_tex.get("idle", sf.tex)
-				var fm := style(G3_.toon_material(col, {"map": ft, "outline": false}), cfg, false)
+				var fm := style(G3_.toon_material(col, {"map": ft, "outline": false, "color_glow": float(cfg.get("face_glow", 0.0))}), cfg, false)
 				mi.material_override = fm
 				face_now = "idle"
 				parts.append({"mi": mi, "color": col, "tex": ft, "solid": fm, "face": true})

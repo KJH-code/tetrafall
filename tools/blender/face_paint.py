@@ -172,3 +172,32 @@ def paint_face(kind, n=512):
     out = np.ones((n, n, 4))
     out[..., :3] = np.clip(c.img, 0, 1)
     return out
+
+
+# ---------- 가림형 얼굴 (투구·복면 안쪽 어둠 + 작은 빛나는 눈) ----------
+VISOR_BG = 0x101218
+EYE_GLOW = np.array([1.0, 0.97, 0.86])
+EYE_HALO = np.array([0.55, 0.75, 1.0])
+
+
+def paint_visor(kind, n=256, eye_x=0.3, eye_y=0.04):
+    """kind = idle | hit | attack → 어두운 바탕에 작은 눈 둘 (기본: 둥근 빛 점 · 맞음: > < · 기합: 눈꼬리 올라간 가는 눈, 더 밝게)"""
+    c = Canvas(n, VISOR_BG)
+    # 안쪽 어둠도 아래로 조금 밝게 (평평한 검정이 아니게)
+    c.put(np.clip((-c.y - 0.2) / 0.8, 0, 1), np.array([0.13, 0.12, 0.16]), 0.6)
+    for s in (-1, 1):
+        ex, ey = s * eye_x, eye_y
+        halo = c.ellipse(ex, ey, 0.2, 0.13)
+        c.put(c.cov(halo, soft=24), EYE_HALO, 0.35)
+        if kind == "idle":
+            d = c.ellipse(ex, ey, 0.085, 0.055)
+            c.put(c.cov(d, soft=2), EYE_GLOW)
+        elif kind == "hit":
+            pts = [(ex + s * 0.07, ey + 0.06), (ex - s * 0.07, ey), (ex + s * 0.07, ey - 0.06)]
+            c.put(c.cov(c.stroke(pts, 0.035)), EYE_GLOW)
+        else:  # 기합: 안쪽 끝이 내려간 가는 눈
+            pts = [(ex - s * 0.1, ey - 0.035), (ex + s * 0.1, ey + 0.035)]
+            c.put(c.cov(c.stroke_taper(pts if s > 0 else pts[::-1], 0.06, 0.025)), np.array([1.0, 0.9, 0.6]))
+    out = np.ones((n, n, 4))
+    out[..., :3] = np.clip(c.img, 0, 1)
+    return out

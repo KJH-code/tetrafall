@@ -503,12 +503,13 @@ func test_blender_tank_body() -> void:
 		return
 	var sc: float = b.ext.transform.basis.get_scale().x
 	check(absf(sc - 1.0) < 2e-3, "크기 1 (얻음 %.4f)" % sc)
-	var worst := 0.0
-	for j in Ext.JOINTS:
-		if j == "torso":
-			continue
-		worst = maxf(worst, _bone_pos(b, b.ext.info.map[j]).distance_to(_jpos(b, b.ext._joint(j))))
-	check(worst < 0.01, "뼈 자리 = 우리 관절 자리 (가장 먼 %.4f m)" % worst)
+	# 히어로 비율 (tools/blender/chars/tank.py HERO): 뼈 길이·자리는 모델 것 (다리 길고 골반 높음), 회전만 우리 관절 → 발은 바닥, 골반·목은 우리보다 높음
+	for j in ["foot_R", "foot_L"]:
+		var dz: float = _bone_pos(b, b.ext.info.map[j]).y - _jpos(b, b.ext._joint(j)).y
+		check(absf(dz) < 0.05, "발 뼈 높이 = 우리 발 (차이 %.3f m)" % dz)
+	for j in ["hips", "neck"]:
+		var up: float = _bone_pos(b, b.ext.info.map[j]).y - _jpos(b, b.ext._joint(j)).y
+		check(up > 0.05, "%s 는 코드 몸보다 높음 (히어로 비율, +%.3f m)" % [j, up])
 	_check_follow(b, "Blender 탱크")
 	var ext_n := 0
 	for dr in b.drawn:

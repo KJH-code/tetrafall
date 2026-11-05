@@ -680,9 +680,11 @@ def build_body(k, cid, out, preview_tint=False, fast=False):
         p.material_index = 0
     # 얼굴: 평면 투영 UV + 표정 텍스처 (기본을 재질에, 셋 다 PNG)
     faces = {}
+    painter = getattr(k, "face_painter", face_paint.paint_face)  # 얼굴 노출형 (paint_face) / 가림형 (paint_visor — 투구 안 어둠 + 작은 눈)
+    px = getattr(k, "face_px", FACE_PX)
     for kind in ("idle", "hit", "attack"):
-        im = new_image("%s_face_%s" % (cid, kind), FACE_PX)
-        im.pixels = face_paint.paint_face(kind, FACE_PX).ravel()
+        im = new_image("%s_face_%s" % (cid, kind), px)
+        im.pixels = painter(kind, px).ravel()
         faces[kind] = im
     if face_recs:
         fo = join([r["obj"] for r in face_recs], cid + "_faceobj")
