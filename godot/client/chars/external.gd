@@ -320,8 +320,10 @@ static func model_info(scene: PackedScene, cfg: Dictionary):
 					var bb: int = m.skin.get_bind_bone(k)
 					binds.append(bb if bb >= 0 else sk.find_bone(m.skin.get_bind_name(k)))
 			var one := _one_surface(m.mesh, si)
+			# W19: 이름이 _unlit 로 끝나는 재질 (tools/blender — 눈 흰자) 은 빛 안 받는 색 (JS eyeWhiteMat), 외곽선 없음
+			var unlit: bool = mat != null and str(mat.resource_name).ends_with("_unlit")
 			surfs.append({"path": root.get_path_to(m), "surf": si, "mesh": one, "color": col, "tex": tex, "skinned": skinned, "bone": bone, "binds": binds,
-				"vcolor": Ext.vertex_colored(one, 0, mat, str(cfg.get("tint", "band")))})
+				"vcolor": Ext.vertex_colored(one, 0, mat, str(cfg.get("tint", "band"))) and not unlit, "unlit": unlit})
 	if first:
 		push_warning("외부 .glb 에 메시가 없음")
 		root.free()
@@ -451,6 +453,13 @@ class Ext extends Node3D:
 		if vcolor and mask:
 			m.set_shader_parameter("skin_tint", Color(skin.r, skin.g, skin.b, 1.0))
 		return m
+
+	# 빛 안 받는 색 (눈 흰자): 툰 재질의 알베도 검정 + 발광 = 색 → 하늘빛·해 음영 없이 그 색 (외곽선 없음, op < 1 이면 반투명)
+	static func unlit_for(col: Color, op: float) -> ShaderMaterial:
+		var opts := {"emissive": Color(col.r, col.g, col.b), "outline": false}
+		if op < 1.0:
+			opts.opacity = op
+		return G3_.toon_material(Color(0, 0, 0), opts)
 
 	var body: Node3D
 	var info: Dictionary
@@ -690,6 +699,12 @@ class Ext extends Node3D:
 			var col: Color = sf.color
 			if mode == "tint":
 				col = col * Color.WHITE.lerp(body.skin_color, tk)
+			if sf.get("unlit", false):
+				var um := unlit_for(sf.color, 1.0)
+				mi.material_override = um
+				parts.append({"mi": mi, "color": sf.color, "tex": null, "solid": um, "unlit": true})
+				body.drawn.append({"mi": mi, "m": {"kind": "toon"}, "merged": false, "ext": true})
+				continue
 			var vc: bool = sf.get("vcolor", false)
 			var mask: bool = vc and mode == "mask"
 			var m := toon_for(col, sf.tex, vc, mask, body.skin_color)
@@ -847,6 +862,16 @@ class Ext extends Node3D:
 		for pt in parts:
 			if pt.get("mask", false):
 				_fx_mask(pt, f, op)
+				continue
+			if pt.get("unlit", false): # 눈 흰자: 번쩍 없이 반투명만 (JS 눈도 그대로 하양)
+				if op >= 1.0:
+					if pt.mi.material_override != pt.solid:
+						pt.mi.material_override = pt.solid
+				else:
+					if not pt.has("alpha"):
+						pt.alpha = unlit_for(pt.color, 0.5)
+					(pt.alpha as ShaderMaterial).set_shader_parameter("albedo", Color(0, 0, 0, op))
+					pt.mi.material_override = pt.alpha
 				continue
 			var mi: MeshInstance3D = pt.mi
 			if op >= 1.0:

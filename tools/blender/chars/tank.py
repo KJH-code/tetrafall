@@ -102,7 +102,7 @@ def build(k):
     eye_r = 0.062 * k.rig["figure_scale"]
     for sign in (-1, 1):
         e = N + Vector((0.117, sign * 0.0805, 0.1615))
-        k.sphere("eye_%d" % sign, e, (eye_r,) * 3, WHITE, "neck", seg=12, rings=8)
+        k.sphere("eye_%d" % sign, e, (eye_r,) * 3, WHITE, "neck", seg=12, rings=8, unlit=True)
         k.sphere("pupil_%d" % sign, e + Vector((eye_r * 0.88, 0, 0)), (eye_r * 0.45,) * 3, PUPIL, "neck", seg=10, rings=6)
     hc = N + Vector((-0.01, 0, 0.19))
     HR = (0.2, 0.2, 0.185)

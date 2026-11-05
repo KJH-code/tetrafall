@@ -192,14 +192,14 @@ class Kit:
         _apply_mods(ob)
         return ob
 
-    def _add(self, name, bm, color, bone, blend=None, skin=False, prop=None, smooth=True):
+    def _add(self, name, bm, color, bone, blend=None, skin=False, prop=None, smooth=True, unlit=False):
         ob = self._new_obj(name, bm)
         for p in ob.data.polygons:
             p.use_smooth = smooth
         ob["tf_bone"] = bone
         ob["tf_skin"] = bool(skin)
         _paint(ob, PREVIEW_SKIN if skin else color, skin)
-        rec = {"obj": ob, "bone": bone, "blend": blend, "skin": skin, "prop": prop}
+        rec = {"obj": ob, "bone": bone, "blend": blend, "skin": skin, "prop": prop, "unlit": unlit}
         if prop is None:
             self.parts.append(rec)
         else:
@@ -521,10 +521,14 @@ def main():
     mod.build(k)
     arm = make_armature(k, cid)
     fails = skin_parts(k, arm)
+    # 재질: 몸 하나 (꼭짓점 색) + 빛 안 받는 칸 (unlit=True — 눈 흰자, JS eyeWhiteMat = MeshBasicMaterial·외곽선 없음) 이 있으면 "<id>_unlit" 하나 더.
+    # 고도 external.gd 는 이름이 _unlit 로 끝나는 재질을 하얀 발광·외곽선 없음으로 그림 (그리기 +1)
+    mat = material(cid)
+    unlit = material(cid + "_unlit") if any(r["unlit"] for r in k.parts) else None
+    for r in k.parts:
+        r["obj"].data.materials.append(unlit if r["unlit"] else mat)
     body = join([r["obj"] for r in k.parts], cid + "_body")
     bind(body, arm)
-    mat = material(cid)
-    body.data.materials.append(mat)
     props = {}
     for pn, recs in k.props.items():
         po = join([r["obj"] for r in recs], cid + "_" + pn)
