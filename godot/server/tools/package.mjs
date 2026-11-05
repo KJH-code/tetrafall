@@ -58,6 +58,20 @@ export function winTryScript(method, driver) {
   ].join('\r\n');
 }
 
+// 새 Blender 탱크 시험 (W19): 기본은 꺼짐 (chars_config.gd EXT). 서버를 켜면서 PC 클라를 실행 인자 --ext 로 같이 켬 (사용자 인자라 `--` 뒤)
+export function winExtScript() {
+  return [
+    '@echo off',
+    'cd /d "%~dp0"',
+    'rem New Blender tank trial: starts tetrafall.exe with --ext (external models). Pick the tank in the lobby. Normal play (start-lan.bat) is unchanged.',
+    ...gpuPrefLines(),
+    'start "" "%~dp0tetrafall.exe" -- --ext',
+    'Tetrafall.Server.exe',
+    'pause',
+    '',
+  ].join('\r\n');
+}
+
 export const TARGETS = {
   win: {
     rid: 'win-x64',
@@ -69,6 +83,7 @@ export const TARGETS = {
       'start-lan.bat': winScript(),
       'start-online.bat': winScript('--online'),
       ...Object.fromEntries(Object.entries(RENDER_TRIALS).map(([k, [m, d]]) => [`start-lan-${k}.bat`, winTryScript(m, d)])),
+      'start-lan-ext.bat': winExtScript(),
     },
   },
   linux: {
@@ -80,6 +95,7 @@ export const TARGETS = {
     scripts: {
       'start-lan.sh': '#!/bin/sh\ncd "$(dirname "$0")"\nexec ./Tetrafall.Server\n',
       'start-online.sh': '#!/bin/sh\ncd "$(dirname "$0")"\nexec ./Tetrafall.Server --online\n',
+      'start-lan-ext.sh': '#!/bin/sh\ncd "$(dirname "$0")"\n./tetrafall.x86_64 -- --ext &\nexec ./Tetrafall.Server\n',
     },
   },
 };
@@ -110,6 +126,8 @@ export function readme(t) {
           '',
           '렌더러 시험 (성능 비교용):  start-lan-compat.bat (지금 기본) · start-lan-forward.bat (Forward+) · start-lan-mobile.bat (Mobile)',
           `                    서버와 ${pc} 를 그 렌더러로 같이 켬. 각각 8명 판에서 F3 를 켜고 Ctrl+C 로 복사한 숫자를 보내 주세요 (색이 조금 다를 수 있음 — 시험용)`,
+          '',
+          '새 탱크 시험 (Blender 모델):  start-lan-ext.bat — 서버와 ' + pc + ' 를 --ext 로 같이 켬. 대기실에서 탱크를 고르면 새 모델 (기본 start-lan 은 그대로)',
         ]
       : []),
     '',

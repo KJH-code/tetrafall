@@ -75,3 +75,18 @@ test('start-lan-compat·forward·mobile .bat: 렌더러만 다름', () => {
   assert.ok(!bat('start-lan.bat').includes('tetrafall.exe" --'), '기본 start-lan 은 그대로');
   assert.ok(readme(TARGETS.win).includes('start-lan-forward.bat'), 'README 안내');
 });
+
+// W19 새 Blender 탱크 시험: 클라를 --ext 로 켬, 기본 start-lan 은 그대로
+test('start-lan-ext .bat/.sh: 클라 --ext', () => {
+  const s = bat('start-lan-ext.bat');
+  const lines = s.split('\r\n');
+  assert.ok(/^[\x00-\x7f]*$/.test(s) && s.endsWith('\r\n'), 'ASCII·CRLF');
+  assert.ok(!/\(\r\n/.test(s), '괄호 블록 없음');
+  const at = lines.findIndex((l) => l.startsWith('start ""'));
+  assert.equal(lines[at], 'start "" "%~dp0tetrafall.exe" -- --ext');
+  assert.ok(at > lines.indexOf(':run') && lines[at + 1] === 'Tetrafall.Server.exe' && lines[at + 2] === 'pause', 'GPU 등록 → 클라 → 서버');
+  const sh = TARGETS.linux.scripts['start-lan-ext.sh'];
+  assert.ok(sh.startsWith('#!/bin/sh') && sh.includes('tetrafall.x86_64 -- --ext') && sh.includes('exec ./Tetrafall.Server'));
+  assert.ok(!bat('start-lan.bat').includes('--ext'), '기본 start-lan 은 그대로');
+  assert.ok(readme(TARGETS.win).includes('start-lan-ext.bat'), 'README 안내');
+});

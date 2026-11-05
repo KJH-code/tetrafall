@@ -53,6 +53,8 @@ node godot/server/tools/package.mjs --godot "C:\Godot\Godot_v4.7.2-stable_win64_
 
 같은 폴더에 렌더러만 다른 시작 파일이 있다: `start-lan-compat.bat` (지금 기본), `start-lan-forward.bat` (Forward+), `start-lan-mobile.bat` (Mobile). 각각 켜서 판 중에 **F3 → Ctrl+C** 로 복사한 한 줄을 하나씩 보내 주면 PC 기본 렌더러를 숫자로 정한다. 타이틀 왼쪽 아래 글자에 지금 렌더러가 나온다.
 
+`start-lan-ext.bat` = 새 Blender 탱크 시험: 서버와 PC 클라를 `--ext` 로 같이 켬. 탱크를 고르면 새 모델 (기본 start-lan 은 그대로).
+
 ## v0.1.3 에서 바뀐 것
 
 몸 자세 최적화 2라운드 (먼 몸 갱신 줄임·래그돌 계산 줄임), 외곽선 껍데기를 그림자에서 뺌, 고성능 그래픽카드 (RTX·Radeon RX) 면 2880×1800 도 화질 '높음' 으로 자동, 대기실·설정 창을 한 장으로 구워 그리기 호출이 크게 줄어듦 (대기실 319 → 135).
