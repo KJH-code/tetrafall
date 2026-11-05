@@ -89,16 +89,34 @@ func _run() -> void:
 	detail = OS.get_cmdline_user_args().has("--detail")
 	var args := OS.get_cmdline_user_args()
 	var cid: String = args[0] if args.size() > 0 else "tank"
-	var a := _measure(cid, false)
-	var b := _measure(cid, true)
-	print("COST %s 구운 몸 %s" % [cid, JSON.stringify(a)])
-	print("COST %s 외부 모델 %s" % [cid, JSON.stringify(b)])
-	print("| | 구운 몸 | 외부 (Blender) |")
-	print("| --- | --- | --- |")
-	for k in ["tris", "draws", "meshes", "bones", "first_ms", "next_ms", "pose_ms", "vm_tris", "vm_draws"]:
-		var fa = a[k]
-		var fb = b[k]
-		if fa is float:
-			print("| %s | %.2f | %.2f |" % [k, fa, fb])
-		else:
-			print("| %s | %d | %d |" % [k, fa, fb])
+	var Gfx = load("res://world/gfx.gd")
+	var cols := {"구운 몸": _measure(cid, false)}
+	# W19 LOD: 판 몸은 화질 (world/gfx.gd plan.level), 대기실·초상은 stage (External.stage)
+	for lv in ["high", "medium", "low"]:
+		Gfx.plan = {"level": lv}
+		cols["외부 " + lv] = _measure(cid, true)
+	Gfx.plan = {}
+	External.stage = true
+	cols["외부 stage"] = _measure(cid, true)
+	External.stage = false
+	for k in cols:
+		print("COST %s %s %s" % [cid, k, JSON.stringify(cols[k])])
+	var head := "| |"
+	var line := "| --- |"
+	for k in cols:
+		head += " %s |" % k
+		line += " --- |"
+	print(head)
+	print(line)
+	for key in ["tris", "draws", "meshes", "bones", "first_ms", "next_ms", "pose_ms", "vm_tris", "vm_draws"]:
+		var row := "| %s |" % key
+		for k in cols:
+			var f = cols[k][key]
+			row += (" %.2f |" % f) if f is float else (" %d |" % f)
+		print(row)
+	# 8명 판 (모두 이 캐릭터) 삼각형 합·구운 몸 대비
+	var base: float = float(cols["구운 몸"].tris)
+	var row8 := "| 8명 삼각형 (구운 대비) |"
+	for k in cols:
+		row8 += " %d (%.2f×) |" % [int(cols[k].tris) * 8, float(cols[k].tris) / base]
+	print(row8)

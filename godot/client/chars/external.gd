@@ -45,7 +45,6 @@ const JUNK := ["mixamorig", "bip", "bip01", "bip001", "def", "org", "jnt", "join
 
 static var _cache := {} # 캐릭터 → 모델 정보 (없으면 null)
 static var stage := false # W19: 대기실 큰 캐릭터·초상 몸을 만드는 동안 참 (ui/portrait.gd still_body) → 최고 품질 LOD
-const Gfx := preload("res://world/gfx.gd")
 
 
 # ---------- 파일 ----------
@@ -436,7 +435,9 @@ static func pick_lod(cfg: Dictionary, third: bool, on_stage: bool) -> String:
 		return ""
 	if not third or on_stage:
 		return str(lods.get("stage", lods.get("high", "")))
-	var lv: String = str(Gfx.plan.get("level", "high")) if not Gfx.plan.is_empty() else "high"
+	var Gfx = load("res://world/gfx.gd") # preload 하면 -s 도구 (자동 로드 View 전) 에서 컴파일이 깨짐
+	var plan: Dictionary = Gfx.plan
+	var lv: String = str(plan.get("level", "high")) if not plan.is_empty() else "high"
 	return str(lods.get(lv, lods.get("high", "")))
 
 

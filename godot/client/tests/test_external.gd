@@ -463,8 +463,8 @@ func test_blender_tank_info() -> void:
 	check(info.names.size() == 16, "뼈 16개 (손가락 없음, 얻음 %d)" % info.names.size())
 	var lods: Dictionary = info.cfg.get("lods", {})
 	check(lods.size() == 4, "LOD 4 (stage·high·medium·low)")
-	# 삼각형 예산 (재혁 2026-11-05): 높음 15~20천 · 보통 ~1만 · 낮음 ~6천 · 대기실·초상·1인칭 = 4만 이하
-	var want := {"stage": [20000, 40000], "high": [14000, 20000], "medium": [8500, 11000], "low": [4000, 6500]}
+	# 삼각형 예산 (재혁 2026-11-05): 8명 판 합 (몸 + 방패) 이 구운 탱크 (보이는 4840) 의 높음 2.5배·보통 1.8배·낮음 1배 이내 · 대기실·초상·1인칭 = 4만 이하
+	var want := {"stage": [20000, 40000], "high": [9000, 12100 - 1400], "medium": [6000, 8700 - 1400], "low": [2500, 4840 - 1400]}
 	for k in want:
 		var ss := _lod_surfs(info, str(lods.get(k, "")))
 		var body_sf = null

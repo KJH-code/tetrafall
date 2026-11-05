@@ -35,8 +35,10 @@ CHILD = {"hips": "waist", "waist": "torso", "torso": "neck", "shoulder": "elbow"
 G2B = Matrix(((0, 1, 0, 0), (-1, 0, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)))  # 게임 → Blender
 
 # LOD (몸 삼각형 목표): lod0 = 대기실 큰 캐릭터·초상·1인칭 팔 (한 명만 크게), lod1 = 판 화질 높음, lod2 = 보통, lod3 = 낮음
-LOD_TRIS = {"lod0": 38000, "lod1": 17000, "lod2": 10000, "lod3": 6000}
+# 판 LOD 는 '8명 판 삼각형 합 (몸 + 방패) 이 구운 탱크 (보이는 4840) 의 높음 2.5배·보통 1.8배·낮음 1배 이내' 에 맞춤 (재혁 2026-11-05) — 방패 PROP_TRIS 포함
+LOD_TRIS = {"lod0": 38000, "lod1": 10500, "lod2": 7200, "lod3": 3400}
 ATLAS = 1024
+PROP_TRIS = 1400  # 소품 (방패) 삼각형 (LOD 하나)
 FACE_PX = 512
 PREVIEW_TINT = 0xd94a3a  # 미리보기에서만 몸 색 칸 색 (게임에선 플레이어 색을 곱함)
 
@@ -761,6 +763,11 @@ def build_prop(k, cid, pn, recs, fast=False, preview_tint=False):
         for p in me.polygons:
             p.material_index = slot[r["look"]]
     po = join([r["obj"] for r in recs], "%s_%s" % (cid, pn))
+    if tri_count(po) > PROP_TRIS:  # 소품은 LOD 하나 (판 8명 × 방패) — 굽기 전에 줄임
+        d = po.modifiers.new("dec", "DECIMATE")
+        d.ratio = PROP_TRIS / tri_count(po)
+        d.use_collapse_triangulate = True
+        _apply_mods(po)
     _select([po])
     bpy.ops.object.mode_set(mode="EDIT")
     bpy.ops.mesh.select_all(action="SELECT")
