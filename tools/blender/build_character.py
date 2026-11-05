@@ -1,5 +1,5 @@
 # W19 Blender 캐릭터 제작 공통 (Blender 4.5, 화면 없이). 캐릭터 모양은 chars/<id>.py 의 build(k) 가 부품을 부름.
-# 실행 (레포 뿌리): blender -b --factory-startup -P tools/blender/build_character.py -- tank [--preview <폴더>] [--out <폴더>] [--blend <파일>]
+# 실행 (레포 뿌리): blender -b --factory-startup -P tools/blender/build_character.py -- tank [--preview <폴더>] [--out <폴더>] [--blend <파일>] [--parts]
 # 나오는 것: <out>/<id>.glb (몸 + 뼈대, 스킨 메시 하나·재질 하나) · <out>/<id>_<소품>.glb (방패 등 따로) · <out>/<id>.json (고도 조정 값) · 미리보기 PNG
 #
 # 규격 (README.md 2절):
@@ -145,12 +145,13 @@ class Kit:
         bm.transform(g2b @ m)
         return self._add(name, bm, color, bone, **kw)
 
-    def torus(self, name, pos, R, r, color, bone, rot=(0, 0, 0), scale=(1, 1, 1), seg=20, ring=6, **kw):
-        """고리 (축 = 게임 z), scale 로 타원"""
+    def torus(self, name, pos, R, r, color, bone, rot=(0, 0, 0), scale=(1, 1, 1), seg=20, ring=6, arc=None, **kw):
+        """고리 (축 = 게임 z), scale 로 타원. arc = (시작 각, 끝 각) 라디안 (0 = 게임 +x, 왼쪽으로 돎) 이면 그 호만 (두 끝은 막음)"""
         bm = bmesh.new()
         vs = []
-        for i in range(seg):
-            a = 2 * math.pi * i / seg
+        n = seg if arc is None else seg + 1
+        for i in range(n):
+            a = 2 * math.pi * i / seg if arc is None else arc[0] + (arc[1] - arc[0]) * i / seg
             row = []
             for k in range(ring):
                 b = 2 * math.pi * k / ring
@@ -159,11 +160,53 @@ class Kit:
             vs.append(row)
         for i in range(seg):
             for k in range(ring):
-                a0, a1 = vs[i], vs[(i + 1) % seg]
+                a0, a1 = vs[i], vs[(i + 1) % n]
                 bm.faces.new((a0[k], a1[k], a1[(k + 1) % ring], a0[(k + 1) % ring]))
+        if arc is not None:  # 호의 두 끝 막기 (닫힌 입체 → 외곽선·뒷면 구멍 없음)
+            bm.faces.new(vs[0])
+            bm.faces.new(list(reversed(vs[-1])))
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
         self._place(bm, pos, rot, scale)
         return self._add(name, bm, color, bone, **kw)
+
+    def panel(self, name, center, z_top, length, r_top, r_bot, ang, width, color, bone, depth=1.0, thick=0.025,
+              seg=6, rows=3, round_bottom=0.0, **kw):
+        """늘어진 천·판 (원뿔 껍데기의 한 조각): 가운데 center (게임 x, y), 위 z_top 에서 length 아래로, 반지름 r_top → r_bot (바깥으로 벌어짐),
+        ang = 가운데 방향 (라디안, 0 = 앞 +x), width = 벌어진 각, depth = x 방향 납작함 (JS d.depth), round_bottom = 아래 모서리 둥글게 줄이는 길이 (m).
+        두께는 안쪽으로 thick (닫힌 입체)"""
+        bm = bmesh.new()
+        grid = []
+        for r_i in range(rows + 1):
+            t = r_i / rows
+            z = z_top - length * t
+            rr = r_top + (r_bot - r_top) * t
+            row = []
+            for i in range(seg + 1):
+                u = i / seg
+                a = ang - width / 2 + width * u
+                zz = z
+                if round_bottom > 0 and r_i == rows:  # 아래 두 모서리를 위로 둥글게
+                    e = abs(u - 0.5) * 2
+                    zz = z + round_bottom * e * e
+                row.append(bm.verts.new((center[0] + math.cos(a) * rr * depth, center[1] + math.sin(a) * rr, zz)))
+            grid.append(row)
+        for r_i in range(rows):
+            for i in range(seg):
+                bm.faces.new((grid[r_i][i], grid[r_i + 1][i], grid[r_i + 1][i + 1], grid[r_i][i + 1]))
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        # 바깥을 보게 (첫 면 법선이 가운데에서 멀어지는 쪽)
+        f0 = bm.faces[0]
+        c = f0.calc_center_median()
+        if f0.normal.dot(Vector((c.x - center[0], c.y - center[1], 0))) < 0:
+            bmesh.ops.reverse_faces(bm, faces=bm.faces)
+        self._place(bm, (0, 0, 0), (0, 0, 0), (1, 1, 1))
+        ob = self._add(name, bm, color, bone, **kw)
+        mod = ob.modifiers.new("solid", "SOLIDIFY")
+        mod.thickness = thick
+        mod.offset = -1.0
+        mod.use_even_offset = True
+        _apply_mods(ob)
+        return ob
 
     def cylinder(self, name, pos, r, h, color, bone, rot=(0, 0, 0), scale=(1, 1, 1), seg=20, bevel=0.0, **kw):
         """원기둥 (축 = 게임 z, 가운데 pos), bevel = 윗·아랫 모서리 깎기 (m)"""
@@ -494,7 +537,7 @@ def load_char_module(char_id):
 
 def parse_args():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-    out = {"char": "tank", "out": os.path.join(REPO, "godot", "client", "assets", "models", "ext"), "preview": None, "blend": None}
+    out = {"char": "tank", "out": os.path.join(REPO, "godot", "client", "assets", "models", "ext"), "preview": None, "blend": None, "parts": False}
     i = 0
     pos = []
     while i < len(argv):
@@ -502,6 +545,10 @@ def parse_args():
         if a in ("--out", "--preview", "--blend"):
             out[a[2:]] = argv[i + 1]
             i += 2
+            continue
+        if a == "--parts":
+            out["parts"] = True
+            i += 1
             continue
         pos.append(a)
         i += 1
@@ -519,6 +566,9 @@ def main():
     k = Kit(cid, rig)
     mod = load_char_module(cid)
     mod.build(k)
+    if args["parts"]:  # 부품별 삼각형 (예산 맞출 때)
+        rows = sorted(((tri_count(r["obj"]), r["obj"].name) for r in k.parts), reverse=True)
+        print("TF 부품 삼각형 (많은 순): " + ", ".join("%s %d" % (n, t) for t, n in rows))
     arm = make_armature(k, cid)
     fails = skin_parts(k, arm)
     # 재질: 몸 하나 (꼭짓점 색) + 빛 안 받는 칸 (unlit=True — 눈 흰자, JS eyeWhiteMat = MeshBasicMaterial·외곽선 없음) 이 있으면 "<id>_unlit" 하나 더.

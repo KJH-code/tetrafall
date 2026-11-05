@@ -30,12 +30,12 @@
 		}
 	],
 	"stats": {
-		"tris": 9848,
+		"tris": 9792,
 		"prop_tris": {
 			"shield": 1592
 		},
 		"bones": 16,
-		"verts": 5014,
+		"verts": 5002,
 		"box_min": [
 			-0.3555,
 			-0.7646,
