@@ -1,93 +1,94 @@
-# Blender 캐릭터 제작 파이프라인 (W19 — 탱크 1명 시험 제작)
+# Blender 캐릭터 제작 파이프라인 (W19 — 탱크 시험 제작, 고퀄 스타일화 판)
 
-재혁 결정 (B 방식): 캐릭터 모델은 Blender 를 스크립트로 돌려 우리 규격으로 직접 만듦. 화풍은 '중간' (둥글고 굵은 형태 + 단순한 색 + 두꺼운 외곽선 툰).
+재혁 결정 (B 방식): 캐릭터 모델은 Blender 를 스크립트로 돌려 우리 규격으로 직접 만듦.
+화풍 목표 (2026-11-05 재혁): "로우폴리가 아닌 실제 고퀄 게임처럼, 느낌은 스매시 레전드 정도" — 치비 비율, 매끈한 곡면, 2차 디테일 (리벳·금 테·벨트·별), 손칠 느낌 텍스처, 큰 반짝이는 눈·표정, 얇은 외곽선.
 이번엔 탱크 1명. 통과하면 나머지 7명을 같은 방식으로 (따로 작업).
 
 ## 1. 무엇이 어디에
 
 | 파일 | 하는 일 |
 | --- | --- |
-| `dump_rig.gd` (고도) | 지금 구운 몸의 관절 자리·체형 수치·방패 자리를 `ref/<id>_rig.json` 으로 뽑음 → Blender 가 같은 자리에 뼈를 세움 |
-| `build_character.py` | 공통: 부품 (둥근 상자·구·캡슐·고리·호 고리·구 껍데기·늘어진 판·원기둥, 베벨·두께), 꼭짓점 색 + 몸 색 칸, 뼈대, 가중치 (딱딱한 부품 = 뼈 하나, 부드러운 부품 = 부품마다 자동 가중치 뒤 정리), 미리보기 렌더, glb·json 내보내기 |
-| `chars/<id>.py` | 캐릭터 모양 `build(k)` + 고도 조정 값 `CFG` (방패 attach 등) + 미리보기 자세 `PREVIEW_POSES` |
-| `cost.gd` (고도) | 구운 몸 vs 외부 (Blender) 몸 비용 표 (삼각형·그리기·뼈·만들기 ms·자세 ms·1인칭 팔) |
-| 결과 | `godot/client/assets/models/ext/<id>.glb` (몸 + 뼈대) · `<id>_<소품>.glb` (방패 등) · `<id>.json` (조정 값 + 통계) |
+| `dump_rig.gd` (고도) | 지금 구운 몸의 관절 자리·체형·방패 자리를 `ref/<id>_rig.json` 으로 뽑음 → Blender 가 같은 자리에 뼈를 세움 |
+| `build_character.py` | 공통: 부품 (덩어리·둥근 상자·관·고리·원판·껍데기·늘어진 판·별 — 낮은 우리를 서브디비전 2 로 매끈하게), 가중치, UV 펼침, Cycles 굽기, 얼굴 투영, LOD, 내보내기, 미리보기 |
+| `face_paint.py` | 얼굴 텍스처 그리기 (numpy): 큰 눈 (홍채 그라데이션·동공·빛 고리·반짝임 두 점·속눈썹)·눈썹·코·볼터치·입, 표정 3종 |
+| `chars/<id>.py` | 캐릭터 모양 `build(k)` + 재질 느낌 `B.look(...)` + 고도 조정 값 `CFG` + 미리보기 자세 |
+| `cost.gd` (고도) | 구운 몸 vs 외부 몸 (화질 high·medium·low·stage) 비용 표 + 8명 판 합 |
+| `stage_shot.gd` (고도) | 대기실 무대 빛으로 몸 나란히 (색 3가지·LOD·표정) PNG — 눈으로 비교 |
+| 결과 `godot/client/assets/models/ext/` | `<id>.glb` (뼈대 + LOD 메시 4: `<id>_lod0..3`) · `<id>_<소품>.glb` · `<id>_face_<표정>.png` · `<id>.json` · 고도가 뽑아 둔 텍스처 (`<id>_<id>_atlas.jpg` 등, 커밋) |
 
-예전 시험 로봇 (Quaternius, W14) 은 `ext/robot_test.glb` (+ `.json`) 로 옮김 — 테스트만 씀.
+예전 시험 로봇 (Quaternius, W14) 은 `ext/robot_test.glb` — 테스트만 씀.
 
 ## 2. 설치·실행
 
 ```
-# Blender 4.5 (화면 없이, GPU 없어도 됨 — 미리보기는 Workbench)
+# Blender 4.5 (화면 없이, GPU 없어도 됨 — 굽기는 Cycles CPU, 미리보기는 Workbench)
 curl -LO https://download.blender.org/release/Blender4.5/blender-4.5.3-linux-x64.tar.xz && tar xf blender-4.5.3-linux-x64.tar.xz   # 레포 밖에
-# (관절 자리를 새로 뽑을 때만) 고도
-<godot> --headless --path godot/client -s ../../tools/blender/dump_rig.gd -- tank
-# 만들기 (레포 뿌리): ext/ 에 tank.glb·tank_shield.glb·tank.json, --preview 면 미리보기 PNG (정면·3/4·옆·뒤·머리·자세 4 + 모음 tank_sheet.png)
-blender -b --factory-startup -P tools/blender/build_character.py -- tank --preview <밖 폴더> [--out <폴더>] [--blend <파일.blend>] [--parts]
-# 고도 import (.glb.import 갱신) → 테스트 → 비용 표
+# 만들기 (레포 뿌리, ~25초): ext/ 에 tank.glb·tank_shield.glb·tank_face_*.png·tank.json, --preview 면 미리보기 (정면·3/4·옆·뒤·얼굴 둘·자세 3 + 모음 sheet + 아틀라스)
+blender -b --factory-startup -P tools/blender/build_character.py -- tank --preview <밖 폴더> [--out <폴더>] [--parts] [--fast]
+# 고도 import (새 텍스처·.import 생김 → 커밋) → 테스트 → 비용 표 → 눈 확인
 <godot> --headless --path godot/client --import
 <godot> --headless --path godot/client -s tests/run_tests.gd
 <godot> --headless --path godot/client -s ../../tools/blender/cost.gd -- tank
-# 게임에서 보기 (외부 모델은 기본 끔, --ext 로 켬)
-PORT=3119 node server/index.js &
-xvfb-run -a -s "-screen 0 1280x720x24" <godot> --resolution 1280x720 --path godot/client -- --ext --auto practice --char tank --view third --server ws://127.0.0.1:3119 --shot a.png --shot-after 14 --quit-after 15
+xvfb-run -a -s "-screen 0 1600x1000x24" <godot> --path godot/client -s ../../tools/blender/stage_shot.gd -- a.png stage ext [faces]
+# 게임에서 (외부 모델은 기본 끔, --ext — 배포 묶음은 start-lan-ext.bat)
+xvfb-run -a -s "-screen 0 1280x720x24" <godot> --resolution 1280x720 --path godot/client -- --ext --gfx high --auto practice --char tank --view third --server ws://127.0.0.1:3119 --shot a.png --shot-after 13 --quit-after 14
 ```
 
-`--parts` 는 부품별 삼각형을 많은 순으로 찍음 (예산 맞출 때). 만드는 데 ~3초.
-같은 스크립트를 다시 돌리면 같은 모양이 나오지만 glb 바이트는 매번 조금 다름 (glTF 내보내기의 법선 1e-4 잡음·인덱스 순서) — 커밋할 땐 한 번 만든 것만.
+`--parts` 부품별 삼각형 (서브디비전 뒤), `--fast` 굽기 256px (모양만 빨리 볼 때). 다시 만들면 모양은 같지만 glb 바이트는 조금 다름 (굽기 잡음·법선).
 
 ## 3. 규격표 (7명 확장 때 지킬 것)
 
 | 항목 | 규격 |
 | --- | --- |
-| 좌표 | 부품은 게임 좌표 (앞 +x, 왼쪽 +y, 위 +z, m, 발바닥 z = 0) 로 적음. Blender 로는 (X, Y, Z) = (y, −x, z), 내보내면 glTF 앞 +Z (고도 yaw 90° 로 게임 앞) |
-| 키·비율 | 관절 자리 = `ref/<id>_rig.json` (고도 몸 쉬는 자세, `PLAYER_HEIGHT` 1.6 × `FIGURE_SCALE` 1.15, 체형 `FIGURE_BODIES`) — 부품도 이 자리 기준으로. json `height`·`offset` 은 스크립트가 "크기 1·자리 그대로" 가 되게 적음 |
-| 뼈 | 16개, 이름 = 우리 관절 그대로 `hips waist torso neck shoulder_R elbow_R hand_R shoulder_L elbow_L hand_L thigh_R knee_R foot_R thigh_L knee_L foot_L` (R = 캐릭터 오른쪽). 손가락·빗장·머리 뼈 없음 (주먹 한 덩어리, 머리는 neck) |
-| 쉬는 자세 | 우리 몸 쉬는 자세 그대로 (팔 내림 — T/A 포즈 아님). 외부 모델 맞춤 회전 A 가 거의 0 이 됨 |
-| 삼각형 | 몸 1만 이하 (외곽선 껍데기로 그리기는 ×2). 소품 (방패) 은 따로 |
-| 재질 | 몸 1개 (`<id>`, 하양 + 꼭짓점 색 `COLOR_0`) + 빛 안 받는 칸이 있으면 `<id>_unlit` 1개 (눈 흰자 — 고도는 이름이 `_unlit` 로 끝나는 재질을 하얀 발광·외곽선 없음으로). 텍스처 없음 |
-| 색 | 꼭짓점 색 = JS `figure.js` 옷 색 (sRGB 값 그대로 — 내보내기 전에 선형 → sRGB 로 바꿔 둠). 플레이어 색 칸 = 둘째 UV (고도 UV2) x = 1 + 꼭짓점 하양 → 툰 셰이더 `skin_tint` (json `tint: "mask"`) |
-| 가중치 | 딱딱한 부품 (갑옷·투구·장갑·장화) = 뼈 하나 100%. 부드러운 부품 (`blend=[뼈…]`: 몸통 통·소매·허벅지·허리 천) = 그 부품만 자동 가중치 (bone heat) 뒤 허락한 뼈만, 정점당 최대 3, 0.04 아래 버리고 정규화 |
-| 눈 | 모델 안에 (흰자 = `_unlit` 재질, 눈동자 = 몸 재질). 코드 몸의 눈은 외부 모델이면 안 그림 (안쪽 몸 메시를 비움). **흰자는 머리 덮개 (투구·모자) 바깥 타원 안에** — 밖으로 나오면 옆·3/4 에서 눈알이 떠 보임 (`test_blender_tank_eyes_in_helmet`) |
-| 밝기 | 몸 색 칸 뺀 넓이 평균 색이 구운 몸의 0.92~1.1 배 (`test_blender_tank_brightness`, 탱크 0.95) |
-| 분리 소품 | `prop="이름"` 부품은 `<id>_<이름>.glb` 로 따로 (뼈 없음, 안쪽 몸 소품 노드 좌표 — 탱크 방패 = JS 방패 원판 좌표, 돌기 −x). json `attach` 에 `{"glb", "ref": "shields.back"}` (안쪽 몸 소품 노드 아래 → 보이기·1인칭 쥐기는 예전 그대로) |
+| 좌표 | 부품은 게임 좌표 (앞 +x, 왼쪽 +y, 위 +z, m, 발바닥 0). Blender 로는 (X, Y, Z) = (y, −x, z), glTF 앞 +Z |
+| 비율 | 관절 자리 = `ref/<id>_rig.json` (우리 몸 쉬는 자세 — 바꾸지 않음). 치비는 **메시만** 키움 (탱크 머리 반지름 0.26~0.29 m, 목 관절 위 0.27 m 가운데) |
+| 뼈 | 16개, 이름 = 우리 관절 그대로 (`hips waist torso neck shoulder_R elbow_R hand_R … foot_L`), 손가락·머리 뼈 없음 (머리 = neck). 쉬는 자세 = 우리 몸 (팔 내림) |
+| 부품 | 낮은 우리 → 서브디비전 2 (매끈). 딱딱한 것 (갑옷·투구·장갑) = 뼈 하나 100%, 굽는 것 (`blend=[뼈…]`: 옷 몸통·소매·허벅지·허리 천) = 자동 가중치 → 허락 뼈만 3개까지 |
+| LOD | 한 glb 안 메시 4 (같은 뼈·같은 UV·같은 텍스처, Decimate): **lod0 = 대기실 큰 캐릭터·초상·1인칭 팔 (≤ 4만)**, lod1 = 판 화질 높음, lod2 = 보통, lod3 = 낮음. `<id>.json` `lods` 가 화면·화질 → 메시 이름. 판 LOD 는 '8명 판 합 (몸 + 방패) ≤ 구운 몸 × 높음 2.5·보통 1.8·낮음 1.0' (탱크: 10.5k·7.2k·3.4k + 방패 1.4k) |
+| 텍스처 | 몸 알베도 아틀라스 1024² (JPEG, glb 안) = Cycles 굽기: look 색 × AO × 위쪽 빛 × 붓 얼룩 + 모서리 빛 (pointiness) + 쇠 광택 띠. 소품 512². 얼굴 512² PNG (표정마다) |
+| 재질 | 2개: `<id>` (아틀라스, 꼭짓점 색 하양) · `<id>_face` (얼굴 — 외곽선 없음, 표정 교체). 고도에서 몸 그리기 = 몸 2 (툰 + 외곽선) + 얼굴 1 + 방패 2 = 5 |
+| 몸 색 (틴트 마스크) | 둘째 UV (고도 UV2) x = 1 인 면만 플레이어 색을 **곱함** (`skin_multiply` — 굽은 그늘이 남음). 그 면은 회백 (0xeeeeee) 으로 굽힘. **몸 전체 틴트 금지** — 탱크는 깃·허리 천·방패 판만 (몸 넓이의 ~10%, 테스트 2~25%) |
+| 얼굴·눈 | 머리 덩어리 = `face=True` 부품: 앞쪽 면에 정면 평면 투영 (얼굴 칸 [-1,1] = 머리 반지름), 뒤쪽 면은 맨살 구석. 코드 몸의 눈 (addEyes) 은 외부 모델이면 안 그림. 투구·모자 얼굴창은 눈썹 위까지 열기 |
+| 표정 | `faces {idle, hit, attack}` (`face_paint.paint_face`): 경직·맞은 직후 `EXT_HIT_FACE_S` = hit (> < 눈·작은 입), 공격 동작 = attack (찡그린 눈썹·벌린 입), 나머지 idle. external.gd `expression()` |
+| 그림 손질 (json) | `toon_steps` [0.66, 0.84, 1.0] (칠한 그늘이 있으니 부드럽게) · `outline` 0.45 (외곽선 굵기 배율 — 얇게) · `rim` [0.35, 3] (가장자리 빛) |
+| 분리 소품 | `prop="이름"` 부품 → `<id>_<이름>.glb` (자기 아틀라스, `PROP_TRIS` 1400), json `attach` `{"glb", "ref": "shields.back"}` (안쪽 몸 소품 노드 아래 → 보이기·1인칭 쥐기는 예전 그대로) |
+| 밝기 | 몸 색 칸 뺀 넓이 평균 밝기 (텍스처 포함) ≥ 구운 몸 × 0.92 (`test_blender_tank_brightness`). 대기실·초상은 무대 흰 빛 (`portrait.gd stage_light`) |
 
 ## 4. 새 캐릭터 만드는 순서
 
-1. `dump_rig.gd -- <id>` → `ref/<id>_rig.json` (관절·체형·소품 자리)
-2. `chars/<id>.py`: `build(k)` 에서 JS `figure.js` `dress<Char>` 를 보며 부품을 관절 자리에 (`k.j("elbow_R")`), 색은 JS 값, 플레이어 색 칸은 `skin=True`, 굽는 곳은 `blend=[…]`, 소품은 `prop=`. 좌우는 `k.mirror(fn)`
-3. `--preview` 로 정면·옆·뒤·극단 자세 (`PREVIEW_POSES`: 어깨 들기·웅크림·비틂) 를 보고 찌그러짐·삐져나옴 확인, `--parts` 로 1만 이하
-4. 고도 import → `--ext --char <id>` 로 3인칭·1인칭·대기실·초상 확인, `cost.gd`
-5. 테스트: `tests/test_external.gd` 의 `test_blender_tank_*` 를 그 캐릭터로 (뼈 이름 = 관절·크기 1·뼈 자리·표면 수·그리는 메시)
+1. `dump_rig.gd -- <id>` → `ref/<id>_rig.json`
+2. `chars/<id>.py`: JS `figure.js` `dress<Char>` 의 정체성 (무기·모자·색) 을 보며 `B.look(이름, 색, kind)` (metal·cloth·leather·skin·tint) 로 재질을 정하고, 부품을 관절 자리에 (`k.j("elbow_R")`, 곡면 위 자리는 `_on(가운데, 반지름, 방향)`). 머리 덩어리는 `face=True` + `k.face_frame`, 플레이어 색은 `tint` look 으로 일부만, 굽는 곳 `blend=[…]`, 소품 `prop=`
+3. `--fast --preview` 로 모양을 보며 고침 → 실루엣·비율·디테일 3~4번 반복 → `--preview` (굽기 1024) → `stage_shot.gd` 로 게임 셰이더에서 색 3가지·LOD·표정 확인
+4. 고도 import → `--ext --char <id>` 3인칭·1인칭·대기실·초상, `cost.gd` (8명 합 배율)
+5. 테스트: `tests/test_external.gd` 의 `test_blender_tank_*` 를 그 캐릭터로 (뼈 이름·LOD 예산·몸 색 칸 넓이·표정·밝기·크기 1·뼈 자리)
 
 ## 5. 탱크 결과 (2026-11-05)
 
-모양: 둥근 투구 (얼굴 앞만 뚫림) + 이마 띠·가로 쇠 띠 둘·코 가드 + 몸 색 볏 (금 받침), 왕눈알 (JS addEyes 자리·크기, 흰자 빛 안 받음), 가슴 갑옷 껍데기 + 금 장식·배 띠·허리띠·금 버클,
-두 겹 어깨 갑옷 + 금 징, 몸 색 소매, 쇠 장갑·주먹, 허리 천 (타바드 앞·뒤, 몸 색 + 금 테), 옆 치마판 두 겹, 사슬 바지·가죽 허벅지·무릎 받이·정강이 갑옷·쇠 장화, 큰 둥근 방패 (몸 색 판 + 쇠 테 + 금 고리·돌기·징, 따로).
+모양: 큰 머리 치비 (얼굴창 투구 + 금 이마 띠 + 볼 가리개 리벳 + 쇠 마루 + 플레이어 색 깃, 앞머리), 큰 눈 얼굴 (표정 3), 둥근 흉갑 (가운데 능선·금 별·리벳·아래·목 금 테),
+두 겹 어깨 갑옷 + 금 리벳, 누빈 크림 소매·허벅지, 팔꿈치·무릎 받이, 팔 보호대 + 금 손목 테, 가죽 장갑 손 (엄지), 가죽 벨트·금 버클·주머니, 플레이어 색 허리 천 (앞·뒤, 금 단), 쇠 치마판 두 겹,
+정강이 갑옷·가죽 장화 테·쇠 장화·밑창, 큰 둥근 방패 (플레이어 색 판 + 쇠 테 + 금 고리·돌기·별·리벳 8 + 뒤 손잡이·띠).
 
-| | 구운 탱크 (지금) | Blender 탱크 |
-| --- | --- | --- |
-| 삼각형 (보이는 몸 + 방패 하나) | 4840 | 11384 (몸 9792 + 방패 1592) |
-| 그리기 (외곽선 next_pass 포함) | 6 | 5 (몸 2 + 눈 흰자 1 + 방패 2) |
-| 메시 | 4 | 3 |
-| 뼈 | 27 | 16 |
-| 몸 만들기 처음 / 그 뒤 | 5.5 / 0.72 ms | 7.2 / 1.68 ms |
-| 자세 + 뼈 맞추기 (프레임당) | 0.14 ms | 0.18 ms |
-| 1인칭 팔 삼각형 / 그리기 | 2832 / 66 | 1158 / 2 |
+`cost.gd` (헤드리스, 판 몸 하나):
 
-8명 판 추정 (모두 이 규격일 때): 그리기 48 → 40, 삼각형 (외곽선 껍데기 ×2) ~7.7만 → ~18만, 자세 ms 8 × 0.04 = +0.3 ms/프레임, 몸 만들기 +1 ms/명 (판 시작·캐릭터 바꿀 때만).
-그리기는 줄고 삼각형이 2.3배 — 내장 GPU 에서 버틸지는 재혁 PC F3 로 봐야 함 (삼각형 줄이는 손잡이: 구·고리 seg/rings, `--parts`).
+| | 구운 몸 | 외부 high | 외부 medium | 외부 low | 외부 stage |
+| --- | --- | --- | --- | --- | --- |
+| 삼각형 (몸 + 보이는 방패) | 4840 | 11900 | 8600 | 4794 | 39400 |
+| 그리기 (외곽선 포함) | 6 | 5 | 5 | 5 | 5 |
+| 뼈 | 27 | 16 | 16 | 16 | 16 |
+| 몸 만들기 처음 / 그 뒤 | 5.8 / 0.71 ms | ~75 / 1.9 ms | | | |
+| 자세 + 뼈 맞추기 | 0.14 ms | 0.19 ms | | | |
+| 1인칭 팔 삼각형 / 그리기 | 2832 / 66 | 4034 / 2 | | | |
+| **8명 판 삼각형 (구운 대비)** | 38.7k (1.00×) | 95.2k (2.46×) | 68.8k (1.78×) | 38.4k (0.99×) | (한 명만) |
+
+처음 75 ms = 판 처음 몸 하나 만들 때 한 번 (.glb·텍스처 읽기, LOD 4 표면 나누기, 1인칭 팔 메시) — 그 뒤는 1.9 ms. 이 컨테이너는 소프트웨어 렌더라 프레임 ms 는 의미 없음 → **재혁 PC F3 로 8명 판 FPS 확인** 필요.
 
 ## 6. 한계·못 한 것
 
-- 허리 천은 JS 처럼 따로 흔들리지 않고 허벅지 가중치로 다리를 따라 휨 (큰 걸음·발차기에서 천이 늘어남)
-- 볏·방패는 플레이어 색 칸이라 빨강은 '빨간 플레이어' 일 때만 (JS 와 같음). 늘 빨강으로 하려면 `skin=False` + RED 색
-- 표정 없음 (눈동자 고정), 클립 (춤 등) 없음 — 움직임은 전부 코드 자세
-- 반투명 (유령화) 때 표면 2개 (몸·눈) 가 따로 투명이라 겹침 정렬은 예전 묶음 몸보다 거침
-- glb 바이트가 매번 조금 다름 (2절)
-
-## 7. 재혁 캡처 고침 (2026-11-05, v0.1.6 뒤)
-
-- 눈알이 투구 위로 떠 보임 → 눈을 작게 (반지름 0.071 → 0.064) 뒤로 (투구 얼굴 구멍 안). 원인: JS addEyes 자리 그대로라 흰자가 투구 겉면보다 앞·옆으로 나와 3/4·옆에서 투구 밖에 떠 보였음
-- 대기실 큰 캐릭터·초상이 어둡고 탁함 → 원인은 모델이 아니라 무대: 고도 툰 셰이더 빛이 전역 값이라 대기실 어두운 장면 (lobby_dark) 빛을 그대로 받음 (구운 탱크도 같은 맵 테마에선 똑같이 어두움 — 테마마다 달라 보였던 것). JS 처럼 무대는 늘 흰 빛 (앰비언트 1.05 + 앞 빛 1.5): `ui/portrait.gd` `stage_light` (재질마다 `toon_local_light`, 값 `shaders/g3_config.gd` `STAGE_*`). 모델 쪽은 장화·주먹을 쇠 색으로 (몸 밝기 0.92 → 0.95)
-- 방패: 평소엔 등, 공격 동안 앞 — 구운 탱크·JS 와 같음 (대기실 기본 자세도 등)
+- **프로시저럴 한계**: 부품 조립 + 서브디비전이라 '손으로 조각한' 유기적 형태 (머리카락 가닥·천 주름·근육·얼굴 입체 (코·볼 볼륨)) 는 못 냄 — 탱크처럼 갑옷·둥근 물건 위주 캐릭터는 잘 맞고, 머리카락·옷 주름이 핵심인 캐릭터 (바드·사냥꾼) 는 단순해 보일 수 있음. 대안: 그 부분만 AI 생성 (Meshy·Tripo) 메시를 받아 Blender 스크립트에서 붙이기 (EXTERNAL.md 의 외부 모델 길과 섞기)
+- 텍스처는 '굽기' 라 붓 자국·손그림 무늬 (천 바느질·흠집) 는 약함 — 필요하면 look 에 무늬 노드를 더하거나 손그림 텍스처를 덮어야 함
+- LOD 는 Decimate 라 낮은 단계 (3.4k) 에서 UV 이음매 근처 색 얼룩·각이 보임 (화질 낮음 전용)
+- 허리 천은 따로 흔들리지 않고 허벅지 가중치로 따라 휨, 깃도 고정
+- 표정은 텍스처 3장 교체만 (눈 깜빡임·입 모양 섞기 없음)
+- 얼굴은 정면 평면 투영이라 옆 (90°) 에선 눈이 길게 늘어 보일 수 있음 (투구 볼 가리개가 대부분 가림)
+- glb 4 LOD + 아틀라스로 tank.glb ~4 MB (웹 첫 로딩 +) — 8명이면 ~30 MB, 줄이려면 lod0 을 따로 파일로 (대기실에서만 받기) 또는 텍스처 512
+- 판 중 플레이어 색이 대기실에서 바꾼 색을 늦게 따라가는 경우 (자동 조종 `--color` 로 볼 때) — 구운 몸도 같아서 이번 범위 밖
