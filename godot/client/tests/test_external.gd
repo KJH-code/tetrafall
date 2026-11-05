@@ -600,10 +600,10 @@ func test_blender_tank_shield() -> void:
 	var box := AABB()
 	var first := true
 	for mi in pb.find_children("*", "MeshInstance3D", true, false):
-		var ab: AABB = (pb.transform * (mi as MeshInstance3D).transform) * (mi as MeshInstance3D).mesh.get_aabb()
+		var ab: AABB = (Transform3D(pb.transform.basis) * (mi as MeshInstance3D).transform) * (mi as MeshInstance3D).mesh.get_aabb() # 자리 (attach pos — 등판에 붙임) 는 빼고 모양만
 		box = ab if first else box.merge(ab)
 		first = false
-	# W19 v2: 큰 팔각 방패 (tools/blender/chars/tank.py sr 0.4 + 테 — 히어로 비율 몸에 맞춰 예전 원판 0.368 보다 조금 큼)
+	# W19 v3: 큰 히터 방패 (tools/blender/chars/tank.py SH_* — 폭 0.68·높이 0.86 + 테, 히어로 비율 몸에 맞춰 예전 원판 0.368 보다 큼)
 	var sr: float = maxf(0.28, float(b.d.chestR) * 1.15)
 	check(box.size.y > 2.0 * sr and box.size.y < 2.0 * sr * 1.35 and box.size.z > 2.0 * sr * 0.95 and box.size.z < 2.0 * sr * 1.35 and box.size.x < 0.4, "방패 크기 %s (예전 원판 %.3f)" % [box.size, sr])
 	check(box.position.x < -0.08, "돌기 = 방패 -x (JS·viewmodel 과 같은 쪽, %.3f)" % box.position.x)
