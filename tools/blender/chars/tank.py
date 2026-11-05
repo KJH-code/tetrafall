@@ -52,8 +52,8 @@ def build(k):
     H = J("hips")
 
     # ===== 머리 (치비: 크게) =====
-    hc = N + Vector((0.035, 0, 0.255))  # 머리 가운데
-    HR = (0.245, 0.27, 0.245)
+    hc = N + Vector((0.035, 0, 0.27))  # 머리 가운데
+    HR = (0.262, 0.29, 0.262)
     k.face_frame = (hc.copy(), HR[1], HR[2])  # 얼굴 텍스처 투영 (build_character.face_uv)
     k.blob("face", hc, HR, "skin", "neck", cuts=2, face=True)
     # 투구: 얼굴창 (이마 아래 앞이 열림, 볼 가리개는 옆에), 뒤통수·목 뒤 덮개
@@ -62,7 +62,7 @@ def build(k):
     def helm_keep(p):
         if p.z < -0.62:
             return False
-        if p.x > 0.18 and p.z < 0.46 and abs(p.y) < 0.72:
+        if p.x > 0.16 and p.z < 0.46 and abs(p.y) < 0.78:
             return False  # 얼굴창
         if p.x > 0.5 and p.z < -0.3:
             return False  # 턱 아래
@@ -88,7 +88,7 @@ def build(k):
         r1 = HH[2] + 0.075 + 0.04 * math.sin(math.pi * i / 6)
         plume_pts.append(hc + Vector((math.sin(a) * r1 * 0.98, 0, math.cos(a) * r1)))
         t = i / 6
-        plume_r.append((0.045 + 0.025 * math.sin(math.pi * t), 0.075 + 0.045 * math.sin(math.pi * min(1, t * 1.2))))
+        plume_r.append((0.055 + 0.035 * math.sin(math.pi * t), 0.08 + 0.05 * math.sin(math.pi * min(1, t * 1.2))))
     k.sweep("crest", crest_pts[:6], crest_r[:6], "steel_dark", "neck", sides=6, up=(1, 0, 0), sub=1)
     k.sweep("plume", plume_pts, plume_r, "tint", "neck", sides=8, up=(0, 1, 0))
     # 앞머리 (투구 아래로 삐져나온 머리칼 세 갈래)
@@ -106,8 +106,12 @@ def build(k):
     zt = -0.6 * PR[2] * 1.06
     tw = math.sqrt(1 - 0.6 ** 2) * 1.04
     k.torus("plate_trim", pc + Vector((0, 0, zt + 0.004)), 1.0, 0.024, "gold", "torso", scale=(PR[0] * tw + 0.01, PR[1] * tw + 0.01, 1.0), seg=24, ring=6, sub=1)
+    # 가운데 능선 (흉갑 앞을 위아래로) + 목둘레 금 테
+    ridge = [_on(pc, PR, (1.0, 0.0, zz), 0.004) for zz in (0.62, 0.35, 0.05, -0.25, -0.5)]
+    k.sweep("plate_ridge", ridge, [(0.016, 0.012)] * len(ridge), "steel", "torso", sides=6, up=(1, 0, 0), sub=1)
+    k.torus("neck_trim", pc + Vector((0.0, 0, PR[2] * 0.8)), 1.0, 0.022, "gold", "torso", scale=(PR[0] * 0.6 + 0.01, PR[1] * 0.6 + 0.01, 1.0), seg=20, ring=6, sub=1)
     # 가슴 별 (금) + 리벳
-    k.star("chest_star", pc + Vector((PR[0] * 0.93, 0, 0.13)), 0.1, 0.03, "gold", "torso", rot=(0, 72, 0))
+    k.star("chest_star", _on(pc, PR, (0.9, 0.42, 0.3), 0.004), 0.085, 0.03, "gold", "torso", rot=(0, 70, 25))
     for s in (-1, 1):
         for zz in (0.27, 0.0):
             a = math.radians(38 if zz > 0 else 50)

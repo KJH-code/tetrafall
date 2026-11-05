@@ -72,16 +72,16 @@ MOUTH = 0x8a2f2a
 TONGUE = 0xe0706a
 BROW = 0x5a3418
 
-EYE = {"x": 0.37, "y": -0.04, "rx": 0.165, "ry": 0.225}
+EYE = {"x": 0.38, "y": -0.07, "rx": 0.19, "ry": 0.26}
 
 
 def _blush(c):
     for s in (-1, 1):
-        d = c.ellipse(s * 0.6, -0.33, 0.15, 0.075)
+        d = c.ellipse(s * 0.63, -0.4, 0.15, 0.075)
         c.put(c.cov(d, soft=14), BLUSH, 0.55)
         for k in range(3):  # 볼 빗금 세 줄 (치비 볼터치)
-            x0 = s * (0.53 + k * 0.055)
-            c.put(c.cov(c.stroke([(x0 - s * 0.012, -0.30), (x0 + s * 0.012, -0.355)], 0.018)), 0xe57b74, 0.65)
+            x0 = s * (0.56 + k * 0.055)
+            c.put(c.cov(c.stroke([(x0 - s * 0.012, -0.37), (x0 + s * 0.012, -0.425)], 0.018)), 0xe57b74, 0.65)
 
 
 def _eye_open(c, s, squint=0.0):
@@ -140,17 +140,17 @@ def _nose(c):
 
 def _mouth(c, kind):
     if kind == "idle":  # 작은 웃음
-        c.put(c.cov(c.stroke(arc(0, -0.36, 0.09, 0.06, np.pi * 1.15, np.pi * 1.85, 10), 0.028)), MOUTH)
+        c.put(c.cov(c.stroke(arc(0, -0.42, 0.09, 0.06, np.pi * 1.15, np.pi * 1.85, 10), 0.028)), MOUTH)
     elif kind == "hit":  # 놀란 작은 입 (세모진 o)
-        d = c.ellipse(0, -0.43, 0.06, 0.07)
+        d = c.ellipse(0, -0.48, 0.06, 0.07)
         c.put(c.cov(d), MOUTH)
-        c.put(c.cov(np.maximum(c.ellipse(0, -0.47, 0.04, 0.03), d)), TONGUE)
+        c.put(c.cov(np.maximum(c.ellipse(0, -0.52, 0.04, 0.03), d)), TONGUE)
     else:  # 기합: 크게 벌린 입 (위 이 한 줄 + 혀)
-        d = c.ellipse(0, -0.42, 0.13, 0.1)
-        d = np.maximum(d, c.y + 0.33)  # 윗입술 평평
+        d = c.ellipse(0, -0.47, 0.13, 0.1)
+        d = np.maximum(d, c.y + 0.38)  # 윗입술 평평
         c.put(c.cov(d), MOUTH)
-        c.put(c.cov(np.maximum(c.ellipse(0, -0.49, 0.08, 0.05), d)), TONGUE)
-        c.put(c.cov(np.maximum(d, -(c.y + 0.37))), 0xffffff)
+        c.put(c.cov(np.maximum(c.ellipse(0, -0.54, 0.08, 0.05), d)), TONGUE)
+        c.put(c.cov(np.maximum(d, -(c.y + 0.42))), 0xffffff)
 
 
 def paint_face(kind, n=512):

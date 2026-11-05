@@ -1,8 +1,8 @@
 {
 	"_": "W19 Blender 로 만든 몸 (tools/blender/build_character.py tank) — 다시 만들면 덮어씀. 키는 chars/chars_config.gd EXT_DEFAULTS",
-	"height": 1.16005,
+	"height": 1.18446,
 	"offset": [
-		0.01962,
+		0.01472,
 		-0.0013,
 		5e-05
 	],
@@ -57,7 +57,7 @@
 			"lod2": 10000,
 			"lod3": 6000
 		},
-		"full_tris": 60008,
+		"full_tris": 61232,
 		"prop_tris": {
 			"shield": 6784
 		},
@@ -65,14 +65,14 @@
 		"atlas": 1024,
 		"face_px": 512,
 		"box_min": [
-			-0.344,
+			-0.3735,
 			-0.7642,
 			-0.0013
 		],
 		"box_max": [
-			0.3833,
+			0.4029,
 			0.7641,
-			2.1332
+			2.1781
 		],
 		"auto_weight_fail": []
 	}
