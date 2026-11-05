@@ -941,6 +941,13 @@ def render_previews(scene, k, res, props, mod, outdir, cid, lod="lod0"):
         scene.render.filepath = p
         bpy.ops.render.render(write_still=True)
         shots.append(p)
+    for nm, tgt, yaw, pitch, ortho in getattr(mod, "PREVIEW_EXTRA", []):  # 캐릭터가 더 보고 싶은 각도 (위에서·투구 옆 등)
+        pose_bones(arm, [])
+        _cam(scene, Vector(tgt), yaw, pitch, 6, ortho)
+        p = os.path.join(outdir, "%s_%s.png" % (cid, nm))
+        scene.render.filepath = p
+        bpy.ops.render.render(write_still=True)
+        shots.append(p)
     for nm, pose in getattr(mod, "PREVIEW_POSES", {}).items():
         pose_bones(arm, pose)
         _cam(scene, c, 35, 12, 6, 2.6)

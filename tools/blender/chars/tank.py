@@ -91,79 +91,114 @@ def build(k):
     J = k.j
     T, N, H = J("torso"), J("neck"), J("hips")
 
-    # ===== 투구 (v4: 1.25배 — 실루엣의 상징, 뼈 자리는 그대로·메시만 키움) — 둥근 돔 + 세로 슬릿 바이저 + 피벗 원판 + 리벳 금 띠 + 볼 가드 + 이마 별 + 소켓·깃털 =====
-    HS = 1.25
-    HR = (0.14 * HS, 0.135 * HS, 0.15 * HS)
-    HH = (HR[0] + 0.045 * HS, HR[1] + 0.035 * HS, HR[2] + 0.035 * HS)
-    hc = N + Vector((0.04, 0, 0.8 * HH[2] - 0.0))  # 투구 아래 테가 목 받이에 닿게
-    k.face_frame = (hc.copy(), HH[1], HH[2])
-    VZ0, VZ1, VY = -0.6, 0.32, 0.74
+    # ===== 투구 (v5 재혁 '구처럼 둥긂' → 각진 판금 투구): 팔각 단면 고리를 쌓은 경사 돔 (위에서 앞이 좁은 계란, 옆에서 이마가 나오고 뒤통수가 흘러내림),
+    #        앞은 코처럼 튀어나온 쐐기 바이저 (세로 슬릿 5), 아래는 각지게 좁아지는 턱 가리개, 정수리 세로 능선 + 소켓·깃털, 판 이음선 리벳, 피벗 원판, 이마 금 띠·별, 넓은 목 테
+    hc = N + Vector((0.035, 0, 0.19))
+    k.helm_hc = hc
+    # 고리: (z, 앞 반경, 뒤 반경, 옆 반경, 뒤쪽 z 내림) — 투구 가운데 hc 기준 m
+    RINGS = [(-0.2, 0.13, 0.2, 0.155, -0.08), (-0.13, 0.19, 0.215, 0.19, -0.05), (-0.04, 0.25, 0.22, 0.205, -0.015), (0.04, 0.225, 0.22, 0.205, 0.0),
+             (0.11, 0.195, 0.215, 0.192, 0.0), (0.165, 0.145, 0.205, 0.16, 0.0), (0.2, 0.07, 0.17, 0.105, 0.0), (0.218, 0.0, 0.105, 0.04, 0.0)]
+    NS = 8
 
-    def dome_keep(p):
-        if p.z < -0.8 and p.x < 0.4:
-            return False
-        if p.x > 0.3 and VZ0 < p.z < VZ1 and abs(p.y) < VY:
-            return False
-        return True
-    k.shell("helmet", hc, HH, "steel_bright", "neck", dome_keep, thick=0.035, cuts=4)
-    VH = (HH[0] + 0.016, HH[1] + 0.014, HH[2] + 0.012)
-    k.shell("visor", hc, VH, "steel", "neck", lambda p: p.x > 0.24 and VZ0 - 0.06 < p.z < VZ1 + 0.06 and abs(p.y) < VY + 0.06, thick=0.026, cuts=6)
-    for i, yn in enumerate((-0.6, -0.3, 0.0, 0.3, 0.6)):
-        top = _on(hc, VH, (0.9, yn, 0.22), 0.001)
-        bot = _on(hc, VH, (0.95, yn * 0.95, -0.12), 0.001)
+    def ring_pt(r, a):
+        z, rf, rb, rs, dz = r
+        c, s_ = math.cos(a), math.sin(a)
+        x = c * (rf if c > 0 else rb)
+        return Vector((x, s_ * rs, z + (dz * -c if c < 0 else 0.0)))
+
+    def surf(z, a, out=0.0):
+        """투구 겉면 점 (높이 z, 방향 a 라디안 — 0 = 앞): 고리 사이·팔각 꼭짓점 사이를 직선 보간 (평평한 판 위)"""
+        for r0, r1 in zip(RINGS[:-1], RINGS[1:]):
+            if r0[0] <= z <= r1[0]:
+                t = (z - r0[0]) / (r1[0] - r0[0])
+                rr = tuple(r0[i] + (r1[i] - r0[i]) * t for i in range(5))
+                break
+        else:
+            rr = RINGS[0] if z < RINGS[0][0] else RINGS[-1]
+        k8 = a / (2 * math.pi / NS)
+        i0_ = math.floor(k8)
+        f = k8 - i0_
+        p0 = ring_pt(rr, i0_ * 2 * math.pi / NS)
+        p1 = ring_pt(rr, (i0_ + 1) * 2 * math.pi / NS)
+        p = p0 * (1 - f) + p1 * f
+        d = Vector((p.x, p.y, 0)).normalized()
+        return hc + p + d * out
+
+    import bmesh
+    bm = bmesh.new()
+    vs = [[bm.verts.new(ring_pt(r, 2 * math.pi * i / NS) + hc) for i in range(NS)] for r in RINGS]
+    for a_, b_ in zip(vs[:-1], vs[1:]):
+        for i in range(NS):
+            bm.faces.new((a_[i], a_[(i + 1) % NS], b_[(i + 1) % NS], b_[i]))
+    bm.faces.new(vs[-1])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    k._place(bm)
+    k._finish("helmet", bm, "steel_bright", "neck", thick=0.026, bevel=0.006)
+    # 바이저 세로 슬릿 5 (얼굴 재질: 안 어둠 + 눈 점) — 앞 쐐기 판 위
+    k.face_frame = (hc + Vector((0, 0, 0.045)), 0.2, 0.12)
+    for i, yy in enumerate((-0.12, -0.06, 0.0, 0.06, 0.12)):
+        a_ = math.asin(max(-0.9, min(0.9, yy / 0.21)))
+        top = surf(0.1, a_, 0.002)
+        bot = surf(0.0, a_, 0.002)
         mid = (top + bot) / 2
         yaw = math.degrees(math.atan2(mid.y - hc.y, mid.x - hc.x))
-        k.rbox("slit_%d" % i, tuple(mid), (0.009, 0.03 * HS, (top - bot).length + 0.012), "visor", "neck", rot=(0, -8, yaw), round_=0.3, face=True)
+        k.rbox("slit_%d" % i, tuple(mid), (0.01, 0.026, (top - bot).length + 0.008), "visor", "neck", rot=(0, -8, yaw), round_=0.3, face=True)
+    # 숨구멍 (턱 가리개 앞 두 줄)
     for s_ in (-1, 1):
         for i in range(3):
-            k.blob("vent_%d_%d" % (s_, i), _on(hc, VH, (0.85, s_ * (0.12 + i * 0.12), -0.42), -0.001), (0.008 * HS,) * 3, "visor", "neck", **RIV)
+            k.blob("vent_%d_%d" % (s_, i), surf(-0.1, s_ * (0.2 + i * 0.17), 0.001), (0.008,) * 3, "visor", "neck", **RIV)
+    # 판 이음선 리벳 (옆·뒤 꼭짓점 줄) + 피벗 원판 (옆)
+    for ai in (2, 3, 5, 6):
+        a_ = 2 * math.pi * ai / NS
+        for zz in (-0.1, 0.0, 0.1):
+            k.blob("seam_rivet_%d_%d" % (ai, int((zz + 1) * 10)), surf(zz, a_, 0.004), (0.008,) * 3, "steel", "neck", **RIV)
     for s_ in (-1, 1):
-        pv = _on(hc, VH, (0.12, s_ * 1.0, 0.0), 0.006)
-        k.disk("pivot_%d" % s_, tuple(pv), 0.045 * HS, 0.018, "gold", "neck", rot=(90, 0, 0), seg=10, edge=0.3)
-        k.disk("pivot_in_%d" % s_, tuple(pv + Vector((0, s_ * 0.011, 0))), 0.024 * HS, 0.013, "steel_dark", "neck", rot=(90, 0, 0), seg=8, edge=0.3)
+        pv = surf(0.04, s_ * math.pi / 2, 0.008)
+        k.disk("pivot_%d" % s_, tuple(pv), 0.055, 0.018, "gold", "neck", rot=(90, 0, 0), seg=8, edge=0.3)
+        k.disk("pivot_in_%d" % s_, tuple(pv + Vector((0, s_ * 0.011, 0))), 0.03, 0.013, "steel_dark", "neck", rot=(90, 0, 0), seg=8, edge=0.3)
         for a in range(4):
             aa = math.radians(45 + 90 * a)
-            k.blob("pivot_rivet_%d_%d" % (s_, a), tuple(pv + Vector((math.cos(aa) * 0.033 * HS, s_ * 0.01, math.sin(aa) * 0.033 * HS))), (0.007,) * 3, "steel", "neck", **RIV)
-    bz = VZ1 + 0.1
-    bw = math.sqrt(max(0.0, 1 - bz ** 2))
-    k.torus("brow_band", hc + Vector((0, 0, bz * HH[2])), 1.0, 0.021, "gold", "neck", scale=(HH[0] * bw + 0.009, HH[1] * bw + 0.009, 1.0),
-            seg=14, ring=4, arc=(-1.75, 1.75))
-    for i in range(11):
-        a = -1.55 + 3.1 * i / 10
-        k.blob("band_rivet_%d" % i, _on(hc, HH, (math.cos(a) * bw, math.sin(a) * bw, bz), 0.016), (0.007,) * 3, "steel", "neck", **RIV)
-    k.torus("helm_rim", hc + Vector((-0.012, 0, -0.75 * HH[2])), 1.0, 0.024, "gold", "neck", scale=(HH[0] * 0.66 + 0.016, HH[1] * 0.66 + 0.016, 1.0),
-            seg=12, ring=4)
-    for s_ in (-1, 1):
-        k.shell("cheek_%d" % s_, hc + Vector((0.01, 0, -0.01)), (HH[0] + 0.01, HH[1] + 0.01, HH[2]), "steel", "neck",
-                (lambda sg: (lambda p: p.y * sg > 0.55 and -0.85 < p.z < -0.1 and p.x > -0.3))(s_), thick=0.018, cuts=4)
-        # 볼 가드 홈 라인 (곡선)
-        cl = [_on(hc, HH, (0.35 - t * 0.5, sg_ * 0.92, -0.2 - t * 0.5), 0.02) for t in (0.0, 0.33, 0.66, 1.0) for sg_ in (s_,)]
-        k.sweep("cheek_line_%d" % s_, cl, [(0.006, 0.006)] * 4, "steel_dark", "neck", sides=4, up=(1, 0, 0), bevel=0)
-    k.star("brow_star", _on(hc, HH, (0.82, 0.0, 0.58), 0.004), 0.05 * HS, 0.016, "gold", "neck", rot=(0, 55, 0), points=4, inner=0.4)
-    rid = [_on(hc, HH, (math.sin(math.radians(a)), 0, math.cos(math.radians(a))), 0.004) for a in (52, 20, -15, -50)]
-    k.sweep("crown_ridge", rid, [(0.012, 0.01)] * 4, "gold", "neck", sides=4, up=(1, 0, 0))
-    # 깃 꽂이 (금속 원통) + 깃털 6 가닥 (얇은 리본, 위로 솟았다 큰 곡선으로 뒤·아래로, 길이·벌어짐 다르게, 명암 2단)
-    sk = _on(hc, HH, (-0.2, 0.0, 1.0), -0.006)
-    k.disk("plume_socket", tuple(sk + Vector((0, 0, 0.025))), 0.03, 0.06, "gold", "neck", rot=(0, -14, 0), seg=8, edge=0.25)
-    k.torus("socket_ring", sk + Vector((0, 0, 0.0)), 0.036, 0.01, "steel_dark", "neck", seg=8, ring=4)
-    base = sk + Vector((0.0, 0, 0.045))
-    for i, (dy, ln, lift, ww) in enumerate(((0.0, 1.0, 1.0, 0.032), (-0.02, 0.92, 0.9, 0.028), (0.02, 0.92, 0.9, 0.028),
-                                            (-0.04, 0.8, 0.75, 0.024), (0.04, 0.8, 0.75, 0.024), (0.0, 0.66, 1.15, 0.022))):
-        pts = []
-        rad = []
+            k.blob("pivot_rivet_%d_%d" % (s_, a), tuple(pv + Vector((math.cos(aa) * 0.04, s_ * 0.01, math.sin(aa) * 0.04))), (0.007,) * 3, "steel", "neck", **RIV)
+    # 이마 금 띠 (바이저 위, 팔각 고리를 따라 앞 반) + 리벳 + 이마 별
+    band = [surf(0.125, a_, 0.008) for a_ in [math.radians(x) for x in (-100, -67.5, -45, -22.5, 0, 22.5, 45, 67.5, 100)]]
+    k.sweep("brow_band", band, [(0.012, 0.02)] * len(band), "gold", "neck", sides=4, up=(0, 0, 1))
+    for i, x in enumerate((-80, -45, -22.5, 22.5, 45, 80)):
+        k.blob("band_rivet_%d" % i, surf(0.125, math.radians(x), 0.02), (0.007,) * 3, "steel", "neck", **RIV)
+    k.star("brow_star", surf(0.155, 0.0, 0.006), 0.045, 0.016, "gold", "neck", rot=(0, 60, 0), points=4, inner=0.4)
+    # 정수리 세로 능선 (앞 이마 → 정수리 → 뒤통수) + 깃 꽂이 (능선 위)
+    comb = [surf(0.16, 0.0, -0.05), surf(0.2, 0.0, -0.012), hc + Vector((0.0, 0, 0.228)), surf(0.205, math.pi - 1e-3, 0.008), surf(0.1, math.pi - 1e-3, 0.006),
+            surf(-0.05, math.pi - 1e-3, 0.004)]
+    k.sweep("comb", comb, [(0.014, 0.045)] * len(comb), "steel", "neck", sides=4, up=(1, 0, 0))
+    k.sweep("comb_trim", [c + Vector((0, 0, 0.0)) for c in comb], [(0.016, 0.008)] * len(comb), "gold", "neck", sides=4, up=(1, 0, 0), bevel=0)
+    sk = hc + Vector((-0.04, 0, 0.245))
+    k.disk("plume_socket", tuple(sk), 0.028, 0.05, "gold", "neck", rot=(0, -18, 0), seg=8, edge=0.25)
+    k.torus("socket_ring", sk + Vector((0.005, 0, -0.018)), 0.034, 0.009, "steel_dark", "neck", seg=8, ring=4)
+    # 깃털 8 가닥 (짧고 풍성하게, 부채, 명암 2단) — 소켓 안에서 시작, 위로 조금 솟았다 뒤·아래로
+    base = sk + Vector((0.0, 0, 0.012))
+    for i in range(8):
+        dy = (i - 3.5) / 3.5  # -1 .. 1
+        ln = 0.8 * (1.0 - 0.18 * abs(dy))
+        ww = 0.03 * (1.0 - 0.25 * abs(dy))
+        lift = 1.0 - 0.3 * abs(dy)
         P0 = base
-        P1 = base + Vector((0.06, 0, 0.26 * lift)) * ln
-        P2 = base + Vector((-0.34, dy * 3.0, 0.24 * lift)) * ln
-        P3 = base + Vector((-0.52, dy * 6.0, -0.12)) * ln
-        for t_i in range(10):
-            t = t_i / 9
+        P1 = base + Vector((0.05, dy * 0.015, 0.1 * lift)) * ln
+        P2 = base + Vector((-0.36, dy * 0.08, 0.08 * lift)) * ln
+        P3 = base + Vector((-0.56, dy * 0.13, -0.24)) * ln
+        pts, rad = [], []
+        for t_i in range(9):
+            t = t_i / 8
             u = 1 - t
-            pt = P0 * u ** 3 + P1 * 3 * u * u * t + P2 * 3 * u * t * t + P3 * t ** 3
-            pts.append(pt)
-            w = ww * 1.35 * (0.45 + 1.25 * math.sin(math.pi * min(1.0, t * 1.15)))
-            rad.append((max(0.004, w * (1.0 - 0.9 * t ** 3)), 0.004))
+            pts.append(P0 * u ** 3 + P1 * 3 * u * u * t + P2 * 3 * u * t * t + P3 * t ** 3)
+            w = ww * 1.6 * (0.5 + 1.2 * math.sin(math.pi * min(1.0, t * 1.15)))
+            rad.append((max(0.005, w * (1.0 - 0.88 * t ** 3)), 0.005))
         k.sweep("plume_%d" % i, pts, rad, "tint" if i % 2 == 0 else "tint_dark", "neck", sides=4, up=(0, 1, 0), bevel=0)
-    k.torus("gorget", N + Vector((0.0, 0, -0.07)), 0.16, 0.05, "steel", "torso", scale=(1.0, 1.12, 1.0), seg=10, ring=4)
+    # 목 (짧고 두꺼운 사슬) + 넓은 목 테 (고르짓, 어깨 위로 걸침 — 투구가 '놓인' 느낌) + 리벳
+    k.sweep("neck_mail", [N + Vector((0, 0, -0.04)), N + Vector((0.01, 0, 0.06))], [(0.12, 0.13)] * 2, "cloth", "neck", sides=8)
+    k.torus("gorget", N + Vector((0.0, 0, -0.035)), 1.0, 0.05, "steel", "torso", scale=(0.21, 0.25, 0.75), seg=8, ring=4)
+    k.torus("gorget_trim", N + Vector((0.0, 0, 0.0)), 1.0, 0.014, "gold", "torso", scale=(0.205, 0.245, 1.0), seg=8, ring=4)
+    for i in range(8):
+        a = 2 * math.pi * (i + 0.5) / 8
+        k.blob("gorget_rivet_%d" % i, N + Vector((math.cos(a) * 0.255 * 0.85, math.sin(a) * 0.3 * 0.85, -0.02)), (0.008,) * 3, "gold", "torso", **RIV)
 
     # ===== 몸통 (두꺼운 면진 흉갑, 역삼각형) =====
     k.blob("chest_core", T + Vector((0, 0, 0.02)), (0.22, 0.3, 0.28), "cloth", "torso", cuts=1, blend=["torso", "waist"])
@@ -396,6 +431,8 @@ def _back():
 
 
 PREVIEW_PROPS = {"shield": _back()}
+_HC = (HERO["neck"][0] + 0.035, 0.0, HERO["neck"][2] + 0.19)
+PREVIEW_EXTRA = [("top", (0, 0, 1.0), 0, 89, 1.8), ("helm_side", _HC, 90, 5, 0.75), ("helm_back", _HC, 160, 12, 0.75), ("helm_top", _HC, 30, 60, 0.75)]
 PREVIEW_POSES = {
     "punch": [("shoulder_R", (0, 1, 0), -95), ("shoulder_L", (0, 1, 0), -30), ("elbow_L", (0, 1, 0), -110),
               ("waist", (0, 0, 1), 25), ("thigh_R", (0, 1, 0), -35), ("knee_R", (0, 1, 0), 50)],
