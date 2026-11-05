@@ -12,9 +12,9 @@ import face_paint
 HARD = True
 SUB = 0
 
-B.look("steel", 0xbcc5d0, "metal", band=0.4, edge=0.55, hi=0xffffff, edge_from=0.5, edge_to=0.56)
-B.look("steel_dark", 0x5f6878, "metal", band=0.28, edge=0.45, hi=0xe8f0ff, edge_from=0.5, edge_to=0.56)
-B.look("gold", 0xe3ad3e, "metal", band=0.5, edge=0.6, hi=0xfff4c8, ao_min=0.6, edge_from=0.5, edge_to=0.56)
+B.look("steel", 0x99a3b1, "metal", band=0.22, edge=0.38, hi=0xffffff, edge_from=0.5, edge_to=0.56)
+B.look("steel_dark", 0x535c6c, "metal", band=0.18, edge=0.32, hi=0xe8f0ff, edge_from=0.5, edge_to=0.56)
+B.look("gold", 0xd9a033, "metal", band=0.3, edge=0.4, hi=0xfff4c8, ao_min=0.6, edge_from=0.5, edge_to=0.56)
 B.look("leather", 0x7a4a2b, "leather", edge=0.2, hi=0xffd9b0)
 B.look("leather_dark", 0x4c2f1d, "leather", edge=0.15, hi=0xd0a080)
 B.look("cloth", 0x3e4656, "cloth", edge=0.12, hi=0xc0c8ff, ao_min=0.55)  # 어두운 관절 틈 (사슬·속옷)
@@ -56,7 +56,7 @@ CFG = {
     ],
     "toon_steps": [0.7, 0.86, 1.0],
     "outline": 0.45,
-    "rim": [0.3, 3.0],
+    "rim": [0.22, 3.0],
     "face_glow": 0.9,
 }
 
