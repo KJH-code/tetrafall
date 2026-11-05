@@ -447,7 +447,9 @@ func test_blender_tank_info() -> void:
 	for j in Ext.JOINTS:
 		check(info.map.has(j) and info.names[info.map[j]] == j, "뼈 이름 = 우리 관절 %s" % j)
 	check(info.names.size() == 16, "뼈 16개 (손가락 없음, 얻음 %d)" % info.names.size())
-	check(info.surfs.size() == 1 and info.surfs[0].skinned and info.surfs[0].vcolor, "스킨 메시 하나·재질 하나·꼭짓점 색")
+	# 표면 2: 몸 (꼭짓점 색 툰) + 눈 흰자 (재질 tank_unlit — 빛 안 받는 하양, JS eyeWhiteMat)
+	check(info.surfs.size() == 2 and info.surfs[0].skinned and info.surfs[0].vcolor and not info.surfs[0].get("unlit", false), "스킨 메시 하나·몸 재질 꼭짓점 색 (표면 %d)" % info.surfs.size())
+	check(info.surfs.size() == 2 and info.surfs[1].get("unlit", false) and not info.surfs[1].vcolor, "둘째 표면 = 눈 흰자 (빛 안 받음)")
 	var arr: Array = (info.surfs[0].mesh as ArrayMesh).surface_get_arrays(0)
 	var tris: int = (arr[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
 	check(tris <= 10000, "몸 삼각형 1만 이하 (%d)" % tris)
@@ -488,11 +490,16 @@ func test_blender_tank_body() -> void:
 		worst = maxf(worst, _bone_pos(b, b.ext.info.map[j]).distance_to(_jpos(b, b.ext._joint(j))))
 	check(worst < 0.01, "뼈 자리 = 우리 관절 자리 (가장 먼 %.4f m)" % worst)
 	_check_follow(b, "Blender 탱크")
-	# 그리는 것: 몸 1 + 방패 2 (등·앞), 안쪽 몸 메시는 없음, 띠 없음 (mask)
+	# 그리는 것: 몸 1 + 눈 흰자 1 + 방패 2 (등·앞), 안쪽 몸 메시는 없음, 띠 없음 (mask)
 	var ext_n := 0
 	for dr in b.drawn:
 		ext_n += 1 if dr.get("ext", false) else 0
-	check(ext_n == 3 and b.drawn.size() == 3 and b.ext.band == null, "그리는 메시 3 (몸·등 방패·앞 방패, 얻음 %d/%d)" % [ext_n, b.drawn.size()])
+	check(ext_n == 4 and b.drawn.size() == 4 and b.ext.band == null, "그리는 메시 4 (몸·눈 흰자·등 방패·앞 방패, 얻음 %d/%d)" % [ext_n, b.drawn.size()])
+	var eye: ShaderMaterial = null
+	for pt in b.ext.parts:
+		if pt.get("unlit", false):
+			eye = pt.mi.material_override
+	check(eye != null and eye.next_pass == null and (eye.get_shader_parameter("emissive") as Color).is_equal_approx(Color.WHITE), "눈 흰자: 하얀 발광·외곽선 없음")
 	var m: ShaderMaterial = b.ext.parts[0].mi.material_override
 	check(m.get_shader_parameter("use_vertex_color") == true and (m.get_shader_parameter("skin_tint") as Color).is_equal_approx(Color(0.2, 0.5, 1.0, 1.0)) and m.next_pass != null, "꼭짓점 색 툰 + 몸 색 칸 = 플레이어 색 + 외곽선")
 	b.free()
