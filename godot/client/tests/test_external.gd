@@ -119,7 +119,7 @@ func test_robot_info() -> void:
 	check(info.names[info.map.hips] == "Body" and info.names[info.map.hand_L] == "Palm2.L" and info.names[info.map.foot_R] == "Foot.R", "로봇 골반·손·발 뼈")
 	check((info.box as AABB).size.y > 0.0 and info.surfs.size() >= 14, "상자·표면 %d" % info.surfs.size())
 	check(info.anims.has("Wave") and info.anims.has("Dance"), "로봇 클립")
-	check(Ext.load_char("dummy") == null and Ext.load_char("없는캐릭터") == null and not Ext.has_char("hunter"), "없는 캐릭터는 null")
+	check(Ext.load_char("dummy") == null and Ext.load_char("없는캐릭터") == null and not Ext.has_char("bard"), "없는 캐릭터는 null")
 	check(info.cfg.get("keep") == ["shields"] and info.cfg.get("tint") == "band" and float(info.cfg.yaw) == 90.0, "robot_test.json 덮음 + 기본 값")
 
 
@@ -223,7 +223,7 @@ func test_three_tiers() -> void:
 	var off = _body("tank", true, false)
 	check(off.ext == null and off.baked and off.batch != null, "외부 끔 → 구운 몸 (예전 그대로)")
 	off.free()
-	var no = _body("hunter", true, true)
+	var no = _body("bard", true, true)
 	check(no.ext == null, "외부 모델 없는 캐릭터는 그대로")
 	no.free()
 	var pieces = _robot_body(true, true, false)
@@ -825,3 +825,113 @@ func test_ninja_first_person() -> void:
 			bas += 1
 		check(bas == 0, "1인칭에는 단검 안 붙음 (%d)" % bas)
 	t.free()
+
+
+# ---------- 사냥꾼 (스킨 메시 하나 + Mixamo 식 뼈 65, tools/blender/tripo/rig_hunter.py) ----------
+
+# 뼈 매칭, LOD (stage = 원본 전체, 판 = 5000·4000·3000 — 닌자·탱크와 달리 이음선이 덜 잘려 셋 다 만듦), 몸 색 칸 = 모자 + 목수건, 소총이 오른팔 뼈에 매임
+func test_hunter_info() -> void:
+	var info = Ext.load_char("hunter")
+	check(info != null, "사냥꾼 hunter.glb 읽음")
+	if info == null:
+		return
+	for j in Ext.JOINTS:
+		check(info.map.has(j), "뼈 매칭 %s" % j)
+	check(String(info.names[info.map.hips]).ends_with("Hips") and String(info.names[info.map.shoulder_R]).ends_with("RightArm") and String(info.names[info.map.elbow_L]).ends_with("LeftForeArm"), "골반=Hips·위팔=Arm·아래팔=ForeArm")
+	check(info.names.size() >= 60, "손가락까지 뼈 %d" % info.names.size())
+	var lods: Dictionary = info.cfg.get("lods", {})
+	var names := {}
+	for k in lods:
+		names[str(lods[k])] = true
+	check(lods.size() == 4 and names.size() == 4, "LOD 4개 (stage·high·medium·low 모두 다른 메시)")
+	var want := {"stage": [15000, 20000], "high": [4500, 5500], "medium": [3500, 4500], "low": [2500, 3500]}
+	var stage_sf = null
+	for k in want:
+		var ss := _lod_surfs(info, str(lods.get(k, "")))
+		var tri := 0
+		var body_sf = null
+		for sf in ss:
+			tri += _tris(sf.mesh)
+			body_sf = sf
+		check(ss.size() == 1 and body_sf.skinned and body_sf.vcolor and body_sf.tex != null, "%s: 몸 표면 하나 = 스킨·꼭짓점 색 (몸 색 칸)·텍스처" % k)
+		check(tri >= want[k][0] and tri <= want[k][1], "%s 삼각형 %d (%d~%d)" % [k, tri, want[k][0], want[k][1]])
+		var st := _albedo_stats(body_sf.mesh, body_sf.tex)
+		check(st[1] > 0.03 and st[1] < 0.35, "%s 몸 색 칸 넓이 %.0f%% (3~35%% — 모자·붉은 목수건)" % [k, st[1] * 100.0])
+		if k == "stage":
+			stage_sf = body_sf
+	check(info.cfg.tint == "mask" and (info.cfg.attach as Array).is_empty() and (info.cfg.keep as Array).is_empty() and str(info.cfg.get("vm_node", "")) == "hunter_vm", "hunter.json: mask·소품 없음 (소총이 몸에 붙음, 코드 총은 안 남김)·1인칭 팔 = hunter_vm (소총 뺌)")
+	# 소총은 몸 밖으로 크게 나온 쪽 아래팔 (게임 R 관절 = Mixamo Right*) 에 매임: 몸 바깥 (|z|) 꼭짓점의 아래팔 뼈 쪽 센 수
+	if stage_sf != null:
+		var arr: Array = stage_sf.mesh.surface_get_arrays(0)
+		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var bi: PackedInt32Array = arr[Mesh.ARRAY_BONES]
+		var bw: PackedFloat32Array = arr[Mesh.ARRAY_WEIGHTS]
+		var cnt := {"R": 0, "L": 0}
+		for i in v.size():
+			if absf(v[i].z) < 0.2 * float(info.box.size.y):
+				continue
+			var best := 0
+			for k in 4:
+				if bw[i * 4 + k] > bw[i * 4 + best]:
+					best = k
+			var bn: String = info.names[stage_sf.binds[bi[i * 4 + best]]]
+			if bn.contains("ForeArm"):
+				cnt["R" if bn.contains("Right") else "L"] += 1
+		check(cnt.R > 3 * cnt.L and cnt.R > 300, "소총·오른 아래팔 뼈 꼭짓점 오른 %d·왼 %d" % [cnt.R, cnt.L])
+
+
+# 판 몸: 크기·발바닥, 뼈가 우리 관절을 따라감, 그리는 메시 하나, 몸 색 칸 = 플레이어 색, 화질별 LOD
+func test_hunter_body() -> void:
+	var Gfx = load("res://world/gfx.gd")
+	var was: Dictionary = Gfx.plan
+	for lv in ["high", "medium", "low"]:
+		Gfx.plan = {"level": lv}
+		var b = _body("hunter")
+		check(b.ext != null and b.ext.lod == str(b.ext.info.cfg.lods[lv]), "화질 %s → LOD %s" % [lv, b.ext.lod if b.ext != null else "-"])
+		b.free()
+	Gfx.plan = {}
+	var b = _body("hunter")
+	Gfx.plan = was
+	check(b.ext != null, "사냥꾼 붙음")
+	if b.ext == null:
+		b.free()
+		return
+	var sc: float = b.ext.transform.basis.get_scale().x
+	var hh: float = (b.ext.info.box as AABB).size.y * sc
+	var want_h: float = C.PLAYER_HEIGHT * C.FIGURE_SCALE * float(b.ext.info.cfg.height)
+	check(absf(hh - want_h) < 0.01, "키 %.3f m = 예전 몸 키 %.3f m × height" % [hh, want_h])
+	for j in ["foot_R", "foot_L"]:
+		var dz: float = _bone_pos(b, b.ext.info.map[j]).y - _jpos(b, b.ext._joint(j)).y
+		check(absf(dz) < 0.1, "발 뼈 높이 = 우리 발 (차이 %.3f m)" % dz)
+	_check_follow(b, "사냥꾼")
+	var ext_n := 0
+	for dr in b.drawn:
+		ext_n += 1 if dr.get("ext", false) else 0
+	check(ext_n == 1 and b.drawn.size() == 1 and b.ext.band == null, "그리는 메시 1 (몸 하나, 얻음 %d/%d)" % [ext_n, b.drawn.size()])
+	check(b.ext.find_children("*", "BoneAttachment3D", true, false).is_empty(), "손 뼈에 붙인 소품 없음")
+	var m: ShaderMaterial = b.ext.parts[0].mi.material_override
+	check(m.get_shader_parameter("use_vertex_color") == true and m.get_shader_parameter("skin_multiply") == true and (m.get_shader_parameter("skin_tint") as Color).is_equal_approx(Color(0.2, 0.5, 1.0, 1.0)), "몸 색 칸 = 플레이어 색 곱하기")
+	b.free()
+
+
+# 1인칭 쌍둥이: glb 안의 hunter_vm (stage 몸에서 아래팔·손만, 소총 꼭짓점은 뺌 — 안 빼면 소총이 화면 가운데를 가로지름). 판 몸에는 안 그려짐
+func test_hunter_first_person() -> void:
+	var t = _body("hunter", false)
+	check(t.ext != null and not t.ext.third and t.ext.lod == "hunter_vm", "1인칭 쌍둥이 = hunter_vm (얻음 %s)" % (t.ext.lod if t.ext != null else "-"))
+	if t.ext != null:
+		var arm_tri := 0
+		for sf in t.ext.info.surfs:
+			if sf.vm_mesh != null:
+				arm_tri += _tris(sf.vm_mesh)
+		check(arm_tri > 500 and arm_tri < 3000, "1인칭 팔 삼각형 %d (아래팔·손, 소총 없음)" % arm_tri)
+		var meshes := 0
+		for mi in t.ext.find_children("*", "MeshInstance3D", true, false):
+			meshes += 1 if (mi as MeshInstance3D).mesh != null and String(mi.name).begins_with("hunter_") else 0
+		check(meshes == 1, "1인칭에 그리는 외부 메시 하나 (%d)" % meshes)
+	t.free()
+	var b = _body("hunter")
+	var seen := {}
+	for mi in b.ext.find_children("*", "MeshInstance3D", true, false):
+		seen[String(mi.name).split("_s")[0]] = true
+	check(not seen.has("hunter_vm") and not seen.has("hunter_lod0"), "판 몸에는 1인칭 팔·stage 메시 없음 (%s)" % [seen.keys()])
+	b.free()
