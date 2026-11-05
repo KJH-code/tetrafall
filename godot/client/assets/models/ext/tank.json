@@ -61,6 +61,7 @@
 		3.0
 	],
 	"face_glow": 0.9,
+	"label_lift": 0.22,
 	"stats": {
 		"tris": {
 			"lod0": 24468,

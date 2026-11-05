@@ -85,6 +85,9 @@ func _make(p: Dictionary, color: int) -> Dictionary:
 	lab.outline_size = WC.LABEL_FONT[1]
 	lab.no_depth_test = true
 	lab.position.y = C.PLAYER_HEIGHT + C.LABEL_ABOVE_HEAD + WC.LABEL_LIFT
+	var ext = body.get("ext") # W19 외부 (Blender) 모델이 코드 몸보다 크면 (투구 깃) 이름표를 그만큼 올림 (<id>.json label_lift)
+	if ext != null and ext.get("info") is Dictionary:
+		lab.position.y += float(ext.info.cfg.get("label_lift", 0.0))
 	root.add_child(lab)
 	# 체력전: 이름 아래 작은 HP 막대 (뒤판 + 채움, 화면 크기 고정)
 	var bar_back := _bar_sprite(Color(0, 0, 0, 0.7))

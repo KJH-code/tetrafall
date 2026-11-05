@@ -44,7 +44,7 @@ const EXT := false
 # vm_from 1인칭 팔에 남길 부분 ("elbow" 팔꿈치 아래 = 예전 1인칭과 같음, "shoulder") · vm_snap 1인칭에서 우리 관절 자리에 붙일 관절 (팔꿈치 → 손이 예전 1인칭 자리) · clips 동작 이름 → 모델 클립 이름 (play_clip 예)
 # W19 (tools/blender 고퀄 모델): lods {stage, high, medium, low} = 화면·화질별로 그릴 메시 노드 이름 (stage = 대기실 큰 캐릭터·초상·1인칭 팔, 나머지 = 판 화질) ·
 # faces {idle, hit, attack} 표정 텍스처 (이름이 <id>_face 인 재질에 끼움 — 맞음·경직 = hit, 공격 동작 = attack) · toon_steps 툰 3단 (칠한 그늘이 있으면 부드럽게) ·
-# face_glow 얼굴 재질이 제 색으로 빛남 (가림형: 투구 안 어둠의 눈) · outline 외곽선 굵기 배율 (C.OUTLINE_THICKNESS ×, 얼굴엔 안 그림) · rim [세기, 거듭제곱] 가장자리 빛 · tint "mask" 면 몸 색 칸 (UV2.x = 1) 만 플레이어 색을 곱함
+# label_lift 머리 위 이름표 올림 (m, 모델이 코드 몸보다 클 때) · face_glow 얼굴 재질이 제 색으로 빛남 (가림형: 투구 안 어둠의 눈) · outline 외곽선 굵기 배율 (C.OUTLINE_THICKNESS ×, 얼굴엔 안 그림) · rim [세기, 거듭제곱] 가장자리 빛 · tint "mask" 면 몸 색 칸 (UV2.x = 1) 만 플레이어 색을 곱함
 const EXT_DEFAULTS := {"bones": {}, "yaw": 90.0, "height": 1.0, "offset": [0, 0, 0], "tint": "band", "tint_k": 0.6, "band": [0.17, 0.035, 0.0], "band_joint": "waist",
 	"keep": [], "attach": [], "vm_from": "elbow", "vm_snap": ["elbow"], "clips": {}, "lods": {}, "faces": {}, "outline": 1.0, "rim": [0.0, 3.0]}
 const EXT_HIT_FACE_S := 0.45 # 맞은 뒤 이만큼 (초) '맞음' 표정
