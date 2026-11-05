@@ -1,82 +1,14 @@
 {
-	"_": "W20 Tripo 로 만든 기사 (tools/blender/tripo/ — rig_tank.py 리깅 + lods.mjs LOD, 소품 rig_props.py) — 다시 만들면 덮어씀. 키는 chars/chars_config.gd EXT_DEFAULTS",
-	"height": 1.03261,
-	"offset": [
-		-0.07,
-		0.0,
-		0.0
-	],
+	"_": "자동 리깅 탱크 (tools/blender/tripo/ — rig_tank_auto.py 손질 + lods.mjs LOD) — 다시 만들면 덮어씀. 키는 chars/chars_config.gd EXT_DEFAULTS",
+	"height": 1.0,
+	"yaw": 0.0,
 	"tint": "mask",
 	"lods": {
 		"stage": "tank_lod0",
 		"high": "tank_lod1",
-		"medium": "tank_lod2",
-		"low": "tank_lod3"
+		"medium": "tank_lod1",
+		"low": "tank_lod1"
 	},
-	"attach": [
-		{
-			"glb": "res://assets/models/ext/tank_shield.glb",
-			"ref": "shields.back",
-			"vm": false,
-			"pos": [
-				0.0932,
-				0.0,
-				0.069
-			]
-		},
-		{
-			"glb": "res://assets/models/ext/tank_shield.glb",
-			"ref": "shields.front",
-			"rot": [
-				0,
-				0,
-				180
-			],
-			"vm": false,
-			"pos": [
-				0.1027,
-				0.0,
-				0.2396
-			]
-		},
-		{
-			"glb": "res://assets/models/ext/tank_shield.glb",
-			"ref": "shields.front",
-			"third": false
-		},
-		{
-			"glb": "res://assets/models/ext/tank_hammer.glb",
-			"joint": "hand_R",
-			"pos": [
-				0,
-				0,
-				0
-			],
-			"rot": [
-				0,
-				0,
-				0
-			],
-			"scale": 0.5263
-		},
-		{
-			"glb": "res://assets/models/ext/tank_hammer.glb",
-			"joint": "hand_R",
-			"pos": [
-				0,
-				0,
-				0
-			],
-			"rot": [
-				0,
-				0,
-				0
-			],
-			"scale": 0.3,
-			"vm": true,
-			"third": false
-		}
-	],
 	"toon_steps": [
 		0.7,
 		0.86,
@@ -87,10 +19,8 @@
 		0.22,
 		3.0
 	],
-	"label_lift": 0.12,
 	"vm_from": "elbow",
 	"vm_snap": [
 		"elbow"
-	],
-	"vm_node": "tank_vm"
+	]
 }

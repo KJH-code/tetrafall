@@ -453,70 +453,90 @@ func _tris(m: Mesh) -> int:
 	return (m.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
 
 
+# W22 자동 리깅 탱크 (스킨 메시 하나 + Mixamo 식 뼈 65, tools/blender/tripo/rig_tank_auto.py): 방패 (왼팔)·해머 (오른손) 가 몸 메시에 붙어 있음 (원본은 좌우 반대라 뒤집음)
 func test_blender_tank_info() -> void:
 	var info = Ext.load_char("tank")
-	check(info != null, "Blender 탱크 tank.glb 읽음")
+	check(info != null, "탱크 tank.glb 읽음")
 	if info == null:
 		return
 	for j in Ext.JOINTS:
-		check(info.map.has(j) and info.names[info.map[j]] == j, "뼈 이름 = 우리 관절 %s" % j)
-	check(info.names.size() == 16, "뼈 16개 (손가락 없음, 얻음 %d)" % info.names.size())
+		check(info.map.has(j), "뼈 매칭 %s" % j)
+	check(info.map.hips >= 0 and String(info.names[info.map.hips]).ends_with("Hips") and String(info.names[info.map.waist]).ends_with("Spine") and String(info.names[info.map.torso]).ends_with("Spine2"), "골반=Hips·허리=Spine·가슴=Spine2")
+	check(String(info.names[info.map.shoulder_L]).ends_with("LeftArm") and String(info.names[info.map.elbow_R]).ends_with("RightForeArm") and String(info.names[info.map.foot_L]).ends_with("LeftFoot"), "위팔=Arm (빗장 아님)·아래팔=ForeArm·발=Foot")
+	check(info.names.size() >= 60, "손가락까지 뼈 %d" % info.names.size())
 	var lods: Dictionary = info.cfg.get("lods", {})
-	check(lods.size() == 4, "LOD 4 (stage·high·medium·low)")
-	# 삼각형 예산 (재혁 2026-11-05): 8명 판 합 (몸 + 방패) 이 구운 탱크 (보이는 4840) 의 높음 2.5배·보통 1.8배·낮음 1배 이내 · 대기실·초상·1인칭 = 4만 이하
-	# W20 Tripo 기사: 판 LOD 는 meshopt 로 줄임 (high ~5000·medium ~4000·low ~3000, 소품은 방패 2500·망치 900)
-	var want := {"stage": [12000, 40000], "high": [3500, 5400], "medium": [3000, 4400], "low": [2000, 3600]}
+	check(lods.size() == 4 and str(lods.high) == str(lods.medium) and str(lods.medium) == str(lods.low) and str(lods.stage) != str(lods.low), "LOD: stage 하나 + 판 셋이 같은 메시 하나")
+	# 삼각형: 원본 1.94만 그대로 (대기실·초상·1인칭) + 판 약 8900 (UV 조각이 잘게 나뉘어 meshopt 가 이음선을 안 넘으면 이 밑으로 안 내려감)
+	var want := {"stage": [15000, 20000], "high": [6000, 9500]}
+	var stage_sf = null
 	for k in want:
 		var ss := _lod_surfs(info, str(lods.get(k, "")))
-		var body_sf = null
 		var tri := 0
+		var body_sf = null
 		for sf in ss:
 			tri += _tris(sf.mesh)
-			if not sf.face:
-				body_sf = sf
-		check(body_sf != null and body_sf.skinned and body_sf.vcolor and body_sf.tex != null, "%s: 몸 표면 = 스킨·꼭짓점 색 (몸 색 칸)·텍스처" % k)
-		check(ss.size() == 1, "%s: 표면 하나 (얼굴 재질 없음, 가림형 투구 그림에 구워짐)" % k)
+			body_sf = sf
+		check(ss.size() == 1 and body_sf.skinned and body_sf.vcolor and body_sf.tex != null, "%s: 몸 표면 하나 = 스킨·꼭짓점 색 (몸 색 칸)·텍스처 (얼굴 재질 없음, 닫힌 투구)" % k)
 		check(tri >= want[k][0] and tri <= want[k][1], "%s 삼각형 %d (%d~%d)" % [k, tri, want[k][0], want[k][1]])
-	# 몸 색 칸은 일부만 (허리 천·깃·방패) — 몸 전체를 칠하지 않음
-	var hs := _lod_surfs(info, str(lods.get("high", "")))
-	for sf in hs:
-		if not sf.face:
-			var st := _albedo_stats(sf.mesh, sf.tex)
-			check(st[1] > 0.02 and st[1] < 0.40, "몸 색 칸 넓이 %.0f%% (2~40%% — 망토·앞 천·목도리)" % (st[1] * 100.0))
+		var st := _albedo_stats(body_sf.mesh, body_sf.tex)
+		check(st[1] > 0.03 and st[1] < 0.35, "%s 몸 색 칸 넓이 %.0f%% (3~35%% — 붉은 목도리·허리 천)" % [k, st[1] * 100.0])
+		if k == "stage":
+			stage_sf = body_sf
 	check((info.cfg.get("faces", {}) as Dictionary).is_empty(), "표정 텍스처 없음 (닫힌 투구)")
-	check(info.cfg.tint == "mask" and (info.cfg.attach as Array).size() == 5 and str(info.cfg.get("vm_node", "")) == "tank_vm", "tank.json: mask·방패 3 + 해머 2 (판·1인칭)·vm_node")
+	check(info.cfg.tint == "mask" and (info.cfg.attach as Array).is_empty() and (info.cfg.keep as Array).is_empty() and str(info.cfg.get("vm_node", "")) == "", "tank.json: mask·소품 없음 (방패·해머가 몸에 붙음, W20 소품·닫힌 팔 메시 뺌)")
+	# 방패는 캐릭터 왼쪽 (glTF -Z) 팔 뼈에, 해머는 오른쪽 (+Z) 팔 뼈에 매여 있어야 함 (게임 규칙: 방패 왼손 viewmodel, 해머 오른손 평타). 원본은 반대라 뒤집음
+	if stage_sf != null:
+		var arr: Array = stage_sf.mesh.surface_get_arrays(0)
+		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var bi: PackedInt32Array = arr[Mesh.ARRAY_BONES]
+		var bw: PackedFloat32Array = arr[Mesh.ARRAY_WEIGHTS]
+		var side := {"left": 0, "right": 0}
+		var wrong := 0
+		for i in v.size():
+			if absf(v[i].z) < 0.33 * float(info.box.size.y) / 0.98:
+				continue
+			var best := 0
+			for k in 4:
+				if bw[i * 4 + k] > bw[i * 4 + best]:
+					best = k
+			var bn: String = info.names[stage_sf.binds[bi[i * 4 + best]]]
+			var left: bool = v[i].z < 0.0
+			if bn.contains("Left") == left and (bn.contains("Left") or bn.contains("Right")):
+				side["left" if left else "right"] += 1
+			else:
+				wrong += 1
+		check(side.left > 800 and side.right > 800 and wrong < 100, "몸 바깥 (|z| > 0.33) 꼭짓점 뼈 좌우: 왼쪽 방패 %d·오른쪽 해머 %d 맞음, 어긋남 %d" % [side.left, side.right, wrong])
 
 
-# 쉬는 자세: 크기 1, 뼈 자리 = 우리 관절 자리, 판 몸 = high LOD 하나만 + 얼굴 + 방패 2, 재질 손질 (몸 색 칸 곱하기·얇은 외곽선·얼굴 외곽선 없음)
+# 판 몸: 크기·발바닥, 뼈가 우리 관절 방향을 따라감 (팔 들기·무릎 굽힘), 몸 색 칸 = 플레이어 색, 소품 메시 없음 (방패·해머가 몸에 붙어 있음)
 func test_blender_tank_body() -> void:
 	var Gfx = load("res://world/gfx.gd")
 	var was: Dictionary = Gfx.plan
 	Gfx.plan = {} # 화질 모름 = high (앞 테스트가 바꿔 둔 값을 비움)
 	var b = _body("tank")
 	Gfx.plan = was
-	check(b.ext != null, "Blender 탱크 붙음")
+	check(b.ext != null, "탱크 붙음")
 	if b.ext == null:
 		b.free()
 		return
 	var sc: float = b.ext.transform.basis.get_scale().x
-	check(absf(sc - 1.0) < 2e-3, "크기 1 (얻음 %.4f)" % sc)
-	# 히어로 비율 (tools/blender/chars/tank.py HERO): 뼈 길이·자리는 모델 것 (다리 길고 골반 높음), 회전만 우리 관절 → 발은 바닥, 골반·목은 우리보다 높음
+	var hh: float = (b.ext.info.box as AABB).size.y * sc
+	var want_h: float = C.PLAYER_HEIGHT * C.FIGURE_SCALE * float(b.ext.info.cfg.height)
+	check(absf(hh - want_h) < 0.01, "키 %.3f m = 예전 몸 키 %.3f m × height (원본 단위라 배율 %.3f)" % [hh, want_h, sc])
 	for j in ["foot_R", "foot_L"]:
 		var dz: float = _bone_pos(b, b.ext.info.map[j]).y - _jpos(b, b.ext._joint(j)).y
-		check(absf(dz) < 0.05, "발 뼈 높이 = 우리 발 (차이 %.3f m)" % dz)
-	for j in ["hips", "neck"]:
-		var up: float = _bone_pos(b, b.ext.info.map[j]).y - _jpos(b, b.ext._joint(j)).y
-		check(up > 0.05, "%s 는 코드 몸보다 높음 (히어로 비율, +%.3f m)" % [j, up])
-	_check_follow(b, "Blender 탱크")
+		check(absf(dz) < 0.1, "발 뼈 높이 = 우리 발 (차이 %.3f m)" % dz)
+	_check_follow(b, "탱크")
 	var ext_n := 0
 	for dr in b.drawn:
 		ext_n += 1 if dr.get("ext", false) else 0
-	check(ext_n == 4 and b.drawn.size() == 4 and b.ext.band == null, "그리는 메시 4 (몸·등 방패·앞 방패·해머, 얻음 %d/%d)" % [ext_n, b.drawn.size()])
+	check(ext_n == 1 and b.drawn.size() == 1 and b.ext.band == null, "그리는 메시 1 (몸 하나 — 방패·해머 소품 없음, 코드 방패 안 남김, 얻음 %d/%d)" % [ext_n, b.drawn.size()])
+	check(b.ext.find_children("*", "BoneAttachment3D", true, false).is_empty(), "손 뼈에 붙인 소품 없음")
 	check(b.ext.lod == str(b.ext.info.cfg.lods.high), "판 몸 = high LOD (얻음 %s)" % b.ext.lod)
 	var lods_seen := {}
 	for mi in b.ext.find_children("*", "MeshInstance3D", true, false):
 		lods_seen[String(mi.name).split("_s")[0]] = true
-	check(not lods_seen.has(str(b.ext.info.cfg.lods.stage)) and not lods_seen.has(str(b.ext.info.cfg.lods.low)), "다른 LOD 메시는 없음 (%s)" % [lods_seen.keys()])
+	check(not lods_seen.has(str(b.ext.info.cfg.lods.stage)), "stage LOD 메시는 없음 (%s)" % [lods_seen.keys()])
 	var m: ShaderMaterial = b.ext.parts[0].mi.material_override
 	check(m.get_shader_parameter("use_vertex_color") == true and m.get_shader_parameter("skin_multiply") == true and (m.get_shader_parameter("skin_tint") as Color).is_equal_approx(Color(0.2, 0.5, 1.0, 1.0)), "몸 색 칸 = 플레이어 색 곱하기")
 	check(m.next_pass != null and float((m.next_pass as ShaderMaterial).get_shader_parameter("thickness")) < C.OUTLINE_THICKNESS, "외곽선 얇게 (외부 모델 outline 배율)")
@@ -565,7 +585,7 @@ func test_blender_tank_face() -> void:
 	b.free()
 
 
-# 방패: 안쪽 몸 방패 노드 (shields.back/front) 아래 — 그 노드 보이기를 따라감, 자리·크기 = 예전 코드 방패
+# 방패 동작: 3인칭은 몸 모델 방패가 왼팔을 따라감 (안쪽 코드 방패 노드는 비어 있음 = 겹쳐 그려지지 않음). 방패 올려치기 자세에서 방패 뼈 (왼손 끝) 가 오른쪽보다 위로 올라감
 func test_blender_tank_shield() -> void:
 	var b = _body("tank")
 	if b.ext == null:
@@ -574,27 +594,26 @@ func test_blender_tank_shield() -> void:
 		return
 	var back: Node3D = b._n(b.refs.shields.back)
 	var front: Node3D = b._n(b.refs.shields.front)
-	var pb := back.get_node_or_null("ext_shields_back") as Node3D
-	var pf := front.get_node_or_null("ext_shields_front") as Node3D
-	check(pb != null and pf != null, "방패 소품이 등·앞 방패 노드 아래")
-	if pb == null or pf == null:
-		b.free()
-		return
-	# 방패 상자 (방패 노드 기준): 예전 코드 방패 (JS 원판 반지름 sr = max(0.28, chestR × 1.15), 두께 x) 와 비슷
-	var box := AABB()
-	var first := true
-	for mi in pb.find_children("*", "MeshInstance3D", true, false):
-		var ab: AABB = (Transform3D(pb.transform.basis) * (mi as MeshInstance3D).transform) * (mi as MeshInstance3D).mesh.get_aabb() # 자리 (attach pos — 등판에 붙임) 는 빼고 모양만
-		box = ab if first else box.merge(ab)
-		first = false
-	# W20: Tripo 기사 방패 (높이 0.95 m·폭 0.66 m·두께 0.28 m — tools/blender/tripo/rig_props.py SHIELD_HEIGHT)
-	check(box.size.y > 0.55 and box.size.y < 0.8 and box.size.z > 0.85 and box.size.z < 1.05 and box.size.x < 0.4, "방패 크기 %s" % box.size)
-	check(box.position.x < -0.08, "돌기 = 방패 -x (JS·viewmodel 과 같은 쪽, %.3f)" % box.position.x)
-	check(pf.transform.basis.x.dot(Vector3(-1, 0, 0)) > 0.99 or pf.transform.basis.y.dot(Vector3(0, 0, 1)) > 0.99, "앞 방패는 z 180° (돌기가 바깥)")
-	# 방패 동작 → 앞 방패 노드가 보임 (body._costume_parts) → 소품도
-	check(back.visible and not front.visible, "평소: 등 방패")
+	check(back.get_node_or_null("ext_shields_back") == null and front.get_node_or_null("ext_shields_front") == null, "코드 방패 노드에 소품 없음 (몸 모델 방패와 안 겹침)")
+	var left: int = -1
+	var right: int = -1
+	for i in b.ext.info.names.size():
+		var n: String = b.ext.info.names[i]
+		if n.ends_with("LeftHandMiddle3"):
+			left = i
+		elif n.ends_with("RightHandMiddle3"):
+			right = i
+	check(left >= 0 and right >= 0, "손가락 뼈 둘 (방패·해머가 매인 뼈)")
+	if left >= 0 and right >= 0:
+		var y0: float = _bone_pos(b, left).y
+		b.P.shFwd = [0.2, 2.5]
+		b.P.elbow = [0.2, 0.5]
+		b._apply(0.0)
+		b.ext.sync()
+		var y1: float = _bone_pos(b, left).y
+		var yr: float = _bone_pos(b, right).y
+		check(y1 > y0 + 0.2 and y1 > yr, "왼팔을 들면 방패 뼈가 따라 올라감 (%.2f → %.2f, 오른손 %.2f)" % [y0, y1, yr])
 	b.free()
-
 
 
 func test_blender_tank_fx_twin() -> void:
@@ -616,21 +635,17 @@ func test_blender_tank_fx_twin() -> void:
 	b.ext.fx([b.skin_color, Color(0, 0, 0), Color(0, 0, 0)], 1.0)
 	check(mi.material_override == solid, "반투명 끝")
 	b.free()
-	# 1인칭 쌍둥이: stage LOD 의 팔꿈치 아래 삼각형만 + 앞 방패만 (등 방패 없음)
+	# 1인칭 쌍둥이: stage LOD 의 팔꿈치 아래 삼각형만 (방패·해머 포함 — 손에 붙어 따라감), 소품·코드 방패 없음
 	var t = _body("tank", false)
-	check(t.ext != null and not t.ext.third and t.ext.lod == "tank_vm", "1인칭 쌍둥이 = 닫힌 팔 메시 (vm_node)")
+	check(t.ext != null and not t.ext.third and t.ext.lod == str(t.ext.info.cfg.lods.stage), "1인칭 쌍둥이 = stage LOD")
 	if t.ext != null:
 		var arm_tri := 0
 		for sf in _lod_surfs(t.ext.info, t.ext.lod):
 			if sf.vm_mesh != null:
 				arm_tri += _tris(sf.vm_mesh)
-		check(arm_tri > 100 and arm_tri < 600, "1인칭 팔 삼각형 %d (닫힌 앞팔 보호대·금 띠·주먹·손등판 두 팔)" % arm_tri)
-		var back: Node3D = t._n(t.refs.shields.back)
-		var front: Node3D = t._n(t.refs.shields.front)
-		check(back.get_node_or_null("ext_shields_back") == null and front.get_node_or_null("ext_shields_front") != null, "1인칭: 앞 방패만 (viewmodel 이 왼손에 쥠)")
-		var pf: Node3D = front.get_node_or_null("ext_shields_front")
-		if pf != null:
-			check(pf.transform.basis.is_equal_approx(Ext.Ext.GLTF_TO_GAME_), "1인칭 앞 방패는 돌림 없음 (viewmodel 이 돌기 = -x 로 맞춤)")
+		check(arm_tri > 2000 and arm_tri < 9000, "1인칭 팔 삼각형 %d (아래팔·손·방패·해머만 남김)" % arm_tri)
+		check(t.ext.find_children("*", "BoneAttachment3D", true, false).is_empty(), "1인칭에도 따로 붙인 소품 없음")
+		check((t._n(t.refs.shields.front) as Node3D).get_node_or_null("ext_shields_front") == null, "1인칭 앞 방패 노드에 소품 없음 (몸 모델 방패가 왼팔을 따라감)")
 	t.free()
 
 
