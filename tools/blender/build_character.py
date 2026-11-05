@@ -518,7 +518,7 @@ def bake_material(name, lk, target_img, preview_tint=False):
     kind = lk["kind"]
     col = lk["color"]
     if kind == "tint":
-        col = PREVIEW_TINT if preview_tint else 0xeeeeee
+        col = PREVIEW_TINT if preview_tint else lk.get("tint_base", 0xeeeeee)  # 몸 색 칸: 밝은 회백 (tint_base 로 명암 단)
     base = N("ShaderNodeRGB")
     base.outputs[0].default_value = lin(col)
     geo = N("ShaderNodeNewGeometry")
@@ -556,10 +556,37 @@ def bake_material(name, lk, target_img, preview_tint=False):
     m1.operation = "MULTIPLY"
     L(aof.outputs[0], m1.inputs[0])
     L(up.outputs[0], m1.inputs[1])
+    m2a = N("ShaderNodeMath")
+    m2a.operation = "MULTIPLY"
+    L(m1.outputs[0], m2a.inputs[0])
+    L(nzr.outputs[0], m2a.inputs[1])
+    # 손칠 느낌 더: 몸 높이 그라데이션 (발 쪽 어둡게·머리 쪽 밝게) × 얼룩·긁힘 점 (작은 잡음을 문턱으로)
+    pos = N("ShaderNodeSeparateXYZ")
+    L(geo.outputs["Position"], pos.inputs[0])
+    hz = N("ShaderNodeMapRange")
+    hz.inputs["From Min"].default_value = 0.0
+    hz.inputs["From Max"].default_value = 2.0
+    hz.inputs["To Min"].default_value = lk.get("hgrad", 0.86)
+    hz.inputs["To Max"].default_value = 1.06
+    L(pos.outputs["Z"], hz.inputs["Value"])
+    st = N("ShaderNodeTexNoise")
+    st.inputs["Scale"].default_value = 38.0
+    st.inputs["Detail"].default_value = 4.0
+    str_ = N("ShaderNodeMapRange")
+    str_.interpolation_type = "SMOOTHSTEP"
+    str_.inputs["From Min"].default_value = 0.6
+    str_.inputs["From Max"].default_value = 0.72
+    str_.inputs["To Min"].default_value = 1.0
+    str_.inputs["To Max"].default_value = 1.0 - lk.get("stain", 0.14 if kind == "metal" else 0.08)
+    L(st.outputs["Fac"], str_.inputs["Value"])
+    m2b = N("ShaderNodeMath")
+    m2b.operation = "MULTIPLY"
+    L(m2a.outputs[0], m2b.inputs[0])
+    L(hz.outputs[0], m2b.inputs[1])
     m2 = N("ShaderNodeMath")
     m2.operation = "MULTIPLY"
-    L(m1.outputs[0], m2.inputs[0])
-    L(nzr.outputs[0], m2.inputs[1])
+    L(m2b.outputs[0], m2.inputs[0])
+    L(str_.outputs[0], m2.inputs[1])
     shade = N("ShaderNodeMix")
     shade.data_type = "RGBA"
     shade.blend_type = "MULTIPLY"
