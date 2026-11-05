@@ -36,8 +36,8 @@ const VM_SHIELD_PUSH := {
 }
 
 # W14 외부 뼈대 모델 (assets/models/ext/<캐릭터>.glb, chars/external.gd, 안내 chars/EXTERNAL.md): 있으면 그 모델 (→ 없으면 구운 몸 → 코드 조립).
-# 지금 들어 있는 건 시험용 로봇 하나 (탱크 자리) 라 기본은 끔 — 실행 인자 --ext 로 켬 (테스트는 Body.use_ext)
-const EXT := false
+# 지금 들어 있는 건 시험용 로봇 하나 (탱크 자리) 였는데, 2026-11-05 Tripo 모델 (탱크·닌자·사냥꾼) 이 들어와 기본 켬 — 끄려면 실행 인자 --no-ext (모델이 없는 캐릭터는 구운 몸 → 코드 몸, 테스트는 Body.use_ext)
+const EXT := true
 # 조정 값 기본 (모델마다 assets/models/ext/<캐릭터>.json 이 덮음): bones 뼈 이름 덮어쓰기 {우리 관절: 모델 뼈} · yaw 앞 방향 (도, glTF 앞 +Z → 게임 앞 = 90) ·
 # height 키 배율 (PLAYER_HEIGHT × FIGURE_SCALE 기준) · offset 몸 기준 옮김 [x, y, z] (고도 좌표, m) · tint 몸 색 "keep" 텍스처 그대로 / "band" + 허리 플레이어 색 띠 / "tint" 곱함 (tint_k) ·
 # band 띠 [반지름, 두께, 뼈 따라 올림] (모델 키 비율) · band_joint 띠를 붙일 관절 · keep 안쪽 몸에서 남길 소품 (refs 키, 예 "shields") · attach 따로 받은 물건 [{glb, joint, pos, rot, scale}] ·

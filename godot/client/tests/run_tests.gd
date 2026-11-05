@@ -4,6 +4,7 @@
 # 하나라도 실패하면 종료 코드 1. 묶음마다 test_<묶음>.gd 를 만들고 FILES 에 한 줄 더함 (godot/PLAN.md 7절)
 extends SceneTree
 
+const Body := preload("res://chars/body.gd")
 const FILES := ["res://tests/test_core.gd", "res://tests/test_ui.gd", "res://tests/test_audio.gd", "res://tests/test_world.gd", "res://tests/test_shaders.gd", "res://tests/test_fx.gd", "res://tests/test_chars.gd", "res://tests/test_bblocks.gd", "res://tests/test_perf.gd", "res://tests/test_tutorial_ui.gd", "res://tests/test_block_style.gd", "res://tests/test_batch.gd", "res://tests/test_title.gd", "res://tests/test_sharp.gd", "res://tests/test_feel.gd", "res://tests/test_ui_js.gd", "res://tests/test_ui_nodes.gd", "res://tests/test_gfx.gd", "res://tests/test_ui_scale.gd", "res://tests/test_baked.gd", "res://tests/test_ui_bake.gd", "res://tests/test_external.gd", "res://tests/test_ext_clips.gd"]
 
 
@@ -31,6 +32,7 @@ class ErrorLog extends Logger:
 
 
 func _initialize() -> void:
+	Body.use_ext = false # 기본 켬이지만 예전 몸 (구운·코드 조립) 테스트는 끈 채로 — 외부 몸 테스트 (test_external·test_ext_clips) 는 스스로 켬
 	var log := ErrorLog.new()
 	OS.add_logger(log)
 	var passed := 0
