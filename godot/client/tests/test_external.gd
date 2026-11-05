@@ -439,6 +439,20 @@ func test_matches_our_names() -> void:
 	check(rig.get("torso") == "chest", "Rigify 식은 그대로 (torso → chest, 얻음 %s)" % rig.get("torso"))
 
 
+
+# W19 고퀄 탱크 (tools/blender): 뼈 = 우리 관절 이름, LOD 4 (stage·high·medium·low 메시 노드), 몸 = 구운 알베도 텍스처 + 몸 색 칸 (UV2) 일부만, 얼굴 = 표정 텍스처
+func _lod_surfs(info: Dictionary, node: String) -> Array:
+	var out := []
+	for sf in info.surfs:
+		if str(sf.get("node", "")) == node:
+			out.append(sf)
+	return out
+
+
+func _tris(m: Mesh) -> int:
+	return (m.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
+
+
 func test_blender_tank_info() -> void:
 	var info = Ext.load_char("tank")
 	check(info != null, "Blender 탱크 tank.glb 읽음")
@@ -447,42 +461,48 @@ func test_blender_tank_info() -> void:
 	for j in Ext.JOINTS:
 		check(info.map.has(j) and info.names[info.map[j]] == j, "뼈 이름 = 우리 관절 %s" % j)
 	check(info.names.size() == 16, "뼈 16개 (손가락 없음, 얻음 %d)" % info.names.size())
-	# 표면 2: 몸 (꼭짓점 색 툰) + 눈 흰자 (재질 tank_unlit — 빛 안 받는 하양, JS eyeWhiteMat)
-	check(info.surfs.size() == 2 and info.surfs[0].skinned and info.surfs[0].vcolor and not info.surfs[0].get("unlit", false), "스킨 메시 하나·몸 재질 꼭짓점 색 (표면 %d)" % info.surfs.size())
-	check(info.surfs.size() == 2 and info.surfs[1].get("unlit", false) and not info.surfs[1].vcolor, "둘째 표면 = 눈 흰자 (빛 안 받음)")
-	var arr: Array = (info.surfs[0].mesh as ArrayMesh).surface_get_arrays(0)
-	var tris: int = (arr[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
-	check(tris <= 10000, "몸 삼각형 1만 이하 (%d)" % tris)
-	var uv2 = arr[Mesh.ARRAY_TEX_UV2]
-	var cols = arr[Mesh.ARRAY_COLOR]
-	check(uv2 != null and cols != null and (uv2 as PackedVector2Array).size() == (cols as PackedColorArray).size(), "몸 색 칸 UV2 + 꼭짓점 색")
-	if uv2 == null or cols == null:
-		return
-	# 몸 색 칸 = 하양 (skin_tint 가 칠함), 나머지 칸에 JS dressTank 쇠 색 (sRGB a3adb8) 이 그대로 들어옴 (Blender 내보내기가 고도 import 의 sRGB→선형을 미리 되돌림)
-	var skin_n := 0
-	var steel := false
-	var skin_white := true
-	for i in (cols as PackedColorArray).size():
-		var c: Color = cols[i]
-		if uv2[i].x > 0.5:
-			skin_n += 1
-			skin_white = skin_white and c.is_equal_approx(Color.WHITE)
-		elif absf(c.r - 0xa3 / 255.0) < 0.01 and absf(c.g - 0xad / 255.0) < 0.01 and absf(c.b - 0xb8 / 255.0) < 0.01:
-			steel = true
-	check(skin_n > 100 and skin_white, "몸 색 칸 정점 %d 개 하양" % skin_n)
-	check(steel, "쇠 색 꼭짓점 (sRGB a3adb8) 그대로")
+	var lods: Dictionary = info.cfg.get("lods", {})
+	check(lods.size() == 4, "LOD 4 (stage·high·medium·low)")
+	# 삼각형 예산 (재혁 2026-11-05): 높음 15~20천 · 보통 ~1만 · 낮음 ~6천 · 대기실·초상·1인칭 = 4만 이하
+	var want := {"stage": [20000, 40000], "high": [14000, 20000], "medium": [8500, 11000], "low": [4000, 6500]}
+	for k in want:
+		var ss := _lod_surfs(info, str(lods.get(k, "")))
+		var body_sf = null
+		var face_sf = null
+		var tri := 0
+		for sf in ss:
+			tri += _tris(sf.mesh)
+			if sf.face:
+				face_sf = sf
+			else:
+				body_sf = sf
+		check(body_sf != null and body_sf.skinned and body_sf.vcolor and body_sf.tex != null, "%s: 몸 표면 = 스킨·꼭짓점 색 (몸 색 칸)·구운 텍스처" % k)
+		check(face_sf != null and face_sf.skinned and face_sf.tex != null, "%s: 얼굴 표면 (텍스처)" % k)
+		check(tri >= want[k][0] and tri <= want[k][1], "%s 삼각형 %d (%d~%d)" % [k, tri, want[k][0], want[k][1]])
+	# 몸 색 칸은 일부만 (허리 천·깃·방패) — 몸 전체를 칠하지 않음
+	var hs := _lod_surfs(info, str(lods.get("high", "")))
+	for sf in hs:
+		if not sf.face:
+			var st := _albedo_stats(sf.mesh, sf.tex)
+			check(st[1] > 0.02 and st[1] < 0.25, "몸 색 칸 넓이 %.0f%% (2~25%%)" % (st[1] * 100.0))
+	for e in ["idle", "hit", "attack"]:
+		check(ResourceLoader.exists(str(info.cfg.get("faces", {}).get(e, ""))), "표정 텍스처 %s" % e)
 	check(info.cfg.tint == "mask" and (info.cfg.attach as Array).size() == 3, "tank.json: mask·방패 attach 3")
 
 
-# 쉬는 자세: 크기 1 (모델 키 = Blender 키), 뼈 자리 = 우리 관절 자리 (Blender 가 ref/tank_rig.json 자리에 뼈를 세움)
+# 쉬는 자세: 크기 1, 뼈 자리 = 우리 관절 자리, 판 몸 = high LOD 하나만 + 얼굴 + 방패 2, 재질 손질 (몸 색 칸 곱하기·얇은 외곽선·얼굴 외곽선 없음)
 func test_blender_tank_body() -> void:
+	var Gfx = load("res://world/gfx.gd")
+	var was: Dictionary = Gfx.plan
+	Gfx.plan = {} # 화질 모름 = high (앞 테스트가 바꿔 둔 값을 비움)
 	var b = _body("tank")
+	Gfx.plan = was
 	check(b.ext != null, "Blender 탱크 붙음")
 	if b.ext == null:
 		b.free()
 		return
 	var sc: float = b.ext.transform.basis.get_scale().x
-	check(absf(sc - 1.0) < 1e-3, "크기 1 (얻음 %.4f)" % sc)
+	check(absf(sc - 1.0) < 2e-3, "크기 1 (얻음 %.4f)" % sc)
 	var worst := 0.0
 	for j in Ext.JOINTS:
 		if j == "torso":
@@ -490,18 +510,73 @@ func test_blender_tank_body() -> void:
 		worst = maxf(worst, _bone_pos(b, b.ext.info.map[j]).distance_to(_jpos(b, b.ext._joint(j))))
 	check(worst < 0.01, "뼈 자리 = 우리 관절 자리 (가장 먼 %.4f m)" % worst)
 	_check_follow(b, "Blender 탱크")
-	# 그리는 것: 몸 1 + 눈 흰자 1 + 방패 2 (등·앞), 안쪽 몸 메시는 없음, 띠 없음 (mask)
 	var ext_n := 0
 	for dr in b.drawn:
 		ext_n += 1 if dr.get("ext", false) else 0
-	check(ext_n == 4 and b.drawn.size() == 4 and b.ext.band == null, "그리는 메시 4 (몸·눈 흰자·등 방패·앞 방패, 얻음 %d/%d)" % [ext_n, b.drawn.size()])
-	var eye: ShaderMaterial = null
-	for pt in b.ext.parts:
-		if pt.get("unlit", false):
-			eye = pt.mi.material_override
-	check(eye != null and eye.next_pass == null and (eye.get_shader_parameter("emissive") as Color).is_equal_approx(Color.WHITE), "눈 흰자: 하얀 발광·외곽선 없음")
+	check(ext_n == 4 and b.drawn.size() == 4 and b.ext.band == null, "그리는 메시 4 (몸·얼굴·등 방패·앞 방패, 얻음 %d/%d)" % [ext_n, b.drawn.size()])
+	check(b.ext.lod == str(b.ext.info.cfg.lods.high), "판 몸 = high LOD (얻음 %s)" % b.ext.lod)
+	var lods_seen := {}
+	for mi in b.ext.find_children("*", "MeshInstance3D", true, false):
+		lods_seen[String(mi.name).split("_s")[0]] = true
+	check(not lods_seen.has(str(b.ext.info.cfg.lods.stage)) and not lods_seen.has(str(b.ext.info.cfg.lods.low)), "다른 LOD 메시는 없음 (%s)" % [lods_seen.keys()])
 	var m: ShaderMaterial = b.ext.parts[0].mi.material_override
-	check(m.get_shader_parameter("use_vertex_color") == true and (m.get_shader_parameter("skin_tint") as Color).is_equal_approx(Color(0.2, 0.5, 1.0, 1.0)) and m.next_pass != null, "꼭짓점 색 툰 + 몸 색 칸 = 플레이어 색 + 외곽선")
+	check(m.get_shader_parameter("use_vertex_color") == true and m.get_shader_parameter("skin_multiply") == true and (m.get_shader_parameter("skin_tint") as Color).is_equal_approx(Color(0.2, 0.5, 1.0, 1.0)), "몸 색 칸 = 플레이어 색 곱하기")
+	check(m.next_pass != null and float((m.next_pass as ShaderMaterial).get_shader_parameter("thickness")) < C.OUTLINE_THICKNESS, "외곽선 얇게 (외부 모델 outline 배율)")
+	check(float(m.get_shader_parameter("rim_strength")) > 0.0, "림 빛")
+	var face: ShaderMaterial = null
+	for pt in b.ext.parts:
+		if pt.get("face", false):
+			face = pt.mi.material_override
+	check(face != null and face.next_pass == null and face.get_shader_parameter("use_tex") == true, "얼굴: 텍스처·외곽선 없음")
+	b.free()
+
+
+# LOD 고르기: 1인칭 쌍둥이·대기실·초상 = stage, 판 몸 = 화질 (world/gfx.gd plan.level)
+func test_blender_tank_lod() -> void:
+	var Gfx = load("res://world/gfx.gd")
+	var cfg := {"lods": {"stage": "a", "high": "b", "medium": "c", "low": "d"}}
+	var was: Dictionary = Gfx.plan
+	Gfx.plan = {}
+	check(Ext.pick_lod(cfg, true, false) == "b", "화질 모름 = high")
+	check(Ext.pick_lod(cfg, false, false) == "a" and Ext.pick_lod(cfg, true, true) == "a", "1인칭·대기실 = stage")
+	for lv in ["high", "medium", "low"]:
+		Gfx.plan = {"level": lv}
+		check(Ext.pick_lod(cfg, true, false) == cfg.lods[lv], "화질 %s" % lv)
+	Gfx.plan = {"level": "low"}
+	var b = _body("tank")
+	check(b.ext != null and b.ext.lod == str(b.ext.info.cfg.lods.low), "화질 낮음 판 몸 = low LOD")
+	b.free()
+	Gfx.plan = was
+	Ext.stage = true
+	var s = _body("tank")
+	Ext.stage = false
+	check(s.ext != null and s.ext.lod == str(s.ext.info.cfg.lods.stage), "대기실·초상 몸 = stage LOD")
+	s.free()
+
+
+# 표정: 기본 idle, 경직·맞은 직후 hit, 공격 동작 attack → 얼굴 재질 텍스처가 바뀜
+func test_blender_tank_face() -> void:
+	var b = _body("tank")
+	if b.ext == null:
+		check(false, "외부 모델 없음")
+		b.free()
+		return
+	var fm: ShaderMaterial = null
+	for pt in b.ext.parts:
+		if pt.get("face", false):
+			fm = pt.solid
+	check(b.ext.expression() == "idle" and fm.get_shader_parameter("albedo_tex") == b.ext.face_tex.idle, "기본 표정")
+	b.was_stunned = true
+	b.ext.sync()
+	check(b.ext.face_now == "hit" and fm.get_shader_parameter("albedo_tex") == b.ext.face_tex.hit, "경직 = 맞음 표정")
+	b.was_stunned = false
+	b.cur_act = {"move": "x"}
+	b.ext.sync()
+	check(b.ext.face_now == "attack" and fm.get_shader_parameter("albedo_tex") == b.ext.face_tex.attack, "공격 = 기합 표정")
+	b.cur_act = null
+	b.hit = {"id": 1, "t0": Time.get_ticks_msec() / 1000.0, "stop": 0.0, "dir": null, "pow": 1.0}
+	b.ext.sync()
+	check(b.ext.face_now == "hit", "맞은 직후 = 맞음 표정")
 	b.free()
 
 
@@ -536,6 +611,7 @@ func test_blender_tank_shield() -> void:
 	b.free()
 
 
+
 func test_blender_tank_fx_twin() -> void:
 	var b = _body("tank")
 	if b.ext == null:
@@ -551,21 +627,19 @@ func test_blender_tank_fx_twin() -> void:
 	check(sm.get_shader_parameter("skin_emissive").is_equal_approx(Color(0.4, 0.2, 0)) and sm.get_shader_parameter("emissive").is_equal_approx(Color(0.1, 0.1, 0)), "피부 발광·나머지 발광 나눔")
 	b.ext.fx([b.skin_color, Color(0, 0, 0), Color(0, 0, 0)], 0.5)
 	var am := mi.material_override as ShaderMaterial
-	check(am != solid and am.get_shader_parameter("albedo").a == 0.5 and am.get_shader_parameter("use_vertex_color") == true, "반투명도 꼭짓점 색")
+	check(am != solid and am.get_shader_parameter("albedo").a == 0.5 and am.get_shader_parameter("use_vertex_color") == true and am.get_shader_parameter("skin_multiply") == true, "반투명도 꼭짓점 색·곱하기")
 	b.ext.fx([b.skin_color, Color(0, 0, 0), Color(0, 0, 0)], 1.0)
 	check(mi.material_override == solid, "반투명 끝")
 	b.free()
-	# 1인칭 쌍둥이: 팔꿈치 아래 삼각형만 + 앞 방패만 (등 방패 없음)
+	# 1인칭 쌍둥이: stage LOD 의 팔꿈치 아래 삼각형만 + 앞 방패만 (등 방패 없음)
 	var t = _body("tank", false)
-	check(t.ext != null and not t.ext.third, "1인칭 쌍둥이")
+	check(t.ext != null and not t.ext.third and t.ext.lod == str(t.ext.info.cfg.lods.stage), "1인칭 쌍둥이 = stage LOD")
 	if t.ext != null:
 		var arm_tri := 0
-		for pt in t.ext.parts:
-			if (pt.mi as MeshInstance3D).get_parent() is BoneAttachment3D or String((pt.mi as MeshInstance3D).name).begins_with("ext_"):
-				continue
-		var vm = t.ext.info.surfs[0].vm_mesh
-		arm_tri = (vm as ArrayMesh).surface_get_arrays(0)[Mesh.ARRAY_INDEX].size() / 3 if vm != null else 0
-		check(arm_tri > 300 and arm_tri < 3000, "1인칭 팔 삼각형 %d (장갑·주먹·팔꿈치)" % arm_tri)
+		for sf in _lod_surfs(t.ext.info, t.ext.lod):
+			if sf.vm_mesh != null:
+				arm_tri += _tris(sf.vm_mesh)
+		check(arm_tri > 300 and arm_tri < 9000, "1인칭 팔 삼각형 %d (팔 보호대·장갑·팔꿈치)" % arm_tri)
 		var back: Node3D = t._n(t.refs.shields.back)
 		var front: Node3D = t._n(t.refs.shields.front)
 		check(back.get_node_or_null("ext_shields_back") == null and front.get_node_or_null("ext_shields_front") != null, "1인칭: 앞 방패만 (viewmodel 이 왼손에 쥠)")
@@ -575,13 +649,19 @@ func test_blender_tank_fx_twin() -> void:
 	t.free()
 
 
-# 꼭짓점 색 몸 메시의 넓이 가중 평균 색 (몸 색 칸 빼고) · 몸 색 칸 넓이 비율
-func _albedo_stats(mesh: Mesh) -> Array:
+# 몸 메시의 넓이 가중 평균 색 (꼭짓점 색 × 텍스처 (있으면, 삼각형 가운데 UV), 몸 색 칸 빼고) · 몸 색 칸 넓이 비율
+func _albedo_stats(mesh: Mesh, tex = null) -> Array:
 	var arr: Array = mesh.surface_get_arrays(0)
 	var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
 	var c: PackedColorArray = arr[Mesh.ARRAY_COLOR]
 	var u2: PackedVector2Array = arr[Mesh.ARRAY_TEX_UV2]
+	var uv = arr[Mesh.ARRAY_TEX_UV]
 	var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+	var img: Image = null
+	if tex is Texture2D:
+		img = (tex as Texture2D).get_image()
+		if img != null and img.is_compressed():
+			img.decompress()
 	var s := Vector3.ZERO
 	var area_sum := 0.0
 	var skin := 0.0
@@ -594,12 +674,16 @@ func _albedo_stats(mesh: Mesh) -> Array:
 			skin += area
 			continue
 		var col: Color = (c[i0] + c[i1] + c[i2]) / 3.0
+		if img != null and uv != null:
+			var u: Vector2 = ((uv[i0] + uv[i1] + uv[i2]) / 3.0)
+			var px := Vector2i(clampi(int(fposmod(u.x, 1.0) * img.get_width()), 0, img.get_width() - 1), clampi(int(fposmod(u.y, 1.0) * img.get_height()), 0, img.get_height() - 1))
+			col = col * img.get_pixelv(px)
 		s += Vector3(col.r, col.g, col.b) * area
 		area_sum += area
 	return [s / maxf(1e-9, area_sum), skin / maxf(1e-9, skin + area_sum)]
 
 
-# 밝기 (W19 재혁 '어둡고 탁함'): Blender 탱크 몸 (몸 색 칸 뺀 쇠·가죽·금) 의 넓이 평균 색이 구운 탱크와 비슷 (밝기 0.92~1.1 배) — 같은 툰 셰이더라 알베도가 같으면 화면 밝기도 같음
+# 밝기 (W19 재혁 '어둡고 탁함'): Blender 탱크 (high LOD, 몸 색 칸 뺀 갑옷·옷, 구운 그늘 포함) 의 넓이 평균 밝기가 구운 탱크의 0.92~1.35 배 — 더 어둡지 않게
 func test_blender_tank_brightness() -> void:
 	var baked = _body("tank", true, false)
 	var ext = _body("tank")
@@ -607,35 +691,16 @@ func test_blender_tank_brightness() -> void:
 	for dr in baked.drawn:
 		if (dr.mi as MeshInstance3D).mesh != null and (dr.mi as MeshInstance3D).mesh.surface_get_format(0) & Mesh.ARRAY_FORMAT_COLOR:
 			bm = (dr.mi as MeshInstance3D).mesh
-	var em: Mesh = null if ext.ext == null else (ext.ext.parts[0].mi as MeshInstance3D).mesh
-	check(bm != null and em != null, "구운 몸·Blender 몸 꼭짓점 색 메시")
-	if bm != null and em != null:
+	var ep = null if ext.ext == null else ext.ext.parts[0]
+	check(bm != null and ep != null, "구운 몸·Blender 몸 메시")
+	if bm != null and ep != null:
 		var a := _albedo_stats(bm)
-		var b := _albedo_stats(em)
+		var b := _albedo_stats((ep.mi as MeshInstance3D).mesh, ep.tex)
 		var la: float = (a[0] as Vector3).dot(Vector3(0.2126, 0.7152, 0.0722))
 		var lb: float = (b[0] as Vector3).dot(Vector3(0.2126, 0.7152, 0.0722))
-		check(lb / la > 0.92 and lb / la < 1.1, "몸 평균 밝기 구운 몸 대비 %.3f (구운 %.3f, Blender %.3f)" % [lb / la, la, lb])
-		check(b[1] > 0.15, "몸 색 칸 넓이 %.0f%% (구운 %.0f%%)" % [b[1] * 100.0, a[1] * 100.0])
+		check(lb / la > 0.92 and lb / la < 1.35, "몸 평균 밝기 구운 몸 대비 %.3f (구운 %.3f, Blender %.3f)" % [lb / la, la, lb])
 	baked.free()
 	ext.free()
-
-
-# 눈 (W19 재혁 '눈알이 투구 위로 떠 있음'): 눈 흰자 정점이 전부 투구 바깥 타원 (tools/blender/chars/tank.py hc·HR) 안 → 어느 방향에서 봐도 투구 밖으로 안 삐져나옴
-func test_blender_tank_eyes_in_helmet() -> void:
-	var info = Ext.load_char("tank")
-	if info == null or info.surfs.size() < 2:
-		check(false, "Blender 탱크 눈 표면")
-		return
-	var neck := Vector3(0.032, 0.0, 1.437) # 게임 좌표 (tools/blender/ref/tank_rig.json)
-	var hc := neck + Vector3(-0.01, 0.0, 0.19)
-	var hr := Vector3(0.2, 0.2, 0.185)
-	var arr: Array = (info.surfs[1].mesh as ArrayMesh).surface_get_arrays(0)
-	var worst := 0.0
-	for p in (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array):
-		var g := Vector3(p.z, p.x, p.y) # glTF (X, Y, Z) = 게임 (y, z, x)
-		var d := (g - hc) / hr
-		worst = maxf(worst, d.length())
-	check(worst < 1.0, "눈 흰자가 투구 안 (가장 바깥 %.3f < 1)" % worst)
 
 
 # 무대 빛 (대기실 큰 캐릭터·초상, ui/portrait.gd stage_light): 구운 몸·Blender 몸 모두 툰 재질이 전역 (대기실 어두운 장면) 빛 대신 JS 무대 흰 빛

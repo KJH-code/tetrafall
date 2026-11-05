@@ -62,7 +62,10 @@ func _lookup(char_id: String, color: Color, size: int, full: bool) -> Texture2D:
 
 # 초상·대기실 큰 캐릭터 (char_stage) 몸: 자기 SubViewport 장면이라 판의 위험 빛 (전역 값 g3_hz_lp) 을 안 받게 끔 (JS portrait·char-stage 는 따로 된 scene)
 static func still_body(chars, char_id: String, color: Color) -> Node3D:
+	var Ext = load("res://chars/external.gd")
+	Ext.stage = true # 외부 (Blender) 모델은 최고 품질 LOD (한 명만 크게 그림)
 	var body = chars.make_body(char_id, color)
+	Ext.stage = false
 	if body.has_method("set_hz_light"):
 		body.set_hz_light(false)
 	stage_light(body)

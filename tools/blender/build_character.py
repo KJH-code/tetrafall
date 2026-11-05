@@ -957,8 +957,7 @@ def main():
     tris = {ln: tri_count(lo) for ln, lo in lods.items()}
     ptris = {pn: tri_count(po) for pn, po in props.items()}
     # 상자 (게임 좌표): 고도는 상자 바닥 = 발바닥, 키 = PLAYER_HEIGHT × FIGURE_SCALE × height → 크기 1 이 되게
-    lo0 = lods["lod0"]
-    vs = [lo0.matrix_world @ v.co for v in lo0.data.vertices]
+    vs = [lo_.matrix_world @ v.co for lo_ in lods.values() for v in lo_.data.vertices]  # 고도는 모든 LOD 메시를 합친 상자로 크기를 잼
     bx = [(-v.y, v.x, v.z) for v in vs]
     lo = [min(p[i] for p in bx) for i in range(3)]
     hi = [max(p[i] for p in bx) for i in range(3)]

@@ -44,6 +44,8 @@ const REQUIRED := ["hips", "shoulder_R", "shoulder_L", "elbow_R", "elbow_L", "th
 const JUNK := ["mixamorig", "bip", "bip01", "bip001", "def", "org", "jnt", "joint", "bn", "armature", "skeleton", "sk", "rig", "character", "ctrl"]
 
 static var _cache := {} # 캐릭터 → 모델 정보 (없으면 null)
+static var stage := false # W19: 대기실 큰 캐릭터·초상 몸을 만드는 동안 참 (ui/portrait.gd still_body) → 최고 품질 LOD
+const Gfx := preload("res://world/gfx.gd")
 
 
 # ---------- 파일 ----------
@@ -322,8 +324,10 @@ static func model_info(scene: PackedScene, cfg: Dictionary):
 			var one := _one_surface(m.mesh, si)
 			# W19: 이름이 _unlit 로 끝나는 재질 (tools/blender — 눈 흰자) 은 빛 안 받는 색 (JS eyeWhiteMat), 외곽선 없음
 			var unlit: bool = mat != null and str(mat.resource_name).ends_with("_unlit")
+			# W19: 이름이 _face 로 끝나는 재질 = 얼굴 (표정 텍스처를 바꿔 끼움, 외곽선 없음), 메시 노드 이름 = LOD 이름 (cfg.lods)
+			var face: bool = mat != null and str(mat.resource_name).ends_with("_face")
 			surfs.append({"path": root.get_path_to(m), "surf": si, "mesh": one, "color": col, "tex": tex, "skinned": skinned, "bone": bone, "binds": binds,
-				"vcolor": Ext.vertex_colored(one, 0, mat, str(cfg.get("tint", "band"))) and not unlit, "unlit": unlit})
+				"vcolor": Ext.vertex_colored(one, 0, mat, str(cfg.get("tint", "band"))) and not unlit and not face, "unlit": unlit, "face": face, "node": str(m.name)})
 	if first:
 		push_warning("외부 .glb 에 메시가 없음")
 		root.free()
@@ -418,10 +422,22 @@ static func attach(body: Node3D, third: bool):
 	if info == null:
 		return null
 	var e := Ext.new()
+	e.lod = pick_lod(info.cfg, third, stage)
 	if not e.setup(body, info, third):
 		e.free()
 		return null
 	return e
+
+
+# W19 LOD: 1인칭 쌍둥이·대기실 큰 캐릭터·초상 = stage (한 명만 크게), 판 몸 = 화질 (world/gfx.gd plan.level — 없으면 high). cfg.lods 없으면 "" (모든 메시)
+static func pick_lod(cfg: Dictionary, third: bool, on_stage: bool) -> String:
+	var lods: Dictionary = cfg.get("lods", {})
+	if lods.is_empty():
+		return ""
+	if not third or on_stage:
+		return str(lods.get("stage", lods.get("high", "")))
+	var lv: String = str(Gfx.plan.get("level", "high")) if not Gfx.plan.is_empty() else "high"
+	return str(lods.get(lv, lods.get("high", "")))
 
 
 # 몸에 붙은 외부 모델 하나 (frame 또는 허리 관절 아래 Node3D)
@@ -461,6 +477,23 @@ class Ext extends Node3D:
 			opts.opacity = op
 		return G3_.toon_material(Color(0, 0, 0), opts)
 
+	# W19 재질 손질 (cfg): 몸 색 칸은 곱하기 (mask), 툰 단계·림 빛, 외곽선 굵기 (outline = false 면 외곽선 없앰)
+	static func style(m: ShaderMaterial, cfg: Dictionary, outline := true) -> ShaderMaterial:
+		if str(cfg.get("tint", "band")) == "mask":
+			m.set_shader_parameter("skin_multiply", true)
+		if cfg.has("toon_steps"):
+			var ts: Array = cfg.toon_steps
+			m.set_shader_parameter("toon_steps", Vector3(float(ts[0]), float(ts[1]), float(ts[2])))
+		var rim: Array = cfg.get("rim", [0.0, 3.0])
+		if float(rim[0]) > 0.0:
+			m.set_shader_parameter("rim_strength", float(rim[0]))
+			m.set_shader_parameter("rim_power", float(rim[1]))
+		if not outline:
+			m.next_pass = null
+		elif m.next_pass != null and float(cfg.get("outline", 1.0)) != 1.0:
+			m.next_pass = G3_.shared_outline(C_.OUTLINE_THICKNESS * float(cfg.outline))
+		return m
+
 	var body: Node3D
 	var info: Dictionary
 	var third := true
@@ -478,6 +511,9 @@ class Ext extends Node3D:
 	var band: MeshInstance3D = null
 	var anim: AnimationPlayer = null
 	var clip := "" # 재생 중인 클립 (빈 글자 = 뼈 맞추기)
+	var lod := "" # 그릴 메시 노드 이름 (pick_lod, 빈 글자 = 전부)
+	var face_tex := {} # 표정 → Texture2D (cfg.faces)
+	var face_now := ""
 	var root_k := 1.0
 	var opacity := 1.0
 
@@ -634,8 +670,34 @@ class Ext extends Node3D:
 			mapped[bi] = maps.size()
 			maps.append(m)
 
+	# 표정 (cfg.faces): 경직·맞은 직후 = hit, 공격 동작 = attack, 나머지 idle
+	func expression() -> String:
+		if body.get("was_stunned") == true:
+			return "hit"
+		var h = body.get("hit")
+		if h is Dictionary and Time.get_ticks_msec() / 1000.0 - float(h.get("t0", -99.0)) < K_.EXT_HIT_FACE_S:
+			return "hit"
+		if body.get("cur_act") != null:
+			return "attack"
+		return "idle"
+
+	func _face_sync() -> void:
+		if face_tex.is_empty():
+			return
+		var e := expression()
+		if e == face_now or not face_tex.has(e):
+			return
+		face_now = e
+		for pt in parts:
+			if pt.get("face", false):
+				pt.tex = face_tex[e]
+				(pt.solid as ShaderMaterial).set_shader_parameter("albedo_tex", pt.tex)
+				if pt.has("alpha"):
+					(pt.alpha as ShaderMaterial).set_shader_parameter("albedo_tex", pt.tex)
+
 	# 매 프레임: 관절 → 뼈
 	func sync() -> void:
+		_face_sync()
 		if clip != "" or sk == null:
 			return
 		for m in maps:
@@ -677,7 +739,15 @@ class Ext extends Node3D:
 		var mode: String = str(cfg.get("tint", "band"))
 		var tk: float = float(cfg.get("tint_k", 0.6))
 		var olds := {}
+		for mi0 in model.find_children("*", "MeshInstance3D", true, false): # 고른 LOD 밖 메시도 버림
+			olds[mi0] = true
+		for k in cfg.get("faces", {}):
+			var fp: String = str(cfg.faces[k])
+			if ResourceLoader.exists(fp):
+				face_tex[k] = load(fp)
 		for sf in info.surfs:
+			if lod != "" and str(sf.get("node", "")) != lod:
+				continue
 			var orig := model.get_node_or_null(sf.path) as MeshInstance3D
 			if orig == null:
 				continue
@@ -705,9 +775,17 @@ class Ext extends Node3D:
 				parts.append({"mi": mi, "color": sf.color, "tex": null, "solid": um, "unlit": true})
 				body.drawn.append({"mi": mi, "m": {"kind": "toon"}, "merged": false, "ext": true})
 				continue
+			if sf.get("face", false): # 얼굴: 표정 텍스처, 외곽선 없음
+				var ft = face_tex.get("idle", sf.tex)
+				var fm := style(G3_.toon_material(col, {"map": ft, "outline": false}), cfg, false)
+				mi.material_override = fm
+				face_now = "idle"
+				parts.append({"mi": mi, "color": col, "tex": ft, "solid": fm, "face": true})
+				body.drawn.append({"mi": mi, "m": {"kind": "toon"}, "merged": false, "ext": true})
+				continue
 			var vc: bool = sf.get("vcolor", false)
 			var mask: bool = vc and mode == "mask"
-			var m := toon_for(col, sf.tex, vc, mask, body.skin_color)
+			var m := style(toon_for(col, sf.tex, vc, mask, body.skin_color), cfg)
 			mi.material_override = m
 			parts.append({"mi": mi, "color": col, "tex": sf.tex, "solid": m, "vcolor": vc, "mask": mask})
 			body.drawn.append({"mi": mi, "m": {"kind": "toon"}, "merged": false, "ext": true})
@@ -844,7 +922,7 @@ class Ext extends Node3D:
 			var col: Color = (sm as BaseMaterial3D).albedo_color if sm is BaseMaterial3D else Color.WHITE
 			var tex = (sm as BaseMaterial3D).albedo_texture if sm is BaseMaterial3D else null
 			var vc := vertex_colored(me, 0, sm, mode)
-			var m := toon_for(col, tex, vc, vc and mode == "mask", body.skin_color)
+			var m := style(toon_for(col, tex, vc, vc and mode == "mask", body.skin_color), info.cfg)
 			(mi as MeshInstance3D).material_override = m
 			if not third:
 				(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -882,7 +960,7 @@ class Ext extends Node3D:
 					var opts := {"opacity": 0.5, "outline": false}
 					if pt.tex != null:
 						opts.map = pt.tex
-					pt.alpha = G3_.toon_material(pt.color, opts)
+					pt.alpha = style(G3_.toon_material(pt.color, opts), info.cfg, false)
 					G3_.toon_hazard_light(pt.alpha, body.hz_light)
 				var c: Color = pt.color
 				(pt.alpha as ShaderMaterial).set_shader_parameter("albedo", Color(c.r, c.g, c.b, op))
@@ -897,7 +975,7 @@ class Ext extends Node3D:
 		var want: Material = pt.solid
 		if op < 1.0:
 			if not pt.has("alpha"):
-				pt.alpha = toon_for(pt.color, pt.tex, true, true, body.skin_color, {"opacity": 0.5, "outline": false})
+				pt.alpha = style(toon_for(pt.color, pt.tex, true, true, body.skin_color, {"opacity": 0.5, "outline": false}), info.cfg, false)
 				G3_.toon_hazard_light(pt.alpha, body.hz_light)
 			want = pt.alpha
 		if mi.material_override != want:
