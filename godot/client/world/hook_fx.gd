@@ -427,6 +427,8 @@ func step() -> void:
 						_burst(Vector3(c[0] + 0.5, c[1] + 0.5, c[2] + 0.5), null, 0x8a7a68, ceili(26.0 / cs.size()) + 4, 6, 0.13, 0.7)
 					if effects != null:
 						effects.ring(Vector3(sl.to.x, sl.to.y, sl.to.z - 0.45), 0xc0a880, 3.5 + g.size, 0.35, true)
+						if effects.has_method("quake"): # W18 땅 충격 (빛 고리·흙먼지·돌 조각)
+							effects.quake(Vector3(sl.to.x, sl.to.y, sl.to.z - 0.45), 1.2 + g.size * 0.3)
 					for k in range(1, int(C.HOOK_SLAM_LEN) + 1):
 						_burst(Vector3(sl.line.x + sl.dir.x * k, sl.line.y + sl.dir.y * k, sl.line.z + 0.1), null, 0x9a8a78, 4, 2.5, 0.1, 0.5)
 					if marks != null:

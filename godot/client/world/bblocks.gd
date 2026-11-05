@@ -5,6 +5,7 @@
 extends Node3D
 
 const C := preload("res://core/config.gd")
+const FXC := preload("res://fx/fx_config.gd")
 const Co := preload("res://core/coords.gd")
 const BL := preload("res://world/bblock_look.gd")
 const Tex := preload("res://world/bblock_tex.gd")
@@ -358,6 +359,8 @@ func pop(gh: Dictionary, big := false) -> void:
 		fx.burst(pos, null, 0x8a8478, roundi((16 if big else 7) * (C.BB_LOW_FX if _low() else 1.0)), 4.0, 0.12, 0.7)
 		fx.burst(pos, dir, 0xffc040, 3 if _low() else 8, 8.0, 0.1, 0.3)
 		fx.ring(pos, 0xffd080, 5.0 if big else 2.6, 0.3)
+		if fx.has_method("explode"): # W18 불덩이·연기·불꽃 줄 (판자 조각은 위 spawn_shards 그대로라 돌 조각은 안 냄)
+			fx.explode(pos, FXC.BOOM_K.bigBomb if big else FXC.BOOM_K.bblock, dir, null, false)
 	# 터진 칸이 번쩍 + 붙어 있던 블록이 들썩 (render.js bbPop blockPulse 두 번)
 	var mk = _marks()
 	if mk != null:

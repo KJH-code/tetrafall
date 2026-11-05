@@ -333,6 +333,10 @@ func _follow(_dt: float) -> void:
 		pos[0] + sw[3] + sin(src.walk) * C.VM_BOB * 0.6 * amp,
 		pos[1] + sw[4] - absf(cos(src.walk)) * C.VM_BOB * amp + sin(t * 2.0) * C.VM_BREATH,
 		pos[2] + sw[2] * C.VM_CANNON_KICK_BACK)
+	# W18 팔 반동 (fx/effects.gd vm_offset — 때린 순간 주먹이 몸 쪽으로, 맞은 순간 옆·아래로. 카메라 좌표)
+	var fxn = src.get("fx_node")
+	if fxn != null and is_instance_valid(fxn) and fxn.has_method("vm_offset"):
+		anchor.position += fxn.vm_offset()
 
 
 # 탱크 앞 방패를 왼손에 쥠 (W11, JS 는 허리에 붙은 채): 원본 앞 방패가 보이면 (방패 동작) 손을 내려 방패를 쥐고 들어 올림 →

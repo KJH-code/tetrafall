@@ -7,10 +7,14 @@ extends Node3D
 const Prof := preload("res://core/prof.gd")
 
 const C := preload("res://core/config.gd")
+const Co := preload("res://core/coords.gd")
 const FM := preload("res://fx/fx_math.gd")
 const Effects := preload("res://fx/effects.gd")
 const KO := preload("res://fx/ko.gd")
 const Bodies := preload("res://world/bodies.gd")
+const FXC := preload("res://fx/fx_config.gd")
+const SM := preload("res://audio/sound_math.gd")
+const WC := preload("res://world/world_config.gd")
 
 var effects: Node3D
 var ko: Node3D
@@ -37,6 +41,9 @@ func _init() -> void:
 
 func _ready() -> void:
 	add_to_group("fx")
+	var w := get_parent().get_parent() if get_parent() != null else null
+	if w != null and w.has_method("solid_at"):
+		effects.solid = w.solid_at # 조각이 땅에 닿아 튐
 	if OS.get_cmdline_user_args().has("--fx-demo"):
 		demo_next = 0.0
 	Store.game_event.connect(on_event)
@@ -55,7 +62,8 @@ func _process(dt: float) -> void:
 
 
 func _prof_process(dt: float) -> void:
-	var s: float = ko.time_scale()
+	read_settings()
+	var s := screen_scale()
 	View.time_scale = s
 	if s != last_scale:
 		last_scale = s
@@ -69,6 +77,17 @@ func _prof_process(dt: float) -> void:
 	effects.update(sdt, rig.cam if rig != null else get_viewport().get_camera_3d())
 
 
+# 화질·움직임 줄이기 → 효과 수준 (프레임마다)
+func read_settings() -> void:
+	effects.lv = FXC.level_of(str(WC.level), bool(View.settings.get("lowGfx", false)))
+	effects.reduced = bool(View.settings.get("reducedMotion", false))
+
+
+# 화면 시계 배율: KO (마지막 킬 슬로모션·압사 히트스톱) 와 W18 타격 히트스톱 중 더 느린 쪽
+func screen_scale() -> float:
+	return minf(ko.time_scale(), effects.stop_scale())
+
+
 func _cam_hook(cam: Camera3D) -> void:
 	if rig != null and rig.sky_blend > 0.0:
 		return
@@ -76,6 +95,14 @@ func _cam_hook(cam: Camera3D) -> void:
 	if o != Vector3.ZERO:
 		cam.position += Vector3(o.x, o.z, -o.y)
 	ko.cam_hook(cam)
+	# W18 카메라 반동·시야 조임 (흔들림 위에, 마지막 킬 줌 뒤)
+	var k: Vector4 = effects.kick_now()
+	if k != Vector4.ZERO:
+		var m: float = 1.0 if View.mode == "first" else float(FXC.KICK.third)
+		cam.rotate_object_local(Vector3.UP, deg_to_rad(k.y * m))
+		cam.rotate_object_local(Vector3.RIGHT, deg_to_rad(k.x * m))
+		cam.rotate_object_local(Vector3.FORWARD, deg_to_rad(k.z * m))
+		cam.fov *= 1.0 - k.w
 
 
 func _demo() -> void:
@@ -165,6 +192,8 @@ func _feel(e: Dictionary, t: String) -> bool:
 			var chest := _at(tp, 1.0)
 			if not e.get("ok", false):
 				fx.burst(chest, null, 0xaaaaaa, 4, 2.0, 0.06, 0.25) # 무적이라 무시: 작은 회색 먼지만
+				var ig: Array = FXC.HIT_IGNORED_FLASH
+				fx.glow(chest, 0xc8c8c8, ig[0], ig[1], ig[2])
 				return true
 			var dir = null
 			if not a.is_empty():
@@ -179,10 +208,7 @@ func _feel(e: Dictionary, t: String) -> bool:
 			fx.burst(chest, dir, 0xffee40 if kind == "projectile" else (0xffa040 if heavy else 0xfff2c0), int(C.FX_PARTICLES * (2 if heavy else 1)), 7.0 if heavy else 5.0)
 			fx.ring(chest, 0xffee40 if kind == "projectile" else (0xff8a10 if heavy else 0xffffff), 3.4 if heavy else 2.4)
 			fx.hit_squash(e.target)
-			if _mine(e, "target"):
-				fx.shake(C.FX_SHAKE_HURT * (1.6 if heavy else 1.0))
-			elif _mine(e, "by"):
-				fx.shake(C.FX_SHAKE_HIT * (2.0 if heavy else 1.0), 150.0)
+			_impact(e, chest, dir, SM.hit_tier(e))
 			return true
 		"land":
 			var cells: Array = e.get("cells", [])
@@ -229,6 +255,7 @@ func _feel(e: Dictionary, t: String) -> bool:
 			fx.burst(at, null, 0xff7020, 40, 9.0, 0.16, 0.7)
 			fx.burst(at, null, 0x555555, 24, 5.0, 0.12, 0.9)
 			fx.ring(at, 0xffa040, 4.5)
+			fx.explode(at, FXC.BOOM_K.boom)
 			if _near(d, 6.0):
 				fx.shake(0.35 * (1.0 - float(d) / 6.0), 450.0)
 			return true
@@ -240,6 +267,31 @@ func _feel(e: Dictionary, t: String) -> bool:
 			fx.shake(0.12, 900.0)
 			return true
 	return false
+
+
+# W18 타격 임팩트 (단계 = 소리와 같은 hit_tier): 번쩍·빛 고리·불꽃 줄·먼지 (effects.impact) + 나와 상관있으면
+# 흔들림 (JS 값 × 단계 배율) · 화면 히트스톱 · 카메라 반동·시야 조임 · 1인칭 팔 반동. 수치 fx_config.gd HIT_TIERS
+func _impact(e: Dictionary, chest: Vector3, dir, tier: String) -> void:
+	var T := FXC.tier(tier)
+	effects.impact(chest, dir, tier)
+	var me_t := _mine(e, "target")
+	var me_b := _mine(e, "by")
+	if not me_t and not me_b:
+		return
+	effects.hit_stop(float(T.stop))
+	var K: Dictionary = FXC.KICK
+	if me_t:
+		effects.shake(C.FX_SHAKE_HURT * float(T.shake_hurt))
+		var side := 0.0 # 밀린 쪽이 화면 오른쪽이면 +
+		var c: Camera3D = rig.cam if rig != null else null
+		if dir != null and c != null and c.is_inside_tree():
+			side = Co.gxyz(float(dir.x), float(dir.y), 0.0).dot(c.global_basis.x)
+		effects.cam_kick(float(T.kick) * K.hurt_pitch, 0.0, -side * float(T.kick) * K.hurt_roll, float(T.fov))
+		effects.vm_kick(Vector3(side, -0.8, 0.6) * float(T.vm))
+	else:
+		effects.shake(C.FX_SHAKE_HIT * float(T.shake_hit), 150.0)
+		effects.cam_kick(float(T.kick) * K.hit_pitch, randf_range(-1.0, 1.0) * float(T.kick) * K.hit_yaw, 0.0, float(T.fov))
+		effects.vm_kick(Vector3(0.0, 0.25, 1.0) * float(T.vm)) # 주먹이 몸 쪽으로 튕겨 돌아옴
 
 
 # 사냥꾼 표식 +1 불꽃 색 (main.js mark: 꽉 차면 HUNT_MARK_UI.full 금빛, 아니면 빨강)
@@ -258,6 +310,11 @@ func _skill(e: Dictionary, t: String) -> bool:
 				return false
 			if t == "mark":
 				fx.burst(_at(tp, C.PLAYER_HEIGHT + 0.3), null, mark_color(e.get("n", 0)), 10 + int(e.get("n", 0)) * 4, 2.5, 0.08, 0.4)
+				var full := float(e.get("n", 0)) >= C.HUNTER_MARK_MAX # W18 꽉 찬 순간: 금빛 번쩍 + 빛 고리 (표식 폭발)
+				fx.glow(_at(tp, C.PLAYER_HEIGHT + 0.3), mark_color(e.get("n", 0)), 2.2 if full else 0.8, 220.0 if full else 120.0, 1.0, fx.STAR if full else fx.ROUND, {"grow": 1.3, "hot": 0.8})
+				if full:
+					fx.glow(_at(tp, 1.0), mark_color(e.get("n", 0)), 0.4, 300.0, 0.9, fx.SHOCK, {"grow": 9.0, "pw": 1.3})
+					fx.sparks(_at(tp, 1.0), Vector3.ZERO, mark_color(e.get("n", 0)), FXC.count(10, fx.lv), 8.0, 0.4, 260.0, 1.0)
 			else:
 				fx.burst(_at(tp, C.PLAYER_HEIGHT + 0.3), null, 0x886666, 5, 1.2, 0.06, 0.3)
 		"leapWarn":
@@ -278,6 +335,7 @@ func _skill(e: Dictionary, t: String) -> bool:
 		"blink":
 			fx.burst(Vector3(e.from.x, e.from.y, e.to.z + 0.8), null, 0x404060, 10, 2.0, 0.1, 0.4)
 			fx.burst(_at(e.to, 0.8), null, 0x404060, 10, 2.0, 0.1, 0.4)
+			fx.glow(_at(e.to, 0.9), 0xc8d0ff, 1.4, 160.0, 0.8, fx.STAR, {"grow": 1.4, "hot": 1.0}) # W18 베고 나온 자리 번쩍
 		"wallKick":
 			var wall := Vector3(e.x + e.dir.x * 0.5, e.y + e.dir.y * 0.5, e.z + 0.6)
 			fx.ring(wall, 0xffffff, 3.0, 0.3)
@@ -295,6 +353,8 @@ func _skill(e: Dictionary, t: String) -> bool:
 			fx.burst(pos, null, 0xd8f0ff, 30, 9.0, 0.11, 0.6)
 			fx.burst(pos, null, 0x9ab8d0, 16, 6.0, 0.08, 0.5)
 			fx.ring(pos, 0xd8f0ff, 3.4, 0.3)
+			fx.glow(pos, 0xd8f0ff, 2.6, 200.0, 1.0, fx.STAR, {"grow": 1.4, "hot": 1.0}) # W18 유리처럼 깨짐: 번쩍 + 하늘빛 조각 불꽃
+			fx.sparks(pos, Vector3.ZERO, 0xd8f0ff, FXC.count(14, fx.lv), 9.0, 0.35, 320.0, 1.0)
 		"quakeRise":
 			var cells: Array = e.get("cells", [])
 			if cells.is_empty():
@@ -303,9 +363,13 @@ func _skill(e: Dictionary, t: String) -> bool:
 			for c in cells:
 				fx.burst(_cell(c, 0.1), null, int(C.QUAKE_COLOR), 6, 4.0, 0.12, 0.5)
 				fx.burst(_cell(c, 0.6), {"x": 0, "y": 0}, 0x6a5e52, 2, 5.0, 0.16, 0.5) # 튀는 흙덩이
+				var QR: Dictionary = FXC.QUAKE_RISE # W18 칸마다 솟는 흙먼지 기둥 + 튀는 돌
+				fx.smoke(_cell(c, 0.2), int(FXC.QUAKE.dust_color), FXC.count(QR.dust[0], fx.lv), QR.dust[1], QR.dust[2], QR.dust[3], 0.3, 0.65)
+				fx.chunks(_cell(c, 0.5), null, int(C.QUAKE_COLOR), FXC.count(QR.chunks[0], fx.lv), QR.chunks[1], QR.chunks[2])
 				sum += Vector3(c[0], c[1], c[2])
 			sum /= cells.size()
 			fx.ring(Vector3(sum.x + 0.5, sum.y + 0.5, sum.z + 0.05), int(C.QUAKE_COLOR), 6.0, 0.35, true)
+			fx.glow(Vector3(sum.x + 0.5, sum.y + 0.5, sum.z + 0.06), int(FXC.QUAKE.glow_color), 0.4, 420.0, 0.8, fx.SHOCK, {"grow": 16.0, "flat": true, "pw": 1.3}) # W18 바닥 빛 고리
 			if _near(_dist(sum.x + 0.5, sum.y + 0.5, sum.z), 8.0):
 				fx.shake(0.28, 350.0)
 		"quakeFall":
@@ -332,6 +396,7 @@ func _skill(e: Dictionary, t: String) -> bool:
 		"slam":
 			fx.ring(_at(e, 0.1), 0xc0b090, float(e.r) * 2, 0.4, true)
 			fx.burst(_at(e, 0.2), null, 0xc0b090, 28, 7.0, 0.14, 0.6)
+			fx.quake(_at(e), float(e.r)) # W18 땅 충격
 			var m := Store.me()
 			if not m.is_empty() and Vector2(m.x - e.x, m.y - e.y).length() < float(e.r) * 2:
 				fx.shake(0.25, 350.0)
@@ -350,6 +415,7 @@ func _skill(e: Dictionary, t: String) -> bool:
 			fx.burst(muzzle, {"x": f.x, "y": f.y}, 0xffffe0, 10, 6.0, 0.16, 0.12)
 			fx.burst(muzzle, {"x": f.x * 0.3, "y": f.y * 0.3}, 0x8a8a8a, 16, 1.5, 0.16, 1.4)
 			fx.ring(muzzle, 0xffd080, 2.4, 0.18)
+			fx.glow(muzzle, 0xffe8a0, 1.5, 110.0, 1.0, fx.STAR, {"grow": 1.3, "hot": 1.0, "rot": e.yaw}) # W18 포구 번쩍
 			if _near(0.0 if me else _dist(e.x, e.y, e.z), 4.0):
 				fx.shake(0.18 if me else 0.1, 200.0)
 		"noteFire":
@@ -399,6 +465,7 @@ func _at_player(e: Dictionary, t: String) -> bool:
 	match t:
 		"empower":
 			fx.burst(_at(a, 1.0), null, int(C.EMPOWER_GLOW), 24, 5.0, 0.1, 0.6)
+			fx.glow(_at(a, 1.0), int(C.EMPOWER_GLOW), 2.4, 260.0, 0.9, fx.STAR, {"grow": 1.4, "hot": 0.7}) # W18
 		"armor":
 			fx.burst(_at(a, 1.0), null, 0xfff0a0, 14, 6.0, 0.06, 0.3)
 		"amp":

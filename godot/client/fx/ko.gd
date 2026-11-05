@@ -5,6 +5,7 @@ extends Node3D
 const C := preload("res://core/config.gd")
 const Co := preload("res://core/coords.gd")
 const FM := preload("res://fx/fx_math.gd")
+const FXC := preload("res://fx/fx_config.gd")
 
 var fx # effects.gd
 var color_of := func(_id): return 0xffffff
@@ -110,6 +111,11 @@ func smash(p: Vector3, out: Dictionary, color: int, me: bool, near: bool) -> voi
 	fx.burst(at, {"x": dir.x, "y": dir.y}, color, parts(C.KO_SMASH_PARTICLES), 12.0, 0.16, 0.8)
 	fx.burst(at, null, 0xffffff, parts(C.KO_SMASH_PARTICLES / 2.0), 6.0, 0.1, 0.5)
 	fx.ring(at, color, 5.0, 0.4)
+	# W18: 줄기 밑동 번쩍 + 바깥으로 그 사람 색 불꽃 줄 (fx_config KO_FX)
+	var K: Dictionary = FXC.KO_FX
+	fx.glow(at, color, K.smash_flash[0], K.smash_flash[1], 1.0, fx.STAR, {"grow": 1.4, "hot": 1.0})
+	var sp: Array = K.smash_sparks
+	fx.sparks(at, dir, color, FXC.count(sp[0], fx.lv), sp[1], sp[2], sp[3], 0.45)
 	if me:
 		fx.shake(C.KO_SHAKE_ME, C.KO_SHAKE_MS)
 	elif near:
@@ -135,8 +141,16 @@ func crush(p: Vector3, me: bool, near: bool) -> void:
 	fx.burst(base, null, 0x9a8a7a, parts(C.KO_CRUSH_DUST), 7.0, 0.22, 1.0) # 먼지 크게
 	fx.burst(base + Vector3(0, 0, 0.6), null, 0x5d6b7a, parts(C.KO_CRUSH_CHIPS), 9.0, 0.16, 0.8) # 블록 조각
 	fx.ring(base, 0xd8c8b0, 3.5, 0.35, true)
+	# W18: 먼지 구름 + 블록 조각 (튀고 멈춤) + 바닥 빛 고리 (fx_config KO_FX)
+	var K: Dictionary = FXC.KO_FX
+	var cs: Array = K.crush_smoke
+	fx.smoke(base, 0xa89a88, FXC.count(cs[0], fx.lv), cs[1], cs[2], 0.5, 1.6, 0.7)
+	var cc: Array = K.crush_chunks
+	fx.chunks(base + Vector3(0, 0, 0.4), null, 0x5d6b7a, FXC.count(cc[0], fx.lv), cc[1], cc[2])
+	fx.quake(base, 1.4)
 	if me or near:
-		stop_until = now_ms() + C.KO_CRUSH_STOP_MS # 짧은 히트스톱
+		if not fx.reduced: # 움직임 줄이기면 히트스톱 없음 (W18)
+			stop_until = now_ms() + C.KO_CRUSH_STOP_MS # 짧은 히트스톱
 		fx.shake(C.KO_SHAKE_ME if me else C.KO_SHAKE_NEAR, C.KO_SHAKE_MS)
 
 
@@ -144,6 +158,11 @@ func crush(p: Vector3, me: bool, near: bool) -> void:
 func final(e: Dictionary) -> void:
 	var now := now_ms()
 	slow = {"start": now, "until": now + C.KO_FINAL_MS, "x": float(e.get("x", 0)), "y": float(e.get("y", 0)), "z": float(e.get("z", 0))}
+	# W18: 마지막 킬 자리에 하얀 번쩍 + 그 사람 색 빛 고리 (슬로모션 화면 시계로 흘러 천천히 퍼짐 — fx_config KO_FX.final)
+	var F: Array = FXC.KO_FX.final
+	var at := Vector3(slow.x, slow.y, slow.z + 0.8)
+	fx.glow(at, 0xffffff, F[0], F[1], 1.0, fx.STAR, {"grow": 1.5, "hot": 1.0, "front": 0.5})
+	fx.glow(at, color_of.call(e.get("who")), 0.5, F[1] * 1.4, 0.9, fx.SHOCK, {"grow": F[0] * 2.0 / 0.5, "pw": 1.2})
 	View.sound_cue.emit("final", {"who": e.get("who"), "by": e.get("by"), "x": slow.x, "y": slow.y, "z": slow.z, "color": color_of.call(e.get("who"))})
 
 
