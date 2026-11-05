@@ -748,7 +748,29 @@ func test_ninja_info() -> void:
 		check(tri >= want[k][0] and tri <= want[k][1], "%s 삼각형 %d (%d~%d)" % [k, tri, want[k][0], want[k][1]])
 		var st := _albedo_stats(body_sf.mesh, body_sf.tex)
 		check(st[1] > 0.05 and st[1] < 0.35, "%s 몸 색 칸 넓이 %.0f%% (5~35%% — 목도리·허리띠)" % [k, st[1] * 100.0])
-	check(info.cfg.tint == "mask" and (info.cfg.attach as Array).size() == 2 and (info.cfg.keep as Array).is_empty() and str(info.cfg.get("vm_node", "")) == "", "ninja.json: mask·단검 2 (판 몸만)·1인칭은 팔꿈치 아래 가르기")
+	check(info.cfg.tint == "mask" and (info.cfg.attach as Array).size() == 2 and (info.cfg.keep as Array).is_empty() and str(info.cfg.get("vm_node", "")) == "ninja_vm", "ninja.json: mask·단검 2 (판 몸만)·1인칭은 닫힌 팔 노드 ninja_vm (W23)")
+
+
+# 위치가 같은 꼭짓점을 한 점으로 보고 삼각형 한 개에만 쓰인 모서리 수 (0 = 닫힌 껍질)
+static func _open_edges(mesh: ArrayMesh) -> int:
+	var arr := mesh.surface_get_arrays(0)
+	var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+	var ks := PackedStringArray()
+	for v in vs:
+		ks.append("%d,%d,%d" % [roundi(v.x * 1e5), roundi(v.y * 1e5), roundi(v.z * 1e5)])
+	var ec := {}
+	for i in range(0, idx.size(), 3):
+		for k in 3:
+			var a: String = ks[idx[i + k]]
+			var b: String = ks[idx[i + (k + 1) % 3]]
+			var e: String = (a + "|" + b) if a < b else (b + "|" + a)
+			ec[e] = int(ec.get(e, 0)) + 1
+	var n := 0
+	for e in ec:
+		if ec[e] == 1:
+			n += 1
+	return n
 
 
 # 판 몸: 크기·발바닥, 뼈가 우리 관절 방향을 따라감 (팔 들기·무릎 굽힘), 단검 두 자루가 손에 붙음, 몸 색 칸 = 플레이어 색, 안쪽 몸 소품은 안 남김
@@ -787,13 +809,17 @@ func test_ninja_body() -> void:
 # 1인칭 쌍둥이: stage LOD 의 팔꿈치 아래 삼각형만 남김 (소매·장갑이 닫힌 팔이라 깨지지 않음), 단검은 안 붙임 (viewmodel 이 표창을 쥐여 줌)
 func test_ninja_first_person() -> void:
 	var t = _body("ninja", false)
-	check(t.ext != null and not t.ext.third and t.ext.lod == str(t.ext.info.cfg.lods.stage), "1인칭 쌍둥이 = stage LOD")
+	check(t.ext != null and not t.ext.third and t.ext.lod == "ninja_vm", "1인칭 쌍둥이 = 닫힌 팔 노드 ninja_vm (W23)")
 	if t.ext != null:
 		var arm_tri := 0
 		for sf in _lod_surfs(t.ext.info, t.ext.lod):
 			if sf.vm_mesh != null:
 				arm_tri += _tris(sf.vm_mesh)
-		check(arm_tri > 300 and arm_tri < 4000, "1인칭 팔 삼각형 %d (아래팔·손만 남김)" % arm_tri)
+		check(arm_tri > 300 and arm_tri < 5000, "1인칭 팔 삼각형 %d (아래팔·손만)" % arm_tri)
+		for sf in _lod_surfs(t.ext.info, t.ext.lod):
+			if sf.vm_mesh != null:
+				var op := _open_edges(sf.vm_mesh)
+				check(op <= 20, "1인칭 팔 닫힘: 열린 가장자리 %d (예전 가르기는 팔꿈치 둘레가 수백 개 열림)" % op)
 		var bas := 0
 		for ba in t.ext.find_children("*", "BoneAttachment3D", true, false):
 			bas += 1

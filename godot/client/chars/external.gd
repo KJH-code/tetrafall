@@ -15,6 +15,7 @@ extends RefCounted
 const C := preload("res://core/config.gd")
 const G3 := preload("res://shaders/g3.gd")
 const K := preload("res://chars/chars_config.gd")
+const Clips := preload("res://chars/ext_clips.gd")
 
 const DIR := "res://assets/models/ext/"
 
@@ -337,6 +338,9 @@ static func model_info(scene: PackedScene, cfg: Dictionary):
 		info.anims = Array((ap as AnimationPlayer).get_animation_list())
 		break
 	info.vm_bones = _vm_bones(info)
+	# W23 동작 클립 (cfg.clips.file = 뼈대·동작만 든 .glb, 안 쓰면 {}) — 몸끼리 같이 씀
+	var cc = cfg.get("clips", {})
+	info.clipset = Clips.load_lib(str((cc as Dictionary).get("file", ""))) if cc is Dictionary else {}
 	var vm_node: String = str(cfg.get("vm_node", ""))
 	for sf in surfs:
 		# W20 vm_node: 1인칭 팔 = glb 안에 따로 만든 닫힌 팔 메시 (노드 이름) 통째로. 없으면 예전 (팔꿈치 아래 삼각형 가르기)
@@ -524,6 +528,25 @@ class Ext extends Node3D:
 	var face_now := ""
 	var root_k := 1.0
 	var opacity := 1.0
+	# W23 동작 클립 층 (ext_clips.gd): 코드 구동 위에 뼈 회전을 클립 쪽으로 섞음 (cw = 섞는 정도)
+	const Rag_ := preload("res://chars/ragdoll.gd")
+	const Clips_ := preload("res://chars/ext_clips.gd")
+	var clipset: Dictionary = {}
+	var cbones := {} # 클립 뼈 이름 → 뼈 번호
+	var cw := 0.0
+	var air_t := 0.0
+	var last_t := 0.0
+	var cur_clip := ""
+	var last_sel := {}
+	var last_layer := {} # 뼈 이름 → Quaternion (지난 프레임 클립 층 결과, 클립이 바뀔 때 크로스페이드 시작점)
+	var fade_from := {}
+	var fade_t := 1.0
+	var clip_dirty := false # 클립 층이 풀어 둔 뼈를 쉬는 자세로 되돌려야 함
+	var forced := {} # 확인용 (tools/clip_shot.gd): {clip, t, air} 를 강제
+	var clip_info := {} # 확인용: 마지막 프레임 {clip, cw, dy}
+	const Cloth_ := preload("res://chars/ext_cloth.gd")
+	var cloths: Array = [] # 천·끈 사슬 (cfg.cloth, ext_cloth.gd) — 판 몸만
+	var cloth_t := 0.0
 
 	func setup(b: Node3D, inf: Dictionary, third_: bool) -> bool:
 		body = b
@@ -557,6 +580,16 @@ class Ext extends Node3D:
 			set_process(true)
 		else:
 			set_process(false)
+		if third:
+			for cdef in info.cfg.get("cloth", []):
+				var cl = Cloth_.new()
+				if cl.setup(sk, cdef.get("bones", []), info, cdef):
+					cloths.append(cl)
+		clipset = info.get("clipset", {})
+		for cn in clipset:
+			for bn in (clipset[cn].rot as Dictionary):
+				if not cbones.has(bn):
+					cbones[bn] = sk.find_bone(bn)
 		sync()
 		return true
 
@@ -703,11 +736,22 @@ class Ext extends Node3D:
 				if pt.has("alpha"):
 					(pt.alpha as ShaderMaterial).set_shader_parameter("albedo_tex", pt.tex)
 
-	# 매 프레임: 관절 → 뼈
-	func sync() -> void:
+	# 매 프레임: 관절 → 뼈 (st = body._anim_state — 있으면 동작 클립 층도, 판 몸만)
+	func sync(st = null) -> void:
 		_face_sync()
 		if clip != "" or sk == null:
 			return
+		_code_sync()
+		if third and not clipset.is_empty() and (st != null or not forced.is_empty()):
+			_clip_layer(st)
+		if not cloths.is_empty():
+			var now := Time.get_ticks_msec() * 0.001
+			var cdt := clampf(now - cloth_t, 0.0, 0.1) if cloth_t > 0.0 else 0.0
+			cloth_t = now
+			for cl in cloths:
+				cl.step(cdt)
+
+	func _code_sync() -> void:
 		for m in maps:
 			var jr = _rel(m.joint)
 			if jr == null:
@@ -740,6 +784,123 @@ class Ext extends Node3D:
 				sk.set_bone_pose_scale(b, loc.basis.get_scale())
 			else:
 				glob[b] = (glob[p] * (rl[b] as Transform3D)) if p >= 0 else (rl[b] as Transform3D)
+
+	# W23 동작 클립 층: 상태 → 클립·시각 (ext_clips.gd select) → 뼈 회전을 코드 구동 결과와 cw 만큼 섞음.
+	# 힘 빠진 몸 (래그돌 깨어 있고 모터 약함) 은 코드 (물리) 쪽으로 빨리 돌아감 — 클립이 쓰러지는 몸을 붙잡지 않게.
+	func _clip_layer(st) -> void:
+		var cc: Dictionary = info.cfg.get("clips", {})
+		var now := Time.get_ticks_msec() * 0.001
+		var dt := clampf(now - last_t, 0.0, 0.1) if last_t > 0.0 else 0.0
+		last_t = now
+		var sel := {"clip": ""}
+		if not forced.is_empty():
+			sel = forced
+		elif st != null:
+			air_t = air_t + dt if bool(st.get("air", false)) else 0.0
+			sel = Clips_.select(cc, st, air_t)
+		var want := 1.0 if (str(sel.clip) != "" and clipset.has(str(sel.clip))) else 0.0
+		if want > 0.0 and forced.is_empty():
+			var rg = Rag_._inst
+			if rg != null and is_instance_valid(rg) and rg.rags.has(body):
+				var r: Dictionary = rg.rags[body]
+				if r.awake and float(r.motor) < K_.EXT_CLIP_MOTOR_MIN:
+					want = 0.0
+		var rate: float = (K_.EXT_CLIP_IN if want > cw else K_.EXT_CLIP_OUT)
+		cw = want if not forced.is_empty() else move_toward(cw, want, dt * rate)
+		if want > 0.0:
+			last_sel = sel
+		var use: Dictionary = sel if want > 0.0 else last_sel
+		if cw <= 0.0005 or str(use.get("clip", "")) == "" or not clipset.has(str(use.get("clip", ""))):
+			if clip_dirty:
+				_clip_release()
+			cw = 0.0
+			clip_info = {"clip": "", "cw": 0.0}
+			return
+		var name := str(use.clip)
+		if name != cur_clip:
+			fade_from = last_layer.duplicate() if cw > 0.05 else {}
+			fade_t = 0.0 if not fade_from.is_empty() else 1.0
+			cur_clip = name
+		fade_t = minf(1.0, fade_t + dt / K_.EXT_CLIP_FADE_S)
+		var data: Dictionary = clipset[name]
+		var an: Animation = data.anim
+		var tt := float(use.get("t", 0.0))
+		if use.get("norm", false):
+			tt *= float(data.len)
+		tt = fposmod(tt, float(data.len)) if use.get("loop", false) else clampf(tt, 0.0, float(data.len))
+		var ef := fade_t * fade_t * (3.0 - 2.0 * fade_t)
+		var rl: Array = info.rest_local
+		for bn in data.rot:
+			var bi: int = int(cbones.get(bn, -1))
+			if bi < 0:
+				continue
+			var q: Quaternion = an.rotation_track_interpolate(int(data.rot[bn]), tt)
+			if fade_t < 1.0 and fade_from.has(bn):
+				q = (fade_from[bn] as Quaternion).slerp(q, ef)
+			last_layer[bn] = q
+			var base: Quaternion = sk.get_bone_pose_rotation(bi) if mapped.has(bi) else (rl[bi] as Transform3D).basis.get_rotation_quaternion()
+			sk.set_bone_pose_rotation(bi, base.slerp(q, cw))
+		clip_dirty = true
+		var hb: int = int(info.map.get("hips", -1))
+		var dy := 0.0
+		if hb >= 0:
+			var hp: Vector3 = sk.get_bone_pose_position(hb)
+			var key := sk.get_bone_name(hb)
+			if data.pos.has(key):
+				var cp: Vector3 = an.position_track_interpolate(int(data.pos[key]), tt)
+				sk.set_bone_pose_position(hb, hp.lerp(cp, cw))
+			# 발 붙이기: 가장 낮은 발 뼈가 바닥 (쉬는 자세 높이) 에 닿게 골반을 올리거나 내림 (달리기는 통통 뜨는 걸 두려고 파묻힘만 막음)
+			if not bool(use.get("air", false)):
+				dy = _ground_dy(cc, str(use.get("kind", "")) == "loco")
+				if absf(dy) > 1e-6:
+					sk.set_bone_pose_position(hb, sk.get_bone_pose_position(hb) + Vector3(0, dy * cw, 0))
+		clip_info = {"clip": name, "cw": cw, "dy": dy, "t": tt}
+
+	# 뼈 높이 (뼈대 공간): 뼈 지역 자세를 부모로 곱함 (get_bone_global_pose 는 트리 밖 뼈대에선 안 갱신됨 — 테스트·초상)
+	func _bone_y(bi: int) -> float:
+		var t := Transform3D.IDENTITY
+		var b := bi
+		while b >= 0:
+			t = sk.get_bone_pose(b) * t
+			b = sk.get_bone_parent(b)
+		return t.origin.y
+
+	func _ground_dy(cc: Dictionary, sink_only: bool) -> float:
+		var names: Array = cc.get("ground", [])
+		if names.is_empty():
+			return 0.0
+		var rest_min := 1e9
+		var cur_min := 1e9
+		for bn in names:
+			var bi := sk.find_bone(str(bn))
+			if bi < 0:
+				continue
+			rest_min = minf(rest_min, (info.rest_global[bi] as Transform3D).origin.y)
+			cur_min = minf(cur_min, _bone_y(bi))
+		if rest_min > 1e8:
+			return 0.0
+		var dy := rest_min - cur_min
+		if sink_only and dy < 0.0:
+			return 0.0
+		return clampf(dy, -0.2, 0.2)
+
+	# 클립이 끝나면 클립이 건드린 뼈 중 코드가 안 맞추는 뼈 (척추·빗장·머리·손가락) 를 쉬는 자세로
+	func _clip_release() -> void:
+		clip_dirty = false
+		cur_clip = ""
+		last_layer.clear()
+		var rl: Array = info.rest_local
+		for bn in cbones:
+			var bi: int = int(cbones[bn])
+			if bi >= 0 and not mapped.has(bi):
+				sk.set_bone_pose_rotation(bi, (rl[bi] as Transform3D).basis.get_rotation_quaternion())
+
+	# 확인용 (tools/clip_shot.gd): 클립 하나를 그 시각 (초) 에 통째로
+	func preview_clip(nm: String, t: float, in_air := false) -> void:
+		forced = {"clip": nm, "t": t, "air": in_air, "kind": "act"} if nm != "" else {}
+		if nm == "":
+			cw = 0.0
+		sync()
 
 	# ④ 표면마다 MeshInstance3D (원래 자리·스킨 그대로), 재질은 툰
 	func _surfaces() -> void:

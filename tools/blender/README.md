@@ -177,3 +177,16 @@ blender -b --factory-startup -P tools/blender/tripo/posecheck.py -- <리깅.glb>
 - **1인칭**: 닫힌 팔 메시 (`vm_node`) 안 만들고 로더의 팔꿈치 아래 가르기 그대로 — 방패가 손가락·아래팔 뼈에 매여 있어서 같이 따라옴. 방패 올려치기·내려치기에서 쥔 손 (IK 로 코드 방패 자리까지 내려감) 과 함께 방패가 움직이고 주먹·끈이 방패 앞에 보임. 코드 방패 (`shields` refs) 는 안 씀. 알려진 한계: 방패 동작 때 모델 방패가 W20 소품 (더 작았음) 보다 커서 화면 가운데를 많이 가림.
 - 확인 그림: `stage_shot.gd`·`move_shot.gd` 에 `SHOT_CHAR=tank` (동작 목록 `SHOT_MOVES`, 확대 `SHOT_FOV`), 게임 `--ext --act-freeze`.
 - 알려진 한계: 코드 몸과 팔·다리 길이가 달라 서버 판정 위치 (주먹·해머 끝) 와 보이는 해머가 조금 다름, 방패가 몸 옆으로 0.15 m 튀어나와 좁은 틈에선 방패만 벽에 닿아 보일 수 있음 (판정은 서버라 무관).
+
+
+## 10. W23 — 닌자 1인칭 팔·동작 클립·목도리 뼈 (2026-11-05)
+
+```
+blender -b --factory-startup -P tools/blender/tripo/rig_ninja.py -- --out <폴더>   # → ninja_rigged.glb (+ 닫힌 1인칭 팔 ninja_vm, 목도리 꼬리 뼈 Scarf1~3)
+LOD_LOCK=1 node tools/blender/tripo/lods.mjs <폴더>/ninja_rigged.glb <폴더>/ninja.glb ninja 5000
+blender -b --factory-startup -P tools/blender/tripo/anim_ninja.py -- --rig <폴더>/ninja_rigged.glb --out <폴더>/ninja_anim.glb   # 동작 클립 (뼈대 + 키프레임만)
+node tools/blender/tripo/anim_pack.mjs <폴더>/ninja_anim.glb <폴더>/ninja_anim_p.glb   # 키 줄이기 (prune 은 쓰지 말 것 — 뼈대가 지워져 트랙이 뼈에서 떨어짐)
+```
+- `ninja_vm.py`: 아래팔 축 수직 평면 (팔꿈치에서 12%) 으로 몸 전체를 잘라 손 든 덩어리만 남기고 단면을 메워 오므림. glTF 가져오기가 UV 이음선마다 꼭짓점을 둘로 나눠서 `remove_doubles` 먼저. 꼭짓점 그룹 이름은 메시 데이터에 있어서 오브젝트에 다시 만들어야 내보내기에 스킨이 붙음.
+- `anim_ninja.py` / `clips_ninja.py`: 자세 = 관절 각 (도) 표, 뼈마다 부모가 돌아간 뒤 Blender 축 (앞 +X, 왼 +Y, 위 +Z) 으로 FK. 동작 눈금 WIND 0.30 · STRIKE 0.40 · REC 0.80 (`chars/ext_clips.gd MARKS` 와 같아야 함). 손으로 찍은 키라 품질 한계 있음 — Mixamo 라이브러리는 로그인이 필요해 자동화 못 함.
+- `ninja_scarf.py`: 붉은 꼬리 꼭짓점 (몸 뒤 x < -0.04) 275 개를 뼈 3개 사슬에 (위쪽은 몸통 가중치와 섞임).
