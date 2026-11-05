@@ -107,3 +107,26 @@ v2 모양: 十 슬릿 닫힌 면진 투구 (금 이마 테·정수리 금 능선
 - 방패는 안쪽 몸 허리 노드 아래 + 고정 올림 (attach pos) 이라 허리를 크게 비틀면 모델 등과 조금 뜰 수 있음
 - glb 4 LOD + 아틀라스로 tank.glb ~4 MB (웹 첫 로딩 +) — 8명이면 ~30 MB, 줄이려면 lod0 을 따로 파일로 (대기실에서만 받기) 또는 텍스처 512
 - 판 중 플레이어 색이 대기실에서 바꾼 색을 늦게 따라가는 경우 (자동 조종 `--color` 로 볼 때) — 구운 몸도 같아서 이번 범위 밖
+
+
+## 7. W20 — Tripo 기사로 탱크 몸 교체 (2026-11-05, `tools/blender/tripo/`)
+
+재혁 결정: 탱크 몸 = Tripo 로 만든 기사 (`src/tank_tripo_15k.glb`), W19 의 프로시저럴 탱크 (`chars/tank.py`·`build_character.py tank`) 는 쓰지 않음 (파일은 남김). 원본은 판금 조각이 **한 덩어리로 붙은 메시 하나** (위치로 합치면 조각이 따로 안 떨어짐) 라 조각 단위 단단한 가중치가 안 되고, 꼭짓점마다 뼈 캡슐까지 거리로 가중치.
+
+```
+# 몸: 리깅 → tank_rigged.glb (lod0 한 메시), 그다음 LOD 3개 (meshopt, UV 이음선 안 찢김 — Blender Decimate 는 찢어짐)
+blender -b --factory-startup -P tools/blender/tripo/rig_tank.py -- --out <폴더> [--preview <폴더>] [--dbg]
+node tools/blender/tripo/lods.mjs <폴더>/tank_rigged.glb <폴더>/tank.glb        # npm i @gltf-transform/core@4 @gltf-transform/functions@4 meshoptimizer@0.22 (레포 밖, NODE_PATH)
+# 소품: 방패·망치 (src/cellB_60k.glb 에서 UV 덩어리를 방패 판 평면 거리·위치로 골라 떼어 냄) → 줄이기
+blender -b --factory-startup -P tools/blender/tripo/rig_props.py -- --out <폴더>
+node tools/blender/tripo/lods.mjs prop <폴더>/tank_shield_hi.glb <폴더>/tank_shield.glb 1500   # 망치 900
+# 자세별 확인 (걷기·팔 들기·쪼그림·점프, 앞·옆·뒤)
+blender -b --factory-startup -P tools/blender/tripo/verify_glb.py -- <tank.glb> <폴더> lod0,lod2
+```
+
+- 뼈 16 (우리 관절 이름), 키 1.9 m, 앞 -Y (glTF +Z). 관절 자리·캡슐 `rig_tank.py` `JL`·`CAPS`, 가중치 부드러움 `TAU`.
+- 몸 색 칸 (`tint: "mask"`) = 빨강 칸 (망토·앞 천·목도리, 몸 넓이 ~31%): 텍스처의 빨강을 밝기만 남긴 회백으로 바꾸고 (`GRAY`) UV2.x = 1 로 표시 → 플레이어 색을 곱함. 꼭짓점 색 (흰) 필요.
+- 망토 = 몸통 뼈 (아래는 허리·골반으로 섞임), 망토와 팔을 잇는 삼각형은 팔을 들 때 가시처럼 늘어나서 뗌 (`CUT`).
+- 텍스처 알베도 한 장 (원본 4096 → 2048 jpg, 법선·금속 그림 뺌). 표정·얼굴 재질 없음 (닫힌 투구가 텍스처에 구워짐) → `tank.json` 에 `faces` 없음.
+- LOD: stage = 원본 1.49만, 판 높음·보통·낮음 = 5000·4000·3000 (`lods.mjs` `TARGETS`). 방패 2500·망치 900 (소품은 meshopt 한계로 목표보다 큼).
+- 알려진 한계: **1인칭 팔** (`vm_from` 팔꿈치 아래 삼각형 가르기) 이 이 몸에선 깨져 보임 — 붙은 한 덩어리 메시를 뼈로 가른 열린 껍질이라 외곽선 가시·늘어진 삼각형. 전용 닫힌 1인칭 팔 메시가 필요함. 방패 뒷면 (손잡이 쪽) 에 팔이 겹쳐 있던 구멍이 있음 (바깥 면은 온전). 망치 (`tank_hammer.glb`) 는 파일만 있고 게임에 붙이지 않음.

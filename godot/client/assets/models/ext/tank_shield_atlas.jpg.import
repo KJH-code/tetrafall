@@ -2,16 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://tftna55nfhbh"
-path="res://.godot/imported/tank_face_attack.png-b1709b464646941e1e0af741f724e6ae.ctex"
+uid="uid://ml83so27odo7"
+path="res://.godot/imported/tank_shield_atlas.jpg-68ef7a0065274141cb829b1a6e90b195.ctex"
 metadata={
 "vram_texture": false
+}
+generator_parameters={
+"md5": "d5ed8185ad39a8be483ebe5d64a13a80"
 }
 
 [deps]
 
-source_file="res://assets/models/ext/tank_face_attack.png"
-dest_files=["res://.godot/imported/tank_face_attack.png-b1709b464646941e1e0af741f724e6ae.ctex"]
+source_file="res://assets/models/ext/tank_shield_atlas.jpg"
+dest_files=["res://.godot/imported/tank_shield_atlas.jpg-68ef7a0065274141cb829b1a6e90b195.ctex"]
 
 [params]
 
@@ -23,7 +26,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

@@ -2,16 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b3rwfnt4m4vlc"
-path="res://.godot/imported/tank_face_hit.png-0e64a0d1a5af27148d58e63d164786e4.ctex"
+uid="uid://dx2nijawayymp"
+path="res://.godot/imported/tank_hammer_atlas.jpg-b896a3c3a4b9a611497dda0fb45b5471.ctex"
 metadata={
 "vram_texture": false
+}
+generator_parameters={
+"md5": "d5ed8185ad39a8be483ebe5d64a13a80"
 }
 
 [deps]
 
-source_file="res://assets/models/ext/tank_face_hit.png"
-dest_files=["res://.godot/imported/tank_face_hit.png-0e64a0d1a5af27148d58e63d164786e4.ctex"]
+source_file="res://assets/models/ext/tank_hammer_atlas.jpg"
+dest_files=["res://.godot/imported/tank_hammer_atlas.jpg-b896a3c3a4b9a611497dda0fb45b5471.ctex"]
 
 [params]
 
@@ -23,7 +26,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

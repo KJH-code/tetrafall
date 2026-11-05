@@ -1,10 +1,10 @@
 {
-	"_": "W19 Blender 로 만든 몸 (tools/blender/build_character.py tank) — 다시 만들면 덮어씀. 키는 chars/chars_config.gd EXT_DEFAULTS",
-	"height": 1.167,
+	"_": "W20 Tripo 로 만든 기사 (tools/blender/tripo/ — rig_tank.py 리깅 + lods.mjs LOD, 소품 rig_props.py) — 다시 만들면 덮어씀. 키는 chars/chars_config.gd EXT_DEFAULTS",
+	"height": 1.03261,
 	"offset": [
-		-0.04249,
-		-0.00378,
-		0.00024
+		-0.07,
+		0.0,
+		0.0
 	],
 	"tint": "mask",
 	"lods": {
@@ -12,11 +12,6 @@
 		"high": "tank_lod1",
 		"medium": "tank_lod2",
 		"low": "tank_lod3"
-	},
-	"faces": {
-		"idle": "res://assets/models/ext/tank_face_idle.png",
-		"hit": "res://assets/models/ext/tank_face_hit.png",
-		"attack": "res://assets/models/ext/tank_face_attack.png"
 	},
 	"attach": [
 		{
@@ -60,32 +55,9 @@
 		0.22,
 		3.0
 	],
-	"face_glow": 0.9,
-	"label_lift": 0.22,
-	"stats": {
-		"tris": {
-			"lod0": 24468,
-			"lod1": 10500,
-			"lod2": 7200,
-			"lod3": 3400
-		},
-		"full_tris": 24468,
-		"prop_tris": {
-			"shield": 1400
-		},
-		"bones": 16,
-		"atlas": 1024,
-		"face_px": 512,
-		"box_min": [
-			-0.416,
-			-0.797,
-			-0.0038
-		],
-		"box_max": [
-			0.3311,
-			0.7965,
-			2.1435
-		],
-		"auto_weight_fail": []
-	}
+	"label_lift": 0.12,
+	"vm_from": "elbow",
+	"vm_snap": [
+		"elbow"
+	]
 }

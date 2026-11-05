@@ -14,7 +14,7 @@
 | `chars_config.gd` `EXT` | 기본 끔 (지금 든 건 시험 로봇이라). 실행 인자 `--ext` 로 켬, 테스트는 `Body.use_ext` |
 | `tests/test_external.gd` | 11개 (4절) |
 
-탱크 자리 `assets/models/ext/tank.glb` (+ `tank_shield.glb`·`tank_face_*.png`·`tank.json`) = **W19 Blender 로 만든 고퀄 탱크** (`tools/blender/` — 뼈 이름이 우리 관절 그대로·쉬는 자세 같음, LOD 메시 4 (`lods`: 대기실·초상·1인칭 = stage, 판 = 화질), 구운 알베도 텍스처 + 몸 색 칸만 플레이어 색 곱하기, 얼굴 재질 `_face` = 표정 텍스처 교체·외곽선 없음, 툰 단계·림·외곽선 굵기 조정 — 규격·비용은 `tools/blender/README.md`).
+탱크 자리 `assets/models/ext/tank.glb` (+ `tank_shield.glb`·`tank_hammer.glb`·`tank.json`) = **W20 Tripo 기사 (리깅 `tools/blender/tripo/`, README 7절 — 얼굴 재질·표정 없음, 몸 색 칸 = 망토·천)**. 아래 W19 설명 (얼굴 재질·표정·방패 크기) 은 예전 몸 기준 · (`tools/blender/` — 뼈 이름이 우리 관절 그대로·쉬는 자세 같음, LOD 메시 4 (`lods`: 대기실·초상·1인칭 = stage, 판 = 화질), 구운 알베도 텍스처 + 몸 색 칸만 플레이어 색 곱하기, 얼굴 재질 `_face` = 표정 텍스처 교체·외곽선 없음, 툰 단계·림·외곽선 굵기 조정 — 규격·비용은 `tools/blender/README.md`).
 시험 모델: `assets/models/ext/robot_test.glb` = Quaternius 로봇 (three.js 예제 RobotExpressive, CC0 — `assets/CREDITS.md`, W19 에 tank.glb 에서 옮김, 테스트만 씀).
 이 모델은 몸 대부분이 **뼈에 붙은 딱딱한 조각** (BoneAttachment3D) + 손만 스킨, 발 뼈가 IK 용으로 뿌리 뼈 밑에 있음 → 일부러 까다로운 경우. Meshy·Tripo 처럼 **스킨 메시 하나** 인 모델은 테스트의 합성 모델 (Mixamo 이름 T 포즈, 뼈마다 쉬는 회전 제각각) 로 확인.
 
