@@ -1,7 +1,19 @@
 # W20 확인 그림: 대기실 무대 빛으로 탱크 3인칭 몸을 동작별 자세 (act 를 그 단계에 멈춤) 로 나란히 한 장. 방패·해머가 손·등·앞에 붙는지 눈으로 봄.
+# SHOT_CHAR=<캐릭터 id> 환경 변수로 다른 캐릭터 (기본 tank).
 # 실행 (레포 뿌리): xvfb-run -a -s "-screen 0 1700x900x24" <godot> --path godot/client -s ../../tools/blender/move_shot.gd -- <out.png> [yaw 도, 기본 35] [stage|high]
 extends SceneTree
 const MOVES := [["", "", 0.0], ["주먹", "strike", 0.5], ["어깨 박치기", "strike", 0.5], ["방패 올려치기", "wind", 0.9], ["방패 올려치기", "strike", 0.6], ["방패 내려치기", "strike", 0.5]]
+# SHOT_FOV (기본 26)·SHOT_DIST (기본 19) 로 확대, 동작 수만큼 가운데 정렬.
+# SHOT_MOVES="동작:strike|wind:u;…" 로 동작 목록을 바꿈 (닌자 예: SHOT_MOVES=";베기:strike:0.5;반대 베기:strike:0.5;표창:strike:0.5;ninjaDash:strike:0.5;공중 베기:wind:0.9")
+func _moves() -> Array:
+	var env := OS.get_environment("SHOT_MOVES")
+	if env == "":
+		return MOVES
+	var out := []
+	for e in env.split(";"):
+		var f := e.split(":")
+		out.append([f[0], f[1] if f.size() > 1 else "", float(f[2]) if f.size() > 2 else 0.0])
+	return out
 func _initialize() -> void:
 	_run.call_deferred()
 func _run() -> void:
@@ -31,22 +43,23 @@ func _run() -> void:
 	vp.add_child(light)
 	light.look_at_from_position(Vector3(3, 4, 2), Vector3.ZERO, Vector3.UP)
 	var bodies := []
-	for i in MOVES.size():
-		var b = P.still_body(Chars, "tank", Color.html("e05050"))
+	var MV := _moves()
+	for i in MV.size():
+		var b = P.still_body(Chars, OS.get_environment("SHOT_CHAR") if OS.get_environment("SHOT_CHAR") != "" else "tank", Color.html("e05050"))
 		var t := Node3D.new()
-		t.position = Vector3(0, 0, -5.25 + i * 2.1)
+		t.position = Vector3(0, 0, (i - (MV.size() - 1) / 2.0) * 2.1)
 		t.rotation.y = deg_to_rad(yaw)
 		vp.add_child(t)
 		t.add_child(b)
 		bodies.append(b)
 	var cam := Camera3D.new()
-	cam.fov = 26
+	cam.fov = float(OS.get_environment("SHOT_FOV")) if OS.get_environment("SHOT_FOV") != "" else 26.0
 	vp.add_child(cam)
-	cam.look_at_from_position(Vector3(19.0, 1.4, 0), Vector3(0, 1.0, 0), Vector3.UP)
+	cam.look_at_from_position(Vector3(float(OS.get_environment("SHOT_DIST")) if OS.get_environment("SHOT_DIST") != "" else 19.0, 1.4, 0), Vector3(0, 1.0, 0), Vector3.UP)
 	cam.current = true
 	for k in 14:
 		for i in bodies.size():
-			var m: Array = MOVES[i]
+			var m: Array = MV[i]
 			if str(m[0]) != "":
 				var tt := Time.get_ticks_msec() / 1000.0
 				var u: float = m[2]

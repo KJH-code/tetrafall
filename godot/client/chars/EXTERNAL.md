@@ -15,6 +15,8 @@
 | `tests/test_external.gd` | 11개 (4절) |
 
 탱크 자리 `assets/models/ext/tank.glb` (+ `tank_shield.glb`·`tank_hammer.glb`·`tank.json`) = **W20 Tripo 기사 (리깅 `tools/blender/tripo/`, README 7절 — 얼굴 재질·표정 없음, 몸 색 칸 = 망토·천)**. 아래 W19 설명 (얼굴 재질·표정·방패 크기) 은 예전 몸 기준 · (`tools/blender/` — 뼈 이름이 우리 관절 그대로·쉬는 자세 같음, LOD 메시 4 (`lods`: 대기실·초상·1인칭 = stage, 판 = 화질), 구운 알베도 텍스처 + 몸 색 칸만 플레이어 색 곱하기, 얼굴 재질 `_face` = 표정 텍스처 교체·외곽선 없음, 툰 단계·림·외곽선 굵기 조정 — 규격·비용은 `tools/blender/README.md`).
+닌자 자리 `assets/models/ext/ninja.glb` (+ `ninja_dagger.glb`·`ninja.json`) = **자동 리깅 닌자 (W21, `tools/blender/tripo/rig_ninja.py`, README 8절)** — 스킨 메시 하나 + 손가락까지 뼈 65 (Mixamo 식 이름, `ALIASES` 가 그대로 맞춤, `bones` 덮어쓰기 없음), 앞 = glTF +X → `yaw: 0`, 몸 색 칸 `tint: "mask"` = 붉은 목도리·허리띠, 판 몸 LOD = 원본 전체 (stage) + 약 8500 하나 (high·medium·low 가 같은 메시, 이음선 때문에 더 못 줄임), 1인칭 팔 = 닫힌 `vm_node` 없이 **팔꿈치 아래 삼각형 가르기** (소매·장갑이 닫힌 팔이라 깨지지 않음), 단검은 `attach` 로 두 손 뼈에 (`ninja_dagger.glb`, 판 몸만 — 1인칭은 viewmodel 이 표창을 쥐여 줌, 안쪽 몸의 단검·손 구슬은 `keep` 없이 지움).
+
 시험 모델: `assets/models/ext/robot_test.glb` = Quaternius 로봇 (three.js 예제 RobotExpressive, CC0 — `assets/CREDITS.md`, W19 에 tank.glb 에서 옮김, 테스트만 씀).
 이 모델은 몸 대부분이 **뼈에 붙은 딱딱한 조각** (BoneAttachment3D) + 손만 스킨, 발 뼈가 IK 용으로 뿌리 뼈 밑에 있음 → 일부러 까다로운 경우. Meshy·Tripo 처럼 **스킨 메시 하나** 인 모델은 테스트의 합성 모델 (Mixamo 이름 T 포즈, 뼈마다 쉬는 회전 제각각) 로 확인.
 

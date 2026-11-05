@@ -1,0 +1,60 @@
+{
+	"_": "자동 리깅 닌자 (tools/blender/tripo/ — rig_ninja.py 손질 + lods.mjs LOD) — 다시 만들면 덮어씀. 키는 chars/chars_config.gd EXT_DEFAULTS",
+	"height": 1.0,
+	"yaw": 0.0,
+	"tint": "mask",
+	"lods": {
+		"stage": "ninja_lod0",
+		"high": "ninja_lod1",
+		"medium": "ninja_lod1",
+		"low": "ninja_lod1"
+	},
+	"toon_steps": [
+		0.7,
+		0.86,
+		1.0
+	],
+	"outline": 0.45,
+	"rim": [
+		0.22,
+		3.0
+	],
+	"vm_from": "elbow",
+	"vm_snap": [
+		"elbow"
+	],
+	"attach": [
+		{
+			"glb": "res://assets/models/ext/ninja_dagger.glb",
+			"joint": "hand_R",
+			"pos": [
+				0,
+				0.04,
+				0
+			],
+			"rot": [
+				0,
+				0,
+				0
+			],
+			"scale": 1.0,
+			"vm": false
+		},
+		{
+			"glb": "res://assets/models/ext/ninja_dagger.glb",
+			"joint": "hand_L",
+			"pos": [
+				0,
+				0.04,
+				0
+			],
+			"rot": [
+				0,
+				0,
+				0
+			],
+			"scale": 1.0,
+			"vm": false
+		}
+	]
+}

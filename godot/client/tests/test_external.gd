@@ -119,7 +119,7 @@ func test_robot_info() -> void:
 	check(info.names[info.map.hips] == "Body" and info.names[info.map.hand_L] == "Palm2.L" and info.names[info.map.foot_R] == "Foot.R", "로봇 골반·손·발 뼈")
 	check((info.box as AABB).size.y > 0.0 and info.surfs.size() >= 14, "상자·표면 %d" % info.surfs.size())
 	check(info.anims.has("Wave") and info.anims.has("Dance"), "로봇 클립")
-	check(Ext.load_char("dummy") == null and Ext.load_char("없는캐릭터") == null and not Ext.has_char("ninja"), "없는 캐릭터는 null")
+	check(Ext.load_char("dummy") == null and Ext.load_char("없는캐릭터") == null and not Ext.has_char("hunter"), "없는 캐릭터는 null")
 	check(info.cfg.get("keep") == ["shields"] and info.cfg.get("tint") == "band" and float(info.cfg.yaw) == 90.0, "robot_test.json 덮음 + 기본 값")
 
 
@@ -223,7 +223,7 @@ func test_three_tiers() -> void:
 	var off = _body("tank", true, false)
 	check(off.ext == null and off.baked and off.batch != null, "외부 끔 → 구운 몸 (예전 그대로)")
 	off.free()
-	var no = _body("ninja", true, true)
+	var no = _body("hunter", true, true)
 	check(no.ext == null, "외부 모델 없는 캐릭터는 그대로")
 	no.free()
 	var pieces = _robot_body(true, true, false)
@@ -704,3 +704,83 @@ func test_stage_light() -> void:
 					on += 1
 		check(n > 0 and on == n, "%s 툰 재질 %d 개 모두 무대 빛 (%d)" % ["Blender" if ext else "구운", n, on])
 		b.free()
+
+
+# ---------- 닌자 (스킨 메시 하나 + Mixamo 식 뼈 65, tools/blender/tripo/rig_ninja.py) ----------
+
+# 뼈 이름 자동 매칭 (손가락·빗장은 안 맞춤), LOD (stage = 원본 전체, 판 = 약 8500: 이음선 때문에 더 못 줄임), 몸 색 칸 = 목도리·허리띠 일부, ninja.json
+func test_ninja_info() -> void:
+	var info = Ext.load_char("ninja")
+	check(info != null, "닌자 ninja.glb 읽음")
+	if info == null:
+		return
+	for j in Ext.JOINTS:
+		check(info.map.has(j), "뼈 매칭 %s" % j)
+	check(info.map.hips >= 0 and String(info.names[info.map.hips]).ends_with("Hips") and String(info.names[info.map.waist]).ends_with("Spine") and String(info.names[info.map.torso]).ends_with("Spine2"), "골반=Hips·허리=Spine·가슴=Spine2")
+	check(String(info.names[info.map.shoulder_L]).ends_with("LeftArm") and String(info.names[info.map.elbow_R]).ends_with("RightForeArm") and String(info.names[info.map.foot_L]).ends_with("LeftFoot"), "위팔=Arm (빗장 아님)·아래팔=ForeArm·발=Foot")
+	check(info.names.size() >= 60, "손가락까지 뼈 %d" % info.names.size())
+	var lods: Dictionary = info.cfg.get("lods", {})
+	check(lods.size() == 4 and str(lods.high) == str(lods.medium) and str(lods.medium) == str(lods.low) and str(lods.stage) != str(lods.low), "LOD: stage 하나 + 판 셋이 같은 메시 하나")
+	var want := {"stage": [15000, 20000], "high": [6000, 9500]}
+	for k in want:
+		var ss := _lod_surfs(info, str(lods.get(k, "")))
+		var tri := 0
+		var body_sf = null
+		for sf in ss:
+			tri += _tris(sf.mesh)
+			body_sf = sf
+		check(ss.size() == 1 and body_sf.skinned and body_sf.vcolor and body_sf.tex != null, "%s: 몸 표면 하나 = 스킨·꼭짓점 색 (몸 색 칸)·텍스처" % k)
+		check(tri >= want[k][0] and tri <= want[k][1], "%s 삼각형 %d (%d~%d)" % [k, tri, want[k][0], want[k][1]])
+		var st := _albedo_stats(body_sf.mesh, body_sf.tex)
+		check(st[1] > 0.05 and st[1] < 0.35, "%s 몸 색 칸 넓이 %.0f%% (5~35%% — 목도리·허리띠)" % [k, st[1] * 100.0])
+	check(info.cfg.tint == "mask" and (info.cfg.attach as Array).size() == 2 and (info.cfg.keep as Array).is_empty() and str(info.cfg.get("vm_node", "")) == "", "ninja.json: mask·단검 2 (판 몸만)·1인칭은 팔꿈치 아래 가르기")
+
+
+# 판 몸: 크기·발바닥, 뼈가 우리 관절 방향을 따라감 (팔 들기·무릎 굽힘), 단검 두 자루가 손에 붙음, 몸 색 칸 = 플레이어 색, 안쪽 몸 소품은 안 남김
+func test_ninja_body() -> void:
+	var Gfx = load("res://world/gfx.gd")
+	var was: Dictionary = Gfx.plan
+	Gfx.plan = {}
+	var b = _body("ninja")
+	Gfx.plan = was
+	check(b.ext != null, "닌자 붙음")
+	if b.ext == null:
+		b.free()
+		return
+	var sc: float = b.ext.transform.basis.get_scale().x
+	var hh: float = (b.ext.info.box as AABB).size.y * sc
+	var want_h: float = C.PLAYER_HEIGHT * C.FIGURE_SCALE * float(b.ext.info.cfg.height)
+	check(absf(hh - want_h) < 0.01, "키 %.3f m = 예전 몸 키 %.3f m × height (원본 단위라 배율 %.3f)" % [hh, want_h, sc])
+	for j in ["foot_R", "foot_L"]:
+		var dz: float = _bone_pos(b, b.ext.info.map[j]).y - _jpos(b, b.ext._joint(j)).y
+		check(absf(dz) < 0.1, "발 뼈 높이 = 우리 발 (차이 %.3f m)" % dz)
+	_check_follow(b, "닌자")
+	var ext_n := 0
+	for dr in b.drawn:
+		ext_n += 1 if dr.get("ext", false) else 0
+	check(ext_n == 7 and b.drawn.size() == 7 and b.ext.band == null, "그리는 메시 7 (몸 + 단검 2 × 3 조각, 얻음 %d/%d)" % [ext_n, b.drawn.size()])
+	var daggers := 0
+	for ba in b.ext.find_children("*", "BoneAttachment3D", true, false):
+		daggers += 1 if String((ba as BoneAttachment3D).bone_name).ends_with("Hand") else 0
+	check(daggers == 2, "손 뼈에 단검 둘 (얻음 %d)" % daggers)
+	var m: ShaderMaterial = b.ext.parts[0].mi.material_override
+	check(m.get_shader_parameter("use_vertex_color") == true and m.get_shader_parameter("skin_multiply") == true and (m.get_shader_parameter("skin_tint") as Color).is_equal_approx(Color(0.2, 0.5, 1.0, 1.0)), "몸 색 칸 = 플레이어 색 곱하기")
+	check(b.ext.lod == str(b.ext.info.cfg.lods.high), "판 몸 = high LOD (얻음 %s)" % b.ext.lod)
+	b.free()
+
+
+# 1인칭 쌍둥이: stage LOD 의 팔꿈치 아래 삼각형만 남김 (소매·장갑이 닫힌 팔이라 깨지지 않음), 단검은 안 붙임 (viewmodel 이 표창을 쥐여 줌)
+func test_ninja_first_person() -> void:
+	var t = _body("ninja", false)
+	check(t.ext != null and not t.ext.third and t.ext.lod == str(t.ext.info.cfg.lods.stage), "1인칭 쌍둥이 = stage LOD")
+	if t.ext != null:
+		var arm_tri := 0
+		for sf in _lod_surfs(t.ext.info, t.ext.lod):
+			if sf.vm_mesh != null:
+				arm_tri += _tris(sf.vm_mesh)
+		check(arm_tri > 300 and arm_tri < 4000, "1인칭 팔 삼각형 %d (아래팔·손만 남김)" % arm_tri)
+		var bas := 0
+		for ba in t.ext.find_children("*", "BoneAttachment3D", true, false):
+			bas += 1
+		check(bas == 0, "1인칭에는 단검 안 붙음 (%d)" % bas)
+	t.free()

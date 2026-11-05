@@ -1,4 +1,5 @@
 # W19 확인 그림: 대기실 무대 빛 (흰 빛, 앰비언트 검정) 으로 몸을 나란히 그려 PNG 하나 (화면 필요 — xvfb-run).
+# SHOT_CHAR=<캐릭터 id> 환경 변수로 다른 캐릭터 (기본 tank).
 # 실행 (레포 뿌리): xvfb-run -a -s "-screen 0 1600x1000x24" <godot> --path godot/client -s ../../tools/blender/stage_shot.gd -- <out.png> [stage|high|medium|low] [ext] [faces|turn]
 #   stage = 대기실·초상 LOD (Portrait.still_body), high|medium|low = 판 화질 LOD · ext 면 Blender 몸만 (빨강·청록·노랑), 없으면 구운 몸 3 + Blender 3 · faces 면 얼굴 가까이 표정 3 (기합·맞음·기본)
 extends SceneTree
@@ -38,10 +39,10 @@ func _run() -> void:
 			Body.use_ext = ext
 			var b
 			if lod_mode == "stage":
-				b = P.still_body(Chars, "tank", c)
+				b = P.still_body(Chars, OS.get_environment("SHOT_CHAR") if OS.get_environment("SHOT_CHAR") != "" else "tank", c)
 			else:
 				Gfx.plan = {"level": lod_mode}
-				b = Chars.make_body("tank", c)
+				b = Chars.make_body(OS.get_environment("SHOT_CHAR") if OS.get_environment("SHOT_CHAR") != "" else "tank", c)
 				P.stage_light(b)
 			var t := Node3D.new()
 			t.position = Vector3(0, 0, (-1.4 + i * 1.4) if a.size() > 2 else (-3.5 + i * 1.4))
