@@ -230,3 +230,22 @@ LOD_LOCK=1 node tools/blender/tripo/lods.mjs <폴더>/hook_rigged.glb <폴더>/h
 - **밧줄 시작점**: 코드 손 관절 (`hand_L`) 은 모델 왼손 뼈와 약 20 cm 어긋남 (모델 팔이 짧음) → `hook.json` `rope_bone` (= `LeftHandMiddle4`, 갈고리 뿌리) 의 뼈 위치를 `Ext.rope_point()` 로 얻어 `world/hook_fx.gd` `hand()` 가 씀 (밧줄 던지기·걸림·감김·블록 덩어리 모두). 없는 캐릭터 (`rope_bone` 비움) 는 예전 그대로. 코드 몸의 갈고리 소품은 외부 몸이라 안 남김 (`keep` 없음).
 - 확인 그림: `tools/blender/move_shot.gd` 에 `SHOT_CHAR=hook` (동작 목록 `SHOT_MOVES`).
 - 알려진 한계: 오른 주먹 둘레 찢어진 조각 (위), 코트 치맛자락이 다리 사이에서 늘어나는 건 원본 그대로 (큰 다리 자세에서 약간), 모자 틈 (판 LOD 에서 금 테 사이 작은 구멍 몇 개), 코드 평타 '주먹'은 오른팔이 벨트에서 뻗는 모양이라 주먹이 모델과 길이가 다름.
+
+## 13. W26 — 자동 리깅 대포수 (2026-11-05, `tools/blender/tripo/rig_cannon.py`) — **품질 미달, 기본 켬 비권장 (아래 '한계')**
+
+원본 `tripo/src/cannon_tripo_rigged.glb` (스킨 메시 하나 19,028 삼각형, **Tripo 뼈 이름 78개** — 접두어 없음 `BoneRoot·Hip·Pelvis·Waist·Spine01/02·NeckTwist01/02·Head·L_/R_Thigh·Calf·Foot·ToeBase·Clavicle·Upperarm·Forearm·Hand·손가락 1~3·트위스트·ShareBone`, 알베도 4096, 애니메이션 없음, 두 손으로 앞에 든 손대포가 몸 메시에 붙어 있음, 앞 = glTF +X).
+
+```
+blender -b --factory-startup -P tools/blender/tripo/rig_cannon.py -- --out <폴더>   # → cannon_rigged.glb (cannon_lod0 + cannon_vm + 뼈대) + cannon_gun.glb (손대포 소품)
+LOD_LOCK=1 node tools/blender/tripo/lods.mjs <폴더>/cannon_rigged.glb <폴더>/cannon.glb cannon 5000   # 판 LOD 하나 (약 7600)
+```
+
+- **뼈 이름 매칭**: `chars/external.gd` `ALIASES` 만 (cannon.json 에 bones 없음) — 이 규격 전체에 통함 (바드가 같은 이름). 기존 별칭이 이미 `Pelvis`(골반; `Hip` 은 그 부모라 안 씀)·`Spine01/02`(허리·가슴)·`Upperarm`·`Forearm`·`Hand`·`Thigh`·`Calf`·`Foot` 를 맞췄고 (빗장 `Clavicle` 안 씀), 목만 `NeckTwist01` 별칭 (`necktwist01`·`necktwist`) 을 `head` 앞에 추가. 트위스트·ShareBone·눈·손가락은 안 맞춤 = 부모를 따라감. 테스트 `test_match_conventions` 에 78개 이름 전체.
+- 원본 손질: 뼈대/메시 세계 좌표로 굽기 (이 모델은 어긋남 없었음), 좌우 뒤집기 없음, 알베도 밝기 `LIFT` 0.8, 알베도만 2048 jpg, 이음선 법선 합침.
+- **몸 색 칸** (`tint: "mask"`, 넓이 8.6%): 빨간 두건 (+ 두건 배지) 과 다이너마이트 띠의 빨간 줄 (큰 덩어리 `MIN_RED_CLUSTER` 20 이상) → 회백 + UV2.x = 1. 판 카메라 위에서 두건이 가장 잘 보임. 팀 색 3종 확인 (빨강·파랑·초록, 두건 + 띠).
+- **LOD**: UV 이음선 때문에 약 7600 아래로 안 내려감 (5000·4000·3000 목표도 8190 안팎) → 판 LOD 하나 (high·medium·low 같이) + stage 17,000 대. glb 3.4 MB + 손대포 소품 0.8 MB.
+- **손대포 (가장 큰 문제)**: 원본은 대포가 몸 메시와 **한 덩어리**로 이어져 있고 가중치는 자동으로 왼손·손가락에 매임, 주먹이 대포에 녹아 있음. 코드 자세는 한 팔씩 움직이므로 (후려치기·포탄·반동) 그대로 쓰면 대포가 두 손 사이로 늘어나 가시 (처음 캡처에서 확인). 오른손 뼈 하나에 가중치 1 로 다시 묶어도 몸과 이어진 삼각형이 늘어남 → `split_gun`: 대포 삼각형 (중심이 손 사이 타원·손 앞 원통 안, 주먹·아래팔 꼭짓점은 지킴 `arm_verts`) 을 몸에서 떼어 소품 `cannon_gun.glb` (오른손 뼈 지역 좌표, 모델 키로 나눔) 로. `cannon.json` `attach` 하나 (`joint: hand_R`, `rot [0, 90, 0]` = 포구가 앞, `vm: true`). 코드 대포 (`refs.cannon`) 는 `keep` 없이 안 남김.
+- **자세**: 쉬는 자세가 두 손으로 앞에 든 것이라 코드의 '오른어깨에 멘' 자세 (`_costume_pose` cannon) 대신 `cannon.json` `hold` (우리 관절 값 `shFwd·shOut·elbow`) 를 씀 — `body.gd` 에 `hold` 분기 한 곳 (cfg 에 `hold` 가 없으면 예전 그대로). 평타·스킬 자세는 코드 그대로.
+- **1인칭**: 원본 팔·손은 대포에 손가락이 녹아 있어 대포를 떼면 속이 빈 껍질이라 못 씀 → `make_vm` 이 닫힌 전용 팔 (소매 8각 통 + 가죽 띠 + 주먹, 152 삼각형, 뼈에 가중치 1, 색은 알베도 한 점) 을 `cannon_vm` 으로. 손대포는 `vm: true` 로 같은 소품을 쌍둥이 오른손에.
+- **한계 (캡처로 확인)**: ① 주먹에 녹은 나무 그루터기 (~120 꼭짓점) 와 대포를 뗀 자리의 속 면이 몸에 남아, 서서 있을 때 손 주변에 **어두운 보라 (외곽선 껍질) 면** 이 보이고 후려치기·반동·점프처럼 팔을 크게 쓰는 동작에서 그 면이 리본처럼 늘어남. ② 대포 소품 가장자리에 가는 가시. ③ 1인칭 팔은 상자꼴 (탱크 W20 과 같은 수준). 서 있기·걷기·포탄 쏘기 자세는 알아볼 만하지만 동작 전반이 쓸 만하지 않아 **기본으로 켜지 말 것** — 고치려면 원본을 대포가 따로 떨어진 모델로 다시 뽑거나 (손은 빈 주먹, 대포는 별도 메시) 손으로 메시 수선이 필요.
+- 확인 그림 (`stage_shot.gd`·`move_shot.gd` `SHOT_CHAR=cannon`, `vm_shots.gd <폴더> x cannon --ext`): 코드 어깨 자세 대신 두 손 자세인 것, 팀 색, 동작 contact sheet.

@@ -27,12 +27,13 @@ const PARENT := {"waist": "hips", "torso": "waist", "neck": "torso", "shoulder":
 const CHILD := {"waist": "neck", "torso": "neck", "shoulder": "elbow", "elbow": "hand", "thigh": "knee", "knee": "foot"}
 # 뼈 이름 별칭 (정리한 이름 = 소문자·구분자·좌우·접두어 뺌, 앞에 있을수록 먼저). Mixamo (Hips·Spine·Spine1·Spine2·Neck·Head·LeftShoulder=빗장·LeftArm·LeftForeArm·LeftHand·LeftUpLeg·LeftLeg·LeftFoot),
 # Quaternius·블렌더 Rigify (Hips·Spine·Chest·UpperArm.L·LowerArm.L·Hand.L·UpperLeg.L·LowerLeg.L·Foot.L), 언리얼 (pelvis·spine_01~03·upperarm_l·lowerarm_l·thigh_l·calf_l),
-# 3ds Max Biped (Bip01 L UpperArm·L Forearm·L Thigh·L Calf), Meshy·Tripo 자동 뼈 (Mixamo 식 이름이 많음 — 다르면 <id>.json "bones")
+# 3ds Max Biped (Bip01 L UpperArm·L Forearm·L Thigh·L Calf), Meshy·Tripo 자동 뼈 (Mixamo 식 이름이 많음 — 다르면 <id>.json "bones"),
+# Tripo 자동 리깅 뼈 (BoneRoot·Hip·Pelvis·Waist·Spine01·Spine02·NeckTwist01·Head·L_Clavicle·L_Upperarm·L_Forearm·L_Hand·L_Thigh·L_Calf·L_Foot + 트위스트·ShareBone — 별칭으로 통함, 안 맞춘 뼈는 부모를 따라감)
 const ALIASES := {
 	"hips": ["hips", "pelvis", "hip", "cog"],
 	"waist": ["spine", "abdomen", "spine01", "spine1", "lowerspine", "spinelower", "stomach"],
 	"torso": ["chest", "upperchest", "spine2", "spine02", "spine03", "torso", "upperspine", "spineupper", "ribcage", "spine1", "spine01"],
-	"neck": ["neck", "neck1", "neck01", "head"],
+	"neck": ["neck", "neck1", "neck01", "necktwist01", "necktwist", "head"],
 	"shoulder": ["upperarm", "arm", "uparm", "humerus", "armupper"],
 	"elbow": ["forearm", "lowerarm", "loarm", "elbow", "armlower"],
 	"hand": ["hand", "wrist", "palm"],

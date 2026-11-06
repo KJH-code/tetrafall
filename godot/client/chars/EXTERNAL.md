@@ -21,6 +21,8 @@
 
 갈고리 자리 `assets/models/ext/hook.glb` (+ `hook.json`) = **자동 리깅 갈고리 (해적 선장, W25, `tools/blender/tripo/rig_hook.py`, README 12절)** — 스킨 메시 하나 + 뼈 65, 앞 = glTF +X → `yaw: 0`, 좌우 뒤집기 없음 (갈고리 손이 Mixamo `LeftHand` = 게임 L 관절 팔), 몸 색 칸 `tint: "mask"` = 삼각 모자 (14.8%), 판 LOD = 약 8350 하나 (high·medium·low 같은 메시) + stage 약 18,750, 소품 없음 (갈고리가 몸에 붙음, 코드 갈고리는 안 남김), 1인칭 팔 = glb 안 `hook_vm` (`vm_node`, 왼팔 갈고리가 보임), **`rope_bone: "LeftHandMiddle4"`** = 갈고리 밧줄이 모델 갈고리 뿌리에서 나가게 (`Ext.rope_point()` → `world/hook_fx.gd` `hand()`, 코드 손 관절은 모델 손과 20 cm 어긋남). 원본의 코트가 팔 뼈에 매여 팔과 함께 올라오던 가중치를 고침 (README 12절).
 
+**(보관 중: 재혁 결정으로 대포수 파일 전부는 `assets/models/ext_hold/` 에 있음 — 로더가 안 읽어서 대포수는 예전 코드 몸. 대포가 따로 떨어진 모델이 오면 교체. 되살리려면 `ext/` 로 되돌림, 대포수 전용 테스트 3개는 ext 에 cannon.glb 가 있을 때만 돎, 내보내기 제외 `export_presets.cfg`)** 대포수 자리 `assets/models/ext/cannon.glb` (+ `cannon_gun.glb`·`cannon.json`) = **자동 리깅 대포수 (W26, `tools/blender/tripo/rig_cannon.py`, README 13절, 품질 미달 — 기본 켬 비권장)** — 스킨 메시 하나 + **Tripo 뼈 이름 78개** (접두어 없는 `L_Upperarm` 식, `ALIASES` 가 맞춤: 골반 `Pelvis`·허리 `Spine01`·가슴 `Spine02`·목 `NeckTwist01`), 앞 = glTF +X → `yaw: 0`, 몸 색 칸 `tint: "mask"` = 빨간 두건 + 다이너마이트 띠, 판 LOD 하나 (약 7600) + stage 17,000 대, 손대포는 몸에서 떼어 `attach` (`hand_R`, `vm: true`) 로 오른손 뼈에, 코드 대포는 안 남김, 쉬는 자세는 cfg `hold` (코드 어깨 자세 대신 두 손으로 앞에 듦, `body.gd` `_costume_pose`), 1인칭 = 닫힌 전용 팔 `cannon_vm`.
+
 시험 모델: `assets/models/ext/robot_test.glb` = Quaternius 로봇 (three.js 예제 RobotExpressive, CC0 — `assets/CREDITS.md`, W19 에 tank.glb 에서 옮김, 테스트만 씀).
 이 모델은 몸 대부분이 **뼈에 붙은 딱딱한 조각** (BoneAttachment3D) + 손만 스킨, 발 뼈가 IK 용으로 뿌리 뼈 밑에 있음 → 일부러 까다로운 경우. Meshy·Tripo 처럼 **스킨 메시 하나** 인 모델은 테스트의 합성 모델 (Mixamo 이름 T 포즈, 뼈마다 쉬는 회전 제각각) 로 확인.
 

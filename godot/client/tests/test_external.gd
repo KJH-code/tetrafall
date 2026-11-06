@@ -1109,3 +1109,118 @@ func test_hook_first_person() -> void:
 		seen[String(mi.name).split("_s")[0]] = true
 	check(not seen.has("hook_vm") and not seen.has("hook_lod0"), "판 몸에는 1인칭 팔·stage 메시 없음 (%s)" % [seen.keys()])
 	b.free()
+
+
+# ---------- 대포수 (스킨 메시 하나 + Tripo 자동 리깅 뼈 78 — 접두어 없는 L_/R_ 이름, tools/blender/tripo/rig_cannon.py) ----------
+
+# 뼈 매칭 (ALIASES 만으로 — cannon.json 에 bones 덮어쓰기 없음), LOD, 몸 색 칸 = 빨간 두건·다이너마이트 띠, 손대포는 몸에서 떼어 오른손 소품으로
+func test_cannon_info() -> void:
+	if not Ext.has_char("cannon"): # W26 대포수 몸은 보관 중 (assets/models/ext_hold/) — ext/ 에 cannon.glb 가 없으면 건너뜀
+		print("      (건너뜀: ext/cannon.glb 없음 — 보관 중)")
+		return
+	var info = Ext.load_char("cannon")
+	check(info != null, "대포수 cannon.glb 읽음")
+	if info == null:
+		return
+	for j in Ext.JOINTS:
+		check(info.map.has(j), "뼈 매칭 %s" % j)
+	var nm := func(j: String) -> String: return String(info.names[info.map[j]])
+	check(nm.call("hips") == "Pelvis" and nm.call("waist") == "Spine01" and nm.call("torso") == "Spine02" and nm.call("neck") == "NeckTwist01", "골반=Pelvis·허리=Spine01·가슴=Spine02·목=NeckTwist01")
+	check(nm.call("shoulder_R") == "R_Upperarm" and nm.call("elbow_L") == "L_Forearm" and nm.call("knee_R") == "R_Calf" and nm.call("foot_L") == "L_Foot", "위팔=Upperarm (빗장 안 씀)·아래팔=Forearm·정강이=Calf")
+	check(not (info.cfg.get("bones", {}) as Dictionary).size() > 0, "cannon.json 에 bones 덮어쓰기 없음 (이름 매칭만)")
+	check(info.names.size() >= 70, "손가락·트위스트까지 뼈 %d" % info.names.size())
+	var lods: Dictionary = info.cfg.get("lods", {})
+	check(lods.stage == "cannon_lod0" and lods.high == lods.medium and lods.medium == lods.low and lods.high != lods.stage, "LOD: stage 하나 + 판 하나 (UV 이음선 때문에 약 8000 아래로 안 내려감)")
+	var want := {"stage": [16000, 19500], "high": [6500, 9000]}
+	var stage_sf = null
+	for k in want:
+		var ss := _lod_surfs(info, str(lods.get(k, "")))
+		var tri := 0
+		var body_sf = null
+		for sf in ss:
+			tri += _tris(sf.mesh)
+			body_sf = sf
+		check(ss.size() == 1 and body_sf.skinned and body_sf.vcolor and body_sf.tex != null, "%s: 몸 표면 하나 = 스킨·꼭짓점 색 (몸 색 칸)·텍스처" % k)
+		check(tri >= want[k][0] and tri <= want[k][1], "%s 삼각형 %d (%d~%d)" % [k, tri, want[k][0], want[k][1]])
+		var st := _albedo_stats(body_sf.mesh, body_sf.tex)
+		check(st[1] >= 0.05 and st[1] < 0.3, "%s 몸 색 칸 넓이 %.1f%% (5~30%% — 빨간 두건·다이너마이트 띠)" % [k, st[1] * 100.0])
+		if k == "stage":
+			stage_sf = body_sf
+	check(info.cfg.tint == "mask" and str(info.cfg.get("vm_node", "")) == "cannon_vm" and (info.cfg.get("hold") is Dictionary), "cannon.json: mask·1인칭 닫힌 팔·두 손으로 든 자세 hold")
+	var at: Array = info.cfg.get("attach", [])
+	check(at.size() == 1 and at[0].joint == "hand_R" and at[0].get("vm", false) == true and ResourceLoader.exists(str(at[0].glb)), "손대포 소품 = 오른손 뼈 하나 (판 몸·1인칭 둘 다)")
+	if stage_sf != null:
+		# 손대포가 몸 메시에 안 남음: 두 손 사이 앞 (glTF 축: 앞 x 0.15~0.46, 높이 y 0.52~0.65, |z| < 0.05, 미터) 에 꼭짓점이 거의 없어야 함 (남으면 한 팔만 들 때 대포가 늘어나 가시)
+		var v: PackedVector3Array = stage_sf.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		var left := 0
+		for p in v:
+			if p.x > 0.15 and p.x < 0.46 and absf(p.z) < 0.05 and p.y > 0.52 and p.y < 0.65:
+				left += 1
+		check(left < 200, "몸 메시에 손대포 통이 거의 안 남음 (앞 가운데 %d 꼭짓점 — 주먹에 녹은 나무 그루터기 ~120 은 남음, 원본 대포는 수천)" % left)
+	var gun = load(str(at[0].glb)).instantiate()
+	var gtri := 0
+	for mi in gun.find_children("*", "MeshInstance3D", true, false):
+		gtri += _tris((mi as MeshInstance3D).mesh)
+	check(gtri > 800 and gtri < 2500, "손대포 소품 삼각형 %d" % gtri)
+	gun.free()
+
+
+# 판 몸: 크기·발바닥, 뼈가 우리 관절을 따라감, 그리는 메시 = 몸 하나 + 손대포 하나, 손대포 = 오른손 뼈, 코드 대포 안 남김, 두 손으로 든 자세
+func test_cannon_body() -> void:
+	if not Ext.has_char("cannon"):
+		return
+	var Gfx = load("res://world/gfx.gd")
+	var was: Dictionary = Gfx.plan
+	Gfx.plan = {}
+	var b = _body("cannon")
+	Gfx.plan = was
+	check(b.ext != null, "대포수 붙음")
+	if b.ext == null:
+		b.free()
+		return
+	var sc: float = b.ext.transform.basis.get_scale().x
+	var hh: float = (b.ext.info.box as AABB).size.y * sc
+	var want_h: float = C.PLAYER_HEIGHT * C.FIGURE_SCALE * float(b.ext.info.cfg.height)
+	check(absf(hh - want_h) < 0.01, "키 %.3f m = 예전 몸 키 %.3f m × height" % [hh, want_h])
+	for j in ["foot_R", "foot_L"]:
+		var dz: float = _bone_pos(b, b.ext.info.map[j]).y - _jpos(b, b.ext._joint(j)).y
+		check(absf(dz) < 0.1, "발 뼈 높이 = 우리 발 (차이 %.3f m)" % dz)
+	_check_follow(b, "대포수")
+	var bas: Array = b.ext.find_children("*", "BoneAttachment3D", true, false)
+	check(bas.size() == 1 and String((bas[0] as BoneAttachment3D).bone_name) == "R_Hand", "손대포 = 오른손 뼈 소품 하나 (%d)" % bas.size())
+	var ext_n := 0
+	for dr in b.drawn:
+		ext_n += 1 if dr.get("ext", false) else 0
+	check(ext_n == 2 and b.drawn.size() == 2, "그리는 메시 2 (몸 + 손대포, 얻음 %d/%d)" % [ext_n, b.drawn.size()])
+	# 두 손으로 든 자세 (hold): 코드 몸의 어깨에 멘 자세 (오른팔 옆 1.75) 대신 팔꿈치를 굽혀 앞으로
+	var st := {"id": -1, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0, "emote": -1}
+	for i in 30:
+		b.pose(st, i * 16.0)
+	var el: float = -(b.elbows[0] as Node3D).rotation.y
+	var sh: float = absf((b.shoulders[0] as Node3D).rotation.x) + absf((b.shoulders[0] as Node3D).rotation.z)
+	check(absf(el - 1.4) < 0.2 and sh < 1.0, "쉬는 자세 = 두 손으로 앞에 듦 (오른 팔꿈치 %.2f, 어깨 %.2f)" % [el, sh])
+	var m: ShaderMaterial = b.ext.parts[0].mi.material_override
+	check(m.get_shader_parameter("use_vertex_color") == true and m.get_shader_parameter("skin_multiply") == true and (m.get_shader_parameter("skin_tint") as Color).is_equal_approx(Color(0.2, 0.5, 1.0, 1.0)), "몸 색 칸 = 플레이어 색 곱하기")
+	b.free()
+
+
+# 1인칭 쌍둥이: glb 안의 닫힌 팔 cannon_vm (원본 팔·손은 대포에 녹아 있어 못 씀) + 손대포 (vm: true). 판 몸에는 안 그려짐
+func test_cannon_first_person() -> void:
+	if not Ext.has_char("cannon"):
+		return
+	var t = _body("cannon", false)
+	check(t.ext != null and not t.ext.third and t.ext.lod == "cannon_vm", "1인칭 쌍둥이 = cannon_vm (얻음 %s)" % (t.ext.lod if t.ext != null else "-"))
+	if t.ext != null:
+		var arm_tri := 0
+		for sf in t.ext.info.surfs:
+			if sf.vm_mesh != null:
+				arm_tri += _tris(sf.vm_mesh)
+		check(arm_tri > 100 and arm_tri < 400, "1인칭 팔 삼각형 %d (닫힌 소매·띠·주먹 두 팔)" % arm_tri)
+		check(t.ext.find_children("*", "BoneAttachment3D", true, false).size() == 1, "1인칭에도 손대포 하나")
+	t.free()
+	var b = _body("cannon")
+	var seen := {}
+	for mi in b.ext.find_children("*", "MeshInstance3D", true, false):
+		seen[String(mi.name).split("_s")[0]] = true
+	check(not seen.has("cannon_vm") and not seen.has("cannon_lod0"), "판 몸에는 1인칭 팔·stage 메시 없음 (%s)" % [seen.keys()])
+	b.free()
