@@ -22,5 +22,6 @@
 	"vm_from": "elbow",
 	"vm_snap": [
 		"elbow"
-	]
+	],
+	"vm_node": "tank_vm"
 }
