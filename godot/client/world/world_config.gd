@@ -1,5 +1,6 @@
 # 고도 판 그리기 (G1) 에만 필요한 수치. 게임 수치는 core/config.gd (shared/config.js) 를 씀
 extends RefCounted
+const Opts := preload("res://core/opts.gd")
 
 # 판 화면·1인칭 팔 다중 샘플 (render.js WebGLRenderer({ antialias: true }) — 크롬 기본 4×). 웹·PC 따로 정함 (재혁 2026-11-02: PC 4× 그대로,
 # 웹은 지금 PC 와 같은 값 — 웹 성능 작업이 정함). 고르기는 msaa_3d
@@ -28,6 +29,8 @@ const ITEM_BOB := [0.45, 0.06, 300.0, 2.0] # 높이, 출렁임, 주기 ms, 도�
 #   내 몸 (1인칭 팔이 관절을 베낌) 은 늘 매 프레임
 const SUBVIEW_HZ := 60.0 # W15: 대기실 큰 캐릭터·타이틀/대기실 거울 반사 SubViewport 를 다시 그리는 최대 빈도 (60fps 이하 화면이면 그대로 매 프레임, 120fps 면 한 프레임 걸러)
 const POSE_LOD := {"near": 3.0, "far_hz": 60.0, "far2": 10.0, "far2_hz": 30.0, "off_hz": 20.0, "margin": 2.5} # W15: 10m 밖 30Hz (둘째 단)
+# W29 웹: 먼 몸 자세를 더 드물게 (60→30Hz, 10m 밖 30→20Hz, 시야 밖 20→10Hz)
+const POSE_LOD_WEB := {"near": 3.0, "far_hz": 30.0, "far2": 10.0, "far2_hz": 20.0, "off_hz": 10.0, "margin": 2.5}
 const LABEL_PIXEL := 0.0011 # 머리 위 이름표 글자 크기 (fixed_size 화면 크기)
 const LABEL_FONT := [40, 10] # 글자 크기, 외곽선
 const AMBIENT_DEFAULT := [0x8090c0, 0.7] # 테마 없을 때 주변광
@@ -59,6 +62,7 @@ const SPIN_ARC_COLOR := 0xe8ecf4 # 갈고리 스핀 원호 색 (render.js spinAr
 # 높음 = 예전 그대로 (MSAA 4×, 3D 해상도 1). 보통 = 모습은 거의 같음 (MSAA 2×, 거울 반사 작게, 창이 아주 크면 3D 해상도를 GFX_MAX_PX 까지).
 # 낮음 = 예전 '그래픽 낮춤' (lowGfx: MSAA 끔·그림자·블룸·거울·장식 줄임) + 3D 해상도를 GFX_MAX_PX.low 까지 (JS 낮춤 setPixelRatio(1) 자리)
 # 자동: 내장 그래픽 (Intel·AMD APU 등) 이면 낮음, 창 픽셀이 GFX_BIG_PX (고성능 외장이면 GFX_BIG_PX_FAST) 보다 많으면 보통, 아니면 높음 (소프트웨어 GL 은 개발 확인용이라 높음 그대로)
+const WEB_LOW_SCALE := 0.75 # W29: 웹 낮음 화질의 3D 해상도 배율 상한
 const GFX_CHOICES := ["auto", "high", "medium", "low"]
 const GFX_LABEL := {"auto": "자동", "high": "높음", "medium": "보통", "low": "낮음"}
 const GFX_BIG_PX := 2560 * 1440 # 자동: 이보다 큰 창이면 보통
@@ -72,7 +76,7 @@ static var level := "high"
 
 
 # 다중 샘플 고르기: 그래픽 낮춤 → MSAA_LOW, 아니면 보통 화질이면 MSAA_MEDIUM, 웹이면 MSAA_3D_WEB, PC 면 MSAA_3D_PC (web 기본 = 지금 실행이 웹 내보내기인가)
-static func msaa_3d(low: bool, web: bool = OS.has_feature("web"), lv: String = level) -> Viewport.MSAA:
+static func msaa_3d(low: bool, web: bool = Opts.web(), lv: String = level) -> Viewport.MSAA:
 	if low or lv == "low":
 		return MSAA_LOW
 	if lv == "medium":

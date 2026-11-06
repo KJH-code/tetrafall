@@ -54,8 +54,8 @@ func apply(emit: bool, win: Window = null) -> void:
 	choice = forced if forced != "" else GC.migrate(View.settings)
 	var root := win if win != null else get_tree().root
 	var size := root.size
-	var lv := GC.effective(choice, adapter, vendor, size)
-	var p := GC.plan(lv, size, OS.has_feature("web"))
+	var lv := GC.effective(choice, adapter, vendor, size, Opts.web())
+	var p := GC.plan(lv, size, Opts.web())
 	WC.level = lv
 	plan = p
 	root.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR

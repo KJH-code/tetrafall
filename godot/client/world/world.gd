@@ -231,7 +231,7 @@ static func grid_material(g3) -> Material:
 	return g3.toon_material(Color.WHITE, {"vertex_color": true, "hz_tint": true, "outline": false})
 
 
-static func msaa_for(low: bool, web: bool = OS.has_feature("web")) -> Viewport.MSAA:
+static func msaa_for(low: bool, web: bool = Opts.web()) -> Viewport.MSAA:
 	return WC.msaa_3d(low, web)
 
 

@@ -2,6 +2,7 @@
 # 필드를 더할 땐 이 파일에 한 줄 + 주석 (누가 쓰고 누가 읽는지), 커밋 메시지에 'View 필드 추가'.
 # 설정은 user://settings.json 에 기억 (JS 판 localStorage tf-* 자리)
 extends Node
+const Opts := preload("res://core/opts.gd")
 
 const C := preload("res://core/config.gd")
 const UiScale := preload("res://core/ui_scale.gd")
@@ -21,7 +22,7 @@ var settings := {
 	"music": 1.0, # 음악 크기 0~1 (audio/)
 	"fov": C.FOV_DEFAULT, # 시야각 (G1 카메라)
 	"shadows": true, # 그림자 (G1)
-	"outline": true, # 외곽선 (G3)
+	"outline": not Opts.web(), # 외곽선 (G3). 웹은 기본 끔 (W29, 설정 창에서 켬)
 	"lowGfx": false, # 그래픽 낮춤 (G1·G3·G5). W6 부터는 화질 (gfx) 이 낮음이면 켬 — world/gfx.gd 가 씀
 	"gfx": "", # 화질 "auto"|"high"|"medium"|"low" (G4 설정 창이 씀, world/gfx.gd 가 읽어 lowGfx·3D 배율·MSAA 를 정함). 빈 값 = 예전 파일: lowGfx 켬이면 낮음, 아니면 자동
 	"third": false, # 3인칭 시작 (G1)
@@ -75,7 +76,7 @@ func apply_ui_scale() -> void:
 
 # 처음 창 크기 (W9): 윈도우 화면 배율 150%·200% 면 1280×720 창을 그만큼 키움 (UI 자동 배율도 따라 커짐). 웹·전체 화면·--resolution 이면 안 함
 func _startup_window() -> void:
-	if OS.has_feature("web") or DisplayServer.get_name() == "headless" or OS.has_feature("editor"):
+	if Opts.web() or DisplayServer.get_name() == "headless" or OS.has_feature("editor"):
 		return
 	var w := get_window()
 	if w.mode != Window.MODE_WINDOWED:

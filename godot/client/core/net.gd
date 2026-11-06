@@ -2,6 +2,7 @@
 # 메시지는 JSON 글자 (JS·C# 서버 같은 프로토콜). 받은 메시지는 message 신호로 (Store 가 프로토콜을 처리), 보내기는 send(dict) 만.
 # 끊기면 NET_RECONNECT_MS 마다 다시 붙어 보고 (NET_RECONNECT_TRIES 번), 붙으면 reconnected → Store 가 자리 토큰으로 rejoin
 extends Node
+const Opts := preload("res://core/opts.gd")
 
 const Prof := preload("res://core/prof.gd")
 
@@ -38,7 +39,7 @@ static func now_ms() -> float:
 static func default_url(args: Dictionary) -> String:
 	if args.has("server"):
 		return str(args.server)
-	if OS.has_feature("web"):
+	if Opts.web():
 		var u = JavaScriptBridge.eval("new URLSearchParams(location.search).get('server') || ((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host)", true)
 		return str(u)
 	return "ws://127.0.0.1:%d" % int(C.PORT)

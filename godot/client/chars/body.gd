@@ -31,7 +31,7 @@ const HEAVY_HITS := ["bomb", "shock", "projectile", "slam", "wall", "blast", "bi
 var char_id := ""
 var cd := {} # 몸 자료 (bodies.bin 의 캐릭터 한 줄, 구운 몸이면 manifest — 같은 모양: nodes·mats·refs)
 var baked := false # 구운 몸 (.glb) 으로 만듦
-static var use_ext: bool = (K.EXT and not Opts.args().has("--no-ext")) or Opts.args().has("--ext") # W14 외부 뼈대 모델이 있으면 씀 (chars/external.gd)
+static var use_ext: bool = (K.EXT and not Opts.web() and not Opts.args().has("--no-ext")) or Opts.args().has("--ext") # 웹은 기본 끔 (W29: 새 모델은 삼각형·텍스처가 무거움, 웹에서 켜려면 주소 ?ext=1). W14 외부 뼈대 모델이 있으면 씀 (chars/external.gd)
 var ext = null # 붙은 외부 모델 (External.Ext) — 있으면 안쪽 몸 (조각) 은 관절만, 그리는 건 외부 모델
 static var use_glb: bool = K.GLB and not Opts.args().has("--no-glb") # 구운 몸이 있으면 씀 (테스트가 예전 조립과 둘 다 봄, 확인용 실행 인자 --no-glb 면 예전 조립)
 var d := {} # 체형 (FIGURE_BODIES 한 줄)

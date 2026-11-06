@@ -17,7 +17,7 @@ var args := {}
 
 func _ready() -> void:
 	args = parse_args(Opts.args())
-	if OS.has_feature("web"):
+	if Opts.web():
 		# 웹: 주소 뒤 ?room=코드&server=ws://…&auto=host&bots=3 … 를 명령줄 옵션처럼 (값 없는 건 true)
 		var q = JSON.parse_string(str(JavaScriptBridge.eval("JSON.stringify(Object.fromEntries(new URLSearchParams(location.search)))", true)))
 		if typeof(q) == TYPE_DICTIONARY:

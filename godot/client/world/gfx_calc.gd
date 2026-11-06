@@ -53,7 +53,9 @@ static func is_fast(adapter: String, vendor := "") -> bool:
 
 
 # 자동 화질: 내장 그래픽 → 낮음, 창 픽셀 > GFX_BIG_PX (고성능 외장이면 GFX_BIG_PX_FAST) → 보통, 아니면 높음
-static func auto_level(adapter: String, vendor: String, size: Vector2i) -> String:
+static func auto_level(adapter: String, vendor: String, size: Vector2i, web := false) -> String:
+	if web: # W29: 웹은 GPU 를 알 수 없고 (ANGLE 이름) 싱글스레드 wasm 이라 자동은 낮음 (설정 창에서 보통·높음으로 올림)
+		return "low"
 	if is_integrated(adapter, vendor):
 		return "low"
 	if size.x * size.y > (WC.GFX_BIG_PX_FAST if is_fast(adapter, vendor) else WC.GFX_BIG_PX):
@@ -62,11 +64,11 @@ static func auto_level(adapter: String, vendor: String, size: Vector2i) -> Strin
 
 
 # 설정 (View.settings.gfx, 없거나 모르는 값이면 자동) → 실제 화질
-static func effective(choice, adapter: String, vendor: String, size: Vector2i) -> String:
+static func effective(choice, adapter: String, vendor: String, size: Vector2i, web := false) -> String:
 	var c := str(choice)
 	if c in ["high", "medium", "low"]:
 		return c
-	return auto_level(adapter, vendor, size)
+	return auto_level(adapter, vendor, size, web)
 
 
 # 예전 설정 파일 (gfx 없이 lowGfx 만) → 화질 선택: 그래픽 낮춤 켬이면 낮음, 아니면 자동
@@ -90,6 +92,8 @@ static func scale_3d(level: String, size: Vector2i) -> float:
 # 화질 → 적용할 값 {level, low (= 예전 lowGfx), msaa (Viewport.MSAA), scale (3D 배율), mirror (거울 크기 배율)}
 static func plan(level: String, size: Vector2i, web := false) -> Dictionary:
 	var s := scale_3d(level, size)
+	if web and level == "low": # W29: 웹 낮음은 3D 해상도 0.75 까지 (설정 높음·보통이면 그대로)
+		s = minf(s, WC.WEB_LOW_SCALE)
 	return {"level": level, "low": level == "low", "msaa": WC.msaa_3d(level == "low", web, level), "scale": s, "mirror": WC.mirror_scale(s, level) if level != "low" else 0.0}
 
 

@@ -29,9 +29,11 @@ var _last_now = null
 func _ready() -> void:
 	var a := Opts.args()
 	lod_on = not a.has("--no-pose-lod")
+	if Opts.web():
+		lod = WC.POSE_LOD_WEB
 	var ni := a.find("--pose-lod-near")
 	if ni >= 0 and ni + 1 < a.size():
-		lod = WC.POSE_LOD.duplicate()
+		lod = lod.duplicate()
 		lod.near = float(a[ni + 1])
 	if ResourceLoader.exists(CHARS):
 		chars_script = load(CHARS)
