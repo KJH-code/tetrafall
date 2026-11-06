@@ -1164,7 +1164,12 @@ func _costume_pose(T: Dictionary, st: Dictionary, actv, tt: float) -> void:
 			T.neckPitch += bang * 0.55 - 0.1
 			T.waistPitch += bang * 0.12
 			T.elbow[0] += sin(tt * C.BARD_HEADBANG_HZ * PI * 4.0) * 0.25 # 줄 긁기
-	if refs.has("cannon") and not st.stunned and st.emote < 0:
+	var hold = ext.info.cfg.get("hold") if ext != null else null
+	if refs.has("cannon") and hold is Dictionary and not st.stunned and st.emote < 0:
+		# 외부 몸 (cfg "hold" = 우리 관절 값): 모델 대포가 손에 붙어 있으니 어깨에 메는 대신 모델의 쉬는 자세 (두 손으로 앞에 듦) 로
+		for k in hold:
+			T[k] = (hold[k] as Array).duplicate()
+	elif refs.has("cannon") and not st.stunned and st.emote < 0:
 		# 대포를 어깨에 멘 자세: 오른손은 대포를 받치고, 왼손은 허리에 척 (걸으면 왼팔만 흔들림)
 		T.shFwd[0] = 0.25
 		T.shOut[0] = 1.75

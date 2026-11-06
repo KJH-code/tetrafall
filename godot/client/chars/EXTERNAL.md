@@ -19,6 +19,8 @@
 
 사냥꾼 자리 `assets/models/ext/hunter.glb` (+ `hunter.json`) = **자동 리깅 사냥꾼 (W24, `tools/blender/tripo/rig_hunter.py`, README 10절)** — 스킨 메시 하나 + 뼈 65, 앞 = glTF +X → `yaw: 0`, 좌우 뒤집기 없음 (소총이 이미 R 관절 팔을 따라감), 몸 색 칸 `tint: "mask"` = 모자 + 붉은 목수건, 판 LOD 3개 (high 4991·medium 3995·low 2999) + stage 18,519, 소품 없음 (소총이 몸에 붙음, 코드 총은 안 남김), 1인칭 팔 = glb 안 `hunter_vm` (`vm_node`, 소총 뺀 아래팔·손).
 
+대포수 자리 `assets/models/ext/cannon.glb` (+ `cannon_gun.glb`·`cannon.json`) = **자동 리깅 대포수 (W26, `tools/blender/tripo/rig_cannon.py`, README 12절, 품질 미달 — 기본 켬 비권장)** — 스킨 메시 하나 + **Tripo 뼈 이름 78개** (접두어 없는 `L_Upperarm` 식, `ALIASES` 가 맞춤: 골반 `Pelvis`·허리 `Spine01`·가슴 `Spine02`·목 `NeckTwist01`), 앞 = glTF +X → `yaw: 0`, 몸 색 칸 `tint: "mask"` = 빨간 두건 + 다이너마이트 띠, 판 LOD 하나 (약 7600) + stage 17,000 대, 손대포는 몸에서 떼어 `attach` (`hand_R`, `vm: true`) 로 오른손 뼈에, 코드 대포는 안 남김, 쉬는 자세는 cfg `hold` (코드 어깨 자세 대신 두 손으로 앞에 듦, `body.gd` `_costume_pose`), 1인칭 = 닫힌 전용 팔 `cannon_vm`.
+
 시험 모델: `assets/models/ext/robot_test.glb` = Quaternius 로봇 (three.js 예제 RobotExpressive, CC0 — `assets/CREDITS.md`, W19 에 tank.glb 에서 옮김, 테스트만 씀).
 이 모델은 몸 대부분이 **뼈에 붙은 딱딱한 조각** (BoneAttachment3D) + 손만 스킨, 발 뼈가 IK 용으로 뿌리 뼈 밑에 있음 → 일부러 까다로운 경우. Meshy·Tripo 처럼 **스킨 메시 하나** 인 모델은 테스트의 합성 모델 (Mixamo 이름 T 포즈, 뼈마다 쉬는 회전 제각각) 로 확인.
 
