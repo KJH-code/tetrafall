@@ -23,5 +23,6 @@
 		"elbow"
 	],
 	"vm_node": "hook_vm",
-	"rope_bone": "LeftHandMiddle4"
+	"rope_bone": "LeftHandMiddle4",
+	"portrait": {"half": 0.25, "up": 0.04}
 }

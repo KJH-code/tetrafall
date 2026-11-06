@@ -610,11 +610,15 @@ class Ext extends Node3D:
 	# 밧줄·쇠사슬이 나가는 자리 (cfg rope_bone = 뼈 이름 끝, 예 "LeftHandMiddle4"): 모델 손 (갈고리) 뼈의 몸 (body) 기준 위치 — 호출 쪽이 body.global_transform 을 곱함.
 	# 없으면 null (코드 손 관절을 씀 — 모델 팔 길이가 달라 20 cm 쯤 어긋남). 트리 밖에서도 됨 (뼈 지역 자세를 직접 곱함)
 	func rope_point() -> Variant:
-		var rb := str(info.cfg.get("rope_bone", ""))
-		if rb == "" or sk == null:
+		return bone_point(str(info.cfg.get("rope_bone", "")))
+
+	# 뼈 (이름이 name_end 로 끝남) 의 몸 (body) 기준 위치. 뼈 지역 자세를 직접 곱함 (트리 밖·그리기 전에도 맞음). 없으면 null.
+	# 초상 (ui/portrait.gd) 이 머리 뼈로 얼굴 자리를 잡음
+	func bone_point(name_end: String) -> Variant:
+		if name_end == "" or sk == null:
 			return null
 		for i in sk.get_bone_count():
-			if sk.get_bone_name(i).ends_with(rb):
+			if sk.get_bone_name(i).ends_with(name_end):
 				var t := sk.get_bone_pose(i)
 				var p := sk.get_bone_parent(i)
 				while p >= 0:

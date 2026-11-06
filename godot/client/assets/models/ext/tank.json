@@ -22,5 +22,6 @@
 	"vm_from": "elbow",
 	"vm_snap": [
 		"elbow"
-	]
+	],
+	"portrait": {"up": -0.012, "shift": [-0.058, 0.055]}
 }

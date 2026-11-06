@@ -1224,3 +1224,103 @@ func test_cannon_first_person() -> void:
 		seen[String(mi.name).split("_s")[0]] = true
 	check(not seen.has("cannon_vm") and not seen.has("cannon_lod0"), "판 몸에는 1인칭 팔·stage 메시 없음 (%s)" % [seen.keys()])
 	b.free()
+
+
+# ---------- W27 대기실 큰 캐릭터·초상 (ui/portrait.gd prime_idle·frame) ----------
+
+# 위팔 → 아래팔 뼈가 아래쪽을 향하는 정도 (1 = 똑바로 아래, 0 = 옆으로 쭉 = T 포즈). 뼈 이름은 Mixamo 식 (새 외부 모델 넷 모두)
+static func _arm_down(b) -> float:
+	var worst := 1.0
+	for side in ["Left", "Right"]:
+		var a = b.ext.bone_point(side + "Arm")
+		var f = b.ext.bone_point(side + "ForeArm")
+		if a == null or f == null:
+			return -2.0
+		var d: Vector3 = ((f as Vector3) - (a as Vector3)).normalized()
+		worst = minf(worst, -d.y)
+	return worst
+
+
+# 대기실 큰 캐릭터·초상이 만드는 몸 (ui/portrait.gd still_body — stage LOD 최고 품질)
+func _still(ch: String, ext := true):
+	var P = load("res://ui/portrait.gd")
+	var was_e: bool = Body.use_ext
+	Body.use_ext = ext
+	var b = P.still_body(load("res://chars/chars.gd"), ch, Color(0.2, 0.5, 1.0))
+	Body.use_ext = was_e
+	return b
+
+
+func _ext_ids() -> Array:
+	var out := []
+	for ch in ["tank", "ninja", "hunter", "hook"]:
+		if Ext.has_char(ch):
+			out.append(ch)
+	return out
+
+
+# 대기실 큰 캐릭터 (char_stage.gd) 는 만들자마자 첫 프레임을 그림 → prime_idle 을 거치면 팔이 쉬는 자세 (내린 팔, 옆으로 쭉 안 벌어짐 = T 포즈 아님).
+# 처음 자세 (pose 를 한 번도 안 부른 몸) 와 달라야 priming 이 실제로 일을 한다는 뜻
+func test_stage_not_t_pose() -> void:
+	var P = load("res://ui/portrait.gd")
+	var root: Window = (Engine.get_main_loop() as SceneTree).root
+	for ch in _ext_ids():
+		var b = _still(ch)
+		root.add_child(b)
+		P.prime_idle(b)
+		var down := _arm_down(b)
+		check(down > 0.55, "%s 큰 캐릭터 쉬는 자세 팔이 내려옴 (아래 %.2f, 0 = T 포즈)" % [ch, down])
+		check(b.posed, "%s prime_idle 이 pose 를 불렀음" % ch)
+		root.remove_child(b)
+		b.free()
+	var cb = _still("bard", false)
+	root.add_child(cb)
+	P.prime_idle(cb) # 코드 몸도 그대로 됨
+	check(cb.posed, "코드 몸도 prime_idle")
+	root.remove_child(cb)
+	cb.free()
+
+
+# 초상 프레이밍 (얼굴): 가운데 = 머리 뼈 근처 (몸 뿌리가 아님 — 모델마다 머리 높이·앞뒤 자리가 다름), 세로 반은 몸 키에 비례, 머리 뼈가 칸 안.
+# 온몸은 몸 상자 가운데에 몸 전체. 코드 몸 넷도 칸이 몸 키·머리에 맞음
+func test_portrait_frame() -> void:
+	var P = load("res://ui/portrait.gd")
+	var root: Window = (Engine.get_main_loop() as SceneTree).root
+	for ch in _ext_ids() + ["bard", "berserker", "cannon", "builder"]:
+		var ext: bool = Ext.has_char(ch) and ch in ["tank", "ninja", "hunter", "hook"]
+		var b = _still(ch, ext)
+		root.add_child(b)
+		P.prime_idle(b)
+		var f: Dictionary = P.frame(b, false)
+		var g: Dictionary = P.frame(b, true)
+		check(f.half > 0.15 and f.half < 0.5, "%s 얼굴 칸 세로 반 %.2f m (0.15~0.5)" % [ch, f.half])
+		var top: float = C.PLAYER_HEIGHT * C.FIGURE_SCALE
+		if ext:
+			check(g.half > top * 0.5 and g.half < top * 0.7 and absf(g.at.y - top / 2.0) < top * 0.05, "%s 온몸 칸 세로 반 %.2f 가운데 %.2f (몸 키 %.2f)" % [ch, g.half, g.at.y, top])
+			check(f.at.y > top * 0.6 and f.at.y < top, "%s 얼굴 칸 가운데 높이 %.2f (몸 위쪽, 키 %.2f)" % [ch, f.at.y, top])
+			var hp: Vector3 = b.ext.bone_point("Head")
+			check(absf(f.at.y - hp.y) < f.half * 0.3, "%s 얼굴 칸 가운데가 머리 뼈 근처 (칸 %.2f, 머리 뼈 %.2f)" % [ch, f.at.y, hp.y])
+			check(absf(f.at.x - hp.x) < 0.1 and absf(f.at.z - hp.z) < 0.1, "%s 가로 자리도 머리 (칸 %s, 머리 %s)" % [ch, f.at, hp])
+			check(f.half > top * 0.18 and f.half < top * 0.3, "%s 칸 크기가 몸 키에 비례 (%.2f / 키 %.2f)" % [ch, f.half, top])
+		root.remove_child(b)
+		b.free()
+	# 몸 키가 다르면 칸도 따라감 (같은 모델을 키 배율 1.25 로 — 고정 m 값이면 안 따라감)
+	if Ext.has_char("ninja"):
+		var info = Ext.load_char("ninja")
+		var prev: Dictionary = info.cfg
+		var cfg2: Dictionary = prev.duplicate(true)
+		cfg2["height"] = 1.25
+		var key := "ninja"
+		Ext._cache.erase(key)
+		var saved = info
+		Ext._cache[key] = Ext.model_info(info.scene, cfg2)
+		var big = _still("ninja")
+		root.add_child(big)
+		P.prime_idle(big)
+		var fb: Dictionary = P.frame(big, false)
+		var small = _still("ninja")
+		Ext._cache[key] = saved
+		root.remove_child(big)
+		big.free()
+		small.free()
+		check(fb.half > 0.22 * 1.84 * 1.25 * 0.8, "키 배율 1.25 면 얼굴 칸도 커짐 (%.2f)" % fb.half)

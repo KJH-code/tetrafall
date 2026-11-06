@@ -22,5 +22,6 @@
 	"vm_snap": [
 		"elbow"
 	],
-	"vm_node": "hunter_vm"
+	"vm_node": "hunter_vm",
+	"portrait": {"half": 0.24, "up": 0.03}
 }

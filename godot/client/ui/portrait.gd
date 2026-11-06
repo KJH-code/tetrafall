@@ -9,6 +9,9 @@ const CHARS_PATH := "res://chars/chars.gd"
 
 const LEFT_SIDE := ["cannon"] # 오른어깨 포신이 얼굴을 가려 반대쪽에서 봄 (JS 그대로)
 const FOV := 26.0
+const PRIME_STEPS := 50 # prime_idle 이 부르는 pose 수 (16 ms 걸음 = 0.8 초)
+const FACE_HALF := 0.22 # 외부 모델 얼굴 칸 세로 반 (몸 키 × 이만큼 — 머리 뼈 둘레로 투구·모자까지 + 어깨 조금). 모델마다 cfg portrait.half (키 배율) 로 덮음
+const FACE_UP := 0.02 # 칸 가운데를 머리 뼈 (머리 한가운데) 에서 올림 (몸 키 × 이만큼). cfg portrait.up
 
 signal drawn(key: String)
 
@@ -136,30 +139,14 @@ func _draw_one(job: Array) -> void:
 	var body = still_body(Chars, char_id, job[2])
 	vp.add_child(body)
 	# 가만히 선 자세 (숨쉬기 위상을 조금 줘서 팔이 굳어 보이지 않게 — JS t 0.8)
-	if body.has_method("pose"):
-		for i in 50:
-			body.pose({"id": -1, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0}, i * 16.0)
-	# 몸의 실제 크기에 맞춰 화면을 채움 (고도 y = 게임 z). 온몸 = 몸 전체, 얼굴 = 목 관절 위 (머리) 기준
-	var box := _bounds(body)
-	var z_top := box.end.y if box.size != Vector3.ZERO else C.PLAYER_HEIGHT
-	var z_bot := box.position.y if box.size != Vector3.ZERO else 0.0
-	var h := maxf(0.3, z_top - z_bot)
-	var top := z_top + h * 0.04
-	var bot := z_bot - h * 0.03
-	var neck = body.get("neck")
-	if not full and neck is Node3D:
-		var neck_z: float = (neck as Node3D).global_position.y
-		var hb := _bounds(neck)
-		var head_h := maxf(0.12, (hb.end.y if hb.size != Vector3.ZERO else neck_z + 0.3) - neck_z)
-		top = neck_z + head_h * 1.3
-		bot = neck_z - head_h * 1.0
-	elif not full:
-		bot = z_top - h * 0.4
-	var half := (top - bot) / 2.0 * 1.08
+	prime_idle(body)
+	# 몸의 실제 크기에 맞춰 화면을 채움 (고도 y = 게임 z). 온몸 = 몸 전체, 얼굴 = 머리 (외부 모델은 머리 뼈, 코드 몸은 목 관절) 기준
+	var fr := frame(body, full)
+	var half: float = fr.half
 	var dist := half / tan(deg_to_rad(FOV / 2.0))
 	var ang := deg_to_rad(38.0 if full else 46.0) # 앞 (+x) 에서 돌린 각
 	var side := 1.0 if LEFT_SIDE.has(char_id) else -1.0
-	var at_z := (top + bot) / 2.0
+	var at: Vector3 = fr.at
 	var cam := Camera3D.new()
 	cam.fov = FOV
 	cam.near = 0.05
@@ -167,8 +154,8 @@ func _draw_one(job: Array) -> void:
 	vp.add_child(cam)
 	var gx := cos(ang) * dist
 	var gy := side * sin(ang) * dist
-	var gz := at_z + (0.0 if full else (top - bot) * 0.1)
-	cam.look_at_from_position(Vector3(gx, gz, -gy), Vector3(0, at_z, 0), Vector3.UP)
+	var rise := 0.0 if full else half * 0.18
+	cam.look_at_from_position(at + Vector3(gx, rise, -gy), at, Vector3.UP)
 	cam.current = true
 	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 	await RenderingServer.frame_post_draw
@@ -179,13 +166,62 @@ func _draw_one(job: Array) -> void:
 	drawn.emit(k)
 
 
+# 가만히 선 자세로 미리 굳힘 (초상·대기실 큰 캐릭터): body.pose 는 시간으로 관절을 쉬는 자세로 부드럽게 옮기므로 (처음 호출은 dt 0 = 관절 처음 값),
+# 만든 그 프레임에 그리면 외부 모델이 팔을 벌린 처음 자세 (T·A 포즈) 로 한 번 찍힘. 미리 몇십 번 불러 쉬는 자세에서 시작
+static func prime_idle(body: Node) -> void:
+	if body.has_method("pose"):
+		for i in PRIME_STEPS:
+			body.pose({"id": -1, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0}, i * 16.0)
+
+
+# 카메라가 볼 곳: {at: 눈여겨볼 점 (고도 좌표), half: 화면 세로 반 (m, 시야 FOV 안에 들어갈 크기)}.
+# 온몸 = 몸 상자 가운데. 얼굴 = 외부 모델이면 머리 뼈 (Head — 머리 한가운데, 모델마다 키·머리 높이·앞뒤 자리가 달라 몸 상자로는 안 맞음)
+# 없으면 (코드 몸) 목 관절 위 머리 상자. 가로 자리는 머리 (몸) 자리 — 몸 뿌리 기준으로 보면 앞뒤로 어긋난 몸 (자세 숙임·모델 자리) 은 얼굴이 옆으로 잘림
+static func frame(body: Node3D, full: bool) -> Dictionary:
+	var box := _bounds(body)
+	var z_top := box.end.y if box.size != Vector3.ZERO else C.PLAYER_HEIGHT
+	var z_bot := box.position.y if box.size != Vector3.ZERO else 0.0
+	var cx := box.get_center().x if box.size != Vector3.ZERO else 0.0
+	var cz := box.get_center().z if box.size != Vector3.ZERO else 0.0
+	var ext0 = body.get("ext")
+	if ext0 != null and ext0.has_method("bone_point"):
+		# 외부 모델: 키는 정해진 값 (PLAYER_HEIGHT × FIGURE_SCALE × cfg height — external.gd _place), 발바닥 0, 가로는 몸 뿌리.
+		# 메시 상자 (skinned AABB) 는 만든 그 프레임엔 아직 자세 반영 전이라 틀릴 수 있음
+		z_bot = 0.0
+		z_top = C.PLAYER_HEIGHT * C.FIGURE_SCALE * float(ext0.info.cfg.get("height", 1.0))
+		cx = 0.0
+		cz = 0.0
+	var h := maxf(0.3, z_top - z_bot)
+	if full:
+		var top := z_top + h * 0.04
+		var bot := z_bot - h * 0.03
+		return {"at": Vector3(cx, (top + bot) / 2.0, cz), "half": (top - bot) / 2.0 * 1.08}
+	var ext = body.get("ext")
+	if ext != null and ext.has_method("bone_point"):
+		var hp = ext.bone_point("Head")
+		if hp != null:
+			var pc: Dictionary = ext.info.cfg.get("portrait", {})
+			var half_e: float = h * float(pc.get("half", FACE_HALF))
+			var up: float = h * float(pc.get("up", FACE_UP))
+			var sh: Array = pc.get("shift", [0.0, 0.0]) # 머리 뼈에서 가로 어긋남 m (고도 x·z) — 머리 모양이 뼈와 앞뒤·좌우로 어긋난 모델
+			return {"at": Vector3((hp as Vector3).x + float(sh[0]), (hp as Vector3).y + up, (hp as Vector3).z + float(sh[1])), "half": half_e}
+	var neck = body.get("neck")
+	if neck is Node3D and (neck as Node3D).is_inside_tree():
+		var hb := _bounds(neck) # 목 아래 달린 조각 = 머리 (투구·뿔·모자·눈)
+		if hb.size != Vector3.ZERO:
+			return {"at": hb.get_center(), "half": clampf(hb.size.y * 1.6, 0.26, 0.4)}
+		var np: Vector3 = (neck as Node3D).global_position
+		return {"at": np + Vector3(0, 0.15, 0), "half": 0.25}
+	return {"at": Vector3(cx, z_top - h * 0.12, cz), "half": h * 0.2}
+
+
 # 아래 MeshInstance3D 들의 전역 상자 (고도 좌표)
 static func _bounds(n: Node) -> AABB:
 	var out := AABB()
 	var first := true
 	for mi in n.find_children("*", "MeshInstance3D", true, false):
 		var m := mi as MeshInstance3D
-		if not m.is_visible_in_tree():
+		if not m.is_inside_tree() or not m.is_visible_in_tree(): # 트리 밖이면 전역 자리를 모름 (테스트)
 			continue
 		var b: AABB = m.global_transform * m.get_aabb()
 		if first:
@@ -193,7 +229,7 @@ static func _bounds(n: Node) -> AABB:
 			first = false
 		else:
 			out = out.merge(b)
-	if n is MeshInstance3D:
+	if n is MeshInstance3D and n.is_inside_tree():
 		var b0: AABB = (n as MeshInstance3D).global_transform * (n as MeshInstance3D).get_aabb()
 		out = b0 if first else out.merge(b0)
 	return out

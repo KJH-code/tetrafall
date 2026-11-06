@@ -93,17 +93,17 @@ func show_char(char_id: String, color: Color) -> void:
 	body = Portrait.still_body(Chars, char_id, color) # 판 위험 빛 안 받음
 	turn.add_child(body)
 	turn.rotation = Vector3.ZERO
-	_pose(0.0, 0.0)
+	# 만든 그 프레임이 외부 모델의 처음 자세 (T·A 포즈) 가 아니게 쉬는 자세부터 (portrait.prime_idle)
+	Portrait.prime_idle(body)
 	# 몸 크기에 맞춰 카메라 (portrait 온몸과 같은 방식, 정면 +x 에서)
-	var box: AABB = Portrait._bounds(body)
-	var top: float = box.end.y if box.size != Vector3.ZERO else C.PLAYER_HEIGHT
-	var bot: float = box.position.y if box.size != Vector3.ZERO else 0.0
-	var half := (top - bot) / 2.0 * 1.18
+	var fr := Portrait.frame(body, true)
+	var half: float = fr.half * 1.02 # 온몸 칸 (위아래 여유 포함) 보다 조금만 더 (예전 몸 키 × 1.18)
 	var dist := half / tan(deg_to_rad(FOV / 2.0))
-	var at_z := (top + bot) / 2.0
+	var at_z: float = fr.at.y
 	cam.look_at_from_position(Vector3(dist, at_z + half * 0.12, 0), Vector3(0, at_z, 0), Vector3.UP)
 	var now := float(Time.get_ticks_msec())
 	picked_at = now - C.EMOTE_MS if first else now
+	_pose(now - picked_at, now) # 처음엔 도발 없이 쉬는 자세, 그 뒤 바꾸면 도발부터
 	key = k
 
 
