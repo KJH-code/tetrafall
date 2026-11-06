@@ -2,6 +2,7 @@
 # 단계 판정·지형은 서버 (server/tutorial.js), 띠 문구는 tutorial_calc.gd 로 지금 키 설정 이름을 넣어 만듦. 다 했거나 건너뛰면 Prefs tutorial = done·skipped
 # 여는 곳: 메뉴·설정의 '튜토리얼' (View.open_panel "tutorial"). main.gd 가 붙임
 extends CanvasLayer
+const Opts := preload("res://core/opts.gd")
 
 const C := preload("res://core/config.gd")
 const Keys := preload("res://core/keys.gd")
@@ -113,7 +114,7 @@ func _ready() -> void:
 	Store.state_changed.connect(func(st, _prev): update(st))
 	Store.game_event.connect(_on_event)
 	# 처음 켠 사람 (아직 안 물어봄): 메뉴에서 묻기. 자동 조종·방 주소로 들어오면 안 물음
-	var args := OS.get_cmdline_user_args()
+	var args := Opts.args()
 	if Prefs.get_value("tutorial") == null and not args.has("--auto") and not args.has("--room"):
 		ask_pending = true # 타이틀이 끝나 메뉴가 보이면 (View.title_on 이 꺼지면) 물음 (JS startTitle onDone → tut.ask)
 

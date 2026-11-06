@@ -1,6 +1,7 @@
 # G4 화면 뿌리 (CanvasLayer UI): 메뉴 · 대기실 판 · 방장 판 · (판 HUD·결과·설정 — 다음 단계) · 화면 전환 슬래시 · 접속 글·핑.
 # 지금 화면 = ui_calc.screen_of (JS shared/wipe.js screenOf), 바뀌면 슬래시가 다 덮는 순간 뒤 화면을 바꿈 (JS updateScreen)
 extends CanvasLayer
+const Opts := preload("res://core/opts.gd")
 
 const Prof := preload("res://core/prof.gd")
 
@@ -42,7 +43,7 @@ func _ready() -> void:
 	menu = load("res://ui/menu.gd").new()
 	root.add_child(menu)
 	# (W16) 내용이 드물게 바뀌는 큰 판은 그림만 구움 (ui/baked_panel.gd — 입력·초점은 그대로), --no-bake 면 예전처럼
-	Baked.enabled = not OS.get_cmdline_user_args().has("--no-bake")
+	Baked.enabled = not Opts.args().has("--no-bake")
 	lobby = load("res://ui/lobby.gd").new()
 	var lb := Baked.wrap(lobby)
 	root.add_child(lb)

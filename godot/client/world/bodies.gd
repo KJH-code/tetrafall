@@ -1,6 +1,7 @@
 # 사람 몸 자리: G2 의 chars/chars.gd make_body(char, color) 가 있으면 그 몸, 없으면 상자 몸 (G0 dev_view 와 같음).
 # World 는 위치 (Store.view_pos 보간)·방향·보이기·머리 위 이름표만 정함. 몸 동작은 몸 노드의 pose(p, now_ms)·on_event(e) (G2)
 extends Node3D
+const Opts := preload("res://core/opts.gd")
 
 const C := preload("res://core/config.gd")
 const Co := preload("res://core/coords.gd")
@@ -26,7 +27,7 @@ var _last_now = null
 
 
 func _ready() -> void:
-	var a := OS.get_cmdline_user_args()
+	var a := Opts.args()
 	lod_on = not a.has("--no-pose-lod")
 	var ni := a.find("--pose-lod-near")
 	if ni >= 0 and ni + 1 < a.size():

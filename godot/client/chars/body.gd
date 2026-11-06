@@ -5,6 +5,7 @@
 # 몸 안은 게임 좌표 그대로 (앞 +x, 왼쪽 +y, 위 +z, three.js 와 같은 XYZ 회전 순서) — 맨 위 'frame' 노드 하나가 고도 (x, z, -y) 로 돌림 (core/coords.gd 와 같은 돌림)
 # 아직: 광전사 분노 표시 (눈 충혈·핏줄)·어지러움 눈동자·바드 폼 전환 튀기기·유령화 반투명·체크 무늬 반복 수·그리기 수 줄이기
 extends Node3D
+const Opts := preload("res://core/opts.gd")
 
 const C := preload("res://core/config.gd")
 const G3 := preload("res://shaders/g3.gd")
@@ -30,9 +31,9 @@ const HEAVY_HITS := ["bomb", "shock", "projectile", "slam", "wall", "blast", "bi
 var char_id := ""
 var cd := {} # 몸 자료 (bodies.bin 의 캐릭터 한 줄, 구운 몸이면 manifest — 같은 모양: nodes·mats·refs)
 var baked := false # 구운 몸 (.glb) 으로 만듦
-static var use_ext: bool = (K.EXT and not OS.get_cmdline_user_args().has("--no-ext")) or OS.get_cmdline_user_args().has("--ext") # W14 외부 뼈대 모델이 있으면 씀 (chars/external.gd)
+static var use_ext: bool = (K.EXT and not Opts.args().has("--no-ext")) or Opts.args().has("--ext") # W14 외부 뼈대 모델이 있으면 씀 (chars/external.gd)
 var ext = null # 붙은 외부 모델 (External.Ext) — 있으면 안쪽 몸 (조각) 은 관절만, 그리는 건 외부 모델
-static var use_glb: bool = K.GLB and not OS.get_cmdline_user_args().has("--no-glb") # 구운 몸이 있으면 씀 (테스트가 예전 조립과 둘 다 봄, 확인용 실행 인자 --no-glb 면 예전 조립)
+static var use_glb: bool = K.GLB and not Opts.args().has("--no-glb") # 구운 몸이 있으면 씀 (테스트가 예전 조립과 둘 다 봄, 확인용 실행 인자 --no-glb 면 예전 조립)
 var d := {} # 체형 (FIGURE_BODIES 한 줄)
 var skin_color := Color.WHITE
 var mats: Array[Material] = []

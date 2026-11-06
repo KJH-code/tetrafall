@@ -2,6 +2,7 @@
 # + 위험 + 사람 몸 자리 + 하늘 시점 도우미 + 아이템 + 카메라. 서버 상태는 Store 에서 읽기만
 # 다른 묶음 자리: 몸 = G2 chars/chars.gd · 셰이더 = G3 shaders/ · 효과 = G5 fx/ (fx_root 에 붙임) · 건축가 블록 = G6 world/bblocks.gd
 extends Node3D
+const Opts := preload("res://core/opts.gd")
 
 const C := preload("res://core/config.gd")
 const Co := preload("res://core/coords.gd")
@@ -159,12 +160,12 @@ func _ready() -> void:
 	apply_theme("")
 	# 확인용 명령줄 (-- 뒤): --world-view over|third|first · --map <맵 id> · --mode <모드> · --hp (체력전) (방장이면 대기실에서 바꿈)
 	var args := {}
-	var list := OS.get_cmdline_user_args()
+	var list := Opts.args()
 	for i in list.size():
 		if list[i].begins_with("--") and i + 1 < list.size() and not list[i + 1].begins_with("--"):
 			args[list[i].substr(2)] = list[i + 1]
 	rig.force = str(args.get("world-view", ""))
-	marks_demo = args.has("marks-demo") or OS.get_cmdline_user_args().has("--marks-demo")
+	marks_demo = args.has("marks-demo") or Opts.args().has("--marks-demo")
 	Store.joined.connect(func(_room, _re):
 		if args.has("map"):
 			Store.send_room({"type": "setMap", "map": args.map})

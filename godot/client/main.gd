@@ -6,6 +6,7 @@
 #   성능 재연 (W12): --rec <파일> (판을 녹화) · --replay <파일> (서버 없이 같은 판을 다시 돌려 잼, core/replay.gd)
 #   자동 확인: --auto host|guest [--bots N] [--drop-at 초] [--quit-after-rounds N] [--quit-after 초] [--shot 파일.png --shot-after 초]
 extends Node
+const Opts := preload("res://core/opts.gd")
 
 const C := preload("res://core/config.gd")
 const AutoPilot := preload("res://core/autopilot.gd")
@@ -15,7 +16,7 @@ var args := {}
 
 
 func _ready() -> void:
-	args = parse_args(OS.get_cmdline_user_args())
+	args = parse_args(Opts.args())
 	if OS.has_feature("web"):
 		# 웹: 주소 뒤 ?room=코드&server=ws://…&auto=host&bots=3 … 를 명령줄 옵션처럼 (값 없는 건 true)
 		var q = JSON.parse_string(str(JavaScriptBridge.eval("JSON.stringify(Object.fromEntries(new URLSearchParams(location.search)))", true)))

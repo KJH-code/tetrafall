@@ -1,6 +1,7 @@
 # 연습 방 화면 (G6, main.js updatePractice·setPracticeOpen 자리): 연습 키 (기본 Tab) 로 왼쪽 작은 창 — 토글 (F 쿨 없음·R 가득·블록 없음·안 죽음)·내 피해·캐릭터·맵·허수아비 (추가·피해 %·삭제)·연습 나가기.
 # 오른쪽엔 허수아비 콤보 기록 (진행 중 노랑, 끝나면 흰 글씨로 잠깐). 튜토리얼 방엔 없음. 창이 열리면 마우스가 풀림. main.gd 가 붙임
 extends CanvasLayer
+const Opts := preload("res://core/opts.gd")
 
 const C := preload("res://core/config.gd")
 const S := preload("res://ui/ui_style.gd")
@@ -147,7 +148,7 @@ static func _name_of(p: Dictionary) -> String:
 
 func _process(_dt: float) -> void:
 	var on := playing()
-	if on and not open and OS.get_cmdline_user_args().has("--practice-open") and not has_meta("auto_opened"): # 확인용
+	if on and not open and Opts.args().has("--practice-open") and not has_meta("auto_opened"): # 확인용
 		set_meta("auto_opened", true)
 		set_open(true)
 	if not on and open:

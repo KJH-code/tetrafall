@@ -4,6 +4,7 @@
 # 하이브리드 노트북 안내: Windows 에서 내장 그래픽으로 돌면 'reg query' 로 이 PC 의 다른 GPU 를 찾음 (스레드 — 타이틀을 안 멈춤) → hint (F3·화면 구석이 읽음)
 # 확인용: --gfx auto|high|medium|low (설정에 안 남김) · --fake-gpu "<이름>" (어댑터 이름 흉내) · --fake-gpu-others "<이름>" (다른 GPU 흉내, reg 안 부름)
 extends Node
+const Opts := preload("res://core/opts.gd")
 
 const WC := preload("res://world/world_config.gd")
 const GC := preload("res://world/gfx_calc.gd")
@@ -24,7 +25,7 @@ var _thread: Thread = null
 
 func _ready() -> void:
 	name = "Gfx"
-	var args := OS.get_cmdline_user_args()
+	var args := Opts.args()
 	adapter = RenderingServer.get_video_adapter_name()
 	vendor = RenderingServer.get_video_adapter_vendor()
 	var fake := _arg(args, "--fake-gpu")

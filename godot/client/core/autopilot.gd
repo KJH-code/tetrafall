@@ -16,6 +16,7 @@
 #   --shot-round <N> (N판째 시작 뒤 --shot-after 초에 찍음) · --char2 <id> --char2-at <초> (연습: 판 중 캐릭터 바꾸기) · --tut-skip <초> (튜토리얼: 한 단계에 이만큼 머물면 넘기기 → 끝까지)
 # 화면 범인 찾기: --hide ui|world|audio (그 묶음을 숨기고 찍음) · --dump (찍을 때 보이는 Control·CanvasItem·3D 노드를 화면 사각형과 함께 출력)
 extends Node
+const Opts := preload("res://core/opts.gd")
 
 const C := preload("res://core/config.gd")
 const Prof := preload("res://core/prof.gd")
@@ -312,7 +313,7 @@ func _process(_d: float) -> void:
 			_log("성능 표: 평균 %.2fms · 1%% low %.2fms · 그리기 %d · 메모리 %.1fMB (영상 %.1fMB) · 프레임 %d | 나눔 평균: 그리기 CPU %.1fms · GPU %.1fms · TIME_PROCESS (스크립트 + 그리기 — 고도 4.7 은 draw 까지 들어감, 스크립트만은 F3 줄) %.1fms · 물리 %.1fms" % [avg, low / k, Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0, Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0, sorted.size(), perf_split[0] / maxf(1, perf_split[4]), perf_split[1] / maxf(1, perf_split[4]), perf_split[2] / maxf(1, perf_split[4]), perf_split[3] / maxf(1, perf_split[4])])
 			_log("성능 구간 (프레임당): %s" % Prof.report(int(perf_split[4])))
 			var pf := get_tree().root.find_child("Perf", true, false) # F3 (ui/perf.gd, --perf 로 켬): 재혁 PC 에서 '복사' 하는 그 한 줄
-			if pf != null and pf.has_method("line") and OS.get_cmdline_user_args().has("--perf"):
+			if pf != null and pf.has_method("line") and Opts.args().has("--perf"):
 				_log("F3 한 줄: %s" % pf.line())
 			_log("성능: 그리기 %d · 물체 %d · 삼각형 %d · FPS %d · 프레임 평균 %.1fms 최악 %.1fms (최근 %d프레임) | 나눠서: 보이는 %d · 그림자 %d · 몸 메시 %d" % [Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME), Engine.get_frames_per_second(), avg, worst, frame_ms.size(), get_viewport().get_render_info(Viewport.RENDER_INFO_TYPE_VISIBLE, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME), get_viewport().get_render_info(Viewport.RENDER_INFO_TYPE_SHADOW, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME), _body_meshes(get_tree().root)])
 			var rw = get_tree().root.get_node_or_null("TfRagdolls")

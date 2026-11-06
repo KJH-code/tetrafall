@@ -6,9 +6,25 @@ const { chromium } = require('playwright');
 
 (async () => {
   const [target, view = 'third', map = 'pyramid', secs = '10', warm = '15'] = process.argv.slice(2);
-  const browser = await chromium.launch({ headless: false, args: ['--use-angle=gl', '--ignore-gpu-blocklist', '--enable-precise-memory-info'] });
-  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  const browser = await chromium.launch({ headless: false, args: ['--use-angle=gl', '--ignore-gpu-blocklist', '--enable-precise-memory-info', ...(process.env.UNCAP ? ['--disable-frame-rate-limit', '--disable-gpu-vsync'] : [])] });
+  const page = await browser.newPage({ viewport: { width: Number(process.env.VW || 1280), height: Number(process.env.VH || 720) } });
   const logs = [];
+  // GLSTUB=1: 그리기 명령(draw*)을 아무것도 안 하게 바꿔 (소프트웨어 GL 의 래스터·정점 처리를 뺌) 엔진·스크립트·GL 호출 보내기 CPU 만 잼. window.__gl = {draws, tris} 로 셈
+  if (process.env.GLSTUB) await page.addInitScript(() => {
+    const st = (window.__gl = { draws: 0, tris: 0, calls: 0 });
+    for (const C of [WebGL2RenderingContext, WebGLRenderingContext]) {
+      for (const n of ['drawElements', 'drawArrays', 'drawElementsInstanced', 'drawArraysInstanced', 'drawRangeElements']) {
+        if (!C.prototype[n]) continue;
+        C.prototype[n] = function (mode, a, b, c, d) {
+          st.draws++;
+          // drawElements(mode,count,type,offset[,inst]) · drawArrays(mode,first,count[,inst]) · drawRangeElements(mode,start,end,count,type,offset)
+          const cnt = n === 'drawRangeElements' ? c : n.startsWith('drawArrays') ? b : a;
+          const inst = n === 'drawArraysInstanced' ? c : n === 'drawElementsInstanced' ? d : 1;
+          st.tris += (mode === 4 ? cnt / 3 : mode === 5 || mode === 6 ? cnt - 2 : 0) * (inst || 1);
+        };
+      }
+    }
+  });
   page.on('console', (m) => logs.push(m.text()));
   if (target === 'js') {
     await page.addInitScript((third) => {
@@ -43,6 +59,7 @@ const { chromium } = require('playwright');
     if (R) R.info.autoReset = false; // JS: 한 프레임 = 장면 + 외곽선 두 번 그림 → 프레임마다 직접 셈
     let last = performance.now();
     const t0 = last;
+    const g0 = window.__gl ? { ...window.__gl } : null;
     const f = (now) => {
       ms.push(now - last);
       last = now;
@@ -53,7 +70,7 @@ const { chromium } = require('playwright');
         const k = Math.max(1, Math.ceil(s.length * 0.01));
         const tf = window.__tf;
         const info = tf && tf.renderer && tf.renderer.renderer ? tf.renderer.renderer.info.render : null;
-        res({ frames: ms.length, avg: ms.reduce((a, b) => a + b, 0) / ms.length, low: s.slice(0, k).reduce((a, b) => a + b, 0) / k, draws: calls.length ? Math.round(calls.slice(1).reduce((a, b) => a + b, 0) / Math.max(1, calls.length - 1)) : null, heapMB: performance.memory ? performance.memory.usedJSHeapSize / 1048576 : null, phase: tf && tf.getState() ? tf.getState().phase : null });
+        res({ glPerFrame: g0 ? { draws: Math.round((window.__gl.draws - g0.draws) / ms.length), tris: Math.round((window.__gl.tris - g0.tris) / ms.length) } : null, frames: ms.length, avg: ms.reduce((a, b) => a + b, 0) / ms.length, low: s.slice(0, k).reduce((a, b) => a + b, 0) / k, draws: calls.length ? Math.round(calls.slice(1).reduce((a, b) => a + b, 0) / Math.max(1, calls.length - 1)) : null, heapMB: performance.memory ? performance.memory.usedJSHeapSize / 1048576 : null, phase: tf && tf.getState() ? tf.getState().phase : null });
       }
     };
     requestAnimationFrame(f);

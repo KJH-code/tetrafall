@@ -3,6 +3,7 @@
 # 생길 때 바닥을 뚫고 솟아 살짝 넘침 · 수명 끝 무렵 금이 퍼지고 하얗게 깜빡 · 같은 묶음 이웃 칸 윗면은 쇠 띠 · R 은 빛 판이 세지며 부풂
 # · 연쇄 폭발은 칸마다 차례로 (대기 칸은 하얗게) · 수명 끝은 부서지며 내려앉음 · 판자 조각. 소리는 View.sound_cue "blast" (audio/)
 extends Node3D
+const Opts := preload("res://core/opts.gd")
 
 const C := preload("res://core/config.gd")
 const FXC := preload("res://fx/fx_config.gd")
@@ -96,7 +97,7 @@ func _pool(name: String, mat: Material, shadow := true) -> void:
 
 func _ready() -> void:
 	Store.game_event.connect(on_event)
-	demo = OS.get_cmdline_user_args().has("--bb-demo")
+	demo = Opts.args().has("--bb-demo")
 
 
 func _demo_list(st: Dictionary) -> Array:

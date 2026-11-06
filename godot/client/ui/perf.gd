@@ -6,6 +6,7 @@
 # 구간 (래그돌·몸 애니·블록·위험) 은 그 묶음이 PerfCalc.begin/end 로 감싸면 나옴. main.gd 가 붙임.
 # 메뉴·타이틀 (방 밖) 에선 왼쪽 아래 구석에 작은 글씨로 GPU·렌더러·창 크기·화질을 늘 보이고, 내장 그래픽 + 다른 GPU 면 안내 한 줄 (F3 와 상관없이)
 extends CanvasLayer
+const Opts := preload("res://core/opts.gd")
 
 const C := preload("res://core/config.gd")
 const PC := preload("res://ui/perf_calc.gd")
@@ -121,7 +122,7 @@ func _ready() -> void:
 
 
 func _apply() -> void:
-	PC.on = bool(View.settings.get("perf", false)) or OS.get_cmdline_user_args().has("--perf") # --perf: 확인용 (설정에 안 남김)
+	PC.on = bool(View.settings.get("perf", false)) or Opts.args().has("--perf") # --perf: 확인용 (설정에 안 남김)
 	box.visible = PC.on
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), PC.on)
 	win = PC.PerfWindow.new()

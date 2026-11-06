@@ -3,6 +3,7 @@
 # 몸 쪽 (renderer.hitReact·skillMove·trail·blockPulse·lightBurst 등) 은 G2·G1·G3 몫이라 여기 없음.
 # 다른 묶음이 읽는 것: View.time_scale (KO 슬로모션·히트스톱, 프레임 dt 에 곱함) · effects.squash_amount(id)·punch_amount(id) (몸)
 extends Node3D
+const Opts := preload("res://core/opts.gd")
 
 const Prof := preload("res://core/prof.gd")
 
@@ -44,7 +45,7 @@ func _ready() -> void:
 	var w := get_parent().get_parent() if get_parent() != null else null
 	if w != null and w.has_method("solid_at"):
 		effects.solid = w.solid_at # 조각이 땅에 닿아 튐
-	if OS.get_cmdline_user_args().has("--fx-demo"):
+	if Opts.args().has("--fx-demo"):
 		demo_next = 0.0
 	Store.game_event.connect(on_event)
 	PlayerInput.action_sent.connect(_on_action)
