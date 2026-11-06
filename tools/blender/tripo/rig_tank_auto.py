@@ -14,6 +14,7 @@ sys.path.insert(0, HERE)
 sys.dont_write_bytecode = True
 import rigkit as K  # noqa: E402
 import rig_tank as R  # noqa: E402  (빨강 판정·상수 재사용)
+import ninja_vm as VM  # noqa: E402  (1인칭 닫힌 팔)
 
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 SRC = os.path.join(HERE, "src", "tank_tripo_rigged.glb")
@@ -199,7 +200,10 @@ def main():
     a = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     out = a[a.index("--out") + 1] if "--out" in a else os.path.join(REPO, "godot", "client", "assets", "models", "ext")
     ob, arm = build(a)
-    export(os.path.join(out, "tank_rigged.glb"), [ob, arm])
+    # W28: 닫힌 1인칭 팔 tank_vm (아래팔·손·손가락 뼈가 센 꼭짓점 = 방패·해머 포함, 아래팔 축 수직 평면으로 잘라 어깨 쪽으로 길게 닫음).
+    # 예전엔 로더가 팔꿈치 아래 삼각형을 갈라 써서 팔꿈치 쪽이 열려 있어 이동·평타 때 공중에 떠 보임
+    vm = VM.make_vm(ob, arm, "tank_vm", True, None, 1.0, False)
+    export(os.path.join(out, "tank_rigged.glb"), [ob, vm, arm])
     print("TF 내보냄", out)
 
 

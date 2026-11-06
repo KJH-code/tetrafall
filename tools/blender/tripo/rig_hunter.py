@@ -14,6 +14,7 @@ sys.path.insert(0, HERE)
 sys.dont_write_bytecode = True
 import rigkit as K  # noqa: E402
 import rig_tank as R  # noqa: E402  (빨강 판정·상수 재사용)
+import ninja_vm as VM  # noqa: E402  (1인칭 닫힌 팔)
 
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
 SRC = os.path.join(HERE, "src", "hunter_tripo_rigged.glb")
@@ -78,32 +79,10 @@ def make_vm(ob, arm):
                 a = H("%sHand%s%d" % (sd, f, i))
                 b = H("%sHand%s%d" % (sd, f, i + 1)) if i < 4 else a + (a - H("%sHand%s%d" % (sd, f, i - 1))) * 0.5
                 seg[P + "%sHand%s%d" % (sd, f, i)] = (a, b, VM_R["Finger"])
-    names = {g.index: g.name for g in ob.vertex_groups}
-    ok = set()
-    for v in ob.data.vertices:
-        if not v.groups:
-            continue
-        g = max(v.groups, key=lambda g: g.weight)
-        n = names[g.group]
-        if n in seg and K.seg_dist(v.co, seg[n][0], seg[n][1])[0] <= seg[n][2]:
-            ok.add(v.index)
-    vm = ob.copy()
-    vm.data = ob.data.copy()
-    vm.name = "hunter_vm"
-    vm.data.name = "hunter_vm"
-    bpy.context.scene.collection.objects.link(vm)
-    vm.parent = arm
-    vm.matrix_parent_inverse = Matrix.Identity(4)
-    bm = bmesh.new()
-    bm.from_mesh(vm.data)
-    bm.faces.ensure_lookup_table()
-    bm.verts.ensure_lookup_table()
-    drop = [f for f in bm.faces if not all(v.index in ok for v in f.verts)]
-    bmesh.ops.delete(bm, geom=drop, context="FACES_ONLY")
-    loose = [v for v in bm.verts if not v.link_faces]
-    bmesh.ops.delete(bm, geom=loose, context="VERTS")
-    bm.to_mesh(vm.data)
-    bm.free()
+    # W28: 닫힌 팔 (ninja_vm.make_vm: 아래팔 축 수직 평면으로 잘라 어깨 쪽으로 길게 닫음 — 예전엔 팔꿈치 쪽이 열린 채 들쭉날쭉이라 이동·평타 때 공중에 떠 보임)
+    def accept(co, gname):
+        return gname in seg and K.seg_dist(co, seg[gname][0], seg[gname][1])[0] <= seg[gname][2]
+    vm = VM.make_vm(ob, arm, "hunter_vm", True, accept, 1.0)
     print("TF 1인칭 팔 삼각형", len(vm.data.polygons))
     return vm
 

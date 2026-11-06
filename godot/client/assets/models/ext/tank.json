@@ -23,5 +23,6 @@
 	"vm_snap": [
 		"elbow"
 	],
-	"portrait": {"up": -0.012, "shift": [-0.058, 0.055]}
+	"portrait": {"up": -0.012, "shift": [-0.058, 0.055]},
+	"vm_node": "tank_vm"
 }

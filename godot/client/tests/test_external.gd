@@ -10,6 +10,8 @@ const K := preload("res://chars/chars_config.gd")
 const Body := preload("res://chars/body.gd")
 const Ext := preload("res://chars/external.gd")
 const RagW := preload("res://chars/ragdoll.gd")
+const VM_ := preload("res://chars/viewmodel.gd")
+const Chars := preload("res://chars/chars.gd")
 
 var errors: Array = []
 
@@ -483,7 +485,7 @@ func test_blender_tank_info() -> void:
 		if k == "stage":
 			stage_sf = body_sf
 	check((info.cfg.get("faces", {}) as Dictionary).is_empty(), "표정 텍스처 없음 (닫힌 투구)")
-	check(info.cfg.tint == "mask" and (info.cfg.attach as Array).is_empty() and (info.cfg.keep as Array).is_empty() and str(info.cfg.get("vm_node", "")) == "", "tank.json: mask·소품 없음 (방패·해머가 몸에 붙음, W20 소품·닫힌 팔 메시 뺌)")
+	check(info.cfg.tint == "mask" and (info.cfg.attach as Array).is_empty() and (info.cfg.keep as Array).is_empty() and str(info.cfg.get("vm_node", "")) == "tank_vm", "tank.json: mask·소품 없음 (방패·해머가 몸에 붙음), 1인칭은 닫힌 팔 tank_vm (W28, 방패·해머 포함)")
 	# 방패는 캐릭터 왼쪽 (glTF -Z) 팔 뼈에, 해머는 오른쪽 (+Z) 팔 뼈에 매여 있어야 함 (게임 규칙: 방패 왼손 viewmodel, 해머 오른손 평타). 원본은 반대라 뒤집음
 	if stage_sf != null:
 		var arr: Array = stage_sf.mesh.surface_get_arrays(0)
@@ -637,7 +639,7 @@ func test_blender_tank_fx_twin() -> void:
 	b.free()
 	# 1인칭 쌍둥이: stage LOD 의 팔꿈치 아래 삼각형만 (방패·해머 포함 — 손에 붙어 따라감), 소품·코드 방패 없음
 	var t = _body("tank", false)
-	check(t.ext != null and not t.ext.third and t.ext.lod == str(t.ext.info.cfg.lods.stage), "1인칭 쌍둥이 = stage LOD")
+	check(t.ext != null and not t.ext.third and t.ext.lod == "tank_vm", "1인칭 쌍둥이 = 닫힌 팔 tank_vm (W28)")
 	if t.ext != null:
 		var arm_tri := 0
 		for sf in _lod_surfs(t.ext.info, t.ext.lod):
@@ -1366,3 +1368,150 @@ func test_stage_ext_no_taunt() -> void:
 	var cb = _still("bard", false)
 	check(CS.emote_for(cb, 100.0) == C.EMOTE_CHAR and CS.emote_for(cb, C.EMOTE_MS + 500.0) == -1.0, "예전 코드 몸은 도발 유지 (EMOTE_MS 뒤 끝)")
 	cb.free()
+
+
+# ---------- W28: 1인칭 팔이 이동·평타 때 공중에 떠 보이던 문제 (팔꿈치 쪽 끝이 화면 안에 올라와 몸에 안 이어짐) ----------
+
+# 한쪽 팔 (L 이면 +y 쪽 / R 이면 반대) 의 쉬는 자세 팔꿈치 → 손목 축에 꼭짓점을 비춘 값: [뒤로 (어깨 쪽) 가장 먼 길이 / 팔 길이, 열린 가장자리 중 팔꿈치 평면 (0.5 팔 길이) 보다 어깨 쪽 개수, 열린 가장자리 수]
+func _vm_reach(info: Dictionary, side: String, mesh: ArrayMesh) -> Array:
+	var el: Vector3 = (info.rest_global[int(info.map["elbow_" + side])] as Transform3D).origin
+	var ha: Vector3 = (info.rest_global[int(info.map["hand_" + side])] as Transform3D).origin
+	var ln := el.distance_to(ha)
+	var ax := (ha - el).normalized()
+	var arr := mesh.surface_get_arrays(0)
+	var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+	# 이 쪽 팔 꼭짓점: 축에서 팔 길이의 0.6 배 안 (두 팔은 몸 폭만큼 떨어져 있음)
+	var mine := {}
+	var back := 0.0
+	for i in vs.size():
+		var d := vs[i] - el
+		var t := d.dot(ax)
+		if (d - ax * t).length() < ln * 0.6:
+			mine[i] = true
+			back = maxf(back, -t)
+	var ks := PackedStringArray()
+	for v in vs:
+		ks.append("%d,%d,%d" % [roundi(v.x * 1e5), roundi(v.y * 1e5), roundi(v.z * 1e5)])
+	var ec := {}
+	var ends := {}
+	for i in range(0, idx.size(), 3):
+		for k in 3:
+			var ia: int = idx[i + k]
+			var ib: int = idx[i + (k + 1) % 3]
+			var a: String = ks[ia]
+			var b: String = ks[ib]
+			var e: String = (a + "|" + b) if a < b else (b + "|" + a)
+			ec[e] = int(ec.get(e, 0)) + 1
+			ends[e] = [ia, ib]
+	var open := 0
+	var open_back := 0
+	for e in ec:
+		if ec[e] == 1:
+			var pair: Array = ends[e]
+			if mine.has(pair[0]) and mine.has(pair[1]):
+				open += 1
+				if (vs[pair[0]] - el).dot(ax) < 0.0 and (vs[pair[1]] - el).dot(ax) < 0.0:
+					open_back += 1
+	return [back / ln, open_back, open]
+
+
+func test_vm_arm_reaches_shoulder() -> void:
+	for ch in ["ninja", "tank", "hunter", "hook"]:
+		var info = Ext.load_char(ch)
+		check(info != null and str(info.cfg.get("vm_node", "")) == ch + "_vm", "%s: 1인칭 팔은 닫힌 전용 메시 %s_vm" % [ch, ch])
+		if info == null:
+			continue
+		var m: ArrayMesh = null
+		for sf in info.surfs:
+			if sf.vm_mesh != null:
+				m = sf.vm_mesh
+		check(m != null, "%s: 1인칭 팔 메시가 있음" % ch)
+		if m == null:
+			continue
+		for side in ["L", "R"]:
+			var r := _vm_reach(info, side, m)
+			check(r[0] >= 2.0, "%s %s: 1인칭 팔이 팔꿈치에서 어깨 쪽으로 팔 길이의 %.2f 배 뻗음 (2 배 이상 — 이동·평타 때 끝이 화면 밖 아래·카메라 뒤)" % [ch, side, r[0]])
+			check(r[1] <= 8, "%s %s: 팔꿈치 뒤 (소매 통) 에 열린 가장자리 %d (닫힌 끝 — 예전엔 팔꿈치 둘레가 열려 단면이 보임)" % [ch, side, r[1]])
+
+
+# 이동·점프·대시·평타 자세 (tools/move_shot.gd 와 같은 상태표): [이름, 공중, 걷는 속도 비율, 걸음 위상, vz, 공중 대시, 평타 단계, u]
+const VM_POSES := [
+	["idle", false, 0.0, 0.0, 0.0, 0.0, "", 0.0],
+	["walk", false, 1.0, 1.57, 0.0, 0.0, "", 0.0],
+	["walk2", false, 1.0, 4.71, 0.0, 0.0, "", 0.0],
+	["jump", true, 1.0, 0.0, 7.0, 0.0, "", 0.0],
+	["fall", true, 1.0, 0.0, -9.0, 0.0, "", 0.0],
+	["dash", true, 1.0, 0.0, 0.0, 1.0, "", 0.0],
+	["wind", false, 0.0, 0.0, 0.0, 0.0, "wind", 0.6],
+	["strike", false, 0.0, 0.0, 0.0, 0.0, "strike", 0.6],
+	["strike_walk", false, 1.0, 1.57, 0.0, 0.0, "strike", 0.6],
+	["rec", false, 0.0, 0.0, 0.0, 0.0, "rec", 0.5],
+]
+
+
+# 모든 자세에서 두 팔의 소매 통 먼 끝 (팔꿈치에서 손목 반대로 팔 길이의 2.4 배) 이 1인칭 카메라 시야 밖 — 윗단면이 화면에 올라와 공중에 떠 보이지 않음
+func test_vm_arm_tip_offscreen() -> void:
+	var was: bool = Body.use_ext
+	Body.use_ext = true
+	for ch in ["ninja", "tank", "hunter", "hook"]:
+		var vm = VM_.new()
+		vm._ready() # 트리 밖 (test_viewmodel_follows 와 같은 방식) — 카메라 좌표는 부모 변환을 직접 곱해서 셈
+		var b = Chars.make_body(ch, Color(0.9, 0.4, 0.2))
+		vm._sync(b)
+		if vm.twin == null or vm.twin.ext == null:
+			check(false, "%s 1인칭 외부 팔 없음" % ch)
+			vm.free()
+			b.free()
+			continue
+		var sk: Skeleton3D = vm.twin.ext.sk
+		var info: Dictionary = vm.twin.ext.info
+		var worst := ""
+		var t := 1.0
+		for s in VM_POSES:
+			t += 1.0 / 60.0
+			var atk: Dictionary = C.BASIC_ATTACKS[ch].chain[0]
+			var act = null
+			if str(s[6]) != "":
+				act = {"id": 1, "move": atk.name, "phase": s[6], "u": s[7], "air": false}
+			var st := {"air": s[1], "walking": float(s[2]) > 0.0 and not s[1], "hs": float(s[2]) * C.MOVE_SPEED, "walk": s[3], "vz": s[4], "t": t, "stunned": false, "dancing": false, "emote": -1, "emoteT": 0.0, "victory": -1.0, "punch": 0.0, "holding": false, "hit": null,
+				"act": act, "accF": 0.0, "accS": 0.0, "tumble": 0.0, "recover": 0.0, "land": 0.0, "flip": -1.0, "rag": false, "sniffAt": null, "idle": 0.0, "airDash": s[5], "bump": null, "whirl": -1.0, "dizzy": 0.0, "glide": false, "amp": false, "form": "", "loaded": false, "ammo": 3.0}
+			b.hs = float(s[2]) * C.MOVE_SPEED
+			b.walk = s[3]
+			b.vz = s[4]
+			b.t = t
+			b._figure_anim(st, 1.0 / 60.0)
+			b._apply(1.0 / 60.0)
+			b.cur_act = act
+			vm._follow(1.0 / 60.0)
+			vm.twin.ext.sync()
+			for side in ["L", "R"]:
+				var eb: Vector3 = sk.get_bone_global_pose(int(info.map["elbow_" + side])).origin
+				var hb: Vector3 = sk.get_bone_global_pose(int(info.map["hand_" + side])).origin
+				var tip := _vm_cam_point(vm, sk, eb - (hb - eb) * 2.4)
+				if _vm_in_view(vm.cam.fov, tip):
+					worst += " %s/%s" % [s[0], side]
+		check(worst == "", "%s: 이동·평타 자세에서 소매 통 먼 끝이 시야 안:%s" % [ch, worst])
+		vm.twin.free()
+		b.free()
+		vm.free()
+	Body.use_ext = was
+
+
+# 스켈레톤 좌표의 점 → 1인칭 카메라 좌표 (부모 변환을 카메라까지 곱함)
+func _vm_cam_point(vm, sk: Skeleton3D, p: Vector3) -> Vector3:
+	var n: Node = sk
+	var v := p
+	while n != null and n != vm.cam:
+		if n is Node3D:
+			v = (n as Node3D).transform * v
+		n = n.get_parent()
+	return v
+
+
+# 카메라 좌표의 점이 시야 (세로 fov, 가로세로 16:9, 가까운 면 0.01) 안인가
+func _vm_in_view(fov_deg: float, v: Vector3) -> bool:
+	if -v.z < 0.01:
+		return false
+	var hh := tan(deg_to_rad(fov_deg) * 0.5) * -v.z
+	return absf(v.y) <= hh and absf(v.x) <= hh * 16.0 / 9.0
