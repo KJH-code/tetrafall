@@ -606,6 +606,22 @@ class Ext extends Node3D:
 			n = n.get_parent()
 		return t if n == space else null
 
+	# 밧줄·쇠사슬이 나가는 자리 (cfg rope_bone = 뼈 이름 끝, 예 "LeftHandMiddle4"): 모델 손 (갈고리) 뼈의 몸 (body) 기준 위치 — 호출 쪽이 body.global_transform 을 곱함.
+	# 없으면 null (코드 손 관절을 씀 — 모델 팔 길이가 달라 20 cm 쯤 어긋남). 트리 밖에서도 됨 (뼈 지역 자세를 직접 곱함)
+	func rope_point() -> Variant:
+		var rb := str(info.cfg.get("rope_bone", ""))
+		if rb == "" or sk == null:
+			return null
+		for i in sk.get_bone_count():
+			if sk.get_bone_name(i).ends_with(rb):
+				var t := sk.get_bone_pose(i)
+				var p := sk.get_bone_parent(i)
+				while p >= 0:
+					t = sk.get_bone_pose(p) * t
+					p = sk.get_bone_parent(p)
+				return _body_rel(sk) * t.origin
+		return null
+
 	func _body_rel(n: Node) -> Transform3D:
 		var t := Transform3D.IDENTITY
 		while n != null and n != body:

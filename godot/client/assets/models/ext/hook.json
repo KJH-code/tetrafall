@@ -1,0 +1,27 @@
+{
+	"_": "자동 리깅 갈고리 (해적 선장) (tools/blender/tripo/ — rig_hook.py 손질 + lods.mjs LOD) — 다시 만들면 덮어씀. 키는 chars/chars_config.gd EXT_DEFAULTS",
+	"height": 1.0,
+	"yaw": 0.0,
+	"tint": "mask",
+	"lods": {
+		"stage": "hook_lod0",
+		"high": "hook_lod1",
+		"medium": "hook_lod1",
+		"low": "hook_lod1"
+	},
+	"toon_steps": [
+		0.7,
+		0.86,
+		1.0
+	],
+	"outline": 0.45,
+	"rim": [
+		0.22,
+		3.0
+	],
+	"vm_snap": [
+		"elbow"
+	],
+	"vm_node": "hook_vm",
+	"rope_bone": "LeftHandMiddle4"
+}

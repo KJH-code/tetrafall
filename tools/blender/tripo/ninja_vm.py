@@ -22,7 +22,7 @@ def _arm_groups(side):
     return set(names)
 
 
-def _side(ob, arm, side):
+def _side(ob, arm, side, arm_only=False):
     """한쪽 팔: 새 bmesh (닫힌 아래팔 + 손), 못 만들면 None"""
     B = arm.data.bones
     elbow = Vector(B[P + side + "ForeArm"].head_local)
@@ -46,13 +46,22 @@ def _side(ob, arm, side):
         w = v[dl].get(gi, 0.0)
         if w > best:
             best, seed = w, v
+    ok = None
+    if arm_only:  # 갈고리: 손이 벨트·코트에 닿아 이어져 있어서 (한 덩어리) 아래팔·손·손가락 뼈가 가장 센 꼭짓점만 (코트까지 번지지 않게)
+        gnames = {ob.vertex_groups[P + n].index for n in [a[len(P):] for a in _arm_groups(side)]}
+        ok = set()
+        for v in bm.verts:
+            if v[dl]:
+                gi_top = max(v[dl].items(), key=lambda kv: kv[1])[0]
+                if gi_top in gnames:
+                    ok.add(v)
     keep = {seed}
     stack = [seed]
     while stack:
         v = stack.pop()
         for e in v.link_edges:
             o = e.other_vert(v)
-            if o not in keep:
+            if o not in keep and (ok is None or o in ok):
                 keep.add(o)
                 stack.append(o)
     drop = [v for v in bm.verts if v not in keep]
@@ -69,6 +78,10 @@ def _side(ob, arm, side):
     # 경계가 여러 고리면 (손가락 사이 틈 등 원래 열린 곳) 단면 고리만: 평면 위 꼭짓점으로만 이뤄진 가장자리
     on_plane = [e for e in bnd if all(abs((v.co - p0).dot(ax)) < 1e-4 for v in e.verts)]
     res = bmesh.ops.holes_fill(bm, edges=on_plane, sides=64)
+    if arm_only:  # 잘라낸 코트·벨트 자리 구멍도 메움 (손 아래 안쪽이라 화면엔 거의 안 보임)
+        rest = [e for e in bm.edges if e.is_boundary and e not in on_plane]
+        if rest:
+            bmesh.ops.holes_fill(bm, edges=rest, sides=64)
     caps = res["faces"]
     # 둥근 끝: 마개 면을 팔꿈치 쪽 (-ax) 으로 밀어내며 오므림
     if caps:
@@ -83,17 +96,17 @@ def _side(ob, arm, side):
     return bm
 
 
-def make_vm(ob, arm):
-    """닫힌 1인칭 팔 오브젝트 'ninja_vm' (좌우 한 메시). ob = 몸 (ninja_lod0), arm = 뼈대"""
+def make_vm(ob, arm, name="ninja_vm", arm_only=False):
+    """닫힌 1인칭 팔 오브젝트 (이름 기본 'ninja_vm', 갈고리는 'hook_vm' — 좌우 한 메시). ob = 몸 (…_lod0), arm = 뼈대"""
     parts = []
     for side in ("Left", "Right"):
-        bm = _side(ob, arm, side)
+        bm = _side(ob, arm, side, arm_only)
         if bm is None:
             print("TF 1인칭 팔 못 만듦", side)
             continue
         parts.append(bm)
         print("TF 1인칭 팔", side, "삼각형 약", len(bm.faces))
-    me = bpy.data.meshes.new("ninja_vm")
+    me = bpy.data.meshes.new(name)
     # 재질·UV·색 층은 clear_geometry 가 층 이름을 지우므로 bmesh 를 합쳐서 to_mesh
     big = bmesh.new()
     big.from_mesh(ob.data)
@@ -109,7 +122,7 @@ def make_vm(ob, arm):
     big.free()
     for m in ob.data.materials:
         me.materials.append(m)
-    vm = bpy.data.objects.new("ninja_vm", me)
+    vm = bpy.data.objects.new(name, me)
     bpy.context.scene.collection.objects.link(vm)
     for g in ob.vertex_groups:  # 뼈대 이름 (꼭짓점 그룹 이름은 메시 데이터에 있어서 새로 만듦, 번호 순서 그대로)
         vm.vertex_groups.new(name=g.name)

@@ -74,7 +74,9 @@ func hand(id) -> Variant:
 		return null
 	var n: Dictionary = bodies.nodes.get(int(id), {})
 	if not n.is_empty() and n.root.visible and n.body.visible and n.body.get("hands") is Array and n.body.hands.size() > 1 and n.body.hands[1] != null:
-		return Co.game(n.body.hands[1].global_position)
+		var ext = n.body.get("ext")
+		var rp = ext.rope_point() if ext != null and ext.has_method("rope_point") else null
+		return Co.game(n.body.global_transform * (rp as Vector3) if rp != null else n.body.hands[1].global_position)
 	var s = bodies.shown.get(int(id))
 	return Vector3(s.x, s.y, s.z + 1) if s != null else null
 

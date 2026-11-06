@@ -935,3 +935,177 @@ func test_hunter_first_person() -> void:
 		seen[String(mi.name).split("_s")[0]] = true
 	check(not seen.has("hunter_vm") and not seen.has("hunter_lod0"), "판 몸에는 1인칭 팔·stage 메시 없음 (%s)" % [seen.keys()])
 	b.free()
+
+
+# ---------- 갈고리 (해적 선장, 스킨 메시 하나 + Mixamo 식 뼈 65, tools/blender/tripo/rig_hook.py) ----------
+
+# 뼈 매칭, LOD (stage = 원본 전체, 판 = 하나 약 8400 을 high·medium·low 가 같이 씀 — UV 이음선 때문에 더 못 줄임), 몸 색 칸 = 삼각 모자, 갈고리 손이 게임 L 관절 (= Mixamo Left*)
+func test_hook_info() -> void:
+	var info = Ext.load_char("hook")
+	check(info != null, "갈고리 hook.glb 읽음")
+	if info == null:
+		return
+	for j in Ext.JOINTS:
+		check(info.map.has(j), "뼈 매칭 %s" % j)
+	check(String(info.names[info.map.hips]).ends_with("Hips") and String(info.names[info.map.hand_L]).ends_with("LeftHand") and String(info.names[info.map.elbow_L]).ends_with("LeftForeArm"), "골반=Hips·왼손=LeftHand·아래팔=ForeArm")
+	check(info.names.size() >= 60, "손가락까지 뼈 %d" % info.names.size())
+	var lods: Dictionary = info.cfg.get("lods", {})
+	var names := {}
+	for k in lods:
+		names[str(lods[k])] = true
+	check(lods.size() == 4 and names.size() == 2 and lods.high == lods.medium and lods.medium == lods.low, "LOD: stage 하나 + 판 셋이 같은 메시")
+	var want := {"stage": [17000, 20000], "high": [7500, 9500]}
+	var stage_sf = null
+	for k in want:
+		var ss := _lod_surfs(info, str(lods.get(k, "")))
+		var tri := 0
+		var body_sf = null
+		for sf in ss:
+			tri += _tris(sf.mesh)
+			body_sf = sf
+		check(ss.size() == 1 and body_sf.skinned and body_sf.vcolor and body_sf.tex != null, "%s: 몸 표면 하나 = 스킨·꼭짓점 색 (몸 색 칸)·텍스처" % k)
+		check(tri >= want[k][0] and tri <= want[k][1], "%s 삼각형 %d (%d~%d)" % [k, tri, want[k][0], want[k][1]])
+		var st := _albedo_stats(body_sf.mesh, body_sf.tex)
+		check(st[1] > 0.05 and st[1] < 0.35, "%s 몸 색 칸 넓이 %.0f%% (5~35%% — 삼각 모자)" % [k, st[1] * 100.0])
+		if k == "stage":
+			stage_sf = body_sf
+	check(info.cfg.tint == "mask" and (info.cfg.attach as Array).is_empty() and (info.cfg.keep as Array).is_empty() and str(info.cfg.get("vm_node", "")) == "hook_vm" and str(info.cfg.get("rope_bone", "")) != "", "hook.json: mask·소품 없음 (갈고리가 몸에 붙음, 코드 갈고리는 안 남김)·1인칭 hook_vm·밧줄 뼈")
+	# 갈고리는 게임 L 관절 팔 (갈고리 던지기·휘두르기·내려치기 모두 L): 몸 밖으로 크게 나온 꼭짓점 중 왼 아래팔·손 뼈 쪽이 오른쪽보다 많음 (원본은 갈고리 손이 Mixamo LeftHand)
+	if stage_sf != null:
+		var arr: Array = stage_sf.mesh.surface_get_arrays(0)
+		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var bi: PackedInt32Array = arr[Mesh.ARRAY_BONES]
+		var bw: PackedFloat32Array = arr[Mesh.ARRAY_WEIGHTS]
+		var cnt := {"R": 0, "L": 0}
+		for i in v.size():
+			if absf(v[i].z) < 0.2 * float(info.box.size.y):
+				continue
+			var best := 0
+			for k in 4:
+				if bw[i * 4 + k] > bw[i * 4 + best]:
+					best = k
+			var bn: String = info.names[stage_sf.binds[bi[i * 4 + best]]]
+			if bn.contains("Hand") or bn.contains("ForeArm"):
+				cnt["R" if bn.contains("Right") else "L"] += 1
+		check(cnt.L > cnt.R, "갈고리 손 = 왼 (L 관절) 팔 뼈 꼭짓점 왼 %d·오른 %d" % [cnt.L, cnt.R])
+
+
+# 코트·치맛자락이 팔을 따라 올라오지 않게 (원본은 코트 판 3360 꼭짓점이 손 뼈에 매였음): 팔 뼈 (위팔·아래팔·손·손가락) 가중치는 그 쪽 팔 뼈가 가장 센 꼭짓점이거나 뼈 선분 3 cm 안에만
+func test_hook_arm_weights() -> void:
+	var info = Ext.load_char("hook")
+	if info == null:
+		check(false, "hook.glb 읽음")
+		return
+	var sf = _lod_surfs(info, str(info.cfg.lods.stage))[0]
+	var arr: Array = sf.mesh.surface_get_arrays(0)
+	var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var bi: PackedInt32Array = arr[Mesh.ARRAY_BONES]
+	var bw: PackedFloat32Array = arr[Mesh.ARRAY_WEIGHTS]
+	var rest: Array = info.rest_global
+	var segs := {}
+	for i in info.names.size():
+		var n: String = info.names[i]
+		if not (n.contains("Arm") or n.contains("Hand")) or n.contains("Shoulder"):
+			continue
+		var kid := -1
+		for j in info.names.size():
+			if info.parents[j] == i:
+				kid = j
+				break
+		var a: Vector3 = (rest[i] as Transform3D).origin
+		var b: Vector3 = (rest[kid] as Transform3D).origin if kid >= 0 else a + Vector3(0, -0.03, 0)
+		segs[i] = [a, b, n.contains("Left")]
+	var bad := 0
+	var arm_verts := 0
+	for i in v.size():
+		var best := 0
+		for k in 4:
+			if bw[i * 4 + k] > bw[i * 4 + best]:
+				best = k
+		var top: int = sf.binds[bi[i * 4 + best]]
+		var top_arm: bool = segs.has(top)
+		var top_left: bool = top_arm and bool(segs[top][2])
+		arm_verts += 1 if top_arm else 0
+		for k in 4:
+			if bw[i * 4 + k] < 0.01:
+				continue
+			var bone: int = sf.binds[bi[i * 4 + k]]
+			if not segs.has(bone):
+				continue
+			if top_arm and top_left == bool(segs[bone][2]):
+				continue
+			var a: Vector3 = segs[bone][0]
+			var b: Vector3 = segs[bone][1]
+			var t := clampf((v[i] - a).dot(b - a) / maxf(1e-9, (b - a).length_squared()), 0.0, 1.0)
+			if (v[i] - (a + (b - a) * t)).length() > 0.035 * float(info.box.size.y):
+				bad += 1
+	check(arm_verts > 1000, "팔 뼈가 센 꼭짓점 %d" % arm_verts)
+	check(bad == 0, "팔 뼈 가중치가 코트에 번진 꼭짓점 %d (0)" % bad)
+
+
+# 판 몸: 크기·발바닥, 뼈가 우리 관절을 따라감, 그리는 메시 하나, 몸 색 칸 = 플레이어 색, 화질별 LOD, 밧줄이 모델 갈고리 쪽에서 나감
+func test_hook_body() -> void:
+	var Gfx = load("res://world/gfx.gd")
+	var was: Dictionary = Gfx.plan
+	for lv in ["high", "medium", "low"]:
+		Gfx.plan = {"level": lv}
+		var b = _body("hook")
+		check(b.ext != null and b.ext.lod == str(b.ext.info.cfg.lods[lv]), "화질 %s → LOD %s" % [lv, b.ext.lod if b.ext != null else "-"])
+		b.free()
+	Gfx.plan = {}
+	var b = _body("hook")
+	Gfx.plan = was
+	check(b.ext != null, "갈고리 붙음")
+	if b.ext == null:
+		b.free()
+		return
+	var sc: float = b.ext.transform.basis.get_scale().x
+	var hh: float = (b.ext.info.box as AABB).size.y * sc
+	var want_h: float = C.PLAYER_HEIGHT * C.FIGURE_SCALE * float(b.ext.info.cfg.height)
+	check(absf(hh - want_h) < 0.01, "키 %.3f m = 예전 몸 키 %.3f m × height" % [hh, want_h])
+	for j in ["foot_R", "foot_L"]:
+		var dz: float = _bone_pos(b, b.ext.info.map[j]).y - _jpos(b, b.ext._joint(j)).y
+		check(absf(dz) < 0.1, "발 뼈 높이 = 우리 발 (차이 %.3f m)" % dz)
+	_check_follow(b, "갈고리")
+	var ext_n := 0
+	for dr in b.drawn:
+		ext_n += 1 if dr.get("ext", false) else 0
+	check(ext_n == 1 and b.drawn.size() == 1 and b.ext.band == null, "그리는 메시 1 (몸 하나, 얻음 %d/%d)" % [ext_n, b.drawn.size()])
+	check(b.ext.find_children("*", "BoneAttachment3D", true, false).is_empty(), "손 뼈에 붙인 소품 없음 (코드 갈고리 안 남김)")
+	var m: ShaderMaterial = b.ext.parts[0].mi.material_override
+	check(m.get_shader_parameter("use_vertex_color") == true and m.get_shader_parameter("skin_multiply") == true and (m.get_shader_parameter("skin_tint") as Color).is_equal_approx(Color(0.2, 0.5, 1.0, 1.0)), "몸 색 칸 = 플레이어 색 곱하기")
+	b.free()
+	# 밧줄 시작점: 쉬는 자세에서 모델 왼손 (갈고리) 뼈 곁 (≤ 0.15 m) 이고, 코드 손 관절과는 다른 자리 (모델 팔 길이가 달라 어긋나던 것)
+	var rb = _body("hook")
+	rb.pose({"id": -1, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0, "emote": -1}, 0.0)
+	var rp = rb.ext.rope_point()
+	check(rp != null, "밧줄 뼈 위치 (rope_bone)")
+	if rp != null:
+		var hand_pos: Vector3 = _bone_pos(rb, rb.ext.info.map.hand_L)
+		var hand_joint: Vector3 = _jpos(rb, rb.ext._joint("hand_L"))
+		check((rp as Vector3).distance_to(hand_pos) < 0.15, "밧줄 시작점이 모델 왼손 곁 (%.3f m)" % (rp as Vector3).distance_to(hand_pos))
+		check((rp as Vector3).distance_to(hand_joint) > 0.03, "코드 손 관절과 다른 자리 (모델 갈고리 쪽, %.3f m)" % (rp as Vector3).distance_to(hand_joint))
+	rb.free()
+
+
+# 1인칭 쌍둥이: glb 안의 hook_vm (닫힌 팔 — 왼쪽은 갈고리가 화면에 보임, 오른쪽은 주먹). 판 몸에는 안 그려짐
+func test_hook_first_person() -> void:
+	var t = _body("hook", false)
+	check(t.ext != null and not t.ext.third and t.ext.lod == "hook_vm", "1인칭 쌍둥이 = hook_vm (얻음 %s)" % (t.ext.lod if t.ext != null else "-"))
+	if t.ext != null:
+		var arm_tri := 0
+		for sf in t.ext.info.surfs:
+			if sf.vm_mesh != null:
+				arm_tri += _tris(sf.vm_mesh)
+		check(arm_tri > 1000 and arm_tri < 3000, "1인칭 팔 삼각형 %d (아래팔·손·갈고리, 코트 안 번짐)" % arm_tri)
+		var meshes := 0
+		for mi in t.ext.find_children("*", "MeshInstance3D", true, false):
+			meshes += 1 if (mi as MeshInstance3D).mesh != null and String(mi.name).begins_with("hook_") else 0
+		check(meshes == 1, "1인칭에 그리는 외부 메시 하나 (%d)" % meshes)
+	t.free()
+	var b = _body("hook")
+	var seen := {}
+	for mi in b.ext.find_children("*", "MeshInstance3D", true, false):
+		seen[String(mi.name).split("_s")[0]] = true
+	check(not seen.has("hook_vm") and not seen.has("hook_lod0"), "판 몸에는 1인칭 팔·stage 메시 없음 (%s)" % [seen.keys()])
+	b.free()
