@@ -783,7 +783,7 @@ func _move_state(p: Dictionary, pos: Vector3, dt: float) -> void:
 		air_dash_t = C.FIGURE_AIR_DASH.s
 	air_dashes_prev = ad
 	air_dash_t = 0.0 if stunned else maxf(0.0, air_dash_t - dt)
-	var busy := walking or air or stunned or act != null or float(p.get("emote", -1)) >= 0
+	var busy := walking or air or stunned or act != null or float(p.get("emote", -1)) >= 0 or bool(p.get("noIdle", false)) # noIdle: 대기실 큰 캐릭터 (외부 몸) — 평소 버릇 동작 안 함
 	idle_t = 0.0 if busy else idle_t + dt
 	t += dt
 	dizzy = maxf(0.0, dizzy - dt)

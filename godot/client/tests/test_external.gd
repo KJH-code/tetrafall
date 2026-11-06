@@ -1340,3 +1340,29 @@ func test_switch_first_frame_arms_down() -> void:
 		check(down > 0.55, "%s 바꾼 직후 도발 첫 pose 에 팔이 내려옴 (%.2f)" % [ch, down])
 		root.remove_child(b)
 		b.free()
+
+
+# W27 대기실 큰 캐릭터: 외부 몸은 도발 없이 (바꾼 뒤 3초 모든 프레임 팔 내림 > 0.55), 예전 코드 몸은 도발 유지
+func test_stage_ext_no_taunt() -> void:
+	var P = load("res://ui/portrait.gd")
+	var CS = load("res://ui/char_stage.gd")
+	var root: Window = (Engine.get_main_loop() as SceneTree).root
+	for ch in _ext_ids():
+		var b = _still(ch)
+		root.add_child(b)
+		P.prime_idle(b)
+		var worst := 9.0
+		var emotes := 0
+		for i in 180: # 3초, 60fps
+			var age := i * 1000.0 / 60.0
+			var em: float = CS.emote_for(b, age)
+			if em >= 0.0:
+				emotes += 1
+			b.pose({"id": -1, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0, "emote": em, "noIdle": true}, 5000.0 + age)
+			worst = minf(worst, _arm_down(b))
+		check(emotes == 0 and worst > 0.55, "%s 바꾼 뒤 3초 도발 없음 (%d 프레임)·팔 내림 최저 %.2f" % [ch, emotes, worst])
+		root.remove_child(b)
+		b.free()
+	var cb = _still("bard", false)
+	check(CS.emote_for(cb, 100.0) == C.EMOTE_CHAR and CS.emote_for(cb, C.EMOTE_MS + 500.0) == -1.0, "예전 코드 몸은 도발 유지 (EMOTE_MS 뒤 끝)")
+	cb.free()

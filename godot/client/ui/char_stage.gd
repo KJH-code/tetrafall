@@ -108,8 +108,15 @@ func show_char(char_id: String, color: Color) -> void:
 
 
 func _pose(age: float, now: float) -> void:
-	var tz := U.taunt_at(age)
-	body.pose({"id": -1, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0, "emote": C.EMOTE_CHAR if tz.on else -1}, now)
+	body.pose({"id": -1, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0, "emote": emote_for(body, age), "noIdle": body.get("ext") != null}, now)
+
+
+# 고른 뒤 age_ms 에 틀 이모트 (-1 = 쉬는 자세). 외부 모델 (새 몸) 은 도발·평소 버릇 (noIdle) 없이 쉬는 자세 + 돎만: 도발 포즈가 팔을 수평으로 올려 (사냥꾼 겨누기 등) 큰 무대에서 T 포즈로 보임 (재혁 2026-11-06).
+# 예전 코드 몸은 그대로 도발. 판 중 도발 이모트는 안 건드림
+static func emote_for(b, age_ms: float) -> float:
+	if b != null and b.get("ext") != null:
+		return -1.0
+	return C.EMOTE_CHAR if U.taunt_at(age_ms).on else -1.0
 
 
 func _process(_d: float) -> void:
