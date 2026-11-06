@@ -1324,3 +1324,19 @@ func test_portrait_frame() -> void:
 		big.free()
 		small.free()
 		check(fb.half > 0.22 * 1.84 * 1.25 * 0.8, "키 배율 1.25 면 얼굴 칸도 커짐 (%.2f)" % fb.half)
+
+
+# 캐릭터 바꾸기 (char_stage.show_char) 직후: prime_idle → 도발 시작 (age 0) 첫 pose 때 팔은 아직 내려와 있음 (처음 관절 값·T 포즈 한 프레임 아님).
+# 도발이 진행되면 일부 모델은 팔을 수평으로 듦 (사냥꾼 겨누기·갈고리 손짓 등 설계된 포즈 — 연속 캡처 tools/switch_shot.gd) → 여기선 안 막음
+func test_switch_first_frame_arms_down() -> void:
+	var P = load("res://ui/portrait.gd")
+	var root: Window = (Engine.get_main_loop() as SceneTree).root
+	for ch in _ext_ids():
+		var b = _still(ch)
+		root.add_child(b)
+		P.prime_idle(b)
+		b.pose({"id": -1, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0, "emote": C.EMOTE_CHAR}, 5000.0)
+		var down := _arm_down(b)
+		check(down > 0.55, "%s 바꾼 직후 도발 첫 pose 에 팔이 내려옴 (%.2f)" % [ch, down])
+		root.remove_child(b)
+		b.free()
