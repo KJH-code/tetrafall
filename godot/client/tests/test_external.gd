@@ -1549,3 +1549,14 @@ func test_preload_and_warm() -> void:
 	for c in host.get_children():
 		c.free()
 	host.free()
+
+
+# W30: 외부 모델 아틀라스는 VRAM 압축 (무손실이면 읽을 때 2048² 를 풀어 100ms 넘게 멈추고 영상 메모리가 5배) — 가져오기 설정 + 프로젝트 설정이 지켜지는지
+func test_atlas_vram_compressed() -> void:
+	var ps := FileAccess.get_file_as_string("res://project.godot")
+	check(ps.contains("textures/vram_compression/import_s3tc_bptc=true"), "project.godot 에 S3TC·BPTC 가져오기 켬")
+	for id in ["tank", "ninja", "hunter", "hook"]:
+		var p := "res://assets/models/ext/%s_%s_atlas.jpg.import" % [id, id]
+		check(FileAccess.get_file_as_string(p).contains("compress/mode=2"), "%s 아틀라스 VRAM 압축" % id)
+		var tex = load("res://assets/models/ext/%s_%s_atlas.jpg" % [id, id])
+		check(tex != null and (tex as Texture2D).get_image().is_compressed(), "%s 아틀라스를 압축 상태로 읽음" % id)

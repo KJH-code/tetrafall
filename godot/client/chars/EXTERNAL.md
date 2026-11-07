@@ -102,3 +102,14 @@
 ## 10. W28 — 1인칭 팔이 이동·평타 때 공중에 떠 보이던 문제 (2026-11-06)
 
 원인: 닫힌 팔 메시가 팔꿈치 바로 위에서 끝나 (탱크는 로더 가르기라 열린 가장자리) 팔을 앞으로 뻗는 자세 (평타·대시·점프) 에서 끝이 화면 가운데에 올라옴. 고침: 네 모델 모두 `*_vm` (탱크도 `tank_vm` + `tank.json` `vm_node`) 을 팔꿈치에서 어깨 쪽으로 팔 길이의 2.6 배 뻗은 닫힌 소매 통으로 (`tools/blender/tripo/ninja_vm.py` `extend_end`, README 14절). 로더·viewmodel 은 안 고침. 테스트 `test_vm_arm_reaches_shoulder` (통 길이·열린 가장자리)·`test_vm_arm_tip_offscreen` (서기·걷기·점프·낙하·대시·평타 자세에서 통 먼 끝이 시야 밖). 확인 그림 `tools/move_shot.gd <폴더> <캐릭터> --ext`.
+
+
+## 11. W30 — 새 모델 랙 측정과 고침 (2026-11-07, PC 최적화)
+
+재혁: 새 모델 (탱크·닌자·사냥꾼·갈고리) 이 들어온 뒤 PC 에서 랙이 되살아남. 지속 저FPS 인지 순간 끊김인지, 언제인지 불분명 → **히치 로거** 를 만들고 (재혁 PC 에서 다음 판 뒤 한 줄로 원인 확인) 헤드리스·소프트웨어 렌더로 후보를 가름.
+
+- **히치 로거** (`core/hitch.gd`, 켜기: F3 성능 표시를 켜면 같이, 또는 실행 인자 `--hitch` — 꺼져 있으면 비용 0): 프레임 간격이 `max(최근 프레임 중앙값 × 2, 20ms)` 를 넘으면 `user://hitches.txt` (윈도우 `%APPDATA%\Godot\app_userdata\Tetrafall\hitches.txt`) 에 한 줄 — 시각·프레임 ms·화면·**원인**·스크립트/렌더 CPU ms·가장 긴 구간 (`Prof` 구간 프레임별 합)·그 사이 태그 (방 입장·판 단계·KO·부활·스킬·필살기·몸 만들기·모델 불러오기·외부 몸 연결·래그돌 만들기·미리 그리기·초상, 새 캐릭터 첫 등장 직후 3프레임은 '첫 그리기 지연 의심'). F3 패널 맨 아래와 '복사' 한 줄 끝에 `히치 N회 · 최악 xxms · 원인 상위: …`. 지속 저FPS 는 FPS·프레임 평균·1% low 가 말해 주고 (중앙값이 같이 올라서 히치로 안 셈), 히치는 그 위의 튐만 셈. 태그 달기: `Hitch.tag("KO", "x")`, 시간 재기 `var t := Hitch.t() … Hitch.span("몸 만들기", id, t)`.
+- **원인 1 (고침)**: 새 모델 텍스처 아틀라스 (2048², jpg) 가 **무손실 가져오기** (`compress/mode=0`) 라 처음 읽을 때 CPU 로 풀기만 100~120ms (한 캐릭터당, 메인 스레드) + 영상 메모리 21MB (4명 85MB). 가져오기를 `VRAM 압축` (S3TC, `project.godot` `import_s3tc_bptc=true`) 으로: 읽기 2.4ms, 영상 메모리 5.6MB/명 (4명 15MB 포함 모든 것), 모습 차이 눈으로 안 보임 (`tools/lobby_shot.gd` 전후 비교). 테스트 `test_atlas_vram_compressed`.
+- **원인 2 (고침)**: 몸이 **처음** 나오는 순간 읽기·정보 셈·첫 그리기가 한 프레임에 몰림. `External.request_all` 이 메뉴에서 쉴 때 모든 .glb·클립 파일을 스레드로 요청하고 (`ResourceLoader.load_threaded_request`), `External.warm_step` 이 캐릭터마다 진짜 몸을 아주 작게 카메라 앞에 두 프레임 그려 셰이더·메시를 올려 둠 (`world.gd`, G3 prewarm 다음, 실행 인자 `--no-ext-warm` 로 끔). 새 캐릭터 첫 프레임 133~363ms → 9~21ms (소프트웨어 렌더, `tools/ext_meas.gd --warm`).
+- **측정 도구**: `tools/ext_meas.gd` (캐릭터별 읽기·만들기·첫 프레임·그리기·삼각형·영상 메모리, `--eight` 8명 합, `--warm`, `--no-ext`, `--order`), 재연 (`--replay … --prof --hitch`) 끝에 객체·메모리 늘어남 한 줄 (`core/replay.gd`).
+- **못 가른 것**: GPU ms (소프트웨어 렌더). 판 중 8명 새 모델은 삼각형 +50% (208k vs 139k, 그림자·외곽선 포함 몸 하나 ~26.7k) 이고 CPU 는 +1.4ms/프레임 (`Ext.sync` 0.6 + 자세) — 재혁 PC 의 GPU 가 내장이면 이쪽이 지속 랙의 후보. 외곽선 껍질을 먼 몸에서 끄는 건 화면이 달라져서 측정 근거 없이는 안 함.
