@@ -13,7 +13,7 @@ static func load_lib(path: String) -> Dictionary:
 	var out := {}
 	if path == "" or not ResourceLoader.exists(path):
 		return out
-	var scene = load(path)
+	var scene = _take(path)
 	if not (scene is PackedScene):
 		return out
 	var root: Node = (scene as PackedScene).instantiate()
@@ -79,3 +79,14 @@ static func select(cc: Dictionary, st: Dictionary, air_t: float) -> Dictionary:
 		var nm2: String = str(cc.get("run", "")) if amp >= float(cc.get("run_from", 0.55)) else str(cc.get("walk", ""))
 		return {"clip": nm2, "t": fposmod(float(st.get("walk", 0.0)) / TAU, 1.0), "air": false, "kind": "loco", "norm": true}
 	return {"clip": str(cc.get("idle", "")), "t": float(st.get("t", 0.0)), "air": false, "kind": "idle", "loop": true}
+
+
+# W30: 메뉴에서 미리 요청해 둔 (스레드) 파일이면 그 결과를, 아니면 그 자리에서 읽음
+static var requested := {}
+
+
+static func _take(path: String):
+	if requested.has(path):
+		requested.erase(path)
+		return ResourceLoader.load_threaded_get(path)
+	return load(path)

@@ -3,6 +3,7 @@
 # 다른 묶음 자리: 몸 = G2 chars/chars.gd · 셰이더 = G3 shaders/ · 효과 = G5 fx/ (fx_root 에 붙임) · 건축가 블록 = G6 world/bblocks.gd
 extends Node3D
 const Opts := preload("res://core/opts.gd")
+const External := preload("res://chars/external.gd")
 
 const C := preload("res://core/config.gd")
 const Co := preload("res://core/coords.gd")
@@ -61,6 +62,8 @@ var G3 = null
 var preview = null # 대기실 지형 미리보기 {key, grid, top, w, d, h, off} (LP.build), 없으면 서버 격자
 var sprouts = null # G3 튀어나온 조각 노드 (테마마다)
 var _menu_since := -1.0 # 메뉴에 머문 시각 (prewarm)
+var _ext_requested := false # W30: 외부 모델 스레드 미리 읽기 요청함
+var _ext_warm_done := false # W30: 외부 몸 미리 그리기 끝
 var _prewarmed = null # 셰이더 미리 데운 테마 (G3.prewarm)
 var dark = null # 대기실 어두운 무대 (lobby_dark.gd), 대기실 아니면 null
 var vm = null # G2 1인칭 팔·무기 (chars/viewmodel.gd)
@@ -410,6 +413,11 @@ func _process(dt: float) -> void:
 			G3.prewarm(self, View.menu_theme)
 	elif live:
 		_menu_since = -1.0
+	if not live and _prewarmed != null and not _ext_warm_done and Opts.args().has("--no-ext-warm") == false:
+		if not _ext_requested:
+			_ext_requested = true
+			External.request_all()
+		_ext_warm_done = External.warm_step(self, func(id, col): return bodies.chars_script.make_body(id, col)) if bodies != null and bodies.chars_script != null else true
 	if not live:
 		hazard_view.clear() # 판 중에 나가면 위험 경고·전역 위험 빛·물들임이 메뉴에 남던 것 (update 가 더 안 불림)
 	if headless or not live:

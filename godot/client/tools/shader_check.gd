@@ -58,10 +58,33 @@ func _initialize() -> void:
 			x += 0.3
 			root3.add_child(mi)
 			made += 1
+	# W30 외부 모델 (--ext) 몸: 몸 색 칸 (mask)·스킨·얼굴·안 받는 빛·외곽선 재질까지 — 판 몸 (판 LOD)·큰 캐릭터 (stage LOD)·1인칭 쌍둥이 (merge 끔)·반투명 (유령) 을 캐릭터마다
+	var ext_made := 0
+	var Body = load("res://chars/body.gd")
+	var Ext = load("res://chars/external.gd")
+	if Body != null and Ext != null:
+		var prev_ext: bool = Body.use_ext
+		Body.use_ext = true
+		for id in ["tank", "ninja", "hunter", "hook"]:
+			if not Ext.has_char(id):
+				continue
+			for variant in ["third", "stage", "vm", "ghost"]:
+				var b = Body.new()
+				Ext.stage = variant == "stage"
+				b.build(id, Color(0.8, 0.3, 0.3), variant != "vm")
+				Ext.stage = false
+				if variant == "ghost":
+					b.opacity = 0.4
+				root3.add_child(b)
+				b.position = Vector3(x, -0.5, -1.0)
+				b.scale = Vector3.ONE * 0.3
+				x += 0.25
+				ext_made += 1
+		Body.use_ext = prev_ext
 	for i in 4:
 		await process_frame
 	await RenderingServer.frame_post_draw
-	print("shader check: 렌더러 %s · 장치 %s · 파일 %d개 + G3 재질 %d개 그림" % [RenderingServer.get_current_rendering_method(), RenderingServer.get_video_adapter_name(), n, made])
+	print("shader check: 렌더러 %s · 장치 %s · 파일 %d개 + G3 재질 %d개 + 외부 몸 %d개 그림" % [RenderingServer.get_current_rendering_method(), RenderingServer.get_video_adapter_name(), n, made, ext_made])
 	quit(0)
 
 

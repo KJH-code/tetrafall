@@ -1515,3 +1515,37 @@ func _vm_in_view(fov_deg: float, v: Vector3) -> bool:
 		return false
 	var hh := tan(deg_to_rad(fov_deg) * 0.5) * -v.z
 	return absf(v.y) <= hh and absf(v.x) <= hh * 16.0 / 9.0
+
+
+# W30 미리 읽기·미리 그리기: 스레드로 요청한 파일도 같은 정보가 나오고, 한 번 더 부르면 새로 요청 안 함, warm_step 은 캐릭터마다 몸 하나를 두 프레임 두었다 치우고 끝나면 true
+func test_preload_and_warm() -> void:
+	for id in ["tank", "ninja", "hunter", "hook"]:
+		Ext._cache.erase(id)
+	Ext._req.clear()
+	var n: int = Ext.request_all()
+	check(n >= 4, "외부 모델 4개 이상 요청: %d" % n)
+	check(Ext.request_all() == 0, "두 번째는 새로 요청 안 함")
+	var info = Ext.load_char("hunter") # 요청해 둔 스레드 결과를 받음
+	check(info != null and not info.surfs.is_empty(), "스레드로 읽은 hunter 정보")
+	check(not Ext._req.has(Ext.glb_path("hunter")), "받은 뒤 요청 표시 지움")
+	var host := Node3D.new()
+	var prev: bool = Body.use_ext
+	Body.use_ext = true
+	Ext._warm_i = 0
+	Ext._warm_body = null
+	var made: Array = []
+	var mk := func(id, col):
+		made.append(id)
+		return Chars.make_body(id, col)
+	var steps := 0
+	while not Ext.warm_step(host, mk) and steps < 200:
+		steps += 1
+		var alive := host.get_children().filter(func(c): return not c.is_queued_for_deletion())
+		check(alive.size() <= 1, "미리 그리는 몸은 한 번에 하나")
+	check(steps < 200, "미리 그리기가 끝남")
+	check(made.has("tank") and made.has("ninja") and made.has("hunter") and made.has("hook"), "외부 4명 다 만듦: %s" % [made])
+	check(host.get_children().filter(func(c): return not c.is_queued_for_deletion()).is_empty(), "끝나면 몸을 치움")
+	Body.use_ext = prev
+	for c in host.get_children():
+		c.free()
+	host.free()

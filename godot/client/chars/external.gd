@@ -47,6 +47,10 @@ const REQUIRED := ["hips", "shoulder_R", "shoulder_L", "elbow_R", "elbow_L", "th
 const JUNK := ["mixamorig", "bip", "bip01", "bip001", "def", "org", "jnt", "joint", "bn", "armature", "skeleton", "sk", "rig", "character", "ctrl"]
 
 static var _cache := {} # 캐릭터 → 모델 정보 (없으면 null)
+static var _req := {} # W30: 스레드로 미리 요청한 파일 (경로 → true)
+static var _warm_i := 0
+static var _warm_wait := 0
+static var _warm_body = null
 static var stage := false # W19: 대기실 큰 캐릭터·초상 몸을 만드는 동안 참 (ui/portrait.gd still_body) → 최고 품질 LOD
 
 
@@ -64,7 +68,8 @@ static func load_char(char_id: String):
 	var gp := glb_path(char_id)
 	var _ht := Hitch.t() # W30 히치 로거
 	if ResourceLoader.exists(gp):
-		var s = load(gp)
+		var s = ResourceLoader.load_threaded_get(gp) if _req.has(gp) else load(gp)
+		_req.erase(gp)
 		Hitch.span("몸 불러오기", char_id + " 파일", _ht)
 		if s is PackedScene:
 			var _hm := Hitch.t()
@@ -76,6 +81,52 @@ static func load_char(char_id: String):
 
 static func has_char(char_id: String) -> bool:
 	return load_char(char_id) != null
+
+
+# W30 미리 읽기: 메뉴에서 쉴 때 모든 외부 모델 .glb (+ 클립 파일) 을 스레드로 요청 — 몸이 처음 나올 때 메인 스레드에서 읽느라 멈추지 않게.
+# 파일 읽기·텍스처 올리기가 스레드에서 끝나 있어 load_char 는 장면 정보 셈 (수 ms) 만 함
+static func request_all() -> int:
+	var n := 0
+	for id in C.FIGURE_CHARS:
+		var gp := glb_path(id)
+		if _cache.has(id) or _req.has(gp) or not ResourceLoader.exists(gp):
+			continue
+		if ResourceLoader.load_threaded_request(gp, "PackedScene", true) == OK:
+			_req[gp] = true
+			n += 1
+		var cc = read_cfg(id).get("clips", {})
+		var cp: String = str((cc as Dictionary).get("file", "")) if cc is Dictionary else ""
+		if cp != "" and ResourceLoader.exists(cp) and not Clips.requested.has(cp) and ResourceLoader.load_threaded_request(cp, "PackedScene", true) == OK:
+			Clips.requested[cp] = true
+	return n
+
+
+# W30 몸 미리 데우기: 메뉴·대기실 밖에서 쉴 때 한 번에 한 캐릭터씩 진짜 몸을 아주 작게 카메라 앞에 두 프레임 그려 셰이더·메시·텍스처를 올려 둠
+# (첫 프레임이 새 캐릭터 몸을 처음 그리며 멈추지 않게). 반환: 다 끝났으면 true. host 는 카메라 앞에 둘 Node3D (world), 몸 만들기가 끝난 뒤에야 다음 캐릭터
+static func warm_step(host: Node3D, make_body: Callable) -> bool:
+	if _warm_body != null:
+		_warm_wait -= 1
+		if _warm_wait <= 0:
+			_warm_body.queue_free()
+			_warm_body = null
+		return false
+	if _warm_i >= C.FIGURE_CHARS.size():
+		return true
+	var id: String = C.FIGURE_CHARS[_warm_i]
+	_warm_i += 1
+	if not preload("res://chars/body.gd").use_ext or not ResourceLoader.exists(glb_path(id)):
+		return false
+	var _ht := Hitch.t()
+	var b: Node3D = make_body.call(id, Color(0.8, 0.3, 0.3))
+	var cam := host.get_viewport().get_camera_3d() if host.is_inside_tree() else null
+	b.scale = Vector3.ONE * 0.001
+	host.add_child(b)
+	if cam:
+		b.global_position = cam.global_position + (-cam.global_transform.basis.z) * 2.0
+	_warm_body = b
+	_warm_wait = 2
+	Hitch.span("미리 그리기", "몸 " + id, _ht)
+	return false
 
 
 # 조정 값: chars_config.gd EXT_DEFAULTS 위에 assets/models/ext/<id>.json (있으면) 을 덮음
