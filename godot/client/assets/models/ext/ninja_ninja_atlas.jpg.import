@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bpwfhs2a7jd12"
-path="res://.godot/imported/ninja_ninja_atlas.jpg-6436dc34c3cece9d1a2aedb3b16d9480.ctex"
+path.s3tc="res://.godot/imported/ninja_ninja_atlas.jpg-6436dc34c3cece9d1a2aedb3b16d9480.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "e0c8813205d865b409aac02010a874af"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/ext/ninja_ninja_atlas.jpg"
-dest_files=["res://.godot/imported/ninja_ninja_atlas.jpg-6436dc34c3cece9d1a2aedb3b16d9480.ctex"]
+dest_files=["res://.godot/imported/ninja_ninja_atlas.jpg-6436dc34c3cece9d1a2aedb3b16d9480.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

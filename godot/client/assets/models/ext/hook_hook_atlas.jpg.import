@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://crglp35ldl7tr"
-path="res://.godot/imported/hook_hook_atlas.jpg-2ed31ef189a9ff189c6bbbf367ed0a00.ctex"
+path.s3tc="res://.godot/imported/hook_hook_atlas.jpg-2ed31ef189a9ff189c6bbbf367ed0a00.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "ca53c6229e51f88938be019596df79d9"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/ext/hook_hook_atlas.jpg"
-dest_files=["res://.godot/imported/hook_hook_atlas.jpg-2ed31ef189a9ff189c6bbbf367ed0a00.ctex"]
+dest_files=["res://.godot/imported/hook_hook_atlas.jpg-2ed31ef189a9ff189c6bbbf367ed0a00.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
