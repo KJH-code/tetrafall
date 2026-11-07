@@ -4,6 +4,7 @@
 # 다 그리면 drawn(key). 헤드리스면 안 그림 (null 그대로 → 색 상자). ui.gd 가 하나 만들어 Portrait.inst 에 둠
 extends Node
 
+const Hitch := preload("res://core/hitch.gd")
 const C := preload("res://core/config.gd")
 const CHARS_PATH := "res://chars/chars.gd"
 
@@ -65,6 +66,13 @@ func _lookup(char_id: String, color: Color, size: int, full: bool) -> Texture2D:
 
 # 초상·대기실 큰 캐릭터 (char_stage) 몸: 자기 SubViewport 장면이라 판의 위험 빛 (전역 값 g3_hz_lp) 을 안 받게 끔 (JS portrait·char-stage 는 따로 된 scene)
 static func still_body(chars, char_id: String, color: Color) -> Node3D:
+	var _ht := Hitch.t()
+	var b = _still_body(chars, char_id, color)
+	Hitch.span("초상·큰 캐릭터", char_id, _ht)
+	return b
+
+
+static func _still_body(chars, char_id: String, color: Color) -> Node3D:
 	var Ext = load("res://chars/external.gd")
 	Ext.stage = true # 외부 (Blender) 모델은 최고 품질 LOD (한 명만 크게 그림)
 	var body = chars.make_body(char_id, color)

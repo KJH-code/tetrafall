@@ -12,6 +12,8 @@ const C := preload("res://core/config.gd")
 const PC := preload("res://ui/perf_calc.gd")
 const S := preload("res://ui/ui_style.gd")
 const Gfx := preload("res://world/gfx.gd")
+const Hitch := preload("res://core/hitch.gd")
+const Prof := preload("res://core/prof.gd")
 const GC := preload("res://world/gfx_calc.gd")
 const CORNER_SIZE := 11 # 구석 글자 px
 const CORNER_ALPHA := 0.6
@@ -71,6 +73,9 @@ var corner := VBoxContainer.new()
 var corner_hint: Label
 var corner_info: Label
 var corner_at := 0.0
+var hlog := Hitch.Log.new() # W30 히치 로거 (core/hitch.gd): F3 를 켜거나 --hitch 면 기록
+var hfile: FileAccess = null
+var hstart := 0.0
 
 
 func _ready() -> void:
@@ -124,16 +129,41 @@ func _ready() -> void:
 func _apply() -> void:
 	PC.on = bool(View.settings.get("perf", false)) or Opts.args().has("--perf") # --perf: 확인용 (설정에 안 남김)
 	box.visible = PC.on
-	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), PC.on)
+	var hon: bool = PC.on or Opts.args().has("--hitch") # 히치 로거는 F3 패널을 켜면 같이 (패널 없이 기록만: --hitch)
+	if hon != Hitch.on:
+		Hitch.on = hon
+		Hitch.reset()
+		Prof.set_hitch(hon)
+		hlog = Hitch.Log.new()
+		hstart = Time.get_ticks_usec() / 1000.0
+	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), hon)
 	win = PC.PerfWindow.new()
 	samples = []
 	last = 0.0
 	# 탐침은 켰을 때만 트리에 (꺼져 있으면 비용 0). 맨 앞·맨 뒤는 process_priority 로 — 트리 어디에 있든
 	for p in [first, tail]:
-		if PC.on and p.get_parent() == null:
+		if hon and p.get_parent() == null:
 			get_tree().root.add_child.call_deferred(p)
-		elif not PC.on and p.get_parent() != null:
+		elif not hon and p.get_parent() != null:
 			p.get_parent().remove_child(p)
+
+
+# 히치 판정 (프레임 간격이 문턱을 넘으면 기록 + user://hitches.txt 한 줄). 태그·구간은 이 간격에 모인 것
+func _hitch(now: float, ms: float, rcpu: float) -> void:
+	var sec := {}
+	var fr := Prof.take_frame()
+	for k in fr:
+		sec[k] = fr[k] / 1000.0
+	var rec := hlog.push((now - hstart) / 1000.0, ms, {"tags": Hitch.take(), "sec": sec, "script": script_ms, "rcpu": rcpu, "screen": _screen()})
+	if rec.is_empty():
+		return
+	if hfile == null:
+		hfile = FileAccess.open(Hitch.FILE, FileAccess.WRITE)
+		if hfile != null:
+			hfile.store_line("# 히치 기록 %s · %s · %s · 창 %s · 기준 = max(평균×%.0f, %.0fms)" % [Time.get_datetime_string_from_system(), _renderer(), PC.short_gpu(gpu), str(get_viewport().get_visible_rect().size), Hitch.FACTOR, Hitch.MIN_MS])
+	if hfile != null:
+		hfile.store_line(Hitch.line(rec))
+		hfile.flush()
 
 
 func _exit_tree() -> void:
@@ -146,7 +176,7 @@ func _process(_dt: float) -> void:
 	var now := Time.get_ticks_usec() / 1000.0
 	if now - corner_at >= C.PERF_DRAW_MS:
 		_corner(now)
-	if not PC.on:
+	if not Hitch.on:
 		return
 	var vp := get_viewport().get_viewport_rid()
 	var rcpu := RenderingServer.viewport_get_measured_render_time_cpu(vp) + RenderingServer.get_frame_setup_time_cpu()
@@ -157,10 +187,13 @@ func _process(_dt: float) -> void:
 	if last > 0.0:
 		win.push(now, now - last, sec, work)
 		samples.append([now, script_ms, phys_ms, rcpu, rgpu])
+		_hitch(now, now - last, rcpu)
 		while samples.size() > 0 and samples[0][0] < now - C.PERF_FPS_MS:
 			samples.pop_front()
 	last = now
 	PC.sec = {}
+	if not PC.on:
+		return
 	draws = int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
 	tris = int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
 	objs = int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME))
@@ -205,7 +238,7 @@ func extra() -> Dictionary:
 	var rag := int(rw.stats.get("n", 0)) if rw != null and rw.get("stats") is Dictionary else 0
 	return {"draws": draws, "tris": tris, "players": ps.size(), "rag": rag, "low": bool(View.settings.get("lowGfx", false)), "size": "%d×%d" % [sz.x, sz.y], "gpu": gpu, "ping": Net.ping_text().replace("핑 ", ""),
 		"screen": _screen(), "script": means[0], "phys": means[1], "rcpu": means[2], "rgpu": means[3], "objs": objs, "svp": PC.svp_text(svps),
-		"vram": Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0, "gfx": _gfx_text(), "renderer": _renderer(), "vendor": Gfx.vendor, "hint": Gfx.hint}
+		"vram": Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0, "gfx": _gfx_text(), "renderer": _renderer(), "vendor": Gfx.vendor, "hint": Gfx.hint, "hitch": hlog.summary()}
 
 
 func _draw_text(now: float) -> void:
@@ -224,6 +257,7 @@ func _draw_text(now: float) -> void:
 		"SubViewport %s" % e.svp,
 		"%d명 (래그돌 %d) · %s · 화질 %s" % [e.players, e.rag, e.size, e.gfx],
 		"GPU %s · %s" % [sg if sg != "" else "모름", e.renderer],
+		hlog.summary(),
 	] + ([e.hint] if e.hint != "" else []))
 
 

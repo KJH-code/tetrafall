@@ -15,6 +15,7 @@ const Moves := preload("res://chars/moves.gd")
 const K := preload("res://chars/chars_config.gd")
 const Ragdoll := preload("res://chars/ragdoll.gd")
 const Prof := preload("res://core/prof.gd")
+const Hitch := preload("res://core/hitch.gd")
 const Baked := preload("res://chars/baked.gd")
 const BakedBatch := preload("res://chars/baked_batch.gd")
 const External := preload("res://chars/external.gd")
@@ -148,6 +149,15 @@ var counter_at := -1e9
 
 
 func build(char_id_: String, color: Color, merge: bool = K.MERGE) -> void:
+	var _ht := Hitch.t() # W30 히치 로거: 몸 만들기 시간·새 캐릭터 첫 등장
+	_build(char_id_, color, merge)
+	if Hitch.on:
+		if Hitch.first("새 캐릭터", char_id_):
+			Hitch.tag("새 캐릭터", char_id_)
+		Hitch.span("몸 만들기", char_id_, _ht)
+
+
+func _build(char_id_: String, color: Color, merge: bool) -> void:
 	char_id = char_id_
 	dummy = char_id == "dummy"
 	var body_kind: String = C.FIGURE_BODY.get(char_id, "lean")
@@ -1424,7 +1434,7 @@ func _ragdoll(p: Dictionary):
 
 
 static func _prof(name: String, t0: int) -> int:
-	if not Prof.on:
+	if not (Prof.on or Prof.hitch):
 		return 0
 	Prof.add(name, t0)
 	return Prof.now()

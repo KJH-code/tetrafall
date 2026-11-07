@@ -5,21 +5,36 @@
 extends RefCounted
 
 static var on := false
+static var hitch := false # W30: 히치 로거 (core/hitch.gd) 가 켜지면 참 — 구간을 프레임마다 모음 (frame). sums 는 on 일 때만
 static var sums := {} # 이름 → [합 µs, 번]
+static var frame := {} # W30: 이번 프레임 (perf.gd 가 매 프레임 가져가며 비움) 이름 → 합 µs
 static var _lap := 0
 
 
+static func set_hitch(v: bool) -> void:
+	hitch = v
+	if not hitch:
+		frame = {}
+
+
+# 지난 프레임 구간 합 (이름 → µs) 을 가져가고 비움
+static func take_frame() -> Dictionary:
+	var f := frame
+	frame = {}
+	return f
+
+
 static func now() -> int:
-	return Time.get_ticks_usec() if on else 0
+	return Time.get_ticks_usec() if (on or hitch) else 0
 
 
 static func begin() -> void:
-	if on:
+	if on or hitch:
 		_lap = Time.get_ticks_usec()
 
 
 static func lap(name: String) -> void:
-	if not on:
+	if not (on or hitch):
 		return
 	var t := Time.get_ticks_usec()
 	add_us(name, t - _lap)
@@ -27,15 +42,18 @@ static func lap(name: String) -> void:
 
 
 static func add(name: String, t0: int) -> void:
-	if on:
+	if on or hitch:
 		add_us(name, Time.get_ticks_usec() - t0)
 
 
 static func add_us(name: String, us: int) -> void:
-	var s: Array = sums.get(name, [0, 0])
-	s[0] += us
-	s[1] += 1
-	sums[name] = s
+	if on:
+		var s: Array = sums.get(name, [0, 0])
+		s[0] += us
+		s[1] += 1
+		sums[name] = s
+	if hitch:
+		frame[name] = int(frame.get(name, 0)) + us
 
 
 static func reset() -> void:

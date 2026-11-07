@@ -110,7 +110,7 @@ static func perf_line(s: Dictionary, extra := {}) -> String:
 		parts.append("SubViewport %s" % extra.svp)
 	if extra.get("vram") != null:
 		parts.append("영상 메모리 %dMB" % roundi(float(extra.vram)))
-	for kv in [["gfx", "화질 %s"], ["renderer", "렌더러 %s"], ["vendor", "제조사 %s"], ["hint", "안내 %s"]]:
+	for kv in [["gfx", "화질 %s"], ["renderer", "렌더러 %s"], ["vendor", "제조사 %s"], ["hint", "안내 %s"], ["hitch", "%s"]]:
 		if str(extra.get(kv[0], "")) != "":
 			parts.append(kv[1] % str(extra[kv[0]]))
 	return " · ".join(parts)

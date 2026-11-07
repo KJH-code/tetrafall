@@ -4,6 +4,7 @@
 extends Node
 
 const Prof := preload("res://core/prof.gd")
+const Hitch := preload("res://core/hitch.gd")
 
 const C := preload("res://core/config.gd")
 const Interp := preload("res://core/interp.gd")
@@ -127,6 +128,7 @@ func _on_message(m: Dictionary) -> void:
 		"welcome":
 			my_id = int(m.id)
 			room = m.room
+			Hitch.tag("방 입장", str(room.get("code", "")))
 			pending_code = ""
 			Seat.save(str(room.code), str(m.get("token", "")))
 			joined.emit(room, bool(m.get("rejoined", false)))
@@ -163,6 +165,8 @@ func _on_state(m: Dictionary) -> void:
 		grid_version = int(m.get("gridVersion", 0))
 		grid_changed.emit(grid_version)
 	state = m
+	if Hitch.on and str(m.get("phase", "")) != str(prev_state.get("phase", "")):
+		Hitch.tag("판 단계", str(m.get("phase", "")))
 	if m.has("room"):
 		room = m.room
 	_players_by_id.clear()
@@ -186,6 +190,11 @@ func _on_state(m: Dictionary) -> void:
 			_frame_prev = null
 		state_changed.emit(state, prev_state)
 	Prof.add("store ·state 신호 받는 쪽", _ps)
+	if Hitch.on:
+		for e in m.get("events", []):
+			var k: String = Hitch.EVENT_KIND.get(str(e.get("type", "")), "")
+			if k != "":
+				Hitch.tag(k, str(e.get("type", "")))
 	_ps = Prof.now()
 	if Prof.on: # 재는 중이면 받는 쪽마다 따로 (같은 순서로 부름 — 동작 같음)
 		var conns := get_signal_connection_list("game_event")

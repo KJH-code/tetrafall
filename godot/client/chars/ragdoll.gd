@@ -7,6 +7,7 @@
 extends Node
 
 const Prof := preload("res://core/prof.gd")
+const Hitch := preload("res://core/hitch.gd")
 
 const C := preload("res://core/config.gd")
 const RM := preload("res://chars/ragdoll_math.gd")
@@ -111,6 +112,12 @@ static func glob(n: Node3D) -> Transform3D:
 
 
 func create(b) -> void:
+	var _ht := Hitch.t()
+	_create(b)
+	Hitch.span("래그돌 만들기", str(b.char_id), _ht)
+
+
+func _create(b) -> void:
 	var weight: float = C.RAGDOLL_WEIGHT.get(C.FIGURE_BODY.get(b.char_id, ""), 1.0)
 	var S: float = glob(b.hips).basis.get_scale().x # 몸 전체 크기 (FIGURE_SCALE × 몸 노드)
 	var segs: Array = []

@@ -6,6 +6,7 @@
 extends RefCounted
 
 const C := preload("res://core/config.gd")
+const Hitch := preload("res://core/hitch.gd")
 const Prof := preload("res://core/prof.gd")
 const Co := preload("res://core/coords.gd")
 const K := preload("res://shaders/g3_config.gd")
@@ -670,6 +671,13 @@ static func set_low(world: Node3D, on: bool) -> void:
 # 메뉴에서 쉴 때 G3 셰이더를 쓰는 모든 갈래 (보통 메시·MultiMesh (인스턴스 색·custom)·SkinnedMesh, 그림자 패스 포함) 를 카메라 앞에 아주 작게 한 번씩 그려 둠.
 # 만든 셰이더는 Shader 자원 (g3.gd preload) 에 남아 판에서 다시 안 만듦. frames 뒤 스스로 치움. 반환: 그 노드 (done 신호)
 static func prewarm(world: Node3D, theme_id = null, frames := 3) -> Node3D:
+	var _ht := Hitch.t()
+	var r := _prewarm(world, theme_id, frames)
+	Hitch.span("미리 그리기", str(theme_id), _ht)
+	return r
+
+
+static func _prewarm(world: Node3D, theme_id = null, frames := 3) -> Node3D:
 	var cam := world.get_viewport().get_camera_3d() if world.is_inside_tree() else null
 	var root := Node3D.new()
 	root.name = "G3Prewarm"

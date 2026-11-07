@@ -16,6 +16,7 @@ const C := preload("res://core/config.gd")
 const G3 := preload("res://shaders/g3.gd")
 const K := preload("res://chars/chars_config.gd")
 const Clips := preload("res://chars/ext_clips.gd")
+const Hitch := preload("res://core/hitch.gd")
 
 const DIR := "res://assets/models/ext/"
 
@@ -61,10 +62,14 @@ static func load_char(char_id: String):
 		return _cache[char_id]
 	var out = null
 	var gp := glb_path(char_id)
+	var _ht := Hitch.t() # W30 히치 로거
 	if ResourceLoader.exists(gp):
 		var s = load(gp)
+		Hitch.span("몸 불러오기", char_id + " 파일", _ht)
 		if s is PackedScene:
+			var _hm := Hitch.t()
 			out = model_info(s, read_cfg(char_id))
+			Hitch.span("몸 불러오기", char_id + " 정보", _hm)
 	_cache[char_id] = out
 	return out
 
@@ -432,9 +437,11 @@ static func attach(body: Node3D, third: bool):
 		return null
 	var e := Ext.new()
 	e.lod = pick_lod(info.cfg, third, stage)
+	var _ht := Hitch.t()
 	if not e.setup(body, info, third):
 		e.free()
 		return null
+	Hitch.span("외부 몸 연결", body.char_id, _ht)
 	return e
 
 
