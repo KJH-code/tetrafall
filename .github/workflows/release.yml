@@ -64,9 +64,17 @@ jobs:
           V=$GODOT_VERSION
           base=https://github.com/godotengine/godot/releases/download/$V-stable
           mkdir -p ~/godot && cd ~/godot
-          curl -sSLO $base/Godot_v$V-stable_linux.x86_64.zip
+          # 내려받기가 도중에 끊기면 (v0.1.13 첫 시도: 템플릿 tpz 가 잘려서 unzip 실패) 다시: 재시도 + 못 열면 지우고 다시
+          dl() { # dl <파일> — 받고 zip 으로 열리는지 확인, 최대 5번
+            for i in 1 2 3 4 5; do
+              curl -fSL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 30 -o "$1" "$base/$1" && unzip -tq "$1" >/dev/null && return 0
+              echo "내려받기 실패 ($i/5): $1"; rm -f "$1"; sleep $((i * 5))
+            done
+            echo "내려받기 포기: $1"; return 1
+          }
+          dl Godot_v$V-stable_linux.x86_64.zip
           unzip -q Godot_v$V-stable_linux.x86_64.zip
-          curl -sSLO $base/Godot_v$V-stable_export_templates.tpz
+          dl Godot_v$V-stable_export_templates.tpz
           T=~/.local/share/godot/export_templates/$V.stable
           mkdir -p $T
           unzip -q -j Godot_v$V-stable_export_templates.tpz \
