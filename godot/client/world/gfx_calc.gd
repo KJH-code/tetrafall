@@ -8,7 +8,7 @@ const PC := preload("res://ui/perf_calc.gd")
 # 외장 그래픽 이름 (내장 쪽 이름 규칙보다 먼저): 인텔 Arc A·B 시리즈 카드 (A380·A770·B580·Arc Pro A60), AMD Radeon RX·Pro, NVIDIA 전부
 const DISCRETE_RE := "(?i)(nvidia|geforce|quadro|rtx|gtx|radeon\\s*(\\(tm\\)\\s*)?(rx|pro)\\b|arc(\\(tm\\))?\\s*(pro\\s*)?[ab]\\d{2,3}\\b)"
 # 내장 그래픽: 인텔 (UHD·Iris·HD Graphics·Core Ultra 의 'Arc(TM) Graphics'·'Arc 140V'), AMD APU (Radeon(TM) Graphics·Vega 8·780M), 퀄컴 Adreno
-const INTEGRATED_RE := "(?i)(intel|radeon\\s*(\\(tm\\)\\s*)?(graphics|vega|\\d{3}m\\b)|vega\\s*\\d+\\s*graphics|adreno)"
+const INTEGRATED_RE := "(?i)(intel|\\buhd\\b|\\biris\\b|radeon\\s*(\\(tm\\)\\s*)?(graphics|vega|\\d{3}m\\b)|vega\\s*\\d+\\s*graphics|adreno)"
 # 고성능 외장 (W15): NVIDIA RTX (2050~ 노트북 포함)·AMD Radeon RX 네 자리 (RX 5000~). 자동 화질에서 큰 창도 높음을 GFX_BIG_PX_FAST 까지 (GTX·Quadro·옛 RX 480 등은 예전 기준)
 const FAST_RE := "(?i)(\\brtx\\b|radeon\\s*(\\(tm\\)\\s*)?rx\\s*\\d{4})"
 # 소프트웨어·가상 (개발 확인용 llvmpipe, 원격·기본 드라이버) — 내장으로 치지 않음 (자동이 낮추지 않음, 다른 GPU 로도 안 셈)
@@ -111,11 +111,33 @@ static func level_text(choice, p: Dictionary, scale_now := -1.0) -> String:
 	return "%s · 3D %d%% · MSAA %d×" % [t, roundi(sc * 100.0), ms]
 
 
-# 하이브리드 노트북 안내: 지금 내장 그래픽인데 이 PC 에 외장 GPU 가 있으면 (Windows). 아니면 ""
+# 하이브리드 노트북 안내 (W32 글 다듬음): 지금 내장 그래픽인데 이 PC 에 외장 GPU 가 있으면 (Windows). 아니면 ""
 static func hybrid_hint(adapter: String, vendor: String, others: Array) -> String:
 	if not is_integrated(adapter, vendor) or others.is_empty():
 		return ""
-	return "내장 그래픽으로 실행 중 (%s 있음) — Windows 설정 > 그래픽에서 tetrafall.exe 를 고성능으로" % str(others[0])
+	return "내장 GPU 로 도는 것 같음 (%s 있음) — 설정 > 시스템 > 디스플레이 > 그래픽에서 tetrafall.exe 를 고성능으로 지정" % str(others[0])
+
+
+# 설정 창 도움말 한 줄 (W32): 늘 보임 (한 줄에 들어가게 짧게). 하이브리드 안내가 떠 있으면 그 글이 대신 나옴 (길어서 두 줄)
+const GPU_HELP := "노트북이 느리면 Windows 그래픽 설정에서 tetrafall.exe 를 고성능으로"
+
+
+# F3·화면 구석 GPU 이름 뒤에 붙는 말: 내장 / 소프트웨어 렌더 / "" (외장이거나 모름)
+static func gpu_kind(adapter: String, vendor := "") -> String:
+	var n := PC.short_gpu(adapter)
+	if n == "":
+		return ""
+	if is_software(n):
+		return "소프트웨어 렌더"
+	return "내장" if is_integrated(n, vendor) else ""
+
+
+# 시작 때 로그에 남길 한 줄: "[GPU] Intel(R) UHD Graphics (Intel) · 내장" (+ 하이브리드 안내가 있으면 이어서)
+static func startup_line(adapter: String, vendor: String, hint := "") -> String:
+	var n := PC.short_gpu(adapter)
+	var k := gpu_kind(adapter, vendor)
+	var t := "[GPU] %s%s%s" % [n if n != "" else "이름 모름", " (%s)" % vendor if vendor != "" else "", " · " + k if k != "" else ""]
+	return t + (" · 경고: " + hint if hint != "" else "")
 
 
 # 렌더러 글: "opengl3 · GL Compatibility" (드라이버·방식)

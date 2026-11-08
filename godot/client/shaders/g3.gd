@@ -212,6 +212,16 @@ static func set_field(world: Node3D, w: float, d: float) -> void:
 	sun.directional_shadow_max_distance = sqrt(w * w + d * d) / 2.0 + K.SHADOW_REACH_PAD * 4.0
 
 
+# 판 크기로 정한 그림자 거리 (set_field 와 같은 식)
+static func shadow_full(w: float, d: float) -> float:
+	return sqrt(w * w + d * d) / 2.0 + K.SHADOW_REACH_PAD * 4.0
+
+
+# W32: 그림자 거리를 판 크기 값 (shadow_full) 이하로 줄여 적용 (world.gd 가 카메라 자리로 정함 — world/shadow_calc.gd reach)
+static func set_shadow_reach(world: Node3D, dist: float) -> void:
+	(_env_node(world).get_node("Sun") as DirectionalLight3D).directional_shadow_max_distance = dist
+
+
 # 그림자 켜기·끄기 (JS 대기 화면 설정 '그림자', render.js setShadows)
 static func set_shadows(world: Node3D, on: bool) -> void:
 	(_env_node(world).get_node("Sun") as DirectionalLight3D).shadow_enabled = on

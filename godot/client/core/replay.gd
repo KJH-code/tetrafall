@@ -180,7 +180,7 @@ static func census(root: Node) -> void:
 		while a != null and a.get_script() == null:
 			a = a.get_parent()
 		var key := "%s/%s" % [a.get_script().resource_path.get_file() if a != null else "-", String(n.name).rstrip("0123456789@_").left(18)]
-		var r: Array = rows.get(key, [0, 0, 0])
+		var r: Array = rows.get(key, [0, 0, 0, 0])
 		r[0] += 1
 		var tris := 0
 		var mesh: Mesh = null
@@ -201,19 +201,25 @@ static func census(root: Node) -> void:
 				var sm: Material = gi.material_override if gi.material_override else mesh.surface_get_material(si)
 				if sm != null and sm.next_pass != null:
 					r[1] += 1
-		r[2] += tris * k
+		if gi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY: # W32: 그림자 전용 메시는 화면에 안 그려짐
+			r[2] += tris * k
+		if gi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF: # W32: 해 그림자 패스에 들어가는 삼각형 (보이는 것 중에서만 — 시야 밖 몸은 안 셈)
+			r[3] += tris * k
 		rows[key] = r
 	var list := []
 	for key in rows:
 		list.append([key] + rows[key])
 	list.sort_custom(func(x, y): return x[1] > y[1])
-	var tot := [0, 0, 0]
+	var tot := [0, 0, 0, 0]
 	for row in list:
-		for i in 3:
+		for i in 4:
 			tot[i] += row[i + 1]
-	print("[재연] 물체 무리 (보이는 GeometryInstance3D %d · 외곽선 패스 %d · 삼각형 %d):" % tot)
+	print("[재연] 물체 무리 (보이는 GeometryInstance3D %d · 외곽선 패스 %d · 삼각형 %d · 그림자 던지는 삼각형 %d):" % tot)
 	for row in list.slice(0, 40):
-		print("  %-40s %4d · 외곽선 %4d · 삼각형 %7d" % row)
+		print("  %-40s %4d · 외곽선 %4d · 삼각형 %7d · 그림자 %7d" % row)
+	var sun := root.find_child("Sun", true, false) as DirectionalLight3D # W32: 해 그림자 거리 (판 크기 값 이하로 카메라 자리에 맞춤, world.gd)
+	if sun != null:
+		print("[재연] 해 그림자: 켬 %s · 거리 %.1f m" % [sun.shadow_enabled, sun.directional_shadow_max_distance])
 	var l2 := c2d.keys()
 	l2.sort_custom(func(x, y): return c2d[x] > c2d[y])
 	var t2 := 0

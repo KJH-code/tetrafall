@@ -25,8 +25,9 @@ var sliders := {}
 var checks := {}
 var keys_scroll: ScrollContainer
 var gfx_btns := {} # 화질 선택 (W6): "auto"·"high"·"medium"·"low" → Button
+var gfx_help: Label # W32
 var gfx_note: Label # 지금 실제 화질 (자동이면 무엇으로 정했는지)
-const KEYS_ROOM := 510.0 # 설정 창에서 키 목록 밖 높이 (예전 480 + UI 크기 줄 30)
+const KEYS_ROOM := 534.0 # 설정 창에서 키 목록 밖 높이 (예전 480 + UI 크기 줄 30 + GPU 도움말 줄 24)
 const KEYS_MIN := 60.0 # 키 목록 최소 높이 (예전 90 − UI 크기 줄 30: 960×540 에서 창 높이가 예전 그대로 540)
 var fit_h := -1.0 # 키 목록 높이를 맞춘 UI 좌표 높이 (UI 크기·창 크기가 바뀌면 다시)
 var scale_btns := {} # UI 크기 선택 (UiScale.label) → Button
@@ -174,11 +175,14 @@ func _gfx_row(parent: Node) -> void:
 		var b := S.button(WC.GFX_LABEL[c], func(): View.set_setting("gfx", id), "ghost", 13)
 		gfx_btns[c] = b
 		row.add_child(b)
+	gfx_help = S.body_label("", 11, Color("bbbbbb")) # W32: 노트북 GPU 도움말 한 줄 (하이브리드를 알아내면 그 안내가 대신, 주황)
+	gfx_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	gfx_note = S.body_label("", 12, Color("bbbbbb"))
 	gfx_note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	gfx_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	row.add_child(gfx_note)
 	parent.add_child(row)
+	parent.add_child(gfx_help)
 	View.changed.connect(func(k): if k in ["gfx", "lowGfx"] and is_inside_tree(): _show_gfx.call_deferred())
 	_show_gfx()
 
@@ -191,6 +195,14 @@ func _show_gfx() -> void:
 			gfx_btns[c].set_meta("kind", kind)
 			S.style_button(gfx_btns[c], kind, 13)
 	gfx_note.text = ("지금 " + GC.level_text(pick, Gfx.plan)) if not Gfx.plan.is_empty() else ""
+	_show_gpu_help()
+
+
+# W32: 하이브리드 노트북을 알아냈으면 그 안내 (주황), 아니면 늘 같은 도움말 한 줄. 안내는 레지스트리 조회가 끝난 뒤에 생기므로 창이 보일 때마다 다시
+func _show_gpu_help() -> void:
+	var warn: bool = Gfx.hint != ""
+	gfx_help.text = Gfx.hint if warn else GC.GPU_HELP
+	gfx_help.add_theme_color_override("font_color", Color("ffb050") if warn else Color("bbbbbb"))
 
 
 # UI 크기 (W9, core/ui_scale.gd — JS 의 브라우저 확대 자리): 자동 (창 크기에 맞춤) · 80~200% 고정. 누르면 바로 바뀌고 저장

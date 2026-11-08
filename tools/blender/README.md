@@ -145,14 +145,14 @@ blender -b --factory-startup -P tools/blender/tripo/verify_glb.py -- <tank.glb> 
 ```
 blender -b --factory-startup -P tools/blender/tripo/rig_ninja.py -- --out <폴더>           # → <폴더>/ninja_rigged.glb
 LOD_LOCK=1 node tools/blender/tripo/lods.mjs <폴더>/ninja_rigged.glb <폴더>/ninja.glb ninja 5000   # 판 LOD 하나 (아래), 4번째 인자 = 이름, 5번째 = 판 LOD 삼각형 목표 (쉼표로 여러 개), 6번째 = stage 도 줄일 때, LOD_LOCK=1 = 가장자리 고정
-blender -b --factory-startup -P tools/blender/tripo/rig_ninja.py -- --dagger <ext>/ninja_dagger.glb   # 손에 쥐는 단검 소품 (칼날·손잡이·날밑 3 조각)
+blender -b --factory-startup -P tools/blender/tripo/rig_ninja.py -- --dagger <ext>/ninja_dagger.glb   # 손에 쥐는 단검 소품 (칼날·손잡이·날밑 3 조각을 한 메시·한 재질로 합침, W32)
 ```
 
 - **뼈대 노드 올림**: 원본은 뼈대 노드가 -0.488 m 내려가 있고 메시는 올라가 있어서 (둘이 합쳐 발바닥 0) 로더의 쉬는 자세 상자 계산이 0.9 m 어긋나 **모델이 허공에 뜸** → 메시·뼈대를 세계 좌표로 굽고 변환을 항등으로.
 - **팔 가중치 정리** (`trim_arm_weights`): 허리춤 천이 손 바로 옆에 붙어 있어서 자동 가중치가 천 일부를 손·아래팔에 매어 놓음 → 팔을 뻗으면 천이 따라와 허리에서 손까지 검은 가시가 생김. 팔·손가락 뼈 가중치를 그 뼈 선분에서 `ARM_R` (위팔 8·아래팔 6·손 5·손가락 3.5 cm) 안의 꼭짓점에만 남김 (2651 꼭짓점 정리). 목도리 꼬리는 원본이 오른 빗장·팔에 매어서 몸통 (위로 갈수록 목) 뼈로 옮김 (`TAIL_Z`·`TAIL_SIDE`).
 - **몸 색 칸** (`tint: "mask"`): 알베도의 빨강 (목도리·허리띠·칼자루 장식, 텍스처 13% / 넓이 19%) 을 밝기만 남긴 회백 (`GRAY`) 으로 바꾸고 UV2.x = 1 + 꼭짓점 색 (흰). 알베도만 남김 (법선·금속 그림 뺌, 4096 → 2048 jpg), 이음선 법선 합침.
 - **LOD**: UV 조각이 너무 잘게 나뉘어 있어 (위치 8875 개 vs 꼭짓점 23270 개) meshopt 가 이음선을 안 넘으면 **약 8500 삼각형** 밑으로 안 내려감 (기사는 3000 까지 내려감). 가장자리를 안 잠그면 (`lockBorder: false`, 기사 방식) 8495 에서 치마·목도리에 검은 구멍이 나서 `LOD_LOCK=1` (가장자리 잠금) 으로 8520. 이음선을 넘게 하는 `Permissive` (meshoptimizer 1.x) 는 5000 에서 몸에 구멍·뒤집힌 삼각형이 생겨 못 씀 → 판 LOD 는 하나 (8500, `lods.mjs` 로 만든 `ninja_lod1`) 를 high·medium·low 가 같이 쓰고, stage = 원본 17,756 그대로. 더 내리려면 새 UV 로 알베도를 다시 굽는 길 (몸 LOD 마다 텍스처 하나) 뿐.
-- **단검**: 코드 몸의 단검·손 구슬 (`keep`) 은 모델 손과 팔 길이가 달라 허공에 뜸 → `attach` 두 손 뼈에 `ninja_dagger.glb` (칼날 +Y = 손 뼈 방향, 판 몸만).
+- **단검**: 코드 몸의 단검·손 구슬 (`keep`) 은 모델 손과 팔 길이가 달라 허공에 뜸 → `attach` 두 손 뼈에 `ninja_dagger.glb` (칼날 +Y = 손 뼈 방향, 판 몸만). **W32**: 세 조각 (재질 셋 = 그리기 3 × 색·외곽선) 을 `join_palette` 로 한 메시·한 재질로 합침 — 조각 색은 12×1 팔레트 그림 (조각마다 4 칸, UV 는 칸 가운데라 가장자리 안 섞임, PNG 무손실·밉맵 없음 — 고도 `.import` 에서 `mipmaps/generate=false`). 모양·색·자리 그대로 (삼각형 46 = 칼날 6 + 손잡이 28 + 날밑 12, 색은 선형 값을 sRGB 로 인코딩해 같은 색). 닌자 몸 그리기 14회 → 6회 (단검 둘 × 색·외곽선 4 + 몸 2).
 - **1인칭**: 닫힌 팔 메시 (`vm_node`) 를 따로 안 만들고 로더의 팔꿈치 아래 삼각형 가르기 그대로 (소매 끝이 화면 아래 밖이라 열린 단면이 안 보임). 확인 `--act-shots`.
 - 확인 그림: `stage_shot.gd`·`move_shot.gd` 에 `SHOT_CHAR=ninja` (동작 목록 `SHOT_MOVES`, 확대 `SHOT_FOV`) 환경 변수.
 - 알려진 한계: 목도리 꼬리가 몸통에 붙은 채 늘 뒤로 날린 모양 그대로 (자세에 안 흔들림), 코드 몸과 팔·다리 길이가 달라 서버 판정 위치 (주먹·칼 끝) 와 보이는 칼이 조금 다름, glb 3.4 MB.

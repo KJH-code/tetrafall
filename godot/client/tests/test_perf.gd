@@ -171,6 +171,21 @@ func test_pose_lod_rule() -> void:
 	check(L.due(5.0, null, 50.0, 8.0), "처음은 셈")
 
 
+# W32 셋째 단: far3 (18m) 밖은 far3_hz (15Hz, 웹 10Hz) — 외곽선 껍질 떼는 거리보다 멀고, far3 없는 표는 예전 그대로, 시야 밖·내 몸 규칙은 그대로
+func test_pose_lod_far3() -> void:
+	var L = load("res://world/pose_lod.gd")
+	var WC = load("res://world/world_config.gd")
+	var lod: Dictionary = WC.POSE_LOD
+	var near := func(a: float, b: float) -> bool: return absf(a - b) < 0.001
+	check(float(lod.far3) > float(lod.far2) and float(lod.far3) >= float(WC.OUTLINE_FAR.gone), "셋째 단은 둘째 단·외곽선 떼는 거리보다 멂")
+	check(near.call(L.interval_ms(12.0, true, false, lod), 1000.0 / 30.0), "10~18m: 30Hz")
+	check(near.call(L.interval_ms(17.9, true, false, lod), 1000.0 / 30.0) and near.call(L.interval_ms(18.1, true, false, lod), 1000.0 / 15.0), "18m 밖 15Hz")
+	check(near.call(L.interval_ms(40.0, false, false, lod), 1000.0 / float(lod.off_hz)), "시야 밖은 off_hz 그대로 (멀어도)")
+	check(L.interval_ms(40.0, true, true, lod) == 0.0, "내 몸 (always) 은 늘 매 프레임")
+	check(near.call(L.interval_ms(30.0, true, false, WC.POSE_LOD_WEB), 100.0), "웹 18m 밖 10Hz")
+	check(near.call(L.interval_ms(30.0, true, false, {"near": 3.0, "far_hz": 60.0, "far2": 10.0, "far2_hz": 30.0, "off_hz": 20.0, "margin": 2.5}), 1000.0 / 30.0), "far3 없는 표 = 예전 (30Hz)")
+
+
 # W15 둘째 단: far2 밖은 far2_hz (기본 WC.POSE_LOD 10m 밖 30Hz — 120fps 면 4프레임에 한 번, 60fps 면 2프레임에 한 번). far2 없는 표는 예전 그대로
 func test_pose_lod_far2() -> void:
 	var L = load("res://world/pose_lod.gd")

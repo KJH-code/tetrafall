@@ -182,12 +182,12 @@ def build(args):
     return ob, arm, vm
 
 
-def export(path, objs):
+def export(path, objs, image_format="JPEG"):
     K.select(objs)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", use_selection=True, export_apply=False,
                               export_yup=True, export_texcoords=True, export_normals=True, export_tangents=False,
-                              export_materials="EXPORT", export_image_format="JPEG", export_jpeg_quality=88,
+                              export_materials="EXPORT", export_image_format=image_format, export_jpeg_quality=88,
                               export_vertex_color="ACTIVE", export_all_vertex_colors=False,
                               export_skins=True, export_influence_nb=4, export_def_bones=False, export_leaf_bone=False,
                               export_animations=False, export_morph=False, export_attributes=False,
@@ -229,8 +229,52 @@ def make_dagger(path):
     bm = bmesh.new()
     bmesh.ops.create_cube(bm, size=1.0, matrix=Matrix.Translation((0, 0, 0.037)) @ Matrix.Diagonal((0.05, 0.016, 0.008, 1)))
     guard = obj("dagger_guard", bm, mat("dagger_guard", (0.35, 0.36, 0.40), 0.5))
-    export(path, [blade, grip, guard])
-    print("TF 단검", path)
+    # W32: 조각 셋을 한 메시 · 한 재질로 합침 — 판 몸 그리기가 단검 하나당 3조각 × (색 + 외곽선) = 6회였던 것이 2회. 색은 12×1 팔레트 그림 (조각마다 4 칸, UV 는 칸 가운데라 가장자리 섞임 없음)
+    joined = join_palette([blade, grip, guard], [(0.78, 0.82, 0.88), (0.20, 0.12, 0.08), (0.35, 0.36, 0.40)], 0.5)
+    export(path, [joined], image_format="AUTO")
+    print("TF 단검", path, "삼각형", len(joined.data.polygons))
+
+
+def srgb(c):
+    """선형 → sRGB 인코딩 (팔레트 그림은 sRGB 로 읽힘 — 고도가 읽어 선형으로 되돌리면 원래 색)"""
+    return 12.92 * c if c <= 0.0031308 else 1.055 * (c ** (1 / 2.4)) - 0.055
+
+
+def join_palette(objs, colors, rough):
+    """objs (조각마다 재질 하나) 를 한 메시로 합치고, 조각 색을 팔레트 그림 한 장 + UV 로 옮겨 재질 하나로"""
+    K.select(objs)
+    bpy.context.view_layer.objects.active = objs[0]
+    bpy.ops.object.join()
+    ob = objs[0]
+    me = ob.data
+    n = len(colors)
+    W = 4 * n  # 조각마다 4 칸 (한 칸 = 1 px)
+    img = bpy.data.images.new("dagger_palette", W, 1, alpha=False)
+    px = []
+    for i in range(W):
+        c = colors[i // 4]
+        px += [srgb(c[0]), srgb(c[1]), srgb(c[2]), 1.0]
+    img.pixels = px
+    img.pack()
+    uv = me.uv_layers.new(name="UVMap")
+    for poly in me.polygons:
+        u = (poly.material_index * 4 + 2) / W
+        for li in poly.loop_indices:
+            uv.data[li].uv = (u, 0.5)
+    m = bpy.data.materials.new("dagger")
+    m.use_nodes = True
+    nt = m.node_tree
+    pr = nt.nodes["Principled BSDF"]
+    pr.inputs["Roughness"].default_value = rough
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = img
+    tex.interpolation = "Closest"
+    nt.links.new(tex.outputs["Color"], pr.inputs["Base Color"])
+    me.materials.clear()
+    me.materials.append(m)
+    for poly in me.polygons:
+        poly.material_index = 0
+    return ob
 
 
 def main():

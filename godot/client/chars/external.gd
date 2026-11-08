@@ -15,6 +15,7 @@ extends RefCounted
 const C := preload("res://core/config.gd")
 const G3 := preload("res://shaders/g3.gd")
 const K := preload("res://chars/chars_config.gd")
+const ExtShadow := preload("res://chars/ext_shadow.gd")
 const Clips := preload("res://chars/ext_clips.gd")
 const Hitch := preload("res://core/hitch.gd")
 
@@ -488,6 +489,7 @@ static func attach(body: Node3D, third: bool):
 		return null
 	var e := Ext.new()
 	e.lod = pick_lod(info.cfg, third, stage)
+	e.shadow_lod = ExtShadow.caster_node(info.cfg, e.lod, third, stage)
 	var _ht := Hitch.t()
 	if not e.setup(body, info, third):
 		e.free()
@@ -583,6 +585,7 @@ class Ext extends Node3D:
 	var anim: AnimationPlayer = null
 	var clip := "" # 재생 중인 클립 (빈 글자 = 뼈 맞추기)
 	var lod := "" # 그릴 메시 노드 이름 (pick_lod, 빈 글자 = 전부)
+	var shadow_lod := "" # W32: 그림자만 던질 가장 낮은 LOD 노드 이름 (chars/ext_shadow.gd, 빈 글자 = 보이는 메시가 그림자도 던짐)
 	var face_tex := {} # 표정 → Texture2D (cfg.faces)
 	var face_now := ""
 	var root_k := 1.0
@@ -1017,7 +1020,7 @@ class Ext extends Node3D:
 			mi.transform = orig.transform
 			if sf.skinned:
 				mi.skin = orig.skin
-			if not third:
+			if not third or shadow_lod != "": # 1인칭 쌍둥이는 그림자 없음 · W32 판 몸은 저폴리 그림자 전용 메시가 따로 던짐
 				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			orig.get_parent().add_child(mi)
 			if sf.skinned:
@@ -1045,6 +1048,8 @@ class Ext extends Node3D:
 			mi.material_override = m
 			parts.append({"mi": mi, "color": col, "tex": sf.tex, "solid": m, "vcolor": vc, "mask": mask})
 			body.drawn.append({"mi": mi, "m": {"kind": "toon"}, "merged": false, "ext": true})
+		if shadow_lod != "":
+			ExtShadow.add(model, sk, info.surfs, shadow_lod) # W32: 원래 메시 (olds) 를 지우기 전에 — 그 자리·스킨을 베낌
 		for o in olds:
 			(o as Node).get_parent().remove_child(o)
 			(o as Node).free()

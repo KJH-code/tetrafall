@@ -11,8 +11,10 @@ const UI_CALC := "res://ui/ui_calc.gd" # G4 hp_view (체력전 HP)
 const CHARS := "res://chars/chars.gd"
 const Lod := preload("res://world/pose_lod.gd")
 const OutFar := preload("res://world/outline_far.gd")
+const Sh := preload("res://world/shadow_calc.gd")
 const Opts_ := preload("res://core/opts.gd")
 static var NO_OUTLINE_FAR: bool = Opts_.args().has("--no-outline-far") # 확인용: 외곽선 거리 끔 (전후 비교)
+static var NO_SHADOW_FAR: bool = Opts_.args().has("--no-shadow-far") or Opts_.args().has("--no-shadow-opt") # 확인용 (W32): 먼 몸·시야 밖 몸 그림자 끄기를 끔 (전후 비교)
 const Prof := preload("res://core/prof.gd")
 
 var stencil_fn = null # Callable(ShaderMaterial): 몸 재질이 스텐실을 씀 (사냥꾼의 눈 x-ray 가 몸에 가린 곳엔 안 나오게, G3.toon_stencil_write)
@@ -27,6 +29,7 @@ var cam: Camera3D = null # 몸 자세 LOD (W12, world/pose_lod.gd): 판 카메�
 var lod_on := true # 확인용 (--no-pose-lod)
 var lod := WC.POSE_LOD # 확인용 --pose-lod-near <m> 로 near 만 바꿈
 var _last_now = null
+var sun_node: DirectionalLight3D = null # W32: 해 (몸 그림자가 떨어지는 쪽 계산) — World 아래 G3Env/Sun, 처음 쓸 때 찾음
 
 
 func _ready() -> void:
@@ -180,21 +183,38 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 	shown.clear()
 	var frame_ms: float = 0.0 if _last_now == null else maxf(0.0, now_ms - float(_last_now))
 	_last_now = now_ms
+	var builds := 0 # 이번 프레임에 만든 몸 수 (WC.BODY_BUILDS_PER_FRAME 까지, 내 몸은 따로)
 	var planes: Array = []
 	var cpos := Vector3.ZERO
 	var use_lod: bool = lod_on and cam != null and cam.is_inside_tree()
 	if use_lod:
 		planes = cam.get_frustum()
 		cpos = cam.global_position
+	var to_sun := Vector3(0.4, 1.0, 0.4).normalized()
+	if use_lod and not NO_SHADOW_FAR:
+		if sun_node == null and get_parent() != null:
+			sun_node = get_parent().get_node_or_null("G3Env/Sun") as DirectionalLight3D
+		if sun_node != null and sun_node.is_inside_tree():
+			to_sun = sun_node.global_transform.basis.z.normalized() # 빛은 −Z 로 비춤 → +Z = 해가 있는 쪽
 	for p in st.get("players", []):
 		var id := int(p.id)
 		seen[id] = true
 		var color := player_color(p, st)
 		var n: Dictionary = nodes.get(id, {})
+		var mine0: bool = my_id != null and id == int(my_id)
 		if not n.is_empty() and (n.char != look_of(p) or (chars_script == null and n.color != color)):
+			if builds >= WC.BODY_BUILDS_PER_FRAME and not mine0:
+				shown[id] = Store.view_pos(id) if pos_fn == null else pos_fn.call(p, Store.view_pos(id))
+				continue # W32: 이번 프레임 만들 몸이 찼음 — 지금 몸 (옛 캐릭터) 을 두고 다음 프레임에 바꿈
 			n.root.queue_free() # 캐릭터·색이 바뀜 → 몸 새로
 			n = {}
 		if n.is_empty():
+			if builds >= WC.BODY_BUILDS_PER_FRAME and not mine0:
+				var sp := Store.view_pos(id)
+				shown[id] = sp if pos_fn == null else pos_fn.call(p, sp) # 자리는 알려 줌 (카메라·하늘 도우미) — 몸은 다음 프레임에
+				continue # W32: 몸 만들기 분산
+			if not mine0:
+				builds += 1
 			n = _make(p, color)
 			nodes[id] = n
 		var pos := Store.view_pos(id)
@@ -210,6 +230,12 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 		if use_lod and not NO_OUTLINE_FAR and n.body.has_method("set_outline_far"): # W31: 먼 몸은 외곽선 껍질을 뗌 (시야각 70° 기준 거리, 켜고 끄는 문턱에 여유)
 			var of := OutFar.far_state(root.global_position.distance_to(cpos), cam.fov, bool(n.body.outline_far()), mine)
 			n.body.set_outline_far(of)
+		if use_lod and not NO_SHADOW_FAR and n.body.has_method("set_shadow_off"): # W32: 먼 몸·몸도 그림자도 시야 밖인 몸은 해 그림자를 끔
+			var so: bool = Sh.far_off(root.global_position.distance_to(cpos), cam.fov, bool(n.body.shadow_off()), mine)
+			if not so and root.visible and not mine:
+				var sc := root.global_position + Vector3(0, C.PLAYER_HEIGHT * 0.5, 0)
+				so = not Sh.visible_or_shadow(planes, sc, to_sun, float(lod.margin) + float(WC.SHADOW.view_pad), root.global_position.y)
+			n.body.set_shadow_off(so)
 		if n.body.has_method("pose"):
 			var iv := 0.0
 			if use_lod and root.visible and not mine:

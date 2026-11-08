@@ -256,7 +256,7 @@ func _draw_text(now: float) -> void:
 		"그리기 %d · 물체 %d · 삼각형 %dk · 영상 메모리 %dMB" % [e.draws, e.objs, roundi(e.tris / 1000.0), roundi(e.vram)],
 		"SubViewport %s" % e.svp,
 		"%d명 (래그돌 %d) · %s · 화질 %s" % [e.players, e.rag, e.size, e.gfx],
-		"GPU %s · %s" % [sg if sg != "" else "모름", e.renderer],
+		"GPU %s%s · %s" % [sg if sg != "" else "모름", _kind_suffix(), e.renderer],
 		hlog.summary(),
 	] + ([e.hint] if e.hint != "" else []))
 
@@ -270,9 +270,15 @@ func _corner(now: float) -> void:
 		return
 	var sz := get_viewport().get_visible_rect().size
 	var sg := PC.short_gpu(gpu)
-	corner_info.text = "GPU %s · %s · 창 %d×%d · 화질 %s · F3 성능" % [sg if sg != "" else "모름", _renderer(), sz.x, sz.y, _gfx_text()]
+	corner_info.text = "GPU %s%s · %s · 창 %d×%d · 화질 %s · F3 성능" % [sg if sg != "" else "모름", _kind_suffix(), _renderer(), sz.x, sz.y, _gfx_text()]
 	corner_hint.text = Gfx.hint
 	corner_hint.visible = Gfx.hint != ""
+
+
+# W32: GPU 이름 뒤 " (내장)" / " (소프트웨어 렌더)"
+func _kind_suffix() -> String:
+	var k := GC.gpu_kind(Gfx.adapter, Gfx.vendor)
+	return " (%s)" % k if k != "" else ""
 
 
 func line() -> String:

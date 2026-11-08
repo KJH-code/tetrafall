@@ -37,9 +37,39 @@ func test_other_gpus_from_reg() -> void:
 	check(GC.discrete_in_reg(out) == ["NVIDIA GeForce RTX 5070 Laptop GPU"], "외장만 한 번: %s" % str(GC.discrete_in_reg(out)))
 	check(GC.discrete_in_reg("") == [] and GC.discrete_in_reg("오류: 지정된 레지스트리 키 또는 값을 찾을 수 없습니다.") == [], "못 읽으면 빈 목록")
 	var h := GC.hybrid_hint("Intel(R) Arc(TM) Graphics", "Intel", ["NVIDIA GeForce RTX 5070 Laptop GPU"])
-	check(h.contains("내장 그래픽") and h.contains("tetrafall.exe") and h.contains("고성능") and h.contains("RTX 5070"), "안내 한 줄: %s" % h)
+	check(h.contains("내장 GPU") and h.contains("tetrafall.exe") and h.contains("고성능") and h.contains("RTX 5070"), "안내 한 줄: %s" % h)
 	check(GC.hybrid_hint("Intel(R) Arc(TM) Graphics", "Intel", []) == "", "다른 GPU 없으면 안내 없음")
 	check(GC.hybrid_hint("NVIDIA GeForce RTX 5070 Laptop GPU", "NVIDIA Corporation", ["NVIDIA GeForce RTX 5070 Laptop GPU"]) == "", "외장으로 돌면 안내 없음")
+
+
+# W32 하이브리드 GPU 경고: 이름만으로 내장 판정 (UHD·Iris 는 'Intel' 글자가 없어도), 경고 글, 시작 로그 줄, 설정 도움말
+func test_gpu_warning() -> void:
+	for n in ["Intel(R) UHD Graphics 620", "Intel(R) Iris(R) Xe Graphics", "UHD Graphics 770", "Iris Xe Graphics", "ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0)", "Intel(R) Arc(TM) Graphics"]:
+		check(GC.is_integrated(n), "내장: %s" % n)
+	check(not GC.is_integrated("NVIDIA GeForce RTX 4060 Laptop GPU") and not GC.is_integrated("Intel(R) Arc(TM) A770 Graphics"), "외장은 내장 아님")
+	var h := GC.hybrid_hint("Intel(R) UHD Graphics 620", "Intel", ["NVIDIA GeForce MX150"])
+	check(h.contains("내장 GPU 로 도는 것 같음") and h.contains("MX150") and h.contains("설정 > 시스템 > 디스플레이 > 그래픽") and h.contains("고성능") and h.contains("tetrafall.exe"), "경고 한 줄: %s" % h)
+	check(GC.hybrid_hint("NVIDIA GeForce RTX 4060 Laptop GPU", "NVIDIA", ["NVIDIA GeForce RTX 4060 Laptop GPU"]) == "", "외장으로 돌면 경고 없음")
+	check(GC.hybrid_hint("Intel(R) UHD Graphics 620", "Intel", []) == "", "다른 GPU 를 못 찾으면 경고 없음 (내장뿐인 PC 에 소음 안 냄)")
+	check(GC.gpu_kind("Intel(R) UHD Graphics 620", "Intel") == "내장" and GC.gpu_kind("NVIDIA GeForce RTX 4060 Laptop GPU") == "" and GC.gpu_kind("llvmpipe (LLVM 19.1.1, 256 bits)") == "소프트웨어 렌더" and GC.gpu_kind("") == "", "GPU 이름 뒤 말")
+	var l := GC.startup_line("Intel(R) UHD Graphics 620", "Intel")
+	check(l.begins_with("[GPU] ") and l.contains("UHD") and l.contains("내장") and not l.contains("경고"), "시작 로그 줄: %s" % l)
+	check(GC.startup_line("Intel(R) UHD Graphics 620", "Intel", h).contains("경고: 내장 GPU 로 도는 것 같음"), "경고가 있으면 이어서")
+	check(GC.GPU_HELP.contains("그래픽 설정") and GC.GPU_HELP.contains("tetrafall.exe") and GC.GPU_HELP.contains("고성능"), "설정 도움말 한 줄")
+	# 설정 창: 도움말은 늘 보이고, 하이브리드 안내가 있으면 그 글 (주황)
+	var st = load("res://ui/settings.gd").new()
+	st._ready()
+	var was_hint: String = Gfx.hint
+	Gfx.hint = ""
+	st._show_gpu_help()
+	check(st.gfx_help.text == GC.GPU_HELP and st.gfx_help.visible, "도움말 한 줄이 늘 있음")
+	st.gfx_help.size.x = 460.0 # 설정 창 안쪽 폭
+	check(st.gfx_help.get_line_count() == 1, "도움말은 한 줄에 들어감 (%d줄) — 설정 창이 작은 화면에서도 안 넘치게" % st.gfx_help.get_line_count())
+	Gfx.hint = h
+	st._show_gpu_help()
+	check(st.gfx_help.text == h, "안내가 있으면 그 글")
+	Gfx.hint = was_hint
+	st.free()
 
 
 func test_auto_level() -> void:
