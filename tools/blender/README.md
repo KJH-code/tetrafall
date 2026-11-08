@@ -282,3 +282,8 @@ node relod_merge.mjs godot/client/assets/models/ext/ninja.glb ninja <폴더>/nin
 - **합치기** (`relod_merge.mjs`): 옛 `<이름>_lod1..N` 메시·노드를 지우고 새 메시를 같은 이름으로 (새 글의 뼈 번호는 뼈 이름으로 원래 스킨 번호로 바꿈), 재질·텍스처는 LOD 마다 하나 (`<이름>_atlas_lodN` → 고도가 `<이름>_<이름>_atlas_lodN.jpg` 로 꺼냄). `prune()` 은 `keepAttributes: true` 로 — 기본값은 안 쓰는 `TEXCOORD_1` (몸 색 칸) 을 지워서 stage 까지 색이 안 입혀짐.
 - **결과** (소프트웨어 렌더 환경, `tools/ext_meas.gd --eight --level …`): 8명 판 삼각형 (같은 캐릭터 8명, 외곽선 껍질 포함) 탱크 143.1k → **80.0k (높음)·64.0k (보통)·48.0k (낮음)**, 닌자 137.8k → 81.5k·65.5k·49.5k, 갈고리 133.8k → 80.0k·64.0k·48.0k. 영상 메모리 +6 MB (stage 2048 아틀라스는 그대로 + 1024 LOD 아틀라스, 한 판에서 쓰는 LOD 는 하나). glb 3.7~4.1 MB (+0.5 MB: 아틀라스 jpg 셋). 사냥꾼은 이미 3~5천이라 그대로.
 - 못 한 것: `relod.py` 는 Smart UV 라 조각 수가 많음 (큰 조각 몇 개로는 못 만듦). 마스크 경계 어긋남은 위 8% (텍스처 쪽에 마스크를 같이 굽는 길은 셰이더 변경이 필요해 안 함). 대포수 (`ext_hold`, 기본 꺼짐) 는 안 건드림.
+
+## 16. W33 — 탱크·사냥꾼·갈고리 이동 클립 + 모델 자동 검사 (2026-11-08)
+
+- `tripo/anim_ninja.py` 에 `--clips <모듈>` 추가 (기본 `clips_ninja`). `tripo/clips_loco.py` = 이동 클립 공용 생성기 (걸음 4위상·점프·낙하·착지·idle, 스타일 표 = 보폭 A·무릎·골반 흔들림·팔 쉬는 자세 등), `clips_tank.py`·`clips_hunter.py`·`clips_hook.py` 가 스타일만 정의. 만들기: `--rig <assets/models/ext/<id>.glb>` (최종 glb 의 뼈대) → `<id>_anim.glb`. 공격·스킬은 클립 없음 (코드 구동). 눈 확인: `godot/client/tools/pose_sheet.gd`.
+- `tripo/model_audit.py` — 삼각형·열린 모서리 (같은 위치 정점 합친 뒤)·비다양체·뒤집힘 의심·UV 범위/겹침·정점당 뼈 수·가중치 합·마스크 (UV2.x 꼭짓점) 경계 삼각형 비율. 결과 요약은 `docs/model-review-2026-11.md` 2절.

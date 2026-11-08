@@ -1,5 +1,5 @@
 # 닌자 동작 클립 (W23): 자동 리깅 닌자 뼈대 (Mixamo 식 이름) 에 손으로 만든 키프레임 동작을 넣어 ninja_anim.glb 로 (뼈대 + 동작만, 메시 없음).
-# blender -b --factory-startup -P tools/blender/tripo/anim_ninja.py -- --rig <ninja_rigged.glb> --out <ninja_anim.glb> [--preview <폴더>]
+# blender -b --factory-startup -P tools/blender/tripo/anim_ninja.py -- --rig <ninja_rigged.glb> --out <ninja_anim.glb> [--clips clips_tank]  (W33: --rig 는 assets/models/ext/<id>.glb 그대로 가능)
 #
 # 자세 쓰는 법 (아래 POSES·CLIPS): 코드 몸 (figure) 처럼 '관절 각' 으로 쓰되 (앞뒤·옆·비틀기·굽힘, 라디안 아닌 도), 코드 몸에 없는 관절 (척추 셋·빗장·머리·발목·손목) 도 쓸 수 있음.
 #   좌표 (Blender, 원본 닌자): 앞 +X, 왼쪽 +Y, 위 +Z.  각 뼈의 회전 Δ 는 '부모가 이미 돌아간 뒤' 에 이 축으로 더함 (FK).
@@ -185,8 +185,12 @@ def clip(name, length, loop, keys):
     CLIPS[name] = (length, loop, keys)
 
 
+CLIPS_MODULE = "clips_ninja"  # W33: --clips <모듈 이름> 으로 캐릭터별 자세 표 (clips_tank·clips_hunter·clips_hook)
+
+
 def build_clips():
-    from clips_ninja import define  # 아래 별도 파일 (자세 표가 길어서)
+    import importlib
+    define = importlib.import_module(CLIPS_MODULE).define  # 별도 파일 (자세 표가 길어서)
     define(sys.modules[__name__])
 
 
@@ -218,6 +222,9 @@ def main():
     a = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     rig = a[a.index("--rig") + 1]
     out = a[a.index("--out") + 1]
+    global CLIPS_MODULE
+    if "--clips" in a:
+        CLIPS_MODULE = a[a.index("--clips") + 1]
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=rig)
     for o in list(bpy.context.scene.objects):

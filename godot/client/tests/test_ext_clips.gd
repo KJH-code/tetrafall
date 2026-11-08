@@ -169,11 +169,64 @@ func test_twin_and_no_clip_unchanged() -> void:
 		t.ext.sync(_st({"act": {"id": 1, "move": "찌르기", "phase": "strike", "u": 0.5, "air": false}}))
 		check(t.ext.cw == 0.0 and t.ext.clip_info.is_empty(), "1인칭 쌍둥이는 클립 층 안 씀 (코드 관절을 베낌)")
 	t.free()
-	var k = _body("tank")
-	if k.ext != null:
-		k.ext.sync(_st())
-		check(k.ext.clipset.is_empty() and k.ext.cw == 0.0, "클립 설정 없는 외부 몸 (탱크) 은 그대로")
-	k.free()
+
+
+# W33: 탱크·사냥꾼·갈고리 이동 클립 (idle·walk·run·jump·fall·land, 공격·스킬 moves 는 없음 = 코드 구동 그대로)
+func test_loco_clips_new_models() -> void:
+	for ch in ["tank", "hunter", "hook"]:
+		var b = _body(ch)
+		check(b.ext != null and not b.ext.clipset.is_empty(), "%s 이동 클립 파일 읽음" % ch)
+		if b.ext == null:
+			b.free()
+			continue
+		var X = b.ext
+		var cc: Dictionary = X.info.cfg.clips
+		for n in ["idle", "walk", "run", "jump", "fall", "land"]:
+			check(X.clipset.has(n), "%s 클립 %s 있음" % [ch, n])
+		check((cc.get("moves", {}) as Dictionary).is_empty(), "%s 공격·스킬은 클립 없이 코드 구동 (서버 타이밍 그대로)" % ch)
+		var sel = Clips.select(cc, _st({"act": {"id": 1, "move": "주먹", "phase": "strike", "u": 0.5, "air": false}}), 0.0)
+		check(str(sel.clip) == "", "%s 공격 중엔 코드 구동 (클립 안 고름)" % ch)
+		check(str(Clips.select(cc, _st({"walking": true, "hs": 6.0, "walk": 1.0}), 0.0).clip) == "run", "%s 달리면 run" % ch)
+		# 달리기 클립: 두 걸음 끝점에서 두 발이 앞뒤로 벌어짐 (쉬는 자세 대비 앞발이 8cm 이상 앞)
+		var sk: Skeleton3D = X.sk
+		X.sync()
+		var rest_r := _bone_pos(sk, "mixamorig_RightFoot")
+		var rest_l := _bone_pos(sk, "mixamorig_LeftFoot")
+		X.preview_clip("run", 0.0)
+		var r := _bone_pos(sk, "mixamorig_RightFoot")
+		var l := _bone_pos(sk, "mixamorig_LeftFoot")
+		check(maxf(r.x - rest_r.x, l.x - rest_l.x) > 0.08, "%s 달리기 닿음 자세에서 앞발이 앞으로 (%.2f)" % [ch, maxf(r.x - rest_r.x, l.x - rest_l.x)])
+		check(absf((r.x - l.x)) > 0.12, "%s 달리기 두 발이 앞뒤로 벌어짐 (%.2f)" % [ch, absf(r.x - l.x)])
+		b.free()
+	# 탱크 idle 은 해머를 위로 세워 듦: 오른손 높이가 쉬는 자세보다 높음 (클립이 코드 팔을 덮어씀)
+	var tk = _body("tank")
+	if tk.ext != null:
+		var sk2: Skeleton3D = tk.ext.sk
+		tk.ext.sync()
+		var h0 := _bone_pos(sk2, "mixamorig_RightHand")
+		tk.ext.preview_clip("idle", 0.0)
+		var h1 := _bone_pos(sk2, "mixamorig_RightHand")
+		check(h1.distance_to(h0) > 0.05, "탱크 idle 클립이 오른팔을 코드 구동에서 움직임 (%.3f)" % h1.distance_to(h0))
+	tk.free()
+
+
+# W33: 판 몸은 body.pose 의 sync(st) 가 클립까지 맞춘 뒤 같은 프레임에 Ext._process 가 st 없는 sync() 로 코드 구동을 덮어쓰면 안 됨
+# (고도는 노드가 트리에 들어올 때 _process 를 다시 켬 → 클립이 팔다리를 못 움직이던 결함)
+func test_process_does_not_overwrite_clip() -> void:
+	for ch in ["ninja", "tank"]:
+		var b = _body(ch)
+		if b.ext == null:
+			b.free()
+			continue
+		var X = b.ext
+		var sk: Skeleton3D = X.sk
+		var ai := sk.find_bone("mixamorig_RightArm")
+		X.cw = 1.0
+		X.sync(_st({"walking": true, "hs": 6.0, "walk": 2.0}))
+		var after_pose: Quaternion = sk.get_bone_pose_rotation(ai)
+		X._process(0.016)
+		check(sk.get_bone_pose_rotation(ai).is_equal_approx(after_pose), "%s 같은 프레임 _process 가 클립 팔을 덮지 않음" % ch)
+		b.free()
 
 
 # 천 (목도리 꼬리 뼈 3개, chars/ext_cloth.gd): 몸이 앞으로 달리면 뒤로 날리고, 길이는 그대로, 순간이동하면 늘어나지 않고 다시 시작

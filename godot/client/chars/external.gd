@@ -652,7 +652,13 @@ class Ext extends Node3D:
 		sync()
 		return true
 
+	# W33: 판 몸 (third) 은 body.pose 가 sync(st) 로 클립까지 맞춤 — 그 뒤 같은 프레임에 이 _process 가 st 없는 sync() 를 또 부르면
+	# 코드 구동 (_code_sync) 이 클립이 맞춘 팔다리 뼈를 도로 덮어씀 (고도는 _ready 때 _process 를 다시 켜서 setup 의 set_process(false) 가 안 먹음)
+	var st_frame := -1
+
 	func _process(_d: float) -> void:
+		if third and st_frame == Engine.get_process_frames():
+			return
 		sync()
 
 	# 관절 n → space 기준 transform (못 닿으면 null)
@@ -817,6 +823,8 @@ class Ext extends Node3D:
 
 	# 매 프레임: 관절 → 뼈 (st = body._anim_state — 있으면 동작 클립 층도, 판 몸만)
 	func sync(st = null) -> void:
+		if st != null:
+			st_frame = Engine.get_process_frames()
 		_face_sync()
 		if clip != "" or sk == null:
 			return
