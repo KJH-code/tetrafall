@@ -13,6 +13,8 @@ var chars: Array = []
 var shot := ""
 var far := 0.0
 var bd = null # world/bodies.gd (몸 LOD·그림자 판정까지 같이 돌림)
+var _t_prev := 0
+var _dts: Array = [] # 프레임 간격 ms (처음 그린 프레임들 = 셰이더 컴파일 포함)
 
 
 func _arg(a: PackedStringArray, k: String, d: String) -> String:
@@ -114,6 +116,10 @@ var _players: Array = []
 
 func _process(_d: float) -> bool:
 	frames += 1
+	var tn := Time.get_ticks_usec()
+	if _t_prev > 0:
+		_dts.append((tn - _t_prev) / 1000.0)
+	_t_prev = tn
 	if frames == 1:
 		_build() # (트리가 돌기 시작한 다음에 — look_at·_ready 가 트리 안을 요구함)
 		return false
@@ -129,6 +135,10 @@ func _process(_d: float) -> bool:
 			info.call(V, Viewport.RENDER_INFO_OBJECTS_IN_FRAME), info.call(S, Viewport.RENDER_INFO_OBJECTS_IN_FRAME),
 			info.call(V, Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME), info.call(S, Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME),
 			Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0])
+		if _dts.size() >= 8:
+			var rest: Array = _dts.slice(3)
+			rest.sort()
+			print("SHADOW_MEAS 프레임 ms: 장면 만들기 + 처음 그리기 %.0f (셰이더 컴파일 포함) · 2·3째 %.0f %.0f · 이후 중앙값 %.1f" % [_dts[0], _dts[1], _dts[2], rest[rest.size() / 2]])
 		var off := 0
 		for id in bd.nodes:
 			off += 1 if bd.nodes[id].body.has_method("shadow_off") and bd.nodes[id].body.shadow_off() else 0

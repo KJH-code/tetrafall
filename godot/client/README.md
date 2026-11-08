@@ -81,6 +81,7 @@ xvfb-run -a godot --path godot/client --rendering-driver opengl3 -- --auto host 
 xvfb-run -a godot --path godot/client --rendering-driver opengl3 -- --replay /tmp/game8.rec --profile replay [--prof] [--replay-render] [--set gfx=medium,third=true] [--shot a.png]
 ```
 
+- `--no-shadow-opt` (W32): 해 그림자 줄이기 전부 끔 (몸 그림자 전용 저폴리·먼 몸/시야 밖 몸 그림자 끄기·블록 칸 그림자 상자·그림자 거리 카메라 맞춤) — 전후 비교. `--no-shadow-far` = 먼 몸 끄기만. `--census` 에 '그림자 던지는 삼각형' 열·해 그림자 거리. 장면 측정: `xvfb-run -a godot --path godot/client --rendering-driver opengl3 --resolution 1280x720 -s res://tools/shadow_meas.gd -- [--chars …] [--level high|medium|low] [--cells N --falling N] [--far m] [--close|--zoom] [--no-shadow-opt] [--shot a.png]` (8명 + 칸을 해 그림자 켠 장면에 놓고 그림자 패스 삼각형·그리기·프레임 ms). 자세한 내용 `chars/EXTERNAL.md` 13절
 - `--frame-log <tsv>` (W17): 재는 동안 프레임마다 벽시계 ms·스크립트 ms·위험 켬·그리기·물체 한 줄 — 한 프레임만 튀는지 (셰이더 첫 컴파일) 보기
 - `--census` (W15): 끝에 무리별 3D 물체·외곽선·삼각형, 보이는 2D 노드, viewport 마다 3D·그림자·2D 그리기
 - `--prof`: 구간별 ms/프레임 (`core/prof.gd` — world·몸·HUD·net 구간, 느린 프레임 6개). 꺼져 있으면 비용 거의 0 (테스트 `test_prof_off_is_free`)

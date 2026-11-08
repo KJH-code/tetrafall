@@ -217,6 +217,9 @@ static func census(root: Node) -> void:
 	print("[재연] 물체 무리 (보이는 GeometryInstance3D %d · 외곽선 패스 %d · 삼각형 %d · 그림자 던지는 삼각형 %d):" % tot)
 	for row in list.slice(0, 40):
 		print("  %-40s %4d · 외곽선 %4d · 삼각형 %7d · 그림자 %7d" % row)
+	var sun := root.find_child("Sun", true, false) as DirectionalLight3D # W32: 해 그림자 거리 (판 크기 값 이하로 카메라 자리에 맞춤, world.gd)
+	if sun != null:
+		print("[재연] 해 그림자: 켬 %s · 거리 %.1f m" % [sun.shadow_enabled, sun.directional_shadow_max_distance])
 	var l2 := c2d.keys()
 	l2.sort_custom(func(x, y): return c2d[x] > c2d[y])
 	var t2 := 0
