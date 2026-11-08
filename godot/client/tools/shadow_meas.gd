@@ -1,11 +1,10 @@
 # 해 그림자 비용 재기 (W32): 8명 몸 + 떨어지는 칸 + 쌓인 칸을 해 그림자 켠 장면에 놓고 그림자 패스 삼각형·그리기·물체와 화면 삼각형을 켬/끔 (--no-shadow-opt) 으로 비교.
-# xvfb-run -a godot --path godot/client --rendering-driver opengl3 --resolution 1280x720 -s res://tools/shadow_meas.gd -- [--chars ninja,tank,hunter,hook,ninja,tank,hunter,hook] [--level high|medium|low] [--theme castle] [--cells 150] [--falling 24] [--far 40] [--no-shadow-opt] [--shot a.png]
+# xvfb-run -a godot --path godot/client --rendering-driver opengl3 --resolution 1280x720 -s res://tools/shadow_meas.gd -- [--chars ninja,tank,hunter,hook,ninja,tank,hunter,hook] [--level high|medium|low] [--theme castle] [--cells 150] [--falling 24] [--far 40] [--close|--zoom] [--no-shadow-opt] [--shot a.png]
 #   --far <m>: 몸 절반을 카메라에서 이만큼 뒤로 (먼 몸 그림자 끄기 확인)   --cells: 쌓인 칸 수   --falling: 떨어지는 칸 수
 extends SceneTree
 
 const WC := preload("res://world/world_config.gd")
 const Co := preload("res://core/coords.gd")
-const Sh := preload("res://world/shadow_calc.gd")
 
 var frames := 0
 var cam: Camera3D
@@ -47,6 +46,14 @@ func _build() -> void:
 	cam.far = 200.0
 	cam.global_position = Vector3(fw / 2.0, 6.0, 4.0)
 	cam.look_at(Vector3(fw / 2.0, 0.0, -fw / 2.0 + 2.0))
+	if a.has("--zoom"): # 첫 몸 (gx 3, gy 4) 하나만 크게 (단검·손 모습 전후 비교)
+		cam.fov = 28.0
+		cam.global_position = Vector3(4.6, 1.5, -1.8)
+		cam.look_at(Vector3(3.0, 0.95, -4.0))
+	elif a.has("--close"): # 4명 가까이 (모습 전후 비교)
+		cam.fov = 60.0
+		cam.global_position = Vector3(fw / 2.0, 3.2, 3.5)
+		cam.look_at(Vector3(fw / 2.0, 0.9, -4.0))
 	var floor_m := MeshInstance3D.new()
 	var bm := BoxMesh.new()
 	bm.size = Vector3(fw, 0.5, fw)

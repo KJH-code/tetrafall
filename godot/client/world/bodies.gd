@@ -183,6 +183,7 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 	shown.clear()
 	var frame_ms: float = 0.0 if _last_now == null else maxf(0.0, now_ms - float(_last_now))
 	_last_now = now_ms
+	var builds := 0 # 이번 프레임에 만든 몸 수 (WC.BODY_BUILDS_PER_FRAME 까지, 내 몸은 따로)
 	var planes: Array = []
 	var cpos := Vector3.ZERO
 	var use_lod: bool = lod_on and cam != null and cam.is_inside_tree()
@@ -200,10 +201,20 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 		seen[id] = true
 		var color := player_color(p, st)
 		var n: Dictionary = nodes.get(id, {})
+		var mine0: bool = my_id != null and id == int(my_id)
 		if not n.is_empty() and (n.char != look_of(p) or (chars_script == null and n.color != color)):
+			if builds >= WC.BODY_BUILDS_PER_FRAME and not mine0:
+				shown[id] = Store.view_pos(id) if pos_fn == null else pos_fn.call(p, Store.view_pos(id))
+				continue # W32: 이번 프레임 만들 몸이 찼음 — 지금 몸 (옛 캐릭터) 을 두고 다음 프레임에 바꿈
 			n.root.queue_free() # 캐릭터·색이 바뀜 → 몸 새로
 			n = {}
 		if n.is_empty():
+			if builds >= WC.BODY_BUILDS_PER_FRAME and not mine0:
+				var sp := Store.view_pos(id)
+				shown[id] = sp if pos_fn == null else pos_fn.call(p, sp) # 자리는 알려 줌 (카메라·하늘 도우미) — 몸은 다음 프레임에
+				continue # W32: 몸 만들기 분산
+			if not mine0:
+				builds += 1
 			n = _make(p, color)
 			nodes[id] = n
 		var pos := Store.view_pos(id)

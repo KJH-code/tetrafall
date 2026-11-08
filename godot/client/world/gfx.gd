@@ -48,6 +48,7 @@ func _ready() -> void:
 		adapter = fake
 		vendor = ""
 	forced = _arg(args, "--gfx")
+	print(GC.startup_line(adapter, vendor)) # W32: 시작 로그에 GPU 이름 (Godot 로그 파일에도 남음)
 	_force_adapt = args.has("--adapt")
 	_off_adapt = args.has("--adapt-off")
 	var fg := _arg(args, "--adapt-fake-gpu")
@@ -117,6 +118,8 @@ func _find_others() -> void:
 func _got_others(found: Array) -> void:
 	others = found
 	hint = GC.hybrid_hint(adapter, vendor, others)
+	if hint != "":
+		push_warning(GC.startup_line(adapter, vendor, hint)) # W32: 로그에도 경고 (F3·화면 구석에도 뜸)
 	if _thread != null:
 		_thread.wait_to_finish()
 		_thread = null

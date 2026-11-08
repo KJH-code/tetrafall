@@ -228,3 +228,53 @@ func test_grid_cells_shadow_proxy() -> void:
 	check(not gv.proxy_on and gv.piece_mmi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON, "상자 칸이면 그대로")
 	gv.free()
 	WC.shadow_opt = was
+
+
+# 몸 만들기 분산: 한 프레임에 WC.BODY_BUILDS_PER_FRAME 개까지 (내 몸은 따로 바로), 나머지는 다음 프레임에 — 방 입장·봇 8명이 한 프레임에 몰리지 않게
+func test_body_builds_spread_over_frames() -> void:
+	var Bodies = load("res://world/bodies.gd")
+	var bd = Bodies.new()
+	bd._ready()
+	bd.chars_script = null # 상자 몸 (만들기 비용 상관없이 몇 개 만들었나만)
+	var cap: int = WC.BODY_BUILDS_PER_FRAME
+	var ps := []
+	for i in 8:
+		ps.append({"id": i + 1, "char": "tank", "alive": true, "yaw": 0.0, "x": float(i), "y": 0.0, "z": 0.0, "slot": i, "color": i})
+	var st := {"players": ps, "teamMode": false}
+	bd.update(st, 5, false, false, 0.0) # 내 id 5
+	check(bd.nodes.size() == cap + 1 and bd.nodes.has(5), "첫 프레임: 내 몸 + %d 개 (얻음 %d)" % [cap, bd.nodes.size()])
+	check(bd.shown.size() == 8, "만들지 못한 몸도 자리는 알려 줌 (카메라·하늘 도우미) — %d" % bd.shown.size())
+	var frames := 1
+	var last: int = bd.nodes.size()
+	while bd.nodes.size() < 8 and frames < 10:
+		bd.update(st, 5, false, false, frames * 16.0)
+		frames += 1
+		check(bd.nodes.size() - last <= cap, "프레임마다 최대 %d 개씩 (%d → %d)" % [cap, last, bd.nodes.size()])
+		last = bd.nodes.size()
+	check(bd.nodes.size() == 8 and frames <= 1 + int(ceil((7 - cap) / float(cap))), "8명이 %d 프레임 안에 다 나옴 (%d)" % [1 + int(ceil((7 - cap) / float(cap))), frames])
+	# 이미 있는 몸은 안 건드림: 다음 프레임에 새로 안 만듦
+	var ids: Array = bd.nodes.keys()
+	var roots := []
+	for id in ids:
+		roots.append(bd.nodes[id].root)
+	bd.update(st, 5, false, false, 999.0)
+	var same := true
+	for i in ids.size():
+		same = same and bd.nodes[ids[i]].root == roots[i]
+	check(same, "다 나온 뒤엔 그대로")
+	# 캐릭터가 바뀌면 (몸 새로) 그것도 프레임당 상한 안
+	var st2 := st.duplicate(true)
+	for p in st2.players:
+		p["char"] = "ninja"
+	bd.update(st2, 5, false, false, 1000.0)
+	var rebuilt := 0
+	for id in ids:
+		rebuilt += 1 if bd.nodes[id].char == "ninja" else 0
+	check(rebuilt <= cap + 1, "캐릭터 일괄 변경도 한 프레임에 최대 %d + 내 몸 (얻음 %d)" % [cap, rebuilt])
+	for i in 6:
+		bd.update(st2, 5, false, false, 1010.0 + i)
+	var all_new := true
+	for id in ids:
+		all_new = all_new and bd.nodes[id].char == "ninja"
+	check(all_new, "몇 프레임 뒤엔 다 바뀜")
+	bd.free()

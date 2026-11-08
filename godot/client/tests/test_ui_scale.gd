@@ -153,10 +153,10 @@ func test_settings_row() -> void:
 	s._show_scale()
 	check(s.scale_btns["자동"].get_meta("kind") == "go" and s.scale_btns["125%"].get_meta("kind") == "ghost", "자동으로 바꾸면 그 칸")
 	check(_src("res://ui/settings.gd").contains("[\"uiScale\", \"auto\"]"), "기본값 = 자동")
-	check(s.KEYS_ROOM == 510.0 and s.KEYS_MIN == 60.0, "키 목록 높이에서 UI 크기 줄 만큼 더 뺌 (960×540 에서 설정 창 높이 예전 그대로)")
+	check(s.KEYS_ROOM == 534.0 and s.KEYS_MIN == 60.0, "키 목록 높이에서 UI 크기 줄·GPU 도움말 줄 만큼 더 뺌 (960×540 에서 설정 창이 화면 안)")
 	s.keys_scroll.custom_minimum_size.y = s.KEYS_MIN
 	var h_small: float = s.box.get_combined_minimum_size().y
-	check(h_small <= 470.0, "작은 창 설정 창 최소 높이 %.0f (예전 468 — 키 목록 90 일 때)" % h_small)
+	check(h_small <= 494.0, "작은 창 설정 창 최소 높이 %.0f (예전 468 + GPU 도움말 줄 — 540 높이 창 안)" % h_small)
 	View.settings.uiScale = keep
 	s.free()
 	check(_src("res://core/view.gd").contains("\"uiScale\": \"auto\""), "View 기본 설정 uiScale = auto (user://settings.json 에 저장·복원)")
