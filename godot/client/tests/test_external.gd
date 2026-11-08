@@ -797,7 +797,7 @@ func test_ninja_body() -> void:
 	var ext_n := 0
 	for dr in b.drawn:
 		ext_n += 1 if dr.get("ext", false) else 0
-	check(ext_n == 7 and b.drawn.size() == 7 and b.ext.band == null, "그리는 메시 7 (몸 + 단검 2 × 3 조각, 얻음 %d/%d)" % [ext_n, b.drawn.size()])
+	check(ext_n == 3 and b.drawn.size() == 3 and b.ext.band == null, "그리는 메시 3 (몸 + 단검 2 — W32 에 단검 세 조각을 한 메시로 합침, 얻음 %d/%d)" % [ext_n, b.drawn.size()])
 	var daggers := 0
 	for ba in b.ext.find_children("*", "BoneAttachment3D", true, false):
 		daggers += 1 if String((ba as BoneAttachment3D).bone_name).ends_with("Hand") else 0
