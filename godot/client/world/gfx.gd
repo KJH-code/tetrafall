@@ -195,6 +195,7 @@ func _apply_adapt() -> void:
 	WC.msaa_cut = cut
 	if not ch:
 		return
+	Hitch.tag("해상도 변경", "%d%%%s" % [roundi(s * 100.0), " MSAA 낮춤" if cut else ""]) # 3D 버퍼를 다시 만드는 순간 — 히치 로거가 원인으로 적음
 	root.scaling_3d_scale = s
 	root.msaa_3d = WC.msaa_3d(bool(plan.get("low", false)), Opts.web(), WC.level)
 	sync_vm()
