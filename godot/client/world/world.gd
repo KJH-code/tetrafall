@@ -81,6 +81,7 @@ func _ready() -> void:
 	set_msaa(bool(View.settings.get("lowGfx", false))) # 모서리 계단 없앰 (JS antialias). 확인용 --msaa 는 자동 조종이 뒤에 덮어씀
 	if ResourceLoader.exists(G3_PATH):
 		G3 = load(G3_PATH)
+		G3.set_outline_far(float(WC.OUTLINE_FAR.taper_from), float(WC.OUTLINE_FAR.gone), float(WC.OUTLINE_FAR.min_k)) # W31: 몸 외곽선 거리 (셰이더 전역 값)
 	var we := WorldEnvironment.new()
 	env.background_mode = Environment.BG_SKY
 	env.sky = Sky.new()

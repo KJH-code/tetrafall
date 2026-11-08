@@ -261,3 +261,24 @@ LOD_LOCK=1 node tools/blender/tripo/lods.mjs <폴더>/cannon_rigged.glb <폴더>
 - 탱크: `rig_tank_auto.py` 가 `tank_vm` 을 새로 만듦 (`make_vm(…, arm_only=True, thick=1.0, connected=False)` — 방패·해머가 손가락·아래팔 뼈에 매인 별개 덩어리라 연결 퍼짐 대신 뼈 조건 전부) + `tank.json` `vm_node: "tank_vm"`. 방패·해머는 그대로 따라옴 (`vm_shots.gd tank` 로 방패 올리기·밀치기 확인).
 - 재생성: `blender -b --factory-startup -P tools/blender/tripo/rig_<캐릭터>.py -- --out <폴더>` → `LOD_LOCK=1 node tools/blender/tripo/lods.mjs …` (닌자 5000, 사냥꾼 5000,4000,3000, 갈고리 5000, 탱크 5000) → ext/ 에 복사 → `godot --headless --import`. 판 몸·LOD·몸 색 칸은 그대로 (닌자는 같은 크기 3,678,200 B).
 - 알려진 한계: 소매 통 색이 고리 둘레 UV 가운데값 한 가지라 팔 모양과 완전히 같진 않음 (탱크 = 짙은 갈색, 갈고리 = 주황 띠 쪽). 사냥꾼 왼팔·갈고리 오른팔은 원래 열린 곳 (소총·코트 자리) 이 소매 통 쪽에 몇 개 남음 (6·2 개, 테스트 기준 ≤ 8).
+
+## 15. W31 — 닌자·탱크·갈고리 판 LOD 를 새 UV 로 다시 굽기 (2026-11-08, `tripo/relod.py`·`relod_merge.mjs`)
+
+PC 최적화 2차 (지속 비용). 8절·9절·12절의 한계 — Tripo UV 가 잘게 나뉘어 meshopt 가 이음선을 못 넘어 판 LOD 가 **8500~8900 삼각형 아래로 안 내려감** — 을 없앰. 이미 리깅해 둔 `ext/<이름>.glb` 만 있으면 되고 (`rig_*.py` 를 다시 돌릴 필요 없음, stage·1인칭 팔·뼈대·재질은 글자 그대로 둠), 판 LOD 셋 (high 5000·medium 4000·low 3000 삼각형) 마다 메시와 1024 알베도를 따로 만듦.
+
+```
+# 한 LOD (Blender 4.5, 약 4초): stage → Decimate → Smart UV → 알베도·마스크 굽기 → <폴더>/<이름>_relod.glb
+blender -b --factory-startup -P tools/blender/tripo/relod.py -- --glb godot/client/assets/models/ext/ninja.glb --name ninja --out <폴더>/l1 --tris 5000 [--size 1024] [--angle 66] [--margin 0.008] [--ray 0.04]
+# (4000, 3000 도 같게 l2·l3 로) 그다음 원래 glb 에 LOD 셋으로 합침 (@gltf-transform/core 가 있는 폴더에서 — ESM 이라 NODE_PATH 가 안 먹으니 그 폴더에 복사해서)
+node relod_merge.mjs godot/client/assets/models/ext/ninja.glb ninja <폴더>/ninja.glb <폴더>/l1/ninja_relod.glb <폴더>/l2/ninja_relod.glb <폴더>/l3/ninja_relod.glb
+# ext/ 에 덮어쓰고 .json lods 를 high=lod1·medium=lod2·low=lod3 으로, godot --headless --import → 새 아틀라스 *_atlas_lod1~3.jpg.import 의 compress/mode 를 2 (VRAM) 로 고치고 한 번 더 import
+```
+
+- **줄이기**: stage 를 복사해 `remove_doubles` (UV 이음선으로 갈라진 꼭짓점 합침, 위치 기준 → 닫힌 메시) → 삼각화 → 맞춤 법선 지움 → Decimate Collapse (비율 = 목표/stage). 꼭짓점 8.9천 → 2.5천 (5000 삼각형), 구멍 없음 (예전 meshopt LOD 는 치마·목도리에 검은 구멍이 보였음).
+- **가중치**: Decimate 가 아니라 Data Transfer (`POLYINTERP_NEAREST`, 모든 꼭짓점 그룹, 이름으로) 로 stage 에서 가져옴 → 같은 Mixamo 뼈에 묶임 (4개 제한 + 정규화). `posecheck.py` 로 팔 올리기·쪼그림·몸 비틀기 앞/옆/뒤 stage 와 나란히 확인 (갈라짐·가시 없음).
+- **새 UV**: Smart UV Project (각 66°) → 조각 크기 맞춤 → 포장 (여백 0.008). 큰 조각 몇십 개를 노렸으나 Tripo 형태가 덩어리져서 약 960개 (예전 판 LOD 3100, stage 3500). 꼭짓점 6.5천 (5000 삼각형의 1.3배) — 예전 14.7천.
+- **알베도 굽기**: Cycles CPU 1 샘플, `DIFFUSE` 색만 (직접·간접 빛 끔) 선택→활성 (stage → 새 메시, 광선 거리 `--ray` 0.04 m), 여백 10 픽셀 늘리기, 1024². **저장할 때 `save_render` 가 장면 색 관리 (AgX) 를 거치면 색이 바램 → 표준 + 보정 없음으로 먼저 맞춤** (처음에 이걸로 탱크 주황이 연한 갈색이 됐음).
+- **몸 색 칸 (`tint: "mask"`, UV2.x)**: 셰이더는 `UV2.x > 0.5` 면 몸 색을 입히는 꼭짓점 단위 판정이라, stage 의 칸을 새 꼭짓점마다 가장 가까운 stage 면의 가장 가까운 모서리 값으로 옮김 (BVH). 알베도의 회백 칸과 새 꼭짓점 판정 경계가 삼각형 하나만큼 어긋나므로 (stage 칸 넓이의 약 8%: 닌자 `missing 1.3% / spill 1.2%` 텍스처 비율, 탱크 1.1/1.1, 갈고리 0.2/0.1) 어긋난 곳은 stage 회백 그대로 둠 (빨강으로 되돌리면 파랑 팀에서 빨강 점) — 안 입혀진 곳은 연회색, 더 입혀진 곳은 어두운 팀 색. 눈에 띄는 정도는 `godot/client/tools/lod_shot.gd` (3색 나란히) 로 확인.
+- **합치기** (`relod_merge.mjs`): 옛 `<이름>_lod1..N` 메시·노드를 지우고 새 메시를 같은 이름으로 (새 글의 뼈 번호는 뼈 이름으로 원래 스킨 번호로 바꿈), 재질·텍스처는 LOD 마다 하나 (`<이름>_atlas_lodN` → 고도가 `<이름>_<이름>_atlas_lodN.jpg` 로 꺼냄). `prune()` 은 `keepAttributes: true` 로 — 기본값은 안 쓰는 `TEXCOORD_1` (몸 색 칸) 을 지워서 stage 까지 색이 안 입혀짐.
+- **결과** (소프트웨어 렌더 환경, `tools/ext_meas.gd --eight --level …`): 8명 판 삼각형 (같은 캐릭터 8명, 외곽선 껍질 포함) 탱크 143.1k → **80.0k (높음)·64.0k (보통)·48.0k (낮음)**, 닌자 137.8k → 81.5k·65.5k·49.5k, 갈고리 133.8k → 80.0k·64.0k·48.0k. 영상 메모리 +6 MB (stage 2048 아틀라스는 그대로 + 1024 LOD 아틀라스, 한 판에서 쓰는 LOD 는 하나). glb 3.7~4.1 MB (+0.5 MB: 아틀라스 jpg 셋). 사냥꾼은 이미 3~5천이라 그대로.
+- 못 한 것: `relod.py` 는 Smart UV 라 조각 수가 많음 (큰 조각 몇 개로는 못 만듦). 마스크 경계 어긋남은 위 8% (텍스처 쪽에 마스크를 같이 굽는 길은 셰이더 변경이 필요해 안 함). 대포수 (`ext_hold`, 기본 꺼짐) 는 안 건드림.

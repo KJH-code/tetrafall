@@ -78,6 +78,24 @@ static func shared_outline(thickness: float = C.OUTLINE_THICKNESS, no_fog := fal
 	return _outline_cache[key]
 
 
+# 몸 외곽선 (W31): 같은 외곽선 재질의 사본 — 먼 거리에서 굵기가 줄어드는 (far_taper) 것. 원본마다 하나 (나눠 씀)
+static var _far_cache := {}
+
+
+static func far_outline(o: Material) -> Material:
+	var id := o.get_instance_id()
+	if not _far_cache.has(id):
+		var d := o.duplicate() as ShaderMaterial
+		d.set_shader_parameter("far_taper", 1.0)
+		_far_cache[id] = d
+	return _far_cache[id]
+
+
+# 몸 외곽선 거리 전역 값 (W31, WC.OUTLINE_FAR): x = 줄기 시작, y = 0 이 되는 거리, z = 그 거리에서의 배율. y = 0 이면 끔
+static func set_outline_far(from: float, gone: float, min_k: float) -> void:
+	_set_global("g3_outline_far", Vector3(from, gone, min_k))
+
+
 # 재질에 외곽선을 붙임 (설정 '외곽선' 이 꺼져 있으면 붙일 것만 기억) — set_outline_on 이 나중에 켜고 끔
 static func attach_outline(m: Material, o: Material) -> void:
 	m.next_pass = o if outline_on else null

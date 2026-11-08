@@ -72,7 +72,7 @@ func test_plaid_repeat_and_nearest() -> void:
 func test_outline_like_three() -> void:
 	# three OutlineEffect calculateOutline: vec4 norm = normalize(pos - pos2); pos + norm * thickness * pos.w (w 까지 vec4 그대로) — 고도도 같음
 	var s := _src("res://shaders/outline.gdshader")
-	check(s.contains("vec4 n = normalize(pos - pos2);") and s.contains("POSITION = pos + n * thickness * pos.w;"), "외곽선 = three calculateOutline (vec4 정규화)")
+	check(s.contains("vec4 n = normalize(pos - pos2);") and s.contains("POSITION = pos + n * thickness * k * pos.w;") and s.contains("float k = 1.0;"), "외곽선 = three calculateOutline (vec4 정규화, W31: 몸 외곽선만 거리 배율 k, 기본 1)")
 
 
 func test_game_light_grade_is_css_filter() -> void:

@@ -10,6 +10,9 @@ const Labels := preload("res://world/labels.gd")
 const UI_CALC := "res://ui/ui_calc.gd" # G4 hp_view (체력전 HP)
 const CHARS := "res://chars/chars.gd"
 const Lod := preload("res://world/pose_lod.gd")
+const OutFar := preload("res://world/outline_far.gd")
+const Opts_ := preload("res://core/opts.gd")
+static var NO_OUTLINE_FAR: bool = Opts_.args().has("--no-outline-far") # 확인용: 외곽선 거리 끔 (전후 비교)
 const Prof := preload("res://core/prof.gd")
 
 var stencil_fn = null # Callable(ShaderMaterial): 몸 재질이 스텐실을 씀 (사냥꾼의 눈 x-ray 가 몸에 가린 곳엔 안 나오게, G3.toon_stencil_write)
@@ -204,6 +207,9 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 		root.position = Co.gpos(pos)
 		root.rotation = Vector3(0, Co.rot_y(p.yaw), 0)
 		(n.body as Node3D).visible = not (mine and hide_me)
+		if use_lod and not NO_OUTLINE_FAR and n.body.has_method("set_outline_far"): # W31: 먼 몸은 외곽선 껍질을 뗌 (시야각 70° 기준 거리, 켜고 끄는 문턱에 여유)
+			var of := OutFar.far_state(root.global_position.distance_to(cpos), cam.fov, bool(n.body.outline_far()), mine)
+			n.body.set_outline_far(of)
 		if n.body.has_method("pose"):
 			var iv := 0.0
 			if use_lod and root.visible and not mine:

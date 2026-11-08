@@ -670,6 +670,62 @@ static func _autoload(name: String):
 
 
 # ---------- 매 프레임 (World 가 부름) ----------
+# ---- 외곽선 거리 (W31, world/bodies.gd 가 카메라 거리로 부름): 먼 몸은 외곽선 껍질 (next_pass — 몸이 한 번 더 그려짐) 을 뗌.
+# 처음 부를 때 이 몸의 재질 중 외곽선을 가진 것을 모아 (나눠 쓰는 재질은 건드리지 않음) 가까울 땐 굵기가 거리로 줄어드는 사본 (G3.far_outline) 으로 바꿔 둠
+const OUTLINE_SHADER := "res://shaders/outline.gdshader"
+static var _ol_owner := {} # 재질 id → 몸 id (먼저 모은 몸이 주인)
+var _ol: Array = [] # [[재질, 가까울 때 외곽선]]
+var _ol_built := false
+var _ol_far := false
+
+
+func set_outline_far(far: bool) -> void:
+	if not _ol_built:
+		_collect_outline()
+	if _ol.is_empty():
+		return
+	var off := far or not G3.outline_on
+	var e0: Array = _ol[0]
+	if _ol_far == far and (e0[0] as Material).next_pass == (null if off else e0[1]):
+		return
+	_ol_far = far
+	for e in _ol:
+		(e[0] as Material).next_pass = null if off else e[1]
+
+
+func outline_far() -> bool:
+	return _ol_far
+
+
+func _collect_outline() -> void:
+	_ol_built = true
+	var me := get_instance_id()
+	var seen := {}
+	for mi in find_children("*", "MeshInstance3D", true, false):
+		var mats := []
+		var m3 := mi as MeshInstance3D
+		if m3.material_override != null:
+			mats.append(m3.material_override)
+		elif m3.mesh != null:
+			for i in m3.mesh.get_surface_count():
+				var m: Material = m3.get_surface_override_material(i)
+				mats.append(m if m != null else m3.mesh.surface_get_material(i))
+		for m in mats:
+			if m == null or seen.has(m.get_instance_id()) or m.next_pass == null:
+				continue
+			seen[m.get_instance_id()] = true
+			var np := m.next_pass as ShaderMaterial
+			if np == null or np.shader == null or np.shader.resource_path != OUTLINE_SHADER:
+				continue
+			if _ol_owner.has(m.get_instance_id()) and _ol_owner[m.get_instance_id()] != me and instance_from_id(int(_ol_owner[m.get_instance_id()])) != null:
+				continue # 다른 몸과 나눠 쓰는 재질
+			_ol_owner[m.get_instance_id()] = me
+			var far_o: Material = G3.far_outline(np)
+			_ol.append([m, far_o])
+			if G3.outline_on:
+				m.next_pass = far_o
+
+
 func pose(p: Dictionary, now_ms: float) -> void:
 	pid = int(p.id)
 	posed = true
