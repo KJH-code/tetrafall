@@ -6,6 +6,7 @@ const C := preload("res://core/config.gd")
 const Co := preload("res://core/coords.gd")
 const Cells := preload("res://world/cells.gd")
 const WC := preload("res://world/world_config.gd")
+const PiecesView := preload("res://world/pieces_view.gd")
 
 var mmi := MultiMeshInstance3D.new()
 var floor_mesh := MeshInstance3D.new()
@@ -16,6 +17,8 @@ var skip := {} # 그리지 않을 칸 (건축가 블록이 따로 그림)
 var count := 0
 var make_mat = null # Callable(Color) -> Material: G3 툰 재질 (없으면 StandardMaterial3D)
 var piece_mmi := MultiMeshInstance3D.new() # 쌓인 테트리미노 칸 (모양 칸) 만: G3 PieceLook (set_piece_look), 없으면 mmi 에 같이
+var piece_caster := MultiMeshInstance3D.new() # W32: 쌓인 모양 칸의 그림자를 던지는 상자 (모양 칸 한 개가 300~430 삼각형이라 쌓일수록 해 그림자 패스가 커짐). 보이는 칸은 그림자 끔
+var proxy_on := false
 var terrain_mmi := MultiMeshInstance3D.new() # 테마 지형 칸 (값 1) 만: G3 지형 셰이더 (칸 크기 1, 이웃·그늘 비트는 custom data)
 var terrain_custom = null # Callable(grid, w, d, h, skip) -> PackedColorArray (G3.terrain_custom), null 이면 지형도 칸 색 블록
 
@@ -43,6 +46,13 @@ func _ready() -> void:
 	piece_mmi.multimesh = pmm
 	piece_mmi.visible = false
 	add_child(piece_mmi)
+	var qm := MultiMesh.new()
+	qm.transform_format = MultiMesh.TRANSFORM_3D
+	qm.mesh = box
+	piece_caster.multimesh = qm
+	piece_caster.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+	piece_caster.visible = false
+	add_child(piece_caster)
 	terrain_mmi.visible = false
 	add_child(terrain_mmi)
 	for n in [floor_mesh, cliff]:
@@ -58,6 +68,10 @@ func set_piece_look(mesh: Mesh, mat: Material, colors: Dictionary) -> void:
 	piece_mmi.multimesh.mesh = mesh
 	piece_mmi.material_override = mat
 	piece_colors = colors
+	proxy_on = mesh != null and PiecesView.proxy_wanted(mesh)
+	piece_caster.visible = proxy_on
+	piece_caster.multimesh.instance_count = 0
+	piece_mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if proxy_on else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 
 
 # 테마 지형 셰이더 (G3 terrain_mesh·terrain_material·terrain_custom). mesh 가 null 이면 끔 (지형도 칸 색 블록)
@@ -124,12 +138,17 @@ func rebuild(grid: PackedByteArray, w: int, d: int, h: int) -> void:
 				tm.set_instance_custom_data(k, looks[k])
 	var pm := piece_mmi.multimesh
 	pm.instance_count = pcs.size()
+	var qm := piece_caster.multimesh
+	qm.instance_count = pcs.size() if proxy_on else 0
 	for k in pcs.size():
 		var i: int = pcs[k]
 		var x := i % w
 		var y := (i / w) % d
 		var z := i / (w * d)
-		pm.set_instance_transform(k, Transform3D(Basis(), Co.gxyz(x + 0.5, y + 0.5, z + 0.5)))
+		var pxf := Transform3D(Basis(), Co.gxyz(x + 0.5, y + 0.5, z + 0.5))
+		pm.set_instance_transform(k, pxf)
+		if proxy_on:
+			qm.set_instance_transform(k, pxf)
 		var c := Co.color(Cells.cell_color(grid[i], piece_colors))
 		if (x + y + z) % 2:
 			c = c * WC.CHECKER

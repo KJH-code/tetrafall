@@ -27,6 +27,7 @@ const BodyFx := preload("res://world/body_fx.gd")
 const CamRig := preload("res://world/cam_rig.gd")
 const LobbyDark := preload("res://world/lobby_dark.gd")
 const Gfx := preload("res://world/gfx.gd") # 화질 (W6): 설정 화질·창 크기·GPU → lowGfx·3D 배율·MSAA
+const ShadowCalc := preload("res://world/shadow_calc.gd") # W32: 그림자 거리
 const BBLOCKS := "res://world/bblocks.gd"
 const FX := "res://fx/fx.gd" # G5 효과 (있으면 fx_root 에 붙이고 setup(rig): 카메라 흔들림·KO 줌은 rig.hook)
 const G3_PATH := "res://shaders/g3.gd" # G3 툰·테마 (있으면 하늘·빛·안개·블록 재질을 G3 가 맡음)
@@ -249,6 +250,9 @@ func g3_has(fn: String) -> bool:
 	return false
 
 
+var _shadow_reach := -1.0 # 지금 적용한 그림자 거리 (World 가 판 크기로 정하면 set_field 가 덮으므로, 판 크기가 바뀌면 -1 로 되돌려 다시 정함)
+
+
 func set_shadows(on: bool) -> void:
 	if G3 != null:
 		G3.set_shadows(self, on)
@@ -448,6 +452,7 @@ func _process(dt: float) -> void:
 		grid_view.set_field(fs.x, fs.y)
 		if G3 != null:
 			G3.set_field(self, fs.x, fs.y)
+			_shadow_reach = -1.0
 		built_version = -2
 	_lobby_dark(st, fs)
 	scenery.build(C.WORLD_MAP_THEME.get(theme_id), fs.x, fs.y, bool(View.settings.get("lowGfx", false)), fs.z)
@@ -469,6 +474,13 @@ func _process(dt: float) -> void:
 	bodies.update(st, Store.my_id, rig.hide_me(), sky_on, now)
 	Prof.lap("world bodies.update (몸 자세)")
 	rig.field_size = Vector2(fs.x, fs.y)
+	if G3 != null and WC.shadow_opt and rig.cam.is_inside_tree(): # W32: 그림자 거리를 카메라 자리에 맞춤 (판 크기 값 이하)
+		var cg: Vector3 = rig.cam.global_position
+		var full: float = G3.shadow_full(fs.x, fs.y)
+		var rch: float = ShadowCalc.reach_next(_shadow_reach, Vector3(cg.x, -cg.z, cg.y), fs.x, fs.y, full)
+		if not is_equal_approx(rch, _shadow_reach):
+			_shadow_reach = rch
+			G3.set_shadow_reach(self, rch)
 	var ph := str(st.get("phase", ""))
 	if ph != last_phase:
 		marks.phase_changed() # 판 시작·끝: 서버가 솟은 땅을 버림

@@ -82,6 +82,15 @@ const ADAPT := {"min": 0.6, "hz_min": 30.0, "hz_max": 60.0, "window": 20, "trim"
 #   taper_from~gone: 이 사이에서 외곽선 굵기가 1 → min_k 배로 줄어듦 (셰이더, 화면 일정 굵기라 먼 몸은 상대적으로 굵었음) · gone 넘으면 껍질을 아예 뗌 (그리기·삼각형 한 벌 줄음), hyst: 켜고 끄는 문턱 여유 (m)
 #   gone 은 몸 자세 LOD 둘째 단 (POSE_LOD.far2 = 10m) 보다 멀게 (그 안은 자세도 매 프레임 가까이 있는 몸). 8명 판 필드 대각선 27m 라 20m 로 두면 3인칭에서 거의 안 떼짐 (재연 전후 삼각형 같음). min_k 0.25 × 굵기 1.6px = 0.4px 이라 떼는 순간 눈에 안 띔. 내 몸·대기실·1인칭·초상은 늘 가까워서 (taper_from 안) 그대로
 const OUTLINE_FAR := {"taper_from": 8.0, "gone": 16.0, "min_k": 0.25, "hyst": 1.0}
+# ---- 해 그림자 비용 (W32, 해 그림자 패스 = 3D 삼각형의 38%): 몸 그림자만 줄임 (블록·지형 그림자는 그대로). 순수 계산 world/shadow_calc.gd, 적용 chars/body.gd set_shadow_off + world/bodies.gd
+#   far: 카메라 거리 (시야각 70° 기준 환산, 외곽선 거리와 같은 식) 가 이 값 넘으면 그 몸의 그림자를 끔 (hyst: 켜고 끄는 문턱 ±m). 몸 자세 LOD 첫 단 10m · 외곽선 껍질 떼는 16m 보다 멀게
+#   (큰 판 대각선 27m 의 가장 먼 모퉁이까지 가는 3인칭에선 거의 안 걸림 — 전체 보기·하늘 시점에서만 이득) · view_pad: 몸도 그 몸 그림자 자리도 시야 밖일 때 (공 반지름 m, 몸 크기 + 그림자 길이 여유) 끔
+#   caster_lod: 판 몸 그림자 전용 저폴리 (외부 모델의 가장 낮은 LOD 메시를 SHADOWS_ONLY 로, 보이는 메시는 그림자 끔 — chars/ext_shadow.gd) · 보이는 LOD 가 이미 가장 낮으면 안 함
+#   reach: 그림자 거리를 판 크기뿐 아니라 카메라에서 판 가장 먼 모퉁이까지 + pad (m) 로도 제한 (step m 단위로 올림 — 자주 바뀌면 그림자 지도 픽셀이 흔들림), min: 이 아래로는 안 줄임
+#   piece_proxy: 떨어지는 블록 칸 (칸 모양이 300~430 삼각형인 테마) 의 그림자는 상자 (12 삼각형) 하나로 던짐 — 보이는 칸은 그림자 끔 + 같은 자리 상자 MultiMesh 가 그림자만 (SHADOWS_ONLY)
+const SHADOW := {"far": 22.0, "hyst": 1.5, "view_pad": 3.0, "caster_lod": true, "piece_proxy": true, "piece_proxy_min_tris": 24, "reach_pad": 8.0, "reach_step": 4.0, "reach_min": 16.0}
+# 확인용: --no-shadow-opt = W32 그림자 줄이기 전부 끔 (저폴리 캐스터·칸 상자 그림자·먼 몸 끄기·그림자 거리), --no-shadow-far = 먼 몸·시야 밖 몸 그림자 끄기만 끔 (전후 비교)
+static var shadow_opt: bool = not Opts.args().has("--no-shadow-opt")
 # 지금 적용된 화질 (world/gfx.gd 가 정함, msaa_3d·mirror_scale 이 읽음). 테스트·헤드리스는 기본 high = 예전 값
 static var level := "high"
 static var msaa_cut := false # W31: 적응형 해상도 (world/adapt_calc.gd) 가 판 중에만 켬 — 판이 끝나면 꺼짐

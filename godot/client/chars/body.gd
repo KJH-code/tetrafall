@@ -697,6 +697,41 @@ func outline_far() -> bool:
 	return _ol_far
 
 
+# ---- 그림자 거리 (W32, world/bodies.gd 가 부름): 너무 멀거나 (shadow_calc.far_off) 몸도 그림자 자리도 시야 밖인 몸은 해 그림자를 끔 (그림자 패스 삼각형이 몸마다 줄음).
+# 처음 부를 때 이 몸의 해 그림자를 던지는 메시 (SHADOWS 켬·그림자 전용) 를 모아 원래 설정을 기억, 켜면 그대로 되돌림. 이후에 붙은 메시는 안 건드림 (계속 던짐)
+var _sh: Array = [] # [[MeshInstance3D, 원래 cast_shadow]]
+var _sh_built := false
+var _sh_off := false
+
+
+func set_shadow_off(off: bool) -> void:
+	if off == _sh_off:
+		return
+	if not _sh_built:
+		_collect_shadow()
+	_sh_off = off
+	for e in _sh:
+		var mi = e[0]
+		if not is_instance_valid(mi):
+			continue
+		if int(e[1]) == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY:
+			(mi as Node3D).visible = not off # 그림자 전용 메시는 cast OFF 로 끄면 화면에 그려져 버림 (OFF = 그림자만 안 던짐) → 숨김으로
+		else:
+			(mi as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if off else int(e[1])
+
+
+func shadow_off() -> bool:
+	return _sh_off
+
+
+func _collect_shadow() -> void:
+	_sh_built = true
+	for mi in find_children("*", "MeshInstance3D", true, false):
+		var cs: int = (mi as GeometryInstance3D).cast_shadow
+		if cs != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+			_sh.append([mi, cs])
+
+
 func _collect_outline() -> void:
 	_ol_built = true
 	var me := get_instance_id()
