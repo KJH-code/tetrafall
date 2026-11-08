@@ -6,8 +6,8 @@
 	"lods": {
 		"stage": "ninja_lod0",
 		"high": "ninja_lod1",
-		"medium": "ninja_lod1",
-		"low": "ninja_lod1"
+		"medium": "ninja_lod2",
+		"low": "ninja_lod3"
 	},
 	"toon_steps": [
 		0.7,

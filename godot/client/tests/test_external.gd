@@ -467,9 +467,9 @@ func test_blender_tank_info() -> void:
 	check(String(info.names[info.map.shoulder_L]).ends_with("LeftArm") and String(info.names[info.map.elbow_R]).ends_with("RightForeArm") and String(info.names[info.map.foot_L]).ends_with("LeftFoot"), "위팔=Arm (빗장 아님)·아래팔=ForeArm·발=Foot")
 	check(info.names.size() >= 60, "손가락까지 뼈 %d" % info.names.size())
 	var lods: Dictionary = info.cfg.get("lods", {})
-	check(lods.size() == 4 and str(lods.high) == str(lods.medium) and str(lods.medium) == str(lods.low) and str(lods.stage) != str(lods.low), "LOD: stage 하나 + 판 셋이 같은 메시 하나")
-	# 삼각형: 원본 1.94만 그대로 (대기실·초상·1인칭) + 판 약 8900 (UV 조각이 잘게 나뉘어 meshopt 가 이음선을 안 넘으면 이 밑으로 안 내려감)
-	var want := {"stage": [15000, 20000], "high": [6000, 9500]}
+	check(lods.size() == 4 and str(lods.high) != str(lods.medium) and str(lods.medium) != str(lods.low) and str(lods.stage) != str(lods.high), "LOD: stage 하나 + 판 셋 (W31 새 UV 로 다시 구움, 메시 셋이 따로)")
+	# 삼각형: 원본 1.94만 그대로 (대기실·초상·1인칭) + 판 high 5000 (W31 새 UV 로 다시 굽기 — 예전엔 UV 조각이 잘게 나뉘어 8900 밑으로 안 내려감)
+	var want := {"stage": [15000, 20000], "high": [4400, 5000]}
 	var stage_sf = null
 	for k in want:
 		var ss := _lod_surfs(info, str(lods.get(k, "")))
@@ -737,8 +737,8 @@ func test_ninja_info() -> void:
 	check(String(info.names[info.map.shoulder_L]).ends_with("LeftArm") and String(info.names[info.map.elbow_R]).ends_with("RightForeArm") and String(info.names[info.map.foot_L]).ends_with("LeftFoot"), "위팔=Arm (빗장 아님)·아래팔=ForeArm·발=Foot")
 	check(info.names.size() >= 60, "손가락까지 뼈 %d" % info.names.size())
 	var lods: Dictionary = info.cfg.get("lods", {})
-	check(lods.size() == 4 and str(lods.high) == str(lods.medium) and str(lods.medium) == str(lods.low) and str(lods.stage) != str(lods.low), "LOD: stage 하나 + 판 셋이 같은 메시 하나")
-	var want := {"stage": [15000, 20000], "high": [6000, 9500]}
+	check(lods.size() == 4 and str(lods.high) != str(lods.medium) and str(lods.medium) != str(lods.low) and str(lods.stage) != str(lods.high), "LOD: stage 하나 + 판 셋 (W31 새 UV 로 다시 구움, 메시 셋이 따로)")
+	var want := {"stage": [15000, 20000], "high": [4400, 5000]}
 	for k in want:
 		var ss := _lod_surfs(info, str(lods.get(k, "")))
 		var tri := 0
@@ -955,8 +955,8 @@ func test_hook_info() -> void:
 	var names := {}
 	for k in lods:
 		names[str(lods[k])] = true
-	check(lods.size() == 4 and names.size() == 2 and lods.high == lods.medium and lods.medium == lods.low, "LOD: stage 하나 + 판 셋이 같은 메시")
-	var want := {"stage": [17000, 20000], "high": [7500, 9500]}
+	check(lods.size() == 4 and names.size() == 4, "LOD: stage 하나 + 판 셋 (W31 새 UV 로 다시 구움, 메시 넷이 따로)")
+	var want := {"stage": [17000, 20000], "high": [4400, 5000]}
 	var stage_sf = null
 	for k in want:
 		var ss := _lod_surfs(info, str(lods.get(k, "")))

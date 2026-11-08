@@ -6,8 +6,8 @@
 	"lods": {
 		"stage": "tank_lod0",
 		"high": "tank_lod1",
-		"medium": "tank_lod1",
-		"low": "tank_lod1"
+		"medium": "tank_lod2",
+		"low": "tank_lod3"
 	},
 	"toon_steps": [
 		0.7,

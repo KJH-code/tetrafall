@@ -2,7 +2,7 @@
 # 몸 하나가 늘리는 그리기·물체·삼각형, 그다음 같은 캐릭터 8명을 한꺼번에 넣었을 때 (그리기·삼각형·영상 메모리·프레임당 자세 CPU).
 # 소프트웨어 GL (llvmpipe) 라 GPU ms 는 못 잼 — 읽기·만들기·자세 CPU ms 와 그리기·삼각형·메모리 숫자가 근거. frame1 ms 는 셰이더 첫 사용 비용의 '순서 있는 어림'
 #   (먼저 나온 캐릭터가 공용 셰이더 갈래를 대신 물므로 --order 를 바꿔 두 번 돌려 볼 것).
-# xvfb-run -a -s "-screen 0 960x540x24" godot --path godot/client --rendering-driver opengl3 --resolution 960x540 -s res://tools/ext_meas.gd -- [--ext|--no-ext] [--order tank,ninja,hunter,hook,bard] [--eight]
+# xvfb-run -a -s "-screen 0 960x540x24" godot --path godot/client --rendering-driver opengl3 --resolution 960x540 -s res://tools/ext_meas.gd -- [--ext|--no-ext] [--order tank,ninja,hunter,hook,bard] [--eight] [--level high|medium|low]
 extends SceneTree
 
 const C := preload("res://core/config.gd")
@@ -35,6 +35,9 @@ func _initialize() -> void:
 	use_ext = not a.has("--no-ext")
 	eight = a.has("--eight")
 	warm = a.has("--warm")
+	var lv := a.find("--level") # W31: 판 LOD 단계 (high·medium·low) — 판 몸이 고르는 LOD (Gfx.plan.level)
+	if lv >= 0:
+		load("res://world/gfx.gd").plan = {"level": str(a[lv + 1])}
 	var i := a.find("--order")
 	if i >= 0:
 		ids = str(a[i + 1]).split(",")
