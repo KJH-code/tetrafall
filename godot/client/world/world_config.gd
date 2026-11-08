@@ -71,17 +71,26 @@ const GFX_MAX_PX := {"high": 0, "medium": 2560 * 1440, "low": 1920 * 1080} # 3D 
 const GFX_MIN_SCALE := {"high": 1.0, "medium": 0.75, "low": 0.5} # 3D 해상도 배율 하한 (보통은 흐려 보이지 않게 0.75 까지만)
 const MSAA_MEDIUM := Viewport.MSAA_2X # 보통: 판·1인칭 팔 다중 샘플 (4× 의 반 — 모서리 모습은 거의 같음)
 const MIRROR_SCALE := {"high": 0.5, "medium": 0.35} # 타이틀·대기실 거울 반사 SubViewport = 창 크기 × 이 값 × 3D 배율 (낮음은 거울 없음). 반사는 흐리게 덮여 해상도가 잘 안 보임
+# ---- 적응형 3D 해상도 (W31, world/adapt_calc.gd): 판 중에만. 천장 = 화질이 정한 배율, 바닥 = min(min, 천장)
+#   hz_min~hz_max: 목표 프레임 = 모니터 주사율을 이 사이로 (144Hz 여도 60fps 만 맞춤) · window: 프레임 몇 개씩 모아 판단 (60fps 에서 20개 = 0.33초) · trim: 느린 쪽 이 비율은 버림 (히치)
+#   down: 목표의 이 배 넘게 느리면 내림 · aim: 내릴 때 목표의 이 배를 노림 · down_min/down_max: 한 번에 내리는 폭 · cpu_bound: 프레임 중 CPU 일이 이 비율 넘으면 해상도로 안 풀리는 병목
+#   up_meet: 목표의 이 배 이하면 '맞춤' · headroom: GPU 시간을 알 때/프레임이 이 배 이하일 때만 '여유' 로 쳐서 올린 뒤 예상 (up_pred) 을 따짐 · up_hold: 연속 이만큼 맞추면 올림 (프로브 실패마다 2배) · up_step: 올리는 폭
+#   probe_windows: 올린 뒤 이 창 안에 도로 내리면 실패 · fails_max: 기다림 2^fails 배 상한 · ban_windows: 프로브 실패한 배율을 이만큼 (×2^실패 횟수) 창 동안 다시 안 올림 · cut_windows: 바닥에서 이 창 연속 느리면 MSAA 한 단계 낮춤
+const ADAPT := {"min": 0.6, "hz_min": 30.0, "hz_max": 60.0, "window": 20, "trim": 0.2, "down": 1.10, "aim": 0.92, "down_min": 0.05, "down_max": 0.15, "cpu_bound": 0.8,
+	"up_meet": 1.04, "headroom": 0.8, "up_pred": 0.92, "up_hold": 6, "up_step": 0.05, "probe_windows": 3, "fails_max": 3, "cut_windows": 9, "ban_windows": 30}
 # 지금 적용된 화질 (world/gfx.gd 가 정함, msaa_3d·mirror_scale 이 읽음). 테스트·헤드리스는 기본 high = 예전 값
 static var level := "high"
+static var msaa_cut := false # W31: 적응형 해상도 (world/adapt_calc.gd) 가 판 중에만 켬 — 판이 끝나면 꺼짐
 
 
 # 다중 샘플 고르기: 그래픽 낮춤 → MSAA_LOW, 아니면 보통 화질이면 MSAA_MEDIUM, 웹이면 MSAA_3D_WEB, PC 면 MSAA_3D_PC (web 기본 = 지금 실행이 웹 내보내기인가)
 static func msaa_3d(low: bool, web: bool = Opts.web(), lv: String = level) -> Viewport.MSAA:
 	if low or lv == "low":
 		return MSAA_LOW
-	if lv == "medium":
-		return MSAA_MEDIUM
-	return MSAA_3D_WEB if web else MSAA_3D_PC
+	var m: Viewport.MSAA = MSAA_MEDIUM if lv == "medium" else (MSAA_3D_WEB if web else MSAA_3D_PC)
+	if msaa_cut: # W31: 적응형 해상도가 바닥에서도 느려서 한 단계 낮춤 (4× → 2× → 끔)
+		m = (Viewport.MSAA_2X if m == Viewport.MSAA_4X or m == Viewport.MSAA_8X else Viewport.MSAA_DISABLED) as Viewport.MSAA
+	return m
 
 
 # 거울 반사 크기 배율 (창 크기에 곱함). scale_3d: 판 3D 해상도 배율

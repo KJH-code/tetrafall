@@ -111,7 +111,7 @@ func test_gfx_node_applies() -> void:
 	g.forced = "medium"
 	g.apply(false, root)
 	check(vm.view.msaa_3d == Viewport.MSAA_2X, "팔: 보통 2×")
-	Gfx.plan = {"scale": 0.75}
+	Gfx.scale_now = 0.75
 	g.sync_vm()
 	check(is_equal_approx(vm.view.scaling_3d_scale, 0.75) and vm.view.scaling_3d_mode == Viewport.SCALING_3D_MODE_BILINEAR, "팔: 판 3D 배율")
 	g.world = null

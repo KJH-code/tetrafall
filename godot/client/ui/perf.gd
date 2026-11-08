@@ -136,7 +136,7 @@ func _apply() -> void:
 		Prof.set_hitch(hon)
 		hlog = Hitch.Log.new()
 		hstart = Time.get_ticks_usec() / 1000.0
-	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), hon)
+	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), hon or Gfx.adapting)
 	win = PC.PerfWindow.new()
 	samples = []
 	last = 0.0
@@ -228,7 +228,7 @@ func _renderer() -> String:
 
 
 func _gfx_text() -> String:
-	return GC.level_text(Gfx.choice, Gfx.plan) if not Gfx.plan.is_empty() else ""
+	return GC.level_text(Gfx.choice, Gfx.plan, Gfx.scale_now) + (" · " + Gfx.adapt_info if Gfx.adapt_info != "" else "") if not Gfx.plan.is_empty() else ""
 
 
 func extra() -> Dictionary:

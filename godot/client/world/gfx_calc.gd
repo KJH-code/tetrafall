@@ -102,9 +102,13 @@ static func msaa_x(m: int) -> int:
 
 
 # 화면 구석·F3 의 화질 글: "보통 (자동) · 3D 75% · MSAA 2×"
-static func level_text(choice, p: Dictionary) -> String:
+static func level_text(choice, p: Dictionary, scale_now := -1.0) -> String:
 	var t := "%s%s" % [WC.GFX_LABEL.get(p.level, p.level), " (자동)" if str(choice) not in ["high", "medium", "low"] else ""]
-	return "%s · 3D %d%% · MSAA %d×" % [t, roundi(float(p.scale) * 100.0), msaa_x(int(p.msaa))]
+	var sc: float = float(p.scale) if scale_now < 0.0 else scale_now # W31: 적응형이면 지금 배율
+	var ms := msaa_x(int(p.msaa))
+	if WC.msaa_cut:
+		ms = msaa_x(int(WC.msaa_3d(bool(p.low), false, str(p.level))))
+	return "%s · 3D %d%% · MSAA %d×" % [t, roundi(sc * 100.0), ms]
 
 
 # 하이브리드 노트북 안내: 지금 내장 그래픽인데 이 PC 에 외장 GPU 가 있으면 (Windows). 아니면 ""

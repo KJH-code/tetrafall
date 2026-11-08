@@ -2,12 +2,16 @@
 #   View.settings.lowGfx (예전 '그래픽 낮춤' = 낮음 — 그림자·블룸·거울·장식은 예전처럼 lowGfx 를 듣는 쪽이 끔), 판 3D 해상도 배율·MSAA, 1인칭 팔 MSAA·3D 배율, 거울 크기 (WC.level)
 # World 가 _ready 맨 처음에 붙임 (그 뒤 world·타이틀이 lowGfx 를 읽음). 창 크기가 바뀌면 다시 (자동이면 높음 ↔ 보통, 배율)
 # 하이브리드 노트북 안내: Windows 에서 내장 그래픽으로 돌면 'reg query' 로 이 PC 의 다른 GPU 를 찾음 (스레드 — 타이틀을 안 멈춤) → hint (F3·화면 구석이 읽음)
+# W31 적응형 3D 해상도: 판 중 (playing) 에만 프레임 시간을 보고 배율을 천장(화질이 정한 배율)~바닥 사이에서 조절 (world/adapt_calc.gd). 대기실·메뉴·창 크기 바뀔 때는 천장 그대로.
+#   설정 adaptRes (기본 켬), 웹·소프트웨어 렌더(llvmpipe 등)에서는 안 함. 확인용: --adapt (소프트웨어에서도 켬) · --adapt-off · --adapt-fake-gpu <ms> (배율 1 에서 GPU 가 이만큼 걸리는 척, 배율² 로 줄어듦)
 # 확인용: --gfx auto|high|medium|low (설정에 안 남김) · --fake-gpu "<이름>" (어댑터 이름 흉내) · --fake-gpu-others "<이름>" (다른 GPU 흉내, reg 안 부름)
 extends Node
 const Opts := preload("res://core/opts.gd")
+const Hitch := preload("res://core/hitch.gd")
 
 const WC := preload("res://world/world_config.gd")
 const GC := preload("res://world/gfx_calc.gd")
+const AC := preload("res://world/adapt_calc.gd")
 const REG_KEY := "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}" # 디스플레이 어댑터 장치 종류
 
 # 읽기 (F3 ui/perf.gd·화면 구석): 지금 값
@@ -17,10 +21,21 @@ static var choice := "auto" # 설정 선택 (자동·높음·보통·낮음)
 static var plan := {} # GC.plan: {level, low, msaa, scale, mirror}
 static var others: Array = [] # 이 PC 의 다른 (외장) GPU 이름 (Windows reg, 내장 그래픽일 때만 찾음)
 static var hint := "" # 하이브리드 안내 한 줄 (없으면 "")
+static var scale_now := 1.0 # 지금 3D 배율 (적응형이면 조절 중인 값, 아니면 plan.scale)
+static var adapting := false # 적응형이 지금 돌고 있나 (판 중)
+static var adapt_info := "" # F3·설정에 보일 한 줄 ("자동 해상도 (천장 100%)"), 안 돌면 ""
 
 var world = null # world.gd (1인칭 팔 vm 의 MSAA 를 같이)
 var forced := "" # --gfx
 var _thread: Thread = null
+var ctl = null # AC.Ctl (판 중에만 일함)
+var _tail: Node = null
+var _head_us := 0
+var _script_ms := 0.0
+var _last_us := 0
+var _fake_gpu := 0.0
+var _force_adapt := false
+var _off_adapt := false
 
 
 func _ready() -> void:
@@ -33,6 +48,11 @@ func _ready() -> void:
 		adapter = fake
 		vendor = ""
 	forced = _arg(args, "--gfx")
+	_force_adapt = args.has("--adapt")
+	_off_adapt = args.has("--adapt-off")
+	var fg := _arg(args, "--adapt-fake-gpu")
+	_fake_gpu = float(fg) if fg != "" else 0.0
+	process_priority = -2147483648 # 프레임 맨 앞 (스크립트 시간 재기 시작)
 	apply(false)
 	get_tree().root.size_changed.connect(func(): apply(true))
 	View.changed.connect(func(k): if k == "gfx": apply(true))
@@ -59,8 +79,13 @@ func apply(emit: bool, win: Window = null) -> void:
 	WC.level = lv
 	plan = p
 	root.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
-	root.scaling_3d_scale = p.scale
-	root.msaa_3d = p.msaa
+	scale_now = p.scale
+	if ctl != null:
+		ctl.set_ceiling(p.scale)
+		if adapting:
+			scale_now = ctl.scale
+	root.scaling_3d_scale = scale_now
+	root.msaa_3d = WC.msaa_3d(p.low, Opts.web(), lv)
 	if bool(View.settings.get("lowGfx", false)) != p.low:
 		if emit:
 			View.set_setting("lowGfx", p.low) # 듣는 쪽 (world·g3·타이틀·효과) 이 예전 '그래픽 낮춤' 처럼 바꿈
@@ -79,7 +104,7 @@ func sync_vm() -> void:
 	var sv = vm.get("view")
 	if sv is SubViewport:
 		(sv as SubViewport).scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
-		(sv as SubViewport).scaling_3d_scale = float(plan.get("scale", 1.0))
+		(sv as SubViewport).scaling_3d_scale = scale_now
 
 
 func _find_others() -> void:
@@ -101,3 +126,85 @@ func _exit_tree() -> void:
 	if _thread != null:
 		_thread.wait_to_finish()
 		_thread = null
+
+
+# ---- 적응형 3D 해상도 (W31) ----
+func _wants_adapt() -> bool:
+	if _off_adapt or plan.is_empty() or Opts.web() or not bool(View.settings.get("adaptRes", true)):
+		return false
+	if GC.is_software(adapter) and not _force_adapt:
+		return false
+	return Store.in_room() and Store.phase() == "playing" # 판 중에만 (대기실·메뉴·결과·카운트다운은 고정)
+
+
+func _process(_dt: float) -> void:
+	var want := _wants_adapt()
+	if want != adapting:
+		_adapt_switch(want)
+	if not adapting:
+		return
+	_head_us = Time.get_ticks_usec()
+	var now := _head_us
+	var f := (now - _last_us) / 1000.0 if _last_us > 0 else 0.0
+	_last_us = now
+	if f <= 0.0 or f > 500.0: # 처음·멈춤 (로딩) 은 안 셈
+		return
+	var vp := get_viewport().get_viewport_rid()
+	var rcpu := RenderingServer.viewport_get_measured_render_time_cpu(vp) + RenderingServer.get_frame_setup_time_cpu()
+	var g := RenderingServer.viewport_get_measured_render_time_gpu(vp)
+	if _fake_gpu > 0.0: # 확인용: 가짜 부하 (배율² 에 비례)
+		g = maxf(g, _fake_gpu * scale_now * scale_now)
+		f = maxf(f, g)
+	if ctl.push(f, _script_ms + rcpu, g):
+		_apply_adapt()
+
+
+func _adapt_switch(on: bool) -> void:
+	adapting = on
+	var vp := get_viewport().get_viewport_rid()
+	if on:
+		if ctl == null:
+			ctl = AC.Ctl.new(float(plan.scale), AC.target_ms(DisplayServer.screen_get_refresh_rate()))
+		ctl.set_ceiling(float(plan.scale))
+		ctl.set_target(AC.target_ms(DisplayServer.screen_get_refresh_rate()))
+		ctl.restart()
+		_last_us = 0
+		if _tail == null:
+			_tail = _Tail.new()
+			_tail.gfx = self
+			_tail.process_priority = 2147483647
+			add_child(_tail)
+		RenderingServer.viewport_set_measure_render_time(vp, true)
+	else:
+		if ctl != null:
+			ctl.restart()
+		WC.msaa_cut = false
+		RenderingServer.viewport_set_measure_render_time(vp, Hitch.on)
+		adapt_info = ""
+	_apply_adapt()
+
+
+# 계산기 값(배율·MSAA 낮춤) → 창·1인칭 팔에 적용. 안 돌면 천장 그대로
+func _apply_adapt() -> void:
+	var root: Window = (Engine.get_main_loop() as SceneTree).root
+	var s: float = ctl.scale if adapting and ctl != null else float(plan.get("scale", 1.0))
+	var cut: bool = adapting and ctl != null and ctl.cut
+	adapt_info = ("자동 해상도 (천장 %d%%)%s" % [roundi(float(plan.scale) * 100.0), " · MSAA 낮춤" if cut else ""]) if adapting else ""
+	var ch := absf(s - scale_now) > 0.0001 or cut != WC.msaa_cut
+	scale_now = s
+	WC.msaa_cut = cut
+	if not ch:
+		return
+	root.scaling_3d_scale = s
+	root.msaa_3d = WC.msaa_3d(bool(plan.get("low", false)), Opts.web(), WC.level)
+	sync_vm()
+
+
+# 프레임 맨 끝 (스크립트 일 끝): 맨 앞 시각과의 차 = 스크립트 시간
+class _Tail:
+	extends Node
+	var gfx = null
+
+	func _process(_dt: float) -> void:
+		if gfx != null and gfx.adapting:
+			gfx._script_ms = (Time.get_ticks_usec() - gfx._head_us) / 1000.0

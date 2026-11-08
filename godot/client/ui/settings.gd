@@ -65,7 +65,8 @@ func _ready() -> void:
 	_check(v, "그림자", "shadows", "켜기 (느리면 끄기)")
 	_check(v, "외곽선", "outline", "켜기 (느리면 끄기)")
 	_gfx_row(v) # 예전 '그래픽 낮춤' 체크 자리: 화질 자동·높음·보통·낮음 (낮음 = 그래픽 낮춤)
-	_check(v, "시점", "third", "3인칭 (%s 로 바꿈)" % Keys.key_label(PlayerInput.binds.get("view", "KeyV")))
+	var vrow := _check(v, "시점", "third", "3인칭 (%s 로 바꿈)" % Keys.key_label(PlayerInput.binds.get("view", "KeyV")))
+	_check_in(vrow, "adaptRes", "3D 해상도 자동") # W31: 판 중 느리면 3D 해상도를 스스로 낮춤 (한 줄 더 안 늘리려고 시점 줄에)
 	_check(v, "움직임 줄이기", "reducedMotion", "켜기 (전환·반짝임 줄임)")
 	_scale_row(v)
 	var kh := HBoxContainer.new()
@@ -143,18 +144,23 @@ func _slider(parent: Node, text: String, key: String, lo: float, hi: float, step
 	parent.add_child(row)
 
 
-func _check(parent: Node, text: String, key: String, note: String) -> void:
+func _check(parent: Node, text: String, key: String, note: String) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	var l := S.body_label(text, 15, S.TEXT)
 	l.custom_minimum_size.x = 110
 	row.add_child(l)
+	_check_in(row, key, note)
+	parent.add_child(row)
+	return row
+
+
+func _check_in(row: HBoxContainer, key: String, note: String) -> void:
 	var c := CheckBox.new()
 	c.text = note
 	S.body(S.style_check(c, 14))
 	c.toggled.connect(func(on): View.set_setting(key, on))
 	row.add_child(c)
 	checks[key] = c
-	parent.add_child(row)
 
 
 # 화질 (W6): 자동·높음·보통·낮음 버튼 + 지금 실제 화질 (자동이면 내장 그래픽·창 크기로 정한 것). 고르면 View.settings.gfx → world/gfx.gd 가 적용
@@ -346,7 +352,7 @@ func _reset_keys() -> void:
 
 func _reset_settings() -> void:
 	# JS SETTINGS_DEFAULT
-	for kv in [["sens", 1.0], ["sfx", 1.0], ["music", 1.0], ["fov", C.FOV_DEFAULT], ["shadows", true], ["outline", true], ["gfx", "auto"], ["third", false], ["reducedMotion", false], ["uiScale", "auto"]]:
+	for kv in [["sens", 1.0], ["sfx", 1.0], ["music", 1.0], ["fov", C.FOV_DEFAULT], ["shadows", true], ["outline", true], ["gfx", "auto"], ["adaptRes", true], ["third", false], ["reducedMotion", false], ["uiScale", "auto"]]:
 		View.set_setting(kv[0], kv[1])
 	_on_shown()
 

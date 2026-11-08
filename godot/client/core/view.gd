@@ -25,6 +25,7 @@ var settings := {
 	"outline": not Opts.web(), # 외곽선 (G3). 웹은 기본 끔 (W29, 설정 창에서 켬)
 	"lowGfx": false, # 그래픽 낮춤 (G1·G3·G5). W6 부터는 화질 (gfx) 이 낮음이면 켬 — world/gfx.gd 가 씀
 	"gfx": "", # 화질 "auto"|"high"|"medium"|"low" (G4 설정 창이 씀, world/gfx.gd 가 읽어 lowGfx·3D 배율·MSAA 를 정함). 빈 값 = 예전 파일: lowGfx 켬이면 낮음, 아니면 자동
+	"adaptRes": true, # 3D 해상도 자동 (적응형, W31 — world/adapt_calc.gd). 새 설치는 켬, 예전 파일에서 화질을 직접 골라 둔 사용자는 끔 (migrate_adapt)
 	"third": false, # 3인칭 시작 (G1)
 	"reducedMotion": false, # 움직임 줄이기 (G4·G5, JS 는 브라우저 설정)
 	"perf": false, # F3 성능 표시 (G6, JS tf-perf)
@@ -53,12 +54,20 @@ signal sound_cue(kind: String, info: Dictionary)
 signal open_panel(name: String)
 
 
+# 저장된 설정 → 3D 해상도 자동 여부 (W31): 값이 있으면 그대로, 없는데 (예전 파일) 화질을 높음·보통·낮음으로 직접 골라 뒀으면 존중해서 끔, 아니면 켬
+static func migrate_adapt(d: Dictionary) -> bool:
+	if d.has("adaptRes"):
+		return bool(d.adaptRes)
+	return str(d.get("gfx", "")) not in ["high", "medium", "low"]
+
+
 func _ready() -> void:
 	if FileAccess.file_exists(PATH):
 		var d = JSON.parse_string(FileAccess.get_file_as_string(PATH))
 		if typeof(d) == TYPE_DICTIONARY:
 			for k in d:
 				settings[k] = d[k]
+			settings.adaptRes = migrate_adapt(d)
 	settings.uiScale = UiScale.normalize(settings.get("uiScale", "auto"))
 	PlayerInput.sensitivity = float(settings.sens)
 	_startup_window()
