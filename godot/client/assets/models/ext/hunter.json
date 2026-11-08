@@ -1,27 +1,53 @@
 {
-	"_": "자동 리깅 사냥꾼 (tools/blender/tripo/ — rig_hunter.py 손질 + lods.mjs LOD) — 다시 만들면 덮어씀. 키는 chars/chars_config.gd EXT_DEFAULTS",
-	"height": 1.0,
-	"yaw": 0.0,
-	"tint": "mask",
-	"lods": {
-		"stage": "hunter_lod0",
-		"high": "hunter_lod1",
-		"medium": "hunter_lod2",
-		"low": "hunter_lod3"
-	},
-	"toon_steps": [
-		0.7,
-		0.86,
-		1.0
-	],
-	"outline": 0.45,
-	"rim": [
-		0.22,
-		3.0
-	],
-	"vm_snap": [
-		"elbow"
-	],
-	"vm_node": "hunter_vm",
-	"portrait": {"half": 0.24, "up": 0.03}
+ "_": "자동 리깅 사냥꾼 (tools/blender/tripo/ — rig_hunter.py 손질 + lods.mjs LOD) — 다시 만들면 덮어씀. 키는 chars/chars_config.gd EXT_DEFAULTS",
+ "height": 1.0,
+ "yaw": 0.0,
+ "tint": "mask",
+ "lods": {
+  "stage": "hunter_lod0",
+  "high": "hunter_lod1",
+  "medium": "hunter_lod2",
+  "low": "hunter_lod3"
+ },
+ "toon_steps": [
+  0.7,
+  0.86,
+  1.0
+ ],
+ "outline": 0.45,
+ "rim": [
+  0.22,
+  3.0
+ ],
+ "vm_snap": [
+  "elbow"
+ ],
+ "vm_node": "hunter_vm",
+ "portrait": {
+  "half": 0.24,
+  "up": 0.03
+ },
+ "clips": {
+  "file": "res://assets/models/ext/hunter_anim.glb",
+  "marks": [
+   0.3,
+   0.4,
+   0.8
+  ],
+  "idle": "idle",
+  "walk": "walk",
+  "run": "run",
+  "jump": "jump",
+  "fall": "fall",
+  "land": "land",
+  "run_speed": 4.5,
+  "run_from": 0.55,
+  "ground": [
+   "mixamorig_LeftFoot",
+   "mixamorig_RightFoot",
+   "mixamorig_LeftToeBase",
+   "mixamorig_RightToeBase"
+  ],
+  "moves": {}
+ }
 }

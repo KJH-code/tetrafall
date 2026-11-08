@@ -1,28 +1,57 @@
 {
-	"_": "자동 리깅 탱크 (tools/blender/tripo/ — rig_tank_auto.py 손질 + lods.mjs LOD) — 다시 만들면 덮어씀. 키는 chars/chars_config.gd EXT_DEFAULTS",
-	"height": 1.0,
-	"yaw": 0.0,
-	"tint": "mask",
-	"lods": {
-		"stage": "tank_lod0",
-		"high": "tank_lod1",
-		"medium": "tank_lod2",
-		"low": "tank_lod3"
-	},
-	"toon_steps": [
-		0.7,
-		0.86,
-		1.0
-	],
-	"outline": 0.45,
-	"rim": [
-		0.22,
-		3.0
-	],
-	"vm_from": "elbow",
-	"vm_snap": [
-		"elbow"
-	],
-	"portrait": {"up": -0.012, "shift": [-0.058, 0.055]},
-	"vm_node": "tank_vm"
+ "_": "자동 리깅 탱크 (tools/blender/tripo/ — rig_tank_auto.py 손질 + lods.mjs LOD) — 다시 만들면 덮어씀. 키는 chars/chars_config.gd EXT_DEFAULTS",
+ "height": 1.0,
+ "yaw": 0.0,
+ "tint": "mask",
+ "lods": {
+  "stage": "tank_lod0",
+  "high": "tank_lod1",
+  "medium": "tank_lod2",
+  "low": "tank_lod3"
+ },
+ "toon_steps": [
+  0.7,
+  0.86,
+  1.0
+ ],
+ "outline": 0.45,
+ "rim": [
+  0.22,
+  3.0
+ ],
+ "vm_from": "elbow",
+ "vm_snap": [
+  "elbow"
+ ],
+ "portrait": {
+  "up": -0.012,
+  "shift": [
+   -0.058,
+   0.055
+  ]
+ },
+ "vm_node": "tank_vm",
+ "clips": {
+  "file": "res://assets/models/ext/tank_anim.glb",
+  "marks": [
+   0.3,
+   0.4,
+   0.8
+  ],
+  "idle": "idle",
+  "walk": "walk",
+  "run": "run",
+  "jump": "jump",
+  "fall": "fall",
+  "land": "land",
+  "run_speed": 4.5,
+  "run_from": 0.55,
+  "ground": [
+   "mixamorig_LeftFoot",
+   "mixamorig_RightFoot",
+   "mixamorig_LeftToeBase",
+   "mixamorig_RightToeBase"
+  ],
+  "moves": {}
+ }
 }

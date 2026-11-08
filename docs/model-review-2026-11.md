@@ -104,3 +104,10 @@
 - 이 환경에는 GPU 가 없어 llvmpipe 로 그렸다 — 포즈·색·실루엣은 정확하지만 그림자·외곽선 굵기·톤매핑은 실제와 다르고 (그림이 어둡고 푸른 이유: 환경광을 낮게 둔 시트 전용 조명), 프레임 사이 움직임 (크로스페이드 0.1초, 클립 전환의 튐) 은 정지 그림 몇 장으로는 못 봄.
 - GPU ms 는 측정 불가. 클립 추가로 CPU 는 `Ext.sync` 에 클립 샘플링이 늘지만 (닌자 기준 W30 측정 몸 하나 ~0.1ms) 3명 추가를 따로 재지는 않음.
 - 1인칭 팔은 `move_shot.gd` 정지 장면 (판·카메라 없음) — 실제 판의 시야·FOV 와 다를 수 있음.
+
+## 9. 검증
+
+- `tests/run_tests.gd` 265 통과 0 실패 (시작 263 + 새 테스트 2: `test_loco_clips_new_models`, `test_process_does_not_overwrite_clip`; 기존 `test_twin_and_no_clip_unchanged` 의 '탱크는 클립 없음' 검사를 새 클립에 맞춰 바꿈).
+- `tools/shader_check.gd` (xvfb, gl_compatibility): 0 에러 (파일 22개 + G3 재질 3개 + 외부 몸 16개 그림).
+- `node --test godot/server/tools/package.test.mjs`: 6 통과.
+- 서버 판정·`moves` 타이밍·`figure_motion`·`moves.gd` 는 바꾸지 않음.
