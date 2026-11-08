@@ -2,6 +2,9 @@
 // 실행 (레포 뿌리): node --test godot/server/tools/package.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { TARGETS, readme, gpuPrefLines, GPU_PREF_KEY, GPU_PREF_VALUE } from './package.mjs';
 
 const bat = (name) => TARGETS.win.scripts[name];
@@ -89,4 +92,25 @@ test('start-lan-ext .bat/.sh: 클라 --ext', () => {
   assert.ok(sh.startsWith('#!/bin/sh') && sh.includes('tetrafall.x86_64 -- --ext') && sh.includes('exec ./Tetrafall.Server'));
   assert.ok(!bat('start-lan.bat').includes('--ext'), '기본 start-lan 은 그대로');
   assert.ok(readme(TARGETS.win).includes('start-lan-ext.bat'), 'README 안내');
+});
+
+// W32 하이브리드 GPU: .bat 이 고성능으로 등록하는 exe 이름 = 묶음에 실제로 들어가는 윈도우 클라 exe = 내보내기 프리셋 이름 (이름이 어긋나면 등록이 헛돎).
+// 값 이름은 '%~dp0' + exe (= 사용자가 켜는 전체 경로) 라서 폴더를 옮겨도 다음 start 에서 새 경로로 다시 씀. 클라를 켜는 모든 .bat 이 등록 다음에 켬.
+test('GPU 등록 exe 이름 = 묶음 윈도우 클라 = 내보내기 프리셋', () => {
+  const exe = path.basename(TARGETS.win.client[0]);
+  assert.equal(exe, 'tetrafall.exe');
+  const presets = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../client/export_presets.cfg'), 'utf8');
+  const win = presets.split(/\[preset\.\d+\]\r?\n/).find((b) => /name="Windows"/.test(b));
+  assert.ok(win, '윈도우 프리셋');
+  assert.equal(path.basename(/export_path="([^"]+)"/.exec(win)[1]), exe, '프리셋 내보내기 이름');
+  for (const l of gpuPrefLines().filter((x) => x.includes('%~dp0'))) assert.ok(l.includes(`"%~dp0${exe}"`), `등록 줄 exe: ${l}`);
+  assert.ok(gpuPrefLines()[0].includes(exe), '안내 줄도 같은 이름');
+  for (const [name, s] of Object.entries(TARGETS.win.scripts)) {
+    const lines = s.split('\r\n');
+    const run = lines.indexOf(':run');
+    assert.ok(run > 0, `${name}: GPU 등록 줄이 있음`);
+    for (const [i, l] of lines.entries()) if (l.startsWith('start ""')) {
+      assert.ok(i > run && l.includes(`"%~dp0${exe}"`), `${name}: 클라는 등록 다음, 같은 exe`);
+    }
+  }
 });
