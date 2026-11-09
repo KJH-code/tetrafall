@@ -101,6 +101,7 @@ static var cell_lod: bool = not Opts.args().has("--no-cell-lod")
 static var cell_lod_far: float = float(Opts.args()[Opts.args().find("--cell-lod-far") + 1]) if Opts.args().has("--cell-lod-far") else float(CELL_LOD.far) # 확인용: 낮은 모양으로 바꾸는 거리 (m) 덮어쓰기
 # ---- 몸 만들기 분산 (W32): 방에 들어가거나 봇을 넣을 때 몸이 한꺼번에 8개 나오면 (몸 만들기 2~5ms + 처음 그리기 9~12ms 씩) 한 프레임이 크게 끊김 → 한 프레임에 이만큼만 만들고 나머지는 다음 프레임 (내 몸은 늘 바로)
 const BODY_BUILDS_PER_FRAME := 2
+const BODY_BUILD_MS := 8.0 # W41: 한 프레임 몸 만들기 ms 상한 (넘으면 나머지는 다음 프레임, 내 몸은 늘 바로)
 # 확인용: --no-shadow-opt = W32 그림자 줄이기 전부 끔 (저폴리 캐스터·칸 상자 그림자·먼 몸 끄기·그림자 거리), --no-shadow-far = 먼 몸·시야 밖 몸 그림자 끄기만 끔 (전후 비교)
 static var shadow_opt: bool = not Opts.args().has("--no-shadow-opt")
 # W39 항목 4: 필드 아래 섬·섬 뿌리 바위·먼 떠 있는 섬은 해 그림자를 안 던짐 (필드 밖·아래라 그림자가 떨어질 곳이 구름 바다 (빛 안 받음) 뿐 — 그림자 패스 삼각형 3.4~4.2k). 끄기 --no-scenery-opt
