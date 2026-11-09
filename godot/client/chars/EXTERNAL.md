@@ -166,7 +166,7 @@ W31 이 남긴 후보 (해 그림자 패스 = 3D 삼각형의 38%) 를 실제로
 - 화면 삼각형은 그대로 (그림자만 줄임). 영상 메모리는 상자 그림자·그림자 전용 메시·팔레트 그림으로 +0.8MB (8명 + 칸 장면). 재연의 몸 대부분이 코드 몸 (`body.gd/batch`, 13k) 이라 이득이 작음 — 코드 몸은 합친 메시 하나에 외곽선 next_pass 가 있어 그림자 패스에 두 번 잡히는데 따로 줄이지 않음 (다음 후보: 코드 몸도 그림자 전용 메시).
 - 모습: 4명 캡처 (`shadow_meas.gd --close`) 화소 차 (>8) 408 / 921,600 (그림자 가장자리 모양 + 닌자 단검 한 점), 닌자 확대 (`--zoom`) 단검 위치·색 같음, 블록 칸 그림자 (상자 vs 칸 모양) 눈으로 구별 안 됨.
 
-## 14. W34 — 새 모델 다듬기 (2026-11-09, 자세한 전후는 `docs/w34/README.md`)
+## 15. W34 — 새 모델 다듬기 (2026-11-09, 자세한 전후는 `docs/w34/README.md`)
 
 - **몸 색 칸 마스크 텍스처**: json `skin_mask {메시 노드: 마스크 png}` → 툰 재질 `skin_mask_tex`·`use_skin_mask` (`External.Ext.skin_mask_for`·`toon_for`). 마스크는 `tripo/relod.py` (판 LOD, 알베도와 같은 UV) / `tripo/maskbake.py` (사냥꾼 stage UV) 가 굽는다. 없는 메시는 예전 꼭짓점 UV2.x 판정.
 - **걷기·달리기 보폭**: json `clips.stride {걷기·달리기: [k, c, 박자]}` — k 배 발 앞뒤 (c = 한 바퀴 평균 자리) 2본 IK (`Ext._stride_ik`, `leg_ik`) + 클립 박자 배율 (`ext_clips.gd select`). 측정 `tools/foot_slide.gd`.
