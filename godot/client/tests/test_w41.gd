@@ -283,3 +283,54 @@ func test_wait_does_not_starve_lower_priority() -> void:
 	var n := s.step(1000.0)
 	check(log == ["low"] and n == 1, "기다리는 작업이 낮은 우선순위를 막지 않음: %s" % str(log))
 	check(s.has("blocked") and s.pieces_run == 1, "기다림은 조각으로 안 셈")
+
+
+# 셰이더 파일마다 '처음 쓸 때 컴파일' 을 미리 하는 길이 있어야 함 — 새 셰이더를 만들면 이 표에 어디서 데우는지 (또는 안 데워도 되는 이유) 를 적게 함.
+# 표 = tools/shader_check.gd 가 도는 .gdshader 목록과 같은 파일 (res://shaders · res://title · res://world)
+const WARM_TABLE := {
+	"toon.gdshader": "G3.prewarm 조각 (toon_material)", "toon_alpha.gdshader": "G3.prewarm (opacity 재질)", "outline.gdshader": "toon_material next_pass (G3.prewarm)",
+	"terrain.gdshader": "G3.prewarm", "floor.gdshader": "G3.prewarm", "piece.gdshader": "G3.prewarm (불투명·투명 갈래)", "piece_alpha.gdshader": "G3.prewarm piece_material transparent",
+	"hazard.gdshader": "G3.prewarm (두 갈래)", "flat.gdshader": "G3.prewarm scenery_material", "halo.gdshader": "G3.prewarm halo 한 점",
+	"sky.gdshader": "warm.scan (world 아래 하늘 재질)", "fx_glow.gdshader": "warm.scan (이펙트 풀)", "fx_smoke.gdshader": "warm.scan (이펙트 풀)",
+	"ghost_depth.gdshader": "world._warm_scan_step 유령 재질 (보통 갈래)", "vignette.gdshader": "light.vignette (GameLight.warm_canvas_step)",
+	"hazard_vignette.gdshader": "hazard_view.warm_canvas_step (k=0 으로 켬)",
+	"bblock.gdshader": "warm.scan (건축가 블록 풀 7개)",
+	"hazard.gdshaderinc": "(포함 파일)", "hz_light.gdshaderinc": "(포함 파일)", "piece_common.gdshaderinc": "(포함 파일)", "toon_common.gdshaderinc": "(포함 파일)",
+}
+const TITLE_EXEMPT := "타이틀·메뉴 배경 (자기 장면, 처음 켤 때 한 번 — 이미 첫 화면)"
+
+
+func test_every_shader_has_a_warm_path() -> void:
+	var missing := []
+	for dir in ["res://shaders/", "res://world/"]:
+		for f in DirAccess.get_files_at(dir):
+			if f.ends_with(".gdshader") or f.ends_with(".gdshaderinc"):
+				if not WARM_TABLE.has(f):
+					missing.append(dir + f)
+	check(missing.is_empty(), "미리 하는 길이 표에 없는 셰이더 (WARM_TABLE 에 적거나 데우기를 넣을 것): %s" % str(missing))
+	for k in WARM_TABLE:
+		var found := false
+		for dir in ["res://shaders/", "res://world/"]:
+			if FileAccess.file_exists(dir + k):
+				found = true
+		check(found, "표에만 있고 파일이 없음: " + k)
+
+
+func test_prewarm_parts_cover_full() -> void:
+	var G3 = load("res://shaders/g3.gd")
+	var w1 := Node3D.new()
+	var w2 := Node3D.new()
+	G3.prewarm(w1, "castle") # 예전: 전부
+	for i in G3.prewarm_parts():
+		G3.prewarm(w2, "castle", 3, i)
+	var n1 := w1.get_child(0).get_child_count() # G3Prewarm 하나
+	var n2 := 0
+	var roots := 0
+	for c in w2.get_children():
+		if c.name != "G3Light": # 판 빛 노드 빼고 = 조각마다 만든 G3Prewarm 뿌리
+			n2 += c.get_child_count()
+			roots += 1
+	check(n1 == n2 and n1 > 20, "조각으로 나눠도 그리는 물체 수가 전부와 같음: %d vs %d" % [n1, n2])
+	check(roots == G3.prewarm_parts(), "조각마다 노드 하나: %d" % roots)
+	w1.free()
+	w2.free()

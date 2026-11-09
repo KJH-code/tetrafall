@@ -73,9 +73,10 @@ var _ext_warm_done := false # W30: 외부 몸 미리 그리기 끝
 var _prewarmed = null # 셰이더 미리 데운 테마 (G3.prewarm)
 var _sched_setup_done := false # W41 스케줄러에 메뉴 작업을 넣었음
 var _sched_prev_us := 0
-const WARM_SCAN_PER_PIECE := 4
+const WARM_SCAN_PER_PIECE := 2
 var _scan_done := {} # 미리 그린 재질 id
 var _scan_queue: Array = []
+var _ghost_warmed := false
 var _scan_root: Node3D = null
 var _scan_wait := 0
 var _pf_done := {} # 대기실에서 텍스처를 미리 요청한 캐릭터
@@ -459,6 +460,9 @@ func _warm_scan_step() -> bool:
 		return PSched.WAIT
 	if _scan_queue.is_empty():
 		_scan_queue = WarmScan.collect(self, _scan_done)
+		if not _ghost_warmed and G3 != null:
+			_ghost_warmed = true # 유령화·무적 몸 (반투명 + 깊이 선 묶음) 은 처음 켤 때 컴파일됨 — 같은 재질을 한 번 그림 (스킨 갈래는 몸 데우기가 맡음)
+			_scan_queue.append([preload("res://chars/ghost_depth.gd").with_prepass(G3.toon_material(Color.WHITE, {"opacity": 0.5})), false])
 		if _scan_queue.is_empty():
 			return true
 	var take: Array = _scan_queue.slice(0, WARM_SCAN_PER_PIECE)
@@ -493,15 +497,21 @@ func _sched_setup() -> void:
 	var S = PSched.main
 	var after := float(C.LOBBY_DARK.prewarmMs)
 	if g3_has("prewarm"):
+		var pi := [0]
 		S.add("g3.prewarm", 1, func():
 			if not is_visible_in_tree():
-				return PSched.WAIT # 타이틀 동안 world 는 숨김 — 숨은 채로 그리면 셰이더가 안 만들어짐 (메뉴로 넘어오길 기다림)
-			_prewarmed = str(View.menu_theme)
-			G3.prewarm(self, View.menu_theme)
-			return true, 8.0, "menu", after)
+				return PSched.WAIT # 타이틀·메뉴 동안 world 는 숨김 (title.gd) — 숨은 채로 그리면 셰이더가 안 만들어짐: 대기실에서 (조각으로 나눠)
+			G3.prewarm(self, View.menu_theme, 3, pi[0])
+			pi[0] += 1
+			if pi[0] >= G3.prewarm_parts():
+				_prewarmed = str(View.menu_theme)
+				return true
+			return false, 3.0, "menu", after)
 	S.add("warm.scan", 3, _warm_scan_step, 3.0, "menu", after + 300.0)
 	if light_fx != null and light_fx.has_method("warm_lut_step"):
 		S.add("light.lut", 6, func(): return light_fx.warm_lut_step(), 0.7, "menu", after)
+		S.add("hazard.vignette", 7, func(): return PSched.WAIT if not is_visible_in_tree() else hazard_view.warm_canvas_step(), 0.2, "menu", after)
+		S.add("light.vignette", 7, func(): return PSched.WAIT if not is_visible_in_tree() else light_fx.warm_canvas_step(), 0.2, "menu", after)
 	if Opts.args().has("--no-ext-warm") or bodies == null or bodies.get("chars_script") == null:
 		return
 	var mine := str(UiPrefs.get_value("char", ""))

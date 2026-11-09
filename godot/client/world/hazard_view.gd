@@ -88,6 +88,21 @@ func _ready() -> void:
 
 
 # 가장자리 경고 그리기: want 로 부드럽게 (reset 이면 바로 0 — hazard.js 꺼짐), 0.01 아래면 안 그림
+# W41: 가장자리 경고 (CanvasItem 셰이더) 는 위험이 가까워질 때 처음 보여 컴파일됨 → 대기실에서 k=0 (셰이더가 알파 0) 으로 세 프레임 켬. 끝나면 true
+var _vig_warm := 0
+
+
+func warm_canvas_step() -> bool:
+	_vig_warm += 1
+	if _vig_warm == 1:
+		vig.material.set_shader_parameter("k", 0.0)
+		vig.visible = true
+	elif _vig_warm >= 4:
+		vig.visible = false
+		return true
+	return false
+
+
 func _draw_vig(want: float, dt: float, reset := false) -> void:
 	vig_k = 0.0 if reset else vig_k + (want - vig_k) * (1.0 - exp(-6.0 * dt))
 	vig.visible = vig_k >= 0.01

@@ -24,6 +24,7 @@ const Prof := preload("res://core/prof.gd")
 var args := {}
 var role := "host"
 var start_ms := 0.0
+var lobby_ms := -1.0 # W41 --start-delay <초>: 대기실에 이만큼 있다가 시작 (사람이 캐릭터 고르는 시간 흉내)
 var created := false
 var started := false
 var snapshots := 0
@@ -157,7 +158,9 @@ func _on_state(st: Dictionary, _prev: Dictionary) -> void:
 		var got := int(Store.me().get("color", -1))
 		_log("색 %d %s (지금 %d)" % [want, "받아짐" if got == want else "거절", got])
 		color_sent = -1.0
-	if (role == "host" or is_host) and shot_at != "lobby" and not started and ph == "lobby" and (not args.has("mode") or st.get("mode") == str(args["mode"])) and st.get("canStart", false) and (Store.player(Store.my_id).size() > 0 or str(args.get("view", "")) == "spectate") and int(st.players.size()) >= int(args.get("wait-players", 2)):
+	if ph == "lobby" and lobby_ms < 0.0:
+		lobby_ms = Net.now_ms()
+	if (role == "host" or is_host) and shot_at != "lobby" and not started and ph == "lobby" and (Net.now_ms() - lobby_ms) / 1000.0 >= float(args.get("start-delay", 0)) and (not args.has("mode") or st.get("mode") == str(args["mode"])) and st.get("canStart", false) and (Store.player(Store.my_id).size() > 0 or str(args.get("view", "")) == "spectate") and int(st.players.size()) >= int(args.get("wait-players", 2)):
 		started = true
 		Store.send_room({"type": "start"})
 		_log("시작 (%d명)" % st.players.size())

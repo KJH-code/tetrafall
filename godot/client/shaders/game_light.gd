@@ -190,6 +190,22 @@ static func grade_layer(g: Array, n: int, z: int) -> Image:
 	return Image.create_from_data(n, n, false, Image.FORMAT_RGB8, data)
 
 
+# W41: 가장자리 어둠 (vignette.gdshader, CanvasItem) 도 처음 보일 때 (카운트다운) 컴파일 → 대기실에서 투명도 1% 로 두 프레임 켬 (눈에 안 띔). 끝나면 true
+var _vig_warm := 0
+
+
+func warm_canvas_step() -> bool:
+	_vig_warm += 1
+	if _vig_warm == 1:
+		vig.visible = true
+		vig.modulate.a = 0.01
+	elif _vig_warm >= 4:
+		vig.modulate.a = 1.0
+		vig.visible = false
+		return true
+	return false
+
+
 # W41: 메뉴에서 색 보정 LUT 를 한 층씩 미리 (프레임 예산 스케줄러가 부름). 다 만들었으면 true
 func warm_lut_step() -> bool:
 	if lut != null or not is_on():
