@@ -37,6 +37,7 @@
   ]
  },
  "vm_node": "tank_vm",
+ "vm_bone_scale": {"mixamorig_LeftForeArm": 0.6},
  "clips": {
   "file": "res://assets/models/ext/tank_anim.glb",
   "marks": [

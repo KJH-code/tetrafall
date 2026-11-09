@@ -234,3 +234,29 @@ func test_hunter_vm_rifle() -> void:
 		check(not (rifles[0] as MeshInstance3D).cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON, "1인칭 소총은 그림자 없음")
 	tw.free()
 	vm.free()
+
+
+# ---- 5. 탱크 1인칭 방패 크기 ----
+func test_tank_vm_shield_scale() -> void:
+	var was: bool = Body.use_ext
+	Body.use_ext = true
+	var vm = Body.new()
+	vm.build("tank", Color(0.2, 0.5, 1.0), false)
+	var tw = Body.new()
+	tw.build("tank", Color(0.2, 0.5, 1.0), true)
+	Body.use_ext = was
+	var bn := "mixamorig_LeftForeArm"
+	var want: float = float((vm.ext.info.cfg.get("vm_bone_scale", {}) as Dictionary).get(bn, 1.0))
+	check(want < 1.0 and want >= 0.45, "tank.json vm_bone_scale 왼 아래팔 0.45~1 (%.2f)" % want)
+	vm.ext.sync()
+	tw.ext.sync()
+	var sv: float = vm.ext.sk.get_bone_pose_scale(vm.ext.sk.find_bone(bn)).x
+	var st: float = tw.ext.sk.get_bone_pose_scale(tw.ext.sk.find_bone(bn)).x
+	check(absf(sv / st - want) < 0.02, "1인칭 왼 아래팔이 판 몸의 %.2f 배 (%.3f / %.3f)" % [want, sv, st])
+	vm.ext.sync() # 여러 번 불러도 누적해서 줄지 않음
+	var sv2: float = vm.ext.sk.get_bone_pose_scale(vm.ext.sk.find_bone(bn)).x
+	check(absf(sv2 - sv) < 1e-4, "배율이 누적되지 않음 (%.3f → %.3f)" % [sv, sv2])
+	var hn := "mixamorig_RightForeArm" # 해머 쥔 오른팔은 그대로
+	check(absf(vm.ext.sk.get_bone_pose_scale(vm.ext.sk.find_bone(hn)).x / tw.ext.sk.get_bone_pose_scale(tw.ext.sk.find_bone(hn)).x - 1.0) < 0.02, "오른팔 크기 그대로")
+	vm.free()
+	tw.free()
