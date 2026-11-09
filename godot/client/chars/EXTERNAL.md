@@ -174,3 +174,10 @@ W31 이 남긴 후보 (해 그림자 패스 = 3D 삼각형의 38%) 를 실제로
 - **1인칭 전용**: json `vm_bone_scale {뼈: 배율}` (`Ext._vm_bone_scale`, 탱크 방패), 사냥꾼 소총은 `attach` 의 `vm: true`·`third: false` (`hunter_rifle.glb`, `tripo/hunter_rifle.mjs`).
 - **갈고리 부스러기·이음 삼각형**: `tripo/drop_shards.mjs`·`hook_bridge.py` (README 18절).
 - **서버 판정 vs 보이는 타격**: `tools/hit_reach.gd` (표 `docs/w34/7_hit_reach.csv`).
+
+## 16. W37 — PC 최적화 4차: 프레임 구성 분류별 측정과 고침 (2026-11-09, 표는 `docs/w37/README.md`)
+
+- **도구**: `replay --budget` (`core/budget.gd`, 분류마다 그 물체만 끄고 그려 그리기·삼각형·그림자 삼각형 몫 + 그림·CPU ms·SubViewport), `tools/frame_budget.cjs` (장면 여럿 표), `tools/rec_chars.mjs`·`rec_loop.mjs`·`replay --mon-every` (긴 판 누수), `tools/leak_probe.gd`.
+- **고침**: 1인칭 팔 SubViewport MSAA 4×→2× (영상 메모리 −14MB), 코드 몸 그림자 쌍둥이 (예전 몸 8명 삼각형 −17.5%), **G3 재질 기록 누수** (몸 하나당 객체 +10~29 → 0), 위험 표면 격자 120→64 (용암 판 삼각형 −12.5%). 끄기 `--no-vm-msaa-cap`·`--no-batch-twin`.
+- **안 한 것 (측정 근거)**: 칸 거리 LOD (<1% 라 되돌림), 이펙트 풀 (상한 안), 대기실 리소스 해제 (2.7MB), 새 모델 LOD 아틀라스 상주 (glb 쪼개기 필요 — 보류).
+
