@@ -19,10 +19,23 @@ const SPAN_MIN_MS := 1.0
 const FILE := "user://hitches.txt" # 기록 파일 (한 줄에 히치 하나)
 const MAX_TAGS := 80 # 한 프레임 간격에 모을 태그 상한
 # 원인 이름 → 설명 순서 (태그 종류 우선순위: 앞일수록 먼저 원인으로 침)
-const KIND_ORDER := ["해상도 변경", "몸 불러오기", "몸 만들기", "외부 몸 연결", "미리 그리기", "초상·큰 캐릭터", "래그돌 만들기", "방 입장", "판 단계", "KO", "부활", "필살기", "스킬", "새 캐릭터"]
+const KIND_ORDER := ["해상도 변경", "몸 불러오기", "몸 만들기", "외부 몸 연결", "미리 그리기", "미리 하기", "초상·큰 캐릭터", "래그돌 만들기", "방 입장", "판 단계", "첫 이벤트", "블록 낙하 시작", "KO", "부활", "필살기", "스킬", "이벤트", "새 캐릭터"]
 
 # 서버 이벤트 종류 → 태그 이름 (core/store.gd 가 스냅샷마다 달아 줌). 모르는 종류는 안 적음
 const EVENT_KIND := {"death": "KO", "respawn": "부활", "skill": "스킬", "ult": "필살기", "pickup": "아이템", "roundStart": "판 단계", "roundEnd": "판 단계"}
+
+# W41: 서버 이벤트 하나 → [태그 종류, 자세한 글자]. 스킬·필살기는 누구 (캐릭터) 것인지, 나머지 이벤트는 종류 그대로 (타격은 따로 — 너무 잦아 '이벤트' 에 묶음).
+# 재혁 PC 한 판 뒤 hitches.txt 에서 '필살기 hook ult' · '이벤트 quakeRise' · '블록 낙하 시작 T' 처럼 무슨 일 직후였는지 보이게
+static func event_tag(e: Dictionary, char_id := "") -> Array:
+	var type := str(e.get("type", ""))
+	if type == "":
+		return []
+	var k: String = EVENT_KIND.get(type, "이벤트")
+	var detail := type
+	if (k == "스킬" or k == "필살기") and char_id != "":
+		detail = "%s %s" % [char_id, type]
+	return [k, detail]
+
 
 static var on := false
 static var _tags: Array = []
@@ -123,6 +136,28 @@ class Log:
 		return rec
 
 	# '히치 N회 · 최악 xxms · 원인 상위: A n, B m' (없으면 '히치 0회')
+	# 히치 원인 상위 n개 (원인 이름 기준): 줄 목록 "1. 원인 ×번 · 최악 ms @ 시각 (화면, 자세한 글자)". from_count = 이 횟수 이후 (한 판 몫만, 전체는 0)
+	func top_report(from_count := 0, n := 5) -> Array:
+		var recs: Array = records.slice(maxi(0, records.size() - (count - from_count))) if count > from_count else []
+		var g := {}
+		for r in recs:
+			var e: Array = g.get(r.cause, [0, 0.0, null])
+			e[0] += 1
+			if r.ms > e[1]:
+				e[1] = r.ms
+				e[2] = r
+			g[r.cause] = e
+		var ks := g.keys()
+		ks.sort_custom(func(a, b): return g[a][0] > g[b][0] or (g[a][0] == g[b][0] and g[a][1] > g[b][1]))
+		var out := []
+		var i := 1
+		for k in ks.slice(0, n):
+			var e: Array = g[k]
+			var r: Dictionary = e[2]
+			out.append("%d. %s ×%d · 최악 %dms @ %.1fs (%s%s)" % [i, k, e[0], roundi(e[1]), r.t, r.screen, (", " + str(r.detail)) if str(r.detail) != "" else ""])
+			i += 1
+		return out
+
 	func summary() -> String:
 		if count == 0:
 			return "히치 0회"

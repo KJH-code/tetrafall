@@ -15,6 +15,7 @@ signal joined(room: Dictionary, rejoined: bool) # 방에 들어감 (welcome)
 signal join_error(reason: String)
 signal left_room(reason: String) # 방 밖으로 (left)
 signal state_changed(state: Dictionary, prev: Dictionary) # 스냅샷마다 (grid 는 늘 채워 둠)
+var _pieces_seen := {} # W41 히치 태그용: 이미 본 블록 id
 signal game_event(e: Dictionary) # 스냅샷에 실려 온 이벤트 하나씩 (state_changed 다음)
 signal grid_changed(version: int) # 격자가 바뀜 (gridVersion)
 
@@ -192,9 +193,22 @@ func _on_state(m: Dictionary) -> void:
 	Prof.add("store ·state 신호 받는 쪽", _ps)
 	if Hitch.on:
 		for e in m.get("events", []):
-			var k: String = Hitch.EVENT_KIND.get(str(e.get("type", "")), "")
-			if k != "":
-				Hitch.tag(k, str(e.get("type", "")))
+			var who = e.get("who", e.get("by"))
+			var ch := str(_players_by_id.get(int(who), {}).get("char", "")) if who != null else ""
+			var et := Hitch.event_tag(e, ch)
+			if not et.is_empty() and str(e.get("type", "")) != "hit": # 타격은 너무 잦아 뺌 (KO·스킬·필살기가 원인 후보)
+				Hitch.tag(et[0], et[1])
+				if Hitch.first("첫 이벤트", str(et[1])): # 이 실행에서 처음 본 종류 = 처음 쓰는 이펙트·재질 후보
+					Hitch.tag("첫 이벤트", str(et[1]))
+		var seen_p: Dictionary = {}
+		for pc in m.get("pieces", []):
+			seen_p[pc.get("id", -1)] = true
+			if not _pieces_seen.has(pc.get("id", -1)):
+				_pieces_seen[pc.get("id", -1)] = true
+				Hitch.tag("블록 낙하 시작", "%s%s" % [str(pc.get("shape", "")), " (하늘)" if pc.get("sky", false) else ""])
+		for id in _pieces_seen.keys():
+			if not seen_p.has(id):
+				_pieces_seen.erase(id)
 	_ps = Prof.now()
 	if Prof.on or Prof.hitch: # 재는 중이면 받는 쪽마다 따로 (같은 순서로 부름 — 동작 같음)
 		var conns := get_signal_connection_list("game_event")

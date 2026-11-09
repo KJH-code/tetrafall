@@ -76,6 +76,8 @@ var corner_at := 0.0
 var hlog := Hitch.Log.new() # W30 히치 로거 (core/hitch.gd): F3 를 켜거나 --hitch 면 기록
 var hfile: FileAccess = null
 var hstart := 0.0
+var _last_phase := ""
+var _round_from := 0
 var lag_prev := ""
 var lag_file: FileAccess = null # W41 --lag-log <파일>: 프레임마다 한 줄
 
@@ -166,6 +168,13 @@ func _hitch(now: float, ms: float, rcpu: float) -> void:
 		if lag_prev != "":
 			lag_file.store_line(lag_prev % script_ms)
 		lag_prev = Hitch.frame_line((now - hstart) / 1000.0, ms, -1.0, rcpu, _screen(), sec, tags).replace("%", "%%").replace("\t-1.0\t", "\t%.1f\t")
+	var ph := Store.phase() if Store.in_room() else ""
+	if ph != _last_phase:
+		if ph == "playing" and _last_phase != "playing":
+			_round_from = hlog.count
+		if _last_phase == "playing" and ph != "playing": # 판이 끝나거나 나감: 이번 판 요약을 파일에 (재혁은 이 줄만 붙여 주면 됨)
+			_write_round_summary()
+		_last_phase = ph
 	var rec := hlog.push((now - hstart) / 1000.0, ms, {"tags": tags, "sec": sec, "script": script_ms, "rcpu": rcpu, "screen": _screen()})
 	if rec.is_empty():
 		return
@@ -178,7 +187,22 @@ func _hitch(now: float, ms: float, rcpu: float) -> void:
 		hfile.flush()
 
 
+# 한 판 끝 요약 (W41): 이번 판 히치 수·최악 + 원인 상위 5개 (시점 포함) 를 hitches.txt 에 '# ' 줄로
+func _write_round_summary() -> void:
+	var n := hlog.count - _round_from
+	if hfile == null:
+		hfile = FileAccess.open(Hitch.FILE, FileAccess.WRITE)
+	if hfile == null:
+		return
+	hfile.store_line("# ---- 판 요약 (%s): 히치 %d회 ----" % [Time.get_datetime_string_from_system(), n])
+	for l in hlog.top_report(_round_from, 5):
+		hfile.store_line("#   " + l)
+	hfile.flush()
+
+
 func _exit_tree() -> void:
+	if _last_phase == "playing" and Hitch.on: # 판 도중 창을 닫아도 요약은 남김
+		_write_round_summary()
 	for p in [first, tail]:
 		if p != null and p.get_parent() == null:
 			p.free()
@@ -270,7 +294,7 @@ func _draw_text(now: float) -> void:
 		"%d명 (래그돌 %d) · %s · 화질 %s" % [e.players, e.rag, e.size, e.gfx],
 		"GPU %s%s · %s" % [sg if sg != "" else "모름", _kind_suffix(), e.renderer],
 		hlog.summary(),
-	] + ([e.hint] if e.hint != "" else []))
+	] + hlog.top_report(0, 3).map(func(l): return "  " + l) + ([e.hint] if e.hint != "" else []))
 
 
 # 구석 (방 밖만): GPU·렌더러·창 크기·화질 + 하이브리드 안내

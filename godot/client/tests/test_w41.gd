@@ -202,3 +202,28 @@ func test_adapt_settle_after_change() -> void:
 	check(c.scale == s1, "바꾼 직후 한 창은 판단 안 함: %s → %s" % [s1, c.scale])
 	_feed(c, frames)
 	check(c.scale < s1, "그다음 창은 다시 판단")
+
+
+# 히치 로거 강화: 이벤트 태그 (캐릭터·종류) · 원인 상위 n 요약 · 한 판 몫만
+func test_event_tag() -> void:
+	check(Hitch.event_tag({"type": "ult"}, "hook") == ["필살기", "hook ult"], "필살기는 캐릭터와 함께: %s" % str(Hitch.event_tag({"type": "ult"}, "hook")))
+	check(Hitch.event_tag({"type": "skill"}, "ninja") == ["스킬", "ninja skill"], "스킬")
+	check(Hitch.event_tag({"type": "quakeRise"}) == ["이벤트", "quakeRise"], "그 밖 이벤트는 종류 그대로")
+	check(Hitch.event_tag({"type": "death"})[0] == "KO", "KO 는 기존 표")
+	check(Hitch.event_tag({}).is_empty(), "종류 없으면 안 닮")
+
+
+func test_top_report() -> void:
+	var log := Hitch.Log.new()
+	for i in 60:
+		log.push(i * 0.01, 8.0, {})
+	log.push(1.0, 90.0, {"tags": [["몸 만들기", "tank", 60.0]], "screen": "대기실"})
+	var from := log.count
+	log.push(2.0, 50.0, {"tags": [["필살기", "hook ult", -1.0]], "screen": "판 (playing)"})
+	log.push(3.0, 120.0, {"tags": [["필살기", "tank ult", -1.0]], "screen": "판 (playing)"})
+	log.push(4.0, 70.0, {"tags": [["블록 낙하 시작", "T", -1.0]], "screen": "판 (playing)"})
+	var all := log.top_report(0, 5)
+	check(all.size() == 3 and all[0].contains("필살기 ×2") and all[0].contains("최악 120ms") and all[0].contains("@ 3.0s"), "전체 상위: %s" % str(all))
+	var one := log.top_report(from, 5)
+	check(one.size() == 2 and not str(one).contains("몸 만들기"), "한 판 몫만 (그 전 히치 뺌): %s" % str(one))
+	check(log.top_report(log.count, 5).is_empty(), "히치 없으면 빈 목록")
