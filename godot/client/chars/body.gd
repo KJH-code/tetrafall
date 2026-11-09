@@ -32,6 +32,7 @@ const HEAVY_HITS := ["bomb", "shock", "projectile", "slam", "wall", "blast", "bi
 var char_id := ""
 var cd := {} # 몸 자료 (bodies.bin 의 캐릭터 한 줄, 구운 몸이면 manifest — 같은 모양: nodes·mats·refs)
 var baked := false # 구운 몸 (.glb) 으로 만듦
+const GhostDepth := preload("res://chars/ghost_depth.gd")
 static var use_ext: bool = (K.EXT and not Opts.web() and not Opts.args().has("--no-ext")) or Opts.args().has("--ext") # 웹은 기본 끔 (W29: 새 모델은 삼각형·텍스처가 무거움, 웹에서 켜려면 주소 ?ext=1). W14 외부 뼈대 모델이 있으면 씀 (chars/external.gd)
 var ext = null # 붙은 외부 모델 (External.Ext) — 있으면 안쪽 몸 (조각) 은 관절만, 그리는 건 외부 모델
 static var use_glb: bool = K.GLB and not Opts.args().has("--no-glb") # 구운 몸이 있으면 씀 (테스트가 예전 조립과 둘 다 봄, 확인용 실행 인자 --no-glb 면 예전 조립)
@@ -1437,7 +1438,7 @@ func _apply_opacity() -> void:
 		elif am is ShaderMaterial:
 			var c2: Color = dr.col
 			(am as ShaderMaterial).set_shader_parameter("albedo", Color(c2.r, c2.g, c2.b, opacity))
-		mi.material_override = am
+		mi.material_override = GhostDepth.wrap_in(dr) # W35: 깊이 선 먼저 (안쪽 삼각형이 앞과 섞이지 않게)
 
 
 # 위험 빛 받기 (W3): 전역 위험 빛이 자기 SubViewport 장면에도 걸려서 그 몸만 끔. 지금 붙은 재질·바드 폼 몸통·반투명 재질 다 (나중에 만드는 반투명도 따름)

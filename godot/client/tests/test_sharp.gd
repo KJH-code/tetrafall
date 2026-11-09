@@ -225,8 +225,9 @@ func test_leave_room_clears_hazard() -> void:
 func _shader_mats(root: Node) -> Array:
 	var out := []
 	for mi in root.find_children("*", "MeshInstance3D", true, false):
-		if (mi as MeshInstance3D).material_override is ShaderMaterial:
-			out.append((mi as MeshInstance3D).material_override)
+		var im = preload("res://chars/ghost_depth.gd").inner((mi as MeshInstance3D).material_override) # 반투명은 깊이 선 안쪽 재질
+		if im is ShaderMaterial:
+			out.append(im)
 	return out
 
 

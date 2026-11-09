@@ -387,3 +387,21 @@ func test_armor_hit_reaction() -> void:
 	check(br.pow == C.FIGURE_HIT_ARMOR_BREAK and absf(br.stop - C.HITSTOP_MS * 1.5 / 1000.0) < 1e-9 and br.breaks, "깨진 타 = 크게, 멈칫 ×1.5")
 	check(B.armor_reaction(0.3, 0.3).is_empty(), "200ms 지나면 보통 타")
 	check(B.armor_reaction(0.1, 0.1).pow == C.FIGURE_HIT_ARMOR, "둘 다면 버틴 쪽 먼저")
+
+
+# W35: 반투명 몸 깊이 선 — 반투명 재질 앞에 깊이만 쓰는 재질을 붙임 (같은 재질이면 하나만), 깊이 선 → 원래 재질 순서, 같은 그리기 순서
+func test_ghost_depth_wrap() -> void:
+	const GD := preload("res://chars/ghost_depth.gd")
+	var alpha := G3_toon_alpha()
+	var w: ShaderMaterial = GD.with_prepass(alpha)
+	check(w != alpha and w.next_pass == alpha, "깊이 선 재질 → 반투명 재질 순서")
+	var holder := {"alpha": alpha}
+	check(GD.wrap_in(holder) == GD.wrap_in(holder) and GD.wrap_in(holder).next_pass == alpha and GD.inner(GD.wrap_in(holder)) == alpha, "칸마다 한 번만 만들고 안쪽 재질을 되찾음")
+	check(GD.inner(alpha) == alpha, "감싸지 않은 재질은 그대로")
+	check(w.render_priority == alpha.render_priority, "그리기 순서 같음")
+	check(w.shader.code.contains("depth_draw_always") and w.shader.code.contains("shadows_disabled"), "깊이만 쓰고 그림자 안 만듦")
+	check(GD.with_prepass(null) == null, "재질 없으면 없음")
+
+
+func G3_toon_alpha() -> ShaderMaterial:
+	return load("res://shaders/g3.gd").toon_material(Color.WHITE, {"opacity": 0.5, "outline": false})

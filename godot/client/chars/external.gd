@@ -15,6 +15,7 @@ extends RefCounted
 const C := preload("res://core/config.gd")
 const G3 := preload("res://shaders/g3.gd")
 const K := preload("res://chars/chars_config.gd")
+const GhostDepth := preload("res://chars/ghost_depth.gd")
 const ExtShadow := preload("res://chars/ext_shadow.gd")
 const Clips := preload("res://chars/ext_clips.gd")
 const Hitch := preload("res://core/hitch.gd")
@@ -1214,7 +1215,7 @@ class Ext extends Node3D:
 					if not pt.has("alpha"):
 						pt.alpha = unlit_for(pt.color, 0.5)
 					(pt.alpha as ShaderMaterial).set_shader_parameter("albedo", Color(0, 0, 0, op))
-					pt.mi.material_override = pt.alpha
+					pt.mi.material_override = GhostDepth.wrap_in(pt) # W35 깊이 선 먼저
 				continue
 			var mi: MeshInstance3D = pt.mi
 			if op >= 1.0:
@@ -1229,8 +1230,8 @@ class Ext extends Node3D:
 					G3_.toon_hazard_light(pt.alpha, body.hz_light)
 				var c: Color = pt.color
 				(pt.alpha as ShaderMaterial).set_shader_parameter("albedo", Color(c.r, c.g, c.b, op))
-				mi.material_override = pt.alpha
-			var sm := mi.material_override as ShaderMaterial
+				mi.material_override = GhostDepth.wrap_in(pt) # W35 깊이 선 먼저
+			var sm := (pt.alpha if op < 1.0 else mi.material_override) as ShaderMaterial # 반투명이면 깊이 선 재질 말고 안쪽 반투명 재질에
 			if sm != null:
 				sm.set_shader_parameter("emissive", Color(0, 0, 0) if pt.get("band", false) and e == f[1] and e == Color(0, 0, 0) else e)
 		opacity = op
@@ -1243,8 +1244,9 @@ class Ext extends Node3D:
 				pt.alpha = style(toon_for(pt.color, pt.tex, true, true, body.skin_color, {"opacity": 0.5, "outline": false}), info.cfg, false)
 				G3_.toon_hazard_light(pt.alpha, body.hz_light)
 			want = pt.alpha
-		if mi.material_override != want:
-			mi.material_override = want
+		var shown: Material = GhostDepth.wrap_in(pt) if op < 1.0 else want # W35 반투명이면 깊이 선 먼저
+		if mi.material_override != shown:
+			mi.material_override = shown
 		var key := [f, op]
 		if pt.get("fx_m") == want and pt.get("fx_v") == key: # 같은 값이면 안 올림 (W15)
 			return
