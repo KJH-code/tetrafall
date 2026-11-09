@@ -380,3 +380,11 @@ func test_results_never_overlaps_menu() -> void:
 	Store.room = keep[1]
 	Store.state = keep[2]
 	View.victory_stage = keep[3]
+
+
+# W35: 결과 판 승자 글 — 좁은 칸에서도 '승리' 가 두 줄로 쪼개지지 않게 (WORD JOINER), 보이는 글은 그대로
+func test_results_head_keeps_word_together() -> void:
+	const R := preload("res://ui/results.gd")
+	var t: String = R.win_text("P4(봇)")
+	check(t.contains("승\u2060리"), "승 리 사이 단어 이음표")
+	check(t.replace("\u2060", "") == "P4(봇) 승리", "보이는 글은 'P4(봇) 승리' 그대로")

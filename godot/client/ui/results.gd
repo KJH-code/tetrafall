@@ -94,6 +94,11 @@ func _name(p: Dictionary) -> String:
 	return str(p.get("nick", "")) if str(p.get("nick", "")) != "" else str(p.get("name", "?"))
 
 
+# W35: 승자 글 — 줄이 좁아도 '승 / 리' 로 끊기지 않게 승 리 사이에 WORD JOINER (안 보이는 글자)
+static func win_text(who: String) -> String:
+	return "%s 승\u2060리" % who
+
+
 func refresh(st: Dictionary) -> void:
 	var ps: Array = st.players.filter(func(p): return not p.get("spectator", false) and not p.get("dummy", false))
 	var winners := {}
@@ -129,11 +134,11 @@ func refresh(st: Dictionary) -> void:
 			break
 	var wt = st.round.get("winnerTeam")
 	if wt != null:
-		head.text = "%s팀 승리" % TEAM_KO.get(str(wt), str(wt))
+		head.text = "%s팀 승\u2060리" % TEAM_KO.get(str(wt), str(wt))
 	elif winners.size() > 1:
-		head.text = "공동 승리"
+		head.text = "공동 승\u2060리"
 	elif top != null:
-		head.text = "%s 승리" % _name(top)
+		head.text = win_text(_name(top))
 	else:
 		head.text = "무승부"
 	head.add_theme_color_override("font_color", _color(top) if top != null else S.ACCENT)
