@@ -79,7 +79,9 @@ const MIRROR_SCALE := {"high": 0.5, "medium": 0.35} # 타이틀·대기실 거�
 #   up_meet: 목표의 이 배 이하면 '맞춤' · headroom: GPU 시간을 알 때/프레임이 이 배 이하일 때만 '여유' 로 쳐서 올린 뒤 예상 (up_pred) 을 따짐 · up_hold: 연속 이만큼 맞추면 올림 (프로브 실패마다 2배) · up_step: 올리는 폭
 #   probe_windows: 올린 뒤 이 창 안에 도로 내리면 실패 · fails_max: 기다림 2^fails 배 상한 · ban_windows: 프로브 실패한 배율을 이만큼 (×2^실패 횟수) 창 동안 다시 안 올림 · cut_windows: 바닥에서 이 창 연속 느리면 MSAA 한 단계 낮춤
 const ADAPT := {"min": 0.6, "hz_min": 30.0, "hz_max": 60.0, "window": 20, "trim": 0.2, "down": 1.10, "aim": 0.92, "down_min": 0.05, "down_max": 0.15, "cpu_bound": 0.8,
-	"up_meet": 1.04, "headroom": 0.8, "up_pred": 0.92, "up_hold": 6, "up_step": 0.05, "probe_windows": 3, "fails_max": 3, "cut_windows": 9, "ban_windows": 30}
+	"up_meet": 1.04, "headroom": 0.8, "up_pred": 0.92, "up_hold": 6, "up_step": 0.05, "probe_windows": 3, "fails_max": 3, "cut_windows": 9, "ban_windows": 30,
+	# W41 렉 사냥: 판 시작 직후 로딩·첫 사용 스파이크를 GPU 병목으로 오판해 배율을 내렸다 올렸다 (3D 버퍼 다시 만들기 = 또 끊김) 하지 않게
+	"grace_ms": 4000.0, "spike": 3.0, "spike_min": 25.0, "settle": 1, "hist": 40}
 # ---- 외곽선 거리 (W31, 외곽선 껍질 = next_pass 로 몸이 한 번 더 그려짐): 거리는 시야각 70° 기준으로 맞춘 값 (시야각을 넓히면 같은 거리가 더 작게 보이므로 거리 × tan(fov/2)/tan(35°)).
 #   taper_from~gone: 이 사이에서 외곽선 굵기가 1 → min_k 배로 줄어듦 (셰이더, 화면 일정 굵기라 먼 몸은 상대적으로 굵었음) · gone 넘으면 껍질을 아예 뗌 (그리기·삼각형 한 벌 줄음), hyst: 켜고 끄는 문턱 여유 (m)
 #   gone 은 몸 자세 LOD 둘째 단 (POSE_LOD.far2 = 10m) 보다 멀게 (그 안은 자세도 매 프레임 가까이 있는 몸). 8명 판 필드 대각선 27m 라 20m 로 두면 3인칭에서 거의 안 떼짐 (재연 전후 삼각형 같음). min_k 0.25 × 굵기 1.6px = 0.4px 이라 떼는 순간 눈에 안 띔. 내 몸·대기실·1인칭·초상은 늘 가까워서 (taper_from 안) 그대로

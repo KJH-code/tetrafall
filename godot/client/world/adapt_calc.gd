@@ -48,6 +48,9 @@ class Ctl:
 	var _ban := 2.0 # 올리기 실패한 배율 (이 배율 이상은 _ban_left 창 동안 안 올라감)
 	var _ban_left := 0
 	var _floor_streak := 0
+	var _hist: Array = [] # W41: 최근 보통 프레임 (스파이크 제외) — 스파이크 판정 기준 중앙값
+	var _settle := 0 # W41: 배율을 바꾼 뒤 이만큼의 창은 판단 안 함 (3D 버퍼를 다시 만든 직후 프레임이 느림)
+	var spikes := 0 # 버린 스파이크 프레임 수 (확인용)
 
 	func _init(ceiling: float, target_ms_: float, cfg_: Dictionary = WC.ADAPT, start := -1.0) -> void:
 		cfg = cfg_
@@ -72,15 +75,33 @@ class Ctl:
 		_floor_streak = 0
 		cut = false
 		_ban_left = 0
+		_hist = []
+		_settle = 0
 
 	# 프레임 하나: frame_ms = 프레임 간격, work_ms = CPU 일 (스크립트 + 렌더 CPU, 모르면 −1), gpu_ms = 렌더 GPU 시간 (모르면 0). 창이 차서 판단했고 배율·cut 이 바뀌었으면 참
 	func push(frame_ms: float, work_ms := -1.0, gpu_ms := 0.0) -> bool:
+		# W41 스파이크 (로딩·첫 사용·히치): 최근 보통 프레임 중앙값의 spike 배 넘고 spike_min ms 넘으면 판단에서 뺌 (히치 하나가 창 20% 를 넘겨 GPU 병목으로 오판하지 않게). 계속 느린 기계는 중앙값이 같이 올라 스파이크가 아님
+		if _hist.size() >= 10 and frame_ms > float(cfg.get("spike_min", 25.0)):
+			var sorted := _hist.duplicate()
+			sorted.sort()
+			if frame_ms > float(sorted[sorted.size() / 2]) * float(cfg.get("spike", 3.0)):
+				spikes += 1
+				return false
+		_hist.append(frame_ms)
+		if _hist.size() > int(cfg.get("hist", 40)):
+			_hist.pop_front()
 		_f.append(frame_ms)
 		_w.append(work_ms)
 		_g.append(gpu_ms)
 		if _f.size() < int(cfg.window):
 			return false
-		var ch := _decide()
+		var ch := false
+		if _settle > 0:
+			_settle -= 1 # 바꾼 직후 창은 건너뜀
+		else:
+			ch = _decide()
+			if ch and cfg.get("settle", 0) > 0:
+				_settle = int(cfg.settle)
 		_f = []
 		_w = []
 		_g = []

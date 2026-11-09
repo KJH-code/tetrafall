@@ -29,6 +29,7 @@ var world = null # world.gd (1인칭 팔 vm 의 MSAA 를 같이)
 var forced := "" # --gfx
 var _thread: Thread = null
 var ctl = null # AC.Ctl (판 중에만 일함)
+var _adapt_since_us := 0 # W41 적응형 켠 (판이 playing 이 된) 시각
 var _tail: Node = null
 var _head_us := 0
 var _script_ms := 0.0
@@ -152,6 +153,8 @@ func _process(_dt: float) -> void:
 	_last_us = now
 	if f <= 0.0 or f > 500.0: # 처음·멈춤 (로딩) 은 안 셈
 		return
+	if (now - _adapt_since_us) / 1000.0 < float(WC.ADAPT.get("grace_ms", 0.0)):
+		return # W41: 판 시작 직후 유예 — 몸 만들기·첫 사용 값 때문에 느린 프레임을 GPU 병목으로 안 봄
 	var vp := get_viewport().get_viewport_rid()
 	var rcpu := RenderingServer.viewport_get_measured_render_time_cpu(vp) + RenderingServer.get_frame_setup_time_cpu()
 	var g := RenderingServer.viewport_get_measured_render_time_gpu(vp)
@@ -172,6 +175,7 @@ func _adapt_switch(on: bool) -> void:
 		ctl.set_target(AC.target_ms(DisplayServer.screen_get_refresh_rate()))
 		ctl.restart()
 		_last_us = 0
+		_adapt_since_us = Time.get_ticks_usec()
 		if _tail == null:
 			_tail = _Tail.new()
 			_tail.gfx = self
