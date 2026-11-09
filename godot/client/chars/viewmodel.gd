@@ -78,7 +78,7 @@ func _ready() -> void:
 
 
 func set_msaa() -> void:
-	view.msaa_3d = WC.msaa_3d(bool(View.settings.get("lowGfx", false)))
+	view.msaa_3d = WC.vm_msaa(bool(View.settings.get("lowGfx", false)))
 
 
 func _on_view(k: String) -> void:

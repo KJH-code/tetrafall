@@ -37,13 +37,13 @@ func test_msaa_like_js_antialias() -> void:
 	var keep = View.settings.get("lowGfx", false)
 	View.settings.lowGfx = false # set_setting 은 설정 파일을 씀 → 값만 바꾸고 신호
 	vm._ready()
-	check(vm.view.msaa_3d == WC.msaa_3d(false), "1인칭 팔 = 판 화면 값")
+	check(vm.view.msaa_3d == WC.vm_msaa(false), "1인칭 팔 = 판 화면 값 (W37: 4× 이상이면 2× 까지)")
 	View.settings.lowGfx = true
 	View.changed.emit("lowGfx")
 	check(vm.view.msaa_3d == WC.MSAA_LOW, "1인칭 팔: 낮춤이면 곧바로 끔")
 	View.settings.lowGfx = keep
 	View.changed.emit("lowGfx")
-	check(vm.view.msaa_3d == WC.msaa_3d(bool(keep)), "되돌림")
+	check(vm.view.msaa_3d == WC.vm_msaa(bool(keep)), "되돌림")
 	vm.free()
 
 

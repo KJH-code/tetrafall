@@ -110,6 +110,18 @@ static func msaa_3d(low: bool, web: bool = Opts.web(), lv: String = level) -> Vi
 	return m
 
 
+# W37: 1인칭 팔 SubViewport (창 크기 그대로 한 장 더) 의 MSAA 는 판 값이 4× 이상이어도 2× 까지만 — 팔 가장자리는 외곽선 껍질이 가려 주고, 화면 한 장 더의 MSAA 4× 렌더 타깃이
+#   영상 메모리 ~33MB 였음 (1인칭 183.7MB vs 3인칭 150.6MB, 소프트웨어 렌더 재연). 확인용 --no-vm-msaa-cap 으로 예전 (판과 같은 값)
+static var vm_msaa_cap: bool = not Opts.args().has("--no-vm-msaa-cap")
+
+
+static func vm_msaa(low: bool, web: bool = Opts.web(), lv: String = level) -> Viewport.MSAA:
+	var m := msaa_3d(low, web, lv)
+	if vm_msaa_cap and (m == Viewport.MSAA_4X or m == Viewport.MSAA_8X):
+		return Viewport.MSAA_2X
+	return m
+
+
 # 거울 반사 크기 배율 (창 크기에 곱함). scale_3d: 판 3D 해상도 배율
 static func mirror_scale(scale_3d := 1.0, lv: String = level) -> float:
 	return float(MIRROR_SCALE.get(lv, MIRROR_SCALE.medium)) * scale_3d
