@@ -252,6 +252,15 @@ static func report(tree: SceneTree, label: String, cpu_frames := 0) -> Dictionar
 		var ck := cpu.keys()
 		ck.sort_custom(func(a, b): return cpu[a] > cpu[b])
 		print("[구성] CPU ms/프레임 (스크립트 구간): %s" % " · ".join(ck.map(func(k): return "%s %.2f" % [k, cpu[k]])))
+	var svs := []
+	var sv_bytes := 0
+	for sv in tree.root.find_children("*", "SubViewport", true, false):
+		var s2 := sv as SubViewport
+		var samples: int = [1, 2, 4, 8][clampi(int(s2.msaa_3d), 0, 3)]
+		var b: int = s2.size.x * s2.size.y * 4 * (1 + (samples if s2.own_world_3d or s2.get_child_count() > 0 else 0) * 2)
+		sv_bytes += b
+		svs.append("%s %dx%d %s%s MSAA %d (~%.1fMB)" % [s2.name, s2.size.x, s2.size.y, ["끔", "한 번", "보일 때", "부모", "늘"][s2.render_target_update_mode], "" if (s2.get_parent() == null or not s2.get_parent() is CanvasItem or (s2.get_parent() as CanvasItem).is_visible_in_tree()) else " 숨음", samples, b / 1048576.0])
+	print("[구성] SubViewport %d개 (렌더 대상 어림 %.1fMB): %s" % [svs.size(), sv_bytes / 1048576.0, " | ".join(svs)])
 	var out := {"label": label, "rows": jr, "total": base, "canvas": canvas, "cpu": cpu, "vram_mb": Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0}
 	print("[구성json] " + JSON.stringify(out))
 	return out
