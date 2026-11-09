@@ -276,10 +276,26 @@ func _process(_d: float) -> void:
 	if measuring:
 		frames += 1
 		_frame_line()
+		_mon_tick()
 	if measuring and Net.virt >= t_end:
 		done = true
 		measuring = false
 		_report()
+
+
+# --mon-every <초> (W37): 재는 동안 그 간격 (가상 초) 마다 객체·노드·고아·메모리 한 줄 — 긴 판 (tools/rec_loop.mjs) 누수 확인
+var _mon_next := 0.0
+
+
+func _mon_tick() -> void:
+	if not args.has("mon-every"):
+		return
+	var sec: float = (Net.virt - t_start) / 1000.0
+	if sec < _mon_next:
+		return
+	_mon_next = sec + float(args["mon-every"])
+	var m: Dictionary = _mons()
+	print("[재연·감시] %6.0f초 · 물체 %d · 자원 %d · 노드 %d · 고아 %d · 정적 메모리 %.2fMB · 영상 %.1fMB · 그림 %.1f" % [sec, m.obj, m.res, m.node, m.orphan, m.mem / 1048576.0, m.vram / 1048576.0, m.tex / 1048576.0])
 
 
 # 지난 프레임 한 줄 (이 노드가 맨 먼저 돌아 지난 _process 부터 지금까지 = 지난 프레임 전체: 스크립트·그리기·셰이더 컴파일)
@@ -363,6 +379,8 @@ func _report() -> void:
 	if args.has("census"):
 		census(get_tree().root)
 		await UiCensus.run(get_tree(), "재연 %.1f초" % ((Net.virt - t_start) / 1000.0))
+	if args.has("budget"): # W37: 범주별 프레임 구성표 (core/budget.gd)
+		await preload("res://core/budget.gd").report(get_tree(), str(args.get("budget-label", "재연")), n)
 	if args.has("ui-check"): # W16: 구운 판 위 입력 (core/ui_check.gd)
 		await preload("res://core/ui_check.gd").run(get_tree())
 	if args.has("shot") and DisplayServer.get_name() != "headless":

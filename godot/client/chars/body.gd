@@ -798,9 +798,10 @@ func pose(p: Dictionary, now_ms: float) -> void:
 		rw.apply(self)
 	t0 = _prof("몸 래그돌 잡기·넣기", t0)
 	_sync_bones()
+	t0 = _prof("몸 코드 묶음 뼈", t0)
 	if ext != null:
 		ext.sync(st)
-	t0 = _prof("몸 묶음 뼈", t0)
+	t0 = _prof("몸 외부 몸 sync", t0)
 	_apply_opacity()
 	_fx_colors(p)
 	_prof("몸 재질 (투명·색 효과)", t0)
