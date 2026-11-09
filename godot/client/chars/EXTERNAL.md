@@ -174,3 +174,11 @@ W31 이 남긴 후보 (해 그림자 패스 = 3D 삼각형의 38%) 를 실제로
 - **1인칭 전용**: json `vm_bone_scale {뼈: 배율}` (`Ext._vm_bone_scale`, 탱크 방패), 사냥꾼 소총은 `attach` 의 `vm: true`·`third: false` (`hunter_rifle.glb`, `tripo/hunter_rifle.mjs`).
 - **갈고리 부스러기·이음 삼각형**: `tripo/drop_shards.mjs`·`hook_bridge.py` (README 18절).
 - **서버 판정 vs 보이는 타격**: `tools/hit_reach.gd` (표 `docs/w34/7_hit_reach.csv`).
+
+## 16. W38 — 새 모델 평타·스킬·도발·승리 클립, 맞음 움찔, 1인칭 휘두름 (2026-11-09, 전후 그림 `docs/w38/`)
+
+- 클립: 탱크 `t_*` 6·사냥꾼 `h_*` 6·갈고리 `k_*` 8 평타·스킬 + 도발·승리 (`<id>_anim.glb`, 자세 표 `tools/blender/tripo/clips_<id>.py` 의 `define_attacks`·`define_poses`, 만들기는 16절 W33 과 같은 명령). `<id>.json` `clips.moves {서버 동작 이름: 클립}`·`clips.taunt`·`clips.victory`. 눈금 `marks` 0.30/0.40/0.80 (서버 준비·타격·회복 u 를 구간별로 맞춤, `ext_clips.gd select`), 도발 클립 길이 = `EMOTE_MS` (끝은 쉬는 자세), 승리는 반복.
+- `select`: 전용 도발 (`C.EMOTE_CHAR`)·승리는 힘 빠진 상태·방금 맞음이 아니면 클립. 맞음·경직·낙사·일어남은 여전히 코드 + 래그돌.
+- 맞음 움찔 `Ext._hit_flinch` (config `EXT_HIT_FLINCH_*`): 가산 (척추 둘·머리), 모든 외부 몸 (닌자 포함), 래그돌 모터 약하면 빠짐.
+- 1인칭: `viewmodel.gd act_swing` + config `VM_ACT_STYLE`·`VM_ACT_SWING`.
+- 테스트 (`test_ext_clips.gd`): `W38_MOVES` 표 (캐릭터별 클립 만든 동작) — 클립을 늘리면 표도 늘림. 단계→눈금·클립 길이·타격 순간 손·골반 앞으로·움찔·도발·승리·1인칭 곡선.

@@ -111,3 +111,17 @@
 - `tools/shader_check.gd` (xvfb, gl_compatibility): 0 에러 (파일 22개 + G3 재질 3개 + 외부 몸 16개 그림).
 - `node --test godot/server/tools/package.test.mjs`: 6 통과.
 - 서버 판정·`moves` 타이밍·`figure_motion`·`moves.gd` 는 바꾸지 않음.
+
+
+## 10. W38 — 새 모델 모션 (Mixamo 없이, 2026-11-09)
+
+손 키프레임 클립 (Blender FK, `tools/blender/tripo/clips_tank·hunter·hook.py` 의 `define_attacks`·`define_poses`) 과 코드 보정. 전후 그림 `docs/w38/`.
+- **탱크 6·사냥꾼 6·갈고리 8 평타·스킬 클립** (`<id>.json` `clips.moves`): 서버 단계 (준비·타격·회복 u) 를 클립 눈금 0.30/0.40/0.80 초에 맞춰 (닌자 방식) 타격 순간이 판정과 일치. 클립 길이·구간은 `test_w38_attack_clips_match_server_phases` 가 고정. 안 만든 것: 갈고리 `hookDragged` (맞아 끌려가는 자세, 래그돌), 탱크 방패 막기 (막기 상태가 서버 규칙에 없음).
+- **맞음 움찔** (`external.gd` `_hit_flinch`, config `EXT_HIT_FLINCH_*`): 맞은 뒤 0.3초 척추·머리를 `hit.pow` 세기·방향으로 가산. 래그돌 모터가 약하면 (쓰러지는 중) 빠짐.
+- **도발·승리 클립** (탱크·사냥꾼·갈고리, `clips.taunt`·`victory`): 전용 도발 이모트 (`EMOTE_CHAR`)·승리 포즈만, 힘 빠진 상태는 코드.
+- **타격 끝 짧음 (`tools/hit_reach.gd`, 서버 최대 앞면 − 보이는 끝, m)**: 탱크 주먹 -0.45→-0.34, 박치기 -1.41→-0.92, 올려치기 -0.94→-0.33, 내려치기 -0.64→-0.21 / 사냥꾼 베기 -0.87→-0.75, 반대 베기 -1.44→-1.02, 찔러 넣기 -0.91→-0.60, 내려 베기 -0.96→-0.43 / 갈고리 휘두르기 -0.65→-0.56, 주먹 -0.93→-0.84, 내려치기 -1.10→-1.02 (갈고리는 모델이 작아 골반 이동이 눈에 덜 보임).
+- **1인칭** (`viewmodel.gd` `act_swing`, config `VM_ACT_*`): 같은 서버 단계 곡선으로 화면 전체를 윈드업 때 당기고 타격 때 휩쓸고 여운으로 되돌림 (가산, 구조 그대로).
+- **보류**: 갈고리 코트 자락 흔들림 (코트 뼈가 없음 — 모델에 뼈를 새로 넣는 리깅 작업), 닌자 외 3명의 방패 막기, 공중 대시 자세 클립.
+
+### Mixamo 요청 목록 갱신 (7절 + W38)
+손 클립으로 모자란 것만 (받으면 `ext_clips.gd` 에 매핑): 탱크 "Great Sword Slash"·"Overhead Heavy Attack" (평타 감 비교), "Shield Block"; 사냥꾼 "Firing Rifle"·"Rifle Reload"(탕 반동·장전), "Rifle Melee"(개머리 베기), "Forward Roll"(도약); 갈고리 "Standing Melee Attack Horizontal"(휘두름), "Throw Object"·"Pulling A Rope"(던짐·끌어당김), "Pirate Taunt"/"Beckoning"(도발); 공통 "Hit Reaction"(약·중·강 3종, 현재는 가산 움찔), "Victory"/"Taunt" 반복 2종. 새 모델·애니는 못 받는 중이라 요청만 유지.
