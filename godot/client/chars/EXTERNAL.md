@@ -198,3 +198,13 @@ W31 이 남긴 후보 (해 그림자 패스 = 3D 삼각형의 38%) 를 실제로
 - 칸 LOD (`world/cell_lod.gd`, `--no-cell-lod`·`--cell-lod-far`): 먼 칸은 108삼각형 낮은 모양, 판 후반 합계 141.8k→126.9k.
 - 섬·바위 해 그림자 끔 (`--no-scenery-opt`): 그림자 지형 6.0k→1.8k.
 - 몸 자세: `_code_maps`·`_code_bones` ext.sync 0.064→0.023ms/몸. 도구 `tools/tex_meas.gd`·`pose_cpu.gd`·`--budget-split`.
+
+
+## 19. W41 — 렉 사냥: 메뉴 직후·판 시작 직후·블록 이벤트 (2026-11-10, 표는 `docs/w41/README.md`)
+
+- 측정 도구 (재혁 PC 에서도 씀): `--hitch --lag-log <파일>` (프레임마다 한 줄: 시각·프레임 ms·스크립트 ms·렌더 CPU·화면·구간·태그), `--first-use [--first-out 파일 --first-min ms]` (구간·시간 잰 일마다 처음·둘째 부름 ms 표), `--boot-log` (켜는 동안 단계 ms), `--menu-wait <초>` · `--start-delay <초>` (메뉴·대기실에 이만큼 있다 진행), `--sched-log`, `--mat-census`.
+- 프레임 예산 스케줄러 `world/prewarm_sched.gd` (`PSched.main`): 메뉴·대기실 미리 하기를 조각으로, 프레임당 3ms 예산·조각 4개 상한·입력 뒤 150ms 쉼 (굶으면 2.5초마다 한 조각)·평소보다 느린 프레임 뒤 쉼 (평소 프레임에 상대)·판 중 쉼·`WAIT` (기다림은 조각으로 안 셈). 끄기 `--no-prewarm-sched` (예전 방식).
+- world 는 타이틀·메뉴 동안 숨겨짐 (`title.gd`) → 그때 그리는 일은 셰이더를 안 만듦. 그리기 작업 (G3.prewarm 조각·재질 미리 그리기 `world/warm_scan.gd`·몸 데우기 그리기·판 빛·위험 경고 가장자리) 은 world 가 보일 때 (대기실) 로 미루고, 메뉴에선 읽기·정보 셈·텍스처 요청·LUT 만.
+- `chars/tex_prefetch.gd`: 대기실 사람들의 캐릭터 알베도·마스크 (큰 캐릭터·초상 = stage LOD, 판 몸 = 화질 LOD) 를 스레드로 미리 요청, 몸·초상을 만들 때 `Ext.tex_of`·`skin_mask_for` 가 받음. 판이 playing 이 되면 안 받은 것 놓음. 끄기 `--no-tex-prefetch`.
+- 적응형 해상도: 판 시작 4초 유예·스파이크 (중앙값 3배·25ms↑) 프레임 판단에서 뺌·바꾼 직후 한 창 건너뜀 (`WC.ADAPT` `grace_ms`·`spike`·`settle`).
+- 히치 로거: 이벤트 태그 (스킬·필살기 = 캐릭터 + 종류, 처음 본 이벤트 종류 = '첫 이벤트', '블록 낙하 시작 <모양>', '미리 하기'), 한 판 끝에 원인 상위 5개 + 최악 ms + 시점을 `hitches.txt` 에 `# ---- 판 요약` 줄로, F3 맨 아래에 상위 3개.
