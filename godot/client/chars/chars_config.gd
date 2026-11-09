@@ -79,4 +79,7 @@ const EXT_HIT_HAND_RAD := 0.35
 const EXT_HIT_CRIT_S := 0.5
 const EXT_ARMOR_BREAK_S := 0.45 # 탱크 방어구 깨짐: 방패 쥔 팔 반동 시간
 const EXT_ARMOR_BREAK_RAD := 0.5
+# W40 1인칭 팔을 3인칭 클립 (평타·스킬) 곡선으로: 클립이 코드 자세에서 얼마나 벗어났나 (뼈 지역 회전 차이) 를 1인칭 쌍둥이 팔에 이 비율로 더함 (0 = 끔)
+const VM_CLIP_ARM := 0.0 # 기본 끔 (보류): 0.3·0.55 로 켜 보니 소총·갈고리를 쥔 팔이 화면 위로 솟거나 왼손이 세로로 서서 어색 — 전후 docs/w40/vm_clip/
+const VM_CLIP_ARM_BONES := ["shoulder_R", "elbow_R", "hand_R", "shoulder_L", "elbow_L", "hand_L"]
 const EXT_FLASH := 0.55 # 경직 하얀 깜빡임 (외부 모델은 피부 부위를 몰라서 몸 전체 하얀 발광으로)

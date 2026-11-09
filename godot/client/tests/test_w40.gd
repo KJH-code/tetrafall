@@ -40,6 +40,7 @@ func _step(X, st: Dictionary) -> void:
 	var now := Time.get_ticks_msec() * 0.001
 	X.cloth_t = now - 1.0 / 60.0
 	X.extra_t = now - 1.0 / 60.0
+	X.last_t = now - 1.0 / 60.0
 	X.sync(st)
 
 
@@ -393,3 +394,26 @@ func test_tank_armor_break_recoil() -> void:
 	_step(X, _st({"hit": {"id": 1, "age": 5.0, "stop": 0.0, "dx": -1.0, "dy": 0.0, "pow": 1.0}}))
 	check(q0.angle_to(sk.get_bone_pose_rotation(bi)) < 1e-3, "시간이 지나면 반동 없음")
 	b.free()
+
+
+# W40 3: 1인칭 팔 = 3인칭 클립 곡선 (기본 끔 — K.VM_CLIP_ARM 0): 공격·스킬 클립 중에만 팔 뼈의 클립 차이를 기록, 다른 때는 비움
+func test_vm_clip_arm_delta_recorded_only_in_act() -> void:
+	check(K.VM_CLIP_ARM == 0.0, "1인칭 클립 팔은 기본 끔 (보류)")
+	for ch in ["hunter", "hook", "tank"]:
+		var b = _body(ch)
+		if b.ext == null:
+			b.free()
+			continue
+		var X = b.ext
+		var move := "베기" if ch == "hunter" else ("갈고리 휘두르기" if ch == "hook" else "주먹")
+		for i in 12:
+			_step(X, _st({"act": {"id": 1, "move": move, "phase": "strike", "u": 0.5, "air": false}}))
+		check(not X.arm_delta.is_empty(), "%s 공격 클립 중 팔 뼈 차이 기록 (%d 뼈)" % [ch, X.arm_delta.size()])
+		var mx := 0.0
+		for bi in X.arm_delta:
+			mx = maxf(mx, Quaternion.IDENTITY.angle_to(X.arm_delta[bi]))
+		check(mx > 0.05, "%s 클립이 코드 팔과 다름 (최대 %.2f rad)" % [ch, mx])
+		for i in 40:
+			_step(X, _st())
+		check(X.arm_delta.is_empty(), "%s 공격이 끝나면 비움" % ch)
+		b.free()

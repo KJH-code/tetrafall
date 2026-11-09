@@ -30,6 +30,7 @@ var pips: Array = [] # 대포수: 대포 등에 남은 포탄 수만큼 쇠공 [
 var veins: Array = [] # 광전사: 분노가 차면 아래팔 핏줄 (팔마다 묶음)
 var shield_k := 0.0 # 탱크 방패를 쥔 정도 (W11): 0 = 빈손 (방패 넣음), VM_SHIELD_REACH 까지 = 손을 내림, 1 = 쥐고 든 자세
 static var _star_mesh: ArrayMesh = null
+static var clip_arm: float = K.VM_CLIP_ARM # W40: 3인칭 클립 팔 곡선을 1인칭 팔에 섞는 비율 (확인 도구가 0 으로 끄고 전후 비교)
 static var shield_hand: bool = K.VM_SHIELD_HAND # 탱크 방패를 왼손에 쥠 (W11). 확인 도구 (tools/vm_shots.gd old) 가 예전 모습을 찍을 때 끔
 
 
@@ -124,6 +125,9 @@ func _sync(body) -> void:
 	twin.build(char_id, body.skin_color, false) # 합치지 않음 (조각마다 보이기)
 	twin.set_hz_light(false) # 자기 SubViewport 장면 — 판의 위험 빛 안 받음 (JS viewmodel 은 따로 된 scene)
 	view.add_child(twin)
+	if twin.ext != null and body.ext != null: # W40: 3인칭 클립 팔 곡선
+		twin.ext.src_ext = body.ext
+		twin.ext.clip_arm_k = clip_arm
 	twin.visible = false # 몸 자체는 안 그림 — 허리만 떼어 anchor 에 붙임
 	var w: int = twin.nodes.find(twin.waist)
 	# 허리 아래 (허리 제외) 노드 번호

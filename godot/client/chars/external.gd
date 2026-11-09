@@ -625,6 +625,10 @@ class Ext extends Node3D:
 	var gaze_w := 0.0
 	var breath_w := 0.0
 	var extra_t := 0.0
+	var arm_ids := {}
+	var arm_delta := {} # W40: 클립이 코드 자세에서 벗어난 팔 뼈 (뼈 번호 → Quaternion: base⁻¹ · 클립 결과), 공격·스킬 클립 중에만 — 1인칭 쌍둥이가 읽어 감
+	var src_ext = null # W40 1인칭 쌍둥이만: 베끼는 3인칭 몸의 Ext
+	var clip_arm_k := 0.0
 
 	func setup(b: Node3D, inf: Dictionary, third_: bool) -> bool:
 		body = b
@@ -852,6 +856,7 @@ class Ext extends Node3D:
 		_code_sync()
 		if not third:
 			_vm_bone_scale()
+			_vm_clip_arms()
 		if st != null and float(st.get("airDash", 0.0)) > 0.0 and not bool(st.get("stunned", false)):
 			_dash_wrist()
 		if third and not clipset.is_empty() and (st != null or not forced.is_empty()):
@@ -927,6 +932,7 @@ class Ext extends Node3D:
 			last_sel = sel
 		var use: Dictionary = sel if want > 0.0 else last_sel
 		if cw <= 0.0005 or str(use.get("clip", "")) == "" or not clipset.has(str(use.get("clip", ""))):
+			arm_delta.clear()
 			if clip_dirty:
 				_clip_release()
 			cw = 0.0
@@ -946,6 +952,13 @@ class Ext extends Node3D:
 		tt = fposmod(tt, float(data.len)) if use.get("loop", false) else clampf(tt, 0.0, float(data.len))
 		var ef := fade_t * fade_t * (3.0 - 2.0 * fade_t)
 		var rl: Array = info.rest_local
+		var is_act: bool = str(use.get("kind", "")) == "act" and want > 0.0
+		arm_delta.clear()
+		if arm_ids.is_empty():
+			for jn in K_.VM_CLIP_ARM_BONES:
+				var ab: int = int(info.map.get(jn, -1))
+				if ab >= 0:
+					arm_ids[ab] = true
 		for bn in data.rot:
 			var bi: int = int(cbones.get(bn, -1))
 			if bi < 0:
@@ -955,7 +968,10 @@ class Ext extends Node3D:
 				q = (fade_from[bn] as Quaternion).slerp(q, ef)
 			last_layer[bn] = q
 			var base: Quaternion = sk.get_bone_pose_rotation(bi) if mapped.has(bi) else (rl[bi] as Transform3D).basis.get_rotation_quaternion()
-			sk.set_bone_pose_rotation(bi, base.slerp(q, cw))
+			var fin: Quaternion = base.slerp(q, cw)
+			sk.set_bone_pose_rotation(bi, fin)
+			if is_act and arm_ids.has(bi):
+				arm_delta[bi] = base.inverse() * fin
 		clip_dirty = true
 		var hb: int = int(info.map.get("hips", -1))
 		var dy := 0.0
@@ -1152,6 +1168,15 @@ class Ext extends Node3D:
 			var bi := sk.find_bone(str(bn))
 			if bi >= 0:
 				sk.set_bone_pose_scale(bi, sk.get_bone_pose_scale(bi) * float(vs[bn]))
+
+	# W40 1인칭 팔: 3인칭 몸의 공격·스킬 클립이 코드 자세에서 벗어난 만큼 (팔 뼈 지역 회전 차이) 을 clip_arm_k 비율로 쌍둥이 팔에 더함.
+	# 쌍둥이 어깨는 viewmodel 이 손을 화면 아래로 가져오느라 따로 돌려 놓았으니 전부 더하면 넘치므로 가산 비율로만 섞음
+	func _vm_clip_arms() -> void:
+		if clip_arm_k <= 0.0 or src_ext == null or not is_instance_valid(src_ext):
+			return
+		for bi in src_ext.arm_delta:
+			var d: Quaternion = src_ext.arm_delta[bi]
+			sk.set_bone_pose_rotation(bi, sk.get_bone_pose_rotation(bi) * Quaternion.IDENTITY.slerp(d, clip_arm_k))
 
 	# W34 공중 대시 손목: 공용 슈퍼맨 자세 (figure_pose SUPERMAN) 는 팔을 쭉 뻗는 것만 정해서 손에 쥔 무기 (해머·소총) 가 모델 쥐는 각 그대로 팔과 직각으로 솟음 —
 	# cfg.dash_wrist {관절 이름 (hand_R 등): [x, y, z 도]} 만큼 손뼈를 그 뼈의 지역 축으로 더 돌려 무기가 팔 쪽 (앞) 으로 눕게. 코드 몸은 그대로
