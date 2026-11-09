@@ -187,9 +187,11 @@ func test_loco_clips_new_models() -> void:
 		var cc: Dictionary = X.info.cfg.clips
 		for n in ["idle", "walk", "run", "jump", "fall", "land"]:
 			check(X.clipset.has(n), "%s 클립 %s 있음" % [ch, n])
-		check((cc.get("moves", {}) as Dictionary).is_empty(), "%s 공격·스킬은 클립 없이 코드 구동 (서버 타이밍 그대로)" % ch)
-		var sel = Clips.select(cc, _st({"act": {"id": 1, "move": "주먹", "phase": "strike", "u": 0.5, "air": false}}), 0.0)
-		check(str(sel.clip) == "", "%s 공격 중엔 코드 구동 (클립 안 고름)" % ch)
+		# W38: 클립을 만든 동작 (W38_MOVES) 만 moves 에 있고 (나머지는 코드 구동 = 서버 타이밍 그대로)
+		var want: Array = W38_MOVES.get(ch, [])
+		check((cc.get("moves", {}) as Dictionary).size() == want.size(), "%s moves 표 = 클립 만든 동작 %d개" % [ch, want.size()])
+		var sel = Clips.select(cc, _st({"act": {"id": 1, "move": "없는 동작", "phase": "strike", "u": 0.5, "air": false}}), 0.0)
+		check(str(sel.clip) == "", "%s 표에 없는 동작은 코드 구동 (클립 안 고름)" % ch)
 		check(str(Clips.select(cc, _st({"walking": true, "hs": 6.0, "walk": 1.0}), 0.0).clip) == "run", "%s 달리면 run" % ch)
 		# 달리기 클립: 두 걸음 끝점에서 두 발이 앞뒤로 벌어짐 (쉬는 자세 대비 앞발이 8cm 이상 앞)
 		var sk: Skeleton3D = X.sk
@@ -280,3 +282,146 @@ func test_cloth_scarf_chain() -> void:
 	var q: Quaternion = X.sk.get_bone_pose_rotation(cl.bones[2])
 	check(not q.is_equal_approx((X.info.rest_local[cl.bones[2]] as Transform3D).basis.get_rotation_quaternion()), "꼬리 끝 뼈 회전이 쉬는 자세에서 벗어남")
 	holder.free()
+
+
+# W38 공격·스킬 클립 (탱크·사냥꾼·갈고리 — 손 키프레임): 서버 단계 (moves) 와 클립 눈금이 맞음.
+# 캐릭터마다 코드가 아닌 클립으로 가야 할 동작 목록 (평타 = config BASIC_ATTACKS, 스킬 = moves 표) — 새 클립이 늘면 여기도 늘림
+const W38_MOVES := {
+	"tank": ["주먹", "어깨 박치기", "방패 올려치기", "방패 내려치기", "tankCharge", "tankSlam"],
+	"hook": ["갈고리 휘두르기", "주먹", "갈고리 내려치기", "탕", "갈고리 스핀", "hookThrow", "hookSlam", "hookZip"],
+	"hunter": ["베기", "반대 베기", "찔러 넣기", "내려 베기", "hunterAim", "hunterLeap"],
+}
+
+
+func test_w38_attack_clips_match_server_phases() -> void:
+	var m: Array = Clips.MARKS
+	for ch in W38_MOVES:
+		var info = Ext.load_char(ch)
+		check(info != null and not info.clipset.is_empty(), "%s 클립 파일" % ch)
+		if info == null:
+			continue
+		var cc: Dictionary = info.cfg.clips
+		check(float(cc.marks[0]) == float(m[0]) and float(cc.marks[1]) == float(m[1]) and float(cc.marks[2]) == float(m[2]), "%s 눈금 = 닌자와 같음 (클립 길이·구간)" % ch)
+		for mv in W38_MOVES[ch]:
+			var cn = (cc.moves as Dictionary).get(mv)
+			check(cn != null and info.clipset.has(str(cn)), "%s %s → 클립 %s 있음" % [ch, mv, cn])
+			if cn == null or not info.clipset.has(str(cn)):
+				continue
+			var c: Dictionary = info.clipset[str(cn)]
+			check(absf(float(c.len) - float(m[2])) < 0.04, "%s %s 클립 길이 = 회복 눈금 (%.2f)" % [ch, cn, float(c.len)])
+			# 서버 단계 → 클립 눈금: 준비 끝 = WIND, 타격 끝 = STRIKE, 회복 끝 = REC
+			var mk := func(ph: String, u: float) -> Dictionary: return Clips.select(cc, _st({"act": {"id": 1, "move": mv, "phase": ph, "u": u, "air": false}}), 0.0)
+			check(str(mk.call("wind", 1.0).clip) == str(cn) and absf(float(mk.call("wind", 1.0).t) - float(m[0])) < 1e-5, "%s %s 준비 끝 = 준비 눈금" % [ch, mv])
+			check(absf(float(mk.call("strike", 1.0).t) - float(m[1])) < 1e-5, "%s %s 타격 끝 = 타격 눈금" % [ch, mv])
+			check(absf(float(mk.call("rec", 1.0).t) - float(m[2])) < 1e-5, "%s %s 회복 끝 = 끝 눈금" % [ch, mv])
+
+
+# 타격 순간 (눈금 STRIKE) 에 무기 손이 준비 눈금 (WIND) 보다 앞 (+x) 으로 나가 있고 몸 (골반) 도 앞으로 내딛음
+func test_w38_strike_reaches_forward() -> void:
+	var cases := {"tank": [["주먹", "t_punch", "mixamorig_RightHand"]], "hook": [["갈고리 휘두르기", "k_hook", "mixamorig_LeftHand"], ["주먹", "k_fist", "mixamorig_RightHand"], ["hookThrow", "k_throw", "mixamorig_LeftHand"]], "hunter": [["베기", "h_slash", "mixamorig_RightHand"], ["찔러 넣기", "h_thrust", "mixamorig_RightHand"]]}
+	for ch in cases:
+		var b = _body(ch)
+		if b.ext == null:
+			b.free()
+			continue
+		var X = b.ext
+		var sk: Skeleton3D = X.sk
+		for cs in cases[ch]:
+			X.preview_clip(str(cs[1]), float(Clips.MARKS[0]))
+			var hw := _bone_pos(sk, str(cs[2])).x
+			var pw := _bone_pos(sk, "mixamorig_Hips").x
+			X.preview_clip(str(cs[1]), float(Clips.MARKS[1]))
+			var hs := _bone_pos(sk, str(cs[2])).x
+			var ps := _bone_pos(sk, "mixamorig_Hips").x
+			check(hs - hw > 0.1, "%s %s 타격 순간 손이 준비 때보다 앞으로 %.2f" % [ch, cs[0], hs - hw])
+			check(ps - pw > 0.03, "%s %s 타격 순간 몸을 앞으로 내딛음 %.2f" % [ch, cs[0], ps - pw])
+		b.free()
+
+
+# W38 맞음 움찔: 맞은 직후 척추·머리가 맞은 방향 (뒤로 밀리면 젖힘) 으로 돌고, 세기는 hit.pow 에 비례, 시간이 지나면 사라짐
+func test_w38_hit_flinch() -> void:
+	for ch in ["tank", "ninja"]:
+		var b = _body(ch)
+		if b.ext == null:
+			b.free()
+			continue
+		var X = b.ext
+		X.clipset = {} # 클립 섞임은 실제 시간 (cw) 따라 변하니 움찔만 따로 봄
+		var sk: Skeleton3D = X.sk
+		var bi := sk.find_bone("mixamorig_Spine2")
+		var hb := sk.find_bone("mixamorig_Head")
+		var hit := func(age: float, pw: float) -> Dictionary: return _st({"hit": {"id": 1, "age": age, "stop": 0.0, "dx": -1.0, "dy": 0.0, "pow": pw}})
+		X.sync(hit.call(5.0, 1.0))
+		var q0: Quaternion = sk.get_bone_pose_rotation(bi)
+		var h0 := _bone_pos(sk, "mixamorig_Head")
+		X.sync(hit.call(0.04, 0.6))
+		var a_weak: float = q0.angle_to(sk.get_bone_pose_rotation(bi))
+		X.sync(hit.call(0.04, 2.0))
+		var a_strong: float = q0.angle_to(sk.get_bone_pose_rotation(bi))
+		var h1 := _bone_pos(sk, "mixamorig_Head")
+		check(a_strong > 0.03 and a_strong < 0.5, "%s 맞음 움찔: 척추가 %.3f rad 돌아감 (0.03~0.5)" % [ch, a_strong])
+		check(a_strong > a_weak * 1.5, "%s 센 타격 (%.3f) 이 약한 타격 (%.3f) 보다 크게" % [ch, a_strong, a_weak])
+		check(h1.x < h0.x - 0.005, "%s 뒤로 밀리면 머리가 뒤로 젖혀짐 (%.3f → %.3f)" % [ch, h0.x, h1.x])
+		X.sync(hit.call(K.EXT_HIT_FLINCH_S + 0.1, 2.0))
+		check(q0.angle_to(sk.get_bone_pose_rotation(bi)) < 1e-4, "%s 시간이 지나면 움찔 없음" % ch)
+		b.free()
+
+
+# W38 도발·승리 클립: 전용 도발 (EMOTE_CHAR)·승리만 클립으로, 힘 빠진 상태·다른 이모트·닌자 (클립 없음) 는 코드. 도발 클립 길이 = EMOTE_MS, 끝은 쉬는 자세로 돌아옴
+func test_w38_taunt_victory_clips() -> void:
+	for ch in ["tank", "hunter", "hook"]:
+		var info = Ext.load_char(ch)
+		var cc: Dictionary = info.cfg.clips
+		check(info.clipset.has(str(cc.get("taunt", ""))) and info.clipset.has(str(cc.get("victory", ""))), "%s 도발·승리 클립 있음" % ch)
+		var tl: float = float(info.clipset[str(cc.taunt)].len)
+		check(absf(tl - C.EMOTE_MS / 1000.0) < 0.05, "%s 도발 클립 길이 %.2f = 이모트 시간" % [ch, tl])
+		var s1 := Clips.select(cc, _st({"emote": int(C.EMOTE_CHAR), "emoteT": 0.7}), 0.0)
+		check(s1.clip == str(cc.taunt) and absf(float(s1.t) - 0.7) < 1e-5, "%s 도발 = 도발 클립, 시각 = 이모트 시간" % ch)
+		check(Clips.select(cc, _st({"emote": 1, "emoteT": 0.7}), 0.0).clip == "", "%s 다른 이모트는 코드" % ch)
+		var s2 := Clips.select(cc, _st({"victory": 1.3}), 0.0)
+		check(s2.clip == str(cc.victory) and s2.get("loop", false), "%s 승리 = 승리 클립 (반복)" % ch)
+		check(Clips.select(cc, _st({"victory": 1.3, "stunned": true}), 0.0).clip == "", "%s 힘 빠지면 코드 (래그돌)" % ch)
+		check(Clips.select(cc, _st({"emote": int(C.EMOTE_CHAR), "tumble": 0.5}), 0.0).clip == "", "%s 구르면 도발 안 함" % ch)
+		var b = _body(ch)
+		if b.ext != null:
+			var X = b.ext
+			var sk: Skeleton3D = X.sk
+			X.sync()
+			var h0 := _bone_pos(sk, "mixamorig_RightHand")
+			X.preview_clip(str(cc.victory), 0.4)
+			check(_bone_pos(sk, "mixamorig_RightHand").distance_to(h0) > 0.04 or _bone_pos(sk, "mixamorig_LeftHand").y > 0.0, "%s 승리 클립이 몸을 움직임" % ch)
+			X.preview_clip(str(cc.taunt), tl)
+			var end_pos := _bone_pos(sk, "mixamorig_LeftHand")
+			X.preview_clip("idle", 0.0)
+			check(end_pos.distance_to(_bone_pos(sk, "mixamorig_LeftHand")) < 0.06, "%s 도발 클립 끝이 쉬는 자세로 돌아옴 (%.3f)" % [ch, end_pos.distance_to(_bone_pos(sk, "mixamorig_LeftHand"))])
+		b.free()
+
+
+# W38 1인칭 휘두름 보정: 서버 단계 (wind·strike·rec) 에 곡선이 이어지고 (준비 끝 = W, 타격 끝 = S, 회복 끝 = 0), 표에 없는 동작·끊김은 0
+func test_w38_viewmodel_act_swing() -> void:
+	var VM := preload("res://chars/viewmodel.gd")
+	var K2 := C
+	var act := func(mv: String, ph: String, u: float) -> Dictionary: return {"id": 1, "move": mv, "phase": ph, "u": u, "air": false}
+	check(VM.act_swing(null) == [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "동작 없음 = 0")
+	check(VM.act_swing(act.call("찌르기", "strike", 0.5)) == [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "표에 없는 동작 (닌자 등) = 0")
+	check(VM.act_swing(act.call("베기", "broken", 0.5)) == [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "끊김 = 0")
+	for mv in K2.VM_ACT_STYLE:
+		var st: Dictionary = K2.VM_ACT_SWING[K2.VM_ACT_STYLE[mv]]
+		var w: Array = VM.act_swing(act.call(mv, "wind", 1.0))
+		var s0: Array = VM.act_swing(act.call(mv, "strike", 0.0))
+		var s1: Array = VM.act_swing(act.call(mv, "strike", 1.0))
+		var r0: Array = VM.act_swing(act.call(mv, "rec", 0.0))
+		var r1: Array = VM.act_swing(act.call(mv, "rec", 1.0))
+		for i in 6:
+			check(absf(w[i] - st.W[i]) < 1e-5 and absf(s0[i] - st.W[i]) < 1e-5, "%s 준비 끝 = 타격 시작 = W[%d]" % [mv, i])
+			check(absf(s1[i] - st.S[i]) < 1e-5 and absf(r0[i] - st.S[i]) < 1e-5, "%s 타격 끝 = 회복 시작 = S[%d]" % [mv, i])
+			check(absf(r1[i]) < 1e-5, "%s 회복 끝 = 0" % mv)
+	# 모든 스타일 동작은 서버 평타·스킬 이름 (config BASIC_ATTACKS 의 name 또는 스킬 이름) 이어야 함
+	var names := {}
+	for chn in ["tank", "hunter", "hook"]:
+		for a in C.BASIC_ATTACKS[chn].chain + C.BASIC_ATTACKS[chn].air:
+			names[a.name] = true
+			if a.has("loaded"):
+				names[a.loaded.name] = true
+	for mv in K2.VM_ACT_STYLE:
+		check(names.has(mv) or ["tankSlam", "hookSlam", "hookThrow", "hunterAim"].has(mv), "VM_ACT_STYLE %s 는 실제 동작 이름" % mv)

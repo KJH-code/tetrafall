@@ -54,5 +54,10 @@ const EXT_CLIP_IN := 14.0
 const EXT_CLIP_OUT := 30.0
 const EXT_CLIP_MOTOR_MIN := 0.9
 const EXT_CLIP_FADE_S := 0.10
+# W38 맞음 움찔 (external.gd _hit_flinch): 맞은 뒤 FLINCH_S 초 동안 척추 둘·머리 뼈 [이름, 비율] 을 RAD × 세기 (hit.pow 0.4~2) 만큼 젖힘, 감쇠 시간 DECAY_S
+const EXT_HIT_FLINCH_S := 0.30
+const EXT_HIT_FLINCH_DECAY_S := 0.09
+const EXT_HIT_FLINCH_RAD := 0.18
+const EXT_HIT_FLINCH_BONES := [["mixamorig_Spine1", 0.5], ["mixamorig_Spine2", 0.6], ["mixamorig_Head", 0.8]]
 const EXT_HIT_FACE_S := 0.45 # 맞은 뒤 이만큼 (초) '맞음' 표정
 const EXT_FLASH := 0.55 # 경직 하얀 깜빡임 (외부 모델은 피부 부위를 몰라서 몸 전체 하얀 발광으로)

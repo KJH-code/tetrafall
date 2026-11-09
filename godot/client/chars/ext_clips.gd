@@ -4,6 +4,8 @@
 # 여기는 순수 계산 (노드 없음): 상태 (body._anim_state 와 같은 모양) → 어느 클립을 몇 초에 재생할지. 파일 읽기는 load_lib.
 extends RefCounted
 
+const C := preload("res://core/config.gd")
+
 # 공격 눈금 (초, 클립 안): 준비 u 0~1 → 0~WIND, 타격 u → WIND~STRIKE, 회복 u → STRIKE~REC (anim_ninja.py WIND·STRIKE·REC 와 같음, cfg.clips.marks 로 덮음)
 const MARKS := [0.30, 0.40, 0.80]
 
@@ -41,6 +43,15 @@ static func select(cc: Dictionary, st: Dictionary, air_t: float) -> Dictionary:
 	var none := {"clip": "", "t": 0.0, "air": false, "kind": ""}
 	if cc.is_empty():
 		return none
+	# W38 도발 (전용 도발 이모트)·승리 포즈 클립 (cfg.clips.taunt / victory): 힘 빠진 상태가 아니고 방금 맞은 게 아닐 때만 — 아니면 아래대로 코드
+	var weak: bool = bool(st.get("stunned", false)) or float(st.get("recover", 0.0)) > 0.0 or float(st.get("tumble", 0.0)) > 0.0 or float(st.get("flip", -1.0)) >= 0.0 \
+			or float(st.get("dizzy", 0.0)) > 0.0 or float(st.get("whirl", -1.0)) >= 0.0 or float(st.get("airDash", 0.0)) > 0.0 or bool(st.get("glide", false))
+	var recent: bool = st.get("hit") is Dictionary and float(st.hit.get("age", 9.0)) < float(cc.get("hit_code_s", 0.4))
+	if not weak and not recent and st.get("act") == null and not bool(st.get("air", false)):
+		if float(st.get("victory", -1.0)) >= 0.0 and cc.has("victory"):
+			return {"clip": str(cc.victory), "t": float(st.victory), "air": false, "kind": "pose", "loop": true}
+		if int(st.get("emote", -1)) == int(C.EMOTE_CHAR) and cc.has("taunt"):
+			return {"clip": str(cc.taunt), "t": float(st.get("emoteT", 0.0)), "air": false, "kind": "pose"}
 	# 힘 빠진·특수 자세는 늘 코드 (래그돌이 힘 빠진 몸을 굴림)
 	if bool(st.get("stunned", false)) or float(st.get("recover", 0.0)) > 0.0 or float(st.get("tumble", 0.0)) > 0.0 or float(st.get("flip", -1.0)) >= 0.0 \
 			or float(st.get("dizzy", 0.0)) > 0.0 or float(st.get("whirl", -1.0)) >= 0.0 or int(st.get("emote", -1)) >= 0 or float(st.get("victory", -1.0)) >= 0.0 \
