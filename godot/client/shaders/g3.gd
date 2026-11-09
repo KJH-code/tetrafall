@@ -100,6 +100,8 @@ static func set_outline_far(from: float, gone: float, min_k: float) -> void:
 static func attach_outline(m: Material, o: Material) -> void:
 	m.next_pass = o if outline_on else null
 	_outlined.append([weakref(m), o])
+	if _outlined.size() > _outlined_limit:
+		_outlined_limit = _prune(_outlined) # W37: 사라진 재질 기록 정리 (_track 과 같은 까닭)
 
 
 # 설정 '외곽선' (View.settings.outline, World 가 부름): 만든 재질 전부에 곧바로
@@ -658,12 +660,29 @@ static func _low(arg) -> bool:
 	return low if arg == null else bool(arg)
 
 
+# W37: 몸·판마다 재질을 새로 만드는데 (방마다 8명 × 재질 10~30개) 목록은 set_low 때만 정리돼서 판마다 WeakRef·Callable 이 쌓이던 것 (몸 하나 만들고 지울 때마다 객체 +10~29, 긴 판 누수) →
+# 목록이 한계를 넘으면 사라진 재질만 제자리에서 버림 (set_low 도는 중엔 건드리지 않음 — 거기서 pop_back 으로 맨 뒤 둘을 뺌). 한계는 살아 있는 수의 두 배 (최소 512)
+static var _mats_busy := false
+static var _mats_limit := 512
+static var _outlined_limit := 512
+
+
+static func _prune(list: Array) -> int:
+	var live := list.filter(func(e): return e[0].get_ref() != null)
+	list.clear()
+	list.append_array(live)
+	return maxi(512, live.size() * 2)
+
+
 static func _track(m: ShaderMaterial, make: Callable) -> void:
 	_mats.append([weakref(m), make])
+	if _mats.size() > _mats_limit and not _mats_busy:
+		_mats_limit = _prune(_mats)
 
 
 static func set_low(world: Node3D, on: bool) -> void:
 	low = on
+	_mats_busy = true
 	var keep := []
 	for e in _mats:
 		var m = e[0].get_ref()
@@ -683,6 +702,7 @@ static func set_low(world: Node3D, on: bool) -> void:
 		for k in fresh.get_meta_list():
 			m.set_meta(k, fresh.get_meta(k))
 	_mats = keep
+	_mats_busy = false
 	if world:
 		for n in world.find_children("G3Sprouts", "", true, false):
 			if n.has_meta("g3_last"):

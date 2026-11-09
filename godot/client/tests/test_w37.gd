@@ -75,3 +75,23 @@ func test_batch_shadow_twin() -> void:
 	check(b2.find_children("batch_sh*", "MeshInstance3D", true, false).is_empty(), "--no-batch-twin: 쌍둥이 없음")
 	b2.free()
 	WC.batch_twin_on = keep
+
+
+# G3 재질 기록 (_mats·_outlined) 정리: 몸을 만들고 지울 때마다 사라진 재질의 WeakRef·Callable 이 쌓이던 누수. 한계 (512) 를 넘으면 사라진 것만 버려서 길이가 한없이 늘지 않음
+func test_g3_material_registry_pruned() -> void:
+	var G3 := preload("res://shaders/g3.gd")
+	var held := []
+	for i in 3000:
+		var m = G3.toon_material(Color(0.1, 0.2, 0.3), {"vertex_color": true, "outline": true})
+		if i % 50 == 0:
+			held.append(m) # 일부는 살아 있어야 함 (정리가 산 재질을 버리면 안 됨)
+	check(G3._mats.size() < 1600, "재질 기록이 한없이 안 늘어남 (%d)" % G3._mats.size())
+	check(G3._outlined.size() < 1600, "외곽선 기록도 (%d)" % G3._outlined.size())
+	var tracked := 0
+	for m in held:
+		for e in G3._outlined:
+			if e[0].get_ref() == m:
+				tracked += 1
+				break
+	check(tracked == held.size(), "정리 뒤에도 산 재질의 외곽선 기록은 그대로 (%d/%d)" % [tracked, held.size()])
+	check(not G3._mats_busy, "set_low 밖에서는 정리 가능 상태")
