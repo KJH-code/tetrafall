@@ -42,14 +42,16 @@ const CHARS = {
   },
   // 갈고리 코트 자락: 엉덩이 아래 코트 (다리 축에서 먼 것), 부츠 위
   hook: {
-    parent: 'Hips', prefix: 'Skirt', chains: 3, N: 3, ytop: 0.46, ybot: 0.17, a0: 0.0, a1: 0.5, axisU: -1,
-    sel: ({ p, bone }) => {
+    parent: 'Hips', prefix: 'Skirt', chains: 3, N: 3, ytop: 0.46, ybot: 0.17, a0: 0.0, a1: 0.5, axisU: -1, centers: [-1.25, 0, 1.25],
+    sel: ({ p, bone, own }) => {
       const dleg = Math.min(segDist(p, bone.LeftUpLeg, bone.LeftLeg), segDist(p, bone.LeftLeg, bone.LeftFoot), segDist(p, bone.RightUpLeg, bone.RightLeg), segDist(p, bone.RightLeg, bone.RightFoot));
-      const out = sstep(0.075, 0.11, dleg);
+      const out = sstep(0.075, 0.11, dleg) * sstep(0.35, 0.65, own); // 팔·갈고리 (팔 뼈 가중치) 뺌
       const y = sstep(0.47, 0.40, p[1]) * sstep(0.18, 0.21, p[1]);
       const hx = bone.Hips[0], hz = bone.Hips[2];
       const ang = Math.atan2(p[2] - hz, p[0] - hx); // 앞 +x 가 0, 뒤 ±π, 왼 -z (-π/2)
-      return { m: out * y, u: ang };
+      const af = ang >= 0 ? ang - Math.PI : ang + Math.PI; // 뒤 = 0, 왼 = +π/2, 오른 = -π/2
+      const front = sstep(2.7, 2.1, Math.abs(af)); // 앞자락은 다리를 따라감 (다리를 뚫지 않게)
+      return { m: out * y * front, u: ang };
     },
   },
 };
@@ -103,6 +105,7 @@ async function texSampler(prim) {
     return [data[o], data[o + 1], data[o + 2]];
   };
 }
+const OWN = new Set(['Hips', 'Spine', 'Spine1', 'Spine2', 'LeftUpLeg', 'RightUpLeg', 'LeftLeg', 'RightLeg'].map((n) => jIdx.get(P + n)));
 const infoByNode = new Map();
 for (const n of meshNodes) {
   const prim = n.getMesh().listPrimitives()[0];
@@ -111,9 +114,12 @@ for (const n of meshNodes) {
   const samp = await texSampler(prim);
   const cnt = pos.length / 3;
   const m = new Float32Array(cnt), u = new Float32Array(cnt);
+  const ja0 = prim.getAttribute('JOINTS_0').getArray(), wa0 = prim.getAttribute('WEIGHTS_0').getArray();
   for (let i = 0; i < cnt; i++) {
     const p = [pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]];
-    const r = cfg.sel({ p, rgb: samp(uv[i * 2], uv[i * 2 + 1]), mask: uv2 ? uv2[i * 2] : 0, bone });
+    let own = 0; // 몸통·다리 뼈에 매인 가중치 비율 (팔·손이 센 꼭짓점을 가려냄)
+    for (let q = 0; q < 4; q++) if (OWN.has(ja0[i * 4 + q])) own += wa0[i * 4 + q];
+    const r = cfg.sel({ p, rgb: samp(uv[i * 2], uv[i * 2 + 1]), mask: uv2 ? uv2[i * 2] : 0, bone, own });
     m[i] = r.m; u[i] = r.u;
   }
   infoByNode.set(n, { prim, m, u, pos, cnt });
@@ -126,7 +132,8 @@ for (let i = 0; i < st.cnt; i++) if (st.m[i] > 0.5) us.push(st.u[i]);
 us.sort((a, b) => a - b);
 if (us.length < 100) throw new Error('천 꼭짓점이 너무 적음 ' + us.length);
 let centers;
-if (cfg.axisU === -1) { // 둘레 각: 뒤 (±π) 를 가운데로 접어 연속으로 (각 → 뒤 기준 -π..π 로 돌려 분위수)
+if (cfg.centers) centers = cfg.centers.slice();
+else if (cfg.axisU === -1) { // 둘레 각: 뒤 (±π) 를 가운데로 접어 연속으로 (각 → 뒤 기준 -π..π 로 돌려 분위수)
   centers = [];
   const f = us.map((a) => (a >= 0 ? a - Math.PI : a + Math.PI)).sort((a, b) => a - b); // 뒤 = 0
   for (let k = 0; k < cfg.chains; k++) centers.push(f[Math.floor(f.length * (k + 0.5) / cfg.chains)]);
@@ -171,7 +178,15 @@ for (let k = 0; k < cfg.chains; k++) {
       row.push([prev[0], ys[i], prev[2]]);
     } else row.push([sx / sw, ys[i], sz / sw]);
   }
-  // 머리는 몸 가까이: 첫 단계는 부모 뼈 x (등) 쪽으로 당김
+  // 가로 평균이 들쭉날쭉하면 뼈가 지그재그라 높이에 대해 직선으로 맞춤 (x·z 각각 최소제곱)
+  const nn = row.length, my = (nn - 1) / 2;
+  for (const ax of [0, 2]) {
+    const mean = row.reduce((t, r) => t + r[ax], 0) / nn;
+    let num = 0, den = 0;
+    row.forEach((r, i) => { num += (i - my) * (r[ax] - mean); den += (i - my) ** 2; });
+    const sl = num / den;
+    row.forEach((r, i) => { r[ax] = mean + sl * (i - my); });
+  }
   heads.push(row);
 }
 
