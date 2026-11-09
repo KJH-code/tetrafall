@@ -50,6 +50,7 @@ const JUNK := ["mixamorig", "bip", "bip01", "bip001", "def", "org", "jnt", "join
 
 static var _cache := {} # 캐릭터 → 모델 정보 (없으면 null)
 static var _req := {} # W30: 스레드로 미리 요청한 파일 (경로 → true)
+static var _scenes := {} # W41: 스레드 읽기가 끝난 장면을 미리 받아 둔 것 (경로 → PackedScene) — 받기 (메인 스레드 ~10ms) 와 정보 셈을 다른 프레임에
 static var _warm_i := 0
 static var _warm_wait := 0
 static var _warm_body = null
@@ -72,7 +73,10 @@ static func load_char(char_id: String):
 	var gp := glb_path(char_id)
 	var _ht := Hitch.t() # W30 히치 로거
 	if ResourceLoader.exists(gp):
-		var s = ResourceLoader.load_threaded_get(gp) if _req.has(gp) else load(gp)
+		var s = _scenes.get(gp)
+		if s == null:
+			s = ResourceLoader.load_threaded_get(gp) if _req.has(gp) else load(gp)
+		_scenes.erase(gp)
 		_req.erase(gp)
 		Hitch.span("몸 불러오기", char_id + " 파일", _ht)
 		if s is PackedScene:
@@ -131,6 +135,143 @@ static func warm_step(host: Node3D, make_body: Callable) -> bool:
 	_warm_wait = 2
 	Hitch.span("미리 그리기", "몸 " + id, _ht)
 	return false
+
+
+# ---- W41 미리 읽기·데우기를 조각으로 (world/prewarm_sched.gd 가 프레임 예산 안에서 한 조각씩 부름) ----
+const TexPre := preload("res://chars/tex_prefetch.gd")
+
+
+# 이 캐릭터 .glb·클립 하나만 스레드로 요청 (request_all 은 8명 한꺼번에 — 읽기가 끝나는 순간 업로드가 한 프레임에 몰림). 요청했거나 이미 있으면 false
+static func request_one(id: String) -> bool:
+	var gp := glb_path(id)
+	if _cache.has(id) or _req.has(gp) or not ResourceLoader.exists(gp):
+		return false
+	var ok := ResourceLoader.load_threaded_request(gp, "PackedScene", not lazy_tex) == OK
+	if ok:
+		_req[gp] = true
+	var cc = read_cfg(id).get("clips", {})
+	var cp: String = str((cc as Dictionary).get("file", "")) if cc is Dictionary else ""
+	if cp != "" and ResourceLoader.exists(cp) and not Clips.requested.has(cp) and ResourceLoader.load_threaded_request(cp, "PackedScene", true) == OK:
+		Clips.requested[cp] = true
+	return ok
+
+
+# 끝난 스레드 읽기 결과를 받아 둠 (load_char 가 쓸 것). 받았으면 true
+static func take_scene(id: String) -> bool:
+	var gp := glb_path(id)
+	if _cache.has(id) or not _req.has(gp) or _scenes.has(gp):
+		return false
+	var s = ResourceLoader.load_threaded_get(gp)
+	if s != null:
+		_scenes[gp] = s
+		_req.erase(gp)
+		return true
+	return false
+
+
+# .glb 읽기가 끝났나 (요청 안 했거나 이미 정보가 있으면 참)
+static func file_ready(id: String) -> bool:
+	var gp := glb_path(id)
+	if _cache.has(id) or not _req.has(gp):
+		return true
+	return ResourceLoader.load_threaded_get_status(gp) != ResourceLoader.THREAD_LOAD_IN_PROGRESS
+
+
+# 그 캐릭터 몸이 쓸 알베도·마스크를 스레드로 요청: on_stage = 대기실 큰 캐릭터·초상 (최고 LOD), game = 판 몸 (화질 LOD). 정보 (load_char) 가 이미 있어야 함. 요청한 수
+static func prefetch_tex(id: String, on_stage: bool, game: bool) -> int:
+	if not lazy_tex or not _cache.has(id) or _cache[id] == null:
+		return 0
+	var info: Dictionary = _cache[id]
+	var nodes := {}
+	if on_stage:
+		nodes[pick_lod(info.cfg, true, true)] = true
+	if game:
+		nodes[pick_lod(info.cfg, true, false)] = true
+	var n := 0
+	for sf in info.surfs:
+		if nodes.has(str(sf.get("node", ""))) and TexPre.request(str(sf.get("tex_path", ""))):
+			n += 1
+	for node in nodes:
+		var mp := str(info.cfg.get("skin_mask", {}).get(node, ""))
+		if mp != "" and TexPre.request(mp):
+			n += 1
+	return n
+
+
+# 몸 데우기 한 캐릭터를 조각으로: 요청 → (읽기 끝날 때까지 기다림, 일 없음) → 정보 → 텍스처 요청 → 몸 만들기+작게 그리기 → 두 프레임 뒤 치움.
+# step 이 true 를 돌려주면 끝. 조각마다 프레임 예산 스케줄러가 부름 (한 조각 = 메인 스레드 일 한 덩이)
+class WarmJob:
+	extends RefCounted
+	var id := ""
+	var stage := 0
+	var body: Node3D = null
+	var wait := 2
+	var want_game := true # 판 몸 LOD 텍스처 미리 읽기
+	var want_stage := false # 대기실 큰 캐릭터·초상 (최고 LOD) 텍스처 미리 읽기
+	var make := true # 몸까지 만들어 작게 그려 봄 (아니면 미리 읽기만)
+
+	func _init(id_: String, game_ := true, stage_ := false, make_ := true) -> void:
+		id = id_
+		want_game = game_
+		want_stage = stage_
+		make = make_
+
+	# 읽기가 다 끝났나 (몸을 만들 때 텍스처를 기다리지 않을 만큼)
+	func tex_ready() -> bool:
+		var Ext_ = load("res://chars/external.gd")
+		var info = Ext_._cache.get(id)
+		if info == null:
+			return true
+		var T = preload("res://chars/tex_prefetch.gd")
+		for sf in info.surfs:
+			var tp := str(sf.get("tex_path", ""))
+			if tp != "" and not T.ready(tp):
+				return false
+		return true
+
+	func step(host: Node3D, make_body: Callable) -> bool:
+		var Ext_ = load("res://chars/external.gd")
+		match stage:
+			0:
+				if not preload("res://chars/body.gd").use_ext or not ResourceLoader.exists(Ext_.glb_path(id)):
+					return true
+				Ext_.request_one(id)
+				stage = 1
+			1:
+				if Ext_.file_ready(id):
+					stage = 2
+			2:
+				var _t2 := Hitch.t()
+				Ext_.take_scene(id) # 받기만 (장면 정보 셈은 다음 조각)
+				Hitch.span("몸 불러오기", id + " 받기", _t2)
+				stage = 3
+			3:
+				Ext_.load_char(id) # 정보 셈 (몸마다 같이 씀)
+				Ext_.prefetch_tex(id, want_stage, want_game)
+				stage = 4 if make or want_stage else 9
+			4:
+				if not tex_ready():
+					return false
+				if not make:
+					return true
+				var _ht := Hitch.t()
+				body = make_body.call(id, Color(0.8, 0.3, 0.3))
+				var cam := host.get_viewport().get_camera_3d() if host.is_inside_tree() else null
+				body.scale = Vector3.ONE * 0.001
+				host.add_child(body)
+				if cam:
+					body.global_position = cam.global_position + (-cam.global_transform.basis.z) * 2.0
+				Hitch.span("미리 그리기", "몸 " + id, _ht)
+				stage = 5
+			5:
+				wait -= 1
+				if wait <= 0:
+					body.queue_free()
+					body = null
+					return true
+			_:
+				return true
+		return false
 
 
 # 조정 값: chars_config.gd EXT_DEFAULTS 위에 assets/models/ext/<id>.json (있으면) 을 덮음
@@ -568,13 +709,13 @@ class Ext extends Node3D:
 	static func tex_of(sf: Dictionary):
 		var p: String = str(sf.get("tex_path", ""))
 		if p != "":
-			return load(p)
+			return preload("res://chars/tex_prefetch.gd").get_tex(p) # W41: 미리 요청한 게 있으면 그걸
 		return sf.get("tex")
 
 	# W34 cfg.skin_mask[메시 노드 이름] 의 마스크 텍스처 (없으면 null = 꼭짓점 판정)
 	static func skin_mask_for(cfg: Dictionary, node: String):
 		var p: String = str(cfg.get("skin_mask", {}).get(node, ""))
-		return load(p) if p != "" and ResourceLoader.exists(p) else null
+		return preload("res://chars/tex_prefetch.gd").get_tex(p) if p != "" and ResourceLoader.exists(p) else null
 
 	# 빛 안 받는 색 (눈 흰자): 툰 재질의 알베도 검정 + 발광 = 색 → 하늘빛·해 음영 없이 그 색 (외곽선 없음, op < 1 이면 반투명)
 	static func unlit_for(col: Color, op: float) -> ShaderMaterial:

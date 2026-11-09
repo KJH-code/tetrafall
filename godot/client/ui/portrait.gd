@@ -5,6 +5,9 @@
 extends Node
 
 const Hitch := preload("res://core/hitch.gd")
+const PSched := preload("res://world/prewarm_sched.gd") # W41
+const Ext := preload("res://chars/external.gd")
+const Opts := preload("res://core/opts.gd")
 const C := preload("res://core/config.gd")
 const CHARS_PATH := "res://chars/chars.gd"
 
@@ -105,8 +108,24 @@ static func _has_local_light(sh: Shader) -> bool:
 
 # 메뉴에 오래 있으면 카드 8장을 미리 (JS warmPortraits)
 func warm(color: Color) -> void:
+	if Opts.args().has("--no-prewarm-sched"):
+		for c in C.CHARACTERS:
+			_lookup(str(c), color, render_px(128, float(View.ui_scale)), true)
+		return
+	# W41: 카드 8장을 한꺼번에 줄 세우면 (장마다 최고 LOD 몸 만들기 30ms 안팎 + 그림 읽어 오기) 메뉴에서 8프레임 연속 끊김 →
+	# 캐릭터마다 스케줄러 조각 (모델·텍스처 스레드 읽기 → 끝나면 줄 세움), 장 사이 250ms 간격
+	var rank := 0
 	for c in C.CHARACTERS:
-		_lookup(str(c), color, render_px(128, float(View.ui_scale)), true)
+		var id := str(c)
+		var job = Ext.WarmJob.new(id, false, true, false)
+		var done := [false]
+		PSched.main.add("portrait." + id, 8 + rank, func():
+			if not done[0]:
+				done[0] = job.step(null, Callable())
+				return false
+			_lookup(id, color, render_px(128, float(View.ui_scale)), true)
+			return true, 3.0, "menu", 250.0 * rank)
+		rank += 1
 
 
 func _process(_d: float) -> void:

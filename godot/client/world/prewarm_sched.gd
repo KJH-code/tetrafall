@@ -13,11 +13,16 @@ extends RefCounted
 const Hitch := preload("res://core/hitch.gd")
 
 const BUDGET_MS := 3.0 # 프레임당 (조각 시간 합) 예산
-const FRAME_CAP_MS := 25.0 # 직전 프레임이 이보다 길면 이번엔 쉼
+const FRAME_CAP_MS := 12.0 # 직전 프레임이 (평소 프레임 × FRAME_REL + 이만큼) 보다 길면 이번엔 쉼 — 평소 자체가 느린 기계 (소프트웨어 렌더·내장 GPU) 에서 영영 못 돌지 않게 평소 값에 상대
+const FRAME_REL := 1.5
 const QUIET_MS := 150.0 # 입력 뒤 이만큼 쉼
 const STARVE_MS := 2500.0 # 이만큼 못 돌았으면 쉬는 규칙을 어기고 한 조각
 const MAX_PIECES := 4 # 한 프레임 조각 수 상한 (아주 작은 조각이 많아도)
 const EST_DEFAULT_MS := 1.0
+
+
+# 게임 전체가 같이 쓰는 하나 (world.gd 가 프레임마다 step, ui·초상 등이 add)
+static var main: Sched = Sched.new()
 
 
 class Task:
@@ -49,6 +54,7 @@ class Sched:
 	var frames_busy := 0 # 조각을 돌린 프레임 수
 	var worst_frame_ms := 0.0 # 한 프레임에 돌린 조각 시간 합의 최대
 	var clock: Callable # () → 지금 ms (테스트가 가짜 시계를 끼움). 비어 있으면 엔진 시계
+	var base_ms := 0.0 # 평소 프레임 간격 (쉬지 않은 프레임의 느린 이동 평균)
 	var _seq := 0
 	var _last_input := -1e12
 	var _last_run := 0.0
@@ -123,7 +129,10 @@ class Sched:
 		if not enabled or tasks.is_empty() or hold:
 			return 0
 		var starving := at - _last_run >= starve_ms
-		var resting := (prev_frame_ms > frame_cap_ms) or (at - _last_input < quiet_ms)
+		var slow := base_ms > 0.0 and prev_frame_ms > base_ms * FRAME_REL + frame_cap_ms
+		if prev_frame_ms > 0.0 and not slow:
+			base_ms = prev_frame_ms if base_ms <= 0.0 else lerpf(base_ms, prev_frame_ms, 0.05)
+		var resting := slow or (at - _last_input < quiet_ms)
 		if resting and not starving:
 			return 0
 		var spent := 0.0

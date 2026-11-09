@@ -80,14 +80,14 @@ static func report(frames: int) -> String:
 	return " · ".join(rows.map(func(r): return "%s %.2fms" % [r[0], r[1]]))
 
 
-# '처음 쓰는 값' 표 (W41): 처음 − 둘째 부름 (둘째가 없으면 처음 그대로) 이 큰 순서. 줄 = "이름 | 처음 ms | 둘째 ms | 번 | 최대 ms | 평균 ms | 처음−둘째 ms"
+# '처음 쓰는 값' 표 (W41): 처음 − 둘째 부름 (둘째가 없으면 처음 그대로) 이 큰 순서. 줄 = "이름 | 처음 ms | 둘째 ms | 번 | 최대 ms | 평균 ms | 처음-둘째 ms"
 static func first_report(min_ms := 1.0) -> Array:
 	var rows := []
 	for k in firsts:
 		var f: Array = firsts[k]
 		var second: float = f[1] / 1000.0 if f[1] >= 0 else 0.0
 		var d: float = f[0] / 1000.0 - second
-		if f[3] / 1000.0 >= min_ms: # 가장 큰 부름이 문턱 넘는 것 (처음−둘째 가 음수여도 — 매번 느린 구간도 보이게)
+		if f[3] / 1000.0 >= min_ms: # 가장 큰 부름이 문턱 넘는 것 (처음-둘째 가 음수여도 — 매번 느린 구간도 보이게)
 			rows.append([k, f[0] / 1000.0, second if f[1] >= 0 else -1.0, f[2], f[3] / 1000.0, f[4] / 1000.0 / maxf(1, f[2]), d])
 	rows.sort_custom(func(a, b): return a[6] > b[6])
-	return rows.map(func(r): return "%s | 처음 %.1fms | 둘째 %s | %d번 | 최대 %.1fms | 평균 %.2fms | 처음−둘째 %.1fms" % [r[0], r[1], ("%.1fms" % r[2]) if r[2] >= 0.0 else "-", r[3], r[4], r[5], r[6]])
+	return rows.map(func(r): return "%s | 처음 %.1fms | 둘째 %s | %d번 | 최대 %.1fms | 평균 %.2fms | 처음-둘째 %.1fms" % [r[0], r[1], ("%.1fms" % r[2]) if r[2] >= 0.0 else "-", r[3], r[4], r[5], r[6]])

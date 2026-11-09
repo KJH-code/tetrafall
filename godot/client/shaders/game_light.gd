@@ -28,6 +28,7 @@ var lut: ImageTexture3D = null # 지금 프리셋의 색 보정 (grade_lut, 처�
 var _keep_n := -1 # 지난 프레임 빛 무리 그대로 쓸 수 있음 (그때 수, -1 = 아니)
 var _keep_halos = null
 var _keep_p = null
+var _lut_imgs: Array[Image] = [] # warm_lut_step 가 만드는 중인 층
 var _env_set := [] # 색 보정을 넣은 [환경, 켬, 프리셋]
 
 
@@ -64,6 +65,7 @@ func set_preset(n: String) -> void:
 	preset_name = n if C.GAME_LIGHT_PRESETS.has(n) else "off"
 	p = C.GAME_LIGHT_PRESETS[preset_name]
 	lut = null
+	_lut_imgs = []
 	var v: Array = p.vignette
 	var rgb := String(v[2]).split(",")
 	vig.material.set_shader_parameter("color", Color(float(rgb[0]) / 255.0, float(rgb[1]) / 255.0, float(rgb[2]) / 255.0, float(v[0])))
@@ -169,18 +171,38 @@ static func grade_lut(g: Array, n: int = K.GRADE_LUT) -> ImageTexture3D:
 static func grade_images(g: Array, n: int) -> Array[Image]:
 	var imgs: Array[Image] = []
 	for z in n:
-		var data := PackedByteArray()
-		data.resize(n * n * 3)
-		var i := 0
-		for y in n:
-			for x in n:
-				var o := css_grade(Color((x + 0.5) / n, (y + 0.5) / n, (z + 0.5) / n), g)
-				data[i] = int(round(o.r * 255.0))
-				data[i + 1] = int(round(o.g * 255.0))
-				data[i + 2] = int(round(o.b * 255.0))
-				i += 3
-		imgs.append(Image.create_from_data(n, n, false, Image.FORMAT_RGB8, data))
+		imgs.append(grade_layer(g, n, z))
 	return imgs
+
+
+# LUT 한 층 (z = 파랑). 한 번에 다 만들면 (n=32 → 약 18ms) 카운트다운 첫 프레임이 멈춤 → 메뉴에서 한 층씩 (warm_lut_step)
+static func grade_layer(g: Array, n: int, z: int) -> Image:
+	var data := PackedByteArray()
+	data.resize(n * n * 3)
+	var i := 0
+	for y in n:
+		for x in n:
+			var o := css_grade(Color((x + 0.5) / n, (y + 0.5) / n, (z + 0.5) / n), g)
+			data[i] = int(round(o.r * 255.0))
+			data[i + 1] = int(round(o.g * 255.0))
+			data[i + 2] = int(round(o.b * 255.0))
+			i += 3
+	return Image.create_from_data(n, n, false, Image.FORMAT_RGB8, data)
+
+
+# W41: 메뉴에서 색 보정 LUT 를 한 층씩 미리 (프레임 예산 스케줄러가 부름). 다 만들었으면 true
+func warm_lut_step() -> bool:
+	if lut != null or not is_on():
+		return true
+	var n: int = K.GRADE_LUT
+	_lut_imgs.append(grade_layer(p.grade, n, _lut_imgs.size()))
+	if _lut_imgs.size() < n:
+		return false
+	var t := ImageTexture3D.new()
+	t.create(Image.FORMAT_RGB8, n, n, n, false, _lut_imgs)
+	lut = t
+	_lut_imgs = []
+	return true
 
 
 func _grade_lut() -> ImageTexture3D:

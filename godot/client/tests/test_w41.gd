@@ -111,7 +111,14 @@ func test_frame_cap_hold_cancel_after() -> void:
 	var log := []
 	s.add("a", 1, _piece(f, 1.0, log, "a"), 1.0, "g", 0.0, 0.0)
 	s.add("late", 1, _piece(f, 1.0, log, "late"), 1.0, "g2", 500.0, 0.0)
-	check(s.step(100.0, 60.0) == 0, "직전 프레임이 느리면 쉼")
+	s.base_ms = 10.0 # 평소 10ms
+	check(s.step(100.0, 60.0) == 0, "직전 프레임이 평소보다 많이 느리면 쉼")
+	check(s.base_ms == 10.0, "느린 프레임은 평소 값에 안 섞임")
+	var slow := _sched(f) # 평소 자체가 느린 기계 (100ms): 110ms 는 쉴 이유 아님
+	slow.add("q", 1, _piece(f, 1.0, [], "q"), 1.0, "", 0.0, 0.0)
+	slow.step(0.0, 100.0)
+	slow.add("r", 1, _piece(f, 1.0, [], "r"), 1.0, "", 0.0, 0.0)
+	check(slow.step(200.0, 110.0) == 1, "평소가 느린 기계에선 계속 돎")
 	check(s.step(100.0, 10.0, true) == 0, "hold 면 쉼")
 	check(s.step(100.0, 10.0) == 1 and log == ["a"], "not_before 전 작업은 안 돎")
 	check(s.step(600.0) == 1 and log == ["a", "late"], "시각 지나면 돎")
@@ -132,10 +139,66 @@ func test_prof_first_second() -> void:
 	var rows := Prof.first_report(1.0)
 	Prof.track = false
 	Prof.firsts = {}
-	check(rows.size() == 1 and rows[0].contains("처음 9.0ms") and rows[0].contains("둘째 1.0ms") and rows[0].contains("3번") and rows[0].contains("처음−둘째 8.0ms"), "처음·둘째 표: %s" % str(rows))
+	check(rows.size() == 1 and rows[0].contains("처음 9.0ms") and rows[0].contains("둘째 1.0ms") and rows[0].contains("3번") and rows[0].contains("처음-둘째 8.0ms"), "처음·둘째 표: %s" % str(rows))
 
 
 func test_frame_line() -> void:
 	var l := Hitch.frame_line(1.5, 40.0, 12.0, 3.0, "메뉴", {"a": 5.0, "b": 0.1}, [["몸 만들기", "tank", 9.0], ["판 단계", "playing", -1.0]])
 	var c := l.split("\t")
 	check(c.size() == 7 and c[4] == "메뉴" and c[5] == "a 5.0" and c[6].contains("몸 만들기 tank 9.0ms") and c[6].contains("판 단계 playing"), "프레임 한 줄: %s" % l)
+
+
+# 적응형 해상도: 판 시작 직후 스파이크 (로딩·첫 사용) 를 GPU 병목으로 안 봄 · 바꾼 직후 창 건너뜀
+const AC := preload("res://world/adapt_calc.gd")
+const WC := preload("res://world/world_config.gd")
+
+
+func _feed(ctl, frames: Array) -> int:
+	var changes := 0
+	for f in frames:
+		if ctl.push(f, -1.0, 0.0): # 일 시간 모름 → GPU 쪽으로 침
+			changes += 1
+	return changes
+
+
+func test_adapt_ignores_spikes() -> void:
+	var c = AC.Ctl.new(1.0, 16.667)
+	var frames := []
+	for i in 40:
+		frames.append(10.0)
+	for i in 8: # 판 시작 직후: 몸 만들기·첫 그리기로 80ms 프레임이 띄엄띄엄 (창 20프레임의 40%)
+		frames.append(80.0)
+		frames.append(10.0)
+		frames.append(10.0)
+	var ch := _feed(c, frames)
+	check(ch == 0 and c.scale == 1.0, "스파이크만으로는 배율이 안 내려감: 변경 %d 배율 %s" % [ch, c.scale])
+	check(c.spikes >= 6, "스파이크로 버린 프레임 수: %d" % c.spikes)
+	# 끄고 (spike 배율을 아주 크게) 같은 입력이면 예전처럼 내려감 = 이 필터가 막은 것
+	var cfg: Dictionary = WC.ADAPT.duplicate()
+	cfg["spike"] = 1000.0
+	var c2 = AC.Ctl.new(1.0, 16.667, cfg)
+	_feed(c2, frames)
+	check(c2.scale < 1.0, "필터 없으면 같은 입력에 내려감 (비교): %s" % c2.scale)
+
+
+func test_adapt_sustained_slow_still_adapts() -> void:
+	var c = AC.Ctl.new(1.0, 16.667)
+	var frames := []
+	for i in 200:
+		frames.append(30.0) # 계속 30ms = GPU 병목 (스파이크 아님)
+	_feed(c, frames)
+	check(c.scale < 0.9, "계속 느리면 내려감: %s" % c.scale)
+
+
+func test_adapt_settle_after_change() -> void:
+	var c = AC.Ctl.new(1.0, 16.667)
+	var frames := []
+	for i in 20:
+		frames.append(30.0)
+	var ch1 := _feed(c, frames) # 첫 창 → 내림
+	check(ch1 == 1, "첫 창에서 한 번 내림: %d" % ch1)
+	var s1: float = c.scale
+	_feed(c, frames) # 바로 다음 창은 건너뜀 (3D 버퍼 다시 만든 직후)
+	check(c.scale == s1, "바꾼 직후 한 창은 판단 안 함: %s → %s" % [s1, c.scale])
+	_feed(c, frames)
+	check(c.scale < s1, "그다음 창은 다시 판단")

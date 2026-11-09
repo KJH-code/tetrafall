@@ -28,6 +28,9 @@ const CamRig := preload("res://world/cam_rig.gd")
 const LobbyDark := preload("res://world/lobby_dark.gd")
 const Gfx := preload("res://world/gfx.gd") # 화질 (W6): 설정 화질·창 크기·GPU → lowGfx·3D 배율·MSAA
 const ShadowCalc := preload("res://world/shadow_calc.gd") # W32: 그림자 거리
+const PSched := preload("res://world/prewarm_sched.gd") # W41: 메뉴·대기실 미리 하기를 프레임 예산 안에서 한 조각씩
+const TexPre := preload("res://chars/tex_prefetch.gd")
+const UiPrefs := preload("res://ui/ui_prefs.gd")
 const BBLOCKS := "res://world/bblocks.gd"
 const FX := "res://fx/fx.gd" # G5 효과 (있으면 fx_root 에 붙이고 setup(rig): 카메라 흔들림·KO 줌은 rig.hook)
 const G3_PATH := "res://shaders/g3.gd" # G3 툰·테마 (있으면 하늘·빛·안개·블록 재질을 G3 가 맡음)
@@ -66,6 +69,10 @@ var _menu_since := -1.0 # 메뉴에 머문 시각 (prewarm)
 var _ext_requested := false # W30: 외부 모델 스레드 미리 읽기 요청함
 var _ext_warm_done := false # W30: 외부 몸 미리 그리기 끝
 var _prewarmed = null # 셰이더 미리 데운 테마 (G3.prewarm)
+var _sched_setup_done := false # W41 스케줄러에 메뉴 작업을 넣었음
+var _sched_prev_us := 0
+var _pf_done := {} # 대기실에서 텍스처를 미리 요청한 캐릭터
+var _jobs := {} # 캐릭터 → External.WarmJob (W41)
 var dark = null # 대기실 어두운 무대 (lobby_dark.gd), 대기실 아니면 null
 var vm = null # G2 1인칭 팔·무기 (chars/viewmodel.gd)
 var _halo_st = null # 판 빛 무리를 만든 스냅샷 (같으면 _halos 그대로)
@@ -387,6 +394,95 @@ func shown_pos(p: Dictionary, pos: Vector3) -> Vector3:
 	return pos
 
 
+func _no_sched() -> bool:
+	return Opts.args().has("--no-prewarm-sched")
+
+
+func _input(e: InputEvent) -> void:
+	if e is InputEventMouseMotion or e is InputEventKey or e is InputEventMouseButton:
+		PSched.main.note_input(Time.get_ticks_usec() / 1000.0)
+
+
+# 예전 방식 (--no-prewarm-sched): 메뉴 1.5초 뒤 G3.prewarm 한 번, 그 뒤 외부 몸 데우기를 프레임마다 한 캐릭터
+func _old_prewarm(live: bool) -> void:
+	if not live and _prewarmed == null and g3_has("prewarm"):
+		var tn := Time.get_ticks_msec() * 1.0
+		if _menu_since < 0:
+			_menu_since = tn
+		elif tn - _menu_since > float(C.LOBBY_DARK.prewarmMs):
+			_prewarmed = str(View.menu_theme)
+			G3.prewarm(self, View.menu_theme)
+	elif live:
+		_menu_since = -1.0
+	if not live and _prewarmed != null and not _ext_warm_done and Opts.args().has("--no-ext-warm") == false:
+		if not _ext_requested:
+			_ext_requested = true
+			External.request_all()
+		_ext_warm_done = External.warm_step(self, func(id, col): return bodies.chars_script.make_body(id, col)) if bodies != null and bodies.chars_script != null else true
+
+
+# W41: 스케줄러 한 프레임. 판 중 (countdown·playing·over) 에는 쉼 (hold), 메뉴·대기실에서만 조각을 돌림
+func _sched_tick(live: bool, st: Dictionary) -> void:
+	var now_us := Time.get_ticks_usec()
+	var prev_ms := (now_us - _sched_prev_us) / 1000.0 if _sched_prev_us > 0 else 0.0
+	_sched_prev_us = now_us
+	if not _sched_setup_done:
+		_sched_setup_done = true
+		_sched_setup()
+	var ph := str(st.get("phase", "")) if live else ""
+	if live and ph == "lobby" and not Opts.args().has("--no-tex-prefetch"):
+		_lobby_prefetch(st)
+	var in_game := ph == "countdown" or ph == "playing" or ph == "over"
+	if in_game:
+		_pf_done.clear() # 판이 끝나 대기실로 돌아오면 다시 미리 읽음
+	PSched.main.step(now_us / 1000.0, prev_ms, in_game)
+	if in_game and TexPre.pending() > 0 and ph == "playing":
+		TexPre.drain() # 판이 자리 잡으면 안 받은 텍스처 요청을 놓음 (영상 메모리)
+
+
+# W41: 대기실에 있는 사람들의 캐릭터 (+ 나) 의 판 몸·큰 캐릭터·초상 텍스처를 미리 스레드로 요청 — 판 시작 때 몸·초상을 만들며 동기로 읽던 것 (몸당 10~50ms)
+func _lobby_prefetch(st: Dictionary) -> void:
+	var want := {}
+	for p in st.get("players", []):
+		if p.get("spectator", false) or p.get("dummy", false) or p.get("char") == null:
+			continue
+		want[str(p.char)] = true
+	var rank := 0
+	for id in want:
+		if _pf_done.has(id) or not C.FIGURE_CHARS.has(id):
+			continue
+		_pf_done[id] = true
+		var job = External.WarmJob.new(str(id), true, true, false)
+		PSched.main.add("lobby.prefetch." + str(id), 0 + rank, func(): return job.step(self, Callable()), 4.0, "lobby")
+		rank += 1
+
+
+# 메뉴 작업 목록 (우선순위 작을수록 먼저): 셰이더 데우기 → 내 캐릭터 → 판 빛 LUT → 나머지 캐릭터 몸. 시작 1.5초 뒤부터 (타이틀 첫 장면이 자리 잡은 뒤)
+func _sched_setup() -> void:
+	var S = PSched.main
+	var after := float(C.LOBBY_DARK.prewarmMs)
+	if g3_has("prewarm"):
+		S.add("g3.prewarm", 1, func():
+			_prewarmed = str(View.menu_theme)
+			G3.prewarm(self, View.menu_theme)
+			return true, 8.0, "menu", after)
+	if light_fx != null and light_fx.has_method("warm_lut_step"):
+		S.add("light.lut", 6, func(): return light_fx.warm_lut_step(), 0.7, "menu", after)
+	if Opts.args().has("--no-ext-warm") or bodies == null or bodies.get("chars_script") == null:
+		return
+	var mine := str(UiPrefs.get_value("char", ""))
+	var order: Array = C.FIGURE_CHARS.duplicate()
+	if mine != "" and order.has(mine):
+		order.erase(mine)
+		order.push_front(mine)
+	var rank := 0
+	for id in order:
+		var job = External.WarmJob.new(str(id))
+		_jobs[id] = job
+		S.add("ext.warm." + str(id), 2 + rank, func(): return job.step(self, func(i, col): return bodies.chars_script.make_body(i, col)), 4.0, "menu", after + 200.0 * rank)
+		rank += 1
+
+
 # 격자 칸이 단단한가 (게임 좌표, render.js solidAt): 필드 밖 = 빈칸, 바닥 아래 = 단단함
 func solid_at(x: float, y: float, z: float) -> bool:
 	var gx := floori(x)
@@ -411,21 +507,12 @@ func _process(dt: float) -> void:
 		n.visible = live and ((n != hazard_view and n != ghost_aim) or n.visible) and (n != scenery or dark == null) # 어두운 무대면 떠 있는 섬·먼 배경 숨김
 	if not live and vm != null:
 		vm.update(null, false, dt) # 방 밖: 1인칭 팔 끔
-	# 첫 진입 멈춤 줄이기 (render.js prewarmLobby): 메뉴에 LOBBY_DARK.prewarmMs 머문 뒤 이번 창 테마로 한 번 (B3 G3.prewarm)
-	if not live and _prewarmed == null and g3_has("prewarm"):
-		var tn := Time.get_ticks_msec() * 1.0
-		if _menu_since < 0:
-			_menu_since = tn
-		elif tn - _menu_since > float(C.LOBBY_DARK.prewarmMs):
-			_prewarmed = str(View.menu_theme)
-			G3.prewarm(self, View.menu_theme)
-	elif live:
-		_menu_since = -1.0
-	if not live and _prewarmed != null and not _ext_warm_done and Opts.args().has("--no-ext-warm") == false:
-		if not _ext_requested:
-			_ext_requested = true
-			External.request_all()
-		_ext_warm_done = External.warm_step(self, func(id, col): return bodies.chars_script.make_body(id, col)) if bodies != null and bodies.chars_script != null else true
+	# 첫 진입 멈춤 줄이기 (render.js prewarmLobby): 메뉴·대기실에서 미리 하기 — W41 부터 프레임 예산 스케줄러 (world/prewarm_sched.gd) 가 조각으로 나눠 돌림.
+	# 끄고 예전 방식 (한 프레임에 몰아서) 으로 되돌리기: --no-prewarm-sched
+	if _no_sched():
+		_old_prewarm(live)
+	else:
+		_sched_tick(live, st)
 	if not live:
 		hazard_view.clear() # 판 중에 나가면 위험 경고·전역 위험 빛·물들임이 메뉴에 남던 것 (update 가 더 안 불림)
 	if headless or not live:
@@ -440,7 +527,7 @@ func _process(dt: float) -> void:
 	var mid := str(pk) if pk != null else str(st.get("map", {}).get("id", ""))
 	if mid != theme_id:
 		apply_theme(mid)
-		Prof.lap("world 섬·대기실 ·테마 적용")
+		Prof.lap("world 섬·대기실 ·맵 바꿈")
 	if pk != null:
 		var n := LP.lobby_field_size(st)
 		var key := "%s:%d:%d" % [pk, n, fs.z]
@@ -459,7 +546,7 @@ func _process(dt: float) -> void:
 			G3.set_field(self, fs.x, fs.y)
 			_shadow_reach = -1.0
 		built_version = -2
-	Prof.lap("world 섬·대기실 ·판 크기 바뀜")
+	Prof.lap("world 섬·대기실 ·판 크기 변경")
 	_lobby_dark(st, fs)
 	Prof.lap("world 섬·대기실 ·어두운 무대")
 	scenery.build(C.WORLD_MAP_THEME.get(theme_id), fs.x, fs.y, bool(View.settings.get("lowGfx", false)), fs.z)
