@@ -336,3 +336,62 @@ func test_w38_strike_reaches_forward() -> void:
 			check(hs - hw > 0.1, "%s %s 타격 순간 손이 준비 때보다 앞으로 %.2f" % [ch, cs[0], hs - hw])
 			check(ps - pw > 0.03, "%s %s 타격 순간 몸을 앞으로 내딛음 %.2f" % [ch, cs[0], ps - pw])
 		b.free()
+
+
+# W38 맞음 움찔: 맞은 직후 척추·머리가 맞은 방향 (뒤로 밀리면 젖힘) 으로 돌고, 세기는 hit.pow 에 비례, 시간이 지나면 사라짐
+func test_w38_hit_flinch() -> void:
+	for ch in ["tank", "ninja"]:
+		var b = _body(ch)
+		if b.ext == null:
+			b.free()
+			continue
+		var X = b.ext
+		X.clipset = {} # 클립 섞임은 실제 시간 (cw) 따라 변하니 움찔만 따로 봄
+		var sk: Skeleton3D = X.sk
+		var bi := sk.find_bone("mixamorig_Spine2")
+		var hb := sk.find_bone("mixamorig_Head")
+		var hit := func(age: float, pw: float) -> Dictionary: return _st({"hit": {"id": 1, "age": age, "stop": 0.0, "dx": -1.0, "dy": 0.0, "pow": pw}})
+		X.sync(hit.call(5.0, 1.0))
+		var q0: Quaternion = sk.get_bone_pose_rotation(bi)
+		var h0 := _bone_pos(sk, "mixamorig_Head")
+		X.sync(hit.call(0.04, 0.6))
+		var a_weak: float = q0.angle_to(sk.get_bone_pose_rotation(bi))
+		X.sync(hit.call(0.04, 2.0))
+		var a_strong: float = q0.angle_to(sk.get_bone_pose_rotation(bi))
+		var h1 := _bone_pos(sk, "mixamorig_Head")
+		check(a_strong > 0.03 and a_strong < 0.5, "%s 맞음 움찔: 척추가 %.3f rad 돌아감 (0.03~0.5)" % [ch, a_strong])
+		check(a_strong > a_weak * 1.5, "%s 센 타격 (%.3f) 이 약한 타격 (%.3f) 보다 크게" % [ch, a_strong, a_weak])
+		check(h1.x < h0.x - 0.005, "%s 뒤로 밀리면 머리가 뒤로 젖혀짐 (%.3f → %.3f)" % [ch, h0.x, h1.x])
+		X.sync(hit.call(K.EXT_HIT_FLINCH_S + 0.1, 2.0))
+		check(q0.angle_to(sk.get_bone_pose_rotation(bi)) < 1e-4, "%s 시간이 지나면 움찔 없음" % ch)
+		b.free()
+
+
+# W38 도발·승리 클립: 전용 도발 (EMOTE_CHAR)·승리만 클립으로, 힘 빠진 상태·다른 이모트·닌자 (클립 없음) 는 코드. 도발 클립 길이 = EMOTE_MS, 끝은 쉬는 자세로 돌아옴
+func test_w38_taunt_victory_clips() -> void:
+	for ch in ["tank", "hunter", "hook"]:
+		var info = Ext.load_char(ch)
+		var cc: Dictionary = info.cfg.clips
+		check(info.clipset.has(str(cc.get("taunt", ""))) and info.clipset.has(str(cc.get("victory", ""))), "%s 도발·승리 클립 있음" % ch)
+		var tl: float = float(info.clipset[str(cc.taunt)].len)
+		check(absf(tl - C.EMOTE_MS / 1000.0) < 0.05, "%s 도발 클립 길이 %.2f = 이모트 시간" % [ch, tl])
+		var s1 := Clips.select(cc, _st({"emote": int(C.EMOTE_CHAR), "emoteT": 0.7}), 0.0)
+		check(s1.clip == str(cc.taunt) and absf(float(s1.t) - 0.7) < 1e-5, "%s 도발 = 도발 클립, 시각 = 이모트 시간" % ch)
+		check(Clips.select(cc, _st({"emote": 1, "emoteT": 0.7}), 0.0).clip == "", "%s 다른 이모트는 코드" % ch)
+		var s2 := Clips.select(cc, _st({"victory": 1.3}), 0.0)
+		check(s2.clip == str(cc.victory) and s2.get("loop", false), "%s 승리 = 승리 클립 (반복)" % ch)
+		check(Clips.select(cc, _st({"victory": 1.3, "stunned": true}), 0.0).clip == "", "%s 힘 빠지면 코드 (래그돌)" % ch)
+		check(Clips.select(cc, _st({"emote": int(C.EMOTE_CHAR), "tumble": 0.5}), 0.0).clip == "", "%s 구르면 도발 안 함" % ch)
+		var b = _body(ch)
+		if b.ext != null:
+			var X = b.ext
+			var sk: Skeleton3D = X.sk
+			X.sync()
+			var h0 := _bone_pos(sk, "mixamorig_RightHand")
+			X.preview_clip(str(cc.victory), 0.4)
+			check(_bone_pos(sk, "mixamorig_RightHand").distance_to(h0) > 0.04 or _bone_pos(sk, "mixamorig_LeftHand").y > 0.0, "%s 승리 클립이 몸을 움직임" % ch)
+			X.preview_clip(str(cc.taunt), tl)
+			var end_pos := _bone_pos(sk, "mixamorig_LeftHand")
+			X.preview_clip("idle", 0.0)
+			check(end_pos.distance_to(_bone_pos(sk, "mixamorig_LeftHand")) < 0.06, "%s 도발 클립 끝이 쉬는 자세로 돌아옴 (%.3f)" % [ch, end_pos.distance_to(_bone_pos(sk, "mixamorig_LeftHand"))])
+		b.free()

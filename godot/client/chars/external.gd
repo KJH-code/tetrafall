@@ -849,6 +849,8 @@ class Ext extends Node3D:
 			_dash_wrist()
 		if third and not clipset.is_empty() and (st != null or not forced.is_empty()):
 			_clip_layer(st)
+		if third and st != null:
+			_hit_flinch(st)
 		if not cloths.is_empty():
 			var now := Time.get_ticks_msec() * 0.001
 			var cdt := clampf(now - cloth_t, 0.0, 0.1) if cloth_t > 0.0 else 0.0
@@ -964,6 +966,34 @@ class Ext extends Node3D:
 				if absf(dy) > 1e-6:
 					sk.set_bone_pose_position(hb, sk.get_bone_pose_position(hb) + Vector3(0, dy * cw, 0))
 		clip_info = {"clip": name, "cw": cw, "dy": dy, "t": tt}
+
+	# W38 맞음 움찔: 맞은 직후 (hit.age < K_.EXT_HIT_FLINCH_S) 척추·머리를 맞은 방향으로 짧게 젖힘 (가산, 세기 = hit.pow 단계 — 약 0.5 … 치명 2).
+	# 코드 구동 (hit_pose·휘청) 위에 척추 둘·머리 뼈를 더 돌릴 뿐이라 클립 층과 안 부딪침. 래그돌이 깨어 있고 모터가 약하면 (쓰러지는 중) 안 함 — 물리가 맡음.
+	# 몸 기준 뼈대 공간: 앞 = +x, 위 = +y. 젖힘 (뒤로) = z 축 +, 옆 기울기 = x 축.
+	func _hit_flinch(st) -> void:
+		var hit = st.get("hit")
+		if not (hit is Dictionary) or float(hit.get("age", 9.0)) >= K_.EXT_HIT_FLINCH_S:
+			return
+		var rg = Rag_._inst
+		if rg != null and is_instance_valid(rg) and rg.rags.has(body):
+			var r: Dictionary = rg.rags[body]
+			if r.awake and float(r.motor) < K_.EXT_CLIP_MOTOR_MIN:
+				return
+		var age: float = float(hit.age)
+		var env: float = (1.0 - exp(-age / 0.015)) * exp(-age / K_.EXT_HIT_FLINCH_DECAY_S)
+		var amp: float = clampf(float(hit.get("pow", 1.0)), 0.4, 2.0) * K_.EXT_HIT_FLINCH_RAD * env
+		var back: float = -float(hit.get("dx", 0.0)) # 뒤로 밀리면 (dx < 0) 윗몸이 뒤로 젖혀짐
+		var side: float = float(hit.get("dy", 0.0))
+		for e in K_.EXT_HIT_FLINCH_BONES:
+			var bi := sk.find_bone(str(e[0]))
+			if bi < 0:
+				continue
+			var k: float = float(e[1])
+			var d := Quaternion(Vector3.BACK, back * amp * k) * Quaternion(Vector3.RIGHT, side * amp * k * 0.6)
+			var pg := _gt(sk.get_bone_parent(bi))
+			var pb := pg.basis.get_rotation_quaternion()
+			var lq: Quaternion = sk.get_bone_pose_rotation(bi)
+			sk.set_bone_pose_rotation(bi, pb.inverse() * d * pb * lq)
 
 	# W34 1인칭 쌍둥이만: cfg.vm_bone_scale {모델 뼈 이름: 배율} — 그 뼈 (와 아래 자식 전부) 를 줄임. 탱크는 왼 아래팔에 붙은 방패가 화면 왼쪽 아래를 너무 가려서
 	# (방패 쥐기 IK 는 손 관절 자리를 그대로 따라가니 3/4 타 쥐기는 유지, 방패·주먹만 같이 작아짐)

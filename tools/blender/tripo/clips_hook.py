@@ -17,6 +17,7 @@ STYLE = dict(
 def define(M):
     define_loco(M, STYLE)
     define_attacks(M)
+    define_poses(M)
 
 
 # ---- W38 평타·스킬 (오른손 = 칼/권총, 왼손 = 갈고리). 눈금 WIND/STRIKE/REC 는 clips_ninja.py 와 같음 ----
@@ -70,3 +71,15 @@ def define_attacks(M):
     # 갈고리 줄 타고 날아가기 (공중, 왼팔 위로 쭉 뻗고 몸은 매달려 끌려감)
     zw = P_(air, spine_pitch=10, arm_fwd=(-30, 130), arm_out=(30, 10), elbow=(50, 8), leg_fwd=(-30, -20), knee=(30, 40))
     clip("k_zip", R, False, [(0.0, air), (W, zw), (S, zw), (R, zw)])
+
+
+# ---- W38 도발 ("이리 와", 1.6초)·승리 (반복) ----
+def define_poses(M):
+    P_, clip = M.P_, M.clip
+    ready = P_(spine_pitch=-1, spine_twist=3, arm_fwd=(8, 8), arm_out=(6, 6), elbow=(30, 34), knee=(8, 8), leg_fwd=(4, -2))
+    beck = P_(ready, hips_twist=-8, spine_twist=-12, neck_pitch=-6, leg_fwd=(-6, 14), knee=(16, 22), arm_fwd=(14, 80), arm_out=(10, 10), elbow=(40, 30), hips_side=3)
+    beck2 = P_(beck, arm_fwd=(14, 70), elbow=(40, 100))
+    clip("k_taunt", 1.6, False, [(0.0, ready), (0.3, beck), (0.55, beck2), (0.8, beck), (1.05, beck2), (1.2, beck), (1.6, ready)])
+    up = P_(ready, spine_pitch=-4, neck_pitch=-8, leg_fwd=(8, -6), knee=(10, 12), arm_fwd=(30, 150), arm_out=(60, 20), elbow=(20, 20), spine_twist=8)
+    up2 = P_(up, hips_z=0.012, spine_pitch=-8, arm_fwd=(30, 160))
+    clip("k_victory", 1.6, True, [(0.0, up), (0.4, up2), (0.8, up), (1.2, up2), (1.6, up)])

@@ -17,6 +17,7 @@ STYLE = dict(
 def define(M):
     define_loco(M, STYLE)
     define_attacks(M)
+    define_poses(M)
 
 
 # ---- W38 평타·스킬 (소총 = 오른손 메시에 붙음, 왼손은 받침). 눈금 WIND/STRIKE/REC 는 clips_ninja.py 와 같음 ----
@@ -62,3 +63,15 @@ def define_attacks(M):
     lw = P_(ready, hips_z=-0.14, spine_pitch=40, neck_pitch=-24, leg_fwd=(52, 48), knee=(96, 90), foot=(-20, -20), arm_fwd=(72, 72), arm_out=(10, 10), elbow=(60, 60))
     ls = P_(ready, spine_pitch=30, neck_pitch=-14, leg_fwd=(-30, -18), knee=(18, 30), foot=(36, 30), arm_fwd=(80, 90), arm_out=(14, 10), elbow=(30, 36))
     clip("h_leap", R, False, [(0.0, ready), (W, lw), (S, ls), (0.6, P_(ls, spine_pitch=36, leg_fwd=(-20, -10))), (R, P_(ls, spine_pitch=22, leg_fwd=(20, 10), knee=(40, 50)))])
+
+
+# ---- W38 도발 ("찍었다", 1.6초)·승리 (반복) ----
+def define_poses(M):
+    P_, clip = M.P_, M.clip
+    ready = P_(spine_pitch=2, arm_fwd=(28, 12), arm_out=(2, 6), elbow=(52, 28), knee=(8, 8), leg_fwd=(4, -2))
+    tip = P_(ready, hips_twist=-6, spine_twist=-12, neck_pitch=-6, leg_fwd=(-6, 14), knee=(16, 22), arm_fwd=(44, 150), arm_out=(4, 20), elbow=(40, 122))
+    tip2 = P_(tip, neck_pitch=-12, spine_pitch=6, arm_fwd=(44, 156), elbow=(40, 130))
+    clip("h_taunt", 1.6, False, [(0.0, ready), (0.3, tip), (0.7, tip2), (1.1, tip), (1.3, tip2), (1.6, ready)])
+    up = P_(ready, spine_pitch=-6, neck_pitch=-8, leg_fwd=(8, -6), knee=(10, 12), arm_fwd=(120, 60), arm_out=(10, 24), elbow=(30, 100))
+    up2 = P_(up, hips_z=0.012, spine_pitch=-10, arm_fwd=(126, 140), elbow=(30, 70))
+    clip("h_victory", 1.6, True, [(0.0, up), (0.4, up2), (0.8, up), (1.2, up2), (1.6, up)])

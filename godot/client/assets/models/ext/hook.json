@@ -55,6 +55,6 @@
    "mixamorig_LeftToeBase",
    "mixamorig_RightToeBase"
   ],
-  "moves": {"갈고리 휘두르기": "k_hook", "주먹": "k_fist", "갈고리 내려치기": "k_chop", "탕": "k_shot", "갈고리 스핀": "k_spin", "hookThrow": "k_throw", "hookSlam": "k_slam", "hookZip": "k_zip"}
+  "taunt": "k_taunt", "victory": "k_victory", "moves": {"갈고리 휘두르기": "k_hook", "주먹": "k_fist", "갈고리 내려치기": "k_chop", "탕": "k_shot", "갈고리 스핀": "k_spin", "hookThrow": "k_throw", "hookSlam": "k_slam", "hookZip": "k_zip"}
  }
 }

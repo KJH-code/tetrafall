@@ -59,6 +59,6 @@
    "mixamorig_LeftToeBase",
    "mixamorig_RightToeBase"
   ],
-  "moves": {"베기": "h_slash", "반대 베기": "h_back", "찔러 넣기": "h_thrust", "내려 베기": "h_dive", "hunterAim": "h_aim", "hunterLeap": "h_leap"}
+  "taunt": "h_taunt", "victory": "h_victory", "moves": {"베기": "h_slash", "반대 베기": "h_back", "찔러 넣기": "h_thrust", "내려 베기": "h_dive", "hunterAim": "h_aim", "hunterLeap": "h_leap"}
  }
 }
