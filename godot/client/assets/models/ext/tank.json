@@ -60,6 +60,6 @@
    "mixamorig_LeftToeBase",
    "mixamorig_RightToeBase"
   ],
-  "moves": {}
+  "moves": {"주먹": "t_punch", "어깨 박치기": "t_bash", "방패 올려치기": "t_upper", "방패 내려치기": "t_dive", "tankCharge": "t_charge", "tankSlam": "t_slam"}
  }
 }
