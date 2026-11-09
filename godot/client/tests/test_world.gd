@@ -267,3 +267,44 @@ func test_hunt_marks_match_js() -> void:
 		check(near(H.edge_level(e[0], C.HUNTER_MARK_MAX, age, e[2]), e[3]), "edgeLevel %s" % [e])
 	for b in fx.blinks:
 		check(H.mark_blink(b[0], b[1]) == b[2], "markBlink %s" % [b])
+
+
+# W35: 사냥꾼 표식 칸 그림 (JS canvas 마름모) — 찬 칸은 가운데가 칸 색, 빈 칸은 가운데 반투명, 꼭짓점 밖은 투명, 키가 가로보다 큼
+func test_hunt_pip_texture_matches_js_shape() -> void:
+	const BF := preload("res://world/body_fx.gd")
+	var on: Image = BF.pip_texture("on").get_image()
+	var off: Image = BF.pip_texture("off").get_image()
+	var full: Image = BF.pip_texture("full").get_image()
+	check(_close(on.get_pixel(16, 16), Color(1.0, 0.227, 0.165)), "찬 칸 가운데 = U.on")
+	check(_close(full.get_pixel(16, 16), Color(1.0, 0.824, 0.227)), "꽉 참 가운데 = U.full")
+	check(off.get_pixel(16, 16).a > 0.3 and off.get_pixel(16, 16).a < 0.4, "빈 칸 가운데 = 검정 35%")
+	check(on.get_pixel(1, 1).a < 0.01, "마름모 밖 모서리는 투명")
+	var w := 0
+	var h := 0
+	for i in 32:
+		if on.get_pixel(i, 16).a > 0.5:
+			w += 1
+		if on.get_pixel(16, i).a > 0.5:
+			h += 1
+	check(h > w, "키 큰 마름모 (세로 %d > 가로 %d)" % [h, w])
+
+
+func _close(a: Color, b: Color) -> bool:
+	return absf(a.r - b.r) < 0.02 and absf(a.g - b.g) < 0.02 and absf(a.b - b.b) < 0.02 and a.a > 0.98
+
+
+# W35: 취약 ♫ 그림 — 글꼴 없이 그린 분홍 음표 + 어두운 테두리
+func test_vuln_note_texture() -> void:
+	const BF := preload("res://world/body_fx.gd")
+	var im: Image = BF.note_texture().get_image()
+	var pink := 0
+	var edge := 0
+	for y in 64:
+		for x in 64:
+			var c := im.get_pixel(x, y)
+			if c.a > 0.5 and c.r > 0.9 and c.g > 0.35:
+				pink += 1
+			elif c.a > 0.5 and c.r < 0.3:
+				edge += 1
+	check(pink > 300 and edge > 100, "분홍 음표 (%d) + 테두리 (%d)" % [pink, edge])
+	check(im.get_pixel(0, 0).a < 0.01, "그림 밖은 투명")
