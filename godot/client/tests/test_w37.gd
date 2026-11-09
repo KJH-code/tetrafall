@@ -43,3 +43,35 @@ func test_budget_categories() -> void:
 	check(Budget.cpu_category("zzz") == "기타 (스크립트)", "표에 없는 이름은 기타")
 	l3.free()
 	root.free()
+
+
+# 코드 몸 그림자 쌍둥이: 보이는 합친 메시는 그림자를 끄고 껍질 없는 쌍둥이가 같은 메시·스킨·뼈대로 던짐. 두 번 불러도 하나, 끄면 (set_shadow_off) 쌍둥이도 꺼짐·켜면 복원
+func test_batch_shadow_twin() -> void:
+	var Body := preload("res://chars/body.gd")
+	for ch in ["bard", "berserker", "builder", "cannon"]:
+		var b = Body.new()
+		b.build(ch, Color(0.2, 0.5, 1.0), true)
+		b.add_batch_shadow_twin()
+		b.add_batch_shadow_twin()
+		var twins := b.find_children("batch_sh*", "MeshInstance3D", true, false)
+		check(twins.size() == 1, "%s: 쌍둥이 하나 (%d)" % [ch, twins.size()])
+		if twins.size() == 1:
+			var tw := twins[0] as MeshInstance3D
+			var src: MeshInstance3D = b.batch.mi
+			check(tw.mesh == src.mesh and tw.skin == src.skin, "%s: 같은 메시·스킨" % ch)
+			check(tw.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY and tw.material_override == null, "%s: 그림자 전용·재질 없음 (껍질 없음)" % ch)
+			check(src.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s: 보이는 메시는 그림자 끔" % ch)
+			check(tw.get_node(tw.skeleton) == b.batch.skel, "%s: 같은 뼈대" % ch)
+			b.set_shadow_off(true)
+			check(not tw.visible, "%s: 먼 몸 그림자 끄기가 쌍둥이를 숨김" % ch)
+			b.set_shadow_off(false)
+			check(tw.visible and src.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s: 켜면 복원 (보이는 메시는 그림자 끈 채)" % ch)
+		b.free()
+	var keep := WC.batch_twin_on
+	WC.batch_twin_on = false
+	var b2 = Body.new()
+	b2.build("bard", Color(0.2, 0.5, 1.0), true)
+	b2.add_batch_shadow_twin()
+	check(b2.find_children("batch_sh*", "MeshInstance3D", true, false).is_empty(), "--no-batch-twin: 쌍둥이 없음")
+	b2.free()
+	WC.batch_twin_on = keep

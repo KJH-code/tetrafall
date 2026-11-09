@@ -18,6 +18,7 @@ const Prof := preload("res://core/prof.gd")
 const Hitch := preload("res://core/hitch.gd")
 const Baked := preload("res://chars/baked.gd")
 const BakedBatch := preload("res://chars/baked_batch.gd")
+const WC := preload("res://world/world_config.gd")
 const External := preload("res://chars/external.gd")
 const FXC := preload("res://fx/fx_config.gd")
 const SM := preload("res://audio/sound_math.gd")
@@ -705,6 +706,31 @@ func outline_far() -> bool:
 var _sh: Array = [] # [[MeshInstance3D, 원래 cast_shadow]]
 var _sh_built := false
 var _sh_off := false
+
+
+# W37: 코드 몸 (조각 합친 SkinnedMesh 하나) 은 외곽선 껍질 (next_pass) 이 있어 해 그림자 패스가 같은 메시를 두 번 그림 (껍질도 한 번 더 제출) →
+# 보이는 메시는 그림자를 끄고 같은 메시·스킨·뼈대의 그림자 전용 쌍둥이 (재질 없음 = 껍질 없음) 가 던짐. 판 몸 (World bodies._make) 만 부름. WC.SHADOW.batch_twin
+var _twin: MeshInstance3D = null
+
+
+func add_batch_shadow_twin() -> void:
+	if _twin != null or batch == null or ext != null or not WC.shadow_opt or not WC.batch_twin_on or not bool(WC.SHADOW.get("batch_twin", false)):
+		return
+	var src: MeshInstance3D = batch.mi
+	if src == null or src.mesh == null or src.get_parent() == null or _sh_built:
+		return
+	var tw := MeshInstance3D.new()
+	tw.name = "batch_sh"
+	tw.mesh = src.mesh
+	tw.skin = src.skin
+	tw.transform = src.transform
+	tw.layers = src.layers
+	tw.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+	src.get_parent().add_child(tw)
+	if src.skin != null and batch.skel != null:
+		tw.skeleton = tw.get_path_to(batch.skel)
+	src.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_twin = tw
 
 
 func set_shadow_off(off: bool) -> void:

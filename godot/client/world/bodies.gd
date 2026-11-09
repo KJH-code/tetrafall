@@ -82,6 +82,8 @@ func _make(p: Dictionary, color: int) -> Dictionary:
 	else:
 		body = _box_body(color)
 	root.add_child(body)
+	if body.has_method("add_batch_shadow_twin"):
+		body.add_batch_shadow_twin() # W37: 코드 몸 그림자는 껍질 없는 쌍둥이가
 	if stencil_fn != null and body.get("drawn") is Array: # render.js bodyOrder: 사람 몸은 x-ray 복사본보다 앞
 		for dr in body.drawn:
 			if dr.get("mi") is GeometryInstance3D and dr.mi.material_override is ShaderMaterial:

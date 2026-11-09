@@ -89,12 +89,14 @@ const OUTLINE_FAR := {"taper_from": 8.0, "gone": 16.0, "min_k": 0.25, "hyst": 1.
 #   (큰 판 대각선 27m 의 가장 먼 모퉁이까지 가는 3인칭에선 거의 안 걸림 — 전체 보기·하늘 시점에서만 이득) · view_pad: 몸도 그 몸 그림자 자리도 시야 밖일 때 (공 반지름 m, 몸 크기 + 그림자 길이 여유) 끔
 #   caster_lod: 판 몸 그림자 전용 저폴리 (외부 모델의 가장 낮은 LOD 메시를 SHADOWS_ONLY 로, 보이는 메시는 그림자 끔 — chars/ext_shadow.gd) · 보이는 LOD 가 이미 가장 낮으면 안 함
 #   reach: 그림자 거리를 판 크기뿐 아니라 카메라에서 판 가장 먼 모퉁이까지 + pad (m) 로도 제한 (step m 단위로 올림 — 자주 바뀌면 그림자 지도 픽셀이 흔들림), min: 이 아래로는 안 줄임
+#   batch_twin (W37): 코드 몸 합친 메시도 그림자는 껍질 없는 쌍둥이 메시가 던짐 (보이는 메시는 그림자 끔)
 #   piece_proxy: 떨어지는 블록 칸 (칸 모양이 300~430 삼각형인 테마) 의 그림자는 상자 (12 삼각형) 하나로 던짐 — 보이는 칸은 그림자 끔 + 같은 자리 상자 MultiMesh 가 그림자만 (SHADOWS_ONLY)
-const SHADOW := {"far": 22.0, "hyst": 1.5, "view_pad": 3.0, "caster_lod": true, "piece_proxy": true, "piece_proxy_min_tris": 24, "reach_pad": 8.0, "reach_step": 4.0, "reach_min": 16.0}
+const SHADOW := {"far": 22.0, "hyst": 1.5, "view_pad": 3.0, "caster_lod": true, "piece_proxy": true, "piece_proxy_min_tris": 24, "batch_twin": true, "reach_pad": 8.0, "reach_step": 4.0, "reach_min": 16.0}
 # ---- 몸 만들기 분산 (W32): 방에 들어가거나 봇을 넣을 때 몸이 한꺼번에 8개 나오면 (몸 만들기 2~5ms + 처음 그리기 9~12ms 씩) 한 프레임이 크게 끊김 → 한 프레임에 이만큼만 만들고 나머지는 다음 프레임 (내 몸은 늘 바로)
 const BODY_BUILDS_PER_FRAME := 2
 # 확인용: --no-shadow-opt = W32 그림자 줄이기 전부 끔 (저폴리 캐스터·칸 상자 그림자·먼 몸 끄기·그림자 거리), --no-shadow-far = 먼 몸·시야 밖 몸 그림자 끄기만 끔 (전후 비교)
 static var shadow_opt: bool = not Opts.args().has("--no-shadow-opt")
+static var batch_twin_on: bool = not Opts.args().has("--no-batch-twin") # W37: 코드 몸 그림자 쌍둥이만 끔 (전후 비교)
 # 지금 적용된 화질 (world/gfx.gd 가 정함, msaa_3d·mirror_scale 이 읽음). 테스트·헤드리스는 기본 high = 예전 값
 static var level := "high"
 static var msaa_cut := false # W31: 적응형 해상도 (world/adapt_calc.gd) 가 판 중에만 켬 — 판이 끝나면 꺼짐
