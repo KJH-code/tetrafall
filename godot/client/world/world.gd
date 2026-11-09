@@ -289,6 +289,9 @@ func apply_theme(map_id: String) -> void:
 			var rim: float = light_fx.rim
 			var pm: Mesh = G3.piece_mesh(tid, low)
 			var cols: Dictionary = G3.piece_colors(tid)
+			hook_fx.g3 = G3 # W35 갈고리 덩어리가 맵 테마 칸 모습·돌·모래 재질을 씀
+			hook_fx.theme_id = tid
+			hook_fx.low = low
 			pieces_view.set_look(pm, [G3.piece_material(tid, low, {"rim": rim}), G3.piece_material(tid, low, {"rim": rim, "transparent": true, "opacity": 1.0})], cols)
 			grid_view.set_piece_look(pm, G3.piece_material(tid, low, {"rim": rim, "outline": false}), cols) # 쌓인 칸은 외곽선 없음 (render.js landed noOutline)
 		return

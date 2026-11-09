@@ -308,3 +308,36 @@ func test_vuln_note_texture() -> void:
 				edge += 1
 	check(pink > 300 and edge > 100, "분홍 음표 (%d) + 테두리 (%d)" % [pink, edge])
 	check(im.get_pixel(0, 0).a < 0.01, "그림 밖은 투명")
+
+
+# W35: 갈고리 R 덩어리 재질 — 종류마다 JS 처럼 (지형 돌·쌓기 나무·설치 모래·테트리미노 = 맵 테마 칸)
+func test_hook_chunk_materials() -> void:
+	var hf = preload("res://world/hook_fx.gd").new()
+	hf.g3 = load("res://shaders/g3.gd")
+	hf.theme_id = "volcano"
+	var col := Color(0.8, 0.5, 0.2)
+	var terr: Dictionary = hf.chunk_look({"v": 1}, col)
+	var build: Dictionary = hf.chunk_look({"v": 2, "builder": true}, col)
+	var thrown: Dictionary = hf.chunk_look({"v": 3}, col)
+	var piece: Dictionary = hf.chunk_look({"v": 5}, col)
+	check(terr.mat.get_shader_parameter("use_tex") == true and terr.mat.get_shader_parameter("albedo_tex") == preload("res://world/chunk_tex.gd").stone(), "지형 덩어리 = 돌 그림")
+	check(thrown.mat.get_shader_parameter("albedo_tex") == preload("res://world/chunk_tex.gd").sand(), "설치 블록 덩어리 = 모래 그림")
+	check(build.mat.get_shader_parameter("albedo_tex") == preload("res://world/chunk_tex.gd").wood(), "건축가 덩어리 = 판자 그림")
+	check(piece.mesh is ArrayMesh and piece.mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR] is PackedColorArray, "테트리미노 덩어리 = 테마 칸 모양 + 꼭짓점 색")
+	check(piece.mat.get_shader_parameter("face_tex") != null, "테트리미노 덩어리 재질 = 테마 칸 재질 (면 그림)")
+	var sky: Dictionary = hf.chunk_look({"v": 3, "sky": true}, col)
+	check(absf(sky.mat.get_shader_parameter("albedo").a - float(C.SKY_PIECE_OPACITY)) < 0.001, "하늘 덩어리는 반투명")
+	check(terr.mat.get_shader_parameter("albedo_tex").get_image().get_pixel(10, 10).r > 0.4, "돌 그림이 칠해짐")
+	hf.free()
+
+
+# W35: 탱크 R 솟는 땅 칸이 돌 그림을 입음 (JS quakeMat map: tex.stone)
+func test_quake_cells_use_stone_texture() -> void:
+	var mk = preload("res://world/marks.gd").new()
+	var G3 = load("res://shaders/g3.gd")
+	mk.make_mat = func(c: Color): return G3.toon_material(c)
+	mk.quake_rise([[1, 1, 1], [2, 1, 1]], 1000.0, 7)
+	var m: ShaderMaterial = mk._quake_mat
+	check(m.get_shader_parameter("use_tex") == true and m.get_shader_parameter("albedo_tex") == preload("res://world/chunk_tex.gd").stone(), "솟는 땅 재질 = 돌 그림")
+	check(mk.quakes.size() == 1 and mk.quakes[0].nodes.size() == 2, "솟는 땅 칸 2개")
+	mk.free()

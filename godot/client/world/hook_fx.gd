@@ -8,6 +8,7 @@ const C := preload("res://core/config.gd")
 const Co := preload("res://core/coords.gd")
 const WC := preload("res://world/world_config.gd")
 const Cells := preload("res://world/cells.gd")
+const Tex := preload("res://world/chunk_tex.gd")
 
 var effects = null # G5 fx/effects.gd
 var marks = null # world/marks.gd
@@ -205,6 +206,43 @@ func drop_rope(who) -> void:
 
 
 # ---------- R 덩어리 ----------
+var theme_id = null # 맵 테마 (테트리미노 칸 모습). world.gd 가 테마를 깔 때 넣음
+var g3 = null # G3 (shaders/g3.gd), 없으면 색 상자
+var low := false
+
+
+# W35 덩어리 재질 (render.js blockGrab): 건축가 블록 = 판자 상자, 테트리미노 칸 = 맵 테마 칸 모양·재질, 지형 = 돌, 설치 블록 = 모래 (그림 world/chunk_tex.gd).
+# 하늘 블록 (sky) 은 밝고 반투명 (SKY_PIECE_OPACITY). g3 가 없으면 예전처럼 색 상자
+func chunk_look(e: Dictionary, col: Color) -> Dictionary:
+	var v := int(e.get("v", 0))
+	var builder: bool = e.get("builder", false)
+	var sky: bool = e.get("sky", false)
+	var opacity: float = float(C.SKY_PIECE_OPACITY) if sky else 1.0
+	if g3 == null or not g3.has_method("toon_material"):
+		var bm := BoxMesh.new()
+		bm.size = Vector3.ONE * 0.98
+		return {"mesh": bm, "mat": _mat(col)}
+	if v > Cells.THROWN and not builder and g3.has_method("piece_mesh"):
+		var base: ArrayMesh = g3.piece_mesh(theme_id, low)
+		var arr: Array = base.surface_get_arrays(0)
+		var n: int = (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+		var cols := PackedColorArray()
+		cols.resize(n)
+		cols.fill(col) # 칸 색은 인스턴스 COLOR 자리 = 꼭짓점 색 (한 덩어리 한 색)
+		arr[Mesh.ARRAY_COLOR] = cols
+		var cm := ArrayMesh.new()
+		cm.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		return {"mesh": cm, "mat": g3.piece_material(theme_id, low, {"transparent": sky, "opacity": opacity})}
+	var bm2 := BoxMesh.new()
+	bm2.size = Vector3.ONE * 0.98
+	var tex: Texture2D = Tex.stone()
+	if builder or v == Cells.BUILD:
+		tex = Tex.wood()
+	elif v == Cells.THROWN:
+		tex = Tex.sand()
+	var mat: ShaderMaterial = g3.toon_material(col, {"map": tex, "opacity": opacity})
+	return {"mesh": bm2, "mat": mat}
+
 func block_grab(e: Dictionary) -> void:
 	var now := now_ms()
 	var cells: Array = e.cells if e.get("cells") != null and not e.cells.is_empty() else [e.from]
@@ -217,14 +255,12 @@ func block_grab(e: Dictionary) -> void:
 		center += Vector3(c[0] + 0.5, c[1] + 0.5, c[2] + 0.5)
 	center /= cells.size()
 	var g := Node3D.new()
-	var mat := _mat(col)
-	var bm := BoxMesh.new()
-	bm.size = Vector3.ONE * 0.98
+	var look := chunk_look(e, col)
 	var size := 0.0
 	for c in cells:
 		var m := MeshInstance3D.new()
-		m.mesh = bm
-		m.material_override = mat
+		m.mesh = look.mesh
+		m.material_override = look.mat
 		var off := Vector3(c[0] + 0.5, c[1] + 0.5, c[2] + 0.5) - center
 		m.position = Co.gpos(off)
 		g.add_child(m)
