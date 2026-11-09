@@ -334,3 +334,10 @@ func test_prewarm_parts_cover_full() -> void:
 	check(roots == G3.prewarm_parts(), "조각마다 노드 하나: %d" % roots)
 	w1.free()
 	w2.free()
+
+
+# 종료 때 스케줄러에 작업이 남아 있으면 (람다가 world·몸 데우기 잡을 붙잡음) 엔진 종료 중 힙이 깨져 abort 했음 → world 가 트리를 나갈 때 비움
+func test_world_clears_sched_on_exit() -> void:
+	var src := FileAccess.get_file_as_string("res://world/world.gd")
+	var i := src.find("func _exit_tree()")
+	check(i >= 0 and src.substr(i, 700).contains("PSched.main.clear()"), "world.gd _exit_tree 가 PSched.main.clear() 를 부름")

@@ -89,6 +89,11 @@ var _halos: Array = []
 const VIEWMODEL := "res://chars/viewmodel.gd"
 
 
+func _exit_tree() -> void:
+	# 끝낼 때 남은 미리 하기 작업을 놓음: 정적 스케줄러가 람다 (world·몸 데우기 잡을 붙잡음) 를 쥔 채로 엔진이 내려가면 힙이 깨져 종료 때 abort (W41 병합 검증: Linux 소프트웨어 렌더 실행이 rc=134)
+	PSched.main.clear()
+
+
 func _ready() -> void:
 	headless = DisplayServer.get_name() == "headless"
 	var gfx := Gfx.new() # 맨 먼저: 아래·타이틀이 읽는 lowGfx 를 화질로 정함
