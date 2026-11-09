@@ -29,28 +29,28 @@ def define_attacks(M):
     # 베기 (오른손 대각 베기): 오른쪽 위로 젖혔다가 몸을 감으며 왼쪽 아래로 휘두름
     w = P_(ready, hips_z=-0.04, hips_twist=-10, spine_pitch=-4, spine_twist=-36, neck_yaw=14, leg_fwd=(-10, 22), knee=(26, 36),
            arm_fwd=(110, 30), arm_out=(60, 10), elbow=(70, 50), clav_fwd=(-12, 4))
-    s = P_(ready, hips_x=0.1, hips_z=-0.06, hips_twist=16, spine_pitch=22, spine_twist=36, neck_yaw=-12, leg_fwd=(-24, 40), knee=(12, 44), foot=(10, -8),
-           arm_fwd=(90, 30), arm_out=(6, 10), elbow=(4, 56), clav_fwd=(18, 2))
-    clip("h_slash", R, False, [(0.0, ready), (W, w), (S, s), (0.55, P_(s, hips_x=0.12, spine_twist=26, arm_fwd=(76, 30), elbow=(16, 56))), (R, ready)])
+    s = P_(ready, hips_x=0.32, hips_z=-0.08, hips_twist=22, spine_pitch=30, spine_twist=44, neck_yaw=-12, leg_fwd=(-34, 52), knee=(12, 54), foot=(10, -8),
+           arm_fwd=(96, 30), arm_out=(6, 10), elbow=(4, 56), clav_fwd=(18, 2))
+    clip("h_slash", R, False, [(0.0, ready), (W, w), (S, s), (0.55, P_(s, hips_x=0.34, spine_twist=30, arm_fwd=(80, 30), elbow=(16, 56))), (R, ready)])
 
     # 반대 베기 (되받아 치기): 왼쪽 아래에서 오른쪽 위로 올려 베며 반대로 감음
     w = P_(ready, hips_z=-0.05, hips_twist=14, spine_pitch=10, spine_twist=30, neck_yaw=-12, leg_fwd=(22, -10), knee=(34, 20),
            arm_fwd=(40, 12), arm_out=(-8, 6), elbow=(60, 40), clav_fwd=(10, 0))
-    s = P_(ready, hips_x=0.1, hips_z=-0.04, hips_twist=-14, spine_pitch=6, spine_twist=-36, neck_yaw=12, leg_fwd=(40, -24), knee=(40, 20),
-           arm_fwd=(116, 24), arm_out=(64, 8), elbow=(14, 50), clav_fwd=(-14, 4))
-    clip("h_back", R, False, [(0.0, ready), (W, w), (S, s), (0.55, P_(s, hips_x=0.12, arm_fwd=(100, 24))), (R, ready)])
+    s = P_(ready, hips_x=0.32, hips_z=-0.06, hips_twist=-20, spine_pitch=14, spine_twist=-44, neck_yaw=12, leg_fwd=(52, -30), knee=(46, 20),
+           arm_fwd=(120, 24), arm_out=(64, 8), elbow=(4, 50), clav_fwd=(-14, 4))
+    clip("h_back", R, False, [(0.0, ready), (W, w), (S, s), (0.55, P_(s, hips_x=0.34, arm_fwd=(104, 24))), (R, ready)])
 
     # 찔러 넣기: 낮게 몸을 접어 뒤로 당김 → 한 발 크게 내딛으며 소총 끝을 곧게 찌름
     w = P_(ready, hips_z=-0.1, hips_twist=-14, spine_pitch=16, spine_twist=-26, neck_pitch=-8, leg_fwd=(-16, 34), knee=(40, 54), foot=(2, -8),
            arm_fwd=(16, 26), arm_out=(30, 8), elbow=(124, 100), clav_fwd=(-14, -8))
-    s = P_(ready, hips_x=0.2, hips_z=-0.1, hips_twist=18, spine_pitch=32, spine_twist=24, neck_pitch=-14, leg_fwd=(-36, 50), knee=(10, 62), foot=(14, -10),
-           arm_fwd=(94, 84), arm_out=(2, 6), elbow=(2, 8), clav_fwd=(22, 18))
-    clip("h_thrust", R, False, [(0.0, ready), (W, w), (S, s), (0.58, P_(s, hips_x=0.22, spine_pitch=28)), (R, ready)])
+    s = P_(ready, hips_x=0.46, hips_z=-0.12, hips_twist=22, spine_pitch=38, spine_twist=30, neck_pitch=-14, leg_fwd=(-46, 58), knee=(8, 70), foot=(14, -10),
+           arm_fwd=(100, 92), arm_out=(2, 6), elbow=(2, 8), clav_fwd=(22, 18))
+    clip("h_thrust", R, False, [(0.0, ready), (W, w), (S, s), (0.58, P_(s, hips_x=0.48, spine_pitch=34)), (R, ready)])
 
     # 내려 베기 (공중): 소총을 머리 위로 → 온몸으로 내리침
     air = P_(ready, spine_pitch=8, neck_pitch=-6, leg_fwd=(30, 20), knee=(60, 50), foot=(8, 8), arm_fwd=(60, 40), arm_out=(14, 14), elbow=(60, 60))
     w = P_(air, spine_pitch=-16, arm_fwd=(150, 100), arm_out=(14, 10), elbow=(60, 80), leg_fwd=(40, 28))
-    s = P_(air, spine_pitch=44, neck_pitch=-20, arm_fwd=(48, 40), arm_out=(6, 6), elbow=(8, 14), leg_fwd=(-8, -4), knee=(20, 20))
+    s = P_(air, hips_x=0.30, spine_pitch=52, neck_pitch=-20, arm_fwd=(62, 54), arm_out=(6, 6), elbow=(4, 8), leg_fwd=(-8, -4), knee=(20, 20))
     clip("h_dive", R, False, [(0.0, air), (W, w), (S, s), (R, P_(s, spine_pitch=30))])
 
     # 조준 (R 처형 사격·F 표식 조준): 소총을 어깨에 대고 두 팔을 앞으로 → 탕 반동 → 장전하듯 내림
