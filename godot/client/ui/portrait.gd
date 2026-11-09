@@ -121,7 +121,10 @@ func warm(color: Color) -> void:
 		var done := [false]
 		PSched.main.add("portrait." + id, 8 + rank, func():
 			if not done[0]:
-				done[0] = job.step(null, Callable())
+				var r = job.step(null, Callable())
+				if typeof(r) == TYPE_INT:
+					return r # WAIT 그대로
+				done[0] = bool(r)
 				return false
 			_lookup(id, color, render_px(128, float(View.ui_scale)), true)
 			return true, 3.0, "menu", 250.0 * rank)

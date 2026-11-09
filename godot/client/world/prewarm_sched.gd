@@ -19,6 +19,7 @@ const QUIET_MS := 150.0 # 입력 뒤 이만큼 쉼
 const STARVE_MS := 2500.0 # 이만큼 못 돌았으면 쉬는 규칙을 어기고 한 조각
 const MAX_PIECES := 4 # 한 프레임 조각 수 상한 (아주 작은 조각이 많아도)
 const EST_DEFAULT_MS := 1.0
+const WAIT := -1 # 조각이 돌려줄 수 있는 값: 지금은 할 일이 없음 (읽기 끝나길·world 가 보이길 기다림) — 조각으로 안 세고 이번 프레임엔 건너뜀 (낮은 우선순위가 굶지 않게)
 
 
 # 게임 전체가 같이 쓰는 하나 (world.gd 가 프레임마다 step, ui·초상 등이 add)
@@ -114,10 +115,10 @@ class Sched:
 	func note_input(at_ms: float) -> void:
 		_last_input = at_ms
 
-	func _best(at: float) -> Task:
+	func _best(at: float, skip: Dictionary = {}) -> Task:
 		var best: Task = null
 		for t in tasks:
-			if t.not_before > at:
+			if t.not_before > at or skip.has(t.id):
 				continue
 			if best == null or t.prio < best.prio or (t.prio == best.prio and t.seq < best.seq):
 				best = t
@@ -138,15 +139,20 @@ class Sched:
 		var spent := 0.0
 		var n := 0
 		var limit := 1 if resting else max_pieces # 굶어서 억지로 돌릴 땐 한 조각만
+		var skip := {}
 		while n < limit:
-			var t := _best(at)
+			var t := _best(at, skip)
 			if t == null:
 				break
 			if n > 0 and spent + t.est_ms > budget_ms:
 				break
 			var t0 := now_ms()
-			var done: bool = bool(t.fn.call())
+			var r = t.fn.call()
 			var ms := now_ms() - t0
+			if typeof(r) == TYPE_INT and int(r) == WAIT:
+				skip[t.id] = true # 기다리는 중: 조각으로 안 세고 다음 작업으로
+				continue
+			var done: bool = bool(r)
 			spent += ms
 			n += 1
 			t.runs += 1
@@ -165,6 +171,6 @@ class Sched:
 			pieces_run += n
 			frames_busy += 1
 			worst_frame_ms = maxf(worst_frame_ms, spent)
-			if Hitch.on:
+			if Hitch.on and spent >= 1.0:
 				Hitch.tag("미리 하기", "%d조각 %.1fms" % [n, spent], spent)
 		return n

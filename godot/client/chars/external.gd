@@ -208,6 +208,7 @@ class WarmJob:
 	var wait := 2
 	var want_game := true # 판 몸 LOD 텍스처 미리 읽기
 	var want_stage := false # 대기실 큰 캐릭터·초상 (최고 LOD) 텍스처 미리 읽기
+	var cpu_done := false
 	var make := true # 몸까지 만들어 작게 그려 봄 (아니면 미리 읽기만)
 
 	func _init(id_: String, game_ := true, stage_ := false, make_ := true) -> void:
@@ -229,7 +230,8 @@ class WarmJob:
 				return false
 		return true
 
-	func step(host: Node3D, make_body: Callable) -> bool:
+	# 돌려주는 값: true = 끝, false = 다음 프레임에 이어서, PSched.WAIT (-1) = 기다리는 중 (할 일 없음)
+	func step(host: Node3D, make_body: Callable):
 		var Ext_ = load("res://chars/external.gd")
 		match stage:
 			0:
@@ -238,8 +240,9 @@ class WarmJob:
 				Ext_.request_one(id)
 				stage = 1
 			1:
-				if Ext_.file_ready(id):
-					stage = 2
+				if not Ext_.file_ready(id):
+					return -1 # WAIT
+				stage = 2
 			2:
 				var _t2 := Hitch.t()
 				Ext_.take_scene(id) # 받기만 (장면 정보 셈은 다음 조각)
@@ -251,9 +254,18 @@ class WarmJob:
 				stage = 4 if make or want_stage else 9
 			4:
 				if not tex_ready():
-					return false
+					return -1
 				if not make:
 					return true
+				if host == null or not host.is_visible_in_tree():
+					# 타이틀·메뉴 동안 world 는 숨겨져 (title.gd) 그려도 셰이더가 안 만들어짐 → 여기선 만들기 (CPU 첫 사용 값) 만 한 번 치르고 버림,
+					# 그리기는 world 가 보이는 대기실에서 (두 번째 만들기는 싸다)
+					if not cpu_done:
+						cpu_done = true
+						var b0: Node3D = make_body.call(id, Color(0.8, 0.3, 0.3))
+						b0.free()
+						return false
+					return -1
 				var _ht := Hitch.t()
 				body = make_body.call(id, Color(0.8, 0.3, 0.3))
 				var cam := host.get_viewport().get_camera_3d() if host.is_inside_tree() else null

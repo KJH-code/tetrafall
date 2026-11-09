@@ -19,6 +19,7 @@ const GhostAim := preload("res://world/ghost_aim.gd")
 const Scenery := preload("res://world/scenery.gd")
 const LP := preload("res://world/lobby_preview.gd")
 const Prof := preload("res://core/prof.gd") # 성능 구간 재기 (--perf-log 만)
+const Hitch := preload("res://core/hitch.gd")
 const Marks := preload("res://world/marks.gd")
 const LightFx := preload("res://world/light_fx.gd")
 const Shots := preload("res://world/shots.gd")
@@ -29,6 +30,7 @@ const LobbyDark := preload("res://world/lobby_dark.gd")
 const Gfx := preload("res://world/gfx.gd") # 화질 (W6): 설정 화질·창 크기·GPU → lowGfx·3D 배율·MSAA
 const ShadowCalc := preload("res://world/shadow_calc.gd") # W32: 그림자 거리
 const PSched := preload("res://world/prewarm_sched.gd") # W41: 메뉴·대기실 미리 하기를 프레임 예산 안에서 한 조각씩
+const WarmScan := preload("res://world/warm_scan.gd")
 const TexPre := preload("res://chars/tex_prefetch.gd")
 const UiPrefs := preload("res://ui/ui_prefs.gd")
 const BBLOCKS := "res://world/bblocks.gd"
@@ -71,6 +73,11 @@ var _ext_warm_done := false # W30: 외부 몸 미리 그리기 끝
 var _prewarmed = null # 셰이더 미리 데운 테마 (G3.prewarm)
 var _sched_setup_done := false # W41 스케줄러에 메뉴 작업을 넣었음
 var _sched_prev_us := 0
+const WARM_SCAN_PER_PIECE := 4
+var _scan_done := {} # 미리 그린 재질 id
+var _scan_queue: Array = []
+var _scan_root: Node3D = null
+var _scan_wait := 0
 var _pf_done := {} # 대기실에서 텍스처를 미리 요청한 캐릭터
 var _jobs := {} # 캐릭터 → External.WarmJob (W41)
 var dark = null # 대기실 어두운 무대 (lobby_dark.gd), 대기실 아니면 null
@@ -440,6 +447,28 @@ func _sched_tick(live: bool, st: Dictionary) -> void:
 		TexPre.drain() # 판이 자리 잡으면 안 받은 텍스처 요청을 놓음 (영상 메모리)
 
 
+# W41: 재질 미리 그리기 (world/warm_scan.gd) 한 조각 = 재질 몇 개를 카메라 앞에 작게 그림 → 두 프레임 뒤 치움. 한 번 한 재질은 다시 안 함 (맵을 바꿔 새 재질이 생기면 다음 scan 이 찾음)
+func _warm_scan_step() -> bool:
+	if _scan_root != null:
+		_scan_wait -= 1
+		if _scan_wait <= 0:
+			_scan_root.queue_free()
+			_scan_root = null
+		return false
+	if not is_visible_in_tree():
+		return PSched.WAIT
+	if _scan_queue.is_empty():
+		_scan_queue = WarmScan.collect(self, _scan_done)
+		if _scan_queue.is_empty():
+			return true
+	var take: Array = _scan_queue.slice(0, WARM_SCAN_PER_PIECE)
+	_scan_queue = _scan_queue.slice(WARM_SCAN_PER_PIECE)
+	_scan_root = WarmScan.spawn(self, take, get_viewport().get_camera_3d())
+	_scan_wait = 2
+	Hitch.tag("미리 그리기", "재질 %d개 (남은 %d)" % [take.size(), _scan_queue.size()])
+	return false
+
+
 # W41: 대기실에 있는 사람들의 캐릭터 (+ 나) 의 판 몸·큰 캐릭터·초상 텍스처를 미리 스레드로 요청 — 판 시작 때 몸·초상을 만들며 동기로 읽던 것 (몸당 10~50ms)
 func _lobby_prefetch(st: Dictionary) -> void:
 	var want := {}
@@ -452,6 +481,8 @@ func _lobby_prefetch(st: Dictionary) -> void:
 		if _pf_done.has(id) or not C.FIGURE_CHARS.has(id):
 			continue
 		_pf_done[id] = true
+		if not PSched.main.has("warm.scan.lobby"):
+			PSched.main.add("warm.scan.lobby", 4, _warm_scan_step, 3.0, "lobby", 300.0) # 맵·인원에 따라 새로 생긴 재질
 		var job = External.WarmJob.new(str(id), true, true, false)
 		PSched.main.add("lobby.prefetch." + str(id), 0 + rank, func(): return job.step(self, Callable()), 4.0, "lobby")
 		rank += 1
@@ -463,9 +494,12 @@ func _sched_setup() -> void:
 	var after := float(C.LOBBY_DARK.prewarmMs)
 	if g3_has("prewarm"):
 		S.add("g3.prewarm", 1, func():
+			if not is_visible_in_tree():
+				return PSched.WAIT # 타이틀 동안 world 는 숨김 — 숨은 채로 그리면 셰이더가 안 만들어짐 (메뉴로 넘어오길 기다림)
 			_prewarmed = str(View.menu_theme)
 			G3.prewarm(self, View.menu_theme)
 			return true, 8.0, "menu", after)
+	S.add("warm.scan", 3, _warm_scan_step, 3.0, "menu", after + 300.0)
 	if light_fx != null and light_fx.has_method("warm_lut_step"):
 		S.add("light.lut", 6, func(): return light_fx.warm_lut_step(), 0.7, "menu", after)
 	if Opts.args().has("--no-ext-warm") or bodies == null or bodies.get("chars_script") == null:

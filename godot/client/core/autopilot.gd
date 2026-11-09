@@ -361,6 +361,15 @@ func _process(_d: float) -> void:
 		var fxn := get_tree().get_first_node_in_group("fx")
 		if fxn != null:
 			snd += " | 효과 이벤트 %d번" % fxn.events
+		if args.has("mat-census"): # W41: 미리 그릴 재질 수 (world 아래, 몸 빼고)
+			var WS = load("res://world/warm_scan.gd")
+			var wnode := get_tree().root.find_child("World", true, false)
+			var list: Array = WS.collect(wnode if wnode != null else get_tree().root, {})
+			var kinds := {}
+			for e in list:
+				var k := "%s%s" % [e[0].get_class(), (" " + str((e[0] as ShaderMaterial).shader.resource_path.get_file()) if e[0] is ShaderMaterial and (e[0] as ShaderMaterial).shader != null else "")]
+				kinds[k] = int(kinds.get(k, 0)) + 1
+			print("[재질 수] %d개 · %s" % [list.size(), str(kinds)])
 		if args.has("sched-log"): # W41: 미리 하기 예산기가 한 일
 			var PS = load("res://world/prewarm_sched.gd")
 			print("[미리하기] 조각 %d · 일한 프레임 %d · 한 프레임 최대 %.1fms · 남은 %d · 끝난 %s" % [PS.main.pieces_run, PS.main.frames_busy, PS.main.worst_frame_ms, PS.main.pending(), str(PS.main.finished.map(func(f): return "%s %d조각 %.0fms" % [f[0], f[1], f[2]]))])

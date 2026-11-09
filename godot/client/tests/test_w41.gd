@@ -227,3 +227,59 @@ func test_top_report() -> void:
 	var one := log.top_report(from, 5)
 	check(one.size() == 2 and not str(one).contains("몸 만들기"), "한 판 몫만 (그 전 히치 뺌): %s" % str(one))
 	check(log.top_report(log.count, 5).is_empty(), "히치 없으면 빈 목록")
+
+
+# 재질 미리 그리기 수집: 재질 중복 없이·이미 한 것 제외·MultiMesh 표시·몸 제외
+const WS := preload("res://world/warm_scan.gd")
+
+
+func test_warm_scan_collect() -> void:
+	var root := Node3D.new()
+	var m1 := StandardMaterial3D.new()
+	var m2 := ShaderMaterial.new()
+	var a := MeshInstance3D.new()
+	a.mesh = BoxMesh.new()
+	a.material_override = m1
+	root.add_child(a)
+	var b := MeshInstance3D.new() # 같은 재질 두 번 → 한 번만
+	b.mesh = BoxMesh.new()
+	b.material_override = m1
+	root.add_child(b)
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = BoxMesh.new()
+	mm.instance_count = 1
+	var c := MultiMeshInstance3D.new()
+	c.multimesh = mm
+	c.material_override = m2
+	root.add_child(c)
+	var surf := MeshInstance3D.new() # 표면 재질
+	var bm := BoxMesh.new()
+	var m3 := StandardMaterial3D.new()
+	bm.material = m3
+	surf.mesh = bm
+	root.add_child(surf)
+	var done := {}
+	var list := WS.collect(root, done)
+	check(list.size() == 3, "재질 셋 (중복·표면 포함): %d" % list.size())
+	var multi := 0
+	for e in list:
+		multi += 1 if e[1] else 0
+	check(multi == 1, "MultiMesh 재질 표시")
+	check(WS.collect(root, done).is_empty(), "이미 한 재질은 다시 안 모음")
+	var host := Node3D.new()
+	var sp := WS.spawn(host, list, null)
+	check(sp.get_child_count() == list.size() * 2, "재질마다 보통 + MultiMesh 하나씩: %d" % sp.get_child_count())
+	host.free()
+	root.free()
+
+
+func test_wait_does_not_starve_lower_priority() -> void:
+	var f := Fake.new()
+	var s := _sched(f)
+	var log := []
+	s.add("blocked", 1, func(): return PS.WAIT, 1.0, "", 0.0, 0.0)
+	s.add("low", 9, _piece(f, 1.0, log, "low"), 1.0, "", 0.0, 0.0)
+	var n := s.step(1000.0)
+	check(log == ["low"] and n == 1, "기다리는 작업이 낮은 우선순위를 막지 않음: %s" % str(log))
+	check(s.has("blocked") and s.pieces_run == 1, "기다림은 조각으로 안 셈")
