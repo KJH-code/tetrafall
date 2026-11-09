@@ -151,6 +151,7 @@ func _run() -> void:
 			b.walk = float(st.walk)
 			b.vz = float(st.vz)
 			b.t = float(st.t)
+			b.air_dash_t = float(st.airDash) * C.FIGURE_AIR_DASH.s # W34: 공중 대시 몸 기울임도 (rig 틸트) 게임 그대로
 			b.set_meta("air", st.air)
 			b.set_meta("walking", st.walking)
 			b._figure_anim(st, dt)

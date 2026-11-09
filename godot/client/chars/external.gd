@@ -842,6 +842,8 @@ class Ext extends Node3D:
 		if clip != "" or sk == null:
 			return
 		_code_sync()
+		if st != null and float(st.get("airDash", 0.0)) > 0.0 and not bool(st.get("stunned", false)):
+			_dash_wrist()
 		if third and not clipset.is_empty() and (st != null or not forced.is_empty()):
 			_clip_layer(st)
 		if not cloths.is_empty():
@@ -959,6 +961,18 @@ class Ext extends Node3D:
 				if absf(dy) > 1e-6:
 					sk.set_bone_pose_position(hb, sk.get_bone_pose_position(hb) + Vector3(0, dy * cw, 0))
 		clip_info = {"clip": name, "cw": cw, "dy": dy, "t": tt}
+
+	# W34 공중 대시 손목: 공용 슈퍼맨 자세 (figure_pose SUPERMAN) 는 팔을 쭉 뻗는 것만 정해서 손에 쥔 무기 (해머·소총) 가 모델 쥐는 각 그대로 팔과 직각으로 솟음 —
+	# cfg.dash_wrist {관절 이름 (hand_R 등): [x, y, z 도]} 만큼 손뼈를 그 뼈의 지역 축으로 더 돌려 무기가 팔 쪽 (앞) 으로 눕게. 코드 몸은 그대로
+	func _dash_wrist() -> void:
+		var dw: Dictionary = info.cfg.get("dash_wrist", {})
+		for jn in dw:
+			var bi: int = int(info.map.get(jn, -1))
+			if bi < 0:
+				continue
+			var a: Array = dw[jn]
+			var q := Quaternion.from_euler(Vector3(deg_to_rad(float(a[0])), deg_to_rad(float(a[1])), deg_to_rad(float(a[2]))))
+			sk.set_bone_pose_rotation(bi, sk.get_bone_pose_rotation(bi) * q)
 
 	# 뼈 전역 자세 (뼈대 공간): 뼈 지역 자세를 부모로 곱함
 	func _gt(bi: int) -> Transform3D:

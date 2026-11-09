@@ -173,3 +173,35 @@ func test_clip_rate_scales_phase() -> void:
 	var b := Clips.select(cc, st, 0.0)
 	check(absf(float(a.t) - fposmod(1.0 / TAU, 1.0)) < 1e-5, "stride 없으면 위상 그대로")
 	check(absf(float(b.t) - fposmod(1.5 / TAU, 1.0)) < 1e-5, "박자 1.5 배 (%.3f)" % float(b.t))
+
+
+# ---- 3. 공중 대시 손목 (무기가 팔과 직각으로 솟던 것) ----
+func test_dash_wrist() -> void:
+	var st := {"air": true, "walking": false, "hs": 4.5, "walk": 0.0, "vz": 0.0, "t": 1.0, "stunned": false, "emote": -1, "victory": -1.0, "hit": null, "act": null,
+		"tumble": 0.0, "recover": 0.0, "land": 0.0, "flip": -1.0, "idle": 0.0, "airDash": 0.0, "dizzy": 0.0, "whirl": -1.0, "glide": false}
+	for ch in ["tank", "hunter", "ninja", "hook"]:
+		var b = _body(ch, "high")
+		var X = b.ext
+		var dw: Dictionary = X.info.cfg.get("dash_wrist", {})
+		check(dw.is_empty() == (ch in ["ninja", "hook"]), "%s dash_wrist 있음 여부 (무기가 쥔 해머·소총만)" % ch)
+		var hb: int = int(X.info.map.get("hand_R", -1))
+		X.sync(st)
+		var q0: Quaternion = X.sk.get_bone_pose_rotation(hb)
+		st.airDash = 1.0
+		X.sync(st)
+		var q1: Quaternion = X.sk.get_bone_pose_rotation(hb)
+		st.airDash = 0.0
+		var ang := rad_to_deg(q0.angle_to(q1))
+		if dw.has("hand_R"):
+			var a: Array = dw.hand_R
+			var want := rad_to_deg(Quaternion.from_euler(Vector3(deg_to_rad(a[0]), deg_to_rad(a[1]), deg_to_rad(a[2]))).get_angle())
+			X.info.cfg["dash_wrist"] = {} # 같은 대시 자세에서 손목 보정만 뺌 → 차이 = 설정한 각
+			st.airDash = 1.0
+			X.sync(st)
+			var q2: Quaternion = X.sk.get_bone_pose_rotation(hb)
+			st.airDash = 0.0
+			X.info.cfg["dash_wrist"] = dw # 캐시된 설정을 되돌림
+			var diff := rad_to_deg(q1.angle_to(q2))
+			check(absf(diff - want) < 2.0, "%s 대시 손목 보정 %.1f도 (설정 %.1f)" % [ch, diff, want])
+			check(ang > 20.0, "%s 대시에서 손뼈가 돌아감 (%.0f)" % [ch, ang])
+		b.free()
