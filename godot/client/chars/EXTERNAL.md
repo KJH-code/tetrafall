@@ -189,3 +189,12 @@ W31 이 남긴 후보 (해 그림자 패스 = 3D 삼각형의 38%) 를 실제로
 - 맞음 움찔 `Ext._hit_flinch` (config `EXT_HIT_FLINCH_*`): 가산 (척추 둘·머리), 모든 외부 몸 (닌자 포함), 래그돌 모터 약하면 빠짐.
 - 1인칭: `viewmodel.gd act_swing` + config `VM_ACT_STYLE`·`VM_ACT_SWING`.
 - 테스트 (`test_ext_clips.gd`): `W38_MOVES` 표 (캐릭터별 클립 만든 동작) — 클립을 늘리면 표도 늘림. 단계→눈금·클립 길이·타격 순간 손·골반 앞으로·움찔·도발·승리·1인칭 곡선.
+
+
+## 18. W39 — PC 최적화 5차 (2026-11-10, 표는 `docs/w39/README.md`)
+
+- 합친 뒤 영상 메모리 +21MB 는 회귀 아님 (같은 녹화 W37 151.2 = 합친 151.2MB, 조건 차이).
+- 알베도 지연 로드 (`External.lazy_tex`, `Ext.tex_of`, `--no-lazy-tex`): 메뉴 47.6→30.9MB, 판 8명 55.1→43.1MB.
+- 칸 LOD (`world/cell_lod.gd`, `--no-cell-lod`·`--cell-lod-far`): 먼 칸은 108삼각형 낮은 모양, 판 후반 합계 141.8k→126.9k.
+- 섬·바위 해 그림자 끔 (`--no-scenery-opt`): 그림자 지형 6.0k→1.8k.
+- 몸 자세: `_code_maps`·`_code_bones` ext.sync 0.064→0.023ms/몸. 도구 `tools/tex_meas.gd`·`pose_cpu.gd`·`--budget-split`.
