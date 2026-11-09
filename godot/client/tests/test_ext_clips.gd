@@ -88,7 +88,11 @@ func test_select_maps_server_phases() -> void:
 	# 상태: 달리기·서기·공중
 	check(Clips.select(cc, _st(), 0.0).clip == "idle", "가만히 = idle")
 	var run := Clips.select(cc, _st({"walking": true, "hs": C.MOVE_SPEED, "walk": PI}), 0.0)
-	check(run.clip == "run" and absf(run.t - 0.5) < 1e-5 and run.get("norm", false), "달리기 = run, 걸음 위상 π = 한 바퀴의 절반")
+	var rate := 1.0 # W34 박자 배율 (cfg.clips.stride.run[2])
+	var sdr = (cc.get("stride", {}) as Dictionary).get("run")
+	if sdr is Array and sdr.size() > 2:
+		rate = float(sdr[2])
+	check(run.clip == "run" and absf(run.t - fposmod(0.5 * rate, 1.0)) < 1e-5 and run.get("norm", false), "달리기 = run, 걸음 위상 π = 한 바퀴의 절반 (× 박자 배율 %.1f)" % rate)
 	check(Clips.select(cc, _st({"walking": true, "hs": 1.0, "walk": 0.0}), 0.0).clip == "walk", "느리면 walk")
 	check(Clips.select(cc, _st({"air": true, "vz": 3.0}), 0.1).clip == "jump", "오르는 중 = jump")
 	check(Clips.select(cc, _st({"air": true, "vz": -3.0}), 0.5).clip == "fall", "내리는 중 = fall")

@@ -539,10 +539,20 @@ class Ext extends Node3D:
 			opts.map = tex
 		if vcolor:
 			opts.vertex_color = true
+		var mt = opts.get("skin_mask")
+		opts.erase("skin_mask")
 		var m := G3_.toon_material(col, opts)
 		if vcolor and mask:
 			m.set_shader_parameter("skin_tint", Color(skin.r, skin.g, skin.b, 1.0))
+			if mt != null: # W34 몸 색 칸 마스크 텍스처 (꼭짓점 UV2 대신)
+				m.set_shader_parameter("skin_mask_tex", mt)
+				m.set_shader_parameter("use_skin_mask", true)
 		return m
+
+	# W34 cfg.skin_mask[메시 노드 이름] 의 마스크 텍스처 (없으면 null = 꼭짓점 판정)
+	static func skin_mask_for(cfg: Dictionary, node: String):
+		var p: String = str(cfg.get("skin_mask", {}).get(node, ""))
+		return load(p) if p != "" and ResourceLoader.exists(p) else null
 
 	# 빛 안 받는 색 (눈 흰자): 툰 재질의 알베도 검정 + 발광 = 색 → 하늘빛·해 음영 없이 그 색 (외곽선 없음, op < 1 이면 반투명)
 	static func unlit_for(col: Color, op: float) -> ShaderMaterial:
@@ -833,6 +843,10 @@ class Ext extends Node3D:
 		if clip != "" or sk == null:
 			return
 		_code_sync()
+		if not third:
+			_vm_bone_scale()
+		if st != null and float(st.get("airDash", 0.0)) > 0.0 and not bool(st.get("stunned", false)):
+			_dash_wrist()
 		if third and not clipset.is_empty() and (st != null or not forced.is_empty()):
 			_clip_layer(st)
 		if not cloths.is_empty():
@@ -940,12 +954,97 @@ class Ext extends Node3D:
 			if data.pos.has(key):
 				var cp: Vector3 = an.position_track_interpolate(int(data.pos[key]), tt)
 				sk.set_bone_pose_position(hb, hp.lerp(cp, cw))
+			# W34 보폭 늘리기 (발 미끄러짐): 걷기·달리기 클립의 발 앞뒤 움직임을 (골반 기준 한 바퀴 평균 자리 c 둘레로) k 배로 늘려 2본 IK 로 다리를 다시 폄 (cfg.clips.stride {클립: [k, c, 박자 배율]})
+			var sd = (cc.get("stride", {}) as Dictionary).get(name)
+			if sd is Array and float(sd[0]) > 1.0 and not bool(use.get("air", false)):
+				_stride_ik(1.0 + (float(sd[0]) - 1.0) * cw, float(sd[1]))
 			# 발 붙이기: 가장 낮은 발 뼈가 바닥 (쉬는 자세 높이) 에 닿게 골반을 올리거나 내림 (달리기는 통통 뜨는 걸 두려고 파묻힘만 막음)
 			if not bool(use.get("air", false)):
 				dy = _ground_dy(cc, str(use.get("kind", "")) == "loco")
 				if absf(dy) > 1e-6:
 					sk.set_bone_pose_position(hb, sk.get_bone_pose_position(hb) + Vector3(0, dy * cw, 0))
 		clip_info = {"clip": name, "cw": cw, "dy": dy, "t": tt}
+
+	# W34 1인칭 쌍둥이만: cfg.vm_bone_scale {모델 뼈 이름: 배율} — 그 뼈 (와 아래 자식 전부) 를 줄임. 탱크는 왼 아래팔에 붙은 방패가 화면 왼쪽 아래를 너무 가려서
+	# (방패 쥐기 IK 는 손 관절 자리를 그대로 따라가니 3/4 타 쥐기는 유지, 방패·주먹만 같이 작아짐)
+	func _vm_bone_scale() -> void:
+		var vs: Dictionary = info.cfg.get("vm_bone_scale", {})
+		for bn in vs:
+			var bi := sk.find_bone(str(bn))
+			if bi >= 0:
+				sk.set_bone_pose_scale(bi, sk.get_bone_pose_scale(bi) * float(vs[bn]))
+
+	# W34 공중 대시 손목: 공용 슈퍼맨 자세 (figure_pose SUPERMAN) 는 팔을 쭉 뻗는 것만 정해서 손에 쥔 무기 (해머·소총) 가 모델 쥐는 각 그대로 팔과 직각으로 솟음 —
+	# cfg.dash_wrist {관절 이름 (hand_R 등): [x, y, z 도]} 만큼 손뼈를 그 뼈의 지역 축으로 더 돌려 무기가 팔 쪽 (앞) 으로 눕게. 코드 몸은 그대로
+	func _dash_wrist() -> void:
+		var dw: Dictionary = info.cfg.get("dash_wrist", {})
+		for jn in dw:
+			var bi: int = int(info.map.get(jn, -1))
+			if bi < 0:
+				continue
+			var a: Array = dw[jn]
+			var q := Quaternion.from_euler(Vector3(deg_to_rad(float(a[0])), deg_to_rad(float(a[1])), deg_to_rad(float(a[2]))))
+			sk.set_bone_pose_rotation(bi, sk.get_bone_pose_rotation(bi) * q)
+
+	# 뼈 전역 자세 (뼈대 공간): 뼈 지역 자세를 부모로 곱함
+	func _gt(bi: int) -> Transform3D:
+		var t := Transform3D.IDENTITY
+		var b := bi
+		while b >= 0:
+			t = sk.get_bone_pose(b) * t
+			b = sk.get_bone_parent(b)
+		return t
+
+	# W34 보폭 늘리기: 두 다리 각각, 발이 골반 기준 앞뒤 (뼈대 공간 x) 로 쉬는 자리에서 벗어난 만큼을 k 배로 늘린 자리 → 2본 IK (허벅지·정강이 길이 그대로, 무릎은 앞쪽).
+	# c = 한 바퀴 평균 발 자리 (골반 기준 x, 뼈대 공간). 발 방향 (전역) 은 클립 그대로. 닿을 수 없으면 (다리 길이 밖) 가장 먼 자리까지만
+	func _stride_ik(k: float, center: float) -> void:
+		var hb: int = int(info.map.get("hips", -1))
+		if hb < 0:
+			return
+		var rg: Array = info.rest_global
+		for side in ["Left", "Right"]:
+			var ub := sk.find_bone("mixamorig_%sUpLeg" % side)
+			var kb := sk.find_bone("mixamorig_%sLeg" % side)
+			var fb := sk.find_bone("mixamorig_%sFoot" % side)
+			if ub < 0 or kb < 0 or fb < 0:
+				continue
+			var gH := _gt(hb)
+			var gU := _gt(ub)
+			var gK := _gt(kb)
+			var gF := _gt(fb)
+			var dx: float = (gF.origin.x - gH.origin.x) - center
+			var target := gF.origin + Vector3(dx * (k - 1.0), 0.0, 0.0)
+			var r := leg_ik(gU.origin, gK.origin, gF.origin, target, Vector3(1, 0, 0))
+			var old1 := (gK.origin - gU.origin).normalized()
+			var q1 := Quaternion(old1, ((r.knee as Vector3) - gU.origin).normalized())
+			var bU := Basis(q1) * gU.basis
+			var old2: Vector3 = q1 * (gF.origin - gK.origin).normalized()
+			var q2 := Quaternion(old2, ((r.foot as Vector3) - (r.knee as Vector3)).normalized())
+			var bK := Basis(q2) * Basis(q1) * gK.basis
+			var pU := sk.get_bone_parent(ub)
+			var pb: Basis = _gt(pU).basis if pU >= 0 else Basis.IDENTITY
+			sk.set_bone_pose_rotation(ub, (pb.inverse() * bU).orthonormalized().get_rotation_quaternion())
+			sk.set_bone_pose_rotation(kb, (bU.inverse() * bK).orthonormalized().get_rotation_quaternion())
+			sk.set_bone_pose_rotation(fb, (bK.inverse() * gF.basis).orthonormalized().get_rotation_quaternion())
+
+	# 2본 IK (순수 계산): 엉덩이 P·무릎 K·발 F 의 길이 (l1 = P→K, l2 = K→F) 를 지키며 발을 T 로 — 닿을 수 없으면 가장 먼/가까운 곳까지 (방향은 P→T).
+	# pole = 무릎이 향할 쪽 (P→T 와 수직인 몫만 씀). 돌려줌 {knee, foot}
+	static func leg_ik(P: Vector3, K: Vector3, F: Vector3, T: Vector3, pole: Vector3) -> Dictionary:
+		var l1 := P.distance_to(K)
+		var l2 := K.distance_to(F)
+		var v := T - P
+		var dist := v.length()
+		if dist < 1e-6 or l1 < 1e-6 or l2 < 1e-6:
+			return {"knee": K, "foot": F}
+		var dir := v / dist
+		dist = clampf(dist, absf(l1 - l2) + 1e-4, (l1 + l2) * 0.999)
+		var a := (l1 * l1 - l2 * l2 + dist * dist) / (2.0 * dist)
+		var h := sqrt(maxf(l1 * l1 - a * a, 0.0))
+		var perp := pole - dir * pole.dot(dir)
+		if perp.length() < 1e-4:
+			perp = (K - P) - dir * (K - P).dot(dir)
+		perp = perp.normalized()
+		return {"knee": P + dir * a + perp * h, "foot": P + dir * dist}
 
 	# 뼈 높이 (뼈대 공간): 뼈 지역 자세를 부모로 곱함 (get_bone_global_pose 는 트리 밖 뼈대에선 안 갱신됨 — 테스트·초상)
 	func _bone_y(bi: int) -> float:
@@ -1045,9 +1144,10 @@ class Ext extends Node3D:
 				continue
 			var vc: bool = sf.get("vcolor", false)
 			var mask: bool = vc and mode == "mask"
-			var m := style(toon_for(col, sf.tex, vc, mask, body.skin_color), cfg)
+			var mt = skin_mask_for(cfg, str(sf.get("node", ""))) if mask else null
+			var m := style(toon_for(col, sf.tex, vc, mask, body.skin_color, {"skin_mask": mt} if mt != null else {}), cfg)
 			mi.material_override = m
-			parts.append({"mi": mi, "color": col, "tex": sf.tex, "solid": m, "vcolor": vc, "mask": mask})
+			parts.append({"mi": mi, "color": col, "tex": sf.tex, "solid": m, "vcolor": vc, "mask": mask, "mask_tex": mt})
 			body.drawn.append({"mi": mi, "m": {"kind": "toon"}, "merged": false, "ext": true})
 		if shadow_lod != "":
 			ExtShadow.add(model, sk, info.surfs, shadow_lod) # W32: 원래 메시 (olds) 를 지우기 전에 — 그 자리·스킨을 베낌
@@ -1241,7 +1341,7 @@ class Ext extends Node3D:
 		var want: Material = pt.solid
 		if op < 1.0:
 			if not pt.has("alpha"):
-				pt.alpha = style(toon_for(pt.color, pt.tex, true, true, body.skin_color, {"opacity": 0.5, "outline": false}), info.cfg, false)
+				pt.alpha = style(toon_for(pt.color, pt.tex, true, true, body.skin_color, {"opacity": 0.5, "outline": false, "skin_mask": pt.get("mask_tex")}), info.cfg, false)
 				G3_.toon_hazard_light(pt.alpha, body.hz_light)
 			want = pt.alpha
 		var shown: Material = GhostDepth.wrap_in(pt) if op < 1.0 else want # W35 반투명이면 깊이 선 먼저

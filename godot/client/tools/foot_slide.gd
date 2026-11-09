@@ -31,6 +31,9 @@ func _run() -> void:
 		for nm in ["walk", "run"]:
 			if not X.clipset.has(nm):
 				continue
+			var sd = (X.info.cfg.get("clips", {}).get("stride", {}) as Dictionary).get(nm)
+			var rate: float = float(sd[2]) if sd is Array and sd.size() > 2 else 1.0 # W34 박자 배율: 클립 한 바퀴 = 코드 위상 1/rate 바퀴
+			var need_r := need / rate
 			var n := 60
 			var fR := sk.find_bone("mixamorig_RightFoot")
 			var fL := sk.find_bone("mixamorig_LeftFoot")
@@ -38,11 +41,17 @@ func _run() -> void:
 			var travel := 0.0
 			var had := false
 			var prev_stance := -1
+			var hy_min := 1e9
+			var hy_max := -1e9
+			var fh := sk.find_bone("mixamorig_Hips")
 			for i in n + 1:
 				var t: float = float(X.clipset[nm].len) * float(i) / n
 				X.preview_clip(nm, t)
 				X.fade_t = 1.0 # 클립 바뀐 직후 크로스페이드 (실제 시간 0.1초) 를 건너뜀
 				X.preview_clip(nm, t)
+				var hy := _pos(sk, fh).y
+				hy_min = minf(hy_min, hy)
+				hy_max = maxf(hy_max, hy)
 				var pr := _pos(sk, fR)
 				var pl := _pos(sk, fL)
 				var stance: int = 0 if pr.y <= pl.y else 1
@@ -53,7 +62,7 @@ func _run() -> void:
 				prev_stance = stance
 				had = true
 			travel *= sc
-			print("TFS %s %s 한 바퀴: 접지 발 뒤로 %.2f m, 코드 걸음 위상이 가는 거리 %.2f m, 비 %.2f" % [ch, nm, travel, need, travel / need])
+			print("TFS %s %s 한 바퀴: 접지 발 뒤로 %.2f m, 코드 걸음 위상이 가는 거리 %.2f m (박자 ×%.2f), 비 %.2f, 몸 위아래 %.2f m" % [ch, nm, travel, need_r, rate, travel / need_r, (hy_max - hy_min) * sc])
 		b.queue_free()
 	quit()
 

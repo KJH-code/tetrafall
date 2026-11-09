@@ -3,6 +3,13 @@
  "height": 1.0,
  "yaw": 0.0,
  "tint": "mask",
+ "dash_wrist": {"hand_R": [0, -50, 0]},
+ "skin_mask": {
+  "hunter_lod0": "res://assets/models/ext/hunter_mask.png",
+  "hunter_lod1": "res://assets/models/ext/hunter_mask.png",
+  "hunter_lod2": "res://assets/models/ext/hunter_mask.png",
+  "hunter_lod3": "res://assets/models/ext/hunter_mask.png"
+ },
  "lods": {
   "stage": "hunter_lod0",
   "high": "hunter_lod1",
@@ -18,6 +25,9 @@
  "rim": [
   0.22,
   3.0
+ ],
+ "attach": [
+  {"glb": "res://assets/models/ext/hunter_rifle.glb", "joint": "hand_R", "pos": [0, 0, 0], "rot": [0, 0, 40], "scale": 1.0213, "vm": true, "third": false}
  ],
  "vm_snap": [
   "elbow"
@@ -42,6 +52,7 @@
   "land": "land",
   "run_speed": 4.5,
   "run_from": 0.55,
+  "stride": {"walk": [1.4, -0.03, 1.6], "run": [1.45, -0.08, 1.6]},
   "ground": [
    "mixamorig_LeftFoot",
    "mixamorig_RightFoot",
