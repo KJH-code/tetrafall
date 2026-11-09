@@ -135,9 +135,12 @@ export function readme(t, { cloudflared = true } = {}) {
           '',
           `게임이 느리면:      노트북 (내장+외장 그래픽) 은 start-lan·start-online 이 처음 켜질 때 ${pc} 를 Windows 고성능 GPU 로 등록함 (관리자 권한 없이, 이미 정했으면 그대로).`,
           `                    ${pc} 만 따로 쓰면 Windows 설정 > 시스템 > 디스플레이 > 그래픽 에서 ${pc} 를 '고성능'. 게임 설정 '화질' 자동·높음·보통·낮음, F3 = 성능 표시 (Ctrl+C 복사)`,
+          `                    내장 그래픽으로 도는 것 같으면 타이틀 왼쪽 아래·설정 창에 노란 경고와 해결법이 뜸. 판 중 GPU 가 병목이면 3D 해상도가 알아서 0.6~1.0 사이로 조절됨 (설정 '3D 해상도 자동', 끄기 가능).`,
+          '                    랙 순간 기록: F3 를 켜면 %APPDATA%\\Godot\\app_userdata\\Tetrafall\\hitches.txt 에 쌓임 — 느렸다면 그 파일도 보내 주세요',
           '',
           '렌더러 시험 (성능 비교용):  start-lan-compat.bat (지금 기본) · start-lan-forward.bat (Forward+) · start-lan-mobile.bat (Mobile)',
-          `                    서버와 ${pc} 를 그 렌더러로 같이 켬. 각각 8명 판에서 F3 를 켜고 Ctrl+C 로 복사한 숫자를 보내 주세요 (색이 조금 다를 수 있음 — 시험용)`,
+          `                    서버와 ${pc} 를 그 렌더러로 같이 켬 (색이 조금 다를 수 있음 — 시험용). 세 개를 각각: 같은 맵의 8명 판 (방 설정에서 봇 7) 을 한 판 하고,`,
+          '                    판 중에 F3 → Ctrl+C 로 복사한 한 줄 (첫 줄에 렌더러·GPU 이름이 들어 있음) 을 하나씩 보내 주세요. 타이틀 왼쪽 아래 글자에도 지금 렌더러가 나옴',
           '',
           '새 탱크 시험 (Blender 모델):  start-lan-ext.bat — 서버와 ' + pc + ' 를 --ext 로 같이 켬. 대기실에서 탱크를 고르면 새 모델 (기본 start-lan 은 그대로)',
         ]
