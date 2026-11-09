@@ -115,7 +115,7 @@ JS 같음: ○ 같음 · △ 거의 (작은 차이) · × 다름/없음. 개선 
 | 건축가 | 망치 폭파·R 큰 폭탄 칸마다 불덩이·연기·불꽃 (판자 조각은 예전 그대로) |
 | 갈고리 | R 내려찍기 박힘 땅 충격 · 탕 포구 번쩍 |
 
-W3 남은 것 중 안 한 것: 취약 표시 모양 · 탱크 R 솟는 땅 돌 텍스처 · 갈고리 R 덩어리 재질 · 1인칭 발밑 고리 숨김 (이펙트보다 모양·재질 일이라 다음으로).
+W3 남은 것 중 안 한 것: ~~취약 표시 모양 · 탱크 R 솟는 땅 돌 텍스처 · 갈고리 R 덩어리 재질 · 1인칭 발밑 고리 숨김~~ → **W35 (2026-11-09) 에 다 함** (아래 'W35').
 
 ## 4. 폭발·KO (W18)
 
@@ -185,3 +185,16 @@ xvfb-run -a godot --path godot/client --rendering-driver opengl3 --resolution 12
 - W3 남은 것 중 모양·재질 일 (취약 표시 모양·솟는 땅 돌 텍스처·갈고리 덩어리 재질·1인칭 발밑 고리 숨김)
 - 갈고리 사슬 장력 빛 · 화면 공간 왜곡 (충격파 굴절 — 화면 복사가 필요해 웹·내장 그래픽 비용이 커 안 함)
 
+
+
+## W35 (2026-11-09) 남은 이펙트·재질 정리
+
+| 항목 | 전 | 후 | 어디 |
+| --- | --- | --- | --- |
+| 사냥꾼 표식 칸·취약 음표 | 글꼴 글자 ◆◇ (Label3D) · 돌아가는 3D 음표 모형 | JS canvas 와 같은 그림 (키 큰 마름모 + 테두리, 찬 칸·꽉 참·빈 칸) · 분홍 ♫ 빌보드 그림 (글꼴 안 씀) | `world/body_fx.gd` `pip_texture`·`note_texture`, `world_config.gd` HUNT_PIP_*·VULN_NOTE_PX |
+| 탱크 R 솟는 땅 | 색만 | 돌 그림 (JS tex.stone) | `world/chunk_tex.gd`, `marks.gd quake_rise` |
+| 갈고리 R 덩어리 | 색 상자 | 지형 돌 · 설치 블록 모래 · 건축가 판자 · 테트리미노 = 맵 테마 칸 모양·재질 (하늘 블록 반투명) | `hook_fx.gd chunk_look` |
+| 1인칭 내 발밑 고리 | 보임 | 숨김 (남의 고리·3인칭 그대로) | `body_fx.gd hide_own_ring` |
+| 갈고리 사슬 팽팽함 빛 | 없음 | 팽팽한 동안 사슬 따라 빛 알갱이 + 끝 번쩍 (빛 풀, 낮음이면 없음, 움직임 줄이기면 세기 ×0.5) | `fx_config.gd HOOK_TENSION`, `hook_fx.gd tension_light` |
+| 탱크 아머 맞음 반응 | 일반 맞음 | 버틴 타 = 얼굴만 (FIGURE_HIT_ARMOR, 멈칫 없음) · 깨진 타 = 크게 (ARMOR_BREAK, 멈칫 ×1.5) | `chars/body.gd armor_reaction` |
+| 반투명 몸 (유령화·무적) | 안쪽 삼각형이 앞과 섞임 | 깊이만 쓰는 재질을 먼저 그려 가장 앞 면만 칠함 | `shaders/ghost_depth.gdshader`, `chars/ghost_depth.gd` (확인 `tools/ghost_shot.gd`) |

@@ -333,3 +333,50 @@ func test_lobby_stage_click_opens_skill_card() -> void:
 	l._toggle_card()
 	check(not l.skill_card.visible, "토글 다시 → 닫힘")
 	l.free()
+
+
+# W35 결과 판 ↔ 메뉴 겹침 (재발 점검): 결과 → 방 나감 → 메뉴에서 결과·대기실·HUD 가 같이 보이면 안 됨. 슬래시가 덮는 순간에도 마지막 목표 화면만
+func test_results_never_overlaps_menu() -> void:
+	var keep := [Store.my_id, Store.room, Store.state, View.victory_stage]
+	var ui = load("res://ui/ui.gd").new() # _ready (트리 밖이라 안 불림) 대신 판 노드를 직접 끼움 — 화면 고르기·보이기만 시험
+	ui.menu = Control.new()
+	ui.lobby = PanelContainer.new()
+	ui.host_players = PanelContainer.new()
+	ui.results = PanelContainer.new()
+	ui.hud = _make("res://ui/hud.gd")
+	ui.hud_extra = Control.new()
+	ui.wipe = load("res://ui/wipe.gd").new()
+	ui.wipe.covered.connect(func(): ui._show(ui.target))
+	Store.my_id = 1
+	Store.room = {"code": "ABCD"}
+	Store.state = {"phase": "over", "mode": "survival", "players": [_player(1, 0, 1), _player(2, 1, 0)], "round": {"n": 1, "winnerId": 1}}
+	View.victory_stage = "results"
+	check(ui._screen_now() == "results", "판 끝 + 결과 단계 = 결과 화면")
+	ui._show("results")
+	check(ui.results.visible and not ui.menu.visible and not ui.lobby.visible and not ui.hud.visible, "결과 화면은 결과 판만")
+	# 방을 나감 (Store 가 방을 비움) → 메뉴
+	Store.my_id = null
+	Store.room = {}
+	Store.state = {}
+	check(ui._screen_now() == "menu", "방 밖이면 메뉴")
+	ui.target = "menu" # 슬래시가 도는 동안 목표가 바뀐 뒤 덮는 순간
+	ui.wipe.covered.emit()
+	check(ui.shown == "menu" and ui.menu.visible and not ui.results.visible and not ui.lobby.visible and not ui.hud.visible, "덮는 순간 메뉴만 (결과 판 안 남음)")
+	# 연속 판: 결과 → 대기실 → 판 → 결과
+	Store.my_id = 1
+	Store.room = {"code": "ABCD"}
+	for step in [["over", "results", "results"], ["lobby", "lobby", "lobby"], ["playing", "lobby", "game"], ["over", "results", "results"], ["over", "lobby", "lobby"]]:
+		Store.state = {"phase": step[0], "mode": "survival", "players": [_player(1, 0, 0), _player(2, 1, 0)], "round": {"n": 2}}
+		View.victory_stage = step[1]
+		var want: String = step[2]
+		check(ui._screen_now() == want, "%s·%s → %s (%s)" % [step[0], step[1], want, ui._screen_now()])
+		ui._show(want)
+		var vis := [ui.menu.visible, ui.lobby.visible, ui.results.visible, ui.hud.visible].filter(func(v): return v).size()
+		check(vis == 1, "%s 화면은 판 하나만 보임 (%d)" % [want, vis])
+	for n in [ui.menu, ui.lobby, ui.host_players, ui.results, ui.hud, ui.hud_extra, ui.wipe]:
+		n.free()
+	ui.free()
+	Store.my_id = keep[0]
+	Store.room = keep[1]
+	Store.state = keep[2]
+	View.victory_stage = keep[3]
