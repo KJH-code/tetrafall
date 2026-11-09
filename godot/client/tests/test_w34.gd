@@ -260,3 +260,64 @@ func test_tank_vm_shield_scale() -> void:
 	check(absf(vm.ext.sk.get_bone_pose_scale(vm.ext.sk.find_bone(hn)).x / tw.ext.sk.get_bone_pose_scale(tw.ext.sk.find_bone(hn)).x - 1.0) < 0.02, "오른팔 크기 그대로")
 	vm.free()
 	tw.free()
+
+
+# ---- 6. 갈고리 떨어진 부스러기·이음 삼각형 ----
+# 위치를 합쳐 이어진 덩어리 수 (삼각형 수 내림차순)
+static func _components(mesh: Mesh) -> Array:
+	var arr: Array = mesh.surface_get_arrays(0)
+	var pos: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+	var key := {}
+	var rep := PackedInt32Array()
+	rep.resize(pos.size())
+	for i in pos.size():
+		var k := Vector3i((pos[i] * 1e4).round())
+		if not key.has(k):
+			key[k] = i
+		rep[i] = key[k]
+	var par := PackedInt32Array()
+	par.resize(pos.size())
+	for i in pos.size():
+		par[i] = i
+	for t in range(0, idx.size(), 3):
+		var a := rep[idx[t]]
+		while par[a] != a:
+			a = par[a]
+		for j in [1, 2]:
+			var b := rep[idx[t + j]]
+			while par[b] != b:
+				b = par[b]
+			par[b] = a
+	var cnt := {}
+	for t in range(0, idx.size(), 3):
+		var r := rep[idx[t]]
+		while par[r] != r:
+			r = par[r]
+		cnt[r] = int(cnt.get(r, 0)) + 1
+	var out := cnt.values()
+	out.sort()
+	out.reverse()
+	return out
+
+
+func test_hook_no_floating_shards() -> void:
+	var Ext2 = load("res://chars/external.gd")
+	var info = Ext2.load_char("hook")
+	check(info != null, "갈고리 모델 읽음")
+	if info == null:
+		return
+	var seen := {}
+	for sf in info.surfs:
+		var nm := str(sf.node)
+		if not nm.begins_with("hook_lod") or seen.has(nm):
+			continue
+		seen[nm] = true
+		var comps := _components(sf.mesh)
+		check(comps.size() >= 1 and comps[0] > 2500, "%s 몸 덩어리 하나가 큼 (%s)" % [nm, str(comps.slice(0, 3))])
+		var small := 0
+		for c in comps.slice(1):
+			if c <= 150:
+				small += 1
+		check(small == 0, "%s 떨어진 부스러기 덩어리 %d (W34 전 stage 3 · LOD 3~4)" % [nm, small])
+	check(seen.size() == 4, "stage + 판 LOD 3 (%d)" % seen.size())

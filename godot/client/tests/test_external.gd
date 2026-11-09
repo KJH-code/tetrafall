@@ -861,7 +861,9 @@ func test_hunter_info() -> void:
 		check(st[1] > 0.03 and st[1] < 0.35, "%s 몸 색 칸 넓이 %.0f%% (3~35%% — 모자·붉은 목수건)" % [k, st[1] * 100.0])
 		if k == "stage":
 			stage_sf = body_sf
-	check(info.cfg.tint == "mask" and (info.cfg.attach as Array).is_empty() and (info.cfg.keep as Array).is_empty() and str(info.cfg.get("vm_node", "")) == "hunter_vm", "hunter.json: mask·소품 없음 (소총이 몸에 붙음, 코드 총은 안 남김)·1인칭 팔 = hunter_vm (소총 뺌)")
+	var att: Array = info.cfg.attach
+	check(info.cfg.tint == "mask" and (info.cfg.keep as Array).is_empty() and str(info.cfg.get("vm_node", "")) == "hunter_vm", "hunter.json: mask·코드 총은 안 남김·1인칭 팔 = hunter_vm (소총 뺌)")
+	check(att.size() == 1 and bool(att[0].get("vm", false)) and not bool(att[0].get("third", true)), "소품 = 1인칭 쌍둥이 전용 소총 하나 (W34 hunter_rifle.glb, 판 몸은 몸 메시에 소총이 있음)")
 	# 소총은 몸 밖으로 크게 나온 쪽 아래팔 (게임 R 관절 = Mixamo Right*) 에 매임: 몸 바깥 (|z|) 꼭짓점의 아래팔 뼈 쪽 센 수
 	if stage_sf != null:
 		var arr: Array = stage_sf.mesh.surface_get_arrays(0)
@@ -929,7 +931,7 @@ func test_hunter_first_person() -> void:
 		var meshes := 0
 		for mi in t.ext.find_children("*", "MeshInstance3D", true, false):
 			meshes += 1 if (mi as MeshInstance3D).mesh != null and String(mi.name).begins_with("hunter_") else 0
-		check(meshes == 1, "1인칭에 그리는 외부 메시 하나 (%d)" % meshes)
+		check(meshes == 2, "1인칭에 그리는 외부 메시 = 팔 + W34 소총 (%d)" % meshes)
 	t.free()
 	var b = _body("hunter")
 	var seen := {}

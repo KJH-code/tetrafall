@@ -296,3 +296,9 @@ node relod_merge.mjs godot/client/assets/models/ext/ninja.glb ninja <폴더>/nin
 - `<이름>.json` `skin_mask` {메시 노드: 마스크 경로} → `external.gd` `skin_mask_for` → 툰 재질 `skin_mask_tex`·`use_skin_mask`. 셰이더는 uniform 분기라 새 셰이더 변형·재질 수 변화 없음 (W30 prewarm 그대로). 표에 없는 메시 (닌자·탱크·갈고리 stage = 원본 UV 에 맞는 꼭짓점 마스크) 는 예전 판정.
 - 마스크 png 는 `.import` 에서 lossless + 밉맵 (VRAM 압축하면 가장자리가 블록 무늬).
 - 재현: `blender -b --factory-startup -P tools/blender/tripo/relod.py -- --glb ext/ninja.glb --name ninja --out <폴더> --tris 5000` (4000·3000 도) → `<폴더>/ninja_mask_lod.png`.
+
+## 18. W34 — 갈고리 찢어진 조각 (2026-11-09, `tripo/drop_shards.mjs`·`tripo/hook_bridge.py`)
+
+- 재현: `godot/client/tools/pose_sheet.gd -- <png> hook skill 30 240` 의 `hookDragged` 칸 — 오른 주먹에서 허리 쪽으로 가는 줄 (늘어난 삼각형) 이 보임. 원인 둘: ① 몸에서 떨어진 부스러기 덩어리 (stage 85+3+1 삼각형, 판 LOD 33·26·20 + 2·1 개) 가 손가락 뼈에 매여 따라다님 ② 쉬는 자세에선 작은 '이음' 삼각형 (주먹과 코트를 잇던 원본 한 덩어리) 이 팔을 움직이면 늘어남 (stage 19·LOD 10~19 개). 안 보이는 곳 (코드 쪽 `RightUpLeg` 가중치) 에서 12개가 모든 자세에서 늘어나는 것도 같은 덩어리.
+- 고침: `hook_bridge.py` (자세 21개로 늘어남 검사, 번호 JSON) → `BRIDGE_JSON=… node drop_shards.mjs hook.glb out.glb hook_lod0,hook_lod1,hook_lod2,hook_lod3` (작은 덩어리 + 이음 삼각형 빼고, 한 번 더 돌려서 이음을 빼고 남은 외톨이 삼각형 1개 정리). 삼각형: stage 18720 → 18611, 판 LOD 5000·3999·2999 → 4944·3956·2967. 1인칭 팔 (`hook_vm`) 은 그대로. 마스크 텍스처는 UV 가 그대로라 다시 안 굽음.
+- 코트 안감 비침: glb 재질은 양면 (`doubleSided`) 인데 게임 툰 셰이더는 뒷면을 안 그림 — `cull_disabled` 로 바꿔 같은 자세로 비교하니 차이 픽셀 0.1% 미만 (코트 가장자리 몇 점), 아래쪽 붉은 안감 조각은 원래 디자인 (코트 안감). 셰이더 변형·프리워밍 비용을 늘릴 만큼이 아니라 **바꾸지 않음**.
