@@ -51,6 +51,9 @@ uniform float color_glow = 0.0; // 제 색으로 빛남 (JS 결정·버섯 갓: 
 // W19 외부 (Blender) 모델: 몸 색 칸을 플레이어 색으로 '곱함' (칠해 둔 그늘·무늬가 남음 — 기본 false = 예전처럼 바꿔 칠함),
 // 림 빛 (가장자리 밝게, 세기 0 = 없음 — 스매시 레전드 식 부드러운 테두리)
 uniform bool skin_multiply = false;
+// W34 몸 색 칸 마스크 텍스처 (tools/blender relod.py·maskbake.py): 켜면 꼭짓점 UV2.x 대신 알베도와 같은 UV 의 이 그림 (R, 칸 = 1) 이 피부 정도 — 판 LOD 에서 꼭짓점 단위 경계가 알베도와 어긋나던 것을 텍셀 단위로
+uniform bool use_skin_mask = false;
+uniform sampler2D skin_mask_tex : hint_default_black, filter_linear_mipmap, repeat_disable;
 uniform float rim_strength = 0.0;
 uniform float rim_power = 3.0;
 
@@ -105,9 +108,11 @@ void fragment() {
 		}
 		c *= texture(albedo_tex, uv);
 	}
-	bool skin = use_vertex_color && UV2.x > 0.5;
+	float skin_k = 0.0; // 피부 정도 0~1 (꼭짓점 판정은 0/1, 마스크 텍스처는 가장자리 부드럽게)
+	if (use_vertex_color) skin_k = use_skin_mask ? smoothstep(0.3, 0.7, texture(skin_mask_tex, UV).r) : step(0.5, UV2.x);
 	if (use_vertex_color && !vertex_color_linear) c *= COLOR;
-	if (skin) c.rgb = skin_multiply ? c.rgb * mix(vec3(1.0), skin_tint.rgb, skin_tint.a) : mix(c.rgb, skin_tint.rgb, skin_tint.a);
+	float sk = skin_tint.a * skin_k;
+	c.rgb = skin_multiply ? c.rgb * mix(vec3(1.0), skin_tint.rgb, sk) : mix(c.rgb, skin_tint.rgb, sk);
 	vec3 base = g3_lin(c.rgb);
 	if (use_vertex_color && vertex_color_linear) base *= COLOR.rgb;
 	vec3 hemi = toon_hemi(world_n);
@@ -116,7 +121,7 @@ void fragment() {
 		hemi = mix(local_hemi_ground, local_hemi_sky, lup) * local_hemi_energy;
 	}
 	v_base = base;
-	v_amb = base * hemi / PI + g3_lin(skin ? skin_emissive : emissive) * emissive_energy + base * color_glow;
+	v_amb = base * hemi / PI + g3_lin(mix(emissive, skin_emissive, skin_k)) * emissive_energy + base * color_glow;
 	v_amb += base * g3_hz_light((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz, world_n);
 	if (rim_strength > 0.0) v_amb += base * rim_strength * pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), rim_power);
 	if (hz_tint) g3_hz_apply((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).y, v_base, v_amb);

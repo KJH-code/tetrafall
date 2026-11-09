@@ -3,6 +3,12 @@
  "height": 1.0,
  "yaw": 0.0,
  "tint": "mask",
+ "skin_mask": {
+  "hunter_lod0": "res://assets/models/ext/hunter_mask.png",
+  "hunter_lod1": "res://assets/models/ext/hunter_mask.png",
+  "hunter_lod2": "res://assets/models/ext/hunter_mask.png",
+  "hunter_lod3": "res://assets/models/ext/hunter_mask.png"
+ },
  "lods": {
   "stage": "hunter_lod0",
   "high": "hunter_lod1",

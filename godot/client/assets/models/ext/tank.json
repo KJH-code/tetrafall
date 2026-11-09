@@ -3,6 +3,11 @@
  "height": 1.0,
  "yaw": 0.0,
  "tint": "mask",
+ "skin_mask": {
+  "tank_lod1": "res://assets/models/ext/tank_mask_lod1.png",
+  "tank_lod2": "res://assets/models/ext/tank_mask_lod2.png",
+  "tank_lod3": "res://assets/models/ext/tank_mask_lod3.png"
+ },
  "lods": {
   "stage": "tank_lod0",
   "high": "tank_lod1",

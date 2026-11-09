@@ -538,10 +538,20 @@ class Ext extends Node3D:
 			opts.map = tex
 		if vcolor:
 			opts.vertex_color = true
+		var mt = opts.get("skin_mask")
+		opts.erase("skin_mask")
 		var m := G3_.toon_material(col, opts)
 		if vcolor and mask:
 			m.set_shader_parameter("skin_tint", Color(skin.r, skin.g, skin.b, 1.0))
+			if mt != null: # W34 몸 색 칸 마스크 텍스처 (꼭짓점 UV2 대신)
+				m.set_shader_parameter("skin_mask_tex", mt)
+				m.set_shader_parameter("use_skin_mask", true)
 		return m
+
+	# W34 cfg.skin_mask[메시 노드 이름] 의 마스크 텍스처 (없으면 null = 꼭짓점 판정)
+	static func skin_mask_for(cfg: Dictionary, node: String):
+		var p: String = str(cfg.get("skin_mask", {}).get(node, ""))
+		return load(p) if p != "" and ResourceLoader.exists(p) else null
 
 	# 빛 안 받는 색 (눈 흰자): 툰 재질의 알베도 검정 + 발광 = 색 → 하늘빛·해 음영 없이 그 색 (외곽선 없음, op < 1 이면 반투명)
 	static func unlit_for(col: Color, op: float) -> ShaderMaterial:
@@ -1044,9 +1054,10 @@ class Ext extends Node3D:
 				continue
 			var vc: bool = sf.get("vcolor", false)
 			var mask: bool = vc and mode == "mask"
-			var m := style(toon_for(col, sf.tex, vc, mask, body.skin_color), cfg)
+			var mt = skin_mask_for(cfg, str(sf.get("node", ""))) if mask else null
+			var m := style(toon_for(col, sf.tex, vc, mask, body.skin_color, {"skin_mask": mt} if mt != null else {}), cfg)
 			mi.material_override = m
-			parts.append({"mi": mi, "color": col, "tex": sf.tex, "solid": m, "vcolor": vc, "mask": mask})
+			parts.append({"mi": mi, "color": col, "tex": sf.tex, "solid": m, "vcolor": vc, "mask": mask, "mask_tex": mt})
 			body.drawn.append({"mi": mi, "m": {"kind": "toon"}, "merged": false, "ext": true})
 		if shadow_lod != "":
 			ExtShadow.add(model, sk, info.surfs, shadow_lod) # W32: 원래 메시 (olds) 를 지우기 전에 — 그 자리·스킨을 베낌
@@ -1240,7 +1251,7 @@ class Ext extends Node3D:
 		var want: Material = pt.solid
 		if op < 1.0:
 			if not pt.has("alpha"):
-				pt.alpha = style(toon_for(pt.color, pt.tex, true, true, body.skin_color, {"opacity": 0.5, "outline": false}), info.cfg, false)
+				pt.alpha = style(toon_for(pt.color, pt.tex, true, true, body.skin_color, {"opacity": 0.5, "outline": false, "skin_mask": pt.get("mask_tex")}), info.cfg, false)
 				G3_.toon_hazard_light(pt.alpha, body.hz_light)
 			want = pt.alpha
 		if mi.material_override != want:

@@ -2,8 +2,10 @@
 #  줄이고 (Decimate 접기) → 새 UV (Smart UV, 큰 조각 몇십 개) → stage 알베도를 새 UV 로 굽고 (Cycles CPU, 선택→활성) → 스킨 가중치는 stage 에서 Data Transfer
 #  → 몸 색 칸 (UV2.x = 1, tint "mask") 은 stage 에서 꼭짓점으로 옮기고 알베도의 회백/빨강을 그 꼭짓점 색 칸에 맞춰 다시 칠함 → glb (뼈대 + 메시 하나) 로 내보냄.
 # 이 glb 를 relod_merge.mjs 가 원래 glb 에 판 LOD 로 합침 (UV 이음선이 적어 meshopt 로 더 줄이는 LOD 둘도 거기서).
+# W34: 몸 색 칸을 꼭짓점이 아니라 **마스크 텍스처** 로도 굽는다 — stage 마스크 (UV2.x) 를 새 UV 로 옮긴 그림 (한 채널, 칸 = 흰) 을 <이름>_mask_lod.png 로 저장. 셰이더 g3 (skin_mask_tex) 가
+#  꼭짓점 UV2 대신 이 그림을 읽어서 알베도 (stage 에서 구운 회백 칸) 와 칸 경계가 텍셀 단위로 딱 맞음. 가장자리는 stage 꼭짓점 보간 기울기를 조금 가파르게 (MASK_SOFT) 해서 1~3 텍셀로 부드럽게.
 # 실행: blender -b --factory-startup -P tools/blender/tripo/relod.py -- --glb <ext/이름.glb> --name ninja --out <폴더> [--tris 5000] [--size 1024] [--angle 66] [--margin 0.008] [--ray 0.04]
-#   → <폴더>/<이름>_relod.glb (+ 확인용 <이름>_atlas_lod.png·마스크 png)
+#   → <폴더>/<이름>_relod.glb (+ 확인용 <이름>_atlas_lod.png·마스크 png, 셰이더가 읽는 <이름>_mask_lod.png)
 import bpy, bmesh, sys, os, math
 import numpy as np
 from mathutils.bvhtree import BVHTree
@@ -22,6 +24,7 @@ SIZE = int(arg('--size', 1024))
 ANGLE = float(arg('--angle', 66))
 MARGIN = float(arg('--margin', 0.008))
 RAY = float(arg('--ray', 0.04))
+MASK_SOFT = float(arg('--mask-soft', 8.0))  # 마스크 가장자리 기울기 (1 = stage 꼭짓점 보간 그대로)
 os.makedirs(OUT, exist_ok=True)
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -228,6 +231,18 @@ scene.render.image_settings.file_format = 'PNG'
 im_alb.save_render(png, scene=scene)
 for im, nm in ((im_ms, 'mask_src'), (im_mn, 'mask_new')):
     im.save_render(os.path.join(OUT, '%s_%s.png' % (NAME, nm)), scene=scene)
+# 셰이더가 읽는 몸 색 칸 마스크 (한 채널): stage 꼭짓점 보간값 0.5 가 경계, 기울기를 MASK_SOFT 배로
+mk = np.clip((px(im_ms)[:, :, 0] - 0.5) * MASK_SOFT + 0.5, 0.0, 1.0)
+im_mk = make_image(NAME + '_mask_lod', data=True)
+buf = np.zeros((SIZE, SIZE, 4), dtype=np.float32)
+buf[:, :, 0] = buf[:, :, 1] = buf[:, :, 2] = mk
+buf[:, :, 3] = 1.0
+im_mk.pixels.foreach_set(buf.ravel())
+im_mk.update()
+scene.render.image_settings.color_mode = 'BW'
+im_mk.save_render(os.path.join(OUT, NAME + '_mask_lod.png'), scene=scene)
+scene.render.image_settings.color_mode = 'RGB'
+print('RELOD mask texture: coverage %.4f' % mk.mean())
 scene.render.image_settings.file_format = 'JPEG'
 jpg = os.path.join(OUT, NAME + '_atlas_lod.jpg')
 im_alb.save_render(jpg, scene=scene)

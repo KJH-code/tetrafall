@@ -287,3 +287,12 @@ node relod_merge.mjs godot/client/assets/models/ext/ninja.glb ninja <폴더>/nin
 
 - `tripo/anim_ninja.py` 에 `--clips <모듈>` 추가 (기본 `clips_ninja`). `tripo/clips_loco.py` = 이동 클립 공용 생성기 (걸음 4위상·점프·낙하·착지·idle, 스타일 표 = 보폭 A·무릎·골반 흔들림·팔 쉬는 자세 등), `clips_tank.py`·`clips_hunter.py`·`clips_hook.py` 가 스타일만 정의. 만들기: `--rig <assets/models/ext/<id>.glb>` (최종 glb 의 뼈대) → `<id>_anim.glb`. 공격·스킬은 클립 없음 (코드 구동). 눈 확인: `godot/client/tools/pose_sheet.gd`.
 - `tripo/model_audit.py` — 삼각형·열린 모서리 (같은 위치 정점 합친 뒤)·비다양체·뒤집힘 의심·UV 범위/겹침·정점당 뼈 수·가중치 합·마스크 (UV2.x 꼭짓점) 경계 삼각형 비율. 결과 요약은 `docs/model-review-2026-11.md` 2절.
+
+## 17. W34 — 몸 색 칸 마스크 텍스처 (2026-11-09, `tripo/relod.py`·`tripo/maskbake.py`, 셰이더 `toon_common.gdshaderinc`)
+
+- 문제: `tint: "mask"` 는 꼭짓점 단위 (UV2.x 0/1) 판정이라 판 LOD (삼각형 3~5천) 는 알베도 (stage 에서 구운 회백 칸) 와 칸 경계가 삼각형 하나만큼 어긋남 (stage 칸 넓이의 8% 쯤: 어긋난 곳은 연회색·어두운 팀 색).
+- `relod.py` 가 알베도와 같은 새 UV 로 **마스크 텍스처** (`<이름>_mask_lod.png`, 한 채널 1024², stage 꼭짓점 보간값 0.5 가 경계, 기울기 8배 = 1~3 텍셀 부드러움 `--mask-soft`) 도 굽는다. 같은 입력이면 UV·삼각형이 글자 그대로 재현되므로 (확인함) glb·알베도는 다시 합치지 않고 마스크 png 만 `ext/<이름>_mask_lod1~3.png` 로 둠.
+- `maskbake.py` = 같은 일을 한 메시의 자기 UV 로 (사냥꾼: 판 LOD 가 stage 와 같은 UV·알베도라 `hunter_mask.png` 하나를 lod0~3 이 같이 읽음).
+- `<이름>.json` `skin_mask` {메시 노드: 마스크 경로} → `external.gd` `skin_mask_for` → 툰 재질 `skin_mask_tex`·`use_skin_mask`. 셰이더는 uniform 분기라 새 셰이더 변형·재질 수 변화 없음 (W30 prewarm 그대로). 표에 없는 메시 (닌자·탱크·갈고리 stage = 원본 UV 에 맞는 꼭짓점 마스크) 는 예전 판정.
+- 마스크 png 는 `.import` 에서 lossless + 밉맵 (VRAM 압축하면 가장자리가 블록 무늬).
+- 재현: `blender -b --factory-startup -P tools/blender/tripo/relod.py -- --glb ext/ninja.glb --name ninja --out <폴더> --tris 5000` (4000·3000 도) → `<폴더>/ninja_mask_lod.png`.

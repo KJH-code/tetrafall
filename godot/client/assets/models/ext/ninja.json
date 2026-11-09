@@ -3,6 +3,11 @@
 	"height": 1.0,
 	"yaw": 0.0,
 	"tint": "mask",
+	"skin_mask": {
+		"ninja_lod1": "res://assets/models/ext/ninja_mask_lod1.png",
+		"ninja_lod2": "res://assets/models/ext/ninja_mask_lod2.png",
+		"ninja_lod3": "res://assets/models/ext/ninja_mask_lod3.png"
+	},
 	"lods": {
 		"stage": "ninja_lod0",
 		"high": "ninja_lod1",
