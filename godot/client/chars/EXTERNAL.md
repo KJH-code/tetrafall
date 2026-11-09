@@ -189,3 +189,15 @@ W31 이 남긴 후보 (해 그림자 패스 = 3D 삼각형의 38%) 를 실제로
 - 맞음 움찔 `Ext._hit_flinch` (config `EXT_HIT_FLINCH_*`): 가산 (척추 둘·머리), 모든 외부 몸 (닌자 포함), 래그돌 모터 약하면 빠짐.
 - 1인칭: `viewmodel.gd act_swing` + config `VM_ACT_STYLE`·`VM_ACT_SWING`.
 - 테스트 (`test_ext_clips.gd`): `W38_MOVES` 표 (캐릭터별 클립 만든 동작) — 클립을 늘리면 표도 늘림. 단계→눈금·클립 길이·타격 순간 손·골반 앞으로·움찔·도발·승리·1인칭 곡선.
+
+## 18. W40 — 모션 개선 2차: 천 뼈·시선·숨쉬기·착지·맞음 방향·타격 끝 (2026-11-09, 전후 그림·표 `docs/w40/`)
+
+- **천 뼈 (`tools/blender/tripo/cloth_bones.mjs`)**: 이미 만든 `ext/<id>.glb` (stage + 판 LOD) 에 뼈 사슬을 더함. Blender·relod 를 다시 안 돌리고 gltf-transform 으로 새 뼈를 스킨 **끝에** 붙이고 (기존 65 뼈 번호·애니메이션 클립 호환), 천 꼭짓점 (규칙은 캐릭터별 `sel`) 의 가중치를 높이·가로 hat 으로 새 뼈에 옮김 (위쪽은 몸 가중치와 부드럽게 섞음, 꼭짓점당 4개 제한). 선택은 꼭짓점 단위 규칙이라 stage·LOD 가 같은 천을 가리킴 (모델 점검 `model_audit.py`: 가중치 합·정점당 뼈 4·삼각형 수 그대로). 재생성: `node cloth_bones.mjs <in.glb> <out.glb> hunter|tank|hook [--debug <폴더>]` (한 번만 — 이미 천 뼈가 있으면 거절).
+  - 사냥꾼 **망토**: 올리브 칸 (+ 몸 뒤) 에 `Cape1~3` × 3 마디. 탱크 **등 뒤 천** (몸 뒤 x < -0.115 얇은 판): `Tabard1~2` × 3. 갈고리 **코트 자락**: 엉덩이 아래·다리 축에서 먼 꼭짓점 (팔·갈고리는 팔 뼈 가중치로 뺌, 앞자락은 다리를 따라감) `Skirt1~3` × 3. 탱크의 붉은 목도리 (몸 색 칸) 는 목 둘레뿐이라 꼬리·**허리 앞 천은 없어서 보류**.
+  - `ext/<id>.json` `cloth` (사슬마다 `bones`·`rest`·`damp`·`gravity`·`fwd`). `ext_cloth.gd`: 사슬 끝 점 방향을 앞 뼈와 같게 (뼈 +Y 가 사슬을 안 따르는 모델), `fwd` = 쉬는 자리보다 몸 앞으로 이만큼 넘게 못 나옴 (등 뒤 천이 몸을 뚫고 오지 않게). 판 몸만, 먼 몸은 `pose` 가 안 불려 시뮬도 건너뜀.
+  - 확인: `tools/cloth_shot.gd` (달리기·맞아 날아감·점프·돌기 시뮬 프레임 줄), `docs/w40/cloth/`.
+- **가산 층 (`chars/ext_motion.gd` 순수 계산 + `external.gd _extra_layer`)**: 시선 (가장 가까운 다른 몸 ±`EXT_GAZE_MAX_DEG` 35°, 척추 2·목·머리에 나눔, 맞음·경직·공격·도발·승리·대시 중 끔), 숨쉬기 (캐릭터마다 주기·위상), 착지 (무릎 굽힘 + 윗몸 숙임, 엉덩이는 발이 올라간 만큼 잰 값으로 내림). 수치는 `chars_config.gd EXT_*`. 정적 목록 `Motion_.bodies` (판 몸).
+- **맞음 방향** (`_hit_flinch`): 앞·뒤·옆 (머리가 앞으로/뒤로, 옆은 몸통 비틂), 치명·강타 (pow ≥ `EXT_HIT_CRIT_POW`) 는 머리 채찍 진동 + 쥔 손 흔들림, 탱크 방어구 깨짐 (`armor_break_react_at`) 은 방패 쥔 (왼) 팔 반동. **고침**: 코드 구동이 안 맞추는 뼈 (머리·Spine1 등) 에 가산이 매 프레임 쌓이던 문제 → `_reset_extra`.
+- **1인칭 팔 = 클립 곡선 (보류)**: `arm_delta` (클립이 코드 자세에서 벗어난 팔 뼈) 를 쌍둥이 팔에 `K.VM_CLIP_ARM` 비율로 더하는 길은 있으나 0.3·0.55 로 켜 보니 팔이 솟거나 왼손이 세로로 서서 기본 끔 (`docs/w40/vm_clip/`). 확인 `tools/vm_clip_shot.gd`.
+- **타격 끝**: 사냥꾼·갈고리 클립의 타격 자세 (`hips_x`·상체·팔 뻗기) 키움, `tools/hit_reach.gd` 전후 `docs/w40/reach/`.
+- 테스트 `tests/test_w40.gd` (12). 비용 `tools/ext_cost.gd`.

@@ -302,3 +302,9 @@ node relod_merge.mjs godot/client/assets/models/ext/ninja.glb ninja <폴더>/nin
 - 재현: `godot/client/tools/pose_sheet.gd -- <png> hook skill 30 240` 의 `hookDragged` 칸 — 오른 주먹에서 허리 쪽으로 가는 줄 (늘어난 삼각형) 이 보임. 원인 둘: ① 몸에서 떨어진 부스러기 덩어리 (stage 85+3+1 삼각형, 판 LOD 33·26·20 + 2·1 개) 가 손가락 뼈에 매여 따라다님 ② 쉬는 자세에선 작은 '이음' 삼각형 (주먹과 코트를 잇던 원본 한 덩어리) 이 팔을 움직이면 늘어남 (stage 19·LOD 10~19 개). 안 보이는 곳 (코드 쪽 `RightUpLeg` 가중치) 에서 12개가 모든 자세에서 늘어나는 것도 같은 덩어리.
 - 고침: `hook_bridge.py` (자세 21개로 늘어남 검사, 번호 JSON) → `BRIDGE_JSON=… node drop_shards.mjs hook.glb out.glb hook_lod0,hook_lod1,hook_lod2,hook_lod3` (작은 덩어리 + 이음 삼각형 빼고, 한 번 더 돌려서 이음을 빼고 남은 외톨이 삼각형 1개 정리). 삼각형: stage 18720 → 18611, 판 LOD 5000·3999·2999 → 4944·3956·2967. 1인칭 팔 (`hook_vm`) 은 그대로. 마스크 텍스처는 UV 가 그대로라 다시 안 굽음.
 - 코트 안감 비침: glb 재질은 양면 (`doubleSided`) 인데 게임 툰 셰이더는 뒷면을 안 그림 — `cull_disabled` 로 바꿔 같은 자세로 비교하니 차이 픽셀 0.1% 미만 (코트 가장자리 몇 점), 아래쪽 붉은 안감 조각은 원래 디자인 (코트 안감). 셰이더 변형·프리워밍 비용을 늘릴 만큼이 아니라 **바꾸지 않음**.
+
+## 19. W40 — 천·망토·코트 2차 모션 뼈 (2026-11-09, `tripo/cloth_bones.mjs`)
+
+- 닌자 목도리 (`ninja_scarf.py`, Blender) 방식을 사냥꾼·탱크·갈고리에: 이미 리깅한 `ext/<id>.glb` 에 뼈 사슬 (`mixamorig:<Cape|Tabard|Skirt><n>_<i>`, 사슬 × 3 마디) 을 **스킨 끝에** 추가하고 stage·판 LOD 모두에 같은 규칙으로 가중치를 옮김 — Blender 다시 안 돌림 (`@gltf-transform/core` + `sharp` 가 있는 폴더에서 `node cloth_bones.mjs <in> <out> <id> [--debug <폴더>]`). 천 선택은 캐릭터별 `sel` (사냥꾼 = 올리브 텍셀 색, 탱크 = 몸 뒤 판 기하, 갈고리 = 다리 축 거리 + 몸통·다리 가중치 비율), 사슬 가운데는 가로 좌표 분위수 (또는 `centers`), 뼈 머리는 천 꼭짓점 평균에 높이 직선 맞춤. 새 뼈의 세계 회전은 항등 (고도 쪽 사슬 방향은 `ext_cloth.gd` 가 앞 뼈 방향으로 잡음).
+- 한 번만 돌릴 것 (이미 천 뼈가 있으면 거절). relod·maskbake 와 호환: 몸·UV·마스크는 안 건드림.
+- 클립 (`clips_hunter.py`·`clips_hook.py`): 평타·스킬 타격 자세의 `hips_x`·상체·팔 뻗기를 키움 (W34 타격 끝 짧음).

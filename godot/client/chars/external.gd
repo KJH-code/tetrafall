@@ -625,6 +625,7 @@ class Ext extends Node3D:
 	var gaze_w := 0.0
 	var breath_w := 0.0
 	var extra_t := 0.0
+	var extra_off := false # 확인 도구 (tools/ext_cost.gd) 가 가산 층 비용을 떼어 잴 때
 	var arm_ids := {}
 	var arm_delta := {} # W40: 클립이 코드 자세에서 벗어난 팔 뼈 (뼈 번호 → Quaternion: base⁻¹ · 클립 결과), 공격·스킬 클립 중에만 — 1인칭 쌍둥이가 읽어 감
 	var src_ext = null # W40 1인칭 쌍둥이만: 베끼는 3인칭 몸의 Ext
@@ -1082,6 +1083,8 @@ class Ext extends Node3D:
 
 	# W40 가산 층: 시선·머리 추적 + 숨쉬기 + 착지 숙임. 클립·코드 위에 뼈 회전만 더함 (판정·moves·figure_motion 불변).
 	func _extra_layer(st) -> void:
+		if extra_off:
+			return
 		var now := Time.get_ticks_msec() * 0.001
 		var dt := clampf(now - extra_t, 0.0, 0.1) if extra_t > 0.0 else 0.0
 		extra_t = now
