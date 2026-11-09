@@ -288,6 +288,7 @@ func test_cloth_scarf_chain() -> void:
 # 캐릭터마다 코드가 아닌 클립으로 가야 할 동작 목록 (평타 = config BASIC_ATTACKS, 스킬 = moves 표) — 새 클립이 늘면 여기도 늘림
 const W38_MOVES := {
 	"tank": ["주먹", "어깨 박치기", "방패 올려치기", "방패 내려치기", "tankCharge", "tankSlam"],
+	"hook": ["갈고리 휘두르기", "주먹", "갈고리 내려치기", "탕", "갈고리 스핀", "hookThrow", "hookSlam", "hookZip"],
 	"hunter": ["베기", "반대 베기", "찔러 넣기", "내려 베기", "hunterAim", "hunterLeap"],
 }
 
@@ -317,7 +318,7 @@ func test_w38_attack_clips_match_server_phases() -> void:
 
 # 타격 순간 (눈금 STRIKE) 에 무기 손이 준비 눈금 (WIND) 보다 앞 (+x) 으로 나가 있고 몸 (골반) 도 앞으로 내딛음
 func test_w38_strike_reaches_forward() -> void:
-	var cases := {"tank": [["주먹", "t_punch", "mixamorig_RightHand"]], "hunter": [["베기", "h_slash", "mixamorig_RightHand"], ["찔러 넣기", "h_thrust", "mixamorig_RightHand"]]}
+	var cases := {"tank": [["주먹", "t_punch", "mixamorig_RightHand"]], "hook": [["갈고리 휘두르기", "k_hook", "mixamorig_LeftHand"], ["주먹", "k_fist", "mixamorig_RightHand"], ["hookThrow", "k_throw", "mixamorig_LeftHand"]], "hunter": [["베기", "h_slash", "mixamorig_RightHand"], ["찔러 넣기", "h_thrust", "mixamorig_RightHand"]]}
 	for ch in cases:
 		var b = _body(ch)
 		if b.ext == null:
