@@ -321,3 +321,13 @@ func test_hook_no_floating_shards() -> void:
 				small += 1
 		check(small == 0, "%s 떨어진 부스러기 덩어리 %d (W34 전 stage 3 · LOD 3~4)" % [nm, small])
 	check(seen.size() == 4, "stage + 판 LOD 3 (%d)" % seen.size())
+
+
+# ---- 7. 서버 판정 vs 보이는 타격 위치 측정 도구 ----
+func test_hit_reach_tool_loads() -> void:
+	var s = load("res://tools/hit_reach.gd")
+	check(s != null and s.can_instantiate(), "tools/hit_reach.gd 읽힘 (측정 도구)")
+	# 서버 판정 수치가 도구가 쓰는 값과 같음 (바뀌면 도구 설명·표를 다시)
+	check(is_equal_approx(C.PUSH_RANGE, 1.8) and is_equal_approx(C.PLAYER_HALF, 0.3), "PUSH_RANGE 1.8 · PLAYER_HALF 0.3 (docs/w34 표의 전제)")
+	var a: Dictionary = C.BASIC_ATTACKS.tank.chain[0]
+	check(a.name == "주먹" and is_equal_approx(float(a.step), 0.4), "탱크 1타 주먹 step 0.4")
