@@ -41,7 +41,8 @@ func setup(skel: Skeleton3D, names: Array, info: Dictionary, cfg: Dictionary) ->
 	rest_parent = info.rest_global[parent_b] if parent_b >= 0 else Transform3D.IDENTITY
 	for i in bones.size():
 		var a: Vector3 = rest_g[i].origin
-		var b: Vector3 = (rest_g[i + 1].origin if i + 1 < bones.size() else a + rest_g[i].basis * Vector3(0, _tip_len(i), 0))
+		# 마지막 뼈 끝 = 앞 뼈와 같은 방향·길이 (W40: 뼈 +Y 축이 사슬을 따르지 않는 모델 — cloth_bones.mjs 는 세계 회전 항등 — 에서 끝점이 위로 가던 것)
+		var b: Vector3 = (rest_g[i + 1].origin if i + 1 < bones.size() else (a + rest_dir[i - 1] * _tip_len(i) if i > 0 else a + rest_g[i].basis * Vector3(0, _tip_len(i), 0)))
 		var d := b - a
 		rest_len.append(d.length())
 		rest_dir.append(d.normalized())

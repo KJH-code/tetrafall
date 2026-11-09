@@ -19,6 +19,7 @@ const GhostDepth := preload("res://chars/ghost_depth.gd")
 const ExtShadow := preload("res://chars/ext_shadow.gd")
 const Clips := preload("res://chars/ext_clips.gd")
 const Hitch := preload("res://core/hitch.gd")
+const Motion_ := preload("res://chars/ext_motion.gd")
 
 const DIR := "res://assets/models/ext/"
 
@@ -620,6 +621,10 @@ class Ext extends Node3D:
 	const Cloth_ := preload("res://chars/ext_cloth.gd")
 	var cloths: Array = [] # 천·끈 사슬 (cfg.cloth, ext_cloth.gd) — 판 몸만
 	var cloth_t := 0.0
+	var gaze_y := 0.0 # W40 시선 (몸 기준 yaw, 라디안, 부드럽게)
+	var gaze_w := 0.0
+	var breath_w := 0.0
+	var extra_t := 0.0
 
 	func setup(b: Node3D, inf: Dictionary, third_: bool) -> bool:
 		body = b
@@ -654,6 +659,8 @@ class Ext extends Node3D:
 		else:
 			set_process(false)
 		if third:
+			if not Motion_.bodies.has(body):
+				Motion_.bodies.append(body) # W40 시선: 다른 몸 찾기 (정적 목록 — 나무 밖 테스트에서도 됨)
 			for cdef in info.cfg.get("cloth", []):
 				var cl = Cloth_.new()
 				if cl.setup(sk, cdef.get("bones", []), info, cdef):
@@ -850,7 +857,9 @@ class Ext extends Node3D:
 		if third and not clipset.is_empty() and (st != null or not forced.is_empty()):
 			_clip_layer(st)
 		if third and st != null:
+			_reset_extra()
 			_hit_flinch(st)
+			_extra_layer(st)
 		if not cloths.is_empty():
 			var now := Time.get_ticks_msec() * 0.001
 			var cdt := clampf(now - cloth_t, 0.0, 0.1) if cloth_t > 0.0 else 0.0
@@ -972,7 +981,12 @@ class Ext extends Node3D:
 	# 몸 기준 뼈대 공간: 앞 = +x, 위 = +y. 젖힘 (뒤로) = z 축 +, 옆 기울기 = x 축.
 	func _hit_flinch(st) -> void:
 		var hit = st.get("hit")
-		if not (hit is Dictionary) or float(hit.get("age", 9.0)) >= K_.EXT_HIT_FLINCH_S:
+		if not (hit is Dictionary):
+			return
+		var react: Dictionary = Motion_.hit_react(hit)
+		var win: float = maxf(K_.EXT_HIT_FLINCH_S, K_.EXT_HIT_CRIT_S if react.crit else 0.0)
+		if float(hit.get("age", 9.0)) >= win:
+			_armor_recoil()
 			return
 		var rg = Rag_._inst
 		if rg != null and is_instance_valid(rg) and rg.rags.has(body):
@@ -982,18 +996,153 @@ class Ext extends Node3D:
 		var age: float = float(hit.age)
 		var env: float = (1.0 - exp(-age / 0.015)) * exp(-age / K_.EXT_HIT_FLINCH_DECAY_S)
 		var amp: float = clampf(float(hit.get("pow", 1.0)), 0.4, 2.0) * K_.EXT_HIT_FLINCH_RAD * env
-		var back: float = -float(hit.get("dx", 0.0)) # 뒤로 밀리면 (dx < 0) 윗몸이 뒤로 젖혀짐
-		var side: float = float(hit.get("dy", 0.0))
+		var back: float = float(react.back) # 뒤로 밀리면 (dx < 0) 윗몸이 뒤로 젖혀짐
+		var side: float = float(react.side)
+		var twist: float = float(react.twist) # W40: 옆에서 맞으면 몸통이 비틀림, 뒤에서 맞으면 앞으로 숙이며 어깨 움츠림 (back 부호가 이미 반대)
 		for e in K_.EXT_HIT_FLINCH_BONES:
 			var bi := sk.find_bone(str(e[0]))
 			if bi < 0:
 				continue
 			var k: float = float(e[1])
-			var d := Quaternion(Vector3.BACK, back * amp * k) * Quaternion(Vector3.RIGHT, side * amp * k * 0.6)
-			var pg := _gt(sk.get_bone_parent(bi))
-			var pb := pg.basis.get_rotation_quaternion()
-			var lq: Quaternion = sk.get_bone_pose_rotation(bi)
-			sk.set_bone_pose_rotation(bi, pb.inverse() * d * pb * lq)
+			var d := Quaternion(Vector3.BACK, back * amp * k) * Quaternion(Vector3.RIGHT, side * amp * k * 0.6) * Quaternion(Vector3.UP, twist * amp * k)
+			_add_rot(bi, d)
+		if react.crit: # 치명·강타: 머리가 채찍처럼 튕기고 무기 쥔 손이 흔들림 (감쇠 진동)
+			var ce: float = exp(-age / 0.14) * clampf(float(hit.get("pow", 1.0)) / 2.0, 0.5, 1.2)
+			var hb := sk.find_bone("mixamorig_Head")
+			if hb >= 0:
+				_add_rot(hb, Quaternion(Vector3.BACK, back * sin(age * 34.0) * K_.EXT_HIT_WHIP_RAD * ce))
+			for hj in ["hand_R", "hand_L"]:
+				var bi2: int = int(info.map.get(hj, -1))
+				if bi2 >= 0:
+					_add_rot(bi2, Quaternion(Vector3.BACK, sin(age * 52.0 + (0.0 if hj == "hand_R" else 1.7)) * K_.EXT_HIT_HAND_RAD * ce))
+		_armor_recoil()
+
+	# W40: 코드 구동이 안 맞추는 (안 매칭된) 뼈에 가산 층이 매 프레임 더하면 쌓이므로, 클립이 그 프레임 안 맞춘 뼈는 쉬는 회전으로 되돌린 뒤 더함
+	# (옛 W38 움찔의 머리 뼈도 같은 문제 — 움찔이 끝나도 머리가 남은 만큼 기울어 있던 것을 같이 고침)
+	var extra_ids: Array = []
+
+	func _reset_extra() -> void:
+		if extra_ids.is_empty():
+			for n in ["mixamorig_Spine1", "mixamorig_Spine2", "mixamorig_Neck", "mixamorig_Head"]:
+				extra_ids.append(sk.find_bone(n))
+		var rl: Array = info.rest_local
+		for bi in extra_ids:
+			if bi < 0 or mapped.has(bi):
+				continue
+			if cw > 0.0005 and cbones.has(sk.get_bone_name(bi)):
+				continue # 클립이 이번 프레임에 이 뼈를 새로 맞춤
+			sk.set_bone_pose_rotation(bi, (rl[bi] as Transform3D).basis.get_rotation_quaternion())
+
+	# 몸 (skeleton 공간) 축 회전 d 를 뼈의 지금 자세에 더함 (부모 전역 회전으로 지역 좌표로 옮김)
+	func _add_rot(bi: int, d: Quaternion) -> void:
+		var pg := _gt(sk.get_bone_parent(bi))
+		var pb := pg.basis.get_rotation_quaternion()
+		var lq: Quaternion = sk.get_bone_pose_rotation(bi)
+		sk.set_bone_pose_rotation(bi, pb.inverse() * d * pb * lq)
+
+	# W40 탱크 방어구 깨짐: 방패 쥔 (왼) 팔이 뒤로 튕김 (body.armor_break_react_at, 몸에 값이 있는 캐릭터만)
+	func _armor_recoil() -> void:
+		var at = body.get("armor_break_react_at")
+		if at == null:
+			return
+		var age: float = Time.get_ticks_msec() / 1000.0 - float(at)
+		if age < 0.0 or age > K_.EXT_ARMOR_BREAK_S:
+			return
+		var env: float = (1.0 - exp(-age / 0.02)) * exp(-age / 0.12)
+		for j in ["shoulder_L", "elbow_L"]:
+			var bi: int = int(info.map.get(j, -1))
+			if bi >= 0:
+				_add_rot(bi, Quaternion(Vector3.BACK, -K_.EXT_ARMOR_BREAK_RAD * env * (1.0 if j == "shoulder_L" else 0.6)))
+
+	# 노드의 월드 변환 (나무 밖에서도: 부모 변환을 직접 곱함, 크기는 orthonormalized 로 뺄 것)
+	func _world_of(n: Node3D) -> Transform3D:
+		var t := Transform3D.IDENTITY
+		var c: Node = n
+		while c != null:
+			if c is Node3D:
+				t = (c as Node3D).transform * t
+			c = c.get_parent()
+		return t
+
+	# W40 가산 층: 시선·머리 추적 + 숨쉬기 + 착지 숙임. 클립·코드 위에 뼈 회전만 더함 (판정·moves·figure_motion 불변).
+	func _extra_layer(st) -> void:
+		var now := Time.get_ticks_msec() * 0.001
+		var dt := clampf(now - extra_t, 0.0, 0.1) if extra_t > 0.0 else 0.0
+		extra_t = now
+		if dt <= 0.0:
+			return
+		var rg = Rag_._inst
+		if rg != null and is_instance_valid(rg) and rg.rags.has(body):
+			var r: Dictionary = rg.rags[body]
+			if r.awake and float(r.motor) < K_.EXT_CLIP_MOTOR_MIN:
+				return # 힘 빠진 몸은 물리가 맡음
+		# --- 시선 ---
+		var allow := Motion_.gaze_allowed(st)
+		gaze_w = move_toward(gaze_w, 1.0 if allow else 0.0, dt * K_.EXT_GAZE_W_RATE)
+		var want := 0.0
+		if allow:
+			var inv := _world_of(body).orthonormalized().affine_inverse()
+			var others := []
+			var alive := []
+			for o in Motion_.bodies:
+				if not is_instance_valid(o):
+					continue
+				alive.append(o)
+				if o != body and (o as Node3D).visible and (o as Node).get_parent() != null: # 나무에서 뺀 (풀에 쉬는) 몸은 부모가 없어 안 봄
+					others.append(inv * (_world_of(o).origin + Vector3(0, 1.4, 0)))
+			if alive.size() != Motion_.bodies.size():
+				Motion_.bodies = alive
+			var tg: Dictionary = Motion_.pick_target(others, K_.EXT_GAZE_DIST, K_.EXT_GAZE_FOV)
+			if not tg.is_empty():
+				want = Motion_.clamp_yaw(float(tg.yaw), K_.EXT_GAZE_MAX_DEG)
+		gaze_y = Motion_.follow(gaze_y, want, dt, K_.EXT_GAZE_RATE)
+		var th: float = gaze_y * gaze_w
+		if absf(th) > 0.002:
+			for e in K_.EXT_GAZE_BONES:
+				var bi := sk.find_bone(str(e[0]))
+				if bi >= 0:
+					_add_rot(bi, Quaternion(Vector3.UP, th * float(e[1])))
+		# --- 숨쉬기 (서 있고 아무것도 안 할 때, 캐릭터마다 박자·위상 다름) ---
+		breath_w = move_toward(breath_w, 1.0 if Motion_.breath_allowed(st) else 0.0, dt * 2.0)
+		if breath_w > 0.01:
+			var bv: float = Motion_.breath(float(st.get("t", 0.0)), str(body.get("char_id"))) * breath_w * K_.EXT_BREATH_RAD
+			for e in [["mixamorig_Spine1", 0.5], ["mixamorig_Spine2", 1.0], ["mixamorig_Head", -0.6]]:
+				var bi3 := sk.find_bone(str(e[0]))
+				if bi3 >= 0:
+					_add_rot(bi3, Quaternion(Vector3.BACK, bv * float(e[1])))
+		# --- 착지: 윗몸 숙임 + 무릎 굽힘 (엉덩이를 그만큼 내려 발이 땅에 그대로) ---
+		var la := Motion_.land_amount(st)
+		if la > 0.02 and not bool(st.get("air", false)):
+			var al: float = K_.EXT_LAND_BEND_RAD * la
+			var fy0 := 0.0
+			var nf := 0
+			for side in ["R", "L"]:
+				var fi: int = int(info.map.get("foot_" + side, -1))
+				if fi >= 0:
+					fy0 += _gt(fi).origin.y
+					nf += 1
+			for side in ["R", "L"]:
+				var th_i: int = int(info.map.get("thigh_" + side, -1))
+				var kn_i: int = int(info.map.get("knee_" + side, -1))
+				var ft_i: int = int(info.map.get("foot_" + side, -1))
+				if th_i >= 0 and kn_i >= 0:
+					_add_rot(th_i, Quaternion(Vector3.BACK, al))
+					_add_rot(kn_i, Quaternion(Vector3.BACK, -2.0 * al))
+					if ft_i >= 0:
+						_add_rot(ft_i, Quaternion(Vector3.BACK, al))
+			# 무릎을 접으면 발이 올라가니 올라간 만큼 엉덩이를 내려 발은 땅에 그대로 (모델 다리 길이·비율이 달라도 잰 값으로)
+			var hb: int = int(info.map.get("hips", -1))
+			if hb >= 0 and nf > 0:
+				var fy1 := 0.0
+				for side in ["R", "L"]:
+					var fi2: int = int(info.map.get("foot_" + side, -1))
+					if fi2 >= 0:
+						fy1 += _gt(fi2).origin.y
+				sk.set_bone_pose_position(hb, sk.get_bone_pose_position(hb) - Vector3(0, (fy1 - fy0) / nf, 0))
+			for e in [["mixamorig_Spine1", 0.5], ["mixamorig_Spine2", 0.5], ["mixamorig_Head", -0.5]]:
+				var bi4 := sk.find_bone(str(e[0]))
+				if bi4 >= 0:
+					_add_rot(bi4, Quaternion(Vector3.BACK, -K_.EXT_LAND_LEAN_RAD * la * float(e[1])))
 
 	# W34 1인칭 쌍둥이만: cfg.vm_bone_scale {모델 뼈 이름: 배율} — 그 뼈 (와 아래 자식 전부) 를 줄임. 탱크는 왼 아래팔에 붙은 방패가 화면 왼쪽 아래를 너무 가려서
 	# (방패 쥐기 IK 는 손 관절 자리를 그대로 따라가니 3/4 타 쥐기는 유지, 방패·주먹만 같이 작아짐)
