@@ -949,12 +949,76 @@ class Ext extends Node3D:
 			if data.pos.has(key):
 				var cp: Vector3 = an.position_track_interpolate(int(data.pos[key]), tt)
 				sk.set_bone_pose_position(hb, hp.lerp(cp, cw))
+			# W34 보폭 늘리기 (발 미끄러짐): 걷기·달리기 클립의 발 앞뒤 움직임을 (골반 기준 한 바퀴 평균 자리 c 둘레로) k 배로 늘려 2본 IK 로 다리를 다시 폄 (cfg.clips.stride {클립: [k, c, 박자 배율]})
+			var sd = (cc.get("stride", {}) as Dictionary).get(name)
+			if sd is Array and float(sd[0]) > 1.0 and not bool(use.get("air", false)):
+				_stride_ik(1.0 + (float(sd[0]) - 1.0) * cw, float(sd[1]))
 			# 발 붙이기: 가장 낮은 발 뼈가 바닥 (쉬는 자세 높이) 에 닿게 골반을 올리거나 내림 (달리기는 통통 뜨는 걸 두려고 파묻힘만 막음)
 			if not bool(use.get("air", false)):
 				dy = _ground_dy(cc, str(use.get("kind", "")) == "loco")
 				if absf(dy) > 1e-6:
 					sk.set_bone_pose_position(hb, sk.get_bone_pose_position(hb) + Vector3(0, dy * cw, 0))
 		clip_info = {"clip": name, "cw": cw, "dy": dy, "t": tt}
+
+	# 뼈 전역 자세 (뼈대 공간): 뼈 지역 자세를 부모로 곱함
+	func _gt(bi: int) -> Transform3D:
+		var t := Transform3D.IDENTITY
+		var b := bi
+		while b >= 0:
+			t = sk.get_bone_pose(b) * t
+			b = sk.get_bone_parent(b)
+		return t
+
+	# W34 보폭 늘리기: 두 다리 각각, 발이 골반 기준 앞뒤 (뼈대 공간 x) 로 쉬는 자리에서 벗어난 만큼을 k 배로 늘린 자리 → 2본 IK (허벅지·정강이 길이 그대로, 무릎은 앞쪽).
+	# c = 한 바퀴 평균 발 자리 (골반 기준 x, 뼈대 공간). 발 방향 (전역) 은 클립 그대로. 닿을 수 없으면 (다리 길이 밖) 가장 먼 자리까지만
+	func _stride_ik(k: float, center: float) -> void:
+		var hb: int = int(info.map.get("hips", -1))
+		if hb < 0:
+			return
+		var rg: Array = info.rest_global
+		for side in ["Left", "Right"]:
+			var ub := sk.find_bone("mixamorig_%sUpLeg" % side)
+			var kb := sk.find_bone("mixamorig_%sLeg" % side)
+			var fb := sk.find_bone("mixamorig_%sFoot" % side)
+			if ub < 0 or kb < 0 or fb < 0:
+				continue
+			var gH := _gt(hb)
+			var gU := _gt(ub)
+			var gK := _gt(kb)
+			var gF := _gt(fb)
+			var dx: float = (gF.origin.x - gH.origin.x) - center
+			var target := gF.origin + Vector3(dx * (k - 1.0), 0.0, 0.0)
+			var r := leg_ik(gU.origin, gK.origin, gF.origin, target, Vector3(1, 0, 0))
+			var old1 := (gK.origin - gU.origin).normalized()
+			var q1 := Quaternion(old1, ((r.knee as Vector3) - gU.origin).normalized())
+			var bU := Basis(q1) * gU.basis
+			var old2: Vector3 = q1 * (gF.origin - gK.origin).normalized()
+			var q2 := Quaternion(old2, ((r.foot as Vector3) - (r.knee as Vector3)).normalized())
+			var bK := Basis(q2) * Basis(q1) * gK.basis
+			var pU := sk.get_bone_parent(ub)
+			var pb: Basis = _gt(pU).basis if pU >= 0 else Basis.IDENTITY
+			sk.set_bone_pose_rotation(ub, (pb.inverse() * bU).orthonormalized().get_rotation_quaternion())
+			sk.set_bone_pose_rotation(kb, (bU.inverse() * bK).orthonormalized().get_rotation_quaternion())
+			sk.set_bone_pose_rotation(fb, (bK.inverse() * gF.basis).orthonormalized().get_rotation_quaternion())
+
+	# 2본 IK (순수 계산): 엉덩이 P·무릎 K·발 F 의 길이 (l1 = P→K, l2 = K→F) 를 지키며 발을 T 로 — 닿을 수 없으면 가장 먼/가까운 곳까지 (방향은 P→T).
+	# pole = 무릎이 향할 쪽 (P→T 와 수직인 몫만 씀). 돌려줌 {knee, foot}
+	static func leg_ik(P: Vector3, K: Vector3, F: Vector3, T: Vector3, pole: Vector3) -> Dictionary:
+		var l1 := P.distance_to(K)
+		var l2 := K.distance_to(F)
+		var v := T - P
+		var dist := v.length()
+		if dist < 1e-6 or l1 < 1e-6 or l2 < 1e-6:
+			return {"knee": K, "foot": F}
+		var dir := v / dist
+		dist = clampf(dist, absf(l1 - l2) + 1e-4, (l1 + l2) * 0.999)
+		var a := (l1 * l1 - l2 * l2 + dist * dist) / (2.0 * dist)
+		var h := sqrt(maxf(l1 * l1 - a * a, 0.0))
+		var perp := pole - dir * pole.dot(dir)
+		if perp.length() < 1e-4:
+			perp = (K - P) - dir * (K - P).dot(dir)
+		perp = perp.normalized()
+		return {"knee": P + dir * a + perp * h, "foot": P + dir * dist}
 
 	# 뼈 높이 (뼈대 공간): 뼈 지역 자세를 부모로 곱함 (get_bone_global_pose 는 트리 밖 뼈대에선 안 갱신됨 — 테스트·초상)
 	func _bone_y(bi: int) -> float:

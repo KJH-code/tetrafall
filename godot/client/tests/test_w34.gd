@@ -3,6 +3,9 @@ extends RefCounted
 
 const Body := preload("res://chars/body.gd")
 const Ext := preload("res://chars/external.gd")
+const Pose := preload("res://chars/figure_pose.gd")
+const C := preload("res://core/config.gd")
+const Clips := preload("res://chars/ext_clips.gd")
 
 var errors: Array = []
 
@@ -93,3 +96,80 @@ func test_toon_for_without_mask_unchanged() -> void:
 	var t := load("res://assets/models/ext/ninja_mask_lod1.png") as Texture2D
 	var m2: ShaderMaterial = Ext.Ext.toon_for(Color.WHITE, null, true, true, Color.RED, {"skin_mask": t})
 	check(m2.get_shader_parameter("use_skin_mask") == true, "마스크를 주면 텍스처 판정")
+
+
+# ---- 2. 발 미끄러짐 (보폭 늘리기 IK + 박자 배율) ----
+func test_leg_ik_pure() -> void:
+	var P := Vector3(0, 0.45, 0)
+	var K := Vector3(0.05, 0.25, 0)
+	var F := Vector3(0, 0.02, 0)
+	var l1 := P.distance_to(K)
+	var l2 := K.distance_to(F)
+	for tx in [-0.3, -0.1, 0.0, 0.2, 0.3, 0.9]: # 마지막은 닿을 수 없음 → 가장 먼 자리까지
+		var T := Vector3(tx, 0.02, 0)
+		var r := Ext.Ext.leg_ik(P, K, F, T, Vector3(1, 0, 0))
+		check(absf(P.distance_to(r.knee) - l1) < 1e-4, "허벅지 길이 유지 (T.x %.1f)" % tx)
+		check(absf((r.knee as Vector3).distance_to(r.foot) - l2) < 1e-4, "정강이 길이 유지 (T.x %.1f)" % tx)
+		check((r.knee as Vector3).x >= minf(P.x, (r.foot as Vector3).x) - 1e-4, "무릎이 앞쪽 (T.x %.1f)" % tx)
+		if P.distance_to(T) < (l1 + l2) * 0.999:
+			check((r.foot as Vector3).distance_to(T) < 1e-3, "닿을 수 있으면 발이 목표에 (T.x %.1f)" % tx)
+		else:
+			check(P.distance_to(r.foot) <= (l1 + l2) * 0.9991, "못 닿으면 다리 길이까지만")
+
+
+# 걷기·달리기 한 바퀴 동안 접지 발이 뒤로 가는 거리 ÷ (박자 배율을 반영한 코드 위상 한 바퀴 거리) — W33 측정 0.24~0.39 → 0.4 이상
+func test_foot_slide_ratio() -> void:
+	var old := {"ninja": 0.37, "tank": 0.28, "hunter": 0.39, "hook": 0.33} # W33 달리기
+	for ch in IDS:
+		var b = _body(ch, "high")
+		var X = b.ext
+		var sk: Skeleton3D = X.sk
+		var sc := 1.0 # 뼈대 공간 → 몸 (m): 트리 밖이라 지역 크기를 몸까지 곱함
+		var nd: Node = sk
+		while nd != null and nd != b:
+			if nd is Node3D:
+				sc *= (nd as Node3D).transform.basis.get_scale().x
+			nd = nd.get_parent()
+		var need0: float = TAU / (C.ANIM_WALK_FREQ * float(Pose.gait_of(ch).freq))
+		for nm in ["walk", "run"]:
+			var sd = X.info.cfg.clips.stride.get(nm)
+			check(sd is Array and sd.size() == 3 and float(sd[0]) > 1.0 and float(sd[2]) >= 1.0, "%s %s stride [k, c, 박자]" % [ch, nm])
+			if not (sd is Array):
+				continue
+			var need: float = need0 / float(sd[2])
+			var fR := sk.find_bone("mixamorig_RightFoot")
+			var fL := sk.find_bone("mixamorig_LeftFoot")
+			var travel := 0.0
+			var prev := Vector3.ZERO
+			var had := false
+			var prev_st := -1
+			var n := 60
+			for i in n + 1:
+				var t: float = float(X.clipset[nm].len) * float(i) / n
+				X.preview_clip(nm, t)
+				X.fade_t = 1.0
+				X.preview_clip(nm, t)
+				var pr: Vector3 = X._gt(fR).origin
+				var pl: Vector3 = X._gt(fL).origin
+				var stance: int = 0 if pr.y <= pl.y else 1
+				var cur: Vector3 = pr if stance == 0 else pl
+				if had and stance == prev_st:
+					travel += -(cur.x - prev.x)
+				prev = cur
+				prev_st = stance
+				had = true
+			var ratio: float = travel * sc / need
+			check(ratio >= 0.4, "%s %s 발 미끄러짐 비 %.2f >= 0.4 (W33 %s)" % [ch, nm, ratio, "달리기 %.2f" % old[ch]])
+		b.free()
+
+
+# 박자 배율: 같은 몸 속도 (코드 걸음 위상) 에서 클립이 배율만큼 더 돌고, 배율 1 이면 예전 그대로
+func test_clip_rate_scales_phase() -> void:
+	var st := {"air": false, "walking": true, "hs": 4.5, "walk": 1.0, "vz": 0.0, "t": 1.0, "stunned": false, "emote": -1, "victory": -1.0, "hit": null, "act": null,
+		"tumble": 0.0, "recover": 0.0, "land": 0.0, "flip": -1.0, "idle": 0.0, "airDash": 0.0, "dizzy": 0.0, "whirl": -1.0, "glide": false}
+	var cc := {"walk": "walk", "run": "run", "run_speed": 4.5, "run_from": 0.55}
+	var a := Clips.select(cc, st, 0.0)
+	cc["stride"] = {"run": [1.4, -0.1, 1.5]}
+	var b := Clips.select(cc, st, 0.0)
+	check(absf(float(a.t) - fposmod(1.0 / TAU, 1.0)) < 1e-5, "stride 없으면 위상 그대로")
+	check(absf(float(b.t) - fposmod(1.5 / TAU, 1.0)) < 1e-5, "박자 1.5 배 (%.3f)" % float(b.t))
