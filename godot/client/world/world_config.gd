@@ -53,8 +53,9 @@ const CAM_ABOVE_HAZARD := 0.8 # 승자·셀카 카메라를 위험 표면 위 �
 const VICTORY_PULL := [0.3, 0.6] # 승자 카메라가 막히면: 막힌 칸 앞 여백, 승자에서 가장 가까운 거리
 const MARK_CELL := 0.94 # 스킬 예고 칸 판 크기 (render.js markBox)
 const LABEL_GAP := [96.0, 40.0] # 보통 시점 이름표 겹침 판정 크기 (화면 px, 가까운 4명 크기 기준 — 먼 것은 LABEL_FAR_SCALE 배)
-const HUNT_PIP_PX := 0.00085 # 머리 위 표식 마름모 글자 크기 (fixed_size). JS sprite pip 0.045 × 마름모 26/32 = 720p 에서 높이 ~17px (고도 ◆ 글자는 font 48 의 ~2/3)
-const HUNT_PIP_GAP := 50.0 # 마름모 칸 사이 (글자 px, pixel_size 와 같이 줄어듦 — JS 칸 21px ÷ 마름모 17px 비율)
+const HUNT_PIP_PX := 0.0013 # 머리 위 표식 칸 그림 한 장 (32px) 의 fixed_size pixel_size. 720p 에서 그림 높이 ~21px → 마름모 26/32 = ~17px (JS sprite pip 0.045 와 같은 크기)
+const VULN_NOTE_PX := 0.001 # 취약 ♫ 그림 (64px, fixed_size): 720p 에서 그림 높이 ~32px·음표 ~22px (JS sprite 0.07)
+const HUNT_PIP_GAP := 32.0 # 칸 사이 (그림 px — JS canvas 칸 32px 간격 그대로)
 const HP_BAR := [130.0, 16.0, 64.0] # 체력전 머리 위 HP 막대: 폭·높이·이름 아래로 (이름표 글자 px 단위 — 화면에선 약 절반)
 const SPIN_ARC_COLOR := 0xe8ecf4 # 갈고리 스핀 원호 색 (render.js spinArc)
 

@@ -8,6 +8,8 @@ const C := preload("res://core/config.gd")
 const Co := preload("res://core/coords.gd")
 const WC := preload("res://world/world_config.gd")
 const Cells := preload("res://world/cells.gd")
+const Tex := preload("res://world/chunk_tex.gd")
+const FXC := preload("res://fx/fx_config.gd")
 
 var effects = null # G5 fx/effects.gd
 var marks = null # world/marks.gd
@@ -152,6 +154,19 @@ func set_chain(c: Dictionary, a: Vector3, b: Vector3, t: float, sag := 0.0, wave
 	c.head.rotation = Vector3(0, t / 60.0, PI / 2)
 
 
+# W35 사슬 팽팽함 빛: a → b 사슬을 따라 빛 알갱이 (effects.glow 풀 — 낮음이면 풀이 없어 안 그림). 같은 사슬은 every ms 마다 한 번
+func tension_light(c: Dictionary, a: Vector3, b: Vector3, now: float, k := 1.0) -> void:
+	if effects == null or now < float(c.get("tn_next", 0.0)):
+		return
+	var T: Dictionary = FXC.HOOK_TENSION
+	c.tn_next = now + float(T.every)
+	for i in int(T.dots):
+		var u := randf_range(0.08, 0.92)
+		var at := a.lerp(b, u)
+		effects.glow(at, int(T.color), float(T.size) * k, float(T.ms), float(T.a), effects.ROUND, {"grow": 0.6, "hot": 1.0})
+	effects.glow(b, int(T.hot), float(T.end_size) * k, float(T.ms), 0.7, effects.STAR, {"grow": 1.3, "hot": 1.0}) # 걸린 끝 번쩍
+
+
 func throw_rope(who, yaw: float, ms: float) -> void:
 	var s = bodies.shown.get(int(who)) if bodies != null and who != null else null
 	if s == null:
@@ -205,6 +220,43 @@ func drop_rope(who) -> void:
 
 
 # ---------- R 덩어리 ----------
+var theme_id = null # 맵 테마 (테트리미노 칸 모습). world.gd 가 테마를 깔 때 넣음
+var g3 = null # G3 (shaders/g3.gd), 없으면 색 상자
+var low := false
+
+
+# W35 덩어리 재질 (render.js blockGrab): 건축가 블록 = 판자 상자, 테트리미노 칸 = 맵 테마 칸 모양·재질, 지형 = 돌, 설치 블록 = 모래 (그림 world/chunk_tex.gd).
+# 하늘 블록 (sky) 은 밝고 반투명 (SKY_PIECE_OPACITY). g3 가 없으면 예전처럼 색 상자
+func chunk_look(e: Dictionary, col: Color) -> Dictionary:
+	var v := int(e.get("v", 0))
+	var builder: bool = e.get("builder", false)
+	var sky: bool = e.get("sky", false)
+	var opacity: float = float(C.SKY_PIECE_OPACITY) if sky else 1.0
+	if g3 == null or not g3.has_method("toon_material"):
+		var bm := BoxMesh.new()
+		bm.size = Vector3.ONE * 0.98
+		return {"mesh": bm, "mat": _mat(col)}
+	if v > Cells.THROWN and not builder and g3.has_method("piece_mesh"):
+		var base: ArrayMesh = g3.piece_mesh(theme_id, low)
+		var arr: Array = base.surface_get_arrays(0)
+		var n: int = (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+		var cols := PackedColorArray()
+		cols.resize(n)
+		cols.fill(col) # 칸 색은 인스턴스 COLOR 자리 = 꼭짓점 색 (한 덩어리 한 색)
+		arr[Mesh.ARRAY_COLOR] = cols
+		var cm := ArrayMesh.new()
+		cm.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		return {"mesh": cm, "mat": g3.piece_material(theme_id, low, {"transparent": sky, "opacity": opacity})}
+	var bm2 := BoxMesh.new()
+	bm2.size = Vector3.ONE * 0.98
+	var tex: Texture2D = Tex.stone()
+	if builder or v == Cells.BUILD:
+		tex = Tex.wood()
+	elif v == Cells.THROWN:
+		tex = Tex.sand()
+	var mat: ShaderMaterial = g3.toon_material(col, {"map": tex, "opacity": opacity})
+	return {"mesh": bm2, "mat": mat}
+
 func block_grab(e: Dictionary) -> void:
 	var now := now_ms()
 	var cells: Array = e.cells if e.get("cells") != null and not e.cells.is_empty() else [e.from]
@@ -217,14 +269,12 @@ func block_grab(e: Dictionary) -> void:
 		center += Vector3(c[0] + 0.5, c[1] + 0.5, c[2] + 0.5)
 	center /= cells.size()
 	var g := Node3D.new()
-	var mat := _mat(col)
-	var bm := BoxMesh.new()
-	bm.size = Vector3.ONE * 0.98
+	var look := chunk_look(e, col)
 	var size := 0.0
 	for c in cells:
 		var m := MeshInstance3D.new()
-		m.mesh = bm
-		m.material_override = mat
+		m.mesh = look.mesh
+		m.material_override = look.mat
 		var off := Vector3(c[0] + 0.5, c[1] + 0.5, c[2] + 0.5) - center
 		m.position = Co.gpos(off)
 		g.add_child(m)
@@ -379,6 +429,7 @@ func step() -> void:
 				end = goal
 				sag = 0.0
 				wave = C.ROPE_WOBBLE * 0.4 * exp(-since / 60.0)
+				tension_light(r.chain, a, end, now)
 			else: # 감김: 느슨해지며 손으로 돌아옴
 				var v: float = (since - hold) / C.HOOK_FLY_MS
 				end = a.lerp(goal, maxf(0.02, 1 - v))
@@ -452,3 +503,5 @@ func step() -> void:
 				m.transparency = 1.0 - C.HOOK_GRAB_FP_OPACITY if mine else 0.0
 		var taut: bool = g.slam != null or now - g.t0 < g.ms * C.HOOK_GRAB_SHAKE_PART # 덜덜·내려찍기는 팽팽, 돌릴 땐 살짝 출렁
 		set_chain(g.chain, h, pos, now, 0.0, 0.0 if taut else C.ROPE_WOBBLE * 0.4)
+		if taut:
+			tension_light(g.chain, h, pos, now, 1.0 + (0.5 if g.slam != null else 0.0))

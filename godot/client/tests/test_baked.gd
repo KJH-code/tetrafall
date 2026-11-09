@@ -324,7 +324,7 @@ func test_baked_lighter() -> void:
 		# 반투명 (유령화): 투명 재질에도 피부색
 		g.opacity = 0.5
 		g._apply_opacity()
-		var am: ShaderMaterial = g.batch.mi.material_override
+		var am: ShaderMaterial = preload("res://chars/ghost_depth.gd").inner(g.batch.mi.material_override)
 		check(am != m and Color(am.get_shader_parameter("skin_tint")).a == 1.0, "%s 반투명 피부색" % ch)
 		g.opacity = 1.0
 		g._apply_opacity()

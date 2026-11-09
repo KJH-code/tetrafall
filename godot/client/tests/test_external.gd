@@ -338,7 +338,7 @@ func test_ext_fx() -> void:
 	var mi: MeshInstance3D = b.ext.parts[0].mi
 	var solid = mi.material_override
 	b.ext.fx([b.skin_color, Color(0, 0, 0), Color(0, 0, 0)], 0.5)
-	check(mi.material_override != solid and (mi.material_override as ShaderMaterial).get_shader_parameter("albedo").a == 0.5, "반투명 재질")
+	check(mi.material_override != solid and (preload("res://chars/ghost_depth.gd").inner(mi.material_override) as ShaderMaterial).get_shader_parameter("albedo").a == 0.5, "반투명 재질")
 	b.ext.fx([b.skin_color, Color(0, 0, 0), Color(0, 0, 0)], 1.0)
 	check(mi.material_override == solid, "반투명 끝")
 	b.ext.fx([Color.WHITE, Color(0, 0, 0), Color(0, 0, 0)], 1.0)
@@ -632,7 +632,7 @@ func test_blender_tank_fx_twin() -> void:
 	var sm := mi.material_override as ShaderMaterial
 	check(sm.get_shader_parameter("skin_emissive").is_equal_approx(Color(0.4, 0.2, 0)) and sm.get_shader_parameter("emissive").is_equal_approx(Color(0.1, 0.1, 0)), "피부 발광·나머지 발광 나눔")
 	b.ext.fx([b.skin_color, Color(0, 0, 0), Color(0, 0, 0)], 0.5)
-	var am := mi.material_override as ShaderMaterial
+	var am := preload("res://chars/ghost_depth.gd").inner(mi.material_override) as ShaderMaterial
 	check(am != solid and am.get_shader_parameter("albedo").a == 0.5 and am.get_shader_parameter("use_vertex_color") == true and am.get_shader_parameter("skin_multiply") == true, "반투명도 꼭짓점 색·곱하기")
 	b.ext.fx([b.skin_color, Color(0, 0, 0), Color(0, 0, 0)], 1.0)
 	check(mi.material_override == solid, "반투명 끝")

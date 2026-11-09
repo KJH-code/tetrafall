@@ -309,3 +309,82 @@ func test_body_font_where_js_system_ui() -> void:
 	check(bf.call(p.hint) and bf.call(p.checks.values()[0]), "연습: Tab 안내·체크 = 본문")
 	p.free()
 	Store.my_id = keep
+
+
+# W35: 대기실 큰 캐릭터 칸이 클릭을 삼키지 않음 → 누르면 스킬 카드 열림, 카드를 누르거나 카드 밖을 누르면 닫힘
+func test_lobby_stage_click_opens_skill_card() -> void:
+	var l = _make("res://ui/lobby.gd")
+	check(l.stage_box.mouse_filter == Control.MOUSE_FILTER_PASS, "큰 캐릭터 칸은 클릭을 위로 올림 (PASS)")
+	var node: Node = l.stage_box
+	while node != l.stage and node != null:
+		check(node == l.stage_box or (node is Control and (node as Control).mouse_filter != Control.MOUSE_FILTER_STOP), "stage 까지 길에 클릭을 삼키는 칸 없음 (%s)" % node.name)
+		node = node.get_parent()
+	for c in l.stage_box.get_children():
+		if c != l.skill_btn and c != l.stage_3d: # stage_3d 는 _ready 에서 IGNORE (트리 밖이라 안 불림 — ui_check 가 실제로 확인)
+			check((c as Control).mouse_filter == Control.MOUSE_FILTER_IGNORE, "큰 캐릭터 칸 자식은 클릭 무시 (%s)" % c.name)
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	l.stage.gui_input.emit(press)
+	check(l.skill_card.visible and l.skill_btn.text == "스킬 닫기", "큰 캐릭터 클릭 → 스킬 카드 열림")
+	l.skill_card.gui_input.emit(press)
+	check(not l.skill_card.visible and l.skill_btn.text == "스킬 보기", "카드를 누르면 닫힘")
+	l._toggle_card(true)
+	l._toggle_card()
+	check(not l.skill_card.visible, "토글 다시 → 닫힘")
+	l.free()
+
+
+# W35 결과 판 ↔ 메뉴 겹침 (재발 점검): 결과 → 방 나감 → 메뉴에서 결과·대기실·HUD 가 같이 보이면 안 됨. 슬래시가 덮는 순간에도 마지막 목표 화면만
+func test_results_never_overlaps_menu() -> void:
+	var keep := [Store.my_id, Store.room, Store.state, View.victory_stage]
+	var ui = load("res://ui/ui.gd").new() # _ready (트리 밖이라 안 불림) 대신 판 노드를 직접 끼움 — 화면 고르기·보이기만 시험
+	ui.menu = Control.new()
+	ui.lobby = PanelContainer.new()
+	ui.host_players = PanelContainer.new()
+	ui.results = PanelContainer.new()
+	ui.hud = _make("res://ui/hud.gd")
+	ui.hud_extra = Control.new()
+	ui.wipe = load("res://ui/wipe.gd").new()
+	ui.wipe.covered.connect(func(): ui._show(ui.target))
+	Store.my_id = 1
+	Store.room = {"code": "ABCD"}
+	Store.state = {"phase": "over", "mode": "survival", "players": [_player(1, 0, 1), _player(2, 1, 0)], "round": {"n": 1, "winnerId": 1}}
+	View.victory_stage = "results"
+	check(ui._screen_now() == "results", "판 끝 + 결과 단계 = 결과 화면")
+	ui._show("results")
+	check(ui.results.visible and not ui.menu.visible and not ui.lobby.visible and not ui.hud.visible, "결과 화면은 결과 판만")
+	# 방을 나감 (Store 가 방을 비움) → 메뉴
+	Store.my_id = null
+	Store.room = {}
+	Store.state = {}
+	check(ui._screen_now() == "menu", "방 밖이면 메뉴")
+	ui.target = "menu" # 슬래시가 도는 동안 목표가 바뀐 뒤 덮는 순간
+	ui.wipe.covered.emit()
+	check(ui.shown == "menu" and ui.menu.visible and not ui.results.visible and not ui.lobby.visible and not ui.hud.visible, "덮는 순간 메뉴만 (결과 판 안 남음)")
+	# 연속 판: 결과 → 대기실 → 판 → 결과
+	Store.my_id = 1
+	Store.room = {"code": "ABCD"}
+	for step in [["over", "results", "results"], ["lobby", "lobby", "lobby"], ["playing", "lobby", "game"], ["over", "results", "results"], ["over", "lobby", "lobby"]]:
+		Store.state = {"phase": step[0], "mode": "survival", "players": [_player(1, 0, 0), _player(2, 1, 0)], "round": {"n": 2}}
+		View.victory_stage = step[1]
+		var want: String = step[2]
+		check(ui._screen_now() == want, "%s·%s → %s (%s)" % [step[0], step[1], want, ui._screen_now()])
+		ui._show(want)
+		var vis := [ui.menu.visible, ui.lobby.visible, ui.results.visible, ui.hud.visible].filter(func(v): return v).size()
+		check(vis == 1, "%s 화면은 판 하나만 보임 (%d)" % [want, vis])
+	for n in [ui.menu, ui.lobby, ui.host_players, ui.results, ui.hud, ui.hud_extra, ui.wipe]:
+		n.free()
+	ui.free()
+	Store.my_id = keep[0]
+	Store.room = keep[1]
+	Store.state = keep[2]
+	View.victory_stage = keep[3]
+
+
+# W35: 결과 판 승자 글 — 좁은 칸에서도 '승리' 가 두 줄로 쪼개지지 않게 (WORD JOINER), 보이는 글은 그대로
+func test_results_head_keeps_word_together() -> void:
+	const R := preload("res://ui/results.gd")
+	var t: String = R.win_text("P4(봇)")
+	check(t.contains("승\u2060리"), "승 리 사이 단어 이음표")
+	check(t.replace("\u2060", "") == "P4(봇) 승리", "보이는 글은 'P4(봇) 승리' 그대로")

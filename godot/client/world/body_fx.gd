@@ -235,6 +235,11 @@ func on_event(e: Dictionary) -> void:
 			View.sound_cue.emit("blast", {"x": p.x, "y": p.y, "z": p.z, "big": float(e.get("rage", 1)) > 1.3, "wood": false})
 
 
+# W35: 1인칭이면 내 발밑 고리는 숨김 (카메라가 몸 안이라 바닥 원이 화면 아래를 덮음). 남의 고리·3인칭·하늘 시점은 그대로
+static func hide_own_ring(ring_id, my_id, is_third: bool) -> bool:
+	return my_id != null and ring_id != null and int(ring_id) == int(my_id) and not is_third
+
+
 # 스킬·필살기 빛: 발밑 고리가 퍼짐 (스킬 하양 순간, 필살기 하늘색 두 겹 + 반짝이). 캐릭터를 따라다님
 func aura(id, ult: bool) -> void:
 	if id == null or _shown(id) == null:
@@ -292,7 +297,7 @@ func update(st: Dictionary, my_id, dt: float) -> void:
 			a.node.queue_free()
 			auras.remove_at(i)
 			continue
-		a.node.visible = u >= 0
+		a.node.visible = u >= 0 and not hide_own_ring(a.id, my_id, third.call())
 		if u < 0:
 			continue
 		a.node.position = Co.gxyz(s.x, s.y, s.z + 0.04)
@@ -405,28 +410,71 @@ func _label(text: String, color: Color, outline: Color, px: float) -> Label3D:
 
 # 분홍 음표 (머리·기둥·깃발 두 개 = 이어진 8분음표 둘), 화면을 덮지 않게 작게
 func _note() -> Node3D:
-	var g := Node3D.new()
-	var mat := _flat(0xff6ad5)
-	mat.no_depth_test = false
-	for k in 2:
-		var hm := SphereMesh.new()
-		hm.radius = 0.08
-		hm.height = 0.12
-		var head := _mi(hm, mat)
-		head.position = Vector3(-0.1 + k * 0.2, 0, 0)
-		g.add_child(head)
-		var sm := BoxMesh.new()
-		sm.size = Vector3(0.025, 0.28, 0.025)
-		var stem := _mi(sm, mat)
-		stem.position = Vector3(-0.03 + k * 0.2, 0.14, 0)
-		g.add_child(stem)
-	var bm := BoxMesh.new()
-	bm.size = Vector3(0.22, 0.04, 0.025)
-	var beam := _mi(bm, mat)
-	beam.position = Vector3(0.07, 0.27, 0)
-	g.add_child(beam)
-	add_child(g)
-	return g
+	# W35: JS 와 같게 머리 위 화면 크기 고정 분홍 ♫ (테두리 있는 빌보드 그림) — 예전엔 돌아가는 3D 음표 모형. 글꼴에 안 기대고 직접 그림
+	var l := Sprite3D.new()
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.fixed_size = true
+	l.shaded = false
+	l.double_sided = true
+	l.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+	l.texture = note_texture()
+	l.pixel_size = WC.VULN_NOTE_PX
+	l.render_priority = 12
+	add_child(l)
+	return l
+
+
+static var _note_tex: ImageTexture = null
+
+
+# 64×64 분홍 ♫ (#ff6ad5, 테두리 #3a0030 3px): 머리 두 개 (기울어진 타원) + 막대 둘 + 위 이음줄
+static func note_texture() -> ImageTexture:
+	if _note_tex != null:
+		return _note_tex
+	var N := 64
+	var inside := PackedByteArray()
+	inside.resize(N * N)
+	for y in N:
+		for x in N:
+			var px := x + 0.5
+			var py := y + 0.5
+			var hit := false
+			for hx in [20.0, 44.0]: # 머리: 타원 (오른쪽 위로 기울임)
+				var dx: float = px - hx
+				var dy: float = py - 47.0
+				var c := cos(-0.45)
+				var sn := sin(-0.45)
+				var u: float = dx * c - dy * sn
+				var v: float = dx * sn + dy * c
+				if (u * u) / (8.5 * 8.5) + (v * v) / (6.0 * 6.0) <= 1.0:
+					hit = true
+			if absf(px - 27.0) <= 2.2 and py >= 12.0 and py <= 46.0: # 막대 (머리 오른쪽)
+				hit = true
+			if absf(px - 51.0) <= 2.2 and py >= 8.0 and py <= 42.0:
+				hit = true
+			if px >= 25.0 and px <= 53.2 and py >= 8.0 + (px - 25.0) * (-4.0 / 28.0) and py <= 8.0 + (px - 25.0) * (-4.0 / 28.0) + 8.0 and py >= 5.0: # 이음줄 (살짝 위로)
+				hit = true
+			inside[y * N + x] = 1 if hit else 0
+	var img := Image.create(N, N, false, Image.FORMAT_RGBA8)
+	var fill := Color("ff6ad5")
+	var edge := Color("3a0030")
+	for y in N:
+		for x in N:
+			if inside[y * N + x] == 1:
+				img.set_pixel(x, y, fill)
+				continue
+			var near := false
+			for oy in range(-2, 3):
+				for ox in range(-2, 3):
+					if ox * ox + oy * oy <= 5:
+						var xx := x + ox
+						var yy := y + oy
+						if xx >= 0 and yy >= 0 and xx < N and yy < N and inside[yy * N + xx] == 1:
+							near = true
+			if near:
+				img.set_pixel(x, y, edge)
+	_note_tex = ImageTexture.create_from_image(img)
+	return _note_tex
 
 
 # 사냥꾼 표식 (2026-10-31 재혁: 몇 개인지·붙은 순간·누가 달렸는지 — shared/hunt-marks.js, world/hunt_marks.gd):
@@ -444,12 +492,15 @@ func _hunt(d: Dictionary, p: Dictionary, s: Vector3, my_id, mine: bool, now: flo
 		var g := Node3D.new()
 		var labs := []
 		for i in mx:
-			var l := Label3D.new()
+			var l := Sprite3D.new() # W35: JS 와 같은 그림 (키 큰 마름모 + 테두리, 글꼴에 안 기댐)
 			l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 			l.fixed_size = true
-			l.font_size = 48
-			l.outline_size = 14
+			l.shaded = false
+			l.double_sided = true
+			l.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+			l.pixel_size = WC.HUNT_PIP_PX
 			l.render_priority = 12
+			l.offset = Vector2((i - (mx - 1) / 2.0) * WC.HUNT_PIP_GAP, 0)
 			g.add_child(l)
 			labs.append(l)
 		add_child(g)
@@ -465,14 +516,51 @@ func _hunt(d: Dictionary, p: Dictionary, s: Vector3, my_id, mine: bool, now: flo
 	var breathe := 1 + 0.08 * sin(now / 120.0) if pp.full else 1.0
 	var px: float = WC.HUNT_PIP_PX * pop * breathe
 	for i in mx:
-		var l: Label3D = d.hunt.labs[i]
+		var l: Sprite3D = d.hunt.labs[i]
 		var on: bool = pp.pips[i]
-		l.text = "◆" if on else "◇"
-		l.modulate = Co.color(U.full if pp.full else U.on) if on else Co.color(U.off)
-		l.outline_modulate = Color(0.19, 0, 0) if on else Color(0, 0, 0, 0.6)
+		l.texture = pip_texture("full" if pp.full else "on") if on else pip_texture("off")
 		l.pixel_size = px
 		l.offset = Vector2((i - (mx - 1) / 2.0) * WC.HUNT_PIP_GAP, 0)
 		l.no_depth_test = by_me # 내 표식은 블록 뒤에서도 보임
+
+
+static var _pip_tex := {}
+
+
+# 표식 칸 한 개 그림 (JS render.js updateHuntMarks canvas: 32×32, 꼭짓점 (16,3)·(27,16)·(16,29)·(5,16), 테두리 3px).
+# 찬 칸 = U.on 채움 + #300 테두리, 꽉 참 = U.full, 빈 칸 = 검정 35% 채움 + U.off 테두리. 4×4 겹샘플로 부드럽게
+static func pip_texture(kind: String) -> ImageTexture:
+	if _pip_tex.has(kind):
+		return _pip_tex[kind]
+	var U: Dictionary = C.HUNT_MARK_UI
+	var fill := Color(0, 0, 0, 0.35) if kind == "off" else Co.color(U.full if kind == "full" else U.on)
+	var edge := Co.color(U.off) if kind == "off" else Color("330000")
+	var img := Image.create(32, 32, false, Image.FORMAT_RGBA8)
+	for y in 32:
+		for x in 32:
+			var a_fill := 0.0
+			var a_edge := 0.0
+			for sy in 4:
+				for sx in 4:
+					var dx := absf(x + (sx + 0.5) / 4.0 - 16.0)
+					var dy := absf(y + (sy + 0.5) / 4.0 - 16.0)
+					var dd := dx / 11.0 + dy / 13.0 # 1 = 마름모 가장자리
+					var dist := (dd - 1.0) * 8.4 # 가장자리까지 수직 거리 (px, 바깥 +)
+					if absf(dist) <= 1.5:
+						a_edge += 1.0
+					elif dist < 0:
+						a_fill += 1.0
+			a_fill /= 16.0
+			a_edge /= 16.0
+			# 채움 위에 테두리 (JS fill → stroke): 안쪽 채움 + 테두리 띠 (premultiplied 섞기)
+			var ca := fill.a * a_fill
+			var rgb := Vector3(fill.r, fill.g, fill.b) * ca
+			var oa := ca * (1.0 - a_edge) + edge.a * a_edge
+			rgb = rgb * (1.0 - a_edge) + Vector3(edge.r, edge.g, edge.b) * edge.a * a_edge
+			img.set_pixel(x, y, Color(rgb.x / oa, rgb.y / oa, rgb.z / oa, oa) if oa > 0.0001 else Color(0, 0, 0, 0))
+	var t := ImageTexture.create_from_image(img)
+	_pip_tex[kind] = t
+	return t
 
 
 # 몸 위 한 겹 (G2 body.set_overlay): 붙는 순간 빨간 번쩍 (flashMs) > 사냥꾼의 눈 (내 표식 대상, 블록에 가린 부분만 빨갛게) > 없음. 바뀔 때만 부름
@@ -536,7 +624,6 @@ func _status(d: Dictionary, p: Dictionary, s: Vector3, mine: bool, now: float) -
 	l.visible = vuln and not (mine and not third.call())
 	if l.visible:
 		l.position = Co.gxyz(s.x, s.y, s.z + C.PLAYER_HEIGHT + C.LABEL_ABOVE_HEAD + 0.75 + 0.25 * absf(sin(now / 160.0)))
-		l.rotation.y = now / 500.0
 	var r: MeshInstance3D = d.slow.node
 	r.visible = slow and not (mine and not third.call()) # JS 는 몸 그룹 자식이라 내 1인칭이면 같이 숨음
 	if r.visible:

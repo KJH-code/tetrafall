@@ -32,6 +32,7 @@ const HEAVY_HITS := ["bomb", "shock", "projectile", "slam", "wall", "blast", "bi
 var char_id := ""
 var cd := {} # 몸 자료 (bodies.bin 의 캐릭터 한 줄, 구운 몸이면 manifest — 같은 모양: nodes·mats·refs)
 var baked := false # 구운 몸 (.glb) 으로 만듦
+const GhostDepth := preload("res://chars/ghost_depth.gd")
 static var use_ext: bool = (K.EXT and not Opts.web() and not Opts.args().has("--no-ext")) or Opts.args().has("--ext") # 웹은 기본 끔 (W29: 새 모델은 삼각형·텍스처가 무거움, 웹에서 켜려면 주소 ?ext=1). W14 외부 뼈대 모델이 있으면 씀 (chars/external.gd)
 var ext = null # 붙은 외부 모델 (External.Ext) — 있으면 안쪽 몸 (조각) 은 관절만, 그리는 건 외부 모델
 static var use_glb: bool = K.GLB and not Opts.args().has("--no-glb") # 구운 몸이 있으면 씀 (테스트가 예전 조립과 둘 다 봄, 확인용 실행 인자 --no-glb 면 예전 조립)
@@ -146,6 +147,8 @@ var act = null # {id, move, t0, windup, struck, rec, broken, air}
 var hit = null # {id, t0, stop, dir (Vector2 게임), pow}
 var finish_at := -1e9
 var counter_at := -1e9
+var armor_react_at := -1e9 # W35 (s): 아머로 버틴 시각 — 그 타는 안 휘청 (render.js armorHitAt)
+var armor_break_react_at := -1e9 # W35 (s): 아머가 깨진 시각 — 그 타는 크게 휘청 (armorBreakAt)
 
 
 func build(char_id_: String, color: Color, merge: bool = K.MERGE) -> void:
@@ -1435,7 +1438,7 @@ func _apply_opacity() -> void:
 		elif am is ShaderMaterial:
 			var c2: Color = dr.col
 			(am as ShaderMaterial).set_shader_parameter("albedo", Color(c2.r, c2.g, c2.b, opacity))
-		mi.material_override = am
+		mi.material_override = GhostDepth.wrap_in(dr) # W35: 깊이 선 먼저 (안쪽 삼각형이 앞과 섞이지 않게)
 
 
 # 위험 빛 받기 (W3): 전역 위험 빛이 자기 SubViewport 장면에도 걸려서 그 몸만 끔. 지금 붙은 재질·바드 폼 몸통·반투명 재질 다 (나중에 만드는 반투명도 따름)
@@ -1779,6 +1782,12 @@ func on_event(e: Dictionary) -> void:
 		"counter":
 			if hit_me:
 				counter_at = now
+		"armor":
+			if mine:
+				armor_react_at = now
+		"armorBreak":
+			if mine:
+				armor_break_react_at = now
 		"hit":
 			if hit_me and e.get("ok", false):
 				# 닌자 표창: 판정은 즉시지만 맞는 몸짓은 표창이 닿을 때 (main.js handleEvent STAR_FLY_MS — fx.gd·audio.gd 와 같은 때)
@@ -1893,6 +1902,14 @@ func _skill_move(move: String, windup_ms: float, now: float) -> void:
 
 # 맞은 순간 (render.js hitReact). dir = 밀린 방향 (게임 Vector2, 없으면 null)
 func _hit_react(dir, heavy: bool, crit: bool, kind: String, now: float) -> void:
+	# 탱크 아머 (render.js hitReact): 버틴 타는 얼굴만 찡그리는 정도 (멈칫 없음), 깨진 타는 크게 (멈칫 ×1.5), 같은 틱에 armor·armorBreak 가 hit 보다 먼저 옴
+	var armor := armor_reaction(now - armor_react_at, now - armor_break_react_at)
+	if not armor.is_empty():
+		seq += 1
+		hit = {"id": seq, "t0": now, "stop": armor.stop, "dir": dir, "pow": armor.pow}
+		if armor.breaks and act != null and act.broken == null:
+			act = null
+		return
 	var finish := now - finish_at < 0.2
 	var counter := now - counter_at < 0.2
 	var base: float = C.FIGURE_HIT_FINISH if finish else (C.FIGURE_HIT_HEAVY if (heavy or crit or kind in HEAVY_HITS) else 1.0)
@@ -1902,6 +1919,15 @@ func _hit_react(dir, heavy: bool, crit: bool, kind: String, now: float) -> void:
 	hit = {"id": seq, "t0": now, "stop": stop, "dir": dir, "pow": power}
 	if act != null and act.broken == null:
 		act = null
+
+
+# W35 아머 맞음 반응 (순수): age_s = 버팀·깨짐 이벤트 뒤 초. 200ms 안이면 {pow, stop, breaks}, 아니면 {}
+static func armor_reaction(held_age: float, break_age: float) -> Dictionary:
+	if held_age < 0.2:
+		return {"pow": C.FIGURE_HIT_ARMOR, "stop": 0.0, "breaks": false}
+	if break_age < 0.2:
+		return {"pow": C.FIGURE_HIT_ARMOR_BREAK, "stop": C.HITSTOP_MS * 1.5 / 1000.0, "breaks": true}
+	return {}
 
 
 # 표창 맞음은 표창이 닿을 때까지 기다림 (fx.gd·audio.gd 와 같은 규칙, late = 다시 부른 것)

@@ -47,6 +47,8 @@ var perf_rt := false
 var perf_split := [0.0, 0.0, 0.0, 0.0, 0] # 그리기 CPU · GPU · _process · 물리 (ms 합), 프레임 수
 var shot_at := "game"
 var over_ms := -1.0
+var left_ms := -1.0 # W35 --leave-after: 방 나간 시각
+var vis_last := "" # W35 --vis-log: 마지막으로 찍은 화면 판 보임 상태
 var restart_for := -1 # 이 판 끝 (rounds) 에 다음 판 시작을 보냈는지
 var was_host = null # 방장이 바뀌면 로그 (방장 나가면 넘김)
 var color_sent := -1.0 # --color 보낸 시각 (받아짐·거절 로그)
@@ -265,6 +267,16 @@ func _process(_d: float) -> void:
 		shot_time = round_no == int(args["shot-round"]) and Store.phase() == "playing" and now - round_ms >= float(args.get("shot-after", 8)) * 1000.0
 	if shot_at == "results":
 		shot_time = over_ms >= 0.0 and now - over_ms >= float(args.get("shot-after", 1.5)) * 1000.0
+	# W35 겹침 점검: --leave-after <초> 판이 끝나고 이만큼 뒤 방 나가기 (메뉴로), --shot-at leave 는 나간 뒤 --shot-after 초에 찍음,
+	#   --vis-log 는 화면 판 (메뉴·대기실·결과·HUD·설정) 보임이 바뀔 때마다 한 줄 (겹쳐 보이면 '겹침' 표시)
+	if args.has("leave-after") and left_ms < 0.0 and over_ms >= 0.0 and now - over_ms >= float(args["leave-after"]) * 1000.0:
+		left_ms = now
+		Store.leave()
+		_log("방 나감 (--leave-after)")
+	if shot_at == "leave":
+		shot_time = left_ms >= 0.0 and now - left_ms >= float(args.get("shot-after", 2)) * 1000.0
+	if args.has("vis-log"):
+		_vis_log(now)
 	# 타이틀 (W8, --title <테마> 와 같이): 시간을 타이틀 시계로 — 느린 xvfb 에서도 JS 스샷 (로고 완성 + 3.5초 · 메뉴 들어오고 4초) 과 같은 순간
 	#   --shot-at title: 로고 완성 뒤 --title-ms (기본 3500) · --shot-at menu: 완성 + 3500 에 Enter → 메뉴 카메라 자리 잡고 --menu-ms (기본 4000)
 	var tn := get_tree().root.find_child("Title", true, false)
@@ -513,3 +525,31 @@ func _vm_log() -> void:
 		set_meta("vm_log_open", true)
 	f.store_line(JSON.stringify(row))
 	f.close()
+
+
+# W35 --vis-log: 화면 판 보임이 바뀔 때만 (menu·lobby·results·game·settings), 둘 이상 같이 보이면 '겹침'
+func _vis_log(now: float) -> void:
+	var ui = get_tree().root.find_child("Ui", true, false)
+	if ui == null:
+		for n in get_tree().root.find_children("*", "CanvasLayer", true, false):
+			if n.get("lobby") is Control and n.get("results") is Control:
+				ui = n
+				break
+	if ui == null:
+		return
+	var on := []
+	if ui.menu.is_visible_in_tree():
+		on.append("menu")
+	if ui.lobby.is_visible_in_tree():
+		on.append("lobby")
+	if ui.results.is_visible_in_tree():
+		on.append("results")
+	if ui.hud.is_visible_in_tree():
+		on.append("hud")
+	if ui.settings.visible:
+		on.append("settings")
+	var key := "%s|%s|%s" % [",".join(on), Store.phase(), "방" if Store.in_room() else "방 밖"]
+	if key != vis_last:
+		vis_last = key
+		var exclusive := on.filter(func(x): return x != "settings")
+		_log("화면 [%.1fs] %s · 단계 %s · %s%s" % [now / 1000.0, ",".join(on), Store.phase(), "방" if Store.in_room() else "방 밖", "  ← 겹침!" if exclusive.size() > 1 and not (exclusive.size() == 2 and "hud" in exclusive and "lobby" in exclusive and false) else ""])

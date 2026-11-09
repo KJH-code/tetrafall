@@ -117,7 +117,14 @@ static func run(tree: SceneTree) -> void:
 	await click(tree, keys_btn)
 	_check(lobby.keys_text.visible == was, "'조작법' 다시 클릭 → 처음대로")
 	# 큰 캐릭터 (산 칸 — 굽지 않음) 클릭 → 스킬 카드
-	# (큰 캐릭터 가운데 클릭은 굽기 전에도 안 열림 — stage_box ColorRect 가 클릭을 막음, W16 에 남긴 기존 문제)
+	# W35: 큰 캐릭터 중앙 클릭 → 열림, 카드를 다시 누르면 닫힘, 열려 있을 때 다른 곳 (이름 칸 쪽) 을 누르면 닫힘
+	await click(tree, lobby.stage_box)
+	_check(lobby.skill_card.visible, "큰 캐릭터 중앙 클릭 → 스킬 카드")
+	await click(tree, lobby.skill_card)
+	_check(not lobby.skill_card.visible, "열린 스킬 카드를 다시 누르면 닫힘")
+	await click(tree, lobby.stage_box)
+	await click(tree, lobby.name_edit)
+	_check(not lobby.skill_card.visible, "스킬 카드가 열려 있을 때 다른 곳을 누르면 닫힘")
 	await click(tree, lobby.skill_btn)
 	_check(lobby.skill_card.visible, "'스킬 보기' (산 칸) 클릭 → 스킬 카드")
 	for b in lobby.skill_card.find_children("*", "Button", true, false): # 카드 '닫기'
