@@ -196,7 +196,7 @@ func _on_state(m: Dictionary) -> void:
 			if k != "":
 				Hitch.tag(k, str(e.get("type", "")))
 	_ps = Prof.now()
-	if Prof.on: # 재는 중이면 받는 쪽마다 따로 (같은 순서로 부름 — 동작 같음)
+	if Prof.on or Prof.hitch: # 재는 중이면 받는 쪽마다 따로 (같은 순서로 부름 — 동작 같음)
 		var conns := get_signal_connection_list("game_event")
 		for e in m.get("events", []):
 			for c in conns:

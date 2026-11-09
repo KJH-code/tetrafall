@@ -440,6 +440,7 @@ func _process(dt: float) -> void:
 	var mid := str(pk) if pk != null else str(st.get("map", {}).get("id", ""))
 	if mid != theme_id:
 		apply_theme(mid)
+		Prof.lap("world 섬·대기실 ·테마 적용")
 	if pk != null:
 		var n := LP.lobby_field_size(st)
 		var key := "%s:%d:%d" % [pk, n, fs.z]
@@ -450,6 +451,7 @@ func _process(dt: float) -> void:
 		fs = Vector3i(n, n, fs.z)
 	else:
 		preview = null
+	Prof.lap("world 섬·대기실 ·미리보기 지형")
 	if fs != field:
 		field = fs
 		grid_view.set_field(fs.x, fs.y)
@@ -457,8 +459,11 @@ func _process(dt: float) -> void:
 			G3.set_field(self, fs.x, fs.y)
 			_shadow_reach = -1.0
 		built_version = -2
+	Prof.lap("world 섬·대기실 ·판 크기 바뀜")
 	_lobby_dark(st, fs)
+	Prof.lap("world 섬·대기실 ·어두운 무대")
 	scenery.build(C.WORLD_MAP_THEME.get(theme_id), fs.x, fs.y, bool(View.settings.get("lowGfx", false)), fs.z)
+	Prof.lap("world 섬·대기실 ·지형 만들기")
 	scenery.step(dt)
 	Prof.lap("world 섬·대기실")
 	if bblocks != null:

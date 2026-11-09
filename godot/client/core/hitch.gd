@@ -8,6 +8,7 @@
 # 이 파일은 순수 계산 (노드 없음) — tests/test_hitch.gd
 extends RefCounted
 
+const Prof := preload("res://core/prof.gd")
 const FACTOR := 2.0 # 평범한 프레임 평균의 이 배 넘으면 히치
 const MIN_MS := 20.0 # 평균이 아주 낮아도 (240fps) 이 이상만 히치 (60Hz 한 프레임 16.7ms 를 넘겨야 눈에 띔)
 const BASE_N := 120 # 기준 (중앙값) 낼 최근 프레임 수
@@ -40,6 +41,8 @@ static func tag(kind: String, detail: String = "", ms: float = -1.0) -> void:
 static func span(kind: String, detail: String, t0: int) -> void:
 	if on:
 		var ms := (Time.get_ticks_usec() - t0) / 1000.0
+		if Prof.track: # W41 --first-use: 시간 잰 일도 처음·둘째 표에
+			Prof.add_us("%s %s" % [kind, detail], int(ms * 1000.0))
 		if ms >= SPAN_MIN_MS:
 			tag(kind, detail, ms)
 
@@ -159,6 +162,16 @@ class Log:
 		if float(rec.rcpu) >= ms * 0.5:
 			return ["렌더 CPU (그리기 의심)", "%.1fms" % rec.rcpu]
 		return ["원인 불명 (GPU 대기·화면 동기·OS?)", ""]
+
+
+# 프레임 한 줄 (--lag-log, W41): 탭으로 나눈 열 — 시각 · 프레임 ms · 스크립트 ms · 렌더 CPU ms · 화면 · 큰 구간 · 태그
+static func frame_line(t_s: float, ms: float, script: float, rcpu: float, screen: String, sec: Dictionary, tags: Array) -> String:
+	var secs: Array = sec.keys()
+	secs.sort_custom(func(a, b): return sec[a] > sec[b])
+	var tg := []
+	for t in tags:
+		tg.append("%s %s%s" % [t[0], t[1], (" %.1fms" % float(t[2])) if float(t[2]) >= 0.0 else ""])
+	return "%.3f\t%.1f\t%.1f\t%.1f\t%s\t%s\t%s" % [t_s, ms, script, rcpu, screen, ", ".join(secs.filter(func(k): return sec[k] >= 0.3).map(func(k): return "%s %.1f" % [k, sec[k]])), " | ".join(tg)]
 
 
 # 히치 한 줄 (파일·복사)

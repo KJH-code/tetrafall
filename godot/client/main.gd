@@ -15,8 +15,14 @@ const Seat := preload("res://core/seat.gd")
 var args := {}
 
 
+func _boot(what: String) -> void: # W41 --boot-log: 켜는 동안 단계별 ms (엔진 시작부터)
+	if args.has("boot-log"):
+		print("[켜기] %6.0fms  %s" % [Time.get_ticks_msec(), what])
+
+
 func _ready() -> void:
 	args = parse_args(Opts.args())
+	_boot("main _ready 시작")
 	if Opts.web():
 		# 웹: 주소 뒤 ?room=코드&server=ws://…&auto=host&bots=3 … 를 명령줄 옵션처럼 (값 없는 건 true)
 		var q = JSON.parse_string(str(JavaScriptBridge.eval("JSON.stringify(Object.fromEntries(new URLSearchParams(location.search)))", true)))
@@ -24,7 +30,9 @@ func _ready() -> void:
 			for k in q:
 				args[k] = q[k] if str(q[k]) != "" else true
 	var world := _scene_or("res://world/world.tscn", "res://core/dev_view.gd")
+	_boot("world 불러옴")
 	add_child(world)
+	_boot("world 붙임")
 	if ResourceLoader.exists("res://title/title.gd"): # 타이틀 + 메뉴 3D 배경: 켜져 있는 동안 판 (world) 은 숨김 (빛·안개가 섞이지 않게)
 		var title: Node = load("res://title/title.gd").new()
 		title.active_changed.connect(func(on): world.visible = not on)
@@ -32,12 +40,16 @@ func _ready() -> void:
 		title.fixed_theme = str(args.get("title", ""))
 		title.auto_press = float(args.get("title-press", -1))
 		add_child(title)
+	_boot("title 붙임")
 	add_child(_scene_or("res://ui/ui.tscn", "res://core/dev_ui.gd"))
+	_boot("ui 붙임")
 	for g6 in ["res://ui/perf.gd", "res://ui/practice.gd", "res://ui/tutorial_ui.gd", "res://world/tutorial_mark.gd"]: # G6: F3 성능 표시·연습 창·튜토리얼 (띠·목표 칸 빛)
 		if ResourceLoader.exists(g6):
 			add_child(load(g6).new())
+	_boot("F3·연습·튜토리얼 붙임")
 	if ResourceLoader.exists("res://audio/audio.tscn"):
 		add_child(load("res://audio/audio.tscn").instantiate())
+	_boot("audio 붙임")
 	Seat.profile = str(args.get("profile", ""))
 	if args.has("room"):
 		Store.pending_code = str(args.room).to_upper() # (타이틀은 --room 이면 건너뜀)

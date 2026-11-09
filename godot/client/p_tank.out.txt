@@ -1,0 +1,35 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+WARNING: Could not set V-Sync mode, as changing V-Sync mode is not supported by the graphics driver.
+     at: set_use_vsync (platform/linuxbsd/x11/gl_manager_x11.cpp:372)
+OpenGL API 4.5 (Core Profile) Mesa 25.2.8-0ubuntu0.24.04.4 - Compatibility - Using Device: Mesa - llvmpipe (LLVM 20.1.2, 256 bits)
+ALSA lib confmisc.c:855:(parse_card) cannot find card '0'
+ALSA lib conf.c:5208:(_snd_config_evaluate) function snd_func_card_inum returned error: No such file or directory
+ALSA lib confmisc.c:422:(snd_func_concat) error evaluating strings
+ALSA lib conf.c:5208:(_snd_config_evaluate) function snd_func_concat returned error: No such file or directory
+ALSA lib confmisc.c:1342:(snd_func_refer) error evaluating name
+ALSA lib conf.c:5208:(_snd_config_evaluate) function snd_func_refer returned error: No such file or directory
+ALSA lib conf.c:5731:(snd_config_expand) Evaluate error: No such file or directory
+ALSA lib pcm.c:2721:(snd_pcm_open_noupdate) Unknown PCM default
+ERROR: Condition "status < 0" is true. Returning: ERR_CANT_OPEN
+   at: init_output_device (drivers/alsa/audio_driver_alsa.cpp:97)
+WARNING: All audio drivers failed, falling back to the dummy driver.
+     at: initialize (servers/audio/audio_server.cpp:258)
+
+[GPU] llvmpipe (LLVM 20.1.2, 256 bits) (Mesa) · 소프트웨어 렌더
+[자동 practice] UI 크기 설정 (저장된 값) auto
+[자동 practice] UI 크기 시작 0.750 · UI 좌표 (640.0, 360.0) · 창 (480, 270) · 화면 1.00
+[자동 practice] 방 HTAQ 들어옴 (내 id 6)
+[처음] world bodies.update (몸 자세) | 처음 49.4ms | 둘째 4.9ms | 890번 | 최대 49.4ms | 평균 1.01ms | 처음−둘째 44.4ms
+[처음] world 섬·대기실 | 처음 31.5ms | 둘째 0.0ms | 890번 | 최대 31.5ms | 평균 0.07ms | 처음−둘째 31.5ms
+[처음] ui (HUD) | 처음 27.1ms | 둘째 0.1ms | 892번 | 최대 27.1ms | 평균 0.42ms | 처음−둘째 27.0ms
+[처음] 몸 만들기 tank | 처음 30.6ms | 둘째 5.0ms | 2번 | 최대 30.6ms | 평균 17.82ms | 처음−둘째 25.6ms
+[처음] world 판 빛 | 처음 20.2ms | 둘째 0.1ms | 890번 | 최대 20.2ms | 평균 0.07ms | 처음−둘째 20.1ms
+[처음] 몸 만들기 dummy | 처음 14.9ms | 둘째 3.3ms | 2번 | 최대 14.9ms | 평균 9.07ms | 처음−둘째 11.6ms
+[처음] 몸 불러오기 tank 파일 | 처음 9.7ms | 둘째 - | 1번 | 최대 9.7ms | 평균 9.72ms | 처음−둘째 9.7ms
+[처음] 몸 불러오기 tank 정보 | 처음 9.6ms | 둘째 - | 1번 | 최대 9.6ms | 평균 9.61ms | 처음−둘째 9.6ms
+[처음] world 1인칭 팔·유령 조준 | 처음 6.0ms | 둘째 0.3ms | 890번 | 최대 6.0ms | 평균 0.21ms | 처음−둘째 5.7ms
+[처음] 외부 몸 연결 tank | 처음 7.5ms | 둘째 3.8ms | 2번 | 최대 7.5ms | 평균 5.64ms | 처음−둘째 3.8ms
+[처음] world 위험 | 처음 1.4ms | 둘째 0.1ms | 890번 | 최대 1.4ms | 평균 0.05ms | 처음−둘째 1.4ms
+[처음] audio | 처음 1.2ms | 둘째 0.0ms | 892번 | 최대 2.9ms | 평균 0.07ms | 처음−둘째 1.1ms
+[처음] HUD ·스킬 | 처음 0.6ms | 둘째 0.1ms | 708번 | 최대 0.6ms | 평균 0.07ms | 처음−둘째 0.6ms
+[자동 practice] 끝: 판 0번, 스냅샷 710개, 움직인 거리 39.6칸, 재접속 안 함, 핑 31ms | 효과음 167번, 곡 meadow | 효과 이벤트 120번

@@ -65,6 +65,9 @@ func _ready() -> void:
 		View.settings["third"] = str(args["view"]) == "third"
 	if args.has("perf-log"):
 		Prof.on = true
+	if args.has("first-use"): # W41: 구간 이름마다 처음·둘째 부름 ms (--hitch 도 같이 줘야 몸·이펙트 시간 잰 일이 들어감)
+		Prof.track = true
+		Prof.on = true
 	# UI 크기 (W9): --ui-scale auto|0.8|1|1.25|1.5|2 → 설정 창에서 고른 것처럼 (user://settings.json 에 저장), 설정 창 칸 누르기는 --ui-pick. 시작할 때 저장된 값을 한 줄
 	_log("UI 크기 설정 (저장된 값) %s" % str(View.settings.get("uiScale", "auto")))
 	if args.has("ui-scale"):
@@ -100,7 +103,7 @@ func _log(t: String) -> void:
 
 
 func _on_rooms(_list: Dictionary) -> void:
-	if role == "host" and not shot_at in ["menu", "title"] and not created and not Store.in_room() and Store.pending_code == "":
+	if role == "host" and not shot_at in ["menu", "title"] and not created and not Store.in_room() and Store.pending_code == "" and (Net.now_ms() - start_ms) / 1000.0 >= float(args.get("menu-wait", 0)): # W41 --menu-wait <초>: 메뉴에서 이만큼 있다가 방 만들기
 		created = true
 		Store.create_room("", str(args.get("name", "고도")))
 	if role in ["practice", "tutorial"] and not created and not Store.in_room(): # G6 연습·튜토리얼 방 (혼자, 바로 판)
@@ -185,6 +188,9 @@ func _on_state(st: Dictionary, _prev: Dictionary) -> void:
 func _process(_d: float) -> void:
 	var now := Net.now_ms()
 	var el := (now - start_ms) / 1000.0
+	if role == "host" and args.has("menu-wait") and not created and el >= float(args["menu-wait"]) and not Store.in_room() and Store.pending_code == "" and not shot_at in ["menu", "title"]:
+		created = true
+		Store.create_room("", str(args.get("name", "고도")))
 	# 판 중: 가장 가까운 상대 쪽으로 걷고 가끔 평타
 	var me := Store.me()
 	if Store.phase() == "playing" and not me.is_empty() and me.alive:
@@ -355,6 +361,15 @@ func _process(_d: float) -> void:
 		var fxn := get_tree().get_first_node_in_group("fx")
 		if fxn != null:
 			snd += " | 효과 이벤트 %d번" % fxn.events
+		if Prof.track: # W41 --first-use: 처음 쓰는 값 표 (파일 --first-use-out 도)
+			var rep := Prof.first_report(float(args.get("first-min", 1.0)))
+			for l in rep:
+				print("[처음] %s" % l)
+			if args.has("first-out") and args["first-out"] is String:
+				var ff := FileAccess.open(str(args["first-out"]), FileAccess.WRITE)
+				if ff != null:
+					for l in rep:
+						ff.store_line(l)
 		_log("끝: 판 %d번, 스냅샷 %d개, 움직인 거리 %.1f칸, 재접속 %s, %s%s" % [rounds, snapshots, moved, "같은 자리" if rejoined else "안 함", Net.ping_text(), snd])
 		get_tree().quit(0 if ok else 2)
 

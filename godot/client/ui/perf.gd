@@ -76,6 +76,8 @@ var corner_at := 0.0
 var hlog := Hitch.Log.new() # W30 히치 로거 (core/hitch.gd): F3 를 켜거나 --hitch 면 기록
 var hfile: FileAccess = null
 var hstart := 0.0
+var lag_prev := ""
+var lag_file: FileAccess = null # W41 --lag-log <파일>: 프레임마다 한 줄
 
 
 func _ready() -> void:
@@ -136,6 +138,11 @@ func _apply() -> void:
 		Prof.set_hitch(hon)
 		hlog = Hitch.Log.new()
 		hstart = Time.get_ticks_usec() / 1000.0
+	if hon and lag_file == null and Opts.args().has("--lag-log"):
+		var a := Opts.args()
+		lag_file = FileAccess.open(str(a[a.find("--lag-log") + 1]), FileAccess.WRITE)
+		if lag_file != null:
+			lag_file.store_line("t_s\twall_ms\tscript_ms\trcpu_ms\tscreen\tsections\ttags")
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), hon or Gfx.adapting)
 	win = PC.PerfWindow.new()
 	samples = []
@@ -154,7 +161,12 @@ func _hitch(now: float, ms: float, rcpu: float) -> void:
 	var fr := Prof.take_frame()
 	for k in fr:
 		sec[k] = fr[k] / 1000.0
-	var rec := hlog.push((now - hstart) / 1000.0, ms, {"tags": Hitch.take(), "sec": sec, "script": script_ms, "rcpu": rcpu, "screen": _screen()})
+	var tags := Hitch.take()
+	if lag_file != null: # W41 --lag-log: 모든 프레임 한 줄 (시점별 CPU ms 흐름). 스크립트 ms 는 한 프레임 늦게 알 수 있어 (탐침이 프레임 끝에 잼) 이전 줄에 채워 씀
+		if lag_prev != "":
+			lag_file.store_line(lag_prev % script_ms)
+		lag_prev = Hitch.frame_line((now - hstart) / 1000.0, ms, -1.0, rcpu, _screen(), sec, tags).replace("%", "%%").replace("\t-1.0\t", "\t%.1f\t")
+	var rec := hlog.push((now - hstart) / 1000.0, ms, {"tags": tags, "sec": sec, "script": script_ms, "rcpu": rcpu, "screen": _screen()})
 	if rec.is_empty():
 		return
 	if hfile == null:
