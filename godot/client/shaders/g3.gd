@@ -525,7 +525,7 @@ static func hazard_look(theme_id) -> Dictionary:
 static func hazard_mesh(far: bool, low_arg = null) -> PlaneMesh:
 	var low := _low(low_arg)
 	var m := PlaneMesh.new()
-	var seg: int = int(C.HAZARD_FAR_SEG) if far else int(C.HAZARD_SEG[1 if low else 0])
+	var seg: int = int(C.HAZARD_FAR_SEG) if far else int(K.HAZARD_SEG[1 if low else 0])
 	m.size = Vector2.ONE * (2.0 * C.HAZARD_FAR_SIZE if far else 1.0)
 	m.subdivide_width = seg - 1
 	m.subdivide_depth = seg - 1

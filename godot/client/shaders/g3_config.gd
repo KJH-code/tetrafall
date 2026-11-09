@@ -25,3 +25,7 @@ const SHADOW_REACH_PAD := 4.0
 const SHADOW_MAX_DISTANCE := 60.0
 const STENCIL_MY_BODY := 7 # 스텐실 값: 3인칭 내 몸 (사냥꾼의 눈 x-ray 가 이 값 위엔 안 그림 — JS 는 몸을 복사본 뒤에 그려 renderOrder 로 가름)
 const GRADE_LUT := 32 # 판 빛 색 보정 LUT 한 변 (game_light.gd grade_lut: CSS saturate·contrast·brightness 를 구움, 32³ RGB8 = 96KB)
+
+# W37: 위험 표면 (필드 판) 정점 격자 수 [보통, 그래픽 낮춤]. JS 값 (C.HAZARD_SEG = 120) 은 three 가 정점 처리가 싸서였고, 고도에선 삼각형 28.8k (용암 판 8명 장면 화면 삼각형의 12%).
+# 정점 격자 64 (19×19 판의 둘레 여백 포함 31m 에서 칸 0.48m) 도 파도 모양·닿는 곳 거품 테 (조각 셰이더의 닿는 곳 거리 그림) 가 눈으로 같음 (캡처 전후, 화소 차 3.5%·대부분 파도 위상).
+const HAZARD_SEG := [64, 40]

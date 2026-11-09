@@ -95,3 +95,15 @@ func test_g3_material_registry_pruned() -> void:
 				break
 	check(tracked == held.size(), "정리 뒤에도 산 재질의 외곽선 기록은 그대로 (%d/%d)" % [tracked, held.size()])
 	check(not G3._mats_busy, "set_low 밖에서는 정리 가능 상태")
+
+
+# 위험 표면 정점 격자: 보통 64 (JS 120 보다 성김 — 삼각형 28.8k → 8.2k), 낮춤 40 그대로, 먼 바다 판 64 그대로. 격자 수 ≥ 파도를 담는 최소 (필드 31m 에서 칸 ≤ 0.6m)
+func test_hazard_seg() -> void:
+	var G3 := preload("res://shaders/g3.gd")
+	var K := preload("res://shaders/g3_config.gd")
+	var near: PlaneMesh = G3.hazard_mesh(false, false)
+	var low: PlaneMesh = G3.hazard_mesh(false, true)
+	check(near.subdivide_width == int(K.HAZARD_SEG[0]) - 1 and near.subdivide_depth == int(K.HAZARD_SEG[0]) - 1, "보통 격자 %d" % [near.subdivide_width + 1])
+	check(low.subdivide_width + 1 == 40, "낮춤 격자 40 그대로")
+	check(G3.hazard_mesh(true, false).subdivide_width + 1 == 64, "먼 바다 격자 64 그대로")
+	check(31.0 / float(K.HAZARD_SEG[0]) <= 0.6, "19×19 판 (둘레 포함 31m) 칸 크기 0.6m 이하: %.2f" % (31.0 / float(K.HAZARD_SEG[0])))
