@@ -2,6 +2,7 @@
 # stage 는 그대로 (원본 1.7~1.9만), 몸 색 칸 (UV2.x) 넓이가 stage 와 거의 같고, 아틀라스는 LOD 마다 따로 VRAM 압축, 1인칭 팔은 그대로. 사냥꾼은 건드리지 않음 (이미 3~5천).
 extends RefCounted
 
+const Ext := preload("res://chars/external.gd")
 var errors: Array = []
 
 const BUDGET := {"high": 5000, "medium": 4000, "low": 3000}
@@ -52,6 +53,11 @@ func _stats(scene: Node, name: String) -> Dictionary:
 	var mat := mi.mesh.surface_get_material(0)
 	if mat is BaseMaterial3D and (mat as BaseMaterial3D).albedo_texture != null:
 		tex_w = (mat as BaseMaterial3D).albedo_texture.get_width()
+	elif mat is BaseMaterial3D: # W39: 장면의 알베도는 벗겨져 있음 (몸 만들 때만 읽음) — 같은 재질이 가리키던 경로로
+		for k in Ext._tex_paths:
+			if str(k).contains("|" + name + "|"):
+				tex_w = (load(str(Ext._tex_paths[k])) as Texture2D).get_width()
+				break
 	return {"tris": tris, "mask": marea / maxf(area, 0.000001), "islands": roots.size(), "verts": pos.size(), "uv2": uv2.size() == pos.size(), "tex": tex_w}
 
 

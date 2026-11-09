@@ -478,9 +478,9 @@ func test_blender_tank_info() -> void:
 		for sf in ss:
 			tri += _tris(sf.mesh)
 			body_sf = sf
-		check(ss.size() == 1 and body_sf.skinned and body_sf.vcolor and body_sf.tex != null, "%s: 몸 표면 하나 = 스킨·꼭짓점 색 (몸 색 칸)·텍스처 (얼굴 재질 없음, 닫힌 투구)" % k)
+		check(ss.size() == 1 and body_sf.skinned and body_sf.vcolor and Ext.Ext.tex_of(body_sf) != null, "%s: 몸 표면 하나 = 스킨·꼭짓점 색 (몸 색 칸)·텍스처 (얼굴 재질 없음, 닫힌 투구)" % k)
 		check(tri >= want[k][0] and tri <= want[k][1], "%s 삼각형 %d (%d~%d)" % [k, tri, want[k][0], want[k][1]])
-		var st := _albedo_stats(body_sf.mesh, body_sf.tex)
+		var st := _albedo_stats(body_sf.mesh, Ext.Ext.tex_of(body_sf))
 		check(st[1] > 0.03 and st[1] < 0.35, "%s 몸 색 칸 넓이 %.0f%% (3~35%% — 붉은 목도리·허리 천)" % [k, st[1] * 100.0])
 		if k == "stage":
 			stage_sf = body_sf
@@ -746,9 +746,9 @@ func test_ninja_info() -> void:
 		for sf in ss:
 			tri += _tris(sf.mesh)
 			body_sf = sf
-		check(ss.size() == 1 and body_sf.skinned and body_sf.vcolor and body_sf.tex != null, "%s: 몸 표면 하나 = 스킨·꼭짓점 색 (몸 색 칸)·텍스처" % k)
+		check(ss.size() == 1 and body_sf.skinned and body_sf.vcolor and Ext.Ext.tex_of(body_sf) != null, "%s: 몸 표면 하나 = 스킨·꼭짓점 색 (몸 색 칸)·텍스처" % k)
 		check(tri >= want[k][0] and tri <= want[k][1], "%s 삼각형 %d (%d~%d)" % [k, tri, want[k][0], want[k][1]])
-		var st := _albedo_stats(body_sf.mesh, body_sf.tex)
+		var st := _albedo_stats(body_sf.mesh, Ext.Ext.tex_of(body_sf))
 		check(st[1] > 0.05 and st[1] < 0.35, "%s 몸 색 칸 넓이 %.0f%% (5~35%% — 목도리·허리띠)" % [k, st[1] * 100.0])
 	check(info.cfg.tint == "mask" and (info.cfg.attach as Array).size() == 2 and (info.cfg.keep as Array).is_empty() and str(info.cfg.get("vm_node", "")) == "ninja_vm", "ninja.json: mask·단검 2 (판 몸만)·1인칭은 닫힌 팔 노드 ninja_vm (W23)")
 
@@ -855,9 +855,9 @@ func test_hunter_info() -> void:
 		for sf in ss:
 			tri += _tris(sf.mesh)
 			body_sf = sf
-		check(ss.size() == 1 and body_sf.skinned and body_sf.vcolor and body_sf.tex != null, "%s: 몸 표면 하나 = 스킨·꼭짓점 색 (몸 색 칸)·텍스처" % k)
+		check(ss.size() == 1 and body_sf.skinned and body_sf.vcolor and Ext.Ext.tex_of(body_sf) != null, "%s: 몸 표면 하나 = 스킨·꼭짓점 색 (몸 색 칸)·텍스처" % k)
 		check(tri >= want[k][0] and tri <= want[k][1], "%s 삼각형 %d (%d~%d)" % [k, tri, want[k][0], want[k][1]])
-		var st := _albedo_stats(body_sf.mesh, body_sf.tex)
+		var st := _albedo_stats(body_sf.mesh, Ext.Ext.tex_of(body_sf))
 		check(st[1] > 0.03 and st[1] < 0.35, "%s 몸 색 칸 넓이 %.0f%% (3~35%% — 모자·붉은 목수건)" % [k, st[1] * 100.0])
 		if k == "stage":
 			stage_sf = body_sf
@@ -967,9 +967,9 @@ func test_hook_info() -> void:
 		for sf in ss:
 			tri += _tris(sf.mesh)
 			body_sf = sf
-		check(ss.size() == 1 and body_sf.skinned and body_sf.vcolor and body_sf.tex != null, "%s: 몸 표면 하나 = 스킨·꼭짓점 색 (몸 색 칸)·텍스처" % k)
+		check(ss.size() == 1 and body_sf.skinned and body_sf.vcolor and Ext.Ext.tex_of(body_sf) != null, "%s: 몸 표면 하나 = 스킨·꼭짓점 색 (몸 색 칸)·텍스처" % k)
 		check(tri >= want[k][0] and tri <= want[k][1], "%s 삼각형 %d (%d~%d)" % [k, tri, want[k][0], want[k][1]])
-		var st := _albedo_stats(body_sf.mesh, body_sf.tex)
+		var st := _albedo_stats(body_sf.mesh, Ext.Ext.tex_of(body_sf))
 		check(st[1] > 0.05 and st[1] < 0.35, "%s 몸 색 칸 넓이 %.0f%% (5~35%% — 삼각 모자)" % [k, st[1] * 100.0])
 		if k == "stage":
 			stage_sf = body_sf
@@ -1144,9 +1144,9 @@ func test_cannon_info() -> void:
 		for sf in ss:
 			tri += _tris(sf.mesh)
 			body_sf = sf
-		check(ss.size() == 1 and body_sf.skinned and body_sf.vcolor and body_sf.tex != null, "%s: 몸 표면 하나 = 스킨·꼭짓점 색 (몸 색 칸)·텍스처" % k)
+		check(ss.size() == 1 and body_sf.skinned and body_sf.vcolor and Ext.Ext.tex_of(body_sf) != null, "%s: 몸 표면 하나 = 스킨·꼭짓점 색 (몸 색 칸)·텍스처" % k)
 		check(tri >= want[k][0] and tri <= want[k][1], "%s 삼각형 %d (%d~%d)" % [k, tri, want[k][0], want[k][1]])
-		var st := _albedo_stats(body_sf.mesh, body_sf.tex)
+		var st := _albedo_stats(body_sf.mesh, Ext.Ext.tex_of(body_sf))
 		check(st[1] >= 0.05 and st[1] < 0.3, "%s 몸 색 칸 넓이 %.1f%% (5~30%% — 빨간 두건·다이너마이트 띠)" % [k, st[1] * 100.0])
 		if k == "stage":
 			stage_sf = body_sf

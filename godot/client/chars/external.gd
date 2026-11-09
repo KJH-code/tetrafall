@@ -53,6 +53,8 @@ static var _req := {} # W30: 스레드로 미리 요청한 파일 (경로 → tr
 static var _warm_i := 0
 static var _warm_wait := 0
 static var _warm_body = null
+static var lazy_tex: bool = not preload("res://core/opts.gd").args().has("--no-lazy-tex") # W39: 알베도 텍스처를 몸 만들 때만 읽음 — 안 쓰는 LOD·stage 알베도가 영상 메모리에 상주하지 않게 (끄기 --no-lazy-tex)
+static var _tex_paths := {} # "장면 경로|메시 노드|표면" → 알베도 텍스처 경로 (장면에서 벗겨 낸 것)
 static var stage := false # W19: 대기실 큰 캐릭터·초상 몸을 만드는 동안 참 (ui/portrait.gd still_body) → 최고 품질 LOD
 
 
@@ -93,7 +95,7 @@ static func request_all() -> int:
 		var gp := glb_path(id)
 		if _cache.has(id) or _req.has(gp) or not ResourceLoader.exists(gp):
 			continue
-		if ResourceLoader.load_threaded_request(gp, "PackedScene", true) == OK:
+		if ResourceLoader.load_threaded_request(gp, "PackedScene", not lazy_tex) == OK:
 			_req[gp] = true
 			n += 1
 		var cc = read_cfg(id).get("clips", {})
@@ -346,6 +348,7 @@ static func model_info(scene: PackedScene, cfg: Dictionary):
 		rest_global.append(sk.get_bone_global_rest(i))
 	# 표면: 원래 메시마다·표면마다
 	var surfs: Array = []
+	var mat_tex := {} # 재질 → 벗긴 알베도 경로 (이 장면 안)
 	var box := AABB()
 	var first := true
 	for mi in root.find_children("*", "MeshInstance3D", true, false):
@@ -372,9 +375,20 @@ static func model_info(scene: PackedScene, cfg: Dictionary):
 				mat = m.mesh.surface_get_material(si)
 			var col := Color.WHITE
 			var tex = null
+			var tex_key := "%s|%s|%d" % [scene.resource_path, str(m.name), si]
 			if mat is BaseMaterial3D:
 				col = (mat as BaseMaterial3D).albedo_color
 				tex = (mat as BaseMaterial3D).albedo_texture
+				if lazy_tex:
+					# W39: 장면 (PackedScene) 이 알베도 텍스처를 붙잡고 있지 않게 벗김 — 몸이 만들어질 때 그 LOD 것만 읽음. 재질을 여러 LOD 가 나눠 쓰면 (사냥꾼) 처음 본 경로를 같이 씀,
+					# 이미 벗긴 장면을 다시 읽으면 (테스트) 처음에 적어 둔 경로
+					var tp := str(tex.resource_path) if tex != null else str(mat_tex.get(mat.get_instance_id(), _tex_paths.get(tex_key, "")))
+					if tp.begins_with("res://") and not tp.contains("::"):
+						_tex_paths[tex_key] = tp
+						mat_tex[mat.get_instance_id()] = tp
+						(mat as BaseMaterial3D).albedo_texture = null
+						tex = null
+			var tex_path: String = str(_tex_paths.get(tex_key, "")) if lazy_tex else ""
 			var binds := PackedInt32Array() # 스킨 bind 번호 → 뼈 번호 (bind 가 이름으로만 이어진 것도)
 			if skinned:
 				for k in m.skin.get_bind_count():
@@ -385,7 +399,7 @@ static func model_info(scene: PackedScene, cfg: Dictionary):
 			var unlit: bool = mat != null and str(mat.resource_name).ends_with("_unlit")
 			# W19: 이름이 _face 로 끝나는 재질 = 얼굴 (표정 텍스처를 바꿔 끼움, 외곽선 없음), 메시 노드 이름 = LOD 이름 (cfg.lods)
 			var face: bool = mat != null and str(mat.resource_name).ends_with("_face")
-			surfs.append({"path": root.get_path_to(m), "surf": si, "mesh": one, "color": col, "tex": tex, "skinned": skinned, "bone": bone, "binds": binds,
+			surfs.append({"path": root.get_path_to(m), "surf": si, "mesh": one, "color": col, "tex": tex, "tex_path": tex_path, "skinned": skinned, "bone": bone, "binds": binds,
 				"vcolor": Ext.vertex_colored(one, 0, mat, str(cfg.get("tint", "band"))) and not unlit and not face, "unlit": unlit, "face": face, "node": str(m.name)})
 	if first:
 		push_warning("외부 .glb 에 메시가 없음")
@@ -548,6 +562,13 @@ class Ext extends Node3D:
 				m.set_shader_parameter("skin_mask_tex", mt)
 				m.set_shader_parameter("use_skin_mask", true)
 		return m
+
+	# W39 몸 만들 때 읽는 알베도 텍스처: 경로가 있으면 그때 load (같은 캐릭터 몸끼리는 리소스 캐시가 같은 객체를 줘서 공유, 쓰는 몸이 없으면 풀려남), 없으면 장면에 붙어 있던 그대로
+	static func tex_of(sf: Dictionary):
+		var p: String = str(sf.get("tex_path", ""))
+		if p != "":
+			return load(p)
+		return sf.get("tex")
 
 	# W34 cfg.skin_mask[메시 노드 이름] 의 마스크 텍스처 (없으면 null = 꼭짓점 판정)
 	static func skin_mask_for(cfg: Dictionary, node: String):
@@ -1165,7 +1186,7 @@ class Ext extends Node3D:
 				body.drawn.append({"mi": mi, "m": {"kind": "toon"}, "merged": false, "ext": true})
 				continue
 			if sf.get("face", false): # 얼굴: 표정 텍스처, 외곽선 없음
-				var ft = face_tex.get("idle", sf.tex)
+				var ft = face_tex.get("idle", tex_of(sf))
 				var fm := style(G3_.toon_material(col, {"map": ft, "outline": false, "color_glow": float(cfg.get("face_glow", 0.0))}), cfg, false)
 				mi.material_override = fm
 				face_now = "idle"
@@ -1175,9 +1196,10 @@ class Ext extends Node3D:
 			var vc: bool = sf.get("vcolor", false)
 			var mask: bool = vc and mode == "mask"
 			var mt = skin_mask_for(cfg, str(sf.get("node", ""))) if mask else null
-			var m := style(toon_for(col, sf.tex, vc, mask, body.skin_color, {"skin_mask": mt} if mt != null else {}), cfg)
+			var stex = tex_of(sf)
+			var m := style(toon_for(col, stex, vc, mask, body.skin_color, {"skin_mask": mt} if mt != null else {}), cfg)
 			mi.material_override = m
-			parts.append({"mi": mi, "color": col, "tex": sf.tex, "solid": m, "vcolor": vc, "mask": mask, "mask_tex": mt})
+			parts.append({"mi": mi, "color": col, "tex": stex, "solid": m, "vcolor": vc, "mask": mask, "mask_tex": mt})
 			body.drawn.append({"mi": mi, "m": {"kind": "toon"}, "merged": false, "ext": true})
 		if shadow_lod != "":
 			ExtShadow.add(model, sk, info.surfs, shadow_lod) # W32: 원래 메시 (olds) 를 지우기 전에 — 그 자리·스킨을 베낌
