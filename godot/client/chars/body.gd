@@ -146,6 +146,8 @@ var act = null # {id, move, t0, windup, struck, rec, broken, air}
 var hit = null # {id, t0, stop, dir (Vector2 게임), pow}
 var finish_at := -1e9
 var counter_at := -1e9
+var armor_react_at := -1e9 # W35 (s): 아머로 버틴 시각 — 그 타는 안 휘청 (render.js armorHitAt)
+var armor_break_react_at := -1e9 # W35 (s): 아머가 깨진 시각 — 그 타는 크게 휘청 (armorBreakAt)
 
 
 func build(char_id_: String, color: Color, merge: bool = K.MERGE) -> void:
@@ -1779,6 +1781,12 @@ func on_event(e: Dictionary) -> void:
 		"counter":
 			if hit_me:
 				counter_at = now
+		"armor":
+			if mine:
+				armor_react_at = now
+		"armorBreak":
+			if mine:
+				armor_break_react_at = now
 		"hit":
 			if hit_me and e.get("ok", false):
 				# 닌자 표창: 판정은 즉시지만 맞는 몸짓은 표창이 닿을 때 (main.js handleEvent STAR_FLY_MS — fx.gd·audio.gd 와 같은 때)
@@ -1893,6 +1901,14 @@ func _skill_move(move: String, windup_ms: float, now: float) -> void:
 
 # 맞은 순간 (render.js hitReact). dir = 밀린 방향 (게임 Vector2, 없으면 null)
 func _hit_react(dir, heavy: bool, crit: bool, kind: String, now: float) -> void:
+	# 탱크 아머 (render.js hitReact): 버틴 타는 얼굴만 찡그리는 정도 (멈칫 없음), 깨진 타는 크게 (멈칫 ×1.5), 같은 틱에 armor·armorBreak 가 hit 보다 먼저 옴
+	var armor := armor_reaction(now - armor_react_at, now - armor_break_react_at)
+	if not armor.is_empty():
+		seq += 1
+		hit = {"id": seq, "t0": now, "stop": armor.stop, "dir": dir, "pow": armor.pow}
+		if armor.breaks and act != null and act.broken == null:
+			act = null
+		return
 	var finish := now - finish_at < 0.2
 	var counter := now - counter_at < 0.2
 	var base: float = C.FIGURE_HIT_FINISH if finish else (C.FIGURE_HIT_HEAVY if (heavy or crit or kind in HEAVY_HITS) else 1.0)
@@ -1902,6 +1918,15 @@ func _hit_react(dir, heavy: bool, crit: bool, kind: String, now: float) -> void:
 	hit = {"id": seq, "t0": now, "stop": stop, "dir": dir, "pow": power}
 	if act != null and act.broken == null:
 		act = null
+
+
+# W35 아머 맞음 반응 (순수): age_s = 버팀·깨짐 이벤트 뒤 초. 200ms 안이면 {pow, stop, breaks}, 아니면 {}
+static func armor_reaction(held_age: float, break_age: float) -> Dictionary:
+	if held_age < 0.2:
+		return {"pow": C.FIGURE_HIT_ARMOR, "stop": 0.0, "breaks": false}
+	if break_age < 0.2:
+		return {"pow": C.FIGURE_HIT_ARMOR_BREAK, "stop": C.HITSTOP_MS * 1.5 / 1000.0, "breaks": true}
+	return {}
 
 
 # 표창 맞음은 표창이 닿을 때까지 기다림 (fx.gd·audio.gd 와 같은 규칙, late = 다시 부른 것)

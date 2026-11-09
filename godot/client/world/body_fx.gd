@@ -235,6 +235,11 @@ func on_event(e: Dictionary) -> void:
 			View.sound_cue.emit("blast", {"x": p.x, "y": p.y, "z": p.z, "big": float(e.get("rage", 1)) > 1.3, "wood": false})
 
 
+# W35: 1인칭이면 내 발밑 고리는 숨김 (카메라가 몸 안이라 바닥 원이 화면 아래를 덮음). 남의 고리·3인칭·하늘 시점은 그대로
+static func hide_own_ring(ring_id, my_id, is_third: bool) -> bool:
+	return my_id != null and ring_id != null and int(ring_id) == int(my_id) and not is_third
+
+
 # 스킬·필살기 빛: 발밑 고리가 퍼짐 (스킬 하양 순간, 필살기 하늘색 두 겹 + 반짝이). 캐릭터를 따라다님
 func aura(id, ult: bool) -> void:
 	if id == null or _shown(id) == null:
@@ -292,7 +297,7 @@ func update(st: Dictionary, my_id, dt: float) -> void:
 			a.node.queue_free()
 			auras.remove_at(i)
 			continue
-		a.node.visible = u >= 0
+		a.node.visible = u >= 0 and not hide_own_ring(a.id, my_id, third.call())
 		if u < 0:
 			continue
 		a.node.position = Co.gxyz(s.x, s.y, s.z + 0.04)

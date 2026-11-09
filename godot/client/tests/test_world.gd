@@ -367,3 +367,23 @@ func test_hook_tension_light() -> void:
 	hf.tension_light(chain, Vector3.ZERO, Vector3(3, 0, 0), 1000.0 + float(T.every) + 1.0)
 	check(spy.calls == 2 * (int(T.dots) + 1), "간격 뒤 다시")
 	hf.free()
+
+
+# W35: 1인칭이면 내 발밑 고리만 숨김
+func test_own_ring_hidden_in_first_person() -> void:
+	const BF := preload("res://world/body_fx.gd")
+	check(BF.hide_own_ring(3, 3, false), "1인칭 내 고리 숨김")
+	check(not BF.hide_own_ring(3, 3, true), "3인칭 내 고리 보임")
+	check(not BF.hide_own_ring(4, 3, false), "남의 고리는 1인칭에서도 보임")
+	check(not BF.hide_own_ring(3, null, false), "내 id 모르면 보임")
+
+
+# W35: 탱크 아머 맞음 반응 (JS hitReact) — 버틴 타는 약하게·멈칫 없음, 깨진 타는 크게·멈칫 ×1.5, 오래되면 보통 타
+func test_armor_hit_reaction() -> void:
+	const B := preload("res://chars/body.gd")
+	var held: Dictionary = B.armor_reaction(0.05, 99.0)
+	check(held.pow == C.FIGURE_HIT_ARMOR and held.stop == 0.0 and not held.breaks, "버틴 타 = 얼굴만 찡그림, 멈칫 없음")
+	var br: Dictionary = B.armor_reaction(99.0, 0.05)
+	check(br.pow == C.FIGURE_HIT_ARMOR_BREAK and absf(br.stop - C.HITSTOP_MS * 1.5 / 1000.0) < 1e-9 and br.breaks, "깨진 타 = 크게, 멈칫 ×1.5")
+	check(B.armor_reaction(0.3, 0.3).is_empty(), "200ms 지나면 보통 타")
+	check(B.armor_reaction(0.1, 0.1).pow == C.FIGURE_HIT_ARMOR, "둘 다면 버틴 쪽 먼저")
