@@ -341,3 +341,29 @@ func test_quake_cells_use_stone_texture() -> void:
 	check(m.get_shader_parameter("use_tex") == true and m.get_shader_parameter("albedo_tex") == preload("res://world/chunk_tex.gd").stone(), "솟는 땅 재질 = 돌 그림")
 	check(mk.quakes.size() == 1 and mk.quakes[0].nodes.size() == 2, "솟는 땅 칸 2개")
 	mk.free()
+
+
+class _GlowSpy:
+	var calls := 0
+	const ROUND := 0
+	const STAR := 1
+	func glow(_p, _c, _s, _ms, _a = 1.0, _k = 0, _o = {}) -> void:
+		calls += 1
+
+
+# W35: 갈고리 사슬이 팽팽한 동안 빛 알갱이 (간격마다 한 번, 알갱이 수 + 끝 번쩍), 효과 풀이 없으면 아무 일 없음
+func test_hook_tension_light() -> void:
+	var hf = preload("res://world/hook_fx.gd").new()
+	var chain := {}
+	hf.tension_light(chain, Vector3.ZERO, Vector3(3, 0, 0), 1000.0) # 효과 풀 없음
+	check(not chain.has("tn_next"), "효과 풀이 없으면 안 그림")
+	var spy := _GlowSpy.new()
+	hf.effects = spy
+	hf.tension_light(chain, Vector3.ZERO, Vector3(3, 0, 0), 1000.0)
+	var T: Dictionary = preload("res://fx/fx_config.gd").HOOK_TENSION
+	check(spy.calls == int(T.dots) + 1, "알갱이 %d + 끝 번쩍 1 (%d)" % [int(T.dots), spy.calls])
+	hf.tension_light(chain, Vector3.ZERO, Vector3(3, 0, 0), 1010.0)
+	check(spy.calls == int(T.dots) + 1, "간격 안에서는 또 안 터뜨림")
+	hf.tension_light(chain, Vector3.ZERO, Vector3(3, 0, 0), 1000.0 + float(T.every) + 1.0)
+	check(spy.calls == 2 * (int(T.dots) + 1), "간격 뒤 다시")
+	hf.free()

@@ -9,6 +9,7 @@ const Co := preload("res://core/coords.gd")
 const WC := preload("res://world/world_config.gd")
 const Cells := preload("res://world/cells.gd")
 const Tex := preload("res://world/chunk_tex.gd")
+const FXC := preload("res://fx/fx_config.gd")
 
 var effects = null # G5 fx/effects.gd
 var marks = null # world/marks.gd
@@ -151,6 +152,19 @@ func set_chain(c: Dictionary, a: Vector3, b: Vector3, t: float, sag := 0.0, wave
 	im.surface_end()
 	c.head.position = Co.gpos(b)
 	c.head.rotation = Vector3(0, t / 60.0, PI / 2)
+
+
+# W35 사슬 팽팽함 빛: a → b 사슬을 따라 빛 알갱이 (effects.glow 풀 — 낮음이면 풀이 없어 안 그림). 같은 사슬은 every ms 마다 한 번
+func tension_light(c: Dictionary, a: Vector3, b: Vector3, now: float, k := 1.0) -> void:
+	if effects == null or now < float(c.get("tn_next", 0.0)):
+		return
+	var T: Dictionary = FXC.HOOK_TENSION
+	c.tn_next = now + float(T.every)
+	for i in int(T.dots):
+		var u := randf_range(0.08, 0.92)
+		var at := a.lerp(b, u)
+		effects.glow(at, int(T.color), float(T.size) * k, float(T.ms), float(T.a), effects.ROUND, {"grow": 0.6, "hot": 1.0})
+	effects.glow(b, int(T.hot), float(T.end_size) * k, float(T.ms), 0.7, effects.STAR, {"grow": 1.3, "hot": 1.0}) # 걸린 끝 번쩍
 
 
 func throw_rope(who, yaw: float, ms: float) -> void:
@@ -415,6 +429,7 @@ func step() -> void:
 				end = goal
 				sag = 0.0
 				wave = C.ROPE_WOBBLE * 0.4 * exp(-since / 60.0)
+				tension_light(r.chain, a, end, now)
 			else: # 감김: 느슨해지며 손으로 돌아옴
 				var v: float = (since - hold) / C.HOOK_FLY_MS
 				end = a.lerp(goal, maxf(0.02, 1 - v))
@@ -488,3 +503,5 @@ func step() -> void:
 				m.transparency = 1.0 - C.HOOK_GRAB_FP_OPACITY if mine else 0.0
 		var taut: bool = g.slam != null or now - g.t0 < g.ms * C.HOOK_GRAB_SHAKE_PART # 덜덜·내려찍기는 팽팽, 돌릴 땐 살짝 출렁
 		set_chain(g.chain, h, pos, now, 0.0, 0.0 if taut else C.ROPE_WOBBLE * 0.4)
+		if taut:
+			tension_light(g.chain, h, pos, now, 1.0 + (0.5 if g.slam != null else 0.0))

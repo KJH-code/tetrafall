@@ -47,6 +47,9 @@ const LEVELS := {
 	"medium": {"mult": 0.7, "glow": true, "smoke": true, "chunks": true},
 	"low": {"mult": 0.0, "glow": false, "smoke": false, "chunks": false},
 }
+# 갈고리 사슬 팽팽함 빛 (W35): 사슬이 팽팽한 동안 (걸림·R 덩어리 덜덜·내려찍기) 사슬을 따라 가산 빛 알갱이가 튐. 빛 풀이라 그리기 0 추가,
+# 화질 낮음이면 빛 풀이 꺼져 없고, 움직임 줄이기면 빛 세기가 flash 배율 (0.5) 로 줄어듦. every = 알갱이 터뜨리는 간격 (ms)
+const HOOK_TENSION := {"color": 0xfff0c0, "hot": 0xffd890, "size": 0.34, "ms": 190.0, "a": 0.85, "every": 55.0, "dots": 3, "end_size": 0.8}
 const MAX_GLOW := 160 # 빛 (번쩍·불꽃 줄·빛 고리·불덩이) MultiMesh 하나
 const MAX_SMOKE := 64 # 연기 MultiMesh 하나
 const MAX_CHUNKS := 64 # 돌·흙 조각 MultiMesh 하나 (한 번 튀고 멈춤)
