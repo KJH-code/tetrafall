@@ -261,3 +261,89 @@ func test_scenery_shadow_off() -> void:
 		check(off_n == 2, "%s: 끔 — 예전처럼 섬·바위 메시 둘이 던짐 (얻음 %d)" % [theme, off_n])
 		sc.free()
 	WC.scenery_opt = keep
+
+
+# ---------- 항목 5: 새 모델 몸 자세 CPU (chars/external.gd _code_maps·_code_bones) ----------
+
+# 예전 방식 (관절마다 뿌리까지 거슬러 올라가 곱하고, 모든 뼈를 돎) — 새 방식과 같은 뼈 자세를 내는지 대조용
+func _ref_code_sync(e) -> void:
+	for m in e.maps:
+		var jr = e._rel(m.joint)
+		if jr == null:
+			continue
+		var jt: Transform3D = jr
+		var d: Quaternion = jt.basis.get_rotation_quaternion() * m.qref_inv
+		var bas := Basis(e.qwi * d * e.qw) * (m.C as Basis)
+		var pos: Vector3
+		if m.snap:
+			pos = e.Wi * jt.origin
+		elif m.root:
+			pos = e.Wi * ((m.prest as Vector3) + (jt.origin - (m.jref as Vector3)) * e.root_k)
+		elif int(m.anchor) >= 0:
+			pos = (e.glob[int(m.anchor)] * (m.off as Transform3D)).origin
+		else:
+			pos = Vector3.INF
+		e.glob[int(m.bone)] = Transform3D(bas, pos)
+	var parents: PackedInt32Array = e.info.parents
+	var rl: Array = e.info.rest_local
+	for b in e.info.order:
+		var p := parents[b]
+		if e.mapped.has(b):
+			var g: Transform3D = e.glob[b]
+			if g.origin == Vector3.INF:
+				g.origin = ((e.glob[p] if p >= 0 else Transform3D.IDENTITY) * (rl[b] as Transform3D)).origin
+				e.glob[b] = g
+			var loc: Transform3D = (e.glob[p].affine_inverse() * g) if p >= 0 else g
+			e.sk.set_bone_pose_position(b, loc.origin)
+			e.sk.set_bone_pose_rotation(b, loc.basis.get_rotation_quaternion())
+			e.sk.set_bone_pose_scale(b, loc.basis.get_scale())
+		else:
+			e.glob[b] = (e.glob[p] * (rl[b] as Transform3D)) if p >= 0 else (rl[b] as Transform3D)
+
+
+func _bone_poses(sk: Skeleton3D) -> Array:
+	var out := []
+	for i in sk.get_bone_count():
+		out.append(sk.get_bone_pose(i))
+	return out
+
+
+# 새 방식 (부모 관절 전역 자세를 이어 곱함·매핑된 뼈와 조상만 돎) = 예전 방식과 뼈 자세가 같다 — 네 모델, 서기·걷기·공중·맞음 자세
+func test_code_sync_matches_reference() -> void:
+	var keep: bool = Body.use_ext
+	Body.use_ext = true
+	var Gfx_ := preload("res://world/gfx.gd")
+	var was: Dictionary = Gfx_.plan
+	Gfx_.plan = {}
+	var states := [
+		{"x": 5.0, "y": 5.0, "z": 0.0},
+		{"x": 6.0, "y": 5.5, "z": 0.0, "stunned": true},
+		{"x": 7.0, "y": 6.0, "z": 3.0},
+	]
+	for id in ["ninja", "tank", "hunter", "hook"]:
+		var b := Chars.make_body(id, Color(0.8, 0.3, 0.3))
+		check(b.ext != null, "%s 붙음" % id)
+		if b.ext == null:
+			b.free()
+			continue
+		var e = b.ext
+		check(e.need_order.size() > 0 and e.need_order.size() < e.info.order.size(), "%s: 뼈 쓰기는 일부만 (%d / %d)" % [id, e.need_order.size(), e.info.order.size()])
+		var worst := 0.0
+		for k in 12:
+			var s: Dictionary = (states[k % 3] as Dictionary).duplicate()
+			s.x = float(s.x) + k * 0.2
+			var p := {"id": 1, "slot": 0, "char": id, "alive": true, "yaw": 0.4 * k, "damage": 0}
+			p.merge(s)
+			b.pose(p, 1000.0 + k * 70.0)
+			e._code_sync()
+			var a := _bone_poses(e.sk)
+			_ref_code_sync(e)
+			var r := _bone_poses(e.sk)
+			for i in a.size():
+				var ta: Transform3D = a[i]
+				var tr: Transform3D = r[i]
+				worst = maxf(worst, ta.origin.distance_to(tr.origin) + (ta.basis.get_rotation_quaternion() - tr.basis.get_rotation_quaternion()).length())
+		check(worst < 1e-4, "%s: 새·예전 방식 뼈 자세 차 %.6f" % [id, worst])
+		b.free()
+	Gfx_.plan = was
+	Body.use_ext = keep

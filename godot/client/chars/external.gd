@@ -531,6 +531,7 @@ static func pick_lod(cfg: Dictionary, third: bool, on_stage: bool) -> String:
 # 몸에 붙은 외부 모델 하나 (frame 또는 허리 관절 아래 Node3D)
 class Ext extends Node3D:
 	const G3_ := preload("res://shaders/g3.gd")
+	const Prof_ := preload("res://core/prof.gd")
 	const C_ := preload("res://core/config.gd")
 	const K_ := preload("res://chars/chars_config.gd")
 	# 소품 .glb (glTF Y 위·앞 +Z) → 게임 좌표 (앞 +x, 왼쪽 +y, 위 +z): attach "ref" 소품은 게임 좌표로 만든 것 (tools/blender — Blender (X, Y, Z) = (y, -x, z))
@@ -612,6 +613,10 @@ class Ext extends Node3D:
 	var maps: Array = [] # [{joint, bone, qref_inv, C (Basis, 뼈대 공간), anchor, off (Transform3D), root, jref, prest (space)}]
 	var glob: Array[Transform3D] = [] # 뼈대 공간 전역 (매 프레임)
 	var mapped := {} # 뼈 번호 → maps 번호
+	var rel_par := PackedInt32Array() # W39: maps 번호 → 관절 노드의 부모가 되는 매핑 관절의 maps 번호 (없으면 -1)
+	var rels: Array[Transform3D] = [] # W39: 이번 프레임 관절 → space 자세 (maps 번호별)
+	var rel_ok := PackedByteArray()
+	var need_order := PackedInt32Array() # W39: 뼈 쓰기가 도는 뼈 (매핑된 뼈 + 조상, 부모 먼저)
 	var parts: Array = [] # [{mi, color, tex, solid, alpha}]
 	var band: MeshInstance3D = null
 	var anim: AnimationPlayer = null
@@ -830,6 +835,28 @@ class Ext extends Node3D:
 				m.off = (rg[anc] as Transform3D).affine_inverse() * (rg[bi] as Transform3D)
 			mapped[bi] = maps.size()
 			maps.append(m)
+		# W39 자세 CPU: ① 관절 위 부모가 다른 매핑 관절이면 그 전역 자세를 이어 곱함 (뿌리까지 매번 거슬러 올라가지 않게) ② 뼈 쓰기는 매핑된 뼈와 그 조상만 (손가락 같은 끝 뼈는 쉬는 자세 그대로 부모를 따라감)
+		rel_par.resize(maps.size())
+		rel_par.fill(-1)
+		for i in maps.size():
+			var pn: Node = (maps[i].joint as Node).get_parent()
+			for j in i:
+				if maps[j].joint == pn:
+					rel_par[i] = j
+					break
+		rels.resize(maps.size())
+		rel_ok.resize(maps.size())
+		var need := {}
+		var parents_: PackedInt32Array = info.parents
+		for bi2 in mapped:
+			var b2: int = int(bi2)
+			while b2 >= 0 and not need.has(b2):
+				need[b2] = true
+				b2 = parents_[b2]
+		need_order = PackedInt32Array()
+		for b3 in info.order:
+			if need.has(int(b3)):
+				need_order.append(int(b3))
 
 	# 표정 (cfg.faces): 경직·맞은 직후 = hit, 공격 동작 = attack, 나머지 idle
 	func expression() -> String:
@@ -860,16 +887,20 @@ class Ext extends Node3D:
 	func sync(st = null) -> void:
 		if st != null:
 			st_frame = Engine.get_process_frames()
+		var t0 := Prof_.now()
 		_face_sync()
 		if clip != "" or sk == null:
 			return
+		t0 = _lap("몸 외부 몸 ·표정", t0)
 		_code_sync()
+		t0 = _lap("몸 외부 몸 ·뼈 맞추기", t0)
 		if not third:
 			_vm_bone_scale()
 		if st != null and float(st.get("airDash", 0.0)) > 0.0 and not bool(st.get("stunned", false)):
 			_dash_wrist()
 		if third and not clipset.is_empty() and (st != null or not forced.is_empty()):
 			_clip_layer(st)
+		t0 = _lap("몸 외부 몸 ·클립 층", t0)
 		if third and st != null:
 			_hit_flinch(st)
 		if not cloths.is_empty():
@@ -878,12 +909,29 @@ class Ext extends Node3D:
 			cloth_t = now
 			for cl in cloths:
 				cl.step(cdt)
+		_lap("몸 외부 몸 ·움찔·천", t0)
+
+	static func _lap(name: String, t0: int) -> int:
+		if t0 == 0:
+			return 0
+		Prof_.add(name, t0)
+		return Prof_.now()
 
 	func _code_sync() -> void:
-		for m in maps:
-			var jr = _rel(m.joint)
+		_code_maps()
+		_code_bones()
+
+	# ① 관절 → 매핑된 뼈의 뼈대 공간 전역 자세 (glob)
+	func _code_maps() -> void:
+		for i in maps.size():
+			var m: Dictionary = maps[i]
+			var pi: int = rel_par[i]
+			var jr = (rels[pi] * (m.joint as Node3D).transform) if pi >= 0 and rel_ok[pi] != 0 else _rel(m.joint)
 			if jr == null:
+				rel_ok[i] = 0
 				continue
+			rels[i] = jr
+			rel_ok[i] = 1
 			var jt: Transform3D = jr
 			var d: Quaternion = jt.basis.get_rotation_quaternion() * m.qref_inv
 			var bas := Basis(qwi * d * qw) * (m.C as Basis)
@@ -897,9 +945,12 @@ class Ext extends Node3D:
 			else:
 				pos = Vector3.INF
 			glob[int(m.bone)] = Transform3D(bas, pos)
+
+	# ② 부모 먼저 순서로 뼈 지역 자세를 skeleton 에 씀 (안 맞춘 뼈는 쉬는 자세 그대로 부모를 따라감)
+	func _code_bones() -> void:
 		var parents: PackedInt32Array = info.parents
 		var rl: Array = info.rest_local
-		for b in info.order:
+		for b in need_order:
 			var p := parents[b]
 			if mapped.has(b):
 				var g: Transform3D = glob[b]

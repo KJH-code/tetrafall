@@ -254,7 +254,7 @@ static func report(tree: SceneTree, label: String, cpu_frames := 0) -> Dictionar
 	if cpu_frames > 0 and Prof.on:
 		for k in Prof.sums:
 			var c := cpu_category(k)
-			if k.contains("(번)") or k.contains("받은 스냅샷 수") or k.begins_with("net ·") or k.begins_with("HUD ·") or k.begins_with("store ·") or k.begins_with("몸 LOD") or k.begins_with("몸 figureAnim") or k.begins_with("몸 묶음") or k.begins_with("몸 움직임") or k.begins_with("몸 재질") or k.begins_with("몸 래그돌"):
+			if k.contains("(번)") or k.contains("받은 스냅샷 수") or k.begins_with("net ·") or k.begins_with("HUD ·") or k.begins_with("store ·") or k.begins_with("몸 LOD") or k.begins_with("몸 외부 몸 ·") or k.begins_with("몸 figureAnim") or k.begins_with("몸 묶음") or k.begins_with("몸 움직임") or k.begins_with("몸 재질") or k.begins_with("몸 래그돌"):
 				continue # 안쪽 구간 (바깥 구간이 이미 포함) 은 합에서 뺌
 			cpu[c] = float(cpu.get(c, 0.0)) + float(Prof.sums[k][0]) / 1000.0 / maxf(1.0, cpu_frames)
 	print("[구성] -- 프레임 구성 · %s --" % label)
