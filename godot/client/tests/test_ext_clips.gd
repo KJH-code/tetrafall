@@ -362,7 +362,7 @@ func test_w38_hit_flinch() -> void:
 		check(a_strong > 0.03 and a_strong < 0.5, "%s 맞음 움찔: 척추가 %.3f rad 돌아감 (0.03~0.5)" % [ch, a_strong])
 		check(a_strong > a_weak * 1.5, "%s 센 타격 (%.3f) 이 약한 타격 (%.3f) 보다 크게" % [ch, a_strong, a_weak])
 		check(h1.x < h0.x - 0.005, "%s 뒤로 밀리면 머리가 뒤로 젖혀짐 (%.3f → %.3f)" % [ch, h0.x, h1.x])
-		X.sync(hit.call(K.EXT_HIT_FLINCH_S + 0.1, 2.0))
+		X.sync(hit.call(K.EXT_HIT_CRIT_S + 0.1, 2.0)) # W40: 치명·강타 (pow >= EXT_HIT_CRIT_POW) 는 채찍 때문에 CRIT_S 까지 이어짐
 		check(q0.angle_to(sk.get_bone_pose_rotation(bi)) < 1e-4, "%s 시간이 지나면 움찔 없음" % ch)
 		b.free()
 

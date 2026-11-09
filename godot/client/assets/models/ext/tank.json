@@ -61,5 +61,9 @@
    "mixamorig_RightToeBase"
   ],
   "taunt": "t_taunt", "victory": "t_victory", "moves": {"주먹": "t_punch", "어깨 박치기": "t_bash", "방패 올려치기": "t_upper", "방패 내려치기": "t_dive", "tankCharge": "t_charge", "tankSlam": "t_slam"}
- }
+ },
+ "cloth": [
+   {"bones": ["mixamorig_Tabard1_1", "mixamorig_Tabard1_2", "mixamorig_Tabard1_3"], "rest": 0.16, "damp": 0.92, "gravity": 18.0, "drag": 0.0, "fwd": 0.01},
+   {"bones": ["mixamorig_Tabard2_1", "mixamorig_Tabard2_2", "mixamorig_Tabard2_3"], "rest": 0.16, "damp": 0.92, "gravity": 18.0, "drag": 0.0, "fwd": 0.01}
+ ]
 }

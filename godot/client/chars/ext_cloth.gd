@@ -20,6 +20,7 @@ var damp := 0.94 # 속도 남기기 (프레임)
 var grav := 20.0 # 중력 (m/s², 월드)
 var drag := 0.0 # 공기 저항 (속도에 비례, /초)
 var iters := 3
+var fwd_lim := 1e9 # W40: 쉬는 자리보다 몸 앞쪽으로 이만큼 (m) 넘게 못 나옴 — 등 뒤 천이 몸·다리를 뚫고 앞으로 안 오게 (cfg.fwd, 기본 끔)
 var last_anchor := Vector3.ZERO
 var rest_parent := Transform3D.IDENTITY
 
@@ -40,7 +41,8 @@ func setup(skel: Skeleton3D, names: Array, info: Dictionary, cfg: Dictionary) ->
 	rest_parent = info.rest_global[parent_b] if parent_b >= 0 else Transform3D.IDENTITY
 	for i in bones.size():
 		var a: Vector3 = rest_g[i].origin
-		var b: Vector3 = (rest_g[i + 1].origin if i + 1 < bones.size() else a + rest_g[i].basis * Vector3(0, _tip_len(i), 0))
+		# 마지막 뼈 끝 = 앞 뼈와 같은 방향·길이 (W40: 뼈 +Y 축이 사슬을 따르지 않는 모델 — cloth_bones.mjs 는 세계 회전 항등 — 에서 끝점이 위로 가던 것)
+		var b: Vector3 = (rest_g[i + 1].origin if i + 1 < bones.size() else (a + rest_dir[i - 1] * _tip_len(i) if i > 0 else a + rest_g[i].basis * Vector3(0, _tip_len(i), 0)))
 		var d := b - a
 		rest_len.append(d.length())
 		rest_dir.append(d.normalized())
@@ -48,6 +50,7 @@ func setup(skel: Skeleton3D, names: Array, info: Dictionary, cfg: Dictionary) ->
 	damp = float(cfg.get("damp", damp))
 	grav = float(cfg.get("gravity", grav))
 	drag = float(cfg.get("drag", drag))
+	fwd_lim = float(cfg.get("fwd", fwd_lim))
 	return true
 
 
@@ -97,6 +100,12 @@ func step(dt: float) -> void:
 		prev[i] = pts[i]
 		pts[i] = pts[i] + v + g * h * h
 		pts[i] = pts[i] + (tgt[i] - pts[i]) * (1.0 - pow(1.0 - k_rest, h * 60.0))
+	if fwd_lim < 1e8: # 앞쪽 한계: 부모 뼈의 앞 (+x, 뼈대 공간) 을 월드로
+		var pf: Vector3 = (W.basis * (pg.basis * (rel.basis * Vector3.RIGHT))).normalized()
+		for i in range(1, pts.size()):
+			var dd: float = (pts[i] - tgt[i]).dot(pf)
+			if dd > fwd_lim * scl:
+				pts[i] -= pf * (dd - fwd_lim * scl)
 	for it in iters:
 		for i in range(1, pts.size()):
 			var d: Vector3 = pts[i] - pts[i - 1]

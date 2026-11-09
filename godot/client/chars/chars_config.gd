@@ -60,4 +60,26 @@ const EXT_HIT_FLINCH_DECAY_S := 0.09
 const EXT_HIT_FLINCH_RAD := 0.18
 const EXT_HIT_FLINCH_BONES := [["mixamorig_Spine1", 0.5], ["mixamorig_Spine2", 0.6], ["mixamorig_Head", 0.8]]
 const EXT_HIT_FACE_S := 0.45 # 맞은 뒤 이만큼 (초) '맞음' 표정
+# W40 가산 동작 (chars/ext_motion.gd + external.gd _extra_layer): 시선·머리 추적, 숨쉬기, 착지 숙임, 맞음 방향별 반응 — 코드·클립 위에 뼈 회전만 더함
+const EXT_GAZE_MAX_DEG := 35.0 # 머리·윗몸이 몸 앞에서 돌아갈 수 있는 한계
+const EXT_GAZE_DIST := 7.0 # 이 거리 (m) 안의 가장 가까운 몸을 쳐다봄
+const EXT_GAZE_FOV := 1.9 # 몸 앞 ±이 각 (라디안) 안의 몸만 (뒤에 있는 몸은 안 돌아봄)
+const EXT_GAZE_RATE := 5.0 # 따라가는 빠르기 (/초)
+const EXT_GAZE_W_RATE := 4.0 # 켜고 끄는 가중치 빠르기 (/초)
+const EXT_GAZE_BONES := [["mixamorig_Spine2", 0.2], ["mixamorig_Neck", 0.35], ["mixamorig_Head", 0.45]] # 합 1.0 = 한계 각 전부
+const EXT_GAZE_HIT_OFF_S := 0.45 # 맞은 직후 이만큼은 시선 끔
+const EXT_BREATH_PERIOD := Vector2(2.6, 3.8) # 숨쉬기 한 번 (초) 범위, 캐릭터마다 이 안에서
+const EXT_BREATH_RAD := 0.016 # 숨쉬기 가슴 젖힘 (라디안)
+const EXT_LAND_BEND_RAD := 0.36 # 착지 무릎 굽힘 최대 (허벅지 앞 α, 정강이 −2α)
+const EXT_LAND_LEAN_RAD := 0.2 # 착지 윗몸 숙임
+const EXT_HIT_CRIT_POW := 1.5 # 이 세기 이상 맞음 = 치명·강타 (머리 채찍·손 흔들림)
+const EXT_HIT_TWIST := 0.5 # 옆에서 맞으면 몸통이 비틀리는 비율
+const EXT_HIT_WHIP_RAD := 0.3
+const EXT_HIT_HAND_RAD := 0.35
+const EXT_HIT_CRIT_S := 0.5
+const EXT_ARMOR_BREAK_S := 0.45 # 탱크 방어구 깨짐: 방패 쥔 팔 반동 시간
+const EXT_ARMOR_BREAK_RAD := 0.5
+# W40 1인칭 팔을 3인칭 클립 (평타·스킬) 곡선으로: 클립이 코드 자세에서 얼마나 벗어났나 (뼈 지역 회전 차이) 를 1인칭 쌍둥이 팔에 이 비율로 더함 (0 = 끔)
+const VM_CLIP_ARM := 0.0 # 기본 끔 (보류): 0.3·0.55 로 켜 보니 소총·갈고리를 쥔 팔이 화면 위로 솟거나 왼손이 세로로 서서 어색 — 전후 docs/w40/vm_clip/
+const VM_CLIP_ARM_BONES := ["shoulder_R", "elbow_R", "hand_R", "shoulder_L", "elbow_L", "hand_L"]
 const EXT_FLASH := 0.55 # 경직 하얀 깜빡임 (외부 모델은 피부 부위를 몰라서 몸 전체 하얀 발광으로)

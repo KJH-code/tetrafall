@@ -30,30 +30,30 @@ def define_attacks(M):
     # 갈고리 휘두르기 (왼팔 옆으로 크게 벌려 감았다가 몸을 비틀며 앞으로 후려침)
     w = P_(ready, hips_z=-0.05, hips_twist=12, spine_pitch=2, spine_twist=44, neck_yaw=-16, leg_fwd=(26, -10), knee=(40, 20),
            arm_fwd=(10, -14), arm_out=(10, 112), elbow=(30, 46), clav_fwd=(4, -14))
-    s = P_(ready, hips_x=0.24, hips_z=-0.06, hips_twist=-18, spine_pitch=20, spine_twist=-40, neck_yaw=14, leg_fwd=(40, -26), knee=(40, 22), foot=(-6, 8),
-           arm_fwd=(10, 86), arm_out=(10, 8), elbow=(30, 4), clav_fwd=(4, 18))
-    clip("k_hook", R, False, [(0.0, ready), (W, w), (S, s), (0.55, P_(s, hips_x=0.28, spine_twist=-28, arm_fwd=(10, 72), arm_out=(10, 24))), (R, ready)])
+    s = P_(ready, hips_x=0.42, hips_z=-0.08, hips_twist=-24, spine_pitch=26, spine_twist=-48, neck_yaw=14, leg_fwd=(48, -32), knee=(44, 22), foot=(-6, 8),
+           arm_fwd=(10, 96), arm_out=(10, 8), elbow=(30, 4), clav_fwd=(4, 18))
+    clip("k_hook", R, False, [(0.0, ready), (W, w), (S, s), (0.55, P_(s, hips_x=0.46, spine_twist=-34, arm_fwd=(10, 80), arm_out=(10, 24))), (R, ready)])
 
     # 주먹 (오른팔 주먹 → 몸 실어 곧게 찌름)
     w = P_(ready, hips_z=-0.06, hips_twist=-12, spine_pitch=-4, spine_twist=-36, neck_yaw=14, leg_fwd=(-14, 28), knee=(34, 44),
            arm_fwd=(-12, 12), arm_out=(34, 6), elbow=(116, 40), clav_fwd=(-14, 4))
-    s = P_(ready, hips_x=0.32, hips_z=-0.07, hips_twist=18, spine_pitch=24, spine_twist=32, neck_yaw=-12, leg_fwd=(-30, 46), knee=(12, 52), foot=(12, -10),
-           arm_fwd=(92, 12), arm_out=(2, 6), elbow=(0, 40), clav_fwd=(22, 4))
-    clip("k_fist", R, False, [(0.0, ready), (W, w), (S, s), (0.55, P_(s, hips_x=0.36, spine_twist=24, arm_fwd=(84, 12))), (R, ready)])
+    s = P_(ready, hips_x=0.52, hips_z=-0.09, hips_twist=22, spine_pitch=30, spine_twist=38, neck_yaw=-12, leg_fwd=(-40, 56), knee=(10, 60), foot=(12, -10),
+           arm_fwd=(100, 12), arm_out=(2, 6), elbow=(0, 40), clav_fwd=(22, 4))
+    clip("k_fist", R, False, [(0.0, ready), (W, w), (S, s), (0.55, P_(s, hips_x=0.56, spine_twist=28, arm_fwd=(92, 12))), (R, ready)])
 
     # 갈고리 내려치기 (왼팔 머리 위 → 내리꽂음)
     w = P_(ready, hips_z=-0.03, spine_pitch=-12, neck_pitch=-6, leg_fwd=(24, 16), knee=(34, 30), arm_fwd=(10, 168), arm_out=(6, 14), elbow=(30, 40))
-    s = P_(ready, hips_x=0.20, hips_z=-0.1, spine_pitch=40, neck_pitch=-22, leg_fwd=(34, 28), knee=(52, 48), foot=(-10, -10), arm_fwd=(10, 50), arm_out=(6, 8), elbow=(30, 4))
+    s = P_(ready, hips_x=0.40, hips_z=-0.12, spine_pitch=48, neck_pitch=-22, leg_fwd=(40, 34), knee=(56, 52), foot=(-10, -10), arm_fwd=(10, 64), arm_out=(6, 8), elbow=(30, 4))
     clip("k_chop", R, False, [(0.0, ready), (W, w), (S, s), (0.6, P_(s, hips_z=-0.12, spine_pitch=36)), (R, ready)])
 
     # 탕 (권총, 오른손): 팔 앞으로 조준 → 반동으로 팔이 위로 튐
-    aim = P_(ready, hips_z=-0.03, hips_twist=-6, spine_twist=-12, neck_yaw=8, leg_fwd=(-6, 14), knee=(16, 22), arm_fwd=(86, 14), arm_out=(0, 6), elbow=(8, 40), clav_fwd=(10, 0))
-    kick = P_(aim, hips_x=-0.05, spine_pitch=-8, neck_pitch=-5, arm_fwd=(122, 14), elbow=(34, 40))
+    aim = P_(ready, hips_x=0.18, hips_z=-0.03, hips_twist=-6, spine_twist=-12, neck_yaw=8, leg_fwd=(-14, 20), knee=(16, 22), arm_fwd=(96, 14), arm_out=(0, 6), elbow=(2, 40), clav_fwd=(14, 0))
+    kick = P_(aim, hips_x=0.14, spine_pitch=-4, neck_pitch=-5, arm_fwd=(112, 14), elbow=(24, 40))
     clip("k_shot", R, False, [(0.0, ready), (W, aim), (S, kick), (0.55, P_(aim, arm_fwd=(60, 14), elbow=(50, 40))), (R, ready)])
 
     # 갈고리 스핀 (공중): 팔 벌려 갈고리 쪽을 크게 휘두르며 몸 비틂 (회전은 코드가 몸 전체를 돌림)
     w = P_(air, spine_twist=40, arm_fwd=(10, -10), arm_out=(30, 112), elbow=(30, 40))
-    s = P_(air, spine_twist=-30, arm_fwd=(10, 12), arm_out=(30, 100), elbow=(30, 8), spine_pitch=14)
+    s = P_(air, hips_x=0.25, spine_twist=-30, arm_fwd=(10, 12), arm_out=(30, 100), elbow=(30, 8), spine_pitch=14)
     clip("k_spin", R, False, [(0.0, air), (W, w), (S, s), (R, P_(s, spine_twist=-10))])
 
     # 갈고리 던지기: 왼팔을 뒤로 젖혔다 앞으로 곧게 뻗어 던짐 (줄이 날아감)
