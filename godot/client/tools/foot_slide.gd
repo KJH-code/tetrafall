@@ -62,7 +62,7 @@ func _run() -> void:
 				prev_stance = stance
 				had = true
 			travel *= sc
-			print("TFS %s %s 한 바퀴: 접지 발 뒤로 %.2f m, 코드 걸음 위상이 가는 거리 %.2f m (박자 ×%.2f), 비 %.2f, 골반 위아래 %.2f m" % [ch, nm, travel, need_r, rate, travel / need_r, (hy_max - hy_min) * sc])
+			print("TFS %s %s 한 바퀴: 접지 발 뒤로 %.2f m, 코드 걸음 위상이 가는 거리 %.2f m (박자 ×%.2f), 비 %.2f, 몸 위아래 %.2f m" % [ch, nm, travel, need_r, rate, travel / need_r, (hy_max - hy_min) * sc])
 		b.queue_free()
 	quit()
 
