@@ -214,6 +214,26 @@ static func report(tree: SceneTree, label: String, cpu_frames := 0) -> Dictionar
 			d.append(maxi(0, on_now[i] - off[i]))
 		rows.append({"cat": k, "nodes": nodes.size(), "draws": d[0], "sdraws": d[1], "objs": d[2], "tris": d[4], "stris": d[5], "tex": tb})
 	await RenderingServer.frame_post_draw
+	# W39 --budget-split <분류>: 그 분류 안 물체를 하나씩 끄고 그려 몫을 나눔 (지형·배경 안에서 누가 큰지)
+	var split_args := OS.get_cmdline_user_args()
+	var si := split_args.find("--budget-split")
+	if si >= 0 and si + 1 < split_args.size() and groups.has(split_args[si + 1]):
+		for n in groups[split_args[si + 1]]:
+			if not is_instance_valid(n):
+				continue
+			await RenderingServer.frame_post_draw
+			await RenderingServer.frame_post_draw
+			var a := info(tree)
+			_set_visible([n], false)
+			await RenderingServer.frame_post_draw
+			await RenderingServer.frame_post_draw
+			var b := info(tree)
+			_set_visible([n], true)
+			var inst := ""
+			if n is MultiMeshInstance3D and (n as MultiMeshInstance3D).multimesh != null:
+				inst = " 인스턴스 %d" % (n as MultiMeshInstance3D).multimesh.visible_instance_count
+			print("[구성분할] %s %s%s: 그리기 %d 삼각형 %d 그림자 %d" % [str(n.get_path()).right(70), n.get_class(), inst, maxi(0, a[0] - b[0]), maxi(0, a[4] - b[4]), maxi(0, a[5] - b[5])])
+	await RenderingServer.frame_post_draw
 	# 3D 가 아닌 몫: 합과 전체의 차 (하늘 셰이더·후처리·SubViewport 합성 등) + 2D
 	var sum := [0, 0, 0, 0, 0, 0]
 	for r in rows:

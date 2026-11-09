@@ -92,6 +92,11 @@ const OUTLINE_FAR := {"taper_from": 8.0, "gone": 16.0, "min_k": 0.25, "hyst": 1.
 #   batch_twin (W37): 코드 몸 합친 메시도 그림자는 껍질 없는 쌍둥이 메시가 던짐 (보이는 메시는 그림자 끔)
 #   piece_proxy: 떨어지는 블록 칸 (칸 모양이 300~430 삼각형인 테마) 의 그림자는 상자 (12 삼각형) 하나로 던짐 — 보이는 칸은 그림자 끔 + 같은 자리 상자 MultiMesh 가 그림자만 (SHADOWS_ONLY)
 const SHADOW := {"far": 22.0, "hyst": 1.5, "view_pad": 3.0, "caster_lod": true, "piece_proxy": true, "piece_proxy_min_tris": 24, "batch_twin": true, "reach_pad": 8.0, "reach_step": 4.0, "reach_min": 16.0}
+# ---- 블록 칸 LOD (W39, world/cell_lod.gd): far = 시야각 70° 기준 카메라 거리 (m) 를 넘는 칸은 낮은 모양 (hyst = 켜고 끄는 문턱 여유), min_ratio = 칸 모양 삼각형이 낮은 모양의 이 배 이상일 때만 (수정 56 < 108 은 그대로),
+#   하늘 계단 블록도 같은 거리 규칙 (반투명이라 따로 먼 하늘 블록 MultiMesh), regroup_move = 쌓인 칸은 카메라가 이만큼 (m) 움직였을 때만 가까움·멂을 다시 가름. 끄기 --no-cell-lod
+const CELL_LOD := {"far": 14.0, "hyst": 1.5, "min_ratio": 1.5, "regroup_move": 1.0}
+static var cell_lod: bool = not Opts.args().has("--no-cell-lod")
+static var cell_lod_far: float = float(Opts.args()[Opts.args().find("--cell-lod-far") + 1]) if Opts.args().has("--cell-lod-far") else float(CELL_LOD.far) # 확인용: 낮은 모양으로 바꾸는 거리 (m) 덮어쓰기
 # ---- 몸 만들기 분산 (W32): 방에 들어가거나 봇을 넣을 때 몸이 한꺼번에 8개 나오면 (몸 만들기 2~5ms + 처음 그리기 9~12ms 씩) 한 프레임이 크게 끊김 → 한 프레임에 이만큼만 만들고 나머지는 다음 프레임 (내 몸은 늘 바로)
 const BODY_BUILDS_PER_FRAME := 2
 # 확인용: --no-shadow-opt = W32 그림자 줄이기 전부 끔 (저폴리 캐스터·칸 상자 그림자·먼 몸 끄기·그림자 거리), --no-shadow-far = 먼 몸·시야 밖 몸 그림자 끄기만 끔 (전후 비교)

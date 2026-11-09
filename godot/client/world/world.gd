@@ -292,8 +292,8 @@ func apply_theme(map_id: String) -> void:
 			hook_fx.g3 = G3 # W35 갈고리 덩어리가 맵 테마 칸 모습·돌·모래 재질을 씀
 			hook_fx.theme_id = tid
 			hook_fx.low = low
-			pieces_view.set_look(pm, [G3.piece_material(tid, low, {"rim": rim}), G3.piece_material(tid, low, {"rim": rim, "transparent": true, "opacity": 1.0})], cols)
-			grid_view.set_piece_look(pm, G3.piece_material(tid, low, {"rim": rim, "outline": false}), cols) # 쌓인 칸은 외곽선 없음 (render.js landed noOutline)
+			pieces_view.set_look(pm, [G3.piece_material(tid, low, {"rim": rim}), G3.piece_material(tid, low, {"rim": rim, "transparent": true, "opacity": 1.0})], cols, G3.piece_mesh(tid, true))
+			grid_view.set_piece_look(pm, G3.piece_material(tid, low, {"rim": rim, "outline": false}), cols, G3.piece_mesh(tid, true)) # 쌓인 칸은 외곽선 없음 (render.js landed noOutline)
 		return
 	var sk: Dictionary = theme.get("sky", {})
 	sky_mat.sky_top_color = Co.color(sk.get("top", C.SKY_TOP))
@@ -473,6 +473,7 @@ func _process(dt: float) -> void:
 			G3.sprout_update(sprouts, g, fs.x, fs.y, fs.z, grid_view.skip, bool(View.settings.get("lowGfx", false)))
 	Prof.lap("world 격자·건축 블록")
 	rig.pre(dt)
+	grid_view.regroup() # W39: 쌓인 칸 먼/가까움 (카메라가 움직였을 때만)
 	var sky_on: bool = rig.sky_blend > 0.5
 	bodies.update(st, Store.my_id, rig.hide_me(), sky_on, now)
 	Prof.lap("world bodies.update (몸 자세)")

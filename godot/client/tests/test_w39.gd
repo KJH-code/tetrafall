@@ -109,3 +109,121 @@ func test_lazy_tex_off_keeps_old_behavior() -> void:
 	check(t != null, "끄고도 몸 텍스처가 나옴")
 	Ext.lazy_tex = keep
 	Ext._cache.erase("hook")
+
+
+# ---------- 항목 3: 블록 칸 LOD (world/cell_lod.gd · pieces_view.gd · grid_view.gd) ----------
+
+const C_ := preload("res://core/config.gd")
+const CellLod := preload("res://world/cell_lod.gd")
+const WC := preload("res://world/world_config.gd")
+const G3 := preload("res://shaders/g3.gd")
+const PV := preload("res://world/pieces_view.gd")
+const GV := preload("res://world/grid_view.gd")
+const Co := preload("res://core/coords.gd")
+
+
+func _cam_at(pos: Vector3) -> void:
+	CellLod.test_cam = {"pos": pos, "fov": 70.0}
+
+
+func test_cell_lod_distance_and_hysteresis() -> void:
+	var far: float = WC.cell_lod_far
+	check(not CellLod.far_state(far - 0.5, 70.0, false) and not CellLod.far_state(far + 0.5, 70.0, false), "문턱 근처 (여유 안) 는 지금 상태 유지: 높은 모양 → 높은 모양")
+	check(CellLod.far_state(far + 2.0, 70.0, false), "문턱 + 여유를 넘으면 낮은 모양")
+	check(CellLod.far_state(far - 0.5, 70.0, true) and not CellLod.far_state(far - 2.0, 70.0, true), "낮은 모양에서 돌아오려면 문턱 - 여유 안으로")
+	# 시야각을 넓히면 같은 거리가 작게 보임 → 더 일찍 낮춤
+	check(CellLod.far_state(far * 0.8, 110.0, false) and not CellLod.far_state(far * 0.8, 70.0, false), "시야각 110° 는 70° 보다 가까운 거리에서 낮춤")
+
+
+func test_cell_lod_worth() -> void:
+	var keep: bool = WC.cell_lod
+	WC.cell_lod = true
+	var low: int = PV.mesh_tris(G3.piece_mesh("castle", true))
+	check(CellLod.worth(PV.mesh_tris(G3.piece_mesh("castle", false)), low), "성 테마 칸 (432) 은 낮은 모양 (108) 이 이득")
+	check(not CellLod.worth(PV.mesh_tris(G3.piece_mesh("crystal", false)), low), "수정 테마 칸 (56) 은 낮은 모양 (108) 이 오히려 큼 → 그대로")
+	check(not CellLod.worth(low, low), "화질 낮음 (이미 낮은 모양) 은 그대로")
+	WC.cell_lod = false
+	check(not CellLod.worth(432, 108), "--no-cell-lod 면 안 함")
+	WC.cell_lod = keep
+
+
+# 떨어지는 칸: 가까운 조각은 칸 모양 MultiMesh, 먼 조각은 낮은 모양 (하늘 블록은 반투명 쪽), 그림자 상자는 모두, 합계 = 칸 수
+func test_pieces_view_far_pieces_use_low_mesh() -> void:
+	var keep: bool = WC.cell_lod
+	WC.cell_lod = true
+	_cam_at(Vector3.ZERO)
+	var pv = PV.new()
+	pv._ready()
+	pv.set_look(G3.piece_mesh("castle", false), [StandardMaterial3D.new(), StandardMaterial3D.new()], C_.SHAPE_COLORS, G3.piece_mesh("castle", true))
+	check(pv.low_mesh != null and pv.far_mmi.visible, "낮은 모양 준비됨")
+	var near_p := Co.gxyz(2.5, 2.5, 2.5)
+	_cam_at(near_p + Vector3(0, 3, 6)) # 칸에서 6.7m
+	var st := {"pieces": [
+		{"shape": "T", "cells": [[2, 2, 2], [3, 2, 2], [4, 2, 2]], "sky": false},
+		{"shape": "I", "cells": [[40, 2, 2], [41, 2, 2]], "sky": false},
+		{"shape": "O", "cells": [[2, 40, 2], [3, 40, 2]], "sky": true},
+		{"shape": "L", "cells": [[2, 2, 6]], "sky": true}]}
+	pv.update(st, 1, {}, 0.0)
+	check(pv.cells_mmi.multimesh.visible_instance_count == 3, "가까운 칸 3 (얻음 %d)" % pv.cells_mmi.multimesh.visible_instance_count)
+	check(pv.far_mmi.multimesh.visible_instance_count == 2, "먼 칸 2 (얻음 %d)" % pv.far_mmi.multimesh.visible_instance_count)
+	check(pv.sky_mmi.multimesh.visible_instance_count == 1 and pv.sky_far_mmi.multimesh.visible_instance_count == 2, "하늘 블록: 가까움 1·멂 2 (얻음 %d·%d)" % [pv.sky_mmi.multimesh.visible_instance_count, pv.sky_far_mmi.multimesh.visible_instance_count])
+	check(pv.far_mmi.multimesh.mesh == pv.low_mesh and pv.cells_mmi.multimesh.mesh != pv.low_mesh, "먼 칸은 낮은 모양, 가까운 칸은 칸 모양")
+	# 그림자 상자 (보이는 칸 그림자는 상자가 대신): 일반 칸 3 + 2 = 5, 자리가 겹치지 않음
+	var qm: MultiMesh = pv.caster_mmi.multimesh
+	if pv.proxy_on:
+		check(qm.visible_instance_count == 5, "그림자 상자 = 일반 칸 수 5 (얻음 %d)" % qm.visible_instance_count)
+	# 내가 조종하는 조각은 늘 칸 모양
+	var st2 := {"pieces": [{"shape": "T", "cells": [[40, 2, 2]], "sky": false, "phase": "control", "controller": 1}]}
+	pv.update(st2, 1, {}, 0.0)
+	check(pv.cells_mmi.multimesh.visible_instance_count == 1 and pv.far_mmi.multimesh.visible_instance_count == 0, "내가 조종하는 조각은 멀어도 칸 모양")
+	# 끄면 모두 가까운 쪽
+	WC.cell_lod = false
+	pv.set_look(G3.piece_mesh("castle", false), [StandardMaterial3D.new(), StandardMaterial3D.new()], C_.SHAPE_COLORS, G3.piece_mesh("castle", true))
+	check(pv.low_mesh == null and not pv.far_mmi.visible, "--no-cell-lod: 낮은 모양 안 씀")
+	pv.update(st, 1, {}, 0.0)
+	check(pv.far_mmi.multimesh.visible_instance_count == 0 and pv.cells_mmi.multimesh.visible_instance_count == 5, "--no-cell-lod: 전부 칸 모양")
+	pv.free()
+	CellLod.test_cam = null
+	WC.cell_lod = keep
+
+
+# 쌓인 칸: 가깝/멂으로 나눔, 카메라가 regroup_move 넘게 움직일 때만 다시 나눔, 합계는 늘 칸 수
+func test_grid_view_regroup() -> void:
+	var keep: bool = WC.cell_lod
+	WC.cell_lod = true
+	_cam_at(Co.gxyz(1.0, 1.0, 4.0))
+	var gv = GV.new()
+	gv._ready()
+	gv.set_piece_look(G3.piece_mesh("castle", false), StandardMaterial3D.new(), C_.SHAPE_COLORS, G3.piece_mesh("castle", true))
+	check(gv.low_mesh != null and gv.piece_far.visible, "낮은 모양 준비됨")
+	var w := 40
+	var d := 4
+	var grid := PackedByteArray()
+	grid.resize(w * d * 3)
+	for x in [1, 2, 3, 30, 35, 38]: # 앞 셋은 카메라 가까이, 뒤 셋은 멀리
+		grid[x + 1 * w] = 12
+	gv.rebuild(grid, w, d, 3)
+	var near_n: int = gv.piece_mmi.multimesh.instance_count
+	var far_n: int = gv.piece_far.multimesh.instance_count
+	check(near_n == 3 and far_n == 3 and gv.lod_far == 3, "가까움 3·멂 3 (얻음 %d·%d)" % [near_n, far_n])
+	var rg: int = gv.regroups
+	gv.regroup()
+	check(gv.regroups == rg, "카메라가 안 움직이면 다시 안 나눔")
+	_cam_at(CellLod.test_cam.pos + Vector3(0.3, 0, 0))
+	gv.regroup()
+	check(gv.regroups == rg, "regroup_move 안쪽 움직임은 다시 안 나눔")
+	_cam_at(Co.gxyz(36.0, 1.0, 4.0)) # 반대쪽으로 크게
+	gv.regroup()
+	check(gv.regroups == rg + 1 and gv.piece_mmi.multimesh.instance_count == 3 and gv.piece_far.multimesh.instance_count == 3, "카메라가 반대쪽으로 가면 다시 나눔 (가까움 %d·멂 %d)" % [gv.piece_mmi.multimesh.instance_count, gv.piece_far.multimesh.instance_count])
+	var near_x := 0
+	for k in gv.near_idx:
+		if gv._pxf[k].origin.x > 20.0:
+			near_x += 1
+	check(near_x == 3, "가까운 칸이 카메라 쪽 (x 30 이상) 으로 바뀜 (%d)" % near_x)
+	WC.cell_lod = false
+	gv.set_piece_look(G3.piece_mesh("castle", false), StandardMaterial3D.new(), C_.SHAPE_COLORS, G3.piece_mesh("castle", true))
+	gv.rebuild(grid, w, d, 3)
+	check(gv.piece_mmi.multimesh.instance_count == 6 and gv.piece_far.multimesh.instance_count == 0, "--no-cell-lod: 전부 칸 모양")
+	gv.free()
+	CellLod.test_cam = null
+	WC.cell_lod = keep

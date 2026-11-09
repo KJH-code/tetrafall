@@ -6,12 +6,17 @@ const C := preload("res://core/config.gd")
 const Co := preload("res://core/coords.gd")
 const Cells := preload("res://world/cells.gd")
 const WC := preload("res://world/world_config.gd")
+const CellLod := preload("res://world/cell_lod.gd")
 
 var cells_mmi := MultiMeshInstance3D.new()
 var sky_mmi := MultiMeshInstance3D.new() # 하늘 계단 블록 (render.js skyPieceMat: 밝게·살짝 비침·하늘색 빛) — 늘 반투명 재질
 var shadow_mmi := MultiMeshInstance3D.new()
 var caster_mmi := MultiMeshInstance3D.new() # W32: 보이는 칸과 같은 자리에서 그림자만 던지는 상자 (칸 모양이 복잡한 테마에서 해 그림자 패스 삼각형을 줄임)
 var proxy_on := false # 보이는 칸 그림자를 끄고 caster_mmi 가 대신 던지는 중
+var sky_far_mmi := MultiMeshInstance3D.new() # W39: 먼 하늘 블록 (낮은 모양, 반투명 재질)
+var far_mmi := MultiMeshInstance3D.new() # W39: 먼 칸 (시야각 70° 기준 14m 넘음) 은 낮은 모양으로 (world/cell_lod.gd) — 같은 재질
+var low_mesh: Mesh = null # 낮은 모양 (G3 piece_mesh low), 없거나 칸 모양이 이미 가벼우면 null = LOD 안 함
+var lod_far := 0 # 지난 갱신에서 먼 칸 수 (확인용)
 var piece_mat := StandardMaterial3D.new()
 var piece_colors: Dictionary = C.SHAPE_COLORS
 var mats = null # G3 툰 재질 [불투명, 반투명] (없으면 piece_mat 의 transparency 를 바꿈)
@@ -43,6 +48,23 @@ func _ready() -> void:
 	sky_mmi.material_override = piece_mat
 	sky_mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(sky_mmi)
+	var fm := MultiMesh.new()
+	fm.transform_format = MultiMesh.TRANSFORM_3D
+	fm.use_colors = true
+	fm.mesh = box
+	far_mmi.multimesh = fm
+	far_mmi.material_override = piece_mat
+	far_mmi.visible = false
+	add_child(far_mmi)
+	var skm := MultiMesh.new()
+	skm.transform_format = MultiMesh.TRANSFORM_3D
+	skm.use_colors = true
+	skm.mesh = box
+	sky_far_mmi.multimesh = skm
+	sky_far_mmi.material_override = piece_mat
+	sky_far_mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	sky_far_mmi.visible = false
+	add_child(sky_far_mmi)
 	var sm := MultiMesh.new()
 	sm.transform_format = MultiMesh.TRANSFORM_3D
 	sm.use_colors = true
@@ -61,9 +83,15 @@ func _ready() -> void:
 
 
 # G3 칸 모양·재질 [불투명, 반투명 (알파 = 인스턴스 색 a)]·조각 색
-func set_look(mesh: Mesh, materials: Array, colors: Dictionary) -> void:
+func set_look(mesh: Mesh, materials: Array, colors: Dictionary, lod_mesh: Mesh = null) -> void:
 	cells_mmi.multimesh.mesh = mesh
+	# W39: 칸 모양이 낮은 모양보다 훨씬 무거울 때만 낮은 모양을 씀 (먼 칸·하늘 블록)
+	low_mesh = lod_mesh if lod_mesh != null and CellLod.worth(mesh_tris(mesh), mesh_tris(lod_mesh)) else null
 	sky_mmi.multimesh.mesh = mesh
+	far_mmi.multimesh.mesh = low_mesh if low_mesh != null else mesh
+	sky_far_mmi.multimesh.mesh = far_mmi.multimesh.mesh
+	far_mmi.visible = low_mesh != null
+	sky_far_mmi.visible = low_mesh != null
 	set_proxy(proxy_wanted(mesh))
 	mats = materials
 	piece_colors = colors
@@ -88,6 +116,7 @@ static func proxy_wanted(mesh: Mesh) -> bool:
 func set_proxy(on: bool) -> void:
 	proxy_on = on
 	cells_mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if on else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	far_mmi.cast_shadow = cells_mmi.cast_shadow
 	if not on:
 		caster_mmi.multimesh.visible_instance_count = 0
 	_key_st = null # 상자 자리를 다음 갱신에서 다시 씀
@@ -120,15 +149,21 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 	# 칸 자리·색은 스냅샷 값 그대로 → 같은 스냅샷·같은 시점·같은 색 표·하늘 블록 없음 (반짝임이 시간에 따라 바뀜) 이면 지난 프레임 그대로 (W15)
 	var sky_on := sky_blend > 0.5
 	if is_same(st, _key_st) and sky_on == _key_sky and is_same(piece_colors, _key_cols) and my_id == _key_me:
-		if not _sky_base.is_empty(): # 하늘 블록 반짝임만 (색 = 하얗게 섞은 모양 색 + 시간에 따라 하늘빛)
+		if not _sky_base.is_empty() or not _sky_base_far.is_empty(): # 하늘 블록 반짝임만 (색 = 하얗게 섞은 모양 색 + 시간에 따라 하늘빛)
 			var g := Color(0.12, 0.22, 0.3, 0.0) * (0.55 + 0.45 * sin(Time.get_ticks_msec() / 500.0))
 			var km0 := sky_mmi.multimesh
 			for i in _sky_base.size():
 				var c: Color = _sky_base[i] + g
 				c.a = _sky_a
 				km0.set_instance_color(i, c)
+			var kf0 := sky_far_mmi.multimesh
+			for i in _sky_base_far.size():
+				var c: Color = _sky_base_far[i] + g
+				c.a = _sky_a
+				kf0.set_instance_color(i, c)
 		return
 	_sky_base.clear()
+	_sky_base_far.clear()
 	_key_st = st
 	_key_sky = sky_on
 	_key_cols = piece_colors
@@ -142,15 +177,20 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 	var km := sky_mmi.multimesh
 	var sm := shadow_mmi.multimesh
 	var qm := caster_mmi.multimesh
+	var fm := far_mmi.multimesh
 	if mm.instance_count < n:
 		qm.instance_count = n + 8
+		fm.instance_count = n + 8
+		sky_far_mmi.multimesh.instance_count = n + 8
 		mm.instance_count = n + 8
 		km.instance_count = n + 8
 		sm.instance_count = n + 8
 	var alpha := WC.PIECE_SKY_ALPHA if sky_blend > 0.5 else 1.0
 	if mats != null:
 		cells_mmi.material_override = mats[1] if alpha < 1.0 else mats[0]
+		far_mmi.material_override = cells_mmi.material_override
 		sky_mmi.material_override = mats[1]
+		sky_far_mmi.material_override = mats[1]
 	else:
 		piece_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if alpha < 1.0 else BaseMaterial3D.TRANSPARENCY_DISABLED
 	# 하늘 계단 블록: 모양 색을 하얗게 섞고 하늘색으로 은은히 빛남 (render.js skyGlow), 살짝 비침 (하늘 시점이면 더)
@@ -158,6 +198,13 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 	var glow := 0.55 + 0.45 * sin(Time.get_ticks_msec() / 500.0)
 	var sky_glow := Color(0.12, 0.22, 0.3, 0.0) * glow
 	var q := 0
+	var f := 0 # 먼 칸 (낮은 모양)
+	var qf := 0 # 먼 하늘 블록
+	var skf := sky_far_mmi.multimesh
+	var qi := 0 # 그림자 상자 번호 (가까운 칸·먼 칸 모두)
+	var cam: Dictionary = CellLod.camera_of(self) if low_mesh != null else {}
+	var cam_pos: Vector3 = cam.get("pos", Vector3.ZERO)
+	var cam_fov: float = float(cam.get("fov", 70.0))
 	var warned: bool = not me.is_empty() and me.alive and me.get("danger") != null
 	var k := 0
 	var s := 0
@@ -173,19 +220,37 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 			_sky_a = sky_a
 		var mine: bool = str(pc.get("phase", "")) == "control" and pc.get("controller") != null and my_id != null and int(pc.controller) == int(my_id)
 		var show_shadow: bool = pc.get("shadowVisible", false) or mine
+		var far_piece := false # W39: 조각 가운데 (첫 칸) 이 멀면 조각 통째로 낮은 모양 (한 조각 안에서 모양이 섞이지 않게). 내가 조종하는 조각은 늘 높은 모양
+		if not cam.is_empty() and not mine and pc.cells.size() > 0:
+			var c0: Array = pc.cells[0]
+			far_piece = CellLod.far_state(cam_pos.distance_to(Co.gxyz(c0[0] + 0.5, c0[1] + 0.5, c0[2] + 0.5)), cam_fov, false)
 		for i in pc.cells.size():
 			var c: Array = pc.cells[i]
 			var xf := Transform3D(Basis(), Co.gxyz(c[0] + 0.5, c[1] + 0.5, c[2] + 0.5))
 			if sky:
-				km.set_instance_transform(q, xf)
-				km.set_instance_color(q, col)
-				_sky_base.append(base)
-				q += 1
+				if far_piece:
+					skf.set_instance_transform(qf, xf)
+					skf.set_instance_color(qf, col)
+					_sky_base_far.append(base)
+					qf += 1
+				else:
+					km.set_instance_transform(q, xf)
+					km.set_instance_color(q, col)
+					_sky_base.append(base)
+					q += 1
+			elif far_piece:
+				fm.set_instance_transform(f, xf)
+				fm.set_instance_color(f, col)
+				if proxy_on:
+					qm.set_instance_transform(qi, xf)
+					qi += 1
+				f += 1
 			else:
 				mm.set_instance_transform(k, xf)
 				mm.set_instance_color(k, col)
 				if proxy_on:
-					qm.set_instance_transform(k, xf)
+					qm.set_instance_transform(qi, xf)
+					qi += 1
 				k += 1
 			if show_shadow and pc.has("shadow") and i < pc.shadow.size():
 				var sh: Array = pc.shadow[i]
@@ -202,8 +267,11 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 				sm.set_instance_color(s, sc)
 				s += 1
 	mm.visible_instance_count = k
-	qm.visible_instance_count = k if proxy_on else 0
+	fm.visible_instance_count = f
+	lod_far = f
+	qm.visible_instance_count = qi if proxy_on else 0
 	km.visible_instance_count = q
+	skf.visible_instance_count = qf
 	sm.visible_instance_count = s
 
 
@@ -213,4 +281,5 @@ var _key_sky := false
 var _key_cols = null
 var _key_me = null
 var _sky_base: Array[Color] = [] # 지난번 하늘 블록 칸마다 반짝임 전 색 (같은 스냅샷이면 반짝임만 다시)
+var _sky_base_far: Array[Color] = [] # 먼 하늘 블록 (낮은 모양) 도 같은 식
 var _sky_a := 1.0
