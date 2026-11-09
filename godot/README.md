@@ -18,6 +18,7 @@
 - 배포 묶음: `node godot/server/tools/package.mjs --godot <고도> --web-template <zip>` (또는 환경 변수 `GODOT_WEB_TEMPLATE`) — 웹 내보내기 동안만 `custom_template/release` 를 바꾸고 끝나면 (실패해도) 되돌림, 안 주면 공식 템플릿. GitHub Release (`.github/workflows/release.yml`) 는 **기본 끔** (변수 `WEB_TEMPLATE_BUILD=true` 또는 수동 실행 `web_template` 로 켬) — 켜면 `web-template` job 이 이 스크립트로 빌드해 넘김 (캐시 키 = 고도·emsdk 버전 + 스크립트 해시, 첫 빌드 40~60분, 실패하면 공식 템플릿으로 묶음). 버전은 환경 변수 `GODOT_VERSION`·`EM_VERSION` (기본 4.7.2·4.0.11)
 - 더 줄이려면: 클래스 단위 build profile (편집기 → 도구 → 엔진 컴파일 구성 → '프로젝트에서 찾기', 헤드리스 명령 없음 — 편집기에서 만들어 `build_profile=` 로). `optimize=size_extra`·`deprecated=no` 는 안 써 봄 (wasm 실행 속도·옛 API)
 - pck 쪼개기 (보류, W5): 첫 pck (br 6.04MB) 의 소리 녹음 중 판 효과음 262개 = br 2.12MB (10Mbps 약 1.7초), 타이틀·앰비언트 녹음 7테마 몫 = br 2.64MB (그 판에 쓰는 한 테마만 먼저면 약 2.3MB 더). 뒤로 미루려면 `audio/sfx.gd` 가 아직 없는 녹음을 건너뛰고 따로 받은 팩을 `ProjectSettings.load_resource_pack` 해야 함 (audio 는 W5 범위 밖)
+- W36 (2026-11-09) 다시 잼 (현재 브랜치 웹 내보내기, `web_first.cjs` 10Mbps 흉내·3번 중앙값): 공식 템플릿 첫 화면 **16.6초** (받는 양 14.49MB) → 직접 빌드 **15.1초** (12.97MB). 웹 폴더 36파일 (미리 압축 .br·.gz 포함): 날것 54.1 → 47.4MB, br 18.2 → 16.7MB, gz 21.9 → 19.9MB. 켜는 동안 한 번 멈춤 (wasm 컴파일·엔진 켜기, 소프트웨어 렌더) 약 4~5초는 두 템플릿이 같았음 (`web_lobby.cjs`, 잡음 큼) — 받는 시간만 줄고 컴파일 시간은 거의 그대로. 릴리스 워크플로에서는 **기본 끔** (`WEB_TEMPLATE_BUILD`, 첫 빌드가 길어서) — 이 환경은 W5 가 빌드해 둔 템플릿으로 재서 빌드 시간·`release.yml` 의 job 실행은 직접 못 확인함
 
 ## 렌더러 시험 (W12, 2026-11-03 — 결정은 재혁 PC 숫자 뒤)
 
