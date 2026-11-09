@@ -29,15 +29,15 @@ const CHARS = {
       return { m: back * below, u: p[2] };
     },
   },
-  // 탱크 붉은 천 (몸 색 칸 UV2.x): 등 뒤로 늘어진 긴 천 (몸 뒤 x < xs) + 목도리 꼬리
+  // 탱크 등 뒤로 늘어진 긴 천 (망토, 몸 뒤 x < -0.115 의 얇은 판): 기하로만 가름 (몸 색 칸 UV2.x 는 목도리 둘레뿐이라 천과 안 맞음)
   tank: {
-    parent: 'Spine2', prefix: 'Tabard', chains: 2, N: 3, ytop: 0.66, ybot: 0.08, a0: 0.0, a1: 0.5, axisU: 2,
-    sel: ({ p, mask, bone }) => {
-      if (mask < 0.5) return { m: 0, u: p[2] };
-      const xs = bone.Spine1[0];
-      const back = sstep(xs - 0.0, xs - 0.05, p[0]); // 뒤쪽
-      const lowish = sstep(0.72, 0.62, p[1]);
-      return { m: back * lowish, u: p[2] };
+    parent: 'Spine2', prefix: 'Tabard', chains: 2, N: 3, ytop: 0.64, ybot: 0.07, a0: 0.0, a1: 0.5, axisU: 2,
+    sel: ({ p }) => {
+      const back = sstep(-0.108, -0.122, p[0]);
+      const wide = sstep(0.24, 0.20, Math.abs(p[2]));
+      const hi = sstep(0.67, 0.62, p[1]);
+      const lo = sstep(0.03, 0.06, p[1]);
+      return { m: back * wide * hi * lo, u: p[2] };
     },
   },
   // 갈고리 코트 자락: 엉덩이 아래 코트 (다리 축에서 먼 것), 부츠 위
