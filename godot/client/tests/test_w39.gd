@@ -227,3 +227,37 @@ func test_grid_view_regroup() -> void:
 	gv.free()
 	CellLod.test_cam = null
 	WC.cell_lod = keep
+
+
+# ---------- 항목 4: 지형·배경 (world/scenery.gd) ----------
+
+const Scenery := preload("res://world/scenery.gd")
+
+
+func _shadow_casters(sc: Node3D) -> int:
+	var n := 0
+	for mi in sc.find_children("*", "MeshInstance3D", true, false):
+		if (mi as MeshInstance3D).cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON:
+			n += 1
+	return n
+
+
+# 필드 아래 섬·섬 뿌리 바위·먼 떠 있는 섬은 해 그림자를 안 던짐 (--no-scenery-opt 면 예전처럼 둘이 던짐)
+func test_scenery_shadow_off() -> void:
+	var keep: bool = WC.scenery_opt
+	for theme in ["castle", "mushroom"]:
+		var sc := Scenery.new()
+		WC.scenery_opt = true
+		sc._ready()
+		sc.build(theme, 14, 14, false)
+		var on_n := _shadow_casters(sc)
+		WC.scenery_opt = false
+		sc.free()
+		sc = Scenery.new()
+		sc._ready()
+		sc.build(theme, 14, 14, false)
+		var off_n := _shadow_casters(sc)
+		check(on_n == 0, "%s: 켬 — 그림자 던지는 배경 메시 0 (얻음 %d)" % [theme, on_n])
+		check(off_n == 2, "%s: 끔 — 예전처럼 섬·바위 메시 둘이 던짐 (얻음 %d)" % [theme, off_n])
+		sc.free()
+	WC.scenery_opt = keep

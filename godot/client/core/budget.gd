@@ -231,8 +231,8 @@ static func report(tree: SceneTree, label: String, cpu_frames := 0) -> Dictionar
 			_set_visible([n], true)
 			var inst := ""
 			if n is MultiMeshInstance3D and (n as MultiMeshInstance3D).multimesh != null:
-				inst = " 인스턴스 %d" % (n as MultiMeshInstance3D).multimesh.visible_instance_count
-			print("[구성분할] %s %s%s: 그리기 %d 삼각형 %d 그림자 %d" % [str(n.get_path()).right(70), n.get_class(), inst, maxi(0, a[0] - b[0]), maxi(0, a[4] - b[4]), maxi(0, a[5] - b[5])])
+				inst = " 개수 %d" % (n as MultiMeshInstance3D).multimesh.visible_instance_count
+			print("[구성나눔] %s %s%s: 그리기 %d 삼각형 %d 그림자 %d" % [str(n.get_path()).right(70), n.get_class(), inst, maxi(0, a[0] - b[0]), maxi(0, a[4] - b[4]), maxi(0, a[5] - b[5])])
 	await RenderingServer.frame_post_draw
 	# 3D 가 아닌 몫: 합과 전체의 차 (하늘 셰이더·후처리·SubViewport 합성 등) + 2D
 	var sum := [0, 0, 0, 0, 0, 0]

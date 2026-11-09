@@ -101,6 +101,8 @@ static var cell_lod_far: float = float(Opts.args()[Opts.args().find("--cell-lod-
 const BODY_BUILDS_PER_FRAME := 2
 # 확인용: --no-shadow-opt = W32 그림자 줄이기 전부 끔 (저폴리 캐스터·칸 상자 그림자·먼 몸 끄기·그림자 거리), --no-shadow-far = 먼 몸·시야 밖 몸 그림자 끄기만 끔 (전후 비교)
 static var shadow_opt: bool = not Opts.args().has("--no-shadow-opt")
+# W39 항목 4: 필드 아래 섬·섬 뿌리 바위·먼 떠 있는 섬은 해 그림자를 안 던짐 (필드 밖·아래라 그림자가 떨어질 곳이 구름 바다 (빛 안 받음) 뿐 — 그림자 패스 삼각형 3.4~4.2k). 끄기 --no-scenery-opt
+static var scenery_opt: bool = not Opts.args().has("--no-scenery-opt")
 static var batch_twin_on: bool = not Opts.args().has("--no-batch-twin") # W37: 코드 몸 그림자 쌍둥이만 끔 (전후 비교)
 # 지금 적용된 화질 (world/gfx.gd 가 정함, msaa_3d·mirror_scale 이 읽음). 테스트·헤드리스는 기본 high = 예전 값
 static var level := "high"

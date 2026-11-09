@@ -407,7 +407,7 @@ func build(id, w: int, d: int, low_gfx: bool, h: int = int(C.GRID_H)) -> void:
 	# 필드 아래 섬 (윗면은 바닥 판 바로 아래)
 	var isl := Parts.new()
 	island(isl, w, d, maxf(w, d) * 0.85, int(L.seed), L.cliff, at(cx, cy, -0.3))
-	_add(isl.mesh(), {"vertex_color": true}, self, true)
+	_add(isl.mesh(), {"vertex_color": true}, self, not WC.scenery_opt)
 	# 섬 뿌리 바위 + 먼 섬 (한 메시) + 빛나는 소품 (한 메시)
 	var solid := Parts.new()
 	var glow := Parts.new()
@@ -427,7 +427,7 @@ func build(id, w: int, d: int, low_gfx: bool, h: int = int(C.GRID_H)) -> void:
 		var dist := 6 + rand.next() * 55 if low_cloud else 45 + rand.next() * 40
 		var z: float = L.sea[1] + 1.5 - rand.next() * 2.5 if low_cloud else 16 + rand.next() * 14
 		cloud(sky, L.cloud, rand, cos(a) * dist, sin(a) * dist, z, 1 + rand.next() * 1.4)
-	_add(solid.mesh(), {"vertex_color": true, "outline": false}, drift, true)
+	_add(solid.mesh(), {"vertex_color": true, "outline": false}, drift, not WC.scenery_opt)
 	_add(glow.mesh(), {"vertex_color": true, "unshaded": true}, drift, false)
 	_add(sky.mesh(), {"vertex_color": true, "outline": false, "emissive": shade(L.cloud, float(L.get("cloudGlow", 0.45)))}, drift, false)
 	drift.position = Co.gxyz(cx, cy, 0)
