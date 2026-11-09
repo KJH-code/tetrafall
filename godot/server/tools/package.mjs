@@ -4,7 +4,11 @@
 //   --web-template: 웹 내보내기에 쓸 직접 빌드한 템플릿 zip (godot/client/tools/build-web-template.sh 결과, 없으면 환경 변수 GODOT_WEB_TEMPLATE).
 //                   내보내는 동안만 export_presets.cfg 웹 custom_template/release 를 그 경로로 바꾸고 끝나면 (실패해도) 되돌림. 안 주면 공식 템플릿
 //   --no-godot    : 내보내기 건너뛰고 이미 있는 godot/client/build/ 를 씀 (없는 건 빠짐 — 안내만)
-//   --cloudflared : cloudflared 를 GitHub 에서 받아 서버 옆에 넣음 (그러면 --online 이 설치 없이 됨)
+//   --cloudflared : cloudflared 를 GitHub 에서 받아 서버 옆에 넣음 (그러면 --online 이 설치 없이 됨). 못 받아도 (GitHub 일시 장애) 묶음은 cloudflared 없이 만들고
+//                   경고 + README.txt '직접 설치' 안내 + dist/release-notes.md (릴리스 노트에 덧붙임). 막으려면 --require-cloudflared
+//   --cloudflared-cache <폴더> : 받은 cloudflared 를 <폴더>/<플랫폼>/<이름> 에 보관 — 있으면 네트워크를 안 씀 (환경 변수 CLOUDFLARED_CACHE). 최신이 아니라 정한 태그면 CLOUDFLARED_TAG
+//   --cloudflared-budget <초>  : cloudflared 받기 전체(모든 플랫폼) 시간 상한, 기본 600 (한 번 시도 최대 60초, 3번까지, 간격 2·4초)
+//   --require-cloudflared      : cloudflared 를 못 받으면 묶기를 실패로 (기본은 경고하고 계속)
 //   --out <폴더>  : 기본 dist/
 // 결과: dist/tetrafall-win-x64/ (+ .zip), dist/tetrafall-linux-x64/ (+ .zip)
 //   Tetrafall.Server(.exe)   서버 (자기 완결형 한 파일)
@@ -102,7 +106,7 @@ export const TARGETS = {
   },
 };
 
-export function readme(t) {
+export function readme(t, { cloudflared = true } = {}) {
   const win = t.rid.startsWith('win');
   const ext = win ? 'bat' : 'sh';
   const pc = path.basename(t.client[0]);
@@ -111,7 +115,13 @@ export function readme(t) {
     '',
     `같은 Wi-Fi 친구와:  start-lan.${ext} 를 켜고, 창에 뜬 "다른 PC에서: http://…" 주소를 친구에게`,
     `인터넷 친구와:      start-online.${ext} 를 켜고, 창에 뜬 https://….trycloudflare.com 주소를 친구에게 (클립보드에 복사돼 있음)`,
-    '                    cloudflared 가 이 폴더에 없으면: winget install --id Cloudflare.cloudflared',
+    ...(cloudflared
+      ? ['                    cloudflared 가 이 폴더에 없으면: ' + (win ? 'winget install --id Cloudflare.cloudflared' : 'https://github.com/cloudflare/cloudflared/releases 에서 받아 이 폴더에 cloudflared 로')]
+      : [
+          '                    ※ 이 묶음에는 cloudflared 가 안 들어 있음 (만들 때 GitHub 에서 못 받음). 먼저 직접 설치:',
+          '                      ' + (win ? 'winget install --id Cloudflare.cloudflared' : 'https://github.com/cloudflare/cloudflared/releases 에서 받아 이 폴더에 cloudflared 로 (chmod +x)'),
+          '                      같은 Wi-Fi (start-lan) 는 상관없이 됨',
+        ]),
     '',
     `나(서버 PC)는:      ${pc} 를 켜면 이 PC 서버에 바로 붙음 (아니면 브라우저로 http://localhost:3000)`,
     '친구는:             받은 주소를 크롬·엣지로 열기 (설치 없음). 방 코드는 대기실 "링크 복사"',
@@ -309,28 +319,77 @@ export function precompress(dir) {
   return sum;
 }
 
-async function download(url, to) {
-  console.log(`받는 중: ${url}`);
-  // 네트워크가 한 번 끊겨도 긴 묶기가 통째로 죽지 않게 (Actions 에서 'fetch failed' 가 난 적 있음) 몇 번 다시 시도
+// cloudflared 받기 (W36 2026-11-09): v0.1.13 배포가 GitHub 504 가 이어져 실패 → ① 캐시 ② 몇 번 시도해도 안 되면 그 플랫폼 zip 은 cloudflared 없이 ③ 전체 시간 상한.
+export const DL_TRIES = 3;
+export const DL_ATTEMPT_MS = 60_000;
+export const DL_BUDGET_SEC = 600;
+export function cloudflaredUrl(t, tag = process.env.CLOUDFLARED_TAG || '') {
+  const u = t.cloudflared.url;
+  return tag ? u.replace('/releases/latest/download/', `/releases/download/${tag}/`) : u;
+}
+// 한 파일 받기. 시도마다 timeout (남은 예산 안에서), 실패하면 2·4초 쉬고 다시. 못 받으면 throw. 받는 도중 끊긴 반쪽 파일은 남기지 않음
+export async function download(url, to, { fetchFn = fetch, tries = DL_TRIES, attemptMs = DL_ATTEMPT_MS, deadline = Infinity, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), log = console.log } = {}) {
+  log(`받는 중: ${url}`);
   let last;
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < tries; i++) {
+    const left = deadline - Date.now();
+    if (left <= 0) throw last ?? new Error('시간 상한(예산)을 넘음');
     try {
-      const res = await fetch(url);
+      const res = await fetchFn(url, { signal: AbortSignal.timeout(Math.min(attemptMs, left)) });
       if (!res.ok) throw new Error(`${url} → ${res.status}`);
-      fs.writeFileSync(to, Buffer.from(await res.arrayBuffer()));
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (!buf.length) throw new Error(`${url} → 빈 응답`);
+      fs.writeFileSync(to, buf);
       fs.chmodSync(to, 0o755);
       return;
     } catch (e) {
       last = e;
-      console.log(`  받기 실패 (${i + 1}/4): ${e.message}${e.cause ? ' · ' + e.cause.message : ''}`);
-      await new Promise((r) => setTimeout(r, 2000 * 2 ** i));
+      log(`  받기 실패 (${i + 1}/${tries}): ${e.message}${e.cause ? ' · ' + e.cause.message : ''}`);
+      if (i < tries - 1) await sleep(Math.min(2000 * 2 ** i, Math.max(0, deadline - Date.now())));
     }
   }
   throw last;
 }
 
+// 플랫폼 하나의 cloudflared 를 dest 에 놓음. 돌려줌 { ok, from: 'cache'|'net'|null, error }. 캐시 폴더에 있으면 네트워크 안 씀, 받으면 캐시에 보관.
+// 못 받아도 throw 안 함 (required 일 때만) — 호출쪽이 경고하고 계속
+export async function fetchCloudflared(t, dest, o = {}) {
+  const { cache = null, required = false, ...dl } = o;
+  const log = dl.log ?? console.log;
+  const cached = cache ? path.join(cache, t.rid, t.cloudflared.name) : null;
+  if (cached && fs.existsSync(cached) && fs.statSync(cached).size > 0) {
+    fs.copyFileSync(cached, dest);
+    fs.chmodSync(dest, 0o755);
+    log(`cloudflared 캐시 사용 (${t.rid}): ${cached}`);
+    return { ok: true, from: 'cache', error: null };
+  }
+  try {
+    await download(cloudflaredUrl(t), dest, dl);
+  } catch (e) {
+    fs.rmSync(dest, { force: true });
+    if (required) throw e;
+    return { ok: false, from: null, error: e.message };
+  }
+  if (cached) {
+    fs.mkdirSync(path.dirname(cached), { recursive: true });
+    fs.copyFileSync(dest, cached);
+  }
+  return { ok: true, from: 'net', error: null };
+}
+
+// 릴리스 노트에 덧붙일 글 (cloudflared 를 못 넣은 플랫폼이 있을 때만, 아니면 빈 글)
+export function releaseNotes(missingCloudflared) {
+  if (!missingCloudflared.length) return '';
+  return [
+    '### cloudflared 안내',
+    `이번 묶음의 ${missingCloudflared.join(', ')} 에는 cloudflared 가 들어 있지 않습니다 (빌드 때 GitHub 에서 받지 못함).`,
+    '인터넷 친구와 하려면 직접 설치: Windows `winget install --id Cloudflare.cloudflared`, Linux 는 https://github.com/cloudflare/cloudflared/releases 에서 받아 서버 옆에 `cloudflared` 로 두기. 같은 Wi-Fi (start-lan) 는 영향 없음.',
+    '',
+  ].join('\n');
+}
+
 export function parseArgs(argv) {
-  const o = { targets: ['win', 'linux'], out: path.join(root, 'dist'), godot: process.env.GODOT || null, exportGodot: true, cloudflared: false, webTemplate: process.env.GODOT_WEB_TEMPLATE || null };
+  const o = { targets: ['win', 'linux'], out: path.join(root, 'dist'), godot: process.env.GODOT || null, exportGodot: true, cloudflared: false, webTemplate: process.env.GODOT_WEB_TEMPLATE || null, cloudflaredCache: process.env.CLOUDFLARED_CACHE ? path.resolve(process.env.CLOUDFLARED_CACHE) : null, cloudflaredBudgetSec: DL_BUDGET_SEC, requireCloudflared: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--godot') o.godot = argv[++i];
@@ -339,11 +398,15 @@ export function parseArgs(argv) {
     else if (a === '--no-godot') o.exportGodot = false;
     else if (a === '--cloudflared') o.cloudflared = true;
     else if (a === '--web-template') o.webTemplate = argv[++i];
+    else if (a === '--cloudflared-cache') o.cloudflaredCache = path.resolve(argv[++i]);
+    else if (a === '--cloudflared-budget') o.cloudflaredBudgetSec = Number(argv[++i]);
+    else if (a === '--require-cloudflared') o.requireCloudflared = true;
     else throw new Error(`모르는 옵션: ${a}`);
   }
   for (const t of o.targets) if (!TARGETS[t]) throw new Error(`모르는 대상: ${t} (win, linux)`);
   if (o.exportGodot && !o.godot) throw new Error('고도 실행 파일을 --godot 또는 GODOT 로 알려 주세요 (이미 내보냈으면 --no-godot)');
   if (o.webTemplate) o.webTemplate = path.resolve(o.webTemplate);
+  if (!(o.cloudflaredBudgetSec > 0)) throw new Error('--cloudflared-budget 은 0 보다 큰 초');
   return o;
 }
 
@@ -366,6 +429,8 @@ async function main() {
   }
   fs.mkdirSync(o.out, { recursive: true });
   const missing = [];
+  const missingCf = [];
+  const cfDeadline = Date.now() + o.cloudflaredBudgetSec * 1000;
   for (const name of o.targets) {
     const t = TARGETS[name];
     const dir = path.join(o.out, `tetrafall-${t.rid}`);
@@ -386,12 +451,25 @@ async function main() {
       else missing.push(`${name}: PC 클라 (${c})`);
     }
     for (const [file, text] of Object.entries(t.scripts)) fs.writeFileSync(path.join(dir, file), text, { mode: 0o755 });
-    fs.writeFileSync(path.join(dir, 'README.txt'), readme(t));
-    if (o.cloudflared) await download(t.cloudflared.url, path.join(dir, t.cloudflared.name));
+    let hasCf = false;
+    if (o.cloudflared) {
+      const r = await fetchCloudflared(t, path.join(dir, t.cloudflared.name), { cache: o.cloudflaredCache, required: o.requireCloudflared, deadline: cfDeadline });
+      hasCf = r.ok;
+      if (!r.ok) {
+        missingCf.push(name);
+        const msg = `cloudflared 를 못 넣음 (${name}): ${r.error} — 이 묶음은 cloudflared 없이 만듦 (README.txt 에 직접 설치 안내)`;
+        console.log(process.env.GITHUB_ACTIONS ? `::warning title=cloudflared 받기 실패 (${name})::${msg}` : `경고: ${msg}`);
+      }
+    }
+    fs.writeFileSync(path.join(dir, 'README.txt'), readme(t, { cloudflared: hasCf || !o.cloudflared }));
     const zip = `${dir}.zip`;
     const n = writeZip(dir, zip);
     console.log(`묶음: ${path.relative(root, zip)} (파일 ${n}개, ${(fs.statSync(zip).size / 1e6).toFixed(1)}MB)`);
   }
+  // 릴리스 노트에 덧붙일 글 (워크플로가 있으면 body_path 로 씀) + Actions 요약
+  const notes = releaseNotes(missingCf);
+  fs.writeFileSync(path.join(o.out, 'release-notes.md'), notes);
+  if (notes && process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `\n${notes}\n`);
   if (missing.length) console.log(`\n빠진 것 (고도로 내보낸 뒤 다시):\n  ${missing.join('\n  ')}`);
 }
 

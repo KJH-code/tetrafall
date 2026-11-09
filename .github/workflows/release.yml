@@ -6,6 +6,10 @@
 # 빌드해 artifact 로 package 에 넘김. 캐시 키 = 고도·emsdk 버전 + 스크립트 해시 → 두 번째부터는 빌드 건너뜀 (첫 빌드 40~60분).
 # 캐시는 그 브랜치와 기본 브랜치 (main) 것만 보임 — 새 브랜치의 [release ...] 첫 실행은 main 에 캐시가 없으면 다시 빌드.
 # 템플릿 빌드가 실패하면 (continue-on-error) package 는 공식 템플릿으로 묶음 — 릴리스가 템플릿 때문에 막히지 않게
+# 켜기/끄기 (W36): 기본은 끔 (공식 템플릿 — 첫 빌드가 150분 job 이라 릴리스가 너무 길어짐). 켜려면
+#   ① 저장소 변수 WEB_TEMPLATE_BUILD = true (Settings > Secrets and variables > Actions > Variables, 이후 모든 릴리스) 또는
+#   ② 'Run workflow' 의 web_template 체크 (그 실행만)
+# 한 번 빌드해 캐시에 들어가면 (키 = 고도·emsdk 버전 + 스크립트 해시) 다음부터는 캐시만 받아 몇 분 → 그때 변수를 켜 두면 됨. 끄면 web-template job 은 건너뜀 (skipped)
 name: release
 
 on:
@@ -21,6 +25,10 @@ on:
         description: '미리보기(prerelease)로'
         type: boolean
         default: true
+      web_template:
+        description: '작은 웹 템플릿 직접 빌드 (캐시 없으면 40~60분 더 — 기본 끔 = 공식 템플릿)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -32,7 +40,8 @@ env:
 
 jobs:
   web-template:
-    if: github.event_name != 'push' || startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '[release ')
+    # 끔이 기본: 변수 WEB_TEMPLATE_BUILD == 'true' 이거나 수동 실행에서 web_template 을 켰을 때만
+    if: ${{ (vars.WEB_TEMPLATE_BUILD == 'true' || inputs.web_template == true) && (github.event_name != 'push' || startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '[release ')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 150
     continue-on-error: true
@@ -159,12 +168,47 @@ jobs:
             echo "GODOT_WEB_TEMPLATE=$f" >> "$GITHUB_ENV"
             echo "웹 템플릿: 직접 빌드 ($(du -h "$f" | cut -f1))" | tee -a "$GITHUB_STEP_SUMMARY"
           else
-            echo "웹 템플릿: 공식 (직접 빌드 job 결과 ${{ needs.web-template.result }})" | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "웹 템플릿: 공식 (직접 빌드 job 결과 ${{ needs.web-template.result }} — skipped 는 끔이 기본, 켜기: 변수 WEB_TEMPLATE_BUILD=true)" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
 
+      # cloudflared (W36): 태그별로 캐시. GitHub 가 504 일 때도 릴리스가 나가게 — 최신 태그 조회가 실패하면 예전 캐시 (restore-keys), 그것도 없으면
+      # package.mjs 가 cloudflared 없이 묶고 경고 + README.txt/릴리스 노트에 '직접 설치' 안내 (--require-cloudflared 를 붙이면 반대로 실패시킴)
+      - name: cloudflared 최신 태그
+        id: cf
+        continue-on-error: true
+        run: |
+          t=$(curl -sI --max-time 20 --retry 3 --retry-all-errors https://github.com/cloudflare/cloudflared/releases/latest | tr -d '\r' | awk -F/ 'tolower($1) ~ /^location:/ {print $NF}')
+          echo "tag=${t:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "cloudflared 최신 태그: ${t:-모름 (캐시 있으면 그것을 씀)}"
+
+      - name: cloudflared 캐시 (태그가 같으면 받기 생략, 새 태그면 받은 뒤 저장)
+        if: steps.cf.outputs.tag != 'unknown'
+        uses: actions/cache@v4
+        with:
+          path: ~/cloudflared-cache
+          key: cloudflared-${{ steps.cf.outputs.tag }}
+
+      - name: cloudflared 캐시 (태그를 못 알아냈을 때 — 가장 최근 것만 꺼냄, 저장 안 함)
+        if: steps.cf.outputs.tag == 'unknown'
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/cloudflared-cache
+          key: cloudflared-unknown
+          restore-keys: cloudflared-
+
       - name: 묶기
+        timeout-minutes: 40
+        env:
+          # 태그를 알면 latest 대신 그 태그를 받아서 캐시 키와 받은 파일이 어긋나지 않게
+          CLOUDFLARED_TAG: ${{ steps.cf.outputs.tag != 'unknown' && steps.cf.outputs.tag || '' }}
         # GODOT_WEB_TEMPLATE 가 있으면 package.mjs 가 웹 내보내기에 그 템플릿을 씀 (없으면 공식)
-        run: node godot/server/tools/package.mjs --godot "$GODOT" --targets win,linux --cloudflared
+        run: node godot/server/tools/package.mjs --godot "$GODOT" --targets win,linux --cloudflared --cloudflared-cache "$HOME/cloudflared-cache" --cloudflared-budget 600
+
+      - name: 릴리스 노트 덧붙임
+        id: notes
+        run: |
+          # package.mjs 가 cloudflared 를 못 넣은 플랫폼이 있을 때만 dist/release-notes.md 에 글을 씀
+          if [ -s dist/release-notes.md ]; then echo "body=dist/release-notes.md" >> "$GITHUB_OUTPUT"; fi
 
       - name: Release
         uses: softprops/action-gh-release@v2
@@ -173,6 +217,7 @@ jobs:
           target_commitish: ${{ github.sha }}
           prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || steps.tag.outputs.pre == 'true' }}
           generate_release_notes: true
+          body_path: ${{ steps.notes.outputs.body }}
           files: |
             dist/tetrafall-win-x64.zip
             dist/tetrafall-linux-x64.zip

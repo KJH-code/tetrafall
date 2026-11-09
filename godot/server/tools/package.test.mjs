@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { TARGETS, readme, gpuPrefLines, GPU_PREF_KEY, GPU_PREF_VALUE } from './package.mjs';
+import os from 'node:os';
+import { TARGETS, readme, gpuPrefLines, GPU_PREF_KEY, GPU_PREF_VALUE, download, fetchCloudflared, cloudflaredUrl, releaseNotes, parseArgs } from './package.mjs';
 
 const bat = (name) => TARGETS.win.scripts[name];
 
@@ -113,4 +114,114 @@ test('GPU 등록 exe 이름 = 묶음 윈도우 클라 = 내보내기 프리셋',
       assert.ok(i > run && l.includes(`"%~dp0${exe}"`), `${name}: 클라는 등록 다음, 같은 exe`);
     }
   }
+});
+
+// ---- 배포 안정성 (W36 2026-11-09): cloudflared 캐시·실패해도 계속·시간 상한 ----
+const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tf-pkg-'));
+const quiet = { log() {}, sleep: async () => {} };
+const okRes = (body = 'BIN') => ({ ok: true, status: 200, arrayBuffer: async () => Buffer.from(body) });
+
+test('download: 일시 장애는 다시 시도해서 받음, 시도마다 timeout 신호', async () => {
+  const d = tmp();
+  let n = 0;
+  const signals = [];
+  const fetchFn = async (url, init) => {
+    signals.push(init.signal);
+    return ++n < 3 ? { ok: false, status: 504 } : okRes('hello');
+  };
+  await download('http://x/a', path.join(d, 'a'), { ...quiet, fetchFn });
+  assert.equal(n, 3);
+  assert.equal(fs.readFileSync(path.join(d, 'a'), 'utf8'), 'hello');
+  assert.ok(signals.every((s) => s instanceof AbortSignal), '각 시도에 AbortSignal.timeout');
+});
+
+test('download: 계속 실패하면 throw, 반쪽 파일을 안 남김. 시도 횟수 상한', async () => {
+  const d = tmp();
+  let n = 0;
+  await assert.rejects(download('http://x/a', path.join(d, 'a'), { ...quiet, fetchFn: async () => (n++, { ok: false, status: 504 }) }), /504/);
+  assert.equal(n, 3);
+  assert.equal(fs.existsSync(path.join(d, 'a')), false);
+});
+
+test('download: 시간 예산이 지나면 더 시도 안 함', async () => {
+  const d = tmp();
+  let n = 0;
+  await assert.rejects(download('http://x/a', path.join(d, 'a'), { ...quiet, deadline: Date.now() - 1, fetchFn: async () => (n++, okRes()) }));
+  assert.equal(n, 0);
+});
+
+test('cloudflared 못 받아도 throw 안 함 (경고용 결과), required 면 throw', async () => {
+  const d = tmp();
+  const fetchFn = async () => ({ ok: false, status: 504 });
+  const r = await fetchCloudflared(TARGETS.linux, path.join(d, 'cloudflared'), { ...quiet, fetchFn });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /504/);
+  assert.equal(fs.existsSync(path.join(d, 'cloudflared')), false);
+  await assert.rejects(fetchCloudflared(TARGETS.linux, path.join(d, 'cloudflared'), { ...quiet, fetchFn, required: true }), /504/);
+});
+
+test('cloudflared 캐시: 받으면 보관, 다음엔 네트워크를 안 씀 (플랫폼별 폴더)', async () => {
+  const d = tmp();
+  const cache = path.join(d, 'cache');
+  let n = 0;
+  const fetchFn = async () => (n++, okRes('EXE'));
+  const a = await fetchCloudflared(TARGETS.win, path.join(d, 'cloudflared.exe'), { ...quiet, fetchFn, cache });
+  assert.deepEqual([a.ok, a.from, n], [true, 'net', 1]);
+  assert.equal(fs.readFileSync(path.join(cache, 'win-x64', 'cloudflared.exe'), 'utf8'), 'EXE');
+  fs.rmSync(path.join(d, 'cloudflared.exe'));
+  const b = await fetchCloudflared(TARGETS.win, path.join(d, 'cloudflared.exe'), { ...quiet, fetchFn: async () => { throw new Error('네트워크를 쓰면 안 됨'); }, cache });
+  assert.deepEqual([b.ok, b.from], [true, 'cache']);
+  assert.equal(fs.readFileSync(path.join(d, 'cloudflared.exe'), 'utf8'), 'EXE');
+  assert.equal(fs.existsSync(path.join(cache, 'linux-x64')), false, '다른 플랫폼 칸은 안 건드림');
+});
+
+test('cloudflared 캐시에 빈 파일이면 무시하고 다시 받음', async () => {
+  const d = tmp();
+  const cache = path.join(d, 'cache');
+  fs.mkdirSync(path.join(cache, 'linux-x64'), { recursive: true });
+  fs.writeFileSync(path.join(cache, 'linux-x64', 'cloudflared'), '');
+  const r = await fetchCloudflared(TARGETS.linux, path.join(d, 'cf'), { ...quiet, fetchFn: async () => okRes('NEW'), cache });
+  assert.equal(r.from, 'net');
+  assert.equal(fs.readFileSync(path.join(cache, 'linux-x64', 'cloudflared'), 'utf8'), 'NEW');
+});
+
+test('cloudflared 태그를 정하면 latest 대신 그 태그 주소', () => {
+  assert.match(cloudflaredUrl(TARGETS.linux, ''), /releases\/latest\/download\/cloudflared-linux-amd64$/);
+  assert.equal(cloudflaredUrl(TARGETS.win, '2025.1.0'), 'https://github.com/cloudflare/cloudflared/releases/download/2025.1.0/cloudflared-windows-amd64.exe');
+});
+
+test('README: cloudflared 가 빠지면 직접 설치 안내가 맨 앞에 (플랫폼별), 있으면 예전 한 줄', () => {
+  const winMiss = readme(TARGETS.win, { cloudflared: false });
+  assert.match(winMiss, /cloudflared 가 안 들어 있음/);
+  assert.match(winMiss, /winget install --id Cloudflare\.cloudflared/);
+  assert.match(readme(TARGETS.linux, { cloudflared: false }), /releases 에서 받아 이 폴더에 cloudflared 로 \(chmod \+x\)/);
+  assert.doesNotMatch(readme(TARGETS.win), /안 들어 있음/);
+  assert.match(readme(TARGETS.win), /cloudflared 가 이 폴더에 없으면: winget/);
+});
+
+test('릴리스 노트: 빠진 플랫폼이 있을 때만 글, 없으면 빈 글', () => {
+  assert.equal(releaseNotes([]), '');
+  const n = releaseNotes(['linux']);
+  assert.match(n, /linux/);
+  assert.match(n, /winget install/);
+});
+
+test('옵션: 캐시·예산·필수 (기본은 캐시 없음·600초·필수 아님)', () => {
+  const base = ['--no-godot'];
+  const d = parseArgs(base);
+  assert.deepEqual([d.cloudflaredCache, d.cloudflaredBudgetSec, d.requireCloudflared], [null, 600, false]);
+  const o = parseArgs([...base, '--cloudflared-cache', 'c', '--cloudflared-budget', '90', '--require-cloudflared']);
+  assert.deepEqual([o.cloudflaredCache, o.cloudflaredBudgetSec, o.requireCloudflared], [path.resolve('c'), 90, true]);
+  assert.throws(() => parseArgs([...base, '--cloudflared-budget', '0']));
+});
+
+// ---- release.yml (W36): 작은 웹 템플릿 켜기/끄기 스위치 ----
+test('release.yml: 웹 템플릿 job 은 변수·수동 입력으로만 켜짐 (기본 끔), package 는 건너뛰어도 돎', () => {
+  const y = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../../../.github/workflows/release.yml'), 'utf8');
+  const job = y.slice(y.indexOf('  web-template:'), y.indexOf('  package:'));
+  assert.match(job, /vars\.WEB_TEMPLATE_BUILD == 'true'/);
+  assert.match(job, /inputs\.web_template == true/);
+  assert.match(y, /web_template:\n\s+description:[^\n]*\n\s+type: boolean\n\s+default: false/);
+  assert.match(y, /needs: web-template\n\s+#[^\n]*\n\s+if: \$\{\{ !cancelled\(\)/);
+  assert.match(y, /--cloudflared-cache/);
 });
