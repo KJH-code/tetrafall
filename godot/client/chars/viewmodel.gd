@@ -323,6 +323,8 @@ func _follow(_dt: float) -> void:
 		sw = _bard_hold(src.cur_act, src.t)
 	elif hold and cannon != null:
 		sw = _cannon_hold(src.cur_act, cannon)
+	elif not hold:
+		sw = act_swing(src.cur_act)
 	_swing(sw[0], sw[1], sw[5])
 	# 걷기 흔들림 (걸음 위상 따라 위아래·좌우), 가만히 있으면 숨쉬기
 	var amp := minf(1.0, src.hs / C.MOVE_SPEED)
@@ -398,6 +400,21 @@ static func shield_push(act) -> Array:
 	var m: Dictionary = K.VM_SHIELD_PUSH[act.move]
 	var u := _e(clampf(float(act.u), 0.0, 1.0))
 	for i in 5:
+		var w: float = m.W[i]
+		var st: float = m.S[i]
+		out[i] = w * u if act.phase == "wind" else (w + (st - w) * u if act.phase == "strike" else st * (1.0 - u))
+	return out
+
+
+# W38 1인칭 평타·스킬 휘두름 보정 (가산, 구조 그대로): 3인칭 클립과 같은 서버 단계 (wind u → 당김, strike u → 휘두름·뻗음, rec u → 되돌림) 에 맞춰
+# 화면 전체 (어깨 기준점) 를 윈드업 때 뒤·아래로 당기고 타격 때 앞으로 밀며 휩쓸고, 회복 때 여운 있게 돌아오게. 동작 → 스타일 config VM_ACT_STYLE, 스타일 값 VM_ACT_SWING (W·S = [yaw, pitch, kick, dx, lift, roll])
+static func act_swing(act) -> Array:
+	var out := [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+	if act == null or act.phase == "broken" or not C.VM_ACT_STYLE.has(act.move):
+		return out
+	var m: Dictionary = C.VM_ACT_SWING[C.VM_ACT_STYLE[act.move]]
+	var u := _e(clampf(float(act.u), 0.0, 1.0))
+	for i in 6:
 		var w: float = m.W[i]
 		var st: float = m.S[i]
 		out[i] = w * u if act.phase == "wind" else (w + (st - w) * u if act.phase == "strike" else st * (1.0 - u))

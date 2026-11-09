@@ -660,6 +660,14 @@ const VM_POS = {"default": [0.0, -0.16, -0.26], "tank": [0.0, -0.2, -0.26], "bar
 const VM_SIZE = {"tank": 0.7, "builder": 0.58, "bard": 0.7, "cannon": 0.7, "berserker": 0.75, "hunter": 0.8, "hook": 0.72}
 const VM_ROLL = {"bard": 0.25}
 const VM_ARM_LOW = 1.0
+# W38 1인칭 휘두름 보정 (viewmodel.gd act_swing): 스타일별 [yaw, pitch, kick (뒤로 +), dx, lift, roll] 의 준비 끝 (W)·타격 끝 (S) 값. yaw + = 왼쪽으로 휩쓰는 쪽
+const VM_ACT_SWING = {
+	"slash": {"W": [-0.16, 0.06, 0.5, 0.02, 0.0, -0.1], "S": [0.2, -0.05, -0.3, -0.02, -0.01, 0.12]},
+	"chop": {"W": [0.0, 0.2, 0.4, 0.0, 0.03, 0.0], "S": [0.0, -0.22, -0.3, 0.0, -0.03, 0.0]},
+	"thrust": {"W": [-0.05, 0.02, 0.9, 0.0, -0.01, -0.05], "S": [0.04, 0.0, -0.8, 0.0, 0.0, 0.05]},
+	"shot": {"W": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "S": [0.0, 0.14, 0.8, 0.0, 0.02, 0.0]},
+}
+const VM_ACT_STYLE = {"주먹": "slash", "베기": "slash", "반대 베기": "slash", "갈고리 휘두르기": "slash", "방패 올려치기": "chop", "방패 내려치기": "chop", "갈고리 내려치기": "chop", "내려 베기": "chop", "tankSlam": "chop", "hookSlam": "chop", "찔러 넣기": "thrust", "어깨 박치기": "thrust", "hookThrow": "thrust", "탕": "shot", "hunterAim": "shot"}
 const VM_ARM_OUT = 0.5
 const VM_NARROW = 1.5
 const VM_ELBOW_ADD = 1.35

@@ -395,3 +395,33 @@ func test_w38_taunt_victory_clips() -> void:
 			X.preview_clip("idle", 0.0)
 			check(end_pos.distance_to(_bone_pos(sk, "mixamorig_LeftHand")) < 0.06, "%s 도발 클립 끝이 쉬는 자세로 돌아옴 (%.3f)" % [ch, end_pos.distance_to(_bone_pos(sk, "mixamorig_LeftHand"))])
 		b.free()
+
+
+# W38 1인칭 휘두름 보정: 서버 단계 (wind·strike·rec) 에 곡선이 이어지고 (준비 끝 = W, 타격 끝 = S, 회복 끝 = 0), 표에 없는 동작·끊김은 0
+func test_w38_viewmodel_act_swing() -> void:
+	var VM := preload("res://chars/viewmodel.gd")
+	var K2 := C
+	var act := func(mv: String, ph: String, u: float) -> Dictionary: return {"id": 1, "move": mv, "phase": ph, "u": u, "air": false}
+	check(VM.act_swing(null) == [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "동작 없음 = 0")
+	check(VM.act_swing(act.call("찌르기", "strike", 0.5)) == [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "표에 없는 동작 (닌자 등) = 0")
+	check(VM.act_swing(act.call("베기", "broken", 0.5)) == [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "끊김 = 0")
+	for mv in K2.VM_ACT_STYLE:
+		var st: Dictionary = K2.VM_ACT_SWING[K2.VM_ACT_STYLE[mv]]
+		var w: Array = VM.act_swing(act.call(mv, "wind", 1.0))
+		var s0: Array = VM.act_swing(act.call(mv, "strike", 0.0))
+		var s1: Array = VM.act_swing(act.call(mv, "strike", 1.0))
+		var r0: Array = VM.act_swing(act.call(mv, "rec", 0.0))
+		var r1: Array = VM.act_swing(act.call(mv, "rec", 1.0))
+		for i in 6:
+			check(absf(w[i] - st.W[i]) < 1e-5 and absf(s0[i] - st.W[i]) < 1e-5, "%s 준비 끝 = 타격 시작 = W[%d]" % [mv, i])
+			check(absf(s1[i] - st.S[i]) < 1e-5 and absf(r0[i] - st.S[i]) < 1e-5, "%s 타격 끝 = 회복 시작 = S[%d]" % [mv, i])
+			check(absf(r1[i]) < 1e-5, "%s 회복 끝 = 0" % mv)
+	# 모든 스타일 동작은 서버 평타·스킬 이름 (config BASIC_ATTACKS 의 name 또는 스킬 이름) 이어야 함
+	var names := {}
+	for chn in ["tank", "hunter", "hook"]:
+		for a in C.BASIC_ATTACKS[chn].chain + C.BASIC_ATTACKS[chn].air:
+			names[a.name] = true
+			if a.has("loaded"):
+				names[a.loaded.name] = true
+	for mv in K2.VM_ACT_STYLE:
+		check(names.has(mv) or ["tankSlam", "hookSlam", "hookThrow", "hunterAim"].has(mv), "VM_ACT_STYLE %s 는 실제 동작 이름" % mv)
