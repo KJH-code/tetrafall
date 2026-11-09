@@ -25,15 +25,15 @@ func _run() -> void:
 	var chains := 0
 	for e in bodies:
 		chains += e[0].ext.cloths.size()
-	print("TF 몸 8, 천 사슬 ", chains)
-	for mode in ["둘 다", "천 끔", "가산 층 끔", "둘 다 끔"]:
+	print("TF 몸 8, 천 줄 ", chains)
+	for mode in ["둘 다", "천 끔", "가산 끔", "둘 다 끔"]:
 		var saved := []
 		for e in bodies:
 			var X = e[0].ext
 			saved.append(X.cloths.duplicate())
 			if mode == "천 끔" or mode == "둘 다 끔":
 				X.cloths.clear()
-			X.extra_off = mode == "가산 층 끔" or mode == "둘 다 끔"
+			X.extra_off = mode == "가산 끔" or mode == "둘 다 끔"
 		var t0 := Time.get_ticks_usec()
 		for f in n:
 			var st: Dictionary = T._st({"walking": true, "hs": 4.5, "walk": f * 0.2, "t": f / 60.0})
