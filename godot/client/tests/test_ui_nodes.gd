@@ -309,3 +309,27 @@ func test_body_font_where_js_system_ui() -> void:
 	check(bf.call(p.hint) and bf.call(p.checks.values()[0]), "연습: Tab 안내·체크 = 본문")
 	p.free()
 	Store.my_id = keep
+
+
+# W35: 대기실 큰 캐릭터 칸이 클릭을 삼키지 않음 → 누르면 스킬 카드 열림, 카드를 누르거나 카드 밖을 누르면 닫힘
+func test_lobby_stage_click_opens_skill_card() -> void:
+	var l = _make("res://ui/lobby.gd")
+	check(l.stage_box.mouse_filter == Control.MOUSE_FILTER_PASS, "큰 캐릭터 칸은 클릭을 위로 올림 (PASS)")
+	var node: Node = l.stage_box
+	while node != l.stage and node != null:
+		check(node == l.stage_box or (node is Control and (node as Control).mouse_filter != Control.MOUSE_FILTER_STOP), "stage 까지 길에 클릭을 삼키는 칸 없음 (%s)" % node.name)
+		node = node.get_parent()
+	for c in l.stage_box.get_children():
+		if c != l.skill_btn and c != l.stage_3d: # stage_3d 는 _ready 에서 IGNORE (트리 밖이라 안 불림 — ui_check 가 실제로 확인)
+			check((c as Control).mouse_filter == Control.MOUSE_FILTER_IGNORE, "큰 캐릭터 칸 자식은 클릭 무시 (%s)" % c.name)
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	l.stage.gui_input.emit(press)
+	check(l.skill_card.visible and l.skill_btn.text == "스킬 닫기", "큰 캐릭터 클릭 → 스킬 카드 열림")
+	l.skill_card.gui_input.emit(press)
+	check(not l.skill_card.visible and l.skill_btn.text == "스킬 보기", "카드를 누르면 닫힘")
+	l._toggle_card(true)
+	l._toggle_card()
+	check(not l.skill_card.visible, "토글 다시 → 닫힘")
+	l.free()

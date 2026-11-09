@@ -130,8 +130,11 @@ func _ready() -> void:
 	stage_box.color = Color(0, 0, 0, 0) # 그리기 전엔 빈칸 (ColorRect 기본 흰색이 하얀 네모로 보이던 것)
 	stage_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	stage_box.custom_minimum_size = Vector2(60, 120)
+	stage_box.mouse_filter = Control.MOUSE_FILTER_PASS # W35: 클릭을 삼키지 않고 stage 로 올려 스킬 카드를 엶 (예전 STOP 이 삼킴)
 	sv.add_child(stage_box)
-	stage_box.add_child(S.radial_glow(Vector2(0.5, 0.88), 0.6, 0.42)) # JS #char-stage 아래 둥근 빛 (g 42% → 투명 60%)
+	var glow := S.radial_glow(Vector2(0.5, 0.88), 0.6, 0.42) # JS #char-stage 아래 둥근 빛 (g 42% → 투명 60%)
+	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stage_box.add_child(glow)
 	stage_img = _tex_rect()
 	stage_box.add_child(stage_img)
 	stage_3d = load("res://ui/char_stage.gd").new()
@@ -194,6 +197,9 @@ func _ready() -> void:
 	close.size_flags_vertical = Control.SIZE_SHRINK_END
 	skill_card.add_child(close)
 	skill_card.visible = false
+	skill_card.gui_input.connect(func(e): # W35: 카드를 다시 누르면 닫힘 (글 스크롤은 휠이라 그대로)
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			_toggle_card(false))
 	pick_holder.add_child(skill_card)
 
 	# 이름 · 색
@@ -311,6 +317,15 @@ func _add(c: Control, gap_key: String) -> void:
 	gaps[gap_key] = sp
 	sp.visible = c.visible
 	c.visibility_changed.connect(func(): sp.visible = c.visible)
+
+
+# W35: 카드가 열린 채 카드 밖 (이름 칸·시작 등) 을 누르면 닫음. 그 클릭은 막지 않고 그대로 통과
+func _input(e: InputEvent) -> void:
+	if skill_card == null or not skill_card.visible or not (e is InputEventMouseButton) or not e.pressed:
+		return
+	var p := get_global_mouse_position()
+	if not skill_card.get_global_rect().has_point(p):
+		_toggle_card(false)
 
 
 func _toggle_card(on = null) -> void:
