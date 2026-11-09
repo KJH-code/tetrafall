@@ -26,6 +26,9 @@
   0.22,
   3.0
  ],
+ "attach": [
+  {"glb": "res://assets/models/ext/hunter_rifle.glb", "joint": "hand_R", "pos": [0, 0, 0], "rot": [0, 0, 40], "scale": 1.0213, "vm": true, "third": false}
+ ],
  "vm_snap": [
   "elbow"
  ],

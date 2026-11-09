@@ -205,3 +205,32 @@ func test_dash_wrist() -> void:
 			check(absf(diff - want) < 2.0, "%s 대시 손목 보정 %.1f도 (설정 %.1f)" % [ch, diff, want])
 			check(ang > 20.0, "%s 대시에서 손뼈가 돌아감 (%.0f)" % [ch, ang])
 		b.free()
+
+
+# ---- 4. 사냥꾼 1인칭 소총 ----
+func test_hunter_vm_rifle() -> void:
+	var was: bool = Body.use_ext
+	Body.use_ext = true
+	var tw = Body.new()
+	tw.build("hunter", Color(0.2, 0.5, 1.0), true) # 판 몸 (3인칭): 소총이 몸 메시에 있으니 따로 안 붙임
+	var vm = Body.new()
+	vm.build("hunter", Color(0.2, 0.5, 1.0), false) # 1인칭 쌍둥이
+	Body.use_ext = was
+	var n3 := 0
+	for ba in tw.find_children("*", "BoneAttachment3D", true, false):
+		n3 += ba.find_children("*", "MeshInstance3D", true, false).size()
+	check(n3 == 0, "판 몸에는 소총 소품 없음 (몸에 있음) — %d" % n3)
+	var rifles := []
+	for ba in vm.find_children("*", "BoneAttachment3D", true, false):
+		for mi in ba.find_children("*", "MeshInstance3D", true, false):
+			rifles.append(mi)
+	check(rifles.size() == 1, "1인칭 쌍둥이에 소총 하나 — %d" % rifles.size())
+	if rifles.size() == 1:
+		var m: Mesh = (rifles[0] as MeshInstance3D).mesh
+		var tris: int = (m.surface_get_arrays(0)[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
+		check(tris >= 300 and tris <= 900, "소총 삼각형 300~900 (%d)" % tris)
+		var bb: AABB = m.get_aabb()
+		check(bb.size.length() > 0.25 and bb.size.length() < 0.7, "소총 길이 0.25~0.7 m (%.2f)" % bb.size.length())
+		check(not (rifles[0] as MeshInstance3D).cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON, "1인칭 소총은 그림자 없음")
+	tw.free()
+	vm.free()
