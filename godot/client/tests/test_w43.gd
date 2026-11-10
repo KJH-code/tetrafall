@@ -475,3 +475,47 @@ func test_fade_applied_in_body() -> void:
 			_step(X, _st())
 			check(absf(X.fade_len - K.EXT_FADE_ACT_OUT_S) < 1e-6, "%s 공격 끝 페이드 길게 %f" % [ch, X.fade_len])
 		b.free()
+
+
+# ---------- 1인칭 팔 클립 곡선 (안전한 방식) ----------
+
+func test_vm_clip_arm_weights_table() -> void:
+	check(K.VM_CLIP_ARM > 0.0 and K.VM_CLIP_ARM <= 1.0, "전체 배율 켜짐")
+	for ch in CHARS:
+		var kk: Array = K.VM_CLIP_ARM_K.get(ch, [])
+		check(kk.size() == 2 and float(kk[0]) >= 0.0 and float(kk[0]) <= 0.3 and float(kk[1]) >= 0.0 and float(kk[1]) <= 0.3, "%s 어깨·팔꿈치 비율 0~0.3" % ch)
+
+
+# 쌍둥이 팔: 팔꿈치는 클립 쪽으로 조금 돌지만 손의 전역 회전 (쥔 무기 방향) 은 그대로
+func test_vm_clip_arm_keeps_hand_orientation() -> void:
+	var moves := {"ninja": "찌르기", "tank": "주먹", "hunter": "베기", "hook": "갈고리 휘두르기"}
+	for ch in CHARS:
+		var a = _body(ch) # 3인칭 몸 (클립)
+		var was: bool = Body.use_ext
+		Body.use_ext = true
+		var tw = Body.new()
+		tw.build(ch, Color(0.2, 0.5, 1.0), false) # 1인칭 쌍둥이 모양 (합치지 않음)
+		Body.use_ext = was
+		if a.ext == null or tw.ext == null:
+			a.free()
+			tw.free()
+			continue
+		var st := _st({"act": {"id": 1, "move": moves[ch], "phase": "strike", "u": 0.6, "air": false}})
+		for i in 12:
+			_step(a.ext, st)
+		check(not a.ext.arm_delta.is_empty(), "%s 클립 차이 기록" % ch)
+		tw.ext.src_ext = a.ext
+		tw.ext.clip_arm_k = 0.0
+		tw.ext.sync()
+		var hr0 := _gq(tw.ext.sk, "mixamorig_RightHand")
+		var hl0 := _gq(tw.ext.sk, "mixamorig_LeftHand")
+		var er0 := _gq(tw.ext.sk, "mixamorig_RightForeArm")
+		var el0 := _gq(tw.ext.sk, "mixamorig_LeftForeArm")
+		tw.ext.clip_arm_k = 1.0
+		tw.ext.sync()
+		var dh := maxf(rad_to_deg(hr0.angle_to(_gq(tw.ext.sk, "mixamorig_RightHand"))), rad_to_deg(hl0.angle_to(_gq(tw.ext.sk, "mixamorig_LeftHand"))))
+		var de := maxf(rad_to_deg(er0.angle_to(_gq(tw.ext.sk, "mixamorig_RightForeArm"))), rad_to_deg(el0.angle_to(_gq(tw.ext.sk, "mixamorig_LeftForeArm"))))
+		check(dh < 1.0, "%s 손 전역 회전이 그대로 (%f°)" % [ch, dh])
+		check(de > 0.5 and de < 45.0, "%s 팔꿈치는 돎 (한계 안) (%f°)" % [ch, de])
+		a.free()
+		tw.free()

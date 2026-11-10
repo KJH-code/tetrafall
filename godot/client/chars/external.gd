@@ -1651,14 +1651,30 @@ class Ext extends Node3D:
 			if bi >= 0:
 				sk.set_bone_pose_scale(bi, sk.get_bone_pose_scale(bi) * float(vs[bn]))
 
-	# W40 1인칭 팔: 3인칭 몸의 공격·스킬 클립이 코드 자세에서 벗어난 만큼 (팔 뼈 지역 회전 차이) 을 clip_arm_k 비율로 쌍둥이 팔에 더함.
-	# 쌍둥이 어깨는 viewmodel 이 손을 화면 아래로 가져오느라 따로 돌려 놓았으니 전부 더하면 넘치므로 가산 비율로만 섞음
+	# W40 1인칭 팔: 3인칭 몸의 공격·스킬 클립이 코드 자세에서 벗어난 만큼 (팔 뼈 지역 회전 차이) 을 쌍둥이 팔에 더함.
+	# W43 안전한 방식: 손 뼈 차이는 안 받고 어깨·팔꿈치만 캐릭터별 비율 (VM_CLIP_ARM_K) 로 섞은 뒤, 손의 전역 회전이 그대로이도록 손 지역 회전을 되돌림 → 쥔 소총·갈고리·방패 방향이 안 변함
+	# (W40: 손까지 섞으면 소총·갈고리를 쥔 팔이 솟고 왼손이 세로로 섰음). 새 전역 = sh·qs · el·qe · hand′ = sh · el · hand  ⇒  hand′ = qe⁻¹ · el⁻¹ · qs⁻¹ · el · hand
 	func _vm_clip_arms() -> void:
 		if clip_arm_k <= 0.0 or src_ext == null or not is_instance_valid(src_ext):
 			return
-		for bi in src_ext.arm_delta:
-			var d: Quaternion = src_ext.arm_delta[bi]
-			sk.set_bone_pose_rotation(bi, sk.get_bone_pose_rotation(bi) * Quaternion.IDENTITY.slerp(d, clip_arm_k))
+		var kk: Array = K_.VM_CLIP_ARM_K.get(str(body.get("char_id")), [0.0, 0.0])
+		for side in ["R", "L"]:
+			var sb: int = int(info.map.get("shoulder_" + side, -1))
+			var eb: int = int(info.map.get("elbow_" + side, -1))
+			var hb: int = int(info.map.get("hand_" + side, -1))
+			if sb < 0 or eb < 0 or hb < 0:
+				continue
+			var ds: Quaternion = src_ext.arm_delta.get(sb, Quaternion.IDENTITY)
+			var de: Quaternion = src_ext.arm_delta.get(eb, Quaternion.IDENTITY)
+			var qs := Quaternion.IDENTITY.slerp(ds, clip_arm_k * float(kk[0]))
+			var qe := Quaternion.IDENTITY.slerp(de, clip_arm_k * float(kk[1]))
+			if qs == Quaternion.IDENTITY and qe == Quaternion.IDENTITY:
+				continue
+			var el: Quaternion = sk.get_bone_pose_rotation(eb)
+			var hd: Quaternion = sk.get_bone_pose_rotation(hb)
+			sk.set_bone_pose_rotation(sb, sk.get_bone_pose_rotation(sb) * qs)
+			sk.set_bone_pose_rotation(eb, el * qe)
+			sk.set_bone_pose_rotation(hb, (qe.inverse() * el.inverse() * qs.inverse() * el * hd).normalized())
 
 	# W34 공중 대시 손목: 공용 슈퍼맨 자세 (figure_pose SUPERMAN) 는 팔을 쭉 뻗는 것만 정해서 손에 쥔 무기 (해머·소총) 가 모델 쥐는 각 그대로 팔과 직각으로 솟음 —
 	# cfg.dash_wrist {관절 이름 (hand_R 등): [x, y, z 도]} 만큼 손뼈를 그 뼈의 지역 축으로 더 돌려 무기가 팔 쪽 (앞) 으로 눕게. 코드 몸은 그대로
