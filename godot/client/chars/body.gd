@@ -1705,12 +1705,58 @@ func snapshot(material: Material) -> Node3D:
 	var holder := Node3D.new()
 	var f := frame.duplicate() as Node3D
 	holder.add_child(f)
+	var tinted := []
 	for mi in f.find_children("*", "MeshInstance3D", true, false):
 		var g := mi as MeshInstance3D
 		g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		if g.layers != 0:
 			g.material_override = material
+			tinted.append(g)
+	holder.set_meta("tinted", tinted) # W42 snapshot_fill 이 재질만 다시 입힐 메시
 	return holder
+
+
+# W42 잔상 풀: snapshot 으로 만든 복제본 (holder) 을 다시 씀 — 노드·메시를 새로 안 만들고 지금 자세 (노드 변환·보임·뼈 자세) 만 베끼고 재질만 갈아 끼움.
+# 구조가 안 맞으면 (몸이 다시 지어짐 등) false — 부른 쪽이 holder 를 버리고 snapshot 으로 새로 만듦
+func snapshot_fill(holder: Node3D, material: Material) -> bool:
+	if holder.get_child_count() != 1 or not holder.has_meta("tinted"):
+		return false
+	if not copy_pose(frame, holder.get_child(0)):
+		return false
+	for g in holder.get_meta("tinted"):
+		(g as MeshInstance3D).material_override = material
+	return true
+
+
+# src 의 자세를 snapshot 복제본 dst 에 베낌. 복제 (duplicate) 는 장면에서 만든 모델을 처음 모양대로 다시 지어 (떼어 둔 LOD 메시도 도로 달림, 안 쓰는 노드는 그대로 둠),
+# 그래서 자식은 인덱스가 아니라 이름 (내부 노드의 '@' 는 복제에서 '_') 으로 찾음. src 쪽 노드를 dst 에서 못 찾으면 false
+static func copy_pose(src: Node, dst: Node) -> bool:
+	var stack := [[src, dst]]
+	while not stack.is_empty():
+		var pr: Array = stack.pop_back()
+		var a: Node = pr[0]
+		var b: Node = pr[1]
+		if a is Node3D:
+			if not (b is Node3D):
+				return false
+			(b as Node3D).transform = (a as Node3D).transform
+			(b as Node3D).visible = (a as Node3D).visible
+			if a is Skeleton3D:
+				var sa := a as Skeleton3D
+				var sb := b as Skeleton3D
+				var bc := sa.get_bone_count()
+				if sb == null or bc != sb.get_bone_count():
+					return false
+				for i in bc:
+					sb.set_bone_pose(i, sa.get_bone_pose(i))
+		for c in a.get_children(true):
+			var d: Node = b.get_node_or_null(NodePath(str(c.name).replace("@", "_")))
+			if d == null:
+				if c is PhysicalBoneSimulator3D or c is PhysicalBone3D or not (c is Node3D):
+					continue # 래그돌 물리 뼈·도우미는 복제본에 없어도 됨 (그리지 않는 노드)
+				return false
+			stack.append([c, d])
+	return true
 
 
 # 살아 움직이는 몸 위에 한 겹 더 (GeometryInstance3D.material_overlay — 묶은 몸도 같은 뼈로). null 이면 끔

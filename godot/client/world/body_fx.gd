@@ -9,6 +9,9 @@ const Co := preload("res://core/coords.gd")
 const WC := preload("res://world/world_config.gd")
 const HM := preload("res://world/hunt_marks.gd")
 const FXC := preload("res://fx/fx_config.gd")
+const Prof := preload("res://core/prof.gd")
+const Opts := preload("res://core/opts.gd")
+const Gate := preload("res://core/entry_gate.gd")
 
 var effects = null # G5 fx/effects.gd
 var marks = null # world/marks.gd (trail·block_pulse·neighbors)
@@ -114,11 +117,85 @@ func fall_ghost(who, out) -> void:
 	var p := Store.player(who)
 	var a0 := float(FXC.KO_FX.fall_ghost_alpha)
 	var mat := _flat(bodies.player_color(p, Store.state) if not p.is_empty() else 0xffffff, a0, true)
-	var g: Node3D = n.body.snapshot(mat)
-	add_child(g)
+	var g: Node3D = _snap(n.body, mat)
 	g.global_transform = n.body.global_transform
 	var o := Vector2(float(out.x), float(out.y)) if out is Dictionary else Vector2.ZERO
 	ghosts.append({"node": g, "mat": mat, "t0": now_ms(), "ms": float(FXC.KO_FX.fall_ghost_ms), "a0": a0, "p0": g.position, "vel": Co.gxyz(o.x * 3.0, o.y * 3.0, -4.0)})
+
+
+# W42 잔상 풀: 베기·낙사 잔상은 매번 몸 복제 (모델을 처음 모양대로 다시 지음, 몸 종류에 따라 0.5~2.6ms + 지울 때 비용) 였음 → 끝난 잔상 몸을 숨겨 두었다가
+# 같은 종류 몸의 잔상이 필요하면 자세·재질만 갈아 끼워 다시 씀 (chars/body.gd snapshot_fill). --no-ghost-pool 이면 예전처럼 매번 복제. 모습은 같음 (복제본 그대로 재사용)
+const SNAP_POOL_MAX := 10 # 몸 종류마다 쉬는 잔상 몸 상한 (닌자 베기 = 잔상 한 줄이 FADE/MS ≈ 8 개 동시)
+var _snap_pool := {} # 몸 종류 (char_id + 외부/코드) → [쉬는 holder]
+var snap_stats := [0, 0] # 확인용 [풀에서 재사용, 새로 복제]
+
+
+static func _snap_key(body) -> String:
+	return "%s|%s" % [body.char_id, "x" if body.get("ext") != null else "c"]
+
+
+func _snap(body, mat: Material) -> Node3D:
+	if not Opts.args().has("--no-ghost-pool"):
+		var key := _snap_key(body)
+		var list: Array = _snap_pool.get(key, [])
+		while not list.is_empty():
+			var h: Node3D = list.pop_back()
+			if is_instance_valid(h) and body.snapshot_fill(h, mat):
+				h.visible = true
+				snap_stats[0] += 1
+				return h
+			if is_instance_valid(h):
+				h.queue_free() # 구조가 안 맞음 — 버리고 새로
+	return _snap_new(body, mat)
+
+
+func _snap_new(body, mat: Material) -> Node3D:
+	var g: Node3D = body.snapshot(mat)
+	g.set_meta("snap_key", _snap_key(body))
+	add_child(g)
+	snap_stats[1] += 1
+	return g
+
+
+func _snap_release(g: Node3D) -> void:
+	var key := str(g.get_meta("snap_key", ""))
+	if key == "" or Opts.args().has("--no-ghost-pool"):
+		g.queue_free()
+		return
+	var list: Array = _snap_pool.get(key, [])
+	if list.size() >= SNAP_POOL_MAX:
+		g.queue_free()
+		return
+	g.visible = false
+	list.append(g)
+	_snap_pool[key] = list
+
+
+# 몸 종류마다 쉬는 잔상 몸을 하나 미리 지어 둠 (첫 베기·낙사 때 복제 2~3ms 를 안 치르게). 프레임에 하나, 입장 쪼개기 문이 허락할 때만
+func _prewarm_pool(st: Dictionary) -> void:
+	if bodies == null or Opts.args().has("--no-ghost-pool"):
+		return
+	for p in st.get("players", []):
+		var n: Dictionary = bodies.nodes.get(int(p.id), {})
+		if n.is_empty() or not n.body.has_method("snapshot") or not n.body.is_inside_tree():
+			continue
+		var key := _snap_key(n.body)
+		var want := 2 # 낙사 잔상 몫
+		if str(n.body.char_id) == "ninja": # 순간 베기 잔상 줄: FADE_MS / MS 개가 동시에 떠 있음
+			want = mini(SNAP_POOL_MAX, int(ceil(C.BLINK_GHOST_FADE_MS / C.BLINK_GHOST_MS)) + 1)
+		if (_snap_pool.get(key, []) as Array).size() >= want or int(_pre_done.get(key, 0)) >= want:
+			continue
+		if not Gate.ok("fx.ghost"):
+			return
+		_pre_done[key] = int(_pre_done.get(key, 0)) + 1
+		var t0 := Gate.t()
+		var g := _snap_new(n.body, _flat(0xffffff, 0.4))
+		_snap_release(g)
+		Gate.done("fx.ghost", t0)
+		return
+
+
+var _pre_done := {} # 몸 종류 → 미리 지은 수
 
 
 func _shown(id):
@@ -261,6 +338,7 @@ func aura(id, ult: bool) -> void:
 func update(st: Dictionary, my_id, dt: float) -> void:
 	var now := now_ms()
 	var seen := {}
+	_prewarm_pool(st)
 	for p in st.get("players", []):
 		var id := int(p.id)
 		seen[id] = true
@@ -591,17 +669,20 @@ func _ghosts(st: Dictionary, now: float) -> void:
 			if n.is_empty() or not n.body.has_method("snapshot"):
 				continue
 			var p := Store.player(id)
+			var _tg := Prof.now()
 			var mat := _flat(bodies.player_color(p, st) if not p.is_empty() else 0xffffff, 0.4)
 			mat.no_depth_test = false
-			var g: Node3D = n.body.snapshot(mat)
-			add_child(g)
+			Prof.add("ghost ·material", _tg)
+			_tg = Prof.now()
+			var g: Node3D = _snap(n.body, mat)
 			g.global_transform = n.body.global_transform
+			Prof.add("ghost ·snapshot or pool", _tg)
 			ghosts.append({"node": g, "mat": mat, "t0": now})
 	for i in range(ghosts.size() - 1, -1, -1):
 		var gh: Dictionary = ghosts[i]
 		var u: float = (now - gh.t0) / float(gh.get("ms", C.BLINK_GHOST_FADE_MS))
 		if u >= 1:
-			gh.node.queue_free()
+			_snap_release(gh.node)
 			ghosts.remove_at(i)
 			continue
 		gh.mat.albedo_color.a = float(gh.get("a0", 0.4)) * (1 - u)

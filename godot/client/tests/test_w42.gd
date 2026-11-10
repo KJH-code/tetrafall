@@ -204,3 +204,99 @@ func test_hud_prebuild_cards() -> void:
 	hud.free()
 	Store.my_id = keep[0]
 	Store.room = keep[1]
+
+
+# 잔상 풀: snapshot 복제본에 지금 자세만 베끼면 새로 복제한 것과 같은 자세. 구조가 안 맞으면 false
+func test_snapshot_fill_matches_fresh() -> void:
+	var was := Body.use_ext
+	var mat := StandardMaterial3D.new()
+	var host := Node3D.new()
+	for spec in [["ninja", true], ["tank", true], ["bard", false], ["builder", false]]:
+		Body.use_ext = spec[1]
+		var b = Chars.make_body(spec[0], Color(0.8, 0.3, 0.3))
+		host.add_child(b)
+		for f in 20:
+			b.pose({"id": 1, "slot": 0, "char": spec[0], "alive": true, "yaw": 0.3, "x": 5.0 + f * 0.1, "y": 5.0, "z": 0.0, "damage": 0}, 1000.0 + f * 16.7)
+		var h: Node3D = b.snapshot(mat)
+		host.add_child(h)
+		for f in 25: # 자세가 달라지게
+			b.pose({"id": 1, "slot": 0, "char": spec[0], "alive": true, "yaw": 1.1, "x": 9.0 + f * 0.2, "y": 6.0, "z": 0.5, "damage": 40}, 3000.0 + f * 16.7)
+		var m2 := StandardMaterial3D.new()
+		check(b.snapshot_fill(h, m2), "%s snapshot_fill 성공" % spec[0])
+		var fresh: Node3D = b.snapshot(mat)
+		host.add_child(fresh)
+		var worst := 0.0
+		var worst_name := ""
+		var pairs := 0
+		var skel_bad := 0
+		var stack := [[fresh.get_child(0), h.get_child(0)]]
+		while not stack.is_empty():
+			var pr: Array = stack.pop_back()
+			var a: Node = pr[0]
+			var d: Node = pr[1]
+			if a is Node3D and d is Node3D and not (a is BoneAttachment3D): # (뼈에 붙은 노드는 뼈 갱신 때 따라옴 — 복제본은 아직 안 갱신)
+				pairs += 1
+				var ta: Transform3D = (a as Node3D).transform
+				var td: Transform3D = (d as Node3D).transform
+				var dv: float = (ta.origin - td.origin).length() + absf(ta.basis.x.x - td.basis.x.x) + absf(ta.basis.y.y - td.basis.y.y) + absf(ta.basis.z.z - td.basis.z.z) + absf(ta.basis.x.y - td.basis.x.y) + absf(ta.basis.y.z - td.basis.y.z) + absf(ta.basis.z.x - td.basis.z.x)
+				if dv > worst:
+					worst = dv
+					worst_name = "%s/%s" % [a.get_parent().name if a.get_parent() != null else "", a.name]
+				if a is Skeleton3D:
+					for i in (a as Skeleton3D).get_bone_count():
+						if not (a as Skeleton3D).get_bone_pose(i).is_equal_approx((d as Skeleton3D).get_bone_pose(i)):
+							skel_bad += 1
+			for c in a.get_children(true):
+				var cd: Node = d.get_node_or_null(NodePath(str(c.name).replace("@", "_")))
+				if cd != null:
+					stack.append([c, cd])
+		check(pairs > 10 and worst < 1e-4 and skel_bad == 0, "%s 풀로 채운 자세 = 새로 복제한 자세 (노드 %d, 최대 차 %.6f %s, 뼈 다름 %d)" % [spec[0], pairs, worst, worst_name, skel_bad])
+		var tinted: Array = h.get_meta("tinted")
+		check(not tinted.is_empty() and tinted.all(func(g): return (g as MeshInstance3D).material_override == m2), "%s 재질만 갈아 끼움" % spec[0])
+		# 구조가 안 맞는 holder (자식을 하나 지움) 는 거절
+		var broken: Node3D = b.snapshot(mat)
+		var skel: Node = broken.find_children("*", "MeshInstance3D", true, false)[0]
+		skel.get_parent().remove_child(skel)
+		skel.free()
+		check(not b.snapshot_fill(broken, mat), "%s 구조가 안 맞으면 false" % spec[0])
+		broken.free()
+		fresh.free()
+		h.free()
+		b.free()
+	Body.use_ext = was
+	host.free()
+
+
+# body_fx 풀: 끝난 잔상을 숨겨 두고 같은 종류 몸이면 다시 씀, 상한 넘으면 버림, --no-ghost-pool 이면 풀 안 씀
+func test_body_fx_ghost_pool_reuse() -> void:
+	var was := Body.use_ext
+	Body.use_ext = false
+	var fx = BodyFx.new()
+	var host := Node3D.new()
+	var b = Chars.make_body("builder", Color(0.3, 0.8, 0.3))
+	host.add_child(b)
+	var mat := StandardMaterial3D.new()
+	var g1: Node3D = fx._snap(b, mat)
+	check(fx.snap_stats == [0, 1] and g1.get_parent() == fx, "처음엔 새 복제 (풀 비어 있음)")
+	fx._snap_release(g1)
+	check(not g1.visible and (fx._snap_pool.values()[0] as Array).size() == 1, "끝난 잔상은 숨겨 풀에")
+	var g2: Node3D = fx._snap(b, mat)
+	check(g2 == g1 and g2.visible and fx.snap_stats == [1, 1], "같은 종류 몸이 다시 씀 (복제 안 함)")
+	# 상한
+	var many := []
+	for i in BodyFx.SNAP_POOL_MAX + 3:
+		many.append(fx._snap(b, mat))
+	for g in many:
+		fx._snap_release(g)
+	var kept: int = (fx._snap_pool.values()[0] as Array).size()
+	check(kept == BodyFx.SNAP_POOL_MAX, "풀은 상한 (%d) 까지만 (%d)" % [BodyFx.SNAP_POOL_MAX, kept])
+	fx._snap_release(g2)
+	# 몸 종류가 다르면 다른 풀
+	var b2 = Chars.make_body("bard", Color(0.3, 0.3, 0.8))
+	host.add_child(b2)
+	var before: int = fx.snap_stats[1]
+	var gb: Node3D = fx._snap(b2, mat)
+	check(fx.snap_stats[1] == before + 1 and gb.get_meta("snap_key") != g1.get_meta("snap_key"), "몸 종류마다 풀이 따로")
+	fx.free()
+	host.free()
+	Body.use_ext = was
