@@ -80,6 +80,10 @@ const EXT_HIT_CRIT_S := 0.5
 const EXT_ARMOR_BREAK_S := 0.45 # 탱크 방어구 깨짐: 방패 쥔 팔 반동 시간
 const EXT_ARMOR_BREAK_RAD := 0.5
 
+# W43 클립 크로스페이드 (초): 클립 바뀔 때 종류 (ext_clips.select 의 kind) 에 따라. 공격 들어갈 때는 칼같이 (EXT_CLIP_FADE_S), 나올 때·서기↔걷기·달리기·착지는 길게 — tools/clip_pops.gd 가 잰 자세 차이 (최대 70~120°) 가 0.1 초에 몰려 튀던 것
+const EXT_FADE_LOCO_S := 0.18 # 서기·걷기·달리기·착지 사이
+const EXT_FADE_ACT_OUT_S := 0.20 # 공격·스킬·도발·승리 끝 → 다른 클립
+const EXT_FADE_LAND_S := 0.14 # 점프·낙하 → 착지
 # W43 방향 이동 (스트레이프·후진): 몸은 조준 방향을 보고 이동은 따로라, 몸 기준 이동 방향에 맞춰 걷기·달리기 클립을 거꾸로 틀고 (뒤로 걸음) 골반을 이동 쪽으로 돌린 만큼 척추를 되돌림 (옆걸음).
 # 서버 이동·판정은 그대로 — 뼈 회전만.
 const EXT_DIR_MIN_SPEED := 0.9 # 이 속도 (m/s) 아래면 방향 안 따짐

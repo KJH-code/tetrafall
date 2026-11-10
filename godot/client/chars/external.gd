@@ -813,6 +813,7 @@ class Ext extends Node3D:
 	var turn_prev := 0.0
 	var turn_have := false
 	var fade_len := 0.1
+	var cur_kind := ""
 	var extra_off := false # 확인 도구 (tools/ext_cost.gd) 가 가산 층 비용을 떼어 잴 때
 	var arm_ids := {}
 	var arm_delta := {} # W40: 클립이 코드 자세에서 벗어난 팔 뼈 (뼈 번호 → Quaternion: base⁻¹ · 클립 결과), 공격·스킬 클립 중에만 — 1인칭 쌍둥이가 읽어 감
@@ -1179,8 +1180,9 @@ class Ext extends Node3D:
 		if ckey != cur_clip:
 			fade_from = last_layer.duplicate() if cw > 0.05 else {}
 			fade_t = 0.0 if not fade_from.is_empty() else 1.0
-			fade_len = K_.EXT_DIR_FADE_S if (cur_clip.trim_suffix("~r") == name) else K_.EXT_CLIP_FADE_S
+			fade_len = K_.EXT_DIR_FADE_S if (cur_clip.trim_suffix("~r") == name) else Clips_.fade_s(cur_kind, str(use.get("kind", "")))
 			cur_clip = ckey
+			cur_kind = str(use.get("kind", ""))
 		fade_t = minf(1.0, fade_t + dt / fade_len)
 		var data: Dictionary = clipset[name]
 		var an: Animation = data.anim
@@ -1762,6 +1764,7 @@ class Ext extends Node3D:
 	func _clip_release() -> void:
 		clip_dirty = false
 		cur_clip = ""
+		cur_kind = ""
 		last_layer.clear()
 		var rl: Array = info.rest_local
 		for bn in cbones:

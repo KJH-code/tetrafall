@@ -444,3 +444,34 @@ func test_weapon_droop_changes_hand_pose() -> void:
 	var q_on := _gq(X.sk, hand)
 	check(rad_to_deg(q_off.angle_to(q_on)) > 3.0, "달릴 때 해머 든 손이 처짐 (%f°)" % rad_to_deg(q_off.angle_to(q_on)))
 	b.free()
+
+
+# ---------- 클립 크로스페이드 (닌자 다듬기·공통) ----------
+
+func test_fade_lengths_by_kind() -> void:
+	check(Clips.fade_s("idle", "loco") == K.EXT_FADE_LOCO_S and Clips.fade_s("loco", "idle") == K.EXT_FADE_LOCO_S and Clips.fade_s("loco", "loco") == K.EXT_FADE_LOCO_S, "서기↔걷기·달리기 길게")
+	check(Clips.fade_s("fall", "land") == K.EXT_FADE_LAND_S, "낙하→착지")
+	check(Clips.fade_s("act", "idle") == K.EXT_FADE_ACT_OUT_S and Clips.fade_s("act", "loco") == K.EXT_FADE_ACT_OUT_S and Clips.fade_s("pose", "idle") == K.EXT_FADE_ACT_OUT_S, "공격·도발 끝은 길게")
+	check(Clips.fade_s("idle", "act") == K.EXT_CLIP_FADE_S and Clips.fade_s("loco", "act") == K.EXT_CLIP_FADE_S and Clips.fade_s("act", "act") == K.EXT_CLIP_FADE_S, "공격으로 들어갈 땐 짧게 (타격 순간 = 판정)")
+	check(K.EXT_CLIP_FADE_S < K.EXT_FADE_LAND_S and K.EXT_FADE_LAND_S < K.EXT_FADE_LOCO_S and K.EXT_FADE_LOCO_S < K.EXT_FADE_ACT_OUT_S + 1e-6, "길이 순서")
+
+
+# 실제 몸: 서기 → 달리기 때 페이드가 길고, 공격 시작은 짧으며 공격 끝은 길다. 4명 모두
+func test_fade_applied_in_body() -> void:
+	for ch in CHARS:
+		var b = _body(ch)
+		var X = b.ext
+		if X == null:
+			b.free()
+			continue
+		for i in 10:
+			_step(X, _st())
+		_step(X, _walk_st(1.0, 0.0, 1.1, true))
+		check(absf(X.fade_len - K.EXT_FADE_LOCO_S) < 1e-6 and X.cur_kind == "loco", "%s 서기→달리기 페이드 %f" % [ch, X.fade_len])
+		var mv: String = str((X.info.cfg.clips.moves as Dictionary).keys()[0])
+		_step(X, _st({"act": {"move": mv, "phase": "wind", "u": 0.2, "air": false, "id": 1}}))
+		if X.cur_kind == "act":
+			check(absf(X.fade_len - K.EXT_CLIP_FADE_S) < 1e-6, "%s 공격 시작 페이드 짧게 %f" % [ch, X.fade_len])
+			_step(X, _st())
+			check(absf(X.fade_len - K.EXT_FADE_ACT_OUT_S) < 1e-6, "%s 공격 끝 페이드 길게 %f" % [ch, X.fade_len])
+		b.free()
