@@ -59,6 +59,10 @@ var mode_sent := false
 
 
 func _ready() -> void:
+	if args.has("mat-first"):
+		var mfn: Node = load("res://core/mat_first.gd").new()
+		mfn.name = "MatFirst"
+		get_tree().root.add_child.call_deferred(mfn)
 	role = str(args.get("auto", "host"))
 	shot_at = str(args.get("shot-at", "game"))
 	start_ms = Net.now_ms()
@@ -373,6 +377,14 @@ func _process(_d: float) -> void:
 				var k := "%s%s" % [e[0].get_class(), (" " + str((e[0] as ShaderMaterial).shader.resource_path.get_file()) if e[0] is ShaderMaterial and (e[0] as ShaderMaterial).shader != null else "")]
 				kinds[k] = int(kinds.get(k, 0)) + 1
 			print("[재질 수] %d개 · %s" % [list.size(), str(kinds)])
+		if args.has("mat-first"): # W42: 판에서 처음 그려진 재질 모양 (미리 그리기가 못 덮은 후보) — core/mat_first.gd
+			var mf: Node = get_tree().root.find_child("MatFirst", true, false)
+			if mf != null:
+				print("[재질 처음] 미리 본 것 %d · 판에서 처음 %d" % [mf.pre.size(), mf.game.size()])
+				for l in mf.report():
+					print(l)
+				for k in mf.pre:
+					print("[미리 본] %.1fs | %s" % [mf.pre[k], k])
 		if args.has("sched-log"): # W41: 미리 하기 예산기가 한 일
 			var PS = load("res://world/prewarm_sched.gd")
 			print("[미리하기] 조각 %d · 일한 프레임 %d · 한 프레임 최대 %.1fms · 남은 %d · 끝난 %s" % [PS.main.pieces_run, PS.main.frames_busy, PS.main.worst_frame_ms, PS.main.pending(), str(PS.main.finished.map(func(f): return "%s %d조각 %.0fms" % [f[0], f[1], f[2]]))])

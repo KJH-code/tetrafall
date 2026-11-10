@@ -269,7 +269,7 @@ func test_warm_scan_collect() -> void:
 	check(WS.collect(root, done).is_empty(), "이미 한 재질은 다시 안 모음")
 	var host := Node3D.new()
 	var sp := WS.spawn(host, list, null)
-	check(sp.get_child_count() == list.size() * 2, "재질마다 보통 + MultiMesh 하나씩: %d" % sp.get_child_count())
+	check(sp.get_child_count() == list.size() * (1 + WS.MULTI_FLAGS.size()), "재질마다 보통 + MultiMesh 네 갈래 (W42: 색+custom·색·custom·없음): %d" % sp.get_child_count())
 	host.free()
 	root.free()
 

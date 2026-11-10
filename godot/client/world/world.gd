@@ -74,10 +74,11 @@ var _ext_warm_done := false # W30: 외부 몸 미리 그리기 끝
 var _prewarmed = null # 셰이더 미리 데운 테마 (G3.prewarm)
 var _sched_setup_done := false # W41 스케줄러에 메뉴 작업을 넣었음
 var _sched_prev_us := 0
-const WARM_SCAN_PER_PIECE := 2
+const WARM_SCAN_PER_PIECE := 3
 var _scan_done := {} # 미리 그린 재질 id
 var _scan_queue: Array = []
 var _ghost_warmed := false
+var _std_warmed := false # W42 표준 재질 모양 표를 미리 그릴 줄에 넣었음
 var _scan_root: Node3D = null
 var _scan_wait := 0
 var _pf_done := {} # 대기실에서 텍스처를 미리 요청한 캐릭터
@@ -95,6 +96,7 @@ const VIEWMODEL := "res://chars/viewmodel.gd"
 func _exit_tree() -> void:
 	# 끝낼 때 남은 미리 하기 작업을 놓음: 정적 스케줄러가 람다 (world·몸 데우기 잡을 붙잡음) 를 쥔 채로 엔진이 내려가면 힙이 깨져 종료 때 abort (W41 병합 검증: Linux 소프트웨어 렌더 실행이 rc=134)
 	PSched.main.clear()
+	WarmScan.clear_static()
 
 
 func _ready() -> void:
@@ -448,6 +450,9 @@ func _sched_tick(live: bool, st: Dictionary) -> void:
 	var ph := str(st.get("phase", "")) if live else ""
 	if live and ph == "lobby" and not Opts.args().has("--no-tex-prefetch"):
 		_lobby_prefetch(st)
+	if live and ph == "lobby" and not PSched.main.has("warm.skin") and not _skin_started and not Opts.args().has("--no-skin-warm") and not _no_sched():
+		_skin_started = true # W42 항목 5: 몸 종류마다 스킨 갈래 (반투명 유령화·무적, 잔상) 셰이더를 숨은 채 한 번 그림
+		PSched.main.add("warm.skin", 3, _warm_skin_step, 3.0, "lobby", 500.0)
 	var in_game := ph == "countdown" or ph == "playing" or ph == "over"
 	if in_game:
 		_pf_done.clear() # 판이 끝나 대기실로 돌아오면 다시 미리 읽음
@@ -468,16 +473,76 @@ func _warm_scan_step() -> bool:
 		return PSched.WAIT
 	if _scan_queue.is_empty():
 		_scan_queue = WarmScan.collect(self, _scan_done)
+		if not _std_warmed: # W42: 이벤트 때 코드가 새로 만드는 표준 재질 모양들 (warm_scan.gd STD_KEYS)
+			_std_warmed = true
+			_scan_queue = WarmScan.std_entries() + _scan_queue # 작고 확실한 것부터
 		if not _ghost_warmed and G3 != null:
 			_ghost_warmed = true # 유령화·무적 몸 (반투명 + 깊이 선 묶음) 은 처음 켤 때 컴파일됨 — 같은 재질을 한 번 그림 (스킨 갈래는 몸 데우기가 맡음)
 			_scan_queue.append([preload("res://chars/ghost_depth.gd").with_prepass(G3.toon_material(Color.WHITE, {"opacity": 0.5})), false])
+			_scan_queue.append([preload("res://chars/ghost_depth.gd").with_prepass(WarmScan.std_material([0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0])), false]) # 코드 몸 (조각 메시) 의 유령화·무적 — 표준 반투명을 깊이 선으로 감쌈
 		if _scan_queue.is_empty():
 			return true
 	var take: Array = _scan_queue.slice(0, WARM_SCAN_PER_PIECE)
 	_scan_queue = _scan_queue.slice(WARM_SCAN_PER_PIECE)
 	_scan_root = WarmScan.spawn(self, take, get_viewport().get_camera_3d())
-	_scan_wait = 2
+	_scan_wait = 1 # 붙인 프레임에 그려지고 다음 부름에 치움 (W42: 2 → 1, 재질이 140개 넘게 늘어서)
 	Hitch.tag("미리 그리기", "재질 %d개 (남은 %d)" % [take.size(), _scan_queue.size()])
+	return false
+
+
+# W42 항목 5: 스킨 몸 (뼈로 움직이는 메시) 의 반투명 갈래 — 유령화·무적 (깊이 선 + 반투명 툰), 잔상·낙사 잔상 (표준 반투명) — 은 그 재질이 스킨 메시를 처음 그릴 때 컴파일됨.
+# 앞의 재질 미리 그리기 (warm_scan) 는 상자 메시로만 그려 스킨 갈래를 못 덮음. 대기실에 있는 몸 종류마다 몸을 복제해 (body.snapshot) 그 재질들을 입혀 카메라 앞에 아주 작게 두 프레임 그림
+var _skin_started := false
+var _skin_done := {} # 몸 종류 → true
+var _skin_queue: Array = [] # [몸, 종류, 재질 번호]
+var _skin_root: Node3D = null
+var _skin_wait := 0
+
+
+func _skin_mat(i: int) -> Material:
+	if i == 0:
+		return preload("res://chars/ghost_depth.gd").with_prepass(G3.toon_material(Color.WHITE, {"opacity": 0.5})) if G3 != null else null
+	return WarmScan.std_material(WarmScan.SKIN_KEYS[i - 1])
+
+
+func _warm_skin_step() -> Variant:
+	if _skin_root != null:
+		_skin_wait -= 1
+		if _skin_wait <= 0:
+			_skin_root.queue_free()
+			_skin_root = null
+		return false
+	if not is_visible_in_tree() or bodies == null or G3 == null:
+		return PSched.WAIT
+	if _skin_queue.is_empty():
+		for id in bodies.nodes:
+			var b = bodies.nodes[id].get("body")
+			if b == null or not is_instance_valid(b) or not b.has_method("snapshot") or not b.is_inside_tree():
+				continue
+			var key := BodyFx.skin_key(b)
+			if _skin_done.has(key):
+				continue
+			_skin_done[key] = true
+			for i in WarmScan.SKIN_KEYS.size() + 1:
+				_skin_queue.append([b, key, i])
+		if _skin_queue.is_empty():
+			return PSched.WAIT
+	var job: Array = _skin_queue.pop_front()
+	var body = job[0]
+	if not is_instance_valid(body) or not body.is_inside_tree():
+		return false
+	var t0 := Hitch.t()
+	_skin_root = Node3D.new()
+	_skin_root.name = "WarmSkin"
+	add_child(_skin_root)
+	var cam := get_viewport().get_camera_3d()
+	if cam != null and cam.is_inside_tree():
+		_skin_root.global_transform = cam.global_transform.translated_local(Vector3(0, 0, -2.0))
+	var g: Node3D = body.snapshot(_skin_mat(int(job[2])))
+	g.scale = Vector3.ONE * 0.002
+	_skin_root.add_child(g)
+	_skin_wait = 2
+	Hitch.span("미리 그리기", "skin %s %d" % [job[1], job[2]], t0)
 	return false
 
 

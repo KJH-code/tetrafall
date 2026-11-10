@@ -130,6 +130,10 @@ var _snap_pool := {} # 몸 종류 (char_id + 외부/코드) → [쉬는 holder]
 var snap_stats := [0, 0] # 확인용 [풀에서 재사용, 새로 복제]
 
 
+static func skin_key(body) -> String: # 스킨 갈래를 미리 켤 몸 종류 (잔상 풀 열쇠와 같음)
+	return _snap_key(body)
+
+
 static func _snap_key(body) -> String:
 	return "%s|%s" % [body.char_id, "x" if body.get("ext") != null else "c"]
 

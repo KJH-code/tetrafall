@@ -300,3 +300,105 @@ func test_body_fx_ghost_pool_reuse() -> void:
 	fx.free()
 	host.free()
 	Body.use_ext = was
+
+
+# ---- 항목 4·5: GPU 첫 사용 (셰이더 컴파일) 커버리지 ----
+const WS := preload("res://world/warm_scan.gd")
+const MF := preload("res://core/mat_first.gd")
+
+# --mat-first 로 8명 판 (캐릭터마다 한 판, 소프트웨어 렌더) 을 돌려 '판에서 처음 그려진' 표준 재질 모양을 모은 것 (render_priority 뺀 열쇠). 이 모양은 미리 그리기 표 (STD_KEYS) 에 있어야 함 — 없으면 이벤트 때 컴파일
+const OBSERVED_STD := [
+	"B:sh0,tr1,bl0,cu2,dt0,bb0,vc0,tx0,em0,fog1,dd0", "B:sh0,tr1,bl0,cu0,dt0,bb0,vc1,tx0,em0,fog0,dd0", "B:sh0,tr1,bl0,cu2,dt0,bb0,vc1,tx0,em0,fog0,dd2",
+	"B:sh0,tr1,bl1,cu2,dt0,bb0,vc0,tx1,em0,fog1,dd0", "B:sh0,tr0,bl0,cu2,dt0,bb0,vc0,tx0,em0,fog0,dd0", "B:sh0,tr1,bl0,cu2,dt0,bb0,vc0,tx0,em0,fog0,dd0",
+	"B:sh0,tr1,bl1,cu2,dt0,bb0,vc0,tx0,em0,fog1,dd0", "B:sh0,tr1,bl1,cu2,dt0,bb0,vc0,tx0,em0,fog0,dd2", "B:sh0,tr0,bl0,cu2,dt0,bb0,vc0,tx0,em0,fog1,dd0",
+	"B:sh0,tr1,bl0,cu0,dt0,bb0,vc1,tx0,em0,fog1,dd0", "B:sh0,tr1,bl1,cu0,dt0,bb1,vc0,tx1,em0,fog1,dd0", "B:sh0,tr1,bl0,cu2,dt1,bb0,vc0,tx0,em0,fog0,dd0",
+	"B:sh0,tr1,bl0,cu2,dt1,bb0,vc0,tx0,em0,fog1,dd0",
+]
+
+
+func test_std_keys_cover_observed_events() -> void:
+	var have := []
+	for k in WS.STD_KEYS:
+		have.append(MF.mat_key(WS.std_material(k)))
+	for o in OBSERVED_STD:
+		check(have.has(o), "판에서 처음 그려지는 재질 모양이 미리 그리기 표에 없음: " + o)
+	check(have.size() == WS.STD_KEYS.size() and have.size() >= OBSERVED_STD.size(), "표의 모양이 겹치지 않음 (%d)" % have.size())
+	for k in WS.SKIN_KEYS:
+		check(WS.STD_KEYS.has(k), "스킨에 입히는 모양은 표준 표 안")
+
+
+func test_std_entries_have_sprite_and_clear() -> void:
+	var e: Array = WS.std_entries()
+	check(e.size() == WS.STD_KEYS.size() + 1 and e.back()[0] is String, "표준 재질 + Sprite3D 한 칸")
+	var host := Node3D.new()
+	var root: Node3D = WS.spawn(host, [e.back()], null)
+	var sprites := root.find_children("*", "Sprite3D", true, false)
+	check(sprites.size() == 2, "Sprite3D 두 갈래 (%d)" % sprites.size())
+	check(MF.keys_of(sprites[0]) == ["sprite3d"], "mat_first 가 Sprite3D 로 셈")
+	WS.clear_static()
+	check(WS._std.is_empty() and WS._px == null, "clear_static 이 정적 재질을 비움 (종료 때 쥐고 있지 않음)")
+	host.free()
+
+
+# 한 재질을 메시 · MultiMesh 네 갈래 (색+custom / 색 / custom / 없음) 로 그림 — 판이 실제로 쓰는 노드 종류 조합
+func test_spawn_draws_all_node_kinds() -> void:
+	var host := Node3D.new()
+	var m := WS.std_material(WS.STD_KEYS[0])
+	var root: Node3D = WS.spawn(host, [[m, true]], null)
+	var kinds := {}
+	for n in root.get_children():
+		for k in MF.keys_of(n):
+			kinds[str(k).split("|")[0]] = true
+	for want in ["mesh", "multi+col+cd", "multi+col", "multi+cd", "multi"]:
+		check(kinds.has(want), "미리 그리기가 노드 종류를 그림: " + want)
+	host.free()
+
+
+func test_mat_first_key_chain_and_kinds() -> void:
+	var a := WS.std_material(WS.STD_KEYS[0])
+	var b := WS.std_material(WS.STD_KEYS[1])
+	a.next_pass = b
+	check(MF.mat_key(a).contains(">B:"), "next_pass 줄 이어 적음")
+	a.render_priority = 9
+	check(not MF.mat_key(a).contains("rp"), "render_priority 는 셰이더 모양이 아니라 열쇠에 안 넣음")
+	var sh := ShaderMaterial.new()
+	sh.shader = load("res://shaders/toon.gdshader")
+	check(MF.mat_key(sh) == "S:toon.gdshader", "셰이더 재질은 파일 이름")
+	var mi := MeshInstance3D.new()
+	mi.mesh = BoxMesh.new()
+	mi.material_override = sh
+	check(MF.keys_of(mi) == ["mesh|S:toon.gdshader"], "메시 노드 열쇠")
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = MultiMesh.new()
+	mmi.multimesh.transform_format = MultiMesh.TRANSFORM_3D
+	mmi.multimesh.use_colors = true
+	mmi.multimesh.mesh = BoxMesh.new()
+	mmi.multimesh.instance_count = 1
+	mmi.material_override = sh
+	check(MF.keys_of(mmi) == ["multi+col|S:toon.gdshader"], "MultiMesh 열쇠 (색)")
+	mmi.multimesh.instance_count = 0
+	check(MF.keys_of(mmi).is_empty(), "비어 있는 MultiMesh 는 안 그려져 안 셈")
+	mi.free()
+	mmi.free()
+
+
+# 항목 5: 스킨 몸 유령 갈래 — 대기실 몸 종류마다 스킨 메시에 유령 재질·표준 반투명을 입혀 숨은 채 그림. 스킨 메시 열쇠가 'skin|...' 로 잡히는지 + 작업이 줄에 달리는지
+func test_skin_warm_wiring_and_key() -> void:
+	var was := Body.use_ext
+	Body.use_ext = true
+	var b = Chars.make_body("ninja", Color(0.8, 0.3, 0.3))
+	var host := Node3D.new()
+	host.add_child(b)
+	var g: Node3D = b.snapshot(WS.std_material(WS.SKIN_KEYS[0]))
+	host.add_child(g)
+	var skin_keys := []
+	for mi in g.find_children("*", "MeshInstance3D", true, false):
+		for k in MF.keys_of(mi):
+			if str(k).begins_with("skin|"):
+				skin_keys.append(k)
+	check(not skin_keys.is_empty() and skin_keys.all(func(k): return str(k).begins_with("skin|B:")), "스킨 메시에 표준 반투명이 입혀짐 (%d)" % skin_keys.size())
+	check(BodyFx.skin_key(b) == "ninja|x", "스킨 갈래 열쇠 = 몸 종류 (%s)" % BodyFx.skin_key(b))
+	var src := FileAccess.get_file_as_string("res://world/world.gd")
+	check(src.contains('"warm.skin"') and src.contains("_warm_skin_step") and src.contains("--no-skin-warm"), "world.gd 가 warm.skin 작업을 줄에 넣음 (--no-skin-warm 으로 끔)")
+	host.free()
+	Body.use_ext = was
