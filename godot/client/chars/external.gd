@@ -1310,6 +1310,62 @@ class Ext extends Node3D:
 			var dy := _feet_y() - fy0
 			sk.set_bone_pose_position(hb, sk.get_bone_pose_position(hb) - Vector3(0, dy, 0))
 
+	# W43 무기 무게·흔들림 (config EXT_WEAPON): 손뼈 월드 가속도 → 용수철. 상태 = 항목마다 {p (이전 위치 월드), v, th [pitch, roll], om [pitch, roll]}
+	var weapon_st: Array = []
+	var weapon_w := 0.0
+	var weapon_pitch_last := 0.0 # 확인용: 첫 항목의 지금 pitch (라디안)
+
+	func _weapon_layer(st, dt: float) -> void:
+		if move_off:
+			return
+		var table: Array = K_.EXT_WEAPON.get(str(body.get("char_id")), [])
+		if table.is_empty():
+			return
+		weapon_w = move_toward(weapon_w, 1.0 if Motion_.weapon_allowed(st) else 0.0, dt * K_.EXT_WEAPON_W_RATE)
+		var W: Transform3D = Rag_.glob(sk)
+		var sp := clampf(float(st.get("hs", 0.0)) / float(C_.MOVE_SPEED), 0.0, 1.2) if bool(st.get("walking", false)) else 0.0
+		if weapon_st.size() != table.size():
+			weapon_st.clear()
+			for e in table:
+				weapon_st.append({"p": Vector3.INF, "v": Vector3.ZERO, "th": [0.0, 0.0], "om": [0.0, 0.0]})
+		for i in table.size():
+			var e: Dictionary = table[i]
+			var s: Dictionary = weapon_st[i]
+			var jb: int = int(info.map.get(str(e.joint), -1))
+			var sb: int = int(info.map.get(str(e.get("src", e.joint)), -1))
+			if jb < 0 or sb < 0:
+				continue
+			var pw: Vector3 = W * _gt(sb).origin # 월드
+			var acc_b := Vector3.ZERO
+			if (s.p as Vector3) != Vector3.INF:
+				var vn: Vector3 = (pw - (s.p as Vector3)) / dt
+				var an: Vector3 = (vn - (s.v as Vector3)) / dt
+				s.v = vn
+				# 월드 가속도 → 뼈대 공간 (앞 +x, 위 +y, 오른쪽 +z)
+				acc_b = W.basis.orthonormalized().inverse() * an
+				acc_b /= maxf(0.01, W.basis.get_scale().x)
+			s.p = pw
+			var ax := Motion_.clamp_acc(acc_b.x)
+			var ay := Motion_.clamp_acc(acc_b.y)
+			var az := Motion_.clamp_acc(acc_b.z)
+			var k: float = float(e.k)
+			var c: float = float(e.c)
+			var rp := Motion_.spring_step(float(s.th[0]), float(s.om[0]), float(e.gp) * k * ax + float(e.gy) * k * ay, dt, k, c)
+			var rr := Motion_.spring_step(float(s.th[1]), float(s.om[1]), -float(e.gr) * k * az, dt, k, c)
+			var lim: float = float(e.get("max", 0.3))
+			s.th = [clampf(float(rp[0]), -lim, lim), clampf(float(rr[0]), -lim, lim)]
+			s.om = [rp[1], rr[1]]
+			if i == 0:
+				weapon_pitch_last = float(s.th[0])
+			var w := weapon_w
+			if w < 0.01:
+				continue
+			var pitch: float = (float(s.th[0]) + float(e.get("droop", 0.0)) * sp) * w
+			var roll: float = float(s.th[1]) * w
+			if absf(pitch) > 0.001 or absf(roll) > 0.001:
+				var q := Quaternion(Vector3.BACK, pitch) * Quaternion(Vector3.RIGHT, roll)
+				_add_rot(jb, q)
+
 	var extra_gap := 0.0 # 직전 가산 층 이후 지난 시간 (몸이 숨었다 나타났는지 알아냄)
 
 	func _feet_y() -> float:
@@ -1541,6 +1597,7 @@ class Ext extends Node3D:
 				if bi >= 0:
 					_add_rot(bi, Quaternion(Vector3.UP, th * float(e[1])))
 		_move_layer(st, dt) # W43
+		_weapon_layer(st, dt) # W43
 		# --- 숨쉬기 (서 있고 아무것도 안 할 때, 캐릭터마다 박자·위상 다름) ---
 		breath_w = move_toward(breath_w, 1.0 if Motion_.breath_allowed(st) else 0.0, dt * 2.0)
 		if breath_w > 0.01:

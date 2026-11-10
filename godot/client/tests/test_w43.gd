@@ -370,3 +370,77 @@ func test_getup_on_respawn() -> void:
 	X.sync(_st())
 	check(X.getup_t >= 0.0 and X.getup_amp == K.EXT_GETUP_SPAWN_AMP, "숨었다 나타나면 일어나기 (amp %f)" % X.getup_amp)
 	b.free()
+
+
+# ---------- 무기 무게·흔들림 ----------
+
+func test_weapon_table_and_spring_math() -> void:
+	for ch in CHARS:
+		check(K.EXT_WEAPON.has(ch) and not (K.EXT_WEAPON[ch] as Array).is_empty(), "%s 무기 흔들림 표" % ch)
+		for e in K.EXT_WEAPON[ch]:
+			check(e.has("joint") and float(e.k) > 0.0 and float(e.c) > 0.0 and float(e.max) > 0.0 and float(e.max) <= 0.4, "%s 표 값 (한계 0.4 이하)" % ch)
+			check(float(e.c) / (2.0 * sqrt(float(e.k))) > 0.3 and float(e.c) / (2.0 * sqrt(float(e.k))) < 1.5, "%s 감쇠비가 적당 (진동하다 가라앉음)" % ch)
+	# 용수철: 입력이 없으면 0 으로 가라앉고, 일정 입력이면 input/k 에 수렴
+	var th := 0.4
+	var om := 0.0
+	for i in 240:
+		var r := M.spring_step(th, om, 0.0, 1.0 / 60.0, 90.0, 9.0)
+		th = r[0]
+		om = r[1]
+	check(absf(th) < 0.01, "용수철이 가라앉음 (%f)" % th)
+	th = 0.0
+	om = 0.0
+	for i in 400:
+		var r2 := M.spring_step(th, om, 90.0 * 0.2, 1.0 / 60.0, 90.0, 9.0)
+		th = r2[0]
+		om = r2[1]
+	check(absf(th - 0.2) < 0.01, "일정 입력은 input/k 에 수렴 (%f)" % th)
+	check(M.clamp_acc(1e6) == K.EXT_WEAPON_ACC_MAX and M.clamp_acc(NAN) == 0.0, "가속도 자르기")
+	check(M.weapon_allowed(_st({"walking": true})) and not M.weapon_allowed(_st({"act": {"move": "x"}})) and not M.weapon_allowed(_st({"stunned": true})), "무기 흔들림 허용 상태")
+
+
+# 몸을 앞뒤로 흔들면 (가속도) 무기 쥔 손뼈가 늦게 따라 흔들리고 (한계 안), 멈추면 가라앉음. 공격 중엔 꺼짐
+func test_weapon_sways_with_motion_and_settles() -> void:
+	for ch in CHARS:
+		var b = _body(ch)
+		var X = b.ext
+		if X == null:
+			b.free()
+			continue
+		var mx := 0.0
+		var x := 0.0
+		for i in 120:
+			x = sin(float(i) / 60.0 * TAU * 1.5) * 0.15 # 1.5 Hz 앞뒤 (가속도 ≈ 13 m/s²)
+			b.position = Vector3(x, 0, 0)
+			_step(X, _st({"walking": true, "hs": 3.0, "walk": float(i) * 0.1, "mvF": 3.0, "vw": Vector2(3.0, 0.0)}))
+			mx = maxf(mx, absf(X.weapon_pitch_last))
+		var lim: float = float((K.EXT_WEAPON[ch] as Array)[0].max)
+		check(mx > 0.02, "%s 흔들리면 무기가 늦게 처짐 (%f)" % [ch, mx])
+		check(mx <= lim + 1e-5, "%s 한계 안 (%f ≤ %f)" % [ch, mx, lim])
+		for i in 120:
+			_step(X, _st())
+		check(absf(X.weapon_pitch_last) < 0.01, "%s 멈추면 가라앉음 (%f)" % [ch, X.weapon_pitch_last])
+		# 공격 중: 가중치 0 으로
+		for i in 40:
+			x = sin(float(i) / 60.0 * TAU * 1.5) * 0.15
+			b.position = Vector3(x, 0, 0)
+			_step(X, _st({"act": {"move": "x", "phase": "strike", "u": 0.5}}))
+		check(X.weapon_w < 0.05, "%s 공격 중엔 꺼짐 (%f)" % [ch, X.weapon_w])
+		b.free()
+
+
+# 걷기 처짐 (droop): 탱크 해머는 달릴 때 앞으로 숙임 (손뼈 회전이 서 있을 때와 다름), 끄면 같음
+func test_weapon_droop_changes_hand_pose() -> void:
+	var b = _body("tank")
+	var X = b.ext
+	var hand := "mixamorig_RightHand"
+	X.move_off = true
+	for i in 20:
+		_step(X, _st({"walking": true, "hs": C.MOVE_SPEED, "walk": 1.0, "mvF": C.MOVE_SPEED, "vw": Vector2(C.MOVE_SPEED, 0.0)}))
+	var q_off := _gq(X.sk, hand)
+	X.move_off = false
+	for i in 60:
+		_step(X, _st({"walking": true, "hs": C.MOVE_SPEED, "walk": 1.0, "mvF": C.MOVE_SPEED, "vw": Vector2(C.MOVE_SPEED, 0.0)}))
+	var q_on := _gq(X.sk, hand)
+	check(rad_to_deg(q_off.angle_to(q_on)) > 3.0, "달릴 때 해머 든 손이 처짐 (%f°)" % rad_to_deg(q_off.angle_to(q_on)))
+	b.free()

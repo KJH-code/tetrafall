@@ -182,3 +182,28 @@ static func getup_blocked(st: Dictionary) -> bool:
 		return true
 	var h = st.get("hit")
 	return h is Dictionary and float(h.get("age", 9.0)) < 0.25
+
+
+# ---------- W43 무기 무게·흔들림 (순수 계산) ----------
+
+# 용수철-댐퍼 한 걸음 (반암시적 오일러): θ'' = −kθ − cθ' + input. 돌려줌 [θ, ω]
+static func spring_step(theta: float, omega: float, input: float, dt: float, k: float, c: float) -> Array:
+	var h := minf(dt, 1.0 / 30.0)
+	var w := omega + (-k * theta - c * omega + input) * h
+	var t := theta + w * h
+	return [t, w]
+
+
+# 가속도 (m/s²) 자르기 — 공격 휘두름·순간이동 스파이크가 무기를 날려 보내지 않게
+static func clamp_acc(a: float) -> float:
+	return clampf(a, -K.EXT_WEAPON_ACC_MAX, K.EXT_WEAPON_ACC_MAX) if is_finite(a) else 0.0
+
+
+# 무기 흔들림을 쓸 수 있는 상태: 걷기·서기·공중 (공격·도발·승리·이모트·경직·착지 직후 맞음 아님)
+static func weapon_allowed(st: Dictionary) -> bool:
+	if bool(st.get("stunned", false)) or st.get("act") != null or int(st.get("emote", -1)) >= 0 or float(st.get("victory", -1.0)) >= 0.0:
+		return false
+	if float(st.get("recover", 0.0)) > 0.0 or float(st.get("tumble", 0.0)) > 0.0 or float(st.get("flip", -1.0)) >= 0.0 or float(st.get("airDash", 0.0)) > 0.0:
+		return false
+	var h = st.get("hit")
+	return not (h is Dictionary and float(h.get("age", 9.0)) < 0.45)
