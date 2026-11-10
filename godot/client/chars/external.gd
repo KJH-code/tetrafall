@@ -805,7 +805,7 @@ class Ext extends Node3D:
 	var breath_w := 0.0
 	var extra_t := 0.0
 	# W43 방향 이동·기울임·방향 전환
-	var move_off := false # 확인 도구: W43 이동 가산 (방향·기울임·전환) 끄기 — 전후 비교·비용 재기
+	var move_off := OS.get_cmdline_args().has("--no-w43") # 실행 인자 --no-w43 으로도 끔 (전후 비용 비교). 확인 도구: W43 이동 가산 (방향·기울임·전환) 끄기 — 전후 비교·비용 재기
 	var dir_rev := false # 뒤로 걸음 (클립 거꾸로)
 	var dir_y := 0.0 # 골반 yaw (몸 기준, 라디안, 부드럽게)
 	var lean_p := 0.0

@@ -26,7 +26,7 @@ func _run() -> void:
 	for e in bodies:
 		chains += e[0].ext.cloths.size()
 	print("TF 몸 8, 천 줄 ", chains)
-	for mode in ["둘 다", "천 끔", "가산 끔", "둘 다 끔"]:
+	for mode in ["둘 다", "W43 끔", "천 끔", "가산 끔", "둘 다 끔"]: # W43 끔 = 방향·기울임·전환·일어나기·무기 흔들림 (move_off, 팔 흔들림 폭 포함)
 		var saved := []
 		for e in bodies:
 			var X = e[0].ext
@@ -34,9 +34,10 @@ func _run() -> void:
 			if mode == "천 끔" or mode == "둘 다 끔":
 				X.cloths.clear()
 			X.extra_off = mode == "가산 끔" or mode == "둘 다 끔"
+			X.move_off = mode == "W43 끔"
 		var t0 := Time.get_ticks_usec()
 		for f in n:
-			var st: Dictionary = T._st({"walking": true, "hs": 4.5, "walk": f * 0.2, "t": f / 60.0})
+			var st: Dictionary = T._st({"walking": true, "hs": 4.5, "walk": f * 0.2, "t": f / 60.0, "mvF": 4.5 * (1.0 if f % 120 < 90 else -1.0), "vw": Vector2(4.5, 0.0)})
 			for e in bodies:
 				(e[1] as Node3D).position.x += 0.075
 				e[0].ext.cloth_t = Time.get_ticks_msec() * 0.001 - 1.0 / 60.0

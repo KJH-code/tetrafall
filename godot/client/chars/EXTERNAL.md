@@ -220,3 +220,13 @@ W31 이 남긴 후보 (해 그림자 패스 = 3D 삼각형의 38%) 를 실제로
 - **1인칭 팔 = 클립 곡선 (보류)**: `arm_delta` (클립이 코드 자세에서 벗어난 팔 뼈) 를 쌍둥이 팔에 `K.VM_CLIP_ARM` 비율로 더하는 길은 있으나 0.3·0.55 로 켜 보니 팔이 솟거나 왼손이 세로로 서서 기본 끔 (`docs/w40/vm_clip/`). 확인 `tools/vm_clip_shot.gd`.
 - **타격 끝**: 사냥꾼·갈고리 클립의 타격 자세 (`hips_x`·상체·팔 뻗기) 키움, `tools/hit_reach.gd` 전후 `docs/w40/reach/`.
 - 테스트 `tests/test_w40.gd` (12). 비용 `tools/ext_cost.gd`.
+
+## 21. W43 — 모션 개선 3차: 방향 이동·기울임·일어나기·무기 흔들림·클립 이음 (2026-11-10, 표·전후 `docs/w43/README.md`)
+
+- 전부 `chars/ext_motion.gd` (순수 계산) + `external.gd` 가산 층 (`_dir_update`·`_move_layer`·`_getup_layer`·`_weapon_layer`, 판 몸만), 수치 `chars_config.gd` `EXT_DIR_*`·`EXT_LEAN_*`·`EXT_TURN_*`·`EXT_GETUP_*`·`EXT_WEAPON`·`EXT_FADE_*`·`VM_CLIP_ARM_K`. 서버 판정·moves·figure_motion 불변. 끄기: 실행 인자 `--no-w43` (`Ext.move_off`).
+- `body.gd _anim_state` 에 몸 기준 이동 `mvF`·`mvS` (앞·왼쪽 m/s)·월드 이동 `vw` 추가 (몸은 조준 yaw 를 보고 이동은 따로).
+- 방향 이동: 뒤로 걸음 = 걷기·달리기 클립 거꾸로 (`select` 의 `rev`, 크로스페이드 키 `이름~r`), 옆·대각 = 골반 yaw + 척추 반대. 일어나기: 경직 뒤 웅크림 (`st.recover`)·부활 (0.5초 숨음) 에 0.7초 가산, 래그돌 모터로 가중. 무기: 손뼈 가속도 → 용수철. 클립 이음: `Clips_.fade_s` 종류별 크로스페이드 (공격 진입은 0.10 그대로), `tools/clip_pops.gd` 가 이음 자세 차이 측정.
+- 1인칭 팔 클립 곡선 켬 (`VM_CLIP_ARM` 1.0): 손 전역 회전 고정 + 어깨·팔꿈치만 (`VM_CLIP_ARM_K`).
+- 확인 도구: `tools/pose_sheet.gd` 에 묶음 `dir`·`getup` 과 `--w43off`, `tools/ext_cost.gd` 에 'W43 끔' 줄. 테스트 `tests/test_w43.gd`.
+- 보류: 탱크 허리 앞 천·어깨 장갑 (단독 뼈 없음 — 가중치 실측), 닌자 등 칼 단독 흔들림 (몸 메시 하나), 발 미끄러짐 방향 이동 측정.
+
