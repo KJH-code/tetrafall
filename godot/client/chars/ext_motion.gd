@@ -3,6 +3,7 @@
 extends RefCounted
 
 const K := preload("res://chars/chars_config.gd")
+const C := preload("res://core/config.gd")
 
 # 판 몸 (3인칭 외부 모델) 들 — 서로 쳐다보기용 정적 목록 (죽은 노드는 쓸 때 걸러 냄)
 static var bodies: Array = []
@@ -98,3 +99,55 @@ static func hit_react(hit: Dictionary) -> Dictionary:
 	var pw: float = float(hit.get("pow", 1.0))
 	var crit := pw >= K.EXT_HIT_CRIT_POW
 	return {"back": -dx, "side": dy, "twist": -dy * K.EXT_HIT_TWIST, "front_hit": dx < -0.35, "back_hit": dx > 0.35, "crit": crit}
+
+
+# ---------- W43 방향 이동·기울임·방향 전환 (순수 계산) ----------
+
+# 몸 기준 이동 (앞 mvF, 왼쪽 mvS, m/s) → 이동 방향을 앞 기준으로 접은 각 psi (라디안, + = 왼쪽) 와 '뒤로 걸음' 여부 (히스테리시스: prev_rev).
+# 뒤로 걸음이면 (이동 방향이 앞에서 105° 넘게 벗어남) psi 는 뒤 방향에서 잰 각 — 다리는 거꾸로 재생하며 그 쪽으로 돌림.
+static func move_fold(mv_f: float, mv_s: float, prev_rev: bool) -> Dictionary:
+	var th := atan2(mv_s, mv_f) # (-π, π], 0 = 앞
+	var a := absf(th)
+	var rev := prev_rev
+	if prev_rev:
+		if a < deg_to_rad(K.EXT_DIR_REV_LEAVE_DEG):
+			rev = false
+	elif a > deg_to_rad(K.EXT_DIR_REV_ENTER_DEG):
+		rev = true
+	var psi := th
+	if rev:
+		psi = th - PI if th > 0.0 else th + PI
+	return {"psi": psi, "rev": rev}
+
+
+# 골반 yaw (라디안): 접은 이동 각 × gain, 한계 안
+static func hip_yaw(psi: float) -> float:
+	var lim := deg_to_rad(K.EXT_DIR_MAX_DEG)
+	return clampf(psi * K.EXT_DIR_GAIN, -lim, lim)
+
+
+# 앞으로 숙이는 양 (라디안, + = 앞): 속도 비례 + 가속도 (+ 가속 = 앞, − 급정지 = 뒤로 젖힘), 뒤로 걸으면 뒤로 살짝
+static func lean_pitch(speed: float, acc_f: float, rev: bool, walking: bool) -> float:
+	var sp := clampf(speed / maxf(0.1, float(C.MOVE_SPEED)), 0.0, 1.2)
+	var p := K.EXT_LEAN_SPEED_RAD * sp if walking else 0.0
+	if rev and walking:
+		p = -K.EXT_LEAN_BACK_RAD * sp
+	if is_finite(acc_f):
+		p += clampf(acc_f * K.EXT_LEAN_ACC_K, -K.EXT_LEAN_ACC_MAX, K.EXT_LEAN_ACC_MAX)
+	return p
+
+
+# 이동 방향이 돌아가는 빠르기 (rad/s) → 윗몸 비틀림 (라디안, + = 왼쪽으로 돎)
+static func turn_twist(rate: float) -> float:
+	return clampf(rate * K.EXT_TURN_K, -K.EXT_TURN_MAX_RAD, K.EXT_TURN_MAX_RAD)
+
+
+# 각 차 (-π, π] 로 접기
+static func wrap_pi(a: float) -> float:
+	return fposmod(a + PI, TAU) - PI
+
+
+# 달릴 때 팔 흔들림 배율: 지금 속도 / 클립이 가정한 속도 (걷기 = 0.5 MOVE_SPEED, 달리기 = MOVE_SPEED), 범위 안
+static func arm_swing_scale(speed: float, run_clip: bool) -> float:
+	var nominal := float(C.MOVE_SPEED) * (1.0 if run_clip else 0.5)
+	return clampf(speed / maxf(0.1, nominal), K.EXT_ARM_SWING_RANGE.x, K.EXT_ARM_SWING_RANGE.y)

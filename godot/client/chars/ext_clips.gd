@@ -92,7 +92,11 @@ static func select(cc: Dictionary, st: Dictionary, air_t: float) -> Dictionary:
 		var sd = (cc.get("stride", {}) as Dictionary).get(nm2)
 		if sd is Array and sd.size() > 2:
 			rate = float(sd[2])
-		return {"clip": nm2, "t": fposmod(float(st.get("walk", 0.0)) / TAU * rate, 1.0), "air": false, "kind": "loco", "norm": true}
+		var lt := fposmod(float(st.get("walk", 0.0)) / TAU * rate, 1.0)
+		var rev: bool = bool(st.get("rev", false)) # W43 뒤로 걸음: 같은 걸음 한 바퀴를 거꾸로 (발이 땅에서 앞으로 밀림)
+		if rev:
+			lt = fposmod(1.0 - lt, 1.0)
+		return {"clip": nm2, "t": lt, "air": false, "kind": "loco", "norm": true, "rev": rev}
 	return {"clip": str(cc.get("idle", "")), "t": float(st.get("t", 0.0)), "air": false, "kind": "idle", "loop": true}
 
 

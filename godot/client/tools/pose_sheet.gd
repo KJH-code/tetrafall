@@ -17,7 +17,7 @@ const SKILLS := {
 func _base(t := 1.0) -> Dictionary:
 	return {"air": false, "walking": false, "hs": 0.0, "walk": 0.0, "vz": 0.0, "t": t, "stunned": false, "dancing": false, "emote": -1, "emoteT": 0.0, "victory": -1.0, "punch": 0.0,
 		"holding": false, "hit": null, "act": null, "accF": 0.0, "accS": 0.0, "tumble": 0.0, "recover": 0.0, "land": 0.0, "flip": -1.0, "rag": false, "sniffAt": null, "idle": 0.0,
-		"airDash": 0.0, "bump": null, "whirl": -1.0, "dizzy": 0.0, "glide": false, "amp": false, "form": "", "loaded": false, "ammo": 3.0}
+		"airDash": 0.0, "mvF": 0.0, "mvS": 0.0, "vw": Vector2.ZERO, "bump": null, "whirl": -1.0, "dizzy": 0.0, "glide": false, "amp": false, "form": "", "loaded": false, "ammo": 3.0}
 
 
 func _states(ch: String, group: String) -> Array:
@@ -34,6 +34,15 @@ func _states(ch: String, group: String) -> Array:
 		out.append(["fall", {"air": true, "hs": ms * 0.5, "vz": -9.0, "t": 0.8}])
 		out.append(["land", {"land": 0.8}])
 		out.append(["airdash", {"air": true, "airDash": 1.0, "hs": ms}])
+	if group == "dir": # W43 방향 이동: 몸은 앞을 봄, 이동 방향 (몸 기준 앞 mvF·왼쪽 mvS) 만 다름. 걷기 (0.6) · 달리기 (1.0) × 앞·뒤·왼·오른 + 대각선
+		for sp in [["walk", 0.6, 1.2], ["run", 1.0, 1.2]]:
+			for d in [["fwd", 1.0, 0.0], ["back", -1.0, 0.0], ["left", 0.0, 1.0], ["right", 0.0, -1.0]]:
+				var v: float = ms * float(sp[1])
+				out.append(["%s_%s" % [sp[0], d[0]], {"walking": true, "hs": v, "walk": float(sp[2]), "mvF": v * float(d[1]), "mvS": v * float(d[2]), "vw": Vector2(v * float(d[1]), v * float(d[2]))}])
+		for d in [["fwdL", 0.7071, 0.7071], ["backL", -0.7071, 0.7071], ["backR", -0.7071, -0.7071], ["fwdR", 0.7071, -0.7071]]:
+			for sp in [["walk", 0.6, 3.2], ["run", 1.0, 3.2]]:
+				var v2: float = ms * float(sp[1])
+				out.append(["%s_%s" % [sp[0], d[0]], {"walking": true, "hs": v2, "walk": float(sp[2]), "mvF": v2 * float(d[1]), "mvS": v2 * float(d[2]), "vw": Vector2(v2 * float(d[1]), v2 * float(d[2]))}])
 	var sets: Dictionary = C.BASIC_ATTACKS[ch]
 	var atk := []
 	for a in sets.chain:
@@ -123,6 +132,8 @@ func _run() -> void:
 		t.rotation.y = deg_to_rad(yaw - 90.0)
 		vp.add_child(t)
 		t.add_child(b)
+		if a.has("--w43off") and b.ext != null:
+			b.ext.move_off = true
 		if a.has("--noclip") and b.ext != null:
 			b.ext.clipset = {}
 		bodies.append(b)

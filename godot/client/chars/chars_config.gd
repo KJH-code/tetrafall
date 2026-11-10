@@ -79,6 +79,32 @@ const EXT_HIT_HAND_RAD := 0.35
 const EXT_HIT_CRIT_S := 0.5
 const EXT_ARMOR_BREAK_S := 0.45 # 탱크 방어구 깨짐: 방패 쥔 팔 반동 시간
 const EXT_ARMOR_BREAK_RAD := 0.5
+
+# W43 방향 이동 (스트레이프·후진): 몸은 조준 방향을 보고 이동은 따로라, 몸 기준 이동 방향에 맞춰 걷기·달리기 클립을 거꾸로 틀고 (뒤로 걸음) 골반을 이동 쪽으로 돌린 만큼 척추를 되돌림 (옆걸음).
+# 서버 이동·판정은 그대로 — 뼈 회전만.
+const EXT_DIR_MIN_SPEED := 0.9 # 이 속도 (m/s) 아래면 방향 안 따짐
+const EXT_DIR_REV_ENTER_DEG := 105.0 # 이동 방향이 몸 앞에서 이만큼 넘게 벗어나면 '뒤로 걸음' (거꾸로 재생)
+const EXT_DIR_REV_LEAVE_DEG := 75.0 # 이만큼 안으로 돌아오면 다시 앞으로 (히스테리시스)
+const EXT_DIR_GAIN := 0.6 # 골반 yaw = 이동 방향 (앞 기준으로 접은 각) × 이 값
+const EXT_DIR_MAX_DEG := 45.0 # 골반 yaw 한계
+const EXT_DIR_RATE := 9.0 # 골반 yaw 따라가는 빠르기 (/초)
+const EXT_DIR_FADE_S := 0.16 # 앞↔뒤 재생이 바뀔 때 크로스페이드 (초)
+# W43 이동 기울임: 속도에 비례해 앞으로 (0~) + 가속·급정지 (가속도 m/s², 멈추면 뒤로 젖힘) + 뒤로 걸을 땐 살짝 뒤로. 라디안
+const EXT_LEAN_SPEED_RAD := 0.07 # 달리기 속도 (MOVE_SPEED) 에서의 앞 숙임 (≈4°)
+const EXT_LEAN_ACC_K := 0.004 # 가속도 1 m/s² 당
+const EXT_LEAN_ACC_MAX := 0.12 # 가속·급정지 기울임 한계 (≈7°)
+const EXT_LEAN_BACK_RAD := 0.05 # 뒤로 걸을 때 윗몸 뒤로
+const EXT_LEAN_RATE := 10.0
+const EXT_LEAN_BONES := [["mixamorig_Spine1", 0.5], ["mixamorig_Spine2", 0.5], ["mixamorig_Head", -0.4]]
+# W43 방향 전환: 이동 방향 (월드) 이 돌아가는 빠르기 (rad/s) × K 만큼 윗몸이 새 방향으로 비틀리고 (한계 MAX) 두 팔이 서로 반대로 반동
+const EXT_TURN_MIN_SPEED := 1.5
+const EXT_TURN_K := 0.045
+const EXT_TURN_MAX_RAD := 0.30
+const EXT_TURN_ARM_RAD := 0.35 # 비틀림 최대일 때 팔 앞뒤 반동
+const EXT_TURN_RATE := 12.0
+const EXT_TURN_BONES := [["mixamorig_Spine1", 0.5], ["mixamorig_Spine2", 0.5]]
+# W43 달릴 때 팔 흔들림 폭: 클립 속도 기준 (걷기 = MOVE_SPEED × 0.5, 달리기 = MOVE_SPEED) 에서 속도가 벗어난 비율만큼 (범위 안으로)
+const EXT_ARM_SWING_RANGE := Vector2(0.8, 1.25)
 # W40 1인칭 팔을 3인칭 클립 (평타·스킬) 곡선으로: 클립이 코드 자세에서 얼마나 벗어났나 (뼈 지역 회전 차이) 를 1인칭 쌍둥이 팔에 이 비율로 더함 (0 = 끔)
 const VM_CLIP_ARM := 0.0 # 기본 끔 (보류): 0.3·0.55 로 켜 보니 소총·갈고리를 쥔 팔이 화면 위로 솟거나 왼손이 세로로 서서 어색 — 전후 docs/w40/vm_clip/
 const VM_CLIP_ARM_BONES := ["shoulder_R", "elbow_R", "hand_R", "shoulder_L", "elbow_L", "hand_L"]

@@ -996,6 +996,7 @@ func _anim_state(p: Dictionary, now_ms: float) -> Dictionary:
 		"air": get_meta("air", false), "walking": get_meta("walking", false), "hs": hs, "walk": walk, "vz": vz, "t": t,
 		"stunned": p.get("stunned", false), "emote": int(p.get("emote", -1)), "emoteT": emote_t, "victory": vic_t,
 		"hit": _hit_for(p, now_ms), "act": _act_for(now_ms), "accF": acc_f, "accS": acc_s,
+		"mvF": cos(float(p.get("yaw", 0.0))) * vxs + sin(float(p.get("yaw", 0.0))) * vys, "mvS": -sin(float(p.get("yaw", 0.0))) * vxs + cos(float(p.get("yaw", 0.0))) * vys, "vw": Vector2(vxs, vys), # W43 몸 기준 이동 (앞·왼쪽 m/s)·월드 이동
 		"tumble": tumble_amt, "recover": recover * recover_pow, "land": land * land_pow,
 		"flip": flip / C.FIGURE_FLIP_S if flip >= 0.0 else -1.0, "idle": idle_t, "airDash": air_dash_t / C.FIGURE_AIR_DASH.s,
 		"form": str(p.get("bard", {}).get("form", "")) if p.get("bard") is Dictionary else "", "dizzy": dizzy / C.BERSERK_DIZZY_S, "punch": _fx_amount("punch_amount"), "whirl": _whirl_time(p), "glide": p.get("bard") is Dictionary and float(p.bard.get("glideLeft", 0.0)) > 0.0 and get_meta("air", false), "amp": p.get("bard") is Dictionary and float(p.bard.get("ampLeft", 0.0)) > 0.0,
