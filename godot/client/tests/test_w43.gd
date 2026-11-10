@@ -275,3 +275,98 @@ func test_arm_swing_scales_with_speed() -> void:
 		check(dev[0] >= 0.0, "%s 평균 회전 캐시" % ch)
 		check(dev[2] >= dev[1] - 0.01 or dev[1] <= 1.0, "%s 빠르면 팔 흔들림이 큼 (%s)" % [ch, dev])
 		b.free()
+
+
+# ---------- 일어나기 ----------
+
+func test_getup_curves() -> void:
+	var c0 := M.getup_curves(0.0)
+	var c1 := M.getup_curves(1.0)
+	check(c0.env == 0.0 and c1.env == 0.0, "일어나기 처음·끝은 가중치 0 (튐 없음)")
+	var mx := 0.0
+	var prev := 0.0
+	for i in 101:
+		var c := M.getup_curves(float(i) / 100.0)
+		check(c.env >= 0.0 and c.env <= 1.0 and c.torso >= 0.0 and c.torso <= 1.0 and c.arm >= 0.0 and c.arm <= 1.0 and c.step >= 0.0 and c.step <= 1.0, "곡선 값 0~1 (u %d)" % i)
+		mx = maxf(mx, c.env)
+		if i > 0:
+			check(absf(c.env - prev) < 0.12 and absf(c.arm) < 1.01, "곡선이 연속 (u %d)" % i)
+		prev = c.env
+	check(mx > 0.99, "가운데에서 최대 1")
+	var a1 := M.getup_curves(0.3)
+	var a2 := M.getup_curves(0.8)
+	check(a1.arm > a2.arm, "손 짚고 (0.3) 밀어 놓음 (0.8) — 팔이 줄어듦")
+	check(M.getup_curves(0.1).torso > M.getup_curves(0.7).torso, "윗몸이 일어나며 펴짐")
+
+
+func test_getup_motor_weight_and_block() -> void:
+	check(M.getup_motor_w(0.0) == 0.0 and M.getup_motor_w(0.05) == 0.0, "축 늘어진 몸엔 안 섞음")
+	check(M.getup_motor_w(1.0) == 1.0 and M.getup_motor_w(0.5) >= 0.99, "돌아온 몸엔 전부")
+	check(M.getup_motor_w(-1.0) == 1.0, "래그돌 없으면 1")
+	var mid := M.getup_motor_w(0.3)
+	check(mid > 0.0 and mid < 1.0, "모터가 돌아오는 도중엔 부분 (%f)" % mid)
+	check(M.getup_motor_w(0.4) > M.getup_motor_w(0.2), "모터가 세질수록 섞임이 늚")
+	check(not M.getup_blocked(_st()), "서 있으면 막히지 않음")
+	check(M.getup_blocked(_st({"stunned": true})) and M.getup_blocked(_st({"act": {"move": "x"}})) and M.getup_blocked(_st({"air": true})), "경직·공격·공중이면 막힘")
+
+
+# 경직이 풀려 웅크림 (recover) 이 시작되면 일어나기 타이머가 돌고, 끝나면 풀림. 다시 맞으면 끊김
+func test_getup_starts_on_recover_and_ends() -> void:
+	for ch in CHARS:
+		var b = _body(ch)
+		var X = b.ext
+		if X == null:
+			b.free()
+			continue
+		for i in 5:
+			_step(X, _st())
+		check(X.getup_t < 0.0, "%s 평소엔 일어나기 아님" % ch)
+		_step(X, _st({"recover": 1.0}))
+		check(X.getup_t >= 0.0 and X.getup_amp > 0.99, "%s 웅크림 시작 → 일어나기 시작 (amp %f)" % [ch, X.getup_amp])
+		var any_w := 0.0
+		for i in 30:
+			_step(X, _st({"recover": maxf(0.0, 1.0 - i / 27.0)}))
+			any_w = maxf(any_w, X.getup_w_last)
+		check(any_w > 0.5, "%s 가중치가 올라감 (%f)" % [ch, any_w])
+		for i in 60:
+			_step(X, _st())
+		check(X.getup_t < 0.0, "%s 0.7 초 뒤 끝" % ch)
+		# 다시 경직이면 끊김
+		_step(X, _st({"recover": 1.0}))
+		check(X.getup_t >= 0.0, "%s 두 번째 시작" % ch)
+		_step(X, _st({"stunned": true}))
+		check(X.getup_t < 0.0, "%s 경직으로 끊김" % ch)
+		# 가볍게 맞고 선 것 (recover 0.5) 은 약하게
+		for i in 5:
+			_step(X, _st())
+		_step(X, _st({"recover": 0.5}))
+		check(X.getup_amp < 0.9, "%s 가벼운 경직은 약하게 (%f)" % [ch, X.getup_amp])
+		b.free()
+
+
+# 일어나며 다리를 접어도 발은 땅에 그대로 (엉덩이 보정)
+func test_getup_keeps_feet_on_ground() -> void:
+	var b = _body("hook")
+	var X = b.ext
+	for i in 5:
+		_step(X, _st())
+	var rest := (X._feet_y() as float)
+	X.getup_mark = 0.45
+	for i in 4:
+		_step(X, _st({"recover": 1.0}))
+	check(X.getup_w_last > 0.9, "일어나기 켜짐 (%f)" % X.getup_w_last)
+	check(absf(X._feet_y() - rest) < 0.04, "발 높이가 그대로 (%f → %f)" % [rest, X._feet_y()])
+	X.getup_mark = 0.0
+	b.free()
+
+
+# 몸이 숨었다 (0.5초 이상 갱신 없음) 다시 보이면 (부활·판 시작) 낮은 세기로 일어나기
+func test_getup_on_respawn() -> void:
+	var b = _body("tank")
+	var X = b.ext
+	for i in 5:
+		_step(X, _st())
+	X.extra_t = Time.get_ticks_msec() * 0.001 - 2.0 # 2초 숨어 있었음
+	X.sync(_st())
+	check(X.getup_t >= 0.0 and X.getup_amp == K.EXT_GETUP_SPAWN_AMP, "숨었다 나타나면 일어나기 (amp %f)" % X.getup_amp)
+	b.free()

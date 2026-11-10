@@ -1247,6 +1247,81 @@ class Ext extends Node3D:
 					sk.set_bone_pose_position(hb, sk.get_bone_pose_position(hb) + Vector3(0, dy * cw, 0))
 		clip_info = {"clip": name, "cw": cw, "dy": dy, "t": tt}
 
+	# W43 일어나기: 경직이 풀려 땅에 닿아 웅크림 (st.recover) 이 시작되면, 또는 몸이 숨었다 다시 보이면 (부활·판 시작) 타이머를 돌려 손 짚고 일어나는 자세를 가산.
+	# 래그돌이 깨어 있으면 모터가 돌아오는 만큼 (getup_motor_w) 섞음 — 아직 축 늘어졌으면 물리에 맡김.
+	var getup_t := -1.0
+	var getup_amp := 1.0
+	var getup_peak := 0.0
+	var getup_mark := 0.0 # 확인 도구: 0 이상이면 이 진행 비율 (u) 로 고정
+	var getup_w_last := 0.0
+
+	func _getup_layer(st, dt: float, rag_motor: float) -> void:
+		if move_off:
+			return
+		var now := Time.get_ticks_msec() * 0.001
+		if getup_t < 0.0 and extra_gap > K_.EXT_GETUP_SPAWN_GAP_S and not Motion_.getup_blocked(st):
+			getup_t = 0.0 # 부활·판 시작: 숨었다 나타남
+			getup_amp = K_.EXT_GETUP_SPAWN_AMP
+			getup_peak = 0.0
+		var rec := float(st.get("recover", 0.0))
+		if getup_t < 0.0 and rec > 0.05 and not Motion_.getup_blocked(st):
+			getup_t = 0.0
+			getup_peak = rec
+			getup_amp = clampf(rec, 0.5, 1.0) # 가볍게 맞고 선 것 (recover_pow 0.5) 은 약하게, 구르다 선 것 (1) 은 크게
+		if getup_t >= 0.0 and Motion_.getup_blocked(st):
+			getup_t = -1.0
+		if getup_t >= 0.0:
+			getup_t += dt
+			if getup_t > K_.EXT_GETUP_S:
+				getup_t = -1.0
+		var u := getup_mark if getup_mark > 0.0 else (getup_t / K_.EXT_GETUP_S if getup_t >= 0.0 else -1.0)
+		getup_w_last = 0.0
+		if u < 0.0:
+			return
+		var cv: Dictionary = Motion_.getup_curves(u)
+		var w: float = float(cv.env) * Motion_.getup_motor_w(rag_motor) * getup_amp
+		getup_w_last = w
+		if w < 0.005:
+			return
+		var al: float = K_.EXT_GETUP_LEG * w * float(cv.step)
+		var fy0 := _feet_y()
+		var legs := [["R", 1.0], ["L", -0.5]] # 오른발 앞, 왼발 뒤로 (무릎 꿇는 쪽)
+		for lg in legs:
+			var th_i: int = int(info.map.get("thigh_" + str(lg[0]), -1))
+			var kn_i: int = int(info.map.get("knee_" + str(lg[0]), -1))
+			if th_i < 0 or kn_i < 0:
+				continue
+			var f: float = float(lg[1])
+			_add_rot(th_i, Quaternion(Vector3.BACK, al * f))
+			_add_rot(kn_i, Quaternion(Vector3.BACK, -al * (0.9 if f > 0.0 else 1.4)))
+		var aa: float = K_.EXT_GETUP_ARM * w * float(cv.arm)
+		for jn in ["shoulder_R", "shoulder_L"]:
+			var sbi: int = int(info.map.get(jn, -1))
+			if sbi >= 0:
+				_add_rot(sbi, Quaternion(Vector3.BACK, aa))
+		var tp: float = K_.EXT_GETUP_TORSO * w * float(cv.torso)
+		for e in [["mixamorig_Spine1", 0.5], ["mixamorig_Spine2", 0.5], ["mixamorig_Head", -0.5]]:
+			var bi := sk.find_bone(str(e[0]))
+			if bi >= 0:
+				_add_rot(bi, Quaternion(Vector3.BACK, -tp * float(e[1])))
+		# 다리를 접으면 발이 올라가니 올라간 만큼 엉덩이를 내려 발은 땅에 (착지와 같은 방법)
+		var hb: int = int(info.map.get("hips", -1))
+		if hb >= 0 and fy0 < 1e8:
+			var dy := _feet_y() - fy0
+			sk.set_bone_pose_position(hb, sk.get_bone_pose_position(hb) - Vector3(0, dy, 0))
+
+	var extra_gap := 0.0 # 직전 가산 층 이후 지난 시간 (몸이 숨었다 나타났는지 알아냄)
+
+	func _feet_y() -> float:
+		var fy := 0.0
+		var nf := 0
+		for side in ["R", "L"]:
+			var fi: int = int(info.map.get("foot_" + side, -1))
+			if fi >= 0:
+				fy += _gt(fi).origin.y
+				nf += 1
+		return fy / nf if nf > 0 else 1e9
+
 	# 클립 한 바퀴의 평균 회전 (부호 맞춰 더해 정규화), 클립·뼈마다 한 번만
 	var swing_means := {}
 
@@ -1425,15 +1500,20 @@ class Ext extends Node3D:
 		if extra_off:
 			return
 		var now := Time.get_ticks_msec() * 0.001
+		extra_gap = (now - extra_t) if extra_t > 0.0 else 0.0
 		var dt := clampf(now - extra_t, 0.0, 0.1) if extra_t > 0.0 else 0.0
 		extra_t = now
 		if dt <= 0.0:
 			return
 		var rg = Rag_._inst
+		var rag_motor := -1.0
 		if rg != null and is_instance_valid(rg) and rg.rags.has(body):
 			var r: Dictionary = rg.rags[body]
-			if r.awake and float(r.motor) < K_.EXT_CLIP_MOTOR_MIN:
-				return # 힘 빠진 몸은 물리가 맡음
+			if r.awake:
+				rag_motor = float(r.motor)
+		_getup_layer(st, dt, rag_motor) # W43: 모터가 돌아오는 동안 손 짚고 일어나기 (힘 빠진 몸 규칙보다 먼저)
+		if rag_motor >= 0.0 and rag_motor < K_.EXT_CLIP_MOTOR_MIN:
+			return # 힘 빠진 몸은 물리가 맡음
 		# --- 시선 ---
 		var allow := Motion_.gaze_allowed(st)
 		gaze_w = move_toward(gaze_w, 1.0 if allow else 0.0, dt * K_.EXT_GAZE_W_RATE)

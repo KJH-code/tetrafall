@@ -34,6 +34,9 @@ func _states(ch: String, group: String) -> Array:
 		out.append(["fall", {"air": true, "hs": ms * 0.5, "vz": -9.0, "t": 0.8}])
 		out.append(["land", {"land": 0.8}])
 		out.append(["airdash", {"air": true, "airDash": 1.0, "hs": ms}])
+	if group == "getup": # W43 일어나기: 진행 u = 0.05 … 0.95 (recover 는 코드 웅크림이 줄어드는 값, 래그돌 없음 = 모터 가중치 1)
+		for u in [0.05, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.0]:
+			out.append(["getup_%d" % int(u * 100), {"recover": maxf(0.0, 1.0 - u / 0.64), "getup_u": u}])
 	if group == "dir": # W43 방향 이동: 몸은 앞을 봄, 이동 방향 (몸 기준 앞 mvF·왼쪽 mvS) 만 다름. 걷기 (0.6) · 달리기 (1.0) × 앞·뒤·왼·오른 + 대각선
 		for sp in [["walk", 0.6, 1.2], ["run", 1.0, 1.2]]:
 			for d in [["fwd", 1.0, 0.0], ["back", -1.0, 0.0], ["left", 0.0, 1.0], ["right", 0.0, -1.0]]:
@@ -158,6 +161,8 @@ func _run() -> void:
 			if ov.has("t"):
 				st.t = float(ov.t)
 			var b = bodies[i]
+			if ov.has("getup_u") and b.ext != null:
+				b.ext.getup_mark = float(ov.getup_u)
 			b.hs = float(st.hs)
 			b.walk = float(st.walk)
 			b.vz = float(st.vz)

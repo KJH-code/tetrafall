@@ -103,6 +103,14 @@ const EXT_TURN_MAX_RAD := 0.30
 const EXT_TURN_ARM_RAD := 0.35 # 비틀림 최대일 때 팔 앞뒤 반동
 const EXT_TURN_RATE := 12.0
 const EXT_TURN_BONES := [["mixamorig_Spine1", 0.5], ["mixamorig_Spine2", 0.5]]
+# W43 일어나기 (경직이 풀려 땅에 닿은 뒤 · 부활 직후): 웅크린 자세에서 손을 짚고 한 발 내딛으며 일어남 (가산, 래그돌 모터가 돌아오는 만큼 섞임). 라디안
+const EXT_GETUP_S := 0.7 # 전체 길이 (초)
+const EXT_GETUP_TORSO := 0.45 # 윗몸 앞 숙임 (시작 값, 일어나며 0 으로)
+const EXT_GETUP_ARM := 0.9 # 손 짚으러 팔이 앞으로 뻗는 양
+const EXT_GETUP_LEG := 0.45 # 앞발 허벅지 앞 (뒷발은 0.5 배 뒤로 + 무릎 꿇음)
+const EXT_GETUP_MOTOR := Vector2(0.12, 0.5) # 래그돌 모터가 이 구간에서 0 → 1 로 섞임 (몸이 완전히 축 늘어졌을 땐 안 함)
+const EXT_GETUP_SPAWN_GAP_S := 0.5 # 몸이 이만큼 (초) 숨었다 다시 보이면 (부활·판 시작) 낮은 세기로 일어나기부터
+const EXT_GETUP_SPAWN_AMP := 0.5
 # W43 달릴 때 팔 흔들림 폭: 클립 속도 기준 (걷기 = MOVE_SPEED × 0.5, 달리기 = MOVE_SPEED) 에서 속도가 벗어난 비율만큼 (범위 안으로)
 const EXT_ARM_SWING_RANGE := Vector2(0.8, 1.25)
 # W40 1인칭 팔을 3인칭 클립 (평타·스킬) 곡선으로: 클립이 코드 자세에서 얼마나 벗어났나 (뼈 지역 회전 차이) 를 1인칭 쌍둥이 팔에 이 비율로 더함 (0 = 끔)

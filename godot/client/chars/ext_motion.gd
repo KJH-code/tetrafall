@@ -151,3 +151,34 @@ static func wrap_pi(a: float) -> float:
 static func arm_swing_scale(speed: float, run_clip: bool) -> float:
 	var nominal := float(C.MOVE_SPEED) * (1.0 if run_clip else 0.5)
 	return clampf(speed / maxf(0.1, nominal), K.EXT_ARM_SWING_RANGE.x, K.EXT_ARM_SWING_RANGE.y)
+
+
+# ---------- W43 일어나기 (순수 계산) ----------
+
+# 일어나기 곡선: u = 0..1 (경과 비율) → {env 들어가고 나오는 가중치, torso 윗몸 앞 숙임 (1 → 0), arm 손 짚으러 뻗음 (뻗고 → 밀고 → 놓음), step 한 발 내딛기 (종 모양)}
+static func getup_curves(u: float) -> Dictionary:
+	var x := clampf(u, 0.0, 1.0)
+	var env := _sstep(0.0, 0.15, x) * (1.0 - _sstep(0.8, 1.0, x))
+	var reach := _sstep(0.0, 0.35, x)
+	var push := _sstep(0.4, 0.8, x)
+	return {"env": env, "torso": 1.0 - x, "arm": reach * (1.0 - 0.8 * push), "step": sin(PI * x)}
+
+
+static func _sstep(a: float, b: float, v: float) -> float:
+	var t := clampf((v - a) / maxf(b - a, 1e-6), 0.0, 1.0)
+	return t * t * (3.0 - 2.0 * t)
+
+
+# 래그돌 모터 세기 → 일어나기를 섞는 비율 (축 늘어진 몸 0 … 돌아온 몸 1). 래그돌 없으면 (모터 < 0 로 넘김) 1
+static func getup_motor_w(motor: float) -> float:
+	if motor < 0.0:
+		return 1.0
+	return _sstep(K.EXT_GETUP_MOTOR.x, K.EXT_GETUP_MOTOR.y, motor)
+
+
+# 일어나기를 시작·계속해도 되는 상태인가 (공격·새로 맞음·다시 경직이면 끊음)
+static func getup_blocked(st: Dictionary) -> bool:
+	if bool(st.get("stunned", false)) or st.get("act") != null or bool(st.get("air", false)) or int(st.get("emote", -1)) >= 0 or float(st.get("victory", -1.0)) >= 0.0:
+		return true
+	var h = st.get("hit")
+	return h is Dictionary and float(h.get("age", 9.0)) < 0.25
