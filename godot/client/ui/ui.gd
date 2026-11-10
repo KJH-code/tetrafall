@@ -4,6 +4,7 @@ extends CanvasLayer
 const Opts := preload("res://core/opts.gd")
 
 const Prof := preload("res://core/prof.gd")
+const Gate := preload("res://core/entry_gate.gd")
 
 const C := preload("res://core/config.gd")
 const S := preload("res://ui/ui_style.gd")
@@ -229,20 +230,38 @@ var _drawn_at := 0
 
 
 func _refresh_panels(st: Dictionary) -> void:
+	var t := Prof.now() # W42: 화면 판마다 구간 (--hitch·--perf-log 일 때만)
 	if shown == "game" and not st.is_empty():
 		hud.refresh(st)
+		Prof.add("ui ·HUD refresh", t)
+		t = Prof.now()
 		hud_extra.refresh(st)
+		Prof.add("ui ·HUD extra refresh", t)
 	if shown == "results" and not st.is_empty():
 		results.refresh(st)
+		Prof.add("ui ·results refresh", t)
+	t = Prof.now()
 	if (shown == "results" or shown == "lobby") and not st.is_empty():
 		hud.score_band(st, get_viewport().get_visible_rect().size, true) # 판 사이 위 점수 띠 (JS body.ui-dark #score)
+		Prof.add("ui ·score band", t)
 	if shown == "lobby" and not st.is_empty():
+		t = Prof.now()
 		lobby.refresh(st)
+		Prof.add("ui ·lobby refresh", t)
+		t = Prof.now()
 		hud.warm_faces(st)
+		Prof.add("ui ·lobby warm faces", t)
+		if Gate.ok("ui.hud") and not Opts.args().has("--no-hud-prebuild"): # W42: 판 HUD 카드 8장을 숨은 채 한 장씩 (판 시작 때 만들던 것)
+			var tp := Gate.t()
+			hud.prebuild_cards(st, get_viewport().get_visible_rect().size)
+			Gate.done("ui.hud", tp)
+			Prof.add("ui ·HUD card prebuild", tp)
 		var host: bool = st.get("hostId") == Store.my_id
 		host_players.visible = host
 		if host:
+			t = Prof.now()
 			host_players.refresh(st)
+			Prof.add("ui ·host players refresh", t)
 
 
 # Enter: 대기실·판 끝에 방장이면 시작 (판 중 Enter 는 블록 하드드롭이라 PlayerInput 이 가짐)

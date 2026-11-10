@@ -383,6 +383,11 @@ func far_shapes(solid: Parts, glow: Parts, L: Dictionary, r: Rng, cx: float, cy:
 				solid.add(peak(rad, h, seg, tips), tint, at(x, y, base + h / 2, r.next() * 3))
 
 
+# W42: build 가 일을 하나 (테마·판 크기·화질이 바뀜) — 입장 쪼개기가 '이번 프레임에 이 큰 일을 돌려도 되나' 를 먼저 물음
+func stale(id, w: int, d: int, low_gfx: bool) -> bool:
+	return not (id == theme_id and size == Vector2i(w, d) and low_gfx == low) and id != null and C.WORLD_THEMES.has(id)
+
+
 # 테마·판 크기가 바뀌면 다시 만듦 (world.js layout). theme_id null 이면 비움
 func build(id, w: int, d: int, low_gfx: bool, h: int = int(C.GRID_H)) -> void:
 	if id == theme_id and size == Vector2i(w, d) and low_gfx == low:

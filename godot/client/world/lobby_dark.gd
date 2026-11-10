@@ -21,7 +21,7 @@ var _glow_was := {}
 
 
 # world: World Node3D (G3Env 를 가짐), G3: shaders/g3.gd, flash: 다른 테마에서 맵을 바꿔 들어옴
-func setup(world: Node3D, G3, theme_id: String, w: int, d: int, low_gfx: bool, flash: bool) -> void:
+func setup(world: Node3D, G3, theme_id: String, w: int, d: int, low_gfx: bool, flash: bool, defer := false) -> void:
 	theme = theme_id
 	T = C.TITLE_THEMES[theme_id]
 	low = low_gfx
@@ -30,7 +30,7 @@ func setup(world: Node3D, G3, theme_id: String, w: int, d: int, low_gfx: bool, f
 	var R: float = maxf(w, d) * L.clear + 3
 	if ResourceLoader.exists(STAGE):
 		var S = load(STAGE)
-		stage = S.new(theme_id, {"low": low, "logoW": 0, "logoH": 0, "camDist": R, "ring": true, "clear": R, "floorZ": -float(L.drop)})
+		stage = S.new(theme_id, {"low": low, "logoW": 0, "logoH": 0, "camDist": R, "ring": true, "clear": R, "floorZ": -float(L.drop), "defer": defer})
 		if stage is Node3D:
 			add_child(stage)
 			stage.position = Co.gxyz(w / 2.0, d / 2.0, 0) # 무대 가운데 = 섬 가운데
@@ -51,6 +51,22 @@ func setup(world: Node3D, G3, theme_id: String, w: int, d: int, low_gfx: bool, f
 	add_child(flash_layer)
 	flash_at = Time.get_ticks_msec() * 1.0 if flash else -1e12
 	apply(world, G3)
+
+
+# W42: 무대 스크립트 (title_world.gd 큰 파일) 컴파일을 미리 — 메뉴 미리 하기 조각. 정적 (노드를 안 붙잡음)
+static func preload_stage() -> bool:
+	if not ResourceLoader.has_cached(STAGE):
+		load(STAGE)
+	return true
+
+
+# W42: 무대가 다 지어졌나 (defer 로 만들면 setup_step 으로 소품·빛 가루를 나눠 지음)
+func ready() -> bool:
+	return stage == null or not stage.has_method("ready_built") or stage.ready_built()
+
+
+func stage_step() -> bool: # 한 조각, 참 = 다 지음
+	return stage == null or not stage.has_method("setup_step") or stage.setup_step()
 
 
 # 같은 테마·판 크기·그래픽 설정이면 그대로 씀
@@ -92,7 +108,7 @@ func apply(world: Node3D, G3) -> void:
 func step(world: Node3D, G3) -> void:
 	frames += 1
 	apply(world, G3)
-	if stage != null and stage.has_method("update"):
+	if stage != null and stage.has_method("update") and ready():
 		stage.update(Time.get_ticks_msec() / 1000.0, 1.0, get_viewport().get_visible_rect().size.y * 0.5)
 	var k: float = 1.0 - (Time.get_ticks_msec() - flash_at) / float(C.LOBBY_DARK.flashMs)
 	flash_rect.color.a = float(C.LOBBY_DARK.flash) * k * k if k > 0 else 0.0

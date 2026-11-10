@@ -1,6 +1,7 @@
 # 사람 몸 자리: G2 의 chars/chars.gd make_body(char, color) 가 있으면 그 몸, 없으면 상자 몸 (G0 dev_view 와 같음).
 # World 는 위치 (Store.view_pos 보간)·방향·보이기·머리 위 이름표만 정함. 몸 동작은 몸 노드의 pose(p, now_ms)·on_event(e) (G2)
 extends Node3D
+const Gate := preload("res://core/entry_gate.gd")
 const Opts := preload("res://core/opts.gd")
 
 const C := preload("res://core/config.gd")
@@ -206,13 +207,13 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 		var n: Dictionary = nodes.get(id, {})
 		var mine0: bool = my_id != null and id == int(my_id)
 		if not n.is_empty() and (n.char != look_of(p) or (chars_script == null and n.color != color)):
-			if (builds >= WC.BODY_BUILDS_PER_FRAME or build_ms >= WC.BODY_BUILD_MS) and not mine0:
+			if (builds >= WC.BODY_BUILDS_PER_FRAME or build_ms >= WC.BODY_BUILD_MS or not Gate.ok("body")) and not mine0:
 				shown[id] = Store.view_pos(id) if pos_fn == null else pos_fn.call(p, Store.view_pos(id))
 				continue # W32: 이번 프레임 만들 몸이 찼음 — 지금 몸 (옛 캐릭터) 을 두고 다음 프레임에 바꿈
 			n.root.queue_free() # 캐릭터·색이 바뀜 → 몸 새로
 			n = {}
 		if n.is_empty():
-			if (builds >= WC.BODY_BUILDS_PER_FRAME or build_ms >= WC.BODY_BUILD_MS) and not mine0:
+			if (builds >= WC.BODY_BUILDS_PER_FRAME or build_ms >= WC.BODY_BUILD_MS or not Gate.ok("body")) and not mine0:
 				var sp := Store.view_pos(id)
 				shown[id] = sp if pos_fn == null else pos_fn.call(p, sp) # 자리는 알려 줌 (카메라·하늘 도우미) — 몸은 다음 프레임에
 				continue # W32: 몸 만들기 분산
@@ -221,6 +222,7 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 			var _tb := Time.get_ticks_usec()
 			n = _make(p, color)
 			build_ms += (Time.get_ticks_usec() - _tb) / 1000.0
+			Gate.done("body", _tb) # W42: 입장 쪼개기 — 이 프레임 큰 일 합에 셈 (월드의 지형·무대·ui 의 큰 캐릭터와 한 프레임에 몰리지 않게)
 			nodes[id] = n
 		var pos := Store.view_pos(id)
 		if pos_fn != null:

@@ -39,7 +39,11 @@ const MIRROR := preload("res://title/mirror.gdshader")
 const MIRROR_LAYER := 20
 
 
-func setup(theme: String, opts := {}) -> void:
+var _later := 0 # W42 setup(defer): 0 = 다 지음 · 1 = 테마 소품 차례 · 2 = 빛 가루 차례 (setup_step 이 한 번에 하나)
+
+
+# defer 참이면 바닥·빛·안개까지만 하고 (싼 앞부분) 테마 소품·빛 가루는 setup_step() 이 한 번에 하나씩 (대기실 입장 쪼개기 — world/lobby_dark.gd). 거짓이면 예전처럼 한 번에
+func setup(theme: String, opts := {}, defer := false) -> void:
 	basis = TB
 	id = theme if C.TITLE_THEMES.has(theme) else C.TITLE_THEMES.keys()[0]
 	T = C.TITLE_THEMES[id]
@@ -73,16 +77,43 @@ func setup(theme: String, opts := {}) -> void:
 	var key := point(T.key[0], T.key[1] * C.TITLE_LIGHT[0], 0.0, 1.4, Vector3(-logo_w * 0.25, -cam_dist * 0.55, 10))
 	back_light = point(T.back[0], T.back[1] * C.TITLE_LIGHT[1], 0.0, 1.3, Vector3(0, 9, 3))
 	_floor()
+	if defer:
+		_later = 1
+		return
+	_props()
+	_dust()
+
+
+func _props() -> void:
 	ring_rnd = F.Rng.new(99) if ring else null
 	if has_method("_" + id):
 		call("_" + id)
 	ring_rnd = null
+
+
+func _dust() -> void:
 	var n := roundi(float(T.motes[1]) * (C.WORLD_LOW_DETAIL if low else 1.0))
 	var box: Array = mote_box if mote_box != null else [-logo_w * 0.9, logo_w * 0.9, -cam_dist * 0.6, 40.0, floor_z, floor_z + 18.0]
 	if ring:
 		box = [-clear * 2, clear * 2, -clear * 2, clear * 2, box[4], box[5]] # 대기실: 섬 둘레
 	dust = F.motes(n, T.motes[0], T.motes[2], T.motes[3], box, rnd, id == "meadow")
 	add_child(dust)
+
+
+# defer 로 만든 무대의 남은 일 한 조각 (참 = 다 지음)
+func setup_step() -> bool:
+	if _later == 1:
+		_props()
+		_later = 2
+		return false
+	if _later == 2:
+		_dust()
+		_later = 0
+	return true
+
+
+func ready_built() -> bool:
+	return _later == 0
 
 
 # 화면 보정 곡선: x → srgb_to_linear(x) (JS 합성 판 색 그대로)
@@ -548,6 +579,8 @@ func _meadow() -> void:
 
 # 매 프레임: t 초, lit 장면 밝기 0~1, px (JS 점 크기 — 고도는 지금 카메라 시야각으로 빛 가루 크기를 정해서 안 씀). 거울 카메라도 지금 카메라 따라
 func update(t: float, lit: float, _px := 0.0) -> void:
+	if _later != 0:
+		return # W42: 아직 다 안 지음 (입장 쪼개기)
 	var cam: Camera3D = get_viewport().get_camera_3d() if is_inside_tree() else null
 	var fov: float = cam.fov if cam != null else float(C.TITLE_FOV)
 	if cam != null:

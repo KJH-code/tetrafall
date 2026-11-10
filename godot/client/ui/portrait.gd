@@ -5,6 +5,7 @@
 extends Node
 
 const Hitch := preload("res://core/hitch.gd")
+const Gate := preload("res://core/entry_gate.gd")
 const PSched := preload("res://world/prewarm_sched.gd") # W41
 const Ext := preload("res://chars/external.gd")
 const Opts := preload("res://core/opts.gd")
@@ -134,6 +135,8 @@ func warm(color: Color) -> void:
 func _process(_d: float) -> void:
 	if busy or queue.is_empty():
 		return
+	if not Gate.ok("ui.portrait"):
+		return # W42: 이번 프레임엔 다른 큰 일 (무대·지형·몸) 이 있음 — 다음 프레임에
 	busy = true
 	var job: Array = queue.pop_front()
 	await _draw_one(job)
@@ -141,6 +144,7 @@ func _process(_d: float) -> void:
 
 
 func _draw_one(job: Array) -> void:
+	var _g := Gate.t()
 	var k: String = job[0]
 	var char_id: String = job[1]
 	var size: int = job[3]
@@ -188,6 +192,7 @@ func _draw_one(job: Array) -> void:
 	cam.look_at_from_position(at + Vector3(gx, rise, -gy), at, Vector3.UP)
 	cam.current = true
 	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	Gate.done("ui.portrait", _g) # 몸 만들기·장면 꾸미기까지 (그림 그리기는 다음 프레임들)
 	await RenderingServer.frame_post_draw
 	await RenderingServer.frame_post_draw
 	var img := vp.get_texture().get_image()

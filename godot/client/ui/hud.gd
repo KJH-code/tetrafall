@@ -2,6 +2,7 @@
 # 밝은 예전 모양 (노랑·남색, ui_style hud_box). 아래 사람마다 초상 + 큰 % (+ 체력전 HP 막대), 위 시간·점수 띠 (킬 점수전은 목표까지 막대),
 # 오른쪽 위 킬 피드, Tab(연습 창 키) 점수표, 부활 카운트다운, 스킬 F·R 칸, 조준점 둘레 대시·밀치기 쿨, 관전 안내, 카운트다운 큰 숫자
 extends Control
+const Gate := preload("res://core/entry_gate.gd")
 const HProf := preload("res://core/prof.gd")
 
 const C := preload("res://core/config.gd")
@@ -600,6 +601,7 @@ func _cards(st: Dictionary, vp: Vector2) -> void:
 	var key := JSON.stringify(live.map(func(p): return [p.id, p.get("char"), p.get("color"), p.get("team"), _name(p)]))
 	if key != cards_key:
 		cards_key = key
+		_pre_key = ""
 		for c in cards_row.get_children():
 			c.free()
 		cards.clear()
@@ -656,6 +658,39 @@ func _cards(st: Dictionary, vp: Vector2) -> void:
 		if hv != null:
 			c.hp_fill.size.x = c.hp.size.x * float(hv.frac)
 			c.hp_fill.color = Color("e0300c") if hv.low else Color("2fbf5a")
+
+
+# W42: 대기실에서 아래 판 카드를 숨은 채 한 장씩 미리 만들어 둠 (판 시작 한 프레임에 8장 + 초상 자리 만들기가 몰리던 것). 부를 때마다 카드 한 장,
+# 다 만들면 참. 같은 사람 목록 (key) 이면 _cards 가 그대로 씀 — 목록이 바뀌면 그쪽이 새로 만듦
+var _pre_key := ""
+var _pre_i := 0
+var _pre_L: Dictionary = {}
+
+
+func prebuild_cards(st: Dictionary, vp: Vector2) -> bool:
+	var live: Array = st.players.filter(func(p): return not p.get("spectator", false) and not p.get("dummy", false))
+	if live.size() < 2 or Store.room.get("practice", false):
+		return true
+	var key := JSON.stringify(live.map(func(p): return [p.id, p.get("char"), p.get("color"), p.get("team"), _name(p)]))
+	if key == cards_key:
+		return true
+	if _pre_key != key:
+		for c in cards_row.get_children():
+			c.free()
+		cards.clear()
+		cards_key = ""
+		_pre_key = key
+		_pre_i = 0
+		_pre_L = U.card_layout(live.size(), vp.x)
+		cards_row.add_theme_constant_override("separation", int(_pre_L.gap))
+	var p: Dictionary = live[_pre_i]
+	cards[p.id] = _make_card(p, _pre_L)
+	_pre_i += 1
+	if _pre_i >= live.size():
+		cards_key = key
+		_pre_key = ""
+		return true
+	return false
 
 
 func _make_card(p: Dictionary, L: Dictionary) -> Dictionary:
@@ -879,6 +914,8 @@ func _cell(text: String, expand: int) -> String:
 
 func _rig():
 	if rig == null or not is_instance_valid(rig):
+		if not is_inside_tree():
+			return null # (트리 밖: 테스트)
 		var w := get_tree().root.find_child("World", true, false)
 		rig = w.get("rig") if w != null else null
 	return rig

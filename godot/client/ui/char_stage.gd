@@ -81,6 +81,13 @@ func active() -> bool:
 
 
 # 캐릭터·색이 바뀌면 몸을 새로. 처음 들어올 땐 도발 없이 바로 돌기 시작, 그 뒤 바꾸면 도발 한 번
+# W42: show_char 가 일을 하나 (캐릭터·색이 바뀜) — 입장 쪼개기가 큰 일 차례를 먼저 물음
+func pending(char_id: String, color: Color) -> bool:
+	if Chars == null or char_id == "" or DisplayServer.get_name() == "headless":
+		return false
+	return "%s|%s" % [char_id, color.to_html(false)] != key
+
+
 func show_char(char_id: String, color: Color) -> void:
 	if Chars == null or char_id == "" or DisplayServer.get_name() == "headless":
 		return

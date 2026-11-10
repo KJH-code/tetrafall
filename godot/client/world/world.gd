@@ -31,6 +31,7 @@ const Gfx := preload("res://world/gfx.gd") # 화질 (W6): 설정 화질·창 크
 const ShadowCalc := preload("res://world/shadow_calc.gd") # W32: 그림자 거리
 const PSched := preload("res://world/prewarm_sched.gd") # W41: 메뉴·대기실 미리 하기를 프레임 예산 안에서 한 조각씩
 const WarmScan := preload("res://world/warm_scan.gd")
+const Gate := preload("res://core/entry_gate.gd") # W42: 입장·카운트다운 큰 일을 한 프레임에 하나씩
 const TexPre := preload("res://chars/tex_prefetch.gd")
 const UiPrefs := preload("res://ui/ui_prefs.gd")
 const BBLOCKS := "res://world/bblocks.gd"
@@ -82,6 +83,8 @@ var _scan_wait := 0
 var _pf_done := {} # 대기실에서 텍스처를 미리 요청한 캐릭터
 var _jobs := {} # 캐릭터 → External.WarmJob (W41)
 var dark = null # 대기실 어두운 무대 (lobby_dark.gd), 대기실 아니면 null
+var _entered := false # W42: 입장 쪼개기가 끝남 (처음 한 바퀴 다 돌림) — 그 전엔 판 노드를 숨김 (반쯤 지어진 장면이 안 보이게)
+var entry_frames := 0 # 확인용: 이번 입장에서 일을 미룬 프레임 수
 var vm = null # G2 1인칭 팔·무기 (chars/viewmodel.gd)
 var _halo_st = null # 판 빛 무리를 만든 스냅샷 (같으면 _halos 그대로)
 var _halo_lit := false
@@ -513,6 +516,8 @@ func _sched_setup() -> void:
 				return true
 			return false, 3.0, "menu", after)
 	S.add("warm.scan", 3, _warm_scan_step, 3.0, "menu", after + 300.0)
+	if G3 != null and ResourceLoader.exists(LobbyDark.STAGE): # W42: 대기실 무대 스크립트 컴파일 (~22ms) 을 메뉴에서 미리 — 타이틀을 거치면 이미 있음. 정적 함수라 world 를 안 붙잡음 (종료 때 스케줄러 람다가 죽은 노드를 쥐는 abort 방지)
+		S.add("stage.script", 5, LobbyDark.preload_stage, 22.0, "menu", after + 400.0)
 	if light_fx != null and light_fx.has_method("warm_lut_step"):
 		S.add("light.lut", 6, func(): return light_fx.warm_lut_step(), 0.7, "menu", after)
 		S.add("hazard.vignette", 7, func(): return PSched.WAIT if not is_visible_in_tree() else hazard_view.warm_canvas_step(), 0.2, "menu", after)
@@ -553,7 +558,7 @@ func _process(dt: float) -> void:
 	# 방 밖 (메뉴): 판 노드를 숨김 (크기 안 정한 바닥·절벽 상자가 원점 카메라 앞을 가르던 것). 하늘·빛 (G3Env)·효과는 그대로
 	var live: bool = not st.is_empty() and st.has("field")
 	for n in [scenery, grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, ghost_aim, marks, light_fx, shots, hook_fx, body_fx]:
-		n.visible = live and ((n != hazard_view and n != ghost_aim) or n.visible) and (n != scenery or dark == null) # 어두운 무대면 떠 있는 섬·먼 배경 숨김
+		n.visible = live and (_entered or not Gate.on()) and ((n != hazard_view and n != ghost_aim) or n.visible) and (n != scenery or dark == null) # 어두운 무대면 떠 있는 섬·먼 배경 숨김
 	if not live and vm != null:
 		vm.update(null, false, dt) # 방 밖: 1인칭 팔 끔
 	# 첫 진입 멈춤 줄이기 (render.js prewarmLobby): 메뉴·대기실에서 미리 하기 — W41 부터 프레임 예산 스케줄러 (world/prewarm_sched.gd) 가 조각으로 나눠 돌림.
@@ -563,6 +568,8 @@ func _process(dt: float) -> void:
 	else:
 		_sched_tick(live, st)
 	if not live:
+		_entered = false
+		entry_frames = 0
 		hazard_view.clear() # 판 중에 나가면 위험 경고·전역 위험 빛·물들임이 메뉴에 남던 것 (update 가 더 안 불림)
 	if headless or not live:
 		return
@@ -575,7 +582,12 @@ func _process(dt: float) -> void:
 	var pk = LP.pick(st, View.menu_theme)
 	var mid := str(pk) if pk != null else str(st.get("map", {}).get("id", ""))
 	if mid != theme_id:
+		if not Gate.ok("world.theme"):
+			_entry_wait()
+			return
+		var tg := Gate.t()
 		apply_theme(mid)
+		Gate.done("world.theme", tg)
 		Prof.lap("world 섬·대기실 ·맵 바꿈")
 	if pk != null:
 		var n := LP.lobby_field_size(st)
@@ -596,9 +608,21 @@ func _process(dt: float) -> void:
 			_shadow_reach = -1.0
 		built_version = -2
 	Prof.lap("world 섬·대기실 ·판 크기 변경")
-	_lobby_dark(st, fs)
+	if _lobby_dark(st, fs):
+		_entry_wait()
+		return
 	Prof.lap("world 섬·대기실 ·어두운 무대")
-	scenery.build(C.WORLD_MAP_THEME.get(theme_id), fs.x, fs.y, bool(View.settings.get("lowGfx", false)), fs.z)
+	var sc_low := bool(View.settings.get("lowGfx", false))
+	var sc_id = C.WORLD_MAP_THEME.get(theme_id)
+	if scenery.stale(sc_id, fs.x, fs.y, sc_low):
+		if not Gate.ok("world.scenery"):
+			_entry_wait()
+			return
+		var ts := Gate.t()
+		scenery.build(sc_id, fs.x, fs.y, sc_low, fs.z)
+		Gate.done("world.scenery", ts)
+	else:
+		scenery.build(sc_id, fs.x, fs.y, sc_low, fs.z) # 바꿀 게 없으면 바로 돌아옴 (테마 없음 → 비움도 여기)
 	Prof.lap("world 섬·대기실 ·지형 만들기")
 	scenery.step(dt)
 	Prof.lap("world 섬·대기실")
@@ -608,11 +632,17 @@ func _process(dt: float) -> void:
 	var gkey = preview.key if preview != null else Store.grid_version
 	var g := grid()
 	if str(gkey) != str(built_version) and g.size() == fs.x * fs.y * fs.z:
+		if not Gate.ok("world.grid"):
+			_entry_wait()
+			return
+		var tgr := Gate.t()
 		grid_view.rebuild(g, fs.x, fs.y, fs.z)
 		built_version = gkey
 		if sprouts != null:
 			G3.sprout_update(sprouts, g, fs.x, fs.y, fs.z, grid_view.skip, bool(View.settings.get("lowGfx", false)))
+		Gate.done("world.grid", tgr)
 	Prof.lap("world 격자·건축 블록")
+	_entered = true # 입장 한 바퀴 끝 (지형·무대·칸까지 다 지음)
 	rig.pre(dt)
 	grid_view.regroup() # W39: 쌓인 칸 먼/가까움 (카메라가 움직였을 때만)
 	var sky_on: bool = rig.sky_blend > 0.5
@@ -695,6 +725,14 @@ func _process(dt: float) -> void:
 	Prof.lap("world 1인칭 팔·유령 조준")
 
 
+# 입장 쪼개기: 이번 프레임에 이 큰 일 차례가 아님 → 나머지는 다음 프레임에 (그동안 판 노드는 숨은 채 / 맵 바꿈이면 옛 장면이 잠깐 그대로)
+func _entry_wait() -> void:
+	entry_frames += 1
+	if Hitch.on:
+		Hitch.tag("entry split", "deferred frame %d" % entry_frames)
+	Prof.lap("world entry split (deferred)")
+
+
 # 판 빛 무리: 떨어지는 블록 칸·아이템마다 [x, y, z, 색, 크기 배수] (game-light.js)
 static func halos_of(st: Dictionary, piece_colors: Dictionary) -> Array:
 	var halos := []
@@ -719,12 +757,23 @@ func column_top(x: int, y: int) -> int:
 
 
 # 대기실 어두운 무대 (render.js 의 dark): 고른 맵 테마의 어두운 엔딩 장면, 맵 바꾸면 그 테마 + 빛 번쩍, 판 시작하면 밝은 판으로
-func _lobby_dark(st: Dictionary, fs: Vector3i) -> void:
+func _lobby_dark(st: Dictionary, fs: Vector3i) -> bool: # 참 = 이번 프레임엔 큰 일 차례가 아님 (미룸)
 	if G3 == null:
-		return
+		return false
 	var low := bool(View.settings.get("lowGfx", false))
 	var dk = LP.lobby_theme(st, View.menu_theme)
 	var swap := false
+	var needs: bool = (dark != null and not dark.fits(dk, fs.x, fs.y, low)) or (dark == null and dk != null)
+	if needs and not Gate.ok("world.dark"):
+		return true
+	if needs and dark == null and ResourceLoader.exists(LobbyDark.STAGE) and not ResourceLoader.has_cached(LobbyDark.STAGE):
+		# 무대 스크립트 (title_world.gd 큰 파일) 컴파일 ~22ms — 타이틀을 안 거친 입장 (?room= 링크) 은 여기서 처음. 따로 한 칸 (메뉴 미리 하기가 이미 했으면 건너뜀)
+		if not Gate.ok("world.dark.load"):
+			return true
+		var tl := Gate.t()
+		load(LobbyDark.STAGE)
+		Gate.done("world.dark.load", tl)
+	var tg := Gate.t()
 	if dark != null and not dark.fits(dk, fs.x, fs.y, low):
 		swap = dk != null and dk != dark.theme
 		dark.dispose(self)
@@ -737,6 +786,16 @@ func _lobby_dark(st: Dictionary, fs: Vector3i) -> void:
 	if dk != null and dark == null:
 		dark = LobbyDark.new()
 		add_child(dark)
-		dark.setup(self, G3, dk, fs.x, fs.y, low, swap)
+		dark.setup(self, G3, dk, fs.x, fs.y, low, swap, Gate.on())
+	if needs:
+		Gate.done("world.dark", tg)
+	if dark != null and not dark.ready(): # 소품·빛 가루는 프레임마다 한 조각씩 (큰 일 한 칸)
+		if Gate.ok("world.dark.part"):
+			var tp := Gate.t()
+			dark.stage_step()
+			Gate.done("world.dark.part", tp)
+		if not dark.ready() and not _entered:
+			return true # 입장 첫 바퀴: 무대가 다 지어질 때까지 (아직 숨은 채) 기다림
 	if dark != null:
 		dark.step(self, G3)
+	return false

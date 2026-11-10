@@ -3,6 +3,7 @@
 # 큰 캐릭터·카드 초상은 G2 몸이 나오면 SubViewport (지금은 색 상자 + 이름). 방 메시지는 server/rooms.js 그대로 (Store.send_room)
 extends PanelContainer
 
+const Gate := preload("res://core/entry_gate.gd")
 const C := preload("res://core/config.gd")
 const S := preload("res://ui/ui_style.gd")
 const Keys := preload("res://core/keys.gd")
@@ -517,9 +518,17 @@ func refresh(st: Dictionary) -> void:
 	# 큰 캐릭터: 도는 3D (그래픽 낮춤이면 정지 초상 — JS 와 같게)
 	var low := bool(View.settings.get("lowGfx", false))
 	stage_3d.visible = not low
+	var stage_wait := false # W42: 큰 캐릭터 몸 만들기 (~10ms) 차례가 아님 → 다음 갱신에 (그동안 초상도 안 줄 세움)
 	if not low:
-		stage_3d.call("show_char", ch, my_col)
-	var live: bool = not low and stage_3d.call("active")
+		if not stage_3d.call("pending", ch, my_col):
+			stage_3d.call("show_char", ch, my_col)
+		elif Gate.ok("ui.stage"):
+			var tg := Gate.t()
+			stage_3d.call("show_char", ch, my_col)
+			Gate.done("ui.stage", tg)
+		else:
+			stage_wait = true
+	var live: bool = not low and (stage_wait or stage_3d.call("active"))
 	var big: Texture2D = Portrait.tex(ch, my_col, 256, true) if not live else null
 	stage_img.texture = big
 	stage_img.visible = not live

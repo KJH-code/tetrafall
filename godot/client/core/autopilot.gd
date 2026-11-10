@@ -376,6 +376,9 @@ func _process(_d: float) -> void:
 		if args.has("sched-log"): # W41: 미리 하기 예산기가 한 일
 			var PS = load("res://world/prewarm_sched.gd")
 			print("[미리하기] 조각 %d · 일한 프레임 %d · 한 프레임 최대 %.1fms · 남은 %d · 끝난 %s" % [PS.main.pieces_run, PS.main.frames_busy, PS.main.worst_frame_ms, PS.main.pending(), str(PS.main.finished.map(func(f): return "%s %d조각 %.0fms" % [f[0], f[1], f[2]]))])
+		if args.has("sched-log"): # W42: 입장 쪼개기 문 — 일마다 [돌린 수, 미룬 수, 최대 ms], 예상 ms, 한 프레임 큰 일 합 최대
+			var GT = load("res://core/entry_gate.gd")
+			print("[gate] frame peak %.1fms · tasks %s · est %s" % [GT.frame_peak, str(GT.log), str(GT.est)])
 		if Prof.track: # W41 --first-use: 처음 쓰는 값 표 (파일 --first-use-out 도)
 			var rep := Prof.first_report(float(args.get("first-min", 1.0)))
 			for l in rep:

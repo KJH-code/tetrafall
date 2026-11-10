@@ -7,6 +7,7 @@ extends Node
 
 signal active_changed(on: bool) # 3D 배경이 켜짐/꺼짐 — main.gd 가 판 (world) 을 숨김/보임
 
+const Opts_ := preload("res://core/opts.gd")
 const C := preload("res://core/config.gd")
 const Co := preload("res://core/coords.gd")
 const TC := preload("res://title/title_calc.gd")
@@ -49,9 +50,18 @@ func _init() -> void:
 	name = "Title" # 자동 조종 (--shot-at title) 이 찾음
 
 
+static func _arg_value(key: String) -> String:
+	var a := Opts_.args()
+	var i := a.find(key)
+	return str(a[i + 1]) if i >= 0 and i + 1 < a.size() and not str(a[i + 1]).begins_with("--") else ""
+
+
 func _ready() -> void:
 	headless = DisplayServer.get_name() == "headless"
 	theme = fixed_theme if C.TITLE_THEMES.has(fixed_theme) else TC.pick_theme(randf())
+	var pin := _arg_value("--menu-theme") # W42 확인용: 메뉴 테마만 고정 (타이틀 장면은 안 켬) — 측정을 같은 테마로 비교
+	if pin != "" and C.TITLE_THEMES.has(pin):
+		theme = pin
 	View.menu_theme = theme
 	View.ui_theme = theme
 	layer.layer = 9 # 메뉴 판 (G4 ui = 10) 아래
