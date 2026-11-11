@@ -10,13 +10,14 @@ const HZ := 60.0 # 표본 빠르기 (표본 사이 1/HZ 초). 임계는 이 표�
 const POP_TORSO := 35.0 # 몸통·팔다리 뼈 (Hips·Spine·어깨·팔·다리)
 const POP_END := 60.0 # 손·발·머리·목
 const POP_CLOTH := 80.0 # 천 사슬 (물리라 더 빠름)
+const POP_JERK_K := 0.5 # 팝 = 각속도가 임계를 넘고 + 직전 표본보다 임계의 이 비율 넘게 갑자기 늘어남 (매끈히 빨라지는 달리기 다리·휘두름은 팝 아님)
 const POP_SOFT_K := 0.5 # '약한 팝' 보조 지표 = 임계 × 이 값
 const JIT_WIN := 30 # 떨림 창 (표본 수, 0.5초)
 const JIT_RMS := 0.25 # 창 안 각가속도 RMS (°/표본²) 가 이 이상이고
 const JIT_FLIP := 0.35 # 속도 방향이 뒤집힌 표본 비율이 이 이상이면 떨림 창
 const JIT_MIN_V := 0.03 # 이보다 느린 속도의 뒤집힘은 안 셈 (°/표본)
-const SLIDE_LIFT := 0.025 # 발이 '땅에 닿음' 높이 (m, 서 있을 때 발 높이보다 위로)
-const SLIDE_MIN_RUN := 3 # 닿음이 이 표본 이상 이어져야 한 번의 디딤
+const SLIDE_LIFT := 0.02 # 발이 '땅에 닿음' 높이 (m, 서 있을 때 발 높이보다 위로)
+const SLIDE_MIN_RUN := 6 # 닿음이 이 표본 (0.1초) 이상 이어져야 한 번의 디딤 (스치는 발은 디딤 아님)
 const SLIDE_MOVE_MIN := 0.12 # 몸이 이만큼 (m) 이상 가는 디딤은 '걸음' (비 = 발 끌림 ÷ 몸 이동)
 const SLIDE_BAD_RATIO := 0.35 # 걸음 디딤에서 이 비를 넘으면 미끄러짐
 const SLIDE_IDLE_BAD := 0.04 # 거의 안 가는 디딤 (몸 이동 < 0.05) 에서 발이 이만큼 (m) 끌리면 '정지 중 끌림'
@@ -97,8 +98,6 @@ class PopDet:
 	var prev: Quaternion
 	var w_prev := 0.0
 	var have := false
-	var over := false
-	var soft_over := false
 
 	func _init(thr_ := 35.0, soft_k_ := 0.5) -> void:
 		thr = thr_
@@ -106,8 +105,6 @@ class PopDet:
 
 	func reset() -> void:
 		have = false
-		over = false
-		soft_over = false
 		w_prev = 0.0
 
 	# 돌려줌 {w: 각속도, pop: 새로 임계 넘음, soft: 새로 약한 임계 넘음, jerk: |w - 앞 w|}. scale = (1/HZ) / 실제 간격 (간격이 어긋나면 °/표본으로 환산)
@@ -116,16 +113,11 @@ class PopDet:
 			prev = q
 			have = true
 			w_prev = 0.0
-			over = false
-			soft_over = false
-			return {"w": 0.0, "pop": false, "soft": false, "jerk": 0.0}
+			return {"w": 0.0, "pop": false, "soft": false, "fast": false, "jerk": 0.0}
 		var w: float = R.ang(prev, q) * scale
 		prev = q
-		var is_over := w > thr
-		var is_soft := w > thr * soft_k
-		var out := {"w": w, "pop": is_over and not over, "soft": is_soft and not soft_over, "jerk": absf(w - w_prev)}
-		over = is_over
-		soft_over = is_soft
+		var jerk := absf(w - w_prev)
+		var out := {"w": w, "pop": w > thr and jerk >= POP_JERK_K * thr, "soft": w > thr * soft_k and jerk >= POP_JERK_K * thr * soft_k, "fast": w > thr, "jerk": jerk}
 		w_prev = w
 		return out
 

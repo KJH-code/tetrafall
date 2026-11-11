@@ -33,6 +33,8 @@ var _last_phase := ""
 var _round_pops: Array = []
 var _file: FileAccess = null
 var trace: FileAccess = null
+var btrace: FileAccess = null
+var btrace_bone := ""
 var _last_now := -1.0
 var trace_pid := -999
 
@@ -43,6 +45,12 @@ func _ready() -> void:
 	out_dir = str(v) if v is String and str(v) != "" else ""
 	light = out_dir == ""
 	rec_name = str(args.get("replay", "live")).get_file()
+	if args.has("qa-bone-trace"):
+		btrace_bone = str(args["qa-bone-trace"])
+		trace_pid = int(args.get("qa-trace", trace_pid))
+		DirAccess.make_dir_recursive_absolute(out_dir)
+		btrace = FileAccess.open(out_dir.path_join("btrace.csv"), FileAccess.WRITE)
+		btrace.store_line("t,label,move,u,clip,cw,fade_t,clip_t,qx,qy,qz,qw,excl")
 	if args.has("qa-trace"): # 확인용: 한 몸 (id) 의 표본별 발 줄 → <폴더>/trace.csv
 		trace_pid = int(args["qa-trace"])
 		DirAccess.make_dir_recursive_absolute(out_dir)
@@ -299,6 +307,12 @@ class Track:
 			excl = true
 			excl_left -= 1
 		var L := _label(st)
+		var cc: Dictionary = ext.info.cfg.get("clips", {})
+		if L == "stun": # 맞아 날아가는·쓰러진 몸은 래그돌 (물리) 이 맡음 — 판정 대상 아님
+			excl = true
+			excl_left = RAG_MARGIN
+		elif L == "act" and st.act is Dictionary and not (cc.get("moves", {}) as Dictionary).has(str((st.act as Dictionary).get("move", ""))):
+			excl = true # 이 캐릭터 클립에 없는 동작 (캐릭터를 바꿔 만든 녹화의 옛 캐릭터 기술) — 코드 자세라 검사 대상 아님
 		if excl:
 			L = "rag"
 		var clip: String = str(ext.cur_clip) if ext.cw > 0.01 else "(코드)"
@@ -306,6 +320,17 @@ class Track:
 		var wmax := 0.0
 		var wbone := ""
 		var has := have > 0
+		if q.btrace != null and pid_of() == q.trace_pid: # 확인용 (--qa-bone-trace 뼈 이름): 한 뼈의 표본별 회전·클립 층 값
+			var bi0 := sk.find_bone("mixamorig_" + q.btrace_bone)
+			if bi0 >= 0:
+				var mvn := ""
+				var u := -1.0
+				if st.get("act") is Dictionary:
+					mvn = "%s/%s" % [str(st.act.get("move", "")), str(st.act.get("phase", ""))]
+					u = float(st.act.get("u", -1.0))
+				var qq := sk.get_bone_pose_rotation(bi0)
+				var ci: Dictionary = ext.clip_info
+				q.btrace.store_line("%.3f,%s,%s,%.3f,%s,%.3f,%.3f,%s,%.4f,%.4f,%.4f,%.4f,%s" % [t, L, mvn, u, str(ext.cur_clip), ext.cw, ext.fade_t, str(ci.get("t", "")), qq.x, qq.y, qq.z, qq.w, str(excl)])
 		var qs: Array = []
 		for i in ids.size():
 			qs.append(sk.get_bone_pose_rotation(ids[i]))
@@ -345,7 +370,8 @@ class Track:
 			a.excluded += 1
 		# --- 상태 전환·깜빡임·이음새 ---
 		if clip != clip_last:
-			if has and t - clip_chg < 0.3 and not excl:
+			var ground_clip: bool = L in ["idle", "loco", "land"] and lab in ["idle", "loco", "land"] # 콤보 연타는 정상 — 땅 위 서기·걷기·달리기 사이만 '깜빡임'
+			if has and t - clip_chg < 0.3 and not excl and ground_clip:
 				a.clip_flicker += 1
 				var fr := {"t": t, "pid": pid_of(), "char": ch, "bone": clip_last + "→" + clip, "sev": 0.3 - (t - clip_chg), "state": L, "clip": clip}
 				q.top("flicker", fr)
@@ -492,8 +518,8 @@ class Track:
 				q.top("slide", row0)
 				q.csv_row("slide", row0)
 			return
-		if float(d.body) < M.SLIDE_MOVE_MIN:
-			return
+		if float(d.body) < M.SLIDE_MOVE_MIN or float(d.body) / (float(d.len) / M.HZ) < 0.8:
+			return # 거의 안 가는 (벽에 막혀 제자리 달리기 등) 디딤은 '걸음' 에서 뺌 (0.8 m/s 이상으로 가야)
 		var th := rad_to_deg(atan2(ms, mf))
 		var kind := "fwd"
 		if absf(th) > 130.0:
@@ -907,6 +933,8 @@ func finish() -> void:
 		print("[모션QA 디버그] 몸 ", Motion_.bodies.size(), " ", info)
 	if trace != null:
 		trace.close()
+	if btrace != null:
+		btrace.close()
 	if light:
 		return
 	var out := {"meta": {"rec": rec_name, "samples": k, "hz": M.HZ, "secs": (_now() - epoch), "thr": {"pop_torso": M.POP_TORSO, "pop_end": M.POP_END, "pop_cloth": M.POP_CLOTH}}, "chars": {}, "top": {}}
