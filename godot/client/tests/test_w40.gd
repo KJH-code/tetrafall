@@ -396,9 +396,9 @@ func test_tank_armor_break_recoil() -> void:
 	b.free()
 
 
-# W40 3: 1인칭 팔 = 3인칭 클립 곡선 (기본 끔 — K.VM_CLIP_ARM 0): 공격·스킬 클립 중에만 팔 뼈의 클립 차이를 기록, 다른 때는 비움
+# W40 3: 1인칭 팔 = 3인칭 클립 곡선 (W43 부터 켬 — K.VM_CLIP_ARM 1.0): 공격·스킬 클립 중에만 팔 뼈의 클립 차이를 기록, 다른 때는 비움
 func test_vm_clip_arm_delta_recorded_only_in_act() -> void:
-	check(K.VM_CLIP_ARM == 0.0, "1인칭 클립 팔은 기본 끔 (보류)")
+	check(K.VM_CLIP_ARM == 1.0, "1인칭 클립 팔은 W43 안전한 방식으로 켬 (손 고정 + 어깨·팔꿈치만)")
 	for ch in ["hunter", "hook", "tank"]:
 		var b = _body(ch)
 		if b.ext == null:

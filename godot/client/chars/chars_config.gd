@@ -79,7 +79,58 @@ const EXT_HIT_HAND_RAD := 0.35
 const EXT_HIT_CRIT_S := 0.5
 const EXT_ARMOR_BREAK_S := 0.45 # 탱크 방어구 깨짐: 방패 쥔 팔 반동 시간
 const EXT_ARMOR_BREAK_RAD := 0.5
+
+# W43 클립 크로스페이드 (초): 클립 바뀔 때 종류 (ext_clips.select 의 kind) 에 따라. 공격 들어갈 때는 칼같이 (EXT_CLIP_FADE_S), 나올 때·서기↔걷기·달리기·착지는 길게 — tools/clip_pops.gd 가 잰 자세 차이 (최대 70~120°) 가 0.1 초에 몰려 튀던 것
+const EXT_FADE_LOCO_S := 0.18 # 서기·걷기·달리기·착지 사이
+const EXT_FADE_ACT_OUT_S := 0.20 # 공격·스킬·도발·승리 끝 → 다른 클립
+const EXT_FADE_LAND_S := 0.14 # 점프·낙하 → 착지
+# W43 방향 이동 (스트레이프·후진): 몸은 조준 방향을 보고 이동은 따로라, 몸 기준 이동 방향에 맞춰 걷기·달리기 클립을 거꾸로 틀고 (뒤로 걸음) 골반을 이동 쪽으로 돌린 만큼 척추를 되돌림 (옆걸음).
+# 서버 이동·판정은 그대로 — 뼈 회전만.
+const EXT_DIR_MIN_SPEED := 0.9 # 이 속도 (m/s) 아래면 방향 안 따짐
+const EXT_DIR_REV_ENTER_DEG := 105.0 # 이동 방향이 몸 앞에서 이만큼 넘게 벗어나면 '뒤로 걸음' (거꾸로 재생)
+const EXT_DIR_REV_LEAVE_DEG := 75.0 # 이만큼 안으로 돌아오면 다시 앞으로 (히스테리시스)
+const EXT_DIR_GAIN := 0.6 # 골반 yaw = 이동 방향 (앞 기준으로 접은 각) × 이 값
+const EXT_DIR_MAX_DEG := 45.0 # 골반 yaw 한계
+const EXT_DIR_RATE := 9.0 # 골반 yaw 따라가는 빠르기 (/초)
+const EXT_DIR_FADE_S := 0.16 # 앞↔뒤 재생이 바뀔 때 크로스페이드 (초)
+# W43 이동 기울임: 속도에 비례해 앞으로 (0~) + 가속·급정지 (가속도 m/s², 멈추면 뒤로 젖힘) + 뒤로 걸을 땐 살짝 뒤로. 라디안
+const EXT_LEAN_SPEED_RAD := 0.07 # 달리기 속도 (MOVE_SPEED) 에서의 앞 숙임 (≈4°)
+const EXT_LEAN_ACC_K := 0.004 # 가속도 1 m/s² 당
+const EXT_LEAN_ACC_MAX := 0.12 # 가속·급정지 기울임 한계 (≈7°)
+const EXT_LEAN_BACK_RAD := 0.05 # 뒤로 걸을 때 윗몸 뒤로
+const EXT_LEAN_RATE := 10.0
+const EXT_LEAN_BONES := [["mixamorig_Spine1", 0.5], ["mixamorig_Spine2", 0.5], ["mixamorig_Head", -0.4]]
+# W43 방향 전환: 이동 방향 (월드) 이 돌아가는 빠르기 (rad/s) × K 만큼 윗몸이 새 방향으로 비틀리고 (한계 MAX) 두 팔이 서로 반대로 반동
+const EXT_TURN_MIN_SPEED := 1.5
+const EXT_TURN_K := 0.045
+const EXT_TURN_MAX_RAD := 0.30
+const EXT_TURN_ARM_RAD := 0.35 # 비틀림 최대일 때 팔 앞뒤 반동
+const EXT_TURN_RATE := 12.0
+const EXT_TURN_BONES := [["mixamorig_Spine1", 0.5], ["mixamorig_Spine2", 0.5]]
+# W43 일어나기 (경직이 풀려 땅에 닿은 뒤 · 부활 직후): 웅크린 자세에서 손을 짚고 한 발 내딛으며 일어남 (가산, 래그돌 모터가 돌아오는 만큼 섞임). 라디안
+const EXT_GETUP_S := 0.7 # 전체 길이 (초)
+const EXT_GETUP_TORSO := 0.45 # 윗몸 앞 숙임 (시작 값, 일어나며 0 으로)
+const EXT_GETUP_ARM := 0.9 # 손 짚으러 팔이 앞으로 뻗는 양
+const EXT_GETUP_LEG := 0.45 # 앞발 허벅지 앞 (뒷발은 0.5 배 뒤로 + 무릎 꿇음)
+const EXT_GETUP_MOTOR := Vector2(0.12, 0.5) # 래그돌 모터가 이 구간에서 0 → 1 로 섞임 (몸이 완전히 축 늘어졌을 땐 안 함)
+const EXT_GETUP_SPAWN_GAP_S := 0.5 # 몸이 이만큼 (초) 숨었다 다시 보이면 (부활·판 시작) 낮은 세기로 일어나기부터
+const EXT_GETUP_SPAWN_AMP := 0.5
+# W43 무기 무게·흔들림: 무기를 든 손뼈 (또는 등 칼처럼 몸에 붙은 뼈) 가 월드에서 움직이는 가속도 (걸음 통통·달리기·급정지) 를 용수철-댐퍼에 넣어 무기가 한 박자 늦게 처지고 흔들림. 공격·도발·승리·경직 중엔 꺼짐 (클립·코드·물리가 맡음).
+# joint = 돌릴 관절, src = 가속도를 잴 관절 (기본 joint), gp = 앞뒤 가속도 (몸 기준 +앞) → 윗쪽이 뒤로 처지는 +, gy = 위 가속도 → 같은 축, gr = 옆 가속도 → 좌우 기울기, k·c = 용수철·댐퍼, max = 한계 (라디안), droop = 걷기·달리기 속도 비례 정적 처짐 (+ = 뒤, − = 앞으로 숙임), share = 윗팔 쪽에도 나눠 주는 비율
+const EXT_WEAPON_ACC_MAX := 60.0 # 가속도 한계 (m/s²) — 공격 휘두름 스파이크 자름
+const EXT_WEAPON_W_RATE := 8.0
+const EXT_WEAPON := {
+	"tank": [{"joint": "hand_R", "gp": 0.010, "gy": 0.0, "gr": 0.006, "k": 90.0, "c": 9.0, "max": 0.35, "droop": -0.14}], # 해머: 머리가 무거워 걸을 때 앞으로 처지고 급정지에 앞으로 쏠림
+	"hunter": [{"joint": "hand_R", "gp": 0.004, "gy": -0.010, "gr": 0.003, "k": 70.0, "c": 7.0, "max": 0.28, "droop": 0.0}], # 소총: 어깨끈에 걸린 듯 달리면 총구가 위아래로 까딱
+	"hook": [{"joint": "hand_L", "gp": 0.008, "gy": -0.010, "gr": 0.006, "k": 80.0, "c": 8.0, "max": 0.30, "droop": 0.0}], # 갈고리 팔: 걸음 반동
+	"ninja": [{"joint": "torso", "src": "hips", "gp": 0.004, "gy": 0.0, "gr": 0.005, "k": 60.0, "c": 6.0, "max": 0.07, "droop": 0.0}], # 등 칼: 칼이 몸 메시에 붙어 있어 단독 흔들림은 못 하고 윗몸 약한 늦음만
+}
+# W43 달릴 때 팔 흔들림 폭: 클립 속도 기준 (걷기 = MOVE_SPEED × 0.5, 달리기 = MOVE_SPEED) 에서 속도가 벗어난 비율만큼 (범위 안으로)
+const EXT_ARM_SWING_RANGE := Vector2(0.8, 1.25)
 # W40 1인칭 팔을 3인칭 클립 (평타·스킬) 곡선으로: 클립이 코드 자세에서 얼마나 벗어났나 (뼈 지역 회전 차이) 를 1인칭 쌍둥이 팔에 이 비율로 더함 (0 = 끔)
-const VM_CLIP_ARM := 0.0 # 기본 끔 (보류): 0.3·0.55 로 켜 보니 소총·갈고리를 쥔 팔이 화면 위로 솟거나 왼손이 세로로 서서 어색 — 전후 docs/w40/vm_clip/
+const VM_CLIP_ARM := 1.0 # W43: 전체 배율 (0 = 끔). W40 은 손까지 섞어 0.3·0.55 에서 소총·갈고리 쥔 팔이 솟아 끔 → W43 은 손 방향 고정 + 어깨·팔꿈치만 (아래 VM_CLIP_ARM_K), 전후 docs/w43/
 const VM_CLIP_ARM_BONES := ["shoulder_R", "elbow_R", "hand_R", "shoulder_L", "elbow_L", "hand_L"]
+# W43 1인칭 팔 클립 곡선 다시 시험 (안전한 방식): 손 뼈의 클립 차이는 안 받고 (쥔 손·무기 방향 고정 — 손의 전역 회전을 되돌림) 어깨·팔꿈치 회전만 캐릭터별 비율 [어깨, 팔꿈치] (0~0.3) 로 섞음.
+# VM_CLIP_ARM 은 전체 배율 (0 = 끔). 어깨 회전은 쌍둥이 팔꿈치가 우리 팔꿈치 관절 자리에 붙어 (vm_snap) 있어 윗팔 소매만 돌리고 손 자리는 팔꿈치 회전이 정함
+const VM_CLIP_ARM_K := {"ninja": [0.2, 0.2], "tank": [0.2, 0.25], "hunter": [0.15, 0.2], "hook": [0.15, 0.2]}
 const EXT_FLASH := 0.55 # 경직 하얀 깜빡임 (외부 모델은 피부 부위를 몰라서 몸 전체 하얀 발광으로)

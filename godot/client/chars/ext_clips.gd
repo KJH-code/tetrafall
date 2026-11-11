@@ -5,6 +5,7 @@
 extends RefCounted
 
 const C := preload("res://core/config.gd")
+const K := preload("res://chars/chars_config.gd")
 
 # 공격 눈금 (초, 클립 안): 준비 u 0~1 → 0~WIND, 타격 u → WIND~STRIKE, 회복 u → STRIKE~REC (anim_ninja.py WIND·STRIKE·REC 와 같음, cfg.clips.marks 로 덮음)
 const MARKS := [0.30, 0.40, 0.80]
@@ -92,8 +93,24 @@ static func select(cc: Dictionary, st: Dictionary, air_t: float) -> Dictionary:
 		var sd = (cc.get("stride", {}) as Dictionary).get(nm2)
 		if sd is Array and sd.size() > 2:
 			rate = float(sd[2])
-		return {"clip": nm2, "t": fposmod(float(st.get("walk", 0.0)) / TAU * rate, 1.0), "air": false, "kind": "loco", "norm": true}
+		var lt := fposmod(float(st.get("walk", 0.0)) / TAU * rate, 1.0)
+		var rev: bool = bool(st.get("rev", false)) # W43 뒤로 걸음: 같은 걸음 한 바퀴를 거꾸로 (발이 땅에서 앞으로 밀림)
+		if rev:
+			lt = fposmod(1.0 - lt, 1.0)
+		return {"clip": nm2, "t": lt, "air": false, "kind": "loco", "norm": true, "rev": rev}
 	return {"clip": str(cc.get("idle", "")), "t": float(st.get("t", 0.0)), "air": false, "kind": "idle", "loop": true}
+
+
+# W43 크로스페이드 길이: 앞 클립 종류 → 새 클립 종류. 공격으로 들어갈 땐 짧게 (타격 순간이 판정과 같아야 해서 EXT_CLIP_FADE_S 그대로)
+static func fade_s(prev_kind: String, kind: String) -> float:
+	var ground := ["idle", "loco", "land"]
+	if prev_kind in ground and kind in ground:
+		return K.EXT_FADE_LOCO_S
+	if (prev_kind == "act" or prev_kind == "pose") and kind != "act":
+		return K.EXT_FADE_ACT_OUT_S
+	if (prev_kind == "jump" or prev_kind == "fall") and kind == "land":
+		return K.EXT_FADE_LAND_S
+	return K.EXT_CLIP_FADE_S
 
 
 # W30: 메뉴에서 미리 요청해 둔 (스레드) 파일이면 그 결과를, 아니면 그 자리에서 읽음
