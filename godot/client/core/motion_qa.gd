@@ -1,7 +1,7 @@
-# W44 모션 QA: 판 중 새 모델 몸 (외부 .glb 4명) 의 뼈·메시를 60Hz 로 표본해 튐 (팝)·떨림·발 미끄러짐·뚫림·늘어남·관절 한계·전환 이음새를 센다.
+# W44 동작 QA: 판 중 새 모델 몸 (외부 .glb 4명) 의 뼈·메시를 60Hz 로 표본해 튐 (튐)·떨림·발 미끄러짐·뚫림·늘어남·관절 한계·전환 이음새를 센다.
 #   재연:  godot --headless --path godot/client -- --replay <녹화> --replay-secs 60 --replay-warm 0 --fixed-fps 120 --motion-qa <출력 폴더>
 #          → <폴더>/motion_qa.json (요약 + 상위 목록) · motion_qa.csv (사건 한 줄씩). 렌더 없이 뼈 포즈·월드 변환만 읽음 — 가상 시계라 기계가 느려도 같은 시뮬 시간.
-#   판 중 (재혁 PC): --motion-qa (폴더 없이) = 가벼운 모드 (팝 카운터만) → 한 판 끝에 user://motion_qa.txt 에 '팝 상위 5개' (hitch 로거와 같은 형식)
+#   판 중 (재혁 PC): --motion-qa (폴더 없이) = 가벼운 모드 (튐 카운터만) → 한 판 끝에 user://motion_qa.txt 에 '튐 상위 5개' (hitch 로거와 같은 형식)
 # 계산은 core/motion_qa_math.gd (순수 — tests/test_motion_qa.gd 가 합성 뼈 열로 시험). 꺼져 있으면 이 노드가 트리에 없어 비용 0.
 extends Node
 
@@ -119,12 +119,12 @@ func _exit_tree() -> void:
 		_write_round()
 
 
-# ---- 가벼운 모드: 한 판 끝에 팝 상위 5개 ----
+# ---- 가벼운 모드: 한 판 끝에 튐 상위 5개 ----
 func _write_round() -> void:
 	if _file == null:
 		_file = FileAccess.open(FILE, FileAccess.WRITE)
 		if _file != null:
-			_file.store_line("# 모션 QA %s · 팝 = 뼈 회전이 한 표본 (1/60초) 에 임계 (몸통·팔다리 %.0f°, 손·발·머리 %.0f°) 를 넘음" % [Time.get_datetime_string_from_system(), M.POP_TORSO, M.POP_END])
+			_file.store_line("# 동작 QA %s · 튐 = 뼈 회전이 한 표본 (1/60초) 에 임계 (몸통·팔다리 %.0f°, 손·발·머리 %.0f°) 를 넘음" % [Time.get_datetime_string_from_system(), M.POP_TORSO, M.POP_END])
 	if _file == null:
 		return
 	var n := 0
@@ -132,7 +132,7 @@ func _write_round() -> void:
 		n += int(agg[c].get("pops", 0))
 	var rows: Array = tops["pop"].duplicate()
 	rows.sort_custom(func(a, b): return a.sev > b.sev)
-	_file.store_line("# ---- 판 요약 (%s): 팝 %d회 ----" % [Time.get_datetime_string_from_system(), n])
+	_file.store_line("# ---- 판 요약 (%s): 튐 %d회 ----" % [Time.get_datetime_string_from_system(), n])
 	for i in mini(5, rows.size()):
 		var r: Dictionary = rows[i]
 		_file.store_line("#   %d. %s %s %s · %.0f°/프레임 · %s @ %.1fs" % [i + 1, r.char, r.bone, r.cls, r.sev, r.state, r.t])
@@ -316,7 +316,7 @@ class Track:
 		if excl:
 			L = "rag"
 		var clip: String = str(ext.cur_clip) if ext.cw > 0.01 else "(코드)"
-		# --- 각속도 (팝) ---
+		# --- 각속도 (튐) ---
 		var wmax := 0.0
 		var wbone := ""
 		var has := have > 0
@@ -500,7 +500,7 @@ class Track:
 			if L in ["idle", "land"] and mn > M.FLOAT_LIFT:
 				a.float += 1
 				a.float_max = maxf(a.float_max, mn)
-				var row := {"t": t, "pid": pid_of(), "char": ch, "bone": "발 뜸", "sev": mn, "state": L, "clip": str(ext.cur_clip)}
+				var row := {"t": t, "pid": pid_of(), "char": ch, "bone": "발 들림", "sev": mn, "state": L, "clip": str(ext.cur_clip)}
 				q.top("slide", row)
 				q.csv_row("float", row)
 
@@ -914,7 +914,7 @@ func get_skin_data(ch: String, ext, tr) -> Dictionary:
 				if w > 0.0:
 					pp += w * ((Gr[bbn[sd2.sub_b[i * 4 + j]]] as Transform3D) * (binds[sd2.sub_b[i * 4 + j]] as Transform3D) * sd2.sub_v[i])
 			dev = maxf(dev, pp.distance_to(sd2.sub_v[i]))
-		print("[모션QA 디버그] %s 스킨 쉬는 자세 오차 %.4f · 캡슐 %s · 경첩 %s" % [ch, dev, d.caps.map(func(c): return "%s %.3f" % [sk.get_bone_name(c.a).trim_prefix("mixamorig_"), c.r]), hinge.keys().map(func(k): return "%s %s" % [k, hinge[k].h])])
+		print("[동작QA 디버그] %s 메시 쉬는 자세 오차 %.4f · 충돌 몸통 %s · hinge %s" % [ch, dev, d.caps.map(func(c): return "%s %.3f" % [sk.get_bone_name(c.a).trim_prefix("mixamorig_"), c.r]), hinge.keys().map(func(k): return "%s %s" % [k, hinge[k].h])])
 	_skin_cache[ch] = d
 	return d
 
@@ -929,8 +929,8 @@ func finish() -> void:
 		for b in Motion_.bodies:
 			info.append("%s ext=%s vis=%s st=%s fr=%s/%s" % [b.get("char_id"), b.get("ext") != null, b.is_visible_in_tree() if b.is_inside_tree() else "outtree", b.get("ext").last_st != null if b.get("ext") != null else "-", b.get("ext").st_frame if b.get("ext") != null else -1, Engine.get_process_frames()])
 		var st = get_node_or_null("/root/Store")
-		print("[모션QA 디버그] phase ", st.phase() if st else "-", " players ", (st.state.get("players", []) as Array).size() if st else 0, " virt ", Net.virt)
-		print("[모션QA 디버그] 몸 ", Motion_.bodies.size(), " ", info)
+		print("[동작QA 디버그] phase ", st.phase() if st else "-", " players ", (st.state.get("players", []) as Array).size() if st else 0, " virt ", Net.virt)
+		print("[동작QA 디버그] 몸 ", Motion_.bodies.size(), " ", info)
 	if trace != null:
 		trace.close()
 	if btrace != null:
@@ -977,4 +977,4 @@ func finish() -> void:
 		for l in csv:
 			f2.store_line(l)
 		f2.close()
-	print("[모션QA] 표본 %d · 몸 %d · %s → %s" % [k, tracks.size(), ", ".join(agg.keys().map(func(c): return "%s 팝 %d" % [c, agg[c].pops])), out_dir])
+	print("[동작QA] 표본 %d · 몸 %d · %s → %s" % [k, tracks.size(), ", ".join(agg.keys().map(func(c): return "%s 튐 %d" % [c, agg[c].pops])), out_dir])

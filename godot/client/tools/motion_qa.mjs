@@ -14,11 +14,24 @@ const topN = Number(opt('--top', 20));
 const only = opt('--only', '').split(',').filter(Boolean);
 if (!dirs.length) { console.error('사용: node motion_qa.mjs <결과 폴더> [<후 폴더>]'); process.exit(2); }
 
+// 늘어남은 정상 자세에서도 ×2.2 를 넘는 변이 많아 (관절 둘레 짧은 변) 표에는 이 배수 이상만 셈 — CSV 의 stretch 사건에서 다시 셈
+const STRETCH_SHOW = Number(opt('--stretch', 5));
+
 function load(root) {
   const files = [];
   for (const d of fs.readdirSync(root)) {
     const f = path.join(root, d, 'motion_qa.json');
-    if (fs.existsSync(f)) files.push([d, JSON.parse(fs.readFileSync(f, 'utf8'))]);
+    if (!fs.existsSync(f)) continue;
+    const j = JSON.parse(fs.readFileSync(f, 'utf8'));
+    const csv = path.join(root, d, 'motion_qa.csv');
+    j.stretch5 = {};
+    if (fs.existsSync(csv)) {
+      for (const line of fs.readFileSync(csv, 'utf8').split('\n')) {
+        const c = line.split(',');
+        if (c[0] === 'stretch' && Number(c[5]) >= STRETCH_SHOW) j.stretch5[c[3]] = (j.stretch5[c[3]] || 0) + 1;
+      }
+    }
+    files.push([d, j]);
   }
   return files;
 }
@@ -42,7 +55,7 @@ function merge(files) {
       add(o, 'idle_n', c.idle_drift.n); add(o, 'idle_bad', c.idle_drift.bad); add(o, 'idle_sum', c.idle_drift.mean * c.idle_drift.n);
       add(o, 'sunk', c.foot.sunk); add(o, 'ground', c.foot.ground_frames); add(o, 'floaty', c.foot.float);
       add(o, 'cloth_pen', c.cloth_pen.frames); add(o, 'cloth_of', c.cloth_pen.of); mx(o, 'cloth_max', c.cloth_pen.max);
-      add(o, 'st_hi', c.stretch.hi); add(o, 'st_n', c.stretch.samples); mx(o, 'st_max', c.stretch.max);
+      add(o, 'st_hi', j.stretch5[ch] || 0); add(o, 'st_n', c.stretch.samples); mx(o, 'st_max', c.stretch.max);
       add(o, 'w_pen', c.weapon_pen.frames); add(o, 'w_n', c.weapon_pen.samples); mx(o, 'w_max', c.weapon_pen.max);
       for (const [k, v] of Object.entries(c.limits)) add(o.lim, k, v);
       for (const [k, v] of Object.entries(c.limit_worst)) mx(o.lim_worst, k, v);
@@ -82,7 +95,7 @@ function rows(m) {
     ['발 박힘 / 뜸 (땅 프레임 중)', (o) => `${o.sunk} / ${o.floaty} (${o.ground})`],
     ['**천 뚫림** 프레임 (>2cm)', (o) => `${o.cloth_pen}/${o.cloth_of} (최대 ${f3(o.cloth_max)}m)`],
     ['**무기 뚫림** 프레임 (>2cm)', (o) => `${o.w_pen}/${o.w_n} (최대 ${f3(o.w_max)}m)`],
-    ['**삼각형 늘어남** (몸, ×2.2↑)', (o) => `${o.st_hi}/${o.st_n} (최대 ×${f1(o.st_max)})`],
+    [`**삼각형 늘어남** (몸, ×${STRETCH_SHOW}↑)`, (o) => `${o.st_hi}/${o.st_n} (최대 ×${f1(o.st_max)})`],
     ['관절 한계: 반대 굽힘·과굽힘·목·척추', (o) => `${o.lim.rev || 0} · ${o.lim.over || 0} · ${o.lim.neck || 0} · ${o.lim.spine || 0}`],
     ['클립 깜빡임 (0.3초 안 재전환)', (o) => `${o.flicker}`],
   ];
@@ -112,9 +125,24 @@ function seams(m) {
   return lines.join('\n');
 }
 
-function tops(files, kind) {
+const CLOTH = /^(Scarf|Cape|Skirt|Tabard)/;
+
+// 상위 목록은 재연마다 남긴 motion_qa.csv (사건 한 줄씩) 에서 — 몸 팝과 천 팝은 따로, 래그돌 전환은 이음새에서 뺌
+function tops(root, files, kind) {
   const all = [];
-  for (const [name, j] of files) for (const r of j.top[kind] || []) all.push({ ...r, rec: name });
+  for (const [name] of files) {
+    const f = path.join(root, name, 'motion_qa.csv');
+    if (!fs.existsSync(f)) continue;
+    for (const line of fs.readFileSync(f, 'utf8').split('\n').slice(1)) {
+      const c = line.split(',');
+      if (c.length < 8) continue;
+      const k = c[0], bone = c[4];
+      const want = kind === 'pop' ? k === 'pop' && !CLOTH.test(bone) : kind === 'pop_cloth' ? k === 'pop' && CLOTH.test(bone) : k === kind;
+      if (!want) continue;
+      if (kind === 'seam' && c[6].includes('rag')) continue;
+      all.push({ t: Number(c[1]), char: c[3], bone, sev: Number(c[5]), state: c[6], clip: c[7], extra: c.slice(8).join(','), rec: name });
+    }
+  }
   all.sort((a, b) => b.sev - a.sev);
   const lines = ['| # | 캐릭터 | 뼈 | 값 | 상태 | 클립 | 시각 | 재연 | 비고 |', '| --: | --- | --- | --: | --- | --- | --: | --- | --- |'];
   all.slice(0, topN).forEach((r, i) => lines.push(`| ${i + 1} | ${r.char} | ${r.bone} | ${f2(r.sev)} | ${r.state} | ${r.clip} | ${f1(r.t)} | ${r.rec} | ${r.extra || ''} |`));
@@ -132,9 +160,9 @@ if (dirs.length > 1) {
   console.log(table(mA));
   console.log('\n### 상태 전환 이음새 (래그돌 관련 전환 뺌)\n');
   console.log(seams(mA));
-  for (const kind of ['pop', 'slide', 'pen', 'weapon', 'stretch', 'limit', 'seam', 'flicker', 'jitter']) {
+  for (const kind of ['pop', 'pop_cloth', 'slide', 'pen', 'weapon', 'stretch', 'limit', 'seam', 'flicker', 'jitter']) {
     if (only.length && !only.includes(kind)) continue;
     console.log(`\n### 상위 ${topN}: ${kind}\n`);
-    console.log(tops(A, kind));
+    console.log(tops(dirs[0], A, kind));
   }
 }

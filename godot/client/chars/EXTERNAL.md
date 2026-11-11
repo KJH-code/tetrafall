@@ -230,3 +230,11 @@ W31 이 남긴 후보 (해 그림자 패스 = 3D 삼각형의 38%) 를 실제로
 - 확인 도구: `tools/pose_sheet.gd` 에 묶음 `dir`·`getup` 과 `--w43off`, `tools/ext_cost.gd` 에 'W43 끔' 줄. 테스트 `tests/test_w43.gd`.
 - 보류: 탱크 허리 앞 천·어깨 장갑 (단독 뼈 없음 — 가중치 실측), 닌자 등 칼 단독 흔들림 (몸 메시 하나), 발 미끄러짐 방향 이동 측정.
 
+
+## 22. W44 — 모션 QA 자동화와 고침 (2026-11-11, 표·전후·상위 20 `docs/w44/README.md`)
+
+재혁 눈 피드백 없이 **재연 전체에서 새 모델 4명의 뼈·메시를 60Hz 로 표본해** 튐 (팝)·떨림·발 미끄러짐·천/무기 뚫림·삼각형 늘어남·관절 한계·상태 전환 이음새를 자동으로 세는 도구.
+- 도구: `core/motion_qa.gd` (표본기 노드, `--motion-qa <폴더>` → `motion_qa.json`·`.csv`), `core/motion_qa_math.gd` (순수 검출기·임계, `tests/test_motion_qa.gd` 가 합성 뼈 열로 시험), `tools/motion_qa.mjs` (결과 합치기·전후 표). 판 중 가벼운 모드 (`--motion-qa` 만) = 팝 카운터만 + 한 판 끝에 `user://motion_qa.txt` 에 상위 5개. 꺼져 있으면 노드 없음 (비용 0).
+- **가상 시계**: 몸 동작 층·천·`body.gd` 몸 시간·래그돌 재우기가 `Motion_.now_s()/now_ms()` (`ext_motion.gd`, 재연에선 `Net.virt`) 를 씀 — 느린 기계에서도 같은 시뮬 시간 (`--fixed-fps` 와 함께). `Ext.last_st` = 마지막 몸 상태 (QA 가 읽음).
+- 고침 (전후 수치는 docs/w44): 천 서브스텝·뼈 회전 속도 제한 (`ext_cloth.gd`, 천 팝 61~166 → 0), 천 몸 충돌 (`cloth_colliders` — 반지름은 QA 가 스킨 메시에서 잰 값, 천 뚫림 → 0), 같은 공격 클립 재시작 크로스페이드 (`_clip_layer`, 닌자 표창 137° 튐), 걷기↔달리기 히스테리시스 (`EXT_RUN_HYS`). 끄기 스위치 `--no-cloth-sub|rate|col` · `--no-run-hys` · `--no-clip-restart` (+ `--no-w43` 는 이제 `--` 뒤 인자도 먹음).
+- 보류: 공격 strike·wind 의 빠른 타격 (moves 시간 설계값), 달리기 다리 (W34 박자 배율), 발 미끄러짐 (판정 한계), 탱크 허리 웨이트, 래그돌 복귀·닌자 대시 크로스페이드 분해.

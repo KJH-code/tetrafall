@@ -1182,7 +1182,7 @@ class Ext extends Node3D:
 		var ckey := name + ("~r" if bool(use.get("rev", false)) else "") # W43 같은 클립 거꾸로 재생도 따로 크로스페이드
 		# W44 같은 클립이 처음부터 다시 시작 (닌자 표창 → 표창2 처럼 연달아 같은 클립을 쓰는 동작: 끝 자세에서 시작 자세로 한 표본에 137° 튐 — tools/motion_qa) → 짧게 크로스페이드
 		var tt_now: float = float(use.get("t", 0.0)) * (float(clipset[name].len) if use.get("norm", false) else 1.0)
-		var restart: bool = not move_off_hys and ckey == cur_clip and str(use.get("kind", "")) == "act" and last_tt >= 0.0 and tt_now < last_tt - K_.EXT_RESTART_BACK_S and cw > 0.05
+		var restart: bool = not move_off_restart and ckey == cur_clip and str(use.get("kind", "")) == "act" and last_tt >= 0.0 and tt_now < last_tt - K_.EXT_RESTART_BACK_S and cw > 0.05
 		last_tt = tt_now if str(use.get("kind", "")) == "act" else -1.0
 		if restart:
 			fade_from = last_layer.duplicate()
@@ -1426,6 +1426,7 @@ class Ext extends Node3D:
 
 	var dir_psi := 0.0
 	var last_tt := -1.0 # W44 지난 프레임 공격 클립 시각 (같은 클립 다시 시작 알아냄)
+	var move_off_restart := OS.get_cmdline_user_args().has("--no-clip-restart") or OS.get_cmdline_user_args().has("--no-run-hys") # 확인용 (모션 QA 전후 비교)
 	var move_off_hys := OS.get_cmdline_user_args().has("--no-run-hys") # 확인용 (모션 QA 전후 비교)
 
 	# W43 이동 가산 층 (extra_layer 에서): ① 골반을 이동 방향으로 돌리고 척추로 되돌림 (옆걸음) ② 속도·가속도 기울임 ③ 방향 전환 비틀림·팔 반동. 클립·코드 위에 뼈 회전만 더함.

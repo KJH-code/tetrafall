@@ -1,0 +1,800 @@
+{
+  "chars": {
+    "ninja": {
+      "clip_flicker": 4,
+      "cloth_pen": {
+        "frames": 0,
+        "max": 0.0,
+        "of": 440
+      },
+      "excluded": 0,
+      "foot": {
+        "float": 0,
+        "float_max": 0.0,
+        "ground_frames": 66,
+        "sunk": 0,
+        "sunk_min": 0.0
+      },
+      "idle_drift": {
+        "bad": 0,
+        "mean": 0.0,
+        "n": 0,
+        "p95": 0.0
+      },
+      "jitter": {
+        "bad": 0,
+        "windows": 0,
+        "worst_bone": "",
+        "worst_rms": 0.0
+      },
+      "label_flicker": {
+        "act→loco": 1,
+        "idle→act": 13,
+        "loco→act": 2
+      },
+      "limit_worst": {},
+      "limits": {},
+      "pop_by": {
+        "limb": 38
+      },
+      "pop_worst": 129.0,
+      "pop_worst_bone": "RightArm",
+      "pops": 38,
+      "pops_soft": 671,
+      "samples": 2640,
+      "seam": {
+        "act→idle": {
+          "bone": "RightArm",
+          "clip": "idle",
+          "jump_max": 4.8,
+          "jump_mean": 4.7,
+          "n": 13,
+          "peak_max": 55.3,
+          "peak_mean": 36.7
+        },
+        "act→loco": {
+          "bone": "RightLeg",
+          "clip": "walk",
+          "jump_max": 17.4,
+          "jump_mean": 13.8,
+          "n": 2,
+          "peak_max": 36.2,
+          "peak_mean": 35.6
+        },
+        "idle→act": {
+          "bone": "RightArm",
+          "clip": "star",
+          "jump_max": 0.5,
+          "jump_mean": 0.4,
+          "n": 13,
+          "peak_max": 55.3,
+          "peak_mean": 36.7
+        },
+        "loco→act": {
+          "bone": "LeftForeArm",
+          "clip": "atk2",
+          "jump_max": 25.1,
+          "jump_mean": 21.8,
+          "n": 2,
+          "peak_max": 40.4,
+          "peak_mean": 38.3
+        }
+      },
+      "slide": {
+        "fwd": {
+          "bad": 1,
+          "mean": 1.647,
+          "n": 1,
+          "p95": 1.647
+        }
+      },
+      "stretch": {
+        "cloth_hi": 92,
+        "cloth_max": 6.88,
+        "hi": 388,
+        "lo": 235,
+        "max": 4.71,
+        "min": 0.18,
+        "samples": 440
+      },
+      "weapon_pen": {
+        "frames": 0,
+        "max": 0.0,
+        "samples": 0
+      }
+    }
+  },
+  "meta": {
+    "hz": 60.0,
+    "rec": "prac_ninja.rec",
+    "samples": 2647,
+    "secs": 44.1250000000022,
+    "thr": {
+      "pop_cloth": 80.0,
+      "pop_end": 60.0,
+      "pop_torso": 35.0
+    }
+  },
+  "top": {
+    "flicker": [
+      {
+        "bone": "(코드)→idle",
+        "char": "ninja",
+        "clip": "idle",
+        "pid": 3,
+        "sev": 0.283,
+        "state": "idle",
+        "t": 0.15
+      },
+      {
+        "bone": "run~r→walk~r",
+        "char": "ninja",
+        "clip": "walk~r",
+        "pid": 3,
+        "sev": 0.283,
+        "state": "loco",
+        "t": 1.1
+      },
+      {
+        "bone": "walk→run",
+        "char": "ninja",
+        "clip": "run",
+        "pid": 3,
+        "sev": 0.267,
+        "state": "loco",
+        "t": 1.183
+      },
+      {
+        "bone": "walk~r→walk",
+        "char": "ninja",
+        "clip": "walk",
+        "pid": 3,
+        "sev": 0.25,
+        "state": "loco",
+        "t": 1.15
+      }
+    ],
+    "jitter": [],
+    "limit": [],
+    "pen": [],
+    "pop": [
+      {
+        "bone": "RightArm",
+        "char": "ninja",
+        "clip": "dash",
+        "cls": "limb",
+        "extra": "fade 0.50 cw 1.00 since_lab 11.67 since_clip 0.03",
+        "jerk": 97.119,
+        "pid": 3,
+        "sev": 128.965,
+        "state": "act ninjaDash/strike",
+        "t": 33.5
+      },
+      {
+        "bone": "RightArm",
+        "char": "ninja",
+        "clip": "dash",
+        "cls": "limb",
+        "extra": "fade 0.50 cw 1.00 since_lab 9.63 since_clip 0.03",
+        "jerk": 97.119,
+        "pid": 3,
+        "sev": 128.965,
+        "state": "act ninjaDash/strike",
+        "t": 31.467
+      },
+      {
+        "bone": "RightArm",
+        "char": "ninja",
+        "clip": "dash",
+        "cls": "limb",
+        "extra": "fade 0.50 cw 1.00 since_lab 4.47 since_clip 0.03",
+        "jerk": 97.119,
+        "pid": 3,
+        "sev": 128.965,
+        "state": "act ninjaDash/strike",
+        "t": 26.3
+      },
+      {
+        "bone": "RightArm",
+        "char": "ninja",
+        "clip": "dash",
+        "cls": "limb",
+        "extra": "fade 0.50 cw 1.00 since_lab 2.40 since_clip 0.03",
+        "jerk": 97.119,
+        "pid": 3,
+        "sev": 128.965,
+        "state": "act ninjaDash/strike",
+        "t": 24.233
+      },
+      {
+        "bone": "RightArm",
+        "char": "ninja",
+        "clip": "dash",
+        "cls": "limb",
+        "extra": "fade 0.50 cw 1.00 since_lab 0.90 since_clip 0.03",
+        "jerk": 97.119,
+        "pid": 3,
+        "sev": 128.965,
+        "state": "act ninjaDash/strike",
+        "t": 7.7
+      },
+      {
+        "bone": "RightArm",
+        "char": "ninja",
+        "clip": "dash",
+        "cls": "limb",
+        "extra": "fade 0.50 cw 1.00 since_lab 2.97 since_clip 0.03",
+        "jerk": 97.119,
+        "pid": 3,
+        "sev": 128.965,
+        "state": "act ninjaDash/strike",
+        "t": 9.767
+      },
+      {
+        "bone": "RightArm",
+        "char": "ninja",
+        "clip": "dash",
+        "cls": "limb",
+        "extra": "fade 0.50 cw 1.00 since_lab 2.10 since_clip 0.03",
+        "jerk": 96.257,
+        "pid": 3,
+        "sev": 128.476,
+        "state": "act ninjaDash/strike",
+        "t": 15.967
+      },
+      {
+        "bone": "RightArm",
+        "char": "ninja",
+        "clip": "star",
+        "cls": "limb",
+        "extra": "fade 0.33 cw 1.00 since_lab 2.32 since_clip 0.02",
+        "jerk": 39.888,
+        "pid": 3,
+        "sev": 53.117,
+        "state": "act 표창/wind",
+        "t": 39.783
+      },
+      {
+        "bone": "RightForeArm",
+        "char": "ninja",
+        "clip": "atk1",
+        "cls": "limb",
+        "extra": "fade 0.50 cw 1.00 since_lab 0.33 since_clip 0.03",
+        "jerk": 32.717,
+        "pid": 3,
+        "sev": 43.231,
+        "state": "act 찌르기/strike",
+        "t": 0.867
+      },
+      {
+        "bone": "LeftForeArm",
+        "char": "ninja",
+        "clip": "atk2",
+        "cls": "limb",
+        "extra": "fade 0.50 cw 1.00 since_lab 15.00 since_clip 0.03",
+        "jerk": 32.054,
+        "pid": 3,
+        "sev": 42.835,
+        "state": "act 반대 찌르기/strike",
+        "t": 36.833
+      },
+      {
+        "bone": "LeftForeArm",
+        "char": "ninja",
+        "clip": "atk2",
+        "cls": "limb",
+        "extra": "fade 0.50 cw 1.00 since_lab 0.70 since_clip 0.03",
+        "jerk": 32.054,
+        "pid": 3,
+        "sev": 42.835,
+        "state": "act 반대 찌르기/strike",
+        "t": 3.867
+      },
+      {
+        "bone": "LeftForeArm",
+        "char": "ninja",
+        "clip": "atk2",
+        "cls": "limb",
+        "extra": "fade 0.50 cw 1.00 since_lab 6.43 since_clip 0.03",
+        "jerk": 31.981,
+        "pid": 3,
+        "sev": 42.518,
+        "state": "act 반대 찌르기/strike",
+        "t": 13.233
+      },
+      {
+        "bone": "RightArm",
+        "char": "ninja",
+        "clip": "star",
+        "cls": "limb",
+        "extra": "fade 0.50 cw 1.00 since_lab 7.50 since_clip 0.03",
+        "jerk": 31.098,
+        "pid": 3,
+        "sev": 40.198,
+        "state": "act 표창/wind",
+        "t": 29.333
+      },
+      {
+        "bone": "RightArm",
+        "char": "ninja",
+        "clip": "star",
+        "cls": "limb",
+        "extra": "fade 0.50 cw 1.00 since_lab 0.03 since_clip 0.03",
+        "jerk": 30.687,
+        "pid": 3,
+        "sev": 38.141,
+        "state": "act 표창/wind",
+        "t": 6.833
+      },
+      {
+        "bone": "RightForeArm",
+        "char": "ninja",
+        "clip": "atk1",
+        "cls": "limb",
+        "extra": "fade 0.50 cw 1.00 since_lab 14.63 since_clip 0.03",
+        "jerk": 31.495,
+        "pid": 3,
+        "sev": 37.935,
+        "state": "act 찌르기/strike",
+        "t": 36.467
+      },
+      {
+        "bone": "RightArm",
+        "char": "ninja",
+        "clip": "star",
+        "cls": "limb",
+        "extra": "fade 0.50 cw 1.00 since_lab 0.37 since_clip 0.03",
+        "jerk": 23.665,
+        "pid": 3,
+        "sev": 37.891,
+        "state": "act 표창/wind",
+        "t": 22.2
+      },
+      {
+        "bone": "RightArm",
+        "char": "ninja",
+        "clip": "star",
+        "cls": "limb",
+        "extra": "fade 0.50 cw 1.00 since_lab 9.50 since_clip 0.03",
+        "jerk": 24.082,
+        "pid": 3,
+        "sev": 37.823,
+        "state": "act 표창/wind",
+        "t": 31.333
+      },
+      {
+        "bone": "RightArm",
+        "char": "ninja",
+        "clip": "star",
+        "cls": "limb",
+        "extra": "fade 0.50 cw 1.00 since_lab 4.33 since_clip 0.03",
+        "jerk": 25.21,
+        "pid": 3,
+        "sev": 37.547,
+        "state": "act 표창/wind",
+        "t": 26.167
+      },
+      {
+        "bone": "RightArm",
+        "char": "ninja",
+        "clip": "star",
+        "cls": "limb",
+        "extra": "fade 0.50 cw 1.00 since_lab 0.77 since_clip 0.03",
+        "jerk": 25.21,
+        "pid": 3,
+        "sev": 37.547,
+        "state": "act 표창/wind",
+        "t": 7.567
+      },
+      {
+        "bone": "RightArm",
+        "char": "ninja",
+        "clip": "star",
+        "cls": "limb",
+        "extra": "fade 0.50 cw 1.00 since_lab 0.53 since_clip 0.03",
+        "jerk": 30.239,
+        "pid": 3,
+        "sev": 37.53,
+        "state": "act 표창/wind",
+        "t": 38.0
+      }
+    ],
+    "seam": [
+      {
+        "bone": "RightArm",
+        "char": "ninja",
+        "clip": "star",
+        "extra": "jump 0.3",
+        "pid": 3,
+        "sev": 55.279,
+        "state": "idle→act",
+        "t": 6.8
+      },
+      {
+        "bone": "RightArm",
+        "char": "ninja",
+        "clip": "idle",
+        "extra": "jump 4.5",
+        "pid": 3,
+        "sev": 55.279,
+        "state": "act→idle",
+        "t": 6.783
+      },
+      {
+        "bone": "LeftForeArm",
+        "char": "ninja",
+        "clip": "atk2",
+        "extra": "jump 25.1",
+        "pid": 3,
+        "sev": 40.381,
+        "state": "loco→act",
+        "t": 1.233
+      },
+      {
+        "bone": "RightLeg",
+        "char": "ninja",
+        "clip": "atk3",
+        "extra": "jump 0.3",
+        "pid": 3,
+        "sev": 36.175,
+        "state": "idle→act",
+        "t": 37.1
+      },
+      {
+        "bone": "RightLeg",
+        "char": "ninja",
+        "clip": "walk",
+        "extra": "jump 17.4",
+        "pid": 3,
+        "sev": 36.175,
+        "state": "act→loco",
+        "t": 1.483
+      },
+      {
+        "bone": "RightLeg",
+        "char": "ninja",
+        "clip": "atk3",
+        "extra": "jump 18.5",
+        "pid": 3,
+        "sev": 36.175,
+        "state": "loco→act",
+        "t": 1.533
+      },
+      {
+        "bone": "RightLeg",
+        "char": "ninja",
+        "clip": "idle",
+        "extra": "jump 4.5",
+        "pid": 3,
+        "sev": 36.175,
+        "state": "act→idle",
+        "t": 37.05
+      },
+      {
+        "bone": "RightLeg",
+        "char": "ninja",
+        "clip": "atk3",
+        "extra": "jump 0.3",
+        "pid": 3,
+        "sev": 36.175,
+        "state": "idle→act",
+        "t": 21.5
+      },
+      {
+        "bone": "RightLeg",
+        "char": "ninja",
+        "clip": "idle",
+        "extra": "jump 4.5",
+        "pid": 3,
+        "sev": 36.175,
+        "state": "act→idle",
+        "t": 21.483
+      },
+      {
+        "bone": "RightLeg",
+        "char": "ninja",
+        "clip": "atk3",
+        "extra": "jump 0.3",
+        "pid": 3,
+        "sev": 36.175,
+        "state": "idle→act",
+        "t": 13.5
+      },
+      {
+        "bone": "RightLeg",
+        "char": "ninja",
+        "clip": "idle",
+        "extra": "jump 4.5",
+        "pid": 3,
+        "sev": 36.175,
+        "state": "act→idle",
+        "t": 4.083
+      },
+      {
+        "bone": "RightLeg",
+        "char": "ninja",
+        "clip": "atk3",
+        "extra": "jump 0.2",
+        "pid": 3,
+        "sev": 36.175,
+        "state": "idle→act",
+        "t": 4.167
+      },
+      {
+        "bone": "RightLeg",
+        "char": "ninja",
+        "clip": "idle",
+        "extra": "jump 4.5",
+        "pid": 3,
+        "sev": 36.175,
+        "state": "act→idle",
+        "t": 13.45
+      },
+      {
+        "bone": "LeftForeArm",
+        "char": "ninja",
+        "clip": "run~r",
+        "extra": "jump 10.3",
+        "pid": 3,
+        "sev": 35.09,
+        "state": "act→loco",
+        "t": 1.083
+      },
+      {
+        "bone": "LeftArm",
+        "char": "ninja",
+        "clip": "atk4",
+        "extra": "jump 0.5",
+        "pid": 3,
+        "sev": 34.686,
+        "state": "idle→act",
+        "t": 37.467
+      },
+      {
+        "bone": "LeftArm",
+        "char": "ninja",
+        "clip": "idle",
+        "extra": "jump 4.8",
+        "pid": 3,
+        "sev": 34.686,
+        "state": "act→idle",
+        "t": 37.433
+      },
+      {
+        "bone": "LeftArm",
+        "char": "ninja",
+        "clip": "idle",
+        "extra": "jump 4.8",
+        "pid": 3,
+        "sev": 34.686,
+        "state": "act→idle",
+        "t": 1.833
+      },
+      {
+        "bone": "LeftArm",
+        "char": "ninja",
+        "clip": "atk4",
+        "extra": "jump 0.5",
+        "pid": 3,
+        "sev": 34.686,
+        "state": "idle→act",
+        "t": 21.833
+      },
+      {
+        "bone": "LeftArm",
+        "char": "ninja",
+        "clip": "idle",
+        "extra": "jump 4.8",
+        "pid": 3,
+        "sev": 34.686,
+        "state": "act→idle",
+        "t": 21.8
+      },
+      {
+        "bone": "LeftArm",
+        "char": "ninja",
+        "clip": "atk4",
+        "extra": "jump 0.5",
+        "pid": 3,
+        "sev": 34.686,
+        "state": "idle→act",
+        "t": 1.867
+      }
+    ],
+    "slide": [
+      {
+        "bone": "발 R",
+        "char": "ninja",
+        "clip": "atk2",
+        "extra": "slide 0.67 body 0.41 len 9",
+        "pid": 3,
+        "sev": 1.647,
+        "state": "걸음 fwd",
+        "t": 1.233
+      }
+    ],
+    "stretch": [
+      {
+        "bone": "LeftArm|Spine1",
+        "char": "ninja",
+        "clip": "atk2",
+        "pid": 3,
+        "sev": 4.711,
+        "state": "act",
+        "t": 2.717
+      },
+      {
+        "bone": "LeftArm|Spine1",
+        "char": "ninja",
+        "clip": "atk2",
+        "pid": 3,
+        "sev": 4.708,
+        "state": "act",
+        "t": 29.217
+      },
+      {
+        "bone": "LeftArm|Spine1",
+        "char": "ninja",
+        "clip": "atk2",
+        "pid": 3,
+        "sev": 4.7,
+        "state": "act",
+        "t": 13.317
+      },
+      {
+        "bone": "LeftArm|Spine1",
+        "char": "ninja",
+        "clip": "atk2",
+        "pid": 3,
+        "sev": 4.692,
+        "state": "act",
+        "t": 36.917
+      },
+      {
+        "bone": "LeftArm|Spine1",
+        "char": "ninja",
+        "clip": "atk4",
+        "pid": 3,
+        "sev": 4.477,
+        "state": "act",
+        "t": 10.117
+      },
+      {
+        "bone": "LeftArm|Spine1",
+        "char": "ninja",
+        "clip": "atk4",
+        "pid": 3,
+        "sev": 4.465,
+        "state": "act",
+        "t": 37.717
+      },
+      {
+        "bone": "LeftArm|Spine1",
+        "char": "ninja",
+        "clip": "atk4",
+        "pid": 3,
+        "sev": 4.465,
+        "state": "act",
+        "t": 33.817
+      },
+      {
+        "bone": "LeftArm|Spine1",
+        "char": "ninja",
+        "clip": "atk4",
+        "pid": 3,
+        "sev": 4.464,
+        "state": "act",
+        "t": 2.117
+      },
+      {
+        "bone": "LeftArm|Spine1",
+        "char": "ninja",
+        "clip": "atk4",
+        "pid": 3,
+        "sev": 4.463,
+        "state": "act",
+        "t": 23.417
+      },
+      {
+        "bone": "LeftArm|Spine1",
+        "char": "ninja",
+        "clip": "atk4",
+        "pid": 3,
+        "sev": 4.461,
+        "state": "act",
+        "t": 14.117
+      },
+      {
+        "bone": "LeftArm|Spine1",
+        "char": "ninja",
+        "clip": "atk4",
+        "pid": 3,
+        "sev": 4.459,
+        "state": "act",
+        "t": 24.717
+      },
+      {
+        "bone": "LeftArm|Spine1",
+        "char": "ninja",
+        "clip": "atk4",
+        "pid": 3,
+        "sev": 4.459,
+        "state": "act",
+        "t": 41.617
+      },
+      {
+        "bone": "LeftArm|Spine1",
+        "char": "ninja",
+        "clip": "atk4",
+        "pid": 3,
+        "sev": 4.459,
+        "state": "act",
+        "t": 12.717
+      },
+      {
+        "bone": "LeftArm|Spine1",
+        "char": "ninja",
+        "clip": "atk4",
+        "pid": 3,
+        "sev": 4.459,
+        "state": "act",
+        "t": 11.417
+      },
+      {
+        "bone": "LeftArm|Spine1",
+        "char": "ninja",
+        "clip": "atk4",
+        "pid": 3,
+        "sev": 4.458,
+        "state": "act",
+        "t": 3.417
+      },
+      {
+        "bone": "LeftArm|Spine1",
+        "char": "ninja",
+        "clip": "atk4",
+        "pid": 3,
+        "sev": 4.456,
+        "state": "act",
+        "t": 40.417
+      },
+      {
+        "bone": "LeftArm|Spine1",
+        "char": "ninja",
+        "clip": "atk4",
+        "pid": 3,
+        "sev": 4.455,
+        "state": "act",
+        "t": 22.117
+      },
+      {
+        "bone": "LeftArm|Spine1",
+        "char": "ninja",
+        "clip": "atk4",
+        "pid": 3,
+        "sev": 4.455,
+        "state": "act",
+        "t": 26.017
+      },
+      {
+        "bone": "LeftArm|Spine1",
+        "char": "ninja",
+        "clip": "atk4",
+        "pid": 3,
+        "sev": 4.449,
+        "state": "act",
+        "t": 32.517
+      },
+      {
+        "bone": "LeftArm|Spine1",
+        "char": "ninja",
+        "clip": "atk4",
+        "pid": 3,
+        "sev": 4.449,
+        "state": "act",
+        "t": 31.217
+      }
+    ],
+    "weapon": []
+  }
+}
