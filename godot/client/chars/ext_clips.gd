@@ -40,7 +40,7 @@ static func load_lib(path: String) -> Dictionary:
 
 # 지금 상태에 맞는 클립 (없으면 {clip: ""} = 코드 구동). cc = cfg.clips, st = 몸 상태, air_t = 공중에 뜬 뒤 초
 # 돌려줌: {clip, t (초), air (참이면 발이 바닥이 아님 — 발 바닥 맞추기 안 함), kind}
-static func select(cc: Dictionary, st: Dictionary, air_t: float) -> Dictionary:
+static func select(cc: Dictionary, st: Dictionary, air_t: float, prev_clip := "") -> Dictionary:
 	var none := {"clip": "", "t": 0.0, "air": false, "kind": ""}
 	if cc.is_empty():
 		return none
@@ -88,7 +88,14 @@ static func select(cc: Dictionary, st: Dictionary, air_t: float) -> Dictionary:
 		return {"clip": str(cc.land), "t": clampf(1.0 - float(st.land), 0.0, 1.0), "air": false, "kind": "land", "norm": true}
 	if bool(st.get("walking", false)):
 		var amp: float = float(st.get("hs", 0.0)) / maxf(0.1, float(cc.get("run_speed", 4.5)))
-		var nm2: String = str(cc.get("run", "")) if amp >= float(cc.get("run_from", 0.55)) else str(cc.get("walk", ""))
+		var rf: float = float(cc.get("run_from", 0.55))
+		# W44 히스테리시스: 속도가 문턱 근처에서 출렁이면 걷기↔달리기 클립이 수시로 바뀌어 크로스페이드가 쌓이던 것 (tools/motion_qa 클립 깜빡임)
+		# — 지금 달리는 중이면 문턱 아래 K.EXT_RUN_HYS 까지, 걷는 중이면 문턱 위 K.EXT_RUN_HYS 까지 그대로
+		if prev_clip != "" and prev_clip == str(cc.get("run", "")):
+			rf -= K.EXT_RUN_HYS
+		elif prev_clip != "" and prev_clip == str(cc.get("walk", "")):
+			rf += K.EXT_RUN_HYS
+		var nm2: String = str(cc.get("run", "")) if amp >= rf else str(cc.get("walk", ""))
 		var rate := 1.0 # W34 박자 배율 (cfg.clips.stride {클립: [k, c, 배율]}): 코드 걸음 위상이 몸 속도에 비례하니 클립도 비례, 배율만큼 더 빨리 돌려 한 바퀴 몸 이동 거리를 다리 길이에 맞춤
 		var sd = (cc.get("stride", {}) as Dictionary).get(nm2)
 		if sd is Array and sd.size() > 2:

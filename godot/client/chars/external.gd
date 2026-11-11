@@ -805,7 +805,7 @@ class Ext extends Node3D:
 	var breath_w := 0.0
 	var extra_t := 0.0
 	# W43 방향 이동·기울임·방향 전환
-	var move_off := OS.get_cmdline_args().has("--no-w43") # 실행 인자 --no-w43 으로도 끔 (전후 비용 비교). 확인 도구: W43 이동 가산 (방향·기울임·전환) 끄기 — 전후 비교·비용 재기
+	var move_off := OS.get_cmdline_args().has("--no-w43") or OS.get_cmdline_user_args().has("--no-w43") # 실행 인자 --no-w43 으로도 끔 (전후 비용 비교). 확인 도구: W43 이동 가산 (방향·기울임·전환) 끄기 — 전후 비교·비용 재기
 	var dir_rev := false # 뒤로 걸음 (클립 거꾸로)
 	var dir_y := 0.0 # 골반 yaw (몸 기준, 라디안, 부드럽게)
 	var lean_p := 0.0
@@ -1158,7 +1158,7 @@ class Ext extends Node3D:
 		elif st != null:
 			air_t = air_t + dt if bool(st.get("air", false)) else 0.0
 			_dir_update(st)
-			sel = Clips_.select(cc, st, air_t)
+			sel = Clips_.select(cc, st, air_t, cur_clip.trim_suffix("~r") if cur_kind == "loco" and not move_off_hys else "")
 		var want := 1.0 if (str(sel.clip) != "" and clipset.has(str(sel.clip))) else 0.0
 		if want > 0.0 and forced.is_empty():
 			var rg = Rag_._inst
@@ -1180,6 +1180,14 @@ class Ext extends Node3D:
 			return
 		var name := str(use.clip)
 		var ckey := name + ("~r" if bool(use.get("rev", false)) else "") # W43 같은 클립 거꾸로 재생도 따로 크로스페이드
+		# W44 같은 클립이 처음부터 다시 시작 (닌자 표창 → 표창2 처럼 연달아 같은 클립을 쓰는 동작: 끝 자세에서 시작 자세로 한 표본에 137° 튐 — tools/motion_qa) → 짧게 크로스페이드
+		var tt_now: float = float(use.get("t", 0.0)) * (float(clipset[name].len) if use.get("norm", false) else 1.0)
+		var restart: bool = not move_off_hys and ckey == cur_clip and str(use.get("kind", "")) == "act" and last_tt >= 0.0 and tt_now < last_tt - K_.EXT_RESTART_BACK_S and cw > 0.05
+		last_tt = tt_now if str(use.get("kind", "")) == "act" else -1.0
+		if restart:
+			fade_from = last_layer.duplicate()
+			fade_t = 0.0
+			fade_len = K_.EXT_CLIP_FADE_S
 		if ckey != cur_clip:
 			fade_from = last_layer.duplicate() if cw > 0.05 else {}
 			fade_t = 0.0 if not fade_from.is_empty() else 1.0
@@ -1417,6 +1425,8 @@ class Ext extends Node3D:
 		st["rev"] = dir_rev
 
 	var dir_psi := 0.0
+	var last_tt := -1.0 # W44 지난 프레임 공격 클립 시각 (같은 클립 다시 시작 알아냄)
+	var move_off_hys := OS.get_cmdline_user_args().has("--no-run-hys") # 확인용 (모션 QA 전후 비교)
 
 	# W43 이동 가산 층 (extra_layer 에서): ① 골반을 이동 방향으로 돌리고 척추로 되돌림 (옆걸음) ② 속도·가속도 기울임 ③ 방향 전환 비틀림·팔 반동. 클립·코드 위에 뼈 회전만 더함.
 	func _move_layer(st, dt: float) -> void:

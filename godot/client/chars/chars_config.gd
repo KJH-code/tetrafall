@@ -81,6 +81,8 @@ const EXT_ARMOR_BREAK_S := 0.45 # 탱크 방어구 깨짐: 방패 쥔 팔 반동
 const EXT_ARMOR_BREAK_RAD := 0.5
 
 # W43 클립 크로스페이드 (초): 클립 바뀔 때 종류 (ext_clips.select 의 kind) 에 따라. 공격 들어갈 때는 칼같이 (EXT_CLIP_FADE_S), 나올 때·서기↔걷기·달리기·착지는 길게 — tools/clip_pops.gd 가 잰 자세 차이 (최대 70~120°) 가 0.1 초에 몰려 튀던 것
+const EXT_RESTART_BACK_S := 0.12 # W44 같은 공격 클립의 시각이 이만큼 (초) 넘게 거꾸로 가면 '다시 시작' → 크로스페이드
+const EXT_RUN_HYS := 0.08 # W44 걷기↔달리기 문턱 (run_from, 속도 비율) 히스테리시스 폭
 const EXT_FADE_LOCO_S := 0.18 # 서기·걷기·달리기·착지 사이
 const EXT_FADE_ACT_OUT_S := 0.20 # 공격·스킬·도발·승리 끝 → 다른 클립
 const EXT_FADE_LAND_S := 0.14 # 점프·낙하 → 착지
