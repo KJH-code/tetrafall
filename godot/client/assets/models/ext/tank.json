@@ -62,7 +62,7 @@
   ],
   "taunt": "t_taunt", "victory": "t_victory", "moves": {"주먹": "t_punch", "어깨 박치기": "t_bash", "방패 올려치기": "t_upper", "방패 내려치기": "t_dive", "tankCharge": "t_charge", "tankSlam": "t_slam"}
  },
- "cloth": [
+ "cloth_colliders": [["mixamorig_Hips", "mixamorig_Spine1", 0.125], ["mixamorig_Spine1", "mixamorig_Neck", 0.077], ["mixamorig_LeftUpLeg", "mixamorig_LeftLeg", 0.109], ["mixamorig_LeftLeg", "mixamorig_LeftFoot", 0.076], ["mixamorig_RightUpLeg", "mixamorig_RightLeg", 0.104], ["mixamorig_RightLeg", "mixamorig_RightFoot", 0.071]], "cloth": [
    {"bones": ["mixamorig_Tabard1_1", "mixamorig_Tabard1_2", "mixamorig_Tabard1_3"], "rest": 0.16, "damp": 0.92, "gravity": 18.0, "drag": 0.0, "fwd": 0.01},
    {"bones": ["mixamorig_Tabard2_1", "mixamorig_Tabard2_2", "mixamorig_Tabard2_3"], "rest": 0.16, "damp": 0.92, "gravity": 18.0, "drag": 0.0, "fwd": 0.01}
  ]
