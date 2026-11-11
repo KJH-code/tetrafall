@@ -7,6 +7,7 @@ extends RefCounted
 
 const Opts := preload("res://core/opts.gd")
 
+const SMALL_MS := 4.0 # 이보다 작은 일 (카드 한 장·잔상 몸 하나) 은 문을 늘 통과하고 합에도 안 셈 — 잔일이 큰 일 (초상·몸) 을 영영 막지 않게
 const CAP_MS := 16.0 # 한 프레임 큰 일 합 상한 (여기에 평소 프레임 일 ~8ms 가 더해져 소프트웨어 렌더 스크립트 목표 25ms 이하)
 const EST_DEFAULT := {
 	"world.theme": 14.0, # apply_theme (G3 재질·칸 모양·위험·튀어나온 조각)
@@ -42,7 +43,7 @@ static func on() -> bool:
 
 # 순수 계산: 이미 쓴 spent_ms 인 프레임에 est_ms 짜리 일을 더 돌려도 되나
 static func can(spent_ms: float, est_ms: float, cap_ms := CAP_MS) -> bool:
-	return spent_ms <= 0.0 or spent_ms + est_ms <= cap_ms
+	return spent_ms <= 0.0 or est_ms < SMALL_MS or spent_ms + est_ms <= cap_ms
 
 
 static func _roll() -> void:
@@ -78,7 +79,8 @@ static func done(name: String, t0_us: int) -> float:
 	var ms := (Time.get_ticks_usec() - t0_us) / 1000.0
 	if on():
 		_roll()
-		spent += ms
+		if ms >= SMALL_MS:
+			spent += ms
 		frame_peak = maxf(frame_peak, spent)
 		est[name] = ms if not est.has(name) else lerpf(float(est[name]), ms, 0.5)
 		var e: Array = log.get(name, [0, 0, 0.0])

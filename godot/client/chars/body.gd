@@ -1705,6 +1705,8 @@ func snapshot(material: Material) -> Node3D:
 	var holder := Node3D.new()
 	var f := frame.duplicate() as Node3D
 	holder.add_child(f)
+	if not Opts.args().has("--ghost-all-lods"):
+		prune_extras(frame, f)
 	var tinted := []
 	for mi in f.find_children("*", "MeshInstance3D", true, false):
 		var g := mi as MeshInstance3D
@@ -1714,6 +1716,35 @@ func snapshot(material: Material) -> Node3D:
 			tinted.append(g)
 	holder.set_meta("tinted", tinted) # W42 snapshot_fill 이 재질만 다시 입힐 메시
 	return holder
+
+
+# 복제 (duplicate) 는 장면 모델을 처음 모양대로 다시 지어 살아 있는 몸이 떼어 둔 다른 LOD 메시 (lod0 1.8만 삼각형 · vm · lod1~3) 까지 도로 달아 놓음 —
+# 잔상이 LOD 5겹을 겹쳐 그리고 (삼각형 4만+, 투명도도 겹침), 풀로 들고 있으면 스킨 버퍼가 몸마다 +1MB 남. 원본에 없는 메시는 지움 (W42, 끄기 --ghost-all-lods = 예전 겹친 모습)
+static func prune_extras(src: Node, dst: Node) -> int:
+	var matched := {}
+	var stack := [[src, dst]]
+	while not stack.is_empty():
+		var pr: Array = stack.pop_back()
+		var a: Node = pr[0]
+		var b: Node = pr[1]
+		matched[b.get_instance_id()] = true
+		for c in a.get_children(true):
+			var d: Node = b.get_node_or_null(NodePath(str(c.name).replace("@", "_")))
+			if d != null:
+				stack.append([c, d])
+	var extra := []
+	var walk := [dst]
+	while not walk.is_empty():
+		var n: Node = walk.pop_back()
+		for c in n.get_children(true):
+			if not matched.has(c.get_instance_id()) and c is MeshInstance3D:
+				extra.append(c)
+			else:
+				walk.append(c)
+	for e in extra:
+		e.get_parent().remove_child(e)
+		e.free()
+	return extra.size()
 
 
 # W42 잔상 풀: snapshot 으로 만든 복제본 (holder) 을 다시 씀 — 노드·메시를 새로 안 만들고 지금 자세 (노드 변환·보임·뼈 자세) 만 베끼고 재질만 갈아 끼움.

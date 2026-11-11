@@ -38,6 +38,7 @@ func _gate_end() -> void:
 # 순수 계산: 그 프레임에 큰 일이 없었으면 무조건 허용 (굶지 않음), 있었으면 합이 상한 이하일 때만
 func test_gate_can() -> void:
 	check(Gate.can(0.0, 99.0), "빈 프레임은 얼마나 큰 일이든 허용")
+	check(Gate.can(14.0, 2.0) and not Gate.can(14.0, 25.0), "잔일 (예상 4ms 미만) 은 큰 일 뒤에도 허용 — 잔일이 큰 일을 굶기지 않음 / 큰 일 뒤 큰 일은 미룸")
 	check(Gate.can(6.0, 10.0), "6 + 10 = 16 = 상한 → 허용")
 	check(not Gate.can(6.0, 10.1), "6 + 10.1 > 상한 → 미룸")
 	check(not Gate.can(14.0, 22.0), "큰 일 뒤에 큰 일은 미룸")
@@ -54,10 +55,10 @@ func test_gate_frames_and_starvation() -> void:
 	check(int(Gate.log["world.scenery"][1]) == 1 and int(Gate.log["body"][1]) == 1, "미룬 수를 셈")
 	_fake_frame += 1
 	check(Gate.ok("world.scenery"), "다음 프레임엔 첫 일이라 허용")
-	var t0 := Gate.t() - 3000
+	var t0 := Gate.t() - 6000
 	Gate.done("world.scenery", t0)
-	check(Gate.spent >= 3.0 and Gate.frame_peak >= 3.0, "돌린 ms 가 이 프레임 합에 들어감 (%.1f)" % Gate.spent)
-	check(Gate.est_of("world.scenery") >= 3.0 and Gate.est_of("world.scenery") < 6.0, "예상 ms 가 잰 값으로 (%.1f)" % Gate.est_of("world.scenery"))
+	check(Gate.spent >= 6.0 and Gate.frame_peak >= 6.0, "돌린 ms 가 이 프레임 합에 들어감 (%.1f)" % Gate.spent)
+	check(Gate.est_of("world.scenery") >= 6.0 and Gate.est_of("world.scenery") < 12.0, "예상 ms 가 잰 값으로 (%.1f)" % Gate.est_of("world.scenery"))
 	_gate_end()
 
 
@@ -400,5 +401,28 @@ func test_skin_warm_wiring_and_key() -> void:
 	check(BodyFx.skin_key(b) == "ninja|x", "스킨 갈래 열쇠 = 몸 종류 (%s)" % BodyFx.skin_key(b))
 	var src := FileAccess.get_file_as_string("res://world/world.gd")
 	check(src.contains('"warm.skin"') and src.contains("_warm_skin_step") and src.contains("--no-skin-warm"), "world.gd 가 warm.skin 작업을 줄에 넣음 (--no-skin-warm 으로 끔)")
+	host.free()
+	Body.use_ext = was
+
+
+# 잔상 복제본은 원본에 없는 (떼어 둔 LOD) 메시를 안 달고 있음 — 겹쳐 그리던 것 (삼각형 4만+) 과 풀 메모리 +19MB 를 없앰
+func test_snapshot_has_only_source_meshes() -> void:
+	var was := Body.use_ext
+	Body.use_ext = true
+	var b = Chars.make_body("ninja", Color(0.8, 0.3, 0.3))
+	var host := Node3D.new()
+	host.add_child(b)
+	var count := func(n: Node) -> int:
+		var k := 0
+		for mi in n.find_children("*", "MeshInstance3D", true, false):
+			if (mi as MeshInstance3D).layers != 0:
+				k += 1
+		return k
+	var g: Node3D = b.snapshot(StandardMaterial3D.new())
+	host.add_child(g)
+	check(count.call(g) == count.call(b.frame), "복제본 메시 수 = 원본 (%d vs %d)" % [count.call(g), count.call(b.frame)])
+	var fresh_extra: int = Body.prune_extras(b.frame, g.get_child(0))
+	check(fresh_extra == 0, "이미 정리됨 (더 지울 것 없음)")
+	check(b.snapshot_fill(g, StandardMaterial3D.new()), "정리한 복제본도 풀로 채워짐")
 	host.free()
 	Body.use_ext = was
