@@ -13,6 +13,7 @@ const C := preload("res://core/config.gd")
 const RM := preload("res://chars/ragdoll_math.gd")
 const Co := preload("res://core/coords.gd")
 const K := preload("res://chars/chars_config.gd")
+const Motion_ := preload("res://chars/ext_motion.gd") # W44 가상 시계 (재연에서 래그돌 재우기가 같은 시뮬 시간에)
 
 const GROUND := 1
 const PART := 2
@@ -181,7 +182,7 @@ func _create(b) -> void:
 		PhysicsServer3D.joint_disable_collisions_between_bodies(jr, true)
 		joints.append(jr)
 	made += 1
-	rags[b] = {"segs": segs, "joints": joints, "motor": 1.0, "snap": 0.0, "hit_id": null, "weight": weight, "fresh": true, "root_v": Vector3.ZERO, "awake": true, "calm_at": Time.get_ticks_msec() * 1.0, "mask": -1}
+	rags[b] = {"segs": segs, "joints": joints, "motor": 1.0, "snap": 0.0, "hit_id": null, "weight": weight, "fresh": true, "root_v": Vector3.ZERO, "awake": true, "calm_at": Motion_.now_s() * 1000.0, "mask": -1}
 
 
 # X 축이 a 인 직교 기준틀
@@ -221,7 +222,7 @@ func capture(b, st: Dictionary, hit, dt: float) -> void:
 	if rag == null:
 		return
 	var m := RM.motor(st)
-	var now := Time.get_ticks_msec() * 1.0
+	var now := Motion_.now_s() * 1000.0
 	var new_hit: bool = hit != null and hit.id != rag.hit_id
 	var wake: bool = m.motor < K.RAGDOLL_WAKE_BELOW or new_hit
 	# 쉬는 몸 (W15): 목표 자세는 깰 때만 쓰임 (apply·_drive 는 깬 몸만) → 쉬는 동안은 골반 (root_v — 깰 때 몸 전체 속도) 만 셈.
