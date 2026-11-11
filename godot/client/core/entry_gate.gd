@@ -53,8 +53,11 @@ static func _roll() -> void:
 		spent = 0.0
 
 
+# 큰 일 (표 기본값 8ms 이상) 은 기본값보다 작게는 안 잡음 — 변한 게 없어 0.1ms 로 끝난 때의 값이 평균에 섞여 진짜 큰 일 (지형 다시 깔기 12ms) 이 '잔일' 로 문을 통과하던 것
 static func est_of(name: String) -> float:
-	return float(est.get(name, EST_DEFAULT.get(name, 5.0)))
+	var d := float(EST_DEFAULT.get(name, 5.0))
+	var e := float(est.get(name, d))
+	return maxf(e, d) if d >= 8.0 else e
 
 
 # 지금 돌려도 되나 (꺼져 있으면 늘 참). 미루면 log 에 셈

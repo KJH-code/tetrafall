@@ -58,7 +58,9 @@ func test_gate_frames_and_starvation() -> void:
 	var t0 := Gate.t() - 6000
 	Gate.done("world.scenery", t0)
 	check(Gate.spent >= 6.0 and Gate.frame_peak >= 6.0, "돌린 ms 가 이 프레임 합에 들어감 (%.1f)" % Gate.spent)
-	check(Gate.est_of("world.scenery") >= 6.0 and Gate.est_of("world.scenery") < 12.0, "예상 ms 가 잰 값으로 (%.1f)" % Gate.est_of("world.scenery"))
+	check(Gate.est_of("world.scenery") >= 17.0, "큰 일의 예상은 기본값 밑으로 안 내려감 (%.1f)" % Gate.est_of("world.scenery"))
+	Gate.est["ui.hud"] = 0.9
+	check(is_equal_approx(Gate.est_of("ui.hud"), 0.9), "잔일은 잰 값 그대로")
 	_gate_end()
 
 
