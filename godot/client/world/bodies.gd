@@ -208,6 +208,7 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 	var ol_cfg := WC.outline_far_cfg(WC.body_press) # W45 몸 압박 (적응형 해상도가 바닥에서도 느릴 때): 먼 몸 외곽선·그림자·자세 LOD 거리를 당긴 표 (0 단계면 원래 표 그대로)
 	var sh_cfg := WC.shadow_cfg(WC.body_press)
 	var lod_use: Dictionary = WC.pose_lod_cfg(lod, WC.body_press)
+	var builds_cap: int = WC.BODY_BUILDS_PER_FRAME_SPLIT if Gate.on() and not Gate.no_split("body") else WC.BODY_BUILDS_PER_FRAME # W45: 붙이기를 나눈 때는 한 프레임에 새 몸 하나
 	var jobs := 0 # W45: 이번 프레임에 외부 모델 붙이기 조각을 돌린 몸 수 (WC.BODY_JOBS_PER_FRAME 까지)
 	var builds := 0 # 이번 프레임에 만든 몸 수 (WC.BODY_BUILDS_PER_FRAME 까지, 내 몸은 따로)
 	var build_ms := 0.0 # W41: 이번 프레임 몸 만들기에 쓴 ms — WC.BODY_BUILD_MS 넘으면 남은 몸은 다음 프레임 (처음 만드는 몸 하나가 30ms 라 둘이 한 프레임에 몰리면 60ms)
@@ -230,13 +231,13 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 		var n: Dictionary = nodes.get(id, {})
 		var mine0: bool = my_id != null and id == int(my_id)
 		if not n.is_empty() and (n.char != look_of(p) or (chars_script == null and n.color != color)):
-			if (builds >= WC.BODY_BUILDS_PER_FRAME or build_ms >= WC.BODY_BUILD_MS or not Gate.ok("body")) and not mine0:
+			if (builds >= builds_cap or build_ms >= WC.BODY_BUILD_MS or not Gate.ok("body")) and not mine0:
 				shown[id] = Store.view_pos(id) if pos_fn == null else pos_fn.call(p, Store.view_pos(id))
 				continue # W32: 이번 프레임 만들 몸이 찼음 — 지금 몸 (옛 캐릭터) 을 두고 다음 프레임에 바꿈
 			n.root.queue_free() # 캐릭터·색이 바뀜 → 몸 새로
 			n = {}
 		if n.is_empty():
-			if (builds >= WC.BODY_BUILDS_PER_FRAME or build_ms >= WC.BODY_BUILD_MS or not Gate.ok("body")) and not mine0:
+			if (builds >= builds_cap or build_ms >= WC.BODY_BUILD_MS or not Gate.ok("body")) and not mine0:
 				var sp := Store.view_pos(id)
 				shown[id] = sp if pos_fn == null else pos_fn.call(p, sp) # 자리는 알려 줌 (카메라·하늘 도우미) — 몸은 다음 프레임에
 				continue # W32: 몸 만들기 분산
