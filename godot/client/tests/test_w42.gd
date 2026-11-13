@@ -39,10 +39,10 @@ func _gate_end() -> void:
 func test_gate_can() -> void:
 	check(Gate.can(0.0, 99.0), "빈 프레임은 얼마나 큰 일이든 허용")
 	check(Gate.can(14.0, 2.0) and not Gate.can(14.0, 25.0), "잔일 (예상 4ms 미만) 은 큰 일 뒤에도 허용 — 잔일이 큰 일을 굶기지 않음 / 큰 일 뒤 큰 일은 미룸")
-	check(Gate.can(6.0, 10.0), "6 + 10 = 16 = 상한 → 허용")
-	check(not Gate.can(6.0, 10.1), "6 + 10.1 > 상한 → 미룸")
+	check(Gate.can(4.0, 8.0), "4 + 8 = 12 = 상한 → 허용 (W45: 상한 16 → 12)")
+	check(not Gate.can(4.0, 8.1), "4 + 8.1 > 상한 → 미룸")
 	check(not Gate.can(14.0, 22.0), "큰 일 뒤에 큰 일은 미룸")
-	check(Gate.CAP_MS <= 16.0, "상한은 평소 프레임 일 (~8ms) 을 더해도 25ms 안에 드는 값")
+	check(Gate.CAP_MS <= 12.0, "상한은 평소 프레임 일 (~8ms) 을 더해도 25ms 안에 드는 값 (W45: 12)")
 
 
 # 프레임 번호가 바뀌면 합이 0, 같은 프레임엔 쌓임. 못 한 일은 다음 프레임 첫 일로 돈다 (굶지 않음)
@@ -58,7 +58,7 @@ func test_gate_frames_and_starvation() -> void:
 	var t0 := Gate.t() - 6000
 	Gate.done("world.scenery", t0)
 	check(Gate.spent >= 6.0 and Gate.frame_peak >= 6.0, "돌린 ms 가 이 프레임 합에 들어감 (%.1f)" % Gate.spent)
-	check(Gate.est_of("world.scenery") >= 17.0, "큰 일의 예상은 기본값 밑으로 안 내려감 (%.1f)" % Gate.est_of("world.scenery"))
+	check(Gate.est_of("world.scenery") >= 9.0, "큰 일의 예상은 기본값 밑으로 안 내려감 (%.1f)" % Gate.est_of("world.scenery"))
 	Gate.est["ui.hud"] = 0.9
 	check(is_equal_approx(Gate.est_of("ui.hud"), 0.9), "잔일은 잰 값 그대로")
 	_gate_end()

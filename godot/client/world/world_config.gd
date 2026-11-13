@@ -81,7 +81,9 @@ const MIRROR_SCALE := {"high": 0.5, "medium": 0.35} # 타이틀·대기실 거�
 const ADAPT := {"min": 0.6, "hz_min": 30.0, "hz_max": 60.0, "window": 20, "trim": 0.2, "down": 1.10, "aim": 0.92, "down_min": 0.05, "down_max": 0.15, "cpu_bound": 0.8,
 	"up_meet": 1.04, "headroom": 0.8, "up_pred": 0.92, "up_hold": 6, "up_step": 0.05, "probe_windows": 3, "fails_max": 3, "cut_windows": 9, "ban_windows": 30,
 	# W41 렉 사냥: 판 시작 직후 로딩·첫 사용 스파이크를 GPU 병목으로 오판해 배율을 내렸다 올렸다 (3D 버퍼 다시 만들기 = 또 끊김) 하지 않게
-	"grace_ms": 4000.0, "spike": 3.0, "spike_min": 25.0, "settle": 1, "hist": 40}
+	"grace_ms": 4000.0, "spike": 3.0, "spike_min": 25.0, "settle": 1, "hist": 40,
+	# W45 몸 압박: 해상도 바닥 → MSAA 낮춤 (cut_windows) 에서도 느리면 press_windows 창마다 한 단계씩 (press_max 단까지): 1 = 먼 몸 외곽선 앞당김 + 먼 몸 자세 LOD 한 단계 (BODY_PRESS), 2 = 먼 몸 그림자 거리 줄임. 판이 끝나면 되돌림. press_max 0 = 끔 (--no-body-pressure)
+	"press_windows": 9, "press_max": 2}
 # ---- 외곽선 거리 (W31, 외곽선 껍질 = next_pass 로 몸이 한 번 더 그려짐): 거리는 시야각 70° 기준으로 맞춘 값 (시야각을 넓히면 같은 거리가 더 작게 보이므로 거리 × tan(fov/2)/tan(35°)).
 #   taper_from~gone: 이 사이에서 외곽선 굵기가 1 → min_k 배로 줄어듦 (셰이더, 화면 일정 굵기라 먼 몸은 상대적으로 굵었음) · gone 넘으면 껍질을 아예 뗌 (그리기·삼각형 한 벌 줄음), hyst: 켜고 끄는 문턱 여유 (m)
 #   gone 은 몸 자세 LOD 둘째 단 (POSE_LOD.far2 = 10m) 보다 멀게 (그 안은 자세도 매 프레임 가까이 있는 몸). 8명 판 필드 대각선 27m 라 20m 로 두면 3인칭에서 거의 안 떼짐 (재연 전후 삼각형 같음). min_k 0.25 × 굵기 1.6px = 0.4px 이라 떼는 순간 눈에 안 띔. 내 몸·대기실·1인칭·초상은 늘 가까워서 (taper_from 안) 그대로
@@ -101,6 +103,8 @@ static var cell_lod: bool = not Opts.args().has("--no-cell-lod")
 static var cell_lod_far: float = float(Opts.args()[Opts.args().find("--cell-lod-far") + 1]) if Opts.args().has("--cell-lod-far") else float(CELL_LOD.far) # 확인용: 낮은 모양으로 바꾸는 거리 (m) 덮어쓰기
 # ---- 몸 만들기 분산 (W32): 방에 들어가거나 봇을 넣을 때 몸이 한꺼번에 8개 나오면 (몸 만들기 2~5ms + 처음 그리기 9~12ms 씩) 한 프레임이 크게 끊김 → 한 프레임에 이만큼만 만들고 나머지는 다음 프레임 (내 몸은 늘 바로)
 const BODY_BUILDS_PER_FRAME := 2
+const BODY_BUILDS_PER_FRAME_SPLIT := 1 # W45: 외부 모델 붙이기를 조각으로 나눈 때 (코드 몸 부분 1.1~2.5ms 만 남음) 한 프레임 새 몸 수 — 입장 첫 프레임에 몸 둘 + 조각 셋이 겹쳐 9~10ms 하던 것
+const BODY_JOBS_PER_FRAME := 2 # W45: 한 프레임에 외부 모델 붙이기 조각 (장면·재질·소품·모션 연결 한 단계 0.2~2ms) 을 돌리는 몸 수 (내 몸은 늘 바로)
 const BODY_BUILD_MS := 8.0 # W41: 한 프레임 몸 만들기 ms 상한 (넘으면 나머지는 다음 프레임, 내 몸은 늘 바로)
 # 확인용: --no-shadow-opt = W32 그림자 줄이기 전부 끔 (저폴리 캐스터·칸 상자 그림자·먼 몸 끄기·그림자 거리), --no-shadow-far = 먼 몸·시야 밖 몸 그림자 끄기만 끔 (전후 비교)
 static var shadow_opt: bool = not Opts.args().has("--no-shadow-opt")
@@ -109,6 +113,39 @@ static var scenery_opt: bool = not Opts.args().has("--no-scenery-opt")
 static var batch_twin_on: bool = not Opts.args().has("--no-batch-twin") # W37: 코드 몸 그림자 쌍둥이만 끔 (전후 비교)
 # 지금 적용된 화질 (world/gfx.gd 가 정함, msaa_3d·mirror_scale 이 읽음). 테스트·헤드리스는 기본 high = 예전 값
 static var level := "high"
+# W45 몸 압박 (적응형 해상도가 바닥·MSAA 낮춤에서도 느릴 때의 다음 수단, 먼 몸만 — 가까운 몸·내 몸·1인칭은 그대로). 단계는 adapt_calc.gd Ctl.press (1·2), 수치:
+#   outline: 외곽선 굵기 줄기 시작 / 껍질 떼는 거리 (시야각 70° 환산 m, OUTLINE_FAR 의 8·16 보다 가깝게) · pose: 먼 몸 자세 LOD 거리를 이 배율로 당김 (10m 밖 30Hz → 6m 밖, 18m 밖 15Hz → 10.8m 밖) · shadow_far: 먼 몸 그림자 끄는 거리 (SHADOW.far 22 보다 가깝게)
+const BODY_PRESS := {"outline_from": 5.0, "outline_gone": 10.0, "pose_k": 0.6, "shadow_far": 14.0}
+# 몸 압박 단계 (0 = 평소) 에 맞는 외곽선 거리 값 (OUTLINE_FAR 모양). 순수 계산
+static func outline_far_cfg(press: int) -> Dictionary:
+	if press < 1:
+		return OUTLINE_FAR
+	var d: Dictionary = OUTLINE_FAR.duplicate()
+	d["taper_from"] = minf(float(OUTLINE_FAR.taper_from), float(BODY_PRESS.outline_from))
+	d["gone"] = minf(float(OUTLINE_FAR.gone), float(BODY_PRESS.outline_gone))
+	return d
+
+
+# 몸 압박 단계에 맞는 먼 몸 그림자 끄는 거리 (m, 시야각 70° 환산) 값 (SHADOW 모양): 2단계부터 BODY_PRESS.shadow_far
+static func shadow_cfg(press: int) -> Dictionary:
+	if press < 2:
+		return SHADOW
+	var d: Dictionary = SHADOW.duplicate()
+	d["far"] = minf(float(SHADOW.far), float(BODY_PRESS.shadow_far))
+	return d
+
+
+# 몸 압박 1단계부터 먼 몸 자세 LOD 거리를 당긴 표 (POSE_LOD 모양, far2·far3 만 × pose_k)
+static func pose_lod_cfg(base: Dictionary, press: int) -> Dictionary:
+	if press < 1:
+		return base
+	var d: Dictionary = base.duplicate()
+	d["far2"] = float(base.far2) * float(BODY_PRESS.pose_k)
+	d["far3"] = float(base.far3) * float(BODY_PRESS.pose_k)
+	return d
+
+
+static var body_press := 0 # W45: 지금 몸 압박 단계 (0 = 없음) — 적응형 해상도 (world/gfx.gd) 가 판 중에만 켬, 판이 끝나면 0
 static var msaa_cut := false # W31: 적응형 해상도 (world/adapt_calc.gd) 가 판 중에만 켬 — 판이 끝나면 꺼짐
 
 

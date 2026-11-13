@@ -37,6 +37,8 @@ var baked := false # 구운 몸 (.glb) 으로 만듦
 const GhostDepth := preload("res://chars/ghost_depth.gd")
 static var use_ext: bool = (K.EXT and not Opts.web() and not Opts.args().has("--no-ext")) or Opts.args().has("--ext") # 웹은 기본 끔 (W29: 새 모델은 삼각형·텍스처가 무거움, 웹에서 켜려면 주소 ?ext=1). W14 외부 뼈대 모델이 있으면 씀 (chars/external.gd)
 var ext = null # 붙은 외부 모델 (External.Ext) — 있으면 안쪽 몸 (조각) 은 관절만, 그리는 건 외부 모델
+var ext_job = null # W45: 외부 모델을 프레임에 걸쳐 붙이는 중 (External.AttachJob) — world/bodies.gd 가 ext_step 을 부름. 다 붙기 전엔 몸을 안 보이고 pose 도 안 부름
+static var split_ext := false # W45: 켜져 있는 동안 만든 판 몸은 외부 모델을 바로 안 붙이고 ext_job 으로 (bodies.gd 만 켬, 끄기 --no-body-split)
 static var use_glb: bool = K.GLB and not Opts.args().has("--no-glb") # 구운 몸이 있으면 씀 (테스트가 예전 조립과 둘 다 봄, 확인용 실행 인자 --no-glb 면 예전 조립)
 var d := {} # 체형 (FIGURE_BODIES 한 줄)
 var skin_color := Color.WHITE
@@ -196,7 +198,25 @@ func _build(char_id_: String, color: Color, merge: bool) -> void:
 	refs = cd.refs
 	_after_build(merge, baked_batch)
 	if want_ext:
-		ext = External.attach(self, third)
+		if split_ext and third and not Opts.args().has("--no-body-split"):
+			ext_job = External.attach_job(self, third)
+		if ext_job == null:
+			ext = External.attach(self, third)
+
+
+func ext_pending() -> bool:
+	return ext_job != null
+
+
+# W45: 외부 모델 붙이기 한 조각. 돌려줌 1 = 끝 (붙었거나 못 붙임), 0 = 한 조각 함, -1 = 기다림
+func ext_step() -> int:
+	if ext_job == null:
+		return 1
+	var r: int = ext_job.step()
+	if r == 1:
+		ext = ext_job.e
+		ext_job = null
+	return r
 
 
 # 예전 조립: bodies.bin 의 노드 표대로 노드·메시를 하나씩 만듦

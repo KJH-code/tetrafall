@@ -192,9 +192,15 @@ func _on_state(st: Dictionary, _prev: Dictionary) -> void:
 		last_pos = p
 
 
+var _mem_next := 0.0 # W45 --mem-log: 영상 메모리 기록 다음 시각 (초)
+
+
 func _process(_d: float) -> void:
 	var now := Net.now_ms()
 	var el := (now - start_ms) / 1000.0
+	if args.has("mem-log") and el >= _mem_next: # W45: 영상 메모리 (그림·버퍼·합) 를 2초마다 — 어느 단계에서 얼마 늘었나 (소프트웨어 렌더에서도 믿을 만한 값)
+		_mem_next = el + 2.0
+		print("[메모리] %.1fs %s/%s 그림 %.1f buf %.1f 합 %.1f MB" % [el, "방" if Store.in_room() else "메뉴", Store.phase(), Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / 1048576.0, Performance.get_monitor(Performance.RENDER_BUFFER_MEM_USED) / 1048576.0, Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0])
 	if role == "host" and args.has("menu-wait") and not created and el >= float(args["menu-wait"]) and not Store.in_room() and Store.pending_code == "" and not shot_at in ["menu", "title"]:
 		created = true
 		Store.create_room("", str(args.get("name", "고도")))
@@ -391,6 +397,16 @@ func _process(_d: float) -> void:
 		if args.has("sched-log"): # W42: 입장 쪼개기 문 — 일마다 [돌린 수, 미룬 수, 최대 ms], 예상 ms, 한 프레임 큰 일 합 최대
 			var GT = load("res://core/entry_gate.gd")
 			print("[gate] frame peak %.1fms · tasks %s · est %s" % [GT.frame_peak, str(GT.log), str(GT.est)])
+			var gm := {}
+			for k in GT.log: # W45: 일마다 돌린 수·미룬 수·평균·최소·최대 ms
+				var ge: Array = GT.log[k]
+				gm[k] = "%d runs defer %d · 평균 %.1f · 최소 %.1f · 최대 %.1f" % [ge[0], ge[1], float(ge[3]) / maxf(1.0, float(ge[0])), float(ge[4]) if float(ge[4]) < 1e8 else 0.0, ge[2]]
+			print("[gate 표] %s" % str(gm))
+			var EX = load("res://chars/external.gd")
+			var sm := {}
+			for k in EX.Ext.stage_ms: # W45: 외부 몸 만들기 단계 [횟수, 합 ms, 최대 ms]
+				sm[k] = [EX.Ext.stage_ms[k][0], snappedf(EX.Ext.stage_ms[k][1], 0.1), snappedf(EX.Ext.stage_ms[k][2], 0.1)]
+			print("[몸 단계] %s" % str(sm))
 		if Prof.track: # W41 --first-use: 처음 쓰는 값 표 (파일 --first-use-out 도)
 			var rep := Prof.first_report(float(args.get("first-min", 1.0)))
 			for l in rep:

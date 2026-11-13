@@ -285,8 +285,23 @@ func set_shadows(on: bool) -> void:
 		sun.shadow_enabled = on
 
 
+var _theme_stage := 0 # W45: 맵 적용이 어디까지 갔나 (0 = 쉼·처음, 1·2 = 다음 단계 차례)
+
+
 # 맵 id → 테마 (WORLD_MAP_THEME·WORLD_THEMES 색만, 꾸밈은 G3). 표에 없는 맵은 예전 노을 (SKY_*·FOG_*)
 func apply_theme(map_id: String) -> void:
+	_theme_stage = 0
+	while apply_theme_step(map_id):
+		pass
+
+
+# W45: 맵 적용 한 단계 (G3 있으면 세 단계: ① 지형·바닥·칸 색·소품 ② 위험 액체 ③ 테트리미노 칸 모양·재질). 옛 한 덩어리는 11~17ms (소프트웨어 렌더, 테마마다 다름).
+# 돌려줌: 더 남았으면 true. 단계 사이에 맵이 또 바뀌면 처음부터. G3 없으면 한 단계
+func apply_theme_step(map_id: String) -> bool:
+	if _theme_stage > 0 and map_id != theme_id:
+		_theme_stage = 0
+	if G3 != null and _theme_stage > 0:
+		return _apply_theme_late(map_id)
 	theme = Cells.theme_of(map_id)
 	theme_id = map_id
 	grid_view.set_theme(theme)
@@ -306,20 +321,8 @@ func apply_theme(map_id: String) -> void:
 		sprouts = G3.sprout_node(tid)
 		if sprouts != null:
 			grid_view.add_child(sprouts) # 판 밖 (메뉴) 에선 grid_view 와 같이 숨음
-		if g3_has("hazard_material"):
-			hazard_view.set_g3(G3, tid, low) # 위험 액체 (B3): 필드 판 + 지평선 바다, 물들임
-		if g3_has("piece_mesh"):
-			# 테트리미노 칸 (B3 PieceLook): 떨어지는 칸·쌓인 칸 모양·재질·조각 색, 빛 테두리 = GAME_LIGHT 안 rim (그래픽 낮춤이면 0)
-			light_fx.low = low
-			var rim: float = light_fx.rim
-			var pm: Mesh = G3.piece_mesh(tid, low)
-			var cols: Dictionary = G3.piece_colors(tid)
-			hook_fx.g3 = G3 # W35 갈고리 덩어리가 맵 테마 칸 모습·돌·모래 재질을 씀
-			hook_fx.theme_id = tid
-			hook_fx.low = low
-			pieces_view.set_look(pm, [G3.piece_material(tid, low, {"rim": rim}), G3.piece_material(tid, low, {"rim": rim, "transparent": true, "opacity": 1.0})], cols, G3.piece_mesh(tid, true))
-			grid_view.set_piece_look(pm, G3.piece_material(tid, low, {"rim": rim, "outline": false}), cols, G3.piece_mesh(tid, true)) # 쌓인 칸은 외곽선 없음 (render.js landed noOutline)
-		return
+		_theme_stage = 1
+		return true
 	var sk: Dictionary = theme.get("sky", {})
 	sky_mat.sky_top_color = Co.color(sk.get("top", C.SKY_TOP))
 	sky_mat.sky_horizon_color = Co.color(sk.get("horizon", C.SKY_HORIZON))
@@ -338,6 +341,31 @@ func apply_theme(map_id: String) -> void:
 	sun.transform = Transform3D(Basis.looking_at(-to_sun, Vector3.UP if absf(to_sun.y) < 0.99 else Vector3.FORWARD), Vector3.ZERO)
 	sun.light_color = Co.color(theme.get("sunColor", 0xfff0d8))
 	sun.light_energy = float(theme.get("sunIntensity", 1.0)) * WC.SUN_ENERGY
+	return false
+
+
+# 맵 적용 둘째·셋째 단계 (apply_theme_step)
+func _apply_theme_late(map_id: String) -> bool:
+	var tid = C.WORLD_MAP_THEME.get(map_id)
+	var low := bool(View.settings.get("lowGfx", false))
+	if _theme_stage == 1:
+		if g3_has("hazard_material"):
+			hazard_view.set_g3(G3, tid, low) # 위험 액체 (B3): 필드 판 + 지평선 바다, 물들임
+		_theme_stage = 2
+		return true
+	_theme_stage = 0
+	if g3_has("piece_mesh"):
+		# 테트리미노 칸 (B3 PieceLook): 떨어지는 칸·쌓인 칸 모양·재질·조각 색, 빛 테두리 = GAME_LIGHT 안 rim (그래픽 낮춤이면 0)
+		light_fx.low = low
+		var rim: float = light_fx.rim
+		var pm: Mesh = G3.piece_mesh(tid, low)
+		var cols: Dictionary = G3.piece_colors(tid)
+		hook_fx.g3 = G3 # W35 갈고리 덩어리가 맵 테마 칸 모습·돌·모래 재질을 씀
+		hook_fx.theme_id = tid
+		hook_fx.low = low
+		pieces_view.set_look(pm, [G3.piece_material(tid, low, {"rim": rim}), G3.piece_material(tid, low, {"rim": rim, "transparent": true, "opacity": 1.0})], cols, G3.piece_mesh(tid, true))
+		grid_view.set_piece_look(pm, G3.piece_material(tid, low, {"rim": rim, "outline": false}), cols, G3.piece_mesh(tid, true)) # 쌓인 칸은 외곽선 없음 (render.js landed noOutline)
+	return false
 
 
 func _marks_demo() -> void:
@@ -635,6 +663,7 @@ func _process(dt: float) -> void:
 	if not live:
 		_entered = false
 		entry_frames = 0
+		Gate.entered = true
 		hazard_view.clear() # 판 중에 나가면 위험 경고·전역 위험 빛·물들임이 메뉴에 남던 것 (update 가 더 안 불림)
 	if headless or not live:
 		return
@@ -646,14 +675,21 @@ func _process(dt: float) -> void:
 	# 대기실: 고른 맵의 시작 지형을 지금 인원 판 크기로 미리 깖 (render.js lobbyPreview), 테마도 그 맵
 	var pk = LP.pick(st, View.menu_theme)
 	var mid := str(pk) if pk != null else str(st.get("map", {}).get("id", ""))
-	if mid != theme_id:
+	if mid != theme_id or _theme_stage > 0:
 		if not Gate.ok("world.theme"):
 			_entry_wait()
 			return
 		var tg := Gate.t()
-		apply_theme(mid)
+		var more_t := false
+		if Gate.on() and not Gate.no_split("theme"): # W45: 맵 적용을 세 단계로 (단계마다 한 프레임)
+			more_t = apply_theme_step(mid)
+		else:
+			apply_theme(mid)
 		Gate.done("world.theme", tg)
 		Prof.lap("world 섬·대기실 ·맵 바꿈")
+		if more_t:
+			_entry_wait()
+			return
 	if pk != null:
 		var n := LP.lobby_field_size(st)
 		var key := "%s:%d:%d" % [pk, n, fs.z]
@@ -679,13 +715,23 @@ func _process(dt: float) -> void:
 	Prof.lap("world 섬·대기실 ·어두운 무대")
 	var sc_low := bool(View.settings.get("lowGfx", false))
 	var sc_id = C.WORLD_MAP_THEME.get(theme_id)
-	if scenery.stale(sc_id, fs.x, fs.y, sc_low):
+	if scenery.stale(sc_id, fs.x, fs.y, sc_low) or scenery.building():
 		if not Gate.ok("world.scenery"):
 			_entry_wait()
 			return
 		var ts := Gate.t()
-		scenery.build(sc_id, fs.x, fs.y, sc_low, fs.z)
-		Gate.done("world.scenery", ts)
+		if Gate.on() and not Gate.no_split("scene"): # W45: 지형 (섬·먼 배경) 을 네 단계로 — 단계마다 한 프레임 (옛 17~23ms 한 덩어리)
+			var began := true
+			if scenery.stale(sc_id, fs.x, fs.y, sc_low) or not scenery.building(): # 짓는 중에 맵이 또 바뀌면 처음부터
+				began = scenery.build_begin(sc_id, fs.x, fs.y, sc_low, fs.z)
+			var more: bool = began and scenery.build_step()
+			Gate.done("world.scenery", ts)
+			if more:
+				_entry_wait()
+				return
+		else:
+			scenery.build(sc_id, fs.x, fs.y, sc_low, fs.z)
+			Gate.done("world.scenery", ts)
 	else:
 		scenery.build(sc_id, fs.x, fs.y, sc_low, fs.z) # 바꿀 게 없으면 바로 돌아옴 (테마 없음 → 비움도 여기)
 	Prof.lap("world 섬·대기실 ·지형 만들기")
@@ -707,7 +753,10 @@ func _process(dt: float) -> void:
 			G3.sprout_update(sprouts, g, fs.x, fs.y, fs.z, grid_view.skip, bool(View.settings.get("lowGfx", false)))
 		Gate.done("world.grid", tgr)
 	Prof.lap("world 격자·건축 블록")
+	if not _entered and Hitch.on: # W45: 입장 첫 바퀴가 몇 프레임 걸렸나 (미룬 프레임 수) — 입장 쪼개기 전후 비교
+		Hitch.tag("입장 첫 바퀴 끝", "대기 %d프레임" % entry_frames)
 	_entered = true # 입장 한 바퀴 끝 (지형·무대·칸까지 다 지음)
+	Gate.entered = true
 	rig.pre(dt)
 	grid_view.regroup() # W39: 쌓인 칸 먼/가까움 (카메라가 움직였을 때만)
 	var sky_on: bool = rig.sky_blend > 0.5
@@ -793,6 +842,7 @@ func _process(dt: float) -> void:
 # 입장 쪼개기: 이번 프레임에 이 큰 일 차례가 아님 → 나머지는 다음 프레임에 (그동안 판 노드는 숨은 채 / 맵 바꿈이면 옛 장면이 잠깐 그대로)
 func _entry_wait() -> void:
 	entry_frames += 1
+	Gate.entered = false # W45: 입장 첫 바퀴가 아직 — 초상·큰 캐릭터는 기다림
 	if Hitch.on:
 		Hitch.tag("entry split", "deferred frame %d" % entry_frames)
 	Prof.lap("world entry split (deferred)")

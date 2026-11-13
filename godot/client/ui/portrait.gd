@@ -15,6 +15,9 @@ const CHARS_PATH := "res://chars/chars.gd"
 const LEFT_SIDE := ["cannon"] # 오른어깨 포신이 얼굴을 가려 반대쪽에서 봄 (JS 그대로)
 const FOV := 26.0
 const PRIME_STEPS := 50 # prime_idle 이 부르는 pose 수 (16 ms 걸음 = 0.8 초)
+const PRIME_CHUNK := PRIME_STEPS # W45: 한 조각에 부르는 pose 수. 50번 전부 = 한 조각 (몸 만들기 프레임과 따로 한 프레임). 여러 프레임에 나누면 안 됨: 새 모델 (외부) 몸의 클립 층·천이 실제 시계 (Motion_.now_s) 로 도는데 50번을 몇 ms 안에 부르는 걸 전제로 한 모습이라 (클립 가중이 아직 안 오른 쉬는 자세), 프레임에 걸쳐 시간이 흐르면 탱크 방패가 얼굴을 가리는 등 자세가 달라짐 (2026-11-13 캡처 전후 비교에서 잡음)
+const MAX_INFLIGHT := 3 # W45: 동시에 만드는 초상 수 (조각으로 나눠서 한 프레임 일이 작으니 여럿을 겹쳐 돌림)
+const ENTRY_HOLD_FRAMES := 90 # W45: 방 입장 첫 바퀴 (지형·맵·무대) 가 안 끝나도 이만큼만 기다림
 const FACE_HALF := 0.22 # 외부 모델 얼굴 칸 세로 반 (몸 키 × 이만큼 — 머리 뼈 둘레로 투구·모자까지 + 어깨 조금). 모델마다 cfg portrait.half (키 배율) 로 덮음
 const FACE_UP := 0.02 # 칸 가운데를 머리 뼈 (머리 한가운데) 에서 올림 (몸 키 × 이만큼). cfg portrait.up
 
@@ -24,7 +27,9 @@ static var inst = null
 
 var cache := {} # key → ImageTexture (못 그리면 null 로 기억)
 var queue := [] # [key, char, color, size, full]
-var busy := false
+var busy := false # (옛) 한 장만 — W45 부터 inflight
+var inflight := 0 # W45: 만들고 있는 초상 수
+var held_frames := 0 # W45: 입장 첫 바퀴 동안 미룬 프레임 수
 var Chars = null
 
 
@@ -133,14 +138,19 @@ func warm(color: Color) -> void:
 
 
 func _process(_d: float) -> void:
-	if busy or queue.is_empty():
+	var split := Gate.on() and not Gate.no_split("portrait")
+	if queue.is_empty() or inflight >= (MAX_INFLIGHT if split else 1):
+		held_frames = 0
+		return
+	if split and not Gate.entered and held_frames < ENTRY_HOLD_FRAMES: # W45: 방 입장 첫 바퀴 (지형·맵·무대) 가 끝난 뒤에 — 카드는 전환 띠 뒤라 늦게 와도 안 보임
+		held_frames += 1
 		return
 	if not Gate.ok("ui.portrait"):
 		return # W42: 이번 프레임엔 다른 큰 일 (무대·지형·몸) 이 있음 — 다음 프레임에
-	busy = true
+	inflight += 1
 	var job: Array = queue.pop_front()
 	await _draw_one(job)
-	busy = false
+	inflight -= 1
 
 
 func _draw_one(job: Array) -> void:
@@ -171,9 +181,26 @@ func _draw_one(job: Array) -> void:
 	vp.add_child(key)
 	key.look_at_from_position(Vector3(3, 4, 2), Vector3.ZERO, Vector3.UP)
 	var body = still_body(Chars, char_id, job[2])
-	vp.add_child(body)
 	# 가만히 선 자세 (숨쉬기 위상을 조금 줘서 팔이 굳어 보이지 않게 — JS t 0.8)
-	prime_idle(body)
+	var split := Gate.on() and not Gate.no_split("portrait")
+	if split: # W45: 몸 만들기까지가 이 프레임 일 (3~7ms), 자세 굳히기 (50번 5~10ms) 는 다음 프레임 한 조각 — 한 프레임 14ms 덩어리를 둘로.
+		# 몸은 자세 굳히는 프레임에 나무에 넣음 (넣자마자 굳힘 = 예전과 같은 순서): 먼저 넣어 두면 외부 몸의 _process 가 한 프레임 먼저 돌아 천이 프레임 시간만큼 한 번에 움직여 모습이 달라짐
+		Gate.done("ui.portrait", _g)
+		var i := 0
+		while i < PRIME_STEPS:
+			await get_tree().process_frame
+			if not Gate.ok("ui.portrait.prime"):
+				continue
+			var tp := Gate.t()
+			if body.get_parent() == null:
+				vp.add_child(body)
+			var n := mini(PRIME_CHUNK, PRIME_STEPS - i)
+			prime_chunk(body, i, n)
+			i += n
+			Gate.done("ui.portrait.prime", tp)
+	else:
+		vp.add_child(body)
+		prime_idle(body)
 	# 몸의 실제 크기에 맞춰 화면을 채움 (고도 y = 게임 z). 온몸 = 몸 전체, 얼굴 = 머리 (외부 모델은 머리 뼈, 코드 몸은 목 관절) 기준
 	var fr := frame(body, full)
 	var half: float = fr.half
@@ -192,7 +219,8 @@ func _draw_one(job: Array) -> void:
 	cam.look_at_from_position(at + Vector3(gx, rise, -gy), at, Vector3.UP)
 	cam.current = true
 	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
-	Gate.done("ui.portrait", _g) # 몸 만들기·장면 꾸미기까지 (그림 그리기는 다음 프레임들)
+	if not split:
+		Gate.done("ui.portrait", _g) # 몸 만들기·장면 꾸미기까지 (그림 그리기는 다음 프레임들)
 	await RenderingServer.frame_post_draw
 	await RenderingServer.frame_post_draw
 	var img := vp.get_texture().get_image()
@@ -204,8 +232,13 @@ func _draw_one(job: Array) -> void:
 # 가만히 선 자세로 미리 굳힘 (초상·대기실 큰 캐릭터): body.pose 는 시간으로 관절을 쉬는 자세로 부드럽게 옮기므로 (처음 호출은 dt 0 = 관절 처음 값),
 # 만든 그 프레임에 그리면 외부 모델이 팔을 벌린 처음 자세 (T·A 포즈) 로 한 번 찍힘. 미리 몇십 번 불러 쉬는 자세에서 시작
 static func prime_idle(body: Node) -> void:
+	prime_chunk(body, 0, PRIME_STEPS)
+
+
+# prime_idle 의 i0 번째부터 n 번 (W45: 조각으로 나눠 부르기 — 시각 i × 16ms 는 그대로라 한 번에 부른 것과 같은 자세)
+static func prime_chunk(body: Node, i0: int, n: int) -> void:
 	if body.has_method("pose"):
-		for i in PRIME_STEPS:
+		for i in range(i0, i0 + n):
 			body.pose({"id": -1, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0}, i * 16.0)
 
 

@@ -9,6 +9,8 @@ const U := preload("res://ui/ui_calc.gd")
 const Portrait := preload("res://ui/portrait.gd")
 const WC := preload("res://world/world_config.gd")
 const Lod := preload("res://world/pose_lod.gd")
+const Gate := preload("res://core/entry_gate.gd")
+const Opts := preload("res://core/opts.gd")
 const CHARS_PATH := "res://chars/chars.gd"
 const FOV := 26.0
 
@@ -21,6 +23,8 @@ var key := "" # "char|색"
 var picked_at := -1.0e9 # 고른 시각 ms (도발·정면 기준)
 var Chars = null
 var _rate := {} # 다시 그리기 빈도 (world/pose_lod.gd frame_due)
+var prime_i := -1 # W45: 자세 굳히기가 어디까지 (-1 = 안 하는 중)
+var _first := false # 처음 들어온 캐릭터면 도발 없이 (show_char → _finish_show)
 
 
 func _ready() -> void:
@@ -96,22 +100,31 @@ func show_char(char_id: String, color: Color) -> void:
 		return
 	var first := key == ""
 	if body != null:
-		body.queue_free()
+		_drop_body()
 	body = Portrait.still_body(Chars, char_id, color) # 판 위험 빛 안 받음
-	turn.add_child(body)
 	turn.rotation = Vector3.ZERO
+	key = k
+	_first = first
+	if Gate.on() and not Gate.no_split("portrait"): # W45: 자세 굳히기 50번 (5~10ms) 는 다음 프레임 한 조각 — 굳기 전엔 그리지 않음 (T·A 포즈가 안 보이게). 몸은 굳히는 프레임에 나무에 넣음 (portrait.gd 와 같은 이유)
+		prime_i = 0
+		vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		return
+	turn.add_child(body)
 	# 만든 그 프레임이 외부 모델의 처음 자세 (T·A 포즈) 가 아니게 쉬는 자세부터 (portrait.prime_idle)
 	Portrait.prime_idle(body)
-	# 몸 크기에 맞춰 카메라 (portrait 온몸과 같은 방식, 정면 +x 에서)
+	_finish_show()
+
+
+# 자세를 다 굳힌 뒤: 몸 크기에 맞춰 카메라 (portrait 온몸과 같은 방식, 정면 +x 에서) · 처음엔 도발 없이, 그 뒤 바꾸면 도발부터
+func _finish_show() -> void:
 	var fr := Portrait.frame(body, true)
 	var half: float = fr.half * 1.02 # 온몸 칸 (위아래 여유 포함) 보다 조금만 더 (예전 몸 키 × 1.18)
 	var dist := half / tan(deg_to_rad(FOV / 2.0))
 	var at_z: float = fr.at.y
 	cam.look_at_from_position(Vector3(dist, at_z + half * 0.12, 0), Vector3(0, at_z, 0), Vector3.UP)
 	var now := float(Time.get_ticks_msec())
-	picked_at = now - C.EMOTE_MS if first else now
+	picked_at = now - C.EMOTE_MS if _first else now
 	_pose(now - picked_at, now) # 처음엔 도발 없이 쉬는 자세, 그 뒤 바꾸면 도발부터
-	key = k
 
 
 func _pose(age: float, now: float) -> void:
@@ -129,6 +142,20 @@ static func emote_for(b, age_ms: float) -> float:
 func _process(_d: float) -> void:
 	if body == null or not is_visible_in_tree():
 		return
+	if prime_i >= 0: # W45: 자세 굳히기 조각 (한 프레임에 PRIME_CHUNK 번) — 차례가 아니면 다음 프레임에
+		if not Gate.ok("ui.portrait.prime"):
+			return
+		var tp := Gate.t()
+		if body.get_parent() == null:
+			turn.add_child(body)
+		var n := mini(Portrait.PRIME_CHUNK, Portrait.PRIME_STEPS - prime_i)
+		Portrait.prime_chunk(body, prime_i, n)
+		prime_i += n
+		Gate.done("ui.portrait.prime", tp)
+		if prime_i >= Portrait.PRIME_STEPS:
+			prime_i = -1
+			_finish_show()
+		return
 	_fit() # UI 배율이 바뀌어도 (칸 크기는 그대로라 resized 가 안 옴)
 	var now := float(Time.get_ticks_msec())
 	# 자세·다시 그리기는 WC.SUBVIEW_HZ 까지만 (W15: 천천히 도는 작은 칸 — 120fps 면 한 프레임 걸러 그려도 같아 보임)
@@ -142,8 +169,19 @@ func _process(_d: float) -> void:
 
 
 # 판이 시작하면 (대기실 판이 숨으면): 몸을 놓음, 다시 대기실이면 show_char 가 새로 만듦
+# W45: 몸이 아직 나무에 안 들어갔으면 (자세 굳히기 기다리는 중) queue_free 가 안 먹으니 바로 free
+func _drop_body() -> void:
+	if body.is_inside_tree():
+		body.queue_free()
+	else:
+		body.free()
+
+
 func release() -> void:
 	if body != null:
-		body.queue_free()
+		_drop_body()
 	body = null
 	key = ""
+	prime_i = -1
+	if not Opts.args().has("--no-stage-shrink"): # W45: 판 중엔 안 보이는 큰 캐릭터 렌더 대상 (UI 크기 × 배율 픽셀, 2× MSAA ≈ 7MB) 을 2×2 로 — 다시 보이면 _process 의 _fit 이 되돌림
+		vp.size = Vector2i(2, 2)

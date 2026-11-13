@@ -522,7 +522,7 @@ func refresh(st: Dictionary) -> void:
 	if not low:
 		if not stage_3d.call("pending", ch, my_col):
 			stage_3d.call("show_char", ch, my_col)
-		elif Gate.ok("ui.stage"):
+		elif (Gate.entered or Gate.no_split("portrait")) and Gate.ok("ui.stage"): # W45: 방 입장 첫 바퀴 (맵·지형·무대) 가 끝난 뒤에
 			var tg := Gate.t()
 			stage_3d.call("show_char", ch, my_col)
 			Gate.done("ui.stage", tg)

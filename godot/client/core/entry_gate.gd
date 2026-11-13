@@ -8,17 +8,19 @@ extends RefCounted
 const Opts := preload("res://core/opts.gd")
 
 const SMALL_MS := 4.0 # 이보다 작은 일 (카드 한 장·잔상 몸 하나) 은 문을 늘 통과하고 합에도 안 셈 — 잔일이 큰 일 (초상·몸) 을 영영 막지 않게
-const CAP_MS := 16.0 # 한 프레임 큰 일 합 상한 (여기에 평소 프레임 일 ~8ms 가 더해져 소프트웨어 렌더 스크립트 목표 25ms 이하)
+const CAP_MS := 12.0 # 한 프레임 큰 일 합 상한 (여기에 평소 프레임 일 ~8ms 가 더해져 소프트웨어 렌더 스크립트 목표 25ms 이하. W45: 16 → 12 — 일이 8ms 안팎 조각으로 쪼개져 둘이 겹쳐도 20 안쪽)
 const EST_DEFAULT := {
-	"world.theme": 14.0, # apply_theme (G3 재질·칸 모양·위험·튀어나온 조각)
+	"world.theme": 6.0, # apply_theme 한 단계 (W45: 지형·바닥 / 위험 / 칸 모양 세 단계, 한 덩어리는 11~17)
 	"world.dark.load": 22.0, # 무대 스크립트 컴파일
 	"world.dark": 8.0, # 어두운 무대 앞부분 (바닥·거울·빛·안개)
 	"world.dark.part": 11.0, # 어두운 무대 소품 · 빛 가루 (한 조각)
-	"world.scenery": 17.0, # 지형 (섬·먼 배경 메시)
+	"world.scenery": 9.0, # 지형 (섬·먼 배경 메시) 한 단계 (W45: 세 단계로 쪼갬, 한 덩어리는 17~23)
 	"world.grid": 8.0, # 쌓인 칸 다시 깔기·튀어나온 조각
-	"body": 12.0, # 몸 하나 만들기
-	"ui.stage": 14.0, # 대기실 큰 캐릭터 몸 만들기
-	"ui.portrait": 14.0, # 초상 한 장
+	"body": 5.0, # 몸 하나 만들기 (코드 몸 부분 + 외부 모델 붙이기. W45 부터 붙이기는 "body.ext" 조각으로 프레임에 걸침)
+	"body.ext": 1.5, # 외부 모델 붙이기 한 조각 (장면·재질·소품·모션 연결 한 단계)
+	"ui.stage": 8.0, # 대기실 큰 캐릭터 몸 만들기 (W45: 자세 굳히기는 조각, 한 덩어리는 14)
+	"ui.portrait": 8.0, # 초상 한 장 — 몸 만들기까지 (W45: 자세 굳히기는 조각 "ui.portrait.prime", 한 덩어리는 14)
+	"ui.portrait.prime": 8.0, # 초상·큰 캐릭터 자세 굳히기 50번 한 조각 (W45, 새 모델 5~10ms · 코드 몸 4~6ms)
 	"fx.ghost": 3.0, # 잔상 몸 풀 미리 만들기 (몸 종류마다 하나)
 	"ui.hud": 6.0, # 판 HUD 카드 미리 만들기 (카드 하나 ~1ms 라 여러 장)
 }
@@ -28,7 +30,8 @@ static var _enabled = null
 static var frame := -1
 static var spent := 0.0
 static var est := {} # 이름 → 예상 ms (이동 평균)
-static var log := {} # 이름 → [돌린 수, 미룬 수, 최대 ms] (확인용 --sched-log)
+static var log := {} # 이름 → [돌린 수, 미룬 수, 최대 ms, 합 ms, 최소 ms] (확인용 --sched-log, W45 가 합·최소 추가 — 평균·바닥을 봄)
+static var entered := true # W45: 방 입장 첫 바퀴 (맵·무대·지형·칸) 가 끝났나 — world 가 정함. 초상·큰 캐릭터는 끝난 뒤에 (그 전엔 큰 일이 한 프레임씩 줄 서 있음)
 static var frame_peak := 0.0 # 한 프레임에 쓴 큰 일 합의 최대 (확인용)
 static var _clock: Callable # 테스트 가짜 프레임 번호 () → int
 
@@ -67,10 +70,20 @@ static func ok(name: String) -> bool:
 	_roll()
 	var r := can(spent, est_of(name))
 	if not r:
-		var e: Array = log.get(name, [0, 0, 0.0])
+		var e: Array = log.get(name, [0, 0, 0.0, 0.0, 1e9])
 		e[1] += 1
 		log[name] = e
 	return r
+
+
+# W45: 조각별 끄는 인자 (--no-scene-split 지형 · --no-theme-split 맵 적용 · --no-body-split 몸 만들기 · --no-portrait-split 초상·큰 캐릭터) — 전후 비교
+static var _ns := {}
+
+
+static func no_split(what: String) -> bool:
+	if not _ns.has(what):
+		_ns[what] = Opts.args().has("--no-%s-split" % what)
+	return bool(_ns[what])
 
 
 static func t() -> int:
@@ -86,9 +99,11 @@ static func done(name: String, t0_us: int) -> float:
 			spent += ms
 		frame_peak = maxf(frame_peak, spent)
 		est[name] = ms if not est.has(name) else lerpf(float(est[name]), ms, 0.5)
-		var e: Array = log.get(name, [0, 0, 0.0])
+		var e: Array = log.get(name, [0, 0, 0.0, 0.0, 1e9])
 		e[0] += 1
 		e[2] = maxf(e[2], ms)
+		e[3] = float(e[3]) + ms
+		e[4] = minf(float(e[4]), ms)
 		log[name] = e
 	return ms
 
@@ -102,3 +117,5 @@ static func reset() -> void:
 	_enabled = null
 	enabled_override = null
 	_clock = Callable()
+	_ns = {}
+	entered = true

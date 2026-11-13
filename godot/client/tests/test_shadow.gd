@@ -3,6 +3,7 @@
 extends RefCounted
 
 const WC := preload("res://world/world_config.gd")
+const Gate := preload("res://core/entry_gate.gd")
 const SC := preload("res://world/shadow_calc.gd")
 const Body := preload("res://chars/body.gd")
 const ExtShadow := preload("res://chars/ext_shadow.gd")
@@ -236,7 +237,7 @@ func test_body_builds_spread_over_frames() -> void:
 	var bd = Bodies.new()
 	bd._ready()
 	bd.chars_script = null # 상자 몸 (만들기 비용 상관없이 몇 개 만들었나만)
-	var cap: int = WC.BODY_BUILDS_PER_FRAME
+	var cap: int = WC.BODY_BUILDS_PER_FRAME_SPLIT if Gate.on() and not Gate.no_split("body") else WC.BODY_BUILDS_PER_FRAME # W45: 붙이기를 나눈 때는 한 프레임 새 몸 하나
 	var ps := []
 	for i in 8:
 		ps.append({"id": i + 1, "char": "tank", "alive": true, "yaw": 0.0, "x": float(i), "y": 0.0, "z": 0.0, "slot": i, "color": i})

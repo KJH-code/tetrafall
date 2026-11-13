@@ -170,7 +170,11 @@ func _adapt_switch(on: bool) -> void:
 	var vp := get_viewport().get_viewport_rid()
 	if on:
 		if ctl == null:
-			ctl = AC.Ctl.new(float(plan.scale), AC.target_ms(DisplayServer.screen_get_refresh_rate()))
+			var acfg: Dictionary = WC.ADAPT
+			if Opts.args().has("--no-body-pressure"): # W45 확인용: 몸 압박 끔 (해상도·MSAA 까지만)
+				acfg = WC.ADAPT.duplicate()
+				acfg["press_max"] = 0
+			ctl = AC.Ctl.new(float(plan.scale), AC.target_ms(DisplayServer.screen_get_refresh_rate()), acfg)
 		ctl.set_ceiling(float(plan.scale))
 		ctl.set_target(AC.target_ms(DisplayServer.screen_get_refresh_rate()))
 		ctl.restart()
@@ -186,9 +190,18 @@ func _adapt_switch(on: bool) -> void:
 		if ctl != null:
 			ctl.restart()
 		WC.msaa_cut = false
+		_press_off()
 		RenderingServer.viewport_set_measure_render_time(vp, Hitch.on)
 		adapt_info = ""
 	_apply_adapt()
+
+
+# W45: 판이 끝나면 몸 압박을 되돌림 (외곽선 거리 전역 값 포함)
+func _press_off() -> void:
+	if WC.body_press != 0:
+		WC.body_press = 0
+		var oc := WC.outline_far_cfg(0)
+		load("res://shaders/g3.gd").set_outline_far(float(oc.taper_from), float(oc.gone), float(oc.min_k))
 
 
 # 계산기 값(배율·MSAA 낮춤) → 창·1인칭 팔에 적용. 안 돌면 천장 그대로
@@ -196,10 +209,17 @@ func _apply_adapt() -> void:
 	var root: Window = (Engine.get_main_loop() as SceneTree).root
 	var s: float = ctl.scale if adapting and ctl != null else float(plan.get("scale", 1.0))
 	var cut: bool = adapting and ctl != null and ctl.cut
-	adapt_info = ("자동 해상도 (천장 %d%%)%s" % [roundi(float(plan.scale) * 100.0), " · MSAA 낮춤" if cut else ""]) if adapting else ""
+	var press: int = ctl.press if adapting and ctl != null else 0
+	adapt_info = ("자동 해상도 (천장 %d%%)%s%s" % [roundi(float(plan.scale) * 100.0), " · MSAA 낮춤" if cut else "", (" · 몸 압박 %d" % press) if press > 0 else ""]) if adapting else ""
 	var ch := absf(s - scale_now) > 0.0001 or cut != WC.msaa_cut
+	var press_ch := press != WC.body_press
 	scale_now = s
 	WC.msaa_cut = cut
+	WC.body_press = press
+	if press_ch: # W45: 몸 외곽선 거리 (셰이더 전역 값) 를 압박 단계에 맞춤 — 3D 버퍼를 안 건드림
+		var oc := WC.outline_far_cfg(press)
+		load("res://shaders/g3.gd").set_outline_far(float(oc.taper_from), float(oc.gone), float(oc.min_k))
+		Hitch.tag("몸 압박", "%d단계" % press)
 	if not ch:
 		return
 	Hitch.tag("해상도 변경", "%d%%%s" % [roundi(s * 100.0), " MSAA 낮춤" if cut else ""]) # 3D 버퍼를 다시 만드는 순간 — 히치 로거가 원인으로 적음
