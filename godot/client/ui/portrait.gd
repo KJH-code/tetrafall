@@ -15,7 +15,7 @@ const CHARS_PATH := "res://chars/chars.gd"
 const LEFT_SIDE := ["cannon"] # 오른어깨 포신이 얼굴을 가려 반대쪽에서 봄 (JS 그대로)
 const FOV := 26.0
 const PRIME_STEPS := 50 # prime_idle 이 부르는 pose 수 (16 ms 걸음 = 0.8 초)
-const PRIME_CHUNK := 10 # W45: 한 프레임에 부르는 pose 수 (새 모델 몸 50번이 5~10ms 라 5조각으로 — 부르는 순서·시각은 그대로라 자세 결과 같음)
+const PRIME_CHUNK := PRIME_STEPS # W45: 한 조각에 부르는 pose 수. 50번 전부 = 한 조각 (몸 만들기 프레임과 따로 한 프레임). 여러 프레임에 나누면 안 됨: 새 모델 (외부) 몸의 클립 층·천이 실제 시계 (Motion_.now_s) 로 도는데 50번을 몇 ms 안에 부르는 걸 전제로 한 모습이라 (클립 가중이 아직 안 오른 쉬는 자세), 프레임에 걸쳐 시간이 흐르면 탱크 방패가 얼굴을 가리는 등 자세가 달라짐 (2026-11-13 캡처 전후 비교에서 잡음)
 const MAX_INFLIGHT := 3 # W45: 동시에 만드는 초상 수 (조각으로 나눠서 한 프레임 일이 작으니 여럿을 겹쳐 돌림)
 const ENTRY_HOLD_FRAMES := 90 # W45: 방 입장 첫 바퀴 (지형·맵·무대) 가 안 끝나도 이만큼만 기다림
 const FACE_HALF := 0.22 # 외부 모델 얼굴 칸 세로 반 (몸 키 × 이만큼 — 머리 뼈 둘레로 투구·모자까지 + 어깨 조금). 모델마다 cfg portrait.half (키 배율) 로 덮음
@@ -181,10 +181,10 @@ func _draw_one(job: Array) -> void:
 	vp.add_child(key)
 	key.look_at_from_position(Vector3(3, 4, 2), Vector3.ZERO, Vector3.UP)
 	var body = still_body(Chars, char_id, job[2])
-	vp.add_child(body)
 	# 가만히 선 자세 (숨쉬기 위상을 조금 줘서 팔이 굳어 보이지 않게 — JS t 0.8)
 	var split := Gate.on() and not Gate.no_split("portrait")
-	if split: # W45: 자세 굳히기 50번 (5~10ms) 를 프레임마다 10번씩 — 몸 만들기까지가 이 프레임 일, 나머지는 작은 조각
+	if split: # W45: 몸 만들기까지가 이 프레임 일 (3~7ms), 자세 굳히기 (50번 5~10ms) 는 다음 프레임 한 조각 — 한 프레임 14ms 덩어리를 둘로.
+		# 몸은 자세 굳히는 프레임에 나무에 넣음 (넣자마자 굳힘 = 예전과 같은 순서): 먼저 넣어 두면 외부 몸의 _process 가 한 프레임 먼저 돌아 천이 프레임 시간만큼 한 번에 움직여 모습이 달라짐
 		Gate.done("ui.portrait", _g)
 		var i := 0
 		while i < PRIME_STEPS:
@@ -192,11 +192,14 @@ func _draw_one(job: Array) -> void:
 			if not Gate.ok("ui.portrait.prime"):
 				continue
 			var tp := Gate.t()
+			if body.get_parent() == null:
+				vp.add_child(body)
 			var n := mini(PRIME_CHUNK, PRIME_STEPS - i)
 			prime_chunk(body, i, n)
 			i += n
 			Gate.done("ui.portrait.prime", tp)
 	else:
+		vp.add_child(body)
 		prime_idle(body)
 	# 몸의 실제 크기에 맞춰 화면을 채움 (고도 y = 게임 z). 온몸 = 몸 전체, 얼굴 = 머리 (외부 모델은 머리 뼈, 코드 몸은 목 관절) 기준
 	var fr := frame(body, full)

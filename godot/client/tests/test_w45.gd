@@ -83,17 +83,19 @@ func test_scenery_restart_midway() -> void:
 	ref.free()
 
 
-# 초상 자세 굳히기를 10번씩 나눠 불러도 (시각 i × 16ms 그대로) 코드 몸 관절 자세가 한 번에 부른 것과 같음
+# 초상 자세 굳히기: 50번은 한 조각 (여러 프레임에 나누면 외부 몸의 실제 시계 클립·천이 흘러 탱크 방패가 얼굴을 가리는 등 모습이 달라짐 — 캡처 전후에서 잡음).
+# 조각 부르기 (prime_chunk) 자체는 시각 i × 16ms 그대로라 나눠 불러도 코드 몸 관절 자세가 한 번에 부른 것과 같음
 func test_prime_chunks_equal_whole() -> void:
-	check(Portrait.PRIME_STEPS % Portrait.PRIME_CHUNK == 0, "조각이 50 을 나눠 떨어짐")
+	check(Portrait.PRIME_CHUNK == Portrait.PRIME_STEPS, "50번은 한 조각 (시계가 안 흐르게)")
+	check(Portrait.PRIME_STEPS % 10 == 0, "10번씩 나눠도 떨어짐")
 	for id in ["bard", "berserker", "builder", "cannon"]:
 		var a = Chars.make_body(id, Color(0.8, 0.2, 0.2))
 		var b = Chars.make_body(id, Color(0.8, 0.2, 0.2))
 		Portrait.prime_idle(a)
 		var i := 0
 		while i < Portrait.PRIME_STEPS:
-			Portrait.prime_chunk(b, i, Portrait.PRIME_CHUNK)
-			i += Portrait.PRIME_CHUNK
+			Portrait.prime_chunk(b, i, 10)
+			i += 10
 		var worst := 0.0
 		var na: Array = a.find_children("*", "Node3D", true, false)
 		var nb: Array = b.find_children("*", "Node3D", true, false)

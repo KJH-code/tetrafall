@@ -100,16 +100,16 @@ func show_char(char_id: String, color: Color) -> void:
 		return
 	var first := key == ""
 	if body != null:
-		body.queue_free()
+		_drop_body()
 	body = Portrait.still_body(Chars, char_id, color) # 판 위험 빛 안 받음
-	turn.add_child(body)
 	turn.rotation = Vector3.ZERO
 	key = k
 	_first = first
-	if Gate.on() and not Gate.no_split("portrait"): # W45: 자세 굳히기 50번 (5~10ms) 는 프레임마다 10번씩 — 다 굳기 전엔 그리지 않음 (T·A 포즈가 안 보이게)
+	if Gate.on() and not Gate.no_split("portrait"): # W45: 자세 굳히기 50번 (5~10ms) 는 다음 프레임 한 조각 — 굳기 전엔 그리지 않음 (T·A 포즈가 안 보이게). 몸은 굳히는 프레임에 나무에 넣음 (portrait.gd 와 같은 이유)
 		prime_i = 0
 		vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
 		return
+	turn.add_child(body)
 	# 만든 그 프레임이 외부 모델의 처음 자세 (T·A 포즈) 가 아니게 쉬는 자세부터 (portrait.prime_idle)
 	Portrait.prime_idle(body)
 	_finish_show()
@@ -146,6 +146,8 @@ func _process(_d: float) -> void:
 		if not Gate.ok("ui.portrait.prime"):
 			return
 		var tp := Gate.t()
+		if body.get_parent() == null:
+			turn.add_child(body)
 		var n := mini(Portrait.PRIME_CHUNK, Portrait.PRIME_STEPS - prime_i)
 		Portrait.prime_chunk(body, prime_i, n)
 		prime_i += n
@@ -167,9 +169,17 @@ func _process(_d: float) -> void:
 
 
 # 판이 시작하면 (대기실 판이 숨으면): 몸을 놓음, 다시 대기실이면 show_char 가 새로 만듦
+# W45: 몸이 아직 나무에 안 들어갔으면 (자세 굳히기 기다리는 중) queue_free 가 안 먹으니 바로 free
+func _drop_body() -> void:
+	if body.is_inside_tree():
+		body.queue_free()
+	else:
+		body.free()
+
+
 func release() -> void:
 	if body != null:
-		body.queue_free()
+		_drop_body()
 	body = null
 	key = ""
 	prime_i = -1

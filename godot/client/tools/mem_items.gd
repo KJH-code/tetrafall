@@ -19,14 +19,14 @@ func _initialize() -> void:
 	var cam := Camera3D.new()
 	cam.position = Vector3(0, 1, 5)
 	root.add_child(cam)
-	steps.append(["기준 (빈 장면, 창 %s)" % str(root.size), func(): pass])
+	steps.append(["기준 (맨 장면, 창 %s)" % str(root.size), func(): pass])
 	var sun := DirectionalLight3D.new()
 	sun.shadow_enabled = true
 	root.add_child(sun)
 	steps.append(["해 그림자 켬 (방향광 그림자 지도 기본 크기)", func(): pass])
 	steps.append(["방향광 그림자 지도 1024 (게임 값)", func(): RenderingServer.directional_shadow_atlas_set_size(1024, true)])
 	steps.append(["방향광 그림자 지도 4096 (고도 기본)", func(): RenderingServer.directional_shadow_atlas_set_size(4096, true)])
-	steps.append(["방향광 그림자 지도 1024 로 되돌림", func(): RenderingServer.directional_shadow_atlas_set_size(1024, true)])
+	steps.append(["방향광 그림자 지도 1024 원래 값", func(): RenderingServer.directional_shadow_atlas_set_size(1024, true)])
 	for msaa in [1, 2, 3]:
 		steps.append(["SubViewport 512x512 own_world MSAA %dx" % [[1, 2, 4][msaa - 1] if msaa < 3 else 4], func():
 			var vp := SubViewport.new()
@@ -44,7 +44,7 @@ func _initialize() -> void:
 				steps.append(["그림 %s" % f, func(): _hold.append(load(path))])
 	for id in ids:
 		var gp := "res://assets/models/ext/%s.glb" % id
-		steps.append(["모델 %s.glb 불러와 장면에 넣음 (메시 전 LOD)" % id, func():
+		steps.append(["몸 파일 %s.glb 불러와 장면에 넣음 (메시 전 LOD)" % id, func():
 			var sc := (load(gp) as PackedScene).instantiate()
 			_hold.append(sc)
 			root.add_child(sc)])
@@ -61,7 +61,7 @@ func _process(_d: float) -> bool:
 	wait = 0
 	var now := _mon()
 	if i > 0:
-		print("MEMI %-62s 그림 %+6.2f 버퍼 %+6.2f   (누계 그림 %.1f 버퍼 %.1f)" % [steps[i - 1][0], now.x - last.x, now.y - last.y, now.x, now.y])
+		print("MEMI %-62s 그림 %+6.2f buf %+6.2f   (누계 그림 %.1f buf %.1f)" % [steps[i - 1][0], now.x - last.x, now.y - last.y, now.x, now.y])
 	last = now
 	if i >= steps.size():
 		quit()
