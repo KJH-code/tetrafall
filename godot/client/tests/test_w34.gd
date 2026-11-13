@@ -117,49 +117,14 @@ func test_leg_ik_pure() -> void:
 			check(P.distance_to(r.foot) <= (l1 + l2) * 0.9991, "못 닿으면 다리 길이까지만")
 
 
-# 걷기·달리기 한 바퀴 동안 접지 발이 뒤로 가는 거리 ÷ (박자 배율을 반영한 코드 위상 한 바퀴 거리) — W33 측정 0.24~0.39 → 0.4 이상
+# 걷기·달리기 stride [k, c, 박자] 모양 (W46: 발 미끄러짐은 접지 구간 중앙값 비로 다시 잼 — tests/test_w46.gd. 예전 '낮은 발목' 판정 비 >= 0.4 는 스치는 발을 디딤으로 오판해 박자 ×1.6·보폭 ×1.4 를 고르게 했고, 새 판정은 앞 이동 비 1.4~2.6 으로 틀렸음을 보임)
 func test_foot_slide_ratio() -> void:
-	var old := {"ninja": 0.37, "tank": 0.28, "hunter": 0.39, "hook": 0.33} # W33 달리기
 	for ch in IDS:
 		var b = _body(ch, "high")
 		var X = b.ext
-		var sk: Skeleton3D = X.sk
-		var sc := 1.0 # 뼈대 공간 → 몸 (m): 트리 밖이라 지역 크기를 몸까지 곱함
-		var nd: Node = sk
-		while nd != null and nd != b:
-			if nd is Node3D:
-				sc *= (nd as Node3D).transform.basis.get_scale().x
-			nd = nd.get_parent()
-		var need0: float = TAU / (C.ANIM_WALK_FREQ * float(Pose.gait_of(ch).freq))
 		for nm in ["walk", "run"]:
 			var sd = X.info.cfg.clips.stride.get(nm)
-			check(sd is Array and sd.size() == 3 and float(sd[0]) > 1.0 and float(sd[2]) >= 1.0, "%s %s stride [k, c, 박자]" % [ch, nm])
-			if not (sd is Array):
-				continue
-			var need: float = need0 / float(sd[2])
-			var fR := sk.find_bone("mixamorig_RightFoot")
-			var fL := sk.find_bone("mixamorig_LeftFoot")
-			var travel := 0.0
-			var prev := Vector3.ZERO
-			var had := false
-			var prev_st := -1
-			var n := 60
-			for i in n + 1:
-				var t: float = float(X.clipset[nm].len) * float(i) / n
-				X.preview_clip(nm, t)
-				X.fade_t = 1.0
-				X.preview_clip(nm, t)
-				var pr: Vector3 = X._gt(fR).origin
-				var pl: Vector3 = X._gt(fL).origin
-				var stance: int = 0 if pr.y <= pl.y else 1
-				var cur: Vector3 = pr if stance == 0 else pl
-				if had and stance == prev_st:
-					travel += -(cur.x - prev.x)
-				prev = cur
-				prev_st = stance
-				had = true
-			var ratio: float = travel * sc / need
-			check(ratio >= 0.4, "%s %s 발 미끄러짐 비 %.2f >= 0.4 (W33 %s)" % [ch, nm, ratio, "달리기 %.2f" % old[ch]])
+			check(sd is Array and sd.size() == 3 and float(sd[0]) >= 1.0 and float(sd[2]) > 0.2, "%s %s stride [k, c, 박자]" % [ch, nm])
 		b.free()
 
 

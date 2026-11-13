@@ -642,6 +642,20 @@ class Track:
 			a.stretch_cloth_hi += 1
 		if hi > M.STRETCH_MAX:
 			a.stretch_hi += 1
+			if OS.get_environment("QA_STRETCH_DBG") != "" and hi > 12.0:
+				var sd2: Dictionary = data.skin
+				var v0: int = edges[hi_e * 2]
+				var v1: int = edges[hi_e * 2 + 1]
+				var o := "STRDBG t=%.2f r=%.1f rest=%.3f %s clip=%s\n" % [t, hi, rl[hi_e], sd.edge_name[hi_e], clip]
+				for vv in [v0, v1]:
+					o += "  v rest %s sk %s w:" % [(sd2.sub_v as PackedVector3Array)[vv], sv[vv]]
+					for j in 4:
+						o += " %s:%.2f" % [sk.get_bone_name((sd2.bind_bone as PackedInt32Array)[(sd2.sub_b as PackedInt32Array)[vv * 4 + j]]), (sd2.sub_w as PackedFloat32Array)[vv * 4 + j]]
+					o += "\n"
+				for bn in ["Hips", "Spine", "LeftUpLeg", "RightUpLeg", "Tabard1_1", "Tabard1_2", "Tabard1_3"]:
+					var bi := sk.find_bone("mixamorig_" + bn)
+					o += "  %s rot %s glob %s\n" % [bn, sk.get_bone_pose_rotation(bi), (G[bi] as Transform3D).origin]
+				print(o)
 			var row := {"t": t, "pid": pid_of(), "char": ch, "bone": sd.edge_name[hi_e], "sev": hi, "state": L, "clip": clip}
 			q.top("stretch", row)
 			q.csv_row("stretch", row)
