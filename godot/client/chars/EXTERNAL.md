@@ -238,3 +238,9 @@ W31 이 남긴 후보 (해 그림자 패스 = 3D 삼각형의 38%) 를 실제로
 - **가상 시계**: 몸 동작 층·천·`body.gd` 몸 시간·래그돌 재우기가 `Motion_.now_s()/now_ms()` (`ext_motion.gd`, 재연에선 `Net.virt`) 를 씀 — 느린 기계에서도 같은 시뮬 시간 (`--fixed-fps` 와 함께). `Ext.last_st` = 마지막 몸 상태 (QA 가 읽음).
 - 고침 (전후 수치는 docs/w44): 천 서브스텝·뼈 회전 속도 제한 (`ext_cloth.gd`, 천 팝 61~166 → 0), 천 몸 충돌 (`cloth_colliders` — 반지름은 QA 가 스킨 메시에서 잰 값, 천 뚫림 → 0), 같은 공격 클립 재시작 크로스페이드 (`_clip_layer`, 닌자 표창 137° 튐), 걷기↔달리기 히스테리시스 (`EXT_RUN_HYS`). 끄기 스위치 `--no-cloth-sub|rate|col` · `--no-run-hys` · `--no-clip-restart` (+ `--no-w43` 는 이제 `--` 뒤 인자도 먹음).
 - 보류: 공격 strike·wind 의 빠른 타격 (moves 시간 설계값), 달리기 다리 (W34 박자 배율), 발 미끄러짐 (판정 한계), 탱크 허리 웨이트, 래그돌 복귀·닌자 대시 크로스페이드 분해.
+
+## 23. W45 — PC 최적화 7차: 입장 첫 프레임 쪼개기·몸 압박·메모리 (2026-11-13, 표·전후는 `docs/w45/README.md`)
+
+- **외부 몸 붙이기 네 조각** (`External.attach_job` → `AttachJob.step`, `Ext.setup_a/b/c/d`): ① 장면 인스턴스·크기·쉬는 자세 맞춤 ② 재질·텍스처·LOD 표면·그림자 쌍둥이 ③ 안쪽 몸 숨기기·허리 띠·소품 ④ 클립 재생기·천·모션 층 연결·처음 자세. `Body.split_ext` 가 켜진 동안 (world/bodies.gd `_make` 만) 만든 판 몸은 바로 안 붙이고 `body.ext_job`, `bodies.update` 가 프레임마다 `ext_step()` (한 프레임 `BODY_JOBS_PER_FRAME` 몸까지). **다 붙기 전엔 몸을 안 보이고 (`body.visible = false`) pose 도 안 부름** — ① 의 쉬는 자세 맞춤이 관절의 처음 자세를 읽기 때문 (T 포즈·코드 몸이 안 보이게). 알베도·마스크 스레드 읽기가 안 끝났으면 ① 앞에서 기다림 (`game_tex_ready`, 최대 45프레임) — 동기로 읽으면 5~7ms. 끄기 `--no-body-split`. 1인칭 쌍둥이·초상·큰 캐릭터·몸 데우기는 옛 길 (`External.attach`, 한 번에).
+- **모션 층 (`ext_motion/ext_clips/ext_cloth`) 은 안 건드림.** 단 이 때문에 알아 둘 점: 새 모델 몸의 클립 층·천은 **실제 시계** (`Motion_.now_s`) 로 도니 `pose` 를 부르는 시각 간격이 모습에 영향. 초상·큰 캐릭터의 자세 굳히기 (`Portrait.prime_idle` 50번) 를 여러 프레임에 나눠 불렀더니 탱크 방패가 얼굴을 가림 (캡처 전후 91% 화소 차) → 50번은 한 조각 (`PRIME_CHUNK == PRIME_STEPS`), 몸은 굳히는 프레임에 나무에 넣음 (먼저 넣으면 `Ext._process` 가 한 프레임 먼저 돌아 천이 프레임 시간만큼 한 번에 움직임).
+- 확인용: `--sched-log` 끝에 `[몸 단계]` (단계별 횟수·합·최대 ms)·`[gate 표]` (입장문 일마다 돌린 수·평균·최소·최대), `--hitch` 태그 `입장 첫 바퀴 끝`·`몸 다 보임 N명`, `--mem-log` (영상 메모리 2초마다).

@@ -198,6 +198,9 @@ func test_bodies_hide_until_attached() -> void:
 		if shown_at.size() == 4:
 			break
 	check(seen_hidden, "한 프레임 이상 숨은 채 지어짐")
+	check(not Body.split_ext, "몸을 만든 뒤엔 split_ext 를 꺼 둠 (정적 상태가 남지 않게 — 다른 길 (초상·1인칭) 이 옛 길로)")
+	for k in External.Ext.stage_ms: # 정적 기록에 람다·노드가 없음 (종료 때 정적 상태가 붙잡고 있다가 abort 하는 것을 막음)
+		check(External.Ext.stage_ms[k] is Array and (External.Ext.stage_ms[k] as Array).all(func(x): return typeof(x) == TYPE_INT or typeof(x) == TYPE_FLOAT), "몸 단계 기록은 숫자만 (%s)" % k)
 	check(shown_at.size() == 4, "40프레임 안에 4명 다 붙음 (%d)" % shown_at.size())
 	check(max_jobs <= WC.BODY_JOBS_PER_FRAME + 1, "한 프레임에 끝나는 몸이 상한 안 (%d)" % max_jobs)
 	bs.free()
