@@ -8,6 +8,17 @@ const C := preload("res://core/config.gd")
 # 판 몸 (3인칭 외부 모델) 들 — 서로 쳐다보기용 정적 목록 (죽은 노드는 쓸 때 걸러 냄)
 static var bodies: Array = []
 
+# W44 시계: 재연 (core/replay.gd) 은 가상 시계를 꽂아 느린 기계에서도 같은 시뮬 시간으로 돎. 없으면 실제 시계
+static var clock: Callable = Callable()
+
+
+static func now_s() -> float:
+	return float(clock.call()) if clock.is_valid() else Time.get_ticks_msec() * 0.001
+
+
+static func now_ms() -> float:
+	return float(clock.call()) * 1000.0 if clock.is_valid() else Time.get_ticks_msec() * 1.0
+
 
 # 몸 기준 (앞 +x, 오른쪽 +z) 좌표 → 위(Y) 축 회전 각 (라디안, 왼쪽으로 돌려야 하면 +). 고도 Y 회전은 +x 를 -z 쪽으로 돎
 static func yaw_to(local: Vector3) -> float:

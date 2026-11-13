@@ -26,6 +26,7 @@ var first: Probe
 var tail: Probe
 var measuring := false
 var done := false
+var _qa = null
 var frame_us: Array = [] # 프레임마다 스크립트 µs (중앙값·최악)
 var spikes: Array = [] # --prof: 가장 느린 프레임 [µs, 가상 초, 그 프레임 구간 큰 순서 글자]
 var _prev_sums := {}
@@ -110,6 +111,12 @@ func _ready() -> void:
 	Net.replay_i = 0
 	Net.virt = float(lines[0][0])
 	Prof.on = args.has("prof")
+	preload("res://chars/ext_motion.gd").clock = func(): return Net.virt / 1000.0 # W44 몸 동작 층도 가상 시계 (느린 기계에서도 같은 시뮬 시간)
+	if args.has("motion-qa"): # W44 모션 QA (core/motion_qa.gd): 재연 끝에 json·csv
+		_qa = load("res://core/motion_qa.gd").new()
+		_qa.args = args
+		_qa.epoch = float(lines[0][0]) / 1000.0
+		get_tree().root.add_child.call_deferred(_qa)
 	if not args.has("replay-render"):
 		RenderingServer.render_loop_enabled = false
 	first = Probe.new(false)
@@ -347,6 +354,9 @@ func _bakes() -> Dictionary:
 func _report() -> void:
 	if flog != null:
 		flog.close()
+	if _qa != null:
+		_qa.finish()
+	preload("res://chars/ext_motion.gd").clock = Callable() # 끝나면 가상 시계를 뺌 (Net 이 먼저 사라져도 안 부르게)
 	var n := maxi(1, frames)
 	var b1 := _bakes()
 	if not b1.is_empty():

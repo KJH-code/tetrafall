@@ -61,7 +61,7 @@
   ],
   "taunt": "h_taunt", "victory": "h_victory", "moves": {"베기": "h_slash", "반대 베기": "h_back", "찔러 넣기": "h_thrust", "내려 베기": "h_dive", "hunterAim": "h_aim", "hunterLeap": "h_leap"}
  },
- "cloth": [
+ "cloth_colliders": [["mixamorig_Hips", "mixamorig_Spine1", 0.083], ["mixamorig_LeftUpLeg", "mixamorig_LeftLeg", 0.058], ["mixamorig_LeftLeg", "mixamorig_LeftFoot", 0.043], ["mixamorig_RightUpLeg", "mixamorig_RightLeg", 0.073], ["mixamorig_RightLeg", "mixamorig_RightFoot", 0.045]], "cloth": [
    {"bones": ["mixamorig_Cape1_1", "mixamorig_Cape1_2", "mixamorig_Cape1_3"], "rest": 0.12, "damp": 0.93, "gravity": 18.0, "drag": 0.0, "fwd": 0.05},
    {"bones": ["mixamorig_Cape2_1", "mixamorig_Cape2_2", "mixamorig_Cape2_3"], "rest": 0.12, "damp": 0.93, "gravity": 18.0, "drag": 0.0, "fwd": 0.05},
    {"bones": ["mixamorig_Cape3_1", "mixamorig_Cape3_2", "mixamorig_Cape3_3"], "rest": 0.12, "damp": 0.93, "gravity": 18.0, "drag": 0.0, "fwd": 0.05}

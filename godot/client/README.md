@@ -23,6 +23,9 @@ node godot/client/tools/fixtures.mjs                              # 정답 자�
 node godot/client/tools/gen-config.mjs                            # shared/config.js → core/config.gd (JS config 를 바꾸면)
 bash godot/client/tools/e2e.sh                                    # JS 서버 + 헤드리스 클라 둘: 방 만들기·코드로 들어가기·판·중간에 끊고 같은 자리로
 xvfb-run -a godot --path godot/client --rendering-driver opengl3 -- --auto host --bots 7 --wait-players 8 --shot /tmp/s.png --shot-after 12 --quit-after 13
+# W44 모션 QA (튐·떨림·발 미끄러짐·뚫림 자동 검출, docs/w44/README.md): 재연 + 표 합치기. 판 중 가벼운 모드는 클라에 --motion-qa (한 판 끝에 user://motion_qa.txt)
+xvfb-run -a godot --path godot/client --rendering-driver opengl3 --fixed-fps 120 -- --replay <녹화.rec> --replay-fps 120 --replay-secs 44 --replay-warm 0 --no-pose-lod --set third=true --motion-qa /tmp/qa/<이름>
+node godot/client/tools/motion_qa.mjs /tmp/qa [<후 폴더>]
 ```
 
 ## 내보내기 (G7)

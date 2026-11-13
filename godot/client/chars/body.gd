@@ -13,6 +13,7 @@ const Pose := preload("res://chars/figure_pose.gd")
 const Motion := preload("res://chars/figure_motion.gd")
 const Moves := preload("res://chars/moves.gd")
 const K := preload("res://chars/chars_config.gd")
+const Motion_ := preload("res://chars/ext_motion.gd") # W44 가상 시계 (재연·모션 QA 에서 몸 시간이 같은 시뮬 시간)
 const Ragdoll := preload("res://chars/ragdoll.gd")
 const Prof := preload("res://core/prof.gd")
 const Hitch := preload("res://core/hitch.gd")
@@ -921,7 +922,7 @@ func _move_state(p: Dictionary, pos: Vector3, dt: float) -> void:
 	dizzy = maxf(0.0, dizzy - dt)
 	rage_k = clampf(float(p.get("damage", 0.0)) / C.BERSERK_RAGE_PCT, 0.0, 1.0) if char_id == "berserker" else 0.0
 	# 유령화: 반투명 느리게 일렁, 부활·콤보 뒤 무적은 빠르게 깜빡 (render.js)
-	var ms := Time.get_ticks_msec() * 1.0
+	var ms := Motion_.now_ms() * 1.0
 	if float(p.get("ghostLeft", 0.0)) > 0.0:
 		opacity = 0.35 + 0.1 * sin(ms / 120.0)
 	elif float(p.get("shieldLeft", 0.0)) > 0.0 or float(p.get("iframeLeft", 0.0)) > 0.0:
@@ -1258,7 +1259,7 @@ func _apply(_dt: float) -> void:
 	if parts != null:
 		if parts_z0 == null:
 			parts_z0 = parts.position.z
-		var bonk := 1.0 - (Time.get_ticks_msec() / 1000.0 - bonk_at) / (C.HEAD_BONK_FX_MS / 1000.0)
+		var bonk := 1.0 - (Motion_.now_ms() / 1000.0 - bonk_at) / (C.HEAD_BONK_FX_MS / 1000.0)
 		var kb := sin(PI * minf(1.0, (1.0 - bonk) * 3.0)) * bonk if bonk > 0.0 else 0.0
 		neck.rotation.y += C.HEAD_BONK_NOD * kb
 		parts.position.z = parts_z0 - C.HEAD_BONK_SQUASH * kb
@@ -1326,7 +1327,7 @@ func _costume_parts(st: Dictionary, a, dt: float, tt: float) -> void:
 		var in_hand: bool = (acting and move.get("gun", false)) or st.loaded
 		_vis(refs.gun.get("inHand"), in_hand)
 		_vis(refs.gun.get("holster"), not in_hand)
-		_vis(refs.gun.get("spark"), st.loaded and int(Time.get_ticks_msec() / 90.0) % 3 != 0)
+		_vis(refs.gun.get("spark"), st.loaded and int(Motion_.now_ms() / 90.0) % 3 != 0)
 	if refs.has("bow") and refs.bow is Dictionary:
 		var bow_in: bool = acting and move.get("bow", false)
 		_vis(refs.bow.get("inHand"), bow_in)
@@ -1342,7 +1343,7 @@ func _costume_parts(st: Dictionary, a, dt: float, tt: float) -> void:
 		var f: String = "metal" if st.form == "metal" else "bard"
 		if f != form:
 			if form != "":
-				form_at = Time.get_ticks_msec() / 1000.0
+				form_at = Motion_.now_ms() / 1000.0
 			form = f
 			for k in refs.formParts:
 				for r in refs.formParts[k]:
@@ -1412,12 +1413,12 @@ func _face(st: Dictionary, tt: float) -> void:
 	for i in stars.size():
 		stars[i].visible = st.dizzy > 0.0
 		if stars[i].visible:
-			var ang := Time.get_ticks_msec() / 180.0 + i * PI * 2.0 / 3.0
+			var ang := Motion_.now_ms() / 180.0 + i * PI * 2.0 / 3.0
 			stars[i].position = Vector3(cos(ang) * 0.32, sin(ang) * 0.32, C.PLAYER_HEIGHT * C.FIGURE_SCALE + 0.15)
 			stars[i].rotation = Vector3(0, 0, ang * 2.0)
 	# 바드 폼 전환: 메탈은 모히칸이 머리에서 확 솟아오름 (넘쳤다 돌아옴), 음유시인은 모자가 툭 얹힘
 	if refs.has("formParts"):
-		var u := minf(1.0, (Time.get_ticks_msec() / 1000.0 - form_at) / (C.BARD_FORM_POP_MS / 1000.0))
+		var u := minf(1.0, (Motion_.now_ms() / 1000.0 - form_at) / (C.BARD_FORM_POP_MS / 1000.0))
 		var pop := sin(u * PI * 0.5) * (1.0 + 0.35 * sin(u * PI)) if u < 1.0 else 1.0
 		if form == "metal":
 			var mh := _n(refs.get("mohawk"))
@@ -1503,7 +1504,7 @@ func _whirl_time(p: Dictionary) -> float:
 	if not (bz is Dictionary) or not (float(bz.get("spinLeft", 0.0)) > 0.0) or not p.get("alive", true):
 		whirl_t0 = null
 		return -1.0
-	var now := Time.get_ticks_msec() / 1000.0
+	var now := Motion_.now_ms() / 1000.0
 	if whirl_t0 == null:
 		whirl_t0 = now - (float(bz.get("spinMs", 0.0)) - float(bz.spinLeft)) / 1000.0
 	return minf(now - whirl_t0, float(bz.get("spinMs", 0.0)) / 1000.0)
@@ -1583,7 +1584,7 @@ func _shown() -> bool:
 
 
 func _ragdoll_capture(rw, p: Dictionary, st: Dictionary, pos: Vector3, _dt: float) -> void:
-	var now := Time.get_ticks_msec() / 1000.0
+	var now := Motion_.now_ms() / 1000.0
 	var limp: bool = p.get("stunned", false) == true
 	if rag_was_stunned and not limp:
 		rag_stun_end = now
@@ -1613,7 +1614,7 @@ func _notification(what: int) -> void:
 # 피부만: 경직 하얗게 깜빡 (70ms) · 발광 경직 0x664400 / 조종권 0x005566 / 점프 강화 0x1a5a1a / 닌자 강화 깜빡 EMPOWER_GLOW.
 # 몸 전체 (옷 포함): 스킬·필살기 빛 · 지상 F 준비 하얗게 · 탱크 아머 금속 번쩍 (버틴 순간 하양)
 func _fx_event(ty: String, e: Dictionary) -> void:
-	var now := Time.get_ticks_msec() * 1.0
+	var now := Motion_.now_ms() * 1.0
 	match ty:
 		"skill", "ult", "ultRefund":
 			var ult := ty != "skill"
@@ -1673,7 +1674,7 @@ func fx_colors(p: Dictionary, now: float) -> Array:
 # 재질에 넣기: 묶은 몸 = 묶음 재질 하나 (emissive = 나머지, skin_tint·skin_emissive = 피부 정점만 — G3 툰이 받음, 정점 표시는 조각 meta tf_skin),
 # 따로 그리는 조각은 제 재질 (피부 재질은 색·발광 둘 다)
 func _fx_colors(p: Dictionary) -> void:
-	var f := fx_colors(p, Time.get_ticks_msec() * 1.0)
+	var f := fx_colors(p, Motion_.now_ms() * 1.0)
 	var skin: Color = f[0]
 	if ext != null:
 		ext.fx(f, opacity)
@@ -1846,7 +1847,7 @@ func _has_id() -> bool:
 func on_event(e: Dictionary) -> void:
 	if not _has_id() or dummy:
 		return
-	var now := Time.get_ticks_msec() / 1000.0
+	var now := Motion_.now_ms() / 1000.0
 	var who = e.get("who")
 	var mine: bool = who != null and int(who) == pid
 	var target = e.get("target")
@@ -1857,10 +1858,10 @@ func on_event(e: Dictionary) -> void:
 	match ty:
 		"star": # 닌자 표창 한 발 (1인칭 왼손 표창이 잠깐 빔)
 			if mine:
-				star_at = Time.get_ticks_msec()
+				star_at = Motion_.now_ms()
 		"shellFire": # 대포 반동 (1인칭 대포가 화면 쪽으로 툭)
 			if mine:
-				cannon_kick_at = Time.get_ticks_msec()
+				cannon_kick_at = Motion_.now_ms()
 		"attack":
 			if mine:
 				_attack_start(e, now)
@@ -2045,7 +2046,7 @@ func hit_flash(tier: String) -> void:
 	var ms := float(FXC.tier(tier).body)
 	if ms <= 0.0:
 		return
-	hit_flash_at = Time.get_ticks_msec() * 1.0
+	hit_flash_at = Motion_.now_ms() * 1.0
 	hit_flash_ms = ms
 	hit_flash_color = _hex(FXC.HIT_BODY_COLOR).lerp(_hex(FXC.HIT_FLASH_COLOR.crit), 0.5 if tier == "crit" else 0.0)
 
@@ -2054,7 +2055,7 @@ func hit_flash(tier: String) -> void:
 func _hit_for(p: Dictionary, _now_ms: float):
 	if hit == null:
 		return null
-	var now := Time.get_ticks_msec() / 1000.0
+	var now := Motion_.now_ms() / 1000.0
 	var age: float = now - hit.t0
 	if age > 2.0:
 		hit = null
@@ -2072,7 +2073,7 @@ func _hit_for(p: Dictionary, _now_ms: float):
 func _act_for(_now_ms: float):
 	if act == null:
 		return null
-	var now := Time.get_ticks_msec() / 1000.0
+	var now := Motion_.now_ms() / 1000.0
 	if act.rec <= 0.0 or now - act.t0 > C.FIGURE_ACT_MAX_S or not Moves.MOVES.has(act.move):
 		act = null
 		return null

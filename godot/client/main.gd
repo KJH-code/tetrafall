@@ -63,6 +63,10 @@ func _ready() -> void:
 		add_child(rp)
 		if args.has("replay"):
 			return
+	if args.has("motion-qa"): # W44 판 중 가벼운 모션 QA (팝 카운터만, 한 판 끝에 user://motion_qa.txt)
+		var qa: Node = load("res://core/motion_qa.gd").new()
+		qa.args = args
+		add_child(qa)
 	Net.start(Net.default_url(args))
 
 

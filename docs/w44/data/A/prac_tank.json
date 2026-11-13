@@ -1,0 +1,1021 @@
+{
+  "chars": {
+    "tank": {
+      "clip_flicker": 1,
+      "cloth_pen": {
+        "frames": 18,
+        "max": 0.098,
+        "of": 408
+      },
+      "excluded": 178,
+      "foot": {
+        "float": 0,
+        "float_max": 0.0,
+        "ground_frames": 73,
+        "sunk": 2,
+        "sunk_min": -0.055
+      },
+      "idle_drift": {
+        "bad": 2,
+        "mean": 0.147,
+        "n": 2,
+        "p95": 0.156
+      },
+      "jitter": {
+        "bad": 0,
+        "windows": 0,
+        "worst_bone": "",
+        "worst_rms": 0.0
+      },
+      "label_flicker": {
+        "act→air": 2,
+        "act→rag": 2,
+        "air→act": 2,
+        "land→act": 6
+      },
+      "limit_worst": {},
+      "limits": {},
+      "pop_by": {
+        "cloth": 12,
+        "limb": 102
+      },
+      "pop_worst": 176.8,
+      "pop_worst_bone": "Tabard1_2",
+      "pops": 114,
+      "pops_soft": 375,
+      "samples": 2621,
+      "seam": {
+        "act→air": {
+          "bone": "LeftLeg",
+          "clip": "jump",
+          "jump_max": 2.2,
+          "jump_mean": 1.5,
+          "n": 2,
+          "peak_max": 40.0,
+          "peak_mean": 26.5
+        },
+        "act→loco": {
+          "bone": "RightLeg",
+          "clip": "run",
+          "jump_max": 4.7,
+          "jump_mean": 4.7,
+          "n": 1,
+          "peak_max": 41.7,
+          "peak_mean": 41.7
+        },
+        "act→rag": {
+          "bone": "RightForeArm",
+          "clip": "t_charge",
+          "jump_max": 68.8,
+          "jump_mean": 61.2,
+          "n": 7,
+          "peak_max": 74.2,
+          "peak_mean": 65.3
+        },
+        "air→act": {
+          "bone": "RightArm",
+          "clip": "t_punch",
+          "jump_max": 2.8,
+          "jump_mean": 2.8,
+          "n": 2,
+          "peak_max": 57.3,
+          "peak_mean": 57.3
+        },
+        "idle→act": {
+          "bone": "LeftArm",
+          "clip": "t_charge",
+          "jump_max": 6.3,
+          "jump_mean": 6.3,
+          "n": 1,
+          "peak_max": 20.9,
+          "peak_mean": 20.9
+        },
+        "land→act": {
+          "bone": "LeftForeArm",
+          "clip": "t_charge",
+          "jump_max": 20.0,
+          "jump_mean": 13.9,
+          "n": 6,
+          "peak_max": 63.0,
+          "peak_mean": 50.1
+        },
+        "loco→act": {
+          "bone": "RightArm",
+          "clip": "t_punch",
+          "jump_max": 19.4,
+          "jump_mean": 19.4,
+          "n": 1,
+          "peak_max": 57.3,
+          "peak_mean": 57.3
+        },
+        "rag→act": {
+          "bone": "LeftForeArm",
+          "clip": "t_upper",
+          "jump_max": 25.6,
+          "jump_mean": 25.6,
+          "n": 1,
+          "peak_max": 28.1,
+          "peak_mean": 28.1
+        },
+        "rag→land": {
+          "bone": "RightArm",
+          "clip": "land",
+          "jump_max": 15.2,
+          "jump_mean": 14.8,
+          "n": 6,
+          "peak_max": 57.3,
+          "peak_mean": 43.7
+        }
+      },
+      "slide": {
+        "fwd": {
+          "bad": 1,
+          "mean": 1.177,
+          "n": 1,
+          "p95": 1.177
+        }
+      },
+      "stretch": {
+        "cloth_hi": 346,
+        "cloth_max": 21.1,
+        "hi": 337,
+        "lo": 125,
+        "max": 13.58,
+        "min": 0.07,
+        "samples": 408
+      },
+      "weapon_pen": {
+        "frames": 0,
+        "max": 0.0,
+        "samples": 408
+      }
+    }
+  },
+  "meta": {
+    "hz": 60.0,
+    "rec": "prac_tank.rec",
+    "samples": 2646,
+    "secs": 44.1166666666688,
+    "thr": {
+      "pop_cloth": 80.0,
+      "pop_end": 60.0,
+      "pop_torso": 35.0
+    }
+  },
+  "top": {
+    "flicker": [
+      {
+        "bone": "(코드)→idle",
+        "char": "tank",
+        "clip": "idle",
+        "pid": 4,
+        "sev": 0.283,
+        "state": "idle",
+        "t": 0.142
+      }
+    ],
+    "jitter": [],
+    "limit": [],
+    "pen": [
+      {
+        "bone": "Tabard1_1",
+        "char": "tank",
+        "clip": "run",
+        "pid": 4,
+        "sev": 0.098,
+        "state": "loco",
+        "t": 39.325
+      },
+      {
+        "bone": "Tabard2_1",
+        "char": "tank",
+        "clip": "run",
+        "pid": 4,
+        "sev": 0.079,
+        "state": "loco",
+        "t": 39.125
+      },
+      {
+        "bone": "Tabard2_1",
+        "char": "tank",
+        "clip": "t_upper",
+        "pid": 4,
+        "sev": 0.042,
+        "state": "act",
+        "t": 14.925
+      },
+      {
+        "bone": "Tabard2_1",
+        "char": "tank",
+        "clip": "t_upper",
+        "pid": 4,
+        "sev": 0.04,
+        "state": "act",
+        "t": 35.125
+      },
+      {
+        "bone": "Tabard2_1",
+        "char": "tank",
+        "clip": "t_upper",
+        "pid": 4,
+        "sev": 0.04,
+        "state": "act",
+        "t": 2.225
+      },
+      {
+        "bone": "Tabard1_1",
+        "char": "tank",
+        "clip": "t_upper",
+        "pid": 4,
+        "sev": 0.038,
+        "state": "act",
+        "t": 15.025
+      },
+      {
+        "bone": "Tabard1_1",
+        "char": "tank",
+        "clip": "t_upper",
+        "pid": 4,
+        "sev": 0.037,
+        "state": "act",
+        "t": 2.325
+      },
+      {
+        "bone": "Tabard1_1",
+        "char": "tank",
+        "clip": "t_upper",
+        "pid": 4,
+        "sev": 0.037,
+        "state": "act",
+        "t": 35.225
+      },
+      {
+        "bone": "Tabard2_1",
+        "char": "tank",
+        "clip": "t_upper",
+        "pid": 4,
+        "sev": 0.034,
+        "state": "act",
+        "t": 37.925
+      },
+      {
+        "bone": "Tabard2_1",
+        "char": "tank",
+        "clip": "t_upper",
+        "pid": 4,
+        "sev": 0.031,
+        "state": "act",
+        "t": 42.425
+      },
+      {
+        "bone": "Tabard2_1",
+        "char": "tank",
+        "clip": "t_upper",
+        "pid": 4,
+        "sev": 0.031,
+        "state": "act",
+        "t": 3.925
+      },
+      {
+        "bone": "Tabard2_1",
+        "char": "tank",
+        "clip": "t_upper",
+        "pid": 4,
+        "sev": 0.028,
+        "state": "act",
+        "t": 9.825
+      },
+      {
+        "bone": "Tabard1_1",
+        "char": "tank",
+        "clip": "t_upper",
+        "pid": 4,
+        "sev": 0.025,
+        "state": "act",
+        "t": 2.225
+      },
+      {
+        "bone": "Tabard1_1",
+        "char": "tank",
+        "clip": "t_upper",
+        "pid": 4,
+        "sev": 0.024,
+        "state": "act",
+        "t": 35.125
+      },
+      {
+        "bone": "Tabard1_1",
+        "char": "tank",
+        "clip": "t_upper",
+        "pid": 4,
+        "sev": 0.023,
+        "state": "act",
+        "t": 4.025
+      },
+      {
+        "bone": "Tabard1_1",
+        "char": "tank",
+        "clip": "t_upper",
+        "pid": 4,
+        "sev": 0.023,
+        "state": "act",
+        "t": 9.825
+      },
+      {
+        "bone": "Tabard1_1",
+        "char": "tank",
+        "clip": "t_upper",
+        "pid": 4,
+        "sev": 0.021,
+        "state": "act",
+        "t": 11.525
+      },
+      {
+        "bone": "Tabard1_1",
+        "char": "tank",
+        "clip": "t_upper",
+        "pid": 4,
+        "sev": 0.021,
+        "state": "act",
+        "t": 40.725
+      },
+      {
+        "bone": "Tabard1_1",
+        "char": "tank",
+        "clip": "t_upper",
+        "pid": 4,
+        "sev": 0.021,
+        "state": "act",
+        "t": 33.625
+      },
+      {
+        "bone": "Tabard1_1",
+        "char": "tank",
+        "clip": "t_upper",
+        "pid": 4,
+        "sev": 0.021,
+        "state": "act",
+        "t": 8.225
+      }
+    ],
+    "pop": [
+      {
+        "bone": "Tabard1_2",
+        "char": "tank",
+        "clip": "land",
+        "cls": "cloth",
+        "extra": "fade 1.00 cw 0.12 since_lab 0.37 since_clip 0.35",
+        "jerk": 174.981,
+        "pid": 4,
+        "sev": 176.825,
+        "state": "land",
+        "t": 25.325
+      },
+      {
+        "bone": "Tabard1_3",
+        "char": "tank",
+        "clip": "land",
+        "cls": "cloth",
+        "extra": "fade 1.00 cw 0.12 since_lab 0.37 since_clip 0.35",
+        "jerk": 140.414,
+        "pid": 4,
+        "sev": 140.704,
+        "state": "land",
+        "t": 25.325
+      },
+      {
+        "bone": "Tabard2_3",
+        "char": "tank",
+        "clip": "fall",
+        "cls": "cloth",
+        "extra": "fade 0.08 cw 1.00 since_lab 0.08 since_clip 0.08",
+        "jerk": 46.474,
+        "pid": 4,
+        "sev": 131.951,
+        "state": "air",
+        "t": 26.008
+      },
+      {
+        "bone": "Tabard2_2",
+        "char": "tank",
+        "clip": "land",
+        "cls": "cloth",
+        "extra": "fade 1.00 cw 0.12 since_lab 0.37 since_clip 0.35",
+        "jerk": 118.798,
+        "pid": 4,
+        "sev": 119.76,
+        "state": "land",
+        "t": 25.325
+      },
+      {
+        "bone": "Tabard1_3",
+        "char": "tank",
+        "clip": "jump",
+        "cls": "cloth",
+        "extra": "fade 0.29 cw 1.00 since_lab 0.05 since_clip 0.05",
+        "jerk": 46.626,
+        "pid": 4,
+        "sev": 114.621,
+        "state": "air",
+        "t": 13.508
+      },
+      {
+        "bone": "Tabard1_2",
+        "char": "tank",
+        "clip": "jump",
+        "cls": "cloth",
+        "extra": "fade 0.37 cw 1.00 since_lab 0.07 since_clip 0.07",
+        "jerk": 104.223,
+        "pid": 4,
+        "sev": 106.048,
+        "state": "air",
+        "t": 25.992
+      },
+      {
+        "bone": "Tabard1_1",
+        "char": "tank",
+        "clip": "jump",
+        "cls": "cloth",
+        "extra": "fade 0.37 cw 1.00 since_lab 0.07 since_clip 0.07",
+        "jerk": 104.636,
+        "pid": 4,
+        "sev": 105.931,
+        "state": "air",
+        "t": 25.992
+      },
+      {
+        "bone": "Tabard1_1",
+        "char": "tank",
+        "clip": "land",
+        "cls": "cloth",
+        "extra": "fade 1.00 cw 0.12 since_lab 0.37 since_clip 0.35",
+        "jerk": 91.125,
+        "pid": 4,
+        "sev": 94.527,
+        "state": "land",
+        "t": 25.325
+      },
+      {
+        "bone": "Tabard1_2",
+        "char": "tank",
+        "clip": "jump",
+        "cls": "cloth",
+        "extra": "fade 0.21 cw 1.00 since_lab 0.03 since_clip 0.03",
+        "jerk": 84.302,
+        "pid": 4,
+        "sev": 91.897,
+        "state": "air",
+        "t": 13.492
+      },
+      {
+        "bone": "Tabard1_2",
+        "char": "tank",
+        "clip": "t_charge",
+        "cls": "cloth",
+        "extra": "fade 0.17 cw 0.58 since_lab 0.03 since_clip 0.03",
+        "jerk": 71.634,
+        "pid": 4,
+        "sev": 91.555,
+        "state": "act tankCharge/strike",
+        "t": 25.358
+      },
+      {
+        "bone": "Tabard2_3",
+        "char": "tank",
+        "clip": "jump",
+        "cls": "cloth",
+        "extra": "fade 0.37 cw 1.00 since_lab 0.07 since_clip 0.07",
+        "jerk": 81.102,
+        "pid": 4,
+        "sev": 85.478,
+        "state": "air",
+        "t": 25.992
+      },
+      {
+        "bone": "Tabard2_1",
+        "char": "tank",
+        "clip": "land",
+        "cls": "cloth",
+        "extra": "fade 1.00 cw 0.12 since_lab 0.37 since_clip 0.35",
+        "jerk": 81.63,
+        "pid": 4,
+        "sev": 84.727,
+        "state": "land",
+        "t": 25.325
+      },
+      {
+        "bone": "RightArm",
+        "char": "tank",
+        "clip": "t_punch",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 1.00 since_lab 3.78 since_clip 0.18",
+        "jerk": 30.708,
+        "pid": 4,
+        "sev": 57.332,
+        "state": "act 주먹/strike",
+        "t": 23.075
+      },
+      {
+        "bone": "RightArm",
+        "char": "tank",
+        "clip": "t_punch",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 1.00 since_lab 1.98 since_clip 0.18",
+        "jerk": 30.708,
+        "pid": 4,
+        "sev": 57.332,
+        "state": "act 주먹/strike",
+        "t": 21.275
+      },
+      {
+        "bone": "RightArm",
+        "char": "tank",
+        "clip": "t_punch",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 1.00 since_lab 3.55 since_clip 0.18",
+        "jerk": 30.708,
+        "pid": 4,
+        "sev": 57.332,
+        "state": "act 주먹/strike",
+        "t": 10.342
+      },
+      {
+        "bone": "RightArm",
+        "char": "tank",
+        "clip": "t_punch",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 1.00 since_lab 0.18 since_clip 0.18",
+        "jerk": 30.708,
+        "pid": 4,
+        "sev": 57.332,
+        "state": "act 주먹/strike",
+        "t": 19.475
+      },
+      {
+        "bone": "RightArm",
+        "char": "tank",
+        "clip": "t_punch",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 1.00 since_lab 0.15 since_clip 0.15",
+        "jerk": 30.708,
+        "pid": 4,
+        "sev": 57.332,
+        "state": "act 주먹/strike",
+        "t": 13.775
+      },
+      {
+        "bone": "RightArm",
+        "char": "tank",
+        "clip": "t_punch",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 1.00 since_lab 1.88 since_clip 0.18",
+        "jerk": 30.708,
+        "pid": 4,
+        "sev": 57.332,
+        "state": "act 주먹/strike",
+        "t": 15.508
+      },
+      {
+        "bone": "RightArm",
+        "char": "tank",
+        "clip": "t_punch",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 1.00 since_lab 0.48 since_clip 0.15",
+        "jerk": 30.708,
+        "pid": 4,
+        "sev": 57.332,
+        "state": "act 주먹/strike",
+        "t": 1.008
+      },
+      {
+        "bone": "RightArm",
+        "char": "tank",
+        "clip": "t_punch",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 1.00 since_lab 1.88 since_clip 0.18",
+        "jerk": 30.708,
+        "pid": 4,
+        "sev": 57.332,
+        "state": "act 주먹/strike",
+        "t": 41.275
+      }
+    ],
+    "seam": [
+      {
+        "bone": "RightForeArm",
+        "char": "tank",
+        "clip": "t_charge",
+        "extra": "jump 46.0",
+        "pid": 4,
+        "sev": 74.231,
+        "state": "act→rag",
+        "t": 34.392
+      },
+      {
+        "bone": "RightArm",
+        "char": "tank",
+        "clip": "t_slam",
+        "extra": "jump 68.8",
+        "pid": 4,
+        "sev": 68.802,
+        "state": "act→rag",
+        "t": 18.892
+      },
+      {
+        "bone": "RightArm",
+        "char": "tank",
+        "clip": "t_slam",
+        "extra": "jump 68.8",
+        "pid": 4,
+        "sev": 68.8,
+        "state": "act→rag",
+        "t": 6.392
+      },
+      {
+        "bone": "RightArm",
+        "char": "tank",
+        "clip": "t_slam",
+        "extra": "jump 68.8",
+        "pid": 4,
+        "sev": 68.799,
+        "state": "act→rag",
+        "t": 31.858
+      },
+      {
+        "bone": "RightArm",
+        "char": "tank",
+        "clip": "t_slam",
+        "extra": "jump 68.8",
+        "pid": 4,
+        "sev": 68.799,
+        "state": "act→rag",
+        "t": 24.958
+      },
+      {
+        "bone": "LeftForeArm",
+        "char": "tank",
+        "clip": "t_charge",
+        "extra": "jump 18.5",
+        "pid": 4,
+        "sev": 63.044,
+        "state": "land→act",
+        "t": 25.358
+      },
+      {
+        "bone": "RightArm",
+        "char": "tank",
+        "clip": "land",
+        "extra": "jump 15.2",
+        "pid": 4,
+        "sev": 57.332,
+        "state": "rag→land",
+        "t": 32.225
+      },
+      {
+        "bone": "RightArm",
+        "char": "tank",
+        "clip": "t_punch",
+        "extra": "jump 2.7",
+        "pid": 4,
+        "sev": 57.332,
+        "state": "air→act",
+        "t": 26.125
+      },
+      {
+        "bone": "RightArm",
+        "char": "tank",
+        "clip": "t_punch",
+        "extra": "jump 11.5",
+        "pid": 4,
+        "sev": 57.332,
+        "state": "land→act",
+        "t": 32.258
+      },
+      {
+        "bone": "RightArm",
+        "char": "tank",
+        "clip": "t_punch",
+        "extra": "jump 11.5",
+        "pid": 4,
+        "sev": 57.332,
+        "state": "land→act",
+        "t": 19.292
+      },
+      {
+        "bone": "RightArm",
+        "char": "tank",
+        "clip": "land",
+        "extra": "jump 14.4",
+        "pid": 4,
+        "sev": 57.332,
+        "state": "rag→land",
+        "t": 19.258
+      },
+      {
+        "bone": "RightArm",
+        "char": "tank",
+        "clip": "t_punch",
+        "extra": "jump 2.8",
+        "pid": 4,
+        "sev": 57.332,
+        "state": "air→act",
+        "t": 13.625
+      },
+      {
+        "bone": "RightArm",
+        "char": "tank",
+        "clip": "t_punch",
+        "extra": "jump 11.0",
+        "pid": 4,
+        "sev": 57.332,
+        "state": "land→act",
+        "t": 6.792
+      },
+      {
+        "bone": "RightArm",
+        "char": "tank",
+        "clip": "land",
+        "extra": "jump 14.0",
+        "pid": 4,
+        "sev": 57.332,
+        "state": "rag→land",
+        "t": 6.758
+      },
+      {
+        "bone": "RightArm",
+        "char": "tank",
+        "clip": "t_punch",
+        "extra": "jump 19.4",
+        "pid": 4,
+        "sev": 57.332,
+        "state": "loco→act",
+        "t": 39.392
+      },
+      {
+        "bone": "LeftForeArm",
+        "char": "tank",
+        "clip": "t_slam",
+        "extra": "jump 53.7",
+        "pid": 4,
+        "sev": 53.725,
+        "state": "act→rag",
+        "t": 12.425
+      },
+      {
+        "bone": "LeftForeArm",
+        "char": "tank",
+        "clip": "t_slam",
+        "extra": "jump 53.7",
+        "pid": 4,
+        "sev": 53.725,
+        "state": "act→rag",
+        "t": 37.058
+      },
+      {
+        "bone": "RightArm",
+        "char": "tank",
+        "clip": "t_dive",
+        "extra": "jump 10.7",
+        "pid": 4,
+        "sev": 41.823,
+        "state": "land→act",
+        "t": 12.825
+      },
+      {
+        "bone": "RightLeg",
+        "char": "tank",
+        "clip": "run",
+        "extra": "jump 4.7",
+        "pid": 4,
+        "sev": 41.653,
+        "state": "act→loco",
+        "t": 38.758
+      },
+      {
+        "bone": "LeftForeArm",
+        "char": "tank",
+        "clip": "land",
+        "extra": "jump 15.0",
+        "pid": 4,
+        "sev": 40.716,
+        "state": "rag→land",
+        "t": 25.325
+      }
+    ],
+    "slide": [
+      {
+        "bone": "발 L",
+        "char": "tank",
+        "clip": "run",
+        "extra": "slide 0.71 body 0.60 len 9",
+        "pid": 4,
+        "sev": 1.177,
+        "state": "걸음 fwd",
+        "t": 38.908
+      },
+      {
+        "bone": "발 L",
+        "char": "tank",
+        "clip": "t_charge",
+        "extra": "len 23",
+        "pid": 4,
+        "sev": 0.156,
+        "state": "정지 끌림",
+        "t": 0.525
+      },
+      {
+        "bone": "발 R",
+        "char": "tank",
+        "clip": "t_charge",
+        "extra": "len 23",
+        "pid": 4,
+        "sev": 0.138,
+        "state": "정지 끌림",
+        "t": 0.525
+      }
+    ],
+    "stretch": [
+      {
+        "bone": "LeftUpLeg|Spine",
+        "char": "tank",
+        "clip": "land",
+        "pid": 4,
+        "sev": 13.584,
+        "state": "land",
+        "t": 25.325
+      },
+      {
+        "bone": "LeftUpLeg|Spine",
+        "char": "tank",
+        "clip": "jump",
+        "pid": 4,
+        "sev": 12.881,
+        "state": "air",
+        "t": 13.525
+      },
+      {
+        "bone": "LeftUpLeg|Spine",
+        "char": "tank",
+        "clip": "fall",
+        "pid": 4,
+        "sev": 12.611,
+        "state": "air",
+        "t": 26.025
+      },
+      {
+        "bone": "LeftUpLeg|Spine",
+        "char": "tank",
+        "clip": "t_punch",
+        "pid": 4,
+        "sev": 11.705,
+        "state": "act",
+        "t": 13.825
+      },
+      {
+        "bone": "LeftUpLeg|Spine",
+        "char": "tank",
+        "clip": "t_charge",
+        "pid": 4,
+        "sev": 11.218,
+        "state": "act",
+        "t": 42.725
+      },
+      {
+        "bone": "LeftUpLeg|Spine",
+        "char": "tank",
+        "clip": "t_punch",
+        "pid": 4,
+        "sev": 11.018,
+        "state": "act",
+        "t": 26.325
+      },
+      {
+        "bone": "LeftUpLeg|Spine",
+        "char": "tank",
+        "clip": "t_charge",
+        "pid": 4,
+        "sev": 10.903,
+        "state": "act",
+        "t": 0.625
+      },
+      {
+        "bone": "LeftUpLeg|Spine",
+        "char": "tank",
+        "clip": "t_punch",
+        "pid": 4,
+        "sev": 9.953,
+        "state": "act",
+        "t": 7.025
+      },
+      {
+        "bone": "LeftUpLeg|Spine",
+        "char": "tank",
+        "clip": "t_punch",
+        "pid": 4,
+        "sev": 9.736,
+        "state": "act",
+        "t": 19.525
+      },
+      {
+        "bone": "LeftUpLeg|Spine",
+        "char": "tank",
+        "clip": "t_punch",
+        "pid": 4,
+        "sev": 9.713,
+        "state": "act",
+        "t": 2.825
+      },
+      {
+        "bone": "LeftUpLeg|Spine",
+        "char": "tank",
+        "clip": "t_punch",
+        "pid": 4,
+        "sev": 9.698,
+        "state": "act",
+        "t": 23.125
+      },
+      {
+        "bone": "LeftUpLeg|Spine",
+        "char": "tank",
+        "clip": "t_punch",
+        "pid": 4,
+        "sev": 9.698,
+        "state": "act",
+        "t": 29.925
+      },
+      {
+        "bone": "LeftUpLeg|Spine",
+        "char": "tank",
+        "clip": "t_bash",
+        "pid": 4,
+        "sev": 9.484,
+        "state": "act",
+        "t": 43.225
+      },
+      {
+        "bone": "LeftUpLeg|Spine",
+        "char": "tank",
+        "clip": "t_bash",
+        "pid": 4,
+        "sev": 9.406,
+        "state": "act",
+        "t": 17.525
+      },
+      {
+        "bone": "LeftUpLeg|Spine",
+        "char": "tank",
+        "clip": "t_dive",
+        "pid": 4,
+        "sev": 9.306,
+        "state": "act",
+        "t": 36.625
+      },
+      {
+        "bone": "LeftUpLeg|Spine",
+        "char": "tank",
+        "clip": "t_punch",
+        "pid": 4,
+        "sev": 9.301,
+        "state": "act",
+        "t": 41.325
+      },
+      {
+        "bone": "LeftUpLeg|Spine",
+        "char": "tank",
+        "clip": "t_punch",
+        "pid": 4,
+        "sev": 9.29,
+        "state": "act",
+        "t": 28.125
+      },
+      {
+        "bone": "LeftUpLeg|Spine",
+        "char": "tank",
+        "clip": "t_punch",
+        "pid": 4,
+        "sev": 9.287,
+        "state": "act",
+        "t": 21.325
+      },
+      {
+        "bone": "LeftUpLeg|Spine",
+        "char": "tank",
+        "clip": "t_dive",
+        "pid": 4,
+        "sev": 9.276,
+        "state": "act",
+        "t": 31.425
+      },
+      {
+        "bone": "LeftUpLeg|Spine",
+        "char": "tank",
+        "clip": "t_dive",
+        "pid": 4,
+        "sev": 9.264,
+        "state": "act",
+        "t": 24.525
+      }
+    ],
+    "weapon": []
+  }
+}
