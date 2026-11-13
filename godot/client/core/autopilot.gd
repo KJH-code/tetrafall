@@ -192,9 +192,15 @@ func _on_state(st: Dictionary, _prev: Dictionary) -> void:
 		last_pos = p
 
 
+var _mem_next := 0.0 # W45 --mem-log: 영상 메모리 기록 다음 시각 (초)
+
+
 func _process(_d: float) -> void:
 	var now := Net.now_ms()
 	var el := (now - start_ms) / 1000.0
+	if args.has("mem-log") and el >= _mem_next: # W45: 영상 메모리 (그림·버퍼·합) 를 2초마다 — 어느 단계에서 얼마 늘었나 (소프트웨어 렌더에서도 믿을 만한 값)
+		_mem_next = el + 2.0
+		print("[메모리] %.1fs %s/%s 그림 %.1f 버퍼 %.1f 합 %.1f MB" % [el, "방" if Store.in_room() else "메뉴", Store.phase(), Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / 1048576.0, Performance.get_monitor(Performance.RENDER_BUFFER_MEM_USED) / 1048576.0, Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0])
 	if role == "host" and args.has("menu-wait") and not created and el >= float(args["menu-wait"]) and not Store.in_room() and Store.pending_code == "" and not shot_at in ["menu", "title"]:
 		created = true
 		Store.create_room("", str(args.get("name", "고도")))

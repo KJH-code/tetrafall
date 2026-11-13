@@ -10,6 +10,7 @@ const Portrait := preload("res://ui/portrait.gd")
 const WC := preload("res://world/world_config.gd")
 const Lod := preload("res://world/pose_lod.gd")
 const Gate := preload("res://core/entry_gate.gd")
+const Opts := preload("res://core/opts.gd")
 const CHARS_PATH := "res://chars/chars.gd"
 const FOV := 26.0
 
@@ -172,3 +173,5 @@ func release() -> void:
 	body = null
 	key = ""
 	prime_i = -1
+	if not Opts.args().has("--no-stage-shrink"): # W45: 판 중엔 안 보이는 큰 캐릭터 렌더 대상 (UI 크기 × 배율 픽셀, 2× MSAA ≈ 7MB) 을 2×2 로 — 다시 보이면 _process 의 _fit 이 되돌림
+		vp.size = Vector2i(2, 2)

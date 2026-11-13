@@ -291,3 +291,21 @@ func test_press_cfg_tables() -> void:
 	check(not ShadowCalc.far_off(16.0, 70.0, false) and ShadowCalc.far_off(16.0, 70.0, false, false, WC.shadow_cfg(2)), "16m 몸: 평소엔 그림자, 2 단계는 끔")
 	check(OutFar.far_state(12.0, 70.0, false, true, WC.outline_far_cfg(2)) == false, "내 몸은 늘 껍질 있음")
 	check(PoseLod.interval_ms(8.0, true, false, WC.pose_lod_cfg(WC.POSE_LOD, 1)) > PoseLod.interval_ms(8.0, true, false, WC.POSE_LOD), "8m 몸: 1 단계는 자세를 드물게")
+
+
+# ---------- 항목 4: 영상 메모리 ----------
+
+# 대기실 큰 캐릭터: 판 중 (release) 엔 안 보이는 렌더 대상을 2×2 로 줄이고 (UI 크기 × 배율 픽셀 2× MSAA ≈ 7MB), 다시 보이면 _fit 이 칸 크기로 되돌림
+func test_stage_release_shrinks_render_target() -> void:
+	var Stage = load("res://ui/char_stage.gd")
+	var st = Stage.new()
+	st.size = Vector2(300, 400)
+	st._ready()
+	st._fit()
+	check(st.vp.size == Vector2i(300, 400), "칸 크기 그대로 (%s)" % str(st.vp.size))
+	st.release()
+	check(st.vp.size == Vector2i(2, 2), "release 뒤 2×2 (%s)" % str(st.vp.size))
+	check(st.body == null and st.key == "" and st.prime_i == -1, "몸·열쇠·자세 굳히기 상태도 비움")
+	st._fit()
+	check(st.vp.size == Vector2i(300, 400), "다시 보이면 칸 크기로 되돌림 (%s)" % str(st.vp.size))
+	st.free()
