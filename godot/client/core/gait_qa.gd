@@ -154,3 +154,65 @@ static func _gt(sk: Skeleton3D, bi: int) -> Transform3D:
 		t = sk.get_bone_pose(b) * t
 		b = sk.get_bone_parent(b)
 	return t
+
+
+# 천 사슬 떨림 (W46): 몸이 일정 속도로 달리거나 (zig = 0.5초마다 좌우로 방향을 바꿈, 실제 판의 조작처럼) 하는 동안 천 뼈 (끝 마디 = 이름이 _3 으로 끝나는 뼈) 의 회전 각속도 ω (°/표본) 를 재
+# → {jerk: 표본간 |Δω| 평균 (°), flip: ω 방향이 뒤집힌 비율, peak: 최대 ω, bones: 센 뼈 수}. 사슬 끝이 떠는 정도 (갈고리 치맛자락·사냥꾼 망토 가장자리)
+static func measure_cloth(rg: Dictionary, spd: float, zig: bool) -> Dictionary:
+	var X = rg.X
+	var sk: Skeleton3D = rg.sk
+	var ids := []
+	for bi in sk.get_bone_count():
+		var nm := sk.get_bone_name(bi)
+		if M.bone_class(nm) == "cloth" and nm.ends_with("_3"):
+			ids.append(bi)
+	X.last_layer.clear()
+	var phase := 0.0
+	var prevq := {}
+	var prevw := {}
+	var sum_j := 0.0
+	var n_j := 0
+	var flips := 0
+	var n_f := 0
+	var peak := 0.0
+	var frames := int(SECS * 60.0)
+	for f in frames:
+		vt[0] += 1.0 / 60.0
+		var side := 0.0
+		if zig:
+			side = 1.0 if int(float(f) / 30.0) % 2 == 0 else -1.0
+		var mvF := spd * (0.6 if zig else 1.0)
+		var mvS := spd * 0.8 * side
+		var hs := Vector2(mvF, mvS).length()
+		phase += hs * C.ANIM_WALK_FREQ * rg.freq / 60.0
+		var st := st_base({"t": vt[0], "walking": true, "hs": hs, "mvF": mvF, "mvS": mvS, "vw": Vector2(mvF, mvS), "walk": phase})
+		X.sync(st)
+		for bi in ids:
+			var q: Quaternion = sk.get_bone_pose_rotation(bi)
+			if prevq.has(bi) and f > 60:
+				var rv: Vector3 = _rotvec(prevq[bi], q)
+				var w := rv.length()
+				peak = maxf(peak, w)
+				if prevw.has(bi):
+					var pw: Vector3 = prevw[bi]
+					sum_j += (rv - pw).length()
+					n_j += 1
+					if rv.length() > 0.5 and pw.length() > 0.5:
+						n_f += 1
+						if rv.dot(pw) < 0.0:
+							flips += 1
+				prevw[bi] = rv
+			prevq[bi] = q
+	return {"jerk": sum_j / maxf(1.0, float(n_j)), "flip": float(flips) / maxf(1.0, float(n_f)), "peak": peak, "bones": ids.size()}
+
+
+# 두 회전 사이 회전 벡터 (축 × 각, °)
+static func _rotvec(a: Quaternion, b: Quaternion) -> Vector3:
+	var d: Quaternion = (a.inverse() * b).normalized()
+	if d.w < 0.0:
+		d = Quaternion(-d.x, -d.y, -d.z, -d.w)
+	var ang := 2.0 * acos(clampf(d.w, -1.0, 1.0))
+	var sn := sqrt(maxf(1.0 - d.w * d.w, 0.0))
+	if sn < 1e-6:
+		return Vector3.ZERO
+	return Vector3(d.x, d.y, d.z) / sn * rad_to_deg(ang)

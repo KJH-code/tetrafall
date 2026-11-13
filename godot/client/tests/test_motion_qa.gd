@@ -9,9 +9,9 @@ const C := preload("res://core/config.gd")
 
 var errors: Array = []
 const CHARS := ["ninja", "tank", "hunter", "hook"]
-# 합성 시나리오의 팝 상한 (2026-11-11 W44 고친 뒤 값 + 여유). 모션 변경이 이걸 넘기면 새 튐이 생긴 것 — tools/motion_qa 로 어디인지 찾을 것
-const POP_CAP_BODY := {"ninja": 36, "tank": 41, "hunter": 50, "hook": 44} # 몸통·팔다리·손발머리 (천 제외) 전체 (달리기 다리 포함)
-const POP_CAP_CALM := {"ninja": 8, "tank": 16, "hunter": 13, "hook": 13} # 달리기 빼고 (서기·걷기·옆·뒤·공격·점프·착지·일어나기)
+# 합성 시나리오의 팝 상한 (2026-11-13 W46 걸음 고친 뒤 실측값 + 여유: 몸 0·3·2·1 (달리기 다리 팝 36~50 → 0). 모션 변경이 이걸 넘기면 새 튐이 생긴 것 — tools/motion_qa 로 어디인지 찾을 것
+const POP_CAP_BODY := {"ninja": 4, "tank": 8, "hunter": 7, "hook": 6} # 몸통·팔다리·손발머리 (천 제외) 전체 (달리기 다리 포함)
+const POP_CAP_CALM := {"ninja": 4, "tank": 8, "hunter": 7, "hook": 6} # 달리기 빼고 (서기·걷기·옆·뒤·공격·점프·착지·일어나기)
 const POP_CAP_CLOTH := 0
 
 

@@ -28,6 +28,7 @@ func _run() -> void:
 	var ov := {}
 	var quick := false
 	var sweep := false
+	var cloth_mode := false
 	var i := 0
 	while i < a.size():
 		if a[i] == "--csv" and i + 1 < a.size():
@@ -35,6 +36,8 @@ func _run() -> void:
 			i += 1
 		elif a[i] == "--quick":
 			quick = true
+		elif a[i] == "--cloth": # 천 사슬 끝 떨림 (직선 이동·좌우 지그재그)
+			cloth_mode = true
 		elif a[i] == "--sweep":
 			sweep = true
 		elif a[i] == "--sweep-rates":
@@ -70,7 +73,11 @@ func _run() -> void:
 				arr[2] = ov.get("rate-" + nm, arr[2])
 				strd[nm] = arr
 		Motion_.clock = func(): return G.vt[0]
-		if sweep:
+		if cloth_mode:
+			for zig in [false, true]:
+				var cj: Dictionary = G.measure_cloth(r0, C.MOVE_SPEED, zig)
+				print("TGC %s %s: 천 끝 뼈 %d · 표본간 각속도 변화 평균 %.2f° · 방향 반전 %.0f%% · 최대 각속도 %.1f°" % [ch, "좌우 지그재그" if zig else "직선 이동", cj.bones, cj.jerk, cj.flip * 100.0, cj.peak])
+		elif sweep:
 			for clip in ["walk", "run"]:
 				if not strd.has(clip):
 					continue
