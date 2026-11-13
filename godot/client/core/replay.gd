@@ -382,7 +382,7 @@ func _report() -> void:
 			print("[재연] 느린 프레임 %.1fms (재기 %.2f초): %s" % [sp[0] / 1000.0, sp[1], sp[2]])
 	if args.has("replay-render"):
 		print("[재연] 그리기 %d · 물체 %d · 삼각형 %d · 영상 메모리 %.1fMB" % [Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME), Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0])
-		print("[재연] 3D scale %.2f (adapt %s, MSAA cut %s)" % [Gfx.scale_now, str(Gfx.adapting), str(WC.msaa_cut)])
+		print("[재연] 3D scale %.2f (adapt %s, MSAA cut %s, 몸 압박 %d)" % [Gfx.scale_now, str(Gfx.adapting), str(WC.msaa_cut), WC.body_press])
 	var m1 := _mons()
 	print("[재연] 늘어남 (재는 동안): 물체 수 %+d · 자원 %+d · 노드 %+d · 고아 노드 %+d · 정적 메모리 %+.2fMB (프레임당 %+.1fKB) · 영상 %.1fMB (그림 %.1f · 쓰는 곳 %.1f)" % [m1.obj - _mon0.get("obj", 0), m1.res - _mon0.get("res", 0), m1.node - _mon0.get("node", 0), m1.orphan - _mon0.get("orphan", 0),
 		(m1.mem - _mon0.get("mem", 0)) / 1048576.0, (m1.mem - _mon0.get("mem", 0)) / 1024.0 / n, m1.vram / 1048576.0, m1.tex / 1048576.0, m1.buf / 1048576.0])

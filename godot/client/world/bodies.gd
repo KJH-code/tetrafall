@@ -17,6 +17,7 @@ const Opts_ := preload("res://core/opts.gd")
 static var NO_OUTLINE_FAR: bool = Opts_.args().has("--no-outline-far") # 확인용: 외곽선 거리 끔 (전후 비교)
 static var NO_SHADOW_FAR: bool = Opts_.args().has("--no-shadow-far") or Opts_.args().has("--no-shadow-opt") # 확인용 (W32): 먼 몸·시야 밖 몸 그림자 끄기를 끔 (전후 비교)
 const Prof := preload("res://core/prof.gd")
+const Hitch := preload("res://core/hitch.gd")
 
 var stencil_fn = null # Callable(ShaderMaterial): 몸 재질이 스텐실을 씀 (사냥꾼의 눈 x-ray 가 몸에 가린 곳엔 안 나오게, G3.toon_stencil_write)
 var nodes := {} # id -> {root, body, label, char, color}
@@ -25,6 +26,7 @@ var ui_calc = null # G4 ui/ui_calc.gd (hp_view·hp_color) — 없으면 체력�
 static var _white: ImageTexture
 var pos_fn = null # Callable(p, pos) -> pos: 화면 위치 고치기 (World: 대기실 미리보기 판 가운데·지형 위)
 var make_mat = null # Callable(Color) -> Material: G3 툰 재질 (상자 몸, 없으면 StandardMaterial3D)
+var _tagged_all := false # W45: 몸 다 보임 태그를 한 번만 (사람이 바뀌면 다시)
 var shown := {} # id -> 게임 좌표 화면 위치 (Vector3) — 카메라·하늘 도우미가 읽음
 var cam: Camera3D = null # 몸 자세 LOD (W12, world/pose_lod.gd): 판 카메라 (지난 프레임 자리) — 없으면 모두 매 프레임
 var lod_on := true # 확인용 (--no-pose-lod)
@@ -203,6 +205,9 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 	shown.clear()
 	var frame_ms: float = 0.0 if _last_now == null else maxf(0.0, now_ms - float(_last_now))
 	_last_now = now_ms
+	var ol_cfg := WC.outline_far_cfg(WC.body_press) # W45 몸 압박 (적응형 해상도가 바닥에서도 느릴 때): 먼 몸 외곽선·그림자·자세 LOD 거리를 당긴 표 (0 단계면 원래 표 그대로)
+	var sh_cfg := WC.shadow_cfg(WC.body_press)
+	var lod_use: Dictionary = WC.pose_lod_cfg(lod, WC.body_press)
 	var jobs := 0 # W45: 이번 프레임에 외부 모델 붙이기 조각을 돌린 몸 수 (WC.BODY_JOBS_PER_FRAME 까지)
 	var builds := 0 # 이번 프레임에 만든 몸 수 (WC.BODY_BUILDS_PER_FRAME 까지, 내 몸은 따로)
 	var build_ms := 0.0 # W41: 이번 프레임 몸 만들기에 쓴 ms — WC.BODY_BUILD_MS 넘으면 남은 몸은 다음 프레임 (처음 만드는 몸 하나가 30ms 라 둘이 한 프레임에 몰리면 60ms)
@@ -268,10 +273,10 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 		if pend:
 			n["posed_at"] = null
 		if not pend and use_lod and not NO_OUTLINE_FAR and n.body.has_method("set_outline_far"): # W31: 먼 몸은 외곽선 껍질을 뗌 (시야각 70° 기준 거리, 켜고 끄는 문턱에 여유)
-			var of := OutFar.far_state(root.global_position.distance_to(cpos), cam.fov, bool(n.body.outline_far()), mine)
+			var of := OutFar.far_state(root.global_position.distance_to(cpos), cam.fov, bool(n.body.outline_far()), mine, ol_cfg) # W45: 몸 압박이면 더 가까이서 뗌
 			n.body.set_outline_far(of)
 		if not pend and use_lod and not NO_SHADOW_FAR and n.body.has_method("set_shadow_off"): # W32: 먼 몸·몸도 그림자도 시야 밖인 몸은 해 그림자를 끔
-			var so: bool = Sh.far_off(root.global_position.distance_to(cpos), cam.fov, bool(n.body.shadow_off()), mine)
+			var so: bool = Sh.far_off(root.global_position.distance_to(cpos), cam.fov, bool(n.body.shadow_off()), mine, sh_cfg) # W45: 몸 압박 2단계면 더 가까이서 끔
 			if not so and root.visible and not mine:
 				var sc := root.global_position + Vector3(0, C.PLAYER_HEIGHT * 0.5, 0)
 				so = not Sh.visible_or_shadow(planes, sc, to_sun, float(lod.margin) + float(WC.SHADOW.view_pad), root.global_position.y)
@@ -280,7 +285,7 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 			var iv := 0.0
 			if use_lod and root.visible and not mine:
 				var c := root.global_position + Vector3(0, C.PLAYER_HEIGHT * 0.5, 0)
-				iv = Lod.interval_ms(c.distance_to(cpos), Lod.in_view(planes, c, float(lod.margin)), false, lod)
+				iv = Lod.interval_ms(c.distance_to(cpos), Lod.in_view(planes, c, float(lod.margin)), false, lod_use) # W45: 몸 압박이면 먼 단 거리를 당김
 			if Lod.due(now_ms, n.get("posed_at"), iv, frame_ms):
 				n.body.pose(p, now_ms)
 				n["posed_at"] = now_ms
@@ -301,6 +306,16 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 		if lab.modulate != lc:
 			lab.modulate = lc
 		lab.visible = p.alive and not (mine and not sky) # 내 % 는 화면 아래 HUD
+	if Hitch.on: # W45: 사람 몸이 다 보이는 순간 (붙는 중인 몸 없음) — 입장 쪼개기 전후 비교
+		var all_ok: bool = seen.size() >= 2 and nodes.size() >= seen.size()
+		if all_ok:
+			for id in seen:
+				var nn: Dictionary = nodes.get(id, {})
+				if nn.is_empty() or (nn.body.has_method("ext_pending") and nn.body.ext_pending()):
+					all_ok = false
+		if all_ok and not _tagged_all:
+			Hitch.tag("몸 다 보임", "%d명" % seen.size())
+		_tagged_all = all_ok
 	for id in nodes.keys():
 		if not seen.has(id):
 			nodes[id].root.queue_free()

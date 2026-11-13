@@ -753,6 +753,8 @@ func _process(dt: float) -> void:
 			G3.sprout_update(sprouts, g, fs.x, fs.y, fs.z, grid_view.skip, bool(View.settings.get("lowGfx", false)))
 		Gate.done("world.grid", tgr)
 	Prof.lap("world 격자·건축 블록")
+	if not _entered and Hitch.on: # W45: 입장 첫 바퀴가 몇 프레임 걸렸나 (미룬 프레임 수) — 입장 쪼개기 전후 비교
+		Hitch.tag("입장 첫 바퀴 끝", "미룬 %d프레임" % entry_frames)
 	_entered = true # 입장 한 바퀴 끝 (지형·무대·칸까지 다 지음)
 	Gate.entered = true
 	rig.pre(dt)

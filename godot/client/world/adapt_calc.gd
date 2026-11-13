@@ -6,6 +6,8 @@
 #  - 올릴 때는 천천히: 목표를 맞춘 창이 UP_HOLD 개 연속이고 (올린 뒤 예상 시간도 여유 안) 이면 UP_STEP 만큼. 올렸다가 곧 도로 내렸으면 (프로브 실패)
 #    다음 올리기까지 기다림이 두 배씩 (FAILS_MAX 까지) — V-Sync 로 프레임이 목표에 붙어 여유를 알 수 없을 때도 진동이 점점 드물어짐.
 #  - 천장 = 화질이 정한 배율 (gfx_calc), 바닥 = min(ADAPT.min, 천장). 바닥에서도 느리면 CUT_WINDOWS 창 뒤 MSAA 한 단계 (cut) — 판이 끝나면 되돌림.
+#  - W45 몸 압박 (press 1·2): MSAA 를 낮춘 뒤에도 계속 느리면 (바닥 연속 창 수가 cut_windows + press_windows × 단계) 한 단계씩 — 1 = 먼 몸 외곽선 앞당김·먼 몸 자세 LOD, 2 = 먼 몸 그림자 거리 줄임.
+#    순서 = 해상도 → MSAA → 몸 압박 1 → 2. 해상도가 바닥이 아니거나 (내릴 여지) 한 창이라도 목표 안이면 연속이 끊겨 단계가 안 오름. 판이 끝나면 (restart) 전부 되돌림.
 extends RefCounted
 
 const WC := preload("res://world/world_config.gd")
@@ -37,6 +39,7 @@ class Ctl:
 	var floor_s := 0.6
 	var scale := 1.0 # 지금 배율
 	var cut := false # 바닥에서도 느려서 MSAA 를 한 단계 낮춰야 함
+	var press := 0 # W45 몸 압박 단계 (0·1·2): MSAA 낮춤 뒤에도 느릴 때
 	var windows := 0 # 지금까지 판단한 창 수 (확인용)
 	var changes := 0 # 배율이 바뀐 횟수 (확인용)
 	var _f: Array = []
@@ -74,6 +77,7 @@ class Ctl:
 		_good = 0
 		_floor_streak = 0
 		cut = false
+		press = 0
 		_ban_left = 0
 		_hist = []
 		_settle = 0
@@ -143,6 +147,9 @@ class Ctl:
 					_floor_streak += 1
 					if _floor_streak >= int(cfg.cut_windows) and not cut:
 						cut = true
+						changed = true
+					elif cut and press < int(cfg.get("press_max", 0)) and _floor_streak >= int(cfg.cut_windows) + int(cfg.get("press_windows", 9)) * (press + 1):
+						press += 1 # W45: MSAA 도 낮췄는데 계속 느림 → 몸 압박 한 단계 (먼 몸만)
 						changed = true
 		else:
 			_floor_streak = 0

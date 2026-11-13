@@ -9,6 +9,10 @@ const Chars := preload("res://chars/chars.gd")
 const External := preload("res://chars/external.gd")
 const Scenery := preload("res://world/scenery.gd")
 const Portrait := preload("res://ui/portrait.gd")
+const AC := preload("res://world/adapt_calc.gd")
+const OutFar := preload("res://world/outline_far.gd")
+const ShadowCalc := preload("res://world/shadow_calc.gd")
+const PoseLod := preload("res://world/pose_lod.gd")
 const WC := preload("res://world/world_config.gd")
 
 var errors: Array = []
@@ -196,3 +200,94 @@ func test_bodies_hide_until_attached() -> void:
 	check(max_jobs <= WC.BODY_JOBS_PER_FRAME + 1, "한 프레임에 끝나는 몸이 상한 안 (%d)" % max_jobs)
 	bs.free()
 	Gate.reset()
+
+
+# ---------- 항목 2: 몸 압박 단계 (적응형 해상도 다음 수단) ----------
+
+# 가짜 GPU 부하 (배율² 로 줄어듦) 를 정한 만큼 돌리며 단계가 바뀐 순서를 적음: "배율" · "MSAA" · "압박1" · "압박2"
+func _ladder(ctl, frames: int, gpu_full: float, cpu: float) -> Array:
+	var seq := []
+	var last_scale: float = ctl.scale
+	var last_cut: bool = ctl.cut
+	var last_press: int = ctl.press
+	for i in frames:
+		var g: float = gpu_full * ctl.scale * ctl.scale
+		var f: float = maxf(cpu, g)
+		if ctl.push(f, cpu, g):
+			if absf(ctl.scale - last_scale) > 0.0001:
+				seq.append("배율")
+			if ctl.cut != last_cut:
+				seq.append("MSAA")
+			if ctl.press != last_press:
+				seq.append("압박%d" % ctl.press)
+			last_scale = ctl.scale
+			last_cut = ctl.cut
+			last_press = ctl.press
+	return seq
+
+
+# 순서: 해상도 (바닥까지) → MSAA → 몸 압박 1 → 2, 한 번에 한 단계, 단계 사이는 press_windows 창 이상
+func test_press_ladder_order() -> void:
+	var c := AC.Ctl.new(1.0, 16.667)
+	var seq := _ladder(c, 20 * 120, 200.0, 4.0)
+	var steps := seq.filter(func(x): return x != "배율")
+	check(steps == ["MSAA", "압박1", "압박2"], "단계 순서: MSAA → 압박1 → 압박2 (%s)" % str(steps))
+	var first_press := seq.find("압박1")
+	check(first_press > 0 and seq.slice(0, first_press).has("MSAA") and seq.slice(0, seq.find("MSAA")).all(func(x): return x == "배율"), "압박은 해상도·MSAA 다음 (%s)" % str(seq))
+	check(c.scale == 0.6 and c.cut and c.press == 2, "끝: 바닥 배율 · MSAA 낮춤 · 압박 2 (%.2f %s %d)" % [c.scale, str(c.cut), c.press])
+	# 더 오래 돌려도 2 를 넘지 않음
+	_ladder(c, 20 * 60, 200.0, 4.0)
+	check(c.press == 2, "압박은 press_max 까지만")
+	c.restart()
+	check(c.press == 0 and not c.cut, "판이 끝나면 (restart) 압박·MSAA 되돌림")
+
+
+# 해상도가 바닥이 아니면 (내릴 여지) 압박 안 함 · CPU 가 병목이면 (해상도로도 몸 압박으로도 안 풀림) 안 함 · 가벼운 부하면 안 함
+func test_press_only_when_gpu_bound_at_floor() -> void:
+	var c1 := AC.Ctl.new(1.0, 16.667)
+	_ladder(c1, 20 * 60, 24.0, 4.0) # 배율을 낮추면 풀리는 부하: 바닥까지 안 감
+	check(c1.press == 0 and not c1.cut and c1.scale > 0.6, "해상도로 풀리면 압박·MSAA 안 건드림 (%.2f)" % c1.scale)
+	var c2 := AC.Ctl.new(1.0, 16.667)
+	_ladder(c2, 20 * 120, 5.0, 40.0) # CPU 가 느림
+	check(c2.press == 0 and c2.scale == 1.0, "CPU 병목이면 가만히")
+	var c3 := AC.Ctl.new(1.0, 16.667)
+	_ladder(c3, 20 * 120, 4.0, 4.0)
+	check(c3.press == 0 and c3.scale == 1.0, "빠르면 가만히")
+
+
+# 끄기 (press_max 0 = --no-body-pressure) 면 예전 그대로 (MSAA 까지만), 중간에 부하가 풀리면 연속이 끊겨 다음 단계로 안 감
+func test_press_off_and_interrupted() -> void:
+	var cfg := WC.ADAPT.duplicate()
+	cfg["press_max"] = 0
+	var c := AC.Ctl.new(1.0, 16.667, cfg)
+	var seq := _ladder(c, 20 * 120, 200.0, 4.0)
+	check(c.press == 0 and c.cut and not seq.has("압박1"), "press_max 0: MSAA 까지만 (%s)" % str(seq))
+	# 부하가 한 창이라도 풀리면 (목표 안) 바닥 연속이 끊김: cut 뒤 press 직전에 끊고 다시 시작하면 처음부터 셈
+	var c2 := AC.Ctl.new(1.0, 16.667)
+	_ladder(c2, 20 * (int(WC.ADAPT.cut_windows) + 30), 200.0, 4.0)
+	var before: int = c2.press
+	for i in 20 * 2: # 두 창 가벼움
+		c2.push(8.0, 4.0, 4.0)
+	var seq2 := _ladder(c2, 20 * (int(WC.ADAPT.press_windows) - 1), 200.0, 4.0)
+	check(c2.press <= before + 1, "끊긴 뒤엔 press_windows 를 다시 채워야 다음 단계 (%d → %d)" % [before, c2.press])
+
+
+# 압박 단계 표: 0 단계는 원래 표 그대로 (모습 불변), 1 단계는 외곽선·자세 LOD 만, 2 단계에 그림자
+func test_press_cfg_tables() -> void:
+	check(WC.outline_far_cfg(0) == WC.OUTLINE_FAR and WC.shadow_cfg(0) == WC.SHADOW and WC.shadow_cfg(1) == WC.SHADOW and WC.pose_lod_cfg(WC.POSE_LOD, 0) == WC.POSE_LOD, "0 단계 (그림자는 1 단계도) 원래 표")
+	var o1 := WC.outline_far_cfg(1)
+	check(float(o1.taper_from) < float(WC.OUTLINE_FAR.taper_from) and float(o1.gone) < float(WC.OUTLINE_FAR.gone) and float(o1.gone) > float(o1.taper_from), "외곽선 거리가 가까워짐 (%s)" % str(o1))
+	check(float(o1.min_k) == float(WC.OUTLINE_FAR.min_k) and float(o1.hyst) == float(WC.OUTLINE_FAR.hyst), "굵기·문턱 여유는 그대로")
+	var s2 := WC.shadow_cfg(2)
+	check(float(s2.far) < float(WC.SHADOW.far) and float(s2.hyst) == float(WC.SHADOW.hyst) and s2.caster_lod == WC.SHADOW.caster_lod, "2 단계: 그림자 끄는 거리만 가까워짐")
+	var p1 := WC.pose_lod_cfg(WC.POSE_LOD, 1)
+	check(float(p1.far2) < float(WC.POSE_LOD.far2) and float(p1.far3) < float(WC.POSE_LOD.far3) and float(p1.near) == float(WC.POSE_LOD.near) and float(p1.margin) == float(WC.POSE_LOD.margin), "자세 LOD 먼 단 거리만 당김")
+	# 가까운 몸 (내 몸·3m) 은 어느 단계에서도 그대로: 외곽선 굵기 1, 자세는 매 프레임
+	for k in 3:
+		check(OutFar.thickness_k(3.0, WC.outline_far_cfg(k)) == 1.0, "가까운 몸 외곽선 굵기 그대로 (%d단계)" % k)
+		check(not OutFar.far_state(3.0, 70.0, false, false, WC.outline_far_cfg(k)) and not ShadowCalc.far_off(3.0, 70.0, false, false, WC.shadow_cfg(k)), "가까운 몸은 껍질·그림자 그대로 (%d단계)" % k)
+		check(PoseLod.interval_ms(3.0, true, false, WC.pose_lod_cfg(WC.POSE_LOD, k)) == PoseLod.interval_ms(3.0, true, false, WC.POSE_LOD), "가까운 몸 자세 주기 그대로 (%d단계)" % k)
+	check(not OutFar.far_state(12.0, 70.0, false) and OutFar.far_state(12.0, 70.0, false, false, WC.outline_far_cfg(1)), "12m 몸: 평소엔 껍질 있음, 1 단계는 뗌")
+	check(not ShadowCalc.far_off(16.0, 70.0, false) and ShadowCalc.far_off(16.0, 70.0, false, false, WC.shadow_cfg(2)), "16m 몸: 평소엔 그림자, 2 단계는 끔")
+	check(OutFar.far_state(12.0, 70.0, false, true, WC.outline_far_cfg(2)) == false, "내 몸은 늘 껍질 있음")
+	check(PoseLod.interval_ms(8.0, true, false, WC.pose_lod_cfg(WC.POSE_LOD, 1)) > PoseLod.interval_ms(8.0, true, false, WC.POSE_LOD), "8m 몸: 1 단계는 자세를 드물게")
