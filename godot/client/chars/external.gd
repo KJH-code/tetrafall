@@ -1444,8 +1444,15 @@ class Ext extends Node3D:
 			var wb: int = int(info.map.get("waist", -1))
 			if hb >= 0:
 				_add_rot(hb, Quaternion(Vector3.UP, dir_y))
-			if wb >= 0:
-				_add_rot(wb, Quaternion(Vector3.UP, -dir_y)) # 윗몸은 앞 (조준 방향) 그대로
+			# 윗몸은 앞 (조준 방향) 그대로 — 되돌림을 척추 둘~셋에 나눔 (W46: 골반 yaw 가 커져 한 뼈에 몰면 벨트가 비틀림). 척추 뼈가 없으면 예전처럼 waist 에 몰아서
+			var done := 0.0
+			for e in K_.EXT_DIR_COUNTER:
+				var sbi := sk.find_bone(str(e[0]))
+				if sbi >= 0:
+					_add_rot(sbi, Quaternion(Vector3.UP, -dir_y * float(e[1])))
+					done += float(e[1])
+			if wb >= 0 and done < 0.999:
+				_add_rot(wb, Quaternion(Vector3.UP, -dir_y * (1.0 - done)))
 		# ② 기울임
 		var lt := Motion_.lean_pitch(speed, float(st.get("accF", 0.0)), dir_rev, walking) if not bool(st.get("air", false)) else 0.0
 		lean_p = Motion_.follow(lean_p, lt, dt, K_.EXT_LEAN_RATE)

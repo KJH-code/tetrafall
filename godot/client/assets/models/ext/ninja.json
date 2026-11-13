@@ -78,7 +78,7 @@
 		"land": "land",
 		"run_speed": 4.5,
 		"run_from": 0.55,
-		"stride": {"walk": [1.4, -0.1, 1.6], "run": [1.45, -0.14, 1.6]},
+		"stride": {"walk": [1.0, -0.1, 0.5], "run": [1.0, -0.14, 0.5]},
 		"ground": [
 			"mixamorig_LeftFoot",
 			"mixamorig_RightFoot",

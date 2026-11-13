@@ -91,8 +91,9 @@ const EXT_FADE_LAND_S := 0.14 # 점프·낙하 → 착지
 const EXT_DIR_MIN_SPEED := 0.9 # 이 속도 (m/s) 아래면 방향 안 따짐
 const EXT_DIR_REV_ENTER_DEG := 105.0 # 이동 방향이 몸 앞에서 이만큼 넘게 벗어나면 '뒤로 걸음' (거꾸로 재생)
 const EXT_DIR_REV_LEAVE_DEG := 75.0 # 이만큼 안으로 돌아오면 다시 앞으로 (히스테리시스)
-const EXT_DIR_GAIN := 0.6 # 골반 yaw = 이동 방향 (앞 기준으로 접은 각) × 이 값
-const EXT_DIR_MAX_DEG := 45.0 # 골반 yaw 한계
+const EXT_DIR_GAIN := 1.0 # 골반 yaw = 이동 방향 (앞 기준으로 접은 각) × 이 값 (W46: 0.6 → 1.0 — 다리 걸음 축이 이동 방향과 맞아야 디딘 발이 안 끌림)
+const EXT_DIR_COUNTER := [["mixamorig_Spine", 0.5], ["mixamorig_Spine1", 0.3], ["mixamorig_Spine2", 0.2]] # W46: 골반을 돌린 만큼 윗몸이 되돌리는 몫 (척추 셋에 나눔 — 한 뼈에 몰면 벨트가 비틀려 늘어남). 합 1
+const EXT_DIR_MAX_DEG := 70.0 # 골반 yaw 한계 (W46: 45° → 70°, 옆걸음 발 미끄러짐 비 0.75~0.9 → 0.3 — tools/gait_qa.gd)
 const EXT_DIR_RATE := 9.0 # 골반 yaw 따라가는 빠르기 (/초)
 const EXT_DIR_FADE_S := 0.16 # 앞↔뒤 재생이 바뀔 때 크로스페이드 (초)
 # W43 이동 기울임: 속도에 비례해 앞으로 (0~) + 가속·급정지 (가속도 m/s², 멈추면 뒤로 젖힘) + 뒤로 걸을 땐 살짝 뒤로. 라디안
