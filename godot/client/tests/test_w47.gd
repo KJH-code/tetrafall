@@ -90,3 +90,13 @@ func test_old_gait_switch() -> void:
 	check(K.stride_of(other, "run") == [1.0, 0.0, 0.9], "표 밖 캐릭터는 JSON 값")
 	Opts.override = null
 	check(not K.old_gait() and Motion_.hip_yaw(deg_to_rad(90.0)) > deg_to_rad(60.0), "되돌린 뒤 새 값")
+
+
+# 영 스케일·NaN·inf basis 는 회전으로 못 씀 (재연에서 _hit_flinch → _add_rot 가 NaN 부모 basis 로 경고를 20초에 20번 찍던 것), 크기만 다른 정상 basis 는 통과
+func test_basis_ok() -> void:
+	check(Motion_.basis_ok(Basis.IDENTITY), "항등 basis 통과")
+	check(Motion_.basis_ok(Basis.IDENTITY.scaled(Vector3(0.05, 0.05, 0.05))), "작은 몸 (스케일 0.05) 통과")
+	check(Motion_.basis_ok(Basis(Vector3.UP, 1.2).scaled(Vector3(2, 2, 2))), "돌아간 큰 몸 통과")
+	check(not Motion_.basis_ok(Basis(Vector3.ZERO, Vector3.ZERO, Vector3.ZERO)), "영행렬 거절")
+	check(not Motion_.basis_ok(Basis(Vector3(NAN, 0, 0), Vector3.UP, Vector3.BACK)), "NaN 거절")
+	check(not Motion_.basis_ok(Basis(Vector3(INF, 0, 0), Vector3.UP, Vector3.BACK)), "inf 거절")

@@ -261,4 +261,4 @@ W31 이 남긴 후보 (해 그림자 패스 = 3D 삼각형의 38%) 를 실제로
 
 - **영벡터 가드**: 천 점이 겹치면 `Vector3.normalized()` 뒤 `Quaternion(a, b)` 가 "The vectors must not be zero" 를 프레임마다 찍던 것 (로그 출력이 CPU 비용). `Motion_.safe_dir(v, 대체)` (길이² ≤ 1e-8 이면 대체 방향, 아니면 `normalized()` 와 같은 값)·`Motion_.rot_between(a, b)` (영벡터면 항등) 를 `ext_cloth.gd` (점→뼈 회전·쉬는 방향·앞쪽 한계) 와 `external.gd` (정렬 회전·스윙 축·다리 IK 보폭·극점) 에 씀. 정상 프레임 값은 그대로.
 - **`-- --old-gait`** (웹 `?old-gait=1`): W46 이전 걸음 (stride 박자 1.6 · 보폭 k 1.4~1.45 · 골반 yaw 이득 0.6·한계 45°·윗몸 되돌림 waist 한 뼈) 로 되돌려 눈으로 비교. 표 `chars_config.gd EXT_GAIT_OLD`, 읽는 쪽 `K.stride_of`·`K.dir_gain/dir_max_deg/dir_counter` (`Opts.args()`, 호출 때마다 읽음 — 캐시 없음). `read_cfg` 가 `clips.char` 를 심어 캐릭터별 표를 찾음. 표 밖 캐릭터는 JSON 값 그대로.
-- 테스트 `tests/test_w47.gd` (3).
+- `_add_rot` (맞음 움찔 등 가산 회전) 은 부모 전역 basis 가 영 스케일·NaN·inf 면 `Motion_.basis_ok` 로 건너뜀 (재연 20초에 경고 20건 → 0). 테스트 `tests/test_w47.gd` (4).

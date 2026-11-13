@@ -29,6 +29,14 @@ static func safe_dir(v: Vector3, fallback: Vector3) -> Vector3:
 	return v.normalized() if v.length_squared() > SAFE_EPS2 else fallback
 
 
+# 회전으로 쓸 수 있는 basis 인가: 세 열 길이² 가 모두 유한하고 SAFE_EPS2 보다 큼 (영 스케일·NaN·inf 는 거짓 — NaN 은 '< eps' 비교가 거짓이라 따로 걸러야 함)
+static func basis_ok(b: Basis) -> bool:
+	var lx := b.x.length_squared()
+	var ly := b.y.length_squared()
+	var lz := b.z.length_squared()
+	return is_finite(lx + ly + lz) and lx > SAFE_EPS2 and ly > SAFE_EPS2 and lz > SAFE_EPS2
+
+
 # a → b 최단 회전. 둘 중 하나가 영벡터에 가까우면 회전 없음 (항등)
 static func rot_between(a: Vector3, b: Vector3) -> Quaternion:
 	if a.length_squared() <= SAFE_EPS2 or b.length_squared() <= SAFE_EPS2:

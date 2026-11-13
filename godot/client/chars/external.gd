@@ -1667,6 +1667,9 @@ class Ext extends Node3D:
 	# 몸 (skeleton 공간) 축 회전 d 를 뼈의 지금 자세에 더함 (부모 전역 회전으로 지역 좌표로 옮김)
 	func _add_rot(bi: int, d: Quaternion) -> void:
 		var pg := _gt(sk.get_bone_parent(bi))
+		# W47: 부모 전역 basis 가 영 스케일 (몸 크기 0) 이거나 NaN·inf 면 → get_rotation_quaternion 이 "cannot be normalized"·"must be normalized" 를 찍음. 회전을 더할 의미가 없어 건너뜀
+		if not Motion_.basis_ok(pg.basis):
+			return
 		var pb := pg.basis.get_rotation_quaternion()
 		var lq: Quaternion = sk.get_bone_pose_rotation(bi)
 		sk.set_bone_pose_rotation(bi, pb.inverse() * d * pb * lq)
