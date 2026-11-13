@@ -210,7 +210,7 @@ func _apply_adapt() -> void:
 	var s: float = ctl.scale if adapting and ctl != null else float(plan.get("scale", 1.0))
 	var cut: bool = adapting and ctl != null and ctl.cut
 	var press: int = ctl.press if adapting and ctl != null else 0
-	adapt_info = ("자동 해상도 (천장 %d%%)%s%s" % [roundi(float(plan.scale) * 100.0), " · MSAA 낮춤" if cut else "", (" · 먼 몸 압박 %d" % press) if press > 0 else ""]) if adapting else ""
+	adapt_info = ("자동 해상도 (천장 %d%%)%s%s" % [roundi(float(plan.scale) * 100.0), " · MSAA 낮춤" if cut else "", (" · 몸 압박 %d" % press) if press > 0 else ""]) if adapting else ""
 	var ch := absf(s - scale_now) > 0.0001 or cut != WC.msaa_cut
 	var press_ch := press != WC.body_press
 	scale_now = s
