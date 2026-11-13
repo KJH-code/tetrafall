@@ -308,3 +308,10 @@ node relod_merge.mjs godot/client/assets/models/ext/ninja.glb ninja <폴더>/nin
 - 닌자 목도리 (`ninja_scarf.py`, Blender) 방식을 사냥꾼·탱크·갈고리에: 이미 리깅한 `ext/<id>.glb` 에 뼈 사슬 (`mixamorig:<Cape|Tabard|Skirt><n>_<i>`, 사슬 × 3 마디) 을 **스킨 끝에** 추가하고 stage·판 LOD 모두에 같은 규칙으로 가중치를 옮김 — Blender 다시 안 돌림 (`@gltf-transform/core` + `sharp` 가 있는 폴더에서 `node cloth_bones.mjs <in> <out> <id> [--debug <폴더>]`). 천 선택은 캐릭터별 `sel` (사냥꾼 = 올리브 텍셀 색, 탱크 = 몸 뒤 판 기하, 갈고리 = 다리 축 거리 + 몸통·다리 가중치 비율), 사슬 가운데는 가로 좌표 분위수 (또는 `centers`), 뼈 머리는 천 꼭짓점 평균에 높이 직선 맞춤. 새 뼈의 세계 회전은 항등 (고도 쪽 사슬 방향은 `ext_cloth.gd` 가 앞 뼈 방향으로 잡음).
 - 한 번만 돌릴 것 (이미 천 뼈가 있으면 거절). relod·maskbake 와 호환: 몸·UV·마스크는 안 건드림.
 - 클립 (`clips_hunter.py`·`clips_hook.py`): 평타·스킬 타격 자세의 `hips_x`·상체·팔 뻗기를 키움 (W34 타격 끝 짧음).
+
+## 20. W46 — 허리 장갑·벨트 스킨 늘어남 수리 (2026-11-13, `tripo/waist_reweight.mjs`)
+
+- 자동 가중치가 골반 높이 (벨트·허리 장갑·엉덩이 옆 천 판) 에서 이웃 꼭짓점끼리 크게 다르게 (허벅지 0.48 ↔ 척추·천 뼈 0.25 …) 매어 있어 공격 동작에서 0.02m 변이 0.26m 로 늘어남 (모션 QA ×12~18). 이미 리깅한 `ext/<id>.glb` 의 stage·판 LOD 가중치만 고쳐 다시 씀 — 뼈·UV·텍스처·마스크·뼈 번호·애니메이션 그대로라 `relod.py`·`relod_merge.mjs`·`maskbake.py` 와 호환 (Blender 안 돌림).
+- 규칙: 골반 둘레 (y 0.05~0.85, 팔·손 가중치가 센 꼭짓점 제외) 꼭짓점 가중치를 이웃끼리 라플라스 평활 (위치가 같은 꼭짓점은 한 점으로 묶어 UV 이음선이 안 갈라짐, 정점당 뼈 4·합 1 유지) + 엉덩이 관절 +0.08m 위 허벅지 가중치를 가슴 (Spine1) 으로. 실행 `node waist_reweight.mjs <in.glb> <out.glb> tank --arms` (`@gltf-transform/core` 가 있는 폴더에서, 한 번만).
+- 전후: `model_audit.py` 같음 (뼈 71·가중치 합 불량 0), 모션 QA 탱크 삼각형 늘어남 ×18.2 → ×3.5. 표·그림 `docs/w46/`.
+
