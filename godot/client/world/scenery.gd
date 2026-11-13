@@ -389,9 +389,28 @@ func stale(id, w: int, d: int, low_gfx: bool) -> bool:
 
 
 # 테마·판 크기가 바뀌면 다시 만듦 (world.js layout). theme_id null 이면 비움
+# W45: 한 프레임에 17~23ms 하던 것을 네 단계 (build_begin + build_step 넷) 로 쪼갬 — 입장 쪼개기 문 (core/entry_gate.gd) 이 단계마다 한 프레임씩.
+# build() 는 예전처럼 한 번에 (테스트·문을 끈 때). 단계 사이에 같은 난수 (rand) 를 이어 써서 결과는 한 번에 만든 것과 같음
 func build(id, w: int, d: int, low_gfx: bool, h: int = int(C.GRID_H)) -> void:
-	if id == theme_id and size == Vector2i(w, d) and low_gfx == low:
+	if not build_begin(id, w, d, low_gfx, h):
 		return
+	while build_step():
+		pass
+
+
+var _bj := {} # 짓는 중인 일: {phase, L, rand, w, d, h, cx, cy, k, solid, glow, sky}. 비어 있으면 짓는 중 아님
+
+
+# 짓는 중 (단계가 남음)
+func building() -> bool:
+	return not _bj.is_empty()
+
+
+# 짓기 시작: 바꿀 게 없으면 false (바로 돌아옴). 짓는 중에 다른 테마·크기로 또 부르면 처음부터 (옛 조각은 버림)
+func build_begin(id, w: int, d: int, low_gfx: bool, h: int = int(C.GRID_H)) -> bool:
+	if id == theme_id and size == Vector2i(w, d) and low_gfx == low and _bj.is_empty():
+		return false
+	_bj = {}
 	motes = {}
 	theme_id = id
 	size = Vector2i(w, d)
@@ -403,91 +422,117 @@ func build(id, w: int, d: int, low_gfx: bool, h: int = int(C.GRID_H)) -> void:
 		n.queue_free()
 	far_objs = []
 	if id == null or not C.WORLD_THEMES.has(id):
-		return
+		return false
 	var L: Dictionary = C.WORLD_THEMES[id]
-	var cx := w / 2.0
-	var cy := d / 2.0
-	var rand := Rng.new(int(L.seed))
-	var k: float = C.WORLD_LOW_DETAIL if low else 1.0
-	# 필드 아래 섬 (윗면은 바닥 판 바로 아래)
-	var isl := Parts.new()
-	island(isl, w, d, maxf(w, d) * 0.85, int(L.seed), L.cliff, at(cx, cy, -0.3))
-	_add(isl.mesh(), {"vertex_color": true}, self, not WC.scenery_opt)
-	# 섬 뿌리 바위 + 먼 섬 (한 메시) + 빛나는 소품 (한 메시)
-	var solid := Parts.new()
-	var glow := Parts.new()
-	for i in 6:
-		var a := rand.next() * TAU
-		prop(solid, glow, "rock", L, rand, cos(a) * w * 0.3, sin(a) * d * 0.3, -2.5 - rand.next() * 4, 1.2 + rand.next() * 1.5)
-	var islets := roundi(L.islets * k)
-	for i in islets:
-		var a := TAU * i / islets + rand.next() * 0.6
-		var dist := w * 0.5 + 14 + rand.next() * 26
-		islet(solid, glow, L, rand, cos(a) * dist, sin(a) * dist, -7 + rand.next() * 13)
-	var sky := Parts.new()
-	var clouds := roundi(L.clouds * k)
-	for i in clouds:
-		var a := rand.next() * TAU
-		var low_cloud := i < clouds * 0.7 # 대부분은 섬 아래 구름 바다, 나머지는 멀리 하늘에
-		var dist := 6 + rand.next() * 55 if low_cloud else 45 + rand.next() * 40
-		var z: float = L.sea[1] + 1.5 - rand.next() * 2.5 if low_cloud else 16 + rand.next() * 14
-		cloud(sky, L.cloud, rand, cos(a) * dist, sin(a) * dist, z, 1 + rand.next() * 1.4)
-	_add(solid.mesh(), {"vertex_color": true, "outline": false}, drift, not WC.scenery_opt)
-	_add(glow.mesh(), {"vertex_color": true, "unshaded": true}, drift, false)
-	_add(sky.mesh(), {"vertex_color": true, "outline": false, "emissive": shade(L.cloud, float(L.get("cloudGlow", 0.45)))}, drift, false)
-	drift.position = Co.gxyz(cx, cy, 0)
-	# 구름 바다: 넓은 원판, 끝으로 갈수록 투명
-	var sea := MeshInstance3D.new()
-	sea.mesh = sea_mesh(lin(L.sea[0]), C.WORLD_SEA_FADE[0], C.WORLD_SEA_FADE[1])
-	var sm := StandardMaterial3D.new()
-	sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	sm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	sm.vertex_color_use_as_albedo = true
-	sm.disable_fog = true
-	sm.render_priority = -1
-	sea.material_override = sm
-	sea.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	sea.position = Co.gxyz(cx, cy, L.sea[1])
-	add_child(sea)
-	# 먼 배경: 안개 없이 (멀리서도 실루엣)
-	var fs := Parts.new()
-	var fg := Parts.new()
-	far_shapes(fs, fg, L, rand, cx, cy, roundi(L.far.count * (0.6 if low else 1.0)))
-	_add(fs.mesh(), {"vertex_color": true, "outline": false, "no_fog": true}, self, false)
-	_add(fg.mesh(), {"vertex_color": true, "unshaded": true, "no_fog": true}, self, false)
-	# 떠다니는 빛: 필드 둘레 (반딧불은 떠돌고, 불씨는 위로) — world.js motes, 같은 난수 순서
-	if L.get("motes") != null:
-		var M: Dictionary = L.motes
-		var rise: bool = M.get("rise", false)
-		var n := roundi(M.count * k)
-		var base := []
-		for i in n:
-			var bx := cx + (rand.next() - 0.5) * (w + 10)
-			var by := cy + (rand.next() - 0.5) * (d + 10)
-			var bz := rand.next() * (h * 0.6 if rise else 7.0) + (0.0 if rise else 0.5)
-			base.append([bx, by, bz, rand.next()])
-		var mm := MultiMesh.new()
-		mm.transform_format = MultiMesh.TRANSFORM_3D
-		var q := QuadMesh.new()
-		q.size = Vector2.ONE * float(M.size)
-		mm.mesh = q
-		mm.instance_count = n
-		var mat := StandardMaterial3D.new()
-		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-		mat.no_depth_test = false
-		mat.disable_fog = true
-		mat.albedo_color = Co.color(M.color)
-		mat.albedo_texture = dot_texture()
-		var mi := MultiMeshInstance3D.new()
-		mi.multimesh = mm
-		mi.material_override = mat
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		mi.extra_cull_margin = 1000.0
-		add_child(mi)
-		motes = {"mi": mi, "mat": mat, "base": base, "speed": float(M.get("speed", 1.0)), "rise": rise, "top": h * 0.6}
+	_bj = {"phase": 0, "L": L, "rand": Rng.new(int(L.seed)), "w": w, "d": d, "h": h, "cx": w / 2.0, "cy": d / 2.0, "k": C.WORLD_LOW_DETAIL if low_gfx else 1.0}
+	return true
+
+
+# 한 단계. 돌려줌: 단계가 더 남았으면 true
+func build_step() -> bool:
+	if _bj.is_empty():
+		return false
+	var L: Dictionary = _bj.L
+	var rand: Rng = _bj.rand
+	var w: int = _bj.w
+	var d: int = _bj.d
+	var h: int = _bj.h
+	var cx: float = _bj.cx
+	var cy: float = _bj.cy
+	var k: float = _bj.k
+	match int(_bj.phase):
+		0: # 섬 모양 · 뿌리 바위 · 먼 섬 · 구름 (꼭짓점 묶음을 만듦)
+			var isl := Parts.new()
+			island(isl, w, d, maxf(w, d) * 0.85, int(L.seed), L.cliff, at(cx, cy, -0.3))
+			_bj.isl = isl
+			var solid := Parts.new()
+			var glow := Parts.new()
+			for i in 6:
+				var a := rand.next() * TAU
+				prop(solid, glow, "rock", L, rand, cos(a) * w * 0.3, sin(a) * d * 0.3, -2.5 - rand.next() * 4, 1.2 + rand.next() * 1.5)
+			var islets := roundi(L.islets * k)
+			for i in islets:
+				var a := TAU * i / islets + rand.next() * 0.6
+				var dist := w * 0.5 + 14 + rand.next() * 26
+				islet(solid, glow, L, rand, cos(a) * dist, sin(a) * dist, -7 + rand.next() * 13)
+			var sky := Parts.new()
+			var clouds := roundi(L.clouds * k)
+			for i in clouds:
+				var a := rand.next() * TAU
+				var low_cloud := i < clouds * 0.7 # 대부분은 섬 아래 구름 바다, 나머지는 멀리 하늘에
+				var dist := 6 + rand.next() * 55 if low_cloud else 45 + rand.next() * 40
+				var z: float = L.sea[1] + 1.5 - rand.next() * 2.5 if low_cloud else 16 + rand.next() * 14
+				cloud(sky, L.cloud, rand, cos(a) * dist, sin(a) * dist, z, 1 + rand.next() * 1.4)
+			_bj.solid = solid
+			_bj.glow = glow
+			_bj.sky = sky
+		1: # 섬·뿌리 바위를 메시로 굳히기 (자리: 섬 먼저)
+			_add((_bj.isl as Parts).mesh(), {"vertex_color": true}, self, not WC.scenery_opt)
+			_add((_bj.solid as Parts).mesh(), {"vertex_color": true, "outline": false}, drift, not WC.scenery_opt)
+			_bj.erase("isl")
+			_bj.erase("solid")
+		2: # 빛나는 소품·구름 메시 · 구름 바다
+			_add((_bj.glow as Parts).mesh(), {"vertex_color": true, "unshaded": true}, drift, false)
+			_add((_bj.sky as Parts).mesh(), {"vertex_color": true, "outline": false, "emissive": shade(L.cloud, float(L.get("cloudGlow", 0.45)))}, drift, false)
+			_bj.erase("glow")
+			_bj.erase("sky")
+			drift.position = Co.gxyz(cx, cy, 0)
+			# 구름 바다: 넓은 원판, 끝으로 갈수록 투명
+			var sea := MeshInstance3D.new()
+			sea.mesh = sea_mesh(lin(L.sea[0]), C.WORLD_SEA_FADE[0], C.WORLD_SEA_FADE[1])
+			var sm := StandardMaterial3D.new()
+			sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			sm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			sm.vertex_color_use_as_albedo = true
+			sm.disable_fog = true
+			sm.render_priority = -1
+			sea.material_override = sm
+			sea.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			sea.position = Co.gxyz(cx, cy, L.sea[1])
+			add_child(sea)
+		_: # 먼 배경 (안개 없이 — 멀리서도 실루엣) · 떠다니는 빛
+			var fs := Parts.new()
+			var fg := Parts.new()
+			far_shapes(fs, fg, L, rand, cx, cy, roundi(L.far.count * (0.6 if low else 1.0)))
+			_add(fs.mesh(), {"vertex_color": true, "outline": false, "no_fog": true}, self, false)
+			_add(fg.mesh(), {"vertex_color": true, "unshaded": true, "no_fog": true}, self, false)
+			# 떠다니는 빛: 필드 둘레 (반딧불은 떠돌고, 불씨는 위로) — world.js motes, 같은 난수 순서
+			if L.get("motes") != null:
+				var M: Dictionary = L.motes
+				var rise: bool = M.get("rise", false)
+				var n := roundi(M.count * k)
+				var base := []
+				for i in n:
+					var bx := cx + (rand.next() - 0.5) * (w + 10)
+					var by := cy + (rand.next() - 0.5) * (d + 10)
+					var bz := rand.next() * (h * 0.6 if rise else 7.0) + (0.0 if rise else 0.5)
+					base.append([bx, by, bz, rand.next()])
+				var mm := MultiMesh.new()
+				mm.transform_format = MultiMesh.TRANSFORM_3D
+				var q := QuadMesh.new()
+				q.size = Vector2.ONE * float(M.size)
+				mm.mesh = q
+				mm.instance_count = n
+				var mat := StandardMaterial3D.new()
+				mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+				mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+				mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+				mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+				mat.no_depth_test = false
+				mat.disable_fog = true
+				mat.albedo_color = Co.color(M.color)
+				mat.albedo_texture = dot_texture()
+				var mi := MultiMeshInstance3D.new()
+				mi.multimesh = mm
+				mi.material_override = mat
+				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				mi.extra_cull_margin = 1000.0
+				add_child(mi)
+				motes = {"mi": mi, "mat": mat, "base": base, "speed": float(M.get("speed", 1.0)), "rise": rise, "top": h * 0.6}
+			_bj = {}
+			return false
+	_bj.phase = int(_bj.phase) + 1
+	return true
 
 
 # 구름 바다 판 (world.js seaMaterial: 1 - smoothstep(inner, outer, 거리) 를 고리마다 꼭짓점 알파로)

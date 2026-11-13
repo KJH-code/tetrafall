@@ -391,6 +391,16 @@ func _process(_d: float) -> void:
 		if args.has("sched-log"): # W42: 입장 쪼개기 문 — 일마다 [돌린 수, 미룬 수, 최대 ms], 예상 ms, 한 프레임 큰 일 합 최대
 			var GT = load("res://core/entry_gate.gd")
 			print("[gate] frame peak %.1fms · tasks %s · est %s" % [GT.frame_peak, str(GT.log), str(GT.est)])
+			var gm := {}
+			for k in GT.log: # W45: 일마다 돌린 수·미룬 수·평균·최소·최대 ms
+				var ge: Array = GT.log[k]
+				gm[k] = "%d runs defer %d · 평균 %.1f · 최소 %.1f · 최대 %.1f" % [ge[0], ge[1], float(ge[3]) / maxf(1.0, float(ge[0])), float(ge[4]) if float(ge[4]) < 1e8 else 0.0, ge[2]]
+			print("[gate 표] %s" % str(gm))
+			var EX = load("res://chars/external.gd")
+			var sm := {}
+			for k in EX.Ext.stage_ms: # W45: 외부 몸 만들기 단계 [횟수, 합 ms, 최대 ms]
+				sm[k] = [EX.Ext.stage_ms[k][0], snappedf(EX.Ext.stage_ms[k][1], 0.1), snappedf(EX.Ext.stage_ms[k][2], 0.1)]
+			print("[몸 단계] %s" % str(sm))
 		if Prof.track: # W41 --first-use: 처음 쓰는 값 표 (파일 --first-use-out 도)
 			var rep := Prof.first_report(float(args.get("first-min", 1.0)))
 			for l in rep:

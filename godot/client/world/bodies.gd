@@ -79,16 +79,16 @@ func _make(p: Dictionary, color: int) -> Dictionary:
 	var root := Node3D.new()
 	var body: Node3D
 	if chars_script != null:
+		var BodyS = load("res://chars/body.gd")
+		BodyS.split_ext = Gate.on() and not Gate.no_split("body") # W45: 외부 모델 붙이기를 프레임에 걸침 (끝날 때까지 몸 숨김)
 		body = chars_script.make_body(look_of(p), Co.color(color))
+		BodyS.split_ext = false
 	else:
 		body = _box_body(color)
 	root.add_child(body)
 	if body.has_method("add_batch_shadow_twin"):
 		body.add_batch_shadow_twin() # W37: 코드 몸 그림자는 껍질 없는 쌍둥이가
-	if stencil_fn != null and body.get("drawn") is Array: # render.js bodyOrder: 사람 몸은 x-ray 복사본보다 앞
-		for dr in body.drawn:
-			if dr.get("mi") is GeometryInstance3D and dr.mi.material_override is ShaderMaterial:
-				stencil_fn.call(dr.mi.material_override)
+	_stencil(body)
 	var lab := Label3D.new()
 	lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	lab.fixed_size = true
@@ -97,9 +97,6 @@ func _make(p: Dictionary, color: int) -> Dictionary:
 	lab.outline_size = WC.LABEL_FONT[1]
 	lab.no_depth_test = true
 	lab.position.y = C.PLAYER_HEIGHT + C.LABEL_ABOVE_HEAD + WC.LABEL_LIFT
-	var ext = body.get("ext") # W19 외부 (Blender) 모델이 코드 몸보다 크면 (투구 깃) 이름표를 그만큼 올림 (<id>.json label_lift)
-	if ext != null and ext.get("info") is Dictionary:
-		lab.position.y += float(ext.info.cfg.get("label_lift", 0.0))
 	root.add_child(lab)
 	# 체력전: 이름 아래 작은 HP 막대 (뒤판 + 채움, 화면 크기 고정)
 	var bar_back := _bar_sprite(Color(0, 0, 0, 0.7))
@@ -110,7 +107,27 @@ func _make(p: Dictionary, color: int) -> Dictionary:
 		b.visible = false
 		root.add_child(b)
 	add_child(root)
-	return {"root": root, "body": body, "label": lab, "char": look_of(p), "color": color, "bar_back": bar_back, "bar_fill": bar_fill}
+	var n := {"root": root, "body": body, "label": lab, "char": look_of(p), "color": color, "bar_back": bar_back, "bar_fill": bar_fill}
+	_lift_label(n)
+	return n
+
+
+# render.js bodyOrder: 사람 몸은 x-ray 복사본보다 앞 (스텐실 쓰기)
+func _stencil(body: Node3D) -> void:
+	if stencil_fn != null and body.get("drawn") is Array:
+		for dr in body.drawn:
+			if dr.get("mi") is GeometryInstance3D and dr.mi.material_override is ShaderMaterial:
+				stencil_fn.call(dr.mi.material_override)
+
+
+# W19 외부 (Blender) 모델이 코드 몸보다 크면 (투구 깃) 이름표 (와 HP 막대) 를 그만큼 올림 (<id>.json label_lift). W45: 외부 모델이 나중에 붙으면 (ext_job) 붙은 뒤에 다시 부름
+func _lift_label(n: Dictionary) -> void:
+	var ext = n.body.get("ext")
+	if ext != null and ext.get("info") is Dictionary:
+		var lab: Label3D = n.label
+		lab.position.y = C.PLAYER_HEIGHT + C.LABEL_ABOVE_HEAD + WC.LABEL_LIFT + float(ext.info.cfg.get("label_lift", 0.0))
+		for k in ["bar_back", "bar_fill"]:
+			(n[k] as Node3D).position.y = lab.position.y
 
 
 func _bar_sprite(c: Color) -> Sprite3D:
@@ -186,6 +203,7 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 	shown.clear()
 	var frame_ms: float = 0.0 if _last_now == null else maxf(0.0, now_ms - float(_last_now))
 	_last_now = now_ms
+	var jobs := 0 # W45: 이번 프레임에 외부 모델 붙이기 조각을 돌린 몸 수 (WC.BODY_JOBS_PER_FRAME 까지)
 	var builds := 0 # 이번 프레임에 만든 몸 수 (WC.BODY_BUILDS_PER_FRAME 까지, 내 몸은 따로)
 	var build_ms := 0.0 # W41: 이번 프레임 몸 만들기에 쓴 ms — WC.BODY_BUILD_MS 넘으면 남은 몸은 다음 프레임 (처음 만드는 몸 하나가 30ms 라 둘이 한 프레임에 몰리면 60ms)
 	var planes: Array = []
@@ -230,20 +248,35 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 		shown[id] = pos
 		var root: Node3D = n.root
 		var mine: bool = my_id != null and id == int(my_id)
+		# W45: 외부 모델을 프레임에 걸쳐 붙이는 중이면 한 조각 (한 프레임 몸 조각 수·ms 상한, 내 몸은 상한 밖) — 다 붙기 전엔 몸을 안 보이고 pose 도 안 부름
+		var pend: bool = n.body.has_method("ext_pending") and n.body.ext_pending()
+		if pend and (mine or (jobs < WC.BODY_JOBS_PER_FRAME and build_ms < WC.BODY_BUILD_MS)):
+			var _tj := Time.get_ticks_usec()
+			var r: int = n.body.ext_step()
+			if r >= 0:
+				jobs += 1
+				build_ms += (Time.get_ticks_usec() - _tj) / 1000.0
+				Gate.done("body.ext", _tj) # 큰 조각 (4ms 이상) 만 이 프레임 큰 일 합에 셈
+			if r == 1:
+				_stencil(n.body)
+				_lift_label(n)
+			pend = n.body.ext_pending()
 		root.visible = p.alive and not p.get("master", false)
 		root.position = Co.gpos(pos)
 		root.rotation = Vector3(0, Co.rot_y(p.yaw), 0)
-		(n.body as Node3D).visible = not (mine and hide_me)
-		if use_lod and not NO_OUTLINE_FAR and n.body.has_method("set_outline_far"): # W31: 먼 몸은 외곽선 껍질을 뗌 (시야각 70° 기준 거리, 켜고 끄는 문턱에 여유)
+		(n.body as Node3D).visible = not (mine and hide_me) and not pend
+		if pend:
+			n["posed_at"] = null
+		if not pend and use_lod and not NO_OUTLINE_FAR and n.body.has_method("set_outline_far"): # W31: 먼 몸은 외곽선 껍질을 뗌 (시야각 70° 기준 거리, 켜고 끄는 문턱에 여유)
 			var of := OutFar.far_state(root.global_position.distance_to(cpos), cam.fov, bool(n.body.outline_far()), mine)
 			n.body.set_outline_far(of)
-		if use_lod and not NO_SHADOW_FAR and n.body.has_method("set_shadow_off"): # W32: 먼 몸·몸도 그림자도 시야 밖인 몸은 해 그림자를 끔
+		if not pend and use_lod and not NO_SHADOW_FAR and n.body.has_method("set_shadow_off"): # W32: 먼 몸·몸도 그림자도 시야 밖인 몸은 해 그림자를 끔
 			var so: bool = Sh.far_off(root.global_position.distance_to(cpos), cam.fov, bool(n.body.shadow_off()), mine)
 			if not so and root.visible and not mine:
 				var sc := root.global_position + Vector3(0, C.PLAYER_HEIGHT * 0.5, 0)
 				so = not Sh.visible_or_shadow(planes, sc, to_sun, float(lod.margin) + float(WC.SHADOW.view_pad), root.global_position.y)
 			n.body.set_shadow_off(so)
-		if n.body.has_method("pose"):
+		if not pend and n.body.has_method("pose"):
 			var iv := 0.0
 			if use_lod and root.visible and not mine:
 				var c := root.global_position + Vector3(0, C.PLAYER_HEIGHT * 0.5, 0)

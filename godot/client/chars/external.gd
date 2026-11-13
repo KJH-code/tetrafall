@@ -667,6 +667,84 @@ static func attach(body: Node3D, third: bool):
 	return e
 
 
+# W45: 판 몸 붙이기를 프레임에 걸쳐 (입장 첫 바퀴 — 한 프레임에 몸 여럿이 몰리지 않게). body.build 가 Body.split_ext 일 때 이걸 만들고 (body.ext_job),
+# world/bodies.gd 가 프레임마다 step 을 부름. 몸 (code 몸) 은 다 붙기 전엔 안 보이고 (T 포즈·코드 몸 안 보임) pose 도 안 불림 (쉬는 자세 맞춤이 관절의 처음 자세를 읽음).
+# 끄기: 실행 인자 --no-body-split (옛: 한 번에 붙임)
+static func attach_job(body: Node3D, third: bool):
+	var info = load_char(body.char_id)
+	if info == null:
+		return null
+	var j := AttachJob.new()
+	j.body = body
+	j.third = third
+	j.info = info
+	j.lod = pick_lod(info.cfg, third, stage)
+	j.shadow_lod = ExtShadow.caster_node(info.cfg, j.lod, third, stage)
+	return j
+
+
+# 판 몸이 쓸 알베도·마스크 (스레드 요청) 가 다 읽혔나 — 몸 만들 때 동기로 읽으면 5~7ms (VRAM 올리기). 요청 안 했으면 여기서 요청
+static func game_tex_ready(id: String) -> bool:
+	if not lazy_tex or not _cache.has(id) or _cache[id] == null:
+		return true
+	prefetch_tex(id, false, true)
+	var info: Dictionary = _cache[id]
+	var node := pick_lod(info.cfg, true, false)
+	for sf in info.surfs:
+		if str(sf.get("node", "")) == node:
+			var tp := str(sf.get("tex_path", ""))
+			if tp != "" and not TexPre.ready(tp):
+				return false
+	var mp := str(info.cfg.get("skin_mask", {}).get(node, ""))
+	return mp == "" or TexPre.ready(mp)
+
+
+class AttachJob:
+	extends RefCounted
+	const TEX_WAIT_FRAMES := 45 # 텍스처가 이만큼 안 읽혀도 (느린 디스크) 그냥 진행
+	var body: Node3D
+	var third := true
+	var info: Dictionary
+	var lod := ""
+	var shadow_lod := ""
+	var e = null # 만드는 중인 Ext (끝나면 body.ext)
+	var stage := 0
+	var waited := 0
+	var spent_ms := 0.0
+
+	# 돌려줌: 1 = 끝 (e 가 붙음 — 못 붙였으면 e 가 null), 0 = 한 조각 함, -1 = 기다림 (텍스처 읽는 중 — 일 안 함)
+	func step() -> int:
+		var t0 := Time.get_ticks_usec()
+		var r := 0
+		match stage:
+			0:
+				if waited < TEX_WAIT_FRAMES and not External_.game_tex_ready(body.char_id):
+					waited += 1
+					return -1
+				e = Ext.new()
+				e.lod = lod
+				e.shadow_lod = shadow_lod
+				if not e.setup_a(body, info, third):
+					e.free()
+					e = null
+					return 1
+			1:
+				e.setup_b()
+			2:
+				e.setup_c()
+			_:
+				e.setup_d()
+				r = 1
+		stage += 1
+		var ms := (Time.get_ticks_usec() - t0) / 1000.0
+		spent_ms += ms
+		if r == 1:
+			Hitch.span("외부 몸 연결", body.char_id, Time.get_ticks_usec() - int(spent_ms * 1000.0))
+		return r
+
+	const External_ := preload("res://chars/external.gd")
+
+
 # W19 LOD: 1인칭 쌍둥이·대기실 큰 캐릭터·초상 = stage (한 명만 크게), 판 몸 = 화질 (world/gfx.gd plan.level — 없으면 high). cfg.lods 없으면 "" (모든 메시)
 static func pick_lod(cfg: Dictionary, third: bool, on_stage: bool) -> String:
 	var lods: Dictionary = cfg.get("lods", {})
@@ -821,6 +899,16 @@ class Ext extends Node3D:
 	var clip_arm_k := 0.0
 
 	func setup(b: Node3D, inf: Dictionary, third_: bool) -> bool:
+		if not setup_a(b, inf, third_):
+			return false
+		setup_b()
+		setup_c()
+		setup_d()
+		return true
+
+	# W45: 몸 만들기를 네 조각으로 (External.AttachJob 이 프레임마다 하나씩 부름 — 판 몸 만들기 한 덩어리 1~10ms 를 프레임에 걸침).
+	# ① 장면 인스턴스·크기 맞춤·쉬는 자세 맞춤 (관절의 처음 자세를 읽으니 이 조각 전에 body.pose 가 불리면 안 됨)
+	func setup_a(b: Node3D, inf: Dictionary, third_: bool) -> bool:
 		body = b
 		info = inf
 		third = third_
@@ -828,6 +916,7 @@ class Ext extends Node3D:
 		space = b.frame if third else b.waist
 		if space == null:
 			return false
+		var _t := Time.get_ticks_usec()
 		model = (info.scene as PackedScene).instantiate() as Node3D
 		sk = model.get_node_or_null(info.sk_path) as Skeleton3D
 		if sk == null:
@@ -835,13 +924,30 @@ class Ext extends Node3D:
 			return false
 		add_child(model)
 		space.add_child(self)
+		_t = _stage("instance", _t)
 		_place()
 		_bind()
+		_stage("bind", _t)
+		return true
+
+	# ② 재질·텍스처·LOD 표면·그림자 쌍둥이
+	func setup_b() -> void:
+		var _t := Time.get_ticks_usec()
 		_surfaces()
+		_stage("surfaces", _t)
+
+	# ③ 안쪽 몸 숨기기·허리 띠·소품
+	func setup_c() -> void:
+		var _t := Time.get_ticks_usec()
 		_hide_inner()
 		if third:
 			_band()
 		_attach_props()
+		_stage("inner_band_props", _t)
+
+	# ④ 클립 재생기·천·모션 층 연결·처음 자세 한 번
+	func setup_d() -> void:
+		var _t := Time.get_ticks_usec()
 		anim = null
 		for ap in model.find_children("*", "AnimationPlayer", true, false):
 			anim = ap
@@ -859,13 +965,26 @@ class Ext extends Node3D:
 				var cl = Cloth_.new()
 				if cl.setup(sk, cdef.get("bones", []), info, cdef):
 					cloths.append(cl)
+		_t = _stage("anim_cloth", _t)
 		clipset = info.get("clipset", {})
 		for cn in clipset:
 			for bn in (clipset[cn].rot as Dictionary):
 				if not cbones.has(bn):
 					cbones[bn] = sk.find_bone(bn)
 		sync()
-		return true
+		_stage("clip_sync", _t)
+
+	static var stage_ms := {} # 확인용 (--sched-log): 몸 만들기 단계 → [횟수, 합 ms, 최대 ms]
+
+	static func _stage(nm: String, t0: int) -> int:
+		var now := Time.get_ticks_usec()
+		var ms := (now - t0) / 1000.0
+		var e: Array = stage_ms.get(nm, [0, 0.0, 0.0])
+		e[0] += 1
+		e[1] += ms
+		e[2] = maxf(e[2], ms)
+		stage_ms[nm] = e
+		return now
 
 	# W33: 판 몸 (third) 은 body.pose 가 sync(st) 로 클립까지 맞춤 — 그 뒤 같은 프레임에 이 _process 가 st 없는 sync() 를 또 부르면
 	# 코드 구동 (_code_sync) 이 클립이 맞춘 팔다리 뼈를 도로 덮어씀 (고도는 _ready 때 _process 를 다시 켜서 setup 의 set_process(false) 가 안 먹음)
