@@ -97,7 +97,7 @@ static func select(cc: Dictionary, st: Dictionary, air_t: float, prev_clip := ""
 			rf += K.EXT_RUN_HYS
 		var nm2: String = str(cc.get("run", "")) if amp >= rf else str(cc.get("walk", ""))
 		var rate := 1.0 # W34 박자 배율 (cfg.clips.stride {클립: [k, c, 배율]}): 코드 걸음 위상이 몸 속도에 비례하니 클립도 비례, 배율만큼 더 빨리 돌려 한 바퀴 몸 이동 거리를 다리 길이에 맞춤
-		var sd = (cc.get("stride", {}) as Dictionary).get(nm2)
+		var sd = K.stride_of(cc, nm2)
 		if sd is Array and sd.size() > 2:
 			rate = float(sd[2])
 		var lt := fposmod(float(st.get("walk", 0.0)) / TAU * rate, 1.0)

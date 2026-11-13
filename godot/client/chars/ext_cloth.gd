@@ -4,6 +4,7 @@
 extends RefCounted
 
 const Rag := preload("res://chars/ragdoll.gd")
+const Motion_ := preload("res://chars/ext_motion.gd")
 
 var sk: Skeleton3D
 var bones: Array[int] = []
@@ -55,7 +56,7 @@ func setup(skel: Skeleton3D, names: Array, info: Dictionary, cfg: Dictionary) ->
 		var b: Vector3 = (rest_g[i + 1].origin if i + 1 < bones.size() else (a + rest_dir[i - 1] * _tip_len(i) if i > 0 else a + rest_g[i].basis * Vector3(0, _tip_len(i), 0)))
 		var d := b - a
 		rest_len.append(d.length())
-		rest_dir.append(d.normalized())
+		rest_dir.append(Motion_.safe_dir(d, Vector3.UP))
 	for c in info.cfg.get("cloth_colliders", []):
 		var ia := sk.find_bone(str(c[0]))
 		var ib := sk.find_bone(str(c[1]))
@@ -146,8 +147,9 @@ func step(dt: float) -> void:
 	var Wi: Transform3D = W.affine_inverse()
 	var par: Transform3D = pg
 	for i in bones.size():
-		var ds: Vector3 = (Wi.basis * (pts[i + 1] - pts[i])).normalized()
-		var glob_b: Basis = Basis(Quaternion(rest_dir[i], ds)) * (rest_g[i] as Transform3D).basis
+		# 점이 겹쳐 길이가 0 이면 쉬는 방향 (회전 없음) 으로 — 영벡터 normalized 경고 방지
+		var ds: Vector3 = Motion_.safe_dir(Wi.basis * (pts[i + 1] - pts[i]), rest_dir[i])
+		var glob_b: Basis = Basis(Motion_.rot_between(rest_dir[i], ds)) * (rest_g[i] as Transform3D).basis
 		var origin: Vector3 = par * (rest_l[i] as Transform3D).origin
 		var loc_b: Basis = par.basis.orthonormalized().inverse() * glob_b
 		var qn: Quaternion = loc_b.get_rotation_quaternion()
@@ -180,7 +182,7 @@ func _verlet(h: float, anc: Vector3, tgt: Array, shift: Vector3, scl: float, W: 
 		pts[i] = pts[i] + v + g * h * h
 		pts[i] = pts[i] + ((tgt[i] as Vector3) + shift - pts[i]) * (1.0 - pow(1.0 - k_rest, h * 60.0))
 	if fwd_lim < 1e8: # 앞쪽 한계: 부모 뼈의 앞 (+x, 뼈대 공간) 을 월드로
-		var pf: Vector3 = (W.basis * (pg.basis * (rel.basis * Vector3.RIGHT))).normalized()
+		var pf: Vector3 = Motion_.safe_dir(W.basis * (pg.basis * (rel.basis * Vector3.RIGHT)), Vector3.RIGHT)
 		for i in range(1, pts.size()):
 			var dd: float = (pts[i] - ((tgt[i] as Vector3) + shift)).dot(pf)
 			if dd > fwd_lim * scl:

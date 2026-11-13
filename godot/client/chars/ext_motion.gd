@@ -20,6 +20,22 @@ static func now_ms() -> float:
 	return float(clock.call()) * 1000.0 if clock.is_valid() else Time.get_ticks_msec() * 1.0
 
 
+# 영벡터 가드: 점이 겹치면 normalized() 가 "cannot be normalized"·Quaternion(a, b) 가 "must be normalized" 를 프레임마다 찍음 (재연 20MB 로그, 로그 출력 자체가 CPU 비용).
+# 길이 제곱이 SAFE_EPS2 보다 작으면 fallback (직전·쉬는 방향) 을 돌려줌. 정상일 땐 v.normalized() 와 같은 값
+const SAFE_EPS2 := 1e-8
+
+
+static func safe_dir(v: Vector3, fallback: Vector3) -> Vector3:
+	return v.normalized() if v.length_squared() > SAFE_EPS2 else fallback
+
+
+# a → b 최단 회전. 둘 중 하나가 영벡터에 가까우면 회전 없음 (항등)
+static func rot_between(a: Vector3, b: Vector3) -> Quaternion:
+	if a.length_squared() <= SAFE_EPS2 or b.length_squared() <= SAFE_EPS2:
+		return Quaternion.IDENTITY
+	return Quaternion(a.normalized(), b.normalized())
+
+
 # 몸 기준 (앞 +x, 오른쪽 +z) 좌표 → 위(Y) 축 회전 각 (라디안, 왼쪽으로 돌려야 하면 +). 고도 Y 회전은 +x 를 -z 쪽으로 돎
 static func yaw_to(local: Vector3) -> float:
 	return atan2(-local.z, local.x)
@@ -133,8 +149,8 @@ static func move_fold(mv_f: float, mv_s: float, prev_rev: bool) -> Dictionary:
 
 # 골반 yaw (라디안): 접은 이동 각 × gain, 한계 안
 static func hip_yaw(psi: float) -> float:
-	var lim := deg_to_rad(K.EXT_DIR_MAX_DEG)
-	return clampf(psi * K.EXT_DIR_GAIN, -lim, lim)
+	var lim := deg_to_rad(K.dir_max_deg())
+	return clampf(psi * K.dir_gain(), -lim, lim)
 
 
 # 앞으로 숙이는 양 (라디안, + = 앞): 속도 비례 + 가속도 (+ 가속 = 앞, − 급정지 = 뒤로 젖힘), 뒤로 걸으면 뒤로 살짝

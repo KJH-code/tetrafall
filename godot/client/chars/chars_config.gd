@@ -1,6 +1,8 @@
 # G2 고도에만 필요한 수치 (PLAN 7절: 묶음 폴더의 <묶음>_config.gd). JS 수치는 core/config.gd
 extends RefCounted
 
+const Opts := preload("res://core/opts.gd")
+
 # 몸 조각 합치기 (JS client/batch.js 와 같은 뜻): 움직이는 노드마다 그 아래 같이 움직이는 조각을 재질 종류마다 메시 하나로 (색은 정점 색).
 # false 면 조각마다 MeshInstance3D (확인용 — 그리기 수가 몸 하나에 약 100+)
 # (2026-10-31 Skeleton3D 한 메시 판은 1인칭에서 몸이 화면을 덮고 하얀 조각이 보이고, 숨긴 조각도 삼각형을 그려서 바꿈)
@@ -94,6 +96,46 @@ const EXT_DIR_REV_LEAVE_DEG := 75.0 # 이만큼 안으로 돌아오면 다시 �
 const EXT_DIR_GAIN := 1.0 # 골반 yaw = 이동 방향 (앞 기준으로 접은 각) × 이 값 (W46: 0.6 → 1.0 — 다리 걸음 축이 이동 방향과 맞아야 디딘 발이 안 끌림)
 const EXT_DIR_COUNTER := [["mixamorig_Spine", 0.5], ["mixamorig_Spine1", 0.3], ["mixamorig_Spine2", 0.2]] # W46: 골반을 돌린 만큼 윗몸이 되돌리는 몫 (척추 셋에 나눔 — 한 뼈에 몰면 벨트가 비틀려 늘어남). 합 1
 const EXT_DIR_MAX_DEG := 70.0 # 골반 yaw 한계 (W46: 45° → 70°, 옆걸음 발 미끄러짐 비 0.75~0.9 → 0.3 — tools/gait_qa.gd)
+# W47 걸음 되돌리기 (`-- --old-gait`, 웹 `?old-gait=1`): W46 이 달리기 박자를 1.6 → 0.5~0.75 로 늦춰 (걸음 수 닌자 8.4 → 2.6/초 …) 재혁이 눈으로 비교하려고 W34/W43 값으로 되돌리는 스위치.
+# stride = 캐릭터 → {클립: [보폭 k, c, 박자]} (W46 전 ext/*.json clips.stride), 방향 이득·한계·윗몸 되돌림은 W46 전 값 (되돌림 비면 예전처럼 waist 한 뼈에 몰음)
+const EXT_GAIT_OLD := {
+	"stride": {
+		"ninja": {"walk": [1.4, -0.1, 1.6], "run": [1.45, -0.14, 1.6]},
+		"tank": {"walk": [1.4, -0.03, 1.6], "run": [1.45, -0.07, 1.6]},
+		"hunter": {"walk": [1.4, -0.03, 1.6], "run": [1.45, -0.08, 1.6]},
+		"hook": {"walk": [1.4, -0.04, 1.6], "run": [1.45, -0.08, 1.6]},
+	},
+	"dir_gain": 0.6,
+	"dir_max_deg": 45.0,
+	"dir_counter": [],
+}
+
+
+static func old_gait() -> bool:
+	return Opts.args().has("--old-gait")
+
+
+# 클립 걸음 설정 [k, c, 박자] (없으면 null). cc = cfg.clips (read_cfg 가 "char" 를 심어 둠)
+static func stride_of(cc: Dictionary, clip: String):
+	if old_gait():
+		var t: Dictionary = (EXT_GAIT_OLD.stride as Dictionary).get(str(cc.get("char", "")), {})
+		if t.has(clip):
+			return t[clip]
+	return (cc.get("stride", {}) as Dictionary).get(clip)
+
+
+static func dir_gain() -> float:
+	return float(EXT_GAIT_OLD.dir_gain) if old_gait() else EXT_DIR_GAIN
+
+
+static func dir_max_deg() -> float:
+	return float(EXT_GAIT_OLD.dir_max_deg) if old_gait() else EXT_DIR_MAX_DEG
+
+
+static func dir_counter() -> Array:
+	return EXT_GAIT_OLD.dir_counter if old_gait() else EXT_DIR_COUNTER
+
+
 const EXT_DIR_RATE := 9.0 # 골반 yaw 따라가는 빠르기 (/초)
 const EXT_DIR_FADE_S := 0.16 # 앞↔뒤 재생이 바뀔 때 크로스페이드 (초)
 # W43 이동 기울임: 속도에 비례해 앞으로 (0~) + 가속·급정지 (가속도 m/s², 멈추면 뒤로 젖힘) + 뒤로 걸을 땐 살짝 뒤로. 라디안

@@ -298,6 +298,8 @@ static func read_cfg(char_id: String) -> Dictionary:
 				cfg[k] = j[k]
 		else:
 			push_warning("외부 .glb 조정 파일 %s: JSON 오류" % jp)
+	if cfg.get("clips") is Dictionary:
+		cfg.clips["char"] = char_id # W47 --old-gait 이 캐릭터별 옛 걸음 표를 찾는 키
 	return cfg
 
 
@@ -1100,7 +1102,7 @@ class Ext extends Node3D:
 					var dj: Vector3 = (cr as Transform3D).origin - (jr as Transform3D).origin
 					var db: Vector3 = (W * (rg[int(map[cname])] as Transform3D)).origin - bpos
 					if dj.length() > 1e-6 and db.length() > 1e-6:
-						A = Quaternion(db.normalized(), dj.normalized())
+						A = Motion_.rot_between(db, dj)
 			elif pj != null:
 				var pname: String = pj + (side if pj in ["shoulder", "elbow", "thigh", "knee"] else "")
 				A = align.get(pname, Quaternion.IDENTITY)
@@ -1350,7 +1352,7 @@ class Ext extends Node3D:
 				if ang > PI:
 					ang -= TAU
 				if absf(ang) > 1e-5:
-					q = mq * Quaternion(dq.get_axis().normalized(), ang * swing_k)
+					q = mq * Quaternion(Motion_.safe_dir(dq.get_axis(), Vector3.UP), ang * swing_k)
 			if fade_t < 1.0 and fade_from.has(bn):
 				q = (fade_from[bn] as Quaternion).slerp(q, ef)
 			last_layer[bn] = q
@@ -1369,7 +1371,7 @@ class Ext extends Node3D:
 				var cp: Vector3 = an.position_track_interpolate(int(data.pos[key]), tt)
 				sk.set_bone_pose_position(hb, hp.lerp(cp, cw))
 			# W34 보폭 늘리기 (발 미끄러짐): 걷기·달리기 클립의 발 앞뒤 움직임을 (골반 기준 한 바퀴 평균 자리 c 둘레로) k 배로 늘려 2본 IK 로 다리를 다시 폄 (cfg.clips.stride {클립: [k, c, 박자 배율]})
-			var sd = (cc.get("stride", {}) as Dictionary).get(name)
+			var sd = K_.stride_of(cc, name)
 			if sd is Array and float(sd[0]) > 1.0 and not bool(use.get("air", false)):
 				_stride_ik(1.0 + (float(sd[0]) - 1.0) * cw, float(sd[1]))
 			# 발 붙이기: 가장 낮은 발 뼈가 바닥 (쉬는 자세 높이) 에 닿게 골반을 올리거나 내림 (달리기는 통통 뜨는 걸 두려고 파묻힘만 막음)
@@ -1565,7 +1567,7 @@ class Ext extends Node3D:
 				_add_rot(hb, Quaternion(Vector3.UP, dir_y))
 			# 윗몸은 앞 (조준 방향) 그대로 — 되돌림을 척추 둘~셋에 나눔 (W46: 골반 yaw 가 커져 한 뼈에 몰면 벨트가 비틀림). 척추 뼈가 없으면 예전처럼 waist 에 몰아서
 			var done := 0.0
-			for e in K_.EXT_DIR_COUNTER:
+			for e in K_.dir_counter():
 				var sbi := sk.find_bone(str(e[0]))
 				if sbi >= 0:
 					_add_rot(sbi, Quaternion(Vector3.UP, -dir_y * float(e[1])))
@@ -1857,11 +1859,11 @@ class Ext extends Node3D:
 			var dx: float = (gF.origin.x - gH.origin.x) - center
 			var target := gF.origin + Vector3(dx * (k - 1.0), 0.0, 0.0)
 			var r := leg_ik(gU.origin, gK.origin, gF.origin, target, Vector3(1, 0, 0))
-			var old1 := (gK.origin - gU.origin).normalized()
-			var q1 := Quaternion(old1, ((r.knee as Vector3) - gU.origin).normalized())
+			var old1 := Motion_.safe_dir(gK.origin - gU.origin, Vector3.DOWN)
+			var q1 := Motion_.rot_between(old1, (r.knee as Vector3) - gU.origin)
 			var bU := Basis(q1) * gU.basis
-			var old2: Vector3 = q1 * (gF.origin - gK.origin).normalized()
-			var q2 := Quaternion(old2, ((r.foot as Vector3) - (r.knee as Vector3)).normalized())
+			var old2: Vector3 = q1 * Motion_.safe_dir(gF.origin - gK.origin, Vector3.DOWN)
+			var q2 := Motion_.rot_between(old2, (r.foot as Vector3) - (r.knee as Vector3))
 			var bK := Basis(q2) * Basis(q1) * gK.basis
 			var pU := sk.get_bone_parent(ub)
 			var pb: Basis = _gt(pU).basis if pU >= 0 else Basis.IDENTITY
@@ -1885,7 +1887,7 @@ class Ext extends Node3D:
 		var perp := pole - dir * pole.dot(dir)
 		if perp.length() < 1e-4:
 			perp = (K - P) - dir * (K - P).dot(dir)
-		perp = perp.normalized()
+		perp = Motion_.safe_dir(perp, Vector3.BACK)
 		return {"knee": P + dir * a + perp * h, "foot": P + dir * dist}
 
 	# 뼈 높이 (뼈대 공간): 뼈 지역 자세를 부모로 곱함 (get_bone_global_pose 는 트리 밖 뼈대에선 안 갱신됨 — 테스트·초상)
