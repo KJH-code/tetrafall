@@ -15,6 +15,8 @@ godot --path godot/client -- --server ws://주소:3000 --room ABCD   # 다른 �
 옵션 (`--` 뒤, 웹이면 주소 뒤 `?키=값`): `--server` · `--room` · `--name` · `--profile` (자리 토큰 저장을 나눔 — 같은 PC 에서 사람 둘) ·
 자동 확인 `--auto host|guest` `--bots N` `--wait-players N` `--drop-at 초` (연결 끊었다 같은 자리로) `--quit-after-rounds N` `--quit-after 초` `--min-moved 칸` `--shot 파일.png --shot-after 초`
 
+스냅샷 묶음: PC 클라는 주소에 `?pack=gzip` 을 붙여 접속 (`core/net.gd` `packed_url`) → C# 서버가 큰 메시지 (`NET_DEFLATE_MIN_BYTES` 이상, 사실상 스냅샷) 를 gzip 바이너리로 보내고 클라가 풂 (`unpack`). 고도 WebSocketPeer 는 permessage-deflate 를 못 써서 8명 판이 약 418KB/s 로 오던 것 → 약 92KB/s (헤드리스 8명 판 30초 실측). 웹 판은 쿼리 없이 붙어 예전처럼 브라우저 압축 (Text + permessage-deflate), JS 서버는 쿼리를 무시하고 Text 로 보냄 — 글자 패킷은 예전처럼 읽으니 어느 서버든 붙음. `--auto` 로 돌리면 끝날 때 `[net] 받은 N KB/s (스냅샷 n개, gzip 켬|끔)` 한 줄.
+
 ## 테스트·확인
 
 ```

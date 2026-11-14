@@ -4,6 +4,7 @@ extends RefCounted
 const C := preload("res://core/config.gd")
 const Interp := preload("res://core/interp.gd")
 const NetMeter := preload("res://core/net_meter.gd")
+const NetScript := preload("res://core/net.gd")
 const Keys := preload("res://core/keys.gd")
 
 var errors: Array = []
@@ -83,6 +84,28 @@ func test_net_meter_matches_js() -> void:
 					bad += 1
 	check(n > 300, "프레임 %d" % n)
 	check(bad == 0, "핑 표시가 JS 와 다른 프레임 %d개" % bad)
+
+
+# PC 판 스냅샷 묶음: 바이너리 패킷은 gzip 을 풀고, 글자 패킷 (JS 서버·작은 메시지) 은 그대로
+func test_net_unpack() -> void:
+	var text := "{\"type\":\"state\",\"name\":\"재혁\",\"grid\":\"%s\"}" % "0123456789".repeat(400)
+	var raw := text.to_utf8_buffer()
+	var gz := raw.compress(FileAccess.COMPRESSION_GZIP)
+	check(gz.size() < raw.size(), "gzip %d / 원문 %d" % [gz.size(), raw.size()])
+	check(NetScript.unpack(gz, false) == text, "gzip 바이너리를 풀면 원문")
+	check(NetScript.unpack(raw, true) == text, "글자 패킷은 그대로")
+	var m = JSON.parse_string(NetScript.unpack(gz, false))
+	check(typeof(m) == TYPE_DICTIONARY and m.get("type") == "state" and m.get("name") == "재혁", "푼 글자가 JSON 으로 읽힘")
+
+
+func test_net_packed_url() -> void:
+	for row in [
+		["ws://127.0.0.1:3000", "ws://127.0.0.1:3000/?pack=gzip"],
+		["wss://x.trycloudflare.com", "wss://x.trycloudflare.com/?pack=gzip"],
+		["ws://h:1/a?b=1", "ws://h:1/a?b=1&pack=gzip"],
+		["ws://h:1/", "ws://h:1/?pack=gzip"],
+	]:
+		check(NetScript.packed_url(row[0]) == row[1], "주소 %s → %s / %s" % [row[0], NetScript.packed_url(row[0]), row[1]])
 
 
 func test_keys_match_js() -> void:

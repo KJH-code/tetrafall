@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO.Compression;
 using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Text;
@@ -10,6 +11,7 @@ namespace Tetrafall.Tests;
 
 // 서버 프로세스 (JS test/safety.test.js '서버 프로세스' 와 같음): 잘못된 % 주소는 400 (서버 안 죽음), NET_MAX_PAYLOAD_BYTES 넘는 메시지는
 // 그 연결만 1009 로 끊김, 다른 연결은 그대로. + 표준 입력으로 받은 터널 주소가 방 링크로, 방 로그 파일이 JS 와 같은 줄 모양
+// + ?pack=gzip 으로 붙은 연결 (고도 PC 클라) 은 큰 메시지를 gzip 바이너리로, 쿼리 없는 연결은 예전처럼 Text
 public class ServerProcessTests
 {
     static string RepoRoot()
@@ -181,5 +183,78 @@ public class ServerProcessTests
         var bodies = got.Select(l => Regex.Match(l, @"^\[\d{1,2}시 \d{1,2}분 \d{1,2}초\] (.*)$")).ToList();
         Assert.All(bodies, m => Assert.True(m.Success));
         Assert.Equal(new[] { $"방 {code} 만듦: 재혁의 방 (비공개)", "P1 접속 (slot 0) — 호스트", "P1 접속 종료", $"방 {code} 닫음 (사람 0명)" }, bodies.Select(m => m.Groups[1].Value));
+    }
+
+    // 메시지 하나를 날것으로 (종류 + 바이트). 닫히거나 시간이 지나면 null
+    static async Task<(WebSocketMessageType kind, byte[] bytes)?> Receive(ClientWebSocket ws, byte[] buf, CancellationToken ct)
+    {
+        var ms = new MemoryStream();
+        try
+        {
+            WebSocketReceiveResult r;
+            do
+            {
+                r = await ws.ReceiveAsync(buf, ct);
+                if (r.MessageType == WebSocketMessageType.Close) return null;
+                ms.Write(buf, 0, r.Count);
+            } while (!r.EndOfMessage);
+            return (r.MessageType, ms.ToArray());
+        }
+        catch (OperationCanceledException) { return null; }
+    }
+
+    static byte[] Gunzip(byte[] gz)
+    {
+        using var src = new GZipStream(new MemoryStream(gz), CompressionMode.Decompress);
+        var ms = new MemoryStream();
+        src.CopyTo(ms);
+        return ms.ToArray();
+    }
+
+    // 방 만들고 봇 7명과 시작 → 판이 시작된 뒤 (phase 가 lobby 아님) 스냅샷 n 개를 받음: (종류, 받은 바이트, 푼 바이트). 다른 메시지 종류도 같이 돌려줌
+    static async Task<(List<(WebSocketMessageType kind, byte[] wire, byte[] json)> states, List<(WebSocketMessageType kind, byte[] wire, byte[] json)> all)> EightPlayerStates(ClientWebSocket ws, int n)
+    {
+        await SendText(ws, "{\"type\":\"create\",\"nick\":\"재혁\"}");
+        for (int i = 0; i < 7; i++) await SendText(ws, "{\"type\":\"addBot\"}");
+        await SendText(ws, "{\"type\":\"start\"}");
+        var states = new List<(WebSocketMessageType, byte[], byte[])>();
+        var all = new List<(WebSocketMessageType, byte[], byte[])>();
+        using var cts = new CancellationTokenSource(20000);
+        var buf = new byte[1 << 20];
+        while (states.Count < n)
+        {
+            var got = await Receive(ws, buf, cts.Token);
+            if (got == null) break;
+            var (kind, wire) = got.Value;
+            var json = kind == WebSocketMessageType.Binary ? Gunzip(wire) : wire;
+            all.Add((kind, wire, json));
+            var m = JsonDocument.Parse(json).RootElement;
+            if (m.GetProperty("type").GetString() == "state" && m.GetProperty("phase").GetString() != "lobby" && m.GetProperty("players").GetArrayLength() == 8) states.Add((kind, wire, json));
+        }
+        return (states, all);
+    }
+
+    [Fact]
+    public async Task Packed_client_gets_gzip_snapshots()
+    {
+        using var srv = new Server();
+        var packed = new ClientWebSocket();
+        await packed.ConnectAsync(new Uri($"ws://127.0.0.1:{srv.port}/?pack=gzip"), CancellationToken.None);
+        var (states, all) = await EightPlayerStates(packed, 30);
+        Assert.Equal(30, states.Count);
+        Assert.All(states, s => Assert.Equal(WebSocketMessageType.Binary, s.kind));
+        Assert.All(states, s => Assert.Contains("\"type\":\"state\"", Encoding.UTF8.GetString(s.json)));
+        double wire = states.Sum(s => (double)s.wire.Length), raw = states.Sum(s => (double)s.json.Length);
+        Assert.True(wire / raw < 0.3, $"누른 {wire} / 푼 {raw} = {wire / raw:F3}");
+        // 큰 메시지만 누름: 바이너리는 풀면 NET_DEFLATE_MIN_BYTES 이상, 글자는 그 아래 (welcome·작은 대기실 스냅샷 등)
+        Assert.All(all, m => Assert.Equal(m.json.Length >= C.NET_DEFLATE_MIN_BYTES, m.kind == WebSocketMessageType.Binary));
+
+        // 쿼리 없이 붙은 연결 (브라우저·예전 클라) 은 같은 서버에서 전부 Text — 8명 판 큰 스냅샷도
+        var plain = await Open(srv.port);
+        var (plainStates, plainAll) = await EightPlayerStates(plain, 30);
+        Assert.Equal(30, plainStates.Count);
+        Assert.All(plainAll, m => Assert.Equal(WebSocketMessageType.Text, m.kind));
+        Assert.All(plainStates, s => Assert.True(s.wire.Length >= C.NET_DEFLATE_MIN_BYTES, $"스냅샷 {s.wire.Length}B"));
+        Assert.False(srv.proc.HasExited, "서버 프로세스 살아 있음");
     }
 }

@@ -37,8 +37,10 @@ app.Run(async ctx =>
     if (ctx.WebSockets.IsWebSocketRequest)
     {
         // 스냅샷 압축 (permessage-deflate, 문맥 안 들고 있음 — index.js 와 같음). 작은 메시지는 안 누름 (WsSocket)
+        // ?pack=gzip (고도 PC 클라): 고도 WebSocketPeer 는 permessage-deflate 를 못 써서 큰 메시지를 gzip 바이너리로 (WsSocket). 브라우저는 쿼리 없이 예전 그대로
+        bool packed = ctx.Request.Query["pack"] == "gzip";
         using var ws = await ctx.WebSockets.AcceptWebSocketAsync(new WebSocketAcceptContext { DangerousEnableCompression = true, DisableServerContextTakeover = true });
-        await Serve(ws);
+        await Serve(ws, packed);
         return;
     }
     // 잘못된 % 인코딩 주소는 400 (JS decodeURIComponent 처럼 엄격하게, Kestrel 이 풀기 전 주소로)
@@ -57,9 +59,9 @@ app.Run(async ctx =>
     await ctx.Response.SendFileAsync(send);
 });
 
-async Task Serve(WebSocket ws)
+async Task Serve(WebSocket ws, bool packed)
 {
-    var sock = new WsSocket(ws);
+    var sock = new WsSocket(ws, packed);
     var ready = new TaskCompletionSource<Conn>();
     inbox.Enqueue(() => ready.SetResult(rooms.Connect(sock)));
     var conn = await ready.Task;
