@@ -38,7 +38,12 @@
 
 ## 웹
 
-WEB_RESULT
+웹 내보내기 (`build/web`, 직접 빌드 템플릿 아님 — 설치된 `web_nothreads_release.zip`) 를 크로미움 + Playwright (`tools/web_soak.cjs`) 로 열어 JS 서버에 붙임. 자동 조종 방장 + 봇 3.
+
+- Opts 쿼리 5종 (기본 · `?old-gait=1` · `?no-ext=1` · `?ext=1` · `?no-tex-prefetch=1&no-entry-split=1&no-prewarm-sched=1`) 각 45초: **전부 방 들어옴 · 콘솔 에러 없음**. 남는 건 `NotAllowedError: user gesture required to request Pointer Lock` 한 줄 (자동 조종이 마우스 잠금을 부르는데 자동화 브라우저에는 사용자 클릭이 없음 — 시험 환경 한정, 판마다 1번).
+- `?ext=1` (외부 모델 + `TexPre`·`load_threaded_request`) 도 에러 없이 들어와 판이 돎 → 스레드 없는 wasm 에서 `load_threaded_request` 폴백은 문제 없음 (고도가 그 자리에서 읽음). 단 화면 모습·프레임 시간은 소프트웨어 GL 이라 못 봄.
+- 5분 연속 (자동 조종, 3판 끝남): JS 힙 17 → 26 MB (완만), DOM 노드 53 고정, 콘솔 줄 약 1.2줄/초 (자동 조종 로그), 에러 0 (잠금 줄 판마다 1). wasm 선형 메모리는 이 도구로 못 잼 — 재혁 브라우저에서 개발자 도구 메모리 탭으로 확인 필요.
+
 
 ## 고친 것과 회귀 테스트 (`tests/test_w50.gd`, 전체 421)
 
