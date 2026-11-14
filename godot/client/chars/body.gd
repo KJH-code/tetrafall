@@ -699,6 +699,19 @@ static func _autoload(name: String):
 # 처음 부를 때 이 몸의 재질 중 외곽선을 가진 것을 모아 (나눠 쓰는 재질은 건드리지 않음) 가까울 땐 굵기가 거리로 줄어드는 사본 (G3.far_outline) 으로 바꿔 둠
 const OUTLINE_SHADER := "res://shaders/outline.gdshader"
 static var _ol_owner := {} # 재질 id → 몸 id (먼저 모은 몸이 주인)
+const OL_OWNER_MAX := 1024
+
+
+# W50: 몸을 만들고 지울 때마다 재질 id 가 쌓이기만 하던 것 — 한계를 넘으면 사라진 재질의 기록을 버림
+static func prune_ol_owner() -> int:
+	if _ol_owner.size() <= OL_OWNER_MAX:
+		return 0
+	var n := 0
+	for k in _ol_owner.keys():
+		if instance_from_id(int(k)) == null:
+			_ol_owner.erase(k)
+			n += 1
+	return n
 var _ol: Array = [] # [[재질, 가까울 때 외곽선]]
 var _ol_built := false
 var _ol_far := false
@@ -805,6 +818,7 @@ func _collect_outline() -> void:
 			if _ol_owner.has(m.get_instance_id()) and _ol_owner[m.get_instance_id()] != me and instance_from_id(int(_ol_owner[m.get_instance_id()])) != null:
 				continue # 다른 몸과 나눠 쓰는 재질
 			_ol_owner[m.get_instance_id()] = me
+			prune_ol_owner()
 			var far_o: Material = G3.far_outline(np)
 			_ol.append([m, far_o])
 			if G3.outline_on:

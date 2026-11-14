@@ -40,3 +40,17 @@ func test_sched_finished_capped() -> void:
 		s.step(1000.0 + i * 20.0, 16.0)
 	check(s.finished.size() <= PSched.Sched.FINISHED_MAX, "끝난 기록 상한 %d" % s.finished.size())
 	check(s.pending() == 0, "다 끝남")
+
+
+func test_outline_owner_pruned() -> void:
+	var Body := preload("res://chars/body.gd")
+	Body._ol_owner.clear()
+	for i in 1500: # 이미 없어진 재질 id (몸을 지우고 난 뒤)
+		var o := Object.new()
+		Body._ol_owner[o.get_instance_id()] = 1
+		o.free()
+	var live := Material.new()
+	Body._ol_owner[live.get_instance_id()] = 1
+	var n := Body.prune_ol_owner()
+	check(n == 1500 and Body._ol_owner.size() == 1, "사라진 재질 기록을 버림 %d 남음 %d" % [n, Body._ol_owner.size()])
+	Body._ol_owner.clear()
