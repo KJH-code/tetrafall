@@ -20,6 +20,11 @@ func _process(_d: float) -> bool:
 	frames += 1
 	if frames == 2:
 		root.get_node("View").apply_ui_scale()
+	if frames == 58: # main 이 켜진 뒤 한 번 더 (UI 배율 설정이 main 시작에 덮이지 않게)
+		var v2 = root.get_node("View")
+		var a2 := OS.get_cmdline_user_args()
+		v2.settings["uiScale"] = a2[1] if a2.size() > 1 and a2[1] == "auto" else (float(a2[1]) if a2.size() > 1 else "auto")
+		v2.apply_ui_scale()
 	if frames == 60:
 		st = _find(root)
 		st.visible = true
