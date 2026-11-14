@@ -3,6 +3,7 @@
 extends RefCounted
 
 const U := preload("res://ui/ui_calc.gd")
+const Awards := preload("res://ui/awards_calc.gd")
 
 var errors: Array = []
 var fx: Dictionary = {}
@@ -166,3 +167,153 @@ func test_char_select() -> void:
 func test_leave() -> void:
 	for l in fx.get("leave", []):
 		expect(U.leave_needs_confirm(l[0], l[1], l[2]), l[3], "leave_needs_confirm%s" % str(l.slice(0, 3)))
+
+
+# ---------- 판 끝 칭호 (고도 판 전용, ui/awards_calc.gd) ----------
+
+# 서버 이벤트 모양 그대로 (JSON 이라 id 는 float, 자멸이면 killer null)
+static func _kill(killer, victim, cause: String) -> Dictionary:
+	return {"type": "kill", "killer": killer, "victim": victim, "cause": cause}
+
+
+# 결과 스냅샷에서 칭호가 읽는 부분만: rows = [id, 피해 %, 살았나] (이름 P<id>), winner = 승자 id (없으면 null)
+static func _award_state(rows: Array, winner = null) -> Dictionary:
+	var ps: Array = []
+	for r in rows:
+		ps.append({"id": float(r[0]), "name": "P%d" % int(r[0]), "nick": "", "damage": float(r[1]), "alive": r[2]})
+	return {"players": ps, "round": {"n": 1.0, "winnerId": winner, "winnerIds": [] if winner == null else [winner]}}
+
+
+static func _award_feed(t, events: Array) -> void:
+	for e in events:
+		t.feed(e)
+
+
+func test_awards_tally_kills_causes() -> void:
+	var t := Awards.Tally.new()
+	_award_feed(t, [
+		_kill(null, 4.0, "fall"), # 첫 탈락 = 자멸
+		_kill(1.0, 2.0, "fall"), _kill(1.0, 3.0, "crush"), _kill(1.0, 5.0, "fall"),
+		_kill(6.0, 6.0, "lava"), # 자기 자신이 killer 여도 자멸
+		_kill(7.0, 1.0, "hp"),
+	])
+	expect(t.rows[1], {"kills": 3, "fall": 2, "crush": 1, "self": 0, "combo": 0, "counter": 0, "hits": 0}, "1번 킬·낙사·압사")
+	expect(t.rows[7], {"kills": 1, "fall": 0, "crush": 0, "self": 0, "combo": 0, "counter": 0, "hits": 0}, "7번 체력 킬 (낙사·압사 아님)")
+	expect(t.rows[4].self, 1, "4번 자멸")
+	expect(t.rows[6], {"kills": 0, "fall": 0, "crush": 0, "self": 1, "combo": 0, "counter": 0, "hits": 0}, "6번 자멸 (킬 아님)")
+	check(not t.rows.has(2) and not t.rows.has(3) and not t.rows.has(5), "죽기만 한 사람은 줄 없음: %s" % str(t.rows.keys()))
+	check(t.first == 4 and t.first_self, "첫 탈락 4번·자멸: %s %s" % [str(t.first), str(t.first_self)])
+	# 콤보는 가장 긴 것, 카운터·맞은 hit 는 횟수 (ok 거짓은 안 셈). 모르는 이벤트는 흘림
+	var rev: int = t.rev
+	_award_feed(t, [
+		{"type": "combo", "by": 2.0, "target": 3.0, "n": 3.0, "finish": false}, {"type": "combo", "by": 2.0, "target": 3.0, "n": 6.0, "finish": true},
+		{"type": "combo", "by": 2.0, "target": 5.0, "n": 2.0, "finish": false},
+		{"type": "counter", "by": 2.0, "target": 3.0}, {"type": "counter", "by": 2.0, "target": 5.0},
+		{"type": "hit", "by": 2.0, "target": 3.0, "ok": true}, {"type": "hit", "by": 2.0, "target": 3.0, "ok": false}, {"type": "hit", "by": 5.0, "target": 3.0, "ok": true},
+	])
+	expect([t.rows[2].combo, t.rows[2].counter, t.rows[3].hits], [6, 2, 2], "콤보 최대·카운터·맞은 hit")
+	check(t.rev == rev + 7, "센 이벤트마다 rev (ok 거짓 hit 는 안 셈): %d → %d" % [rev, t.rev])
+	t.feed({"type": "land", "by": 2.0})
+	t.feed({"type": "kill", "killer": 1.0, "victim": null, "cause": "fall"})
+	check(t.rev == rev + 7 and t.rows[1].kills == 3, "모르는 이벤트·victim 없는 kill 은 흘림")
+
+
+func test_awards_pick_max3_priority() -> void:
+	# 후보 5개 (해결사 1번 · 콤보 장인 2번 · 받아치기 3번 · 버티기 4번 · 샌드백 5번) → 우선순위 위 3줄만
+	var t := Awards.Tally.new()
+	_award_feed(t, [
+		_kill(1.0, 6.0, "hp"), _kill(1.0, 7.0, "hp"),
+		{"type": "combo", "by": 2.0, "target": 5.0, "n": 7.0, "finish": true},
+		{"type": "counter", "by": 3.0, "target": 5.0}, {"type": "counter", "by": 3.0, "target": 5.0},
+		{"type": "hit", "by": 2.0, "target": 5.0, "ok": true}, {"type": "hit", "by": 2.0, "target": 5.0, "ok": true}, {"type": "hit", "by": 3.0, "target": 5.0, "ok": true},
+	])
+	var st := _award_state([[5, 80, false], [4, 150, true], [3, 30, false], [2, 40, false], [1, 20, true], [6, 0, false], [7, 0, false]], 1.0)
+	expect(Awards.pick(t, st), ["해결사 · P1 2킬", "콤보 장인 · P2 7연타", "받아치기 · P3 카운터 2번"], "위 3줄")
+	check(Awards.MAX_LINES == 3 and Awards.ORDER.size() == 9 and Awards.ORDER.all(func(a): return Awards.TITLES.has(a) and Awards.STAT_TEXT.has(a)), "칭호 표")
+	# 위 칭호가 빠지면 아래 것이 차례로 올라옴: 압사 장인 > 밀어내기 왕 > … > 버티기 > 샌드백 > 발이 미끄러짐
+	var t2 := Awards.Tally.new()
+	_award_feed(t2, [
+		_kill(null, 7.0, "fall"), _kill(3.0, 6.0, "fall"), _kill(3.0, 5.0, "fall"), _kill(2.0, 1.0, "crush"),
+		{"type": "hit", "by": 3.0, "target": 5.0, "ok": true},
+	])
+	var st2 := _award_state([[7, 10, false], [5, 80, false], [4, 150, true], [3, 30, true], [2, 0, true], [1, 20, false], [6, 0, false]], 4.0)
+	expect(Awards.pick(t2, st2), ["해결사 · P3 2킬", "압사 장인 · P2 압사 1킬", "버티기 · P4 피해 150%"], "밀어내기 왕은 이미 해결사인 3번 → 건너뛰고 버티기")
+	st2.players = st2.players.filter(func(p): return int(p.id) != 3 and int(p.id) != 2) # 나간 사람은 후보가 아님
+	expect(Awards.pick(t2, st2), ["버티기 · P4 피해 150%", "샌드백 · P5 1대 맞음", "발이 미끄러짐 · P7 첫 탈락이 자멸"], "아래 3개")
+	# 완벽한 승리: 승자가 피해 0 · 맞은 hit 0 (한 대라도 맞았거나 승자가 아니거나 마스터면 아님)
+	var t3 := Awards.Tally.new()
+	var st3 := _award_state([[1, 0, true], [2, 60, false]], 1.0)
+	expect(Awards.pick(t3, st3), ["완벽한 승리 · P1 피해 0%"], "완벽한 승리")
+	st3.players[0].master = true
+	expect(Awards.pick(t3, st3), [], "마스터는 완벽한 승리 아님")
+	st3.players[0].master = false
+	expect(Awards.pick(t3, _award_state([[1, 0, true], [2, 0, true]])), [], "승자 없음 (무승부)")
+	t3.feed({"type": "hit", "by": 2.0, "target": 1.0, "ok": true})
+	expect(Awards.pick(t3, st3), ["샌드백 · P1 1대 맞음"], "맞은 승자는 완벽한 승리 아님")
+
+
+func test_awards_tie_and_one_per_player() -> void:
+	# 2번·1번이 2킬 동률 → st.players 순서가 앞인 2번이 해결사. 낙사 킬도 동률 → 2번은 이미 받았으니 1번이 밀어내기 왕
+	var t := Awards.Tally.new()
+	_award_feed(t, [_kill(1.0, 5.0, "fall"), _kill(1.0, 6.0, "fall"), _kill(2.0, 7.0, "fall"), _kill(2.0, 8.0, "fall")])
+	var rows := [[2, 0, true], [1, 0, true], [5, 0, false], [6, 0, false], [7, 0, false], [8, 0, false]]
+	expect(Awards.pick(t, _award_state(rows)), ["해결사 · P2 2킬", "밀어내기 왕 · P1 낙사 2킬"], "동률 → 앞 사람, 다음 칭호는 남은 동률자")
+	rows = [[1, 0, true], [2, 0, true], [5, 0, false], [6, 0, false], [7, 0, false], [8, 0, false]]
+	expect(Awards.pick(t, _award_state(rows)), ["해결사 · P1 2킬", "밀어내기 왕 · P2 낙사 2킬"], "순서를 바꾸면 반대로")
+	# 혼자 다 한 사람 (3킬 전부 낙사 · 콤보 6 · 카운터 2) 은 한 줄만 — 나머지 칭호는 2등에게 안 넘어감
+	var t2 := Awards.Tally.new()
+	_award_feed(t2, [
+		_kill(1.0, 5.0, "fall"), _kill(1.0, 6.0, "fall"), _kill(1.0, 7.0, "fall"), _kill(2.0, 8.0, "fall"), _kill(2.0, 1.0, "fall"),
+		{"type": "combo", "by": 1.0, "target": 2.0, "n": 6.0, "finish": true}, {"type": "combo", "by": 2.0, "target": 1.0, "n": 5.0, "finish": true},
+		{"type": "counter", "by": 1.0, "target": 2.0}, {"type": "counter", "by": 1.0, "target": 2.0},
+	])
+	var got := Awards.pick(t2, _award_state(rows))
+	expect(got, ["해결사 · P1 3킬"], "한 사람 한 줄, 2등 (낙사 2킬·콤보 5) 은 '왕'·'장인' 아님")
+	var names := {}
+	for line in got:
+		names[line.split(" · ")[1].split(" ")[0]] = true
+	check(names.size() == got.size(), "같은 사람이 두 줄: %s" % str(got))
+
+
+func test_awards_below_threshold_none() -> void:
+	# 킬 1 · 콤보 2 뿐 (기준: 킬 2 · 콤보 5) → 0줄
+	var t := Awards.Tally.new()
+	_award_feed(t, [_kill(1.0, 2.0, "fall"), {"type": "combo", "by": 1.0, "target": 2.0, "n": 2.0, "finish": false}])
+	var st := _award_state([[1, 40, true], [2, 90, false]], 1.0)
+	expect(Awards.pick(t, st), [], "기준 미달")
+	expect(Awards.pick(Awards.Tally.new(), _award_state([[1, 40, true], [2, 90, false]], 1.0)), [], "이벤트 없음")
+	# 기준 바로 아래·딱 기준 (표 AWARD_MIN 값 그대로)
+	expect(Awards.AWARD_MIN, {"kills": 2, "fall": 2, "crush": 1, "combo": 5, "counter": 2, "endure": 120, "sandbag": 1}, "기준 표")
+	st.players[0].damage = 119.0
+	t.feed({"type": "combo", "by": 1.0, "target": 2.0, "n": 4.0, "finish": false})
+	t.feed({"type": "counter", "by": 1.0, "target": 2.0})
+	expect(Awards.pick(t, st), [], "콤보 4 · 카운터 1 · 피해 119")
+	st.players[0].damage = 120.0
+	expect(Awards.pick(t, st), ["버티기 · P1 피해 120%"], "피해 120 = 기준")
+	st.players[0].alive = false
+	expect(Awards.pick(t, st), [], "죽은 사람은 버티기 아님")
+	t.feed({"type": "combo", "by": 1.0, "target": 2.0, "n": 5.0, "finish": true})
+	expect(Awards.pick(t, st), ["콤보 장인 · P1 5연타"], "콤보 5 = 기준")
+	# 첫 탈락이 남에게 죽은 것이면 '발이 미끄러짐' 없음 (뒤 자멸은 상관없음)
+	var t2 := Awards.Tally.new()
+	_award_feed(t2, [_kill(1.0, 2.0, "hp"), _kill(null, 3.0, "fall")])
+	expect(Awards.pick(t2, _award_state([[1, 0, false], [2, 0, false], [3, 0, false]])), [], "첫 탈락이 자멸 아님")
+
+
+func test_awards_reset_on_new_round() -> void:
+	var t := Awards.Tally.new()
+	t.at_round("ABCD|1")
+	_award_feed(t, [_kill(null, 3.0, "fall"), _kill(1.0, 2.0, "fall"), _kill(1.0, 4.0, "fall"), {"type": "hit", "by": 1.0, "target": 2.0, "ok": true}])
+	var st := _award_state([[1, 0, true], [2, 0, false], [3, 0, false], [4, 0, false]])
+	t.at_round("ABCD|1") # 같은 판이면 그대로
+	check(t.rows[1].kills == 2 and t.first == 3, "같은 판은 안 비움")
+	expect(Awards.pick(t, st).size(), 3, "1판 칭호")
+	var rev: int = t.rev
+	t.at_round("ABCD|2") # 새 판의 첫 이벤트 앞에서 비움
+	check(t.rows.is_empty() and t.first == null and not t.first_self, "새 판이면 비움: %s" % str(t.rows))
+	check(t.rev > rev, "비우면 rev 가 바뀜 (화면이 다시 그림)")
+	expect(Awards.pick(t, st), [], "비운 뒤 칭호 없음")
+	t.feed(_kill(4.0, 1.0, "crush"))
+	check(t.rows.size() == 1 and t.rows[4].crush == 1 and t.first == 1 and not t.first_self, "새 판 집계는 처음부터")
+	t.at_round("WXYZ|2") # 다른 방의 같은 판 번호도 새 판
+	check(t.rows.is_empty(), "방이 바뀌어도 비움")

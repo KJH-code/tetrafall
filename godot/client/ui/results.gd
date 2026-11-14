@@ -1,5 +1,6 @@
 # 판 끝 결과 (JS #results updateResults): 판이 끝나고 RESULTS_HERO_MS 동안만, 오른쪽에 붙은 빛 판 — 승자 초상 (G2 전엔 색 상자) + 승리 글 + 결과 표
 # (이름·캐릭터·승/킬·피해·결과). 승자가 먼저, 그다음 승/킬 순
+# 고도 판 전용: 승리 글 아래 판 끝 칭호 최대 3줄 (awards_calc.gd — 판 동안 Store.game_event 를 세어 뽑음)
 extends PanelContainer
 
 const C := preload("res://core/config.gd")
@@ -7,6 +8,7 @@ const S := preload("res://ui/ui_style.gd")
 const Portrait := preload("res://ui/portrait.gd")
 const U := preload("res://ui/ui_calc.gd")
 const Coords := preload("res://core/coords.gd")
+const Awards := preload("res://ui/awards_calc.gd")
 
 const CAUSE_KO := {"crush": "압사", "fall": "낙사", "lava": "용암", "hp": "체력"}
 const TEAM_KO := {"red": "빨강", "blue": "파랑"}
@@ -18,6 +20,10 @@ var star_who = null # [char, color] — 그려지면 넣음
 var head: Label
 var table: GridContainer
 var key := ""
+# 판 끝 칭호: 판 동안 이벤트를 셈. 판 중에 들어온 (재접속) 사람은 그 전 이벤트가 없어 집계가 모자람 — KillTally 와 같은 한계
+var tally := Awards.Tally.new()
+var awards: Array = [] # 칭호 Label (Awards.MAX_LINES 개, 빈 줄은 숨김)
+var awards_key := ""
 
 
 func _ready() -> void:
@@ -41,11 +47,44 @@ func _ready() -> void:
 	head.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	who.add_child(head)
 	v.add_child(who)
+	for i in Awards.MAX_LINES:
+		var a := S.label("", 16, S.ACCENT)
+		a.visible = false
+		awards.append(a)
+		v.add_child(a)
+	Store.game_event.connect(_on_event)
 	table = GridContainer.new()
 	table.columns = 5
 	table.add_theme_constant_override("h_separation", 18)
 	table.add_theme_constant_override("v_separation", 4)
 	v.add_child(table)
+
+
+# 이벤트는 그 스냅샷의 state 다음에 옴 (store.gd) → Store.state.round.n 이 그 이벤트의 판. 판 (또는 방) 이 바뀌었으면 먼저 비움
+func _on_event(e: Dictionary) -> void:
+	var rnd = Store.state.get("round")
+	tally.at_round("%s|%s" % [str(Store.room.get("code", "")), str(rnd.get("n")) if rnd is Dictionary else ""])
+	tally.feed(e)
+
+
+func _place() -> void:
+	var vp := get_viewport_rect().size
+	position = Vector2(vp.x - size.x - 12, (vp.y - size.y) / 2.0 + 22)
+
+
+# 칭호 줄 채우기. 마지막 킬 이벤트는 판 끝 스냅샷 뒤에 오므로 표 (key) 와 따로, 집계가 바뀌면 (tally.rev) 다시
+func _fill_awards(st: Dictionary, k: String) -> void:
+	var ak := "%s|%d" % [k, tally.rev]
+	if ak == awards_key:
+		return
+	awards_key = ak
+	var lines := Awards.pick(tally, st)
+	for i in awards.size():
+		var a: Label = awards[i]
+		a.visible = i < lines.size()
+		a.text = lines[i] if i < lines.size() else ""
+	reset_size() # 줄이 줄면 판도 줄어듦 (컨테이너 밖 판은 저절로 안 줄어듦)
+	_place()
 
 
 func _color(p: Dictionary) -> Color:
@@ -67,11 +106,11 @@ func refresh(st: Dictionary) -> void:
 	var kills: bool = st.get("mode") == "kills"
 	var hp_on: bool = bool(st.get("hpMode", false)) # 체력전: '피해' 열 → '남은 HP'
 	var k := "%s|%s|%s|%s" % [str(st.round.n), str(ids), JSON.stringify(ps.map(func(p): return [p.id, p.get("wins"), p.get("score"), p.damage, p.get("hp"), p.alive, p.get("cause")])), hp_on]
-	var vp := get_viewport_rect().size
-	position = Vector2(vp.x - size.x - 12, (vp.y - size.y) / 2.0 + 22)
+	_place()
 	if star_who != null and star_img.texture == null:
 		star_img.texture = Portrait.tex(star_who[0], star_who[1], 192)
 	if k == key:
+		_fill_awards(st, k)
 		return
 	key = k
 	title.text = "라운드 %d 결과" % int(st.round.n)
@@ -118,3 +157,4 @@ func refresh(st: Dictionary) -> void:
 		var hv = U.hp_view(p, st) if hp_on else null
 		table.add_child(S.label(("%d" % (int(hv.hp) if p.alive else 0)) if hv != null else "%d%%" % int(p.damage), 15, row_col))
 		table.add_child(S.label("생존" if p.alive else CAUSE_KO.get(str(p.get("cause", "")), "탈락"), 15, row_col))
+	_fill_awards(st, k)
