@@ -4,7 +4,7 @@ using Tetrafall.Core.Js;
 namespace Tetrafall.Core;
 
 // 판별 캐릭터 조정 층 (고도 판 전용, JS 에 없음): 한 판 (Game) 만 캐릭터별 수치를 덮어씀 — 전역 표 (C.*) 는 그대로.
-// Game 에 안 주면 (null) 곱셈 자체가 없어 예전과 비트까지 같음. 밸런스 시뮬레이션 (sim --tune) 이 씀, 방 (Rooms) 은 안 씀.
+// Game 에 안 주면 (null) 곱셈 자체가 없어 예전과 비트까지 같음. 밸런스 시뮬레이션 (sim --tune) 이 쓰고, 서버 방 (Rooms) 은 밸런스 표 (ConfigBalance.cs) 를 이걸로 받음.
 //   kbTaken  받는 넉백 배율 (% 배율 넉백에만 — 고정 넉백 중간 타는 그대로)
 //   kbDealt  주는 넉백 배율 (고정 넉백 중간 타는 그대로 — 광전사 분노와 같은 규칙)
 //   dmgDealt 주는 피해 % 배율 (남을 때릴 때만, 탱크 아머로 버틴 타도)

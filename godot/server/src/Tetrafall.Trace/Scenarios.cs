@@ -25,12 +25,12 @@ public static class Scenarios
         new("각본 6명 블록 마스터 하늘", 6, "master", false, true, false, "stairs", 7008),
     };
 
-    // tools/tutorial-trace.mjs runTutorial 그대로: 캐릭터마다 튜토리얼 자동 조종으로 끝까지
-    public static (int ticks, bool done, List<string?> results) RunTutorial(string ch, Action<int, List<string>, string> onLine, int maxTicks = int.MaxValue)
+    // tools/tutorial-trace.mjs runTutorial 그대로: 캐릭터마다 튜토리얼 자동 조종으로 끝까지 (tune: 고도 판 전용 — 방 밸런스 표로도 끝까지 가는지 볼 때)
+    public static (int ticks, bool done, List<string?> results) RunTutorial(string ch, Action<int, List<string>, string> onLine, int maxTicks = int.MaxValue, Tune? tune = null)
     {
         double TICK = 1000 / C.TICK_RATE;
         var logs = new List<string>();
-        var g = new Game(line => logs.Add(line), characters: true, skyStairs: false, countdownMs: 0);
+        var g = new Game(line => logs.Add(line), characters: true, skyStairs: false, countdownMs: 0, tune: tune);
         g.rng = new Mulberry32((uint)(8000 + Array.IndexOf(C.CHARACTERS, ch))).AsFunc();
         g.AddPlayer(1);
         g.SetChar(1, ch);

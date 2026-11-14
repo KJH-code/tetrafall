@@ -26,10 +26,21 @@ public sealed class SimOptions
     public Dictionary<string, double>? hpMult; // --hp-mult (체력전 캐릭터 배율을 이 판들만 — 전역 C.HP_CHAR_MULT 는 안 고치고 GameTune 이 Tune.hpMult 로)
     public bool events; // --events on (돌발 이벤트 — 고도 판 전용, tools/sim.js 에 없음)
     public Tune? tune; // --tune (판별 캐릭터 조정 Tune.cs — 고도 판 전용, tools/sim.js 에 없음)
+    public bool balance; // --balance on (방 밸런스 표 ConfigBalance.cs 로 — 고도 판 전용, 기본 off)
 
-    // 판에 넘길 조정: --tune + --hp-mult (Tune.hpMult 로 합침, 같은 캐릭터가 둘 다에 있으면 --tune 의 hpMult 가 이김). 둘 다 없으면 null → 예전과 같은 판
+    // --balance on 이면 방 밸런스 표 위에 --tune 을 덮음 (같은 캐릭터·키면 --tune 이 이김). 끄면 --tune 그대로
+    Tune? BaseTune()
+    {
+        if (!balance) return tune;
+        var t = C.BalanceTune();
+        if (tune != null) foreach (var key in Tune.KEYS) foreach (var (c, x) in tune.Table(key)!) t.Set(c, key, x);
+        return t;
+    }
+
+    // 판에 넘길 조정: (--balance 표 + --tune) + --hp-mult (Tune.hpMult 로 합침, 같은 캐릭터가 둘 다에 있으면 --tune 의 hpMult 가 이김). 다 없으면 null → 예전과 같은 판
     public Tune? GameTune()
     {
+        var tune = BaseTune();
         if (hpMult == null) return tune;
         var t = tune?.Clone() ?? new Tune();
         foreach (var (c, x) in hpMult) if (tune?.HpMult(c) == null) t.Set(c, "hpMult", x);
@@ -56,6 +67,7 @@ public sealed class SimOptions
         }
         if (events) o.P("events", true); // 켰을 때만 (끄면 summary.json 이 예전과 같게)
         if (tune != null) tune.Write(o.Key("tune")); // --tune 을 줬을 때만
+        if (balance) o.P("balance", true); // 켰을 때만 (끄면 summary.json 이 예전과 같게)
         o.EndObj();
     }
 }
@@ -124,6 +136,7 @@ public static class BotSim
                 case "--hp-mult": o.hpMult = ParseHpMult(V()); break;
                 case "--events": o.events = V() == "on"; break;
                 case "--tune": o.tune = Tune.Parse(V()); break;
+                case "--balance": o.balance = V() == "on"; break;
                 default: throw new ArgumentException($"모르는 옵션 {a}");
             }
         }

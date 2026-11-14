@@ -91,6 +91,7 @@ public sealed class Rooms
     readonly double countdownMs;
     readonly Func<double> now;
     readonly Func<string> newToken;
+    readonly Tune? tune; // 방 밸런스 표 (ConfigBalance.cs). null 이면 표 없음 — 판마다 Clone 해서 넘김
     readonly OrderedMap<string, Room> rooms = new(); // code → room
     public readonly List<Conn> conns = new(); // JS Set (넣은 순서)
     int nextId = 1; // 플레이어 id 는 방이 달라도 겹치지 않게 서버 전체에서 셈
@@ -107,8 +108,9 @@ public sealed class Rooms
     static double MaxPlayers() => Math.Min(C.MAX_PLAYERS, 8); // shared/config.js SPAWN_POINTS 8곳
 
     // openLog(code) → 방마다 로그 (서버는 파일, 테스트는 목록), serverLog: 방 밖 일, now(): 메시지 빈도 제한용 시계 (ms),
-    // newToken(): 자리 토큰 (기본 RECONNECT_TOKEN_BYTES 바이트 난수의 16진수, 테스트는 정해진 값)
-    public Rooms(Func<string, IRoomLog>? openLog = null, Action<string>? serverLog = null, Func<double>? rng = null, double countdownMs = 0, Func<double>? now = null, Func<string>? newToken = null)
+    // newToken(): 자리 토큰 (기본 RECONNECT_TOKEN_BYTES 바이트 난수의 16진수, 테스트는 정해진 값),
+    // tune: 방 밸런스 표 (서버는 C.BalanceTune(), 안 주면 표 없는 예전 판 — 테스트·LoadBench)
+    public Rooms(Func<string, IRoomLog>? openLog = null, Action<string>? serverLog = null, Func<double>? rng = null, double countdownMs = 0, Func<double>? now = null, Func<string>? newToken = null, Tune? tune = null)
     {
         this.openLog = openLog ?? (_ => new NullLog());
         this.serverLog = serverLog ?? (_ => { });
@@ -117,6 +119,7 @@ public sealed class Rooms
         var sw = System.Diagnostics.Stopwatch.StartNew();
         this.now = now ?? (() => sw.Elapsed.TotalMilliseconds);
         this.newToken = newToken ?? (() => Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes((int)C.RECONNECT_TOKEN_BYTES)).ToLowerInvariant());
+        this.tune = tune;
     }
 
     sealed class NullLog : IRoomLog
@@ -358,7 +361,7 @@ public sealed class Rooms
         var name = CleanText(rawName, C.ROOM_NAME_MAX_LEN);
         if (name == "") name = nick != "" ? $"{nick}의 방" : $"방 {code}";
         var @out = openLog(code);
-        var game = new Game(m => @out.Log(m), characters: true, skyStairs: C.SKY_STAIRS_DEFAULT, countdownMs: countdownMs);
+        var game = new Game(m => @out.Log(m), characters: true, skyStairs: C.SKY_STAIRS_DEFAULT, countdownMs: countdownMs, tune: tune?.Clone());
         game.SetMap(C.MAP_DEFAULT);
         var room = new Room { code = code, name = name, game = game, @out = @out };
         rooms.Set(code, room);
@@ -376,7 +379,7 @@ public sealed class Rooms
         var code = NewCode();
         var nick = CleanText(rawNick, C.NAME_MAX_LEN);
         var kind = tutorial ? "튜토리얼" : "연습";
-        var game = new Game(_ => { }, characters: true, skyStairs: false, countdownMs: 0); // 연습 판은 로그·stats 에서 뺌
+        var game = new Game(_ => { }, characters: true, skyStairs: false, countdownMs: 0, tune: tune?.Clone()); // 연습 판은 로그·stats 에서 뺌
         var room = new Room { code = code, name = nick != "" ? $"{nick}의 {kind}" : $"{kind} {code}", practice = true, tutorial = tutorial, game = game, @out = new NullLog() };
         rooms.Set(code, room);
         serverLog($"방 {code} 만듦: {kind} (방 {rooms.Count}개)");
