@@ -874,6 +874,8 @@ class Ext extends Node3D:
 	var last_layer := {} # 뼈 이름 → Quaternion (지난 프레임 클립 층 결과, 클립이 바뀔 때 크로스페이드 시작점)
 	var fade_from := {}
 	var fade_t := 1.0
+	var fade_peak := 0.0 # W52 마지막 페이드 시작 때 가장 큰 뼈 자세 차이 (도, 확인용)
+	var fade_ref := {} # W52 페이드 안 뼈마다 지난 프레임에 쓴 목표 사원수 (슬러프 호가 안 뒤집히게, Motion_.slerp_cont)
 	var clip_dirty := false # 클립 층이 풀어 둔 뼈를 쉬는 자세로 되돌려야 함
 	var forced := {} # 확인용 (tools/clip_shot.gd): {clip, t, air} 를 강제
 	var clip_info := {} # 확인용: 마지막 프레임 {clip, cw, dy}
@@ -1337,10 +1339,12 @@ class Ext extends Node3D:
 		if restart:
 			fade_from = last_layer.duplicate()
 			fade_t = 0.0
+			fade_ref.clear()
 			fade_len = K_.EXT_CLIP_FADE_S
 		if ckey != cur_clip:
 			fade_from = last_layer.duplicate() if cw > 0.05 else {}
 			fade_t = 0.0 if not fade_from.is_empty() else 1.0
+			fade_ref.clear()
 			fade_len = K_.EXT_DIR_FADE_S if (cur_clip.trim_suffix("~r") == name) else Clips_.fade_s(cur_kind, str(use.get("kind", "")))
 			cur_clip = ckey
 			cur_kind = str(use.get("kind", ""))
@@ -1355,16 +1359,27 @@ class Ext extends Node3D:
 			if cw > 0.05 and str(use.get("kind", "")) == "loco":
 				fade_from = last_layer.duplicate()
 				fade_t = 0.0
+				fade_ref.clear()
 				fade_len = K_.EXT_DIR_FADE_S
 		gait_blend = minf(1.0, gait_blend + dt / K_.EXT_DIR_FADE_S)
-		fade_t = minf(1.0, fade_t + dt / fade_len)
 		var data: Dictionary = clipset[name]
 		var an: Animation = data.anim
 		var tt := float(use.get("t", 0.0))
 		if use.get("norm", false):
 			tt *= float(data.len)
 		tt = fposmod(tt, float(data.len)) if use.get("loop", false) else clampf(tt, 0.0, float(data.len))
+		# W52 이음 자세 차이가 크면 (닌자 표창 → 대시 오른팔 172°) 0.1초에 몰려 한 프레임 74~129° 튐 → 시작점과 지금 클립 자세의 가장 큰 뼈 각 (도) 에 비례해 페이드를 늘림 (EXT_FADE_ADAPT_DPS 도/초, 상한 EXT_FADE_ADAPT_MAX_S)
+		if fade_t <= 0.0 and not fade_from.is_empty() and K_.flag("pop_fix"):
+			var mx := 0.0
+			for bn in data.rot:
+				if fade_from.has(bn):
+					var qa: Quaternion = an.rotation_track_interpolate(int(data.rot[bn]), tt)
+					mx = maxf(mx, rad_to_deg((fade_from[bn] as Quaternion).angle_to(qa)))
+			fade_len = Motion_.fade_len_for(fade_len, mx)
+			fade_peak = mx
+		fade_t = minf(1.0, fade_t + dt / fade_len)
 		var ef := fade_t * fade_t * (3.0 - 2.0 * fade_t)
+		var fade_cont := K_.flag("pop_fix") # W52: 크로스페이드 슬러프가 호를 안 뒤집게 (끄면 예전 Quaternion.slerp)
 		var rl: Array = info.rest_local
 		var is_act: bool = str(use.get("kind", "")) == "act" and want > 0.0
 		arm_delta.clear()
@@ -1397,7 +1412,12 @@ class Ext extends Node3D:
 				if absf(ang) > 1e-5:
 					q = mq * Quaternion(Motion_.safe_dir(dq.get_axis(), Vector3.UP), ang * swing_k)
 			if fade_t < 1.0 and fade_from.has(bn):
-				q = (fade_from[bn] as Quaternion).slerp(q, ef)
+				if fade_cont:
+					var sc: Array = Motion_.slerp_cont(fade_from[bn] as Quaternion, q, ef, fade_ref.get(bn, Quaternion(0, 0, 0, 0)))
+					q = sc[0]
+					fade_ref[bn] = sc[1]
+				else:
+					q = (fade_from[bn] as Quaternion).slerp(q, ef)
 			last_layer[bn] = q
 			var base: Quaternion = sk.get_bone_pose_rotation(bi) if mapped.has(bi) else (rl[bi] as Transform3D).basis.get_rotation_quaternion()
 			var fin: Quaternion = base.slerp(q, cw)

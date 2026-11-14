@@ -14,6 +14,13 @@ const SKIN := true
 const RAGDOLL := true
 const RAGDOLL_TIME_MIN := 0.05 # 래그돌 물리 시간 배율 하한 (히트스톱 0 이어도 나눗셈이 안 터지게)
 const RAGDOLL_SLEEP_MS := 350.0 # 모터가 다 센 채로 이만큼 지나면 래그돌 강체를 쉼 (물리 비용 없음, 자세는 figureAnim 그대로). 맞음·경직·낙사면 바로 깸
+const RAGDOLL_FALL_RECOVER_S := 0.3 # W52 낙하 (RAGDOLL_FALL_Z 아래) 가 끝난 뒤 모터가 힘 빠진 값에서 1 로 돌아오는 시간 (초, 0 이면 예전처럼 한 프레임)
+const RAGDOLL_SNAP_DEV_DEG := 30.0 # W52 물리 자세가 목표에서 이 각 (도) 넘게 멀 때만 snap 이 오르는 속도를 제한
+const RAGDOLL_SNAP_RISE_PER_S := 3.0 # W52 위 제한: snap 이 오르는 속도 (/초). 0.6 까지 0.2초
+const RAGDOLL_SLEEP_DEV_DEG := 15.0 # W52 쉬기 전 물리 자세가 목표에서 이 각 (도) 안이어야 (아니면 더 기다림·쉴 때 블렌드)
+const RAGDOLL_SLEEP_WAIT_MS := 700.0 # W52 위 조건이 안 돼도 이만큼 (ms) 더 기다린 뒤엔 쉬면서 블렌드
+const RAGDOLL_SLEEP_BLEND_DPS := 900.0 # W52 쉴 때 블렌드 길이 = 자세 차이 (도) ÷ 이 값 (초)
+const RAGDOLL_SLEEP_BLEND_MAX_S := 0.25 # W52 위 상한
 const RAGDOLL_WAKE_BELOW := 0.95 # 모터가 이보다 약할 때만 깨어 있음 (맞음·경직 회복 끝 무렵 0.95~1 은 물리가 목표와 거의 같아 쉼)
 # 1인칭 팔 SubViewport 다중 샘플 = 판 화면과 같음 (JS viewmodel 은 판과 같은 캔버스 = antialias) → world/world_config.gd msaa_3d (웹·PC·그래픽 낮춤)
 # W7 구운 몸 (assets/models/<캐릭터>.glb, 레포 뿌리 tools/bake-bodies.mjs): 있으면 그 파일로 몸을 만듦 (조립·묶기 없음). false 면 늘 예전 조립 (chars/data/bodies.bin)
@@ -85,6 +92,8 @@ const EXT_ARMOR_BREAK_RAD := 0.5
 # W43 클립 크로스페이드 (초): 클립 바뀔 때 종류 (ext_clips.select 의 kind) 에 따라. 공격 들어갈 때는 칼같이 (EXT_CLIP_FADE_S), 나올 때·서기↔걷기·달리기·착지는 길게 — tools/clip_pops.gd 가 잰 자세 차이 (최대 70~120°) 가 0.1 초에 몰려 튀던 것
 const EXT_RESTART_BACK_S := 0.12 # W44 같은 공격 클립의 시각이 이만큼 (초) 넘게 거꾸로 가면 '다시 시작' → 크로스페이드
 const EXT_RUN_HYS := 0.08 # W44 걷기↔달리기 문턱 (run_from, 속도 비율) 히스테리시스 폭
+const EXT_FADE_ADAPT_DPS := 900.0 # W52 페이드 길이 = 이음 자세 차이 (도) ÷ 이 값 (초) 로 늘림 — 차이 90° 면 0.1초, 172° 면 0.19초. 기본 길이보다 짧아지진 않음
+const EXT_FADE_ADAPT_MAX_S := 0.24 # W52 위 늘림 상한 (공격 타이밍이 너무 밀리지 않게)
 const EXT_FADE_LOCO_S := 0.18 # 서기·걷기·달리기·착지 사이
 const EXT_FADE_ACT_OUT_S := 0.20 # 공격·스킬·도발·승리 끝 → 다른 클립
 const EXT_FADE_LAND_S := 0.14 # 점프·낙하 → 착지
@@ -119,20 +128,20 @@ static func old_gait() -> bool:
 # 이름 → 기본값 (켜짐 = 지금 모습 그대로). 순서·글은 설정 창 개별 토글 표시용 (EXT_MOTION_LABELS).
 # gait_new = 걸음 박자·보폭·옆걸음 이득 새값 (W46, 끄면 `--old-gait` 와 같은 옛값) · dir = 방향 이동 블렌드 (뒤로 걸음 클립 거꾸로·옆걸음 골반 yaw·팔 흔들림 폭, W43)
 # lean = 이동 기울임·방향 전환 비틀림 (W43) · getup = 일어나기 (W43) · weapon = 무기 처짐·흔들림 (W43) · cloth = 천 시뮬 (끄면 천 뼈가 쉬는 자세로 돌아가 멈춤)
-# gaze = 시선·머리 추적 (W40) · land_breath = 착지 숙임·숨쉬기 (W40) · hit_dir = 맞음 방향별 움찔 (W40, 끄면 W38 처럼 뒤로 젖힘만) · vm_arm = 1인칭 팔 클립 구동 (W43)
+# pop_fix = W52 튐 줄이기 (크로스페이드 슬러프 호 고정·래그돌 복귀 블렌드·공격 구간 다리 이음, 끄면 W49 와 같음) · gaze = 시선·머리 추적 (W40) · land_breath = 착지 숙임·숨쉬기 (W40) · hit_dir = 맞음 방향별 움찔 (W40, 끄면 W38 처럼 뒤로 젖힘만) · vm_arm = 1인칭 팔 클립 구동 (W43)
 const EXT_MOTION_FLAGS := {
 	"gait_new": true, "dir": true, "lean": true, "getup": true, "weapon": true,
-	"cloth": true, "gaze": true, "land_breath": true, "hit_dir": true, "vm_arm": true,
+	"cloth": true, "gaze": true, "land_breath": true, "hit_dir": true, "vm_arm": true, "pop_fix": true,
 }
 const EXT_MOTION_LABELS := {
 	"gait_new": "걸음 박자 새값 (끄면 옛값)", "dir": "방향 이동 블렌드 (옆·뒤 걸음)", "lean": "이동 기울임·방향 전환", "getup": "일어나기", "weapon": "무기 처짐",
-	"cloth": "천 시뮬", "gaze": "시선 추적", "land_breath": "착지·숨쉬기", "hit_dir": "맞음 방향별 움찔", "vm_arm": "1인칭 팔 클립 구동",
+	"cloth": "천 시뮬", "gaze": "시선 추적", "land_breath": "착지·숨쉬기", "hit_dir": "맞음 방향별 움찔", "vm_arm": "1인칭 팔 클립 구동", "pop_fix": "튐 줄이기 (이음·복귀)",
 }
 # 프리셋 = 이 표 값의 묶음. new = 지금 그대로, old = v0.1.17 이전 (W46 이전 걸음 + W43 가산 넷 끔, W40 가산·W44 천 수정은 유지), min = 클립 + 코드 자세만 (가산 층 전부 끔)
 const EXT_MOTION_PRESETS := {
-	"new": {"gait_new": true, "dir": true, "lean": true, "getup": true, "weapon": true, "cloth": true, "gaze": true, "land_breath": true, "hit_dir": true, "vm_arm": true},
-	"old": {"gait_new": false, "dir": false, "lean": false, "getup": false, "weapon": false, "cloth": true, "gaze": true, "land_breath": true, "hit_dir": true, "vm_arm": false},
-	"min": {"gait_new": false, "dir": false, "lean": false, "getup": false, "weapon": false, "cloth": false, "gaze": false, "land_breath": false, "hit_dir": false, "vm_arm": false},
+	"new": {"gait_new": true, "dir": true, "lean": true, "getup": true, "weapon": true, "cloth": true, "gaze": true, "land_breath": true, "hit_dir": true, "vm_arm": true, "pop_fix": true},
+	"old": {"gait_new": false, "dir": false, "lean": false, "getup": false, "weapon": false, "cloth": true, "gaze": true, "land_breath": true, "hit_dir": true, "vm_arm": false, "pop_fix": false},
+	"min": {"gait_new": false, "dir": false, "lean": false, "getup": false, "weapon": false, "cloth": false, "gaze": false, "land_breath": false, "hit_dir": false, "vm_arm": false, "pop_fix": false},
 }
 const EXT_MOTION_PRESET_NAMES := {"new": "새 모션 (기본)", "old": "옛 모션 (v0.1.17 이전)", "min": "최소 (코드 자세만)", "custom": "직접 고름"}
 # `--no-w43` = 이 넷 (W43 가산 층 전부). 인자 이름 = `--no-` + 플래그 (밑줄은 -), 예: `--no-gaze` `--no-land-breath` `--no-gait-new` (= `--old-gait`)

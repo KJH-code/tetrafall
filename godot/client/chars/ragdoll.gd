@@ -244,7 +244,13 @@ func capture(b, st: Dictionary, hit, dt: float) -> void:
 	rag.stale = not full
 	rag.root_v = rag.segs[0].tv
 	rag.motor = m.motor
-	rag.snap = m.snap
+	# W52 snap (물리 자세를 목표 자세 쪽으로 끌어오는 비율) 이 0 → 0.5~0.6 으로 한 프레임에 뛰면 (힘 빠졌다 돌아오는 도중 공격·포즈가 시작) 몸이 60° 넘게 튐 →
+	# 물리 자세가 목표에서 RAGDOLL_SNAP_DEV_DEG 넘게 멀 때만 오르는 속도를 제한 (내리는 건 바로)
+	if K.flag("pop_fix") and dt > 0.0 and float(m.snap) > float(rag.get("snap_eff", 0.0)) and not rag.fresh and _pose_dev(rag) > K.RAGDOLL_SNAP_DEV_DEG:
+		rag.snap_eff = move_toward(float(rag.get("snap_eff", 0.0)), float(m.snap), dt * K.RAGDOLL_SNAP_RISE_PER_S)
+	else:
+		rag.snap_eff = float(m.snap)
+	rag.snap = rag.snap_eff
 	# 쉬기: 모터가 다 센 (평소·공격·포즈) 동안은 물리가 목표 자세를 거의 그대로 따라가니 강체를 멈춰 둠 (kinematic, 힘 계산·엔진 걸음 없음).
 	# 맞음·경직·낙사·일어나기 (모터 < 1) 면 깨움 (그 순간 목표 자세로 맞추고), 다 세진 뒤 K.RAGDOLL_SLEEP_MS 지나면 다시 쉼
 	if wake:
@@ -252,7 +258,10 @@ func capture(b, st: Dictionary, hit, dt: float) -> void:
 		if not rag.awake:
 			_set_awake(rag, true)
 	elif rag.awake and now - float(rag.calm_at) > K.RAGDOLL_SLEEP_MS:
-		_set_awake(rag, false)
+		# W52 물리 자세가 목표에서 멀면 (관절 한계에 걸리거나 아직 따라가는 중) 쉬는 순간 한 프레임에 목표로 튐 (재연 중앙값 5~54°, 최대 170°+) →
+		# 목표에 가까워질 때까지 (최대 RAGDOLL_SLEEP_WAIT_MS 더) 깨어 있다가, 그래도 멀면 쉬면서 짧게 블렌드 (_set_awake)
+		if not K.flag("pop_fix") or _pose_dev(rag) < K.RAGDOLL_SLEEP_DEV_DEG or now - float(rag.calm_at) > K.RAGDOLL_SLEEP_MS + K.RAGDOLL_SLEEP_WAIT_MS:
+			_set_awake(rag, false)
 	var mask := GROUND if rag.awake and m.motor < C.RAGDOLL_COLLIDE_BELOW else 0 # 힘이 빠졌을 때만 바닥·블록과 부딪힘
 	if mask != int(rag.mask):
 		rag.mask = mask
@@ -272,6 +281,17 @@ func capture(b, st: Dictionary, hit, dt: float) -> void:
 
 # 깨우기 (강체로, 목표 자세에서 시작) / 쉬기 (움직이지 않는 강체)
 func _set_awake(rag: Dictionary, on: bool) -> void:
+	if not on and rag.awake: # W52 확인용: 쉬는 순간 물리 자세와 목표 (figureAnim) 자세의 가장 큰 조각 각 (도) — 이만큼이 쉬면서 한 번에 튈 수 있음
+		var dev := _pose_dev(rag)
+		rag.sleep_dev = dev
+		if K.flag("pop_fix") and dev > K.RAGDOLL_SLEEP_DEV_DEG:
+			rag.blend_q = []
+			for sg in rag.segs:
+				rag.blend_q.append(sg.wq)
+			rag.blend_t0 = Motion_.now_s()
+			rag.blend_len = clampf(dev / K.RAGDOLL_SLEEP_BLEND_DPS, 0.05, K.RAGDOLL_SLEEP_BLEND_MAX_S)
+	if on:
+		rag.blend_len = 0.0
 	rag.awake = on
 	for sg in rag.segs:
 		PhysicsServer3D.body_set_mode(sg.body, PhysicsServer3D.BODY_MODE_RIGID if on else PhysicsServer3D.BODY_MODE_KINEMATIC)
@@ -290,8 +310,12 @@ func _snap_all(rag: Dictionary) -> void:
 # 물리 자세 → 관절 회전 (부모부터). snap 만큼 목표 자세 쪽으로 섞음
 func apply(b) -> void:
 	var rag = rags.get(b)
-	if rag == null or not rag.awake:
-		return # 쉬는 몸은 figureAnim 자세 그대로
+	if rag == null:
+		return
+	if not rag.awake:
+		if float(rag.get("blend_len", 0.0)) > 0.0:
+			_apply_blend(rag)
+		return # 쉬는 몸은 figureAnim 자세 그대로 (W52: 쉬기 직후 짧은 블렌드 동안만 물리 마지막 자세 → 목표)
 	for sg in rag.segs:
 		var x: Transform3D = PhysicsServer3D.body_get_state(sg.body, PhysicsServer3D.BODY_STATE_TRANSFORM)
 		var wq := x.basis.get_rotation_quaternion()
@@ -304,6 +328,30 @@ func apply(b) -> void:
 		var j: Node3D = sg.joint
 		var pq := glob(j.get_parent() as Node3D).basis.orthonormalized().get_rotation_quaternion()
 		j.quaternion = (pq.inverse() * wq).normalized()
+
+
+# W52 쉰 직후: 쉬던 순간 물리 자세 (blend_q) 에서 지금 목표 자세 (figureAnim, sg.tq) 로 부드럽게 (스무드스텝, blend_len 초)
+func _apply_blend(rag: Dictionary) -> void:
+	var u := (Motion_.now_s() - float(rag.blend_t0)) / maxf(1e-3, float(rag.blend_len))
+	if u >= 1.0:
+		rag.blend_len = 0.0
+		return
+	var ef := u * u * (3.0 - 2.0 * u)
+	var i := 0
+	for sg in rag.segs:
+		var wq: Quaternion = (rag.blend_q[i] as Quaternion).slerp(sg.tq, ef)
+		var j: Node3D = sg.joint
+		var pq := glob(j.get_parent() as Node3D).basis.orthonormalized().get_rotation_quaternion()
+		j.quaternion = (pq.inverse() * wq).normalized()
+		i += 1
+
+
+# 물리 자세 (지난 apply 가 계산한 wq) 와 목표 자세 (tq) 의 가장 큰 조각 각 (도)
+func _pose_dev(rag: Dictionary) -> float:
+	var dev := 0.0
+	for sg in rag.segs:
+		dev = maxf(dev, rad_to_deg((sg.wq as Quaternion).angle_to(sg.tq)))
+	return dev
 
 
 func _physics_process(_delta: float) -> void:
