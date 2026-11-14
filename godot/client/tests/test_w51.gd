@@ -84,3 +84,19 @@ func test_free_mid_build_is_safe() -> void:
 
 func test_default_step_budget() -> void:
 	check(WC.DARK_STEP_MS > 0.0 and WC.DARK_STEP_MS <= 8.0, "조각 시간 8ms 이하")
+
+
+# 입장 첫 바퀴 끝 프레임 나누기 (world.gd): 칸 깔기 → 몸 자세 → 효과·위험 → 나머지, 세 단계가 다 끝나야 판 노드가 보이고 Gate.entered. 끄기 --no-tail-split.
+# World 노드는 트리·스토어가 있어야 돌아서 (test_w41 처럼) 연결을 글자로 확인 — 실제 프레임 수·ms 는 docs/w51/README.md 측정
+func test_tail_split_wiring() -> void:
+	var Gate = load("res://core/entry_gate.gd")
+	check(not Gate.no_split("tail"), "꼬리 나누기 기본 켬")
+	var src := FileAccess.get_file_as_string("res://world/world.gd")
+	check(src.count("Gate.no_split(\"tail\")") >= 3, "꼬리 나누기 끄는 자리 (칸 깔기 뒤·보이기·단계)")
+	check(src.contains("var _tail := 0") and src.contains("_tail = 0\n\t\tentry_frames = 0"), "방 밖이면 단계 0 으로")
+	check(src.contains("_tail >= 2 or Gate.no_split(\"tail\")"), "세 단계가 끝나야 판 노드가 보임")
+	check(src.contains("if not tail_on:\n\t\tGate.entered = true"), "Gate.entered 는 꼬리 끝에서")
+	var order: PackedInt32Array = [src.find("hazard_view.update("), src.find("if tail_on and _tail == 1"), src.find("items_view.update(")]
+	check(order[0] > 0 and order[0] < order[1] and order[1] < order[2], "두번째 단계는 위험 갱신 뒤·아이템 앞")
+	var b := src.find("bodies.update(st, Store.my_id")
+	check(b > 0 and b < src.find("if tail_on and _tail == 0") and src.find("if tail_on and _tail == 0") < src.find("marks.step()"), "첫 단계는 몸 자세 뒤·표식 앞")

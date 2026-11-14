@@ -84,6 +84,7 @@ var _scan_wait := 0
 var _pf_done := {} # 대기실에서 텍스처를 미리 요청한 캐릭터
 var _jobs := {} # 캐릭터 → External.WarmJob (W41)
 var dark = null # 대기실 어두운 무대 (lobby_dark.gd), 대기실 아니면 null
+var _tail := 0 # W51: 입장 첫 바퀴 끝 (칸 깔기 다음) 의 남은 일을 세 프레임에 나눈 단계 — 0 몸 자세 · 1 효과·위험·떨어지는 칸 · 2 나머지 (카메라·1인칭 팔). 방 밖이면 0 으로
 var _entered := false # W42: 입장 쪼개기가 끝남 (처음 한 바퀴 다 돌림) — 그 전엔 판 노드를 숨김 (반쯤 지어진 장면이 안 보이게)
 var entry_frames := 0 # 확인용: 이번 입장에서 일을 미룬 프레임 수
 var vm = null # G2 1인칭 팔·무기 (chars/viewmodel.gd)
@@ -653,7 +654,7 @@ func _process(dt: float) -> void:
 	# 방 밖 (메뉴): 판 노드를 숨김 (크기 안 정한 바닥·절벽 상자가 원점 카메라 앞을 가르던 것). 하늘·빛 (G3Env)·효과는 그대로
 	var live: bool = not st.is_empty() and st.has("field")
 	for n in [scenery, grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, ghost_aim, marks, light_fx, shots, hook_fx, body_fx]:
-		n.visible = live and (_entered or not Gate.on()) and ((n != hazard_view and n != ghost_aim) or n.visible) and (n != scenery or dark == null) # 어두운 무대면 떠 있는 섬·먼 배경 숨김
+		n.visible = live and ((_entered and (_tail >= 2 or Gate.no_split("tail"))) or not Gate.on()) and ((n != hazard_view and n != ghost_aim) or n.visible) and (n != scenery or dark == null) # 어두운 무대면 떠 있는 섬·먼 배경 숨김
 	if not live and vm != null:
 		vm.update(null, false, dt) # 방 밖: 1인칭 팔 끔
 	# 첫 진입 멈춤 줄이기 (render.js prewarmLobby): 메뉴·대기실에서 미리 하기 — W41 부터 프레임 예산 스케줄러 (world/prewarm_sched.gd) 가 조각으로 나눠 돌림.
@@ -664,6 +665,7 @@ func _process(dt: float) -> void:
 		_sched_tick(live, st)
 	if not live:
 		_entered = false
+		_tail = 0
 		entry_frames = 0
 		Gate.entered = true
 		hazard_view.clear() # 판 중에 나가면 위험 경고·전역 위험 빛·물들임이 메뉴에 남던 것 (update 가 더 안 불림)
@@ -764,7 +766,9 @@ func _process(dt: float) -> void:
 	if not _entered and Hitch.on: # W45: 입장 첫 바퀴가 몇 프레임 걸렸나 (미룬 프레임 수) — 입장 쪼개기 전후 비교
 		Hitch.tag("입장 첫 바퀴 끝", "대기 %d프레임" % entry_frames)
 	_entered = true # 입장 한 바퀴 끝 (지형·무대·칸까지 다 지음)
-	Gate.entered = true
+	var tail_on: bool = _tail < 2 and Gate.on() and not Gate.no_split("tail")
+	if not tail_on:
+		Gate.entered = true
 	rig.pre(dt)
 	grid_view.regroup() # W39: 쌓인 칸 먼/가까움 (카메라가 움직였을 때만)
 	var sky_on: bool = rig.sky_blend > 0.5
@@ -778,6 +782,10 @@ func _process(dt: float) -> void:
 		if not is_equal_approx(rch, _shadow_reach):
 			_shadow_reach = rch
 			G3.set_shadow_reach(self, rch)
+	if tail_on and _tail == 0: # W51: 몸 자세 첫 갱신까지만 하고 다음 프레임으로 (몸 자세 ~8ms 에 효과·위험·1인칭 팔 첫 갱신이 더해져 25ms 넘던 것)
+		_tail = 1
+		_entry_wait()
+		return
 	var ph := str(st.get("phase", ""))
 	if ph != last_phase:
 		marks.phase_changed() # 판 시작·끝: 서버가 솟은 땅을 버림
@@ -819,6 +827,10 @@ func _process(dt: float) -> void:
 	Prof.lap("world 떨어지는 칸")
 	hazard_view.update(st, Store.grid, Store.grid_version, me, dt)
 	Prof.lap("world 위험")
+	if tail_on and _tail == 1: # 효과·위험·떨어지는 칸까지 하고 다음 프레임에 나머지 (카메라 자리·이름표·1인칭 팔)
+		_tail = 2
+		_entry_wait()
+		return
 	grid_view.cliff.visible = scenery.theme_id == null and (hazard_view.G3 != null or not hazard_view.visible) # 테마 섬이 있으면 상자 절벽 대신 · 단순 위험 표면은 반투명이라 절벽이 비침 (G3 재질은 깊이로 가림)
 	items_view.update(st, dt, now)
 	Prof.lap("world 아이템")
