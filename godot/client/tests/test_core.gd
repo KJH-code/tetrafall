@@ -93,7 +93,10 @@ func test_keys_match_js() -> void:
 		var got := Keys.wheel_slot(Vector2(row[0], row[1]), C.EMOTE_NAMES.size(), C.EMOTE_PICK_PX)
 		check(got == int(row[2]), "바퀴 (%s, %s) → %d / JS %d" % [row[0], row[1], got, int(row[2])])
 	var binds := Keys.default_binds()
-	check(binds == fx.defaults, "기본 키가 JS 와 같음")
+	var js_binds := binds.duplicate()
+	for g in Keys.GODOT_ONLY:
+		js_binds.erase(g) # 고도 판에만 있는 행동 (W49 motionToggle)
+	check(js_binds == fx.defaults, "기본 키가 JS 와 같음 (고도 전용 행동 제외)")
 	for g in fx.groups:
 		check(Keys.group_label(binds, g[0]) == g[1], "묶음 글자 %s / JS %s" % [Keys.group_label(binds, g[0]), g[1]])
 	var clash := binds.duplicate()

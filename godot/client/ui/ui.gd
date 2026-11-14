@@ -80,7 +80,18 @@ func _ready() -> void:
 	root.add_child(wipe)
 	wipe.covered.connect(func(): _show(target))
 	Net.status_changed.connect(func(t): status.text = t)
+	PlayerInput.ui_action.connect(func(id, pressed): if id == "motionToggle" and pressed: motion_toggle())
 	_show(_screen_now())
+
+
+# W49 판 중 단축키 (기본 F6): 새 모션 ↔ 옛 모션을 바로 바꿔 같은 순간을 눈으로 비교. 새 모션이면 옛 모션으로, 그 밖이면 새 모션으로. 알림 한 줄
+func motion_toggle() -> String:
+	var K := preload("res://chars/chars_config.gd")
+	var pn := K.toggled_preset(View.settings.get("motionFlags"))
+	View.set_setting("motionFlags", K.preset_flags(pn))
+	if hud_extra != null:
+		hud_extra.toast("모션: %s" % str(K.EXT_MOTION_PRESET_NAMES[pn]), "good" if pn == "new" else "")
+	return pn
 
 
 func reduced() -> bool:

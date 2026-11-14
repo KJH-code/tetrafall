@@ -171,6 +171,30 @@ func step(dt: float) -> void:
 		par = Transform3D(glob_b, origin)
 
 
+# W49 천 시뮬을 끌 때: 뼈를 쉬는 회전으로 부드럽게 (지수 14/초) 돌려놓음. 다 돌아오면 true — 이때 사슬 상태를 비워 다시 켜면 처음부터 (쉬는 모양 점) 시작
+func rest_step(dt: float) -> bool:
+	if sk == null:
+		return true
+	var k := 1.0 - exp(-14.0 * clampf(dt, 0.0, 0.1))
+	var done := true
+	for i in bones.size():
+		var rq: Quaternion = (rest_l[i] as Transform3D).basis.get_rotation_quaternion()
+		var cq: Quaternion = sk.get_bone_pose_rotation(bones[i])
+		if cq.dot(rq) < 0.0:
+			cq = Quaternion(-cq.x, -cq.y, -cq.z, -cq.w)
+		var nq: Quaternion = cq.slerp(rq, k)
+		if rad_to_deg(nq.angle_to(rq)) < 0.3:
+			nq = rq
+		else:
+			done = false
+		sk.set_bone_pose_rotation(bones[i], nq)
+		sk.set_bone_pose_position(bones[i], (rest_l[i] as Transform3D).origin)
+	if done:
+		ready = false
+		last_q.clear()
+	return done
+
+
 # 한 서브스텝 (anc = 이 걸음의 앵커, shift = 목표 점을 앵커 따라 옮길 만큼)
 func _verlet(h: float, anc: Vector3, tgt: Array, shift: Vector3, scl: float, W: Transform3D, pg: Transform3D, rel: Transform3D, cols: Array) -> void:
 	var g := Vector3(0, -grav, 0)

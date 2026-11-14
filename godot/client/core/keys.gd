@@ -30,8 +30,12 @@ const ACTIONS := [
 	{"id": "help", "label": "조작법 보기 (누르고 있기)", "def": "KeyH", "group": "기타"},
 	{"id": "practice", "label": "연습 창 열기·닫기 (연습 방) · 점수표 (킬 점수전, 누르고 있기)", "def": "Tab", "group": "기타"},
 	{"id": "perf", "label": "성능 표시 켜기·끄기 (FPS·구간 ms)", "def": "F3", "group": "기타"},
+	{"id": "motionToggle", "label": "모션 새↔옛 즉시 전환 (같은 순간을 눈으로 비교)", "def": "F6", "group": "기타"},
 	{"id": "tutSkip", "label": "튜토리얼 이 단계 넘기기", "def": "KeyN", "group": "기타"},
 ]
+
+# 고도 판에만 있는 행동 (JS 에 없음 — 기본 키 대조 테스트가 뺌): 판 중 새↔옛 모션 전환 (W49)
+const GODOT_ONLY := ["motionToggle"]
 
 const SAVE_PATH := "user://keys.json"
 const SAME := {"ShiftRight": "ShiftLeft", "ControlRight": "ControlLeft", "AltRight": "AltLeft", "MetaRight": "MetaLeft"}

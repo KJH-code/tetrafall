@@ -221,6 +221,10 @@ func _input_blocked(e: InputEvent) -> void:
 			ui_action.emit("perf", true)
 			if get_viewport() != null:
 				get_viewport().set_input_as_handled()
+		elif not typing and "motionToggle" in by_code.get(code, []): # W49: 설정 창이 떠 있어도 (창을 연 채 새↔옛 비교)
+			ui_action.emit("motionToggle", true)
+			if get_viewport() != null:
+				get_viewport().set_input_as_handled()
 
 
 func _notification(what: int) -> void:
@@ -261,7 +265,7 @@ func _act(a: Dictionary) -> void:
 
 
 func press(id: String) -> void:
-	if id in ["help", "view", "practice", "perf", "tutSkip"]:
+	if id in ["help", "view", "practice", "perf", "tutSkip", "motionToggle"]:
 		ui_action.emit(id, true)
 		return
 	if id == "viewL" or id == "viewR":

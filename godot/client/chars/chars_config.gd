@@ -112,12 +112,118 @@ const EXT_GAIT_OLD := {
 
 
 static func old_gait() -> bool:
-	return Opts.args().has("--old-gait")
+	return Opts.args().has("--old-gait") or not flag("gait_new")
+
+
+# ---------- W49 모션 가산 층 플래그 (설정 창 '모션' · 실행 인자 · 테스트가 같은 길) ----------
+# 이름 → 기본값 (켜짐 = 지금 모습 그대로). 순서·글은 설정 창 개별 토글 표시용 (EXT_MOTION_LABELS).
+# gait_new = 걸음 박자·보폭·옆걸음 이득 새값 (W46, 끄면 `--old-gait` 와 같은 옛값) · dir = 방향 이동 블렌드 (뒤로 걸음 클립 거꾸로·옆걸음 골반 yaw·팔 흔들림 폭, W43)
+# lean = 이동 기울임·방향 전환 비틀림 (W43) · getup = 일어나기 (W43) · weapon = 무기 처짐·흔들림 (W43) · cloth = 천 시뮬 (끄면 천 뼈가 쉬는 자세로 돌아가 멈춤)
+# gaze = 시선·머리 추적 (W40) · land_breath = 착지 숙임·숨쉬기 (W40) · hit_dir = 맞음 방향별 움찔 (W40, 끄면 W38 처럼 뒤로 젖힘만) · vm_arm = 1인칭 팔 클립 구동 (W43)
+const EXT_MOTION_FLAGS := {
+	"gait_new": true, "dir": true, "lean": true, "getup": true, "weapon": true,
+	"cloth": true, "gaze": true, "land_breath": true, "hit_dir": true, "vm_arm": true,
+}
+const EXT_MOTION_LABELS := {
+	"gait_new": "걸음 박자 새값 (끄면 옛값)", "dir": "방향 이동 블렌드 (옆·뒤 걸음)", "lean": "이동 기울임·방향 전환", "getup": "일어나기", "weapon": "무기 처짐",
+	"cloth": "천 시뮬", "gaze": "시선 추적", "land_breath": "착지·숨쉬기", "hit_dir": "맞음 방향별 움찔", "vm_arm": "1인칭 팔 클립 구동",
+}
+# 프리셋 = 이 표 값의 묶음. new = 지금 그대로, old = v0.1.17 이전 (W46 이전 걸음 + W43 가산 넷 끔, W40 가산·W44 천 수정은 유지), min = 클립 + 코드 자세만 (가산 층 전부 끔)
+const EXT_MOTION_PRESETS := {
+	"new": {"gait_new": true, "dir": true, "lean": true, "getup": true, "weapon": true, "cloth": true, "gaze": true, "land_breath": true, "hit_dir": true, "vm_arm": true},
+	"old": {"gait_new": false, "dir": false, "lean": false, "getup": false, "weapon": false, "cloth": true, "gaze": true, "land_breath": true, "hit_dir": true, "vm_arm": false},
+	"min": {"gait_new": false, "dir": false, "lean": false, "getup": false, "weapon": false, "cloth": false, "gaze": false, "land_breath": false, "hit_dir": false, "vm_arm": false},
+}
+const EXT_MOTION_PRESET_NAMES := {"new": "새 모션 (기본)", "old": "옛 모션 (v0.1.17 이전)", "min": "최소 (코드 자세만)", "custom": "직접 고름"}
+# `--no-w43` = 이 넷 (W43 가산 층 전부). 인자 이름 = `--no-` + 플래그 (밑줄은 -), 예: `--no-gaze` `--no-land-breath` `--no-gait-new` (= `--old-gait`)
+const EXT_NO_W43 := ["dir", "lean", "getup", "weapon"]
+
+static var _set := {} # 설정 창이 정한 값 (이름 → bool). 비면 기본값
+static var _arg := {} # 인자가 끈 것 (이름 → true), refresh() 가 Opts.args() 에서 읽음 — 인자가 설정보다 우선 (끄는 쪽 합집합)
+static var _arg_ready := false
+
+
+# 설정 값 (View.settings.motionFlags) 을 받음. 모르는 이름은 버리고 빠진 것은 기본값
+static func set_flags(d) -> void:
+	_set = {}
+	if d is Dictionary:
+		for k in EXT_MOTION_FLAGS:
+			if d.has(k):
+				_set[k] = bool(d[k])
+
+
+# 실행 인자 (`--motion old|min`, `--no-w43`, `--no-<플래그>`, `--old-gait`) 를 읽어 끄는 목록을 만듦. 인자가 바뀌는 테스트는 부름
+static func refresh() -> void:
+	_arg = {}
+	var a := Opts.args()
+	if a.has("--no-w43") or OS.get_cmdline_args().has("--no-w43"):
+		for n in EXT_NO_W43:
+			_arg[n] = true
+	var mi := a.find("--motion")
+	if mi >= 0 and mi + 1 < a.size() and EXT_MOTION_PRESETS.has(str(a[mi + 1])):
+		var pr: Dictionary = EXT_MOTION_PRESETS[str(a[mi + 1])]
+		for n in pr:
+			if not bool(pr[n]):
+				_arg[n] = true
+	for n in EXT_MOTION_FLAGS:
+		if a.has("--no-" + str(n).replace("_", "-")):
+			_arg[n] = true
+	if a.has("--old-gait"):
+		_arg["gait_new"] = true
+	_arg_ready = true
+
+
+static func flag(name: String) -> bool:
+	if not _arg_ready:
+		refresh()
+	if _arg.has(name):
+		return false
+	return bool(_set.get(name, EXT_MOTION_FLAGS.get(name, true)))
+
+
+# 실행 인자가 꺼 둔 플래그 이름들 (표 순서) — 설정 창이 '설정보다 우선' 안내를 띄움
+static func arg_off_names() -> Array:
+	if not _arg_ready:
+		refresh()
+	var out := []
+	for n in EXT_MOTION_FLAGS:
+		if _arg.has(n):
+			out.append(n)
+	return out
+
+
+# 설정 값 → 지금 프리셋 이름 ("new"·"old"·"min", 아니면 "custom")
+static func preset_of(d) -> String:
+	for pn in EXT_MOTION_PRESETS:
+		var ok := true
+		for k in EXT_MOTION_FLAGS:
+			var v: bool = bool((d as Dictionary).get(k, EXT_MOTION_FLAGS[k])) if d is Dictionary else bool(EXT_MOTION_FLAGS[k])
+			if v != bool(EXT_MOTION_PRESETS[pn][k]):
+				ok = false
+				break
+		if ok:
+			return str(pn)
+	return "custom"
+
+
+# 프리셋 값 묶음 (복사본)
+static func preset_flags(pn: String) -> Dictionary:
+	return (EXT_MOTION_PRESETS.get(pn, EXT_MOTION_PRESETS["new"]) as Dictionary).duplicate()
+
+
+# 판 중 단축키: 새 모션이면 옛 모션으로, 그 밖 (옛·최소·직접) 이면 새 모션으로
+static func toggled_preset(d) -> String:
+	return "old" if preset_of(d) == "new" else "new"
 
 
 # 클립 걸음 설정 [k, c, 박자] (없으면 null). cc = cfg.clips (read_cfg 가 "char" 를 심어 둠)
 static func stride_of(cc: Dictionary, clip: String):
-	if old_gait():
+	return stride_of_mode(cc, clip, old_gait())
+
+
+# 같은 값을 걸음 모드를 정해서 (old = 옛값) — 설정이 바뀔 때 앞·뒤 모드의 보폭을 섞어 부드럽게 옮기려고
+static func stride_of_mode(cc: Dictionary, clip: String, old: bool):
+	if old:
 		var t: Dictionary = (EXT_GAIT_OLD.stride as Dictionary).get(str(cc.get("char", "")), {})
 		if t.has(clip):
 			return t[clip]

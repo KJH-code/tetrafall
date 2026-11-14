@@ -880,12 +880,18 @@ class Ext extends Node3D:
 	const Cloth_ := preload("res://chars/ext_cloth.gd")
 	var cloths: Array = [] # 천·끈 사슬 (cfg.cloth, ext_cloth.gd) — 판 몸만
 	var cloth_t := 0.0
+	var cloth_rested := false # W49 천 시뮬이 꺼져 천 뼈가 쉬는 자세에 다 돌아옴
 	var gaze_y := 0.0 # W40 시선 (몸 기준 yaw, 라디안, 부드럽게)
 	var gaze_w := 0.0
 	var breath_w := 0.0
 	var extra_t := 0.0
 	# W43 방향 이동·기울임·방향 전환
-	var move_off := OS.get_cmdline_args().has("--no-w43") or OS.get_cmdline_user_args().has("--no-w43") # 실행 인자 --no-w43 으로도 끔 (전후 비용 비교). 확인 도구: W43 이동 가산 (방향·기울임·전환) 끄기 — 전후 비교·비용 재기
+	# W49: W43 가산 켬·끔은 _fl("dir"·"lean"·"getup"·"weapon") = K_.flag — 설정 창·`--no-w43`·`--motion old` 가 같은 길, 판 중에도 다음 프레임부터.
+	# move_off = 이 몸 하나만 W43 넷을 끄는 확인 도구·테스트 스위치 (tools/ext_cost.gd·pose_sheet.gd·test_w43.gd)
+	var move_off := false
+
+	func _fl(name: String) -> bool:
+		return K_.flag(name) and not (move_off and K_.EXT_NO_W43.has(name))
 	var dir_rev := false # 뒤로 걸음 (클립 거꾸로)
 	var dir_y := 0.0 # 골반 yaw (몸 기준, 라디안, 부드럽게)
 	var lean_p := 0.0
@@ -1206,11 +1212,23 @@ class Ext extends Node3D:
 			_hit_flinch(st)
 			_extra_layer(st)
 		if not cloths.is_empty():
-			var now := Motion_.now_s()
-			var cdt := clampf(now - cloth_t, 0.0, 0.1) if cloth_t > 0.0 else 0.0
-			cloth_t = now
-			for cl in cloths:
-				cl.step(cdt)
+			var c_on := K_.flag("cloth") # W49: 꺼지면 천 뼈가 쉬는 자세로 부드럽게 돌아가고 (rest_step) 그 뒤엔 계산 0
+			if c_on or not cloth_rested:
+				var now := Motion_.now_s()
+				var cdt := clampf(now - cloth_t, 0.0, 0.1) if cloth_t > 0.0 else 0.0
+				cloth_t = now
+				if c_on:
+					cloth_rested = false
+					for cl in cloths:
+						cl.step(cdt)
+				else:
+					var all_rest := true
+					for cl in cloths:
+						if not cl.rest_step(cdt):
+							all_rest = false
+					cloth_rested = all_rest
+			else:
+				cloth_t = 0.0 # 쉬는 동안엔 시계를 안 이어 둠 (다시 켤 때 첫 프레임 dt 를 0 으로)
 		_lap("몸 외부 몸 ·움찔·천", t0)
 
 	static func _lap(name: String, t0: int) -> int:
@@ -1315,6 +1333,19 @@ class Ext extends Node3D:
 			fade_len = K_.EXT_DIR_FADE_S if (cur_clip.trim_suffix("~r") == name) else Clips_.fade_s(cur_kind, str(use.get("kind", "")))
 			cur_clip = ckey
 			cur_kind = str(use.get("kind", ""))
+		# W49 걸음 모드 (새·옛 박자) 가 판 중에 바뀌면 걷기·달리기 클립 시각이 갑자기 달라지니 (박자 배율) 짧게 크로스페이드, 보폭 k·c 는 앞·뒤 모드 값을 섞어 옮김
+		var go := K_.old_gait()
+		if not gait_known:
+			gait_known = true
+			gait_old = go
+		elif go != gait_old:
+			gait_old = go
+			gait_blend = 0.0
+			if cw > 0.05 and str(use.get("kind", "")) == "loco":
+				fade_from = last_layer.duplicate()
+				fade_t = 0.0
+				fade_len = K_.EXT_DIR_FADE_S
+		gait_blend = minf(1.0, gait_blend + dt / K_.EXT_DIR_FADE_S)
 		fade_t = minf(1.0, fade_t + dt / fade_len)
 		var data: Dictionary = clipset[name]
 		var an: Animation = data.anim
@@ -1334,12 +1365,13 @@ class Ext extends Node3D:
 		# W43 달릴 때 팔 흔들림 폭: 걷기·달리기 클립의 위팔 회전을 한 바퀴 평균 둘레로 (속도 / 클립 속도) 배
 		var swing_k := 1.0
 		var swing_bones := {}
-		if str(use.get("kind", "")) == "loco" and st != null and not move_off:
+		if str(use.get("kind", "")) == "loco" and st != null and _fl("dir"):
 			swing_k = Motion_.arm_swing_scale(float(st.get("hs", 0.0)), name == str(cc.get("run", "")))
 			for jn in ["shoulder_L", "shoulder_R"]:
 				var sbi: int = int(info.map.get(jn, -1))
 				if sbi >= 0:
 					swing_bones[sbi] = true
+		var vm_on := K_.flag("vm_arm") # W49: 1인칭 팔 클립 구동이 꺼지면 쌍둥이가 읽을 팔 차이를 만들지 않음
 		for bn in data.rot:
 			var bi: int = int(cbones.get(bn, -1))
 			if bi < 0:
@@ -1359,7 +1391,7 @@ class Ext extends Node3D:
 			var base: Quaternion = sk.get_bone_pose_rotation(bi) if mapped.has(bi) else (rl[bi] as Transform3D).basis.get_rotation_quaternion()
 			var fin: Quaternion = base.slerp(q, cw)
 			sk.set_bone_pose_rotation(bi, fin)
-			if is_act and arm_ids.has(bi):
+			if is_act and vm_on and arm_ids.has(bi):
 				arm_delta[bi] = base.inverse() * fin
 		clip_dirty = true
 		var hb: int = int(info.map.get("hips", -1))
@@ -1372,8 +1404,15 @@ class Ext extends Node3D:
 				sk.set_bone_pose_position(hb, hp.lerp(cp, cw))
 			# W34 보폭 늘리기 (발 미끄러짐): 걷기·달리기 클립의 발 앞뒤 움직임을 (골반 기준 한 바퀴 평균 자리 c 둘레로) k 배로 늘려 2본 IK 로 다리를 다시 폄 (cfg.clips.stride {클립: [k, c, 박자 배율]})
 			var sd = K_.stride_of(cc, name)
-			if sd is Array and float(sd[0]) > 1.0 and not bool(use.get("air", false)):
-				_stride_ik(1.0 + (float(sd[0]) - 1.0) * cw, float(sd[1]))
+			var sk_eff := float(sd[0]) if sd is Array else 1.0
+			var sc_eff := float(sd[1]) if sd is Array else 0.0
+			if gait_blend < 1.0: # W49 모드가 바뀐 직후: 앞 모드 값에서 새 값으로
+				var sp = K_.stride_of_mode(cc, name, not gait_old)
+				var gb := gait_blend * gait_blend * (3.0 - 2.0 * gait_blend)
+				sk_eff = lerpf(float(sp[0]) if sp is Array else 1.0, sk_eff, gb)
+				sc_eff = lerpf(float(sp[1]) if sp is Array else sc_eff, sc_eff, gb)
+			if sk_eff > 1.0001 and not bool(use.get("air", false)):
+				_stride_ik(1.0 + (sk_eff - 1.0) * cw, sc_eff)
 			# 발 붙이기: 가장 낮은 발 뼈가 바닥 (쉬는 자세 높이) 에 닿게 골반을 올리거나 내림 (달리기는 통통 뜨는 걸 두려고 파묻힘만 막음)
 			if not bool(use.get("air", false)):
 				dy = _ground_dy(cc, str(use.get("kind", "")) == "loco")
@@ -1390,15 +1429,16 @@ class Ext extends Node3D:
 	var getup_w_last := 0.0
 
 	func _getup_layer(st, dt: float, rag_motor: float) -> void:
-		if move_off:
-			return
-		var now := Motion_.now_s()
-		if getup_t < 0.0 and extra_gap > K_.EXT_GETUP_SPAWN_GAP_S and not Motion_.getup_blocked(st):
+		var on := _fl("getup")
+		if not on and getup_t < 0.0:
+			getup_w_last = 0.0
+			return # 꺼짐: 하던 일어나기는 끝까지 (뼈가 튀지 않게), 새로 시작은 안 함 — 비용 0
+		if on and getup_t < 0.0 and extra_gap > K_.EXT_GETUP_SPAWN_GAP_S and not Motion_.getup_blocked(st):
 			getup_t = 0.0 # 부활·판 시작: 숨었다 나타남
 			getup_amp = K_.EXT_GETUP_SPAWN_AMP
 			getup_peak = 0.0
 		var rec := float(st.get("recover", 0.0))
-		if getup_t < 0.0 and rec > 0.05 and not Motion_.getup_blocked(st):
+		if on and getup_t < 0.0 and rec > 0.05 and not Motion_.getup_blocked(st):
 			getup_t = 0.0
 			getup_peak = rec
 			getup_amp = clampf(rec, 0.5, 1.0) # 가볍게 맞고 선 것 (recover_pow 0.5) 은 약하게, 구르다 선 것 (1) 은 크게
@@ -1450,12 +1490,14 @@ class Ext extends Node3D:
 	var weapon_pitch_last := 0.0 # 확인용: 첫 항목의 지금 pitch (라디안)
 
 	func _weapon_layer(st, dt: float) -> void:
-		if move_off:
+		var on := _fl("weapon")
+		if not on and weapon_w <= 0.0:
+			weapon_st.clear() # 꺼짐: 가중치가 0 으로 내려간 뒤엔 계산 안 함 (다시 켜면 손 위치부터 새로 — 튀는 가속도 없음)
 			return
 		var table: Array = K_.EXT_WEAPON.get(str(body.get("char_id")), [])
 		if table.is_empty():
 			return
-		weapon_w = move_toward(weapon_w, 1.0 if Motion_.weapon_allowed(st) else 0.0, dt * K_.EXT_WEAPON_W_RATE)
+		weapon_w = move_toward(weapon_w, 1.0 if (on and Motion_.weapon_allowed(st)) else 0.0, dt * K_.EXT_WEAPON_W_RATE)
 		var W: Transform3D = Rag_.glob(sk)
 		var sp := clampf(float(st.get("hs", 0.0)) / float(C_.MOVE_SPEED), 0.0, 1.2) if bool(st.get("walking", false)) else 0.0
 		if weapon_st.size() != table.size():
@@ -1532,7 +1574,9 @@ class Ext extends Node3D:
 
 	# W43: 몸 기준 이동 방향으로 '뒤로 걸음' 여부 (히스테리시스) 를 정해 st.rev 에 적음 → ext_clips.select 가 클립을 거꾸로 틂. 걷는 중 (땅·공격 아님) 만.
 	func _dir_update(st) -> void:
-		if move_off:
+		if not _fl("dir"):
+			dir_rev = false
+			dir_psi = 0.0
 			return
 		var mv := Vector2(float(st.get("mvF", 0.0)), float(st.get("mvS", 0.0)))
 		var ok: bool = bool(st.get("walking", false)) and not bool(st.get("air", false)) and st.get("act") == null and mv.length() > K_.EXT_DIR_MIN_SPEED
@@ -1546,19 +1590,25 @@ class Ext extends Node3D:
 		st["rev"] = dir_rev
 
 	var dir_psi := 0.0
+	var gait_known := false # W49 걸음 모드 (K_.old_gait) 가 바뀌는 때를 알아냄
+	var gait_old := false
+	var gait_blend := 1.0 # 바뀐 뒤 0 → 1 (EXT_DIR_FADE_S)
 	var last_tt := -1.0 # W44 지난 프레임 공격 클립 시각 (같은 클립 다시 시작 알아냄)
 	var move_off_restart := OS.get_cmdline_user_args().has("--no-clip-restart") or OS.get_cmdline_user_args().has("--no-run-hys") # 확인용 (모션 QA 전후 비교)
 	var move_off_hys := OS.get_cmdline_user_args().has("--no-run-hys") # 확인용 (모션 QA 전후 비교)
 
 	# W43 이동 가산 층 (extra_layer 에서): ① 골반을 이동 방향으로 돌리고 척추로 되돌림 (옆걸음) ② 속도·가속도 기울임 ③ 방향 전환 비틀림·팔 반동. 클립·코드 위에 뼈 회전만 더함.
 	func _move_layer(st, dt: float) -> void:
-		if move_off:
-			return
+		var on_dir := _fl("dir")
+		var on_lean := _fl("lean")
+		if not on_dir and not on_lean and absf(dir_y) <= 0.002 and absf(lean_p) <= 0.002 and absf(turn_tw) <= 0.002:
+			turn_have = false
+			return # 둘 다 꺼짐 + 남은 기울임이 다 풀림: 비용 0 (켜져 있던 값은 follow 로 부드럽게 0 까지)
 		var walking: bool = bool(st.get("walking", false)) and not bool(st.get("air", false)) and st.get("act") == null
 		var mvv := Vector2(float(st.get("mvF", 0.0)), float(st.get("mvS", 0.0)))
 		var speed := mvv.length()
 		# ① 골반 yaw
-		var target := Motion_.hip_yaw(dir_psi) if (walking and speed > K_.EXT_DIR_MIN_SPEED) else 0.0
+		var target := Motion_.hip_yaw(dir_psi) if (on_dir and walking and speed > K_.EXT_DIR_MIN_SPEED) else 0.0
 		dir_y = Motion_.follow(dir_y, target, dt, K_.EXT_DIR_RATE)
 		if absf(dir_y) > 0.002:
 			var hb: int = int(info.map.get("hips", -1))
@@ -1575,7 +1625,7 @@ class Ext extends Node3D:
 			if wb >= 0 and done < 0.999:
 				_add_rot(wb, Quaternion(Vector3.UP, -dir_y * (1.0 - done)))
 		# ② 기울임
-		var lt := Motion_.lean_pitch(speed, float(st.get("accF", 0.0)), dir_rev, walking) if not bool(st.get("air", false)) else 0.0
+		var lt := Motion_.lean_pitch(speed, float(st.get("accF", 0.0)), dir_rev, walking) if (on_lean and not bool(st.get("air", false))) else 0.0
 		lean_p = Motion_.follow(lean_p, lt, dt, K_.EXT_LEAN_RATE)
 		if absf(lean_p) > 0.002:
 			for e in K_.EXT_LEAN_BONES:
@@ -1585,7 +1635,7 @@ class Ext extends Node3D:
 		# ③ 방향 전환
 		var vw: Vector2 = st.get("vw", Vector2.ZERO)
 		var tt := 0.0
-		if walking and vw.length() > K_.EXT_TURN_MIN_SPEED:
+		if on_lean and walking and vw.length() > K_.EXT_TURN_MIN_SPEED:
 			var ang := atan2(vw.y, vw.x)
 			if turn_have:
 				tt = Motion_.turn_twist(Motion_.wrap_pi(ang - turn_prev) / maxf(dt, 1e-3))
@@ -1628,8 +1678,9 @@ class Ext extends Node3D:
 		var env: float = (1.0 - exp(-age / 0.015)) * exp(-age / K_.EXT_HIT_FLINCH_DECAY_S)
 		var amp: float = clampf(float(hit.get("pow", 1.0)), 0.4, 2.0) * K_.EXT_HIT_FLINCH_RAD * env
 		var back: float = float(react.back) # 뒤로 밀리면 (dx < 0) 윗몸이 뒤로 젖혀짐
-		var side: float = float(react.side)
-		var twist: float = float(react.twist) # W40: 옆에서 맞으면 몸통이 비틀림, 뒤에서 맞으면 앞으로 숙이며 어깨 움츠림 (back 부호가 이미 반대)
+		var hd_on := K_.flag("hit_dir") # W49: 끄면 W38 처럼 뒤로 젖힘만 (옆 기울기·비틂 0)
+		var side: float = float(react.side) if hd_on else 0.0
+		var twist: float = float(react.twist) if hd_on else 0.0 # W40: 옆에서 맞으면 몸통이 비틀림, 뒤에서 맞으면 앞으로 숙이며 어깨 움츠림 (back 부호가 이미 반대)
 		for e in K_.EXT_HIT_FLINCH_BONES:
 			var bi := sk.find_bone(str(e[0]))
 			if bi < 0:
@@ -1717,8 +1768,9 @@ class Ext extends Node3D:
 		_getup_layer(st, dt, rag_motor) # W43: 모터가 돌아오는 동안 손 짚고 일어나기 (힘 빠진 몸 규칙보다 먼저)
 		if rag_motor >= 0.0 and rag_motor < K_.EXT_CLIP_MOTOR_MIN:
 			return # 힘 빠진 몸은 물리가 맡음
-		# --- 시선 ---
-		var allow := Motion_.gaze_allowed(st)
+		# --- 시선 --- (W49: 꺼지면 가중치가 0 으로 내려간 뒤엔 건너뜀)
+		var g_on := K_.flag("gaze")
+		var allow := g_on and Motion_.gaze_allowed(st)
 		gaze_w = move_toward(gaze_w, 1.0 if allow else 0.0, dt * K_.EXT_GAZE_W_RATE)
 		var want := 0.0
 		if allow:
@@ -1738,6 +1790,8 @@ class Ext extends Node3D:
 				want = Motion_.clamp_yaw(float(tg.yaw), K_.EXT_GAZE_MAX_DEG)
 		gaze_y = Motion_.follow(gaze_y, want, dt, K_.EXT_GAZE_RATE)
 		var th: float = gaze_y * gaze_w
+		if not g_on and gaze_w <= 0.0:
+			gaze_y = 0.0
 		if absf(th) > 0.002:
 			for e in K_.EXT_GAZE_BONES:
 				var bi := sk.find_bone(str(e[0]))
@@ -1746,7 +1800,8 @@ class Ext extends Node3D:
 		_move_layer(st, dt) # W43
 		_weapon_layer(st, dt) # W43
 		# --- 숨쉬기 (서 있고 아무것도 안 할 때, 캐릭터마다 박자·위상 다름) ---
-		breath_w = move_toward(breath_w, 1.0 if Motion_.breath_allowed(st) else 0.0, dt * 2.0)
+		var lb_on := K_.flag("land_breath") # W49: 착지·숨쉬기 한 토글
+		breath_w = move_toward(breath_w, 1.0 if (lb_on and Motion_.breath_allowed(st)) else 0.0, dt * 2.0)
 		if breath_w > 0.01:
 			var bv: float = Motion_.breath(float(st.get("t", 0.0)), str(body.get("char_id"))) * breath_w * K_.EXT_BREATH_RAD
 			for e in [["mixamorig_Spine1", 0.5], ["mixamorig_Spine2", 1.0], ["mixamorig_Head", -0.6]]:
@@ -1754,7 +1809,7 @@ class Ext extends Node3D:
 				if bi3 >= 0:
 					_add_rot(bi3, Quaternion(Vector3.BACK, bv * float(e[1])))
 		# --- 착지: 윗몸 숙임 + 무릎 굽힘 (엉덩이를 그만큼 내려 발이 땅에 그대로) ---
-		var la := Motion_.land_amount(st)
+		var la := Motion_.land_amount(st) if lb_on else 0.0
 		if la > 0.02 and not bool(st.get("air", false)):
 			var al: float = K_.EXT_LAND_BEND_RAD * la
 			var fy0 := 0.0
@@ -1800,7 +1855,7 @@ class Ext extends Node3D:
 	# W43 안전한 방식: 손 뼈 차이는 안 받고 어깨·팔꿈치만 캐릭터별 비율 (VM_CLIP_ARM_K) 로 섞은 뒤, 손의 전역 회전이 그대로이도록 손 지역 회전을 되돌림 → 쥔 소총·갈고리·방패 방향이 안 변함
 	# (W40: 손까지 섞으면 소총·갈고리를 쥔 팔이 솟고 왼손이 세로로 섰음). 새 전역 = sh·qs · el·qe · hand′ = sh · el · hand  ⇒  hand′ = qe⁻¹ · el⁻¹ · qs⁻¹ · el · hand
 	func _vm_clip_arms() -> void:
-		if clip_arm_k <= 0.0 or src_ext == null or not is_instance_valid(src_ext):
+		if clip_arm_k <= 0.0 or not K_.flag("vm_arm") or src_ext == null or not is_instance_valid(src_ext):
 			return
 		var kk: Array = K_.VM_CLIP_ARM_K.get(str(body.get("char_id")), [0.0, 0.0])
 		for side in ["R", "L"]:

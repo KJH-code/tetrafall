@@ -20,6 +20,11 @@ static func now_ms() -> float:
 	return float(clock.call()) * 1000.0 if clock.is_valid() else Time.get_ticks_msec() * 1.0
 
 
+# W49 모션 가산 층 켬·끔 (설정 창·실행 인자 → chars_config.gd flag). 꺼진 층은 비용 0 으로 건너뜀
+static func flag(name: String) -> bool:
+	return K.flag(name)
+
+
 # 영벡터 가드: 점이 겹치면 normalized() 가 "cannot be normalized"·Quaternion(a, b) 가 "must be normalized" 를 프레임마다 찍음 (재연 20MB 로그, 로그 출력 자체가 CPU 비용).
 # 길이 제곱이 SAFE_EPS2 보다 작으면 fallback (직전·쉬는 방향) 을 돌려줌. 정상일 땐 v.normalized() 와 같은 값
 const SAFE_EPS2 := 1e-8
