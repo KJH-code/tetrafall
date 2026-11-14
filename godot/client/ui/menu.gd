@@ -7,6 +7,8 @@ const S := preload("res://ui/ui_style.gd")
 const Prefs := preload("res://ui/ui_prefs.gd")
 const U := preload("res://ui/ui_calc.gd")
 
+const OFFLINE_TEXT := "서버에 연결되지 않았습니다 — 다시 연결 중" # 연결 없이 눌렀을 때 (보내도 아무 일도 안 일어남)
+
 signal open_settings
 signal open_tutorial
 
@@ -80,9 +82,9 @@ func _ready() -> void:
 	var cline := HBoxContainer.new()
 	room_name = S.line_edit("방 이름 (비우면 '내 이름의 방')", 20, int(C.ROOM_NAME_MAX_LEN))
 	room_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	room_name.text_submitted.connect(func(_t): _create())
+	room_name.text_submitted.connect(func(_t): _online_do(_create))
 	cline.add_child(room_name)
-	create_btn = S.button("만들기", _create, "go", 20)
+	create_btn = S.button("만들기", func(): _online_do(_create), "go", 20)
 	cline.add_child(create_btn)
 	create.add_child(cline)
 	create.add_child(_note("처음엔 비공개 — 코드·링크를 아는 사람만 (대기실에서 '공개로')"))
@@ -95,9 +97,9 @@ func _ready() -> void:
 	room_code = S.line_edit("ABCD", 26, int(C.ROOM_CODE_LEN))
 	room_code.custom_minimum_size.x = 150
 	room_code.alignment = HORIZONTAL_ALIGNMENT_CENTER
-	room_code.text_submitted.connect(func(_t): _join(room_code.text))
+	room_code.text_submitted.connect(func(_t): _online_do(func(): _join(room_code.text)))
 	kline.add_child(room_code)
-	kline.add_child(S.button("들어가기", func(): _join(room_code.text), "go", 20))
+	kline.add_child(S.button("들어가기", func(): _online_do(func(): _join(room_code.text)), "go", 20))
 	code.add_child(kline)
 	code.add_child(_note("친구에게 받은 방 코드"))
 	_item(col, "code", "코드로 들어가기", code)
@@ -119,7 +121,7 @@ func _ready() -> void:
 	# 연습·튜토리얼·설정
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
-	for it in [["연습", _practice], ["튜토리얼", func(): open_tutorial.emit()], ["설정", func(): open_settings.emit()]]:
+	for it in [["연습", func(): _online_do(_practice)], ["튜토리얼", func(): _online_do(func(): open_tutorial.emit())], ["설정", func(): open_settings.emit()]]:
 		var b := S.button(it[0], it[1], "big", 24)
 		b.custom_minimum_size.y = 50
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -172,6 +174,17 @@ func open(which) -> void:
 
 func _nick() -> String:
 	return nick.text.strip_edges()
+
+
+# 버튼·Enter 가 지나는 문: 서버에 붙어 있을 때만 action. 아니면 (끊김·다시 붙는 중·포기) 글로 알리고 다시 붙어 봄 —
+# 만들기가 걸어 둔 한 번짜리 연결도 걷음 (나중에 다른 길로 들어간 방에 옵션을 보내지 않게)
+func _online_do(action: Callable) -> void:
+	if Net.is_open():
+		action.call()
+		return
+	_forget_create()
+	msg.text = OFFLINE_TEXT
+	Net.retry()
 
 
 func _create() -> void:
@@ -235,7 +248,7 @@ func _render_list() -> void:
 		row.add_child(info)
 		var is_full: bool = float(r.humans) + float(r.get("bots", 0)) >= float(r.max)
 		var code_s := str(r.code)
-		var b := S.button("꽉 참" if is_full else "들어가기", func(): _join(code_s), "go", 16)
+		var b := S.button("꽉 참" if is_full else "들어가기", func(): _online_do(func(): _join(code_s)), "go", 16)
 		b.disabled = is_full
 		row.add_child(b)
 		list_box.add_child(row)

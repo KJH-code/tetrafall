@@ -34,6 +34,7 @@ var _players_by_id := {}
 func _ready() -> void:
 	Net.message.connect(_on_message)
 	Net.opened.connect(_on_opened)
+	Net.gave_up.connect(_on_gave_up)
 
 
 # ---------- 보내기 (방 밖·방 안 메시지, rooms.js 와 같은 모양) ----------
@@ -50,6 +51,11 @@ func join(code: String) -> void:
 func leave() -> void:
 	if not room.is_empty():
 		Seat.drop(str(room.code))
+	if not Net.is_open(): # 끊긴 채면 보낼 수도 없고 서버의 left 도 안 옴 → 여기서 바로 방 밖으로 (다시 붙어도 그 방으로 안 돌아감)
+		pending_code = ""
+		if in_room():
+			_clear_room("")
+		return
 	Net.send({"type": "leave"})
 
 
@@ -107,6 +113,33 @@ func _on_opened(reconnect: bool) -> void:
 		join(pending_code)
 
 
+# 다시 붙기를 포기함 (Net.gave_up): 방 안이면 방을 비우고 메뉴로, 이유는 지금 상태 글
+func _on_gave_up() -> void:
+	if in_room():
+		pending_code = ""
+		_clear_room(Net.status)
+
+
+# 들어가기 거절 (joinError) 처리: 방 안에서 받았으면 다시 붙은 뒤 그 방으로 못 돌아간 것 (서버가 다시 켜졌거나 방이 사라짐) → 'left' (방을 비우고 메뉴로),
+# 방 밖이면 'error' (메뉴 글만)
+static func join_error_action(in_room_now: bool) -> String:
+	return "left" if in_room_now else "error"
+
+
+# 방 밖으로: 방·스냅샷·보간 기록을 비우고 left_room(reason). keep_seat 면 자리 토큰은 둠 (다른 창이 내 자리를 가져간 경우)
+func _clear_room(reason: String, keep_seat := false) -> void:
+	if not room.is_empty() and not keep_seat:
+		Seat.drop(str(room.code))
+	my_id = null
+	room = {}
+	state = {}
+	prev_state = {}
+	tracks.clear()
+	_players_by_id.clear()
+	clock.reset()
+	left_room.emit(reason)
+
+
 func _on_message(m: Dictionary) -> void:
 	match str(m.get("type", "")):
 		"rooms":
@@ -117,7 +150,10 @@ func _on_message(m: Dictionary) -> void:
 			Net.send({"type": "join", "code": m.code})
 		"joinError":
 			pending_code = ""
-			join_error.emit(str(m.get("reason", "")))
+			if join_error_action(in_room()) == "left":
+				_clear_room("방이 없어졌습니다 — " + str(m.get("reason", "")))
+			else:
+				join_error.emit(str(m.get("reason", "")))
 		"welcome":
 			my_id = int(m.id)
 			room = m.room
@@ -125,16 +161,7 @@ func _on_message(m: Dictionary) -> void:
 			Seat.save(str(room.code), str(m.get("token", "")))
 			joined.emit(room, bool(m.get("rejoined", false)))
 		"left":
-			if not room.is_empty() and not m.get("replaced", false):
-				Seat.drop(str(room.code))
-			my_id = null
-			room = {}
-			state = {}
-			prev_state = {}
-			tracks.clear()
-			_players_by_id.clear()
-			clock.reset()
-			left_room.emit(str(m.get("reason", "")))
+			_clear_room(str(m.get("reason", "")), bool(m.get("replaced", false)))
 		"state":
 			if my_id == null:
 				return # 방을 나간 직후 남은 스냅샷

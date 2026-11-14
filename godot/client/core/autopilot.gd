@@ -11,6 +11,7 @@
 #   --color <팔레트 번호> (host·guest, 받아짐/거절 로그) · 방장이 나가 넘겨받으면 로그 + 판 시작도 맡음 ·
 #   --shot-round <N> (N판째 시작 뒤 --shot-after 초에 찍음) · --char2 <id> --char2-at <초> (연습: 판 중 캐릭터 바꾸기) · --tut-skip <초> (튜토리얼: 한 단계에 이만큼 머물면 넘기기 → 끝까지)
 # 돌발 이벤트: --events [on] (방장이 대기실 옵션 '돌발 이벤트' 를 켬 — 블록 폭우·돌풍·보급)
+# 죽은 방 탈출 (tools/e2e_net.sh): 방 밖으로 나가지면 '방 밖: 이유' 로그, --expect-left 면 이유 있는 left_room 을 받아야 성공. 접속 상태 글이 바뀌면 '접속: …' 로그
 # 화면 범인 찾기: --hide ui|world|audio (그 묶음을 숨기고 찍음) · --dump (찍을 때 보이는 Control·CanvasItem·3D 노드를 화면 사각형과 함께 출력)
 extends Node
 
@@ -49,6 +50,7 @@ var color_sent := -1.0 # --color 보낸 시각 (받아짐·거절 로그)
 var round_no := 0 # --shot-round: 지금 몇 판째 (playing 이 될 때마다 +1)
 var round_ms := -1.0
 var mode_sent := false
+var left_reason := "" # 마지막으로 받은 left_room 이유 (--expect-left)
 
 
 func _ready() -> void:
@@ -76,10 +78,17 @@ func _ready() -> void:
 	Store.joined.connect(_on_joined)
 	Store.state_changed.connect(_on_state)
 	Store.join_error.connect(func(r): _log("들어가기 실패: %s" % r))
+	Store.left_room.connect(_on_left)
+	Net.status_changed.connect(func(t): _log("접속: %s" % t))
 
 
 func _log(t: String) -> void:
 	print("[자동 %s] %s" % [role, t])
+
+
+func _on_left(reason: String) -> void:
+	left_reason = reason
+	_log("방 밖: %s" % reason)
 
 
 func _on_rooms(_list: Dictionary) -> void:
@@ -289,7 +298,7 @@ func _process(_d: float) -> void:
 	var done_rounds := rounds >= int(args.get("quit-after-rounds", 999999))
 	var done_time := args.has("quit-after") and el >= float(args["quit-after"])
 	if done_rounds or done_time:
-		var ok := (snapshots > 0 or shot_at == "menu") and (not args.has("drop-at") or rejoined) and (not args.has("quit-after-rounds") or done_rounds) and (not args.has("min-moved") or moved >= float(args["min-moved"]))
+		var ok := (snapshots > 0 or shot_at == "menu") and (not args.has("drop-at") or rejoined) and (not args.has("quit-after-rounds") or done_rounds) and (not args.has("min-moved") or moved >= float(args["min-moved"])) and (not args.has("expect-left") or left_reason != "")
 		var sfx := get_tree().root.find_child("Sfx", true, false)
 		var music := get_tree().root.find_child("Music", true, false)
 		var snd := (" | 효과음 %d번, 곡 %s" % [sfx.played, music.song_key]) if sfx != null and music != null else ""
