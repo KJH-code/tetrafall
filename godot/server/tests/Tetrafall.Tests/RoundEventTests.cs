@@ -336,6 +336,101 @@ public class RoundEventTests
     }
 
     [Fact]
+    public void 마스터에선_아이템_칸을_안_띄움()
+    {
+        // itemsEnabled = 이벤트가 실제로 도는 판만 (RoundEventsRun). 대기실 스냅샷도 같은 값 (아이템 키 안내)
+        foreach (var (mode, events, want) in new[] { ("survival", true, true), ("kills", true, true), ("master", true, false), ("master", false, false), ("survival", false, false) })
+        {
+            var g = new Game(null, characters: true);
+            for (int i = 0; i < 3; i++) g.AddPlayer(i + 1);
+            Assert.True(mode == "survival" || g.SetMode(mode));
+            Assert.Equal(events, g.SetRoundEvents(events));
+            Assert.Equal(want, g.RoundEventsRun());
+            Assert.Equal(want, J(g.Snapshot()).GetProperty("itemsEnabled").GetBoolean()); // 대기실
+            Assert.True(g.StartRound());
+            g.Tick(TICK);
+            var s = J(g.Snapshot());
+            Assert.Equal(want, s.GetProperty("itemsEnabled").GetBoolean()); // 판 중
+            Assert.Equal(events, s.TryGetProperty("roundEvents", out _)); // 옵션 표시는 그대로 (마스터도)
+        }
+        // 대기실에서 모드를 바꾸면 따라 바뀜
+        var lobby = new Game(null, characters: true);
+        for (int i = 0; i < 3; i++) lobby.AddPlayer(i + 1);
+        Assert.True(lobby.SetRoundEvents(true));
+        Assert.True(J(lobby.Snapshot()).GetProperty("itemsEnabled").GetBoolean());
+        Assert.True(lobby.SetMode("master"));
+        Assert.False(J(lobby.Snapshot()).GetProperty("itemsEnabled").GetBoolean());
+        Assert.True(lobby.SetMode("kills"));
+        Assert.True(J(lobby.Snapshot()).GetProperty("itemsEnabled").GetBoolean());
+    }
+
+    [Fact]
+    public void 히트스톱_중엔_돌풍이_안_쌓임()
+    {
+        // 가장 긴 멈춤 (치명 × 카운터) 동안 넉백 감쇠가 안 돌아 바람이 쌓이면 풀릴 때 한꺼번에 밀림 → 멈춘 동안은 안 더함
+        double S = C.EVENT_WIND_SPEED, stop = C.HITSTOP_MS * C.CRIT_HITSTOP_MULT * C.COUNTER_HITSTOP_MULT;
+        foreach (var (dx, dy) in C.EVENT_WIND_DIRS)
+        {
+            var (g, _, _) = Humans(n: 2);
+            g.nextSpawnAt = double.PositiveInfinity;
+            g.Tick(TICK);
+            var (a, b) = (g.players[1], g.players[2]);
+            double cx = g.W / 2.0, cy = g.D / 2.0;
+            CharKit.Place(a, cx - 2 * dy, cy - 2 * dx); // 바람 옆으로 2칸씩 떨어져 나란히
+            CharKit.Place(b, cx + 2 * dy, cy + 2 * dx);
+            double ax0 = a.x, ay0 = a.y, bx0 = b.x, by0 = b.y;
+            g.StartRoundEvent("wind", new XY(dx, dy));
+            a.freezeUntil = g.time + stop;
+            double maxKb = 0;
+            for (double t = 0; t < stop + 1000; t += TICK)
+            {
+                bool frozen = g.time + TICK < a.freezeUntil; // 이 틱의 IntegratePlayer·돌풍이 보는 값 (Tick 이 시각을 먼저 올림)
+                g.Tick(TICK);
+                if (frozen)
+                {
+                    Assert.Equal(0, a.kbx);
+                    Assert.Equal(0, a.kby);
+                    Assert.Equal(ax0, a.x);
+                    Assert.Equal(ay0, a.y);
+                }
+                maxKb = Math.Max(maxKb, Math.Sqrt(a.kbx * a.kbx + a.kby * a.kby));
+            }
+            // 풀린 뒤에도 정상 빠르기 (약 S) 를 안 넘고, 안 멈춘 사람보다 덜 감
+            Assert.InRange(maxKb, 0.8 * S, 1.2 * S);
+            double along = (a.x - ax0) * dx + (a.y - ay0) * dy, free = (b.x - bx0) * dx + (b.y - by0) * dy;
+            Assert.True(along > 0 && along < free, $"돌풍 ({dx}, {dy}): 멈췄던 사람 {along}칸 / 안 멈춘 사람 {free}칸");
+        }
+    }
+
+    [Fact]
+    public void 새_판_첫_틱_전_스냅샷에_지난_판_이벤트가_없음()
+    {
+        // 카운트다운 0: StartRound 가 바로 playing → 첫 틱 전 스냅샷. 순서 주의: 첫 틱이 새 판을 알아챈 뒤에 이벤트를 시작해야 재현됨
+        var (g, _, _) = Humans();
+        g.nextSpawnAt = double.PositiveInfinity;
+        g.Tick(TICK);
+        g.StartRoundEvent("rain");
+        g.Tick(TICK);
+        Assert.True(g.RoundEventActive());
+        Assert.Equal("rain", J(g.Snapshot()).GetProperty("roundEvent").GetProperty("kind").GetString());
+        g.EndRound(null);
+        Assert.False(g.RoundEventActive()); // 판이 끝남
+        Assert.True(g.StartRound());
+        Assert.Equal("playing", g.phase);
+        Assert.True(g.evKind == "rain" && g.time < g.evEndsAt); // 지난 판 것이 아직 남아 있지만 (틱이 비움)
+        Assert.False(g.RoundEventActive());
+        var s = J(g.Snapshot());
+        Assert.True(s.GetProperty("roundEvents").GetBoolean());
+        Assert.False(s.TryGetProperty("roundEvent", out _));
+        g.Tick(TICK);
+        Assert.Null(g.evKind);
+        Assert.False(J(g.Snapshot()).TryGetProperty("roundEvent", out _));
+        // 새 판에서 시작한 이벤트는 다시 실림
+        g.StartRoundEvent("wind", new XY(0, 1));
+        Assert.Equal("wind", J(g.Snapshot()).GetProperty("roundEvent").GetProperty("kind").GetString());
+    }
+
+    [Fact]
     public void 같은_시드면_같은_이벤트_순서()
     {
         // 봇 4명 킬 점수전 (판이 길어 이벤트가 여러 번): 로그 전체와 이벤트 시각·종류가 같은 시드면 같음

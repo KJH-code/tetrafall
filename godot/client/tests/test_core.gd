@@ -96,6 +96,24 @@ func test_net_unpack() -> void:
 	check(NetScript.unpack(raw, true) == text, "글자 패킷은 그대로")
 	var m = JSON.parse_string(NetScript.unpack(gz, false))
 	check(typeof(m) == TYPE_DICTIONARY and m.get("type") == "state" and m.get("name") == "재혁", "푼 글자가 JSON 으로 읽힘")
+	check(NetScript.gzip_size(gz) == raw.size(), "gzip 꼬리의 푼 크기 %d / %d" % [NetScript.gzip_size(gz), raw.size()])
+
+
+# 푼 크기 상한 (INBOUND_MAX_BYTES): 작은 패킷이 아주 크게 풀리는 것 (gzip 폭탄) 은 풀어 보지 않고 버림 — 엔진 오류 줄도 없음 (러너가 오류로 셈)
+func test_net_unpack_limit() -> void:
+	var lim: int = NetScript.INBOUND_MAX_BYTES
+	check(lim == 1 << 22, "상한 %d" % lim)
+	for row in [[lim, true], [lim + 1, false], [lim * 16, false]]:
+		var raw := PackedByteArray()
+		raw.resize(row[0])
+		raw.fill(97)
+		var gz := raw.compress(FileAccess.COMPRESSION_GZIP)
+		check(gz.size() < lim / 16, "푼 크기 %d 가 %d 로 눌림" % [raw.size(), gz.size()])
+		var got := NetScript.unpack(gz, false)
+		check(got.length() == (raw.size() if row[1] else 0), "푼 크기 %d → 글자 %d (%s)" % [raw.size(), got.length(), "풀림" if row[1] else "버림"])
+	# 꼬리가 없을 만큼 짧은 바이너리도 조용히 버림
+	check(NetScript.unpack(PackedByteArray([31, 139]), false) == "", "2바이트 패킷")
+	check(NetScript.unpack(PackedByteArray(), false) == "", "빈 패킷")
 
 
 func test_net_packed_url() -> void:

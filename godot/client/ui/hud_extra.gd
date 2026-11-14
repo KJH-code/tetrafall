@@ -400,11 +400,20 @@ func _on_event(e: Dictionary) -> void:
 		"lava":
 			toast("용암! 위로", "me")
 		"roundEvent": # 돌발 이벤트 (방 옵션): 블록 폭우·돌풍·보급 시작
-			var ev_text := RoundEventText.text(e)
+			var ev_text := RoundEventText.text(e, _view_yaw())
 			if ev_text != "":
 				toast(ev_text)
 		"clear":
 			toast("층 클리어!")
+
+
+# 화면 위쪽이 향하는 게임 방향 (돌풍 화살표): 하늘 시점이면 카메라의 sky_yaw, 아니면 보는 방향 (1·3인칭·관전 카메라가 따라 도는 yaw)
+func _view_yaw() -> float:
+	if str(View.mode) == "sky":
+		var rig = hud.call("_rig") if hud != null else null
+		if rig != null:
+			return float(rig.sky_yaw)
+	return PlayerInput.yaw
 
 
 # 판 끝 승리 큰 글씨 (JS onState showBig small): 결과 표가 나올 때까지 위쪽에

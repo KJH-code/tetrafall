@@ -46,7 +46,7 @@ public sealed partial class Game
         o.Key("lava").Obj().P("active", lava.active).P("z", lava.z).EndObj();
         var (tc, tp) = ItemTimers();
         o.Key("itemTimers").Obj().P("control", tc).P("power", tp).EndObj();
-        o.P("itemsEnabled", C.ITEMS_ENABLED || ControlItemOn() || roundEvents); // 필드에 아이템이 나오는 판인지 (돌발 이벤트 보급도)
+        o.P("itemsEnabled", C.ITEMS_ENABLED || ControlItemOn() || RoundEventsRun()); // 필드에 아이템이 나오는 판인지 (돌발 이벤트 보급도 — 이벤트가 안 도는 블록 마스터는 아님)
         o.P("botLevel", botLevel);
         o.P("teamMode", teamMode);
         o.Key("practice");

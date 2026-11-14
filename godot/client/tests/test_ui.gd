@@ -58,6 +58,44 @@ func test_hud_layout() -> void:
 		expect(U.label_sizes(l[0]), l[1], "label_sizes(%s)" % str(l[0]))
 
 
+# 대기실 판 자리 (고도 판 전용, lobby.gd _place): 오른쪽 끝·위에 붙고, 자리보다 크면 통째로 줄여 화면 안에
+func test_lobby_place() -> void:
+	var m: float = U.C.HUD_CARD_MARGIN
+	# [화면, 내용 높이, 배율 1 인지] — 내용 폭은 lobby_dock 폭 그대로 (lobby.gd 가 그렇게 잡음)
+	for row in [[Vector2(960, 540), 660.0, false], [Vector2(1280, 720), 660.0, false], [Vector2(1280, 720), 600.0, true], [Vector2(1920, 1080), 660.0, true], [Vector2(1920, 1080), 900.0, true], [Vector2(2560, 1440), 660.0, true]]:
+		var view: Vector2 = row[0]
+		var w: float = U.lobby_dock(view.x).w
+		var content := Vector2(w, row[1])
+		var at := U.lobby_place(view, content)
+		var tag := "lobby_place(%s, %s) = %s" % [str(view), str(content), str(at)]
+		check(is_equal_approx(at.y, U.LOBBY_TOP), "위에 붙음: " + tag) # 큰 화면에서도 세로 가운데로 안 내려옴
+		check(is_equal_approx(at.x + content.x * at.scale, view.x - m), "오른쪽 끝에 붙음: " + tag)
+		check(at.x >= 0.0 and at.y + content.y * at.scale <= view.y - m + 1e-6, "화면 안: " + tag)
+		check((at.scale == 1.0) == row[2], "배율 1 %s: %s" % [str(row[2]), tag])
+		check(at.scale > U.LOBBY_SCALE_MIN and at.scale <= 1.0, "배율 범위: " + tag)
+		if not row[2]: # 줄일 땐 딱 자리만큼 (아래 여백까지)
+			check(is_equal_approx(at.y + content.y * at.scale, view.y - m), "줄인 판 아래 끝 = 화면 아래 여백: " + tag)
+	# 960×540 실제 값: 자리 높이 540 - 84 - 12 = 444 → 660 짜리 판은 444/660 배
+	var small := U.lobby_place(Vector2(960, 540), Vector2(380, 660))
+	check(is_equal_approx(small.scale, 444.0 / 660.0) and is_equal_approx(small.x, 960.0 - 12.0 - 380.0 * 444.0 / 660.0), "960×540: %s" % str(small))
+	# 내용이 판 폭보다 넓어도 (긴 줄) 폭에 맞춰 줄여 오른쪽으로 안 넘침
+	var wide := U.lobby_place(Vector2(1920, 1080), Vector2(940, 400))
+	check(is_equal_approx(wide.scale, 0.5) and is_equal_approx(wide.x, 1920.0 - m - 470.0), "넓은 내용: %s" % str(wide))
+	# 크기를 아직 모르면 (0) 줄이지 않음, 아주 큰 내용도 배율 아래 끝에서 멈춤
+	check(U.lobby_place(Vector2(960, 540), Vector2(380, 0)).scale == 1.0, "높이 0")
+	check(U.lobby_place(Vector2(960, 540), Vector2(380, 1.0e6)).scale == U.LOBBY_SCALE_MIN, "아주 큰 내용")
+
+
+# 방 옵션 꼬리 (손님 대기실 줄·공개 방 목록): 켠 것만, 순서 고정. 서버는 hpMode·roundEvents 를 켰을 때만 보냄 (없으면 끔)
+func test_room_opts() -> void:
+	check(U.room_opts({}) == "", "옵션 없음: '%s'" % U.room_opts({}))
+	check(U.room_opts({"skyStairs": false, "hpMode": false}) == "", "전부 끔")
+	check(U.room_opts({"skyStairs": true}) == " · 하늘 계단", "하늘 계단")
+	check(U.room_opts({"skyStairs": false, "hpMode": true}) == " · 체력전", "체력전")
+	check(U.room_opts({"roundEvents": true, "mode": "kills"}) == " · 돌발 이벤트", "돌발 이벤트")
+	check(U.room_opts({"roundEvents": true, "hpMode": true, "skyStairs": true}) == " · 하늘 계단 · 체력전 · 돌발 이벤트", "전부: '%s'" % U.room_opts({"roundEvents": true, "hpMode": true, "skyStairs": true}))
+
+
 func test_kills_hud() -> void:
 	var t := U.KillTally.new()
 	for row in fx.get("tally", []):

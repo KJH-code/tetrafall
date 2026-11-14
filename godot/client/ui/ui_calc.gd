@@ -36,6 +36,34 @@ static func lobby_dock(view_w: float) -> Dictionary:
 	return {"w": w, "left": view_w - C.HUD_CARD_MARGIN - w}
 
 
+# ---------- 고도 판 전용 (JS 에 없음 — 정답 자료 대신 tests/test_ui.gd 가 값으로 고정) ----------
+const LOBBY_TOP := 84.0 # 대기실 판 위쪽 (위 점수 띠 아래)
+const LOBBY_SCALE_MIN := 0.1 # 대기실 판 줄임 배율 아래 끝 (0 으로 나누기·뒤집힘 막기)
+const ROOM_OPTS := [["skyStairs", "하늘 계단"], ["hpMode", "체력전"], ["roundEvents", "돌발 이벤트"]] # 방 옵션 표시 (키는 스냅샷·공개 목록 같음)
+
+
+# 대기실 판 자리: 오른쪽 끝·위 (LOBBY_TOP) 에 붙임. content = 줄이기 전 판 크기 (폭은 lobby_dock 폭, 높이는 내용만큼).
+# 자리 (폭 lobby_dock · 높이 LOBBY_TOP ~ 화면 아래 여백) 보다 크면 통째로 줄임 (960×540 등), 들어가면 배율 1.
+# 반환 {scale 배율, x·y 왼쪽 위}
+static func lobby_place(view: Vector2, content: Vector2) -> Dictionary:
+	var room := Vector2(lobby_dock(view.x).w, view.y - LOBBY_TOP - C.HUD_CARD_MARGIN)
+	var s := 1.0
+	if content.x > 0.0 and content.y > 0.0:
+		s = clampf(minf(room.x / content.x, room.y / content.y), LOBBY_SCALE_MIN, 1.0)
+	return {"scale": s, "x": view.x - C.HUD_CARD_MARGIN - content.x * s, "y": LOBBY_TOP}
+
+
+# 켠 방 옵션을 한 줄 꼬리로: " · 하늘 계단 · 체력전 · 돌발 이벤트" (손님 대기실 줄·공개 방 목록). d = 스냅샷 또는 공개 목록 한 줄
+static func room_opts(d: Dictionary) -> String:
+	var out := ""
+	for o in ROOM_OPTS:
+		if d.get(o[0], false):
+			out += " · %s" % o[1]
+	return out
+
+
+# ---------- hud-layout.js (이어서) ----------
+
 # 머리 위 이름·%: 카메라에서 가까운 LABEL_FULL_N 명만 원래 크기, 나머지는 작고 흐리게. dists[i] → {scale, opacity}
 static func label_sizes(dists: Array) -> Array:
 	var order := []

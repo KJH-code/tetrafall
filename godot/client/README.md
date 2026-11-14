@@ -15,7 +15,7 @@ godot --path godot/client -- --server ws://주소:3000 --room ABCD   # 다른 �
 옵션 (`--` 뒤, 웹이면 주소 뒤 `?키=값`): `--server` · `--room` · `--name` · `--profile` (자리 토큰 저장을 나눔 — 같은 PC 에서 사람 둘) ·
 자동 확인 `--auto host|guest` `--bots N` `--wait-players N` `--drop-at 초` (연결 끊었다 같은 자리로) `--quit-after-rounds N` `--quit-after 초` `--min-moved 칸` `--shot 파일.png --shot-after 초`
 
-스냅샷 묶음: PC 클라는 주소에 `?pack=gzip` 을 붙여 접속 (`core/net.gd` `packed_url`) → C# 서버가 큰 메시지 (`NET_DEFLATE_MIN_BYTES` 이상, 사실상 스냅샷) 를 gzip 바이너리로 보내고 클라가 풂 (`unpack`). 고도 WebSocketPeer 는 permessage-deflate 를 못 써서 8명 판이 약 418KB/s 로 오던 것 → 약 92KB/s (헤드리스 8명 판 30초 실측). 웹 판은 쿼리 없이 붙어 예전처럼 브라우저 압축 (Text + permessage-deflate), JS 서버는 쿼리를 무시하고 Text 로 보냄 — 글자 패킷은 예전처럼 읽으니 어느 서버든 붙음. `--auto` 로 돌리면 끝날 때 `[net] 받은 N KB/s (스냅샷 n개, gzip 켬|끔)` 한 줄.
+스냅샷 묶음: PC 클라는 주소에 `?pack=gzip` 을 붙여 접속 (`core/net.gd` `packed_url`) → C# 서버가 큰 메시지 (`NET_DEFLATE_MIN_BYTES` 이상, 사실상 스냅샷) 를 gzip 바이너리로 보내고 클라가 풂 (`unpack`). 고도 WebSocketPeer 는 permessage-deflate 를 못 써서 8명 판이 약 418KB/s 로 오던 것 → 약 92KB/s (헤드리스 8명 판 30초 실측). 웹 판은 쿼리 없이 붙어 예전처럼 브라우저 압축 (Text + permessage-deflate), JS 서버는 쿼리를 무시하고 Text 로 보냄 — 글자 패킷은 예전처럼 읽으니 어느 서버든 붙음. `--auto` 로 돌리면 끝날 때 `[net] 받은 N KB/s (스냅샷 n개, gzip 켬|끔)` 한 줄. 푼 크기는 `INBOUND_MAX_BYTES` (4MB, 받는 버퍼와 같은 값) 까지: gzip 꼬리에 적힌 크기가 넘으면 풀지 않고 버리고, 풀 때도 적힌 크기까지만 (작은 패킷 하나가 수백 MB 로 풀리는 것 막기, `tests/test_core.gd` `test_net_unpack_limit`).
 
 ## 테스트·확인
 
@@ -66,3 +66,9 @@ JS 화면의 합성 소리·곡을 **크로미움에서 그대로 녹음해 구�
 | `core/config.gd` | 만든 파일 (shared/config.js) |
 | `core/dev_view.gd` · `dev_ui.gd` · `autopilot.gd` | 개발용 상자 화면·버튼·자동 조종 (G1·G4 씬이 생기면 안 쓰임) |
 | `assets/fonts/ui_font.tres` | 프로젝트 글꼴: Black Han Sans 한글·라틴 (OFL) + 기호 대체 `dejavu-sans-bold-symbols.woff2` (DejaVu Sans Bold 조각 — · — … ← → ↺ ▸ ° 등, 라이선스 `DejaVu-LICENSE.txt`). 웹엔 시스템 글꼴 대체가 없어 여기 없는 글자는 빈 칸 → `tests/test_core.gd` 가 스크립트 글의 글자를 다 확인. 다시 만들기: `pyftsubset DejaVuSans-Bold.ttf --unicodes="U+0020-007E,U+00A0-00FF,U+2010-2027,U+2030-203A,U+2190-21FF,U+2212,U+2460-2473,U+25A0-25FF,U+2600-2606,U+2713-2717,U+2764" --flavor=woff2 --layout-features= --no-hinting` |
+
+## 화면 계산 (고도 판 전용 — JS 에 없는 것, `ui/ui_calc.gd` 아래쪽·`tests/test_ui.gd`)
+
+- 대기실 판 배치 (`lobby.gd` `_place` → `lobby_place`): 폭은 `lobby_dock`, 오른쪽 끝·위 (`LOBBY_TOP` 84) 에 붙임. 내용이 자리 (위 84 ~ 화면 아래 여백) 보다 크면 판을 통째로 줄임 — 960×540 약 0.67배, 1280×720 약 0.99배, 1920×1080 은 줄임 없음 (세로 가운데로 내려오지 않고 위에 붙음).
+- 방 옵션 표시 (`room_opts`): 손님 대기실 줄 (`lobby.gd` map_info, 방장은 체크 상자) 과 공개 방 목록 한 줄 (`menu.gd`) 에 켠 옵션을 ` · 하늘 계단 · 체력전 · 돌발 이벤트` 로 붙임.
+- 돌발 이벤트 알림 (`ui/round_event_text.gd`, `tests/test_round_events.gd`): 서버 이벤트 `roundEvent` 가 올 때 한 번 뜨는 알림. 돌풍 화살표는 보는 방향 기준 (`hud_extra.gd` `_view_yaw`: 하늘 시점이면 `cam_rig.sky_yaw`, 아니면 `PlayerInput.yaw`) — 알림이 뜬 뒤에 몸을 돌리면 안 따라옴. 스냅샷 `roundEvent` (진행 중·남은 시간) 는 아직 화면에서 안 읽음.

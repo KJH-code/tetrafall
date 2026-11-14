@@ -25,8 +25,13 @@ public sealed partial class Game
         return true;
     }
 
-    // 스냅샷에 실을 진행 중 이벤트가 있는지
-    public bool RoundEventActive() => roundEvents && phase == "playing" && evKind != null && time < evEndsAt;
+    // 이 방 설정에서 돌발 이벤트가 실제로 도는지: 블록 마스터 (자동 블록 없음)·연습·튜토리얼은 켜 둬도 안 돎.
+    // 판 단계는 안 봄 — 대기실 스냅샷 itemsEnabled (아이템 키 안내) 도 이 값을 씀
+    public bool RoundEventsRun() => roundEvents && mode != "master" && mode != "practice" && tutorial == null;
+
+    // 스냅샷에 실을 진행 중 이벤트가 있는지. evRoundStart 가 이번 판 것이어야 함 — 카운트다운 0 이면 새 판 첫 틱 전
+    // 스냅샷에 지난 판 이벤트가 남던 것을 막음 (새 판인지는 틱 안 UpdateRoundEvents 만 알아챔)
+    public bool RoundEventActive() => roundEvents && phase == "playing" && evRoundStart == roundStartTime && evKind != null && time < evEndsAt;
 
     // 틱마다 (roundEvents 켰을 때만 Tick 이 부름): 시각이 되면 이벤트 하나 고르고, 진행 중인 것을 돌림
     public void UpdateRoundEvents(double dtMs)
@@ -40,7 +45,7 @@ public sealed partial class Game
             evKind = null;
             evDir = null;
         }
-        if (mode == "master" || mode == "practice" || tutorial != null) return; // 블록 마스터 (자동 블록 없음)·연습·튜토리얼은 안 돎
+        if (!RoundEventsRun()) return; // 블록 마스터·연습·튜토리얼은 안 돎
         if (evKind != null && time >= evEndsAt)
         {
             evKind = null;
@@ -71,11 +76,12 @@ public sealed partial class Game
         else if (evKind == "wind" && evDir != null)
         {
             // 돌풍: 넉백 속도에 조금씩 더함. 넉백은 틱마다 exp(-k·dt) 로 줄어드니 (땅 6, 공중 1.2) k 를 곱해 넣어야
-            // 땅에서도 공중에서도 흐르는 빠르기가 약 EVENT_WIND_SPEED 로 같아짐
+            // 땅에서도 공중에서도 흐르는 빠르기가 약 EVENT_WIND_SPEED 로 같아짐.
+            // 히트스톱 (freezeUntil) 중인 사람은 건너뜀: IntegratePlayer 가 멈춤 동안 감쇠 전에 돌아가서 그동안 더한 바람이 안 줄고 쌓임
             double dt = dtMs / 1000;
             foreach (var p in Players())
             {
-                if (!OnField(p)) continue;
+                if (!OnField(p) || time < p.freezeUntil) continue;
                 double k = p.grounded ? C.KB_DAMPING_GROUND : C.KB_DAMPING_AIR;
                 p.kbx += evDir.x * C.EVENT_WIND_SPEED * k * dt;
                 p.kby += evDir.y * C.EVENT_WIND_SPEED * k * dt;

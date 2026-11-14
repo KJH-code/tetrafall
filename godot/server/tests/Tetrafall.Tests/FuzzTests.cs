@@ -11,7 +11,10 @@ namespace Tetrafall.Tests;
 // 해시는 고정하지 않고 불변식만 봄. 난수는 전부 Mulberry32 시드 고정 (시드마다 따로 → 병렬이어도 같은 결과)
 public class FuzzTests
 {
-    const int RULE_SEEDS = 21;       // 규칙 퍼즈 판 수 (모드 3 × 인원 7 = 21 조합을 한 번씩 — 클래스 전체 30초 안)
+    const int RULE_SEEDS = 42;       // 규칙 퍼즈 판 수 (모드 3 × 인원 7 = 21 조합을 두 번씩 — 클래스 전체 30초 안)
+    const double RULE_EVENTS = 0.5;  // 규칙 퍼즈: 돌발 이벤트를 켜는 판 비율
+    const int RULE_EVENT_SEEDS_MIN = 6; // 강제 이벤트가 한 번이라도 걸린 판이 이만큼은 있어야 함 (지금 시드로는 42판 중 13판)
+    const double RULE_EVENT_FORCE = 0.002; // 돌발 이벤트 판: 틱마다 이벤트 하나를 강제로 시작할 확률 (약 17초에 한 번 — 진행 중인 것 위에 겹쳐 시작도)
     const int ROOM_SEEDS = 12;       // 방 메시지 퍼즈 시드 수
     const int ROOM_TICKS = 1500;     // 시드마다 틱 수 (50초)
     const int HUGE_YAW_TICKS = 30;   // 큰 각도 입력 뒤 돌리는 틱 수
@@ -100,17 +103,19 @@ public class FuzzTests
     static readonly double[] WEIRD = { double.NaN, double.PositiveInfinity, double.NegativeInfinity, 1e300, -1e300, -1e308, 2e6, -3e7, 1e9, -7, -0.0, 0.5 };
 
     // 한 시드 = 한 구성 (모드·인원은 시드로 골고루, 나머지는 무작위) 으로 판 하나. 문제가 있으면 한 줄, 없으면 null
-    static string? RuleFuzz(int seed)
+    // forced: 강제로 시작한 돌발 이벤트 수 (그물이 그 경로를 실제로 지나는지 확인용)
+    static string? RuleFuzz(int seed, out int forced)
     {
+        forced = 0;
         var r = new Mulberry32((uint)seed * 2654435761u);
         double R() => r.Next();
         int I(int n) => (int)Math.Floor(R() * n);
         double Weird() => WEIRD[I(WEIRD.Length)];
         string mode = MODES[seed % MODES.Length];
         int n = (int)C.MIN_PLAYERS + seed / MODES.Length % ((int)C.MAX_PLAYERS - (int)C.MIN_PLAYERS + 1);
-        bool hp = R() < 0.4, team = R() < 0.3, sky = R() < 0.5;
+        bool hp = R() < 0.4, team = R() < 0.3, sky = R() < 0.5, events = R() < RULE_EVENTS;
         string map = Maps.MAP_IDS[I(Maps.MAP_IDS.Length)];
-        string tag = $"시드 {seed} {mode} {n}명 체력전 {hp} 팀전 {team} 하늘 계단 {sky} {map}";
+        string tag = $"시드 {seed} {mode} {n}명 체력전 {hp} 팀전 {team} 하늘 계단 {sky} 돌발 이벤트 {events} {map}";
         string step = "준비";
         int tick = 0;
         try
@@ -120,6 +125,7 @@ public class FuzzTests
             g.SetMap(map);
             g.SetMode(mode);
             if (hp) g.SetHpMode(true);
+            if (events && !g.SetRoundEvents(true)) return $"{tag}: 돌발 이벤트 켜기 거절";
             var humans = new List<int>();
             int nh = 1 + I(Math.Min(4, n));
             for (int i = 0; i < n; i++)
@@ -137,24 +143,23 @@ public class FuzzTests
                 step = "입력";
                 foreach (var id in humans)
                 {
-                    if (R() < 0.3)
-                        g.HandleInput(id, new InputMsg
-                        {
-                            fwd = R() < 0.03 ? Weird() : R() < 0.02 ? null : R() * 2 - 1,
-                            strafe = R() < 0.03 ? Weird() : R() * 2 - 1,
-                            yaw = R() < 0.03 ? Weird() : R() < 0.01 ? (R() - 0.5) * 2 * C.INPUT_YAW_MAX : R() * 2 * Math.PI,
-                            pitch = R() < 0.03 ? Weird() : R() * 3 - 1.5,
-                            jump = R() < 0.2,
-                        });
-                    if (R() < 0.15)
-                        g.HandleAction(id, new ActionMsg
-                        {
-                            name = ACTIONS[I(ACTIONS.Length)],
-                            n = R() < 0.5 ? I(9) - 1.0 : R() < 0.5 ? Weird() : "x",
-                            dx = R() < 0.1 ? Weird() : I(3) - 1,
-                            dy = R() < 0.1 ? Weird() : I(3) - 1,
-                            dir = R() < 0.1 ? Weird() : I(3) - 1,
-                        });
+                    // 사람마다 매 틱 입력 하나 + 행동 하나
+                    g.HandleInput(id, new InputMsg
+                    {
+                        fwd = R() < 0.03 ? Weird() : R() < 0.02 ? null : R() * 2 - 1,
+                        strafe = R() < 0.03 ? Weird() : R() * 2 - 1,
+                        yaw = R() < 0.03 ? Weird() : R() < 0.01 ? (R() - 0.5) * 2 * C.INPUT_YAW_MAX : R() * 2 * Math.PI,
+                        pitch = R() < 0.03 ? Weird() : R() * 3 - 1.5,
+                        jump = R() < 0.2,
+                    });
+                    g.HandleAction(id, new ActionMsg
+                    {
+                        name = ACTIONS[I(ACTIONS.Length)],
+                        n = R() < 0.5 ? I(9) - 1.0 : R() < 0.5 ? Weird() : "x",
+                        dx = R() < 0.1 ? Weird() : I(3) - 1,
+                        dy = R() < 0.1 ? Weird() : I(3) - 1,
+                        dir = R() < 0.1 ? Weird() : I(3) - 1,
+                    });
                     // 유령 투하: 죽은 사람만 되지만 산 사람이 보내도 거절돼야 함
                     if (R() < (g.GetPlayer(id)?.alive == false ? 0.05 : 0.005)) g.GhostDrop(id, R() < 0.1 ? Weird() : R() * 24 - 2, R() < 0.1 ? Weird() : R() * 24 - 2);
                     if (R() < 0.0005) g.SetAway(id, R() < 0.5);
@@ -164,6 +169,14 @@ public class FuzzTests
                     step = "나감";
                     g.RemovePlayer(humans[^1]);
                     humans.RemoveAt(humans.Count - 1);
+                }
+                // 돌발 이벤트가 도는 판 (마스터는 켜도 안 돎): 가끔 폭우·돌풍·보급을 강제로 시작 (제때 오는 것 말고도)
+                if (g.RoundEventsRun() && g.phase == "playing" && R() < RULE_EVENT_FORCE)
+                {
+                    step = "돌발 이벤트";
+                    var (wx, wy) = C.EVENT_WIND_DIRS[I(C.EVENT_WIND_DIRS.Length)];
+                    g.StartRoundEvent(C.EVENT_KINDS[I(C.EVENT_KINDS.Length)], new XY(wx, wy));
+                    forced++;
                 }
                 step = "틱";
                 g.Tick(TICK);
@@ -197,9 +210,12 @@ public class FuzzTests
     public void Random_inputs_keep_game_finite_and_running()
     {
         var bad = new string?[RULE_SEEDS];
-        Parallel.For(0, RULE_SEEDS, i => bad[i] = RuleFuzz(i + 1));
+        var forced = new int[RULE_SEEDS];
+        Parallel.For(0, RULE_SEEDS, i => bad[i] = RuleFuzz(i + 1, out forced[i]));
         var list = bad.Where(b => b != null).Order(StringComparer.Ordinal).ToList();
         Assert.True(list.Count == 0, $"규칙 퍼즈 문제 {list.Count}건:\n{string.Join("\n", list)}");
+        // 돌발 이벤트 경로 (폭우·돌풍·보급) 가 그물 안에 있음: 여러 판에서 강제로 시작됨
+        Assert.True(forced.Count(f => f > 0) >= RULE_EVENT_SEEDS_MIN, $"돌발 이벤트를 강제로 시작한 판 {forced.Count(f => f > 0)}개 (이벤트 수 {string.Join(",", forced)})");
     }
 
     // ---------- 방 메시지 퍼즈 ----------
@@ -208,7 +224,7 @@ public class FuzzTests
     {
         "input", "input", "input", "input", "input", "input", "action", "action", "action", "action", "action", "action", "action", "action",
         "leave", "setPublic", "addBot", "addBot", "removeBot", "spectate", "kick", "setName", "setChar", "setColor", "teamMode", "setTeam", "shuffleTeams",
-        "botLevel", "setMap", "setMode", "skyStairs", "hpMode", "ghostDrop", "ghostDrop", "tutorialSkip", "practiceSet", "dummyAdd", "dummyRemove", "dummySet",
+        "botLevel", "setMap", "setMode", "skyStairs", "hpMode", "roundEvents", "ghostDrop", "ghostDrop", "tutorialSkip", "practiceSet", "dummyAdd", "dummyRemove", "dummySet",
         "start", "start", "start", "start", "ping", "create", "create", "join", "join", "rejoin", "practice", "tutorial", "zzz",
     };
     static readonly string[] MSG_FIELDS =

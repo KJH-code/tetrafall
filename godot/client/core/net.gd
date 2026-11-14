@@ -10,6 +10,11 @@ const Prof := preload("res://core/prof.gd")
 const C := preload("res://core/config.gd")
 const NetMeter := preload("res://core/net_meter.gd")
 
+# 받는 패킷 크기 상한 (8명 스냅샷 + 격자): WebSocket 받는 버퍼 (누른 크기) 이자 gzip 을 푼 크기 상한 — 작은 패킷 하나가 수백 MB 로 풀리는 것 막기.
+# config NET_MAX_PAYLOAD_BYTES (서버가 받는 메시지 상한 64KB) 와는 다른 값: 그걸 쓰면 큰 스냅샷이 잘림
+const INBOUND_MAX_BYTES := 1 << 22
+const GZIP_ISIZE_BYTES := 4 # gzip 꼬리 ISIZE: 푼 크기 (리틀 엔디언 32비트, RFC 1952)
+
 signal opened(reconnect: bool) # 붙음 (reconnect: 끊겼다 다시 붙음)
 signal closed # 끊김 (다시 붙어 보는 중이면 status 로)
 signal message(msg: Dictionary) # 받은 메시지 하나 (msg.recvAt = 받은 로컬 시각 ms)
@@ -55,11 +60,21 @@ static func packed_url(u: String) -> String:
 	return u + ("?pack=gzip" if has_path else "/?pack=gzip")
 
 
-# 받은 패킷 → JSON 글자: 글자 패킷은 그대로, 바이너리는 gzip 풀기 (못 풀면 빈 글자 → 그 패킷은 버려짐)
+# gzip 꼬리에 적힌 푼 크기 (꼬리가 없을 만큼 짧으면 -1)
+static func gzip_size(bytes: PackedByteArray) -> int:
+	return bytes.decode_u32(bytes.size() - GZIP_ISIZE_BYTES) if bytes.size() >= GZIP_ISIZE_BYTES else -1
+
+
+# 받은 패킷 → JSON 글자: 글자 패킷은 그대로, 바이너리는 gzip 풀기 (못 풀면 빈 글자 → 그 패킷은 버려짐).
+# 푼 크기는 INBOUND_MAX_BYTES 까지: 꼬리에 적힌 크기가 상한을 넘으면 풀어 보지 않고 버리고 (엔진 오류 줄 없음),
+# 풀 때도 적힌 크기까지만 푼다 — 꼬리가 거짓말이어도 (실제로는 더 큼) 고도가 거기서 멈추고 빈 배열을 돌려줌 (오류 한 줄)
 static func unpack(bytes: PackedByteArray, is_text: bool) -> String:
 	if is_text:
 		return bytes.get_string_from_utf8()
-	return bytes.decompress_dynamic(-1, FileAccess.COMPRESSION_GZIP).get_string_from_utf8()
+	var n := gzip_size(bytes)
+	if n <= 0 or n > INBOUND_MAX_BYTES:
+		return ""
+	return bytes.decompress_dynamic(n, FileAccess.COMPRESSION_GZIP).get_string_from_utf8()
 
 
 # 실제로 붙을 주소 (url·상태 글은 원래 주소 그대로): 웹은 브라우저가 permessage-deflate 를 해 주니 그대로
@@ -71,7 +86,7 @@ func start(server_url: String) -> void:
 	url = server_url
 	recv_log = OS.get_cmdline_user_args().has("--auto")
 	ws = WebSocketPeer.new()
-	ws.inbound_buffer_size = 1 << 22 # 8명 스냅샷 + 격자
+	ws.inbound_buffer_size = INBOUND_MAX_BYTES
 	var err := ws.connect_to_url(_connect_url())
 	_set_status("연결 중… %s" % url if err == OK else "연결 실패 %s (%d)" % [url, err])
 
@@ -161,7 +176,7 @@ func _prof_process(_delta: float) -> void:
 			retry_at = now + C.NET_RECONNECT_MS
 			_set_status("서버 연결 끊김 — 다시 연결 중 (%d/%d)" % [tries, int(C.NET_RECONNECT_TRIES)])
 			ws = WebSocketPeer.new()
-			ws.inbound_buffer_size = 1 << 22
+			ws.inbound_buffer_size = INBOUND_MAX_BYTES
 			ws.connect_to_url(_connect_url())
 
 

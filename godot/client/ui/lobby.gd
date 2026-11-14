@@ -162,6 +162,7 @@ func _ready() -> void:
 	events_box = _check("돌발 이벤트", func(on): Store.send_room({"type": "roundEvents", "on": on})) # 고도 판 전용 (블록 폭우·돌풍·보급)
 	col.add_child(settings_box)
 	map_info = S.label("", 13, Color("cdd5ee"))
+	map_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART # 옵션이 여럿 붙어도 판 폭 안에서 줄바꿈
 	map_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	map_info.visible = false
 	col.add_child(map_info)
@@ -325,7 +326,7 @@ func refresh(st: Dictionary) -> void:
 	map_info.visible = mp is Dictionary and not host
 	if mp is Dictionary:
 		var ch := str(mp.get("choice", "random"))
-		map_info.text = "맵: %s · 모드: %s%s" % ["무작위" if ch == "random" or not C.MAPS.has(ch) else str(C.MAPS[ch].name), str(C.MODE_NAMES.get(str(st.get("mode", "")), st.get("mode", ""))), " · 하늘 계단" if st.get("skyStairs", false) else ""]
+		map_info.text = "맵: %s · 모드: %s%s" % ["무작위" if ch == "random" or not C.MAPS.has(ch) else str(C.MAPS[ch].name), str(C.MODE_NAMES.get(str(st.get("mode", "")), st.get("mode", ""))), U.room_opts(st)]
 	team_note.visible = bool(st.get("teamMode", false))
 	add_bot.disabled = n >= min(C.MAX_PLAYERS, C.SPAWN_POINTS.size())
 	remove_bot.disabled = not st.players.any(func(p): return p.get("isBot", false))
@@ -373,21 +374,16 @@ func refresh(st: Dictionary) -> void:
 
 
 # 폭: 오른쪽에 붙임 (lobby_dock). 보이는 첫 프레임부터 (스냅샷이 오기 전에도) — 첫 1~2초 왼쪽에 좁게 붙던 것.
-# 작은 창 (960×540 등) 에서 판이 화면 아래·오른쪽으로 잘리지 않게: 내용 크기가 자리 (위 점수 띠 아래 ~ 화면 끝 여백) 보다 크면
-# 판을 통째로 줄임 (오른쪽 끝은 그대로 붙임). 자리에 들어가면 예전 그대로 (줄임 없음)
+# 자리: 오른쪽 끝·위에 붙이고, 작은 창 (960×540 등) 에서 판이 화면 아래·오른쪽으로 잘리지 않게 내용이 자리보다 크면
+# 판을 통째로 줄임 (계산은 ui_calc.gd lobby_place — tests/test_ui.gd 가 고정). 자리에 들어가면 줄임 없음
 func _place() -> void:
 	var vw := get_viewport_rect().size
-	var dock := U.lobby_dock(vw.x)
-	custom_minimum_size.x = dock.w
-	size = Vector2(dock.w, 0.0) # 높이는 내용만큼 (0 을 넣으면 최소 크기로 잡힘 — 방 설정 줄 수가 바뀌어도 판이 내용에 맞음)
-	var top := 84.0
-	var room := Vector2(dock.w, vw.y - top - C.HUD_CARD_MARGIN)
-	var s := 1.0
-	if size.x > 0.0 and size.y > 0.0:
-		s = clampf(min(room.x / size.x, room.y / size.y), 0.1, 1.0)
-	scale = Vector2(s, s)
-	position.x = vw.x - C.HUD_CARD_MARGIN - size.x * s
-	position.y = max(top, (vw.y - size.y * s) / 2.0 + 28.0)
+	var w: float = U.lobby_dock(vw.x).w
+	custom_minimum_size.x = w
+	size = Vector2(w, 0.0) # 높이는 내용만큼 (0 을 넣으면 최소 크기로 잡힘 — 방 설정 줄 수가 바뀌어도 판이 내용에 맞음)
+	var at := U.lobby_place(vw, size)
+	scale = Vector2(at.scale, at.scale)
+	position = Vector2(at.x, at.y)
 
 
 func _process(_d: float) -> void:

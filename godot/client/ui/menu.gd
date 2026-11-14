@@ -5,6 +5,7 @@ extends Control
 const C := preload("res://core/config.gd")
 const S := preload("res://ui/ui_style.gd")
 const Prefs := preload("res://ui/ui_prefs.gd")
+const U := preload("res://ui/ui_calc.gd")
 
 signal open_settings
 signal open_tutorial
@@ -210,7 +211,7 @@ func _render_list() -> void:
 		var bots := " + 봇 %d" % int(r.bots) if float(r.get("bots", 0)) > 0 else ""
 		var mode: String = C.MODE_NAMES.get(str(r.get("mode", "survival")), "생존")
 		var map_name: String = C.MAPS[str(r.map)].name if C.MAPS.has(str(r.get("map", ""))) else ("무작위" if str(r.get("map", "")) == "random" else str(r.get("map", "")))
-		info.add_child(S.label("사람 %d%s / %d명 · %s · 맵 %s%s · %s" % [int(r.humans), bots, int(r.max), mode, map_name, " · 하늘 계단" if r.get("skyStairs", false) else "", "팀전" if r.get("teamMode", false) else "개인전"], 12, Color("a49cbc")))
+		info.add_child(S.label("사람 %d%s / %d명 · %s · 맵 %s%s · %s" % [int(r.humans), bots, int(r.max), mode, map_name, U.room_opts(r), "팀전" if r.get("teamMode", false) else "개인전"], 12, Color("a49cbc")))
 		row.add_child(info)
 		var is_full: bool = float(r.humans) + float(r.get("bots", 0)) >= float(r.max)
 		var code_s := str(r.code)
