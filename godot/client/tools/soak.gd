@@ -6,6 +6,7 @@
 extends Node
 
 const PSched := preload("res://world/prewarm_sched.gd")
+const UiStyle := preload("res://ui/ui_style.gd")
 const Motion_ := preload("res://chars/ext_motion.gd")
 const TexPre := preload("res://chars/tex_prefetch.gd")
 const EntryGate := preload("res://core/entry_gate.gd")
@@ -99,7 +100,11 @@ static func rss_mb() -> float:
 # 정적 스케줄러·캐시 크기 (선형으로 늘면 누수 후보)
 func statics() -> String:
 	var g3 = load("res://shaders/g3.gd")
-	return "sched %d/%d motb %d g3 %d/%d texreq %d gate %d" % [PSched.main.tasks.size(), PSched.main.finished.size(), Motion_.bodies.size(), g3._mats.size(), g3._outlined.size(), TexPre._req.size(), EntryGate.log.size()]
+	var reg_live := 0
+	for r in UiStyle._reg: # W53: 화면 빛 등록부 (ui_style.gd, 4000 넘으면 정리) 의 살아 있는/죽은 약한 참조
+		if r[0].get_ref() != null:
+			reg_live += 1
+	return "sched %d/%d motb %d g3 %d/%d texreq %d gate %d reg %d/%d" % [PSched.main.tasks.size(), PSched.main.finished.size(), Motion_.bodies.size(), g3._mats.size(), g3._outlined.size(), TexPre._req.size(), EntryGate.log.size(), reg_live, UiStyle._reg.size()]
 
 
 # W51: 트리에서 닿는 자원을 클래스별로 셈 (노드 속성 → 자원 → 하위 자원, 한 번씩). 총 자원 수 (OBJECT_RESOURCE_COUNT) 와 뺀 값이 '트리 밖에 살아 있는 자원'
@@ -135,6 +140,63 @@ func res_census() -> Dictionary:
 					if v is Resource:
 						stack.append(v)
 	return cls
+
+
+# W53: 닿는 모든 객체 (노드·자원 경로 있든 없든·RefCounted) 를 '클래스@스크립트' 로 셈 — OBJECT_COUNT 가 입장마다 느는 것의 종류 가르기. --soak-obj
+# 닿는 객체 수 (reach) 와 OBJECT_COUNT 의 차 = 트리·속성 밖 (정적 변수·람다·약한 참조 목록·신호 연결 쥔 것) 에 있는 객체
+func obj_census() -> Dictionary:
+	var seen := {}
+	var cls := {}
+	var stack: Array = [get_tree().root]
+	while not stack.is_empty():
+		var o = stack.pop_back()
+		if o == null or not is_instance_valid(o) or seen.has(o.get_instance_id()):
+			continue
+		seen[o.get_instance_id()] = true
+		var k: String = o.get_class()
+		var sc = o.get_script()
+		if sc is Script and (sc as Script).resource_path != "":
+			k += "@" + (sc as Script).resource_path.get_file()
+		if o is Resource and (o as Resource).resource_path == "":
+			k += "(local)"
+		cls[k] = int(cls.get(k, 0)) + 1
+		if o is Node:
+			for c in (o as Node).get_children(true):
+				stack.append(c)
+		for pr in o.get_property_list():
+			var ty := int(pr["type"])
+			if ty == TYPE_OBJECT and (int(pr["usage"]) & PROPERTY_USAGE_STORAGE or int(pr["usage"]) & PROPERTY_USAGE_SCRIPT_VARIABLE):
+				var v = o.get(pr["name"])
+				if v is Object and is_instance_valid(v) and not (v is Node and v.get_parent() == null and not (o is Node)):
+					stack.append(v)
+			elif (ty == TYPE_ARRAY or ty == TYPE_DICTIONARY) and (int(pr["usage"]) & PROPERTY_USAGE_SCRIPT_VARIABLE):
+				var coll = o.get(pr["name"])
+				for v in (coll.values() if ty == TYPE_DICTIONARY else coll):
+					if v is Object and is_instance_valid(v):
+						stack.append(v)
+	return cls
+
+
+var _obj_prev := {}
+
+
+func obj_line(tag: String) -> void:
+	var cur := obj_census()
+	var reach := 0
+	for k in cur:
+		reach += int(cur[k])
+	var total := int(Performance.get_monitor(Performance.OBJECT_COUNT))
+	var diffs := []
+	for k in cur:
+		var d: int = int(cur[k]) - int(_obj_prev.get(k, 0))
+		if d != 0 and not _obj_prev.is_empty():
+			diffs.append([k, d])
+	diffs.sort_custom(func(a, b): return absi(a[1]) > absi(b[1]))
+	var dp := []
+	for e in diffs.slice(0, 14):
+		dp.append("%s=%+d" % [e[0], e[1]])
+	_p("%s objcen reach=%d total=%d 밖=%d | 지난 표본과 차이: %s" % [tag, reach, total, total - reach, " ".join(dp)])
+	_obj_prev = cur
 
 
 var _res_files: PackedStringArray = []
@@ -192,6 +254,8 @@ func res_line(tag: String) -> void:
 func sample(tag: String) -> void:
 	if args.has("soak-res") and tag != "t":
 		res_line(tag)
+	if args.has("soak-obj") and tag != "t":
+		obj_line(tag)
 	var line := "%s t=%.0f rss=%.0f obj=%d node=%d orph=%d res=%d smem=%.1f vmem=%.1f fmax=%.0f pmax=%.0f err=%d warn=%d | %s | %s/%s win=%s" % [
 		tag, Time.get_ticks_msec() * 0.001 - t0, rss_mb(), Performance.get_monitor(Performance.OBJECT_COUNT), Performance.get_monitor(Performance.OBJECT_NODE_COUNT),
 		Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT), Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT),

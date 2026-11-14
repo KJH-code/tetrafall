@@ -125,3 +125,41 @@ func test_non_host_skips_host_panel() -> void:
 	check(ui.host_players.calls.get("refresh", 0) == 0 and not ui.host_players.visible, "방장 아니면 방장 판 갱신·표시 없음")
 	_free(ui)
 	_gate_end()
+
+
+# 화면 빛 등록부 (ui_style._reg): 사라진 컨트롤의 WeakRef 가 4000 까지 쌓이지 않고 살아 있는 수 기준 한계에서 정리됨, 살아 있는 것은 그대로
+func test_style_reg_prunes_dead_refs() -> void:
+	var S = load("res://ui/ui_style.gd")
+	var keep_reg: Array = S._reg
+	var keep_lim: int = S._reg_limit
+	var keep_old = S._reg_old
+	S._reg = []
+	S._reg_limit = S.REG_MIN
+	S._reg_old = false
+	var alive: Array = []
+	for i in 300:
+		var b := StyleBoxFlat.new()
+		alive.append(b)
+		S._keep(b, "pane")
+	for round in 6: # 입장마다 만들고 버림 (사라지는 컨트롤)
+		for i in 400:
+			var d := StyleBoxFlat.new()
+			S._keep(d, "pane")
+			d = null
+	check(S._reg.size() <= S.REG_MIN + 1, "죽은 참조가 쌓이지 않음 (크기 %d, 한계 %d)" % [S._reg.size(), S.REG_MIN])
+	var live := 0
+	for r in S._reg:
+		if r[0].get_ref() != null:
+			live += 1
+	check(live == 300, "살아 있는 300개는 다 남음 (%d)" % live)
+	check(S._reg_limit >= S.REG_MIN, "한계는 최소 이상")
+	S._reg_old = true # --no-reg-prune: 예전 4000
+	S._reg = []
+	for i in 1500:
+		var d := StyleBoxFlat.new()
+		S._keep(d, "pane")
+		d = null
+	check(S._reg.size() == 1500, "끄면 4000 까지 안 버림 (%d)" % S._reg.size())
+	S._reg = keep_reg
+	S._reg_limit = keep_lim
+	S._reg_old = keep_old
