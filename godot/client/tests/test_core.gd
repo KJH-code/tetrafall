@@ -93,7 +93,12 @@ func test_keys_match_js() -> void:
 		var got := Keys.wheel_slot(Vector2(row[0], row[1]), C.EMOTE_NAMES.size(), C.EMOTE_PICK_PX)
 		check(got == int(row[2]), "바퀴 (%s, %s) → %d / JS %d" % [row[0], row[1], got, int(row[2])])
 	var binds := Keys.default_binds()
-	check(binds == fx.defaults, "기본 키가 JS 와 같음")
+	var js_binds := binds.duplicate()
+	for id in Keys.GODOT_ONLY: # 고도 전용 행동 (W48 report) 은 JS 기본 키 표에 없음
+		js_binds.erase(id)
+	check(js_binds == fx.defaults, "기본 키가 JS 와 같음 (고도 전용 %s 제외)" % str(Keys.GODOT_ONLY))
+	for id in Keys.GODOT_ONLY:
+		check(not fx.defaults.has(id) and binds.has(id), "고도 전용 행동 %s 는 JS 표에 없고 고도 기본 키는 있음" % id)
 	for g in fx.groups:
 		check(Keys.group_label(binds, g[0]) == g[1], "묶음 글자 %s / JS %s" % [Keys.group_label(binds, g[0]), g[1]])
 	var clash := binds.duplicate()

@@ -37,7 +37,8 @@ static func event_tag(e: Dictionary, char_id := "") -> Array:
 	return [k, detail]
 
 
-static var on := false
+static var on := false # 태그 모으기 (W48: 보고서 core/report.gd 가 방 안에서 늘 켬 — 태그·시간 잰 일만, 프레임마다 하는 일 없음)
+static var full := false # F3 패널·--hitch: 프레임마다 구간·탐침·렌더 시간까지 (ui/perf.gd). 이게 켜져 있으면 tag 를 perf.gd 가 가져감
 static var _tags: Array = []
 static var _seen := {}
 
@@ -77,6 +78,11 @@ static func take() -> Array:
 	return o
 
 
+# 모인 태그가 있나 (보고서가 프레임마다 물어도 배열을 새로 안 만듦)
+static func pending() -> bool:
+	return not _tags.is_empty()
+
+
 static func reset() -> void:
 	_tags = []
 	_seen = {}
@@ -103,41 +109,46 @@ class Log:
 		return maxf(FACTOR * avg(), MIN_MS)
 
 	# ctx: {tags: [[kind, detail, ms]], sec: {구간: ms}, script, rcpu, screen}. 히치면 기록을 돌려주고, 아니면 {}
+	# W48: 기준 (중앙값 정렬) 은 MIN_MS 를 넘는 프레임에서만 계산 — 기준선은 늘 MIN_MS 이상이라 그 아래 프레임은 히치일 수 없음 (보고서가 방 안 프레임마다 부름 → 프레임당 몇 µs)
 	func push(t_s: float, ms: float, ctx: Dictionary = {}) -> Dictionary:
 		frames += 1
-		var a := avg()
-		var thr := threshold()
 		var tags: Array = ctx.get("tags", [])
-		var watched: Array = []
-		for k in watch.keys():
-			watched.append(k)
 		var rec := {}
-		if ms > thr:
-			rec = {"t": t_s, "ms": ms, "thr": thr, "avg": a, "tags": tags, "sec": ctx.get("sec", {}), "script": float(ctx.get("script", 0.0)), "rcpu": float(ctx.get("rcpu", 0.0)), "screen": str(ctx.get("screen", "")), "watched": watched}
-			var c: Array = cause_of(rec)
-			rec["cause"] = c[0]
-			rec["detail"] = c[1]
-			count += 1
-			worst = maxf(worst, ms)
-			causes[c[0]] = int(causes.get(c[0], 0)) + 1
-			records.append(rec)
-			if records.size() > KEEP:
-				records.pop_front()
+		if ms > MIN_MS:
+			var a := avg()
+			var thr := maxf(FACTOR * a, MIN_MS)
+			if ms > thr:
+				var watched: Array = []
+				for k in watch.keys():
+					watched.append(k)
+				rec = {"t": t_s, "ms": ms, "thr": thr, "avg": a, "tags": tags, "sec": ctx.get("sec", {}), "script": float(ctx.get("script", 0.0)), "rcpu": float(ctx.get("rcpu", 0.0)), "screen": str(ctx.get("screen", "")), "watched": watched}
+				var c: Array = cause_of(rec)
+				rec["cause"] = c[0]
+				rec["detail"] = c[1]
+				count += 1
+				worst = maxf(worst, ms)
+				causes[c[0]] = int(causes.get(c[0], 0)) + 1
+				records.append(rec)
+				if records.size() > KEEP:
+					records.pop_front()
 		base.append(ms)
 		if base.size() > BASE_N:
 			base.pop_front()
-		for k in watch.keys():
-			watch[k] -= 1
-			if watch[k] <= 0:
-				watch.erase(k)
-		for tg in tags:
-			if tg[0] == "새 캐릭터":
-				watch[str(tg[1])] = WATCH_FRAMES
+		if not watch.is_empty():
+			for k in watch.keys():
+				watch[k] -= 1
+				if watch[k] <= 0:
+					watch.erase(k)
+		if not tags.is_empty():
+			for tg in tags:
+				if tg[0] == "새 캐릭터":
+					watch[str(tg[1])] = WATCH_FRAMES
 		return rec
 
 	# '히치 N회 · 최악 xxms · 원인 상위: A n, B m' (없으면 '히치 0회')
 	# 히치 원인 상위 n개 (원인 이름 기준): 줄 목록 "1. 원인 ×번 · 최악 ms @ 시각 (화면, 자세한 글자)". from_count = 이 횟수 이후 (한 판 몫만, 전체는 0)
-	func top_report(from_count := 0, n := 5) -> Array:
+	# t_offset: 시각에서 뺄 값 (보고서가 '판 시작부터 몇 초' 로 보이게)
+	func top_report(from_count := 0, n := 5, t_offset := 0.0) -> Array:
 		var recs: Array = records.slice(maxi(0, records.size() - (count - from_count))) if count > from_count else []
 		var g := {}
 		for r in recs:
@@ -154,7 +165,7 @@ class Log:
 		for k in ks.slice(0, n):
 			var e: Array = g[k]
 			var r: Dictionary = e[2]
-			out.append("%d. %s ×%d · 최악 %dms @ %.1fs (%s%s)" % [i, k, e[0], roundi(e[1]), r.t, r.screen, (", " + str(r.detail)) if str(r.detail) != "" else ""])
+			out.append("%d. %s ×%d · 최악 %dms @ %.1fs (%s%s)" % [i, k, e[0], roundi(e[1]), r.t - t_offset, r.screen, (", " + str(r.detail)) if str(r.detail) != "" else ""])
 			i += 1
 		return out
 
