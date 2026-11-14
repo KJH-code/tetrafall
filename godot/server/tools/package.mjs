@@ -14,6 +14,7 @@
 //   Tetrafall.Server(.exe)   서버 (자기 완결형 한 파일)
 //   web/                     고도 웹 빌드 (+ 파일마다 .br·.gz 미리 압축) → 서버가 /play/ 로, / 는 /play/ 로 넘겨줌
 //   tetrafall(.exe / .x86_64) 고도 PC 클라 (기본 ws://127.0.0.1:3000 = 이 PC 서버)
+//   보고서-복사.bat (+ report.bat, report-copy.ps1) / report.sh (W48)  게임이 꺼져 있어도 저장 폴더의 last_report.txt·hitches.txt 앞 30줄·motion_qa.txt 를 하나로 합쳐 클립보드에 (개인정보 지움)
 //   start-lan / start-online (.bat / .sh — 윈도우 .bat 은 처음에 tetrafall.exe 를 고성능 GPU 로 등록), README.txt, cloudflared(.exe) (--cloudflared 일 때)
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -78,6 +79,131 @@ export function winExtScript() {
   ].join('\r\n');
 }
 
+// ---- 성능·모션 보고서 복사 (W48, 재혁 PC 데이터 수집을 한 번에) ----
+// 재혁이 F3 한 줄·hitches.txt·motion_qa.txt 를 한 번도 못 보냄 → 게임 안 결과 화면 [성능 보고 복사] 버튼·F4 (user://last_report.txt 도 씀) 와,
+// 게임이 꺼진 뒤에도 더블클릭 한 번으로 저장 폴더 (윈도우 %APPDATA%\Godot\app_userdata\Tetrafall\, 리눅스 ~/.local/share/godot/app_userdata/Tetrafall/) 의
+// last_report.txt + hitches.txt 앞 30줄 + motion_qa.txt 를 한 덩어리로 합쳐 클립보드에 넣고 창에도 보여 줌.
+// 개인정보: C:\Users\이름 → %USERPROFILE%·%APPDATA%, 리눅스 홈 → ~, 이 PC 사용자·컴퓨터 이름 → <사용자>.
+// .bat 은 ASCII 만 (cmd 가 OEM 코드 페이지로 읽음) — 한글이 든 일은 UTF-8 BOM 붙인 report-copy.ps1 (PowerShell 5.1 이 BOM 으로 UTF-8 인식) 이 함.
+export const REPORT_DIR_WIN = '%APPDATA%\\Godot\\app_userdata\\Tetrafall';
+export const REPORT_DIR_LINUX = '~/.local/share/godot/app_userdata/Tetrafall';
+export const REPORT_HITCH_LINES = 30;
+export const REPORT_MOTION_LINES = 40;
+export const REPORT_LAST_LINES = 60;
+export function reportBat() {
+  return [
+    '@echo off',
+    'rem Tetrafall report: copies last_report.txt + hitches.txt + motion_qa.txt from the game save folder to the clipboard. Works when the game is closed.',
+    'cd /d "%~dp0"',
+    'powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0report-copy.ps1"',
+    'pause',
+    '',
+  ].join('\r\n');
+}
+export function reportPs1() {
+  const lines = [
+    '$ErrorActionPreference = \'SilentlyContinue\'',
+    '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
+    '$dir = Join-Path $env:APPDATA \'Godot\\app_userdata\\Tetrafall\'',
+    'function Get-Part($name, $max) {',
+    '  $f = Join-Path $dir $name',
+    '  if (Test-Path -LiteralPath $f) { (Get-Content -LiteralPath $f -Encoding UTF8 -TotalCount $max) -join [Environment]::NewLine } else { \'(없음)\' }',
+    '}',
+    '$parts = @()',
+    `$parts += (Get-Part 'last_report.txt' ${REPORT_LAST_LINES})`,
+    '$parts += \'\'',
+    `$parts += '--- hitches.txt (앞 ${REPORT_HITCH_LINES}줄) ---'`,
+    `$parts += (Get-Part 'hitches.txt' ${REPORT_HITCH_LINES})`,
+    '$parts += \'\'',
+    '$parts += \'--- motion_qa.txt ---\'',
+    `$parts += (Get-Part 'motion_qa.txt' ${REPORT_MOTION_LINES})`,
+    '$text = $parts -join [Environment]::NewLine',
+    '# 개인정보: 경로의 사용자 이름 → %APPDATA%·%USERPROFILE%, 사용자·컴퓨터 이름 → <사용자>',
+    '$text = $text -replace \'(?i)[A-Z]:\\\\Users\\\\[^\\\\\\s]+\\\\AppData\\\\Roaming\', \'%APPDATA%\'',
+    '$text = $text -replace \'(?i)[A-Z]:\\\\Users\\\\[^\\\\\\s]+\\\\AppData\\\\Local\', \'%LOCALAPPDATA%\'',
+    '$text = $text -replace \'(?i)[A-Z]:\\\\Users\\\\[^\\\\\\s]+\', \'%USERPROFILE%\'',
+    'foreach ($n in @($env:USERNAME, $env:COMPUTERNAME)) { if ($n -and $n.Length -ge 3) { $text = $text.Replace($n, \'<사용자>\') } }',
+    'Set-Clipboard -Value $text',
+    'Write-Host $text',
+    'Write-Host \'\'',
+    'Write-Host \'[복사됨] 채팅에 붙여 넣어 주세요 (Ctrl+V). 위 글에 "(없음)" 뿐이면 게임에서 한 판 끝낸 뒤 다시 눌러 주세요.\'',
+    '',
+  ];
+  return '\uFEFF' + lines.join('\r\n');
+}
+export function reportSh() {
+  return [
+    '#!/bin/sh',
+    '# Tetrafall 보고서 복사: 저장 폴더의 last_report.txt + hitches.txt 앞 30줄 + motion_qa.txt 를 합쳐 클립보드에 (게임이 꺼져 있어도). 개인정보는 지움',
+    'D="${XDG_DATA_HOME:-$HOME/.local/share}/godot/app_userdata/Tetrafall"',
+    'part() { if [ -f "$D/$1" ]; then head -n "$2" "$D/$1"; else echo "(없음)"; fi; }',
+    'ME="$(id -un 2>/dev/null)"',
+    'HOSTN="$(hostname 2>/dev/null)"',
+    'T="$(mktemp)"',
+    '{',
+    `  part last_report.txt ${REPORT_LAST_LINES}`,
+    '  echo',
+    `  echo "--- hitches.txt (앞 ${REPORT_HITCH_LINES}줄) ---"`,
+    `  part hitches.txt ${REPORT_HITCH_LINES}`,
+    '  echo',
+    '  echo "--- motion_qa.txt ---"',
+    `  part motion_qa.txt ${REPORT_MOTION_LINES}`,
+    '} | sed -e "s|$HOME|~|g" -e \'s|/home/[^/ ]*|~|g\' -e \'s|/Users/[^/ ]*|~|g\' > "$T"',
+    'for n in "$ME" "$HOSTN"; do',
+    '  if [ "${#n}" -ge 3 ]; then sed -i -e "s|$n|<사용자>|g" "$T"; fi',
+    'done',
+    'if command -v wl-copy >/dev/null 2>&1; then wl-copy < "$T"; OK=1',
+    'elif command -v xclip >/dev/null 2>&1; then xclip -selection clipboard < "$T"; OK=1',
+    'elif command -v xsel >/dev/null 2>&1; then xsel -b < "$T"; OK=1',
+    'elif command -v pbcopy >/dev/null 2>&1; then pbcopy < "$T"; OK=1',
+    'else OK=0; fi',
+    'cat "$T"',
+    'echo',
+    'if [ "$OK" = 1 ]; then echo "[복사됨] 채팅에 붙여 넣어 주세요. 위 글에 (없음) 뿐이면 게임에서 한 판 끝낸 뒤 다시 실행."',
+    'else echo "[클립보드 도구 없음 (wl-copy·xclip·xsel)] 위 글을 직접 선택해 복사해 주세요."; fi',
+    'rm -f "$T"',
+    '',
+  ].join('\n');
+}
+
+// 내보내는 동안만 core/build_info.gd 의 TAG·COMMIT 을 이 묶음 버전으로 (보고서 첫 줄에 나옴). 끝나면 (실패해도) 되돌림 — 끊기면 다음 실행이 .orig 로 되돌림.
+export const BUILD_INFO_FILE = path.join('core', 'build_info.gd');
+export const TAG_RE = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
+export function stampBuildInfo(src, tag, commit) {
+  if (tag && !TAG_RE.test(tag)) throw new Error(`버전 태그에 쓸 수 없는 글자: ${tag}`);
+  if (commit && !/^[0-9a-f]{4,40}$/.test(commit)) throw new Error(`커밋 글자가 이상함: ${commit}`);
+  const out = src.replace(/^const TAG := ".*"$/m, `const TAG := "${tag || 'dev'}"`).replace(/^const COMMIT := ".*"$/m, `const COMMIT := "${commit || ''}"`);
+  if (out === src && (tag || commit)) throw new Error('build_info.gd 에 TAG·COMMIT 줄이 없음');
+  return out;
+}
+// 태그 이름 찾기: 환경 변수 TETRAFALL_TAG → 태그 푸시 (GITHUB_REF) → 마지막 커밋 글의 [release 태그] (release.yml 과 같은 규칙) → 가장 가까운 git 태그 → 'dev'
+export function findTag(env = process.env, gitFn = (args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' }).stdout || '') {
+  const ok = (t) => (t && TAG_RE.test(t) ? t : '');
+  if (ok(env.TETRAFALL_TAG)) return env.TETRAFALL_TAG;
+  const m = /^refs\/tags\/(.+)$/.exec(env.GITHUB_REF || '');
+  if (m && ok(m[1])) return m[1];
+  const rel = /\[release ([^\]\s]+)\]/.exec(gitFn(['log', '-1', '--format=%B']));
+  if (rel && ok(rel[1])) return rel[1];
+  const d = gitFn(['describe', '--tags', '--abbrev=0']).trim();
+  return ok(d) || 'dev';
+}
+export function withBuildInfo(file, tag, commit, fn) {
+  const orig = file + PRESETS_ORIG;
+  if (fs.existsSync(orig)) {
+    fs.writeFileSync(file, fs.readFileSync(orig));
+    fs.rmSync(orig);
+  }
+  const before = fs.readFileSync(file, 'utf8');
+  fs.writeFileSync(orig, before);
+  fs.writeFileSync(file, stampBuildInfo(before, tag, commit));
+  try {
+    return fn();
+  } finally {
+    fs.writeFileSync(file, fs.readFileSync(orig));
+    fs.rmSync(orig);
+  }
+}
+
 export const TARGETS = {
   win: {
     rid: 'win-x64',
@@ -90,6 +216,9 @@ export const TARGETS = {
       'start-online.bat': winScript('--online'),
       ...Object.fromEntries(Object.entries(RENDER_TRIALS).map(([k, [m, d]]) => [`start-lan-${k}.bat`, winTryScript(m, d)])),
       'start-lan-ext.bat': winExtScript(),
+      '보고서-복사.bat': reportBat(),
+      'report.bat': reportBat(),
+      'report-copy.ps1': reportPs1(),
     },
   },
   linux: {
@@ -102,6 +231,7 @@ export const TARGETS = {
       'start-lan.sh': '#!/bin/sh\ncd "$(dirname "$0")"\nexec ./Tetrafall.Server\n',
       'start-online.sh': '#!/bin/sh\ncd "$(dirname "$0")"\nexec ./Tetrafall.Server --online\n',
       'start-lan-ext.sh': '#!/bin/sh\ncd "$(dirname "$0")"\n./tetrafall.x86_64 -- --ext &\nexec ./Tetrafall.Server\n',
+      'report.sh': reportSh(),
     },
   },
 };
@@ -110,7 +240,12 @@ export function readme(t, { cloudflared = true } = {}) {
   const win = t.rid.startsWith('win');
   const ext = win ? 'bat' : 'sh';
   const pc = path.basename(t.client[0]);
+  const report = win ? '보고서-복사.bat' : 'report.sh';
   return [
+    `버그·렉·모션 어색함 보고:  결과 화면의 [성능 보고 복사] 버튼 (또는 F4) → 채팅에 붙여넣기. 게임을 껐으면 ${report} (더블클릭·실행)`,
+    `                    ${report} 는 게임을 껐어도 마지막 판 보고서 (last_report.txt) + 끊김 기록 (hitches.txt 앞 30줄) + 모션 기록 (motion_qa.txt) 을 합쳐 복사해 줌. 보고서에는 사용자 이름·경로 (C:\\Users\\이름) 가 안 들어감`,
+    `                    저장 폴더: ${win ? '%APPDATA%\\Godot\\app_userdata\\Tetrafall\\' : '~/.local/share/godot/app_userdata/Tetrafall/'}`,
+    '',
     'Tetrafall (고도 클라 + C# 서버)',
     '',
     `같은 Wi-Fi 친구와:  start-lan.${ext} 를 켜고, 창에 뜬 "다른 PC에서: http://…" 주소를 친구에게`,
@@ -136,7 +271,7 @@ export function readme(t, { cloudflared = true } = {}) {
           `게임이 느리면:      노트북 (내장+외장 그래픽) 은 start-lan·start-online 이 처음 켜질 때 ${pc} 를 Windows 고성능 GPU 로 등록함 (관리자 권한 없이, 이미 정했으면 그대로).`,
           `                    ${pc} 만 따로 쓰면 Windows 설정 > 시스템 > 디스플레이 > 그래픽 에서 ${pc} 를 '고성능'. 게임 설정 '화질' 자동·높음·보통·낮음, F3 = 성능 표시 (Ctrl+C 복사)`,
           `                    내장 그래픽으로 도는 것 같으면 타이틀 왼쪽 아래·설정 창에 노란 경고와 해결법이 뜸. 판 중 GPU 가 병목이면 3D 해상도가 알아서 0.6~1.0 사이로 조절됨 (설정 '3D 해상도 자동', 끄기 가능).`,
-          '                    랙 순간 기록: F3 를 켜면 %APPDATA%\\Godot\\app_userdata\\Tetrafall\\hitches.txt 에 쌓임 — 느렸다면 그 파일도 보내 주세요',
+          '                    랙 순간 기록: 판 보고서에 원인 상위가 들어감 (F3 를 켜 두면 더 자세한 %APPDATA%\\Godot\\app_userdata\\Tetrafall\\hitches.txt 도 쌓임 — 보고서-복사.bat 이 앞 30줄을 같이 복사)',
           '',
           '렌더러 시험 (성능 비교용):  start-lan-compat.bat (지금 기본) · start-lan-forward.bat (Forward+) · start-lan-mobile.bat (Mobile)',
           `                    서버와 ${pc} 를 그 렌더러로 같이 켬 (색이 조금 다를 수 있음 — 시험용). 세 개를 각각: 같은 맵의 8명 판 (방 설정에서 봇 7) 을 한 판 하고,`,
@@ -422,13 +557,19 @@ async function main() {
     } else console.log('웹 템플릿: 공식 (export_templates)');
     run(o.godot, ['--headless', '--path', clientDir, '--import']);
     const presets = ['Web', ...o.targets.map((t) => TARGETS[t].preset)];
-    for (const p of presets) {
-      const target = { Web: 'build/web', Windows: 'build/windows', Linux: 'build/linux' }[p];
-      fs.mkdirSync(path.join(clientDir, target), { recursive: true });
-      const exp = () => run(o.godot, ['--headless', '--path', clientDir, '--export-release', p]);
-      if (p === 'Web') withPresetTemplate(path.join(clientDir, 'export_presets.cfg'), 'Web', o.webTemplate, exp);
-      else exp();
-    }
+    const tag = findTag();
+    const commit = (spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: root, encoding: 'utf8' }).stdout || '').trim();
+    console.log(`버전 표기 (보고서 첫 줄): ${tag}${commit ? ` (${commit})` : ''}`);
+    // 내보내는 동안만 build_info.gd 에 버전을 적음 (끝나면 되돌림)
+    withBuildInfo(path.join(clientDir, BUILD_INFO_FILE), tag, /^[0-9a-f]{4,40}$/.test(commit) ? commit : '', () => {
+      for (const p of presets) {
+        const target = { Web: 'build/web', Windows: 'build/windows', Linux: 'build/linux' }[p];
+        fs.mkdirSync(path.join(clientDir, target), { recursive: true });
+        const exp = () => run(o.godot, ['--headless', '--path', clientDir, '--export-release', p]);
+        if (p === 'Web') withPresetTemplate(path.join(clientDir, 'export_presets.cfg'), 'Web', o.webTemplate, exp);
+        else exp();
+      }
+    });
   }
   fs.mkdirSync(o.out, { recursive: true });
   const missing = [];
