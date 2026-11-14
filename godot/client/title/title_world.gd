@@ -303,6 +303,7 @@ func _crystal() -> void:
 	var rock := F.std(T.rock, 0.95)
 	var ceil := mesh(F.rock_plane(260, 160, 60, 3.5, rnd), rock, Vector3(0, 0 if ring else 40, ceil_z))
 	ceil.basis = Basis(Vector3.RIGHT, PI) # 아래를 봄
+	await _cut()
 	if ring:
 		ceil.basis = ceil.basis.scaled_local(Vector3(1.2, 1.9, 1)) # 대기실: 머리 위 전체
 		_rock_ring(clear * 2.6, ceil_z - floor_z + 6, T.rock, floor_z - 3)
@@ -616,6 +617,8 @@ func _meadow() -> void:
 		var h := 0.6 + rnd.next() * 1.4
 		var g := Co.color(T.grass) * (0.8 + rnd.next() * 0.8)
 		blades.append({"p": Vector3(x, y, floor_z + h / 2 - 0.1), "s": Vector3(0.12, 0.12, h), "r": F.euler((rnd.next() - 0.5) * 0.5, (rnd.next() - 0.5) * 0.5, 0), "c": g})
+		if i % 400 == 399:
+			await _cut()
 	await _cut()
 	add_child(_inst(F.cone(1, 1, 3), F.std(0xffffff, 1.0), blades, F.rot_x(PI / 2)))
 	await _cut()
