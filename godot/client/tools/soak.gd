@@ -102,7 +102,96 @@ func statics() -> String:
 	return "sched %d/%d motb %d g3 %d/%d texreq %d gate %d" % [PSched.main.tasks.size(), PSched.main.finished.size(), Motion_.bodies.size(), g3._mats.size(), g3._outlined.size(), TexPre._req.size(), EntryGate.log.size()]
 
 
+# W51: 트리에서 닿는 자원을 클래스별로 셈 (노드 속성 → 자원 → 하위 자원, 한 번씩). 총 자원 수 (OBJECT_RESOURCE_COUNT) 와 뺀 값이 '트리 밖에 살아 있는 자원'
+# (정적 캐시·누수 후보). 끄기·켜기 = --soak-res (기본 꺼짐 — 걷는 데 수백 ms)
+func res_census() -> Dictionary:
+	var seen := {}
+	var cls := {}
+	var stack: Array = [get_tree().root]
+	while not stack.is_empty():
+		var o = stack.pop_back()
+		if o == null or seen.has(o.get_instance_id()):
+			continue
+		seen[o.get_instance_id()] = true
+		if o is Resource and (o as Resource).resource_path.contains("::"): # OBJECT_RESOURCE_COUNT 는 경로 있는 (캐시에 든) 자원만 셈 — 경로 없는 코드 자원은 안 셈
+			var rp: String = (o as Resource).resource_path
+			var k: String = o.get_class()
+			if rp.begins_with("res://"):
+				var parts := rp.trim_prefix("res://").split("/")
+				k += "@" + "/".join(parts.slice(0, mini(2, parts.size() - 1))) if parts.size() > 1 else "@" + rp
+			else:
+				k += "@local"
+			cls[k] = int(cls.get(k, 0)) + 1
+		if o is Node:
+			for c in (o as Node).get_children(true):
+				stack.append(c)
+		for pr in o.get_property_list():
+			if int(pr["type"]) == TYPE_OBJECT and (int(pr["usage"]) & PROPERTY_USAGE_STORAGE or int(pr["usage"]) & PROPERTY_USAGE_SCRIPT_VARIABLE):
+				var v = o.get(pr["name"])
+				if v is Object and not (v is Node and not (o is Node)) and not (v is Node and v.get_parent() != null and o is Node and v != o.get_parent()):
+					stack.append(v)
+			elif int(pr["type"]) == TYPE_ARRAY and (int(pr["usage"]) & PROPERTY_USAGE_SCRIPT_VARIABLE):
+				for v in o.get(pr["name"]):
+					if v is Resource:
+						stack.append(v)
+	return cls
+
+
+var _res_files: PackedStringArray = []
+var _res_prev := {}
+
+
+func _scan_files(dir: String) -> void:
+	for f in DirAccess.get_files_at(dir):
+		if not f.ends_with(".import") and not f.ends_with(".uid") and not f.ends_with(".md") and not f.ends_with(".cjs") and not f.ends_with(".mjs") and not f.ends_with(".sh"):
+			_res_files.append(dir.path_join(f))
+	for d in DirAccess.get_directories_at(dir):
+		if d != ".godot" and d != "tests" and not d.begins_with("."):
+			_scan_files(dir.path_join(d))
+
+
+# 캐시에 든 자원 이름을 세서 지난 표본과 비교 (새로 캐시된 경로를 이름으로 찍음). 파일 → ResourceLoader.has_cached, 하위 자원 (res://x.glb::Mesh) 은 트리에서 닿는 것만
+func res_line(tag: String) -> void:
+	if _res_files.is_empty():
+		_scan_files("res://")
+	var cur := {}
+	for f in _res_files:
+		if ResourceLoader.has_cached(f):
+			var r = ResourceLoader.get_cached_ref(f)
+			cur[f] = r.get_class() if r != null else "?"
+	var reach := res_census()
+	var sub := 0
+	for k in reach:
+		sub += int(reach[k])
+	var added := []
+	for f in cur:
+		if not _res_prev.has(f):
+			added.append("%s(%s)" % [f.trim_prefix("res://"), cur[f]])
+	var gone := 0
+	for f in _res_prev:
+		if not cur.has(f):
+			gone += 1
+	_res_prev = cur
+	var bydir := {}
+	for f in cur:
+		var pr: PackedStringArray = f.trim_prefix("res://").split("/")
+		var k2 := "/".join(pr.slice(0, mini(2, pr.size() - 1))) if pr.size() > 1 else "(root)"
+		bydir[k2] = int(bydir.get(k2, 0)) + 1
+	var ds := bydir.keys()
+	ds.sort_custom(func(a, b): return bydir[a] > bydir[b])
+	var dp := []
+	for k3 in ds.slice(0, 10):
+		dp.append("%s=%d" % [k3, bydir[k3]])
+	_p("%s rescache files=%d sub(reach)=%d total=%d 새 %d 빠짐 %d | 경로별 %s" % [tag, cur.size(), sub, int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT)), added.size(), gone, " ".join(dp)])
+	if not added.is_empty() and added.size() <= 40:
+		_p("%s resnew %s" % [tag, " ".join(added)])
+	elif not added.is_empty():
+		_p("%s resnew %s ... (%d개 더)" % [tag, " ".join(added.slice(0, 40)), added.size() - 40])
+
+
 func sample(tag: String) -> void:
+	if args.has("soak-res") and tag != "t":
+		res_line(tag)
 	var line := "%s t=%.0f rss=%.0f obj=%d node=%d orph=%d res=%d smem=%.1f vmem=%.1f fmax=%.0f pmax=%.0f err=%d warn=%d | %s | %s/%s win=%s" % [
 		tag, Time.get_ticks_msec() * 0.001 - t0, rss_mb(), Performance.get_monitor(Performance.OBJECT_COUNT), Performance.get_monitor(Performance.OBJECT_NODE_COUNT),
 		Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT), Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT),

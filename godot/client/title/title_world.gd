@@ -8,6 +8,7 @@ const C := preload("res://core/config.gd")
 const Co := preload("res://core/coords.gd")
 const F := preload("res://title/title_fx.gd")
 const WC := preload("res://world/world_config.gd") # 화질 (W6): 거울 크기 배율
+const Opts := preload("res://core/opts.gd")
 const Lod := preload("res://world/pose_lod.gd") # (W15) SubViewport 다시 그리기 빈도
 
 const TB := Basis(Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, 1, 0)) # 게임 (x, y, z 위) → 고도 (x, z, -y)
@@ -39,6 +40,11 @@ const MIRROR := preload("res://title/mirror.gdshader")
 const MIRROR_LAYER := 20
 
 
+signal _go # W51: 소품 짓기 코루틴을 다음 조각으로 이어 줌 (setup_step 이 emit)
+var cut_ms := -1.0 # W51: 소품 한 조각 시간 (ms) — 이 시간이 지난 뒤 처음 만나는 _cut() 에서 다음 프레임으로 미룸. 음수 = 안 끊음 (한 번에). 대기실 defer 때 setup_step 이 정함
+var cut_override = null # 테스트: 한 조각 시간 (ms, 0 이면 끊는 자리마다 끊음) — null 이면 world_config DARK_STEP_MS (--no-dark-split 이면 끔)
+var _step_t := 0
+var _co_running := false
 var _later := 0 # W42 setup(defer): 0 = 다 지음 · 1 = 테마 소품 차례 · 2 = 빛 가루 차례 (setup_step 이 한 번에 하나)
 
 
@@ -84,11 +90,23 @@ func setup(theme: String, opts := {}, defer := false) -> void:
 	_dust()
 
 
+# W51: 코루틴 끊는 자리 — 소품 만들기 (테마 함수) 사이사이에 둠. cut_ms 가 음수면 아무 일 없이 지나감. 난수 (rnd) 를 쓰는 순서는 그대로라 결과는 한 번에 지은 것과 같음
+func _cut() -> void:
+	if cut_ms >= 0.0 and float(Time.get_ticks_usec() - _step_t) > cut_ms * 1000.0:
+		await _go
+
+
 func _props() -> void:
 	ring_rnd = F.Rng.new(99) if ring else null
 	if has_method("_" + id):
-		call("_" + id)
+		await call("_" + id)
 	ring_rnd = null
+
+
+func _run_props() -> void:
+	await _props()
+	_co_running = false
+	_later = 2
 
 
 func _dust() -> void:
@@ -102,9 +120,17 @@ func _dust() -> void:
 
 # defer 로 만든 무대의 남은 일 한 조각 (참 = 다 지음)
 func setup_step() -> bool:
+	_step_t = Time.get_ticks_usec()
 	if _later == 1:
-		_props()
-		_later = 2
+		if _co_running:
+			_go.emit()
+		else:
+			_co_running = true
+			if cut_override != null:
+				cut_ms = float(cut_override)
+			else:
+				cut_ms = -1.0 if Opts.args().has("--no-dark-split") else WC.DARK_STEP_MS
+			_run_props()
 		return false
 	if _later == 2:
 		_dust()
@@ -277,12 +303,14 @@ func _crystal() -> void:
 	var rock := F.std(T.rock, 0.95)
 	var ceil := mesh(F.rock_plane(260, 160, 60, 3.5, rnd), rock, Vector3(0, 0 if ring else 40, ceil_z))
 	ceil.basis = Basis(Vector3.RIGHT, PI) # 아래를 봄
+	await _cut()
 	if ring:
 		ceil.basis = ceil.basis.scaled_local(Vector3(1.2, 1.9, 1)) # 대기실: 머리 위 전체
 		_rock_ring(clear * 2.6, ceil_z - floor_z + 6, T.rock, floor_z - 3)
 	else:
 		var wall := mesh(F.rock_plane(260, 60, 50, 5, rnd), rock, Vector3(0, 75, ceil_z - 25))
 		wall.basis = Basis(Vector3.RIGHT, PI / 2)
+	await _cut()
 	var st := []
 	for i in 30 if low else 70:
 		var x := (rnd.next() - 0.5) * 180
@@ -292,6 +320,7 @@ func _crystal() -> void:
 			continue
 		st.append({"p": Vector3(x, y, ceil_z - h / 2), "s": Vector3(0.6 + rnd.next() * 1.4, 0.6 + rnd.next() * 1.4, h), "r": F.euler(-PI / 2, 0, 0)})
 	add_child(_inst(F.flat(F.cone(1, 1, 5)), F.std(T.rock, 1.0), st, F.rot_x(-PI / 2)))
+	await _cut()
 	var cr := []
 	for i in 10 if low else 22:
 		var x := (rnd.next() - 0.5) * 160
@@ -299,6 +328,7 @@ func _crystal() -> void:
 		if absf(x) < logo_w * 0.6 and y < 18:
 			continue
 		_crystal_cluster(cr, Vector3(x, y, ceil_z - 0.5), -1, 1.5 + rnd.next() * 2.5, T.crystals)
+	await _cut()
 	for i in 14 if low else 34:
 		var x := (rnd.next() - 0.5) * 170
 		var y := -26 + rnd.next() * 100
@@ -306,6 +336,7 @@ func _crystal() -> void:
 			continue
 		_crystal_cluster(cr, Vector3(x, y, floor_z), 1, 1.2 + rnd.next() * (4.0 if y > 20 else 2.2), T.crystals)
 	add_child(_inst(F.octahedron(), F.glow_inst(0.5, 0.25), cr))
+	await _cut()
 	for i in 3:
 		point(T.crystals[i % T.crystals.size()], C.TITLE_LIGHT[2], 50, 1.6, Vector3((i - 1) * 40, 18 + rnd.next() * 20, floor_z + 3))
 	var rocks := []
@@ -349,12 +380,15 @@ func _volcano() -> void:
 			x = nx
 			y = ny
 			s += 1
+	await _cut()
 	var lava := F.basic(T.lava, 2.2)
 	add_child(_inst(F.box(), lava, seg))
+	await _cut()
 	var cone_mat := F.std(T.rock, 1.0)
 	for c in [[-45, 95, 34, 34], [55, 110, 42, 44], [5, 130, 30, 26]]:
 		mesh(F.flat(F.cyl(c[2] * 0.15, c[2], c[3], 9, 3)), cone_mat, Vector3(c[0], c[1], floor_z + c[3] / 2.0), F.rot_x(PI / 2))
 		put(F.glow_sprite(T.lava, c[2] * 1.2, c[2] * 0.6, 0.9), Vector3(c[0], c[1], floor_z + c[3] + 2))
+		await _cut()
 	put(F.glow_sprite(0xff3a08, 260, 70, 0.35), Vector3(0, 140, 20))
 	for i in 2:
 		point(T.lava, 80, 60, 1.5, Vector3(30 if i else -30, 15, floor_z + 1.5))
@@ -379,7 +413,9 @@ func _moon(r: float, at: Vector3, glow_w: float, glow_a: float) -> void:
 
 func _desert() -> void:
 	add_child(F.stars(500 if low else 1400, rnd, 150.0, ring))
+	await _cut()
 	_moon(6, Vector3(-60, 130, 48), 50, 0.22)
+	await _cut()
 	var sand := F.std(T.sand, 1.0)
 	var p := PlaneMesh.new()
 	p.size = Vector2(400, 400)
@@ -389,6 +425,7 @@ func _desert() -> void:
 	for i in 14:
 		dunes.append({"p": Vector3((rnd.next() - 0.5) * 220, 20 + rnd.next() * 110, floor_z - 2), "s": Vector3(30 + rnd.next() * 30, 14 + rnd.next() * 14, 4 + rnd.next() * 5), "r": F.euler(0, 0, rnd.next() * 3)})
 	add_child(_inst(F.sphere(1, 20, 10), sand, dunes))
+	await _cut()
 	var pyr := F.std(T.stone, 0.9)
 	var geo := Transform3D(Basis(Vector3.BACK, PI / 4) * Basis(Vector3.RIGHT, PI / 2), Vector3.ZERO) # rotateX(PI/2) 다음 rotateZ(PI/4)
 	for q in [[-38, 70, 26], [28, 95, 36], [75, 60, 16]]:
@@ -397,6 +434,7 @@ func _desert() -> void:
 		var at := Vector3(q[0], q[1], floor_z + s * 0.9 - s * 0.05)
 		mesh(F.flat(F.cone(s * 0.12, s * 0.11, 4)), F.basic(T.cap, 2.0), at, geo)
 		put(F.glow_sprite(T.cap, s * 0.9, s * 0.9, 0.7), at)
+		await _cut()
 	mote_box = [-90, 90, -30, 60, floor_z, floor_z + 6]
 
 
@@ -423,9 +461,13 @@ func _mushroom() -> void:
 			spots.append({"p": Vector3(x + cos(a) * cos(e) * r, y - lean * h * 0.5 + sin(a) * cos(e) * r, floor_z + h + sin(e) * r * 0.55), "s": Vector3(r * 0.09, r * 0.09, r * 0.05)})
 		if h > 14 and big.size() < 3:
 			big.append([x, y, h, c])
+	await _cut()
 	add_child(_inst(F.cyl(0.7, 1, 1, 8), stem, stems, F.rot_x(PI / 2)))
+	await _cut()
 	add_child(_inst(F.hemi_open(1, 20, 10), F.glow_inst(0.9, 0.5), caps, F.rot_x(PI / 2))) # 밑이 뚫린 갓 (W8)
+	await _cut()
 	add_child(_inst(F.sphere(1, 8, 6), F.basic(0xffffff), spots))
+	await _cut()
 	for b in big:
 		point(b[3], 90, 40, 1.5, Vector3(b[0], b[1], floor_z + b[2] - 1))
 	mote_box = [-90, 90, -25, 70, floor_z, floor_z + 20]
@@ -433,8 +475,10 @@ func _mushroom() -> void:
 
 func _skycastle() -> void:
 	add_child(F.stars(500 if low else 1400, rnd, 150.0, ring))
+	await _cut()
 	_moon(8, Vector3(55, 140, 55), 60, 0.2)
 	dir_light(T.moon, 1.4, Vector3(55, 140, 55))
+	await _cut()
 	var cloud := F.std(T.cloud, 1.0, 0.0, T.cloud, 0.15)
 	var cl := []
 	for i in 120 if low else 260:
@@ -443,6 +487,7 @@ func _skycastle() -> void:
 		var s := 5 + rnd.next() * 9
 		cl.append({"p": Vector3(x, y, floor_z - 1 - s * 0.45 + rnd.next() * 0.8), "s": Vector3(s * 1.6, s, s * 0.45)})
 	add_child(_inst(F.sphere(1, 14, 8), cloud, cl))
+	await _cut()
 	var wall := F.std(T.wall, 0.9)
 	var roof := F.std(T.roof, 0.8)
 	var wins := []
@@ -460,6 +505,7 @@ func _skycastle() -> void:
 		var b := BoxMesh.new()
 		b.size = Vector3(16 * k, 3 * k, 10 * k)
 		mesh(b, wall, Vector3(cx, cy, floor_z + 5 * k - 2))
+		await _cut()
 	add_child(_inst(F.box(), F.basic(T.window, 1.6), wins))
 	mote_box = [-90, 90, -30, 80, floor_z, floor_z + 25]
 
@@ -481,6 +527,7 @@ func _brick_tex() -> ImageTexture:
 
 func _castle() -> void:
 	var tex := _brick_tex()
+	await _cut()
 	var wall_mat := F.std(0xffffff, 0.95)
 	wall_mat.albedo_texture = tex
 	wall_mat.uv1_scale = Vector3(30 * 3, 5 * 2, 1) # three repeat (30, 5) × 고도 BoxMesh 면 3×2 나눔
@@ -499,12 +546,14 @@ func _castle() -> void:
 		rw.uv1_scale = Vector3(40, 5, 1)
 		rw.cull_mode = BaseMaterial3D.CULL_DISABLED
 		mesh(F.cyl(R, R, wall_h, 64, 1, true), rw, Vector3(0, 0, floor_z + wall_h / 2), F.rot_x(PI / 2))
+		await _cut()
 		var cren := []
 		var nc := roundi(TAU * R / 5.0)
 		for k in nc:
 			var a := float(k) / nc * TAU
 			cren.append({"p": Vector3(cos(a) * R, sin(a) * R, floor_z + wall_h + 1.2), "s": Vector3(6, 2.6, 2.4), "r": F.euler(0, 0, a)})
 		add_child(F.instanced(F.box(), tm, cren)) # 성벽 톱니는 제자리 (흩뿌리지 않음)
+		await _cut()
 		for k in 4:
 			var a := PI / 4 + k * PI / 2
 			mesh(F.cyl(7, 7, wall_h + 14, 12), tower_mat, Vector3(cos(a) * R, sin(a) * R, floor_z + (wall_h + 14) / 2), F.rot_x(PI / 2))
@@ -534,6 +583,7 @@ func _castle() -> void:
 		var f := put(F.glow_sprite(T.torch, 3.2, 4.4, 1.0), at)
 		var core := put(F.glow_sprite(0xffe2a0, 1.4, 2, 1.0), at)
 		var halo := put(F.glow_sprite(T.torch, 16, 16, 0.35), at)
+		await _cut()
 		var fl := [f, core, halo, rnd.next() * 10, null]
 		if (i % 3 == 0) if ring else (not low or i % 2 == 0): # 대기실은 3개만
 			fl[4] = point(T.torch, 45, 30, 1.6, Vector3(sp[0] - cos(sp[2]) * 1.7, sp[1] - sin(sp[2]) * 1.7, z + 2))
@@ -552,9 +602,12 @@ func _castle() -> void:
 
 func _meadow() -> void:
 	add_child(F.stars(600 if low else 1600, rnd, 150.0, ring))
+	await _cut()
 	_moon(5, Vector3(60, 130, 45), 45, 0.2)
 	dir_light(T.moon, 0.3, Vector3(60, 130, 45))
+	await _cut()
 	mesh(F.rock_plane(400, 400, 50, 1.2, rnd), F.std(T.grass, 0.95), Vector3(0, 0, floor_z - 0.3))
+	await _cut()
 	var blades := []
 	for i in 900 if low else 2600:
 		var x := (rnd.next() - 0.5) * 180
@@ -564,7 +617,11 @@ func _meadow() -> void:
 		var h := 0.6 + rnd.next() * 1.4
 		var g := Co.color(T.grass) * (0.8 + rnd.next() * 0.8)
 		blades.append({"p": Vector3(x, y, floor_z + h / 2 - 0.1), "s": Vector3(0.12, 0.12, h), "r": F.euler((rnd.next() - 0.5) * 0.5, (rnd.next() - 0.5) * 0.5, 0), "c": g})
+		if i % 400 == 399:
+			await _cut()
+	await _cut()
 	add_child(_inst(F.cone(1, 1, 3), F.std(0xffffff, 1.0), blades, F.rot_x(PI / 2)))
+	await _cut()
 	var tm := F.std(T.tree, 1.0)
 	var cones := []
 	for i in 40:
