@@ -16,6 +16,7 @@ const godot = opt('godot', process.env.GODOT || '/home/user/tools-dl/Godot_v4.7.
 const port = Number(opt('port', 3400 + Math.floor(Math.random() * 400)));
 const n = opt('n', '10');
 const bots = opt('bots', '3');
+const engine = (opt('engine', '') || '').split(' ').filter(Boolean);
 const extra = (opt('extra', '') || '').split(' ').filter(Boolean);
 const timeout = Number(opt('timeout', 1500)) * 1000;
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'soakhome-'));
@@ -27,12 +28,14 @@ const T0 = Date.now();
 await new Promise((r) => setTimeout(r, 1500));
 const env = { ...process.env, HOME: home, XDG_DATA_HOME: path.join(home, 'data'), XDG_CONFIG_HOME: path.join(home, 'cfg') };
 // 가져온 import 캐시는 프로젝트 안 .godot 라 HOME 과 무관
-const g = spawn('xvfb-run', ['-a', godot, '--rendering-method', 'gl_compatibility', '--path', client, '--', '--server', `ws://127.0.0.1:${port}`, '--soak', scen, '--soak-n', n, '--bots', bots, '--soak-sample', opt('sample', '0'), ...extra], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+const g = spawn('xvfb-run', ['-a', godot, '--rendering-method', 'gl_compatibility', ...engine, '--path', client, '--', '--server', `ws://127.0.0.1:${port}`, '--soak', scen, '--soak-n', n, '--bots', bots, '--soak-sample', opt('sample', '0'), ...extra], { env, stdio: ['ignore', 'pipe', 'pipe'] });
 const rows = [];
 let lines = 0, bad = 0, aborted = false;
 const kinds = {};
+const keep = opt('grep', '') ? new RegExp(opt('grep', '')) : null; // 큰 로그를 저장하지 않고 이 식에 맞는 줄만 출력 (예: 종료 때 누수 객체)
 const onLine = (l) => {
   lines++;
+  if (keep && keep.test(l)) console.log(l);
   if (/^\[soak\]/.test(l)) { rows.push(l); if (!/로그 \d+번/.test(l)) console.log(l); else console.log(l); }
   else if (/ERROR|WARNING|SCRIPT ERROR|Aborted|corrupted|malloc/.test(l)) {
     bad++;

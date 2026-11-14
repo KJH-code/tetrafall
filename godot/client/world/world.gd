@@ -97,6 +97,8 @@ func _exit_tree() -> void:
 	# 끝낼 때 남은 미리 하기 작업을 놓음: 정적 스케줄러가 람다 (world·몸 데우기 잡을 붙잡음) 를 쥔 채로 엔진이 내려가면 힙이 깨져 종료 때 abort (W41 병합 검증: Linux 소프트웨어 렌더 실행이 rc=134)
 	PSched.main.clear()
 	WarmScan.clear_static()
+	if G3 != null and G3.has_method("clear_static"):
+		G3.clear_static() # W50: G3 정적 목록의 람다가 g3.gd 를 쥔 채 내려가던 것
 
 
 func _ready() -> void:

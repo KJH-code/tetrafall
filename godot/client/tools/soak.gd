@@ -1,8 +1,8 @@
 # 스트레스·장시간 시험 (W50): main.gd 가 --soak <시나리오> 로 붙이는 노드. 소프트웨어 렌더 xvfb 에서 도는 자동 조종 시험의 '객체·메모리·로그' 추세를 찍음.
 # 사용 (서버 필요 — tools/soak.mjs 가 서버·고도·표를 다 함): godot --path godot/client -- --server ws://127.0.0.1:3000 --soak <시나리오> [--soak-n N] [--bots N] [--soak-sample 초]
 # 시나리오: rounds (한 방에서 N판 연속) · enter (방 만들기→나가기 N회, 5번에 한 번은 판 시작 중·입장 직후 나가기) · chars (대기실 8명 방에서 캐릭터 N번 바꾸기) ·
-#   resize (창 크기·UI 배율·화질 N번 바꾸기, 대기실 + 판 중) · modes (연습·튜토리얼·생존·마스터·킬·팀전·체력전·하늘 계단을 L바퀴) · reconnect (판 중·대기실·카운트다운에 연결을 N번 끊음) · idle
-# 출력: "[soak] <시나리오> <꼬리표> ..." 한 줄씩 (rss·객체·노드·고아·자원·정적 메모리·영상 메모리·최악 프레임·경고/에러 수·정적 상태 크기) — tools/soak.mjs 가 표로 만듦. 끝은 "[soak] <시나리오> DONE rc=…"
+#   resize (창 크기·UI 크기·화질 N번 바꾸기, 대기실 + 판 중) · modes (연습·튜토리얼·생존·마스터·킬·팀전·체력전·하늘 계단을 L바퀴) · reconnect (판 중·대기실·카운트다운에 연결을 N번 끊음) · idle
+# 출력: "[soak] <시나리오> <표시 이름> ..." 한 줄씩 (rss·객체·노드·고아·자원·정적 메모리·영상 메모리·최악 프레임·경고/에러 수·정적 상태 크기) — tools/soak.mjs 가 표로 만듦. 끝은 "[soak] <시나리오> DONE rc=…"
 extends Node
 
 const PSched := preload("res://world/prewarm_sched.gd")
@@ -151,7 +151,7 @@ func open_room(nick := "soak") -> bool:
 		return false
 	Store.create_room("", nick)
 	if not await until(func(): return Store.in_room(), 15.0):
-		fail("방 만들기 응답 없음")
+		fail("방 만들기 안 옴")
 		return false
 	return true
 
@@ -159,7 +159,7 @@ func open_room(nick := "soak") -> bool:
 func leave_room() -> void:
 	Store.leave()
 	if not await until(func(): return not Store.in_room(), 10.0):
-		fail("방 나가기 응답 없음 (연결 %s · 단계 %s · 창 %s · 배율 %.2f)" % [Net.is_open(), Store.phase(), str(get_window().size), get_window().content_scale_factor])
+		fail("방 나가기 안 옴 (연결 %s · 단계 %s · 창 %s · 크기 %.2f)" % [Net.is_open(), Store.phase(), str(get_window().size), get_window().content_scale_factor])
 
 
 func add_bots(k: int) -> void:
