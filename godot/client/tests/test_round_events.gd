@@ -1,4 +1,5 @@
-# 돌발 이벤트 알림 글 (ui/round_event_text.gd): 종류마다 한 줄, 돌풍은 방향 화살표 (게임 좌표 → 보는 방향 기준), 모르는 것은 빈 글
+# 돌발 이벤트 알림 글 (ui/round_event_text.gd): 종류마다 한 줄, 돌풍은 방향 화살표 (게임 좌표 → 보는 방향 기준), 모르는 것은 빈 글.
+# 진행 중 띠 (status): 스냅샷 roundEvent 의 남은 초까지
 extends RefCounted
 
 const T := preload("res://ui/round_event_text.gd")
@@ -87,3 +88,32 @@ func test_round_event_text_unknown_empty() -> void:
 		check(T.text({"kind": "wind"}, yaw) == "", "방향 없는 돌풍")
 		check(T.text({"kind": "wind", "dir": null}, yaw) == "", "방향 null 돌풍")
 		check(T.text({"kind": "wind", "dir": {"x": 0, "y": 0}}, yaw) == "", "방향 0 돌풍")
+
+
+# 진행 중 띠 (hud_extra.gd refresh → status): 스냅샷 roundEvent {kind, left, dir} → '돌풍 ↓ 5초'·'블록 폭우 1초'. 남은 초는 올림
+func test_round_event_status() -> void:
+	var wind := {"kind": "wind", "left": 4200.0, "dir": {"x": 0.0, "y": -1.0}}
+	check(T.status(wind, UP) == "돌풍 ↓ 5초", "돌풍: '%s'" % T.status(wind, UP))
+	check(T.status({"kind": "rain", "left": 300.0, "dir": null}, UP) == "블록 폭우 1초", "폭우: '%s'" % T.status({"kind": "rain", "left": 300.0, "dir": null}, UP))
+	check(T.status({"kind": "rain", "left": 6000.0}, 0.0) == "블록 폭우 6초", "딱 6초")
+	check(T.status({"kind": "rain", "left": 5999.0}, 0.0) == "블록 폭우 6초", "5.999초 → 6초 (올림)")
+	check(T.status({"kind": "rain", "left": 1.0}, 0.0) == "블록 폭우 1초", "1ms 남아도 1초")
+	# 띠 없음: 진행 중 아님·보급·모르는 종류·방향 없는 돌풍
+	for yaw in [0.0, UP]:
+		check(T.status(null, yaw) == "", "null")
+		check(T.status({}, yaw) == "", "빈 것")
+		check(T.status({"kind": "rain", "left": 0.0}, yaw) == "", "left 0")
+		check(T.status({"kind": "wind", "left": -5.0, "dir": {"x": 1.0, "y": 0.0}}, yaw) == "", "left 음수")
+		check(T.status({"kind": "rain"}, yaw) == "", "left 없음")
+		check(T.status({"kind": "rain", "left": null}, yaw) == "", "left null")
+		check(T.status({"kind": "supply", "left": 3000.0}, yaw) == "", "보급")
+		check(T.status({"kind": "meteor", "left": 3000.0}, yaw) == "", "모르는 종류")
+		check(T.status({"kind": "wind", "left": 3000.0}, yaw) == "", "방향 없는 돌풍")
+		check(T.status({"kind": "wind", "left": 3000.0, "dir": null}, yaw) == "", "방향 null 돌풍")
+		check(T.status({"kind": "wind", "left": 3000.0, "dir": {"x": 0, "y": 0}}, yaw) == "", "방향 0 돌풍")
+	# 화살표는 보는 방향 기준 (몸을 돌리면 띠도 따라 바뀜): 같은 ev 에 yaw 0 과 π/2
+	check(T.status(wind, 0.0) != T.status(wind, UP), "yaw 가 달라도 글이 같음: '%s'" % T.status(wind, 0.0))
+	check(T.status(wind, 0.0) == "돌풍 → 5초", "yaw 0: '%s'" % T.status(wind, 0.0))
+	# 화살표는 시작 알림 (text) 과 같은 것
+	for yaw in [0.0, UP, PI, -UP, 0.6]:
+		check(T.status(wind, yaw) == "%s 5초" % T.text(wind, yaw), "yaw %.2f: 띠 '%s' vs 알림 '%s'" % [yaw, T.status(wind, yaw), T.text(wind, yaw)])

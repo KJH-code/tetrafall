@@ -61,6 +61,17 @@ func _ready() -> void:
 	add_child(cam)
 	cam.current = true
 	PlayerInput.ui_action.connect(_on_ui)
+	Store.game_event.connect(_on_event)
+
+
+# 내 유령 투하를 서버가 안 받음 (서버 이벤트 ghostDropFail {who, reason} — 쿨·칸 꽉 참 등): 조준 원만 살짝 흔들림, 글자 없음 (JS ghostRefuse)
+static func refuse_from(e: Dictionary, my_id) -> bool:
+	return str(e.get("type", "")) == "ghostDropFail" and my_id != null and e.get("who") != null and int(e.get("who")) == int(my_id)
+
+
+func _on_event(e: Dictionary) -> void:
+	if refuse_from(e, Store.my_id):
+		ghost_refuse_at = Time.get_ticks_msec() * 1.0
 
 
 func third() -> bool:

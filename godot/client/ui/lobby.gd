@@ -159,7 +159,9 @@ func _ready() -> void:
 	map_sel = _select("맵", ["random"] + Array(C.MAP_IDS), func(id): return "무작위" if id == "random" else C.MAPS[id].name, func(id): Store.send_room({"type": "setMap", "map": id}))
 	sky_box = _check("하늘 계단", func(on): Store.send_room({"type": "skyStairs", "on": on}))
 	hp_box = _check("체력전", func(on): Store.send_room({"type": "hpMode", "on": on}))
-	events_box = _check("돌발 이벤트", func(on): Store.send_room({"type": "roundEvents", "on": on})) # 고도 판 전용 (블록 폭우·돌풍·보급)
+	events_box = _check("돌발 이벤트", func(on): # 고도 판 전용 (블록 폭우·돌풍·보급). 고른 값은 기억해 다음에 만드는 방에도 (menu.gd _create — 기억 없으면 켬)
+		Prefs.set_value("roundEvents", on)
+		Store.send_room({"type": "roundEvents", "on": on}))
 	col.add_child(settings_box)
 	map_info = S.label("", 13, Color("cdd5ee"))
 	map_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART # 옵션이 여럿 붙어도 판 폭 안에서 줄바꿈
@@ -300,6 +302,17 @@ func _copy_link() -> void:
 	DisplayServer.clipboard_set(link)
 
 
+# 대기실 밖 단계의 상태 한 줄 (판 중에 들어온 사람도 이 판을 봄): 끝났으면 '종료', 카운트다운·진행 중은 그대로 말함
+# (예전엔 전부 '라운드 N 종료' 라 진행 중인 판도 끝난 것처럼 보였음)
+static func phase_status(phase: String, n: int) -> String:
+	match phase:
+		"countdown":
+			return "곧 시작"
+		"playing":
+			return "라운드 %d 진행 중" % n
+	return "라운드 %d 종료" % n
+
+
 # 매 프레임 (ui.gd 가 부름): 스냅샷을 보고 판 내용 맞춤
 func refresh(st: Dictionary) -> void:
 	var me := Store.me()
@@ -315,7 +328,7 @@ func refresh(st: Dictionary) -> void:
 		else:
 			text = "%d명 접속. 호스트가 시작하길 기다리는 중" % n
 	else:
-		text = "라운드 %d 종료" % int(st.round.n)
+		text = phase_status(str(st.phase), int(st.round.n))
 	status.text = text
 	hint.visible = str(Prefs.get_value("tutorial", "")) != "done"
 	_key_texts(bool(st.get("itemsEnabled", C.ITEMS_ENABLED)))

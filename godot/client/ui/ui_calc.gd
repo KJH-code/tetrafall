@@ -65,6 +65,28 @@ static func room_opts(d: Dictionary) -> String:
 	return out
 
 
+# 블록 마스터 반격 알림 한 줄 (서버 이벤트 masterStall {who, ms}): 보는 사람 자리마다 다른 글. n초 = ms 올림.
+# me = 내 플레이어 (없으면 {}), eater_name = 반격 아이템을 먹은 사람 이름. 마스터 편 (마스터·좀비) 은 자기 블록이 멈추는 것
+static func master_stall_text(e: Dictionary, me: Dictionary, eater_name: String) -> String:
+	var n := int(ceil(float(e.get("ms", 0.0)) / 1000.0))
+	if me.get("master", false) or me.get("zombie", false):
+		return "반격! 블록 %d초 멈춤" % n
+	if not me.is_empty() and e.get("who") != null and me.get("id") != null and int(e.get("who")) == int(me.get("id")):
+		return "반격! 마스터 블록 %d초 멈춤" % n
+	return "%s 반격! 마스터 블록 %d초 멈춤" % [eater_name, n]
+
+
+# 메뉴에서 방을 만든 직후 보낼 방 옵션 메시지 목록 (menu.gd _create): 돌발 이벤트는 기본 켬.
+# pref = 기억해 둔 체크 (ui_prefs roundEvents: 없으면 null = 켬, false 면 끈 채로), st = 지금 스냅샷 (비었으면 꺼짐으로 봄 — 서버 기본값).
+# 이미 켜져 있으면 안 보냄. 모드는 안 봄 (블록 마스터 방도 켜 둠 — 모드를 바꾸면 그때부터 돎)
+static func create_defaults(pref, st: Dictionary) -> Array:
+	if pref is bool and not pref:
+		return []
+	if st.get("roundEvents", false):
+		return []
+	return [{"type": "roundEvents", "on": true}]
+
+
 # ---------- hud-layout.js (이어서) ----------
 
 # 머리 위 이름·%: 카메라에서 가까운 LABEL_FULL_N 명만 원래 크기, 나머지는 작고 흐리게. dists[i] → {scale, opacity}

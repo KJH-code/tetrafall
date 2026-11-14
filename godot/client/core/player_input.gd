@@ -31,6 +31,7 @@ func _ready() -> void:
 	set_binds(Keys.load_binds())
 	Store.state_changed.connect(_on_state)
 	Store.joined.connect(func(_room, rejoined): _on_joined(rejoined))
+	Store.game_event.connect(_on_event)
 
 
 func set_binds(b: Dictionary) -> void:
@@ -70,6 +71,22 @@ func _on_joined(rejoined: bool) -> void:
 		var p := Store.me()
 		if not p.is_empty():
 			set_yaw_pitch(p.yaw, 0)
+
+
+# 튜토리얼 단계가 바뀜 (서버 이벤트 tutorialStep {who, yaw}): 내 것이면 그 단계 처음 자리에서 볼 쪽 (yaw), 아니면 null
+# (JS main.js handleEvent: input.setYawPitch(e.yaw, 0))
+static func step_yaw(e: Dictionary, my_id):
+	if str(e.get("type", "")) != "tutorialStep" or my_id == null or e.get("who") == null or e.get("yaw") == null:
+		return null
+	if int(e.get("who")) != int(my_id):
+		return null
+	return float(e.get("yaw"))
+
+
+func _on_event(e: Dictionary) -> void:
+	var y = step_yaw(e, Store.my_id)
+	if y != null:
+		set_yaw_pitch(float(y), 0)
 
 
 func _on_state(st: Dictionary, _prev: Dictionary) -> void:

@@ -130,7 +130,9 @@ func _ready() -> void:
 		col.custom_minimum_size.x = minf(600.0, size.x - 32.0)
 		logo.add_theme_font_size_override("font_size", int(clampf(size.x * 0.092, 64.0, 124.0))))
 	Store.rooms_changed.connect(func(_l): _render_list())
-	Store.join_error.connect(func(r): msg.text = str(r))
+	Store.join_error.connect(func(r):
+		_forget_create()
+		msg.text = str(r))
 	Store.left_room.connect(func(r): msg.text = "" if str(r) == "" else str(r))
 	_render_list()
 
@@ -173,15 +175,34 @@ func _nick() -> String:
 
 func _create() -> void:
 	msg.text = ""
+	# 만든 방에 들어가면 한 번만: 기본 방 옵션을 보냄 (돌발 이벤트 기본 켬 — U.create_defaults)
+	if not Store.joined.is_connected(_on_created):
+		Store.joined.connect(_on_created, CONNECT_ONE_SHOT)
 	Store.create_room(room_name.text, _nick())
+
+
+# 내가 만든 방의 welcome: 재접속이 아니면 기본 방 옵션 메시지 (방장만 먹음 — 방금 만든 방은 내가 방장)
+func _on_created(_room: Dictionary, rejoined: bool) -> void:
+	if rejoined:
+		return
+	for m in U.create_defaults(Prefs.get_value("roundEvents", null), Store.state):
+		Store.send_room(m)
+
+
+# 방 만들기가 아닌 길로 들어가면 (코드·목록·연습), 만들기가 안 돼 남아 있던 한 번짜리 연결을 걷음 (남의 방·연습 방에 옵션을 보내지 않게)
+func _forget_create() -> void:
+	if Store.joined.is_connected(_on_created):
+		Store.joined.disconnect(_on_created)
 
 
 func _join(code: String) -> void:
 	msg.text = ""
+	_forget_create()
 	Store.join(code)
 
 
 func _practice() -> void:
+	_forget_create()
 	Net.send({"type": "practice", "nick": _nick()})
 
 

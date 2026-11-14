@@ -1,5 +1,5 @@
 # 돌발 이벤트 알림 글 (서버 이벤트 roundEvent → 알림 한 줄, 이벤트가 시작할 때 한 번). 순수 계산 — hud_extra.gd 가 toast 로 띄움.
-# 스냅샷 roundEvent (진행 중인 이벤트·남은 시간) 는 아직 화면 어디서도 안 읽음 (판 중에 들어온 사람은 진행 중인 이벤트를 모름)
+# 스냅샷 roundEvent (진행 중인 이벤트·남은 시간) 는 status 가 한 줄로 — hud_extra.gd refresh 가 끝날 때까지 위 가운데 띠에 (판 중에 들어온 사람도 봄)
 # e = {kind: "rain" | "wind" | "supply", dir: {x, y} (돌풍만, 게임 좌표 단위 벡터)}
 extends RefCounted
 
@@ -15,6 +15,24 @@ static func text(e: Dictionary, yaw: float) -> String:
 		"wind":
 			var a := arrow(e.get("dir"), yaw)
 			return "돌풍 %s" % a if a != "" else ""
+	return ""
+
+
+# 진행 중인 이벤트 띠 글: ev = 스냅샷 roundEvent {kind, left (남은 ms), dir} 또는 null. 남은 초는 올림 (0.3초 남아도 1초).
+# 진행 중이 아님 (null·left 0 이하)·보급 (한 번에 끝남)·모르는 종류·방향 없는 돌풍은 "" (띠 숨김). 돌풍 화살표는 매번 보는 방향 기준
+static func status(ev, yaw: float) -> String:
+	if not (ev is Dictionary):
+		return ""
+	var left := float(ev.get("left", 0.0)) if ev.get("left") != null else 0.0
+	if left <= 0.0:
+		return ""
+	var n := int(ceil(left / 1000.0))
+	match str(ev.get("kind", "")):
+		"rain":
+			return "블록 폭우 %d초" % n
+		"wind":
+			var a := arrow(ev.get("dir"), yaw)
+			return "돌풍 %s %d초" % [a, n] if a != "" else ""
 	return ""
 
 

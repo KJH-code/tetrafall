@@ -9,8 +9,9 @@ const S := preload("res://ui/ui_style.gd")
 const Keys := preload("res://core/keys.gd")
 const Coords := preload("res://core/coords.gd")
 const RoundEventText := preload("res://ui/round_event_text.gd")
+const U := preload("res://ui/ui_calc.gd")
 
-const ITEM_KO := {"control": "조종권", "knockback": "투사체", "jump": "점프력 상승", "ghost": "유령화", "brick": "설치 블록", "bomb": "폭탄", "speed": "이속 증가"}
+const ITEM_KO := {"control": "조종권", "knockback": "투사체", "jump": "점프력 상승", "ghost": "유령화", "brick": "설치 블록", "bomb": "폭탄", "speed": "이속 증가", "counter": "반격"}
 const TEAM_KO := {"red": "빨강", "blue": "파랑"}
 const TEAM_MAIN := {"red": Color("ff5a4a"), "blue": Color("4aa8ff")}
 const ULT_FAIL_TEXT := {"noBlock": "블록 없음", "noSpace": "자리 없음", "busy": "사용 중", "noTarget": "대상 없음"}
@@ -23,6 +24,7 @@ var timer_labels := {}
 var timer_full := {"control": null, "power": null}
 var timer_prev := {"control": null, "power": null}
 var banner: Label
+var event_chip: Label # 진행 중인 돌발 이벤트 띠 (스냅샷 roundEvent: '블록 폭우 N초'·'돌풍 → N초' — 끝날 때까지)
 var danger: Label
 var toasts: VBoxContainer
 var win_big: Label
@@ -103,6 +105,10 @@ func _ready() -> void:
 	banner.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	banner.visible = false
 	top_box.add_child(banner)
+	event_chip = _box_label(17, Color("6a3fb0"))
+	event_chip.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	event_chip.visible = false
+	top_box.add_child(event_chip)
 	danger = _box_label(24, Color("e0300c"))
 	danger.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	danger.visible = false
@@ -391,12 +397,16 @@ func _on_event(e: Dictionary) -> void:
 		"mark":
 			if e.get("by") == me_id:
 				show_hitmarker()
-		"pickup":
-			if e.get("who") == me_id:
+		"pickup": # 반격 (counter) 은 바로 뒤 masterStall 이 알림 → 여기선 넘김 (줍는 사람에게 같은 내용 두 줄 안 뜨게)
+			if e.get("who") == me_id and str(e.get("item", "")) != "counter":
 				toast("%s!" % str(ITEM_KO.get(str(e.get("item", "")), str(e.get("item", "")))), "good")
 		"controlStart":
 			if e.get("who") != me_id and Store.state.get("mode") != "master": # 블록 마스터는 블록마다 오고 위 띠가 이미 알려 줌
 				toast("%s 블록 조종 시작. 그림자를 조심!" % _name(Store.player(e.get("who"))))
+		"masterStall": # 블록 마스터 반격 아이템: 마스터 편 새 블록이 잠깐 멈춤 (마스터 편엔 경고색, 생존자엔 좋은 소식)
+			var me := Store.me()
+			var mine: bool = bool(me.get("master", false)) or bool(me.get("zombie", false))
+			toast(U.master_stall_text(e, me, _name(Store.player(e.get("who")))), "me" if mine else "good")
 		"lava":
 			toast("용암! 위로", "me")
 		"roundEvent": # 돌발 이벤트 (방 옵션): 블록 폭우·돌풍·보급 시작
@@ -517,6 +527,11 @@ func refresh(st: Dictionary) -> void:
 	top_box.size.x = minf(vp.x - 40, 760)
 	_item_timers(st)
 	_banner(st, p)
+	# 진행 중인 돌발 이벤트: 시작 알림이 사라진 뒤에도 끝날 때까지 한 줄 (돌풍 화살표는 지금 보는 방향 기준으로 매 프레임)
+	var ev_status := RoundEventText.status(st.get("roundEvent"), _view_yaw()) if playing else ""
+	event_chip.visible = ev_status != ""
+	if ev_status != "":
+		event_chip.text = ev_status
 	# 압사 경고: 내 머리 위로 떨어지는 블록이 곧 깔 때 (서버가 계산한 남은 시간)
 	var dg = p.get("danger") if alive and playing else null
 	danger.visible = dg != null
