@@ -57,6 +57,10 @@ func _ready() -> void:
 		var ap := AutoPilot.new()
 		ap.args = args
 		add_child(ap)
+	if args.has("nan-hunt"): # W49 뼈 NaN·영 스케일이 처음 생기는 곳 추적 (tools/nan_hunt.gd, 재연·판 중 둘 다)
+		var nh: Node = load("res://tools/nan_hunt.gd").new()
+		nh.args = args
+		add_child(nh)
 	if args.has("rec") or args.has("replay"): # 성능 재연 (W12, core/replay.gd): 녹화는 판과 같이, 재연은 서버 없이
 		var rp: Node = load("res://core/replay.gd").new()
 		rp.args = args

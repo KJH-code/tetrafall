@@ -1197,7 +1197,9 @@ class Ext extends Node3D:
 		if clip != "" or sk == null:
 			return
 		t0 = _lap("몸 외부 몸 ·표정", t0)
+		_pr("start")
 		_code_sync()
+		_pr("code_sync")
 		t0 = _lap("몸 외부 몸 ·뼈 맞추기", t0)
 		if not third:
 			_vm_bone_scale()
@@ -1206,10 +1208,13 @@ class Ext extends Node3D:
 			_dash_wrist()
 		if third and not clipset.is_empty() and (st != null or not forced.is_empty()):
 			_clip_layer(st)
+		_pr("clip")
 		t0 = _lap("몸 외부 몸 ·클립 층", t0)
 		if third and st != null:
 			_reset_extra()
+			_pr("reset_extra")
 			_hit_flinch(st)
+			_pr("hit_flinch")
 			_extra_layer(st)
 		if not cloths.is_empty():
 			var c_on := K_.flag("cloth") # W49: 꺼지면 천 뼈가 쉬는 자세로 부드럽게 돌아가고 (rest_step) 그 뒤엔 계산 0
@@ -1221,6 +1226,7 @@ class Ext extends Node3D:
 					cloth_rested = false
 					for cl in cloths:
 						cl.step(cdt)
+					_pr("cloth")
 				else:
 					var all_rest := true
 					for cl in cloths:
@@ -1230,6 +1236,11 @@ class Ext extends Node3D:
 			else:
 				cloth_t = 0.0 # 쉬는 동안엔 시계를 안 이어 둠 (다시 켤 때 첫 프레임 dt 를 0 으로)
 		_lap("몸 외부 몸 ·움찔·천", t0)
+
+	# W49 NaN 추적 훅 (Motion_.probe 가 비어 있으면 아무것도 안 함)
+	func _pr(stage: String) -> void:
+		if Motion_.probe.is_valid():
+			Motion_.probe.call(self, stage)
 
 	static func _lap(name: String, t0: int) -> int:
 		if t0 == 0:
@@ -1675,6 +1686,11 @@ class Ext extends Node3D:
 			if r.awake and float(r.motor) < K_.EXT_CLIP_MOTOR_MIN:
 				return
 		var age: float = float(hit.age)
+		# W49: 맞은 지 음수 (시계가 바뀜: 재연 가상 시계·반복 재생에서 t0 가 옛 시계 값이면 age 가 −수십 초) 이거나 깨진 값이면 움찔 없음.
+		# exp(−age/0.015) 는 age < −10.6초에서 INF → (1−INF)·INF = NaN 이 척추 회전에 써졌음 (nan_fuzz hit.age=−1e9·−inf·nan)
+		if not is_finite(age) or age < -0.05:
+			return
+		age = maxf(age, 0.0)
 		var env: float = (1.0 - exp(-age / 0.015)) * exp(-age / K_.EXT_HIT_FLINCH_DECAY_S)
 		var amp: float = clampf(float(hit.get("pow", 1.0)), 0.4, 2.0) * K_.EXT_HIT_FLINCH_RAD * env
 		var back: float = float(react.back) # 뒤로 밀리면 (dx < 0) 윗몸이 뒤로 젖혀짐
@@ -1717,12 +1733,21 @@ class Ext extends Node3D:
 
 	# 몸 (skeleton 공간) 축 회전 d 를 뼈의 지금 자세에 더함 (부모 전역 회전으로 지역 좌표로 옮김)
 	func _add_rot(bi: int, d: Quaternion) -> void:
+		# W49: 더할 회전이 깨졌으면 (NaN·inf — 입력이 깨진 가산 층) 뼈에 쓰지 않음. 아래 부모 basis 검사만으로는 이 뼈에 이미 NaN 이 써진 뒤라, 자식 뼈들의 경고만 막고 NaN 은 남았음
+		if not Motion_.quat_ok(d):
+			if Motion_.probe.is_valid():
+				Motion_.probe.call(self, "add_rot_bad_input:" + sk.get_bone_name(bi))
+			return
 		var pg := _gt(sk.get_bone_parent(bi))
 		# W47: 부모 전역 basis 가 영 스케일 (몸 크기 0) 이거나 NaN·inf 면 → get_rotation_quaternion 이 "cannot be normalized"·"must be normalized" 를 찍음. 회전을 더할 의미가 없어 건너뜀
 		if not Motion_.basis_ok(pg.basis):
+			if Motion_.probe.is_valid():
+				Motion_.probe.call(self, "add_rot_skip:" + sk.get_bone_name(bi))
 			return
 		var pb := pg.basis.get_rotation_quaternion()
 		var lq: Quaternion = sk.get_bone_pose_rotation(bi)
+		if not Motion_.quat_ok(lq): # 이 뼈가 이미 깨져 있으면 쉬는 회전에서 다시 (스스로 고침)
+			lq = (info.rest_local[bi] as Transform3D).basis.get_rotation_quaternion()
 		sk.set_bone_pose_rotation(bi, pb.inverse() * d * pb * lq)
 
 	# W40 탱크 방어구 깨짐: 방패 쥔 (왼) 팔이 뒤로 튕김 (body.armor_break_react_at, 몸에 값이 있는 캐릭터만)
@@ -1759,13 +1784,17 @@ class Ext extends Node3D:
 		extra_t = now
 		if dt <= 0.0:
 			return
+		if not Motion_.basis_ok(Rag_.glob(sk).basis): # W49: 몸 월드 크기가 0·NaN (숨김·찌그러짐이 깨진 값) 이면 가산 층 건너뜀 — 월드 가속도·시선이 영행렬을 뒤집으려 해 경고를 찍던 곳 (nan_fuzz body.scale=0)
+			return
 		var rg = Rag_._inst
 		var rag_motor := -1.0
 		if rg != null and is_instance_valid(rg) and rg.rags.has(body):
 			var r: Dictionary = rg.rags[body]
 			if r.awake:
 				rag_motor = float(r.motor)
+		_pr("extra_start")
 		_getup_layer(st, dt, rag_motor) # W43: 모터가 돌아오는 동안 손 짚고 일어나기 (힘 빠진 몸 규칙보다 먼저)
+		_pr("getup")
 		if rag_motor >= 0.0 and rag_motor < K_.EXT_CLIP_MOTOR_MIN:
 			return # 힘 빠진 몸은 물리가 맡음
 		# --- 시선 --- (W49: 꺼지면 가중치가 0 으로 내려간 뒤엔 건너뜀)
@@ -1797,17 +1826,21 @@ class Ext extends Node3D:
 				var bi := sk.find_bone(str(e[0]))
 				if bi >= 0:
 					_add_rot(bi, Quaternion(Vector3.UP, th * float(e[1])))
+		_pr("gaze")
 		_move_layer(st, dt) # W43
+		_pr("move")
 		_weapon_layer(st, dt) # W43
+		_pr("weapon")
 		# --- 숨쉬기 (서 있고 아무것도 안 할 때, 캐릭터마다 박자·위상 다름) ---
 		var lb_on := K_.flag("land_breath") # W49: 착지·숨쉬기 한 토글
 		breath_w = move_toward(breath_w, 1.0 if (lb_on and Motion_.breath_allowed(st)) else 0.0, dt * 2.0)
 		if breath_w > 0.01:
-			var bv: float = Motion_.breath(float(st.get("t", 0.0)), str(body.get("char_id"))) * breath_w * K_.EXT_BREATH_RAD
+			var bv: float = Motion_.breath(Motion_.fin(float(st.get("t", 0.0))), str(body.get("char_id"))) * breath_w * K_.EXT_BREATH_RAD
 			for e in [["mixamorig_Spine1", 0.5], ["mixamorig_Spine2", 1.0], ["mixamorig_Head", -0.6]]:
 				var bi3 := sk.find_bone(str(e[0]))
 				if bi3 >= 0:
 					_add_rot(bi3, Quaternion(Vector3.BACK, bv * float(e[1])))
+		_pr("breath")
 		# --- 착지: 윗몸 숙임 + 무릎 굽힘 (엉덩이를 그만큼 내려 발이 땅에 그대로) ---
 		var la := Motion_.land_amount(st) if lb_on else 0.0
 		if la > 0.02 and not bool(st.get("air", false)):
@@ -1841,6 +1874,7 @@ class Ext extends Node3D:
 				var bi4 := sk.find_bone(str(e[0]))
 				if bi4 >= 0:
 					_add_rot(bi4, Quaternion(Vector3.BACK, -K_.EXT_LAND_LEAN_RAD * la * float(e[1])))
+		_pr("land")
 
 	# W34 1인칭 쌍둥이만: cfg.vm_bone_scale {모델 뼈 이름: 배율} — 그 뼈 (와 아래 자식 전부) 를 줄임. 탱크는 왼 아래팔에 붙은 방패가 화면 왼쪽 아래를 너무 가려서
 	# (방패 쥐기 IK 는 손 관절 자리를 그대로 따라가니 3/4 타 쥐기는 유지, 방패·주먹만 같이 작아짐)

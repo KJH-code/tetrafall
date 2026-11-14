@@ -279,3 +279,102 @@ func test_all_combinations_sane() -> void:
 					break
 		b.free()
 	_reset()
+
+
+# ---------- NaN 원인 (tools/nan_hunt.gd·nan_fuzz.gd 로 찾음) ----------
+# 원인: 가산 층 (_hit_flinch·숨쉬기 …) 이 깨진 입력 (NaN·inf, 또는 맞은 지 −10.6초보다 오래: exp(−age/0.015) 가 INF 가 되어 (1−INF)·INF = NaN) 으로 회전을 셈해
+# _add_rot 가 그 NaN 을 척추 뼈 회전에 씀 → 자식 뼈의 _add_rot 은 부모 전역 basis 가 NaN 이라 경고 (W47 은 이 경고만 막았음). 입구에서 막음.
+
+var _probe_events: Array = []
+
+
+func _on_probe(_X, stage: String) -> void:
+	if stage.begins_with("add_rot_skip") or stage.begins_with("add_rot_bad_input"):
+		_probe_events.append(stage)
+
+
+func test_nan_math_fact_and_helpers() -> void:
+	var age := -11.0 # 시계가 바뀌면 (재연 가상 시계·반복 재생) 맞은 지 음수가 됨
+	var env := (1.0 - exp(-age / 0.015)) * exp(-age / K.EXT_HIT_FLINCH_DECAY_S)
+	check(not is_finite(env), "고침 전 식: 맞은 지 −11초면 움찔 세기가 유한하지 않음 (%s)" % str(env))
+	check(M.fin(NAN) == 0.0 and M.fin(INF, 1.0) == 1.0 and M.fin(2.5) == 2.5, "fin")
+	check(M.quat_ok(Quaternion.IDENTITY) and not M.quat_ok(Quaternion(NAN, 0, 0, 1)) and not M.quat_ok(Quaternion(0, 0, 0, 0)) and not M.quat_ok(Quaternion(INF, 0, 0, 1)), "quat_ok")
+	var r: Dictionary = M.hit_react({"dx": NAN, "dy": INF, "pow": NAN, "age": 0.1})
+	check(is_finite(float(r.back)) and is_finite(float(r.side)) and is_finite(float(r.twist)), "깨진 맞음 값도 hit_react 는 유한한 값")
+
+
+func test_broken_inputs_never_write_nan() -> void:
+	var cases := []
+	for age in [-30.0, -11.0, -1e9, NAN, -INF, INF]:
+		cases.append(["hit.age=%s" % str(age), _st({"hit": {"id": 1, "age": age, "stop": 0.0, "dx": -0.6, "dy": 0.8, "pow": 2.0}})])
+	for k in ["dx", "dy", "pow"]:
+		for v in [NAN, INF, -INF]:
+			var h := {"id": 1, "age": 0.05, "stop": 0.0, "dx": -0.6, "dy": 0.8, "pow": 2.0}
+			h[k] = v
+			cases.append(["hit.%s=%s" % [k, str(v)], _st({"hit": h})])
+	for v in [NAN, INF, -INF]:
+		cases.append(["st.t=%s" % str(v), _st({"t": v})])
+		cases.append(["st.land=%s" % str(v), _st({"land": v})])
+	for ch in CHARS:
+		var b = _body(ch)
+		var X = b.ext
+		if X == null:
+			b.free()
+			continue
+		M.probe = Callable(self, "_on_probe")
+		for c in cases:
+			_probe_events.clear()
+			for i in 6:
+				_step(X, c[1])
+			check(_sane(X.sk), "%s %s: 뼈에 NaN·영 스케일이 안 써짐" % [ch, c[0]])
+			check(not _probe_events.any(func(e): return str(e).begins_with("add_rot_skip")), "%s %s: 깨진 부모 뼈 때문에 건너뜀이 없음 (입구에서 막아 NaN 이 안 생김)" % [ch, c[0]])
+		M.probe = Callable()
+		b.free()
+	_reset()
+
+
+# 맞은 지 음수 (시계 바뀜) 의 움찔은 없음: _hit_flinch 만 따로 불러 척추 회전 변화를 잼 (정상 맞음은 움직이고, 음수·깨진 값은 0)
+func test_negative_hit_age_means_no_flinch() -> void:
+	_reset()
+	var b = _body("tank")
+	var X = b.ext
+	for i in 4:
+		_step(X, _st())
+	var flinch := func(age: float) -> float:
+		X._reset_extra()
+		var q0 := _gq(X.sk, "mixamorig_Spine2")
+		X._hit_flinch(_st({"hit": {"id": 1, "age": age, "stop": 0.0, "dx": -1.0, "dy": 0.0, "pow": 2.0}}))
+		return rad_to_deg(q0.angle_to(_gq(X.sk, "mixamorig_Spine2")))
+	check(float(flinch.call(0.04)) > 1.0, "정상 맞음 (age 0.04) 은 움찔")
+	for age in [-30.0, -11.0, -1e9, -INF, NAN]:
+		check(float(flinch.call(age)) < 0.01, "age %s 는 움찔 없음" % str(age))
+	check(_sane(X.sk), "그 뒤에도 뼈가 멀쩡")
+	b.free()
+	_reset()
+
+
+# 몸 월드 크기가 0 (숨김·깨진 찌그러짐) 이어도 천·가산 층이 경고 없이 건너뜀 (테스트 러너는 엔진 오류가 나면 실패로 침)
+func test_degenerate_world_scale_is_skipped() -> void:
+	for ch in CHARS:
+		_reset()
+		var b = _body(ch)
+		var X = b.ext
+		if X == null:
+			b.free()
+			continue
+		var holder := Node3D.new()
+		holder.add_child(b)
+		for i in 4:
+			_step(X, _walk(1.0, 0.0, true))
+		for sc in [Vector3.ZERO, Vector3(1, 0, 1), Vector3.ONE * NAN]:
+			holder.scale = sc
+			for i in 4:
+				_step(X, _walk(1.0, 0.0, true))
+				_step(X, _st({"hit": {"id": 3, "age": 0.03, "stop": 0.0, "dx": -1.0, "dy": 0.0, "pow": 2.0}}))
+			check(_sane(X.sk), "%s 월드 크기 %s 에도 뼈가 멀쩡" % [ch, str(sc)])
+		holder.scale = Vector3.ONE
+		for i in 6:
+			_step(X, _walk(1.0, 0.0, true))
+		check(_sane(X.sk), "%s 다시 정상 크기로 돌아와도 멀쩡" % ch)
+		holder.free()
+	_reset()

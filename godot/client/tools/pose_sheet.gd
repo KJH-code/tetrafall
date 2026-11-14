@@ -1,5 +1,6 @@
 # W33 동작 contact sheet: 캐릭터 몸 (--ext 외부 모델) 을 상태마다 한 칸씩, 3/4 뷰·옆 뷰로 나란히 한 장에 저장 (코드 구동 + 클립 층 진짜 길).
 # 상태 = body._anim_state 와 같은 모양의 사전 (공격은 act {move, phase, u}), 발 접지·클립 섞임은 몸이 매 프레임 하는 그대로 (ext.sync).
+# W49: 끝에 --preset new|old|min 을 더하면 그 모션 프리셋으로 (--w43off 는 W43 넷만).
 # xvfb-run -a -s "-screen 0 1900x1000x24" godot --path godot/client --resolution 1900x1000 -s res://tools/pose_sheet.gd -- <out.png> <캐릭터> <묶음 loco|atk|skill|react|all> [yaw 도: 30 = 3/4 앞, 90 = 옆, 기본 30] [칸 폭 px, 기본 200] [--code = 외부 몸 끄기(코드 몸)] [--noclip = 클립 층 끄기 (전: 코드 구동만)] [--only 이름,이름 = 그 상태만]
 extends SceneTree
 
@@ -86,6 +87,9 @@ func _initialize() -> void:
 
 func _run() -> void:
 	var a := OS.get_cmdline_user_args()
+	var pi := a.find("--preset") # W49: 새·옛·최소 모션 프리셋 (chars_config.gd EXT_MOTION_PRESETS) 으로 그리기 — 같은 상태를 프리셋만 바꿔 나란히 비교
+	if pi >= 0 and pi + 1 < a.size():
+		load("res://chars/chars_config.gd").set_flags(load("res://chars/chars_config.gd").preset_flags(a[pi + 1]))
 	var out: String = a[0]
 	var ch: String = a[1]
 	var group: String = a[2] if a.size() > 2 else "loco"

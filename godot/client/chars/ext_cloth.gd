@@ -111,6 +111,10 @@ func step(dt: float) -> void:
 		return
 	var W: Transform3D = Rag.glob(sk) # 트리 밖 (테스트·초상) 에서도 부모 변환을 곱해 셈
 	var pg: Transform3D = _gl(parent_b) if parent_b >= 0 else Transform3D.IDENTITY
+	# W49: 몸 월드 변환이나 부모 뼈 자세가 영 스케일·NaN 이면 (숨김·깨진 입력 — nan_fuzz) 이번 프레임은 안 움직임: 아래 affine_inverse·orthonormalized·Quaternion 이 경고를 프레임마다 찍던 곳
+	if not Motion_.basis_ok(W.basis) or not Motion_.basis_ok(pg.basis):
+		ready = false
+		return
 	# 쉬는 모양 목표 (월드): 부모의 지금 자세에 쉬는 상대 자리를 곱함
 	var rel: Transform3D = rest_parent.affine_inverse()
 	var tgt: Array[Vector3] = []

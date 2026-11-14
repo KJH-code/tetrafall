@@ -8,6 +8,9 @@ const C := preload("res://core/config.gd")
 # 판 몸 (3인칭 외부 모델) 들 — 서로 쳐다보기용 정적 목록 (죽은 노드는 쓸 때 걸러 냄)
 static var bodies: Array = []
 
+# W49 NaN 추적 (tools/nan_hunt.gd): 몸 한 프레임 (Ext.sync) 의 단계마다 (몸, 단계 이름) 으로 불림. 비어 있으면 (평소) 비용은 is_valid 한 번
+static var probe: Callable = Callable()
+
 # W44 시계: 재연 (core/replay.gd) 은 가상 시계를 꽂아 느린 기계에서도 같은 시뮬 시간으로 돎. 없으면 실제 시계
 static var clock: Callable = Callable()
 
@@ -40,6 +43,17 @@ static func basis_ok(b: Basis) -> bool:
 	var ly := b.y.length_squared()
 	var lz := b.z.length_squared()
 	return is_finite(lx + ly + lz) and lx > SAFE_EPS2 and ly > SAFE_EPS2 and lz > SAFE_EPS2
+
+
+# W49 NaN·inf 를 기본값으로 (입력 값이 깨져도 가산 층이 NaN 을 뼈에 쓰지 않게 — tools/nan_fuzz.gd 가 찾은 입구)
+static func fin(x: float, d := 0.0) -> float:
+	return x if is_finite(x) else d
+
+
+# 단위 사원수로 쓸 수 있나 (모든 성분이 유한하고 길이가 1 근처)
+static func quat_ok(q: Quaternion) -> bool:
+	var l2 := q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w
+	return is_finite(l2) and absf(l2 - 1.0) < 0.05
 
 
 # a → b 최단 회전. 둘 중 하나가 영벡터에 가까우면 회전 없음 (항등)
@@ -134,9 +148,9 @@ static func land_amount(st: Dictionary) -> float:
 # 맞음 방향별: 앞에서 맞음 (dx < 0, 뒤로 밀림) = 윗몸 뒤로 젖힘, 뒤에서 맞음 (dx > 0) = 앞으로 숙임 + 어깨 움츠림, 옆 = 몸통 비틀림 (맞은 쪽 반대로) + 기울기.
 # 돌려줌 {back (z 축, +뒤로), side (x 축 기울기), twist (y 축 비틂), whip (치명이면 머리 채찍 진동), hand (무기 쥔 손 흔들림)} — 세기 amp 는 호출 쪽 (hit.pow·감쇠)
 static func hit_react(hit: Dictionary) -> Dictionary:
-	var dx: float = float(hit.get("dx", 0.0))
-	var dy: float = float(hit.get("dy", 0.0))
-	var pw: float = float(hit.get("pow", 1.0))
+	var dx: float = fin(float(hit.get("dx", 0.0))) # W49: 깨진 값 (NaN·inf) 은 0 — 움찔 수식이 NaN 을 뼈에 쓰던 입구
+	var dy: float = fin(float(hit.get("dy", 0.0)))
+	var pw: float = fin(float(hit.get("pow", 1.0)), 1.0)
 	var crit := pw >= K.EXT_HIT_CRIT_POW
 	return {"back": -dx, "side": dy, "twist": -dy * K.EXT_HIT_TWIST, "front_hit": dx < -0.35, "back_hit": dx > 0.35, "crit": crit}
 
