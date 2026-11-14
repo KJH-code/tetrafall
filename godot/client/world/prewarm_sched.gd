@@ -51,6 +51,8 @@ class Sched:
 	var enabled := true
 	var tasks: Array = []
 	var finished: Array = [] # [id, 조각 수, 합 ms, 가장 긴 조각 ms] (끝난 것, 확인용)
+	var dropped := 0 # W50: 주인이 사라져 버린 작업 수 (확인용)
+	const FINISHED_MAX := 64 # W50: 끝난 작업 기록 상한 (판·캐릭터 변경마다 쌓이던 것)
 	var pieces_run := 0 # 지금까지 돌린 조각 수
 	var frames_busy := 0 # 조각을 돌린 프레임 수
 	var worst_frame_ms := 0.0 # 한 프레임에 돌린 조각 시간 합의 최대
@@ -117,7 +119,11 @@ class Sched:
 
 	func _best(at: float, skip: Dictionary = {}) -> Task:
 		var best: Task = null
-		for t in tasks:
+		for t in tasks.duplicate():
+			if not t.fn.is_valid(): # W50: 주인 (노드) 이 free 된 작업 — 부르면 step 마다 오류가 영영 나서 버림
+				cancel(t.id)
+				dropped += 1
+				continue
 			if t.not_before > at or skip.has(t.id):
 				continue
 			if best == null or t.prio < best.prio or (t.prio == best.prio and t.seq < best.seq):
@@ -163,6 +169,8 @@ class Sched:
 			t.est_ms = ms if t.runs == 1 else lerpf(t.est_ms, ms, 0.4)
 			if done:
 				finished.append([t.id, t.runs, t.spent_ms, t.worst_ms])
+				if finished.size() > FINISHED_MAX:
+					finished.pop_front()
 				cancel(t.id)
 			if spent >= budget_ms:
 				break

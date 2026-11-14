@@ -656,6 +656,19 @@ static var _mats: Array = [] # [WeakRef 재질, Callable(low) → 같은 설정�
 static var _sprouts: Array = [] # WeakRef 조각 노드
 
 
+# W50: 끝낼 때 정적 목록·캐시를 비움. _mats 의 Callable (람다) 이 이 스크립트를 쥐고 있어 종료 때 'g3.gd 가 아직 쓰임 · 누수 객체' 로 남던 것 (world._exit_tree 가 부름)
+static func clear_static() -> void:
+	_mats = []
+	_outlined = []
+	_sprouts = []
+	_outline_cache = {}
+	_far_cache = {}
+	_piece_meshes = {}
+	_hz_shaders = {}
+	_piece_shapes = null
+	_stencil_toon = null
+
+
 static func _low(arg) -> bool:
 	return low if arg == null else bool(arg)
 

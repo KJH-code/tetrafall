@@ -70,6 +70,10 @@ func _ready() -> void:
 		add_child(rp)
 		if args.has("replay"):
 			return
+	if args.has("soak") and ResourceLoader.exists("res://tools/soak.gd"): # W50 스트레스·장시간 시험 (tools/soak.gd, 서버 필요 — tools/soak.mjs)
+		var sk: Node = load("res://tools/soak.gd").new()
+		sk.args = args
+		add_child(sk)
 	if args.has("motion-qa"): # W44 판 중 가벼운 모션 QA (팝 카운터만, 한 판 끝에 user://motion_qa.txt)
 		var qa: Node = load("res://core/motion_qa.gd").new()
 		qa.args = args
