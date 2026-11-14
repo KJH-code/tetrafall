@@ -26,7 +26,8 @@ var inbox = new ConcurrentQueue<Action>();
 var rooms = new Rooms(
     openLog: code => new FileRoomLog(runDir, code),
     serverLog: m => Console.WriteLine($"[{Stamp()}] {m}"),
-    countdownMs: C.ROUND_COUNTDOWN_MS);
+    countdownMs: C.ROUND_COUNTDOWN_MS,
+    tune: ServerBalance.FromEnv(Environment.GetEnvironmentVariable("TF_BALANCE"), Console.WriteLine));
 
 var builder = WebApplication.CreateSlimBuilder(args);
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
