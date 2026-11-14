@@ -103,6 +103,7 @@ static var cell_lod: bool = not Opts.args().has("--no-cell-lod")
 static var cell_lod_far: float = float(Opts.args()[Opts.args().find("--cell-lod-far") + 1]) if Opts.args().has("--cell-lod-far") else float(CELL_LOD.far) # 확인용: 낮은 모양으로 바꾸는 거리 (m) 덮어쓰기
 # ---- 몸 만들기 분산 (W32): 방에 들어가거나 봇을 넣을 때 몸이 한꺼번에 8개 나오면 (몸 만들기 2~5ms + 처음 그리기 9~12ms 씩) 한 프레임이 크게 끊김 → 한 프레임에 이만큼만 만들고 나머지는 다음 프레임 (내 몸은 늘 바로)
 const BODY_BUILDS_PER_FRAME := 2
+const DARK_STEP_MS := 6.0 # W51: 대기실 어두운 무대 소품 한 조각 시간 (ms) — 한 덩어리 22~32ms 를 이 시간 넘으면 다음 프레임으로 끊음 (title_world.gd _cut). --no-dark-split 이면 예전처럼 한 덩어리
 const BODY_BUILDS_PER_FRAME_SPLIT := 1 # W45: 외부 모델 붙이기를 조각으로 나눈 때 (코드 몸 부분 1.1~2.5ms 만 남음) 한 프레임 새 몸 수 — 입장 첫 프레임에 몸 둘 + 조각 셋이 겹쳐 9~10ms 하던 것
 const BODY_JOBS_PER_FRAME := 2 # W45: 한 프레임에 외부 모델 붙이기 조각 (장면·재질·소품·모션 연결 한 단계 0.2~2ms) 을 돌리는 몸 수 (내 몸은 늘 바로)
 const BODY_BUILD_MS := 8.0 # W41: 한 프레임 몸 만들기 ms 상한 (넘으면 나머지는 다음 프레임, 내 몸은 늘 바로)

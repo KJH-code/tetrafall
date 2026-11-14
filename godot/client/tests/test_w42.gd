@@ -135,6 +135,7 @@ func test_stage_deferred_equals_full() -> void:
 		var od := opts.duplicate()
 		od["defer"] = true
 		var part = S.new(id, od)
+		part.cut_override = -1.0 # W51: 끊지 않을 때의 옛 모양 (소품 한 조각 + 빛 가루 한 조각)
 		check(full.ready_built(), "%s 한 번에: 다 지음" % id)
 		check(not part.ready_built(), "%s 나눔: 앞부분만" % id)
 		check(part.get_child_count() < full.get_child_count(), "%s 나눔: 앞부분은 자식이 적음 (%d < %d)" % [id, part.get_child_count(), full.get_child_count()])
