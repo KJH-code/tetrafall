@@ -56,6 +56,30 @@ static func quat_ok(q: Quaternion) -> bool:
 	return is_finite(l2) and absf(l2 - 1.0) < 0.05
 
 
+# W52 길 이어 슬러프: Quaternion.slerp 는 매번 짧은 쪽 호를 골라서 (a·b 부호로), 크로스페이드 도중 목표가 움직여 a·b 가 0 을 지나면 호가 갑자기 반대쪽으로 뒤집혀 한 프레임에 최대 180° 튐
+# (닌자 표창 → 대시: 오른팔 129°). 목표 b 의 부호를 앞 프레임 ref (같은 페이드 안 지난 프레임 값) 와 같은 쪽으로 고정하고 (ref 가 영이면 a 와 같은 쪽 = 짧은 호로 시작),
+# 뒤집지 않는 슬러프를 씀 → 페이드 안에서 연속. 돌려줌 [섞은 사원수, 쓴 b (다음 프레임 ref)]
+static func slerp_cont(a: Quaternion, b: Quaternion, t: float, ref: Quaternion) -> Array:
+	var rf := ref if (ref.x != 0.0 or ref.y != 0.0 or ref.z != 0.0 or ref.w != 0.0) else a
+	var bb := b if b.dot(rf) >= 0.0 else -b
+	var c := clampf(a.dot(bb), -1.0, 1.0)
+	var out: Quaternion
+	if absf(c) > 0.9995:
+		out = Quaternion(lerpf(a.x, bb.x, t), lerpf(a.y, bb.y, t), lerpf(a.z, bb.z, t), lerpf(a.w, bb.w, t)).normalized()
+	else:
+		var th := acos(c)
+		var s := sin(th)
+		var wa := sin((1.0 - t) * th) / s
+		var wb := sin(t * th) / s
+		out = Quaternion(a.x * wa + bb.x * wb, a.y * wa + bb.y * wb, a.z * wa + bb.z * wb, a.w * wa + bb.w * wb).normalized()
+	return [out, bb]
+
+
+# W52 크로스페이드 길이: 기본 길이 base (초) 와 시작점 ↔ 지금 클립 자세의 가장 큰 뼈 차이 dist_deg 로. 차이가 EXT_FADE_ADAPT_DPS 도/초 × base 를 넘으면 그 비율로 늘림 (상한 EXT_FADE_ADAPT_MAX_S)
+static func fade_len_for(base: float, dist_deg: float) -> float:
+	return clampf(maxf(base, dist_deg / K.EXT_FADE_ADAPT_DPS), base, maxf(base, K.EXT_FADE_ADAPT_MAX_S))
+
+
 # a → b 최단 회전. 둘 중 하나가 영벡터에 가까우면 회전 없음 (항등)
 static func rot_between(a: Vector3, b: Vector3) -> Quaternion:
 	if a.length_squared() <= SAFE_EPS2 or b.length_squared() <= SAFE_EPS2:

@@ -81,8 +81,8 @@ static func _sane(sk: Skeleton3D) -> bool:
 func test_flag_table_and_presets() -> void:
 	_reset()
 	var names: Array = K.EXT_MOTION_FLAGS.keys()
-	check(names.size() == 10, "플래그 10개 (%d)" % names.size())
-	check(K.EXT_MOTION_LABELS.keys().size() == 10 and K.EXT_MOTION_LABELS.keys().all(func(k): return names.has(k)), "글 표가 플래그와 같은 이름")
+	check(names.size() == 11, "플래그 11개 (%d)" % names.size())
+	check(K.EXT_MOTION_LABELS.keys().size() == 11 and K.EXT_MOTION_LABELS.keys().all(func(k): return names.has(k)), "글 표가 플래그와 같은 이름")
 	check(K.EXT_MOTION_FLAGS.values().all(func(v): return v == true), "기본은 모두 켜짐 (지금 동작 그대로)")
 	for pn in ["new", "old", "min"]:
 		var pr: Dictionary = K.EXT_MOTION_PRESETS[pn]
@@ -117,10 +117,10 @@ func test_flag_sources() -> void:
 	check(not K.flag("gait_new") and not K.flag("gaze") and not K.flag("land_breath") and K.flag("dir"), "--old-gait·--no-gaze·--no-land-breath")
 	Opts.override = PackedStringArray(["--motion", "old"])
 	K.refresh()
-	check(K.arg_off_names() == ["gait_new", "dir", "lean", "getup", "weapon", "vm_arm"], "--motion old = 옛 모션 프리셋이 끈 것 %s" % str(K.arg_off_names()))
+	check(K.arg_off_names() == ["gait_new", "dir", "lean", "getup", "weapon", "vm_arm", "pop_fix"], "--motion old = 옛 모션 프리셋이 끈 것 %s" % str(K.arg_off_names()))
 	Opts.override = PackedStringArray(["--motion", "min"])
 	K.refresh()
-	check(K.arg_off_names().size() == 10, "--motion min = 전부")
+	check(K.arg_off_names().size() == 11, "--motion min = 전부")
 	Opts.override = PackedStringArray(["--motion", "new", "--motion-x"])
 	K.refresh()
 	check(K.arg_off_names().is_empty(), "--motion new·모르는 인자는 아무것도 안 끔")
@@ -153,7 +153,7 @@ func test_settings_roundtrip() -> void:
 	check(cl == d and K.preset_of(cl) == "old", "옛 모션 저장 → 복원")
 	check(ViewS._clean_motion(null) == K.EXT_MOTION_FLAGS and ViewS._clean_motion("x") == K.EXT_MOTION_FLAGS and ViewS._clean_motion([1]) == K.EXT_MOTION_FLAGS, "값이 없거나 모양이 틀리면 기본 (모두 켬)")
 	var partial: Dictionary = ViewS._clean_motion({"dir": false, "junk": 1})
-	check(not partial.dir and partial.lean and not partial.has("junk") and partial.size() == 10, "빠진 이름은 켬, 모르는 이름은 버림")
+	check(not partial.dir and partial.lean and not partial.has("junk") and partial.size() == 11, "빠진 이름은 켬, 모르는 이름은 버림")
 	check(FileAccess.get_file_as_string("res://core/view.gd").contains("\"motionFlags\""), "View 기본 설정에 motionFlags")
 	_reset()
 
@@ -252,7 +252,7 @@ func test_all_combinations_sane() -> void:
 		var f := K.preset_flags("new")
 		f[n] = false
 		combos.append({"name": n + " 끔", "f": f})
-	check(combos.size() == 13, "조합 13개 (%d)" % combos.size())
+	check(combos.size() == 14, "조합 14개 (%d)" % combos.size())
 	var states := [
 		_st(), _walk(1.0, 0.0), _walk(0.0, 1.0, true), _walk(-1.0, 0.0), _walk(0.7, -0.7, true),
 		_st({"hit": {"id": 1, "age": 0.03, "stop": 0.0, "dx": -1.0, "dy": 0.0, "pow": 2.0}}),

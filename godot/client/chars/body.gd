@@ -83,6 +83,8 @@ var rag_why := "" # 래그돌이 안 켜진 까닭 (확인용)
 var rag_test := false # 테스트: 장면 트리 밖에서도 래그돌 켬
 var rag_was_stunned := false # 래그돌: 경직이 풀린 시각 (초, 일어나기)
 var rag_stun_end := -1.0
+var rag_was_falling := false # W52 낙하 (판 가장자리 아래) 가 끝난 시각 — 모터 복귀 완화 (ragdoll_math sinceFall)
+var rag_fall_end := -1.0
 var batch = null
 var bone_dyn: Array[int] = [] # 매 프레임 맞출 묶음 뼈 (나머지는 늘 같은 자세)
 var bone_chain: Array = [] # bone_dyn 마다 조각 → 부모 조각 사이 노드 (Array[Node3D])
@@ -1623,6 +1625,10 @@ func _ragdoll_capture(rw, p: Dictionary, st: Dictionary, pos: Vector3, _dt: floa
 	if rag_was_stunned and not limp:
 		rag_stun_end = now
 	rag_was_stunned = limp
+	var fell: bool = pos.z < C.RAGDOLL_FALL_Z
+	if rag_was_falling and not fell:
+		rag_fall_end = now
+	rag_was_falling = fell
 	var h = st.get("hit")
 	var hi = null # 맞은 방향 (게임, 단위) — 서버가 준 방향, 없으면 몸 뒤쪽
 	if h != null:
@@ -1634,7 +1640,7 @@ func _ragdoll_capture(rw, p: Dictionary, st: Dictionary, pos: Vector3, _dt: floa
 	var act = st.get("act")
 	var phase = act.phase if act != null else ("pose" if int(p.get("emote", -1)) >= 0 or vic_t >= 0.0 else null)
 	rw.capture(self, {"stunned": limp, "sinceStun": now - rag_stun_end if rag_stun_end >= 0.0 else INF, "hitAge": h.age if h != null else null,
-		"falling": pos.z < C.RAGDOLL_FALL_Z, "act": phase}, hi, _dt)
+		"falling": fell, "sinceFall": now - rag_fall_end if rag_fall_end >= 0.0 else INF, "act": phase}, hi, _dt)
 
 
 func _notification(what: int) -> void:

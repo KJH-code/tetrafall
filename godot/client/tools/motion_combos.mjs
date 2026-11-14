@@ -14,7 +14,7 @@ const out = resolve(arg('out', 'motion-combos'));
 const only = arg('only', '') ? arg('only').split(',') : null;
 if (!godot || !rec) { console.error('--godot 와 --rec 필요'); process.exit(2); }
 const proj = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const FLAGS = ['gait_new', 'dir', 'lean', 'getup', 'weapon', 'cloth', 'gaze', 'land_breath', 'hit_dir', 'vm_arm'];
+const FLAGS = ['gait_new', 'dir', 'lean', 'getup', 'weapon', 'cloth', 'gaze', 'land_breath', 'hit_dir', 'vm_arm', 'pop_fix'];
 const combos = [
   { name: 'new', args: [] },
   { name: 'old', args: ['--motion', 'old'] },

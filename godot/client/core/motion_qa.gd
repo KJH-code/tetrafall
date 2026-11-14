@@ -157,7 +157,7 @@ func _write_round() -> void:
 
 func A(ch: String) -> Dictionary:
 	if not agg.has(ch):
-		agg[ch] = {"samples": 0, "excluded": 0, "pops": 0, "pops_soft": 0, "pop_by": {}, "pop_worst": 0.0, "pop_worst_bone": "",
+		agg[ch] = {"samples": 0, "excluded": 0, "pops": 0, "pops_soft": 0, "rag_pops": 0, "rag_by": {}, "rag_worst": 0.0, "rag_worst_bone": "", "rag_edge": {}, "pop_by": {}, "pop_worst": 0.0, "pop_worst_bone": "",
 			"jit_win": 0, "jit_bad": 0, "jit_worst": 0.0, "jit_worst_bone": "",
 			"slide_n": {}, "slide_ratio": {}, "slide_bad": {}, "slide_worst": 0.0, "idle_drift": [], "idle_drift_bad": 0,
 			"sunk": 0, "sunk_min": 0.0, "float": 0, "float_max": 0.0, "ground_frames": 0,
@@ -208,6 +208,7 @@ class Track:
 	var clip_last := ""
 	var clip_chg := -9.0
 	var excl_left := 0
+	var rag_prev_awake := false
 	var settled := 0 # 같은 'idle' 이 이어진 표본 수
 	var pending: Array = []
 	var prev_wmax := 0.0
@@ -345,6 +346,15 @@ class Track:
 				var qq := sk.get_bone_pose_rotation(bi0)
 				var ci: Dictionary = ext.clip_info
 				q.btrace.store_line("%.3f,%s,%s,%.3f,%s,%.3f,%.3f,%s,%.4f,%.4f,%.4f,%.4f,%s" % [t, L, mvn, u, str(ext.cur_clip), ext.cw, ext.fade_t, str(ci.get("t", "")), qq.x, qq.y, qq.z, qq.w, str(excl)])
+		# W52 래그돌 구간 (제외된 표본) 의 튐: 모터 단계별로 세고, 깨어남·쉼 순간의 가장 큰 뼈 각도 차를 따로 모음 (복귀 팝 측정)
+		var rag_phase := ""
+		var rag_awake := false
+		if rg != null and is_instance_valid(rg) and rg.rags.has(body):
+			var r3: Dictionary = rg.rags[body]
+			rag_awake = bool(r3.awake)
+			if excl:
+				var mo := float(r3.motor)
+				rag_phase = "limp" if mo < 0.5 else ("back" if mo < 0.97 else "margin")
 		var qs: Array = []
 		for i in ids.size():
 			qs.append(sk.get_bone_pose_rotation(ids[i]))
@@ -354,6 +364,15 @@ class Track:
 			if cls[i] != "cloth" and w > wmax:
 				wmax = w
 				wbone = names[i]
+			if excl and has and rag_phase != "" and cls[i] != "cloth":
+				if r2.pop:
+					a.rag_pops += 1
+					a.rag_by[rag_phase] = int(a.rag_by.get(rag_phase, 0)) + 1
+					if w > float(a.rag_worst):
+						a.rag_worst = w
+						a.rag_worst_bone = names[i]
+					var rrow := {"t": t, "pid": pid_of(), "char": ch, "bone": names[i], "cls": cls[i], "sev": w, "state": "rag " + rag_phase + (" awake" if rag_awake else " asleep"), "clip": clip, "jerk": r2.jerk, "extra": "motor %.2f" % float((rg.rags[body] as Dictionary).motor)}
+					q.csv_row("ragpop", rrow)
 			if not has or excl:
 				continue
 			var cl: String = cls[i]
@@ -375,6 +394,17 @@ class Track:
 					"extra": "fade %.2f cw %.2f since_lab %.2f since_clip %.2f" % [ext.fade_t, ext.cw, t - last_lab_chg, t - clip_chg]}
 				q.top("pop", row)
 				q.csv_row("pop", row)
+		if has and rag_awake != rag_prev_awake: # W52 깨어남·쉼 순간 (래그돌 물리 ↔ figureAnim 자세) 의 가장 큰 뼈 각도 차
+			var ek := "wake" if rag_awake else "sleep"
+			var el: Array = a.rag_edge.get(ek, [])
+			el.append(snappedf(wmax, 0.1))
+			a.rag_edge[ek] = el
+			q.csv_row("ragedge", {"t": t, "pid": pid_of(), "char": ch, "bone": wbone, "sev": wmax, "state": ek + " " + L, "clip": clip, "extra": "cw %.2f" % ext.cw})
+			if not rag_awake and rg != null and is_instance_valid(rg) and rg.rags.has(body):
+				var sl: Array = a.rag_edge.get("sleep_dev", [])
+				sl.append(snappedf(float((rg.rags[body] as Dictionary).get("sleep_dev", 0.0)), 0.1))
+				a.rag_edge["sleep_dev"] = sl
+		rag_prev_awake = rag_awake
 		if light:
 			have += 1
 			a.samples += 1
@@ -968,7 +998,7 @@ func finish() -> void:
 	var out := {"meta": {"rec": rec_name, "samples": k, "hz": M.HZ, "secs": (_now() - epoch), "thr": {"pop_torso": M.POP_TORSO, "pop_end": M.POP_END, "pop_cloth": M.POP_CLOTH}}, "chars": {}, "top": {}}
 	for ch in agg:
 		var a: Dictionary = agg[ch]
-		var c := {"samples": a.samples, "excluded": a.excluded, "pops": a.pops, "pops_soft": a.pops_soft, "pop_by": a.pop_by, "pop_worst": snappedf(a.pop_worst, 0.1), "pop_worst_bone": a.pop_worst_bone,
+		var c := {"samples": a.samples, "excluded": a.excluded, "pops": a.pops, "pops_soft": a.pops_soft, "rag": {"pops": a.rag_pops, "by": a.rag_by, "worst": snappedf(a.rag_worst, 0.1), "worst_bone": a.rag_worst_bone, "edge": a.rag_edge}, "pop_by": a.pop_by, "pop_worst": snappedf(a.pop_worst, 0.1), "pop_worst_bone": a.pop_worst_bone,
 			"jitter": {"windows": a.jit_win, "bad": a.jit_bad, "worst_rms": snappedf(a.jit_worst, 0.001), "worst_bone": a.jit_worst_bone},
 			"slide": {}, "idle_drift": {"n": (a.idle_drift as Array).size(), "mean": snappedf(M.mean(a.idle_drift), 0.001), "p95": snappedf(M.pct(a.idle_drift, 0.95), 0.001), "bad": a.idle_drift_bad},
 			"foot": {"ground_frames": a.ground_frames, "sunk": a.sunk, "sunk_min": snappedf(a.sunk_min, 0.001), "float": a.float, "float_max": snappedf(a.float_max, 0.001)},
