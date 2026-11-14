@@ -21,6 +21,9 @@ const timeout = Number(opt('timeout', 1500)) * 1000;
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'soakhome-'));
 
 const server = spawn('node', ['server/index.js'], { cwd: root, env: { ...process.env, PORT: String(port) }, stdio: 'ignore' });
+let serverGone = '';
+server.on('exit', (c, sig) => { serverGone = `서버 프로세스 끝남 code=${c} signal=${sig} (${Math.round((Date.now() - T0) / 1000)}초)`; console.log(serverGone); });
+const T0 = Date.now();
 await new Promise((r) => setTimeout(r, 1500));
 const env = { ...process.env, HOME: home, XDG_DATA_HOME: path.join(home, 'data'), XDG_CONFIG_HOME: path.join(home, 'cfg') };
 // 가져온 import 캐시는 프로젝트 안 .godot 라 HOME 과 무관
@@ -41,7 +44,7 @@ const onLine = (l) => {
 readline.createInterface({ input: g.stdout }).on('line', onLine);
 readline.createInterface({ input: g.stderr }).on('line', onLine);
 const timer = setTimeout(() => { console.log('시간 초과 — 끊음'); g.kill('SIGKILL'); }, timeout);
-const rc = await new Promise((r) => g.on('close', (c, s) => r(c ?? 128 + (s === 'SIGKILL' ? 9 : 0))));
+const rc = await new Promise((r) => g.on('close', (c, s) => { if (s) console.log(`고도 프로세스 신호 ${s}`); r(c ?? 128 + (s === 'SIGKILL' ? 9 : 0)); }));
 clearTimeout(timer);
 server.kill();
 fs.rmSync(home, { recursive: true, force: true });
