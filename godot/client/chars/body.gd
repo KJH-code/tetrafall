@@ -2011,7 +2011,7 @@ func _dir_from(by):
 
 func _new_act(move: String, now: float, windup: float, struck, rec: float, air := false) -> Dictionary:
 	seq += 1
-	return {"id": seq, "move": move, "t0": now, "windup": windup, "struck": struck, "rec": rec, "broken": null, "air": air}
+	return {"id": seq, "move": move, "t0": now, "windup": windup, "struck": struck, "rec": rec, "broken": null, "air": air, "lf": K.lead_frac(char_id, move)}
 
 
 # attack 이벤트: 준비 시작. 동작 이름은 평타 표의 name (갈고리 주먹만 'hook:주먹'), 회복 시간은 평타 표의 rec (render.js attackStart)
@@ -2128,14 +2128,14 @@ func _act_for(_now_ms: float):
 		if age > act.windup + C.FIGURE_SWING_WAIT_S:
 			act = null
 			return null
-		return {"id": act.id, "move": act.move, "phase": "wind", "u": minf(1.0, age / act.windup) if act.windup > 0.0 else 1.0, "air": act.air}
+		return {"id": act.id, "move": act.move, "phase": "wind", "u": minf(1.0, age / act.windup) if act.windup > 0.0 else 1.0, "air": act.air, "ws": act.windup, "lf": act.lf}
 	if act.get("hold", false):
-		return {"id": act.id, "move": act.move, "phase": "strike", "u": 1.0, "air": act.air} # 기타 꽂기: 떨어지는 동안 타격 자세 그대로
+		return {"id": act.id, "move": act.move, "phase": "strike", "u": 1.0, "air": act.air, "ws": act.windup, "lf": act.lf} # 기타 꽂기: 떨어지는 동안 타격 자세 그대로
 	var s: float = now - act.struck
 	if s < C.FIGURE_STRIKE_S:
-		return {"id": act.id, "move": act.move, "phase": "strike", "u": s / C.FIGURE_STRIKE_S, "air": act.air}
+		return {"id": act.id, "move": act.move, "phase": "strike", "u": s / C.FIGURE_STRIKE_S, "air": act.air, "ws": act.windup, "lf": act.lf}
 	var r: float = (s - C.FIGURE_STRIKE_S) / act.rec
 	if r >= 1.0:
 		act = null
 		return null
-	return {"id": act.id, "move": act.move, "phase": "rec", "u": r, "air": act.air}
+	return {"id": act.id, "move": act.move, "phase": "rec", "u": r, "air": act.air, "ws": act.windup, "lf": act.lf}

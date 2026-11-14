@@ -1061,6 +1061,33 @@ class Ext extends Node3D:
 		return null
 
 	# 크기·방향·발바닥: 모델 뿌리 → 몸 (body) = yaw·크기·옮김, 그걸 space 기준으로
+	var base_origin := Vector3.ZERO # W54: _place 가 정한 자리 (앞딛기 보정은 이 위에 앞 +x 를 더함)
+
+	# W54 앞딛기 보정: 타격 순간 모델을 앞으로 밀어 (config W54_LUNGE) 보이는 끝이 서버 앞면에 가까워지게. 판정·서버 위치는 그대로 (보이는 쪽만). `--old-moves` 면 0
+	func _lunge(st) -> void:
+		var m := 0.0
+		var act = st.get("act") if st != null else null
+		if act is Dictionary and not K_.old_moves():
+			var tb = K_.W54_LUNGE.get(str(body.char_id))
+			if tb is Dictionary:
+				m = minf(float((tb as Dictionary).get(str(act.get("move", "")), 0.0)), K_.W54_LUNGE_MAX)
+		var f := 0.0
+		if m > 0.0:
+			var u: float = clampf(float(act.get("u", 0.0)), 0.0, 1.0)
+			match str(act.get("phase", "")):
+				"wind":
+					var ws: float = float(act.get("ws", 0.0))
+					var ld: float = Clips_.lead_s(ws, 0.0) # 앞당김 표에 없는 동작도 같은 시간 동안 밀어 냄
+					if ld > 0.0:
+						f = smoothstep(0.0, 1.0, (u * ws - (ws - ld)) / ld)
+				"strike":
+					f = 1.0
+				"rec":
+					f = 1.0 - smoothstep(0.0, 1.0, u / K_.W54_LUNGE_OUT)
+		var want := base_origin + Vector3(m * f, 0.0, 0.0)
+		if not transform.origin.is_equal_approx(want):
+			transform.origin = want
+
 	func _place() -> void:
 		var cfg: Dictionary = info.cfg
 		var box: AABB = info.box
@@ -1073,6 +1100,7 @@ class Ext extends Node3D:
 		var tb := Transform3D(basis, -(basis * foot) + Vector3(float(off[0]), float(off[1]), float(off[2])))
 		var sp := _body_rel(space)
 		transform = sp.affine_inverse() * tb
+		base_origin = transform.origin
 		W = transform * (info.sk_rel as Transform3D)
 		Wi = W.affine_inverse()
 		qw = W.basis.get_rotation_quaternion()
@@ -1218,6 +1246,7 @@ class Ext extends Node3D:
 			_hit_flinch(st)
 			_pr("hit_flinch")
 			_extra_layer(st)
+			_lunge(st)
 		if not cloths.is_empty():
 			var c_on := K_.flag("cloth") # W49: 꺼지면 천 뼈가 쉬는 자세로 부드럽게 돌아가고 (rest_step) 그 뒤엔 계산 0
 			if c_on or not cloth_rested:

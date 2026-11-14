@@ -124,6 +124,44 @@ static func old_gait() -> bool:
 	return Opts.args().has("--old-gait") or not flag("gait_new")
 
 
+# ---------- W54 사거리·타이밍 맞추기 (docs/w54): 서버 규칙·`moves` 는 그대로, 보이는 쪽만. 끄기 `-- --old-moves` (웹 `?old-moves=1`) ----------
+# 타격 앞당김: 서버는 준비가 끝나는 순간 판정하는데 클립 휘두름은 그 뒤 타격 구간 (FIGURE_STRIKE_S) 에 시작해 무기가 70~250ms 늦게 닿음.
+# 준비의 마지막 min(W54_LEAD_S, 준비 × W54_LEAD_MAX_FRAC) 동안 휘두름의 앞 (동작별 표 W54_LEAD_BY, 속도 한계 안에서 판정 순간 닿는 위치가 가장 먼 값) 를 먼저 지나가서 판정 순간에 무기가 이미 나가 있고, 휘두름 전체가 길어져 (70ms → 최대 140ms) 클립 배속이 내려감 (강한 팝↓).
+const W54_LEAD_S := 0.07
+const W54_LEAD_MAX_FRAC := 0.6
+# 앞딛기 보정: 타격 순간 몸 모델을 앞으로 밀어 (m, 몸 앞 +x) 보이는 끝이 서버 앞면에 가까워지게. 캐릭터 → {동작: m}. 한계 W54_LUNGE_MAX (상대 몸을 뚫어 보이지 않게). 값은 docs/w54 의 측정으로
+const W54_LUNGE_MAX := 0.2
+const W54_LUNGE := {
+	"tank": {"방패 내려치기": 0.2},
+	"ninja": {"찌르기": 0.2, "반대 찌르기": 0.2, "앞차기": 0.2, "올려 차기": 0.2, "공중 베기": 0.2, "내려 차기": 0.2},
+	"hook": {"탕": 0.2, "갈고리 스핀": 0.2},
+}
+const W54_LUNGE_OUT := 0.5 # 회복 구간 앞 이만큼 (u) 동안 되돌림
+
+
+# 동작마다 판정 순간 클립 위치 (휘두름 구간의 몇 %), 측정으로 고름 (docs/w54: `w54_reach.gd --frac` 로 훑음, 휘두름 클립 배속이 예전 (1.43) 을 안 넘는 한도 = 준비 시간에 따라)
+const W54_LEAD_BY := {
+	"tank": {"주먹": 0.5, "어깨 박치기": 1.0, "방패 올려치기": 0.5, "방패 내려치기": 1.0},
+	"ninja": {"앞차기": 0.5, "올려 차기": 1.0, "내려 차기": 0.75}, # 찌르기·반대 찌르기·공중 베기: 준비가 60ms 라 앞당길 틈이 없고 (휘두름이 더 빨라짐) 닿는 위치도 안 늘어서 뺌
+	"hunter": {"베기": 0.86, "반대 베기": 0.75, "찔러 넣기": 0.75, "내려 베기": 1.0},
+	"hook": {"갈고리 휘두르기": 1.0, "주먹": 1.0, "갈고리 내려치기": 1.0, "갈고리 스핀": 1.0}, # 탕: 클립이 끝에서 오히려 줄어서 뺌
+}
+static var w54_frac_force := -1.0 # 확인용 (tools/w54_reach.gd 가 0~1 로 훑음). 음수 = 안 씀
+
+
+static func lead_frac(ch: String, move: String) -> float:
+	if w54_frac_force >= 0.0:
+		return w54_frac_force
+	var t = W54_LEAD_BY.get(ch)
+	if t is Dictionary and (t as Dictionary).has(move):
+		return float((t as Dictionary)[move])
+	return -1.0 # 표에 없음 = 앞당기지 않음 (예전 그대로)
+
+
+static func old_moves() -> bool:
+	return Opts.args().has("--old-moves")
+
+
 # ---------- W49 모션 가산 층 플래그 (설정 창 '모션' · 실행 인자 · 테스트가 같은 길) ----------
 # 이름 → 기본값 (켜짐 = 지금 모습 그대로). 순서·글은 설정 창 개별 토글 표시용 (EXT_MOTION_LABELS).
 # gait_new = 걸음 박자·보폭·옆걸음 이득 새값 (W46, 끄면 `--old-gait` 와 같은 옛값) · dir = 방향 이동 블렌드 (뒤로 걸음 클립 거꾸로·옆걸음 골반 yaw·팔 흔들림 폭, W43)

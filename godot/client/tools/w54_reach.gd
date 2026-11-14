@@ -11,6 +11,7 @@ extends SceneTree
 var _clk := 0.0 # 가상 시계 (초) — 몸 동작 층의 크로스페이드가 실제 시계가 아니라 프레임 dt 로 돌게 (재연과 같음)
 
 const C := preload("res://core/config.gd")
+const K := preload("res://chars/chars_config.gd")
 
 
 func _initialize() -> void:
@@ -94,6 +95,8 @@ func _run() -> void:
 		csv = a[a.find("--csv") + 1]
 	var MotionM = load("res://chars/ext_motion.gd")
 	MotionM.clock = func(): return _clk
+	if a.has("--frac"):
+		K.w54_frac_force = float(a[a.find("--frac") + 1])
 	var Body = load("res://chars/body.gd")
 	var Chars = load("res://chars/chars.gd")
 	Body.use_ext = not a.has("--code")
@@ -101,10 +104,10 @@ func _run() -> void:
 	root.add_child(vp)
 	# 표본: [이름, phase, u, 서버 시각 기준 ms 계산용 (phase, u)]
 	var samples := [["준비끝", "wind", 1.0], ["타격0", "strike", 0.0], ["타격.25", "strike", 0.25], ["타격.5", "strike", 0.5], ["타격.75", "strike", 0.75], ["타격1", "strike", 1.0], ["회복.15", "rec", 0.15], ["회복.4", "rec", 0.4]]
-	var hdr := "캐릭터,동작,공중,step,range,서버 앞면 range-0.3,스텝 포함 앞면(서버),"
+	var hdr := "캐릭터,동작,공중,step,range,서버 앞면 range-0.3,걸음 이동 포함 앞면(서버),"
 	for s in samples:
 		hdr += "%s," % s[0]
-	hdr += "최대 끝,최대 시각(타격 후 ms),차 최대-서버(스텝 제외),차 타격1-서버,차 타격0-서버"
+	hdr += "최대 끝,최대 시각(타격 후 ms),차 최대-서버(걸음 이동 제외),차 타격1-서버,차 타격0-서버"
 	var lines := [hdr]
 	for ch in chars:
 		var b = Chars.make_body(ch, Color.RED)
@@ -137,7 +140,7 @@ func _run() -> void:
 				for k in 14:
 					var st := _base()
 					st.air = air
-					st.act = {"id": 1, "move": d.name, "phase": s[1], "u": s[2], "air": air}
+					st.act = {"id": 1, "move": d.name, "phase": s[1], "u": s[2], "air": air, "ws": float(d.windup) / 1000.0, "lf": K.lead_frac(ch, str(d.name))}
 					st.loaded = str(d.name) == "탕"
 					b._figure_anim(st, 0.05)
 					b._apply(0.05)
