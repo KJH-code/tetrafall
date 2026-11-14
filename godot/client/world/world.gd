@@ -744,6 +744,7 @@ func _process(dt: float) -> void:
 		grid_view.skip = bblocks.skip()
 	var gkey = preview.key if preview != null else Store.grid_version
 	var g := grid()
+	var grid_ran := false
 	if str(gkey) != str(built_version) and g.size() == fs.x * fs.y * fs.z:
 		if not Gate.ok("world.grid"):
 			_entry_wait()
@@ -754,7 +755,12 @@ func _process(dt: float) -> void:
 		if sprouts != null:
 			G3.sprout_update(sprouts, g, fs.x, fs.y, fs.z, grid_view.skip, bool(View.settings.get("lowGfx", false)))
 		Gate.done("world.grid", tgr)
+		grid_ran = true
 	Prof.lap("world 격자·건축 블록")
+	if grid_ran and not _entered and Gate.on() and not Gate.no_split("tail"):
+		# W51: 입장 첫 바퀴의 끝 프레임에 칸 깔기 (격자·튀어나온 조각·칸 값 ~8ms) 와 몸 자세·몸 효과·위험·1인칭 팔 첫 갱신 (~19ms) 이 한꺼번에 몰리던 것 — 칸 깔기만 하고 다음 프레임으로 (끄기 --no-tail-split)
+		_entry_wait()
+		return
 	if not _entered and Hitch.on: # W45: 입장 첫 바퀴가 몇 프레임 걸렸나 (미룬 프레임 수) — 입장 쪼개기 전후 비교
 		Hitch.tag("입장 첫 바퀴 끝", "대기 %d프레임" % entry_frames)
 	_entered = true # 입장 한 바퀴 끝 (지형·무대·칸까지 다 지음)
