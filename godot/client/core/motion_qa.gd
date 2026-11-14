@@ -1,6 +1,7 @@
 # W44 동작 QA: 판 중 새 모델 몸 (외부 .glb 4명) 의 뼈·메시를 60Hz 로 표본해 튐 (튐)·떨림·발 미끄러짐·뚫림·늘어남·관절 한계·전환 이음새를 센다.
 #   재연:  godot --headless --path godot/client -- --replay <녹화> --replay-secs 60 --replay-warm 0 --fixed-fps 120 --motion-qa <출력 폴더>
 #          → <폴더>/motion_qa.json (요약 + 상위 목록) · motion_qa.csv (사건 한 줄씩). 렌더 없이 뼈 포즈·월드 변환만 읽음 — 가상 시계라 기계가 느려도 같은 시뮬 시간.
+#   W49 --motion-script "초:프리셋,초:프리셋…" (예: "8:old,14:new,20:min") = 재연의 그 가상 시각 (재연 처음부터 초) 에 모션 프리셋 (new·old·min) 으로 바꿈 → json 에 toggles (바꾼 뒤 1초 안 튐 수)
 #   판 중 (재혁 PC): --motion-qa (폴더 없이) = 가벼운 모드 (튐 카운터만) → 한 판 끝에 user://motion_qa.txt 에 '튐 상위 5개' (hitch 로거와 같은 형식)
 # 계산은 core/motion_qa_math.gd (순수 — tests/test_motion_qa.gd 가 합성 뼈 열로 시험). 꺼져 있으면 이 노드가 트리에 없어 비용 0.
 extends Node
@@ -37,6 +38,10 @@ var btrace: FileAccess = null
 var btrace_bone := ""
 var _last_now := -1.0
 var trace_pid := -999
+var motion_script: Array = [] # W49 [[초, 프리셋]] (시각순)
+var script_i := 0
+var toggle_log: Array = [] # [{t, preset}]
+const KCfg := preload("res://chars/chars_config.gd")
 
 
 func _ready() -> void:
@@ -58,6 +63,10 @@ func _ready() -> void:
 		trace.store_line("t,label,clip,cw,side,lift,a_y,t_y,foot_x,foot_z,body_x,body_z")
 	if args.has("replay"):
 		Motion_.clock = func(): return Net.virt / 1000.0 # 가상 시계 (core/replay.gd 도 같은 값을 꽂음)
+	for part in str(args.get("motion-script", "")).split(",", false):
+		var kv := part.split(":")
+		if kv.size() == 2 and KCfg.EXT_MOTION_PRESETS.has(kv[1]):
+			motion_script.append([float(kv[0]), kv[1]])
 
 
 func _now() -> float:
@@ -68,6 +77,11 @@ func _process(_d: float) -> void:
 	if done:
 		return
 	var now := _now()
+	while script_i < motion_script.size() and now - epoch >= float(motion_script[script_i][0]):
+		var pn: String = motion_script[script_i][1]
+		KCfg.set_flags(KCfg.preset_flags(pn)) # 설정 파일은 안 씀 (정적 상태만) — 재연이 재혁 설정을 건드리지 않게
+		toggle_log.append({"t": snappedf(now - epoch, 0.001), "preset": pn})
+		script_i += 1
 	if light:
 		_phase_watch()
 	if next_t < 0.0:
@@ -980,6 +994,20 @@ func finish() -> void:
 					rr2[kk] = snappedf(rr2[kk], 0.001)
 			rows.append(rr2)
 		out.top[kd] = rows
+	if not toggle_log.is_empty(): # W49 바꾼 뒤 1초 안의 튐 (팝) 수 — 재연 전체 평균과 비교
+		var tg := []
+		var total_pops := 0
+		for l in csv:
+			if str(l).begins_with("pop,"):
+				total_pops += 1
+		for tl in toggle_log:
+			var n1 := 0
+			for l in csv:
+				var cols := str(l).split(",")
+				if cols[0] == "pop" and float(cols[1]) > float(tl.t) and float(cols[1]) <= float(tl.t) + 1.0:
+					n1 += 1
+			tg.append({"t": tl.t, "preset": tl.preset, "pops_1s_after": n1})
+		out["toggles"] = {"list": tg, "pops_total": total_pops, "pops_per_s_avg": snappedf(float(total_pops) / maxf(1.0, float(out.meta.secs)), 0.01)}
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	var f := FileAccess.open(out_dir.path_join("motion_qa.json"), FileAccess.WRITE)
 	if f != null:

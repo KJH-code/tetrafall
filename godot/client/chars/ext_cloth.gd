@@ -111,6 +111,10 @@ func step(dt: float) -> void:
 		return
 	var W: Transform3D = Rag.glob(sk) # 트리 밖 (테스트·초상) 에서도 부모 변환을 곱해 셈
 	var pg: Transform3D = _gl(parent_b) if parent_b >= 0 else Transform3D.IDENTITY
+	# W49: 몸 월드 변환이나 부모 뼈 자세가 영 스케일·NaN 이면 (숨김·깨진 입력 — nan_fuzz) 이번 프레임은 안 움직임: 아래 affine_inverse·orthonormalized·Quaternion 이 경고를 프레임마다 찍던 곳
+	if not Motion_.basis_ok(W.basis) or not Motion_.basis_ok(pg.basis):
+		ready = false
+		return
 	# 쉬는 모양 목표 (월드): 부모의 지금 자세에 쉬는 상대 자리를 곱함
 	var rel: Transform3D = rest_parent.affine_inverse()
 	var tgt: Array[Vector3] = []
@@ -169,6 +173,30 @@ func step(dt: float) -> void:
 		sk.set_bone_pose_rotation(bones[i], qn)
 		sk.set_bone_pose_position(bones[i], (rest_l[i] as Transform3D).origin)
 		par = Transform3D(glob_b, origin)
+
+
+# W49 천 시뮬을 끌 때: 뼈를 쉬는 회전으로 부드럽게 (지수 14/초) 돌려놓음. 다 돌아오면 true — 이때 사슬 상태를 비워 다시 켜면 처음부터 (쉬는 모양 점) 시작
+func rest_step(dt: float) -> bool:
+	if sk == null:
+		return true
+	var k := 1.0 - exp(-14.0 * clampf(dt, 0.0, 0.1))
+	var done := true
+	for i in bones.size():
+		var rq: Quaternion = (rest_l[i] as Transform3D).basis.get_rotation_quaternion()
+		var cq: Quaternion = sk.get_bone_pose_rotation(bones[i])
+		if cq.dot(rq) < 0.0:
+			cq = Quaternion(-cq.x, -cq.y, -cq.z, -cq.w)
+		var nq: Quaternion = cq.slerp(rq, k)
+		if rad_to_deg(nq.angle_to(rq)) < 0.3:
+			nq = rq
+		else:
+			done = false
+		sk.set_bone_pose_rotation(bones[i], nq)
+		sk.set_bone_pose_position(bones[i], (rest_l[i] as Transform3D).origin)
+	if done:
+		ready = false
+		last_q.clear()
+	return done
 
 
 # 한 서브스텝 (anc = 이 걸음의 앵커, shift = 목표 점을 앵커 따라 옮길 만큼)

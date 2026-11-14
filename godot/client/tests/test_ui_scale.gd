@@ -4,6 +4,7 @@ extends RefCounted
 
 const UiScale := preload("res://core/ui_scale.gd")
 const U := preload("res://ui/ui_calc.gd")
+const Keys := preload("res://core/keys.gd")
 
 var errors: Array = []
 
@@ -153,10 +154,20 @@ func test_settings_row() -> void:
 	s._show_scale()
 	check(s.scale_btns["자동"].get_meta("kind") == "go" and s.scale_btns["125%"].get_meta("kind") == "ghost", "자동으로 바꾸면 그 칸")
 	check(_src("res://ui/settings.gd").contains("[\"uiScale\", \"auto\"]"), "기본값 = 자동")
-	check(s.KEYS_ROOM == 534.0 and s.KEYS_MIN == 60.0, "키 목록 높이에서 UI 크기 줄·GPU 도움말 줄 만큼 더 뺌 (960×540 에서 설정 창이 화면 안)")
-	s.keys_scroll.custom_minimum_size.y = s.KEYS_MIN
+	# W49: 세 탭 (일반·모션·조작 키) — 한 번에 하나만 보여 가장 큰 탭 높이만 차지 (예전엔 한 화면에 다 있어 실제 글꼴로 960×540 에서 35px 넘쳤음)
+	check(s.TABS.map(func(t): return t[0]) == ["general", "motion", "keys"] and s.TAB_NAT == 300.0, "탭 셋·탭 내용 높이 300")
+	s._fit_tabs()
 	var h_small: float = s.box.get_combined_minimum_size().y
-	check(h_small <= 494.0, "작은 창 설정 창 최소 높이 %.0f (예전 468 + GPU 도움말 줄 — 540 높이 창 안)" % h_small)
+	check(h_small <= 540.0 - s.CHROME_PAD, "설정 창 최소 높이 %.0f (540 높이 창 안 — 탭 내용 300 + 제목·탭 줄·버튼 줄)" % h_small)
+	var keep_binds: Dictionary = PlayerInput.binds
+	if PlayerInput.binds.is_empty():
+		PlayerInput.binds = Keys.default_binds() # (테스트: 자동 로드가 키를 아직 안 읽었으면)
+	for tid in ["general", "motion", "keys"]:
+		s._pick_tab(tid)
+		check(s.tab_scrolls[tid].visible and s.tab_scrolls.keys().all(func(k): return k == tid or not s.tab_scrolls[k].visible), "%s 탭만 보임" % tid)
+	s._pick_tab("general")
+	PlayerInput.binds = keep_binds
+	check(_src("res://core/keys.gd").contains("motionToggle") and _src("res://ui/settings.gd").contains("motionFlags"), "키 설정 motionToggle · 설정 창 모션 탭")
 	View.settings.uiScale = keep
 	s.free()
 	check(_src("res://core/view.gd").contains("\"uiScale\": \"auto\""), "View 기본 설정 uiScale = auto (user://settings.json 에 저장·복원)")

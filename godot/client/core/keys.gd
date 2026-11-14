@@ -31,10 +31,13 @@ const ACTIONS := [
 	{"id": "practice", "label": "연습 창 열기·닫기 (연습 방) · 점수표 (킬 점수전, 누르고 있기)", "def": "Tab", "group": "기타"},
 	{"id": "perf", "label": "성능 표시 켜기·끄기 (FPS·구간 ms)", "def": "F3", "group": "기타"},
 	{"id": "report", "label": "성능·모션 보고서 복사 (채팅에 붙여넣기)", "def": "F4", "group": "기타"}, # W48 — JS 판에는 없는 고도 전용 (GODOT_ONLY)
+	{"id": "motionToggle", "label": "모션 새↔옛 즉시 전환 (같은 순간을 눈으로 비교)", "def": "F6", "group": "기타"}, # W49
 	{"id": "tutSkip", "label": "튜토리얼 이 단계 넘기기", "def": "KeyN", "group": "기타"},
 ]
 
-const GODOT_ONLY := ["report"] # JS 판 keys.js 에 없는 행동 (기본 키 비교 테스트가 뺌)
+# 고도 판에만 있는 행동 (JS keys.js 에 없음 — 기본 키 대조 테스트가 뺌): 성능·모션 보고서 (W48), 판 중 새↔옛 모션 전환 (W49)
+const GODOT_ONLY := ["report", "motionToggle"]
+
 const SAVE_PATH := "user://keys.json"
 const SAME := {"ShiftRight": "ShiftLeft", "ControlRight": "ControlLeft", "AltRight": "AltLeft", "MetaRight": "MetaLeft"}
 const MOUSE := ["좌클릭", "휠 클릭", "우클릭", "마우스 뒤", "마우스 앞"]

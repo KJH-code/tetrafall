@@ -6,6 +6,7 @@ const Opts := preload("res://core/opts.gd")
 
 const C := preload("res://core/config.gd")
 const UiScale := preload("res://core/ui_scale.gd")
+const CharsK := preload("res://chars/chars_config.gd")
 
 signal changed(key: String)
 
@@ -29,6 +30,7 @@ var settings := {
 	"third": false, # 3인칭 시작 (G1)
 	"reducedMotion": false, # 움직임 줄이기 (G4·G5, JS 는 브라우저 설정)
 	"perf": false, # F3 성능 표시 (G6, JS tf-perf)
+	"motionFlags": CharsK.EXT_MOTION_FLAGS.duplicate(), # 모션 가산 층 켬·끔 (W49, 설정 창 '모션' 프리셋·개별 토글 — chars/chars_config.gd EXT_MOTION_FLAGS 가 이름·프리셋 표. 기본은 모두 켬 = 새 모션. 인자 --motion·--no-w43 등은 이것과 합집합)
 	"uiScale": "auto", # UI 크기 (W9): "auto" (창 크기에 맞춤) 또는 0.8·1·1.25·1.5·2 (JS 브라우저 확대 자리) — core/ui_scale.gd, 설정 창이 바꿈
 }
 # 지금 UI 배율 (W9, core/ui_scale.gd — View 가 창 크기·설정으로 정함). 화면 픽셀 = UI 좌표 × ui_scale. 초상 (ui/portrait.gd) 이 선명하게 그릴 크기로 읽음
@@ -69,6 +71,8 @@ func _ready() -> void:
 				settings[k] = d[k]
 			settings.adaptRes = migrate_adapt(d)
 	settings.uiScale = UiScale.normalize(settings.get("uiScale", "auto"))
+	settings.motionFlags = _clean_motion(settings.get("motionFlags"))
+	CharsK.set_flags(settings.motionFlags)
 	PlayerInput.sensitivity = float(settings.sens)
 	_startup_window()
 	get_window().size_changed.connect(apply_ui_scale)
@@ -108,8 +112,19 @@ func set_mode(m: String) -> void:
 		changed.emit("mode")
 
 
+# 저장된 모션 플래그 → 표에 있는 이름만, 값 bool (빠진 이름은 기본값 = 켬). 예전 파일·손으로 고친 파일 방어
+static func _clean_motion(d) -> Dictionary:
+	var out := {}
+	for k in CharsK.EXT_MOTION_FLAGS:
+		out[k] = bool(d.get(k, CharsK.EXT_MOTION_FLAGS[k])) if d is Dictionary else bool(CharsK.EXT_MOTION_FLAGS[k])
+	return out
+
+
 func set_setting(key: String, value) -> void:
 	settings[key] = value
+	if key == "motionFlags":
+		settings[key] = _clean_motion(value)
+		CharsK.set_flags(settings[key]) # 판 중에도 다음 프레임부터 (Ext 가 프레임마다 CharsK.flag 를 읽음)
 	if key == "sens":
 		PlayerInput.sensitivity = float(value)
 	if key == "uiScale":
