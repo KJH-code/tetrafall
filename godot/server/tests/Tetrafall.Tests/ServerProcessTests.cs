@@ -21,14 +21,15 @@ public class ServerProcessTests
         throw new InvalidOperationException("레포 뿌리를 못 찾음");
     }
 
-    sealed class Server : IDisposable
+    internal sealed class Server : IDisposable
     {
         public readonly Process proc;
         public readonly int port;
         public readonly string logDir;
         readonly List<string> lines = new();
 
-        public Server()
+        // env: 서버 프로세스에 더 줄 환경 변수 (NetGuardTests: TF_KEEPALIVE_MS 등)
+        public Server(IReadOnlyDictionary<string, string>? env = null)
         {
             logDir = Path.Combine(Path.GetTempPath(), "tf-logs-" + Guid.NewGuid().ToString("N"));
             var psi = new ProcessStartInfo("dotnet", Path.Combine(AppContext.BaseDirectory, "Tetrafall.Server.dll"))
@@ -42,6 +43,7 @@ public class ServerProcessTests
             psi.Environment["TF_ROOT"] = RepoRoot();
             psi.Environment["TF_LOG_DIR"] = logDir;
             psi.Environment["TF_STDIN_CONTROL"] = "1";
+            foreach (var (k, v) in env ?? new Dictionary<string, string>()) psi.Environment[k] = v;
             proc = Process.Start(psi)!;
             var started = new TaskCompletionSource<int>();
             proc.OutputDataReceived += (_, e) =>

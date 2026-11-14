@@ -9,6 +9,8 @@ using Tetrafall.Server;
 // 실행: dotnet run --project godot/server/src/Tetrafall.Server   (포트: 환경 변수 PORT, 없으면 C.PORT = 3000)
 //   --online (또는 TF_ONLINE=1): Cloudflare 터널도 켜서 친구용 https 주소 (Tunnel.cs, node 필요 없음)
 // 배포 폴더 (tools/package.mjs zip): 서버 exe 옆 web/ 를 /play/ 로, / 는 /play/ 로 넘겨줌 (JS 화면 없음)
+// 멈춘·밀린 접속 끊기: Ping 에 Pong 이 안 오거나 (C.NET_KEEPALIVE_MS + C.NET_KEEPALIVE_TIMEOUT_MS, 약 20~25초) 보내기 줄이 C.NET_SEND_QUEUE_MAX 를 넘으면
+//   그 접속만 끊고 콘솔에 "접속 N 끊음: …" 한 줄 → 예전 끊김 흐름 (자리 유지 + 봇 대리 + 토큰 복귀). 테스트용 환경 변수 TF_KEEPALIVE_MS·TF_KEEPALIVE_TIMEOUT_MS (양의 정수 ms)
 // 스레드: WebSocket 받기·보내기는 비동기, 게임(Rooms·Game)은 루프 스레드 하나에서만 (받은 메시지는 inbox 로 넘김) → JS 처럼 잠금 없음
 
 if (args.Length > 0 && args[0] == "load") Environment.Exit(LoadBench.Run(args)); // 서버 부하 재기 (tools/load.mjs 와 나란히)
@@ -30,7 +32,8 @@ var builder = WebApplication.CreateSlimBuilder(args);
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 var app = builder.Build();
-app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(30) });
+var keepAlive = WsSocket.KeepAlive();
+app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = keepAlive.interval, KeepAliveTimeout = keepAlive.timeout });
 
 app.Run(async ctx =>
 {
@@ -68,6 +71,7 @@ async Task Serve(WebSocket ws, bool packed)
     var sendLoop = sock.RunSendLoop();
     var buf = new byte[8192];
     var msg = new MemoryStream();
+    string? dropped = null; // 서버가 먼저 끊은 이유 (있을 때만 콘솔 한 줄)
     try
     {
         while (ws.State == WebSocketState.Open)
@@ -87,10 +91,14 @@ async Task Serve(WebSocket ws, bool packed)
             if (r.MessageType == WebSocketMessageType.Text) inbox.Enqueue(() => rooms.MessageText(conn, text));
         }
     }
-    catch (WebSocketException) { }
+    catch (WebSocketException) { } // 보통 닫힘 (상대가 끊음): 조용히
+    catch (OperationCanceledException) { dropped = "응답 없음"; } // keepalive 시간 초과로 Abort 된 소켓 (ConnectionAbortedException 도 이 계열)
+    catch (IOException) { }
     finally
     {
         sock.Closed();
+        dropped = sock.DropReason ?? dropped; // 보내기 줄 상한으로 끊은 것이면 그 이유
+        if (dropped != null) Console.WriteLine($"[{Stamp()}] 접속 {conn.id} 끊음: {dropped}");
         inbox.Enqueue(() => rooms.Disconnect(conn));
         await sendLoop;
     }
