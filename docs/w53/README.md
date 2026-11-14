@@ -119,7 +119,7 @@
 
 | 항목 | 결과 |
 | --- | --- |
-| 고도 전체 테스트 `tests/run_tests.gd` | **476 통과, 0 실패** (새 `test_w53.gd` 17개 검사: 대기실 판 나누기 5 · 등록부 정리 1 · 효과음 묶음 규칙·플러그인 일치·null 처리 3) |
+| 고도 전체 테스트 `tests/run_tests.gd` | **476 통과, 0 실패** (새 `test_w53.gd` 9개 테스트: 대기실 판 나누기 5 · 등록부 정리 1 · 효과음 묶음 규칙·플러그인 일치·null 처리 3) |
 | `npm test` | 580 통과 |
 | 패키지 테스트 (`godot/server/tools/package.test.mjs` + `test/godot-package.test.js`) | 32 통과 |
 | `tools/shader_check.gd` | 오류 0 (파일 23 + G3 3 + 외부 몸 16) |
