@@ -15,7 +15,7 @@ func _init() -> void:
 			reps = int(args[i + 1])
 		if args[i] == "--cut":
 			cut = float(args[i + 1])
-	print("테마\t한 덩어리 최대 ms\t끊음 조각 수\t끊음 최대 조각 ms\t합 ms (한 덩어리 → 끊음)  [끊는 시간 %.1f ms, %d번 중 가장 나쁜 값]" % [cut, reps])
+	print("맵\t한 덩어리 최대 ms\t끊음 조각 수\t끊음 최대 조각 ms\t합 ms (한 덩어리 → 끊음)  [끊는 시간 %.1f ms, %d번 중 가장 큰 값]" % [cut, reps])
 	for id in C.TITLE_THEMES.keys():
 		var worst := {}
 		for mode in ["full", "cut"]:

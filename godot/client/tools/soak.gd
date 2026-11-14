@@ -182,7 +182,7 @@ func res_line(tag: String) -> void:
 	var dp := []
 	for k3 in ds.slice(0, 10):
 		dp.append("%s=%d" % [k3, bydir[k3]])
-	_p("%s rescache files=%d sub(reach)=%d total=%d 새 %d 빠짐 %d | 폴더 %s" % [tag, cur.size(), sub, int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT)), added.size(), gone, " ".join(dp)])
+	_p("%s rescache files=%d sub(reach)=%d total=%d 새 %d 빠짐 %d | 경로별 %s" % [tag, cur.size(), sub, int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT)), added.size(), gone, " ".join(dp)])
 	if not added.is_empty() and added.size() <= 40:
 		_p("%s resnew %s" % [tag, " ".join(added)])
 	elif not added.is_empty():
