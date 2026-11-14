@@ -22,6 +22,8 @@ const EST_DEFAULT := {
 	"ui.portrait": 8.0, # 초상 한 장 — 몸 만들기까지 (W45: 자세 굳히기는 조각 "ui.portrait.prime", 한 덩어리는 14)
 	"ui.portrait.prime": 8.0, # 초상·큰 캐릭터 자세 굳히기 50번 한 조각 (W45, 새 모델 5~10ms · 코드 몸 4~6ms)
 	"fx.ghost": 3.0, # 잔상 몸 풀 미리 만들기 (몸 종류마다 하나)
+	"ui.panel.a": 6.0, # W53 대기실 판 첫 갱신 A (점수 띠 + 대기실 판, 5~7ms)
+	"ui.panel.b": 6.0, # W53 대기실 판 첫 갱신 B (얼굴 데우기 + HUD 카드 + 방장 판, 5~7ms)
 	"ui.hud": 6.0, # 판 HUD 카드 미리 만들기 (카드 하나 ~1ms 라 여러 장)
 }
 
@@ -76,7 +78,7 @@ static func ok(name: String) -> bool:
 	return r
 
 
-# W45: 조각별 끄는 인자 (--no-scene-split 지형 · --no-theme-split 맵 적용 · --no-body-split 몸 만들기 · --no-portrait-split 초상·큰 캐릭터) — 전후 비교
+# W45: 조각별 끄는 인자 (--no-panel-split 대기실 판 첫 갱신 W53 · --no-scene-split 지형 · --no-theme-split 맵 적용 · --no-body-split 몸 만들기 · --no-portrait-split 초상·큰 캐릭터) — 전후 비교
 static var _ns := {}
 
 
