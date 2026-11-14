@@ -13,7 +13,7 @@ const AWARD_MIN := {
 	"sandbag": 1, # 샌드백: 맞은 hit 수 (가장 많이 맞은 사람 — 한 대도 안 맞았으면 없음)
 }
 const MAX_LINES := 3
-const NONE := {"kills": 0, "fall": 0, "crush": 0, "self": 0, "combo": 0, "counter": 0, "hits": 0} # 이벤트가 하나도 없던 사람의 줄
+const NONE := {"kills": 0, "fall": 0, "crush": 0, "self": 0, "deaths": 0, "combo": 0, "counter": 0, "hits": 0} # 이벤트가 하나도 없던 사람의 줄
 # 우선순위 (앞이 먼저). 칭호마다 값이 가장 큰 사람 한 명, 동률이면 st.players 순서가 앞인 사람
 const ORDER := ["closer", "crusher", "pusher", "combo", "counter", "perfect", "endure", "sandbag", "slip"]
 const TITLES := {
@@ -29,9 +29,11 @@ const STAT_TEXT := {
 
 # 판 동안 이벤트로 사람마다 셈. 판 중에 들어온 (재접속) 사람은 그 전 이벤트를 못 받아 집계가 모자람 — ui_calc.gd KillTally 와 같은 한계
 class Tally:
-	var rows := {} # id (int) → {kills, fall, crush, self, combo, counter, hits}
+	var rows := {} # id (int) → {kills, fall, crush, self, deaths (죽은 횟수 — 자멸도 남에게 죽은 것도), combo, counter, hits}
 	var first = null # 첫 탈락자 id (없으면 null)
-	var first_self := false # 그 첫 탈락이 자멸인지
+	var first_self := false # 그 첫 탈락이 스스로 떨어진 것인지 (낙사 + 킬 없음 — '발이 미끄러짐'. 자동 블록 압사·용암은 아님)
+	var masters := {} # 블록 마스터 판 중에 마스터 편이던 id (note_state) — 판이 끝나면 서버가 master 를 false 로 되돌려 결과 스냅샷만으론 모름
+	var chains := {} # 맞는 사람 id → 지금 콤보 사슬 {n 지난 연타 수, by 친 사람 id (여럿이 섞였으면 null)}
 	var round_key = null # 세고 있는 판 (at_round)
 	var rev := 0 # 바뀔 때마다 +1 (화면이 다시 그릴지 봄)
 
@@ -39,6 +41,8 @@ class Tally:
 		rows = {}
 		first = null
 		first_self = false
+		masters = {}
+		chains = {}
 		rev += 1
 
 	# 판이 바뀌었으면 (key 가 지난번과 다르면) 먼저 비움. 이벤트를 넣기 전에 부름
@@ -56,7 +60,19 @@ class Tally:
 	static func _id(v):
 		return int(v) if (v is float or v is int) else null
 
-	# 서버 이벤트 하나: kill {killer(자멸이면 null), victim, cause} · combo {by, n} · counter {by} · hit {target, ok}. 다른 건 흘림
+	# 판 중 스냅샷 (results.gd 가 스냅샷마다 부름): 블록 마스터 판이면 마스터 편 (마스터 + 죽어서 넘어간 사람) id 를 기억.
+	# 판 끝 스냅샷에선 마스터도 master 가 false 라 (서버 EndRound) 판 중에 봐 둬야 '완벽한 승리' 에서 뺄 수 있음.
+	# 판이 끝난 뒤에 들어온 사람은 못 봄 — 이벤트 집계와 같은 한계
+	func note_state(st: Dictionary) -> void:
+		if st.get("phase") != "playing" or st.get("mode") != "master":
+			return
+		for p in st.get("players", []):
+			var id = _id(p.get("id"))
+			if id != null and p.get("master", false) and not masters.has(id):
+				masters[id] = true
+				rev += 1
+
+	# 서버 이벤트 하나: kill {killer(자멸이면 null), victim, cause} · combo {by, target, n} · counter {by} · hit {target, ok}. 다른 건 흘림
 	func feed(e: Dictionary) -> void:
 		match str(e.get("type", "")):
 			"kill":
@@ -65,23 +81,39 @@ class Tally:
 					return
 				var killer = _id(e.get("killer"))
 				var own: bool = killer == null or killer == victim
+				var cause := str(e.get("cause", ""))
 				if first == null:
 					first = victim
-					first_self = own
+					first_self = own and cause == "fall" # 킬 없는 압사 (자동 블록)·용암은 '미끄러짐' 이 아님. self 집계는 KillTally·서버 ScoreDeath 와 같이 그대로
+				row(victim).deaths += 1
 				if own:
 					row(victim).self += 1
 				else:
 					var k := row(killer)
 					k.kills += 1
-					var cause := str(e.get("cause", ""))
 					if cause == "fall" or cause == "crush":
 						k[cause] += 1
 			"combo":
+				# 서버의 n 은 맞는 쪽이 이어 맞은 수 (누가 쳤든 +1) — 마지막 타를 친 사람에게 통째로 주면 남의 타까지 그 사람 연타가 됨.
+				# 그래서 맞는 사람마다 사슬을 따로 봄: n 이 지난 n + 1 이면 같은 사슬, 아니면 새 사슬. 사슬 안에서 친 사람이 하나일 때만 그 사람에게 n 을 줌
+				# (다른 사람이 끼면 그 사슬은 그 뒤로 아무에게도 안 줌 — 거짓 '장인' 보다 덜 주는 쪽).
+				# 한계: 사슬의 첫 타는 combo 이벤트가 없어 (n 은 2 부터 옴) 누가 쳤는지 모름 → 첫 타만 남이 쳤으면 1타 많게 셈
 				var by = _id(e.get("by"))
-				if by == null:
+				var target = _id(e.get("target"))
+				if by == null or target == null:
 					return
-				var r := row(by)
-				r.combo = maxi(int(r.combo), int(e.get("n", 0)))
+				var n := int(e.get("n", 0))
+				var ch = chains.get(target)
+				if ch != null and n == int(ch.n) + 1:
+					ch.n = n
+					if ch.by != by:
+						ch.by = null
+				else:
+					ch = {"n": n, "by": by}
+					chains[target] = ch
+				if ch.by != null:
+					var r := row(by)
+					r.combo = maxi(int(r.combo), n)
 			"counter":
 				var by = _id(e.get("by"))
 				if by == null:
@@ -114,8 +146,10 @@ static func _value(award: String, p: Dictionary, r: Dictionary, tally: Tally, wi
 			return int(r.combo) if int(r.combo) >= int(AWARD_MIN.combo) else -1
 		"counter":
 			return int(r.counter) if int(r.counter) >= int(AWARD_MIN.counter) else -1
-		"perfect": # 승자가 한 대도 안 맞고 피해 0. 블록 마스터의 마스터는 필드에 없어 맞을 수 없으니 뺌
-			var clean: bool = winner and not p.get("master", false) and float(p.get("damage", 0)) == 0.0 and int(r.hits) == 0
+		"perfect": # 승자가 판 중 죽은 적 없고 (부활하면 피해가 0 으로 돌아오니 deaths 로 봄) 한 대도 안 맞고 피해 0.
+			# 블록 마스터의 마스터 편은 필드에 없어 맞을 수 없으니 뺌 — 판 끝 스냅샷은 master 가 이미 false 라 판 중에 기억한 tally.masters 로
+			var was_master: bool = p.get("master", false) or tally.masters.has(int(p.id))
+			var clean: bool = winner and not was_master and int(r.deaths) == 0 and float(p.get("damage", 0)) == 0.0 and int(r.hits) == 0
 			return 0 if clean else -1
 		"endure":
 			var dmg := int(p.get("damage", 0))
@@ -139,6 +173,11 @@ static func pick(tally: Tally, st: Dictionary) -> Array[String]:
 	var winners := {}
 	for id in ids:
 		winners[int(id)] = true
+	var wt = rnd.get("winnerTeam") # 팀전: 서버가 winnerIds 는 비우고 winnerTeam 만 실음 → 그 팀 사람이 승자
+	if wt != null:
+		for p in ps:
+			if p.get("team") != null and str(p.get("team")) == str(wt):
+				winners[int(p.id)] = true
 	var used := {}
 	for award in ORDER:
 		if out.size() >= MAX_LINES:

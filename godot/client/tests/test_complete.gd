@@ -9,6 +9,9 @@ const Input_ := preload("res://core/player_input.gd")
 const CamRig := preload("res://world/cam_rig.gd")
 const HudExtra := preload("res://ui/hud_extra.gd")
 const Lobby := preload("res://ui/lobby.gd")
+const Menu := preload("res://ui/menu.gd")
+const Prefs := preload("res://ui/ui_prefs.gd")
+const RoundEventText := preload("res://ui/round_event_text.gd")
 
 const SERVER_DIR := "../server/src/Tetrafall.Core/" # res:// (godot/client) 기준. 바로 아래 *.cs 만 (bin·obj 하위 폴더는 안 읽음)
 const TYPE_RE := "P\\(\"type\", ?\"([A-Za-z]+)\"\\)" # 이벤트·메시지 쓰기: o.P("type", "이름")
@@ -172,3 +175,141 @@ func test_create_defaults() -> void:
 	# 보낼 메시지는 서버 방 메시지 모양 그대로 (Rooms.cs roundEvents: {type, on})
 	var m: Dictionary = U.create_defaults(null, {})[0]
 	check(m.size() == 2 and m.get("type") == "roundEvents" and m.get("on") == true, "메시지 모양: %s" % str(m))
+
+
+# ---------- 이벤트 연결 줄 (사이클 2 리뷰 F8: 줄을 지우거나 바꿔도 테스트가 그대로 통과하던 것) ----------
+# 아래 노드 테스트는 러너가 SceneTree._initialize 안에서 돌아 노드가 트리에 못 들어감 (뿌리가 아직 트리 밖) → _ready 를 직접 부르고
+# 처리기 (_on_event·_event_chip·_create·_on_created) 를 직접 부름. 화면 크기를 읽는 refresh (get_viewport_rect) 는 못 불러
+# refresh 가 _event_chip 을 부르는 한 줄은 여기서 못 봄 (자동 조종 스크린샷 몫)
+
+# 아이템 주움 알림 고르기 (pickup {who, item}): 내가 주운 것만, 반격 (counter) 은 masterStall 이 알리니 넘김
+func test_pickup_toast() -> void:
+	var names: Dictionary = HudExtra.ITEM_KO
+	check(U.pickup_toast({"type": "pickup", "who": 2.0, "item": "jump"}, 2, names) == "점프력 상승!", "내가 주움: '%s'" % U.pickup_toast({"who": 2.0, "item": "jump"}, 2, names))
+	check(U.pickup_toast({"type": "pickup", "who": 2.0, "item": "counter"}, 2, names) == "", "반격은 넘김 (masterStall 이 알림)")
+	check(U.pickup_toast({"type": "pickup", "who": 3.0, "item": "jump"}, 2, names) == "", "남이 주운 것")
+	check(U.pickup_toast({"type": "pickup", "who": 3.0, "item": "counter"}, 2, names) == "", "남이 주운 반격")
+	check(U.pickup_toast({"type": "pickup", "who": 0.0, "item": "bomb"}, 0, names) == "폭탄!", "id 0 도 내 것")
+	check(U.pickup_toast({"type": "pickup", "who": 2.0, "item": "jump"}, null, names) == "", "방 밖 (내 id 없음)")
+	check(U.pickup_toast({"type": "pickup", "item": "jump"}, 2, names) == "", "who 없음")
+	check(U.pickup_toast({"type": "pickup", "who": 2.0, "item": "meteor"}, 2, names) == "meteor!", "표에 없는 아이템은 id 그대로")
+	for item in names: # 반격만 빼고 전부 '이름!'
+		var got := U.pickup_toast({"type": "pickup", "who": 2.0, "item": item}, 2, names)
+		check(got == ("" if item == "counter" else "%s!" % names[item]), "%s: '%s'" % [item, got])
+
+
+# 방을 만든 뒤 welcome 에 보낼 메시지: 재접속이면 없음, 아니면 기본 방 옵션
+func test_created_msgs() -> void:
+	var on := [{"type": "roundEvents", "on": true}]
+	check(U.created_msgs(false, null, {}) == on, "새로 만든 방: %s" % str(U.created_msgs(false, null, {})))
+	check(U.created_msgs(true, null, {}).is_empty(), "재접속이면 안 보냄")
+	check(U.created_msgs(false, false, {}).is_empty(), "끔 기억이면 안 보냄")
+	check(U.created_msgs(false, true, {"roundEvents": true}).is_empty(), "이미 켜짐")
+
+
+static func _toast_texts(h) -> Array:
+	return h.toasts.get_children().map(func(x): return str(x.text))
+
+
+# hud_extra.gd 처리기: pickup → 알림 (반격·남의 것은 없음), masterStall → 알림 (세 시점 글), 돌발 이벤트 띠
+func test_hud_extra_event_wiring() -> void:
+	var keep_state = Store.state
+	var keep_by = Store._players_by_id
+	var keep_me = Store.my_id
+	var me := {"id": 2.0, "name": "나", "nick": "", "alive": true, "master": false, "zombie": false}
+	var bot := {"id": 4.0, "name": "봇4", "nick": "", "alive": true, "master": false, "zombie": false}
+	Store.state = {"phase": "playing", "mode": "master", "players": [me, bot]}
+	Store._players_by_id = {2: me, 4: bot}
+	Store.my_id = 2
+	var h = HudExtra.new()
+	h._ready()
+	check(Store.game_event.is_connected(h._on_event), "hud_extra 가 이벤트 신호를 받음")
+	# pickup
+	h._on_event({"type": "pickup", "who": 2.0, "item": "jump"})
+	check(_toast_texts(h) == ["점프력 상승!"], "내가 주움 → 알림: %s" % str(_toast_texts(h)))
+	h._on_event({"type": "pickup", "who": 2.0, "item": "counter"})
+	h._on_event({"type": "pickup", "who": 4.0, "item": "speed"})
+	h._on_event({"type": "pickup", "who": 4.0, "item": "counter"})
+	check(_toast_texts(h) == ["점프력 상승!"], "반격·남이 주운 것은 알림 없음: %s" % str(_toast_texts(h)))
+	# masterStall: 먹은 사람 (나) · 다른 생존자가 먹음 · 내가 마스터 편
+	var ms := float(C.MASTER_COUNTER_STALL_MS)
+	var n := int(ceil(ms / 1000.0))
+	h._on_event({"type": "masterStall", "who": 2.0, "until": 9000.0, "ms": ms})
+	check(_toast_texts(h) == ["점프력 상승!", "반격! 마스터 블록 %d초 멈춤" % n], "내가 먹음: %s" % str(_toast_texts(h)))
+	h._on_event({"type": "masterStall", "who": 4.0, "until": 9000.0, "ms": ms})
+	check(_toast_texts(h).back() == "봇4 반격! 마스터 블록 %d초 멈춤" % n, "남이 먹음: %s" % str(_toast_texts(h)))
+	me.master = true
+	h._on_event({"type": "masterStall", "who": 4.0, "until": 9000.0, "ms": ms})
+	check(_toast_texts(h).back() == "반격! 블록 %d초 멈춤" % n, "마스터 편: %s" % str(_toast_texts(h)))
+	check(_toast_texts(h).size() == 4, "알림 줄 수: %s" % str(_toast_texts(h)))
+	me.master = false
+	# 돌발 이벤트 띠: 판 중 + 진행 중인 이벤트가 있을 때만, 글은 RoundEventText.status
+	var rain := {"kind": "rain", "left": 4200.0, "dir": null}
+	check(not h.event_chip.visible, "처음엔 띠 없음")
+	h._event_chip({"phase": "playing", "roundEvent": rain})
+	check(h.event_chip.visible and h.event_chip.text == "블록 폭우 5초", "폭우 띠: %s '%s'" % [str(h.event_chip.visible), h.event_chip.text])
+	var wind := {"kind": "wind", "left": 3000.0, "dir": {"x": 0.0, "y": -1.0}}
+	h._event_chip({"phase": "playing", "roundEvent": wind})
+	check(h.event_chip.visible and h.event_chip.text == RoundEventText.status(wind, h._view_yaw()) and h.event_chip.text.begins_with("돌풍"), "돌풍 띠: '%s'" % h.event_chip.text)
+	h._event_chip({"phase": "over", "roundEvent": rain})
+	check(not h.event_chip.visible, "판 중이 아니면 띠 없음")
+	h._event_chip({"phase": "playing", "roundEvent": rain})
+	h._event_chip({"phase": "playing", "roundEvent": null})
+	check(not h.event_chip.visible, "이벤트가 끝나면 띠 없음")
+	h._event_chip({"phase": "playing", "roundEvent": {"kind": "supply", "left": 3000.0}})
+	check(not h.event_chip.visible, "보급은 띠 없음")
+	h.free()
+	Store.state = keep_state
+	Store._players_by_id = keep_by
+	Store.my_id = keep_me
+
+
+# menu.gd: 방 만들기 → 그 방의 welcome 에 한 번만 기본 방 옵션을 보냄. 재접속·다른 길 (코드·연습) 로 들어가면 안 보냄
+func test_menu_create_sends_room_defaults() -> void:
+	var keep_state = Store.state
+	var keep_pref = Prefs.get_value("roundEvents", null)
+	Prefs._load()["roundEvents"] = true # 기억 '켬' 으로 고정 (파일엔 안 씀 — 끝나면 되돌림)
+	Store.state = {}
+	var menu = Menu.new()
+	menu._ready()
+	var sent: Array = []
+	menu.send_room = func(m: Dictionary): sent.append(m)
+	# 만든 방의 welcome 에 불릴 연결 (joined 신호를 진짜로 쏘면 다른 듣는 쪽 — PlayerInput 등 — 도 불리니, 메뉴의 연결만 골라 부름)
+	var call_created := func(rejoined: bool) -> int:
+		var n := 0
+		for c in Store.joined.get_connections():
+			if (c.callable as Callable).get_object() == menu:
+				(c.callable as Callable).call({"code": "ABCD"}, rejoined)
+				n += 1
+		return n
+	check(call_created.call(false) == 0 and sent.is_empty(), "만들기 전엔 연결 없음")
+	menu._create()
+	check(call_created.call(false) == 1, "만들기 → welcome 연결 하나")
+	check(sent == [{"type": "roundEvents", "on": true}], "새 방 welcome → 돌발 이벤트 켬 메시지: %s" % str(sent))
+	menu._create() # 두 번 눌러도 연결은 하나
+	sent.clear()
+	check(call_created.call(false) == 1 and sent.size() == 1, "연결은 하나: %s" % str(sent))
+	# 재접속 welcome 이면 안 보냄
+	sent.clear()
+	check(call_created.call(true) == 1 and sent.is_empty(), "재접속이면 안 보냄: %s" % str(sent))
+	# 이미 켜진 방·끔 기억이면 안 보냄
+	Store.state = {"roundEvents": true}
+	call_created.call(false)
+	check(sent.is_empty(), "이미 켜진 방: %s" % str(sent))
+	Store.state = {}
+	Prefs._load()["roundEvents"] = false
+	call_created.call(false)
+	check(sent.is_empty(), "끔 기억: %s" % str(sent))
+	Prefs._load()["roundEvents"] = true
+	# 다른 길로 들어가면 남은 연결을 걷음 (남의 방·연습 방에 옵션을 보내지 않게)
+	menu._join("WXYZ")
+	check(call_created.call(false) == 0 and sent.is_empty(), "코드로 들어가면 연결 걷음")
+	menu._create()
+	menu._practice()
+	check(call_created.call(false) == 0 and sent.is_empty(), "연습으로 들어가도 연결 걷음")
+	menu.free()
+	if keep_pref == null:
+		Prefs._load().erase("roundEvents")
+	else:
+		Prefs._load()["roundEvents"] = keep_pref
+	Store.state = keep_state

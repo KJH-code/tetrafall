@@ -4,6 +4,7 @@ extends RefCounted
 
 const U := preload("res://ui/ui_calc.gd")
 const Awards := preload("res://ui/awards_calc.gd")
+const Results := preload("res://ui/results.gd")
 
 var errors: Array = []
 var fx: Dictionary = {}
@@ -197,11 +198,13 @@ func test_awards_tally_kills_causes() -> void:
 		_kill(6.0, 6.0, "lava"), # 자기 자신이 killer 여도 자멸
 		_kill(7.0, 1.0, "hp"),
 	])
-	expect(t.rows[1], {"kills": 3, "fall": 2, "crush": 1, "self": 0, "combo": 0, "counter": 0, "hits": 0}, "1번 킬·낙사·압사")
-	expect(t.rows[7], {"kills": 1, "fall": 0, "crush": 0, "self": 0, "combo": 0, "counter": 0, "hits": 0}, "7번 체력 킬 (낙사·압사 아님)")
-	expect(t.rows[4].self, 1, "4번 자멸")
-	expect(t.rows[6], {"kills": 0, "fall": 0, "crush": 0, "self": 1, "combo": 0, "counter": 0, "hits": 0}, "6번 자멸 (킬 아님)")
-	check(not t.rows.has(2) and not t.rows.has(3) and not t.rows.has(5), "죽기만 한 사람은 줄 없음: %s" % str(t.rows.keys()))
+	expect(t.rows[1], {"kills": 3, "fall": 2, "crush": 1, "self": 0, "deaths": 1, "combo": 0, "counter": 0, "hits": 0}, "1번 킬·낙사·압사 (+ 7번에게 죽음)")
+	expect(t.rows[7], {"kills": 1, "fall": 0, "crush": 0, "self": 0, "deaths": 0, "combo": 0, "counter": 0, "hits": 0}, "7번 체력 킬 (낙사·압사 아님)")
+	expect([t.rows[4].self, t.rows[4].deaths], [1, 1], "4번 자멸 (죽은 횟수에도)")
+	expect(t.rows[6], {"kills": 0, "fall": 0, "crush": 0, "self": 1, "deaths": 1, "combo": 0, "counter": 0, "hits": 0}, "6번 자멸 (킬 아님)")
+	for id in [2, 3, 5]: # 남에게 죽기만 한 사람: 죽은 횟수만
+		expect(t.rows[id], {"kills": 0, "fall": 0, "crush": 0, "self": 0, "deaths": 1, "combo": 0, "counter": 0, "hits": 0}, "%d번 죽기만 함" % id)
+	expect(Awards.NONE.deaths, 0, "이벤트 없는 사람의 죽은 횟수")
 	check(t.first == 4 and t.first_self, "첫 탈락 4번·자멸: %s %s" % [str(t.first), str(t.first_self)])
 	# 콤보는 가장 긴 것, 카운터·맞은 hit 는 횟수 (ok 거짓은 안 셈). 모르는 이벤트는 흘림
 	var rev: int = t.rev
@@ -314,6 +317,228 @@ func test_awards_reset_on_new_round() -> void:
 	check(t.rev > rev, "비우면 rev 가 바뀜 (화면이 다시 그림)")
 	expect(Awards.pick(t, st), [], "비운 뒤 칭호 없음")
 	t.feed(_kill(4.0, 1.0, "crush"))
-	check(t.rows.size() == 1 and t.rows[4].crush == 1 and t.first == 1 and not t.first_self, "새 판 집계는 처음부터")
+	check(t.rows.size() == 2 and t.rows[4].crush == 1 and t.rows[1].deaths == 1 and t.first == 1 and not t.first_self, "새 판 집계는 처음부터: %s" % str(t.rows))
 	t.at_round("WXYZ|2") # 다른 방의 같은 판 번호도 새 판
 	check(t.rows.is_empty(), "방이 바뀌어도 비움")
+
+
+# ---------- 사이클 2 리뷰 지적 (F1~F6) ----------
+
+# 결과 스냅샷 한 사람 (서버 WritePlayer 에서 칭호·결과 판이 읽는 것): 판 끝엔 마스터도 master 가 false
+static func _award_player(id: int, opts := {}) -> Dictionary:
+	var p := {"id": float(id), "slot": float(id - 1), "color": float(id - 1), "name": "P%d" % id, "nick": "", "spectator": false, "dummy": false, "team": null,
+		"damage": 0.0, "alive": true, "wins": 0.0, "cause": null, "master": false, "zombie": false, "char": "tank"}
+	p.merge(opts, true)
+	return p
+
+
+# F1: 블록 마스터 판에서 마스터가 이겨도 '완벽한 승리' 아님. 판 끝 스냅샷은 마스터도 master:false (서버 EndRound) → 판 중 스냅샷에서 기억한 id 로 뺌
+func test_awards_master_winner_not_perfect() -> void:
+	var playing := {"phase": "playing", "mode": "master", "round": {"n": 1.0},
+		"players": [_award_player(1, {"master": true}), _award_player(2), _award_player(3)]}
+	# 실제 모양의 판 끝: 마스터 (1번) 가 이김 — master false · 피해 0 · alive true · winnerIds = [마스터]. 생존자 둘은 용암 (킬 없음)
+	var over := {"phase": "over", "mode": "master", "round": {"n": 1.0, "winnerId": 1.0, "winnerTeam": null, "winnerIds": [1.0]},
+		"players": [_award_player(1), _award_player(2, {"alive": false, "cause": "lava"}), _award_player(3, {"alive": false, "cause": "lava"})]}
+	var deaths := [_kill(null, 2.0, "lava"), _kill(null, 3.0, "lava")]
+	var t := Awards.Tally.new()
+	t.at_round("ABCD|1")
+	var rev: int = t.rev
+	t.note_state(playing)
+	check(t.masters.has(1) and t.masters.size() == 1 and t.rev == rev + 1, "판 중 마스터 기억: %s" % str(t.masters))
+	t.note_state(playing)
+	check(t.rev == rev + 1, "이미 아는 마스터는 rev 그대로")
+	_award_feed(t, deaths)
+	t.note_state(over) # 판 끝 스냅샷 (master false) 이 와도 기억은 그대로
+	check(t.masters.has(1), "판 끝 스냅샷이 기억을 지우지 않음")
+	expect(Awards.pick(t, over), [], "마스터 승리: 완벽한 승리 없음")
+	# 대조: 판 중 스냅샷을 못 봤으면 (기억 없음) 예전처럼 붙음 — 위 결과가 기억 덕분임을 보임
+	var t0 := Awards.Tally.new()
+	_award_feed(t0, deaths)
+	expect(Awards.pick(t0, over), ["완벽한 승리 · P1 피해 0%"], "기억이 없으면 붙음 (판 끝 뒤에 들어온 사람의 한계)")
+	# 죽어서 마스터 편으로 넘어간 사람 (zombie) 도 master:true → 같이 담김 (승자가 아니라 상관없음). 생존자가 이기면 그 생존자는 완벽한 승리
+	var t2 := Awards.Tally.new()
+	t2.note_state(playing)
+	t2.feed(_kill(null, 2.0, "lava"))
+	t2.note_state({"phase": "playing", "mode": "master", "players": [_award_player(1, {"master": true}), _award_player(2, {"master": true, "zombie": true}), _award_player(3)]})
+	check(t2.masters.has(1) and t2.masters.has(2) and not t2.masters.has(3), "마스터 편: %s" % str(t2.masters))
+	var survived := {"round": {"n": 1.0, "winnerId": 3.0, "winnerIds": [3.0]}, "players": [_award_player(1), _award_player(2, {"alive": false}), _award_player(3)]}
+	expect(Awards.pick(t2, survived), ["완벽한 승리 · P3 피해 0%"], "혼자 버틴 생존자")
+	# 블록 마스터 판 중이 아니면 안 담음 (다른 모드·대기실·카운트다운·판 끝)
+	var t3 := Awards.Tally.new()
+	for st in [{"phase": "playing", "mode": "survival"}, {"phase": "lobby", "mode": "master"}, {"phase": "countdown", "mode": "master"}, {"phase": "over", "mode": "master"}]:
+		st["players"] = [_award_player(1, {"master": true})]
+		t3.note_state(st)
+	check(t3.masters.is_empty(), "판 중 블록 마스터가 아니면 안 담음: %s" % str(t3.masters))
+	# 새 판이면 비움
+	t.at_round("ABCD|2")
+	check(t.masters.is_empty(), "새 판이면 마스터 기억도 비움")
+
+
+# F1 화면 쪽 (results.gd): 스냅샷 신호를 받아 마스터를 기억하고, 판이 바뀌면 비움.
+# 러너가 SceneTree._initialize 안에서 돌아 노드가 트리에 못 들어감 (뿌리가 아직 트리 밖) → _ready 를 직접 부르고,
+# 화면 크기를 읽는 refresh (_place 의 get_viewport_rect) 는 못 부름 — 줄 고르기는 그 판의 tally 로 Awards.pick 을 직접
+func test_results_remembers_master_from_snapshots() -> void:
+	var keep_state = Store.state
+	var keep_room = Store.room
+	Store.room = {"code": "ABCD"}
+	var r = Results.new()
+	r._ready()
+	check(Store.state_changed.is_connected(r._on_state) and Store.game_event.is_connected(r._on_event), "results 가 스냅샷·이벤트 신호를 받음")
+	var playing := {"phase": "playing", "mode": "master", "round": {"n": 3.0},
+		"players": [_award_player(1, {"master": true}), _award_player(2), _award_player(3)]}
+	var over := {"phase": "over", "mode": "master", "round": {"n": 3.0, "winnerId": 1.0, "winnerTeam": null, "winnerIds": [1.0]},
+		"players": [_award_player(1), _award_player(2, {"alive": false, "cause": "lava"}), _award_player(3, {"alive": false, "cause": "lava"})]}
+	r._on_state(playing, {})
+	check(r.tally.masters.has(1), "판 중 스냅샷 → 마스터 기억: %s" % str(r.tally.masters))
+	Store.state = playing
+	r._on_event(_kill(null, 2.0, "lava"))
+	r._on_event(_kill(null, 3.0, "lava"))
+	Store.state = over
+	r._on_state(over, playing)
+	check(r.tally.masters.has(1) and r.tally.rows.size() == 2, "같은 판의 이벤트·판 끝 스냅샷은 안 비움: %s %s" % [str(r.tally.masters), str(r.tally.rows)])
+	expect(Awards.pick(r.tally, over), [], "마스터 승리 결과 판에 칭호 줄 없음")
+	var next: Dictionary = playing.duplicate(true)
+	next.round.n = 4.0
+	next.phase = "countdown"
+	r._on_state(next, over)
+	check(r.tally.masters.is_empty() and r.tally.rows.is_empty(), "다음 판 스냅샷이 오면 비움")
+	r.free()
+	Store.state = keep_state
+	Store.room = keep_room
+
+
+# F2: 판 중에 죽었던 (부활하면 피해가 0 으로 돌아옴) 승자는 완벽한 승리 아님 — 죽은 횟수로 봄
+func test_awards_perfect_needs_no_deaths() -> void:
+	var st := _award_state([[1, 0, true], [2, 60, true]], 1.0)
+	# 자멸 1번 (킬 점수전: 용암에 빠졌다 부활 — 피해 0·alive)
+	var t := Awards.Tally.new()
+	t.feed(_kill(null, 1.0, "lava"))
+	expect([t.rows[1].self, t.rows[1].deaths, t.rows[1].hits], [1, 1, 0], "자멸: self·deaths")
+	expect(Awards.pick(t, st), [], "자멸한 승자")
+	# 조종 블록 압사 1번: killer 는 붙지만 hit 이벤트는 없음 (서버 Kill 은 death·kill 만) → hits 0·self 0 이어도 아님
+	var t2 := Awards.Tally.new()
+	t2.feed(_kill(2.0, 1.0, "crush"))
+	expect([t2.rows[1].self, t2.rows[1].deaths, t2.rows[1].hits], [0, 1, 0], "압사당함: hits 0·self 0·deaths 1")
+	expect(Awards.pick(t2, st), ["압사 장인 · P2 압사 1킬"], "조종 블록에 깔렸던 승자")
+	# 깨끗한 승자 (남만 죽음)
+	var t3 := Awards.Tally.new()
+	t3.feed(_kill(null, 2.0, "lava"))
+	expect(Awards.pick(t3, st), ["완벽한 승리 · P1 피해 0%"], "깨끗한 승자")
+
+
+# F3: 팀전은 winnerIds 가 비고 winnerTeam 만 옴 → 그 팀 사람이 승자
+func test_awards_perfect_team_win() -> void:
+	var ps := [_award_player(3, {"team": "blue"}), _award_player(2, {"team": "red"}), _award_player(1, {"team": "red"}), _award_player(4, {"team": "blue", "alive": false})]
+	var st := {"players": ps, "round": {"n": 1.0, "winnerId": null, "winnerTeam": "red", "winnerIds": []}}
+	var t := Awards.Tally.new()
+	_award_feed(t, [_kill(null, 2.0, "lava"), _kill(null, 4.0, "lava")]) # 빨강 2번은 판 중에 죽었음
+	expect(Awards.pick(t, st), ["완벽한 승리 · P1 피해 0%"], "빨강 승리: 깨끗한 빨강 1번만 (죽었던 빨강 2번·깨끗한 파랑 3번은 아님)")
+	st.round.winnerTeam = "blue"
+	expect(Awards.pick(t, st), ["완벽한 승리 · P3 피해 0%"], "파랑 승리면 파랑 3번")
+	st.round.winnerTeam = null
+	expect(Awards.pick(t, st), [], "승리 팀 없음 (무승부)")
+	# 개인전 (team null) 은 winnerTeam 이 없으니 예전 그대로
+	for p in ps:
+		p.team = null
+	st.round.winnerIds = [3.0]
+	expect(Awards.pick(t, st), ["완벽한 승리 · P3 피해 0%"], "개인전 대조군")
+
+
+# F4: '발이 미끄러짐' 은 첫 탈락이 스스로 떨어진 것 (낙사 + 킬 없음) 일 때만 — 자동 블록 압사·용암 (killer null) 은 아님
+func test_awards_slip_only_fall() -> void:
+	var st := _award_state([[1, 30, true], [2, 30, false]])
+	for cause in ["crush", "lava", "hp"]:
+		var t := Awards.Tally.new()
+		t.feed(_kill(null, 2.0, cause))
+		check(t.first == 2 and not t.first_self, "첫 탈락 %s (킬 없음) 는 미끄러짐 아님" % cause)
+		expect(t.rows[2].self, 1, "자멸 집계는 그대로 (%s)" % cause) # KillTally·서버 ScoreDeath 와 같은 정의
+		expect(Awards.pick(t, st), [], "첫 탈락 %s·킬 없음 → 칭호 없음" % cause)
+	var t2 := Awards.Tally.new()
+	t2.feed(_kill(null, 2.0, "fall"))
+	check(t2.first_self, "낙사 + 킬 없음 = 미끄러짐")
+	expect(Awards.pick(t2, st), ["발이 미끄러짐 · P2 첫 탈락이 자멸"], "첫 탈락 낙사·킬 없음")
+	# 첫 탈락이 압사 (킬 없음) 면 뒤의 자멸 낙사는 상관없음
+	var t3 := Awards.Tally.new()
+	_award_feed(t3, [_kill(null, 2.0, "crush"), _kill(null, 1.0, "fall")])
+	expect(Awards.pick(t3, _award_state([[1, 30, false], [2, 30, false]])), [], "첫 탈락만 봄")
+
+
+static func _combo(by: float, target: float, n: int) -> Dictionary:
+	return {"type": "combo", "by": by, "target": target, "n": float(n), "finish": false}
+
+
+# F5: 서버 combo 의 n 은 맞는 쪽이 이어 맞은 수 (누가 쳤든) — 여럿이 번갈아 친 사슬은 아무의 연타도 아님
+func test_awards_combo_chain_single_hitter() -> void:
+	var st := _award_state([[1, 0, true], [2, 0, true], [3, 0, true]])
+	# 1번 4타·3번 3타를 2번에게 번갈아, 마지막은 3번 (첫 타는 이벤트 없음): n = 2(1번) 3(3번) 4(1번) 5(3번) 6(1번) 7(3번)
+	var t := Awards.Tally.new()
+	for i in 6:
+		t.feed(_combo(1.0 if i % 2 == 0 else 3.0, 2.0, i + 2))
+	expect(Awards.pick(t, st), [], "번갈아 친 7연타는 콤보 장인 없음")
+	expect([t.rows[1].combo, t.rows.get(3, Awards.NONE).combo], [2, 0], "섞이기 전까지만 (1번 2), 3번은 0")
+	# 한 사람이 7타
+	var t2 := Awards.Tally.new()
+	for n in range(2, 8):
+		t2.feed(_combo(1.0, 2.0, n))
+	expect(Awards.pick(t2, st), ["콤보 장인 · P1 7연타"], "혼자 7연타")
+	# 섞인 사슬이 끝나고 새 사슬 (n 이 지난 n + 1 이 아님) 은 다시 셈
+	for n in range(2, 6):
+		t.feed(_combo(3.0, 2.0, n))
+	expect(Awards.pick(t, st), ["콤보 장인 · P3 5연타"], "새 사슬은 3번 혼자 5연타")
+	# 사슬은 맞는 사람마다 따로: 1번이 2번을, 3번이 4번을 동시에 쳐도 서로 안 섞임
+	var t3 := Awards.Tally.new()
+	for n in range(2, 7):
+		t3.feed(_combo(1.0, 2.0, n))
+		t3.feed(_combo(3.0, 4.0, n))
+	expect([t3.rows[1].combo, t3.rows[3].combo], [6, 6], "맞는 사람이 다르면 따로")
+	# 남이 끼어든 뒤로는 원래 치던 사람이 이어 쳐도 안 줌 (그 사슬 끝까지)
+	var t4 := Awards.Tally.new()
+	_award_feed(t4, [_combo(1.0, 2.0, 2), _combo(1.0, 2.0, 3), _combo(3.0, 2.0, 4), _combo(1.0, 2.0, 5), _combo(1.0, 2.0, 6)])
+	expect([t4.rows[1].combo, t4.rows.get(3, Awards.NONE).combo], [3, 0], "끼어든 뒤는 안 셈")
+	# target 없는 combo 는 흘림 (사슬을 알 수 없음)
+	var rev: int = t4.rev
+	t4.feed({"type": "combo", "by": 1.0, "n": 9.0})
+	check(t4.rev == rev and t4.rows[1].combo == 3, "target 없는 combo 는 흘림")
+	# 새 판이면 사슬도 비움
+	t4.at_round("ABCD|9")
+	check(t4.chains.is_empty(), "새 판이면 사슬 비움")
+
+
+# F6: 결과 판 자리 (results.gd _place): 오른쪽에 붙고, 작은 창에서 위·아래 여백 안으로 — 넘치면 통째로 줄임
+func test_results_place() -> void:
+	var m: float = U.C.HUD_CARD_MARGIN
+	# [화면, 판 크기, 배율 1 인지]
+	for row in [[Vector2(960, 540), Vector2(430, 504), false], [Vector2(960, 540), Vector2(430, 480), true], [Vector2(1280, 720), Vector2(430, 504), true],
+			[Vector2(1920, 1080), Vector2(430, 504), true], [Vector2(960, 540), Vector2(430, 700), false], [Vector2(400, 300), Vector2(430, 200), false]]:
+		var view: Vector2 = row[0]
+		var content: Vector2 = row[1]
+		var at := U.results_place(view, content)
+		var tag := "results_place(%s, %s) = %s" % [str(view), str(content), str(at)]
+		check((at.scale == 1.0) == row[2], "배율 1 %s: %s" % [str(row[2]), tag])
+		check(is_equal_approx(at.x + content.x * at.scale, view.x - m), "오른쪽 끝에 붙음 (줄인 폭으로): " + tag)
+		check(at.x >= m - 1e-6, "왼쪽도 화면 안: " + tag)
+		check(at.y >= U.RESULTS_TOP - 1e-6 and at.y + content.y * at.scale <= view.y - m + 1e-6, "위·아래 화면 안: " + tag)
+	# 넉넉한 화면: 예전 자리 그대로 (세로 가운데 + RESULTS_DROP)
+	var big := U.results_place(Vector2(1280, 720), Vector2(430, 504))
+	check(is_equal_approx(big.y, (720.0 - 504.0) / 2.0 + U.RESULTS_DROP) and is_equal_approx(big.x, 1280.0 - m - 430.0), "1280×720: %s" % str(big))
+	# 960×540 에 504 짜리 (8명 + 칭호 3줄): 자리 540 - 40 - 12 = 488 → 488/504 배, 위 끝에 붙음
+	var small := U.results_place(Vector2(960, 540), Vector2(430, 504))
+	check(is_equal_approx(small.scale, 488.0 / 504.0) and is_equal_approx(small.y, U.RESULTS_TOP), "960×540: %s" % str(small))
+	# 줄이지 않아도 되지만 가운데 + DROP 이면 아래로 넘치는 높이: 아래 여백에 맞춰 올림
+	var mid := U.results_place(Vector2(960, 540), Vector2(430, 480))
+	check(is_equal_approx(mid.y + 480.0, 540.0 - m), "아래 여백에 맞춤: %s" % str(mid))
+	check(U.results_place(Vector2(960, 540), Vector2(430, 0)).scale == 1.0, "높이 0 (크기를 아직 모름)")
+	# 판 노드가 그 계산대로 놓임 (results.gd _place_in): 960×540 에선 줄어 네 테두리가 화면 안, 1280×720 에선 배율 1
+	var r = Results.new()
+	r._ready()
+	r.size = Vector2(430, 504)
+	check(is_equal_approx(r.size.y, 504.0), "판 크기를 넣음: %s" % str(r.size))
+	for view in [Vector2(960, 540), Vector2(1280, 720)]:
+		r._place_in(view)
+		var end: Vector2 = r.position + r.size * r.scale
+		var tag := "%s: 자리 %s 크기 %s 배율 %s" % [str(view), str(r.position), str(r.size), str(r.scale)]
+		check(r.position.x >= 0.0 and r.position.y >= U.RESULTS_TOP - 1e-3 and end.y <= view.y - m + 1e-3 and is_equal_approx(end.x, view.x - m), "네 테두리가 화면 안: " + tag)
+		check(is_equal_approx(r.scale.x, r.scale.y) and (r.scale.x < 1.0) == (view.y < 600.0), "작은 화면만 줄임: " + tag)
+	r.free()
+	# 실제 판 (8명 + 칭호 3줄) 이 960×540·1280×720 화면 안에 드는지는 노드가 트리에 있어야 재므로 (get_viewport_rect — 이 러너에선 못 함)
+	# 자동 조종 스크린샷으로 봄: --resolution 960x540 … --shot-at results --shot-after 6 (ui/README.md)

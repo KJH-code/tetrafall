@@ -22,6 +22,7 @@ var panes := {} # 이름 → 펼친 세부 Control
 var list_key := ""
 var col: VBoxContainer
 var logo: Label
+var send_room: Callable = func(m: Dictionary): Store.send_room(m) # 방 메시지 보내는 길 (테스트가 바꿔 끼워 무엇을 보내는지 봄)
 
 
 func _ready() -> void:
@@ -181,12 +182,10 @@ func _create() -> void:
 	Store.create_room(room_name.text, _nick())
 
 
-# 내가 만든 방의 welcome: 재접속이 아니면 기본 방 옵션 메시지 (방장만 먹음 — 방금 만든 방은 내가 방장)
+# 내가 만든 방의 welcome: 재접속이 아니면 기본 방 옵션 메시지 (방장만 먹음 — 방금 만든 방은 내가 방장). 고르기는 U.created_msgs
 func _on_created(_room: Dictionary, rejoined: bool) -> void:
-	if rejoined:
-		return
-	for m in U.create_defaults(Prefs.get_value("roundEvents", null), Store.state):
-		Store.send_room(m)
+	for m in U.created_msgs(rejoined, Prefs.get_value("roundEvents", null), Store.state):
+		send_room.call(m)
 
 
 # 방 만들기가 아닌 길로 들어가면 (코드·목록·연습), 만들기가 안 돼 남아 있던 한 번짜리 연결을 걷음 (남의 방·연습 방에 옵션을 보내지 않게)

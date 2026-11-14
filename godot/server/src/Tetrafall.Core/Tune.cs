@@ -9,7 +9,7 @@ namespace Tetrafall.Core;
 //   kbDealt  주는 넉백 배율 (고정 넉백 중간 타는 그대로 — 광전사 분노와 같은 규칙)
 //   dmgDealt 주는 피해 % 배율 (남을 때릴 때만, 탱크 아머로 버틴 타도)
 //   skillCd  F 쿨타임 배율
-//   ultGain  필살기 게이지 차는 양 배율 (주든 받든 그 사람 몫)
+//   ultGain  필살기 게이지 차는 양 배율 (주든 받든 그 사람 몫). 건축가 블록 폭발 패시브 (BUILDER_BLAST_ULT) 는 제외 — GainUlt 를 안 거치고 바로 더함
 //   hpMult   체력전 HP 배율 — 배율이 아니라 C.HP_CHAR_MULT[캐릭터] 대신 쓰는 값 (sim --hp-mult 와 같은 뜻)
 public sealed class Tune
 {

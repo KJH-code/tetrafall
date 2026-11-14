@@ -39,6 +39,8 @@ static func lobby_dock(view_w: float) -> Dictionary:
 # ---------- 고도 판 전용 (JS 에 없음 — 정답 자료 대신 tests/test_ui.gd 가 값으로 고정) ----------
 const LOBBY_TOP := 84.0 # 대기실 판 위쪽 (위 점수 띠 아래)
 const LOBBY_SCALE_MIN := 0.1 # 대기실 판 줄임 배율 아래 끝 (0 으로 나누기·뒤집힘 막기)
+const RESULTS_TOP := 40.0 # 결과 판 위쪽 끝 (이보다 위로는 안 올라감)
+const RESULTS_DROP := 22.0 # 결과 판: 세로 가운데에서 이만큼 아래
 # 방 옵션 표시: [키 (스냅샷·공개 목록 같음), 글, 켜도 안 먹는 모드]. 블록 마스터 판은 하늘 계단 (Game.Round.cs StartRound sky)·돌발 이벤트 (Game.Events.cs RoundEventsRun) 가 안 돎
 const ROOM_OPTS := [["skyStairs", "하늘 계단", ["master"]], ["hpMode", "체력전", []], ["roundEvents", "돌발 이벤트", ["master"]]]
 
@@ -52,6 +54,20 @@ static func lobby_place(view: Vector2, content: Vector2) -> Dictionary:
 	if content.x > 0.0 and content.y > 0.0:
 		s = clampf(minf(room.x / content.x, room.y / content.y), LOBBY_SCALE_MIN, 1.0)
 	return {"scale": s, "x": view.x - C.HUD_CARD_MARGIN - content.x * s, "y": LOBBY_TOP}
+
+
+# 결과 판 자리 (results.gd _place): 오른쪽 끝에 붙이고 세로 가운데에서 RESULTS_DROP 만큼 아래 (위 점수 띠를 비킴).
+# content = 줄이기 전 판 크기. 위 (RESULTS_TOP)·아래 (HUD_CARD_MARGIN) 여백 안으로 y 를 넣고, 그 사이 높이·화면 폭보다 크면 통째로 줄임
+# (960×540 에 8명 + 칭호 3줄), 들어가면 배율 1. 줄인 판은 줄인 폭 (content.x × 배율) 으로 오른쪽에 붙임. 반환 {scale 배율, x·y 왼쪽 위}
+static func results_place(view: Vector2, content: Vector2) -> Dictionary:
+	var m: float = C.HUD_CARD_MARGIN
+	var room := Vector2(view.x - m * 2.0, view.y - RESULTS_TOP - m)
+	var s := 1.0
+	if content.x > 0.0 and content.y > 0.0:
+		s = clampf(minf(room.x / content.x, room.y / content.y), LOBBY_SCALE_MIN, 1.0)
+	var h := content.y * s
+	var y := minf((view.y - h) / 2.0 + RESULTS_DROP, view.y - m - h) # 아래로 넘치면 올리고
+	return {"scale": s, "x": view.x - m - content.x * s, "y": maxf(y, RESULTS_TOP)} # 위는 점수 띠 아래까지만
 
 
 # 켠 방 옵션을 한 줄 꼬리로: " · 하늘 계단 · 체력전 · 돌발 이벤트" (손님 대기실 줄·공개 방 목록). d = 스냅샷 또는 공개 목록 한 줄.
@@ -74,6 +90,23 @@ static func master_stall_text(e: Dictionary, me: Dictionary, eater_name: String)
 	if not me.is_empty() and e.get("who") != null and me.get("id") != null and int(e.get("who")) == int(me.get("id")):
 		return "반격! 마스터 블록 %d초 멈춤" % n
 	return "%s 반격! 마스터 블록 %d초 멈춤" % [eater_name, n]
+
+
+# 아이템을 주웠을 때 (서버 이벤트 pickup {who, item}) 내 화면에 띄울 알림 글 — 안 띄우면 "". names = 아이템 이름 표 (hud_extra.gd ITEM_KO).
+# 내가 주운 것만. 반격 (counter) 은 바로 뒤 masterStall 이 알리므로 넘김 (줍는 사람에게 같은 내용 두 줄 안 뜨게). 표에 없는 아이템은 id 그대로
+static func pickup_toast(e: Dictionary, me_id, names: Dictionary) -> String:
+	var who = e.get("who")
+	if me_id == null or not (who is float or who is int) or int(who) != int(me_id):
+		return ""
+	var item := str(e.get("item", ""))
+	if item == "counter":
+		return ""
+	return "%s!" % str(names.get(item, item))
+
+
+# 내가 만든 방의 welcome 을 받았을 때 보낼 방 메시지 (menu.gd _on_created): 재접속이면 (rejoined) 없음, 아니면 create_defaults
+static func created_msgs(rejoined: bool, pref, st: Dictionary) -> Array:
+	return [] if rejoined else create_defaults(pref, st)
 
 
 # 메뉴에서 방을 만든 직후 보낼 방 옵션 메시지 목록 (menu.gd _create): 돌발 이벤트는 기본 켬.

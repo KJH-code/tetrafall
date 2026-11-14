@@ -53,6 +53,7 @@ func _ready() -> void:
 		awards.append(a)
 		v.add_child(a)
 	Store.game_event.connect(_on_event)
+	Store.state_changed.connect(_on_state)
 	table = GridContainer.new()
 	table.columns = 5
 	table.add_theme_constant_override("h_separation", 18)
@@ -60,16 +61,35 @@ func _ready() -> void:
 	v.add_child(table)
 
 
+# 세고 있는 판의 열쇠 (방 코드|판 번호): 이벤트·스냅샷이 같은 열쇠를 써야 판이 바뀔 때 한 번만 비워짐
+func _round_key(st: Dictionary) -> String:
+	var rnd = st.get("round")
+	return "%s|%s" % [str(Store.room.get("code", "")), str(rnd.get("n")) if rnd is Dictionary else ""]
+
+
 # 이벤트는 그 스냅샷의 state 다음에 옴 (store.gd) → Store.state.round.n 이 그 이벤트의 판. 판 (또는 방) 이 바뀌었으면 먼저 비움
 func _on_event(e: Dictionary) -> void:
-	var rnd = Store.state.get("round")
-	tally.at_round("%s|%s" % [str(Store.room.get("code", "")), str(rnd.get("n")) if rnd is Dictionary else ""])
+	tally.at_round(_round_key(Store.state))
 	tally.feed(e)
 
 
+# 스냅샷마다: 블록 마스터 판 중이면 마스터 편 id 를 기억 (판 끝 스냅샷엔 master 가 이미 false — awards_calc.gd note_state)
+func _on_state(st: Dictionary, _prev: Dictionary) -> void:
+	tally.at_round(_round_key(st))
+	tally.note_state(st)
+
+
+# 자리: 오른쪽에 붙이고 세로 가운데 조금 아래. 작은 창 (960×540 에 8명 + 칭호 3줄) 에서 판이 화면 밖으로 안 나가게
+# 위·아래 여백 안으로 넣고, 그래도 넘치면 통째로 줄임 (계산은 ui_calc.gd results_place — tests/test_ui.gd 가 고정)
 func _place() -> void:
-	var vp := get_viewport_rect().size
-	position = Vector2(vp.x - size.x - 12, (vp.y - size.y) / 2.0 + 22)
+	_place_in(get_viewport_rect().size)
+
+
+# vp = 화면 크기 (테스트는 트리 밖이라 화면 크기를 못 읽어 직접 넣음)
+func _place_in(vp: Vector2) -> void:
+	var at := U.results_place(vp, size)
+	scale = Vector2(at.scale, at.scale)
+	position = Vector2(at.x, at.y)
 
 
 # 칭호 줄 채우기. 마지막 킬 이벤트는 판 끝 스냅샷 뒤에 오므로 표 (key) 와 따로, 집계가 바뀌면 (tally.rev) 다시

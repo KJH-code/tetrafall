@@ -397,9 +397,10 @@ func _on_event(e: Dictionary) -> void:
 		"mark":
 			if e.get("by") == me_id:
 				show_hitmarker()
-		"pickup": # 반격 (counter) 은 바로 뒤 masterStall 이 알림 → 여기선 넘김 (줍는 사람에게 같은 내용 두 줄 안 뜨게)
-			if e.get("who") == me_id and str(e.get("item", "")) != "counter":
-				toast("%s!" % str(ITEM_KO.get(str(e.get("item", "")), str(e.get("item", "")))), "good")
+		"pickup": # 반격 (counter) 은 바로 뒤 masterStall 이 알림 → 여기선 넘김 (줍는 사람에게 같은 내용 두 줄 안 뜨게). 고르기는 U.pickup_toast
+			var got := U.pickup_toast(e, me_id, ITEM_KO)
+			if got != "":
+				toast(got, "good")
 		"controlStart":
 			if e.get("who") != me_id and Store.state.get("mode") != "master": # 블록 마스터는 블록마다 오고 위 띠가 이미 알려 줌
 				toast("%s 블록 조종 시작. 그림자를 조심!" % _name(Store.player(e.get("who"))))
@@ -527,11 +528,7 @@ func refresh(st: Dictionary) -> void:
 	top_box.size.x = minf(vp.x - 40, 760)
 	_item_timers(st)
 	_banner(st, p)
-	# 진행 중인 돌발 이벤트: 시작 알림이 사라진 뒤에도 끝날 때까지 한 줄 (돌풍 화살표는 지금 보는 방향 기준으로 매 프레임)
-	var ev_status := RoundEventText.status(st.get("roundEvent"), _view_yaw()) if playing else ""
-	event_chip.visible = ev_status != ""
-	if ev_status != "":
-		event_chip.text = ev_status
+	_event_chip(st)
 	# 압사 경고: 내 머리 위로 떨어지는 블록이 곧 깔 때 (서버가 계산한 남은 시간)
 	var dg = p.get("danger") if alive and playing else null
 	danger.visible = dg != null
@@ -586,6 +583,14 @@ func refresh(st: Dictionary) -> void:
 	help.position = Vector2(vp.x - help.size.x - 12, 40)
 	# 아래: 버프·아이템 칸, 갈고리 탄·대포수 탄 (F·R 칸 옆)
 	_bottom(st, p, show_me, vp)
+
+
+# 진행 중인 돌발 이벤트 띠: 시작 알림이 사라진 뒤에도 끝날 때까지 한 줄 (돌풍 화살표는 지금 보는 방향 기준으로 매 프레임). 판 중에만
+func _event_chip(st: Dictionary) -> void:
+	var ev_status := RoundEventText.status(st.get("roundEvent"), _view_yaw()) if st.get("phase") == "playing" else ""
+	event_chip.visible = ev_status != ""
+	if ev_status != "":
+		event_chip.text = ev_status
 
 
 func _item_timers(st: Dictionary) -> void:

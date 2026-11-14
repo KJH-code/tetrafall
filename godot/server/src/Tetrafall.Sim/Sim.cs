@@ -77,10 +77,16 @@ public static class BotSim
         return h;
     }
 
-    // --hp-mult: "1.1" (8명 모두) 또는 "tank=1.2,ninja=0.9" (tools/sim.js parseHpMult 와 같음)
+    // --hp-mult: "1.1" (8명 모두) 또는 "tank=1.2,ninja=0.9" (tools/sim.js parseHpMult 와 같음).
+    // 숫자 하나도 캐릭터=배율처럼 0 보다 커야 함 (JS 와 다름 — 고도 판 전용): 0 이나 "1.2.3" 을 그대로 넘기면 판마다 Tune.Set 이
+    // 병렬 워커 안에서 던져 (AggregateException) 종료 코드 1 대신 처리 안 된 예외로 죽음 → 여기서 ArgumentException
     public static Dictionary<string, double> ParseHpMult(string v)
     {
-        if (System.Text.RegularExpressions.Regex.IsMatch(v, @"^[\d.]+$")) return C.CHARACTERS.ToDictionary(c => c, _ => double.Parse(v, System.Globalization.CultureInfo.InvariantCulture));
+        if (System.Text.RegularExpressions.Regex.IsMatch(v, @"^[\d.]+$"))
+        {
+            if (!double.TryParse(v, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var all) || !(all > 0)) throw new ArgumentException($"--hp-mult {v}: 0 보다 큰 배율");
+            return C.CHARACTERS.ToDictionary(c => c, _ => all);
+        }
         var outp = new Dictionary<string, double>();
         foreach (var part in v.Split(','))
         {

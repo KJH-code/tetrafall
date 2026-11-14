@@ -15,8 +15,8 @@ JS `client/main.js`·`client/index.html` 의 화면을 옮김. 계산은 `ui_cal
 | `tutorial_ui.gd` · `tutorial_calc.gd` | (G6) 튜토리얼: 묻기·캐릭터 고르기·진행 띠·끝 화면, 띠 문구 계산 (client/tutorial-ui.js, shared/tutorial.js). 메뉴·설정 '튜토리얼' → View.open_panel |
 | `perf.gd` · `perf_calc.gd` | (G6) F3 성능 표시·계산 (client/perf.js, shared/perf.js), 켬 = View.settings.perf |
 | `char_stage.gd` | 대기실 큰 3D 캐릭터: 고르면 정면 도발 한 번 → 천천히 돎, 판 시작하면 놓음, 그래픽 낮춤이면 정지 초상 (client/char-stage.js) |
-| `results.gd` · `awards_calc.gd` | 판 끝 결과 판 (updateResults) + 고도 판 전용 판 끝 칭호: 판 동안 kill·combo·counter·hit 이벤트를 세어 승리 글 아래 최대 3줄 ("콤보 장인 · P3 7연타"), 기준 수치 `AWARD_MIN`·우선순위 `ORDER` |
+| `results.gd` · `awards_calc.gd` | 판 끝 결과 판 (updateResults, 작은 창에선 화면 안으로 줄임 `ui_calc.gd` results_place) + 고도 판 전용 판 끝 칭호: 판 동안 kill·combo·counter·hit 이벤트를 세어 (+ 블록 마스터 판 중 스냅샷에서 마스터 편 id 를 기억) 승리 글 아래 최대 3줄 ("콤보 장인 · P3 7연타"), 기준 수치 `AWARD_MIN`·우선순위 `ORDER` |
 | `ui_prefs.gd` | 기억 (tf-name·tf-color·tf-char·tf-tutorial → user://ui.json) |
 
-main.gd 가 `ui/ui.tscn` 을 자동으로 붙임 (2026-10-31 총괄이 고도로 돌려 스크립트 에러 0 확인). 화면 확인: `--auto host --bots 3 --shot <png> --shot-at menu|lobby|game|tab|settings|results` (core/autopilot.gd, tab 은 `--mode kills`).
+main.gd 가 `ui/ui.tscn` 을 자동으로 붙임 (2026-10-31 총괄이 고도로 돌려 스크립트 에러 0 확인). 화면 확인: `--auto host --bots 3 --shot <png> --shot-at menu|lobby|game|tab|settings|results` (core/autopilot.gd, tab 은 `--mode kills`, results 는 `--shot-after 6` 을 같이 — 기본 1.5초엔 아직 승리 클로즈업 `VICTORY_CLOSEUP_MS` 중이라 결과 판이 없음. 결과 판은 판 끝 약 2.8초 뒤부터 `RESULTS_HERO_MS` 5초 동안).
 초상은 portrait.gd (다 그려지기 전·헤드리스면 색 상자).  3D 메뉴·대기실 배경은 범위 밖 — 빛 색은 `View.ui_theme` 가 생기면 그 테마, 없으면 자수정.

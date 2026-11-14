@@ -43,4 +43,33 @@ public class SimTests
     {
         Assert.Equal("{\n \"a\": [\n  1,\n  \"x\"\n ],\n \"b\": {},\n \"c\": [],\n \"d\": null\n}", BotSim.Pretty("{\"a\":[1,\"x\"],\"b\":{},\"c\":[],\"d\":null}"));
     }
+
+    // --hp-mult 숫자 하나: 0 이하·숫자가 아닌 것 ("1.2.3") 은 ArgumentException (Program 이 잡아 종료 코드 1).
+    // 예전엔 그대로 넘어가 판마다 Tune.Set 이 워커 안에서 던짐 (AggregateException → 처리 안 된 예외로 죽음)
+    [Theory]
+    [InlineData("0")]
+    [InlineData("0.0")]
+    [InlineData("1.2.3")]
+    [InlineData(".")]
+    [InlineData("tank=0")]
+    [InlineData("tank=-1")]
+    [InlineData("nobody=1.1")]
+    public void HpMult_rejects_bad_values(string v)
+    {
+        Assert.Throws<ArgumentException>(() => BotSim.ParseHpMult(v));
+        Assert.Throws<ArgumentException>(() => BotSim.ParseArgs(new[] { "--hp", "on", "--hp-mult", v }));
+    }
+
+    [Fact]
+    public void HpMult_single_number_applies_to_all_characters()
+    {
+        var all = BotSim.ParseHpMult("1.1");
+        Assert.Equal(Tetrafall.Core.C.CHARACTERS.Length, all.Count);
+        Assert.All(Tetrafall.Core.C.CHARACTERS, c => Assert.Equal(1.1, all[c]));
+        Assert.Equal(0.5, BotSim.ParseHpMult(".5")["tank"]);
+        var some = BotSim.ParseHpMult("tank=1.2,ninja=0.9");
+        Assert.Equal(new[] { "tank", "ninja" }, some.Keys.ToArray());
+        Assert.Equal(1.2, some["tank"]);
+        Assert.Equal(0.9, some["ninja"]);
+    }
 }
