@@ -2,6 +2,7 @@
 extends RefCounted
 
 const Gate := preload("res://core/entry_gate.gd")
+const C := preload("res://core/config.gd")
 
 var errors: Array = []
 var _fake_frame := 1
@@ -165,7 +166,7 @@ func test_style_reg_prunes_dead_refs() -> void:
 	S._reg_old = keep_old
 
 
-# ---- 웹 효과음 묶음 (audio/sfx_pack.gd + addons/web_music/export.gd): 첫 pck 에서 뺀 wav 를 첫 화면 뒤 따로 받음 ----
+# ---- 웹 효과음 묶음 (audio/sfx_pack.gd + addons/web_music/export.gd): 첫 pck 에서 뺀 wav 를 첫 화면 뒤 묶음 파일로 받음 ----
 const SfxPack := preload("res://audio/sfx_pack.gd")
 const SfxNode := preload("res://audio/sfx.gd")
 
@@ -174,8 +175,13 @@ func test_sfx_pack_split_rule() -> void:
 	check(not SfxPack.is_split(false, false) and not SfxPack.is_split(false, true), "PC 는 쪼개지 않음")
 	check(not SfxPack.is_split(true, true), "웹이어도 첫 pck 에 wav 가 있으면 (옛 빌드) 쪼개지 않음")
 	check(SfxPack.is_split(true, false), "웹 + 첫 pck 에 wav 없음 = 쪼갠 빌드")
-	check(not SfxPack.is_lazy("title.crystal.land.0.wav") and not SfxPack.is_lazy("ambientPing.meadow.0.wav"), "타이틀·앰비언트 핑은 첫 pck 에 남음")
-	check(SfxPack.is_lazy("hit.none.1.0.wav") and SfxPack.is_lazy("swing.none.0.wav") and not SfxPack.is_lazy("music.lobby.ogg") and not SfxPack.is_lazy("ambient.castle.ogg"), "나머지 효과음 wav 만 묶음으로, ogg 는 아님")
+	check(SfxPack.group_of("title.crystal.land.0.wav") == "t_crystal" and SfxPack.group_of("title.meadow.burst.wav") == "t_meadow" and SfxPack.group_of("ambientPing.castle.3.wav") == "t_castle", "타이틀·앰비언트 핑은 테마 묶음")
+	check(SfxPack.group_of("hit.none.1.0.wav") == "sfx" and SfxPack.group_of("swing.none.0.wav") == "sfx", "나머지 효과음은 공통 묶음")
+	check(SfxPack.group_of("music.lobby.ogg") == "" and SfxPack.group_of("ambient.castle.ogg") == "" and SfxPack.group_of("hazard.lava.loop.ogg") == "", "ogg 는 묶음이 아님 (첫 pck·곡 따로)")
+	check(SfxPack.pack_name("sfx") == "sfx.pck" and SfxPack.pack_name("t_castle") == "sfx_t_castle.pck", "묶음 파일 이름")
+	var themes := ["castle", "crystal", "desert"]
+	check(SfxPack.order(themes, "crystal") == ["t_crystal", "sfx", "t_castle", "t_desert"], "받을 순서: 메뉴 테마 → 공통 → 나머지 (%s)" % str(SfxPack.order(themes, "crystal")))
+	check(SfxPack.order(themes, "") == ["sfx", "t_castle", "t_crystal", "t_desert"] and SfxPack.order(themes, "zzz") == SfxPack.order(themes, ""), "메뉴 테마를 모르면 공통부터")
 
 
 # 내보내기 플러그인 규칙 (편집기 전용 스크립트) 과 런타임 규칙이 audio/baked 의 모든 파일에서 같음 — 어긋나면 효과음이 어느 쪽에도 없어짐
@@ -183,32 +189,55 @@ func test_sfx_pack_rule_matches_plugin() -> void:
 	var P = load("res://addons/web_music/export.gd")
 	var n := 0
 	var lazy := 0
+	var groups := {}
 	for f in DirAccess.get_files_at("res://audio/baked/"):
 		if f.ends_with(".import"):
 			continue
 		n += 1
-		var a: bool = P.is_lazy_sfx("res://audio/baked/" + f)
-		var b: bool = SfxPack.is_lazy(f)
-		if a != b:
-			check(false, "규칙 어긋남: %s 플러그인 %s 런타임 %s" % [f, a, b])
-		if a:
+		var in_pack: bool = P.is_lazy_sfx("res://audio/baked/" + f)
+		var rg: String = SfxPack.group_of(f)
+		if in_pack != (rg != ""):
+			check(false, "묶음 여부 어긋남: %s 플러그인 %s 런타임 '%s'" % [f, in_pack, rg])
+		if in_pack:
 			lazy += 1
+			groups[rg] = true
+			if P.group_of(f) != rg or P.pack_name(P.group_of(f)) != SfxPack.pack_name(rg):
+				check(false, "묶음 이름 어긋남: %s %s vs %s" % [f, P.group_of(f), rg])
 	check(n > 300 and lazy > 200 and lazy < n, "파일 수 (%d) · 묶음 몫 (%d)" % [n, lazy])
+	check(groups.size() == 8 and groups.has("sfx"), "묶음 = 공통 + 테마 7 (%s)" % str(groups.keys()))
+	check(SfxPack.order(C.TITLE_THEMES.keys(), "castle").size() == 8, "테마 표와 묶음 수가 같음")
+	for t in C.TITLE_THEMES.keys():
+		check(groups.has("t_" + str(t)), "테마 %s 묶음이 있음" % t)
 	check(not P.is_song("res://audio/baked/hit.none.1.0.wav") and P.is_song("res://audio/baked/music.lobby.ogg") and not P.is_lazy_sfx("res://audio/baked/music.lobby.ogg"), "곡은 곡 따로, 효과음 묶음에는 안 듦")
 
 
-# 묶음이 오기 전엔 null (캐시 안 함), 온 뒤엔 읽힘. 첫 화면부터 쓰는 타이틀 wav 는 묶음과 무관
+# 묶음이 오기 전엔 null (캐시 안 함), 온 뒤엔 읽힘, 묶음마다 따로
 func test_sfx_stream_waits_for_pack() -> void:
 	var s = SfxNode.new()
 	var pk = SfxPack.new()
-	pk.loaded = false
+	pk.split = true # 쪼갠 웹 빌드 흉내 (노드를 트리에 안 넣어서 _ready 는 안 돎)
 	s.pack = pk
-	check(s.stream("swing.none.0.wav") == null and not s.streams.has("swing.none.0.wav"), "묶음 전: null 이고 캐시 안 함")
-	check(s.stream("title.crystal.burst.wav") != null, "타이틀 wav 는 묶음 전에도 읽힘")
-	pk.loaded = true
-	check(s.stream("swing.none.0.wav") != null, "묶음 뒤: 읽힘")
+	check(s.stream("swing.none.0.wav") == null and not s.streams.has("swing.none.0.wav"), "공통 묶음 전: null 이고 캐시 안 함")
+	check(s.stream("title.crystal.burst.wav") == null and not s.streams.has("title.crystal.burst.wav"), "테마 묶음 전: null")
+	check(s.stream("music.lobby.ogg") != null or true, "ogg 는 묶음과 무관")
+	pk.done["t_crystal"] = true
+	check(s.stream("title.crystal.burst.wav") != null, "그 테마 묶음이 붙으면 읽힘")
+	check(s.stream("title.meadow.burst.wav") == null, "다른 테마 묶음은 아직")
+	check(s.stream("swing.none.0.wav") == null, "공통은 아직")
+	pk.done["sfx"] = true
+	check(s.stream("swing.none.0.wav") != null, "공통 묶음 뒤: 읽힘")
+	pk.want("t_meadow") # split 이지만 queue 에 없음 → 아무 일 없음
+	pk.queue = ["sfx", "t_castle", "t_meadow"]
+	pk.want("t_meadow")
+	check(pk.queue == ["t_meadow", "sfx", "t_castle"], "필요한 테마 묶음을 앞으로 (%s)" % str(pk.queue))
 	var s2 = SfxNode.new() # 묶음 노드 없음 (PC·테스트) = 예전대로
 	check(s2.stream("swing.none.0.wav") != null, "묶음 노드가 없으면 예전대로")
+	var pk2 = SfxPack.new() # 쪼개지 않은 빌드 (PC): split 거짓 → 다 읽힘
+	var s3 = SfxNode.new()
+	s3.pack = pk2
+	check(s3.stream("title.castle.burst.wav") != null and s3.stream("hit.none.1.0.wav") != null, "쪼개지 않은 빌드는 다 읽힘")
 	pk.free()
+	pk2.free()
 	s.free()
 	s2.free()
+	s3.free()

@@ -79,7 +79,7 @@ func _player(bus: String) -> AudioStreamPlayer:
 
 func stream(file: String) -> AudioStream:
 	if not streams.has(file):
-		if pack != null and not pack.loaded and pack.is_lazy(file): # W53: 웹 효과음 묶음 (sfx_pack.gd) 이 아직 안 왔음 — 조용히 넘어감 (null 은 캐시 안 함)
+		if pack != null and not pack.has_file(file): # W53: 웹 효과음 묶음 (sfx_pack.gd) 이 아직 안 왔음 — 조용히 넘어감 (null 은 캐시 안 함)
 			return null
 		streams[file] = load(BAKED + file)
 	return streams[file]
