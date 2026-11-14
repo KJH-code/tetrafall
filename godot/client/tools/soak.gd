@@ -159,7 +159,7 @@ func open_room(nick := "soak") -> bool:
 func leave_room() -> void:
 	Store.leave()
 	if not await until(func(): return not Store.in_room(), 10.0):
-		fail("방 나가기 응답 없음")
+		fail("방 나가기 응답 없음 (연결 %s · 단계 %s · 창 %s · 배율 %.2f)" % [Net.is_open(), Store.phase(), str(get_window().size), get_window().content_scale_factor])
 
 
 func add_bots(k: int) -> void:
@@ -294,6 +294,7 @@ func _resize() -> void:
 		if (i + 1) % 10 == 0:
 			sample("판%d" % (i + 1))
 		if not in_phase("playing"):
+			_p("판 중 단계 끝남 %d번째 (단계 %s)" % [i, Store.phase()])
 			break
 	await until(func(): return in_phase("over"), 240.0)
 	sample("판끝")
