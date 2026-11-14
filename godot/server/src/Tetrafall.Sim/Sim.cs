@@ -24,6 +24,7 @@ public sealed class SimOptions
     public string? mode; // --mode (안 주면 summary.json 에 키 없음 — JS 와 같게)
     public bool hp; // --hp on (체력전)
     public Dictionary<string, double>? hpMult; // --hp-mult (체력전 캐릭터 배율을 이 판들만 — ParseArgs 가 C.HP_CHAR_MULT 에 넣음)
+    public bool events; // --events on (돌발 이벤트 — 고도 판 전용, tools/sim.js 에 없음)
 
     // JSON.stringify({ ...o, base: undefined }) 와 같은 키 순서
     public void Write(JsonOut o)
@@ -43,6 +44,7 @@ public sealed class SimOptions
             foreach (var (c, x) in hpMult) o.P(c, x);
             o.EndObj();
         }
+        if (events) o.P("events", true); // 켰을 때만 (끄면 summary.json 이 예전과 같게)
         o.EndObj();
     }
 }
@@ -103,6 +105,7 @@ public static class BotSim
                 case "--mode": o.mode = V(); break;
                 case "--hp": o.hp = V() == "on"; break;
                 case "--hp-mult": o.hpMult = ParseHpMult(V()); break;
+                case "--events": o.events = V() == "on"; break;
                 default: throw new ArgumentException($"모르는 옵션 {a}");
             }
         }
@@ -156,6 +159,7 @@ public static class BotSim
         g.SetMap(job.map);
         if (o.mode != null) g.SetMode(o.mode);
         if (o.hp) g.SetHpMode(true);
+        if (o.events) g.SetRoundEvents(true);
         var bots = new List<Player>();
         for (int i = 0; i < job.n; i++) bots.Add(g.AddBot()!);
         for (int i = 0; i < bots.Count; i++) g.SetChar(bots[i].id, job.chars[i]);

@@ -13,6 +13,7 @@ public sealed partial class Game
     public bool characters;
     public bool skyStairs; // 호스트 옵션 (판 사이에만 바꿈)
     public bool hpMode; // 체력전
+    public bool roundEvents; // 돌발 이벤트 (고도 판 전용 옵션, 기본 끔 — Game.Events.cs)
     public double killsTarget; // 킬 점수전 목표 (판 시작 때)
     public double masterStallUntil; // 블록 마스터: 반격 아이템으로 마스터 편 다음 블록이 이때까지 안 나옴
     public double counterItemAt; // 블록 마스터: 다음 반격 아이템 시각
@@ -185,6 +186,7 @@ public sealed partial class Game
         TutorialUpdate(dtMs);
         UpdateLava(dtMs);
         UpdateItems();
+        if (roundEvents) UpdateRoundEvents(dtMs);
         UpdateProjectiles(dt);
         if (shells.Count > 0) UpdateShells(dt);
         if (notes.Count > 0) UpdateNotes(dt);

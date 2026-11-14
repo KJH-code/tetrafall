@@ -38,6 +38,7 @@ var level_sel: OptionButton
 var map_sel: OptionButton
 var sky_box: CheckBox
 var hp_box: CheckBox
+var events_box: CheckBox
 var mode_info: Label
 var map_info: Label # 방장 아닌 사람: 판 사이에 맵·모드 (JS #map-info)
 var team_note: Label # 팀전이면 색 칸 대신 '팀전은 팀 색' (JS #color-team-note)
@@ -158,6 +159,7 @@ func _ready() -> void:
 	map_sel = _select("맵", ["random"] + Array(C.MAP_IDS), func(id): return "무작위" if id == "random" else C.MAPS[id].name, func(id): Store.send_room({"type": "setMap", "map": id}))
 	sky_box = _check("하늘 계단", func(on): Store.send_room({"type": "skyStairs", "on": on}))
 	hp_box = _check("체력전", func(on): Store.send_room({"type": "hpMode", "on": on}))
+	events_box = _check("돌발 이벤트", func(on): Store.send_room({"type": "roundEvents", "on": on})) # 고도 판 전용 (블록 폭우·돌풍·보급)
 	col.add_child(settings_box)
 	map_info = S.label("", 13, Color("cdd5ee"))
 	map_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -333,6 +335,7 @@ func refresh(st: Dictionary) -> void:
 		_set_select(map_sel, st.map.choice)
 	sky_box.set_pressed_no_signal(bool(st.get("skyStairs", false)))
 	hp_box.set_pressed_no_signal(bool(st.get("hpMode", false)))
+	events_box.set_pressed_no_signal(bool(st.get("roundEvents", false)))
 	mode_info.text = _mode_desc(str(st.get("mode", "survival")))
 	# 캐릭터
 	var ch := str(me.get("char", ""))
@@ -369,14 +372,22 @@ func refresh(st: Dictionary) -> void:
 	_place()
 
 
-# 폭: 오른쪽에 붙임 (lobby_dock). 보이는 첫 프레임부터 (스냅샷이 오기 전에도) — 첫 1~2초 왼쪽에 좁게 붙던 것
+# 폭: 오른쪽에 붙임 (lobby_dock). 보이는 첫 프레임부터 (스냅샷이 오기 전에도) — 첫 1~2초 왼쪽에 좁게 붙던 것.
+# 작은 창 (960×540 등) 에서 판이 화면 아래·오른쪽으로 잘리지 않게: 내용 크기가 자리 (위 점수 띠 아래 ~ 화면 끝 여백) 보다 크면
+# 판을 통째로 줄임 (오른쪽 끝은 그대로 붙임). 자리에 들어가면 예전 그대로 (줄임 없음)
 func _place() -> void:
 	var vw := get_viewport_rect().size
 	var dock := U.lobby_dock(vw.x)
 	custom_minimum_size.x = dock.w
-	size.x = dock.w
-	position.x = dock.left
-	position.y = max(84.0, (vw.y - size.y) / 2.0 + 28.0)
+	size = Vector2(dock.w, 0.0) # 높이는 내용만큼 (0 을 넣으면 최소 크기로 잡힘 — 방 설정 줄 수가 바뀌어도 판이 내용에 맞음)
+	var top := 84.0
+	var room := Vector2(dock.w, vw.y - top - C.HUD_CARD_MARGIN)
+	var s := 1.0
+	if size.x > 0.0 and size.y > 0.0:
+		s = clampf(min(room.x / size.x, room.y / size.y), 0.1, 1.0)
+	scale = Vector2(s, s)
+	position.x = vw.x - C.HUD_CARD_MARGIN - size.x * s
+	position.y = max(top, (vw.y - size.y * s) / 2.0 + 28.0)
 
 
 func _process(_d: float) -> void:

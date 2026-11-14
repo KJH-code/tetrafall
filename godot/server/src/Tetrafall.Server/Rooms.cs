@@ -533,6 +533,9 @@ public sealed class Rooms
             case "hpMode": // 체력전 (대기실 옵션)
                 if (host) game.SetHpMode(Truthy(F("on")));
                 break;
+            case "roundEvents": // 돌발 이벤트 (대기실 옵션, 고도 판 전용)
+                if (host) game.SetRoundEvents(Truthy(F("on")));
+                break;
             case "ghostDrop": // 유령 투하: 죽은 사람이 고른 칸에 1칸 블록 (생존 모드)
                 game.GhostDrop(id, F("x"), F("y"));
                 break;
@@ -664,6 +667,7 @@ public sealed class Rooms
         var o = new JsonOut();
         o.Obj().P("code", room.code).P("name", room.name).P("public", room.isPublic).P("practice", room.practice);
         if (room.tutorial) o.P("tutorial", true); // 튜토리얼 방만
+        if (room.game.roundEvents) o.P("roundEvents", true); // 돌발 이벤트 (켰을 때만 — 끄면 예전 메시지와 같게)
         if (publicUrl != null) o.P("link", RoomLinkOf(publicUrl, room.code));
         return o.EndObj().ToString();
     }
@@ -689,7 +693,9 @@ public sealed class Rooms
             if (!r.isPublic) continue;
             var ps = r.game.Players().ToList();
             o.Obj().P("code", r.code).P("name", r.name).P("humans", ps.Count(p => !p.isBot)).P("bots", ps.Count(p => p.isBot)).P("max", MaxPlayers())
-                .P("map", r.game.mapChoice).P("mode", r.game.mode).P("teamMode", r.game.teamMode).P("botLevel", r.game.botLevel).P("skyStairs", r.game.skyStairs).P("hpMode", r.game.hpMode).EndObj();
+                .P("map", r.game.mapChoice).P("mode", r.game.mode).P("teamMode", r.game.teamMode).P("botLevel", r.game.botLevel).P("skyStairs", r.game.skyStairs).P("hpMode", r.game.hpMode);
+            if (r.game.roundEvents) o.P("roundEvents", true); // 켰을 때만
+            o.EndObj();
         }
         o.EndArr().P("count", rooms.Count).P("max", C.ROOM_MAX).EndObj();
         return o.ToString();

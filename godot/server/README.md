@@ -28,6 +28,8 @@ JS 화면 파일은 레포 뿌리 `client/`·`shared/`·`node_modules/three` 에
 dotnet run -c Release --project godot/server/src/Tetrafall.Sim -- --rounds 200 --players 2,4   # 옵션은 tools/sim.js 와 같음 (--maps --chars --level --sky --seed --workers --no-mirror --no-log --out --base --mode --hp --hp-mult)
 ```
 
+`--events on` (고도 판 전용, 기본 off): 돌발 이벤트 (블록 폭우·돌풍·보급 — `Game.Events.cs`, 수치 `ConfigEvents.cs`) 를 켠 판. 로그에 `  [이벤트] …` 줄, summary.json `options.events`. 끄면 예전과 같은 판
+
 같은 옵션·시드면 JS 와 같은 판·같은 summary.json (`out` 칸만 다름)·같은 워커 로그 (워커 수도 같으면) — `npm run stats -- sim-logs/<시각>` 그대로. 4코어에서 JS 의 약 1.8배 빠름 (252판: JS 20.3초 / C# 11.1초)
 
 ## 한 파일로 내보내기 (S7)

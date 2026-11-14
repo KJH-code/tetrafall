@@ -8,6 +8,7 @@ const C := preload("res://core/config.gd")
 const S := preload("res://ui/ui_style.gd")
 const Keys := preload("res://core/keys.gd")
 const Coords := preload("res://core/coords.gd")
+const RoundEventText := preload("res://ui/round_event_text.gd")
 
 const ITEM_KO := {"control": "조종권", "knockback": "투사체", "jump": "점프력 상승", "ghost": "유령화", "brick": "설치 블록", "bomb": "폭탄", "speed": "이속 증가"}
 const TEAM_KO := {"red": "빨강", "blue": "파랑"}
@@ -398,6 +399,10 @@ func _on_event(e: Dictionary) -> void:
 				toast("%s 블록 조종 시작. 그림자를 조심!" % _name(Store.player(e.get("who"))))
 		"lava":
 			toast("용암! 위로", "me")
+		"roundEvent": # 돌발 이벤트 (방 옵션): 블록 폭우·돌풍·보급 시작
+			var ev_text := RoundEventText.text(e)
+			if ev_text != "":
+				toast(ev_text)
 		"clear":
 			toast("층 클리어!")
 
