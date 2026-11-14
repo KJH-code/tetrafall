@@ -48,6 +48,7 @@ var gpu_n := 0
 var light_log := Hitch.Log.new()
 var full_from := 0 # 판 시작 때 perf.gd 로그의 히치 수·시각 (그 판 몫만 보이게)
 var full_t0 := 0.0
+var just_started := false
 var ctx := {} # 판 정보 (캐릭터·인원·맵·모드) — 시작 때 찍고 끝날 때 다시 찍음
 var pops := Pops.new()
 
@@ -79,6 +80,9 @@ func _process(_d: float) -> void:
 		phase_now = ph
 	var dt_ms := (now - prev_us) / 1000.0 if prev_us > 0 else 0.0
 	prev_us = now
+	if just_started: # 판이 시작된 프레임의 간격은 앞 단계 (불러오기·카운트다운) 몫이라 판 기록에 안 셈
+		just_started = false
+		dt_ms = 0.0
 	var tags: Array = []
 	if Hitch.pending() and not Hitch.full:
 		tags = Hitch.take() # F3 가 켜져 있으면 perf.gd 가 가져감
@@ -119,6 +123,7 @@ func _on_phase(old: String, new: String) -> void:
 
 func _start_round() -> void:
 	playing = true
+	just_started = true
 	frames = PackedFloat32Array()
 	worst_ms = 0.0
 	worst_t = 0.0
@@ -160,9 +165,12 @@ func round_ctx() -> Dictionary:
 	for p in ps:
 		if p.get("isBot", false):
 			bots += 1
-	var me: Dictionary = Store.me()
+	var mine := "?"
+	for p in st.get("players", []): # 스냅샷에서 직접 (Store.me() 는 스냅샷을 받은 뒤에만 참)
+		if int(p.get("id", -1)) == int(Store.my_id):
+			mine = str(p.get("char", "?"))
 	var mp = st.get("map")
-	return {"char": str(me.get("char", "?")), "players": ps.size(), "bots": bots, "map": str(mp.get("id", "?")) if mp is Dictionary else "?",
+	return {"char": mine, "players": ps.size(), "bots": bots, "map": str(mp.get("id", "?")) if mp is Dictionary else "?",
 		"mode": str(st.get("mode", "?")), "practice": bool(Store.room.get("practice", false)), "tutorial": bool(Store.room.get("tutorial", false))}
 
 

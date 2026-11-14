@@ -1,6 +1,6 @@
 # 성능 보고 복사 화면 쪽 (W48): 복사하면 아래 가운데 토스트 '복사됨 — 채팅에 붙여 넣어 주세요'. 클립보드에 들어갔다고 확인되지 않으면 (웹 브라우저는 복사가 됐는지 읽을 수 없음·
 # 일부 리눅스 창 환경) 글 전체를 선택된 글 칸에 보여 줌 — 직접 Ctrl+C. 버튼은 results.gd·lobby.gd 의 '성능 보고 복사' (R.request_copy), 키는 F4 (Keys 'report').
-# 토스트·칸은 UI 배율을 따름 (UI 뿌리 창 content_scale 안에서 그림).
+# 토스트는 왼쪽 가운데 (오른쪽 판·아래 카드·위 점수 띠와 안 겹침 — UI 배율 2배 작은 화면에서 결과 표를 가리던 것). 토스트·칸은 UI 배율을 따름 (UI 뿌리 창 content_scale 안에서 그림).
 extends CanvasLayer
 
 const S := preload("res://ui/ui_style.gd")
@@ -34,10 +34,12 @@ func _ready() -> void:
 	toast_label = S.body_label(OK_TEXT, 15, Color.WHITE)
 	toast.add_child(toast_label)
 	toast.visible = false
-	toast.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	toast.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	toast.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	toast.position.y -= 56
+	toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	toast_label.custom_minimum_size.x = 250
+	toast.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT) # 왼쪽 가운데: 오른쪽에 붙는 결과·대기실 판·아래 사람 카드·위 점수 띠와 안 겹침
+	toast.grow_horizontal = Control.GROW_DIRECTION_END
+	toast.grow_vertical = Control.GROW_DIRECTION_BOTH
+	toast.position.x = 16
 	add_child(toast)
 	box = PanelContainer.new()
 	box.add_theme_stylebox_override("panel", S.pane())
@@ -56,6 +58,7 @@ func _ready() -> void:
 	edit.editable = false
 	edit.custom_minimum_size = Vector2(620, 230)
 	edit.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+	edit.add_theme_font_override("font", S.BODY) # 본문 글꼴 (숫자·기호가 또렷, 한글은 대체 글꼴)
 	edit.add_theme_font_size_override("font_size", 12)
 	v.add_child(edit)
 	var close := S.button("닫기", func(): box.visible = false, "ghost", 13)
@@ -67,7 +70,7 @@ func _ready() -> void:
 
 
 func _on_copied(ok: bool, text: String) -> void:
-	show_toast(OK_TEXT if ok else "보고서를 만들었어요 — 복사가 안 되면 아래 글을 복사해 주세요")
+	show_toast(OK_TEXT if ok else "복사가 안 됐을 수 있어요 — 아래 글을 복사해 주세요")
 	if not ok:
 		show_text(text)
 

@@ -111,16 +111,17 @@ static func build(d: Dictionary, names: Array = []) -> String:
 	var ol := []
 	var opts: Array = d.get("opts", [])
 	ol.append("옵션: " + (" ".join(opts) if not opts.is_empty() else "기본"))
+	# 글에 나오는 순서대로. 앞 칸은 중요도 (작을수록 먼저 지킴): 길이가 넘치면 중요도 큰 줄부터 버림
 	groups = [
 		[0, [head]],
 		[0, lines_env],
 		[1, [round_line] if round_line != "" else []],
 		[1, fl],
 		[2, hl.slice(0, 2)], # 히치 요약 줄 + 맨 위 원인
-		[3, ol],
-		[4, pl.slice(0, 2)],
 		[5, hl.slice(2)],
+		[4, pl.slice(0, 2)],
 		[6, pl.slice(2)],
+		[3, ol],
 	]
 	return fit(groups, names)
 

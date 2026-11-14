@@ -226,6 +226,32 @@ func test_tags_belong_to_perf_when_full() -> void:
 	rep.free()
 
 
+# 실제 phase 흐름: playing 이 되는 프레임은 기록 안 함 (앞 단계 간격), 그다음부터 기록, 판이 끝나면 글
+func test_phase_flow_skips_start_frame() -> void:
+	var keep := [Store.my_id, Store.room, Store.state]
+	Store.my_id = 1
+	Store.room = {"code": "ABCD"}
+	Store.state = {"phase": "countdown", "mode": "survival", "players": [{"id": 1, "slot": 0, "char": "ninja", "isBot": false}, {"id": 2, "slot": 1, "char": "tank", "isBot": true}], "map": {"id": "flat"}}
+	var rep := _rep()
+	Hitch.on = true
+	rep._process(0.016)
+	check(not rep.playing, "countdown 에선 기록 안 함")
+	Store.state.phase = "playing"
+	rep._process(0.016)
+	check(rep.playing and rep.frames.is_empty() and rep.ctx.get("char") == "ninja" and rep.ctx.get("bots") == 1 and rep.ctx.get("map") == "flat", "시작 프레임은 안 셈, 판 정보를 찍음: %s" % str(rep.ctx))
+	rep._process(0.016)
+	check(rep.frames.size() == 1, "다음 프레임부터 기록: %d" % rep.frames.size())
+	Store.state.phase = "over"
+	rep._process(0.016)
+	check(not rep.playing and rep.last_text.contains("캐릭터 ninja") and rep.last_text.contains("2명 (봇 1)"), "끝나면 글: " + rep.last_text)
+	Hitch.on = false
+	_cleanup()
+	rep.free()
+	Store.my_id = keep[0]
+	Store.room = keep[1]
+	Store.state = keep[2]
+
+
 # 방 밖 (Store 비어 있음) 이면 판 기록을 시작하지 않음
 func test_no_round_outside_room() -> void:
 	var rep := _rep()
