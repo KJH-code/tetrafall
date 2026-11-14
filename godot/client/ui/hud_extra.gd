@@ -407,13 +407,19 @@ func _on_event(e: Dictionary) -> void:
 			toast("층 클리어!")
 
 
-# 화면 위쪽이 향하는 게임 방향 (돌풍 화살표): 하늘 시점이면 카메라의 sky_yaw, 아니면 보는 방향 (1·3인칭·관전 카메라가 따라 도는 yaw)
+# 화면 위쪽이 향하는 게임 방향 (돌풍 화살표): 하늘 시점이면 카메라의 sky_yaw, 이모트 셀카·승자 클로즈업이면 그 몸 yaw 의 반대
+# (카메라가 몸 앞에서 돌아봄), 아니면 보는 방향 (1·3인칭·관전 카메라가 따라 도는 yaw). 고르기는 RoundEventText.view_yaw
 func _view_yaw() -> float:
-	if str(View.mode) == "sky":
-		var rig = hud.call("_rig") if hud != null else null
-		if rig != null:
-			return float(rig.sky_yaw)
-	return PlayerInput.yaw
+	var rig = hud.call("_rig") if hud != null else null
+	var sky_yaw = null
+	var close_yaw = null
+	if rig != null:
+		if str(View.mode) == "sky":
+			sky_yaw = float(rig.sky_yaw)
+		var close: Dictionary = Store.player(rig.close_id())
+		if not close.is_empty():
+			close_yaw = float(close.get("yaw", 0.0))
+	return RoundEventText.view_yaw(PlayerInput.yaw, sky_yaw, close_yaw)
 
 
 # 판 끝 승리 큰 글씨 (JS onState showBig small): 결과 표가 나올 때까지 위쪽에

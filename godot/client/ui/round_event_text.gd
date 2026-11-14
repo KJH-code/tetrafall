@@ -4,7 +4,7 @@
 extends RefCounted
 
 
-# yaw: 화면 위쪽이 향하는 게임 방향 (보는 방향 PlayerInput.yaw, 하늘 시점이면 cam_rig.sky_yaw). 돌풍 화살표에만 씀.
+# yaw: 화면 위쪽이 향하는 게임 방향 (view_yaw). 돌풍 화살표에만 씀.
 # 모르는 종류·방향 없는 돌풍은 "" (안 띄움)
 static func text(e: Dictionary, yaw: float) -> String:
 	match str(e.get("kind", "")):
@@ -32,3 +32,15 @@ static func arrow(dir, yaw: float) -> String:
 	if absf(right) >= absf(fwd):
 		return "→" if right > 0.0 else "←"
 	return "↑" if fwd > 0.0 else "↓"
+
+
+# 화면 위쪽이 향하는 게임 방향 (world/cam_rig.gd place 와 같은 순서). 해당 없으면 null 을 넘김
+# sky_yaw: 하늘 시점이면 cam_rig.sky_yaw (맨 뒤에 섞여 다른 카메라를 덮음)
+# close_yaw: 클로즈업 (이모트 셀카·승자) 대상의 몸 yaw — 카메라가 몸 앞에서 돌아보니 화면 앞쪽은 반대 (victory_camera)
+# look_yaw: 그 밖 (1·3인칭·관전) 은 보는 방향 PlayerInput.yaw
+static func view_yaw(look_yaw: float, sky_yaw = null, close_yaw = null) -> float:
+	if sky_yaw != null:
+		return float(sky_yaw)
+	if close_yaw != null:
+		return float(close_yaw) + PI
+	return look_yaw

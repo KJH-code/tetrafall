@@ -86,7 +86,9 @@ func test_lobby_place() -> void:
 	check(U.lobby_place(Vector2(960, 540), Vector2(380, 1.0e6)).scale == U.LOBBY_SCALE_MIN, "아주 큰 내용")
 
 
-# 방 옵션 꼬리 (손님 대기실 줄·공개 방 목록): 켠 것만, 순서 고정. 서버는 hpMode·roundEvents 를 켰을 때만 보냄 (없으면 끔)
+# 방 옵션 꼬리 (손님 대기실 줄·공개 방 목록): 켠 것만, 순서 고정.
+# 서버가 보내는 모양: skyStairs 는 늘 true/false, hpMode 는 공개 목록에선 늘 true/false (Rooms.cs PublicList)·스냅샷에선 켰을 때만,
+# roundEvents 는 둘 다 켰을 때만 → 키가 없든 false 든 끔
 func test_room_opts() -> void:
 	check(U.room_opts({}) == "", "옵션 없음: '%s'" % U.room_opts({}))
 	check(U.room_opts({"skyStairs": false, "hpMode": false}) == "", "전부 끔")
@@ -94,6 +96,19 @@ func test_room_opts() -> void:
 	check(U.room_opts({"skyStairs": false, "hpMode": true}) == " · 체력전", "체력전")
 	check(U.room_opts({"roundEvents": true, "mode": "kills"}) == " · 돌발 이벤트", "돌발 이벤트")
 	check(U.room_opts({"roundEvents": true, "hpMode": true, "skyStairs": true}) == " · 하늘 계단 · 체력전 · 돌발 이벤트", "전부: '%s'" % U.room_opts({"roundEvents": true, "hpMode": true, "skyStairs": true}))
+	# 생존·킬 점수전은 셋 다 먹음
+	for mode in ["survival", "kills"]:
+		var all := U.room_opts({"mode": mode, "roundEvents": true, "hpMode": true, "skyStairs": true})
+		check(all == " · 하늘 계단 · 체력전 · 돌발 이벤트", "%s 전부: '%s'" % [mode, all])
+	# 블록 마스터 방: 하늘 계단·돌발 이벤트는 켜져 있어도 판에서 안 돎 (서버 StartRound sky · RoundEventsRun) → 안 붙임. 체력전은 먹음
+	var master := U.room_opts({"mode": "master", "roundEvents": true, "hpMode": true, "skyStairs": true})
+	check(master == " · 체력전", "마스터 전부 켬: '%s'" % master)
+	check(U.room_opts({"mode": "master", "roundEvents": true, "skyStairs": true}) == "", "마스터 하늘 계단 + 돌발 이벤트: '%s'" % U.room_opts({"mode": "master", "roundEvents": true, "skyStairs": true}))
+	check(U.room_opts({"mode": "master", "roundEvents": true, "skyStairs": false, "hpMode": false}) == "", "마스터 돌발 이벤트만")
+	# 표의 안 먹는 모드는 실제 모드 id
+	for o in U.ROOM_OPTS:
+		for m in o[2]:
+			check(U.C.MODE_NAMES.has(m), "ROOM_OPTS %s: 모르는 모드 %s" % [o[0], m])
 
 
 func test_kills_hud() -> void:

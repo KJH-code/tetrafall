@@ -39,7 +39,8 @@ static func lobby_dock(view_w: float) -> Dictionary:
 # ---------- 고도 판 전용 (JS 에 없음 — 정답 자료 대신 tests/test_ui.gd 가 값으로 고정) ----------
 const LOBBY_TOP := 84.0 # 대기실 판 위쪽 (위 점수 띠 아래)
 const LOBBY_SCALE_MIN := 0.1 # 대기실 판 줄임 배율 아래 끝 (0 으로 나누기·뒤집힘 막기)
-const ROOM_OPTS := [["skyStairs", "하늘 계단"], ["hpMode", "체력전"], ["roundEvents", "돌발 이벤트"]] # 방 옵션 표시 (키는 스냅샷·공개 목록 같음)
+# 방 옵션 표시: [키 (스냅샷·공개 목록 같음), 글, 켜도 안 먹는 모드]. 블록 마스터 판은 하늘 계단 (Game.Round.cs StartRound sky)·돌발 이벤트 (Game.Events.cs RoundEventsRun) 가 안 돎
+const ROOM_OPTS := [["skyStairs", "하늘 계단", ["master"]], ["hpMode", "체력전", []], ["roundEvents", "돌발 이벤트", ["master"]]]
 
 
 # 대기실 판 자리: 오른쪽 끝·위 (LOBBY_TOP) 에 붙임. content = 줄이기 전 판 크기 (폭은 lobby_dock 폭, 높이는 내용만큼).
@@ -53,11 +54,13 @@ static func lobby_place(view: Vector2, content: Vector2) -> Dictionary:
 	return {"scale": s, "x": view.x - C.HUD_CARD_MARGIN - content.x * s, "y": LOBBY_TOP}
 
 
-# 켠 방 옵션을 한 줄 꼬리로: " · 하늘 계단 · 체력전 · 돌발 이벤트" (손님 대기실 줄·공개 방 목록). d = 스냅샷 또는 공개 목록 한 줄
+# 켠 방 옵션을 한 줄 꼬리로: " · 하늘 계단 · 체력전 · 돌발 이벤트" (손님 대기실 줄·공개 방 목록). d = 스냅샷 또는 공개 목록 한 줄.
+# 방 모드 (d.mode) 에서 안 먹는 옵션은 켜져 있어도 뺌 (블록 마스터 방의 하늘 계단·돌발 이벤트). 모드가 없으면 켠 것 전부
 static func room_opts(d: Dictionary) -> String:
+	var mode := str(d.get("mode", ""))
 	var out := ""
 	for o in ROOM_OPTS:
-		if d.get(o[0], false):
+		if d.get(o[0], false) and not (o[2] as Array).has(mode):
 			out += " · %s" % o[1]
 	return out
 

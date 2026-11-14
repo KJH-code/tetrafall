@@ -48,6 +48,37 @@ func test_round_event_arrow_follows_view() -> void:
 	check(seen.size() == 4, "yaw 한 바퀴에 화살표 %d가지: %s" % [seen.size(), str(seen.keys())])
 
 
+# 화면 위쪽 방향 고르기 (hud_extra.gd _view_yaw): 하늘 시점 > 클로즈업 (이모트 셀카) > 보는 방향
+func test_round_event_view_yaw() -> void:
+	check(is_equal_approx(T.view_yaw(0.7), 0.7), "보통: 보는 방향")
+	check(is_equal_approx(T.view_yaw(0.7, null, null), 0.7), "null 둘: 보는 방향")
+	check(is_equal_approx(T.view_yaw(0.7, 1.9), 1.9), "하늘 시점: sky_yaw")
+	check(is_equal_approx(T.view_yaw(0.7, 0.0), 0.0), "하늘 시점 sky_yaw 0 도 하늘 (null 과 다름)")
+	check(is_equal_approx(T.view_yaw(0.7, null, 0.3), 0.3 + PI), "셀카: 몸 yaw 의 반대")
+	check(is_equal_approx(T.view_yaw(0.7, null, 0.0), PI), "셀카 몸 yaw 0 도 셀카 (null 과 다름)")
+	check(is_equal_approx(T.view_yaw(0.7, 1.9, 0.3), 1.9), "하늘 시점이 클로즈업을 덮음 (cam_rig place 순서)")
+	# 이모트 셀카: 카메라가 몸 앞 (cos yaw, sin yaw) 에서 몸을 돌아봄 → 앞·뒤, 좌·우가 1·3인칭과 반대
+	# [몸 yaw, dx, dy, 셀카 화살표, 1·3인칭 화살표]
+	var rows := [
+		[0.0, 1, 0, "↓", "↑"], [0.0, -1, 0, "↑", "↓"], [0.0, 0, 1, "→", "←"], [0.0, 0, -1, "←", "→"], # 리뷰 반례: yaw 0 셀카 중 (1, 0) 돌풍 = 카메라 쪽 (아래)
+		[UP, 1, 0, "←", "→"], [UP, 0, 1, "↓", "↑"], [-UP, 0, 1, "↑", "↓"], [PI, 1, 0, "↑", "↓"],
+		[UP + 0.6, 1, 0, "←", "→"], [0.6 + TAU, 1, 0, "↓", "↑"],
+	]
+	for r in rows:
+		var e := {"kind": "wind", "dir": {"x": float(r[1]), "y": float(r[2])}}
+		var selfie := T.text(e, T.view_yaw(r[0], null, r[0]))
+		var plain := T.text(e, T.view_yaw(r[0]))
+		check(selfie == "돌풍 %s" % r[3], "셀카 yaw %.2f 돌풍 (%s, %s): '%s' vs '돌풍 %s'" % [r[0], r[1], r[2], selfie, r[3]])
+		check(plain == "돌풍 %s" % r[4], "보통 yaw %.2f 돌풍 (%s, %s): '%s' vs '돌풍 %s'" % [r[0], r[1], r[2], plain, r[4]])
+	# 셀카 카메라 자리로 직접 확인: 눈 = 몸 + 앞 × 거리, 보는 쪽 = 몸 − 눈. 바람이 눈 쪽으로 불면 화면 아래 (↓), 눈에서 멀어지면 ↑
+	for i in 12:
+		var yaw := TAU * i / 12.0 + 0.2
+		var to_eye := {"x": cos(yaw), "y": sin(yaw)}
+		var away := {"x": -cos(yaw), "y": -sin(yaw)}
+		check(T.arrow(to_eye, T.view_yaw(yaw, null, yaw)) == "↓", "셀카 yaw %.2f: 카메라 쪽 바람은 ↓" % yaw)
+		check(T.arrow(away, T.view_yaw(yaw, null, yaw)) == "↑", "셀카 yaw %.2f: 카메라 반대쪽 바람은 ↑" % yaw)
+
+
 func test_round_event_text_unknown_empty() -> void:
 	for yaw in [0.0, UP]:
 		check(T.text({}, yaw) == "", "빈 이벤트")
