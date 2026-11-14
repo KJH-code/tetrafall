@@ -214,6 +214,8 @@ func _hazard(state: Dictionary, dt: float, ear_z) -> void:
 		hz.volume_db = hz_db
 	if randf() < float(C.SFX_HAZARD.pops.get(style, 0)) * dt and not hz_pop.playing:
 		var pop: Dictionary = rec.pops[randi() % rec.pops.size()]
-		hz_pop.stream = sfx.stream(pop.file)
-		hz_pop.volume_db = linear_to_db(maxf(0.00001, float(pop.gain) * hz_level))
-		hz_pop.play()
+		var pst: AudioStream = sfx.stream(pop.file)
+		if pst != null: # W53: 웹 효과음 묶음이 아직 안 옴이면 조용히
+			hz_pop.stream = pst
+			hz_pop.volume_db = linear_to_db(maxf(0.00001, float(pop.gain) * hz_level))
+			hz_pop.play()

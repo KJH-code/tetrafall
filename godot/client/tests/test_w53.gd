@@ -163,3 +163,52 @@ func test_style_reg_prunes_dead_refs() -> void:
 	S._reg = keep_reg
 	S._reg_limit = keep_lim
 	S._reg_old = keep_old
+
+
+# ---- 웹 효과음 묶음 (audio/sfx_pack.gd + addons/web_music/export.gd): 첫 pck 에서 뺀 wav 를 첫 화면 뒤 따로 받음 ----
+const SfxPack := preload("res://audio/sfx_pack.gd")
+const SfxNode := preload("res://audio/sfx.gd")
+
+
+func test_sfx_pack_split_rule() -> void:
+	check(not SfxPack.is_split(false, false) and not SfxPack.is_split(false, true), "PC 는 쪼개지 않음")
+	check(not SfxPack.is_split(true, true), "웹이어도 첫 pck 에 wav 가 있으면 (옛 빌드) 쪼개지 않음")
+	check(SfxPack.is_split(true, false), "웹 + 첫 pck 에 wav 없음 = 쪼갠 빌드")
+	check(not SfxPack.is_lazy("title.crystal.land.0.wav") and not SfxPack.is_lazy("ambientPing.meadow.0.wav"), "타이틀·앰비언트 핑은 첫 pck 에 남음")
+	check(SfxPack.is_lazy("hit.none.1.0.wav") and SfxPack.is_lazy("swing.none.0.wav") and not SfxPack.is_lazy("music.lobby.ogg") and not SfxPack.is_lazy("ambient.castle.ogg"), "나머지 효과음 wav 만 묶음으로, ogg 는 아님")
+
+
+# 내보내기 플러그인 규칙 (편집기 전용 스크립트) 과 런타임 규칙이 audio/baked 의 모든 파일에서 같음 — 어긋나면 효과음이 어느 쪽에도 없어짐
+func test_sfx_pack_rule_matches_plugin() -> void:
+	var P = load("res://addons/web_music/export.gd")
+	var n := 0
+	var lazy := 0
+	for f in DirAccess.get_files_at("res://audio/baked/"):
+		if f.ends_with(".import"):
+			continue
+		n += 1
+		var a: bool = P.is_lazy_sfx("res://audio/baked/" + f)
+		var b: bool = SfxPack.is_lazy(f)
+		if a != b:
+			check(false, "규칙 어긋남: %s 플러그인 %s 런타임 %s" % [f, a, b])
+		if a:
+			lazy += 1
+	check(n > 300 and lazy > 200 and lazy < n, "파일 수 (%d) · 묶음 몫 (%d)" % [n, lazy])
+	check(not P.is_song("res://audio/baked/hit.none.1.0.wav") and P.is_song("res://audio/baked/music.lobby.ogg") and not P.is_lazy_sfx("res://audio/baked/music.lobby.ogg"), "곡은 곡 따로, 효과음 묶음에는 안 듦")
+
+
+# 묶음이 오기 전엔 null (캐시 안 함), 온 뒤엔 읽힘. 첫 화면부터 쓰는 타이틀 wav 는 묶음과 무관
+func test_sfx_stream_waits_for_pack() -> void:
+	var s = SfxNode.new()
+	var pk = SfxPack.new()
+	pk.loaded = false
+	s.pack = pk
+	check(s.stream("swing.none.0.wav") == null and not s.streams.has("swing.none.0.wav"), "묶음 전: null 이고 캐시 안 함")
+	check(s.stream("title.crystal.burst.wav") != null, "타이틀 wav 는 묶음 전에도 읽힘")
+	pk.loaded = true
+	check(s.stream("swing.none.0.wav") != null, "묶음 뒤: 읽힘")
+	var s2 = SfxNode.new() # 묶음 노드 없음 (PC·테스트) = 예전대로
+	check(s2.stream("swing.none.0.wav") != null, "묶음 노드가 없으면 예전대로")
+	pk.free()
+	s.free()
+	s2.free()
