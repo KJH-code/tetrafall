@@ -219,11 +219,12 @@ public sealed partial class Game
         return true;
     }
 
-    // 체력전 최대 HP: 모드별 (HP_MAX_BY_MODE) × 캐릭터 배율 (HP_CHAR_MULT, 캐릭터 켰을 때만, 반올림). p 없으면 모드 값 그대로 (스냅샷 맨 위 hpMax·로그)
+    // 체력전 최대 HP: 모드별 (HP_MAX_BY_MODE) × 캐릭터 배율 (HP_CHAR_MULT, 캐릭터 켰을 때만, 반올림). p 없으면 모드 값 그대로 (스냅샷 맨 위 hpMax·로그).
+    // 판별 조정 (Tune.hpMult) 에 그 캐릭터가 있으면 HP_CHAR_MULT 대신 그 값
     public double HpMax(Player? p = null)
     {
         double @base = C.HP_MAX_BY_MODE.TryGetValue(mode, out var v) ? v : C.HP_MAX_BY_MODE["survival"];
-        double mult = p != null && characters && p.@char != null ? C.HP_CHAR_MULT.GetValueOrDefault(p.@char, 1) : 1;
+        double mult = p != null && characters && p.@char != null ? tune?.HpMult(p.@char) ?? C.HP_CHAR_MULT.GetValueOrDefault(p.@char, 1) : 1;
         return mult == 1 ? @base : JsMath.Round(@base * mult);
     }
 

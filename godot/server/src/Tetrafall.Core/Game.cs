@@ -83,15 +83,17 @@ public sealed partial class Game
     public double powerItemNextAt;
     public bool gridDirty = true;
     List<string> events = new(); // 이벤트는 만들 때 JSON 글자로 (스냅샷에 그대로 붙임)
+    public readonly Tune? tune; // 이 판만의 캐릭터별 조정 (Tune.cs). null 이면 곱하지 않음 — 예전과 비트까지 같음
 
-    // countdownMs: 판 시작 전 카운트다운 (서버 C.ROUND_COUNTDOWN_MS, 테스트 기본 0). characters·skyStairs·hpMode: JS 옵션과 같음
-    public Game(Action<string>? log = null, bool characters = false, bool skyStairs = false, double countdownMs = 0, bool hpMode = false)
+    // countdownMs: 판 시작 전 카운트다운 (서버 C.ROUND_COUNTDOWN_MS, 테스트 기본 0). characters·skyStairs·hpMode: JS 옵션과 같음. tune: 고도 판 전용
+    public Game(Action<string>? log = null, bool characters = false, bool skyStairs = false, double countdownMs = 0, bool hpMode = false, Tune? tune = null)
     {
         logOut = log ?? (_ => { });
         this.countdownMs = countdownMs;
         this.characters = characters;
         this.skyStairs = skyStairs;
         this.hpMode = hpMode;
+        this.tune = tune;
         grid = new byte[W * D * H];
         gridPiece = new int[grid.Length];
     }

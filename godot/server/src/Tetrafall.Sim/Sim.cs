@@ -23,8 +23,18 @@ public sealed class SimOptions
     public string? @base;
     public string? mode; // --mode (안 주면 summary.json 에 키 없음 — JS 와 같게)
     public bool hp; // --hp on (체력전)
-    public Dictionary<string, double>? hpMult; // --hp-mult (체력전 캐릭터 배율을 이 판들만 — ParseArgs 가 C.HP_CHAR_MULT 에 넣음)
+    public Dictionary<string, double>? hpMult; // --hp-mult (체력전 캐릭터 배율을 이 판들만 — 전역 C.HP_CHAR_MULT 는 안 고치고 GameTune 이 Tune.hpMult 로)
     public bool events; // --events on (돌발 이벤트 — 고도 판 전용, tools/sim.js 에 없음)
+    public Tune? tune; // --tune (판별 캐릭터 조정 Tune.cs — 고도 판 전용, tools/sim.js 에 없음)
+
+    // 판에 넘길 조정: --tune + --hp-mult (Tune.hpMult 로 합침, 같은 캐릭터가 둘 다에 있으면 --tune 의 hpMult 가 이김). 둘 다 없으면 null → 예전과 같은 판
+    public Tune? GameTune()
+    {
+        if (hpMult == null) return tune;
+        var t = tune?.Clone() ?? new Tune();
+        foreach (var (c, x) in hpMult) if (tune?.HpMult(c) == null) t.Set(c, "hpMult", x);
+        return t;
+    }
 
     // JSON.stringify({ ...o, base: undefined }) 와 같은 키 순서
     public void Write(JsonOut o)
@@ -45,6 +55,7 @@ public sealed class SimOptions
             o.EndObj();
         }
         if (events) o.P("events", true); // 켰을 때만 (끄면 summary.json 이 예전과 같게)
+        if (tune != null) tune.Write(o.Key("tune")); // --tune 을 줬을 때만
         o.EndObj();
     }
 }
@@ -106,6 +117,7 @@ public static class BotSim
                 case "--hp": o.hp = V() == "on"; break;
                 case "--hp-mult": o.hpMult = ParseHpMult(V()); break;
                 case "--events": o.events = V() == "on"; break;
+                case "--tune": o.tune = Tune.Parse(V()); break;
                 default: throw new ArgumentException($"모르는 옵션 {a}");
             }
         }
@@ -114,7 +126,6 @@ public static class BotSim
         foreach (var m in o.maps) if (!Maps.MAP_IDS.Contains(m)) throw new ArgumentException($"--maps {m}: {string.Join(",", Maps.MAP_IDS)} 중");
         foreach (var c in o.chars) if (!C.CHARACTERS.Contains(c)) throw new ArgumentException($"--chars {c}: {string.Join(",", C.CHARACTERS)} 중");
         if (o.mode != null && !C.MODE_NAMES.ContainsKey(o.mode)) throw new ArgumentException($"--mode {o.mode}: {string.Join(",", C.MODE_NAMES.Keys)} 중");
-        if (o.hpMult != null) foreach (var (c, x) in o.hpMult) C.HP_CHAR_MULT[c] = x; // 판 돌리기 전에 한 번 (스레드 시작 전)
         if (!C.BOT_LEVELS.ContainsKey(o.level)) throw new ArgumentException($"--level {o.level}: {string.Join(",", C.BOT_LEVELS.Keys)} 중");
         return o;
     }
@@ -153,7 +164,7 @@ public static class BotSim
     // 한 판
     public static SimResult RunJob(SimJob job, SimOptions o, Action<string>? log = null)
     {
-        var g = new Game(log, characters: true, skyStairs: o.sky);
+        var g = new Game(log, characters: true, skyStairs: o.sky, tune: o.GameTune());
         g.rng = new Mulberry32(job.seed).AsFunc();
         g.SetBotLevel(o.level);
         g.SetMap(job.map);

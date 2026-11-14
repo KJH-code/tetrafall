@@ -352,7 +352,7 @@ public sealed partial class Game
     public bool UseSkill(Player p)
     {
         if (OtherMoveActive(p)) return false; // 다른 기술 발동 중
-        p.skillReadyAt = time + C.SKILL_CD_MS[p.@char!]; // 먼저 걸어 둠
+        p.skillReadyAt = time + (tune != null ? C.SKILL_CD_MS[p.@char!] * tune.SkillCd(p.@char) : C.SKILL_CD_MS[p.@char!]); // 먼저 걸어 둠
         if (p.grounded && C.SKILL_WINDUP_CHARS.Contains(p.@char))
         {
             // 이동 스킬 지상 예고: SKILL_WINDUP_MS 뒤 누른 순간 방향으로 나감 (UpdateCombat → FireWindup)
@@ -497,6 +497,9 @@ public sealed partial class Game
         if (Invulnerable(t)) return false; // 콤보 뒤 무적·부활 무적
         bool teammate = src != null && SameTeam(GetPlayer(src.by), t);
         if (teammate) return false; // 팀전에서 같은 팀 공격은 아무 효과 없음
+        // 판별 조정 (Tune): 남을 때린 타의 피해 % — 아래 아머 길·보통 길 둘 다 이 값으로
+        var tuneBy = tune != null && src != null && src.by != t.id ? GetPlayer(src.by) : null;
+        if (tuneBy != null) gain *= tune!.DmgDealt(tuneBy.@char);
         // 탱크 아머 (F 돌진 중·R 떠오르는 동안): 넉백·경직 없이 피해 % 만. 마무리 타·필살기면 깨지고 보통처럼
         bool armorBroken = false;
         if (!teammate && t.@char == "tank" && (time < t.chargeUntil || Truthy(t.slamAt)))
@@ -543,6 +546,7 @@ public sealed partial class Game
         // 광전사 분노: 주는 넉백 × (1 + 자기 피해 % × 계수). 고정 넉백 중간 타는 빼고. R 마지막 날림은 R 시작 때 피해 % (src.rage)
         var rager = !teammate && src != null && src.by != t.id ? GetPlayer(src.by) : null;
         if (!fixed_ && rager != null && rager.@char == "berserker") speed *= RageMult(src!.rage ?? rager.damage);
+        if (!fixed_ && tuneBy != null) speed *= tune!.KbDealt(tuneBy.@char); // 판별 조정: 주는 넉백 (분노처럼 고정 넉백 중간 타는 빼고)
         if (!teammate && t.comboHits >= 2 && src != null) Emit(o => o.P("type", "combo").P("by", src.by).P("target", t.id).P("n", t.comboHits).P("finish", finisher));
         // 맞아서 끊긴 공격: 쿨타임·게이지를 돌려주고 interrupt 이벤트
         if (t.atk != null)
@@ -626,6 +630,7 @@ public sealed partial class Game
             }
         }
         double taken = t.@char == "tank" ? C.TANK_KB_TAKEN : t.@char == "ninja" ? C.NINJA_KB_TAKEN : 1; // 탱크 패시브: 덜 밀림, 닌자 약점: 잘 밀림
+        if (tune != null) taken *= tune.KbTaken(t.@char); // 판별 조정: 받는 넉백
         double vuln = !teammate && time < t.vulnUntil ? C.BARD_VULN_MULT : 1; // 바드 취약의 노래 (% 배율 넉백에만)
         double mult = fixed_ ? 1 : (C.DAMAGE_KB_BASE + t.damage * C.DAMAGE_KB_PER_PERCENT) * taken * vuln;
         t.damage += gain;
@@ -647,9 +652,16 @@ public sealed partial class Game
     public void GainUlt(Player t, Src? src, double gain)
     {
         if (gain <= 0) return;
-        t.ult = Math.Min(UltMax(t), t.ult + gain * C.ULT_PER_DAMAGE);
+        t.ult = Math.Min(UltMax(t), t.ult + UltGainOf(t, gain));
         var by = src != null && src.by != t.id ? GetPlayer(src.by) : null;
-        if (by != null) by.ult = Math.Min(UltMax(by), by.ult + gain * C.ULT_PER_DAMAGE);
+        if (by != null) by.ult = Math.Min(UltMax(by), by.ult + UltGainOf(by, gain));
+    }
+
+    // 피해 % → 그 사람 게이지 몫 (판별 조정 Tune.ultGain 이 있으면 곱함)
+    double UltGainOf(Player p, double gain)
+    {
+        double u = gain * C.ULT_PER_DAMAGE;
+        return tune != null ? u * tune.UltGain(p.@char) : u;
     }
 
     // 카운터히트 대상: 빗나간 평타의 후딜, 돌진 중, 내려찍기·솟는 벽 준비·갈고리 블록 뽑는 중 등
