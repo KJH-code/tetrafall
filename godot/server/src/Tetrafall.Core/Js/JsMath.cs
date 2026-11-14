@@ -70,7 +70,8 @@ public static class JsMath
       if (hx < 0) { y0 = -y0; y1 = -y1; return -n; }
       return n;
     }
-    throw new NotSupportedException("JsMath: 각도가 너무 큼");
+    // 정밀 구간 밖 (|x| > 2^20·π/2): 2π 로 한 번 줄여 [-π, π] 에서 다시 — V8 과 비트 일치 아님. 예전엔 던져서 방이 닫혔음 (무한·NaN 은 Sin·Cos 가 앞에서 거름)
+    return RemPio2(Math.IEEERemainder(x, 2 * Math.PI), out y0, out y1);
   }
 
   public static double Sin(double x) {

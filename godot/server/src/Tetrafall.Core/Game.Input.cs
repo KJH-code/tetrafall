@@ -51,7 +51,8 @@ public sealed partial class Game
         p.input.fwd = Clamp(input.fwd);
         p.input.strafe = Clamp(input.strafe);
         p.input.jump = input.jump;
-        if (input.yaw is double yaw && double.IsFinite(yaw)) p.yaw = yaw;
+        // 고도 전용: 아주 큰 yaw 는 NaN 처럼 무시 (예전 yaw 유지) — JS 에 없는 규칙, C.INPUT_YAW_MAX
+        if (input.yaw is double yaw && double.IsFinite(yaw) && Math.Abs(yaw) <= C.INPUT_YAW_MAX) p.yaw = yaw;
         if (input.pitch is double pitch && double.IsFinite(pitch)) p.pitch = Math.Max(-1.5, Math.Min(1.5, pitch));
     }
 
