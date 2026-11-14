@@ -165,9 +165,9 @@ func _run() -> void:
 			if best_i == 0:
 				t_ms = 0.0
 			elif best_i <= 5:
-				t_ms = float(ms[best_i]) * C.FIGURE_STRIKE_S * 1000.0
+				t_ms = float(ms[best_i]) * K.strike_s(ch, str(d.name)) * 1000.0
 			else:
-				t_ms = C.FIGURE_STRIKE_S * 1000.0 + [0.15, 0.4][best_i - 6] * float(d.get("rec", 300.0))
+				t_ms = K.strike_s(ch, str(d.name)) * 1000.0 + [0.15, 0.4][best_i - 6] * float(d.get("rec", 300.0))
 			var line := "%s,%s,%s,%.1f,%.1f,%.2f,%.2f," % [ch, d.name, "공중" if air else "지상", step, rng, front, front + step]
 			for t in tips:
 				line += "%.2f," % t

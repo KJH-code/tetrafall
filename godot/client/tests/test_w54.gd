@@ -56,7 +56,7 @@ func _windup_of(ch: String, mv: String) -> float:
 
 func test_tables_valid_and_speed_cap() -> void:
 	_reset()
-	var old_speed := (0.40 - 0.30) / C.FIGURE_STRIKE_S # 예전 타격 구간 클립 배속
+	var old_speed := (0.40 - 0.30) / C.FIGURE_STRIKE_S # 예전 타격 구간 클립 배속 (1.43)
 	for ch in K.W54_LEAD_BY:
 		for mv in K.W54_LEAD_BY[ch]:
 			var ws := _windup_of(ch, str(mv))
@@ -64,17 +64,26 @@ func test_tables_valid_and_speed_cap() -> void:
 			var f: float = K.W54_LEAD_BY[ch][mv]
 			check(f >= 0.0 and f <= 1.0, "frac 0~1: %s %s" % [ch, mv])
 			var ld := Clips.lead_s(ws, f)
-			check(ld > 0.0 and ld <= K.W54_LEAD_S + 1e-9 and ld <= ws * K.W54_LEAD_MAX_FRAC + 1e-9, "앞당김 길이 한계: %s %s" % [ch, mv])
-			if ld > 0.0:
-				var r1 := f * 0.10 / ld
-				var r2 := (1.0 - f) * 0.10 / C.FIGURE_STRIKE_S
-				check(r1 <= old_speed * 1.01 and r2 <= old_speed * 1.01, "휘두름 배속이 예전 (%.2f) 이하: %s %s (%.2f·%.2f)" % [old_speed, ch, mv, r1, r2])
+			check(ld > 0.0 and ld <= K.W54_LEAD_S + 1e-9 and ws - ld >= K.W54_LEAD_KEEP_S - 1e-9, "앞당김은 준비 앞 %.2f초를 남김: %s %s" % [K.W54_LEAD_KEEP_S, ch, mv])
+			var ss := K.strike_s(ch, str(mv))
+			var r1 := f * 0.10 / ld
+			var r2 := (1.0 - f) * 0.10 / ss
+			check(r1 <= 1.01 and r2 <= 1.01, "휘두름 배속 1.0 이하: %s %s (%.2f·%.2f)" % [ch, mv, r1, r2])
+	for ch in K.W54_STRIKE_MOVES:
+		for mv in K.W54_STRIKE_MOVES[ch]:
+			check(_windup_of(ch, str(mv)) > 0.0, "타격 구간 표 동작이 서버 평타에 있음: %s %s" % [ch, mv])
+			check(absf(K.strike_s(ch, str(mv)) - K.W54_STRIKE_S) < 1e-9 and (0.10 / K.W54_STRIKE_S) < old_speed, "타격 구간이 예전보다 길어 클립 배속이 내려감: %s %s" % [ch, mv])
+	check(K.strike_s("tank", "어깨 박치기") == K.W54_STRIKE_S and K.strike_s("tank", "없는") == C.FIGURE_STRIKE_S and K.strike_s("bard", "주먹") == C.FIGURE_STRIKE_S, "표에 없으면 예전")
+	check(Clips.lead_s(0.12, 0.5) == 0.0 and Clips.lead_s(0.15, 0.5) == 0.0 and absf(Clips.lead_s(0.30, 0.5) - 0.07) < 1e-9 and absf(Clips.lead_s(0.20, 0.5) - 0.05) < 1e-9, "준비 150ms 이하는 앞당김 없음")
 	for ch in K.W54_LUNGE:
 		for mv in K.W54_LUNGE[ch]:
 			check(_windup_of(ch, str(mv)) > 0.0, "앞딛기 표 동작이 서버 평타에 있음: %s %s" % [ch, mv])
 			check(float(K.W54_LUNGE[ch][mv]) > 0.0 and float(K.W54_LUNGE[ch][mv]) <= K.W54_LUNGE_MAX, "앞딛기 ≤ 한계: %s %s" % [ch, mv])
 	check(K.W54_LUNGE_MAX <= 0.2 + 1e-9, "앞딛기 한계 0.2m 이하")
 	check(K.lead_frac("tank", "없는 동작") < 0.0, "표에 없으면 앞당김 없음")
+	Opts.override = ["--old-moves"]
+	check(K.strike_s("tank", "주먹") == C.FIGURE_STRIKE_S, "--old-moves 면 타격 구간 예전")
+	_reset()
 
 
 func _sel(phase: String, u: float, ws: float, lf: float) -> Dictionary:
@@ -84,8 +93,8 @@ func _sel(phase: String, u: float, ws: float, lf: float) -> Dictionary:
 
 func test_select_lead_continuity() -> void:
 	_reset()
-	var ws := 0.15
-	var lf := 0.8
+	var ws := 0.30
+	var lf := 0.7
 	var m0 := 0.30
 	var m1 := 0.40
 	var tl := m0 + (m1 - m0) * lf
@@ -107,15 +116,15 @@ func test_select_lead_continuity() -> void:
 func test_old_moves_switch() -> void:
 	_reset()
 	check(not K.old_moves(), "기본 켬 (새)")
-	check(absf(float(_sel("wind", 1.0, 0.15, 0.8).t) - 0.38) < 1e-6, "새: 준비 끝 0.38")
+	check(absf(float(_sel("wind", 1.0, 0.30, 0.7).t) - 0.37) < 1e-6, "새: 준비 끝 0.38")
 	Opts.override = ["--old-moves"]
 	check(K.old_moves(), "--old-moves 로 끔")
-	check(absf(float(_sel("wind", 1.0, 0.15, 0.8).t) - 0.30) < 1e-6, "끔: 준비 끝 = 예전 눈금 0.30")
-	check(absf(float(_sel("strike", 0.0, 0.15, 0.8).t) - 0.30) < 1e-6 and absf(float(_sel("strike", 1.0, 0.15, 0.8).t) - 0.40) < 1e-6, "끔: 타격 구간 예전 그대로")
+	check(absf(float(_sel("wind", 1.0, 0.30, 0.7).t) - 0.30) < 1e-6, "끔: 준비 끝 = 예전 눈금 0.30")
+	check(absf(float(_sel("strike", 0.0, 0.30, 0.7).t) - 0.30) < 1e-6 and absf(float(_sel("strike", 1.0, 0.30, 0.7).t) - 0.40) < 1e-6, "끔: 타격 구간 예전 그대로")
 	_reset()
 	# 표에 없는 동작 (lf -1) 과 준비 시간 모름 (ws 0) 은 예전 그대로
-	check(absf(float(_sel("wind", 1.0, 0.15, -1.0).t) - 0.30) < 1e-6, "표에 없는 동작 = 예전")
-	check(absf(float(_sel("wind", 0.5, 0.0, 0.8).t) - 0.15) < 1e-6, "준비 시간 모름 = 예전")
+	check(absf(float(_sel("wind", 1.0, 0.30, -1.0).t) - 0.30) < 1e-6, "표에 없는 동작 = 예전")
+	check(absf(float(_sel("wind", 0.5, 0.0, 0.7).t) - 0.15) < 1e-6, "준비 시간 모름 = 예전")
 
 
 # 실제 몸: 앞딛기가 판정 순간에 켜지고 --old-moves 면 0, 서버 위치 (몸 중심 frame) 는 그대로

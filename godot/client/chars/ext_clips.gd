@@ -15,7 +15,7 @@ const MARKS := [0.30, 0.40, 0.80]
 static func lead_s(ws: float, lf := 0.0) -> float:
 	if ws <= 0.0 or lf < 0.0 or K.old_moves():
 		return 0.0
-	return minf(K.W54_LEAD_S, ws * K.W54_LEAD_MAX_FRAC)
+	return clampf(ws - K.W54_LEAD_KEEP_S, 0.0, K.W54_LEAD_S)
 
 
 # 클립 파일 (.glb 안 AnimationPlayer) → {이름: {anim, len, rot: {뼈 이름: 트랙}, pos: {뼈 이름: 트랙}}}. 뼈 이름은 고도가 바꾼 뒤 이름 (':' → '_')
