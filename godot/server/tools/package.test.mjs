@@ -300,12 +300,14 @@ test('W48 report.sh: 세 파일을 합쳐 (히치는 앞 30줄만) 클립보드�
   fs.writeFileSync(path.join(h.data, 'last_report.txt'), `[Tetrafall 성능 보고] v1\n저장 ${h.data}/x 그리고 /home/otheruser/y\n사용자 ${me} 가 했다\n`);
   fs.writeFileSync(path.join(h.data, 'hitches.txt'), Array.from({ length: 50 }, (_, i) => `히치줄 ${i + 1}`).join('\n') + '\n');
   fs.writeFileSync(path.join(h.data, 'motion_qa.txt'), '# 동작 QA\n#   1. ninja Hips 52\n');
+  fs.appendFileSync(path.join(h.data, 'last_report.txt'), '경로 C:\\Users\\hong\\AppData\\Roaming\\Godot 그리고 D:\\Users\\hong\\Docs\n');
   const { r, clip } = runReport(h, true);
   assert.equal(r.status, 0, r.stderr);
   for (const out of [clip, r.stdout]) {
     assert.ok(out.includes('[Tetrafall 성능 보고] v1') && out.includes('히치줄 30') && !out.includes('히치줄 31') && out.includes('ninja Hips 52'), `합친 글:\n${out}`);
     assert.ok(out.includes('저장 ~/.local/share/godot/app_userdata/Tetrafall/x 그리고 ~/y'), `홈 경로 → ~:\n${out}`);
     assert.ok(!out.includes(h.home) && !out.includes('/home/') && !out.includes('otheruser'), '경로·이름이 남음');
+    assert.ok(!out.includes('hong') && out.includes('경로 %APPDATA%\\Godot 그리고 %USERPROFILE%\\Docs'), `윈도우 경로 → %APPDATA%·%USERPROFILE%:\n${out}`);
     if (me.length >= 3) assert.ok(!out.includes(`사용자 ${me} `) && out.includes('<사용자>'), `사용자 이름 ${me} 가 남음`);
   }
   assert.ok(r.stdout.includes('[복사됨]'), '복사 안내');
