@@ -353,6 +353,20 @@ func _process(_d: float) -> void:
 				var why := {}
 				_rag_why(get_tree().root, why)
 				_log("래그돌 만든 수 %d · 안 켠 몸 %s" % [rw.made, str(why)])
+	if args.has("report-click") and shot_time and not get_meta("report_clicked", false): # W48: F4 를 실제 입력 이벤트로 눌러 보고서 복사 (결과 화면에선 ui_blocking 경로) → 토스트가 뜬 뒤 찍음
+		set_meta("report_clicked", true)
+		set_meta("report_ms", now)
+		var f4 := InputEventKey.new()
+		f4.physical_keycode = KEY_F4
+		f4.pressed = true
+		Input.parse_input_event(f4)
+		var f4u := InputEventKey.new()
+		f4u.physical_keycode = KEY_F4
+		f4u.pressed = false
+		Input.parse_input_event(f4u)
+		_log("보고서 (F4): user://last_report.txt = %s" % FileAccess.get_file_as_string("user://last_report.txt").replace("\n", " / "))
+	if get_meta("report_clicked", false) and now - float(get_meta("report_ms", 0.0)) < 700.0:
+		shot_time = false
 	if args.has("shot") and not shot_done and shot_time and DisplayServer.get_name() != "headless":
 		shot_done = true
 		var shot_img := get_viewport().get_texture().get_image()

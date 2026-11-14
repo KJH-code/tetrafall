@@ -47,6 +47,9 @@ func _ready() -> void:
 		if ResourceLoader.exists(g6):
 			add_child(load(g6).new())
 	_boot("F3·연습·튜토리얼 추가")
+	if not args.has("replay"): # W48 성능·모션 보고서: 방 안에서 프레임 간격·히치 태그를 모아 결과 화면 버튼·F4 로 복사 (core/report.gd). 재연 (성능 측정) 에선 안 붙임
+		add_child(load("res://core/report.gd").new())
+		add_child(load("res://ui/report_ui.gd").new())
 	if ResourceLoader.exists("res://audio/audio.tscn"):
 		add_child(load("res://audio/audio.tscn").instantiate())
 	_boot("audio 추가")

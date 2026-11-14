@@ -24,6 +24,14 @@ static var hint := "" # 하이브리드 안내 한 줄 (없으면 "")
 static var scale_now := 1.0 # 지금 3D 배율 (적응형이면 조절 중인 값, 아니면 plan.scale)
 static var adapting := false # 적응형이 지금 돌고 있나 (판 중)
 static var adapt_info := "" # F3·설정에 보일 한 줄 ("자동 해상도 (천장 100%)"), 안 돌면 ""
+static var res_changes := 0 # W48 성능 보고서: 3D 해상도·MSAA 가 바뀐 횟수 (이번 판 몫은 reset_round_stats 부터)
+static var scale_min := 1.0 # W48: 이번 판에서 3D 배율이 내려간 가장 낮은 값 (적응형)
+
+
+# 판 시작 때 (core/report.gd): 해상도 변경 횟수·최저 배율을 지금 값부터 다시 셈
+static func reset_round_stats() -> void:
+	res_changes = 0
+	scale_min = scale_now
 
 var world = null # world.gd (1인칭 팔 vm 의 MSAA 를 같이)
 var forced := "" # --gfx
@@ -191,7 +199,7 @@ func _adapt_switch(on: bool) -> void:
 			ctl.restart()
 		WC.msaa_cut = false
 		_press_off()
-		RenderingServer.viewport_set_measure_render_time(vp, Hitch.on)
+		RenderingServer.viewport_set_measure_render_time(vp, Hitch.full)
 		adapt_info = ""
 	_apply_adapt()
 
@@ -222,6 +230,8 @@ func _apply_adapt() -> void:
 		Hitch.tag("몸 압박", "%d단계" % press)
 	if not ch:
 		return
+	res_changes += 1
+	scale_min = minf(scale_min, s)
 	Hitch.tag("해상도 변경", "%d%%%s" % [roundi(s * 100.0), " MSAA 낮춤" if cut else ""]) # 3D 버퍼를 다시 만드는 순간 — 히치 로거가 원인으로 적음
 	root.scaling_3d_scale = s
 	root.msaa_3d = WC.msaa_3d(bool(plan.get("low", false)), Opts.web(), WC.level)

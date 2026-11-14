@@ -6,7 +6,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import os from 'node:os';
-import { TARGETS, readme, gpuPrefLines, GPU_PREF_KEY, GPU_PREF_VALUE, download, fetchCloudflared, cloudflaredUrl, releaseNotes, parseArgs } from './package.mjs';
+import { TARGETS, readme, gpuPrefLines, GPU_PREF_KEY, GPU_PREF_VALUE, download, fetchCloudflared, cloudflaredUrl, releaseNotes, parseArgs, reportBat, reportPs1, reportSh, stampBuildInfo, withBuildInfo, findTag, BUILD_INFO_FILE } from './package.mjs';
+import { spawnSync } from 'node:child_process';
 
 const bat = (name) => TARGETS.win.scripts[name];
 
@@ -107,6 +108,7 @@ test('GPU 등록 exe 이름 = 묶음 윈도우 클라 = 내보내기 프리셋',
   for (const l of gpuPrefLines().filter((x) => x.includes('%~dp0'))) assert.ok(l.includes(`"%~dp0${exe}"`), `등록 줄 exe: ${l}`);
   assert.ok(gpuPrefLines()[0].includes(exe), '안내 줄도 같은 이름');
   for (const [name, s] of Object.entries(TARGETS.win.scripts)) {
+    if (/^(보고서-복사|report)/.test(name)) continue; // W48 보고서 복사 스크립트는 게임·서버를 켜지 않음
     const lines = s.split('\r\n');
     const run = lines.indexOf(':run');
     assert.ok(run > 0, `${name}: GPU 등록 줄이 있음`);
@@ -224,4 +226,131 @@ test('release.yml: 웹 템플릿 job 은 변수·수동 입력으로만 켜짐 (
   assert.match(y, /web_template:\n\s+description:[^\n]*\n\s+type: boolean\n\s+default: false/);
   assert.match(y, /needs: web-template\n\s+#[^\n]*\n\s+if: \$\{\{ !cancelled\(\)/);
   assert.match(y, /--cloudflared-cache/);
+});
+
+
+// ---- W48: 성능·모션 보고서 복사 (보고서-복사.bat / report.sh) + 빌드 버전 표기 ----
+const here = path.dirname(fileURLToPath(import.meta.url));
+const clientDir = path.join(here, '../../client');
+
+test('W48 배포 폴더에 보고서 스크립트 포함 (윈도우 .bat·.ps1, 리눅스 .sh)', () => {
+  for (const n of ['보고서-복사.bat', 'report.bat', 'report-copy.ps1']) assert.ok(TARGETS.win.scripts[n], `win ${n}`);
+  assert.ok(TARGETS.linux.scripts['report.sh'].startsWith('#!/bin/sh\n'), 'linux report.sh 는 sh');
+  assert.equal(TARGETS.win.scripts['보고서-복사.bat'], TARGETS.win.scripts['report.bat'], '한글 이름이 깨지는 풀기 도구용 ASCII 이름도 같은 내용');
+});
+
+test('W48 보고서 .bat: ASCII·CRLF·괄호 블록 없음·rem 에 특수 글자 없음, ps1 은 UTF-8 BOM + CRLF', () => {
+  const b = reportBat();
+  assert.ok(/^[\x00-\x7f]*$/.test(b) && b.endsWith('\r\n') && !/[^\r]\n/.test(b), 'ASCII·CRLF');
+  for (const l of b.split('\r\n')) {
+    if (l.startsWith('rem ')) assert.ok(!/[<>|&%]/.test(l), `rem 줄 특수 글자: ${l}`);
+    else assert.ok(!/^\s*\(|\)\s*$/.test(l), `괄호 블록: ${l}`);
+  }
+  assert.ok(b.includes('-File "%~dp0report-copy.ps1"') && b.split('\r\n').includes('pause'), 'ps1 호출 + 창 유지');
+  const p = reportPs1();
+  assert.ok(p.startsWith('\uFEFF') && !/[^\r]\n/.test(p), 'BOM + CRLF');
+  for (const need of ["'last_report.txt' 60", "'hitches.txt' 30", "'motion_qa.txt' 40", 'Set-Clipboard', 'Godot\\app_userdata\\Tetrafall', '%APPDATA%', '%USERPROFILE%', '$env:USERNAME', '$env:COMPUTERNAME'])
+    assert.ok(p.includes(need), `ps1 에 ${need}`);
+  assert.equal((p.match(/'/g) || []).length % 2, 0, '작은따옴표 짝');
+  assert.equal((p.match(/\{/g) || []).length, (p.match(/\}/g) || []).length, '중괄호 짝');
+});
+
+test('W48 배포 스크립트·README 에 이 PC 의 사용자 이름·홈 경로가 없음', () => {
+  const me = os.userInfo().username;
+  const all = [...Object.values(TARGETS.win.scripts), ...Object.values(TARGETS.linux.scripts), readme(TARGETS.win), readme(TARGETS.linux)].join('\n');
+  if (me.length >= 4) assert.ok(!all.includes(me), `사용자 이름 ${me}`);
+  assert.ok(!all.includes(os.homedir()), '홈 경로');
+  assert.ok(!/[A-Za-z]:\\Users\\(?!이름)[^\\\s]+/.test(all), '실제 C:\\Users\\이름 경로');
+});
+
+test('W48 README 맨 위: 성능 보고 복사 버튼·F4·보고서 스크립트 안내 (+ docs)', () => {
+  for (const [t, name] of [[TARGETS.win, '보고서-복사.bat'], [TARGETS.linux, 'report.sh']]) {
+    const top = readme(t).split(/\r?\n/).slice(0, 3).join('\n');
+    assert.ok(top.includes('성능 보고 복사') && top.includes('F4') && top.includes('채팅에 붙여넣기') && top.includes(name), `${t.rid} 맨 위: ${top}`);
+  }
+  const doc = fs.readFileSync(path.join(here, '../../../docs/godot-play.md'), 'utf8');
+  assert.ok(/데이터 보내는 법/.test(doc) && doc.includes('F4') && doc.includes('보고서-복사.bat') && doc.includes('last_report.txt'), 'docs/godot-play.md 에 데이터 보내는 법 절');
+});
+
+function fakeHome() {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'tf-report-'));
+  const home = path.join(base, 'home', 'kimjh');
+  const data = path.join(home, '.local/share/godot/app_userdata/Tetrafall');
+  fs.mkdirSync(data, { recursive: true });
+  const bin = path.join(base, 'bin');
+  fs.mkdirSync(bin);
+  for (const t of ['head', 'sed', 'id', 'hostname', 'mktemp', 'cat', 'rm', 'sh']) {
+    const w = spawnSync('sh', ['-c', `command -v ${t}`], { encoding: 'utf8' }).stdout.trim();
+    if (w) fs.symlinkSync(w, path.join(bin, t));
+  }
+  return { base, home, data, bin };
+}
+function runReport({ home, bin }, withClip) {
+  const script = path.join(home, 'report.sh');
+  fs.writeFileSync(script, reportSh(), { mode: 0o755 });
+  const clip = path.join(home, 'clip.txt');
+  if (withClip) fs.writeFileSync(path.join(bin, 'xclip'), `#!/bin/sh\ncat > "${clip}"\n`, { mode: 0o755 });
+  const r = spawnSync('sh', [script], { encoding: 'utf8', env: { PATH: bin, HOME: home } });
+  return { r, clip: fs.existsSync(clip) ? fs.readFileSync(clip, 'utf8') : null };
+}
+
+test('W48 report.sh: 세 파일을 합쳐 (히치는 앞 30줄만) 클립보드에, 사용자 이름·홈 경로는 지움', () => {
+  const h = fakeHome();
+  const me = spawnSync('id', ['-un'], { encoding: 'utf8' }).stdout.trim();
+  fs.writeFileSync(path.join(h.data, 'last_report.txt'), `[Tetrafall 성능 보고] v1\n저장 ${h.data}/x 그리고 /home/otheruser/y\n사용자 ${me} 가 했다\n`);
+  fs.writeFileSync(path.join(h.data, 'hitches.txt'), Array.from({ length: 50 }, (_, i) => `히치줄 ${i + 1}`).join('\n') + '\n');
+  fs.writeFileSync(path.join(h.data, 'motion_qa.txt'), '# 동작 QA\n#   1. ninja Hips 52\n');
+  fs.appendFileSync(path.join(h.data, 'last_report.txt'), '경로 C:\\Users\\hong\\AppData\\Roaming\\Godot 그리고 D:\\Users\\hong\\Docs\n');
+  const { r, clip } = runReport(h, true);
+  assert.equal(r.status, 0, r.stderr);
+  for (const out of [clip, r.stdout]) {
+    assert.ok(out.includes('[Tetrafall 성능 보고] v1') && out.includes('히치줄 30') && !out.includes('히치줄 31') && out.includes('ninja Hips 52'), `합친 글:\n${out}`);
+    assert.ok(out.includes('저장 ~/.local/share/godot/app_userdata/Tetrafall/x 그리고 ~/y'), `홈 경로 → ~:\n${out}`);
+    assert.ok(!out.includes(h.home) && !out.includes('/home/') && !out.includes('otheruser'), '경로·이름이 남음');
+    assert.ok(!out.includes('hong') && out.includes('경로 %APPDATA%\\Godot 그리고 %USERPROFILE%\\Docs'), `윈도우 경로 → %APPDATA%·%USERPROFILE%:\n${out}`);
+    if (me.length >= 3) assert.ok(!out.includes(`사용자 ${me} `) && out.includes('<사용자>'), `사용자 이름 ${me} 가 남음`);
+  }
+  assert.ok(r.stdout.includes('[복사됨]'), '복사 안내');
+  fs.rmSync(h.base, { recursive: true, force: true });
+});
+
+test('W48 report.sh: 저장 폴더가 없어도 안 죽고 (없음) 안내, 클립보드 도구가 없으면 직접 복사 안내', () => {
+  const h = fakeHome();
+  fs.rmSync(path.join(h.home, '.local'), { recursive: true, force: true });
+  const { r, clip } = runReport(h, false);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(clip, null);
+  assert.ok(r.stdout.includes('(없음)') && r.stdout.includes('클립보드 도구 없음'), r.stdout);
+  fs.rmSync(h.base, { recursive: true, force: true });
+});
+
+test('W48 빌드 버전: build_info.gd 의 TAG·COMMIT 을 내보내는 동안만 바꾸고 끝나면 (예외여도) 되돌림', () => {
+  const real = fs.readFileSync(path.join(clientDir, BUILD_INFO_FILE), 'utf8');
+  assert.ok(/^const TAG := "dev"$/m.test(real) && /^const COMMIT := ""$/m.test(real), '저장소 값은 dev·빈 커밋');
+  const st = stampBuildInfo(real, 'v0.1.20-godot-preview', 'ab12cd3');
+  assert.ok(st.includes('const TAG := "v0.1.20-godot-preview"') && st.includes('const COMMIT := "ab12cd3"'));
+  assert.equal(stampBuildInfo(real, '', ''), real, '태그·커밋 없으면 그대로 (dev)');
+  assert.throws(() => stampBuildInfo(real, 'v1"; OS.kill(0) #', ''), /쓸 수 없는/, '따옴표 든 태그는 거절 (GDScript 주입 막기)');
+  assert.throws(() => stampBuildInfo(real, 'v1', 'zzzz'), /커밋/);
+  const tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'tf-bi-')), 'build_info.gd');
+  fs.writeFileSync(tmp, real);
+  withBuildInfo(tmp, 'v9', 'abcd', () => assert.ok(fs.readFileSync(tmp, 'utf8').includes('const TAG := "v9"')));
+  assert.equal(fs.readFileSync(tmp, 'utf8'), real, '끝나면 되돌림');
+  assert.ok(!fs.existsSync(tmp + '.orig'));
+  assert.throws(() => withBuildInfo(tmp, 'v9', 'abcd', () => { throw new Error('내보내기 실패'); }), /내보내기 실패/);
+  assert.equal(fs.readFileSync(tmp, 'utf8'), real, '실패해도 되돌림');
+  fs.writeFileSync(tmp + '.orig', real); // 끊긴 지난 실행의 흔적
+  fs.writeFileSync(tmp, st);
+  withBuildInfo(tmp, '', '', () => {});
+  assert.equal(fs.readFileSync(tmp, 'utf8'), real, '끊긴 지난 실행의 .orig 로 먼저 되돌림');
+});
+
+test('W48 태그 찾기: 환경 변수 → 태그 푸시 → 커밋 [release 태그] → git 태그 → dev', () => {
+  const git = (msg, desc = '') => (a) => (a[0] === 'log' ? msg : desc);
+  assert.equal(findTag({ TETRAFALL_TAG: 'v1' }, git('')), 'v1');
+  assert.equal(findTag({ GITHUB_REF: 'refs/tags/v2-x' }, git('')), 'v2-x');
+  assert.equal(findTag({}, git('v0.1.19 안내 [release v0.1.19-godot-preview]\n본문')), 'v0.1.19-godot-preview');
+  assert.equal(findTag({}, git('그냥 커밋', 'v0.1.18\n')), 'v0.1.18');
+  assert.equal(findTag({}, git('그냥 커밋', '')), 'dev');
+  assert.equal(findTag({ TETRAFALL_TAG: 'a b; rm' }, git('')), 'dev', '이상한 글자는 무시');
 });

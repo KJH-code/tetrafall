@@ -14,6 +14,7 @@ const S := preload("res://ui/ui_style.gd")
 const Gfx := preload("res://world/gfx.gd")
 const Hitch := preload("res://core/hitch.gd")
 const Prof := preload("res://core/prof.gd")
+const R := preload("res://core/report.gd")
 const GC := preload("res://world/gfx_calc.gd")
 const CORNER_SIZE := 11 # 구석 글자 px
 const CORNER_ALPHA := 0.6
@@ -116,6 +117,7 @@ func _ready() -> void:
 		corner.add_child(l)
 	add_child(corner)
 	gpu = Gfx.adapter if Gfx.adapter != "" else RenderingServer.get_video_adapter_name()
+	R.full_src = self # W48: 보고서가 F3 가 켜졌을 때 이 hlog (스크립트·렌더 CPU 가 든 것) 를 씀
 	first = Probe.new(false)
 	tail = Probe.new(true)
 	tail.peer = first
@@ -134,8 +136,9 @@ func _apply() -> void:
 	PC.on = bool(View.settings.get("perf", false)) or Opts.args().has("--perf") # --perf: 확인용 (설정에 안 남김)
 	box.visible = PC.on
 	var hon: bool = PC.on or Opts.args().has("--hitch") # 히치 로거는 F3 패널을 켜면 같이 (패널 없이 기록만: --hitch)
-	if hon != Hitch.on:
-		Hitch.on = hon
+	if hon != Hitch.full:
+		Hitch.full = hon # W48: 태그 모으기 (Hitch.on) 는 보고서 (core/report.gd) 가 늘 켜 둠 — 이쪽은 프레임마다 구간·탐침까지 도는 F3 모드
+		Hitch.on = hon or R.enabled
 		Hitch.reset()
 		Prof.set_hitch(hon)
 		hlog = Hitch.Log.new()
@@ -201,7 +204,7 @@ func _write_round_summary() -> void:
 
 
 func _exit_tree() -> void:
-	if _last_phase == "playing" and Hitch.on: # 판 도중 창을 닫아도 요약은 남김
+	if _last_phase == "playing" and Hitch.full: # 판 도중 창을 닫아도 요약은 남김
 		_write_round_summary()
 	for p in [first, tail]:
 		if p != null and p.get_parent() == null:
@@ -212,7 +215,7 @@ func _process(_dt: float) -> void:
 	var now := Time.get_ticks_usec() / 1000.0
 	if now - corner_at >= C.PERF_DRAW_MS:
 		_corner(now)
-	if not Hitch.on:
+	if not Hitch.full:
 		return
 	var vp := get_viewport().get_viewport_rid()
 	var rcpu := RenderingServer.viewport_get_measured_render_time_cpu(vp) + RenderingServer.get_frame_setup_time_cpu()
@@ -315,6 +318,11 @@ func _corner(now: float) -> void:
 func _kind_suffix() -> String:
 	var k := GC.gpu_kind(Gfx.adapter, Gfx.vendor)
 	return " (%s)" % k if k != "" else ""
+
+
+# 최근 평균 [스크립트, 물리, 렌더 CPU, 렌더 GPU] ms (보고서용)
+func cpu_means() -> Array:
+	return PC.recent_mean(samples, Time.get_ticks_usec() / 1000.0, C.PERF_FPS_MS, 4)
 
 
 func line() -> String:

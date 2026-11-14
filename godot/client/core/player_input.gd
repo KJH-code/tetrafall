@@ -217,8 +217,10 @@ func _input_blocked(e: InputEvent) -> void:
 		var code := Keys.norm_code(Keys.event_code(e))
 		if not e.pressed:
 			up(code)
-		elif not typing and "perf" in by_code.get(code, []):
-			ui_action.emit("perf", true)
+		elif not typing and ("perf" in by_code.get(code, []) or "report" in by_code.get(code, [])): # W48: 보고서 복사 (F4) 도 메뉴·대기실에서
+			for id in ["perf", "report"]:
+				if id in by_code.get(code, []):
+					ui_action.emit(id, true)
 			if get_viewport() != null:
 				get_viewport().set_input_as_handled()
 
@@ -261,7 +263,7 @@ func _act(a: Dictionary) -> void:
 
 
 func press(id: String) -> void:
-	if id in ["help", "view", "practice", "perf", "tutSkip"]:
+	if id in ["help", "view", "practice", "perf", "report", "tutSkip"]:
 		ui_action.emit(id, true)
 		return
 	if id == "viewL" or id == "viewR":

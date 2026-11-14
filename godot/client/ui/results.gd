@@ -7,6 +7,7 @@ const S := preload("res://ui/ui_style.gd")
 const Portrait := preload("res://ui/portrait.gd")
 const U := preload("res://ui/ui_calc.gd")
 const Coords := preload("res://core/coords.gd")
+const R := preload("res://core/report.gd")
 
 const CAUSE_KO := {"crush": "압사", "fall": "낙사", "lava": "용암", "hp": "체력"}
 const TEAM_KO := {"red": "빨강", "blue": "파랑"}
@@ -73,6 +74,11 @@ func _ready() -> void:
 			if is_instance_valid(c):
 				table.draw_rect(Rect2(0, (c as Control).position.y - 3, table.size.x, (c as Control).size.y + 6), S.alpha(S.g(), 0.22)))
 	v.add_child(table)
+	# W48: 한 판 성능·모션 보고서를 클립보드로 (F4 도 같음) — 느림·어색함을 채팅에 붙여 넣기만 하면 되게
+	var rep := S.button("성능 보고 복사", func(): R.request_copy(), "ghost", 12)
+	rep.size_flags_horizontal = Control.SIZE_SHRINK_END
+	rep.tooltip_text = "이번 판의 FPS·끊김·모션 정보를 복사합니다 (F4)"
+	v.add_child(rep)
 
 
 # JS 작은 창: padding 11 16 12 22, 초상 96, 승리 글 30, 표 13, 이름 15, 얼굴 26 (표 글자는 refresh 가 small_was 로)

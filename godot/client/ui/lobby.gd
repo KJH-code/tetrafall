@@ -11,6 +11,7 @@ const Portrait := preload("res://ui/portrait.gd")
 const U := preload("res://ui/ui_calc.gd")
 const Coords := preload("res://core/coords.gd")
 const Prefs := preload("res://ui/ui_prefs.gd")
+const R := preload("res://core/report.gd")
 
 signal open_settings
 
@@ -299,6 +300,7 @@ func _ready() -> void:
 	keys_row.add_child(S.pad(S.button("설정", func(): open_settings.emit(), "ghost", 13), KEYS_BTN_PAD[0], KEYS_BTN_PAD[1]))
 	var keys_btn := S.pad(S.button("조작법", func(): keys_text.visible = not keys_text.visible, "ghost", 13), KEYS_BTN_PAD[0], KEYS_BTN_PAD[1])
 	keys_row.add_child(keys_btn)
+	keys_row.add_child(S.pad(S.button("성능 보고 복사", func(): R.request_copy(), "ghost", 13), KEYS_BTN_PAD[0], KEYS_BTN_PAD[1])) # W48 (F4 도 같음)
 	_add(keys_row, "keys")
 	keys_text = S.body_label("WASD 이동 · Space 점프 (공중에서 한 번 더) · Shift 대시 · F 스킬 · R 필살기 · 좌클릭 평타 · 우클릭 아이템 · Q/E 방향 · G 이모트 · V 시점 · H 조작법", 12, Color("cdd5ee"))
 	keys_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
