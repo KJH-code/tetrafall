@@ -76,6 +76,9 @@ public sealed partial class Player
     public XY? chargeDir; // 탱크 돌진 방향
     public string? lastGround; // 마지막으로 밟은 칸 종류 (GROUND_LOG 키)
     public double? ghostReadyAt; // 유령 투하 다음 시각 (죽을 때 정함)
+    // 고도 판 전용 (JS 에 없음, 스냅샷에도 안 실음): 지금 kbx·kby 가 맞은 넉백인지 (ApplyKnockback 이 켜고, 대시·대포 반동이 끄고,
+    // IntegratePlayer 가 kbx·kby 가 둘 다 0 이 되면 끔). 돌발 이벤트 빙판은 이게 켜졌을 때만 땅 감쇠를 줄임 — 자기 움직임은 그대로
+    public bool kbHit;
 }
 
 public sealed class PlayerInput

@@ -190,11 +190,25 @@ public static class Scenarios
         return list;
     }
 
-    // h<번호> = 그 판을 체력전 켜고 (trace.mjs 와 같음, 34판 해시엔 안 들어감), c<번호> = CS 판
-    public static Scenario Find(string key) =>
-        key.Length > 1 && key[0] == 'h' && int.TryParse(key[1..], out var h) ? ALL[h] with { name = ALL[h].name + " 체력전", hp = true }
-        : key.Length > 1 && key[0] == 'c' && int.TryParse(key[1..], out var c) ? CS[c]
-        : int.TryParse(key, out var i) ? ALL[i] : ALL.FirstOrDefault(s => s.name.Contains(key)) ?? throw new ArgumentException($"시나리오 없음: {key}");
+    // h<번호> = 그 판을 체력전 켜고 (trace.mjs 와 같음, 34판 해시엔 안 들어감), c<번호> = CS 판.
+    // 번호가 목록 밖이면 (c99·c-1·999) 이름 못 찾을 때와 같은 '시나리오 없음'
+    public static Scenario Find(string key)
+    {
+        if (key.Length > 1 && key[0] == 'h' && int.TryParse(key[1..], out var h))
+        {
+            var sc = At(ALL, h, key);
+            return sc with { name = sc.name + " 체력전", hp = true };
+        }
+        if (key.Length > 1 && key[0] == 'c' && int.TryParse(key[1..], out var c)) return At(CS, c, key);
+        if (int.TryParse(key, out var i)) return At(ALL, i, key);
+        return ALL.FirstOrDefault(s => s.name.Contains(key)) ?? throw new ArgumentException($"시나리오 없음: {key}");
+    }
+
+    // s<번호> = 각본 판 (번호가 목록 밖이면 Find 와 같은 '시나리오 없음')
+    public static ScriptedScenario FindScripted(string key) =>
+        key.Length > 1 && key[0] == 's' && int.TryParse(key[1..], out var n) ? At(SCRIPTED, n, key) : throw new ArgumentException($"시나리오 없음: {key}");
+
+    static T At<T>(List<T> list, int n, string key) => n >= 0 && n < list.Count ? list[n] : throw new ArgumentException($"시나리오 없음: {key}");
 
     const double CAP_MS = 120000;
 

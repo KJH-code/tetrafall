@@ -92,12 +92,14 @@ public sealed partial class Game
         }
         p.airJumpQueued = false;
         double kbDamp = p.grounded ? C.KB_DAMPING_GROUND : C.KB_DAMPING_AIR;
-        if (roundEvents && p.grounded) kbDamp *= GroundDampMult(); // 돌발 이벤트 빙판: 땅에서 덜 줄어 멀리 미끄러짐 (끄면 곱하지도 않음)
+        // 돌발 이벤트 빙판: 맞은 넉백만 땅에서 덜 줄어 멀리 미끄러짐 (끄면 곱하지도 않음). 대시·대포 반동은 kbHit 를 꺼서 평소 그대로
+        if (roundEvents && p.grounded && p.kbHit) kbDamp *= GroundDampMult();
         double damp = JsMath.Exp(-kbDamp * dt);
         p.kbx *= damp;
         p.kby *= damp;
         if (Math.Abs(p.kbx) < 0.01) p.kbx = 0;
         if (Math.Abs(p.kby) < 0.01) p.kby = 0;
+        if (p.kbx == 0 && p.kby == 0) p.kbHit = false; // 넉백이 다 줄면 끔 (부활 등 kbx = 0 으로 되돌린 뒤 남은 깃발도 여기서)
         if (p.grounded && p.dive == null)
         {
             p.glideCount = 0; // 땅·블록에 서면 천천히 낙하 횟수 다시
@@ -105,7 +107,9 @@ public sealed partial class Game
         }
         if (p.glideUntil != 0 && (p.grounded || time >= p.glideUntil)) p.glideUntil = 0;
         double grav = C.GRAVITY * (p.glideUntil != 0 ? C.BARD_GLIDE_GRAVITY : 1); // 바드 천천히 낙하: 중력 줄임
-        if (roundEvents) grav *= GravityMult(); // 돌발 이벤트 저중력 (바드 활공과 곱해짐, 끄면 곱하지도 않음)
+        // 돌발 이벤트 저중력 (바드 활공과 곱해짐, 끄면 곱하지도 않음). 탱크 R 내려찍기 준비 (slamAt) 중엔 평소 중력:
+        // 내려찍기는 땅에 닿을 때가 아니라 시각 (TANK_SLAM_WINDUP_MS) 에 터져서, 저중력이면 아직 공중이라 바닥의 적이 높이 판정에서 빠짐
+        if (roundEvents && !Truthy(p.slamAt)) grav *= GravityMult();
         p.vz -= grav * dt;
         if (p.glideUntil != 0 && p.vz < -C.BARD_GLIDE_FALL) p.vz = -C.BARD_GLIDE_FALL;
         if (p.dive != null && p.vz > -C.BARD_DIVE_SPEED) p.vz = -C.BARD_DIVE_SPEED; // 기타 꽂기: 빠르게 아래로

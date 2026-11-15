@@ -170,7 +170,7 @@ public class FuzzTests
                     g.RemovePlayer(humans[^1]);
                     humans.RemoveAt(humans.Count - 1);
                 }
-                // 돌발 이벤트가 도는 판 (마스터는 켜도 안 돎): 가끔 폭우·돌풍·보급을 강제로 시작 (제때 오는 것 말고도)
+                // 돌발 이벤트가 도는 판 (마스터는 켜도 안 돎): 가끔 폭우·돌풍·보급·저중력·빙판을 강제로 시작 (제때 오는 것 말고도)
                 if (g.RoundEventsRun() && g.phase == "playing" && R() < RULE_EVENT_FORCE)
                 {
                     step = "돌발 이벤트";
@@ -214,7 +214,7 @@ public class FuzzTests
         Parallel.For(0, RULE_SEEDS, i => bad[i] = RuleFuzz(i + 1, out forced[i]));
         var list = bad.Where(b => b != null).Order(StringComparer.Ordinal).ToList();
         Assert.True(list.Count == 0, $"규칙 퍼즈 문제 {list.Count}건:\n{string.Join("\n", list)}");
-        // 돌발 이벤트 경로 (폭우·돌풍·보급) 가 그물 안에 있음: 여러 판에서 강제로 시작됨
+        // 돌발 이벤트 경로 (폭우·돌풍·보급·저중력·빙판) 가 그물 안에 있음: 여러 판에서 강제로 시작됨
         Assert.True(forced.Count(f => f > 0) >= RULE_EVENT_SEEDS_MIN, $"돌발 이벤트를 강제로 시작한 판 {forced.Count(f => f > 0)}개 (이벤트 수 {string.Join(",", forced)})");
     }
 

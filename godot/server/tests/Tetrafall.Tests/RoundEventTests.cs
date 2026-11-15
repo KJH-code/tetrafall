@@ -74,12 +74,14 @@ public class RoundEventTests
         return top - z0;
     }
 
-    // 땅에 선 p 에게 넉백 kbx 를 직접 넣고, 0 이 될 때까지 (넉백 감쇠) 간 x 거리. 내내 땅 위
+    // 땅에 선 p 에게 넉백 kbx 를 직접 넣고, 0 이 될 때까지 (넉백 감쇠) 간 x 거리. 내내 땅 위.
+    // kbHit: 맞고 착지한 뒤 남은 넉백 (ApplyKnockback 은 몸을 띄워서 내내 땅 위가 안 됨)
     const double SLIDE_KB = 5;
     static double Slide(Player p, Action step)
     {
         double x0 = p.x;
         p.kbx = SLIDE_KB;
+        p.kbHit = true;
         for (int i = 0; i < 10 * C.TICK_RATE && p.kbx != 0; i++)
         {
             step();
@@ -501,6 +503,136 @@ public class RoundEventTests
         g.Tick(TICK);
         Assert.False(b.grounded);
         Assert.Equal(3 * Math.Exp(-C.KB_DAMPING_AIR * TICK / 1000), b.kbx, 9);
+    }
+
+    // Solo 판 둘 (같은 시드·같은 자리): 평소 / kind 이벤트를 막 켠 판. 같은 measure 를 돌려 (평소, 이벤트) 값
+    static (double normal, double ev) SoloPair(string kind, Func<Game, Player, double> measure)
+    {
+        var (g0, _, _, a0) = Solo();
+        var (g1, _, _, a1) = Solo();
+        g1.StartRoundEvent(kind);
+        double normal = measure(g0, a0);
+        Assert.True(g1.RoundEventActive()); // 재는 내내 이벤트 안
+        double ev = measure(g1, a1);
+        Assert.True(g1.RoundEventActive());
+        return (normal, ev);
+    }
+
+    // p 의 넉백 (kbx·kby) 이 다 줄 때까지 틱. 내내 땅 위 (자기 움직임 — 대시·대포 반동)
+    static void UntilStill(Game g, Player p)
+    {
+        for (int i = 0; i < 10 * C.TICK_RATE && (p.kbx != 0 || p.kby != 0); i++)
+        {
+            g.Tick(TICK);
+            Assert.True(p.grounded);
+        }
+        Assert.True(p.kbx == 0 && p.kby == 0);
+        Assert.False(p.kbHit);
+    }
+
+    [Fact]
+    public void 빙판_동안_땅_대시_거리는_평소와_같음()
+    {
+        // 빙판은 맞은 넉백에만 (설계 '맞으면 멀리 미끄러짐. 걷기는 그대로'). 대시는 같은 kbx 를 써도 자기 움직임이라 그대로
+        var (normal, ice) = SoloPair("ice", (g, a) =>
+        {
+            CharKit.Place(a, g.W / 2.0 - 3, g.D / 2.0, yaw: 0);
+            a.kbHit = true; // 앞서 맞은 깃발이 남아 있어도 대시가 끔
+            double x0 = a.x;
+            g.Dash(a);
+            Assert.False(a.kbHit);
+            UntilStill(g, a);
+            return a.x - x0;
+        });
+        Assert.True(normal > 0.5, $"대시 거리 {normal}");
+        Assert.Equal(normal, ice, 9);
+    }
+
+    [Fact]
+    public void 빙판_동안_대포_반동_거리는_평소와_같음()
+    {
+        foreach (bool big in new[] { false, true })
+        {
+            var (normal, ice) = SoloPair("ice", (g, a) =>
+            {
+                CharKit.Place(a, g.W / 2.0, g.D / 2.0, yaw: 0); // +x 로 쏨 → 반동은 -x
+                a.kbHit = true;
+                double x0 = a.x;
+                g.FireShell(a, big);
+                Assert.False(a.kbHit);
+                UntilStill(g, a);
+                return x0 - a.x;
+            });
+            Assert.True(normal > 0.2, $"반동 거리 (큰 탄 {big}) {normal}");
+            Assert.Equal(normal, ice, 9);
+        }
+    }
+
+    [Fact]
+    public void 빙판_동안_실제로_맞으면_더_멀리_미끄러짐()
+    {
+        // ApplyKnockback 은 맞은 사람을 띄움 → 빙판 배율은 착지 뒤 남은 미끄러짐에만. 밀치기 0% 실측 약 1.8배
+        var (normal, ice) = SoloPair("ice", (g, a) =>
+        {
+            var b = g.players[2];
+            CharKit.Place(a, 1.5, g.D / 2.0);
+            a.shieldUntil = 0;
+            double x0 = a.x;
+            Assert.True(g.ApplyKnockback(a, 1, 0, C.PUSH_KB_SPEED, C.PUSH_KB_UP, C.STUN_MS, 0, new Src(b.id, "push")));
+            Assert.True(a.kbHit);
+            Assert.False(a.grounded);
+            for (int i = 0; i < 10 * C.TICK_RATE && !(a.grounded && a.kbx == 0 && a.kby == 0); i++) g.Tick(TICK);
+            Assert.True(a.grounded && a.alive);
+            Assert.False(a.kbHit);
+            return a.x - x0;
+        });
+        Assert.True(normal > 0);
+        Assert.True(ice > 1.5 * normal, $"맞은 거리 빙판 {ice} / 평소 {normal}");
+    }
+
+    [Fact]
+    public void 저중력_동안_탱크_내려찍기는_평소_높이에서_터짐()
+    {
+        // 내려찍기는 땅에 닿을 때가 아니라 TANK_SLAM_WINDUP_MS 뒤에 터짐 → 준비 동안은 평소 중력이라 이벤트 없는 판과 같은 높이.
+        // 저중력이 걸리면 1칸 블록 위 탱크가 아직 공중 (약 2.9) 이라 바닥의 적이 높이 판정 (2.5) 에서 빠졌음
+        foreach (int block in new[] { 0, 1 })
+        {
+            var (g, _, _, a) = Solo();
+            var b = g.players[2];
+            g.StartRoundEvent("lowgrav");
+            Assert.Equal(C.EVENT_LOWGRAV_G, g.GravityMult());
+            a.@char = "tank";
+            int cx = g.W / 2, cy = g.D / 2;
+            if (block == 1) g.grid[g.Idx(cx, cy, 0)] = Pieces.CELL.TERRAIN;
+            CharKit.Place(a, cx + 0.5, cy + 0.5, z: block);
+            CharKit.Place(b, cx + 0.5 + 1.6, cy + 0.5);
+            b.shieldUntil = 0; // 무적이면 hit ok:false
+            g.Tick(TICK);
+            g.DrainEvents();
+            double dmg0 = b.damage;
+            g.TankSlamStart(a);
+            JsonElement? slam = null;
+            var hits = new List<JsonElement>();
+            int ticks = 0;
+            while (slam == null && ticks < 2 * C.TICK_RATE)
+            {
+                g.Tick(TICK);
+                ticks++;
+                foreach (var e in g.DrainEvents().Select(J))
+                {
+                    if (e.GetProperty("type").GetString() == "slam") slam = e;
+                    if (e.GetProperty("type").GetString() == "hit" && e.GetProperty("kind").GetString() == "slam") hits.Add(e);
+                }
+            }
+            Assert.NotNull(slam);
+            Assert.True(ticks <= C.TANK_SLAM_WINDUP_MS / TICK + 1, $"{ticks}틱"); // 약 21틱 (준비 시간)
+            Assert.True(g.RoundEventActive() && g.evKind == "lowgrav");
+            Assert.Equal(block, slam.Value.GetProperty("z").GetDouble(), 9);
+            var hit = Assert.Single(hits);
+            Assert.Equal(b.id, hit.GetProperty("target").GetInt32());
+            Assert.True(hit.GetProperty("ok").GetBoolean());
+            Assert.True(b.damage > dmg0);
+        }
     }
 
     [Fact]

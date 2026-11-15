@@ -410,7 +410,7 @@ func _on_event(e: Dictionary) -> void:
 			toast(U.master_stall_text(e, me, _name(Store.player(e.get("who")))), "me" if mine else "good")
 		"lava":
 			toast("용암! 위로", "me")
-		"roundEvent": # 돌발 이벤트 (방 옵션): 블록 폭우·돌풍·보급 시작
+		"roundEvent": # 돌발 이벤트 (방 옵션): 블록 폭우·돌풍·보급·저중력·빙판 시작
 			var ev_text := RoundEventText.text(e, _view_yaw())
 			if ev_text != "":
 				toast(ev_text)

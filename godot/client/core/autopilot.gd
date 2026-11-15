@@ -10,7 +10,7 @@
 # 연기 시험 (B4): --team (팀전) · --sky (하늘 계단) · --char <id> (방장 캐릭터도) · --skills <초> (그 간격으로 F·R) ·
 #   --color <팔레트 번호> (host·guest, 받아짐/거절 로그) · 방장이 나가 넘겨받으면 로그 + 판 시작도 맡음 ·
 #   --shot-round <N> (N판째 시작 뒤 --shot-after 초에 찍음) · --char2 <id> --char2-at <초> (연습: 판 중 캐릭터 바꾸기) · --tut-skip <초> (튜토리얼: 한 단계에 이만큼 머물면 넘기기 → 끝까지)
-# 돌발 이벤트: --events [on] (방장이 대기실 옵션 '돌발 이벤트' 를 켬 — 블록 폭우·돌풍·보급)
+# 돌발 이벤트: --events [on] (방장이 대기실 옵션 '돌발 이벤트' 를 켬 — 블록 폭우·돌풍·보급·저중력·빙판)
 # 죽은 방 탈출 (tools/e2e_net.sh): 방 밖으로 나가지면 '방 밖: 이유' 로그, --expect-left 면 이유 있는 left_room 을 받아야 성공. 접속 상태 글이 바뀌면 '접속: …' 로그
 # 화면 범인 찾기: --hide ui|world|audio (그 묶음을 숨기고 찍음) · --dump (찍을 때 보이는 Control·CanvasItem·3D 노드를 화면 사각형과 함께 출력)
 extends Node

@@ -79,6 +79,7 @@ public sealed partial class Game
         if (hl == 0 || double.IsNaN(hl)) hl = 1;
         p.kbx -= dir.x / hl * recoil;
         p.kby -= dir.y / hl * recoil;
+        p.kbHit = false; // 자기 움직임 (반동) — 빙판 배율 안 받음
         Emit(o => o.P("type", "shellFire").P("who", p.id).P("id", sh.id).P("big", big).P("x", sh.x).P("y", sh.y).P("z", sh.z)
             .Key("dir").Obj().P("x", dir.x).P("y", dir.y).P("z", dir.z).EndObj().P("speed", speed).P("recoil", recoil));
         return sh;

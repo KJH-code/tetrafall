@@ -61,6 +61,7 @@ public sealed partial class Game
         }
         p.kbx = dx * C.DASH_SPEED;
         p.kby = dy * C.DASH_SPEED;
+        p.kbHit = false; // 자기 움직임 — 빙판 배율 안 받음
         p.dashReadyAt = time + C.DASH_COOLDOWN_MS;
         if (!p.grounded) p.airDashes--;
     }
@@ -639,6 +640,7 @@ public sealed partial class Game
         if (len == 0 || double.IsNaN(len)) len = 1; // JS: || 1
         t.kbx = dx / len * speed * mult;
         t.kby = dy / len * speed * mult;
+        t.kbHit = true; // 맞은 넉백 — 빙판이면 착지 뒤 남은 미끄러짐이 길어짐
         t.vz = up;
         t.grounded = false;
         t.wallBounced = false; // 벽 튕김은 맞을 때마다 한 번

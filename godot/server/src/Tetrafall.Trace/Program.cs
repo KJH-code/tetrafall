@@ -49,13 +49,13 @@ if (a[0] == "trace")
         return 0;
     }
     bool scripted = key.Length > 1 && key[0] == 's' && key[1..].All(char.IsDigit);
-    string name = scripted ? Scenarios.SCRIPTED[int.Parse(key[1..])].name : Scenarios.Find(key).name;
+    string name = scripted ? Scenarios.FindScripted(key).name : Scenarios.Find(key).name;
     string outPath = a.Count > 2 ? a[2] : "cs.jsonl";
     using var w = new StreamWriter(outPath, false, new UTF8Encoding(false)) { NewLine = "\n" };
     Action<int, List<string>, string> line = (t, logs, snap) => w.WriteLine(Scenarios.TraceLine(t, logs, snap));
     try
     {
-        var (ticks, phase) = scripted ? Scenarios.RunScripted(Scenarios.SCRIPTED[int.Parse(key[1..])], line, maxTicks) : Scenarios.Run(Scenarios.Find(key), line, maxTicks);
+        var (ticks, phase) = scripted ? Scenarios.RunScripted(Scenarios.FindScripted(key), line, maxTicks) : Scenarios.Run(Scenarios.Find(key), line, maxTicks);
         Console.WriteLine($"{name}: {ticks}틱 {phase} → {outPath}");
     }
     catch (NotImplementedException e)
@@ -110,7 +110,7 @@ if (a[0] == "cshash")
     // --write: [[이름, 해시, 틱, phase], …] 한 판 한 줄 (BOM 없는 UTF-8, \n) → tests/Tetrafall.Tests/fixtures/cs-hash.json
     bool verbose = a.Contains("--verbose");
     int wi = a.IndexOf("--write");
-    string? writePath = wi >= 0 && wi + 1 < a.Count ? a[wi + 1] : null;
+    string? writePath = wi >= 0 && wi + 1 < a.Count && !a[wi + 1].StartsWith("--") ? a[wi + 1] : null; // --write --verbose 를 경로로 안 받음
     if (wi >= 0 && writePath == null)
     {
         Console.Error.WriteLine("cshash --write <경로>");

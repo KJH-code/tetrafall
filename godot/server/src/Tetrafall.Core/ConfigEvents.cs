@@ -17,6 +17,7 @@ public static partial class C
     // 30Hz 틱 적분 2.34), 맞고 뜬 사람도 오래 떠서 멀리 날아감 (공중 넉백 감쇠는 그대로)
     public const double EVENT_LOWGRAV_G = 0.45;
     public const double EVENT_ICE_MS = 6000; // 빙판: 지속 시간
-    // 빙판: 땅에 선 사람의 넉백 감쇠 배율 (KB_DAMPING_GROUND 6 → 1.8). 땅에서 맞으면 약 3.3배 (1/0.3) 미끄러짐. 걷기는 그대로
+    // 빙판: 땅에 선 사람의 맞은 넉백 감쇠 배율 (KB_DAMPING_GROUND 6 → 1.8). 맞으면 띄워지므로 착지 뒤 남은 미끄러짐에만 걸림 —
+    // 땅 구간은 약 3.3배 (1/0.3), 실제로 맞은 거리는 약 1.2~2배 (밀치기 0% 약 1.8). 걷기·대시·대포 반동은 그대로 (Player.kbHit)
     public const double EVENT_ICE_DAMP = 0.3;
 }

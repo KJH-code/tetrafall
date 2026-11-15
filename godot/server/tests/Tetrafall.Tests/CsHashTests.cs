@@ -86,4 +86,31 @@ public class CsHashTests
     {
         Assert.Equal(Scenarios.CS.Select(s => s.name).ToList(), Fixture().Select(r => r.name).ToList());
     }
+
+    [Fact]
+    public void 번호가_목록_밖이면_시나리오_없음()
+    {
+        // trace c99·c-1·h999·999·s99 가 ArgumentOutOfRangeException 으로 죽지 않고 이름 못 찾을 때와 같은 '시나리오 없음'
+        foreach (string key in new[] { "c99", "c-1", $"c{Scenarios.CS.Count}", "h999", "h-1", "999", "-1", $"{Scenarios.ALL.Count}" })
+            Assert.Contains("시나리오 없음", Assert.Throws<ArgumentException>(() => Scenarios.Find(key)).Message);
+        foreach (string key in new[] { "s99", "s-1", $"s{Scenarios.SCRIPTED.Count}", "s99999999999" })
+            Assert.Contains("시나리오 없음", Assert.Throws<ArgumentException>(() => Scenarios.FindScripted(key)).Message);
+        // 목록 안 번호는 그대로
+        Assert.Same(Scenarios.CS[0], Scenarios.Find("c0"));
+        Assert.Same(Scenarios.CS[^1], Scenarios.Find($"c{Scenarios.CS.Count - 1}"));
+        Assert.Same(Scenarios.ALL[^1], Scenarios.Find($"{Scenarios.ALL.Count - 1}"));
+        var h0 = Scenarios.Find("h0");
+        Assert.True(h0.hp && h0.name == Scenarios.ALL[0].name + " 체력전");
+        Assert.Same(Scenarios.SCRIPTED[^1], Scenarios.FindScripted($"s{Scenarios.SCRIPTED.Count - 1}"));
+    }
+
+    [Fact]
+    public void Cshash_write_뒤가_옵션이면_사용법_오류()
+    {
+        // cshash --write --verbose: '--verbose' 를 경로로 받아 지금 폴더에 파일을 만들던 것 → 판을 돌리기 전에 사용법 오류 (종료 코드 1)
+        var main = typeof(Scenarios).Assembly.EntryPoint!;
+        foreach (var args in new[] { new[] { "cshash", "--write", "--verbose" }, new[] { "cshash", "--write" } })
+            Assert.Equal(1, main.Invoke(null, new object[] { args }));
+        Assert.False(File.Exists("--verbose"));
+    }
 }

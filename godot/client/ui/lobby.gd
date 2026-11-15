@@ -159,7 +159,7 @@ func _ready() -> void:
 	map_sel = _select("맵", ["random"] + Array(C.MAP_IDS), func(id): return "무작위" if id == "random" else C.MAPS[id].name, func(id): Store.send_room({"type": "setMap", "map": id}))
 	sky_box = _check("하늘 계단", func(on): Store.send_room({"type": "skyStairs", "on": on}))
 	hp_box = _check("체력전", func(on): Store.send_room({"type": "hpMode", "on": on}))
-	events_box = _check("돌발 이벤트", func(on): # 고도 판 전용 (블록 폭우·돌풍·보급). 고른 값은 기억해 다음에 만드는 방에도 (menu.gd _create — 기억 없으면 켬)
+	events_box = _check("돌발 이벤트", func(on): # 고도 판 전용 (블록 폭우·돌풍·보급·저중력·빙판). 고른 값은 기억해 다음에 만드는 방에도 (menu.gd _create — 기억 없으면 켬)
 		Prefs.set_value("roundEvents", on)
 		Store.send_room({"type": "roundEvents", "on": on}))
 	col.add_child(settings_box)

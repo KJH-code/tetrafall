@@ -42,7 +42,8 @@ public sealed partial class Game
     // 스냅샷에 지난 판 이벤트가 남던 것을 막음 (새 판인지는 틱 안 UpdateRoundEvents 만 알아챔)
     public bool RoundEventActive() => roundEvents && phase == "playing" && evRoundStart == roundStartTime && evKind != null && time < evEndsAt;
 
-    // 저중력: 플레이어 중력 배율 (IntegratePlayer). 빙판: 땅 넉백 감쇠 배율 (IntegratePlayer, 땅에 섰을 때만). 아니면 1.
+    // 저중력: 플레이어 중력 배율 (IntegratePlayer, 탱크 내려찍기 준비 중엔 안 곱함). 빙판: 땅 넉백 감쇠 배율 (IntegratePlayer,
+    // 땅에 섰고 맞은 넉백 kbHit 일 때만 — 대시·대포 반동은 그대로). 아니면 1.
     // evKind 만 보면 안 됨 — UpdateRoundEvents 는 판이 끝난 틱에 바로 돌아가 evKind 가 결과·대기실·다음 판 첫 틱까지 남음.
     // RoundEventActive 가 판 단계·이번 판 것인지·남은 시간까지 봄
     public double GravityMult() => evKind == "lowgrav" && RoundEventActive() ? C.EVENT_LOWGRAV_G : 1;
