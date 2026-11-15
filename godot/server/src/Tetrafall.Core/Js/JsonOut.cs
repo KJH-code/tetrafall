@@ -6,9 +6,20 @@ namespace Tetrafall.Core.Js;
 // JS 의 undefined 필드는 안 씀 (부르지 않으면 됨), Infinity·NaN 은 null (JSON.stringify 와 같음)
 public sealed class JsonOut
 {
-    readonly StringBuilder sb = new(4096);
+    readonly StringBuilder sb;
     readonly Stack<bool> first = new();
     bool afterKey;
+
+    // capacity: 처음 글자 칸. 이벤트·방 정보처럼 짧은 것이 대부분이라 작게 (예전 4096 은 이벤트 하나에 8KB 씩 썼음), 길면 StringBuilder 가 알아서 늘림
+    public JsonOut(int capacity = 256) => sb = new StringBuilder(capacity);
+
+    // 재사용: 들고 있는 StringBuilder 를 비우고 거기에 씀 (Game.Snapshot — 매 틱 새 덩이를 안 만들게).
+    // 결과는 ToString() 으로 새 string 이 되니 buf 를 다음에 또 써도 앞 결과는 그대로. 같은 buf 를 두 JsonOut 이 동시에 쓰면 안 됨
+    public JsonOut(StringBuilder buf)
+    {
+        sb = buf;
+        sb.Clear();
+    }
 
     public override string ToString() => sb.ToString();
 
@@ -70,7 +81,8 @@ public sealed class JsonOut
     public JsonOut Num(double v)
     {
         Sep();
-        sb.Append(double.IsFinite(v) ? JsNumber.ToJs(v) : "null");
+        if (double.IsFinite(v)) JsNumber.Write(sb, v); // 숫자 글자를 sb 에 바로 (따로 string 을 안 만듦)
+        else sb.Append("null");
         return this;
     }
 

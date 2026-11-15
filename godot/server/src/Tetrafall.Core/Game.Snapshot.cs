@@ -6,10 +6,16 @@ namespace Tetrafall.Core;
 // JS 에서 undefined 인 키는 안 씀, Infinity 는 null (JsonOut)
 public sealed partial class Game
 {
+    // 스냅샷 글자 칸: Game 마다 하나를 매 스냅샷에 비우고 다시 씀 (새 StringBuilder 면 8명 판 한 번에 덩이 약 32KB 를 새로 씀).
+    // 재사용이 안전한 까닭: 한 Game 의 Snapshot 은 한 번에 한 스레드에서만 돎 (Rooms.Broadcast 의 Parallel.For 는 방마다 다른 Game,
+    // 입장·재접속 스냅샷은 Program.cs inbox 로 같은 루프 스레드에서 Broadcast 와 따로, trace·sim·테스트는 한 스레드).
+    // 돌려주는 글자는 ToString() 으로 새로 만든 string 이라 다음 스냅샷이 칸을 덮어도 그대로
+    readonly System.Text.StringBuilder snapBuf = new(4096);
+
     // extra: 스냅샷 끝에 더 붙일 키 (trace 의 events 등)
     public string Snapshot(bool includeGrid = false, Action<JsonOut>? extra = null)
     {
-        var o = new JsonOut();
+        var o = new JsonOut(snapBuf);
         o.Obj();
         o.P("type", "state").P("time", time).P("phase", phase);
         o.P("hostId", hostId);

@@ -48,9 +48,11 @@ public static class LoadBench
         int gc0 = GC.CollectionCount(0), gc1 = GC.CollectionCount(1), gc2 = GC.CollectionCount(2);
         var times = new double[TICKS];
         int rounds = 0;
+        long alloc0 = 0; // 데우기 틱이 끝난 순간의 누적 할당 (모든 스레드)
         var sw = new Stopwatch();
         for (int t = 0; t < TICKS; t++)
         {
+            if (t == WARM) alloc0 = GC.GetTotalAllocatedBytes(true);
             sw.Restart();
             int g0 = GC.CollectionCount(0);
             rooms.Tick(TICK);
@@ -85,6 +87,7 @@ public static class LoadBench
                 rooms.Message(conn, Msg(new { type = "start" }));
             }
         }
+        double allocKbPerTick = (GC.GetTotalAllocatedBytes(true) - alloc0) / 1024.0 / (TICKS - WARM); // 요약 만들기 전에 잼
         var steady = times.Skip(WARM).OrderBy(x => x).ToArray();
         double R3(double x) => Math.Round(x * 1000) / 1000;
         Console.WriteLine(JsonSerializer.Serialize(new
@@ -105,6 +108,8 @@ public static class LoadBench
             budgetMs = R3(TICK),
             sentMB = R3(sinks.Sum(s => s.bytes) / 1e6),
         }));
+        // 서버 틱 루프 (Tick + Broadcast, 가짜 소켓) 가 데우기 뒤 틱마다 쓴 힙 (방 4개 합, 병렬 스레드 포함). 스냅샷 할당 줄이기의 앞·뒤 비교용
+        Console.WriteLine($"할당 {allocKbPerTick.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)} KB/틱 (방 합)");
         if (prof)
         {
             Console.WriteLine($"GC 횟수 gen0 {GC.CollectionCount(0) - gc0} · gen1 {GC.CollectionCount(1) - gc1} · gen2 {GC.CollectionCount(2) - gc2}");

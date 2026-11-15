@@ -22,6 +22,13 @@ public sealed class WsSocket : ISocket
     // 열쇠는 참조 (내용 아님) 라 string 이 버려지면 같이 사라짐. 두 보내기 루프가 동시에 처음 보면 팩토리가 두 번 돌 수 있는데 결과가 같아 괜찮음
     static readonly ConditionalWeakTable<string, byte[]> gzipCache = new();
 
+    // 큰 메시지의 UTF-8 바이트도 글자 객체마다 하나 (예전엔 접속마다 GetBytes: 8명 방이면 같은 스냅샷 약 14KB 를 8번 바꿈).
+    // 같은 byte[] 를 여러 접속이 같이 보내는데, 서버 쪽 SendAsync 는 읽기만 함 (가림 마스크는 클라→서버만, permessage-deflate 도 읽기만)
+    static readonly ConditionalWeakTable<string, byte[]> utf8Cache = new();
+
+    // text 의 UTF-8 바이트 (같은 string 객체면 같은 byte[] — 받은 쪽은 고치면 안 됨). 큰 메시지만 여기로 (작은 건 금방 버려져 캐시할 값어치 없음)
+    public static byte[] Utf8(string text) => utf8Cache.GetValue(text, static t => Encoding.UTF8.GetBytes(t));
+
     // packed: 주소에 ?pack=gzip 을 붙인 접속 (고도 PC 클라, core/net.gd). 고도 WebSocketPeer 는 permessage-deflate 를 협상하지 않아
     // 8명 판 스냅샷 13.9KB 가 그대로 30Hz (약 418KB/s) 로 나감 → 큰 메시지만 gzip 바이너리로 (약 3KB, 120KB/s 아래).
     // 브라우저 (웹 클라·JS 화면) 는 쿼리 없이 붙어 예전처럼 Text + permessage-deflate
@@ -81,16 +88,18 @@ public sealed class WsSocket : ISocket
             await foreach (var text in queue.Reader.ReadAllAsync())
             {
                 if (ws.State != WebSocketState.Open) break;
-                var bytes = Encoding.UTF8.GetBytes(text);
-                if (packed && bytes.Length >= C.NET_DEFLATE_MIN_BYTES)
+                // 큰 메시지 = UTF-8 바이트 수가 NET_DEFLATE_MIN_BYTES 이상 (예전과 같은 가름). 바이트 수는 글자 수 이상이라 긴 글자는 세지 않고 큼
+                bool big = text.Length >= C.NET_DEFLATE_MIN_BYTES || Encoding.UTF8.GetByteCount(text) >= C.NET_DEFLATE_MIN_BYTES;
+                if (packed && big)
                 {
                     // 이미 눌렀으니 permessage-deflate 로 또 누르지 않음. 받는 쪽은 바이너리 = gzip, 글자 = 예전 그대로로 가름
-                    var gz = gzipCache.GetValue(text, _ => Gzip(bytes));
+                    var gz = gzipCache.GetValue(text, static t => Gzip(Utf8(t)));
                     await ws.SendAsync(gz, WebSocketMessageType.Binary, WebSocketMessageFlags.EndOfMessage | WebSocketMessageFlags.DisableCompression, CancellationToken.None);
                 }
                 else
                 {
-                    var flags = WebSocketMessageFlags.EndOfMessage | (bytes.Length < C.NET_DEFLATE_MIN_BYTES ? WebSocketMessageFlags.DisableCompression : 0);
+                    var bytes = big ? Utf8(text) : Encoding.UTF8.GetBytes(text);
+                    var flags = WebSocketMessageFlags.EndOfMessage | (big ? 0 : WebSocketMessageFlags.DisableCompression);
                     await ws.SendAsync(bytes, WebSocketMessageType.Text, flags, CancellationToken.None);
                 }
                 Interlocked.Decrement(ref queued); // 다 보낸 뒤에 뺌: 보내는 중에 멈춘 것도 밀린 것으로 셈
