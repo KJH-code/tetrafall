@@ -234,6 +234,147 @@ func _batch_same(b, msg: String) -> void:
 	check(worst < 1e-3, "%s: 가장 먼 차 %f" % [msg, worst])
 
 
+# 묶은 몸 뼈 묶음 (사이클 5 u3, body.gd bone_groups): 같은 부모 사슬 (조각 위 → 부모 조각 바로 아래) 끼리 묶어 사슬은 한 번만 곱함.
+# 8명 모두 묶음 뼈를 합치면 묶은 뼈 전체 (빠짐·겹침 없음), 묶음 사슬 = 그 묶음 뼈마다의 부모 사슬 = 묶음 link 에서 bone_links 를 위로 따라간 길, 묶음 수 50 이하
+func test_bodies_bone_groups() -> void:
+	var seen := 0
+	for ch in C.FIGURE_CHARS:
+		var b = Chars.make_body(ch, Color(0.3, 0.7, 0.4))
+		check(b.batch != null, "%s 묶은 몸" % ch)
+		if b.batch == null:
+			b.free()
+			continue
+		seen += 1
+		var n: int = b.batch.pieces.size()
+		var got := {}
+		var dup := 0
+		var bad_chain := 0
+		for g in b.bone_groups:
+			check(g.bones.size() > 0 and g.bones.size() == g.pieces.size(), "%s 묶음 뼈 %d · 조각 %d" % [ch, g.bones.size(), g.pieces.size()])
+			for k in mini(g.bones.size(), g.pieces.size()):
+				var bi: int = g.bones[k]
+				if got.has(bi):
+					dup += 1
+				got[bi] = true
+				check(g.pieces[k] == b.batch.pieces[bi], "%s 뼈 %d 조각이 묶음 조각과 다름" % [ch, bi])
+				var want := _parent_chain(b, bi)
+				var same: bool = want.size() == g.chain.size()
+				for j in mini(want.size(), g.chain.size()):
+					same = same and want[j] == g.chain[j]
+				if not same:
+					bad_chain += 1
+			# 노드마다 한 번 곱하는 길 (bone_links): 묶음 link 에서 위로 따라가면 묶음 사슬 그대로
+			var walk := []
+			var li: int = g.link
+			while li >= 0 and walk.size() <= g.chain.size():
+				walk.append(b.bone_links[li])
+				li = b.bone_link_up[li]
+			var same_walk: bool = walk.size() == g.chain.size()
+			for j in mini(walk.size(), g.chain.size()):
+				same_walk = same_walk and walk[j] == g.chain[j]
+			if not same_walk:
+				bad_chain += 1
+		check(dup == 0 and got.size() == n, "%s 묶음 뼈 %d (겹침 %d) / 묶은 뼈 %d" % [ch, got.size(), dup, n])
+		check(bad_chain == 0, "%s 묶음 사슬이 뼈의 부모 사슬과 다름 %d" % [ch, bad_chain])
+		check(b.bone_groups.size() <= 50 and b.bone_groups.size() < n, "%s 묶음 %d (뼈 %d)" % [ch, b.bone_groups.size(), n])
+		b.free()
+	check(seen == C.FIGURE_CHARS.size(), "묶은 몸 %d / %d" % [seen, C.FIGURE_CHARS.size()])
+
+
+# 묶음으로 맞춘 뼈 자세 = 예전 식 (조각부터 부모 사슬을 하나씩 곱하고 자리·돌림·크기 셋으로 나눔) 과 1e-4 안 (돌림은 쿼터니언 내적 |q·q'| ≥ 1−1e-6).
+# 8명마다 걷기 + 도발 (test_bodies_batch_pose 와 같은 길) / 팔꿈치·목 돌림 / 사슬 중간 노드 하나 + 다른 묶음 조각 하나 숨김
+func test_bodies_bone_groups_same_pose() -> void:
+	for ch in C.FIGURE_CHARS:
+		var b = Chars.make_body(ch, Color(0.3, 0.7, 0.4))
+		if b.batch == null:
+			check(false, "%s 묶은 몸" % ch)
+			b.free()
+			continue
+		var p := {"id": -1, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0}
+		for i in 50:
+			p.x = 0.05 * i # 걷기
+			b.pose(p, i * 16.0)
+		p.emote = C.EMOTE_CHAR
+		for i in 30:
+			b.pose(p, 800.0 + i * 16.0)
+		b._sync_bones()
+		_bones_same_old(b, "%s 걷기·도발" % ch)
+		b.elbows[0].rotation = Vector3(0.4, -1.2, 0.3)
+		b.neck.rotation.z = 0.8
+		b._sync_bones()
+		_bones_same_old(b, "%s 팔꿈치·목 돌림" % ch)
+		# 가장 긴 사슬의 가운데 노드 숨김 + 그 노드 밑이 아닌 다른 묶음의 보이는 조각 하나 숨김
+		var long_g = null
+		for g in b.bone_groups:
+			if long_g == null or g.chain.size() > long_g.chain.size():
+				long_g = g
+		check(long_g != null and long_g.chain.size() >= 2, "%s 긴 사슬" % ch)
+		if long_g == null or long_g.chain.is_empty():
+			b.free()
+			continue
+		var mid: Node3D = long_g.chain[floori(long_g.chain.size() / 2.0)]
+		var hid_bone := -1
+		for pass_ in 2: # 먼저 숨긴 노드 밑이 아닌 묶음에서, 없으면 아무 다른 묶음에서 (숨긴 조각 뼈 크기는 사슬과 상관없이 bone_hide)
+			for g in b.bone_groups:
+				if hid_bone >= 0:
+					break
+				if is_same(g, long_g) or (pass_ == 0 and g.chain.has(mid)):
+					continue
+				for k in g.pieces.size():
+					if g.pieces[k].visible and b.batch.shown(g.pieces[k]):
+						hid_bone = g.bones[k]
+						g.pieces[k].visible = false
+						break
+		check(hid_bone >= 0, "%s 숨길 조각" % ch)
+		mid.visible = false
+		b._sync_bones()
+		_bones_same_old(b, "%s 사슬 노드·조각 숨김" % ch)
+		var sk: Skeleton3D = b.bone_skel
+		# 숨김 길을 실제로 탔는지: 숨긴 조각 뼈 크기 = bone_hide, 숨긴 노드 밑 뼈는 크기가 거의 0
+		if hid_bone >= 0:
+			var hs: Vector3 = sk.get_bone_pose_scale(hid_bone) - Vector3.ONE * b.bone_hide
+			check(maxf(absf(hs.x), maxf(absf(hs.y), absf(hs.z))) < b.bone_hide * 0.01, "%s 숨긴 조각 뼈 크기 %s" % [ch, sk.get_bone_pose_scale(hid_bone)])
+		check(absf(sk.get_bone_pose_scale(long_g.bones[0]).x) < 1e-3, "%s 숨긴 노드 밑 뼈 크기 %s" % [ch, sk.get_bone_pose_scale(long_g.bones[0])])
+		b.free()
+
+
+# 뼈 bi 의 부모 사슬: 조각 바로 위부터 부모 조각 (없으면 묶음 root) 바로 아래까지 (곱하는 순서)
+func _parent_chain(b, bi: int) -> Array:
+	var par: int = b.bone_skel.get_bone_parent(bi)
+	var stop: Node = b.batch.pieces[par] if par >= 0 else b.batch.root
+	var out := []
+	var n: Node = b.batch.pieces[bi].get_parent()
+	while n != null and n != stop:
+		out.append(n)
+		n = n.get_parent()
+	return out
+
+
+# 모든 묶은 뼈의 자세가 예전 식 (사슬을 조각부터 하나씩 곱해 자리·돌림·크기) 과 같은지
+func _bones_same_old(b, msg: String) -> void:
+	var sk: Skeleton3D = b.bone_skel
+	var hide: float = b.bone_hide
+	var hb := Transform3D(Basis().scaled(Vector3.ONE * hide), Vector3.ZERO)
+	var worst_p := 0.0
+	var worst_s := 0.0
+	var worst_q := 1.0
+	for bi in b.batch.pieces.size():
+		var piece: Node3D = b.batch.pieces[bi]
+		var xf := piece.transform
+		for n in _parent_chain(b, bi):
+			if not (n as Node3D).visible:
+				xf = hb * xf
+			xf = (n as Node3D).transform * xf
+		var want_s: Vector3 = xf.basis.get_scale() if piece.visible else Vector3.ONE * hide
+		var dp: Vector3 = (sk.get_bone_pose_position(bi) - xf.origin).abs()
+		var ds: Vector3 = (sk.get_bone_pose_scale(bi) - want_s).abs()
+		worst_p = maxf(worst_p, maxf(dp.x, maxf(dp.y, dp.z)))
+		worst_s = maxf(worst_s, maxf(ds.x, maxf(ds.y, ds.z)))
+		worst_q = minf(worst_q, absf(sk.get_bone_pose_rotation(bi).dot(xf.basis.get_rotation_quaternion())))
+	check(worst_p <= 1e-4 and worst_s <= 1e-4, "%s: 자리 차 %.7f · 크기 차 %.7f" % [msg, worst_p, worst_s])
+	check(worst_q >= 1.0 - 1e-6, "%s: 돌림 |내적| %.9f" % [msg, worst_q])
+
+
 const VM := preload("res://chars/viewmodel.gd")
 
 

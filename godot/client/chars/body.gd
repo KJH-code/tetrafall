@@ -62,8 +62,13 @@ var rag_test := false # 테스트: 장면 트리 밖에서도 래그돌 켬
 var rag_was_stunned := false # 래그돌: 경직이 풀린 시각 (초, 일어나기)
 var rag_stun_end := -1.0
 var batch = null
-var bone_dyn: Array[int] = [] # 매 프레임 맞출 묶음 뼈 (나머지는 늘 같은 자세)
-var bone_chain: Array = [] # bone_dyn 마다 조각 → 부모 조각 사이 노드 (Array[Node3D])
+# 매 프레임 맞출 묶음 뼈를 부모 사슬 (조각 위 → 부모 조각 바로 아래 노드들) 이 같은 것끼리 묶음 (나머지 뼈는 늘 같은 자세)
+# [{chain: Array[Node3D] (곱하는 순서, 조각 하나뿐이면 빈 배열), bones: PackedInt32Array, pieces: Array[Node3D], link: 사슬 첫 노드의 bone_links 번호 (빈 사슬 -1)}]
+var bone_groups: Array = []
+# 묶음 사슬들에 나오는 노드 (겹치지 않게, 위 노드가 먼저) — 묶음 사슬은 거의 다 다른 묶음 사슬 + 노드 하나라 노드마다 한 번만 곱함
+var bone_links: Array[Node3D] = []
+var bone_link_up: PackedInt32Array = [] # 바로 위 노드의 bone_links 번호 (부모 조각·root 바로 아래면 -1)
+var bone_link_xf: Array[Transform3D] = [] # 매 프레임 노드부터 사슬 끝까지 곱 (_sync_bones 가 채움)
 var bone_skel: Skeleton3D = null
 var bone_hide := 1e-6 # K.SKIN: G3 batch.gd (툰 조각 전부 → SkinnedMesh 하나, 뼈 = 조각)
 var rig: Node3D # 몸 전체 기울임·공중제비·구르기 (render.js rig)
@@ -339,22 +344,43 @@ func _batch(cd: Dictionary) -> void:
 		idx[nodes[i]] = i
 	var hide = batch.get_script().get_script_constant_map().get("HIDE_SCALE", 1e-6)
 	bone_hide = float(hide)
-	bone_dyn.clear()
-	bone_chain.clear()
+	bone_groups.clear()
+	bone_links.clear()
+	bone_link_up.clear()
 	bone_skel = batch.skel
+	var group_of := {} # 부모 사슬 (노드 id 목록 글자) → bone_groups 번호
+	var link_of := {} # 사슬 노드 → bone_links 번호
 	for bi in batch.pieces.size():
 		var par: int = batch.skel.get_bone_parent(bi)
 		var stop: Node = batch.pieces[par] if par >= 0 else batch.root
-		var chain: Array[Node3D] = [] # 조각부터 부모 조각 바로 아래까지 (곱하는 순서)
-		var moving := false
-		var n: Node = batch.pieces[bi]
+		var piece: Node3D = batch.pieces[bi]
+		var chain: Array[Node3D] = [] # 조각 바로 위부터 부모 조각 바로 아래까지 (곱하는 순서)
+		var key := ""
+		var moving := dyn.has(idx.get(piece, -1))
+		var n: Node = piece.get_parent()
 		while n != null and n != stop:
 			chain.append(n as Node3D)
+			key += "%d," % n.get_instance_id()
 			moving = moving or dyn.has(idx.get(n, -1))
 			n = n.get_parent()
-		if moving:
-			bone_dyn.append(bi)
-			bone_chain.append(chain)
+		if not moving:
+			continue
+		if not group_of.has(key):
+			group_of[key] = bone_groups.size()
+			# 사슬 노드를 위에서부터 bone_links 에 (이미 있으면 그대로 — 노드의 사슬 끝 (부모 조각·root) 은 어느 사슬에서나 같음)
+			for j in range(chain.size() - 1, -1, -1):
+				if not link_of.has(chain[j]):
+					link_of[chain[j]] = bone_links.size()
+					bone_links.append(chain[j])
+					bone_link_up.append(link_of[chain[j + 1]] if j + 1 < chain.size() else -1)
+			var pieces: Array[Node3D] = []
+			bone_groups.append({"chain": chain, "bones": [], "pieces": pieces, "link": link_of[chain[0]] if chain.size() > 0 else -1})
+		var g: Dictionary = bone_groups[group_of[key]]
+		g.bones.append(bi)
+		g.pieces.append(piece)
+	for g in bone_groups:
+		g.bones = PackedInt32Array(g.bones)
+	bone_link_xf.resize(bone_links.size())
 	for i in piece_mat:
 		var mi := nodes[i] as MeshInstance3D
 		if mi.layers != 0:
@@ -1232,24 +1258,34 @@ func _crush_flat() -> void:
 # 묶은 몸 뼈 자세 = 지금 조각 자리 (매 프레임 _apply 뒤에 바로 — 초상처럼 pose 뒤 곧바로 한 번 그리는 곳도 맞게)
 # 움직이는 뼈만 (G3 batch.gd sync 와 같은 셈 — 부모 조각 기준 자리, 안 보이면 크기 거의 0)
 # (사슬은 만들 때 미리 모아 둠 — 다른 스크립트 속성·함수를 매 뼈 부르면 느림)
+# 같은 부모 사슬은 한 번만 곱함: 사슬 노드마다 (위 노드부터) 노드 → 사슬 끝 곱을 한 번 (숨은 노드는 그 아래에 크기 bone_hide),
+# 묶음 곱 gp = 그 묶음 사슬 첫 노드의 곱 → 뼈 = gp × 조각. 예전 (조각부터 하나씩 곱함) 과 곱하는 순서가 같아 결과가 같음 (묶는 방식만 다름).
+# 뼈마다 엔진 호출은 set_bone_pose 한 번 (자리·돌림·크기로 나누는 건 엔진이)
 func _sync_bones() -> void:
 	if bone_skel == null:
 		return
 	var sk := bone_skel
-	var hb := Basis().scaled(Vector3.ONE * bone_hide)
-	for k in bone_dyn.size():
-		var chain: Array[Node3D] = bone_chain[k]
-		var p := chain[0]
-		var xf := p.transform
-		for j in range(1, chain.size()):
-			var n := chain[j]
-			if not n.visible:
-				xf = Transform3D(hb, Vector3.ZERO) * xf
-			xf = n.transform * xf
-		var bi := bone_dyn[k]
-		sk.set_bone_pose_position(bi, xf.origin)
-		sk.set_bone_pose_rotation(bi, xf.basis.get_rotation_quaternion())
-		sk.set_bone_pose_scale(bi, xf.basis.get_scale() if p.visible else Vector3.ONE * bone_hide)
+	var hb := Transform3D(Basis().scaled(Vector3.ONE * bone_hide), Vector3.ZERO)
+	var hide_scale := Vector3.ONE * bone_hide
+	var lx := bone_link_xf
+	for i in bone_links.size():
+		var n := bone_links[i]
+		var a := n.transform
+		if not n.visible:
+			a = a * hb
+		var up := bone_link_up[i]
+		lx[i] = lx[up] * a if up >= 0 else a
+	for g: Dictionary in bone_groups:
+		var li: int = g.link
+		var gp: Transform3D = lx[li] if li >= 0 else Transform3D() # 묶음 P (멤버 P = 자세 표와 이름이 겹치지 않게)
+		var bones: PackedInt32Array = g.bones
+		var pieces: Array[Node3D] = g.pieces
+		for k in bones.size():
+			var p := pieces[k]
+			var xf := gp * p.transform
+			if not p.visible:
+				xf.basis = Basis(xf.basis.get_rotation_quaternion()).scaled(hide_scale)
+			sk.set_bone_pose(bones[k], xf)
 
 
 # ---------- 래그돌 (JS render.js ragdollCapture·RAGDOLL_CHARS, 물리는 chars/ragdoll.gd) ----------
