@@ -2,7 +2,7 @@ using Tetrafall.Core.Js;
 
 namespace Tetrafall.Core;
 
-// 돌발 이벤트 (고도 판 전용, 방 옵션 roundEvents — 기본 끔): 생존·킬 점수전 판 중에 EVENT_GAP_MS 마다 짧은 이벤트 하나.
+// 돌발 이벤트 (고도 판 전용, 방 옵션 roundEvents — 기본 끔): 생존·킬 점수전 판 중에 EVENT_GAP_MS 마다 짧은 이벤트 하나 (한 판 안에서 직전과 다른 종류 — PickEventKind).
 // 블록 폭우 (rain: 자동 블록이 상한을 넘겨 쏟아짐) · 돌풍 (wind: 필드 위 모두가 한쪽으로 밀림) · 보급 (supply: 아이템 몇 개) ·
 // 저중력 (lowgrav: 높이 뛰고 맞으면 멀리 날아감) · 빙판 (ice: 땅에서 맞으면 멀리 미끄러짐). 저중력·빙판은 IntegratePlayer 가
 // GravityMult·GroundDampMult 로 배율만 받음. 봇은 이 둘을 모름 (점프 도달·낙하 시간 추정은 평소 중력 그대로) — 판정 특혜 없음.
@@ -15,6 +15,7 @@ public sealed partial class Game
     public double evEndsAt;
     public XY? evDir; // 돌풍 방향 (단위 벡터)
     double evRainNextAt; // 블록 폭우: 다음 블록 시각
+    string? evLastKind; // 이번 판에서 마지막으로 고른 종류 (보급 포함 — 보급 뒤엔 evKind 가 null 이라 따로). 새 판이면 null
 
     static readonly Dictionary<string, string> EVENT_LOG = new()
     {
@@ -49,6 +50,15 @@ public sealed partial class Game
     public double GravityMult() => evKind == "lowgrav" && RoundEventActive() ? C.EVENT_LOWGRAV_G : 1;
     public double GroundDampMult() => evKind == "ice" && RoundEventActive() ? C.EVENT_ICE_DAMP : 1;
 
+    // 이벤트 종류 고르기 (rng 한 번 = r): 판 첫 이벤트 (last null) 는 5종 중 floor(r×5), 그 뒤로는 직전 종류를 뺀 4종 (원래 순서) 중 floor(r×4)
+    // — 한 판 안에서 같은 종류가 연이어 나오지 않음
+    public static string PickEventKind(double r, string? last)
+    {
+        if (last == null) return C.EVENT_KINDS[(int)Math.Floor(r * C.EVENT_KINDS.Length)];
+        var rest = Array.FindAll(C.EVENT_KINDS, k => k != last);
+        return rest[(int)Math.Floor(r * rest.Length)];
+    }
+
     // 틱마다 (roundEvents 켰을 때만 Tick 이 부름): 시각이 되면 이벤트 하나 고르고, 진행 중인 것을 돌림
     public void UpdateRoundEvents(double dtMs)
     {
@@ -60,6 +70,7 @@ public sealed partial class Game
             evNextAt = roundStartTime + C.EVENT_FIRST_MS;
             evKind = null;
             evDir = null;
+            evLastKind = null;
         }
         if (!RoundEventsRun()) return; // 블록 마스터·연습·튜토리얼은 안 돎
         if (evKind != null && time >= evEndsAt)
@@ -70,7 +81,8 @@ public sealed partial class Game
         if (time >= evNextAt)
         {
             evNextAt += C.EVENT_GAP_MS;
-            string kind = C.EVENT_KINDS[(int)Math.Floor(rng() * C.EVENT_KINDS.Length)];
+            string kind = PickEventKind(rng(), evLastKind);
+            evLastKind = kind;
             XY? dir = null;
             if (kind == "wind")
             {
