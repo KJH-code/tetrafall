@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# 죽은 방 탈출 + 서버 침묵 감지 자동 확인: C# 서버 + 헤드리스 고도 클라.
+# 죽은 방 탈출 + 서버 침묵 감지 + 서버 끄기 자동 확인: C# 서버 + 헤드리스 고도 클라.
 #  A (서버 다시 켬): host 가 방을 만든 뒤 서버를 죽이고 같은 포트로 다시 켬 → host 는 다시 붙지만 그 방은 없음
 #    → 대기실에 갇히지 않고 '방으로 돌아가지 못했습니다 — …그런 방이 없습니다' 이유와 함께 방 밖으로 (--expect-left)
 #  B (서버 12초 멈춤): host + guest 판 중에 서버를 kill -STOP → 12초 뒤 -CONT. 소켓은 안 끊기지만 아무것도 안 옴
 #    → 클라가 '서버 응답 없음' 으로 소켓을 버리고 다시 붙어 같은 자리로 (자리 토큰), 서버 로그엔 복귀
+#  C (서버 끔): host + 봇 3 판 중에 서버에 kill -TERM → 서버는 방마다 left '서버를 껐습니다 — …' + 닫기 1001 을 보내고 5초 안에 꺼짐
+#    → host 는 그 이유로 방 밖 (--expect-left), 서버 콘솔 '서버 끄는 중:', 방 로그 마지막 줄 '[서버 종료]'
 # 실행 (레포 뿌리): bash godot/client/tools/e2e_net.sh   ·  PORT (기본 3431) · LOG (기본 /tmp/tf-e2e-net) ·
-#   SERVER_DLL (Tetrafall.Server.dll 경로 — 없으면 $LOG/bin 에 Release 로 지음) · STALL (B 가 멈추는 초, 기본 12) · QUIT_A·QUIT_B (클라가 끝나는 초)
+#   SERVER_DLL (Tetrafall.Server.dll 경로 — 없으면 $LOG/bin 에 Release 로 지음) · STALL (B 가 멈추는 초, 기본 12) · QUIT_A·QUIT_B·QUIT_C (클라가 끝나는 초)
 # 끄는 것은 이 스크립트가 띄운 PID 만 (같은 기계에 다른 서버가 있어도 안 건드림)
 set -u
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -16,6 +18,7 @@ LOG=${LOG:-/tmp/tf-e2e-net}
 STALL=${STALL:-12}
 QUIT_A=${QUIT_A:-60}
 QUIT_B=${QUIT_B:-45}
+QUIT_C=${QUIT_C:-40}
 mkdir -p "$LOG"
 cd "$ROOT"
 if [ -z "${SERVER_DLL:-}" ]; then
@@ -32,7 +35,7 @@ cleanup() {
   done
   sleep 0.5
   for p in $(jobs -p); do
-    kill -9 "$p" 2>/dev/null # 서버는 TERM 뒤에도 한참 살 수 있음 (server_down 설명)
+    kill -9 "$p" 2>/dev/null # 클라·멈춘 서버가 TERM 뒤에도 남아 있으면
   done
 }
 trap cleanup EXIT
@@ -49,14 +52,21 @@ server_up() {
   return 1
 }
 
-# 서버 내리기: TERM 을 보내고 2초 안에 안 죽으면 KILL. C# 서버는 TERM 을 받아도 열린 WebSocket 이 있으면 종료 대기 (30초) 동안
-# 틱·스냅샷을 계속 보내며 살아 있음 → 그대로 두면 '서버가 죽음' 이 아니라 30초 뒤에야 끊김
+# 서버 내리기 (끄기): TERM 을 보내고 5초 안에 안 꺼지면 KILL. C# 서버는 TERM 을 받으면 방마다 left + 닫기 1001 을 보내고
+# 종료 대기 NET_SHUTDOWN_MS (3초) 안에 꺼짐 (예전엔 열린 WebSocket 이 있으면 Kestrel 기본 30초 동안 틱·스냅샷을 계속 보냈음)
 server_down() {
   kill $S 2>/dev/null
-  for i in $(seq 1 10); do
+  for i in $(seq 1 25); do
     kill -0 $S 2>/dev/null || break
     sleep 0.2
   done
+  kill -9 $S 2>/dev/null
+  wait $S 2>/dev/null
+}
+
+# 서버 죽이기 (A): 인사 없이 KILL. TERM 으로 끄면 서버가 보내는 left '서버를 껐습니다' 가 A 가 기다리는
+# '방으로 돌아가지 못했습니다 — 그런 방이 없습니다' (다시 켠 서버의 joinError) 보다 먼저 와서 host 를 방 밖으로 내보냄
+server_kill() {
   kill -9 $S 2>/dev/null
   wait $S 2>/dev/null
 }
@@ -105,7 +115,7 @@ H=$!
 CODE=$(room_code "$LOG/a-host.txt")
 echo "  방 코드: ${CODE:-없음}"
 sleep 3
-server_down
+server_kill
 server_up "$LOG/a-server2.txt" || { echo "e2e_net: 서버가 다시 안 뜸"; tail -5 "$LOG/a-server2.txt"; exit 1; }
 wait $H; RH=$?
 server_down
@@ -143,6 +153,40 @@ expect "서버 로그에 복귀" grep -q "복귀" "$LOG/b-server.txt"
 expect "종료 코드 host $RH, guest $RG" [ $RH -eq 0 -a $RG -eq 0 ]
 B=$FAIL
 
+# ---------- C: 서버 끔 (TERM) ----------
+FAIL=0
+echo "C: 판 중에 서버를 끔 (kill -TERM)"
+server_up "$LOG/c-server.txt" || { echo "e2e_net: 서버가 안 뜸 (포트 $PORT)"; tail -5 "$LOG/c-server.txt"; exit 1; }
+client "$LOG/c-host.txt" --auto host --profile e2enet-c --bots 3 --expect-left --quit-after "$QUIT_C"
+H=$!
+CODE=$(room_code "$LOG/c-host.txt")
+echo "  방 코드: ${CODE:-없음}"
+wait_for "$LOG/c-host.txt" "시작 (" 30
+sleep 4
+# 꺼질 때까지 잼: 5초 지킴이가 그때도 살아 있으면 KILL (그러면 5초 넘김 = 실패)
+T0=$(date +%s%N)
+kill -TERM $S
+( sleep 5; kill -9 $S 2>/dev/null ) &
+W=$!
+wait $S 2>/dev/null
+T1=$(date +%s%N)
+kill $W 2>/dev/null
+wait $W 2>/dev/null
+OFF_MS=$(( (T1 - T0) / 1000000 ))
+echo "  TERM → 꺼짐 ${OFF_MS}ms"
+wait $H; RH=$?
+ROOMLOG=$(ls -t "$LOG"/logs/*/*_"$CODE".txt 2>/dev/null | head -1)
+grep -h "^\[자동" "$LOG/c-host.txt" | grep -v "접속: .*([0-9]*/[0-9]*)" | sed 's/^/  /'
+grep -h "서버 끄는 중:" "$LOG/c-server.txt" | sed 's/^/  /'
+[ -n "$ROOMLOG" ] && tail -1 "$ROOMLOG" | sed 's/^/  방 로그 끝: /'
+expect "판이 시작됨" grep -q "시작 (" "$LOG/c-host.txt"
+expect "서버가 5초 안에 꺼짐 (${OFF_MS}ms)" [ "$OFF_MS" -lt 5000 ]
+expect "host 로그에 '방 밖: 서버를 껐습니다'" grep -q "방 밖: 서버를 껐습니다" "$LOG/c-host.txt"
+expect "host 종료 코드 0 (지금 $RH)" [ $RH -eq 0 ]
+expect "서버 출력에 '서버 끄는 중:'" grep -q "서버 끄는 중:" "$LOG/c-server.txt"
+expect "방 로그 마지막 줄에 '[서버 종료]'" sh -c '[ -n "$1" ] && tail -1 "$1" | grep -q "\[서버 종료\]"' _ "$ROOMLOG"
+C=$FAIL
+
 name() { [ "$1" -eq 0 ] && echo 통과 || echo 실패; }
-echo "e2e_net: A $(name $A) · B $(name $B)"
-[ $A -eq 0 ] && [ $B -eq 0 ]
+echo "e2e_net: A $(name $A) · B $(name $B) · C $(name $C)"
+[ $A -eq 0 ] && [ $B -eq 0 ] && [ $C -eq 0 ]

@@ -211,6 +211,34 @@ public sealed class Rooms
         try { room.@out.Close(); } catch { }
     }
 
+    // 서버 끄기 (Program.cs ApplicationStopping → inbox): 방마다 로그 한 줄 + 방 안 접속에 left (이 글) 를 보내고 닫음 (Crash 와 같은 모양).
+    // 그 뒤 들어오는 create·practice·tutorial·join·rejoin 은 joinError SHUTDOWN_JOIN. 두 번째부터는 아무 일 없음. 반환: 닫은 방 수
+    public const string SHUTDOWN_REASON = "서버를 껐습니다 — 호스트가 다시 켜면 새로 들어오세요";
+    public const string SHUTDOWN_JOIN = "서버를 끄는 중입니다";
+    bool closing;
+    public bool Closing => closing;
+
+    public int Shutdown(string reason = SHUTDOWN_REASON)
+    {
+        if (closing) return 0;
+        closing = true;
+        var list = rooms.Values();
+        foreach (var room in list)
+        {
+            try { room.@out.Log($"[서버 종료] 방 {room.code} 닫음 (사람 {JsNumber.ToJs(room.game.HumanCount())}명)"); } catch { } // 로그를 못 써도 나머지는 닫음
+            rooms.Delete(room.code);
+            foreach (var c in room.conns.Values())
+            {
+                c.room = null;
+                Send(c.ws, o => o.P("type", "left").P("reason", reason));
+            }
+            room.conns.Clear();
+            room.seats.Clear();
+            try { room.@out.Close(); } catch { }
+        }
+        return list.Count;
+    }
+
     // 연결마다 1초에 NET_MSG_RATE 개 (잠깐 몰리면 NET_MSG_BURST 개까지). 넘는 메시지는 버림
     bool Allow(Conn conn)
     {
@@ -325,6 +353,11 @@ public sealed class Rooms
         }
         if (conn.room == null)
         {
+            if (closing && type is "create" or "practice" or "tutorial" or "join" or "rejoin")
+            {
+                Send(conn.ws, o => o.P("type", "joinError").P("reason", SHUTDOWN_JOIN)); // 서버를 끄는 중 (Shutdown 뒤): 새 방·자리 없음
+                return;
+            }
             if (type == "create") Create(conn, Field(msg, "name"), Field(msg, "nick"));
             else if (type == "practice") CreatePractice(conn, Field(msg, "nick"), Field(msg, "char"));
             else if (type == "tutorial") CreatePractice(conn, Field(msg, "nick"), Field(msg, "char"), true);

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Net.Sockets;
 using System.Net.WebSockets;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -68,6 +69,21 @@ public class ServerProcessTests
         public int Count(string part)
         {
             lock (lines) return lines.Count(l => l.Contains(part));
+        }
+
+        [DllImport("libc", SetLastError = true)]
+        static extern int kill(int pid, int sig);
+
+        // 서버 프로세스에 신호 (리눅스·맥 libc kill — ShutdownTests: SIGTERM 15). 보냈으면 true
+        public bool Signal(int sig) => kill(proc.Id, sig) == 0;
+
+        // 프로세스가 ms 안에 끝나면 since 부터 끝날 때까지 ms (그 뒤 남은 출력 줄까지 다 읽음 — Saw·Count 가 마지막 줄도 봄), 안 끝나면 null
+        public double? ExitedWithin(int ms, Stopwatch since)
+        {
+            if (!proc.WaitForExit(ms)) return null;
+            double t = since.Elapsed.TotalMilliseconds;
+            proc.WaitForExit();
+            return t;
         }
 
         public void Dispose()

@@ -88,6 +88,17 @@ func test_lobby_place() -> void:
 	check(U.lobby_place(Vector2(960, 540), Vector2(380, 1.0e6)).scale == U.LOBBY_SCALE_MIN, "아주 큰 내용")
 
 
+# 접속 상태 글 자리 (고도 판 전용, ui.gd status): 판 HUD 가 보이면 왼쪽 위 판 시간 (hud.gd timer_label (14, 12) 글자 26 + 위아래 여백 3,
+# 높이 약 40) 아래로 — 판 중 끊김 글이 시간과 겹치던 것. 그 밖 (메뉴·대기실·결과) 은 예전 자리 그대로
+func test_status_pos() -> void:
+	var game := U.status_pos(true)
+	var other := U.status_pos(false)
+	check(game.y > 52.0, "판 중엔 판 시간 아래: %s" % str(game))
+	check(game == Vector2(16, 64), "판 중 자리: %s" % str(game))
+	check(other == Vector2(16, 12), "메뉴·대기실은 예전 자리: %s" % str(other))
+	check(game.x == other.x, "왼쪽 끝은 같음")
+
+
 # 방 옵션 꼬리 (손님 대기실 줄·공개 방 목록): 켠 것만, 순서 고정.
 # 서버가 보내는 모양: skyStairs 는 늘 true/false, hpMode 는 공개 목록에선 늘 true/false (Rooms.cs PublicList)·스냅샷에선 켰을 때만,
 # roundEvents 는 둘 다 켰을 때만 → 키가 없든 false 든 끔

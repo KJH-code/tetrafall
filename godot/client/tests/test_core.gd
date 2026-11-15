@@ -314,6 +314,79 @@ func test_net_silent_from_open() -> void:
 	n.free()
 
 
+# 끊긴 까닭 글 (닫기 코드): 1001 (C# 서버를 끔 — WsSocket.Bye) 만 '서버가 꺼짐', 보통 닫힘 1000·비정상 1006·코드 없음 -1 은 '서버 연결 끊김'
+func test_net_lost_reason() -> void:
+	check(NetScript.lost_reason(1001) == NetScript.LOST_SHUTDOWN, "1001 → %s" % NetScript.lost_reason(1001))
+	check(NetScript.LOST_SHUTDOWN == "서버가 꺼짐", "글: %s" % NetScript.LOST_SHUTDOWN)
+	for code in [1000, 1006, -1, 1011]:
+		check(NetScript.lost_reason(code) == NetScript.LOST_CLOSED, "%d → %s" % [code, NetScript.lost_reason(code)])
+
+
+# 서버를 끔: 붙은 뒤 서버 쪽 소켓 (TCPServer + WebSocketPeer, test_net_silent_from_open 과 같은 모양) 이 left 를 보내고 틈 뒤 닫기 1001
+# (C# WsSocket.Bye 의 NET_SHUTDOWN_CLOSE_GAP_MS — 한 poll 에 left 와 닫기를 같이 받으면 고도는 left 를 못 읽음)
+# → left 는 message 로, 상태 글 '서버가 꺼짐 — 다시 연결 중', 핑 자리 글 '연결 끊김 · 다시 연결 중 N' (지난 핑 대신), 다시 붙기는 그대로 (같은 길)
+func test_net_server_shutdown_close() -> void:
+	var tcp := TCPServer.new()
+	check(tcp.listen(0, "127.0.0.1") == OK, "WebSocket 리스너")
+	var peers: Array = []
+	var n = NetScript.new() # 트리에 안 넣음 (_process 없음 — 프레임은 아래에서 직접)
+	var texts: Array = []
+	var closes: Array = []
+	var msgs: Array = []
+	n.status_changed.connect(func(t): texts.append(t))
+	n.closed.connect(func(): closes.append(1))
+	n.message.connect(func(m): msgs.append(m))
+	var step := func() -> void:
+		while tcp.is_connection_available():
+			var p := WebSocketPeer.new()
+			p.accept_stream(tcp.take_connection())
+			peers.append(p)
+		for p in peers:
+			p.poll()
+		n._prof_process(0.0)
+		OS.delay_msec(5)
+	n.start("ws://127.0.0.1:%d" % tcp.get_local_port())
+	for i in 400: # 최대 약 2초
+		step.call()
+		if n.is_open():
+			break
+	check(n.is_open() and peers.size() == 1, "붙음 (상태 %d, 서버 쪽 %d)" % [n.ws.get_ready_state(), peers.size()])
+	check(n.ping_text().begins_with("핑 "), "붙어 있을 땐 핑 글: %s" % n.ping_text())
+	for p in peers:
+		p.send_text(JSON.stringify({"type": "left", "reason": "서버를 껐습니다"}))
+	for i in 400:
+		step.call()
+		if msgs.any(func(m): return m.get("type") == "left"):
+			break
+	check(msgs.any(func(m): return m.get("type") == "left") and n.is_open(), "닫기 전에 left 를 읽음 (%s)" % str(msgs))
+	for p in peers:
+		p.close(1001, "server shutdown")
+	for i in 400:
+		step.call()
+		if not closes.is_empty():
+			break
+	check(closes.size() == 1 and not n.is_open(), "끊김 (끊김 %d, 상태 %d)" % [closes.size(), n.ws.get_ready_state()])
+	check(n.reconnecting and n.lost == NetScript.LOST_SHUTDOWN, "다시 붙기 시작, 까닭 %s" % n.lost)
+	check(not texts.is_empty() and str(texts.back()).begins_with("서버가 꺼짐 — "), "상태 글: %s" % str(texts))
+	check(n.ping_text().begins_with("연결 끊김"), "핑 자리 글: %s" % n.ping_text())
+	check(n.ping_text() == "연결 끊김 · 다시 연결 중 0", "아직 다시 붙어 보기 전: %s" % n.ping_text())
+	# 다시 붙어 보기 (서버가 다시 켜진 셈 — 같은 리스너): 시도 글도 같은 까닭, 횟수가 핑 자리에
+	n.retry_at = 0.0
+	step.call()
+	check(n.tries == 1 and texts.back() == "서버가 꺼짐 — 다시 연결 중 (1/%d)" % int(C.NET_RECONNECT_TRIES), "시도 글: %s" % texts.back())
+	check(n.ping_text() == "연결 끊김 · 다시 연결 중 1", "핑 자리 시도 횟수: %s" % n.ping_text())
+	for i in 400:
+		step.call()
+		if n.is_open():
+			break
+	check(n.is_open() and not n.reconnecting and n.ping_text().begins_with("핑 "), "다시 붙으면 핑 글 (%s)" % n.ping_text())
+	n._discard()
+	for p in peers:
+		p.close(-1)
+	tcp.stop()
+	n.free()
+
+
 # 다시 붙기 처음부터 (net.gd retry): 포기한 뒤 (횟수 다 씀) 면 횟수를 되돌리고 바로 다시, 주소가 없으면 (접속 시작 전) 아무것도 안 함
 func test_net_retry_restarts() -> void:
 	var n = NetScript.new() # 트리에 안 넣음 (_process 없음 = 실제 접속 안 함)

@@ -12,6 +12,9 @@ using Tetrafall.Server;
 // 멈춘·밀린 접속 끊기: Ping 에 Pong 이 안 오거나 (C.NET_KEEPALIVE_MS + C.NET_KEEPALIVE_TIMEOUT_MS, 약 20~25초) 보내기 줄이 C.NET_SEND_QUEUE_MAX 를 넘으면
 //   그 접속만 끊고 콘솔에 "접속 N 끊음: …" 한 줄 (서버를 끄는 중에 끊긴 접속은 안 찍음) → 예전 끊김 흐름 (자리 유지 + 봇 대리 + 토큰 복귀). 테스트용 환경 변수 TF_KEEPALIVE_MS·TF_KEEPALIVE_TIMEOUT_MS (양의 정수 ms)
 // 스레드: WebSocket 받기·보내기는 비동기, 게임(Rooms·Game)은 루프 스레드 하나에서만 (받은 메시지는 inbox 로 넘김) → JS 처럼 잠금 없음
+// 끄기 (SIGTERM·Ctrl+C): ApplicationStopping 이 inbox 로 Rooms.Shutdown (방 로그 '[서버 종료]' + 방 안 접속에 left '서버를 껐습니다 — …', 그 뒤 들어가기는 joinError)
+//   + 접속마다 WsSocket.Bye (줄을 다 보내고 C.NET_SHUTDOWN_CLOSE_GAP_MS 뒤 닫기 1001 → 고도 클라 '서버가 꺼짐') 를 넘기고 최대 C.NET_SHUTDOWN_WAIT_MS 기다려 콘솔 '서버 끄는 중: …' 한 줄.
+//   닫기에 답 없는 접속은 종료 대기 C.NET_SHUTDOWN_MS (Kestrel 기본 30초 대신 3초) 뒤 Abort → 약 3초 안에 꺼짐
 
 if (args.Length > 0 && args[0] == "load") Environment.Exit(LoadBench.Run(args)); // 서버 부하 재기 (tools/load.mjs 와 나란히)
 var root = FindRepoRoot();
@@ -32,6 +35,7 @@ var rooms = new Rooms(
 var builder = WebApplication.CreateSlimBuilder(args);
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
+builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromMilliseconds(C.NET_SHUTDOWN_MS)); // 끄기 대기 (머리 주석)
 var app = builder.Build();
 var keepAlive = WsSocket.KeepAlive();
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = keepAlive.interval, KeepAliveTimeout = keepAlive.timeout });
@@ -67,7 +71,12 @@ async Task Serve(WebSocket ws, bool packed)
 {
     var sock = new WsSocket(ws, packed);
     var ready = new TaskCompletionSource<Conn>();
-    inbox.Enqueue(() => ready.SetResult(rooms.Connect(sock)));
+    inbox.Enqueue(() =>
+    {
+        var c = rooms.Connect(sock);
+        if (rooms.Closing) sock.Bye(); // 끄기 시작 뒤 붙은 접속: 방 목록만 보내고 닫기 1001
+        ready.SetResult(c);
+    });
     var conn = await ready.Task;
     var sendLoop = sock.RunSendLoop();
     var buf = new byte[8192];
@@ -127,6 +136,25 @@ if (Environment.GetEnvironmentVariable("TF_STDIN_CONTROL") == "1")
         }
     }) { IsBackground = true, Name = "stdin-control" }.Start();
 }
+
+// 서버 끄기 (머리 주석): 게임 상태는 루프 스레드만 만지니 inbox 로 넘기고, 신호 받은 스레드는 최대 C.NET_SHUTDOWN_WAIT_MS 기다림
+app.Lifetime.ApplicationStopping.Register(() =>
+{
+    var done = new ManualResetEventSlim();
+    (int rooms, int conns) shut = (0, 0);
+    inbox.Enqueue(() =>
+    {
+        try
+        {
+            int n = rooms.Shutdown();
+            foreach (var c in rooms.conns) (c.ws as WsSocket)?.Bye();
+            shut = (n, rooms.conns.Count);
+        }
+        finally { done.Set(); }
+    });
+    if (done.Wait(TimeSpan.FromMilliseconds(C.NET_SHUTDOWN_WAIT_MS))) Console.WriteLine($"[{Stamp()}] 서버 끄는 중: 방 {shut.rooms}개 닫음 · 접속 {shut.conns}개");
+    else Console.WriteLine($"[{Stamp()}] 서버 끄는 중: 게임 루프가 {C.NET_SHUTDOWN_WAIT_MS}ms 안에 답이 없어 그대로 끔 (남은 접속은 {C.NET_SHUTDOWN_MS}ms 뒤 끊김)");
+});
 
 // 고정 틱 루프 (index.js 와 같음: 누적 시간으로 보정, 한 번에 최대 5틱, 너무 밀리면 버림)
 var loop = new Thread(() =>

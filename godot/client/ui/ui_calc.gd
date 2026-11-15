@@ -45,6 +45,15 @@ const RESULTS_DROP := 22.0 # 결과 판: 세로 가운데에서 이만큼 아래
 const ROOM_OPTS := [["skyStairs", "하늘 계단", ["master"]], ["hpMode", "체력전", []], ["roundEvents", "돌발 이벤트", ["master"]]]
 
 
+const STATUS_POS := Vector2(16, 12) # 접속 상태 글 (연결 중·끊김 — ui.gd status) 자리: 메뉴·대기실·결과는 왼쪽 위
+const STATUS_POS_GAME := Vector2(16, 64) # 판 HUD 가 보일 때: 왼쪽 위 판 시간 (hud.gd timer_label (14, 12) 글자 26) 아래 — 겹치지 않게
+
+
+# 접속 상태 글 자리: in_game = 판 HUD 가 보임 (ui.gd hud.visible)
+static func status_pos(in_game: bool) -> Vector2:
+	return STATUS_POS_GAME if in_game else STATUS_POS
+
+
 # 대기실 판 자리: 오른쪽 끝·위 (LOBBY_TOP) 에 붙임. content = 줄이기 전 판 크기 (폭은 lobby_dock 폭, 높이는 내용만큼).
 # 자리 (폭 lobby_dock · 높이 LOBBY_TOP ~ 화면 아래 여백) 보다 크면 통째로 줄임 (960×540 등), 들어가면 배율 1.
 # 반환 {scale 배율, x·y 왼쪽 위}

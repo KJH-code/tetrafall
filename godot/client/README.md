@@ -22,6 +22,8 @@ godot --path godot/client -- --server ws://주소:3000 --room ABCD   # 다른 �
 - 붙어 보기 상한 (`core/net.gd` `connect_stuck`·`CONNECT_MS` 6초): 처음 접속이든 다시 붙기든 한 번 붙어 보기가 6초 넘게 CONNECTING 이면 (멈춘 서버 — 커널이 TCP 는 받아 줘도 업그레이드 응답이 안 옴) 그 소켓을 버리고 다음 시도로. 그래서 서버가 멈춘 채 안 돌아와도 방 화면에 끝없이 남지 않음: 시도마다 max(`NET_RECONNECT_MS` 2초, 6초) = 6초라 침묵 6초 + `NET_RECONNECT_TRIES` 30번 × 6초 = 약 3분 뒤 포기 (`gave_up` → 메뉴로). 거절되는 서버 (꺼짐) 는 시도마다 2초라 약 1분. `retry()` 는 `NET_RECONNECT_MS` (2초) 넘게 매달린 소켓만 버리고 처음부터 (`retry_drops`, 프레임이 멈췄던 시간은 뺌) — 그보다 젊은 붙어 보기는 느린 핸드셰이크 (터널 TLS 등) 일 수 있어 그대로 두고 횟수만 되돌림 (버튼을 거듭 눌러도 핸드셰이크가 처음부터 다시 시작되지 않음)
 - 죽은 방 탈출 (`core/store.gd` `join_error_action`·`_clear_room`): 다시 붙었는데 그 방이 없으면 (서버가 다시 켜짐 → rejoinError → join → joinError) 방 안에서 받은 joinError 라 방을 비우고 `left_room("방으로 돌아가지 못했습니다 — 서버 이유")` → 메뉴에 그 글 (앞머리는 이유와 상관없는 말 `LEFT_BACK_FAILED` — 자리 유지가 지나 다시 들어가려는데 방이 꽉 찬 것도 같은 길이라, 서버 이유 '그런 방이 없습니다'·'꽉 찼습니다' 가 까닭을 말함). 방 밖 joinError 는 예전처럼 메뉴 글만 (`join_error`)
 - 다시 붙기를 `NET_RECONNECT_TRIES` 번 다 쓰면 `Net.gave_up` → 방 안이면 방을 비우고 상태 글을 이유로 메뉴로. 연결 없이 '방 나가기' 를 누르면 서버 답을 기다리지 않고 바로 방 밖
+- 서버 끄기 (2026-11-15): 호스트가 C# 서버를 끄면 (SIGTERM·Ctrl+C) 서버가 방 안 사람마다 `left` '서버를 껐습니다 — 호스트가 다시 켜면 새로 들어오세요' 를 보내고 (그대로 메뉴에 그 글) `NET_SHUTDOWN_CLOSE_GAP_MS` (0.5초) 뒤 닫기 코드 1001 로 닫고 약 3초 안에 꺼짐 — 틈이 없으면 고도 WebSocketPeer 가 한 poll 에 left 와 닫기를 같이 받아 바로 닫힌 상태가 되고 left 를 못 읽음 (서버 쪽은 `godot/server/src/Tetrafall.Server/Program.cs` 머리 주석). 클라는 닫기 코드로 까닭을 가름 (`core/net.gd` `lost_reason`: 1001 이면 `LOST_SHUTDOWN` '서버가 꺼짐', 그 밖은 '서버 연결 끊김') → 상태 글 '서버가 꺼짐 — 다시 연결 중 (n/N)', 다시 붙기는 그대로 (호스트가 다시 켜면 붙음 — 방은 없어서 새로 들어감)
+- 끊김 표시: 다시 붙는 중엔 오른쪽 위 핑 자리가 지난 핑 대신 '연결 끊김 · 다시 연결 중 N' (`ping_text`, N = 시도 횟수). 왼쪽 위 상태 글은 판 HUD 가 보이면 판 시간 아래 (`ui/ui_calc.gd` `status_pos`: 판 중 (16, 64), 그 밖 (16, 12)) — 판 중 끊김 글이 시간과 겹치던 것
 - 메뉴 (`ui/menu.gd` `_online_do`): 연결이 없을 때 방 만들기·들어가기·연습·튜토리얼을 누르면 '서버에 연결되지 않았습니다 — 다시 연결 중' 을 띄우고 `Net.retry()` (횟수를 되돌려 처음부터 다시 붙어 봄 — 붙어 보는 중이면 위 붙어 보기 상한 단락대로). 튜토리얼 창의 '시작' (설정 → 튜토리얼 길은 메뉴 문을 안 지남)·끝 화면 '봇 3명과 한 판' 도 같은 글 + `Net.retry()` (`ui/tutorial_ui.gd` `_offline`) — 튜토리얼을 done 으로 남기거나 봇 판 예약 (`quick_pending`) 을 켜지 않음
 
 ## 테스트·확인
@@ -31,11 +33,11 @@ godot --headless --path godot/client -s res://tests/run_tests.gd   # 보간·핑
 node godot/client/tools/fixtures.mjs                              # 정답 자료 다시 뽑기 (client/interp.js·shared/net.js·client/keys.js)
 node godot/client/tools/gen-config.mjs                            # shared/config.js → core/config.gd (JS config 를 바꾸면)
 bash godot/client/tools/e2e.sh                                    # JS 서버 + 헤드리스 클라 둘: 방 만들기·코드로 들어가기·판·중간에 끊고 같은 자리로
-bash godot/client/tools/e2e_net.sh                                # C# 서버 + 헤드리스 클라: A 서버를 죽였다 다시 켬 → '방으로 돌아가지 못했습니다 — …그런 방이 없습니다' 로 방 밖 · B 판 중 서버 12초 멈춤 (kill -STOP) → '서버 응답 없음' 뒤 같은 자리로
+bash godot/client/tools/e2e_net.sh                                # C# 서버 + 헤드리스 클라: A 서버를 죽였다 다시 켬 → '방으로 돌아가지 못했습니다 — …그런 방이 없습니다' 로 방 밖 · B 판 중 서버 12초 멈춤 (kill -STOP) → '서버 응답 없음' 뒤 같은 자리로 · C 판 중 서버 끔 (kill -TERM) → 5초 안에 꺼지고 '방 밖: 서버를 껐습니다'
 xvfb-run -a godot --path godot/client --rendering-driver opengl3 -- --auto host --bots 7 --wait-players 8 --shot /tmp/s.png --shot-after 12 --quit-after 13
 ```
 
-`e2e_net.sh`: 환경 변수 `PORT` (기본 3431) · `LOG` (기본 `/tmp/tf-e2e-net`, 서버·클라 로그) · `SERVER_DLL` (지어 둔 `Tetrafall.Server.dll` — 없으면 `$LOG/bin` 에 Release 로 지음) · `STALL` (B 가 멈추는 초). 약 2분, 마지막 줄 `e2e_net: A 통과 · B 통과` (하나라도 실패면 종료 코드 1). 서버를 내릴 땐 TERM 뒤 2초 안에 안 죽으면 KILL — C# 서버는 TERM 을 받아도 열린 WebSocket 이 있으면 종료 대기 30초 동안 틱·스냅샷을 계속 보냄. 끄는 것은 스크립트가 띄운 프로세스뿐
+`e2e_net.sh`: 환경 변수 `PORT` (기본 3431) · `LOG` (기본 `/tmp/tf-e2e-net`, 서버·클라 로그) · `SERVER_DLL` (지어 둔 `Tetrafall.Server.dll` — 없으면 `$LOG/bin` 에 Release 로 지음) · `STALL` (B 가 멈추는 초). 약 3분, 마지막 줄 `e2e_net: A 통과 · B 통과 · C 통과` (하나라도 실패면 종료 코드 1). A 는 서버를 KILL 로 죽임 (TERM 이면 서버가 보내는 left '서버를 껐습니다' 가 A 가 기다리는 '그런 방이 없습니다' 보다 먼저 옴), C 는 TERM 을 보내고 꺼질 때까지 잼 (5초 넘으면 실패, 서버 콘솔 '서버 끄는 중:' · 방 로그 마지막 줄 '[서버 종료]' 도 봄). 그 밖에 서버를 내릴 땐 TERM 뒤 5초 안에 안 꺼지면 KILL. 끄는 것은 스크립트가 띄운 프로세스뿐
 
 ## 내보내기 (G7)
 

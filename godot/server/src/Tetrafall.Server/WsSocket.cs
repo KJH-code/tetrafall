@@ -14,8 +14,10 @@ public sealed class WsSocket : ISocket
     readonly Channel<string> queue = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleReader = true });
     readonly bool packed;
     readonly int queueMax;
+    readonly double closeGapMs;
     int queued; // 줄에 넣었지만 아직 다 못 보낸 개수 (보내는 중인 것 포함)
     volatile bool closed;
+    volatile bool bye; // 서버 끄기 (Bye): 줄을 다 보낸 뒤 닫기 1001
     volatile string? dropReason;
 
     // 누른 결과는 글자 객체마다 하나: 방은 스냅샷 string 하나를 모든 연결에 Send 하니 8명이어도 한 번만 누름.
@@ -32,12 +34,13 @@ public sealed class WsSocket : ISocket
     // packed: 주소에 ?pack=gzip 을 붙인 접속 (고도 PC 클라, core/net.gd). 고도 WebSocketPeer 는 permessage-deflate 를 협상하지 않아
     // 8명 판 스냅샷 13.9KB 가 그대로 30Hz (약 418KB/s) 로 나감 → 큰 메시지만 gzip 바이너리로 (약 3KB, 120KB/s 아래).
     // 브라우저 (웹 클라·JS 화면) 는 쿼리 없이 붙어 예전처럼 Text + permessage-deflate
-    // queueMax: 보내기 줄 상한 (기본 C.NET_SEND_QUEUE_MAX, 테스트는 작게)
-    public WsSocket(WebSocket ws, bool packed = false, int? queueMax = null)
+    // queueMax: 보내기 줄 상한 (기본 C.NET_SEND_QUEUE_MAX, 테스트는 작게), closeGapMs: 끌 때 줄을 다 보낸 뒤 닫기까지 틈 (기본 C.NET_SHUTDOWN_CLOSE_GAP_MS)
+    public WsSocket(WebSocket ws, bool packed = false, int? queueMax = null, double? closeGapMs = null)
     {
         this.ws = ws;
         this.packed = packed;
         this.queueMax = queueMax ?? (int)C.NET_SEND_QUEUE_MAX;
+        this.closeGapMs = closeGapMs ?? C.NET_SHUTDOWN_CLOSE_GAP_MS;
     }
 
     public bool Open => !closed && ws.State == WebSocketState.Open;
@@ -81,6 +84,15 @@ public sealed class WsSocket : ISocket
         queue.Writer.TryComplete();
     }
 
+    // 서버 끄기 (Program.cs ApplicationStopping, Rooms.Shutdown 다음): 줄을 닫음 — 이미 넣은 메시지 (left) 는 그대로 보내고, 보내기 루프가
+    // 줄을 다 비운 뒤 closeGapMs 쉬고 닫기 프레임 1001 (EndpointUnavailable = Going Away, 고도 클라 net.gd lost_reason → '서버가 꺼짐').
+    // 그 뒤 Send 는 아무 일 없음 (Open = false). 닫기에 답하지 않는 클라 (안 읽음) 는 HostOptions.ShutdownTimeout (C.NET_SHUTDOWN_MS) 뒤 Kestrel 이 Abort → 끝이 보장됨
+    public void Bye()
+    {
+        bye = true;
+        Closed();
+    }
+
     public async Task RunSendLoop()
     {
         try
@@ -104,10 +116,17 @@ public sealed class WsSocket : ISocket
                 }
                 Interlocked.Decrement(ref queued); // 다 보낸 뒤에 뺌: 보내는 중에 멈춘 것도 밀린 것으로 셈
             }
+            // Bye 로 닫힌 줄을 다 보냄 → 틈 (C.NET_SHUTDOWN_CLOSE_GAP_MS: 고도 클라가 left 를 따로 읽게) 뒤 닫기 1001. 중간에 끊겨 (State 가 Open 아님) 나왔으면 건너뜀
+            if (bye && ws.State == WebSocketState.Open)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(closeGapMs));
+                if (ws.State == WebSocketState.Open)
+                    await ws.CloseOutputAsync(WebSocketCloseStatus.EndpointUnavailable, "server shutdown", CancellationToken.None);
+            }
         }
         catch (WebSocketException) { }
         catch (ObjectDisposedException) { }
-        catch (OperationCanceledException) { } // Abort (줄 상한·keepalive 시간 초과) 뒤 SendAsync 가 던짐
+        catch (OperationCanceledException) { } // Abort (줄 상한·keepalive 시간 초과·종료 대기 끝) 뒤 SendAsync·CloseOutputAsync 가 던짐
     }
 
     static byte[] Gzip(byte[] bytes)

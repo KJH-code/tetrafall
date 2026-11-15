@@ -26,6 +26,8 @@ const CONNECT_MS := 6000
 const GZIP_ISIZE_BYTES := 4 # gzip 꼬리 ISIZE: 푼 크기 (리틀 엔디언 32비트, RFC 1952)
 const LOST_CLOSED := "서버 연결 끊김" # 끊긴 까닭 글 (상태 글 앞머리)
 const LOST_SILENT := "서버 응답 없음"
+const LOST_SHUTDOWN := "서버가 꺼짐" # 서버가 닫기 코드 1001 로 닫음 (C# 서버를 끔 — Rooms.Shutdown 의 left 다음 WsSocket.Bye)
+const CLOSE_GOING_AWAY := 1001 # WebSocket 닫기 코드 Going Away (서버 EndpointUnavailable)
 
 signal opened(reconnect: bool) # 붙음 (reconnect: 끊겼다 다시 붙음)
 signal closed # 끊김 (다시 붙어 보는 중이면 status 로)
@@ -107,6 +109,11 @@ static func connect_stuck(now: float, connect_at, slack: float) -> bool:
 # 그보다 젊은 붙어 보기는 느린 핸드셰이크 (터널 TLS 등) 일 수 있어 그대로 둠 — 누를 때마다 버리면 처음부터 다시 해 영영 못 붙음. 시작 시각이 없으면 false
 static func retry_drops(now: float, connect_at, slack: float) -> bool:
 	return connect_at != null and now - float(connect_at) - slack > C.NET_RECONNECT_MS
+
+
+# 열려 있던 소켓이 닫힌 까닭 글: 닫기 코드 1001 (서버를 끔) 이면 '서버가 꺼짐', 그 밖 (1000·1006·-1 등) 은 '서버 연결 끊김'. 다시 붙기는 어느 쪽이든 같음
+static func lost_reason(code: int) -> String:
+	return LOST_SHUTDOWN if code == CLOSE_GOING_AWAY else LOST_CLOSED
 
 
 # 실제로 붙을 주소 (url·상태 글은 원래 주소 그대로): 웹은 브라우저가 permessage-deflate 를 해 주니 그대로
@@ -208,7 +215,9 @@ func _prof_process(_delta: float) -> void:
 		if connect_stuck(now, connect_at, meter.slack(now)):
 			_drop_stuck(now)
 	elif st == WebSocketPeer.STATE_CLOSED:
-		if was_open or (not ever_open and tries == 0 and not reconnecting):
+		if was_open:
+			_lost(now, lost_reason(ws.get_close_code()))
+		elif not ever_open and tries == 0 and not reconnecting:
 			_lost(now, LOST_CLOSED)
 		if reconnecting and now >= retry_at:
 			if tries >= C.NET_RECONNECT_TRIES:
@@ -302,8 +311,10 @@ func _flush(list: Array) -> void:
 		Prof.add_us("net ·받은 스냅샷 수", 1000 * list.size()) # ms 자리에 '개' (1000µs = 1)
 
 
-# 접속 상태 표시 (client/net.js draw 글자 그대로): "핑 12ms" (+ 서버 느림), 알림 글
+# 접속 상태 표시 (client/net.js draw 글자 그대로): "핑 12ms" (+ 서버 느림), 알림 글. 다시 붙는 중이면 지난 핑 대신 "연결 끊김 · 다시 연결 중 3" (시도 횟수)
 func ping_text() -> String:
+	if reconnecting:
+		return "연결 끊김 · 다시 연결 중 %d" % tries
 	var v := meter.view(now_ms())
 	return "핑 %s%s" % [v.ping, (" · 서버 %dms" % v.server) if v.server >= C.NET_SERVER_SLOW_MS else ""]
 

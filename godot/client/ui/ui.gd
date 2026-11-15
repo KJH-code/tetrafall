@@ -50,13 +50,14 @@ func _ready() -> void:
 	results = load("res://ui/results.gd").new()
 	root.add_child(results)
 	status = S.label("연결 중...", 16, S.TEXT)
-	status.position = Vector2(16, 12)
+	status.position = U.status_pos(false)
 	root.add_child(status)
 	ping = S.label("", 12, S.DIM)
 	ping.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
 	ping.position = Vector2(-120, 52)
 	ping.size.x = 108
 	ping.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	ping.grow_horizontal = Control.GROW_DIRECTION_BEGIN # 글이 폭보다 길면 (연결 끊김 · 다시 연결 중 N) 왼쪽으로 늘어남 — 화면 밖으로 안 나감
 	root.add_child(ping)
 	settings = load("res://ui/settings.gd").new()
 	root.add_child(settings)
@@ -129,6 +130,7 @@ func _prof_process(_d: float) -> void:
 	var others := get_tree().get_nodes_in_group("ui_blocker").any(func(n): return bool(n.call("blocking")))
 	PlayerInput.ui_blocking = settings.visible or shown in ["menu", "lobby", "results"] or focus is LineEdit or others
 	status.visible = not Net.is_open() # 연결 중·끊김 글만 (판 시간은 HUD)
+	status.position = U.status_pos(hud.visible) # 판 중엔 판 시간 아래 (겹치지 않게)
 	var now := _screen_now()
 	if now != target:
 		var kind = U.wipe_kind(target, now)
