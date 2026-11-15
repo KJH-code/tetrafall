@@ -194,11 +194,21 @@ static func pick(r: Rng, list: Array):
 
 
 # ---------- 섬 (world.js islandGeometry): 위는 판 모양 사각, 아래로 둥글게 좁아져 뾰족 ----------
-static func island(p: Parts, w: float, d: float, depth: float, seed: int, bands: Array, xf: Transform3D) -> void:
+# 고리 꼭짓점 (순수 계산): [rings, tip] — rings[k][i] = 고리 k (위 → 아래) 방위 i 의 지역 좌표 (z 위), tip = 끝 점. 고리 6 × 점 36 은 world.js 그대로.
+# C6: 흔들림을 줄이고 (TT.ISLAND_JITTER·ISLAND_Z_JITTER) 방위마다 반지름·높이가 위 고리보다 꼭 줄어들게 묶음 — 예전엔 아래 고리가 위 고리 밖·위로 나와
+# 면이 뒤집혔고 (뒷면은 안 그려져) 끝에 구멍이 났음. 작은 섬 (depth 가 얕음) 은 둘째 고리 (-1.1 고정) 보다 셋째가 위였음. 끝 점도 마지막 고리 안쪽 아래로
+static func island_shape(w: float, d: float, depth: float, seed: int) -> Array:
+	var TT := preload("res://world/theme_tune.gd")
 	var r := Rng.new(seed)
 	var n := 36
 	var spec := [[0.0, 1.0, 0.0], [-1.1, 0.985, 0.02], [-0.3 * depth, 0.82, 0.08], [-0.55 * depth, 0.58, 0.12], [-0.8 * depth, 0.33, 0.15], [-0.95 * depth, 0.14, 0.2]]
 	var rings := []
+	var up_q := PackedFloat32Array() # 위 고리의 방위별 반지름 배수·높이
+	var up_z := PackedFloat32Array()
+	up_q.resize(n)
+	up_z.resize(n)
+	var narrow := INF # 마지막 고리의 가장 좁은 반지름
+	var bottom := 0.0 # 마지막 고리의 가장 낮은 높이
 	for k in spec.size():
 		var ring := []
 		for i in n:
@@ -207,11 +217,30 @@ static func island(p: Parts, w: float, d: float, depth: float, seed: int, bands:
 			var sn := sin(a)
 			var sq := 1.0 / maxf(absf(c), absf(sn))
 			var round_ := lerpf(sq, 1.05, minf(1.0, k / 2.5))
-			var j: float = 1.0 + (r.next() - 0.5) * 2 * spec[k][2]
-			var z: float = spec[k][0] * (0.9 + r.next() * 0.2 if k > 1 else 1.0)
-			ring.append(Vector3(c * round_ * (w / 2) * spec[k][1] * j, sn * round_ * (d / 2) * spec[k][1] * j, z))
+			var j: float = 1.0 + (r.next() - 0.5) * 2 * spec[k][2] * TT.ISLAND_JITTER
+			var z: float = spec[k][0] * (1.0 + (r.next() - 0.5) * 2 * TT.ISLAND_Z_JITTER if k > 1 else 1.0)
+			var q: float = round_ * spec[k][1] * j
+			if k > 0:
+				q = minf(q, up_q[i] * TT.ISLAND_SHRINK)
+				z = minf(z, up_z[i] - TT.ISLAND_DROP * depth)
+			up_q[i] = q
+			up_z[i] = z
+			var v := Vector3(c * (w / 2) * q, sn * (d / 2) * q, z)
+			ring.append(v)
+			if k == spec.size() - 1:
+				narrow = minf(narrow, Vector2(v.x, v.y).length())
+				bottom = minf(bottom, z)
 		rings.append(ring)
-	var tip := Vector3((r.next() - 0.5) * 1.5, (r.next() - 0.5) * 1.5, -depth * 1.1)
+	var off := Vector2((r.next() - 0.5) * 1.5, (r.next() - 0.5) * 1.5).limit_length(narrow * TT.ISLAND_TIP_IN)
+	return [rings, Vector3(off.x, off.y, minf(-depth * 1.1, bottom - TT.ISLAND_DROP * depth))]
+
+
+static func island(p: Parts, w: float, d: float, depth: float, seed: int, bands: Array, xf: Transform3D) -> void:
+	var TT := preload("res://world/theme_tune.gd")
+	var n := 36
+	var shape := island_shape(w, d, depth, seed)
+	var rings: Array = shape[0]
+	var tip: Vector3 = shape[1]
 	var last := rings.size() - 1
 	for k in last:
 		var base := lin(bands[mini(k, bands.size() - 1)])
@@ -220,13 +249,14 @@ static func island(p: Parts, w: float, d: float, depth: float, seed: int, bands:
 			var b: Vector3 = rings[k][(i + 1) % n]
 			var c: Vector3 = rings[k + 1][i]
 			var e: Vector3 = rings[k + 1][(i + 1) % n]
-			var m := 0.92 + ((i * 7 + k * 3) % 5) * 0.035
+			var m := 1.0 + (((i * 7 + k * 3) % 5) - 2) * TT.ISLAND_FACE_SHADE # 면마다 살짝 다른 밝기 (C6: ±7% → 층 색 차보다 작게 — 층이 면 얼룩에 묻혔음)
 			var v := Color(base.r * m, base.g * m, base.b * m)
-			p.tri(xf * a, xf * c, xf * b, v)
-			p.tri(xf * b, xf * c, xf * e, v)
+			# C6: 감김을 고도 앞면 (밖에서 볼 때 시계 방향) 으로 — world.js (three, 반시계) 순서 그대로라 섬이 안팎이 뒤집혀 있었음 (밖에선 건너편 안쪽 면이 보였고 외곽선 껍질이 통째로 드러남)
+			p.tri(xf * a, xf * b, xf * c, v)
+			p.tri(xf * b, xf * e, xf * c, v)
 	var tc := shade(bands[bands.size() - 1], 0.75)
 	for i in n:
-		p.tri(xf * rings[last][i], xf * tip, xf * rings[last][(i + 1) % n], tc)
+		p.tri(xf * rings[last][i], xf * rings[last][(i + 1) % n], xf * tip, tc)
 
 
 # ---------- 소품 (world.js prop) ----------
@@ -423,7 +453,7 @@ func build_begin(id, w: int, d: int, low_gfx: bool, h: int = int(C.GRID_H)) -> b
 	far_objs = []
 	if id == null or not C.WORLD_THEMES.has(id):
 		return false
-	var L: Dictionary = C.WORLD_THEMES[id]
+	var L: Dictionary = preload("res://world/theme_tune.gd").theme(id) # C6: 고도 쪽 덮어쓰기 (절벽 밝기 하한)
 	_bj = {"phase": 0, "L": L, "rand": Rng.new(int(L.seed)), "w": w, "d": d, "h": h, "cx": w / 2.0, "cy": d / 2.0, "k": C.WORLD_LOW_DETAIL if low_gfx else 1.0}
 	return true
 
@@ -467,7 +497,7 @@ func build_step() -> bool:
 			_bj.glow = glow
 			_bj.sky = sky
 		1: # 섬·뿌리 바위를 메시로 굳히기 (자리: 섬 먼저)
-			_add((_bj.isl as Parts).mesh(), {"vertex_color": true}, self, not WC.scenery_opt)
+			_add((_bj.isl as Parts).mesh(), {"vertex_color": true, "outline": false}, self, not WC.scenery_opt) # C6: 외곽선 끔 (섬 아래가 외곽선 보라로 덮였음, 그리기 −1)
 			_add((_bj.solid as Parts).mesh(), {"vertex_color": true, "outline": false}, drift, not WC.scenery_opt)
 			_bj.erase("isl")
 			_bj.erase("solid")

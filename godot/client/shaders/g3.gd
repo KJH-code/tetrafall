@@ -163,7 +163,8 @@ static func set_sun(sun: DirectionalLight3D, color, intensity: float, dir: Array
 static func apply_theme(world: Node3D, theme_id, low_arg = null) -> void:
 	var low := _low(low_arg)
 	var env := _env_node(world)
-	var L = C.WORLD_THEMES.get(theme_id) if theme_id != null else null
+	var tune := preload("res://world/theme_tune.gd") # C6: 고도 쪽 덮어쓰기 (어두운 세 테마 하늘·하늘빛·해·안개 — C.WORLD_THEMES 는 생성 파일)
+	var L = tune.theme(theme_id) if C.WORLD_THEMES.has(theme_id) else null
 	var sky := {}
 	var sun_dir: Array = C.SUN_DIR
 	var sun_col = C.SUN_COLOR
@@ -188,6 +189,13 @@ static func apply_theme(world: Node3D, theme_id, low_arg = null) -> void:
 	var m: ShaderMaterial = dome.material_override
 	for k in ["top", "mid", "horizon", "below", "glow", "disc", "disc_size", "stars"]:
 		m.set_shader_parameter(k, sky[k])
+	var low_dim: float = tune.sky_low_dim(theme_id, low) # C6: 낮춤이면 판 빛이 하늘을 안 낮춤 → 밝혀 둔 하늘 (어두운 세 테마) 은 여기서 낮춰 보통 화질과 비슷하게
+	if low_dim != 1.0:
+		for k in ["top", "mid", "horizon", "below"]:
+			m.set_shader_parameter(k, sky[k] * low_dim)
+	var band: Dictionary = tune.sky_band(theme_id, low) # C6 지평선 띠 (낮춤이면 0)
+	for k in band:
+		m.set_shader_parameter(k, band[k])
 	var sd := Vector3(float(sun_dir[0]), float(sun_dir[1]), float(sun_dir[2])).normalized()
 	m.set_shader_parameter("sun_dir", sd)
 	var we: WorldEnvironment = env.get_node("Env")
@@ -724,8 +732,12 @@ static func set_low(world: Node3D, on: bool) -> void:
 		var gl = world.get_node_or_null("G3Light")
 		if gl:
 			gl.low = on
-		if world.get_node_or_null("G3Env"):
+		var env := world.get_node_or_null("G3Env")
+		if env:
 			set_shadows(world, not on)
+			var band: Dictionary = preload("res://world/theme_tune.gd").sky_band(env.get_meta("theme") if env.has_meta("theme") else null, on) # C6 하늘 띠도 끄고 켬
+			for k in band:
+				(env.get_node("Sky").material_override as ShaderMaterial).set_shader_parameter(k, band[k])
 
 
 # ---- 첫 진입 멈춤 줄이기 (JS render.js prewarmLobby): 고도는 처음 그릴 때 셰이더를 만듦 (Compatibility 는 미리 만들기 없음) →

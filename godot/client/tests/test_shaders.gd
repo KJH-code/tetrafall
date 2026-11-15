@@ -148,3 +148,173 @@ func test_stencil_body_xray() -> void:
 	G3.xray_skip_body(x)
 	check(x.stencil_mode == BaseMaterial3D.STENCIL_MODE_CUSTOM and x.stencil_flags == BaseMaterial3D.STENCIL_FLAG_READ and x.stencil_compare == BaseMaterial3D.STENCIL_COMPARE_NOT_EQUAL and x.stencil_reference == K.STENCIL_MY_BODY, "x-ray = 그 값 아닌 칸만")
 	check(x.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED, "x-ray 는 몸 다음에 그려짐 (투명 순서)")
+
+
+# ===== C6 (겉모습 1 — 세계 바탕): 테마 고도 쪽 덮어쓰기 (world/theme_tune.gd) · 어두운 세 테마 밝기 · 하늘 띠 =====
+const TT := preload("res://world/theme_tune.gd")
+
+
+# G3.apply_theme·set_low 을 부르는 테스트가 전역 값 (안개·하늘빛·해) 과 G3.low 를 다음 테스트에 안 남기게
+func _globals_keep() -> Dictionary:
+	return G3._globals.duplicate(true)
+
+
+func _globals_back(keep: Dictionary) -> void:
+	for k in G3._globals.keys():
+		if keep.has(k):
+			G3._set_global(k, keep[k])
+		else:
+			G3._globals.erase(k) # 테마를 안 깐 상태 (뒤 테스트가 null 이면 자기 값을 넣음)
+	G3.low = false
+
+
+# 덮어쓰기 표는 하늘·하늘빛·해 세기·안개·절벽만 (floor·terrain·piece·hazard 는 JS 정답 테스트가 C.WORLD_THEMES 로 묶음)
+func test_c6_tune_only_allowed_keys() -> void:
+	check(TT.ALLOWED == ["sky", "hemi", "sunIntensity", "fog", "cliff"], "덮을 수 있는 키 %s" % [TT.ALLOWED])
+	var sky_keys := ["top", "mid", "horizon", "below", "glow", "disc", "discSize", "stars"]
+	for id in TT.TUNE:
+		check(C.WORLD_THEMES.has(id), "%s: 있는 테마" % id)
+		for k in TT.TUNE[id]:
+			check(TT.ALLOWED.has(k), "%s: %s 는 못 덮음" % [id, k])
+			check(typeof(TT.TUNE[id][k]) == typeof(C.WORLD_THEMES[id][k]) or (TT.TUNE[id][k] is float and C.WORLD_THEMES[id][k] is float), "%s.%s: 원래와 같은 꼴" % [id, k])
+		for k in TT.TUNE[id].get("sky", {}):
+			check(sky_keys.has(k), "%s: sky.%s 는 하늘 색 키가 아님" % [id, k])
+		for k in ["hemi", "fog"]:
+			if TT.TUNE[id].has(k):
+				check(TT.TUNE[id][k].size() == C.WORLD_THEMES[id][k].size(), "%s.%s: 원래와 같은 길이" % [id, k])
+	for id in C.WORLD_THEMES:
+		var t := TT.theme(id)
+		for k in ["floor", "terrain", "piece", "hazard", "seed", "sunDir", "sunColor", "sea", "cloud", "far", "props"]:
+			check(t.get(k) == C.WORLD_THEMES[id].get(k), "%s.%s 는 그대로" % [id, k])
+
+
+# 덮지 않은 키와 표에 없는 테마는 C.WORLD_THEMES 와 같다 (절벽 밝기 하한도 밝은 테마는 안 건드림). 결과는 기억해 둔 것 하나
+func test_c6_tune_keeps_base() -> void:
+	for id in C.WORLD_THEMES:
+		var base: Dictionary = C.WORLD_THEMES[id]
+		var t := TT.theme(id)
+		check(is_same(t, TT.theme(id)), "%s: 같은 사전 (기억)" % id)
+		check(t.keys() == base.keys(), "%s: 키 그대로" % id)
+		if not TT.TUNE.has(id):
+			check(t == base, "%s: 표에 없는 테마는 원래 그대로" % id)
+			continue
+		var over: Dictionary = TT.TUNE[id]
+		for k in base:
+			if k == "sky":
+				for sk in base.sky:
+					if not over.get("sky", {}).has(sk):
+						check(t.sky[sk] == base.sky[sk], "%s: sky.%s 그대로" % [id, sk])
+				check(t.sky.keys() == base.sky.keys(), "%s: sky 키 그대로" % id)
+			elif not over.has(k) and k != "cliff":
+				check(t[k] == base[k], "%s.%s 그대로" % [id, k])
+		for k in over:
+			if k == "sky":
+				for sk in over.sky:
+					check(int(t.sky[sk]) == int(over.sky[sk]), "%s: sky.%s 덮임" % [id, sk])
+			else:
+				check(t[k] == over[k], "%s.%s 덮임" % [id, k])
+	check(TT.theme("nope").is_empty() and TT.theme(null).is_empty(), "없는 테마는 빈 사전")
+	check(C.WORLD_THEMES.volcano.sky.horizon == 9186326.0 and C.WORLD_THEMES.volcano.hemi[2] == 1.45, "원래 표는 안 바뀜")
+
+
+# 판 빛 vivid 가 하늘을 낮춘 뒤 (× 0.5, 채도 + 0.15) 에도 지평선이 하한 위 (예전 화산·수정은 아래 = 검정 덩어리)
+func test_c6_dark_sky_floor() -> void:
+	var GL := preload("res://shaders/game_light.gd")
+	var sk: Array = C.GAME_LIGHT_PRESETS.vivid.sky
+	check(sk == [0.5, 0.15], "vivid 하늘 %s" % [sk])
+	for id in C.WORLD_THEMES:
+		var dim: Vector3 = GL._dimv(G3._lin3(TT.theme(id).sky.horizon), sk[0], sk[1], 1.0)
+		check(TT.lin_luma(dim) >= TT.SKY_DIM_LUMA_MIN, "%s: 낮춘 지평선 밝기 %.3f ≥ %.3f" % [id, TT.lin_luma(dim), TT.SKY_DIM_LUMA_MIN])
+	for id in ["volcano", "crystal"]:
+		var old: Vector3 = GL._dimv(G3._lin3(C.WORLD_THEMES[id].sky.horizon), sk[0], sk[1], 1.0)
+		check(TT.lin_luma(old) < TT.SKY_DIM_LUMA_MIN, "%s: 예전 값은 하한 아래 (%.3f)" % [id, TT.lin_luma(old)])
+	for id in TT.TUNE: # 밝힌 색: 성분마다 원래 이상·밤 순서 (꼭대기 < 중간 < 지평선) 그대로
+		var b: Dictionary = C.WORLD_THEMES[id].sky
+		var t: Dictionary = TT.theme(id).sky
+		for s in ["top", "mid", "horizon", "below"]:
+			var bv := G3._lin3(b[s])
+			var tv := G3._lin3(t[s])
+			check(tv.x >= bv.x and tv.y >= bv.y and tv.z >= bv.z, "%s.sky.%s: 원래보다 어둡지 않음" % [id, s])
+		check(TT.luma(t.top) < TT.luma(t.mid) and TT.luma(t.mid) < TT.luma(t.horizon), "%s: 꼭대기 < 중간 < 지평선" % id)
+		check(TT.theme(id).hemi[2] > C.WORLD_THEMES[id].hemi[2] and TT.theme(id).sunIntensity > C.WORLD_THEMES[id].sunIntensity, "%s: 하늘빛·해 세기 ↑" % id)
+	# 그래픽 낮춤 (판 빛 꺼짐): 밝힌 하늘만 SKY_LOW_DIM 배로 그려 넣음, 나머지 테마·보통 화질은 표 값 그대로
+	check(TT.sky_low_dim("volcano", true) == TT.SKY_LOW_DIM and TT.sky_low_dim("volcano", false) == 1.0 and TT.sky_low_dim("meadow", true) == 1.0 and TT.sky_low_dim(null, true) == 1.0, "낮춤 하늘 배율")
+	check(TT.SKY_LOW_DIM > 0.5 and TT.SKY_LOW_DIM < 1.0, "낮춤 배율은 판 빛 (0.5) 과 1 사이")
+	var keep := _globals_keep()
+	var world := Node3D.new()
+	G3.apply_theme(world, "volcano", false)
+	var m: ShaderMaterial = world.get_node("G3Env/Sky").material_override
+	check((m.get_shader_parameter("horizon") as Vector3).is_equal_approx(G3._lin3(TT.TUNE.volcano.sky.horizon)), "보통: 하늘 구에 덮어쓴 지평선 색")
+	check(is_equal_approx(G3.global_value("g3_hemi_energy"), TT.TUNE.volcano.hemi[2]), "하늘빛 세기도 덮어쓴 값")
+	check((G3.global_value("g3_fog_color") as Vector3).is_equal_approx(G3._lin3(TT.TUNE.volcano.fog[0])), "안개 색도")
+	G3.apply_theme(world, "volcano", true)
+	check((m.get_shader_parameter("horizon") as Vector3).is_equal_approx(G3._lin3(TT.TUNE.volcano.sky.horizon) * TT.SKY_LOW_DIM), "낮춤: 지평선 × SKY_LOW_DIM")
+	check((m.get_shader_parameter("top") as Vector3).is_equal_approx(G3._lin3(TT.TUNE.volcano.sky.top) * TT.SKY_LOW_DIM), "낮춤: 꼭대기도")
+	G3.apply_theme(world, "meadow", true)
+	check((m.get_shader_parameter("horizon") as Vector3).is_equal_approx(G3._lin3(C.WORLD_THEMES.meadow.sky.horizon)), "밝은 테마는 낮춤이어도 원래 색")
+	check(is_equal_approx(G3.global_value("g3_hemi_energy"), C.WORLD_THEMES.meadow.hemi[2]), "밝은 테마 하늘빛 그대로")
+	world.free()
+	_globals_back(keep)
+
+
+# 절벽 (섬 몸통 층 색) 7테마: sRGB 밝기 하한 위, 층 순서·구분 그대로, 밝은 테마는 원래 색
+func test_c6_cliff_luma_floor() -> void:
+	for id in C.WORLD_THEMES:
+		var base: Array = C.WORLD_THEMES[id].cliff
+		var got: Array = TT.theme(id).cliff
+		check(got.size() == base.size() and got.size() == 5, "%s: 층 5개" % id)
+		var dark := false
+		for i in got.size():
+			check(TT.luma(got[i]) >= TT.CLIFF_LUMA_MIN, "%s: 층 %d 밝기 %.3f ≥ %.2f" % [id, i, TT.luma(got[i]), TT.CLIFF_LUMA_MIN])
+			check(int(got[i]) >= 0 and int(got[i]) <= 0xffffff and got[i] is float, "%s: 층 %d 색 값" % [id, i])
+			dark = dark or TT.luma(base[i]) < TT.CLIFF_LUMA_MIN
+		if not dark:
+			check(got == base, "%s: 하한 위면 원래 색 그대로" % id)
+			continue
+		for i in range(1, got.size()):
+			var db := TT.luma(base[i]) - TT.luma(base[i - 1])
+			var dg := TT.luma(got[i]) - TT.luma(got[i - 1])
+			check(signf(db) == signf(dg) and absf(dg) >= absf(db), "%s: 층 %d·%d 밝기 순서·차 (%.3f → %.3f)" % [id, i - 1, i, db, dg])
+	check(["volcano", "crystal", "mushroom"].all(func(id): return TT.theme(id).cliff != C.WORLD_THEMES[id].cliff), "어두운 세 테마는 밝혀짐")
+	var one := TT.cliff_floor([0x000000, 0x101010], 0.22)
+	check(TT.luma(one[0]) >= 0.22 and TT.luma(one[1]) > TT.luma(one[0]), "검정도 하한 위 회색으로 %s" % [one])
+	var keep_arr := [0x808080, 0x909090]
+	check(is_same(TT.cliff_floor(keep_arr, 0.22), keep_arr), "하한 위면 받은 배열 그대로")
+	check(TT.cliff_floor([0x0000ff, 0x000010], 0.9).all(func(c): return int(c) <= 0xffffff), "성분은 255 를 안 넘음")
+
+
+# 하늘 띠: 보통 화질이면 band_k > 0 (밤 테마는 glow 섞기), 그래픽 낮춤이면 0 — apply_theme 도 set_low 도
+func test_c6_sky_band_low_off() -> void:
+	check(TT.sky_band("meadow", true) == {"band_k": 0.0, "band_glow": 0.0} and TT.sky_band("volcano", true) == {"band_k": 0.0, "band_glow": 0.0}, "낮춤이면 띠 없음")
+	check(TT.sky_band("meadow", false) == {"band_k": TT.SKY_BAND_K, "band_glow": 0.0}, "낮 테마: 띠만")
+	check(TT.sky_band("volcano", false) == {"band_k": TT.SKY_BAND_K, "band_glow": TT.SKY_BAND_GLOW}, "밤 테마 (sky.glow 있음): glow 섞기")
+	check(TT.sky_band(null, false) == {"band_k": TT.SKY_BAND_K, "band_glow": 0.0}, "예전 노을: 띠만")
+	check(TT.SKY_BAND_K > 0.0 and TT.SKY_BAND_K <= 1.0 and TT.SKY_BAND_GLOW >= 0.0 and TT.SKY_BAND_GLOW <= 1.0, "띠 값 범위")
+	var names := []
+	for u in G3.SKY.get_shader_uniform_list():
+		names.append(u.name)
+	for u in ["top", "mid", "horizon", "below", "sun_dir", "glow", "disc", "disc_size", "stars", "band_k", "band_glow"]:
+		check(names.has(u), "하늘 셰이더 uniform %s (예전 이름 그대로 + 띠 둘)" % u)
+	check(not G3.SKY.code.contains("sampler2D"), "띠는 텍스처 없이")
+	var keep := _globals_keep()
+	var world := Node3D.new()
+	G3.apply_theme(world, "crystal", false)
+	var m: ShaderMaterial = world.get_node("G3Env/Sky").material_override
+	check(is_equal_approx(m.get_shader_parameter("band_k"), TT.SKY_BAND_K) and is_equal_approx(m.get_shader_parameter("band_glow"), TT.SKY_BAND_GLOW), "보통: 띠 켬")
+	G3.set_low(world, true)
+	check(m.get_shader_parameter("band_k") == 0.0 and m.get_shader_parameter("band_glow") == 0.0, "set_low 켬: 띠 끔")
+	G3.set_low(world, false)
+	check(is_equal_approx(m.get_shader_parameter("band_k"), TT.SKY_BAND_K) and is_equal_approx(m.get_shader_parameter("band_glow"), TT.SKY_BAND_GLOW), "set_low 끔: 띠 다시 (그 테마 값)")
+	G3.apply_theme(world, "crystal", true)
+	check(m.get_shader_parameter("band_k") == 0.0, "낮춤으로 테마 적용: 띠 끔")
+	G3.apply_theme(world, "meadow", false)
+	check(is_equal_approx(m.get_shader_parameter("band_k"), TT.SKY_BAND_K) and m.get_shader_parameter("band_glow") == 0.0, "낮 테마: glow 섞기 없음")
+	G3.apply_theme(world, null, false)
+	check(is_equal_approx(m.get_shader_parameter("band_k"), TT.SKY_BAND_K), "예전 노을에도 띠")
+	var bare := Node3D.new() # 테마를 안 깐 판에 set_low: 하늘 노드가 없어도 조용히
+	G3.set_low(bare, true)
+	G3.set_low(bare, false)
+	check(bare.get_node_or_null("G3Env") == null, "set_low 가 하늘 노드를 만들지 않음")
+	bare.free()
+	world.free()
+	_globals_back(keep)

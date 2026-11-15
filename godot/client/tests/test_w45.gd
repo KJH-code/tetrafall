@@ -314,3 +314,87 @@ func test_stage_release_shrinks_render_target() -> void:
 	st._fit()
 	check(st.vp.size == Vector2i(300, 400), "다시 보이면 칸 크기로 되돌림 (%s)" % str(st.vp.size))
 	st.free()
+
+
+# ===== C6 (겉모습 1 — 세계 바탕): 섬 몸통 =====
+# 메인 섬은 외곽선 없이 (예전: 섬이 안팎이 뒤집혀 있어 외곽선 껍질이 통째로 드러나 섬 아래가 보라로 덮였음), 절벽 색은 ThemeTune (밝기 하한) 에서
+func test_c6_main_island_no_outline() -> void:
+	const G3 := preload("res://shaders/g3.gd")
+	const TT := preload("res://world/theme_tune.gd")
+	check(G3.scenery_material({"vertex_color": true}).next_pass != null, "기본은 외곽선 붙음 (비교용)")
+	for id in C.WORLD_THEMES.keys():
+		var s := Scenery.new()
+		s._ready()
+		s.make_mat = G3.scenery_material
+		s.build(id, 14, 14, false, 32)
+		var main: MeshInstance3D = null
+		for c in s.get_children():
+			if c is MeshInstance3D and not c.is_queued_for_deletion():
+				main = c
+				break
+		check(main != null and main.material_override is ShaderMaterial, "%s: 메인 섬 메시" % id)
+		if main == null:
+			s.free()
+			continue
+		check((main.material_override as ShaderMaterial).next_pass == null, "%s: 메인 섬 재질에 외곽선 (next_pass) 없음" % id)
+		check((main.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() == (5 * 36 * 2 + 36) * 3, "%s: 섬 삼각형 수 그대로 (고리 6 × 점 36)" % id)
+		var col: Color = (main.mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR] as PackedColorArray)[0]
+		var want: Color = Scenery.lin(TT.theme(id).cliff[0])
+		var q := 2.0 / 255.0 # 메시 꼭짓점 색은 8비트로 저장됨
+		var sh: float = 2.0 * TT.ISLAND_FACE_SHADE # 면마다 밝기 흔들림 (±2칸)
+		check(col.r >= want.r * (1.0 - sh) - q and col.r <= want.r * (1.0 + sh) + q and col.g >= want.g * (1.0 - sh) - q and col.g <= want.g * (1.0 + sh) + q, "%s: 맨 위 층 색 %s = ThemeTune 절벽 색 %s (면 흔들림 안)" % [id, col, want])
+		s.free()
+
+
+# 섬 고리: 방위마다 반지름·높이가 위 고리보다 꼭 줄어듦 (판 10~19 + 먼 작은 섬 크기), 끝 점은 마지막 고리 안쪽 아래, 면은 전부 바깥을 봄 (구멍 없음)
+func test_c6_island_rings_shrink() -> void:
+	var cases := []
+	for id in C.WORLD_THEMES.keys():
+		for n in range(10, 20):
+			cases.append([float(n), float(n), n * 0.85, int(C.WORLD_THEMES[id].seed)])
+	for i in 40: # 먼 작은 섬 (islet): 폭 3.2~8, 깊이 폭 × 0.9 — 예전엔 둘째 고리 (-1.1 고정) 보다 셋째가 위였음
+		var s := 1.6 + 2.4 * i / 39.0
+		cases.append([s * 2, s * 2, s * 1.8, 1000 + i * 7919])
+	cases.append([19.0, 10.0, 16.15, 5]) # 네모가 아닌 판
+	var bad := []
+	for c in cases:
+		var w: float = c[0]
+		var d: float = c[1]
+		var shape: Array = Scenery.island_shape(w, d, c[2], c[3])
+		var rings: Array = shape[0]
+		var tip: Vector3 = shape[1]
+		if rings.size() != 6 or rings.any(func(r): return r.size() != 36):
+			bad.append("%s: 고리 6 × 점 36 이 아님" % [c])
+			continue
+		var narrow := INF
+		var bottom := INF
+		for i in 36:
+			for k in range(1, 6):
+				var up: Vector3 = rings[k - 1][i]
+				var v: Vector3 = rings[k][i]
+				var q_up := Vector2(up.x / (w / 2), up.y / (d / 2)).length()
+				var q := Vector2(v.x / (w / 2), v.y / (d / 2)).length()
+				if not (q < q_up and v.z < up.z):
+					bad.append("%s 방위 %d 고리 %d: 반지름 %.3f → %.3f, 높이 %.3f → %.3f" % [c, i, k, q_up, q, up.z, v.z])
+				if absf(Vector2(up.x, up.y).angle_to(Vector2(v.x, v.y))) > 1e-3:
+					bad.append("%s 방위 %d 고리 %d: 방위가 틀어짐" % [c, i, k])
+			narrow = minf(narrow, Vector2(rings[5][i].x, rings[5][i].y).length())
+			bottom = minf(bottom, rings[5][i].z)
+		if not (tip.z < bottom and Vector2(tip.x, tip.y).length() < narrow):
+			bad.append("%s: 끝 점 %s 이 마지막 고리 (가장 좁은 반지름 %.3f, 바닥 %.3f) 안쪽 아래가 아님" % [c, tip, narrow, bottom])
+		# 맨 위 고리는 판 모양 그대로 (네 변이 판 가장자리)
+		for v in rings[0]:
+			if absf(maxf(absf(v.x) / (w / 2), absf(v.y) / (d / 2)) - 1.0) > 1e-4 or v.z != 0.0:
+				bad.append("%s: 맨 위 고리가 판 가장자리가 아님 %s" % [c, v])
+				break
+		# 면: Parts.mesh 의 법선 식 (고도 앞면 쪽) 이 위 가운데에서 볼 때 전부 바깥
+		var p := Scenery.Parts.new()
+		Scenery.island(p, w, d, c[2], c[3], C.WORLD_THEMES.meadow.cliff, Transform3D.IDENTITY)
+		var inward := 0
+		for i in range(0, p.pos.size(), 3):
+			var n := (p.pos[i + 2] - p.pos[i]).cross(p.pos[i + 1] - p.pos[i])
+			if n.dot((p.pos[i] + p.pos[i + 1] + p.pos[i + 2]) / 3.0) <= 0.0:
+				inward += 1
+		if p.pos.size() != (5 * 36 * 2 + 36) * 3 or inward != 0:
+			bad.append("%s: 삼각형 %d, 안쪽을 보는 면 %d" % [c, p.pos.size() / 3, inward])
+	check(bad.is_empty(), "섬 고리 (%d 가지 중 어긋남 %d): %s" % [cases.size(), bad.size(), bad.slice(0, 4)])
