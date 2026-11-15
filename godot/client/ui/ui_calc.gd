@@ -65,13 +65,43 @@ static func status_pos(in_game: bool) -> Vector2:
 
 
 # 받침 (글을 담은 판, ui.gd status_box) 왼쪽 위: 글 자리에서 여백만큼 바깥.
-# 판 중엔 가운데 위 알림 칸들 (avoid: Rect2 배열, 같은 캔버스 좌표 — ui.gd _top_rects) 과 겹치면 (칸을 STATUS_GAP 만큼 키워 봄) 그 칸 아래로 STATUS_GAP 띄워 내림.
+# 판 중엔 피할 칸들 (avoid: Rect2 배열, 같은 캔버스 좌표 — ui.gd _avoid_rects: 가운데 위 알림 칸 + 연습 방 왼쪽 위 힌트·연습 창) 과 겹치면
+# (칸을 STATUS_GAP 만큼 키워 봄) 그 칸 아래로 STATUS_GAP 띄워 내림.
 # 배너는 글 길이·줄 수 따라 왼쪽·아래로 늘어 고정 자리로는 못 피함 (사이클 5 테스트: 960 폭 블록 마스터 본인의 두 줄 배너가 x 약 218 까지 와 받침이 둘째 줄을 가림).
-# size = 받침 크기 (0 이면 안 내림). 내려가기만 하니 칸마다 많아야 한 번 → avoid 수 + 1 번 돌면 끝
-static func status_box_pos(in_game: bool, size := Vector2.ZERO, avoid: Array = []) -> Vector2:
-	var pos := status_pos(in_game) - STATUS_PAD
+# 연습 힌트 '연습 창 Tab'·연습 창 (practice.gd, 둘 다 (16, 110)) 은 연습 화면이 위 층 (CanvasLayer 15) 이라 겹치면 상태 글이 가려짐 (사이클 5 수정 리뷰 1).
+# room = 받침이 들어가야 하는 칸 (status_room: 화면에서 아래 사람 판·스킬 칸 위까지, 넓이 0 이면 제한 없음). 내린 자리가 room 을 벗어나면
+# (작은 화면에서 긴 연습 창 아래) 대신 막은 칸 오른쪽 옆 (그 칸 오른쪽 끝 + 띄움, 처음 높이에서 다시 내려 봄) 중 왼쪽부터 room 에 드는 첫 자리. 없으면 내린 자리 그대로.
+# size = 받침 크기 (0 이면 안 내림)
+static func status_box_pos(in_game: bool, size := Vector2.ZERO, avoid: Array = [], room := Rect2()) -> Vector2:
+	var start := status_pos(in_game) - STATUS_PAD
 	if not in_game:
+		return start
+	var pos := _drop_below(start, size, avoid)
+	if not room.has_area() or room.encloses(Rect2(pos, size)):
 		return pos
+	var xs: Array = []
+	for r in avoid:
+		var x: float = (r as Rect2).grow(STATUS_GAP).end.x
+		if x > start.x and not xs.has(x):
+			xs.append(x)
+	xs.sort()
+	for x in xs:
+		var q := _drop_below(Vector2(x, start.y), size, avoid)
+		if room.encloses(Rect2(q, size)):
+			return q
+	return pos
+
+
+# 받침이 들어갈 칸: 화면 위 왼쪽부터, 아래 HUD 칸들 (bottom: Rect2 배열 — 사람 판 줄·F·R 칸·내 %·관전 안내) 중 가장 높은 위 끝 - STATUS_GAP 까지
+static func status_room(view: Vector2, bottom: Array = []) -> Rect2:
+	var floor_y := view.y
+	for r in bottom:
+		floor_y = minf(floor_y, (r as Rect2).position.y - STATUS_GAP)
+	return Rect2(Vector2.ZERO, Vector2(view.x, maxf(0.0, floor_y)))
+
+
+# pos 에서 겹치는 칸 아래로 내리기를 더 안 겹칠 때까지. 내려가기만 하니 칸마다 많아야 한 번 → avoid 수 + 1 번 돌면 끝
+static func _drop_below(pos: Vector2, size: Vector2, avoid: Array) -> Vector2:
 	for _i in avoid.size() + 1:
 		var moved := false
 		for r in avoid:

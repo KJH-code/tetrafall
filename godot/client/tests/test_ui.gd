@@ -5,6 +5,7 @@ extends RefCounted
 const U := preload("res://ui/ui_calc.gd")
 const Awards := preload("res://ui/awards_calc.gd")
 const Results := preload("res://ui/results.gd")
+const Practice := preload("res://ui/practice.gd")
 
 var errors: Array = []
 var fx: Dictionary = {}
@@ -137,6 +138,82 @@ func test_status_avoids_top_box() -> void:
 	# 판 밖 (메뉴·대기실·결과) 은 알림을 안 봄, 받침 크기 0 이면 안 내림
 	check(U.status_box_pos(false, size, [Rect2(0, 0, 960, 540)]) == U.status_box_pos(false), "판 밖은 그대로")
 	check(U.status_box_pos(true, Vector2.ZERO, [banner]) == base, "크기 0 이면 그대로")
+
+
+# 연습 방 왼쪽 위 힌트 '연습 창 Tab'·연습 창 (practice.gd, 둘 다 (16, 110), 위 층 CanvasLayer 15) 도 피함 (사이클 5 수정 리뷰 1:
+# 끊긴 동안 상태 글 (16, 108) 이 힌트와 겹쳐 뭉개지고, 연습 창을 열면 통째로 가려졌음). 아래로 내리다 아래 HUD (F·R 칸) 에 닿으면 막은 칸 오른쪽 옆
+func test_status_avoids_practice() -> void:
+	var size := Vector2(272, 26)
+	var gap := U.STATUS_GAP
+	var base := U.status_box_pos(true)
+	var room720 := U.status_room(Vector2(1280, 720), [Rect2(511, 676, 258, 28)]) # F·R 칸 (1인칭 연습 방)
+	var hint := Rect2(16, 110, 92, 18)
+	var p := U.status_box_pos(true, size, [hint], room720)
+	check(p.x == base.x and is_equal_approx(p.y, hint.end.y + gap), "힌트 아래로: %s" % str(p))
+	check(not Rect2(p, size).intersects(hint.grow(gap)), "힌트 (+띄움) 와 안 겹침")
+	# 연습 창 (1280×720): 창 아래에 자리가 있으면 창 아래
+	var win := Rect2(16, 110, 300, 400)
+	var q := U.status_box_pos(true, size, [win], room720)
+	check(q.x == base.x and is_equal_approx(q.y, win.end.y + gap) and room720.encloses(Rect2(q, size)), "1280×720 연습 창 아래: %s" % str(q))
+	# 960×540: 창 아래로 내리면 아래 HUD 에 닿음 → 창 오른쪽 옆, 처음 높이
+	var room540 := U.status_room(Vector2(960, 540), [Rect2(351, 496, 258, 28)])
+	var s := U.status_box_pos(true, size, [win], room540)
+	check(is_equal_approx(s.x, win.end.x + gap) and s.y == base.y, "960×540 연습 창 오른쪽 옆: %s" % str(s))
+	check(room540.encloses(Rect2(s, size)) and not Rect2(s, size).intersects(win.grow(gap)), "옆 자리는 화면 안·창과 안 겹침: %s" % str(s))
+	# 옆 자리에 가운데 위 알림 칸이 있으면 그 열에서 다시 내림
+	var toast := Rect2(300, 100, 360, 30)
+	for avoid in [[win, toast], [toast, win]]:
+		var t := U.status_box_pos(true, size, avoid, room540)
+		var clear := room540.encloses(Rect2(t, size))
+		for r in avoid:
+			clear = clear and not Rect2(t, size).intersects((r as Rect2).grow(gap))
+		check(clear and is_equal_approx(t.x, win.end.x + gap) and is_equal_approx(t.y, toast.end.y + gap), "옆 열의 알림 아래: %s" % str(t))
+	# 어디에도 안 들어가면 (아주 작은 화면) 예전처럼 내린 자리, room 없음 (넓이 0) 도 예전 그대로
+	check(U.status_box_pos(true, size, [win], Rect2(0, 0, 320, 200)) == U.status_box_pos(true, size, [win]), "자리가 없으면 내린 자리")
+	check(U.status_box_pos(true, size, [win], Rect2()) == q, "room 없으면 제한 없이 내림")
+	check(U.status_box_pos(true, size, [], room540) == base, "피할 칸 없으면 기본 자리")
+	# 받침 칸: 아래 HUD 칸 중 가장 높은 위 끝 - 띄움까지, 없으면 화면 전체
+	check(U.status_room(Vector2(1280, 720)) == Rect2(0, 0, 1280, 720), "아래 HUD 없으면 화면 전체")
+	check(U.status_room(Vector2(1280, 720), [Rect2(0, 650, 10, 10), Rect2(500, 600, 10, 10)]) == Rect2(0, 0, 1280, 600 - gap), "가장 높은 아래 칸 위까지")
+
+
+# practice.gd 연결: 'status_avoid' 무리 + avoid_rects() 가 보이는 힌트·연습 창 사각형 (ui.gd _avoid_rects 가 모음). 튜토리얼 방엔 힌트·창이 없어 빈 배열
+func test_practice_avoid_rects() -> void:
+	var keep_state = Store.state
+	var keep_room = Store.room
+	var keep_locked = PlayerInput.locked
+	Store.state = {"phase": "playing", "practice": {"dummies": []}, "players": []}
+	Store.room = {"code": "PRAC", "practice": true}
+	var p = Practice.new()
+	p._ready() # 테스트 러너 안에선 트리가 안 돌아 직접 (test_complete hud_extra 와 같음)
+	check(p.is_in_group("status_avoid"), "status_avoid 무리")
+	p._process(0.0)
+	p.hint.reset_size()
+	var size := Vector2(272, 26)
+	var room := U.status_room(Vector2(1280, 720))
+	var r: Array = p.avoid_rects()
+	check(r.size() == 1 and (r[0] as Rect2).position == Vector2(16, 110) and (r[0] as Rect2).size.y > 0.0, "힌트만: %s" % str(r))
+	if r.size() == 1:
+		var at := U.status_box_pos(true, size, r, room)
+		check(not Rect2(at, size).intersects(r[0]) and room.encloses(Rect2(at, size)), "받침이 힌트와 안 겹침: %s" % str(at))
+	p.set_open(true)
+	p._process(0.0)
+	check(p.open and p.win.visible and not p.hint.visible, "창 열림 → 힌트 숨김")
+	p.win.size = Vector2(300, 400) # 트리 밖이라 컨테이너가 크기를 못 잼 (러너가 트리 시작 전에 돎) — 실제 크기는 화면 사진으로
+	r = p.avoid_rects()
+	check(r.size() == 1 and r[0] == Rect2(16, 110, 300, 400), "연습 창만 (힌트 숨김): %s" % str(r))
+	if r.size() == 1:
+		var at := U.status_box_pos(true, size, r, room)
+		check(not Rect2(at, size).intersects(r[0]) and room.encloses(Rect2(at, size)), "받침이 연습 창과 안 겹침: %s" % str(at))
+	# 튜토리얼 방 (연습 방 위에서 돎): 연습 힌트·창이 안 뜸 → 피할 칸 없음 (튜토리얼 띠는 STATUS_POS_GAME 이 이미 피함)
+	Store.state = {"phase": "playing", "practice": {"dummies": []}, "tutorial": {"step": 0}, "players": []}
+	Store.room = {"code": "TUTO", "practice": true, "tutorial": true}
+	p._process(0.0)
+	check(p.avoid_rects().is_empty() and not p.open, "튜토리얼 방은 빈 배열: %s" % str(p.avoid_rects()))
+	p.free()
+	Store.state = keep_state
+	Store.room = keep_room
+	PlayerInput.locked = keep_locked
 
 
 # 방 옵션 꼬리 (손님 대기실 줄·공개 방 목록): 켠 것만, 순서 고정.

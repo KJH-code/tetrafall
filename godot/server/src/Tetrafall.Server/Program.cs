@@ -15,7 +15,7 @@ using Tetrafall.Server;
 // 끄기 (SIGTERM·Ctrl+C): ApplicationStopping 이 inbox 로 Rooms.Shutdown (방 로그 '[서버 종료]' + 방 안 접속에 left '서버를 껐습니다 — …', 그 뒤 들어가기는 joinError)
 //   + 접속마다 WsSocket.Bye (줄을 다 보내고 C.NET_SHUTDOWN_CLOSE_GAP_MS 뒤 닫기 1001 → 고도 클라 '서버가 꺼짐') 를 넘기고 최대 C.NET_SHUTDOWN_WAIT_MS 기다려 콘솔 '서버 끄는 중: …' 한 줄.
 //   닫기에 답 없는 접속은 종료 대기 C.NET_SHUTDOWN_MS (Kestrel 기본 30초 대신 3초) 뒤 Abort → 약 3초 안에 꺼짐.
-//   --online 이면 터널 (cloudflared) 은 그 뒤 ApplicationStopped 에서 끔 — 터널로 붙은 사람도 left + 1001 을 받게 (StartTunnel)
+//   --online 이면 터널 (cloudflared) 은 그 뒤 ApplicationStopped 에서 끔 — 터널로 붙은 사람도 left + 1001 을 받게 (StartTunnel). 끄기 시작 때는 다시 켜지 않음 표시만
 
 if (args.Length > 0 && args[0] == "load") Environment.Exit(LoadBench.Run(args)); // 서버 부하 재기 (tools/load.mjs 와 나란히)
 var root = FindRepoRoot();
@@ -237,7 +237,10 @@ void StartTunnel()
     };
     // 터널은 맨 나중에 끔 (ApplicationStopped = Kestrel 이 접속을 다 닫았거나 종료 대기 C.NET_SHUTDOWN_MS 가 지난 뒤): 터널로 붙은 사람도
     // left + 닫기 1001 (Bye 의 틈 C.NET_SHUTDOWN_CLOSE_GAP_MS 뒤) 을 받고 끊김. ApplicationStopping 에서 끄면 (등록 반대 순서라 끄기 콜백보다 먼저 돎)
-    // 터널이 바로 죽어 그 사람들은 1006 으로 끊겼음 (사이클 5 리뷰 F1, ShutdownTests). ProcessExit 는 그 뒤 (Main 이 끝날 때) — 두 번 불려도 됨
+    // 터널이 바로 죽어 그 사람들은 1006 으로 끊겼음 (사이클 5 리뷰 F1, ShutdownTests). ProcessExit 는 그 뒤 (Main 이 끝날 때) — 두 번 불려도 됨.
+    // 다만 끄는 동안 (최대 약 C.NET_SHUTDOWN_MS) cloudflared 가 먼저 꺼지면 (터미널 Ctrl+C 는 cloudflared 에도 감) 지키기가 '다시 켭니다' 로 새로 켰음
+    // → ApplicationStopping 에서 다시 켜지 않음 표시만 (NoRestart, 프로세스는 안 죽임 — 사이클 5 수정 리뷰 2). 이 등록이 끄기 콜백보다 나중이라 먼저 돎
+    app.Lifetime.ApplicationStopping.Register(() => keeper.NoRestart());
     app.Lifetime.ApplicationStopped.Register(() => keeper.Stop());
     AppDomain.CurrentDomain.ProcessExit += (_, _) => keeper.Stop();
     _ = Task.Run(keeper.Run);

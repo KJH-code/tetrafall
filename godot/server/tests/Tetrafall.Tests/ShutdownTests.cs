@@ -551,4 +551,48 @@ public class ShutdownTests
             try { Directory.Delete(dir, true); } catch { }
         }
     }
+
+    // --online 서버를 끄는 동안 cloudflared 가 먼저 꺼져도 (터미널 Ctrl+C 는 cloudflared 에도 감) 다시 켜지 않음 (사이클 5 수정 리뷰 2):
+    // 콘솔 '다시 켭니다' 0줄, 새 cloudflared 없음 (가짜 cloudflared 가 켜질 때마다 PID 를 한 줄씩 더 적음).
+    // 닫기에 답 안 하는 접속을 하나 두어 끄기가 종료 대기 (NET_SHUTDOWN_MS) 만큼 걸리게 → 그동안 지키기가 주소 받기 단계 (TUNNEL_POLL_MS 마다) 에서 꺼짐을 봄
+    [Fact]
+    public async Task Sigterm_online_tunnel_dying_during_shutdown_is_not_restarted()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        var dir = Path.Combine(Path.GetTempPath(), "tf-fakecf-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var pidFile = Path.Combine(dir, "pids");
+            var script = Path.Combine(dir, "cloudflared");
+            File.WriteAllText(script, "#!/bin/sh\necho $$ >> \"$TF_FAKE_CF_PID\"\nexec sleep 60\n");
+            File.SetUnixFileMode(script, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            string[] Pids() => File.Exists(pidFile) ? File.ReadAllLines(pidFile).Where(l => l.Trim() != "").ToArray() : Array.Empty<string>();
+            using var srv = new ServerProcessTests.Server(new Dictionary<string, string> { ["CLOUDFLARED"] = script, ["TF_FAKE_CF_PID"] = pidFile }, new[] { "--online" });
+            int pid = 0;
+            for (var w = Stopwatch.StartNew(); w.ElapsedMilliseconds < 10000 && pid == 0; await Task.Delay(20))
+                if (Pids().Length > 0 && int.TryParse(Pids()[0].Trim(), out var p)) pid = p;
+            Assert.True(pid > 0, "서버가 가짜 cloudflared 를 켬");
+            using var quiet = await Open(srv.port); // 읽지 않음 → 닫기에 답 없음
+            await Task.Delay(200);
+
+            var sw = Stopwatch.StartNew();
+            Assert.True(srv.Signal(SIGTERM), "SIGTERM 보냄");
+            // 끄기 시작 줄 (NoRestart 는 그보다 먼저 돎) 을 본 뒤 cloudflared 를 죽임
+            while (!srv.Saw("서버 끄는 중:") && sw.ElapsedMilliseconds < 3000) await Task.Delay(5);
+            Assert.True(srv.Saw("서버 끄는 중:"), "끄기 시작");
+            Process.GetProcessById(pid).Kill();
+            double killedAt = sw.Elapsed.TotalMilliseconds;
+            var exited = srv.ExitedWithin(EXIT_WITHIN_MS, sw);
+            Assert.True(exited != null, $"{EXIT_WITHIN_MS}ms 안에 안 꺼짐");
+            Assert.True(exited - killedAt > C.TUNNEL_POLL_MS * 2, $"지키기가 꺼짐을 볼 만큼 끄기가 이어짐: 죽인 {killedAt:F0}ms · 꺼짐 {exited:F0}ms");
+            Assert.Equal(0, srv.Count("다시 켭니다"));
+            Assert.Equal(0, srv.Count("[터널]"));
+            Assert.True(Pids().Length == 1, $"새 cloudflared 안 켬: {string.Join(",", Pids())}");
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
+    }
 }

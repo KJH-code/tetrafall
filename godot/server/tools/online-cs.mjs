@@ -53,6 +53,12 @@ export function publicUrlLine(url) {
   return `${JSON.stringify({ type: 'publicUrl', url })}\n`;
 }
 
+// 터널 지키기에 '다시 켜지 않음' 표시만 (cloudflared 는 안 죽임 — 죽이기는 서버가 꺼진 뒤 stop). tools/online.js TunnelKeeper 는 얼어 있어
+// 메서드를 못 더함 → stopped 를 켬: run 고리는 단계마다 다시 켜기 (fail) 전에 stopped 를 보고 그냥 끝남
+export function noRestart(keeper) {
+  if (keeper) keeper.stopped = true;
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.PORT) || C.PORT;
   let keeper = null;
@@ -68,10 +74,13 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   // 끄기 (Ctrl+C·SIGTERM): 서버 먼저 → 서버가 꺼지면 (exit) 터널. 서버는 방마다 left + 닫기 1001 을 보내고 꺼지는데, 터널을 먼저 끄면
   // 터널로 붙은 친구는 그걸 못 받고 1006 으로 끊김 (사이클 5 리뷰 F1 — C# --online 은 Program.cs ApplicationStopped).
   // SERVER_STOP_WAIT_MS 안에 안 꺼지거나 신호를 한 번 더 받으면 그대로 다 끔.
-  // Windows 는 kill 이 곧바로 강제 종료 (신호 없음) 라 보내지 않음 — 콘솔 Ctrl+C 는 서버도 직접 받아 스스로 끔
+  // Windows 는 kill 이 곧바로 강제 종료 (신호 없음) 라 보내지 않음 — 콘솔 Ctrl+C 는 서버도 직접 받아 스스로 끔.
+  // 신호를 받자마자 터널 지키기에 '다시 켜지 않음' 표시만 (cloudflared 는 안 죽임): 터미널 Ctrl+C 는 cloudflared 에도 가서 끄는 도중 먼저 꺼질 수 있는데,
+  // 그때 '터널 문제 → 다시 켭니다' 로 새로 켜지 않게 (사이클 5 수정 리뷰 2, C# 은 Tunnel.cs NoRestart)
   let stopping = false;
   for (const sig of ['SIGINT', 'SIGTERM']) {
     process.on(sig, () => {
+      noRestart(keeper);
       if (stopping || server.exitCode !== null || server.signalCode !== null) return finish(0);
       stopping = true;
       if (process.platform !== 'win32') server.kill('SIGTERM');

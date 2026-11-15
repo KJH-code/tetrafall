@@ -28,6 +28,7 @@ var syncing := false
 func _ready() -> void:
 	layer = 15
 	add_to_group("ui_blocker") # ui.gd 가 blocking() 을 보고 게임 키·마우스 잡기를 막음
+	add_to_group("status_avoid") # ui.gd 가 avoid_rects() 를 보고 판 중 상태 글 받침을 비킴
 	win.add_theme_stylebox_override("panel", S.pane())
 	win.position = Vector2(16, 110)
 	win.custom_minimum_size = Vector2(300, 0)
@@ -115,6 +116,16 @@ func set_open(on: bool) -> void:
 
 func blocking() -> bool:
 	return open
+
+
+# 왼쪽 위 힌트·(열려 있으면) 연습 창의 화면 사각형 — 이 층 (15) 이 상태 글 (ui.gd, 10) 위라 겹치면 상태 글이 가려짐 → ui.gd 가 받침을 그 아래·옆으로 (ui_calc status_box_pos).
+# 둘 다 이 층 바로 아래 칸이고 층은 옮김·배율이 없어 position 이 곧 화면 좌표 (ui.gd 의 get_global_rect 와 같은 좌표)
+func avoid_rects() -> Array:
+	var out: Array = []
+	for c in [hint, win]:
+		if c.visible and c.size.y > 0.0:
+			out.append(Rect2((c as Control).position, (c as Control).size))
+	return out
 
 
 static func _name_of(p: Dictionary) -> String:

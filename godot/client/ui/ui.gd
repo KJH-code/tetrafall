@@ -104,6 +104,30 @@ func _top_rects() -> Array:
 	return out
 
 
+# 판 중 상태 글 받침이 피할 칸 전부: 가운데 위 알림 칸 + 'status_avoid' 무리 (연습 방 왼쪽 위 힌트·연습 창 — practice.gd avoid_rects)
+# + 가운데 '화면을 클릭하면 조작 시작' (hud_extra center: 마우스가 풀리면 — 연습 창을 열면 — 뜸. 작은 화면에서 연습 창 옆으로 비킨 받침 바로 아래에 옴)
+func _avoid_rects() -> Array:
+	var out := _top_rects()
+	var center = hud_extra.get("center")
+	if hud_extra.visible and center is Control and center.visible and center.size.y > 0.0:
+		out.append((center as Control).get_global_rect())
+	for n in get_tree().get_nodes_in_group("status_avoid"):
+		out.append_array(n.call("avoid_rects"))
+	return out
+
+
+# 아래 HUD 칸 (사람 판 줄·F·R 칸·내 %·관전 안내) 의 화면 사각형 — 받침이 이 위까지만 내려감 (ui_calc status_room)
+func _bottom_rects() -> Array:
+	var out: Array = []
+	if not hud.visible:
+		return out
+	for k in ["cards_row", "skills", "damage_label", "spec_label"]:
+		var c = hud.get(k)
+		if c is Control and c.visible and c.size.y > 0.0:
+			out.append((c as Control).get_global_rect())
+	return out
+
+
 func reduced() -> bool:
 	return bool(View.settings.get("lowGfx", false)) or bool(View.settings.get("reducedMotion", false))
 
@@ -160,7 +184,8 @@ func _prof_process(_d: float) -> void:
 	var others := get_tree().get_nodes_in_group("ui_blocker").any(func(n): return bool(n.call("blocking")))
 	PlayerInput.ui_blocking = settings.visible or shown in ["menu", "lobby", "results"] or focus is LineEdit or others
 	status_box.visible = not Net.is_open() # 연결 중·끊김 글만 (판 시간은 HUD)
-	status_box.position = U.status_box_pos(hud.visible, status_box.size, _top_rects()) # 판 중엔 판 시간·튜토리얼 띠 아래 + 받침, 가운데 위 알림과 겹치면 그 아래
+	# 판 중엔 판 시간·튜토리얼 띠 아래 + 받침, 가운데 위 알림·연습 힌트·연습 창과 겹치면 그 아래 (아래 HUD 에 닿으면 그 옆)
+	status_box.position = U.status_box_pos(hud.visible, status_box.size, _avoid_rects(), U.status_room(get_viewport().get_visible_rect().size, _bottom_rects()))
 	status_style.bg_color = U.status_back(hud.visible)
 	var now := _screen_now()
 	if now != target:

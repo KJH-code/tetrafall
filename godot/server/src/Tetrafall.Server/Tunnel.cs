@@ -36,9 +36,14 @@ public sealed class TunnelKeeper
         return m.Success ? m.Value : null;
     }
 
+    // 다시 켜지 않음 표시만 (cloudflared 는 안 죽임): 서버를 끄기 시작할 때 (Program.cs ApplicationStopping). 터널은 끄는 동안 살려 두고
+    // (터널로 붙은 사람도 left + 1001 을 받게) 맨 나중에 Stop 으로 죽이는데, 그 사이 cloudflared 가 먼저 꺼져도 (터미널 Ctrl+C 는 cloudflared 에도 감)
+    // '터널 문제 → 다시 켭니다' 로 새로 켜지 않게 (사이클 5 수정 리뷰 2). Run 은 다음 확인에서 그냥 끝남
+    public void NoRestart() => stopped = true;
+
     public void Stop()
     {
-        stopped = true;
+        NoRestart();
         child?.Kill();
     }
 

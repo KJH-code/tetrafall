@@ -98,6 +98,51 @@ public class TunnelTests
         Assert.False(await k.Run());
     }
 
+    // 서버를 끄기 시작하면 (Program.cs ApplicationStopping → NoRestart) 그 뒤 cloudflared 가 먼저 꺼져도 다시 안 켬 — 주소 받기·열림 확인·열린 뒤 지키기
+    // 어느 단계든 (사이클 5 수정 리뷰 2: 터미널 Ctrl+C 가 cloudflared 에도 가서 끄는 도중 '다시 켭니다' + 새 cloudflared). NoRestart 는 프로세스를 안 죽이고 Stop 이 죽임.
+    // 대조: 표시 없이 꺼지면 예전처럼 다시 켬
+    [Fact]
+    public async Task No_restart_after_shutdown_starts_even_if_cloudflared_dies()
+    {
+        foreach (var phase in new[] { "url", "probe", "health" })
+            foreach (var mark in new[] { true, false })
+            {
+                var r = new Rig();
+                if (phase == "url") r.outputOf = _ => "INF Requesting new quick Tunnel…"; // 주소를 아직 안 찍음
+                if (phase == "probe") r.probe = (_, _) => false; // 아직 안 열림
+                var k = r.Keeper();
+                k.OnReady = url => r.ready.Add(url); // 열린 뒤에도 지키기 고리를 돎
+                int sleeps = 0;
+                k.Sleep = ms =>
+                {
+                    r.now += ms;
+                    if (++sleeps == 2)
+                    {
+                        if (mark) k.NoRestart();
+                        r.procs[0].Exited = true; // 끄는 도중 cloudflared 가 꺼짐
+                    }
+                    if (sleeps > 200) k.Stop(); // 대조 (다시 켬) 가 끝없이 돌지 않게
+                    return Task.CompletedTask;
+                };
+                var ok = await k.Run(); // 대조는 다시 켜다 포기 (false) 할 수도 있음
+                var tag = $"{phase} 단계, 표시 {mark}";
+                if (mark)
+                {
+                    Assert.True(ok, $"{tag}: 그냥 끝남 (true)");
+                    Assert.True(r.procs.Count == 1, $"{tag}: 새로 안 켬 ({r.procs.Count}개)");
+                    Assert.DoesNotContain("restart", r.status);
+                    Assert.False(r.procs[0].Killed, $"{tag}: NoRestart 는 안 죽임");
+                    k.Stop();
+                    Assert.True(r.procs[0].Killed, $"{tag}: Stop 이 죽임");
+                }
+                else
+                {
+                    Assert.True(r.procs.Count >= 2, $"{tag}: 대조 — 다시 켬 ({r.procs.Count}개)");
+                    Assert.Contains("restart", r.status);
+                }
+            }
+    }
+
     [Fact]
     public void Release_folder_serves_web_at_play_and_redirects_root()
     {
