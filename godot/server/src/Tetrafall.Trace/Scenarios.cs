@@ -6,7 +6,8 @@ using Tetrafall.Core.Js;
 namespace Tetrafall.Trace;
 
 // tools/game-hash.js SCENARIOS·runScenario 와 같은 판 (같은 순서·시드). trace.mjs 와 같은 JSONL, game-hash 와 같은 sha256
-public sealed record Scenario(string name, int n, string mode, bool team, bool characters, bool sky, string map, uint seed, bool away = false, bool hp = false);
+// balance·events: 고도 판 전용 (CS 판만 켬) — 방 밸런스 표 (C.BalanceTune)·돌발 이벤트. 기본 끔이라 ALL 34판은 그대로
+public sealed record Scenario(string name, int n, string mode, bool team, bool characters, bool sky, string map, uint seed, bool away = false, bool hp = false, bool balance = false, bool events = false);
 
 // 각본 입력 판 (tools/scripted.mjs SCRIPTED 와 같은 순서): 사람 n 명, 캐릭터 끔
 public sealed record ScriptedScenario(string name, int n, string mode, bool team, bool sky, bool hp, string map, uint seed);
@@ -156,9 +157,43 @@ public static class Scenarios
         return list;
     }
 
-    // h<번호> = 그 판을 체력전 켜고 (trace.mjs 와 같음, 34판 해시엔 안 들어감)
+    // 고도 판 전용 C# 자체 기준선 (cshash, tests/.../fixtures/cs-hash.json — JS 와 비교 안 함): 실제 방 설정 그대로
+    // 캐릭터·하늘 계단·밸런스 표 + 돌발 이벤트. ALL 34판은 JS 와 같은지 보는 그물, 이건 고도 판에만 있는 길이 몰래 안 바뀌는지 보는 그물.
+    // 시드 2001 부터 차례로, 맵은 MAP_IDS 를 돌려 7개 다 (연습은 StartPractice 가 평지·하늘 계단 끔으로 고정 → 목록에도 flat).
+    // 블록 마스터는 이벤트를 켜도 안 도는지 고정, 연습은 이벤트를 못 켜서 (SetRoundEvents 거절) 밸런스 표만
+    public static readonly List<Scenario> CS = BuildCs();
+
+    static List<Scenario> BuildCs()
+    {
+        var rows = new (string name, int n, string mode, bool team, bool hp, bool away, bool events)[]
+        {
+            ("2명 생존 이벤트", 2, "survival", false, false, false, true),
+            ("4명 생존 이벤트", 4, "survival", false, false, false, true),
+            ("8명 생존 이벤트", 8, "survival", false, false, false, true),
+            ("8명 생존 팀 이벤트", 8, "survival", true, false, false, true),
+            ("4명 킬 점수전 이벤트", 4, "kills", false, false, false, true),
+            ("8명 킬 점수전 이벤트", 8, "kills", false, false, false, true),
+            ("4명 킬 점수전 팀 체력전 이벤트", 4, "kills", true, true, false, true),
+            ("4명 생존 체력전 이벤트", 4, "survival", false, true, false, true),
+            ("4명 생존 끊긴 사람 봇 대리 이벤트", 4, "survival", false, false, true, true),
+            ("4명 블록 마스터 이벤트", 4, "master", false, false, false, true),
+            ("8명 블록 마스터 이벤트", 8, "master", false, false, false, true),
+            ("연습 허수아비", 1, "practice", false, false, false, false),
+        };
+        var list = new List<Scenario>();
+        for (int k = 0; k < rows.Length; k++)
+        {
+            var r = rows[k];
+            string map = r.mode == "practice" ? "flat" : Maps.MAP_IDS[k % Maps.MAP_IDS.Length];
+            list.Add(new Scenario("cs " + r.name, r.n, r.mode, r.team, characters: true, sky: true, map, (uint)(2001 + k), away: r.away, hp: r.hp, balance: true, events: r.events));
+        }
+        return list;
+    }
+
+    // h<번호> = 그 판을 체력전 켜고 (trace.mjs 와 같음, 34판 해시엔 안 들어감), c<번호> = CS 판
     public static Scenario Find(string key) =>
         key.Length > 1 && key[0] == 'h' && int.TryParse(key[1..], out var h) ? ALL[h] with { name = ALL[h].name + " 체력전", hp = true }
+        : key.Length > 1 && key[0] == 'c' && int.TryParse(key[1..], out var c) ? CS[c]
         : int.TryParse(key, out var i) ? ALL[i] : ALL.FirstOrDefault(s => s.name.Contains(key)) ?? throw new ArgumentException($"시나리오 없음: {key}");
 
     const double CAP_MS = 120000;
@@ -170,10 +205,11 @@ public static class Scenarios
         double TICK = 1000 / C.TICK_RATE;
         var rnd = new Mulberry32(sc.seed);
         var logs = new List<string>();
-        var g = new Game(line => logs.Add(line), characters: sc.characters, skyStairs: sc.sky, countdownMs: 1500, hpMode: sc.hp);
+        var g = new Game(line => logs.Add(line), characters: sc.characters, skyStairs: sc.sky, countdownMs: 1500, hpMode: sc.hp, tune: sc.balance ? C.BalanceTune() : null);
         g.rng = rnd.AsFunc();
         if (sc.mode == "practice")
         {
+            if (sc.events) throw new ArgumentException($"{sc.name}: 연습 판은 돌발 이벤트를 못 켬 (SetRoundEvents 거절)");
             g.AddPlayer(1);
             g.SetChar(1, "ninja");
             g.StartPractice();
@@ -191,6 +227,7 @@ public static class Scenarios
             if (sc.team) g.SetTeamMode(true);
             if (sc.mode != "survival") g.SetMode(sc.mode);
             g.SetMap(sc.map);
+            if (sc.events && !g.SetRoundEvents(true)) throw new InvalidOperationException($"{sc.name}: 돌발 이벤트 못 켬");
             if (!g.StartRound()) throw new InvalidOperationException($"{sc.name}: 시작 못 함");
         }
         onLine(0, logs, firstSnapshot ? g.Snapshot(true) : ""); // game-hash 는 t=0 스냅샷을 안 만듦 (만들면 gridDirty 가 꺼져 1틱 스냅샷에 격자가 빠짐)
@@ -236,13 +273,18 @@ public static class Scenarios
     }
 
     // tools/game-hash.js runScenario 와 같은 해시: 로그 줄마다 "L줄\n", 틱마다 스냅샷 (t=0 은 안 넣음)
-    public static string Hash(Scenario sc, out int ticks, out string phase)
+    // onSnap: 해시에 넣은 스냅샷 글자를 같이 받음 (테스트가 같은 실행에서 이벤트를 셀 때)
+    public static string Hash(Scenario sc, out int ticks, out string phase, Action<string>? onSnap = null)
     {
         using var h = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         (ticks, phase) = Run(sc, (t, logs, snap) =>
         {
             foreach (var l in logs) h.AppendData(Encoding.UTF8.GetBytes($"L{l}\n"));
-            if (t > 0) h.AppendData(Encoding.UTF8.GetBytes(snap));
+            if (t > 0)
+            {
+                h.AppendData(Encoding.UTF8.GetBytes(snap));
+                onSnap?.Invoke(snap);
+            }
         }, firstSnapshot: false);
         return Convert.ToHexString(h.GetHashAndReset()).ToLowerInvariant();
     }

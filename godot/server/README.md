@@ -78,14 +78,17 @@ Tetrafall.Server --online          # 또는 dotnet run --project godot/server/sr
 | `node godot/server/tools/online-cs.mjs` | C# 서버 + 터널 (`tools/online.js` 의 터널 지키기를 그대로 씀, dll 이 있으면 `bin/Release`, 없으면 `dotnet run`) |
 | `node godot/server/tools/trace.mjs <번호> js.jsonl` | JS 판 시나리오 하나를 틱마다 기록 (`--list` 로 34개 목록, `tools/game-hash.js` 와 같은 판). `h<번호>` = 그 판을 체력전 켜고 (캐릭터별 HP 검증, 34판 해시엔 안 들어감). `s0`~`s7` = 각본 입력 판 (`tools/scripted.mjs`: 사람만·캐릭터 끔, 봇(S5) 전에 판 흐름·블록을 맞추는 판) |
 | `node godot/server/tools/trace-scripted.mjs <캐릭터> js.jsonl` | 봇 없는 각본 판 (S3 전투·캐릭터 검증): 캐릭터마다 사람 둘이 정해진 틱에 평타·스킬·필살기·점프·대시, 킬 점수전·블록 없음, 600틱. `--list`, `--dump scripts.json` (C# 가 같은 각본을 돌릴 자료) |
-| `dotnet run --project godot/server/src/Tetrafall.Trace -- trace <번호> cs.jsonl [--ticks N]` | 같은 판을 C# 로 같은 JSONL (아직 안 옮긴 메서드에 닿으면 거기까지 쓰고 멈춤) |
+| `dotnet run --project godot/server/src/Tetrafall.Trace -- trace <번호> cs.jsonl [--ticks N]` | 같은 판을 C# 로 같은 JSONL (아직 안 옮긴 메서드에 닿으면 거기까지 쓰고 멈춤). `c<번호>` = CS 판 (아래 `cshash`, `--list` 끝에 목록) |
 | `dotnet run --project godot/server/src/Tetrafall.Trace -- hash [--verbose]` | `node tools/game-hash.js` 와 같은 해시 (34판 다 돌면 = 규칙 이식 끝) |
+| `dotnet run --project godot/server/src/Tetrafall.Trace -- cshash [--verbose] [--write <경로>]` | 고도 판 전용 C# 자체 기준선: `Scenarios.CS` 12판 (시드 2001~, 맵 7개, 캐릭터·하늘 계단·밸런스 표 + 돌발 이벤트 — 생존·킬 점수전·팀·체력전·봇 대리, 블록 마스터는 이벤트 켜도 안 돎, 연습은 밸런스 표만) 의 틱별 해시 (`hash` 와 같은 방식, JS 와 비교 안 함). 끝 줄 `cs 판 N개 해시 … (틱 합 T, X초)`, `--verbose` 판마다 `해시16 틱 phase 이름`, `--write` = `[[이름, 해시, 틱, phase], …]` 한 판 한 줄 → `tests/Tetrafall.Tests/fixtures/cs-hash.json` (`CsHashTests`) |
 | `node godot/server/tools/tutorial-trace.mjs <캐릭터> js.jsonl` | 튜토리얼 판 (자동 조종 `shared/tutorial-pilot.js` 으로 끝까지, S4 검증). C# 는 `Tetrafall.Trace trace tut:<캐릭터>` (`TutorialPilot.cs`) |
 | `node godot/server/tools/scenario-logs.mjs <폴더>` · `dotnet …Tetrafall.Trace.dll logs <폴더>` | 34판 로그를 방 로그 파일 모양으로 (양쪽 같은 파일 → `npm run stats -- <폴더>` 비교) |
 | `node godot/server/tools/load.mjs [틱]` · `dotnet …Tetrafall.Server.dll load [틱] [--serial] [--prof]` | 서버 부하: 진짜 Rooms·가짜 소켓, 방 4개 × 8명 (사람 1 + 봇 7) 의 서버 루프 한 번 (rooms.tick + broadcast) 시간 평균·중앙값·99%·최대·16ms/33ms 넘은 틱 수. `--serial` 방을 한 스레드에서 차례로 (예전), `--prof` 구간 표 (봇·블록 자리 고르기 spawn·낙하·착지·물리·전투·나머지·스냅샷) + 느린 틱 10개 (`Profiler`, Game.prof) |
 | `xvfb-run -a node godot/server/tools/cs-e2e.cjs <스샷 폴더> [주소]` | 실전 확인: JS 화면을 서버에 붙여 8명 판 모드 3개 끝까지·결과·다음 판, 연습·튜토리얼 (페이지 에러 0) |
 | `node godot/server/tools/trace-diff.mjs js.jsonl cs.jsonl` | 두 기록에서 처음 갈라지는 틱·JSON 경로·ulp |
 | `xvfb-run -a node godot/server/tools/lobby_shot.cjs <폴더> [주소]` | 기존 JS 화면을 이 서버에 붙여 메뉴·대기실 스샷 |
+
+**C# 기준선 다시 고정 규칙** (`cs-hash.json`): 규칙·봇·돌발 이벤트를 의도해 바꾼 커밋만 `cd godot/server && dotnet run --project src/Tetrafall.Trace -- cshash --write tests/Tetrafall.Tests/fixtures/cs-hash.json` 로 다시 고정하고, 커밋 메시지에 바뀐 판 이름과 까닭을 적는다. 성능·정리 커밋은 해시가 그대로여야 하며 다시 고정하지 않는다 (떨어지면 그 커밋이 길을 바꾼 것). 34판 `game-hash.json` 은 JS 정답 자료라 여기서 다시 뽑지 않음
 
 ## 구조
 
@@ -94,4 +97,4 @@ Tetrafall.Server --online          # 또는 dotnet run --project godot/server/sr
 - `src/Tetrafall.Sim/` — 봇 판 시뮬레이션 (`Sim.cs` = tools/sim.js planJobs·runJob·runParallel·summarizeSim·formatSim, summary.json 은 JSON.stringify(…, null, 1) 모양)
 - `src/Tetrafall.Trace/` — 판 기록기: `Scenarios.cs` (game-hash.js 시나리오 34개·runScenario 그대로), trace JSONL·해시
 - 아직 안 옮긴 메서드는 `Game.Todo.cs` (부르면 NotImplementedException, 괄호 = 작업 id). 옮기면 거기서 지우고 묶음 파일에
-- `tests/Tetrafall.Tests/` — `JsCompatTests`, `ProtocolTests` (JS rooms.js 와 같은 각본 → 같은 메시지 25개·로그 12줄), `RoomScenarioTests` (`tools/room-scenarios.mjs` 각본 5개 — 재접속·방 안 설정·상한·예외 격리·빈도 제한 — 를 C# 로 돌려 JS 와 메시지·로그 글자까지 같음), `RoomsUnitTests` (JS 값 바꾸기·이름 정리·긴 글자·빈도·토큰), `ServerProcessTests` (진짜 프로세스: 잘못된 주소 400·큰 메시지 1009·터널 주소·로그 파일 줄 모양), `S1Tests` (시작 지형 70개·물리 21판 비트·판 시작 trace 33판이 JS 정답 자료와 같음, 물리 단위 테스트), `S2Tests` (각본 판 8개 trace 전체가 JS 와 같음 + modes·sky·ghost 테스트 중 전투·봇·연습이 안 끼는 것), `SimTests` (sim.js 작은 판의 요약·화면 표·로그가 JS 와 같음, 워커 수와 상관없음), `S5Tests` (hp·master·킬 점수전·botpos), `S4Tests` (game-hash 34판 중 C# 가 다 도는 판의 해시가 JS 와 같음 — 안 옮긴 곳에 닿는 판은 건너뜀, 튜토리얼 자동 조종 판 trace, practice·tutorial 테스트)
+- `tests/Tetrafall.Tests/` — `JsCompatTests`, `ProtocolTests` (JS rooms.js 와 같은 각본 → 같은 메시지 25개·로그 12줄), `RoomScenarioTests` (`tools/room-scenarios.mjs` 각본 5개 — 재접속·방 안 설정·상한·예외 격리·빈도 제한 — 를 C# 로 돌려 JS 와 메시지·로그 글자까지 같음), `RoomsUnitTests` (JS 값 바꾸기·이름 정리·긴 글자·빈도·토큰), `ServerProcessTests` (진짜 프로세스: 잘못된 주소 400·큰 메시지 1009·터널 주소·로그 파일 줄 모양), `S1Tests` (시작 지형 70개·물리 21판 비트·판 시작 trace 33판이 JS 정답 자료와 같음, 물리 단위 테스트), `S2Tests` (각본 판 8개 trace 전체가 JS 와 같음 + modes·sky·ghost 테스트 중 전투·봇·연습이 안 끼는 것), `SimTests` (sim.js 작은 판의 요약·화면 표·로그가 JS 와 같음, 워커 수와 상관없음), `S5Tests` (hp·master·킬 점수전·botpos), `S4Tests` (game-hash 34판 중 C# 가 다 도는 판의 해시가 JS 와 같음 — 안 옮긴 곳에 닿는 판은 건너뜀, 튜토리얼 자동 조종 판 trace, practice·tutorial 테스트), `CsHashTests` (고도 판 전용 C# 자체 기준선: `Scenarios.CS` 판 해시·틱이 `fixtures/cs-hash.json` 과 같음, 돌발 이벤트 3종이 다 나오고 블록 마스터 판엔 0번, 밸런스 표를 빼면 해시가 달라짐, 고정 파일 이름 = CS 순서 그대로)

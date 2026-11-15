@@ -5,9 +5,10 @@ using Tetrafall.Trace;
 
 // C# 판 기록 (JS godot/server/tools/trace.mjs · tools/game-hash.js 와 같은 판):
 //   dotnet run --project src/Tetrafall.Trace -- --list
-//   dotnet run --project src/Tetrafall.Trace -- trace <번호|이름 일부|s각본번호> cs.jsonl [--ticks N]   → node tools/trace-diff.mjs js.jsonl cs.jsonl
+//   dotnet run --project src/Tetrafall.Trace -- trace <번호|이름 일부|s각본번호|cCS번호> cs.jsonl [--ticks N] → node tools/trace-diff.mjs js.jsonl cs.jsonl
 //   dotnet run --project src/Tetrafall.Trace -- logs <폴더>                                  → 34판 로그를 방 로그 파일 모양으로 (tools/scenario-logs.mjs 와 같은 파일, npm run stats 비교)
 //   dotnet run --project src/Tetrafall.Trace -- hash [--verbose]                             → node tools/game-hash.js 와 같은 해시면 34판 동등
+//   dotnet run --project src/Tetrafall.Trace -- cshash [--verbose] [--write <경로>]          → 고도 판 전용 CS 판 해시 (C# 자체 기준선, fixtures/cs-hash.json)
 var a = args.ToList();
 if (a.Count == 0 || a[0] == "--list")
 {
@@ -17,6 +18,7 @@ if (a.Count == 0 || a[0] == "--list")
         Console.WriteLine($"{i}\t{s.name}\t맵 {s.map}\t시드 {s.seed}");
     }
     for (int i = 0; i < Scenarios.SCRIPTED.Count; i++) Console.WriteLine($"s{i}\t{Scenarios.SCRIPTED[i].name}\t맵 {Scenarios.SCRIPTED[i].map}\t시드 {Scenarios.SCRIPTED[i].seed}");
+    for (int i = 0; i < Scenarios.CS.Count; i++) Console.WriteLine($"c{i}\t{Scenarios.CS[i].name}\t맵 {Scenarios.CS[i].map}\t시드 {Scenarios.CS[i].seed}");
     return 0;
 }
 int maxTicks = int.MaxValue;
@@ -102,5 +104,37 @@ if (a[0] == "hash")
     Console.WriteLine($"판 {Scenarios.ALL.Count}개 해시 {Convert.ToHexString(all.GetHashAndReset()).ToLowerInvariant()} ({sw.Elapsed.TotalSeconds:F1}초)");
     return 0;
 }
-Console.Error.WriteLine("명령: --list | trace <번호> <출력> [--ticks N] | hash [--verbose]");
+if (a[0] == "cshash")
+{
+    // 고도 판 전용 C# 자체 기준선: 판마다 해시는 hash 와 같은 방식, 전체는 판 해시 글자를 이어 sha256.
+    // --write: [[이름, 해시, 틱, phase], …] 한 판 한 줄 (BOM 없는 UTF-8, \n) → tests/Tetrafall.Tests/fixtures/cs-hash.json
+    bool verbose = a.Contains("--verbose");
+    int wi = a.IndexOf("--write");
+    string? writePath = wi >= 0 && wi + 1 < a.Count ? a[wi + 1] : null;
+    if (wi >= 0 && writePath == null)
+    {
+        Console.Error.WriteLine("cshash --write <경로>");
+        return 1;
+    }
+    using var all = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+    var sw = Stopwatch.StartNew();
+    var rows = new List<string>();
+    long tickSum = 0;
+    foreach (var sc in Scenarios.CS)
+    {
+        string hx = Scenarios.Hash(sc, out int ticks, out string phase);
+        all.AppendData(Encoding.UTF8.GetBytes(hx));
+        tickSum += ticks;
+        rows.Add(new Tetrafall.Core.Js.JsonOut().Arr().Str(sc.name).Str(hx).Num(ticks).Str(phase).EndArr().ToString());
+        if (verbose) Console.WriteLine($"{hx[..16]}  {ticks,5}틱 {phase,-8} {sc.name}");
+    }
+    if (writePath != null)
+    {
+        File.WriteAllText(writePath, "[\n" + string.Join(",\n", rows) + "\n]\n", new UTF8Encoding(false));
+        if (verbose) Console.WriteLine($"→ {writePath}");
+    }
+    Console.WriteLine($"cs 판 {Scenarios.CS.Count}개 해시 {Convert.ToHexString(all.GetHashAndReset()).ToLowerInvariant()} (틱 합 {tickSum}, {sw.Elapsed.TotalSeconds:F1}초)");
+    return 0;
+}
+Console.Error.WriteLine("명령: --list | trace <번호|c번호> <출력> [--ticks N] | hash [--verbose] | cshash [--verbose] [--write <경로>]");
 return 1;
