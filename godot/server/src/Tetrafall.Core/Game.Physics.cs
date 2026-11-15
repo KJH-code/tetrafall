@@ -92,7 +92,7 @@ public sealed partial class Game
         }
         p.airJumpQueued = false;
         double kbDamp = p.grounded ? C.KB_DAMPING_GROUND : C.KB_DAMPING_AIR;
-        // 돌발 이벤트 빙판: 맞은 넉백만 땅에서 덜 줄어 멀리 미끄러짐 (끄면 곱하지도 않음). 대시·대포 반동은 kbHit 를 꺼서 평소 그대로
+        // 돌발 이벤트 빙판: 맞은 넉백만 땅에서 덜 줄어 멀리 미끄러짐 (끄면 곱하지도 않음). 대시는 kbHit 를 끄고, 대포 반동은 남은 맞은 넉백이 없을 때만 꺼서 평소 그대로
         if (roundEvents && p.grounded && p.kbHit) kbDamp *= GroundDampMult();
         double damp = JsMath.Exp(-kbDamp * dt);
         p.kbx *= damp;

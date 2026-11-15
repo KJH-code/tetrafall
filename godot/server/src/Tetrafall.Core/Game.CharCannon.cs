@@ -77,9 +77,11 @@ public sealed partial class Game
         double recoil = big ? C.CANNON_R_RECOIL : p.grounded ? C.CANNON_RECOIL : C.CANNON_RECOIL_AIR;
         double hl = JsMath.Hypot(dir.x, dir.y);
         if (hl == 0 || double.IsNaN(hl)) hl = 1;
+        // 반동은 자기 움직임이라 빙판 배율 안 받음 — 다만 반동은 기존 넉백에 더해지니, 남은 맞은 넉백이 없을 때만 깃발을 끔
+        // (맞고 미끄러지는 중에 쏴도 맞은 미끄러짐은 그대로. 그때 반동 몫도 같이 빙판을 받음. 부활처럼 kbx = 0 인데 깃발만 남은 때도 끔)
+        if (p.kbx == 0 && p.kby == 0) p.kbHit = false;
         p.kbx -= dir.x / hl * recoil;
         p.kby -= dir.y / hl * recoil;
-        p.kbHit = false; // 자기 움직임 (반동) — 빙판 배율 안 받음
         Emit(o => o.P("type", "shellFire").P("who", p.id).P("id", sh.id).P("big", big).P("x", sh.x).P("y", sh.y).P("z", sh.z)
             .Key("dir").Obj().P("x", dir.x).P("y", dir.y).P("z", dir.z).EndObj().P("speed", speed).P("recoil", recoil));
         return sh;

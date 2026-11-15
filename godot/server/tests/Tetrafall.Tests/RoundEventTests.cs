@@ -556,7 +556,7 @@ public class RoundEventTests
             var (normal, ice) = SoloPair("ice", (g, a) =>
             {
                 CharKit.Place(a, g.W / 2.0, g.D / 2.0, yaw: 0); // +x 로 쏨 → 반동은 -x
-                a.kbHit = true;
+                a.kbHit = true; // 넉백은 0 인데 깃발만 남은 때 (부활 등) — 순수 반동이라 끔
                 double x0 = a.x;
                 g.FireShell(a, big);
                 Assert.False(a.kbHit);
@@ -566,6 +566,50 @@ public class RoundEventTests
             Assert.True(normal > 0.2, $"반동 거리 (큰 탄 {big}) {normal}");
             Assert.Equal(normal, ice, 9);
         }
+    }
+
+    [Fact]
+    public void 빙판_동안_맞고_미끄러지며_대포를_쏴도_맞은_미끄러짐은_그대로()
+    {
+        // 반동은 kbx·kby 에 더해짐 → 맞은 넉백이 남아 있으면 kbHit 를 끄지 않음 (껐더니 쏘기만 하면 남은 맞은 미끄러짐이 평소처럼 빨리 줄었음).
+        // 밀치기 0% 로 +x 로 맞고, 경직이 풀려 땅에 닿은 첫 틱에 +y 로 작은 탄 → 반동은 -y 라 맞은 방향 (x) 거리는 안 쏜 판과 같아야 함.
+        // x 에 섞이는 반동은 AimDir 의 cos(π/2) ≈ 6e-17 몫뿐이라 소수 9자리까지 같음 (고치기 전: 빙판 안 쏨 약 1.01 / 쏨 약 0.68)
+        (double dx, bool fired) Measure(Game g, Player a, bool fire)
+        {
+            var b = g.players[2];
+            CharKit.Place(a, 1.5, g.D / 2.0, yaw: Math.PI / 2);
+            a.shieldUntil = 0;
+            double x0 = a.x;
+            bool fired = false;
+            Assert.True(g.ApplyKnockback(a, 1, 0, C.PUSH_KB_SPEED, C.PUSH_KB_UP, C.STUN_MS, 0, new Src(b.id, "push")));
+            for (int i = 0; i < 10 * C.TICK_RATE && !(a.grounded && a.kbx == 0 && a.kby == 0); i++)
+            {
+                g.Tick(TICK);
+                if (fire && !fired && a.grounded && g.time >= a.stunUntil && g.time >= a.freezeUntil && a.kbx > 0)
+                {
+                    Assert.True(a.kbHit);
+                    g.FireShell(a, false);
+                    fired = true;
+                    Assert.True(a.kbHit); // 맞은 넉백이 남았으니 깃발 그대로
+                    Assert.True(a.kby < 0); // 반동은 -y
+                }
+            }
+            Assert.True(a.grounded && a.alive);
+            Assert.False(a.kbHit);
+            return (a.x - x0, fired);
+        }
+        var (normal, ice) = SoloPair("ice", (g, a) => Measure(g, a, false).dx);
+        bool iceFired = false;
+        var (normalFire, iceFire) = SoloPair("ice", (g, a) =>
+        {
+            var (dx, fired) = Measure(g, a, true);
+            if (g.RoundEventActive()) iceFired = fired;
+            return dx;
+        });
+        Assert.True(iceFired, "빙판 판에서 미끄러지는 동안 쐈어야 함");
+        Assert.True(ice > 1.5 * normal, $"맞은 거리 빙판 {ice} / 평소 {normal}");
+        Assert.Equal(normal, normalFire, 9);
+        Assert.Equal(ice, iceFire, 9);
     }
 
     [Fact]
