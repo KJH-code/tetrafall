@@ -106,6 +106,12 @@ static func near_fade(m: BaseMaterial3D) -> void:
 	m.distance_fade_max_distance = FX_NEAR_FADE[1]
 
 
+# 화면 덮기 상한 (c6): 카메라 앞 dist 칸 (보는 방향 깊이) 에 있는 지름 size 칸짜리 효과를 화면 높이의 frac 배까지만.
+# 그 깊이에서 화면 높이 = 2 × dist × tan(세로 시야각 / 2). 작은 것은 그대로, 카메라 뒤 (dist ≤ 0) 면 0
+static func cap_size(size: float, dist: float, fov_deg: float, frac: float) -> float:
+	return minf(size, frac * 2.0 * maxf(0.0, dist) * tan(deg_to_rad(fov_deg) / 2.0))
+
+
 # 카메라가 스매시 줄기 (꼭짓점 = 원점, 축 axis, 길이 KO_SMASH_LEN × len_k, 끝 반지름 KO_SMASH_WIDTH × side_k) 안이면 옅게 (0.2), 가장자리 1칸 안쪽에서 점점.
 # 3인칭 카메라가 필드 끝에 있을 때 줄기가 화면 전체를 하얗게 덮던 것 (고도 쪽 보정, rel = 카메라 - 꼭짓점, 게임 좌표)
 static func plume_inside_fade(rel: Vector3, axis: Vector3, side_k: float, len_k: float) -> float:

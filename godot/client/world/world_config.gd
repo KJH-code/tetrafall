@@ -44,6 +44,7 @@ const HAZARD_GLOW := [0.4, 0.2] # 위험 표면 스스로 빛남 (용암, 물·�
 const FOAM_ALPHA := 0.85 # 닿는 곳 거품 띠 진하기
 const LABEL_LIFT := 0.2 # 이름표를 머리 위로 더 (두 줄 글자 가운데 자리)
 const LABEL_LIGHTEN := 0.35 # 이름표 글자 색을 몸 색보다 밝게
+const LABEL_PRIORITY := 3 # 이름표 그리기 순서 (c6): 효과 빛 (fx/effects.gd glow_mat 1) 보다 뒤에 그려 효과와 겹쳐도 이름·% 가 위에. 외곽선·HP 막대 뒤판은 이 값 - 1
 const CAM_CLIP := [0.05, 900.0] # 카메라 가까운·먼 자름
 const BLOCK_ROUGH := [0.9, 0.6] # 쌓인 칸, 떨어지는 칸 거칠기
 const ITEM_GLOW := 0.4 # 아이템 스스로 빛남

@@ -84,6 +84,7 @@ var si := 0
 # W18 돌·흙 조각
 var chunk_mm := MultiMesh.new()
 var chunk_mmi := MultiMeshInstance3D.new()
+var chunk_mat: StandardMaterial3D
 var c_pos: Array[Vector3] = []
 var c_vel: Array[Vector3] = []
 var c_rot: Array[Vector3] = []
@@ -101,6 +102,11 @@ var sh := {"amp": 0.0, "ms": 1.0, "until": 0.0}
 var squash_t := {} # 플레이어 id -> 맞은 시각 (ms)
 var punch_t := {} # 플레이어 id -> 팔 뻗기 시작 (ms)
 var cam: Camera3D = null # 고리가 바라볼 카메라 (update 때 받음)
+# c6 화면 덮기 상한 (FXC.SCREEN_CAP): 카메라가 트리 안에 있을 때만 (테스트처럼 없으면 그대로). update 가 프레임마다 정함
+var _cap_on := false
+var _cam_pos := Vector3.ZERO
+var _cam_fwd := Vector3.FORWARD
+var _cam_fov := 75.0
 # W18 화면 쪽
 var lv: Dictionary = FXC.LEVELS.medium # 덧칠 수준 (fx.gd 가 화질로 정함)
 var reduced := false # 움직임 줄이기
@@ -151,7 +157,7 @@ func _init() -> void:
 	p_size.resize(MAX_PARTICLES)
 	p_max.fill(1.0)
 	# 고리
-	var rmesh := ring_mesh(0.8, 1.0, 40)
+	var rmesh := soft_ring_mesh(int(FXC.RING_LOOK.seg)) # c6: 얇은 심 + 부드러운 가장자리 (예전 ring_mesh(0.8, 1.0, 40) 두꺼운 한 색 띠)
 	ring_mat = StandardMaterial3D.new()
 	ring_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	ring_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -201,13 +207,18 @@ func _init() -> void:
 	for arr in [s_life, s_max, s_s0, s_s1, s_rot, s_spin, s_seed]:
 		arr.resize(MAX_SMOKE)
 	s_max.fill(1.0)
-	# 조각 (빛 받는 상자, 불투명 — 끝에 작아짐)
-	var cbox := BoxMesh.new()
-	cbox.size = Vector3.ONE
-	var cmat := StandardMaterial3D.new()
-	cmat.vertex_color_use_as_albedo = true
-	cmat.roughness = 1.0
-	cbox.material = cmat
+	# 조각 (끝에 작아짐). c6: 빛을 안 받고 면마다 밝기가 다른 상자 (예전 빛 받는 상자는 해를 등진 면이 검정 — 환경광이 검정이라),
+	# 카메라 바로 앞이면 흐려짐 (예전엔 없어서 카메라 앞을 지나는 조각이 큰 검은 네모로 화면을 가림).
+	# 거리 흐림 때문에 투명 순서로 그려지므로: 깊이를 쓰고 다른 효과보다 먼저 그려 예전 (불투명) 처럼 연기·빛이 조각 앞뒤를 가림
+	var cbox := chunk_mesh()
+	chunk_mat = StandardMaterial3D.new()
+	chunk_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	chunk_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	chunk_mat.vertex_color_use_as_albedo = true
+	chunk_mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS
+	chunk_mat.render_priority = -1
+	FM.near_fade(chunk_mat)
+	cbox.surface_set_material(0, chunk_mat)
 	_pool_mmi(chunk_mmi, chunk_mm, cbox, MAX_CHUNKS, false)
 	add_child(chunk_mmi)
 	for i in MAX_CHUNKS:
@@ -242,6 +253,70 @@ static func ring_mesh(inner: float, outer: float, seg: int) -> ArrayMesh:
 	return m
 
 
+# c6 충격파 고리 (풀 전용): 반지름 1 기준 세 줄 — 안쪽 (알파 0) → 심 (알파 core_alpha) → 바깥 (잉크 테). 정점 색 × 칸 색 (FXC.RING_LOOK)
+# 삼각형 = seg × 4 (띠 둘). 안이 비쳐 보이는 얇은 고리: 밝은 띠 폭이 반지름의 (outer - inner) 배
+static func soft_ring_mesh(seg: int) -> ArrayMesh:
+	var L: Dictionary = FXC.RING_LOOK
+	var ink: Array = L.ink
+	var radii := [float(L.inner), float(L.core), float(L.outer)]
+	var cols := [Color(1, 1, 1, 0), Color(1, 1, 1, float(L.core_alpha)), Color(float(ink[0]), float(ink[1]), float(ink[2]), float(ink[3]))]
+	var v := PackedVector3Array()
+	var vc := PackedColorArray()
+	for i in seg:
+		var a0 := TAU * i / seg
+		var a1 := TAU * (i + 1) / seg
+		var d0 := Vector3(cos(a0), sin(a0), 0)
+		var d1 := Vector3(cos(a1), sin(a1), 0)
+		for b in 2:
+			var ri: float = radii[b]
+			var ro: float = radii[b + 1]
+			var c_in: Color = cols[b]
+			var c_out: Color = cols[b + 1]
+			v.append_array([d0 * ri, d0 * ro, d1 * ro, d0 * ri, d1 * ro, d1 * ri])
+			vc.append_array([c_in, c_out, c_out, c_in, c_out, c_in])
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = v
+	arr[Mesh.ARRAY_COLOR] = vc
+	var m := ArrayMesh.new()
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	return m
+
+
+# c6 조각 상자 (한 변 1): 면마다 정점 색 = 밝기 (FXC.CHUNK_TONES — 윗면·옆 둘·밑) → 빛을 안 받아도 입체로 보임. 삼각형 12 (BoxMesh 와 같음)
+static func chunk_mesh() -> ArrayMesh:
+	var T: Dictionary = FXC.CHUNK_TONES
+	# [면 법선, 밝기]
+	var faces := [
+		[Vector3.UP, float(T.top)], [Vector3.DOWN, float(T.bottom)],
+		[Vector3.RIGHT, float(T.side_a)], [Vector3.LEFT, float(T.side_a)],
+		[Vector3.BACK, float(T.side_b)], [Vector3.FORWARD, float(T.side_b)],
+	]
+	var v := PackedVector3Array()
+	var nrm := PackedVector3Array()
+	var vc := PackedColorArray()
+	for f in faces:
+		var n: Vector3 = f[0]
+		var u := Vector3(n.y, n.z, n.x) # 면 위 두 축
+		var w := n.cross(u)
+		var c := Color(f[1], f[1], f[1], 1.0)
+		var q := [(n - u - w) * 0.5, (n + u - w) * 0.5, (n + u + w) * 0.5, (n - u + w) * 0.5]
+		# 고도 앞면 = 밖에서 볼 때 시계 방향: (b - a) × (c - a) 가 법선 반대쪽
+		var tri := [0, 2, 1, 0, 3, 2] if (q[1] - q[0]).cross(q[2] - q[0]).dot(n) > 0.0 else [0, 1, 2, 0, 2, 3]
+		for k in tri:
+			v.append(q[k])
+			nrm.append(n)
+			vc.append(c)
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = v
+	arr[Mesh.ARRAY_NORMAL] = nrm
+	arr[Mesh.ARRAY_COLOR] = vc
+	var m := ArrayMesh.new()
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	return m
+
+
 # pos 에서 dir ({x,y} 게임 바닥 방향, null = 사방) 쪽으로 퍼지는 파편
 func burst(pos: Vector3, dir, color: int, count := int(C.FX_PARTICLES), speed := 5.0, size := 0.1, life := 0.45) -> void:
 	var dx: float = float(dir.x) * speed if dir != null else 0.0
@@ -271,7 +346,7 @@ func ring(pos: Vector3, color := 0xffffff, grow := 2.2, life := 0.28, horizontal
 	r_grow[k] = grow
 	r_flat[k] = 1 if horizontal else 0
 	var c := Co.color(color)
-	c.a = 0.9
+	c.a = FXC.RING_ALPHA
 	r_color[k] = c
 	_new |= 1
 
@@ -527,7 +602,12 @@ func stats() -> Dictionary:
 
 func update(dt: float, camera: Camera3D) -> void:
 	cam = camera
-	var cb := cam.global_basis.orthonormalized() if cam != null and cam.is_inside_tree() else Basis()
+	_cap_on = cam != null and cam.is_inside_tree()
+	var cb := cam.global_basis.orthonormalized() if _cap_on else Basis()
+	if _cap_on:
+		_cam_pos = cam.global_position
+		_cam_fwd = -cb.z
+		_cam_fov = cam.fov
 	var n := 0
 	for k in MAX_PARTICLES:
 		if p_life[k] <= 0.0:
@@ -561,6 +641,13 @@ func update(dt: float, camera: Camera3D) -> void:
 	_new = 0
 
 
+# c6: 카메라를 보는 효과의 지름 (칸) 을 화면 높이 × FXC.SCREEN_CAP 까지만 (at = 고도 좌표 자리). 바닥에 눕힌 것 (flat)·카메라가 없을 때 (테스트) 는 그대로
+func _capped(size: float, at: Vector3, flat := false) -> float:
+	if flat or not _cap_on:
+		return size
+	return FM.cap_size(size, (at - _cam_pos).dot(_cam_fwd), _cam_fov, FXC.SCREEN_CAP)
+
+
 func _update_rings(dt: float, cb: Basis) -> void:
 	var n := 0
 	var flat := Basis(Vector3.RIGHT, -PI / 2)
@@ -573,9 +660,11 @@ func _update_rings(dt: float, cb: Basis) -> void:
 		var t: float = 1.0 - r_life[k] / r_max[k]
 		var s: float = 0.2 + t * r_grow[k]
 		var b := flat if r_flat[k] else cb
-		ring_mm.set_instance_transform(n, Transform3D(b.scaled_local(Vector3(s, s, s)), Co.gpos(r_pos[k])))
+		var rp := Co.gpos(r_pos[k])
+		s = _capped(s * 2.0, rp, r_flat[k] != 0) / 2.0 # s = 반지름 (고리 메시 바깥 반지름 1)
+		ring_mm.set_instance_transform(n, Transform3D(b.scaled_local(Vector3(s, s, s)), rp))
 		var c := r_color[k]
-		c.a = 0.9 * (1.0 - t)
+		c.a = FXC.RING_ALPHA * (1.0 - t)
 		ring_mm.set_instance_color(n, c)
 		n += 1
 	ring_mm.visible_instance_count = n
@@ -615,7 +704,9 @@ func _update_glow(dt: float, cb: Basis) -> void:
 		elif g_flat[k]:
 			tr = Transform3D(flat.scaled_local(Vector3(s, s, s)), gp)
 		else:
-			tr = Transform3D(cb.scaled_local(Vector3(s, s, s)), gp + cz * g_front[k])
+			var fp := gp + cz * g_front[k]
+			s = _capped(s, fp)
+			tr = Transform3D(cb.scaled_local(Vector3(s, s, s)), fp)
 		glow_mm.set_instance_transform(n, tr)
 		var c := g_color[k]
 		c.a *= pow(1.0 - t, g_pow[k])

@@ -466,3 +466,139 @@ func test_w18_char_fx_like_js() -> void:
 	check(bf.ghosts.is_empty(), "낮음이면 낙사 잔상 없음")
 	fx.free()
 	bf.free()
+
+
+# ---------- c6 (2026-11-15) 효과 모양: 얇은 고리·빛 안 받는 조각·화면 덮기 상한·이름표를 효과 위로 ----------
+# 충격파 고리 풀의 메시: 세 줄 (안쪽 알파 0 → 심 → 바깥 잉크 테), 삼각형 seg × 4, 밝은 띠 폭이 반지름의 10% 안. ring_mesh (튜토리얼 표시가 씀) 는 그대로
+func test_c6_soft_ring_mesh() -> void:
+	var L: Dictionary = FXC.RING_LOOK
+	for seg in [8, 40]:
+		var m := Effects.soft_ring_mesh(seg)
+		var arr := m.surface_get_arrays(0)
+		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var vc: PackedColorArray = arr[Mesh.ARRAY_COLOR]
+		check(v.size() == seg * 4 * 3 and vc.size() == v.size(), "고리 삼각형 %d (seg %d × 4)" % [v.size() / 3, seg])
+		var r_min := INF
+		var r_max := 0.0
+		var bad := 0
+		for i in v.size():
+			var r := v[i].length()
+			r_min = minf(r_min, r)
+			r_max = maxf(r_max, r)
+			if absf(v[i].z) > 1e-6:
+				bad += 1
+			if near(r, float(L.inner), 1e-4) and vc[i].a != 0.0:
+				bad += 1 # 안쪽 가장자리는 투명 (안이 비쳐 보임)
+			if near(r, float(L.core), 1e-4) and not near(vc[i].a, float(L.core_alpha)):
+				bad += 1
+			if near(r, float(L.outer), 1e-4) and absf(vc[i].a - float(L.ink[3])) > 1.0 / 255.0: # 정점 색은 8비트로 저장됨
+				bad += 1 # 바깥 가장자리 = 잉크 테
+		check(bad == 0, "고리 정점 알파: 안쪽 0 → 심 %s → 바깥 %s (어긋난 정점 %d)" % [L.core_alpha, L.ink[3], bad])
+		check(near(r_min, float(L.inner), 1e-4) and near(r_max, 1.0, 1e-4), "고리 반지름 %s ~ %s (바깥 = 1: 크기 뜻이 예전 고리와 같음)" % [r_min, r_max])
+	check(float(L.outer) - float(L.inner) <= 0.1 + 1e-9 and float(L.inner) < float(L.core) and float(L.core) < float(L.outer), "밝은 띠 폭 ≤ 반지름 10%% (%s)" % (float(L.outer) - float(L.inner)))
+	check(float(L.ink[3]) < float(L.core_alpha), "잉크 테는 심보다 옅음")
+	var fx := Effects.new()
+	var pool: PackedVector3Array = fx.ring_mm.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	check(pool.size() == int(L.seg) * 12 and fx.ring_mm.mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR] != null, "고리 풀이 세 줄 고리를 씀 (정점 %d)" % pool.size())
+	fx.ring(Vector3(1, 1, 1), 0xff0000)
+	check(near(fx.r_color[0].a, FXC.RING_ALPHA), "고리 처음 알파 = FXC.RING_ALPHA")
+	fx.free()
+	var old := Effects.ring_mesh(0.8, 1.0, 40).surface_get_arrays(0)
+	check((old[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() == 240 and old[Mesh.ARRAY_COLOR] == null, "ring_mesh 는 그대로 (튜토리얼 표시)")
+
+
+# 조각 상자: 면마다 밝기 (모두 0.5 이상 — 검은 면 없음), 재질은 빛을 안 받고 카메라 바로 앞이면 흐려짐, 앞면 방향은 BoxMesh 와 같음 (뒷면 지우기에 안 사라짐)
+func test_c6_chunk_tones() -> void:
+	var T: Dictionary = FXC.CHUNK_TONES
+	for k in T:
+		check(float(T[k]) >= 0.5 and float(T[k]) <= 1.0, "조각 면 밝기 %s = %s (0.5 이상)" % [k, T[k]])
+	check(float(T.top) > float(T.side_a) and float(T.side_a) > float(T.side_b) and float(T.side_b) > float(T.bottom), "윗면 > 옆 > 밑 (입체로 읽힘)")
+	var arr := Effects.chunk_mesh().surface_get_arrays(0)
+	var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var n: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+	var vc: PackedColorArray = arr[Mesh.ARRAY_COLOR]
+	check(v.size() == 36 and vc.size() == 36, "조각 상자 삼각형 %d (BoxMesh 와 같은 12)" % (v.size() / 3))
+	# BoxMesh 의 앞면 감는 방향 (삼각형 법선 · 면 법선의 부호)
+	var box := BoxMesh.new().get_mesh_arrays()
+	var bv: PackedVector3Array = box[Mesh.ARRAY_VERTEX]
+	var bn: PackedVector3Array = box[Mesh.ARRAY_NORMAL]
+	var bi: PackedInt32Array = box[Mesh.ARRAY_INDEX]
+	var want := signf((bv[bi[1]] - bv[bi[0]]).cross(bv[bi[2]] - bv[bi[0]]).dot(bn[bi[0]]))
+	var bad := 0
+	var tones := {}
+	for t in 12:
+		var a := v[t * 3]
+		var nn := n[t * 3].round() # 법선은 눌러 저장돼 조금 어긋남
+		if signf((v[t * 3 + 1] - a).cross(v[t * 3 + 2] - a).dot(nn)) != want:
+			bad += 1
+		for k in 3:
+			var p := v[t * 3 + k]
+			if not near(maxf(maxf(absf(p.x), absf(p.y)), absf(p.z)), 0.5) or not near(p.dot(nn), 0.5):
+				bad += 1 # 한 변 1 상자의 그 면 위
+			var c := vc[t * 3 + k]
+			if c.a != 1.0 or c.r != c.g or c.g != c.b:
+				bad += 1
+			tones[Vector3i(nn)] = c.r
+	check(want != 0.0 and bad == 0, "조각 상자 면·감는 방향 (어긋남 %d)" % bad)
+	var q := 1.0 / 255.0 # 정점 색은 8비트로 저장됨
+	check(tones.size() == 6, "면 6개 %s" % str(tones))
+	for e in [[Vector3i.UP, T.top], [Vector3i.DOWN, T.bottom], [Vector3i.RIGHT, T.side_a], [Vector3i.LEFT, T.side_a], [Vector3i.BACK, T.side_b], [Vector3i.FORWARD, T.side_b]]:
+		check(absf(float(tones.get(e[0], -1.0)) - float(e[1])) <= q, "면 %s 밝기 %s (바라는 값 %s)" % [e[0], tones.get(e[0]), e[1]])
+	var fx := Effects.new()
+	var m: StandardMaterial3D = fx.chunk_mm.mesh.surface_get_material(0)
+	check(m == fx.chunk_mat and m.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED and m.vertex_color_use_as_albedo, "조각 재질: 빛 안 받음 + 정점 색 (면 밝기) × 칸 색")
+	check(m.distance_fade_mode == BaseMaterial3D.DISTANCE_FADE_PIXEL_ALPHA and near(m.distance_fade_min_distance, FM.FX_NEAR_FADE[0]) and near(m.distance_fade_max_distance, FM.FX_NEAR_FADE[1]), "조각 재질: 카메라 바로 앞이면 흐려짐")
+	check(m.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_ALWAYS and m.render_priority < 0 and m.render_priority < fx.glow_mat.render_priority, "조각은 깊이를 쓰고 다른 효과보다 먼저 (연기·빛이 조각 앞뒤를 가림)")
+	fx.free()
+
+
+# 화면 덮기 상한: 지름 ≤ 화면 높이 × frac (그 깊이에서), 작은 것은 그대로. 카메라를 보는 고리·빛에만 (바닥에 눕힌 것·카메라 없음은 그대로)
+func test_c6_screen_cap() -> void:
+	check(near(FM.cap_size(10.0, 2.5, 75.0, 0.45), 0.45 * 2.0 * 2.5 * tan(deg_to_rad(37.5))), "2.5칸·75도: %s" % FM.cap_size(10.0, 2.5, 75.0, 0.45))
+	check(near(FM.cap_size(10.0, 2.5, 75.0, 0.45), 1.7265, 1e-3), "2.5칸·75도 = 1.73칸")
+	check(near(FM.cap_size(10.0, 7.0, 60.0, 0.45), 0.45 * 14.0 * tan(deg_to_rad(30.0))) and near(FM.cap_size(10.0, 7.0, 60.0, 0.45), 3.637, 1e-3), "7칸·60도 = 3.64칸")
+	check(FM.cap_size(1.0, 2.5, 75.0, 0.45) == 1.0 and FM.cap_size(0.3, 7.0, 60.0, 0.45) == 0.3, "작은 크기는 그대로")
+	check(FM.cap_size(5.0, 0.0, 75.0, 0.45) == 0.0 and FM.cap_size(5.0, -3.0, 75.0, 0.45) == 0.0, "카메라 뒤 = 0")
+	check(FM.cap_size(10.0, 5.0, 75.0, 0.45) > FM.cap_size(10.0, 2.5, 75.0, 0.45) and FM.cap_size(10.0, 2.5, 90.0, 0.45) > FM.cap_size(10.0, 2.5, 75.0, 0.45), "멀수록·시야가 넓을수록 상한이 큼")
+	check(FXC.SCREEN_CAP > 0.0 and FXC.SCREEN_CAP <= 0.5, "상한 %s (화면 높이의 절반 이하)" % FXC.SCREEN_CAP)
+	# 효과 풀: 카메라를 보는 고리·빛에만, 바닥에 눕힌 것·카메라 없음은 그대로 (헤드리스는 MultiMesh 칸 자리를 못 읽어 크기 정하는 함수로 확인)
+	var fx := Effects.new()
+	var at := Vector3.ZERO
+	fx.update(0.016, null)
+	check(not fx._cap_on and fx._capped(40.0, at) == 40.0, "카메라가 없으면 그대로")
+	var cam := Camera3D.new() # 트리 밖 카메라도 없는 것과 같음
+	fx.update(0.016, cam)
+	check(not fx._cap_on and fx._capped(40.0, at) == 40.0, "트리 밖 카메라면 그대로")
+	cam.free()
+	# 카메라가 2.5칸 앞에서 봄 (러너에선 카메라가 트리에 못 들어가 update 가 넣는 값을 손으로)
+	fx._cap_on = true
+	fx._cam_pos = Vector3(0, 0, 2.5)
+	fx._cam_fwd = Vector3(0, 0, -1)
+	fx._cam_fov = 75.0
+	var cap := FM.cap_size(INF, 2.5, 75.0, FXC.SCREEN_CAP)
+	check(near(fx._capped(40.0, at), cap) and near(cap, 2.5 * 2.0 * tan(deg_to_rad(37.5)) * FXC.SCREEN_CAP), "카메라를 보는 큰 효과 지름 %s = 화면 높이 × %s" % [fx._capped(40.0, at), FXC.SCREEN_CAP])
+	check(fx._capped(40.0, at, true) == 40.0, "바닥에 눕힌 것은 그대로")
+	check(fx._capped(0.5, at) == 0.5, "작은 효과는 그대로")
+	check(near(fx._capped(40.0, Vector3(3.0, -2.0, 0.0)), cap), "깊이 (보는 방향 거리) 로 잼 — 화면 가장자리여도 같은 상한")
+	check(fx._capped(40.0, Vector3(0, 0, 5.0)) == 0.0, "카메라 뒤는 0")
+	fx.free()
+
+
+# 머리 위 이름·% 는 효과 빛 (가산) 보다 뒤에 그려 효과와 겹쳐도 위에 보임. 체력전 HP 막대도 같은 순서
+func test_c6_label_above_fx() -> void:
+	var Bodies := preload("res://world/bodies.gd")
+	var WC := preload("res://world/world_config.gd")
+	var fx := Effects.new()
+	var lab: Label3D = Bodies.make_label()
+	check(lab.render_priority == WC.LABEL_PRIORITY and lab.render_priority > fx.glow_mat.render_priority, "이름표 순서 %d > 효과 빛 %d" % [lab.render_priority, fx.glow_mat.render_priority])
+	check(lab.outline_render_priority == WC.LABEL_PRIORITY - 1 and lab.outline_render_priority > fx.glow_mat.render_priority, "이름표 외곽선 %d 도 효과 빛 위, 글자 아래" % lab.outline_render_priority)
+	for m in [fx.ring_mat, fx.mm.mesh.material, fx.smoke_mat, fx.chunk_mat]:
+		check(lab.outline_render_priority > m.render_priority, "이름표가 파편·고리·연기·조각 위")
+	check(lab.no_depth_test and lab.billboard == BaseMaterial3D.BILLBOARD_ENABLED and lab.fixed_size and near(lab.pixel_size, WC.LABEL_PIXEL, 1e-5) and lab.font_size == WC.LABEL_FONT[0] and lab.outline_size == WC.LABEL_FONT[1], "이름표 나머지 값은 예전 그대로")
+	lab.free()
+	fx.free()
+	var b = Bodies.new()
+	var n: Dictionary = b._make({"id": 1, "x": 0.0, "y": 0.0, "z": 0.0, "alive": true}, 0xff0000)
+	check((n.label as Label3D).render_priority == WC.LABEL_PRIORITY, "몸 이름표가 make_label 을 씀")
+	check((n.bar_fill as Sprite3D).render_priority == WC.LABEL_PRIORITY and (n.bar_back as Sprite3D).render_priority == WC.LABEL_PRIORITY - 1, "HP 막대: 뒤판 %d · 채움 %d" % [n.bar_back.render_priority, n.bar_fill.render_priority])
+	b.free()

@@ -79,6 +79,17 @@ const KO_FX := {"smash_flash": [5.0, 260.0], "smash_sparks": [18, 16.0, 0.8, 380
 # JS 값 (config.gd BERSERK_STEAM_RATE·DIVE_LINE_*) 을 그대로 쓰고, 여기엔 고도 쪽 덧칠만
 const RAGE_GLOW := {"min": 0.6, "size": 1.4, "alpha": 0.35} # 분노 k 가 min 넘으면 몸 둘레 붉은 빛 (빛 MultiMesh, 낮음이면 끔)
 
+# ---- c6 (2026-11-15) 효과 모양: 싸움 장면을 흰·노랑 덩어리와 검은 네모로 덮지 않게 (W18 수·시간·세기는 그대로, 모양과 크기 상한만) ----
+# 충격파 고리 (effects.ring 풀) 단면, 반지름 1 기준: 안쪽 inner (알파 0) → 심 core (알파 core_alpha) → 바깥 outer. 예전엔 0.8~1.0 을 한 색으로 채운 두꺼운 띠 (반지름의 20%)
+# ink = 바깥 가장자리 얇은 잉크 테 [r, g, b, a] — 고리 색에 곱해 어둡게, a = 테 진하기 (시끄러우면 0). seg = 둘레 마디 수
+const RING_LOOK := {"inner": 0.9, "core": 0.955, "outer": 1.0, "core_alpha": 1.0, "ink": [0.08, 0.05, 0.1, 0.35], "seg": 40}
+const RING_ALPHA := 1.0 # 고리 처음 알파 (나이에 따라 0 으로). 예전 0.9
+# 돌·흙 조각 면 밝기 (조각 색에 곱함): 윗면 · 옆 (x 쪽 둘) · 옆 (z 쪽 둘) · 밑. 조각 재질은 빛을 안 받음 —
+# 판 환경광이 검정 (하늘빛은 툰 셰이더 몫, shaders/g3.gd) 이라 빛 받는 상자는 해를 등진 면이 새까만 네모로 보였음
+const CHUNK_TONES := {"top": 1.0, "side_a": 0.82, "side_b": 0.68, "bottom": 0.55}
+# 화면 덮기 상한: 카메라를 보는 고리·빛 (번쩍·불덩이·빛 고리) 하나의 지름을 그 깊이에서 화면 높이 × 이 값까지만 (fx_math.cap_size). 바닥에 눕힌 고리·불꽃 줄·연기는 제외
+const SCREEN_CAP := 0.45
+
 # 효과 수준 (화질·설정) — 효과 노드가 프레임마다 한 번 정함
 static func level_of(gfx_level: String, low_gfx: bool) -> Dictionary:
 	if low_gfx:

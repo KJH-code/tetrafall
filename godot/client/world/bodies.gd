@@ -91,19 +91,14 @@ func _make(p: Dictionary, color: int) -> Dictionary:
 	if body.has_method("add_batch_shadow_twin"):
 		body.add_batch_shadow_twin() # W37: 코드 몸 그림자는 껍질 없는 쌍둥이가
 	_stencil(body)
-	var lab := Label3D.new()
-	lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	lab.fixed_size = true
-	lab.pixel_size = WC.LABEL_PIXEL
-	lab.font_size = WC.LABEL_FONT[0]
-	lab.outline_size = WC.LABEL_FONT[1]
-	lab.no_depth_test = true
+	var lab := make_label()
 	lab.position.y = C.PLAYER_HEIGHT + C.LABEL_ABOVE_HEAD + WC.LABEL_LIFT
 	root.add_child(lab)
-	# 체력전: 이름 아래 작은 HP 막대 (뒤판 + 채움, 화면 크기 고정)
+	# 체력전: 이름 아래 작은 HP 막대 (뒤판 + 채움, 화면 크기 고정). 그리기 순서는 이름표와 같게 (뒤판 = 외곽선, 채움 = 글자)
 	var bar_back := _bar_sprite(Color(0, 0, 0, 0.7))
 	var bar_fill := _bar_sprite(Color.WHITE)
-	bar_fill.render_priority = 1
+	bar_back.render_priority = WC.LABEL_PRIORITY - 1
+	bar_fill.render_priority = WC.LABEL_PRIORITY
 	for b in [bar_back, bar_fill]:
 		b.position.y = lab.position.y
 		b.visible = false
@@ -112,6 +107,20 @@ func _make(p: Dictionary, color: int) -> Dictionary:
 	var n := {"root": root, "body": body, "label": lab, "char": look_of(p), "color": color, "bar_back": bar_back, "bar_fill": bar_fill}
 	_lift_label(n)
 	return n
+
+
+# 머리 위 이름표 (이름·피해 %). c6: 효과 빛 (가산, fx/effects.gd glow_mat 순서 1) 보다 뒤에 그림 — 예전 (순서 0) 엔 번쩍·불덩이가 글자를 덮었음
+static func make_label() -> Label3D:
+	var lab := Label3D.new()
+	lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	lab.fixed_size = true
+	lab.pixel_size = WC.LABEL_PIXEL
+	lab.font_size = WC.LABEL_FONT[0]
+	lab.outline_size = WC.LABEL_FONT[1]
+	lab.no_depth_test = true
+	lab.render_priority = WC.LABEL_PRIORITY
+	lab.outline_render_priority = WC.LABEL_PRIORITY - 1
+	return lab
 
 
 # render.js bodyOrder: 사람 몸은 x-ray 복사본보다 앞 (스텐실 쓰기)
