@@ -2,7 +2,7 @@
 # 메시지는 JSON 글자 (JS·C# 서버 같은 프로토콜). 받은 메시지는 message 신호로 (Store 가 프로토콜을 처리), 보내기는 send(dict) 만.
 # 끊기면 NET_RECONNECT_MS 마다 다시 붙어 보고 (NET_RECONNECT_TRIES 번), 붙으면 reconnected → Store 가 자리 토큰으로 rejoin
 # 열려 있는데 SILENCE_MS 넘게 아무것도 안 오면 (멈춘 서버·죽은 길) 그 소켓을 버리고 같은 길로 다시 붙음. 붙어 보기가 CONNECT_MS 넘게 매달려도 버리고 다음 시도로.
-# 다 써도 못 붙으면 gave_up (Store 가 방을 비우고 메뉴로), 그 뒤엔 retry() 로 다시
+# 다 써도 못 붙으면 gave_up (Store 가 방을 비우고 메뉴로), 그 뒤엔 retry() 로 다시 (붙어 보는 중이면 NET_RECONNECT_MS 넘게 매달린 것만 버리고 다시, 젊으면 횟수만)
 # PC 판은 주소에 ?pack=gzip 을 붙여 접속 → C# 서버가 큰 메시지 (스냅샷) 를 gzip 바이너리로 보냄 (고도 WebSocketPeer 는 permessage-deflate 를 못 씀:
 # 8명 판 13.9KB × 30Hz 가 그대로 옴). 웹 판은 브라우저가 압축을 풀어 주니 그대로, JS 서버는 쿼리를 무시하고 글자로 보냄 — 글자 패킷은 예전처럼 읽음
 extends Node
@@ -101,6 +101,12 @@ static func silent(now: float, last_recv_at, slack: float) -> bool:
 # 붙어 보기가 매달림: 시작한 뒤 CONNECT_MS 넘게 CONNECTING (slack = 프레임이 멈췄던 시간은 뺌 — 엔진이 poll 을 못 한 동안). 시작 시각이 없으면 false
 static func connect_stuck(now: float, connect_at, slack: float) -> bool:
 	return connect_at != null and now - float(connect_at) - slack > CONNECT_MS
+
+
+# retry() 가 지금 붙어 보기를 버릴지: 시작한 뒤 NET_RECONNECT_MS (다시 붙기 간격) 넘게 CONNECTING 일 때만 (slack 은 connect_stuck 처럼 뺌).
+# 그보다 젊은 붙어 보기는 느린 핸드셰이크 (터널 TLS 등) 일 수 있어 그대로 둠 — 누를 때마다 버리면 처음부터 다시 해 영영 못 붙음. 시작 시각이 없으면 false
+static func retry_drops(now: float, connect_at, slack: float) -> bool:
+	return connect_at != null and now - float(connect_at) - slack > C.NET_RECONNECT_MS
 
 
 # 실제로 붙을 주소 (url·상태 글은 원래 주소 그대로): 웹은 브라우저가 permessage-deflate 를 해 주니 그대로
@@ -252,17 +258,19 @@ func _drop_stuck(now: float) -> void:
 
 
 # 다시 붙어 보기를 처음부터 (메뉴에서 눌렀는데 연결이 없을 때): 횟수를 되돌리고, 포기한 뒤거나 붙어 보기가 매달려 있으면
-# (CONNECTING — 그 소켓은 버림) 바로 다시 시작
+# (NET_RECONNECT_MS 넘게 CONNECTING — retry_drops, 그 소켓은 버림) 바로 다시 시작. 그보다 젊은 붙어 보기는 그대로 두고 횟수만
+# (CONNECT_MS 넘게 매달리면 어차피 프레임의 connect_stuck 이 버림)
 func retry() -> void:
 	if url == "" or is_open():
 		return
 	tries = 0
-	var hung := ws.get_ready_state() == WebSocketPeer.STATE_CONNECTING
+	var now := now_ms()
+	var hung := ws.get_ready_state() == WebSocketPeer.STATE_CONNECTING and retry_drops(now, connect_at, meter.slack(now))
 	if hung:
 		_discard()
 	if hung or (not reconnecting and ws.get_ready_state() == WebSocketPeer.STATE_CLOSED):
 		reconnecting = true
-		retry_at = now_ms()
+		retry_at = now
 		_set_status("%s — 다시 연결 중" % lost)
 
 

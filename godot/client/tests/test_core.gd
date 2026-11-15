@@ -129,16 +129,12 @@ func test_net_packed_url() -> void:
 
 
 # 서버 침묵 감지 (net.gd silent): 마지막으로 받은 뒤 SILENCE_MS (6초) 넘게 조용하면 true. 프레임이 멈췄던 시간 (slack) 은 뺌.
-# 실제로는 열린 동안에만 부르고 붙는 순간 last_recv_at = 붙은 시각이라 null 이 없음 (null 은 순수 함수 경계값)
+# 실제로는 열린 동안에만 부르고 붙는 순간 last_recv_at = 붙은 시각이라 null 이 없음 (null 은 순수 함수 경계값 — 붙은 순간부터 세는지는 test_net_silent_from_open)
 func test_net_silence_watchdog() -> void:
 	var lim: float = NetScript.SILENCE_MS
 	check(lim == 6000.0, "침묵 상한 %s" % lim)
 	# 침묵 감시를 받치는 것은 내 핑 (NET_PING_MS) 의 pong 하나 (방 목록은 바뀔 때만 옴): 핑 간격이 상한의 몇 배 안에 들어야 함
 	check(lim >= C.NET_PING_MS * 5, "핑 간격 %s 의 5배 이상" % C.NET_PING_MS)
-	# 붙은 시각부터 셈: 붙은 뒤 아무것도 안 오면 (첫 pong 도 없음) 6초 넘어 끊음
-	var opened_at := 70000.0
-	check(not NetScript.silent(opened_at + lim, opened_at, 0.0), "붙은 뒤 딱 6초는 아직")
-	check(NetScript.silent(opened_at + lim + 1.0, opened_at, 0.0), "붙은 뒤 아무것도 안 오면 6초 넘어 끊음")
 	var t0 := 50000.0
 	check(not NetScript.silent(t0 + 1000.0, t0, 0.0), "1초 전에 받음")
 	check(not NetScript.silent(t0 + lim, t0, 0.0), "딱 6초는 아직")
@@ -175,8 +171,26 @@ func test_net_connect_timeout() -> void:
 	check(not NetScript.connect_stuck(t0 + 99999.0, null, 0.0), "시작 시각 없음")
 
 
+# retry() 가 붙어 보기를 버릴 때 (net.gd retry_drops): 시작한 뒤 NET_RECONNECT_MS (2초) 넘게 CONNECTING 일 때만. 그보다 젊으면 느린 핸드셰이크일 수 있어 그대로.
+# 프레임이 멈췄던 시간 (slack) 은 빼고, 시작 시각이 없으면 false. 2초 ~ CONNECT_MS (6초) 사이는 버튼을 눌렀을 때만 버림 (그 뒤는 프레임이 버림)
+func test_net_retry_drops() -> void:
+	var lim: float = C.NET_RECONNECT_MS
+	check(lim == 2000.0, "다시 붙기 간격 %s" % lim)
+	check(lim < NetScript.CONNECT_MS, "붙어 보기 상한 %s 보다 짧음" % NetScript.CONNECT_MS)
+	var t0 := 30000.0
+	check(not NetScript.retry_drops(t0, t0, 0.0), "막 시작함")
+	check(not NetScript.retry_drops(t0 + 800.0, t0, 0.0), "0.8초째 (느린 터널 핸드셰이크) 는 그대로")
+	check(not NetScript.retry_drops(t0 + lim, t0, 0.0), "딱 2초는 아직")
+	check(NetScript.retry_drops(t0 + lim + 1.0, t0, 0.0), "2초 넘게 매달림 → 버림")
+	check(not NetScript.connect_stuck(t0 + lim + 1.0, t0, 0.0), "그때 프레임은 아직 안 버림 (버튼만)")
+	check(not NetScript.retry_drops(t0 + 3000.0, t0, 1500.0), "slack 1.5초 → 남은 1.5초는 아직")
+	check(NetScript.retry_drops(t0 + 3000.0, t0, 500.0), "slack 0.5초 → 남은 2.5초는 매달림")
+	check(not NetScript.retry_drops(t0 + 99999.0, null, 0.0), "시작 시각 없음")
+
+
 # 멈춘 서버 (TCP 는 받아 주지만 업그레이드 응답이 없음 — 안 읽는 TCPServer) 에 붙어 보기: 상한이 지나면 소켓을 버리고 다음 시도로,
-# 다 쓰면 gave_up, retry() 는 매달린 소켓도 버리고 처음부터. 상한을 기다리지 않게 connect_at 을 과거로 돌려 프레임 (_prof_process) 을 직접 돌림
+# 다 쓰면 gave_up, retry() 는 NET_RECONNECT_MS 넘게 매달린 소켓만 버리고 처음부터 (젊은 붙어 보기는 그대로).
+# 상한을 기다리지 않게 connect_at 을 과거로 돌려 프레임 (_prof_process) 을 직접 돌림
 func test_net_connect_stuck_moves_on() -> void:
 	var hole := TCPServer.new()
 	check(hole.listen(0, "127.0.0.1") == OK, "안 읽는 TCP 리스너")
@@ -214,10 +228,23 @@ func test_net_connect_stuck_moves_on() -> void:
 	n.retry_at = 0.0
 	frame.call(3)
 	check(gave.size() == 1 and not n.reconnecting and n.ws.get_ready_state() == WebSocketPeer.STATE_CLOSED, "다 쓰면 gave_up (%d, %s)" % [gave.size(), n.reconnecting])
-	# retry(): 포기한 뒤 → 다시 시작, 그 시도가 매달린 동안 또 누르면 매달린 소켓을 버리고 처음부터
+	# retry(): 포기한 뒤 → 다시 시작
 	n.retry()
 	frame.call(3)
 	check(n.tries == 1 and n.ws.get_ready_state() == WebSocketPeer.STATE_CONNECTING, "retry → 다시 붙어 봄 (%d)" % n.tries)
+	# 붙어 보기 직후 거듭 누름 (느린 핸드셰이크일 수 있음): 소켓·시작 시각 그대로, 횟수만 되돌림
+	var young = n.ws
+	var young_at = n.connect_at
+	for i in 5:
+		n.tries = 9
+		n.retry()
+		check(n.tries == 0, "누를 때마다 횟수 0 (%d)" % n.tries)
+		frame.call(1)
+	check(n.ws == young and n.connect_at == young_at and n.ws.get_ready_state() == WebSocketPeer.STATE_CONNECTING, "젊은 붙어 보기는 안 버림")
+	# 2초 넘게 매달린 뒤 (프레임은 CONNECT_MS 전이라 아직 안 버림) 누르면 버리고 처음부터
+	n.connect_at = NetScript.now_ms() - (C.NET_RECONNECT_MS + 1000.0)
+	frame.call(1)
+	check(n.ws == young and n.ws.get_ready_state() == WebSocketPeer.STATE_CONNECTING, "프레임은 CONNECT_MS 전엔 그대로")
 	var hung = n.ws
 	n.tries = 9
 	n.retry()
@@ -228,6 +255,62 @@ func test_net_connect_stuck_moves_on() -> void:
 	check(gave.size() == 1, "gave_up 은 한 번만")
 	n._discard()
 	hole.stop()
+	n.free()
+
+
+# 붙은 순간부터 침묵을 셈 (net.gd 붙은 갈래의 last_recv_at = now): 업그레이드까지 해 주고 아무 말도 안 하는 서버 (TCPServer + 서버 쪽 WebSocketPeer,
+# pong 도 없음) 에 붙음. 받은 게 없어도 붙은 순간 last_recv_at 이 있어야 침묵 감시가 돎 (없으면 '받은 적 없음' 이라 영영 안 끊김).
+# 6초를 기다리지 않게 last_recv_at 을 상한 너머 과거로 밀고 프레임 (_prof_process) 을 직접 돌림 → 버리고 같은 길로 다시 붙음
+func test_net_silent_from_open() -> void:
+	var tcp := TCPServer.new()
+	check(tcp.listen(0, "127.0.0.1") == OK, "말 없는 WebSocket 리스너")
+	var peers: Array = [] # 서버 쪽 소켓: 업그레이드 응답만 (poll), 아무것도 안 보냄
+	var n = NetScript.new() # 트리에 안 넣음 (_process 없음 — 프레임은 아래에서 직접)
+	var texts: Array = []
+	var opens: Array = []
+	var closes: Array = []
+	n.status_changed.connect(func(t): texts.append(t))
+	n.opened.connect(func(again): opens.append(again))
+	n.closed.connect(func(): closes.append(1))
+	var step := func() -> void:
+		while tcp.is_connection_available():
+			var p := WebSocketPeer.new()
+			p.accept_stream(tcp.take_connection())
+			peers.append(p)
+		for p in peers:
+			p.poll()
+		n._prof_process(0.0)
+		OS.delay_msec(5)
+	var until_open := func() -> void:
+		for i in 400: # 최대 약 2초
+			step.call()
+			if n.is_open():
+				return
+	var before := NetScript.now_ms()
+	n.start("ws://127.0.0.1:%d" % tcp.get_local_port())
+	until_open.call()
+	check(n.is_open() and opens == [false], "붙음 (상태 %d, %s)" % [n.ws.get_ready_state(), str(opens)])
+	check(n.recv_bytes == 0, "서버가 아무것도 안 보냄 (%d바이트)" % n.recv_bytes)
+	check(n.last_recv_at != null and float(n.last_recv_at) >= before, "받은 게 없어도 붙은 순간부터 잼 (%s)" % str(n.last_recv_at))
+	for i in 3:
+		step.call()
+	check(n.is_open() and closes.is_empty(), "상한 전엔 그대로")
+	# 붙은 뒤 침묵이 상한을 넘음 → 그 소켓을 버리고 끊긴 것과 같은 길 ('서버 응답 없음')
+	if n.last_recv_at != null:
+		n.last_recv_at = float(n.last_recv_at) - (NetScript.SILENCE_MS + 1000.0)
+	step.call()
+	check(not n.is_open() and closes.size() == 1 and n.last_recv_at == null, "조용한 소켓을 버림 (상태 %d, 끊김 %d)" % [n.ws.get_ready_state(), closes.size()])
+	check(n.reconnecting and n.lost == NetScript.LOST_SILENT and texts.back() == "서버 응답 없음 — 다시 연결 중", "다시 붙기 시작: %s" % str(texts))
+	# 간격을 기다리지 않게 retry_at 을 당기면 같은 서버로 다시 붙고, 다시 붙은 순간부터 또 잼
+	n.retry_at = 0.0
+	before = NetScript.now_ms()
+	until_open.call()
+	check(n.is_open() and opens == [false, true] and n.tries == 0, "다시 붙음 (%s, %d)" % [str(opens), n.tries])
+	check(n.last_recv_at != null and float(n.last_recv_at) >= before, "다시 붙은 순간부터 잼 (%s)" % str(n.last_recv_at))
+	n._discard()
+	for p in peers:
+		p.close(-1)
+	tcp.stop()
 	n.free()
 
 
