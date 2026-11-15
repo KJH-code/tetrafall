@@ -590,11 +590,11 @@ func _place() -> void:
 	position.x = dock.left
 	# JS #center: 가운데 + 28px, 최대 높이 100vh − 92px (넘치면 판 안에서 스크롤) — 예전엔 높이 제한이 없어 960×540 에서 아래로 넘침
 	var pad: float = pane_box.content_margin_top + pane_box.content_margin_bottom
-	scroll.custom_minimum_size.y = minf(col.get_combined_minimum_size().y, vw.y - 92.0 - pad)
+	# (계산은 ui_calc lobby_scroll_h·lobby_y — tests/test_ui.gd 가 960×540·1280×720 에서 판이 화면 안·핑 칸 아래임을 고정)
+	scroll.custom_minimum_size.y = U.lobby_scroll_h(vw.y, col.get_combined_minimum_size().y, pad)
 	reset_size()
 	size.x = dock.w
-	position.y = (vw.y - size.y) / 2.0 + 28.0
-	position.y = clampf(position.y, 46.0, maxf(46.0, vw.y - size.y - 18.0))
+	position.y = U.lobby_y(vw.y, size.y)
 	start_btn.custom_minimum_size.x = (dock.w - pane_box.content_margin_left - pane_box.content_margin_right) * 0.92 # JS width 92%
 
 

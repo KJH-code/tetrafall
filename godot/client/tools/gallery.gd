@@ -8,7 +8,8 @@
 #   pieces-<테마 id>.png ×7  — 그 테마 바닥·지형 단 위에 쌓인 테트리미노 7종 + 떨어지는 블록 하나와 그림자 칸
 # 판 그리기 (world/world.tscn) 를 그대로 띄우고 서버 스냅샷 자리 (Store.state·Store.grid) 에 가짜 판 상태를 넣음 → 재질·빛·판 빛·먼 배경이 판 중과 같음.
 # 캐릭터 몸은 chars.make_body 를 판처럼 자리 노드 아래에 세움. 카메라는 이 도구 것 (판 카메라 대신).
-# 같은 사진이 나오게: 난수 시드 고정, 설정은 gallery_config.SETTINGS 로 고정, 엔진 시간 배율 0 (셰이더 TIME·프레임 dt 가 멈춤 — 구름·물결·먼 섬이 그 자리).
+# 같은 사진이 나오게: 난수 시드 고정, 설정은 gallery_config.SETTINGS 로 고정, 엔진 시간 배율 0 (셰이더 TIME·프레임 dt 가 멈춤 — 구름·물결·먼 섬이 그 자리),
+# 몸 동작 시계 (chars/ext_motion.gd clock — 외부 모델의 천·클립·가산 층, 몸 효과) 는 벽시계 대신 이 도구의 가상 시계 (자세 걸음·프레임마다 정해진 만큼만 감).
 # --low = 설정 '그래픽 낮춤'. 끝나면 저장한 파일 목록, 종료 코드 0 (못 만든 사진·스크립트 오류가 있으면 1, 그릴 수 없는 환경 (--headless) 이면 2)
 extends SceneTree
 
@@ -18,6 +19,7 @@ const Co := preload("res://core/coords.gd")
 const Cells := preload("res://world/cells.gd")
 const WC := preload("res://world/world_config.gd")
 const LP := preload("res://world/lobby_preview.gd")
+const ExtMotion := preload("res://chars/ext_motion.gd")
 const KINDS := ["chars", "maps", "pieces"]
 
 
@@ -59,6 +61,8 @@ var Chars = null
 var grid_ver := 1000
 var last_theme := ""
 var t0 := 0
+# 몸 동작 가상 시계의 걸음 수 (시각 = gallery_config.clock_s). 자세 한 걸음 (_place)·그린 한 프레임 (_process) 마다 1 — 벽시계와 무관해 찍을 때마다 같은 천·자세
+var clock_steps := 0
 
 
 func _initialize() -> void:
@@ -87,6 +91,7 @@ func _initialize() -> void:
 	t0 = Time.get_ticks_msec()
 	seed(K.SEED)
 	Engine.time_scale = 0.0
+	ExtMotion.clock = func(): return K.clock_s(clock_steps)
 	store = root.get_node("Store")
 	view = root.get_node("View")
 	for k in K.SETTINGS:
@@ -108,6 +113,7 @@ func _initialize() -> void:
 
 func _end(code: int) -> void:
 	done = true
+	ExtMotion.clock = Callable() # 끝나면 가상 시계를 뺌 (core/replay.gd 처럼)
 	quit(code)
 
 
@@ -141,6 +147,7 @@ func _plan() -> void:
 func _process(_dt: float) -> bool:
 	if done:
 		return true
+	clock_steps += 1 # 이 프레임의 몸 _process (외부 모델 천) 가 볼 시각 — 이 함수가 노드들보다 먼저 돎
 	if job_i >= 0:
 		wait -= 1
 		if wait > 0:
@@ -320,6 +327,7 @@ func _place(f: Dictionary, at: Vector2, yaw: float) -> void:
 	holder.rotation = Vector3(0, Co.rot_y(yaw), 0)
 	var p := {"id": f.id, "alive": true, "x": at.x, "y": at.y, "z": 0.0, "yaw": yaw, "damage": 0.0}
 	for i in K.CHAR_POSE_STEPS:
+		clock_steps += 1
 		f.body.pose(p, i * K.CHAR_POSE_MS)
 
 

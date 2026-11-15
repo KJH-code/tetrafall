@@ -19,6 +19,15 @@ const CHAR_FIT_PASSES := 3 # 몸 방향 ↔ 카메라 거리 맞추기 되풀이
 const CHAR_MARGIN := 0.9 # 화면 채움 (1 = 꽉, 작을수록 여백)
 const CHAR_POSE_STEPS := 50 # 가만히 선 자세로 이만큼 자세를 돌림 (16ms 씩 — 숨쉬기 위상, portrait.gd 와 같게)
 const CHAR_POSE_MS := 16.0
+# 몸 동작 가상 시계 (chars/ext_motion.gd clock 에 꽂음 — 외부 모델 천·클립·가산 층이 벽시계 대신 봄): 시작 시각 + 걸음 수 × 걸음.
+# 시작은 0 보다 커야 함 (몸들이 '시각 0 = 아직 안 돎' 으로 봄), 걸음은 자세 한 걸음과 같게
+const CLOCK_START_S := 100.0
+const CLOCK_STEP_MS := CHAR_POSE_MS
+
+
+# 걸음 수 → 가상 시각 (초)
+static func clock_s(steps: int) -> float:
+	return CLOCK_START_S + steps * CLOCK_STEP_MS / 1000.0
 
 # ---- 맵 ----
 # 위에서: 필드 가운데 (높이 look_z) 를 yaw 쪽으로 pitch 만큼 내려다봄. pitch 가 시야각 절반보다 작아 위쪽에 하늘·먼 배경이 들어옴

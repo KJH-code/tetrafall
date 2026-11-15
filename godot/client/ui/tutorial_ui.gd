@@ -22,6 +22,7 @@ var intro: Label
 var done_title: Label
 var done_sum: Label
 var band := HBoxContainer.new()
+var band_top := CenterContainer.new() # 진행 띠 자리 (위 가운데) — 띠는 이 안에서 가운데 놓임
 var prog: Label
 var txt := RichTextLabel.new() # 단계 문구 (JS .txt: 19px, 키 글자 노랑, max-width 640 에서 줄바꿈 — 예전엔 글 조각을 한 줄로 이어 960 에서 화면 밖)
 var ok_lab: Label
@@ -36,6 +37,7 @@ var quick_pending := false # '봇 3명과 한 판': 새 방이 열리면 봇을 
 func _ready() -> void:
 	layer = 20
 	add_to_group("ui_blocker") # ui.gd 가 blocking() 을 봄
+	add_to_group("status_avoid") # ui.gd 가 avoid_rects() 를 보고 판 중 상태 글 받침을 띠 아래로 비킴
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -78,7 +80,7 @@ func _ready() -> void:
 	stack.add_child(note)
 	modal.visible = false
 	# 진행 띠 (위 가운데)
-	var top := CenterContainer.new()
+	var top := band_top
 	top.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	top.position.y = 58
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -192,6 +194,15 @@ func close() -> void:
 
 func blocking() -> bool:
 	return modal.visible
+
+
+# 진행 띠 (진행 칸 ~ 넘기기 버튼) 의 화면 사각형, 안 보이면 빈 배열 — 이 층 (20) 이 상태 글 (ui.gd, 10) 위라 겹치면 상태 글이 띠 밑에 깔림
+# → ui.gd 가 받침을 그 아래로 (ui_calc status_box_pos). 문구가 두 줄로 접히면 (960 폭) 띠 아래 끝이 내려와 고정 자리로는 못 피함 (사이클 6 병합 리뷰 F1).
+# 띠는 band_top 바로 아래 칸이고 이 층은 옮김·배율이 없어 두 position 의 합이 곧 화면 좌표 (ui.gd 의 get_global_rect 와 같은 좌표)
+func avoid_rects() -> Array:
+	if not band.visible or band.size.y <= 0.0:
+		return []
+	return [Rect2(band_top.position + band.position, band.size)]
 
 
 # 메뉴·설정 '튜토리얼': 방 안이면 나와서 바로 캐릭터 고르기

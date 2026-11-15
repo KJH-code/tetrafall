@@ -58,7 +58,7 @@ xvfb-run -a godot --path godot/client --resolution 1280x720 --rendering-driver o
 - `pieces-<테마 id>.png` ×7 — 그 테마 바닥·지형 단 위에 쌓인 테트리미노 7종 (뒷줄 I·O·T·L, 앞줄 S·Z·J) + 떨어지는 블록 하나와 그림자 칸
 
 `--low` = 설정 '그래픽 낮춤' 으로 (파일 이름 같음 → 다른 `--out` 폴더에). 끝에 저장한 파일 목록, 종료 코드 0 (못 만든 사진·도는 동안 난 엔진/스크립트 오류가 있으면 1, `--headless` 처럼 그릴 수 없으면 안내 한 줄과 2).
-판 그리기 (`world/world.tscn`) 를 그대로 띄우고 스냅샷 자리 (`Store.state`·`Store.grid`) 에 가짜 판 상태를 넣어 찍으므로 재질·빛·판 빛은 판 중과 같음. 같은 사진이 나오게 엔진 시간 배율을 0 으로 둠 (구름·먼 섬·셰이더 물결이 멈춤) — 실제 시계로 움직이는 떠다니는 빛 알갱이 (수정·화산·하늘 성·버섯 테마) 만 조금 달라짐 (두 번 찍어 정규화 RMSE 0.03 아래, 나머지는 0). 캐릭터 사진은 래그돌을 끄고 떠 있는 섬·먼 배경을 숨김. 카메라·배치 수치는 `tools/gallery_config.gd`.
+판 그리기 (`world/world.tscn`) 를 그대로 띄우고 스냅샷 자리 (`Store.state`·`Store.grid`) 에 가짜 판 상태를 넣어 찍으므로 재질·빛·판 빛은 판 중과 같음. 같은 사진이 나오게 엔진 시간 배율을 0 으로 두고 (구름·먼 섬·셰이더 물결이 멈춤) 몸 동작 시계 (`chars/ext_motion.gd` `clock` — 외부 모델의 천·클립·가산 층) 에 가상 시계를 꽂음 (자세 한 걸음·그린 한 프레임마다 16ms, `gallery_config.gd` `clock_s` — 60Hz 로 가만히 선 몸의 천 모양. 예전엔 벽시계라 목도리·망토 자리가 찍을 때마다 달랐음) — 실제 시계로 움직이는 떠다니는 빛 알갱이 (수정·화산·하늘 성·버섯 테마) 만 조금 달라짐 (두 번 찍어 정규화 RMSE 0.03 아래, 나머지는 0). 캐릭터 사진은 래그돌을 끄고 떠 있는 섬·먼 배경을 숨김. 카메라·배치 수치는 `tools/gallery_config.gd`.
 비교: `compare -metric RMSE 앞/char-tank.png 뒤/char-tank.png diff.png` (ImageMagick).
 
 ### 병합 뒤 기준선 (2026-11-15: 이 브랜치 `88d9b1d` + 최신 고도 작업 `6ba2e4d` v0.1.21-godot-preview)
@@ -130,7 +130,7 @@ JS 화면의 합성 소리·곡을 **크로미움에서 그대로 녹음해 구�
 
 ## 화면 계산 (고도 판 전용 — JS 에 없는 것, `ui/ui_calc.gd` 아래쪽·`tests/test_ui.gd`)
 
-- 대기실 판 배치 (2026-11-15 병합 뒤): `lobby.gd` `_place` 는 최신 쪽 방식 — 폭 `lobby_dock`, 세로 가운데 + 28px, 최대 높이 화면 − 92px 를 넘으면 판 안에서 스크롤 (`scroll`), 작은 창이면 `_small_sizes` (JS @media). 이 브랜치 쪽 '통째로 줄이기' 계산 `ui_calc.gd` `lobby_place` 는 계산·테스트 (`test_lobby_place`) 만 남고 `lobby.gd` 는 부르지 않음 (같은 문제 — 작은 창에서 판이 넘침 — 를 최신 쪽이 스크롤로 풂). 결과 판은 그대로 `results_place` 를 씀 (칭호 줄이 붙어도 화면 안).
+- 대기실 판 배치 (2026-11-15 병합 뒤): `lobby.gd` `_place` 는 최신 쪽 방식 — 폭 `lobby_dock`, 세로 가운데 + 28px, 최대 높이 화면 − 92px 를 넘으면 판 안에서 스크롤 (`scroll`), 작은 창이면 `_small_sizes` (JS @media). 그 계산은 `ui_calc.gd` `lobby_scroll_h`·`lobby_y` (`tests/test_ui.gd` `test_lobby_panel_fits` 가 960×540·1280×720 에서 판이 화면 안·핑 칸 아래임을 고정). 이 브랜치 쪽 '통째로 줄이기' 계산은 `lobby.gd` 가 안 불러 지움 (같은 문제 — 작은 창에서 판이 넘침 — 를 최신 쪽이 스크롤로 풂). 결과 판은 그대로 `results_place` 를 씀 (칭호 줄이 붙어도 화면 안, 위 끝 `RESULTS_TOP` 74 = 오른쪽 위 핑 칸 아래 — 대기실 판의 가장 높은 위 끝과 같음).
 - 방 옵션 표시 (`room_opts`): 손님 대기실 줄 (`lobby.gd` map_info, 방장은 체크 상자) 과 공개 방 목록 한 줄 (`menu.gd`) 에 켠 옵션을 ` · 하늘 계단 · 체력전 · 돌발 이벤트` 로 붙임.
 - 돌발 이벤트 알림 (`ui/round_event_text.gd`, `tests/test_round_events.gd`): 서버 이벤트 `roundEvent` 가 올 때 한 번 뜨는 알림. 돌풍 화살표는 보는 방향 기준 (`hud_extra.gd` `_view_yaw`: 하늘 시점이면 `cam_rig.sky_yaw`, 아니면 `PlayerInput.yaw`) — 알림이 뜬 뒤에 몸을 돌리면 안 따라옴. 진행 중인 이벤트는 스냅샷 `roundEvent` (남은 시간·방향) 를 `status` 가 한 줄로 만들어 `hud_extra.gd` `refresh` 가 위 가운데 띠 (`event_chip`: '블록 폭우 N초'·'돌풍 → N초') 에 끝날 때까지 띄움 — 화살표는 매 프레임 보는 방향 기준, 보급은 띠 없음. 메뉴로 만든 방은 돌발 이벤트를 켠 채 시작 (`menu.gd` `_create` → `ui_calc.gd` `create_defaults`, 대기실 체크를 끄면 `ui_prefs` `roundEvents` 로 기억해 다음 방도 끔. 자동 조종 `--auto host` 는 예전 그대로 `--events on` 일 때만).
 

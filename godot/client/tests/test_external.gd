@@ -12,6 +12,7 @@ const Ext := preload("res://chars/external.gd")
 const RagW := preload("res://chars/ragdoll.gd")
 const VM_ := preload("res://chars/viewmodel.gd")
 const Chars := preload("res://chars/chars.gd")
+const Motion_ := preload("res://chars/ext_motion.gd")
 
 var errors: Array = []
 
@@ -1562,3 +1563,48 @@ func test_atlas_vram_compressed() -> void:
 		check(FileAccess.get_file_as_string(p).contains("compress/mode=2"), "%s 아틀라스 VRAM 압축" % id)
 		var tex = load("res://assets/models/ext/%s_%s_atlas.jpg" % [id, id])
 		check(tex != null and (tex as Texture2D).get_image().is_compressed(), "%s 아틀라스를 압축 상태로 읽음" % id)
+
+
+# 사이클 6 병합 리뷰 F2: 갤러리 (tools/gallery.gd) 가 몸 동작 시계 (ext_motion.gd clock) 에 가상 시계를 꽂아 외부 모델 천이 찍을 때마다 같은 자리.
+# 갤러리 _place 와 같은 걸음 (시계 한 걸음 + pose) 을 두 번 돌리면 벽시계가 그 사이 얼마나 갔든 천 뼈 회전이 한 비트도 안 다르고, 천이 실제로 돎 (dt > 0)
+func _gallery_cloth_run(ch: String, stall_ms: int) -> Array:
+	var GK = load("res://tools/gallery_config.gd")
+	var steps := [0]
+	Motion_.clock = func(): return GK.clock_s(steps[0])
+	var b = _body(ch)
+	var out := []
+	if b.ext != null:
+		var p := {"id": 9001, "alive": true, "x": 9.5, "y": 9.5, "z": 0.0, "yaw": 0.7, "damage": 0.0}
+		for i in int(GK.CHAR_POSE_STEPS):
+			steps[0] += 1
+			b.pose(p, i * GK.CHAR_POSE_MS)
+			if i == 10 and stall_ms > 0:
+				OS.delay_msec(stall_ms) # 벽시계만 감 (느린 기계·바쁜 기계 흉내)
+		out.append(b.ext.cloths.size())
+		out.append(float(b.ext.cloth_t))
+		for cl in b.ext.cloths:
+			for bi in cl.bones:
+				out.append(b.ext.sk.get_bone_pose_rotation(bi))
+	Motion_.clock = Callable()
+	b.free()
+	return out
+
+
+func test_gallery_clock_same_cloth() -> void:
+	var GK = load("res://tools/gallery_config.gd")
+	check(GK.clock_s(0) > 0.0 and GK.clock_s(0) == GK.CLOCK_START_S, "가상 시계 시작은 0 보다 큼 (몸들이 시각 0 을 '아직 안 돎' 으로 봄): %s" % str(GK.clock_s(0)))
+	check(is_equal_approx(GK.clock_s(1) - GK.clock_s(0), GK.CHAR_POSE_MS / 1000.0), "한 걸음 = 자세 한 걸음 (%s ms)" % str(GK.CHAR_POSE_MS))
+	check(is_equal_approx(GK.clock_s(250) - GK.clock_s(0), 250.0 * GK.CLOCK_STEP_MS / 1000.0), "걸음 수에 비례")
+	var Gfx = load("res://world/gfx.gd")
+	var was: Dictionary = Gfx.plan
+	Gfx.plan = {}
+	for ch in ["ninja", "tank", "hunter", "hook"]:
+		var a := _gallery_cloth_run(ch, 0)
+		var b := _gallery_cloth_run(ch, 30)
+		check(a.size() > 2 and int(a[0]) >= 1, "%s 천 사슬이 있음: %s" % [ch, str(a.slice(0, 2))])
+		if a.size() <= 2:
+			continue
+		check(is_equal_approx(float(a[1]), GK.clock_s(int(GK.CHAR_POSE_STEPS))), "%s 천이 가상 시계를 봄 (마지막 시각 %s)" % [ch, str(a[1])])
+		check(a == b, "%s 같은 걸음이면 천 뼈 회전이 같음 (벽시계 무관)" % ch)
+	Gfx.plan = was
+	check(not Motion_.clock.is_valid(), "끝나면 시계를 뺌")

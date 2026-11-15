@@ -90,18 +90,30 @@ static func lobby_dock(view_w: float) -> Dictionary:
 
 
 # ---------- 고도 판 전용 (JS 에 없음 — 정답 자료 대신 tests/test_ui.gd 가 값으로 고정) ----------
-const LOBBY_TOP := 84.0 # 대기실 판 위쪽 (위 점수 띠 아래)
-const LOBBY_SCALE_MIN := 0.1 # 대기실 판 줄임 배율 아래 끝 (0 으로 나누기·뒤집힘 막기)
-const RESULTS_TOP := 40.0 # 결과 판 위쪽 끝 (이보다 위로는 안 올라감)
+# 접속 표시 (ui.gd net_box — JS #net: 오른쪽 12 · 위 52): 핑 칸이 맨 위 (글자 12 + 위아래 여백 2 — 화면에서 잰 높이 19, 자동 조종 --dump), 그 아래 렉·끊김 알림 칸
+const NET_RIGHT := 12.0
+const NET_TOP := 52.0
+const NET_PING_H := 19.0
+const NET_GAP := 3.0 # 핑 칸과 그 아래 판 (결과 판) 사이 띄움
+# 대기실 판 (lobby.gd _place, JS #center): 세로 가운데 + LOBBY_DROP, 판 최대 높이 = 화면 − LOBBY_VPAD (넘치면 판 안에서 스크롤),
+# 위 끝은 LOBBY_TOP_MIN 아래·아래 끝은 화면 − LOBBY_BOTTOM 위. 가장 긴 판의 위 끝 = LOBBY_VPAD / 2 + LOBBY_DROP = 74 → 핑 칸 (52~71) 아래
+const LOBBY_DROP := 28.0
+const LOBBY_VPAD := 92.0
+const LOBBY_TOP_MIN := 46.0
+const LOBBY_BOTTOM := 18.0
+const RESULTS_SCALE_MIN := 0.1 # 결과 판 줄임 배율 아래 끝 (0 으로 나누기·뒤집힘 막기)
+# 결과 판 위쪽 끝 (이보다 위로는 안 올라감) = 핑 칸 아래 끝 + 띄움 (74 — 대기실 판의 가장 높은 위 끝과 같음).
+# 예전 40 (위 점수 띠 아래) 은 칭호 줄로 길어진 판이 올라와 오른쪽 위 핑 칸을 판 모서리 안에 넣었음 (사이클 6 병합 리뷰 F3)
+const RESULTS_TOP := NET_TOP + NET_PING_H + NET_GAP
 const RESULTS_DROP := 22.0 # 결과 판: 세로 가운데에서 이만큼 아래
 # 방 옵션 표시: [키 (스냅샷·공개 목록 같음), 글, 켜도 안 먹는 모드]. 블록 마스터 판은 하늘 계단 (Game.Round.cs StartRound sky)·돌발 이벤트 (Game.Events.cs RoundEventsRun) 가 안 돎
 const ROOM_OPTS := [["skyStairs", "하늘 계단", ["master"]], ["hpMode", "체력전", []], ["roundEvents", "돌발 이벤트", ["master"]]]
 
 
 const STATUS_POS := Vector2(16, 12) # 접속 상태 글 (연결 중·끊김 — ui.gd status) 자리: 메뉴·대기실·결과는 왼쪽 위
-# 판 HUD 가 보일 때: 왼쪽, 판 시간 (hud.gd timer_label (14, 12) 글자 26 — 아래 끝 약 52) 과 위 가운데 튜토리얼 진행 띠 (tutorial_ui.gd top y 58,
-# 아래 끝 약 97) 아래. 예전 (16, 64) 은 띠·블록 마스터 생존자 배너 (hud_extra top_box y 62) 와 겹쳤음 — 띠 폭이 글 길이 따라 화면 대부분까지 늘어
-# x 만 옮겨서는 못 피함 (사이클 5 리뷰 F3)
+# 판 HUD 가 보일 때: 왼쪽, 판 시간 (hud.gd timer_label (14, 12) 글자 26 — 아래 끝 약 52) 아래. 예전 (16, 64) 은 위 가운데 튜토리얼 진행 띠
+# (tutorial_ui.gd band_top y 58)·블록 마스터 생존자 배너 (hud_extra top_box y 62) 와 겹쳤음 — 띠 폭이 글 길이 따라 화면 대부분까지 늘어 x 만 옮겨서는 못 피함 (사이클 5 리뷰 F3).
+# 한 줄 띠 (아래 끝 약 97) 는 이 자리가 그 아래지만, 문구가 두 줄로 접히면 (아래 끝 약 120) 여기까지 내려옴 → 띠도 피할 칸 (status_box_pos avoid) 으로 받아 그 아래로 내림
 const STATUS_POS_GAME := Vector2(16, 108)
 # 판 중 받침 (상태 글 뒤 어두운 반투명 판): top_box 는 배너·경고·토스트가 쌓이며 아래로 자라 드물게 겹칠 수 있음 — 겹쳐도 글이 읽히게.
 # 메뉴·대기실·결과는 받침 없음 (예전 모양)
@@ -118,10 +130,11 @@ static func status_pos(in_game: bool) -> Vector2:
 
 
 # 받침 (글을 담은 판, ui.gd status_box) 왼쪽 위: 글 자리에서 여백만큼 바깥.
-# 판 중엔 피할 칸들 (avoid: Rect2 배열, 같은 캔버스 좌표 — ui.gd _avoid_rects: 가운데 위 알림 칸 + 연습 방 왼쪽 위 힌트·연습 창) 과 겹치면
+# 판 중엔 피할 칸들 (avoid: Rect2 배열, 같은 캔버스 좌표 — ui.gd _avoid_rects: 가운데 위 알림 칸 + 연습 방 왼쪽 위 힌트·연습 창 + 튜토리얼 진행 띠) 과 겹치면
 # (칸을 STATUS_GAP 만큼 키워 봄) 그 칸 아래로 STATUS_GAP 띄워 내림.
 # 배너는 글 길이·줄 수 따라 왼쪽·아래로 늘어 고정 자리로는 못 피함 (사이클 5 테스트: 960 폭 블록 마스터 본인의 두 줄 배너가 x 약 218 까지 와 받침이 둘째 줄을 가림).
-# 연습 힌트 '연습 창 Tab'·연습 창 (practice.gd, 둘 다 (16, 110)) 은 연습 화면이 위 층 (CanvasLayer 15) 이라 겹치면 상태 글이 가려짐 (사이클 5 수정 리뷰 1).
+# 연습 힌트 '연습 창 Tab'·연습 창 (practice.gd, 둘 다 (14, 70)) 은 연습 화면이 위 층 (CanvasLayer 15) 이라, 튜토리얼 진행 띠 (tutorial_ui.gd, 줄 수 따라
+# 아래 끝이 달라짐) 는 튜토리얼 화면이 위 층 (20) 이라 겹치면 상태 글이 가려짐 (사이클 5 수정 리뷰 1 · 사이클 6 병합 리뷰 F1).
 # room = 받침이 들어가야 하는 칸 (status_room: 화면에서 아래 사람 판·스킬 칸 위까지, 넓이 0 이면 제한 없음). 내린 자리가 room 을 벗어나면
 # (작은 화면에서 긴 연습 창 아래) 대신 막은 칸 오른쪽 옆 (그 칸 오른쪽 끝 + 띄움, 처음 높이에서 다시 내려 봄) 중 왼쪽부터 room 에 드는 첫 자리. 없으면 내린 자리 그대로.
 # size = 받침 크기 (0 이면 안 내림)
@@ -172,29 +185,39 @@ static func status_back(in_game: bool) -> Color:
 	return STATUS_BACK if in_game else Color(0, 0, 0, 0)
 
 
-# 대기실 판 자리: 오른쪽 끝·위 (LOBBY_TOP) 에 붙임. content = 줄이기 전 판 크기 (폭은 lobby_dock 폭, 높이는 내용만큼).
-# 자리 (폭 lobby_dock · 높이 LOBBY_TOP ~ 화면 아래 여백) 보다 크면 통째로 줄임 (960×540 등), 들어가면 배율 1.
-# 반환 {scale 배율, x·y 왼쪽 위}
-static func lobby_place(view: Vector2, content: Vector2) -> Dictionary:
-	var room := Vector2(lobby_dock(view.x).w, view.y - LOBBY_TOP - C.HUD_CARD_MARGIN)
-	var s := 1.0
-	if content.x > 0.0 and content.y > 0.0:
-		s = clampf(minf(room.x / content.x, room.y / content.y), LOBBY_SCALE_MIN, 1.0)
-	return {"scale": s, "x": view.x - C.HUD_CARD_MARGIN - content.x * s, "y": LOBBY_TOP}
+# 접속 표시 (ui.gd net_box) 왼쪽 위: 오른쪽 끝에서 NET_RIGHT, 위 NET_TOP. box_w = 표시 폭 (핑 칸·알림 칸 중 넓은 쪽)
+static func net_pos(view: Vector2, box_w: float) -> Vector2:
+	return Vector2(view.x - NET_RIGHT - box_w, NET_TOP)
+
+
+# 핑 칸 (접속 표시 맨 위 칸, 오른쪽 맞춤) 의 화면 사각형. ping_w = 핑 칸 폭
+static func net_ping_rect(view: Vector2, ping_w: float) -> Rect2:
+	return Rect2(view.x - NET_RIGHT - ping_w, NET_TOP, ping_w, NET_PING_H)
+
+
+# 대기실 판 안 스크롤 칸 높이 (lobby.gd _place): 내용 높이 그대로, 판 (스크롤 칸 + 판 위아래 여백 pad) 이 화면 − LOBBY_VPAD 를 넘으면 거기까지 (나머지는 판 안에서 스크롤)
+static func lobby_scroll_h(view_h: float, content_h: float, pad: float) -> float:
+	return minf(content_h, view_h - LOBBY_VPAD - pad)
+
+
+# 대기실 판 위 끝 y (lobby.gd _place): 세로 가운데 + LOBBY_DROP, [LOBBY_TOP_MIN, 화면 − 판 높이 − LOBBY_BOTTOM] 안. panel_h = 판 높이 (스크롤 칸 + 여백)
+static func lobby_y(view_h: float, panel_h: float) -> float:
+	var y := (view_h - panel_h) / 2.0 + LOBBY_DROP
+	return clampf(y, LOBBY_TOP_MIN, maxf(LOBBY_TOP_MIN, view_h - panel_h - LOBBY_BOTTOM))
 
 
 # 결과 판 자리 (results.gd _place): 오른쪽 끝에 붙이고 세로 가운데에서 RESULTS_DROP 만큼 아래 (위 점수 띠를 비킴).
-# content = 줄이기 전 판 크기. 위 (RESULTS_TOP)·아래 (HUD_CARD_MARGIN) 여백 안으로 y 를 넣고, 그 사이 높이·화면 폭보다 크면 통째로 줄임
+# content = 줄이기 전 판 크기. 위 (RESULTS_TOP — 오른쪽 위 핑 칸 아래)·아래 (HUD_CARD_MARGIN) 여백 안으로 y 를 넣고, 그 사이 높이·화면 폭보다 크면 통째로 줄임
 # (960×540 에 8명 + 칭호 3줄), 들어가면 배율 1. 줄인 판은 줄인 폭 (content.x × 배율) 으로 오른쪽에 붙임. 반환 {scale 배율, x·y 왼쪽 위}
 static func results_place(view: Vector2, content: Vector2) -> Dictionary:
 	var m: float = C.HUD_CARD_MARGIN
 	var room := Vector2(view.x - m * 2.0, view.y - RESULTS_TOP - m)
 	var s := 1.0
 	if content.x > 0.0 and content.y > 0.0:
-		s = clampf(minf(room.x / content.x, room.y / content.y), LOBBY_SCALE_MIN, 1.0)
+		s = clampf(minf(room.x / content.x, room.y / content.y), RESULTS_SCALE_MIN, 1.0)
 	var h := content.y * s
 	var y := minf((view.y - h) / 2.0 + RESULTS_DROP, view.y - m - h) # 아래로 넘치면 올리고
-	return {"scale": s, "x": view.x - m - content.x * s, "y": maxf(y, RESULTS_TOP)} # 위는 점수 띠 아래까지만
+	return {"scale": s, "x": view.x - m - content.x * s, "y": maxf(y, RESULTS_TOP)} # 위는 핑 칸 아래까지만
 
 
 # 켠 방 옵션을 한 줄 꼬리로: " · 하늘 계단 · 체력전 · 돌발 이벤트" (손님 대기실 줄·공개 방 목록). d = 스냅샷 또는 공개 목록 한 줄.

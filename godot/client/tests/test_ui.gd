@@ -6,6 +6,7 @@ const U := preload("res://ui/ui_calc.gd")
 const Awards := preload("res://ui/awards_calc.gd")
 const Results := preload("res://ui/results.gd")
 const Practice := preload("res://ui/practice.gd")
+const TutorialUI := preload("res://ui/tutorial_ui.gd")
 
 var errors: Array = []
 var fx: Dictionary = {}
@@ -61,48 +62,60 @@ func test_hud_layout() -> void:
 		expect(U.label_sizes(l[0]), l[1], "label_sizes(%s)" % str(l[0]))
 
 
-# 대기실 판 자리 (고도 판 전용, lobby.gd _place): 오른쪽 끝·위에 붙고, 자리보다 크면 통째로 줄여 화면 안에
-func test_lobby_place() -> void:
+# 대기실 판 자리 (고도 판 전용, lobby.gd _place 가 쓰는 계산 — lobby_dock·lobby_scroll_h·lobby_y): 오른쪽에 붙고 세로 가운데 + LOBBY_DROP,
+# 내용이 길면 판 높이를 화면 − LOBBY_VPAD 로 묶고 판 안에서 스크롤. 960×540·1280×720 에서 판이 화면 안이고 오른쪽 위 핑 칸 (ui.gd net_box) 과 안 겹침.
+# (사이클 6 병합 리뷰 F4: 예전 '통째로 줄이기' 계산은 lobby.gd 가 안 부르는 죽은 코드라 그 테스트와 같이 지움)
+func test_lobby_panel_fits() -> void:
 	var m: float = U.C.HUD_CARD_MARGIN
-	# [화면, 내용 높이, 배율 1 인지] — 내용 폭은 lobby_dock 폭 그대로 (lobby.gd 가 그렇게 잡음)
-	for row in [[Vector2(960, 540), 660.0, false], [Vector2(1280, 720), 660.0, false], [Vector2(1280, 720), 600.0, true], [Vector2(1920, 1080), 660.0, true], [Vector2(1920, 1080), 900.0, true], [Vector2(2560, 1440), 660.0, true]]:
+	# [화면, 내용 높이 (스크롤 칸 안), 판 위아래 여백 합 (작은 창 6 + 6, 큰 창 10 + 10 — lobby.gd _small_sizes), 판 안에서 스크롤하는지]
+	for row in [[Vector2(960, 540), 300.0, 12.0, false], [Vector2(960, 540), 436.0, 12.0, false], [Vector2(960, 540), 437.0, 12.0, true], [Vector2(960, 540), 660.0, 12.0, true],
+			[Vector2(1280, 720), 300.0, 20.0, false], [Vector2(1280, 720), 600.0, 20.0, false], [Vector2(1280, 720), 660.0, 20.0, true], [Vector2(1280, 720), 2000.0, 20.0, true],
+			[Vector2(1920, 1080), 660.0, 20.0, false]]:
 		var view: Vector2 = row[0]
-		var w: float = U.lobby_dock(view.x).w
-		var content := Vector2(w, row[1])
-		var at := U.lobby_place(view, content)
-		var tag := "lobby_place(%s, %s) = %s" % [str(view), str(content), str(at)]
-		check(is_equal_approx(at.y, U.LOBBY_TOP), "위에 붙음: " + tag) # 큰 화면에서도 세로 가운데로 안 내려옴
-		check(is_equal_approx(at.x + content.x * at.scale, view.x - m), "오른쪽 끝에 붙음: " + tag)
-		check(at.x >= 0.0 and at.y + content.y * at.scale <= view.y - m + 1e-6, "화면 안: " + tag)
-		check((at.scale == 1.0) == row[2], "배율 1 %s: %s" % [str(row[2]), tag])
-		check(at.scale > U.LOBBY_SCALE_MIN and at.scale <= 1.0, "배율 범위: " + tag)
-		if not row[2]: # 줄일 땐 딱 자리만큼 (아래 여백까지)
-			check(is_equal_approx(at.y + content.y * at.scale, view.y - m), "줄인 판 아래 끝 = 화면 아래 여백: " + tag)
-	# 960×540 실제 값: 자리 높이 540 - 84 - 12 = 444 → 660 짜리 판은 444/660 배
-	var small := U.lobby_place(Vector2(960, 540), Vector2(380, 660))
-	check(is_equal_approx(small.scale, 444.0 / 660.0) and is_equal_approx(small.x, 960.0 - 12.0 - 380.0 * 444.0 / 660.0), "960×540: %s" % str(small))
-	# 내용이 판 폭보다 넓어도 (긴 줄) 폭에 맞춰 줄여 오른쪽으로 안 넘침
-	var wide := U.lobby_place(Vector2(1920, 1080), Vector2(940, 400))
-	check(is_equal_approx(wide.scale, 0.5) and is_equal_approx(wide.x, 1920.0 - m - 470.0), "넓은 내용: %s" % str(wide))
-	# 크기를 아직 모르면 (0) 줄이지 않음, 아주 큰 내용도 배율 아래 끝에서 멈춤
-	check(U.lobby_place(Vector2(960, 540), Vector2(380, 0)).scale == 1.0, "높이 0")
-	check(U.lobby_place(Vector2(960, 540), Vector2(380, 1.0e6)).scale == U.LOBBY_SCALE_MIN, "아주 큰 내용")
+		var content_h: float = row[1]
+		var pad: float = row[2]
+		var dock := U.lobby_dock(view.x)
+		var sh := U.lobby_scroll_h(view.y, content_h, pad)
+		var h := sh + pad # 판 높이 = 스크롤 칸 + 여백
+		var y := U.lobby_y(view.y, h)
+		var rect := Rect2(dock.left, y, dock.w, h)
+		var tag := "화면 %s 내용 %s → 판 %s" % [str(view), str(content_h), str(rect)]
+		check((sh < content_h) == row[3], "스크롤 %s: %s" % [str(row[3]), tag])
+		check(sh <= content_h and h <= view.y - U.LOBBY_VPAD + 1e-6, "판 높이는 화면 − LOBBY_VPAD 까지: " + tag)
+		check(rect.position.x >= 0.0 and is_equal_approx(rect.end.x, view.x - m), "오른쪽 끝에 붙고 왼쪽도 화면 안: " + tag)
+		check(rect.position.y >= U.LOBBY_TOP_MIN - 1e-6 and rect.end.y <= view.y - U.LOBBY_BOTTOM + 1e-6, "위·아래 화면 안: " + tag)
+		for ping_w in [60.0, 84.0, 140.0]:
+			check(not rect.intersects(U.net_ping_rect(view, ping_w)), "핑 칸 (폭 %d) 과 안 겹침: %s" % [int(ping_w), tag])
+		if not row[3]: # 안 넘치면 세로 가운데 + LOBBY_DROP 그대로
+			check(is_equal_approx(y, (view.y - h) / 2.0 + U.LOBBY_DROP), "가운데 + LOBBY_DROP: " + tag)
+	# 실제 값: 960×540 에 긴 판 → 높이 540 − 92 = 448, 위 끝 (540 − 448) / 2 + 28 = 74, 아래 끝 522 (= 540 − 18)
+	var sh540 := U.lobby_scroll_h(540.0, 660.0, 12.0)
+	check(is_equal_approx(sh540, 436.0) and is_equal_approx(U.lobby_y(540.0, sh540 + 12.0), 74.0), "960×540 긴 판: 스크롤 칸 %s · 위 끝 %s" % [str(sh540), str(U.lobby_y(540.0, sh540 + 12.0))])
+	check(is_equal_approx(U.lobby_y(720.0, 628.0), 74.0) and is_equal_approx(U.lobby_y(720.0, 400.0), 188.0), "1280×720 위 끝: %s · %s" % [str(U.lobby_y(720.0, 628.0)), str(U.lobby_y(720.0, 400.0))])
+	# 화면보다 긴 판 (여백 계산이 틀려도) 은 위 끝 LOBBY_TOP_MIN 에서 멈춤 — 음수 자리로 안 올라감
+	check(is_equal_approx(U.lobby_y(540.0, 600.0), U.LOBBY_TOP_MIN), "너무 긴 판은 위 끝에: %s" % str(U.lobby_y(540.0, 600.0)))
 
 
 # 접속 상태 글 자리 (고도 판 전용, ui.gd status): 판 HUD 가 보이면 왼쪽, 판 시간 (hud.gd timer_label (14, 12) 글자 26 + 위아래 여백 3,
-# 아래 끝 약 52) 과 위 가운데 튜토리얼 진행 띠 (tutorial_ui.gd top y 58, 아래 끝 약 97 — 실제 글꼴로 잼) 아래 + 어두운 반투명 받침
-# (사이클 5 리뷰 F3: 예전 (16, 64) 은 띠·블록 마스터 배너 (top_box y 62) 와 겹쳤음). 그 밖 (메뉴·대기실·결과) 은 예전 자리 그대로, 받침 투명
+# 아래 끝 약 52) 아래 + 어두운 반투명 받침 (사이클 5 리뷰 F3: 예전 (16, 64) 은 튜토리얼 띠·블록 마스터 배너 (top_box y 62) 와 겹쳤음).
+# 위 가운데 튜토리얼 진행 띠 (tutorial_ui.gd band_top y 58) 는 줄 수 따라 아래 끝이 달라져 (한 줄 약 97 · 두 줄 약 120 — 실제 글꼴로 잼) 고정 자리가 아니라
+# 피할 칸으로 받음 (사이클 6 병합 리뷰 F1: 두 줄 띠가 (16, 108) 의 상태 글을 덮었음). 그 밖 (메뉴·대기실·결과) 은 예전 자리 그대로, 받침 투명
 func test_status_pos() -> void:
 	const TIMER_BOTTOM := 52.0
 	const BAND_TOP := 58.0
-	const BAND_BOTTOM := 97.0
 	var game := U.status_pos(true)
 	var other := U.status_pos(false)
 	var box := U.status_box_pos(true)
 	check(game == Vector2(16, 108), "판 중 자리: %s" % str(game))
-	check(box == game - U.STATUS_PAD and box.y > BAND_BOTTOM and box.y > TIMER_BOTTOM, "판 중 받침 위 끝이 판 시간·튜토리얼 띠 아래: %s" % str(box))
-	check(game.y >= 100.0, "띠 아래 (y ≥ 100): %s" % str(game))
-	check(not (box.y < BAND_BOTTOM and box.y + 30.0 > BAND_TOP), "받침 (글 16 + 여백) 이 띠 높이 구간과 안 겹침")
+	check(box == game - U.STATUS_PAD and box.y > TIMER_BOTTOM, "판 중 받침 위 끝이 판 시간 아래: %s" % str(box))
+	# 튜토리얼 띠 (960 폭이면 x 약 45~915 — 화면 대부분): 한 줄이면 기본 자리 그대로, 두 줄·세 줄이면 띠 아래 끝 + 띄움으로 내려감
+	var size := Vector2(300, 26) # '서버 응답 없음 — 다시 연결 중 (2/30)' 받침
+	for bottom in [97.0, 120.0, 143.0]:
+		var band := Rect2(45, BAND_TOP, 870, bottom - BAND_TOP)
+		var at := U.status_box_pos(true, size, [band])
+		check(not Rect2(at, size).intersects(band), "받침이 띠 (아래 끝 %d) 와 안 겹침: %s" % [int(bottom), str(at)])
+		check(at.x == box.x and is_equal_approx(at.y, maxf(box.y, bottom + U.STATUS_GAP)), "띠 아래 끝 %d → 받침 위 끝 %s" % [int(bottom), str(at.y)])
+	check(U.status_box_pos(true, size, [Rect2(45, BAND_TOP, 870, 97.0 - BAND_TOP)]) == box, "한 줄 띠는 기본 자리 그대로")
 	check(box.x >= 0.0 and U.status_box_pos(false).x >= 0.0 and U.status_box_pos(false).y >= 0.0, "받침이 화면 안: %s / %s" % [str(box), str(U.status_box_pos(false))])
 	check(other == Vector2(16, 12), "메뉴·대기실은 예전 자리: %s" % str(other))
 	check(U.status_box_pos(false) == other - U.STATUS_PAD, "메뉴 받침도 글 자리에서 여백만큼 바깥 (글은 예전 자리)")
@@ -205,7 +218,7 @@ func test_practice_avoid_rects() -> void:
 	if r.size() == 1:
 		var at := U.status_box_pos(true, size, r, room)
 		check(not Rect2(at, size).intersects(r[0]) and room.encloses(Rect2(at, size)), "받침이 연습 창과 안 겹침: %s" % str(at))
-	# 튜토리얼 방 (연습 방 위에서 돎): 연습 힌트·창이 안 뜸 → 피할 칸 없음 (튜토리얼 띠는 STATUS_POS_GAME 이 이미 피함)
+	# 튜토리얼 방 (연습 방 위에서 돎): 연습 힌트·창이 안 뜸 → 피할 칸 없음 (튜토리얼 띠는 tutorial_ui.gd 가 따로 알림 — test_tutorial_avoid_rects)
 	Store.state = {"phase": "playing", "practice": {"dummies": []}, "tutorial": {"step": 0}, "players": []}
 	Store.room = {"code": "TUTO", "practice": true, "tutorial": true}
 	p._process(0.0)
@@ -214,6 +227,38 @@ func test_practice_avoid_rects() -> void:
 	Store.state = keep_state
 	Store.room = keep_room
 	PlayerInput.locked = keep_locked
+
+
+# tutorial_ui.gd 연결 (사이클 6 병합 리뷰 F1): 'status_avoid' 무리 + avoid_rects() 가 보이는 진행 띠 사각형 (ui.gd _avoid_rects 가 모음).
+# 문구가 두 줄로 접힌 띠 (960×540 에서 아래 끝 약 120) 가 상태 글 자리 (16, 108) 까지 내려와도 받침이 그 아래 — 예전엔 띠 (층 20) 가 상태 글 (층 10) 을 덮었음
+func test_tutorial_avoid_rects() -> void:
+	var t = TutorialUI.new()
+	t._ready() # 테스트 러너 안에선 트리가 안 돌아 직접
+	check(t.is_in_group("status_avoid"), "status_avoid 무리")
+	check(not t.band.visible and t.avoid_rects().is_empty(), "띠가 안 보이면 빈 배열: %s" % str(t.avoid_rects()))
+	check(t.band.get_parent() == t.band_top and is_equal_approx(t.band_top.position.y, 58.0), "띠 자리 (위 58): %s" % str(t.band_top.position))
+	t.band.visible = true
+	var size := Vector2(300, 26)
+	# [화면, 띠 (band_top 안 자리·크기 — 트리 밖이라 컨테이너가 못 재서 화면에서 잰 값을 넣음: 960 폭 두 줄 / 1280 폭 두 줄 / 1280 폭 한 줄), 받침이 내려가는지]
+	for row in [[Vector2(960, 540), Rect2(45, 0, 870, 63), true], [Vector2(1280, 720), Rect2(170, 0, 940, 63), true], [Vector2(1280, 720), Rect2(260, 0, 760, 39), false]]:
+		var view: Vector2 = row[0]
+		t.band.position = (row[1] as Rect2).position
+		t.band.size = (row[1] as Rect2).size
+		var r: Array = t.avoid_rects()
+		var want := Rect2((row[1] as Rect2).position + Vector2(0, 58), (row[1] as Rect2).size)
+		check(r.size() == 1 and r[0] == want, "띠 사각형 = 화면 좌표 (자리 + 위 58): %s / %s" % [str(r), str(want)])
+		if r.size() != 1:
+			continue
+		var room := U.status_room(view, [Rect2(view.x / 2.0 - 129.0, view.y - 44.0, 258, 28)]) # F·R 칸
+		var at := U.status_box_pos(true, size, r, room)
+		var tag := "%s 띠 %s → 받침 %s" % [str(view), str(r[0]), str(at)]
+		check(not Rect2(at, size).intersects(r[0]) and room.encloses(Rect2(at, size)), "받침이 띠와 안 겹치고 화면 안: " + tag)
+		check((at.y > U.status_box_pos(true).y) == row[2], "두 줄 띠만 받침을 내림: " + tag)
+		if row[2]:
+			check(is_equal_approx(at.y, (r[0] as Rect2).end.y + U.STATUS_GAP) and at.x == U.status_box_pos(true).x, "띠 아래 끝 + 띄움, 왼쪽 그대로: " + tag)
+	t.band.visible = false
+	check(t.avoid_rects().is_empty(), "띠를 숨기면 다시 빈 배열")
+	t.free()
 
 
 # 방 옵션 꼬리 (손님 대기실 줄·공개 방 목록): 켠 것만, 순서 고정.
@@ -636,7 +681,7 @@ func test_awards_combo_chain_single_hitter() -> void:
 func test_results_place() -> void:
 	var m: float = U.C.HUD_CARD_MARGIN
 	# [화면, 판 크기, 배율 1 인지]
-	for row in [[Vector2(960, 540), Vector2(430, 504), false], [Vector2(960, 540), Vector2(430, 480), true], [Vector2(1280, 720), Vector2(430, 504), true],
+	for row in [[Vector2(960, 540), Vector2(430, 504), false], [Vector2(960, 540), Vector2(430, 440), true], [Vector2(960, 540), Vector2(430, 480), false], [Vector2(1280, 720), Vector2(430, 504), true],
 			[Vector2(1920, 1080), Vector2(430, 504), true], [Vector2(960, 540), Vector2(430, 700), false], [Vector2(400, 300), Vector2(430, 200), false]]:
 		var view: Vector2 = row[0]
 		var content: Vector2 = row[1]
@@ -649,12 +694,27 @@ func test_results_place() -> void:
 	# 넉넉한 화면: 예전 자리 그대로 (세로 가운데 + RESULTS_DROP)
 	var big := U.results_place(Vector2(1280, 720), Vector2(430, 504))
 	check(is_equal_approx(big.y, (720.0 - 504.0) / 2.0 + U.RESULTS_DROP) and is_equal_approx(big.x, 1280.0 - m - 430.0), "1280×720: %s" % str(big))
-	# 960×540 에 504 짜리 (8명 + 칭호 3줄): 자리 540 - 40 - 12 = 488 → 488/504 배, 위 끝에 붙음
+	# 960×540 에 504 짜리 (8명 + 칭호 3줄): 자리 540 - 74 - 12 = 454 → 454/504 배, 위 끝 (핑 칸 아래) 에 붙음
 	var small := U.results_place(Vector2(960, 540), Vector2(430, 504))
-	check(is_equal_approx(small.scale, 488.0 / 504.0) and is_equal_approx(small.y, U.RESULTS_TOP), "960×540: %s" % str(small))
-	# 줄이지 않아도 되지만 가운데 + DROP 이면 아래로 넘치는 높이: 아래 여백에 맞춰 올림
-	var mid := U.results_place(Vector2(960, 540), Vector2(430, 480))
-	check(is_equal_approx(mid.y + 480.0, 540.0 - m), "아래 여백에 맞춤: %s" % str(mid))
+	check(is_equal_approx(U.RESULTS_TOP, 74.0), "결과 판 위 끝 = 핑 칸 아래 끝 (52 + 19) + 띄움 3 = 대기실 판의 가장 높은 위 끝: %s" % str(U.RESULTS_TOP))
+	check(is_equal_approx(small.scale, 454.0 / 504.0) and is_equal_approx(small.y, U.RESULTS_TOP), "960×540: %s" % str(small))
+	# 사이클 6 병합 리뷰 F3: 칭호 3줄로 길어진 8명 판이 오른쪽 위 핑 칸 (ui.gd net_box — 오른쪽 12 · 위 52, 높이 19) 과 안 겹침.
+	# 예전 위 끝 40 은 960×540 에서 판이 y 41 까지 올라와 핑 칸이 판 오른쪽 위 모서리 안에 들어갔음. 긴 판·큰 화면에서도 같음
+	check(U.RESULTS_TOP >= U.NET_TOP + U.NET_PING_H, "위 끝이 핑 칸 아래 끝보다 아래: %s" % str(U.RESULTS_TOP))
+	check(is_equal_approx(U.RESULTS_TOP, U.lobby_y(540.0, 540.0 - U.LOBBY_VPAD)), "대기실 판의 가장 높은 위 끝과 같은 규칙: %s / %s" % [str(U.RESULTS_TOP), str(U.lobby_y(540.0, 540.0 - U.LOBBY_VPAD))])
+	for view in [Vector2(960, 540), Vector2(1280, 720), Vector2(1920, 1080)]:
+		for content in [Vector2(430, 504), Vector2(430, 560), Vector2(470, 640), Vector2(470, 900)]:
+			var at := U.results_place(view, content)
+			var panel := Rect2(at.x, at.y, content.x * at.scale, content.y * at.scale)
+			for ping_w in [60.0, 84.0, 140.0]: # '핑 54ms' · '핑 671ms' · '핑 끊김' 보다 넓은 폭까지
+				var ping := U.net_ping_rect(view, ping_w)
+				check(not panel.intersects(ping) and panel.position.y - ping.end.y >= U.NET_GAP - 1e-6, "결과 판 %s 이 핑 칸 %s 과 안 겹침 (화면 %s)" % [str(panel), str(ping), str(view)])
+			check(panel.end.y <= view.y - m + 1e-6 and panel.position.x >= m - 1e-6, "그래도 화면 안: %s (화면 %s)" % [str(panel), str(view)])
+	# 접속 표시 자리 (ui.gd _net_draw): 오른쪽 끝에서 NET_RIGHT, 위 NET_TOP — 핑 칸 사각형과 같은 기준
+	check(U.net_pos(Vector2(960, 540), 84.0) == Vector2(960.0 - 12.0 - 84.0, 52.0) and U.net_ping_rect(Vector2(960, 540), 84.0) == Rect2(864, 52, 84, 19), "접속 표시 자리: %s" % str(U.net_pos(Vector2(960, 540), 84.0)))
+	# 줄이지 않아도 되지만 가운데 + DROP 이면 위 끝 (핑 칸 아래) 보다 올라가는 높이: 위 끝에 붙이고 아래는 여백 안
+	var mid := U.results_place(Vector2(960, 540), Vector2(430, 450))
+	check(mid.scale == 1.0 and is_equal_approx(mid.y, U.RESULTS_TOP) and mid.y + 450.0 <= 540.0 - m, "위 끝에 붙임: %s" % str(mid))
 	check(U.results_place(Vector2(960, 540), Vector2(430, 0)).scale == 1.0, "높이 0 (크기를 아직 모름)")
 	# 판 노드가 그 계산대로 놓임 (results.gd _place_in): 960×540 에선 줄어 네 테두리가 화면 안, 1280×720 에선 배율 1
 	var r = Results.new()

@@ -114,7 +114,8 @@ func _top_rects() -> Array:
 	return out
 
 
-# 판 중 상태 글 받침이 피할 칸 전부: 가운데 위 알림 칸 + 'status_avoid' 무리 (연습 방 왼쪽 위 힌트·연습 창 — practice.gd avoid_rects)
+# 판 중 상태 글 받침이 피할 칸 전부: 가운데 위 알림 칸 + 'status_avoid' 무리 (연습 방 왼쪽 위 힌트·연습 창 — practice.gd avoid_rects,
+# 튜토리얼 진행 띠 — tutorial_ui.gd avoid_rects: 문구가 두 줄이면 띠가 상태 글 자리까지 내려옴)
 # + 가운데 '화면을 클릭하면 조작 시작' (hud_extra center: 마우스가 풀리면 — 연습 창을 열면 — 뜸. 작은 화면에서 연습 창 옆으로 비킨 받침 바로 아래에 옴)
 func _avoid_rects() -> Array:
 	var out := _top_rects()
@@ -184,7 +185,7 @@ func _show(screen: String) -> void:
 		hud.score_panel.visible = false
 
 
-# 접속 표시 (JS #net: 오른쪽 12 · 위 52, 세로 줄 gap 4, 오른쪽 맞춤): 핑 칸 (어두운 사선 칸, 렉이면 노랑·빨강) + 알림 칸. 테스트도 부름
+# 접속 표시 (JS #net: 오른쪽 12 · 위 52 — ui_calc NET_RIGHT·NET_TOP, 세로 줄 gap 4, 오른쪽 맞춤): 핑 칸 (어두운 사선 칸, 렉이면 노랑·빨강) + 알림 칸. 테스트도 부름
 func make_net() -> VBoxContainer:
 	net_box = VBoxContainer.new()
 	net_box.add_theme_constant_override("separation", 4)
@@ -240,7 +241,7 @@ func _net_draw() -> void:
 	net_warn.text = w
 	net_warn.visible = w != ""
 	net_box.reset_size()
-	net_box.position = Vector2(vp.x - 12.0 - net_box.size.x, 52)
+	net_box.position = U.net_pos(vp, net_box.size.x)
 
 
 var _net_key := []
@@ -269,7 +270,7 @@ func _prof_process(_d: float) -> void:
 	PlayerInput.ui_blocking = settings.visible or shown in ["menu", "lobby", "results"] or focus is LineEdit or others
 	PlayerInput.typing = focus is LineEdit or focus is TextEdit
 	status_box.visible = not Net.is_open() # 연결 중·끊김 글만 (판 시간은 HUD)
-	# 판 중엔 판 시간·튜토리얼 띠 아래 + 받침, 가운데 위 알림·연습 힌트·연습 창과 겹치면 그 아래 (아래 HUD 에 닿으면 그 옆)
+	# 판 중엔 판 시간 아래 + 받침, 가운데 위 알림·튜토리얼 띠·연습 힌트·연습 창과 겹치면 그 아래 (아래 HUD 에 닿으면 그 옆)
 	status_box.position = U.status_box_pos(hud.visible, status_box.size, _avoid_rects(), U.status_room(get_viewport().get_visible_rect().size, _bottom_rects()))
 	status_style.bg_color = U.status_back(hud.visible)
 	var now := _screen_now()
