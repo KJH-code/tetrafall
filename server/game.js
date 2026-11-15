@@ -4,7 +4,7 @@
 // server/char-*.js (캐릭터별) 로 나눠 두고 아래에서 Game.prototype 에 붙임. 여기엔 생성자·emit·tick 만
 import { CONFIG as C } from '../shared/config.js';
 import { SHAPE_NAMES } from '../shared/pieces.js';
-import { emptyLanded } from './game-util.js';
+import { emptyLanded, byCount } from './game-util.js';
 import { GridPart } from './game-grid.js';
 import { PlayersPart } from './game-players.js';
 import { RoundPart } from './game-round.js';
@@ -52,7 +52,7 @@ export class Game {
     this.H = C.GRID_H; // 격자 높이 (판 시작 때: 하늘 계단이면 SKY_GRID_H)
     this.skyTops = []; // 하늘 계단 사슬마다 맨 위 블록 id (새 블록은 이 옆에)
     this.skyChains = 1; // 이번 판 사슬 수 (SKY_CHAINS, 판 시작 때 인원으로)
-    this.skyLavaMs = C.SKY_LAVA_TRIGGER_MS; // 이번 판 용암 시작 시각 (SKY_LAVA_TRIGGER_BY_COUNT)
+    this.skyLavaMs = byCount(C.SKY_LAVA_TRIGGER_BY_COUNT, C.MIN_PLAYERS); // 이번 판 용암 시작 시각 (판 시작 때 인원별로 다시 정함, SKY_LAVA_TRIGGER_BY_COUNT)
     this.rng = Math.random;
     this.time = 0; // 게임 시간 (ms). tick 마다 dt 만큼 증가
     this.phase = 'lobby'; // 'lobby' | 'countdown' | 'playing' | 'over'

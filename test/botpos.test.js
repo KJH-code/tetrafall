@@ -3,18 +3,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Game } from '../server/game.js';
 import { CONFIG as C } from '../shared/config.js';
+import { TICK, run } from './support/tick.js';
+import { lcg } from './support/rng.js';
 
-const TICK = 1000 / C.TICK_RATE;
-function run(g, ms) {
-  for (let t = 0; t < ms; t += TICK) g.tick(TICK);
-}
-function seeded(seed) {
-  let s = seed >>> 0;
-  return () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 4294967296;
-  };
-}
+const seeded = lcg;
 
 // 사람 1 (멀리 가만히) + 봇 1, 블록·아이템 없이
 function setup(seed) {

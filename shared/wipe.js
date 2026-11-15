@@ -50,3 +50,10 @@ export function wipePlan(kind, reduced = false) {
   const main = bands[bands.length - 1];
   return { kind, fade: false, ms: k.ms, coverMs: main.delay + reach * dur, bands };
 }
+
+// 띠가 덮기 전 HUD 를 그릴 스냅샷: 방 안에서만 전환 직전 스냅샷 (held), 아니면 지금 state.
+// 방을 나가면 (inRoom false) 지난 전환 때 기억한 결과·대기실 스냅샷으로 다시 그리지 않음 — 그러면 결과 판·위 점수 띠가
+// 메뉴로 가는 띠 동안 다시 켜지고, 띠가 끝나면 state 가 없어 아무도 숨기지 않아 메뉴 위에 남음 (2026-11 재혁 보고)
+export function hudSnapshot({ hold, held, state, inRoom }) {
+  return hold && held && inRoom ? held : state;
+}

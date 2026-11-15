@@ -13,6 +13,7 @@
 | 파일 | 출처 | 라이선스 |
 |---|---|---|
 | `fonts/black-han-sans-korean.woff2`, `fonts/black-han-sans-latin.woff2` | Black Han Sans — zesstype, Copyright 2015 The Black Han Sans Project Authors (https://github.com/zesstype/Black-Han-Sans). 한글·라틴 부분집합은 Fontsource 패키지 `@fontsource/black-han-sans` 의 woff2 | SIL OFL 1.1 (`fonts/OFL.txt`) |
+| (고도 판만) `godot/client/assets/fonts/noto-sans-kr-body.woff2` — JS 의 system-ui 자리 본문 글꼴 | Noto Sans KR Regular 2.004 — Copyright 2014-2021 Adobe, Google Fonts 공식 배포본의 부분 집합 (`godot/client/tools/subset-body-font.mjs`) | SIL OFL 1.1 (`godot/client/assets/fonts/NotoSansKR-OFL.txt`) |
 
 OFL 은 상업 이용·재배포가 되지만 글꼴 파일 자체를 팔 수 없고 라이선스 전문을 같이 둬야 한다 → `fonts/OFL.txt`.
 
@@ -43,3 +44,9 @@ OpenGameArt CC0 원본을 `tools/prep-sfx.mjs` 로 역할별로 다듬음 (앞 �
 | `hitHeavy_2·3` | 37 hits/punches — independent.nu ljudbank — https://opengameart.org/content/37-hitspunches | CC0 1.0 |
 | `swishBlade_1~3` | 20 Sword Sound Effects — StarNinjas — https://opengameart.org/content/20-sword-sound-effects-attacks-and-clashes | CC0 1.0 |
 | `swishMid_1~4`, `swishHeavy_1~3` | Swishes Sound Pack — https://opengameart.org/content/swishes-sound-pack | CC0 1.0 |
+
+# 라이브러리 출처 (npm, 서버가 `/vendor/` 로 서빙)
+
+| 라이브러리 | 출처 | 라이선스 |
+|---|---|---|
+| `cannon-es` 0.20.0 (`client/ragdoll.js` 몸 래그돌 물리, `/vendor/cannon-es.js`) | https://github.com/pmndrs/cannon-es (cannon.js 후속, Copyright (c) 2015 cannon.js Authors) | MIT |

@@ -7,6 +7,8 @@ JS `client/main.js`·`client/index.html` 의 화면을 옮김. 계산은 `ui_cal
 | `ui.gd` · `ui.tscn` | 뿌리 CanvasLayer: 화면 고르기 (screenOf)·전환 슬래시·접속 글·핑·Enter 시작 (main.js updateScreen) |
 | `ui_style.gd` | '빛 사선' 모양: 빛 판·평행사변형 버튼·주 버튼·글자 빛·글자 칸, 판 중 HUD 밝은 모양 (index.html CSS) |
 | `menu.gd` | 메뉴: 빛 로고·이름·큰 버튼 펼침·공개 방 목록·연습 (index.html #rooms, main.js openMenu·renderRoomList) |
+| `big_btn.gd` | (W8) 메뉴 큰 버튼 꾸밈: 사선을 칸 안으로 (StyleBoxFlat skew 넘침을 expand_margin 으로), 세로 그라데이션 바탕·안쪽 빛·왼쪽 아래 빛 세모 (뒤 겹), 빛 줄기 반짝임 5.5초 (앞 겹, 움직임 줄이기·그래픽 낮춤이면 없음) — index.html `#rooms button.big` |
+| `text_glow.gd` | (W8) 글자 흐린 빛 (CSS text-shadow 흉내): 글자를 SubViewport 에 반 크기로 한 번 그려 반씩 줄였다 키워 흐린 판 → 더하기 섞기 TextureRect. 메뉴 로고 18·46·90px (`S.LOGO_BLUR`). 고도 Label 의 외곽선·그림자는 흐리지 못해 굵은 외곽선 겹은 얇은 띠로 보임 |
 | `lobby.gd` | 대기실 판 (오른쪽, lobby_dock): 상태·캐릭터 카드 3×3·랜덤·스킬 카드·이름·색·시작·방 설정·방 코드 (main.js drawHud 대기실 부분) |
 | `host_players.gd` | 플레이어 관리 (방장): 팀전·팀 섞기·관전·내보내기 (updateHostPlayers) |
 | `wipe.gd` | 전환 슬래시 (playWipe) |
@@ -17,6 +19,54 @@ JS `client/main.js`·`client/index.html` 의 화면을 옮김. 계산은 `ui_cal
 | `char_stage.gd` | 대기실 큰 3D 캐릭터: 고르면 정면 도발 한 번 → 천천히 돎, 판 시작하면 놓음, 그래픽 낮춤이면 정지 초상 (client/char-stage.js) |
 | `results.gd` · `awards_calc.gd` | 판 끝 결과 판 (updateResults, 작은 창에선 화면 안으로 줄임 `ui_calc.gd` results_place) + 고도 판 전용 판 끝 칭호: 판 동안 kill·combo·counter·hit 이벤트를 세어 (+ 블록 마스터 판 중 스냅샷에서 마스터 편 id 를 기억) 승리 글 아래 최대 3줄 ("콤보 장인 · P3 7연타"), 기준 수치 `AWARD_MIN`·우선순위 `ORDER` |
 | `ui_prefs.gd` | 기억 (tf-name·tf-color·tf-char·tf-tutorial → user://ui.json) |
+| `baked_panel.gd` | (W16) 그림만 굽는 판: 대기실·플레이어 관리·설정 창을 SubViewport 에 바뀔 때만 그려 텍스처 한 장으로 (아래 'W16 2D 판 굽기') |
 
 main.gd 가 `ui/ui.tscn` 을 자동으로 붙임 (2026-10-31 총괄이 고도로 돌려 스크립트 에러 0 확인). 화면 확인: `--auto host --bots 3 --shot <png> --shot-at menu|lobby|game|tab|settings|results` (core/autopilot.gd, tab 은 `--mode kills`, results 는 `--shot-after 6` 을 같이 — 기본 1.5초엔 아직 승리 클로즈업 `VICTORY_CLOSEUP_MS` 중이라 결과 판이 없음. 결과 판은 판 끝 약 2.8초 뒤부터 `RESULTS_HERO_MS` 5초 동안).
 초상은 portrait.gd (다 그려지기 전·헤드리스면 색 상자).  3D 메뉴·대기실 배경은 범위 밖 — 빛 색은 `View.ui_theme` 가 생기면 그 테마, 없으면 자수정.
+
+## UI 배율 (W9, 2026-11-02 재혁 'UI 가 너무 작다')
+
+화면 판·글자는 기준 화면 1280×720 으로 만들고 창 크기에 맞춰 키움 (`core/ui_scale.gd`, project.godot `window/stretch` = canvas_items + expand). 3D 는 창 픽셀 그대로.
+- 자동: 논리 크기 (창 픽셀 / 화면 배율 k — 윈도우 150%·200%, 브라우저 devicePixelRatio. JS 의 CSS 픽셀) 에서 기준 1280×720 이 다 들어가는 배율 min(폭/1280, 높이/720) × k.
+  16:9 는 창 높이 / 720 (1080 → 1.5배), 16:10 은 폭 기준 (재혁 노트북 2880×1800 200% → 2.25배, UI 1280×800). 논리 1280×720 보다 작은 창은 1 × k (960×540 = W4 작은 창 배치 그대로, 웹 DPR 2 도 JS 처럼),
+  960×540 도 안 들어가면 줄임, 최소 0.75 · 최대 2.5. 설정 'UI 크기' 80~200% 고정 = 그 값 × k (JS 브라우저 확대 자리, `View.settings.uiScale`)
+- 판 코드가 읽는 `get_viewport_rect()`·`get_visible_rect()`·마우스 위치·`unproject_position` 은 전부 UI 좌표 (= 창 픽셀 / 배율) → '작은 창' (`ui_calc.small`) 도 UI 좌표로
+- 화면 밖에 그리는 것 (초상·대기실 큰 캐릭터·1인칭 팔·타이틀 거울) 은 UI 좌표 × 배율 = 창 픽셀 크기로 (`UiScale.pixel_size`, `Portrait.render_px`) — 아니면 배율만큼 흐림
+- 마우스 시선은 `screen_relative` (창 픽셀) — `relative` 는 배율로 나뉘어 창 크기마다 감도가 바뀜
+- 화면 배율 k: 윈도우는 고도 screen_get_scale 이 1 이라 DPI / 96, 웹·macOS 는 screen_get_scale. PC 는 처음 창도 1280×720 × k (화면에 맞춰) 로 키움 (안 그러면 200% 화면에 논리 640×360 창). 웹은 캔버스가 CSS × DPR (allow_hidpi)
+
+## W8 타이틀·메뉴 '맛' (JS 와 나란히, 2026-11-03)
+
+7개 테마 × (JS `?title=` · 고도 전 bb07ed2 · 고도 후) 를 1280×720 에서 찍어 대조 (타이틀 = 로고 완성 + 3.5초, 메뉴 = 메뉴 카메라 + 4초, `--shot-at title|menu --title <테마>`).
+고친 것: 메뉴 로고 흐린 빛 (`text_glow.gd`) · 큰 버튼 (`big_btn.gd`: 칸 안 사선·그라데이션·안쪽 빛·빛 세모·반짝임·글자 빛) · 3D 넓은 빛 안개 (`title/haze.gdshader`,
+고도 Compatibility 글로는 `glow_levels` 세기를 무시해 JS UnrealBloom 처럼 넓게 못 번짐 — 실측) · 버섯 갓 밑 뚫기 (`title_fx.hemi_open`) · 타이틀 위 겹 (검은 띠·가장자리·Enter 빛).
+화면 평균 밝기 (rgb, 위아래 60px 뺌) 전 → 후 / JS: 버섯 타이틀 21,41,38 → 49,84,78 / 59,92,83 · 화산 31,8,2 → 59,16,4 / 58,19,8 · 하늘 성 23,25,40 → 43,48,73 / 44,48,71.
+
+비용 (버섯, 1280×720, xvfb llvmpipe — 시간은 소프트웨어 GPU 라 참고만, 그리기 수가 기준):
+
+| 효과 | 그리기 수 | SubViewport | 전체 화면 패스 | 그래픽 낮춤 |
+|---|---|---|---|---|
+| 메뉴 전체 (전 → 후) | 53 → 63 | 0 → 0 (굽기 때 한 프레임만 1) | 0 → 1 (안개) | 안개·반짝임 없음, 로고 빛 1장 |
+| 로고 흐린 빛 3장 | +3 | 굽기 1번 (글자 크기 바뀔 때만), 바로 버림 | — | 14px 1장 |
+| 큰 버튼 6개 꾸밈 | +6 (반짝일 때 +1씩) | — | — | 반짝임 없음 |
+| 빛 안개 | +1 + 화면 복사·밉맵 | — | 1 (밉 5 단계 17곳 읽기) | 끔 |
+| 타이틀 전체 (전 → 후, 위 겹 포함) | 29 → 42 | 거울 그대로 | 0 → 1 | 끔 |
+
+## W16 2D 판 굽기 (2026-11-03) — `baked_panel.gd`
+
+대기실이 판보다 무거운 건 2D 화면 판이었음 (W15: 창 2D 그리기 210). 판 모습은 그대로 두고 **그리기만** 옮김:
+
+- 판 노드는 트리에서 그대로 `ui.gd` 의 자리 (감싼 칸 아래 `CanvasLayer`) 에 있고, 그 층의 `custom_viewport` 가 SubViewport → 판은 SubViewport 에 그려지고 창에는 텍스처 한 장 (그리기 1). 층 변환은 항등이라 **클릭·hover·초점·글자 칸·스크롤·고르기 목록 (팝업 창)·툴팁은 창 gui 가 예전 자리 그대로 받음** (`core/ui_check.gd` 로 확인)
+- 다시 굽는 때 (UPDATE_ONCE): 판 안 CanvasItem 의 `draw` 신호 (글·상자·hover·눌림·커서 깜빡임 — 고도가 다시 그릴 때마다), Control 자리·크기, 보임, 자식 들어옴·나감, 판 자리·UI 배율·판 투명도, 빛 색 바뀜 (`S.style_gen`), 등장 애니 동안 (`S.slide_in`·`pop_down` → `S.animating()`). 아무것도 안 바뀌면 0번 (재연 대기실 60프레임 0번)
+- **판 안 노드의 `modulate` 를 직접 바꾸면 모름** (draw 신호가 없음) → 바꾸는 곳은 `queue_redraw()` 를 같이 (설정 '방 나가기' 깜빡임처럼). 트윈은 `S.slide_in`·`pop_down` 으로
+- 창 픽셀 그대로: SubViewport 크기 = 판 사각형 (+40 여유) × UI 배율, `global_canvas_transform` 에 배율·화소 칸에 맞춘 원점, 글꼴 `oversampling_override` = 배율. 텍스처는 `_draw` 사각형으로 (Control 자리는 gui 화소 맞춤으로 UI 좌표 정수가 돼 2.25배면 1화소 밀림 — 실측), 화소 1:1 (NEAREST), 반투명은 SubViewport 에 미리 곱한 색으로 쌓여 `PREMULT_ALPHA` 로 섞음 → 판 부분 화소 차 0% (>8/255)
+- 산 칸 (`live`): 판 안이지만 매 프레임 바뀌는 그림 = 대기실 큰 3D 캐릭터 (`char_stage`) 와 그 위 '스킬 보기' 는 굽지 않고 RenderingServer 에서 감싼 칸의 자식 칸으로 옮겨 그림 (변환·투명도·스크롤 잘림 따라감, 스킬 카드가 덮으면 숨김)
+- 안 구운 것: 판 HUD 아래 판 (맞을 때 % 흔들림·죽음 회색이 판 중 거의 매 프레임 → 구워도 매 프레임 다시 — 재연 120번/초), 메뉴 (큰 버튼 반짝임이 늘 돎, 2D 43), 결과 (55)
+- 끄기: 실행 인자 `--no-bake` (A/B·문제 확인)
+
+## W35 (2026-11-09) 화면 점검
+
+- 대기실 큰 캐릭터 클릭 → 스킬 카드: `stage_box` (ColorRect, 클릭 STOP) 가 삼키던 것 → PASS 로 올려 `stage.gui_input` 이 받음. 열린 카드는 다시 누르거나 카드 밖을 누르면 닫힘 (`lobby.gd _input`). 확인 `--ui-check` (큰 캐릭터 중앙 클릭·카드 클릭·밖 클릭), 테스트 `test_lobby_stage_click_opens_skill_card`
+- 결과 판 ↔ 메뉴 겹침: 재현 안 됨. 자동 조종 `--leave-after <초>` (판 끝 뒤 방 나가기) + `--shot-at leave` + `--vis-log` (화면 판 보임이 바뀔 때마다 한 줄, 둘 이상 같이 보이면 '겹침!') 로 실제 판을 돌려 확인: `hud → (over) → results → 방 나감 → results(슬래시가 덮는 동안) → menu`, 메뉴·결과 동시 보임 없음. 단위 테스트 `test_results_never_overlaps_menu` (결과→방 나감→메뉴, 슬래시 도중 목표 바뀜, 연속 판 5단계)
+- 결과 판 승자 글 '승 / 리' 로 끊기던 것 (1280×720, 이름이 길 때): 승 리 사이 WORD JOINER (`results.gd win_text`)
+- 1280×720·960×540·2880×1800 (UI 2.25배) 대기실 8명·결과·킬 점수전 판 캡처: 넘침 없음 (960×540 대기실은 판 안 스크롤, 맨 아래 '방 나가기' 줄이 스크롤 아래)

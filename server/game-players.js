@@ -61,6 +61,8 @@ export class PlayersPart {
       team: this.smallerTeam(), // 팀전용. 들어올 때 사람이 적은 팀으로
       emote: -1, // 이모트 번호 (EMOTE_NAMES), -1 = 안 함
       emoteUntil: 0,
+      pieceMoveAt: -1, // 조종 블록 이동 횟수 제한 (handleAction pieceMove): 마지막으로 받은 서버 시각·그 틱에 받은 횟수
+      pieceMoves: 0,
       emoteReadyAt: 0,
       master: false, // 블록 마스터 판의 마스터 편: 살아 있지만 필드에 없음 (하늘에서 블록만 조종)
       zombie: false, // 블록 마스터: 죽어서 마스터 편이 된 생존자 (처음 마스터는 false)
@@ -168,8 +170,15 @@ export class PlayersPart {
     if (!p || p.isBot || !!p.away === !!on) return false;
     p.away = !!on;
     if (on) {
-      this.proxies.set(id, new BotBrain(() => this.rng(), () => this.botLevel));
-      this.log(`  [끊김] ${p.name} 자리 유지 ${C.RECONNECT_GRACE_MS / 1000}초${this.inRound() ? ' (봇 대리)' : ''}`);
+      // 연습·튜토리얼 방은 봇이 대신 조종하지 않음 (허수아비와 싸우며 60초 노는 것 방지) — 입력만 0
+      const proxy = this.mode !== 'practice';
+      if (proxy) this.proxies.set(id, new BotBrain(() => this.rng(), () => this.botLevel));
+      else {
+        p.input.fwd = 0;
+        p.input.strafe = 0;
+        p.input.jump = false;
+      }
+      this.log(`  [끊김] ${p.name} 자리 유지 ${C.RECONNECT_GRACE_MS / 1000}초${proxy && this.inRound() ? ' (봇 대리)' : ''}`);
     } else {
       this.proxies.delete(id);
       p.input.fwd = 0;
@@ -187,12 +196,15 @@ export class PlayersPart {
   removePlayer(id) {
     const p = this.players.get(id);
     if (!p) return;
+    if (p.grab) this.hookGrabDrop(p); // 갈고리 R 로 뽑는 중에 나가면 뽑던 블록은 제자리로 (안 그러면 그 칸이 격자에서 사라짐)
     this.players.delete(id);
     this.bots.delete(id);
     this.proxies.delete(id);
     this.log(`${p.name} ${p.isBot ? '빠짐' : '접속 종료'}`);
     if (this.hostId === id) {
-      const next = [...this.players.values()].find((o) => !o.isBot);
+      // 연결이 살아 있는 사람 먼저 (끊겨 자리만 남은 사람은 마지막)
+      const humans = [...this.players.values()].filter((o) => !o.isBot);
+      const next = humans.find((o) => !o.away) || humans[0];
       this.hostId = next ? next.id : null;
     }
     for (const pc of this.pieces) if (pc.controller === id) pc.controller = null;

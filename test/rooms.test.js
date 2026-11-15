@@ -2,25 +2,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Rooms } from '../server/rooms.js';
-import { CONFIG as C } from '../shared/config.js';
+import { CONFIG as C, maxPlayers } from '../shared/config.js';
+import { TICK } from './support/tick.js';
+import { fakeWs } from './support/fake-ws.js';
+import { lcg } from './support/rng.js';
 
-const TICK = 1000 / C.TICK_RATE;
 
 // 가짜 소켓: 받은 메시지를 모아 둠
-function fakeWs() {
-  return {
-    OPEN: 1,
-    readyState: 1,
-    msgs: [],
-    send(text) {
-      this.msgs.push(JSON.parse(text));
-    },
-    last(type) {
-      return [...this.msgs].reverse().find((m) => m.type === type);
-    },
-  };
-}
-
 // 끊긴 자리의 유지 시간이 다 지난 것으로 (판을 60초 돌리지 않고) → 다음 틱에 나감
 function expireAway(rooms, code) {
   const room = rooms.rooms.get(code);
@@ -33,16 +21,12 @@ function expireAway(rooms, code) {
 function setup(seed = 1) {
   const logs = {};
   const closed = [];
-  let s = seed;
   const rooms = new Rooms({
     openLog: (code) => {
       logs[code] = [];
       return { log: (m) => logs[code].push(m), close: () => closed.push(code) };
     },
-    rng: () => {
-      s = (s * 1664525 + 1013904223) >>> 0;
-      return s / 4294967296;
-    },
+    rng: lcg(seed),
   });
   const join = () => {
     const ws = fakeWs();
@@ -114,7 +98,7 @@ test('방: 공개는 호스트만, 판 사이에만. 목록엔 이름·사람/�
   rooms.message(b.conn, { type: 'setMode', mode: 'master' }); // 호스트 아님 → 무시
   rooms.message(a.conn, { type: 'setPublic', on: true });
   assert.deepEqual(rooms.publicList().rooms, [
-    { code, name: '같이 해요', humans: 2, bots: 1, max: Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length), map: 'stairs', mode: 'kills', teamMode: true, botLevel: 'hard', skyStairs: true, hpMode: false },
+    { code, name: '같이 해요', humans: 2, bots: 1, max: maxPlayers(), map: 'stairs', mode: 'kills', teamMode: true, botLevel: 'hard', skyStairs: true, hpMode: false },
   ]);
   assert.ok(logs[code].includes('[호스트] 방 공개'));
   // 판 중에는 못 바꿈

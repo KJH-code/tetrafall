@@ -3,8 +3,10 @@
 # 생길 때 바닥을 뚫고 솟아 살짝 넘침 · 수명 끝 무렵 금이 퍼지고 하얗게 깜빡 · 같은 묶음 이웃 칸 윗면은 쇠 띠 · R 은 빛 판이 세지며 부풂
 # · 연쇄 폭발은 칸마다 차례로 (대기 칸은 하얗게) · 수명 끝은 부서지며 내려앉음 · 판자 조각. 소리는 View.sound_cue "blast" (audio/)
 extends Node3D
+const Opts := preload("res://core/opts.gd")
 
 const C := preload("res://core/config.gd")
+const FXC := preload("res://fx/fx_config.gd")
 const Co := preload("res://core/coords.gd")
 const BL := preload("res://world/bblock_look.gd")
 const Tex := preload("res://world/bblock_tex.gd")
@@ -41,7 +43,7 @@ func _init() -> void:
 	var L: Dictionary = C.BB_LOOK
 	var crack := Tex.crack_mask()
 	wood_tex = Tex.planks(int(L.wood))
-	var outline = G3.outline_material() if G3 != null else null
+	var outline = G3.shared_outline() if G3 != null else null
 	var mk := func(opts: Dictionary) -> ShaderMaterial:
 		var m := ShaderMaterial.new()
 		m.shader = SHADER
@@ -50,7 +52,7 @@ func _init() -> void:
 		if G3 != null:
 			m.set_shader_parameter("toon_steps", load("res://shaders/g3_config.gd").TOON_STEPS)
 			if not opts.get("unlit", false) and not opts.has("_no_outline"):
-				m.next_pass = outline
+				G3.attach_outline(m, outline) # 설정 '외곽선' 이 켜고 끔
 		return m
 	_pool("wood", mk.call({"albedo_tex": wood_tex, "use_tex": true, "crack_tex": crack, "use_crack": true}))
 	_pool("woodPad", mk.call({"albedo_tex": Tex.planks(int(L.woodPad), true, false, 11), "use_tex": true, "crack_tex": crack, "use_crack": true}))
@@ -59,7 +61,7 @@ func _init() -> void:
 	var st: Array = L.stripeRepeat
 	_pool("band", mk.call({"albedo_tex": Tex.stripes(), "use_tex": true, "uv_scale": Vector2(3.0 * st[0], 2.0 * st[1]), "use_vertex_color": true}))
 	_pool("plate", mk.call({"unlit": true, "use_vertex_color": true}), false)
-	_pool("strap", mk.call({"albedo": Co.color(0x3a3a44), "_no_outline": true}), false)
+	_pool("strap", mk.call({"albedo": Co.color(0x3a3a44)}), false) # 외곽선 있음 (bblocks.js strap = toon, noOutline 아님)
 	for k in BL.KINDS:
 		part_list[k] = BL.parts(k)
 	# 판자 조각 (client/shards.js): MultiMesh 하나, 칸마다 색
@@ -95,7 +97,7 @@ func _pool(name: String, mat: Material, shadow := true) -> void:
 
 func _ready() -> void:
 	Store.game_event.connect(on_event)
-	demo = OS.get_cmdline_user_args().has("--bb-demo")
+	demo = Opts.args().has("--bb-demo")
 
 
 func _demo_list(st: Dictionary) -> Array:
@@ -143,7 +145,7 @@ static func _key(x, y, z) -> String:
 func _tint(owner, st: Dictionary) -> Color:
 	var p := Store.player(owner) if owner != null else {}
 	var c := Co.color(Bodies.player_color(p, st)) if not p.is_empty() else Co.color(0xc08040)
-	return c.lerp(Color.WHITE, C.BB_TINT)
+	return BL.lerp_lin(c, Color.WHITE, C.BB_TINT)
 
 
 func update(st: Dictionary) -> void:
@@ -239,7 +241,7 @@ func draw(items: Array, straps: Array) -> void:
 				"corner":
 					_add("corner", M, Color.WHITE, 0.0, flash)
 				"band":
-					_add("band", M, (b.color as Color).lerp(Color.WHITE, flash) if flash > 0 else b.color)
+					_add("band", M, BL.lerp_lin(b.color, Color.WHITE, flash) if flash > 0 else b.color)
 				"plate":
 					_add("plate", M, BL.plate_color(b.get("glow", 0.0)))
 	for s in straps:
@@ -283,6 +285,11 @@ func on_event(e: Dictionary) -> void:
 			for i in cells.size():
 				var c: Array = cells[i]
 				pop({"x": c[0], "y": c[1], "z": c[2], "dir": e.get("dir")}, i == cells.size() / 2)
+
+
+func _marks():
+	var w := get_parent()
+	return w.get("marks") if w != null else null
 
 
 func _fx():
@@ -330,7 +337,7 @@ func blast_chain(e: Dictionary) -> void:
 	var now := now_ms()
 	var o := Store.player(e.get("who")) if e.get("who") != null else {}
 	var hex: int = Bodies.player_color(o, Store.state) if not o.is_empty() else 0xc08040
-	var tint := Co.color(hex).lerp(Color.WHITE, C.BB_TINT)
+	var tint := BL.lerp_lin(Co.color(hex), Color.WHITE, C.BB_TINT)
 	var cells: Array = e.get("cells", [])
 	for i in cells.size():
 		var c: Array = cells[i]
@@ -353,6 +360,15 @@ func pop(gh: Dictionary, big := false) -> void:
 		fx.burst(pos, null, 0x8a8478, roundi((16 if big else 7) * (C.BB_LOW_FX if _low() else 1.0)), 4.0, 0.12, 0.7)
 		fx.burst(pos, dir, 0xffc040, 3 if _low() else 8, 8.0, 0.1, 0.3)
 		fx.ring(pos, 0xffd080, 5.0 if big else 2.6, 0.3)
+		if fx.has_method("explode"): # W18 불덩이·연기·불꽃 줄 (판자 조각은 위 spawn_shards 그대로라 돌 조각은 안 냄)
+			fx.explode(pos, FXC.BOOM_K.bigBomb if big else FXC.BOOM_K.bblock, dir, null, false)
+	# 터진 칸이 번쩍 + 붙어 있던 블록이 들썩 (render.js bbPop blockPulse 두 번)
+	var mk = _marks()
+	if mk != null:
+		var c := [int(gh.x), int(gh.y), int(gh.z)]
+		mk.block_pulse([c], 0xffe0a0, C.BLOCK_PULSE_MS * 0.8, 0.0, 0.9)
+		mk.block_pulse(mk.neighbors([c]), 0xffd080, C.BLOCK_PULSE_MS, C.BLOCK_JOLT * (1.5 if big else 1.0), 0.45)
+	if fx != null:
 		var me := Store.me()
 		if not me.is_empty():
 			var d := pos.distance_to(Vector3(me.x, me.y, me.z))

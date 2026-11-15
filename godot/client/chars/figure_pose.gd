@@ -11,10 +11,18 @@ static func ease01(u: float) -> float:
 	return x * x * (3.0 - 2.0 * x)
 
 
+static var _gaits := {} # 캐릭터 → 합친 걸음걸이 (W15: 몸마다 프레임마다 두 번 복사·합치던 것을 한 번만. 읽기 전용으로 씀)
+
+
 static func gait_of(char_id: String) -> Dictionary:
-	var g: Dictionary = C.FIGURE_GAIT_DEFAULT.duplicate()
+	var g = _gaits.get(char_id)
+	if g != null:
+		return g
+	g = C.FIGURE_GAIT_DEFAULT.duplicate()
 	if C.FIGURE_GAIT.has(char_id):
 		g.merge(C.FIGURE_GAIT[char_id], true)
+	g.make_read_only()
+	_gaits[char_id] = g
 	return g
 
 

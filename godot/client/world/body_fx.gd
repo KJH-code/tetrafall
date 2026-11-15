@@ -8,6 +8,10 @@ const C := preload("res://core/config.gd")
 const Co := preload("res://core/coords.gd")
 const WC := preload("res://world/world_config.gd")
 const HM := preload("res://world/hunt_marks.gd")
+const FXC := preload("res://fx/fx_config.gd")
+const Prof := preload("res://core/prof.gd")
+const Opts := preload("res://core/opts.gd")
+const Gate := preload("res://core/entry_gate.gd")
 
 var effects = null # G5 fx/effects.gd
 var marks = null # world/marks.gd (trail·block_pulse·neighbors)
@@ -22,6 +26,7 @@ var danger: MeshInstance3D
 var ghosts := [] # 순간 베기 잔상 몸 {node, mat, t0} (G2 body.snapshot)
 var ghost_next := {} # id -> 다음 잔상 시각
 var slides = null # world/hook_fx.gd slides (미끄러지는 몸, to 가 있으면 순간 베기)
+var dives := {} # 바드 기타 꽂기 중인 사람 id -> {t0, acc} (render.js dives — 속도선)
 var xray_mat: StandardMaterial3D # 사냥꾼의 눈: 블록에 가린 부분만 빨갛게 (깊이 반대)
 var _tex := {}
 
@@ -92,6 +97,111 @@ func _ring(p: Vector3, color: int, grow: float, life: float, horizontal := false
 		effects.ring(p, color, grow, life, horizontal)
 
 
+# W18 덧칠 (fx/effects.gd 의 glow·sparks·smoke·quake — 효과 기록 (테스트) 에 없으면 건너뜀)
+func _w18(fn: String, args: Array) -> void:
+	if effects != null and effects.has_method(fn):
+		effects.callv(fn, args)
+
+
+func _glow_on() -> bool:
+	return effects != null and effects.get("lv") is Dictionary and effects.lv.get("glow", false)
+
+
+# W18 낙사 잔상: 그 순간 자세 복사본 (그 사람 색 반투명) 이 바깥·아래로 밀리며 KO_FX.fall_ghost_ms 동안 사라짐. 화질 낮음이면 없음
+func fall_ghost(who, out) -> void:
+	if who == null or bodies == null or not _glow_on():
+		return
+	var n: Dictionary = bodies.nodes.get(int(who), {})
+	if n.is_empty() or not n.body.has_method("snapshot") or not n.body.is_inside_tree():
+		return
+	var p := Store.player(who)
+	var a0 := float(FXC.KO_FX.fall_ghost_alpha)
+	var mat := _flat(bodies.player_color(p, Store.state) if not p.is_empty() else 0xffffff, a0, true)
+	var g: Node3D = _snap(n.body, mat)
+	g.global_transform = n.body.global_transform
+	var o := Vector2(float(out.x), float(out.y)) if out is Dictionary else Vector2.ZERO
+	ghosts.append({"node": g, "mat": mat, "t0": now_ms(), "ms": float(FXC.KO_FX.fall_ghost_ms), "a0": a0, "p0": g.position, "vel": Co.gxyz(o.x * 3.0, o.y * 3.0, -4.0)})
+
+
+# W42 잔상 풀: 베기·낙사 잔상은 매번 몸 복제 (모델을 처음 모양대로 다시 지음, 몸 종류에 따라 0.5~2.6ms + 지울 때 비용) 였음 → 끝난 잔상 몸을 숨겨 두었다가
+# 같은 종류 몸의 잔상이 필요하면 자세·재질만 갈아 끼워 다시 씀 (chars/body.gd snapshot_fill). --no-ghost-pool 이면 예전처럼 매번 복제. 모습은 같음 (복제본 그대로 재사용)
+const SNAP_POOL_MAX := 10 # 몸 종류마다 쉬는 잔상 몸 상한 (닌자 베기 = 잔상 한 줄이 FADE/MS ≈ 8 개 동시)
+var _snap_pool := {} # 몸 종류 (char_id + 외부/코드) → [쉬는 holder]
+var snap_stats := [0, 0] # 확인용 [풀에서 재사용, 새로 복제]
+
+
+static func skin_key(body) -> String: # 스킨 갈래를 미리 켤 몸 종류 (잔상 풀 열쇠와 같음)
+	return _snap_key(body)
+
+
+static func _snap_key(body) -> String:
+	return "%s|%s" % [body.char_id, "x" if body.get("ext") != null else "c"]
+
+
+func _snap(body, mat: Material) -> Node3D:
+	if not Opts.args().has("--no-ghost-pool"):
+		var key := _snap_key(body)
+		var list: Array = _snap_pool.get(key, [])
+		while not list.is_empty():
+			var h: Node3D = list.pop_back()
+			if is_instance_valid(h) and body.snapshot_fill(h, mat):
+				h.visible = true
+				snap_stats[0] += 1
+				return h
+			if is_instance_valid(h):
+				h.queue_free() # 구조가 안 맞음 — 버리고 새로
+	return _snap_new(body, mat)
+
+
+func _snap_new(body, mat: Material) -> Node3D:
+	var g: Node3D = body.snapshot(mat)
+	g.set_meta("snap_key", _snap_key(body))
+	add_child(g)
+	snap_stats[1] += 1
+	return g
+
+
+func _snap_release(g: Node3D) -> void:
+	var key := str(g.get_meta("snap_key", ""))
+	if key == "" or Opts.args().has("--no-ghost-pool"):
+		g.queue_free()
+		return
+	var list: Array = _snap_pool.get(key, [])
+	if list.size() >= SNAP_POOL_MAX:
+		g.queue_free()
+		return
+	g.visible = false
+	list.append(g)
+	_snap_pool[key] = list
+
+
+# 몸 종류마다 쉬는 잔상 몸을 하나 미리 지어 둠 (첫 베기·낙사 때 복제 2~3ms 를 안 치르게). 프레임에 하나, 입장 쪼개기 문이 허락할 때만
+func _prewarm_pool(st: Dictionary) -> void:
+	if bodies == null or Opts.args().has("--no-ghost-pool"):
+		return
+	for p in st.get("players", []):
+		var n: Dictionary = bodies.nodes.get(int(p.id), {})
+		if n.is_empty() or not n.body.has_method("snapshot") or not n.body.is_inside_tree():
+			continue
+		var key := _snap_key(n.body)
+		var want := 2 # 낙사 잔상 몫
+		if str(n.body.char_id) == "ninja": # 순간 베기 잔상 줄: FADE_MS / MS 개가 동시에 떠 있음
+			want = mini(SNAP_POOL_MAX, int(ceil(C.BLINK_GHOST_FADE_MS / C.BLINK_GHOST_MS)) + 1)
+		if (_snap_pool.get(key, []) as Array).size() >= want or int(_pre_done.get(key, 0)) >= want:
+			continue
+		if not Gate.ok("fx.ghost"):
+			return
+		_pre_done[key] = int(_pre_done.get(key, 0)) + 1
+		var t0 := Gate.t()
+		var g := _snap_new(n.body, _flat(0xffffff, 0.4))
+		_snap_release(g)
+		Gate.done("fx.ghost", t0)
+		return
+
+
+var _pre_done := {} # 몸 종류 → 미리 지은 수
+
+
 func _shown(id):
 	return bodies.shown.get(int(id)) if bodies != null and id != null else null
 
@@ -113,6 +223,30 @@ func on_event(e: Dictionary) -> void:
 					n.body.glow_color = Co.color(C.HUNT_MARK_UI.flashColor)
 		"skill", "ult", "ultRefund":
 			aura(e.get("who"), t != "skill")
+		"dive": # 바드 기타 꽂기 시작: 떨어지는 동안 속도선 (render.js diveStart → updateDives)
+			if e.get("who") != null:
+				dives[int(e.who)] = {"t0": now_ms(), "acc": 0.0}
+		"death": # W18 낙사: 떨어지는 몸이 그 사람 색으로 바깥·아래로 사라지는 잔상
+			if str(e.get("cause", "")) == "fall":
+				fall_ghost(e.get("who"), e.get("out"))
+		"skillWindup": # 지상 F 준비 (닌자·탱크·갈고리): 발밑 흰 고리 (render.js skillWindup — 몸 하얘짐은 chars/body.gd)
+			var s = _shown(e.get("who"))
+			if s != null:
+				_ring(Vector3(s.x, s.y, s.z + 0.05), 0xffffff, 1.8, float(e.get("ms", C.SKILL_WINDUP_MS)) / 1000.0, true)
+		"diveEnd": # 바드 메탈 기타 꽂기 끝 (render.js diveEnd): 맞힘 = 흰·빨강 파편 + 빨강 고리, 땅 = 빨강·흙 고리 + 흙 (흔들림은 fx.gd)
+			if e.get("who") != null:
+				dives.erase(int(e.who))
+			var p := Vector3(float(e.get("x", 0)), float(e.get("y", 0)), float(e.get("z", 0)))
+			if e.get("what") == "hit":
+				_burst(p - Vector3(0, 0, 0.2), null, 0xffffff, 18, 6, 0.12, 0.5)
+				_burst(p - Vector3(0, 0, 0.2), null, 0xff3040, 14, 5, 0.14, 0.6)
+				_ring(p - Vector3(0, 0, 0.3), 0xff3040, 1.6, 0.3, true)
+			elif e.get("what") == "land":
+				var r := float(e.get("r", 1.5))
+				_ring(p + Vector3(0, 0, 0.08), 0xff3040, r, 0.4, true)
+				_ring(p + Vector3(0, 0, 0.05), 0xc0a880, r * 1.3, 0.5, true)
+				_burst(p, {"x": 0, "y": 0}, 0x9a8a78, 22, 5, 0.14, 0.6)
+				_w18("quake", [p, r, 0xff3040, -1]) # W18 땅 충격
 		"glideRing": # 음유 천천히 낙하 음파 고리
 			var p := Vector3(e.x, e.y, e.z + 0.9)
 			var r := float(e.get("r", 1.5))
@@ -128,6 +262,8 @@ func on_event(e: Dictionary) -> void:
 				_ring(p + Vector3(0, 0, 1), 0x4060ff, r * 1.6, 0.3)
 				_burst(p + Vector3(0, 0, 1), null, 0xff4050, 22, 6, 0.1, 0.4)
 				_burst(p + Vector3(0, 0, 1.1), null, 0xf0e8d0, 6, 7, 0.04, 0.35)
+				_w18("quake", [p, r, 0xff4050, 0x9a8a78]) # W18 리프 충격파: 붉은 바닥 빛 고리 + 흙먼지
+				_w18("sparks", [p + Vector3(0, 0, 1), Vector3.ZERO, 0xff6070, 10, 9.0, 0.4, 260.0, 1.0])
 				View.sound_cue.emit("blast", {"x": p.x, "y": p.y, "z": p.z, "big": false, "wood": false})
 			else:
 				_ring(p, 0x60ff90, 4, 0.5, true)
@@ -153,11 +289,14 @@ func on_event(e: Dictionary) -> void:
 			_ring(p, int(C.BARD_AMP_COLOR), 4, 0.35)
 			_burst(p, {"x": cos(e.yaw) * 1.5, "y": sin(e.yaw) * 1.5}, 0xffffff, 26, 8, 0.08, 0.35)
 			_burst(p, null, int(C.BARD_AMP_COLOR), 20, 5, 0.1, 0.5)
+			_w18("glow", [p, int(C.BARD_AMP_COLOR), 3.2, 220.0, 1.0, 1, {"grow": 1.4, "hot": 1.0}]) # W18 전격 번쩍 + 앞으로 튀는 번개 줄
+			_w18("sparks", [p, Vector3(cos(e.yaw), sin(e.yaw), 0.2), 0xd8e8ff, 14, 14.0, 0.7, 240.0, 0.8])
 			View.sound_cue.emit("blast", {"x": p.x, "y": p.y, "z": p.z, "big": true, "wood": false})
 		"rushLand": # 광전사 도약 착지
 			var p := Vector3(e.x, e.y, e.z + 0.08)
 			_ring(p, 0xffc080, float(e.get("r", 1.5)) * 2, 0.35, true)
 			_burst(p, null, 0x9a8a78, 22, 4.5, 0.14, 0.6)
+			_w18("quake", [p, float(e.get("r", 1.5)), 0xffc080, -1]) # W18 땅 충격
 			if marks != null:
 				var under := []
 				for c in marks.neighbors([[floori(e.x), floori(e.y), floori(e.z)]]):
@@ -172,7 +311,14 @@ func on_event(e: Dictionary) -> void:
 			_ring(Vector3(e.x, e.y, e.z + 0.9), 0xffffff, r * 1.6, 0.3)
 			_burst(Vector3(e.x, e.y, e.z + 0.6), null, 0xffb060, 26, 7, 0.13, 0.45)
 			_burst(p, null, 0x9a8a78, 18, 4, 0.14, 0.6)
+			_w18("quake", [p, r, 0xff7040, -1]) # W18 땅 충격 + 바깥으로 튀는 불꽃
+			_w18("sparks", [Vector3(e.x, e.y, e.z + 0.9), Vector3.ZERO, 0xffb060, 12, 10.0, 0.45, 260.0, 1.0])
 			View.sound_cue.emit("blast", {"x": p.x, "y": p.y, "z": p.z, "big": float(e.get("rage", 1)) > 1.3, "wood": false})
+
+
+# W35: 1인칭이면 내 발밑 고리는 숨김 (카메라가 몸 안이라 바닥 원이 화면 아래를 덮음). 남의 고리·3인칭·하늘 시점은 그대로
+static func hide_own_ring(ring_id, my_id, is_third: bool) -> bool:
+	return my_id != null and ring_id != null and int(ring_id) == int(my_id) and not is_third
 
 
 # 스킬·필살기 빛: 발밑 고리가 퍼짐 (스킬 하양 순간, 필살기 하늘색 두 겹 + 반짝이). 캐릭터를 따라다님
@@ -196,6 +342,7 @@ func aura(id, ult: bool) -> void:
 func update(st: Dictionary, my_id, dt: float) -> void:
 	var now := now_ms()
 	var seen := {}
+	_prewarm_pool(st)
 	for p in st.get("players", []):
 		var id := int(p.id)
 		seen[id] = true
@@ -211,6 +358,7 @@ func update(st: Dictionary, my_id, dt: float) -> void:
 		_amp(d, p, s, dt, now)
 		_whirl(d, p, s, dt)
 		_wait(d, p, s, now)
+		_char_fx(p, s, mine, dt)
 		if sparks.has(id):
 			if now > sparks[id] or not p.alive:
 				sparks.erase(id)
@@ -231,7 +379,7 @@ func update(st: Dictionary, my_id, dt: float) -> void:
 			a.node.queue_free()
 			auras.remove_at(i)
 			continue
-		a.node.visible = u >= 0
+		a.node.visible = u >= 0 and not hide_own_ring(a.id, my_id, third.call())
 		if u < 0:
 			continue
 		a.node.position = Co.gxyz(s.x, s.y, s.z + 0.04)
@@ -249,6 +397,7 @@ func update(st: Dictionary, my_id, dt: float) -> void:
 		w.node.scale = Vector3(sc, 1, sc)
 		w.mat.albedo_color.a = 0.8 * (1 - u)
 	_ghosts(st, now)
+	_dives(my_id, dt, now)
 	# 내 발밑 위험 고리: 떨어지는 블록이 내 머리 위 (me.danger)
 	var me := Store.me()
 	var ms = _shown(my_id) if my_id != null else null
@@ -343,28 +492,71 @@ func _label(text: String, color: Color, outline: Color, px: float) -> Label3D:
 
 # 분홍 음표 (머리·기둥·깃발 두 개 = 이어진 8분음표 둘), 화면을 덮지 않게 작게
 func _note() -> Node3D:
-	var g := Node3D.new()
-	var mat := _flat(0xff6ad5)
-	mat.no_depth_test = false
-	for k in 2:
-		var hm := SphereMesh.new()
-		hm.radius = 0.08
-		hm.height = 0.12
-		var head := _mi(hm, mat)
-		head.position = Vector3(-0.1 + k * 0.2, 0, 0)
-		g.add_child(head)
-		var sm := BoxMesh.new()
-		sm.size = Vector3(0.025, 0.28, 0.025)
-		var stem := _mi(sm, mat)
-		stem.position = Vector3(-0.03 + k * 0.2, 0.14, 0)
-		g.add_child(stem)
-	var bm := BoxMesh.new()
-	bm.size = Vector3(0.22, 0.04, 0.025)
-	var beam := _mi(bm, mat)
-	beam.position = Vector3(0.07, 0.27, 0)
-	g.add_child(beam)
-	add_child(g)
-	return g
+	# W35: JS 와 같게 머리 위 화면 크기 고정 분홍 ♫ (테두리 있는 빌보드 그림) — 예전엔 돌아가는 3D 음표 모형. 글꼴에 안 기대고 직접 그림
+	var l := Sprite3D.new()
+	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	l.fixed_size = true
+	l.shaded = false
+	l.double_sided = true
+	l.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+	l.texture = note_texture()
+	l.pixel_size = WC.VULN_NOTE_PX
+	l.render_priority = 12
+	add_child(l)
+	return l
+
+
+static var _note_tex: ImageTexture = null
+
+
+# 64×64 분홍 ♫ (#ff6ad5, 테두리 #3a0030 3px): 머리 두 개 (기울어진 타원) + 막대 둘 + 위 이음줄
+static func note_texture() -> ImageTexture:
+	if _note_tex != null:
+		return _note_tex
+	var N := 64
+	var inside := PackedByteArray()
+	inside.resize(N * N)
+	for y in N:
+		for x in N:
+			var px := x + 0.5
+			var py := y + 0.5
+			var hit := false
+			for hx in [20.0, 44.0]: # 머리: 타원 (오른쪽 위로 기울임)
+				var dx: float = px - hx
+				var dy: float = py - 47.0
+				var c := cos(-0.45)
+				var sn := sin(-0.45)
+				var u: float = dx * c - dy * sn
+				var v: float = dx * sn + dy * c
+				if (u * u) / (8.5 * 8.5) + (v * v) / (6.0 * 6.0) <= 1.0:
+					hit = true
+			if absf(px - 27.0) <= 2.2 and py >= 12.0 and py <= 46.0: # 막대 (머리 오른쪽)
+				hit = true
+			if absf(px - 51.0) <= 2.2 and py >= 8.0 and py <= 42.0:
+				hit = true
+			if px >= 25.0 and px <= 53.2 and py >= 8.0 + (px - 25.0) * (-4.0 / 28.0) and py <= 8.0 + (px - 25.0) * (-4.0 / 28.0) + 8.0 and py >= 5.0: # 이음줄 (살짝 위로)
+				hit = true
+			inside[y * N + x] = 1 if hit else 0
+	var img := Image.create(N, N, false, Image.FORMAT_RGBA8)
+	var fill := Color("ff6ad5")
+	var edge := Color("3a0030")
+	for y in N:
+		for x in N:
+			if inside[y * N + x] == 1:
+				img.set_pixel(x, y, fill)
+				continue
+			var near := false
+			for oy in range(-2, 3):
+				for ox in range(-2, 3):
+					if ox * ox + oy * oy <= 5:
+						var xx := x + ox
+						var yy := y + oy
+						if xx >= 0 and yy >= 0 and xx < N and yy < N and inside[yy * N + xx] == 1:
+							near = true
+			if near:
+				img.set_pixel(x, y, edge)
+	_note_tex = ImageTexture.create_from_image(img)
+	return _note_tex
 
 
 # 사냥꾼 표식 (2026-10-31 재혁: 몇 개인지·붙은 순간·누가 달렸는지 — shared/hunt-marks.js, world/hunt_marks.gd):
@@ -382,12 +574,15 @@ func _hunt(d: Dictionary, p: Dictionary, s: Vector3, my_id, mine: bool, now: flo
 		var g := Node3D.new()
 		var labs := []
 		for i in mx:
-			var l := Label3D.new()
+			var l := Sprite3D.new() # W35: JS 와 같은 그림 (키 큰 마름모 + 테두리, 글꼴에 안 기댐)
 			l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 			l.fixed_size = true
-			l.font_size = 48
-			l.outline_size = 14
+			l.shaded = false
+			l.double_sided = true
+			l.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+			l.pixel_size = WC.HUNT_PIP_PX
 			l.render_priority = 12
+			l.offset = Vector2((i - (mx - 1) / 2.0) * WC.HUNT_PIP_GAP, 0)
 			g.add_child(l)
 			labs.append(l)
 		add_child(g)
@@ -403,14 +598,51 @@ func _hunt(d: Dictionary, p: Dictionary, s: Vector3, my_id, mine: bool, now: flo
 	var breathe := 1 + 0.08 * sin(now / 120.0) if pp.full else 1.0
 	var px: float = WC.HUNT_PIP_PX * pop * breathe
 	for i in mx:
-		var l: Label3D = d.hunt.labs[i]
+		var l: Sprite3D = d.hunt.labs[i]
 		var on: bool = pp.pips[i]
-		l.text = "◆" if on else "◇"
-		l.modulate = Co.color(U.full if pp.full else U.on) if on else Co.color(U.off)
-		l.outline_modulate = Color(0.19, 0, 0) if on else Color(0, 0, 0, 0.6)
+		l.texture = pip_texture("full" if pp.full else "on") if on else pip_texture("off")
 		l.pixel_size = px
 		l.offset = Vector2((i - (mx - 1) / 2.0) * WC.HUNT_PIP_GAP, 0)
 		l.no_depth_test = by_me # 내 표식은 블록 뒤에서도 보임
+
+
+static var _pip_tex := {}
+
+
+# 표식 칸 한 개 그림 (JS render.js updateHuntMarks canvas: 32×32, 꼭짓점 (16,3)·(27,16)·(16,29)·(5,16), 테두리 3px).
+# 찬 칸 = U.on 채움 + #300 테두리, 꽉 참 = U.full, 빈 칸 = 검정 35% 채움 + U.off 테두리. 4×4 겹샘플로 부드럽게
+static func pip_texture(kind: String) -> ImageTexture:
+	if _pip_tex.has(kind):
+		return _pip_tex[kind]
+	var U: Dictionary = C.HUNT_MARK_UI
+	var fill := Color(0, 0, 0, 0.35) if kind == "off" else Co.color(U.full if kind == "full" else U.on)
+	var edge := Co.color(U.off) if kind == "off" else Color("330000")
+	var img := Image.create(32, 32, false, Image.FORMAT_RGBA8)
+	for y in 32:
+		for x in 32:
+			var a_fill := 0.0
+			var a_edge := 0.0
+			for sy in 4:
+				for sx in 4:
+					var dx := absf(x + (sx + 0.5) / 4.0 - 16.0)
+					var dy := absf(y + (sy + 0.5) / 4.0 - 16.0)
+					var dd := dx / 11.0 + dy / 13.0 # 1 = 마름모 가장자리
+					var dist := (dd - 1.0) * 8.4 # 가장자리까지 수직 거리 (px, 바깥 +)
+					if absf(dist) <= 1.5:
+						a_edge += 1.0
+					elif dist < 0:
+						a_fill += 1.0
+			a_fill /= 16.0
+			a_edge /= 16.0
+			# 채움 위에 테두리 (JS fill → stroke): 안쪽 채움 + 테두리 띠 (premultiplied 섞기)
+			var ca := fill.a * a_fill
+			var rgb := Vector3(fill.r, fill.g, fill.b) * ca
+			var oa := ca * (1.0 - a_edge) + edge.a * a_edge
+			rgb = rgb * (1.0 - a_edge) + Vector3(edge.r, edge.g, edge.b) * edge.a * a_edge
+			img.set_pixel(x, y, Color(rgb.x / oa, rgb.y / oa, rgb.z / oa, oa) if oa > 0.0001 else Color(0, 0, 0, 0))
+	var t := ImageTexture.create_from_image(img)
+	_pip_tex[kind] = t
+	return t
 
 
 # 몸 위 한 겹 (G2 body.set_overlay): 붙는 순간 빨간 번쩍 (flashMs) > 사냥꾼의 눈 (내 표식 대상, 블록에 가린 부분만 빨갛게) > 없음. 바뀔 때만 부름
@@ -441,20 +673,25 @@ func _ghosts(st: Dictionary, now: float) -> void:
 			if n.is_empty() or not n.body.has_method("snapshot"):
 				continue
 			var p := Store.player(id)
+			var _tg := Prof.now()
 			var mat := _flat(bodies.player_color(p, st) if not p.is_empty() else 0xffffff, 0.4)
 			mat.no_depth_test = false
-			var g: Node3D = n.body.snapshot(mat)
-			add_child(g)
+			Prof.add("ghost ·material", _tg)
+			_tg = Prof.now()
+			var g: Node3D = _snap(n.body, mat)
 			g.global_transform = n.body.global_transform
+			Prof.add("ghost ·snapshot or pool", _tg)
 			ghosts.append({"node": g, "mat": mat, "t0": now})
 	for i in range(ghosts.size() - 1, -1, -1):
 		var gh: Dictionary = ghosts[i]
-		var u: float = (now - gh.t0) / C.BLINK_GHOST_FADE_MS
+		var u: float = (now - gh.t0) / float(gh.get("ms", C.BLINK_GHOST_FADE_MS))
 		if u >= 1:
-			gh.node.queue_free()
+			_snap_release(gh.node)
 			ghosts.remove_at(i)
 			continue
-		gh.mat.albedo_color.a = 0.4 * (1 - u)
+		gh.mat.albedo_color.a = float(gh.get("a0", 0.4)) * (1 - u)
+		if gh.has("vel"): # 낙사 잔상: 밀려 떨어짐
+			gh.node.position = gh.p0 + gh.vel * ((now - gh.t0) / 1000.0)
 
 
 # 취약: 머리 위 분홍 음표 통통 / 둔화: 발밑 옅은 파란 소용돌이
@@ -472,10 +709,9 @@ func _status(d: Dictionary, p: Dictionary, s: Vector3, mine: bool, now: float) -
 	l.visible = vuln and not (mine and not third.call())
 	if l.visible:
 		l.position = Co.gxyz(s.x, s.y, s.z + C.PLAYER_HEIGHT + C.LABEL_ABOVE_HEAD + 0.75 + 0.25 * absf(sin(now / 160.0)))
-		l.rotation.y = now / 500.0
 	var r: MeshInstance3D = d.slow.node
-	r.visible = slow
-	if slow:
+	r.visible = slow and not (mine and not third.call()) # JS 는 몸 그룹 자식이라 내 1인칭이면 같이 숨음
+	if r.visible:
 		r.position = Co.gxyz(s.x, s.y, s.z + 0.04)
 		r.rotation.y = Co.rot_y(-now / 300.0)
 
@@ -582,3 +818,48 @@ func _wait(d: Dictionary, p: Dictionary, s: Vector3, now: float) -> void:
 	if on:
 		n.position = Co.gxyz(s.x, s.y, s.z + C.PLAYER_HEIGHT + 0.2)
 		n.rotation.y = now / 400.0
+
+
+# 캐릭터 상시 효과 (render.js animate 의 붙는 효과, W3 남은 것): 광전사 분노 김 (+ W18 붉은 기운) · 닌자 R 강화 손 불티 (+ W18 빛 불티)
+func _char_fx(p: Dictionary, s: Vector3, mine: bool, dt: float) -> void:
+	if not p.get("alive", false):
+		return
+	if str(p.get("char", "")) == "berserker":
+		var k := clampf(float(p.get("damage", 0)) / C.BERSERK_RAGE_PCT, 0.0, 1.0)
+		if k > 0.2 and randf() < dt * C.BERSERK_STEAM_RATE * k:
+			var yaw := float(p.get("yaw", 0.0))
+			var side := -1.0 if randf() < 0.5 else 1.0
+			var ox := 0.0 if randf() < 0.4 else side * 0.25
+			_burst(Vector3(s.x + sin(yaw) * ox, s.y - cos(yaw) * ox, s.z + (1.25 if ox != 0.0 else 1.6)), {"x": 0, "y": 0}, 0xf4f4f4, 1, 0.9, 0.12, 0.8)
+		var RG: Dictionary = FXC.RAGE_GLOW
+		if k > float(RG.min) and not (mine and not third.call()) and randf() < dt * 6.0:
+			_w18("glow", [Vector3(s.x, s.y, s.z + 1.0), 0xff3020, float(RG.size), 420.0, float(RG.alpha) * k, 0, {"grow": 1.25, "pw": 1.5, "hot": 0.0}])
+	if float(p.get("empower", 0.0)) > 0.0 and randf() < dt * 25.0:
+		var at := Vector3(s.x, s.y, s.z + 0.9 + randf() * 0.6)
+		_burst(at, {"x": 0, "y": 0}, int(C.EMPOWER_GLOW), 1, 1.2, 0.06, 0.4)
+		_w18("glow", [at, int(C.EMPOWER_GLOW), 0.35, 400.0, 0.9, 0, {"vel": Vector3(0, 0, 1.4), "hot": 0.6}])
+
+
+# 바드 기타 꽂기 속도선 (render.js updateDives, W3 남은 것): 몸 둘레로 위로 스치는 줄 DIVE_LINE_RATE 개/초. 내 1인칭이면 화면을 안 덮게 멀리 (DIVE_LINE_R_MINE).
+# W18: 줄은 빛 MultiMesh 의 줄 (그리기 0), 화질 낮음이면 JS 처럼 바닥 표시 줄 (marks.trail)
+func _dives(my_id, dt: float, now: float) -> void:
+	for who in dives.keys():
+		var d: Dictionary = dives[who]
+		var s = _shown(who)
+		if s == null or now - float(d.t0) > C.BARD_DIVE_MAX_MS + 500.0:
+			dives.erase(who)
+			continue
+		d.acc += dt * C.DIVE_LINE_RATE
+		var mine: bool = my_id != null and int(who) == int(my_id) and View.mode == "first"
+		while d.acc >= 1.0:
+			d.acc -= 1.0
+			var ang := randf() * TAU
+			var r: float = C.DIVE_LINE_R_MINE + randf() * 0.8 if mine else 0.45 + randf() * 0.6
+			var z: float = s.z + randf() * 1.8
+			var a := Vector3(s.x + cos(ang) * r, s.y + sin(ang) * r, z)
+			var len := 0.6 + randf() * 0.5
+			var col := 0xffffff if randf() < 0.5 else 0xff6070
+			if _glow_on():
+				_w18("glow", [a + Vector3(0, 0, len), col, len, 110.0, 0.9, 3, {"vel": Vector3(0, 0, 3.0), "pw": 1.0, "hot": 0.8, "rot": 0.0}])
+			elif marks != null:
+				marks.trail(a, a + Vector3(0, 0, len), col, 110.0)

@@ -5,7 +5,7 @@ import { CELL } from '../shared/pieces.js';
 import { cellKey, overlapsCell, BBLOCK_LOG } from './game-util.js';
 
 export class BuilderPart {
-  // ---- 건축가 (2026-10-25 재혁 확정, docs/characters.md 3.1) ----
+  // ---- 건축가 (2026-10-25 재혁 확정, DevVault Projects/Tetrafall/Characters 3.1) ----
   // 건축가 블록: 격자에는 CELL.BUILD 로 두고 주인·종류·묶음·수명은 this.bblocks 에. 건축가 망치로 치면 폭발 (치는 방향 앞만, 자신 제외),
   // 같은 F 벽 묶음끼리만 연쇄. BUILDER_BLOCK_MS 뒤 사라짐. 패시브: 내 블록이 터지면 1칸당 게이지 (대폭발 블록 제외)
 

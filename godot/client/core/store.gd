@@ -4,6 +4,7 @@
 extends Node
 
 const Prof := preload("res://core/prof.gd")
+const Hitch := preload("res://core/hitch.gd")
 
 const C := preload("res://core/config.gd")
 const Interp := preload("res://core/interp.gd")
@@ -20,6 +21,7 @@ signal joined(room: Dictionary, rejoined: bool) # 방에 들어감 (welcome)
 signal join_error(reason: String)
 signal left_room(reason: String) # 방 밖으로 (left)
 signal state_changed(state: Dictionary, prev: Dictionary) # 스냅샷마다 (grid 는 늘 채워 둠)
+var _pieces_seen := {} # W41 히치 태그용: 이미 본 블록 id
 signal game_event(e: Dictionary) # 스냅샷에 실려 온 이벤트 하나씩 (state_changed 다음)
 signal grid_changed(version: int) # 격자가 바뀜 (gridVersion)
 
@@ -108,7 +110,13 @@ func _process(delta: float) -> void:
 
 
 func _prof_process(delta: float) -> void:
-	view_time = clock.advance(Net.now_ms(), delta * 1000.0)
+	# 화면 시계는 프레임 dt 로 흐름: 0.1초까지만, KO 슬로모션·히트스톱이면 느리게 (main.js dt = min(0.1, …) × ko.timeScale → render 의 snapClock.advance).
+	# 예전엔 실제 시간 그대로라 마지막 킬 슬로모션에도 사람 위치는 제 빠르기로 움직였음 (몸 동작만 느림)
+	view_time = clock.advance(Net.now_ms(), clock_dt_ms(delta, View.time_scale))
+
+
+static func clock_dt_ms(delta: float, time_scale: float) -> float:
+	return minf(0.1, delta) * time_scale * 1000.0
 
 
 # ---------- 받기 ----------
@@ -172,6 +180,7 @@ func _on_message(m: Dictionary) -> void:
 		"welcome":
 			my_id = int(m.id)
 			room = m.room
+			Hitch.tag("방 입장", str(room.get("code", "")))
 			pending_code = ""
 			Seat.save(str(room.code), str(m.get("token", "")))
 			joined.emit(room, bool(m.get("rejoined", false)))
@@ -199,6 +208,8 @@ func _on_state(m: Dictionary) -> void:
 		grid_version = int(m.get("gridVersion", 0))
 		grid_changed.emit(grid_version)
 	state = m
+	if Hitch.on and str(m.get("phase", "")) != str(prev_state.get("phase", "")):
+		Hitch.tag("판 단계", str(m.get("phase", "")))
 	if m.has("room"):
 		room = m.room
 	_players_by_id.clear()
@@ -222,8 +233,26 @@ func _on_state(m: Dictionary) -> void:
 			_frame_prev = null
 		state_changed.emit(state, prev_state)
 	Prof.add("store ·state 신호 받는 쪽", _ps)
+	if Hitch.on:
+		for e in m.get("events", []):
+			var who = e.get("who", e.get("by"))
+			var ch := str(_players_by_id.get(int(who), {}).get("char", "")) if who != null else ""
+			var et := Hitch.event_tag(e, ch)
+			if not et.is_empty() and str(e.get("type", "")) != "hit": # 타격은 너무 잦아 뺌 (KO·스킬·필살기가 원인 후보)
+				Hitch.tag(et[0], et[1])
+				if Hitch.first("첫 이벤트", str(et[1])): # 이 실행에서 처음 본 종류 = 처음 쓰는 이펙트·재질 후보
+					Hitch.tag("첫 이벤트", str(et[1]))
+		var seen_p: Dictionary = {}
+		for pc in m.get("pieces", []):
+			seen_p[pc.get("id", -1)] = true
+			if not _pieces_seen.has(pc.get("id", -1)):
+				_pieces_seen[pc.get("id", -1)] = true
+				Hitch.tag("블록 낙하 시작", "%s%s" % [str(pc.get("shape", "")), " (하늘)" if pc.get("sky", false) else ""])
+		for id in _pieces_seen.keys():
+			if not seen_p.has(id):
+				_pieces_seen.erase(id)
 	_ps = Prof.now()
-	if Prof.on: # 재는 중이면 받는 쪽마다 따로 (같은 순서로 부름 — 동작 같음)
+	if Prof.on or Prof.hitch: # 재는 중이면 받는 쪽마다 따로 (같은 순서로 부름 — 동작 같음)
 		var conns := get_signal_connection_list("game_event")
 		for e in m.get("events", []):
 			for c in conns:

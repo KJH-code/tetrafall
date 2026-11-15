@@ -4,7 +4,7 @@ import { CONFIG as C, basicSet } from '../shared/config.js';
 import { basicLabel } from './game-util.js';
 
 export class BardPart {
-  // ---- 바드 (2026-10-26, docs/characters.md 3.8) ----
+  // ---- 바드 (2026-10-26, DevVault Projects/Tetrafall/Characters 3.8) ----
   // 류트 음파: 조준 방향으로 느린 음파를 날림 (updateNotes)
   bardNote(p) {
     const cp = Math.cos(p.pitch || 0);

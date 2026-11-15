@@ -7,6 +7,8 @@ extends Node
 const C := preload("res://core/config.gd")
 const Body := preload("res://chars/body.gd")
 const G3 := preload("res://shaders/g3.gd")
+const K := preload("res://chars/chars_config.gd")
+const WC := preload("res://world/world_config.gd")
 
 const HALF_PI := PI / 2
 
@@ -26,7 +28,10 @@ var on := false
 var star: Node3D = null # 닌자: 왼손에 부채꼴로 쥔 표창 3개 (단검 대신)
 var pips: Array = [] # 대포수: 대포 등에 남은 포탄 수만큼 쇠공 [[쇠공, 원본 포탄 노드]]
 var veins: Array = [] # 광전사: 분노가 차면 아래팔 핏줄 (팔마다 묶음)
+var shield_k := 0.0 # 탱크 방패를 쥔 정도 (W11): 0 = 빈손 (방패 넣음), VM_SHIELD_REACH 까지 = 손을 내림, 1 = 쥐고 든 자세
 static var _star_mesh: ArrayMesh = null
+static var clip_arm: float = K.VM_CLIP_ARM # W40: 3인칭 클립 팔 곡선을 1인칭 팔에 섞는 비율 (확인 도구가 0 으로 끄고 전후 비교)
+static var shield_hand: bool = K.VM_SHIELD_HAND # 탱크 방패를 왼손에 쥠 (W11). 확인 도구 (tools/vm_shots.gd old) 가 예전 모습을 찍을 때 끔
 
 
 func _ready() -> void:
@@ -36,6 +41,8 @@ func _ready() -> void:
 	view = SubViewport.new()
 	view.transparent_bg = true
 	view.own_world_3d = true
+	set_msaa() # JS 는 팔도 판과 같은 캔버스 (antialias) — 판 화면과 같은 값, 그래픽 낮춤을 바꾸면 곧바로
+	View.changed.connect(_on_view)
 	view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(view)
 	cam = Camera3D.new()
@@ -66,8 +73,18 @@ func _ready() -> void:
 	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
 	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	rect.stretch_mode = TextureRect.STRETCH_SCALE
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE # 텍스처 (창 픽셀) 가 UI 좌표보다 커도 화면 크기 그대로 (W9)
 	layer.add_child(rect)
 	_set_on(false)
+
+
+func set_msaa() -> void:
+	view.msaa_3d = WC.vm_msaa(bool(View.settings.get("lowGfx", false)))
+
+
+func _on_view(k: String) -> void:
+	if k == "lowGfx":
+		set_msaa()
 
 
 func _set_on(v: bool) -> void:
@@ -85,9 +102,9 @@ func update(body, first_person: bool, dt: float) -> void:
 	_set_on(first_person and twin != null)
 	if not on:
 		return
-	var size := get_viewport().get_visible_rect().size
-	if Vector2i(size) != view.size:
-		view.size = Vector2i(size)
+	var size: Vector2i = load("res://core/ui_scale.gd").pixel_size(get_viewport()) # 창 픽셀 (UI 배율이 커도 선명하게, W9 — visible_rect 는 UI 좌표)
+	if size != view.size:
+		view.size = size
 	_follow(dt)
 
 
@@ -100,12 +117,17 @@ func _sync(body) -> void:
 	for c in anchor.get_children():
 		c.queue_free()
 	pairs.clear()
+	shield_k = 0.0
 	if body == null or not (body is Body):
 		return
 	char_id = body.char_id
 	twin = Body.new()
 	twin.build(char_id, body.skin_color, false) # 합치지 않음 (조각마다 보이기)
+	twin.set_hz_light(false) # 자기 SubViewport 장면 — 판의 위험 빛 안 받음 (JS viewmodel 은 따로 된 scene)
 	view.add_child(twin)
+	if twin.ext != null and body.ext != null: # W40: 3인칭 클립 팔 곡선
+		twin.ext.src_ext = body.ext
+		twin.ext.clip_arm_k = clip_arm
 	twin.visible = false # 몸 자체는 안 그림 — 허리만 떼어 anchor 에 붙임
 	var w: int = twin.nodes.find(twin.waist)
 	# 허리 아래 (허리 제외) 노드 번호
@@ -114,7 +136,8 @@ func _sync(body) -> void:
 		var p: int = twin.parents[i]
 		if p >= 0 and under.has(p):
 			under[i] = true
-			pairs.append(i)
+			if i < body.nodes.size(): # 구운 몸: 판 몸 (묶음) 은 묶음에 들어간 잎이 없음 — 잎은 안 움직여서 베낄 것도 없음
+				pairs.append(i)
 	var waist: Node3D = twin.waist
 	waist.get_parent().remove_child(waist)
 	anchor.add_child(waist)
@@ -146,12 +169,14 @@ func _sync(body) -> void:
 	_local_light(anchor) # 허리 아래는 anchor 로 옮겨 붙음
 
 
-# 1인칭 팔은 필드 테마와 상관없이 JS viewmodel 의 노을 빛 (G3.toon_local_light — 인자 없으면 그 빛). 복제 몸 재질은 몸마다 따로라 필드 몸은 그대로.
+# 1인칭 팔은 필드 테마와 상관없이 JS viewmodel 의 노을 빛 (G3.toon_local_light — 인자 없으면 그 빛), 위험 빛도 안 받음 (소품 포함).
+# 복제 몸 재질은 몸마다 따로라 필드 몸은 그대로.
 func _local_light(root: Node) -> void:
 	for mi in root.find_children("*", "MeshInstance3D", true, false):
 		var m = (mi as MeshInstance3D).material_override
 		if m is ShaderMaterial:
 			G3.toon_local_light(m)
+			G3.toon_hazard_light(m, false)
 
 
 
@@ -162,7 +187,7 @@ func _props() -> void:
 	veins.clear()
 	if char_id == "ninja":
 		# 왼손엔 단검 대신 부채꼴로 쥔 표창 3개 (던지면 잠깐 비었다가 다시 쥠)
-		var cd: Dictionary = Body._data().chars[char_id]
+		var cd: Dictionary = twin.cd # 예전 조립이면 bodies.bin 한 줄, 구운 몸이면 manifest (같은 번호)
 		for i in twin.nodes.size():
 			if cd.nodes[i].get("dagger", false) and twin.nodes[i] is MeshInstance3D:
 				(twin.nodes[i] as MeshInstance3D).layers = 0
@@ -255,7 +280,7 @@ func _follow(_dt: float) -> void:
 	var shields = twin.refs.get("shields")
 	if shields is Dictionary:
 		var sh = twin._n(shields.get("front"))
-		if sh != null and twin.nodes.find(sh) in pairs:
+		if sh != null and twin.nodes.find(sh) in pairs and not shield_hand: # 예전 (JS): 허리에 붙은 채. 쥐면 아래 _hold_shield
 			sh.scale *= C.VM_SHIELD[0]
 			sh.position += Vector3(0, C.VM_SHIELD[1], C.VM_SHIELD[2])
 			sh.rotation.z += C.VM_SHIELD[3]
@@ -295,11 +320,15 @@ func _follow(_dt: float) -> void:
 	if twin.refs.has("gun") and src.loaded and -src.shoulders[0].rotation.y < 0.6:
 		twin.shoulders[0].rotation.y = -C.VM_GUN_AIM[0]
 		twin.elbows[0].rotation.y = -C.VM_GUN_AIM[1]
+	if shield_hand:
+		_hold_shield(_dt)
 	var sw := [0.0, 0.0, 0.0, 0.0, 0.0, 0.0] # [yaw, pitch, kick, dx, lift, roll]
 	if hold and twin.refs.has("formParts"):
 		sw = _bard_hold(src.cur_act, src.t)
 	elif hold and cannon != null:
 		sw = _cannon_hold(src.cur_act, cannon)
+	elif not hold:
+		sw = act_swing(src.cur_act)
 	_swing(sw[0], sw[1], sw[5])
 	# 걷기 흔들림 (걸음 위상 따라 위아래·좌우), 가만히 있으면 숨쉬기
 	var amp := minf(1.0, src.hs / C.MOVE_SPEED)
@@ -310,6 +339,90 @@ func _follow(_dt: float) -> void:
 		pos[0] + sw[3] + sin(src.walk) * C.VM_BOB * 0.6 * amp,
 		pos[1] + sw[4] - absf(cos(src.walk)) * C.VM_BOB * amp + sin(t * 2.0) * C.VM_BREATH,
 		pos[2] + sw[2] * C.VM_CANNON_KICK_BACK)
+	# W18 팔 반동 (fx/effects.gd vm_offset — 때린 순간 주먹이 몸 쪽으로, 맞은 순간 옆·아래로. 카메라 좌표)
+	var fxn = src.get("fx_node")
+	if fxn != null and is_instance_valid(fxn) and fxn.has_method("vm_offset"):
+		anchor.position += fxn.vm_offset()
+
+
+# 탱크 앞 방패를 왼손에 쥠 (W11, JS 는 허리에 붙은 채): 원본 앞 방패가 보이면 (방패 동작) 손을 내려 방패를 쥐고 들어 올림 →
+# 쥔 자세 + 동작별 밀치기 (당김 → 밀침 → 복귀) → 끝나면 내려 넣고 손이 원래 자리로. 방패가 보이는 동안 왼손 (손목) 은 늘 손잡이 점 (IK _reach)
+func _hold_shield(dt: float) -> void:
+	var shields = twin.refs.get("shields")
+	if not (shields is Dictionary):
+		return
+	var sh = twin._n(shields.get("front"))
+	if sh == null or not (twin.nodes.find(sh) in pairs):
+		return
+	var want: bool = sh.visible # 원본 앞 방패 보이기 (위에서 베낌)
+	shield_k = minf(1.0, shield_k + dt / K.VM_SHIELD_IN_S) if want else maxf(0.0, shield_k - dt / K.VM_SHIELD_OUT_S)
+	sh.visible = false
+	if shield_k <= 0.0:
+		return
+	var ra: float = K.VM_SHIELD_REACH
+	var low := shield_xf(K.VM_SHIELD_LOW)
+	if shield_k < ra: # 빈손으로 방패 쪽 (화면 밖 아래) 으로 내려감 / 넣은 뒤 원래 자리로
+		var free := _waist_point(twin.hands[1], [0.0, 0.0, 0.0])
+		_reach(1, free.lerp(shield_grip(low), _e(shield_k / ra)))
+		return
+	var held: Array = K.VM_SHIELD_GUARD.duplicate()
+	var off := shield_push(src.cur_act)
+	for i in 5:
+		held[i] += off[i]
+	var s := _e((shield_k - ra) / (1.0 - ra))
+	var p: Array = []
+	for i in 5:
+		p.append(lerpf(float(K.VM_SHIELD_LOW[i]), float(held[i]), s))
+	var xf := shield_xf(p)
+	# 팔이 닿는 데까지만: 손잡이가 어깨에서 팔 길이보다 멀면 방패째 어깨 쪽으로
+	var shp: Vector3 = twin.shoulders[1].position
+	var g := shield_grip(xf) - shp
+	var far := float(twin.d.upper) + float(twin.d.lower) - K.VM_SHIELD_ARM_SLACK
+	if g.length() > far:
+		xf.origin -= g.normalized() * (g.length() - far)
+	sh.transform = xf
+	sh.visible = true
+	_reach(1, shield_grip(xf))
+
+
+# 방패 변환 (허리 좌표): p = [앞, 왼쪽, 위, 돌림, 들림]. 바깥면 (돌기, 방패 -x) 이 앞에서 돌림만큼 왼쪽·들림만큼 위를 봄, 크기 VM_SHIELD[0]
+static func shield_xf(p: Array) -> Transform3D:
+	var b := Basis(Vector3(0, 0, 1), float(p[3])) * Basis(Vector3(0, 1, 0), -float(p[4])) * Basis(Vector3(0, 0, 1), PI)
+	return Transform3D(b * Basis.from_scale(Vector3.ONE * C.VM_SHIELD[0]), Vector3(p[0], p[1], p[2]))
+
+
+# 손잡이 점 (허리 좌표)
+static func shield_grip(xf: Transform3D) -> Vector3:
+	return xf * Vector3(K.VM_SHIELD_GRIP[0], K.VM_SHIELD_GRIP[1], K.VM_SHIELD_GRIP[2])
+
+
+# 동작별 밀치기 [앞, 왼쪽, 위, 돌림, 들림]: 준비 0 → W (당김), 타격 W → S (밀침), 회복 S → 0 (복귀)
+static func shield_push(act) -> Array:
+	var out := [0.0, 0.0, 0.0, 0.0, 0.0]
+	if act == null or act.phase == "broken" or not K.VM_SHIELD_PUSH.has(act.move):
+		return out
+	var m: Dictionary = K.VM_SHIELD_PUSH[act.move]
+	var u := _e(clampf(float(act.u), 0.0, 1.0))
+	for i in 5:
+		var w: float = m.W[i]
+		var st: float = m.S[i]
+		out[i] = w * u if act.phase == "wind" else (w + (st - w) * u if act.phase == "strike" else st * (1.0 - u))
+	return out
+
+
+# W38 1인칭 평타·스킬 휘두름 보정 (가산, 구조 그대로): 3인칭 클립과 같은 서버 단계 (wind u → 당김, strike u → 휘두름·뻗음, rec u → 되돌림) 에 맞춰
+# 화면 전체 (어깨 기준점) 를 윈드업 때 뒤·아래로 당기고 타격 때 앞으로 밀며 휩쓸고, 회복 때 여운 있게 돌아오게. 동작 → 스타일 config VM_ACT_STYLE, 스타일 값 VM_ACT_SWING (W·S = [yaw, pitch, kick, dx, lift, roll])
+static func act_swing(act) -> Array:
+	var out := [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+	if act == null or act.phase == "broken" or not C.VM_ACT_STYLE.has(act.move):
+		return out
+	var m: Dictionary = C.VM_ACT_SWING[C.VM_ACT_STYLE[act.move]]
+	var u := _e(clampf(float(act.u), 0.0, 1.0))
+	for i in 6:
+		var w: float = m.W[i]
+		var st: float = m.S[i]
+		out[i] = w * u if act.phase == "wind" else (w + (st - w) * u if act.phase == "strike" else st * (1.0 - u))
+	return out
 
 
 # 화면 기준 추가 회전 (어깨 높이 기준점을 축으로): yaw 좌우로 휩쓸기, pitch 위아래, roll 기울기 (three Euler 'YXZ')

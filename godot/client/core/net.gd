@@ -6,6 +6,7 @@
 # PC 판은 주소에 ?pack=gzip 을 붙여 접속 → C# 서버가 큰 메시지 (스냅샷) 를 gzip 바이너리로 보냄 (고도 WebSocketPeer 는 permessage-deflate 를 못 씀:
 # 8명 판 13.9KB × 30Hz 가 그대로 옴). 웹 판은 브라우저가 압축을 풀어 주니 그대로, JS 서버는 쿼리를 무시하고 글자로 보냄 — 글자 패킷은 예전처럼 읽음
 extends Node
+const Opts := preload("res://core/opts.gd")
 
 const Prof := preload("res://core/prof.gd")
 
@@ -58,17 +59,22 @@ var recv_states := 0 # 받은 스냅샷 수
 var recv_packed := 0 # 그중 gzip 바이너리로 온 패킷 수
 var recv_from := -1.0 # 첫 패킷 받은 시각 ms
 var recv_log := false # --auto (자동 확인) 일 때만 끝날 때 받은 양 한 줄
+# 성능 재연 (W12, core/replay.gd): rec = 받은 글자를 파일에 (시각\t글자), replay = 파일의 글자를 가상 시계로 (서버 없이 같은 판을 다시)
+var rec: FileAccess = null
+var replay: Array = [] # [[ms, 글자], ...] (rec 파일)
+var replay_i := 0
+static var virt = null # 재연 가상 시계 (ms) — 있으면 now_ms 가 이것
 
 
 static func now_ms() -> float:
-	return Time.get_ticks_usec() / 1000.0
+	return virt if virt != null else Time.get_ticks_usec() / 1000.0
 
 
 # 서버 주소: 명령줄 --server ws://… > 웹이면 페이지 주소 (?server= 또는 같은 호스트) > ws://127.0.0.1:PORT
 static func default_url(args: Dictionary) -> String:
 	if args.has("server"):
 		return str(args.server)
-	if OS.has_feature("web"):
+	if Opts.web():
 		var u = JavaScriptBridge.eval("new URLSearchParams(location.search).get('server') || ((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host)", true)
 		return str(u)
 	return "ws://127.0.0.1:%d" % int(C.PORT)
@@ -147,11 +153,11 @@ func _dial(now: float) -> Error:
 
 
 func is_open() -> bool:
-	return ws.get_ready_state() == WebSocketPeer.STATE_OPEN
+	return not replay.is_empty() or ws.get_ready_state() == WebSocketPeer.STATE_OPEN
 
 
 func send(obj: Dictionary) -> void:
-	if is_open():
+	if replay.is_empty() and is_open():
 		ws.send_text(JSON.stringify(obj))
 
 
@@ -169,6 +175,13 @@ func _process(_delta: float) -> void:
 func _prof_process(_delta: float) -> void:
 	var now := now_ms()
 	meter.on_frame(now)
+	if not replay.is_empty(): # 재연: 가상 시계까지의 글자를 받은 것처럼 (보내기는 버림)
+		var pending: Array = []
+		while replay_i < replay.size() and float(replay[replay_i][0]) <= now:
+			pending = _take(str(replay[replay_i][1]), now, pending)
+			replay_i += 1
+		_flush(pending)
+		return
 	if url == "":
 		return
 	ws.poll()
@@ -189,7 +202,6 @@ func _prof_process(_delta: float) -> void:
 		# 다른 메시지는 순서 그대로 — 그 앞에 쌓인 스냅샷은 먼저 내보냄
 		var pending: Array = []
 		while ws.get_available_packet_count() > 0:
-			var _pj := Prof.now()
 			var pkt := ws.get_packet()
 			var is_text := ws.was_string_packet()
 			last_recv_at = now
@@ -198,22 +210,10 @@ func _prof_process(_delta: float) -> void:
 			recv_bytes += pkt.size()
 			if not is_text:
 				recv_packed += 1
-			var m = JSON.parse_string(unpack(pkt, is_text))
-			Prof.add("net ·JSON 파싱", _pj)
-			if typeof(m) != TYPE_DICTIONARY:
-				continue
-			m["recvAt"] = now
-			if m.get("type") == "pong":
-				meter.on_pong(m, now)
-				_emit(m)
-			elif m.get("type") == "state":
-				meter.on_state(now)
-				recv_states += 1
-				pending.append(m)
-			else:
-				_flush(pending)
-				pending = []
-				_emit(m)
+			var text := unpack(pkt, is_text)
+			if rec != null:
+				rec.store_line("%.1f\t%s" % [now, text])
+			pending = _take(text, now, pending)
 		_flush(pending)
 		if now >= ping_at:
 			send(meter.ping(now))
@@ -309,6 +309,28 @@ func recv_line() -> String:
 func _exit_tree() -> void:
 	if recv_log:
 		print(recv_line())
+
+
+# 받은 글자 하나: 스냅샷은 pending 에 모으고 (프레임 끝에 _flush), 다른 메시지는 그 앞 스냅샷을 먼저 내보낸 뒤 바로. 돌려주는 값 = 새 pending
+func _take(text: String, now: float, pending: Array) -> Array:
+	var _pj := Prof.now()
+	var m = JSON.parse_string(text)
+	Prof.add("net ·JSON 파싱", _pj)
+	if typeof(m) != TYPE_DICTIONARY:
+		return pending
+	m["recvAt"] = now
+	if m.get("type") == "pong":
+		meter.on_pong(m, now)
+		_emit(m)
+	elif m.get("type") == "state":
+		meter.on_state(now)
+		recv_states += 1
+		pending.append(m)
+	else:
+		_flush(pending)
+		pending = []
+		_emit(m)
+	return pending
 
 
 func _emit(m: Dictionary) -> void:

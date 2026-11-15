@@ -4,21 +4,16 @@ import assert from 'node:assert/strict';
 import { Game } from '../server/game.js';
 import { CONFIG as C } from '../shared/config.js';
 import { CELL, cellOfShape } from '../shared/pieces.js';
+import { TICK, run } from './support/tick.js';
+import { lcg } from './support/rng.js';
 
 C.ITEMS_ENABLED = true; // 이 파일의 아이템 테스트는 켠 상태로 (기본은 꺼 둠 → 아래 '아이템 꺼 둠' 테스트가 확인). 테스트 파일마다 따로 돌아서 다른 파일엔 안 번짐
 
-const TICK = 1000 / C.TICK_RATE;
 
 // 고정 시드 난수 (2026-10-26: Math.random 을 쓰던 테스트가 가끔 흔들렸음). 테스트마다 다른 k.
 // 다른 시드로도 성질이 맞는지 확인: TEST_SEED=7 npm test
 const SEED0 = Number(process.env.TEST_SEED || 1);
-function seeded(k = 0) {
-  let s = (SEED0 * 7919 + k * 104729) >>> 0 || 1;
-  return () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 2 ** 32;
-  };
-}
+const seeded = (k = 0) => lcg((SEED0 * 7919 + k * 104729) >>> 0 || 1);
 
 function setup({ log = () => {} } = {}) {
   const lines = [];
@@ -35,9 +30,6 @@ function setup({ log = () => {} } = {}) {
   return { g, lines, p1: g.players.get(1), p2: g.players.get(2) };
 }
 
-function run(g, ms) {
-  for (let t = 0; t < ms; t += TICK) g.tick(TICK);
-}
 
 function fallingPiece(g, shape, rot, px, py, pz = C.PIECE_SPAWN_Z, stepMs = C.AUTO_FALL_STEP_MS) {
   const piece = g.makePiece(shape, rot, px, py, pz);

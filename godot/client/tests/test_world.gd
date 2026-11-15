@@ -267,3 +267,141 @@ func test_hunt_marks_match_js() -> void:
 		check(near(H.edge_level(e[0], C.HUNTER_MARK_MAX, age, e[2]), e[3]), "edgeLevel %s" % [e])
 	for b in fx.blinks:
 		check(H.mark_blink(b[0], b[1]) == b[2], "markBlink %s" % [b])
+
+
+# W35: 사냥꾼 표식 칸 그림 (JS canvas 마름모) — 찬 칸은 가운데가 칸 색, 빈 칸은 가운데 반투명, 꼭짓점 밖은 투명, 키가 가로보다 큼
+func test_hunt_pip_texture_matches_js_shape() -> void:
+	const BF := preload("res://world/body_fx.gd")
+	var on: Image = BF.pip_texture("on").get_image()
+	var off: Image = BF.pip_texture("off").get_image()
+	var full: Image = BF.pip_texture("full").get_image()
+	check(_close(on.get_pixel(16, 16), Color(1.0, 0.227, 0.165)), "찬 칸 가운데 = U.on")
+	check(_close(full.get_pixel(16, 16), Color(1.0, 0.824, 0.227)), "꽉 참 가운데 = U.full")
+	check(off.get_pixel(16, 16).a > 0.3 and off.get_pixel(16, 16).a < 0.4, "빈 칸 가운데 = 검정 35%")
+	check(on.get_pixel(1, 1).a < 0.01, "마름모 밖 모서리는 투명")
+	var w := 0
+	var h := 0
+	for i in 32:
+		if on.get_pixel(i, 16).a > 0.5:
+			w += 1
+		if on.get_pixel(16, i).a > 0.5:
+			h += 1
+	check(h > w, "키 큰 마름모 (세로 %d > 가로 %d)" % [h, w])
+
+
+func _close(a: Color, b: Color) -> bool:
+	return absf(a.r - b.r) < 0.02 and absf(a.g - b.g) < 0.02 and absf(a.b - b.b) < 0.02 and a.a > 0.98
+
+
+# W35: 취약 ♫ 그림 — 글꼴 없이 그린 분홍 음표 + 어두운 테두리
+func test_vuln_note_texture() -> void:
+	const BF := preload("res://world/body_fx.gd")
+	var im: Image = BF.note_texture().get_image()
+	var pink := 0
+	var edge := 0
+	for y in 64:
+		for x in 64:
+			var c := im.get_pixel(x, y)
+			if c.a > 0.5 and c.r > 0.9 and c.g > 0.35:
+				pink += 1
+			elif c.a > 0.5 and c.r < 0.3:
+				edge += 1
+	check(pink > 300 and edge > 100, "분홍 음표 (%d) + 테두리 (%d)" % [pink, edge])
+	check(im.get_pixel(0, 0).a < 0.01, "그림 밖은 투명")
+
+
+# W35: 갈고리 R 덩어리 재질 — 종류마다 JS 처럼 (지형 돌·쌓기 나무·설치 모래·테트리미노 = 맵 테마 칸)
+func test_hook_chunk_materials() -> void:
+	var hf = preload("res://world/hook_fx.gd").new()
+	hf.g3 = load("res://shaders/g3.gd")
+	hf.theme_id = "volcano"
+	var col := Color(0.8, 0.5, 0.2)
+	var terr: Dictionary = hf.chunk_look({"v": 1}, col)
+	var build: Dictionary = hf.chunk_look({"v": 2, "builder": true}, col)
+	var thrown: Dictionary = hf.chunk_look({"v": 3}, col)
+	var piece: Dictionary = hf.chunk_look({"v": 5}, col)
+	check(terr.mat.get_shader_parameter("use_tex") == true and terr.mat.get_shader_parameter("albedo_tex") == preload("res://world/chunk_tex.gd").stone(), "지형 덩어리 = 돌 그림")
+	check(thrown.mat.get_shader_parameter("albedo_tex") == preload("res://world/chunk_tex.gd").sand(), "설치 블록 덩어리 = 모래 그림")
+	check(build.mat.get_shader_parameter("albedo_tex") == preload("res://world/chunk_tex.gd").wood(), "건축가 덩어리 = 판자 그림")
+	check(piece.mesh is ArrayMesh and piece.mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR] is PackedColorArray, "테트리미노 덩어리 = 테마 칸 모양 + 꼭짓점 색")
+	check(piece.mat.get_shader_parameter("face_tex") != null, "테트리미노 덩어리 재질 = 테마 칸 재질 (면 그림)")
+	var sky: Dictionary = hf.chunk_look({"v": 3, "sky": true}, col)
+	check(absf(sky.mat.get_shader_parameter("albedo").a - float(C.SKY_PIECE_OPACITY)) < 0.001, "하늘 덩어리는 반투명")
+	check(terr.mat.get_shader_parameter("albedo_tex").get_image().get_pixel(10, 10).r > 0.4, "돌 그림이 칠해짐")
+	hf.free()
+
+
+# W35: 탱크 R 솟는 땅 칸이 돌 그림을 입음 (JS quakeMat map: tex.stone)
+func test_quake_cells_use_stone_texture() -> void:
+	var mk = preload("res://world/marks.gd").new()
+	var G3 = load("res://shaders/g3.gd")
+	mk.make_mat = func(c: Color): return G3.toon_material(c)
+	mk.quake_rise([[1, 1, 1], [2, 1, 1]], 1000.0, 7)
+	var m: ShaderMaterial = mk._quake_mat
+	check(m.get_shader_parameter("use_tex") == true and m.get_shader_parameter("albedo_tex") == preload("res://world/chunk_tex.gd").stone(), "솟는 땅 재질 = 돌 그림")
+	check(mk.quakes.size() == 1 and mk.quakes[0].nodes.size() == 2, "솟는 땅 칸 2개")
+	mk.free()
+
+
+class _GlowSpy:
+	var calls := 0
+	const ROUND := 0
+	const STAR := 1
+	func glow(_p, _c, _s, _ms, _a = 1.0, _k = 0, _o = {}) -> void:
+		calls += 1
+
+
+# W35: 갈고리 사슬이 팽팽한 동안 빛 알갱이 (간격마다 한 번, 알갱이 수 + 끝 번쩍), 효과 풀이 없으면 아무 일 없음
+func test_hook_tension_light() -> void:
+	var hf = preload("res://world/hook_fx.gd").new()
+	var chain := {}
+	hf.tension_light(chain, Vector3.ZERO, Vector3(3, 0, 0), 1000.0) # 효과 풀 없음
+	check(not chain.has("tn_next"), "효과 풀이 없으면 안 그림")
+	var spy := _GlowSpy.new()
+	hf.effects = spy
+	hf.tension_light(chain, Vector3.ZERO, Vector3(3, 0, 0), 1000.0)
+	var T: Dictionary = preload("res://fx/fx_config.gd").HOOK_TENSION
+	check(spy.calls == int(T.dots) + 1, "알갱이 %d + 끝 번쩍 1 (%d)" % [int(T.dots), spy.calls])
+	hf.tension_light(chain, Vector3.ZERO, Vector3(3, 0, 0), 1010.0)
+	check(spy.calls == int(T.dots) + 1, "간격 안에서는 또 안 터뜨림")
+	hf.tension_light(chain, Vector3.ZERO, Vector3(3, 0, 0), 1000.0 + float(T.every) + 1.0)
+	check(spy.calls == 2 * (int(T.dots) + 1), "간격 뒤 다시")
+	hf.free()
+
+
+# W35: 1인칭이면 내 발밑 고리만 숨김
+func test_own_ring_hidden_in_first_person() -> void:
+	const BF := preload("res://world/body_fx.gd")
+	check(BF.hide_own_ring(3, 3, false), "1인칭 내 고리 숨김")
+	check(not BF.hide_own_ring(3, 3, true), "3인칭 내 고리 보임")
+	check(not BF.hide_own_ring(4, 3, false), "남의 고리는 1인칭에서도 보임")
+	check(not BF.hide_own_ring(3, null, false), "내 id 모르면 보임")
+
+
+# W35: 탱크 아머 맞음 반응 (JS hitReact) — 버틴 타는 약하게·멈칫 없음, 깨진 타는 크게·멈칫 ×1.5, 오래되면 보통 타
+func test_armor_hit_reaction() -> void:
+	const B := preload("res://chars/body.gd")
+	var held: Dictionary = B.armor_reaction(0.05, 99.0)
+	check(held.pow == C.FIGURE_HIT_ARMOR and held.stop == 0.0 and not held.breaks, "버틴 타 = 얼굴만 찡그림, 멈칫 없음")
+	var br: Dictionary = B.armor_reaction(99.0, 0.05)
+	check(br.pow == C.FIGURE_HIT_ARMOR_BREAK and absf(br.stop - C.HITSTOP_MS * 1.5 / 1000.0) < 1e-9 and br.breaks, "깨진 타 = 크게, 멈칫 ×1.5")
+	check(B.armor_reaction(0.3, 0.3).is_empty(), "200ms 지나면 보통 타")
+	check(B.armor_reaction(0.1, 0.1).pow == C.FIGURE_HIT_ARMOR, "둘 다면 버틴 쪽 먼저")
+
+
+# W35: 반투명 몸 깊이 선 — 반투명 재질 앞에 깊이만 쓰는 재질을 붙임 (같은 재질이면 하나만), 깊이 선 → 원래 재질 순서, 같은 그리기 순서
+func test_ghost_depth_wrap() -> void:
+	const GD := preload("res://chars/ghost_depth.gd")
+	var alpha := G3_toon_alpha()
+	var w: ShaderMaterial = GD.with_prepass(alpha)
+	check(w != alpha and w.next_pass == alpha, "깊이 선 재질 → 반투명 재질 순서")
+	var holder := {"alpha": alpha}
+	check(GD.wrap_in(holder) == GD.wrap_in(holder) and GD.wrap_in(holder).next_pass == alpha and GD.inner(GD.wrap_in(holder)) == alpha, "칸마다 한 번만 만들고 안쪽 재질을 되찾음")
+	check(GD.inner(alpha) == alpha, "감싸지 않은 재질은 그대로")
+	check(w.render_priority == alpha.render_priority, "그리기 순서 같음")
+	check(w.shader.code.contains("depth_draw_always") and w.shader.code.contains("shadows_disabled"), "깊이만 쓰고 그림자 안 만듦")
+	check(GD.with_prepass(null) == null, "재질 없으면 없음")
+
+
+func G3_toon_alpha() -> ShaderMaterial:
+	return load("res://shaders/g3.gd").toon_material(Color.WHITE, {"opacity": 0.5, "outline": false})

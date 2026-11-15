@@ -87,7 +87,10 @@ public sealed class Rooms
 {
     readonly Func<string, IRoomLog> openLog;
     readonly Action<string> serverLog;
-    readonly Func<double> rng;
+    readonly Func<double>? rng; // 방 코드 뽑기용 (테스트가 정해진 코드를 받으려고 넣음). null 이면 암호용 난수 (S5) — 게임 안 난수 game.rng 와는 따로
+    // 방 코드 글자 뽑기 (0..n-1). 기본은 암호용 난수 CryptoPick (S5). 테스트가 갈아끼워 '정말 이걸 지나는지' 확인함
+    public static readonly Func<int, int> CryptoPick = n => System.Security.Cryptography.RandomNumberGenerator.GetInt32(n);
+    public Func<int, int> CodePick { get; }
     readonly double countdownMs;
     readonly Func<double> now;
     readonly Func<string> newToken;
@@ -105,16 +108,17 @@ public sealed class Rooms
     // 방마다 틱·스냅샷을 병렬로 (false 면 예전처럼 한 스레드에서 차례로 — 부하 비교용)
     public bool parallel = true;
 
-    static double MaxPlayers() => Math.Min(C.MAX_PLAYERS, 8); // shared/config.js SPAWN_POINTS 8곳
+    static double MaxPlayers() => GameUtil.MaxPlayers(); // shared/config.js maxPlayers() — 시작 위치 수와 MAX_PLAYERS 중 작은 쪽
 
     // openLog(code) → 방마다 로그 (서버는 파일, 테스트는 목록), serverLog: 방 밖 일, now(): 메시지 빈도 제한용 시계 (ms),
     // newToken(): 자리 토큰 (기본 RECONNECT_TOKEN_BYTES 바이트 난수의 16진수, 테스트는 정해진 값),
     // tune: 방 밸런스 표 (서버는 C.BalanceTune(), 안 주면 표 없는 예전 판 — 테스트·LoadBench)
-    public Rooms(Func<string, IRoomLog>? openLog = null, Action<string>? serverLog = null, Func<double>? rng = null, double countdownMs = 0, Func<double>? now = null, Func<string>? newToken = null, Tune? tune = null)
+    public Rooms(Func<string, IRoomLog>? openLog = null, Action<string>? serverLog = null, Func<double>? rng = null, double countdownMs = 0, Func<double>? now = null, Func<string>? newToken = null, Func<int, int>? codePick = null, Tune? tune = null)
     {
+        CodePick = codePick ?? CryptoPick;
         this.openLog = openLog ?? (_ => new NullLog());
         this.serverLog = serverLog ?? (_ => { });
-        this.rng = rng ?? Random.Shared.NextDouble;
+        this.rng = rng;
         this.countdownMs = countdownMs;
         var sw = System.Diagnostics.Stopwatch.StartNew();
         this.now = now ?? (() => sw.Elapsed.TotalMilliseconds);
@@ -255,6 +259,9 @@ public sealed class Rooms
     }
 
     // 토큰으로 같은 자리에 다시 붙기. 방·토큰이 안 맞거나 자리 유지 시간이 지났으면 rejoinError (화면은 보통 들어가기로 다시)
+    // 받은 방 코드 (S6): 방 코드는 ROOM_CODE_LEN 글자라 더 긴 건 어차피 없는 방 → 에러 문구엔 ROOM_CODE_LEN 글자까지만
+    static string ShownCode(string code) => code.Length > (int)C.ROOM_CODE_LEN ? code[..(int)C.ROOM_CODE_LEN] : code;
+
     public bool Rejoin(Conn conn, JsonElement? rawCode, JsonElement? rawToken)
     {
         var code = JsText.Trim(StrOrEmpty(rawCode)).ToUpperInvariant();
@@ -263,7 +270,7 @@ public sealed class Rooms
         var found = room != null && token != null ? room.seats.Entries().FirstOrDefault(e => e.Value.token == token) : default;
         if (room == null || found.Value == null)
         {
-            Send(conn.ws, o => o.P("type", "rejoinError").P("code", code).P("reason", "자리가 없습니다 (시간이 지났거나 방이 없어짐)"));
+            Send(conn.ws, o => o.P("type", "rejoinError").P("code", ShownCode(code)).P("reason", "자리가 없습니다 (시간이 지났거나 방이 없어짐)"));
             return false;
         }
         var (id, seat) = (found.Key, found.Value);
@@ -300,14 +307,22 @@ public sealed class Rooms
         return token;
     }
 
+    // 자리 유지 시간: 판을 한 번도 안 한 방이 연결 0명이면 짧게 (S4: 만들고 끊기를 되풀이해 60초씩 ROOM_MAX 를 채우는 것 막기, 그래도 터널 재시작 같은 잠깐 끊김은 버팀), 아니면 RECONNECT_GRACE_MS
+    double GraceMs(Room room)
+    {
+        bool idle = !room.practice && room.conns.Count == 0 && room.game.totals["rounds"] == 0 && !room.game.InRound();
+        return idle ? C.ROOM_EMPTY_LOBBY_GRACE_MS : C.RECONNECT_GRACE_MS;
+    }
+
     // 끊긴 자리 중 유지 시간이 지난 것: 예전처럼 나감 (판 중이면 접속 끊김 사망), 사람이 0명이면 방도 없앰
     void ExpireSeats(Room room)
     {
+        var grace = GraceMs(room);
         foreach (var (id, seat) in room.seats.Entries())
         {
-            if (seat.awayAt is not { } at || room.game.time - at < C.RECONNECT_GRACE_MS) continue;
+            if (seat.awayAt is not { } at || room.game.time - at < grace) continue;
             room.game.players.TryGetValue(id, out var p);
-            room.game.Log($"  [끊김 만료] {(p != null ? p.name : JsNumber.ToJs(id))} {JsNumber.ToJs(C.RECONNECT_GRACE_MS / 1000)}초 안에 안 돌아옴");
+            room.game.Log($"  [끊김 만료] {(p != null ? p.name : JsNumber.ToJs(id))} {JsNumber.ToJs(grace / 1000)}초 안에 안 돌아옴");
             room.seats.Delete(id);
             room.game.RemovePlayer(id);
         }
@@ -374,7 +389,7 @@ public sealed class Rooms
         for (; ; )
         {
             var code = "";
-            for (int i = 0; i < C.ROOM_CODE_LEN; i++) code += C.ROOM_CODE_CHARS[(int)Math.Floor(rng() * C.ROOM_CODE_CHARS.Length)];
+            for (int i = 0; i < C.ROOM_CODE_LEN; i++) code += C.ROOM_CODE_CHARS[rng != null ? (int)Math.Floor(rng() * C.ROOM_CODE_CHARS.Length) : CodePick(C.ROOM_CODE_CHARS.Length)];
             if (!rooms.Has(code)) return code;
         }
     }
@@ -441,7 +456,13 @@ public sealed class Rooms
         var room = rooms.Get(code);
         if (room == null)
         {
-            Send(conn.ws, o => o.P("type", "joinError").P("reason", $"{(code != "" ? code : "빈 코드")}: 그런 방이 없습니다 (코드 확인, 사람이 다 나가면 방이 없어짐)"));
+            Send(conn.ws, o => o.P("type", "joinError").P("reason", $"{(code != "" ? ShownCode(code) : "빈 코드")}: 그런 방이 없습니다 (코드 확인, 사람이 다 나가면 방이 없어짐)"));
+            return false;
+        }
+        if (room.tutorial)
+        {
+            // 튜토리얼 방은 혼자 하는 방 (S8: 손님이 들어와 단계 판정을 어지럽히지 못하게)
+            Send(conn.ws, o => o.P("type", "joinError").P("reason", "튜토리얼 방은 혼자 하는 방이라 들어갈 수 없습니다"));
             return false;
         }
         var player = room.game.AddPlayer(conn.id);
@@ -476,10 +497,10 @@ public sealed class Rooms
         }
     }
 
-    void Close(Room room)
+    void Close(Room room, string why = "사람 0명")
     {
         room.game.RemoveAllBots();
-        room.@out.Log($"방 {room.code} 닫음 (사람 0명)");
+        room.@out.Log($"방 {room.code} 닫음 ({why})");
         room.@out.Close();
         rooms.Delete(room.code);
         serverLog($"방 {room.code} 닫음 (방 {rooms.Count}개)");

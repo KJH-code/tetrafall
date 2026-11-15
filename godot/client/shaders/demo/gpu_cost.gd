@@ -1,6 +1,7 @@
 # G3 재질별 그리기 비용: g3_demo 장면 (인자 그대로) 을 깔고, 셰이더 하나씩 숨겨 가며 viewport 그리기 시간 (CPU+GPU, ms) 평균을 잼.
 #   xvfb-run -a godot --path godot/client --rendering-driver opengl3 --resolution 1280x720 res://shaders/demo/gpu_cost.tscn -- --theme desert --terrain --hazard 1.4
 extends Node3D
+const Opts := preload("res://core/opts.gd")
 
 const G3 := preload("res://shaders/g3.gd")
 
@@ -16,7 +17,7 @@ var hidden: Array = []
 func _ready() -> void:
 	game = load("res://shaders/demo/g3_demo.tscn").instantiate()
 	add_child(game)
-	if OS.get_cmdline_user_args().has("--cost-low"): # 그래픽 낮춤으로 재기
+	if Opts.args().has("--cost-low"): # 그래픽 낮춤으로 재기
 		G3.set_low(game, true)
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	cases = [["전부", []], ["지형 빼고", ["terrain"]], ["위험 빼고", ["hazard"]], ["바닥 빼고", ["floor"]], ["툰 (조각) 빼고", ["toon"]], ["하늘 빼고", ["sky"]], ["외곽선 끔", ["@outline"]], ["그림자 끔", ["@shadow"]]]

@@ -4,7 +4,7 @@
 // 앰비언트는 music 이 맡아 메뉴·대기실까지 이어짐 (music.ambientFor). 누른 키는 메뉴 입력으로 새지 않음 (창 맨 앞에서 가로챔).
 // 움직임 줄이기면 완성 로고 + 하얀 페이드 (가장 하얄 때 메뉴 카메라로). 링크(?room=)로 오면 건너뜀 — 부르는 쪽(main.js)이 shared/title.js showTitle 로 판단
 import { CONFIG as C } from '/shared/config.js';
-import { pickTitleTheme } from '/shared/title.js';
+import { pickTitleTheme, isTitleTheme } from '/shared/title.js';
 import { TitleSound } from '/title-sound.js';
 import { setSessionTheme } from '/menu-theme.js';
 
@@ -13,7 +13,7 @@ import { setSessionTheme } from '/menu-theme.js';
 export function startTitle({ renderer, reduced = false, unlock = () => {}, onDone = () => {}, sound = null, music = null, theme = null }) {
   const el = document.getElementById('title');
   if (!el) return null;
-  const id = theme && C.TITLE_THEMES[theme] ? theme : pickTitleTheme();
+  const id = isTitleTheme(theme) ? theme : pickTitleTheme();
   setSessionTheme(id); // 메뉴 배경·앰비언트도 이 테마 (이번 창 동안)
   const scene = renderer.startTitle(id, reduced);
   const sfx = music && music.ambientFor ? music.ambientFor(id) : sound ? new TitleSound(sound, id) : null;

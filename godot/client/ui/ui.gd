@@ -1,8 +1,10 @@
 # G4 화면 뿌리 (CanvasLayer UI): 메뉴 · 대기실 판 · 방장 판 · (판 HUD·결과·설정 — 다음 단계) · 화면 전환 슬래시 · 접속 글·핑.
 # 지금 화면 = ui_calc.screen_of (JS shared/wipe.js screenOf), 바뀌면 슬래시가 다 덮는 순간 뒤 화면을 바꿈 (JS updateScreen)
 extends CanvasLayer
+const Opts := preload("res://core/opts.gd")
 
 const Prof := preload("res://core/prof.gd")
+const Gate := preload("res://core/entry_gate.gd")
 
 const C := preload("res://core/config.gd")
 const S := preload("res://ui/ui_style.gd")
@@ -10,6 +12,7 @@ const U := preload("res://ui/ui_calc.gd")
 const Portrait := preload("res://ui/portrait.gd")
 const Coords := preload("res://core/coords.gd")
 const Prefs := preload("res://ui/ui_prefs.gd")
+const Baked := preload("res://ui/baked_panel.gd")
 
 var menu: Control
 var lobby: PanelContainer
@@ -23,6 +26,8 @@ var status: Label
 var status_box: PanelContainer # 상태 글 받침 (판 중에만 어두운 반투명 — ui_calc STATUS_BACK)
 var status_style: StyleBoxFlat
 var ping: Label
+var net_warn: Label # 렉·끊김 알림 (JS #netWarn: 핑 아래 빨강 칸)
+var net_box: VBoxContainer
 var shown := "" # 지금 보이는 화면 (menu·lobby·game·results)
 var target := "" # 바뀌려는 화면 (슬래시가 덮으면 shown 이 됨)
 var menu_since := -1.0 # 메뉴가 뜬 시각 (PORTRAIT_WARM_MS 뒤 카드 초상 미리 그리기)
@@ -40,15 +45,23 @@ func _ready() -> void:
 	add_child(root)
 	menu = load("res://ui/menu.gd").new()
 	root.add_child(menu)
+	# (W16) 내용이 드물게 바뀌는 큰 판은 그림만 구움 (ui/baked_panel.gd — 입력·초점은 그대로), --no-bake 면 예전처럼
+	Baked.enabled = not Opts.args().has("--no-bake")
 	lobby = load("res://ui/lobby.gd").new()
-	root.add_child(lobby)
+	var lb := Baked.wrap(lobby)
+	root.add_child(lb)
+	if lb != lobby: # 큰 3D 캐릭터·그 위 '스킬 보기' 는 매 프레임 바뀌어 굽지 않음 (스킬 카드가 덮으면 숨김)
+		lb.live([lobby.stage_3d, lobby.skill_btn], func(): return lobby.skill_card.visible)
 	host_players = load("res://ui/host_players.gd").new()
-	root.add_child(host_players)
+	root.add_child(Baked.wrap(host_players))
 	hud = load("res://ui/hud.gd").new()
 	root.add_child(hud)
 	hud_extra = load("res://ui/hud_extra.gd").new()
 	hud_extra.hud = hud
 	root.add_child(hud_extra)
+	# 위 점수 띠는 화면 뿌리로 (판 HUD 가 숨는 대기실·결과에도 보임 — JS #score 는 판 사이에도 승수, body.ui-dark 빛 판)
+	hud.score_panel.reparent(root)
+	hud.score_panel.visible = false
 	results = load("res://ui/results.gd").new()
 	root.add_child(results)
 	status = S.label("연결 중...", 16, S.TEXT)
@@ -65,20 +78,16 @@ func _ready() -> void:
 	status_box.position = U.status_box_pos(false)
 	status_box.add_child(status)
 	root.add_child(status_box)
-	ping = S.label("", 12, S.DIM)
-	ping.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	ping.position = Vector2(-120, 52)
-	ping.size.x = 108
-	ping.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	ping.grow_horizontal = Control.GROW_DIRECTION_BEGIN # 글이 폭보다 길면 (연결 끊김 · 다시 연결 중 N) 왼쪽으로 늘어남 — 화면 밖으로 안 나감
-	root.add_child(ping)
+	root.add_child(make_net())
 	settings = load("res://ui/settings.gd").new()
-	root.add_child(settings)
+	root.add_child(Baked.wrap(settings))
 	menu.open_settings.connect(func(): settings.visible = true)
 	lobby.open_settings.connect(func(): settings.visible = true)
 	menu.open_tutorial.connect(func(): View.open_panel.emit("tutorial")) # G6 ui/tutorial_ui.gd
 	settings.open_tutorial.connect(func():
 		settings.visible = false
+		if Store.in_room():
+			Store.leave() # JS settings-tutorial: 방 안이면 나와서 (튜토리얼은 따로 혼자 방)
 		View.open_panel.emit("tutorial"))
 	wipe = load("res://ui/wipe.gd").new()
 	root.add_child(wipe)
@@ -86,6 +95,7 @@ func _ready() -> void:
 	Net.status_changed.connect(func(t):
 		status.text = t
 		status_box.reset_size()) # 글이 짧아지면 받침도 줄임
+	PlayerInput.ui_action.connect(func(id, pressed): if id == "motionToggle" and pressed: motion_toggle())
 	_show(_screen_now())
 
 
@@ -128,6 +138,16 @@ func _bottom_rects() -> Array:
 	return out
 
 
+# W49 판 중 단축키 (기본 F6): 새 모션 ↔ 옛 모션을 바로 바꿔 같은 순간을 눈으로 비교. 새 모션이면 옛 모션으로, 그 밖이면 새 모션으로. 알림 한 줄
+func motion_toggle() -> String:
+	var K := preload("res://chars/chars_config.gd")
+	var pn := K.toggled_preset(View.settings.get("motionFlags"))
+	View.set_setting("motionFlags", K.preset_flags(pn))
+	if hud_extra != null:
+		hud_extra.toast("모션: %s" % str(K.EXT_MOTION_PRESET_NAMES[pn]), "good" if pn == "new" else "")
+	return pn
+
+
 func reduced() -> bool:
 	return bool(View.settings.get("lowGfx", false)) or bool(View.settings.get("reducedMotion", false))
 
@@ -160,6 +180,70 @@ func _show(screen: String) -> void:
 	hud.visible = screen == "game"
 	hud_extra.visible = screen == "game"
 	results.visible = screen == "results"
+	if screen == "menu":
+		hud.score_panel.visible = false
+
+
+# 접속 표시 (JS #net: 오른쪽 12 · 위 52, 세로 줄 gap 4, 오른쪽 맞춤): 핑 칸 (어두운 사선 칸, 렉이면 노랑·빨강) + 알림 칸. 테스트도 부름
+func make_net() -> VBoxContainer:
+	net_box = VBoxContainer.new()
+	net_box.add_theme_constant_override("separation", 4)
+	net_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	net_box.z_index = 5
+	ping = S.label("", 12, S.DIM)
+	ping.size_flags_horizontal = Control.SIZE_SHRINK_END
+	ping.add_theme_stylebox_override("normal", _net_box(12, 2))
+	net_box.add_child(ping)
+	net_warn = S.label("", 15, Color.WHITE)
+	net_warn.size_flags_horizontal = Control.SIZE_SHRINK_END
+	var wb := _net_box(16, 4)
+	wb.bg_color = U.net_look("bad").bg
+	net_warn.add_theme_stylebox_override("normal", wb)
+	net_warn.visible = false
+	net_box.add_child(net_warn)
+	return net_box
+
+
+# 핑 칸 (JS #netPing: padding 2 12, 7px 사선) · 알림 칸 (#netWarn: padding 4 16)
+func _net_box(side: int, tb: int) -> StyleBoxFlat:
+	var b := StyleBoxFlat.new()
+	b.bg_color = U.net_look("ok").bg
+	b.skew = Vector2(S.SKEW, 0)
+	b.content_margin_left = side
+	b.content_margin_right = side
+	b.content_margin_top = tb
+	b.content_margin_bottom = tb
+	return b
+
+
+# client/net.js draw (+ reconnect 동안 '연결 끊김 · 다시 연결 중 n'): 핑 글·색 단계, 알림 글
+func _net_draw() -> void:
+	var v: Dictionary = Net.meter.view(Net.now_ms())
+	var pt := "핑 " + Net.ping_value() # 다시 붙는 중이면 지난 핑 대신 '핑 끊김' (끊김 글은 아래 알림 칸)
+	var look := U.net_look(str(v.level))
+	var w := Net.warn_text()
+	if Net.reconnecting:
+		w = Net.ping_text() # '연결 끊김 · 다시 연결 중 N' (첫 시도 전엔 숫자 없이 — net.gd ping_text)
+	elif Net.ever_open and not Net.is_open():
+		w = "연결 끊김"
+	var vp := get_viewport().get_visible_rect().size
+	# 바뀔 때만 (W15: 글자 색 덮어쓰기·칸 바탕색·reset_size 를 프레임마다 — 테마 바뀜 알림·다시 배치가 판 중 HUD 비용의 절반이던 것)
+	var key := [pt, look.fg, look.bg, w, vp]
+	if key == _net_key:
+		return
+	_net_key = key
+	ping.text = pt
+	S.ov_color(ping, "font_color", look.fg)
+	var sb := ping.get_theme_stylebox("normal") as StyleBoxFlat
+	if sb.bg_color != look.bg:
+		sb.bg_color = look.bg
+	net_warn.text = w
+	net_warn.visible = w != ""
+	net_box.reset_size()
+	net_box.position = Vector2(vp.x - 12.0 - net_box.size.x, 52)
+
+
+var _net_key := []
 
 
 func _process(_d: float) -> void:
@@ -172,7 +256,7 @@ func _prof_process(_d: float) -> void:
 	if View.get("ui_theme") != theme_seen:
 		theme_seen = View.get("ui_theme")
 		S.restyle()
-	ping.text = Net.ping_text()
+	_net_draw()
 	menu.visible = shown == "menu" and not View.title_on # 타이틀 동안은 메뉴 판 숨김 (title/title.gd)
 	_put_covers()
 	if not warmed and shown == "menu" and menu_since >= 0.0 and Time.get_ticks_msec() - menu_since >= C.PORTRAIT_WARM_MS and Portrait.inst != null:
@@ -183,6 +267,7 @@ func _prof_process(_d: float) -> void:
 	# 다른 화면 (연습 창·튜토리얼 창) 은 'ui_blocker' 무리 + blocking() — 여기서 한 번에 정해야 서로 덮어쓰지 않음
 	var others := get_tree().get_nodes_in_group("ui_blocker").any(func(n): return bool(n.call("blocking")))
 	PlayerInput.ui_blocking = settings.visible or shown in ["menu", "lobby", "results"] or focus is LineEdit or others
+	PlayerInput.typing = focus is LineEdit or focus is TextEdit
 	status_box.visible = not Net.is_open() # 연결 중·끊김 글만 (판 시간은 HUD)
 	# 판 중엔 판 시간·튜토리얼 띠 아래 + 받침, 가운데 위 알림·연습 힌트·연습 창과 겹치면 그 아래 (아래 HUD 에 닿으면 그 옆)
 	status_box.position = U.status_box_pos(hud.visible, status_box.size, _avoid_rects(), U.status_room(get_viewport().get_visible_rect().size, _bottom_rects()))
@@ -212,19 +297,49 @@ var _drawn_screen := ""
 var _drawn_at := 0
 
 
+# 화면 판 갱신 구간 (히치 로거 --hitch·F3 가 켜졌을 때만 — --budget 의 분류 합에 겹쳐 세지 않게)
+func _pn() -> int:
+	return Prof.now() if Prof.hitch else 0
+
+
+func _pa(name: String, t0: int) -> void:
+	if Prof.hitch:
+		Prof.add(name, t0)
+
+
 func _refresh_panels(st: Dictionary) -> void:
+	var t := _pn() # W42: 화면 판마다 구간 (--hitch·--perf-log 일 때만)
 	if shown == "game" and not st.is_empty():
 		hud.refresh(st)
+		_pa("panel ·HUD refresh", t)
+		t = _pn()
 		hud_extra.refresh(st)
+		_pa("panel ·HUD extra refresh", t)
 	if shown == "results" and not st.is_empty():
 		results.refresh(st)
+		_pa("panel ·results refresh", t)
+	t = _pn()
+	if (shown == "results" or shown == "lobby") and not st.is_empty():
+		hud.score_band(st, get_viewport().get_visible_rect().size, true) # 판 사이 위 점수 띠 (JS body.ui-dark #score)
+		_pa("panel ·score band", t)
 	if shown == "lobby" and not st.is_empty():
+		t = _pn()
 		lobby.refresh(st)
+		_pa("panel ·lobby refresh", t)
+		t = _pn()
 		hud.warm_faces(st)
+		_pa("panel ·lobby warm faces", t)
+		if Gate.ok("ui.hud") and not Opts.args().has("--no-hud-prebuild"): # W42: 판 HUD 카드 8장을 숨은 채 한 장씩 (판 시작 때 만들던 것)
+			var tp := Gate.t()
+			hud.prebuild_cards(st, get_viewport().get_visible_rect().size)
+			Gate.done("ui.hud", tp)
+			_pa("panel ·HUD card prebuild", tp)
 		var host: bool = st.get("hostId") == Store.my_id
 		host_players.visible = host
 		if host:
+			t = _pn()
 			host_players.refresh(st)
+			_pa("panel ·host players refresh", t)
 
 
 # Enter: 대기실·판 끝에 방장이면 시작 (판 중 Enter 는 블록 하드드롭이라 PlayerInput 이 가짐)

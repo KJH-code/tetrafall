@@ -4,11 +4,9 @@
 // 재접속 (2026-10-28): 들어오면 자리 토큰 (welcome.token). 연결이 끊기면 자리를 RECONNECT_GRACE_MS 동안 유지 (판 중이면 봇 대리),
 // 그 안에 { type: 'rejoin', code, token } 으로 오면 같은 자리 (같은 플레이어 id). 지나면 예전처럼 나감. 같은 토큰이 또 오면 새 접속이 자리를 가져감.
 // 소켓은 { readyState, OPEN, send(text) } 만 쓴다 (테스트는 가짜 소켓).
-import { randomBytes } from 'node:crypto';
-import { CONFIG as C } from '../shared/config.js';
+import { randomBytes, randomInt } from 'node:crypto';
+import { CONFIG as C, maxPlayers } from '../shared/config.js';
 import { Game } from './game.js';
-
-const maxPlayers = () => Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length);
 
 // 방 주소: 터널 주소 + ?room=코드 (tools/online.js 콘솔 안내와 같은 모양)
 export function roomLinkOf(base, code) {
@@ -29,11 +27,17 @@ function cleanText(raw, max) {
   return Array.from(clean).slice(0, max).join('');
 }
 
+// 받은 방 코드: 앞뒤 공백 빼고 대문자로. 방 코드는 ROOM_CODE_LEN 글자라 더 긴 건 어차피 없는 방 → 에러 문구엔 ROOM_CODE_LEN 글자까지만 (S6: 긴 글자를 그대로 되돌려 보내지 않음)
+const codeOf = (raw) => String(raw ?? '').trim().toUpperCase();
+const shownCode = (code) => code.slice(0, C.ROOM_CODE_LEN);
+
 export class Rooms {
   // openLog(code) → { log(msg), close() }: 방마다 로그 (서버는 파일, 테스트는 배열)
+  // rng: 방 코드 뽑기용 난수 (테스트가 정해진 코드를 받으려고 넣음). 없으면 crypto.randomInt (2026-10-30 감사 S5: 코드를 Math.random 으로 추측하기 쉬웠음).
+  //      게임 안 난수 game.rng (시드로 판 재현) 와는 따로
   // serverLog(msg): 방 밖 일 (방 만듦·없앰)
   // now(): 메시지 빈도 제한용 시계 (ms, 테스트는 가짜)
-  constructor({ openLog = () => ({ log() {}, close() {} }), serverLog = () => {}, rng = Math.random, countdownMs = 0, now = () => performance.now() } = {}) {
+  constructor({ openLog = () => ({ log() {}, close() {} }), serverLog = () => {}, rng = null, countdownMs = 0, now = () => performance.now() } = {}) {
     this.now = now;
     this.openLog = openLog;
     this.serverLog = serverLog;
@@ -121,11 +125,11 @@ export class Rooms {
 
   // 토큰으로 같은 자리에 다시 붙기. 방·토큰이 안 맞거나 자리 유지 시간이 지났으면 rejoinError (화면은 보통 들어가기로 다시)
   rejoin(conn, rawCode, token) {
-    const code = String(rawCode ?? '').trim().toUpperCase();
+    const code = codeOf(rawCode);
     const room = this.rooms.get(code);
     const found = room && typeof token === 'string' ? [...room.seats.entries()].find(([, s]) => s.token === token) : null;
     if (!found) {
-      send(conn.ws, { type: 'rejoinError', code, reason: '자리가 없습니다 (시간이 지났거나 방이 없어짐)' });
+      send(conn.ws, { type: 'rejoinError', code: shownCode(code), reason: '자리가 없습니다 (시간이 지났거나 방이 없어짐)' });
       return false;
     }
     const [id, seat] = found;
@@ -160,12 +164,19 @@ export class Rooms {
     return token;
   }
 
+  // 자리 유지 시간: 판을 한 번도 안 한 방이 연결 0명이면 짧게 (S4: 만들고 끊기를 되풀이해 60초씩 ROOM_MAX 를 채우는 것 막기, 그래도 터널 재시작 같은 잠깐 끊김은 버팀), 아니면 RECONNECT_GRACE_MS
+  graceMs(room) {
+    const idle = !room.practice && room.conns.size === 0 && room.game.totals.rounds === 0 && !room.game.inRound();
+    return idle ? C.ROOM_EMPTY_LOBBY_GRACE_MS : C.RECONNECT_GRACE_MS;
+  }
+
   // 끊긴 자리 중 유지 시간이 지난 것: 예전처럼 나감 (판 중이면 접속 끊김 사망), 사람이 0명이면 방도 없앰
   expireSeats(room) {
+    const grace = this.graceMs(room);
     for (const [id, seat] of room.seats) {
-      if (seat.awayAt === null || room.game.time - seat.awayAt < C.RECONNECT_GRACE_MS) continue;
+      if (seat.awayAt === null || room.game.time - seat.awayAt < grace) continue;
       const p = room.game.players.get(id);
-      room.game.log(`  [끊김 만료] ${p ? p.name : id} ${C.RECONNECT_GRACE_MS / 1000}초 안에 안 돌아옴`);
+      room.game.log(`  [끊김 만료] ${p ? p.name : id} ${grace / 1000}초 안에 안 돌아옴`);
       room.seats.delete(id);
       room.game.removePlayer(id);
     }
@@ -204,7 +215,7 @@ export class Rooms {
   newCode() {
     for (;;) {
       let code = '';
-      for (let i = 0; i < C.ROOM_CODE_LEN; i++) code += C.ROOM_CODE_CHARS[Math.floor(this.rng() * C.ROOM_CODE_CHARS.length)];
+      for (let i = 0; i < C.ROOM_CODE_LEN; i++) code += C.ROOM_CODE_CHARS[this.rng ? Math.floor(this.rng() * C.ROOM_CODE_CHARS.length) : randomInt(C.ROOM_CODE_CHARS.length)];
       if (!this.rooms.has(code)) return code;
     }
   }
@@ -259,10 +270,15 @@ export class Rooms {
   }
 
   join(conn, rawCode) {
-    const code = String(rawCode ?? '').trim().toUpperCase();
+    const code = codeOf(rawCode);
     const room = this.rooms.get(code);
     if (!room) {
-      send(conn.ws, { type: 'joinError', reason: `${code || '빈 코드'}: 그런 방이 없습니다 (코드 확인, 사람이 다 나가면 방이 없어짐)` });
+      send(conn.ws, { type: 'joinError', reason: `${shownCode(code) || '빈 코드'}: 그런 방이 없습니다 (코드 확인, 사람이 다 나가면 방이 없어짐)` });
+      return false;
+    }
+    if (room.tutorial) {
+      // 튜토리얼 방은 혼자 하는 방 (S8: 손님이 들어와 단계 판정을 어지럽히지 못하게)
+      send(conn.ws, { type: 'joinError', reason: '튜토리얼 방은 혼자 하는 방이라 들어갈 수 없습니다' });
       return false;
     }
     const player = room.game.addPlayer(conn.id);
@@ -294,9 +310,9 @@ export class Rooms {
     }
   }
 
-  close(room) {
+  close(room, why = '사람 0명') {
     room.game.removeAllBots();
-    room.out.log(`방 ${room.code} 닫음 (사람 0명)`);
+    room.out.log(`방 ${room.code} 닫음 (${why})`);
     room.out.close();
     this.rooms.delete(room.code);
     this.serverLog(`방 ${room.code} 닫음 (방 ${this.rooms.size}개)`);

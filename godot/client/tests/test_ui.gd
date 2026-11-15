@@ -140,7 +140,7 @@ func test_status_avoids_top_box() -> void:
 	check(U.status_box_pos(true, Vector2.ZERO, [banner]) == base, "크기 0 이면 그대로")
 
 
-# 연습 방 왼쪽 위 힌트 '연습 창 Tab'·연습 창 (practice.gd, 둘 다 (16, 110), 위 층 CanvasLayer 15) 도 피함 (사이클 5 수정 리뷰 1:
+# 연습 방 왼쪽 위 힌트 '연습 창 Tab'·연습 창 (practice.gd — 병합 뒤 자리는 둘 다 (14, 70), 아래 숫자는 계산만 보는 예전 자리 (16, 110) 그대로. 위 층 CanvasLayer 15) 도 피함 (사이클 5 수정 리뷰 1:
 # 끊긴 동안 상태 글 (16, 108) 이 힌트와 겹쳐 뭉개지고, 연습 창을 열면 통째로 가려졌음). 아래로 내리다 아래 HUD (F·R 칸) 에 닿으면 막은 칸 오른쪽 옆
 func test_status_avoids_practice() -> void:
 	var size := Vector2(272, 26)
@@ -192,7 +192,7 @@ func test_practice_avoid_rects() -> void:
 	var size := Vector2(272, 26)
 	var room := U.status_room(Vector2(1280, 720))
 	var r: Array = p.avoid_rects()
-	check(r.size() == 1 and (r[0] as Rect2).position == Vector2(16, 110) and (r[0] as Rect2).size.y > 0.0, "힌트만: %s" % str(r))
+	check(r.size() == 1 and (r[0] as Rect2).position == Vector2(14, 70) and (r[0] as Rect2).size.y > 0.0, "힌트만: %s" % str(r))
 	if r.size() == 1:
 		var at := U.status_box_pos(true, size, r, room)
 		check(not Rect2(at, size).intersects(r[0]) and room.encloses(Rect2(at, size)), "받침이 힌트와 안 겹침: %s" % str(at))
@@ -201,7 +201,7 @@ func test_practice_avoid_rects() -> void:
 	check(p.open and p.win.visible and not p.hint.visible, "창 열림 → 힌트 숨김")
 	p.win.size = Vector2(300, 400) # 트리 밖이라 컨테이너가 크기를 못 잼 (러너가 트리 시작 전에 돎) — 실제 크기는 화면 사진으로
 	r = p.avoid_rects()
-	check(r.size() == 1 and r[0] == Rect2(16, 110, 300, 400), "연습 창만 (힌트 숨김): %s" % str(r))
+	check(r.size() == 1 and r[0] == Rect2(14, 70, 300, 400), "연습 창만 (힌트 숨김): %s" % str(r))
 	if r.size() == 1:
 		var at := U.status_box_pos(true, size, r, room)
 		check(not Rect2(at, size).intersects(r[0]) and room.encloses(Rect2(at, size)), "받침이 연습 창과 안 겹침: %s" % str(at))

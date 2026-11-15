@@ -3,11 +3,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG as C } from '../shared/config.js';
 import { stageYaw, tauntAt, randomReel } from '../shared/char-select.js';
+import { lcg } from './support/rng.js';
 
-function seeded(seed) {
-  let s = seed >>> 0;
-  return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
-}
+const seeded = lcg;
 
 test('고르면 도발하는 동안 정면, 그 뒤 CHAR_STAGE_SPIN 으로 천천히 돎', () => {
   const hold = C.EMOTE_MS / 1000;

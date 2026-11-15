@@ -22,7 +22,7 @@ public class TunnelTests
     {
         public double now;
         public readonly List<FakeProc> procs = new();
-        public readonly List<string> ready = new(), status = new();
+        public readonly List<string> ready = new(), status = new(), texts = new(), outs = new();
         public Func<int, string> outputOf = n => $"INF |  https://word-{n}-tetra.trycloudflare.com  |";
         public Func<string, int, bool> probe = (_, _) => true; // (주소, 몇 번째 확인)
         int probes;
@@ -44,7 +44,7 @@ public class TunnelTests
                     ready.Add(url);
                     k.Stop(); // 열리면 끝 (지키기 고리는 따로)
                 },
-                OnStatus = (kind, text, _) => status.Add(kind),
+                OnStatus = (kind, text, output) => { status.Add(kind); texts.Add(text); outs.Add(output ?? ""); },
                 Sleep = ms =>
                 {
                     now += ms;
@@ -82,6 +82,20 @@ public class TunnelTests
         Assert.True(r.procs[0].Killed);
         Assert.Contains("restart", r.status);
         Assert.True(r.now >= C.TUNNEL_READY_TIMEOUT_MS);
+    }
+
+    [Fact]
+    public async Task T3_포기할_때_마지막_출력을_같이_넘기고_실패_표시는_다시_켜는_횟수만()
+    {
+        var r = new Rig { outputOf = _ => "ERR failed to request quick Tunnel: https://api.trycloudflare.com" };
+        Assert.False(await r.Keeper().Run());
+        Assert.Equal("give-up", r.status[^1]);
+        Assert.Contains("ERR failed", r.outs[^1]);
+        var restarts = r.texts.Where((_, i) => r.status[i] == "restart").ToList();
+        Assert.Equal((int)C.TUNNEL_MAX_RESTARTS + 1, restarts.Count);
+        var shown = restarts.Select(t => System.Text.RegularExpressions.Regex.Match(t, @"\((\d+)/(\d+)\)")).Where(m => m.Success).Select(m => int.Parse(m.Groups[1].Value)).ToList();
+        Assert.Equal(Enumerable.Range(1, (int)C.TUNNEL_MAX_RESTARTS), shown); // 1/5 … 5/5, 6/5 없음
+        Assert.DoesNotContain("다시 켭니다", restarts[^1]);
     }
 
     [Fact]

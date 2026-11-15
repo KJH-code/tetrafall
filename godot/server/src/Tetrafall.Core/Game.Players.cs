@@ -93,8 +93,16 @@ public sealed partial class Game
         p.away = on;
         if (on)
         {
-            proxies[id] = new BotBrain(() => rng(), () => botLevel);
-            Log($"  [끊김] {p.name} 자리 유지 {JsNumber.ToJs(C.RECONNECT_GRACE_MS / 1000)}초{(InRound() ? " (봇 대리)" : "")}");
+            // 연습·튜토리얼 방은 봇이 대신 조종하지 않음 (허수아비와 싸우며 60초 노는 것 방지) — 입력만 0
+            bool proxy = mode != "practice";
+            if (proxy) proxies[id] = new BotBrain(() => rng(), () => botLevel);
+            else
+            {
+                p.input.fwd = 0;
+                p.input.strafe = 0;
+                p.input.jump = false;
+            }
+            Log($"  [끊김] {p.name} 자리 유지 {JsNumber.ToJs(C.RECONNECT_GRACE_MS / 1000)}초{(proxy && InRound() ? " (봇 대리)" : "")}");
         }
         else
         {
@@ -113,13 +121,16 @@ public sealed partial class Game
     {
         var p = GetPlayer(id);
         if (p == null) return;
+        if (p.grab != null) HookGrabDrop(p); // 갈고리 R 로 뽑는 중에 나가면 뽑던 블록은 제자리로 (안 그러면 그 칸이 격자에서 사라짐)
         players.Remove(id);
         bots.Remove(id);
         proxies.Remove(id);
         Log($"{p.name} {(p.isBot ? "빠짐" : "접속 종료")}");
         if (hostId == id)
         {
-            var next = Players().FirstOrDefault(o => !o.isBot);
+            // 연결이 살아 있는 사람 먼저 (끊겨 자리만 남은 사람은 마지막)
+            var humans = Players().Where(o => !o.isBot).ToList();
+            var next = humans.FirstOrDefault(o => !o.away) ?? humans.FirstOrDefault();
             hostId = next?.id;
         }
         foreach (var pc in pieces) if (pc.controller == id) pc.controller = null;

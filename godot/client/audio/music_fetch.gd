@@ -2,6 +2,7 @@
 # (addons/web_music 내보내기 플러그인 → 웹 빌드 폴더 music/) 쓸 때 여기서 하나씩 받음. PC 는 pck 안 그대로 (sfx.stream).
 # 방에 들어가면 미리 받기 시작 (대기실 곡 → 지금 맵 곡 → 긴장 곡 → 나머지 순), 아직 못 받은 곡은 null → 곡 없이 조용히 넘어감
 extends Node
+const Opts := preload("res://core/opts.gd")
 
 const SM := preload("res://audio/sound_math.gd")
 const RETRY_MS := 15000 # 받기 실패하면 이만큼 뒤에 다시
@@ -17,7 +18,7 @@ var http: HTTPRequest
 
 
 func _ready() -> void:
-	if OS.has_feature("web"):
+	if Opts.web():
 		remote = true
 		base = str(JavaScriptBridge.eval("new URL('music/', location.href).href", true))
 	http = HTTPRequest.new()

@@ -117,11 +117,11 @@ export class TutorialUI {
   update(state, me) {
     const t = state && state.tutorial;
     if (!t) {
-      this.band.classList.add('hidden');
+      this.band.classList.toggle('hidden', true);
       return;
     }
     if (t.done) {
-      this.band.classList.add('hidden');
+      this.band.classList.toggle('hidden', true);
       if (!this.doneShown) {
         this.doneShown = true;
         const msg = doneMessage(t.results);
@@ -133,7 +133,7 @@ export class TutorialUI {
       }
       return;
     }
-    this.band.classList.remove('hidden');
+    this.band.classList.toggle('hidden', false);
     this.band.classList.toggle('done', !!t.ok);
     const step = tutorialStep(t.id);
     const char = (me && me.char) || this.char;

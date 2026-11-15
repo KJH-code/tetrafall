@@ -3,6 +3,7 @@
 extends RefCounted
 
 const C := preload("res://core/config.gd")
+const K := preload("res://chars/chars_config.gd")
 
 
 static func _ease(u: float) -> float:
@@ -33,6 +34,11 @@ static func motor(st: Dictionary) -> Dictionary:
 		m = minf(m, C.RAGDOLL_STUN_MOTOR + (1.0 - C.RAGDOLL_STUN_MOTOR) * _ease(float(ss) / C.RAGDOLL_STUN_RECOVER_S))
 	if st.get("stunned", false):
 		m = minf(m, C.RAGDOLL_STUN_MOTOR)
+		snap = 0.0
+	# W52 낙하가 끝난 뒤 (판 가장자리 아래로 내려갔다 돌아옴): 모터가 0.002 에서 한 프레임에 1~1.6 으로 뛰어 물리 몸이 목표로 휙 끌려가던 것 (재연 탱크 방패 내려치기 뒤 전신 100~170° 튐) → 경직과 같은 완화
+	var sf = st.get("sinceFall")
+	if sf != null and K.flag("pop_fix") and is_finite(float(sf)) and float(sf) < K.RAGDOLL_FALL_RECOVER_S and not st.get("falling", false):
+		m = minf(m, C.RAGDOLL_FALL_MOTOR + (1.0 - C.RAGDOLL_FALL_MOTOR) * _ease(float(sf) / K.RAGDOLL_FALL_RECOVER_S))
 		snap = 0.0
 	if st.get("falling", false):
 		m = minf(m, C.RAGDOLL_FALL_MOTOR)

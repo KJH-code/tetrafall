@@ -4,7 +4,7 @@ import { CONFIG as C } from '../shared/config.js';
 import { EPS } from './game-util.js';
 
 export class HunterPart {
-  // ---- 사냥꾼 (2026-10-26, docs/characters.md 3.5) ----
+  // ---- 사냥꾼 (2026-10-26, DevVault Projects/Tetrafall/Characters 3.5) ----
   // R 게이지 필요량 (사냥꾼은 HUNTER_ULT_MULT 배)
   ultMax(p) {
     return C.ULT_MAX * (p && p.char === 'hunter' ? C.HUNTER_ULT_MULT : 1);

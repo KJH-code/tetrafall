@@ -3,33 +3,20 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Rooms } from '../server/rooms.js';
 import { CONFIG as C } from '../shared/config.js';
+import { TICK } from './support/tick.js';
+import { fakeWs } from './support/fake-ws.js';
+import { lcg } from './support/rng.js';
 
-const TICK = 1000 / C.TICK_RATE;
 const SEED0 = Number(process.env.TEST_SEED || 1);
-
-function fakeWs() {
-  return {
-    OPEN: 1,
-    readyState: 1,
-    msgs: [],
-    send(text) {
-      this.msgs.push(JSON.parse(text));
-    },
-    last(type) {
-      return [...this.msgs].reverse().find((m) => m.type === type);
-    },
-  };
-}
 
 function setup(seed = SEED0) {
   const logs = {};
-  let s = seed >>> 0;
   const rooms = new Rooms({
     openLog: (code) => {
       logs[code] = [];
       return { log: (m) => logs[code].push(m), close() {} };
     },
-    rng: () => ((s = (s * 1664525 + 1013904223) >>> 0), s / 2 ** 32),
+    rng: lcg(seed),
   });
   const connect = () => {
     const ws = fakeWs();
@@ -47,10 +34,7 @@ function twoInRoom(seed) {
   const b = env.connect();
   env.rooms.message(b.conn, { type: 'join', code });
   const room = env.rooms.rooms.get(code);
-  room.game.rng = (() => {
-    let s = (seed * 7919) >>> 0;
-    return () => ((s = (s * 1664525 + 1013904223) >>> 0), s / 2 ** 32);
-  })();
+  room.game.rng = lcg(seed * 7919);
   return { ...env, a, b, code, room, game: room.game };
 }
 
@@ -216,6 +200,7 @@ test('판 중 끊기고 60초 안 옴: 예전처럼 접속 끊김 사망 (살아
 test('사람이 다 끊겨도 방은 60초 뒤에 없어짐, 그 안에 돌아오면 방 그대로', () => {
   const { rooms, a, b, code } = twoInRoom(7);
   const tb = b.ws.last('welcome').token;
+  rooms.rooms.get(code).game.totals.rounds = 1; // 한 판 한 방으로 침 (한 판도 안 한 방은 ROOM_EMPTY_LOBBY_GRACE_MS 로 짧음 — S4)
   rooms.disconnect(a.conn);
   rooms.disconnect(b.conn);
   ticks(rooms, 30000);

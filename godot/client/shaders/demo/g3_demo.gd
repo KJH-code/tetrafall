@@ -2,6 +2,7 @@
 #   xvfb-run -a godot --path godot/client --rendering-driver opengl3 res://shaders/demo/g3_demo.tscn -- --shot /tmp/g3.png [--theme crystal]
 # 물체 자리는 게임 좌표 (x, y, z 위) — core/coords 로 고도 좌표
 extends Node3D
+const Opts := preload("res://core/opts.gd")
 
 const C := preload("res://core/config.gd")
 const G3 := preload("res://shaders/g3.gd")
@@ -35,7 +36,7 @@ var terrain := false # --terrain: 테마 지형 블록 (terrain_grids.json, js_d
 
 
 func _ready() -> void:
-	var args := OS.get_cmdline_user_args()
+	var args := Opts.args()
 	if OS.has_feature("web"): # 웹 판 확인: 주소 ?args=--theme+crystal+--terrain → 같은 인자 (tools/web_g3.cjs)
 		var q = JavaScriptBridge.eval("new URLSearchParams(location.search).get('args') || ''", true)
 		args = PackedStringArray(str(q).split(" ", false))

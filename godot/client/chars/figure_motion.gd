@@ -48,26 +48,47 @@ static func _spring_one(x: float, v: float, tg: float, n: int, h: float, kk: flo
 	return [x, v]
 
 
-# P 를 T 쪽으로 스프링으로 (속도 V). 작은 걸음으로 나눠 안정하게
+static var _sp_wd := {} # 관절 이름 → [w, damp] (FIGURE_SPRING[SPRING_GROUP] 를 한 번만 찾음)
+
+
+# P 를 T 쪽으로 스프링으로 (속도 V). 작은 걸음으로 나눠 안정하게.
+# (W15: 같은 셈을 칸마다 배열 없이 — 예전엔 칸마다 [x, v] 배열을 만들어 돌려받아 8명 판에서 프레임마다 100개 넘게 만들던 것)
 static func spring_pose(P: Dictionary, V: Dictionary, T: Dictionary, dt: float, fast: float = 1.0) -> void:
 	var n := maxi(1, ceili(dt / C.FIGURE_SPRING_STEP))
 	var h := dt / n
 	for key in T:
+		var tv = T[key]
 		if not V.has(key):
-			V[key] = [0.0, 0.0] if T[key] is Array else 0.0
-		var sp: Dictionary = C.FIGURE_SPRING[SPRING_GROUP.get(key, "body")]
-		var w: float = sp.w * fast
+			V[key] = [0.0, 0.0] if tv is Array else 0.0
+		var wd = _sp_wd.get(key)
+		if wd == null:
+			var sp: Dictionary = C.FIGURE_SPRING[SPRING_GROUP.get(key, "body")]
+			wd = [float(sp.w), float(sp.damp)]
+			_sp_wd[key] = wd
+		var w: float = wd[0] * fast
 		var kk := w * w
-		var c: float = 2.0 * sp.damp * w
-		if T[key] is Array:
-			for i in T[key].size():
-				var r := _spring_one(P[key][i], V[key][i], T[key][i], n, h, kk, c)
-				P[key][i] = r[0]
-				V[key][i] = r[1]
+		var c: float = 2.0 * wd[1] * w
+		if tv is Array:
+			var pa: Array = P[key]
+			var va: Array = V[key]
+			for i in tv.size():
+				var x: float = pa[i]
+				var v: float = va[i]
+				var tg: float = tv[i]
+				for j in n:
+					v += (kk * (tg - x) - c * v) * h
+					x += v * h
+				pa[i] = x
+				va[i] = v
 		else:
-			var r := _spring_one(P[key], V[key], T[key], n, h, kk, c)
-			P[key] = r[0]
-			V[key] = r[1]
+			var x: float = P[key]
+			var v: float = V[key]
+			var tg: float = tv
+			for j in n:
+				v += (kk * (tg - x) - c * v) * h
+				x += v * h
+			P[key] = x
+			V[key] = v
 
 
 # 맞은 순간 자세 (히트스톱 동안 이대로 멈칫). dx·dy = 밀려나는 방향 (몸 기준, 앞 +x 왼쪽 +y), power = 세기
@@ -87,10 +108,19 @@ static func hit_pose(T: Dictionary, dx: float, dy: float, power: float) -> void:
 static func step_sway(sw: Dictionary, dt: float) -> void:
 	var n := maxi(1, ceili(dt / 0.01))
 	var h := dt / n
+	var x: float = sw.x
+	var y: float = sw.y
+	var vx: float = sw.vx
+	var vy: float = sw.vy
 	for i in n:
-		for pair in [["x", "vx"], ["y", "vy"]]:
-			sw[pair[1]] += (-C.FIGURE_HIT_SPRING_K * sw[pair[0]] - C.FIGURE_HIT_SPRING_DAMP * sw[pair[1]]) * h
-			sw[pair[0]] += sw[pair[1]] * h
+		vx += (-C.FIGURE_HIT_SPRING_K * x - C.FIGURE_HIT_SPRING_DAMP * vx) * h
+		x += vx * h
+		vy += (-C.FIGURE_HIT_SPRING_K * y - C.FIGURE_HIT_SPRING_DAMP * vy) * h
+		y += vy * h
+	sw.x = x
+	sw.y = y
+	sw.vx = vx
+	sw.vy = vy
 
 
 # 공격·포즈 자세를 P 에 바로 덮어씀 (w = 0~1 섞는 정도). crouch 는 T 의 다리에서 두 무릎을 더 굽힘. V (관절 속도) 는 덮어쓴 만큼 줄임

@@ -23,6 +23,7 @@ var sky := false # 하늘 시점: 마우스 회전 무시
 var sensitivity := 1.0
 var wheel = null # 이모트 바퀴: 연 뒤 마우스 이동량 Vector2
 var ui_blocking := false # 메뉴·글자 칸이 열려 있으면 화면 묶음이 true (게임 키 안 받음)
+var typing := false # 글자 칸에 커서 (ui.gd 가 정함). 막혀 있어도 글자 칸이 아니면 성능 표시 키는 됨 (JS 는 글 칠 때만 키를 안 받음 — F3 은 메뉴·대기실에서도)
 var override = null # 시험·자동 조종: 이 dict 를 input 대신 보냄 (client debug.inputOverride)
 var _send_acc := 0.0
 
@@ -31,6 +32,8 @@ func _ready() -> void:
 	set_binds(Keys.load_binds())
 	Store.state_changed.connect(_on_state)
 	Store.joined.connect(func(_room, rejoined): _on_joined(rejoined))
+	Store.left_room.connect(_on_left_room)
+	Net.message.connect(_on_message)
 	Store.game_event.connect(_on_event)
 
 
@@ -58,19 +61,83 @@ func lock_mouse(on: bool) -> void:
 	if DisplayServer.get_name() != "headless":
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if on else Input.MOUSE_MODE_VISIBLE
 	if not on:
-		keys.clear()
+		release_all()
 
 
-# 들어오면 시작 자리 방향을 봄, 재접속이면 다음 스냅샷의 내 방향
+# 눌린 키 전부 놓음 + 누르고 있어야 열려 있는 것 (이모트 바퀴·도움말·킬 점수전 점수표) 닫기 (input.js releaseAll).
+# 창이 포커스를 잃거나 마우스가 풀릴 때 — 예전엔 Esc 로 풀면 keys 만 비워 G 바퀴가 열린 채 남고, 다시 잡아도 바퀴가 마우스를 가로채 시점이 안 돎
+func release_all() -> void:
+	keys.clear()
+	if wheel != null:
+		wheel = null
+		wheel_changed.emit(-2)
+	ui_action.emit("help", false)
+	ui_action.emit("practice", false)
+
+
+# 판 크기별 시작 자리 (shared/config.js spawnPointsFor = spawnPoints(W, D, SPAWN_INSET)). 안쪽 거리는 기본 판 첫 자리 x 와 같음
+static func spawn_points_for(w: float, d: float) -> Array:
+	var inset: float = C.SPAWN_POINTS[0].x
+	var out := []
+	for xy in [[inset, inset], [w - inset, d - inset], [w - inset, inset], [inset, d - inset], [w / 2.0, inset], [w / 2.0, d - inset], [inset, d / 2.0], [w - inset, d / 2.0]]:
+		out.append({"x": xy[0], "y": xy[1], "yaw": atan2(d / 2.0 - xy[1], w / 2.0 - xy[0])})
+	return out
+
+
+# 들어오면 시작 자리 방향을 봄 (welcome.slot, main.js), 재접속이면 다음 스냅샷의 내 방향
 var _aim_from_state := false
 
 
 func _on_joined(rejoined: bool) -> void:
 	_aim_from_state = rejoined
-	if not rejoined:
-		var p := Store.me()
-		if not p.is_empty():
-			set_yaw_pitch(p.yaw, 0)
+
+
+# 방을 나가면 마우스 풀기 (main.js leftRoom 의 exitPointerLock) — 안 풀면 메뉴에서 커서가 안 보임
+func _on_left_room(_reason: String) -> void:
+	lock_mouse(false)
+
+
+func _on_message(m: Dictionary) -> void:
+	if str(m.get("type", "")) == "welcome" and not m.get("rejoined", false) and m.get("slot") != null:
+		var sp: Dictionary = C.SPAWN_POINTS[int(m.slot) % C.SPAWN_POINTS.size()]
+		set_yaw_pitch(sp.yaw, 0)
+
+
+func _on_state(st: Dictionary, prev: Dictionary) -> void:
+	var p := Store.me()
+	if _aim_from_state and not p.is_empty():
+		set_yaw_pitch(p.yaw, p.get("pitch", 0.0))
+		_aim_from_state = false
+	var ph := str(st.get("phase", ""))
+	enabled = (ph == "playing" or ph == "countdown") and not p.is_empty() and p.alive
+	# 마인크래프트처럼: 판이 시작될 때 (카운트다운·들어올 때 이미 판 중) 마우스를 자동으로 잡음. 화면 클릭을 기다리지 않음.
+	# Esc 로 푼 뒤엔 다음 판 시작 또는 화면 클릭 때까지 그대로 (판 중간엔 다시 안 잡음)
+	var active := ph == "playing" or ph == "countdown"
+	var was_active := str(prev.get("phase", "")) in ["playing", "countdown"]
+	if active and not was_active and not locked and _can_auto_capture():
+		lock_mouse(true)
+	# 판 사이 (결과·대기실) 에는 마우스를 풀어 커서가 보이게: 잡은 채로 대기실에 오면 버튼을 누를 수 없고 커서도 안 보임. 다시 잡는 건 '화면 클릭' (연습 방은 판이 안 끝남)
+	if locked and not Store.room.get("practice", false) and (ph == "over" or ph == "lobby" or ph == ""):
+		lock_mouse(false)
+	# 판이 새로 시작되면 시점을 스폰 방향으로 (main.js onState) — 예전엔 판이 바뀌어도 전 판 끝에 보던 쪽 그대로
+	if not p.is_empty() and not prev.is_empty() and _round_n(prev) != _round_n(st):
+		var f: Dictionary = st.get("field", {})
+		var pts: Array = spawn_points_for(float(f.w), float(f.d)) if f.has("w") else C.SPAWN_POINTS
+		set_yaw_pitch(pts[int(p.slot) % pts.size()].yaw, 0)
+
+
+# 자동으로 잡아도 되는 때: 방 안, 창이 켜져 있고 포커스가 있음, 설정·글자 칸 같은 메뉴가 안 열려 있음
+func _can_auto_capture() -> bool:
+	if not Store.in_room() or ui_blocking:
+		return false
+	if DisplayServer.get_name() == "headless":
+		return true
+	return DisplayServer.window_is_focused()
+
+
+static func _round_n(st: Dictionary):
+	var rd = st.get("round")
+	return rd.get("n") if rd is Dictionary else null
 
 
 # 튜토리얼 단계가 바뀜 (서버 이벤트 tutorialStep {who, yaw}): 내 것이면 그 단계 처음 자리에서 볼 쪽 (yaw), 아니면 null
@@ -83,19 +150,11 @@ static func step_yaw(e: Dictionary, my_id):
 	return float(e.get("yaw"))
 
 
+# 튜토리얼 단계 처음: 그 자리에서 볼 쪽으로 (main.js handleEvent tutorialStep)
 func _on_event(e: Dictionary) -> void:
 	var y = step_yaw(e, Store.my_id)
 	if y != null:
 		set_yaw_pitch(float(y), 0)
-
-
-func _on_state(st: Dictionary, _prev: Dictionary) -> void:
-	var p := Store.me()
-	if _aim_from_state and not p.is_empty():
-		set_yaw_pitch(p.yaw, p.get("pitch", 0.0))
-		_aim_from_state = false
-	var ph := str(st.get("phase", ""))
-	enabled = (ph == "playing" or ph == "countdown") and not p.is_empty() and p.alive
 
 
 func _process(delta: float) -> void:
@@ -118,16 +177,18 @@ func _prof_process(delta: float) -> void:
 
 func _input(e: InputEvent) -> void:
 	if ui_blocking:
+		_input_blocked(e)
 		return
 	if e is InputEventMouseMotion:
+		# screen_relative = 창 픽셀 (relative 는 UI 배율 (core/ui_scale.gd) 로 나눈 UI 좌표라 창 크기마다 감도가 바뀜, W9)
 		if wheel != null:
-			wheel += e.relative
+			wheel += e.screen_relative
 			wheel_changed.emit(wheel_pick())
 			return
 		if not locked or sky:
 			return
-		yaw -= e.relative.x * C.MOUSE_SENSITIVITY * sensitivity
-		pitch -= e.relative.y * C.MOUSE_SENSITIVITY * sensitivity
+		yaw -= e.screen_relative.x * C.MOUSE_SENSITIVITY * sensitivity
+		pitch -= e.screen_relative.y * C.MOUSE_SENSITIVITY * sensitivity
 		var lim := PI / 2 - 0.05
 		pitch = clampf(pitch, -lim, lim)
 		return
@@ -158,14 +219,30 @@ func _input(e: InputEvent) -> void:
 			up(code)
 
 
+# 창·글자 칸이 떠 있을 때: 뗌은 그대로 받음 (JS keyup·mouseup 은 글 칠 때도 받음 — 누른 채 창이 열리면 키가 눌린 채로 남아 계속 걷던 것),
+# 글자 칸이 아니면 성능 표시 키도 (JS F3 은 메뉴·대기실에서도 됨)
+func _input_blocked(e: InputEvent) -> void:
+	if e is InputEventMouseButton and not e.pressed:
+		up(Keys.event_code(e))
+	elif e is InputEventKey and not e.echo:
+		var code := Keys.norm_code(Keys.event_code(e))
+		if not e.pressed:
+			up(code)
+		elif not typing and ("perf" in by_code.get(code, []) or "report" in by_code.get(code, [])): # W48: 보고서 복사 (F4) 도 메뉴·대기실에서
+			for id in ["perf", "report"]:
+				if id in by_code.get(code, []):
+					ui_action.emit(id, true)
+			if get_viewport() != null:
+				get_viewport().set_input_as_handled()
+		elif not typing and "motionToggle" in by_code.get(code, []): # W49: 설정 창이 떠 있어도 (창을 연 채 새↔옛 비교)
+			ui_action.emit("motionToggle", true)
+			if get_viewport() != null:
+				get_viewport().set_input_as_handled()
+
+
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
-		keys.clear()
-		if wheel != null:
-			wheel = null
-			wheel_changed.emit(-2)
-		ui_action.emit("help", false)
-		ui_action.emit("practice", false)
+		release_all()
 
 
 # 코드를 누름 → 묶인 행동들 실행. 행동이 하나라도 있으면 true
@@ -201,7 +278,7 @@ func _act(a: Dictionary) -> void:
 
 
 func press(id: String) -> void:
-	if id in ["help", "view", "practice", "perf", "tutSkip"]:
+	if id in ["help", "view", "practice", "perf", "report", "tutSkip", "motionToggle"]:
 		ui_action.emit(id, true)
 		return
 	if id == "viewL" or id == "viewR":

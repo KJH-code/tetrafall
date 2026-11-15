@@ -1,0 +1,922 @@
+{
+  "chars": {
+    "hook": {
+      "clip_flicker": 1,
+      "cloth_pen": {
+        "frames": 1,
+        "max": 0.023,
+        "of": 291
+      },
+      "excluded": 879,
+      "foot": {
+        "float": 0,
+        "float_max": 0.0,
+        "ground_frames": 123,
+        "sunk": 5,
+        "sunk_min": -0.057
+      },
+      "idle_drift": {
+        "bad": 6,
+        "mean": 0.161,
+        "n": 6,
+        "p95": 0.214
+      },
+      "jitter": {
+        "bad": 0,
+        "windows": 0,
+        "worst_bone": "",
+        "worst_rms": 0.0
+      },
+      "label_flicker": {
+        "act→air": 1,
+        "act→rag": 1,
+        "air→act": 2,
+        "air→land": 1,
+        "air→rag": 1,
+        "idle→act": 4,
+        "idle→rag": 2,
+        "land→act": 1,
+        "loco→air": 1
+      },
+      "limit_worst": {},
+      "limits": {},
+      "pop_by": {
+        "limb": 24,
+        "torso": 1
+      },
+      "pop_worst": 152.5,
+      "pop_worst_bone": "Hips",
+      "pops": 25,
+      "pops_soft": 310,
+      "samples": 2633,
+      "seam": {
+        "act→air": {
+          "bone": "LeftArm",
+          "clip": "jump",
+          "jump_max": 0.8,
+          "jump_mean": 0.8,
+          "n": 1,
+          "peak_max": 21.2,
+          "peak_mean": 21.2
+        },
+        "act→idle": {
+          "bone": "RightArm",
+          "clip": "idle",
+          "jump_max": 2.3,
+          "jump_mean": 2.3,
+          "n": 2,
+          "peak_max": 96.3,
+          "peak_mean": 68.2
+        },
+        "act→rag": {
+          "bone": "RightArm",
+          "clip": "k_hook",
+          "jump_max": 65.7,
+          "jump_mean": 44.0,
+          "n": 30,
+          "peak_max": 96.3,
+          "peak_mean": 92.5
+        },
+        "air→act": {
+          "bone": "LeftArm",
+          "clip": "k_hook",
+          "jump_max": 5.9,
+          "jump_mean": 4.5,
+          "n": 2,
+          "peak_max": 33.4,
+          "peak_mean": 33.4
+        },
+        "air→land": {
+          "bone": "RightLeg",
+          "clip": "land",
+          "jump_max": 24.7,
+          "jump_mean": 24.7,
+          "n": 1,
+          "peak_max": 24.7,
+          "peak_mean": 24.7
+        },
+        "idle→act": {
+          "bone": "LeftArm",
+          "clip": "k_hook",
+          "jump_max": 15.4,
+          "jump_mean": 7.5,
+          "n": 5,
+          "peak_max": 33.4,
+          "peak_mean": 26.8
+        },
+        "idle→rag": {
+          "bone": "RightArm",
+          "clip": "idle",
+          "jump_max": 37.6,
+          "jump_mean": 36.2,
+          "n": 2,
+          "peak_max": 96.3,
+          "peak_mean": 96.3
+        },
+        "land→act": {
+          "bone": "LeftArm",
+          "clip": "k_hook",
+          "jump_max": 2.3,
+          "jump_mean": 2.3,
+          "n": 1,
+          "peak_max": 33.4,
+          "peak_mean": 33.4
+        },
+        "loco→act": {
+          "bone": "LeftLeg",
+          "clip": "k_hook",
+          "jump_max": 48.3,
+          "jump_mean": 48.3,
+          "n": 1,
+          "peak_max": 48.3,
+          "peak_mean": 48.3
+        },
+        "rag→act": {
+          "bone": "RightArm",
+          "clip": "k_shot",
+          "jump_max": 25.3,
+          "jump_mean": 24.3,
+          "n": 25,
+          "peak_max": 67.7,
+          "peak_mean": 26.8
+        },
+        "rag→idle": {
+          "bone": "LeftArm",
+          "clip": "idle",
+          "jump_max": 16.0,
+          "jump_mean": 15.6,
+          "n": 4,
+          "peak_max": 23.3,
+          "peak_mean": 19.8
+        },
+        "rag→loco": {
+          "bone": "LeftLeg",
+          "clip": "run",
+          "jump_max": 16.1,
+          "jump_mean": 15.4,
+          "n": 2,
+          "peak_max": 52.0,
+          "peak_mean": 39.6
+        }
+      },
+      "slide": {
+        "fwd": {
+          "bad": 1,
+          "mean": 1.494,
+          "n": 1,
+          "p95": 1.494
+        }
+      },
+      "stretch": {
+        "cloth_hi": 226,
+        "cloth_max": 11.64,
+        "hi": 242,
+        "lo": 97,
+        "max": 8.0,
+        "min": 0.11,
+        "samples": 291
+      },
+      "weapon_pen": {
+        "frames": 0,
+        "max": 0.0,
+        "samples": 0
+      }
+    }
+  },
+  "meta": {
+    "hz": 60.0,
+    "rec": "prac_hook.rec",
+    "samples": 2647,
+    "secs": 44.1250000000022,
+    "thr": {
+      "pop_cloth": 80.0,
+      "pop_end": 60.0,
+      "pop_torso": 35.0
+    }
+  },
+  "top": {
+    "flicker": [
+      {
+        "bone": "(코드)→idle",
+        "char": "hook",
+        "clip": "idle",
+        "pid": 6,
+        "sev": 0.283,
+        "state": "idle",
+        "t": 0.15
+      }
+    ],
+    "jitter": [],
+    "limit": [],
+    "pen": [
+      {
+        "bone": "Skirt3_1",
+        "char": "hook",
+        "clip": "k_hook",
+        "pid": 6,
+        "sev": 0.023,
+        "state": "act",
+        "t": 23.917
+      }
+    ],
+    "pop": [
+      {
+        "bone": "Hips",
+        "char": "hook",
+        "clip": "k_spin",
+        "cls": "torso",
+        "extra": "fade 1.00 cw 0.47 since_lab 0.02 since_clip 0.02",
+        "jerk": 152.503,
+        "pid": 6,
+        "sev": 152.503,
+        "state": "act 갈고리 스핀/rec",
+        "t": 32.35
+      },
+      {
+        "bone": "LeftArm",
+        "char": "hook",
+        "clip": "k_spin",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 0.47 since_lab 0.02 since_clip 0.02",
+        "jerk": 66.341,
+        "pid": 6,
+        "sev": 66.341,
+        "state": "act 갈고리 스핀/rec",
+        "t": 32.35
+      },
+      {
+        "bone": "RightArm",
+        "char": "hook",
+        "clip": "jump",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 0.47 since_lab 0.02 since_clip 0.02",
+        "jerk": 56.556,
+        "pid": 6,
+        "sev": 56.556,
+        "state": "air",
+        "t": 41.75
+      },
+      {
+        "bone": "RightLeg",
+        "char": "hook",
+        "clip": "run",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 1.00 since_lab 0.90 since_clip 0.90",
+        "jerk": 32.127,
+        "pid": 6,
+        "sev": 53.605,
+        "state": "loco",
+        "t": 23.8
+      },
+      {
+        "bone": "LeftLeg",
+        "char": "hook",
+        "clip": "run",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 1.00 since_lab 0.50 since_clip 0.50",
+        "jerk": 30.635,
+        "pid": 6,
+        "sev": 52.481,
+        "state": "loco",
+        "t": 23.4
+      },
+      {
+        "bone": "LeftLeg",
+        "char": "hook",
+        "clip": "run",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 1.00 since_lab 0.17 since_clip 0.17",
+        "jerk": 48.717,
+        "pid": 6,
+        "sev": 52.008,
+        "state": "loco",
+        "t": 23.067
+      },
+      {
+        "bone": "LeftLeg",
+        "char": "hook",
+        "clip": "run",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 1.00 since_lab 0.22 since_clip 0.22",
+        "jerk": 46.567,
+        "pid": 6,
+        "sev": 51.681,
+        "state": "loco",
+        "t": 23.117
+      },
+      {
+        "bone": "RightLeg",
+        "char": "hook",
+        "clip": "run",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 1.00 since_lab 0.35 since_clip 0.35",
+        "jerk": 27.932,
+        "pid": 6,
+        "sev": 51.407,
+        "state": "loco",
+        "t": 23.25
+      },
+      {
+        "bone": "LeftUpLeg",
+        "char": "hook",
+        "clip": "k_spin",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 0.47 since_lab 0.02 since_clip 0.02",
+        "jerk": 51.07,
+        "pid": 6,
+        "sev": 51.07,
+        "state": "act 갈고리 스핀/rec",
+        "t": 32.35
+      },
+      {
+        "bone": "LeftLeg",
+        "char": "hook",
+        "clip": "run",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 1.00 since_lab 0.72 since_clip 0.72",
+        "jerk": 47.553,
+        "pid": 6,
+        "sev": 50.798,
+        "state": "loco",
+        "t": 23.617
+      },
+      {
+        "bone": "RightLeg",
+        "char": "hook",
+        "clip": "run",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 1.00 since_lab 0.83 since_clip 0.83",
+        "jerk": 45.007,
+        "pid": 6,
+        "sev": 49.406,
+        "state": "loco",
+        "t": 23.733
+      },
+      {
+        "bone": "LeftLeg",
+        "char": "hook",
+        "clip": "k_hook",
+        "cls": "limb",
+        "extra": "fade 0.17 cw 1.00 since_lab 0.97 since_clip 0.97",
+        "jerk": 47.639,
+        "pid": 6,
+        "sev": 48.331,
+        "state": "act 갈고리 휘두르기/wind",
+        "t": 23.867
+      },
+      {
+        "bone": "LeftLeg",
+        "char": "hook",
+        "clip": "run",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 1.00 since_lab 0.77 since_clip 0.77",
+        "jerk": 43.084,
+        "pid": 6,
+        "sev": 47.209,
+        "state": "loco",
+        "t": 23.667
+      },
+      {
+        "bone": "RightLeg",
+        "char": "hook",
+        "clip": "run",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 1.00 since_lab 0.62 since_clip 0.62",
+        "jerk": 37.947,
+        "pid": 6,
+        "sev": 46.523,
+        "state": "loco",
+        "t": 23.517
+      },
+      {
+        "bone": "RightLeg",
+        "char": "hook",
+        "clip": "run",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 1.00 since_lab 0.28 since_clip 0.28",
+        "jerk": 34.946,
+        "pid": 6,
+        "sev": 43.823,
+        "state": "loco",
+        "t": 23.183
+      },
+      {
+        "bone": "RightArm",
+        "char": "hook",
+        "clip": "k_spin",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 0.47 since_lab 0.02 since_clip 0.02",
+        "jerk": 41.093,
+        "pid": 6,
+        "sev": 41.093,
+        "state": "act 갈고리 스핀/rec",
+        "t": 32.35
+      },
+      {
+        "bone": "LeftArm",
+        "char": "hook",
+        "clip": "jump",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 0.47 since_lab 0.02 since_clip 0.02",
+        "jerk": 40.616,
+        "pid": 6,
+        "sev": 40.616,
+        "state": "air",
+        "t": 41.75
+      },
+      {
+        "bone": "LeftForeArm",
+        "char": "hook",
+        "clip": "k_spin",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 0.47 since_lab 0.02 since_clip 0.02",
+        "jerk": 39.74,
+        "pid": 6,
+        "sev": 39.74,
+        "state": "act 갈고리 스핀/rec",
+        "t": 32.35
+      },
+      {
+        "bone": "LeftLeg",
+        "char": "hook",
+        "clip": "k_spin",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 0.47 since_lab 0.02 since_clip 0.02",
+        "jerk": 39.182,
+        "pid": 6,
+        "sev": 39.182,
+        "state": "act 갈고리 스핀/rec",
+        "t": 32.35
+      },
+      {
+        "bone": "RightUpLeg",
+        "char": "hook",
+        "clip": "run",
+        "cls": "limb",
+        "extra": "fade 1.00 cw 1.00 since_lab 0.75 since_clip 0.75",
+        "jerk": 27.012,
+        "pid": 6,
+        "sev": 39.138,
+        "state": "loco",
+        "t": 23.65
+      }
+    ],
+    "seam": [
+      {
+        "bone": "RightArm",
+        "char": "hook",
+        "clip": "k_hook",
+        "extra": "jump 65.1",
+        "pid": 6,
+        "sev": 96.286,
+        "state": "act→rag",
+        "t": 24.2
+      },
+      {
+        "bone": "RightArm",
+        "char": "hook",
+        "clip": "k_hook",
+        "extra": "jump 43.6",
+        "pid": 6,
+        "sev": 96.277,
+        "state": "act→rag",
+        "t": 11.433
+      },
+      {
+        "bone": "RightArm",
+        "char": "hook",
+        "clip": "k_hook",
+        "extra": "jump 43.5",
+        "pid": 6,
+        "sev": 96.274,
+        "state": "act→rag",
+        "t": 37.0
+      },
+      {
+        "bone": "RightArm",
+        "char": "hook",
+        "clip": "k_hook",
+        "extra": "jump 34.3",
+        "pid": 6,
+        "sev": 96.274,
+        "state": "act→rag",
+        "t": 22.367
+      },
+      {
+        "bone": "RightArm",
+        "char": "hook",
+        "clip": "k_hook",
+        "extra": "jump 43.5",
+        "pid": 6,
+        "sev": 96.274,
+        "state": "act→rag",
+        "t": 4.533
+      },
+      {
+        "bone": "RightArm",
+        "char": "hook",
+        "clip": "idle",
+        "extra": "jump 34.9",
+        "pid": 6,
+        "sev": 96.274,
+        "state": "idle→rag",
+        "t": 28.367
+      },
+      {
+        "bone": "RightArm",
+        "char": "hook",
+        "clip": "idle",
+        "extra": "jump 37.6",
+        "pid": 6,
+        "sev": 96.274,
+        "state": "idle→rag",
+        "t": 38.5
+      },
+      {
+        "bone": "RightArm",
+        "char": "hook",
+        "clip": "idle",
+        "extra": "jump 2.3",
+        "pid": 6,
+        "sev": 96.274,
+        "state": "act→idle",
+        "t": 38.467
+      },
+      {
+        "bone": "RightArm",
+        "char": "hook",
+        "clip": "k_hook",
+        "extra": "jump 43.4",
+        "pid": 6,
+        "sev": 96.274,
+        "state": "act→rag",
+        "t": 40.933
+      },
+      {
+        "bone": "RightArm",
+        "char": "hook",
+        "clip": "k_hook",
+        "extra": "jump 43.7",
+        "pid": 6,
+        "sev": 96.274,
+        "state": "act→rag",
+        "t": 6.133
+      },
+      {
+        "bone": "RightArm",
+        "char": "hook",
+        "clip": "k_hook",
+        "extra": "jump 43.6",
+        "pid": 6,
+        "sev": 96.274,
+        "state": "act→rag",
+        "t": 39.767
+      },
+      {
+        "bone": "RightArm",
+        "char": "hook",
+        "clip": "k_hook",
+        "extra": "jump 43.7",
+        "pid": 6,
+        "sev": 96.273,
+        "state": "act→rag",
+        "t": 32.933
+      },
+      {
+        "bone": "RightArm",
+        "char": "hook",
+        "clip": "k_hook",
+        "extra": "jump 43.7",
+        "pid": 6,
+        "sev": 96.273,
+        "state": "act→rag",
+        "t": 30.767
+      },
+      {
+        "bone": "RightArm",
+        "char": "hook",
+        "clip": "k_hook",
+        "extra": "jump 36.0",
+        "pid": 6,
+        "sev": 96.273,
+        "state": "act→rag",
+        "t": 7.767
+      },
+      {
+        "bone": "RightArm",
+        "char": "hook",
+        "clip": "k_hook",
+        "extra": "jump 32.6",
+        "pid": 6,
+        "sev": 96.273,
+        "state": "act→rag",
+        "t": 15.167
+      },
+      {
+        "bone": "RightArm",
+        "char": "hook",
+        "clip": "k_hook",
+        "extra": "jump 44.5",
+        "pid": 6,
+        "sev": 96.273,
+        "state": "act→rag",
+        "t": 20.667
+      },
+      {
+        "bone": "RightArm",
+        "char": "hook",
+        "clip": "k_hook",
+        "extra": "jump 45.2",
+        "pid": 6,
+        "sev": 96.273,
+        "state": "act→rag",
+        "t": 19.367
+      },
+      {
+        "bone": "RightArm",
+        "char": "hook",
+        "clip": "k_hook",
+        "extra": "jump 39.0",
+        "pid": 6,
+        "sev": 96.272,
+        "state": "act→rag",
+        "t": 34.4
+      },
+      {
+        "bone": "RightArm",
+        "char": "hook",
+        "clip": "k_hook",
+        "extra": "jump 43.5",
+        "pid": 6,
+        "sev": 96.271,
+        "state": "act→rag",
+        "t": 29.567
+      },
+      {
+        "bone": "RightArm",
+        "char": "hook",
+        "clip": "k_hook",
+        "extra": "jump 43.6",
+        "pid": 6,
+        "sev": 96.271,
+        "state": "act→rag",
+        "t": 13.733
+      }
+    ],
+    "slide": [
+      {
+        "bone": "발 L",
+        "char": "hook",
+        "clip": "k_hook",
+        "extra": "slide 0.28 body 0.18 len 9",
+        "pid": 6,
+        "sev": 1.494,
+        "state": "걸음 fwd",
+        "t": 42.067
+      },
+      {
+        "bone": "발 R",
+        "char": "hook",
+        "clip": "k_hook",
+        "extra": "len 12",
+        "pid": 6,
+        "sev": 0.214,
+        "state": "정지 끌림",
+        "t": 11.0
+      },
+      {
+        "bone": "발 R",
+        "char": "hook",
+        "clip": "k_hook",
+        "extra": "len 8",
+        "pid": 6,
+        "sev": 0.189,
+        "state": "정지 끌림",
+        "t": 33.9
+      },
+      {
+        "bone": "발 R",
+        "char": "hook",
+        "clip": "k_throw",
+        "extra": "len 21",
+        "pid": 6,
+        "sev": 0.164,
+        "state": "정지 끌림",
+        "t": 0.5
+      },
+      {
+        "bone": "발 L",
+        "char": "hook",
+        "clip": "k_hook",
+        "extra": "len 8",
+        "pid": 6,
+        "sev": 0.15,
+        "state": "정지 끌림",
+        "t": 33.9
+      },
+      {
+        "bone": "발 L",
+        "char": "hook",
+        "clip": "k_throw",
+        "extra": "len 21",
+        "pid": 6,
+        "sev": 0.135,
+        "state": "정지 끌림",
+        "t": 0.5
+      },
+      {
+        "bone": "발 L",
+        "char": "hook",
+        "clip": "k_hook",
+        "extra": "len 12",
+        "pid": 6,
+        "sev": 0.111,
+        "state": "정지 끌림",
+        "t": 11.0
+      }
+    ],
+    "stretch": [
+      {
+        "bone": "RightUpLeg|RightLeg",
+        "char": "hook",
+        "clip": "land",
+        "pid": 6,
+        "sev": 7.996,
+        "state": "land",
+        "t": 41.917
+      },
+      {
+        "bone": "RightUpLeg|RightLeg",
+        "char": "hook",
+        "clip": "jump",
+        "pid": 6,
+        "sev": 6.813,
+        "state": "air",
+        "t": 13.217
+      },
+      {
+        "bone": "RightUpLeg|RightLeg",
+        "char": "hook",
+        "clip": "run",
+        "pid": 6,
+        "sev": 6.577,
+        "state": "loco",
+        "t": 23.217
+      },
+      {
+        "bone": "RightUpLeg|RightLeg",
+        "char": "hook",
+        "clip": "jump",
+        "pid": 6,
+        "sev": 6.195,
+        "state": "air",
+        "t": 13.117
+      },
+      {
+        "bone": "RightUpLeg|RightLeg",
+        "char": "hook",
+        "clip": "k_hook",
+        "pid": 6,
+        "sev": 5.639,
+        "state": "act",
+        "t": 13.417
+      },
+      {
+        "bone": "RightUpLeg|RightLeg",
+        "char": "hook",
+        "clip": "k_spin",
+        "pid": 6,
+        "sev": 5.621,
+        "state": "act",
+        "t": 32.017
+      },
+      {
+        "bone": "RightUpLeg|RightLeg",
+        "char": "hook",
+        "clip": "k_spin",
+        "pid": 6,
+        "sev": 5.619,
+        "state": "act",
+        "t": 32.417
+      },
+      {
+        "bone": "RightUpLeg|RightLeg",
+        "char": "hook",
+        "clip": "k_spin",
+        "pid": 6,
+        "sev": 5.552,
+        "state": "act",
+        "t": 32.117
+      },
+      {
+        "bone": "RightUpLeg|RightLeg",
+        "char": "hook",
+        "clip": "k_spin",
+        "pid": 6,
+        "sev": 5.527,
+        "state": "act",
+        "t": 31.917
+      },
+      {
+        "bone": "RightUpLeg|RightLeg",
+        "char": "hook",
+        "clip": "k_hook",
+        "pid": 6,
+        "sev": 5.427,
+        "state": "act",
+        "t": 13.517
+      },
+      {
+        "bone": "RightUpLeg|RightLeg",
+        "char": "hook",
+        "clip": "k_chop",
+        "pid": 6,
+        "sev": 5.284,
+        "state": "act",
+        "t": 8.617
+      },
+      {
+        "bone": "RightUpLeg|RightLeg",
+        "char": "hook",
+        "clip": "k_chop",
+        "pid": 6,
+        "sev": 5.277,
+        "state": "act",
+        "t": 7.017
+      },
+      {
+        "bone": "RightUpLeg|RightLeg",
+        "char": "hook",
+        "clip": "k_chop",
+        "pid": 6,
+        "sev": 5.239,
+        "state": "act",
+        "t": 16.017
+      },
+      {
+        "bone": "RightUpLeg|RightLeg",
+        "char": "hook",
+        "clip": "k_chop",
+        "pid": 6,
+        "sev": 5.239,
+        "state": "act",
+        "t": 5.417
+      },
+      {
+        "bone": "RightUpLeg|RightLeg",
+        "char": "hook",
+        "clip": "k_chop",
+        "pid": 6,
+        "sev": 5.215,
+        "state": "act",
+        "t": 27.517
+      },
+      {
+        "bone": "RightUpLeg|RightLeg",
+        "char": "hook",
+        "clip": "k_chop",
+        "pid": 6,
+        "sev": 5.192,
+        "state": "act",
+        "t": 36.517
+      },
+      {
+        "bone": "RightUpLeg|RightLeg",
+        "char": "hook",
+        "clip": "k_chop",
+        "pid": 6,
+        "sev": 5.192,
+        "state": "act",
+        "t": 21.617
+      },
+      {
+        "bone": "RightUpLeg|RightLeg",
+        "char": "hook",
+        "clip": "k_chop",
+        "pid": 6,
+        "sev": 5.189,
+        "state": "act",
+        "t": 12.217
+      },
+      {
+        "bone": "RightUpLeg|RightLeg",
+        "char": "hook",
+        "clip": "k_chop",
+        "pid": 6,
+        "sev": 5.188,
+        "state": "act",
+        "t": 3.917
+      },
+      {
+        "bone": "RightUpLeg|RightLeg",
+        "char": "hook",
+        "clip": "k_chop",
+        "pid": 6,
+        "sev": 5.181,
+        "state": "act",
+        "t": 7.117
+      }
+    ],
+    "weapon": []
+  }
+}

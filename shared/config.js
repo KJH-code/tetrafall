@@ -20,6 +20,11 @@ function spawnPoints(W, D, inset) {
 const GRID_W = 10;
 const GRID_D = 10;
 const GRID_H = 16;
+const SKY_GRID_H = 32; // 하늘 계단 켬일 때 격자 높이. 블록 윗면 상한 SKY_TOP_Z 도 이 값 (한 곳에서 — 2026-10-30 감사 T5)
+const SPAWN_INSET = 2.5; // 시작 위치: 가장자리에서 이만큼 안쪽 (SPAWN_POINTS·spawnPointsFor 둘 다)
+const CHARACTERS = ['tank', 'ninja', 'builder', 'hook', 'hunter', 'cannon', 'berserker', 'bard']; // FIGURE_CHARS·RAGDOLL_CHARS 의 처음 값도 이 목록
+const RECONNECT_GRACE_MS = 60000; // 끊긴 자리 유지 시간. 화면의 다시 붙기 횟수 NET_RECONNECT_TRIES 가 이걸 NET_RECONNECT_MS 로 나눈 값
+const NET_RECONNECT_MS = 2000;
 
 export const CONFIG = {
   // ---- 네트워크 / 루프 ----
@@ -49,6 +54,7 @@ export const CONFIG = {
   // 방: 2026-10-22 6단계 (인터넷 대전). 서버 하나에 방 여러 개, 방마다 게임 하나
   // 방 하나(봇 4) ≈ CPU 한 코어의 4%. 사람 하나에 보내는 양 (2026-10-28 잰 값, 압축 후): 4명 판 ≈ 0.4Mbps, 8명 판 ≈ 0.65Mbps (압축 전 1.5·3.4, 하늘 사슬 3개) → 8명 방 하나 ≈ 업로드 5Mbps
   ROOM_MAX: 8, // 서버 하나에 동시에 열 수 있는 방
+  ROOM_EMPTY_LOBBY_GRACE_MS: 10000, // 판을 한 번도 안 한 방이 연결 0명이 되면 자리를 이만큼만 둠 (그 안에 토큰으로 오면 같은 자리 — 터널 재시작·잠깐 끊김. 지나면 닫음, 만들고 끊기 반복으로 ROOM_MAX 가 오래 차는 것 막음). 연습 방·한 판 한 방은 RECONNECT_GRACE_MS
   ROOM_CODE_LEN: 4, // 방 코드 글자 수
   ROOM_CODE_CHARS: 'ABCDEFGHJKLMNPQRSTUVWXYZ', // 헷갈리는 I·O 뺌
   ROOM_NAME_MAX_LEN: 16, // 방 이름 글자 수
@@ -97,22 +103,23 @@ export const CONFIG = {
   // 끄면 예전 규칙 그대로 (격자 높이 GRID_H, AUTO_FALL 낙하·동시 수). 블록 마스터는 자동 블록이 없어서 무시
   // 닿는 거리 R(h) = MOVE_SPEED × 공중 시간 (꼭대기에서 공중 점프, h = 올라갈 높이): h=0 → 5.8칸, 1 → 5.3, 2 → 4.7
   SKY_STAIRS_DEFAULT: true, // 방(대기실) 기본값. new Game() 기본은 끔 (예전 테스트 그대로)
-  SKY_GRID_H: 32, // 켬일 때 격자 높이 (판마다 game.H, snapshot field.h)
+  SKY_GRID_H, // 켬일 때 격자 높이 (판마다 game.H, snapshot field.h)
   SKY_COUNT: 7, // 사슬 하나에 떠 있는 블록 수 (착지·녹으면 그 사슬 맨 위에 새로)
   // 인원별 사슬 수 (2026-10-28 재혁 "블록 더 많이": 사슬 하나는 착지 빠르기가 정해져 있어 큰 판일수록 블록이 드물었음 → 5명 이상 판은 압사 9~14%).
   // 판 시작 때 필드에 나가는 인원으로 (FIELD_SIZES 와 같은 방식). 사슬마다 SKY_COUNT 개, 따로 계단. 떨어지는 빠르기·그림자(경고) 시간은 그대로
   // 봇 판 (2026-10-28, 인원마다 245판): 사슬 1개면 압사 6명 11% · 8명 8% → 이 표로 6명 22% · 8명 23% (4명 17% 와 비슷), 판 길이 6명 94 → 92초 · 8명 100 → 96초. 2~4명은 그대로
   SKY_CHAINS: { 2: 1, 3: 1, 4: 1, 5: 2, 6: 2, 7: 3, 8: 3 },
   SKY_SPAWN_PER_TICK: 1, // 한 틱에 놓는 하늘 블록 수 (자리 고르기가 무거워서 나눔: 판 시작 사슬 7개 = 7틱 약 0.23초)
-  SKY_TOP_Z: 32, // 블록 윗면 최고 높이 (상한)
+  SKY_TOP_Z: SKY_GRID_H, // 블록 윗면 최고 높이 (상한)
   SKY_RISE_MIN: 1, // 새 블록 = 맨 위 블록 지금 높이 + 이 범위의 칸 (정수 무작위)
   SKY_RISE_MAX: 2, // 2단 점프 최고 약 2.8칸이라 여유 있게
   SKY_GAP_MIN: 1, // 이웃 블록 칸 사이 최소 거리 (붙으면 머리 부딪힘·한 덩어리로 보임)
   SKY_REACH_SAFETY: 0.5, // 틈은 R(높이차) × 이 값까지 → 높이차 1 이면 약 2.6칸, 2 면 약 2.3칸
   SKY_FALL_STEP_MS: 2500, // 하늘 블록 1칸 내려오는 간격, 판 내내 고정 (예전 AUTO_FALL 500→300)
   // 그림자(경고)는 착지까지 남은 칸 수로: 예전 SHADOW_LEAD_MS(착지 3초 전)는 한 칸 2.5초면 깔리기 0.5초 전이라 못 피함 (봇 판 압사 28% → 55%)
-  SKY_LAVA_TRIGGER_MS: 60000, // 켬 판은 판 시작 후 이 시간이 지나면 평균 높이와 상관없이 용암 시작 (2026-10-26 재혁: 착지가 느려 용암이 거의 안 옴, 봇 504판 중 2판)
-  // 인원별 (2026-10-28): 사슬이 늘면 계단이 많아져 판이 길어짐 (8명 3사슬 106초) → 5명 이상은 용암을 조금 일찍. 2~4명은 SKY_LAVA_TRIGGER_MS 그대로
+  // 켬 판은 판 시작 후 이 시간이 지나면 평균 높이와 상관없이 용암 시작 (2026-10-26 재혁: 착지가 느려 용암이 거의 안 옴, 봇 504판 중 2판).
+  // 인원별 (2026-10-28): 사슬이 늘면 계단이 많아져 판이 길어짐 (8명 3사슬 106초) → 5명 이상은 용암을 조금 일찍. 2~4명은 60초
+  // (예전 단일 값 SKY_LAVA_TRIGGER_MS 는 이 표가 다 덮어써서 효과가 없었음 — 2026-10-30 감사 T4 에서 지움)
   SKY_LAVA_TRIGGER_BY_COUNT: { 2: 60000, 5: 55000, 7: 50000 },
   SKY_SHADOW_CELLS: 3, // 착지 높이 + 이 칸 안으로 내려오면 그림자 (머리 위 약 1.4칸, 깔리기 약 5초 전)
   SKY_BASE_UP: 6, // 사슬 첫 블록 높이: 그 아래 기둥(착지 높이)보다 이만큼 위
@@ -231,7 +238,7 @@ export const CONFIG = {
   COUNTER_STUN_MULT: 1.5,
   COUNTER_HITSTOP_MULT: 1.5,
   BASIC_ATTACKS: {
-    // 탱크 (2026-10-25 재혁 확정, docs/characters.md 3.3 버티기(반격)형·초보 추천): 평평평(방패 올려치기로 띄움) → 점프 → 공중 방패 내려치기(마무리).
+    // 탱크 (2026-10-25 재혁 확정, DevVault Projects/Tetrafall/Characters 3.3 버티기(반격)형·초보 추천): 평평평(방패 올려치기로 띄움) → 점프 → 공중 방패 내려치기(마무리).
     // 3타는 마무리 아님 (예전 방패 밀기는 마무리라 멀리 날아가 공중 평타가 못 따라감). 2타는 띄우지 않고 경직을 길게 (3타 확정)
     tank: {
       chain: [
@@ -241,7 +248,7 @@ export const CONFIG = {
       ],
       air: [{ name: '방패 내려치기', windup: 150, rec: 400, stun: 600, dmg: 10, kb: 3.8, up: 1, step: 0, finish: true }],
     },
-    // 닌자 (2026-10-25 재혁 확정, docs/characters.md 3.2 연계형): 지상 4타 + 공중 2타. 콤보 사이 후딜은 짧고 연타 마지막 타 뒤 후딜은 김 (허공 이어 치기 스팸 방지).
+    // 닌자 (2026-10-25 재혁 확정, DevVault Projects/Tetrafall/Characters 3.2 연계형): 지상 4타 + 공중 2타. 콤보 사이 후딜은 짧고 연타 마지막 타 뒤 후딜은 김 (허공 이어 치기 스팸 방지).
     // 4타 올려 차기는 마무리 아님 — 띄워서 공중 평타로 이어 감. 공중 2타 내려 차기가 마무리. 수치는 초안 (stun·kb 는 문서에 없어 A 가 정함).
     // 2026-10-25 재혁: 올려 차기 후딜 500 → 350 (사람 손으로 풀 콤보가 들어가게)
     ninja: {
@@ -265,7 +272,7 @@ export const CONFIG = {
       ],
       air: [{ name: '망치 내려찍기', windup: 200, rec: 450, stun: 500, dmg: 9, kb: 3, up: 2, step: 0 }],
     },
-    // 갈고리 (2026-10-25 재혁 확정, docs/characters.md 3.4 그래플러): 휘두르기 → 주먹 → 장전이면 탕(빈 총이 됨) / 빈 총이면 갈고리 내려치기.
+    // 갈고리 (2026-10-25 재혁 확정, DevVault Projects/Tetrafall/Characters 3.4 그래플러): 휘두르기 → 주먹 → 장전이면 탕(빈 총이 됨) / 빈 총이면 갈고리 내려치기.
     // 공중은 갈고리 수평 한 바퀴 (주변 전부). 패시브 사거리 ×1.2 삭제. 수치는 초안 (stun·kb 는 문서에 없어 A 가 정함)
     hook: {
       chain: [
@@ -278,7 +285,7 @@ export const CONFIG = {
       ],
       air: [{ name: '갈고리 스핀', windup: 150, rec: 400, stun: 500, dmg: 6, kb: 3, up: 2, step: 0, angle: 180 }],
     },
-    // 사냥꾼 (2026-10-26 재혁 확정, docs/characters.md 3.5 사냥꾼형): 베기 → 반대 베기 → 찔러 넣기 (맞으면 표식 +1). 속도는 탱크와 닌자 사이.
+    // 사냥꾼 (2026-10-26 재혁 확정, DevVault Projects/Tetrafall/Characters 3.5 사냥꾼형): 베기 → 반대 베기 → 찔러 넣기 (맞으면 표식 +1). 속도는 탱크와 닌자 사이.
     // 공중 내려 베기 1타는 표식 없음. 수치는 초안 (stun·kb 는 문서에 없어 A 가 정함)
     // 2026-10-26 재혁 ㄱ: 공중 내려 베기 = 마무리 (가+다 뒤 킬 낼 타가 없었음). 평평평(표식) → F 덮침 → 평평평 → 점프 → 공중 마무리. kb 는 탱크 공중 마무리 수준
     // 2026-10-26 재혁 결정 "가": 찔러 넣기는 마무리 아님 (봇 판: 마무리 → 무적이라 F 덮침·R 이 거의 다 빗나감). 이어지는 타 수준 kb + 긴 경직 → F 덮침·평타로 이어 감
@@ -290,7 +297,7 @@ export const CONFIG = {
       ],
       air: [{ name: '내려 베기', windup: 150, rec: 400, stun: 600, dmg: 7, kb: 3.8, up: 1, step: 0, finish: true }],
     },
-    // 대포수 (2026-10-26 재혁 확정, docs/characters.md 3.6 견제): 탄이 있으면 평타 = 포탄 (서버가 날리는 보이는 투사체, 지상·공중), 없으면 대포 후려치기.
+    // 대포수 (2026-10-26 재혁 확정, DevVault Projects/Tetrafall/Characters 3.6 견제): 탄이 있으면 평타 = 포탄 (서버가 날리는 보이는 투사체, 지상·공중), 없으면 대포 후려치기.
     // 한 타짜리 (이어 치기 없음). 수치는 초안 (준비·후딜·경직·넉백은 A 가 정함)
     cannon: {
       chain: [
@@ -298,7 +305,7 @@ export const CONFIG = {
       ],
       air: [{ name: '후려치기', windup: 150, rec: 400, stun: 500, dmg: 5, kb: 3.5, up: 2, step: 0, ammo: { name: '포탄', windup: 150, rec: 350, shell: true } }],
     },
-    // 광전사 (2026-10-26 재혁 확정, docs/characters.md 3.7 돌파·쉬움): 판정 넓은 2타 (가로 베기 → 내려찍기 마무리) + 공중 회전 베기 (사방).
+    // 광전사 (2026-10-26 재혁 확정, DevVault Projects/Tetrafall/Characters 3.7 돌파·쉬움): 판정 넓은 2타 (가로 베기 → 내려찍기 마무리) + 공중 회전 베기 (사방).
     // windup·rec·dmg 는 문서 초안, stun·kb·사거리는 A 가 정함
     berserker: {
       chain: [
@@ -307,7 +314,7 @@ export const CONFIG = {
       ],
       air: [{ name: '회전 베기', windup: 150, rec: 400, stun: 550, dmg: 8, kb: 3.5, up: 2, step: 0, angle: 180, radial: true }], // angle 180 = 사방, radial = 바깥으로 밀침
     },
-    // 바드 (2026-10-26 재혁 확정, docs/characters.md 3.8 폼 체인지): 음유시인 폼 = 류트 음파(약한 원거리, 둔화) + 공중 천천히 낙하, 메탈 폼(metal) = 기타 근접 2타 + 공중 기타 꽂기.
+    // 바드 (2026-10-26 재혁 확정, DevVault Projects/Tetrafall/Characters 3.8 폼 체인지): 음유시인 폼 = 류트 음파(약한 원거리, 둔화) + 공중 천천히 낙하, 메탈 폼(metal) = 기타 근접 2타 + 공중 기타 꽂기.
     // 압사 원칙: 점프 봉인·입력 무시 없음, 둔화 약하게. 수치는 초안 (A 가 정함)
     bard: {
       chain: [{ name: '류트 음파', windup: 150, rec: 350, stun: 300, dmg: 3, kb: 1, up: 0.5, step: 0, note: true }],
@@ -390,7 +397,7 @@ export const CONFIG = {
   MAP_DEFAULT: 'random', // 서버 켤 때 맵 선택: 'random' 또는 server/maps.js 의 MAP_IDS (flat·pyramid·stairs·bowl·spiral·pillars·fortress). 호스트가 대기 화면에서 바꿀 수 있음
 
   // ---- 캐릭터 (2026-10-24 7단계 재혁: 친구들이 '스킬/고유기 넣어서'. 캐릭터마다 패시브 + 스킬 F(쿨) + 필살기 R(게이지)) ----
-  CHARACTERS: ['tank', 'ninja', 'builder', 'hook', 'hunter', 'cannon', 'berserker', 'bard'], // 사냥꾼·대포수·광전사·바드 2026-10-26 (docs/characters.md 3.5~3.8)
+  CHARACTERS, // 사냥꾼·대포수·광전사·바드 2026-10-26 (DevVault Projects/Tetrafall/Characters 3.5~3.8)
   CHAR_NAMES: { tank: '탱크', ninja: '닌자', builder: '건축가', hook: '갈고리', hunter: '사냥꾼', cannon: '대포수', berserker: '광전사', bard: '바드' },
   // 2026-10-24 재혁: 스킬이 직접 피해·넉백을 주고 콤보로 이어지게 (닌자 = 콤보 캐릭터). 남이 쓰는 것도 보이게 예고·효과
   SKILL_NAMES: { tank: '돌진', ninja: '순간 베기', builder: '솟는 벽', hook: '갈고리', hunter: '추적 도약', cannon: '발밑 포격', berserker: '광폭 도약', bard: '폼 전환' },
@@ -402,7 +409,7 @@ export const CONFIG = {
   CHAR_STAGE_SPIN: 0.5, // 대기실 큰 3D 캐릭터가 도는 빠르기 (라디안/초). 고르면 정면에서 도발 한 번(EMOTE_MS) 뒤 다시 돎
   CHAR_RANDOM_MS: 650, // '랜덤' 뽑기 연출 길이 (카드 불이 이만큼 돌다가 멈춤)
   CHAR_RANDOM_STEP_MS: 60, // 뽑기 연출에서 불이 옮겨 가는 간격 (끝으로 갈수록 느려짐)
-  // 이동 스킬 예고 (2026-10-26 재혁, docs/characters.md 2절): 닌자 F·탱크 F·갈고리 F 는 지상에서 쓰면 SKILL_WINDUP_MS 준비 (방향은 누른 순간 고정, 이벤트 skillWindup → 화면 번쩍·소리)
+  // 이동 스킬 예고 (2026-10-26 재혁, DevVault Projects/Tetrafall/Characters 2절): 닌자 F·탱크 F·갈고리 F 는 지상에서 쓰면 SKILL_WINDUP_MS 준비 (방향은 누른 순간 고정, 이벤트 skillWindup → 화면 번쩍·소리)
   // 뒤에 나감, 공중에서 쓰면 바로 (복귀가 안 늦게). 준비 중에 맞으면 끊기고 쿨타임 돌려줌 (카운터 대상)
   SKILL_WINDUP_MS: 150,
   SKILL_WINDUP_CHARS: ['ninja', 'tank', 'hook'],
@@ -460,7 +467,7 @@ export const CONFIG = {
   TANK_RING_STUN_MS: 600,
   TANK_SLAM_DAMAGE: 15, // 2026-10-25 맵 7개 섞은 봇 504판 탱크 29% (킬 대부분 내려찍기) → 25 → 20, 넉백 5 → 4.5.
   // 탱크 개편 뒤 20 → 15 (재혁 결정 '나': 피해 15 / 고리 up 5 / 둘 다 실험 → 피해 15 가 가장 내려감, 고리 up 은 공중 마무리 연계를 위해 7 유지)
-  // 닌자 (2026-10-25 재혁 확정, docs/characters.md 3.2 — 연계형 "이어지는 공격의 연속". 수치는 초안)
+  // 닌자 (2026-10-25 재혁 확정, DevVault Projects/Tetrafall/Characters 3.2 — 연계형 "이어지는 공격의 연속". 수치는 초안)
   // 갈아타기: 이어 치기 타 번호·창은 맞은 상대와 상관없이 닌자에게 남음 (모든 캐릭터 공통 구조). 맞는 쪽 COMBO_MS 는 그대로
   // 패시브: 이속 ×1.2 삭제 → 떨어지는 블록에 닿으면(밟거나 옆면) 공중 점프 회복 + 받는 넉백 × NINJA_KB_TAKEN
   NINJA_KB_TAKEN: 1.1, // 가벼워서 잘 밀림 (탱크 TANK_KB_TAKEN 반대). 피해 % 배율이 붙는 넉백에만
@@ -483,7 +490,7 @@ export const CONFIG = {
   // R 강화 (그림자 일격 삭제): NINJA_EMPOWER_MS 동안 지상 1~3타와 공중 평타가 표창 2연발 (즉시 판정, 4타 올려 차기는 그대로)
   NINJA_EMPOWER_MS: 6000,
   NINJA_STAR: { windup: 60, gap: 80, range: 3, angle: 15, dmg: 2, stun: 250, kb: 0.6, up: 1 }, // 한 발. 2발 합쳐 딜 4 (근접 3 보다 조금 더), 경직은 근접보다 짧게. 마무리 타 자리면 둘째 발이 그 타의 마무리 넉백
-  // 사냥꾼 (2026-10-26 재혁 확정, docs/characters.md 3.5 — "표식을 남기면 끝까지 사냥한다". 수치는 초안)
+  // 사냥꾼 (2026-10-26 재혁 확정, DevVault Projects/Tetrafall/Characters 3.5 — "표식을 남기면 끝까지 사냥한다". 수치는 초안)
   // 표식: 상대에게 붙음 (사냥꾼마다 따로). 지상 평타 마무리 타(찔러 넣기)가 맞으면 +1, 최대 HUNTER_MARK_MAX, 마지막으로 쌓인 뒤 HUNTER_MARK_MS 면 사라짐
   HUNTER_MARK_MAX: 3,
   HUNTER_MARK_MS: 10000, // 2026-10-26 재혁 5 → 10초 (콤보를 다 못 맞히면 표식이 금방 사라져 R 을 못 씀)
@@ -512,7 +519,7 @@ export const CONFIG = {
   HUNTER_SHOT_UP: 3,
   HUNTER_SHOT_STUN_MS: 700,
   HUNTER_ULT_MULT: 2, // R 게이지 필요량 × 이 값 (대가)
-  // 대포수 (2026-10-26 재혁 확정, docs/characters.md 3.6 — "피하면서 공중 저격". 수치는 초안)
+  // 대포수 (2026-10-26 재혁 확정, DevVault Projects/Tetrafall/Characters 3.6 — "피하면서 공중 저격". 수치는 초안)
   // 장전: 최대 CANNON_AMMO_MAX 발, CANNON_RELOAD_MS 마다 한 발씩 (판 시작·부활 때 가득). F·R 은 탄 안 씀
   CANNON_AMMO_MAX: 3,
   CANNON_RELOAD_MS: 2500,
@@ -547,7 +554,7 @@ export const CONFIG = {
   CANNON_R_BLAST_KB_UP: 6,
   CANNON_R_BLAST_STUN_MS: 800,
   CANNON_R_RECOIL: 8,
-  // 광전사 (2026-10-26 재혁 확정, docs/characters.md 3.7 — "밀릴수록 세진다". 수치는 초안)
+  // 광전사 (2026-10-26 재혁 확정, DevVault Projects/Tetrafall/Characters 3.7 — "밀릴수록 세진다". 수치는 초안)
   // 패시브 분노: 광전사가 주는 넉백(수평) × (1 + 자기 피해 % × BERSERKER_RAGE_PER_PERCENT), 상한 없음 (재혁).
   // 고정 넉백인 평타 중간 타(가로 베기)는 빼고 (세지면 2타가 안 닿음) — 마무리·공중 평타·F·R 에
   BERSERKER_RAGE_PER_PERCENT: 0.0025, // 2026-10-26 재혁 다 0.003 → 0.0025 (가·나 뒤에도 45%·소용돌이 필살기 킬 1위)
@@ -577,8 +584,7 @@ export const CONFIG = {
   BERSERKER_SPIN_END_KB_UP: 5,
   BERSERKER_SPIN_END_STUN_MS: 800,
   BERSERKER_RAGE_CUT: 20, // 2026-10-26 재혁 40 → 20
-  // 바드 (2026-10-26 재혁 확정, docs/characters.md 3.8). 폼 form: 'bard'(음유시인, 판 시작·부활) / 'metal'. F = 폼 전환 (쿨 SKILL_CD_MS.bard), R = 지금 폼의 R
-  BARD_FORM_NAMES: { bard: '음유시인', metal: '메탈' },
+  // 바드 (2026-10-26 재혁 확정, DevVault Projects/Tetrafall/Characters 3.8). 폼 form: 'bard'(음유시인, 판 시작·부활) / 'metal'. F = 폼 전환 (쿨 SKILL_CD_MS.bard), R = 지금 폼의 R
   BARD_METAL_ULT_NAME: '앰프 음파',
   // 류트 음파 (음유 평타): 보이는 느린 투사체, 사람에 닿으면 약한 넉백 + 둔화, 블록에 닿으면 사라짐
   BARD_NOTE_SPEED: 10,
@@ -632,7 +638,7 @@ export const CONFIG = {
   BARD_AMP_END_KB_SPEED: 4, // 2026-10-26 재혁 5 → 4
   BARD_AMP_END_KB_UP: 4,
   BARD_AMP_END_STUN_MS: 800,
-  // 건축가 (2026-10-25 재혁 확정, docs/characters.md 3.1 — 지형·설치형 "깔고, 쳐서 터뜨린다". 수치는 초안, 밸런스는 나머지 캐릭터 뒤)
+  // 건축가 (2026-10-25 재혁 확정, DevVault Projects/Tetrafall/Characters 3.1 — 지형·설치형 "깔고, 쳐서 터뜨린다". 수치는 초안, 밸런스는 나머지 캐릭터 뒤)
   // 건축가 블록: 벽(지상 F)·3타 블록(평타 3타)·발판(공중 F)·대폭발(R). BUILDER_BLOCK_MS 뒤 사라짐.
   // 건축가 망치(평타)로 치면 폭발: 치는 방향 앞쪽 사람만 그쪽으로 날림, 건축가 자신은 안 맞음. 같은 F 벽 칸끼리만 연쇄. 상대는 못 터뜨림
   BUILDER_WALL_WIDTH: 3, // 지상 F 솟는 벽: 바로 앞 가로 3칸 × 1층. 예고 뒤 솟으며 그 칸 위 사람을 띄움
@@ -700,6 +706,7 @@ export const CONFIG = {
   GHOST_DROP_BOTS: false, // 죽은 봇도 떨어뜨릴지 (봇 판 비교용, 기본 끔)
 
   // ---- 연습 모드 (2026-10-26 재혁: 혼자 쓰는 방, 판이 안 끝남, 허수아비) ----
+  PIECE_MOVE_PER_TICK: 2, // 조종 블록 pieceMove 를 한 틱(같은 서버 시각)에 받아 주는 횟수 (넘는 건 버림, 한 번에 가는 칸은 -1·0·1 — 2026-10-30 감사 S3)
   PRACTICE_DUMMY_MAX: 3, // 허수아비 최대 (사람 + 허수아비 ≤ MAX_PLAYERS 자리)
   PRACTICE_DUMMY_DIST: 2, // 허수아비를 내 앞 이 거리(칸)에 놓음
   PRACTICE_DAMAGE_MAX: 999, // 피해 % 설정 상한 (허수아비·내 피해 %)
@@ -741,9 +748,9 @@ export const CONFIG = {
   KILLS_SHIELD_MS: 2000, // 부활 직후 무적: 안 밀리고 안 깔림 (떨어지면 죽음)
   KILLS_SINK_HEIGHT: 9, // 킬 점수전은 용암이 없음. 가장 높은 기둥이 이 높이에 닿으면 맨 아래 층을 지워 전체를 한 칸 내림
   // 가장자리에서 2.5칸 안쪽 = 칸 중심 (밀치기 한 방 약 1.5칸이라 시작하자마자 한 방에 안 떨어진다)
-  SPAWN_POINTS: spawnPoints(GRID_W, GRID_D, 2.5),
-  SPAWN_INSET: 2.5,
-  spawnPointsFor: (W, D) => spawnPoints(W, D, 2.5), // 판 크기별 시작 위치
+  SPAWN_POINTS: spawnPoints(GRID_W, GRID_D, SPAWN_INSET),
+  SPAWN_INSET,
+  spawnPointsFor: (W, D) => spawnPoints(W, D, SPAWN_INSET), // 판 크기별 시작 위치
 
   // ---- AI 봇 (서버에서 돎, 사람과 같은 입력만 씀) ----
   BOT_THINK_MS: 100, // 판단 주기
@@ -805,7 +812,6 @@ export const CONFIG = {
     tapL: { files: ['impactGeneric_light_000', 'impactGeneric_light_001', 'impactGeneric_light_002'], gain: 0.6 }, // 작은 탁
     softH: { files: ['impactSoft_heavy_000', 'impactSoft_heavy_001', 'impactSoft_heavy_002'], gain: 1 }, // 몸이 깔림·쓰러짐
     metalM: { files: ['impactMetal_medium_000', 'impactMetal_medium_001', 'impactMetal_medium_003'], gain: 0.55 }, // 갈고리·아머 쨍
-    metalL: { files: ['impactMetal_light_001', 'impactMetal_light_004'], gain: 0.5 }, // 가벼운 금속
     glassH: { files: ['impactGlass_heavy_000', 'impactGlass_heavy_002'], gain: 0.35 }, // 수정·와장창 높은 겹
     chop: { files: ['chop'], gain: 0.75 }, // 도끼 (광전사)
     slice: { files: ['knifeSlice', 'knifeSlice2'], gain: 0.55 }, // 단검 베기 (닌자)
@@ -1385,7 +1391,7 @@ export const CONFIG = {
   ROBOT_EYE_PUPIL: 0.3, // 로봇 눈동자 반지름 (같은 비율)
   ROBOT_RUN_SPEED: 3.2, // 이 속도(칸/초)보다 빠르면 로봇이 달리기 동작
   ROBOT_FADE_S: 0.15, // 로봇 동작이 바뀔 때 섞는 시간
-  FIGURE_CHARS: ['tank', 'ninja', 'builder', 'hook', 'hunter', 'cannon', 'berserker', 'bard'], // TABS 식 몸(client/figure.js)으로 그리는 캐릭터 (2026-10-24). 캐릭터 없으면 로봇
+  FIGURE_CHARS: [...CHARACTERS], // TABS 식 몸(client/figure.js)으로 그리는 캐릭터 (2026-10-24). 캐릭터 없으면 로봇
   // 체형 (칸, client/figure.js). foot 발 두께, shin·thigh 다리 마디, torso 몸통 높이, chestR·waistR 가슴·허리 반지름, depth 앞뒤 납작함,
   // barrel 이면 몸통이 둥근 통, head·headW 머리 높이·폭, sink 머리가 어깨에 묻히는 깊이, upper·lower 팔 마디, armR·foreR 팔 굵기,
   // legR 다리 굵기, hand 손 크기, shoulderY 어깨 관절 옆 거리, hipY 다리 사이, hunch 구부정한 각, bend 가만히 설 때 무릎 굽힘(없으면 0), spread 팔 벌린 각
@@ -1511,7 +1517,7 @@ export const CONFIG = {
   FIGURE_SETTLE: 10, // 도는 동작이 끝나고 가장 가까운 한 바퀴 각으로 돌아가는 빠르기 (/초)
   // 액티브 래그돌 (2026-10-27 시범, client/ragdoll.js · ragdoll-math.js · cannon-es). 판정은 서버 AABB 그대로, 몸 모습만 클라 물리.
   // 평소·공격: 관절 모터가 지금 자세(figureAnim)를 세게 따라감 / 맞음·기절·낙사: 모터 힘이 빠져 흐물흐물 (TABS)
-  RAGDOLL_CHARS: ['tank', 'ninja', 'builder', 'hook', 'hunter', 'cannon', 'berserker', 'bard'], // 래그돌로 그리는 캐릭터 (빈 배열이면 끔). 1인칭 내 몸은 늘 끔 (viewmodel 이 관절을 베낌). 2026-10-27 재혁: 8명 전부
+  RAGDOLL_CHARS: [...CHARACTERS], // 래그돌로 그리는 캐릭터 (빈 배열이면 끔). 1인칭 내 몸은 늘 끔 (viewmodel 이 관절을 베낌). 2026-10-27 재혁: 8명 전부
   RAGDOLL_STEP: 1 / 120, // 물리 고정 걸음 (초)
   RAGDOLL_MAX_STEPS: 6, // 한 프레임에 최대 걸음 수 (느린 프레임에서 따라잡기 상한)
   RAGDOLL_GRAVITY: 20, // 몸 물리 중력 (칸/초², 서버 GRAVITY 와 같게)
@@ -1552,7 +1558,6 @@ export const CONFIG = {
   RAGDOLL_DAMPING: 0.05, // 조각마다 공기 저항 (선·각 모두)
   RAGDOLL_FRICTION: 0.6, // 바닥·블록 마찰
   RAGDOLL_GROUND_REACH: 2, // 래그돌 둘레 이 칸 안의 단단한 칸만 물리 상자로 (가까운 것만)
-  FIGURE_ARM_SPREAD: 0.22, // 가만히 있을 때 팔을 옆으로 벌린 각 (라디안)
   FIGURE_WALK_LEG: 0.7, // 걸을 때 허벅지를 앞뒤로 드는 최대 각
   FIGURE_WALK_KNEE: 0.9, // 걸을 때 무릎을 굽히는 최대 각
   FIGURE_WALK_ARM: 0.6, // 걸을 때 팔을 앞뒤로 흔드는 최대 각
@@ -1807,11 +1812,16 @@ export const CONFIG = {
   TUNNEL_MAX_RESTARTS: 5, // 연속 실패 상한 (넘으면 포기하고 안내)
   // 재접속 (2026-10-28 재혁): 끊긴 사람 자리를 이만큼 유지 (같은 자리·이름·색·캐릭터·팀·승수·피해 %). 판 중이면 그동안 봇이 대신 조종, 돌아오면 바로 돌려받음.
   // 지나면 예전처럼 나간 걸로 (판 중이면 '접속 끊김' 사망). 대기실도 같음 (방장이면 방장 유지, 사람이 다 끊겨도 방은 이 시간 뒤에 없어짐)
-  RECONNECT_GRACE_MS: 60000,
+  RECONNECT_GRACE_MS,
   RECONNECT_TOKEN_BYTES: 16, // 자리 토큰 (방 코드와 같이 보냄) 길이: 16바이트 = 추측 불가
-  NET_RECONNECT_MS: 2000, // 화면: 서버 연결이 끊기면 이 간격으로 다시 붙어 봄 (붙으면 새로고침 → 저장한 토큰으로 같은 자리)
-  NET_RECONNECT_TRIES: 30, // 이만큼 해도 안 되면 그만 (30 × 2초 = 자리 유지 RECONNECT_GRACE_MS 와 같게. 터널 주소가 바뀌었으면 새 링크가 필요)
+  NET_RECONNECT_MS, // 화면: 서버 연결이 끊기면 이 간격으로 다시 붙어 봄 (붙으면 새로고침 → 저장한 토큰으로 같은 자리)
+  NET_RECONNECT_TRIES: RECONNECT_GRACE_MS / NET_RECONNECT_MS, // 이만큼 해도 안 되면 그만 (30 × 2초 = 자리 유지 RECONNECT_GRACE_MS 와 같게, 나눗셈으로 맞춤. 터널 주소가 바뀌었으면 새 링크가 필요)
 };
+
+// 방에 들어올 수 있는 최대 인원 (사람 + 봇): MAX_PLAYERS 와 시작 위치 수 중 작은 쪽. 서버·방(server/·C# Rooms)·화면(client/main.js)이 이 함수 하나를 씀 (감사 T5)
+export function maxPlayers() {
+  return Math.min(CONFIG.MAX_PLAYERS, CONFIG.SPAWN_POINTS.length);
+}
 
 // 캐릭터의 평타 세트 (바드는 메탈 폼이면 metal 세트)
 export function basicSet(char, form) {

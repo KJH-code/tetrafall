@@ -4,8 +4,10 @@ import assert from 'node:assert/strict';
 import { Game } from '../server/game.js';
 import { Rooms } from '../server/rooms.js';
 import { CONFIG as C } from '../shared/config.js';
+import { TICK } from './support/tick.js';
+import { fakeWs } from './support/fake-ws.js';
+import { lcg } from './support/rng.js';
 
-const TICK = 1000 / C.TICK_RATE;
 
 function setupN(n) {
   const g = new Game(() => {});
@@ -66,20 +68,6 @@ test('KO: 판을 끝낸 죽음은 finalKill (누가·어떻게·자리·이긴 �
 });
 
 // 가짜 소켓
-function fakeWs() {
-  return {
-    OPEN: 1,
-    readyState: 1,
-    msgs: [],
-    send(text) {
-      this.msgs.push(JSON.parse(text));
-    },
-    last(type) {
-      return [...this.msgs].reverse().find((m) => m.type === type);
-    },
-  };
-}
-
 test('접속: ping → pong 은 보낸 시각을 그대로 + 서버 틱 부하 (방 안·밖 둘 다), 잘못된 ping 은 무시', () => {
   const rooms = new Rooms({ rng: () => 0.5 });
   const ws = fakeWs();
@@ -164,11 +152,10 @@ test('접속 표시 계산 (shared/net.js): 핑 = 왕복 시간, 연속으로 �
 test('접속 표시: 로컬 흔들림 (핑 5ms, 가끔 화면이 멈칫해 pong 하나·스냅샷 사이 하나가 늦음) 에는 1분 동안 노랑이 안 뜸', async () => {
   const { NetMeter } = await import('../shared/net.js');
   const m = new NetMeter();
-  const tick = 1000 / C.TICK_RATE;
   let worst = 'ok';
   for (let now = 0, k = 0; now < 60000; k++) {
     const stall = k % 150 === 75 ? C.NET_SNAPSHOT_GAP_MS + 80 : 0; // 5초마다 한 번 멈칫
-    now += tick + stall;
+    now += TICK + stall;
     m.onState(now);
     if (k % 30 === 0) m.onPong({ type: 'pong', t: now - 5 - stall, workMs: 2, behindMs: 0 }, now);
     const v = m.view(now + 5);
@@ -181,8 +168,7 @@ test('접속 표시: 느린 화면 (프레임 90ms, 헤드리스) 에서 pong·�
   const { NetMeter } = await import('../shared/net.js');
   const m = new NetMeter();
   const frame = 90;
-  let s = 7;
-  const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0), s / 2 ** 32);
+  const rnd = lcg(7);
   let worst = 'ok';
   for (let now = 0, k = 0; now < 30000; k++) {
     now += frame * (0.8 + 0.4 * rnd());
@@ -283,9 +269,8 @@ test('kill 이벤트 (킬피드·부활 화면): 죽음마다 killer·victim·ca
 test('접속 표시: 방을 나가 스냅샷이 끊겨도 메뉴에선 끊김 알림 없음 (2026-10-31 재혁 결과 판 뒤 메뉴에 "끊김 4536ms")', async () => {
   const { NetMeter } = await import('../shared/net.js');
   const m = new NetMeter();
-  const tick = 1000 / C.TICK_RATE;
   let now = 0;
-  for (let k = 0; k < 100; k++) m.onState((now += tick));
+  for (let k = 0; k < 100; k++) m.onState((now += TICK));
   assert.equal(m.view(now + C.NET_SNAPSHOT_STALL_MS * 2).warn !== null, true); // 방 안에서 안 오면 끊김
   m.leaveRoom();
   assert.equal(m.view(now + C.NET_SNAPSHOT_STALL_MS * 4).warn, null);

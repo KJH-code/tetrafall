@@ -5,12 +5,13 @@ import { Rooms } from '../server/rooms.js';
 import { CONFIG as C } from '../shared/config.js';
 import { tutorialLayout, tutorialSteps, tutorialStep, stepText, judge, progressLabel, nextStep, doneMessage, TUTORIAL_N } from '../shared/tutorial.js';
 import { TutorialPilot } from '../shared/tutorial-pilot.js';
+import { TICK } from './support/tick.js';
+import { lcg } from './support/rng.js';
+import { fakeWs } from './support/fake-ws.js';
 
-const TICK = 1000 / C.TICK_RATE;
 const STEPS = C.TUTORIAL_STEPS;
 
 function setup(char = 'tank', seed = 1) {
-  let s = seed;
   const logs = [];
   const server = [];
   const rooms = new Rooms({
@@ -19,12 +20,9 @@ function setup(char = 'tank', seed = 1) {
       return { log() {}, close() {} };
     },
     serverLog: (m) => server.push(m),
-    rng: () => {
-      s = (s * 1664525 + 1013904223) >>> 0;
-      return s / 4294967296;
-    },
+    rng: lcg(seed),
   });
-  const ws = { OPEN: 1, readyState: 1, msgs: [], send(t) { this.msgs.push(JSON.parse(t)); } };
+  const ws = fakeWs();
   const conn = rooms.connect(ws);
   rooms.message(conn, { type: 'tutorial', nick: '재혁', char });
   const g = conn.room.game;
@@ -169,7 +167,7 @@ test('튜토리얼은 아이템이 저절로 안 나옴 (단계가 놓은 것만
   assert.equal(p.g.tutorial.i, 1);
   // 연습 방
   const rooms = new Rooms({ openLog: () => ({ log() {}, close() {} }), serverLog: () => {}, rng: Math.random });
-  const conn = rooms.connect({ OPEN: 1, readyState: 1, send() {} });
+  const conn = rooms.connect(fakeWs());
   rooms.message(conn, { type: 'practice', nick: 'x' });
   rooms.message(conn, { type: 'tutorialSkip' });
   assert.equal(conn.room.game.tutorial, undefined);

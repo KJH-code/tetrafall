@@ -140,6 +140,7 @@ export class Sound {
     const t = this.now() + delay;
     const src = this.ctx.createBufferSource();
     src.buffer = this.noiseBuf;
+    src.loop = true; // 잡음 버퍼는 1초 + 시작 위치가 0~0.5초라 0.5초보다 긴 소리(쏴아·파도 1.4~1.8초)가 잘렸음. 흰 잡음이라 이어 돌려도 티 안 남
     const f = this.ctx.createBiquadFilter();
     f.type = filter;
     f.Q.value = q;

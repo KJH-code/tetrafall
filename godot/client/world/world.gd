@@ -2,6 +2,8 @@
 # + 위험 + 사람 몸 자리 + 하늘 시점 도우미 + 아이템 + 카메라. 서버 상태는 Store 에서 읽기만
 # 다른 묶음 자리: 몸 = G2 chars/chars.gd · 셰이더 = G3 shaders/ · 효과 = G5 fx/ (fx_root 에 붙임) · 건축가 블록 = G6 world/bblocks.gd
 extends Node3D
+const Opts := preload("res://core/opts.gd")
+const External := preload("res://chars/external.gd")
 
 const C := preload("res://core/config.gd")
 const Co := preload("res://core/coords.gd")
@@ -17,6 +19,7 @@ const GhostAim := preload("res://world/ghost_aim.gd")
 const Scenery := preload("res://world/scenery.gd")
 const LP := preload("res://world/lobby_preview.gd")
 const Prof := preload("res://core/prof.gd") # 성능 구간 재기 (--perf-log 만)
+const Hitch := preload("res://core/hitch.gd")
 const Marks := preload("res://world/marks.gd")
 const LightFx := preload("res://world/light_fx.gd")
 const Shots := preload("res://world/shots.gd")
@@ -24,6 +27,13 @@ const HookFx := preload("res://world/hook_fx.gd")
 const BodyFx := preload("res://world/body_fx.gd")
 const CamRig := preload("res://world/cam_rig.gd")
 const LobbyDark := preload("res://world/lobby_dark.gd")
+const Gfx := preload("res://world/gfx.gd") # 화질 (W6): 설정 화질·창 크기·GPU → lowGfx·3D 배율·MSAA
+const ShadowCalc := preload("res://world/shadow_calc.gd") # W32: 그림자 거리
+const PSched := preload("res://world/prewarm_sched.gd") # W41: 메뉴·대기실 미리 하기를 프레임 예산 안에서 한 조각씩
+const WarmScan := preload("res://world/warm_scan.gd")
+const Gate := preload("res://core/entry_gate.gd") # W42: 입장·카운트다운 큰 일을 한 프레임에 하나씩
+const TexPre := preload("res://chars/tex_prefetch.gd")
+const UiPrefs := preload("res://ui/ui_prefs.gd")
 const BBLOCKS := "res://world/bblocks.gd"
 const FX := "res://fx/fx.gd" # G5 효과 (있으면 fx_root 에 붙이고 setup(rig): 카메라 흔들림·KO 줌은 rig.hook)
 const G3_PATH := "res://shaders/g3.gd" # G3 툰·테마 (있으면 하늘·빛·안개·블록 재질을 G3 가 맡음)
@@ -59,16 +69,48 @@ var G3 = null
 var preview = null # 대기실 지형 미리보기 {key, grid, top, w, d, h, off} (LP.build), 없으면 서버 격자
 var sprouts = null # G3 튀어나온 조각 노드 (테마마다)
 var _menu_since := -1.0 # 메뉴에 머문 시각 (prewarm)
+var _ext_requested := false # W30: 외부 모델 스레드 미리 읽기 요청함
+var _ext_warm_done := false # W30: 외부 몸 미리 그리기 끝
 var _prewarmed = null # 셰이더 미리 데운 테마 (G3.prewarm)
+var _sched_setup_done := false # W41 스케줄러에 메뉴 작업을 넣었음
+var _sched_prev_us := 0
+const WARM_SCAN_PER_PIECE := 3
+var _scan_done := {} # 미리 그린 재질 id
+var _scan_queue: Array = []
+var _ghost_warmed := false
+var _std_warmed := false # W42 표준 재질 모양 표를 미리 그릴 줄에 넣었음
+var _scan_root: Node3D = null
+var _scan_wait := 0
+var _pf_done := {} # 대기실에서 텍스처를 미리 요청한 캐릭터
+var _jobs := {} # 캐릭터 → External.WarmJob (W41)
 var dark = null # 대기실 어두운 무대 (lobby_dark.gd), 대기실 아니면 null
+var _tail := 0 # W51: 입장 첫 바퀴 끝 (칸 깔기 다음) 의 남은 일을 세 프레임에 나눈 단계 — 0 몸 자세 · 1 효과·위험·떨어지는 칸 · 2 나머지 (카메라·1인칭 팔). 방 밖이면 0 으로
+var _entered := false # W42: 입장 쪼개기가 끝남 (처음 한 바퀴 다 돌림) — 그 전엔 판 노드를 숨김 (반쯤 지어진 장면이 안 보이게)
+var entry_frames := 0 # 확인용: 이번 입장에서 일을 미룬 프레임 수
 var vm = null # G2 1인칭 팔·무기 (chars/viewmodel.gd)
+var _halo_st = null # 판 빛 무리를 만든 스냅샷 (같으면 _halos 그대로)
+var _halo_lit := false
+var _halos: Array = []
 const VIEWMODEL := "res://chars/viewmodel.gd"
+
+
+func _exit_tree() -> void:
+	# 끝낼 때 남은 미리 하기 작업을 놓음: 정적 스케줄러가 람다 (world·몸 데우기 잡을 붙잡음) 를 쥔 채로 엔진이 내려가면 힙이 깨져 종료 때 abort (W41 병합 검증: Linux 소프트웨어 렌더 실행이 rc=134)
+	PSched.main.clear()
+	WarmScan.clear_static()
+	if G3 != null and G3.has_method("clear_static"):
+		G3.clear_static() # W50: G3 정적 목록의 람다가 g3.gd 를 쥔 채 내려가던 것
 
 
 func _ready() -> void:
 	headless = DisplayServer.get_name() == "headless"
+	var gfx := Gfx.new() # 맨 먼저: 아래·타이틀이 읽는 lowGfx 를 화질로 정함
+	gfx.world = self
+	add_child(gfx)
+	set_msaa(bool(View.settings.get("lowGfx", false))) # 모서리 계단 없앰 (JS antialias). 확인용 --msaa 는 자동 조종이 뒤에 덮어씀
 	if ResourceLoader.exists(G3_PATH):
 		G3 = load(G3_PATH)
+		G3.set_outline_far(float(WC.OUTLINE_FAR.taper_from), float(WC.OUTLINE_FAR.gone), float(WC.OUTLINE_FAR.min_k)) # W31: 몸 외곽선 거리 (셰이더 전역 값)
 	var we := WorldEnvironment.new()
 	env.background_mode = Environment.BG_SKY
 	env.sky = Sky.new()
@@ -115,6 +157,7 @@ func _ready() -> void:
 	if ResourceLoader.exists(VIEWMODEL):
 		vm = load(VIEWMODEL).new()
 		add_child(vm)
+		gfx.sync_vm() # 화질 (W6): 팔 SubViewport 도 판과 같은 3D 배율
 	if ResourceLoader.exists(BBLOCKS):
 		bblocks = load(BBLOCKS).new()
 		add_child(bblocks)
@@ -128,7 +171,7 @@ func _ready() -> void:
 		light_fx.queue_free()
 		light_fx = G3.game_light(self)
 	if G3 != null:
-		grid_view.set_material(G3.toon_material(Color.WHITE, {"vertex_color": true}))
+		grid_view.set_material(grid_material(G3))
 		grid_view.make_mat = func(c: Color): return G3.toon_material(c)
 		bodies.make_mat = grid_view.make_mat
 		marks.make_mat = grid_view.make_mat
@@ -150,12 +193,12 @@ func _ready() -> void:
 	apply_theme("")
 	# 확인용 명령줄 (-- 뒤): --world-view over|third|first · --map <맵 id> · --mode <모드> · --hp (체력전) (방장이면 대기실에서 바꿈)
 	var args := {}
-	var list := OS.get_cmdline_user_args()
+	var list := Opts.args()
 	for i in list.size():
 		if list[i].begins_with("--") and i + 1 < list.size() and not list[i + 1].begins_with("--"):
 			args[list[i].substr(2)] = list[i + 1]
 	rig.force = str(args.get("world-view", ""))
-	marks_demo = args.has("marks-demo") or OS.get_cmdline_user_args().has("--marks-demo")
+	marks_demo = args.has("marks-demo") or Opts.args().has("--marks-demo")
 	Store.joined.connect(func(_room, _re):
 		if args.has("map"):
 			Store.send_room({"type": "setMap", "map": args.map})
@@ -171,6 +214,7 @@ func _ready() -> void:
 	shots.bodies = bodies
 	shots.marks = marks
 	shots.cam = rig.cam
+	bodies.cam = rig.cam # 몸 자세 LOD (W12)
 	hook_fx.bodies = bodies
 	hook_fx.marks = marks
 	hook_fx.my_view_on = func() -> bool: return View.mode == "first"
@@ -189,11 +233,39 @@ func _ready() -> void:
 		if k == "lowGfx":
 			if g3_has("set_low"):
 				G3.set_low(self, View.settings.lowGfx) # B3: 이미 만든 지형·칸·위험 재질·튀어나온 조각·판 빛·그림자를 곧바로
-			set_shadows(not View.settings.lowGfx)
-			apply_theme(str(theme_id))) # 지형 셰이더·튀어나온 조각도 낮춤으로
+			set_shadows(shadows_wanted())
+			set_msaa(View.settings.lowGfx)
+			apply_theme(str(theme_id)) # 지형 셰이더·튀어나온 조각도 낮춤으로
+		elif k == "shadows": # 설정 '그림자'·'외곽선' (W12: 예전엔 듣는 쪽이 없어 체크가 아무것도 안 바꿈)
+			set_shadows(shadows_wanted())
+		elif k == "outline" and G3 != null:
+			G3.set_outline_on(View.settings.get("outline", true) != false))
 	if g3_has("set_low"):
 		G3.set_low(self, bool(View.settings.get("lowGfx", false)))
-	set_shadows(not View.settings.get("lowGfx", false))
+	set_shadows(shadows_wanted())
+	if G3 != null and G3.outline_on != (View.settings.get("outline", true) != false):
+		G3.set_outline_on(View.settings.get("outline", true) != false)
+
+
+# 해 그림자: 설정 '그림자' 켬이고 그래픽 낮춤 (화질 낮음) 이 아닐 때
+static func shadows_wanted(settings: Dictionary = {}) -> bool:
+	var s: Dictionary = settings if not settings.is_empty() else View.settings
+	return not bool(s.get("lowGfx", false)) and s.get("shadows", true) != false
+
+
+# 판 화면 다중 샘플: 보통 WC.MSAA_3D_PC·WC.MSAA_3D_WEB (JS antialias), 그래픽 낮춤이면 WC.MSAA_LOW (JS 는 낮춤에서 픽셀 비율 1 로 비용을 줄임 — 고도는 다중 샘플을 끔)
+func set_msaa(low: bool) -> void:
+	if get_viewport() != null:
+		get_viewport().msaa_3d = msaa_for(low)
+
+
+# 쌓인 칸 (건축·던진 칸 — 격자 칸) 재질: render.js blockMeshes = 위험 물들임 받음 (hazard.js tint), 외곽선 없음 (noOutline)
+static func grid_material(g3) -> Material:
+	return g3.toon_material(Color.WHITE, {"vertex_color": true, "hz_tint": true, "outline": false})
+
+
+static func msaa_for(low: bool, web: bool = Opts.web()) -> Viewport.MSAA:
+	return WC.msaa_3d(low, web)
 
 
 # G3 에 이 함수가 있나 (B3 가 차례로 올리는 재질: 합치는 순서가 달라도 됨)
@@ -206,6 +278,9 @@ func g3_has(fn: String) -> bool:
 	return false
 
 
+var _shadow_reach := -1.0 # 지금 적용한 그림자 거리 (World 가 판 크기로 정하면 set_field 가 덮으므로, 판 크기가 바뀌면 -1 로 되돌려 다시 정함)
+
+
 func set_shadows(on: bool) -> void:
 	if G3 != null:
 		G3.set_shadows(self, on)
@@ -213,8 +288,23 @@ func set_shadows(on: bool) -> void:
 		sun.shadow_enabled = on
 
 
+var _theme_stage := 0 # W45: 맵 적용이 어디까지 갔나 (0 = 쉼·처음, 1·2 = 다음 단계 차례)
+
+
 # 맵 id → 테마 (WORLD_MAP_THEME·WORLD_THEMES 색만, 꾸밈은 G3). 표에 없는 맵은 예전 노을 (SKY_*·FOG_*)
 func apply_theme(map_id: String) -> void:
+	_theme_stage = 0
+	while apply_theme_step(map_id):
+		pass
+
+
+# W45: 맵 적용 한 단계 (G3 있으면 세 단계: ① 지형·바닥·칸 색·소품 ② 위험 액체 ③ 테트리미노 칸 모양·재질). 옛 한 덩어리는 11~17ms (소프트웨어 렌더, 테마마다 다름).
+# 돌려줌: 더 남았으면 true. 단계 사이에 맵이 또 바뀌면 처음부터. G3 없으면 한 단계
+func apply_theme_step(map_id: String) -> bool:
+	if _theme_stage > 0 and map_id != theme_id:
+		_theme_stage = 0
+	if G3 != null and _theme_stage > 0:
+		return _apply_theme_late(map_id)
 	theme = Cells.theme_of(map_id)
 	theme_id = map_id
 	grid_view.set_theme(theme)
@@ -234,17 +324,8 @@ func apply_theme(map_id: String) -> void:
 		sprouts = G3.sprout_node(tid)
 		if sprouts != null:
 			grid_view.add_child(sprouts) # 판 밖 (메뉴) 에선 grid_view 와 같이 숨음
-		if g3_has("hazard_material"):
-			hazard_view.set_g3(G3, tid, low) # 위험 액체 (B3): 필드 판 + 지평선 바다, 물들임
-		if g3_has("piece_mesh"):
-			# 테트리미노 칸 (B3 PieceLook): 떨어지는 칸·쌓인 칸 모양·재질·조각 색, 빛 테두리 = GAME_LIGHT 안 rim (그래픽 낮춤이면 0)
-			light_fx.low = low
-			var rim: float = light_fx.rim
-			var pm: Mesh = G3.piece_mesh(tid, low)
-			var cols: Dictionary = G3.piece_colors(tid)
-			pieces_view.set_look(pm, [G3.piece_material(tid, low, {"rim": rim}), G3.piece_material(tid, low, {"rim": rim, "transparent": true, "opacity": 1.0})], cols)
-			grid_view.set_piece_look(pm, G3.piece_material(tid, low, {"rim": rim, "outline": false}), cols) # 쌓인 칸은 외곽선 없음 (render.js landed noOutline)
-		return
+		_theme_stage = 1
+		return true
 	var sk: Dictionary = theme.get("sky", {})
 	sky_mat.sky_top_color = Co.color(sk.get("top", C.SKY_TOP))
 	sky_mat.sky_horizon_color = Co.color(sk.get("horizon", C.SKY_HORIZON))
@@ -263,6 +344,31 @@ func apply_theme(map_id: String) -> void:
 	sun.transform = Transform3D(Basis.looking_at(-to_sun, Vector3.UP if absf(to_sun.y) < 0.99 else Vector3.FORWARD), Vector3.ZERO)
 	sun.light_color = Co.color(theme.get("sunColor", 0xfff0d8))
 	sun.light_energy = float(theme.get("sunIntensity", 1.0)) * WC.SUN_ENERGY
+	return false
+
+
+# 맵 적용 둘째·셋째 단계 (apply_theme_step)
+func _apply_theme_late(map_id: String) -> bool:
+	var tid = C.WORLD_MAP_THEME.get(map_id)
+	var low := bool(View.settings.get("lowGfx", false))
+	if _theme_stage == 1:
+		if g3_has("hazard_material"):
+			hazard_view.set_g3(G3, tid, low) # 위험 액체 (B3): 필드 판 + 지평선 바다, 물들임
+		_theme_stage = 2
+		return true
+	_theme_stage = 0
+	if g3_has("piece_mesh"):
+		# 테트리미노 칸 (B3 PieceLook): 떨어지는 칸·쌓인 칸 모양·재질·조각 색, 빛 테두리 = GAME_LIGHT 안 rim (그래픽 낮춤이면 0)
+		light_fx.low = low
+		var rim: float = light_fx.rim
+		var pm: Mesh = G3.piece_mesh(tid, low)
+		var cols: Dictionary = G3.piece_colors(tid)
+		hook_fx.g3 = G3 # W35 갈고리 덩어리가 맵 테마 칸 모습·돌·모래 재질을 씀
+		hook_fx.theme_id = tid
+		hook_fx.low = low
+		pieces_view.set_look(pm, [G3.piece_material(tid, low, {"rim": rim}), G3.piece_material(tid, low, {"rim": rim, "transparent": true, "opacity": 1.0})], cols, G3.piece_mesh(tid, true))
+		grid_view.set_piece_look(pm, G3.piece_material(tid, low, {"rim": rim, "outline": false}), cols, G3.piece_mesh(tid, true)) # 쌓인 칸은 외곽선 없음 (render.js landed noOutline)
+	return false
 
 
 func _marks_demo() -> void:
@@ -337,6 +443,196 @@ func shown_pos(p: Dictionary, pos: Vector3) -> Vector3:
 	return pos
 
 
+func _no_sched() -> bool:
+	return Opts.args().has("--no-prewarm-sched")
+
+
+func _input(e: InputEvent) -> void:
+	if e is InputEventMouseMotion or e is InputEventKey or e is InputEventMouseButton:
+		PSched.main.note_input(Time.get_ticks_usec() / 1000.0)
+
+
+# 예전 방식 (--no-prewarm-sched): 메뉴 1.5초 뒤 G3.prewarm 한 번, 그 뒤 외부 몸 데우기를 프레임마다 한 캐릭터
+func _old_prewarm(live: bool) -> void:
+	if not live and _prewarmed == null and g3_has("prewarm"):
+		var tn := Time.get_ticks_msec() * 1.0
+		if _menu_since < 0:
+			_menu_since = tn
+		elif tn - _menu_since > float(C.LOBBY_DARK.prewarmMs):
+			_prewarmed = str(View.menu_theme)
+			G3.prewarm(self, View.menu_theme)
+	elif live:
+		_menu_since = -1.0
+	if not live and _prewarmed != null and not _ext_warm_done and Opts.args().has("--no-ext-warm") == false:
+		if not _ext_requested:
+			_ext_requested = true
+			External.request_all()
+		_ext_warm_done = External.warm_step(self, func(id, col): return bodies.chars_script.make_body(id, col)) if bodies != null and bodies.chars_script != null else true
+
+
+# W41: 스케줄러 한 프레임. 판 중 (countdown·playing·over) 에는 쉼 (hold), 메뉴·대기실에서만 조각을 돌림
+func _sched_tick(live: bool, st: Dictionary) -> void:
+	var now_us := Time.get_ticks_usec()
+	var prev_ms := (now_us - _sched_prev_us) / 1000.0 if _sched_prev_us > 0 else 0.0
+	_sched_prev_us = now_us
+	if not _sched_setup_done:
+		_sched_setup_done = true
+		_sched_setup()
+	var ph := str(st.get("phase", "")) if live else ""
+	if live and ph == "lobby" and not Opts.args().has("--no-tex-prefetch"):
+		_lobby_prefetch(st)
+	if live and ph == "lobby" and not PSched.main.has("warm.skin") and not _skin_started and not Opts.args().has("--no-skin-warm") and not _no_sched():
+		_skin_started = true # W42 항목 5: 몸 종류마다 스킨 갈래 (반투명 유령화·무적, 잔상) 셰이더를 숨은 채 한 번 그림
+		PSched.main.add("warm.skin", 3, _warm_skin_step, 3.0, "lobby", 500.0)
+	var in_game := ph == "countdown" or ph == "playing" or ph == "over"
+	if in_game:
+		_pf_done.clear() # 판이 끝나 대기실로 돌아오면 다시 미리 읽음
+	PSched.main.step(now_us / 1000.0, prev_ms, in_game)
+	if in_game and TexPre.pending() > 0 and ph == "playing":
+		TexPre.drain() # 판이 자리 잡으면 안 받은 텍스처 요청을 놓음 (영상 메모리)
+
+
+# W41: 재질 미리 그리기 (world/warm_scan.gd) 한 조각 = 재질 몇 개를 카메라 앞에 작게 그림 → 두 프레임 뒤 치움. 한 번 한 재질은 다시 안 함 (맵을 바꿔 새 재질이 생기면 다음 scan 이 찾음)
+func _warm_scan_step() -> bool:
+	if _scan_root != null:
+		_scan_wait -= 1
+		if _scan_wait <= 0:
+			_scan_root.queue_free()
+			_scan_root = null
+		return false
+	if not is_visible_in_tree():
+		return PSched.WAIT
+	if _scan_queue.is_empty():
+		_scan_queue = WarmScan.collect(self, _scan_done)
+		if not _std_warmed: # W42: 이벤트 때 코드가 새로 만드는 표준 재질 모양들 (warm_scan.gd STD_KEYS)
+			_std_warmed = true
+			_scan_queue = WarmScan.std_entries() + _scan_queue # 작고 확실한 것부터
+		if not _ghost_warmed and G3 != null:
+			_ghost_warmed = true # 유령화·무적 몸 (반투명 + 깊이 선 묶음) 은 처음 켤 때 컴파일됨 — 같은 재질을 한 번 그림 (스킨 갈래는 몸 데우기가 맡음)
+			_scan_queue.append([preload("res://chars/ghost_depth.gd").with_prepass(G3.toon_material(Color.WHITE, {"opacity": 0.5})), false])
+			_scan_queue.append([preload("res://chars/ghost_depth.gd").with_prepass(WarmScan.std_material([0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0])), false]) # 코드 몸 (조각 메시) 의 유령화·무적 — 표준 반투명을 깊이 선으로 감쌈
+		if _scan_queue.is_empty():
+			return true
+	var take: Array = _scan_queue.slice(0, WARM_SCAN_PER_PIECE)
+	_scan_queue = _scan_queue.slice(WARM_SCAN_PER_PIECE)
+	_scan_root = WarmScan.spawn(self, take, get_viewport().get_camera_3d())
+	_scan_wait = 1 # 붙인 프레임에 그려지고 다음 부름에 치움 (W42: 2 → 1, 재질이 140개 넘게 늘어서)
+	Hitch.tag("미리 그리기", "재질 %d개 (남은 %d)" % [take.size(), _scan_queue.size()])
+	return false
+
+
+# W42 항목 5: 스킨 몸 (뼈로 움직이는 메시) 의 반투명 갈래 — 유령화·무적 (깊이 선 + 반투명 툰), 잔상·낙사 잔상 (표준 반투명) — 은 그 재질이 스킨 메시를 처음 그릴 때 컴파일됨.
+# 앞의 재질 미리 그리기 (warm_scan) 는 상자 메시로만 그려 스킨 갈래를 못 덮음. 대기실에 있는 몸 종류마다 몸을 복제해 (body.snapshot) 그 재질들을 입혀 카메라 앞에 아주 작게 두 프레임 그림
+var _skin_started := false
+var _skin_done := {} # 몸 종류 → true
+var _skin_queue: Array = [] # [몸, 종류, 재질 번호]
+var _skin_root: Node3D = null
+var _skin_wait := 0
+
+
+func _skin_mat(i: int) -> Material:
+	if i == 0:
+		return preload("res://chars/ghost_depth.gd").with_prepass(G3.toon_material(Color.WHITE, {"opacity": 0.5})) if G3 != null else null
+	return WarmScan.std_material(WarmScan.SKIN_KEYS[i - 1])
+
+
+func _warm_skin_step() -> Variant:
+	if _skin_root != null:
+		_skin_wait -= 1
+		if _skin_wait <= 0:
+			_skin_root.queue_free()
+			_skin_root = null
+		return false
+	if not is_visible_in_tree() or bodies == null or G3 == null:
+		return PSched.WAIT
+	if _skin_queue.is_empty():
+		for id in bodies.nodes:
+			var b = bodies.nodes[id].get("body")
+			if b == null or not is_instance_valid(b) or not b.has_method("snapshot") or not b.is_inside_tree():
+				continue
+			var key := BodyFx.skin_key(b)
+			if _skin_done.has(key):
+				continue
+			_skin_done[key] = true
+			for i in WarmScan.SKIN_KEYS.size() + 1:
+				_skin_queue.append([b, key, i])
+		if _skin_queue.is_empty():
+			return PSched.WAIT
+	var job: Array = _skin_queue.pop_front()
+	var body = job[0]
+	if not is_instance_valid(body) or not body.is_inside_tree():
+		return false
+	var t0 := Hitch.t()
+	_skin_root = Node3D.new()
+	_skin_root.name = "WarmSkin"
+	add_child(_skin_root)
+	var cam := get_viewport().get_camera_3d()
+	if cam != null and cam.is_inside_tree():
+		_skin_root.global_transform = cam.global_transform.translated_local(Vector3(0, 0, -2.0))
+	var g: Node3D = body.snapshot(_skin_mat(int(job[2])))
+	g.scale = Vector3.ONE * 0.002
+	_skin_root.add_child(g)
+	_skin_wait = 2
+	Hitch.span("미리 그리기", "skin %s %d" % [job[1], job[2]], t0)
+	return false
+
+
+# W41: 대기실에 있는 사람들의 캐릭터 (+ 나) 의 판 몸·큰 캐릭터·초상 텍스처를 미리 스레드로 요청 — 판 시작 때 몸·초상을 만들며 동기로 읽던 것 (몸당 10~50ms)
+func _lobby_prefetch(st: Dictionary) -> void:
+	var want := {}
+	for p in st.get("players", []):
+		if p.get("spectator", false) or p.get("dummy", false) or p.get("char") == null:
+			continue
+		want[str(p.char)] = true
+	var rank := 0
+	for id in want:
+		if _pf_done.has(id) or not C.FIGURE_CHARS.has(id):
+			continue
+		_pf_done[id] = true
+		if not PSched.main.has("warm.scan.lobby"):
+			PSched.main.add("warm.scan.lobby", 4, _warm_scan_step, 3.0, "lobby", 300.0) # 맵·인원에 따라 새로 생긴 재질
+		var job = External.WarmJob.new(str(id), true, true, false)
+		PSched.main.add("lobby.prefetch." + str(id), 0 + rank, func(): return job.step(self, Callable()), 4.0, "lobby")
+		rank += 1
+
+
+# 메뉴 작업 목록 (우선순위 작을수록 먼저): 셰이더 데우기 → 내 캐릭터 → 판 빛 LUT → 나머지 캐릭터 몸. 시작 1.5초 뒤부터 (타이틀 첫 장면이 자리 잡은 뒤)
+func _sched_setup() -> void:
+	var S = PSched.main
+	var after := float(C.LOBBY_DARK.prewarmMs)
+	if g3_has("prewarm"):
+		var pi := [0]
+		S.add("g3.prewarm", 1, func():
+			if not is_visible_in_tree():
+				return PSched.WAIT # 타이틀·메뉴 동안 world 는 숨김 (title.gd) — 숨은 채로 그리면 셰이더가 안 만들어짐: 대기실에서 (조각으로 나눠)
+			G3.prewarm(self, View.menu_theme, 3, pi[0])
+			pi[0] += 1
+			if pi[0] >= G3.prewarm_parts():
+				_prewarmed = str(View.menu_theme)
+				return true
+			return false, 3.0, "menu", after)
+	S.add("warm.scan", 3, _warm_scan_step, 3.0, "menu", after + 300.0)
+	if G3 != null and ResourceLoader.exists(LobbyDark.STAGE): # W42: 대기실 무대 스크립트 컴파일 (~22ms) 을 메뉴에서 미리 — 타이틀을 거치면 이미 있음. 정적 함수라 world 를 안 붙잡음 (종료 때 스케줄러 람다가 죽은 노드를 쥐는 abort 방지)
+		S.add("stage.script", 5, LobbyDark.preload_stage, 22.0, "menu", after + 400.0)
+	if light_fx != null and light_fx.has_method("warm_lut_step"):
+		S.add("light.lut", 6, func(): return light_fx.warm_lut_step(), 0.7, "menu", after)
+		S.add("hazard.vignette", 7, func(): return PSched.WAIT if not is_visible_in_tree() else hazard_view.warm_canvas_step(), 0.2, "menu", after)
+		S.add("light.vignette", 7, func(): return PSched.WAIT if not is_visible_in_tree() else light_fx.warm_canvas_step(), 0.2, "menu", after)
+	if Opts.args().has("--no-ext-warm") or bodies == null or bodies.get("chars_script") == null:
+		return
+	var mine := str(UiPrefs.get_value("char", ""))
+	var order: Array = C.FIGURE_CHARS.duplicate()
+	if mine != "" and order.has(mine):
+		order.erase(mine)
+		order.push_front(mine)
+	var rank := 0
+	for id in order:
+		var job = External.WarmJob.new(str(id))
+		_jobs[id] = job
+		S.add("ext.warm." + str(id), 2 + rank, func(): return job.step(self, func(i, col): return bodies.chars_script.make_body(i, col)), 4.0, "menu", after + 200.0 * rank)
+		rank += 1
+
+
 # 격자 칸이 단단한가 (게임 좌표, render.js solidAt): 필드 밖 = 빈칸, 바닥 아래 = 단단함
 func solid_at(x: float, y: float, z: float) -> bool:
 	var gx := floori(x)
@@ -358,31 +654,46 @@ func _process(dt: float) -> void:
 	# 방 밖 (메뉴): 판 노드를 숨김 (크기 안 정한 바닥·절벽 상자가 원점 카메라 앞을 가르던 것). 하늘·빛 (G3Env)·효과는 그대로
 	var live: bool = not st.is_empty() and st.has("field")
 	for n in [scenery, grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, ghost_aim, marks, light_fx, shots, hook_fx, body_fx]:
-		n.visible = live and ((n != hazard_view and n != ghost_aim) or n.visible) and (n != scenery or dark == null) # 어두운 무대면 떠 있는 섬·먼 배경 숨김
+		n.visible = live and ((_entered and (_tail >= 2 or Gate.no_split("tail"))) or not Gate.on()) and ((n != hazard_view and n != ghost_aim) or n.visible) and (n != scenery or dark == null) # 어두운 무대면 떠 있는 섬·먼 배경 숨김
 	if not live and vm != null:
 		vm.update(null, false, dt) # 방 밖: 1인칭 팔 끔
-	# 첫 진입 멈춤 줄이기 (render.js prewarmLobby): 메뉴에 LOBBY_DARK.prewarmMs 머문 뒤 이번 창 테마로 한 번 (B3 G3.prewarm)
-	if not live and _prewarmed == null and g3_has("prewarm"):
-		var tn := Time.get_ticks_msec() * 1.0
-		if _menu_since < 0:
-			_menu_since = tn
-		elif tn - _menu_since > float(C.LOBBY_DARK.prewarmMs):
-			_prewarmed = str(View.menu_theme)
-			G3.prewarm(self, View.menu_theme)
-	elif live:
-		_menu_since = -1.0
+	# 첫 진입 멈춤 줄이기 (render.js prewarmLobby): 메뉴·대기실에서 미리 하기 — W41 부터 프레임 예산 스케줄러 (world/prewarm_sched.gd) 가 조각으로 나눠 돌림.
+	# 끄고 예전 방식 (한 프레임에 몰아서) 으로 되돌리기: --no-prewarm-sched
+	if _no_sched():
+		_old_prewarm(live)
+	else:
+		_sched_tick(live, st)
+	if not live:
+		_entered = false
+		_tail = 0
+		entry_frames = 0
+		Gate.entered = true
+		hazard_view.clear() # 판 중에 나가면 위험 경고·전역 위험 빛·물들임이 메뉴에 남던 것 (update 가 더 안 불림)
 	if headless or not live:
 		return
 	dt *= View.time_scale # KO 슬로모션 (G5 가 정함)
 	Prof.begin()
-	var now := Time.get_ticks_msec() * 1.0
+	var now: float = Net.now_ms() # (= 고도 시작부터 ms, 재연이면 가상 시계 — core/replay.gd)
 	var f: Dictionary = st.field
 	var fs := Vector3i(int(f.w), int(f.d), int(f.get("h", C.GRID_H)))
 	# 대기실: 고른 맵의 시작 지형을 지금 인원 판 크기로 미리 깖 (render.js lobbyPreview), 테마도 그 맵
 	var pk = LP.pick(st, View.menu_theme)
 	var mid := str(pk) if pk != null else str(st.get("map", {}).get("id", ""))
-	if mid != theme_id:
-		apply_theme(mid)
+	if mid != theme_id or _theme_stage > 0:
+		if not Gate.ok("world.theme"):
+			_entry_wait()
+			return
+		var tg := Gate.t()
+		var more_t := false
+		if Gate.on() and not Gate.no_split("theme"): # W45: 맵 적용을 세 단계로 (단계마다 한 프레임)
+			more_t = apply_theme_step(mid)
+		else:
+			apply_theme(mid)
+		Gate.done("world.theme", tg)
+		Prof.lap("world 섬·대기실 ·맵 바꿈")
+		if more_t:
+			_entry_wait()
+			return
 	if pk != null:
 		var n := LP.lobby_field_size(st)
 		var key := "%s:%d:%d" % [pk, n, fs.z]
@@ -393,14 +704,41 @@ func _process(dt: float) -> void:
 		fs = Vector3i(n, n, fs.z)
 	else:
 		preview = null
+	Prof.lap("world 섬·대기실 ·미리보기 지형")
 	if fs != field:
 		field = fs
 		grid_view.set_field(fs.x, fs.y)
 		if G3 != null:
 			G3.set_field(self, fs.x, fs.y)
+			_shadow_reach = -1.0
 		built_version = -2
-	_lobby_dark(st, fs)
-	scenery.build(C.WORLD_MAP_THEME.get(theme_id), fs.x, fs.y, bool(View.settings.get("lowGfx", false)), fs.z)
+	Prof.lap("world 섬·대기실 ·판 크기 변경")
+	if _lobby_dark(st, fs):
+		_entry_wait()
+		return
+	Prof.lap("world 섬·대기실 ·어두운 무대")
+	var sc_low := bool(View.settings.get("lowGfx", false))
+	var sc_id = C.WORLD_MAP_THEME.get(theme_id)
+	if scenery.stale(sc_id, fs.x, fs.y, sc_low) or scenery.building():
+		if not Gate.ok("world.scenery"):
+			_entry_wait()
+			return
+		var ts := Gate.t()
+		if Gate.on() and not Gate.no_split("scene"): # W45: 지형 (섬·먼 배경) 을 네 단계로 — 단계마다 한 프레임 (옛 17~23ms 한 덩어리)
+			var began := true
+			if scenery.stale(sc_id, fs.x, fs.y, sc_low) or not scenery.building(): # 짓는 중에 맵이 또 바뀌면 처음부터
+				began = scenery.build_begin(sc_id, fs.x, fs.y, sc_low, fs.z)
+			var more: bool = began and scenery.build_step()
+			Gate.done("world.scenery", ts)
+			if more:
+				_entry_wait()
+				return
+		else:
+			scenery.build(sc_id, fs.x, fs.y, sc_low, fs.z)
+			Gate.done("world.scenery", ts)
+	else:
+		scenery.build(sc_id, fs.x, fs.y, sc_low, fs.z) # 바꿀 게 없으면 바로 돌아옴 (테마 없음 → 비움도 여기)
+	Prof.lap("world 섬·대기실 ·지형 만들기")
 	scenery.step(dt)
 	Prof.lap("world 섬·대기실")
 	if bblocks != null:
@@ -408,17 +746,46 @@ func _process(dt: float) -> void:
 		grid_view.skip = bblocks.skip()
 	var gkey = preview.key if preview != null else Store.grid_version
 	var g := grid()
+	var grid_ran := false
 	if str(gkey) != str(built_version) and g.size() == fs.x * fs.y * fs.z:
+		if not Gate.ok("world.grid"):
+			_entry_wait()
+			return
+		var tgr := Gate.t()
 		grid_view.rebuild(g, fs.x, fs.y, fs.z)
 		built_version = gkey
 		if sprouts != null:
 			G3.sprout_update(sprouts, g, fs.x, fs.y, fs.z, grid_view.skip, bool(View.settings.get("lowGfx", false)))
+		Gate.done("world.grid", tgr)
+		grid_ran = true
 	Prof.lap("world 격자·건축 블록")
+	if grid_ran and not _entered and Gate.on() and not Gate.no_split("tail"):
+		# W51: 입장 첫 바퀴의 끝 프레임에 칸 깔기 (격자·튀어나온 조각·칸 값 ~8ms) 와 몸 자세·몸 효과·위험·1인칭 팔 첫 갱신 (~19ms) 이 한꺼번에 몰리던 것 — 칸 깔기만 하고 다음 프레임으로 (끄기 --no-tail-split)
+		_entry_wait()
+		return
+	if not _entered and Hitch.on: # W45: 입장 첫 바퀴가 몇 프레임 걸렸나 (미룬 프레임 수) — 입장 쪼개기 전후 비교
+		Hitch.tag("입장 첫 바퀴 끝", "대기 %d프레임" % entry_frames)
+	_entered = true # 입장 한 바퀴 끝 (지형·무대·칸까지 다 지음)
+	var tail_on: bool = _tail < 2 and Gate.on() and not Gate.no_split("tail")
+	if not tail_on:
+		Gate.entered = true
 	rig.pre(dt)
+	grid_view.regroup() # W39: 쌓인 칸 먼/가까움 (카메라가 움직였을 때만)
 	var sky_on: bool = rig.sky_blend > 0.5
 	bodies.update(st, Store.my_id, rig.hide_me(), sky_on, now)
 	Prof.lap("world bodies.update (몸 자세)")
 	rig.field_size = Vector2(fs.x, fs.y)
+	if G3 != null and WC.shadow_opt and rig.cam.is_inside_tree(): # W32: 그림자 거리를 카메라 자리에 맞춤 (판 크기 값 이하)
+		var cg: Vector3 = rig.cam.global_position
+		var full: float = G3.shadow_full(fs.x, fs.y)
+		var rch: float = ShadowCalc.reach_next(_shadow_reach, Vector3(cg.x, -cg.z, cg.y), fs.x, fs.y, full)
+		if not is_equal_approx(rch, _shadow_reach):
+			_shadow_reach = rch
+			G3.set_shadow_reach(self, rch)
+	if tail_on and _tail == 0: # W51: 몸 자세 첫 갱신까지만 하고 다음 프레임으로 (몸 자세 ~8ms 에 효과·위험·1인칭 팔 첫 갱신이 더해져 25ms 넘던 것)
+		_tail = 1
+		_entry_wait()
+		return
 	var ph := str(st.get("phase", ""))
 	if ph != last_phase:
 		marks.phase_changed() # 판 시작·끝: 서버가 솟은 땅을 버림
@@ -446,17 +813,13 @@ func _process(dt: float) -> void:
 	body_fx.update(st, Store.my_id, dt)
 	Prof.lap("world body_fx")
 	light_fx.low = bool(View.settings.get("lowGfx", false))
-	var halos := []
 	var lit := ph == "countdown" or ph == "playing" or ph == "over"
-	if lit:
-		for pc in st.get("pieces", []):
-			if pc.get("thrown", false):
-				continue
-			var col: int = 0xffffff if str(pc.get("shape", "")) == "ghost" else (WC.CONTROLLED_COLOR if pc.get("controller") != null else int(pieces_view.piece_colors.get(str(pc.get("shape", "")), 0xffffff)))
-			for c in pc.cells:
-				halos.append([c[0] + 0.5, c[1] + 0.5, c[2] + 0.5, col, 0.7 if pc.get("sky", false) else 1.0])
-		for it in st.get("items", []):
-			halos.append([it.x + 0.5, it.y + 0.5, it.z + 0.5, int(C.GAME_LIGHT_ITEM), 0.6])
+	# 빛 무리 목록은 스냅샷 (떨어지는 칸·아이템 자리 = 스냅샷 값 그대로) 이 바뀔 때만 다시 (W15: 120fps 면 같은 목록을 4번씩 만들던 것)
+	if not (is_same(st, _halo_st) and lit == _halo_lit):
+		_halo_st = st
+		_halo_lit = lit
+		_halos = halos_of(st, pieces_view.piece_colors) if lit else []
+	var halos: Array = _halos
 	light_fx.frame(lit, halos, dt)
 	Prof.lap("world 판 빛")
 	var me := Store.me()
@@ -464,6 +827,10 @@ func _process(dt: float) -> void:
 	Prof.lap("world 떨어지는 칸")
 	hazard_view.update(st, Store.grid, Store.grid_version, me, dt)
 	Prof.lap("world 위험")
+	if tail_on and _tail == 1: # 효과·위험·떨어지는 칸까지 하고 다음 프레임에 나머지 (카메라 자리·이름표·1인칭 팔)
+		_tail = 2
+		_entry_wait()
+		return
 	grid_view.cliff.visible = scenery.theme_id == null and (hazard_view.G3 != null or not hazard_view.visible) # 테마 섬이 있으면 상자 절벽 대신 · 단순 위험 표면은 반투명이라 절벽이 비침 (G3 재질은 깊이로 가림)
 	items_view.update(st, dt, now)
 	Prof.lap("world 아이템")
@@ -492,6 +859,29 @@ func _process(dt: float) -> void:
 	Prof.lap("world 1인칭 팔·유령 조준")
 
 
+# 입장 쪼개기: 이번 프레임에 이 큰 일 차례가 아님 → 나머지는 다음 프레임에 (그동안 판 노드는 숨은 채 / 맵 바꿈이면 옛 장면이 잠깐 그대로)
+func _entry_wait() -> void:
+	entry_frames += 1
+	Gate.entered = false # W45: 입장 첫 바퀴가 아직 — 초상·큰 캐릭터는 기다림
+	if Hitch.on:
+		Hitch.tag("entry split", "deferred frame %d" % entry_frames)
+	Prof.lap("world entry split (deferred)")
+
+
+# 판 빛 무리: 떨어지는 블록 칸·아이템마다 [x, y, z, 색, 크기 배수] (game-light.js)
+static func halos_of(st: Dictionary, piece_colors: Dictionary) -> Array:
+	var halos := []
+	for pc in st.get("pieces", []):
+		if pc.get("thrown", false):
+			continue
+		var col: int = 0xffffff if str(pc.get("shape", "")) == "ghost" else (WC.CONTROLLED_COLOR if pc.get("controller") != null else int(piece_colors.get(str(pc.get("shape", "")), 0xffffff)))
+		for c in pc.cells:
+			halos.append([c[0] + 0.5, c[1] + 0.5, c[2] + 0.5, col, 0.7 if pc.get("sky", false) else 1.0])
+	for it in st.get("items", []):
+		halos.append([it.x + 0.5, it.y + 0.5, it.z + 0.5, int(C.GAME_LIGHT_ITEM), 0.6])
+	return halos
+
+
 # 칸 (x, y) 기둥 꼭대기 높이 (render.js columnTopAt)
 func column_top(x: int, y: int) -> int:
 	for z in range(field.z - 1, -1, -1):
@@ -502,12 +892,23 @@ func column_top(x: int, y: int) -> int:
 
 
 # 대기실 어두운 무대 (render.js 의 dark): 고른 맵 테마의 어두운 엔딩 장면, 맵 바꾸면 그 테마 + 빛 번쩍, 판 시작하면 밝은 판으로
-func _lobby_dark(st: Dictionary, fs: Vector3i) -> void:
+func _lobby_dark(st: Dictionary, fs: Vector3i) -> bool: # 참 = 이번 프레임엔 큰 일 차례가 아님 (미룸)
 	if G3 == null:
-		return
+		return false
 	var low := bool(View.settings.get("lowGfx", false))
 	var dk = LP.lobby_theme(st, View.menu_theme)
 	var swap := false
+	var needs: bool = (dark != null and not dark.fits(dk, fs.x, fs.y, low)) or (dark == null and dk != null)
+	if needs and not Gate.ok("world.dark"):
+		return true
+	if needs and dark == null and ResourceLoader.exists(LobbyDark.STAGE) and not ResourceLoader.has_cached(LobbyDark.STAGE):
+		# 무대 스크립트 (title_world.gd 큰 파일) 컴파일 ~22ms — 타이틀을 안 거친 입장 (?room= 링크) 은 여기서 처음. 따로 한 칸 (메뉴 미리 하기가 이미 했으면 건너뜀)
+		if not Gate.ok("world.dark.load"):
+			return true
+		var tl := Gate.t()
+		load(LobbyDark.STAGE)
+		Gate.done("world.dark.load", tl)
+	var tg := Gate.t()
 	if dark != null and not dark.fits(dk, fs.x, fs.y, low):
 		swap = dk != null and dk != dark.theme
 		dark.dispose(self)
@@ -520,6 +921,16 @@ func _lobby_dark(st: Dictionary, fs: Vector3i) -> void:
 	if dk != null and dark == null:
 		dark = LobbyDark.new()
 		add_child(dark)
-		dark.setup(self, G3, dk, fs.x, fs.y, low, swap)
+		dark.setup(self, G3, dk, fs.x, fs.y, low, swap, Gate.on())
+	if needs:
+		Gate.done("world.dark", tg)
+	if dark != null and not dark.ready(): # 소품·빛 가루는 프레임마다 한 조각씩 (큰 일 한 칸)
+		if Gate.ok("world.dark.part"):
+			var tp := Gate.t()
+			dark.stage_step()
+			Gate.done("world.dark.part", tp)
+		if not dark.ready() and not _entered:
+			return true # 입장 첫 바퀴: 무대가 다 지어질 때까지 (아직 숨은 채) 기다림
 	if dark != null:
 		dark.step(self, G3)
+	return false

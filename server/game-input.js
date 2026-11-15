@@ -2,6 +2,9 @@
 // 2026-10-30 game.js 쪼개기: 원래 game.js 의 줄을 그대로 옮김 (동작·로그 문구 같음, tools/game-hash.js 로 확인)
 import { CONFIG as C } from '../shared/config.js';
 
+// 받은 dx·dy → -1·0·1 (숫자 아니면 0)
+const stepOf = (v) => (Number.isFinite(v) ? Math.sign(v) : 0);
+
 export class InputPart {
   // ---------- 입력 ----------
   handleInput(id, input) {
@@ -63,7 +66,13 @@ export class InputPart {
         return;
       case 'pieceMove':
         if (!controlling) return;
-        this.movePiece(this.controlledPiece(p), action.dx | 0, action.dy | 0);
+        // 한 번에 한 칸(-1·0·1)씩, 한 틱에 PIECE_MOVE_PER_TICK 번까지 (큰 dx·dy 나 폭주 메시지로 블록을 한 번에 끝으로 못 보냄)
+        if (p.pieceMoveAt !== this.time) {
+          p.pieceMoveAt = this.time;
+          p.pieceMoves = 0;
+        }
+        if (++p.pieceMoves > C.PIECE_MOVE_PER_TICK) return;
+        this.movePiece(this.controlledPiece(p), stepOf(action.dx), stepOf(action.dy));
         return;
       case 'rotate':
         if (!controlling) {

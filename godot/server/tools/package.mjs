@@ -1,14 +1,21 @@
 // 배포 묶음 (G7): C# 서버 + 고도 웹 빌드 + 고도 PC 클라를 한 폴더로 → zip. 받는 PC 에는 .NET·node·고도 필요 없음.
-// 실행 (레포 뿌리에서): node godot/server/tools/package.mjs [--godot <고도 4.7.2 실행 파일>] [--targets win,linux] [--cloudflared] [--no-godot]
+// 실행 (레포 뿌리에서): node godot/server/tools/package.mjs [--godot <고도 4.7.2 실행 파일>] [--targets win,linux] [--cloudflared] [--no-godot] [--web-template <zip>]
 //   --godot       : 고도 실행 파일 (없으면 환경 변수 GODOT). 웹·PC 클라를 내보냄 (템플릿: godot/client/README.md G7)
+//   --web-template: 웹 내보내기에 쓸 직접 빌드한 템플릿 zip (godot/client/tools/build-web-template.sh 결과, 없으면 환경 변수 GODOT_WEB_TEMPLATE).
+//                   내보내는 동안만 export_presets.cfg 웹 custom_template/release 를 그 경로로 바꾸고 끝나면 (실패해도) 되돌림. 안 주면 공식 템플릿
 //   --no-godot    : 내보내기 건너뛰고 이미 있는 godot/client/build/ 를 씀 (없는 건 빠짐 — 안내만)
-//   --cloudflared : cloudflared 를 GitHub 에서 받아 서버 옆에 넣음 (그러면 --online 이 설치 없이 됨)
+//   --cloudflared : cloudflared 를 GitHub 에서 받아 서버 옆에 넣음 (그러면 --online 이 설치 없이 됨). 못 받아도 (GitHub 일시 장애) 묶음은 cloudflared 없이 만들고
+//                   경고 + README.txt '직접 설치' 안내 + dist/release-notes.md (릴리스 노트에 덧붙임). 막으려면 --require-cloudflared
+//   --cloudflared-cache <폴더> : 받은 cloudflared 를 <폴더>/<플랫폼>/<이름> 에 보관 — 있으면 네트워크를 안 씀 (환경 변수 CLOUDFLARED_CACHE). 최신이 아니라 정한 태그면 CLOUDFLARED_TAG
+//   --cloudflared-budget <초>  : cloudflared 받기 전체(모든 플랫폼) 시간 상한, 기본 600 (한 번 시도 최대 60초, 3번까지, 간격 2·4초)
+//   --require-cloudflared      : cloudflared 를 못 받으면 묶기를 실패로 (기본은 경고하고 계속)
 //   --out <폴더>  : 기본 dist/
 // 결과: dist/tetrafall-win-x64/ (+ .zip), dist/tetrafall-linux-x64/ (+ .zip)
 //   Tetrafall.Server(.exe)   서버 (자기 완결형 한 파일)
 //   web/                     고도 웹 빌드 (+ 파일마다 .br·.gz 미리 압축) → 서버가 /play/ 로, / 는 /play/ 로 넘겨줌
 //   tetrafall(.exe / .x86_64) 고도 PC 클라 (기본 ws://127.0.0.1:3000 = 이 PC 서버)
-//   start-lan / start-online (.bat / .sh), README.txt, cloudflared(.exe) (--cloudflared 일 때)
+//   보고서-복사.bat (+ report.bat, report-copy.ps1) / report.sh (W48)  게임이 꺼져 있어도 저장 폴더의 last_report.txt·hitches.txt 앞 30줄·motion_qa.txt 를 하나로 합쳐 클립보드에 (개인정보 지움)
+//   start-lan / start-online (.bat / .sh — 윈도우 .bat 은 처음에 tetrafall.exe 를 고성능 GPU 로 등록), README.txt, cloudflared(.exe) (--cloudflared 일 때)
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -20,6 +27,185 @@ const root = path.resolve(here, '../../..');
 const clientDir = path.join(root, 'godot', 'client');
 const serverProject = path.join(root, 'godot', 'server', 'src', 'Tetrafall.Server');
 
+// 하이브리드 그래픽 노트북 (W6 2026-11-02, 재혁 PC: Core Ultra 내장 + RTX 5070 에서 tetrafall.exe 가 내장으로 돌아 랙): Windows 는 exe 마다 GPU 를 고름.
+// HKCU\Software\Microsoft\DirectX\UserGpuPreferences 에 'exe 전체 경로' = 'GpuPreference=2;' (고성능) 를 쓰면 Windows 설정 > 그래픽 에서 고른 것과 같음 (관리자 권한 필요 없음).
+// start 스크립트가 처음 켜질 때 쓰고, 이미 값이 있으면 (재혁이 직접 고른 것 포함) 건드리지 않음. 폴더를 옮기면 새 경로로 다시 씀.
+// .bat 은 ASCII 만 (cmd 는 .bat 을 OEM 코드 페이지로 읽음 — 한글 글자를 넣으면 깨짐). 경로는 %~dp0 (실행 중 펼침 — 한글·공백 경로 그대로) 을 늘 따옴표 안에.
+// 괄호 블록을 안 씀 (경로에 ')' 가 있으면 블록이 깨짐) → goto
+export const GPU_PREF_KEY = 'HKCU\\Software\\Microsoft\\DirectX\\UserGpuPreferences';
+export const GPU_PREF_VALUE = 'GpuPreference=2;';
+export function gpuPrefLines(exe = 'tetrafall.exe') {
+  const at = `"%~dp0${exe}"`;
+  return [
+    `rem Hybrid laptop GPU: run ${exe} on the high-performance GPU (same as Windows Settings - Graphics). Skipped if already set.`,
+    `if not exist ${at} goto run`,
+    `reg query "${GPU_PREF_KEY}" /v ${at} >nul 2>&1`,
+    `if errorlevel 1 reg add "${GPU_PREF_KEY}" /v ${at} /t REG_SZ /d "${GPU_PREF_VALUE}" /f >nul && echo [GPU] ${exe} set to high-performance GPU`,
+    ':run',
+  ];
+}
+export function winScript(serverArgs = '') {
+  return ['@echo off', 'cd /d "%~dp0"', ...gpuPrefLines(), `Tetrafall.Server.exe${serverArgs ? ' ' + serverArgs : ''}`, 'pause', ''].join('\r\n');
+}
+
+// 렌더러 시험 (W12 2026-11-03, 고도판 성능): 기본은 GL Compatibility (웹과 같음). PC 만 Forward+·Mobile (Vulkan) 로 켜 보는 시험용 —
+// 서버를 켜면서 tetrafall.exe 를 그 렌더러로 같이 켬 (고도 실행 인자 --rendering-method·--rendering-driver, 내보낸 exe 에도 먹음).
+// 재혁 PC 에서 각각 F3 (Ctrl+C 복사) 숫자를 받아 기본값을 정함. compat 은 같은 흐름 (스크립트가 클라를 켬) 의 비교 기준.
+export const RENDER_TRIALS = { compat: ['gl_compatibility', 'opengl3'], forward: ['forward_plus', 'vulkan'], mobile: ['mobile', 'vulkan'] };
+export function winTryScript(method, driver) {
+  return [
+    '@echo off',
+    'cd /d "%~dp0"',
+    `rem Renderer trial: ${method} (${driver}). Normal play (start-lan.bat) uses GL Compatibility. Compare FPS with F3 (Ctrl+C copies the numbers).`,
+    ...gpuPrefLines(),
+    `start "" "%~dp0tetrafall.exe" --rendering-method ${method} --rendering-driver ${driver}`,
+    'Tetrafall.Server.exe',
+    'pause',
+    '',
+  ].join('\r\n');
+}
+
+// 새 Blender 탱크 시험 (W19): 기본은 꺼짐 (chars_config.gd EXT). 서버를 켜면서 PC 클라를 실행 인자 --ext 로 같이 켬 (사용자 인자라 `--` 뒤)
+export function winExtScript() {
+  return [
+    '@echo off',
+    'cd /d "%~dp0"',
+    'rem New Blender tank trial: starts tetrafall.exe with --ext (external models). Pick the tank in the lobby. Normal play (start-lan.bat) is unchanged.',
+    ...gpuPrefLines(),
+    'start "" "%~dp0tetrafall.exe" -- --ext',
+    'Tetrafall.Server.exe',
+    'pause',
+    '',
+  ].join('\r\n');
+}
+
+// ---- 성능·모션 보고서 복사 (W48, 재혁 PC 데이터 수집을 한 번에) ----
+// 재혁이 F3 한 줄·hitches.txt·motion_qa.txt 를 한 번도 못 보냄 → 게임 안 결과 화면 [성능 보고 복사] 버튼·F4 (user://last_report.txt 도 씀) 와,
+// 게임이 꺼진 뒤에도 더블클릭 한 번으로 저장 폴더 (윈도우 %APPDATA%\Godot\app_userdata\Tetrafall\, 리눅스 ~/.local/share/godot/app_userdata/Tetrafall/) 의
+// last_report.txt + hitches.txt 앞 30줄 + motion_qa.txt 를 한 덩어리로 합쳐 클립보드에 넣고 창에도 보여 줌.
+// 개인정보: C:\Users\이름 → %USERPROFILE%·%APPDATA%, 리눅스 홈 → ~, 이 PC 사용자·컴퓨터 이름 → <사용자>.
+// .bat 은 ASCII 만 (cmd 가 OEM 코드 페이지로 읽음) — 한글이 든 일은 UTF-8 BOM 붙인 report-copy.ps1 (PowerShell 5.1 이 BOM 으로 UTF-8 인식) 이 함.
+export const REPORT_DIR_WIN = '%APPDATA%\\Godot\\app_userdata\\Tetrafall';
+export const REPORT_DIR_LINUX = '~/.local/share/godot/app_userdata/Tetrafall';
+export const REPORT_HITCH_LINES = 30;
+export const REPORT_MOTION_LINES = 40;
+export const REPORT_LAST_LINES = 60;
+export function reportBat() {
+  return [
+    '@echo off',
+    'rem Tetrafall report: copies last_report.txt + hitches.txt + motion_qa.txt from the game save folder to the clipboard. Works when the game is closed.',
+    'cd /d "%~dp0"',
+    'powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0report-copy.ps1"',
+    'pause',
+    '',
+  ].join('\r\n');
+}
+export function reportPs1() {
+  const lines = [
+    '$ErrorActionPreference = \'SilentlyContinue\'',
+    '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
+    '$dir = Join-Path $env:APPDATA \'Godot\\app_userdata\\Tetrafall\'',
+    'function Get-Part($name, $max) {',
+    '  $f = Join-Path $dir $name',
+    '  if (Test-Path -LiteralPath $f) { (Get-Content -LiteralPath $f -Encoding UTF8 -TotalCount $max) -join [Environment]::NewLine } else { \'(없음)\' }',
+    '}',
+    '$parts = @()',
+    `$parts += (Get-Part 'last_report.txt' ${REPORT_LAST_LINES})`,
+    '$parts += \'\'',
+    `$parts += '--- hitches.txt (앞 ${REPORT_HITCH_LINES}줄) ---'`,
+    `$parts += (Get-Part 'hitches.txt' ${REPORT_HITCH_LINES})`,
+    '$parts += \'\'',
+    '$parts += \'--- motion_qa.txt ---\'',
+    `$parts += (Get-Part 'motion_qa.txt' ${REPORT_MOTION_LINES})`,
+    '$text = $parts -join [Environment]::NewLine',
+    '# 개인정보: 경로의 사용자 이름 → %APPDATA%·%USERPROFILE%, 사용자·컴퓨터 이름 → <사용자>',
+    '$text = $text -replace \'(?i)[A-Z]:\\\\Users\\\\[^\\\\\\s]+\\\\AppData\\\\Roaming\', \'%APPDATA%\'',
+    '$text = $text -replace \'(?i)[A-Z]:\\\\Users\\\\[^\\\\\\s]+\\\\AppData\\\\Local\', \'%LOCALAPPDATA%\'',
+    '$text = $text -replace \'(?i)[A-Z]:\\\\Users\\\\[^\\\\\\s]+\', \'%USERPROFILE%\'',
+    'foreach ($n in @($env:USERNAME, $env:COMPUTERNAME)) { if ($n -and $n.Length -ge 3) { $text = $text.Replace($n, \'<사용자>\') } }',
+    'Set-Clipboard -Value $text',
+    'Write-Host $text',
+    'Write-Host \'\'',
+    'Write-Host \'[복사됨] 채팅에 붙여 넣어 주세요 (Ctrl+V). 위 글에 "(없음)" 뿐이면 게임에서 한 판 끝낸 뒤 다시 눌러 주세요.\'',
+    '',
+  ];
+  return '\uFEFF' + lines.join('\r\n');
+}
+export function reportSh() {
+  return [
+    '#!/bin/sh',
+    '# Tetrafall 보고서 복사: 저장 폴더의 last_report.txt + hitches.txt 앞 30줄 + motion_qa.txt 를 합쳐 클립보드에 (게임이 꺼져 있어도). 개인정보는 지움',
+    'D="${XDG_DATA_HOME:-$HOME/.local/share}/godot/app_userdata/Tetrafall"',
+    'part() { if [ -f "$D/$1" ]; then head -n "$2" "$D/$1"; else echo "(없음)"; fi; }',
+    'ME="$(id -un 2>/dev/null)"',
+    'HOSTN="$(hostname 2>/dev/null)"',
+    'T="$(mktemp)"',
+    '{',
+    `  part last_report.txt ${REPORT_LAST_LINES}`,
+    '  echo',
+    `  echo "--- hitches.txt (앞 ${REPORT_HITCH_LINES}줄) ---"`,
+    `  part hitches.txt ${REPORT_HITCH_LINES}`,
+    '  echo',
+    '  echo "--- motion_qa.txt ---"',
+    `  part motion_qa.txt ${REPORT_MOTION_LINES}`,
+    '} | sed -e "s|$HOME|~|g" -e \'s|/home/[^/ ]*|~|g\' -e \'s|/Users/[^/ ]*|~|g\' \\',
+    '      -e \'s|[A-Za-z]:\\\\Users\\\\[^\\\\ ]*\\\\AppData\\\\Roaming|%APPDATA%|g\' -e \'s|[A-Za-z]:\\\\Users\\\\[^\\\\ ]*\\\\AppData\\\\Local|%LOCALAPPDATA%|g\' \\',
+    '      -e \'s|[A-Za-z]:\\\\Users\\\\[^\\\\ ]*|%USERPROFILE%|g\' > "$T"',
+    'for n in "$ME" "$HOSTN"; do',
+    '  if [ "${#n}" -ge 3 ]; then sed -i -e "s|$n|<사용자>|g" "$T"; fi',
+    'done',
+    'if command -v wl-copy >/dev/null 2>&1; then wl-copy < "$T"; OK=1',
+    'elif command -v xclip >/dev/null 2>&1; then xclip -selection clipboard < "$T"; OK=1',
+    'elif command -v xsel >/dev/null 2>&1; then xsel -b < "$T"; OK=1',
+    'elif command -v pbcopy >/dev/null 2>&1; then pbcopy < "$T"; OK=1',
+    'else OK=0; fi',
+    'cat "$T"',
+    'echo',
+    'if [ "$OK" = 1 ]; then echo "[복사됨] 채팅에 붙여 넣어 주세요. 위 글에 (없음) 뿐이면 게임에서 한 판 끝낸 뒤 다시 실행."',
+    'else echo "[클립보드 도구 없음 (wl-copy·xclip·xsel)] 위 글을 직접 선택해 복사해 주세요."; fi',
+    'rm -f "$T"',
+    '',
+  ].join('\n');
+}
+
+// 내보내는 동안만 core/build_info.gd 의 TAG·COMMIT 을 이 묶음 버전으로 (보고서 첫 줄에 나옴). 끝나면 (실패해도) 되돌림 — 끊기면 다음 실행이 .orig 로 되돌림.
+export const BUILD_INFO_FILE = path.join('core', 'build_info.gd');
+export const TAG_RE = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
+export function stampBuildInfo(src, tag, commit) {
+  if (tag && !TAG_RE.test(tag)) throw new Error(`버전 태그에 쓸 수 없는 글자: ${tag}`);
+  if (commit && !/^[0-9a-f]{4,40}$/.test(commit)) throw new Error(`커밋 글자가 이상함: ${commit}`);
+  const out = src.replace(/^const TAG := ".*"$/m, `const TAG := "${tag || 'dev'}"`).replace(/^const COMMIT := ".*"$/m, `const COMMIT := "${commit || ''}"`);
+  if (out === src && (tag || commit)) throw new Error('build_info.gd 에 TAG·COMMIT 줄이 없음');
+  return out;
+}
+// 태그 이름 찾기: 환경 변수 TETRAFALL_TAG → 태그 푸시 (GITHUB_REF) → 마지막 커밋 글의 [release 태그] (release.yml 과 같은 규칙) → 가장 가까운 git 태그 → 'dev'
+export function findTag(env = process.env, gitFn = (args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' }).stdout || '') {
+  const ok = (t) => (t && TAG_RE.test(t) ? t : '');
+  if (ok(env.TETRAFALL_TAG)) return env.TETRAFALL_TAG;
+  const m = /^refs\/tags\/(.+)$/.exec(env.GITHUB_REF || '');
+  if (m && ok(m[1])) return m[1];
+  const rel = /\[release ([^\]\s]+)\]/.exec(gitFn(['log', '-1', '--format=%B']));
+  if (rel && ok(rel[1])) return rel[1];
+  const d = gitFn(['describe', '--tags', '--abbrev=0']).trim();
+  return ok(d) || 'dev';
+}
+export function withBuildInfo(file, tag, commit, fn) {
+  const orig = file + PRESETS_ORIG;
+  if (fs.existsSync(orig)) {
+    fs.writeFileSync(file, fs.readFileSync(orig));
+    fs.rmSync(orig);
+  }
+  const before = fs.readFileSync(file, 'utf8');
+  fs.writeFileSync(orig, before);
+  fs.writeFileSync(file, stampBuildInfo(before, tag, commit));
+  try {
+    return fn();
+  } finally {
+    fs.writeFileSync(file, fs.readFileSync(orig));
+    fs.rmSync(orig);
+  }
+}
+
 export const TARGETS = {
   win: {
     rid: 'win-x64',
@@ -28,8 +214,13 @@ export const TARGETS = {
     client: ['build/windows/tetrafall.exe'],
     cloudflared: { url: 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe', name: 'cloudflared.exe' },
     scripts: {
-      'start-lan.bat': '@echo off\r\ncd /d "%~dp0"\r\nTetrafall.Server.exe\r\npause\r\n',
-      'start-online.bat': '@echo off\r\ncd /d "%~dp0"\r\nTetrafall.Server.exe --online\r\npause\r\n',
+      'start-lan.bat': winScript(),
+      'start-online.bat': winScript('--online'),
+      ...Object.fromEntries(Object.entries(RENDER_TRIALS).map(([k, [m, d]]) => [`start-lan-${k}.bat`, winTryScript(m, d)])),
+      'start-lan-ext.bat': winExtScript(),
+      '보고서-복사.bat': reportBat(),
+      'report.bat': reportBat(),
+      'report-copy.ps1': reportPs1(),
     },
   },
   linux: {
@@ -41,20 +232,33 @@ export const TARGETS = {
     scripts: {
       'start-lan.sh': '#!/bin/sh\ncd "$(dirname "$0")"\nexec ./Tetrafall.Server\n',
       'start-online.sh': '#!/bin/sh\ncd "$(dirname "$0")"\nexec ./Tetrafall.Server --online\n',
+      'start-lan-ext.sh': '#!/bin/sh\ncd "$(dirname "$0")"\n./tetrafall.x86_64 -- --ext &\nexec ./Tetrafall.Server\n',
+      'report.sh': reportSh(),
     },
   },
 };
 
-export function readme(t) {
+export function readme(t, { cloudflared = true } = {}) {
   const win = t.rid.startsWith('win');
   const ext = win ? 'bat' : 'sh';
   const pc = path.basename(t.client[0]);
+  const report = win ? '보고서-복사.bat' : 'report.sh';
   return [
+    `버그·렉·모션 어색함 보고:  결과 화면의 [성능 보고 복사] 버튼 (또는 F4) → 채팅에 붙여넣기. 게임을 껐으면 ${report} (더블클릭·실행)`,
+    `                    ${report} 는 게임을 껐어도 마지막 판 보고서 (last_report.txt) + 끊김 기록 (hitches.txt 앞 30줄) + 모션 기록 (motion_qa.txt) 을 합쳐 복사해 줌. 보고서에는 사용자 이름·경로 (C:\\Users\\이름) 가 안 들어감`,
+    `                    저장 폴더: ${win ? '%APPDATA%\\Godot\\app_userdata\\Tetrafall\\' : '~/.local/share/godot/app_userdata/Tetrafall/'}`,
+    '',
     'Tetrafall (고도 클라 + C# 서버)',
     '',
     `같은 Wi-Fi 친구와:  start-lan.${ext} 를 켜고, 창에 뜬 "다른 PC에서: http://…" 주소를 친구에게`,
     `인터넷 친구와:      start-online.${ext} 를 켜고, 창에 뜬 https://….trycloudflare.com 주소를 친구에게 (클립보드에 복사돼 있음)`,
-    '                    cloudflared 가 이 폴더에 없으면: winget install --id Cloudflare.cloudflared',
+    ...(cloudflared
+      ? ['                    cloudflared 가 이 폴더에 없으면: ' + (win ? 'winget install --id Cloudflare.cloudflared' : 'https://github.com/cloudflare/cloudflared/releases 에서 받아 이 폴더에 cloudflared 로')]
+      : [
+          '                    ※ 이 묶음에는 cloudflared 가 안 들어 있음 (만들 때 GitHub 에서 못 받음). 먼저 직접 설치:',
+          '                      ' + (win ? 'winget install --id Cloudflare.cloudflared' : 'https://github.com/cloudflare/cloudflared/releases 에서 받아 이 폴더에 cloudflared 로 (chmod +x)'),
+          '                      같은 Wi-Fi (start-lan) 는 상관없이 됨',
+        ]),
     '',
     `나(서버 PC)는:      ${pc} 를 켜면 이 PC 서버에 바로 붙음 (아니면 브라우저로 http://localhost:3000)`,
     '친구는:             받은 주소를 크롬·엣지로 열기 (설치 없음). 방 코드는 대기실 "링크 복사"',
@@ -63,6 +267,21 @@ export function readme(t) {
     '끄기: 서버 창을 닫거나 Ctrl+C. 판 기록은 logs/ 폴더',
     '포트 바꾸기: 환경 변수 PORT (기본 3000)',
     'cloudflared: Cloudflare (Apache-2.0) https://github.com/cloudflare/cloudflared',
+    ...(win
+      ? [
+          '',
+          `게임이 느리면:      노트북 (내장+외장 그래픽) 은 start-lan·start-online 이 처음 켜질 때 ${pc} 를 Windows 고성능 GPU 로 등록함 (관리자 권한 없이, 이미 정했으면 그대로).`,
+          `                    ${pc} 만 따로 쓰면 Windows 설정 > 시스템 > 디스플레이 > 그래픽 에서 ${pc} 를 '고성능'. 게임 설정 '화질' 자동·높음·보통·낮음, F3 = 성능 표시 (Ctrl+C 복사)`,
+          `                    내장 그래픽으로 도는 것 같으면 타이틀 왼쪽 아래·설정 창에 노란 경고와 해결법이 뜸. 판 중 GPU 가 병목이면 3D 해상도가 알아서 0.6~1.0 사이로 조절됨 (설정 '3D 해상도 자동', 끄기 가능).`,
+          '                    랙 순간 기록: 판 보고서에 원인 상위가 들어감 (F3 를 켜 두면 더 자세한 %APPDATA%\\Godot\\app_userdata\\Tetrafall\\hitches.txt 도 쌓임 — 보고서-복사.bat 이 앞 30줄을 같이 복사)',
+          '',
+          '렌더러 시험 (성능 비교용):  start-lan-compat.bat (지금 기본) · start-lan-forward.bat (Forward+) · start-lan-mobile.bat (Mobile)',
+          `                    서버와 ${pc} 를 그 렌더러로 같이 켬 (색이 조금 다를 수 있음 — 시험용). 세 개를 각각: 같은 맵의 8명 판 (방 설정에서 봇 7) 을 한 판 하고,`,
+          '                    판 중에 F3 → Ctrl+C 로 복사한 한 줄 (첫 줄에 렌더러·GPU 이름이 들어 있음) 을 하나씩 보내 주세요. 타이틀 왼쪽 아래 글자에도 지금 렌더러가 나옴',
+          '',
+          '새 탱크 시험 (Blender 모델):  start-lan-ext.bat — 서버와 ' + pc + ' 를 --ext 로 같이 켬. 대기실에서 탱크를 고르면 새 모델 (기본 start-lan 은 그대로)',
+        ]
+      : []),
     '',
   ].join(win ? '\r\n' : '\n');
 }
@@ -71,6 +290,72 @@ export function readme(t) {
 export const PUBLISH_FLAGS = ['--self-contained', '-p:PublishSingleFile=true', '-p:EnableCompressionInSingleFile=true', '-p:InvariantGlobalization=true', '-p:DebugType=none', '-p:IsTransformWebConfigDisabled=true'];
 // Kestrel 혼자 도니 필요 없는 것: IIS 모듈·web.config·정적 웹 자산 목록
 export const PUBLISH_DROP = ['aspnetcorev2_inprocess.dll', 'web.config', 'Tetrafall.Server.staticwebassets.endpoints.json'];
+
+// export_presets.cfg 글에서 이름이 preset 인 묶음의 custom_template/release 만 zip 경로로 바꾼 글 (나머지 글자는 그대로).
+// 경로는 / 로 (고도 cfg 문자열에서 \ 는 이스케이프라 윈도우 경로도 / 로 씀). 그 묶음·줄이 없으면 오류
+export function withReleaseTemplate(cfg, preset, zip) {
+  const nl = cfg.includes('\r\n') ? '\r\n' : '\n';
+  const lines = cfg.split(nl);
+  const nameAt = lines.findIndex((l, i) => l === `name="${preset}"` && lines.slice(0, i).reverse().find((h) => h.startsWith('['))?.match(/^\[preset\.\d+\]$/));
+  if (nameAt < 0) throw new Error(`export_presets.cfg 에 '${preset}' 내보내기 설정이 없음`);
+  const id = lines.slice(0, nameAt).reverse().find((h) => h.startsWith('[')).slice(1, -1);
+  const optAt = lines.indexOf(`[${id}.options]`);
+  if (optAt < 0) throw new Error(`export_presets.cfg 에 [${id}.options] 가 없음`);
+  let end = lines.findIndex((l, i) => i > optAt && l.startsWith('['));
+  if (end < 0) end = lines.length;
+  const at = lines.findIndex((l, i) => i > optAt && i < end && l.startsWith('custom_template/release='));
+  if (at < 0) throw new Error(`[${id}.options] 에 custom_template/release 가 없음`);
+  lines[at] = `custom_template/release=${JSON.stringify(path.resolve(zip).split(path.sep).join('/'))}`;
+  return lines.join(nl);
+}
+
+// 웹 템플릿 zip 확인: 있는 파일이고 고도 웹 템플릿 (안에 godot.wasm·godot.js) 인지 — 잘못 주면 내보내기 전에 멈춤
+export function checkWebTemplate(zip) {
+  if (!fs.existsSync(zip) || !fs.statSync(zip).isFile()) throw new Error(`웹 템플릿 zip 이 없음: ${zip}`);
+  const names = zipNames(fs.readFileSync(zip));
+  for (const need of ['godot.wasm', 'godot.js']) if (!names.includes(need)) throw new Error(`웹 템플릿 zip 안에 ${need} 가 없음: ${zip}`);
+}
+
+// zip 중앙 목록의 파일 이름들 (끝 레코드에서 찾음, zip64 안 봄)
+export function zipNames(buf) {
+  let e = buf.length - 22;
+  while (e >= 0 && buf.readUInt32LE(e) !== 0x06054b50) e--;
+  if (e < 0) throw new Error('zip 이 아님');
+  const n = buf.readUInt16LE(e + 10);
+  let p = buf.readUInt32LE(e + 16);
+  const names = [];
+  for (let i = 0; i < n; i++) {
+    if (buf.readUInt32LE(p) !== 0x02014b50) throw new Error('zip 중앙 목록이 깨짐');
+    const len = buf.readUInt16LE(p + 28);
+    names.push(buf.toString('utf8', p + 46, p + 46 + len));
+    p += 46 + len + buf.readUInt16LE(p + 30) + buf.readUInt16LE(p + 32);
+  }
+  return names;
+}
+
+// fn 을 도는 동안만 export_presets.cfg 의 preset 템플릿을 zip 으로 (zip 이 없으면 그냥 fn). 끝나면 원래 글 그대로 되돌림.
+// 원래 글은 <cfg>.orig 에도 둠 — 내보내기 중 Ctrl+C 로 node 가 바로 죽어 finally 를 못 돌면 다음 실행이 먼저 그것으로 되돌림 (restorePresets)
+export const PRESETS_ORIG = '.orig';
+export function restorePresets(cfgPath) {
+  const orig = cfgPath + PRESETS_ORIG;
+  if (!fs.existsSync(orig)) return false;
+  fs.writeFileSync(cfgPath, fs.readFileSync(orig));
+  fs.rmSync(orig);
+  return true;
+}
+export function withPresetTemplate(cfgPath, preset, zip, fn) {
+  if (restorePresets(cfgPath)) console.log(`지난번 끊긴 내보내기의 ${path.basename(cfgPath)} 를 되돌림`);
+  if (!zip) return fn();
+  const before = fs.readFileSync(cfgPath, 'utf8');
+  const changed = withReleaseTemplate(before, preset, zip);
+  fs.writeFileSync(cfgPath + PRESETS_ORIG, before);
+  fs.writeFileSync(cfgPath, changed);
+  try {
+    return fn();
+  } finally {
+    restorePresets(cfgPath);
+  }
+}
 
 function run(cmd, args, opts = {}) {
   console.log(`> ${cmd} ${args.join(' ')}`);
@@ -174,16 +459,77 @@ export function precompress(dir) {
   return sum;
 }
 
-async function download(url, to) {
-  console.log(`받는 중: ${url}`);
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${url} → ${res.status}`);
-  fs.writeFileSync(to, Buffer.from(await res.arrayBuffer()));
-  fs.chmodSync(to, 0o755);
+// cloudflared 받기 (W36 2026-11-09): v0.1.13 배포가 GitHub 504 가 이어져 실패 → ① 캐시 ② 몇 번 시도해도 안 되면 그 플랫폼 zip 은 cloudflared 없이 ③ 전체 시간 상한.
+export const DL_TRIES = 3;
+export const DL_ATTEMPT_MS = 60_000;
+export const DL_BUDGET_SEC = 600;
+export function cloudflaredUrl(t, tag = process.env.CLOUDFLARED_TAG || '') {
+  const u = t.cloudflared.url;
+  return tag ? u.replace('/releases/latest/download/', `/releases/download/${tag}/`) : u;
+}
+// 한 파일 받기. 시도마다 timeout (남은 예산 안에서), 실패하면 2·4초 쉬고 다시. 못 받으면 throw. 받는 도중 끊긴 반쪽 파일은 남기지 않음
+export async function download(url, to, { fetchFn = fetch, tries = DL_TRIES, attemptMs = DL_ATTEMPT_MS, deadline = Infinity, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), log = console.log } = {}) {
+  log(`받는 중: ${url}`);
+  let last;
+  for (let i = 0; i < tries; i++) {
+    const left = deadline - Date.now();
+    if (left <= 0) throw last ?? new Error('시간 상한(예산)을 넘음');
+    try {
+      const res = await fetchFn(url, { signal: AbortSignal.timeout(Math.min(attemptMs, left)) });
+      if (!res.ok) throw new Error(`${url} → ${res.status}`);
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (!buf.length) throw new Error(`${url} → 빈 응답`);
+      fs.writeFileSync(to, buf);
+      fs.chmodSync(to, 0o755);
+      return;
+    } catch (e) {
+      last = e;
+      log(`  받기 실패 (${i + 1}/${tries}): ${e.message}${e.cause ? ' · ' + e.cause.message : ''}`);
+      if (i < tries - 1) await sleep(Math.min(2000 * 2 ** i, Math.max(0, deadline - Date.now())));
+    }
+  }
+  throw last;
 }
 
-function parseArgs(argv) {
-  const o = { targets: ['win', 'linux'], out: path.join(root, 'dist'), godot: process.env.GODOT || null, exportGodot: true, cloudflared: false };
+// 플랫폼 하나의 cloudflared 를 dest 에 놓음. 돌려줌 { ok, from: 'cache'|'net'|null, error }. 캐시 폴더에 있으면 네트워크 안 씀, 받으면 캐시에 보관.
+// 못 받아도 throw 안 함 (required 일 때만) — 호출쪽이 경고하고 계속
+export async function fetchCloudflared(t, dest, o = {}) {
+  const { cache = null, required = false, ...dl } = o;
+  const log = dl.log ?? console.log;
+  const cached = cache ? path.join(cache, t.rid, t.cloudflared.name) : null;
+  if (cached && fs.existsSync(cached) && fs.statSync(cached).size > 0) {
+    fs.copyFileSync(cached, dest);
+    fs.chmodSync(dest, 0o755);
+    log(`cloudflared 캐시 사용 (${t.rid}): ${cached}`);
+    return { ok: true, from: 'cache', error: null };
+  }
+  try {
+    await download(cloudflaredUrl(t), dest, dl);
+  } catch (e) {
+    fs.rmSync(dest, { force: true });
+    if (required) throw e;
+    return { ok: false, from: null, error: e.message };
+  }
+  if (cached) {
+    fs.mkdirSync(path.dirname(cached), { recursive: true });
+    fs.copyFileSync(dest, cached);
+  }
+  return { ok: true, from: 'net', error: null };
+}
+
+// 릴리스 노트에 덧붙일 글 (cloudflared 를 못 넣은 플랫폼이 있을 때만, 아니면 빈 글)
+export function releaseNotes(missingCloudflared) {
+  if (!missingCloudflared.length) return '';
+  return [
+    '### cloudflared 안내',
+    `이번 묶음의 ${missingCloudflared.join(', ')} 에는 cloudflared 가 들어 있지 않습니다 (빌드 때 GitHub 에서 받지 못함).`,
+    '인터넷 친구와 하려면 직접 설치: Windows `winget install --id Cloudflare.cloudflared`, Linux 는 https://github.com/cloudflare/cloudflared/releases 에서 받아 서버 옆에 `cloudflared` 로 두기. 같은 Wi-Fi (start-lan) 는 영향 없음.',
+    '',
+  ].join('\n');
+}
+
+export function parseArgs(argv) {
+  const o = { targets: ['win', 'linux'], out: path.join(root, 'dist'), godot: process.env.GODOT || null, exportGodot: true, cloudflared: false, webTemplate: process.env.GODOT_WEB_TEMPLATE || null, cloudflaredCache: process.env.CLOUDFLARED_CACHE ? path.resolve(process.env.CLOUDFLARED_CACHE) : null, cloudflaredBudgetSec: DL_BUDGET_SEC, requireCloudflared: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--godot') o.godot = argv[++i];
@@ -191,26 +537,46 @@ function parseArgs(argv) {
     else if (a === '--out') o.out = path.resolve(argv[++i]);
     else if (a === '--no-godot') o.exportGodot = false;
     else if (a === '--cloudflared') o.cloudflared = true;
+    else if (a === '--web-template') o.webTemplate = argv[++i];
+    else if (a === '--cloudflared-cache') o.cloudflaredCache = path.resolve(argv[++i]);
+    else if (a === '--cloudflared-budget') o.cloudflaredBudgetSec = Number(argv[++i]);
+    else if (a === '--require-cloudflared') o.requireCloudflared = true;
     else throw new Error(`모르는 옵션: ${a}`);
   }
   for (const t of o.targets) if (!TARGETS[t]) throw new Error(`모르는 대상: ${t} (win, linux)`);
   if (o.exportGodot && !o.godot) throw new Error('고도 실행 파일을 --godot 또는 GODOT 로 알려 주세요 (이미 내보냈으면 --no-godot)');
+  if (o.webTemplate) o.webTemplate = path.resolve(o.webTemplate);
+  if (!(o.cloudflaredBudgetSec > 0)) throw new Error('--cloudflared-budget 은 0 보다 큰 초');
   return o;
 }
 
 async function main() {
   const o = parseArgs(process.argv.slice(2));
   if (o.exportGodot) {
+    if (o.webTemplate) {
+      checkWebTemplate(o.webTemplate);
+      console.log(`웹 템플릿: ${o.webTemplate} (${(fs.statSync(o.webTemplate).size / 1e6).toFixed(1)}MB)`);
+    } else console.log('웹 템플릿: 공식 (export_templates)');
     run(o.godot, ['--headless', '--path', clientDir, '--import']);
     const presets = ['Web', ...o.targets.map((t) => TARGETS[t].preset)];
-    for (const p of presets) {
-      const target = { Web: 'build/web', Windows: 'build/windows', Linux: 'build/linux' }[p];
-      fs.mkdirSync(path.join(clientDir, target), { recursive: true });
-      run(o.godot, ['--headless', '--path', clientDir, '--export-release', p]);
-    }
+    const tag = findTag();
+    const commit = (spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: root, encoding: 'utf8' }).stdout || '').trim();
+    console.log(`버전 표기 (보고서 첫 줄): ${tag}${commit ? ` (${commit})` : ''}`);
+    // 내보내는 동안만 build_info.gd 에 버전을 적음 (끝나면 되돌림)
+    withBuildInfo(path.join(clientDir, BUILD_INFO_FILE), tag, /^[0-9a-f]{4,40}$/.test(commit) ? commit : '', () => {
+      for (const p of presets) {
+        const target = { Web: 'build/web', Windows: 'build/windows', Linux: 'build/linux' }[p];
+        fs.mkdirSync(path.join(clientDir, target), { recursive: true });
+        const exp = () => run(o.godot, ['--headless', '--path', clientDir, '--export-release', p]);
+        if (p === 'Web') withPresetTemplate(path.join(clientDir, 'export_presets.cfg'), 'Web', o.webTemplate, exp);
+        else exp();
+      }
+    });
   }
   fs.mkdirSync(o.out, { recursive: true });
   const missing = [];
+  const missingCf = [];
+  const cfDeadline = Date.now() + o.cloudflaredBudgetSec * 1000;
   for (const name of o.targets) {
     const t = TARGETS[name];
     const dir = path.join(o.out, `tetrafall-${t.rid}`);
@@ -231,12 +597,25 @@ async function main() {
       else missing.push(`${name}: PC 클라 (${c})`);
     }
     for (const [file, text] of Object.entries(t.scripts)) fs.writeFileSync(path.join(dir, file), text, { mode: 0o755 });
-    fs.writeFileSync(path.join(dir, 'README.txt'), readme(t));
-    if (o.cloudflared) await download(t.cloudflared.url, path.join(dir, t.cloudflared.name));
+    let hasCf = false;
+    if (o.cloudflared) {
+      const r = await fetchCloudflared(t, path.join(dir, t.cloudflared.name), { cache: o.cloudflaredCache, required: o.requireCloudflared, deadline: cfDeadline });
+      hasCf = r.ok;
+      if (!r.ok) {
+        missingCf.push(name);
+        const msg = `cloudflared 를 못 넣음 (${name}): ${r.error} — 이 묶음은 cloudflared 없이 만듦 (README.txt 에 직접 설치 안내)`;
+        console.log(process.env.GITHUB_ACTIONS ? `::warning title=cloudflared 받기 실패 (${name})::${msg}` : `경고: ${msg}`);
+      }
+    }
+    fs.writeFileSync(path.join(dir, 'README.txt'), readme(t, { cloudflared: hasCf || !o.cloudflared }));
     const zip = `${dir}.zip`;
     const n = writeZip(dir, zip);
     console.log(`묶음: ${path.relative(root, zip)} (파일 ${n}개, ${(fs.statSync(zip).size / 1e6).toFixed(1)}MB)`);
   }
+  // 릴리스 노트에 덧붙일 글 (워크플로가 있으면 body_path 로 씀) + Actions 요약
+  const notes = releaseNotes(missingCf);
+  fs.writeFileSync(path.join(o.out, 'release-notes.md'), notes);
+  if (notes && process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `\n${notes}\n`);
   if (missing.length) console.log(`\n빠진 것 (고도로 내보낸 뒤 다시):\n  ${missing.join('\n  ')}`);
 }
 

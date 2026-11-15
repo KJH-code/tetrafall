@@ -7,7 +7,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { CONFIG as C } from '../shared/config.js';
+import { CONFIG as C, maxPlayers } from '../shared/config.js';
 import { Rooms } from './rooms.js';
 import { warmUpPlacement } from './game.js';
 
@@ -89,7 +89,8 @@ function stamp() {
 }
 // 방마다 로그 파일: logs/<서버를 켠 시각>/<방을 연 시각>_<코드>.txt (플레이테스트 분석: npm run stats)
 // 콘솔에는 같은 줄을 [코드] 를 붙여 찍는다
-const LOG_DIR = path.join(ROOT, 'logs');
+// 환경 변수 LOG_DIR 이 있으면 그 폴더 (테스트가 임시 폴더를 줌 — 예전엔 npm test 가 레포 logs/ 에 폴더를 남겼음, 2026-10-30 감사 T2). C# 서버의 TF_LOG_DIR 와 같은 구실
+const LOG_DIR = (process.env.LOG_DIR ?? '').trim() !== '' ? path.resolve(process.env.LOG_DIR) : path.join(ROOT, 'logs');
 const pad = (n) => String(n).padStart(2, '0');
 const fileStamp = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
 const RUN_DIR = path.join(LOG_DIR, fileStamp(new Date()));
@@ -190,7 +191,7 @@ warmUpPlacement(); // 첫 판 첫 블록이 서버 틱을 막지 않게 (JIT 데
 server.listen(PORT, '0.0.0.0', () => {
   const port = server.address().port;
   if (!fs.existsSync(path.join(ROOT, 'node_modules', 'cannon-es'))) console.log('⚠ cannon-es 가 없음 → 몸 래그돌이 꺼짐. 레포 폴더에서 npm install 을 한 번 해 주세요 (Windows PowerShell 은 npm.cmd install)');
-  console.log(`Tetrafall 호스트 서버 실행 중 (포트 ${port}, 틱 ${C.TICK_RATE}Hz, 방 최대 ${C.ROOM_MAX}개, 방마다 ${C.MIN_PLAYERS}~${Math.min(C.MAX_PLAYERS, C.SPAWN_POINTS.length)}명)`);
+  console.log(`Tetrafall 호스트 서버 실행 중 (포트 ${port}, 틱 ${C.TICK_RATE}Hz, 방 최대 ${C.ROOM_MAX}개, 방마다 ${C.MIN_PLAYERS}~${maxPlayers()}명)`);
   console.log('이 PC에서:        http://localhost:' + port);
   for (const [name, addrs] of Object.entries(os.networkInterfaces())) {
     for (const a of addrs || []) {

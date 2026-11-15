@@ -58,7 +58,18 @@ func test_g6_nodes_load() -> void:
 		if s != null and s.can_instantiate():
 			var n = s.new()
 			check(n != null, "못 만듦 %s" % p)
+			# 멤버 기본값으로 만든 노드 (`var x := Label.new()`) 는 _ready 에서 자식이 되는데 트리 밖이라 안 불림 → 주인 없이 남아 종료 누수. 같이 지움
+			var orphans := []
+			for prop in n.get_property_list():
+				if not (int(prop.usage) & PROPERTY_USAGE_SCRIPT_VARIABLE):
+					continue
+				var v = n.get(prop.name)
+				if v is Node and is_instance_valid(v) and v.get_parent() == null and v != n:
+					orphans.append(v)
 			n.free()
+			for o in orphans:
+				if is_instance_valid(o):
+					o.free()
 
 
 # 연결 없이 '시작' (설정 → 튜토리얼 길)·'봇 3명과 한 판': 보내도 버려지니 Prefs tutorial·char 와 quick_pending 을 안 건드리고 메뉴와 같은 글.

@@ -130,6 +130,12 @@ func _on_event(e: Dictionary) -> void:
 			if not a.is_empty():
 				sfx.play("swing." + _weapon(a.get("char")), _dist_p(a), _pos(a))
 		"hit":
+			# 닌자 표창: 맞는 소리는 표창이 닿을 때 (main.js handleEvent 가 STAR_FLY_MS 뒤 다시 부름 — 화면 효과·몸짓과 같은 때, W18)
+			if e.get("star", false) and not e.get("late", false) and is_inside_tree():
+				var late := e.duplicate()
+				late.late = true
+				get_tree().create_timer(C.STAR_FLY_MS / 1000.0).timeout.connect(_on_event.bind(late))
+				return
 			_hit(e)
 		"fire":
 			var a := _pl(e.get("who"))

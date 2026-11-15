@@ -13,8 +13,8 @@ public static partial class C
         return pts.Select(p => new SpawnPt(p.Item1, p.Item2, JsMath.Atan2(D / 2 - p.Item2, W / 2 - p.Item1))).ToArray();
     }
 
-    public static readonly SpawnPt[] SPAWN_POINTS = SpawnPoints(GRID_W, GRID_D, 2.5);
+    public static readonly SpawnPt[] SPAWN_POINTS = SpawnPoints(GRID_W, GRID_D, SPAWN_INSET);
 
     // 판 크기별 시작 위치
-    public static SpawnPt[] spawnPointsFor(double W, double D) => SpawnPoints(W, D, 2.5);
+    public static SpawnPt[] spawnPointsFor(double W, double D) => SpawnPoints(W, D, SPAWN_INSET);
 }

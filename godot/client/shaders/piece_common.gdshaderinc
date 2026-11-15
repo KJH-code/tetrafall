@@ -3,7 +3,7 @@
 #define TOON_CUSTOM
 #include "res://shaders/toon_common.gdshaderinc"
 
-uniform sampler2D face_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D face_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable; // textures.js anisotropy 4 + 밉맵 (고도 기본 이방성 단계 2 = 4×)
 uniform vec3 accent0 : source_color = vec3(1.0);
 uniform vec3 accent1 : source_color = vec3(1.0);
 uniform float glow = 0.0;
@@ -31,6 +31,7 @@ void fragment() {
 		+ mix(d, vec3(1.0), 0.6) * rim * pow(nv, 3.0);
 	v_base = d;
 	v_amb = d * toon_hemi(world_n) / PI + e + g3_lin(emissive) * emissive_energy;
+	v_amb += d * g3_hz_light((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz, world_n); // 위험 빛
 	g3_hz_apply((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).y, v_base, v_amb); // 잠긴 블록 물들임
 	ALBEDO = vec3(1.0);
 	if (g3_fog_far > 0.0 && !no_fog) FOG = vec4(g3_fog_color, smoothstep(g3_fog_near, g3_fog_far, -VERTEX.z));

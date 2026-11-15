@@ -35,9 +35,12 @@ uniform vec3 local_sun = vec3(1.0);
 uniform vec4 albedo : source_color = vec4(1.0);
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap, repeat_enable;
 uniform bool use_tex = false;
+uniform vec2 uv_scale = vec2(1.0); // three texture.repeat (figure.js 체크 무늬 FIGURE_PLAID_REPEAT)
+uniform bool tex_nearest_mag = false; // three magFilter = NearestFilter (가까이서 크게 볼 때 칸이 또렷하게, 작게 볼 땐 밉맵 그대로)
 uniform vec3 emissive : source_color = vec3(0.0);
 uniform float emissive_energy = 1.0;
 uniform vec3 toon_steps = vec3(0.43137, 0.68627, 1.0); // g3_config.TOON_STEPS
+#include "res://shaders/hz_light.gdshaderinc"
 uniform bool use_vertex_color = false;
 uniform bool vertex_color_linear = false; // COLOR 가 이미 선형 (world/scenery.gd 꼭짓점 색)
 uniform bool no_fog = false;
@@ -45,6 +48,14 @@ uniform bool no_fog = false;
 uniform vec3 skin_emissive : source_color = vec3(0.0);
 uniform vec4 skin_tint : source_color = vec4(0.0); // JS fog: false (먼 배경)
 uniform float color_glow = 0.0; // 제 색으로 빛남 (JS 결정·버섯 갓: 발광 += 색 × glow, 인스턴스 색 포함)
+// W19 외부 (Blender) 모델: 몸 색 칸을 플레이어 색으로 '곱함' (칠해 둔 그늘·무늬가 남음 — 기본 false = 예전처럼 바꿔 칠함),
+// 림 빛 (가장자리 밝게, 세기 0 = 없음 — 스매시 레전드 식 부드러운 테두리)
+uniform bool skin_multiply = false;
+// W34 몸 색 칸 마스크 텍스처 (tools/blender relod.py·maskbake.py): 켜면 꼭짓점 UV2.x 대신 알베도와 같은 UV 의 이 그림 (R, 칸 = 1) 이 피부 정도 — 판 LOD 에서 꼭짓점 단위 경계가 알베도와 어긋나던 것을 텍셀 단위로
+uniform bool use_skin_mask = false;
+uniform sampler2D skin_mask_tex : hint_default_black, filter_linear_mipmap, repeat_disable;
+uniform float rim_strength = 0.0;
+uniform float rim_power = 3.0;
 
 varying vec3 world_n;
 varying vec3 v_base; // 선형 바탕색
@@ -88,10 +99,20 @@ void vertex() {
 
 void fragment() {
 	vec4 c = albedo;
-	if (use_tex) c *= texture(albedo_tex, UV);
-	bool skin = use_vertex_color && UV2.x > 0.5;
+	if (use_tex) {
+		vec2 uv = UV * uv_scale;
+		if (tex_nearest_mag) {
+			vec2 ts = vec2(textureSize(albedo_tex, 0));
+			vec2 fw = fwidth(uv * ts);
+			if (max(fw.x, fw.y) < 1.0) uv = (floor(uv * ts) + 0.5) / ts; // 확대 중: 글자 칸 가운데를 집음 = 가장 가까운 칸 (선형이라도 한 칸 색)
+		}
+		c *= texture(albedo_tex, uv);
+	}
+	float skin_k = 0.0; // 피부 정도 0~1 (꼭짓점 판정은 0/1, 마스크 텍스처는 가장자리 부드럽게)
+	if (use_vertex_color) skin_k = use_skin_mask ? smoothstep(0.3, 0.7, texture(skin_mask_tex, UV).r) : step(0.5, UV2.x);
 	if (use_vertex_color && !vertex_color_linear) c *= COLOR;
-	if (skin) c.rgb = mix(c.rgb, skin_tint.rgb, skin_tint.a);
+	float sk = skin_tint.a * skin_k;
+	c.rgb = skin_multiply ? c.rgb * mix(vec3(1.0), skin_tint.rgb, sk) : mix(c.rgb, skin_tint.rgb, sk);
 	vec3 base = g3_lin(c.rgb);
 	if (use_vertex_color && vertex_color_linear) base *= COLOR.rgb;
 	vec3 hemi = toon_hemi(world_n);
@@ -100,7 +121,9 @@ void fragment() {
 		hemi = mix(local_hemi_ground, local_hemi_sky, lup) * local_hemi_energy;
 	}
 	v_base = base;
-	v_amb = base * hemi / PI + g3_lin(skin ? skin_emissive : emissive) * emissive_energy + base * color_glow;
+	v_amb = base * hemi / PI + g3_lin(mix(emissive, skin_emissive, skin_k)) * emissive_energy + base * color_glow;
+	v_amb += base * g3_hz_light((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz, world_n);
+	if (rim_strength > 0.0) v_amb += base * rim_strength * pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), rim_power);
 	if (hz_tint) g3_hz_apply((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).y, v_base, v_amb);
 	ALBEDO = vec3(1.0);
 	if (g3_fog_far > 0.0 && !no_fog) FOG = vec4(g3_fog_color, smoothstep(g3_fog_near, g3_fog_far, -VERTEX.z)); // 고도가 선형으로 섞음 (더하기 패스는 1 - a 를 곱함)

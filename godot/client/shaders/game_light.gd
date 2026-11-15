@@ -10,6 +10,7 @@ const C := preload("res://core/config.gd")
 const Co := preload("res://core/coords.gd")
 const HALO := preload("res://shaders/halo.gdshader")
 const VIG := preload("res://shaders/vignette.gdshader")
+const K := preload("res://shaders/g3_config.gd")
 
 var low := false
 var preset_name := "off"
@@ -23,6 +24,12 @@ var sky_k := -1.0
 var base: Dictionary = {} # 테마 하늘 원래 값
 var base_key = null
 var env_root: Node3D # G3Env 를 가진 world
+var lut: ImageTexture3D = null # 지금 프리셋의 색 보정 (grade_lut, 처음 쓸 때 만듦)
+var _keep_n := -1 # 지난 프레임 빛 무리 그대로 쓸 수 있음 (그때 수, -1 = 아니)
+var _keep_halos = null
+var _keep_p = null
+var _lut_imgs: Array[Image] = [] # warm_lut_step 가 만드는 중인 층
+var _env_set := [] # 색 보정을 넣은 [환경, 켬, 프리셋]
 
 
 func _init() -> void: # 트리 밖에서도 바로 쓸 수 있게 (prewarm·테스트)
@@ -57,6 +64,8 @@ func _init() -> void: # 트리 밖에서도 바로 쓸 수 있게 (prewarm·테�
 func set_preset(n: String) -> void:
 	preset_name = n if C.GAME_LIGHT_PRESETS.has(n) else "off"
 	p = C.GAME_LIGHT_PRESETS[preset_name]
+	lut = null
+	_lut_imgs = []
 	var v: Array = p.vignette
 	var rgb := String(v[2]).split(",")
 	vig.material.set_shader_parameter("color", Color(float(rgb[0]) / 255.0, float(rgb[1]) / 255.0, float(rgb[2]) / 255.0, float(v[0])))
@@ -97,13 +106,17 @@ func frame(active: bool, halos: Array, dt := 1.0 / 60.0) -> void:
 	if env:
 		var e: Environment = env.get_node("Env").environment
 		var g: Array = p.grade
-		e.adjustment_enabled = on and (g[0] != 1.0 or g[1] != 1.0 or g[2] != 1.0)
-		e.adjustment_saturation = float(g[0])
-		e.adjustment_contrast = float(g[1])
-		e.adjustment_brightness = float(g[2])
+		var want := [e, on, p] # 같은 환경·켬·프리셋이면 그대로 (W15: Environment 값 5개를 프레임마다 다시 넣던 것)
+		if want != _env_set:
+			_env_set = want
+			_set_adjust(e, on, g)
 	vig.visible = on and float(p.vignette[0]) > 0.0
 	sky_t = clampf(sky_t + (1.0 if on else -1.0) * C.GAME_LIGHT_SKY_SPEED * minf(dt, 0.1), 0.0, 1.0)
 	_paint_sky(sky_t if p.sky != null else 0.0)
+	# 빛 무리 목록이 같은 배열 (world.gd 가 스냅샷이 바뀔 때만 새로 만듦)·빛 터짐 없음·켬 그대로면 지난 프레임 인스턴스 그대로 (W15)
+	if on and flashes.is_empty() and _keep_n >= 0 and is_same(halos, _keep_halos) and is_same(_keep_p, p):
+		return
+	_keep_n = -1
 	var n := 0
 	if on:
 		var h: Array = p.halo
@@ -118,6 +131,100 @@ func frame(active: bool, halos: Array, dt := 1.0 / 60.0) -> void:
 	else:
 		flashes.clear()
 	mm.visible_instance_count = n
+	if on and flashes.is_empty():
+		_keep_n = n
+		_keep_halos = halos
+		_keep_p = p
+
+
+# 고도 adjustment_saturation 은 평균 기준이라 CSS saturate (휘도 가중 행렬) 와 초록 +14·파랑 −9 다름 → CSS 세 단계를 3D LUT 로 구워 color_correction 에 (밝기·대비·채도 값은 1)
+func _set_adjust(e: Environment, on: bool, g: Array) -> void:
+	e.adjustment_enabled = on and (g[0] != 1.0 or g[1] != 1.0 or g[2] != 1.0)
+	e.adjustment_saturation = 1.0
+	e.adjustment_contrast = 1.0
+	e.adjustment_brightness = 1.0
+	e.adjustment_color_correction = _grade_lut() if e.adjustment_enabled else null
+
+
+# JS 캔버스 CSS filter `saturate(g0) contrast(g1) brightness(g2)` 를 sRGB 한 색에 (크롬처럼 단계마다 0..1 로 자름).
+# saturate = Filter Effects feColorMatrix saturate 행렬 (휘도 0.213·0.715·0.072)
+static func css_grade(c: Color, g: Array) -> Color:
+	var s := float(g[0])
+	var v := Vector3(
+		(0.213 + 0.787 * s) * c.r + (0.715 - 0.715 * s) * c.g + (0.072 - 0.072 * s) * c.b,
+		(0.213 - 0.213 * s) * c.r + (0.715 + 0.285 * s) * c.g + (0.072 - 0.072 * s) * c.b,
+		(0.213 - 0.213 * s) * c.r + (0.715 - 0.715 * s) * c.g + (0.072 + 0.928 * s) * c.b).clampf(0.0, 1.0)
+	v = ((v - Vector3.ONE * 0.5) * float(g[1]) + Vector3.ONE * 0.5).clampf(0.0, 1.0)
+	v = (v * float(g[2])).clampf(0.0, 1.0)
+	return Color(v.x, v.y, v.z)
+
+
+# css_grade 를 n³ LUT 로. 고도 color_correction 은 sRGB 색으로 texture(lut, c) 를 그대로 읽어 (반 텍셀 보정 없음) 칸 i 에 (i + 0.5) / n 의 값을 둠
+# — 크롬 CSS 와 픽셀 ±3 (W3 2026-11-02 잼, 예전 adjustment 3개는 초록 ±14)
+static func grade_lut(g: Array, n: int = K.GRADE_LUT) -> ImageTexture3D:
+	var t := ImageTexture3D.new()
+	t.create(Image.FORMAT_RGB8, n, n, n, false, grade_images(g, n))
+	return t
+
+
+# LUT 층 n 장 (z = 파랑)
+static func grade_images(g: Array, n: int) -> Array[Image]:
+	var imgs: Array[Image] = []
+	for z in n:
+		imgs.append(grade_layer(g, n, z))
+	return imgs
+
+
+# LUT 한 층 (z = 파랑). 한 번에 다 만들면 (n=32 → 약 18ms) 카운트다운 첫 프레임이 멈춤 → 메뉴에서 한 층씩 (warm_lut_step)
+static func grade_layer(g: Array, n: int, z: int) -> Image:
+	var data := PackedByteArray()
+	data.resize(n * n * 3)
+	var i := 0
+	for y in n:
+		for x in n:
+			var o := css_grade(Color((x + 0.5) / n, (y + 0.5) / n, (z + 0.5) / n), g)
+			data[i] = int(round(o.r * 255.0))
+			data[i + 1] = int(round(o.g * 255.0))
+			data[i + 2] = int(round(o.b * 255.0))
+			i += 3
+	return Image.create_from_data(n, n, false, Image.FORMAT_RGB8, data)
+
+
+# W41: 가장자리 어둠 (vignette.gdshader, CanvasItem) 도 처음 보일 때 (카운트다운) 컴파일 → 대기실에서 투명도 1% 로 두 프레임 켬 (눈에 안 띔). 끝나면 true
+var _vig_warm := 0
+
+
+func warm_canvas_step() -> bool:
+	_vig_warm += 1
+	if _vig_warm == 1:
+		vig.visible = true
+		vig.modulate.a = 0.01
+	elif _vig_warm >= 4:
+		vig.modulate.a = 1.0
+		vig.visible = false
+		return true
+	return false
+
+
+# W41: 메뉴에서 색 보정 LUT 를 한 층씩 미리 (프레임 예산 스케줄러가 부름). 다 만들었으면 true
+func warm_lut_step() -> bool:
+	if lut != null or not is_on():
+		return true
+	var n: int = K.GRADE_LUT
+	_lut_imgs.append(grade_layer(p.grade, n, _lut_imgs.size()))
+	if _lut_imgs.size() < n:
+		return false
+	var t := ImageTexture3D.new()
+	t.create(Image.FORMAT_RGB8, n, n, n, false, _lut_imgs)
+	lut = t
+	_lut_imgs = []
+	return true
+
+
+func _grade_lut() -> ImageTexture3D:
+	if lut == null:
+		lut = grade_lut(p.grade)
+	return lut
 
 
 func _g3():

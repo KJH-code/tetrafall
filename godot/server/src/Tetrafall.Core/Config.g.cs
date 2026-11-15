@@ -11,6 +11,7 @@ public static partial class C
     public static readonly double[] PLAYER_PALETTE = { 14700624, 5292112, 11559136, 14729296, 15790320, 4247744, 16744624, 9067056, 11067488, 8006232, 2894904, 10532048, 13660224, 2121808 };
     public const double MIN_PLAYERS = 2;
     public const double ROOM_MAX = 8;
+    public const double ROOM_EMPTY_LOBBY_GRACE_MS = 10000;
     public const double ROOM_CODE_LEN = 4;
     public const string ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ";
     public const double ROOM_NAME_MAX_LEN = 16;
@@ -48,7 +49,6 @@ public static partial class C
     public const double SKY_GAP_MIN = 1;
     public const double SKY_REACH_SAFETY = 0.5;
     public const double SKY_FALL_STEP_MS = 2500;
-    public const double SKY_LAVA_TRIGGER_MS = 60000;
     public static readonly Dictionary<string, double> SKY_LAVA_TRIGGER_BY_COUNT = new() { ["2"] = 60000, ["5"] = 55000, ["7"] = 50000 };
     public const double SKY_SHADOW_CELLS = 3;
     public const double SKY_BASE_UP = 6;
@@ -313,7 +313,6 @@ public static partial class C
     public const double BERSERKER_SPIN_END_KB_UP = 5;
     public const double BERSERKER_SPIN_END_STUN_MS = 800;
     public const double BERSERKER_RAGE_CUT = 20;
-    public static readonly Dictionary<string, string> BARD_FORM_NAMES = new() { ["bard"] = "음유시인", ["metal"] = "메탈" };
     public const string BARD_METAL_ULT_NAME = "앰프 음파";
     public const double BARD_NOTE_SPEED = 10;
     public const double BARD_NOTE_RANGE = 6;
@@ -406,6 +405,7 @@ public static partial class C
     public const double GHOST_DROP_UP = 5;
     public const double GHOST_DROP_UP_SKY = 2;
     public const bool GHOST_DROP_BOTS = false;
+    public const double PIECE_MOVE_PER_TICK = 2;
     public const double PRACTICE_DUMMY_MAX = 3;
     public const double PRACTICE_DUMMY_DIST = 2;
     public const double PRACTICE_DAMAGE_MAX = 999;
@@ -746,7 +746,6 @@ public static partial class C
     public const double RAGDOLL_DAMPING = 0.05;
     public const double RAGDOLL_FRICTION = 0.6;
     public const double RAGDOLL_GROUND_REACH = 2;
-    public const double FIGURE_ARM_SPREAD = 0.22;
     public const double FIGURE_WALK_LEG = 0.7;
     public const double FIGURE_WALK_KNEE = 0.9;
     public const double FIGURE_WALK_ARM = 0.6;
@@ -1018,4 +1017,4 @@ public sealed partial class TTutorialDoneText
 }
 
 // 손으로 옮긴 값 (함수): SPAWN_POINTS spawnPointsFor → ConfigFns.cs
-// 화면 전용이라 안 만든 값 (29개): SFX_BANKS SFX_WEAPONS SFX_HIT_COMBO SFX_HIT_BODY SFX_HIT_TIERS SFX_HAZARD MUSIC_THEMES MUSIC_TENSION SKY_VIEW TUTORIAL_MARK UI_WIPE GAME_LIGHT_PRESETS GAME_LIGHT_FLASH WORLD_FAR WORLD_BLOCK_STYLES TITLE_THEMES TITLE_SOUND MENU_DRIFT LOBBY_DARK WORLD_THEMES FIGURE_BODIES VM_POS VM_GRIP FIGURE_SPRING RAGDOLL_LIMITS FIGURE_GAIT FIGURE_IDLE BB_LOOK BB_SHARDS
+// 화면 전용이라 안 만든 값 (30개): SFX_BANKS SFX_WEAPONS SFX_HIT_COMBO SFX_HIT_BODY SFX_HIT_TIERS SFX_HAZARD MUSIC_THEMES MUSIC_TENSION SKY_VIEW TUTORIAL_MARK UI_WIPE GAME_LIGHT_PRESETS GAME_LIGHT_FLASH WORLD_FAR WORLD_BLOCK_STYLES TITLE_THEMES TITLE_SOUND MENU_DRIFT LOBBY_DARK WORLD_THEMES FIGURE_BODIES VM_POS VM_GRIP FIGURE_SPRING RAGDOLL_LIMITS FIGURE_GAIT FIGURE_IDLE BB_LOOK BB_SHARDS HUNT_MARK_UI

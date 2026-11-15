@@ -50,14 +50,18 @@ dotnet publish godot/server/src/Tetrafall.Server -c Release -r linux-x64 --self-
 ## 배포 묶음 (G7): 서버 + 고도 웹 + 고도 PC 클라 zip
 
 ```
-node godot/server/tools/package.mjs --godot <고도 4.7.2> [--targets win,linux] [--cloudflared]   # → dist/tetrafall-win-x64.zip, dist/tetrafall-linux-x64.zip
+node godot/server/tools/package.mjs --godot <고도 4.7.2> [--targets win,linux] [--cloudflared] [--web-template <zip>]   # → dist/tetrafall-win-x64.zip, dist/tetrafall-linux-x64.zip
 ```
 
 - 폴더: `Tetrafall.Server(.exe)` + `web/` (고도 웹 빌드) + `tetrafall.exe`/`tetrafall.x86_64` (PC 클라) + `start-lan`·`start-online` (.bat/.sh) + `README.txt` (+ `cloudflared` 를 `--cloudflared` 로 GitHub 에서 받아 넣음)
 - 서버는 exe 옆에 `web/index.html` 이 있으면 그 폴더가 뿌리 (배포 폴더): `/play/` = `web/`, JS 화면이 없으니 `/` → `/play/` (302, `?room=` 그대로). 레포·배포 어느 쪽도 아니면 exe 폴더로 뜸 (웹소켓만, PC 클라용)
 - 웹 미리 압축: `web/` 파일마다 `.br` (brotli 11, 창 24) + `.gz` (gzip 9) → 서버 `StaticFiles.Precompressed` 가 Accept-Encoding 따라 br > gzip > 날것 (`Content-Encoding`·`Vary: Accept-Encoding`, 형식은 날것 이름). 엔진 wasm 39.5MB → br 6.9MB · gz 10.2MB (압축 약 1분 40초)
 - 서버 한 파일 약 52MB (`PUBLISH_FLAGS`: 안에서 압축·InvariantGlobalization, 트리밍 안 함 — ASP.NET), IIS 용 aspnetcorev2_inprocess.dll·web.config·staticwebassets.endpoints.json 은 뺌, web/ 에 고도 `*.import` 안 넣음, zip 파일 날짜 = 묶은 시각
+- `--web-template <zip>` (또는 `GODOT_WEB_TEMPLATE`) = 직접 빌드한 웹 템플릿 (`godot/client/tools/build-web-template.sh`, wasm br 6.9 → 5.4MB): 웹 내보내기 동안만 `export_presets.cfg` 웹 `custom_template/release` 를 바꾸고 되돌림 (Ctrl+C 로 끊기면 옆의 `.orig` 를 다음 실행이 먼저 되돌림). 안 주면 공식 템플릿
 - `--no-godot` = 이미 내보낸 `godot/client/build/` 를 씀. zip 은 node 만으로 씀 (유닉스 실행 비트 유지)
+- GitHub Release: `.github/workflows/release.yml` 이 같은 묶음을 Actions 에서 만들어 Release 에 zip 두 개를 올림. 태그 `v*` 를 push 하거나, 아무 브랜치에 커밋 메시지로 `[release v0.1.0]` 를 넣어 push (태그는 GitHub 쪽에서 그 커밋에 만들어짐), 또는 main 에 이 파일이 있으면 Actions 탭 'Run workflow'. 이름에 `-` 가 있으면 미리보기(prerelease). 약 10분. **작은 웹 템플릿 직접 빌드는 기본 끔** (공식 템플릿): 켜려면 저장소 변수 `WEB_TEMPLATE_BUILD=true` (Settings > Secrets and variables > Actions > Variables, 이후 모든 릴리스) 또는 'Run workflow' 의 `web_template` 체크 (그 실행만). 켜면 `web-template` job 이 캐시가 없을 때만 40~60분 (캐시는 그 브랜치·main 것만 보임, 빌드가 실패하면 공식 템플릿으로 묶음) — 한 번 캐시에 들어가면 다음부터 몇 분이라 그때 변수를 켜 두면 됨
+- 배포 안정성 (W36): cloudflared 는 `--cloudflared-cache <폴더>` (환경 변수 `CLOUDFLARED_CACHE`, 플랫폼별 `<폴더>/<rid>/<이름>`) 에 보관돼 있으면 네트워크를 안 씀. 못 받으면 (한 번 최대 60초 × 3번, 전체 `--cloudflared-budget` 기본 600초) 그 플랫폼 zip 은 cloudflared 없이 만들고 경고 + `README.txt` 맨 앞에 '직접 설치' 안내 + `dist/release-notes.md` (워크플로가 릴리스 노트에 덧붙임). 실패로 만들려면 `--require-cloudflared`. 워크플로는 `actions/cache` 로 cloudflared 를 태그별 보관 (`cloudflared-<최신 태그>`; 태그 조회가 안 되면 가장 최근 캐시만 꺼냄)
+- Actions 로그 읽는 법 (W36): 릴리스 실행 → `package` job → 단계 '묶기' 로그에서 `받는 중:` / `받기 실패 (n/3)` / `cloudflared 캐시 사용` / `cloudflared 를 못 넣음` (Actions 주석 경고) 을 찾음. 실행 요약(Summary) 에 '웹 템플릿: 직접 빌드/공식' 한 줄과 cloudflared 안내가 있음. '고도 + 내보내기 템플릿' 단계의 `내려받기 실패 (i/5)` 는 재시도 중이고 `포기` 가 나오면 그때 실패
 - 재혁 PC 순서: [docs/godot-play.md](../../docs/godot-play.md)
 
 ## 인터넷 대전: `--online` (node 없이)
@@ -90,6 +94,8 @@ Tetrafall.Server --online          # 또는 dotnet run --project godot/server/sr
 
 **C# 기준선 다시 고정 규칙** (`cs-hash.json`): 규칙·봇·돌발 이벤트를 의도해 바꾼 커밋만 `cd godot/server && dotnet run --project src/Tetrafall.Trace -- cshash --write tests/Tetrafall.Tests/fixtures/cs-hash.json` 로 다시 고정하고, 커밋 메시지에 바뀐 판 이름과 까닭을 적는다. 성능·정리 커밋은 해시가 그대로여야 하며 다시 고정하지 않는다 (떨어지면 그 커밋이 길을 바꾼 것). 34판 `game-hash.json` 은 JS 정답 자료라 여기서 다시 뽑지 않음
 
+- 2026-11-15 병합 (최신 고도 작업 `6ba2e4d` 를 합침) 때 다시 고정: 최신 쪽 규칙 변경 둘 때문에 12판 중 3판이 바뀜 (틱 수·끝 phase 는 그대로, 34판 해시는 최신 쪽 값 `bf2e2951…` 과 같음 = 이벤트·밸런스 표를 끈 규칙은 온전). `cs 8명 생존 이벤트`·`cs 8명 킬 점수전 이벤트` — 마지막 틱 한 줄만 다름: 판이 끝날 때 바드 폼이 metal → bard 로 돌아감 (`fffd995` '바드 판 끝 음유시인 폼'). `cs 4명 생존 이벤트` — 틱 2067 부터: 판 밖 (y < 0) 에 나간 봇의 yaw 가 달라짐 (`bd2dc9e` S10 `columnTop` 판 밖 검사 — 예전엔 판 밖 칸이 옆 칸 높이로 읽혀 봇이 엉뚱한 쪽으로 돎). 확인: 병합 전·뒤 `trace c<번호>` 를 `tools/trace-diff.mjs` 로 비교
+
 ## 구조
 
 - `src/Tetrafall.Core/` — 규칙 (`Game.cs` + 묶음 `Game.<묶음>.cs` partial, `Player.cs`), `Js/` = JS 와 같은 숫자 부품 (`JsMath` V8 수학, `JsNumber` 숫자 글자·toFixed, `JsonOut` JSON.stringify, `Mulberry32`)
@@ -97,4 +103,4 @@ Tetrafall.Server --online          # 또는 dotnet run --project godot/server/sr
 - `src/Tetrafall.Sim/` — 봇 판 시뮬레이션 (`Sim.cs` = tools/sim.js planJobs·runJob·runParallel·summarizeSim·formatSim, summary.json 은 JSON.stringify(…, null, 1) 모양)
 - `src/Tetrafall.Trace/` — 판 기록기: `Scenarios.cs` (game-hash.js 시나리오 34개·runScenario 그대로), trace JSONL·해시
 - 아직 안 옮긴 메서드는 `Game.Todo.cs` (부르면 NotImplementedException, 괄호 = 작업 id). 옮기면 거기서 지우고 묶음 파일에
-- `tests/Tetrafall.Tests/` — `JsCompatTests`, `ProtocolTests` (JS rooms.js 와 같은 각본 → 같은 메시지 25개·로그 12줄), `RoomScenarioTests` (`tools/room-scenarios.mjs` 각본 5개 — 재접속·방 안 설정·상한·예외 격리·빈도 제한 — 를 C# 로 돌려 JS 와 메시지·로그 글자까지 같음), `RoomsUnitTests` (JS 값 바꾸기·이름 정리·긴 글자·빈도·토큰), `ServerProcessTests` (진짜 프로세스: 잘못된 주소 400·큰 메시지 1009·터널 주소·로그 파일 줄 모양), `S1Tests` (시작 지형 70개·물리 21판 비트·판 시작 trace 33판이 JS 정답 자료와 같음, 물리 단위 테스트), `S2Tests` (각본 판 8개 trace 전체가 JS 와 같음 + modes·sky·ghost 테스트 중 전투·봇·연습이 안 끼는 것), `SimTests` (sim.js 작은 판의 요약·화면 표·로그가 JS 와 같음, 워커 수와 상관없음), `S5Tests` (hp·master·킬 점수전·botpos), `S4Tests` (game-hash 34판 중 C# 가 다 도는 판의 해시가 JS 와 같음 — 안 옮긴 곳에 닿는 판은 건너뜀, 튜토리얼 자동 조종 판 trace, practice·tutorial 테스트), `CsHashTests` (고도 판 전용 C# 자체 기준선: `Scenarios.CS` 판 해시·틱이 `fixtures/cs-hash.json` 과 같음, 돌발 이벤트 `EVENT_KINDS` 의 모든 종류(지금 5종)가 다 나오고 블록 마스터 판엔 0번, 밸런스 표를 빼면 해시가 달라짐, 고정 파일 이름 = CS 순서 그대로)
+- `tests/Tetrafall.Tests/` — `JsCompatTests`, `ProtocolTests` (JS rooms.js 와 같은 각본 → 같은 메시지 25개·로그 12줄), `RoomScenarioTests` (`tools/room-scenarios.mjs` 각본 5개 — 재접속·방 안 설정·상한·예외 격리·빈도 제한 — 를 C# 로 돌려 JS 와 메시지·로그 글자까지 같음), `RoomsUnitTests` (JS 값 바꾸기·이름 정리·긴 글자·빈도·토큰), `ServerProcessTests` (진짜 프로세스: 잘못된 주소 400·큰 메시지 1009·터널 주소·로그 파일 줄 모양), `S1Tests` (시작 지형 70개·물리 21판 비트·판 시작 trace 33판이 JS 정답 자료와 같음, 물리 단위 테스트), `S2Tests` (각본 판 8개 trace 전체가 JS 와 같음 + modes·sky·ghost 테스트 중 전투·봇·연습이 안 끼는 것), `SimTests` (sim.js 작은 판의 요약·화면 표·로그가 JS 와 같음, 워커 수와 상관없음), `S5Tests` (hp·master·킬 점수전·botpos), `AuditTests` (2026-10-30 코드 감사 S1·S3~S10·T3~T5 — JS `test/w1-audit.test.js` 와 같은 내용), `S4Tests` (game-hash 34판 중 C# 가 다 도는 판의 해시가 JS 와 같음 — 안 옮긴 곳에 닿는 판은 건너뜀, 튜토리얼 자동 조종 판 trace, practice·tutorial 테스트), `CsHashTests` (고도 판 전용 C# 자체 기준선: `Scenarios.CS` 판 해시·틱이 `fixtures/cs-hash.json` 과 같음, 돌발 이벤트 `EVENT_KINDS` 의 모든 종류(지금 5종)가 다 나오고 블록 마스터 판엔 0번, 밸런스 표를 빼면 해시가 달라짐, 고정 파일 이름 = CS 순서 그대로)

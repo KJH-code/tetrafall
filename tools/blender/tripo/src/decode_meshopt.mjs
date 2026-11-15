@@ -1,0 +1,11 @@
+import {NodeIO} from '@gltf-transform/core';
+import {EXTMeshoptCompression,KHRMeshQuantization} from '@gltf-transform/extensions';
+import {MeshoptDecoder} from 'meshoptimizer';
+import {dequantize} from '@gltf-transform/functions';
+import fs from 'fs';
+await MeshoptDecoder.ready;
+const io=new NodeIO().registerExtensions([EXTMeshoptCompression,KHRMeshQuantization]).registerDependencies({'meshopt.decoder':MeshoptDecoder});
+const d=await io.readBinary(new Uint8Array(fs.readFileSync(process.argv[2])));
+await d.transform(dequantize());
+for(const e of d.getRoot().listExtensionsUsed())e.dispose();
+await io.write(process.argv[3],d);

@@ -2,8 +2,11 @@
 # 필드를 더할 땐 이 파일에 한 줄 + 주석 (누가 쓰고 누가 읽는지), 커밋 메시지에 'View 필드 추가'.
 # 설정은 user://settings.json 에 기억 (JS 판 localStorage tf-* 자리)
 extends Node
+const Opts := preload("res://core/opts.gd")
 
 const C := preload("res://core/config.gd")
+const UiScale := preload("res://core/ui_scale.gd")
+const CharsK := preload("res://chars/chars_config.gd")
 
 signal changed(key: String)
 
@@ -20,12 +23,18 @@ var settings := {
 	"music": 1.0, # 음악 크기 0~1 (audio/)
 	"fov": C.FOV_DEFAULT, # 시야각 (G1 카메라)
 	"shadows": true, # 그림자 (G1)
-	"outline": true, # 외곽선 (G3)
-	"lowGfx": false, # 그래픽 낮춤 (G1·G3·G5)
+	"outline": not Opts.web(), # 외곽선 (G3). 웹은 기본 끔 (W29, 설정 창에서 켬)
+	"lowGfx": false, # 그래픽 낮춤 (G1·G3·G5). W6 부터는 화질 (gfx) 이 낮음이면 켬 — world/gfx.gd 가 씀
+	"gfx": "", # 화질 "auto"|"high"|"medium"|"low" (G4 설정 창이 씀, world/gfx.gd 가 읽어 lowGfx·3D 배율·MSAA 를 정함). 빈 값 = 예전 파일: lowGfx 켬이면 낮음, 아니면 자동
+	"adaptRes": true, # 3D 해상도 자동 (적응형, W31 — world/adapt_calc.gd). 새 설치는 켬, 예전 파일에서 화질을 직접 골라 둔 사용자는 끔 (migrate_adapt)
 	"third": false, # 3인칭 시작 (G1)
 	"reducedMotion": false, # 움직임 줄이기 (G4·G5, JS 는 브라우저 설정)
 	"perf": false, # F3 성능 표시 (G6, JS tf-perf)
+	"motionFlags": CharsK.EXT_MOTION_FLAGS.duplicate(), # 모션 가산 층 켬·끔 (W49, 설정 창 '모션' 프리셋·개별 토글 — chars/chars_config.gd EXT_MOTION_FLAGS 가 이름·프리셋 표. 기본은 모두 켬 = 새 모션. 인자 --motion·--no-w43 등은 이것과 합집합)
+	"uiScale": "auto", # UI 크기 (W9): "auto" (창 크기에 맞춤) 또는 0.8·1·1.25·1.5·2 (JS 브라우저 확대 자리) — core/ui_scale.gd, 설정 창이 바꿈
 }
+# 지금 UI 배율 (W9, core/ui_scale.gd — View 가 창 크기·설정으로 정함). 화면 픽셀 = UI 좌표 × ui_scale. 초상 (ui/portrait.gd) 이 선명하게 그릴 크기로 읽음
+var ui_scale := 1.0
 # 메뉴(방 밖) 배경 테마 id (TITLE_THEMES 키, JS menu-theme.js). 메뉴 3D 배경을 그리는 쪽이 정함, audio/ 가 메뉴 앰비언트로 읽음
 var menu_theme = null
 # 화면 판 빛 색 테마 (JS menu-theme.js markTheme — body data-theme): 메뉴 = 메뉴 테마, 대기실 = 고른 맵 테마. title/title.gd 가 정함, G4 ui_style 이 읽음 (없으면 자수정)
@@ -47,13 +56,54 @@ signal sound_cue(kind: String, info: Dictionary)
 signal open_panel(name: String)
 
 
+# 저장된 설정 → 3D 해상도 자동 여부 (W31): 값이 있으면 그대로, 없는데 (예전 파일) 화질을 높음·보통·낮음으로 직접 골라 뒀으면 존중해서 끔, 아니면 켬
+static func migrate_adapt(d: Dictionary) -> bool:
+	if d.has("adaptRes"):
+		return bool(d.adaptRes)
+	return str(d.get("gfx", "")) not in ["high", "medium", "low"]
+
+
 func _ready() -> void:
 	if FileAccess.file_exists(PATH):
 		var d = JSON.parse_string(FileAccess.get_file_as_string(PATH))
 		if typeof(d) == TYPE_DICTIONARY:
 			for k in d:
 				settings[k] = d[k]
+			settings.adaptRes = migrate_adapt(d)
+	settings.uiScale = UiScale.normalize(settings.get("uiScale", "auto"))
+	settings.motionFlags = _clean_motion(settings.get("motionFlags"))
+	CharsK.set_flags(settings.motionFlags)
 	PlayerInput.sensitivity = float(settings.sens)
+	_startup_window()
+	get_window().size_changed.connect(apply_ui_scale)
+	apply_ui_scale()
+
+
+# UI 배율 적용 (core/ui_scale.gd): 창 크기가 바뀔 때·설정 'UI 크기' 가 바뀔 때. 재시작 없이 바로
+func apply_ui_scale() -> void:
+	var s := UiScale.apply(get_window(), settings.get("uiScale", "auto"))
+	if absf(ui_scale - s) > 1e-4:
+		ui_scale = s
+		changed.emit("uiScale")
+
+
+# 처음 창 크기 (W9): 윈도우 화면 배율 150%·200% 면 1280×720 창을 그만큼 키움 (UI 자동 배율도 따라 커짐). 웹·전체 화면·--resolution 이면 안 함
+func _startup_window() -> void:
+	if Opts.web() or DisplayServer.get_name() == "headless" or OS.has_feature("editor"):
+		return
+	var w := get_window()
+	if w.mode != Window.MODE_WINDOWED:
+		return
+	for a in OS.get_cmdline_args():
+		if a in ["--resolution", "-f", "--fullscreen", "-m", "--maximized", "-w", "--windowed", "--position"]:
+			return
+	var scr := w.current_screen
+	var k := UiScale.screen_scale(DisplayServer.screen_get_scale(scr), DisplayServer.screen_get_dpi(scr), OS.has_feature("windows"))
+	var usable := DisplayServer.screen_get_usable_rect(scr)
+	var want := UiScale.startup_window(w.size, k, usable.size)
+	if want != w.size:
+		w.size = want
+		w.position = usable.position + (usable.size - want) / 2
 
 
 func set_mode(m: String) -> void:
@@ -62,10 +112,25 @@ func set_mode(m: String) -> void:
 		changed.emit("mode")
 
 
+# 저장된 모션 플래그 → 표에 있는 이름만, 값 bool (빠진 이름은 기본값 = 켬). 예전 파일·손으로 고친 파일 방어
+static func _clean_motion(d) -> Dictionary:
+	var out := {}
+	for k in CharsK.EXT_MOTION_FLAGS:
+		out[k] = bool(d.get(k, CharsK.EXT_MOTION_FLAGS[k])) if d is Dictionary else bool(CharsK.EXT_MOTION_FLAGS[k])
+	return out
+
+
 func set_setting(key: String, value) -> void:
 	settings[key] = value
+	if key == "motionFlags":
+		settings[key] = _clean_motion(value)
+		CharsK.set_flags(settings[key]) # 판 중에도 다음 프레임부터 (Ext 가 프레임마다 CharsK.flag 를 읽음)
 	if key == "sens":
 		PlayerInput.sensitivity = float(value)
+	if key == "uiScale":
+		settings[key] = UiScale.normalize(value)
+		if is_inside_tree():
+			apply_ui_scale()
 	var f := FileAccess.open(PATH, FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify(settings))

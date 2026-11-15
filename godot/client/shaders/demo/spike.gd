@@ -2,6 +2,7 @@
 # --prewarm 이면 메뉴 동안 G3.prewarm. 인자는 g3_demo 와 같이 넘어감 (--theme · --terrain · --hazard · --pieces · --light · --body)
 #   xvfb-run -a godot --path godot/client --rendering-driver opengl3 res://shaders/demo/spike.tscn -- --theme volcano --terrain --hazard 1.4 [--prewarm]
 extends Node3D
+const Opts := preload("res://core/opts.gd")
 
 const G3 := preload("res://shaders/g3.gd")
 const MENU_FRAMES := 20
@@ -14,7 +15,7 @@ var prewarm := false
 
 
 func _ready() -> void:
-	prewarm = OS.get_cmdline_user_args().has("--prewarm")
+	prewarm = Opts.args().has("--prewarm")
 	var cam := Camera3D.new()
 	add_child(cam)
 	cam.make_current()

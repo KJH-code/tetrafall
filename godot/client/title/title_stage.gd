@@ -6,4 +6,4 @@ extends "res://title/title_world.gd"
 
 func _init(theme := "", opts := {}) -> void:
 	if theme != "":
-		setup(theme, opts)
+		setup(theme, opts, bool(opts.get("defer", false))) # defer: 소품·빛 가루는 setup_step() 으로 나눠 (W42 대기실 입장 쪼개기)

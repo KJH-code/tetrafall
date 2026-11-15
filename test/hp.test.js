@@ -6,8 +6,9 @@ import { Game } from '../server/game.js';
 import { Rooms } from '../server/rooms.js';
 import { CONFIG as C } from '../shared/config.js';
 import { parseLog, summarize, formatReport } from '../tools/stats.js';
+import { TICK } from './support/tick.js';
+import { fakeWs } from './support/fake-ws.js';
 
-const TICK = 1000 / C.TICK_RATE;
 
 function setup({ hp = true, mode = 'survival', n = 3 } = {}) {
   const lines = [];
@@ -110,7 +111,7 @@ test('체력전 옵션: 판 사이에만 바뀜, 연습 방은 늘 끔', () => {
 
 test('방: 호스트만 체력전을 켬, 공개 목록에 보임', () => {
   const rooms = new Rooms({});
-  const ws = () => ({ OPEN: 1, readyState: 1, msgs: [], send(t) { this.msgs.push(JSON.parse(t)); } });
+  const ws = fakeWs;
   const a = { ws: ws() };
   a.conn = rooms.connect(a.ws);
   rooms.message(a.conn, { type: 'create' });

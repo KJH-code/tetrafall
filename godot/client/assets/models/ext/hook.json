@@ -1,0 +1,65 @@
+{
+ "_": "자동 리깅 갈고리 (해적 선장) (tools/blender/tripo/ — rig_hook.py 손질 + lods.mjs LOD) — 다시 만들면 덮어씀. 키는 chars/chars_config.gd EXT_DEFAULTS",
+ "height": 1.0,
+ "yaw": 0.0,
+ "tint": "mask",
+ "skin_mask": {
+  "hook_lod1": "res://assets/models/ext/hook_mask_lod1.png",
+  "hook_lod2": "res://assets/models/ext/hook_mask_lod2.png",
+  "hook_lod3": "res://assets/models/ext/hook_mask_lod3.png"
+ },
+ "lods": {
+  "stage": "hook_lod0",
+  "high": "hook_lod1",
+  "medium": "hook_lod2",
+  "low": "hook_lod3"
+ },
+ "toon_steps": [
+  0.7,
+  0.86,
+  1.0
+ ],
+ "outline": 0.45,
+ "rim": [
+  0.22,
+  3.0
+ ],
+ "vm_snap": [
+  "elbow"
+ ],
+ "vm_node": "hook_vm",
+ "rope_bone": "LeftHandMiddle4",
+ "portrait": {
+  "half": 0.25,
+  "up": 0.04
+ },
+ "clips": {
+  "file": "res://assets/models/ext/hook_anim.glb",
+  "marks": [
+   0.3,
+   0.4,
+   0.8
+  ],
+  "idle": "idle",
+  "walk": "walk",
+  "run": "run",
+  "jump": "jump",
+  "fall": "fall",
+  "land": "land",
+  "run_speed": 4.5,
+  "run_from": 0.55,
+  "stride": {"walk": [1.0, -0.04, 0.9], "run": [1.0, -0.08, 0.65]},
+  "ground": [
+   "mixamorig_LeftFoot",
+   "mixamorig_RightFoot",
+   "mixamorig_LeftToeBase",
+   "mixamorig_RightToeBase"
+  ],
+  "taunt": "k_taunt", "victory": "k_victory", "moves": {"갈고리 휘두르기": "k_hook", "주먹": "k_fist", "갈고리 내려치기": "k_chop", "탕": "k_shot", "갈고리 스핀": "k_spin", "hookThrow": "k_throw", "hookSlam": "k_slam", "hookZip": "k_zip"}
+ },
+ "cloth_colliders": [["mixamorig_Hips", "mixamorig_Spine1", 0.073], ["mixamorig_Spine1", "mixamorig_Neck", 0.045], ["mixamorig_LeftUpLeg", "mixamorig_LeftLeg", 0.06], ["mixamorig_LeftLeg", "mixamorig_LeftFoot", 0.045], ["mixamorig_RightUpLeg", "mixamorig_RightLeg", 0.063], ["mixamorig_RightLeg", "mixamorig_RightFoot", 0.052]], "cloth": [
+   {"bones": ["mixamorig_Skirt1_1", "mixamorig_Skirt1_2", "mixamorig_Skirt1_3"], "rest": 0.2, "damp": 0.9, "gravity": 16.0, "drag": 0.0, "fwd": 0.03},
+   {"bones": ["mixamorig_Skirt2_1", "mixamorig_Skirt2_2", "mixamorig_Skirt2_3"], "rest": 0.2, "damp": 0.9, "gravity": 16.0, "drag": 0.0, "fwd": 0.03},
+   {"bones": ["mixamorig_Skirt3_1", "mixamorig_Skirt3_2", "mixamorig_Skirt3_3"], "rest": 0.2, "damp": 0.9, "gravity": 16.0, "drag": 0.0, "fwd": 0.03}
+ ]
+}

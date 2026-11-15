@@ -1,0 +1,945 @@
+{
+  "chars": {
+    "hunter": {
+      "clip_flicker": 0,
+      "cloth_pen": {
+        "frames": 34,
+        "max": 0.083,
+        "of": 429
+      },
+      "excluded": 68,
+      "foot": {
+        "float": 0,
+        "float_max": 0.0,
+        "ground_frames": 72,
+        "sunk": 2,
+        "sunk_min": -0.048
+      },
+      "idle_drift": {
+        "bad": 2,
+        "mean": 0.074,
+        "n": 3,
+        "p95": 0.177
+      },
+      "jitter": {
+        "bad": 0,
+        "windows": 0,
+        "worst_bone": "",
+        "worst_rms": 0.0
+      },
+      "label_flicker": {
+        "act→air": 1,
+        "air→act": 2,
+        "air→land": 1,
+        "air→rag": 1,
+        "idle→act": 1,
+        "land→act": 1
+      },
+      "limit_worst": {},
+      "limits": {},
+      "pop_by": {
+        "cloth": 122,
+        "limb": 111
+      },
+      "pop_worst": 179.5,
+      "pop_worst_bone": "Cape3_1",
+      "pops": 233,
+      "pops_soft": 1312,
+      "samples": 2639,
+      "seam": {
+        "act→air": {
+          "bone": "LeftForeArm",
+          "clip": "fall",
+          "jump_max": 1.1,
+          "jump_mean": 1.0,
+          "n": 2,
+          "peak_max": 61.7,
+          "peak_mean": 45.3
+        },
+        "act→loco": {
+          "bone": "LeftLeg",
+          "clip": "run",
+          "jump_max": 15.5,
+          "jump_mean": 15.5,
+          "n": 1,
+          "peak_max": 53.0,
+          "peak_mean": 53.0
+        },
+        "act→rag": {
+          "bone": "RightForeArm",
+          "clip": "h_leap",
+          "jump_max": 33.8,
+          "jump_mean": 29.1,
+          "n": 2,
+          "peak_max": 57.1,
+          "peak_mean": 52.3
+        },
+        "air→act": {
+          "bone": "RightArm",
+          "clip": "h_slash",
+          "jump_max": 14.9,
+          "jump_mean": 8.2,
+          "n": 2,
+          "peak_max": 61.3,
+          "peak_mean": 46.4
+        },
+        "air→land": {
+          "bone": "LeftLeg",
+          "clip": "land",
+          "jump_max": 28.9,
+          "jump_mean": 28.9,
+          "n": 1,
+          "peak_max": 28.9,
+          "peak_mean": 28.9
+        },
+        "idle→act": {
+          "bone": "RightArm",
+          "clip": "h_slash",
+          "jump_max": 0.1,
+          "jump_mean": 0.1,
+          "n": 2,
+          "peak_max": 60.2,
+          "peak_mean": 35.9
+        },
+        "land→act": {
+          "bone": "RightArm",
+          "clip": "h_slash",
+          "jump_max": 3.6,
+          "jump_mean": 3.6,
+          "n": 1,
+          "peak_max": 60.2,
+          "peak_mean": 60.2
+        },
+        "loco→act": {
+          "bone": "RightArm",
+          "clip": "h_slash",
+          "jump_max": 55.2,
+          "jump_mean": 55.2,
+          "n": 1,
+          "peak_max": 63.7,
+          "peak_mean": 63.7
+        },
+        "rag→air": {
+          "bone": "RightArm",
+          "clip": "jump",
+          "jump_max": 15.1,
+          "jump_mean": 15.1,
+          "n": 1,
+          "peak_max": 19.6,
+          "peak_mean": 19.6
+        },
+        "rag→idle": {
+          "bone": "RightArm",
+          "clip": "idle",
+          "jump_max": 15.4,
+          "jump_mean": 15.4,
+          "n": 1,
+          "peak_max": 31.4,
+          "peak_mean": 31.4
+        }
+      },
+      "slide": {},
+      "stretch": {
+        "cloth_hi": 429,
+        "cloth_max": 34.87,
+        "hi": 259,
+        "lo": 58,
+        "max": 5.6,
+        "min": 0.08,
+        "samples": 429
+      },
+      "weapon_pen": {
+        "frames": 0,
+        "max": 0.0,
+        "samples": 429
+      }
+    }
+  },
+  "meta": {
+    "hz": 60.0,
+    "rec": "prac_hunter.rec",
+    "samples": 2647,
+    "secs": 44.1416666666688,
+    "thr": {
+      "pop_cloth": 80.0,
+      "pop_end": 60.0,
+      "pop_torso": 35.0
+    }
+  },
+  "top": {
+    "flicker": [],
+    "jitter": [],
+    "limit": [],
+    "pen": [
+      {
+        "bone": "Cape2_1",
+        "char": "hunter",
+        "clip": "h_dive",
+        "pid": 5,
+        "sev": 0.083,
+        "state": "act",
+        "t": 38.725
+      },
+      {
+        "bone": "Cape2_1",
+        "char": "hunter",
+        "clip": "h_dive",
+        "pid": 5,
+        "sev": 0.082,
+        "state": "act",
+        "t": 9.125
+      },
+      {
+        "bone": "Cape2_1",
+        "char": "hunter",
+        "clip": "h_dive",
+        "pid": 5,
+        "sev": 0.08,
+        "state": "act",
+        "t": 23.325
+      },
+      {
+        "bone": "Cape2_1",
+        "char": "hunter",
+        "clip": "h_dive",
+        "pid": 5,
+        "sev": 0.063,
+        "state": "act",
+        "t": 1.025
+      },
+      {
+        "bone": "Cape3_1",
+        "char": "hunter",
+        "clip": "h_slash",
+        "pid": 5,
+        "sev": 0.06,
+        "state": "act",
+        "t": 40.125
+      },
+      {
+        "bone": "Cape2_1",
+        "char": "hunter",
+        "clip": "h_dive",
+        "pid": 5,
+        "sev": 0.06,
+        "state": "act",
+        "t": 8.525
+      },
+      {
+        "bone": "Cape2_1",
+        "char": "hunter",
+        "clip": "h_slash",
+        "pid": 5,
+        "sev": 0.049,
+        "state": "act",
+        "t": 19.925
+      },
+      {
+        "bone": "Cape2_1",
+        "char": "hunter",
+        "clip": "h_slash",
+        "pid": 5,
+        "sev": 0.049,
+        "state": "act",
+        "t": 7.125
+      },
+      {
+        "bone": "Cape2_1",
+        "char": "hunter",
+        "clip": "h_slash",
+        "pid": 5,
+        "sev": 0.049,
+        "state": "act",
+        "t": 18.525
+      },
+      {
+        "bone": "Cape2_1",
+        "char": "hunter",
+        "clip": "h_slash",
+        "pid": 5,
+        "sev": 0.049,
+        "state": "act",
+        "t": 5.725
+      },
+      {
+        "bone": "Cape2_1",
+        "char": "hunter",
+        "clip": "h_thrust",
+        "pid": 5,
+        "sev": 0.048,
+        "state": "act",
+        "t": 28.425
+      },
+      {
+        "bone": "Cape3_1",
+        "char": "hunter",
+        "clip": "h_back",
+        "pid": 5,
+        "sev": 0.048,
+        "state": "act",
+        "t": 42.125
+      },
+      {
+        "bone": "Cape2_1",
+        "char": "hunter",
+        "clip": "h_back",
+        "pid": 5,
+        "sev": 0.048,
+        "state": "act",
+        "t": 19.125
+      },
+      {
+        "bone": "Cape2_1",
+        "char": "hunter",
+        "clip": "h_back",
+        "pid": 5,
+        "sev": 0.048,
+        "state": "act",
+        "t": 7.725
+      },
+      {
+        "bone": "Cape2_1",
+        "char": "hunter",
+        "clip": "h_back",
+        "pid": 5,
+        "sev": 0.048,
+        "state": "act",
+        "t": 6.325
+      },
+      {
+        "bone": "Cape2_1",
+        "char": "hunter",
+        "clip": "h_back",
+        "pid": 5,
+        "sev": 0.048,
+        "state": "act",
+        "t": 21.925
+      },
+      {
+        "bone": "Cape2_1",
+        "char": "hunter",
+        "clip": "h_back",
+        "pid": 5,
+        "sev": 0.048,
+        "state": "act",
+        "t": 2.125
+      },
+      {
+        "bone": "Cape2_1",
+        "char": "hunter",
+        "clip": "h_slash",
+        "pid": 5,
+        "sev": 0.047,
+        "state": "act",
+        "t": 21.325
+      },
+      {
+        "bone": "Cape3_1",
+        "char": "hunter",
+        "clip": "h_back",
+        "pid": 5,
+        "sev": 0.045,
+        "state": "act",
+        "t": 43.525
+      },
+      {
+        "bone": "Cape2_1",
+        "char": "hunter",
+        "clip": "h_back",
+        "pid": 5,
+        "sev": 0.043,
+        "state": "act",
+        "t": 17.725
+      }
+    ],
+    "pop": [
+      {
+        "bone": "Cape3_1",
+        "char": "hunter",
+        "clip": "h_dive",
+        "cls": "cloth",
+        "extra": "fade 1.00 cw 1.00 since_lab 0.72 since_clip 0.28",
+        "jerk": 123.473,
+        "pid": 5,
+        "sev": 179.514,
+        "state": "act 내려 베기/rec",
+        "t": 1.158
+      },
+      {
+        "bone": "Cape2_1",
+        "char": "hunter",
+        "clip": "h_thrust",
+        "cls": "cloth",
+        "extra": "fade 1.00 cw 1.00 since_lab 9.88 since_clip 0.45",
+        "jerk": 125.945,
+        "pid": 5,
+        "sev": 178.365,
+        "state": "act 찔러 넣기/rec",
+        "t": 10.325
+      },
+      {
+        "bone": "Cape3_2",
+        "char": "hunter",
+        "clip": "h_slash",
+        "cls": "cloth",
+        "extra": "fade 0.08 cw 1.00 since_lab 8.20 since_clip 0.30",
+        "jerk": 161.313,
+        "pid": 5,
+        "sev": 175.747,
+        "state": "act 베기/wind",
+        "t": 22.242
+      },
+      {
+        "bone": "Cape1_1",
+        "char": "hunter",
+        "clip": "h_back",
+        "cls": "cloth",
+        "extra": "fade 1.00 cw 1.00 since_lab 8.95 since_clip 0.22",
+        "jerk": 100.043,
+        "pid": 5,
+        "sev": 174.814,
+        "state": "act 반대 베기/rec",
+        "t": 39.358
+      },
+      {
+        "bone": "Cape3_1",
+        "char": "hunter",
+        "clip": "h_slash",
+        "cls": "cloth",
+        "extra": "fade 0.08 cw 1.00 since_lab 1.00 since_clip 0.27",
+        "jerk": 149.942,
+        "pid": 5,
+        "sev": 171.724,
+        "state": "act 베기/wind",
+        "t": 15.042
+      },
+      {
+        "bone": "Cape2_3",
+        "char": "hunter",
+        "clip": "h_thrust",
+        "cls": "cloth",
+        "extra": "fade 1.00 cw 1.00 since_lab 9.88 since_clip 0.45",
+        "jerk": 150.154,
+        "pid": 5,
+        "sev": 170.924,
+        "state": "act 찔러 넣기/rec",
+        "t": 10.325
+      },
+      {
+        "bone": "Cape1_3",
+        "char": "hunter",
+        "clip": "h_thrust",
+        "cls": "cloth",
+        "extra": "fade 1.00 cw 1.00 since_lab 9.95 since_clip 0.52",
+        "jerk": 131.26,
+        "pid": 5,
+        "sev": 169.984,
+        "state": "act 찔러 넣기/rec",
+        "t": 10.392
+      },
+      {
+        "bone": "Cape1_1",
+        "char": "hunter",
+        "clip": "h_thrust",
+        "cls": "cloth",
+        "extra": "fade 1.00 cw 1.00 since_lab 9.88 since_clip 0.45",
+        "jerk": 136.906,
+        "pid": 5,
+        "sev": 168.851,
+        "state": "act 찔러 넣기/rec",
+        "t": 10.325
+      },
+      {
+        "bone": "Cape2_1",
+        "char": "hunter",
+        "clip": "h_back",
+        "cls": "cloth",
+        "extra": "fade 1.00 cw 1.00 since_lab 8.95 since_clip 0.22",
+        "jerk": 153.259,
+        "pid": 5,
+        "sev": 168.293,
+        "state": "act 반대 베기/rec",
+        "t": 39.358
+      },
+      {
+        "bone": "Cape3_2",
+        "char": "hunter",
+        "clip": "h_slash",
+        "cls": "cloth",
+        "extra": "fade 0.08 cw 1.00 since_lab 1.00 since_clip 0.27",
+        "jerk": 165.324,
+        "pid": 5,
+        "sev": 167.577,
+        "state": "act 베기/wind",
+        "t": 15.042
+      },
+      {
+        "bone": "Cape3_1",
+        "char": "hunter",
+        "clip": "h_slash",
+        "cls": "cloth",
+        "extra": "fade 0.08 cw 1.00 since_lab 8.20 since_clip 0.30",
+        "jerk": 139.913,
+        "pid": 5,
+        "sev": 165.355,
+        "state": "act 베기/wind",
+        "t": 22.242
+      },
+      {
+        "bone": "Cape3_3",
+        "char": "hunter",
+        "clip": "h_dive",
+        "cls": "cloth",
+        "extra": "fade 1.00 cw 1.00 since_lab 0.68 since_clip 0.25",
+        "jerk": 108.834,
+        "pid": 5,
+        "sev": 164.149,
+        "state": "act 내려 베기/rec",
+        "t": 1.125
+      },
+      {
+        "bone": "Cape3_1",
+        "char": "hunter",
+        "clip": "h_slash",
+        "cls": "cloth",
+        "extra": "fade 0.42 cw 1.00 since_lab 8.23 since_clip 0.03",
+        "jerk": 48.143,
+        "pid": 5,
+        "sev": 163.9,
+        "state": "act 베기/wind",
+        "t": 22.275
+      },
+      {
+        "bone": "Cape1_3",
+        "char": "hunter",
+        "clip": "h_back",
+        "cls": "cloth",
+        "extra": "fade 1.00 cw 1.00 since_lab 8.95 since_clip 0.22",
+        "jerk": 135.532,
+        "pid": 5,
+        "sev": 154.807,
+        "state": "act 반대 베기/rec",
+        "t": 39.358
+      },
+      {
+        "bone": "Cape3_2",
+        "char": "hunter",
+        "clip": "h_slash",
+        "cls": "cloth",
+        "extra": "fade 0.42 cw 1.00 since_lab 8.23 since_clip 0.03",
+        "jerk": 44.668,
+        "pid": 5,
+        "sev": 154.458,
+        "state": "act 베기/wind",
+        "t": 22.275
+      },
+      {
+        "bone": "Cape3_2",
+        "char": "hunter",
+        "clip": "h_dive",
+        "cls": "cloth",
+        "extra": "fade 1.00 cw 1.00 since_lab 0.72 since_clip 0.28",
+        "jerk": 137.262,
+        "pid": 5,
+        "sev": 153.547,
+        "state": "act 내려 베기/rec",
+        "t": 1.158
+      },
+      {
+        "bone": "Cape3_1",
+        "char": "hunter",
+        "clip": "h_slash",
+        "cls": "cloth",
+        "extra": "fade 0.08 cw 1.00 since_lab 3.13 since_clip 0.43",
+        "jerk": 145.316,
+        "pid": 5,
+        "sev": 153.423,
+        "state": "act 베기/wind",
+        "t": 33.542
+      },
+      {
+        "bone": "Cape3_2",
+        "char": "hunter",
+        "clip": "h_slash",
+        "cls": "cloth",
+        "extra": "fade 0.08 cw 1.00 since_lab 3.13 since_clip 0.43",
+        "jerk": 150.886,
+        "pid": 5,
+        "sev": 152.286,
+        "state": "act 베기/wind",
+        "t": 33.542
+      },
+      {
+        "bone": "Cape3_1",
+        "char": "hunter",
+        "clip": "h_dive",
+        "cls": "cloth",
+        "extra": "fade 1.00 cw 1.00 since_lab 0.68 since_clip 0.25",
+        "jerk": 86.987,
+        "pid": 5,
+        "sev": 148.86,
+        "state": "act 내려 베기/rec",
+        "t": 1.125
+      },
+      {
+        "bone": "Cape3_1",
+        "char": "hunter",
+        "clip": "jump",
+        "cls": "cloth",
+        "extra": "fade 1.00 cw 1.00 since_lab 0.12 since_clip 0.12",
+        "jerk": 52.883,
+        "pid": 5,
+        "sev": 146.796,
+        "state": "air",
+        "t": 39.992
+      }
+    ],
+    "seam": [
+      {
+        "bone": "RightArm",
+        "char": "hunter",
+        "clip": "h_slash",
+        "extra": "jump 55.2",
+        "pid": 5,
+        "sev": 63.721,
+        "state": "loco→act",
+        "t": 11.275
+      },
+      {
+        "bone": "LeftForeArm",
+        "char": "hunter",
+        "clip": "fall",
+        "extra": "jump 0.9",
+        "pid": 5,
+        "sev": 61.675,
+        "state": "act→air",
+        "t": 39.575
+      },
+      {
+        "bone": "RightArm",
+        "char": "hunter",
+        "clip": "h_slash",
+        "extra": "jump 1.4",
+        "pid": 5,
+        "sev": 61.342,
+        "state": "air→act",
+        "t": 40.108
+      },
+      {
+        "bone": "RightArm",
+        "char": "hunter",
+        "clip": "h_slash",
+        "extra": "jump 0.1",
+        "pid": 5,
+        "sev": 60.238,
+        "state": "idle→act",
+        "t": 14.042
+      },
+      {
+        "bone": "RightArm",
+        "char": "hunter",
+        "clip": "h_slash",
+        "extra": "jump 3.6",
+        "pid": 5,
+        "sev": 60.238,
+        "state": "land→act",
+        "t": 26.208
+      },
+      {
+        "bone": "RightForeArm",
+        "char": "hunter",
+        "clip": "h_leap",
+        "extra": "jump 33.8",
+        "pid": 5,
+        "sev": 57.103,
+        "state": "act→rag",
+        "t": 29.975
+      },
+      {
+        "bone": "LeftLeg",
+        "char": "hunter",
+        "clip": "run",
+        "extra": "jump 15.5",
+        "pid": 5,
+        "sev": 53.042,
+        "state": "act→loco",
+        "t": 10.608
+      },
+      {
+        "bone": "RightForeArm",
+        "char": "hunter",
+        "clip": "h_aim",
+        "extra": "jump 24.3",
+        "pid": 5,
+        "sev": 47.578,
+        "state": "act→rag",
+        "t": 13.575
+      },
+      {
+        "bone": "RightArm",
+        "char": "hunter",
+        "clip": "h_dive",
+        "extra": "jump 14.9",
+        "pid": 5,
+        "sev": 31.445,
+        "state": "air→act",
+        "t": 30.408
+      },
+      {
+        "bone": "RightArm",
+        "char": "hunter",
+        "clip": "idle",
+        "extra": "jump 15.4",
+        "pid": 5,
+        "sev": 31.41,
+        "state": "rag→idle",
+        "t": 13.958
+      },
+      {
+        "bone": "LeftLeg",
+        "char": "hunter",
+        "clip": "jump",
+        "extra": "jump 1.1",
+        "pid": 5,
+        "sev": 28.922,
+        "state": "act→air",
+        "t": 25.925
+      },
+      {
+        "bone": "LeftLeg",
+        "char": "hunter",
+        "clip": "land",
+        "extra": "jump 28.9",
+        "pid": 5,
+        "sev": 28.922,
+        "state": "air→land",
+        "t": 26.025
+      },
+      {
+        "bone": "RightArm",
+        "char": "hunter",
+        "clip": "jump",
+        "extra": "jump 15.1",
+        "pid": 5,
+        "sev": 19.555,
+        "state": "rag→air",
+        "t": 30.358
+      },
+      {
+        "bone": "RightLeg",
+        "char": "hunter",
+        "clip": "h_leap",
+        "extra": "jump 0.1",
+        "pid": 5,
+        "sev": 11.51,
+        "state": "idle→act",
+        "t": 0.442
+      }
+    ],
+    "slide": [
+      {
+        "bone": "발 R",
+        "char": "hunter",
+        "clip": "h_leap",
+        "extra": "len 16",
+        "pid": 5,
+        "sev": 0.177,
+        "state": "정지 끌림",
+        "t": 0.442
+      },
+      {
+        "bone": "발 L",
+        "char": "hunter",
+        "clip": "h_slash",
+        "extra": "len 11",
+        "pid": 5,
+        "sev": 0.044,
+        "state": "정지 끌림",
+        "t": 26.208
+      }
+    ],
+    "stretch": [
+      {
+        "bone": "LeftUpLeg|LeftArm",
+        "char": "hunter",
+        "clip": "h_thrust",
+        "pid": 5,
+        "sev": 5.604,
+        "state": "act",
+        "t": 10.325
+      },
+      {
+        "bone": "LeftUpLeg|LeftArm",
+        "char": "hunter",
+        "clip": "jump",
+        "pid": 5,
+        "sev": 5.429,
+        "state": "air",
+        "t": 40.025
+      },
+      {
+        "bone": "LeftUpLeg|LeftArm",
+        "char": "hunter",
+        "clip": "h_back",
+        "pid": 5,
+        "sev": 4.893,
+        "state": "act",
+        "t": 17.425
+      },
+      {
+        "bone": "LeftUpLeg|LeftArm",
+        "char": "hunter",
+        "clip": "h_back",
+        "pid": 5,
+        "sev": 4.858,
+        "state": "act",
+        "t": 18.825
+      },
+      {
+        "bone": "LeftUpLeg|LeftArm",
+        "char": "hunter",
+        "clip": "h_back",
+        "pid": 5,
+        "sev": 4.858,
+        "state": "act",
+        "t": 7.425
+      },
+      {
+        "bone": "LeftUpLeg|LeftArm",
+        "char": "hunter",
+        "clip": "h_back",
+        "pid": 5,
+        "sev": 4.857,
+        "state": "act",
+        "t": 21.625
+      },
+      {
+        "bone": "LeftUpLeg|LeftArm",
+        "char": "hunter",
+        "clip": "h_back",
+        "pid": 5,
+        "sev": 4.856,
+        "state": "act",
+        "t": 6.025
+      },
+      {
+        "bone": "LeftUpLeg|LeftArm",
+        "char": "hunter",
+        "clip": "h_back",
+        "pid": 5,
+        "sev": 4.856,
+        "state": "act",
+        "t": 20.225
+      },
+      {
+        "bone": "LeftUpLeg|LeftArm",
+        "char": "hunter",
+        "clip": "h_slash",
+        "pid": 5,
+        "sev": 4.854,
+        "state": "act",
+        "t": 27.625
+      },
+      {
+        "bone": "LeftUpLeg|LeftArm",
+        "char": "hunter",
+        "clip": "h_back",
+        "pid": 5,
+        "sev": 4.834,
+        "state": "act",
+        "t": 1.825
+      },
+      {
+        "bone": "LeftUpLeg|LeftArm",
+        "char": "hunter",
+        "clip": "h_slash",
+        "pid": 5,
+        "sev": 4.771,
+        "state": "act",
+        "t": 32.425
+      },
+      {
+        "bone": "LeftUpLeg|LeftArm",
+        "char": "hunter",
+        "clip": "h_dive",
+        "pid": 5,
+        "sev": 4.748,
+        "state": "act",
+        "t": 38.625
+      },
+      {
+        "bone": "LeftUpLeg|LeftArm",
+        "char": "hunter",
+        "clip": "h_dive",
+        "pid": 5,
+        "sev": 4.72,
+        "state": "act",
+        "t": 23.225
+      },
+      {
+        "bone": "LeftUpLeg|LeftArm",
+        "char": "hunter",
+        "clip": "h_slash",
+        "pid": 5,
+        "sev": 4.714,
+        "state": "act",
+        "t": 29.025
+      },
+      {
+        "bone": "LeftUpLeg|LeftArm",
+        "char": "hunter",
+        "clip": "h_dive",
+        "pid": 5,
+        "sev": 4.64,
+        "state": "act",
+        "t": 25.325
+      },
+      {
+        "bone": "LeftUpLeg|LeftArm",
+        "char": "hunter",
+        "clip": "h_dive",
+        "pid": 5,
+        "sev": 4.368,
+        "state": "act",
+        "t": 1.125
+      },
+      {
+        "bone": "LeftUpLeg|LeftArm",
+        "char": "hunter",
+        "clip": "h_back",
+        "pid": 5,
+        "sev": 4.305,
+        "state": "act",
+        "t": 16.025
+      },
+      {
+        "bone": "LeftUpLeg|LeftArm",
+        "char": "hunter",
+        "clip": "h_thrust",
+        "pid": 5,
+        "sev": 4.236,
+        "state": "act",
+        "t": 13.425
+      },
+      {
+        "bone": "LeftUpLeg|LeftArm",
+        "char": "hunter",
+        "clip": "h_thrust",
+        "pid": 5,
+        "sev": 4.236,
+        "state": "act",
+        "t": 37.125
+      },
+      {
+        "bone": "LeftUpLeg|LeftArm",
+        "char": "hunter",
+        "clip": "h_thrust",
+        "pid": 5,
+        "sev": 4.232,
+        "state": "act",
+        "t": 35.725
+      }
+    ],
+    "weapon": []
+  }
+}

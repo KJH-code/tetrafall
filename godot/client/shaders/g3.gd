@@ -6,6 +6,7 @@
 extends RefCounted
 
 const C := preload("res://core/config.gd")
+const Hitch := preload("res://core/hitch.gd")
 const Prof := preload("res://core/prof.gd")
 const Co := preload("res://core/coords.gd")
 const K := preload("res://shaders/g3_config.gd")
@@ -24,11 +25,14 @@ const PIECE_ALPHA := preload("res://shaders/piece_alpha.gdshader")
 const HAZARD := preload("res://shaders/hazard.gdshader")
 const GAME_LIGHT := preload("res://shaders/game_light.gd")
 
+static var outline_on := true # 설정 '외곽선' (W12): 끄면 툰·블록 재질의 외곽선 next_pass 를 뗌 — 외곽선 그리기 (재질마다 한 번 더) 가 빠짐
+static var _outlined: Array = [] # [WeakRef(재질), 붙일 외곽선 재질] — 켜고 끌 때 다시 붙일 목록 (없어진 재질은 그때 뺌)
+static var _outline_cache := {} # 키 = 굵기|안개 안 받음 → 외곽선 재질 하나 (재질마다 따로 만들던 것을 나눠 씀 — 값이 같음)
 static var _globals := {} # 넣은 전역 셰이더 값 (RenderingServer 는 실행 중 읽기가 안 됨 — 테스트·확인용)
 
 
 # 툰 재질 (three toon({...})). color: Color 또는 0xRRGGBB. opts: map (Texture2D), emissive (Color/숫자), emissive_energy,
-# opacity (1 미만이면 투명), vertex_color (bool), outline (기본 true — 외곽선을 next_pass 로), no_fog (안개 안 받음), color_glow
+# map_repeat (three texture.repeat, 기본 1), map_nearest (three magFilter Nearest), opacity (1 미만이면 투명), vertex_color (bool), outline (기본 true — 외곽선을 next_pass 로), no_fog (안개 안 받음), color_glow
 static func toon_material(color = Color.WHITE, opts := {}) -> ShaderMaterial:
 	var m := ShaderMaterial.new()
 	var c := _col(color)
@@ -39,6 +43,8 @@ static func toon_material(color = Color.WHITE, opts := {}) -> ShaderMaterial:
 	if opts.has("map"):
 		m.set_shader_parameter("albedo_tex", opts.map)
 		m.set_shader_parameter("use_tex", true)
+		m.set_shader_parameter("uv_scale", Vector2.ONE * float(opts.get("map_repeat", 1.0)))
+		m.set_shader_parameter("tex_nearest_mag", opts.get("map_nearest", false))
 	if opts.has("emissive"):
 		m.set_shader_parameter("emissive", _col(opts.emissive))
 	m.set_shader_parameter("emissive_energy", opts.get("emissive_energy", 1.0))
@@ -49,8 +55,7 @@ static func toon_material(color = Color.WHITE, opts := {}) -> ShaderMaterial:
 	if a < 1.0:
 		m.render_priority = 1
 	if opts.get("outline", true) and a >= 1.0:
-		m.next_pass = outline_material()
-		m.next_pass.set_shader_parameter("no_fog", opts.get("no_fog", false))
+		attach_outline(m, shared_outline(C.OUTLINE_THICKNESS, opts.get("no_fog", false)))
 	return m
 
 
@@ -63,9 +68,62 @@ static func outline_material(thickness: float = C.OUTLINE_THICKNESS) -> ShaderMa
 	return o
 
 
+# 나눠 쓰는 외곽선 재질 (굵기·안개마다 하나)
+static func shared_outline(thickness: float = C.OUTLINE_THICKNESS, no_fog := false) -> ShaderMaterial:
+	var key := "%f|%s" % [thickness, no_fog]
+	if not _outline_cache.has(key):
+		var o := outline_material(thickness)
+		o.set_shader_parameter("no_fog", no_fog)
+		_outline_cache[key] = o
+	return _outline_cache[key]
+
+
+# 몸 외곽선 (W31): 같은 외곽선 재질의 사본 — 먼 거리에서 굵기가 줄어드는 (far_taper) 것. 원본마다 하나 (나눠 씀)
+static var _far_cache := {}
+
+
+static func far_outline(o: Material) -> Material:
+	var id := o.get_instance_id()
+	if not _far_cache.has(id):
+		var d := o.duplicate() as ShaderMaterial
+		d.set_shader_parameter("far_taper", 1.0)
+		_far_cache[id] = d
+	return _far_cache[id]
+
+
+# 몸 외곽선 거리 전역 값 (W31, WC.OUTLINE_FAR): x = 줄기 시작, y = 0 이 되는 거리, z = 그 거리에서의 배율. y = 0 이면 끔
+static func set_outline_far(from: float, gone: float, min_k: float) -> void:
+	_set_global("g3_outline_far", Vector3(from, gone, min_k))
+
+
+# 재질에 외곽선을 붙임 (설정 '외곽선' 이 꺼져 있으면 붙일 것만 기억) — set_outline_on 이 나중에 켜고 끔
+static func attach_outline(m: Material, o: Material) -> void:
+	m.next_pass = o if outline_on else null
+	_outlined.append([weakref(m), o])
+	if _outlined.size() > _outlined_limit:
+		_outlined_limit = _prune(_outlined) # W37: 사라진 재질 기록 정리 (_track 과 같은 까닭)
+
+
+# 설정 '외곽선' (View.settings.outline, World 가 부름): 만든 재질 전부에 곧바로
+static func set_outline_on(on: bool) -> void:
+	outline_on = on
+	var keep := []
+	for e in _outlined:
+		var m = e[0].get_ref()
+		if m == null:
+			continue
+		(m as Material).next_pass = e[1] if on else null
+		keep.append(e)
+	_outlined = keep
+
+
 # 외곽선 끄기 (JS noOutline: 하늘·용암·그림자 판·파편 등)
 static func no_outline(m: Material) -> Material:
 	m.next_pass = null
+	for e in _outlined:
+		if e[0].get_ref() == m:
+			_outlined.erase(e)
+			break
 	return m
 
 
@@ -154,6 +212,16 @@ static func set_field(world: Node3D, w: float, d: float) -> void:
 	env.get_node("Sky").position = Co.gxyz(w / 2.0, d / 2.0, 0.0)
 	var sun: DirectionalLight3D = env.get_node("Sun")
 	sun.directional_shadow_max_distance = sqrt(w * w + d * d) / 2.0 + K.SHADOW_REACH_PAD * 4.0
+
+
+# 판 크기로 정한 그림자 거리 (set_field 와 같은 식)
+static func shadow_full(w: float, d: float) -> float:
+	return sqrt(w * w + d * d) / 2.0 + K.SHADOW_REACH_PAD * 4.0
+
+
+# W32: 그림자 거리를 판 크기 값 (shadow_full) 이하로 줄여 적용 (world.gd 가 카메라 자리로 정함 — world/shadow_calc.gd reach)
+static func set_shadow_reach(world: Node3D, dist: float) -> void:
+	(_env_node(world).get_node("Sun") as DirectionalLight3D).directional_shadow_max_distance = dist
 
 
 # 그림자 켜기·끄기 (JS 대기 화면 설정 '그림자', render.js setShadows)
@@ -435,7 +503,7 @@ static func piece_material(theme_id, low_arg = null, opts := {}) -> ShaderMateri
 	m.set_shader_parameter("rim", 0.0 if low else float(opts.get("rim", 0.0)))
 	m.set_shader_parameter("opacity", float(opts.get("opacity", s.opacity)))
 	if not tr and opts.get("outline", true):
-		m.next_pass = outline_material()
+		attach_outline(m, shared_outline())
 	_track(m, func(l): return piece_material(theme_id, l, opts))
 	return m
 
@@ -457,7 +525,7 @@ static func hazard_look(theme_id) -> Dictionary:
 static func hazard_mesh(far: bool, low_arg = null) -> PlaneMesh:
 	var low := _low(low_arg)
 	var m := PlaneMesh.new()
-	var seg: int = int(C.HAZARD_FAR_SEG) if far else int(C.HAZARD_SEG[1 if low else 0])
+	var seg: int = int(C.HAZARD_FAR_SEG) if far else int(K.HAZARD_SEG[1 if low else 0])
 	m.size = Vector2.ONE * (2.0 * C.HAZARD_FAR_SIZE if far else 1.0)
 	m.subdivide_width = seg - 1
 	m.subdivide_depth = seg - 1
@@ -504,6 +572,8 @@ static func hazard_shader(style: int, far: bool, shimmer: bool) -> Shader:
 static func hazard_field_texture(f: Dictionary) -> ImageTexture:
 	var nx: int = f.nx
 	var ny: int = f.ny
+	if f.has("bytes"): # W17: field() 가 같은 값을 미리 만들어 둠 (화소 15k 를 GDScript 로 돌던 4ms)
+		return ImageTexture.create_from_image(Image.create_from_data(nx, ny, false, Image.FORMAT_RGBA8, f.bytes))
 	var data := PackedByteArray()
 	data.resize(nx * ny * 4)
 	for i in nx * ny:
@@ -517,7 +587,7 @@ static func hazard_field_texture(f: Dictionary) -> ImageTexture:
 #   bulge: Vector4 (발 밑 들썩 x, y, 세기, 0 — 게임 좌표), field: field() 결과 (바뀔 때만 주면 됨), rings: far_rings() 결과 [{x, y, r}]}
 static func hazard_update(mats: Array, world: Node3D, p: Dictionary) -> void:
 	var on: bool = p.get("on", false)
-	var theme_id = mats[0].get_meta("hz_theme") if mats.size() else null
+	var theme_id = mats[0].get_meta("hz_theme") if mats.size() and mats[0].has_meta("hz_theme") else null # 테마 없음 (메뉴의 예전 노을) 이면 meta 가 null 로 지워져 있음 (get_meta 기본값 null 은 오류)
 	var L := hazard_look(theme_id)
 	var t: float = p.get("time", 0.0)
 	var zs: float = p.get("z", -99.0)
@@ -586,16 +656,46 @@ static var _mats: Array = [] # [WeakRef 재질, Callable(low) → 같은 설정�
 static var _sprouts: Array = [] # WeakRef 조각 노드
 
 
+# W50: 끝낼 때 정적 목록·캐시를 비움. _mats 의 Callable (람다) 이 이 스크립트를 쥐고 있어 종료 때 'g3.gd 가 아직 쓰임 · 누수 객체' 로 남던 것 (world._exit_tree 가 부름)
+static func clear_static() -> void:
+	_mats = []
+	_outlined = []
+	_sprouts = []
+	_outline_cache = {}
+	_far_cache = {}
+	_piece_meshes = {}
+	_hz_shaders = {}
+	_piece_shapes = null
+	_stencil_toon = null
+
+
 static func _low(arg) -> bool:
 	return low if arg == null else bool(arg)
 
 
+# W37: 몸·판마다 재질을 새로 만드는데 (방마다 8명 × 재질 10~30개) 목록은 set_low 때만 정리돼서 판마다 WeakRef·Callable 이 쌓이던 것 (몸 하나 만들고 지울 때마다 객체 +10~29, 긴 판 누수) →
+# 목록이 한계를 넘으면 사라진 재질만 제자리에서 버림 (set_low 도는 중엔 건드리지 않음 — 거기서 pop_back 으로 맨 뒤 둘을 뺌). 한계는 살아 있는 수의 두 배 (최소 512)
+static var _mats_busy := false
+static var _mats_limit := 512
+static var _outlined_limit := 512
+
+
+static func _prune(list: Array) -> int:
+	var live := list.filter(func(e): return e[0].get_ref() != null)
+	list.clear()
+	list.append_array(live)
+	return maxi(512, live.size() * 2)
+
+
 static func _track(m: ShaderMaterial, make: Callable) -> void:
 	_mats.append([weakref(m), make])
+	if _mats.size() > _mats_limit and not _mats_busy:
+		_mats_limit = _prune(_mats)
 
 
 static func set_low(world: Node3D, on: bool) -> void:
 	low = on
+	_mats_busy = true
 	var keep := []
 	for e in _mats:
 		var m = e[0].get_ref()
@@ -615,6 +715,7 @@ static func set_low(world: Node3D, on: bool) -> void:
 		for k in fresh.get_meta_list():
 			m.set_meta(k, fresh.get_meta(k))
 	_mats = keep
+	_mats_busy = false
 	if world:
 		for n in world.find_children("G3Sprouts", "", true, false):
 			if n.has_meta("g3_last"):
@@ -630,7 +731,23 @@ static func set_low(world: Node3D, on: bool) -> void:
 # ---- 첫 진입 멈춤 줄이기 (JS render.js prewarmLobby): 고도는 처음 그릴 때 셰이더를 만듦 (Compatibility 는 미리 만들기 없음) →
 # 메뉴에서 쉴 때 G3 셰이더를 쓰는 모든 갈래 (보통 메시·MultiMesh (인스턴스 색·custom)·SkinnedMesh, 그림자 패스 포함) 를 카메라 앞에 아주 작게 한 번씩 그려 둠.
 # 만든 셰이더는 Shader 자원 (g3.gd preload) 에 남아 판에서 다시 안 만듦. frames 뒤 스스로 치움. 반환: 그 노드 (done 신호)
-static func prewarm(world: Node3D, theme_id = null, frames := 3) -> Node3D:
+static func prewarm(world: Node3D, theme_id = null, frames := 3, part := -1) -> Node3D:
+	var _ht := Hitch.t()
+	var r := _prewarm(world, theme_id, frames, part)
+	Hitch.span("미리 그리기", "%s%s" % [str(theme_id), (" 조각 %d" % part) if part >= 0 else ""], _ht)
+	return r
+
+
+# W41: 한 프레임에 재질 14개 × 2 (+몸·빛 무리) 를 다 그리면 셰이더 컴파일이 한꺼번에 몰림 → 조각 (재질 PREWARM_PER_PART 개씩 + 마지막 조각 = 몸 묶음·빛 무리). part = 0 .. prewarm_parts()-1, -1 = 예전처럼 전부
+const PREWARM_PER_PART := 3
+const PREWARM_MATS := 14
+
+
+static func prewarm_parts() -> int:
+	return ceili(PREWARM_MATS / float(PREWARM_PER_PART)) + 1
+
+
+static func _prewarm(world: Node3D, theme_id = null, frames := 3, part := -1) -> Node3D:
 	var cam := world.get_viewport().get_camera_3d() if world.is_inside_tree() else null
 	var root := Node3D.new()
 	root.name = "G3Prewarm"
@@ -638,15 +755,22 @@ static func prewarm(world: Node3D, theme_id = null, frames := 3) -> Node3D:
 	if cam:
 		root.global_transform = cam.global_transform.translated_local(Vector3(0, 0, -2.0))
 	var tid = theme_id if theme_id != null else "volcano"
-	var mats: Array = [
-		toon_material(Color.WHITE), toon_material(Color.WHITE, {"opacity": 0.5}), toon_material(Color.WHITE, {"vertex_color": true, "outline": false}),
-		toon_material(Color.WHITE, {"hz_tint": true}), terrain_material(tid), floor_material(tid), piece_material(tid), piece_material(null), piece_material(tid, null, {"transparent": true}), # 테마가 늘 투명이어도 (수정) 불투명 갈래까지
-		hazard_material(tid, null, false), scenery_material({"unshaded": true}), scenery_material({"vertex_color": true}),
+	var makers: Array = [ # 재질은 고른 조각 몫만 만듦 (재질 만들기도 조각 비용)
+		func(): return toon_material(Color.WHITE), func(): return toon_material(Color.WHITE, {"opacity": 0.5}), func(): return toon_material(Color.WHITE, {"vertex_color": true, "outline": false}),
+		func(): return toon_material(Color.WHITE, {"hz_tint": true}), func(): return terrain_material(tid), func(): return floor_material(tid), func(): return piece_material(tid), func(): return piece_material(null), func(): return piece_material(tid, null, {"transparent": true}), # 테마가 늘 투명이어도 (수정) 불투명 갈래까지
+		func(): return hazard_material(tid, null, false), func(): return hazard_material(tid, null, true), func(): return scenery_material({"unshaded": true}), func(): return scenery_material({"vertex_color": true}),
 	]
 	var box := BoxMesh.new()
 	box.size = Vector3.ONE * 0.001
 	var i := 0
-	for m in mats:
+	var last_part := prewarm_parts() - 1
+	var sel: Array = makers
+	if part >= 0 and part < last_part:
+		sel = makers.slice(part * PREWARM_PER_PART, (part + 1) * PREWARM_PER_PART)
+	elif part >= last_part:
+		sel = []
+	for mk in sel:
+		var m = mk.call()
 		if m == null:
 			continue
 		var mi := MeshInstance3D.new()
@@ -666,6 +790,8 @@ static func prewarm(world: Node3D, theme_id = null, frames := 3) -> Node3D:
 		mmi.position = Vector3(i * 0.002, 0.002, 0)
 		root.add_child(mmi)
 		i += 1
+	if part >= 0 and part < last_part: # 재질 조각: 몸 묶음·빛 무리는 마지막 조각
+		return _prewarm_finish(root, frames)
 	# 몸 묶음 (SkinnedMesh 갈래)
 	var body := Node3D.new()
 	var piece := MeshInstance3D.new()
@@ -686,6 +812,10 @@ static func prewarm(world: Node3D, theme_id = null, frames := 3) -> Node3D:
 	halo.material_override = gl.get_node("Halos").material_override
 	halo.scale = Vector3.ONE * 0.001
 	root.add_child(halo)
+	return _prewarm_finish(root, frames)
+
+
+static func _prewarm_finish(root: Node3D, frames: int) -> Node3D:
 	var t := Engine.get_main_loop() as SceneTree # 트리 밖 world 여도
 	var left := [frames]
 	var rid := root.get_instance_id() # 노드를 직접 잡지 않음 (먼저 지워져도 됨)
@@ -712,6 +842,19 @@ static func toon_local_light(mat: ShaderMaterial, on := true, sky = K.SUNSET_HEM
 	mat.set_shader_parameter("local_hemi_ground", _lin3(ground))
 	mat.set_shader_parameter("local_hemi_energy", energy)
 	mat.set_shader_parameter("local_sun", _lin3(sun_color) * sun_energy)
+
+
+# ---- 위험 빛 끄기 (W3): 위험 빛은 전역 값 (g3_hz_lp, hz_light.gdshaderinc) 이라 자기 SubViewport 장면 (1인칭 팔·초상·대기실 큰 캐릭터) 에도 걸림
+# → 그 재질만 hz_light = false. mat 이 G3 툰 계열 ShaderMaterial 이 아니면 그대로
+static func toon_hazard_light(mat: Material, on: bool) -> void:
+	if mat is ShaderMaterial:
+		(mat as ShaderMaterial).set_shader_parameter("hz_light", on)
+
+
+# root 아래 모든 메시의 재질 (material_override) 에 toon_hazard_light
+static func hazard_light_under(root: Node, on: bool) -> void:
+	for mi in root.find_children("*", "MeshInstance3D", true, false):
+		toon_hazard_light((mi as MeshInstance3D).material_override, on)
 
 
 # ---- 스텐실: 3인칭 내 몸에 가린 곳엔 x-ray 안 비침 (JS 사냥꾼의 눈: 몸을 x-ray 복사본 뒤에 그려 renderOrder 로 가름 — 고도 Compatibility 는

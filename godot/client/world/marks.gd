@@ -5,6 +5,7 @@
 extends Node3D
 
 const C := preload("res://core/config.gd")
+const Stone := preload("res://world/chunk_tex.gd")
 const Co := preload("res://core/coords.gd")
 const WC := preload("res://world/world_config.gd")
 
@@ -244,6 +245,9 @@ func quake_rise(cells: Array, ms: float, id) -> void:
 	if _quake_mat == null:
 		if make_mat != null:
 			_quake_mat = make_mat.call(Co.color(C.QUAKE_COLOR))
+			if _quake_mat is ShaderMaterial: # W35: JS toon({ color, map: tex.stone }) — 돌 그림 (예전엔 색만)
+				_quake_mat.set_shader_parameter("albedo_tex", Stone.stone())
+				_quake_mat.set_shader_parameter("use_tex", true)
 		else:
 			var sm := StandardMaterial3D.new()
 			sm.albedo_color = Co.color(C.QUAKE_COLOR)

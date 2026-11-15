@@ -15,6 +15,9 @@ View="*res://core/view.gd"
 [display]
 window/size/viewport_width=1280
 window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/dpi/allow_hidpi=true
 
 [editor_plugins]
 
@@ -31,6 +34,8 @@ common/max_physics_steps_per_frame=3
 [rendering]
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+renderer/rendering_method.web="gl_compatibility"
+textures/vram_compression/import_s3tc_bptc=true
 
 [shader_globals]
 
@@ -66,6 +71,10 @@ g3_fog_far={
 "type": "float",
 "value": 0.0
 }
+g3_outline_far={
+"type": "vec3",
+"value": Vector3(0, 0, 1)
+}
 g3_hz={
 "type": "vec4",
 "value": Vector4(0, 0, 0, 0)
@@ -81,4 +90,16 @@ g3_hz_band={
 g3_hz_mode={
 "type": "float",
 "value": 0.0
+}
+g3_hz_lp={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
+g3_hz_lc={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 1)
+}
+g3_hz_ld={
+"type": "float",
+"value": 1.4
 }

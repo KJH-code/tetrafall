@@ -60,7 +60,7 @@ function harness(urls, openAt, { maxTime = 10 * 60 * 1000, exitNow = false } = {
       return openAt(url, n, t);
     },
     onReady: (url) => ready.push({ url, t }),
-    onStatus: (kind, text) => status.push({ kind, text, t }),
+    onStatus: (kind, text, out) => status.push({ kind, text, out, t }),
     sleep: async (ms) => {
       t += ms;
       if (t > maxTime) k.stop();
@@ -110,6 +110,20 @@ test('터널 지키기: 계속 실패하면 TUNNEL_MAX_RESTARTS 번 다시 켜 �
   assert.equal(h.spawned.length, C.TUNNEL_MAX_RESTARTS + 1);
   assert.equal(h.ready.length, 0);
   assert.ok(h.status.at(-1).kind === 'give-up');
+});
+
+test('터널 지키기 (감사 T3): 포기할 때 cloudflared 마지막 출력을 같이 넘기고, 실패 표시는 다시 켜는 횟수만 (6/5 없음)', async () => {
+  const h = harness([null], () => false, { exitNow: true });
+  await h.k.run();
+  const giveUp = h.status.at(-1);
+  assert.equal(giveUp.kind, 'give-up');
+  assert.match(giveUp.out, /ERR failed/, '마지막 출력이 포기 안내와 같이 옴');
+  const restarts = h.status.filter((x) => x.kind === 'restart');
+  assert.equal(restarts.length, C.TUNNEL_MAX_RESTARTS + 1);
+  const shown = restarts.map((x) => x.text.match(/\((\d+)\/(\d+)\)/)).filter(Boolean);
+  assert.deepEqual(shown.map((m) => Number(m[1])), Array.from({ length: C.TUNNEL_MAX_RESTARTS }, (_, i) => i + 1), '1/5 … 5/5');
+  assert.ok(shown.every((m) => Number(m[1]) <= Number(m[2])), 'n 이 상한을 안 넘음');
+  assert.ok(!restarts.at(-1).text.includes('다시 켭니다'), '마지막 실패는 다시 켠다고 안 함');
 });
 
 test('터널 열림 확인 (probeUrl): 첫 화면 200 + 게임 페이지 + 웹소켓이 열려야 성공. Cloudflare 530·안내 페이지·웹소켓 실패는 실패', async () => {

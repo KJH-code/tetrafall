@@ -1,9 +1,11 @@
 # 캐릭터 몸 하나 (client/figure.js buildFigure·figureAnim + render.js 몸 애니 부분 옮김). chars.gd make_body 가 만듦
 # 몸 모양 (맨몸 + 옷·무기·소품, 노드 나무·정점·재질) 은 tools/gen-bodies.mjs 가 JS buildFigure 를 실제로 돌려 뽑은 chars/data/bodies.bin 그대로 → JS 와 같은 모양
+# W7: 구운 몸 assets/models/<캐릭터>.glb (레포 뿌리 tools/bake-bodies.mjs, chars/baked.gd) 가 있으면 그 장면을 꺼내 씀 — 조립·묶기 (SurfaceTool) 없이 관절 노드만 이름으로 찾음 (chars/BAKE.md)
 # 관절 (엉덩이·허리·목·어깨·팔꿈치·손·허벅지·무릎·발) 과 특별 노드 (천 자락·방패·총·활·뿔·바드 폼…) 는 그 자료의 refs 표로 찾음
 # 몸 안은 게임 좌표 그대로 (앞 +x, 왼쪽 +y, 위 +z, three.js 와 같은 XYZ 회전 순서) — 맨 위 'frame' 노드 하나가 고도 (x, z, -y) 로 돌림 (core/coords.gd 와 같은 돌림)
 # 아직: 광전사 분노 표시 (눈 충혈·핏줄)·어지러움 눈동자·바드 폼 전환 튀기기·유령화 반투명·체크 무늬 반복 수·그리기 수 줄이기
 extends Node3D
+const Opts := preload("res://core/opts.gd")
 
 const C := preload("res://core/config.gd")
 const G3 := preload("res://shaders/g3.gd")
@@ -11,8 +13,16 @@ const Pose := preload("res://chars/figure_pose.gd")
 const Motion := preload("res://chars/figure_motion.gd")
 const Moves := preload("res://chars/moves.gd")
 const K := preload("res://chars/chars_config.gd")
+const Motion_ := preload("res://chars/ext_motion.gd") # W44 가상 시계 (재연·모션 QA 에서 몸 시간이 같은 시뮬 시간)
 const Ragdoll := preload("res://chars/ragdoll.gd")
 const Prof := preload("res://core/prof.gd")
+const Hitch := preload("res://core/hitch.gd")
+const Baked := preload("res://chars/baked.gd")
+const BakedBatch := preload("res://chars/baked_batch.gd")
+const WC := preload("res://world/world_config.gd")
+const External := preload("res://chars/external.gd")
+const FXC := preload("res://fx/fx_config.gd")
+const SM := preload("res://audio/sound_math.gd")
 
 # 스킬·필살기 이벤트 → 몸 동작 (main.js handleEvent 의 renderer.skillMove). [동작, 준비 ms 를 e.ms 에서 받음]
 const SKILL_START := {"leapWarn": ["hunterLeap", true], "aim": ["hunterAim", true], "blink": ["ninjaDash", false], "wallKick": ["ninjaWallKick", false], "charge": ["tankCharge", false], "slamWarn": ["tankSlam", true], "wallWarn": ["builderWall", true], "bigBombWarn": ["builderBig", false], "padBoost": ["builderPad", false], "song": ["bardSong", false], "rush": ["berserkerLeap", false], "rushLand": ["berserkerSlam", false], "groundShot": ["cannonJump", false], "blockGrab": ["hookSlam", true]}
@@ -22,6 +32,14 @@ const SKILL_STRIKE := {"leap": ["hunterLeap", false], "shot": ["hunterAim", fals
 const HEAVY_HITS := ["bomb", "shock", "projectile", "slam", "wall", "blast", "bigbomb", "quake", "blockslam", "execute", "pounce", "shell", "bigshell", "groundshot", "leapwave", "spinend"]
 
 var char_id := ""
+var cd := {} # 몸 자료 (bodies.bin 의 캐릭터 한 줄, 구운 몸이면 manifest — 같은 모양: nodes·mats·refs)
+var baked := false # 구운 몸 (.glb) 으로 만듦
+const GhostDepth := preload("res://chars/ghost_depth.gd")
+static var use_ext: bool = (K.EXT and not Opts.web() and not Opts.args().has("--no-ext")) or Opts.args().has("--ext") # 웹은 기본 끔 (W29: 새 모델은 삼각형·텍스처가 무거움, 웹에서 켜려면 주소 ?ext=1). W14 외부 뼈대 모델이 있으면 씀 (chars/external.gd)
+var ext = null # 붙은 외부 모델 (External.Ext) — 있으면 안쪽 몸 (조각) 은 관절만, 그리는 건 외부 모델
+var ext_job = null # W45: 외부 모델을 프레임에 걸쳐 붙이는 중 (External.AttachJob) — world/bodies.gd 가 ext_step 을 부름. 다 붙기 전엔 몸을 안 보이고 pose 도 안 부름
+static var split_ext := false # W45: 켜져 있는 동안 만든 판 몸은 외부 모델을 바로 안 붙이고 ext_job 으로 (bodies.gd 만 켬, 끄기 --no-body-split)
+static var use_glb: bool = K.GLB and not Opts.args().has("--no-glb") # 구운 몸이 있으면 씀 (테스트가 예전 조립과 둘 다 봄, 확인용 실행 인자 --no-glb 면 예전 조립)
 var d := {} # 체형 (FIGURE_BODIES 한 줄)
 var skin_color := Color.WHITE
 var mats: Array[Material] = []
@@ -51,9 +69,13 @@ var parts_z0 = null # parts 노드 처음 높이 (머리 박음 눌림) # G5 효
 var loaded := false # 갈고리 장전 (스냅샷 loaded, 1인칭 팔이 씀)
 var frame: Node3D # 게임 좌표 → 고도
 var torso_mats := {} # K.SKIN 바드: 폼 → 몸통 전용 재질 (묶음 밖)
+var hz_light := true # 위험 빛 받음 — 자기 SubViewport 몸 (1인칭 팔·초상·대기실 큰 캐릭터) 은 set_hz_light(false)
 # 몸 색 효과 (render.js 매 프레임 bodyMat·mats 색): 시각 ms
 var glow_until := -1e9
 var glow_color := Color.WHITE
+var hit_flash_at := -1e9 # W18 맞은 몸 하얗게 번쩍 (ms, fx_config HIT_TIERS.body)
+var hit_flash_ms := 0.0
+var hit_flash_color := Color.WHITE
 var windup_until := -1e9
 var armor_until := -1e9
 var armor_hit_at := -1e9
@@ -61,6 +83,8 @@ var rag_why := "" # 래그돌이 안 켜진 까닭 (확인용)
 var rag_test := false # 테스트: 장면 트리 밖에서도 래그돌 켬
 var rag_was_stunned := false # 래그돌: 경직이 풀린 시각 (초, 일어나기)
 var rag_stun_end := -1.0
+var rag_was_falling := false # W52 낙하 (판 가장자리 아래) 가 끝난 시각 — 모터 복귀 완화 (ragdoll_math sinceFall)
+var rag_fall_end := -1.0
 var batch = null
 # 매 프레임 맞출 묶음 뼈를 부모 사슬 (조각 위 → 부모 조각 바로 아래 노드들) 이 같은 것끼리 묶음 (나머지 뼈는 늘 같은 자세)
 # [{chain: Array[Node3D] (곱하는 순서, 조각 하나뿐이면 빈 배열), bones: PackedInt32Array, pieces: Array[Node3D], link: 사슬 첫 노드의 bone_links 번호 (빈 사슬 -1)}]
@@ -135,16 +159,78 @@ var act = null # {id, move, t0, windup, struck, rec, broken, air}
 var hit = null # {id, t0, stop, dir (Vector2 게임), pow}
 var finish_at := -1e9
 var counter_at := -1e9
+var armor_react_at := -1e9 # W35 (s): 아머로 버틴 시각 — 그 타는 안 휘청 (render.js armorHitAt)
+var armor_break_react_at := -1e9 # W35 (s): 아머가 깨진 시각 — 그 타는 크게 휘청 (armorBreakAt)
 
 
 func build(char_id_: String, color: Color, merge: bool = K.MERGE) -> void:
+	var _ht := Hitch.t() # W30 히치 로거: 몸 만들기 시간·새 캐릭터 첫 등장
+	_build(char_id_, color, merge)
+	if Hitch.on:
+		if Hitch.first("새 캐릭터", char_id_):
+			Hitch.tag("새 캐릭터", char_id_)
+		Hitch.span("몸 만들기", char_id_, _ht)
+
+
+func _build(char_id_: String, color: Color, merge: bool) -> void:
 	char_id = char_id_
-	var data := _data()
-	var cd: Dictionary = data.chars.get(char_id, data.chars[C.FIGURE_CHARS[0]])
 	dummy = char_id == "dummy"
 	var body_kind: String = C.FIGURE_BODY.get(char_id, "lean")
 	d = C.FIGURE_BODIES.get(body_kind, C.FIGURE_BODIES.lean)
 	skin_color = color
+	var glb = Baked.load_char(char_id) if use_glb else null
+	var baked_batch = null
+	# W14: 외부 모델이 있으면 안쪽 몸은 조각 몸 (merge 끔 — 관절 노드만 쓰고 안 그림), 그 위에 외부 모델 (3단: 외부 → 구운 → 코드 조립)
+	var third := merge
+	var want_ext: bool = use_ext and not dummy and External.has_char(char_id)
+	if want_ext:
+		merge = false
+	if glb != null:
+		cd = glb.manifest
+		# 재질 (figure.js flat·costume·eyeWhiteMat…): 피부 = 플레이어 색, 근육 홈 = 피부 × FIGURE_MUSCLE_SHADE, 나머지는 옷 색 그대로
+		for m in cd.mats:
+			mats.append(_material(m, color))
+		baked_batch = _build_glb(glb.scene, merge and K.SKIN)
+		baked = baked_batch != null or not (merge and K.SKIN)
+		if not baked: # 이름이 안 맞음 (다시 굽기 전 manifest 등) → 예전 조립
+			push_warning("구운 몸 %s 을 못 씀 — 조각 조립으로" % char_id)
+			for c in get_children():
+				c.free()
+			mats.clear()
+			nodes.clear()
+			parents.clear()
+			piece_mat.clear()
+			baked_batch = null
+	if not baked:
+		_build_pieces(color)
+	refs = cd.refs
+	_after_build(merge, baked_batch)
+	if want_ext:
+		if split_ext and third and not Opts.args().has("--no-body-split"):
+			ext_job = External.attach_job(self, third)
+		if ext_job == null:
+			ext = External.attach(self, third)
+
+
+func ext_pending() -> bool:
+	return ext_job != null
+
+
+# W45: 외부 모델 붙이기 한 조각. 돌려줌 1 = 끝 (붙었거나 못 붙임), 0 = 한 조각 함, -1 = 기다림
+func ext_step() -> int:
+	if ext_job == null:
+		return 1
+	var r: int = ext_job.step()
+	if r == 1:
+		ext = ext_job.e
+		ext_job = null
+	return r
+
+
+# 예전 조립: bodies.bin 의 노드 표대로 노드·메시를 하나씩 만듦
+func _build_pieces(color: Color) -> void:
+	var data := _data()
+	cd = data.chars.get(char_id, data.chars[C.FIGURE_CHARS[0]])
 	frame = Node3D.new()
 	frame.basis = Basis(Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, 1, 0)) # 게임 x→x, y→-z, z→y (coords.gd 와 같은 돌림)
 	add_child(frame)
@@ -173,12 +259,74 @@ func build(char_id_: String, color: Color, merge: bool = K.MERGE) -> void:
 		(frame if parent < 0 else nodes[parent]).add_child(n)
 		nodes.append(n)
 		parents.append(parent)
-	refs = cd.refs
+
+
+# 구운 몸: .glb 장면을 꺼내 frame 을 몸에 붙이고 manifest 노드 표 순서대로 이름으로 노드를 찾음.
+# skin_batch (판·대기실·초상 몸): 묶음 조각 (batch 표시 잎) 은 버리고 미리 구운 SkinnedMesh 를 씀 → BakedBatch. 아니면 (1인칭 팔·확인용) 조각 그대로, SkinnedMesh 는 버림
+# 돌려줌: skin_batch 면 BakedBatch (실패면 null), 아니면 null. 노드를 못 찾으면 baked 가 거짓이 되게 nodes 를 비움
+func _build_glb(scene: PackedScene, skin_batch: bool):
+	var root := scene.instantiate() as Node3D
+	frame = root.get_node_or_null("frame") as Node3D
+	if frame == null:
+		root.free()
+		return null
+	root.remove_child(frame)
+	root.free()
+	add_child(frame)
+	var mn: Array = cd.nodes
+	var keep: int = int(cd.get("batchStart", mn.size())) if skin_batch else mn.size()
+	for i in mn.size():
+		var e: Dictionary = mn[i]
+		var parent: int = int(e.parent)
+		var n := (frame if parent < 0 else nodes[parent]).get_node_or_null(NodePath(str(e.name))) as Node3D
+		if n == null:
+			nodes.clear()
+			return null
+		if i >= keep: # 묶음에 들어간 잎 (manifest 맨 끝) — 그리지도 움직이지도 않음
+			n.get_parent().remove_child(n)
+			n.free()
+			continue
+		var q := n.quaternion
+		n.rotation_order = EULER_ORDER_XYZ # three.js 와 같은 회전 순서 (figureAnim 이 rotation 을 씀)
+		n.quaternion = q
+		n.visible = not e.get("hidden", false)
+		if e.has("mat"):
+			var mi := n as MeshInstance3D
+			if mi == null:
+				nodes.clear()
+				return null
+			mi.material_override = mats[int(e.mat)]
+			piece_mat[nodes.size()] = int(e.mat)
+			if e.get("noShadow", false):
+				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			if skin_batch and e.get("batch", false): # 묶음에 들어간 노드 메시 (refs 가 가리켜 남긴 것) 는 자리만 — G3 batch.gd 와 같음
+				mi.layers = 0
+				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		nodes.append(n)
+		parents.append(parent)
+	var sk := frame.get_node_or_null("Skeleton3D") as Skeleton3D
+	if not skin_batch:
+		if sk != null:
+			frame.remove_child(sk)
+			sk.free()
+		return null
+	if sk == null:
+		nodes.clear()
+		return null
+	var bb := BakedBatch.new()
+	if not bb.setup(frame, sk, nodes, skin_color):
+		nodes.clear()
+		return null
+	return bb
+
+
+# 노드 나무를 만든 뒤 (두 길 같음): 관절 찾기·합치기/묶기·어지러움 별·처음 자세
+func _after_build(merge: bool, baked_batch) -> void:
 	rig = _n(refs.rig)
 	if dummy:
 		# 연습 방 허수아비 (character.js buildDummy): 나무 기둥·가로 막대 팔·자루 머리, 관절 없음 — 움직임은 rig 기울기·구르기만
 		if merge and K.SKIN:
-			_batch(cd)
+			_batch(cd, baked_batch)
 		return
 	hips = _n(refs.hips)
 	waist = _n(refs.waist)
@@ -195,7 +343,7 @@ func build(char_id_: String, color: Color, merge: bool = K.MERGE) -> void:
 	if hammer != null:
 		hammer.visible = char_id == "builder" # 건축가 무기
 	if merge and K.SKIN:
-		_batch(cd)
+		_batch(cd, baked_batch)
 	elif merge:
 		_merge(cd)
 	else:
@@ -225,8 +373,8 @@ func build(char_id_: String, color: Color, merge: bool = K.MERGE) -> void:
 # 움직이는 노드 (관절·천 자락·뿔·눈동자·보이기를 바꾸는 무기… = refs 에 나오는 노드 + 처음에 숨긴 노드) 마다, 그 아래 붙어 같이 움직이는 조각들을
 # 재질 종류 (툰/basic·외곽선·발광·체크 무늬·그림자) 마다 메시 하나로 합쳐 그 노드에 붙임. 색은 정점 색. 뼈 (skin) 없이 노드 그대로라 숨기기·자세가 예전처럼.
 # 투명 재질·바드 몸통 (폼마다 재질이 바뀜)·광전사 충혈 흰자 (색이 바뀜) 는 따로 그림
-func _merge(cd: Dictionary) -> void:
-	var dyn := _dyn_nodes(cd)
+func _merge(cdat: Dictionary) -> void:
+	var dyn := _dyn_nodes(cdat)
 	# 광전사 뿔은 늘 같은 곡선 (figureAnim 이 매 프레임 같은 각) → 미리 굽혀 두고 합침
 	if refs.get("horns") is Array:
 		var bend: float = C.FIGURE_HORN_CURL / (C.FIGURE_HORN_SEGS - 1.0)
@@ -237,11 +385,11 @@ func _merge(cd: Dictionary) -> void:
 				if sn != null:
 					sn.rotation.x = float(h.side) * (0.15 if k == 0 else bend)
 	var keep_torso: bool = refs.has("formParts")
-	_merge_groups(cd, dyn, keep_torso)
+	_merge_groups(cdat, dyn, keep_torso)
 
 
 # 움직이는 노드 (figureAnim 이 돌리거나 옮기거나 보이기를 바꾸는 것 + 처음에 숨긴 노드 + 맨 위)
-func _dyn_nodes(cd: Dictionary) -> Dictionary:
+func _dyn_nodes(cdat: Dictionary) -> Dictionary:
 	var dyn := {}
 	# 움직이는 노드만 (figureAnim 이 돌리거나 보이기를 바꾸는 것). 손·발·몸통·코·악기 줄 등 refs 에 있어도 안 움직이는 건 주인 관절에 같이 합침
 	for key in ["rig", "hips", "waist", "neck", "shoulders", "elbows", "thighs", "knees", "pupils", "gun", "bow", "shields", "balls", "formParts", "mohawk", "hammer", "held", "waitMark", "cannon"]:
@@ -254,19 +402,19 @@ func _dyn_nodes(cd: Dictionary) -> Dictionary:
 	if refs.has("formParts"):
 		_collect_nodes(refs.get("torso"), dyn) # 바드 몸통은 폼마다 재질이 바뀜
 	for i in nodes.size():
-		if cd.nodes[i].get("hidden", false) or int(cd.nodes[i].parent) < 0:
+		if cdat.nodes[i].get("hidden", false) or int(cdat.nodes[i].parent) < 0:
 			dyn[i] = true
 	return dyn
 
 
-func _merge_groups(cd: Dictionary, dyn: Dictionary, keep_torso: bool) -> void:
+func _merge_groups(cdat: Dictionary, dyn: Dictionary, keep_torso: bool) -> void:
 	var rage_eye := -1
 	if refs.get("rage") is Dictionary and refs.rage.get("eyeMat") is Dictionary:
 		rage_eye = int(refs.rage.eyeMat.mat)
 	var groups := {} # "주인 노드|재질 종류" → {owner, vs, ns, cs, us, m, shadow}
 	for i in piece_mat:
 		var mi := nodes[i] as MeshInstance3D
-		var m: Dictionary = cd.mats[piece_mat[i]]
+		var m: Dictionary = cdat.mats[piece_mat[i]]
 		if m.get("transparent", false) or (keep_torso and mi == torso) or int(piece_mat[i]) == rage_eye:
 			drawn.append({"mi": mi, "m": m, "merged": false})
 			continue
@@ -276,9 +424,9 @@ func _merge_groups(cd: Dictionary, dyn: Dictionary, keep_torso: bool) -> void:
 		while not dyn.has(owner):
 			rel = nodes[owner].transform * rel
 			owner = parents[owner]
-		var key := "%d|%s|%s|%s|%s|%s" % [owner, m.kind, m.get("outline", true), m.get("emissive", 0), JSON.stringify(m.get("plaid", [])), cd.nodes[i].get("noShadow", false)]
+		var key := "%d|%s|%s|%s|%s|%s" % [owner, m.kind, m.get("outline", true), m.get("emissive", 0), JSON.stringify(m.get("plaid", [])), cdat.nodes[i].get("noShadow", false)]
 		if not groups.has(key):
-			groups[key] = {"owner": owner, "vs": [], "ns": [], "cs": [], "us": [], "m": m, "shadow": not cd.nodes[i].get("noShadow", false)} # Array 에 모아 마지막에 Packed 로
+			groups[key] = {"owner": owner, "vs": [], "ns": [], "cs": [], "us": [], "m": m, "shadow": not cdat.nodes[i].get("noShadow", false)} # Array 에 모아 마지막에 Packed 로
 		var gr: Dictionary = groups[key]
 		var col: Color = _mat_color(m, skin_color)
 		var arr := (mi.mesh as ArrayMesh).surface_get_arrays(0)
@@ -314,7 +462,7 @@ func _merge_groups(cd: Dictionary, dyn: Dictionary, keep_torso: bool) -> void:
 
 # K.SKIN: G3.batch_mesh (shaders/batch.gd, 테스트 test_batch) 로 툰 조각을 몸 한 메시 (툰 1 + 외곽선 1). 그림 (체크 무늬)·basic (눈)·투명 조각은 따로.
 # 바드 몸통은 폼마다 재질을 통째로 바꿔서 묶으면 안 따라감 → 그 재질만 정점 색 켬 (정점 색이 없는 메시라 흰색 = 모습 같음) = 묶음에서 빠짐
-func _batch(cd: Dictionary) -> void:
+func _batch(cdat: Dictionary, baked_batch = null) -> void:
 	# 몸통 재질은 옷 재질과 같은 것이라 (소매 등) 몸통만 복사본을 씀 — 원본을 바꾸면 그 재질 조각이 다 묶음에서 빠짐
 	var tms = refs.get("torsoMat")
 	if tms is Dictionary and torso is MeshInstance3D:
@@ -328,14 +476,19 @@ func _batch(cd: Dictionary) -> void:
 		for f in tms:
 			if mats[int(tms[f])] == cur and torso_mats.has(f):
 				(torso as MeshInstance3D).material_override = torso_mats[f]
-	for i in piece_mat:
-		if cd.mats[piece_mat[i]].get("skin", false):
-			nodes[i].set_meta("tf_skin", true) # 묶음이 피부 정점 표시 (UV2.x = 1) 로 씀 → 툰 skin_tint·skin_emissive
-	batch = G3.batch_mesh(frame)
-	batch.set_process(false) # 뼈 맞추기는 pose 안에서 (_sync_bones)
-	batch.ready.connect(func(): batch.set_process(false), CONNECT_ONE_SHOT) # _process 가 있으면 고도가 ready 때 다시 켬 → 그 뒤에 끔
+	if baked_batch != null:
+		# 구운 몸: 묶음은 .glb 에 이미 있음 (chars/baked_batch.gd) — 처음 보이기 (망치 등) 를 바꾼 뒤라 뼈를 한 번 다 맞춤
+		batch = baked_batch
+		batch.sync()
+	else:
+		for i in piece_mat:
+			if cdat.mats[piece_mat[i]].get("skin", false):
+				nodes[i].set_meta("tf_skin", true) # 묶음이 피부 정점 표시 (UV2.x = 1) 로 씀 → 툰 skin_tint·skin_emissive
+		batch = G3.batch_mesh(frame)
+		batch.set_process(false) # 뼈 맞추기는 pose 안에서 (_sync_bones)
+		batch.ready.connect(func(): batch.set_process(false), CONNECT_ONE_SHOT) # _process 가 있으면 고도가 ready 때 다시 켬 → 그 뒤에 끔
 	# 매 프레임 다시 맞출 뼈만 고름: 조각 → 부모 조각 (없으면 frame) 사이에 움직이는 노드가 있는 뼈. 나머지 뼈는 자세가 늘 같음 (만들 때 batch 가 한 번 맞춤)
-	var dyn := _dyn_nodes(cd)
+	var dyn := _dyn_nodes(cdat)
 	_collect_nodes(refs.get("parts"), dyn) # 머리 박음 눌림
 	_collect_nodes(refs.get("rig"), dyn)
 	for h in refs.get("horns", []):
@@ -385,7 +538,7 @@ func _batch(cd: Dictionary) -> void:
 	for i in piece_mat:
 		var mi := nodes[i] as MeshInstance3D
 		if mi.layers != 0:
-			drawn.append({"mi": mi, "m": cd.mats[piece_mat[i]], "merged": false})
+			drawn.append({"mi": mi, "m": cdat.mats[piece_mat[i]], "merged": false})
 	drawn.append({"mi": batch.mi, "m": {"kind": "toon"}, "merged": true})
 	merged_count = 1
 
@@ -417,7 +570,7 @@ static func _merged_material(m: Dictionary) -> Material:
 	if int(m.get("emissive", 0)) != 0:
 		opts.emissive = int(m.emissive)
 	if m.has("plaid"):
-		opts.map = _plaid(m.plaid)
+		_plaid_opts(opts, m.plaid)
 	return G3.toon_material(Color.WHITE, opts)
 
 
@@ -496,7 +649,11 @@ static func _mat_color(m: Dictionary, skin: Color) -> Color:
 	if m.get("skin", false):
 		return skin
 	if m.get("shade", false):
-		return Color(skin.r * C.FIGURE_MUSCLE_SHADE, skin.g * C.FIGURE_MUSCLE_SHADE, skin.b * C.FIGURE_MUSCLE_SHADE)
+		# 근육 홈 = 피부 × FIGURE_MUSCLE_SHADE. 구운 몸 manifest 는 건축가 안전모 테 값도 (figure.js fig.shade k·contrast: 모자 × FIGURE_HAT_TRIM, 어두운 모자면 흰색 쪽으로)
+		if m.get("contrast", false) and skin.r * 0.3 + skin.g * 0.59 + skin.b * 0.11 < C.FIGURE_TRIM_DARK:
+			return skin.lerp(Color.WHITE, C.FIGURE_TRIM_LIGHTEN)
+		var k: float = float(m.get("shadeK", C.FIGURE_MUSCLE_SHADE))
+		return Color(skin.r * k, skin.g * k, skin.b * k)
 	return Color.from_rgba8((int(m.color) >> 16) & 0xff, (int(m.color) >> 8) & 0xff, int(m.color) & 0xff)
 
 
@@ -516,13 +673,22 @@ static func _material(m: Dictionary, skin: Color) -> Material:
 	if int(m.get("emissive", 0)) != 0:
 		opts.emissive = int(m.emissive)
 	if m.has("plaid"):
-		opts.map = _plaid(m.plaid)
+		_plaid_opts(opts, m.plaid)
 	return G3.toon_material(col, opts)
+
+
+# 체크 무늬 재질 값 (figure.js plaidTexture: repeat FIGURE_PLAID_REPEAT, magFilter Nearest — 밉맵은 three 기본처럼 만듦)
+static func _plaid_opts(opts: Dictionary, fills: Array) -> void:
+	opts.map = _plaid(fills)
+	opts.map_repeat = C.FIGURE_PLAID_REPEAT
+	opts.map_nearest = true
 
 
 # 체크 무늬 천 (figure.js plaidTexture: 32×32 에 칠한 사각형을 그 투명도로 겹침)
 static func _plaid(fills: Array) -> Texture2D:
 	var key := JSON.stringify(fills)
+	if not _cache.has("plaid"):
+		_cache.plaid = {} # 구운 몸 (.glb) 만 쓰면 bodies.bin 을 안 읽어 캐시가 아직 없음
 	if _cache.plaid.has(key):
 		return _cache.plaid[key]
 	var img := Image.create_empty(32, 32, false, Image.FORMAT_RGBA8)
@@ -532,6 +698,7 @@ static func _plaid(fills: Array) -> Texture2D:
 		for y in range(int(f[3]), mini(32, int(f[3]) + int(f[5]))):
 			for x in range(int(f[2]), mini(32, int(f[2]) + int(f[4]))):
 				img.set_pixel(x, y, img.get_pixel(x, y).lerp(Color(c.r, c.g, c.b, 1.0), a))
+	img.generate_mipmaps() # three CanvasTexture 기본 (minFilter LinearMipmapLinear)
 	var tex := ImageTexture.create_from_image(img)
 	_cache.plaid[key] = tex
 	return tex
@@ -542,12 +709,151 @@ static func _store():
 	return _autoload("Store")
 
 
+static var _al := {} # 찾은 자동 로드 (W15: 몸마다 프레임마다 5번 get_node 하던 것)
+
+
 static func _autoload(name: String):
+	var n = _al.get(name)
+	if n != null and is_instance_valid(n):
+		return n
 	var ml = Engine.get_main_loop()
-	return ml.root.get_node_or_null(name) if ml is SceneTree else null
+	n = ml.root.get_node_or_null(name) if ml is SceneTree else null
+	if n != null:
+		_al[name] = n
+	return n
 
 
 # ---------- 매 프레임 (World 가 부름) ----------
+# ---- 외곽선 거리 (W31, world/bodies.gd 가 카메라 거리로 부름): 먼 몸은 외곽선 껍질 (next_pass — 몸이 한 번 더 그려짐) 을 뗌.
+# 처음 부를 때 이 몸의 재질 중 외곽선을 가진 것을 모아 (나눠 쓰는 재질은 건드리지 않음) 가까울 땐 굵기가 거리로 줄어드는 사본 (G3.far_outline) 으로 바꿔 둠
+const OUTLINE_SHADER := "res://shaders/outline.gdshader"
+static var _ol_owner := {} # 재질 id → 몸 id (먼저 모은 몸이 주인)
+const OL_OWNER_MAX := 1024
+
+
+# W50: 몸을 만들고 지울 때마다 재질 id 가 쌓이기만 하던 것 — 한계를 넘으면 사라진 재질의 기록을 버림
+static func prune_ol_owner() -> int:
+	if _ol_owner.size() <= OL_OWNER_MAX:
+		return 0
+	var n := 0
+	for k in _ol_owner.keys():
+		if instance_from_id(int(k)) == null:
+			_ol_owner.erase(k)
+			n += 1
+	return n
+var _ol: Array = [] # [[재질, 가까울 때 외곽선]]
+var _ol_built := false
+var _ol_far := false
+
+
+func set_outline_far(far: bool) -> void:
+	if not _ol_built:
+		_collect_outline()
+	if _ol.is_empty():
+		return
+	var off := far or not G3.outline_on
+	var e0: Array = _ol[0]
+	if _ol_far == far and (e0[0] as Material).next_pass == (null if off else e0[1]):
+		return
+	_ol_far = far
+	for e in _ol:
+		(e[0] as Material).next_pass = null if off else e[1]
+
+
+func outline_far() -> bool:
+	return _ol_far
+
+
+# ---- 그림자 거리 (W32, world/bodies.gd 가 부름): 너무 멀거나 (shadow_calc.far_off) 몸도 그림자 자리도 시야 밖인 몸은 해 그림자를 끔 (그림자 패스 삼각형이 몸마다 줄음).
+# 처음 부를 때 이 몸의 해 그림자를 던지는 메시 (SHADOWS 켬·그림자 전용) 를 모아 원래 설정을 기억, 켜면 그대로 되돌림. 이후에 붙은 메시는 안 건드림 (계속 던짐)
+var _sh: Array = [] # [[MeshInstance3D, 원래 cast_shadow]]
+var _sh_built := false
+var _sh_off := false
+
+
+# W37: 코드 몸 (조각 합친 SkinnedMesh 하나) 은 외곽선 껍질 (next_pass) 이 있어 해 그림자 패스가 같은 메시를 두 번 그림 (껍질도 한 번 더 제출) →
+# 보이는 메시는 그림자를 끄고 같은 메시·스킨·뼈대의 그림자 전용 쌍둥이 (재질 없음 = 껍질 없음) 가 던짐. 판 몸 (World bodies._make) 만 부름. WC.SHADOW.batch_twin
+var _twin: MeshInstance3D = null
+
+
+func add_batch_shadow_twin() -> void:
+	if _twin != null or batch == null or ext != null or not WC.shadow_opt or not WC.batch_twin_on or not bool(WC.SHADOW.get("batch_twin", false)):
+		return
+	var src: MeshInstance3D = batch.mi
+	if src == null or src.mesh == null or src.get_parent() == null or _sh_built:
+		return
+	var tw := MeshInstance3D.new()
+	tw.name = "batch_sh"
+	tw.mesh = src.mesh
+	tw.skin = src.skin
+	tw.transform = src.transform
+	tw.layers = src.layers
+	tw.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+	src.get_parent().add_child(tw)
+	if src.skin != null and batch.skel != null:
+		tw.skeleton = tw.get_path_to(batch.skel)
+	src.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_twin = tw
+
+
+func set_shadow_off(off: bool) -> void:
+	if off == _sh_off:
+		return
+	if not _sh_built:
+		_collect_shadow()
+	_sh_off = off
+	for e in _sh:
+		var mi = e[0]
+		if not is_instance_valid(mi):
+			continue
+		if int(e[1]) == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY:
+			(mi as Node3D).visible = not off # 그림자 전용 메시는 cast OFF 로 끄면 화면에 그려져 버림 (OFF = 그림자만 안 던짐) → 숨김으로
+		else:
+			(mi as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if off else int(e[1])
+
+
+func shadow_off() -> bool:
+	return _sh_off
+
+
+func _collect_shadow() -> void:
+	_sh_built = true
+	for mi in find_children("*", "MeshInstance3D", true, false):
+		var cs: int = (mi as GeometryInstance3D).cast_shadow
+		if cs != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+			_sh.append([mi, cs])
+
+
+func _collect_outline() -> void:
+	_ol_built = true
+	var me := get_instance_id()
+	var seen := {}
+	for mi in find_children("*", "MeshInstance3D", true, false):
+		var mats := []
+		var m3 := mi as MeshInstance3D
+		if m3.material_override != null:
+			mats.append(m3.material_override)
+		elif m3.mesh != null:
+			for i in m3.mesh.get_surface_count():
+				var m: Material = m3.get_surface_override_material(i)
+				mats.append(m if m != null else m3.mesh.surface_get_material(i))
+		for m in mats:
+			if m == null or seen.has(m.get_instance_id()) or m.next_pass == null:
+				continue
+			seen[m.get_instance_id()] = true
+			var np := m.next_pass as ShaderMaterial
+			if np == null or np.shader == null or np.shader.resource_path != OUTLINE_SHADER:
+				continue
+			if _ol_owner.has(m.get_instance_id()) and _ol_owner[m.get_instance_id()] != me and instance_from_id(int(_ol_owner[m.get_instance_id()])) != null:
+				continue # 다른 몸과 나눠 쓰는 재질
+			_ol_owner[m.get_instance_id()] = me
+			prune_ol_owner()
+			var far_o: Material = G3.far_outline(np)
+			_ol.append([m, far_o])
+			if G3.outline_on:
+				m.next_pass = far_o
+
+
 func pose(p: Dictionary, now_ms: float) -> void:
 	pid = int(p.id)
 	posed = true
@@ -582,7 +888,10 @@ func pose(p: Dictionary, now_ms: float) -> void:
 		rw.apply(self)
 	t0 = _prof("몸 래그돌 잡기·넣기", t0)
 	_sync_bones()
-	t0 = _prof("몸 묶음 뼈", t0)
+	t0 = _prof("몸 코드 묶음 뼈", t0)
+	if ext != null:
+		ext.sync(st)
+	t0 = _prof("몸 외부 몸 sync", t0)
 	_apply_opacity()
 	_fx_colors(p)
 	_prof("몸 재질 (투명·색 효과)", t0)
@@ -670,13 +979,13 @@ func _move_state(p: Dictionary, pos: Vector3, dt: float) -> void:
 		air_dash_t = C.FIGURE_AIR_DASH.s
 	air_dashes_prev = ad
 	air_dash_t = 0.0 if stunned else maxf(0.0, air_dash_t - dt)
-	var busy := walking or air or stunned or act != null or float(p.get("emote", -1)) >= 0
+	var busy := walking or air or stunned or act != null or float(p.get("emote", -1)) >= 0 or bool(p.get("noIdle", false)) # noIdle: 대기실 큰 캐릭터 (외부 몸) — 평소 버릇 동작 안 함
 	idle_t = 0.0 if busy else idle_t + dt
 	t += dt
 	dizzy = maxf(0.0, dizzy - dt)
 	rage_k = clampf(float(p.get("damage", 0.0)) / C.BERSERK_RAGE_PCT, 0.0, 1.0) if char_id == "berserker" else 0.0
 	# 유령화: 반투명 느리게 일렁, 부활·콤보 뒤 무적은 빠르게 깜빡 (render.js)
-	var ms := Time.get_ticks_msec() * 1.0
+	var ms := Motion_.now_ms() * 1.0
 	if float(p.get("ghostLeft", 0.0)) > 0.0:
 		opacity = 0.35 + 0.1 * sin(ms / 120.0)
 	elif float(p.get("shieldLeft", 0.0)) > 0.0 or float(p.get("iframeLeft", 0.0)) > 0.0:
@@ -713,6 +1022,9 @@ func _is_winner(p: Dictionary) -> bool:
 	return wt != null and p.get("team") == wt
 
 
+const _CORNERS: Array[Vector2] = [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]
+
+
 # 발밑 (네 모서리) 바로 아래가 바닥·블록인가 (render.js feetOnGround)
 func _feet_on_ground(s: Vector3) -> bool:
 	if s.z <= 0.03 and s.z > -0.3:
@@ -728,9 +1040,9 @@ func _feet_on_ground(s: Vector3) -> bool:
 	var dd := int(f.d)
 	var hh := int(f.get("h", C.GRID_H))
 	var h: float = C.PLAYER_HALF
-	for c in [[-h, -h], [h, -h], [-h, h], [h, h]]:
-		var gx := floori(s.x + c[0])
-		var gy := floori(s.y + c[1])
+	for c in _CORNERS:
+		var gx := floori(s.x + c.x * h)
+		var gy := floori(s.y + c.y * h)
 		var gz := floori(s.z - 0.08)
 		if gx < 0 or gy < 0 or gx >= w or gy >= dd or gz >= hh:
 			continue
@@ -748,6 +1060,7 @@ func _anim_state(p: Dictionary, now_ms: float) -> Dictionary:
 		"air": get_meta("air", false), "walking": get_meta("walking", false), "hs": hs, "walk": walk, "vz": vz, "t": t,
 		"stunned": p.get("stunned", false), "emote": int(p.get("emote", -1)), "emoteT": emote_t, "victory": vic_t,
 		"hit": _hit_for(p, now_ms), "act": _act_for(now_ms), "accF": acc_f, "accS": acc_s,
+		"mvF": cos(float(p.get("yaw", 0.0))) * vxs + sin(float(p.get("yaw", 0.0))) * vys, "mvS": -sin(float(p.get("yaw", 0.0))) * vxs + cos(float(p.get("yaw", 0.0))) * vys, "vw": Vector2(vxs, vys), # W43 몸 기준 이동 (앞·왼쪽 m/s)·월드 이동
 		"tumble": tumble_amt, "recover": recover * recover_pow, "land": land * land_pow,
 		"flip": flip / C.FIGURE_FLIP_S if flip >= 0.0 else -1.0, "idle": idle_t, "airDash": air_dash_t / C.FIGURE_AIR_DASH.s,
 		"form": str(p.get("bard", {}).get("form", "")) if p.get("bard") is Dictionary else "", "dizzy": dizzy / C.BERSERK_DIZZY_S, "punch": _fx_amount("punch_amount"), "whirl": _whirl_time(p), "glide": p.get("bard") is Dictionary and float(p.bard.get("glideLeft", 0.0)) > 0.0 and get_meta("air", false), "amp": p.get("bard") is Dictionary and float(p.bard.get("ampLeft", 0.0)) > 0.0,
@@ -1009,7 +1322,7 @@ func _apply(_dt: float) -> void:
 	if parts != null:
 		if parts_z0 == null:
 			parts_z0 = parts.position.z
-		var bonk := 1.0 - (Time.get_ticks_msec() / 1000.0 - bonk_at) / (C.HEAD_BONK_FX_MS / 1000.0)
+		var bonk := 1.0 - (Motion_.now_ms() / 1000.0 - bonk_at) / (C.HEAD_BONK_FX_MS / 1000.0)
 		var kb := sin(PI * minf(1.0, (1.0 - bonk) * 3.0)) * bonk if bonk > 0.0 else 0.0
 		neck.rotation.y += C.HEAD_BONK_NOD * kb
 		parts.position.z = parts_z0 - C.HEAD_BONK_SQUASH * kb
@@ -1048,7 +1361,12 @@ func _costume_pose(T: Dictionary, st: Dictionary, actv, tt: float) -> void:
 			T.neckPitch += bang * 0.55 - 0.1
 			T.waistPitch += bang * 0.12
 			T.elbow[0] += sin(tt * C.BARD_HEADBANG_HZ * PI * 4.0) * 0.25 # 줄 긁기
-	if refs.has("cannon") and not st.stunned and st.emote < 0:
+	var hold = ext.info.cfg.get("hold") if ext != null else null
+	if refs.has("cannon") and hold is Dictionary and not st.stunned and st.emote < 0:
+		# 외부 몸 (cfg "hold" = 우리 관절 값): 모델 대포가 손에 붙어 있으니 어깨에 메는 대신 모델의 쉬는 자세 (두 손으로 앞에 듦) 로
+		for k in hold:
+			T[k] = (hold[k] as Array).duplicate()
+	elif refs.has("cannon") and not st.stunned and st.emote < 0:
 		# 대포를 어깨에 멘 자세: 오른손은 대포를 받치고, 왼손은 허리에 척 (걸으면 왼팔만 흔들림)
 		T.shFwd[0] = 0.25
 		T.shOut[0] = 1.75
@@ -1072,7 +1390,7 @@ func _costume_parts(st: Dictionary, a, dt: float, tt: float) -> void:
 		var in_hand: bool = (acting and move.get("gun", false)) or st.loaded
 		_vis(refs.gun.get("inHand"), in_hand)
 		_vis(refs.gun.get("holster"), not in_hand)
-		_vis(refs.gun.get("spark"), st.loaded and int(Time.get_ticks_msec() / 90.0) % 3 != 0)
+		_vis(refs.gun.get("spark"), st.loaded and int(Motion_.now_ms() / 90.0) % 3 != 0)
 	if refs.has("bow") and refs.bow is Dictionary:
 		var bow_in: bool = acting and move.get("bow", false)
 		_vis(refs.bow.get("inHand"), bow_in)
@@ -1088,7 +1406,7 @@ func _costume_parts(st: Dictionary, a, dt: float, tt: float) -> void:
 		var f: String = "metal" if st.form == "metal" else "bard"
 		if f != form:
 			if form != "":
-				form_at = Time.get_ticks_msec() / 1000.0
+				form_at = Motion_.now_ms() / 1000.0
 			form = f
 			for k in refs.formParts:
 				for r in refs.formParts[k]:
@@ -1158,12 +1476,12 @@ func _face(st: Dictionary, tt: float) -> void:
 	for i in stars.size():
 		stars[i].visible = st.dizzy > 0.0
 		if stars[i].visible:
-			var ang := Time.get_ticks_msec() / 180.0 + i * PI * 2.0 / 3.0
+			var ang := Motion_.now_ms() / 180.0 + i * PI * 2.0 / 3.0
 			stars[i].position = Vector3(cos(ang) * 0.32, sin(ang) * 0.32, C.PLAYER_HEIGHT * C.FIGURE_SCALE + 0.15)
 			stars[i].rotation = Vector3(0, 0, ang * 2.0)
 	# 바드 폼 전환: 메탈은 모히칸이 머리에서 확 솟아오름 (넘쳤다 돌아옴), 음유시인은 모자가 툭 얹힘
 	if refs.has("formParts"):
-		var u := minf(1.0, (Time.get_ticks_msec() / 1000.0 - form_at) / (C.BARD_FORM_POP_MS / 1000.0))
+		var u := minf(1.0, (Motion_.now_ms() / 1000.0 - form_at) / (C.BARD_FORM_POP_MS / 1000.0))
 		var pop := sin(u * PI * 0.5) * (1.0 + 0.35 * sin(u * PI)) if u < 1.0 else 1.0
 		if form == "metal":
 			var mh := _n(refs.get("mohawk"))
@@ -1178,6 +1496,8 @@ func _face(st: Dictionary, tt: float) -> void:
 # 유령화·무적 반투명: 그리는 메시마다 투명 재질로 바꿔 끼움 (처음 한 번 만들어 둠)
 func _apply_opacity() -> void:
 	for dr in drawn:
+		if dr.get("ext", false):
+			continue # 외부 모델은 ext.fx 가
 		var mi: MeshInstance3D = dr.mi
 		if not dr.has("solid"):
 			dr.solid = mi.material_override
@@ -1197,8 +1517,11 @@ func _apply_opacity() -> void:
 				if int(m.get("emissive", 0)) != 0:
 					opts.emissive = int(m.emissive)
 				if m.has("plaid"):
-					opts.map = _plaid(m.plaid)
+					_plaid_opts(opts, m.plaid)
 				dr.alpha = G3.toon_material(col, opts)
+				if baked and dr.merged: # 구운 묶음: 피부 정점은 흰색 + skin_tint (baked_batch.gd)
+					dr.alpha.set_shader_parameter("skin_tint", (dr.solid as ShaderMaterial).get_shader_parameter("skin_tint"))
+				G3.toon_hazard_light(dr.alpha, hz_light)
 				dr.col = col
 		var am: Material = dr.alpha
 		if am is StandardMaterial3D:
@@ -1207,7 +1530,24 @@ func _apply_opacity() -> void:
 		elif am is ShaderMaterial:
 			var c2: Color = dr.col
 			(am as ShaderMaterial).set_shader_parameter("albedo", Color(c2.r, c2.g, c2.b, opacity))
-		mi.material_override = am
+		mi.material_override = GhostDepth.wrap_in(dr) # W35: 깊이 선 먼저 (안쪽 삼각형이 앞과 섞이지 않게)
+
+
+# 위험 빛 받기 (W3): 전역 위험 빛이 자기 SubViewport 장면에도 걸려서 그 몸만 끔. 지금 붙은 재질·바드 폼 몸통·반투명 재질 다 (나중에 만드는 반투명도 따름)
+func set_hz_light(on: bool) -> void:
+	hz_light = on
+	G3.hazard_light_under(self, on)
+	for m in torso_mats.values():
+		G3.toon_hazard_light(m, on)
+	for dr in drawn:
+		for k in ["solid", "alpha"]:
+			if dr.has(k):
+				G3.toon_hazard_light(dr[k], on)
+
+
+# G5 효과 노드: group "fx" 노드 (fx/fx.gd, World 의 Fx 아래) 의 effects (fx/effects.gd) — Fx 바로 아래만 찾으면 fx.gd 라 못 찾아 늘 0 이던 것
+static func fx_effects(f):
+	return f.effects if f != null and f.get("effects") != null and f.effects.has_method("squash_amount") else null
 
 
 # G5 효과 값 (fx/effects.gd squash_amount·punch_amount). 효과 노드를 한 번 찾아 둠, 없으면 0
@@ -1215,11 +1555,7 @@ func _fx_amount(fn: String) -> float:
 	if fx_node == null or not is_instance_valid(fx_node):
 		fx_node = null
 		if is_inside_tree():
-			var root := get_tree().root.find_child("Fx", true, false)
-			if root != null:
-				for c in root.get_children():
-					if c.has_method("squash_amount"):
-						fx_node = c
+			fx_node = fx_effects(get_tree().get_first_node_in_group("fx"))
 	if fx_node == null or not _has_id():
 		return 0.0
 	return float(fx_node.call(fn, pid))
@@ -1231,29 +1567,10 @@ func _whirl_time(p: Dictionary) -> float:
 	if not (bz is Dictionary) or not (float(bz.get("spinLeft", 0.0)) > 0.0) or not p.get("alive", true):
 		whirl_t0 = null
 		return -1.0
-	var now := Time.get_ticks_msec() / 1000.0
+	var now := Motion_.now_ms() / 1000.0
 	if whirl_t0 == null:
 		whirl_t0 = now - (float(bz.get("spinMs", 0.0)) - float(bz.spinLeft)) / 1000.0
 	return minf(now - whirl_t0, float(bz.get("spinMs", 0.0)) / 1000.0)
-
-
-# 압사: 납작하게 찌그러진 몸이 잠깐 남음 (render.js crushFlat). 몸 노드는 죽으면 숨으니 몸 밖 (World 의 몸 자리) 에 복사본을 둠
-func _crush_flat() -> void:
-	var holder_parent := get_parent().get_parent() if get_parent() != null else null # bodies 노드
-	if holder_parent == null or not is_inside_tree():
-		return
-	var flat := frame.duplicate() as Node3D
-	var holder := Node3D.new()
-	holder_parent.add_child(holder)
-	holder.global_transform = global_transform
-	holder.add_child(flat)
-	flat.transform = Transform3D(frame.basis * Basis.from_scale(Vector3(1.5, 1.5, C.CRUSH_FLAT_Z)), Vector3(0, 0.02, 0))
-	for mi in flat.find_children("*", "MeshInstance3D", true, false):
-		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var tw := holder.create_tween()
-	tw.tween_interval(maxf(0.0, (C.CRUSH_FLAT_MS - 300.0) / 1000.0))
-	tw.tween_property(flat, "scale", Vector3(flat.scale.x, flat.scale.y, 0.01), 0.3) # 끝 0.3초에 종잇장처럼 얇아지며
-	tw.tween_callback(holder.queue_free)
 
 
 # 묶은 몸 뼈 자세 = 지금 조각 자리 (매 프레임 _apply 뒤에 바로 — 초상처럼 pose 뒤 곧바로 한 번 그리는 곳도 맞게)
@@ -1313,7 +1630,7 @@ func _ragdoll(p: Dictionary):
 
 
 static func _prof(name: String, t0: int) -> int:
-	if not Prof.on:
+	if not (Prof.on or Prof.hitch):
 		return 0
 	Prof.add(name, t0)
 	return Prof.now()
@@ -1340,11 +1657,15 @@ func _shown() -> bool:
 
 
 func _ragdoll_capture(rw, p: Dictionary, st: Dictionary, pos: Vector3, _dt: float) -> void:
-	var now := Time.get_ticks_msec() / 1000.0
+	var now := Motion_.now_ms() / 1000.0
 	var limp: bool = p.get("stunned", false) == true
 	if rag_was_stunned and not limp:
 		rag_stun_end = now
 	rag_was_stunned = limp
+	var fell: bool = pos.z < C.RAGDOLL_FALL_Z
+	if rag_was_falling and not fell:
+		rag_fall_end = now
+	rag_was_falling = fell
 	var h = st.get("hit")
 	var hi = null # 맞은 방향 (게임, 단위) — 서버가 준 방향, 없으면 몸 뒤쪽
 	if h != null:
@@ -1356,7 +1677,7 @@ func _ragdoll_capture(rw, p: Dictionary, st: Dictionary, pos: Vector3, _dt: floa
 	var act = st.get("act")
 	var phase = act.phase if act != null else ("pose" if int(p.get("emote", -1)) >= 0 or vic_t >= 0.0 else null)
 	rw.capture(self, {"stunned": limp, "sinceStun": now - rag_stun_end if rag_stun_end >= 0.0 else INF, "hitAge": h.age if h != null else null,
-		"falling": pos.z < C.RAGDOLL_FALL_Z, "act": phase}, hi, _dt)
+		"falling": fell, "sinceFall": now - rag_fall_end if rag_fall_end >= 0.0 else INF, "act": phase}, hi, _dt)
 
 
 func _notification(what: int) -> void:
@@ -1370,7 +1691,7 @@ func _notification(what: int) -> void:
 # 피부만: 경직 하얗게 깜빡 (70ms) · 발광 경직 0x664400 / 조종권 0x005566 / 점프 강화 0x1a5a1a / 닌자 강화 깜빡 EMPOWER_GLOW.
 # 몸 전체 (옷 포함): 스킬·필살기 빛 · 지상 F 준비 하얗게 · 탱크 아머 금속 번쩍 (버틴 순간 하양)
 func _fx_event(ty: String, e: Dictionary) -> void:
-	var now := Time.get_ticks_msec() * 1.0
+	var now := Motion_.now_ms() * 1.0
 	match ty:
 		"skill", "ult", "ultRefund":
 			var ult := ty != "skill"
@@ -1410,6 +1731,11 @@ func fx_colors(p: Dictionary, now: float) -> Array:
 	if now < glow_until:
 		oe = glow_color
 		se = glow_color
+	var hf := now - hit_flash_at
+	if hf >= 0.0 and hf < hit_flash_ms:
+		var k := 1.0 - hf / hit_flash_ms
+		oe = oe.lerp(hit_flash_color, k * k)
+		se = se.lerp(hit_flash_color, k * k)
 	var wu := windup_until - now
 	if wu > 0.0:
 		var v := 0.55 + 0.45 * clampf(1.0 - wu / C.SKILL_WINDUP_MS, 0.0, 1.0)
@@ -1425,14 +1751,23 @@ func fx_colors(p: Dictionary, now: float) -> Array:
 # 재질에 넣기: 묶은 몸 = 묶음 재질 하나 (emissive = 나머지, skin_tint·skin_emissive = 피부 정점만 — G3 툰이 받음, 정점 표시는 조각 meta tf_skin),
 # 따로 그리는 조각은 제 재질 (피부 재질은 색·발광 둘 다)
 func _fx_colors(p: Dictionary) -> void:
-	var f := fx_colors(p, Time.get_ticks_msec() * 1.0)
+	var f := fx_colors(p, Motion_.now_ms() * 1.0)
 	var skin: Color = f[0]
+	if ext != null:
+		ext.fx(f, opacity)
 	for dr in drawn:
+		if dr.get("ext", false):
+			continue
 		var m = (dr.mi as MeshInstance3D).material_override
 		if not (m is ShaderMaterial):
 			continue
 		if int(dr.m.get("emissive", 0)) != 0:
 			continue # 제 발광이 있는 조각은 그대로
+		# 값·재질이 지난번과 같으면 건너뜀 (W15: set_shader_parameter 는 같은 값이어도 재질을 다시 올림 — 몸마다 프레임마다 2~3번)
+		if dr.get("fx_m") == m and dr.get("fx_v") == f:
+			continue
+		dr.fx_m = m
+		dr.fx_v = f
 		var sm := m as ShaderMaterial
 		var is_skin: bool = not dr.merged and dr.m.get("skin", false)
 		sm.set_shader_parameter("emissive", f[1] if is_skin else f[2])
@@ -1440,7 +1775,7 @@ func _fx_colors(p: Dictionary) -> void:
 			sm.set_shader_parameter("albedo", Color(skin.r, skin.g, skin.b, 1.0))
 		elif dr.mi == (batch.mi if batch != null else null):
 			sm.set_shader_parameter("skin_emissive", f[1])
-			sm.set_shader_parameter("skin_tint", Color(skin.r, skin.g, skin.b, 1.0 if skin != skin_color else 0.0))
+			sm.set_shader_parameter("skin_tint", Color(skin.r, skin.g, skin.b, 1.0 if skin != skin_color or baked else 0.0)) # 구운 묶음은 피부 정점이 흰색 — 늘 몸 색을 칠함
 
 
 # ---------- 몸 복제 (B4: 순간 베기 잔상·사냥꾼의 눈) ----------
@@ -1449,12 +1784,89 @@ func snapshot(material: Material) -> Node3D:
 	var holder := Node3D.new()
 	var f := frame.duplicate() as Node3D
 	holder.add_child(f)
+	if not Opts.args().has("--ghost-all-lods"):
+		prune_extras(frame, f)
+	var tinted := []
 	for mi in f.find_children("*", "MeshInstance3D", true, false):
 		var g := mi as MeshInstance3D
 		g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		if g.layers != 0:
 			g.material_override = material
+			tinted.append(g)
+	holder.set_meta("tinted", tinted) # W42 snapshot_fill 이 재질만 다시 입힐 메시
 	return holder
+
+
+# 복제 (duplicate) 는 장면 모델을 처음 모양대로 다시 지어 살아 있는 몸이 떼어 둔 다른 LOD 메시 (lod0 1.8만 삼각형 · vm · lod1~3) 까지 도로 달아 놓음 —
+# 잔상이 LOD 5겹을 겹쳐 그리고 (삼각형 4만+, 투명도도 겹침), 풀로 들고 있으면 스킨 버퍼가 몸마다 +1MB 남. 원본에 없는 메시는 지움 (W42, 끄기 --ghost-all-lods = 예전 겹친 모습)
+static func prune_extras(src: Node, dst: Node) -> int:
+	var matched := {}
+	var stack := [[src, dst]]
+	while not stack.is_empty():
+		var pr: Array = stack.pop_back()
+		var a: Node = pr[0]
+		var b: Node = pr[1]
+		matched[b.get_instance_id()] = true
+		for c in a.get_children(true):
+			var d: Node = b.get_node_or_null(NodePath(str(c.name).replace("@", "_")))
+			if d != null:
+				stack.append([c, d])
+	var extra := []
+	var walk := [dst]
+	while not walk.is_empty():
+		var n: Node = walk.pop_back()
+		for c in n.get_children(true):
+			if not matched.has(c.get_instance_id()) and c is MeshInstance3D:
+				extra.append(c)
+			else:
+				walk.append(c)
+	for e in extra:
+		e.get_parent().remove_child(e)
+		e.free()
+	return extra.size()
+
+
+# W42 잔상 풀: snapshot 으로 만든 복제본 (holder) 을 다시 씀 — 노드·메시를 새로 안 만들고 지금 자세 (노드 변환·보임·뼈 자세) 만 베끼고 재질만 갈아 끼움.
+# 구조가 안 맞으면 (몸이 다시 지어짐 등) false — 부른 쪽이 holder 를 버리고 snapshot 으로 새로 만듦
+func snapshot_fill(holder: Node3D, material: Material) -> bool:
+	if holder.get_child_count() != 1 or not holder.has_meta("tinted"):
+		return false
+	if not copy_pose(frame, holder.get_child(0)):
+		return false
+	for g in holder.get_meta("tinted"):
+		(g as MeshInstance3D).material_override = material
+	return true
+
+
+# src 의 자세를 snapshot 복제본 dst 에 베낌. 복제 (duplicate) 는 장면에서 만든 모델을 처음 모양대로 다시 지어 (떼어 둔 LOD 메시도 도로 달림, 안 쓰는 노드는 그대로 둠),
+# 그래서 자식은 인덱스가 아니라 이름 (내부 노드의 '@' 는 복제에서 '_') 으로 찾음. src 쪽 노드를 dst 에서 못 찾으면 false
+static func copy_pose(src: Node, dst: Node) -> bool:
+	var stack := [[src, dst]]
+	while not stack.is_empty():
+		var pr: Array = stack.pop_back()
+		var a: Node = pr[0]
+		var b: Node = pr[1]
+		if a is Node3D:
+			if not (b is Node3D):
+				return false
+			(b as Node3D).transform = (a as Node3D).transform
+			(b as Node3D).visible = (a as Node3D).visible
+			if a is Skeleton3D:
+				var sa := a as Skeleton3D
+				var sb := b as Skeleton3D
+				var bc := sa.get_bone_count()
+				if sb == null or bc != sb.get_bone_count():
+					return false
+				for i in bc:
+					sb.set_bone_pose(i, sa.get_bone_pose(i))
+		for c in a.get_children(true):
+			var d: Node = b.get_node_or_null(NodePath(str(c.name).replace("@", "_")))
+			if d == null:
+				if c is PhysicalBoneSimulator3D or c is PhysicalBone3D or not (c is Node3D):
+					continue # 래그돌 물리 뼈·도우미는 복제본에 없어도 됨 (그리지 않는 노드)
+				return false
+			stack.append([c, d])
+	return true
 
 
 # 살아 움직이는 몸 위에 한 겹 더 (GeometryInstance3D.material_overlay — 묶은 몸도 같은 뼈로). null 이면 끔
@@ -1512,7 +1924,7 @@ func _has_id() -> bool:
 func on_event(e: Dictionary) -> void:
 	if not _has_id() or dummy:
 		return
-	var now := Time.get_ticks_msec() / 1000.0
+	var now := Motion_.now_ms() / 1000.0
 	var who = e.get("who")
 	var mine: bool = who != null and int(who) == pid
 	var target = e.get("target")
@@ -1523,10 +1935,10 @@ func on_event(e: Dictionary) -> void:
 	match ty:
 		"star": # 닌자 표창 한 발 (1인칭 왼손 표창이 잠깐 빔)
 			if mine:
-				star_at = Time.get_ticks_msec()
+				star_at = Motion_.now_ms()
 		"shellFire": # 대포 반동 (1인칭 대포가 화면 쪽으로 툭)
 			if mine:
-				cannon_kick_at = Time.get_ticks_msec()
+				cannon_kick_at = Motion_.now_ms()
 		"attack":
 			if mine:
 				_attack_start(e, now)
@@ -1538,6 +1950,8 @@ func on_event(e: Dictionary) -> void:
 					act = _new_act("punch", now, 0.0, now, 0.3)
 		"interrupt":
 			if mine:
+				if e.get("kind") == "skill":
+					windup_until = -1e9 # 준비 중 끊김: 하얀 번쩍도 바로 끔 (main.js windupUntil.delete)
 				if act == null:
 					act = _new_act("punch", now, 0.0, null, 0.3)
 				seq += 1
@@ -1551,10 +1965,23 @@ func on_event(e: Dictionary) -> void:
 		"counter":
 			if hit_me:
 				counter_at = now
+		"armor":
+			if mine:
+				armor_react_at = now
+		"armorBreak":
+			if mine:
+				armor_break_react_at = now
 		"hit":
 			if hit_me and e.get("ok", false):
+				# 닌자 표창: 판정은 즉시지만 맞는 몸짓은 표창이 닿을 때 (main.js handleEvent STAR_FLY_MS — fx.gd·audio.gd 와 같은 때)
+				if star_wait(e) and is_inside_tree():
+					var late := e.duplicate()
+					late.late = true
+					get_tree().create_timer(C.STAR_FLY_MS / 1000.0).timeout.connect(on_event.bind(late))
+					return
 				var heavy: bool = e.get("crit", false) or e.get("kind") == "blast" or e.get("kind") == "bigbomb"
 				_hit_react(_dir_from(e.get("by")), heavy, e.get("crit", false), str(e.get("kind", "")), now)
+				hit_flash(SM.hit_tier(e))
 		"hook":
 			if hit_me:
 				var dv = _dir_from(who)
@@ -1584,9 +2011,7 @@ func on_event(e: Dictionary) -> void:
 				if act != null and act.get("hold", false):
 					act.hold = false
 					act.struck = now - C.FIGURE_STRIKE_S # 바로 회복으로
-		"death":
-			if mine and e.get("cause") == "crush":
-				_crush_flat()
+		# death crush: 납작 몸은 world/marks.gd crush_flat 하나만 (render.js crushFlat 곡선 그대로 — 여기서도 만들면 둘이 겹쳐 그려짐)
 		"spinEnd":
 			if mine and refs.has("pupils"):
 				dizzy = C.BERSERK_DIZZY_S
@@ -1660,6 +2085,14 @@ func _skill_move(move: String, windup_ms: float, now: float) -> void:
 
 # 맞은 순간 (render.js hitReact). dir = 밀린 방향 (게임 Vector2, 없으면 null)
 func _hit_react(dir, heavy: bool, crit: bool, kind: String, now: float) -> void:
+	# 탱크 아머 (render.js hitReact): 버틴 타는 얼굴만 찡그리는 정도 (멈칫 없음), 깨진 타는 크게 (멈칫 ×1.5), 같은 틱에 armor·armorBreak 가 hit 보다 먼저 옴
+	var armor := armor_reaction(now - armor_react_at, now - armor_break_react_at)
+	if not armor.is_empty():
+		seq += 1
+		hit = {"id": seq, "t0": now, "stop": armor.stop, "dir": dir, "pow": armor.pow}
+		if armor.breaks and act != null and act.broken == null:
+			act = null
+		return
 	var finish := now - finish_at < 0.2
 	var counter := now - counter_at < 0.2
 	var base: float = C.FIGURE_HIT_FINISH if finish else (C.FIGURE_HIT_HEAVY if (heavy or crit or kind in HEAVY_HITS) else 1.0)
@@ -1671,11 +2104,35 @@ func _hit_react(dir, heavy: bool, crit: bool, kind: String, now: float) -> void:
 		act = null
 
 
+# W35 아머 맞음 반응 (순수): age_s = 버팀·깨짐 이벤트 뒤 초. 200ms 안이면 {pow, stop, breaks}, 아니면 {}
+static func armor_reaction(held_age: float, break_age: float) -> Dictionary:
+	if held_age < 0.2:
+		return {"pow": C.FIGURE_HIT_ARMOR, "stop": 0.0, "breaks": false}
+	if break_age < 0.2:
+		return {"pow": C.FIGURE_HIT_ARMOR_BREAK, "stop": C.HITSTOP_MS * 1.5 / 1000.0, "breaks": true}
+	return {}
+
+
+# 표창 맞음은 표창이 닿을 때까지 기다림 (fx.gd·audio.gd 와 같은 규칙, late = 다시 부른 것)
+static func star_wait(e: Dictionary) -> bool:
+	return e.get("star", false) and not e.get("late", false)
+
+
+# W18 맞은 몸 번쩍: 단계별 ms (0 = 없음), 치명은 금빛 섞음. 스킬 빛·준비·아머 번쩍보다 앞 (짧음)
+func hit_flash(tier: String) -> void:
+	var ms := float(FXC.tier(tier).body)
+	if ms <= 0.0:
+		return
+	hit_flash_at = Motion_.now_ms() * 1.0
+	hit_flash_ms = ms
+	hit_flash_color = _hex(FXC.HIT_BODY_COLOR).lerp(_hex(FXC.HIT_FLASH_COLOR.crit), 0.5 if tier == "crit" else 0.0)
+
+
 # figureAnim 에 넘길 맞은 것 (몸 기준 밀린 방향). 오래되면 버림
 func _hit_for(p: Dictionary, _now_ms: float):
 	if hit == null:
 		return null
-	var now := Time.get_ticks_msec() / 1000.0
+	var now := Motion_.now_ms() / 1000.0
 	var age: float = now - hit.t0
 	if age > 2.0:
 		hit = null
@@ -1693,7 +2150,7 @@ func _hit_for(p: Dictionary, _now_ms: float):
 func _act_for(_now_ms: float):
 	if act == null:
 		return null
-	var now := Time.get_ticks_msec() / 1000.0
+	var now := Motion_.now_ms() / 1000.0
 	if act.rec <= 0.0 or now - act.t0 > C.FIGURE_ACT_MAX_S or not Moves.MOVES.has(act.move):
 		act = null
 		return null

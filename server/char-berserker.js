@@ -3,7 +3,7 @@
 import { CONFIG as C } from '../shared/config.js';
 
 export class BerserkerPart {
-  // ---- 광전사 (2026-10-26, docs/characters.md 3.7) ----
+  // ---- 광전사 (2026-10-26, DevVault Projects/Tetrafall/Characters 3.7) ----
   // 분노 배율: 피해 % 에 비례, 상한 없음
   rageMult(damage) {
     return 1 + damage * C.BERSERKER_RAGE_PER_PERCENT;

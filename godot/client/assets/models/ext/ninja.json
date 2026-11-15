@@ -1,0 +1,114 @@
+{
+	"_": "자동 리깅 닌자 (tools/blender/tripo/ — rig_ninja.py 손질 + lods.mjs LOD) — 다시 만들면 덮어씀. 키는 chars/chars_config.gd EXT_DEFAULTS",
+	"height": 1.0,
+	"yaw": 0.0,
+	"tint": "mask",
+	"skin_mask": {
+		"ninja_lod1": "res://assets/models/ext/ninja_mask_lod1.png",
+		"ninja_lod2": "res://assets/models/ext/ninja_mask_lod2.png",
+		"ninja_lod3": "res://assets/models/ext/ninja_mask_lod3.png"
+	},
+	"lods": {
+		"stage": "ninja_lod0",
+		"high": "ninja_lod1",
+		"medium": "ninja_lod2",
+		"low": "ninja_lod3"
+	},
+	"toon_steps": [
+		0.7,
+		0.86,
+		1.0
+	],
+	"outline": 0.45,
+	"rim": [
+		0.22,
+		3.0
+	],
+	"vm_from": "elbow",
+	"vm_snap": [
+		"elbow"
+	],
+	"attach": [
+		{
+			"glb": "res://assets/models/ext/ninja_dagger.glb",
+			"joint": "hand_R",
+			"pos": [
+				0,
+				0.04,
+				0
+			],
+			"rot": [
+				0,
+				0,
+				0
+			],
+			"scale": 1.0,
+			"vm": false
+		},
+		{
+			"glb": "res://assets/models/ext/ninja_dagger.glb",
+			"joint": "hand_L",
+			"pos": [
+				0,
+				0.04,
+				0
+			],
+			"rot": [
+				0,
+				0,
+				0
+			],
+			"scale": 1.0,
+			"vm": false
+		}
+	],
+	"vm_node": "ninja_vm",
+	"clips": {
+		"file": "res://assets/models/ext/ninja_anim.glb",
+		"marks": [
+			0.3,
+			0.4,
+			0.8
+		],
+		"idle": "idle",
+		"walk": "walk",
+		"run": "run",
+		"jump": "jump",
+		"fall": "fall",
+		"land": "land",
+		"run_speed": 4.5,
+		"run_from": 0.55,
+		"stride": {"walk": [1.0, -0.1, 0.5], "run": [1.0, -0.14, 0.5]},
+		"ground": [
+			"mixamorig_LeftFoot",
+			"mixamorig_RightFoot",
+			"mixamorig_LeftToeBase",
+			"mixamorig_RightToeBase"
+		],
+		"moves": {
+			"찌르기": "atk1",
+			"반대 찌르기": "atk2",
+			"앞차기": "atk3",
+			"올려 차기": "atk4",
+			"공중 베기": "air1",
+			"내려 차기": "air2",
+			"ninjaDash": "dash",
+			"표창": "star",
+			"표창2": "star",
+			"공중 표창": "airstar"
+		}
+	},
+	"cloth": [
+		{
+			"bones": [
+				"mixamorig_Scarf1",
+				"mixamorig_Scarf2",
+				"mixamorig_Scarf3"
+			],
+			"rest": 0.1,
+			"damp": 0.94,
+			"gravity": 20.0,
+			"drag": 0.0
+		}
+	]
+}

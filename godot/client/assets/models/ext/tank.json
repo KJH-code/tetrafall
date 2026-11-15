@@ -1,0 +1,69 @@
+{
+ "_": "자동 리깅 탱크 (tools/blender/tripo/ — rig_tank_auto.py 손질 + lods.mjs LOD) — 다시 만들면 덮어씀. 키는 chars/chars_config.gd EXT_DEFAULTS",
+ "height": 1.0,
+ "yaw": 0.0,
+ "tint": "mask",
+ "dash_wrist": {"hand_R": [0, 0, 60]},
+ "skin_mask": {
+  "tank_lod1": "res://assets/models/ext/tank_mask_lod1.png",
+  "tank_lod2": "res://assets/models/ext/tank_mask_lod2.png",
+  "tank_lod3": "res://assets/models/ext/tank_mask_lod3.png"
+ },
+ "lods": {
+  "stage": "tank_lod0",
+  "high": "tank_lod1",
+  "medium": "tank_lod2",
+  "low": "tank_lod3"
+ },
+ "toon_steps": [
+  0.7,
+  0.86,
+  1.0
+ ],
+ "outline": 0.45,
+ "rim": [
+  0.22,
+  3.0
+ ],
+ "vm_from": "elbow",
+ "vm_snap": [
+  "elbow"
+ ],
+ "portrait": {
+  "up": -0.012,
+  "shift": [
+   -0.058,
+   0.055
+  ]
+ },
+ "vm_node": "tank_vm",
+ "vm_bone_scale": {"mixamorig_LeftForeArm": 0.6},
+ "clips": {
+  "file": "res://assets/models/ext/tank_anim.glb",
+  "marks": [
+   0.3,
+   0.4,
+   0.8
+  ],
+  "idle": "idle",
+  "walk": "walk",
+  "run": "run",
+  "jump": "jump",
+  "fall": "fall",
+  "land": "land",
+  "run_speed": 4.5,
+  "run_from": 0.55,
+  "stride": {"walk": [1.0, -0.03, 1.3], "run": [1.0, -0.07, 0.75]},
+  "ground": [
+   "mixamorig_LeftFoot",
+   "mixamorig_RightFoot",
+   "mixamorig_LeftToeBase",
+   "mixamorig_RightToeBase"
+  ],
+  "taunt": "t_taunt", "victory": "t_victory", "moves": {"주먹": "t_punch", "어깨 박치기": "t_bash", "방패 올려치기": "t_upper", "방패 내려치기": "t_dive", "tankCharge": "t_charge", "tankSlam": "t_slam"}
+ },
+ "cloth_colliders": [["mixamorig_Hips", "mixamorig_Spine1", 0.125], ["mixamorig_Spine1", "mixamorig_Neck", 0.077], ["mixamorig_LeftUpLeg", "mixamorig_LeftLeg", 0.109], ["mixamorig_LeftLeg", "mixamorig_LeftFoot", 0.076], ["mixamorig_RightUpLeg", "mixamorig_RightLeg", 0.104], ["mixamorig_RightLeg", "mixamorig_RightFoot", 0.071]], "cloth": [
+   {"bones": ["mixamorig_Tabard1_1", "mixamorig_Tabard1_2", "mixamorig_Tabard1_3"], "rest": 0.16, "damp": 0.92, "gravity": 18.0, "drag": 0.0, "fwd": 0.01},
+   {"bones": ["mixamorig_Tabard2_1", "mixamorig_Tabard2_2", "mixamorig_Tabard2_3"], "rest": 0.16, "damp": 0.92, "gravity": 18.0, "drag": 0.0, "fwd": 0.01}
+ ]
+}

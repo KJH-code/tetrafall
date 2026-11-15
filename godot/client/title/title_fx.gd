@@ -197,6 +197,41 @@ static func sphere(r: float, seg: int, rings: int, hemi := false) -> SphereMesh:
 	return s
 
 
+# 열린 반구 (three SphereGeometry(r, seg, rings, 0, 2π, 0, π/2)): 위 반쪽만, 바닥 뚜껑 없음. 고도 SphereMesh is_hemisphere 는 바닥 원판이 막혀 있어
+# 버섯 갓 밑면이 꽉 찬 빛 원판으로 보였음 (메뉴 카메라·거울 바닥에 큰 빛 덩어리 — JS 는 밑이 뚫려 테두리 띠만 비침, W8)
+static func hemi_open(r: float, seg: int, rings: int) -> ArrayMesh:
+	var grid := []
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var idx := 0
+	for iy in rings + 1:
+		var row := []
+		var v := float(iy) / rings
+		for ix in seg + 1:
+			var u := float(ix) / seg
+			var th := v * PI / 2.0
+			var ph := u * TAU
+			var p := Vector3(-r * cos(ph) * sin(th), r * cos(th), r * sin(ph) * sin(th))
+			st.set_normal(p.normalized() if p.length() > 0.0 else Vector3.UP)
+			st.set_uv(Vector2(u, v))
+			st.add_vertex(p)
+			row.append(idx)
+			idx += 1
+		grid.append(row)
+	for iy in rings:
+		for ix in seg:
+			var a: int = grid[iy][ix + 1]
+			var b: int = grid[iy][ix]
+			var c: int = grid[iy + 1][ix]
+			var d: int = grid[iy + 1][ix + 1]
+			if iy != 0:
+				for k in [a, d, b]: # three 반시계 → 고도 시계 (뒤집음)
+					st.add_index(k)
+			for k in [b, d, c]:
+				st.add_index(k)
+	return st.commit()
+
+
 static func box() -> BoxMesh:
 	var b := BoxMesh.new()
 	b.size = Vector3.ONE

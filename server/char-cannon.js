@@ -5,7 +5,7 @@ import { CELL } from '../shared/pieces.js';
 import { cellKey } from './game-util.js';
 
 export class CannonPart {
-  // ---- 대포수 (2026-10-26, docs/characters.md 3.6) ----
+  // ---- 대포수 (2026-10-26, DevVault Projects/Tetrafall/Characters 3.6) ----
   // 쌓인 블록 1칸 부숨 (격자 칸 또는 떨어지는 블록의 한 칸). 시작 지형·바닥은 안 부숨. 부쉈으면 true
   breakCell(x, y, z) {
     const key = cellKey(x, y, z);

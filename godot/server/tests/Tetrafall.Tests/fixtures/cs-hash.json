@@ -1,10 +1,10 @@
 [
 ["cs 2명 생존 이벤트","cb63e1e77e61c31a9f91fa58eb807fa3c60876de848832520af5af0bc2c228d2",647,"over"],
-["cs 4명 생존 이벤트","35b50897856da89e6824cbe43af094e5ba06d1e09cdb399298e7419c92820fab",2146,"over"],
-["cs 8명 생존 이벤트","b0c994fddd6cdbe156428f26ea40140b7b9125ae64f82f78254c998b22cb749b",2829,"over"],
+["cs 4명 생존 이벤트","416fa012c4da673fe4b87ea1014d879bbe744631a64f3f9c9126be66f83c0abb",2146,"over"],
+["cs 8명 생존 이벤트","aeb36bdc5c80ea53513dbdc50d67cdc1aaa03a00a2b866e0f72a5f3622acf62e",2829,"over"],
 ["cs 8명 생존 팀 이벤트","153c64a4f5716136372e29da30efe3228d3a706f942c2394af87fd5c147a54a3",3352,"over"],
 ["cs 4명 킬 점수전 이벤트","9cce996fb1b377d6c3be55357bc8e08c5a0e1de537ee613dba191560eaba9ea7",1771,"over"],
-["cs 8명 킬 점수전 이벤트","e15644277595d54efa0fdf5f997aaa47b936bed394d98bdadc34762cd9cfae54",831,"over"],
+["cs 8명 킬 점수전 이벤트","142fac186b109f87c389f34066b13a01cdebac1005a73e7a9e480eb085479aaf",831,"over"],
 ["cs 4명 킬 점수전 팀 체력전 이벤트","ba77255e670defcd2e92064d07a147562cedb40d8284d30e001ce83cdb640c8c",3601,"playing"],
 ["cs 4명 생존 체력전 이벤트","7eb385036ee6191aad5fabf064b3dd34d746deb47690bbc7c6a07632f495acfe",1439,"over"],
 ["cs 4명 생존 끊긴 사람 봇 대리 이벤트","1c0f3c4df1494e009939bc8f74aa0ad5263d833cae63acddb48b0c178d0bc52a",893,"over"],

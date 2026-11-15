@@ -371,13 +371,13 @@ public class S2Tests
     [Fact]
     public void Sky_lava_by_time_off_by_height_only()
     {
-        Assert.Equal(60000, C.SKY_LAVA_TRIGGER_MS);
+        Assert.Equal(60000, C.SKY_LAVA_TRIGGER_BY_COUNT["2"]);
         foreach (var sky in new[] { true, false })
         {
             var (g, lines) = SetupSky(sky: sky, n: 3);
             g.nextSpawnAt = double.PositiveInfinity; // 블록 없이 시간만 (JS 는 updateSpawning 을 비움)
             foreach (var p in g.Players()) p.shieldUntil = double.PositiveInfinity;
-            Run(g, C.SKY_LAVA_TRIGGER_MS - 500);
+            Run(g, C.SKY_LAVA_TRIGGER_BY_COUNT["2"] - 500);
             Assert.False(g.lava.active);
             Run(g, 1000);
             Assert.Equal(sky, g.lava.active);
