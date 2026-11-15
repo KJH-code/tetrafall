@@ -39,6 +39,23 @@ xvfb-run -a godot --path godot/client --rendering-driver opengl3 -- --auto host 
 
 `e2e_net.sh`: 환경 변수 `PORT` (기본 3431) · `LOG` (기본 `/tmp/tf-e2e-net`, 서버·클라 로그) · `SERVER_DLL` (지어 둔 `Tetrafall.Server.dll` — 없으면 `$LOG/bin` 에 Release 로 지음) · `STALL` (B 가 멈추는 초). 약 3분, 마지막 줄 `e2e_net: A 통과 · B 통과 · C 통과` (하나라도 실패면 종료 코드 1). A 는 서버를 KILL 로 죽임 (TERM 이면 서버가 보내는 left '서버를 껐습니다' 가 A 가 기다리는 '그런 방이 없습니다' 보다 먼저 옴), C 는 TERM 을 보내고 꺼질 때까지 잼 (5초 넘으면 실패, 서버 콘솔 '서버 끄는 중:' · 방 로그 마지막 줄 '[서버 종료]' 도 봄). 그 밖에 서버를 내릴 땐 TERM 뒤 5초 안에 안 꺼지면 KILL. 끄는 것은 스크립트가 띄운 프로세스뿐
 
+### 겉모습 갤러리 (`tools/gallery.gd`)
+
+서버·봇 없이 캐릭터·맵·블록을 정해진 시점으로 찍음. **겉모습을 바꾸기 전·뒤에 같은 명령으로 찍어 비교한다** (찍을 때마다 같은 사진 — 봇 판 사진은 장면이 매번 다름).
+
+```
+xvfb-run -a godot --path godot/client --resolution 1280x720 --rendering-driver opengl3 -s res://tools/gallery.gd -- --out <폴더> [--only chars,maps,pieces] [--low]
+```
+
+나오는 파일 (30장, 약 30초):
+- `char-<캐릭터 id>.png` ×8 — 한 캐릭터를 앞·비스듬히 앞·옆·뒤로 나란히 (팔레트 첫 색, 초원 낮 빛, 가만히 선 자세) · `chars-lineup.png` — 8명 정면 한 줄 (팔레트 순서 색)
+- `map-<맵 id>-over.png` ×7 — 8명 판 크기 시작 지형을 비스듬히 위에서 (필드 전체 + 하늘·먼 배경) · `map-<맵 id>-eye.png` ×7 — 필드 가장자리에 선 사람 눈높이에서 가운데를 봄
+- `pieces-<테마 id>.png` ×7 — 그 테마 바닥·지형 단 위에 쌓인 테트리미노 7종 (뒷줄 I·O·T·L, 앞줄 S·Z·J) + 떨어지는 블록 하나와 그림자 칸
+
+`--low` = 설정 '그래픽 낮춤' 으로 (파일 이름 같음 → 다른 `--out` 폴더에). 끝에 저장한 파일 목록, 종료 코드 0 (못 만든 사진·도는 동안 난 엔진/스크립트 오류가 있으면 1, `--headless` 처럼 그릴 수 없으면 안내 한 줄과 2).
+판 그리기 (`world/world.tscn`) 를 그대로 띄우고 스냅샷 자리 (`Store.state`·`Store.grid`) 에 가짜 판 상태를 넣어 찍으므로 재질·빛·판 빛은 판 중과 같음. 같은 사진이 나오게 엔진 시간 배율을 0 으로 둠 (구름·먼 섬·셰이더 물결이 멈춤) — 실제 시계로 움직이는 떠다니는 빛 알갱이 (수정·화산·하늘 성·버섯 테마) 만 조금 달라짐 (두 번 찍어 정규화 RMSE 0.03 아래, 나머지는 0). 캐릭터 사진은 래그돌을 끄고 떠 있는 섬·먼 배경을 숨김. 카메라·배치 수치는 `tools/gallery_config.gd`.
+비교: `compare -metric RMSE 앞/char-tank.png 뒤/char-tank.png diff.png` (ImageMagick).
+
 ## 내보내기 (G7)
 
 ```
