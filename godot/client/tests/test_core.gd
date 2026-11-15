@@ -128,11 +128,17 @@ func test_net_packed_url() -> void:
 		check(NetScript.packed_url(row[0]) == row[1], "주소 %s → %s / %s" % [row[0], NetScript.packed_url(row[0]), row[1]])
 
 
-# 서버 침묵 감지 (net.gd silent): 마지막으로 받은 뒤 SILENCE_MS (6초) 넘게 조용하면 true. 프레임이 멈췄던 시간 (slack) 은 빼고, 받은 적 없으면 false
+# 서버 침묵 감지 (net.gd silent): 마지막으로 받은 뒤 SILENCE_MS (6초) 넘게 조용하면 true. 프레임이 멈췄던 시간 (slack) 은 뺌.
+# 실제로는 열린 동안에만 부르고 붙는 순간 last_recv_at = 붙은 시각이라 null 이 없음 (null 은 순수 함수 경계값)
 func test_net_silence_watchdog() -> void:
 	var lim: float = NetScript.SILENCE_MS
 	check(lim == 6000.0, "침묵 상한 %s" % lim)
-	check(lim > C.NET_PING_MS * 3 and lim > C.ROOM_LIST_MS * 3, "핑·방 목록 간격 (1초) 의 몇 배")
+	# 침묵 감시를 받치는 것은 내 핑 (NET_PING_MS) 의 pong 하나 (방 목록은 바뀔 때만 옴): 핑 간격이 상한의 몇 배 안에 들어야 함
+	check(lim >= C.NET_PING_MS * 5, "핑 간격 %s 의 5배 이상" % C.NET_PING_MS)
+	# 붙은 시각부터 셈: 붙은 뒤 아무것도 안 오면 (첫 pong 도 없음) 6초 넘어 끊음
+	var opened_at := 70000.0
+	check(not NetScript.silent(opened_at + lim, opened_at, 0.0), "붙은 뒤 딱 6초는 아직")
+	check(NetScript.silent(opened_at + lim + 1.0, opened_at, 0.0), "붙은 뒤 아무것도 안 오면 6초 넘어 끊음")
 	var t0 := 50000.0
 	check(not NetScript.silent(t0 + 1000.0, t0, 0.0), "1초 전에 받음")
 	check(not NetScript.silent(t0 + lim, t0, 0.0), "딱 6초는 아직")
@@ -142,7 +148,7 @@ func test_net_silence_watchdog() -> void:
 	check(not NetScript.silent(t0 + 12000.0, t0, 12000.0), "slack 12초가 12초 침묵을 덮음")
 	check(not NetScript.silent(t0 + 12000.0, t0, 6000.0), "slack 6초 → 남은 6초는 아직")
 	check(NetScript.silent(t0 + 12000.0, t0, 5000.0), "slack 5초 → 남은 7초는 침묵")
-	check(not NetScript.silent(t0 + 99999.0, null, 0.0), "첫 패킷 전 (받은 적 없음)")
+	check(not NetScript.silent(t0 + 99999.0, null, 0.0), "시각 없음 (안 붙어 있음 — 순수 함수 경계값)")
 	# 실제 slack (net_meter): 프레임이 멈췄다 풀린 직후엔 멈춘 시간만큼, 고른 프레임이면 한 프레임
 	var m := NetMeter.new()
 	for i in 40:
@@ -151,6 +157,78 @@ func test_net_silence_watchdog() -> void:
 	check(NetScript.silent(last + 7000.0, last - 1.0, m.slack(last)), "고른 프레임 + 7초 침묵")
 	m.on_frame(last + 12000.0) # 12초 멈췄다 풀린 프레임
 	check(not NetScript.silent(last + 12000.0, last, m.slack(last + 12000.0)), "프레임이 12초 멈췄다 풀린 직후엔 안 끊음")
+
+
+# 붙어 보기 상한 (net.gd connect_stuck): 시작한 뒤 CONNECT_MS (6초) 넘게 CONNECTING 이면 true. 프레임이 멈췄던 시간 (slack) 은 빼고, 시작 시각이 없으면 false
+func test_net_connect_timeout() -> void:
+	var lim: float = NetScript.CONNECT_MS
+	check(lim == 6000.0, "붙어 보기 상한 %s" % lim)
+	check(lim >= C.NET_RECONNECT_MS, "다시 붙기 간격 %s 이상 (시도마다 max(간격, 상한))" % C.NET_RECONNECT_MS)
+	# 다 막힌 서버면 포기까지 시도 수 × 6초 (README 침묵 감지 단락의 '약 3분')
+	check(C.NET_RECONNECT_TRIES * maxf(C.NET_RECONNECT_MS, lim) == 180000.0, "포기까지 %s ms" % (C.NET_RECONNECT_TRIES * maxf(C.NET_RECONNECT_MS, lim)))
+	var t0 := 40000.0
+	check(not NetScript.connect_stuck(t0 + 1000.0, t0, 0.0), "1초째는 아직")
+	check(not NetScript.connect_stuck(t0 + lim, t0, 0.0), "딱 6초는 아직")
+	check(NetScript.connect_stuck(t0 + lim + 1.0, t0, 0.0), "6초 넘게 매달림")
+	check(not NetScript.connect_stuck(t0 + 12000.0, t0, 12000.0), "프레임이 12초 멈췄다 풀린 직후엔 안 버림")
+	check(NetScript.connect_stuck(t0 + 12000.0, t0, 5000.0), "slack 5초 → 남은 7초는 매달림")
+	check(not NetScript.connect_stuck(t0 + 99999.0, null, 0.0), "시작 시각 없음")
+
+
+# 멈춘 서버 (TCP 는 받아 주지만 업그레이드 응답이 없음 — 안 읽는 TCPServer) 에 붙어 보기: 상한이 지나면 소켓을 버리고 다음 시도로,
+# 다 쓰면 gave_up, retry() 는 매달린 소켓도 버리고 처음부터. 상한을 기다리지 않게 connect_at 을 과거로 돌려 프레임 (_prof_process) 을 직접 돌림
+func test_net_connect_stuck_moves_on() -> void:
+	var hole := TCPServer.new()
+	check(hole.listen(0, "127.0.0.1") == OK, "안 읽는 TCP 리스너")
+	var n = NetScript.new() # 트리에 안 넣음 (_process 없음 — 프레임은 아래에서 직접)
+	var texts: Array = []
+	var gave: Array = []
+	n.status_changed.connect(func(t): texts.append(t))
+	n.gave_up.connect(func(): gave.append(1))
+	var frame := func(times: int) -> void:
+		for i in times:
+			n._prof_process(0.0)
+			OS.delay_msec(5)
+	var back := NetScript.CONNECT_MS + 1000.0 # 상한 + 프레임 여유
+	n.start("ws://127.0.0.1:%d" % hole.get_local_port())
+	frame.call(20)
+	check(n.ws.get_ready_state() == WebSocketPeer.STATE_CONNECTING and n.connect_at != null, "처음 접속이 매달림 (상태 %d)" % n.ws.get_ready_state())
+	check(not n.reconnecting and n.tries == 0, "상한 전엔 그대로")
+	# 처음 접속이 상한을 넘김 → 버리고 끊긴 것과 같은 길 ('서버 응답 없음')
+	n.connect_at = NetScript.now_ms() - back
+	frame.call(1)
+	check(n.ws.get_ready_state() == WebSocketPeer.STATE_CLOSED and n.connect_at == null, "처음 접속 소켓을 버림")
+	check(n.reconnecting and n.lost == NetScript.LOST_SILENT and texts.back() == "서버 응답 없음 — 다시 연결 중", "다시 붙기 시작: %s" % str(texts))
+	n.retry_at = 0.0
+	frame.call(3)
+	check(n.tries == 1 and n.ws.get_ready_state() == WebSocketPeer.STATE_CONNECTING, "다음 시도 (%d, 상태 %d)" % [n.tries, n.ws.get_ready_state()])
+	# 다시 붙는 중 매달림 → 다음 프레임에 횟수를 올려 바로 다음 시도 (간격 retry_at 은 이미 지남)
+	n.connect_at = NetScript.now_ms() - back
+	n.retry_at = 0.0
+	frame.call(3)
+	check(n.tries == 2 and n.ws.get_ready_state() == WebSocketPeer.STATE_CONNECTING, "매달린 시도 다음으로 (%d)" % n.tries)
+	check(texts.back() == "서버 응답 없음 — 다시 연결 중 (2/%d)" % int(C.NET_RECONNECT_TRIES), "상태 글: %s" % texts.back())
+	# 마지막 시도도 매달림 → gave_up
+	n.tries = int(C.NET_RECONNECT_TRIES)
+	n.connect_at = NetScript.now_ms() - back
+	n.retry_at = 0.0
+	frame.call(3)
+	check(gave.size() == 1 and not n.reconnecting and n.ws.get_ready_state() == WebSocketPeer.STATE_CLOSED, "다 쓰면 gave_up (%d, %s)" % [gave.size(), n.reconnecting])
+	# retry(): 포기한 뒤 → 다시 시작, 그 시도가 매달린 동안 또 누르면 매달린 소켓을 버리고 처음부터
+	n.retry()
+	frame.call(3)
+	check(n.tries == 1 and n.ws.get_ready_state() == WebSocketPeer.STATE_CONNECTING, "retry → 다시 붙어 봄 (%d)" % n.tries)
+	var hung = n.ws
+	n.tries = 9
+	n.retry()
+	check(n.ws != hung or n.ws.get_ready_state() == WebSocketPeer.STATE_CLOSED, "매달린 소켓을 버림")
+	check(n.tries == 0 and n.reconnecting and n.retry_at <= NetScript.now_ms() and n.connect_at == null, "횟수 0, 바로 다시 (%d)" % n.tries)
+	frame.call(3)
+	check(n.tries == 1 and n.ws.get_ready_state() == WebSocketPeer.STATE_CONNECTING, "새 시도 (%d)" % n.tries)
+	check(gave.size() == 1, "gave_up 은 한 번만")
+	n._discard()
+	hole.stop()
+	n.free()
 
 
 # 다시 붙기 처음부터 (net.gd retry): 포기한 뒤 (횟수 다 씀) 면 횟수를 되돌리고 바로 다시, 주소가 없으면 (접속 시작 전) 아무것도 안 함
@@ -187,7 +265,7 @@ func _store_cleared(s) -> bool:
 	return not s.in_room() and s.my_id == null and s.room.is_empty() and s.state.is_empty() and s.prev_state.is_empty() and s.tracks.is_empty() and s._players_by_id.is_empty()
 
 
-# 죽은 방 탈출 (store.gd): 방 안에서 joinError (다시 붙었는데 그 방이 없음) → 방을 비우고 left_room(이유) = 메뉴로. 방 밖 joinError 는 join_error 만
+# 죽은 방 탈출 (store.gd): 방 안에서 joinError (다시 붙었는데 그 방이 없음·꽉 참) → 방을 비우고 left_room(중립 앞머리 + 서버 이유) = 메뉴로. 방 밖 joinError 는 join_error 만
 func test_store_dead_room_exit() -> void:
 	check(StoreScript.join_error_action(true) == "left" and StoreScript.join_error_action(false) == "error", "joinError 처리 고르기")
 	var s = _store_in_room()
@@ -199,11 +277,19 @@ func test_store_dead_room_exit() -> void:
 	s._on_message({"type": "joinError", "reason": "ZZZZ: 그런 방이 없습니다"})
 	check(_store_cleared(s), "방 안 + joinError → 방 정리 (id %s, 방 %s)" % [str(s.my_id), str(s.room)])
 	check(s.pending_code == "", "들어가려던 방도 지움")
-	check(left == ["방이 없어졌습니다 — ZZZZ: 그런 방이 없습니다"], "left_room 이유: %s" % str(left))
+	check(left == ["방으로 돌아가지 못했습니다 — ZZZZ: 그런 방이 없습니다"], "left_room 이유: %s" % str(left))
 	check(errs.is_empty(), "방 안이면 join_error 는 안 냄: %s" % str(errs))
 	# 방 밖 (메뉴에서 없는 코드): join_error 만
 	s._on_message({"type": "joinError", "reason": "QQQQ: 그런 방이 없습니다"})
 	check(errs == ["QQQQ: 그런 방이 없습니다"] and left.size() == 1, "방 밖 + joinError → join_error 만: %s / %s" % [str(errs), str(left)])
+	s.free()
+	# 자리 유지 (60초) 가 지난 뒤 다시 붙었는데 그 방이 꽉 참 (rejoinError → join → joinError): 앞머리가 '방이 없어졌습니다' 처럼 이유와 어긋나지 않음
+	s = _store_in_room()
+	left.clear()
+	s.left_room.connect(func(r): left.append(r))
+	s._on_message({"type": "joinError", "reason": "방이 꽉 찼습니다 (최대 8명)"})
+	check(_store_cleared(s) and left == ["방으로 돌아가지 못했습니다 — 방이 꽉 찼습니다 (최대 8명)"], "꽉 찬 방 → 방 정리 + 이유: %s" % str(left))
+	check(not str(left).contains("없어졌"), "꽉 찬 방에 '없어졌습니다' 를 붙이지 않음")
 	# 서버의 left 는 예전 그대로 (같은 정리 함수): 이유 그대로, 방 정리
 	s.free()
 	s = _store_in_room()

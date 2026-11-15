@@ -10,7 +10,7 @@ using Tetrafall.Server;
 //   --online (또는 TF_ONLINE=1): Cloudflare 터널도 켜서 친구용 https 주소 (Tunnel.cs, node 필요 없음)
 // 배포 폴더 (tools/package.mjs zip): 서버 exe 옆 web/ 를 /play/ 로, / 는 /play/ 로 넘겨줌 (JS 화면 없음)
 // 멈춘·밀린 접속 끊기: Ping 에 Pong 이 안 오거나 (C.NET_KEEPALIVE_MS + C.NET_KEEPALIVE_TIMEOUT_MS, 약 20~25초) 보내기 줄이 C.NET_SEND_QUEUE_MAX 를 넘으면
-//   그 접속만 끊고 콘솔에 "접속 N 끊음: …" 한 줄 → 예전 끊김 흐름 (자리 유지 + 봇 대리 + 토큰 복귀). 테스트용 환경 변수 TF_KEEPALIVE_MS·TF_KEEPALIVE_TIMEOUT_MS (양의 정수 ms)
+//   그 접속만 끊고 콘솔에 "접속 N 끊음: …" 한 줄 (서버를 끄는 중에 끊긴 접속은 안 찍음) → 예전 끊김 흐름 (자리 유지 + 봇 대리 + 토큰 복귀). 테스트용 환경 변수 TF_KEEPALIVE_MS·TF_KEEPALIVE_TIMEOUT_MS (양의 정수 ms)
 // 스레드: WebSocket 받기·보내기는 비동기, 게임(Rooms·Game)은 루프 스레드 하나에서만 (받은 메시지는 inbox 로 넘김) → JS 처럼 잠금 없음
 
 if (args.Length > 0 && args[0] == "load") Environment.Exit(LoadBench.Run(args)); // 서버 부하 재기 (tools/load.mjs 와 나란히)
@@ -93,7 +93,7 @@ async Task Serve(WebSocket ws, bool packed)
         }
     }
     catch (WebSocketException) { } // 보통 닫힘 (상대가 끊음): 조용히
-    catch (OperationCanceledException) { dropped = "응답 없음"; } // keepalive 시간 초과로 Abort 된 소켓 (ConnectionAbortedException 도 이 계열)
+    catch (OperationCanceledException) { dropped = WsSocket.CanceledReason(app.Lifetime.ApplicationStopping.IsCancellationRequested); } // keepalive 시간 초과로 Abort 된 소켓 (ConnectionAbortedException 도 이 계열). 서버를 끄는 중이면 안 찍음
     catch (IOException) { }
     finally
     {

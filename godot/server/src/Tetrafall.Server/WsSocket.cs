@@ -60,6 +60,11 @@ public sealed class WsSocket : ISocket
         return (EnvMs(env("TF_KEEPALIVE_MS"), C.NET_KEEPALIVE_MS), EnvMs(env("TF_KEEPALIVE_TIMEOUT_MS"), C.NET_KEEPALIVE_TIMEOUT_MS));
     }
 
+    // 받기 루프가 OperationCanceledException 으로 끝났을 때 콘솔 '끊음' 이유: keepalive 시간 초과로 Abort 된 소켓이면 "응답 없음".
+    // 서버를 끄는 중 (stopping = ApplicationStopping) 이면 null = 안 찍음 — Kestrel 이 종료 대기 (약 30초) 뒤 남은 접속을 Abort 해도
+    // 같은 예외라, 멀쩡히 읽던 접속까지 응답 없는 클라처럼 남지 않게 (ReceiveAsync 토큰이 None 이라 예외로는 못 가름)
+    public static string? CanceledReason(bool stopping) => stopping ? null : "응답 없음";
+
     static TimeSpan EnvMs(string? value, double fallbackMs) =>
         TimeSpan.FromMilliseconds(int.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var ms) && ms > 0 ? ms : fallbackMs);
 

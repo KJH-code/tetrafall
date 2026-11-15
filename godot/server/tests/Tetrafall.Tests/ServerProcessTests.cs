@@ -64,6 +64,12 @@ public class ServerProcessTests
             lock (lines) return lines.Any(l => l.Contains(part));
         }
 
+        // part 가 든 콘솔 줄 수 (한 번만 찍혀야 하는 줄 — NetGuardTests '끊음')
+        public int Count(string part)
+        {
+            lock (lines) return lines.Count(l => l.Contains(part));
+        }
+
         public void Dispose()
         {
             try { proc.Kill(true); } catch { }

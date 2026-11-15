@@ -9,6 +9,10 @@ const C := preload("res://core/config.gd")
 const Interp := preload("res://core/interp.gd")
 const Seat := preload("res://core/seat.gd")
 
+# 방 안에서 joinError 를 받아 메뉴로 갈 때 이유 앞머리: 이유와 상관없는 말 (서버 이유가 '그런 방이 없습니다'·'꽉 찼습니다' 를 이미 말함).
+# 서버 메시지에 이유 종류를 따로 넣지 않음 — JS 서버에도 붙으니 이유 글만 씀
+const LEFT_BACK_FAILED := "방으로 돌아가지 못했습니다 — "
+
 signal rooms_changed(list: Dictionary) # 공개 방 목록 {rooms, count, max}
 signal joined(room: Dictionary, rejoined: bool) # 방에 들어감 (welcome)
 signal join_error(reason: String)
@@ -120,7 +124,7 @@ func _on_gave_up() -> void:
 		_clear_room(Net.status)
 
 
-# 들어가기 거절 (joinError) 처리: 방 안에서 받았으면 다시 붙은 뒤 그 방으로 못 돌아간 것 (서버가 다시 켜졌거나 방이 사라짐) → 'left' (방을 비우고 메뉴로),
+# 들어가기 거절 (joinError) 처리: 방 안에서 받았으면 다시 붙은 뒤 그 방으로 못 돌아간 것 (서버가 다시 켜져 방이 사라짐·자리 유지가 지났는데 방이 꽉 참) → 'left' (방을 비우고 메뉴로),
 # 방 밖이면 'error' (메뉴 글만)
 static func join_error_action(in_room_now: bool) -> String:
 	return "left" if in_room_now else "error"
@@ -151,7 +155,7 @@ func _on_message(m: Dictionary) -> void:
 		"joinError":
 			pending_code = ""
 			if join_error_action(in_room()) == "left":
-				_clear_room("방이 없어졌습니다 — " + str(m.get("reason", "")))
+				_clear_room(LEFT_BACK_FAILED + str(m.get("reason", "")))
 			else:
 				join_error.emit(str(m.get("reason", "")))
 		"welcome":

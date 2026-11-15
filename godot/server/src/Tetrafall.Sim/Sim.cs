@@ -109,6 +109,15 @@ public static class BotSim
         return outp;
     }
 
+    // on/off 옵션 (--sky·--hp·--events·--balance) 값: 둘만 받고 나머지 (true·ON·1·오타) 는 ArgumentException.
+    // 예전엔 "on" 이 아니면 조용히 off 라, 켰다고 생각한 측정이 실제로는 끈 채 돌 수 있었음
+    public static bool OnOff(string opt, string v) => v switch
+    {
+        "on" => true,
+        "off" => false,
+        _ => throw new ArgumentException($"{opt} {v}: on 또는 off"),
+    };
+
     public static SimOptions ParseArgs(string[] argv)
     {
         var o = new SimOptions();
@@ -124,7 +133,7 @@ public static class BotSim
                 case "--maps": o.maps = L(V(), Maps.MAP_IDS.ToList()); break;
                 case "--chars": o.chars = L(V(), C.CHARACTERS.ToList()); break;
                 case "--level": o.level = V(); break;
-                case "--sky": o.sky = V() == "on"; break;
+                case "--sky": o.sky = OnOff(a, V()); break;
                 case "--seed": o.seed = double.Parse(V()); break;
                 case "--workers": o.workers = int.Parse(V()); break;
                 case "--no-mirror": o.mirror = false; break;
@@ -132,11 +141,11 @@ public static class BotSim
                 case "--out": o.@out = V(); break;
                 case "--base": o.@base = V(); break;
                 case "--mode": o.mode = V(); break;
-                case "--hp": o.hp = V() == "on"; break;
+                case "--hp": o.hp = OnOff(a, V()); break;
                 case "--hp-mult": o.hpMult = ParseHpMult(V()); break;
-                case "--events": o.events = V() == "on"; break;
+                case "--events": o.events = OnOff(a, V()); break;
                 case "--tune": o.tune = Tune.Parse(V()); break;
-                case "--balance": o.balance = V() == "on"; break;
+                case "--balance": o.balance = OnOff(a, V()); break;
                 default: throw new ArgumentException($"모르는 옵션 {a}");
             }
         }

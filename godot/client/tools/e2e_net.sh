@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 죽은 방 탈출 + 서버 침묵 감지 자동 확인: C# 서버 + 헤드리스 고도 클라.
 #  A (서버 다시 켬): host 가 방을 만든 뒤 서버를 죽이고 같은 포트로 다시 켬 → host 는 다시 붙지만 그 방은 없음
-#    → 대기실에 갇히지 않고 '방이 없어졌습니다' 이유와 함께 방 밖으로 (--expect-left)
+#    → 대기실에 갇히지 않고 '방으로 돌아가지 못했습니다 — …그런 방이 없습니다' 이유와 함께 방 밖으로 (--expect-left)
 #  B (서버 12초 멈춤): host + guest 판 중에 서버를 kill -STOP → 12초 뒤 -CONT. 소켓은 안 끊기지만 아무것도 안 옴
 #    → 클라가 '서버 응답 없음' 으로 소켓을 버리고 다시 붙어 같은 자리로 (자리 토큰), 서버 로그엔 복귀
 # 실행 (레포 뿌리): bash godot/client/tools/e2e_net.sh   ·  PORT (기본 3431) · LOG (기본 /tmp/tf-e2e-net) ·
@@ -113,7 +113,7 @@ grep -h "^\[자동" "$LOG/a-host.txt" | grep -v "접속: .*([0-9]*/[0-9]*)" | se
 expect "방 코드를 받음" [ -n "$CODE" ]
 expect "host 종료 코드 0 (지금 $RH)" [ $RH -eq 0 ]
 expect "host 로그에 '방 밖:'" grep -q "방 밖:" "$LOG/a-host.txt"
-expect "host 로그에 '방이 없어졌습니다'" grep -q "방이 없어졌습니다" "$LOG/a-host.txt"
+expect "host 로그에 '방으로 돌아가지 못했습니다 — …그런 방이 없습니다'" grep -q "방으로 돌아가지 못했습니다 — .*그런 방이 없습니다" "$LOG/a-host.txt"
 A=$FAIL
 
 # ---------- B: 서버 12초 멈춤 ----------

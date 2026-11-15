@@ -10,6 +10,7 @@ const Prefs := preload("res://ui/ui_prefs.gd")
 const TC := preload("res://ui/tutorial_calc.gd")
 const Portrait := preload("res://ui/portrait.gd")
 const Coords := preload("res://core/coords.gd")
+const Menu := preload("res://ui/menu.gd") # OFFLINE_TEXT (메뉴와 같은 글)
 
 var modal := PanelContainer.new()
 var panes := {} # ask·pick·done -> VBoxContainer
@@ -23,6 +24,7 @@ var band := HBoxContainer.new()
 var prog: Label
 var txt := HBoxContainer.new()
 var ok_lab: Label
+var note: Label # 창 아래 알림 (연결 없이 눌렀을 때 — 메뉴 msg 자리)
 var chosen: String = C.CHAR_DEFAULT
 var shown_key := ""
 var done_shown := false
@@ -71,6 +73,8 @@ func _ready() -> void:
 	done.add_child(done_sum)
 	done.add_child(_text("이제 진짜 판: 블록이 떨어지고, 밀고, 살아남기", 13))
 	done.add_child(_btns([["메뉴로", _to_menu, "ghost"], ["봇 3명과 한 판", _quick_match, "go"]]))
+	note = _text("", 14, S.TEXT)
+	stack.add_child(note)
 	modal.visible = false
 	# 진행 띠 (위 가운데)
 	var top := CenterContainer.new()
@@ -153,6 +157,7 @@ func _chip(t: String, bg: Color, fg: Color) -> Label:
 func show_pane(name: String) -> void:
 	pane_name = name
 	modal.visible = true
+	note.text = ""
 	for k in panes:
 		panes[k].visible = k == name
 	if name == "pick":
@@ -203,6 +208,8 @@ func _skip_all() -> void:
 
 
 func start() -> void:
+	if _offline():
+		return
 	Prefs.set_value("tutorial", "done")
 	Prefs.set_value("char", chosen) # 대기실 고른 캐릭터로도 남음
 	close()
@@ -217,10 +224,22 @@ func _to_menu() -> void:
 
 
 func _quick_match() -> void:
+	if _offline():
+		return
 	close()
 	quick_pending = true
 	Store.leave()
 	Store.create_room("", str(Prefs.get_value("name", "")))
+
+
+# 연결이 없을 때 '시작'·'봇 3명과 한 판' (설정 → 튜토리얼 길은 메뉴 문 menu.gd _online_do 를 안 지남): 보내도 버려지니
+# Prefs (tutorial = done)·quick_pending 은 안 건드리고 창도 그대로, 메뉴와 같은 글을 띄우고 다시 붙어 봄. 연결이 없으면 true
+func _offline() -> bool:
+	if Net.is_open():
+		return false
+	note.text = Menu.OFFLINE_TEXT
+	Net.retry()
+	return true
 
 
 func _on_joined(_room, rejoined: bool) -> void:

@@ -10,6 +10,9 @@ namespace Tetrafall.Tests;
 
 // 멈춘·밀린 접속 끊기 (고도 전용, JS 에 없음): 보내기 줄 상한 (WsSocket) + keepalive 시간 제한 (Program.cs UseWebSockets).
 // 끊긴 뒤는 예전 끊김 흐름 그대로 (rooms.Disconnect → 자리 유지 + 봇 대리)
+// 시간을 재는 테스트라 다른 테스트와 같이 안 돎 (NetGuardCollection): Parallel.For 테스트들 (BalanceTests·FuzzTests·SimTests·TuneTests) 이
+// 스레드 풀을 잡으면 계속 읽는 호스트의 Pong 이 keepalive 제한보다 늦어 호스트까지 끊기거나, 상한 시간을 넘김
+[Collection(nameof(NetGuardCollection))]
 public class NetGuardTests
 {
     // 가짜 WebSocket: hang 이면 SendAsync 가 Abort 될 때까지 안 끝남 (받는 쪽이 읽기를 멈춘 접속), 아니면 바로 끝남
@@ -146,6 +149,15 @@ public class NetGuardTests
             Assert.Equal(normal, WsSocket.KeepAlive());
     }
 
+    // 받기 루프가 OperationCanceledException 으로 끝난 까닭 (Program.cs Serve): 평소엔 keepalive 시간 초과 = "응답 없음",
+    // 서버를 끄는 중이면 (Kestrel 종료 대기 뒤 Abort) 안 찍음 — 서버를 끌 때마다 멀쩡한 접속이 '응답 없음' 으로 남던 것
+    [Fact]
+    public void Canceled_receive_reason_not_when_stopping()
+    {
+        Assert.Equal("응답 없음", WsSocket.CanceledReason(stopping: false));
+        Assert.Null(WsSocket.CanceledReason(stopping: true));
+    }
+
     // 백그라운드에서 계속 읽는 클라 (읽어야 서버 Ping 에 Pong 이 나감): 받은 메시지를 쌓아 두고 조건에 맞는 것을 기다림
     sealed class Reader
     {
@@ -203,10 +215,17 @@ public class NetGuardTests
 
     static Task SendText(ClientWebSocket ws, string text) => ws.SendAsync(Encoding.UTF8.GetBytes(text), WebSocketMessageType.Text, true, CancellationToken.None);
 
+    // 테스트 keepalive (서버 환경 변수 TF_KEEPALIVE_MS = TF_KEEPALIVE_TIMEOUT_MS): 조용한 클라는 붙은 뒤 약 2.5초 (간격 + 제한 + .NET 확인 주기 —
+    // 실측 2.2~2.6초, 바쁜 기계 load 9 에서도) 에 끊김. 예전 300ms 는 계속 읽는 호스트도 Pong 이 한 번 300ms 늦으면 끊겨 가끔 실패했음
+    const int TEST_KEEPALIVE_MS = 1000;
+    // 판 시작 → 콘솔 '끊음' · 방 로그 (봇 대리) 상한: 실측의 3배쯤. 기본 keepalive (C 값, 20~25초) 로는 못 맞춤 = 환경 변수가 먹혔음을 봄
+    const int DROP_WITHIN_MS = 8000;
+
     [Fact]
     public async Task Silent_client_dropped_seat_goes_to_bot()
     {
-        using var srv = new ServerProcessTests.Server(new Dictionary<string, string> { ["TF_KEEPALIVE_MS"] = "300", ["TF_KEEPALIVE_TIMEOUT_MS"] = "300" });
+        var ka = TEST_KEEPALIVE_MS.ToString();
+        using var srv = new ServerProcessTests.Server(new Dictionary<string, string> { ["TF_KEEPALIVE_MS"] = ka, ["TF_KEEPALIVE_TIMEOUT_MS"] = ka });
         using var host = await Open(srv.port);
         var reader = new Reader(host);
         await SendText(host, "{\"type\":\"create\",\"nick\":\"방장\"}");
@@ -222,8 +241,8 @@ public class NetGuardTests
         var sw = Stopwatch.StartNew();
         Assert.NotNull(await reader.Wait(m => Is(m, "state") && m.GetProperty("phase").GetString() != "lobby"));
 
-        // 5초 안에: 서버 콘솔 한 줄 + 방 로그에 자리 유지 (봇 대리) = 예전 끊김 흐름
-        await Until(() => srv.Saw("접속 2 끊음: 응답 없음"), 5000, "서버 콘솔 '끊음: 응답 없음'");
+        // 상한 안에: 서버 콘솔 한 줄 + 방 로그에 자리 유지 (봇 대리) = 예전 끊김 흐름
+        await Until(() => srv.Saw("접속 2 끊음: 응답 없음"), DROP_WITHIN_MS, "서버 콘솔 '끊음: 응답 없음'");
         const string AWAY = "[끊김] P2 자리 유지 60초 (봇 대리)";
         string log = "";
         await Until(() =>
@@ -233,8 +252,11 @@ public class NetGuardTests
             using var f = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             log = new StreamReader(f).ReadToEnd();
             return log.Contains(AWAY);
-        }, 5000, $"방 로그 '{AWAY}'");
-        Assert.True(sw.ElapsedMilliseconds < 5000, $"시작 뒤 {sw.ElapsedMilliseconds}ms");
+        }, DROP_WITHIN_MS, $"방 로그 '{AWAY}'");
+        Assert.True(sw.ElapsedMilliseconds < DROP_WITHIN_MS, $"시작 뒤 {sw.ElapsedMilliseconds}ms");
+        // '끊음' 은 접속마다 한 줄: 방 로그 줄은 콘솔에도 찍히고 '끊음' 보다 뒤 (Serve finally → rooms.Disconnect) — 그 줄까지 읽은 뒤에 셈 (늦게 찍힌 두 번째 줄도 잡게)
+        await Until(() => srv.Saw(AWAY), DROP_WITHIN_MS, $"서버 콘솔 '{AWAY}'");
+        Assert.Equal(1, srv.Count("접속 2 끊음"));
 
         // 계속 읽는 호스트는 그대로: 안 끊기고 ping → pong
         await SendText(host, "{\"type\":\"ping\",\"t\":7}");
@@ -244,6 +266,11 @@ public class NetGuardTests
         Assert.Equal(WebSocketState.Open, host.State);
         Assert.False(srv.Saw("접속 1 끊음"), "호스트는 안 끊김");
         Assert.False(srv.Saw("보내기 줄"), "줄 상한이 아니라 keepalive 로 끊김");
+        Assert.Equal(1, srv.Count("접속 2 끊음")); // 그 뒤에도 한 줄 그대로
         Assert.False(srv.proc.HasExited, "서버 프로세스 살아 있음");
     }
 }
+
+// 병렬 컬렉션들이 다 끝난 뒤 따로 (xUnit 2: DisableParallelization 컬렉션은 마지막에 혼자 돎)
+[CollectionDefinition(nameof(NetGuardCollection), DisableParallelization = true)]
+public class NetGuardCollection { }

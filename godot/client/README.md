@@ -18,10 +18,11 @@ godot --path godot/client -- --server ws://주소:3000 --room ABCD   # 다른 �
 스냅샷 묶음: PC 클라는 주소에 `?pack=gzip` 을 붙여 접속 (`core/net.gd` `packed_url`) → C# 서버가 큰 메시지 (`NET_DEFLATE_MIN_BYTES` 이상, 사실상 스냅샷) 를 gzip 바이너리로 보내고 클라가 풂 (`unpack`). 고도 WebSocketPeer 는 permessage-deflate 를 못 써서 8명 판이 약 418KB/s 로 오던 것 → 약 92KB/s (헤드리스 8명 판 30초 실측). 웹 판은 쿼리 없이 붙어 예전처럼 브라우저 압축 (Text + permessage-deflate), JS 서버는 쿼리를 무시하고 Text 로 보냄 — 글자 패킷은 예전처럼 읽으니 어느 서버든 붙음. `--auto` 로 돌리면 끝날 때 `[net] 받은 N KB/s (스냅샷 n개, gzip 켬|끔)` 한 줄. 푼 크기는 `INBOUND_MAX_BYTES` (4MB, 받는 버퍼와 같은 값) 까지: gzip 꼬리에 적힌 크기가 넘으면 풀지 않고 버리고, 풀 때도 적힌 크기까지만 (작은 패킷 하나가 수백 MB 로 풀리는 것 막기, `tests/test_core.gd` `test_net_unpack_limit`).
 
 서버 침묵 감지·죽은 방 탈출 (2026-11-14): 끊긴 뒤 어떤 경우에도 없어진 방 화면에 갇히지 않게 — 같은 자리로 돌아가거나, 이유를 띄우고 메뉴로.
-- 침묵 감지 (`core/net.gd` `silent`·`SILENCE_MS` 6초): 소켓은 열려 있는데 아무것도 안 오면 (서버가 멈춤·길이 죽음 — TCP 는 한참 뒤에야 앎) 그 소켓을 버리고 끊겼을 때와 같은 길로 다시 붙음, 상태 글 '서버 응답 없음 — 다시 연결 중'. 서버는 핑마다 (1초) pong 을, 방 밖이면 방 목록도 1초마다 보내니 6초 침묵은 비정상. 쌓인 패킷을 다 읽은 뒤에 보고 프레임이 멈췄던 시간 (`meter.slack`) 은 빼서, 창이 멈췄다 풀린 직후엔 안 끊음. 다시 붙으면 자리 토큰으로 같은 자리
-- 죽은 방 탈출 (`core/store.gd` `join_error_action`·`_clear_room`): 다시 붙었는데 그 방이 없으면 (서버가 다시 켜짐 → rejoinError → join → joinError) 방 안에서 받은 joinError 라 방을 비우고 `left_room("방이 없어졌습니다 — 서버 이유")` → 메뉴에 그 글. 방 밖 joinError 는 예전처럼 메뉴 글만 (`join_error`)
+- 침묵 감지 (`core/net.gd` `silent`·`SILENCE_MS` 6초): 소켓은 열려 있는데 아무것도 안 오면 (서버가 멈춤·길이 죽음 — TCP 는 한참 뒤에야 앎) 그 소켓을 버리고 끊겼을 때와 같은 길로 다시 붙음, 상태 글 '서버 응답 없음 — 다시 연결 중'. 서버는 내 핑마다 (`NET_PING_MS` 1초) pong 을 보내니 6초 침묵은 비정상 — 메뉴·대기실·판 어디서든 이 pong 하나가 받침 (방 목록은 바뀔 때만 와서 근거가 아님. 핑 간격을 늘리거나 핑을 빼면 `SILENCE_MS` 도 같이 볼 것). 붙은 순간부터 셈 (붙었는데 아무 말 없는 서버도 잡음). 쌓인 패킷을 다 읽은 뒤에 보고 프레임이 멈췄던 시간 (`meter.slack`) 은 빼서, 창이 멈췄다 풀린 직후엔 안 끊음. 다시 붙으면 자리 토큰으로 같은 자리
+- 붙어 보기 상한 (`core/net.gd` `connect_stuck`·`CONNECT_MS` 6초): 처음 접속이든 다시 붙기든 한 번 붙어 보기가 6초 넘게 CONNECTING 이면 (멈춘 서버 — 커널이 TCP 는 받아 줘도 업그레이드 응답이 안 옴) 그 소켓을 버리고 다음 시도로. 그래서 서버가 멈춘 채 안 돌아와도 방 화면에 끝없이 남지 않음: 시도마다 max(`NET_RECONNECT_MS` 2초, 6초) = 6초라 침묵 6초 + `NET_RECONNECT_TRIES` 30번 × 6초 = 약 3분 뒤 포기 (`gave_up` → 메뉴로). 거절되는 서버 (꺼짐) 는 시도마다 2초라 약 1분. `retry()` 는 매달린 소켓도 버리고 처음부터
+- 죽은 방 탈출 (`core/store.gd` `join_error_action`·`_clear_room`): 다시 붙었는데 그 방이 없으면 (서버가 다시 켜짐 → rejoinError → join → joinError) 방 안에서 받은 joinError 라 방을 비우고 `left_room("방으로 돌아가지 못했습니다 — 서버 이유")` → 메뉴에 그 글 (앞머리는 이유와 상관없는 말 `LEFT_BACK_FAILED` — 자리 유지가 지나 다시 들어가려는데 방이 꽉 찬 것도 같은 길이라, 서버 이유 '그런 방이 없습니다'·'꽉 찼습니다' 가 까닭을 말함). 방 밖 joinError 는 예전처럼 메뉴 글만 (`join_error`)
 - 다시 붙기를 `NET_RECONNECT_TRIES` 번 다 쓰면 `Net.gave_up` → 방 안이면 방을 비우고 상태 글을 이유로 메뉴로. 연결 없이 '방 나가기' 를 누르면 서버 답을 기다리지 않고 바로 방 밖
-- 메뉴 (`ui/menu.gd` `_online_do`): 연결이 없을 때 방 만들기·들어가기·연습·튜토리얼을 누르면 '서버에 연결되지 않았습니다 — 다시 연결 중' 을 띄우고 `Net.retry()` (횟수를 되돌려 처음부터 다시 붙어 봄)
+- 메뉴 (`ui/menu.gd` `_online_do`): 연결이 없을 때 방 만들기·들어가기·연습·튜토리얼을 누르면 '서버에 연결되지 않았습니다 — 다시 연결 중' 을 띄우고 `Net.retry()` (횟수를 되돌려 처음부터 다시 붙어 봄). 튜토리얼 창의 '시작' (설정 → 튜토리얼 길은 메뉴 문을 안 지남)·끝 화면 '봇 3명과 한 판' 도 같은 글 + `Net.retry()` (`ui/tutorial_ui.gd` `_offline`) — 튜토리얼을 done 으로 남기거나 봇 판 예약 (`quick_pending`) 을 켜지 않음
 
 ## 테스트·확인
 
@@ -30,7 +31,7 @@ godot --headless --path godot/client -s res://tests/run_tests.gd   # 보간·핑
 node godot/client/tools/fixtures.mjs                              # 정답 자료 다시 뽑기 (client/interp.js·shared/net.js·client/keys.js)
 node godot/client/tools/gen-config.mjs                            # shared/config.js → core/config.gd (JS config 를 바꾸면)
 bash godot/client/tools/e2e.sh                                    # JS 서버 + 헤드리스 클라 둘: 방 만들기·코드로 들어가기·판·중간에 끊고 같은 자리로
-bash godot/client/tools/e2e_net.sh                                # C# 서버 + 헤드리스 클라: A 서버를 죽였다 다시 켬 → '방이 없어졌습니다' 로 방 밖 · B 판 중 서버 12초 멈춤 (kill -STOP) → '서버 응답 없음' 뒤 같은 자리로
+bash godot/client/tools/e2e_net.sh                                # C# 서버 + 헤드리스 클라: A 서버를 죽였다 다시 켬 → '방으로 돌아가지 못했습니다 — …그런 방이 없습니다' 로 방 밖 · B 판 중 서버 12초 멈춤 (kill -STOP) → '서버 응답 없음' 뒤 같은 자리로
 xvfb-run -a godot --path godot/client --rendering-driver opengl3 -- --auto host --bots 7 --wait-players 8 --shot /tmp/s.png --shot-after 12 --quit-after 13
 ```
 
