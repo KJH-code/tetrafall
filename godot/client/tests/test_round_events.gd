@@ -117,3 +117,32 @@ func test_round_event_status() -> void:
 	# 화살표는 시작 알림 (text) 과 같은 것
 	for yaw in [0.0, UP, PI, -UP, 0.6]:
 		check(T.status(wind, yaw) == "%s 5초" % T.text(wind, yaw), "yaw %.2f: 띠 '%s' vs 알림 '%s'" % [yaw, T.status(wind, yaw), T.text(wind, yaw)])
+
+
+# 저중력·빙판 (서버 lowgrav·ice): 알림 한 줄은 보는 방향과 상관없음
+func test_round_event_lowgrav_ice_text() -> void:
+	for yaw in [0.0, UP, PI]:
+		var low := T.text({"type": "roundEvent", "kind": "lowgrav", "ms": 6000}, yaw)
+		var ice := T.text({"type": "roundEvent", "kind": "ice", "ms": 6000}, yaw)
+		check(low == "저중력! 높이 뛰고 멀리 날아감", "저중력: '%s'" % low)
+		check(ice == "빙판! 맞으면 멀리 미끄러짐", "빙판: '%s'" % ice)
+		# 스냅샷 모양 (left, dir null) 도 같은 글
+		check(T.text({"kind": "lowgrav", "left": 300.0, "dir": null}, yaw) == low, "스냅샷 저중력")
+		check(T.text({"kind": "ice", "left": 300.0, "dir": null}, yaw) == ice, "스냅샷 빙판")
+
+
+# 저중력·빙판 진행 중 띠: 남은 초는 올림 (폭우와 같은 규칙), left 0 이하·없음이면 ""
+func test_round_event_lowgrav_ice_status() -> void:
+	var rows := [["lowgrav", "저중력"], ["ice", "빙판"]]
+	for r in rows:
+		for yaw in [0.0, UP]:
+			var got := T.status({"kind": r[0], "left": 2300.0, "dir": null}, yaw)
+			check(got == "%s 3초" % r[1], "%s 2.3초: '%s'" % [r[0], got])
+			check(T.status({"kind": r[0], "left": 2300}, 0) == "%s 3초" % r[1], "%s 정수 left·yaw" % r[0])
+			check(T.status({"kind": r[0], "left": 6000.0}, yaw) == "%s 6초" % r[1], "%s 딱 6초" % r[0])
+			check(T.status({"kind": r[0], "left": 1.0}, yaw) == "%s 1초" % r[1], "%s 1ms 남아도 1초" % r[0])
+			check(T.status({"kind": r[0], "left": 0.0}, yaw) == "", "%s left 0" % r[0])
+			check(T.status({"kind": r[0], "left": 0}, yaw) == "", "%s left 정수 0" % r[0])
+			check(T.status({"kind": r[0], "left": -5.0}, yaw) == "", "%s left 음수" % r[0])
+			check(T.status({"kind": r[0]}, yaw) == "", "%s left 없음" % r[0])
+			check(T.status({"kind": r[0], "left": null}, yaw) == "", "%s left null" % r[0])

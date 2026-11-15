@@ -91,7 +91,9 @@ public sealed partial class Game
             }
         }
         p.airJumpQueued = false;
-        double damp = JsMath.Exp(-(p.grounded ? C.KB_DAMPING_GROUND : C.KB_DAMPING_AIR) * dt);
+        double kbDamp = p.grounded ? C.KB_DAMPING_GROUND : C.KB_DAMPING_AIR;
+        if (roundEvents && p.grounded) kbDamp *= GroundDampMult(); // 돌발 이벤트 빙판: 땅에서 덜 줄어 멀리 미끄러짐 (끄면 곱하지도 않음)
+        double damp = JsMath.Exp(-kbDamp * dt);
         p.kbx *= damp;
         p.kby *= damp;
         if (Math.Abs(p.kbx) < 0.01) p.kbx = 0;
@@ -102,7 +104,9 @@ public sealed partial class Game
             p.diveUsed = false;
         }
         if (p.glideUntil != 0 && (p.grounded || time >= p.glideUntil)) p.glideUntil = 0;
-        p.vz -= C.GRAVITY * (p.glideUntil != 0 ? C.BARD_GLIDE_GRAVITY : 1) * dt; // 바드 천천히 낙하: 중력 줄임
+        double grav = C.GRAVITY * (p.glideUntil != 0 ? C.BARD_GLIDE_GRAVITY : 1); // 바드 천천히 낙하: 중력 줄임
+        if (roundEvents) grav *= GravityMult(); // 돌발 이벤트 저중력 (바드 활공과 곱해짐, 끄면 곱하지도 않음)
+        p.vz -= grav * dt;
         if (p.glideUntil != 0 && p.vz < -C.BARD_GLIDE_FALL) p.vz = -C.BARD_GLIDE_FALL;
         if (p.dive != null && p.vz > -C.BARD_DIVE_SPEED) p.vz = -C.BARD_DIVE_SPEED; // 기타 꽂기: 빠르게 아래로
         MoveAxis(p, 0, (ix + p.kbx) * dt);

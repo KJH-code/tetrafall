@@ -1,6 +1,6 @@
 # 돌발 이벤트 알림 글 (서버 이벤트 roundEvent → 알림 한 줄, 이벤트가 시작할 때 한 번). 순수 계산 — hud_extra.gd 가 toast 로 띄움.
 # 스냅샷 roundEvent (진행 중인 이벤트·남은 시간) 는 status 가 한 줄로 — hud_extra.gd refresh 가 끝날 때까지 위 가운데 띠에 (판 중에 들어온 사람도 봄)
-# e = {kind: "rain" | "wind" | "supply", dir: {x, y} (돌풍만, 게임 좌표 단위 벡터)}
+# e = {kind: "rain" | "wind" | "supply" | "lowgrav" | "ice", dir: {x, y} (돌풍만, 게임 좌표 단위 벡터)}
 extends RefCounted
 
 
@@ -12,6 +12,10 @@ static func text(e: Dictionary, yaw: float) -> String:
 			return "블록 폭우!"
 		"supply":
 			return "보급!"
+		"lowgrav":
+			return "저중력! 높이 뛰고 멀리 날아감"
+		"ice":
+			return "빙판! 맞으면 멀리 미끄러짐"
 		"wind":
 			var a := arrow(e.get("dir"), yaw)
 			return "돌풍 %s" % a if a != "" else ""
@@ -30,6 +34,10 @@ static func status(ev, yaw: float) -> String:
 	match str(ev.get("kind", "")):
 		"rain":
 			return "블록 폭우 %d초" % n
+		"lowgrav":
+			return "저중력 %d초" % n
+		"ice":
+			return "빙판 %d초" % n
 		"wind":
 			var a := arrow(ev.get("dir"), yaw)
 			return "돌풍 %s %d초" % [a, n] if a != "" else ""

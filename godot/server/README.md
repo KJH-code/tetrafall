@@ -30,7 +30,7 @@ JS 화면 파일은 레포 뿌리 `client/`·`shared/`·`node_modules/three` 에
 dotnet run -c Release --project godot/server/src/Tetrafall.Sim -- --rounds 200 --players 2,4   # 옵션은 tools/sim.js 와 같음 (--maps --chars --level --sky --seed --workers --no-mirror --no-log --out --base --mode --hp --hp-mult)
 ```
 
-`--events on` (고도 판 전용, 기본 off): 돌발 이벤트 (블록 폭우·돌풍·보급 — `Game.Events.cs`, 수치 `ConfigEvents.cs`) 를 켠 판. 로그에 `  [이벤트] …` 줄, summary.json `options.events`. 끄면 예전과 같은 판
+`--events on` (고도 판 전용, 기본 off): 돌발 이벤트 (블록 폭우·돌풍·보급·저중력·빙판 — `Game.Events.cs`, 수치 `ConfigEvents.cs`) 를 켠 판. 로그에 `  [이벤트] …` 줄, summary.json `options.events`. 끄면 예전과 같은 판
 
 `--tune <캐릭터.키=값,…>` (고도 판 전용, 예 `--tune ninja.kbTaken=0.95,hook.kbDealt=1.1`): 이 실행의 판들만 캐릭터별 수치를 덮어씀 (`Tune.cs` — 판마다 `new Game(…, tune:)`, 전역 표 `C.*` 는 안 고침). 키 6개: 배율 `kbTaken` (받는 넉백)·`kbDealt` (주는 넉백)·`dmgDealt` (주는 피해 %)·`skillCd` (F 쿨타임)·`ultGain` (필살기 게이지 — 건축가 블록 폭발 패시브 `BUILDER_BLAST_ULT` 는 제외) — 없으면 1, 그리고 `hpMult` (체력전 HP — 배율이 아니라 `HP_CHAR_MULT` 대신 쓰는 값, `--hp-mult` 와 같은 뜻. 같은 캐릭터가 둘 다에 있으면 `--tune` 이 이김). 모르는 캐릭터·키, 0 이하는 종료 코드 1. summary.json `options.tune` (줬을 때만). 안 주면 예전과 같은 판
 

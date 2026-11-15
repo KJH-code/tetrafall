@@ -6,7 +6,7 @@ using Tetrafall.Server;
 namespace Tetrafall.Tests;
 
 // 돌발 이벤트 (고도 판 전용 방 옵션, Game.Events.cs · ConfigEvents.cs): 끄면 예전 판 그대로 (rng 도 안 부름),
-// 켜면 생존·킬 점수전 판 중에 EVENT_GAP_MS 마다 블록 폭우·돌풍·보급 중 하나
+// 켜면 생존·킬 점수전 판 중에 EVENT_GAP_MS 마다 블록 폭우·돌풍·보급·저중력·빙판 중 하나
 public class RoundEventTests
 {
     static readonly double TICK = 1000 / C.TICK_RATE;
@@ -56,6 +56,49 @@ public class RoundEventTests
     static List<JsonElement> EventsOf(Game g, string type) => g.DrainEvents().Select(J).Where(e => e.GetProperty("type").GetString() == type).ToList();
 
     static int AutoCount(Game g) => g.pieces.Count(pc => pc.controller == null && pc.thrownBy == null && !pc.sky && pc.ghostBy == null);
+
+    // 땅에 선 p 가 점프해 땅에 다시 닿을 때까지의 꼭짓점 높이 (뛴 자리 기준). step: 한 틱 (판 중이면 g.Tick, 결과 화면이면 IntegratePlayer 직접)
+    static double JumpApex(Player p, Action step)
+    {
+        double z0 = p.z, top = z0;
+        p.input.jump = true;
+        step();
+        p.input.jump = false;
+        Assert.False(p.grounded);
+        for (int i = 0; i < 10 * C.TICK_RATE && !p.grounded; i++)
+        {
+            top = Math.Max(top, p.z);
+            step();
+        }
+        Assert.True(p.grounded);
+        return top - z0;
+    }
+
+    // 땅에 선 p 에게 넉백 kbx 를 직접 넣고, 0 이 될 때까지 (넉백 감쇠) 간 x 거리. 내내 땅 위
+    const double SLIDE_KB = 5;
+    static double Slide(Player p, Action step)
+    {
+        double x0 = p.x;
+        p.kbx = SLIDE_KB;
+        for (int i = 0; i < 10 * C.TICK_RATE && p.kbx != 0; i++)
+        {
+            step();
+            Assert.True(p.grounded);
+        }
+        Assert.Equal(0, p.kbx);
+        return p.x - x0;
+    }
+
+    // 사람 둘 판의 첫 틱 뒤 (이벤트를 시작할 수 있게), 1번은 가운데에 혼자 (2번은 구석에 비켜 둠)
+    static (Game g, List<string> lines, CountedRng rng, Player a) Solo()
+    {
+        var (g, lines, r) = Humans();
+        g.nextSpawnAt = double.PositiveInfinity;
+        g.Tick(TICK); // 첫 틱이 새 판을 알아챔 → 그 뒤에 이벤트 시작
+        CharKit.Place(g.players[2], 1.5, 1.5);
+        CharKit.Place(g.players[1], g.W / 2.0, g.D / 2.0);
+        return (g, lines, r, g.players[1]);
+    }
 
     [Fact]
     public void 끄면_rng를_안_부르고_스냅샷이_그대로()
@@ -399,6 +442,142 @@ public class RoundEventTests
             Assert.InRange(maxKb, 0.8 * S, 1.2 * S);
             double along = (a.x - ax0) * dx + (a.y - ay0) * dy, free = (b.x - bx0) * dx + (b.y - by0) * dy;
             Assert.True(along > 0 && along < free, $"돌풍 ({dx}, {dy}): 멈췄던 사람 {along}칸 / 안 멈춘 사람 {free}칸");
+        }
+    }
+
+    [Fact]
+    public void 저중력_동안_점프_꼭짓점이_높음()
+    {
+        // 같은 판에서 평소 → 저중력. 꼭짓점 비는 연속식 1/G (2.22) 가 아니라 30Hz 틱 적분이라 약 2.34
+        var (g, _, _, a) = Solo();
+        double cx = g.W / 2.0, cy = g.D / 2.0;
+        // 맞고 뜬 사람: 위로 vz·옆으로 kbx 를 직접 넣고 땅에 닿을 때까지 간 x 거리
+        double Fly()
+        {
+            CharKit.Place(a, cx - 2, cy);
+            a.vz = 6;
+            a.kbx = 4;
+            a.grounded = false;
+            double x0 = a.x;
+            for (int i = 0; i < 10 * C.TICK_RATE && !a.grounded; i++) g.Tick(TICK);
+            Assert.True(a.grounded);
+            return a.x - x0;
+        }
+        Assert.Equal(1, g.GravityMult());
+        double normal = JumpApex(a, () => g.Tick(TICK));
+        double normalFly = Fly();
+        g.StartRoundEvent("lowgrav");
+        Assert.Equal(C.EVENT_LOWGRAV_G, g.GravityMult());
+        Assert.Equal(1, g.GroundDampMult());
+        CharKit.Place(a, cx, cy);
+        double low = JumpApex(a, () => g.Tick(TICK));
+        double lowFly = Fly();
+        Assert.True(g.RoundEventActive()); // 내내 저중력 안
+        Assert.InRange(low / normal, 2.1, 2.5);
+        Assert.True(lowFly > 1.3 * normalFly, $"맞고 뜬 거리 저중력 {lowFly} / 평소 {normalFly}");
+    }
+
+    [Fact]
+    public void 빙판_동안_땅_넉백이_2배_넘게_미끄러짐()
+    {
+        var (g, _, _, a) = Solo();
+        double cx = g.W / 2.0, cy = g.D / 2.0;
+        var b = g.players[2];
+        Assert.Equal(1, g.GroundDampMult());
+        CharKit.Place(a, cx - 2, cy);
+        double normal = Slide(a, () => g.Tick(TICK));
+        g.StartRoundEvent("ice");
+        Assert.Equal(C.EVENT_ICE_DAMP, g.GroundDampMult());
+        Assert.Equal(1, g.GravityMult());
+        CharKit.Place(a, cx - 2, cy);
+        double ice = Slide(a, () => g.Tick(TICK));
+        Assert.True(normal > 0);
+        Assert.True(ice >= 2 * normal, $"미끄러진 거리 빙판 {ice} / 평소 {normal}");
+        // 공중 넉백 감쇠는 그대로 (빙판은 땅에 섰을 때만)
+        Assert.True(g.RoundEventActive());
+        CharKit.Place(b, 1.5, 1.5, z: 8);
+        b.grounded = false;
+        b.kbx = 3;
+        g.Tick(TICK);
+        Assert.False(b.grounded);
+        Assert.Equal(3 * Math.Exp(-C.KB_DAMPING_AIR * TICK / 1000), b.kbx, 9);
+    }
+
+    [Fact]
+    public void 판이_끝나면_중력_감쇠가_원래대로()
+    {
+        // UpdateRoundEvents 는 판이 끝난 틱에 바로 돌아가 evKind 가 결과 화면·다음 판 첫 틱까지 남음 → 배율은 RoundEventActive 로 거름.
+        // 결과 화면엔 Tick 이 물리를 안 돌려 IntegratePlayer 를 직접 부름 (틱과 같은 dt)
+        (double apex, double slide) Measure(Game g, Action step)
+        {
+            var a = g.players[1];
+            CharKit.Place(g.players[2], 1.5, 1.5);
+            CharKit.Place(a, g.W / 2.0, g.D / 2.0);
+            double apex = JumpApex(a, step);
+            CharKit.Place(a, g.W / 2.0 - 2, g.D / 2.0);
+            return (apex, Slide(a, step));
+        }
+        var (g0, _, _, _) = Solo();
+        var normal = Measure(g0, () => g0.Tick(TICK)); // 평소: 이벤트 없는 판 중
+        foreach (string kind in new[] { "lowgrav", "ice" })
+        {
+            var (g, _, _, _) = Solo();
+            g.StartRoundEvent(kind);
+            g.Tick(TICK);
+            Assert.True(g.RoundEventActive());
+            Assert.NotEqual(1, kind == "lowgrav" ? g.GravityMult() : g.GroundDampMult());
+            g.EndRound(null);
+            Assert.Equal("over", g.phase);
+            Assert.True(g.evKind == kind && g.time < g.evEndsAt); // 지난 이벤트가 아직 남아 있지만
+            Assert.False(g.RoundEventActive());
+            Assert.Equal(1, g.GravityMult());
+            Assert.Equal(1, g.GroundDampMult());
+            var over = Measure(g, () => g.IntegratePlayer(g.players[1], TICK / 1000));
+            Assert.Equal(normal.apex, over.apex, 9);
+            Assert.Equal(normal.slide, over.slide, 9);
+            // 다음 판 첫 틱 전 (카운트다운 0 → 바로 playing): 첫 틱에선 물리가 UpdateRoundEvents (지난 것 비우기) 보다 먼저 돎
+            Assert.True(g.StartRound());
+            Assert.Equal("playing", g.phase);
+            Assert.True(g.evKind == kind && g.time < g.evEndsAt);
+            Assert.Equal(1, g.GravityMult());
+            Assert.Equal(1, g.GroundDampMult());
+            foreach (var p in g.Players()) p.shieldUntil = double.PositiveInfinity;
+            g.nextSpawnAt = double.PositiveInfinity;
+            var next = Measure(g, () => g.Tick(TICK));
+            Assert.Null(g.evKind);
+            Assert.Equal(normal.apex, next.apex, 9);
+            Assert.Equal(normal.slide, next.slide, 9);
+        }
+    }
+
+    [Fact]
+    public void 새_종류_이벤트_로그_스냅샷()
+    {
+        foreach (var (kind, name, ms) in new[] { ("lowgrav", "저중력", C.EVENT_LOWGRAV_MS), ("ice", "빙판", C.EVENT_ICE_MS) })
+        {
+            var (g, lines, r, _) = Solo();
+            g.DrainEvents();
+            int calls = r.calls;
+            g.StartRoundEvent(kind);
+            Assert.Equal(calls, r.calls); // rng 안 씀
+            var ev = Assert.Single(EventsOf(g, "roundEvent"));
+            Assert.Equal(kind, ev.GetProperty("kind").GetString());
+            Assert.Equal(ms, ev.GetProperty("ms").GetDouble());
+            Assert.False(ev.TryGetProperty("dir", out _));
+            Assert.Contains($"  [이벤트] {name} 6초", lines);
+            Assert.True(g.RoundEventActive());
+            Assert.Equal(kind, g.evKind);
+            var re = J(g.Snapshot()).GetProperty("roundEvent");
+            Assert.Equal(kind, re.GetProperty("kind").GetString());
+            Assert.InRange(re.GetProperty("left").GetDouble(), 1, ms);
+            Assert.Equal(JsonValueKind.Null, re.GetProperty("dir").ValueKind);
+            // 끝나면 스냅샷에서 빠지고 배율도 1
+            Run(g, ms + 2 * TICK);
+            Assert.Equal("playing", g.phase);
+            Assert.False(g.RoundEventActive());
+            Assert.False(J(g.Snapshot()).TryGetProperty("roundEvent", out _));
+            Assert.Equal(1, g.GravityMult());
+            Assert.Equal(1, g.GroundDampMult());
         }
     }
 

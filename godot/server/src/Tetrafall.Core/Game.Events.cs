@@ -3,18 +3,27 @@ using Tetrafall.Core.Js;
 namespace Tetrafall.Core;
 
 // 돌발 이벤트 (고도 판 전용, 방 옵션 roundEvents — 기본 끔): 생존·킬 점수전 판 중에 EVENT_GAP_MS 마다 짧은 이벤트 하나.
-// 블록 폭우 (rain: 자동 블록이 상한을 넘겨 쏟아짐) · 돌풍 (wind: 필드 위 모두가 한쪽으로 밀림) · 보급 (supply: 아이템 몇 개).
+// 블록 폭우 (rain: 자동 블록이 상한을 넘겨 쏟아짐) · 돌풍 (wind: 필드 위 모두가 한쪽으로 밀림) · 보급 (supply: 아이템 몇 개) ·
+// 저중력 (lowgrav: 높이 뛰고 맞으면 멀리 날아감) · 빙판 (ice: 땅에서 맞으면 멀리 미끄러짐). 저중력·빙판은 IntegratePlayer 가
+// GravityMult·GroundDampMult 로 배율만 받음. 봇은 이 둘을 모름 (점프 도달·낙하 시간 추정은 평소 중력 그대로) — 판정 특혜 없음.
 // 끄면 Tick 이 여기를 안 불러 rng 도 안 씀 → 예전 판 (34판 해시·JS 정답 자료) 과 글자까지 같음. 수치는 ConfigEvents.cs
 public sealed partial class Game
 {
     double evRoundStart = double.NaN; // 마지막으로 본 roundStartTime (바뀌면 새 판 — Game.Round.cs 를 안 고치려고 여기서 알아챔)
     public double evNextAt; // 다음 이벤트 시각
-    public string? evKind; // 진행 중인 이벤트 (rain | wind). 보급은 그 자리에서 끝나 안 남음
+    public string? evKind; // 진행 중인 이벤트 (rain | wind | lowgrav | ice). 보급은 그 자리에서 끝나 안 남음
     public double evEndsAt;
     public XY? evDir; // 돌풍 방향 (단위 벡터)
     double evRainNextAt; // 블록 폭우: 다음 블록 시각
 
-    static readonly Dictionary<string, string> EVENT_LOG = new() { ["rain"] = "블록 폭우", ["wind"] = "돌풍", ["supply"] = "보급" };
+    static readonly Dictionary<string, string> EVENT_LOG = new()
+    {
+        ["rain"] = "블록 폭우",
+        ["wind"] = "돌풍",
+        ["supply"] = "보급",
+        ["lowgrav"] = "저중력",
+        ["ice"] = "빙판",
+    };
 
     // 돌발 이벤트 켜고 끄기 (판 사이에만, 연습 방은 안 됨 — SetHpMode 와 같은 규칙)
     public bool SetRoundEvents(bool on)
@@ -32,6 +41,12 @@ public sealed partial class Game
     // 스냅샷에 실을 진행 중 이벤트가 있는지. evRoundStart 가 이번 판 것이어야 함 — 카운트다운 0 이면 새 판 첫 틱 전
     // 스냅샷에 지난 판 이벤트가 남던 것을 막음 (새 판인지는 틱 안 UpdateRoundEvents 만 알아챔)
     public bool RoundEventActive() => roundEvents && phase == "playing" && evRoundStart == roundStartTime && evKind != null && time < evEndsAt;
+
+    // 저중력: 플레이어 중력 배율 (IntegratePlayer). 빙판: 땅 넉백 감쇠 배율 (IntegratePlayer, 땅에 섰을 때만). 아니면 1.
+    // evKind 만 보면 안 됨 — UpdateRoundEvents 는 판이 끝난 틱에 바로 돌아가 evKind 가 결과·대기실·다음 판 첫 틱까지 남음.
+    // RoundEventActive 가 판 단계·이번 판 것인지·남은 시간까지 봄
+    public double GravityMult() => evKind == "lowgrav" && RoundEventActive() ? C.EVENT_LOWGRAV_G : 1;
+    public double GroundDampMult() => evKind == "ice" && RoundEventActive() ? C.EVENT_ICE_DAMP : 1;
 
     // 틱마다 (roundEvents 켰을 때만 Tick 이 부름): 시각이 되면 이벤트 하나 고르고, 진행 중인 것을 돌림
     public void UpdateRoundEvents(double dtMs)
@@ -76,7 +91,7 @@ public sealed partial class Game
         else if (evKind == "wind" && evDir != null)
         {
             // 돌풍: 넉백 속도에 조금씩 더함. 넉백은 틱마다 exp(-k·dt) 로 줄어드니 (땅 6, 공중 1.2) k 를 곱해 넣어야
-            // 땅에서도 공중에서도 흐르는 빠르기가 약 EVENT_WIND_SPEED 로 같아짐.
+            // 땅에서도 공중에서도 흐르는 빠르기가 약 EVENT_WIND_SPEED 로 같아짐 (이벤트는 한 번에 하나라 빙판 배율과 안 겹침).
             // 히트스톱 (freezeUntil) 중인 사람은 건너뜀: IntegratePlayer 가 멈춤 동안 감쇠 전에 돌아가서 그동안 더한 바람이 안 줄고 쌓임
             double dt = dtMs / 1000;
             foreach (var p in Players())
@@ -104,6 +119,17 @@ public sealed partial class Game
                 Emit(o => o.P("type", "roundEvent").P("kind", kind).P("ms", C.EVENT_RAIN_MS));
                 Log($"  [이벤트] {EVENT_LOG[kind]} {JsNumber.ToJs(C.EVENT_RAIN_MS / 1000)}초");
                 break;
+            case "lowgrav":
+            case "ice":
+            {
+                // 저중력·빙판: 시간 동안 배율만 (GravityMult·GroundDampMult). 틱마다 할 일은 없음
+                double ms = kind == "lowgrav" ? C.EVENT_LOWGRAV_MS : C.EVENT_ICE_MS;
+                evKind = kind;
+                evEndsAt = time + ms;
+                Emit(o => o.P("type", "roundEvent").P("kind", kind).P("ms", ms));
+                Log($"  [이벤트] {EVENT_LOG[kind]} {JsNumber.ToJs(ms / 1000)}초");
+                break;
+            }
             case "wind":
             {
                 var d = dir ?? new XY(1, 0);
