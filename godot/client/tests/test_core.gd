@@ -314,12 +314,28 @@ func test_net_silent_from_open() -> void:
 	n.free()
 
 
-# 끊긴 까닭 글 (닫기 코드): 1001 (C# 서버를 끔 — WsSocket.Bye) 만 '서버가 꺼짐', 보통 닫힘 1000·비정상 1006·코드 없음 -1 은 '서버 연결 끊김'
+# 끊긴 까닭 글 (닫기 코드 + 까닭 글): 1001 + "server shutdown" (C# 서버를 끔 — WsSocket.Bye) 만 '서버가 꺼짐'. 다른 까닭의 1001 (프록시·터널의 Going Away),
+# 보통 닫힘 1000·비정상 1006·코드 없음 -1 은 '서버 연결 끊김' (사이클 5 리뷰 F2 — 예전엔 코드만 봄)
 func test_net_lost_reason() -> void:
-	check(NetScript.lost_reason(1001) == NetScript.LOST_SHUTDOWN, "1001 → %s" % NetScript.lost_reason(1001))
+	var why := NetScript.SHUTDOWN_CLOSE_REASON
+	check(why == "server shutdown", "까닭 글: %s" % why)
+	check(NetScript.is_shutdown(1001, why) and NetScript.lost_reason(1001, why) == NetScript.LOST_SHUTDOWN, "1001 + 끄기 → %s" % NetScript.lost_reason(1001, why))
 	check(NetScript.LOST_SHUTDOWN == "서버가 꺼짐", "글: %s" % NetScript.LOST_SHUTDOWN)
+	for r in ["", "going away", "Server Shutdown", "server shutdown "]:
+		check(not NetScript.is_shutdown(1001, r) and NetScript.lost_reason(1001, r) == NetScript.LOST_CLOSED, "1001 + '%s' → %s" % [r, NetScript.lost_reason(1001, r)])
 	for code in [1000, 1006, -1, 1011]:
-		check(NetScript.lost_reason(code) == NetScript.LOST_CLOSED, "%d → %s" % [code, NetScript.lost_reason(code)])
+		check(not NetScript.is_shutdown(code, why) and NetScript.lost_reason(code, why) == NetScript.LOST_CLOSED, "%d → %s" % [code, NetScript.lost_reason(code, why)])
+
+
+# 클라 상수가 C# 서버 소스와 같은 글인지 (test_complete.gd 처럼 서버 소스를 읽음): 닫기 까닭 글 (WsSocket.cs CloseOutputAsync) · 끄기 left 이유 (Rooms.cs SHUTDOWN_REASON)
+func test_shutdown_consts_match_server() -> void:
+	var dir := ProjectSettings.globalize_path("res://").path_join("../server/src/Tetrafall.Server/")
+	var ws := FileAccess.get_file_as_string(dir.path_join("WsSocket.cs"))
+	var rooms := FileAccess.get_file_as_string(dir.path_join("Rooms.cs"))
+	check(ws != "" and rooms != "", "서버 소스를 읽음 (%s)" % dir)
+	check(ws.contains("CloseOutputAsync(WebSocketCloseStatus.EndpointUnavailable, \"%s\"" % NetScript.SHUTDOWN_CLOSE_REASON), "WsSocket.cs 닫기 까닭 글 = '%s'" % NetScript.SHUTDOWN_CLOSE_REASON)
+	check(rooms.contains("public const string SHUTDOWN_REASON = \"%s\";" % StoreScript.LEFT_SHUTDOWN), "Rooms.cs SHUTDOWN_REASON = '%s'" % StoreScript.LEFT_SHUTDOWN)
+	check(int(NetScript.CLOSE_GOING_AWAY) == 1001, "Going Away = EndpointUnavailable 1001")
 
 
 # 서버를 끔: 붙은 뒤 서버 쪽 소켓 (TCPServer + WebSocketPeer, test_net_silent_from_open 과 같은 모양) 이 left 를 보내고 틈 뒤 닫기 1001
@@ -369,7 +385,8 @@ func test_net_server_shutdown_close() -> void:
 	check(n.reconnecting and n.lost == NetScript.LOST_SHUTDOWN, "다시 붙기 시작, 까닭 %s" % n.lost)
 	check(not texts.is_empty() and str(texts.back()).begins_with("서버가 꺼짐 — "), "상태 글: %s" % str(texts))
 	check(n.ping_text().begins_with("연결 끊김"), "핑 자리 글: %s" % n.ping_text())
-	check(n.ping_text() == "연결 끊김 · 다시 연결 중 0", "아직 다시 붙어 보기 전: %s" % n.ping_text())
+	check(n.ping_text() == "연결 끊김 · 다시 연결 중", "아직 다시 붙어 보기 전엔 숫자 없음 (상태 글과 같게, ' 0' 아님): %s" % n.ping_text())
+	check(n.ping_value() == NetScript.PING_LOST, "성능 판 핑 값: %s" % n.ping_value())
 	# 다시 붙어 보기 (서버가 다시 켜진 셈 — 같은 리스너): 시도 글도 같은 까닭, 횟수가 핑 자리에
 	n.retry_at = 0.0
 	step.call()
@@ -456,6 +473,89 @@ func test_store_dead_room_exit() -> void:
 	s._on_message({"type": "state", "phase": "lobby", "players": [], "time": 1.0, "recvAt": 1.0})
 	check(s.state.is_empty(), "방 밖에서 온 남은 스냅샷은 버림")
 	s.free()
+
+
+# 서버를 끈 닫기 → Store (사이클 5 리뷰 F2): 서버 쪽 소켓 (TCPServer + WebSocketPeer) 이 left·닫기를 보내고, 클라 (Net 시험용 + Store 시험용, 신호를 직접 이음) 를 돌림.
+# send_left: 서버가 left 를 먼저 보냄, gap: left 와 닫기 사이에 클라가 poll 함 (서버 틈이 지켜진 경우) — false 면 둘 다 클라 버퍼에 쌓인 뒤 처음 poll.
+# 반환 {left: left_room 이유들, read_left: Net 이 left 를 읽었나, in_room, lost, reconnecting}
+func _shutdown_run(send_left: bool, gap: bool, reason: String) -> Dictionary:
+	var tcp := TCPServer.new()
+	check(tcp.listen(0, "127.0.0.1") == OK, "WebSocket 리스너")
+	var peers: Array = []
+	var n = NetScript.new() # 트리에 안 넣음 (_process 없음 — 프레임은 아래에서 직접)
+	var s = _store_in_room() # 트리에 안 넣음 → 자동 로드 Net 대신 이 n 의 신호를 직접 이음
+	var out := {"left": [], "read_left": false}
+	s.left_room.connect(func(r): out.left.append(r))
+	n.message.connect(func(m):
+		if m.get("type") == "left":
+			out.read_left = true
+		s._on_message(m))
+	n.server_shutdown.connect(s._on_server_shutdown)
+	var serve := func() -> void:
+		while tcp.is_connection_available():
+			var p := WebSocketPeer.new()
+			p.accept_stream(tcp.take_connection())
+			peers.append(p)
+		for p in peers:
+			p.poll()
+	n.start("ws://127.0.0.1:%d" % tcp.get_local_port())
+	for i in 400: # 최대 약 2초
+		serve.call()
+		n._prof_process(0.0)
+		OS.delay_msec(5)
+		if n.is_open():
+			break
+	check(n.is_open() and peers.size() == 1, "붙음 (상태 %d)" % n.ws.get_ready_state())
+	if send_left:
+		for p in peers:
+			p.send_text(JSON.stringify({"type": "left", "reason": StoreScript.LEFT_SHUTDOWN}))
+		if gap:
+			for i in 400:
+				serve.call()
+				n._prof_process(0.0)
+				OS.delay_msec(5)
+				if out.read_left:
+					break
+	for p in peers:
+		p.close(1001, reason)
+	for i in 10: # 서버 쪽만 돌려 left·닫기 프레임을 다 내보냄 (그동안 클라는 poll 안 함 — 창 끌기·로딩·백그라운드 탭)
+		serve.call()
+		OS.delay_msec(5)
+	for i in 400:
+		n._prof_process(0.0)
+		if n.reconnecting:
+			break
+		serve.call()
+		OS.delay_msec(5)
+	out["in_room"] = s.in_room()
+	out["cleared"] = _store_cleared(s)
+	out["lost"] = n.lost
+	out["reconnecting"] = n.reconnecting
+	n._discard()
+	for p in peers:
+		p.close(-1)
+	tcp.stop()
+	n.free()
+	s.free()
+	return out
+
+
+func test_store_server_shutdown_close() -> void:
+	var why := NetScript.SHUTDOWN_CLOSE_REASON
+	# left 와 닫기가 한 poll 에: 고도는 left 를 못 읽고 바로 CLOSED (읽혀도 같은 이유 한 번) → 방을 비우고 끄기 문구로 메뉴
+	var r := _shutdown_run(true, false, why)
+	check(r.cleared and r.left == [StoreScript.LEFT_SHUTDOWN], "한 poll 에 left + 1001 → 방 비움 + 끄기 문구 한 번: %s (left 읽음 %s)" % [str(r.left), r.read_left])
+	check(r.reconnecting and r.lost == NetScript.LOST_SHUTDOWN, "다시 붙기는 그대로 (%s, %s)" % [r.reconnecting, r.lost])
+	# left 없이 닫기만 (left 를 잃음): 닫기만으로 방을 비움 — 예전엔 다시 붙기를 다 쓸 때까지 (약 60초) 방에 갇혔음
+	r = _shutdown_run(false, false, why)
+	check(not r.read_left and r.cleared and r.left == [StoreScript.LEFT_SHUTDOWN], "닫기만 → 방 비움 + 끄기 문구: %s" % str(r.left))
+	# 틈이 지켜져 left 를 먼저 읽음: left 로 방 밖 → 닫기는 아무 일 없음 (left_room 한 번)
+	r = _shutdown_run(true, true, why)
+	check(r.read_left and r.cleared and r.left == [StoreScript.LEFT_SHUTDOWN], "left 먼저 → left_room 한 번: %s" % str(r.left))
+	# 같은 1001 이라도 까닭 글이 다르면 (프록시·터널의 Going Away): 방에 남고 다시 붙어 자리 토큰으로 돌아감 ('서버 연결 끊김')
+	r = _shutdown_run(false, false, "going away")
+	check(r.in_room and r.left.is_empty(), "다른 까닭의 1001 → 방에 남음: %s" % str(r.left))
+	check(r.reconnecting and r.lost == NetScript.LOST_CLOSED, "다시 붙는 까닭 '서버 연결 끊김' (%s)" % r.lost)
 
 
 # 다시 붙기를 포기하면 (Net.gave_up): 방 안이면 방을 비우고 지금 상태 글을 이유로 메뉴로, 방 밖이면 아무 일 없음

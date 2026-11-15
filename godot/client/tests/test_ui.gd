@@ -88,15 +88,55 @@ func test_lobby_place() -> void:
 	check(U.lobby_place(Vector2(960, 540), Vector2(380, 1.0e6)).scale == U.LOBBY_SCALE_MIN, "아주 큰 내용")
 
 
-# 접속 상태 글 자리 (고도 판 전용, ui.gd status): 판 HUD 가 보이면 왼쪽 위 판 시간 (hud.gd timer_label (14, 12) 글자 26 + 위아래 여백 3,
-# 높이 약 40) 아래로 — 판 중 끊김 글이 시간과 겹치던 것. 그 밖 (메뉴·대기실·결과) 은 예전 자리 그대로
+# 접속 상태 글 자리 (고도 판 전용, ui.gd status): 판 HUD 가 보이면 왼쪽, 판 시간 (hud.gd timer_label (14, 12) 글자 26 + 위아래 여백 3,
+# 아래 끝 약 52) 과 위 가운데 튜토리얼 진행 띠 (tutorial_ui.gd top y 58, 아래 끝 약 97 — 실제 글꼴로 잼) 아래 + 어두운 반투명 받침
+# (사이클 5 리뷰 F3: 예전 (16, 64) 은 띠·블록 마스터 배너 (top_box y 62) 와 겹쳤음). 그 밖 (메뉴·대기실·결과) 은 예전 자리 그대로, 받침 투명
 func test_status_pos() -> void:
+	const TIMER_BOTTOM := 52.0
+	const BAND_TOP := 58.0
+	const BAND_BOTTOM := 97.0
 	var game := U.status_pos(true)
 	var other := U.status_pos(false)
-	check(game.y > 52.0, "판 중엔 판 시간 아래: %s" % str(game))
-	check(game == Vector2(16, 64), "판 중 자리: %s" % str(game))
+	var box := U.status_box_pos(true)
+	check(game == Vector2(16, 108), "판 중 자리: %s" % str(game))
+	check(box == game - U.STATUS_PAD and box.y > BAND_BOTTOM and box.y > TIMER_BOTTOM, "판 중 받침 위 끝이 판 시간·튜토리얼 띠 아래: %s" % str(box))
+	check(game.y >= 100.0, "띠 아래 (y ≥ 100): %s" % str(game))
+	check(not (box.y < BAND_BOTTOM and box.y + 30.0 > BAND_TOP), "받침 (글 16 + 여백) 이 띠 높이 구간과 안 겹침")
+	check(box.x >= 0.0 and U.status_box_pos(false).x >= 0.0 and U.status_box_pos(false).y >= 0.0, "받침이 화면 안: %s / %s" % [str(box), str(U.status_box_pos(false))])
 	check(other == Vector2(16, 12), "메뉴·대기실은 예전 자리: %s" % str(other))
+	check(U.status_box_pos(false) == other - U.STATUS_PAD, "메뉴 받침도 글 자리에서 여백만큼 바깥 (글은 예전 자리)")
 	check(game.x == other.x, "왼쪽 끝은 같음")
+	check(U.status_back(true) == U.STATUS_BACK and U.STATUS_BACK.a >= 0.5 and U.STATUS_BACK.get_luminance() < 0.2, "판 중 받침은 어두운 반투명: %s" % str(U.STATUS_BACK))
+	check(U.status_back(false).a == 0.0, "판 밖은 받침 없음")
+
+
+# 판 중 받침이 가운데 위 알림 칸 (hud_extra top_box) 을 피함 (사이클 5 테스트 실패: 960 폭 블록 마스터 본인의 두 줄 배너 x 약 218~742,
+# y 68~126 이 받침 (8~280, 104~130) 오른쪽 끝과 겹쳐 둘째 줄을 가림): 겹치면 그 칸 아래로 STATUS_GAP 띄워 내림, 안 겹치면 그대로
+func test_status_avoids_top_box() -> void:
+	var size := Vector2(272, 26)
+	var base := U.status_box_pos(true)
+	check(U.status_box_pos(true, size, []) == base, "알림 없으면 기본 자리: %s" % str(U.status_box_pos(true, size, [])))
+	var banner := Rect2(218, 68, 524, 58) # 마스터 두 줄 배너 (960 폭)
+	var p := U.status_box_pos(true, size, [banner])
+	check(p.x == base.x and is_equal_approx(p.y, banner.end.y + U.STATUS_GAP), "두 줄 배너 아래로 띄움만큼: %s" % str(p))
+	check(not Rect2(p, size).intersects(banner.grow(U.STATUS_GAP)), "내린 받침은 배너 (+띄움) 와 안 겹침")
+	# 가운데 좁은 칸 (받침 오른쪽 끝 + 띄움보다 오른쪽) 은 가로로 안 겹쳐 그대로
+	check(U.status_box_pos(true, size, [Rect2(base.x + size.x + U.STATUS_GAP + 1.0, 68, 360, 58)]) == base, "가로로 안 겹치면 그대로")
+	# 평행사변형 기울기로 몇 px 삐져나오는 몫: 받침 오른쪽 끝 + 띄움 안이면 피함
+	var edge := Rect2(base.x + size.x + U.STATUS_GAP - 1.0, 90, 300, 30)
+	check(U.status_box_pos(true, size, [edge]).y > base.y, "띄움 안쪽으로 다가온 칸도 피함")
+	# 여러 칸이 쌓임 (배너 + 경고 + 토스트): 내려간 뒤 또 겹치면 또 내림, 순서 상관없이 다 피함
+	var danger := Rect2(150, 132, 660, 40)
+	var toast := Rect2(200, 178, 560, 30)
+	for avoid in [[banner, danger, toast], [toast, danger, banner]]:
+		var q := U.status_box_pos(true, size, avoid)
+		var clear := true
+		for r in avoid:
+			clear = clear and not Rect2(q, size).intersects((r as Rect2).grow(U.STATUS_GAP))
+		check(clear and is_equal_approx(q.y, toast.end.y + U.STATUS_GAP), "쌓인 칸을 다 피함: %s" % str(q))
+	# 판 밖 (메뉴·대기실·결과) 은 알림을 안 봄, 받침 크기 0 이면 안 내림
+	check(U.status_box_pos(false, size, [Rect2(0, 0, 960, 540)]) == U.status_box_pos(false), "판 밖은 그대로")
+	check(U.status_box_pos(true, Vector2.ZERO, [banner]) == base, "크기 0 이면 그대로")
 
 
 # 방 옵션 꼬리 (손님 대기실 줄·공개 방 목록): 켠 것만, 순서 고정.

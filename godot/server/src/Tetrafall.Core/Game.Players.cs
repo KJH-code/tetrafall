@@ -193,6 +193,7 @@ public sealed partial class Game
     {
         if (InRound() || !C.MODE_NAMES.ContainsKey(m) || mode == m) return false;
         mode = m;
+        tune = tuneBase?.For(mode); // 대기실 HpMax (스냅샷 players[].hpMax) 도 새 모드 표로 (Game.cs tune)
         Log($"[호스트] 모드: {C.MODE_NAMES[m]}");
         if (m == "master" && teamMode)
         {

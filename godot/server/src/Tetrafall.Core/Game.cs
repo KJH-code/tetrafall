@@ -84,7 +84,8 @@ public sealed partial class Game
     public bool gridDirty = true;
     List<string> events = new(); // 이벤트는 만들 때 JSON 글자로 (스냅샷에 그대로 붙임)
     public readonly Tune? tuneBase; // 방·sim 이 준 캐릭터별 조정 (Tune.cs, 모드 덮기 포함). null 이면 곱하지 않음 — 예전과 비트까지 같음
-    public Tune? tune; // 이번 판에 쓰는 표 = tuneBase.For(mode) (StartRound 가 고름, 판 중엔 모드를 못 바꿔 안 바뀜). 그 전엔 tuneBase
+    public Tune? tune; // 지금 모드의 표 = tuneBase.For(mode): 모드가 바뀌는 곳 (SetMode·StartPractice) 과 StartRound 가 고름 — 판 밖 대기실 HpMax 도
+                       // 고른 모드 표 (사이클 5 리뷰 F6). 판 중엔 모드를 못 바꿔 안 바뀜. 덮기 없는 모드면 tuneBase 그대로
 
     // countdownMs: 판 시작 전 카운트다운 (서버 C.ROUND_COUNTDOWN_MS, 테스트 기본 0). characters·skyStairs·hpMode: JS 옵션과 같음. tune: 고도 판 전용
     public Game(Action<string>? log = null, bool characters = false, bool skyStairs = false, double countdownMs = 0, bool hpMode = false, Tune? tune = null)
@@ -95,7 +96,7 @@ public sealed partial class Game
         this.skyStairs = skyStairs;
         this.hpMode = hpMode;
         tuneBase = tune;
-        this.tune = tune;
+        this.tune = tune?.For(mode); // 처음 모드 (MODE_DEFAULT) 의 표
         grid = new byte[W * D * H];
         gridPiece = new int[grid.Length];
     }

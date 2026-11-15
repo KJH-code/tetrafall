@@ -2,6 +2,7 @@
 extends RefCounted
 
 const PC := preload("res://ui/perf_calc.gd")
+const NetScript := preload("res://core/net.gd")
 
 var errors: Array = []
 
@@ -61,3 +62,21 @@ func test_prof_off_is_free() -> void:
 	check(PC.sec.has("grid"), "켜면 잼")
 	PC.on = false
 	PC.sec = {}
+
+
+# 끊긴 동안 성능 판·복사 한 줄의 핑 자리 (사이클 5 리뷰 F4): perf.gd 는 Net.ping_value (핑 값만 — 다시 붙는 중이면 '끊김') 를 씀.
+# 예전엔 ping_text 에서 '핑 ' 을 지워 '핑 연결 끊김 · 다시 연결 중 3' 이 됐음
+func test_perf_ping_while_reconnecting() -> void:
+	var n = NetScript.new() # 트리에 안 넣음 (접속 안 함)
+	var s := PC.PerfWindow.new().summary(1000.0)
+	for t in [0, 3]:
+		n.reconnecting = true
+		n.tries = t
+		check(n.ping_value() == NetScript.PING_LOST and NetScript.PING_LOST == "끊김", "다시 붙는 중 핑 값: %s" % n.ping_value())
+		var line := PC.perf_line(s, {"ping": n.ping_value()})
+		check(line.ends_with(" · 핑 끊김") and not line.contains("핑 연결 끊김") and not line.contains("다시 연결 중"), "복사 한 줄: %s" % line)
+	n.reconnecting = false
+	check(n.ping_value() == "…" and n.ping_text() == "핑 " + n.ping_value(), "붙어 있으면 핑 글 = '핑 ' + 값: %s / %s" % [n.ping_text(), n.ping_value()])
+	var src := FileAccess.get_file_as_string("res://ui/perf.gd")
+	check(src.contains("Net.ping_value()") and not src.contains("ping_text"), "perf.gd 는 ping_value 를 씀 (ping_text 를 고쳐 쓰지 않음)")
+	n.free()

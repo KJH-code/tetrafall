@@ -23,6 +23,7 @@ public sealed partial class Game
     public bool StartPractice()
     {
         mode = "practice";
+        tune = tuneBase?.For(mode); // 모드가 바뀌면 표도 (Game.cs tune — StartRound 가 못 열어도 맞게)
         practice = new PracticeToggles { noCooldown = false, fullUlt = false, noBlocks = true, noDeath = true };
         skyStairs = false;
         hpMode = false; // 연습·튜토리얼은 체력전 없음

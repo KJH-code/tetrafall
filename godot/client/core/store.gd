@@ -12,6 +12,8 @@ const Seat := preload("res://core/seat.gd")
 # 방 안에서 joinError 를 받아 메뉴로 갈 때 이유 앞머리: 이유와 상관없는 말 (서버 이유가 '그런 방이 없습니다'·'꽉 찼습니다' 를 이미 말함).
 # 서버 메시지에 이유 종류를 따로 넣지 않음 — JS 서버에도 붙으니 이유 글만 씀
 const LEFT_BACK_FAILED := "방으로 돌아가지 못했습니다 — "
+# 서버를 끈 닫기 (Net.server_shutdown) 로 방을 비울 때 이유: C# Rooms.SHUTDOWN_REASON (서버가 보내는 left 의 이유) 와 같은 글 — tests/test_core.gd 가 서버 소스와 맞춰 봄
+const LEFT_SHUTDOWN := "서버를 껐습니다 — 호스트가 다시 켜면 새로 들어오세요"
 
 signal rooms_changed(list: Dictionary) # 공개 방 목록 {rooms, count, max}
 signal joined(room: Dictionary, rejoined: bool) # 방에 들어감 (welcome)
@@ -39,6 +41,7 @@ func _ready() -> void:
 	Net.message.connect(_on_message)
 	Net.opened.connect(_on_opened)
 	Net.gave_up.connect(_on_gave_up)
+	Net.server_shutdown.connect(_on_server_shutdown)
 
 
 # ---------- 보내기 (방 밖·방 안 메시지, rooms.js 와 같은 모양) ----------
@@ -122,6 +125,14 @@ func _on_gave_up() -> void:
 	if in_room():
 		pending_code = ""
 		_clear_room(Net.status)
+
+
+# 서버를 끈 닫기 (Net.server_shutdown): 아직 방 안이면 서버의 left 를 못 읽은 것 (한 poll 에 left 와 닫기가 같이 옴) → 같은 이유로 방을 비우고 메뉴로
+# (예전엔 다시 붙기를 다 쓸 때까지 약 60초 대기실·판에 갇힘). left 를 이미 처리했으면 방 밖이라 아무 일 없음
+func _on_server_shutdown() -> void:
+	if in_room():
+		pending_code = ""
+		_clear_room(LEFT_SHUTDOWN)
 
 
 # 들어가기 거절 (joinError) 처리: 방 안에서 받았으면 다시 붙은 뒤 그 방으로 못 돌아간 것 (서버가 다시 켜져 방이 사라짐·자리 유지가 지났는데 방이 꽉 참) → 'left' (방을 비우고 메뉴로),

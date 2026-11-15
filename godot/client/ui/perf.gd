@@ -74,7 +74,7 @@ func _process(_dt: float) -> void:
 func extra() -> Dictionary:
 	var ps: Array = Store.state.get("players", [])
 	var sz := get_viewport().get_visible_rect().size
-	return {"draws": draws, "tris": tris, "players": ps.size(), "rag": 0, "low": bool(View.settings.get("lowGfx", false)), "size": "%d×%d" % [sz.x, sz.y], "gpu": gpu, "ping": Net.ping_text().replace("핑 ", "")}
+	return {"draws": draws, "tris": tris, "players": ps.size(), "rag": 0, "low": bool(View.settings.get("lowGfx", false)), "size": "%d×%d" % [sz.x, sz.y], "gpu": gpu, "ping": Net.ping_value()}
 
 
 func _draw_text(now: float) -> void:

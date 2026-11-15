@@ -26,14 +26,19 @@ const CONNECT_MS := 6000
 const GZIP_ISIZE_BYTES := 4 # gzip 꼬리 ISIZE: 푼 크기 (리틀 엔디언 32비트, RFC 1952)
 const LOST_CLOSED := "서버 연결 끊김" # 끊긴 까닭 글 (상태 글 앞머리)
 const LOST_SILENT := "서버 응답 없음"
-const LOST_SHUTDOWN := "서버가 꺼짐" # 서버가 닫기 코드 1001 로 닫음 (C# 서버를 끔 — Rooms.Shutdown 의 left 다음 WsSocket.Bye)
+const PING_LOST := "끊김" # 성능 판 핑 자리 (ping_value): 다시 붙는 중
+const LOST_SHUTDOWN := "서버가 꺼짐" # 서버가 닫기 코드 1001 + 까닭 글 SHUTDOWN_CLOSE_REASON 로 닫음 (C# 서버를 끔 — Rooms.Shutdown 의 left 다음 WsSocket.Bye)
 const CLOSE_GOING_AWAY := 1001 # WebSocket 닫기 코드 Going Away (서버 EndpointUnavailable)
+# 서버를 끈 닫기의 까닭 글 (C# WsSocket.RunSendLoop CloseOutputAsync 와 같은 글 — tests/test_core.gd 가 서버 소스와 맞춰 봄).
+# 1001 만으로는 안 가름: 프록시·터널도 1001 (Going Away) 로 닫을 수 있음 — 그걸로 방에서 내보내면 안 됨
+const SHUTDOWN_CLOSE_REASON := "server shutdown"
 
 signal opened(reconnect: bool) # 붙음 (reconnect: 끊겼다 다시 붙음)
 signal closed # 끊김 (다시 붙어 보는 중이면 status 로)
 signal message(msg: Dictionary) # 받은 메시지 하나 (msg.recvAt = 받은 로컬 시각 ms)
 signal status_changed(text: String) # 접속 상태 글 (화면 아래 줄 등)
 signal gave_up # 다시 붙기를 NET_RECONNECT_TRIES 번 다 씀 (Store: 방 안이면 방을 비우고 메뉴로). retry() 로 다시 시작
+signal server_shutdown # 서버를 끈 닫기 (is_shutdown) 로 끊김 — closed 다음. Store: 방 안이면 (left 를 못 읽음) 방을 비우고 메뉴로. 다시 붙기는 그대로
 
 var url := ""
 var ws := WebSocketPeer.new()
@@ -111,9 +116,14 @@ static func retry_drops(now: float, connect_at, slack: float) -> bool:
 	return connect_at != null and now - float(connect_at) - slack > C.NET_RECONNECT_MS
 
 
-# 열려 있던 소켓이 닫힌 까닭 글: 닫기 코드 1001 (서버를 끔) 이면 '서버가 꺼짐', 그 밖 (1000·1006·-1 등) 은 '서버 연결 끊김'. 다시 붙기는 어느 쪽이든 같음
-static func lost_reason(code: int) -> String:
-	return LOST_SHUTDOWN if code == CLOSE_GOING_AWAY else LOST_CLOSED
+# 서버를 끈 닫기인지: 닫기 코드 1001 과 까닭 글 SHUTDOWN_CLOSE_REASON 둘 다 (WebSocketPeer get_close_code·get_close_reason)
+static func is_shutdown(code: int, reason: String) -> bool:
+	return code == CLOSE_GOING_AWAY and reason == SHUTDOWN_CLOSE_REASON
+
+
+# 열려 있던 소켓이 닫힌 까닭 글: 서버를 끈 닫기 (is_shutdown) 면 '서버가 꺼짐', 그 밖 (1000·1006·-1·다른 까닭의 1001 등) 은 '서버 연결 끊김'. 다시 붙기는 어느 쪽이든 같음
+static func lost_reason(code: int, reason: String) -> String:
+	return LOST_SHUTDOWN if is_shutdown(code, reason) else LOST_CLOSED
 
 
 # 실제로 붙을 주소 (url·상태 글은 원래 주소 그대로): 웹은 브라우저가 permessage-deflate 를 해 주니 그대로
@@ -216,7 +226,13 @@ func _prof_process(_delta: float) -> void:
 			_drop_stuck(now)
 	elif st == WebSocketPeer.STATE_CLOSED:
 		if was_open:
-			_lost(now, lost_reason(ws.get_close_code()))
+			var code := ws.get_close_code()
+			var why := ws.get_close_reason()
+			_lost(now, lost_reason(code, why))
+			# 서버 틈 (NET_SHUTDOWN_CLOSE_GAP_MS) 동안 한 번도 poll 못 하면 (창 끌기·로딩·백그라운드 탭) left 와 닫기가 한 poll 에 와서
+			# 소켓이 바로 CLOSED — left 는 못 읽음. 그래도 방은 비우게 Store 에 알림 (사이클 5 리뷰 F2)
+			if is_shutdown(code, why):
+				server_shutdown.emit()
 		elif not ever_open and tries == 0 and not reconnecting:
 			_lost(now, LOST_CLOSED)
 		if reconnecting and now >= retry_at:
@@ -311,12 +327,21 @@ func _flush(list: Array) -> void:
 		Prof.add_us("net ·받은 스냅샷 수", 1000 * list.size()) # ms 자리에 '개' (1000µs = 1)
 
 
-# 접속 상태 표시 (client/net.js draw 글자 그대로): "핑 12ms" (+ 서버 느림), 알림 글. 다시 붙는 중이면 지난 핑 대신 "연결 끊김 · 다시 연결 중 3" (시도 횟수)
+# 접속 상태 표시 (client/net.js draw 글자 그대로): "핑 12ms" (+ 서버 느림), 알림 글. 다시 붙는 중이면 지난 핑 대신 "연결 끊김 · 다시 연결 중 3" (시도 횟수).
+# 첫 시도 전 (tries 0 — 끊긴 직후 NET_RECONNECT_MS 동안·처음 접속 실패) 엔 숫자 없이 (상태 글 '… — 다시 연결 중' 과 같게, '… 0' 이 안 보이게)
 func ping_text() -> String:
 	if reconnecting:
-		return "연결 끊김 · 다시 연결 중 %d" % tries
+		return "연결 끊김 · 다시 연결 중" + (" %d" % tries if tries > 0 else "")
+	return "핑 " + ping_value()
+
+
+# 핑 값만 ('핑 ' 앞머리 없이 — 성능 판 perf.gd 가 '핑 …' 을 다시 붙임): "12ms" (+ 서버 느림), 다시 붙는 중이면 PING_LOST
+# (예전엔 perf 가 ping_text 에서 '핑 ' 을 지워 '핑 연결 끊김 · 다시 연결 중 3' 이 됐음)
+func ping_value() -> String:
+	if reconnecting:
+		return PING_LOST
 	var v := meter.view(now_ms())
-	return "핑 %s%s" % [v.ping, (" · 서버 %dms" % v.server) if v.server >= C.NET_SERVER_SLOW_MS else ""]
+	return "%s%s" % [v.ping, (" · 서버 %dms" % v.server) if v.server >= C.NET_SERVER_SLOW_MS else ""]
 
 
 func warn_text() -> String:

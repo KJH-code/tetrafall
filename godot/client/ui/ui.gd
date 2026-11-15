@@ -20,6 +20,8 @@ var results: PanelContainer
 var settings: Control
 var wipe: Control
 var status: Label
+var status_box: PanelContainer # 상태 글 받침 (판 중에만 어두운 반투명 — ui_calc STATUS_BACK)
+var status_style: StyleBoxFlat
 var ping: Label
 var shown := "" # 지금 보이는 화면 (menu·lobby·game·results)
 var target := "" # 바뀌려는 화면 (슬래시가 덮으면 shown 이 됨)
@@ -50,8 +52,19 @@ func _ready() -> void:
 	results = load("res://ui/results.gd").new()
 	root.add_child(results)
 	status = S.label("연결 중...", 16, S.TEXT)
-	status.position = U.status_pos(false)
-	root.add_child(status)
+	status_style = StyleBoxFlat.new()
+	status_style.bg_color = U.status_back(false)
+	status_style.set_corner_radius_all(U.STATUS_RADIUS)
+	status_style.content_margin_left = U.STATUS_PAD.x
+	status_style.content_margin_right = U.STATUS_PAD.x
+	status_style.content_margin_top = U.STATUS_PAD.y
+	status_style.content_margin_bottom = U.STATUS_PAD.y
+	status_box = PanelContainer.new()
+	status_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	status_box.add_theme_stylebox_override("panel", status_style)
+	status_box.position = U.status_box_pos(false)
+	status_box.add_child(status)
+	root.add_child(status_box)
 	ping = S.label("", 12, S.DIM)
 	ping.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
 	ping.position = Vector2(-120, 52)
@@ -70,8 +83,25 @@ func _ready() -> void:
 	wipe = load("res://ui/wipe.gd").new()
 	root.add_child(wipe)
 	wipe.covered.connect(func(): _show(target))
-	Net.status_changed.connect(func(t): status.text = t)
+	Net.status_changed.connect(func(t):
+		status.text = t
+		status_box.reset_size()) # 글이 짧아지면 받침도 줄임
 	_show(_screen_now())
+
+
+# 가운데 위 알림 칸들 (hud_extra top_box: 아이템 시계·배너·이벤트 띠·경고·토스트) 의 화면 사각형 — 판 중 상태 글 받침이 피함 (ui_calc status_box_pos).
+# 시계 줄·토스트 줄은 폭이 판 전체라 그 안의 보이는 칸으로
+func _top_rects() -> Array:
+	var out: Array = []
+	if not hud_extra.visible or not (hud_extra.get("top_box") is Control):
+		return out
+	for c in (hud_extra.get("top_box") as Control).get_children():
+		if not (c is Control and c.visible):
+			continue
+		for x in (c.get_children() if c is BoxContainer else [c]):
+			if x is Control and x.visible and x.size.y > 0.0:
+				out.append((x as Control).get_global_rect())
+	return out
 
 
 func reduced() -> bool:
@@ -129,8 +159,9 @@ func _prof_process(_d: float) -> void:
 	# 다른 화면 (연습 창·튜토리얼 창) 은 'ui_blocker' 무리 + blocking() — 여기서 한 번에 정해야 서로 덮어쓰지 않음
 	var others := get_tree().get_nodes_in_group("ui_blocker").any(func(n): return bool(n.call("blocking")))
 	PlayerInput.ui_blocking = settings.visible or shown in ["menu", "lobby", "results"] or focus is LineEdit or others
-	status.visible = not Net.is_open() # 연결 중·끊김 글만 (판 시간은 HUD)
-	status.position = U.status_pos(hud.visible) # 판 중엔 판 시간 아래 (겹치지 않게)
+	status_box.visible = not Net.is_open() # 연결 중·끊김 글만 (판 시간은 HUD)
+	status_box.position = U.status_box_pos(hud.visible, status_box.size, _top_rects()) # 판 중엔 판 시간·튜토리얼 띠 아래 + 받침, 가운데 위 알림과 겹치면 그 아래
+	status_style.bg_color = U.status_back(hud.visible)
 	var now := _screen_now()
 	if now != target:
 		var kind = U.wipe_kind(target, now)

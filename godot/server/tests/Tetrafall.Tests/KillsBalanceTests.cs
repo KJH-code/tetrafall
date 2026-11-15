@@ -144,7 +144,7 @@ public class KillsBalanceTests
         rooms.Message(conn, J("{\"type\":\"addBot\"}"));
         rooms.Message(conn, J("{\"type\":\"setMode\",\"mode\":\"kills\"}"));
         Assert.Equal("kills", g.mode);
-        Assert.Equal(1.1, g.tune!.KbDealt("ninja")); // 판 전엔 기본 표
+        Assert.Equal(1.6, g.tune!.KbDealt("ninja")); // 모드를 고르면 판 전 (대기실) 에도 그 모드 표 (사이클 5 리뷰 F6 — 예전엔 판 전엔 기본 표)
         rooms.Message(conn, J("{\"type\":\"start\"}"));
         Assert.True(g.InRound());
         Assert.Equal(1.6, g.tune!.KbDealt("ninja"));
@@ -159,6 +159,7 @@ public class KillsBalanceTests
         g.EndRound(null);
         rooms.Message(conn, J("{\"type\":\"setMode\",\"mode\":\"survival\"}"));
         Assert.Equal("survival", g.mode);
+        Assert.True(ReferenceEquals(g.tuneBase, g.tune)); // 판 사이에 바꾸면 그 자리에서 기본 표 (예전엔 다음 판 시작까지 킬 표)
         rooms.Message(conn, J("{\"type\":\"start\"}"));
         Assert.True(g.InRound());
         Assert.Equal(1.1, g.tune!.KbDealt("ninja"));
@@ -175,6 +176,40 @@ public class KillsBalanceTests
         Assert.True(pg.InRound());
         Assert.Null(pg.tune);
         Assert.Null(pg.tuneBase);
+    }
+
+    // 대기실 스냅샷 players[].hpMax 는 지금 고른 모드의 표 (사이클 5 리뷰 F6). 탱크에 킬 점수전만 hpMult 2 (기본 HP_CHAR_MULT 0.7):
+    // 예전엔 tune 이 StartRound 에서만 바뀌어 첫 판 전에 kills 를 고르면 대기실 84 (실제 판 240), kills 판 → 판 끝 → survival 이면 대기실 800 (실제 판 280)
+    [Fact]
+    public void 대기실_hpMax는_지금_고른_모드_표()
+    {
+        var g = new Game(null, characters: true, hpMode: true, tune: Tune.Parse("kills:tank.hpMult=2"));
+        g.AddPlayer(1);
+        g.AddPlayer(2);
+        g.SetChar(1, "tank"); // 처음 캐릭터가 이미 탱크면 false
+        Assert.Equal("tank", g.GetPlayer(1)!.@char);
+        double Lobby() => J(g.Snapshot()).GetProperty("players").EnumerateArray().First(p => p.GetProperty("id").GetInt32() == 1).GetProperty("hpMax").GetDouble();
+        double kills = C.HP_MAX_BY_MODE["kills"] * 2, survival = JsMath.Round(C.HP_MAX_BY_MODE["survival"] * C.HP_CHAR_MULT["tank"]);
+        Assert.Equal(240, kills);
+        Assert.Equal(280, survival);
+        Assert.Equal(survival, Lobby());
+        // 첫 판 전에 kills 를 고름 → 대기실도 판도 240
+        Assert.True(g.SetMode("kills"));
+        Assert.Equal(kills, Lobby());
+        Assert.True(g.StartRound());
+        Assert.Equal(kills, Lobby());
+        // 판 끝 → survival 로 바꿈 → 대기실도 판도 280
+        g.EndRound(null);
+        Assert.Equal(kills, Lobby());
+        Assert.True(g.SetMode("survival"));
+        Assert.Equal(survival, Lobby());
+        Assert.True(g.StartRound());
+        Assert.Equal(survival, Lobby());
+        // 연습으로 들어가도 연습 표 (덮기 없음 = 받은 표): 체력전은 꺼지지만 tune 은 기본 표
+        g.EndRound(null);
+        Assert.True(g.SetMode("kills"));
+        Assert.True(g.StartPractice());
+        Assert.True(ReferenceEquals(g.tuneBase, g.tune));
     }
 
     [Fact]

@@ -46,12 +46,47 @@ const ROOM_OPTS := [["skyStairs", "하늘 계단", ["master"]], ["hpMode", "체�
 
 
 const STATUS_POS := Vector2(16, 12) # 접속 상태 글 (연결 중·끊김 — ui.gd status) 자리: 메뉴·대기실·결과는 왼쪽 위
-const STATUS_POS_GAME := Vector2(16, 64) # 판 HUD 가 보일 때: 왼쪽 위 판 시간 (hud.gd timer_label (14, 12) 글자 26) 아래 — 겹치지 않게
+# 판 HUD 가 보일 때: 왼쪽, 판 시간 (hud.gd timer_label (14, 12) 글자 26 — 아래 끝 약 52) 과 위 가운데 튜토리얼 진행 띠 (tutorial_ui.gd top y 58,
+# 아래 끝 약 97) 아래. 예전 (16, 64) 은 띠·블록 마스터 생존자 배너 (hud_extra top_box y 62) 와 겹쳤음 — 띠 폭이 글 길이 따라 화면 대부분까지 늘어
+# x 만 옮겨서는 못 피함 (사이클 5 리뷰 F3)
+const STATUS_POS_GAME := Vector2(16, 108)
+# 판 중 받침 (상태 글 뒤 어두운 반투명 판): top_box 는 배너·경고·토스트가 쌓이며 아래로 자라 드물게 겹칠 수 있음 — 겹쳐도 글이 읽히게.
+# 메뉴·대기실·결과는 받침 없음 (예전 모양)
+const STATUS_BACK := Color(0.03, 0.04, 0.09, 0.72)
+const STATUS_PAD := Vector2(8, 4) # 받침 안쪽 여백 (좌우, 위아래). 글은 그대로 status_pos 에 — 받침이 여백만큼 바깥으로
+const STATUS_RADIUS := 4 # 받침 모서리 둥글기
+# 가운데 위 알림 칸 (hud_extra top_box) 과 받침 사이 띄움: 칸 사각형을 이만큼 키워 (평행사변형 기울기로 삐져나온 몫 포함) 겹치면 그 아래로 이만큼 띄워 내림
+const STATUS_GAP := 6.0
 
 
-# 접속 상태 글 자리: in_game = 판 HUD 가 보임 (ui.gd hud.visible)
+# 접속 상태 글 자리 (글 왼쪽 위): in_game = 판 HUD 가 보임 (ui.gd hud.visible)
 static func status_pos(in_game: bool) -> Vector2:
 	return STATUS_POS_GAME if in_game else STATUS_POS
+
+
+# 받침 (글을 담은 판, ui.gd status_box) 왼쪽 위: 글 자리에서 여백만큼 바깥.
+# 판 중엔 가운데 위 알림 칸들 (avoid: Rect2 배열, 같은 캔버스 좌표 — ui.gd _top_rects) 과 겹치면 (칸을 STATUS_GAP 만큼 키워 봄) 그 칸 아래로 STATUS_GAP 띄워 내림.
+# 배너는 글 길이·줄 수 따라 왼쪽·아래로 늘어 고정 자리로는 못 피함 (사이클 5 테스트: 960 폭 블록 마스터 본인의 두 줄 배너가 x 약 218 까지 와 받침이 둘째 줄을 가림).
+# size = 받침 크기 (0 이면 안 내림). 내려가기만 하니 칸마다 많아야 한 번 → avoid 수 + 1 번 돌면 끝
+static func status_box_pos(in_game: bool, size := Vector2.ZERO, avoid: Array = []) -> Vector2:
+	var pos := status_pos(in_game) - STATUS_PAD
+	if not in_game:
+		return pos
+	for _i in avoid.size() + 1:
+		var moved := false
+		for r in avoid:
+			var near: Rect2 = (r as Rect2).grow(STATUS_GAP)
+			if Rect2(pos, size).intersects(near):
+				pos.y = near.end.y
+				moved = true
+		if not moved:
+			break
+	return pos
+
+
+# 받침 색: 판 중엔 STATUS_BACK, 그 밖엔 투명
+static func status_back(in_game: bool) -> Color:
+	return STATUS_BACK if in_game else Color(0, 0, 0, 0)
 
 
 # 대기실 판 자리: 오른쪽 끝·위 (LOBBY_TOP) 에 붙임. content = 줄이기 전 판 크기 (폭은 lobby_dock 폭, 높이는 내용만큼).

@@ -16,6 +16,7 @@ public sealed partial class Game
     public XY? evDir; // 돌풍 방향 (단위 벡터)
     double evRainNextAt; // 블록 폭우: 다음 블록 시각
     string? evLastKind; // 이번 판에서 마지막으로 고른 종류 (보급 포함 — 보급 뒤엔 evKind 가 null 이라 따로). 새 판이면 null
+    public string[] eventKinds = C.EVENT_KINDS; // 고를 종류 (기본 config 그대로 — 테스트가 1종·0종으로 바꿔 봄)
 
     static readonly Dictionary<string, string> EVENT_LOG = new()
     {
@@ -51,12 +52,16 @@ public sealed partial class Game
     public double GroundDampMult() => evKind == "ice" && RoundEventActive() ? C.EVENT_ICE_DAMP : 1;
 
     // 이벤트 종류 고르기 (rng 한 번 = r): 판 첫 이벤트 (last null) 는 5종 중 floor(r×5), 그 뒤로는 직전 종류를 뺀 4종 (원래 순서) 중 floor(r×4)
-    // — 한 판 안에서 같은 종류가 연이어 나오지 않음
-    public static string PickEventKind(double r, string? last)
+    // — 한 판 안에서 같은 종류가 연이어 나오지 않음. kinds 를 줄인 config 도 틱 예외 (방 Crash) 없이: 1종이면 뺄 수 없어 직전 그대로,
+    // 0종이면 null (이벤트 없음). r 은 어느 경우든 부르는 쪽이 한 번만 뽑음 → 5종 판의 rng 흐름·해시 그대로
+    public static string? PickEventKind(double r, string? last) => PickEventKind(r, last, C.EVENT_KINDS);
+
+    public static string? PickEventKind(double r, string? last, string[] kinds)
     {
-        if (last == null) return C.EVENT_KINDS[(int)Math.Floor(r * C.EVENT_KINDS.Length)];
-        var rest = Array.FindAll(C.EVENT_KINDS, k => k != last);
-        return rest[(int)Math.Floor(r * rest.Length)];
+        if (kinds.Length == 0) return null;
+        var pool = last == null ? kinds : Array.FindAll(kinds, k => k != last);
+        if (pool.Length == 0) return last;
+        return pool[(int)Math.Floor(r * pool.Length)];
     }
 
     // 틱마다 (roundEvents 켰을 때만 Tick 이 부름): 시각이 되면 이벤트 하나 고르고, 진행 중인 것을 돌림
@@ -81,15 +86,18 @@ public sealed partial class Game
         if (time >= evNextAt)
         {
             evNextAt += C.EVENT_GAP_MS;
-            string kind = PickEventKind(rng(), evLastKind);
-            evLastKind = kind;
-            XY? dir = null;
-            if (kind == "wind")
+            // null = 고를 종류가 없음 (config 를 비움): 이벤트 없이 판은 그대로 (rng 는 그래도 한 번)
+            if (PickEventKind(rng(), evLastKind, eventKinds) is string kind)
             {
-                var (dx, dy) = C.EVENT_WIND_DIRS[(int)Math.Floor(rng() * C.EVENT_WIND_DIRS.Length)];
-                dir = new XY(dx, dy);
+                evLastKind = kind;
+                XY? dir = null;
+                if (kind == "wind")
+                {
+                    var (dx, dy) = C.EVENT_WIND_DIRS[(int)Math.Floor(rng() * C.EVENT_WIND_DIRS.Length)];
+                    dir = new XY(dx, dy);
+                }
+                StartRoundEvent(kind, dir);
             }
-            StartRoundEvent(kind, dir);
         }
         if (evKind == "rain")
         {

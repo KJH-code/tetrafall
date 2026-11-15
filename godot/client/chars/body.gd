@@ -68,6 +68,7 @@ var bone_groups: Array = []
 # 묶음 사슬들에 나오는 노드 (겹치지 않게, 위 노드가 먼저) — 묶음 사슬은 거의 다 다른 묶음 사슬 + 노드 하나라 노드마다 한 번만 곱함
 var bone_links: Array[Node3D] = []
 var bone_link_up: PackedInt32Array = [] # 바로 위 노드의 bone_links 번호 (부모 조각·root 바로 아래면 -1)
+# ↑ shaders/batch.gd `_parent_piece` (뼈 부모 = 가장 가까운 조상 조각) 정의를 바꾸면 이 표 (노드마다 위 사슬이 하나로 정해진다는 가정) 도 같이 볼 것
 var bone_link_xf: Array[Transform3D] = [] # 매 프레임 노드부터 사슬 끝까지 곱 (_sync_bones 가 채움)
 var bone_skel: Skeleton3D = null
 var bone_hide := 1e-6 # K.SKIN: G3 batch.gd (툰 조각 전부 → SkinnedMesh 하나, 뼈 = 조각)

@@ -93,6 +93,15 @@ public sealed class WsSocket : ISocket
         Closed();
     }
 
+    // 새 접속을 방들에 붙임 (게임 루프 스레드, Program.cs Serve): Rooms.Connect (방 목록 보냄). 끄기 시작 뒤 (Rooms.Closing) 붙은 접속은
+    // 그 자리에서 Bye → 방 목록 다음 닫기 1001 (Kestrel 은 ApplicationStopping 콜백이 끝난 뒤에야 듣기를 멈춰 이 길이 실제로 열림)
+    public Conn Join(Rooms rooms)
+    {
+        var c = rooms.Connect(this);
+        if (rooms.Closing) Bye();
+        return c;
+    }
+
     public async Task RunSendLoop()
     {
         try

@@ -13,6 +13,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '../../..');
 const project = path.join(here, '../src/Tetrafall.Server');
 
+// 끌 때 서버가 꺼지기를 기다리는 상한: C# ConfigSafety.cs NET_SHUTDOWN_MS (3초 — 닫기에 답 없는 접속까지 끊는 종료 대기) + 여유 (프로세스 정리).
+// C# config 는 shared/config.js 에 없어 여기 이름 붙여 둠 — NET_SHUTDOWN_MS 를 바꾸면 같이 볼 것
+const SERVER_STOP_WAIT_MS = 3000 + 2000;
+
 const INSTALL = [
   'cloudflared 가 없어 터널을 못 켰습니다. 서버는 켜져 있어 같은 Wi-Fi 에서는 됩니다.',
   '설치 (한 번만):',
@@ -55,12 +59,23 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const children = [];
   const stopAll = () => {
     if (keeper) keeper.stop();
-    for (const c of children) if (c.exitCode === null) c.kill();
+    for (const c of children) if (c.exitCode === null && c.signalCode === null) c.kill();
   };
+  const finish = (code) => {
+    stopAll();
+    process.exit(code);
+  };
+  // 끄기 (Ctrl+C·SIGTERM): 서버 먼저 → 서버가 꺼지면 (exit) 터널. 서버는 방마다 left + 닫기 1001 을 보내고 꺼지는데, 터널을 먼저 끄면
+  // 터널로 붙은 친구는 그걸 못 받고 1006 으로 끊김 (사이클 5 리뷰 F1 — C# --online 은 Program.cs ApplicationStopped).
+  // SERVER_STOP_WAIT_MS 안에 안 꺼지거나 신호를 한 번 더 받으면 그대로 다 끔.
+  // Windows 는 kill 이 곧바로 강제 종료 (신호 없음) 라 보내지 않음 — 콘솔 Ctrl+C 는 서버도 직접 받아 스스로 끔
+  let stopping = false;
   for (const sig of ['SIGINT', 'SIGTERM']) {
     process.on(sig, () => {
-      stopAll();
-      process.exit(0);
+      if (stopping || server.exitCode !== null || server.signalCode !== null) return finish(0);
+      stopping = true;
+      if (process.platform !== 'win32') server.kill('SIGTERM');
+      setTimeout(() => finish(0), SERVER_STOP_WAIT_MS);
     });
   }
 
@@ -74,8 +89,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   });
   server.on('exit', (code) => {
     console.log(`서버가 꺼짐 (코드 ${code}). 터널도 끕니다`);
-    stopAll();
-    process.exit(code ?? 0);
+    finish(code ?? 0);
   });
 
   keeper = new TunnelKeeper({

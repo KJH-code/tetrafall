@@ -29,17 +29,19 @@ public class ServerProcessTests
         public readonly string logDir;
         readonly List<string> lines = new();
 
-        // env: 서버 프로세스에 더 줄 환경 변수 (NetGuardTests: TF_KEEPALIVE_MS 등)
-        public Server(IReadOnlyDictionary<string, string>? env = null)
+        // env: 서버 프로세스에 더 줄 환경 변수 (NetGuardTests: TF_KEEPALIVE_MS 등), args: 서버 명령줄 (ShutdownTests: --online)
+        public Server(IReadOnlyDictionary<string, string>? env = null, IEnumerable<string>? args = null)
         {
             logDir = Path.Combine(Path.GetTempPath(), "tf-logs-" + Guid.NewGuid().ToString("N"));
-            var psi = new ProcessStartInfo("dotnet", Path.Combine(AppContext.BaseDirectory, "Tetrafall.Server.dll"))
+            var psi = new ProcessStartInfo("dotnet")
             {
                 RedirectStandardOutput = true,
                 RedirectStandardInput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
             };
+            psi.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "Tetrafall.Server.dll"));
+            foreach (var a in args ?? Array.Empty<string>()) psi.ArgumentList.Add(a);
             psi.Environment["PORT"] = "0";
             psi.Environment["TF_ROOT"] = RepoRoot();
             psi.Environment["TF_LOG_DIR"] = logDir;
