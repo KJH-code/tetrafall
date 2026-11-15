@@ -5,7 +5,7 @@
 extends SceneTree
 
 const Body := preload("res://chars/body.gd")
-const FILES := ["res://tests/test_core.gd", "res://tests/test_ui.gd", "res://tests/test_audio.gd", "res://tests/test_world.gd", "res://tests/test_shaders.gd", "res://tests/test_fx.gd", "res://tests/test_chars.gd", "res://tests/test_bblocks.gd", "res://tests/test_perf.gd", "res://tests/test_tutorial_ui.gd", "res://tests/test_block_style.gd", "res://tests/test_batch.gd", "res://tests/test_title.gd", "res://tests/test_sharp.gd", "res://tests/test_feel.gd", "res://tests/test_ui_js.gd", "res://tests/test_ui_nodes.gd", "res://tests/test_gfx.gd", "res://tests/test_ui_scale.gd", "res://tests/test_baked.gd", "res://tests/test_ui_bake.gd", "res://tests/test_external.gd", "res://tests/test_ext_clips.gd", "res://tests/test_web.gd", "res://tests/test_hitch.gd", "res://tests/test_adapt.gd", "res://tests/test_relod.gd", "res://tests/test_outline.gd", "res://tests/test_shadow.gd", "res://tests/test_dagger.gd", "res://tests/test_w34.gd", "res://tests/test_w37.gd", "res://tests/test_w39.gd", "res://tests/test_w42.gd", "res://tests/test_w41.gd", "res://tests/test_w40.gd", "res://tests/test_w43.gd", "res://tests/test_motion_qa.gd", "res://tests/test_w45.gd", "res://tests/test_w46.gd", "res://tests/test_w47.gd", "res://tests/test_w48.gd", "res://tests/test_w49.gd", "res://tests/test_w50.gd", "res://tests/test_w51.gd", "res://tests/test_w52.gd", "res://tests/test_round_events.gd", "res://tests/test_complete.gd"]
+const FILES := ["res://tests/test_core.gd", "res://tests/test_ui.gd", "res://tests/test_audio.gd", "res://tests/test_world.gd", "res://tests/test_shaders.gd", "res://tests/test_fx.gd", "res://tests/test_chars.gd", "res://tests/test_bblocks.gd", "res://tests/test_perf.gd", "res://tests/test_tutorial_ui.gd", "res://tests/test_block_style.gd", "res://tests/test_batch.gd", "res://tests/test_title.gd", "res://tests/test_sharp.gd", "res://tests/test_feel.gd", "res://tests/test_ui_js.gd", "res://tests/test_ui_nodes.gd", "res://tests/test_gfx.gd", "res://tests/test_ui_scale.gd", "res://tests/test_baked.gd", "res://tests/test_ui_bake.gd", "res://tests/test_external.gd", "res://tests/test_ext_clips.gd", "res://tests/test_web.gd", "res://tests/test_hitch.gd", "res://tests/test_adapt.gd", "res://tests/test_relod.gd", "res://tests/test_outline.gd", "res://tests/test_shadow.gd", "res://tests/test_dagger.gd", "res://tests/test_w34.gd", "res://tests/test_w37.gd", "res://tests/test_w39.gd", "res://tests/test_w42.gd", "res://tests/test_w41.gd", "res://tests/test_w40.gd", "res://tests/test_w43.gd", "res://tests/test_motion_qa.gd", "res://tests/test_w45.gd", "res://tests/test_w46.gd", "res://tests/test_w47.gd", "res://tests/test_w48.gd", "res://tests/test_w49.gd", "res://tests/test_w50.gd", "res://tests/test_w51.gd", "res://tests/test_w52.gd", "res://tests/test_round_events.gd", "res://tests/test_complete.gd", "res://tests/test_baked_look.gd"]
 
 # 테스트 동안 난 오류를 모음 (경고는 뺌). 다른 스레드에서도 불릴 수 있어 잠금
 class ErrorLog extends Logger:
@@ -32,6 +32,7 @@ class ErrorLog extends Logger:
 
 func _initialize() -> void:
 	Body.use_ext = false # 기본 켬이지만 예전 몸 (구운·코드 조립) 테스트는 끈 채로 — 외부 몸 테스트 (test_external·test_ext_clips) 는 스스로 켬
+	Body.use_look = false # c6-u1 화풍 맞추기도 끈 채로 (예전 구운 몸 테스트가 그대로 봄) — test_baked_look 은 스스로 켬
 	var log := ErrorLog.new()
 	OS.add_logger(log)
 	var passed := 0

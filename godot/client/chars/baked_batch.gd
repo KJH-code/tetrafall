@@ -5,6 +5,7 @@
 extends RefCounted
 
 const G3 := preload("res://shaders/g3.gd")
+const Look := preload("res://chars/baked_look.gd")
 
 const HIDE_SCALE := 1e-6 # 안 보이는 노드 뼈 크기 (G3 batch.gd 와 같음)
 
@@ -12,6 +13,7 @@ var pieces: Array[Node3D] = [] # 뼈 번호 → 노드
 var skel: Skeleton3D
 var mi: MeshInstance3D
 var root: Node3D
+var look := false # c6-u1 화풍 맞추기를 입힘 (apply_look) — body._apply_opacity 가 반투명 재질에도 같은 툰 단·림을 넣음
 
 
 # root = frame (뼈·정점 기준), nodes = body.gd 노드 표 (manifest 순서). 뼈 이름 'B_<노드 번호>' 로 짝을 찾음. 못 찾으면 false
@@ -33,6 +35,28 @@ func setup(root_: Node3D, skel_: Skeleton3D, nodes: Array, skin_color: Color) ->
 	m.set_shader_parameter("skin_tint", Color(skin_color.r, skin_color.g, skin_color.b, 1.0))
 	mi.material_override = m
 	sync()
+	return true
+
+
+# c6-u1 화풍 맞추기 (chars/baked_look.gd, 표 baked_look_config.gd): 묶음 메시를 살색·옷 칸만 플레이어 색인 사본 (같은 캐릭터 몸끼리 같이 씀) 으로,
+# 눈 메시를 작은 눈 사본으로 (광전사는 흰자 노드 크기·눈썹 자리), 이 몸의 툰 재질 (mats = body.mats, manifest 재질 순서 + 묶음 재질) 에 외부 모델과 같은 툰 단·림·얇은 외곽선.
+# setup 뒤에 부름. 표에 없는 캐릭터면 아무것도 안 바꾸고 false
+func apply_look(char_id: String, cd: Dictionary, nodes: Array, mats: Array) -> bool:
+	var lk = Look.for_char(char_id, cd, mi, skel, nodes)
+	if lk == null:
+		return false
+	mi.mesh = lk.mesh
+	for i in lk.eyes:
+		(nodes[i] as MeshInstance3D).mesh = lk.eyes[i]
+	for e in lk.xf:
+		var n: Node3D = nodes[e[0]]
+		n.position = e[1]
+		n.scale *= float(e[2])
+	for i in mats.size():
+		var md: Dictionary = cd.mats[i]
+		Look.style(mats[i], md.get("outline", true) and not md.get("transparent", false))
+	Look.style(mi.material_override, true)
+	look = true
 	return true
 
 

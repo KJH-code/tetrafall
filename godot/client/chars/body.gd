@@ -40,6 +40,7 @@ var ext = null # 붙은 외부 모델 (External.Ext) — 있으면 안쪽 몸 (�
 var ext_job = null # W45: 외부 모델을 프레임에 걸쳐 붙이는 중 (External.AttachJob) — world/bodies.gd 가 ext_step 을 부름. 다 붙기 전엔 몸을 안 보이고 pose 도 안 부름
 static var split_ext := false # W45: 켜져 있는 동안 만든 판 몸은 외부 모델을 바로 안 붙이고 ext_job 으로 (bodies.gd 만 켬, 끄기 --no-body-split)
 static var use_glb: bool = K.GLB and not Opts.args().has("--no-glb") # 구운 몸이 있으면 씀 (테스트가 예전 조립과 둘 다 봄, 확인용 실행 인자 --no-glb 면 예전 조립)
+static var use_look: bool = not Opts.args().has("--no-look") # c6-u1 구운 몸 화풍 맞추기 (chars/baked_look.gd: 살색·옷 칸만 플레이어 색·작은 눈·얇은 선). 끄면 예전 구운 몸 그대로 (확인용 실행 인자 --no-look, 테스트는 끈 채로)
 var d := {} # 체형 (FIGURE_BODIES 한 줄)
 var skin_color := Color.WHITE
 var mats: Array[Material] = []
@@ -317,6 +318,8 @@ func _build_glb(scene: PackedScene, skin_batch: bool):
 	if not bb.setup(frame, sk, nodes, skin_color):
 		nodes.clear()
 		return null
+	if use_look:
+		bb.apply_look(char_id, cd, nodes, mats) # c6-u1: 살색·옷 칸만 플레이어 색·작은 눈·얇은 선 (표에 없는 캐릭터는 그대로)
 	return bb
 
 
@@ -1521,6 +1524,8 @@ func _apply_opacity() -> void:
 				dr.alpha = G3.toon_material(col, opts)
 				if baked and dr.merged: # 구운 묶음: 피부 정점은 흰색 + skin_tint (baked_batch.gd)
 					dr.alpha.set_shader_parameter("skin_tint", (dr.solid as ShaderMaterial).get_shader_parameter("skin_tint"))
+				if batch is BakedBatch and batch.look: # c6-u1: 반투명 재질도 사본 메시와 같은 툰 단·림 (외곽선 없음)
+					BakedBatch.Look.style(dr.alpha, false)
 				G3.toon_hazard_light(dr.alpha, hz_light)
 				dr.col = col
 		var am: Material = dr.alpha
