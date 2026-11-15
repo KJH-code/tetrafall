@@ -10,6 +10,7 @@ public sealed partial class Game
     public bool StartRound()
     {
         if (!CanStart()) return false;
+        if (tuneBase != null) tune = tuneBase.For(mode); // 모드 덮기 (킬 점수전 밸런스 표 등). 덮기 없는 모드는 tuneBase 그대로
         int fielded = Participants().Count - (mode == "master" ? 1 : 0);
         sky = skyStairs && mode != "master"; // 블록 마스터는 자동 블록이 없음
         skyTops = new List<int>();

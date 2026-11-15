@@ -28,12 +28,23 @@ public sealed class SimOptions
     public Tune? tune; // --tune (판별 캐릭터 조정 Tune.cs — 고도 판 전용, tools/sim.js 에 없음)
     public bool balance; // --balance on (방 밸런스 표 ConfigBalance.cs 로 — 고도 판 전용, 기본 off)
 
-    // --balance on 이면 방 밸런스 표 위에 --tune 을 덮음 (같은 캐릭터·키면 --tune 이 이김). 끄면 --tune 그대로
+    // --balance on 이면 방 밸런스 표 위에 --tune 을 덮음 (같은 캐릭터·키면 --tune 이 이김). 끄면 --tune 그대로.
+    // --tune 의 모드 없는 값은 모든 모드에서 이김: 기본 표에 넣고, 표의 모드 덮기 (킬 점수전 BALANCE_KILLS) 에 같은 캐릭터·키가 있으면 그 자리도 같은 값.
+    // --tune 의 모드:캐릭터.키=값 은 그 모드에서만 이김 (표의 같은 모드 덮기 위에)
     Tune? BaseTune()
     {
         if (!balance) return tune;
         var t = C.BalanceTune();
-        if (tune != null) foreach (var key in Tune.KEYS) foreach (var (c, x) in tune.Table(key)!) t.Set(c, key, x);
+        if (tune == null) return t;
+        foreach (var key in Tune.KEYS)
+        {
+            foreach (var (c, x) in tune.Table(key)!)
+            {
+                t.Set(c, key, x);
+                foreach (var over in t.modes.Values) if (over.Table(key)!.ContainsKey(c)) over.Set(c, key, x);
+            }
+        }
+        foreach (var (m, over) in tune.modes) foreach (var key in Tune.KEYS) foreach (var (c, x) in over.Table(key)!) t.SetMode(m, c, key, x);
         return t;
     }
 

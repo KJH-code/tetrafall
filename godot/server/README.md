@@ -20,7 +20,7 @@ node godot/server/tools/online-cs.mjs               # (레포 뿌리에서) npm 
 
 환경 변수: `PORT` (0 이면 빈 포트, 시작 줄에 실제 포트), `TF_ROOT` (레포 뿌리), `TF_LOG_DIR` (로그 폴더, 기본 `<뿌리>/logs`), `TF_STDIN_CONTROL=1` (표준 입력 한 줄 `{"type":"publicUrl","url":…}` 로 터널 주소 받기 — online-cs.mjs 가 씀, JS 서버의 node IPC 자리), `TF_BALANCE=off` (방 밸런스 표 끔 — 아래).
 
-방은 기본으로 밸런스 표 (`ConfigBalance.cs` `C.BALANCE` — 캐릭터별 넉백 배율 `kbTaken`·`kbDealt` 만, 층은 `Tune.cs`): 대전·연습·튜토리얼 방의 판마다 `new Game(…, tune:)` 로 넘김 (고도 판 전용, JS 와 다른 규칙). 시작할 때 콘솔에 `밸런스 표: …` 한 줄 (`ServerBalance.cs`), `TF_BALANCE=off` 면 표 없는 예전 판. sim·Trace·테스트가 만드는 Rooms 는 표 없음 (`new Rooms(tune:)` 를 안 줌) → 34판 해시·JS 정답 자료는 그대로.
+방은 기본으로 밸런스 표 (`ConfigBalance.cs` `C.BALANCE` — 캐릭터별 넉백 배율 `kbTaken`·`kbDealt` 만, 층은 `Tune.cs`): 대전·연습·튜토리얼 방의 판마다 `new Game(…, tune:)` 로 넘김 (고도 판 전용, JS 와 다른 규칙). 킬 점수전 판은 그 위에 `C.BALANCE_KILLS` (주는 넉백 `kbDealt` 만, Tune 모드 덮기 — 같은 캐릭터·키를 곱하지 않고 바꿈) 를 덮음: 방은 Game 하나를 계속 쓰고 판마다 `StartRound` 가 `tuneBase.For(mode)` 로 그 모드 표를 고름. 시작할 때 콘솔에 `밸런스 표: … · 킬 점수전: …` 한 줄 (`ServerBalance.cs`), `TF_BALANCE=off` 면 표 없는 예전 판 (킬 덮기도 같이 꺼짐). sim·Trace·테스트가 만드는 Rooms 는 표 없음 (`new Rooms(tune:)` 를 안 줌) → 34판 해시·JS 정답 자료는 그대로.
 
 JS 화면 파일은 레포 뿌리 `client/`·`shared/`·`node_modules/three` 에서 서빙 (뿌리는 자동으로 찾음, 아니면 `TF_ROOT`). 로그는 JS 서버와 같은 `logs/<서버 시각>/<방 시각>_<코드>.txt`, 줄마다 `[13시 5분 7초] …` (JS `toLocaleTimeString('ko-KR')` 와 같음) → `npm run stats` 가 그대로 읽음.
 
@@ -32,9 +32,9 @@ dotnet run -c Release --project godot/server/src/Tetrafall.Sim -- --rounds 200 -
 
 `--events on` (고도 판 전용, 기본 off): 돌발 이벤트 (블록 폭우·돌풍·보급·저중력·빙판 — `Game.Events.cs`, 수치 `ConfigEvents.cs`) 를 켠 판. 로그에 `  [이벤트] …` 줄, summary.json `options.events`. 끄면 예전과 같은 판
 
-`--tune <캐릭터.키=값,…>` (고도 판 전용, 예 `--tune ninja.kbTaken=0.95,hook.kbDealt=1.1`): 이 실행의 판들만 캐릭터별 수치를 덮어씀 (`Tune.cs` — 판마다 `new Game(…, tune:)`, 전역 표 `C.*` 는 안 고침). 키 6개: 배율 `kbTaken` (받는 넉백)·`kbDealt` (주는 넉백)·`dmgDealt` (주는 피해 %)·`skillCd` (F 쿨타임)·`ultGain` (필살기 게이지 — 건축가 블록 폭발 패시브 `BUILDER_BLAST_ULT` 는 제외) — 없으면 1, 그리고 `hpMult` (체력전 HP — 배율이 아니라 `HP_CHAR_MULT` 대신 쓰는 값, `--hp-mult` 와 같은 뜻. 같은 캐릭터가 둘 다에 있으면 `--tune` 이 이김). 모르는 캐릭터·키, 0 이하는 종료 코드 1. summary.json `options.tune` (줬을 때만). 안 주면 예전과 같은 판
+`--tune <캐릭터.키=값,…>` (고도 판 전용, 예 `--tune ninja.kbTaken=0.95,hook.kbDealt=1.1`): 이 실행의 판들만 캐릭터별 수치를 덮어씀 (`Tune.cs` — 판마다 `new Game(…, tune:)`, 전역 표 `C.*` 는 안 고침). 키 6개: 배율 `kbTaken` (받는 넉백)·`kbDealt` (주는 넉백)·`dmgDealt` (주는 피해 %)·`skillCd` (F 쿨타임)·`ultGain` (필살기 게이지 — 건축가 블록 폭발 패시브 `BUILDER_BLAST_ULT` 는 제외) — 없으면 1, 그리고 `hpMult` (체력전 HP — 배율이 아니라 `HP_CHAR_MULT` 대신 쓰는 값, `--hp-mult` 와 같은 뜻. 같은 캐릭터가 둘 다에 있으면 `--tune` 이 이김). 모르는 캐릭터·키, 0 이하는 종료 코드 1. `모드:캐릭터.키=값` (예 `kills:ninja.kbDealt=1.6`, 모드는 survival·master·kills) 은 그 모드 판에서만 바꿈 (모르는 모드도 종료 코드 1). 우선순위 (`--balance on` 일 때): 모드 없는 `--tune` 값은 모든 모드에서 이김 (표의 킬 덮기 같은 자리도), `모드:` 값은 그 모드에서만 이김. summary.json `options.tune` (줬을 때만, 모드 값이 있으면 끝에 `modes`). 안 주면 예전과 같은 판
 
-`--balance on` (고도 판 전용, 기본 off): 서버 방과 같은 밸런스 표 (`ConfigBalance.cs` `C.BALANCE`) 로 돌림 — `--tune <C.BALANCE 글자>` 와 같은 판. `--tune` 을 같이 주면 표 위에 덮음 (같은 캐릭터·키면 `--tune` 이 이김), 그 위에 `--hp-mult`. summary.json `options.balance` (켰을 때만). 끄면 예전과 같은 판·같은 summary.json. 표를 고치면 `--rounds 1000 --players 2,4,8 --balance on` 을 시드 1·2·3 으로 돌려 ×기대 평균을 봄
+`--balance on` (고도 판 전용, 기본 off): 서버 방과 같은 밸런스 표 (`ConfigBalance.cs` `C.BALANCE` + 킬 점수전 덮기 `C.BALANCE_KILLS`) 로 돌림 — 킬 점수전 밖은 `--tune <C.BALANCE 글자>` 와 같은 판. `--tune` 을 같이 주면 표 위에 덮음 (같은 캐릭터·키면 `--tune` 이 이김), 그 위에 `--hp-mult`. summary.json `options.balance` (켰을 때만). 끄면 예전과 같은 판·같은 summary.json. 표를 고치면 `--rounds 1000 --players 2,4,8 --balance on` 을 시드 1·2·3 으로 돌려 ×기대 평균을 봄 (킬 표는 `--rounds 300 --players 4,8 --mode kills --balance on`)
 
 같은 옵션·시드면 JS 와 같은 판·같은 summary.json (`out` 칸만 다름)·같은 워커 로그 (워커 수도 같으면) — `npm run stats -- sim-logs/<시각>` 그대로. 4코어에서 JS 의 약 1.8배 빠름 (252판: JS 20.3초 / C# 11.1초)
 

@@ -2,7 +2,7 @@ using Tetrafall.Core;
 
 namespace Tetrafall.Server;
 
-// 서버 방의 밸런스 표 고르기 (환경 변수 TF_BALANCE): "off" 면 표 없음 (null → 예전과 같은 판), 그 밖 (없음·빈 글자 포함) 이면 C.BALANCE.
+// 서버 방의 밸런스 표 고르기 (환경 변수 TF_BALANCE): "off" 면 표 없음 (null → 예전과 같은 판, 킬 점수전 덮기도 같이 꺼짐), 그 밖 (없음·빈 글자 포함) 이면 C.BALANCE + 킬 점수전 C.BALANCE_KILLS.
 // print: 시작할 때 한 줄 (서버 콘솔 — 방 로그·serverLog 에는 안 남김)
 public static class ServerBalance
 {
@@ -13,7 +13,7 @@ public static class ServerBalance
             print("밸런스 표: 끔 (TF_BALANCE=off)");
             return null;
         }
-        print($"밸런스 표: {C.BALANCE}");
+        print($"밸런스 표: {C.BALANCE} · 킬 점수전: {C.BALANCE_KILLS}");
         return C.BalanceTune();
     }
 }

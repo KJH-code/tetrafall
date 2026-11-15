@@ -103,7 +103,7 @@ public class BalanceTests
             var t = ServerBalance.FromEnv(v, printed.Add);
             Assert.NotNull(t);
             Assert.Equal(0.85, t!.KbDealt("cannon"));
-            Assert.Equal(new[] { $"밸런스 표: {C.BALANCE}" }, printed);
+            Assert.Equal(new[] { $"밸런스 표: {C.BALANCE} · 킬 점수전: {C.BALANCE_KILLS}" }, printed);
         }
     }
 
