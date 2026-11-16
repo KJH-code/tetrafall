@@ -1331,6 +1331,76 @@ func test_portrait_frame() -> void:
 		check(fb.half > 0.22 * 1.84 * 1.25 * 0.8, "키 배율 1.25 면 얼굴 칸도 커짐 (%.2f)" % fb.half)
 
 
+# c8 초상 얼굴 칸 표 (ui/portrait_config.gd): 8명 모두 표에 있고 값이 말이 됨, 카메라 쪽은 표에서 (예전 LEFT_SIDE 는 없앰), 구운·코드 몸의 얼굴 칸 = 머리 조각 상자 + 표 값.
+# 실제 그림의 얼굴 크기·자리 (fill·cx·top) 는 tools/portrait_sheet.gd 가 출력 (러너에선 못 그림)
+func test_c8_portrait_table() -> void:
+	var PK = load("res://ui/portrait_config.gd")
+	var P = load("res://ui/portrait.gd")
+	check(PK.FACE.size() == C.CHARACTERS.size(), "얼굴 칸 표 %d명 (캐릭터 %d명)" % [PK.FACE.size(), C.CHARACTERS.size()])
+	for c in C.CHARACTERS:
+		var ch := str(c)
+		check(PK.FACE.has(ch), "%s 가 FACE 표에 없음" % ch)
+		if not PK.FACE.has(ch):
+			continue
+		var f: Dictionary = PK.FACE[ch]
+		check(absf(float(f.side)) == 1.0, "%s side %s (±1)" % [ch, f.side])
+		check(float(f.half) >= 0.12 and float(f.half) <= 0.45, "%s half %s m (0.12~0.45)" % [ch, f.half])
+		check(absf(float(f.up)) <= 0.2 and (f.shift as Array).size() == 2 and absf(float(f.shift[0])) <= 0.15 and absf(float(f.shift[1])) <= 0.15, "%s up·shift %s·%s (머리 둘레 안)" % [ch, f.up, f.shift])
+		check(PK.side_of(ch, false) == float(f.side), "%s 구운·코드 몸 카메라 쪽 = 표" % ch)
+	for ch in PK.SIDE_EXT:
+		check(absf(float(PK.SIDE_EXT[ch])) == 1.0 and C.CHARACTERS.has(ch), "SIDE_EXT %s = %s (±1, 있는 캐릭터)" % [ch, PK.SIDE_EXT[ch]])
+		check(PK.side_of(ch, true) == float(PK.SIDE_EXT[ch]), "%s 외부 모델 카메라 쪽 = 표" % ch)
+	for ch in EXT4:
+		check(PK.SIDE_EXT.has(ch), "외부 모델 %s 가 SIDE_EXT 에 없음" % ch)
+	# 예전 값이 남는 곳: 대포수는 반대쪽 (포신이 얼굴을 가림), 표에 없는 캐릭터·온몸 초상은 예전 그대로
+	check(float(PK.FACE.cannon.side) == 1.0 and PK.side_of("cannon", false) == 1.0, "대포수 = 반대쪽 (예전 LEFT_SIDE)")
+	check(PK.side_of("없는캐릭터", false) == -1.0 and PK.side_of("없는캐릭터", true) == -1.0, "표에 없으면 예전 쪽 (-1)")
+	check(PK.side_of_full("cannon") == 1.0, "온몸 초상: 대포수만 반대쪽 (예전 그대로)")
+	for c in C.CHARACTERS:
+		if str(c) != "cannon":
+			check(PK.side_of_full(str(c)) == -1.0, "온몸 초상 %s 쪽은 예전 그대로 (-1)" % c)
+	check(not (P as Script).get_script_constant_map().has("LEFT_SIDE"), "portrait.gd 의 LEFT_SIDE 는 표로 옮김")
+	# 얼굴 칸: 표에 있으면 머리 상자 가운데 + (shift x, up, shift z)·표의 half, 없으면 예전 식 (상자 높이 × 1.6 을 0.26~0.4 로)
+	var ctr := Vector3(0.1, 1.5, -0.2)
+	var fb: Dictionary = PK.face_frame("bard", ctr, 0.06)
+	var tb: Dictionary = PK.FACE.bard
+	check((fb.at as Vector3).is_equal_approx(ctr + Vector3(float(tb.shift[0]), float(tb.up), float(tb.shift[1]))) and fb.half == float(tb.half), "표 캐릭터 얼굴 칸 %s" % fb)
+	var fo: Dictionary = PK.face_frame("없는캐릭터", ctr, 0.2)
+	check((fo.at as Vector3).is_equal_approx(ctr) and absf(fo.half - 0.32) < 1e-6, "표에 없으면 예전 식 %s" % fo)
+	check(PK.face_frame("없는캐릭터", ctr, 0.01).half == 0.26 and PK.face_frame("없는캐릭터", ctr, 1.0).half == 0.4, "예전 식의 아래·위 (0.26~0.4)")
+	# portrait.gd 가 표를 씀 (러너에선 몸이 씬 트리에 못 들어가 목 조각 상자를 못 잼 → 실제 칸은 tools/portrait_sheet.gd 로): 얼굴 칸·카메라 쪽 모두 표에서
+	var src := FileAccess.get_file_as_string("res://ui/portrait.gd")
+	check(src.contains("PK.face_frame(") and src.contains("PK.side_of(char_id, is_ext(body))") and not src.contains("clampf(hb.size.y"), "portrait.gd 가 얼굴 칸·카메라 쪽을 표에서 읽음")
+	# 얼굴 초상 카메라 각·높이: 안 적혀 있으면 예전 값 (46도 · 칸 세로 반 × 0.18), 적혀 있으면 그 값 (깊은 두건·넓은 모자챙 — 테스터 지적: 닌자 옆얼굴·사냥꾼 챙에 가린 얼굴)
+	check(PK.FACE_ANG == 46.0 and PK.FACE_RISE == 0.18, "기본 각·높이 = 예전 값 (%s·%s)" % [PK.FACE_ANG, PK.FACE_RISE])
+	var v0: Dictionary = PK.view_of({})
+	var v1: Dictionary = PK.view_of({"ang": 8.0, "rise": -2.0, "half": 0.2})
+	check(v0.ang == 46.0 and v0.rise == 0.18 and v1.ang == 8.0 and v1.rise == -2.0, "view_of: 빈 줄 %s · 적힌 줄 %s" % [v0, v1])
+	check(src.contains("face_view(body, char_id)") and not src.contains("else 46.0") and not src.contains("half * 0.18"), "portrait.gd 가 각·높이를 표에서 읽음 (숫자를 안 박음)")
+	for c in C.CHARACTERS:
+		var fv: Dictionary = PK.view_of(PK.FACE[str(c)])
+		check(fv.ang >= 0.0 and fv.ang <= 60.0 and fv.rise >= -3.0 and fv.rise <= 1.0, "%s 구운·코드 몸 각·높이 %s" % [c, fv])
+	var root: Window = (Engine.get_main_loop() as SceneTree).root
+	# 외부 모델: 얼굴 칸 크기·자리는 모델 옆 json "portrait" (넷 모두 있음)
+	for ch in _ext_ids():
+		var pc: Dictionary = Ext.load_char(ch).cfg.get("portrait", {})
+		check(not pc.is_empty(), "%s json 에 portrait 블록" % ch)
+		var ev: Dictionary = PK.view_of(pc)
+		check(ev.ang >= 0.0 and ev.ang <= 60.0 and ev.rise >= -3.0 and ev.rise <= 1.0, "%s 외부 모델 각·높이 %s (각 0~60도 — 쪽은 SIDE_EXT 가 정함, 높이 -3~1)" % [ch, ev])
+		var b = _still(ch)
+		root.add_child(b)
+		P.prime_idle(b)
+		check(P.is_ext(b), "%s 외부 모델 몸" % ch)
+		var bv: Dictionary = P.face_view(b, ch)
+		check(bv.ang == ev.ang and bv.rise == ev.rise, "%s 실제 몸의 각·높이 = json (%s)" % [ch, bv])
+		root.remove_child(b)
+		b.free()
+	if Ext.has_char("ninja"): # 깊은 두건: 거의 정면에서 (옆에서 보면 두건이 얼굴을 가려 옆얼굴)
+		check(PK.view_of(Ext.load_char("ninja").cfg.get("portrait", {})).ang <= 15.0, "닌자 외부 모델 초상은 거의 정면")
+	if Ext.has_char("hunter"): # 넓은 모자챙: 아래에서 올려다봐야 챙 밑 얼굴이 보임
+		check(PK.view_of(Ext.load_char("hunter").cfg.get("portrait", {})).rise < 0.0, "사냥꾼 외부 모델 초상은 아래에서 올려다봄")
+
+
 # 캐릭터 바꾸기 (char_stage.show_char) 직후: prime_idle → 도발 시작 (age 0) 첫 pose 때 팔은 아직 내려와 있음 (처음 관절 값·T 포즈 한 프레임 아님).
 # 도발이 진행되면 일부 모델은 팔을 수평으로 듦 (사냥꾼 겨누기·갈고리 손짓 등 설계된 포즈 — 연속 캡처 tools/switch_shot.gd) → 여기선 안 막음
 func test_switch_first_frame_arms_down() -> void:

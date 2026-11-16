@@ -225,10 +225,10 @@ func test_c7_edge_frame_keeps_center_clear() -> void:
 				if Edge.alpha_at(size, pt, 1.0) != 0.0:
 					lit += 1
 		check(lit == 0, "%s 가운데 76%% 에 테가 닿음 (%d 점)" % [size, lit])
-		# 바깥 띠 = 받은 알파 그대로, 네 변 모두
+		# 바깥 띠 = 받은 알파 그대로, 네 변 모두 (c8: 위쪽은 윗변 줄임 m(y) 만큼 옅음 — 윗변 점·구석)
 		var mid: Vector2 = size / 2.0
 		for pt in [Vector2(1, mid.y), Vector2(size.x - 1, mid.y), Vector2(mid.x, 1), Vector2(mid.x, size.y - 1), Vector2(2, 2)]:
-			check(absf(Edge.alpha_at(size, pt, 0.8) - 0.8) < 1e-6, "%s 바깥 띠 %s 알파" % [size, pt])
+			check(absf(Edge.alpha_at(size, pt, 0.8) - 0.8 * Edge.top_mul(size, pt.y)) < 1e-6, "%s 바깥 띠 %s 알파" % [size, pt])
 		# 꺾임 점: 0 → 바깥 띠 끝 (1) → 꺾임 → 끝 (0), 거리는 늘고 알파는 안 늘어남
 		var st: Array = Edge.stops(size)
 		check(st.size() == 4 and st[0] == [0.0, 1.0] and absf(st[1][0] - b.x) < 1e-6 and st[1][1] == 1.0 and absf(st[3][0] - (b.x + b.y)) < 1e-6 and st[3][1] == 0.0, "%s 꺾임 점 %s" % [size, st])
@@ -260,9 +260,10 @@ func test_c7_edge_frame_keeps_center_clear() -> void:
 		for band in 3:
 			for q in qs.slice(band * 4, band * 4 + 4):
 				check(absf(q[1][0] - float(st[band][1])) < 1e-6 and absf(q[1][1] - float(st[band][1])) < 1e-6 and absf(q[1][2] - float(st[band + 1][1])) < 1e-6 and absf(q[1][3] - float(st[band + 1][1])) < 1e-6, "띠 %d 알파 %s → %s" % [band, st[band][1], st[band + 1][1]])
-		# 한 번에 그리는 삼각형 묶음 (그리기 1번): 사다리꼴 12개 = 삼각형 24개, 모든 꼭짓점 알파 = 그 자리의 alpha_at (띠 경계 꼭짓점도 한 값 — 계단 없음)
+		# 한 번에 그리는 삼각형 묶음 (그리기 1번): 모든 꼭짓점 알파 = 그 자리의 alpha_at (띠 경계 꼭짓점도 한 값 — 계단 없음).
+		# c8: 옆 변 사다리꼴 6개를 윗변 줄임이 끝나는 높이에서 둘로 → 사다리꼴 18개 = 삼각형 36개 (예전 12개·24개)
 		var t: Array = Edge.tri_arrays(size)
-		check(t[0].size() == 72 and t[1].size() == 48 and t[2].size() == 48, "삼각형 24개·꼭짓점 48개 (%d·%d)" % [t[0].size(), t[1].size()])
+		check(t[0].size() == 108 and t[1].size() == 72 and t[2].size() == 72, "삼각형 36개·꼭짓점 72개 (%d·%d)" % [t[0].size(), t[1].size()])
 		var bad := 0
 		for i in t[0]:
 			if i < 0 or i >= t[1].size():
@@ -329,3 +330,143 @@ func test_c7_edge_below_hud() -> void:
 	h.vignette.set_level(0.0)
 	check(not h.vignette.visible, "세기 0 이면 안 그림")
 	h.free()
+
+
+# ---- c8 판 중 화면 마감: 킬 피드 한 줄 · 무기 이름 · 이벤트 알림 한 줄 · 테 윗변 줄임 · 묶음 자리 한 곳 ----
+const UC := preload("res://ui/ui_calc.gd")
+
+
+# 같은 스냅샷 묶음에 'kill' 이 있으면 'death' 는 피드·세기에 안 넣음 (예전: 가벼운 스냅샷으로 오면 같은 줄이 두 번). 'kill' 을 안 보내는 서버는 그대로
+func test_c8_feed_one_row_per_death() -> void:
+	var death := {"type": "death", "who": 1, "by": 7, "cause": "fall", "weapon": "push"}
+	var kill := {"type": "kill", "victim": 1, "killer": 7, "cause": "fall", "weapon": "push"}
+	check(not UC.death_feeds([death, kill]), "[death, kill] 묶음: death 는 피드에 안 넣음 (kill 이 맡음)")
+	check(not UC.death_feeds([kill, death]) and not UC.death_feeds([{"type": "hit"}, death, {"type": "respawn"}, kill]), "순서·다른 이벤트가 섞여도")
+	check(UC.death_feeds([death]), "[death] 만 (kill 을 안 보내는 서버): 예전 그대로 넣음")
+	check(UC.death_feeds([]) and UC.death_feeds([{"type": "hit"}, {"type": "mark"}]), "빈 묶음·상관없는 이벤트")
+	# hud.gd 가 그 판단을 씀 (death 갈래에서 지금 묶음 Store.state.events 로)
+	var src := FileAccess.get_file_as_string("res://ui/hud.gd")
+	check(src.contains("U.death_feeds(Store.state.get(\"events\", []))"), "hud.gd death 갈래가 U.death_feeds 를 부름")
+
+
+# 서버가 보내는 무기 종류 (godot/server Tetrafall.Core GameUtil.cs WEAPON_LOG 29키) 는 전부 한글 이름 — 영문 키가 킬 피드·관전 안내에 그대로 안 나옴
+func test_c8_weapon_ko_covers_server_kinds() -> void:
+	var kinds := ["ghost", "push", "shell", "bigshell", "groundshot", "leapwave", "spin", "spinend", "note", "riff", "glide", "amp", "ampend", "pounce", "execute", "wallkick", "blast",
+		"bigbomb", "projectile", "shock", "bomb", "control", "thrown", "slam", "hook", "charge", "slash", "wall", "blockslam"]
+	check(kinds.size() == 29, "서버 표 29키")
+	for k in kinds:
+		var ko: String = UC.weapon_ko(k)
+		check(ko != k and ko != "", "무기 %s 의 한글 이름이 없음 (%s)" % [k, ko])
+	check(UC.weapon_ko("ampend") == "앰프 마무리" and UC.weapon_ko("spinend") == "소용돌이 마무리", "마무리 타격 이름")
+	check(UC.cause_text("fall", "ampend") == "낙사 (앰프 마무리)", "킬 피드 원인 칸 %s" % UC.cause_text("fall", "ampend"))
+	check(UC.weapon_ko("amp") == "앰프 음파" and UC.weapon_ko("spin") == "분노 소용돌이" and UC.weapon_ko(null) == "" and UC.weapon_ko("zzz") == "zzz", "예전 이름·빈 값·모르는 종류는 그대로")
+
+
+# 돌발 이벤트: 시작 알림 ('돌풍 ↑') 이 떠 있는 동안 진행 띠 ('돌풍 ↑ 5초') 는 숨김 → 위 가운데 한 줄. 알림이 사라지면 띠
+func test_c8_event_chip_hidden_under_toast() -> void:
+	check(not UC.event_chip_on("돌풍 ↑ 5초", true), "알림이 떠 있으면 띠 숨김")
+	check(UC.event_chip_on("돌풍 ↑ 5초", false), "알림이 없으면 띠")
+	check(not UC.event_chip_on("", false) and not UC.event_chip_on("", true), "진행 중인 이벤트가 없으면 띠 없음")
+	# hud_extra 가 그 알림 줄을 기억해 씀 (러너에선 트리가 안 돌아 알림 줄을 직접 넣음 — toast 의 사라짐 tween 은 트리 안에서만)
+	var HudExtra := preload("res://ui/hud_extra.gd")
+	var h = HudExtra.new()
+	h._ready()
+	var st := {"phase": "playing", "roundEvent": {"kind": "rain", "left": 4200.0}}
+	h._event_chip(st)
+	check(h.event_chip.visible and h.event_chip.text == "블록 폭우 5초", "알림 없이 진행 중: 띠 '%s'" % h.event_chip.text)
+	var l := Label.new()
+	l.text = "블록 폭우!"
+	h.toasts.add_child(l)
+	h.event_toast = l
+	h._event_chip(st)
+	check(not h.event_chip.visible, "시작 알림이 떠 있는 동안 띠 숨김")
+	l.free() # 알림이 사라짐 (또는 넘쳐서 먼저 지워짐)
+	h._event_chip(st)
+	check(h.event_chip.visible and h.event_toast == null, "알림이 사라지면 띠가 다시 보임")
+	h._event_chip({"phase": "over", "roundEvent": {"kind": "rain", "left": 4200.0}})
+	check(not h.event_chip.visible, "판 중이 아니면 띠 없음 (예전 그대로)")
+	h.free()
+
+
+# 맞음·경직 테: 윗변 쪽만 옅게 (y = 0 에서 × top, 화면 높이 × top_ramp 아래는 그대로) — 위 HUD 를 덜 덮음. 배율은 자리 (y) 로만 정해 모서리에 계단이 없음
+func test_c8_edge_top_dim() -> void:
+	var E: Dictionary = Edge.EDGE
+	check(absf(float(E.top) - 0.4) < 1e-9 and absf(float(E.top_ramp) - 0.3) < 1e-9, "윗변 배율 0.4 · 줄임 끝 높이 30%% (%s·%s)" % [E.top, E.top_ramp])
+	check(float(E.top_ramp) > float(E.outer) + float(E.inner) and float(E.top_ramp) < 1.0 - float(E.outer) - float(E.inner), "줄임 끝 높이가 옆 변 띠 안 (모서리 맞물림 아래·아랫변 위)")
+	var kn: Array = E.knee
+	for size in [Vector2(1280, 720), Vector2(960, 540)]:
+		var b: Vector2 = Edge.band_px(size)
+		var mid: Vector2 = size / 2.0
+		var ramp: float = size.y * float(E.top_ramp)
+		var a := 0.8
+		# 배율 m(y): 0 → top, ramp 이상 → 1, 사이는 곧게
+		check(absf(Edge.top_mul(size, 0.0) - 0.4) < 1e-9 and Edge.top_mul(size, ramp) == 1.0 and Edge.top_mul(size, size.y) == 1.0, "%s m(0) = 0.4 · m(ramp 이상) = 1" % size)
+		check(absf(Edge.top_mul(size, ramp / 2.0) - 0.7) < 1e-6 and absf(Edge.top_mul(size, ramp / 4.0) - 0.55) < 1e-6, "%s 사이는 곧게" % size)
+		# 윗변 바깥 띠 ≈ 0.4a, 옆 변 (줄임 끝 아래)·아랫변 = a
+		var top_a: float = Edge.alpha_at(size, Vector2(mid.x, 1), a)
+		check(absf(top_a - a * Edge.top_mul(size, 1.0)) < 1e-6 and top_a > 0.4 * a - 1e-6 and top_a < 0.41 * a, "%s 윗변 (mid.x, 1) 알파 %.4f ≈ 0.4a" % [size, top_a])
+		check(absf(Edge.alpha_at(size, Vector2(1, mid.y), a) - a) < 1e-6 and absf(Edge.alpha_at(size, Vector2(size.x - 1, mid.y), a) - a) < 1e-6, "%s 옆 변 가운데 = a" % size)
+		check(absf(Edge.alpha_at(size, Vector2(mid.x, size.y - 1), a) - a) < 1e-6 and absf(Edge.alpha_at(size, Vector2(2, size.y - 2), a) - a) < 1e-6, "%s 아랫변·아래 구석 = a" % size)
+		for y in [ramp, ramp + 1.0, size.y * 0.5, size.y * 0.8]:
+			check(absf(Edge.alpha_at(size, Vector2(1, y), a) - a) < 1e-6 and absf(Edge.alpha_at(size, Vector2(size.x - 1, y), a) - a) < 1e-6, "%s 옆 변 y=%s (줄임 끝 아래) = a" % [size, y])
+		# 옆 변 위쪽은 내려올수록 진해짐 (0.4a → a), 다시 옅어지지 않음
+		var prev := 0.0
+		var y0 := 1.0
+		while y0 <= ramp + 2.0:
+			var v: float = Edge.alpha_at(size, Vector2(1, y0), a)
+			check(v >= prev - 1e-6 and v <= a + 1e-6, "%s 옆 변 y=%s 알파 %s (내려올수록 안 줄어듦)" % [size, y0, v])
+			prev = v
+			y0 += 1.0
+		# 모서리에 계단 없음: 45도 선 (d, d) 근처에서 윗변 쪽·옆 변 쪽으로 반 화소 옮긴 값의 차가 번지는 띠의 가장 가파른 기울기 (반 화소 몫) 안 — 변마다 다른 배율이면 0.6a 가 한 번에 뜀
+		var steep: float = maxf((1.0 - float(kn[1])) / (b.y * float(kn[0])), float(kn[1]) / (b.y * (1.0 - float(kn[0]))))
+		var worst := 0.0
+		var d := 2.0
+		while d <= b.x + b.y:
+			for cx in [d, size.x - d]:
+				var on: float = Edge.alpha_at(size, Vector2(cx, d), 1.0)
+				var to_top: float = Edge.alpha_at(size, Vector2(cx + (0.5 if cx < mid.x else -0.5), d), 1.0) # 윗변 쪽 (대각선 안쪽 가로로)
+				var to_side: float = Edge.alpha_at(size, Vector2(cx, d + 0.5), 1.0) # 옆 변 쪽 (세로로)
+				worst = maxf(worst, maxf(absf(to_top - to_side), maxf(absf(on - to_top), absf(on - to_side))))
+			d += 1.0
+		check(worst <= steep * 0.5 + 1e-6, "%s 모서리 45도 선에서 반 화소에 알파가 %.4f 넘게 뜀 (얻음 %.4f) — 계단" % [size, steep * 0.5, worst])
+		# 그리는 꼭짓점: 옆 변을 줄임 끝 높이에서 나눈 자리에 꼭짓점 (띠 경계 넷 × 좌우), 같은 자리 꼭짓점은 같은 알파 (변마다 다른 값이 아님)
+		var t: Array = Edge.tri_arrays(size)
+		var at_ramp := 0
+		var seen := {}
+		var clash := 0
+		for i in t[1].size():
+			var v2: Vector2 = t[1][i]
+			if absf(v2.y - ramp) < 1e-4:
+				at_ramp += 1
+				check(absf(t[2][i] - Edge.alpha_at(size, v2, 1.0)) < 1e-4, "%s 나눈 자리 꼭짓점 %s 알파" % [size, v2])
+			var key := "%.3f,%.3f" % [v2.x, v2.y]
+			if seen.has(key) and absf(float(seen[key]) - t[2][i]) > 1e-5:
+				clash += 1
+			seen[key] = t[2][i]
+		check(at_ramp == 24, "%s 줄임 끝 높이의 꼭짓점 %d개 (옆 변 띠 6개 × 나눈 조각 둘 × 둘)" % [size, at_ramp])
+		check(clash == 0, "%s 같은 자리인데 알파가 다른 꼭짓점 %d개" % [size, clash])
+		var tl := -1.0
+		for i in t[1].size():
+			if (t[1][i] as Vector2).is_equal_approx(Vector2.ZERO):
+				tl = t[2][i]
+		check(absf(tl - 0.4) < 1e-6, "왼위 구석 꼭짓점 알파 배율 %.3f (0.4)" % tl)
+	# 나누기: 세로 변이 그 높이를 지날 때만 둘로, 아니면 그대로
+	var side_q := [PackedVector2Array([Vector2(0, 100), Vector2(0, 0), Vector2(10, 10), Vector2(10, 90)]), PackedFloat32Array([1.0, 1.0, 0.5, 0.5])]
+	var parts: Array = Edge.split_at(side_q, 40.0)
+	check(parts.size() == 2 and parts[0][0][1] == Vector2(0, 40) and parts[0][0][2] == Vector2(10, 40) and parts[1][0][0] == Vector2(0, 40) and parts[1][0][3] == Vector2(10, 40), "옆 변 사다리꼴을 y 40 에서 둘로 %s" % [parts])
+	check(parts[0][1] == PackedFloat32Array([1.0, 1.0, 0.5, 0.5]) and parts[1][1] == PackedFloat32Array([1.0, 1.0, 0.5, 0.5]), "나눈 자리 꼭짓점 알파 = 그 변의 값")
+	check(Edge.split_at(side_q, 5.0).size() == 1 and Edge.split_at(side_q, 200.0).size() == 1, "안쪽 변이 안 지나거나 밖이면 그대로")
+	var top_q := [PackedVector2Array([Vector2(0, 0), Vector2(100, 0), Vector2(90, 10), Vector2(10, 10)]), PackedFloat32Array([1.0, 1.0, 0.5, 0.5])]
+	check(Edge.split_at(top_q, 5.0).size() == 1, "윗·아랫변 사다리꼴은 안 나눔")
+
+
+# 3인칭 구석 자리 (내 % · 아래 묶음) 는 한 곳에서: hud.gd 가 숫자 대신 hud_extra.gd STACK 을 읽음
+func test_c8_stack_one_source() -> void:
+	var src := FileAccess.get_file_as_string("res://ui/hud.gd")
+	# (hud.gd 엔 사냥꾼 히트마커가 조준점에서 띄우는 Vector2(22, 22) 가 따로 있음 — 구석 자리와 상관없는 값이라 내 % 자리 줄만 봄)
+	check(src != "" and not src.contains("Vector2(22, vp.y") and not src.contains("damage_label.size.y - 18"), "hud.gd 에 구석 자리 숫자 (Vector2(22, vp.y - … - 18)) 가 남아 있음")
+	var at := src.find("damage_label.position = Vector2(")
+	check(at >= 0 and src.find("damage_label.position = Vector2(", at + 1) < 0, "내 % 구석 자리를 정하는 줄은 하나")
+	check(src.contains("HudExtra.STACK.corner_x") and src.contains("HudExtra.STACK.corner_bottom"), "hud.gd 가 STACK.corner_x·corner_bottom 을 읽음")
+	var HudExtra := preload("res://ui/hud_extra.gd")
+	check(float(HudExtra.STACK.corner_x) == 22.0 and float(HudExtra.STACK.corner_bottom) == 18.0, "값은 예전 그대로 (22·18)")

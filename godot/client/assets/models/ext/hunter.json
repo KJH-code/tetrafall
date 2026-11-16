@@ -37,8 +37,14 @@
  ],
  "vm_node": "hunter_vm",
  "portrait": {
-  "half": 0.24,
-  "up": 0.03
+  "half": 0.21,
+  "up": -0.05,
+  "ang": 20.0,
+  "rise": -2.0,
+  "shift": [
+   -0.056,
+   -0.053
+  ]
  },
  "clips": {
   "file": "res://assets/models/ext/hunter_anim.glb",

@@ -12,6 +12,7 @@ const U := preload("res://ui/ui_calc.gd")
 const Coords := preload("res://core/coords.gd")
 const Keys := preload("res://core/keys.gd")
 const HM := preload("res://world/hunt_marks.gd") # 사냥꾼 표식 계산 (B4, shared/hunt-marks.js)
+const HudExtra := preload("res://ui/hud_extra.gd") # c8: 3인칭 구석 자리 (STACK.corner_x·corner_bottom) 를 여기서 읽음
 
 const CAUSE_KO := U.CAUSE_KO
 const TEAM_KO := {"red": "빨강", "blue": "파랑"}
@@ -347,6 +348,9 @@ func _on_event(e: Dictionary) -> void:
 		"death":
 			if e.who == Store.my_id:
 				killed = {"by": e.get("by"), "byName": e.get("byName"), "cause": e.cause, "weapon": e.get("weapon")}
+			# c8: 같은 묶음에 'kill' 이 있으면 그쪽이 피드·세기를 맡음 (가벼운 스냅샷이면 _on_state 가 안 불려 kill_events 를 여기서 켬 — 예전엔 같은 줄이 두 번)
+			if not kill_events and not U.death_feeds(Store.state.get("events", [])):
+				kill_events = true
 			if e.get("cause") != "disconnect" and not kill_events:
 				_feed(e, tally.add(e))
 		"mark":
@@ -843,7 +847,7 @@ func _skills(me: Dictionary, vp: Vector2) -> void:
 		var small := U.small(vp)
 		S.ov_font_size(damage_label, "font_size", (36 if small else 44) if third else (42 if small else 54))
 		if third:
-			damage_label.position = Vector2(22, vp.y - damage_label.size.y - 18)
+			damage_label.position = Vector2(float(HudExtra.STACK.corner_x), vp.y - damage_label.size.y - float(HudExtra.STACK.corner_bottom)) # c8: 구석 자리는 아래 묶음과 한 곳 (hud_extra.gd STACK)
 
 
 # 조준점 + 둘레 쿨 (바깥 하늘색 = 대시, 안쪽 흰색 = 밀치기)

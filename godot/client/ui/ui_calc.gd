@@ -41,10 +41,29 @@ static func fmt_time(ms: float) -> String:
 # 죽음 원인·무기 이름 (main.js CAUSE_KO·WEAPON_KO) — 킬 피드 '낙사 (망치)'·부활 대기·관전 안내
 const CAUSE_KO := {"crush": "압사", "fall": "낙사", "lava": "용암", "hp": "체력"}
 const WEAPON_KO := {"push": "밀치기", "projectile": "투사체", "shock": "충격파", "bomb": "폭탄", "control": "조종 블록", "thrown": "설치 블록", "charge": "돌진", "slam": "내려찍기", "slash": "순간 베기", "wall": "솟는 벽", "hook": "갈고리", "blockslam": "블록내려찍기", "blast": "블록 폭발", "bigbomb": "대폭발", "wallkick": "벽차기", "quake": "솟는 땅", "ghost": "유령블록", "glide": "낙하 음파", "shell": "포탄", "bigshell": "대형 포탄", "groundshot": "발밑 포격", "pounce": "추적 도약", "execute": "처형 사격", "leapwave": "광폭 도약", "spin": "분노 소용돌이", "note": "음파", "riff": "리프", "amp": "앰프 음파"}
+# c8: C# 서버만 보내는 종류 (godot/server GameUtil.cs WEAPON_LOG 의 마무리 타격) — 예전엔 킬 피드·관전 안내에 영문 키 ('낙사 (ampend)') 그대로 나옴.
+# 표를 따로 둠: WEAPON_KO 는 main.js 와 같은 28개 그대로 (tests/test_ui_js.gd 가 고정)
+const WEAPON_KO_CS := {"ampend": "앰프 마무리", "spinend": "소용돌이 마무리"}
 
 
 static func weapon_ko(w) -> String:
-	return "" if w == null or str(w) == "" else str(WEAPON_KO.get(str(w), str(w)))
+	return "" if w == null or str(w) == "" else str(WEAPON_KO.get(str(w), WEAPON_KO_CS.get(str(w), str(w))))
+
+
+# c8 킬 피드 한 줄: 'death' 이벤트가 피드·세기에 들어가는지 — 같은 스냅샷 묶음 (events) 에 'kill' 이 있으면 그 죽음은 'kill' 이 맡음 (거짓).
+# 묶음이 가벼운 스냅샷 (net.gd _flush 의 _light — state_changed 없이 이벤트만) 으로 오면 hud._on_state 가 'kill' 을 미리 못 봐서 같은 죽음이 두 줄 뜨던 것.
+# 'kill' 을 안 보내는 서버 (JS) 는 늘 참 = 예전 그대로
+static func death_feeds(events: Array) -> bool:
+	for e in events:
+		if e is Dictionary and str(e.get("type", "")) == "kill":
+			return false
+	return true
+
+
+# c8 진행 중인 돌발 이벤트 띠를 보일지: 띠 글 (RoundEventText.status) 이 있고, 그 이벤트의 시작 알림 (toast) 이 아직 떠 있지 않을 때만 —
+# 같이 뜨면 위 가운데에 '돌풍 ↑ 5초'·'돌풍 ↑' 두 줄
+static func event_chip_on(status: String, toast_alive: bool) -> bool:
+	return status != "" and not toast_alive
 
 
 # 킬 피드 원인 칸 (main.js killFeed how): '낙사 (망치)'

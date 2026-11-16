@@ -29,6 +29,7 @@ var timer_full := {"control": null, "power": null}
 var timer_prev := {"control": null, "power": null}
 var banner: Label
 var event_chip: Label # 진행 중인 돌발 이벤트 띠 (스냅샷 roundEvent: '블록 폭우 N초'·'돌풍 → N초' — 끝날 때까지)
+var event_toast = null # c8 (Label — 알림이 넘쳐 먼저 지워질 수 있어 형 없이 둠): 그 이벤트의 시작 알림 줄 (떠 있는 동안 띠를 숨김, 사라지면 null)
 var danger: Label
 var toasts: VBoxContainer
 var win_big: Label
@@ -328,7 +329,8 @@ func _practice() -> bool:
 
 
 # ---------- 알림·번쩍·콤보 (JS toast·flashScreen·showCombo·showCounter·showHitmarker) ----------
-func toast(text: String, kind := "") -> void:
+# 돌려주는 값 = 그 알림 줄 (c8: 돌발 이벤트 띠가 시작 알림이 떠 있는 동안 비킴 — event_toast)
+func toast(text: String, kind := "") -> Label:
 	var bg := Color(0.03, 0.05, 0.1, 0.82)
 	if kind == "me":
 		bg = Color("b53a10")
@@ -356,6 +358,7 @@ func toast(text: String, kind := "") -> void:
 	tw.tween_interval(C.TOAST_MS / 1000.0)
 	tw.tween_property(l, "modulate:a", 0.0, 0.45)
 	tw.tween_callback(l.queue_free)
+	return l
 
 
 func flash_screen(col: Color) -> void:
@@ -454,7 +457,7 @@ func _on_event(e: Dictionary) -> void:
 		"roundEvent": # 돌발 이벤트 (방 옵션): 블록 폭우·돌풍·보급·저중력·빙판 시작
 			var ev_text := RoundEventText.text(e, _view_yaw())
 			if ev_text != "":
-				toast(ev_text)
+				event_toast = toast(ev_text)
 		"clear":
 			toast("층 클리어!")
 
@@ -633,7 +636,11 @@ func refresh(st: Dictionary) -> void:
 # 진행 중인 돌발 이벤트 띠: 시작 알림이 사라진 뒤에도 끝날 때까지 한 줄 (돌풍 화살표는 지금 보는 방향 기준으로 매 프레임). 판 중에만
 func _event_chip(st: Dictionary) -> void:
 	var ev_status := RoundEventText.status(st.get("roundEvent"), _view_yaw()) if st.get("phase") == "playing" else ""
-	event_chip.visible = ev_status != ""
+	# c8: 시작 알림 ('돌풍 ↑') 이 떠 있는 동안은 띠 ('돌풍 ↑ 5초') 를 숨김 — 같은 내용 두 줄 대신 알림 → 띠 한 줄씩
+	var toast_alive: bool = is_instance_valid(event_toast) and not (event_toast as Label).is_queued_for_deletion()
+	if not toast_alive:
+		event_toast = null
+	event_chip.visible = U.event_chip_on(ev_status, toast_alive)
 	if ev_status != "":
 		event_chip.text = ev_status
 

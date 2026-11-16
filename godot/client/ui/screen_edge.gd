@@ -3,15 +3,19 @@
 # 지금: 바깥 가는 진한 띠 (화면 높이의 EDGE.outer) + 안쪽으로 0 까지 번지는 띠 (EDGE.inner) 네 변, 가운데는 비움. 두께는 가로·세로 모두 화면 높이 기준.
 # c7-fix F6: 알파가 바깥에서 안으로 끊김 없이 이어짐 (stops — 이웃 띠가 경계 알파를 같이 씀). 예전엔 안쪽 띠가 바깥 띠의 0.55배에서 시작해 경계에서 한 화소 만에 밝기가 떨어져
 # 굵은 단색 띠 + 옅은 띠 두 겹으로 보였음. 번지는 띠는 꺾임 하나 (EDGE.knee) 로 처음엔 빨리·뒤엔 천천히 줄어 '가장자리에서 번지는 빛' 으로.
-# HUD 판·시계·핑보다 먼저 그림 (z_index EDGE.z — JS 도 #flash 가 #players 아래). 셰이더 없이 정점 색 사다리꼴 12개를 삼각형 묶음 하나로 (_draw, 그리기 1번 —
+# HUD 판·시계·핑보다 먼저 그림 (z_index EDGE.z — JS 도 #flash 가 #players 아래). 셰이더 없이 정점 색 사다리꼴 12개 (c8: 옆 변을 나눠 18개) 를 삼각형 묶음 하나로 (_draw, 그리기 1번 —
 # 사다리꼴마다 draw_polygon 이면 테 하나에 그리기 12번).
-# 순수 계산 (띠 두께·알파·사다리꼴) 은 tests/test_feel.gd test_c7_* 가 고정
+# c8: 윗변 쪽을 옅게 (EDGE.top·top_ramp) — 위 HUD (시계·점수 띠·킬 피드·알림·핑) 가 진한 테 위에 얹혀 덜 읽히던 것. 알파 배율 m(y) 를 자리 (y) 로만 정해
+# 모든 꼭짓점에 곱함 (변마다 다른 배율이 아님 → 모서리 45도 선에서 두 변이 같은 값, 계단 없음). 옆 변 사다리꼴은 m 이 1 이 되는 높이에서 둘로 나눠 그 자리에 꼭짓점.
+# 순수 계산 (띠 두께·알파·사다리꼴) 은 tests/test_feel.gd test_c7_*·test_c8_edge_top_dim 이 고정
 extends Control
 
 const EDGE := {
 	"outer": 0.008, # 바깥 진한 띠 두께 ÷ 화면 높이 (가는 선 — 굵으면 단색 띠로 보임)
 	"inner": 0.107, # 안쪽 번지는 띠 두께 ÷ 화면 높이 (바깥 띠 알파에서 0 까지)
 	"knee": [0.35, 0.4], # 번지는 띠의 꺾임: [띠 안 자리 0~1, 그 자리 알파 배율] — 바깥 띠 알파 1 → 여기 → 0 (끊김 없이 이어짐)
+	"top": 0.4, # c8 윗변 (y = 0) 알파 배율 — 위 HUD 를 덜 덮게
+	"top_ramp": 0.3, # c8 화면 높이 × 이만큼 내려오면 배율 1 (사이는 곧게). 띠 두께 합보다 커야 옆 변을 그 높이에서 나눔
 	"gain": 1.8, # 번쩍: 바깥 띠 알파 = min(1, 받은 색 알파 × gain) — 좁아진 만큼 진하게
 	"fade": 0.4, # 번쩍이 사라지는 시간 (초, 예전 그대로)
 	"stun": Color(1, 0, 0, 0.75), # 경직 테 색 (알파 = 바깥 띠 알파)
@@ -40,11 +44,20 @@ static func stops(size: Vector2) -> Array:
 	return [[0.0, 1.0], [b.x, 1.0], [b.x + b.y * float(kn[0]), float(kn[1])], [b.x + b.y, 0.0]]
 
 
-# 화면 한 점의 알파 (바깥 띠 알파 a 일 때): 가장 가까운 변까지 거리로 — stops 사이를 곧게 이음 (바깥 띠 안 = a, 번지는 띠 = a 에서 0 으로, 그 안쪽 = 0)
+# c8 윗변 줄임 배율 m(y): y = 0 이면 EDGE.top, y ≥ 화면 높이 × EDGE.top_ramp 이면 1, 사이는 곧게
+static func top_mul(size: Vector2, y: float) -> float:
+	var ramp := size.y * float(EDGE.top_ramp)
+	if ramp <= 0.0 or y >= ramp:
+		return 1.0
+	return lerpf(float(EDGE.top), 1.0, maxf(0.0, y) / ramp)
+
+
+# 화면 한 점의 알파 (바깥 띠 알파 a 일 때): 가장 가까운 변까지 거리로 — stops 사이를 곧게 이음 (바깥 띠 안 = a, 번지는 띠 = a 에서 0 으로, 그 안쪽 = 0), 거기에 윗변 줄임 m(y)
 static func alpha_at(size: Vector2, pt: Vector2, a: float) -> float:
 	var d := minf(minf(pt.x, size.x - pt.x), minf(pt.y, size.y - pt.y))
 	if d < 0.0:
 		return 0.0
+	a *= top_mul(size, pt.y)
 	var st := stops(size)
 	for i in st.size() - 1:
 		var d0 := float(st[i][0])
@@ -54,7 +67,8 @@ static func alpha_at(size: Vector2, pt: Vector2, a: float) -> float:
 	return 0.0
 
 
-# 그릴 사다리꼴 (변마다 stops 사이 띠 하나씩 = 12개): [꼭짓점 넷 (바깥 둘 → 안 둘), 꼭짓점마다 알파 배율 (바깥 띠 알파에 곱함)]. 모서리는 45도로 맞물림
+# 띠 사다리꼴 (변마다 stops 사이 띠 하나씩 = 12개, 위 → 오른 → 아래 → 왼 순): [꼭짓점 넷 (바깥 둘 → 안 둘), 꼭짓점마다 꺾임 점 알파 배율]. 모서리는 45도로 맞물림.
+# 윗변 줄임 m(y) 는 아직 안 곱한 값 — 그리는 쪽 (tri_arrays) 이 옆 변을 나누고 꼭짓점마다 곱함
 static func quads(size: Vector2) -> Array:
 	var st := stops(size)
 	var out := []
@@ -82,16 +96,36 @@ func _init() -> void:
 	resized.connect(queue_redraw)
 
 
-# quads 를 한 번에 그릴 삼각형 묶음으로: [꼭짓점 번호 (사다리꼴마다 삼각형 둘), 꼭짓점, 꼭짓점마다 알파 배율]
+# c8 사다리꼴 하나를 높이 y 에서 둘로 (옆 변 = 바깥 변 q[0][0]→[1] 과 안쪽 변 [3]→[2] 가 세로이고 둘 다 y 를 지날 때만. 아니면 그대로 하나).
+# 나눈 자리의 새 꼭짓점은 그 변의 꺾임 점 알파 그대로 (세로 변 위에선 알파가 한 값)
+static func split_at(q: Array, y: float) -> Array:
+	var p: PackedVector2Array = q[0]
+	var a: PackedFloat32Array = q[1]
+	var vertical: bool = p[0].x == p[1].x and p[3].x == p[2].x
+	if not vertical or (p[0].y - y) * (p[1].y - y) >= 0.0 or (p[3].y - y) * (p[2].y - y) >= 0.0:
+		return [q]
+	var mo := Vector2(p[0].x, y)
+	var mi := Vector2(p[3].x, y)
+	return [
+		[PackedVector2Array([p[0], mo, mi, p[3]]), PackedFloat32Array([a[0], a[0], a[3], a[3]])],
+		[PackedVector2Array([mo, p[1], p[2], mi]), PackedFloat32Array([a[0], a[1], a[2], a[3]])],
+	]
+
+
+# quads 를 한 번에 그릴 삼각형 묶음으로: [꼭짓점 번호 (사다리꼴마다 삼각형 둘), 꼭짓점, 꼭짓점마다 알파 배율].
+# c8: 옆 변 사다리꼴은 윗변 줄임이 끝나는 높이 (화면 높이 × EDGE.top_ramp) 에서 둘로 (12 → 18개), 꼭짓점 알파 = 꺾임 점 알파 × m(그 꼭짓점 y) = alpha_at
 static func tri_arrays(size: Vector2) -> Array:
 	var idx := PackedInt32Array()
 	var pts := PackedVector2Array()
 	var al := PackedFloat32Array()
-	for q in quads(size):
-		var o := pts.size()
-		pts.append_array(q[0])
-		al.append_array(q[1])
-		idx.append_array([o, o + 1, o + 2, o, o + 2, o + 3])
+	var ramp_y := size.y * float(EDGE.top_ramp)
+	for q0 in quads(size):
+		for q in split_at(q0, ramp_y):
+			var o := pts.size()
+			pts.append_array(q[0])
+			for i in 4:
+				al.append(q[1][i] * top_mul(size, q[0][i].y))
+			idx.append_array([o, o + 1, o + 2, o, o + 2, o + 3])
 	return [idx, pts, al]
 
 

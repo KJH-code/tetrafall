@@ -3,6 +3,15 @@
 	"height": 1.0,
 	"yaw": 0.0,
 	"tint": "mask",
+	"portrait": {
+		"half": 0.185,
+		"up": -0.01,
+		"ang": 8.0,
+		"shift": [
+			-0.058,
+			0.056
+		]
+	},
 	"skin_mask": {
 		"ninja_lod1": "res://assets/models/ext/ninja_mask_lod1.png",
 		"ninja_lod2": "res://assets/models/ext/ninja_mask_lod2.png",

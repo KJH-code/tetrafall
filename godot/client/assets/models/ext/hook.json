@@ -34,7 +34,11 @@
  "rope_bone": "LeftHandMiddle4",
  "portrait": {
   "half": 0.25,
-  "up": 0.04
+  "up": 0.04,
+  "shift": [
+   -0.033,
+   -0.032
+  ]
  },
  "clips": {
   "file": "res://assets/models/ext/hook_anim.glb",

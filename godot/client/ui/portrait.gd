@@ -12,7 +12,7 @@ const Opts := preload("res://core/opts.gd")
 const C := preload("res://core/config.gd")
 const CHARS_PATH := "res://chars/chars.gd"
 
-const LEFT_SIDE := ["cannon"] # 오른어깨 포신이 얼굴을 가려 반대쪽에서 봄 (JS 그대로)
+const PK := preload("res://ui/portrait_config.gd") # c8: 얼굴 칸 표 (카메라 쪽·크기·자리 — 예전 LEFT_SIDE 도 여기로)
 const FOV := 26.0
 const PRIME_STEPS := 50 # prime_idle 이 부르는 pose 수 (16 ms 걸음 = 0.8 초)
 const PRIME_CHUNK := PRIME_STEPS # W45: 한 조각에 부르는 pose 수. 50번 전부 = 한 조각 (몸 만들기 프레임과 따로 한 프레임). 여러 프레임에 나누면 안 됨: 새 모델 (외부) 몸의 클립 층·천이 실제 시계 (Motion_.now_s) 로 도는데 50번을 몇 ms 안에 부르는 걸 전제로 한 모습이라 (클립 가중이 아직 안 오른 쉬는 자세), 프레임에 걸쳐 시간이 흐르면 탱크 방패가 얼굴을 가리는 등 자세가 달라짐 (2026-11-13 캡처 전후 비교에서 잡음)
@@ -205,8 +205,9 @@ func _draw_one(job: Array) -> void:
 	var fr := frame(body, full)
 	var half: float = fr.half
 	var dist := half / tan(deg_to_rad(FOV / 2.0))
-	var ang := deg_to_rad(38.0 if full else 46.0) # 앞 (+x) 에서 돌린 각
-	var side := 1.0 if LEFT_SIDE.has(char_id) else -1.0
+	var pv := face_view(body, char_id) # c8: 얼굴 초상의 각·높이는 표 (기본 46도·0.18 = 예전 값)
+	var ang := deg_to_rad(38.0 if full else float(pv.ang)) # 앞 (+x) 에서 돌린 각
+	var side: float = PK.side_of(char_id, is_ext(body)) if not full else PK.side_of_full(char_id) # c8: 얼굴은 표 (몸 갈래마다), 온몸은 예전 그대로
 	var at: Vector3 = fr.at
 	var cam := Camera3D.new()
 	cam.fov = FOV
@@ -215,7 +216,7 @@ func _draw_one(job: Array) -> void:
 	vp.add_child(cam)
 	var gx := cos(ang) * dist
 	var gy := side * sin(ang) * dist
-	var rise := 0.0 if full else half * 0.18
+	var rise := 0.0 if full else half * float(pv.rise)
 	cam.look_at_from_position(at + Vector3(gx, rise, -gy), at, Vector3.UP)
 	cam.current = true
 	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
@@ -277,10 +278,23 @@ static func frame(body: Node3D, full: bool) -> Dictionary:
 	if neck is Node3D and (neck as Node3D).is_inside_tree():
 		var hb := _bounds(neck) # 목 아래 달린 조각 = 머리 (투구·뿔·모자·눈)
 		if hb.size != Vector3.ZERO:
-			return {"at": hb.get_center(), "half": clampf(hb.size.y * 1.6, 0.26, 0.4)}
+			return PK.face_frame(str(body.get("char_id")), hb.get_center(), hb.size.y) # c8: 캐릭터마다 표 (portrait_config.gd FACE), 없으면 예전 식
 		var np: Vector3 = (neck as Node3D).global_position
 		return {"at": np + Vector3(0, 0.15, 0), "half": 0.25}
 	return {"at": Vector3(cx, z_top - h * 0.12, cz), "half": h * 0.2}
+
+
+# 얼굴 초상 카메라 각·높이 {ang (도), rise}: 외부 모델이면 json "portrait", 아니면 표 FACE 의 그 캐릭터 줄 (PK.view_of — 안 적혀 있으면 예전 값)
+static func face_view(body: Node, char_id: String) -> Dictionary:
+	if is_ext(body):
+		return PK.view_of(body.get("ext").info.cfg.get("portrait", {}))
+	return PK.view_of(PK.FACE.get(char_id, {}))
+
+
+# 외부 모델이 붙은 몸인지 (얼굴 칸을 머리 뼈·json "portrait" 로 잡는 갈래)
+static func is_ext(body: Node) -> bool:
+	var ext = body.get("ext")
+	return ext != null and ext.has_method("bone_point")
 
 
 # 아래 MeshInstance3D 들의 전역 상자 (고도 좌표)
