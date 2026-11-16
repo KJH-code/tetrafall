@@ -201,3 +201,94 @@ func test_cam_hook_runs_during_selfie() -> void:
 	Store.state = keep[0]
 	Store._players_by_id = keep[1]
 	Store.my_id = keep[2]
+
+
+# ---- c7 화면 가장자리 테 (ui/screen_edge.gd): 맞음·경직 알림이 가운데 장면과 아래 사람 판을 안 덮음 ----
+const Edge := preload("res://ui/screen_edge.gd")
+
+
+# 띠 두께 합 ≤ 화면 높이의 12%, 가운데 76% 사각형은 알파 0 (창 크기 둘)
+func test_c7_edge_frame_keeps_center_clear() -> void:
+	var E: Dictionary = Edge.EDGE
+	check(absf(E.outer - 0.025) < 1e-9 and absf(E.inner - 0.09) < 1e-9 and E.outer + E.inner <= 0.12, "띠 두께: 바깥 2.5%% + 안쪽 9%% (%s)" % (E.outer + E.inner))
+	for size in [Vector2(1280, 720), Vector2(960, 540)]:
+		var b: Vector2 = Edge.band_px(size)
+		check(absf(b.x - size.y * 0.025) < 1e-3 and absf(b.y - size.y * 0.09) < 1e-3 and b.x + b.y <= size.y * 0.12, "%s 띠 %s (합 ≤ 높이의 12%%)" % [size, b])
+		# 가운데 76% 사각형 (가로·세로 12% ~ 88%) 안은 전부 0
+		var lit := 0
+		for iy in 39:
+			for ix in 39:
+				var pt := Vector2(size.x * (0.12 + 0.76 * ix / 38.0), size.y * (0.12 + 0.76 * iy / 38.0))
+				if Edge.alpha_at(size, pt, 1.0) != 0.0:
+					lit += 1
+		check(lit == 0, "%s 가운데 76%% 에 테가 닿음 (%d 점)" % [size, lit])
+		# 바깥 띠 = 받은 알파 그대로, 안쪽 띠 = inner_k 배에서 0 으로 줄어듦, 네 변 모두
+		var mid: Vector2 = size / 2.0
+		for pt in [Vector2(1, mid.y), Vector2(size.x - 1, mid.y), Vector2(mid.x, 1), Vector2(mid.x, size.y - 1), Vector2(2, 2)]:
+			check(absf(Edge.alpha_at(size, pt, 0.8) - 0.8) < 1e-6, "%s 바깥 띠 %s 알파" % [size, pt])
+		var prev := 1.0
+		for i in 12:
+			var d: float = b.x + b.y * (i + 0.5) / 12.0
+			var a: float = Edge.alpha_at(size, Vector2(d, mid.y), 1.0)
+			check(a < prev and a > 0.0 and a <= E.inner_k and absf(a - Edge.alpha_at(size, Vector2(mid.x, size.y - d), 1.0)) < 1e-6, "%s 안쪽 띠 d=%s 알파 %s (줄어듦, 위아래·좌우 같음)" % [size, d, a])
+			prev = a
+		check(Edge.alpha_at(size, Vector2(b.x + b.y + 0.5, mid.y), 1.0) == 0.0 and Edge.alpha_at(size, mid, 1.0) == 0.0, "띠 안쪽은 0")
+		# 그리는 사다리꼴 8개: 가운데 사각형과 안 겹치고, 꼭짓점 알파가 alpha_at 과 같음
+		var qs: Array = Edge.quads(size)
+		check(qs.size() == 8, "사다리꼴 8개 (변 넷 × 바깥·안쪽)")
+		var center: Rect2 = Rect2(size * 0.12, size * 0.76)
+		for q in qs:
+			var box := Rect2(q[0][0], Vector2.ZERO)
+			for v in q[0]:
+				box = box.expand(v)
+			check(not box.intersects(center) and Rect2(Vector2.ZERO, size).grow(0.01).encloses(box), "사다리꼴 %s 이 가운데를 덮거나 화면 밖" % [q[0]])
+			check(q[0].size() == 4 and q[1].size() == 4, "꼭짓점 넷")
+		for q in qs.slice(0, 4):
+			check(q[1][0] == 1.0 and q[1][2] == 1.0, "바깥 띠는 한 알파")
+		for q in qs.slice(4):
+			check(absf(q[1][0] - E.inner_k) < 1e-6 and q[1][2] == 0.0 and q[1][3] == 0.0, "안쪽 띠는 inner_k → 0")
+		# 한 번에 그리는 삼각형 묶음 (그리기 1번): 사다리꼴 8개 = 삼각형 16개, 꼭짓점 알파 = 그 자리의 alpha_at (모서리 맞물림 포함)
+		var t: Array = Edge.tri_arrays(size)
+		check(t[0].size() == 48 and t[1].size() == 32 and t[2].size() == 32, "삼각형 16개·꼭짓점 32개 (%d·%d)" % [t[0].size(), t[1].size()])
+		var bad := 0
+		for i in t[0]:
+			if i < 0 or i >= t[1].size():
+				bad += 1
+		for i in t[1].size():
+			var want: float = Edge.alpha_at(size, t[1][i], 1.0)
+			# 띠 경계의 꼭짓점은 두 값 (바깥 1 · 안쪽 inner_k) 중 하나
+			if absf(t[2][i] - want) > 1e-4 and not (absf(want - 1.0) < 1e-4 and absf(t[2][i] - E.inner_k) < 1e-4):
+				bad += 1
+		check(bad == 0, "%s 삼각형 묶음 꼭짓점 번호·알파 어긋남 %d" % [size, bad])
+	# 번쩍 색: 좁아진 만큼 진하게 (× 1.8, 1 을 안 넘음), 색은 그대로
+	var hit: Color = Edge.flash_tint(Color(1, 0.824, 0, 0.45))
+	check(absf(hit.a - 0.81) < 1e-6 and hit.r == 1.0 and absf(hit.g - 0.824) < 1e-6 and hit.b == 0.0, "맞음 노랑 0.45 → 바깥 띠 0.81 (%s)" % hit)
+	check(Edge.flash_tint(Color(1, 1, 1, 0.9)).a == 1.0 and absf(Edge.flash_tint(Color(1, 0, 0, 0.22)).a - 0.396) < 1e-6, "알파 상한 1")
+	check(absf(E.fade - 0.4) < 1e-9 and absf(E.stun_fade - 0.15) < 1e-9 and absf((E.stun as Color).a - 0.75) < 1e-6 and (E.stun as Color).r == 1.0 and (E.stun as Color).g == 0.0, "사라지는 시간·경직 색은 그대로 (0.4초·0.15초·빨강 0.75)")
+
+
+# 번쩍·경직 테는 HUD 보다 먼저 그려지고 (z_index < 0), 화면 전체를 덮는 번쩍 판이 없음
+func test_c7_edge_below_hud() -> void:
+	var HudExtra := preload("res://ui/hud_extra.gd")
+	var h = HudExtra.new()
+	h._ready() # 러너에선 트리가 안 돌아 직접
+	for e in [h.flash, h.vignette]:
+		check(e.get_script() == Edge and e.get_parent() == h, "번쩍·경직 = 가장자리 테 노드")
+		check(e.z_index < 0 and e.z_as_relative and h.z_index == 0, "HUD (0) 보다 먼저 그림 (z_index %d)" % e.z_index)
+		check(not e.visible and e.modulate.a == 0.0 and e.mouse_filter == Control.MOUSE_FILTER_IGNORE, "꺼진 채로 시작 · 마우스를 안 막음")
+		check(e.anchor_right == 1.0 and e.anchor_bottom == 1.0, "화면 전체 크기 (테만 그림)")
+	for c in h.get_children():
+		check(not (c is ColorRect and c.anchor_right == 1.0 and c.anchor_bottom == 1.0), "화면 전체 ColorRect 가 남아 있음: %s" % c)
+		check(not (c is TextureRect and c.anchor_right == 1.0 and c.anchor_bottom == 1.0), "화면 전체 그림 판이 남아 있음: %s" % c)
+		if c.get_script() != Edge:
+			check(c.z_index >= 0, "HUD 나머지 (콤보·경직 글자·시계 …) 는 테 위: %s" % c)
+	check((h.vignette.tint as Color).is_equal_approx(Edge.EDGE.stun), "경직 테 = 빨강 0.75")
+	# 맞음 번쩍: 켜지고 색 = 노랑, 바깥 띠 알파 0.81 (트리 밖이라 사라짐 tween 은 안 돎)
+	h.flash_screen(Color(1, 0.824, 0, 0.45))
+	check(h.flash.visible and h.flash.modulate.a == 1.0 and (h.flash.tint as Color).is_equal_approx(Color(1, 0.824, 0, 0.81)), "번쩍 켜짐 %s" % h.flash.tint)
+	check(not h.vignette.visible, "번쩍이 경직 테를 켜지 않음")
+	h.vignette.set_level(0.5)
+	check(h.vignette.visible and h.vignette.modulate.a == 0.5, "경직 테 세기")
+	h.vignette.set_level(0.0)
+	check(not h.vignette.visible, "세기 0 이면 안 그림")
+	h.free()

@@ -7,6 +7,8 @@ const Co := preload("res://core/coords.gd")
 const SkyV := preload("res://world/sky_view.gd")
 
 const CAP := 16
+# c7 생존자 삼각뿔 그리는 순서: 이름표 (WC.LABEL_PRIORITY 11) 위 · 조준 표시 (13) 아래. 예전 6 은 이름표 아래라 하늘 시점의 '누가 어디' 표시가 이름표에 묻혔음
+const ORDER_CONE := 12
 
 var ghost: MultiMeshInstance3D
 var pillar: MultiMeshInstance3D
@@ -50,7 +52,7 @@ func _ready() -> void:
 	cn.height = 1.0
 	cn.radial_segments = 4
 	cn.rings = 1
-	cone = _pool(cn, 0.95, 6)
+	cone = _pool(cn, 0.95, ORDER_CONE)
 	beam = _pool(unit, v.beacon[4], 3)
 	edge_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	edge_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA

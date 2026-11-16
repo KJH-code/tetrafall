@@ -1,12 +1,14 @@
 # 효과 견본 (c6): 서버·봇 없이 싸움 효과를 정해진 자리·시각·카메라로 찍음 (찍을 때마다 같은 사진 → 효과 모양을 바꾸기 전·뒤 비교용)
 #   xvfb-run -a godot --path godot/client --resolution 1280x720 --rendering-driver opengl3 -s res://tools/fx_sheet.gd -- --out <폴더> [--only crit,boom] [--low]
-# 나오는 파일 (48장): fx-<종류>-<바닥>-<거리>-<시점>.png
-#   종류 KINDS 6: crit 치명타 · boom 폭탄 폭발 · bigshell 대형 포탄 · quake 땅 흔들기 (탱크 내려찍기) · rings 고리 세로 (왼쪽)·가로 (오른쪽) · ko 낙사 스매시
+# 나오는 파일 (64장): fx-<종류>-<바닥>-<거리>-<시점>.png
+#   종류 KINDS 8: crit 치명타 · boom 폭탄 폭발 · bigshell 대형 포탄 · quake 땅 흔들기 (탱크 내려찍기) · rings 고리 세로 (왼쪽)·가로 (오른쪽) · ko 낙사 스매시
+#     · windup F 준비 예고 고리 (c7: 왼쪽 = 1번 사람 색, 오른쪽 = 2번 사람 색) · aura 스킬 고리 (왼쪽·오른쪽 = 색이 다른 두 사람) + 필살기 고리 (가운데 뒤)
 #   바닥 FLOORS 2: meadow (밝은 초원 바닥) · volcano (어두운 화산 바닥) — 지형 없는 빈 바닥 판 하나
-#   거리 DISTS 2: far (카메라 7칸) · near (2.5칸) / 시점 TIMES 2: a (시작 뒤 0.08초) · b (0.2초)
+#   거리 DISTS 2: far (카메라 7칸) · near (2.5칸) / 시점 TIMES 2: a (시작 뒤 0.08초) · b (0.2초) — windup·aura 는 수명이 짧아 KIND_TIMES (0.05초 · 0.12~0.13초)
 # 판 그리기 (world/world.tscn) 를 갤러리 (tools/gallery.gd) 처럼 띄우고 가짜 판 상태를 넣음 → 바닥·빛·판 빛이 판 중과 같음.
 # 효과는 이 도구의 fx/fx.gd 노드에 가짜 서버 이벤트를 넣어 냄 (치명타·폭탄·땅 흔들기·낙사 = 판과 같은 처리 함수), 대형 포탄은 world/shots.gd bigShellBlast 줄 그대로,
 # 고리는 effects.ring 을 직접. 엔진 시간 배율 0 이라 효과가 스스로 안 흐름 → effects.update(dt, cam)·ko.update(dt) 를 손으로 STEP 초씩 돌려 시각을 맞춤.
+# windup·aura 는 판과 같은 world/body_fx.gd 노드에 이벤트를 넣음: 몸 자리는 가짜 bodies {"shown": {id: 자리}}, 시각은 body_fx.clock 에 이 도구의 시계 (clock_ms) 를 끼움.
 # 효과 수준은 '높음' (빛·연기·조각 켬), --low 면 '그래픽 낮춤' (덧칠 없이 파편·고리만). 난수 시드는 사진마다 고정.
 # 끝나면 저장한 파일 목록 (출력 줄 머리는 '효과 사진' — 본문 글꼴 글자 검사 (test_ui_nodes) 가 스크립트 따옴표 글을 다 훑어서 글꼴에 있는 글자만 씀), 종료 코드 0 (못 만든 사진·스크립트 오류가 있으면 1, 그릴 수 없는 환경 (--headless) 이면 2)
 extends SceneTree
@@ -18,7 +20,9 @@ const WC := preload("res://world/world_config.gd")
 const LP := preload("res://world/lobby_preview.gd")
 const FXC := preload("res://fx/fx_config.gd")
 
-const KINDS := ["crit", "boom", "bigshell", "quake", "rings", "ko"]
+const KINDS := ["crit", "boom", "bigshell", "quake", "rings", "ko", "windup", "aura"]
+const KIND_TIMES := {"windup": [0.05, 0.13], "aura": [0.05, 0.12]} # 종류마다 따로 찍는 시각 (초) — 없으면 TIMES
+const AURA_ULT_BACK := 2.2 # aura 견본: 필살기 고리를 가운데에서 이만큼 뒤 (카메라 반대쪽) 에
 const FLOORS := [["meadow", "flat"], ["volcano", "bowl"]] # [테마 이름 (파일 이름에), 그 테마 맵 id]
 const DISTS := [["far", 7.0], ["near", 2.5]] # 카메라 거리 (칸)
 const TIMES := [["a", 0.08], ["b", 0.2]] # 효과 시작 뒤 (초)
@@ -63,6 +67,9 @@ var store: Node
 var view: Node
 var world: Node3D
 var fx: Node3D
+var bfx: Node3D # world/body_fx.gd (windup·aura)
+var bfx_script: GDScript # 끝날 때 끼워 둔 시계를 빼려고 쥐고 있음
+var clock_ms := 0.0 # body_fx 가 보는 시계 (손으로 돌린 시간, ms)
 var cam := Camera3D.new()
 var grid_ver := 2000
 var last_floor := ""
@@ -110,6 +117,14 @@ func _setup() -> void:
 	# 판의 효과 노드 (world.fx_root 아래) 와 따로: 카메라·시각을 이 도구가 정함. fx.gd 는 자동 로드 (Store) 를 써서 -s 스크립트에선 실행 중에 불러야 함
 	fx = load("res://fx/fx.gd").new()
 	root.add_child(fx)
+	bfx_script = load("res://world/body_fx.gd") # 자동 로드 (Store) 를 써서 여기서 불러옴 (fx.gd 와 같음)
+	bfx_script.clock = func() -> float: return clock_ms
+	bfx = bfx_script.new()
+	bfx.effects = fx.effects
+	bfx.third = func() -> bool: return true
+	var m := mid()
+	bfx.bodies = {"shown": {1: Vector3(m.x - RING_GAP, m.y, 0.0), 2: Vector3(m.x + RING_GAP, m.y, 0.0), 3: Vector3(m.x, m.y + AURA_ULT_BACK, 0.0)}}
+	root.add_child(bfx)
 	cam.near = WC.CAM_CLIP[0]
 	cam.far = WC.CAM_CLIP[1]
 	cam.fov = C.FOV_DEFAULT
@@ -121,11 +136,14 @@ func _setup() -> void:
 				continue
 			for d in DISTS:
 				for ti in TIMES.size():
-					jobs.append(["fx-%s-%s-%s-%s.png" % [kind, fl[0], d[0], TIMES[ti][0]], fl, kind, float(d[1]), float(TIMES[ti][1]), ti == 0])
+					var at: float = KIND_TIMES[kind][ti] if KIND_TIMES.has(kind) else TIMES[ti][1]
+					jobs.append(["fx-%s-%s-%s-%s.png" % [kind, fl[0], d[0], TIMES[ti][0]], fl, kind, float(d[1]), at, ti == 0])
 
 
 func _end(code: int) -> void:
 	done = true
+	if bfx_script != null: # 정적 변수에 이 도구의 함수가 남은 채 엔진이 내려가지 않게
+		bfx_script.clock = Callable()
 	quit(code)
 
 
@@ -240,6 +258,8 @@ func _step(dt: float) -> void:
 	fx.ko.cam = cam
 	fx.ko.update(dt)
 	fx.effects.update(dt, cam)
+	clock_ms += dt * 1000.0
+	bfx.update(store.state, null, dt)
 
 
 func _run_to(t: float) -> void:
@@ -272,3 +292,10 @@ func _fire(kind: String) -> void:
 			e.ring(Vector3(m.x + RING_GAP, m.y, 0.1), 0xffffff, C.NINJA_WALLKICK_RANGE * 2, 0.35, true)
 		"ko":
 			fx.on_event({"type": "death", "who": 2, "cause": "fall", "x": m.x, "y": m.y, "z": 0.0, "out": {"x": -1, "y": 0}})
+		"windup": # 판과 같은 이벤트 (ms 없음 = SKILL_WINDUP_MS): 왼쪽 1번 · 오른쪽 2번
+			for who in [1, 2]:
+				bfx.on_event({"type": "skillWindup", "who": who})
+		"aura": # 스킬 = 왼쪽 1번 · 오른쪽 2번 (쓴 사람 색), 필살기 = 가운데 뒤 3번
+			for who in [1, 2]:
+				bfx.on_event({"type": "skill", "who": who})
+			bfx.on_event({"type": "ult", "who": 3})

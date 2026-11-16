@@ -1,0 +1,122 @@
+# c7 화면 가장자리 테 (ui/hud_extra.gd 가 씀): 맞음·조준당함·노래·연습 초기화 번쩍과 경직 알림을 화면 전체 막 대신 가장자리 띠로만.
+# 예전: 번쩍 = 화면 전체 ColorRect (맞으면 노랑 45% 막이 장면·아래 사람 판까지 덮음), 경직 = 가운데까지 번지는 둥근 붉은 빛.
+# 지금: 바깥 진한 띠 (화면 높이의 EDGE.outer) + 안쪽으로 0 까지 번지는 띠 (EDGE.inner) 네 변, 가운데는 비움. 두께는 가로·세로 모두 화면 높이 기준.
+# HUD 판·시계·핑보다 먼저 그림 (z_index EDGE.z — JS 도 #flash 가 #players 아래). 셰이더 없이 정점 색 사다리꼴 8개를 삼각형 묶음 하나로 (_draw, 그리기 1번 —
+# 사다리꼴마다 draw_polygon 이면 테 하나에 그리기 8번).
+# 순수 계산 (띠 두께·알파·사다리꼴) 은 tests/test_feel.gd test_c7_* 가 고정
+extends Control
+
+const EDGE := {
+	"outer": 0.025, # 바깥 진한 띠 두께 ÷ 화면 높이
+	"inner": 0.09, # 안쪽 번지는 띠 두께 ÷ 화면 높이
+	"gain": 1.8, # 번쩍: 바깥 띠 알파 = min(1, 받은 색 알파 × gain) — 좁아진 만큼 진하게
+	"inner_k": 0.55, # 안쪽 띠가 시작하는 알파 = 바깥 띠 알파 × inner_k (끝은 0)
+	"fade": 0.4, # 번쩍이 사라지는 시간 (초, 예전 그대로)
+	"stun": Color(1, 0, 0, 0.75), # 경직 테 색 (알파 = 바깥 띠 알파)
+	"stun_fade": 0.15, # 경직 테가 켜지고 꺼지는 시간 (초, 예전 그대로)
+	"z": -1, # 그리는 순서: HUD (0) 아래
+}
+
+var tint := Color(1, 1, 1, 0) # 색 + 바깥 띠 알파 (사라짐은 modulate.a 가 맡음 → 다시 안 그림)
+var _tw: Tween
+
+
+# 띠 두께 (화소): x = 바깥 진한 띠, y = 안쪽 번지는 띠
+static func band_px(size: Vector2) -> Vector2:
+	return Vector2(size.y * float(EDGE.outer), size.y * float(EDGE.inner))
+
+
+# 번쩍 색 (화면 전체 막일 때 쓰던 색·알파) → 테 색 (알파 = 바깥 띠 알파)
+static func flash_tint(col: Color) -> Color:
+	return Color(col.r, col.g, col.b, minf(1.0, col.a * float(EDGE.gain)))
+
+
+# 화면 한 점의 알파 (바깥 띠 알파 a 일 때): 가장 가까운 변까지 거리로 — 바깥 띠 안 = a, 안쪽 띠 = a × inner_k 에서 0 으로, 그 안쪽 = 0
+static func alpha_at(size: Vector2, pt: Vector2, a: float) -> float:
+	var b := band_px(size)
+	var d := minf(minf(pt.x, size.x - pt.x), minf(pt.y, size.y - pt.y))
+	if d < 0.0:
+		return 0.0
+	if d <= b.x:
+		return a
+	if d >= b.x + b.y:
+		return 0.0
+	return a * float(EDGE.inner_k) * (1.0 - (d - b.x) / b.y)
+
+
+# 그릴 사다리꼴 8개 (변마다 바깥·안쪽): [꼭짓점 넷 (바깥 둘 → 안 둘), 꼭짓점마다 알파 배율 (바깥 띠 알파에 곱함)]. 모서리는 45도로 맞물림
+static func quads(size: Vector2) -> Array:
+	var b := band_px(size)
+	var k := float(EDGE.inner_k)
+	var out := []
+	for band in [[0.0, b.x, 1.0, 1.0], [b.x, b.x + b.y, k, 0.0]]:
+		var r0 := _rect(size, float(band[0]))
+		var r1 := _rect(size, float(band[1]))
+		var al := PackedFloat32Array([band[2], band[2], band[3], band[3]])
+		for i in 4:
+			var j := (i + 1) % 4
+			out.append([PackedVector2Array([r0[i], r0[j], r1[j], r1[i]]), al])
+	return out
+
+
+# 화면에서 d 화소 들어간 사각형의 네 꼭짓점 (왼위 → 오른위 → 오른아래 → 왼아래)
+static func _rect(size: Vector2, d: float) -> Array:
+	return [Vector2(d, d), Vector2(size.x - d, d), Vector2(size.x - d, size.y - d), Vector2(d, size.y - d)]
+
+
+func _init() -> void:
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	z_index = int(EDGE.z)
+	visible = false # 켜질 때만 그림
+	modulate.a = 0.0
+	resized.connect(queue_redraw)
+
+
+# quads 를 한 번에 그릴 삼각형 묶음으로: [꼭짓점 번호 (사다리꼴마다 삼각형 둘), 꼭짓점, 꼭짓점마다 알파 배율]
+static func tri_arrays(size: Vector2) -> Array:
+	var idx := PackedInt32Array()
+	var pts := PackedVector2Array()
+	var al := PackedFloat32Array()
+	for q in quads(size):
+		var o := pts.size()
+		pts.append_array(q[0])
+		al.append_array(q[1])
+		idx.append_array([o, o + 1, o + 2, o, o + 2, o + 3])
+	return [idx, pts, al]
+
+
+func _draw() -> void:
+	if tint.a <= 0.0 or size.x <= 0.0 or size.y <= 0.0:
+		return
+	var t := tri_arrays(size)
+	var cols := PackedColorArray()
+	for a in t[2]:
+		cols.append(Color(tint.r, tint.g, tint.b, tint.a * a))
+	RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), t[0], t[1], cols)
+
+
+# 테 색을 정함 (알파 = 바깥 띠 알파)
+func paint(col: Color) -> void:
+	if tint != col:
+		tint = col
+		queue_redraw()
+
+
+# 세기 0~1 (경직 테: 켜고 끌 때 hud_extra 가 프레임마다)
+func set_level(k: float) -> void:
+	modulate.a = k
+	visible = k > 0.0
+
+
+# 번쩍 한 번: col = 화면 전체 막일 때의 색·알파. EDGE.fade 초 동안 사라짐
+func fire(col: Color) -> void:
+	paint(flash_tint(col))
+	set_level(1.0)
+	if _tw != null and _tw.is_valid():
+		_tw.kill()
+	if not is_inside_tree():
+		return
+	_tw = create_tween()
+	_tw.tween_property(self, "modulate:a", 0.0, float(EDGE.fade))
+	_tw.tween_callback(func(): visible = false)

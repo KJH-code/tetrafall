@@ -12,6 +12,8 @@ const FXC := preload("res://fx/fx_config.gd")
 const Prof := preload("res://core/prof.gd")
 const Opts := preload("res://core/opts.gd")
 const Gate := preload("res://core/entry_gate.gd")
+const RL := preload("res://world/ring_look.gd")
+const BodiesS := preload("res://world/bodies.gd") # player_color (정적 — 견본 도구·테스트는 bodies 자리에 사전을 넣음)
 
 var effects = null # G5 fx/effects.gd
 var marks = null # world/marks.gd (trail·block_pulse·neighbors)
@@ -20,6 +22,7 @@ var make_mat = null # Callable(Color) -> Material (G3 툰)
 var third := func() -> bool: return false # 3인칭인가 (내 머리 위 표시)
 var per := {} # id -> {ult, hunt, vuln, slow, amp, whirl, wait}
 var auras := [] # {node, mat, t0, ms, grow, id}
+var windups := [] # c7 F 준비 예고 고리 {node, mat, t0, ms, id, at (게임 좌표)} — 그 몸을 따라감
 var sparks := {} # id -> until (필살기 반짝이)
 var waves := [] # {node, mat, t0}
 var danger: MeshInstance3D
@@ -48,8 +51,22 @@ func _ready() -> void:
 	xray_mat.cull_mode = BaseMaterial3D.CULL_BACK # 앞면만 (JS FrontSide) — 양면이면 뒷면이 늘 깊이 반대 검사를 통과해 몸 전체가 빨개짐
 
 
+# c7: 효과 견본 도구 (tools/fx_sheet.gd) 가 시각을 손으로 정할 수 있게 — 비어 있으면 엔진 시계 (판은 늘 이쪽)
+static var clock := Callable()
+
+
 static func now_ms() -> float:
-	return Time.get_ticks_msec() * 1.0
+	return float(clock.call()) if clock.is_valid() else Time.get_ticks_msec() * 1.0
+
+
+func _exit_tree() -> void:
+	RL.clear_static()
+
+
+# 그 사람 색 (0xRRGGBB): 팀전이면 팀 계열. 모르는 사람이면 흰색
+static func color_of(id) -> int:
+	var p := Store.player(id) if id != null else {}
+	return BodiesS.player_color(p, Store.state) if not p.is_empty() else 0xffffff
 
 
 static func _flat(color: int, a := 1.0, add := false) -> StandardMaterial3D:
@@ -229,10 +246,8 @@ func on_event(e: Dictionary) -> void:
 		"death": # W18 낙사: 떨어지는 몸이 그 사람 색으로 바깥·아래로 사라지는 잔상
 			if str(e.get("cause", "")) == "fall":
 				fall_ghost(e.get("who"), e.get("out"))
-		"skillWindup": # 지상 F 준비 (닌자·탱크·갈고리): 발밑 흰 고리 (render.js skillWindup — 몸 하얘짐은 chars/body.gd)
-			var s = _shown(e.get("who"))
-			if s != null:
-				_ring(Vector3(s.x, s.y, s.z + 0.05), 0xffffff, 1.8, float(e.get("ms", C.SKILL_WINDUP_MS)) / 1000.0, true)
+		"skillWindup": # 지상 F 준비 (닌자·탱크·갈고리): 발밑 굵은 예고 고리 (몸 하얘짐은 chars/body.gd)
+			windup(e.get("who"), float(e.get("ms", C.SKILL_WINDUP_MS)))
 		"diveEnd": # 바드 메탈 기타 꽂기 끝 (render.js diveEnd): 맞힘 = 흰·빨강 파편 + 빨강 고리, 땅 = 빨강·흙 고리 + 흙 (흔들림은 fx.gd)
 			if e.get("who") != null:
 				dives.erase(int(e.who))
@@ -321,16 +336,35 @@ static func hide_own_ring(ring_id, my_id, is_third: bool) -> bool:
 	return my_id != null and ring_id != null and int(ring_id) == int(my_id) and not is_third
 
 
-# 스킬·필살기 빛: 발밑 고리가 퍼짐 (스킬 하양 순간, 필살기 하늘색 두 겹 + 반짝이). 캐릭터를 따라다님
+# c7 F 준비 예고 고리: 흰 심 + 그 사람 색 띠 + 잉크 테 (world/ring_look.gd) 가 ms 동안 조금 커지며 그 몸을 따라감.
+# 예전엔 효과 풀의 얇은 흰 고리 (render.js skillWindup) — 밝은 바닥에서 안 보였고 제자리에 남았음
+func windup(id, ms: float) -> void:
+	var s = _shown(id)
+	if s == null or ms <= 0.0:
+		return
+	var W: Dictionary = RL.WINDUP
+	var mat := RL.material(1.0, int(W.priority))
+	var n := _mi(RL.mesh("windup", color_of(id)), mat)
+	var at := Vector3(s.x, s.y, s.z + float(W.lift))
+	n.position = Co.gpos(at)
+	var r := RL.windup_radius(0.0)
+	n.scale = Vector3(r, 1, r)
+	n.visible = false # 다음 update 가 켬 (1인칭 내 것은 숨김)
+	add_child(n)
+	windups.append({"node": n, "mat": mat, "t0": now_ms(), "ms": ms, "id": id, "at": at})
+
+
+# 스킬·필살기 빛: 발밑 고리가 퍼짐 (스킬 = 흰 심 + 쓴 사람 색 순간, 필살기 = 흰 심 + 하늘색 두 겹 + 반짝이). 캐릭터를 따라다님
 func aura(id, ult: bool) -> void:
 	if id == null or _shown(id) == null:
 		return
-	var color := int(C.ULT_AURA_COLOR if ult else C.SKILL_AURA_COLOR)
+	var A: Dictionary = RL.AURA
+	var color := int(C.ULT_AURA_COLOR) if ult else color_of(id)
 	var ms: float = C.ULT_AURA_MS if ult else C.SKILL_AURA_MS
 	var now := now_ms()
 	for delay in ([0.0, ms * 0.25] if ult else [0.0]):
-		var mat := _flat(color, 0.85)
-		var n := _mi(ring_mesh(0.5, 0.58), mat)
+		var mat := RL.material(float(A.alpha))
+		var n := _mi(RL.mesh("aura", color), mat) # c7: (종류, 색) 마다 한 번 만든 메시 (예전엔 부를 때마다 ring_mesh)
 		n.visible = false
 		add_child(n)
 		auras.append({"node": n, "mat": mat, "t0": now + delay, "ms": ms * 0.6, "grow": 2.6 if ult else 1.8, "id": id})
@@ -382,10 +416,24 @@ func update(st: Dictionary, my_id, dt: float) -> void:
 		a.node.visible = u >= 0 and not hide_own_ring(a.id, my_id, third.call())
 		if u < 0:
 			continue
-		a.node.position = Co.gxyz(s.x, s.y, s.z + 0.04)
-		var sc: float = 1 + a.grow * u
+		a.node.position = Co.gxyz(s.x, s.y, s.z + float(RL.AURA.lift))
+		var sc: float = float(RL.AURA.r) * (1 + a.grow * u)
 		a.node.scale = Vector3(sc, 1, sc)
-		a.mat.albedo_color.a = 0.85 * (1 - u)
+		a.mat.albedo_color.a = float(RL.AURA.alpha) * (1 - u)
+	for i in range(windups.size() - 1, -1, -1):
+		var w: Dictionary = windups[i]
+		var s = _shown(w.id)
+		var u: float = (now - w.t0) / w.ms
+		if u >= 1 or s == null:
+			w.node.queue_free()
+			windups.remove_at(i)
+			continue
+		w.node.visible = not hide_own_ring(w.id, my_id, third.call())
+		w.at = Vector3(s.x, s.y, s.z + float(RL.WINDUP.lift))
+		w.node.position = Co.gpos(w.at)
+		var r := RL.windup_radius(u)
+		w.node.scale = Vector3(r, 1, r)
+		w.mat.albedo_color.a = RL.windup_alpha(u)
 	for i in range(waves.size() - 1, -1, -1):
 		var w: Dictionary = waves[i]
 		var u: float = (now - w.t0) / C.BARD_AMP_WAVE_LIFE_MS

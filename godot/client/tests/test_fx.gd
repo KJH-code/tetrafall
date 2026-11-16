@@ -224,15 +224,16 @@ func test_w3_skill_fx_like_js() -> void:
 	bf.on_event({"type": "diveEnd", "what": "land", "x": 1.0, "y": 2.0, "z": 0.0, "r": 2.0})
 	check(fx.pi == 54 and fx.ri == 3, "diveEnd 땅: 흙 22, 고리 2")
 	fx.free()
-	# 지상 F 준비: 그 사람 발밑 (화면 위치) 흰 고리, 커짐 1.8, 준비 시간 동안, 눕힘
+	# 지상 F 준비 (c7): 그 사람 발밑 (화면 위치) 예고 고리 하나, 준비 시간 동안 — body_fx 가 들고 몸을 따라감 (효과 풀 고리는 안 씀. 모양은 test_c7_windup_ring_thick)
 	var rec := FxRec.new()
 	bf.effects = rec
 	bf.bodies = {"shown": {5: Vector3(1, 2, 3)}}
 	bf.on_event({"type": "skillWindup", "who": 5, "ms": 400})
-	check(rec.rings == [[Vector3(1, 2, 3.05), 0xffffff, 1.8, 0.4, true]], "준비 고리 (흰, 1.8, ms) %s" % [rec.rings])
-	rec.rings.clear()
+	check(rec.rings.is_empty() and bf.windups.size() == 1, "준비 고리 하나 (풀 고리 %s · 예고 고리 %d)" % [rec.rings, bf.windups.size()])
+	check(bf.windups.size() == 1 and (bf.windups[0].at as Vector3).is_equal_approx(Vector3(1, 2, 3.05)) and is_equal_approx(float(bf.windups[0].ms) / 1000.0, 0.4), "준비 고리 (발밑 0.05 위, ms) %s" % [bf.windups])
+	bf.windups.clear() # 노드는 bf 자식이라 bf.free() 때 같이
 	bf.on_event({"type": "skillWindup", "who": 5})
-	check(rec.rings.size() == 1 and is_equal_approx(rec.rings[0][3], C.SKILL_WINDUP_MS / 1000.0), "ms 없으면 SKILL_WINDUP_MS")
+	check(bf.windups.size() == 1 and is_equal_approx(float(bf.windups[0].ms), C.SKILL_WINDUP_MS), "ms 없으면 SKILL_WINDUP_MS")
 	# 둔화 고리: 남은 둔화가 있으면 보임, 내 몸 1인칭이면 숨김 (JS 는 몸 그룹 자식)
 	var d := {}
 	var slow := {"alive": true, "slowLeft": 500}
@@ -638,3 +639,193 @@ func test_c6_label_above_fx() -> void:
 	check((n.label as Label3D).render_priority == WC.LABEL_PRIORITY, "몸 이름표가 make_label 을 씀")
 	check((n.bar_fill as Sprite3D).render_priority == WC.LABEL_PRIORITY and (n.bar_back as Sprite3D).render_priority == WC.LABEL_PRIORITY - 1, "HP 막대: 뒤판 %d · 채움 %d" % [n.bar_back.render_priority, n.bar_fill.render_priority])
 	b.free()
+
+
+# ---- c7 신호 고리 (world/ring_look.gd · body_fx 예고·스킬 고리 · 하늘 시점 삼각뿔 순서) ----
+const RL := preload("res://world/ring_look.gd")
+const BFX := preload("res://world/body_fx.gd")
+
+
+# 메시의 정점 색에 col 이 있는지 (정점 색은 8비트로 저장됨)
+func _has_color(m: ArrayMesh, col: Color) -> bool:
+	var q := 1.5 / 255.0
+	for c in m.surface_get_arrays(0)[Mesh.ARRAY_COLOR]:
+		if absf(c.r - col.r) <= q and absf(c.g - col.g) <= q and absf(c.b - col.b) <= q and absf(c.a - col.a) <= q:
+			return true
+	return false
+
+
+# 메시 정점의 [가장 안 반지름, 가장 바깥 반지름] (눕힌 고리: 고도 xz)
+func _radii(m: ArrayMesh) -> Array:
+	var lo := INF
+	var hi := 0.0
+	for v in m.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+		var r := Vector2(v.x, v.z).length()
+		lo = minf(lo, r)
+		hi = maxf(hi, r)
+		check(absf(v.y) < 1e-6, "고리는 바닥에 눕힘")
+	return [lo, hi]
+
+
+# F 준비 예고 고리: 굵은 띠 (반지름의 20% 이상) · 흰 심 + 그 사람 색 + 잉크 테 · 수명의 75% 까지 또렷 · 몸을 따라감 · 순서 9
+func test_c7_windup_ring_thick() -> void:
+	var G3C := preload("res://shaders/g3_config.gd")
+	var WC := preload("res://world/world_config.gd")
+	check(RL.band_frac("windup") >= 0.2 and near(RL.band_frac("windup"), 0.24, 1e-6), "띠 폭 ÷ 반지름 %s" % RL.band_frac("windup"))
+	var color := int(C.PLAYER_PALETTE[1])
+	var m: ArrayMesh = RL.mesh("windup", color)
+	var rr := _radii(m)
+	check(near(rr[0], 0.76, 1e-5) and near(rr[1], 1.0, 1e-5) and (rr[1] - rr[0]) / rr[1] >= 0.2, "메시 단면 %s (0.76 ~ 1.0)" % [rr])
+	check(_has_color(m, Color(1, 1, 1, 1)), "흰 심")
+	check(_has_color(m, Color(G3C.OUTLINE_COLOR.r, G3C.OUTLINE_COLOR.g, G3C.OUTLINE_COLOR.b, RL.INK_ALPHA)) and near(RL.INK_ALPHA, 0.6), "잉크 테 (외곽선 색, 알파 0.6)")
+	check(_has_color(m, RL.tint_of(color)) and not _has_color(m, RL.tint_of(int(C.PLAYER_PALETTE[0]))), "그 사람 색 띠")
+	check(_has_color(m, Color(1, 1, 1, 0)), "안쪽 끝은 투명 (부드러운 안 가장자리)")
+	check(RL.tint_of(0xffffff).is_equal_approx(Color(1, 1, 1, 1)) and RL.tint_of(color).is_equal_approx(Co.color(color).srgb_to_linear()), "정점 색은 선형 값")
+	# 띠 순서: 안 → 바깥으로 이어지고 (틈 없음) 흰 심 0.80~0.88 · 색 0.88~0.97 · 잉크 0.97~1.0
+	var bands: Array = RL.LOOKS.windup.bands
+	for i in bands.size() - 1:
+		check(near(bands[i][1], bands[i + 1][0]), "띠 %d 와 %d 사이 틈 없음" % [i, i + 1])
+	check(bands[1] == [0.80, 0.88, "core", "core"] and bands[2] == [0.88, 0.97, "tint", "tint"] and bands[3] == [0.97, 1.0, "ink", "ink"], "띠 표 %s" % [bands])
+	# 곡선: 반지름 0.95 → 1.25 ease-out · 알파는 75% 까지 1, 끝에 0
+	check(near(RL.windup_radius(0.0), 0.95) and near(RL.windup_radius(1.0), 1.25) and near(RL.windup_radius(2.0), 1.25), "반지름 0.95 → 1.25칸")
+	check(RL.windup_radius(0.5) > (0.95 + 1.25) / 2.0 and near(RL.windup_radius(0.5), 0.95 + 0.3 * 0.75), "ease-out (절반에 이미 3/4)")
+	var prev := 2.0
+	for i in 21:
+		var u := i / 20.0
+		var a := RL.windup_alpha(u)
+		check(a <= prev + 1e-9, "알파는 늘지 않음 (u=%s)" % u)
+		prev = a
+		if u <= 0.75:
+			check(a >= 0.9, "u=%s 알파 %s (75%% 까지 또렷)" % [u, a])
+	check(RL.windup_alpha(1.0) == 0.0 and near(RL.windup_alpha(0.875), 0.5), "끝에 0 (뒤 25%% 에 곧게)")
+	# 이벤트 → 예고 고리 하나 (효과 풀 고리 아님), 몸을 따라감
+	var keep_by = Store._players_by_id
+	var keep_state = Store.state
+	Store._players_by_id = {5: {"id": 5, "color": 1, "slot": 0}}
+	Store.state = {"players": []}
+	var t := [1000.0]
+	BFX.clock = func() -> float: return t[0]
+	var bf = BFX.new()
+	bf._ready() # 러너에선 트리에 못 들어가 직접 (위험 고리 노드를 만듦)
+	var rec := FxRec.new()
+	bf.effects = rec
+	bf.bodies = {"shown": {5: Vector3(1, 2, 3)}}
+	bf.on_event({"type": "skillWindup", "who": 5, "ms": 400})
+	check(bf.windups.size() == 1 and rec.rings.is_empty(), "skillWindup 하나 → 예고 고리 하나 (풀 고리 %d)" % rec.rings.size())
+	var w: Dictionary = bf.windups[0]
+	var node: MeshInstance3D = w.node
+	check(node.mesh == m, "메시 = 그 사람 색 예고 고리 (기억해 둔 것)")
+	check(near(w.ms, 400.0) and near(w.t0, 1000.0), "수명 = ms")
+	check((w.mat as StandardMaterial3D).render_priority == 9 and node.material_override == w.mat and 9 < WC.LABEL_PRIORITY - 1, "순서 9 (이름표 외곽선 아래)")
+	check(not (w.mat as StandardMaterial3D).no_depth_test, "깊이 검사 켬 (블록 뒤면 가려짐)")
+	check(node.position.is_equal_approx(Co.gxyz(1, 2, 3.05)) and near(node.scale.x, 0.95), "처음 자리·반지름 %s %s" % [node.position, node.scale])
+	t[0] = 1200.0 # 수명의 절반: 몸이 움직였으면 따라감
+	bf.bodies.shown[5] = Vector3(4, 2, 3)
+	bf.update({}, null, 0.016)
+	check(node.visible and node.position.is_equal_approx(Co.gxyz(4, 2, 3.05)) and near(node.scale.x, RL.windup_radius(0.5)) and near(node.scale.z, node.scale.x) and near(w.mat.albedo_color.a, 1.0), "절반: 몸을 따라감·커짐·또렷 (%s, %s, %s)" % [node.position, node.scale, w.mat.albedo_color.a])
+	bf.update({}, 5, 0.016) # 1인칭 내 고리는 숨김 (W35 그대로)
+	check(not node.visible, "1인칭 내 예고 고리는 숨김")
+	bf.third = func() -> bool: return true
+	bf.update({}, 5, 0.016)
+	check(node.visible, "3인칭이면 내 것도 보임")
+	t[0] = 1350.0
+	bf.update({}, null, 0.016)
+	check(near(w.mat.albedo_color.a, 0.5), "뒤 25%% 에 사라짐 (알파 %s)" % w.mat.albedo_color.a)
+	t[0] = 1400.0
+	bf.update({}, null, 0.016)
+	check(bf.windups.is_empty(), "수명이 끝나면 없앰")
+	bf.on_event({"type": "skillWindup", "who": 5})
+	check(bf.windups.size() == 1 and near(bf.windups[0].ms, C.SKILL_WINDUP_MS), "ms 없으면 SKILL_WINDUP_MS")
+	bf.on_event({"type": "skillWindup", "who": 99})
+	check(bf.windups.size() == 1, "화면에 없는 사람이면 안 만듦")
+	bf.bodies.shown.erase(5)
+	bf.update({}, null, 0.016)
+	check(bf.windups.is_empty(), "몸이 사라지면 고리도 없앰")
+	bf.free()
+	BFX.clock = Callable()
+	check(BFX.now_ms() > 0.0 and absf(BFX.now_ms() - Time.get_ticks_msec()) < 1000.0, "시계를 비우면 엔진 시계")
+	Store._players_by_id = keep_by
+	Store.state = keep_state
+
+
+# 스킬·필살기 고리: 부를 때마다 메시를 새로 안 만듦 · 스킬 = 흰 심 + 쓴 사람 색, 필살기 = 흰 심 + ULT_AURA_COLOR 두 겹
+func test_c7_aura_mesh_cached() -> void:
+	var keep_by = Store._players_by_id
+	var keep_state = Store.state
+	Store._players_by_id = {5: {"id": 5, "color": 1, "slot": 0}, 6: {"id": 6, "color": 3, "slot": 1}}
+	Store.state = {"players": []}
+	var bf = BFX.new()
+	bf.bodies = {"shown": {5: Vector3(1, 2, 3), 6: Vector3(3, 2, 3)}}
+	bf.aura(5, false)
+	bf.aura(5, false)
+	bf.aura(6, false)
+	check(bf.auras.size() == 3, "스킬 고리 하나씩")
+	var m5: ArrayMesh = bf.auras[0].node.mesh
+	check(m5 == bf.auras[1].node.mesh and m5 == RL.mesh("aura", int(C.PLAYER_PALETTE[1])), "두 번 불러도 같은 메시 (기억해 둔 것)")
+	check(bf.auras[2].node.mesh != m5 and bf.auras[2].node.mesh == RL.mesh("aura", int(C.PLAYER_PALETTE[3])), "색이 다른 사람은 다른 메시")
+	check(bf.auras[0].mat != bf.auras[1].mat, "재질은 고리마다 (알파가 따로 흐름)")
+	check(_has_color(m5, Color(1, 1, 1, 1)) and _has_color(m5, RL.tint_of(int(C.PLAYER_PALETTE[1]))), "스킬 고리 = 흰 심 + 그 사람 색")
+	var bands: Array = RL.LOOKS.aura.bands
+	check(bands.size() == 2 and bands[0][2] == "core" and bands[1][3] == "tint" and near(bands[0][1], bands[1][0]), "2단: 안 = 흰 심, 바깥 = 색 %s" % [bands])
+	var rr := _radii(m5)
+	check(near(RL.band_frac("aura"), 0.14, 1e-6) and near(rr[0], 0.86, 1e-5) and near(rr[1], 1.0, 1e-5), "띠 폭 = 반지름의 14%% %s" % [rr])
+	check(near(bf.auras[0].ms, C.SKILL_AURA_MS * 0.6) and near(bf.auras[0].grow, 1.8), "스킬 고리 시간·커짐은 그대로")
+	# 필살기: 두 겹 (둘째는 ms × 0.25 늦게), ULT_AURA_COLOR 바깥 + 흰 심
+	var n0: int = bf.auras.size()
+	var now: float = BFX.now_ms()
+	bf.aura(5, true)
+	check(bf.auras.size() == n0 + 2, "필살기 고리 두 겹")
+	var u0: Dictionary = bf.auras[n0]
+	var u1: Dictionary = bf.auras[n0 + 1]
+	var mu: ArrayMesh = u0.node.mesh
+	check(mu == u1.node.mesh and mu == RL.mesh("aura", int(C.ULT_AURA_COLOR)) and mu != m5, "필살기 메시 (두 겹이 같은 것)")
+	check(_has_color(mu, Color(1, 1, 1, 1)) and _has_color(mu, RL.tint_of(int(C.ULT_AURA_COLOR))), "필살기 고리 = 흰 심 + ULT_AURA_COLOR")
+	check(near(u1.t0 - u0.t0, C.ULT_AURA_MS * 0.25) and absf(u0.t0 - now) < 50.0 and near(u0.ms, C.ULT_AURA_MS * 0.6) and near(u0.grow, 2.6), "두 겹·지연·커짐은 그대로")
+	check(bf.sparks.has(5), "필살기 반짝이는 그대로")
+	# 처음 크기는 예전 고리 (ring_mesh(0.5, 0.58)) 바깥 반지름
+	check(near(RL.AURA.r, 0.58) and near(RL.AURA.alpha, 0.85), "처음 반지름 0.58칸·알파 0.85")
+	bf.aura(99, false)
+	check(bf.auras.size() == n0 + 2, "화면에 없는 사람이면 안 만듦")
+	bf.free()
+	Store._players_by_id = keep_by
+	Store.state = keep_state
+
+
+# 하늘 시점 생존자 삼각뿔은 이름표 위 · 조준 표시 (13) 아래 순서 (나머지 도우미는 그대로 3)
+func test_c7_sky_marker_above_label() -> void:
+	var WC := preload("res://world/world_config.gd")
+	var sa = preload("res://world/sky_aids.gd").new()
+	sa._ready()
+	var order: int = (sa.cone.material_override as StandardMaterial3D).render_priority
+	check(order > WC.LABEL_PRIORITY and order < 13, "삼각뿔 순서 %d (이름표 %d 위, 조준 13 아래)" % [order, WC.LABEL_PRIORITY])
+	for n in [sa.ghost, sa.pillar, sa.beam]:
+		check((n.material_override as StandardMaterial3D).render_priority == 3, "착지 칸·빛 기둥 순서는 그대로 3")
+	sa.free()
+
+
+# 새 고리 재질 모양은 판 들어올 때 미리 그려 두는 표 (warm_scan.gd STD_KEYS) 안 — 처음 쓸 때 셰이더를 안 만듦
+func test_c7_ring_materials_warm() -> void:
+	var WS := preload("res://world/warm_scan.gd")
+	var MF := preload("res://core/mat_first.gd")
+	var have := []
+	for k in WS.STD_KEYS:
+		have.append(MF.mat_key(WS.std_material(k)))
+	var wm: StandardMaterial3D = RL.material(1.0, int(RL.WINDUP.priority))
+	var am: StandardMaterial3D = RL.material(float(RL.AURA.alpha))
+	check(have.has(MF.mat_key(wm)) and have.has(MF.mat_key(am)), "고리 재질 열쇠 %s 가 표준 표 안" % MF.mat_key(wm))
+	var fx := Effects.new()
+	check(MF.mat_key(wm) == MF.mat_key(fx.ring_mat), "효과 풀 고리와 같은 모양 (이미 쓰이는 셰이더)")
+	fx.free()
+	check(wm.vertex_color_use_as_albedo and not wm.vertex_color_is_srgb and wm.next_pass == null and wm.distance_fade_mode == BaseMaterial3D.DISTANCE_FADE_DISABLED, "열쇠에 안 잡히는 갈래 (정점 색 sRGB·거리 흐림·덧패스) 도 표준 재질과 같음")
+	check(wm.render_priority == 9 and am.render_priority == 0 and near(am.albedo_color.a, 0.85) and near(wm.albedo_color.a, 1.0), "순서·처음 알파")
+	# body_fx 가 만드는 고리가 이 재질을 씀
+	var keep_by = Store._players_by_id
+	Store._players_by_id = {}
+	var bf = BFX.new()
+	bf.bodies = {"shown": {5: Vector3(1, 2, 3)}}
+	bf.windup(5, 150.0)
+	bf.aura(5, false)
+	check(MF.mat_key(bf.windups[0].mat) == MF.mat_key(wm) and MF.mat_key(bf.auras[0].mat) == MF.mat_key(am), "body_fx 고리 재질 = ring_look 재질")
+	check(bf.windups[0].node.mesh == RL.mesh("windup", 0xffffff), "모르는 사람이면 흰색 띠")
+	bf.free()
+	Store._players_by_id = keep_by

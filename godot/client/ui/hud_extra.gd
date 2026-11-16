@@ -16,6 +16,7 @@ const TEAM_MAIN := {"red": Color("ff5a4a"), "blue": Color("4aa8ff")}
 const ULT_FAIL_TEXT := {"noBlock": "블록 없음", "noSpace": "자리 없음", "busy": "사용 중", "noTarget": "대상 없음"}
 const TIMER_LOOK := {"control": [Color("20e0e0"), "조종권"], "power": [Color("ffb040"), "아이템"]}
 const U := preload("res://ui/ui_calc.gd")
+const Edge := preload("res://ui/screen_edge.gd") # c7 화면 가장자리 테 (번쩍·경직)
 # 압사 경고 줄무늬 (JS repeating-linear-gradient(-62deg, #ff4426 0 16px, #d92a0c 16px 32px)): 판 바탕 빨강 (#ff4426) 자리만 줄무늬로 바꿈 (글자·노랑 끝은 그대로)
 # + 판 전체 밝기 깜빡임 (danger-blink)
 const STRIPE_SHADER := "shader_type canvas_item;\nvoid fragment() {\n\tvec4 c = COLOR;\n\tif (distance(c.rgb, vec3(1.0, 0.267, 0.149)) < 0.02) {\n\t\tfloat k = mod(FRAGCOORD.x * 0.4695 + FRAGCOORD.y * 0.8829, 32.0);\n\t\tc.rgb = k < 16.0 ? vec3(1.0, 0.267, 0.149) : vec3(0.851, 0.165, 0.047);\n\t}\n\tc.rgb *= mod(TIME, 0.32) < 0.16 ? 1.18 : 0.9;\n\tCOLOR = c;\n}\n"
@@ -37,8 +38,8 @@ var counter: Label
 var hitmarker: Control
 var hit_until := -1.0
 var stun: Label
-var vignette: TextureRect
-var flash: ColorRect
+var vignette: Edge # 경직 붉은 테
+var flash: Edge # 화면 번쩍 (맞음·조준당함·노래·연습 초기화) 테
 var center: Label
 var wheel: Control
 var wheel_items: Array[Label] = []
@@ -67,15 +68,11 @@ var was_alive := true
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# 화면 번쩍 (JS flashScreen) · 경직 붉은 테두리 (#vignette, inset 140px 붉은 빛)
-	vignette = _edge_rect(Color(1, 0, 0, 0.55))
-	vignette.modulate.a = 0.0
+	# 화면 번쩍 (JS flashScreen) · 경직 붉은 테두리 (#vignette). c7: 둘 다 화면 전체 막·가운데까지 번지는 빛 대신 가장자리 테 (ui/screen_edge.gd) —
+	# 가운데 장면과 아래 사람 판을 안 덮음. HUD 판·시계·핑보다 먼저 그려짐 (z_index −1, JS 도 #flash 가 #players 아래), 켜질 때만 그림
+	vignette = _edge_rect(Edge.EDGE.stun)
 	add_child(vignette)
-	flash = ColorRect.new()
-	flash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	flash.color = Color(1, 1, 1, 0)
-	flash.visible = false # 번쩍일 때만 (W15: 투명한 화면 전체 판을 판 내내 그리던 것 — 글자 색 a = 0 은 modulate 와 달리 그리기를 안 건너뜀)
+	flash = _edge_rect(Color(1, 1, 1, 0))
 	add_child(flash)
 	# 위 묶음 (#top): 시계 · 배너 · 경고 · 알림 — 점수 띠 아래 가운데
 	top_box = VBoxContainer.new()
@@ -304,23 +301,10 @@ func _box_label(size: int, bg: Color) -> Label:
 	return l
 
 
-# 화면 가장자리 빛 (CSS inset box-shadow): 가운데 투명 → 끝 col
-func _edge_rect(col: Color) -> TextureRect:
-	var t := TextureRect.new()
-	var gt := GradientTexture2D.new()
-	gt.fill = GradientTexture2D.FILL_RADIAL
-	gt.fill_from = Vector2(0.5, 0.5)
-	gt.fill_to = Vector2(1.0, 1.0)
-	var gr := Gradient.new()
-	gr.set_color(0, Color(col.r, col.g, col.b, 0.0))
-	gr.set_color(1, col)
-	gr.set_offset(0, 0.6)
-	gt.gradient = gr
-	t.texture = gt
-	t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	t.stretch_mode = TextureRect.STRETCH_SCALE
-	t.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+# 화면 가장자리 테 (ui/screen_edge.gd): col = 색 + 바깥 띠 알파. 꺼진 채로 만듦
+func _edge_rect(col: Color) -> Edge:
+	var t := Edge.new()
+	t.paint(col)
 	return t
 
 
@@ -375,11 +359,7 @@ func toast(text: String, kind := "") -> void:
 
 
 func flash_screen(col: Color) -> void:
-	flash.color = col
-	flash.visible = true
-	var tw := flash.create_tween()
-	tw.tween_property(flash, "color:a", 0.0, 0.4)
-	tw.tween_callback(func(): flash.visible = flash.color.a > 0.0)
+	flash.fire(col) # c7: 가장자리 테만 (색·사라지는 시간은 그대로)
 
 
 func show_combo(n: int, taken: bool, finish: bool) -> void:
@@ -620,7 +600,7 @@ func refresh(st: Dictionary) -> void:
 	var stunned: bool = show_me and bool(p.get("stunned", false))
 	stun.visible = stunned
 	stun.position = Vector2((vp.x - stun.size.x) / 2.0, vp.y / 2.0 + 30)
-	vignette.modulate.a = move_toward(vignette.modulate.a, 1.0 if stunned else 0.0, get_process_delta_time() / 0.15)
+	vignette.set_level(move_toward(vignette.modulate.a, 1.0 if stunned else 0.0, get_process_delta_time() / float(Edge.EDGE.stun_fade)))
 	# 조준점 (든 아이템에 따라 색)
 	var input_on: bool = show_me and PlayerInput.locked
 	crosshair.visible = input_on and not p.get("controlling", false)
