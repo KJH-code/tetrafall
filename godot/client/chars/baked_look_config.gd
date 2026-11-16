@@ -4,7 +4,9 @@ extends RefCounted
 
 # 선·단: assets/models/ext/<id>.json 의 toon_steps·rim·outline 과 같은 값 (테스트가 json 과 견줌)
 const TOON_STEPS := Vector3(0.7, 0.86, 1.0)
-const RIM := [0.22, 3.0] # [세기, 지수]
+const RIM := [0.22, 4.0] # [세기, 지수] (c7-u1: 지수 3 → 4, 림이 가장자리에만)
+const RIM_TINT := [0.5, 1.0] # c7-u1 림 틴트 [림 색을 플레이어 색으로 섞는 양, 림 배율 더하기] — json 의 rim_tint 와 같은 값 (toon_common rim_tint)
+const RIM_GATE := [0.35, 0.65] # 림 틴트가 걸리는 면 [다 걸림, 안 걸림] — chars_config.gd EXT_DEFAULTS rim_gate 와 같은 값
 const OUTLINE := 0.45 # 외곽선 굵기 = C.OUTLINE_THICKNESS × 이 값
 
 # 눈 재질 색 (manifest mats 의 basic 재질, figure.js eyeWhiteMat·pupilMat)
@@ -25,6 +27,8 @@ const WELD := 5000.0 # 조각 나누기: 같은 자리 정점 묶는 눈금 (1 �
 #   promote   피부가 아닌 조각을 플레이어 칸으로 올림: [뼈, 재질 번호] 또는 [뼈, 재질 번호, 높이 문턱] (조각 가운데 높이가 문턱 이상만)
 #   bare      피부가 아닌 조각을 살색으로 (장갑 → 맨손): [뼈, 재질 번호] 또는 [뼈, 재질 번호, 높이 문턱] (조각 가운데 높이가 문턱 **미만**만 — 손목 띠는 남김)
 #   eye_scale 눈 (흰자·눈동자) 배율 — 흰자 가운데 기준. 흰자 지름이 머리 폭의 1/3 이하
+#   double    (c7-u1) 이 몸의 불투명 툰 재질을 양면으로 — 한 겹 천 (망토·코트 자락·등 천) 안쪽이 외곽선 색 (보라) 으로 통칠되던 것. 외부 모델 json 의 double 과 같은 길 (external.gd Ext.look)
+#   outline_push (c7-u1) 외곽선 껍질을 깊이로 뒤로 (0~0.002, json outline_push 와 같은 뜻) — 양면 천 안쪽 면 위로 껍질이 비치지 않게
 const LOOK := {
 	"bard": {
 		"flesh": 0xE6B894,
@@ -65,6 +69,7 @@ const LOOK := {
 		"split": {"neck": [0.29, "flesh", "player"]},
 		"wide": {"shoulder_R": [0.1, "flesh", "player"], "shoulder_L": [0.1, "flesh", "player"]},
 		"eye_scale": 0.5,
+		"double": true, "outline_push": 0.0015,
 	},
 	"ninja": {
 		"flesh": 0xE6B894,
@@ -80,6 +85,7 @@ const LOOK := {
 		"split": {"neck": [0.2, "flesh", "player"], "waist": [0.2, "flesh", "player"]},
 		"promote": [["neck", 2]],
 		"eye_scale": 0.44,
+		"double": true, "outline_push": 0.0015,
 	},
 	"hook": {
 		"flesh": 0xE6B894,
@@ -89,5 +95,6 @@ const LOOK := {
 		"wide": {"elbow_R": [0.08, "flesh", "player"], "elbow_L": [0.08, "flesh", "player"]},
 		"promote": [["neck", 1, 0.2]],
 		"eye_scale": 0.48,
+		"double": true, "outline_push": 0.0015,
 	},
 }

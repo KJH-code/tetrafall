@@ -49,6 +49,14 @@ const LABEL_LIGHTEN := 0.35 # 이름표 글자 색을 몸 색보다 밝게
 # 바닥 표시 (world/marks.gd 8) · 위험 고리 (world/body_fx.gd 9) 보다 크고, 머리 위 상태 글자·음표·사냥 표식 (body_fx.gd 12) · 조준 표시 (world/shots.gd 13) 보다는 작게 — 둘 다 채우는 값은 11 하나.
 # 새 효과 재질의 순서는 9 이하로 (이름표 위에 떠야 하는 표시만 12 이상) — tests/test_fx.gd test_c6_label_above_fx 가 소스의 순서 값을 훑어 고정
 const LABEL_PRIORITY := 11
+# c7-u1 발밑 색 고리 (world/foot_rings.gd, 계산 foot_ring_math.gd): 판 중 살아 있는 사람 발 아래 바닥에 그 사람 색 납작한 고리.
+#   r 바깥 반지름 (칸) · inner 안쪽 = 바깥 × 이 값 · alpha 진하기 · lift 바닥 (기둥 꼭대기·위험 액체 표면) 위로 띄움 · segs 고리 조각 수
+#   fade·fade_min 공중이면 바닥에서 h 칸 위일 때 반지름·알파 × max(fade_min, 1 − fade × h)
+#   me_r·me_alpha·me_lift 3인칭의 나: 안쪽 흰 테 (반지름 × me_r, 흰색 알파, 색 고리보다 이만큼 위)
+#   step 기둥 꼭대기가 발보다 이만큼 넘게 높으면 머리 위 지붕으로 보고 발 아래 칸을 찾음 · phases 그리는 판 단계
+#   key 표준 재질 모양 (warm_scan.gd STD_KEYS 안의 것 — 빛 안 받음·반투명·정점 색·깊이 검사, 떨어지는 블록 그림자 칸과 같은 모양) · order 그리기 순서 (이름표 외곽선 10 아래, 바닥 표시 8 아래)
+const FOOT_RING := {"r": 0.42, "inner": 0.72, "alpha": 0.85, "lift": 0.04, "segs": 32, "fade": 0.12, "fade_min": 0.45, "me_r": 0.78, "me_alpha": 0.6, "me_lift": 0.005,
+	"step": 0.5, "phases": ["countdown", "playing"], "key": [0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0], "order": 7}
 const CAM_CLIP := [0.05, 900.0] # 카메라 가까운·먼 자름
 const BLOCK_ROUGH := [0.9, 0.6] # 쌓인 칸, 떨어지는 칸 거칠기
 const ITEM_GLOW := 0.4 # 아이템 스스로 빛남

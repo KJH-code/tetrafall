@@ -17,6 +17,8 @@ const KEEP_FLAGS := Mesh.ARRAY_FLAG_USE_8_BONE_WEIGHTS | Mesh.ARRAY_FLAG_COMPRES
 
 static var _cache := {} # 캐릭터 → {mesh, eyes {노드 번호 → 메시}, xf [[노드 번호, 자리, 크기 배율]]} 또는 null (표에 없음·못 만듦)
 static var _piece_cache := {} # 캐릭터 → {노드 번호 → 조각 메시 사본} 또는 null (표에 없음) — 조각 몸 (1인칭 팔 쌍둥이) 몫, for_pieces
+static var _char := "" # c7-u1: 지금 화풍을 입히는 캐릭터 — for_char·for_pieces 가 적고, 바로 뒤따르는 style 호출들 (baked_batch.apply_look·body._look_pieces) 이 캐릭터별 값 (양면·민 외곽선) 을 읽음
+const EXT := "res://chars/external.gd" # Ext.look·push_outline (외부 모델과 같은 길). 미리 읽지 않음 (external → body → baked_batch → 여기 로 도는 고리)
 
 
 static func has_char(char_id: String) -> bool:
@@ -361,6 +363,7 @@ static func copy_mesh(src: Mesh, arrays: Array) -> ArrayMesh:
 
 # 캐릭터의 화풍 사본 (한 번 만들어 둠). mi = 묶음 SkinnedMesh, nodes = body.gd 노드 표 (manifest 순서). 표에 없거나 못 만들면 null
 static func for_char(char_id: String, cd: Dictionary, mi: MeshInstance3D, sk: Skeleton3D, nodes: Array):
+	_char = char_id
 	if _cache.has(char_id):
 		return _cache[char_id]
 	var out = null
@@ -417,6 +420,7 @@ static func piece_bone(cd: Dictionary, i: int) -> String:
 # 캐릭터의 조각 메시 사본들 (한 번 만들어 둠, 같은 캐릭터 조각 몸끼리 같이 씀): {노드 번호 → 메시} — 역할이 하나라도 바뀐 조각만 (나머지는 원본 메시·재질 그대로).
 # 사본은 정점 색 (살 = 살색, 그대로인 옷 = 재질 색, 플레이어 칸 = 흰색 + UV2.x 1) 이라 정점 색 툰 재질 + skin_tint 로 그림 (body._look_pieces). 표에 없으면 null
 static func for_pieces(char_id: String, cd: Dictionary, nodes: Array):
+	_char = char_id
 	if _piece_cache.has(char_id):
 		return _piece_cache[char_id]
 	var out = null
@@ -502,6 +506,15 @@ static func style(m: Material, outline: bool) -> void:
 	sm.set_shader_parameter("toon_steps", LK.TOON_STEPS)
 	sm.set_shader_parameter("rim_strength", float(LK.RIM[0]))
 	sm.set_shader_parameter("rim_power", float(LK.RIM[1]))
+	# c7-u1: 양면 (캐릭터별)·림 틴트 (공통) — 외부 모델과 같은 길. 반투명 재질 (body._apply_opacity 가 나중에 부름) 은 양면이 안 먹고 림 틴트만
+	load(EXT).Ext.look(sm, {"double": LK.LOOK.get(_char, {}).get("double", false), "rim_tint": LK.RIM_TINT, "rim_gate": LK.RIM_GATE})
 	if outline:
 		# G3 기록 (set_outline_on 이 차례로 다시 붙임) 에 얇은 것을 한 줄 더 — 뒤 줄이 이김. no_outline 으로 앞 줄을 지우면 기록을 다 훑어 몸마다 재질 수만큼 느려짐
-		G3.attach_outline(sm, G3.shared_outline(C.OUTLINE_THICKNESS * LK.OUTLINE))
+		G3.attach_outline(sm, outline_for(_char))
+
+
+# 이 캐릭터 구운 몸의 외곽선 재질: 얇은 것 (나눠 씀), 표에 outline_push 가 있으면 깊이로 민 얇은 것 (c7-u1, external.gd Ext.push_outline)
+static func outline_for(char_id: String) -> ShaderMaterial:
+	var thin: float = C.OUTLINE_THICKNESS * LK.OUTLINE
+	var push := float(LK.LOOK.get(char_id, {}).get("outline_push", 0.0))
+	return load(EXT).Ext.push_outline(thin, push) if push > 0.0 else G3.shared_outline(thin)

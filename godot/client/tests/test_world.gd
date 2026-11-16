@@ -405,3 +405,157 @@ func test_ghost_depth_wrap() -> void:
 
 func G3_toon_alpha() -> ShaderMaterial:
 	return load("res://shaders/g3.gd").toon_material(Color.WHITE, {"opacity": 0.5, "outline": false})
+
+
+# ---- c7-u1 발밑 색 고리 (world/foot_ring_math.gd 순수 계산, world/foot_rings.gd 그리기, 수치 WC.FOOT_RING) ----
+const FRM := preload("res://world/foot_ring_math.gd")
+const FR := preload("res://world/foot_rings.gd")
+const FWC := preload("res://world/world_config.gd")
+
+
+# 사람 둘 (id 1 = 나, 2 = 남) 이 판 가운데 바닥 (높이 gz) 에 선 판 상태
+func _ring_state(phase := "playing") -> Dictionary:
+	return {"phase": phase, "players": [{"id": 1, "alive": true}, {"id": 2, "alive": true}], "lava": {"active": false, "z": 0.0}}
+
+
+func _rings(st: Dictionary, my_id, hide_me: bool, sky: bool, shown: Dictionary, ground := func(_x, _y, _z): return 2.0) -> Array:
+	return FRM.rings(st, my_id, hide_me, sky, shown, {1: 0xff0000, 2: 0x00ff00}, Vector3i(10, 10, 32), ground, FWC.FOOT_RING)
+
+
+# 고리 자리: 발 아래 기둥 꼭대기 + lift, 필드 밖은 안 그림, 위험 액체가 바닥보다 높으면 그 표면 위. 머리 위 지붕 (블록 밑) 은 건너뛰고 발 아래 칸
+func test_c7_foot_ring_ground() -> void:
+	var cfg: Dictionary = FWC.FOOT_RING
+	check(near(FRM.surface(3.0, true, false, 9.0), 3.0) and near(FRM.surface(3.0, true, true, 1.0), 3.0), "기둥 꼭대기 (위험 꺼짐·더 낮음)")
+	check(near(FRM.surface(3.0, true, true, 4.5), 4.5), "위험 액체가 더 높으면 그 표면")
+	check(is_nan(FRM.surface(3.0, false, false, 0.0)) and is_nan(FRM.surface(3.0, false, true, 9.0)), "필드 밖은 없음")
+	var shown := {1: Vector3(4.5, 5.5, 3.0), 2: Vector3(-0.5, 5.5, 0.0)}
+	var asked := []
+	var ground := func(cx: int, cy: int, _z: float) -> float:
+		asked.append(Vector2i(cx, cy))
+		return 3.0
+	var r := _rings(_ring_state(), null, false, false, shown, ground)
+	check(r.size() == 1 and asked == [Vector2i(4, 5)], "필드 밖 사람은 고리 없음·바닥도 안 물음 (줄 %d, 물은 칸 %s)" % [r.size(), asked])
+	check(near(r[0][0], 4.5) and near(r[0][1], 5.5) and near(r[0][2], 3.0 + float(cfg.lift)), "발 아래 기둥 꼭대기 + lift")
+	check(near(r[0][3], float(cfg.r)) and Color(r[0][4]).is_equal_approx(Color(1, 0, 0, float(cfg.alpha))), "바닥에 서면 온 크기·온 진하기·플레이어 색")
+	for edge in [Vector3(10.2, 5.0, 0.0), Vector3(5.0, 10.0, 0.0), Vector3(5.0, -0.01, 0.0)]:
+		check(_rings(_ring_state(), null, false, false, {1: edge}).is_empty(), "필드 밖 %s" % edge)
+	var st := _ring_state()
+	st.lava = {"active": true, "z": 4.25}
+	r = _rings(st, null, false, false, {1: Vector3(4.5, 5.5, 5.0)})
+	check(near(r[0][2], 4.25 + float(cfg.lift)), "위험 액체가 바닥 (2) 보다 높으면 액체 위")
+	st.lava = {"active": true, "z": 1.0}
+	r = _rings(st, null, false, false, {1: Vector3(4.5, 5.5, 2.0)})
+	check(near(r[0][2], 2.0 + float(cfg.lift)), "액체가 더 낮으면 바닥")
+	st.lava = {"active": false, "z": 9.0}
+	r = _rings(st, null, false, false, {1: Vector3(4.5, 5.5, 2.0)})
+	check(near(r[0][2], 2.0 + float(cfg.lift)), "위험이 꺼져 있으면 z 값 무시")
+	# 기둥: 칸 0·1 단단, 2~4 빈칸, 5 단단 (지붕) → 꼭대기 6. 발 2.0 에 서면 지붕이 아니라 2
+	var col := [true, true, false, false, false, true]
+	var solid := func(z: int) -> bool: return z >= 0 and z < col.size() and col[z]
+	var step := float(cfg.step)
+	check(FRM.ground_under(6, 2.0, solid, step) == 2, "지붕 밑: 발 아래 칸")
+	check(FRM.ground_under(6, 6.0, solid, step) == 6 and FRM.ground_under(6, 8.3, solid, step) == 6, "지붕 위·그 위 공중: 기둥 꼭대기")
+	check(FRM.ground_under(6, 5.6, solid, step) == 6, "꼭대기에 오르는 중 (step 안) 은 꼭대기")
+	check(FRM.ground_under(6, 3.7, solid, step) == 2, "지붕 밑 공중 (점프) 도 발 아래 칸")
+	check(FRM.ground_under(4, 1.0, func(_z): return false, step) == 0, "아래에 단단한 칸이 없으면 바닥 0")
+
+
+# 공중: 바닥에서 높이 오를수록 반지름·알파가 단조 감소, 하한 fade_min
+func test_c7_foot_ring_fade() -> void:
+	var cfg: Dictionary = FWC.FOOT_RING
+	check(near(FRM.fade(0.0, cfg), 1.0) and near(FRM.fade(-0.3, cfg), 1.0), "바닥·바닥 아래 (잠김) 는 1")
+	var prev := 1.0
+	var prev_r := INF
+	var prev_a := INF
+	for i in 80:
+		var h := i * 0.1
+		var k := FRM.fade(h, cfg)
+		check(k <= prev + 1e-9 and k >= float(cfg.fade_min) - 1e-9, "높이 %.1f 배율 %.3f: 단조 감소·하한" % [h, k])
+		prev = k
+		var r := _rings(_ring_state(), null, false, false, {1: Vector3(4.5, 5.5, 2.0 + h)})
+		check(r.size() == 1 and float(r[0][3]) <= prev_r + 1e-9 and Color(r[0][4]).a <= prev_a + 1e-9, "높이 %.1f 반지름·알파 단조 감소" % h)
+		check(near(r[0][3], float(cfg.r) * k, 1e-5) and near(Color(r[0][4]).a, float(cfg.alpha) * k, 1e-5), "높이 %.1f 반지름·알파 = 온 값 × 배율" % h)
+		check(near(r[0][2], 2.0 + float(cfg.lift)), "공중이어도 고리는 바닥에")
+		prev_r = float(r[0][3])
+		prev_a = Color(r[0][4]).a
+	check(near(FRM.fade(1.0, cfg), 1.0 - float(cfg.fade)) and near(FRM.fade(50.0, cfg), float(cfg.fade_min)), "1칸 위 값·하한 값")
+	check(near(float(cfg.fade_min), 0.45) and near(float(cfg.fade), 0.12) and near(float(cfg.r), 0.42) and near(float(cfg.inner), 0.72) and near(float(cfg.alpha), 0.85) and near(float(cfg.lift), 0.04), "FOOT_RING 수치")
+
+
+# 안 그림: 죽음·블록 마스터·하늘 시점 (전부)·1인칭의 나·판 중이 아닐 때 (대기실·결과). 3인칭의 나는 그리고 안쪽 흰 테가 붙음
+func test_c7_foot_ring_hidden() -> void:
+	var cfg: Dictionary = FWC.FOOT_RING
+	var shown := {1: Vector3(4.5, 5.5, 2.0), 2: Vector3(6.5, 5.5, 2.0)}
+	check(_rings(_ring_state(), 1, true, false, shown).size() == 1 and near(_rings(_ring_state(), 1, true, false, shown)[0][0], 6.5), "1인칭: 내 고리 없음, 남 고리만")
+	var third := _rings(_ring_state(), 1, false, false, shown)
+	check(third.size() == 3, "3인칭: 내 고리 + 흰 안쪽 테 + 남 고리 (%d줄)" % third.size())
+	check(Color(third[0][4]).is_equal_approx(Color(1, 0, 0, float(cfg.alpha))) and near(third[0][3], float(cfg.r)), "내 색 고리")
+	check(Color(third[1][4]).is_equal_approx(Color(1, 1, 1, float(cfg.me_alpha))) and near(third[1][3], float(cfg.r) * float(cfg.me_r)), "흰 안쪽 테: 반지름 × me_r, 흰색")
+	check(near(third[1][0], third[0][0]) and near(third[1][1], third[0][1]) and float(third[1][2]) > float(third[0][2]), "흰 테는 같은 자리, 색 고리 바로 위")
+	check(Color(third[2][4]).is_equal_approx(Color(0, 1, 0, float(cfg.alpha))), "남은 흰 테 없이 색 고리만")
+	check(_rings(_ring_state(), null, false, false, shown).size() == 2, "내 id 를 모르면 (관전) 둘 다 색 고리만")
+	check(_rings(_ring_state(), 1, false, true, shown).is_empty() and _rings(_ring_state(), 1, true, true, shown).is_empty(), "하늘 시점이면 전부 안 그림")
+	for ph in ["lobby", "over", "results", ""]:
+		check(_rings(_ring_state(ph), 1, false, false, shown).is_empty(), "판 중이 아니면 (%s) 안 그림" % ph)
+	check(_rings(_ring_state("countdown"), 1, false, false, shown).size() == 3, "카운트다운엔 그림")
+	var st := _ring_state()
+	st.players[1].alive = false
+	check(_rings(st, 1, false, false, shown).size() == 2, "죽은 사람 고리 없음")
+	st = _ring_state()
+	st.players[1].master = true
+	check(_rings(st, 1, false, false, shown).size() == 2, "블록 마스터 고리 없음")
+	st = _ring_state()
+	st.players[0].alive = false
+	check(_rings(st, 1, false, false, shown).size() == 1, "내가 죽으면 (관전) 내 고리·흰 테 없음")
+	check(_rings(_ring_state(), 1, false, false, {2: Vector3(6.5, 5.5, 2.0)}).size() == 1, "화면 자리가 없는 사람은 건너뜀")
+	check(FRM.wanted({"alive": true}, "playing", false, true, false, cfg) and not FRM.wanted({"alive": true}, "playing", false, true, true, cfg), "wanted: 1인칭의 나만 뺌")
+	# 그리는 쪽: 줄 수만큼만 보임, 없으면 노드도 숨김. 판 (World) 이 없으면 안 그림
+	var fr = FR.new()
+	check(not fr.visible and fr.multimesh.visible_instance_count == 0 and fr.multimesh.use_colors, "처음엔 숨김")
+	fr.show_rings(third)
+	check(fr.visible and fr.multimesh.visible_instance_count == 3, "세 줄 → 인스턴스 셋")
+	var t0: Transform3D = FR.xform(third[0]) # (헤드리스 렌더 서버는 인스턴스 값을 안 돌려줘서 변환 계산을 직접 봄)
+	check(t0.origin.is_equal_approx(Co.gxyz(4.5, 5.5, 2.0 + float(cfg.lift))) and near(t0.basis.x.length(), float(cfg.r), 1e-5) and near(t0.basis.z.length(), float(cfg.r), 1e-5) and near(t0.basis.y.length(), 1.0, 1e-5), "인스턴스 자리·반지름 배율")
+	fr.show_rings([third[0]])
+	check(fr.visible and fr.multimesh.visible_instance_count == 1, "줄이 줄면 인스턴스도 줆")
+	fr.update(null, _ring_state(), 1, false, false, shown, {1: 0xff0000, 2: 0x00ff00})
+	check(not fr.visible and fr.multimesh.visible_instance_count == 0, "판이 없으면 안 그림")
+	fr.free()
+
+
+# 재질: 표준 재질 모양 (warm_scan STD_KEYS 안 — 새 셰이더 모양 없음), 빛 안 받음·반투명·정점 색·깊이 검사 켬, 순서는 이름표 외곽선 아래. 메시: 납작한 고리, 한 번에 그림
+func test_c7_foot_ring_material() -> void:
+	const WS := preload("res://world/warm_scan.gd")
+	const MF := preload("res://core/mat_first.gd")
+	var cfg: Dictionary = FWC.FOOT_RING
+	var m: StandardMaterial3D = FR.material()
+	var keys := []
+	for k in WS.STD_KEYS:
+		keys.append(MF.mat_key(WS.std_material(k)))
+	check(keys.has(MF.mat_key(m)), "재질 열쇠가 미리 그리기 표 안 (%s)" % MF.mat_key(m))
+	check(WS.STD_KEYS.has(cfg.key), "config 의 key 가 STD_KEYS 의 한 줄")
+	check(m.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED and m.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA and m.vertex_color_use_as_albedo and not m.no_depth_test, "빛 안 받음·반투명·정점 색·깊이 검사")
+	check(m.render_priority == int(cfg.order) and m.render_priority < FWC.LABEL_PRIORITY - 1, "순서 %d < 이름표 외곽선 %d" % [m.render_priority, FWC.LABEL_PRIORITY - 1])
+	var fr = FR.new()
+	check(fr.material_override != null and MF.mat_key(fr.material_override) == MF.mat_key(m) and fr.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "노드 재질·그림자 없음")
+	check(fr.multimesh.instance_count >= int(C.ROOM_MAX) + 1, "방 최대 인원 + 내 흰 테")
+	var mesh: ArrayMesh = fr.multimesh.mesh
+	var arr := mesh.surface_get_arrays(0)
+	var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+	var rmin := INF
+	var rmax := 0.0
+	var flat := true
+	for v in vs:
+		rmin = minf(rmin, Vector2(v.x, v.z).length())
+		rmax = maxf(rmax, Vector2(v.x, v.z).length())
+		flat = flat and v.y == 0.0
+	check(flat and near(rmax, 1.0, 1e-5) and near(rmin, float(cfg.inner), 1e-5), "납작한 고리: 바깥 1, 안쪽 inner (%.3f~%.3f)" % [rmin, rmax])
+	check(mesh.get_surface_count() == 1 and idx.size() == int(cfg.segs) * 6, "표면 하나, 조각마다 삼각형 둘")
+	# 앞면이 위를 봄 (고도 앞면 = 시계 방향 → 삼각형 법선 (b-a)×(c-a) 가 아래)
+	var up := true
+	for i in range(0, idx.size(), 3):
+		var n := (vs[idx[i + 1]] - vs[idx[i]]).cross(vs[idx[i + 2]] - vs[idx[i]])
+		up = up and n.y < 0.0
+	check(up, "모든 삼각형 앞면이 위")
+	fr.free()

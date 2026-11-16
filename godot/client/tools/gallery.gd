@@ -1,5 +1,5 @@
 # 겉모습 갤러리: 서버·봇 없이 캐릭터·맵·블록을 정해진 시점으로 찍음 (찍을 때마다 같은 사진 → 겉모습을 바꾸기 전·뒤 비교용)
-#   xvfb-run -a godot --path godot/client --resolution 1280x720 --rendering-driver opengl3 -s res://tools/gallery.gd -- --out <폴더> [--only chars,maps,pieces] [--low]
+#   xvfb-run -a godot --path godot/client --resolution 1280x720 --rendering-driver opengl3 -s res://tools/gallery.gd -- --out <폴더> [--only chars,maps,pieces] [--low] [--char-map <맵 id>]
 # 나오는 파일 (30장):
 #   char-<캐릭터 id>.png ×8  — 한 캐릭터를 앞·비스듬히 앞·옆·뒤로 나란히 (팔레트 첫 색)
 #   chars-lineup.png          — 8명 정면 한 줄 (팔레트 순서 색)
@@ -10,6 +10,7 @@
 # 캐릭터 몸은 chars.make_body 를 판처럼 자리 노드 아래에 세움. 카메라는 이 도구 것 (판 카메라 대신).
 # 같은 사진이 나오게: 난수 시드 고정, 설정은 gallery_config.SETTINGS + 화질 (--low 면 낮음, 아니면 높음) 로 고정 (user://settings.json 과 상관없음, 파일에 안 씀), 엔진 시간 배율 0 (셰이더 TIME·프레임 dt 가 멈춤 — 구름·물결·먼 섬이 그 자리),
 # 몸 동작 시계 (chars/ext_motion.gd clock — 외부 모델의 천·클립·가산 층, 몸 효과) 는 벽시계 대신 이 도구의 가상 시계 (자세 걸음·프레임마다 정해진 만큼만 감).
+# --char-map <맵 id> = 캐릭터 사진을 그 맵 테마의 빛·바닥에서 (기본 gallery_config.CHAR_MAP 초원 — 어두운 테마에서 림·윤곽이 읽히는지 볼 때).
 # --low = 설정 '그래픽 낮춤'. 끝나면 저장한 파일 목록, 종료 코드 0 (못 만든 사진·스크립트 오류가 있으면 1, 그릴 수 없는 환경 (--headless) 이면 2)
 extends SceneTree
 
@@ -42,6 +43,7 @@ class ErrorLog extends Logger:
 var out_dir := ""
 var only: Array = KINDS
 var low := false
+var char_map: String = K.CHAR_MAP # 캐릭터 사진의 맵 테마 (--char-map)
 var jobs: Array = [] # [파일 이름, Callable (장면 깔기), 테마 키]
 var job_i := -1
 var wait := 0
@@ -74,6 +76,8 @@ func _initialize() -> void:
 			only = Array(a[i + 1].split(",", false))
 		elif a[i] == "--low":
 			low = true
+		elif a[i] == "--char-map" and i + 1 < a.size():
+			char_map = a[i + 1]
 	if DisplayServer.get_name() == "headless":
 		print("갤러리: 화면을 그릴 수 없는 환경 (--headless) 입니다 — xvfb-run -a godot --rendering-driver opengl3 … 로 돌리세요")
 		_end(2)
@@ -83,6 +87,10 @@ func _initialize() -> void:
 			print("갤러리: --only 는 %s 중에서 (받은 것 '%s')" % [",".join(KINDS), k])
 			_end(1)
 			return
+	if not C.MAPS.has(char_map):
+		print("갤러리: --char-map 은 %s 중에서 (받은 것 '%s')" % [",".join(C.MAPS.keys()), char_map])
+		_end(1)
+		return
 	if out_dir == "" or DirAccess.make_dir_recursive_absolute(out_dir) != OK:
 		print("갤러리: --out <폴더> 가 필요합니다 (만들 수 없는 폴더 '%s')" % out_dir)
 		_end(1)
@@ -131,11 +139,11 @@ func _plan() -> void:
 			var row := []
 			for turn in K.CHAR_TURNS:
 				row.append([str(c), first, float(turn)])
-			jobs.append(["char-%s.png" % c, _scene_chars.bind(row), K.CHAR_MAP])
+			jobs.append(["char-%s.png" % c, _scene_chars.bind(row), char_map])
 		var line := []
 		for i in C.CHARACTERS.size():
 			line.append([str(C.CHARACTERS[i]), int(C.PLAYER_PALETTE[i % C.PLAYER_PALETTE.size()]), 0.0])
-		jobs.append(["chars-lineup.png", _scene_chars.bind(line), K.CHAR_MAP])
+		jobs.append(["chars-lineup.png", _scene_chars.bind(line), char_map])
 	if only.has("maps"):
 		for m in C.MAPS:
 			jobs.append(["map-%s-over.png" % m, _scene_map.bind(str(m), true), str(m)])
@@ -280,12 +288,12 @@ func _aim(look: Vector3, yaw: float, pitch: float, fov: float, pts: Array, margi
 
 
 # ---------- 캐릭터 ----------
-# list: [캐릭터 id, 색 0xRRGGBB, 돌린 각 (도)] 를 화면 왼쪽부터 한 줄로. 초원 낮 빛·빈 바닥 위, 카메라는 해 쪽에서
+# list: [캐릭터 id, 색 0xRRGGBB, 돌린 각 (도)] 를 화면 왼쪽부터 한 줄로. 초원 낮 빛 (--char-map 이면 그 맵 테마)·빈 바닥 위, 카메라는 해 쪽에서
 func _scene_chars(list: Array) -> void:
 	var n := field_n()
-	_stage(K.CHAR_MAP, n, empty_grid(n), [])
+	_stage(char_map, n, empty_grid(n), [])
 	hide_scenery = true
-	var sun: Array = Cells.theme_of(K.CHAR_MAP).get("sunDir", C.SUN_DIR)
+	var sun: Array = Cells.theme_of(char_map).get("sunDir", C.SUN_DIR)
 	var az := atan2(float(sun[1]), float(sun[0])) + deg_to_rad(K.CHAR_SUN_OFF) # 필드 가운데에서 카메라가 있는 쪽
 	var to_cam := Vector2(cos(az), sin(az))
 	var right := Vector2(-sin(az), cos(az)) # 카메라가 가운데를 볼 때 화면 오른쪽 (게임 x, y)

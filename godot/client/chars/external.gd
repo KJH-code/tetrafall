@@ -796,6 +796,8 @@ class Ext extends Node3D:
 			if mt != null: # W34 몸 색 칸 마스크 텍스처 (꼭짓점 UV2 대신)
 				m.set_shader_parameter("skin_mask_tex", mt)
 				m.set_shader_parameter("use_skin_mask", true)
+		else:
+			m.set_shader_parameter("skin_tint", Color(skin.r, skin.g, skin.b, 0.0)) # c7-u1: 몸 색 칸이 아니어도 플레이어 색은 알려 둠 (a = 0 → 칠하지 않음, 림 틴트 rim_tint 만 이 색을 씀)
 		return m
 
 	# W39 몸 만들 때 읽는 알베도 텍스처: 경로가 있으면 그때 load (같은 캐릭터 몸끼리는 리소스 캐시가 같은 객체를 줘서 공유, 쓰는 몸이 없으면 풀려남), 없으면 장면에 붙어 있던 그대로
@@ -832,7 +834,61 @@ class Ext extends Node3D:
 			m.next_pass = null
 		elif m.next_pass != null and float(cfg.get("outline", 1.0)) != 1.0:
 			m.next_pass = G3_.shared_outline(C_.OUTLINE_THICKNESS * float(cfg.outline))
+		look(m, cfg)
+		var push := float(cfg.get("outline_push", 0.0))
+		if outline and push > 0.0 and opaque_toon(m):
+			# c7-u1: 깊이로 민 외곽선. G3 기록 (set_outline_on 이 차례로 다시 붙임) 에 한 줄 더 — 뒤 줄이 이겨서 설정 '외곽선' 을 껐다 켜도 이 재질 (baked_look.style 과 같은 길)
+			G3_.attach_outline(m, push_outline(C_.OUTLINE_THICKNESS * float(cfg.get("outline", 1.0)), push))
 		return m
+
+	# ---- c7-u1 몸 읽힘: 양면 천·림 틴트·깊이로 민 외곽선 (외부 모델 cfg 와 구운 몸 표 chars/baked_look_config.gd 가 같이 씀) ----
+	const TOON_DOUBLE_ := preload("res://shaders/toon_double.gdshader")
+	const G3K_ := preload("res://shaders/g3_config.gd")
+	static var _push_outlines := {} # 열쇠 (굵기·push) → 외곽선 재질 (나눠 씀)
+	static var _double_stencil: Shader = null
+
+	# 불투명 툰 재질인가 (보통·양면·스텐실 쓰는 갈래 — 외곽선을 붙일 수 있는 것). 투명 갈래 (toon_alpha) 는 아님
+	static func opaque_toon(m: ShaderMaterial) -> bool:
+		return m != null and m.shader != null and m.shader != G3_.TOON_ALPHA and m.get_shader_parameter("toon_steps") != null
+
+	# cfg double: 불투명 툰을 양면 갈래 (toon_double.gdshader) 로 — 한 겹 천 (망토·코트 자락) 의 안쪽 면이 버려져 그 자리에 외곽선 껍질 색 (보라) 만 보이던 것. 투명 갈래는 그대로.
+	# cfg rim_tint [섞는 양, 배율 더하기]: 림 빛을 플레이어 색 쪽으로 — 플레이어 색을 아는 재질 (skin_tint 를 넣은 것) 만 (모르는 재질은 예전 림 그대로).
+	# cfg rim_gate [다 걸림, 안 걸림]: 틴트는 면 자체가 눈에서 비껴 선 곳에만 (toon_common rim_gate — 얇은 천 안쪽 겹처럼 보간 법선이 엉킨 면이 플레이어 색으로 물들지 않게)
+	static func look(m: ShaderMaterial, cfg: Dictionary) -> void:
+		if cfg.get("double", false) and m.shader == G3_.TOON:
+			m.shader = TOON_DOUBLE_
+		var rt: Array = cfg.get("rim_tint", [0.0, 0.0])
+		if (float(rt[0]) != 0.0 or float(rt[1]) != 0.0) and m.get_shader_parameter("skin_tint") != null:
+			m.set_shader_parameter("rim_tint", Vector2(float(rt[0]), float(rt[1])))
+			var rg: Array = cfg.get("rim_gate", K_.EXT_DEFAULTS.rim_gate)
+			m.set_shader_parameter("rim_gate", Vector2(float(rg[0]), float(rg[1])))
+
+	# 깊이로 push 만큼 뒤로 민 외곽선 재질 (굵기·push 마다 하나). 안개는 G3.shared_outline 기본과 같이 받음
+	static func push_outline(thickness: float, push: float) -> ShaderMaterial:
+		var key := "%f|%f" % [thickness, push]
+		if not _push_outlines.has(key):
+			var o := G3_.outline_material(thickness)
+			o.set_shader_parameter("push", push)
+			o.set_shader_parameter("no_fog", false)
+			_push_outlines[key] = o
+		return _push_outlines[key]
+
+	# 양면 툰도 스텐실을 씀 (world/bodies.gd _stencil — 사냥꾼의 눈 x-ray 가 몸에 가린 곳엔 안 나오게): G3.toon_stencil_write 는 toon.gdshader 만 바꿔서, 같은 내용의 양면 갈래를 여기서
+	static func double_stencil(m: ShaderMaterial) -> void:
+		if m == null or m.shader != TOON_DOUBLE_:
+			return
+		if _double_stencil == null:
+			_double_stencil = Shader.new()
+			_double_stencil.code = "shader_type spatial;\nrender_mode diffuse_lambert, specular_disabled, cull_disabled;\nstencil_mode write, compare_always, %d;\n#define TOON_DOUBLE\n#include \"res://shaders/toon_common.gdshaderinc\"\n" % G3K_.STENCIL_MY_BODY
+		m.shader = _double_stencil
+
+	# 양면 툰 재질인가 (파일 갈래·스텐실 갈래)
+	static func is_double(m: ShaderMaterial) -> bool:
+		return m != null and m.shader != null and (m.shader == TOON_DOUBLE_ or m.shader == _double_stencil)
+
+	static func clear_look_static() -> void: # 종료 때 (world/bodies.gd _exit_tree): 재질·셰이더를 쥔 채 엔진이 내려가지 않게
+		_push_outlines = {}
+		_double_stencil = null
 
 	var body: Node3D
 	var info: Dictionary

@@ -56,6 +56,11 @@ uniform bool use_skin_mask = false;
 uniform sampler2D skin_mask_tex : hint_default_black, filter_linear_mipmap, repeat_disable;
 uniform float rim_strength = 0.0;
 uniform float rim_power = 3.0;
+// c7-u1 림 틴트: x = 림 색을 플레이어 색 (skin_tint.rgb) 쪽으로 섞는 양, y = 림 배율 더하기 (0, 0 = 예전 림 그대로). 난전에서 몸 가장자리로 누구 편인지 읽히게
+uniform vec2 rim_tint = vec2(0.0);
+// 림 틴트는 면 자체가 눈에서 비껴 선 곳 (실루엣 가장자리) 에만: 면 법선 (화면 미분) 과 눈 방향의 내적이 x 이하면 다 걸리고 y 이상이면 안 걸림 (그 사이 부드럽게).
+// 보간 법선이 엉킨 면 (얇은 천의 안쪽 겹 — 법선이 비스듬해 림이 통째로 켜짐) 이 플레이어 색으로 물들지 않게. 예전 림 (제 색) 은 안 거름
+uniform vec2 rim_gate = vec2(0.35, 0.65);
 
 varying vec3 world_n;
 varying vec3 v_base; // 선형 바탕색
@@ -115,15 +120,31 @@ void fragment() {
 	c.rgb = skin_multiply ? c.rgb * mix(vec3(1.0), skin_tint.rgb, sk) : mix(c.rgb, skin_tint.rgb, sk);
 	vec3 base = g3_lin(c.rgb);
 	if (use_vertex_color && vertex_color_linear) base *= COLOR.rgb;
-	vec3 hemi = toon_hemi(world_n);
+	vec3 wn = world_n;
+	float ndv = dot(normalize(NORMAL), normalize(VIEW)); // 림: 면이 눈을 보는 정도
+#ifdef TOON_DOUBLE
+	// 양면 (toon_double.gdshader): 눈을 등진 법선 (천 안쪽 면) 이면 뒤집어 하늘빛·위험 빛·림을 셈 — 앞·뒷면 판정 (FRONT_FACING) 대신 눈 방향으로 (면이 감긴 방향·엔진이 뒷면 법선을 뒤집는지에 기대지 않음)
+	if (ndv < 0.0) { wn = -wn; ndv = -ndv; }
+	if (!FRONT_FACING) ndv = 1.0; // 천 안쪽 면 (뒷면) 엔 림 없음 — 림은 겉 실루엣에만 (안쪽 면은 법선이 비스듬해 림이 통째로 켜져 플레이어 색으로 물듦)
+#endif
+	vec3 hemi = toon_hemi(wn);
 	if (local_light) {
-		float lup = dot(normalize(world_n), vec3(0.0, 1.0, 0.0)) * 0.5 + 0.5;
+		float lup = dot(normalize(wn), vec3(0.0, 1.0, 0.0)) * 0.5 + 0.5;
 		hemi = mix(local_hemi_ground, local_hemi_sky, lup) * local_hemi_energy;
 	}
 	v_base = base;
 	v_amb = base * hemi / PI + g3_lin(mix(emissive, skin_emissive, skin_k)) * emissive_energy + base * color_glow;
-	v_amb += base * g3_hz_light((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz, world_n);
-	if (rim_strength > 0.0) v_amb += base * rim_strength * pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), rim_power);
+	v_amb += base * g3_hz_light((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz, wn);
+	if (rim_strength > 0.0) {
+		vec3 rc = base; // rim_tint = 0 이면 예전 림 그대로 (제 색)
+		if (rim_tint.x != 0.0 || rim_tint.y != 0.0) {
+			vec3 fn = cross(dFdx(VERTEX), dFdy(VERTEX));
+			float fl = length(fn);
+			float gate = fl > 0.0 ? 1.0 - smoothstep(rim_gate.x, rim_gate.y, abs(dot(fn / fl, normalize(VIEW)))) : 0.0;
+			rc = mix(base, mix(base, g3_lin(skin_tint.rgb), rim_tint.x) * (1.0 + rim_tint.y), gate);
+		}
+		v_amb += rc * rim_strength * pow(1.0 - clamp(ndv, 0.0, 1.0), rim_power);
+	}
 	if (hz_tint) g3_hz_apply((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).y, v_base, v_amb);
 	ALBEDO = vec3(1.0);
 	if (g3_fog_far > 0.0 && !no_fog) FOG = vec4(g3_fog_color, smoothstep(g3_fog_near, g3_fog_far, -VERTEX.z)); // 고도가 선형으로 섞음 (더하기 패스는 1 - a 를 곱함)
@@ -135,9 +156,13 @@ void fragment() {
 #endif
 
 void light() {
-	float u = dot(NORMAL, LIGHT) * 0.5 + 0.5;
+	float ndl = dot(NORMAL, LIGHT);
+#ifdef TOON_DOUBLE
+	if (dot(NORMAL, VIEW) < 0.0) ndl = -ndl; // 눈을 등진 법선 (천 안쪽 면) → 뒤집어 안쪽 면의 빛으로
+#endif
+	float u = ndl * 0.5 + 0.5;
 	float g = u < 1.0 / 3.0 ? toon_steps.x : (u < 2.0 / 3.0 ? toon_steps.y : toon_steps.z);
 	// three 는 그림자 지도에 뒷면을 그려서 (shadowSide) 해 반대쪽 면은 제 그림자를 안 받고 3단 중 어두운 단만 — 고도는 그 면도 그림자라 어두워짐 → 그 면은 그림자 무시
-	float att = dot(NORMAL, LIGHT) > 0.0 ? ATTENUATION : 1.0;
+	float att = ndl > 0.0 ? ATTENUATION : 1.0;
 	DIFFUSE_LIGHT += v_base * g * att * (local_light ? local_sun : g3_sun) / PI + v_amb; // 선형 (고도가 sRGB 로)
 }

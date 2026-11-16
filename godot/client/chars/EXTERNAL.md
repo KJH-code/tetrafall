@@ -277,3 +277,14 @@ W31 이 남긴 후보 (해 그림자 패스 = 3D 삼각형의 38%) 를 실제로
 
 - 플래그 `pop_fix` (설정 모션 탭·`--no-pop-fix`, 옛·최소 프리셋은 끔): ① 클립 크로스페이드가 호를 안 뒤집음 (`Motion_.slerp_cont`) + 이음 자세 차이 (도) ÷ `EXT_FADE_ADAPT_DPS` 로 페이드 길이 늘림 (`fade_len_for`, 상한 `EXT_FADE_ADAPT_MAX_S`) — 닌자 대시 팔 129° → 53° ② 낙하가 끝난 뒤 래그돌 모터 완화 (`ragdoll_math` `sinceFall`, `RAGDOLL_FALL_RECOVER_S`) ③ 래그돌 쉬기 전 목표 15° 안 기다림·쉴 때 블렌드 (`RAGDOLL_SLEEP_*`) ④ 물리가 멀면 snap 오르는 속도 제한 (`RAGDOLL_SNAP_*`). 재연 4명 팝 223 → 180, 90° 넘는 팝 17 → 0.
 - 남은 strike 팝은 서버 `moves` 설계값. 탱크 천·장갑 2차 모션은 타당성만 (docs/w52 4절). 테스트 `tests/test_w52.gd` (8).
+
+
+## 28. c7-u1 — 몸 읽힘: 천 안쪽 보라 없애기·플레이어 색 림 (2026-11-16)
+
+- **천 안쪽이 외곽선 색 (보라) 으로 보이던 것**: 본 패스가 뒷면을 버리고 (`toon.gdshader` cull_back) 그 자리에 외곽선 껍질 (cull_front) 만 남았음 (사냥꾼 망토 밑단·안쪽, 갈고리 코트 안감). json `"double": true` → 불투명 표면 재질이 양면 갈래 `shaders/toon_double.gdshader` (cull_disabled + `TOON_DOUBLE`: 눈을 등진 법선은 뒤집어 빛·하늘빛을 셈, 뒷면엔 림 없음). 투명 갈래 (유령화·무적 `toon_alpha`) 는 그대로.
+  `"outline_push": 0.0015` (0~0.002) → 외곽선 껍질을 클립 깊이로 push × w 만큼 뒤로 민 재질 (`Ext.push_outline`, 굵기·push 마다 하나를 나눠 씀, `G3.attach_outline` 으로 붙여 설정 '외곽선' 을 껐다 켜도 그 재질) — 얇은 천의 안쪽 겹 위로 바깥 겹 껍질이 비치지 않게. 지금 켠 몸: 사냥꾼·갈고리 (탱크·닌자는 보통 툰 그대로).
+  사냥꾼의 눈 x-ray 스텐실: `G3.toon_stencil_write` 는 `toon.gdshader` 만 바꿔서 양면 재질은 `world/bodies.gd _stencil` 이 `Ext.double_stencil` (같은 내용 + stencil write) 로 바꿈.
+- **림 틴트**: json `"rim_tint": [0.5, 1.0]` (넷 공통, [림 색을 플레이어 색으로 섞는 양, 림 배율 더하기]) + `rim` 지수 3 → 4 (가장자리에만). 셰이더 `toon_common.gdshaderinc` `rim_tint` (0, 0 = 예전 림 그대로 — 다른 툰 재질은 안 바뀜). 섞는 색은 `skin_tint.rgb` (= 플레이어 색, 경직 깜빡임 땐 하양): `toon_for` 가 몸 색 칸이 아닌 표면에도 a = 0 으로 넣어 둠 (칠은 안 함). 플레이어 색을 모르는 재질 (닌자 단검·얼굴) 은 예전 림.
+  틴트는 **면 자체가 눈에서 비껴 선 곳에만** (`rim_gate` [0.35, 0.65], 면 법선 = 화면 미분): Tripo 모델의 얇은 천 안쪽 겹은 보간 법선이 비스듬해 림이 통째로 켜져서, 거르지 않으면 망토 안쪽이 플레이어 색으로 물듦 (시험 사진으로 확인).
+- 기본값은 전부 끔 (`chars_config.gd EXT_DEFAULTS` `double`·`outline_push`·`rim_tint`·`rim_gate`). 구운 몸 (`--no-ext`·웹) 은 같은 길을 `baked_look_config.gd` 표로 (BAKE.md 8절). 테스트 `test_external.gd test_c7_*` (3).
+- 그리기 수·삼각형은 그대로 (재질 갈래만 바뀜 — 뒷면 조각을 더 칠할 뿐). 양면 스텐실 갈래는 보통 스텐실 툰처럼 따로 데우지 않음 (대기실에 그 몸이 처음 설 때 만들어짐), 파일 갈래는 W30 몸 데우기가 그림.

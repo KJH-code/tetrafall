@@ -1668,3 +1668,128 @@ func test_gallery_settle_cloth() -> void:
 	check(worst_before > 1.0, "가라앉히지 않으면 찍는 순간 천이 쉬는 모양에서 %.2f도 떨어져 있음 (가라앉히기가 실제로 필요)" % worst_before)
 	Gfx.plan = was
 	check(not Motion_.clock.is_valid(), "끝나면 시계를 뺌")
+
+
+# ---- c7-u1 몸 읽힘: 림 틴트·양면 천·깊이로 민 외곽선 ----
+const G3c7 := preload("res://shaders/g3.gd")
+const EXT4 := ["tank", "ninja", "hunter", "hook"]
+
+
+# 외곽선 재질의 push (안 넣은 재질은 0)
+static func _push_of(o) -> float:
+	var v = (o as ShaderMaterial).get_shader_parameter("push") if o is ShaderMaterial else null
+	return 0.0 if v == null else float(v)
+
+
+func _ext_json(ch: String) -> Dictionary:
+	return JSON.parse_string(FileAccess.get_file_as_string("res://assets/models/ext/%s.json" % ch))
+
+
+# 림 틴트는 기본 꺼짐: 보통 툰 재질은 값을 안 넣고 (셰이더 기본값), 셰이더 기본값은 vec2(0.0) = 예전 림 그대로
+func test_c7_rim_tint_default_off() -> void:
+	var m: ShaderMaterial = G3c7.toon_material()
+	var v = m.get_shader_parameter("rim_tint")
+	check(v == null or Vector2(v) == Vector2.ZERO, "보통 툰 재질의 rim_tint 는 (0, 0) (얻음 %s)" % str(v))
+	var src := FileAccess.get_file_as_string("res://shaders/toon_common.gdshaderinc")
+	check(src.contains("uniform vec2 rim_tint = vec2(0.0);"), "셰이더 기본값 vec2(0.0)")
+	var names := []
+	for u in m.shader.get_shader_uniform_list():
+		names.append(str(u.name))
+	check(names.has("rim_tint") and names.has("rim_gate"), "툰 셰이더에 rim_tint·rim_gate 가 있음")
+	var d = RenderingServer.shader_get_parameter_default(m.shader.get_rid(), "rim_tint")
+	check(d == null or Vector2(d) == Vector2.ZERO, "렌더 서버가 아는 기본값도 0 (얻음 %s)" % str(d))
+	check(Vector2(K.EXT_DEFAULTS.rim_tint[0], K.EXT_DEFAULTS.rim_tint[1]) == Vector2.ZERO and not K.EXT_DEFAULTS.double and float(K.EXT_DEFAULTS.outline_push) == 0.0, "EXT_DEFAULTS 는 전부 끔 (json 이 켬)")
+
+
+# json 넷: rim_tint 가 같고, 양면은 사냥꾼·갈고리만, 외곽선 밀기는 0~0.002
+func test_c7_ext_json_look_keys() -> void:
+	var first = null
+	for ch in EXT4:
+		var j := _ext_json(ch)
+		check(j.has("rim_tint") and (j.rim_tint as Array).size() == 2, "%s rim_tint [섞는 양, 배율 더하기]" % ch)
+		if first == null:
+			first = j.rim_tint
+		check(j.rim_tint == first, "%s rim_tint 가 넷 다 같음 (%s vs %s)" % [ch, j.rim_tint, first])
+		check(float(j.rim_tint[0]) > 0.0 and float(j.rim_tint[0]) <= 1.0 and float(j.rim_tint[1]) >= 0.0, "%s rim_tint 범위" % ch)
+		check(bool(j.get("double", false)) == (ch in ["hunter", "hook"]), "%s double 은 사냥꾼·갈고리만" % ch)
+		var push := float(j.get("outline_push", 0.0))
+		check(push >= 0.0 and push <= 0.002, "%s outline_push 0~0.002 (얻음 %s)" % [ch, push])
+		check((push > 0.0) == bool(j.get("double", false)), "%s 밀기는 양면 몸만" % ch)
+		check(is_equal_approx(float(j.rim[1]), 4.0), "%s 림 지수 4 (가장자리에만)" % ch)
+		var cfg: Dictionary = Ext.read_cfg(ch)
+		check(cfg.rim_tint == j.rim_tint and cfg.rim_gate == K.EXT_DEFAULTS.rim_gate, "%s read_cfg 가 json·기본값을 합침" % ch)
+
+
+# cfg double → 불투명 재질은 toon_double.gdshader, 투명 갈래 (opacity < 1) 는 toon_alpha 그대로. 민 외곽선은 굵기·push 마다 하나, 설정 '외곽선' 껐다 켜도 그 재질.
+# 진짜 몸: 사냥꾼·갈고리 표면은 양면 + 민 외곽선 + 림 틴트, 탱크·닌자는 보통 툰 + 림 틴트. 스텐실 (world/bodies.gd _stencil) 을 걸어도 양면 그대로
+func test_c7_double_material() -> void:
+	var was: bool = G3c7.outline_on
+	G3c7.set_outline_on(true)
+	var E = Ext.Ext
+	var red := Color(0.9, 0.2, 0.2)
+	var cfg := {"tint": "mask", "double": true, "outline": 0.45, "outline_push": 0.0015, "rim": [0.22, 4.0], "rim_tint": [0.5, 1.0]}
+	var m: ShaderMaterial = E.style(E.toon_for(Color.WHITE, null, true, true, red), cfg)
+	check(m.shader.resource_path == "res://shaders/toon_double.gdshader", "double → 불투명 셰이더 toon_double (얻음 %s)" % m.shader.resource_path)
+	check(E.is_double(m) and E.opaque_toon(m), "양면·불투명 판정")
+	var thin: float = C.OUTLINE_THICKNESS * 0.45
+	var po: ShaderMaterial = E.push_outline(thin, 0.0015)
+	check(m.next_pass == po and is_equal_approx(float(po.get_shader_parameter("push")), 0.0015) and is_equal_approx(float(po.get_shader_parameter("thickness")), thin), "깊이로 민 얇은 외곽선")
+	check(po == E.push_outline(thin, 0.0015) and po != E.push_outline(thin, 0.001) and po != G3c7.shared_outline(thin), "굵기·push 마다 하나 (나눠 씀)")
+	check(po.shader == G3c7.OUTLINE and po.get_shader_parameter("no_fog") == false, "외곽선 셰이더 그대로·안개 받음")
+	G3c7.set_outline_on(false)
+	check(m.next_pass == null, "설정 '외곽선' 끔")
+	G3c7.set_outline_on(true)
+	check(m.next_pass == po, "다시 켜도 민 외곽선")
+	check(Vector2(m.get_shader_parameter("rim_tint")) == Vector2(0.5, 1.0) and Color(m.get_shader_parameter("skin_tint")).is_equal_approx(Color(red.r, red.g, red.b, 1.0)), "림 틴트 + 플레이어 색")
+	check(Vector2(m.get_shader_parameter("rim_gate")).is_equal_approx(Vector2(K.EXT_DEFAULTS.rim_gate[0], K.EXT_DEFAULTS.rim_gate[1])), "림 틴트가 걸리는 면 = config 값")
+	# 투명 갈래: 양면·외곽선 없음, 림 틴트만
+	var a: ShaderMaterial = E.style(E.toon_for(Color.WHITE, null, true, true, red, {"opacity": 0.5, "outline": false}), cfg, false)
+	check(a.shader == G3c7.TOON_ALPHA and a.next_pass == null and not E.is_double(a), "opacity < 1 갈래는 toon_alpha 그대로")
+	check(Vector2(a.get_shader_parameter("rim_tint")) == Vector2(0.5, 1.0), "반투명도 같은 림 틴트")
+	# 몸 색 칸이 아닌 표면 (소품): 칠은 안 하고 (a = 0) 플레이어 색만 알려 림 틴트
+	var n: ShaderMaterial = E.style(E.toon_for(Color.WHITE, null, false, false, red), cfg)
+	check(Color(n.get_shader_parameter("skin_tint")).is_equal_approx(Color(red.r, red.g, red.b, 0.0)), "칸 아닌 표면: skin_tint a = 0 (칠 안 함)")
+	# 플레이어 색을 모르는 재질 (얼굴·반투명 소품 — toon_for 를 안 거침) 은 예전 림 그대로
+	var f: ShaderMaterial = E.style(G3c7.toon_material(Color.WHITE, {"outline": false}), cfg, false)
+	check(f.get_shader_parameter("rim_tint") == null and f.get_shader_parameter("skin_tint") == null, "플레이어 색 모르는 재질은 림 틴트 없음")
+	# cfg 에 double·push·rim_tint 가 없으면 예전 그대로
+	var o: ShaderMaterial = E.style(E.toon_for(Color.WHITE, null, true, true, red), {"tint": "mask", "outline": 0.45, "rim": [0.22, 3.0]})
+	check(o.shader == G3c7.TOON and o.next_pass == G3c7.shared_outline(thin) and o.get_shader_parameter("rim_tint") == null, "키 없으면 보통 툰·나눠 쓰는 얇은 외곽선·림 틴트 없음")
+	# 스텐실: 양면 재질은 양면 스텐실 갈래로 (cull_disabled + stencil write), 보통 툰은 안 건드림
+	E.double_stencil(m)
+	check(m.shader != null and m.shader.resource_path == "" and m.shader.code.contains("cull_disabled") and m.shader.code.contains("stencil_mode write") and m.shader.code.contains("#define TOON_DOUBLE"), "양면 스텐실 갈래")
+	check(E.is_double(m) and E.opaque_toon(m) and m.next_pass == po, "스텐실 뒤에도 양면·외곽선 그대로")
+	E.double_stencil(o)
+	check(o.shader == G3c7.TOON, "보통 툰은 double_stencil 이 안 건드림")
+	# 진짜 몸
+	for ch in EXT4:
+		if not Ext.has_char(ch):
+			continue
+		var b = _body(ch)
+		if b.ext == null:
+			b.free()
+			continue
+		var want: bool = ch in ["hunter", "hook"]
+		var masks := 0
+		for pt in b.ext.parts:
+			var sm := pt.solid as ShaderMaterial
+			if pt.get("unlit", false) or pt.get("face", false):
+				continue
+			if not pt.get("mask", false): # 따로 만든 소품 (닌자 단검 — 플레이어 색을 모르는 재질) 은 예전 림 그대로
+				check(sm.get_shader_parameter("skin_tint") != null or sm.get_shader_parameter("rim_tint") == null, "%s 소품 %s: 플레이어 색 없이 림 틴트만 켜지지 않음" % [ch, pt.mi.name])
+				continue
+			check(E.is_double(sm) == want, "%s 표면 양면 = %s" % [ch, want])
+			var rt = sm.get_shader_parameter("rim_tint")
+			check(rt != null and Vector2(rt) == Vector2(b.ext.info.cfg.rim_tint[0], b.ext.info.cfg.rim_tint[1]), "%s 표면 림 틴트" % ch)
+			var np := sm.next_pass as ShaderMaterial
+			check(np != null and (_push_of(np) > 0.0) == want, "%s 외곽선 밀기 = %s" % [ch, want])
+			if pt.get("mask", false):
+				masks += 1
+		check(masks >= 1, "%s 몸 색 칸 표면이 있음" % ch)
+		# 반투명 (유령화): 투명 갈래 그대로
+		b.ext.fx([b.skin_color, Color(0, 0, 0), Color(0, 0, 0)], 0.5)
+		for pt in b.ext.parts:
+			if pt.has("alpha") and pt.alpha is ShaderMaterial and not pt.get("unlit", false):
+				check((pt.alpha as ShaderMaterial).shader == G3c7.TOON_ALPHA, "%s 반투명 갈래 toon_alpha" % ch)
+		b.free()
+	G3c7.set_outline_on(was)

@@ -121,8 +121,9 @@ func test_look_table_all_baked() -> void:
 		var ts: Array = ej.toon_steps
 		check(Vector3(ts[0], ts[1], ts[2]).is_equal_approx(LK.TOON_STEPS), "툰 단 = 외부 모델")
 		check(is_equal_approx(float(ej.rim[0]), float(LK.RIM[0])) and is_equal_approx(float(ej.rim[1]), float(LK.RIM[1])), "림 = 외부 모델")
+		check(is_equal_approx(float(ej.rim_tint[0]), float(LK.RIM_TINT[0])) and is_equal_approx(float(ej.rim_tint[1]), float(LK.RIM_TINT[1])), "림 틴트 = 외부 모델 (c7-u1)")
 		check(is_equal_approx(float(ej.outline), LK.OUTLINE), "외곽선 배율 = 외부 모델")
-	check(LK.TOON_STEPS == Vector3(0.7, 0.86, 1.0) and LK.RIM == [0.22, 3.0] and LK.OUTLINE == 0.45, "선·단 값")
+	check(LK.TOON_STEPS == Vector3(0.7, 0.86, 1.0) and LK.RIM == [0.22, 4.0] and LK.OUTLINE == 0.45, "선·단 값 (c7-u1: 림 지수 3 → 4)")
 
 
 # 몸마다 플레이어 칸 넓이 10~40% (처음 보이는 묶음 삼각형 기준), 얼굴·손은 살색
@@ -371,7 +372,7 @@ func test_look_pieces_first_person() -> void:
 		var lm: ShaderMaterial = p.look_mat
 		check(lm.get_shader_parameter("use_vertex_color") == true and Color(lm.get_shader_parameter("skin_tint")).is_equal_approx(Color(RED.r, RED.g, RED.b, 1.0)), "%s 화풍 재질: 정점 색 + 플레이어 색 칠" % ch)
 		check(Vector3(lm.get_shader_parameter("toon_steps")).is_equal_approx(LK.TOON_STEPS) and is_equal_approx(float(lm.get_shader_parameter("rim_strength")), float(LK.RIM[0])), "%s 화풍 재질 툰 단·림" % ch)
-		check(not G3.outline_on or lm.next_pass == G3.shared_outline(C.OUTLINE_THICKNESS * LK.OUTLINE), "%s 화풍 재질 얇은 외곽선" % ch)
+		check(not G3.outline_on or lm.next_pass == Look.outline_for(ch), "%s 화풍 재질 얇은 외곽선 (c7-u1: 양면 천 몸은 깊이로 민 얇은 것)" % ch)
 		# 손 (1인칭에서 보이는 것): 피부 손 조각이 있으면 플레이어 색 정점이 없고 살색 정점이 있음. 끈 몸은 플레이어 색 재질 그대로
 		for hand in ["hand_R", "hand_L"]:
 			var hi := -1
@@ -597,7 +598,10 @@ func test_look_outline_thin() -> void:
 		var b = _body(ch, RED, true)
 		var m: ShaderMaterial = b.batch.mi.material_override
 		var np := m.next_pass as ShaderMaterial
-		check(np != null and np == G3.shared_outline(thin) and is_equal_approx(float(np.get_shader_parameter("thickness")), thin), "%s 묶음 외곽선 굵기 × 0.45" % ch)
+		# c7-u1: 양면 천 몸 (표의 outline_push — 탱크·사냥꾼·갈고리) 은 같은 굵기의 깊이로 민 외곽선, 나머지는 나눠 쓰는 얇은 것 그대로
+		var push := float(LK.LOOK[ch].get("outline_push", 0.0))
+		check((push > 0.0) == (Look.outline_for(ch) != G3.shared_outline(thin)) and is_equal_approx(_push_of(Look.outline_for(ch)), push), "%s 외곽선 재질 갈래 (push %s)" % [ch, push])
+		check(np != null and np == Look.outline_for(ch) and is_equal_approx(float(np.get_shader_parameter("thickness")), thin), "%s 묶음 외곽선 굵기 × 0.45" % ch)
 		check(Vector3(m.get_shader_parameter("toon_steps")).is_equal_approx(LK.TOON_STEPS), "%s 툰 단" % ch)
 		check(is_equal_approx(float(m.get_shader_parameter("rim_strength")), float(LK.RIM[0])) and is_equal_approx(float(m.get_shader_parameter("rim_power")), float(LK.RIM[1])), "%s 림" % ch)
 		# 따로 그리는 툰 조각 (바드 몸통·건축가 체크 무늬·근육 홈…) 도 같은 선·단
@@ -610,7 +614,7 @@ func test_look_outline_thin() -> void:
 				check(dm.next_pass != null and is_equal_approx(float((dm.next_pass as ShaderMaterial).get_shader_parameter("thickness")), thin), "%s 따로 그리는 조각 외곽선" % ch)
 		# W31 먼 거리 외곽선: 얇은 외곽선 재질을 찾아 거리로 줄어드는 사본으로, 멀면 뗌
 		b.set_outline_far(false)
-		check(not b._ol.is_empty() and m.next_pass == G3.far_outline(G3.shared_outline(thin)), "%s 가까움 = 얇은 외곽선의 먼 거리 사본" % ch)
+		check(not b._ol.is_empty() and m.next_pass == G3.far_outline(Look.outline_for(ch)), "%s 가까움 = 얇은 외곽선의 먼 거리 사본" % ch)
 		check(is_equal_approx(float((m.next_pass as ShaderMaterial).get_shader_parameter("thickness")), thin), "%s 먼 거리 사본 굵기" % ch)
 		b.set_outline_far(true)
 		check(m.next_pass == null, "%s 멀면 외곽선 뗌" % ch)
@@ -746,3 +750,45 @@ func test_look_eyes_pure() -> void:
 	var one := Look.eye_centers(ov, os)
 	check(ov[3].y < 0.0 and os[3] == 1 and one[0] == null and (one[1] as Vector3).is_equal_approx(Vector3(0.1, 0.045, 0.1)), "한쪽 눈")
 	check(_edge_ratio_off(ov, Look.scale_eyes(ov, os, one, 0.5), oi, 0.5) < 1e-6, "한쪽 눈도 모양 그대로 절반")
+
+
+# 외곽선 재질의 push (안 넣은 재질은 0)
+static func _push_of(o) -> float:
+	var v = (o as ShaderMaterial).get_shader_parameter("push") if o is ShaderMaterial else null
+	return 0.0 if v == null else float(v)
+
+
+# c7-u1: 구운 몸의 림 틴트·림 지수·틴트가 걸리는 면 = 외부 모델 json 넷과 같은 값. 양면 + 깊이로 민 외곽선은 천이 있는 탱크·사냥꾼·갈고리만 (0~0.002), 묶음 재질에 실제로 들어감
+func test_c7_baked_matches_ext_rim() -> void:
+	const K := preload("res://chars/chars_config.gd")
+	const E := preload("res://chars/external.gd")
+	for ch in ["tank", "ninja", "hunter", "hook"]:
+		var ep := "res://assets/models/ext/%s.json" % ch
+		if not FileAccess.file_exists(ep):
+			continue
+		var ej: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(ep))
+		check(is_equal_approx(float(ej.rim_tint[0]), float(LK.RIM_TINT[0])) and is_equal_approx(float(ej.rim_tint[1]), float(LK.RIM_TINT[1])), "%s json rim_tint = 구운 몸 RIM_TINT" % ch)
+		check(is_equal_approx(float(ej.rim[0]), float(LK.RIM[0])) and is_equal_approx(float(ej.rim[1]), float(LK.RIM[1])), "%s json rim = 구운 몸 RIM" % ch)
+	check(LK.RIM_GATE == K.EXT_DEFAULTS.rim_gate, "틴트가 걸리는 면 = 외부 모델 기본값")
+	var was: bool = G3.outline_on
+	G3.set_outline_on(true)
+	for ch in LK.LOOK:
+		var want: bool = ch in ["tank", "hunter", "hook"]
+		var lk: Dictionary = LK.LOOK[ch]
+		check(bool(lk.get("double", false)) == want, "%s double 은 천 있는 몸만" % ch)
+		var push := float(lk.get("outline_push", 0.0))
+		check(push >= 0.0 and push <= 0.002 and (push > 0.0) == want, "%s outline_push 0~0.002 (얻음 %s)" % [ch, push])
+		var b = _body(ch, RED, true)
+		var m: ShaderMaterial = b.batch.mi.material_override
+		check(E.Ext.is_double(m) == want, "%s 묶음 재질 양면 = %s" % [ch, want])
+		check(Vector2(m.get_shader_parameter("rim_tint")).is_equal_approx(Vector2(LK.RIM_TINT[0], LK.RIM_TINT[1])), "%s 묶음 재질 림 틴트" % ch)
+		check(Vector2(m.get_shader_parameter("rim_gate")).is_equal_approx(Vector2(LK.RIM_GATE[0], LK.RIM_GATE[1])), "%s 묶음 재질 틴트 면" % ch)
+		check(Color(m.get_shader_parameter("skin_tint")).is_equal_approx(Color(RED.r, RED.g, RED.b, 1.0)), "%s 림이 섞는 색 = 플레이어 색" % ch)
+		check(m.next_pass == Look.outline_for(ch) and is_equal_approx(_push_of(m.next_pass), push), "%s 외곽선 push" % ch)
+		b.free()
+		# 끄면 (--no-look) 예전 그대로: 보통 툰·림 틴트 없음
+		var o = _body(ch, RED, false)
+		var om: ShaderMaterial = o.batch.mi.material_override
+		check(not E.Ext.is_double(om) and om.get_shader_parameter("rim_tint") == null, "%s 끄면 양면·림 틴트 없음" % ch)
+		o.free()
+	G3.set_outline_on(was)

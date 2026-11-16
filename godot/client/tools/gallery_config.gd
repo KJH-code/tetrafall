@@ -14,7 +14,7 @@ static func gfx_choice(low: bool) -> String:
 	return "low" if low else "high"
 
 # ---- 캐릭터 ----
-const CHAR_MAP := "flat" # 초원 낮 빛, 지형 없는 빈 바닥 위에 세움
+const CHAR_MAP := "flat" # 초원 낮 빛, 지형 없는 빈 바닥 위에 세움 (실행 인자 --char-map <맵 id> 로 다른 테마)
 const CHAR_TURNS := [0.0, 40.0, 90.0, 180.0] # 한 장에 나란히: 앞 · 비스듬히 앞 · 옆 · 뒤 (도, 반시계 = 오른쪽 몸이 보임)
 const CHAR_FOV := 18.0 # 좁은 시야각으로 멀리서 (원근 왜곡 적게). 외곽선은 화면 굵기라 판과 같음
 const CHAR_CAM_PITCH := 5.0 # 카메라가 몸 가운데 높이보다 이만큼 위에서 (도)

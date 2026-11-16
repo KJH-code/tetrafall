@@ -295,6 +295,7 @@ const WARM_TABLE := {
 	"ghost_depth.gdshader": "world._warm_scan_step 유령 재질 (보통 갈래)", "vignette.gdshader": "light.vignette (GameLight.warm_canvas_step)",
 	"hazard_vignette.gdshader": "hazard_view.warm_canvas_step (k=0 으로 켬)",
 	"bblock.gdshader": "warm.scan (건축가 블록 풀 7개)",
+	"toon_double.gdshader": "W30 몸 데우기 (대기실 몸 — 사냥꾼·갈고리 천)",
 	"hazard.gdshaderinc": "(포함 파일)", "hz_light.gdshaderinc": "(포함 파일)", "piece_common.gdshaderinc": "(포함 파일)", "toon_common.gdshaderinc": "(포함 파일)",
 }
 const TITLE_EXEMPT := "타이틀·메뉴 배경 (자기 장면, 처음 켤 때 한 번 — 이미 첫 화면)"
