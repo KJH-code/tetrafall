@@ -1,4 +1,5 @@
 // 테트리미노 칸 (JS client/piece-look.js PieceLook 그대로): 면 그림 × 조각 색 (인스턴스 COLOR, sRGB) · accent 부품 (UV2.x 1·2 = accent[0]·[1], 그림은 조금만)
+// C7: face_lift 면 그림을 흰 쪽으로 (어두운 그림에서도 면 주색 = 조각 색. 금은 그림 그대로) · accent_tint 부품 색을 조각 색 쪽으로 (x accent0 · y accent1) — 값은 world/piece_tune.gd, 0 이면 예전 그대로
 // 빛남: glow 제 색 · crack 그림 밝은 금 · fresnel 비스듬한 면 빛 테 · rim 판 빛 테두리. 모양은 assets/pieces/shapes.json (JS pieceGeometry 그대로, g3.gd piece_mesh)
 #define TOON_CUSTOM
 #include "res://shaders/toon_common.gdshaderinc"
@@ -11,6 +12,8 @@ uniform float crack = 0.0;
 uniform float fresnel = 0.0;
 uniform float rim = 0.0;
 uniform float opacity = 1.0;
+uniform float face_lift = 0.0;
+uniform vec2 accent_tint = vec2(0.0);
 
 varying float v_acc;
 
@@ -21,10 +24,11 @@ void vertex() {
 
 void fragment() {
 	vec3 tex = g3_lin(texture(face_tex, UV).rgb);
-	vec3 d = g3_lin(albedo.rgb) * tex * g3_lin(COLOR.rgb);
+	vec3 pc = g3_lin(COLOR.rgb);
+	vec3 d = g3_lin(albedo.rgb) * mix(tex, vec3(1.0), face_lift) * pc;
 	vec3 tt = mix(vec3(1.0), tex, 0.35);
-	d = mix(d, g3_lin(accent0) * tt, 1.0 - step(0.5, abs(v_acc - 1.0)));
-	d = mix(d, g3_lin(accent1) * tt, step(1.5, v_acc));
+	d = mix(d, mix(g3_lin(accent0), pc, accent_tint.x) * tt, 1.0 - step(0.5, abs(v_acc - 1.0)));
+	d = mix(d, mix(g3_lin(accent1), pc, accent_tint.y) * tt, step(1.5, v_acc));
 	float nv = 1.0 - abs(dot(normalize(NORMAL), normalize(VIEW)));
 	vec3 e = d * glow + d * crack * smoothstep(0.6, 0.95, tex.r)
 		+ mix(d, vec3(1.0), 0.4) * fresnel * pow(nv, 2.5)

@@ -7,10 +7,14 @@ const Co := preload("res://core/coords.gd")
 const Cells := preload("res://world/cells.gd")
 const WC := preload("res://world/world_config.gd")
 const CellLod := preload("res://world/cell_lod.gd")
+const LandingRim := preload("res://world/landing_rim.gd")
 
 var cells_mmi := MultiMeshInstance3D.new()
 var sky_mmi := MultiMeshInstance3D.new() # 하늘 계단 블록 (render.js skyPieceMat: 밝게·살짝 비침·하늘색 빛) — 늘 반투명 재질
 var shadow_mmi := MultiMeshInstance3D.new()
+var rim_mmi := MultiMeshInstance3D.new() # C7: 착지 예고 칸의 테 — 조각 바깥 윤곽만 얇은 띠 (world/landing_rim.gd). 그림자와 같은 판·같은 재질 모양
+var rim_danger := 0 # 지난 갱신에서 위험 색 띠 수 (확인용)
+var floor_luma := 1.0 # 바닥 밝기 (sRGB, 테마 floor.a·b 평균 — world.gd 가 테마 적용 때 넣음): 테 색을 고름
 var caster_mmi := MultiMeshInstance3D.new() # W32: 보이는 칸과 같은 자리에서 그림자만 던지는 상자 (칸 모양이 복잡한 테마에서 해 그림자 패스 삼각형을 줄임)
 var proxy_on := false # 보이는 칸 그림자를 끄고 caster_mmi 가 대신 던지는 중
 var sky_far_mmi := MultiMeshInstance3D.new() # W39: 먼 하늘 블록 (낮은 모양, 반투명 재질)
@@ -72,14 +76,35 @@ func _ready() -> void:
 	quad.size = Vector2.ONE
 	sm.mesh = quad
 	shadow_mmi.multimesh = sm
-	var smat := StandardMaterial3D.new()
-	smat.vertex_color_use_as_albedo = true
-	smat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	smat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	smat.no_depth_test = false
-	shadow_mmi.material_override = smat
+	shadow_mmi.material_override = _flat_mat(0)
 	shadow_mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(shadow_mmi)
+	var rm := MultiMesh.new()
+	rm.transform_format = MultiMesh.TRANSFORM_3D
+	rm.use_colors = true
+	rm.mesh = quad
+	rm.visible_instance_count = 0
+	rim_mmi.multimesh = rm
+	rim_mmi.material_override = _flat_mat(1) # 채움 위에 그림
+	rim_mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(rim_mmi)
+
+
+# 그림자 칸·테의 재질: 빛 안 받는 반투명 + 인스턴스 색 (미리 그리기 표 world/warm_scan.gd STD_KEYS 에 있는 모양 — 순서 값은 셰이더 모양에 안 들어감)
+static func _flat_mat(order: int) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.no_depth_test = false
+	m.render_priority = order
+	return m
+
+
+func set_floor_luma(v: float) -> void:
+	if v != floor_luma:
+		floor_luma = v
+		_key_st = null # 테 색을 다음 갱신에서 다시 씀
 
 
 # G3 칸 모양·재질 [불투명, 반투명 (알파 = 인스턴스 색 a)]·조각 색
@@ -176,6 +201,7 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 	var mm := cells_mmi.multimesh
 	var km := sky_mmi.multimesh
 	var sm := shadow_mmi.multimesh
+	var rm := rim_mmi.multimesh
 	var qm := caster_mmi.multimesh
 	var fm := far_mmi.multimesh
 	if mm.instance_count < n:
@@ -185,6 +211,7 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 		mm.instance_count = n + 8
 		km.instance_count = n + 8
 		sm.instance_count = n + 8
+		rm.instance_count = (n + 8) * 4 # 칸마다 변 + 꺾인 모서리 조각은 많아야 4
 	var alpha := WC.PIECE_SKY_ALPHA if sky_blend > 0.5 else 1.0
 	if mats != null:
 		cells_mmi.material_override = mats[1] if alpha < 1.0 else mats[0]
@@ -208,6 +235,8 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 	var warned: bool = not me.is_empty() and me.alive and me.get("danger") != null
 	var k := 0
 	var s := 0
+	var r := 0 # 테 띠 조각 수
+	var hot_n := 0
 	for pc in pieces:
 		var col := piece_color(pc)
 		col.a = alpha
@@ -220,6 +249,7 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 			_sky_a = sky_a
 		var mine: bool = str(pc.get("phase", "")) == "control" and pc.get("controller") != null and my_id != null and int(pc.controller) == int(my_id)
 		var show_shadow: bool = pc.get("shadowVisible", false) or mine
+		var hot := {} # C7: 이 조각 그림자 칸 가운데 내 머리 위 칸 (Vector2i) — 그 칸의 테는 위험 색
 		var far_piece := false # W39: 조각 가운데 (첫 칸) 이 멀면 조각 통째로 낮은 모양 (한 조각 안에서 모양이 섞이지 않게). 내가 조종하는 조각은 늘 높은 모양
 		if not cam.is_empty() and not mine and pc.cells.size() > 0:
 			var c0: Array = pc.cells[0]
@@ -262,10 +292,19 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 				elif warned and sh[0] < me.x + C.PLAYER_HALF and sh[0] + 1 > me.x - C.PLAYER_HALF and sh[1] < me.y + C.PLAYER_HALF and sh[1] + 1 > me.y - C.PLAYER_HALF:
 					sc = Co.color(WC.DANGER_SHADOW[0])
 					sc.a = WC.DANGER_SHADOW[1]
+					hot[Vector2i(roundi(sh[0]), roundi(sh[1]))] = true
 				else:
 					sc = Color(0, 0, 0, shadow_alpha(pc.get("eta")))
 				sm.set_instance_color(s, sc)
 				s += 1
+		if show_shadow and pc.has("shadow"): # 테: 조각 바깥 윤곽만 (채움과 같은 조건)
+			var kind: String = ("fit" if pc.get("fits", false) else "nofit") if mine else "normal"
+			var red := LandingRim.rim_color("danger", floor_luma)
+			for t in LandingRim.items(pc.shadow.slice(0, pc.cells.size()), float(pc.landZ), kind, hot, floor_luma):
+				rm.set_instance_transform(r, t[0])
+				rm.set_instance_color(r, t[1])
+				hot_n += 1 if not hot.is_empty() and t[1] == red else 0
+				r += 1
 	mm.visible_instance_count = k
 	fm.visible_instance_count = f
 	lod_far = f
@@ -273,6 +312,8 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 	km.visible_instance_count = q
 	skf.visible_instance_count = qf
 	sm.visible_instance_count = s
+	rm.visible_instance_count = r
+	rim_danger = hot_n
 
 
 var writes := 0 # 칸을 다 다시 쓴 번 수 (확인용)

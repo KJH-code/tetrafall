@@ -11,6 +11,8 @@ const Cells := preload("res://world/cells.gd")
 const WC := preload("res://world/world_config.gd")
 const GridView := preload("res://world/grid_view.gd")
 const PiecesView := preload("res://world/pieces_view.gd")
+const LandingRim := preload("res://world/landing_rim.gd")
+const EdgeLook := preload("res://world/edge_look.gd")
 const HazardView := preload("res://world/hazard_view.gd")
 const Bodies := preload("res://world/bodies.gd")
 const SkyAids := preload("res://world/sky_aids.gd")
@@ -309,6 +311,7 @@ func apply_theme_step(map_id: String) -> bool:
 	theme_id = map_id
 	grid_view.set_theme(theme)
 	pieces_view.piece_colors = Cells.piece_colors(theme)
+	pieces_view.set_floor_luma(LandingRim.floor_luma(theme)) # C7: 착지 예고 테 색을 바닥 밝기로 고름
 	hazard_view.set_theme(theme)
 	built_version = -2 # 칸 색이 바뀜 → 다시 깖
 	if G3 != null:
@@ -319,6 +322,7 @@ func apply_theme_step(map_id: String) -> bool:
 		var fm = G3.floor_material(tid) if g3_has("floor_material") else null
 		if fm != null:
 			grid_view.floor_mesh.material_override = fm # 바닥 판: 윗면 체크·칸 선·테마 무늬, 옆면 테두리
+		_edge_look() # 새로 받은 바닥·지형 재질에 낭떠러지 테
 		if sprouts != null:
 			sprouts.queue_free()
 		sprouts = G3.sprout_node(tid)
@@ -345,6 +349,12 @@ func apply_theme_step(map_id: String) -> bool:
 	sun.light_color = Co.color(theme.get("sunColor", 0xfff0d8))
 	sun.light_energy = float(theme.get("sunIntensity", 1.0)) * WC.SUN_ENERGY
 	return false
+
+
+# C7: 낭떠러지 테 (world/edge_look.gd) — 바닥 판·지형 재질에 판 크기와 띠 색을 넣음. 테마 적용 직후 (재질이 새로 생김) 와 판 크기가 바뀔 때.
+# 대기실 미리보기·튜토리얼도 같은 길. 판 크기가 아직 0 이면 꺼진 채 (예전 화소)
+func _edge_look() -> void:
+	EdgeLook.apply(grid_view.floor_mesh.material_override, grid_view.terrain_mmi.material_override, C.WORLD_MAP_THEME.get(theme_id), field.x, field.y)
 
 
 # 맵 적용 둘째·셋째 단계 (apply_theme_step)
@@ -708,6 +718,7 @@ func _process(dt: float) -> void:
 	if fs != field:
 		field = fs
 		grid_view.set_field(fs.x, fs.y)
+		_edge_look()
 		if G3 != null:
 			G3.set_field(self, fs.x, fs.y)
 			_shadow_reach = -1.0

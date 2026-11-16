@@ -13,8 +13,12 @@ uniform vec2 tf_blotch; uniform float tf_edge; uniform vec2 tf_height; uniform f
 uniform float tf_mottle; uniform float tf_wear; uniform float tf_top_lift = 1.0;
 uniform vec2 tf_grid; uniform float tf_lip; uniform vec2 tf_strata; uniform vec4 tf_brick; uniform float tf_sheen;
 uniform float tf_side_shade = 1.0; uniform float tf_ao; uniform float tf_hi; uniform float tf_self;
+uniform vec2 tf_field = vec2(0.0); // C7 낭떠러지 테 (world/edge_look.gd, 바닥 판 floor.gdshader 와 같은 띠): 판 크기 (칸). 0 이면 끔 = 예전 화소
+uniform vec3 tf_field_edge = vec3(0.0); // 띠 색 (선형)
+uniform vec3 tf_field_w = vec3(0.0); // 띠 폭 · 그 안쪽 어두운 선 폭 (칸) · 어두운 선 배율 (선형)
 
 varying vec3 v_w; varying vec3 v_cell; varying float v_open; varying float v_ao; varying float v_lift;
+varying vec2 v_flat; // 깎기·흔들기 전 자리 (게임 x·y) — 낭떠러지 테는 이걸로 재서 깎인 윗면 가장자리에도 같은 폭으로 놓임
 
 vec3 g(vec3 v) { return vec3(v.x, -v.z, v.y); }
 vec3 gd(vec3 v) { return vec3(v.x, v.z, -v.y); }
@@ -35,6 +39,7 @@ void vertex() {
 	float open = INSTANCE_CUSTOM.r;
 	v_cell = cell; v_open = open; v_ao = INSTANCE_CUSTOM.g; v_lift = INSTANCE_CUSTOM.b * tf_step;
 	vec3 w0 = cell + position;
+	v_flat = w0.xy;
 	vec3 ex = vec3(0.0);
 	if (position.x > 0.49) ex.x = tf_bit(open, 1.0); else if (position.x < -0.49) ex.x = -tf_bit(open, 2.0);
 	if (position.y > 0.49) ex.y = tf_bit(open, 4.0); else if (position.y < -0.49) ex.y = -tf_bit(open, 8.0);
@@ -115,6 +120,14 @@ void fragment() {
 		float w = tf_noise(v_w * 2.3 * tf_vein_scale + 13.0) - 0.5;
 		glow_amt = (1.0 - smoothstep(0.0, 0.035, abs(v))) * smoothstep(-0.1, 0.15, w) * (1.0 - up * 0.6);
 		base = mix(base, tf_glow, glow_amt * tf_vein);
+	}
+	if (up > 0.5 && tf_field.x > 0.0) { // 필드 바깥 변에 닿은 칸의 윗면: 변에서 폭 안쪽은 밝은 띠, 그 안쪽은 어두운 선 (안쪽 칸은 변까지 1칸 넘어 그대로)
+		float de = min(min(v_flat.x, tf_field.x - v_flat.x), min(v_flat.y, tf_field.y - v_flat.y));
+		float aa = fwidth(de) + 1e-4;
+		float ke = 1.0 - smoothstep(tf_field_w.x - aa, tf_field_w.x + aa, de);
+		float ki = (1.0 - ke) * (1.0 - smoothstep(tf_field_w.x + tf_field_w.y - aa, tf_field_w.x + tf_field_w.y + aa, de));
+		base = mix(base * mix(1.0, tf_field_w.z, ki), tf_field_edge, ke);
+		glow_amt *= 1.0 - max(ke, ki);
 	}
 	float sheen = tf_sheen > 0.0 ? pow(1.0 - abs(dot(n, normalize(g(CAMERA_POSITION_WORLD) - v_w))), 3.0) * tf_sheen : 0.0;
 	vec3 wn = gd(n);

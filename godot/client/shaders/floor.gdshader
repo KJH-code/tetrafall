@@ -7,6 +7,9 @@ shader_type spatial;
 uniform vec3 f_a; uniform vec3 f_b; uniform vec3 f_rim; // 선형
 uniform vec4 f_line; // 선형 색 + 알파
 uniform vec3 f_glow; // 선형 (cracks)
+uniform vec2 f_field = vec2(0.0); // C7 낭떠러지 테 (world/edge_look.gd): 판 크기 (게임 x·y 칸). 0 이면 끔 = 예전 화소
+uniform vec3 f_edge = vec3(0.0); // 띠 색 (선형)
+uniform vec3 f_edge_w = vec3(0.0); // 띠 폭 · 그 안쪽 어두운 선 폭 (칸) · 어두운 선 배율 (선형)
 uniform int f_paint; // 0 grass · 1 sand · 2 stone · 3 moss · 4 cracks · 5 marble
 
 varying vec3 v_wp;
@@ -63,6 +66,14 @@ void fragment() {
 	// 칸 경계 선 (2px, 알파 섞음)
 	vec2 e = min(f, 1.0 - f);
 	if (min(e.x, e.y) < px) c = mix(c, f_line.rgb, f_line.a);
+	if (f_field.x > 0.0) { // 필드 바깥 변: 밝은 띠 + 안쪽 어두운 선 (문턱마다 한 화소만큼 부드럽게 — 먼 변도 선으로 남음)
+		float de = min(min(g.x, f_field.x - g.x), min(g.y, f_field.y - g.y));
+		float aa = fwidth(de) + 1e-4;
+		float ke = 1.0 - smoothstep(f_edge_w.x - aa, f_edge_w.x + aa, de);
+		float ki = (1.0 - ke) * (1.0 - smoothstep(f_edge_w.x + f_edge_w.y - aa, f_edge_w.x + f_edge_w.y + aa, de));
+		c = mix(c * mix(1.0, f_edge_w.z, ki), f_edge, ke);
+		glow *= 1.0 - max(ke, ki);
+	}
 	vec3 wn = normalize(world_n);
 	if (wn.y < 0.5) { c = f_rim; glow = 0.0; }
 	v_base = c;

@@ -510,6 +510,9 @@ static func piece_material(theme_id, low_arg = null, opts := {}) -> ShaderMateri
 	m.set_shader_parameter("fresnel", 0.0 if low else float(s.fresnel))
 	m.set_shader_parameter("rim", 0.0 if low else float(opts.get("rim", 0.0)))
 	m.set_shader_parameter("opacity", float(opts.get("opacity", s.opacity)))
+	const PieceTune := preload("res://world/piece_tune.gd") # C7: 면 그림 올림·부품 색 물들임 (낮춤 갈래도 같은 값 → set_low 가 그대로 둠)
+	m.set_shader_parameter("face_lift", PieceTune.face_lift(theme_id))
+	m.set_shader_parameter("accent_tint", PieceTune.accent_tint(theme_id))
 	if not tr and opts.get("outline", true):
 		attach_outline(m, shared_outline())
 	_track(m, func(l): return piece_material(theme_id, l, opts))
