@@ -844,7 +844,7 @@ class Ext extends Node3D:
 	# ---- c7-u1 몸 읽힘: 양면 천·림 틴트·깊이로 민 외곽선 (외부 모델 cfg 와 구운 몸 표 chars/baked_look_config.gd 가 같이 씀) ----
 	const TOON_DOUBLE_ := preload("res://shaders/toon_double.gdshader")
 	const G3K_ := preload("res://shaders/g3_config.gd")
-	static var _push_outlines := {} # 열쇠 (굵기·push) → 외곽선 재질 (나눠 씀)
+	static var _push_outlines := {} # 열쇠 (굵기·push m) → 외곽선 재질 (나눠 씀)
 	static var _double_stencil: Shader = null
 
 	# 불투명 툰 재질인가 (보통·양면·스텐실 쓰는 갈래 — 외곽선을 붙일 수 있는 것). 투명 갈래 (toon_alpha) 는 아님
@@ -863,8 +863,18 @@ class Ext extends Node3D:
 			var rg: Array = cfg.get("rim_gate", K_.EXT_DEFAULTS.rim_gate)
 			m.set_shader_parameter("rim_gate", Vector2(float(rg[0]), float(rg[1])))
 
-	# 깊이로 push 만큼 뒤로 민 외곽선 재질 (굵기·push 마다 하나). 안개는 G3.shared_outline 기본과 같이 받음
+	# c7-fix F7: 재질에 넘길 cfg — 1인칭 팔 쌍둥이 (third 거짓) 는 림 틴트만 끈 사본, 판·대기실·초상 몸은 cfg 그대로.
+	# 눈앞 팔에선 림이 몸 가장자리 테가 아니라 팔 보호대·장갑의 넓은 면으로 번져 플레이어 색으로 물들었음 (셰이더 주석 "가장자리에만" 과 다름). 예전 림 (rim) 은 그대로
+	static func style_cfg(cfg: Dictionary, third_: bool) -> Dictionary:
+		if third_:
+			return cfg
+		var c := cfg.duplicate()
+		c["rim_tint"] = [0.0, 0.0]
+		return c
+
+	# 깊이로 push m (뷰 공간 거리, 0~K.OUTLINE_PUSH_MAX — outline.gdshader push) 뒤로 민 외곽선 재질 (굵기·push 마다 하나). 안개는 G3.shared_outline 기본과 같이 받음
 	static func push_outline(thickness: float, push: float) -> ShaderMaterial:
+		push = clampf(push, 0.0, K_.OUTLINE_PUSH_MAX)
 		var key := "%f|%f" % [thickness, push]
 		if not _push_outlines.has(key):
 			var o := G3_.outline_material(thickness)
@@ -2108,6 +2118,7 @@ class Ext extends Node3D:
 	# ④ 표면마다 MeshInstance3D (원래 자리·스킨 그대로), 재질은 툰
 	func _surfaces() -> void:
 		var cfg: Dictionary = info.cfg
+		var scfg := style_cfg(cfg, third) # 재질 모습 (style) 몫 — 1인칭 팔은 림 틴트 없이 (c7-fix F7)
 		var mode: String = str(cfg.get("tint", "band"))
 		var tk: float = float(cfg.get("tint_k", 0.6))
 		var olds := {}
@@ -2149,7 +2160,7 @@ class Ext extends Node3D:
 				continue
 			if sf.get("face", false): # 얼굴: 표정 텍스처, 외곽선 없음
 				var ft = face_tex.get("idle", tex_of(sf))
-				var fm := style(G3_.toon_material(col, {"map": ft, "outline": false, "color_glow": float(cfg.get("face_glow", 0.0))}), cfg, false)
+				var fm := style(G3_.toon_material(col, {"map": ft, "outline": false, "color_glow": float(cfg.get("face_glow", 0.0))}), scfg, false)
 				mi.material_override = fm
 				face_now = "idle"
 				parts.append({"mi": mi, "color": col, "tex": ft, "solid": fm, "face": true})
@@ -2159,7 +2170,7 @@ class Ext extends Node3D:
 			var mask: bool = vc and mode == "mask"
 			var mt = skin_mask_for(cfg, str(sf.get("node", ""))) if mask else null
 			var stex = tex_of(sf)
-			var m := style(toon_for(col, stex, vc, mask, body.skin_color, {"skin_mask": mt} if mt != null else {}), cfg)
+			var m := style(toon_for(col, stex, vc, mask, body.skin_color, {"skin_mask": mt} if mt != null else {}), scfg)
 			mi.material_override = m
 			parts.append({"mi": mi, "color": col, "tex": stex, "solid": m, "vcolor": vc, "mask": mask, "mask_tex": mt})
 			body.drawn.append({"mi": mi, "m": {"kind": "toon"}, "merged": false, "ext": true})
@@ -2302,7 +2313,7 @@ class Ext extends Node3D:
 			var col: Color = (sm as BaseMaterial3D).albedo_color if sm is BaseMaterial3D else Color.WHITE
 			var tex = (sm as BaseMaterial3D).albedo_texture if sm is BaseMaterial3D else null
 			var vc := vertex_colored(me, 0, sm, mode)
-			var m := style(toon_for(col, tex, vc, vc and mode == "mask", body.skin_color), info.cfg)
+			var m := style(toon_for(col, tex, vc, vc and mode == "mask", body.skin_color), style_cfg(info.cfg, third))
 			(mi as MeshInstance3D).material_override = m
 			if not third:
 				(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -2340,7 +2351,7 @@ class Ext extends Node3D:
 					var opts := {"opacity": 0.5, "outline": false}
 					if pt.tex != null:
 						opts.map = pt.tex
-					pt.alpha = style(G3_.toon_material(pt.color, opts), info.cfg, false)
+					pt.alpha = style(G3_.toon_material(pt.color, opts), style_cfg(info.cfg, third), false)
 					G3_.toon_hazard_light(pt.alpha, body.hz_light)
 				var c: Color = pt.color
 				(pt.alpha as ShaderMaterial).set_shader_parameter("albedo", Color(c.r, c.g, c.b, op))
@@ -2355,7 +2366,7 @@ class Ext extends Node3D:
 		var want: Material = pt.solid
 		if op < 1.0:
 			if not pt.has("alpha"):
-				pt.alpha = style(toon_for(pt.color, pt.tex, true, true, body.skin_color, {"opacity": 0.5, "outline": false, "skin_mask": pt.get("mask_tex")}), info.cfg, false)
+				pt.alpha = style(toon_for(pt.color, pt.tex, true, true, body.skin_color, {"opacity": 0.5, "outline": false, "skin_mask": pt.get("mask_tex")}), style_cfg(info.cfg, third), false)
 				G3_.toon_hazard_light(pt.alpha, body.hz_light)
 			want = pt.alpha
 		var shown: Material = GhostDepth.wrap_in(pt) if op < 1.0 else want # W35 반투명이면 깊이 선 먼저

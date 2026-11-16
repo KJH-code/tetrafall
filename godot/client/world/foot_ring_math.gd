@@ -36,10 +36,26 @@ static func wanted(p: Dictionary, phase: String, sky: bool, mine: bool, hide_me:
 	return not (mine and hide_me)
 
 
-# 그릴 고리 목록. 한 줄 = [게임 x, y, z (표면 + lift), 반지름 (칸), Color (알파 포함)]. 3인칭의 나는 색 고리 뒤에 흰 안쪽 테 한 줄 더.
+# 고리가 걸치는 칸들 중 가장 높이 올라온 윗면 (c7-fix F3). 테마 지형 꼭대기 칸의 윗면은 칸마다 정수 높이에서 조금씩 오르내려서 (terrain.gdshader v_lift) 정수 높이 + lift 에 둔 고리가
+# 높이 올라온 칸에선 지형에 묻혔음. 고리 원 (가운데 x·y, 반지름 r) 이 닿는 칸 가운데 발 아래 바닥 높이가 gz 로 같은 칸만 봄 (더 낮은 칸 = 낭떠러지 위로 뜸, 더 높은 칸 = 벽이 가림 — 그대로).
+# bump: Callable(cx: int, cy: int, top: int) -> float 그 기둥 꼭대기 칸 윗면이 정수 높이 top 에서 올라온 양 (칸, 내려갔으면 음수)
+static func top_bump(x: float, y: float, r: float, gz: float, feet_z: float, field: Vector3i, ground: Callable, bump: Callable) -> float:
+	var up := -INF
+	for cy in range(maxi(0, int(floor(y - r))), mini(field.y - 1, int(floor(y + r))) + 1):
+		for cx in range(maxi(0, int(floor(x - r))), mini(field.x - 1, int(floor(x + r))) + 1):
+			var dx := x - clampf(x, float(cx), float(cx + 1)) # 원 가운데에서 그 칸 사각형까지 거리
+			var dy := y - clampf(y, float(cy), float(cy + 1))
+			if dx * dx + dy * dy > r * r or float(ground.call(cx, cy, feet_z)) != gz:
+				continue
+			up = maxf(up, float(bump.call(cx, cy, int(gz))))
+	return up if up > -INF else 0.0
+
+
+# 그릴 고리 목록. 한 줄 = [게임 x, y, z (표면 + 윗면 올라온 양 + lift), 반지름 (칸), Color (알파 포함)]. 3인칭의 나는 색 고리 뒤에 흰 안쪽 테 한 줄 더.
 # shown: id → 화면 위치 (게임 좌표 Vector3, Bodies.shown) · colors: id → 0xRRGGBB (이름표와 같은 플레이어 색) · field: 판 크기 (칸)
 # ground: Callable(cx: int, cy: int, feet_z: float) -> float 발 아래 바닥 높이
-static func rings(st: Dictionary, my_id, hide_me: bool, sky: bool, shown: Dictionary, colors: Dictionary, field: Vector3i, ground: Callable, cfg: Dictionary) -> Array:
+# bump: (없어도 됨) top_bump 의 것 — 바닥 칸 위에 놓일 때만 더함 (위험 액체 표면 위면 안 더함). 없으면 윗면 = 정수 높이 (그래픽 낮춤·테마 없는 판·테스트)
+static func rings(st: Dictionary, my_id, hide_me: bool, sky: bool, shown: Dictionary, colors: Dictionary, field: Vector3i, ground: Callable, cfg: Dictionary, bump := Callable()) -> Array:
 	var out := []
 	var phase := str(st.get("phase", ""))
 	var lava: Dictionary = st.get("lava", {}) if st.get("lava") is Dictionary else {}
@@ -54,10 +70,13 @@ static func rings(st: Dictionary, my_id, hide_me: bool, sky: bool, shown: Dictio
 		var cx := int(floor(pos.x))
 		var cy := int(floor(pos.y))
 		var inside: bool = cx >= 0 and cy >= 0 and cx < field.x and cy < field.y
-		var z := surface(float(ground.call(cx, cy, pos.z)) if inside else 0.0, inside, lava_on, lava_z)
+		var gz := float(ground.call(cx, cy, pos.z)) if inside else 0.0
+		var z := surface(gz, inside, lava_on, lava_z)
 		if is_nan(z):
 			continue
 		var k := fade(pos.z - z, cfg)
+		if bump.is_valid() and z == gz:
+			z += top_bump(pos.x, pos.y, float(cfg.r) * k, gz, pos.z, field, ground, bump)
 		var c: Color = Co.color(colors[id])
 		out.append([pos.x, pos.y, z + float(cfg.lift), float(cfg.r) * k, Color(c.r, c.g, c.b, float(cfg.alpha) * k)])
 		if mine:

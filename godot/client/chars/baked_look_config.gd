@@ -28,7 +28,7 @@ const WELD := 5000.0 # 조각 나누기: 같은 자리 정점 묶는 눈금 (1 �
 #   bare      피부가 아닌 조각을 살색으로 (장갑 → 맨손): [뼈, 재질 번호] 또는 [뼈, 재질 번호, 높이 문턱] (조각 가운데 높이가 문턱 **미만**만 — 손목 띠는 남김)
 #   eye_scale 눈 (흰자·눈동자) 배율 — 흰자 가운데 기준. 흰자 지름이 머리 폭의 1/3 이하
 #   double    (c7-u1) 이 몸의 불투명 툰 재질을 양면으로 — 한 겹 천 (망토·코트 자락·등 천) 안쪽이 외곽선 색 (보라) 으로 통칠되던 것. 외부 모델 json 의 double 과 같은 길 (external.gd Ext.look)
-#   outline_push (c7-u1) 외곽선 껍질을 깊이로 뒤로 (0~0.002, json outline_push 와 같은 뜻) — 양면 천 안쪽 면 위로 껍질이 비치지 않게
+#   outline_push (c7-u1) 외곽선 껍질을 깊이로 뒤로 (m — 뷰 공간 거리, 0~OUTLINE_PUSH_MAX, json outline_push 와 같은 뜻·같은 값) — 양면 천 안쪽 면 위로 껍질이 비치지 않게
 const LOOK := {
 	"bard": {
 		"flesh": 0xE6B894,
@@ -69,7 +69,7 @@ const LOOK := {
 		"split": {"neck": [0.29, "flesh", "player"]},
 		"wide": {"shoulder_R": [0.1, "flesh", "player"], "shoulder_L": [0.1, "flesh", "player"]},
 		"eye_scale": 0.5,
-		"double": true, "outline_push": 0.0015,
+		"double": true, "outline_push": 0.01,
 	},
 	"ninja": {
 		"flesh": 0xE6B894,
@@ -85,7 +85,7 @@ const LOOK := {
 		"split": {"neck": [0.2, "flesh", "player"], "waist": [0.2, "flesh", "player"]},
 		"promote": [["neck", 2]],
 		"eye_scale": 0.44,
-		"double": true, "outline_push": 0.0015,
+		"double": true, "outline_push": 0.01,
 	},
 	"hook": {
 		"flesh": 0xE6B894,
@@ -95,6 +95,6 @@ const LOOK := {
 		"wide": {"elbow_R": [0.08, "flesh", "player"], "elbow_L": [0.08, "flesh", "player"]},
 		"promote": [["neck", 1, 0.2]],
 		"eye_scale": 0.48,
-		"double": true, "outline_push": 0.0015,
+		"double": true, "outline_push": 0.01,
 	},
 }

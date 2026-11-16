@@ -680,7 +680,9 @@ func test_c7_windup_ring_thick() -> void:
 	check(_has_color(m, Color(G3C.OUTLINE_COLOR.r, G3C.OUTLINE_COLOR.g, G3C.OUTLINE_COLOR.b, RL.INK_ALPHA)) and near(RL.INK_ALPHA, 0.6), "잉크 테 (외곽선 색, 알파 0.6)")
 	check(_has_color(m, RL.tint_of(color)) and not _has_color(m, RL.tint_of(int(C.PLAYER_PALETTE[0]))), "그 사람 색 띠")
 	check(_has_color(m, Color(1, 1, 1, 0)), "안쪽 끝은 투명 (부드러운 안 가장자리)")
-	check(RL.tint_of(0xffffff).is_equal_approx(Color(1, 1, 1, 1)) and RL.tint_of(color).is_equal_approx(Co.color(color).srgb_to_linear()), "정점 색은 선형 값")
+	check(RL.tint_of(0xffffff).is_equal_approx(Color(1, 1, 1, 1)) and RL.tint_of(color).is_equal_approx(Co.color(color)), "정점 색 = 팔레트 값 그대로 (선형으로 안 바꿈 — c7-fix F2)")
+	for pc in C.PLAYER_PALETTE: # 어두운 팔레트 (0x2c2c38 등) 도 제 색 그대로 고리 메시에 들어감 (선형으로 바꾸면 거의 검정이 돼 서로 안 갈림)
+		check(_has_color(RL.mesh("aura", int(pc)), Co.color(int(pc))) and _has_color(RL.mesh("windup", int(pc)), Co.color(int(pc))), "팔레트 %06x 고리 색 그대로" % int(pc))
 	# 띠 순서: 안 → 바깥으로 이어지고 (틈 없음) 흰 심 0.80~0.88 · 색 0.88~0.97 · 잉크 0.97~1.0
 	var bands: Array = RL.LOOKS.windup.bands
 	for i in bands.size() - 1:

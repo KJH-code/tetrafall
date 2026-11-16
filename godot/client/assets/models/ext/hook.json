@@ -26,7 +26,7 @@
  ],
  "rim_tint": [0.5, 1.0],
  "double": true,
- "outline_push": 0.0015,
+ "outline_push": 0.01,
  "vm_snap": [
   "elbow"
  ],

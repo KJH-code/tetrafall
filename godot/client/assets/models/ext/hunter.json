@@ -28,7 +28,7 @@
  ],
  "rim_tint": [0.5, 1.0],
  "double": true,
- "outline_push": 0.0015,
+ "outline_push": 0.01,
  "attach": [
   {"glb": "res://assets/models/ext/hunter_rifle.glb", "joint": "hand_R", "pos": [0, 0, 0], "rot": [0, 0, 40], "scale": 1.0213, "vm": true, "third": false}
  ],

@@ -1701,7 +1701,7 @@ func test_c7_rim_tint_default_off() -> void:
 	check(Vector2(K.EXT_DEFAULTS.rim_tint[0], K.EXT_DEFAULTS.rim_tint[1]) == Vector2.ZERO and not K.EXT_DEFAULTS.double and float(K.EXT_DEFAULTS.outline_push) == 0.0, "EXT_DEFAULTS 는 전부 끔 (json 이 켬)")
 
 
-# json 넷: rim_tint 가 같고, 양면은 사냥꾼·갈고리만, 외곽선 밀기는 0~0.002
+# json 넷: rim_tint 가 같고, 양면은 사냥꾼·갈고리만, 외곽선 밀기는 0~OUTLINE_PUSH_MAX m (c7-fix F1: 단위가 뷰 공간 거리 — 예전 클립 깊이 단위 값 0.0015 가 남아 있으면 안 됨)
 func test_c7_ext_json_look_keys() -> void:
 	var first = null
 	for ch in EXT4:
@@ -1713,11 +1713,64 @@ func test_c7_ext_json_look_keys() -> void:
 		check(float(j.rim_tint[0]) > 0.0 and float(j.rim_tint[0]) <= 1.0 and float(j.rim_tint[1]) >= 0.0, "%s rim_tint 범위" % ch)
 		check(bool(j.get("double", false)) == (ch in ["hunter", "hook"]), "%s double 은 사냥꾼·갈고리만" % ch)
 		var push := float(j.get("outline_push", 0.0))
-		check(push >= 0.0 and push <= 0.002, "%s outline_push 0~0.002 (얻음 %s)" % [ch, push])
+		check(push >= 0.0 and push <= K.OUTLINE_PUSH_MAX and (push == 0.0 or push >= 0.005), "%s outline_push 0 또는 0.005~%s m (얻음 %s)" % [ch, K.OUTLINE_PUSH_MAX, push])
 		check((push > 0.0) == bool(j.get("double", false)), "%s 밀기는 양면 몸만" % ch)
 		check(is_equal_approx(float(j.rim[1]), 4.0), "%s 림 지수 4 (가장자리에만)" % ch)
 		var cfg: Dictionary = Ext.read_cfg(ch)
 		check(cfg.rim_tint == j.rim_tint and cfg.rim_gate == K.EXT_DEFAULTS.rim_gate, "%s read_cfg 가 json·기본값을 합침" % ch)
+
+
+# c7-fix F7: 1인칭 팔 쌍둥이 재질은 림 틴트 없이 (눈앞 팔에선 림이 넓은 면으로 번져 플레이어 색으로 물듦), 판 몸은 cfg 그대로. 원래 cfg 는 안 바뀜
+func test_c7_vm_no_rim_tint() -> void:
+	var E = Ext.Ext
+	var red := Color(0.9, 0.2, 0.2)
+	var cfg := {"tint": "mask", "outline": 0.45, "rim": [0.22, 4.0], "rim_tint": [0.5, 1.0], "double": true}
+	check(is_same(E.style_cfg(cfg, true), cfg), "판 몸: cfg 그대로")
+	var vm: Dictionary = E.style_cfg(cfg, false)
+	check(vm.rim_tint == [0.0, 0.0] and vm.rim == cfg.rim and vm.double == true and vm.outline == cfg.outline and cfg.rim_tint == [0.5, 1.0], "1인칭: 림 틴트만 끈 사본 (%s)" % [vm])
+	var a: ShaderMaterial = E.style(E.toon_for(Color.WHITE, null, true, true, red), E.style_cfg(cfg, true))
+	var b: ShaderMaterial = E.style(E.toon_for(Color.WHITE, null, true, true, red), vm)
+	check(Vector2(a.get_shader_parameter("rim_tint")) == Vector2(0.5, 1.0), "판 몸 재질 림 틴트")
+	check(b.get_shader_parameter("rim_tint") == null or Vector2(b.get_shader_parameter("rim_tint")) == Vector2.ZERO, "1인칭 재질 림 틴트 없음 (얻음 %s)" % str(b.get_shader_parameter("rim_tint")))
+	check(is_equal_approx(float(b.get_shader_parameter("rim_strength")), 0.22) and is_equal_approx(float(b.get_shader_parameter("rim_power")), 4.0), "1인칭도 예전 림 (제 색) 은 그대로")
+	# 진짜 몸: 닌자·사냥꾼 1인칭 쌍둥이의 모든 재질에 림 틴트 없음, 같은 캐릭터 판 몸엔 있음
+	for ch in ["ninja", "hunter"]:
+		if not Ext.has_char(ch):
+			continue
+		for third in [true, false]:
+			var body = _body(ch, third)
+			var tinted := 0
+			var mats := 0
+			if body.ext != null:
+				for pt in body.ext.parts:
+					var sm := pt.get("solid") as ShaderMaterial
+					if sm == null:
+						continue
+					mats += 1
+					var rt = sm.get_shader_parameter("rim_tint")
+					if rt != null and Vector2(rt) != Vector2.ZERO:
+						tinted += 1
+			check(body.ext != null and mats > 0 and ((tinted > 0) if third else (tinted == 0)), "%s %s: 재질 %d개 중 림 틴트 %d개" % [ch, "판 몸" if third else "1인칭 쌍둥이", mats, tinted])
+			body.free()
+
+
+# c7-fix F8·F4: 양면 툰 — 법선을 '보이는 쪽 면' 기준으로 (면 법선 = 화면 미분으로 가름). 눈 방향·보간 법선 내적 (앞면 가장자리 화소까지 뒤집음) 이나 FRONT_FACING (안을 보게 감긴 겹에서 거꾸로 —
+# 구운 갈고리 코트 겉) 으로 가르지 않고, light() 는 ndl 을 또 뒤집지 않음. 엔진의 그림자 띄움 (normal bias) 몫으로 vertex() 가 꼭짓점 법선을 눈 쪽으로 (갈고리 코트 줄무늬)
+func test_c7_double_backface_normal() -> void:
+	var src := FileAccess.get_file_as_string("res://shaders/toon_common.gdshaderinc")
+	check(src.count("#ifdef TOON_DOUBLE") == 2, "양면 갈래는 vertex·fragment 한 군데씩")
+	var v0 := src.find("void vertex()")
+	var v1 := src.find("void fragment()")
+	var vtx := src.substr(v0, v1 - v0)
+	check(vtx.contains("#ifdef TOON_DOUBLE") and vtx.contains("if (dot(MODELVIEW_NORMAL_MATRIX * NORMAL, (MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz) > 0.0) NORMAL = -NORMAL;"), "vertex: 엔진에 넘기는 꼭짓점 법선을 눈 쪽으로 (그림자 띄움 방향)")
+	check(vtx.find("world_n =") >= 0 and vtx.find("world_n =") < vtx.find("#ifdef TOON_DOUBLE"), "world_n 은 돌리기 전 법선")
+	var i0 := src.find("#ifdef TOON_DOUBLE", v1)
+	var i1 := src.find("#endif", i0)
+	var blk := src.substr(i0, i1 - i0)
+	check(i0 >= 0 and blk.contains("vec3 dn = cross(dFdx(VERTEX), dFdy(VERTEX));") and blk.contains("bool inner = dot(nv, dn) * dot(dn, VIEW) < 0.0;"), "fragment: 보이는 쪽 = 면 법선 (화면 미분) 으로 가름")
+	check(blk.contains("wn = -wn;") and blk.contains("NORMAL = nv;") and blk.contains("ndv = inner ? 1.0"), "안쪽이면 world_n 뒤집기 · NORMAL 다시 넣기 · 안쪽 면 림 끔")
+	var code := "\n".join(Array(blk.split("\n")).filter(func(l): return not str(l).strip_edges().begins_with("//")))
+	check(not code.contains("FRONT_FACING") and not code.contains("ndv < 0.0") and not src.contains("ndl = -ndl"), "FRONT_FACING·눈 방향 내적으로 가르지 않음 · light() 가 ndl 을 또 뒤집지 않음")
 
 
 # cfg double → 불투명 재질은 toon_double.gdshader, 투명 갈래 (opacity < 1) 는 toon_alpha 그대로. 민 외곽선은 굵기·push 마다 하나, 설정 '외곽선' 껐다 켜도 그 재질.
@@ -1727,14 +1780,19 @@ func test_c7_double_material() -> void:
 	G3c7.set_outline_on(true)
 	var E = Ext.Ext
 	var red := Color(0.9, 0.2, 0.2)
-	var cfg := {"tint": "mask", "double": true, "outline": 0.45, "outline_push": 0.0015, "rim": [0.22, 4.0], "rim_tint": [0.5, 1.0]}
+	var cfg := {"tint": "mask", "double": true, "outline": 0.45, "outline_push": 0.04, "rim": [0.22, 4.0], "rim_tint": [0.5, 1.0]}
 	var m: ShaderMaterial = E.style(E.toon_for(Color.WHITE, null, true, true, red), cfg)
 	check(m.shader.resource_path == "res://shaders/toon_double.gdshader", "double → 불투명 셰이더 toon_double (얻음 %s)" % m.shader.resource_path)
 	check(E.is_double(m) and E.opaque_toon(m), "양면·불투명 판정")
 	var thin: float = C.OUTLINE_THICKNESS * 0.45
-	var po: ShaderMaterial = E.push_outline(thin, 0.0015)
-	check(m.next_pass == po and is_equal_approx(float(po.get_shader_parameter("push")), 0.0015) and is_equal_approx(float(po.get_shader_parameter("thickness")), thin), "깊이로 민 얇은 외곽선")
-	check(po == E.push_outline(thin, 0.0015) and po != E.push_outline(thin, 0.001) and po != G3c7.shared_outline(thin), "굵기·push 마다 하나 (나눠 씀)")
+	var po: ShaderMaterial = E.push_outline(thin, 0.04)
+	check(m.next_pass == po and is_equal_approx(float(po.get_shader_parameter("push")), 0.04) and is_equal_approx(float(po.get_shader_parameter("thickness")), thin), "깊이로 민 얇은 외곽선")
+	check(po == E.push_outline(thin, 0.04) and po != E.push_outline(thin, 0.02) and po != G3c7.shared_outline(thin), "굵기·push 마다 하나 (나눠 씀)")
+	# c7-fix F1: push 는 뷰 공간 거리 (m) — 상한을 넘으면 자름, 셰이더는 깊이만 '눈에서 push m 더 먼 점' 의 것으로 (클립 z 에 push × w 를 더하던 예전 식이면 먼 몸의 선이 바닥·제 몸 뒤로 숨음)
+	check(is_equal_approx(float(E.push_outline(thin, 5.0).get_shader_parameter("push")), K.OUTLINE_PUSH_MAX) and E.push_outline(thin, 5.0) == E.push_outline(thin, K.OUTLINE_PUSH_MAX), "push 상한 %s m" % K.OUTLINE_PUSH_MAX)
+	var osrc: String = (G3c7.OUTLINE as Shader).code
+	check(osrc.contains("MODELVIEW_MATRIX * vec4(VERTEX, 1.0) + vec4(0.0, 0.0, -push, 0.0)") and osrc.contains("POSITION.z = pp.z / pp.w * POSITION.w"), "외곽선 셰이더: 깊이 = 뷰 공간에서 push 만큼 뒤 점의 깊이")
+	check(not osrc.contains("push) * pos.w") and not osrc.contains("push * pos.w"), "외곽선 셰이더: 클립 깊이에 push × w 를 더하는 식이 없음")
 	check(po.shader == G3c7.OUTLINE and po.get_shader_parameter("no_fog") == false, "외곽선 셰이더 그대로·안개 받음")
 	G3c7.set_outline_on(false)
 	check(m.next_pass == null, "설정 '외곽선' 끔")

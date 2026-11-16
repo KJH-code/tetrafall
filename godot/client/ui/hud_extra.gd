@@ -701,22 +701,48 @@ func _banner(st: Dictionary, p: Dictionary) -> void:
 			s.bg_color = col
 
 
-# 아래 가운데 묶음 (JS #bottom 세로 줄, gap 6, 아래 16px — 아래 판이 있으면 그 위 18px): 위에서부터 버프 → 내 % → F·R → 아이템.
-# 예전엔 버프·아이템이 F·R 위에 있어 내 % (아래 판이 없는 판) 와 같은 자리에 겹쳤음
+# 아래 묶음 (JS #bottom 세로 줄, gap 6, 아래 16px — 아래 판이 있으면 그 위 18px): 위에서부터 버프 → 내 % → F·R → 아이템.
+# 예전엔 버프·아이템이 F·R 위에 있어 내 % (아래 판이 없는 판) 와 같은 자리에 겹쳤음.
+# c7-fix F5: 3인칭이면 묶음 전체를 왼쪽 아래 구석으로 (내 % 와 같은 구석 — ui/hud.gd 의 #damage.corner). 3인칭 기본 카메라는 내 발을 화면 아래 가운데 (720p 에서 y≈595) 에 둬서
+# 가운데 F·R 띠가 내 발밑 색 고리·'나' 흰 테를 덮었음. 1인칭은 예전 그대로 가운데
+const STACK := {
+	"gap": 6.0, # 칸 사이
+	"bottom": 16.0, # 아래 판이 없을 때 화면 아래에서
+	"above_cards": 18.0, # 아래 판이 있을 때 그 위로
+	"corner_x": 22.0, # 3인칭: 왼쪽에서 (내 % 구석 자리와 같은 값)
+	"corner_bottom": 18.0, # 3인칭·아래 판 없음: 구석의 내 % 가 화면 아래에서 띄운 값 (그 위에 쌓음)
+}
+
+
+# 묶음 칸들의 자리 (순수 계산). sizes = 아래 칸부터 위로 [아이템, F·R, (1인칭만 내 %), 버프] 중 보이는 것의 크기.
+# cards_h = 아래 사람 판 높이 (없으면 0) · corner = 3인칭 (왼쪽 아래 구석) · corner_dmg_h = 구석에 떠 있는 내 % 높이 (없으면 0 — 아래 판이 있으면 내 % 는 판이 보여 줌)
+static func stack_layout(vp: Vector2, sizes: Array, cards_h: float, corner: bool, corner_dmg_h := 0.0) -> Array:
+	var y: float = vp.y - ((cards_h + float(STACK.above_cards)) if cards_h > 0.0 else float(STACK.bottom))
+	if corner and cards_h <= 0.0 and corner_dmg_h > 0.0:
+		y = vp.y - float(STACK.corner_bottom) - corner_dmg_h - float(STACK.gap)
+	var out := []
+	for s in sizes:
+		y -= (s as Vector2).y
+		out.append(Vector2(float(STACK.corner_x) if corner else (vp.x - (s as Vector2).x) / 2.0, y))
+		y -= float(STACK.gap)
+	return out
+
+
 func _stack(vp: Vector2) -> void:
 	var cards: Control = hud.get("cards_row") if hud != null else null
-	var y: float = vp.y - ((cards.size.y + 18.0) if cards != null and cards.visible else 16.0)
 	var dmg: Label = hud.get("damage_label") if hud != null else null
 	var skills: Control = hud.get("skills") if hud != null else null
 	var corner: bool = str(View.mode) == "third"
+	var shown: Array = []
 	for n in [item_slot, skills, dmg if not corner else null, buffs]:
 		if n == null or not (n as Control).visible or (n == buffs and not buffs.get_children().any(func(c): return c.visible)):
 			continue
-		var c := n as Control
-		c.reset_size()
-		y -= c.size.y
-		c.position = Vector2((vp.x - c.size.x) / 2.0, y)
-		y -= 6.0
+		(n as Control).reset_size()
+		shown.append(n)
+	var at := stack_layout(vp, shown.map(func(n): return (n as Control).size), cards.size.y if cards != null and cards.visible else 0.0, corner,
+		dmg.size.y if corner and dmg != null and dmg.visible else 0.0)
+	for i in shown.size():
+		(shown[i] as Control).position = at[i]
 
 
 func _bottom(st: Dictionary, p: Dictionary, show: bool, vp: Vector2) -> void:

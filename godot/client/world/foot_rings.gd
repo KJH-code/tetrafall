@@ -8,6 +8,8 @@ const Co := preload("res://core/coords.gd")
 const WC := preload("res://world/world_config.gd")
 const M := preload("res://world/foot_ring_math.gd")
 const WS := preload("res://world/warm_scan.gd")
+const BS := preload("res://shaders/block_style.gd")
+const Cells := preload("res://world/cells.gd")
 
 
 func _init() -> void:
@@ -73,6 +75,29 @@ func show_rings(list: Array) -> void:
 	visible = not list.is_empty()
 
 
+# c7-fix F3: 테마 지형 칸 (x, y, z) 의 윗면 높낮이 난수 −0.5~0.5 — 지형 셰이더가 받는 값 (block_style.gd cell_looks 의 custom.b → terrain.gdshader v_lift = b × tf_step) 과 같은 식.
+# 둘이 어긋나지 않게 tests/test_world.gd test_c7_foot_ring_follows_top 이 cell_looks 값·셰이더 줄과 묶음
+static func top_rand(x: int, y: int, z: int) -> float:
+	return BS.cell_rand(x, y, z, 1) - 0.5
+
+
+# 그 칸 윗면이 정수 높이에서 올라온 양 (칸): 칸마다 높낮이 (× 재질의 tf_step) + 잡음 밀림 (꼭짓점이 위로 가장 많이 밀릴 때 = 재질의 tf_disp × FOOT_RING.disp_k) 여유
+static func top_bump(x: int, y: int, z: int, step: float, disp: float) -> float:
+	return top_rand(x, y, z) * step + float(WC.FOOT_RING.disp_k) * disp
+
+
+# 지금 판이 그리는 테마 지형 재질의 [tf_step, tf_disp] (grid_view.terrain_mmi — 그래픽 낮춤이면 둘 다 0, 테마 지형이 없으면 [0, 0])
+static func terrain_steps(world) -> Array:
+	var gv = world.get("grid_view") if world != null else null
+	var tm = gv.get("terrain_mmi") if gv != null else null
+	var mat := (tm as MultiMeshInstance3D).material_override as ShaderMaterial if tm is MultiMeshInstance3D and (tm as MultiMeshInstance3D).visible else null
+	if mat == null:
+		return [0.0, 0.0]
+	var s = mat.get_shader_parameter("tf_step")
+	var d = mat.get_shader_parameter("tf_disp")
+	return [float(s) if s != null else 0.0, float(d) if d != null else 0.0]
+
+
 # world = 판 (World: field·column_top·solid_at). 없으면 (테스트·도구가 Bodies 만 씀) 안 그림
 func update(world, st: Dictionary, my_id, hide_me: bool, sky: bool, shown: Dictionary, colors: Dictionary) -> void:
 	if world == null or not world.has_method("column_top") or not world.has_method("solid_at"):
@@ -81,4 +106,16 @@ func update(world, st: Dictionary, my_id, hide_me: bool, sky: bool, shown: Dicti
 	var step := float(WC.FOOT_RING.step)
 	var ground := func(cx: int, cy: int, feet_z: float) -> float:
 		return float(M.ground_under(world.column_top(cx, cy), feet_z, func(z: int) -> bool: return world.solid_at(cx + 0.5, cy + 0.5, z), step))
-	show_rings(M.rings(st, my_id, hide_me, sky, shown, colors, world.field, ground, WC.FOOT_RING))
+	# 꼭대기 칸이 테마 지형 칸이면 그 칸 윗면의 실제 높낮이를 따라감 (F3). 쌓인 블록·건축가 블록 (skip)·바닥판은 평평 (0)
+	var ts := terrain_steps(world)
+	var bump := Callable()
+	if float(ts[0]) != 0.0 or float(ts[1]) != 0.0:
+		var g: PackedByteArray = world.grid()
+		var f: Vector3i = world.field
+		var skip: Dictionary = world.grid_view.skip
+		bump = func(cx: int, cy: int, top: int) -> float:
+			var i := ((top - 1) * f.y + cy) * f.x + cx
+			if top <= 0 or i >= g.size() or g[i] != Cells.TERRAIN or skip.has(i):
+				return 0.0
+			return top_bump(cx, cy, top - 1, float(ts[0]), float(ts[1]))
+	show_rings(M.rings(st, my_id, hide_me, sky, shown, colors, world.field, ground, WC.FOOT_RING, bump))

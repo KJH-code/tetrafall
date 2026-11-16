@@ -54,8 +54,8 @@ func apply_look(char_id: String, cd: Dictionary, nodes: Array, mats: Array) -> b
 		n.scale *= float(e[2])
 	for i in mats.size():
 		var md: Dictionary = cd.mats[i]
-		Look.style(mats[i], md.get("outline", true) and not md.get("transparent", false))
-	Look.style(mi.material_override, true)
+		Look.style(mats[i], md.get("outline", true) and not md.get("transparent", false), char_id)
+	Look.style(mi.material_override, true, char_id)
 	look = true
 	return true
 

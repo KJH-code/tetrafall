@@ -337,12 +337,12 @@ func _look_pieces() -> void:
 		return
 	for i in mats.size():
 		var md: Dictionary = cd.mats[i]
-		Look.style(mats[i], md.get("outline", true) and not md.get("transparent", false))
+		Look.style(mats[i], md.get("outline", true) and not md.get("transparent", false), char_id, false) # c7-fix F7: 1인칭 팔은 림 틴트 없이
 	if lk.is_empty():
 		return
 	look_mat = G3.toon_material(Color.WHITE, {"vertex_color": true, "outline": true})
 	look_mat.set_shader_parameter("skin_tint", Color(skin_color.r, skin_color.g, skin_color.b, 1.0))
-	Look.style(look_mat, true)
+	Look.style(look_mat, true, char_id, false)
 	var at := {}
 	for i in lk:
 		at[nodes[i]] = lk[i]
@@ -1558,7 +1558,7 @@ func _apply_opacity() -> void:
 				if baked and vc: # 구운 묶음·조각 몸 화풍 사본: 피부 정점은 흰색 + skin_tint (baked_batch.gd)
 					dr.alpha.set_shader_parameter("skin_tint", (dr.solid as ShaderMaterial).get_shader_parameter("skin_tint"))
 				if (batch is BakedBatch and batch.look) or look_mat != null: # c6-u1: 반투명 재질도 사본 메시와 같은 툰 단·림 (외곽선 없음)
-					BakedBatch.Look.style(dr.alpha, false)
+					BakedBatch.Look.style(dr.alpha, false, char_id, look_mat == null) # 이 몸의 캐릭터 (c7-fix F10) · 조각 몸 (1인칭 팔, look_mat) 은 림 틴트 없이 (F7)
 				G3.toon_hazard_light(dr.alpha, hz_light)
 				dr.col = col
 		var am: Material = dr.alpha

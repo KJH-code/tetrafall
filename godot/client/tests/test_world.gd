@@ -523,6 +523,93 @@ func test_c7_foot_ring_hidden() -> void:
 	fr.free()
 
 
+# c7-fix F3: 고리 높이가 칸 윗면의 실제 높낮이를 따라감 (테마 지형 꼭대기 칸은 칸마다 정수 높이에서 오르내림 — 예전엔 정수 높이 + lift 라 높이 올라온 칸에서 지형에 묻힘).
+# ① 고리가 쓰는 칸 난수 = 지형 셰이더가 받는 값 (block_style cell_looks 의 custom.b) · 셰이더가 그 값에 tf_step 을 곱해 윗면을 올림 ② 맵 7개 꼭대기 칸마다 고리가 윗면보다 위 (묻히는 칸 0)
+# ③ 걸친 이웃 칸이 더 올라와 있으면 그 높이 · 낮은 칸·벽은 안 봄 · 위험 액체 위·bump 없음 (그래픽 낮춤) 은 예전 그대로
+func test_c7_foot_ring_follows_top() -> void:
+	const BS := preload("res://shaders/block_style.gd")
+	const G3f := preload("res://shaders/g3.gd")
+	const LPf := preload("res://world/lobby_preview.gd")
+	var cfg: Dictionary = FWC.FOOT_RING
+	# ① 셰이더와 같은 값
+	var w := 4
+	var h := 3
+	var grid := PackedByteArray()
+	grid.resize(w * w * h)
+	for y in w:
+		for x in w:
+			grid[y * w + x] = 1
+			if (x + y) % 2 == 0:
+				grid[(1 * w + y) * w + x] = 1
+	var looks: PackedColorArray = BS._cell_looks(grid, w, w, h, {}, h)
+	var n := 0
+	var off := 0
+	for z in h:
+		for y in w:
+			for x in w:
+				if grid[(z * w + y) * w + x] != 1:
+					continue
+				if absf(looks[n].b - FR.top_rand(x, y, z)) > 1e-6:
+					off += 1
+				n += 1
+	check(n == looks.size() and n == 24 and off == 0, "칸 난수 = 지형 셰이더 custom.b (%d칸 중 어긋남 %d)" % [n, off])
+	var src: String = (load("res://shaders/terrain.gdshader") as Shader).code
+	check(src.contains("v_lift = INSTANCE_CUSTOM.b * tf_step") and src.contains("tr.z += v_lift"), "셰이더: 윗면 높이 += custom.b × tf_step")
+	check(src.contains("- 0.5) * tf_disp * vec3(1.0, 1.0, 0.6)") and absf(float(cfg.disp_k) - 0.5 * 0.6) < 1e-9, "셰이더: 잡음 밀림 위로 가장 많이 0.5 × 0.6 × tf_disp = disp_k")
+	check(absf(FR.top_bump(3, 5, 2, 0.14, 0.07) - (FR.top_rand(3, 5, 2) * 0.14 + 0.3 * 0.07)) < 1e-9 and FR.top_bump(3, 5, 2, 0.0, 0.0) == 0.0, "윗면 올라온 양 = 난수 × step + disp 여유 (낮춤이면 0)")
+	check(FR.terrain_steps(null) == [0.0, 0.0], "판이 없으면 높낮이 0")
+	# ② 맵 7개: 8명 판 시작 지형의 꼭대기 칸 가운데에 서면 고리가 그 칸 윗면 (잡음 밀림 포함) 보다 위. 예전 높이 (정수 + lift) 는 묻히는 칸이 있었음
+	var fs: int = LPf.field_size_for(8)
+	var buried_old := 0
+	var all_tops := 0
+	for m in C.MAPS:
+		var s = G3f.terrain_style(C.WORLD_MAP_THEME.get(m))
+		var step: float = float(s.step) if s != null else 0.0
+		var disp: float = float(s.disp) if s != null else 0.0
+		var P = LPf.build(str(m), fs, int(C.GRID_H))
+		var field := Vector3i(fs, fs, int(C.GRID_H))
+		var ground := func(cx: int, cy: int, _fz: float) -> float: return float(P.top[cy * fs + cx])
+		var bump := func(cx: int, cy: int, top: int) -> float: return FR.top_bump(cx, cy, top - 1, step, disp) if top > 0 else 0.0
+		var buried := 0
+		var tops := 0
+		for y in fs:
+			for x in fs:
+				var t := int(P.top[y * fs + x])
+				if t <= 0:
+					continue
+				tops += 1
+				var surf: float = t + FR.top_rand(x, y, t - 1) * step + 0.3 * disp # 그 칸 윗면이 가장 높이 올라온 곳
+				var st := {"phase": "playing", "players": [{"id": 2, "alive": true}], "lava": {"active": false, "z": 0.0}}
+				var out: Array = FRM.rings(st, 1, false, false, {2: Vector3(x + 0.5, y + 0.5, float(t))}, {2: 0x00ff00}, field, ground, cfg, bump)
+				if out.size() != 1 or float(out[0][2]) <= surf:
+					buried += 1
+				if float(t) + float(cfg.lift) <= surf:
+					buried_old += 1
+		all_tops += tops
+		check(buried == 0, "%s: 꼭대기 %d칸 중 고리가 윗면 아래인 칸 %d" % [m, tops, buried])
+	check(all_tops > 300 and buried_old > 0, "예전 높이 (정수 + lift) 는 묻히는 칸이 있었음 (%d칸) — 이 테스트가 그 문제를 잡음" % buried_old)
+	# ③ 이웃·위험 액체·bump 없음
+	var flat := func(_x, _y, _z): return 2.0
+	var bmp := func(cx: int, cy: int, _top: int) -> float: return 0.07 if cx == 6 and cy == 5 else (-0.05 if cx == 5 and cy == 5 else 0.0)
+	var one := {"phase": "playing", "players": [{"id": 2, "alive": true}], "lava": {"active": false, "z": 0.0}}
+	var f10 := Vector3i(10, 10, 32)
+	var mid: Array = FRM.rings(one, 1, false, false, {2: Vector3(5.5, 5.5, 2.0)}, {2: 0x00ff00}, f10, flat, cfg, bmp)
+	check(near(mid[0][2], 2.0 - 0.05 + float(cfg.lift)), "칸 가운데: 제 칸 윗면 (내려간 칸이면 고리도 내려감) %s" % mid[0][2])
+	var edge: Array = FRM.rings(one, 1, false, false, {2: Vector3(5.9, 5.5, 2.0)}, {2: 0x00ff00}, f10, flat, cfg, bmp)
+	check(near(edge[0][2], 2.0 + 0.07 + float(cfg.lift)), "칸 가장자리: 고리가 걸친 더 올라온 이웃 칸 높이 %s" % edge[0][2])
+	var wall := func(cx, _y, _z): return 3.0 if cx == 6 else 2.0
+	var by_wall: Array = FRM.rings(one, 1, false, false, {2: Vector3(5.9, 5.5, 2.0)}, {2: 0x00ff00}, f10, wall, cfg, bmp)
+	check(near(by_wall[0][2], 2.0 - 0.05 + float(cfg.lift)), "높이가 다른 이웃 (벽·낭떠러지) 은 안 봄 %s" % by_wall[0][2])
+	var lava := {"phase": "playing", "players": [{"id": 2, "alive": true}], "lava": {"active": true, "z": 2.6}}
+	var on_lava: Array = FRM.rings(lava, 1, false, false, {2: Vector3(5.9, 5.5, 2.6)}, {2: 0x00ff00}, f10, flat, cfg, bmp)
+	check(near(on_lava[0][2], 2.6 + float(cfg.lift)), "위험 액체 표면 위면 칸 높낮이를 안 더함 %s" % on_lava[0][2])
+	var me: Array = FRM.rings({"phase": "playing", "players": [{"id": 1, "alive": true}], "lava": {}}, 1, false, false, {1: Vector3(5.9, 5.5, 2.0)}, {1: 0xff0000}, f10, flat, cfg, bmp)
+	check(me.size() == 2 and near(me[1][2], 2.0 + 0.07 + float(cfg.lift) + float(cfg.me_lift)), "내 흰 테도 같은 기준 + me_lift")
+	var plain: Array = FRM.rings(one, 1, false, false, {2: Vector3(5.9, 5.5, 2.0)}, {2: 0x00ff00}, f10, flat, cfg)
+	check(near(plain[0][2], 2.0 + float(cfg.lift)), "bump 없음 (그래픽 낮춤·테마 없음) = 정수 높이 + lift")
+	check(FRM.top_bump(0.2, 0.2, 0.42, 2.0, 2.0, f10, flat, func(_x, _y, _t): return 0.03) == 0.03 and FRM.top_bump(5.5, 5.5, 0.42, 2.0, 2.0, f10, func(_x, _y, _z): return 1.0, bmp) == 0.0, "판 가장자리 (격자 밖 칸은 안 봄)·맞는 칸 없음 = 0")
+
+
 # 재질: 표준 재질 모양 (warm_scan STD_KEYS 안 — 새 셰이더 모양 없음), 빛 안 받음·반투명·정점 색·깊이 검사 켬, 순서는 이름표 외곽선 아래. 메시: 납작한 고리, 한 번에 그림
 func test_c7_foot_ring_material() -> void:
 	const WS := preload("res://world/warm_scan.gd")

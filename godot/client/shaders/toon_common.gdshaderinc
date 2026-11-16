@@ -100,6 +100,11 @@ vec3 toon_hemi(vec3 wn) {
 #ifndef TOON_CUSTOM
 void vertex() {
 	world_n = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+#ifdef TOON_DOUBLE
+	// c7-fix F4: 엔진은 해 그림자를 받는 자리를 꼭짓점 법선 쪽으로 띄움 (normal bias). 법선이 안쪽을 보는 겹 (구운 갈고리 코트 겉) 을 바깥에서 보면 거꾸로 띄워져
+	// 제 그림자에 묻힘 (코트 전체가 검게 가라앉고 사선 줄무늬) → 엔진에 넘기는 꼭짓점 법선만 눈 쪽으로 돌려 둠. 그늘·하늘빛은 안 돌린 world_n 으로 fragment() 가 따로 셈
+	if (dot(MODELVIEW_NORMAL_MATRIX * NORMAL, (MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz) > 0.0) NORMAL = -NORMAL;
+#endif
 }
 
 void fragment() {
@@ -123,9 +128,19 @@ void fragment() {
 	vec3 wn = world_n;
 	float ndv = dot(normalize(NORMAL), normalize(VIEW)); // 림: 면이 눈을 보는 정도
 #ifdef TOON_DOUBLE
-	// 양면 (toon_double.gdshader): 눈을 등진 법선 (천 안쪽 면) 이면 뒤집어 하늘빛·위험 빛·림을 셈 — 앞·뒷면 판정 (FRONT_FACING) 대신 눈 방향으로 (면이 감긴 방향·엔진이 뒷면 법선을 뒤집는지에 기대지 않음)
-	if (ndv < 0.0) { wn = -wn; ndv = -ndv; }
-	if (!FRONT_FACING) ndv = 1.0; // 천 안쪽 면 (뒷면) 엔 림 없음 — 림은 겉 실루엣에만 (안쪽 면은 법선이 비스듬해 림이 통째로 켜져 플레이어 색으로 물듦)
+	// 양면 (toon_double.gdshader): 그늘·하늘빛·위험 빛·림을 '보이는 쪽 면' 기준으로 (c7-fix F8·F4).
+	// 보이는 쪽이 꼭짓점 법선의 반대쪽인가 (inner) 를 면 법선 (화면 미분 — 늘 눈 쪽으로 돌릴 수 있음) 으로 가름: 천 안쪽 면, 그리고 안을 보게 감긴 겹을 바깥에서 볼 때 (구운 갈고리 코트 겉 —
+	// 안감처럼 법선·감긴 방향이 다 안쪽). 앞·뒷면 판정 (FRONT_FACING) 은 감긴 방향이 뒤집힌 겹에서 거꾸로고, 보간 법선·눈 방향 내적 (예전 식) 은 앞면 가장자리 화소까지 뒤집었음.
+	// 엔진이 뒷면에서 뒤집어 준 NORMAL 은 안 씀 (vertex() 가 꼭짓점 법선을 눈 쪽으로 돌려 놔서 보간 값이 가장자리에서 엉킴) — world_n 에서 다시 만들어 NORMAL 에 넣음 → light() 의 ndl 도 이 법선
+	vec3 nv = normalize((VIEW_MATRIX * vec4(wn, 0.0)).xyz);
+	vec3 dn = cross(dFdx(VERTEX), dFdy(VERTEX));
+	bool inner = dot(nv, dn) * dot(dn, VIEW) < 0.0;
+	if (inner) {
+		wn = -wn;
+		nv = -nv;
+	}
+	NORMAL = nv;
+	ndv = inner ? 1.0 : dot(nv, normalize(VIEW)); // 안쪽 면엔 림 없음 — 림은 겉 가장자리에만 (안쪽 면은 법선이 비스듬해 림이 통째로 켜져 플레이어 색으로 물듦)
 #endif
 	vec3 hemi = toon_hemi(wn);
 	if (local_light) {
@@ -156,10 +171,7 @@ void fragment() {
 #endif
 
 void light() {
-	float ndl = dot(NORMAL, LIGHT);
-#ifdef TOON_DOUBLE
-	if (dot(NORMAL, VIEW) < 0.0) ndl = -ndl; // 눈을 등진 법선 (천 안쪽 면) → 뒤집어 안쪽 면의 빛으로
-#endif
+	float ndl = dot(NORMAL, LIGHT); // 양면 (TOON_DOUBLE) 은 fragment() 가 NORMAL 을 보이는 쪽 면의 법선으로 넣어 둠 (c7-fix F8: 여기서 또 뒤집지 않음)
 	float u = ndl * 0.5 + 0.5;
 	float g = u < 1.0 / 3.0 ? toon_steps.x : (u < 2.0 / 3.0 ? toon_steps.y : toon_steps.z);
 	// three 는 그림자 지도에 뒷면을 그려서 (shadowSide) 해 반대쪽 면은 제 그림자를 안 받고 3단 중 어두운 단만 — 고도는 그 면도 그림자라 어두워짐 → 그 면은 그림자 무시

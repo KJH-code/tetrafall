@@ -13,7 +13,7 @@ uniform vec4 line_color = vec4(0.08, 0.05, 0.1, 1.0); // three 와 같이 선형
 
 uniform bool no_fog = false;
 uniform float far_taper = 0.0; // W31: 1 이면 (몸 외곽선) 먼 거리에서 굵기를 줄임 — g3_outline_far. 블록·아이템 외곽선은 0 (그대로)
-uniform float push = 0.0; // c7-u1: 0 보다 크면 껍질을 깊이 쪽으로 push × w 만큼 뒤로 (화면 xy 밀기는 그대로) — 양면 천 (toon_double) 안쪽 면 위로 껍질이 비치지 않게. 0 = 예전 식 그대로
+uniform float push = 0.0; // c7-u1·c7-fix F1: 0 보다 크면 껍질의 깊이만 눈에서 멀어지는 쪽으로 push m (뷰 공간 거리) 뒤로 (화면 xy 밀기·굵기는 그대로) — 양면 천 (toon_double) 안쪽 면 위로 껍질이 비치지 않게. 0 = 예전 식 그대로
 
 void vertex() {
 	// 해 그림자 지도 (직교 투영) 엔 껍질을 안 그림 (W15): 고도는 next_pass 도 그림자 패스에 그려서 몸·블록 그림자가 껍질 두께만큼 (직교라 그림자 범위의 0.65%) 커지고
@@ -27,7 +27,12 @@ void vertex() {
 		k = mix(1.0, g3_outline_far.z, smoothstep(g3_outline_far.x, g3_outline_far.y, nd));
 	}
 	POSITION = pos + n * thickness * k * pos.w;
-	if (push > 0.0) POSITION.z += (PROJECTION_MATRIX[3][2] < 0.0 ? push : -push) * pos.w; // 멀어지는 쪽: 보통 깊이는 +z, 뒤집힌 깊이 (reverse-z) 는 −z
+	if (push > 0.0) {
+		// 깊이만: 눈에서 push m 더 먼 점의 NDC 깊이로 (투영을 그대로 지나가서 보통·뒤집힌 깊이 어느 쪽이든 맞음).
+		// 예전 (c7-u1) 은 클립 z 에 push × w 를 더함 = NDC 깊이 상수 → 세계 거리로는 거리² 에 비례 (12칸에서 수 m) 라 껍질이 발밑 바닥·제 몸 뒤로 숨어 하늘을 등진 곳에만 선이 남음
+		vec4 pp = PROJECTION_MATRIX * (MODELVIEW_MATRIX * vec4(VERTEX, 1.0) + vec4(0.0, 0.0, -push, 0.0));
+		POSITION.z = pp.z / pp.w * POSITION.w;
+	}
 	if (PROJECTION_MATRIX[3][3] > 0.5) {
 		POSITION = vec4(2.0, 2.0, 2.0, 1.0); // 클립 밖 한 점 → 삼각형이 다 납작해져 안 그려짐
 	}

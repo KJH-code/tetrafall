@@ -752,13 +752,60 @@ func test_look_eyes_pure() -> void:
 	check(_edge_ratio_off(ov, Look.scale_eyes(ov, os, one, 0.5), oi, 0.5) < 1e-6, "한쪽 눈도 모양 그대로 절반")
 
 
+# c7-fix F10: style 은 캐릭터를 인자로 받음 (정적 변수에 적어 둔 '마지막에 만든 몸' 을 읽지 않음) — 다른 캐릭터 몸을 만든 뒤에 불러도 넘긴 캐릭터의 값.
+# c7-fix F7: rim_tint 거짓 (1인칭 팔) 이면 림 틴트 없이, 예전 림은 그대로. 구운 조각 몸 (1인칭 팔 쌍둥이) 의 화풍 재질에 실제로 림 틴트가 없음
+func test_c7_style_takes_char() -> void:
+	const E := preload("res://chars/external.gd")
+	var was: bool = G3.outline_on
+	G3.set_outline_on(true)
+	var mk := func() -> ShaderMaterial:
+		var m: ShaderMaterial = G3.toon_material(Color.WHITE, {"vertex_color": true, "outline": true})
+		m.set_shader_parameter("skin_tint", Color(RED.r, RED.g, RED.b, 1.0))
+		return m
+	for last in ["bard", "hook"]: # 마지막에 만든 몸이 무엇이든
+		var b = _body(last, RED, true)
+		var mh: ShaderMaterial = mk.call()
+		Look.style(mh, true, "hook")
+		check(E.Ext.is_double(mh) and mh.next_pass == Look.outline_for("hook") and _push_of(mh.next_pass) > 0.0, "%s 몸 뒤에 불러도 갈고리 재질 = 양면 + 민 외곽선" % last)
+		var mb: ShaderMaterial = mk.call()
+		Look.style(mb, true, "bard")
+		check(not E.Ext.is_double(mb) and mb.next_pass == Look.outline_for("bard") and _push_of(mb.next_pass) == 0.0, "%s 몸 뒤에 불러도 바드 재질 = 보통 툰 + 얇은 외곽선" % last)
+		b.free()
+	check(not FileAccess.get_file_as_string("res://chars/baked_look.gd").contains("static var _char"), "캐릭터를 적어 두는 정적 변수가 없음")
+	var on: ShaderMaterial = mk.call()
+	Look.style(on, false, "ninja")
+	var off: ShaderMaterial = mk.call()
+	Look.style(off, false, "ninja", false)
+	check(Vector2(on.get_shader_parameter("rim_tint")).is_equal_approx(Vector2(LK.RIM_TINT[0], LK.RIM_TINT[1])), "기본: 림 틴트")
+	check(off.get_shader_parameter("rim_tint") == null or Vector2(off.get_shader_parameter("rim_tint")) == Vector2.ZERO, "rim_tint 거짓: 림 틴트 없음")
+	check(is_equal_approx(float(off.get_shader_parameter("rim_strength")), float(LK.RIM[0])) and is_equal_approx(float(off.get_shader_parameter("rim_power")), float(LK.RIM[1])), "예전 림 (제 색) 은 그대로")
+	# 구운 조각 몸 (merge 끔 = 1인칭 팔 쌍둥이): 화풍 재질·조각 재질 어디에도 림 틴트 없음
+	var was_e: bool = Body.use_ext
+	var was_l: bool = Body.use_look
+	Body.use_ext = false
+	Body.use_look = true
+	for ch in ["ninja", "hook"]:
+		var vm = Body.new()
+		vm.build(ch, RED, false)
+		var tinted := 0
+		for m in vm.mats + ([vm.look_mat] if vm.look_mat != null else []):
+			var rt = (m as ShaderMaterial).get_shader_parameter("rim_tint") if m is ShaderMaterial else null
+			if rt != null and Vector2(rt) != Vector2.ZERO:
+				tinted += 1
+		check(vm.look_mat != null and tinted == 0, "%s 1인칭 조각 몸: 림 틴트 재질 %d개 (화풍 재질 %s)" % [ch, tinted, vm.look_mat])
+		vm.free()
+	Body.use_ext = was_e
+	Body.use_look = was_l
+	G3.set_outline_on(was)
+
+
 # 외곽선 재질의 push (안 넣은 재질은 0)
 static func _push_of(o) -> float:
 	var v = (o as ShaderMaterial).get_shader_parameter("push") if o is ShaderMaterial else null
 	return 0.0 if v == null else float(v)
 
 
-# c7-u1: 구운 몸의 림 틴트·림 지수·틴트가 걸리는 면 = 외부 모델 json 넷과 같은 값. 양면 + 깊이로 민 외곽선은 천이 있는 탱크·사냥꾼·갈고리만 (0~0.002), 묶음 재질에 실제로 들어감
+# c7-u1: 구운 몸의 림 틴트·림 지수·틴트가 걸리는 면 = 외부 모델 json 넷과 같은 값. 양면 + 깊이로 민 외곽선은 천이 있는 탱크·사냥꾼·갈고리만 (m, 0.005~OUTLINE_PUSH_MAX — 외부 모델 json 과 같은 값), 묶음 재질에 실제로 들어감
 func test_c7_baked_matches_ext_rim() -> void:
 	const K := preload("res://chars/chars_config.gd")
 	const E := preload("res://chars/external.gd")
@@ -777,7 +824,10 @@ func test_c7_baked_matches_ext_rim() -> void:
 		var lk: Dictionary = LK.LOOK[ch]
 		check(bool(lk.get("double", false)) == want, "%s double 은 천 있는 몸만" % ch)
 		var push := float(lk.get("outline_push", 0.0))
-		check(push >= 0.0 and push <= 0.002 and (push > 0.0) == want, "%s outline_push 0~0.002 (얻음 %s)" % [ch, push])
+		check(push <= K.OUTLINE_PUSH_MAX and (push >= 0.005 if want else push == 0.0), "%s outline_push %s (얻음 %s)" % [ch, "0.005~%s m" % K.OUTLINE_PUSH_MAX if want else "0", push])
+		var ejp := "res://assets/models/ext/%s.json" % ch
+		if want and FileAccess.file_exists(ejp) and (JSON.parse_string(FileAccess.get_file_as_string(ejp)) as Dictionary).has("outline_push"):
+			check(is_equal_approx(float(JSON.parse_string(FileAccess.get_file_as_string(ejp)).outline_push), push), "%s 구운 몸 밀기 = 외부 모델 json 값" % ch)
 		var b = _body(ch, RED, true)
 		var m: ShaderMaterial = b.batch.mi.material_override
 		check(E.Ext.is_double(m) == want, "%s 묶음 재질 양면 = %s" % [ch, want])

@@ -34,9 +34,10 @@ static func paint(kind: String, tint: Color) -> Color:
 	return Color(tint.r, tint.g, tint.b, 1.0)
 
 
-# 쓴 사람 색 (0xRRGGBB) → 정점 색. 정점 색은 재질이 선형 값으로 읽어서 (vertex_color_is_srgb 를 켜면 셰이더 모양이 달라져 미리 그리기 표 밖) 여기서 바꿔 둠
+# 쓴 사람 색 (0xRRGGBB) → 정점 색. 이 렌더러 (gl_compatibility) 는 빛 안 받는 재질의 정점 색을 값 그대로 화면에 냄 (albedo 색과 같은 화소) → 팔레트 값 그대로.
+# c7-fix F2: 예전엔 srgb_to_linear 를 거쳐 고리가 플레이어 색보다 어둡고 진했음 (0xE05050 → 화면 190 16 16, 어두운 팔레트 넷은 거의 검정). vertex_color_is_srgb 는 안 켬 (셰이더 모양이 달라져 미리 그리기 표 밖)
 static func tint_of(color: int) -> Color:
-	return Co.color(color).srgb_to_linear()
+	return Co.color(color)
 
 
 # 띠 폭 ÷ 바깥 반지름 (화면에서 고리가 얼마나 굵은지)

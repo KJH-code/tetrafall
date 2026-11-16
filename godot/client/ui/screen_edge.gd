@@ -1,16 +1,18 @@
 # c7 화면 가장자리 테 (ui/hud_extra.gd 가 씀): 맞음·조준당함·노래·연습 초기화 번쩍과 경직 알림을 화면 전체 막 대신 가장자리 띠로만.
 # 예전: 번쩍 = 화면 전체 ColorRect (맞으면 노랑 45% 막이 장면·아래 사람 판까지 덮음), 경직 = 가운데까지 번지는 둥근 붉은 빛.
-# 지금: 바깥 진한 띠 (화면 높이의 EDGE.outer) + 안쪽으로 0 까지 번지는 띠 (EDGE.inner) 네 변, 가운데는 비움. 두께는 가로·세로 모두 화면 높이 기준.
-# HUD 판·시계·핑보다 먼저 그림 (z_index EDGE.z — JS 도 #flash 가 #players 아래). 셰이더 없이 정점 색 사다리꼴 8개를 삼각형 묶음 하나로 (_draw, 그리기 1번 —
-# 사다리꼴마다 draw_polygon 이면 테 하나에 그리기 8번).
+# 지금: 바깥 가는 진한 띠 (화면 높이의 EDGE.outer) + 안쪽으로 0 까지 번지는 띠 (EDGE.inner) 네 변, 가운데는 비움. 두께는 가로·세로 모두 화면 높이 기준.
+# c7-fix F6: 알파가 바깥에서 안으로 끊김 없이 이어짐 (stops — 이웃 띠가 경계 알파를 같이 씀). 예전엔 안쪽 띠가 바깥 띠의 0.55배에서 시작해 경계에서 한 화소 만에 밝기가 떨어져
+# 굵은 단색 띠 + 옅은 띠 두 겹으로 보였음. 번지는 띠는 꺾임 하나 (EDGE.knee) 로 처음엔 빨리·뒤엔 천천히 줄어 '가장자리에서 번지는 빛' 으로.
+# HUD 판·시계·핑보다 먼저 그림 (z_index EDGE.z — JS 도 #flash 가 #players 아래). 셰이더 없이 정점 색 사다리꼴 12개를 삼각형 묶음 하나로 (_draw, 그리기 1번 —
+# 사다리꼴마다 draw_polygon 이면 테 하나에 그리기 12번).
 # 순수 계산 (띠 두께·알파·사다리꼴) 은 tests/test_feel.gd test_c7_* 가 고정
 extends Control
 
 const EDGE := {
-	"outer": 0.025, # 바깥 진한 띠 두께 ÷ 화면 높이
-	"inner": 0.09, # 안쪽 번지는 띠 두께 ÷ 화면 높이
+	"outer": 0.008, # 바깥 진한 띠 두께 ÷ 화면 높이 (가는 선 — 굵으면 단색 띠로 보임)
+	"inner": 0.107, # 안쪽 번지는 띠 두께 ÷ 화면 높이 (바깥 띠 알파에서 0 까지)
+	"knee": [0.35, 0.4], # 번지는 띠의 꺾임: [띠 안 자리 0~1, 그 자리 알파 배율] — 바깥 띠 알파 1 → 여기 → 0 (끊김 없이 이어짐)
 	"gain": 1.8, # 번쩍: 바깥 띠 알파 = min(1, 받은 색 알파 × gain) — 좁아진 만큼 진하게
-	"inner_k": 0.55, # 안쪽 띠가 시작하는 알파 = 바깥 띠 알파 × inner_k (끝은 0)
 	"fade": 0.4, # 번쩍이 사라지는 시간 (초, 예전 그대로)
 	"stun": Color(1, 0, 0, 0.75), # 경직 테 색 (알파 = 바깥 띠 알파)
 	"stun_fade": 0.15, # 경직 테가 켜지고 꺼지는 시간 (초, 예전 그대로)
@@ -31,28 +33,35 @@ static func flash_tint(col: Color) -> Color:
 	return Color(col.r, col.g, col.b, minf(1.0, col.a * float(EDGE.gain)))
 
 
-# 화면 한 점의 알파 (바깥 띠 알파 a 일 때): 가장 가까운 변까지 거리로 — 바깥 띠 안 = a, 안쪽 띠 = a × inner_k 에서 0 으로, 그 안쪽 = 0
-static func alpha_at(size: Vector2, pt: Vector2, a: float) -> float:
+# 알파 꺾임 점들 (가장자리에서 안쪽으로): [거리 (화소), 알파 배율]. 이웃 띠가 같은 점을 같이 써서 경계에 계단이 없음 — 바깥 띠 1 → 1, 번지는 띠 1 → knee → 0
+static func stops(size: Vector2) -> Array:
 	var b := band_px(size)
+	var kn: Array = EDGE.knee
+	return [[0.0, 1.0], [b.x, 1.0], [b.x + b.y * float(kn[0]), float(kn[1])], [b.x + b.y, 0.0]]
+
+
+# 화면 한 점의 알파 (바깥 띠 알파 a 일 때): 가장 가까운 변까지 거리로 — stops 사이를 곧게 이음 (바깥 띠 안 = a, 번지는 띠 = a 에서 0 으로, 그 안쪽 = 0)
+static func alpha_at(size: Vector2, pt: Vector2, a: float) -> float:
 	var d := minf(minf(pt.x, size.x - pt.x), minf(pt.y, size.y - pt.y))
 	if d < 0.0:
 		return 0.0
-	if d <= b.x:
-		return a
-	if d >= b.x + b.y:
-		return 0.0
-	return a * float(EDGE.inner_k) * (1.0 - (d - b.x) / b.y)
+	var st := stops(size)
+	for i in st.size() - 1:
+		var d0 := float(st[i][0])
+		var d1 := float(st[i + 1][0])
+		if d <= d1:
+			return a * lerpf(float(st[i][1]), float(st[i + 1][1]), (d - d0) / (d1 - d0) if d1 > d0 else 1.0)
+	return 0.0
 
 
-# 그릴 사다리꼴 8개 (변마다 바깥·안쪽): [꼭짓점 넷 (바깥 둘 → 안 둘), 꼭짓점마다 알파 배율 (바깥 띠 알파에 곱함)]. 모서리는 45도로 맞물림
+# 그릴 사다리꼴 (변마다 stops 사이 띠 하나씩 = 12개): [꼭짓점 넷 (바깥 둘 → 안 둘), 꼭짓점마다 알파 배율 (바깥 띠 알파에 곱함)]. 모서리는 45도로 맞물림
 static func quads(size: Vector2) -> Array:
-	var b := band_px(size)
-	var k := float(EDGE.inner_k)
+	var st := stops(size)
 	var out := []
-	for band in [[0.0, b.x, 1.0, 1.0], [b.x, b.x + b.y, k, 0.0]]:
-		var r0 := _rect(size, float(band[0]))
-		var r1 := _rect(size, float(band[1]))
-		var al := PackedFloat32Array([band[2], band[2], band[3], band[3]])
+	for s in st.size() - 1:
+		var r0 := _rect(size, float(st[s][0]))
+		var r1 := _rect(size, float(st[s + 1][0]))
+		var al := PackedFloat32Array([st[s][1], st[s][1], st[s + 1][1], st[s + 1][1]])
 		for i in 4:
 			var j := (i + 1) % 4
 			out.append([PackedVector2Array([r0[i], r0[j], r1[j], r1[i]]), al])

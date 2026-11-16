@@ -207,13 +207,16 @@ func test_cam_hook_runs_during_selfie() -> void:
 const Edge := preload("res://ui/screen_edge.gd")
 
 
-# 띠 두께 합 ≤ 화면 높이의 12%, 가운데 76% 사각형은 알파 0 (창 크기 둘)
+# 띠 두께 합 ≤ 화면 높이의 12%, 가운데 76% 사각형은 알파 0 (창 크기 둘). c7-fix F6: 알파가 바깥에서 0 까지 끊김 없이 (띠 경계에 계단 없음)
 func test_c7_edge_frame_keeps_center_clear() -> void:
 	var E: Dictionary = Edge.EDGE
-	check(absf(E.outer - 0.025) < 1e-9 and absf(E.inner - 0.09) < 1e-9 and E.outer + E.inner <= 0.12, "띠 두께: 바깥 2.5%% + 안쪽 9%% (%s)" % (E.outer + E.inner))
+	check(absf(E.outer - 0.008) < 1e-9 and absf(E.inner - 0.107) < 1e-9 and E.outer + E.inner <= 0.12, "띠 두께: 바깥 0.8%% + 안쪽 10.7%% (%s)" % (E.outer + E.inner))
+	check(not E.has("inner_k"), "안쪽 띠가 따로 시작하는 알파 (계단) 는 없음")
+	var kn: Array = E.knee
+	check(kn.size() == 2 and float(kn[0]) > 0.0 and float(kn[0]) < 1.0 and float(kn[1]) > 0.0 and float(kn[1]) < 1.0 - float(kn[0]), "꺾임 %s: 띠 안쪽 자리 · 곧은 선보다 아래 (처음에 빨리 줄어 빛처럼 번짐)" % [kn])
 	for size in [Vector2(1280, 720), Vector2(960, 540)]:
 		var b: Vector2 = Edge.band_px(size)
-		check(absf(b.x - size.y * 0.025) < 1e-3 and absf(b.y - size.y * 0.09) < 1e-3 and b.x + b.y <= size.y * 0.12, "%s 띠 %s (합 ≤ 높이의 12%%)" % [size, b])
+		check(absf(b.x - size.y * 0.008) < 1e-3 and absf(b.y - size.y * 0.107) < 1e-3 and b.x + b.y <= size.y * 0.12, "%s 띠 %s (합 ≤ 높이의 12%%)" % [size, b])
 		# 가운데 76% 사각형 (가로·세로 12% ~ 88%) 안은 전부 0
 		var lit := 0
 		for iy in 39:
@@ -222,20 +225,31 @@ func test_c7_edge_frame_keeps_center_clear() -> void:
 				if Edge.alpha_at(size, pt, 1.0) != 0.0:
 					lit += 1
 		check(lit == 0, "%s 가운데 76%% 에 테가 닿음 (%d 점)" % [size, lit])
-		# 바깥 띠 = 받은 알파 그대로, 안쪽 띠 = inner_k 배에서 0 으로 줄어듦, 네 변 모두
+		# 바깥 띠 = 받은 알파 그대로, 네 변 모두
 		var mid: Vector2 = size / 2.0
 		for pt in [Vector2(1, mid.y), Vector2(size.x - 1, mid.y), Vector2(mid.x, 1), Vector2(mid.x, size.y - 1), Vector2(2, 2)]:
 			check(absf(Edge.alpha_at(size, pt, 0.8) - 0.8) < 1e-6, "%s 바깥 띠 %s 알파" % [size, pt])
+		# 꺾임 점: 0 → 바깥 띠 끝 (1) → 꺾임 → 끝 (0), 거리는 늘고 알파는 안 늘어남
+		var st: Array = Edge.stops(size)
+		check(st.size() == 4 and st[0] == [0.0, 1.0] and absf(st[1][0] - b.x) < 1e-6 and st[1][1] == 1.0 and absf(st[3][0] - (b.x + b.y)) < 1e-6 and st[3][1] == 0.0, "%s 꺾임 점 %s" % [size, st])
+		check(absf(st[2][0] - (b.x + b.y * float(kn[0]))) < 1e-6 and absf(st[2][1] - float(kn[1])) < 1e-6, "%s 꺾임 자리·알파" % size)
+		# 계단 없음 (F6): 가장자리에서 띠 끝 너머까지 반 화소씩 걸으며 — 한 화소에 줄어드는 알파가 번지는 띠의 가장 가파른 기울기를 안 넘고, 다시 커지지 않음
+		var steep: float = maxf((1.0 - float(kn[1])) / (b.y * float(kn[0])), float(kn[1]) / (b.y * (1.0 - float(kn[0]))))
 		var prev := 1.0
-		for i in 12:
-			var d: float = b.x + b.y * (i + 0.5) / 12.0
+		var worst := 0.0
+		var d := 0.0
+		while d <= b.x + b.y + 2.0:
 			var a: float = Edge.alpha_at(size, Vector2(d, mid.y), 1.0)
-			check(a < prev and a > 0.0 and a <= E.inner_k and absf(a - Edge.alpha_at(size, Vector2(mid.x, size.y - d), 1.0)) < 1e-6, "%s 안쪽 띠 d=%s 알파 %s (줄어듦, 위아래·좌우 같음)" % [size, d, a])
+			check(a <= prev + 1e-6 and absf(a - Edge.alpha_at(size, Vector2(mid.x, size.y - d), 1.0)) < 1e-6, "%s d=%s 알파 %s (안 커짐, 위아래·좌우 같음)" % [size, d, a])
+			worst = maxf(worst, prev - a)
 			prev = a
+			d += 0.5
+		check(worst <= steep * 0.5 + 1e-6 and steep < 0.05, "%s 반 화소 걸음에 알파가 %.4f 넘게 떨어짐 (얻음 %.4f) — 띠 경계 계단" % [size, steep * 0.5, worst])
+		check(absf(Edge.alpha_at(size, Vector2(b.x + 0.01, mid.y), 1.0) - 1.0) < 1e-3, "%s 바깥 띠 바로 안쪽도 같은 알파 (예전엔 0.55배로 떨어짐)" % size)
 		check(Edge.alpha_at(size, Vector2(b.x + b.y + 0.5, mid.y), 1.0) == 0.0 and Edge.alpha_at(size, mid, 1.0) == 0.0, "띠 안쪽은 0")
-		# 그리는 사다리꼴 8개: 가운데 사각형과 안 겹치고, 꼭짓점 알파가 alpha_at 과 같음
+		# 그리는 사다리꼴 12개 (변 넷 × 꺾임 점 사이 띠 셋): 가운데 사각형과 안 겹치고, 띠마다 꼭짓점 알파가 꺾임 점 값
 		var qs: Array = Edge.quads(size)
-		check(qs.size() == 8, "사다리꼴 8개 (변 넷 × 바깥·안쪽)")
+		check(qs.size() == 12, "사다리꼴 12개 (변 넷 × 띠 셋)")
 		var center: Rect2 = Rect2(size * 0.12, size * 0.76)
 		for q in qs:
 			var box := Rect2(q[0][0], Vector2.ZERO)
@@ -243,21 +257,18 @@ func test_c7_edge_frame_keeps_center_clear() -> void:
 				box = box.expand(v)
 			check(not box.intersects(center) and Rect2(Vector2.ZERO, size).grow(0.01).encloses(box), "사다리꼴 %s 이 가운데를 덮거나 화면 밖" % [q[0]])
 			check(q[0].size() == 4 and q[1].size() == 4, "꼭짓점 넷")
-		for q in qs.slice(0, 4):
-			check(q[1][0] == 1.0 and q[1][2] == 1.0, "바깥 띠는 한 알파")
-		for q in qs.slice(4):
-			check(absf(q[1][0] - E.inner_k) < 1e-6 and q[1][2] == 0.0 and q[1][3] == 0.0, "안쪽 띠는 inner_k → 0")
-		# 한 번에 그리는 삼각형 묶음 (그리기 1번): 사다리꼴 8개 = 삼각형 16개, 꼭짓점 알파 = 그 자리의 alpha_at (모서리 맞물림 포함)
+		for band in 3:
+			for q in qs.slice(band * 4, band * 4 + 4):
+				check(absf(q[1][0] - float(st[band][1])) < 1e-6 and absf(q[1][1] - float(st[band][1])) < 1e-6 and absf(q[1][2] - float(st[band + 1][1])) < 1e-6 and absf(q[1][3] - float(st[band + 1][1])) < 1e-6, "띠 %d 알파 %s → %s" % [band, st[band][1], st[band + 1][1]])
+		# 한 번에 그리는 삼각형 묶음 (그리기 1번): 사다리꼴 12개 = 삼각형 24개, 모든 꼭짓점 알파 = 그 자리의 alpha_at (띠 경계 꼭짓점도 한 값 — 계단 없음)
 		var t: Array = Edge.tri_arrays(size)
-		check(t[0].size() == 48 and t[1].size() == 32 and t[2].size() == 32, "삼각형 16개·꼭짓점 32개 (%d·%d)" % [t[0].size(), t[1].size()])
+		check(t[0].size() == 72 and t[1].size() == 48 and t[2].size() == 48, "삼각형 24개·꼭짓점 48개 (%d·%d)" % [t[0].size(), t[1].size()])
 		var bad := 0
 		for i in t[0]:
 			if i < 0 or i >= t[1].size():
 				bad += 1
 		for i in t[1].size():
-			var want: float = Edge.alpha_at(size, t[1][i], 1.0)
-			# 띠 경계의 꼭짓점은 두 값 (바깥 1 · 안쪽 inner_k) 중 하나
-			if absf(t[2][i] - want) > 1e-4 and not (absf(want - 1.0) < 1e-4 and absf(t[2][i] - E.inner_k) < 1e-4):
+			if absf(t[2][i] - Edge.alpha_at(size, t[1][i], 1.0)) > 1e-4:
 				bad += 1
 		check(bad == 0, "%s 삼각형 묶음 꼭짓점 번호·알파 어긋남 %d" % [size, bad])
 	# 번쩍 색: 좁아진 만큼 진하게 (× 1.8, 1 을 안 넘음), 색은 그대로
@@ -265,6 +276,32 @@ func test_c7_edge_frame_keeps_center_clear() -> void:
 	check(absf(hit.a - 0.81) < 1e-6 and hit.r == 1.0 and absf(hit.g - 0.824) < 1e-6 and hit.b == 0.0, "맞음 노랑 0.45 → 바깥 띠 0.81 (%s)" % hit)
 	check(Edge.flash_tint(Color(1, 1, 1, 0.9)).a == 1.0 and absf(Edge.flash_tint(Color(1, 0, 0, 0.22)).a - 0.396) < 1e-6, "알파 상한 1")
 	check(absf(E.fade - 0.4) < 1e-9 and absf(E.stun_fade - 0.15) < 1e-9 and absf((E.stun as Color).a - 0.75) < 1e-6 and (E.stun as Color).r == 1.0 and (E.stun as Color).g == 0.0, "사라지는 시간·경직 색은 그대로 (0.4초·0.15초·빨강 0.75)")
+
+
+# c7-fix F5: 3인칭이면 아래 묶음 (아이템·F·R·버프) 이 왼쪽 아래 구석 — 가운데 아래는 내 발밑 색 고리·'나' 흰 테 자리 (720p 에서 y≈595). 1인칭은 예전 그대로 가운데
+func test_c7_stack_leaves_my_ring() -> void:
+	var HudExtra := preload("res://ui/hud_extra.gd")
+	var K: Dictionary = HudExtra.STACK
+	var sizes := [Vector2(120, 26), Vector2(250, 28), Vector2(90, 22)] # 아이템·F·R·버프
+	for vp in [Vector2(1280, 720), Vector2(960, 540)]:
+		for cards_h in [0.0, 96.0]:
+			# 1인칭: 가운데, 아래에서 위로 gap 6 (예전 식 그대로)
+			var mid: Array = HudExtra.stack_layout(vp, sizes, cards_h, false)
+			var y: float = vp.y - ((cards_h + 18.0) if cards_h > 0.0 else 16.0)
+			for i in sizes.size():
+				y -= sizes[i].y
+				check(mid[i].is_equal_approx(Vector2((vp.x - sizes[i].x) / 2.0, y)), "%s 1인칭 칸 %d 자리 %s" % [vp, i, mid[i]])
+				y -= 6.0
+			# 3인칭: 왼쪽 구석 — 화면 가운데 1/3 (내 발 둘레) 에 아무 칸도 안 걸침, 화면 안, 아래 판 위
+			var cor: Array = HudExtra.stack_layout(vp, sizes, cards_h, true, 0.0 if cards_h > 0.0 else 50.0)
+			var foot := Rect2(vp.x / 3.0, vp.y * 0.6, vp.x / 3.0, vp.y * 0.4)
+			var floor_y: float = vp.y - ((cards_h + float(K.above_cards)) if cards_h > 0.0 else (float(K.corner_bottom) + 50.0 + float(K.gap)))
+			for i in sizes.size():
+				var r := Rect2(cor[i], sizes[i])
+				check(cor[i].x == float(K.corner_x) and not r.intersects(foot), "%s 3인칭 칸 %d 이 가운데 아래 (내 발) 를 덮음 %s" % [vp, i, r])
+				check(r.position.y >= 0.0 and r.end.y <= floor_y + 1e-6 and (i == 0 or r.end.y <= cor[i - 1].y - float(K.gap) + 1e-6), "%s 3인칭 칸 %d 이 아래 판·내 %% 와 겹치거나 화면 밖 %s" % [vp, i, r])
+	check(float(K.corner_x) == 22.0 and float(K.corner_bottom) == 18.0, "구석 자리 = 내 % 구석 (ui/hud.gd: x 22, 아래 18) 과 같은 값")
+	check(HudExtra.stack_layout(Vector2(1280, 720), [], 0.0, true).is_empty(), "보이는 칸이 없으면 빈 목록")
 
 
 # 번쩍·경직 테는 HUD 보다 먼저 그려지고 (z_index < 0), 화면 전체를 덮는 번쩍 판이 없음

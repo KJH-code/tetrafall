@@ -58,9 +58,10 @@ const EXT := true
 const EXT_DEFAULTS := {"bones": {}, "yaw": 90.0, "height": 1.0, "offset": [0, 0, 0], "tint": "band", "tint_k": 0.6, "band": [0.17, 0.035, 0.0], "band_joint": "waist",
 	"keep": [], "attach": [], "vm_from": "elbow", "vm_snap": ["elbow"], "vm_node": "", "clips": {}, "cloth": [], "lods": {}, "dash_wrist": {}, "vm_bone_scale": {}, "skin_mask": {}, "faces": {}, "outline": 1.0, "rim": [0.0, 3.0], "rope_bone": "",
 	"double": false, "outline_push": 0.0, "rim_tint": [0.0, 0.0], "rim_gate": [0.35, 0.65]}
-# c7-u1 (external.gd style·look): double 불투명 툰을 양면으로 (한 겹 천 안쪽이 외곽선 색으로 보이던 것 — 사냥꾼 망토·갈고리 코트) · outline_push 외곽선 껍질을 깊이로 뒤로 (0~0.002, 0 = 예전) ·
+# c7-u1 (external.gd style·look): double 불투명 툰을 양면으로 (한 겹 천 안쪽이 외곽선 색으로 보이던 것 — 사냥꾼 망토·갈고리 코트) · outline_push 외곽선 껍질의 깊이만 눈에서 멀어지는 쪽으로 이만큼 (m — 뷰 공간 거리, 0~OUTLINE_PUSH_MAX, 0 = 예전. c7-fix F1: 예전 단위는 클립 깊이 × w 라 먼 몸의 선이 바닥·제 몸 뒤로 숨음) ·
 # rim_tint [림 색을 플레이어 색으로 섞는 양, 림 배율 더하기] (0, 0 = 예전 림) · rim_gate [다 걸림, 안 걸림] 림 틴트가 걸리는 면: 면 법선·눈 방향 내적 (0 = 옆으로 선 면, 1 = 눈을 마주 본 면) —
 # 실루엣 가장자리 면에만 걸리고 눈을 마주 본 면 (보간 법선이 엉킨 얇은 천 안쪽 겹) 은 예전 림 그대로 (toon_common.gdshaderinc rim_gate 기본값과 같음)
+const OUTLINE_PUSH_MAX := 0.1 # outline_push 상한 (m). 넘는 값은 Ext.push_outline 이 여기로 자름 — 천 두 겹 사이 (수 cm) 를 넘겨 밀면 팔·다리 선이 제 몸통 뒤로 숨음
 # rope_bone 갈고리 밧줄이 나가는 모델 뼈 이름 끝 (예 "LeftHandMiddle4", world/hook_fx.gd hand — 코드 손 관절은 모델 손과 20 cm 어긋남)
 # W23 동작 클립 (chars/ext_clips.gd): 클립 층 섞기 — 들어갈 때·나갈 때 속도 (/초, cw 가 0↔1), 래그돌 모터가 이보다 약하면 코드 (물리) 로, 클립 바뀔 때 크로스페이드 초
 const EXT_CLIP_IN := 14.0

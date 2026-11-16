@@ -17,7 +17,6 @@ const KEEP_FLAGS := Mesh.ARRAY_FLAG_USE_8_BONE_WEIGHTS | Mesh.ARRAY_FLAG_COMPRES
 
 static var _cache := {} # 캐릭터 → {mesh, eyes {노드 번호 → 메시}, xf [[노드 번호, 자리, 크기 배율]]} 또는 null (표에 없음·못 만듦)
 static var _piece_cache := {} # 캐릭터 → {노드 번호 → 조각 메시 사본} 또는 null (표에 없음) — 조각 몸 (1인칭 팔 쌍둥이) 몫, for_pieces
-static var _char := "" # c7-u1: 지금 화풍을 입히는 캐릭터 — for_char·for_pieces 가 적고, 바로 뒤따르는 style 호출들 (baked_batch.apply_look·body._look_pieces) 이 캐릭터별 값 (양면·민 외곽선) 을 읽음
 const EXT := "res://chars/external.gd" # Ext.look·push_outline (외부 모델과 같은 길). 미리 읽지 않음 (external → body → baked_batch → 여기 로 도는 고리)
 
 
@@ -363,7 +362,6 @@ static func copy_mesh(src: Mesh, arrays: Array) -> ArrayMesh:
 
 # 캐릭터의 화풍 사본 (한 번 만들어 둠). mi = 묶음 SkinnedMesh, nodes = body.gd 노드 표 (manifest 순서). 표에 없거나 못 만들면 null
 static func for_char(char_id: String, cd: Dictionary, mi: MeshInstance3D, sk: Skeleton3D, nodes: Array):
-	_char = char_id
 	if _cache.has(char_id):
 		return _cache[char_id]
 	var out = null
@@ -420,7 +418,6 @@ static func piece_bone(cd: Dictionary, i: int) -> String:
 # 캐릭터의 조각 메시 사본들 (한 번 만들어 둠, 같은 캐릭터 조각 몸끼리 같이 씀): {노드 번호 → 메시} — 역할이 하나라도 바뀐 조각만 (나머지는 원본 메시·재질 그대로).
 # 사본은 정점 색 (살 = 살색, 그대로인 옷 = 재질 색, 플레이어 칸 = 흰색 + UV2.x 1) 이라 정점 색 툰 재질 + skin_tint 로 그림 (body._look_pieces). 표에 없으면 null
 static func for_pieces(char_id: String, cd: Dictionary, nodes: Array):
-	_char = char_id
 	if _piece_cache.has(char_id):
 		return _piece_cache[char_id]
 	var out = null
@@ -498,8 +495,10 @@ static func _eyes(cd: Dictionary, nodes: Array, k: float, out: Dictionary) -> vo
 			out.xf.append([bi, c + (bn.position - c) * k, k])
 
 
-# 재질에 외부 모델과 같은 툰 단·림 (+ outline 이면 얇은 외곽선 — G3 가 설정 '외곽선' 켜고 끌 때도 이 굵기로). 툰 재질이 아니면 그대로
-static func style(m: Material, outline: bool) -> void:
+# 재질에 외부 모델과 같은 툰 단·림 (+ outline 이면 얇은 외곽선 — G3 가 설정 '외곽선' 켜고 끌 때도 이 굵기로). 툰 재질이 아니면 그대로.
+# char_id = 이 재질을 쓰는 몸의 캐릭터 (양면·민 외곽선은 캐릭터별 표 값). c7-fix F10: 예전엔 for_char·for_pieces 가 적어 둔 정적 변수에서 읽어, 늦게 부르면 (body._apply_opacity) 마지막에 만든 몸의 캐릭터 값을 읽었음.
+# rim_tint 거짓 = 림 틴트 없이 (1인칭 팔 쌍둥이 — c7-fix F7: 눈앞 팔에선 림이 몸 가장자리 테가 아니라 보호대·장갑 넓은 면으로 번져 플레이어 색으로 물듦). 예전 림 (rim_strength·rim_power) 은 그대로
+static func style(m: Material, outline: bool, char_id: String, rim_tint := true) -> void:
 	var sm := m as ShaderMaterial
 	if sm == null or sm.get_shader_parameter("toon_steps") == null:
 		return
@@ -507,10 +506,10 @@ static func style(m: Material, outline: bool) -> void:
 	sm.set_shader_parameter("rim_strength", float(LK.RIM[0]))
 	sm.set_shader_parameter("rim_power", float(LK.RIM[1]))
 	# c7-u1: 양면 (캐릭터별)·림 틴트 (공통) — 외부 모델과 같은 길. 반투명 재질 (body._apply_opacity 가 나중에 부름) 은 양면이 안 먹고 림 틴트만
-	load(EXT).Ext.look(sm, {"double": LK.LOOK.get(_char, {}).get("double", false), "rim_tint": LK.RIM_TINT, "rim_gate": LK.RIM_GATE})
+	load(EXT).Ext.look(sm, {"double": LK.LOOK.get(char_id, {}).get("double", false), "rim_tint": LK.RIM_TINT if rim_tint else [0.0, 0.0], "rim_gate": LK.RIM_GATE})
 	if outline:
 		# G3 기록 (set_outline_on 이 차례로 다시 붙임) 에 얇은 것을 한 줄 더 — 뒤 줄이 이김. no_outline 으로 앞 줄을 지우면 기록을 다 훑어 몸마다 재질 수만큼 느려짐
-		G3.attach_outline(sm, outline_for(_char))
+		G3.attach_outline(sm, outline_for(char_id))
 
 
 # 이 캐릭터 구운 몸의 외곽선 재질: 얇은 것 (나눠 씀), 표에 outline_push 가 있으면 깊이로 민 얇은 것 (c7-u1, external.gd Ext.push_outline)
