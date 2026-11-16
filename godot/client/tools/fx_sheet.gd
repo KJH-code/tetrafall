@@ -10,6 +10,7 @@
 # 고리는 effects.ring 을 직접. 엔진 시간 배율 0 이라 효과가 스스로 안 흐름 → effects.update(dt, cam)·ko.update(dt) 를 손으로 STEP 초씩 돌려 시각을 맞춤.
 # windup·aura 는 판과 같은 world/body_fx.gd 노드에 이벤트를 넣음: 몸 자리는 가짜 bodies {"shown": {id: 자리}}, 시각은 body_fx.clock 에 이 도구의 시계 (clock_ms) 를 끼움.
 # 효과 수준은 '높음' (빛·연기·조각 켬), --low 면 '그래픽 낮춤' (덧칠 없이 파편·고리만). 난수 시드는 사진마다 고정.
+# ko 장마다 '효과 사진 <파일> 줄기 화면 높이 비 0.xx' 한 줄 (c8-u3): 낙사 줄기 밑동 ~ 바깥 단 끝을 화면에 비춘 길이 ÷ 화면 높이 — 화면 상한 (fx_config SCREEN_CAP) 확인용.
 # 끝나면 저장한 파일 목록 (출력 줄 머리는 '효과 사진' — 본문 글꼴 글자 검사 (test_ui_nodes) 가 스크립트 따옴표 글을 다 훑어서 글꼴에 있는 글자만 씀), 종료 코드 0 (못 만든 사진·스크립트 오류가 있으면 1, 그릴 수 없는 환경 (--headless) 이면 2)
 extends SceneTree
 
@@ -61,6 +62,7 @@ var job_i := -1
 var wait := 0
 var saved: Array = []
 var failed: Array = []
+var spans: Array = [] # ko 장마다 줄기 화면 높이 비 (출력 줄)
 var done := false
 var errors := ErrorLog.new()
 var store: Node
@@ -157,6 +159,8 @@ func _process(_dt: float) -> bool:
 		if wait > 0:
 			return false
 		_save(str(jobs[job_i][0]))
+		if str(jobs[job_i][2]) == "ko":
+			_plume_span(str(jobs[job_i][0]))
 	job_i += 1
 	if job_i >= jobs.size():
 		_report()
@@ -189,9 +193,24 @@ func _save(file: String) -> void:
 	saved.append("%s (%d×%d)" % [path, img.get_width(), img.get_height()])
 
 
+# c8-u3: 낙사 줄기 양 끝 (밑동 = 줄기 노드 자리, 끝 = 노드 +Y 로 길이만큼) 을 화면에 비춘 길이 ÷ 화면 높이 — 줄기가 화면을 얼마나 덮는지 숫자로 (끝이 화면 밖이어도 그대로 잼, 카메라 뒤면 '뒤')
+func _plume_span(file: String) -> void:
+	var vh := float(root.get_visible_rect().size.y)
+	for pl in fx.ko.plumes:
+		var n: Node3D = pl.node
+		var a := n.global_position
+		var b := n.global_transform * Vector3(0.0, C.KO_SMASH_LEN * float(FXC.PLUME[0][1]), 0.0) # 바깥 단 (가장 긴 것) 끝
+		if cam.is_position_behind(a) or cam.is_position_behind(b):
+			spans.append("%s 줄기 화면 높이 비 뒤" % file)
+			continue
+		spans.append("%s 줄기 화면 높이 비 %.2f" % [file, cam.unproject_position(a).distance_to(cam.unproject_position(b)) / vh])
+
+
 func _report() -> void:
 	for s in saved:
 		print("효과 사진 저장 %s" % s)
+	for s in spans:
+		print("효과 사진 %s" % s)
 	for f in failed:
 		print("효과 사진 실패 %s" % f)
 	for e in errors.lines:

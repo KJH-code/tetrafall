@@ -113,6 +113,18 @@ static func cap_size(size: float, dist: float, fov_deg: float, frac: float) -> f
 	return minf(size, frac * 2.0 * maxf(0.0, dist) * tan(deg_to_rad(fov_deg) / 2.0))
 
 
+# 낙사 줄기 화면 상한 (c8-u3): 줄기 (길이 len_m · 끝 지름 width_m 중 큰 쪽) 가 그 깊이에서 화면 높이 × frac 을 넘으면 줄이는 배율 (≤ 1 — 길이·폭에 같이 곱함, 넘지 않으면 1).
+# depth_m = 줄기 밑동 (꼭짓점) 의 카메라 깊이 (보는 방향 거리 — 그 깊이에서 화면 높이 = 2 × 깊이 × tan(세로 시야각 / 2), cap_size 와 같은 셈). 카메라 뒤 (≤ 0) 면 0.
+# toward = 줄기 축이 카메라 쪽으로 오는 정도 (−축·보는 방향, 0~1 — 멀어지는 줄기는 0): 줄기가 카메라로 다가오면 줄인 줄기의 끝 (가장 가까운 점) 깊이 depth_m − 배율 × len_m × toward 로 잼
+# → 배율 × 크기 = H × (depth_m − 배율 × len_m × toward), H = frac × 2 × tan(시야각 / 2) 를 풀어 배율 = H × depth_m / (크기 + H × len_m × toward)
+static func plume_cap(len_m: float, width_m: float, depth_m: float, fov_deg: float, frac: float, toward := 0.0) -> float:
+	var size := maxf(len_m, width_m)
+	if size <= 0.0:
+		return 1.0
+	var h := frac * 2.0 * tan(deg_to_rad(fov_deg) / 2.0)
+	return clampf(h * depth_m / (size + h * len_m * maxf(0.0, toward)), 0.0, 1.0)
+
+
 # 카메라가 스매시 줄기 (꼭짓점 = 원점, 축 axis, 길이 KO_SMASH_LEN × len_k, 끝 반지름 KO_SMASH_WIDTH × side_k) 안이면 옅게 (0.2), 가장자리 1칸 안쪽에서 점점.
 # 3인칭 카메라가 필드 끝에 있을 때 줄기가 화면 전체를 하얗게 덮던 것 (고도 쪽 보정, rel = 카메라 - 꼭짓점, 게임 좌표)
 static func plume_inside_fade(rel: Vector3, axis: Vector3, side_k: float, len_k: float) -> float:

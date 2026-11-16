@@ -61,6 +61,9 @@ uniform vec2 rim_tint = vec2(0.0);
 // 림 틴트는 면 자체가 눈에서 비껴 선 곳 (실루엣 가장자리) 에만: 면 법선 (화면 미분) 과 눈 방향의 내적이 x 이하면 다 걸리고 y 이상이면 안 걸림 (그 사이 부드럽게).
 // 보간 법선이 엉킨 면 (얇은 천의 안쪽 겹 — 법선이 비스듬해 림이 통째로 켜짐) 이 플레이어 색으로 물들지 않게. 예전 림 (제 색) 은 안 거름
 uniform vec2 rim_gate = vec2(0.35, 0.65);
+// c8-u3 가까운 몸 깎기: 눈에서 x m 안의 화소는 다 버리고 y m 까지 점점 덜 버림 (디더 — 반투명 아님, 버린 화소는 깊이도 안 씀). y = 0 이면 끔 (기본).
+// 1인칭·관전 카메라 바로 앞을 지나는 남의 몸이 화면을 통째로 덮던 것 → 그 화소만 빠져 뒤 (바닥·이름표) 가 보임. 값은 몸 재질에만 (chars/external.gd Ext.look, g3_config NEAR_CUT)
+uniform vec2 near_cut = vec2(0.0);
 
 varying vec3 world_n;
 varying vec3 v_base; // 선형 바탕색
@@ -96,6 +99,11 @@ vec3 toon_hemi(vec3 wn) {
 	return mix(g3_hemi_ground, g3_hemi_sky, up) * g3_hemi_energy;
 }
 
+// 화소마다 고른 난수 0~1 (interleaved gradient noise) — 가까운 몸 깎기 디더. 4×4 격자 (Bayer) 는 방충망처럼 줄무늬가 보여서 안 씀
+float near_ign(vec2 p) {
+	return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
+}
+
 // TOON_CUSTOM: 셰이더가 vertex()·fragment() 를 직접 씀 (terrain.gdshader) — v_base·v_amb·world_n·ALBEDO·FOG·EMISSION 을 아래처럼 채우고 light() 는 이것
 #ifndef TOON_CUSTOM
 void vertex() {
@@ -108,6 +116,11 @@ void vertex() {
 }
 
 void fragment() {
+	// c8-u3 가까운 몸 깎기 (near_cut): 원근 카메라에만 (해 그림자 지도 = 직교 투영엔 안 깎음 — 그림자는 온전히), 제 빛을 가진 몸 (local_light: 1인칭 팔·초상·대기실 큰 캐릭터) 은 빼고
+	if (near_cut.y > 0.0 && !local_light && PROJECTION_MATRIX[3][3] < 0.5) {
+		float nk = clamp((length(VERTEX) - near_cut.x) / (near_cut.y - near_cut.x), 0.0, 1.0);
+		if (near_ign(FRAGCOORD.xy) >= nk) discard;
+	}
 	vec4 c = albedo;
 	if (use_tex) {
 		vec2 uv = UV * uv_scale;

@@ -11,7 +11,7 @@ var fx # effects.gd
 var color_of := func(_id): return 0xffffff
 var low_gfx := func(): return false
 var field := func(): return Vector2(C.GRID_W, C.GRID_W)
-var plumes: Array = [] # {node, mat, age, life}
+var plumes: Array = [] # {node, mats (단마다 재질 — FXC.PLUME 차례), age, life, dir}
 var slow := {} # 마지막 킬 슬로모션 {start, until, x, y, z}
 var stop_until := 0.0 # 압사 히트스톱
 var edge_layer := CanvasLayer.new()
@@ -38,15 +38,7 @@ void fragment() {
 
 
 func _init() -> void:
-	var cm := CylinderMesh.new() # 꼭짓점이 가장자리, 넓은 쪽이 바깥 (+Y): 아래 반지름 0, 마디 노드가 LEN/2 올림
-	cm.top_radius = C.KO_SMASH_WIDTH
-	cm.bottom_radius = 0.0
-	cm.height = C.KO_SMASH_LEN
-	cm.radial_segments = 12
-	cm.rings = 1
-	cm.cap_top = false
-	cm.cap_bottom = false
-	cone = cm
+	cone = cone_mesh(FXC.PLUME_SEG, FXC.PLUME_TIP_FADE)
 	var sh := Shader.new()
 	sh.code = EDGE_SHADER
 	edge_mat.shader = sh
@@ -57,6 +49,33 @@ func _init() -> void:
 	edge_layer.layer = 1
 	edge_layer.add_child(edge_rect)
 	add_child(edge_layer)
+
+
+# 줄기 원뿔 (c8-u3: 예전 CylinderMesh 와 같은 치수 — 꼭짓점이 아래 (반지름 0), 넓은 끝이 위 (반지름 KO_SMASH_WIDTH), 높이 KO_SMASH_LEN, 가운데가 원점. 마디 노드가 LEN/2 올림).
+# 꼭짓점 색 알파: 넓은 끝 0 → 길이의 fade 지점부터 1 — 원뿔이 넓은 끝에서 뚝 잘려 확성기 입처럼 보이지 않고 끝이 흩어짐 (꼭짓점 색을 쓰는 재질만 — 보통 섞기 단)
+static func cone_mesh(seg: int, fade: float) -> ArrayMesh:
+	var verts := PackedVector3Array()
+	var cols := PackedColorArray()
+	var idx := PackedInt32Array()
+	var rows := [[0.0, 1.0], [1.0 - fade, 1.0], [1.0, 0.0]] # [길이 비 (0 꼭짓점 ~ 1 넓은 끝), 알파]
+	for r in rows:
+		for i in seg:
+			var a := TAU * i / seg
+			verts.append(Vector3(cos(a) * C.KO_SMASH_WIDTH * r[0], (r[0] - 0.5) * C.KO_SMASH_LEN, sin(a) * C.KO_SMASH_WIDTH * r[0]))
+			cols.append(Color(1, 1, 1, r[1]))
+	for j in rows.size() - 1:
+		for i in seg:
+			var a0 := j * seg + i
+			var a1 := j * seg + (i + 1) % seg
+			idx.append_array([a0, a1, a0 + seg, a1, a1 + seg, a0 + seg])
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_COLOR] = cols
+	arr[Mesh.ARRAY_INDEX] = idx
+	var m := ArrayMesh.new()
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	return m
 
 
 static func now_ms() -> float:
@@ -86,26 +105,35 @@ func smash(p: Vector3, out: Dictionary, color: int, me: bool, near: bool) -> voi
 	var f: Vector2 = field.call()
 	var at := FM.smash_at(p, f.x, f.y)
 	var dir := FM.smash_dir(out)
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
-	FM.near_fade(mat) # 카메라 바로 앞이면 흐려짐 (화면을 덮지 않게)
-	var c := Co.color(color)
-	c.a = 0.9
-	mat.albedo_color = c
+	# c8-u3: 원뿔 하나 (더하기 섞기 — 밝은 하늘 앞에서 흰·하늘색 큰 삼각) → 한 노드 아래 겹친 원뿔 2~3단 (FXC.PLUME: 바깥 = 그 사람 색 옅게 · 가운데 = 진하게 · 심 = 흰 쪽).
+	# 단들은 보통 섞기 (색이 남음 — FXC.PLUME_CORE_ADD 를 켜면 심만 더하기). 줄기 항목 (plumes) 은 그대로 하나 — 모양 (FM.plume)·수명은 노드 하나가 맡고 단은 그 아래 배율만
 	var node := Node3D.new()
-	var mi := MeshInstance3D.new()
-	mi.mesh = cone
-	mi.material_override = mat
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	mi.position.y = C.KO_SMASH_LEN / 2.0
-	node.add_child(mi)
+	var mats := []
+	var bands: Array = FXC.PLUME
+	for i in bands.size():
+		var b: Array = bands[i]
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		var add: bool = FXC.PLUME_CORE_ADD and i == bands.size() - 1
+		mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD if add else BaseMaterial3D.BLEND_MODE_MIX
+		mat.vertex_color_use_as_albedo = not add # 보통 섞기 단 = 효과 풀 고리 재질 (effects.ring_mat) 과 같은 모양, 더하기 심 = 예전 줄기 재질 모양 → 판 중에 새 셰이더를 안 만듦 (world/warm_scan.gd STD_KEYS)
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+		FM.near_fade(mat) # 카메라 바로 앞이면 흐려짐 (화면을 덮지 않게)
+		mat.albedo_color = Co.color(color).lerp(Color.WHITE, float(b[3]))
+		var mi := MeshInstance3D.new()
+		mi.mesh = cone
+		mi.material_override = mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.scale = Vector3(float(b[0]), float(b[1]), float(b[0]))
+		mi.position.y = C.KO_SMASH_LEN / 2.0 * float(b[1])
+		mi.sorting_offset = i * FXC.PLUME_SORT_STEP
+		node.add_child(mi)
+		mats.append(mat)
 	node.position = Co.gpos(at)
 	add_child(node)
-	var pl := {"node": node, "mat": mat, "age": 0.0, "life": C.KO_SMASH_MS / 1000.0, "dir": Co.gpos(dir).normalized()}
+	var pl := {"node": node, "mats": mats, "age": 0.0, "life": C.KO_SMASH_MS / 1000.0, "dir": Co.gpos(dir).normalized()}
 	_plume_pose(pl, Vector3(0.2, 0.2, 0.9))
 	plumes.append(pl)
 	fx.burst(at, {"x": dir.x, "y": dir.y}, color, parts(C.KO_SMASH_PARTICLES), 12.0, 0.16, 0.8)
@@ -125,15 +153,33 @@ func smash(p: Vector3, out: Dictionary, color: int, me: bool, near: bool) -> voi
 	edge_until = now_ms() + C.KO_EDGE_MS
 
 
-# 줄기 노드: 로컬 +Y 를 dir 쪽으로 (setFromUnitVectors), 크기 (옆, 길이, 옆)
+# 줄기 노드: 로컬 +Y 를 dir 쪽으로 (setFromUnitVectors), 크기 (옆, 길이, 옆) × 화면 상한 배율. 단마다 알파 = s.z × 단 알파 배율 × 카메라가 그 단 안이면 옅게
 func _plume_pose(pl: Dictionary, s: Vector3) -> void:
 	var d: Vector3 = pl.dir
 	var axis := Vector3.UP.cross(d)
 	var q := Quaternion() if axis.length() < 1e-6 else Quaternion(axis.normalized(), Vector3.UP.angle_to(d))
 	if axis.length() < 1e-6 and d.y < 0:
 		q = Quaternion(Vector3.RIGHT, PI)
-	pl.node.basis = Basis(q).scaled_local(Vector3(s.x, s.y, s.x))
-	pl.mat.albedo_color.a = s.z
+	var k := plume_cap(pl, s)
+	pl.node.basis = Basis(q).scaled_local(Vector3(s.x * k, s.y * k, s.x * k))
+	var seen: bool = cam != null and cam.is_inside_tree() and pl.node.is_inside_tree()
+	var rel: Vector3 = Co.game(cam.global_position - (pl.node as Node3D).global_position) if seen else Vector3.ZERO
+	var bands: Array = FXC.PLUME
+	for i in pl.mats.size():
+		var b: Array = bands[i]
+		var a := s.z * float(b[2])
+		if seen:
+			a *= FM.plume_inside_fade(rel, Co.game(d).normalized(), s.x * k * float(b[0]), s.y * k * float(b[1]))
+		(pl.mats[i] as StandardMaterial3D).albedo_color.a = a
+
+
+# 줄기 화면 상한 배율 (c8-u3, FM.plume_cap): 지금 카메라에서 줄기 (가장 큰 = 바깥 단) 가 화면 높이 × FXC.SCREEN_CAP 을 넘으면 줄임. 카메라가 없으면 (테스트) 1
+func plume_cap(pl: Dictionary, s: Vector3) -> float:
+	if cam == null or not cam.is_inside_tree() or not pl.node.is_inside_tree():
+		return 1.0
+	var fwd := -cam.global_basis.z.normalized()
+	var depth: float = ((pl.node as Node3D).global_position - cam.global_position).dot(fwd)
+	return FM.plume_cap(C.KO_SMASH_LEN * s.y, 2.0 * C.KO_SMASH_WIDTH * s.x, depth, cam.fov, FXC.SCREEN_CAP, -(pl.dir as Vector3).dot(fwd))
 
 
 func crush(p: Vector3, me: bool, near: bool) -> void:
@@ -213,7 +259,4 @@ func update(dt: float) -> void:
 			pl.node.queue_free()
 			plumes.erase(pl)
 			continue
-		var sh := FM.plume(t)
-		if cam != null and cam.is_inside_tree():
-			sh.z *= FM.plume_inside_fade(Co.game(cam.global_position - pl.node.global_position), Co.game(pl.dir).normalized(), sh.x, sh.y)
-		_plume_pose(pl, sh)
+		_plume_pose(pl, FM.plume(t)) # 화면 상한·카메라가 줄기 안이면 옅게 는 _plume_pose 가 단마다

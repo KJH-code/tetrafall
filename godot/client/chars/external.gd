@@ -862,14 +862,22 @@ class Ext extends Node3D:
 			m.set_shader_parameter("rim_tint", Vector2(float(rt[0]), float(rt[1])))
 			var rg: Array = cfg.get("rim_gate", K_.EXT_DEFAULTS.rim_gate)
 			m.set_shader_parameter("rim_gate", Vector2(float(rg[0]), float(rg[1])))
+		near_cut(m, cfg)
 
-	# c7-fix F7: 재질에 넘길 cfg — 1인칭 팔 쌍둥이 (third 거짓) 는 림 틴트만 끈 사본, 판·대기실·초상 몸은 cfg 그대로.
+	# c8-u3 가까운 몸 깎기: 눈앞 cfg near_cut [다 버림 m, 디더 끝 m] 안의 몸 화소를 버림 (toon_common near_cut, 기본 G3K.NEAR_CUT — [0, 0] 이면 끔).
+	# look 이 부르고, look 을 안 지나는 뼈 소품 (_attach_props: 닌자 단검) 도 따로 부름 — 몸이 빠진 눈앞에 단검만 떠 있지 않게
+	static func near_cut(m: ShaderMaterial, cfg: Dictionary) -> void:
+		var nc = cfg.get("near_cut", G3K_.NEAR_CUT)
+		m.set_shader_parameter("near_cut", nc if nc is Vector2 else Vector2(float(nc[0]), float(nc[1])))
+
+	# c7-fix F7: 재질에 넘길 cfg — 1인칭 팔 쌍둥이 (third 거짓) 는 림 틴트·가까운 몸 깎기 (c8-u3 near_cut — 눈앞 팔은 늘 그 거리 안) 를 끈 사본, 판·대기실·초상 몸은 cfg 그대로.
 	# 눈앞 팔에선 림이 몸 가장자리 테가 아니라 팔 보호대·장갑의 넓은 면으로 번져 플레이어 색으로 물들었음 (셰이더 주석 "가장자리에만" 과 다름). 예전 림 (rim) 은 그대로
 	static func style_cfg(cfg: Dictionary, third_: bool) -> Dictionary:
 		if third_:
 			return cfg
 		var c := cfg.duplicate()
 		c["rim_tint"] = [0.0, 0.0]
+		c["near_cut"] = [0.0, 0.0]
 		return c
 
 	# 깊이로 push m (뷰 공간 거리, 0~K.OUTLINE_PUSH_MAX — outline.gdshader push) 뒤로 민 외곽선 재질 (굵기·push 마다 하나). 안개는 G3.shared_outline 기본과 같이 받음
@@ -2277,6 +2285,7 @@ class Ext extends Node3D:
 				var sm = (mi as MeshInstance3D).mesh.surface_get_material(0) if (mi as MeshInstance3D).mesh != null else null
 				if sm is BaseMaterial3D:
 					m = G3_.toon_material((sm as BaseMaterial3D).albedo_color, {"map": (sm as BaseMaterial3D).albedo_texture} if (sm as BaseMaterial3D).albedo_texture != null else {})
+				near_cut(m, style_cfg(info.cfg, third)) # c8-u3: 소품도 몸과 같이 눈앞에서 빠짐 (1인칭 쌍둥이는 0)
 				(mi as MeshInstance3D).material_override = m
 				if not third:
 					(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

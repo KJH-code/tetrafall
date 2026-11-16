@@ -831,3 +831,143 @@ func test_c7_ring_materials_warm() -> void:
 	check(bf.windups[0].node.mesh == RL.mesh("windup", 0xffffff), "모르는 사람이면 흰색 띠")
 	bf.free()
 	Store._players_by_id = keep_by
+
+
+# c8-u3 낙사 줄기 화면 상한 (FM.plume_cap): 가장 큰 줄기 (길이 10.8칸) 도 그 깊이에서 화면 높이 × SCREEN_CAP 안, 멀면 그대로 (1), 카메라 뒤면 0.
+# 카메라 쪽으로 오는 줄기 (toward > 0) 는 줄인 줄기의 가까운 끝 깊이에서도 상한 안
+func test_c8_plume_capped() -> void:
+	var big := FM.plume(0.25) # 다 뻗은 순간
+	var L: float = C.KO_SMASH_LEN * big.y
+	var W: float = 2.0 * C.KO_SMASH_WIDTH * big.x
+	var cap: float = FXC.SCREEN_CAP
+	check(L > W and near(L, 10.8, 1e-4), "줄기 길이 %s 칸 · 끝 지름 %s 칸" % [L, W])
+	for fov in [60.0, 75.0]:
+		var vh1: float = 2.0 * tan(deg_to_rad(fov) / 2.0) # 깊이 1칸에서 화면 높이 (칸)
+		for depth in [2.0, 5.0, 12.0]:
+			var k := FM.plume_cap(L, W, depth, fov, cap)
+			var seen: float = k * maxf(L, W) / (vh1 * depth) # 비친 크기 ÷ 화면 높이
+			check(k > 0.0 and k < 1.0 and seen <= cap + 1e-6 and near(seen, cap, 1e-5), "깊이 %s·시야 %s: 배율 %s, 화면 높이의 %s" % [depth, fov, k, seen])
+			check(FM.plume_cap(L, W, depth, fov, cap, -1.0) == k and FM.plume_cap(L, W, depth, fov, cap, 0.0) == k, "멀어지는·옆으로 가는 줄기는 밑동 깊이로 잼")
+			for toward in [0.5, 1.0]:
+				var kt := FM.plume_cap(L, W, depth, fov, cap, toward)
+				var nd: float = depth - kt * L * toward # 줄인 줄기 끝 (카메라에 가장 가까운 점) 깊이
+				check(kt > 0.0 and kt < k and nd > 0.0 and kt * maxf(L, W) / (vh1 * nd) <= cap + 1e-6, "카메라 쪽 %s: 배율 %s, 끝 깊이 %s 에서도 상한 안" % [toward, kt, nd])
+		check(FM.plume_cap(L, W, 60.0, fov, cap) == 1.0, "멀면 배율 1 (시야 %s)" % fov)
+		check(FM.plume_cap(L, W, 0.0, fov, cap) == 0.0 and FM.plume_cap(L, W, -3.0, fov, cap) == 0.0, "밑동이 카메라 뒤면 0")
+	check(FM.plume_cap(0.6, 0.2, 2.0, 75.0, cap) == 1.0, "작은 줄기는 그대로")
+	check(near(FM.plume_cap(1.0, 8.0, 2.0, 75.0, cap), cap * 2.0 * tan(deg_to_rad(37.5)) * 2.0 / 8.0), "폭이 더 크면 폭으로 잼")
+	check(FM.plume_cap(0.0, 0.0, 2.0, 75.0, cap) == 1.0, "크기 0 은 나누지 않음")
+	# 수명 내내: 깊이 2.5칸 (효과 견본 near) 에서 비친 길이 ≤ 상한
+	for i in 20:
+		var s := FM.plume(i / 20.0)
+		var k := FM.plume_cap(C.KO_SMASH_LEN * s.y, 2.0 * C.KO_SMASH_WIDTH * s.x, 2.5, 75.0, cap)
+		check(k * C.KO_SMASH_LEN * s.y / (2.0 * tan(deg_to_rad(37.5)) * 2.5) <= cap + 1e-6, "t=%s 비친 길이" % (i / 20.0))
+	# 줄기 노드: 카메라가 없으면 (테스트·트리 밖) 배율 1
+	var ko := KO.new()
+	var pl := {"node": Node3D.new(), "mats": [], "dir": Vector3.UP}
+	check(ko.plume_cap(pl, big) == 1.0, "카메라 없으면 1")
+	var cam := Camera3D.new()
+	ko.cam = cam
+	check(ko.plume_cap(pl, big) == 1.0, "트리 밖 카메라도 1")
+	ko.cam = null
+	cam.free()
+	pl.node.free()
+	ko.free()
+
+
+# c8-u3 낙사 줄기 단: 2~3단, 안쪽일수록 폭·길이는 작고 알파·흰 섞기는 큼. 줄기 항목은 그대로 하나 (노드 하나 아래 단마다 원뿔), 단 재질 = 그 사람 색 (흰 섞기) · 미리 그려 둔 재질 모양
+func test_c8_plume_bands() -> void:
+	var P: Array = FXC.PLUME
+	check(P.size() >= 2 and P.size() <= 3, "줄기 %d단" % P.size())
+	check(float(P[0][0]) == 1.0 and float(P[0][1]) == 1.0 and float(P[0][3]) == 0.0, "바깥 단 = 줄기 모양 그대로 (JS 크기) · 그 사람 색")
+	for i in P.size():
+		check(P[i].size() == 4 and float(P[i][2]) > 0.0 and float(P[i][2]) <= 1.0 and float(P[i][3]) >= 0.0 and float(P[i][3]) <= 1.0, "단 %d 값 범위" % i)
+		if i > 0:
+			check(float(P[i][0]) < float(P[i - 1][0]) and float(P[i][1]) < float(P[i - 1][1]), "단 %d: 안쪽일수록 폭·길이 작음" % i)
+			check(float(P[i][2]) > float(P[i - 1][2]) and float(P[i][3]) > float(P[i - 1][3]), "단 %d: 안쪽일수록 알파·흰 섞기 큼" % i)
+	check(float(FXC.PLUME_TIP_FADE) > 0.0 and float(FXC.PLUME_TIP_FADE) < 1.0, "끝 흩어짐 비율")
+	# 원뿔: 예전 CylinderMesh 와 같은 치수, 넓은 끝 알파 0 · 꼭짓점 쪽 1
+	var cone: ArrayMesh = KO.cone_mesh(FXC.PLUME_SEG, FXC.PLUME_TIP_FADE)
+	var arr := cone.surface_get_arrays(0)
+	var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var cs: PackedColorArray = arr[Mesh.ARRAY_COLOR]
+	var lo := INF
+	var hi := -INF
+	var rmax := 0.0
+	var ok_alpha := true
+	for i in vs.size():
+		lo = minf(lo, vs[i].y)
+		hi = maxf(hi, vs[i].y)
+		rmax = maxf(rmax, Vector2(vs[i].x, vs[i].z).length())
+		var t: float = vs[i].y / C.KO_SMASH_LEN + 0.5 # 0 꼭짓점 ~ 1 넓은 끝
+		ok_alpha = ok_alpha and near(cs[i].a, clampf((1.0 - t) / FXC.PLUME_TIP_FADE, 0.0, 1.0), 1e-5)
+		check(near(Vector2(vs[i].x, vs[i].z).length(), C.KO_SMASH_WIDTH * t, 1e-4), "원뿔 반지름 = 폭 × 길이 비")
+	check(near(lo, -C.KO_SMASH_LEN / 2.0) and near(hi, C.KO_SMASH_LEN / 2.0) and near(rmax, C.KO_SMASH_WIDTH, 1e-5), "원뿔 치수 %s~%s, 반지름 %s" % [lo, hi, rmax])
+	check(ok_alpha and vs.size() == 3 * int(FXC.PLUME_SEG), "꼭짓점 색 알파: 넓은 끝 0 → 흩어짐 지점부터 1")
+	# 줄기를 냄 (효과 풀 + KO, 카메라 없음)
+	var e := Effects.new()
+	var ko := KO.new()
+	ko.fx = e
+	var col := 0x3060e0
+	ko.smash(Vector3(-1.5, 4.0, -3.0), {"x": -1, "y": 0}, col, false, false)
+	check(ko.plumes.size() == 1, "줄기 항목 %d (그대로 하나)" % ko.plumes.size())
+	var pl: Dictionary = ko.plumes[0]
+	var node: Node3D = pl.node
+	check(pl.mats.size() == P.size() and node.get_child_count() == P.size(), "한 노드 아래 %d단 (재질 %d)" % [node.get_child_count(), pl.mats.size()])
+	var WS := preload("res://world/warm_scan.gd")
+	var MF := preload("res://core/mat_first.gd")
+	var have := []
+	for k in WS.STD_KEYS:
+		have.append(MF.mat_key(WS.std_material(k)))
+	var prev_off := -INF
+	for i in P.size():
+		var mi := node.get_child(i) as MeshInstance3D
+		var mat := pl.mats[i] as StandardMaterial3D
+		var add: bool = FXC.PLUME_CORE_ADD and i == P.size() - 1
+		check(mi.mesh == ko.cone and mi.material_override == mat and mi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "단 %d 원뿔·재질" % i)
+		check(near(mi.scale.x, P[i][0]) and near(mi.scale.z, P[i][0]) and near(mi.scale.y, P[i][1]) and near(mi.position.y, C.KO_SMASH_LEN / 2.0 * float(P[i][1])), "단 %d 폭·길이 배율, 꼭짓점이 밑동에" % i)
+		check(mat.blend_mode == (BaseMaterial3D.BLEND_MODE_ADD if add else BaseMaterial3D.BLEND_MODE_MIX) and mat.vertex_color_use_as_albedo == (not add), "단 %d 섞기 (바깥 단은 보통 섞기)" % i)
+		check(mat.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED and mat.cull_mode == BaseMaterial3D.CULL_DISABLED and mat.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_DISABLED and mat.distance_fade_mode == BaseMaterial3D.DISTANCE_FADE_PIXEL_ALPHA, "단 %d 빛 안 받음·양면·깊이 안 씀·가까우면 흐려짐" % i)
+		var want := Co.color(col).lerp(Color.WHITE, float(P[i][3]))
+		check(near(mat.albedo_color.r, want.r, 1e-5) and near(mat.albedo_color.g, want.g, 1e-5) and near(mat.albedo_color.b, want.b, 1e-5), "단 %d 색 = 그 사람 색 + 흰 %s" % [i, P[i][3]])
+		check(near(mat.albedo_color.a, 0.9 * float(P[i][2]), 1e-5), "단 %d 처음 알파 %s" % [i, mat.albedo_color.a])
+		check(mi.sorting_offset > prev_off, "단 %d 는 바깥 단 위에 그려짐" % i)
+		prev_off = mi.sorting_offset
+		check(have.has(MF.mat_key(mat)), "단 %d 재질 열쇠 %s 가 미리 그려 두는 표 안" % [i, MF.mat_key(mat)])
+		if not add:
+			check(MF.mat_key(mat) == MF.mat_key(e.ring_mat) and mat.distance_fade_mode == e.ring_mat.distance_fade_mode, "단 %d = 효과 풀 고리 재질과 같은 모양 (이미 쓰이는 셰이더)" % i)
+	# 시간이 흐르면: 노드 크기 = FM.plume(t) (카메라 없음 → 상한 1), 단마다 알파 = FM.plume(t).z × 알파 배율
+	ko.update(0.3)
+	var s := FM.plume(0.3 / (C.KO_SMASH_MS / 1000.0))
+	var sc := node.basis.get_scale()
+	check(near(sc.x, s.x, 1e-4) and near(sc.y, s.y, 1e-4) and near(sc.z, s.x, 1e-4), "노드 크기 %s = 줄기 모양 %s" % [sc, s])
+	for i in P.size():
+		check(near((pl.mats[i] as StandardMaterial3D).albedo_color.a, s.z * float(P[i][2]), 1e-5), "단 %d 알파 = 모양 알파 × 배율" % i)
+	ko.update(1.0)
+	check(ko.plumes.is_empty(), "수명 끝나면 사라짐")
+	ko.free()
+	e.free()
+
+
+# c8-u3 연기 상한: 연기 한 덩이 크기도 고리·빛과 같은 화면 상한 (_capped) 을 지남 — 카메라 앞에서 부푼 연기가 화면을 덮지 않게
+func test_c8_smoke_capped() -> void:
+	var src := FileAccess.get_file_as_string("res://fx/effects.gd")
+	var a := src.find("func _update_smoke")
+	var b := src.find("func _update_chunks")
+	check(a >= 0 and b > a and src.substr(a, b - a).contains("s = _capped(s, gp)"), "_update_smoke 가 크기에 _capped 를 검")
+	var fx := Effects.new()
+	fx.lv = FXC.LEVELS.high
+	fx.smoke(Vector3(3, 3, 0.5), 0x4a4440, 6, 1.4, 1300.0)
+	fx.update(0.3, null) # 카메라 없이도 돎 (상한 없음)
+	check(fx.smoke_mm.visible_instance_count == 6 and fx.smoke_mmi.visible, "연기 6덩이 (%d)" % fx.smoke_mm.visible_instance_count)
+	# 폭발 연기가 다 부풀었을 때 (크기 × 1.9) 카메라 2칸 앞이면 상한, 12칸 앞이면 그대로
+	var full: float = float(FXC.BOOM.smoke[1]) * float(FXC.BOOM_K.bigBomb) * 1.9
+	fx._cap_on = true
+	fx._cam_pos = Vector3(0, 0, 2.0)
+	fx._cam_fwd = Vector3(0, 0, -1)
+	fx._cam_fov = 75.0
+	var near_s: float = fx._capped(full, Vector3.ZERO)
+	check(near_s < full and near(near_s, FXC.SCREEN_CAP * 2.0 * 2.0 * tan(deg_to_rad(37.5))), "2칸 앞 연기 %s칸 → %s칸 (화면 높이 × %s)" % [full, near_s, FXC.SCREEN_CAP])
+	check(fx._capped(full, Vector3(0, 0, -10.0)) == full, "12칸 앞 연기는 그대로")
+	fx.update(0.1, null)
+	fx.free()

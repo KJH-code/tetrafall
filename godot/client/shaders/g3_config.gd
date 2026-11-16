@@ -23,6 +23,12 @@ const SKY_DISC_SIZE := 0.0005
 # 해 그림자 거리 (판 대각선 반 + 여백, render.js reach = hypot(W, D) / 2 + 4)
 const SHADOW_REACH_PAD := 4.0
 const SHADOW_MAX_DISTANCE := 60.0
+# c8-u3 가까운 몸 깎기 (toon_common·outline near_cut): 눈에서 x m 안의 몸 화소는 다 버리고 y m 까지 디더로 점점 덜 버림 (m — 카메라에서 화소까지 거리).
+# 1인칭·관전 카메라 앞을 지나는 남의 몸이 화면을 덮던 것. 판 몸 재질 (외부·구운 몸 — chars/external.gd Ext.look) 과 그 몸 외곽선 사본 (g3.gd far_outline) 에만 넣음
+const NEAR_CUT := Vector2(0.3, 0.75)
+# 몸 두께 어림 (m): 몸 앞면이 빠진 화소 뒤로 보이는 몸 반대편 외곽선 껍질 (앞면보다 그 화소의 몸 두께만큼 멂) 을 같이 버리려고, 껍질 화소 거리를 이만큼 가깝게 침 (outline.gdshader near_shell).
+# 작으면 두꺼운 몸통 가운데에 잉크색이 남고, 크면 그만큼 먼 몸까지 외곽선이 점점이 빠짐 — 외곽선은 NEAR_CUT.y + 이 값 (1.35 m) 밖에서 예전 그대로, NEAR_CUT.x + 이 값 (0.9 m) 안에서 다 빠짐 (몸 면은 NEAR_CUT 그대로)
+const NEAR_CUT_SHELL := 0.6
 const STENCIL_MY_BODY := 7 # 스텐실 값: 3인칭 내 몸 (사냥꾼의 눈 x-ray 가 이 값 위엔 안 그림 — JS 는 몸을 복사본 뒤에 그려 renderOrder 로 가름)
 const GRADE_LUT := 32 # 판 빛 색 보정 LUT 한 변 (game_light.gd grade_lut: CSS saturate·contrast·brightness 를 구움, 32³ RGB8 = 96KB)
 

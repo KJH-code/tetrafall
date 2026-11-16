@@ -13,6 +13,8 @@ uniform vec4 line_color = vec4(0.08, 0.05, 0.1, 1.0); // three 와 같이 선형
 
 uniform bool no_fog = false;
 uniform float far_taper = 0.0; // W31: 1 이면 (몸 외곽선) 먼 거리에서 굵기를 줄임 — g3_outline_far. 블록·아이템 외곽선은 0 (그대로)
+uniform vec2 near_cut = vec2(0.0); // c8-u3 가까운 몸 깎기 (toon_common near_cut 과 같은 값·같은 식): 몸 화소가 빠진 자리에 껍질이 잉크색 실루엣으로 남지 않게. 몸 외곽선 사본 (G3.far_outline) 에만, 공용 외곽선은 0
+uniform float near_shell = 0.0; // c8-u3: 몸 두께 어림 (m, g3_config NEAR_CUT_SHELL). 몸 앞면이 빠진 화소 뒤로 보이는 것은 몸 반대편 껍질 (속에서 본 면) — 앞면보다 몸 두께만큼 멀어 near_cut 거리 밖에 남음 → 껍질은 이만큼 가깝게 쳐서 같이 버림
 uniform float push = 0.0; // c7-u1·c7-fix F1: 0 보다 크면 껍질의 깊이만 눈에서 멀어지는 쪽으로 push m (뷰 공간 거리) 뒤로 (화면 xy 밀기·굵기는 그대로) — 양면 천 (toon_double) 안쪽 면 위로 껍질이 비치지 않게. 0 = 예전 식 그대로
 
 void vertex() {
@@ -39,9 +41,18 @@ void vertex() {
 }
 
 void fragment() {
+	// c8-u3 가까운 몸 깎기: 몸 재질 (toon_common fragment) 과 같은 디더 — 같은 화소 난수라 몸이 빠진 화소에서 껍질도 같이 빠짐.
+	// 몸 앞면이 빠진 화소 뒤로는 몸 반대편 껍질이 보임 (속에서 본 면, 앞면보다 그 화소의 몸 두께만큼 멂 — 그대로 두면 빠진 자리가 잉크색 실루엣으로 남음)
+	// → 껍질은 near_shell (몸 두께 어림) 만큼 가깝게 친 거리로 뺌: 두께가 그 안인 몸은 앞면이 빠진 화소에서 껍질도 늘 빠짐 (같은 난수, 문턱이 더 낮지 않음).
+	// 화소를 버리지 않고 알파 0 으로 (껍질은 원래 알파로 그림): 버리기를 넣으면 소프트웨어 렌더에서 구운 몸 8명 장면 프레임이 ~160 → ~180 ms (tools/shadow_meas.gd --no-ext 5번씩 중앙값) 로 느려졌음
+	float keep = 1.0;
+	if (near_cut.y > 0.0 && PROJECTION_MATRIX[3][3] < 0.5) {
+		float nk = clamp((length(VERTEX) - near_shell - near_cut.x) / (near_cut.y - near_cut.x), 0.0, 1.0);
+		if (fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715)))) >= nk) keep = 0.0;
+	}
 	// 고도 Compatibility 는 결과를 sRGB 로 안 바꿈 (toon_common 주석) → 선형 색을 직접 sRGB 로
 	vec3 c = max(line_color.rgb, vec3(0.0));
 	ALBEDO = mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
-	ALPHA = line_color.a;
+	ALPHA = line_color.a * keep;
 	if (g3_fog_far > 0.0 && !no_fog) FOG = vec4(g3_fog_color, smoothstep(g3_fog_near, g3_fog_far, -VERTEX.z)); // three 외곽선도 안개
 }

@@ -731,7 +731,9 @@ func _update_smoke(dt: float, cb: Basis) -> void:
 		s_rot[k] += s_spin[k] * dt
 		var t: float = 1.0 - s_life[k] / s_max[k]
 		var s: float = lerpf(s_s0[k], s_s1[k], 1.0 - (1.0 - t) * (1.0 - t))
-		smoke_mm.set_instance_transform(n, Transform3D(cb.scaled_local(Vector3(s, s, s)), Co.gpos(s_pos[k])))
+		var gp := Co.gpos(s_pos[k])
+		s = _capped(s, gp) # c8-u3: 카메라 앞에서 부푼 연기 한 덩이가 화면을 덮지 않게 (고리·빛과 같은 상한)
+		smoke_mm.set_instance_transform(n, Transform3D(cb.scaled_local(Vector3(s, s, s)), gp))
 		var c := s_color[k]
 		c.a *= minf(1.0, t * 8.0) * (1.0 - t) # 들어올 땐 빨리, 나갈 땐 천천히
 		smoke_mm.set_instance_color(n, c)

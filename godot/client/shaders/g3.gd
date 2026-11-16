@@ -87,6 +87,8 @@ static func far_outline(o: Material) -> Material:
 	if not _far_cache.has(id):
 		var d := o.duplicate() as ShaderMaterial
 		d.set_shader_parameter("far_taper", 1.0)
+		d.set_shader_parameter("near_cut", K.NEAR_CUT) # c8-u3: 몸 화소가 빠지는 자리 (눈앞) 에서 껍질도 같이 빠짐. 원본 (블록·아이템과 나눠 쓰는 공용 외곽선) 은 0 그대로
+		d.set_shader_parameter("near_shell", K.NEAR_CUT_SHELL)
 		_far_cache[id] = d
 	return _far_cache[id]
 
