@@ -72,6 +72,14 @@ static func lin(c) -> Color:
 	return Co.color(c).srgb_to_linear()
 
 
+# 구름 바다 꼭짓점 색 (c8-fix F4). 빛 안 받는 표준 재질의 꼭짓점 색은 이 렌더러에서 값 그대로 나감.
+# 바다 색을 따로 맞춘 테마 (TT.TUNE 에 sea 가 있는 것: 화산·수정·버섯·사막) 는 sRGB 그대로 — 그 값들이 이 길에서 맞춘 것 (선형으로 바꿔 넣으면 어두운 바다가 거의 0 = 화면 아래 검정).
+# 나머지 (초원·성·하늘성) 는 예전 화면색 그대로 (lin — 선형으로 바꾼 값이 나감): 통째로 sRGB 로 바꾸면 손대지 않은 밝은 테마 바다까지 옅어졌음 (하늘성 금빛 → 크림색, 구름과 덜 갈림)
+static func sea_color(id, c) -> Color:
+	var tune: Dictionary = preload("res://world/theme_tune.gd").TUNE
+	return Co.color(c) if tune.get(str(id), {}).has("sea") else lin(c)
+
+
 static func shade(c, k: float) -> Color:
 	var l := lin(c)
 	return Color(l.r * k, l.g * k, l.b * k)
@@ -509,8 +517,7 @@ func build_step() -> bool:
 			drift.position = Co.gxyz(cx, cy, 0)
 			# 구름 바다: 넓은 원판, 끝으로 갈수록 투명
 			var sea := MeshInstance3D.new()
-			# C8: 색은 sRGB 그대로 — 빛 안 받는 표준 재질의 꼭짓점 색은 이 렌더러에서 값 그대로 나감 (선형으로 바꿔 넣으면 어두운 바다가 거의 0 = 화면 아래 검정)
-			sea.mesh = sea_mesh(Co.color(L.sea[0]), C.WORLD_SEA_FADE[0], C.WORLD_SEA_FADE[1])
+			sea.mesh = sea_mesh(sea_color(theme_id, L.sea[0]), C.WORLD_SEA_FADE[0], C.WORLD_SEA_FADE[1])
 			var sm := StandardMaterial3D.new()
 			sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 			sm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA

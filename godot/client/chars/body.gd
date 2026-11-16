@@ -594,12 +594,13 @@ static func _collect_nodes(v, out: Dictionary) -> void:
 # 합친 표면 재질: 색은 정점 색 (흰 바탕 × 정점 색)
 static func _merged_material(m: Dictionary) -> Material:
 	if m.kind == "basic":
-		var b := StandardMaterial3D.new()
+		if not m.get("double", false):
+			return G3.basic_material(Color.WHITE, {"vertex_color": true}) # c8-fix F2: 가까운 몸 깎기를 받는 셰이더 재질 (정점 색은 sRGB 그대로 — 예전 표준 재질과 같은 색)
+		var b := StandardMaterial3D.new() # 양면 (지금 몸 자료엔 없음): 예전 표준 재질 그대로 — 가까운 몸 깎기는 안 받음
 		b.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		b.vertex_color_use_as_albedo = true
 		b.vertex_color_is_srgb = true # 정점 색은 sRGB 그대로 (Color 값)
-		if m.get("double", false):
-			b.cull_mode = BaseMaterial3D.CULL_DISABLED
+		b.cull_mode = BaseMaterial3D.CULL_DISABLED
 		return b
 	var opts := {"outline": m.get("outline", true), "vertex_color": true}
 	if int(m.get("emissive", 0)) != 0:
@@ -696,13 +697,16 @@ static func _material(m: Dictionary, skin: Color) -> Material:
 	var col := _mat_color(m, skin)
 	var alpha: float = m.opacity if m.get("transparent", false) else 1.0
 	if m.kind == "basic":
-		var b := StandardMaterial3D.new()
+		# c8-fix F2: 눈 흰자·눈동자·빛나는 조각 = 빛 안 받는 셰이더 재질 (G3.basic_material — 예전 표준 재질과 같은 색). 표준 재질은 가까운 몸 깎기 (near_cut) 를 못 받아
+		# 눈앞에서 몸은 점점이 빠지는데 눈알만 불투명하게 떠 있었음. near_cut 값은 툰 재질처럼 화풍 맞추기 (baked_look.style) 가 넣음. 재질 수는 예전과 같음 (몸마다 재질 표 한 줄에 하나)
+		if not m.get("double", false):
+			return G3.basic_material(Color(col.r, col.g, col.b, alpha), {"alpha": alpha < 1.0})
+		var b := StandardMaterial3D.new() # 양면 (지금 몸 자료엔 없음): 예전 표준 재질 그대로 — 가까운 몸 깎기는 안 받음
 		b.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		b.albedo_color = Color(col.r, col.g, col.b, alpha)
 		if alpha < 1.0:
 			b.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		if m.get("double", false):
-			b.cull_mode = BaseMaterial3D.CULL_DISABLED
+		b.cull_mode = BaseMaterial3D.CULL_DISABLED
 		return b
 	var opts := {"outline": m.get("outline", true), "opacity": alpha}
 	if int(m.get("emissive", 0)) != 0:
@@ -776,7 +780,7 @@ static func prune_ol_owner() -> int:
 			_ol_owner.erase(k)
 			n += 1
 	return n
-var _ol: Array = [] # [[재질, 가까울 때 외곽선]]
+var _ol: Array = [] # [[재질, 가까울 때 외곽선, 그 외곽선의 원본 (공용 외곽선)]]
 var _ol_built := false
 var _ol_far := false
 
@@ -788,11 +792,74 @@ func set_outline_far(far: bool) -> void:
 		return
 	var off := far or not G3.outline_on
 	var e0: Array = _ol[0]
-	if _ol_far == far and (e0[0] as Material).next_pass == (null if off else e0[1]):
+	if _ol_far == far and (e0[0] as Material).next_pass == (null if off else _ol_pass(e0)):
 		return
 	_ol_far = far
 	for e in _ol:
-		(e[0] as Material).next_pass = null if off else e[1]
+		(e[0] as Material).next_pass = null if off else _ol_pass(e)
+
+
+# 이 몸에 붙일 외곽선 사본: 보통은 가까운 몸 깎기를 같이 받는 것, 깎기를 꺼 둔 동안 (set_near_cut_off) 은 안 깎는 것 (G3.far_outline(원본, false))
+func _ol_pass(e: Array) -> Material:
+	return G3.far_outline(e[2], false) if _nc_off else e[1]
+
+
+# ---- c8-fix F3 가까운 몸 깎기 끄기 (world/cam_rig.gd 가 부름: 승자 클로즈업·내 이모트 셀카 대상) ----
+# 클로즈업 카메라는 앞이 막히면 가슴에서 WC.VICTORY_PULL[1] (0.6 m) 까지 다가감 = 가까운 몸 깎기 거리 (G3K.NEAR_CUT) 안 → 주인공 몸이 방충망 무늬로 빠졌음.
+# 끄는 동안: 이 몸이 지금 그리는 재질 (툰·눈·외부 모델 부품·소품, 반투명이면 안쪽 재질) 의 near_cut 을 0 으로 (원래 값은 기억), 외곽선은 안 깎는 사본으로 (몸만 끄면 선 없는 몸이 됨).
+# 끄는 동안 새로 끼워지는 재질 (유령화·무적 반투명, 바드 폼 몸통) 은 pose 끝에서 다시 훑어 같이 끔. 되돌리면 기억한 값 그대로
+var _nc_off := false
+var _nc_saved := {} # 재질 id → [재질, 원래 near_cut]
+var _nc_seen := {} # 훑어 본 재질 id
+var _nc_mis: Array = [] # 이 몸 아래 메시 노드 (끌 때 한 번 모음)
+var _nc_ext = null # 모을 때의 외부 모델 (나중에 붙으면 다시 모음)
+
+
+func set_near_cut_off(off: bool) -> void:
+	if off == _nc_off:
+		return
+	_nc_off = off
+	if off:
+		_nc_sweep()
+	else:
+		for e in _nc_saved.values():
+			(e[0] as ShaderMaterial).set_shader_parameter("near_cut", e[1])
+		_nc_saved.clear()
+		_nc_seen.clear()
+		_nc_mis.clear()
+		_nc_ext = null
+	if _ol_built:
+		for e in _ol:
+			if (e[0] as Material).next_pass != null:
+				(e[0] as Material).next_pass = _ol_pass(e)
+
+
+func near_cut_off() -> bool:
+	return _nc_off
+
+
+# 재질의 원래 near_cut (깎기를 꺼 둔 동안 0 으로 덮인 재질이면 기억해 둔 값)
+func _near_cut_of(m: ShaderMaterial):
+	var e = _nc_saved.get(m.get_instance_id())
+	return e[1] if e != null else m.get_shader_parameter("near_cut")
+
+
+func _nc_sweep() -> void:
+	if _nc_mis.is_empty() or _nc_ext != ext:
+		_nc_mis = find_children("*", "MeshInstance3D", true, false)
+		_nc_ext = ext
+	for mi in _nc_mis:
+		if not is_instance_valid(mi):
+			continue
+		var m := GhostDepth.inner((mi as MeshInstance3D).material_override) as ShaderMaterial
+		if m == null or _nc_seen.has(m.get_instance_id()):
+			continue
+		_nc_seen[m.get_instance_id()] = true
+		var nc = m.get_shader_parameter("near_cut")
+		if nc == null or Vector2(nc) == Vector2.ZERO:
+			continue
+		_nc_saved[m.get_instance_id()] = [m, nc]
+		m.set_shader_parameter("near_cut", Vector2.ZERO)
 
 
 func outline_far() -> bool:
@@ -884,9 +951,10 @@ func _collect_outline() -> void:
 			_ol_owner[m.get_instance_id()] = me
 			prune_ol_owner()
 			var far_o: Material = G3.far_outline(np)
-			_ol.append([m, far_o])
+			var e := [m, far_o, np]
+			_ol.append(e)
 			if G3.outline_on:
-				m.next_pass = far_o
+				m.next_pass = _ol_pass(e)
 
 
 func pose(p: Dictionary, now_ms: float) -> void:
@@ -929,6 +997,8 @@ func pose(p: Dictionary, now_ms: float) -> void:
 	t0 = _prof("몸 외부 몸 sync", t0)
 	_apply_opacity()
 	_fx_colors(p)
+	if _nc_off:
+		_nc_sweep() # c8-fix F3: 가까운 몸 깎기를 꺼 둔 동안 새로 끼워진 재질 (반투명·폼 몸통) 도 같이 끔
 	_prof("몸 재질 (투명·색 효과)", t0)
 	# 맞은 순간 찌그러짐 (G5 fx.squash_amount, render.js g.scale): 게임 (x, y 넓게, z 낮게) = 고도 (x, z 넓게, y 낮게)
 	var sq := _fx_amount("squash_amount")
@@ -1474,6 +1544,9 @@ func _costume_parts(st: Dictionary, a, dt: float, tt: float) -> void:
 					sn.rotation.x = float(h.side) * (0.15 if k == 0 else bend)
 
 
+var _rage_eye = null # 분노 눈 흰자 재질에 지난번 넣은 색 (같으면 안 올림)
+
+
 # 광전사 분노·어지러운 눈·별·바드 폼 튀기기 (figure.js figureAnim 끝부분, render.js 별)
 func _face(st: Dictionary, tt: float) -> void:
 	var rage = refs.get("rage")
@@ -1486,8 +1559,12 @@ func _face(st: Dictionary, tt: float) -> void:
 				bn.rotation.x = float(b.side) * (0.15 + 0.6 * k)
 		if rage.get("eyeMat") is Dictionary:
 			var em = mats[int(rage.eyeMat.mat)]
+			var ec := Color(1.0, 1.0 - 0.55 * k, 1.0 - 0.6 * k)
 			if em is StandardMaterial3D:
-				(em as StandardMaterial3D).albedo_color = Color(1.0, 1.0 - 0.55 * k, 1.0 - 0.6 * k)
+				(em as StandardMaterial3D).albedo_color = ec
+			elif G3.is_basic(em) and ec != _rage_eye: # c8-fix F2: 눈 재질이 셰이더 재질 — 값이 바뀔 때만 올림 (W15: 같은 값이어도 재질을 다시 올림)
+				_rage_eye = ec
+				(em as ShaderMaterial).set_shader_parameter("albedo", ec)
 		var beat := 1.0 + 0.25 * maxf(0.0, sin(tt * 9.0)) * k
 		for v in rage.get("veins", []):
 			var vn := _n(v)
@@ -1542,7 +1619,17 @@ func _apply_opacity() -> void:
 			continue
 		if not dr.has("alpha"):
 			var m: Dictionary = dr.m
-			if m.kind == "basic":
+			if m.kind == "basic" and G3.is_basic(dr.solid):
+				# c8-fix F2: 눈 (빛 안 받는 셰이더 재질) 의 반투명 갈래 — 같은 색·같은 가까운 몸 깎기 값 (깎기를 꺼 둔 동안이면 원래 값), 제 빛 가진 몸 표시도 그대로
+				var sb := dr.solid as ShaderMaterial
+				var bc: Color = sb.get_shader_parameter("albedo")
+				var ab: ShaderMaterial = G3.basic_material(bc, {"alpha": true, "vertex_color": sb.get_shader_parameter("use_vertex_color") == true})
+				ab.set_shader_parameter("near_cut", _near_cut_of(sb))
+				ab.set_shader_parameter("local_light", sb.get_shader_parameter("local_light"))
+				G3.toon_hazard_light(ab, hz_light) # 이 몸의 다른 셰이더 재질과 같은 표시 (눈 셰이더는 안 씀 — set_hz_light 가 몸 아래 재질에 다 넣는 것과 같게)
+				dr.alpha = ab
+				dr.col = bc
+			elif m.kind == "basic":
 				var b := (dr.solid as StandardMaterial3D).duplicate() as StandardMaterial3D
 				b.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 				dr.alpha = b
@@ -1797,8 +1884,8 @@ func _fx_colors(p: Dictionary) -> void:
 		if dr.get("ext", false):
 			continue
 		var m = (dr.mi as MeshInstance3D).material_override
-		if not (m is ShaderMaterial):
-			continue
+		if not (m is ShaderMaterial) or dr.m.get("kind") == "basic":
+			continue # 빛 안 받는 조각 (눈) 은 번쩍 없이 그대로 (c8-fix F2: 셰이더 재질이 됐어도 예전처럼 건너뜀)
 		if int(dr.m.get("emissive", 0)) != 0:
 			continue # 제 발광이 있는 조각은 그대로
 		# 값·재질이 지난번과 같으면 건너뜀 (W15: set_shader_parameter 는 같은 값이어도 재질을 다시 올림 — 몸마다 프레임마다 2~3번)

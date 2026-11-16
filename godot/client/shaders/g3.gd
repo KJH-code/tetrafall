@@ -12,6 +12,8 @@ const Co := preload("res://core/coords.gd")
 const K := preload("res://shaders/g3_config.gd")
 const TOON := preload("res://shaders/toon.gdshader")
 const TOON_ALPHA := preload("res://shaders/toon_alpha.gdshader")
+const BASIC := preload("res://shaders/basic.gdshader")
+const BASIC_ALPHA := preload("res://shaders/basic_alpha.gdshader")
 const OUTLINE := preload("res://shaders/outline.gdshader")
 const SKY := preload("res://shaders/sky.gdshader")
 const TERRAIN := preload("res://shaders/terrain.gdshader")
@@ -59,6 +61,21 @@ static func toon_material(color = Color.WHITE, opts := {}) -> ShaderMaterial:
 	return m
 
 
+# 빛 안 받는 몸 조각 재질 (three MeshBasicMaterial: 눈 흰자·눈동자·빛나는 조각 — shaders/basic_common.gdshaderinc). 색은 예전 빛 안 받는 표준 재질과 같음.
+# c8-fix F2: 가까운 몸 깎기 (near_cut) 를 툰 몸과 같이 받게 셰이더 재질로 — near_cut 은 기본 0 (끔), 몸 재질처럼 chars/baked_look.gd style 이 넣음.
+# color: Color 또는 0xRRGGBB (알파 포함). opts: alpha (반투명 갈래 — 유령화·무적·opacity < 1), vertex_color (색은 정점 색 × color)
+static func basic_material(color = Color.WHITE, opts := {}) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = BASIC_ALPHA if opts.get("alpha", false) else BASIC
+	m.set_shader_parameter("albedo", _col(color))
+	m.set_shader_parameter("use_vertex_color", opts.get("vertex_color", false))
+	return m
+
+
+static func is_basic(m) -> bool:
+	return m is ShaderMaterial and ((m as ShaderMaterial).shader == BASIC or (m as ShaderMaterial).shader == BASIC_ALPHA)
+
+
 # 외곽선만 (three OutlineEffect 의 뒤집은 껍데기). 다른 셰이더 재질 next_pass 로 붙여도 됨
 static func outline_material(thickness: float = C.OUTLINE_THICKNESS) -> ShaderMaterial:
 	var o := ShaderMaterial.new()
@@ -80,17 +97,21 @@ static func shared_outline(thickness: float = C.OUTLINE_THICKNESS, no_fog := fal
 
 # 몸 외곽선 (W31): 같은 외곽선 재질의 사본 — 먼 거리에서 굵기가 줄어드는 (far_taper) 것. 원본마다 하나 (나눠 씀)
 static var _far_cache := {}
+static var _far_uncut := {}
 
 
-static func far_outline(o: Material) -> Material:
+# cut 거짓 (c8-fix F3) = 가까운 몸 깎기를 안 받는 사본 (승자 클로즈업·셀카 대상 몸: body.set_near_cut_off — 몸 재질만 0 으로 하면 0.9 m 안에서 선이 다 빠진 몸이 됨). 이것도 원본마다 하나
+static func far_outline(o: Material, cut := true) -> Material:
+	var cache: Dictionary = _far_cache if cut else _far_uncut
 	var id := o.get_instance_id()
-	if not _far_cache.has(id):
+	if not cache.has(id):
 		var d := o.duplicate() as ShaderMaterial
 		d.set_shader_parameter("far_taper", 1.0)
-		d.set_shader_parameter("near_cut", K.NEAR_CUT) # c8-u3: 몸 화소가 빠지는 자리 (눈앞) 에서 껍질도 같이 빠짐. 원본 (블록·아이템과 나눠 쓰는 공용 외곽선) 은 0 그대로
-		d.set_shader_parameter("near_shell", K.NEAR_CUT_SHELL)
-		_far_cache[id] = d
-	return _far_cache[id]
+		if cut:
+			d.set_shader_parameter("near_cut", K.NEAR_CUT) # c8-u3: 몸 화소가 빠지는 자리 (눈앞) 에서 껍질도 같이 빠짐. 원본 (블록·아이템과 나눠 쓰는 공용 외곽선) 은 0 그대로
+			d.set_shader_parameter("near_shell", K.NEAR_CUT_SHELL)
+		cache[id] = d
+	return cache[id]
 
 
 # 몸 외곽선 거리 전역 값 (W31, WC.OUTLINE_FAR): x = 줄기 시작, y = 0 이 되는 거리, z = 그 거리에서의 배율. y = 0 이면 끔
@@ -676,6 +697,7 @@ static func clear_static() -> void:
 	_sprouts = []
 	_outline_cache = {}
 	_far_cache = {}
+	_far_uncut = {}
 	_piece_meshes = {}
 	_hz_shaders = {}
 	_piece_shapes = null

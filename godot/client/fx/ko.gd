@@ -173,13 +173,16 @@ func _plume_pose(pl: Dictionary, s: Vector3) -> void:
 		(pl.mats[i] as StandardMaterial3D).albedo_color.a = a
 
 
-# 줄기 화면 상한 배율 (c8-u3, FM.plume_cap): 지금 카메라에서 줄기 (가장 큰 = 바깥 단) 가 화면 높이 × FXC.SCREEN_CAP 을 넘으면 줄임. 카메라가 없으면 (테스트) 1
+# 줄기 화면 상한 배율 (c8-u3 · c8-fix F1, FM.plume_cap): 지금 카메라에 줄기 (가장 큰 = 바깥 단) 를 원근 투영한 크기 (비친 길이·끝 지름 중 큰 쪽) 가 화면 높이 × FXC.SCREEN_CAP 을 넘으면 줄임. 카메라가 없으면 (테스트) 1.
+# 줄기 꼭짓점 (노드 자리)·축 (pl.dir — 노드 부모 기준) 을 카메라 공간으로 옮겨 넘김
 func plume_cap(pl: Dictionary, s: Vector3) -> float:
 	if cam == null or not cam.is_inside_tree() or not pl.node.is_inside_tree():
 		return 1.0
-	var fwd := -cam.global_basis.z.normalized()
-	var depth: float = ((pl.node as Node3D).global_position - cam.global_position).dot(fwd)
-	return FM.plume_cap(C.KO_SMASH_LEN * s.y, 2.0 * C.KO_SMASH_WIDTH * s.x, depth, cam.fov, FXC.SCREEN_CAP, -(pl.dir as Vector3).dot(fwd))
+	var n: Node3D = pl.node
+	var inv := cam.global_transform.affine_inverse()
+	var par := n.get_parent() as Node3D
+	var dir: Vector3 = pl.dir if par == null else par.global_basis * (pl.dir as Vector3)
+	return FM.plume_cap(C.KO_SMASH_LEN * s.y, 2.0 * C.KO_SMASH_WIDTH * s.x, inv * n.global_position, (inv.basis * dir).normalized(), cam.fov, FXC.SCREEN_CAP, FXC.PLUME_CAP_SEG, FXC.PLUME_CAP_STEPS, FXC.PLUME_CAP_NEAR)
 
 
 func crush(p: Vector3, me: bool, near: bool) -> void:

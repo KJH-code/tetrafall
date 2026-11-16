@@ -99,7 +99,11 @@ const PLUME_CORE_ADD := false
 const PLUME_SORT_STEP := 3.0 # 단마다 그리는 차례를 이만큼 (m, sorting_offset) 앞으로 — 안쪽 단이 늘 바깥 단 위에 (단마다 길이가 달라 가운데 점 깊이로는 차례가 뒤바뀜)
 const PLUME_TIP_FADE := 0.25 # 넓은 끝에서 길이의 이 비율까지 알파가 0 → 1 (원뿔 꼭짓점 색 — 끝이 뚝 잘린 확성기 입 대신 흩어지는 끝. 보통 섞기 단만)
 const PLUME_SEG := 12 # 원뿔 둘레 마디 수 (예전 CylinderMesh radial_segments)
-# 줄기 화면 상한은 SCREEN_CAP 을 같이 씀 (fx_math.plume_cap): 줄기 길이·끝 지름 중 큰 쪽이 그 깊이에서 화면 높이 × SCREEN_CAP 을 넘으면 통째로 줄임
+# 줄기 화면 상한은 SCREEN_CAP 을 같이 씀 (fx_math.plume_cap): 줄기 길이·끝 지름 중 큰 쪽을 지금 카메라에 원근 투영한 크기가 화면 높이 × SCREEN_CAP 을 넘으면 통째로 줄임
+# (c8-fix F1: 예전엔 밑동 깊이에서 화면과 나란히 선 줄기로 어림해, 멀어지는 줄기는 넘지 않는데도 줄었음)
+const PLUME_CAP_SEG := 12 # 끝 원 둘레를 재는 점 수 (원뿔 둘레 마디 PLUME_SEG 와 같게)
+const PLUME_CAP_STEPS := 12 # 배율 이분법 횟수 (배율 정밀도 1 / 2^12)
+const PLUME_CAP_NEAR := 0.05 # 줄기 점이 카메라에서 이 깊이 (m) 보다 가까우면·뒤면 넘는 것으로 침 (카메라 가까운 자름 WC.CAM_CLIP 과 같은 값)
 
 # 효과 수준 (화질·설정) — 효과 노드가 프레임마다 한 번 정함
 static func level_of(gfx_level: String, low_gfx: bool) -> Dictionary:

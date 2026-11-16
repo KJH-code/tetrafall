@@ -833,35 +833,93 @@ func test_c7_ring_materials_warm() -> void:
 	Store._players_by_id = keep_by
 
 
-# c8-u3 낙사 줄기 화면 상한 (FM.plume_cap): 가장 큰 줄기 (길이 10.8칸) 도 그 깊이에서 화면 높이 × SCREEN_CAP 안, 멀면 그대로 (1), 카메라 뒤면 0.
-# 카메라 쪽으로 오는 줄기 (toward > 0) 는 줄인 줄기의 가까운 끝 깊이에서도 상한 안
+# 테스트 쪽 줄기 투영 (FM.plume_span 과 따로 짠 것): 카메라 공간 (보는 쪽 −z) 꼭짓점 apex · 축 dir · 길이 len_m · 끝 원 지름 width_m →
+# 화면에 비친 길이 (꼭짓점 ~ 끝 원 가운데) 와 비친 끝 지름 (끝 원 둘레 48점 중 가장 먼 두 점) 중 큰 쪽 ÷ 화면 높이. 카메라 뒤로 간 점이 있으면 INF
+func _plume_seen(len_m: float, width_m: float, apex: Vector3, dir: Vector3, fov: float) -> float:
+	var t := tan(deg_to_rad(fov) / 2.0)
+	var side := dir.cross(Vector3.FORWARD)
+	side = side.normalized() if side.length() > 1e-4 else Vector3.RIGHT
+	var up := side.cross(dir).normalized()
+	var pts := [apex, apex + dir * len_m]
+	for i in 48:
+		pts.append(apex + dir * len_m + (side * cos(TAU * i / 48.0) + up * sin(TAU * i / 48.0)) * width_m / 2.0)
+	var scr := []
+	for p in pts:
+		if p.z >= 0.0:
+			return INF
+		scr.append(Vector2(p.x, p.y) / (-p.z * t) / 2.0) # 화면 높이 = 1
+	var far: float = (scr[0] as Vector2).distance_to(scr[1])
+	for i in range(2, scr.size()):
+		for j in range(2, i):
+			far = maxf(far, (scr[i] as Vector2).distance_to(scr[j]))
+	return far
+
+
+# c8-fix F1 앞의 식 (비교용): 줄기 전체가 밑동 깊이 depth 에서 화면과 나란히 서 있다고 보고 잼 (toward = 줄기 축이 카메라 쪽으로 오는 정도, 멀어지면 0 으로 침)
+func _plume_cap_old(len_m: float, width_m: float, depth: float, fov: float, frac: float, toward: float) -> float:
+	var h := frac * 2.0 * tan(deg_to_rad(fov) / 2.0)
+	return clampf(h * depth / (maxf(len_m, width_m) + h * len_m * maxf(0.0, toward)), 0.0, 1.0)
+
+
+# c8-u3 · c8-fix F1 낙사 줄기 화면 상한 (FM.plume_cap): 줄기 길이·끝 지름 중 큰 쪽을 카메라에 원근 투영한 크기가 화면 높이 × SCREEN_CAP 안 — 넘지 않으면 배율 1 (안 줄임), 넘으면 딱 상한까지만.
+# 예전 식 (밑동 깊이에서 화면과 나란히 선 줄기로 어림) 은 멀어지는 줄기를 상한 안인데도 줄였고 (밑동 6 m: 배율 0.38), 넘던 줄기는 상한보다 훨씬 작게 줄였음 (3 m: 0.19, 맞는 값 0.55)
 func test_c8_plume_capped() -> void:
 	var big := FM.plume(0.25) # 다 뻗은 순간
 	var L: float = C.KO_SMASH_LEN * big.y
 	var W: float = 2.0 * C.KO_SMASH_WIDTH * big.x
 	var cap: float = FXC.SCREEN_CAP
+	var seg: int = FXC.PLUME_CAP_SEG
+	var steps: int = FXC.PLUME_CAP_STEPS
+	var nr: float = FXC.PLUME_CAP_NEAR
+	var tol := 0.01 # 끝 원을 12점 (그리는 원뿔도 12각) 으로 재는 것과 48점으로 재는 것의 차 (화면 높이 비 — 카메라 쪽으로 오는 줄기에서 가장 큼)
 	check(L > W and near(L, 10.8, 1e-4), "줄기 길이 %s 칸 · 끝 지름 %s 칸" % [L, W])
+	check(seg >= 8 and steps >= 10 and nr > 0.0 and nr < 0.4, "상한 재기 값: 둘레 %d점 · 이분법 %d번 · 가까운 깊이 %s" % [seg, steps, nr])
+	# 장면: 꼭짓점이 눈 아래 1.5 m · 앞 D m (화면 가운데 세로줄), 줄기는 수평 방위 yaw (0 = 카메라에서 멀어짐, 90 = 옆, 180 = 카메라 쪽) + 위로 KO_SMASH_UP. [D, yaw]
+	var cases := [[6.0, 0.0], [9.0, 0.0], [3.0, 0.0], [6.0, 45.0], [1.5, 0.0], [6.0, 90.0], [3.0, 90.0], [6.0, 180.0], [3.0, 180.0], [12.0, 135.0]]
 	for fov in [60.0, 75.0]:
-		var vh1: float = 2.0 * tan(deg_to_rad(fov) / 2.0) # 깊이 1칸에서 화면 높이 (칸)
-		for depth in [2.0, 5.0, 12.0]:
-			var k := FM.plume_cap(L, W, depth, fov, cap)
-			var seen: float = k * maxf(L, W) / (vh1 * depth) # 비친 크기 ÷ 화면 높이
-			check(k > 0.0 and k < 1.0 and seen <= cap + 1e-6 and near(seen, cap, 1e-5), "깊이 %s·시야 %s: 배율 %s, 화면 높이의 %s" % [depth, fov, k, seen])
-			check(FM.plume_cap(L, W, depth, fov, cap, -1.0) == k and FM.plume_cap(L, W, depth, fov, cap, 0.0) == k, "멀어지는·옆으로 가는 줄기는 밑동 깊이로 잼")
-			for toward in [0.5, 1.0]:
-				var kt := FM.plume_cap(L, W, depth, fov, cap, toward)
-				var nd: float = depth - kt * L * toward # 줄인 줄기 끝 (카메라에 가장 가까운 점) 깊이
-				check(kt > 0.0 and kt < k and nd > 0.0 and kt * maxf(L, W) / (vh1 * nd) <= cap + 1e-6, "카메라 쪽 %s: 배율 %s, 끝 깊이 %s 에서도 상한 안" % [toward, kt, nd])
-		check(FM.plume_cap(L, W, 60.0, fov, cap) == 1.0, "멀면 배율 1 (시야 %s)" % fov)
-		check(FM.plume_cap(L, W, 0.0, fov, cap) == 0.0 and FM.plume_cap(L, W, -3.0, fov, cap) == 0.0, "밑동이 카메라 뒤면 0")
-	check(FM.plume_cap(0.6, 0.2, 2.0, 75.0, cap) == 1.0, "작은 줄기는 그대로")
-	check(near(FM.plume_cap(1.0, 8.0, 2.0, 75.0, cap), cap * 2.0 * tan(deg_to_rad(37.5)) * 2.0 / 8.0), "폭이 더 크면 폭으로 잼")
-	check(FM.plume_cap(0.0, 0.0, 2.0, 75.0, cap) == 1.0, "크기 0 은 나누지 않음")
-	# 수명 내내: 깊이 2.5칸 (효과 견본 near) 에서 비친 길이 ≤ 상한
+		for sc in cases:
+			var d: float = sc[0]
+			var yaw := deg_to_rad(float(sc[1]))
+			var dir := (Vector3(sin(yaw), 0.0, -cos(yaw)) + Vector3.UP * C.KO_SMASH_UP).normalized()
+			var apex := Vector3(0.0, -1.5, -d)
+			var k := FM.plume_cap(L, W, apex, dir, fov, cap, seg, steps, nr)
+			var full := _plume_seen(L, W, apex, dir, fov)
+			var seen := _plume_seen(L * k, W * k, apex, dir, fov)
+			var was := _plume_cap_old(L, W, d, fov, cap, dir.z)
+			var tag := "밑동 %s m · 방위 %s° · 시야 %s" % [d, sc[1], fov]
+			check(k > 0.0 and k <= 1.0 and seen <= cap + tol, "%s: 배율 %s, 화면 높이의 %s ≤ %s" % [tag, k, seen, cap])
+			if full <= cap - tol:
+				check(k == 1.0, "%s: 상한 안 (%s) 이면 안 줄임 (배율 %s)" % [tag, full, k])
+			elif full > cap + tol:
+				check(k < 1.0 and seen >= cap - tol, "%s: 넘던 줄기 (%s) 는 딱 상한까지만 (%s)" % [tag, full, seen])
+				check(_plume_seen(L * k * 1.03, W * k * 1.03, apex, dir, fov) > cap, "%s: 더 키우면 넘음 (가장 큰 배율)" % tag)
+			if float(sc[1]) == 90.0:
+				check(near(k, was, 0.01), "%s: 옆으로 뻗는 줄기는 예전 식과 같은 배율 (%s · 예전 %s)" % [tag, k, was])
+			else:
+				check(k > was * 1.05, "%s: 멀어지는·다가오는 줄기는 예전 식 (%s) 보다 덜 줄임 (%s)" % [tag, was, k])
+			if float(sc[1]) > 90.0:
+				check((apex + dir * L * k).z < -nr, "%s: 카메라 쪽으로 오는 줄기 끝이 카메라 앞 (깊이 %s)" % [tag, -(apex + dir * L * k).z])
+		var away := Vector3(0.0, C.KO_SMASH_UP, -1.0).normalized()
+		check(FM.plume_cap(L, W, Vector3(0, -1.5, -60.0), Vector3.RIGHT, fov, cap, seg, steps, nr) == 1.0, "멀면 배율 1 (시야 %s)" % fov)
+		check(FM.plume_cap(L, W, Vector3(0, -1.5, 0.0), away, fov, cap, seg, steps, nr) == 0.0 and FM.plume_cap(L, W, Vector3(0, -1.5, 3.0), away, fov, cap, seg, steps, nr) == 0.0, "밑동이 카메라 뒤면 0")
+	# 검증 때의 네 장면 (시야 75, 눈 아래 1.5 m): 6·9 m 멀어짐은 상한 안이라 그대로 (예전 식 0.38 · 0.58), 3 m 멀어짐 0.55 (예전 0.19), 45° 비스듬히 0.80 (예전 0.38)
+	var ks := []
+	for sc in [[6.0, 0.0], [9.0, 0.0], [3.0, 0.0], [6.0, 45.0]]:
+		var yaw := deg_to_rad(float(sc[1]))
+		ks.append(FM.plume_cap(L, W, Vector3(0, -1.5, -float(sc[0])), (Vector3(sin(yaw), 0.0, -cos(yaw)) + Vector3.UP * C.KO_SMASH_UP).normalized(), 75.0, cap, seg, steps, nr))
+	check(ks[0] == 1.0 and ks[1] == 1.0 and near(ks[2], 0.546, 0.01) and near(ks[3], 0.796, 0.01), "6·9·3 m 멀어짐 · 45° 배율 %s" % [ks])
+	check(FM.plume_cap(0.6, 0.2, Vector3(0, 0, -2.0), Vector3.RIGHT, 75.0, cap, seg, steps, nr) == 1.0, "작은 줄기는 그대로")
+	var kw := FM.plume_cap(1.0, 8.0, Vector3(0, 0, -2.0), Vector3.FORWARD, 75.0, cap, seg, steps, nr)
+	check(kw < 1.0 and _plume_seen(1.0 * kw, 8.0 * kw, Vector3(0, 0, -2.0), Vector3.FORWARD, 75.0) <= cap + tol, "폭이 더 크면 끝 원 지름으로 걸림 (배율 %s)" % kw)
+	check(FM.plume_cap(0.0, 0.0, Vector3(0, 0, -2.0), Vector3.RIGHT, 75.0, cap, seg, steps, nr) == 1.0, "크기 0 은 그대로")
+	check(FM.plume_span(L, W, Vector3(0, -1.5, -6.0), Vector3(0.0, C.KO_SMASH_UP, 1.0).normalized(), 75.0, seg, nr) == INF, "끝이 카메라 뒤로 가면 넘는 것으로 침")
+	# 수명 내내: 깊이 2.5칸 (효과 견본 near) 옆으로 뻗는 줄기가 비친 크기 ≤ 상한
 	for i in 20:
 		var s := FM.plume(i / 20.0)
-		var k := FM.plume_cap(C.KO_SMASH_LEN * s.y, 2.0 * C.KO_SMASH_WIDTH * s.x, 2.5, 75.0, cap)
-		check(k * C.KO_SMASH_LEN * s.y / (2.0 * tan(deg_to_rad(37.5)) * 2.5) <= cap + 1e-6, "t=%s 비친 길이" % (i / 20.0))
+		var ls: float = C.KO_SMASH_LEN * s.y
+		var ws: float = 2.0 * C.KO_SMASH_WIDTH * s.x
+		var k := FM.plume_cap(ls, ws, Vector3(0, -1.0, -2.5), Vector3(1.0, C.KO_SMASH_UP, 0.0).normalized(), 75.0, cap, seg, steps, nr)
+		check(_plume_seen(ls * k, ws * k, Vector3(0, -1.0, -2.5), Vector3(1.0, C.KO_SMASH_UP, 0.0).normalized(), 75.0) <= cap + tol, "t=%s 비친 크기" % (i / 20.0))
 	# 줄기 노드: 카메라가 없으면 (테스트·트리 밖) 배율 1
 	var ko := KO.new()
 	var pl := {"node": Node3D.new(), "mats": [], "dir": Vector3.UP}

@@ -385,11 +385,21 @@ static func _hue_gap(a: Color, b: Color) -> float:
 	return minf(d, 360.0 - d)
 
 
-# 구름 바다 판의 꼭짓점 색은 sRGB 값 그대로 (Co.color 길). 선형으로 바꿔 넣으면 어두운 바다가 거의 0 = 화면 아래 검정이었음
+# 구름 바다 판의 꼭짓점 색 (Scenery.sea_color): 바다 색을 따로 맞춘 테마 (TT.TUNE 에 sea — 화산·수정·버섯·사막) 는 sRGB 값 그대로 (선형으로 바꿔 넣으면 어두운 바다가 거의 0 = 화면 아래 검정이었음),
+# 손대지 않은 밝은 테마 (초원·성·하늘성) 는 예전 화면색 그대로 (선형으로 바꾼 값 — c8-fix F4: 통째로 sRGB 로 바꿨더니 이 셋 바다가 옅어졌음)
 func test_c8_sea_vertex_srgb() -> void:
 	var src := FileAccess.get_file_as_string("res://world/scenery.gd")
-	check(not src.contains("sea_mesh(lin("), "바다 색을 선형으로 바꿔 넣지 않음")
-	check(src.contains("sea_mesh(Co.color(L.sea[0])"), "바다 색은 Co.color 길")
+	check(src.contains("sea_mesh(sea_color(theme_id, L.sea[0])"), "바다 색은 테마마다 고르는 sea_color 길")
+	var tuned := []
+	for id in C.WORLD_THEMES.keys():
+		var raw = TT.theme(id).sea[0]
+		if TT.TUNE.get(id, {}).has("sea"):
+			tuned.append(id)
+			check(Scenery.sea_color(id, raw) == Co.color(raw), "%s: 맞춘 바다는 sRGB 그대로" % id)
+		else:
+			check(TT.theme(id).sea == C.WORLD_THEMES[id].sea and Scenery.sea_color(id, raw) == Co.color(raw).srgb_to_linear(), "%s: 손대지 않은 바다는 원래 값 · 예전 화면색 (선형으로 바꾼 값)" % id)
+	tuned.sort()
+	check(tuned == ["crystal", "desert", "mushroom", "volcano"], "바다를 따로 맞춘 테마 %s" % [tuned])
 	for id in C.WORLD_THEMES.keys():
 		var s := Scenery.new()
 		s._ready()
@@ -401,10 +411,10 @@ func test_c8_sea_vertex_srgb() -> void:
 				sea = c
 		check(sea != null, "%s: 구름 바다 판" % id)
 		if sea != null:
-			var want: Color = Co.color(TT.theme(id).sea[0])
+			var want: Color = Scenery.sea_color(id, TT.theme(id).sea[0])
 			var col: Color = (sea.mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR] as PackedColorArray)[0]
 			var q := 1.5 / 255.0 # 꼭짓점 색은 8비트
-			check(absf(col.r - want.r) <= q and absf(col.g - want.g) <= q and absf(col.b - want.b) <= q, "%s: 바다 꼭짓점 색 %s = 표 색 %s (sRGB 그대로)" % [id, col, want])
+			check(absf(col.r - want.r) <= q and absf(col.g - want.g) <= q and absf(col.b - want.b) <= q, "%s: 바다 꼭짓점 색 %s = sea_color %s" % [id, col, want])
 			check(is_equal_approx(sea.position.y, float(TT.theme(id).sea[1])), "%s: 바다 높이 %s" % [id, sea.position.y])
 			var m: StandardMaterial3D = sea.material_override
 			check(m.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED and m.vertex_color_use_as_albedo and not m.vertex_color_is_srgb, "%s: 빛 안 받는 꼭짓점 색 재질 (값 그대로 나감)" % id)

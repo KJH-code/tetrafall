@@ -113,16 +113,52 @@ static func cap_size(size: float, dist: float, fov_deg: float, frac: float) -> f
 	return minf(size, frac * 2.0 * maxf(0.0, dist) * tan(deg_to_rad(fov_deg) / 2.0))
 
 
-# 낙사 줄기 화면 상한 (c8-u3): 줄기 (길이 len_m · 끝 지름 width_m 중 큰 쪽) 가 그 깊이에서 화면 높이 × frac 을 넘으면 줄이는 배율 (≤ 1 — 길이·폭에 같이 곱함, 넘지 않으면 1).
-# depth_m = 줄기 밑동 (꼭짓점) 의 카메라 깊이 (보는 방향 거리 — 그 깊이에서 화면 높이 = 2 × 깊이 × tan(세로 시야각 / 2), cap_size 와 같은 셈). 카메라 뒤 (≤ 0) 면 0.
-# toward = 줄기 축이 카메라 쪽으로 오는 정도 (−축·보는 방향, 0~1 — 멀어지는 줄기는 0): 줄기가 카메라로 다가오면 줄인 줄기의 끝 (가장 가까운 점) 깊이 depth_m − 배율 × len_m × toward 로 잼
-# → 배율 × 크기 = H × (depth_m − 배율 × len_m × toward), H = frac × 2 × tan(시야각 / 2) 를 풀어 배율 = H × depth_m / (크기 + H × len_m × toward)
-static func plume_cap(len_m: float, width_m: float, depth_m: float, fov_deg: float, frac: float, toward := 0.0) -> float:
-	var size := maxf(len_m, width_m)
-	if size <= 0.0:
+# 낙사 줄기를 원근 투영해 화면에 비친 크기 (÷ 화면 높이): 꼭짓점 apex 에서 축 axis 쪽으로 길이 len_m, 끝 원 지름 width_m 인 원뿔의
+# 비친 길이 (꼭짓점 ~ 끝 원 가운데) 와 비친 끝 지름 (끝 원 둘레 seg 점 가운데 가장 먼 두 점 사이) 중 큰 쪽 — 상한이 재는 '줄기 길이·끝 지름 중 큰 쪽' 을 그 자리·그 방향 그대로 비춘 것.
+# apex·axis = 카메라 공간 (고도 카메라: x 오른쪽 · y 위 · 보는 쪽이 −z → 깊이 = −z), axis 는 단위 벡터. 점 하나라도 카메라 가까이·뒤 (깊이 < near_m) 면 INF (화면을 넘는 것으로 침)
+static func plume_span(len_m: float, width_m: float, apex: Vector3, axis: Vector3, fov_deg: float, seg: int, near_m: float) -> float:
+	var tip := apex + axis * len_m
+	if -apex.z < near_m or -tip.z < near_m:
+		return INF
+	var t := 2.0 * tan(deg_to_rad(fov_deg) / 2.0) # 깊이 1 에서 화면 높이
+	var far2 := (Vector2(apex.x, apex.y) / (-apex.z * t)).distance_squared_to(Vector2(tip.x, tip.y) / (-tip.z * t))
+	var u := axis.cross(Vector3.UP)
+	u = u.normalized() if u.length() > 1e-6 else Vector3.RIGHT
+	var v := axis.cross(u).normalized()
+	var rim := PackedVector2Array()
+	for i in seg:
+		var ang := TAU * i / seg
+		var p := tip + (u * cos(ang) + v * sin(ang)) * (width_m / 2.0)
+		if -p.z < near_m:
+			return INF
+		rim.append(Vector2(p.x, p.y) / (-p.z * t))
+	for i in rim.size():
+		for j in range(i + 1, rim.size()):
+			far2 = maxf(far2, rim[i].distance_squared_to(rim[j]))
+	return sqrt(far2)
+
+
+# 낙사 줄기 화면 상한 (c8-u3 · c8-fix F1): 줄기가 화면에 비친 크기 (plume_span: 비친 길이·비친 끝 지름 중 큰 쪽) 가 화면 높이 × frac 을 넘으면 줄이는 배율 (≤ 1 — 길이·폭에 같이 곱함, 넘지 않으면 1).
+# apex·axis 는 plume_span 과 같음 (카메라 공간). 꼭짓점이 카메라 뒤·바로 앞 (깊이 < near_m) 이면 0.
+# 예전 식은 줄기 전체가 밑동 깊이에서 화면과 나란히 서 있다고 보고 쟀음 → 멀어지는 줄기는 상한 안인데도 줄었음 (밑동 6 m: 배율 0.38, 맞는 배율은 1) → 실제로 비친 크기를 재고 배율을 이분법 steps 번으로 풂.
+# 배율을 키우면 줄기 점마다 화면에서 꼭짓점 자리에서 멀어지기만 하고 (3D 직선의 투영은 직선) 늘 넘지 않는 쪽 값을 돌려줌. 카메라 쪽으로 오는 줄기는 끝 원이 카메라에 다가와 커지면 (또는 가까이·뒤로 가면) 거기서 멈춤.
+# 화면 가운데 쪽에서 옆으로 뻗는 줄기 (화면과 나란함) 는 예전 식과 같은 값, 멀어지는·다가오는 줄기는 더 큼 (tests/test_fx.gd test_c8_plume_capped)
+static func plume_cap(len_m: float, width_m: float, apex: Vector3, axis: Vector3, fov_deg: float, frac: float, seg: int, steps: int, near_m: float) -> float:
+	if maxf(len_m, width_m) <= 0.0:
 		return 1.0
-	var h := frac * 2.0 * tan(deg_to_rad(fov_deg) / 2.0)
-	return clampf(h * depth_m / (size + h * len_m * maxf(0.0, toward)), 0.0, 1.0)
+	if -apex.z < near_m:
+		return 0.0
+	if plume_span(len_m, width_m, apex, axis, fov_deg, seg, near_m) <= frac:
+		return 1.0
+	var lo := 0.0
+	var hi := 1.0
+	for i in steps:
+		var mid := (lo + hi) / 2.0
+		if plume_span(len_m * mid, width_m * mid, apex, axis, fov_deg, seg, near_m) <= frac:
+			lo = mid
+		else:
+			hi = mid
+	return lo
 
 
 # 카메라가 스매시 줄기 (꼭짓점 = 원점, 축 axis, 길이 KO_SMASH_LEN × len_k, 끝 반지름 KO_SMASH_WIDTH × side_k) 안이면 옅게 (0.2), 가장자리 1칸 안쪽에서 점점.

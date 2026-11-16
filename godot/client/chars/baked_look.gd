@@ -495,18 +495,28 @@ static func _eyes(cd: Dictionary, nodes: Array, k: float, out: Dictionary) -> vo
 			out.xf.append([bi, c + (bn.position - c) * k, k])
 
 
-# 재질에 외부 모델과 같은 툰 단·림 (+ outline 이면 얇은 외곽선 — G3 가 설정 '외곽선' 켜고 끌 때도 이 굵기로). 툰 재질이 아니면 그대로.
+# 재질에 외부 모델과 같은 툰 단·림 (+ outline 이면 얇은 외곽선 — G3 가 설정 '외곽선' 켜고 끌 때도 이 굵기로). 툰 재질이 아니면 그대로 —
+# 단 빛 안 받는 몸 조각 재질 (눈 흰자·눈동자: G3.basic_material) 은 가까운 몸 깎기 값만 툰 재질과 같이 받음 (c8-fix F2: 눈앞에서 몸과 같은 화소에서 빠지게).
 # char_id = 이 재질을 쓰는 몸의 캐릭터 (양면·민 외곽선은 캐릭터별 표 값). c7-fix F10: 예전엔 for_char·for_pieces 가 적어 둔 정적 변수에서 읽어, 늦게 부르면 (body._apply_opacity) 마지막에 만든 몸의 캐릭터 값을 읽었음.
-# rim_tint 거짓 = 림 틴트 없이 (1인칭 팔 쌍둥이 — c7-fix F7: 눈앞 팔에선 림이 몸 가장자리 테가 아니라 보호대·장갑 넓은 면으로 번져 플레이어 색으로 물듦). 예전 림 (rim_strength·rim_power) 은 그대로
+# rim_tint 거짓 = 1인칭 팔 쌍둥이: 림 틴트·가까운 몸 깎기 없이 (외부 모델 Ext.style_cfg(cfg, false) 와 같은 규칙).
+# 림 틴트 — c7-fix F7: 눈앞 팔에선 림이 몸 가장자리 테가 아니라 보호대·장갑 넓은 면으로 번져 플레이어 색으로 물듦. 예전 림 (rim_strength·rim_power) 은 그대로.
+# 가까운 몸 깎기 — c8-fix F6: 눈앞 팔은 늘 그 거리 안. 예전엔 cfg 에 near_cut 이 없어 기본 (G3K.NEAR_CUT) 을 받고 셰이더의 !local_light 한 겹으로만 막았음
 static func style(m: Material, outline: bool, char_id: String, rim_tint := true) -> void:
 	var sm := m as ShaderMaterial
-	if sm == null or sm.get_shader_parameter("toon_steps") == null:
+	if sm == null:
+		return
+	var E = load(EXT).Ext
+	var cfg: Dictionary = E.style_cfg({"double": LK.LOOK.get(char_id, {}).get("double", false), "rim_tint": LK.RIM_TINT, "rim_gate": LK.RIM_GATE}, rim_tint)
+	if G3.is_basic(sm):
+		E.near_cut(sm, cfg)
+		return
+	if sm.get_shader_parameter("toon_steps") == null:
 		return
 	sm.set_shader_parameter("toon_steps", LK.TOON_STEPS)
 	sm.set_shader_parameter("rim_strength", float(LK.RIM[0]))
 	sm.set_shader_parameter("rim_power", float(LK.RIM[1]))
 	# c7-u1: 양면 (캐릭터별)·림 틴트 (공통) — 외부 모델과 같은 길. 반투명 재질 (body._apply_opacity 가 나중에 부름) 은 양면이 안 먹고 림 틴트만
-	load(EXT).Ext.look(sm, {"double": LK.LOOK.get(char_id, {}).get("double", false), "rim_tint": LK.RIM_TINT if rim_tint else [0.0, 0.0], "rim_gate": LK.RIM_GATE})
+	E.look(sm, cfg)
 	if outline:
 		# G3 기록 (set_outline_on 이 차례로 다시 붙임) 에 얇은 것을 한 줄 더 — 뒤 줄이 이김. no_outline 으로 앞 줄을 지우면 기록을 다 훑어 몸마다 재질 수만큼 느려짐
 		G3.attach_outline(sm, outline_for(char_id))

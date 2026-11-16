@@ -149,6 +149,7 @@ func _ready() -> void:
 	hook_fx = HookFx.new()
 	body_fx = BodyFx.new()
 	rig.ghost_aim = ghost_aim
+	rig.bodies = bodies # c8-fix F3: 클로즈업 대상 몸의 가까운 몸 깎기를 끔 (cam_rig.close_uncut)
 	for n in [scenery, grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, ghost_aim, marks, light_fx, shots, hook_fx, body_fx, rig, fx_root]:
 		add_child(n)
 	fx_root.name = "Fx"
@@ -520,7 +521,9 @@ func _warm_scan_step() -> bool:
 		if not _ghost_warmed and G3 != null:
 			_ghost_warmed = true # 유령화·무적 몸 (반투명 + 깊이 선 묶음) 은 처음 켤 때 컴파일됨 — 같은 재질을 한 번 그림 (스킨 갈래는 몸 데우기가 맡음)
 			_scan_queue.append([preload("res://chars/ghost_depth.gd").with_prepass(G3.toon_material(Color.WHITE, {"opacity": 0.5})), false])
-			_scan_queue.append([preload("res://chars/ghost_depth.gd").with_prepass(WarmScan.std_material([0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0])), false]) # 코드 몸 (조각 메시) 의 유령화·무적 — 표준 반투명을 깊이 선으로 감쌈
+			# 구운·코드 몸의 눈 (조각 메시, 빛 안 받는 재질 G3.basic_material — c8-fix F2: 예전 표준 재질 [0, 1, 0, 0, …] 자리): 불투명 + 유령화·무적 (반투명을 깊이 선으로 감쌈)
+			_scan_queue.append([G3.basic_material(Color.WHITE), false])
+			_scan_queue.append([preload("res://chars/ghost_depth.gd").with_prepass(G3.basic_material(Color.WHITE, {"alpha": true})), false])
 		if _scan_queue.is_empty():
 			return true
 	var take: Array = _scan_queue.slice(0, WARM_SCAN_PER_PIECE)

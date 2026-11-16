@@ -296,7 +296,8 @@ const WARM_TABLE := {
 	"hazard_vignette.gdshader": "hazard_view.warm_canvas_step (k=0 으로 켬)",
 	"bblock.gdshader": "warm.scan (건축가 블록 풀 7개)",
 	"toon_double.gdshader": "W30 몸 데우기 (대기실 몸 — 사냥꾼·갈고리 천)",
-	"hazard.gdshaderinc": "(포함 파일)", "hz_light.gdshaderinc": "(포함 파일)", "piece_common.gdshaderinc": "(포함 파일)", "toon_common.gdshaderinc": "(포함 파일)",
+	"basic.gdshader": "world._warm_scan_step (G3.basic_material) + W30 몸 데우기 (구운·코드 몸 눈)", "basic_alpha.gdshader": "world._warm_scan_step 유령 재질 (눈 반투명을 깊이 선으로 감싼 것)",
+	"hazard.gdshaderinc": "(포함 파일)", "hz_light.gdshaderinc": "(포함 파일)", "piece_common.gdshaderinc": "(포함 파일)", "toon_common.gdshaderinc": "(포함 파일)", "basic_common.gdshaderinc": "(포함 파일)",
 }
 const TITLE_EXEMPT := "타이틀·메뉴 배경 (자기 장면, 처음 켤 때 한 번 — 이미 첫 화면)"
 

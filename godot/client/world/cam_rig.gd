@@ -49,6 +49,8 @@ func pull_in(at: Dictionary, to: Dictionary, solid: Callable) -> Dictionary:
 # 승자·셀카 카메라가 날아간 시간 (초)
 var last_phase := ""
 var ghost_aim = null # world/ghost_aim.gd 노드 (World 가 넣음)
+var bodies = null # world/bodies.gd 노드 (World 가 넣음): 클로즈업 대상 몸을 찾음 (close_uncut). 없으면 (테스트) 아무것도 안 함
+var _uncut = null # 지금 가까운 몸 깎기를 꺼 둔 몸 (WeakRef, 없으면 null)
 var ghost_refuse_at := -1e9 # 안 되는 투하를 누른 시각 (G4 조준 원 흔들림 자리)
 var field_size = null # 그리는 판 크기 (World 가 정함: 대기실 미리보기면 미리보기 판)
 var force := "" # 확인용 (명령줄 --world-view): "over" 늘 전체 보기 (WC.OVER_POSE), "third"·"first" 시점 고정
@@ -303,13 +305,34 @@ func close_id():
 	return null
 
 
+# c8-fix F3: 클로즈업 대상 (승자·내 이모트 셀카) 몸은 가까운 몸 깎기 (G3K.NEAR_CUT — 1인칭·관전 카메라 앞을 지나는 남의 몸용) 에서 뺌.
+# 이 카메라는 앞이 막히면 pull_in 이 가슴에서 WC.VICTORY_PULL[1] (0.6 m) 까지 당김 = 깎는 거리 안 → 주인공 몸이 방충망 무늬로 빠졌음 (카메라 동작은 그대로 둠).
+# id = 지금 대상 (없으면 null). 대상이 바뀌거나 (몸을 새로 만든 경우 포함) 끝나면 앞 몸은 되돌림. 프레임마다 불러도 됨 (같은 몸이면 아무것도 안 함)
+func close_uncut(id) -> void:
+	var body = null
+	if id != null and bodies != null:
+		var n = bodies.nodes.get(int(id))
+		if n != null and n.get("body") != null and n.body.has_method("set_near_cut_off"):
+			body = n.body
+	var was = _uncut.get_ref() if _uncut != null else null
+	if was == body:
+		return
+	if was != null:
+		was.set_near_cut_off(false)
+	if body != null:
+		body.set_near_cut_off(true)
+	_uncut = weakref(body) if body != null else null
+
+
 # 승자·셀카 카메라 (render.js victoryCamera): 대상 앞 VICTORY_DIST·VICTORY_UP 으로 VICTORY_FLY_S 동안 날아감 (움직임 줄이기면 바로)
 func victory_camera(dt: float, shown: Dictionary, look: Dictionary, solid: Callable) -> void:
 	var id = close_id()
 	var p := Store.player(id)
 	if id == null or p.is_empty() or not shown.has(int(id)):
 		vic_t = 0.0
+		close_uncut(null)
 		return
+	close_uncut(id)
 	vic_t += dt
 	var s: Vector3 = shown[int(id)]
 	var k := 1.0 if reduced() else minf(1.0, vic_t / C.VICTORY_FLY_S)

@@ -27,7 +27,8 @@ const SHADOW_MAX_DISTANCE := 60.0
 # 1인칭·관전 카메라 앞을 지나는 남의 몸이 화면을 덮던 것. 판 몸 재질 (외부·구운 몸 — chars/external.gd Ext.look) 과 그 몸 외곽선 사본 (g3.gd far_outline) 에만 넣음
 const NEAR_CUT := Vector2(0.3, 0.75)
 # 몸 두께 어림 (m): 몸 앞면이 빠진 화소 뒤로 보이는 몸 반대편 외곽선 껍질 (앞면보다 그 화소의 몸 두께만큼 멂) 을 같이 버리려고, 껍질 화소 거리를 이만큼 가깝게 침 (outline.gdshader near_shell).
-# 작으면 두꺼운 몸통 가운데에 잉크색이 남고, 크면 그만큼 먼 몸까지 외곽선이 점점이 빠짐 — 외곽선은 NEAR_CUT.y + 이 값 (1.35 m) 밖에서 예전 그대로, NEAR_CUT.x + 이 값 (0.9 m) 안에서 다 빠짐 (몸 면은 NEAR_CUT 그대로)
+# 작으면 두꺼운 몸통 가운데에 잉크색이 남고, 크면 그만큼 먼 몸까지 외곽선이 점점이 빠짐 — 외곽선은 NEAR_CUT.y + 이 값 (1.35 m) 밖에서 예전 그대로, NEAR_CUT.x + 이 값 (0.9 m) 안에서 다 빠짐 (몸 면은 NEAR_CUT 그대로).
+# 그 사이 (0.9~1.35 m) 는 몸 면은 그대로인 채 선만 점점 옅어짐 (선 화소가 1.0 m 에서 78 %, 1.2 m 에서 33 % 빠짐) — 몸 면이 그대로인 0.75 m 밖에서도 선은 1.35 m 까지 예전과 다름 (알고 받아들인 절충)
 const NEAR_CUT_SHELL := 0.6
 const STENCIL_MY_BODY := 7 # 스텐실 값: 3인칭 내 몸 (사냥꾼의 눈 x-ray 가 이 값 위엔 안 그림 — JS 는 몸을 복사본 뒤에 그려 renderOrder 로 가름)
 const GRADE_LUT := 32 # 판 빛 색 보정 LUT 한 변 (game_light.gd grade_lut: CSS saturate·contrast·brightness 를 구움, 32³ RGB8 = 96KB)
