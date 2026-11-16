@@ -45,6 +45,15 @@ const SKY_LOW_DIM := 0.7
 # 하늘 띠 (sky.gdshader band_k·band_glow): 지평선 쪽 부드러운 띠 2단. 그래픽 낮춤이면 0. band_glow 는 sky.glow 가 있는 (밤) 테마만
 const SKY_BAND_K := 0.5
 const SKY_BAND_GLOW := 0.25
+# 띠 색 대비 기본 (sky.gdshader band_mix·band_lift 기본값과 같음): 윗단 색 = mix(지평선, 중간, MIX), 아랫단 밝히기 LIFT
+const SKY_BAND_MIX := 0.4
+const SKY_BAND_LIFT := 0.0
+# 테마마다 띠 값 덮기 {k, mix, lift} (없는 키는 위 기본). TUNE 밖에 둠 — TUNE 은 테마 값 (ALLOWED 키) 만.
+# 하늘 성 (c6 리뷰 F4): 지평선 (0xFFD17C)·중간 (0xD88C8C) 색이 이미 부드럽게 이어져 기본 띠 (그 둘 사이 색을 반만 섞음) 가 바탕 기울기에 묻혀 안 보였음 →
+# 윗단을 지평선 색 그대로·세기 1 로 (밝은 금빛 구름 띠가 중간 색 하늘 위로 물결침), 아랫단은 0.3 밝게. 갤러리 map-spiral-eye·over 를 보며 맞춘 값 (0.9·0.1·0.15 는 아직 흐렸음)
+const SKY_BAND_THEME := {
+	"skycastle": {"k": 1.0, "mix": 0.0, "lift": 0.3},
+}
 
 # 섬 몸통 (scenery.gd island_shape): 고리 흔들림을 예전의 몇 배로 (반지름) · 높이 흔들림 ± · 방위마다 위 고리보다 반지름이 이 배 이하 · 높이는 depth 의 이만큼 더 아래 ·
 # 끝 점은 마지막 고리 가장 좁은 반지름의 이 배 안쪽 · 면마다 밝기 흔들림
@@ -116,12 +125,14 @@ static func cliff_floor(bands: Array, lo: float) -> Array:
 	return out
 
 
-# 하늘 띠 uniform 값 (sky.gdshader). id 가 표에 없으면 (예전 노을) 띠만
+# 하늘 띠 uniform 값 (sky.gdshader): 세기·glow 섞기 + 색 대비 (테마마다 SKY_BAND_THEME, 없으면 기본). 낮춤이면 세기 0. id 가 표에 없으면 (예전 노을) 띠만
 static func sky_band(id, low: bool) -> Dictionary:
+	var o: Dictionary = SKY_BAND_THEME.get(id, {}) if id != null else {}
+	var tone := {"band_mix": float(o.get("mix", SKY_BAND_MIX)), "band_lift": float(o.get("lift", SKY_BAND_LIFT))}
 	if low:
-		return {"band_k": 0.0, "band_glow": 0.0}
+		return {"band_k": 0.0, "band_glow": 0.0}.merged(tone)
 	var sky: Dictionary = theme(id).get("sky", {})
-	return {"band_k": SKY_BAND_K, "band_glow": SKY_BAND_GLOW if sky.has("glow") else 0.0}
+	return {"band_k": float(o.get("k", SKY_BAND_K)), "band_glow": SKY_BAND_GLOW if sky.has("glow") else 0.0}.merged(tone)
 
 
 # 그래픽 낮춤일 때 하늘 색 (top·mid·horizon·below) 에 곱할 값: TUNE 이 하늘을 밝힌 테마만 SKY_LOW_DIM, 나머지·보통 화질은 1

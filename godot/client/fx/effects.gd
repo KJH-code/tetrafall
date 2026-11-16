@@ -208,16 +208,14 @@ func _init() -> void:
 		arr.resize(MAX_SMOKE)
 	s_max.fill(1.0)
 	# 조각 (끝에 작아짐). c6: 빛을 안 받고 면마다 밝기가 다른 상자 (예전 빛 받는 상자는 해를 등진 면이 검정 — 환경광이 검정이라),
-	# 카메라 바로 앞이면 흐려짐 (예전엔 없어서 카메라 앞을 지나는 조각이 큰 검은 네모로 화면을 가림).
-	# 거리 흐림 때문에 투명 순서로 그려지므로: 깊이를 쓰고 다른 효과보다 먼저 그려 예전 (불투명) 처럼 연기·빛이 조각 앞뒤를 가림
+	# 카메라 바로 앞이면 사라짐 (예전엔 없어서 카메라 앞을 지나는 조각이 큰 검은 네모로 화면을 가림).
+	# 불투명 그대로 (조각은 크기로 사라지고 색 알파는 안 씀): 거리 흐림은 화소를 점점이 버리는 방식 — 버린 화소는 깊이를 안 써서 뒤에 그리는 번쩍·고리·연기가 그대로 보임.
+	# (알파 흐림 + 깊이 쓰기 + 먼저 그리기였을 땐 카메라 앞에서 안 보이게 된 조각이 깊이만 남겨 뒤 효과를 상자 모양으로 도려냄 — c6 리뷰 F1)
 	var cbox := chunk_mesh()
 	chunk_mat = StandardMaterial3D.new()
 	chunk_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	chunk_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	chunk_mat.vertex_color_use_as_albedo = true
-	chunk_mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS
-	chunk_mat.render_priority = -1
-	FM.near_fade(chunk_mat)
+	FM.near_fade(chunk_mat, true)
 	cbox.surface_set_material(0, chunk_mat)
 	_pool_mmi(chunk_mmi, chunk_mm, cbox, MAX_CHUNKS, false)
 	add_child(chunk_mmi)

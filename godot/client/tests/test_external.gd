@@ -1608,3 +1608,63 @@ func test_gallery_clock_same_cloth() -> void:
 		check(a == b, "%s 같은 걸음이면 천 뼈 회전이 같음 (벽시계 무관)" % ch)
 	Gfx.plan = was
 	check(not Motion_.clock.is_valid(), "끝나면 시계를 뺌")
+
+
+# c6 리뷰 F7: 갤러리가 마지막 자리에 세운 뒤 천을 가라앉힘 (tools/gallery.gd _settle — 가상 시계 한 걸음 + 외부 모델 sync() 를 CHAR_SETTLE_STEPS 번).
+# 자세 돌리기 (pose — 클립 층까지) 직후 찍는 프레임 (sync() 만) 으로 넘어가면 천이 한동안 움직임: 가라앉히지 않고 데우기 프레임만 지나 찍으면 아직 움직이는 중이고,
+# 가라앉힌 뒤에는 데우기 프레임 동안 천 뼈가 거의 안 돎 (= 사진에 고정되는 모양이 쉬는 모양)
+func _gallery_settle_run(ch: String) -> Array:
+	var GK = load("res://tools/gallery_config.gd")
+	var steps := [0]
+	Motion_.clock = func(): return GK.clock_s(steps[0])
+	var b = _body(ch)
+	var out := []
+	if b.ext != null and not b.ext.cloths.is_empty():
+		var snap := func() -> Array:
+			var q := []
+			for cl in b.ext.cloths:
+				for bi in cl.bones:
+					q.append(b.ext.sk.get_bone_pose_rotation(bi))
+			return q
+		var p := {"id": 9001, "alive": true, "x": 9.5, "y": 9.5, "z": 0.0, "yaw": 0.7, "damage": 0.0}
+		for i in int(GK.CHAR_POSE_STEPS):
+			steps[0] += 1
+			b.pose(p, i * GK.CHAR_POSE_MS)
+		var run := func(n: int) -> Array:
+			for i in n:
+				steps[0] += 1
+				b.ext.sync()
+			return snap.call()
+		out.append(run.call(int(GK.FIRST_WARM_FRAMES))) # 가라앉히지 않고 찍던 때
+		out.append(run.call(int(GK.CHAR_SETTLE_STEPS) - int(GK.FIRST_WARM_FRAMES))) # 가라앉힌 뒤
+		out.append(run.call(int(GK.FIRST_WARM_FRAMES))) # 그 뒤 데우기 프레임을 지나 찍는 때
+	Motion_.clock = Callable()
+	b.free()
+	return out
+
+
+static func _max_turn_deg(a: Array, b: Array) -> float:
+	var m := 0.0
+	for i in mini(a.size(), b.size()):
+		m = maxf(m, rad_to_deg((a[i] as Quaternion).angle_to(b[i] as Quaternion)))
+	return m
+
+
+func test_gallery_settle_cloth() -> void:
+	var GK = load("res://tools/gallery_config.gd")
+	check(int(GK.CHAR_SETTLE_STEPS) >= 200 and int(GK.CHAR_SETTLE_STEPS) * GK.CLOCK_STEP_MS <= 10000.0, "가라앉히는 걸음 %d (가상 3초 이상, 10초 이하)" % int(GK.CHAR_SETTLE_STEPS))
+	var Gfx = load("res://world/gfx.gd")
+	var was: Dictionary = Gfx.plan
+	Gfx.plan = {}
+	var worst_before := 0.0
+	for ch in ["ninja", "tank", "hunter", "hook"]:
+		var r := _gallery_settle_run(ch)
+		check(r.size() == 3 and (r[0] as Array).size() > 0, "%s 천 뼈가 있음" % ch)
+		if r.size() != 3:
+			continue
+		var still := _max_turn_deg(r[1], r[2])
+		check(still < 0.5, "%s 가라앉힌 뒤 데우기 프레임 동안 천 뼈가 %.2f도 (0.5도 미만) 만 돎" % [ch, still])
+		worst_before = maxf(worst_before, _max_turn_deg(r[0], r[2]))
+	check(worst_before > 1.0, "가라앉히지 않으면 찍는 순간 천이 쉬는 모양에서 %.2f도 떨어져 있음 (가라앉히기가 실제로 필요)" % worst_before)
+	Gfx.plan = was
+	check(not Motion_.clock.is_valid(), "끝나면 시계를 뺌")

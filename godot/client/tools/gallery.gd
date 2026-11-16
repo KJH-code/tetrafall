@@ -8,7 +8,7 @@
 #   pieces-<테마 id>.png ×7  — 그 테마 바닥·지형 단 위에 쌓인 테트리미노 7종 + 떨어지는 블록 하나와 그림자 칸
 # 판 그리기 (world/world.tscn) 를 그대로 띄우고 서버 스냅샷 자리 (Store.state·Store.grid) 에 가짜 판 상태를 넣음 → 재질·빛·판 빛·먼 배경이 판 중과 같음.
 # 캐릭터 몸은 chars.make_body 를 판처럼 자리 노드 아래에 세움. 카메라는 이 도구 것 (판 카메라 대신).
-# 같은 사진이 나오게: 난수 시드 고정, 설정은 gallery_config.SETTINGS 로 고정, 엔진 시간 배율 0 (셰이더 TIME·프레임 dt 가 멈춤 — 구름·물결·먼 섬이 그 자리),
+# 같은 사진이 나오게: 난수 시드 고정, 설정은 gallery_config.SETTINGS + 화질 (--low 면 낮음, 아니면 높음) 로 고정 (user://settings.json 과 상관없음, 파일에 안 씀), 엔진 시간 배율 0 (셰이더 TIME·프레임 dt 가 멈춤 — 구름·물결·먼 섬이 그 자리),
 # 몸 동작 시계 (chars/ext_motion.gd clock — 외부 모델의 천·클립·가산 층, 몸 효과) 는 벽시계 대신 이 도구의 가상 시계 (자세 걸음·프레임마다 정해진 만큼만 감).
 # --low = 설정 '그래픽 낮춤'. 끝나면 저장한 파일 목록, 종료 코드 0 (못 만든 사진·스크립트 오류가 있으면 1, 그릴 수 없는 환경 (--headless) 이면 2)
 extends SceneTree
@@ -92,11 +92,17 @@ func _initialize() -> void:
 	seed(K.SEED)
 	Engine.time_scale = 0.0
 	ExtMotion.clock = func(): return K.clock_s(clock_steps)
+
+
+# 첫 프레임에 (자동 로드 View 의 _ready 가 user://settings.json 을 읽은 뒤 — _initialize 에서 넣으면 그 파일 값에 덮임, tools/fx_sheet.gd 와 같음): 설정 고정 → 판·카메라·찍을 차례.
+# 예전엔 _initialize 에서 넣어, 파일에 gfx: low 가 남아 있으면 (확인용 --low 실행 뒤) 갤러리가 통째로 낮음 화질로 찍혔음 (c6 리뷰 M1)
+func _setup() -> void:
 	store = root.get_node("Store")
 	view = root.get_node("View")
 	for k in K.SETTINGS:
 		view.settings[k] = K.SETTINGS[k]
 	view.settings["lowGfx"] = low
+	view.settings["gfx"] = K.gfx_choice(low) # world/gfx.gd 가 이 값으로 화질을 정함 (파일에는 안 씀)
 	Chars = load("res://chars/chars.gd")
 	world = load("res://world/world.tscn").instantiate()
 	root.add_child(world)
@@ -147,6 +153,9 @@ func _plan() -> void:
 func _process(_dt: float) -> bool:
 	if done:
 		return true
+	if world == null:
+		_setup()
+		return false
 	clock_steps += 1 # 이 프레임의 몸 _process (외부 모델 천) 가 볼 시각 — 이 함수가 노드들보다 먼저 돎
 	if job_i >= 0:
 		wait -= 1
@@ -318,6 +327,7 @@ func _scene_chars(list: Array) -> void:
 		dist = (cam.global_position - Co.gxyz(mid.x, mid.y, top / 2.0)).length()
 	for f in figs:
 		_place(f, f.at, (Vector2(Co.game(cam.global_position).x, Co.game(cam.global_position).y) - Vector2(f.at)).angle() + float(f.turn))
+	_settle(figs)
 
 
 # 몸 자리·방향 (world/bodies.gd 처럼 자리 노드를 옮기고 몸은 pose) + 가만히 선 자세로 돌림 (늘 같은 시각 값 → 같은 자세)
@@ -329,6 +339,19 @@ func _place(f: Dictionary, at: Vector2, yaw: float) -> void:
 	for i in K.CHAR_POSE_STEPS:
 		clock_steps += 1
 		f.body.pose(p, i * K.CHAR_POSE_MS)
+
+
+# 마지막 자리에 선 채로 가상 시간만 더 흘림 (c6 리뷰 F7). 찍는 프레임들에서 외부 모델은 자기 _process 의 sync() (클립 층 없는 코드 자세) 로 돌아서,
+# 자세 돌리기 (_place — pose 가 클립 층까지 맞춘 자세, 몸마다 옮기고 돌리기 여러 번) 직후엔 천 (사냥꾼 망토 등) 이 그 사이를 옮겨 가며 크게 흔들리는 중.
+# 찍기 전 데우기 (8~20프레임 = 0.13~0.32초) 로는 못 가라앉아 망토가 옆으로 뻗은 순간이 사진에 고정됐음 → 찍는 프레임과 같은 걸음 (시계 한 걸음 + sync()) 을 미리 돌림.
+# 외부 모델이 없는 몸 (천 없음) 은 건드리지 않음 — 예전 사진과 같음
+func _settle(figs: Array) -> void:
+	for i in K.CHAR_SETTLE_STEPS:
+		clock_steps += 1
+		for f in figs:
+			var ext = f.body.get("ext")
+			if ext != null:
+				ext.sync()
 
 
 # n 아래 보이는 메시들의 상자를 frame 좌표로 (ui/portrait.gd _bounds 와 같되 줄 방향 축으로 — 비스듬한 줄에서도 폭이 부풀지 않게)

@@ -44,7 +44,11 @@ const HAZARD_GLOW := [0.4, 0.2] # 위험 표면 스스로 빛남 (용암, 물·�
 const FOAM_ALPHA := 0.85 # 닿는 곳 거품 띠 진하기
 const LABEL_LIFT := 0.2 # 이름표를 머리 위로 더 (두 줄 글자 가운데 자리)
 const LABEL_LIGHTEN := 0.35 # 이름표 글자 색을 몸 색보다 밝게
-const LABEL_PRIORITY := 3 # 이름표 그리기 순서 (c6): 효과 빛 (fx/effects.gd glow_mat 1) 보다 뒤에 그려 효과와 겹쳐도 이름·% 가 위에. 외곽선·HP 막대 뒤판은 이 값 - 1
+# 이름표 그리기 순서 (c6): 반투명 효과보다 뒤에 그려 효과와 겹쳐도 이름·% 가 위에. 외곽선·HP 막대 뒤판은 이 값 - 1 (= 10).
+# 11 인 까닭 (c6 리뷰 F3 — 3 이었을 땐 fx/effects.gd 효과 (0~1) 만 넘고 아래 것들이 글자를 덮음): 외곽선 (10) 까지 판 빛·빛 터짐·블록 출렁 (5) · 갈고리 호 (6) ·
+# 바닥 표시 (world/marks.gd 8) · 위험 고리 (world/body_fx.gd 9) 보다 크고, 머리 위 상태 글자·음표·사냥 표식 (body_fx.gd 12) · 조준 표시 (world/shots.gd 13) 보다는 작게 — 둘 다 채우는 값은 11 하나.
+# 새 효과 재질의 순서는 9 이하로 (이름표 위에 떠야 하는 표시만 12 이상) — tests/test_fx.gd test_c6_label_above_fx 가 소스의 순서 값을 훑어 고정
+const LABEL_PRIORITY := 11
 const CAM_CLIP := [0.05, 900.0] # 카메라 가까운·먼 자름
 const BLOCK_ROUGH := [0.9, 0.6] # 쌓인 칸, 떨어지는 칸 거칠기
 const ITEM_GLOW := 0.4 # 아이템 스스로 빛남

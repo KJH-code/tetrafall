@@ -5,8 +5,13 @@ const SEED := 20261115 # 전역 난수 (판 코드가 randf 를 쓰는 곳이 �
 const WARM_FRAMES := 8 # 장면을 깐 뒤 이만큼 그린 다음 찍음 (재질·셰이더·그림자가 준비될 때까지)
 const FIRST_WARM_FRAMES := 20 # 첫 장면·테마가 바뀐 장면은 더 (셰이더 만들기)
 const PLAYERS := 8 # 판 크기 기준 인원 (FIELD_SIZES)
-# 설정 (user://settings.json 과 상관없이 늘 같게). lowGfx 는 --low 가 정함
+# 설정 (user://settings.json 과 상관없이 늘 같게 — 갤러리가 첫 프레임에, View 가 파일을 읽은 뒤에 넣음). lowGfx·gfx 는 --low 가 정함
 const SETTINGS := {"shadows": true, "outline": true, "third": false, "reducedMotion": false, "perf": false}
+
+
+# 화질 선택 (View.settings.gfx): --low 면 낮음, 아니면 높음 — '자동' 은 기계 (GPU·창 크기)·저장된 파일에 따라 달라져서 안 씀
+static func gfx_choice(low: bool) -> String:
+	return "low" if low else "high"
 
 # ---- 캐릭터 ----
 const CHAR_MAP := "flat" # 초원 낮 빛, 지형 없는 빈 바닥 위에 세움
@@ -19,6 +24,8 @@ const CHAR_FIT_PASSES := 3 # 몸 방향 ↔ 카메라 거리 맞추기 되풀이
 const CHAR_MARGIN := 0.9 # 화면 채움 (1 = 꽉, 작을수록 여백)
 const CHAR_POSE_STEPS := 50 # 가만히 선 자세로 이만큼 자세를 돌림 (16ms 씩 — 숨쉬기 위상, portrait.gd 와 같게)
 const CHAR_POSE_MS := 16.0
+# 마지막 자리에 세운 뒤 천이 가라앉게 더 돌리는 걸음 (가상 시계 한 걸음 CLOCK_STEP_MS + 외부 모델 sync — 찍는 프레임과 같은 걸음). c6 리뷰 F7: 사냥꾼 망토가 옆으로 뻗은 채 찍힘
+const CHAR_SETTLE_STEPS := 300
 # 몸 동작 가상 시계 (chars/ext_motion.gd clock 에 꽂음 — 외부 모델 천·클립·가산 층이 벽시계 대신 봄): 시작 시각 + 걸음 수 × 걸음.
 # 시작은 0 보다 커야 함 (몸들이 '시각 0 = 아직 안 돎' 으로 봄), 걸음은 자세 한 걸음과 같게
 const CLOCK_START_S := 100.0

@@ -1,7 +1,7 @@
 # 구운 몸 화풍 맞추기 (c6-u1, 2026-11-15): 구운 몸 (.glb, chars/baked.gd) 이 외부 모델 (chars/external.gd tint "mask") 과 같은 규칙으로 보이게.
 #   살은 살색, 플레이어 색은 옷 칸만 (묶음 메시 사본의 정점 색·UV2.x 만 바꿈 — 모양·뼈는 그대로), 작은 눈 (눈 메시 사본), 얇은 선·부드러운 툰 단 (재질 값).
 # .glb 는 그대로 — 불러온 뒤 캐릭터마다 한 번 사본을 만들어 정적 캐시에 두고 같은 캐릭터 몸끼리 같이 씀. 표·수치는 baked_look_config.gd, 설명 BAKE.md '화풍 맞추기'.
-# 쓰는 곳: baked_batch.gd apply_look (body.gd _build_glb 가 Body.use_look 일 때 부름). 끄기 = 실행 인자 --no-look
+# 쓰는 곳: baked_batch.gd apply_look (body.gd _build_glb 가 Body.use_look 일 때 부름), 조각 몸 (1인칭 팔 쌍둥이) 은 body.gd _look_pieces → for_pieces. 끄기 = 실행 인자 --no-look
 # 순수 계산 (classify·paint·pieces·eye_sides·scale_eyes·area) 은 노드 없이 배열만 받음 → tests/test_baked_look.gd
 extends RefCounted
 
@@ -16,6 +16,7 @@ const PLAYER := 2
 const KEEP_FLAGS := Mesh.ARRAY_FLAG_USE_8_BONE_WEIGHTS | Mesh.ARRAY_FLAG_COMPRESS_ATTRIBUTES # 사본이 원본과 같은 꼴로 저장되게 넘기는 표시
 
 static var _cache := {} # 캐릭터 → {mesh, eyes {노드 번호 → 메시}, xf [[노드 번호, 자리, 크기 배율]]} 또는 null (표에 없음·못 만듦)
+static var _piece_cache := {} # 캐릭터 → {노드 번호 → 조각 메시 사본} 또는 null (표에 없음) — 조각 몸 (1인칭 팔 쌍둥이) 몫, for_pieces
 
 
 static func has_char(char_id: String) -> bool:
@@ -24,6 +25,7 @@ static func has_char(char_id: String) -> bool:
 
 static func clear_cache() -> void:
 	_cache.clear()
+	_piece_cache.clear()
 
 
 static func hex(v: int) -> Color:
@@ -374,6 +376,71 @@ static func for_char(char_id: String, cd: Dictionary, mi: MeshInstance3D, sk: Sk
 			out = {"mesh": copy_mesh(mi.mesh, arr), "eyes": {}, "xf": []}
 			_eyes(cd, nodes, float(look.get("eye_scale", 1.0)), out)
 	_cache[char_id] = out
+	return out
+
+
+# ---------- 조각 몸 (1인칭 팔 쌍둥이, c6 리뷰 F2) ----------
+# 조각 몸 (body._build_glb skin_batch 거짓 — 묶음 SkinnedMesh 없이 잎 조각을 그대로 그림) 은 조각마다 재질 색 하나라 (피부 재질 = 플레이어 색)
+# 묶음 사본 (for_char) 을 못 씀 → 묶음에 들어가는 조각 메시마다 같은 규칙 (classify·paint) 으로 정점 색·UV2.x 를 넣은 사본을 만듦.
+# 조각 정점은 묶음의 그 뼈 기준 좌표와 같음 (잎 `<주인>__m<재질>` = 주인 뼈, 자리 변환 없음 / 남긴 메시 노드 = 제 뼈 — BAKE.md 1절) → split·wide 문턱이 그대로 맞음.
+
+# 조각 메시 하나 → classify 가 받는 자료 (뼈 하나짜리): 피부 재질이면 흰색 + UV2.x 1, 아니면 재질 색 (sRGB 값 그대로) + UV2.x 0. 못 읽으면 빈 표
+static func piece_geometry(mesh: Mesh, m: Dictionary, bone: String) -> Dictionary:
+	if mesh == null or mesh.get_surface_count() != 1:
+		return {}
+	var arr: Array = mesh.surface_get_arrays(0)
+	var vs = arr[Mesh.ARRAY_VERTEX]
+	if vs == null or vs.size() == 0 or arr[Mesh.ARRAY_INDEX] == null:
+		return {}
+	var skin: bool = m.get("skin", false)
+	var cs := PackedColorArray()
+	cs.resize(vs.size())
+	cs.fill(Color.WHITE if skin else hex(int(m.get("color", 0xffffff))))
+	var u2 := PackedVector2Array()
+	u2.resize(vs.size())
+	u2.fill(Vector2(1.0 if skin else 0.0, 0.0))
+	var vb := PackedInt32Array()
+	vb.resize(vs.size())
+	return {"arrays": arr, "vs": vs, "cs": cs, "u2": u2, "bone": vb, "idx": arr[Mesh.ARRAY_INDEX], "names": PackedStringArray([bone]), "poses": [Transform3D.IDENTITY]}
+
+
+# manifest 노드 i 가 묶음에 들어가는 조각이면 그 뼈 이름 (잎 = 주인 노드, 남긴 메시 노드 = 자기), 아니면 ""
+static func piece_bone(cd: Dictionary, i: int) -> String:
+	var e: Dictionary = cd.nodes[i]
+	if not e.has("mat"):
+		return ""
+	if i >= int(cd.get("batchStart", cd.nodes.size())):
+		return str(cd.nodes[int(e.parent)].name) if int(e.parent) >= 0 else ""
+	return str(e.name) if e.get("batch", false) else ""
+
+
+# 캐릭터의 조각 메시 사본들 (한 번 만들어 둠, 같은 캐릭터 조각 몸끼리 같이 씀): {노드 번호 → 메시} — 역할이 하나라도 바뀐 조각만 (나머지는 원본 메시·재질 그대로).
+# 사본은 정점 색 (살 = 살색, 그대로인 옷 = 재질 색, 플레이어 칸 = 흰색 + UV2.x 1) 이라 정점 색 툰 재질 + skin_tint 로 그림 (body._look_pieces). 표에 없으면 null
+static func for_pieces(char_id: String, cd: Dictionary, nodes: Array):
+	if _piece_cache.has(char_id):
+		return _piece_cache[char_id]
+	var out = null
+	var look = LK.LOOK.get(char_id)
+	if look is Dictionary:
+		out = {}
+		var flesh := hex(int(look.flesh))
+		for i in mini(nodes.size(), cd.nodes.size()):
+			var bone := piece_bone(cd, i)
+			var mi := nodes[i] as MeshInstance3D
+			if bone == "" or mi == null:
+				continue
+			var g := piece_geometry(mi.mesh, cd.mats[int(cd.nodes[i].mat)], bone)
+			if g.is_empty():
+				continue
+			var roles := classify(look, cd.mats, g)
+			if roles.count(NONE) == roles.size():
+				continue
+			var painted := paint(g.cs, g.u2, roles, flesh)
+			var arr: Array = g.arrays
+			arr[Mesh.ARRAY_COLOR] = painted[0]
+			arr[Mesh.ARRAY_TEX_UV2] = painted[1]
+			out[i] = copy_mesh(mi.mesh, arr)
+	_piece_cache[char_id] = out
 	return out
 
 

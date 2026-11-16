@@ -121,6 +121,59 @@ func test_scale_and_plan() -> void:
 	check(GC.renderer_text("opengl3", "gl_compatibility") == "opengl3 · GL Compatibility", "렌더러 글")
 
 
+# c6 리뷰 M1: 화질을 다시 적용할 때 (apply(true) — 설정 '화질'·창 크기가 바뀜, 자동 조종 --low) lowGfx 는 메모리 값만 바꾸고 알림 — 설정 파일을 안 씀.
+# 예전엔 View.set_setting("lowGfx") 가 메모리 설정을 통째로 user://settings.json 에 써서, 확인용 --low 실행 한 번이 gfx: low · lowGfx: true 를 남겨 다음 실행이 다 낮음 화질로 떴음.
+# 진짜 설정 파일을 더럽히지 않게: 파일 상태 (있음·내용) 를 먼저 기억하고, 혹시 쓰였으면 (= 실패) 원래대로 되돌림
+func test_apply_does_not_write_settings_file() -> void:
+	var root: Window = (Engine.get_main_loop() as SceneTree).root
+	var path: String = View.PATH
+	var had := FileAccess.file_exists(path)
+	var before := FileAccess.get_file_as_string(path) if had else ""
+	var keep_low = View.settings.get("lowGfx", false)
+	var keep_gfx = View.settings.get("gfx", "")
+	var keep = [root.msaa_3d, root.scaling_3d_scale, WC.level]
+	var heard := []
+	var on_changed := func(k): heard.append(k)
+	View.changed.connect(on_changed)
+	var g = Gfx.new()
+	View.settings["lowGfx"] = false
+	View.settings["gfx"] = "low" # 자동 조종 --low 가 하는 일 (메모리만) → apply(true)
+	g.apply(true, root)
+	check(bool(View.settings.lowGfx) and WC.level == "low", "낮음 적용: lowGfx 켬 (메모리)")
+	check(heard == ["lowGfx"], "lowGfx 바뀜을 알림 (듣는 쪽은 그대로): %s" % str(heard))
+	View.settings["gfx"] = "high"
+	g.apply(true, root)
+	check(not bool(View.settings.lowGfx) and heard == ["lowGfx", "lowGfx"], "높음으로: lowGfx 끔 + 알림")
+	g.apply(true, root)
+	check(heard.size() == 2, "값이 그대로면 안 알림")
+	View.settings["gfx"] = "low"
+	g.apply(false, root)
+	check(bool(View.settings.lowGfx) and heard.size() == 2, "시작할 때 (apply(false)) 는 조용히")
+	var wrote := FileAccess.file_exists(path) != had or (had and FileAccess.get_file_as_string(path) != before)
+	check(not wrote, "apply 가 설정 파일 (%s) 을 쓰지 않음" % path)
+	if wrote: # 실패했을 때만: 진짜 설정 파일을 원래대로
+		if had:
+			var f := FileAccess.open(path, FileAccess.WRITE)
+			if f:
+				f.store_string(before)
+		else:
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	View.changed.disconnect(on_changed)
+	g.free()
+	View.settings["gfx"] = keep_gfx
+	View.settings["lowGfx"] = keep_low
+	root.msaa_3d = keep[0]
+	root.scaling_3d_scale = keep[1]
+	WC.level = keep[2]
+	# 갤러리 (tools/gallery.gd) 가 넣는 화질: --low 면 낮음, 아니면 높음 (저장된 파일·자동과 상관없이 같은 사진)
+	var GK = load("res://tools/gallery_config.gd")
+	check(GK.gfx_choice(true) == "low" and GK.gfx_choice(false) == "high" and GC.migrate({"gfx": GK.gfx_choice(false), "lowGfx": true}) == "high", "갤러리 화질 고정: 파일에 lowGfx 가 남아 있어도 높음")
+	var src := FileAccess.get_file_as_string("res://tools/gallery.gd")
+	var at_setup := src.find("func _setup()")
+	var at_set := src.find("view.settings[\"gfx\"] = K.gfx_choice(low)")
+	check(at_setup > 0 and at_set > at_setup and src.find("func _end(") > at_set and src.find("func _initialize()") < at_setup, "갤러리는 설정을 첫 프레임 (_setup — View 가 파일을 읽은 뒤) 에 넣음")
+
+
 # 적용 노드: 화질 → WC.level·판 화면 3D 배율·MSAA·lowGfx (설정 파일은 안 씀 — apply(false))
 func test_gfx_node_applies() -> void:
 	var root: Window = (Engine.get_main_loop() as SceneTree).root

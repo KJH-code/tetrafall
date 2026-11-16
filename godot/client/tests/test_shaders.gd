@@ -284,17 +284,68 @@ func test_c6_cliff_luma_floor() -> void:
 
 
 # 하늘 띠: 보통 화질이면 band_k > 0 (밤 테마는 glow 섞기), 그래픽 낮춤이면 0 — apply_theme 도 set_low 도
+# c6 리뷰 F4: 하늘 성 (spiral) 은 지평선·중간 색이 부드럽게 이어져 기본 띠가 바탕 기울기에 묻힘 → 그 테마만 띠 색 대비를 키움 (SKY_BAND_THEME). 나머지 테마는 기본값 그대로
+static func _band_contrast(id) -> float:
+	# 윗단 끝 (바탕이 거의 중간 색인 높이) 에서 띠 색과 바탕 색의 sRGB 거리 = 세기 × (1 - mix) × |지평선 - 중간|
+	var sky: Dictionary = TT.theme(id).sky
+	var b: Dictionary = TT.sky_band(id, false)
+	var h := Color.hex((int(sky.horizon) << 8) | 0xff)
+	var m := Color.hex((int(sky.mid) << 8) | 0xff)
+	return float(b.band_k) * (1.0 - float(b.band_mix)) * Vector3(h.r - m.r, h.g - m.g, h.b - m.b).length()
+
+
+func test_c6_sky_band_theme_contrast() -> void:
+	check(G3.SKY.code.contains("uniform float band_mix = %s;" % TT.SKY_BAND_MIX) and G3.SKY.code.contains("uniform float band_lift = %s;" % TT.SKY_BAND_LIFT), "셰이더 기본값 = 기본 상수 (안 넣어도 예전 띠 색)")
+	check(G3.SKY.code.contains("mix(horizon, mid, band_mix)") and G3.SKY.code.contains("(1.0 + band_lift)"), "띠 색이 uniform 을 씀")
+	for id in TT.SKY_BAND_THEME:
+		check(C.WORLD_THEMES.has(id), "%s: 있는 테마" % id)
+		var o: Dictionary = TT.SKY_BAND_THEME[id]
+		for k in o:
+			check(["k", "mix", "lift"].has(k), "%s: 띠 값 키 %s" % [id, k])
+		check(float(o.get("k", TT.SKY_BAND_K)) > 0.0 and float(o.get("k", TT.SKY_BAND_K)) <= 1.0 and float(o.get("mix", TT.SKY_BAND_MIX)) >= 0.0 and float(o.get("mix", TT.SKY_BAND_MIX)) <= 1.0 and float(o.get("lift", TT.SKY_BAND_LIFT)) >= 0.0 and float(o.get("lift", TT.SKY_BAND_LIFT)) <= 0.5, "%s: 띠 값 범위 %s" % [id, o])
+	check(TT.SKY_BAND_THEME.has("skycastle"), "하늘 성 띠 값이 있음")
+	var sc: Dictionary = TT.sky_band("skycastle", false)
+	check(is_equal_approx(sc.band_k, TT.SKY_BAND_THEME.skycastle.k) and is_equal_approx(sc.band_mix, TT.SKY_BAND_THEME.skycastle.mix) and is_equal_approx(sc.band_lift, TT.SKY_BAND_THEME.skycastle.lift) and sc.band_glow == 0.0, "하늘 성: 표 값 %s" % sc)
+	var sl: Dictionary = TT.sky_band("skycastle", true)
+	check(sl.band_k == 0.0 and sl.band_glow == 0.0, "하늘 성도 낮춤이면 띠 없음")
+	var others := 0.0
+	for id in C.WORLD_THEMES:
+		if TT.SKY_BAND_THEME.has(id):
+			continue
+		var b: Dictionary = TT.sky_band(id, false)
+		check(b.band_k == TT.SKY_BAND_K and b.band_mix == TT.SKY_BAND_MIX and b.band_lift == TT.SKY_BAND_LIFT, "%s: 띠 값 기본 그대로 (다른 테마는 안 바뀜)" % id)
+		others = maxf(others, _band_contrast(id))
+	check(C.WORLD_THEMES.size() - TT.SKY_BAND_THEME.size() == 6, "나머지 여섯 테마")
+	var was: float = TT.SKY_BAND_K * (1.0 - TT.SKY_BAND_MIX) * _band_contrast("skycastle") / (float(sc.band_k) * (1.0 - float(sc.band_mix)))
+	check(was < 0.1 and _band_contrast("skycastle") > others, "하늘 성 띠 대비 %.3f (예전 %.3f — 일곱 테마 중 가장 낮았음) > 다른 테마 최대 %.3f" % [_band_contrast("skycastle"), was, others])
+	# 판에 실제로 들어감 + 낮춤이면 꺼짐
+	var keep := _globals_keep()
+	var world := Node3D.new()
+	G3.apply_theme(world, "skycastle", false)
+	var m: ShaderMaterial = world.get_node("G3Env/Sky").material_override
+	check(is_equal_approx(m.get_shader_parameter("band_k"), sc.band_k) and is_equal_approx(m.get_shader_parameter("band_mix"), sc.band_mix) and is_equal_approx(m.get_shader_parameter("band_lift"), sc.band_lift), "하늘 성 하늘 재질에 띠 값")
+	G3.set_low(world, true)
+	check(m.get_shader_parameter("band_k") == 0.0, "set_low 켬: 하늘 성 띠 끔")
+	G3.set_low(world, false)
+	check(is_equal_approx(m.get_shader_parameter("band_k"), sc.band_k), "set_low 끔: 하늘 성 띠 다시")
+	G3.apply_theme(world, "meadow", false)
+	check(is_equal_approx(m.get_shader_parameter("band_mix"), TT.SKY_BAND_MIX) and is_equal_approx(m.get_shader_parameter("band_lift"), TT.SKY_BAND_LIFT) and is_equal_approx(m.get_shader_parameter("band_k"), TT.SKY_BAND_K), "다른 테마로 바꾸면 띠 값이 기본으로 돌아옴")
+	world.free()
+	_globals_back(keep)
+
+
 func test_c6_sky_band_low_off() -> void:
-	check(TT.sky_band("meadow", true) == {"band_k": 0.0, "band_glow": 0.0} and TT.sky_band("volcano", true) == {"band_k": 0.0, "band_glow": 0.0}, "낮춤이면 띠 없음")
-	check(TT.sky_band("meadow", false) == {"band_k": TT.SKY_BAND_K, "band_glow": 0.0}, "낮 테마: 띠만")
-	check(TT.sky_band("volcano", false) == {"band_k": TT.SKY_BAND_K, "band_glow": TT.SKY_BAND_GLOW}, "밤 테마 (sky.glow 있음): glow 섞기")
-	check(TT.sky_band(null, false) == {"band_k": TT.SKY_BAND_K, "band_glow": 0.0}, "예전 노을: 띠만")
+	var tone := {"band_mix": TT.SKY_BAND_MIX, "band_lift": TT.SKY_BAND_LIFT} # 색 대비 기본 (c6 리뷰 F4 — 테마마다 덮을 수 있음)
+	check(TT.sky_band("meadow", true) == {"band_k": 0.0, "band_glow": 0.0}.merged(tone) and TT.sky_band("volcano", true) == {"band_k": 0.0, "band_glow": 0.0}.merged(tone), "낮춤이면 띠 없음")
+	check(TT.sky_band("meadow", false) == {"band_k": TT.SKY_BAND_K, "band_glow": 0.0}.merged(tone), "낮 테마: 띠만")
+	check(TT.sky_band("volcano", false) == {"band_k": TT.SKY_BAND_K, "band_glow": TT.SKY_BAND_GLOW}.merged(tone), "밤 테마 (sky.glow 있음): glow 섞기")
+	check(TT.sky_band(null, false) == {"band_k": TT.SKY_BAND_K, "band_glow": 0.0}.merged(tone), "예전 노을: 띠만")
 	check(TT.SKY_BAND_K > 0.0 and TT.SKY_BAND_K <= 1.0 and TT.SKY_BAND_GLOW >= 0.0 and TT.SKY_BAND_GLOW <= 1.0, "띠 값 범위")
 	var names := []
 	for u in G3.SKY.get_shader_uniform_list():
 		names.append(u.name)
-	for u in ["top", "mid", "horizon", "below", "sun_dir", "glow", "disc", "disc_size", "stars", "band_k", "band_glow"]:
-		check(names.has(u), "하늘 셰이더 uniform %s (예전 이름 그대로 + 띠 둘)" % u)
+	for u in ["top", "mid", "horizon", "below", "sun_dir", "glow", "disc", "disc_size", "stars", "band_k", "band_glow", "band_mix", "band_lift"]:
+		check(names.has(u), "하늘 셰이더 uniform %s (예전 이름 그대로 + 띠 넷)" % u)
 	check(not G3.SKY.code.contains("sampler2D"), "띠는 텍스처 없이")
 	var keep := _globals_keep()
 	var world := Node3D.new()

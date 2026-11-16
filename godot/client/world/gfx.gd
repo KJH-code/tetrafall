@@ -1,5 +1,5 @@
 # 화질 적용 (W6 2026-11-02, 재혁 PC 랙): 설정 '화질' (View.settings.gfx: 자동·높음·보통·낮음) + 창 크기 + GPU 어댑터 → (계산 world/gfx_calc.gd)
-#   View.settings.lowGfx (예전 '그래픽 낮춤' = 낮음 — 그림자·블룸·거울·장식은 예전처럼 lowGfx 를 듣는 쪽이 끔), 판 3D 해상도 배율·MSAA, 1인칭 팔 MSAA·3D 배율, 거울 크기 (WC.level)
+#   View.settings.lowGfx (예전 '그래픽 낮춤' = 낮음 — 그림자·블룸·거울·장식은 예전처럼 lowGfx 를 듣는 쪽이 끔. 계산된 값이라 여기서는 설정 파일에 안 씀), 판 3D 해상도 배율·MSAA, 1인칭 팔 MSAA·3D 배율, 거울 크기 (WC.level)
 # World 가 _ready 맨 처음에 붙임 (그 뒤 world·타이틀이 lowGfx 를 읽음). 창 크기가 바뀌면 다시 (자동이면 높음 ↔ 보통, 배율)
 # 하이브리드 노트북 안내: Windows 에서 내장 그래픽으로 돌면 'reg query' 로 이 PC 의 다른 GPU 를 찾음 (스레드 — 타이틀을 안 멈춤) → hint (F3·화면 구석이 읽음)
 # W31 적응형 3D 해상도: 판 중 (playing) 에만 프레임 시간을 보고 배율을 천장(화질이 정한 배율)~바닥 사이에서 조절 (world/adapt_calc.gd). 대기실·메뉴·창 크기 바뀔 때는 천장 그대로.
@@ -97,10 +97,12 @@ func apply(emit: bool, win: Window = null) -> void:
 	root.scaling_3d_scale = scale_now
 	root.msaa_3d = WC.msaa_3d(p.low, Opts.web(), lv)
 	if bool(View.settings.get("lowGfx", false)) != p.low:
+		# lowGfx 는 화질에서 계산되는 값 — 메모리 값만 바꾸고 알림 (디스크엔 안 씀). View.set_setting 은 메모리 설정을 통째로 user://settings.json 에 써서,
+		# 확인용 실행 (--low·--gfx low·--view third — 메모리만 바꾸는 인자) 한 번이 gfx: low · lowGfx: true · third: true 를 파일에 남겨 다음 실행이 다 낮음 화질로 떴음 (c6 리뷰 M1).
+		# 사람이 설정 창에서 고른 화질은 ui/settings.gd 가 gfx 로 저장, 예전 파일 (gfx 빈 값 + lowGfx 켬) 은 GC.migrate 가 읽음
+		View.settings["lowGfx"] = p.low
 		if emit:
-			View.set_setting("lowGfx", p.low) # 듣는 쪽 (world·g3·타이틀·효과) 이 예전 '그래픽 낮춤' 처럼 바꿈
-		else:
-			View.settings["lowGfx"] = p.low
+			View.changed.emit("lowGfx") # 듣는 쪽 (world·g3·타이틀·효과) 이 예전 '그래픽 낮춤' 처럼 바꿈
 	sync_vm()
 
 

@@ -100,8 +100,9 @@ static func edge_alpha(k: float) -> float:
 const FX_NEAR_FADE := [0.4, 1.6]
 
 
-static func near_fade(m: BaseMaterial3D) -> void:
-	m.distance_fade_mode = BaseMaterial3D.DISTANCE_FADE_PIXEL_ALPHA
+# dither (c6 고침 F1): 불투명 재질용 — 알파 대신 화소를 점점이 버림 (버린 화소는 깊이도 안 씀 → 흐려진 조각이 뒤 효과를 도려내지 않음). 고리·파편은 알파 흐림 그대로
+static func near_fade(m: BaseMaterial3D, dither := false) -> void:
+	m.distance_fade_mode = BaseMaterial3D.DISTANCE_FADE_PIXEL_DITHER if dither else BaseMaterial3D.DISTANCE_FADE_PIXEL_ALPHA
 	m.distance_fade_min_distance = FX_NEAR_FADE[0]
 	m.distance_fade_max_distance = FX_NEAR_FADE[1]
 

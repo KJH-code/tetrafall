@@ -17,6 +17,9 @@ uniform float stars = 0.0;
 // 판 빛 (game_light.gd _paint_sky) 이 그 둘을 낮추면 띠도 같이 어두워짐. 값은 world/theme_tune.gd (sky_band), 그래픽 낮춤이면 band_k = 0 (잡음도 안 셈)
 uniform float band_k = 0.0; // 띠 세기 (0 = 없음)
 uniform float band_glow = 0.0; // 아랫단에 glow 빛깔 섞기 (밤 테마. 밝기는 horizon 밝기로 맞춤)
+// 띠 색 대비 (c6 리뷰 F4): 지평선·중간 색이 이미 부드럽게 이어지는 테마 (하늘 성) 는 기본 띠 색이 바탕 기울기에 묻힘 → 테마마다 (theme_tune.gd SKY_BAND_THEME).
+uniform float band_mix = 0.4; // 윗단 색 = mix(horizon, mid, 이 값). 작을수록 지평선 색 쪽 (중간 색 바탕과 더 갈림)
+uniform float band_lift = 0.0; // 아랫단 색을 이만큼 밝게 (× (1 + 값))
 
 const vec2 BAND_H = vec2(0.09, 0.22); // 아랫단·윗단 위 끝 높이 (h)
 const float BAND_WAVE = 0.11; // 끝이 물결치는 폭 (h)
@@ -53,8 +56,8 @@ void fragment() {
 		float e2 = BAND_H.y + n * BAND_WAVE;
 		float e1 = BAND_H.x + n * BAND_WAVE * 0.5;
 		vec3 lowc = mix(horizon, glow * (dot(horizon, LUMA) / max(dot(glow, LUMA), 0.001)), band_glow);
-		c = mix(c, mix(horizon, mid, 0.4), (1.0 - smoothstep(e2 - BAND_SOFT, e2 + BAND_SOFT, h)) * fade); // 윗단: 지평선과 중간 사이 색
-		c = mix(c, lowc, (1.0 - smoothstep(e1 - BAND_SOFT, e1 + BAND_SOFT, h)) * fade); // 아랫단: 지평선 색 (+ glow 빛깔)
+		c = mix(c, mix(horizon, mid, band_mix), (1.0 - smoothstep(e2 - BAND_SOFT, e2 + BAND_SOFT, h)) * fade); // 윗단: 지평선과 중간 사이 색
+		c = mix(c, lowc * (1.0 + band_lift), (1.0 - smoothstep(e1 - BAND_SOFT, e1 + BAND_SOFT, h)) * fade); // 아랫단: 지평선 색 (+ glow 빛깔)
 	}
 	float s = max(dot(d, sun_dir), 0.0);
 	if (stars > 0.0) {

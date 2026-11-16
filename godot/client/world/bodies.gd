@@ -109,7 +109,8 @@ func _make(p: Dictionary, color: int) -> Dictionary:
 	return n
 
 
-# 머리 위 이름표 (이름·피해 %). c6: 효과 빛 (가산, fx/effects.gd glow_mat 순서 1) 보다 뒤에 그림 — 예전 (순서 0) 엔 번쩍·불덩이가 글자를 덮었음
+# 머리 위 이름표 (이름·피해 %). c6: 반투명 효과 (번쩍·불덩이 1, 판 빛·블록 출렁 5, 갈고리 호 6, 바닥 표시 8, 위험 고리 9) 보다 뒤에 그림 — 예전 (순서 0) 엔 효과가 글자를 덮었음.
+# 머리 위 상태 글자·사냥 표식 (12)·조준 표시 (13) 는 이름표보다 위 그대로 (WC.LABEL_PRIORITY 주석)
 static func make_label() -> Label3D:
 	var lab := Label3D.new()
 	lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED

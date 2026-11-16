@@ -59,6 +59,8 @@ xvfb-run -a godot --path godot/client --resolution 1280x720 --rendering-driver o
 
 `--low` = 설정 '그래픽 낮춤' 으로 (파일 이름 같음 → 다른 `--out` 폴더에). 끝에 저장한 파일 목록, 종료 코드 0 (못 만든 사진·도는 동안 난 엔진/스크립트 오류가 있으면 1, `--headless` 처럼 그릴 수 없으면 안내 한 줄과 2).
 판 그리기 (`world/world.tscn`) 를 그대로 띄우고 스냅샷 자리 (`Store.state`·`Store.grid`) 에 가짜 판 상태를 넣어 찍으므로 재질·빛·판 빛은 판 중과 같음. 같은 사진이 나오게 엔진 시간 배율을 0 으로 두고 (구름·먼 섬·셰이더 물결이 멈춤) 몸 동작 시계 (`chars/ext_motion.gd` `clock` — 외부 모델의 천·클립·가산 층) 에 가상 시계를 꽂음 (자세 한 걸음·그린 한 프레임마다 16ms, `gallery_config.gd` `clock_s` — 60Hz 로 가만히 선 몸의 천 모양. 예전엔 벽시계라 목도리·망토 자리가 찍을 때마다 달랐음) — 실제 시계로 움직이는 떠다니는 빛 알갱이 (수정·화산·하늘 성·버섯 테마) 만 조금 달라짐 (두 번 찍어 정규화 RMSE 0.03 아래, 나머지는 0). 캐릭터 사진은 래그돌을 끄고 떠 있는 섬·먼 배경을 숨김. 카메라·배치 수치는 `tools/gallery_config.gd`.
+설정은 도구가 첫 프레임에 (자동 로드 View 가 `user://settings.json` 을 읽은 뒤) 고정 — 그림자·외곽선 켬 + 화질 높음 (`--low` 면 낮음), 파일에는 안 씀 → 저장된 설정이 무엇이든 같은 사진 (예전엔 `_initialize` 에서 넣어 파일 값에 덮였고, 확인용 `--low` 실행이 파일에 낮음 화질을 남겨 갤러리가 통째로 낮음으로 찍혔음 — c6 리뷰 M1. `world/gfx.gd` 도 이제 계산된 `lowGfx` 를 파일에 안 씀).
+캐릭터 사진은 마지막 자리에 세운 뒤 가상 시계로 `CHAR_SETTLE_STEPS` 걸음 (4.8초) 더 돌려 외부 모델 천을 가라앉힘 (c6 리뷰 F7: 자세 돌리기 직후 사냥꾼 망토가 옆으로 뻗은 순간이 찍히던 것).
 비교: `compare -metric RMSE 앞/char-tank.png 뒤/char-tank.png diff.png` (ImageMagick).
 
 ### 병합 뒤 기준선 (2026-11-15: 이 브랜치 `88d9b1d` + 최신 고도 작업 `6ba2e4d` v0.1.21-godot-preview)
@@ -66,7 +68,7 @@ xvfb-run -a godot --path godot/client --resolution 1280x720 --rendering-driver o
 | 명령 (레포 뿌리) | 결과 |
 | --- | --- |
 | `cd godot/server && dotnet test` | 330개 통과 (최신 쪽 229 + 이 브랜치 쪽 101) |
-| `godot --headless --path godot/client --import` 뒤 `godot --headless --path godot/client -s res://tests/run_tests.gd` | `524 통과, 0 실패` (최신 쪽 467 + 이 브랜치 쪽 57) |
+| `godot --headless --path godot/client --import` 뒤 `godot --headless --path godot/client -s res://tests/run_tests.gd` | `551 통과, 0 실패` (병합 때 524 = 최신 쪽 467 + 이 브랜치 쪽 57, 겉모습 사이클 1 (c6) +23 = 547, c6 리뷰 지적 고치기 +4: 화질 적용이 설정 파일을 안 씀·1인칭 팔 화풍·하늘 성 띠 대비·갤러리 천 가라앉히기) |
 | `npm test` | 580개 통과 (최신 쪽 그대로 — JS 판은 `6ba2e4d` 와 글자까지 같음) |
 | `cd godot/server && dotnet run --project src/Tetrafall.Trace -- hash` | `판 34개 해시 bf2e295158bcb4165fd79b097a1784c61b33716de4e28fa3023b46284dc4cc34` (최신 쪽 값) |
 | `… -- cshash` | `cs 판 12개 해시 cdc36128a49efbf0390074b4001cf4ec3bb39136f853be98779b0f3e66aafe37` (병합 때 다시 고정 — `godot/server/README.md`) |

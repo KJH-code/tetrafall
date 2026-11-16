@@ -547,8 +547,15 @@ func test_c6_chunk_tones() -> void:
 	var fx := Effects.new()
 	var m: StandardMaterial3D = fx.chunk_mm.mesh.surface_get_material(0)
 	check(m == fx.chunk_mat and m.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED and m.vertex_color_use_as_albedo, "조각 재질: 빛 안 받음 + 정점 색 (면 밝기) × 칸 색")
-	check(m.distance_fade_mode == BaseMaterial3D.DISTANCE_FADE_PIXEL_ALPHA and near(m.distance_fade_min_distance, FM.FX_NEAR_FADE[0]) and near(m.distance_fade_max_distance, FM.FX_NEAR_FADE[1]), "조각 재질: 카메라 바로 앞이면 흐려짐")
-	check(m.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_ALWAYS and m.render_priority < 0 and m.render_priority < fx.glow_mat.render_priority, "조각은 깊이를 쓰고 다른 효과보다 먼저 (연기·빛이 조각 앞뒤를 가림)")
+	check(m.distance_fade_mode == BaseMaterial3D.DISTANCE_FADE_PIXEL_DITHER and near(m.distance_fade_min_distance, FM.FX_NEAR_FADE[0]) and near(m.distance_fade_max_distance, FM.FX_NEAR_FADE[1]), "조각 재질: 카메라 바로 앞이면 화소를 점점이 버려 사라짐 (거리는 FX_NEAR_FADE 그대로)")
+	# c6 리뷰 F1: 조각은 불투명 패스 (알파 흐림 + 깊이 쓰기 + 먼저 그리기면 안 보이는 조각이 깊이만 남겨 뒤 효과를 도려냄). 버린 화소는 깊이를 안 씀
+	check(m.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED and m.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_OPAQUE_ONLY and m.render_priority == 0, "조각은 불투명 (투명 %d · 깊이 %d · 순서 %d)" % [m.transparency, m.depth_draw_mode, m.render_priority])
+	check(m.albedo_color.a == 1.0 and not m.no_depth_test, "조각 색 알파는 안 씀 · 깊이 검사 그대로 (연기·빛이 조각 앞뒤를 가림)")
+	# 고리·파편은 알파 흐림 그대로 (반투명 — 깊이 안 씀)
+	check(fx.ring_mat.distance_fade_mode == BaseMaterial3D.DISTANCE_FADE_PIXEL_ALPHA and fx.ring_mat.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA and fx.ring_mat.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_DISABLED, "고리는 알파 흐림·깊이 안 씀 그대로")
+	var probe := StandardMaterial3D.new()
+	FM.near_fade(probe)
+	check(probe.distance_fade_mode == BaseMaterial3D.DISTANCE_FADE_PIXEL_ALPHA, "near_fade 기본은 알파 흐림")
 	fx.free()
 
 
@@ -594,6 +601,35 @@ func test_c6_label_above_fx() -> void:
 	check(lab.outline_render_priority == WC.LABEL_PRIORITY - 1 and lab.outline_render_priority > fx.glow_mat.render_priority, "이름표 외곽선 %d 도 효과 빛 위, 글자 아래" % lab.outline_render_priority)
 	for m in [fx.ring_mat, fx.mm.mesh.material, fx.smoke_mat, fx.chunk_mat]:
 		check(lab.outline_render_priority > m.render_priority, "이름표가 파편·고리·연기·조각 위")
+	# c6 리뷰 F3: 이 풀 밖의 반투명 효과 (판 빛 5 · 바닥 표시 8 …) 도 이름표 외곽선보다 앞 순서 — 만들 수 있는 재질은 직접
+	var gl = preload("res://shaders/game_light.gd").new()
+	var halo: Material = (gl.get_node("Halos") as MultiMeshInstance3D).material_override
+	check(halo != null and lab.outline_render_priority > halo.render_priority, "이름표가 판 빛 (%d) 위" % (halo.render_priority if halo != null else -1))
+	gl.free()
+	var mark: StandardMaterial3D = preload("res://world/marks.gd").flat_mat(0xffffff, 0.5)
+	check(lab.outline_render_priority > mark.render_priority, "이름표가 바닥 표시 (%d) 위" % mark.render_priority)
+	# 나머지 (함수 안에서 만드는 재질: 빛 터짐·블록 출렁·갈고리 호·위험 고리 …) 는 소스의 순서 값을 훑음:
+	# 이름표 외곽선 (WC.LABEL_PRIORITY - 1) 보다 작거나, 이름표 위에 뜨는 표시 (머리 위 상태 글자·음표·사냥 표식 12 · 조준 표시 13) 이거나
+	var above := {"res://world/body_fx.gd": [12], "res://world/shots.gd": [13]}
+	var re := RegEx.create_from_string("render_priority\\s*=\\s*(-?\\d+)")
+	var seen := {}
+	var top := -1000
+	for dir in ["res://world", "res://fx", "res://shaders", "res://chars"]:
+		for f in DirAccess.get_files_at(dir):
+			if not f.ends_with(".gd"):
+				continue
+			var path: String = dir.path_join(f)
+			for hit in re.search_all(FileAccess.get_file_as_string(path)):
+				var v := int(hit.get_string(1))
+				seen[v] = true
+				if above.get(path, []).has(v):
+					check(v > WC.LABEL_PRIORITY, "%s 순서 %d 는 이름표 (%d) 위 표시" % [f, v, WC.LABEL_PRIORITY])
+					continue
+				top = maxi(top, v)
+				check(v < WC.LABEL_PRIORITY - 1, "%s 순서 %d < 이름표 외곽선 %d" % [f, v, WC.LABEL_PRIORITY - 1])
+	for v in [5, 6, 8, 9, 12, 13]:
+		check(seen.has(v), "소스에서 순서 %d 를 찾음 (훑기가 실제로 도는지)" % v)
+	check(top == 9 and WC.LABEL_PRIORITY == 11, "효과 순서 최대 %d < 외곽선 %d < 이름표 %d < 위 표시 12" % [top, WC.LABEL_PRIORITY - 1, WC.LABEL_PRIORITY])
 	check(lab.no_depth_test and lab.billboard == BaseMaterial3D.BILLBOARD_ENABLED and lab.fixed_size and near(lab.pixel_size, WC.LABEL_PIXEL, 1e-5) and lab.font_size == WC.LABEL_FONT[0] and lab.outline_size == WC.LABEL_FONT[1], "이름표 나머지 값은 예전 그대로")
 	lab.free()
 	fx.free()

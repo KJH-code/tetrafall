@@ -59,7 +59,8 @@ var cannon_kick_at := -1e9 # 대포 쏜 시각 (ms, 1인칭 반동)
 var rage_k := 0.0 # 광전사 분노 0~1 (피해 % / BERSERK_RAGE_PCT)
 var form_at := -1e9 # 바드 폼이 바뀐 시각 (초, 튀기기 연출)
 var opacity := 1.0 # 유령화·무적 반투명
-var drawn: Array = [] # 그리는 메시 [{mi, m (재질 표), merged}] (반투명 바꾸기)
+var drawn: Array = [] # 그리는 메시 [{mi, m (재질 표), merged, look? (조각 몸 화풍 사본 — _look_pieces)}] (반투명 바꾸기)
+var look_mat: ShaderMaterial = null # 조각 몸 화풍 사본 조각들이 같이 쓰는 정점 색 툰 재질 (_look_pieces, 없으면 null)
 var stars: Array[MeshInstance3D] = [] # 어지러움: 머리 위 노란 별 셋
 var fx_node = null
 var bonk_at := -1e9 # 머리 박음 시각 (초, headBonk)
@@ -206,6 +207,8 @@ func _build(char_id_: String, color: Color, merge: bool) -> void:
 		_build_pieces(color)
 	refs = cd.refs
 	_after_build(merge, baked_batch)
+	if use_look and baked and not merge and not want_ext:
+		_look_pieces() # c6 리뷰 F2: 조각 몸 (1인칭 팔 쌍둥이) 도 살색·옷 칸만 플레이어 색 (외부 모델 안쪽 몸은 안 그려서 뺌)
 	if want_ext:
 		if split_ext and third and not Opts.args().has("--no-body-split"):
 			ext_job = External.attach_job(self, third)
@@ -321,6 +324,35 @@ func _build_glb(scene: PackedScene, skin_batch: bool):
 	if use_look:
 		bb.apply_look(char_id, cd, nodes, mats) # c6-u1: 살색·옷 칸만 플레이어 색·작은 눈·얇은 선 (표에 없는 캐릭터는 그대로)
 	return bb
+
+
+# c6 리뷰 F2: 구운 조각 몸 (1인칭 팔 쌍둥이 — skin_batch 거짓) 의 화풍 맞추기. 묶음 몸은 baked_batch.apply_look 이 묶음 메시를 사본으로 바꾸지만
+# 조각 몸은 조각마다 재질 색 하나 (피부 재질 = 플레이어 색) 라 내 팔·주먹만 플레이어 색으로 남았음 (같은 화면의 초상·3인칭 몸은 살색).
+# 역할이 바뀌는 조각 (chars/baked_look.gd for_pieces — 묶음과 같은 표·규칙) 만 정점 색 사본 메시 + 이 몸의 정점 색 툰 재질 (skin_tint = 플레이어 색, 묶음 재질과 같은 꼴) 로,
+# 나머지 조각은 그대로. 재질엔 묶음 몸과 같은 툰 단·림·얇은 외곽선. 눈은 안 건드림 (1인칭 팔은 팔꿈치 아래·무기만 그림). 표에 없는 캐릭터·--no-look 이면 예전 그대로
+func _look_pieces() -> void:
+	var Look := BakedBatch.Look
+	var lk = Look.for_pieces(char_id, cd, nodes)
+	if lk == null:
+		return
+	for i in mats.size():
+		var md: Dictionary = cd.mats[i]
+		Look.style(mats[i], md.get("outline", true) and not md.get("transparent", false))
+	if lk.is_empty():
+		return
+	look_mat = G3.toon_material(Color.WHITE, {"vertex_color": true, "outline": true})
+	look_mat.set_shader_parameter("skin_tint", Color(skin_color.r, skin_color.g, skin_color.b, 1.0))
+	Look.style(look_mat, true)
+	var at := {}
+	for i in lk:
+		at[nodes[i]] = lk[i]
+	for dr in drawn:
+		var mesh = at.get(dr.mi)
+		if mesh == null:
+			continue
+		(dr.mi as MeshInstance3D).mesh = mesh
+		(dr.mi as MeshInstance3D).material_override = look_mat
+		dr.look = true # _fx_colors·_apply_opacity 가 묶음 재질처럼 다룸 (정점 색 + skin_tint)
 
 
 # 노드 나무를 만든 뒤 (두 길 같음): 관절 찾기·합치기/묶기·어지러움 별·처음 자세
@@ -1515,16 +1547,17 @@ func _apply_opacity() -> void:
 				b.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 				dr.alpha = b
 			else:
-				var col := Color.WHITE if dr.merged else _mat_color(m, skin_color)
-				var opts := {"opacity": 0.5, "outline": false, "vertex_color": dr.merged}
+				var vc: bool = dr.merged or dr.get("look", false) # 정점 색 메시 (묶음·조각 몸 화풍 사본)
+				var col := Color.WHITE if vc else _mat_color(m, skin_color)
+				var opts := {"opacity": 0.5, "outline": false, "vertex_color": vc}
 				if int(m.get("emissive", 0)) != 0:
 					opts.emissive = int(m.emissive)
 				if m.has("plaid"):
 					_plaid_opts(opts, m.plaid)
 				dr.alpha = G3.toon_material(col, opts)
-				if baked and dr.merged: # 구운 묶음: 피부 정점은 흰색 + skin_tint (baked_batch.gd)
+				if baked and vc: # 구운 묶음·조각 몸 화풍 사본: 피부 정점은 흰색 + skin_tint (baked_batch.gd)
 					dr.alpha.set_shader_parameter("skin_tint", (dr.solid as ShaderMaterial).get_shader_parameter("skin_tint"))
-				if batch is BakedBatch and batch.look: # c6-u1: 반투명 재질도 사본 메시와 같은 툰 단·림 (외곽선 없음)
+				if (batch is BakedBatch and batch.look) or look_mat != null: # c6-u1: 반투명 재질도 사본 메시와 같은 툰 단·림 (외곽선 없음)
 					BakedBatch.Look.style(dr.alpha, false)
 				G3.toon_hazard_light(dr.alpha, hz_light)
 				dr.col = col
@@ -1774,11 +1807,12 @@ func _fx_colors(p: Dictionary) -> void:
 		dr.fx_m = m
 		dr.fx_v = f
 		var sm := m as ShaderMaterial
-		var is_skin: bool = not dr.merged and dr.m.get("skin", false)
+		var look_piece: bool = dr.get("look", false) # 조각 몸 화풍 사본 (_look_pieces): 묶음 재질처럼 skin_tint·skin_emissive
+		var is_skin: bool = not dr.merged and not look_piece and dr.m.get("skin", false)
 		sm.set_shader_parameter("emissive", f[1] if is_skin else f[2])
 		if is_skin:
 			sm.set_shader_parameter("albedo", Color(skin.r, skin.g, skin.b, 1.0))
-		elif dr.mi == (batch.mi if batch != null else null):
+		elif look_piece or dr.mi == (batch.mi if batch != null else null):
 			sm.set_shader_parameter("skin_emissive", f[1])
 			sm.set_shader_parameter("skin_tint", Color(skin.r, skin.g, skin.b, 1.0 if skin != skin_color or baked else 0.0)) # 구운 묶음은 피부 정점이 흰색 — 늘 몸 색을 칠함
 

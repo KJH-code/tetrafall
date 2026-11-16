@@ -14,6 +14,7 @@ const LK := preload("res://chars/baked_look_config.gd")
 const GhostDepth := preload("res://chars/ghost_depth.gd")
 
 const RED := Color(0.9, 0.2, 0.2)
+const PIECE_POS_EPS := 1e-4 # 조각 사본 정점 자리 허용 오차 (칸) — 압축 메시를 다시 담는 양자화 (실측 최대 7e-6)
 const BLUE := Color(0.1, 0.2, 0.9)
 
 var errors: Array = []
@@ -274,18 +275,182 @@ func test_look_off_is_old() -> void:
 		for x in [o, b, o2]:
 			x.free()
 		src.free()
-	# 조각 몸 (1인칭 팔 쌍둥이·외부 모델 안쪽 몸) 과 허수아비는 look 과 상관없음
+	# 조각 몸 (1인칭 팔 쌍둥이) 은 묶음이 없음 — 화풍은 조각 사본으로 (test_look_pieces_first_person). 허수아비는 look 과 상관없음
 	var was: bool = Body.use_look
 	Body.use_look = true
 	var p = Body.new()
 	p.build("tank", RED, false)
-	check(p.batch == null and p.baked, "조각 몸은 묶음 없음 (look 안 입힘)")
+	check(p.batch == null and p.baked, "조각 몸은 묶음 없음")
 	p.free()
 	var d = Body.new()
 	d.build("dummy", RED, true)
 	check(d.batch == null or d.batch.get("look") != true, "허수아비는 look 없음")
 	d.free()
 	Body.use_look = was
+
+
+# 조각 몸 (1인칭 팔 쌍둥이 — merge 끔) 하나. 외부 모델은 ext 로
+func _pieces(ch: String, color: Color, look: bool, ext := false):
+	var was_l: bool = Body.use_look
+	var was_e: bool = Body.use_ext
+	Body.use_look = look
+	Body.use_ext = ext
+	var b = Body.new()
+	b.build(ch, color, false)
+	Body.use_look = was_l
+	Body.use_ext = was_e
+	return b
+
+
+# 정점 하나의 칸: "P" 플레이어 색 (UV2.x 1 → skin_tint) · 아니면 정점 색 (살색·옷 색) 16진
+static func _cell(c: Color, u2x: float) -> String:
+	return "P" if u2x > 0.5 else "%06x" % Look.rgb8(c)
+
+
+# c6 리뷰 F2: 1인칭 팔 (조각 몸) 도 화풍 맞추기 — 예전엔 묶음 몸만 바꿔서 내 팔·주먹만 플레이어 색으로 남았음 (같은 화면의 초상·3인칭 몸은 살색).
+# 조각 몸의 칸 (뼈마다 플레이어 색·살색·옷 색 정점 수) 이 묶음 사본과 똑같고, 손 조각은 살색 정점 + 정점 색 툰 재질 (skin_tint = 플레이어 색), 끄면 (--no-look) 예전 그대로
+func test_look_pieces_first_person() -> void:
+	for ch in LK.LOOK:
+		var flesh: int = int(LK.LOOK[ch].flesh)
+		var p = _pieces(ch, RED, true)
+		var o = _pieces(ch, RED, false)
+		var b = _body(ch, RED, true)
+		var cd: Dictionary = p.cd
+		check(p.baked and p.batch == null and p.look_mat != null and o.look_mat == null, "%s 조각 몸: 화풍 재질 (켬 %s · 끔 %s)" % [ch, p.look_mat, o.look_mat])
+		if p.look_mat == null:
+			for x in [p, o, b]:
+				x.free()
+			continue
+		# 묶음 사본의 칸: 뼈 이름 | 칸 → 정점 수
+		var g := _geo(b)
+		var want := {}
+		for v in g.vs.size():
+			var k: String = "%s|%s" % [g.names[g.bone[v]], _cell(g.cs[v], g.u2[v].x)]
+			want[k] = int(want.get(k, 0)) + 1
+		# 조각 몸의 칸: 사본 조각은 정점 색·UV2, 그대로인 조각은 재질 (피부 재질 = 플레이어 색, 아니면 재질 색)
+		var got := {}
+		var copies := 0
+		var bad_shape := 0
+		var bad_mat := 0
+		var kept_bad := 0
+		for i in cd.nodes.size():
+			var bone := Look.piece_bone(cd, i)
+			if bone == "":
+				continue
+			var mi := p.nodes[i] as MeshInstance3D
+			var om := o.nodes[i] as MeshInstance3D
+			var arr: Array = mi.mesh.surface_get_arrays(0)
+			var n: int = arr[Mesh.ARRAY_VERTEX].size()
+			var md: Dictionary = cd.mats[int(cd.nodes[i].mat)]
+			if mi.mesh != om.mesh:
+				copies += 1
+				var oa: Array = om.mesh.surface_get_arrays(0)
+				var cs: PackedColorArray = arr[Mesh.ARRAY_COLOR]
+				var u2: PackedVector2Array = arr[Mesh.ARRAY_TEX_UV2]
+				if cs.size() != n or u2.size() != n or oa[Mesh.ARRAY_VERTEX].size() != n or arr[Mesh.ARRAY_INDEX] != oa[Mesh.ARRAY_INDEX] or oa[Mesh.ARRAY_COLOR] != null:
+					bad_shape += 1
+					continue
+				for v in n: # 조각 메시는 자리를 16비트로 눌러 담음 (ARRAY_FLAG_COMPRESS_ATTRIBUTES) — 다시 담으며 7e-6 쯤 달라짐
+					if (arr[Mesh.ARRAY_VERTEX][v] as Vector3).distance_to(oa[Mesh.ARRAY_VERTEX][v]) > PIECE_POS_EPS:
+						bad_shape += 1
+						break
+				if mi.material_override != p.look_mat:
+					bad_mat += 1
+				for v in n:
+					var k: String = "%s|%s" % [bone, _cell(cs[v], u2[v].x)]
+					got[k] = int(got.get(k, 0)) + 1
+			else:
+				if mi.material_override != p.mats[int(cd.nodes[i].mat)]:
+					kept_bad += 1
+				var k: String = "%s|%s" % [bone, "P" if md.get("skin", false) else "%06x" % int(md.color)]
+				got[k] = int(got.get(k, 0)) + n
+		check(copies > 0 and bad_shape == 0, "%s 조각 사본 %d개: 정점·삼각형은 원본 그대로, 정점 색·UV2 만 더함 (어긋남 %d)" % [ch, copies, bad_shape])
+		check(bad_mat == 0 and kept_bad == 0, "%s 사본 조각은 화풍 재질, 나머지 조각은 원래 재질 (어긋남 %d·%d)" % [ch, bad_mat, kept_bad])
+		check(got == want, "%s 조각 몸의 칸이 묶음 사본과 같음 (다른 칸 %s)" % [ch, str(_diff(got, want)).substr(0, 300)])
+		# 화풍 재질: 묶음 재질과 같은 꼴 (정점 색 툰 + skin_tint = 플레이어 색) + 같은 툰 단·림·얇은 외곽선
+		var lm: ShaderMaterial = p.look_mat
+		check(lm.get_shader_parameter("use_vertex_color") == true and Color(lm.get_shader_parameter("skin_tint")).is_equal_approx(Color(RED.r, RED.g, RED.b, 1.0)), "%s 화풍 재질: 정점 색 + 플레이어 색 칠" % ch)
+		check(Vector3(lm.get_shader_parameter("toon_steps")).is_equal_approx(LK.TOON_STEPS) and is_equal_approx(float(lm.get_shader_parameter("rim_strength")), float(LK.RIM[0])), "%s 화풍 재질 툰 단·림" % ch)
+		check(not G3.outline_on or lm.next_pass == G3.shared_outline(C.OUTLINE_THICKNESS * LK.OUTLINE), "%s 화풍 재질 얇은 외곽선" % ch)
+		# 손 (1인칭에서 보이는 것): 피부 손 조각이 있으면 플레이어 색 정점이 없고 살색 정점이 있음. 끈 몸은 플레이어 색 재질 그대로
+		for hand in ["hand_R", "hand_L"]:
+			var hi := -1
+			for i in cd.nodes.size():
+				if str(cd.nodes[i].name) == hand + "__m0" and cd.mats[int(cd.nodes[i].mat)].get("skin", false):
+					hi = i
+			if hi < 0:
+				continue # 갈고리 왼손은 갈고리
+			var hm := p.nodes[hi] as MeshInstance3D
+			var ha: Array = hm.mesh.surface_get_arrays(0)
+			var hc = ha[Mesh.ARRAY_COLOR]
+			var hu = ha[Mesh.ARRAY_TEX_UV2]
+			var fl := 0
+			var pl := 0
+			if hc != null and hu != null:
+				for v in hc.size():
+					if hu[v].x > 0.5:
+						pl += 1
+					elif Look.rgb8(hc[v]) == flesh:
+						fl += 1
+			check(hm.material_override == lm and fl > 0 and pl == 0, "%s %s 1인칭 손 조각: 살색 정점 %d · 플레이어 색 정점 %d" % [ch, hand, fl, pl])
+			var om := o.nodes[hi] as MeshInstance3D
+			var omat := om.material_override as ShaderMaterial
+			check(om.mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR] == null and omat != null and Color(omat.get_shader_parameter("albedo")).is_equal_approx(RED), "%s %s 끄면 예전 그대로 (플레이어 색 재질)" % [ch, hand])
+		# 끈 몸: 조각 메시가 .glb 그대로, 툰 단도 예전 값
+		var src: Node3D = Baked.load_char(ch).scene.instantiate()
+		var same := 0
+		var total := 0
+		for i in cd.nodes.size():
+			if Look.piece_bone(cd, i) == "":
+				continue
+			total += 1
+			var sn := src.find_child(str(cd.nodes[i].name), true, false) as MeshInstance3D
+			if sn != null and (o.nodes[i] as MeshInstance3D).mesh == sn.mesh:
+				same += 1
+		check(total > 0 and same == total, "%s 끄면 조각 메시가 .glb 그대로 (%d/%d)" % [ch, same, total])
+		src.free()
+		# 사본은 같은 캐릭터 조각 몸끼리 같이 씀, 재질은 몸마다
+		var p2 = _pieces(ch, BLUE, true)
+		var shared := true
+		for i in cd.nodes.size():
+			if (p.nodes[i] is MeshInstance3D) and (p.nodes[i] as MeshInstance3D).mesh != (p2.nodes[i] as MeshInstance3D).mesh:
+				shared = false
+		check(shared and p2.look_mat != lm and Color(p2.look_mat.get_shader_parameter("skin_tint")).is_equal_approx(Color(BLUE.r, BLUE.g, BLUE.b, 1.0)), "%s 조각 사본은 같이 쓰고 재질은 몸마다" % ch)
+		# 효과·반투명: 묶음 재질처럼 skin_tint (플레이어 칸만) — 끝나면 몸 색·원래 재질
+		p._fx_colors({"stunned": true})
+		check(Color(lm.get_shader_parameter("skin_tint")).a == 1.0 and Color(lm.get_shader_parameter("albedo")).is_equal_approx(Color.WHITE), "%s 효과 중에도 재질 색은 흰색 (살색 정점을 플레이어 색으로 덮지 않음)" % ch)
+		p._fx_colors({})
+		check(Color(lm.get_shader_parameter("skin_tint")).is_equal_approx(Color(RED.r, RED.g, RED.b, 1.0)), "%s 효과 뒤 플레이어 색" % ch)
+		var lp: MeshInstance3D = null
+		for dr in p.drawn:
+			if dr.get("look", false):
+				lp = dr.mi
+				break
+		p.opacity = 0.5
+		p._apply_opacity()
+		var am := GhostDepth.inner(lp.material_override) as ShaderMaterial
+		check(am != null and am != lm and am.get_shader_parameter("use_vertex_color") == true and Color(am.get_shader_parameter("skin_tint")).a == 1.0 and Color(am.get_shader_parameter("albedo")).r == 1.0, "%s 반투명 조각도 정점 색 + 플레이어 색 칠" % ch)
+		p.opacity = 1.0
+		p._apply_opacity()
+		check(lp.material_override == lm, "%s 반투명 끝" % ch)
+		for x in [p, o, b, p2]:
+			x.free()
+	# 외부 모델 안쪽 몸 (안 그리는 조각 몸) 은 안 건드림
+	var e = _pieces("tank", RED, true, true)
+	if e.ext != null:
+		check(e.look_mat == null, "외부 모델 안쪽 조각 몸은 화풍 사본 없음")
+	e.free()
+
+
+static func _diff(a: Dictionary, b: Dictionary) -> Dictionary:
+	var out := {}
+	for k in a:
+		if a[k] != b.get(k):
+			out[k] = [a[k], b.get(k)]
+	for k in b:
+		if not a.has(k):
+			out[k] = [null, b[k]]
+	return out
 
 
 # 눈: 흰자가 배율만큼 줄고 (가운데 그대로) 머리 폭의 1/3 이하, 눈동자·어지러움 궤도가 흰자 안, 광전사 눈썹이 눈 쪽으로 같은 배율
