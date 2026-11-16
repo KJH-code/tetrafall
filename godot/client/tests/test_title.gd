@@ -156,3 +156,63 @@ func test_ring_stage() -> void:
 			st.ring_rnd = null
 			mi.free()
 		st.free()
+
+
+# ===== C8 (겉모습 3 — 타이틀 로고 색): 테마별 글자 빛·흰 심 표 (title/title_tune.gd) · 시작 안내 'Enter' 색 =====
+const Tune := preload("res://title/title_tune.gd")
+const Co := preload("res://core/coords.gd")
+
+
+# 7테마 모두 [빛 배율, 바탕 빛 배율, 흰 심] 이 있고 범위 안. 화산은 빛 배율 0.5 그대로 + 흰 심, 흰 심은 로고 빛을 따라 켜짐. 장면이 셰이더에 넣음
+func test_c8_title_tune_all_themes() -> void:
+	for th in TC.theme_ids():
+		check(Tune.LETTER.has(th), "%s: 표에 있음" % th)
+		var v: Array = Tune.letter(th)
+		check(v.size() == 3, "%s: 값 셋 %s" % [th, v])
+		check(v[0] > 0.0 and v[0] <= 2.0 and v[1] > 0.0 and v[1] <= 2.0, "%s: 빛 배율·바탕 빛 배율 (0, 2] %s" % [th, v])
+		check(v[2] >= 0.0 and v[2] <= 1.0, "%s: 흰 심 0~1 %s" % [th, v])
+		check(Tune.core(th, 0.0) == 0.0 and is_equal_approx(Tune.core(th, C.TITLE_GLOW[1]), v[2]) and is_equal_approx(Tune.core(th, C.TITLE_GLOW[1] * 3.0), v[2]), "%s: 흰 심은 로고 빛이 다 켜지면 표 값 (넘어도 그대로)" % th)
+		check(Tune.core(th, C.TITLE_GLOW[0]) <= v[2] * 0.5, "%s: 쌓이는 동안은 흰 심이 반 아래" % th)
+	check(Tune.LETTER.size() == TC.theme_ids().size(), "표에 없는 테마 없음")
+	check(Tune.letter("volcano")[0] == 0.5 and Tune.letter("volcano")[1] == 0.35 and Tune.letter("volcano")[2] >= 0.5, "화산: 빛 배율 0.5·바탕 0.35 그대로 + 흰 심 %s" % [Tune.letter("volcano")])
+	check(Tune.letter("nope") == Tune.LETTER_DEFAULT and Tune.LETTER_DEFAULT == [1.0, 1.0, 0.0], "표에 없는 테마는 기본 (흰 심 없음)")
+	check(Tune.CORE_EDGE.x > 0.0 and Tune.CORE_EDGE.x < Tune.CORE_EDGE.y and Tune.CORE_EDGE.y <= 1.0 and Tune.CORE_LIT > 0.0 and Tune.CORE_LIT <= 1.5, "흰 심 자리·빛 범위")
+	var names := []
+	for u in (load("res://title/letter.gdshader") as Shader).get_shader_uniform_list():
+		names.append(u.name)
+	for u in ["base_glow", "glow", "glow_col", "sweep_x", "core_white", "core_edge", "core_lit"]:
+		check(names.has(u), "글자 셰이더 uniform %s" % u)
+	var Scene = load("res://title/title_scene.gd")
+	check(not FileAccess.get_file_as_string("res://title/title_scene.gd").contains("LETTER_THEME"), "장면의 예전 표 (LETTER_THEME) 는 title_tune.gd 로 옮김")
+	for th in ["volcano", "meadow"]:
+		var sc = Scene.new()
+		sc.setup(th, {"low": true, "instant": true})
+		sc.step(1.0 / 60.0)
+		var want: float = Tune.letter(th)[2]
+		var got: float = sc.letter_mat.get_shader_parameter("core_white")
+		check(sc.is_done() and is_equal_approx(got, want), "%s: 다 쌓인 로고의 흰 심 %.2f = 표 %.2f" % [th, got, want])
+		check((sc.letter_mat.get_shader_parameter("core_edge") as Vector2).is_equal_approx(Tune.CORE_EDGE) and is_equal_approx(sc.letter_mat.get_shader_parameter("core_lit"), Tune.CORE_LIT), "%s: 흰 심 자리·빛" % th)
+		check(got >= 0.0 and got <= 1.0, "%s: uniform 0~1" % th)
+		sc.free()
+
+
+# 'Enter' 글자 색: 7테마 모두 밝기 하한 위, 빛깔은 테마 빛 색 (edge) 과 15° 안. 이미 밝은 색은 그대로
+func test_c8_hint_color_floor() -> void:
+	check(Tune.HINT_LUMA_MIN >= 0.6 and Tune.HINT_LUMA_MIN < 1.0, "하한 %.2f" % Tune.HINT_LUMA_MIN)
+	var raised := 0
+	for th in TC.theme_ids():
+		var edge: Color = Co.color(C.TITLE_THEMES[th].edge)
+		var c: Color = Tune.hint_color(edge)
+		check(Tune.luma(c) >= Tune.HINT_LUMA_MIN - 1e-4 and Tune.luma(c) >= 0.6, "%s: 밝기 %.3f ≥ %.2f" % [th, Tune.luma(c), Tune.HINT_LUMA_MIN])
+		var d := absf(c.h - edge.h) * 360.0
+		check(minf(d, 360.0 - d) <= 15.0, "%s: 빛깔 차 %.1f° ≤ 15°" % [th, minf(d, 360.0 - d)])
+		check(c.r >= edge.r - 1e-5 and c.g >= edge.g - 1e-5 and c.b >= edge.b - 1e-5 and c.a == edge.a, "%s: 어두워지는 성분 없음" % th)
+		check(c.s > 0.05, "%s: 흰색이 되지는 않음 (채도 %.2f)" % [th, c.s])
+		if Tune.luma(edge) >= Tune.HINT_LUMA_MIN:
+			check(c == edge, "%s: 이미 밝은 색은 그대로" % th)
+		else:
+			raised += 1
+			check(is_equal_approx(Tune.luma(c), Tune.HINT_LUMA_MIN), "%s: 딱 하한까지만 올림" % th)
+	check(raised >= 2, "어두운 테마 빛 색 (화산·수정 등) 이 올려짐 %d" % raised)
+	check(Tune.HINT_BACK.size() == 2 and Tune.HINT_BACK[0] > 14 and Tune.HINT_BACK[1] > 0.0 and Tune.HINT_BACK[1] <= 0.8, "받침 겹은 빛 겹 (14) 보다 넓고 반투명 %s" % [Tune.HINT_BACK])
+	check(Tune.hint_color(Color.BLACK, 0.6).is_equal_approx(Color(0.6, 0.6, 0.6)) and Tune.hint_color(Color.WHITE) == Color.WHITE, "검정·흰색")

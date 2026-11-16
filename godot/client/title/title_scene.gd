@@ -22,8 +22,8 @@ const GLOW_K := 3.0
 const GLOW_THR_K := 0.5
 const GLOW_BLOOM := 0.05
 const LETTER_K := 1.7 # 글자 빛·빛 줄기 (JS 는 블룸이 더 세게 번져 글자가 하얗게 보임)
-# 테마별 글자 빛 배수·바탕 빛 (JS 스샷과 맞춤): 화산 흑요석 글자는 JS 에서 어두운 회색 (빛 배수가 크면 주황으로 뜸)
-const LETTER_THEME := {"volcano": [0.5, 0.35]}
+# 테마별 글자 빛 배수·바탕 빛·흰 심은 title/title_tune.gd LETTER (C8: 예전에 여기 있던 표를 옮김)
+const Tune := preload("res://title/title_tune.gd")
 
 var theme := ""
 var T := {}
@@ -103,7 +103,7 @@ func setup(theme_id: String, opts := {}) -> void:
 		letter_mat.set_shader_parameter("accent1", Co.color(spec.accent[1]))
 		letter_mat.set_shader_parameter("crack", 0.0 if low else float(spec.crack))
 		letter_mat.set_shader_parameter("fresnel", 0.0 if low else float(spec.fresnel))
-		letter_mat.set_shader_parameter("base_glow", (C.TITLE_PIECE_GLOW + float(T.get("pieceGlow", 0.0)) + float(spec.get("glow", 0.0))) * float(LETTER_THEME.get(theme, [1.0, 1.0])[1]))
+		letter_mat.set_shader_parameter("base_glow", (C.TITLE_PIECE_GLOW + float(T.get("pieceGlow", 0.0)) + float(spec.get("glow", 0.0))) * float(Tune.letter(theme)[1]))
 	for m in [mm, shell_mm]:
 		m.transform_format = MultiMesh.TRANSFORM_3D
 		m.use_colors = true
@@ -112,6 +112,8 @@ func setup(theme_id: String, opts := {}) -> void:
 		m.instance_count = n
 	letter_mat.set_shader_parameter("glow_col", Co.color(T.glow))
 	letter_mat.set_shader_parameter("sweep_w", C.TITLE_SWEEP_W)
+	letter_mat.set_shader_parameter("core_edge", Tune.CORE_EDGE) # C8 흰 심 자리·빛 (세기는 step 이 로고 빛에 맞춰 넣음)
+	letter_mat.set_shader_parameter("core_lit", Tune.CORE_LIT)
 	shell_mat.shader = SHELL
 	shell_mat.set_shader_parameter("col", Co.color(T.edge))
 	var i := 0
@@ -306,7 +308,8 @@ func step(dt: float) -> void:
 	var ex = exit_state()
 	var push: float = ex.push if ex != null else 0.0
 	var wh: float = ex.white if ex != null else 0.0
-	letter_mat.set_shader_parameter("glow", L.glow * (1.0 + wh * 2.0) * LETTER_K * float(LETTER_THEME.get(theme, [1.0, 1.0])[0]))
+	letter_mat.set_shader_parameter("glow", L.glow * (1.0 + wh * 2.0) * LETTER_K * float(Tune.letter(theme)[0]))
+	letter_mat.set_shader_parameter("core_white", Tune.core(theme, L.glow))
 	var sweep_u := t - done_at - C.TITLE_BURST_MS * 0.7
 	var sweep_p := fposmod(sweep_u, C.TITLE_SWEEP_MS) / C.TITLE_SWEEP_MS
 	var lw := size.x * C.TITLE_SCALE

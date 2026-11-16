@@ -16,6 +16,7 @@ const LP := preload("res://world/lobby_preview.gd")
 const S := preload("res://ui/ui_style.gd")
 const HAZE := preload("res://title/haze.gdshader")
 const U := preload("res://ui/ui_calc.gd")
+const Tune := preload("res://title/title_tune.gd")
 # 타이틀 위 겹 (JS index.html #title): 위아래 검은 띠 7vh (누르면 .9s ease-in 으로 화면 밖), 가장자리 어둡게
 # radial-gradient(ellipse at 50% 45%, transparent 0 50%, rgba(0,0,0,.6) 100%), 안내 글 text-shadow 0 0 14px 테마 빛 + 'Enter' 테마 빛 색
 const BAR_VH := 0.07
@@ -97,10 +98,10 @@ func _ready() -> void:
 	var hf := FontVariation.new() # JS #title .hint letter-spacing 6px
 	hf.base_font = load("res://assets/fonts/ui_font.tres")
 	hf.spacing_glyph = 6
-	for part in [["Enter", edge], [" / 클릭하여 시작", Color.WHITE]]:
+	for part in [["Enter", Tune.hint_color(edge)], [" / 클릭하여 시작", Color.WHITE]]: # C8: 'Enter' 는 테마 빛 색을 밝기 하한까지 올린 색 (빛 겹은 테마 빛 그대로)
 		var box := Control.new() # 글자 + 뒤 빛 겹 (같은 자리)
 		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		for gl in HINT_GLOW + [null]:
+		for gl in [Tune.HINT_BACK] + HINT_GLOW + [null]: # C8: 맨 뒤 어두운 받침 겹 → 빛 겹 → 글자
 			var l := Label.new()
 			l.text = part[0]
 			l.add_theme_font_override("font", hf)
@@ -110,7 +111,7 @@ func _ready() -> void:
 				l.add_theme_constant_override("outline_size", 2)
 			else:
 				l.add_theme_color_override("font_color", Color(0, 0, 0, 0))
-				l.add_theme_color_override("font_outline_color", S.alpha(edge, gl[1]))
+				l.add_theme_color_override("font_outline_color", Color(0, 0, 0, gl[1]) if box.get_child_count() == 0 else S.alpha(edge, gl[1])) # 첫 겹 = 받침 (검정)
 				l.add_theme_constant_override("outline_size", gl[0])
 			box.add_child(l)
 			hint_parts.append(l)

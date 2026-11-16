@@ -168,9 +168,9 @@ func _globals_back(keep: Dictionary) -> void:
 	G3.low = false
 
 
-# 덮어쓰기 표는 하늘·하늘빛·해 세기·안개·절벽만 (floor·terrain·piece·hazard 는 JS 정답 테스트가 C.WORLD_THEMES 로 묶음)
+# 덮어쓰기 표는 하늘·하늘빛·해 세기·안개·절벽 + (C8) 구름 바다·먼 배경·구름만 (floor·terrain·piece·hazard 는 JS 정답 테스트가 C.WORLD_THEMES 로 묶음)
 func test_c6_tune_only_allowed_keys() -> void:
-	check(TT.ALLOWED == ["sky", "hemi", "sunIntensity", "fog", "cliff"], "덮을 수 있는 키 %s" % [TT.ALLOWED])
+	check(TT.ALLOWED == ["sky", "hemi", "sunIntensity", "fog", "cliff", "sea", "far", "cloud"], "덮을 수 있는 키 %s" % [TT.ALLOWED])
 	var sky_keys := ["top", "mid", "horizon", "below", "glow", "disc", "discSize", "stars"]
 	for id in TT.TUNE:
 		check(C.WORLD_THEMES.has(id), "%s: 있는 테마" % id)
@@ -185,6 +185,8 @@ func test_c6_tune_only_allowed_keys() -> void:
 	for id in C.WORLD_THEMES:
 		var t := TT.theme(id)
 		for k in ["floor", "terrain", "piece", "hazard", "seed", "sunDir", "sunColor", "sea", "cloud", "far", "props"]:
+			if ["sea", "cloud", "far"].has(k) and TT.TUNE.get(id, {}).has(k):
+				continue # C8: 그 테마가 덮은 것만 건너뜀 (안 덮은 테마는 계속 원래 값)
 			check(t.get(k) == C.WORLD_THEMES[id].get(k), "%s.%s 는 그대로" % [id, k])
 
 
@@ -228,7 +230,8 @@ func test_c6_dark_sky_floor() -> void:
 	for id in ["volcano", "crystal"]:
 		var old: Vector3 = GL._dimv(G3._lin3(C.WORLD_THEMES[id].sky.horizon), sk[0], sk[1], 1.0)
 		check(TT.lin_luma(old) < TT.SKY_DIM_LUMA_MIN, "%s: 예전 값은 하한 아래 (%.3f)" % [id, TT.lin_luma(old)])
-	for id in TT.TUNE: # 밝힌 색: 성분마다 원래 이상·밤 순서 (꼭대기 < 중간 < 지평선) 그대로
+	for id in TT.DARK: # 밝힌 색 (어두운 세 테마 — C8 부터 TUNE 에 빛깔만 바꾼 성·사막도 있어 TT.DARK 로 고름): 성분마다 원래 이상·밤 순서 (꼭대기 < 중간 < 지평선) 그대로
+		check(TT.TUNE.has(id) and TT.TUNE[id].has("sky"), "%s: 밝힌 테마는 표에 있음" % id)
 		var b: Dictionary = C.WORLD_THEMES[id].sky
 		var t: Dictionary = TT.theme(id).sky
 		for s in ["top", "mid", "horizon", "below"]:
@@ -239,6 +242,7 @@ func test_c6_dark_sky_floor() -> void:
 		check(TT.theme(id).hemi[2] > C.WORLD_THEMES[id].hemi[2] and TT.theme(id).sunIntensity > C.WORLD_THEMES[id].sunIntensity, "%s: 하늘빛·해 세기 ↑" % id)
 	# 그래픽 낮춤 (판 빛 꺼짐): 밝힌 하늘만 SKY_LOW_DIM 배로 그려 넣음, 나머지 테마·보통 화질은 표 값 그대로
 	check(TT.sky_low_dim("volcano", true) == TT.SKY_LOW_DIM and TT.sky_low_dim("volcano", false) == 1.0 and TT.sky_low_dim("meadow", true) == 1.0 and TT.sky_low_dim(null, true) == 1.0, "낮춤 하늘 배율")
+	check(TT.sky_low_dim("castle", true) == 1.0 and TT.sky_low_dim("desert", true) == 1.0, "빛깔만 바꾼 테마 (C8 성·사막) 는 낮춤이어도 안 낮춤")
 	check(TT.SKY_LOW_DIM > 0.5 and TT.SKY_LOW_DIM < 1.0, "낮춤 배율은 판 빛 (0.5) 과 1 사이")
 	var keep := _globals_keep()
 	var world := Node3D.new()
@@ -369,3 +373,90 @@ func test_c6_sky_band_low_off() -> void:
 	bare.free()
 	world.free()
 	_globals_back(keep)
+
+
+# ===== C8 (겉모습 3 — 세계 색 마감): 구름 바다 색 공간 · 어두운 바다 · 사막 보조색 · 성 하늘 =====
+const Scenery := preload("res://world/scenery.gd")
+const Co := preload("res://core/coords.gd")
+
+
+static func _hue_gap(a: Color, b: Color) -> float:
+	var d := absf(a.h - b.h) * 360.0
+	return minf(d, 360.0 - d)
+
+
+# 구름 바다 판의 꼭짓점 색은 sRGB 값 그대로 (Co.color 길). 선형으로 바꿔 넣으면 어두운 바다가 거의 0 = 화면 아래 검정이었음
+func test_c8_sea_vertex_srgb() -> void:
+	var src := FileAccess.get_file_as_string("res://world/scenery.gd")
+	check(not src.contains("sea_mesh(lin("), "바다 색을 선형으로 바꿔 넣지 않음")
+	check(src.contains("sea_mesh(Co.color(L.sea[0])"), "바다 색은 Co.color 길")
+	for id in C.WORLD_THEMES.keys():
+		var s := Scenery.new()
+		s._ready()
+		s.make_mat = G3.scenery_material
+		s.build(id, 12, 12, false, 32)
+		var sea: MeshInstance3D = null
+		for c in s.get_children():
+			if c is MeshInstance3D and not c.is_queued_for_deletion() and c.material_override is StandardMaterial3D and c.material_override.render_priority == -1:
+				sea = c
+		check(sea != null, "%s: 구름 바다 판" % id)
+		if sea != null:
+			var want: Color = Co.color(TT.theme(id).sea[0])
+			var col: Color = (sea.mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR] as PackedColorArray)[0]
+			var q := 1.5 / 255.0 # 꼭짓점 색은 8비트
+			check(absf(col.r - want.r) <= q and absf(col.g - want.g) <= q and absf(col.b - want.b) <= q, "%s: 바다 꼭짓점 색 %s = 표 색 %s (sRGB 그대로)" % [id, col, want])
+			check(is_equal_approx(sea.position.y, float(TT.theme(id).sea[1])), "%s: 바다 높이 %s" % [id, sea.position.y])
+			var m: StandardMaterial3D = sea.material_override
+			check(m.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED and m.vertex_color_use_as_albedo and not m.vertex_color_is_srgb, "%s: 빛 안 받는 꼭짓점 색 재질 (값 그대로 나감)" % id)
+		s.free()
+
+
+# 어두운 세 테마 바다: sRGB 밝기가 하한 위 (검정 아님), 그 테마 위험 액체보다 어둡고, 높이는 원래 값. 밝은 테마 바다는 안 건드림 (사막만 따로)
+func test_c8_dark_sea_floor() -> void:
+	check(TT.DARK == ["volcano", "crystal", "mushroom"], "어두운 테마 %s" % [TT.DARK])
+	check(TT.SEA_LUMA_MIN >= 0.15 and TT.SEA_LUMA_MIN <= 0.4, "바다 밝기 하한 범위")
+	for id in TT.DARK:
+		var base: Dictionary = C.WORLD_THEMES[id]
+		var sea: Array = TT.theme(id).sea
+		check(sea.size() == 2 and sea[1] == base.sea[1], "%s: 바다 높이 그대로 %s" % [id, sea])
+		var l := TT.luma(sea[0])
+		check(l >= TT.SEA_LUMA_MIN, "%s: 바다 밝기 %.3f ≥ %.2f" % [id, l, TT.SEA_LUMA_MIN])
+		check(l > TT.luma(base.sea[0]), "%s: 원래 바다 (%.3f) 보다 밝음" % [id, TT.luma(base.sea[0])])
+		for hk in ["mid", "shallow"]:
+			check(l < TT.luma(base.hazard[hk]), "%s: 바다 (%.3f) 가 위험 액체 %s (%.3f) 보다 어두움" % [id, l, hk, TT.luma(base.hazard[hk])])
+		# 그 테마 하늘 (below ~ horizon) 빛깔 안: 안개층으로 읽히게
+		var c := Co.color(sea[0])
+		var lo := Co.color(TT.theme(id).sky.below)
+		var hi := Co.color(TT.theme(id).sky.horizon)
+		check(_hue_gap(c, lo.lerp(hi, 0.5)) <= 20.0, "%s: 바다 빛깔이 하늘 below·horizon 중간 색과 20° 안 (%.0f°)" % [id, _hue_gap(c, lo.lerp(hi, 0.5))])
+	for id in ["meadow", "skycastle", "castle"]:
+		check(TT.theme(id).sea == C.WORLD_THEMES[id].sea, "%s: 밝은 테마 바다는 원래 값" % id)
+
+
+# 사막: 모래 주황은 지형·바닥에만 — 하늘 지평선·안개·구름 바다는 바닥 색과 빛깔이 60° 넘게 갈림, 먼 메사는 지형 옆면보다 붉고 어두움. 성 지평선은 초록기 없음
+func test_c8_desert_split() -> void:
+	var t := TT.theme("desert")
+	var base: Dictionary = C.WORLD_THEMES.desert
+	check(t.floor == base.floor and t.terrain == base.terrain, "사막 바닥·지형은 원래 값")
+	for fk in ["a", "b"]:
+		var fl := Co.color(t.floor[fk])
+		for pair in [["sky.horizon", t.sky.horizon], ["sea", t.sea[0]], ["fog", t.fog[0]]]:
+			var gap := _hue_gap(Co.color(pair[1]), fl)
+			check(gap >= 60.0, "사막 %s ↔ floor.%s 빛깔 차 %.0f° ≥ 60°" % [pair[0], fk, gap])
+		check(_hue_gap(Co.color(base.sky.horizon), fl) < 30.0, "원래 지평선은 바닥과 같은 모래색 (%.0f°)" % _hue_gap(Co.color(base.sky.horizon), fl))
+	check(TT.luma(t.sea[0]) < 0.9 and TT.luma(t.sea[0]) > 0.6, "사막 바다는 흰 판이 아님 (밝기 %.2f)" % TT.luma(t.sea[0]))
+	check(t.sea[1] == base.sea[1] and t.fog[1] == base.fog[1] and t.fog[2] == base.fog[2], "바다 높이·안개 거리 그대로")
+	var far := Co.color(t.far.color)
+	var side := Co.color(t.terrain.side)
+	check(TT.luma(t.far.color) < TT.luma(t.terrain.side) - 0.2, "먼 메사가 지형 옆면보다 어두움 (%.2f < %.2f)" % [TT.luma(t.far.color), TT.luma(t.terrain.side)])
+	check(far.h < side.h and far.s > 0.5, "먼 메사가 지형 옆면보다 붉음 (빛깔 %.0f° < %.0f°)" % [far.h * 360.0, side.h * 360.0])
+	for k in base.far:
+		if k != "color" and k != "haze":
+			check(t.far[k] == base.far[k], "사막 far.%s 그대로" % k)
+	check(t.far.haze[0] < t.far.haze[1] and t.far.haze[0] >= 0.0 and t.far.haze[1] <= base.far.haze[1], "먼 메사 지평선 섞기 %s (원래보다 덜 — 지평선이 하늘빛이라 많이 섞으면 뿌옇게 날아감)" % [t.far.haze])
+	# 성: 지평선 B ≥ G (원래는 G > B — 판 빛이 채도를 올리면 초록 얼룩)
+	var ch := Co.color(TT.theme("castle").sky.horizon)
+	var cb := Co.color(C.WORLD_THEMES.castle.sky.horizon)
+	check(ch.b >= ch.g and cb.g > cb.b, "성 지평선 초록기 뺌 (G %.2f ≤ B %.2f)" % [ch.g, ch.b])
+	for sk in ["top", "mid", "below"]:
+		check(TT.theme("castle").sky[sk] == C.WORLD_THEMES.castle.sky[sk], "성 sky.%s 그대로" % sk)

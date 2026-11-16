@@ -1,12 +1,16 @@
 # C6 (겉모습 1 — 세계 바탕): 맵 테마의 고도 쪽 덮어쓰기. core/config.gd 는 JS 에서 만든 생성 파일이라 못 고침 →
 # C.WORLD_THEMES[id] 를 깊게 베낀 것 위에 TUNE 을 깊게 합쳐 돌려줌 (theme, 결과는 기억해 둠). 쓰는 곳: G3.apply_theme (하늘·하늘빛·해·안개) · Scenery (섬 절벽)
 # 덮을 수 있는 키는 ALLOWED 뿐 — floor·terrain·piece·hazard 는 JS 정답 테스트 (test_block_style 등) 가 C.WORLD_THEMES 로 묶고 있어 그대로 둠.
-# 순수 계산만 (노드·three 없음). 테스트 tests/test_shaders.gd·test_w45.gd 의 test_c6_*
+# C8 (겉모습 3 — 세계 색 마감): 구름 바다 (sea)·구름 (cloud)·먼 배경 (far) 도 덮을 수 있음 — 쓰는 곳 Scenery (바다 판·구름·먼 실루엣).
+# 순수 계산만 (노드·three 없음). 테스트 tests/test_shaders.gd·test_w45.gd 의 test_c6_* · test_shaders.gd test_c8_*
 extends RefCounted
 
 const C := preload("res://core/config.gd")
 
-const ALLOWED := ["sky", "hemi", "sunIntensity", "fog", "cliff"]
+const ALLOWED := ["sky", "hemi", "sunIntensity", "fog", "cliff", "sea", "far", "cloud"]
+
+# 하늘을 밝혀 둔 어두운 (밤) 테마 — 아래 TUNE 첫 묶음. 그래픽 낮춤 하늘 배율 (sky_low_dim)·구름 바다 밝기 하한 (SEA_LUMA_MIN) 이 이 셋만 봄
+const DARK := ["volcano", "crystal", "mushroom"]
 
 # 어두운 세 테마 (화산·수정·버섯) 가 검정 덩어리로 꺼지지 않게 (갤러리 사진을 보며 맞춘 값): 하늘 네 색 ↑ (지평선 × ~1.6, 꼭대기·중간·아래 × ~2 — 밤 느낌은 남김),
 # 하늘빛 세기 × 1.5~1.8 + 땅 쪽 색 ↑ (그늘 면이 하늘과 구분되게), 해 세기 + 0.35~0.55, 안개 색도 하늘 중간 색 쯤으로.
@@ -18,20 +22,40 @@ const TUNE := {
 		"hemi": [0xffc4a8, 0x7a4444, 2.6],
 		"sunIntensity": 1.55,
 		"fog": [0x5a1a16, 40.0, 115.0],
+		"sea": [0x7c3020, -16.0],
 	},
 	"crystal": {
 		"sky": {"top": 0x201a50, "mid": 0x4a3a9c, "horizon": 0x9068d8, "below": 0x34266e},
 		"hemi": [0xc0b0ff, 0x5c4a8c, 2.4],
 		"sunIntensity": 1.45,
 		"fog": [0x3a2c78, 40.0, 120.0],
+		"sea": [0x6247a3, -16.0],
 	},
 	"mushroom": {
 		"sky": {"top": 0x103c44, "mid": 0x1e7474, "horizon": 0x4cb496, "below": 0x144846},
 		"hemi": [0xb0f4dc, 0x44684e, 2.3],
 		"sunIntensity": 1.4,
 		"fog": [0x165052, 40.0, 115.0],
+		"sea": [0x245e56, -16.0],
+	},
+	# C8: 성 — 지평선 (원래 0xeaf2ea) 의 초록기를 뺌 (판 빛이 채도를 올리면 하늘 아래쪽이 초록 얼룩으로 떴음)
+	"castle": {
+		"sky": {"horizon": 0xeef0f4},
+	},
+	# C8: 사막 — 모래 주황은 지형·바닥에만. 하늘 지평선·안개·구름 바다·구름은 보조색 (옅은 하늘빛·연보라), 먼 메사는 적갈색 (지형보다 붉고 어둡게 떨어져 보이게).
+	# 원래 값: 지평선 0xf8d8a0 · 안개 0xf2dcb0 · 바다 0xf0dcb8 · 구름 0xfff2e0 · 먼 배경 0xc08a5a (하늘·바다·섬이 전부 모래색 한 덩이였음)
+	"desert": {
+		"sky": {"horizon": 0xd8dce8},
+		"fog": [0xd0d4e0, 45.0, 120.0],
+		"sea": [0xc8cede, -16.0],
+		"cloud": 16052458.0, # 0xf4f0ea
+		"far": {"shapes": ["mesa", "mesa", "pyramid"], "color": 0x9a4630, "base": -18.0, "count": 12.0, "haze": [0.2, 0.45]},
 	},
 }
+
+# C8 구름 바다 (TUNE.*.sea): 어두운 세 테마는 그 테마 하늘 below 와 horizon 의 중간 색에서 출발 — 화면 아래쪽이 검정이 아니라 테마 색 안개층으로.
+# 바다 색은 꼭짓점 색으로 값 그대로 나감 (판 빛이 안 낮춤) → sRGB 밝기가 이 하한 위, 그 테마 위험 액체 (hazard.mid·shallow) 보다는 어둡게 (test_c8_dark_sea_floor)
+const SEA_LUMA_MIN := 0.2
 
 # 절벽 (섬 몸통 층 색) sRGB 밝기 하한: 가장 어두운 층이 이보다 낮으면 그 층을 하한에 놓고 나머지는 그 위로 (층 사이 밝기 차 × CLIFF_SPREAD → 층이 계속 구분됨, 빛깔은 그 색 그대로)
 const CLIFF_LUMA_MIN := 0.22
@@ -135,6 +159,7 @@ static func sky_band(id, low: bool) -> Dictionary:
 	return {"band_k": float(o.get("k", SKY_BAND_K)), "band_glow": SKY_BAND_GLOW if sky.has("glow") else 0.0}.merged(tone)
 
 
-# 그래픽 낮춤일 때 하늘 색 (top·mid·horizon·below) 에 곱할 값: TUNE 이 하늘을 밝힌 테마만 SKY_LOW_DIM, 나머지·보통 화질은 1
+# 그래픽 낮춤일 때 하늘 색 (top·mid·horizon·below) 에 곱할 값: TUNE 이 하늘을 밝힌 테마 (DARK) 만 SKY_LOW_DIM, 나머지·보통 화질은 1
+# (C8: 성·사막도 TUNE 에 sky 가 생겼지만 밝힌 게 아니라 빛깔만 바꾼 것 — 낮추지 않음)
 static func sky_low_dim(id, low: bool) -> float:
-	return SKY_LOW_DIM if low and TUNE.get(id, {}).has("sky") else 1.0
+	return SKY_LOW_DIM if low and DARK.has(id) and TUNE.get(id, {}).has("sky") else 1.0

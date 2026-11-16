@@ -509,7 +509,8 @@ func build_step() -> bool:
 			drift.position = Co.gxyz(cx, cy, 0)
 			# 구름 바다: 넓은 원판, 끝으로 갈수록 투명
 			var sea := MeshInstance3D.new()
-			sea.mesh = sea_mesh(lin(L.sea[0]), C.WORLD_SEA_FADE[0], C.WORLD_SEA_FADE[1])
+			# C8: 색은 sRGB 그대로 — 빛 안 받는 표준 재질의 꼭짓점 색은 이 렌더러에서 값 그대로 나감 (선형으로 바꿔 넣으면 어두운 바다가 거의 0 = 화면 아래 검정)
+			sea.mesh = sea_mesh(Co.color(L.sea[0]), C.WORLD_SEA_FADE[0], C.WORLD_SEA_FADE[1])
 			var sm := StandardMaterial3D.new()
 			sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 			sm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA

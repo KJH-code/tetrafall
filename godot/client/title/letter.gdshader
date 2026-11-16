@@ -14,13 +14,19 @@ uniform vec3 accent0 = vec3(1.0);
 uniform vec3 accent1 = vec3(1.0);
 uniform float crack = 0.0;
 uniform float fresnel = 0.0;
+// C8 흰 심 (title/title_tune.gd): 칸 앞면 가운데를 흰색 쪽으로, 칸 가장자리는 테마 빛 그대로 (메뉴 빛 로고 = 흰 글자 + 테마 빛). 0 (기본) 이면 예전 화소 그대로
+uniform float core_white = 0.0; // 0~1 (표 값 × 로고 빛이 켜진 정도)
+uniform vec2 core_edge = vec2(0.84, 0.99); // 앞면 가운데 → 변 (0~1): 이 사이에서 심이 빠짐
+uniform float core_lit = 0.95; // 심이 스스로 내는 빛 (흰색 × 이 값)
 
 varying float v_flash;
 varying float v_wx;
 varying vec3 v_loc;
 varying float v_acc;
+varying float v_front;
 
 void vertex() {
+	v_front = abs(NORMAL.y); // 로고 앞·뒤를 보는 면 (칸은 로고 평면 x·z 에 놓임, 인스턴스 변환은 크기만)
 	v_flash = INSTANCE_CUSTOM.r;
 	v_wx = INSTANCE_CUSTOM.g + VERTEX.x * INSTANCE_CUSTOM.b; // 무대 x (칸 가운데 + 칸 안 자리)
 	v_loc = VERTEX;
@@ -45,8 +51,10 @@ void fragment() {
 		float nv = 1.0 - abs(dot(normalize(NORMAL), normalize(VIEW)));
 		extra = c * crack * smoothstep(0.6, 0.95, tex.r) + mix(c, vec3(1.0), 0.4) * fresnel * pow(nv, 2.5);
 	}
-	ALBEDO = c;
 	ROUGHNESS = 0.45;
 	float sw = exp(-pow((v_wx - sweep_x) / sweep_w, 2.0));
-	EMISSION = extra + (c * base_glow + mix(c, glow_col, 0.6) * glow + vec3(1.0) * (v_flash * 1.6 + sw * 0.55 * glow)) * (1.0 - 0.5 * seam);
+	vec3 em = extra + (c * base_glow + mix(c, glow_col, 0.6) * glow + vec3(1.0) * (v_flash * 1.6 + sw * 0.55 * glow)) * (1.0 - 0.5 * seam);
+	float core = core_white * smoothstep(0.5, 0.9, v_front) * (1.0 - smoothstep(core_edge.x, core_edge.y, max(a.x, a.z)));
+	ALBEDO = mix(c, vec3(1.0), core);
+	EMISSION = mix(em, max(em, vec3(core_lit)), core);
 }
