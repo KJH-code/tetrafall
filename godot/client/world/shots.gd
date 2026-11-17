@@ -8,6 +8,9 @@ const C := preload("res://core/config.gd")
 const FXC := preload("res://fx/fx_config.gd")
 const Co := preload("res://core/coords.gd")
 const WC := preload("res://world/world_config.gd")
+const IL := preload("res://world/item_look.gd")
+const IM := preload("res://world/item_models.gd")
+const IVM := preload("res://world/item_view_math.gd")
 
 var effects = null # G5 fx/effects.gd
 var marks = null # world/marks.gd (trail·block_pulse·neighbors)
@@ -316,13 +319,10 @@ func update(st: Dictionary, dt: float) -> void:
 
 func _bombs(list: Array, now: float) -> void:
 	while bombs.size() < list.size():
-		var sp := SphereMesh.new()
-		sp.radius = C.BOMB_MODEL_SIZE / 2
-		sp.height = C.BOMB_MODEL_SIZE
-		var m := StandardMaterial3D.new() # 폭탄마다 따로 깜빡
-		m.albedo_color = Color8(0x22, 0x22, 0x22)
-		m.emission_enabled = true
-		var n := _mesh_node(sp, m)
+		# 바닥 아이템 폭탄과 같은 모델 (c10-u2, world/item_models.gd): 몸통 + 빛나는 조각 (띠·불씨). 폭탄마다 따로 깜빡 → 재질도 폭탄마다 (툰 재질의 발광 값만 바꿈 — 셰이더는 같음)
+		var parts: Array = IM.bomb_split(C.BOMB_MODEL_SIZE)
+		var n := _mesh_node(parts[0], IM.material())
+		n.add_child(_mesh_node(parts[1], IM.material()))
 		add_child(n)
 		bombs.append(n)
 	for i in bombs.size():
@@ -332,9 +332,9 @@ func _bombs(list: Array, now: float) -> void:
 			continue
 		var b: Dictionary = list[i]
 		n.position = Co.gxyz(b.x + 0.5, b.y + 0.5, b.z + C.BOMB_MODEL_SIZE / 2)
-		var period := 80 + minf(1.0, float(b.get("left", 0)) / C.BOMB_FUSE_MS) * 320 # 남은 시간이 짧을수록 빨리
-		var on := int(floor(now / period)) % 2 == 0
-		(n.material_override as StandardMaterial3D).emission = Color8(0xff, 0x20, 0) if on else Color.BLACK
+		var on := IVM.bomb_on(now, float(b.get("left", 0))) # 남은 시간이 짧을수록 빨리
+		((n.get_child(0) as MeshInstance3D).material_override as ShaderMaterial).set_shader_parameter("emissive", Co.color(IL.BOMB_GLOW) if on else Color.BLACK)
+		(n.material_override as ShaderMaterial).set_shader_parameter("emissive", Co.color(IL.BOMB_GLOW_BODY) if on else Color.BLACK)
 
 
 func _shells(list: Array, dt: float, now: float) -> void:

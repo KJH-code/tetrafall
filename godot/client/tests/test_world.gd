@@ -646,3 +646,183 @@ func test_c7_foot_ring_material() -> void:
 		up = up and n.y < 0.0
 	check(up, "모든 삼각형 앞면이 위")
 	fr.free()
+
+
+# ---------- c10-u2 아이템 종류별 코드 모델 (world/item_look.gd · item_models.gd · item_view_math.gd · items_view.gd · shots.gd _bombs) ----------
+const IL := preload("res://world/item_look.gd")
+const IM := preload("res://world/item_models.gd")
+const IVM := preload("res://world/item_view_math.gd")
+const IV := preload("res://world/items_view.gd")
+
+
+# 표면 0 의 삼각형마다 [넓이, 첫 꼭짓점 색]
+func _c10_tris(m: Mesh) -> Array:
+	var a := m.surface_get_arrays(0)
+	var vs: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+	var cs: PackedColorArray = a[Mesh.ARRAY_COLOR]
+	var ix: PackedInt32Array = a[Mesh.ARRAY_INDEX]
+	var out := []
+	for i in range(0, ix.size(), 3):
+		out.append([(vs[ix[i + 1]] - vs[ix[i]]).cross(vs[ix[i + 2]] - vs[ix[i]]).length() * 0.5, cs[ix[i]]])
+	return out
+
+
+func _c10_rgb_dist(a: Color, b: Color) -> float:
+	return Vector3(a.r - b.r, a.g - b.g, a.b - b.b).length()
+
+
+func test_c10_item_models_cover_kinds() -> void:
+	check(IL.KINDS == ["bomb", "knockback", "speed", "jump", "ghost", "brick", "counter"], "종류표 7종·순서")
+	var meshes: Array = IL.KINDS.map(func(k): return IM.mesh(k))
+	meshes.append(IM.proj_mesh())
+	for i in meshes.size():
+		var name := str(IL.KINDS[i]) if i < IL.KINDS.size() else "투사체"
+		var m = meshes[i]
+		check(m is ArrayMesh and m.get_surface_count() == 1, "%s: ArrayMesh 표면 하나 (그리기 한 번)" % name)
+		if not m is ArrayMesh:
+			continue
+		var a: Array = m.surface_get_arrays(0)
+		var vs: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+		var tris := IM.tri_count(m)
+		check(tris > 0 and tris <= int(IL.MAX_TRIS), "%s: 삼각형 %d ≤ %d" % [name, tris, IL.MAX_TRIS])
+		check(a[Mesh.ARRAY_COLOR] is PackedColorArray and (a[Mesh.ARRAY_COLOR] as PackedColorArray).size() == vs.size(), "%s: 정점 색 배열" % name)
+		var unit := true
+		for n in (a[Mesh.ARRAY_NORMAL] as PackedVector3Array):
+			unit = unit and absf(n.length() - 1.0) < 1e-3
+		check(unit and (a[Mesh.ARRAY_NORMAL] as PackedVector3Array).size() == vs.size(), "%s: 법선 길이 1" % name)
+		var box: AABB = m.get_aabb()
+		var long := box.get_longest_axis_size()
+		if i < IL.KINDS.size():
+			check(long >= 0.5 and long <= 0.62 and near(long, IL.SIZE, 1e-4), "%s: 긴 변 %.3f (0.5~0.62)" % [name, long])
+			check(IM.mesh(IL.KINDS[i]) == m, "%s: 한 번 만들어 나눠 씀" % name)
+		else:
+			check(near(long, C.PROJECTILE_RADIUS * 2.0, 1e-4), "투사체: 긴 변 = 지름 (%.3f)" % long)
+			check(absf(box.position.x + box.end.x) < 1e-4, "투사체: 좌우 대칭")
+		check(absf(box.position.y + box.end.y) < 1e-4, "%s: 세로 가운데가 0" % name)
+	for k in ["control", "zzz", ""]:
+		var b = IM.mesh(k)
+		check(b is BoxMesh and near((b as BoxMesh).size.x, FWC.ITEM_SIZE), "표에 없는 종류 '%s' 는 예전 상자" % k)
+		check(IVM.kind_of(k) == IL.BOX, "'%s' → 상자 묶음" % k)
+	for k in C.ITEM_POOL:
+		check(IL.PARTS.has(k) and IL.MAIN.has(k), "판에 나오는 아이템 '%s' 에 모델·주색" % k)
+	# 놓인 폭탄: 몸통 + 빛나는 조각 = 바닥 아이템 폭탄 (같은 삼각형 수·같은 테두리 상자)
+	var sp: Array = IM.bomb_split(C.BOMB_MODEL_SIZE)
+	var whole := IM.build(IL.PARTS.bomb, C.BOMB_MODEL_SIZE)
+	check(IM.tri_count(sp[0]) + IM.tri_count(sp[1]) == IM.tri_count(whole) and IM.tri_count(sp[1]) > 0, "폭탄 나눔: 몸통 %d + 빛남 %d = %d" % [IM.tri_count(sp[0]), IM.tri_count(sp[1]), IM.tri_count(whole)])
+	var both: AABB = (sp[0] as ArrayMesh).get_aabb().merge((sp[1] as ArrayMesh).get_aabb())
+	check(both.position.is_equal_approx(whole.get_aabb().position) and both.size.is_equal_approx(whole.get_aabb().size), "폭탄 나눔: 겹치면 같은 크기·자리")
+	check(near(whole.get_aabb().size.y, C.BOMB_MODEL_SIZE, 1e-4), "놓인 폭탄: 키 = BOMB_MODEL_SIZE (바닥에 닿음)")
+
+
+func test_c10_item_colors() -> void:
+	for k in IL.KINDS:
+		var main: Color = Co.color(int(IL.MAIN[k]))
+		check(main.s <= 0.72, "%s 주색 채도 %.2f ≤ 0.72" % [k, main.s])
+		for o in IL.KINDS:
+			if o != k:
+				check(_c10_rgb_dist(main, Co.color(int(IL.MAIN[o]))) >= 0.2, "%s·%s 주색 거리 %.2f ≥ 0.2" % [k, o, _c10_rgb_dist(main, Co.color(int(IL.MAIN[o])))])
+		if k != "ghost": # 유령은 흰빛 — 흰 플레이어 색과 가까워도 됨 (모양·눈으로 가름)
+			for pc in C.PLAYER_PALETTE:
+				check(_c10_rgb_dist(main, Co.color(int(pc))) >= 0.12, "%s 주색이 플레이어 색 %06x 과 거리 %.2f ≥ 0.12" % [k, int(pc), _c10_rgb_dist(main, Co.color(int(pc)))])
+		var total := 0.0
+		var dark := 0.0
+		var has_main := false
+		for t in _c10_tris(IM.mesh(k)):
+			var c: Color = t[1]
+			total += float(t[0])
+			if c.get_luminance() < 0.12:
+				dark += float(t[0])
+			has_main = has_main or c.is_equal_approx(main)
+		check(has_main, "%s: 주색이 모델에 칠해져 있음" % k)
+		check(total > 0.0 and dark / total <= 0.1, "%s: 어두운 (밝기 < 0.12) 면 %.0f%% ≤ 10%%" % [k, 100.0 * dark / maxf(total, 1e-9)])
+
+
+func test_c10_item_groups() -> void:
+	var names: Array = IVM.order()
+	check(names == ["bomb", "knockback", "speed", "jump", "ghost", "brick", "counter", "box"], "묶음 순서: 표 + 상자")
+	var list := [{"type": "ghost", "x": 1, "y": 2, "z": 0}, {"type": "control", "x": 3, "y": 2, "z": 1}, {"type": "bomb", "x": 4, "y": 4, "z": 0}, {"type": "ghost", "x": 5, "y": 5, "z": 2}, {"x": 6, "y": 6, "z": 0}]
+	var g: Array = IVM.groups(list)
+	check(g.map(func(e): return e[0]) == names, "묶음은 늘 같은 순서로 빠짐없이")
+	check(g.map(func(e): return e[1]) == [[2], [], [], [], [0, 3], [], [], [1, 4]], "종류별 번호 (스냅샷 순서), 모르는 종류·종류 없음 → 상자: %s" % str(g))
+	check(IVM.groups([]).all(func(e): return (e[1] as Array).is_empty()), "빈 목록 → 전부 0개")
+	# 자리·출렁임 = 예전 식
+	var p: Vector3 = IVM.item_pos(list[3], 3, 1234.0)
+	check(p.is_equal_approx(Vector3(5.5, 5.5, 2 + FWC.ITEM_BOB[0] + sin(1234.0 / FWC.ITEM_BOB[2] + 3) * FWC.ITEM_BOB[1])), "자리·출렁임이 예전 식 그대로")
+	var row: Array = IVM.ring_row(list[1])
+	check(near(row[0], 3.5) and near(row[1], 2.5) and near(row[2], 1.02) and near(row[3], 0.38) and (row[4] as Color).a <= 0.55 and _c10_rgb_dist(row[4], Co.color(C.GAME_LIGHT_ITEM)) < 1e-4, "받침 고리: 칸 윗면 + 0.02, 반지름 0.38, 알파 ≤ 0.55, 아이템 빛 노랑")
+	# 노드: 0개인 묶음은 숨김, 있는 묶음만 보임
+	var iv = IV.new()
+	var shown := func() -> Array:
+		var out := []
+		for n in names:
+			if (iv.models[n] as MultiMeshInstance3D).visible:
+				out.append("%s%d" % [n, (iv.models[n] as MultiMeshInstance3D).multimesh.visible_instance_count])
+		return out
+	check(shown.call() == [] and not iv.rings.visible and not iv.casters.visible and not iv.projs.visible, "처음엔 전부 숨김")
+	iv.update({"items": list, "projectiles": [{"x": 1.0, "y": 2.0, "z": 3.0}]}, 0.016, 1000.0)
+	check(shown.call() == ["bomb1", "ghost2", "box2"], "있는 종류만 보임: %s" % str(shown.call()))
+	check(iv.rings.visible and iv.rings.multimesh.visible_instance_count == 5 and iv.casters.visible and iv.casters.multimesh.visible_instance_count == 5, "받침 고리·그림자 상자는 아이템마다")
+	check(iv.projs.visible and iv.projs.multimesh.visible_instance_count == 1 and iv.projs.multimesh.mesh == IM.proj_mesh(), "투사체 = 글러브 공")
+	check(FR.xform(row).origin.is_equal_approx(Co.gxyz(3.5, 2.5, 1.02)) and near(FR.xform(row).basis.x.length(), 0.38), "고리 인스턴스 변환 (자리·반지름) — 헤드리스는 MultiMesh 값을 못 읽어 변환 식으로 확인")
+	check(iv.casters.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY and names.all(func(n): return (iv.models[n] as MultiMeshInstance3D).cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF), "그림자는 그림자 상자 하나로")
+	iv.update({"items": [{"type": "speed", "x": 0, "y": 0, "z": 0}]}, 0.016, 2000.0)
+	check(shown.call() == ["speed1"] and not iv.projs.visible and iv.rings.multimesh.visible_instance_count == 1, "줄면 나머지는 다시 숨김: %s" % str(shown.call()))
+	iv.update({}, 0.016, 3000.0)
+	check(shown.call() == [] and not iv.rings.visible and not iv.casters.visible, "0개면 전부 숨김")
+	iv.free()
+
+
+func test_c10_item_px() -> void:
+	for k in IL.KINDS:
+		var long: float = (IM.mesh(k) as ArrayMesh).get_aabb().get_longest_axis_size()
+		var px: float = IVM.px(long, 6.0, 75.0, 720.0)
+		check(px >= 30.0, "%s: 6칸·시야 75°·720p 에서 긴 변 %.1fpx ≥ 30" % [k, px])
+	check(near(IVM.px(1.0, 1.0, 90.0, 720.0), 360.0, 1e-5), "거리 1·시야 90° 면 1칸 = 화면 높이의 반")
+	check(near(IVM.px(0.55, 12.0, 75.0, 720.0) * 2.0, IVM.px(0.55, 6.0, 75.0, 720.0), 1e-5), "거리 두 배면 반")
+
+
+func test_c10_item_mats() -> void:
+	const G3 := preload("res://shaders/g3.gd")
+	const WS := preload("res://world/warm_scan.gd")
+	const MF := preload("res://core/mat_first.gd")
+	var iv = IV.new()
+	var warm: ShaderMaterial = G3.toon_material(Color.WHITE, {"vertex_color": true, "outline": false}) # G3.prewarm 이 데우는 갈래
+	check(iv.mat.shader == warm.shader and iv.mat.shader.resource_path.get_file() == "toon.gdshader", "모델 재질 = 툰 셰이더 (새 셰이더 없음)")
+	check(iv.mat.get_shader_parameter("use_vertex_color") == true, "정점 색 켬")
+	check(MF.mat_key(iv.mat) == MF.mat_key(G3.toon_material(Color.WHITE)), "외곽선까지 툰 재질과 같은 열쇠 (%s)" % MF.mat_key(iv.mat))
+	for k in IL.KINDS:
+		check((iv.models[k] as MultiMeshInstance3D).material_override == iv.mat, "%s: 재질 하나를 나눠 씀" % k)
+	check(iv.projs.material_override == iv.mat, "투사체도 같은 재질")
+	var keys := []
+	for k in WS.STD_KEYS:
+		keys.append(MF.mat_key(WS.std_material(k)))
+	check(keys.has(MF.mat_key(iv.rings.material_override)), "고리 재질 열쇠가 미리 그리기 표 안 (%s)" % MF.mat_key(iv.rings.material_override))
+	check(MF.mat_key(iv.rings.material_override) == MF.mat_key(FR.material()), "고리 = 발밑 고리 재질 모양")
+	var old := StandardMaterial3D.new() # 예전 아이템 상자 재질 모양
+	old.emission_enabled = true
+	check(MF.mat_key(iv.items.material_override) == MF.mat_key(old), "상자 묶음 재질은 예전 그대로")
+	iv.free()
+	# 놓인 폭탄 (shots.gd): 툰 재질 둘 (몸통·빛남), 표준 재질 없음
+	const Shots := preload("res://world/shots.gd")
+	var sh = Shots.new()
+	sh._bombs([{"x": 2, "y": 3, "z": 1, "left": C.BOMB_FUSE_MS}], 0.0)
+	var n: MeshInstance3D = sh.bombs[0]
+	var glow: MeshInstance3D = n.get_child(0)
+	check(n.visible and n.position.is_equal_approx(Co.gxyz(2.5, 3.5, 1 + C.BOMB_MODEL_SIZE / 2)), "놓인 폭탄 자리")
+	check(n.material_override is ShaderMaterial and glow.material_override is ShaderMaterial and (n.material_override as ShaderMaterial).shader == warm.shader and (glow.material_override as ShaderMaterial).shader == warm.shader, "놓인 폭탄 재질 = 툰")
+	check(n.mesh == IM.bomb_split(C.BOMB_MODEL_SIZE)[0] and glow.mesh == IM.bomb_split(C.BOMB_MODEL_SIZE)[1], "놓인 폭탄 = 아이템 폭탄 모델 (몸통 + 빛남)")
+	check((glow.material_override as ShaderMaterial).get_shader_parameter("emissive") == Co.color(IL.BOMB_GLOW), "켜진 반 주기 (시각 0): 띠·불씨 발광")
+	sh._bombs([{"x": 2, "y": 3, "z": 1, "left": C.BOMB_FUSE_MS}], IVM.bomb_period(C.BOMB_FUSE_MS) * 1.5)
+	check((glow.material_override as ShaderMaterial).get_shader_parameter("emissive") == Color.BLACK and (n.material_override as ShaderMaterial).get_shader_parameter("emissive") == Color.BLACK, "꺼진 반 주기: 발광 없음")
+	sh._bombs([], 0.0)
+	check(not n.visible, "폭탄이 없으면 숨김")
+	sh.free()
+
+
+func test_c10_bomb_blink_same() -> void:
+	for left in [0.0, 1.0, 150.0, 750.0, 1499.0, 1500.0, 2200.0, 9000.0]:
+		var old := 80 + minf(1.0, float(left) / C.BOMB_FUSE_MS) * 320 # 예전 shots.gd 식
+		check(near(IVM.bomb_period(left), old), "남은 %dms: 주기 %.1f = 예전 %.1f" % [int(left), IVM.bomb_period(left), old])
+		for now in [0.0, 79.0, 81.0, 399.0, 401.0, 12345.0, 98765.4]:
+			check(IVM.bomb_on(now, left) == (int(floor(float(now) / old)) % 2 == 0), "남은 %dms·시각 %.1f: 켜짐이 예전과 같음" % [int(left), now])
+	check(IVM.bomb_period(0.0) < IVM.bomb_period(C.BOMB_FUSE_MS), "남은 시간이 짧을수록 빨리")
