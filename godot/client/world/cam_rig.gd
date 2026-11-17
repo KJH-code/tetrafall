@@ -286,6 +286,7 @@ func place(dt: float, shown: Dictionary, solid: Callable) -> void:
 	if not following:
 		_spec_key = null
 		spec_dist = null
+	spec_thin(dt, shown, look, following and close_id() == null) # c10-fix F1 (victory_camera 가 eye 를 바꾸기 전 — 관전 카메라 자리로 봄)
 	victory_camera(dt, shown, look, solid)
 	var fov: float = float(View.settings.get("fov", C.FOV_DEFAULT))
 	var at := Co.gxyz(eye.x, eye.y, eye.z)
@@ -306,6 +307,49 @@ func place(dt: float, shown: Dictionary, solid: Callable) -> void:
 	# 흔들림·마지막 킬 줌·화면 끝 KO 빛 (render.js: 승자 클로즈업·셀카 중에도 camHook). 하늘 시점이면 fx 가 안 함
 	if hook != null:
 		hook.call(cam)
+
+
+# c10-fix F1: 관전 따라가기에서 대상을 가리는 남의 몸 (눈 → 바라볼 점·눈 → 대상 발 선분이 그 몸 상자를 지남) 을 디더로 옅게 (body.set_see_thru).
+# on 거짓 (1·3인칭·전체 보기·하늘 시점·승자 클로즈업·대상 없음) 이면 옅게 한 몸을 다 되돌림 — 그때는 남의 몸이 예전 그대로. 순수 계산은 SpecCam.sight_blockers·thin_step
+var thin := {} # id → {"k": 남길 비율, "at": 마지막으로 막은 시각 ms} (확인용으로도 봄)
+var _thin_bodies := {} # id → 옅게 한 몸 (WeakRef)
+
+
+func spec_thin(dt: float, shown: Dictionary, look: Dictionary, on: bool) -> void:
+	if not on and thin.is_empty() and _thin_bodies.is_empty():
+		return
+	var next := {}
+	if on:
+		var tid := int(View.spectate_target)
+		var others := {}
+		for p in Store.state.get("players", []):
+			if p.alive and int(p.id) != tid and shown.has(int(p.id)):
+				others[int(p.id)] = shown[int(p.id)]
+		var e := Vector3(eye.x, eye.y, eye.z)
+		var ends := [Vector3(look.x, look.y, look.z), shown[tid]]
+		var pad: Array = SpecCam.SPEC.thin_pad
+		next = SpecCam.thin_step(thin, SpecCam.sight_blockers(e, ends, others, float(pad[0]), C.PLAYER_HALF, C.PLAYER_HEIGHT),
+			SpecCam.sight_blockers(e, ends, others, float(pad[1]), C.PLAYER_HALF, C.PLAYER_HEIGHT), Net.now_ms(), dt)
+	thin = next
+	for id in _thin_bodies.keys():
+		if not next.has(id):
+			var b = _thin_bodies[id].get_ref()
+			if b != null:
+				b.set_see_thru(1.0)
+			_thin_bodies.erase(id)
+	if bodies == null:
+		return
+	for id in next:
+		var n = bodies.nodes.get(id)
+		var body = n.body if n != null and n.get("body") != null and n.body.has_method("set_see_thru") else null
+		var was = _thin_bodies[id].get_ref() if _thin_bodies.has(id) else null
+		if was != null and was != body:
+			was.set_see_thru(1.0) # 몸을 새로 만든 경우: 앞 몸은 되돌림
+		if body != null:
+			body.set_see_thru(float(next[id].k))
+			_thin_bodies[id] = weakref(body)
+		else:
+			_thin_bodies.erase(id)
 
 
 # 클로즈업 대상: 판 끝 승자 (closeup 동안) 또는 내 이모트 셀카 (살아서 이모트 중, 하늘 시점 아님)

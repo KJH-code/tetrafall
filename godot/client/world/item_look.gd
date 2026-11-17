@@ -94,6 +94,21 @@ const PROJ_SPIN := 3.0 # 투사체가 세로축으로 도는 빠르기 (아이�
 # 받침 고리: 아이템 칸 윗면 바로 위 납작한 고리 (모양·재질은 world/foot_rings.gd 의 것 — 아이템 빛 노랑 C.GAME_LIGHT_ITEM).
 #   r 바깥 반지름 (칸) · inner 안쪽 비 · alpha · lift 칸 윗면 위 높이 · segs 둘레 칸
 const RING := {"r": 0.38, "inner": 0.76, "alpha": 0.5, "lift": 0.02, "segs": 24}
+# c10-fix F3 나옴·사라짐 신호 (world/items_view.gd 가 그림, 순수 계산 world/item_view_math.gd): 필드 아이템이 나오는 순간 그 칸에 짧은 빛 기둥 + 퍼지는 고리,
+# 없어지는 순간 (누가 주움) 그 칸에 짧게 터지는 고리. 바닥에 머무는 시간이 1~2초라 (봇이 바로 주움) 나오고 사라지는 순간이 안 읽혔음. 소리·HUD 글은 없음 (8명 판에서 시끄러움).
+# 화풍 기준서: 아이템 빛 노랑 (C.GAME_LIGHT_ITEM) 의 짧은 빛 기둥·고리, 0.35~0.6초, 알파 0.55 이하 (흰 심만 예외), 세계 안 효과만.
+#   born 나옴: ms 길이 · h 기둥 높이 (칸)·width 폭·core 흰 심 폭 비 · alpha 바깥 (아이템 빛 노랑) 알파·core_alpha 흰 심 알파 · prof 기둥 길이 따라 알파 [[자리 −0.5 바닥 ~ 0.5 꼭대기, 배율]]
+#     ring [처음, 끝] 고리 반지름 (칸, ease-out)·ring_alpha · hold 기둥이 이 비율까지는 알파 그대로, 그 뒤 0 으로
+#   gone 사라짐: ms · ring [처음, 끝] 반지름·alpha · mix 아이템 빛 노랑에 그 종류 주색 (MAIN) 을 섞는 비율 · ring2 안쪽 둘째 고리 반지름 비 (겹 물결 — 나옴의 한 겹 고리와 갈림)
+#     h·width 짧고 굵은 빛 줄 (나옴 기둥과 같은 묶음 — 인스턴스 색으로 사라짐 색을 입힘, 알파는 (1 − u)² 로 빨리 꺼짐): 사람들 사이 바닥 고리만으론 안 보여서
+#   gap_ms 앞 스냅샷과 서버 시각 차가 이보다 크면 (재접속·멈춤) 신호 없음 · born_max 한 스냅샷에 새로 나온 아이템이 이보다 많으면 나옴 신호 없음 (보급 이벤트 = fx/event_fx.gd 가 제 빛 기둥을 그림 · 단계 깔기)
+#   max 한꺼번에 그리는 신호 수 상한 · order 기둥 그리는 순서 (이벤트 효과 order_air 와 같음 — 발밑 고리 7·이름표 11 아래) · lift 고리를 칸 윗면 위로 (받침 고리 RING.lift 위)
+# 그래픽 낮춤이면 기둥 없이 고리만
+const SIGNAL := {
+	"born": {"ms": 500.0, "h": 2.6, "width": 0.16, "core": 0.35, "alpha": 0.55, "core_alpha": 0.9, "prof": [[-0.5, 1.0], [0.5, 0.0]], "ring": [0.3, 1.1], "ring_alpha": 0.55, "hold": 0.3},
+	"gone": {"ms": 400.0, "ring": [0.38, 1.2], "alpha": 0.55, "mix": 0.25, "ring2": 0.55, "h": 0.9, "width": 0.34},
+	"gap_ms": 500.0, "born_max": 1, "max": 12, "order": 3, "lift": 0.03,
+}
 const SHADOW_BOX := 0.34 # 해 그림자 전용 상자 한 변 (종류 상관없이 하나의 MultiMesh)
 
 # 놓인 폭탄 깜빡임 (world/shots.gd): 주기 ms = BOMB_BLINK[0] + min(1, 남은 시간 / C.BOMB_FUSE_MS) × BOMB_BLINK[1] (남은 시간이 짧을수록 빨리).

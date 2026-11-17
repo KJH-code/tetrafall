@@ -28,8 +28,17 @@ var mats = null # G3 툰 재질 [불투명, 반투명] (없으면 piece_mat 의 
 # c10: 관전 (View.mode "spectate") 때 카메라 가까이 (SpecCam.SPEC.fade[1] 안) 있는 떨어지는 칸 — 렌즈 앞을 덮던 것. 반투명 재질 (mats[1]) + 인스턴스 색 알파 (SpecCam.cell_alpha) 로
 # 옅게 그림 (먼 칸부터 순서대로). 그 칸은 cells_mmi·far_mmi·하늘 블록 쪽에서 빠짐. 그림자 안 던짐 (그림자 상자 caster_mmi 는 그대로). 1·3인칭·하늘 시점에서는 늘 비어 있음
 var fade_mmi := MultiMeshInstance3D.new()
-var fade_n := 0 # 지난 갱신에서 옅게 그린 칸 수 (0 이 아니면 같은 스냅샷이어도 다시 씀 — 카메라가 움직이면 알파가 바뀜)
-var faded: Array = [] # 그 칸들 [카메라 거리, 자리 (Transform3D), 색 (알파 곱함)], 먼 칸부터 (확인용 — 헤드리스에서는 MultiMesh 값을 되읽을 수 없음)
+var fade_n := 0 # 지난 갱신에서 옅게 그린 칸 수
+var faded: Array = [] # 그 칸들 [카메라 거리, 자리 (Transform3D), 색 (알파 곱함), 옅게 하기 전 색], 먼 칸부터 (확인용 — 헤드리스에서는 MultiMesh 값을 되읽을 수 없음)
+# c10-fix F2: 옅은 칸 전용 재질 = 반투명 재질 (mats[1]) 의 사본 + 그리는 순서 SpecCam.SPEC.fade_order. mats[1] 은 깊이를 쓰고 (piece_alpha depth_draw_always) 순서 0 이라
+# 그 뒤에 그려지는 착지 테·위험 표면 (1)·판 빛 (5)·발밑 고리 (7)·표식 (8) 이 옅은 칸 뒤에서 잘렸음 → 옅은 칸을 그것들 뒤에 그려 칸 너머로 비치게 함.
+# mats[1] 은 하늘 블록·하늘 시점 칸이 같이 써서 그대로 둠
+var fade_mat: Material = null
+var _fade_src: Material = null # 사본을 뜬 원본 (set_look 이 재질을 바꾸면 다시 뜸)
+# c10-fix F8: 같은 스냅샷이면 옅은 칸의 알파·순서만 다시 씀 (refades). 옅게 그릴 칸 모음 (_fade_ids — 조각·칸 순서로 센 번호) 이 바뀌면 칸 묶음만 다시 나눔 (cell_writes),
+# 그림자 칸·착지 테까지 다 다시 쓰는 것 (writes) 은 스냅샷·시점·색 표·내 id 가 바뀔 때만 (W15 그대로)
+var refades := 0 # 옅은 칸만 다시 쓴 번 수 (확인용)
+var _fade_ids := PackedInt32Array()
 
 
 func _ready() -> void:
@@ -189,11 +198,17 @@ func piece_color(pc: Dictionary) -> Color:
 func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 	# 칸 자리·색은 스냅샷 값 그대로 → 같은 스냅샷·같은 시점·같은 색 표·하늘 블록 없음 (반짝임이 시간에 따라 바뀜) 이면 지난 프레임 그대로 (W15)
 	var sky_on := sky_blend > 0.5
-	# c10: 관전이면 카메라 자리 (가까운 칸을 옅게). 가까운 칸이 있거나 지난번에 옅게 그린 칸이 있으면 아래 건너뛰기를 안 함
+	# c10: 관전이면 카메라 자리 (가까운 칸을 옅게). 옅게 그릴 칸 모음이 지난번과 다르면 (카메라가 움직여 어떤 칸이 경계를 넘음·관전이 끝남) 아래 건너뛰기를 안 함
 	var spec_cam: Dictionary = CellLod.camera_of(self) if mats != null and str(View.mode) == "spectate" else {}
 	var fade_far: float = float(SpecCam.SPEC.fade[1])
-	var fading: bool = fade_n > 0 or (not spec_cam.is_empty() and near_any(st.get("pieces", []), spec_cam.pos, fade_far))
-	if not fading and is_same(st, _key_st) and sky_on == _key_sky and is_same(piece_colors, _key_cols) and my_id == _key_me:
+	var same: bool = is_same(st, _key_st) and sky_on == _key_sky and is_same(piece_colors, _key_cols) and my_id == _key_me
+	var cells_only := false # c10-fix F8: 같은 스냅샷인데 옅게 그릴 칸 모음만 바뀜 → 칸 묶음만 다시 나눔 (그림자 칸·착지 테는 스냅샷 값이라 그대로)
+	if same and (fade_n > 0 or not spec_cam.is_empty()):
+		same = near_ids(st.get("pieces", []), spec_cam.pos, fade_far) == _fade_ids if not spec_cam.is_empty() else false
+		cells_only = not same
+	if same:
+		if fade_n > 0: # c10-fix F8: 칸 모음은 그대로 — 카메라가 움직인 만큼 알파·순서만
+			_refade(spec_cam.pos)
 		if not _sky_base.is_empty() or not _sky_base_far.is_empty(): # 하늘 블록 반짝임만 (색 = 하얗게 섞은 모양 색 + 시간에 따라 하늘빛)
 			var g := Color(0.12, 0.22, 0.3, 0.0) * (0.55 + 0.45 * sin(Time.get_ticks_msec() / 500.0))
 			var km0 := sky_mmi.multimesh
@@ -213,7 +228,10 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 	_key_sky = sky_on
 	_key_cols = piece_colors
 	_key_me = my_id
-	writes += 1
+	if cells_only:
+		cell_writes += 1
+	else:
+		writes += 1
 	var pieces: Array = st.get("pieces", [])
 	var n := 0
 	for pc in pieces:
@@ -239,7 +257,7 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 		far_mmi.material_override = cells_mmi.material_override
 		sky_mmi.material_override = mats[1]
 		sky_far_mmi.material_override = mats[1]
-		fade_mmi.material_override = mats[1]
+		fade_mmi.material_override = _fade_material()
 	else:
 		piece_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if alpha < 1.0 else BaseMaterial3D.TRANSPARENCY_DISABLED
 	# 하늘 계단 블록: 모양 색을 하얗게 섞고 하늘색으로 은은히 빛남 (render.js skyGlow), 살짝 비침 (하늘 시점이면 더)
@@ -259,7 +277,9 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 	var s := 0
 	var r := 0 # 테 띠 조각 수
 	var hot_n := 0
-	faded = [] # c10 옅게 그릴 칸: [카메라 거리, 자리, 색 (알파 곱함)]
+	faded = [] # c10 옅게 그릴 칸: [카메라 거리, 자리, 색 (알파 곱함), 옅게 하기 전 색]
+	_fade_ids = PackedInt32Array()
+	var cell_i := 0 # 조각·칸 순서로 센 번호 (near_ids 와 같은 순서)
 	var fade_on := not spec_cam.is_empty()
 	var fade_pos: Vector3 = spec_cam.get("pos", Vector3.ZERO)
 	for pc in pieces:
@@ -283,10 +303,12 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 			var c: Array = pc.cells[i]
 			var xf := Transform3D(Basis(), Co.gxyz(c[0] + 0.5, c[1] + 0.5, c[2] + 0.5))
 			var cam_d: float = fade_pos.distance_to(xf.origin) if fade_on else fade_far
+			cell_i += 1
 			if cam_d < fade_far: # c10 관전 카메라 가까운 칸 (하늘 블록도): 옅게 — 아래에서 먼 칸부터 씀
 				var fc := col
 				fc.a *= SpecCam.cell_alpha(cam_d)
-				faded.append([cam_d, xf, fc])
+				faded.append([cam_d, xf, fc, col])
+				_fade_ids.append(cell_i - 1)
 				if proxy_on and not sky:
 					qm.set_instance_transform(qi, xf)
 					qi += 1
@@ -315,7 +337,7 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 					qm.set_instance_transform(qi, xf)
 					qi += 1
 				k += 1
-			if show_shadow and pc.has("shadow") and i < pc.shadow.size():
+			if not cells_only and show_shadow and pc.has("shadow") and i < pc.shadow.size():
 				var sh: Array = pc.shadow[i]
 				sm.set_instance_transform(s, Transform3D(Basis(), Co.gxyz(sh[0] + 0.5, sh[1] + 0.5, float(pc.landZ) + WC.SHADOW_LIFT)))
 				var sc: Color
@@ -330,7 +352,7 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 					sc = Color(0, 0, 0, shadow_alpha(pc.get("eta")))
 				sm.set_instance_color(s, sc)
 				s += 1
-		if show_shadow and pc.has("shadow"): # 테: 조각 바깥 윤곽만 (채움과 같은 조건)
+		if not cells_only and show_shadow and pc.has("shadow"): # 테: 조각 바깥 윤곽만 (채움과 같은 조건)
 			var kind: String = ("fit" if pc.get("fits", false) else "nofit") if mine else "normal"
 			var red := LandingRim.rim_color("danger", floor_luma)
 			for t in LandingRim.items(pc.shadow.slice(0, pc.cells.size()), float(pc.landZ), kind, hot, floor_luma):
@@ -338,23 +360,84 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 				rm.set_instance_color(r, t[1])
 				hot_n += 1 if not hot.is_empty() and t[1] == red else 0
 				r += 1
-	if faded.size() > 1:
-		faded.sort_custom(func(a, b): return a[0] > b[0]) # 먼 칸부터 그려야 가까운 칸 너머로 비침
-	var dm := fade_mmi.multimesh
-	for i in faded.size():
-		dm.set_instance_transform(i, faded[i][1])
-		dm.set_instance_color(i, faded[i][2])
-	dm.visible_instance_count = faded.size()
-	fade_n = faded.size()
+	if not faded.is_empty() and fade_n == 0:
+		_sync_fade_material() # 옅게 그리기 시작: 원본 재질이 제자리에서 바뀐 값 (그래픽 낮춤·판 빛 테두리) 을 따라감
+	_write_faded()
 	mm.visible_instance_count = k
 	fm.visible_instance_count = f
 	lod_far = f
 	qm.visible_instance_count = qi if proxy_on else 0
 	km.visible_instance_count = q
 	skf.visible_instance_count = qf
-	sm.visible_instance_count = s
-	rm.visible_instance_count = r
-	rim_danger = hot_n
+	if not cells_only:
+		sm.visible_instance_count = s
+		rm.visible_instance_count = r
+		rim_danger = hot_n
+
+
+# 옅은 칸 묶음에 씀 (먼 칸부터 그려야 가까운 칸 너머로 비침)
+func _write_faded() -> void:
+	if faded.size() > 1:
+		faded.sort_custom(func(a, b): return a[0] > b[0])
+	var dm := fade_mmi.multimesh
+	for i in faded.size():
+		dm.set_instance_transform(i, faded[i][1])
+		dm.set_instance_color(i, faded[i][2])
+	dm.visible_instance_count = faded.size()
+	fade_n = faded.size()
+
+
+# c10-fix F8: 같은 스냅샷·같은 칸 모음 — 옅은 칸의 카메라 거리·알파·순서만 다시 (다른 묶음·그림자·착지 테는 안 건드림).
+# 가까운 하늘 블록의 반짝임 색은 다 쓴 순간 값 그대로 (다음 스냅샷까지 한 틱)
+func _refade(cam_pos: Vector3) -> void:
+	refades += 1
+	for e in faded:
+		e[0] = cam_pos.distance_to((e[1] as Transform3D).origin)
+		var fc: Color = e[3]
+		fc.a *= SpecCam.cell_alpha(e[0])
+		e[2] = fc
+	_write_faded()
+
+
+# c10-fix F2: 옅은 칸 전용 재질 (머리 주석). 원본이 바뀌면 다시 뜸
+func _fade_material() -> Material:
+	var src: Material = mats[1]
+	if fade_mat == null or _fade_src != src:
+		fade_mat = src.duplicate()
+		fade_mat.render_priority = int(SpecCam.SPEC.fade_order)
+		_fade_src = src
+	return fade_mat
+
+
+# 원본 반투명 재질의 셰이더·값을 사본에 다시 베낌 (G3.set_low·판 빛 테두리가 원본을 제자리에서 바꿈 — 사본은 G3 가 안 따라감). 순서 값은 사본 것 그대로
+func _sync_fade_material() -> void:
+	var src := _fade_src as ShaderMaterial
+	var dst := fade_mat as ShaderMaterial
+	if src == null or dst == null or src.shader == null:
+		return
+	if dst.shader != src.shader:
+		dst.shader = src.shader
+	for u in src.shader.get_shader_uniform_list():
+		var v = src.get_shader_parameter(u.name)
+		if v != dst.get_shader_parameter(u.name):
+			dst.set_shader_parameter(u.name, v)
+
+
+# c10-fix F8: 카메라 (고도 좌표 pos) 에서 far (m) 안인 떨어지는 칸의 번호 (조각·칸 순서로 센 것 — update 가 옅게 그리는 칸과 같은 모음)
+static func near_ids(pieces: Array, pos: Vector3, far: float) -> PackedInt32Array:
+	var out := PackedInt32Array()
+	var g := Co.game(pos)
+	var f2 := far * far
+	var i := 0
+	for pc in pieces:
+		for c in pc.cells:
+			var dx: float = c[0] + 0.5 - g.x
+			var dy: float = c[1] + 0.5 - g.y
+			var dz: float = c[2] + 0.5 - g.z
+			if dx * dx + dy * dy + dz * dz < f2:
+				out.append(i)
+			i += 1
+	return out
 
 
 # c10: 떨어지는 칸 가운데 하나라도 카메라 (고도 좌표 pos) 에서 far (m) 안인가
@@ -371,7 +454,8 @@ static func near_any(pieces: Array, pos: Vector3, far: float) -> bool:
 	return false
 
 
-var writes := 0 # 칸을 다 다시 쓴 번 수 (확인용)
+var writes := 0 # 칸·그림자·착지 테를 다 다시 쓴 번 수 (확인용)
+var cell_writes := 0 # c10-fix F8: 칸 묶음만 다시 나눈 번 수 (같은 스냅샷에서 옅게 그릴 칸 모음이 바뀜)
 var _key_st = null # 지난번 그린 스냅샷·시점·색 표·내 id
 var _key_sky := false
 var _key_cols = null

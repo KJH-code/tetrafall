@@ -207,6 +207,99 @@ public class FieldItemTests
     }
 
     [Fact]
+    public void Master_counter_item_takes_no_field_item_slot()
+    {
+        // c10 리뷰 F6: 반격 아이템 (counter) 이 ItemMax() 한 자리를 차지해 필드 아이템이 1개에서 안 채워지고 시계가 null 이었음
+        var (g, lines, _) = Humans(n: 3, mode: "master");
+        Assert.Equal(2, g.ItemMax());
+        double counterAt = g.roundStartTime + C.MASTER_COUNTER_FIRST_MS;
+        while (g.time < counterAt + TICK) g.Tick(TICK);
+        Assert.Contains(g.items, it => it.type == "counter");
+        // 필드 아이템을 하나만 남김 → 반격 아이템이 있어도 자리가 비었으니 시계가 돌고 (null 아님) 상한까지 다시 채워짐
+        var pool = Pool(g);
+        Assert.NotEmpty(pool);
+        foreach (var it in pool.Skip(1)) g.items.Remove(it);
+        Assert.Single(Pool(g));
+        Assert.Equal(1, g.PoolItemCount());
+        g.powerItemNextAt = g.time + 500;
+        Assert.Equal(500, g.ItemTimers().power);
+        Assert.Contains("\"power\":500", g.Snapshot());
+        while (g.time < g.powerItemNextAt + TICK) g.Tick(TICK);
+        Assert.Contains(g.items, it => it.type == "counter");
+        Assert.Equal(2, Pool(g).Count); // 반격 아이템 + 필드 아이템 ItemMax() 개
+        Assert.Equal(3, g.items.Count);
+        Assert.Null(g.ItemTimers().power); // 필드 아이템이 꽉 찼을 때만 시계가 멈춤
+        Assert.DoesNotContain(lines, l => l.Contains("[아이템]"));
+
+        // 반격 아이템을 주워도 다음 필드 아이템 시계는 그대로 (예전엔 ITEM_RESPAWN_MS 뒤로 밀림), 필드 아이템을 주우면 밀림
+        g.items.Remove(Pool(g)[0]);
+        g.powerItemNextAt = g.time + 500;
+        var surv = g.Players().First(p => g.OnField(p));
+        var counter = g.items.First(it => it.type == "counter");
+        double next = g.powerItemNextAt;
+        surv.x = counter.x + 0.5;
+        surv.y = counter.y + 0.5;
+        surv.z = g.ColumnTop(counter.x, counter.y);
+        g.PickupItems();
+        Assert.DoesNotContain(g.items, it => it.type == "counter");
+        Assert.Equal(next, g.powerItemNextAt);
+        var field = Pool(g)[0];
+        var other = g.Players().First(p => g.OnField(p) && p != surv);
+        other.x = field.x + 0.5;
+        other.y = field.y + 0.5;
+        other.z = g.ColumnTop(field.x, field.y);
+        g.PickupItems();
+        Assert.Empty(Pool(g));
+        Assert.Equal(g.time + C.ITEM_RESPAWN_MS, g.powerItemNextAt);
+    }
+
+    [Fact]
+    public void Round_start_log_line_every_round_only_when_items_run()
+    {
+        // c10 리뷰 F7: [호스트] 줄은 켤 때 한 번뿐 → 같은 방 2판째부터는 로그로 아이템 판인지 못 가렸음
+        const string LINE = "  필드 아이템: 켬";
+        var lines = new List<string>();
+        var g = new Game(lines.Add, characters: true);
+        g.AddPlayer(1);
+        g.AddPlayer(2);
+        Assert.True(g.SetFieldItems(true));
+        for (int round = 1; round <= 2; round++)
+        {
+            Assert.True(g.StartRound());
+            while (g.phase != "playing") g.Tick(TICK);
+            Assert.Equal(round, lines.Count(l => l == LINE));
+            int start = lines.FindLastIndex(l => l.StartsWith("===== ROUND"));
+            Assert.True(lines.IndexOf(LINE, start) > start); // 그 판 시작 줄 뒤에
+            g.EndRound(null);
+        }
+        Assert.Equal(1, lines.Count(l => l == "[호스트] 필드 아이템 켬"));
+        // 끄면 다음 판부터 없음
+        Assert.True(g.SetFieldItems(false));
+        Assert.True(g.StartRound());
+        while (g.phase != "playing") g.Tick(TICK);
+        Assert.Equal(2, lines.Count(l => l == LINE));
+
+        // 끈 판·블록 마스터 켠 판
+        var (_, offLines, _) = Humans(items: false);
+        Assert.DoesNotContain(LINE, offLines);
+        var (_, masterLines, _) = Humans(n: 3, mode: "master");
+        Assert.Contains(LINE, masterLines);
+
+        // 연습·튜토리얼: 옵션이 켜진 채여도 아이템이 안 나오니 줄도 없음
+        foreach (bool tutorial in new[] { false, true })
+        {
+            var pl = new List<string>();
+            var pr = new Game(pl.Add, characters: true);
+            pr.AddPlayer(1);
+            pr.fieldItems = true;
+            Assert.True(tutorial ? pr.StartTutorial(1) : pr.StartPractice());
+            for (int t = 0; t < 3 * C.TICK_RATE; t++) pr.Tick(TICK);
+            Assert.Equal("playing", pr.phase);
+            Assert.DoesNotContain(LINE, pl);
+        }
+    }
+
+    [Fact]
     public void Set_refused_in_round_practice_and_same_value()
     {
         var lines = new List<string>();

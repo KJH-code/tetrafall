@@ -801,7 +801,8 @@ func set_outline_far(far: bool) -> void:
 
 # 이 몸에 붙일 외곽선 사본: 보통은 가까운 몸 깎기를 같이 받는 것, 깎기를 꺼 둔 동안 (set_near_cut_off) 은 안 깎는 것 (G3.far_outline(원본, false))
 func _ol_pass(e: Array) -> Material:
-	return G3.far_outline(e[2], false) if _nc_off else e[1]
+	var o: Material = G3.far_outline(e[2], false) if _nc_off else e[1]
+	return _thin_pass(o) if _thin < 1.0 else o # c10-fix F1: 옅은 동안은 이 몸만의 사본 (파일 끝)
 
 
 # ---- c8-fix F3 가까운 몸 깎기 끄기 (world/cam_rig.gd 가 부름: 승자 클로즈업·내 이모트 셀카 대상) ----
@@ -999,6 +1000,8 @@ func pose(p: Dictionary, now_ms: float) -> void:
 	_fx_colors(p)
 	if _nc_off:
 		_nc_sweep() # c8-fix F3: 가까운 몸 깎기를 꺼 둔 동안 새로 끼워진 재질 (반투명·폼 몸통) 도 같이 끔
+	if _thin < 1.0:
+		_thin_sweep() # c10-fix F1: 옅은 동안 새로 끼워진 재질도 같이 옅게
 	_prof("몸 재질 (투명·색 효과)", t0)
 	# 맞은 순간 찌그러짐 (G5 fx.squash_amount, render.js g.scale): 게임 (x, y 넓게, z 낮게) = 고도 (x, z 넓게, y 낮게)
 	var sq := _fx_amount("squash_amount")
@@ -2302,3 +2305,69 @@ func _act_for(_now_ms: float):
 		act = null
 		return null
 	return {"id": act.id, "move": act.move, "phase": "rec", "u": r, "air": act.air}
+
+
+# ---- c10-fix F1 몸 옅게 (world/cam_rig.gd 가 부름: 관전 따라가기에서 대상을 가리는 남의 몸 — 순수 계산 world/spec_cam.gd) ----
+# keep = 디더로 남길 화소 비율 (1 = 예전 그대로). 이 몸이 지금 그리는 셰이더 재질 (툰·눈·외부 모델 부품·소품, 반투명이면 안쪽 재질) 의 near_keep 에 넣음:
+# 가까운 몸 깎기 (near_cut) 와 같은 화소 난수에 상한만 얹어 (toon_common) 어느 화소도 예전보다 더 덮지 않음. 알파 섞기가 아니라 화소 버리기 → 해 그림자·깊이는 그대로.
+# 외곽선은 이 몸만의 사본에 같은 값 (몸들이 나눠 쓰는 사본을 바꾸면 남의 몸 선도 빠짐) — _ol_pass 가 옅은 동안 그 사본을 돌려줌.
+# 옅은 동안 새로 끼워지는 재질 (유령화·무적 반투명, 바드 폼 몸통) 은 pose 끝에서 다시 훑음. 1 로 되돌리면 넣은 값을 지우고 (셰이더 기본 1) 사본도 버림
+var _thin := 1.0
+var _thin_mats := {} # 재질 id → near_keep 을 넣은 재질
+var _thin_ol := {} # 원래 외곽선 (나눠 쓰는 사본) id → 이 몸만의 사본
+var _thin_mis: Array = [] # 이 몸 아래 메시 노드 (옅게 시작할 때 한 번 모음)
+var _thin_ext = null # 모을 때의 외부 모델 (나중에 붙으면 다시 모음)
+
+
+func set_see_thru(keep: float) -> void:
+	keep = clampf(keep, 0.0, 1.0)
+	if keep == _thin:
+		return
+	var edge := _thin >= 1.0 or keep >= 1.0 # 옅게 시작·끝: 외곽선 사본을 갈아 끼움
+	_thin = keep
+	if keep < 1.0:
+		_thin_sweep()
+		for m in _thin_mats.values():
+			(m as ShaderMaterial).set_shader_parameter("near_keep", keep)
+		for o in _thin_ol.values():
+			(o as ShaderMaterial).set_shader_parameter("near_keep", keep)
+	else:
+		for m in _thin_mats.values():
+			(m as ShaderMaterial).set_shader_parameter("near_keep", null) # 넣은 값을 지움 = 셰이더 기본 (1)
+		_thin_mats.clear()
+		_thin_mis.clear()
+		_thin_ext = null
+	if edge and _ol_built:
+		for e in _ol:
+			if (e[0] as Material).next_pass != null:
+				(e[0] as Material).next_pass = _ol_pass(e)
+	if keep >= 1.0:
+		_thin_ol.clear()
+
+
+func see_thru() -> float:
+	return _thin
+
+
+func _thin_sweep() -> void:
+	if _thin_mis.is_empty() or _thin_ext != ext:
+		_thin_mis = find_children("*", "MeshInstance3D", true, false)
+		_thin_ext = ext
+	for mi in _thin_mis:
+		if not is_instance_valid(mi):
+			continue
+		var m := GhostDepth.inner((mi as MeshInstance3D).material_override) as ShaderMaterial
+		if m == null or _thin_mats.has(m.get_instance_id()):
+			continue
+		_thin_mats[m.get_instance_id()] = m
+		m.set_shader_parameter("near_keep", _thin)
+
+
+# 옅은 동안 붙일 외곽선: 원래 사본 (o) 을 베낀 이 몸만의 것 (o 마다 하나 — 같은 o 면 같은 사본)
+func _thin_pass(o: Material) -> Material:
+	var id := o.get_instance_id()
+	if not _thin_ol.has(id):
+		var d := o.duplicate() as ShaderMaterial
+		d.set_shader_parameter("near_keep", _thin)
+		_thin_ol[id] = d
+	return _thin_ol[id]

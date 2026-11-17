@@ -826,3 +826,178 @@ func test_c10_bomb_blink_same() -> void:
 		for now in [0.0, 79.0, 81.0, 399.0, 401.0, 12345.0, 98765.4]:
 			check(IVM.bomb_on(now, left) == (int(floor(float(now) / old)) % 2 == 0), "남은 %dms·시각 %.1f: 켜짐이 예전과 같음" % [int(left), now])
 	check(IVM.bomb_period(0.0) < IVM.bomb_period(C.BOMB_FUSE_MS), "남은 시간이 짧을수록 빨리")
+
+
+# ---------- c10-fix F3 아이템 나옴·사라짐 신호 (world/item_look.gd SIGNAL · item_view_math.gd · items_view.gd) ----------
+
+# 판 중 스냅샷 모양 (신호 판단에 쓰는 값만)
+func _c10_item_st(time: float, items: Array, round_n := 1, phase := "playing") -> Dictionary:
+	return {"phase": phase, "time": time, "mode": "survival", "practice": null, "round": {"n": round_n}, "items": items, "projectiles": []}
+
+
+# 순수 계산: 열쇠 (종류·칸 — 높이는 뺌) · 신호를 내도 되는 스냅샷 쌍 · 나옴·사라짐 고르기 · 시간에 따른 모양 · 수치가 화풍 기준서 안
+func test_c10_fix_item_signal_math() -> void:
+	var S: Dictionary = IL.SIGNAL
+	for k in ["born", "gone"]:
+		check(float(S[k].ms) >= 350.0 and float(S[k].ms) <= 600.0, "%s 길이 %dms 가 0.35~0.6초 안" % [k, int(S[k].ms)])
+	check(float(S.born.alpha) <= 0.55 and float(S.born.ring_alpha) <= 0.55 and float(S.gone.alpha) <= 0.55 and float(S.born.core_alpha) <= 1.0, "알파 0.55 이하 (흰 심만 예외)")
+	check(float(S.born.h) >= 2.0 and float(S.born.h) < float(preload("res://fx/event_fx_config.gd").EVENT_FX.supply.h), "기둥은 사람 키보다 높고 보급 이벤트 기둥보다 낮음 (%s)" % S.born.h)
+	check(int(S.born_max) == 1 and float(S.gap_ms) == 500.0 and int(S.max) >= 8, "한 번에 하나 · 시각 차 500ms · 상한")
+	var a := {"type": "bomb", "x": 3, "y": 4, "z": 1}
+	check(IVM.item_key(a) == "bomb:3:4" and IVM.item_key({"type": "bomb", "x": 3, "y": 4, "z": 5}) == IVM.item_key(a), "열쇠 = 종류·칸 (높이는 기둥 꼭대기를 따라 바뀌니 뺌)")
+	check(IVM.item_key({"type": "jump", "x": 3, "y": 4, "z": 1}) != IVM.item_key(a) and IVM.item_key({"type": "bomb", "x": 4, "y": 3, "z": 1}) != IVM.item_key(a), "종류·칸이 다르면 다른 열쇠")
+	var seen: Dictionary = IVM.seen_of([a, {"type": "jump", "x": 0, "y": 0, "z": 2}])
+	check(seen.size() == 2 and seen["bomb:3:4"] == [3, 4, 1.0, "bomb"] and IVM.seen_of(null).is_empty() and IVM.seen_of([]).is_empty(), "스냅샷 items → 열쇠 표 (%s)" % [seen])
+	# 신호를 내도 되는 쌍
+	var m1: Array = IVM.meta_of(_c10_item_st(1000.0, []))
+	var m2: Array = IVM.meta_of(_c10_item_st(1033.0, []))
+	check(m1 == [1, "playing", 1000.0, false], "meta = [판 번호, 단계, 서버 시각, 연습인가] (%s)" % [m1])
+	check(IVM.signal_ok(m1, m2, 500.0), "판 중 이어진 두 스냅샷: 냄")
+	check(not IVM.signal_ok([], m2, 500.0), "첫 스냅샷: 안 냄")
+	check(not IVM.signal_ok(m1, IVM.meta_of(_c10_item_st(1033.0, [], 2)), 500.0), "판이 바뀜: 안 냄")
+	check(not IVM.signal_ok(m1, IVM.meta_of(_c10_item_st(1033.0, [], 1, "over")), 500.0) and not IVM.signal_ok(IVM.meta_of(_c10_item_st(990.0, [], 1, "countdown")), m1, 500.0), "판 끝·카운트다운: 안 냄")
+	check(not IVM.signal_ok(m1, IVM.meta_of(_c10_item_st(1700.0, [])), 500.0) and IVM.signal_ok(m1, IVM.meta_of(_c10_item_st(1500.0, [])), 500.0), "서버 시각이 0.5초 넘게 뜀 (재접속·멈춤): 안 냄")
+	check(not IVM.signal_ok(m2, m1, 500.0) and not IVM.signal_ok(m1, m1, 500.0), "시각이 거꾸로·그대로: 안 냄")
+	var pr := _c10_item_st(1033.0, [])
+	pr["practice"] = {"dummies": []}
+	var tu := _c10_item_st(1033.0, [])
+	tu["mode"] = "practice"
+	check(not IVM.signal_ok(m1, IVM.meta_of(pr), 500.0) and not IVM.signal_ok(IVM.meta_of(tu), m2, 500.0), "연습·튜토리얼 (단계 깔기): 안 냄")
+	# 견주기
+	var b := {"type": "jump", "x": 0, "y": 0, "z": 2}
+	var c := {"type": "ghost", "x": 7, "y": 7, "z": 0}
+	var d: Dictionary = IVM.item_diff(IVM.seen_of([a]), IVM.seen_of([a, b]), 1)
+	check(d.born == [[0, 0, 2.0, "jump"]] and d.gone == [], "새로 나옴 (%s)" % [d])
+	d = IVM.item_diff(IVM.seen_of([a, b]), IVM.seen_of([b]), 1)
+	check(d.born == [] and d.gone == [[3, 4, 1.0, "bomb"]], "없어짐 — 자리·높이는 앞 스냅샷 것 (%s)" % [d])
+	d = IVM.item_diff(IVM.seen_of([a]), IVM.seen_of([{"type": "bomb", "x": 3, "y": 4, "z": 3}]), 1)
+	check(d.born == [] and d.gone == [], "높이만 바뀜 (밑에 블록이 쌓임): 신호 없음")
+	d = IVM.item_diff(IVM.seen_of([a]), IVM.seen_of([b, c]), 1)
+	check(d.born == [] and d.gone == [[3, 4, 1.0, "bomb"]], "한 스냅샷에 둘 이상 나옴 (보급 이벤트·단계 깔기): 나옴 신호 없음, 사라짐은 냄 (%s)" % [d])
+	d = IVM.item_diff(IVM.seen_of([a, b, c]), {}, 1)
+	check(d.gone.size() == 3, "사라짐은 여럿이어도 냄")
+	# 시간에 따른 모양
+	var at0: Array = IVM.born_at(0.0, S.born)
+	check(near(at0[0], 1.0) and near(at0[1], float(S.born.ring[0])) and near(at0[2], 1.0), "나온 순간: 기둥 1 · 고리 처음 반지름 (%s)" % [at0])
+	var last_r := 0.0
+	var last_a := 2.0
+	for i in 20:
+		var at: Array = IVM.born_at(float(S.born.ms) * i / 20.0, S.born)
+		check(float(at[1]) >= last_r and float(at[2]) <= last_a and float(at[0]) <= 1.0 and float(at[0]) >= 0.0, "고리는 퍼지며 흐려짐 (%d)" % i)
+		last_r = at[1]
+		last_a = at[2]
+	check(near(IVM.born_at(float(S.born.ms) * float(S.born.hold), S.born)[0], 1.0) and float(IVM.born_at(float(S.born.ms) * 0.9, S.born)[0]) < 0.2, "기둥: hold 까지 그대로, 끝엔 거의 0")
+	check(IVM.born_at(float(S.born.ms), S.born) == [0.0, 0.0, 0.0] and IVM.born_at(-1.0, S.born) == [0.0, 0.0, 0.0] and last_r <= float(S.born.ring[1]), "끝나면 0")
+	var g0: Array = IVM.gone_at(0.0, S.gone)
+	var g1: Array = IVM.gone_at(float(S.gone.ms) * 0.5, S.gone)
+	check(near(g0[0], float(S.gone.ring[0])) and near(g0[1], 1.0) and near(g0[2], 1.0) and float(g1[0]) > float(g0[0]) and near(g1[1], 0.5) and near(g1[2], 0.25) and IVM.gone_at(float(S.gone.ms), S.gone) == [0.0, 0.0, 0.0], "사라짐: 고리는 퍼지며 흐려지고 빛 줄은 더 빨리 꺼지고, 끝나면 0")
+	check(float(S.gone.h) < float(S.born.h) * 0.5 and float(S.gone.width) > float(S.born.width), "사라짐 빛 줄은 나옴 기둥보다 훨씬 짧고 굵음 (둘이 갈림)")
+	var y := Co.color(C.GAME_LIGHT_ITEM)
+	var gc: Color = IVM.gone_color("knockback", float(S.gone.mix))
+	check(_c10_rgb_dist(gc, y) > 0.05 and _c10_rgb_dist(gc, y) < _c10_rgb_dist(gc, Co.color(IL.MAIN.knockback)) and _c10_rgb_dist(IVM.gone_color("control", 0.25), y) < 1e-6, "사라짐 색 = 아이템 빛 노랑에 종류 주색 조금 (모르는 종류는 노랑)")
+	var row: Array = IVM.signal_ring_row({"x": 3, "y": 4, "z": 1.0}, 0.7, y, float(S.lift))
+	check(near(row[0], 3.5) and near(row[1], 4.5) and near(row[2], 1.0 + float(S.lift)) and near(row[3], 0.7) and float(S.lift) > float(IL.RING.lift), "신호 고리 줄: 칸 가운데·받침 고리 바로 위")
+
+
+# 노드: 스냅샷이 바뀔 때 나옴·사라짐 신호가 생기고, 고리는 받침 고리 묶음에 얹히고, 기둥 묶음은 나오는 동안만 보임. 첫 스냅샷·판 바뀜·연습·한꺼번에 둘은 조용히
+func test_c10_fix_item_signal_view() -> void:
+	const CellLod := preload("res://world/cell_lod.gd")
+	const G3 := preload("res://shaders/g3.gd")
+	const WS := preload("res://world/warm_scan.gd")
+	const MF := preload("res://core/mat_first.gd")
+	var S: Dictionary = IL.SIGNAL
+	var keep_cam = CellLod.test_cam
+	var keep_low: bool = G3.low
+	G3.low = false
+	CellLod.test_cam = {"pos": Co.gxyz(5.5, -6.0, 1.45), "fov": 75.0}
+	var iv = IV.new()
+	check(not iv.pillars.visible and iv.sigs.is_empty() and iv.pillars.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "처음엔 신호·기둥 없음")
+	var keys := []
+	for k in WS.STD_KEYS:
+		keys.append(MF.mat_key(WS.std_material(k)))
+	check(keys.has(MF.mat_key(iv.pillars.material_override)), "기둥 재질 열쇠가 미리 그리기 표 안 — 새 셰이더 없음 (%s)" % MF.mat_key(iv.pillars.material_override))
+	var a := {"type": "bomb", "x": 3, "y": 4, "z": 1}
+	var b := {"type": "jump", "x": 6, "y": 2, "z": 0}
+	var c := {"type": "ghost", "x": 8, "y": 8, "z": 0}
+	var t := 1000.0
+	var now := 50000.0
+	# 첫 스냅샷에 이미 있던 아이템: 신호 없음
+	iv.update(_c10_item_st(t, [a]), 0.016, now)
+	check(iv.sigs.is_empty() and iv.rings.multimesh.visible_instance_count == 1 and not iv.pillars.visible, "첫 스냅샷: 조용히 (받침 고리 1)")
+	# 새 아이템 하나: 나옴 신호 (기둥 1 + 고리 1 을 받침 고리 2 뒤에)
+	t += 33.0
+	now += 33.0
+	var st2 := _c10_item_st(t, [a, b])
+	iv.update(st2, 0.016, now)
+	check(iv.sigs.size() == 1 and iv.sigs[0].kind == "born" and iv.sigs[0].x == 6 and iv.sigs[0].y == 2 and iv.sigs[0].type == "jump" and iv.sigs[0].t0 == now, "새 아이템: 나옴 신호 (%s)" % [iv.sigs])
+	check(iv.rings.multimesh.visible_instance_count == 3 and iv.pillars.visible and iv.pillars.multimesh.visible_instance_count == 1, "고리 2 + 신호 고리 1 (같은 묶음), 기둥 1")
+	iv.update(st2, 0.016, now + 100.0)
+	check(iv.sigs.size() == 1 and iv.pillars.multimesh.visible_instance_count == 1, "같은 스냅샷을 다시 그려도 신호는 하나")
+	# 눈앞 (1.5 m 안) 기둥은 안 그림, 그래픽 낮춤이면 고리만
+	CellLod.test_cam = {"pos": Co.gxyz(6.5, 2.5, 1.45), "fov": 75.0}
+	iv.update(st2, 0.016, now + 120.0)
+	check(not iv.pillars.visible and iv.rings.multimesh.visible_instance_count == 3, "카메라 바로 앞 기둥은 뺌 (화면을 덮는 번쩍 금지) — 고리는 그대로")
+	CellLod.test_cam = {"pos": Co.gxyz(5.5, -6.0, 1.45), "fov": 75.0}
+	G3.low = true
+	iv.update(st2, 0.016, now + 140.0)
+	check(not iv.pillars.visible and iv.rings.multimesh.visible_instance_count == 3, "그래픽 낮춤: 기둥 없이 고리만")
+	G3.low = false
+	# 길이가 지나면 신호가 빠지고 기둥 묶음은 숨김
+	iv.update(st2, 0.016, now + float(S.born.ms) + 1.0)
+	check(iv.sigs.is_empty() and not iv.pillars.visible and iv.rings.multimesh.visible_instance_count == 2, "0.5초 뒤: 신호 끝 (받침 고리 2 만)")
+	# 아이템이 없어짐 (누가 주움): 사라짐 신호 = 겹 고리 2, 기둥 없음. 마지막 아이템이 없어져도 고리 묶음은 신호 동안 보임
+	t += 33.0
+	now += 1000.0
+	var st3 := _c10_item_st(t, [b])
+	iv.update(st3, 0.016, now)
+	check(iv.sigs.size() == 1 and iv.sigs[0].kind == "gone" and iv.sigs[0].x == 3 and iv.sigs[0].y == 4 and iv.sigs[0].z == 1.0 and iv.sigs[0].type == "bomb", "없어짐: 사라짐 신호 — 앞 스냅샷의 자리·높이 (%s)" % [iv.sigs])
+	check(iv.rings.multimesh.visible_instance_count == 3 and iv.pillars.visible and iv.pillars.multimesh.visible_instance_count == 1, "받침 고리 1 + 겹 고리 2 + 짧은 빛 줄 1")
+	G3.low = true
+	iv.update(st3, 0.016, now + 10.0)
+	check(iv.rings.multimesh.visible_instance_count == 3 and not iv.pillars.visible, "그래픽 낮춤: 사라짐도 고리만")
+	G3.low = false
+	t += 33.0
+	var st4 := _c10_item_st(t, [])
+	iv.update(st4, 0.016, now + 33.0)
+	check(iv.sigs.size() == 2 and iv.rings.visible and iv.rings.multimesh.visible_instance_count == 4 and not iv.casters.visible and iv.pillars.multimesh.visible_instance_count == 2, "아이템 0 이어도 사라짐 신호는 그림 (겹 고리 2 × 2 · 빛 줄 2)")
+	iv.update(st4, 0.016, now + 33.0 + float(S.gone.ms) + 1.0)
+	check(iv.sigs.is_empty() and not iv.rings.visible and not iv.pillars.visible, "끝나면 다 숨김 (그리기 0)")
+	# 한 스냅샷에 둘 (보급 이벤트): 나옴 신호 없음
+	t += 33.0
+	iv.update(_c10_item_st(t, [a, c]), 0.016, now + 2000.0)
+	check(iv.sigs.is_empty(), "한꺼번에 둘: 조용히 (보급은 이벤트 효과가 제 빛 기둥을 그림)")
+	# 판 끝·새 판: 아이템이 사라져도 신호 없음, 남은 신호도 지움
+	t += 33.0
+	iv.update(_c10_item_st(t, [a, c, b]), 0.016, now + 2033.0)
+	check(iv.sigs.size() == 1, "하나 더 나옴: 신호 1")
+	t += 33.0
+	iv.update(_c10_item_st(t, [], 1, "over"), 0.016, now + 2066.0)
+	check(iv.sigs.is_empty(), "판 끝: 신호 없음 · 남은 신호 지움")
+	iv.update(_c10_item_st(0.0, [a], 2, "countdown"), 0.016, now + 9000.0)
+	iv.update(_c10_item_st(33.0, [a, b], 2, "countdown"), 0.016, now + 9033.0)
+	check(iv.sigs.is_empty(), "카운트다운: 신호 없음")
+	# 재접속처럼 서버 시각이 뜀: 그 사이 바뀐 아이템은 조용히 받아들이고, 그 뒤부터 다시 냄
+	iv.update(_c10_item_st(1000.0, [a], 2), 0.016, now + 10000.0)
+	iv.update(_c10_item_st(9000.0, [b, c], 2), 0.016, now + 10033.0)
+	check(iv.sigs.is_empty(), "시각이 뜀: 조용히")
+	iv.update(_c10_item_st(9033.0, [b], 2), 0.016, now + 10066.0)
+	check(iv.sigs.size() == 1 and iv.sigs[0].kind == "gone" and iv.sigs[0].type == "ghost", "그 뒤부터 다시")
+	# 연습·튜토리얼: 안 냄
+	var pv = IV.new()
+	var p1 := _c10_item_st(1000.0, [])
+	var p2 := _c10_item_st(1033.0, [a])
+	var p3 := _c10_item_st(1066.0, [])
+	for p in [p1, p2, p3]:
+		p["mode"] = "practice"
+		p["practice"] = {"dummies": []}
+		pv.update(p, 0.016, now)
+	check(pv.sigs.is_empty() and not pv.pillars.visible and not pv.rings.visible, "연습·튜토리얼: 신호 없음")
+	# 상한
+	for i in int(S.max) + 5:
+		pv.add_signal("gone", [i, 0, 0.0, "bomb"], now)
+	check(pv.sigs.size() == int(S.max) and pv.sigs[0].x == 5, "상한을 넘으면 오래된 것부터 버림")
+	pv.free()
+	iv.free()
+	CellLod.test_cam = keep_cam
+	G3.low = keep_low
+

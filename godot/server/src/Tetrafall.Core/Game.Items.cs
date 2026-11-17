@@ -37,7 +37,7 @@ public sealed partial class Game
     public (double? control, double? power) ItemTimers()
     {
         if (phase != "playing") return (null, null);
-        int powerCount = items.Count(it => it.type != "control");
+        int powerCount = PoolItemCount();
         return (
             !ControlItemOn() || ControlInPlay() ? null : Math.Max(0, controlItemNextAt - time),
             !FieldItemsRun() || powerCount >= ItemMax() ? null : Math.Max(0, powerItemNextAt - time));
@@ -78,6 +78,10 @@ public sealed partial class Game
     // 판 단계는 안 봄 — 대기실 스냅샷 itemsEnabled (아이템 키 안내) 도 이 값을 씀
     public bool FieldItemsRun() => C.ITEMS_ENABLED || (fieldItems && mode != "practice" && tutorial == null);
 
+    // 필드에 놓인 필드 아이템 (ITEM_POOL 종류) 수 — 상한 ItemMax() 와 다음 아이템 시계가 같이 씀.
+    // 조종권·블록 마스터 반격 아이템 (counter) 은 자기 시계가 따로라 자리를 안 차지함
+    public int PoolItemCount() => items.Count(it => C.ITEM_POOL.Contains(it.type));
+
     public bool SpawnItem(string type)
     {
         for (int i = 0; i < C.SPAWN_TRIES; i++)
@@ -105,7 +109,7 @@ public sealed partial class Game
         {
             if (!SpawnItem("control")) controlItemNextAt = time + 1000;
         }
-        int powerCount = items.Count(it => it.type != "control");
+        int powerCount = PoolItemCount();
         if (FieldItemsRun() && powerCount < ItemMax() && time >= powerItemNextAt)
         {
             string type = C.ITEM_POOL[(int)Math.Floor(rng() * C.ITEM_POOL.Length)];
@@ -141,7 +145,8 @@ public sealed partial class Game
                 else
                 {
                     GivePower(p, it.type);
-                    powerItemNextAt = Math.Max(powerItemNextAt, time + C.ITEM_RESPAWN_MS);
+                    // 반격 아이템은 필드 아이템 시계와 따로 (주워도 다음 필드 아이템을 안 미룸)
+                    if (it.type != "counter") powerItemNextAt = Math.Max(powerItemNextAt, time + C.ITEM_RESPAWN_MS);
                     Emit(o => o.P("type", "pickup").P("who", p.id).P("item", it.type));
                 }
                 break;

@@ -353,10 +353,14 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 # 카메라를 놓은 뒤: 크기·흐림 (labelSizes), 하늘 시점이면 작게 + 화면에서 겹치는 이름표는 먼저 놓인 것만 (render.js thinLabels)
 func thin_labels(cam: Camera3D, sky: bool) -> void:
 	var vis: Array[Label3D] = []
+	var first: Label3D = null # c10-fix F1: 관전 따라가기 대상의 이름표 — 겹침 고르기에서 맨 먼저 (바로 옆 사람이 카메라에 더 가까우면 대상 이름표가 사라졌음)
+	var follow = View.spectate_target if str(View.mode) == "spectate" else null
 	for id in nodes:
 		var l: Label3D = nodes[id].label
 		if l.visible and nodes[id].root.visible:
 			vis.append(l)
+			if follow != null and int(id) == int(follow):
+				first = l
 	var dists := []
 	for l in vis:
 		dists.append(l.global_position.distance_to(cam.global_position))
@@ -375,7 +379,7 @@ func thin_labels(cam: Camera3D, sky: bool) -> void:
 		if cam.is_position_behind(l.global_position):
 			continue
 		var g: Vector2 = Vector2(C.SKY_VIEW.labelGap[0], C.SKY_VIEW.labelGap[1]) if sky else Vector2(WC.LABEL_GAP[0], WC.LABEL_GAP[1]) * sizes[i][0]
-		items.append({"px": cam.unproject_position(l.global_position), "dist": dists[i], "gap": g})
+		items.append({"px": cam.unproject_position(l.global_position), "dist": Labels.thin_dist(dists[i], l == first), "gap": g})
 		idx.append(i)
 	var shown := Labels.thin(items, View.covers)
 	for j in idx.size():

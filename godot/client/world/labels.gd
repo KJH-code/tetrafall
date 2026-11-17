@@ -29,6 +29,11 @@ static func thin(items: Array, covers: Array = []) -> Array:
 	return out
 
 
+# c10-fix F1: 겹침 고르기 (thin) 에 넣는 거리 — 관전 따라가기 대상 (first) 은 누구보다 먼저 놓임 (−1: 실제 거리는 늘 0 이상). 크기·흐림 (label_sizes) 은 실제 거리 그대로
+static func thin_dist(dist: float, first: bool) -> float:
+	return -1.0 if first else dist
+
+
 # 머리 위 이름표: 카메라에서 가까운 LABEL_FULL_N 명만 원래 크기, 나머지 작고 흐리게 (shared/hud-layout.js labelSizes). dists[i] → [scale, opacity]
 static func label_sizes(dists: Array) -> Array:
 	var order := []

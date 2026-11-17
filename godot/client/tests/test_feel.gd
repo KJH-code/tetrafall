@@ -648,7 +648,7 @@ func test_c10_spec_fade_near_cells() -> void:
 	pv._ready()
 	pv.mats = [StandardMaterial3D.new(), StandardMaterial3D.new()]
 	var st := {"pieces": [
-		{"shape": "T", "cells": [[2, 2, 2], [3, 2, 2], [4, 2, 2], [9, 2, 2]], "sky": false},
+		{"shape": "T", "cells": [[2, 2, 2], [3, 2, 2], [4, 2, 2], [9, 2, 2]], "sky": false, "shadowVisible": true, "shadow": [[2, 2], [3, 2], [4, 2], [9, 2]], "landZ": 0, "eta": 500.0},
 		{"shape": "I", "cells": [[2, 3, 2]], "sky": true}]}
 	var at := Co.gxyz(2.5, 2.5, 3.5) # 칸 [2,2,2] 가운데에서 1 m 위
 	CellLod.test_cam = {"pos": at, "fov": 75.0}
@@ -658,7 +658,12 @@ func test_c10_spec_fade_near_cells() -> void:
 	var dm: MultiMesh = pv.fade_mmi.multimesh
 	check(pv.fade_n == 4 and dm.visible_instance_count == 4, "옅은 칸 4 (얻음 %d)" % pv.fade_n)
 	check(pv.cells_mmi.multimesh.visible_instance_count == 1 and pv.sky_mmi.multimesh.visible_instance_count == 0, "나머지 1칸만 불투명 묶음, 가까운 하늘 블록도 옅은 쪽 (%d·%d)" % [pv.cells_mmi.multimesh.visible_instance_count, pv.sky_mmi.multimesh.visible_instance_count])
-	check(pv.fade_mmi.material_override == pv.mats[1] and pv.fade_mmi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "반투명 재질 · 그림자 끔")
+	# c10-fix F2: 옅은 칸은 반투명 재질의 사본 (그리는 순서만 뒤 — 착지 테·판 빛·발밑 고리가 칸 너머로 비침). 원본은 그대로 (하늘 블록·하늘 시점 칸이 같이 씀)
+	var fmat: Material = pv.fade_mmi.material_override
+	check(fmat != null and fmat != pv.mats[1] and fmat == pv.fade_mat and fmat is StandardMaterial3D and pv.fade_mmi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "반투명 재질의 사본 · 그림자 끔")
+	check(int(SpecCam.SPEC.fade_order) == 9 and fmat.render_priority == 9 and (pv.mats[1] as Material).render_priority == 0, "옅은 칸 순서 9 (원본 0 그대로)")
+	check(fmat.render_priority > 8 and fmat.render_priority < preload("res://world/world_config.gd").LABEL_PRIORITY - 1 and preload("res://world/world_config.gd").FOOT_RING.order < fmat.render_priority, "착지 테 1·판 빛 5·발밑 고리·표식 8 뒤, 이름표 앞")
+	check(pv.sky_mmi.material_override == pv.mats[1] and pv.sky_far_mmi.material_override == pv.mats[1] and pv.cells_mmi.material_override == pv.mats[0], "하늘 블록·보통 칸 재질은 예전 그대로")
 	var last := INF
 	var seen_min := 1.0
 	check(pv.faded.size() == 4, "옅은 칸 목록 4")
@@ -672,22 +677,289 @@ func test_c10_spec_fade_near_cells() -> void:
 		var base: float = C.SKY_PIECE_OPACITY if origin.distance_to(Co.gxyz(2.5, 3.5, 2.5)) < 1e-4 else 1.0
 		check(absf(a - base * SpecCam.cell_alpha(dist)) < 1e-4, "%d번 칸 알파 %.3f (거리 %.2f)" % [i, a, dist])
 	check(absf(last - 1.0) < 1e-5 and absf(seen_min - 0.2) < 1e-4, "가장 가까운 칸 (1 m) = 0.2 (%s)" % seen_min)
-	# 옅은 칸이 있으면 같은 스냅샷이어도 다시 씀 (카메라가 움직이면 알파가 바뀜)
-	var w: int = pv.writes
+	# c10-fix F8: 같은 스냅샷이고 옅게 그릴 칸 모음이 그대로면 (카메라가 조금 움직임) 옅은 칸의 알파·순서만 다시 — 다른 묶음·그림자·착지 테는 안 씀
+	var w0: int = pv.writes
+	var r0: int = pv.refades
+	var at2 := at + Vector3(0, 0.2, 0) # 0.2 m 위로: [2,2,2] 1.2 · [3,2,2]·[2,3,2] 1.562 · [4,2,2] 2.332 (모두 2.6 안 그대로)
+	CellLod.test_cam = {"pos": at2, "fov": 75.0}
+	pv.update(st, 1, {}, 0.0)
+	check(pv.writes == w0 and pv.refades == r0 + 1 and pv.fade_n == 4 and dm.visible_instance_count == 4, "같은 칸 모음: 다 다시 안 쓰고 옅은 칸만 (writes %d → %d, refades %d)" % [w0, pv.writes, pv.refades - r0])
+	var last2 := INF
+	for i in pv.faded.size():
+		var origin: Vector3 = (pv.faded[i][1] as Transform3D).origin
+		var dist: float = at2.distance_to(origin)
+		var base: float = C.SKY_PIECE_OPACITY if origin.distance_to(Co.gxyz(2.5, 3.5, 2.5)) < 1e-4 else 1.0
+		check(dist <= last2 + 1e-6 and absf(dist - float(pv.faded[i][0])) < 1e-5 and absf((pv.faded[i][2] as Color).a - base * SpecCam.cell_alpha(dist)) < 1e-4, "알파만 다시: %d번 칸 %.3f (거리 %.2f)" % [i, (pv.faded[i][2] as Color).a, dist])
+		last2 = dist
+	check(pv.cells_mmi.multimesh.visible_instance_count == 1, "다른 묶음은 그대로")
+	pv.update(st, 1, {}, 0.0)
+	check(pv.writes == w0 and pv.refades == r0 + 2, "가만히 있어도 옅은 칸만")
+	check(PV.near_ids(st.pieces, at, 2.6) == PackedInt32Array([0, 1, 2, 4]) and PV.near_ids(st.pieces, at2, 2.6) == PackedInt32Array([0, 1, 2, 4]) and PV.near_ids(st.pieces, at + Vector3(0, 1.0, 0), 2.6) == PackedInt32Array([0, 1, 4]) and PV.near_ids([], at, 2.6).is_empty(), "가까운 칸 번호 (조각·칸 순서)")
+	CellLod.test_cam = {"pos": at, "fov": 75.0}
+	pv.update(st, 1, {}, 0.0)
+	# 옅게 그릴 칸 모음이 바뀌면 (어떤 칸이 2.6 m 경계를 넘음) 같은 스냅샷이어도 칸 묶음을 다시 나눔 — 그림자 칸·착지 테는 그대로 (writes 는 안 늘고 cell_writes 가 늚)
+	var w: int = pv.writes + pv.cell_writes
+	var full: int = pv.writes
+	var rims: int = pv.rim_mmi.multimesh.visible_instance_count
 	CellLod.test_cam = {"pos": at + Vector3(0, 1.0, 0), "fov": 75.0}
 	pv.update(st, 1, {}, 0.0)
-	check(pv.writes == w + 1 and pv.fade_n == 3, "카메라가 1 m 물러남: 다시 쓰고 옅은 칸 3 (%d)" % pv.fade_n)
+	check(pv.writes + pv.cell_writes == w + 1 and pv.writes == full and pv.fade_n == 3, "카메라가 1 m 물러남: 칸 묶음만 다시 나누고 옅은 칸 3 (%d)" % pv.fade_n)
+	check(pv.cells_mmi.multimesh.visible_instance_count == 2, "옅은 칸에서 빠진 칸은 보통 묶음으로")
+	check(pv.shadow_mmi.multimesh.visible_instance_count == 4 and pv.rim_mmi.multimesh.visible_instance_count == rims and rims > 0, "그림자 칸 4·착지 테 %d 는 그대로" % rims)
 	check(absf((pv.faded[2][2] as Color).a - SpecCam.cell_alpha(2.0)) < 1e-4 and (pv.faded[2][2] as Color).a > 0.2 + 0.3, "가장 가까운 칸 (2 m) 은 덜 옅음")
 	# 카메라가 멀어지면 한 번 더 써서 되돌리고, 그 뒤엔 예전처럼 건너뜀
 	CellLod.test_cam = {"pos": at + Vector3(0, 30, 0), "fov": 75.0}
 	pv.update(st, 1, {}, 0.0)
-	check(pv.writes == w + 2 and pv.fade_n == 0 and dm.visible_instance_count == 0, "멀어지면 옅은 칸 0")
+	check(pv.writes + pv.cell_writes == w + 2 and pv.writes == full and pv.fade_n == 0 and dm.visible_instance_count == 0, "멀어지면 옅은 칸 0")
 	check(pv.cells_mmi.multimesh.visible_instance_count + pv.far_mmi.multimesh.visible_instance_count == 4 and pv.sky_mmi.multimesh.visible_instance_count + pv.sky_far_mmi.multimesh.visible_instance_count == 1, "칸이 제 묶음으로 돌아옴")
 	pv.update(st, 1, {}, 0.0)
-	check(pv.writes == w + 2, "가까운 칸이 없으면 같은 스냅샷은 건너뜀 (W15)")
+	check(pv.writes + pv.cell_writes == w + 2, "가까운 칸이 없으면 같은 스냅샷은 건너뜀 (W15)")
+	# 관전이 끝나면 (1·3인칭) 옅은 칸을 한 번 다시 써서 되돌림
+	CellLod.test_cam = {"pos": at, "fov": 75.0}
+	pv.update(st, 1, {}, 0.0)
+	check(pv.fade_n == 4, "다시 가까이: 옅은 칸 4")
+	View.mode = "third"
+	pv.update(st, 1, {}, 0.0)
+	check(pv.fade_n == 0 and dm.visible_instance_count == 0 and pv.cells_mmi.multimesh.visible_instance_count + pv.far_mmi.multimesh.visible_instance_count == 4, "관전이 끝나면 칸이 제 묶음으로")
+	View.mode = "spectate"
 	check(PV.near_any(st.pieces, at, 2.6) and not PV.near_any(st.pieces, at + Vector3(0, 30, 0), 2.6) and not PV.near_any([], at, 2.6), "가까운 칸 있나")
 	pv.free()
 	_spec_restore(keep, null)
+
+
+# c10-fix F2: 옅은 칸 재질 사본은 원본 (G3 가 제자리에서 바꾸는 반투명 재질) 의 셰이더·값을 옅게 그리기 시작할 때 다시 베낌, 재질이 바뀌면 (테마) 새로 뜸
+func test_c10_fix_fade_material_follows() -> void:
+	var G3 = load("res://shaders/g3.gd")
+	var keep := _spec_setup([])
+	var pv = PV.new()
+	pv._ready()
+	var a: ShaderMaterial = G3.piece_material("meadow", false, {"rim": 0.4, "transparent": true, "opacity": 1.0})
+	pv.mats = [G3.piece_material("meadow", false, {"rim": 0.4}), a]
+	var st := {"pieces": [{"shape": "T", "cells": [[2, 2, 2]], "sky": false}]}
+	var at := Co.gxyz(2.5, 2.5, 3.5)
+	CellLod.test_cam = {"pos": at, "fov": 75.0}
+	View.mode = "spectate"
+	pv.update(st, 1, {}, 0.0)
+	var f := pv.fade_mmi.material_override as ShaderMaterial
+	check(f != null and f != a and f.shader == a.shader and f.render_priority == int(SpecCam.SPEC.fade_order) and a.render_priority == 0, "사본: 같은 셰이더 (새 셰이더 없음 — 미리 데우기 표 그대로) · 순서만 뒤")
+	check(FileAccess.get_file_as_string("res://shaders/piece_alpha.gdshader").contains("render_mode depth_draw_always;"), "칸 셰이더는 그대로 깊이를 씀 (옅은 칸끼리·칸 면끼리 앞뒤가 맞음)")
+	for u in a.shader.get_shader_uniform_list():
+		check(f.get_shader_parameter(u.name) == a.get_shader_parameter(u.name), "사본 값 %s 같음" % u.name)
+	# 원본이 제자리에서 바뀜 (그래픽 낮춤·판 빛 테두리): 다음에 옅게 그리기 시작할 때 따라감
+	a.set_shader_parameter("rim", 0.0)
+	a.set_shader_parameter("crack", 0.0)
+	CellLod.test_cam = {"pos": at + Vector3(0, 30, 0), "fov": 75.0}
+	pv.update(st, 1, {}, 0.0)
+	check(pv.fade_n == 0, "멀어짐: 옅은 칸 0")
+	CellLod.test_cam = {"pos": at, "fov": 75.0}
+	pv.update(st, 1, {}, 0.0)
+	check(pv.fade_n == 1 and pv.fade_mmi.material_override == f and float(f.get_shader_parameter("rim")) == 0.0 and float(f.get_shader_parameter("crack")) == 0.0 and f.render_priority == int(SpecCam.SPEC.fade_order), "다시 옅게: 같은 사본이 원본 값을 따라감 (순서는 그대로)")
+	# 재질이 바뀌면 (테마 적용 set_look) 사본도 새로
+	var b: ShaderMaterial = G3.piece_material("desert", false, {"transparent": true, "opacity": 1.0})
+	pv.mats = [pv.mats[0], b]
+	pv.update(st.duplicate(true), 1, {}, 0.0)
+	var f2 := pv.fade_mmi.material_override as ShaderMaterial
+	check(f2 != f and f2 != b and f2.get_shader_parameter("face_tex") == b.get_shader_parameter("face_tex") and f2.render_priority == int(SpecCam.SPEC.fade_order), "새 재질의 사본")
+	pv.free()
+	_spec_restore(keep, null)
+
+
+class FakeBody:
+	extends RefCounted
+	var k := 1.0
+	var calls := 0
+
+	func set_see_thru(v: float) -> void:
+		k = v
+		calls += 1
+
+
+class FakeBodies:
+	extends RefCounted
+	var nodes := {}
+
+
+# c10-fix F1 순수 계산: 선분·상자, 시선을 막는 몸 (눈 → 바라볼 점·눈 → 대상 발), 문턱 여유
+func test_c10_fix_spec_sight_blockers() -> void:
+	var S: Dictionary = SpecCam.SPEC
+	check(absf(float(S.thin_keep) - 0.32) < 1e-9 and float(S.thin_keep) >= 0.25 and float(S.thin_keep) <= 0.4, "남길 비율 0.32 (25~40%% — 다 지우지 않음)")
+	check(S.thin_pad == [0.12, 0.28] and float(S.thin_pad[0]) < float(S.thin_pad[1]) and int(S.thin_hold_ms) == 120 and absf(float(S.thin_ease_s) - 0.12) < 1e-9, "문턱 [0.12, 0.28] m · 붙듦 120 ms · 0.12 초에 걸쳐")
+	var lo := Vector3(1, 1, 0)
+	var hi := Vector3(2, 2, 2)
+	check(SpecCam.seg_hits_box(Vector3(0, 1.5, 1), Vector3(3, 1.5, 1), lo, hi), "가로지름")
+	check(SpecCam.seg_hits_box(Vector3(1.5, 1.5, 1), Vector3(9, 9, 9), lo, hi) and SpecCam.seg_hits_box(Vector3(9, 9, 9), Vector3(1.5, 1.5, 1), lo, hi), "끝점이 안")
+	check(not SpecCam.seg_hits_box(Vector3(0, 1.5, 1), Vector3(0.9, 1.5, 1), lo, hi), "닿기 전에 끝남")
+	check(not SpecCam.seg_hits_box(Vector3(0, 0, 1), Vector3(3, 0.9, 1), lo, hi) and not SpecCam.seg_hits_box(Vector3(0, 1.5, 2.1), Vector3(3, 1.5, 2.1), lo, hi), "옆·위로 비낌")
+	check(SpecCam.seg_hits_box(Vector3(0, 1.5, 3), Vector3(3, 1.5, 0), lo, hi) and not SpecCam.seg_hits_box(Vector3(0, 1.5, 6), Vector3(3, 1.5, 3), lo, hi), "비스듬히")
+	check(not SpecCam.seg_hits_box(Vector3(1.5, 0, 1), Vector3(1.5, 0.5, 1), lo, hi) and SpecCam.seg_hits_box(Vector3(1.5, 0, 1), Vector3(1.5, 1.0, 1), lo, hi), "축과 나란한 선분")
+	# 관전 카메라 (대상 발 (5.5, 5.5, 0), yaw 0, 0.45 rad 내려다봄, 4.5 m): 눈 ≈ (1.45, 5.5, 3.36)
+	var e: Dictionary = CamM.orbit_eye({"x": 5.5, "y": 5.5, "z": 1.4}, 0.0, -0.45, C.SPECTATE_DIST)
+	var eye := Vector3(e.x, e.y, e.z)
+	var ends := [Vector3(5.5, 5.5, 1.4), Vector3(5.5, 5.5, 0)]
+	var H: float = C.PLAYER_HALF
+	var T: float = C.PLAYER_HEIGHT
+	var others := {
+		3: Vector3(4.3, 5.5, 0), # 눈과 대상 사이 (눈 → 발 선분이 몸통을 지남)
+		4: Vector3(5.5, 6.1, 0), # 대상 바로 옆 (0.6 m) — 화면 옆, 시선은 안 막음
+		5: Vector3(6.3, 5.5, 0), # 대상 뒤
+		6: Vector3(2.0, 5.5, 2.4), # 렌즈 바로 앞 (높은 곳에 선 몸 — 눈 → 바라볼 점 선분)
+		7: Vector3(4.3, 7.5, 0), # 멀리 옆
+		8: Vector3(4.3, 5.5, 4.0), # 시선 위 (하늘 계단 위)
+	}
+	var hit: Array = SpecCam.sight_blockers(eye, ends, others, float(S.thin_pad[0]), H, T)
+	check(hit == [3, 6], "막는 몸 = 사이에 선 몸·렌즈 앞 몸만 (%s)" % [hit])
+	check(SpecCam.sight_blockers(eye, ends, others, float(S.thin_pad[1]), H, T) == [3, 6], "넓은 문턱에서도 옆 (0.6 m)·뒤 사람은 아님")
+	check(SpecCam.sight_blockers(eye, ends, {}, 0.12, H, T).is_empty() and SpecCam.sight_blockers(eye, [], others, 0.12, H, T).is_empty(), "사람·시선이 없으면 없음")
+	# 문턱 여유: 시선에서 0.2 m 비낀 몸은 좁은 문턱 밖·넓은 문턱 안
+	var side := {9: Vector3(4.3, 5.5 + H + 0.2, 0)}
+	check(SpecCam.sight_blockers(eye, ends, side, float(S.thin_pad[0]), H, T).is_empty() and SpecCam.sight_blockers(eye, ends, side, float(S.thin_pad[1]), H, T) == [9], "0.2 m 비낀 몸: 좁은 문턱 밖 · 넓은 문턱 안")
+	# 대상 이름표: 화면에서 겹치면 가까운 것이 이기던 규칙 (Labels.thin) 에서 관전 따라가기 대상이 맨 먼저 — 바로 옆 사람이 카메라에 더 가까우면 대상 이름표가 사라졌음
+	const Labels := preload("res://world/labels.gd")
+	check(Labels.thin_dist(3.2, false) == 3.2 and Labels.thin_dist(3.2, true) == -1.0 and Labels.thin_dist(0.0, false) > Labels.thin_dist(0.0, true), "겹침 고르기 거리: 대상은 −1 (누구보다 먼저)")
+	var gap := Vector2(60, 30)
+	var near_other := {"px": Vector2(100, 100), "dist": 2.0, "gap": gap}
+	var far_target := {"px": Vector2(110, 105), "dist": 5.0, "gap": gap}
+	check(Labels.thin([near_other, far_target]) == [true, false], "예전 규칙: 가까운 남의 이름표가 이김")
+	far_target["dist"] = Labels.thin_dist(5.0, true)
+	check(Labels.thin([near_other, far_target]) == [false, true], "대상 이름표가 이김 (겹친 남의 이름표가 숨음)")
+	check(Labels.thin([{"px": Vector2(400, 100), "dist": 2.0, "gap": gap}, far_target]) == [true, true], "안 겹치면 둘 다")
+	var bsrc := FileAccess.get_file_as_string("res://world/bodies.gd")
+	check(bsrc.contains("var follow = View.spectate_target if str(View.mode) == \"spectate\" else null") and bsrc.contains("Labels.thin_dist(dists[i], l == first)"), "bodies.gd: 관전 따라가기일 때만 대상 이름표 먼저")
+
+
+# c10-fix F1 순수 계산: 옅어지고 (thin_ease_s) · 문턱 사이에선 그대로 · 벗어나도 thin_hold_ms 는 옅은 채 · 그 뒤 되돌아와 빠짐 (깜빡이지 않음)
+func test_c10_fix_spec_thin_step() -> void:
+	var S: Dictionary = SpecCam.SPEC
+	var keep_k := float(S.thin_keep)
+	var st := {}
+	var t := 1000.0
+	st = SpecCam.thin_step(st, [3], [3], t, 0.03)
+	check(st.has(3) and float(st[3].k) < 1.0 and float(st[3].k) > keep_k and float(st[3].at) == t, "막기 시작: 조금 옅어짐 (%s)" % [st])
+	var last := float(st[3].k)
+	for i in 6:
+		t += 30.0
+		st = SpecCam.thin_step(st, [3], [3], t, 0.03)
+		check(float(st[3].k) <= last + 1e-9 and float(st[3].k) >= keep_k - 1e-9, "단조로 옅어짐 (%.3f)" % float(st[3].k))
+		last = float(st[3].k)
+	check(absf(last - keep_k) < 1e-9, "0.12 초 뒤 남길 비율 %.2f (얻음 %.3f)" % [keep_k, last])
+	# 좁은 문턱은 벗어났지만 넓은 문턱 안: 계속 막는 것으로 (at 이 새로 찍힘). 처음부터 넓은 문턱에만 있던 몸은 안 옅어짐
+	t += 30.0
+	st = SpecCam.thin_step(st, [], [3, 4], t, 0.03)
+	check(absf(float(st[3].k) - keep_k) < 1e-9 and float(st[3].at) == t and not st.has(4), "문턱 사이: 옅은 몸은 그대로, 새 몸은 안 옅어짐")
+	# 좁은 문턱에 드나들어도 (한 프레임씩 번갈아) 값이 안 흔들림
+	for i in 6:
+		t += 16.0
+		st = SpecCam.thin_step(st, [3] if i % 2 == 0 else [], [3] if i % 2 == 0 else [], t, 0.016)
+		check(absf(float(st[3].k) - keep_k) < 1e-9, "한 프레임씩 드나듦: 옅은 채 (%d)" % i)
+	# 완전히 벗어남: thin_hold_ms 동안은 옅은 채, 그 뒤 thin_ease_s 에 걸쳐 되돌아오고 빠짐
+	var left := t
+	t += 16.0
+	st = SpecCam.thin_step(st, [], [], t, 0.016)
+	var free_at := float(st[3].at)
+	check(free_at <= left and absf(float(st[3].k) - keep_k) < 1e-9, "벗어난 직후: 옅은 채")
+	t = free_at + float(S.thin_hold_ms) - 1.0
+	st = SpecCam.thin_step(st, [], [], t, 0.016)
+	check(absf(float(st[3].k) - keep_k) < 1e-9, "붙드는 동안: 옅은 채")
+	t = free_at + float(S.thin_hold_ms) + 1.0
+	st = SpecCam.thin_step(st, [], [], t, 0.03)
+	check(float(st[3].k) > keep_k and float(st[3].k) < 1.0, "붙듦이 끝남: 되돌아오기 시작 (%.3f)" % float(st[3].k))
+	var steps := 0
+	while st.has(3) and steps < 20:
+		t += 30.0
+		st = SpecCam.thin_step(st, [], [], t, 0.03)
+		steps += 1
+	check(st.is_empty() and steps <= 5, "0.12 초 안에 다 되돌아와 빠짐 (%d걸음)" % steps)
+	# 되돌아오는 중에 다시 막으면 그 값에서 다시 옅어짐
+	st = SpecCam.thin_step({3: {"k": 0.8, "at": 0.0}}, [3], [3], 5000.0, 0.03)
+	check(float(st[3].k) < 0.8 and float(st[3].at) == 5000.0, "다시 막음")
+	check(SpecCam.thin_step({}, [], [5], 0.0, 0.03).is_empty(), "아무도 안 막음")
+
+
+# c10-fix F1 트리 안 rig: 관전 따라가기에서만, 시선을 막는 몸만 옅게 (대상·옆 사람·죽은 사람은 그대로). 1·3인칭·전체 보기·승자 클로즈업으로 바뀌면 바로 되돌림
+func test_c10_fix_spec_thin_rig() -> void:
+	var keep := _spec_setup([])
+	var keep_v := [View.victory_stage, View.victory_id]
+	var blocker := {"id": 4, "slot": 3, "alive": true, "yaw": 0.0, "x": 4.3, "y": 5.5, "z": 0.0}
+	var dead := {"id": 5, "slot": 4, "alive": false, "yaw": 0.0, "x": 3.6, "y": 5.5, "z": 0.0}
+	Store._players_by_id[4] = blocker
+	Store._players_by_id[5] = dead
+	Store.state.players.append(blocker)
+	Store.state.players.append(dead)
+	var shown := SPEC_SHOWN.duplicate()
+	shown[4] = Vector3(4.3, 5.5, 0)
+	shown[5] = Vector3(3.6, 5.5, 0)
+	var fb := FakeBodies.new()
+	for id in [1, 2, 3, 4, 5]:
+		fb.nodes[id] = {"body": FakeBody.new()}
+	var rig = CamRig.new()
+	root().add_child(rig)
+	rig.bodies = fb
+	var keep_k := float(SpecCam.SPEC.thin_keep)
+	rig.place(0.03, shown, _no_grid)
+	check(rig.thin.has(4) and rig.thin.size() == 1 and fb.nodes[4].body.k < 1.0 and fb.nodes[4].body.k > keep_k, "막는 몸 (id 4) 만 옅어지기 시작 (%s)" % [rig.thin])
+	for i in 5:
+		rig.place(0.03, shown, _no_grid)
+	check(absf(fb.nodes[4].body.k - keep_k) < 1e-9, "0.12 초 뒤 남길 비율 %.2f (얻음 %.3f)" % [keep_k, fb.nodes[4].body.k])
+	check(fb.nodes[2].body.calls == 0 and fb.nodes[3].body.calls == 0 and fb.nodes[1].body.calls == 0 and fb.nodes[5].body.calls == 0, "대상 (2)·옆 사람 (3)·죽은 사람 (1·5) 은 안 건드림")
+	# 카메라 자리는 예전 그대로 (몸에는 안 당김)
+	var e: Dictionary = CamM.orbit_eye({"x": 5.5, "y": 5.5, "z": 1.4}, 0.0, -0.45, C.SPECTATE_DIST)
+	check(absf(rig.eye.x - e.x) < 1e-6 and absf(rig.eye.z - e.z) < 1e-6 and absf(float(rig.spec_dist) - C.SPECTATE_DIST) < 1e-9, "카메라 자리·거리는 그대로")
+	# 같은 id 의 몸이 바뀌면 (몸을 새로 만듦) 새 몸을 옅게 하고 앞 몸은 되돌림
+	var old_body = fb.nodes[4].body
+	fb.nodes[4] = {"body": FakeBody.new()}
+	rig.place(0.03, shown, _no_grid)
+	check(old_body.k == 1.0 and absf(fb.nodes[4].body.k - keep_k) < 1e-9, "몸이 바뀜: 새 몸 옅게 · 앞 몸 되돌림")
+	# 승자 클로즈업이 시작되면 바로 되돌림
+	View.victory_stage = "closeup"
+	View.victory_id = 2
+	rig.place(0.03, shown, _no_grid)
+	check(fb.nodes[4].body.k == 1.0 and rig.thin.is_empty(), "승자 클로즈업: 되돌림")
+	View.victory_stage = keep_v[0]
+	View.victory_id = keep_v[1]
+	for i in 6:
+		rig.place(0.03, shown, _no_grid)
+	check(absf(fb.nodes[4].body.k - keep_k) < 1e-9, "다시 관전: 옅게")
+	# 전체 보기 (대상 없음)
+	View.spectate_target = null
+	rig.place(0.03, shown, _no_grid)
+	check(fb.nodes[4].body.k == 1.0 and rig.thin.is_empty() and rig._thin_bodies.is_empty(), "전체 보기: 바로 되돌림")
+	View.spectate_target = 2
+	for i in 6:
+		rig.place(0.03, shown, _no_grid)
+	check(absf(fb.nodes[4].body.k - keep_k) < 1e-9, "다시 관전: 옅게 (2)")
+	# 1·3인칭 (내가 살아 있음): 바로 되돌리고 그 뒤로는 안 건드림
+	Store._players_by_id[1].alive = true
+	for mode in ["third", "first"]:
+		rig.force = mode
+		rig.place(0.03, shown, _no_grid)
+		check(fb.nodes[4].body.k == 1.0 and rig.thin.is_empty(), "%s: 남의 몸 그대로" % mode)
+		var calls: int = fb.nodes[4].body.calls
+		rig.place(0.03, shown, _no_grid)
+		check(fb.nodes[4].body.calls == calls and fb.nodes[3].body.calls == 0, "%s: 그 뒤로는 안 건드림" % mode)
+		Store._players_by_id[1].alive = false
+		rig.force = ""
+		for i in 6:
+			rig.place(0.03, shown, _no_grid)
+		check(absf(fb.nodes[4].body.k - keep_k) < 1e-9, "%s 뒤 다시 관전: 옅게" % mode)
+		Store._players_by_id[1].alive = true
+	Store._players_by_id[1].alive = false
+	rig.force = ""
+	# 막던 몸이 비켜남: 붙드는 동안은 옅은 채 (깜빡임 막기), 몸 묶음이 없으면 (테스트·상자 몸) 아무것도 안 함
+	rig.place(0.03, shown, _no_grid)
+	shown[4] = Vector3(4.3, 8.0, 0)
+	rig.place(0.03, shown, _no_grid)
+	check(rig.thin.has(4) and fb.nodes[4].body.k < 1.0, "비켜난 직후: 아직 옅음")
+	rig.thin[4].at -= float(SpecCam.SPEC.thin_hold_ms) + 1.0 # 붙드는 시간이 지난 것으로
+	for i in 6:
+		rig.place(0.03, shown, _no_grid)
+	check(fb.nodes[4].body.k == 1.0 and rig.thin.is_empty() and rig._thin_bodies.is_empty(), "붙듦이 끝나면 되돌아옴")
+	rig.bodies = null
+	shown[4] = Vector3(4.3, 5.5, 0)
+	rig.place(0.03, shown, _no_grid)
+	check(rig.thin.has(4) and rig._thin_bodies.is_empty(), "몸 묶음이 없으면 계산만")
+	View.victory_stage = keep_v[0]
+	View.victory_id = keep_v[1]
+	_spec_restore(keep, rig)
 
 
 # 관전이 아니면 그대로: 1·3인칭 카메라 자리는 예전 식 (떨어지는 칸에 안 당김), 옅은 칸 묶음은 늘 비어 있음

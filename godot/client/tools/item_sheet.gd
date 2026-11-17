@@ -1,6 +1,6 @@
 # 아이템 견본 (c10-u2): 서버·봇 없이 필드 아이템 모델 (world/items_view.gd·item_models.gd)·넉백 투사체·놓인 폭탄 (world/shots.gd) 을 정해진 판·카메라로 찍음 (모양을 바꾸기 전·뒤 비교용)
-#   xvfb-run -a godot --path godot/client --resolution 1280x720 --rendering-driver opengl3 -s res://tools/item_sheet.gd -- --out <폴더> [--only row,far,fp,proj] [--low]
-# 나오는 파일 (7장):
+#   xvfb-run -a godot --path godot/client --resolution 1280x720 --rendering-driver opengl3 -s res://tools/item_sheet.gd -- --out <폴더> [--only row,far,fp,proj,born,gone] [--low]
+# 나오는 파일 (10장):
 #   items-row-meadow-eye.png · items-row-volcano-eye.png  가장자리 칸 눈높이에서 3칸 앞에 7종 한 줄 (왼쪽부터 item_look.gd KINDS 순서) — 밝은 초원 / 어두운 화산 바닥
 #   items-row-meadow-over.png  같은 줄을 비스듬히 위에서 필드 전체로
 #   items-far-meadow-eye.png  8칸 앞에 7종 한 줄
@@ -8,6 +8,8 @@
 #     고개 0 이면 바닥은 눈높이 ÷ tan(시야각 절반) = 1.89칸 앞부터 화면에 들어옴 → 2칸 앞 고리 (반지름 0.38칸, 앞 끝 1.62칸) 는 앞쪽이 화면 아래로 잘림 (아이템 모델은 화면 안). 고리 전체는 2.25칸부터
 #   items-fp3-meadow.png  같은 기본 1인칭에서 3칸 앞에 7종 — 아이템과 받침 고리 전체가 화면 안
 #   items-proj.png  날아가는 넉백 투사체 셋 + 놓인 폭탄 둘 (왼쪽은 깜빡임이 켜진 반 주기, 오른쪽은 꺼진 반 주기) + 가운데 견줄 바닥 아이템 폭탄 하나
+#   items-born-meadow-fp.png · items-born-volcano-eye.png  나옴 신호 (c10-fix F3): 4칸 앞 세 칸에 아이템이 막 나온 순간 (나이 SIG_AGE.born ms 로 고정) — 짧은 빛 기둥 + 퍼지는 고리. 기본 1인칭 / 화산 눈높이
+#   items-gone-meadow-fp.png  사라짐 신호: 같은 줄의 양옆 두 칸에서 아이템이 막 없어진 순간 (터지는 고리, 종류 주색을 섞은 노랑), 가운데 칸은 견줄 보통 아이템
 #   --low 면 그래픽 낮춤 + 외곽선 끔 (웹 기본값) 으로 한 장만: items-row-low.png (외곽선·판 빛 없이 3칸 앞 한 줄)
 # 판 그리기 (world/world.tscn) 를 이벤트 견본 (tools/event_sheet.gd) 처럼 띄우고 가짜 판 상태를 넣음: 지형 단 둘 · 사람 하나 (크기 견줌) · 아이템·투사체·폭탄.
 # 아이템이 도는 각도는 items_view.hold_spin 으로 고정 (출렁임은 실제 시각이라 높이만 조금 다를 수 있음). 놓인 폭탄 깜빡임은 그리기 바로 앞에 가짜 시각 BOMB_NOW 로 다시 맞춤.
@@ -23,7 +25,7 @@ const Cells := preload("res://world/cells.gd")
 const ExtMotion := preload("res://chars/ext_motion.gd")
 const IL := preload("res://world/item_look.gd")
 
-const SCENES := ["row", "far", "fp", "proj"]
+const SCENES := ["row", "far", "fp", "proj", "born", "gone"]
 # [파일 이름, 테마 이름, 그 테마 맵 id, 장면, 시점]
 const JOBS := [
 	["items-row-meadow-eye.png", "meadow", "flat", "row", "eye"],
@@ -33,6 +35,9 @@ const JOBS := [
 	["items-fp3-meadow.png", "meadow", "flat", "row", "fp"],
 	["items-proj.png", "meadow", "flat", "proj", "eye"],
 	["items-row-volcano-eye.png", "volcano", "bowl", "row", "eye"],
+	["items-born-volcano-eye.png", "volcano", "bowl", "born", "eye"],
+	["items-born-meadow-fp.png", "meadow", "flat", "born", "fp"],
+	["items-gone-meadow-fp.png", "meadow", "flat", "gone", "fp"],
 ]
 const LOW_JOBS := [["items-row-low.png", "meadow", "flat", "row", "eye"]]
 const HOLD_FRAMES := 3 # 시점만 바뀐 장면에서 찍기 전 그릴 프레임
@@ -41,8 +46,10 @@ const SPIN := 0.6 # 아이템이 도는 각도 고정 (rad — 앞면이 비스�
 # 가짜 판 (필드 가운데 x·서는 변 y = 0 기준 칸): 지형 단 [dx0, dx1, y0, y1, 높이] · 사람 [dx, y] (먼 줄 뒤 왼쪽 바깥 — 아이템을 안 가림) · 아이템 줄 [앞 칸 수, 가운데에서 칸 오프셋들]
 const STEPS := [[-7, -4, 11, 13, 1], [3, 6, 12, 14, 1]]
 const MAN := [-4.5, 9.5]
-const ROWS := {"row": [3, [-3, -2, -1, 0, 1, 2, 3]], "far": [8, [-3, -2, -1, 0, 1, 2, 3]], "fp": [2, [-2, -1, 0, 1, 2]]}
+const ROWS := {"row": [3, [-3, -2, -1, 0, 1, 2, 3]], "far": [8, [-3, -2, -1, 0, 1, 2, 3]], "fp": [2, [-2, -1, 0, 1, 2]], "born": [4, [-2, 0, 2]], "gone": [4, [-2, 0, 2]]}
 const FP_KINDS := ["jump", "bomb", "knockback", "ghost", "counter"]
+const SIG_KINDS := ["knockback", "jump", "speed"] # 나옴·사라짐 신호 장면의 세 칸
+const SIG_AGE := {"born": 120.0, "gone": 100.0} # 신호 나이를 이 값 (ms) 으로 고정해 찍음 (items_view.hold_sig)
 # 투사체·폭탄 장면: 투사체 [dx, 앞 거리, 높이] · 놓인 폭탄 [dx 칸, 앞 칸, 남은 ms] · 견줄 바닥 아이템 폭탄 [dx 칸, 앞 칸]
 const PROJS := [[-1.6, 3.0, 1.0], [0.4, 4.0, 1.3], [2.2, 5.0, 0.9]]
 const BOMBS := [[-1, 3, 1400.0], [1, 3, 200.0]]
@@ -272,10 +279,23 @@ func _fill(scene: String) -> void:
 		items.append({"type": "bomb", "x": ix, "y": int(BOMB_ITEM[1]), "z": world.column_top(ix, int(BOMB_ITEM[1]))})
 	else:
 		var row: Array = ROWS[scene]
-		var kinds: Array = FP_KINDS if scene == "fp" else IL.KINDS
+		var kinds: Array = FP_KINDS if scene == "fp" else (SIG_KINDS if SIG_AGE.has(scene) else IL.KINDS)
 		for k in row[1].size():
 			var x := mx + int(row[1][k])
 			items.append({"type": kinds[k], "x": x, "y": int(row[0]), "z": world.column_top(x, int(row[0]))})
+	# 나옴·사라짐 신호 (c10-fix F3): 스냅샷 견주기 대신 신호를 직접 넣고 나이를 고정 (다른 장면에서는 비움)
+	var iv = world.items_view
+	iv.sigs.clear()
+	iv.hold_sig = SIG_AGE.get(scene)
+	iv._seen_st = st
+	if scene == "born":
+		for it in items:
+			iv.add_signal("born", [it.x, it.y, it.z, it.type], 0.0)
+	elif scene == "gone":
+		for k in [2, 0]: # 양옆 두 칸은 막 없어짐, 가운데는 그대로
+			var it: Dictionary = items[k]
+			iv.add_signal("gone", [it.x, it.y, it.z, it.type], 0.0)
+			items.remove_at(k)
 	st["items"] = items
 	st["projectiles"] = projs
 	st["bombs"] = bombs

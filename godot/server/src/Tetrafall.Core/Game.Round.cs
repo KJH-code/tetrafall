@@ -183,6 +183,7 @@ public sealed partial class Game
         if (teamMode) Log($"  팀: {TeamLine()}");
         if (sky) Log("  하늘 계단: 켬");
         if (hpMode) Log($"  체력전: 켬 (HP {JsNumber.ToJs(HpMax())})");
+        if (FieldItemsRun()) Log("  필드 아이템: 켬"); // 판마다 (켤 때의 [호스트] 줄은 그 방 첫 판 앞에만 남음). 연습·튜토리얼은 안 나오니 안 찍음
         // JS 는 위에서 ps 를 제자리 정렬 (ps.sort) → 캐릭터 줄도 자리 순
         if (characters) Log($"  캐릭터: {string.Join(" / ", sorted.Select(p => $"{p.name} {C.CHAR_NAMES[p.@char!]}"))}");
         if (mode == "master")

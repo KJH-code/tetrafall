@@ -64,6 +64,9 @@ uniform vec2 rim_gate = vec2(0.35, 0.65);
 // c8-u3 가까운 몸 깎기: 눈에서 x m 안의 화소는 다 버리고 y m 까지 점점 덜 버림 (디더 — 반투명 아님, 버린 화소는 깊이도 안 씀). y = 0 이면 끔 (기본).
 // 1인칭·관전 카메라 바로 앞을 지나는 남의 몸이 화면을 통째로 덮던 것 → 그 화소만 빠져 뒤 (바닥·이름표) 가 보임. 값은 몸 재질에만 (chars/external.gd Ext.look, g3_config NEAR_CUT)
 uniform vec2 near_cut = vec2(0.0);
+// c10-fix F1 몸 옅게: 디더로 남길 화소 비율의 상한 (1 = 끔, 기본). 가까운 몸 깎기와 같은 화소 난수에 상한만 얹음 — 어느 화소도 near_cut 만 있을 때보다 더 덮지 않음.
+// 관전 따라가기에서 대상을 가리는 남의 몸에만 (chars/body.gd set_see_thru, world/cam_rig.gd). near_cut 이 꺼진 재질 (y = 0) 도 이 값만으로 옅어짐
+uniform float near_keep = 1.0;
 
 varying vec3 world_n;
 varying vec3 v_base; // 선형 바탕색
@@ -121,6 +124,8 @@ void fragment() {
 		float nk = clamp((length(VERTEX) - near_cut.x) / (near_cut.y - near_cut.x), 0.0, 1.0);
 		if (near_ign(FRAGCOORD.xy) >= nk) discard;
 	}
+	// c10-fix F1 몸 옅게 (near_keep): 같은 화소 난수 — 위 깎기와 합치면 남는 화소 = 난수 < min(nk, near_keep). 같은 조건 (원근 투영 · 제 빛 가진 몸 아님)
+	if (near_keep < 1.0 && !local_light && PROJECTION_MATRIX[3][3] < 0.5 && near_ign(FRAGCOORD.xy) >= near_keep) discard;
 	vec4 c = albedo;
 	if (use_tex) {
 		vec2 uv = UV * uv_scale;

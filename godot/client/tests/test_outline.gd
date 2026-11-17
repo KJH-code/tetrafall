@@ -140,7 +140,9 @@ func test_c8_near_cut_shader() -> void:
 	var a := tc.find("#ifndef TOON_CUSTOM")
 	var b := tc.rfind("#endif")
 	var d := tc.find("discard;")
-	check(a >= 0 and b > a and d > a and d < b and tc.count("discard;") == 1, "버리기 (discard) 는 #ifndef TOON_CUSTOM 안 한 곳뿐 (자리 %d, 구간 %d~%d, %d번)" % [d, a, b, tc.count("discard;")])
+	# c10-fix F1: 버리기가 둘 — 가까운 몸 깎기 + 몸 옅게 (near_keep, 같은 화소 난수·같은 조건). 둘 다 #ifndef TOON_CUSTOM 안
+	var d2 := tc.rfind("discard;")
+	check(a >= 0 and b > a and d > a and d2 < b and d2 > d and tc.count("discard;") == 2, "버리기 (discard) 는 #ifndef TOON_CUSTOM 안 두 곳뿐 (자리 %d·%d, 구간 %d~%d, %d번)" % [d, d2, a, b, tc.count("discard;")])
 	check(tc.find("uniform vec2 near_cut") < a, "유니폼 선언은 공통 (TOON_CUSTOM 밖)")
 	check(tc.contains("52.9829189") and tc.contains("0.06711056, 0.00583715"), "디더 = interleaved gradient noise")
 	var ol := FileAccess.get_file_as_string("res://shaders/outline.gdshader")
@@ -467,3 +469,128 @@ func test_c8_fix_closeup_uncut() -> void:
 	Body.use_ext = was_ext
 	Body.use_look = was_look
 	G3.outline_on = was_on
+
+
+# c10-fix F1 몸 옅게 (body.set_see_thru): 관전 따라가기에서 대상을 가리는 남의 몸을 디더로 옅게. 셰이더 글 — 가까운 몸 깎기와 같은 화소 난수에 상한 (near_keep) 만 얹음,
+# 몸 재질·눈 재질·외곽선 셋 다. 몸: 그리는 재질 전부 near_keep, 외곽선은 이 몸만의 사본 (나눠 쓰는 사본은 그대로 — 다른 몸은 안 바뀜), 되돌리면 넣은 값을 지움.
+# 외부 모델·구운 몸·코드 몸 (화풍 끔 — near_cut 이 없는 몸) 세 길 모두
+func test_c10_fix_see_thru_body() -> void:
+	var K := preload("res://shaders/g3_config.gd")
+	var tc := FileAccess.get_file_as_string("res://shaders/toon_common.gdshaderinc")
+	var bc := FileAccess.get_file_as_string("res://shaders/basic_common.gdshaderinc")
+	var ol := FileAccess.get_file_as_string("res://shaders/outline.gdshader")
+	for src in [tc, bc]:
+		check(src.contains("uniform float near_keep = 1.0;"), "near_keep 유니폼 (기본 1 = 끔)")
+		check(src.contains("if (near_keep < 1.0 && !local_light && PROJECTION_MATRIX[3][3] < 0.5 && near_ign(FRAGCOORD.xy) >= near_keep) discard;"), "버리기: 같은 화소 난수 · 원근 투영만 (해 그림자는 온전히) · 제 빛 가진 몸 아님")
+		check(src.contains("if (near_ign(FRAGCOORD.xy) >= nk) discard;"), "가까운 몸 깎기 줄은 그대로 (둘을 합치면 난수 < min(nk, near_keep) 만 남음)")
+	check(ol.contains("uniform float near_keep = 1.0;") and ol.contains("if (near_keep < 1.0 && PROJECTION_MATRIX[3][3] < 0.5 && fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715)))) >= near_keep) keep = 0.0;"), "외곽선도 같은 난수·같은 값 (알파 0 으로)")
+	var has := 0
+	for m in [G3.toon_material(Color.WHITE), G3.basic_material(Color.WHITE), G3.shared_outline()]:
+		for u in (m as ShaderMaterial).shader.get_shader_uniform_list():
+			has += 1 if str(u.get("name", "")) == "near_keep" else 0
+		check((m as ShaderMaterial).get_shader_parameter("near_keep") == null, "기본은 값 없음 (= 1, 끔)")
+	check(has == 3, "툰·눈·외곽선 셰이더가 near_keep 유니폼을 가짐 (셰이더가 컴파일됨, %d)" % has)
+
+	var was_ext: bool = Body.use_ext
+	var was_look: bool = Body.use_look
+	var was_on: bool = G3.outline_on
+	G3.outline_on = true
+	var made := []
+	for spec in [["ninja", true, true], ["bard", false, true], ["tank", false, false]]: # 외부 모델 · 구운 몸 · 코드 몸 (화풍 끔)
+		Body.use_ext = spec[1]
+		Body.use_look = spec[2]
+		var bd = Body.new()
+		bd.build(spec[0], Color(0.2, 0.5, 1.0), true)
+		bd.set_outline_far(false)
+		made.append(bd)
+		var tag := str(spec[0])
+		var lined := []
+		var before := {}
+		for e in _shown_mats(bd):
+			var sm := e[1] as ShaderMaterial
+			if sm == null:
+				continue
+			before[sm.get_instance_id()] = sm.get_shader_parameter("near_cut")
+			check(sm.get_shader_parameter("near_keep") == null, "%s 평소 조각 %s: near_keep 없음" % [tag, e[0].name])
+			if sm.next_pass != null:
+				lined.append([sm, sm.next_pass])
+		check(before.size() >= 3 and lined.size() >= 1 and bd.see_thru() == 1.0, "%s: 셰이더 재질 %d · 외곽선 %d" % [tag, before.size(), lined.size()])
+		bd.set_see_thru(0.32)
+		check(absf(bd.see_thru() - 0.32) < 1e-9, tag + ": 옅음 0.32")
+		for e in _shown_mats(bd):
+			var sm := e[1] as ShaderMaterial
+			if sm == null:
+				continue
+			check(absf(float(sm.get_shader_parameter("near_keep")) - 0.32) < 1e-6, "%s 옅은 동안 조각 %s near_keep 0.32" % [tag, e[0].name])
+			check(sm.get_shader_parameter("near_cut") == before[sm.get_instance_id()], "%s: near_cut 은 안 건드림 (%s)" % [tag, e[0].name])
+		var own := []
+		for l in lined:
+			var np := (l[0] as ShaderMaterial).next_pass as ShaderMaterial
+			own.append(np)
+			check(np != null and np != l[1] and absf(float(np.get_shader_parameter("near_keep")) - 0.32) < 1e-6, tag + ": 외곽선 = 이 몸만의 사본 (near_keep 0.32)")
+			check(np.shader == (l[1] as ShaderMaterial).shader and np.get_shader_parameter("near_cut") == (l[1] as ShaderMaterial).get_shader_parameter("near_cut") and np.get_shader_parameter("far_taper") == (l[1] as ShaderMaterial).get_shader_parameter("far_taper"), tag + ": 사본의 다른 값은 원래 사본 그대로")
+			check((l[1] as ShaderMaterial).get_shader_parameter("near_keep") == null, tag + ": 나눠 쓰는 사본은 안 바뀜 (다른 몸은 그대로)")
+		# 값만 바뀌면 (천천히 옅어짐) 사본을 다시 안 뜸, 외곽선 거리·설정이 바뀌어도 그 사본
+		bd.set_see_thru(0.6)
+		bd.set_outline_far(true)
+		bd.set_outline_far(false)
+		for i in lined.size():
+			var np := (lined[i][0] as ShaderMaterial).next_pass as ShaderMaterial
+			check(np == own[i] and absf(float(np.get_shader_parameter("near_keep")) - 0.6) < 1e-6, tag + ": 같은 사본에 새 값 0.6")
+		# 옅은 동안 유령화·무적 (새 반투명 재질) 도 같이 (pose 끝 _thin_sweep)
+		bd.opacity = 0.5
+		if bd.ext != null:
+			bd.ext.fx(bd.fx_colors({}, 0.0), 0.5)
+		bd._apply_opacity()
+		bd._thin_sweep()
+		var ghosts := 0
+		for e in _shown_mats(bd):
+			var sm := e[1] as ShaderMaterial
+			if sm == null:
+				continue
+			check(absf(float(sm.get_shader_parameter("near_keep")) - 0.6) < 1e-6, "%s 옅은 동안 반투명 조각 %s near_keep 0.6" % [tag, e[0].name])
+			ghosts += 1
+		check(ghosts >= 3, tag + ": 반투명 조각 %d" % ghosts)
+		bd.opacity = 1.0
+		if bd.ext != null:
+			bd.ext.fx(bd.fx_colors({}, 0.0), 1.0)
+		bd._apply_opacity()
+		# 승자 클로즈업 (가까운 몸 깎기 끔) 과 겹쳐도: 외곽선은 안 깎는 사본을 베낀 이 몸만의 것
+		if bool(spec[2]):
+			bd.set_near_cut_off(true)
+			for l in lined:
+				var np := (l[0] as ShaderMaterial).next_pass as ShaderMaterial
+				var onc = np.get_shader_parameter("near_cut")
+				check(np != l[1] and (onc == null or Vector2(onc) == Vector2.ZERO) and absf(float(np.get_shader_parameter("near_keep")) - 0.6) < 1e-6, tag + ": 깎기 끔 + 옅음 = 안 깎는 사본의 사본")
+			bd.set_near_cut_off(false)
+		# 되돌림: 넣은 값을 지움, 외곽선은 나눠 쓰는 사본으로
+		bd.set_see_thru(1.0)
+		check(bd.see_thru() == 1.0 and bd._thin_mats.is_empty() and bd._thin_ol.is_empty(), tag + ": 되돌림")
+		for e in _shown_mats(bd):
+			var sm := e[1] as ShaderMaterial
+			if sm == null:
+				continue
+			check(sm.get_shader_parameter("near_keep") == null, "%s 되돌린 뒤 조각 %s: near_keep 없음" % [tag, e[0].name])
+			check(sm.get_shader_parameter("near_cut") == before.get(sm.get_instance_id(), sm.get_shader_parameter("near_cut")), tag + ": near_cut 그대로")
+		for l in lined:
+			check((l[0] as ShaderMaterial).next_pass == l[1], tag + ": 외곽선도 원래 사본")
+		if bool(spec[2]):
+			var cut := 0
+			for e in _shown_mats(bd):
+				var sm := e[1] as ShaderMaterial
+				if sm != null and sm.get_shader_parameter("near_cut") != null and Vector2(sm.get_shader_parameter("near_cut")) == K.NEAR_CUT:
+					cut += 1
+			check(cut >= 3, "%s: 가까운 몸 깎기 값은 그대로 (%d)" % [tag, cut])
+	# 한 몸을 옅게 해도 다른 몸의 재질은 안 바뀜 (몸마다 제 재질)
+	made[0].set_see_thru(0.32)
+	for bd in [made[1], made[2]]:
+		for e in _shown_mats(bd):
+			var sm := e[1] as ShaderMaterial
+			check(sm == null or sm.get_shader_parameter("near_keep") == null, "다른 몸 조각 %s 은 그대로" % e[0].name)
+	made[0].set_see_thru(1.0)
+	for bd in made:
+		bd.free()
+	Body.use_ext = was_ext
+	Body.use_look = was_look
+	G3.outline_on = was_on
+
