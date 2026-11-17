@@ -183,6 +183,16 @@ func _on_event(e: Dictionary) -> void:
 			sfx.play("tick", 0.0 if _mine(e) else _dist(e.x + 0.5, e.y + 0.5, e.z))
 		"boom":
 			sfx.play("boom", _dist(e.x, e.y, e.z), _pos(e))
+		"roundEvent": # 돌발 이벤트 시작 알림음 (보급 = 줍는 소리, 나머지 = 경고음 — sound_math.event_cue)
+			var cue := SM.event_cue(e.get("kind"))
+			if cue != "":
+				sfx.play(cue)
+		"boltWarn": # 번개 예고 고리: 째깍 (내가 그 고리 안이면 = 내 발밑이면 바로 곁 소리)
+			var bm := _me()
+			var mine_ring: bool = not bm.is_empty() and Vector2(float(e.x) - bm.x, float(e.y) - bm.y).length() <= float(e.get("r", 0.0))
+			sfx.play("tick", 0.0 if mine_ring else _dist(e.x, e.y, e.z))
+		"bolt": # 번개가 떨어짐
+			sfx.play("crit", _dist(e.x, e.y, e.z), _pos(e))
 		"throw":
 			var a := _pl(e.get("who"))
 			if not a.is_empty():

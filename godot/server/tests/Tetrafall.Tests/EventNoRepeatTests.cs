@@ -4,7 +4,7 @@ using Tetrafall.Core.Js;
 
 namespace Tetrafall.Tests;
 
-// 돌발 이벤트 같은 종류 연속 금지 (Game.Events.cs PickEventKind): 판 첫 이벤트는 5종 중 하나, 그 뒤로는 직전 종류를 뺀 4종 중 하나.
+// 돌발 이벤트 같은 종류 연속 금지 (Game.Events.cs PickEventKind): 판 첫 이벤트는 6종 중 하나, 그 뒤로는 직전 종류를 뺀 5종 중 하나.
 // 보급 (evKind 에 안 남음) 도 직전으로 침. 새 판이면 직전 기록을 비움
 public class EventNoRepeatTests
 {
@@ -22,9 +22,9 @@ public class EventNoRepeatTests
         foreach (var last in lasts)
         {
             var count = new Dictionary<string, int>();
-            for (int i = 0; i < 1000; i++)
+            for (int i = 0; i < 1200; i++)
             {
-                string k = Game.PickEventKind(i / 1000.0, last)!; // 5종이면 늘 있음
+                string k = Game.PickEventKind(i / 1200.0, last)!; // 6종이면 늘 있음
                 Assert.NotEqual(last, k);
                 Assert.Contains(k, C.EVENT_KINDS);
                 count[k] = count.GetValueOrDefault(k) + 1;
@@ -37,12 +37,12 @@ public class EventNoRepeatTests
             else
             {
                 Assert.Equal(C.EVENT_KINDS.Length - 1, count.Count);
-                foreach (var k in C.EVENT_KINDS.Where(k => k != last)) Assert.True(count[k] == 250, $"last {last}: {k} {count.GetValueOrDefault(k)}번");
+                foreach (var k in C.EVENT_KINDS.Where(k => k != last)) Assert.True(count[k] == 240, $"last {last}: {k} {count.GetValueOrDefault(k)}번");
             }
         }
-        // 4종은 원래 순서 그대로 r 구간에 놓임 (직전이 돌풍이면 폭우·보급·저중력·빙판)
-        Assert.Equal(new[] { "rain", "supply", "lowgrav", "ice" }, new[] { 0.1, 0.3, 0.6, 0.9 }.Select(r => Game.PickEventKind(r, "wind")));
-        Assert.Equal(new[] { "rain", "wind", "supply", "lowgrav", "ice" }, new[] { 0.1, 0.3, 0.5, 0.7, 0.9 }.Select(r => Game.PickEventKind(r, null)));
+        // 5종은 원래 순서 그대로 r 구간에 놓임 (직전이 돌풍이면 폭우·보급·저중력·빙판·번개)
+        Assert.Equal(new[] { "rain", "supply", "lowgrav", "ice", "bolt" }, new[] { 0.1, 0.3, 0.5, 0.7, 0.9 }.Select(r => Game.PickEventKind(r, "wind")));
+        Assert.Equal(new[] { "rain", "wind", "supply", "lowgrav", "ice", "bolt" }, Enumerable.Range(0, 6).Select(i => Game.PickEventKind((i + 0.5) / 6, null)));
     }
 
     // rng 앞에 정한 값을 끼움 (이벤트 종류 고르기). 나머지는 시드 rng
@@ -90,11 +90,11 @@ public class EventNoRepeatTests
     }
 
     [Fact]
-    public void 판_안에선_직전과_다른_종류_새_판이면_다시_5종()
+    public void 판_안에선_직전과_다른_종류_새_판이면_다시_6종()
     {
         var (g, r) = Kills();
-        Assert.Equal("rain", EventAt(g, r, 0, 0.1)); // 첫 이벤트: 5종 중 floor(0.5) = 폭우
-        Assert.Equal("wind", EventAt(g, r, 1, 0.1)); // 같은 r 이어도 직전 (폭우) 를 빼고 4종 중 floor(0.4) = 돌풍
+        Assert.Equal("rain", EventAt(g, r, 0, 0.1)); // 첫 이벤트: 6종 중 floor(0.6) = 폭우
+        Assert.Equal("wind", EventAt(g, r, 1, 0.1)); // 같은 r 이어도 직전 (폭우) 를 빼고 5종 중 floor(0.5) = 돌풍
         Assert.Equal("rain", EventAt(g, r, 2, 0.1)); // 직전은 돌풍 → 폭우 다시 가능
         // 다음 판: 직전 기록을 비움 → 지난 판 마지막 (폭우) 도 첫 이벤트로 나옴
         g.EndRound(null);
@@ -106,9 +106,9 @@ public class EventNoRepeatTests
     public void 보급도_직전으로_침()
     {
         var (g, r) = Kills();
-        Assert.Equal("supply", EventAt(g, r, 0, 0.5)); // 5종 중 floor(2.5) = 보급 (그 자리에서 끝나 evKind 는 null)
+        Assert.Equal("supply", EventAt(g, r, 0, 0.4)); // 6종 중 floor(2.4) = 보급 (그 자리에서 끝나 evKind 는 null)
         Assert.Null(g.evKind);
-        Assert.Equal("lowgrav", EventAt(g, r, 1, 0.5)); // 보급을 빼고 4종 중 floor(2) = 저중력
+        Assert.Equal("lowgrav", EventAt(g, r, 1, 0.5)); // 보급을 빼고 5종 중 floor(2.5) = 저중력
     }
 
     // 종류를 줄인 config (사이클 5 리뷰 F5): 1종이면 직전을 빼면 남는 게 없어 직전 그대로, 0종이면 null (이벤트 없음).
@@ -125,7 +125,7 @@ public class EventNoRepeatTests
             Assert.Null(Game.PickEventKind(r, null, Array.Empty<string>()));
             Assert.Null(Game.PickEventKind(r, "ice", Array.Empty<string>()));
         }
-        // 2인자 판은 config 5종 그대로 (위 테스트와 같은 값)
+        // 2인자 판은 config 6종 그대로 (위 테스트와 같은 값)
         foreach (var r in new[] { 0.1, 0.3, 0.6, 0.9 }) Assert.Equal(Game.PickEventKind(r, "wind", C.EVENT_KINDS), Game.PickEventKind(r, "wind"));
     }
 

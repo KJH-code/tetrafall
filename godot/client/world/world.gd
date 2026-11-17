@@ -56,6 +56,7 @@ var light_fx: Node3D # 판 빛 무리·빛 터짐 (game-light.js 3D 부분)
 var shots: Node3D # 폭탄·포탄·음표·표창·조준점·화살·조종 줄
 var hook_fx: Node3D # 갈고리 밧줄·R 덩어리, 끌려오는 몸 (slides)
 var body_fx: Node3D # 몸 둘레 따로 그리는 것 (필살기 고리·R 찬 빛·표식·취약·앰프·소용돌이·대기 표시·위험 고리)
+var bolt_fx: Node3D = preload("res://world/bolt_fx.gd").new() # c9 돌발 이벤트 '번개': 바닥 예고 고리·번개 띠 (스스로 이벤트를 잇고 돎 — 메시·재질은 트리에 들어갈 때 만듦)
 var last_phase := ""
 var marks_demo := false # 확인용 (명령줄 --marks-demo): 판 중 1.5초마다 내 앞에 가짜 잔상·예고·출렁·솟는 땅·빛
 var _demo_next := 0.0
@@ -94,6 +95,12 @@ var _halo_st = null # 판 빛 무리를 만든 스냅샷 (같으면 _halos 그�
 var _halo_lit := false
 var _halos: Array = []
 const VIEWMODEL := "res://chars/viewmodel.gd"
+
+
+# 트리에 안 들어간 채 버려지는 World (테스트가 World 만 만들어 씀): 선언에서 만든 bolt_fx 는 자식이 아니라 같이 안 지워짐 → 여기서 지움
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE and is_instance_valid(bolt_fx) and bolt_fx.get_parent() == null:
+		bolt_fx.free()
 
 
 func _exit_tree() -> void:
@@ -150,7 +157,7 @@ func _ready() -> void:
 	body_fx = BodyFx.new()
 	rig.ghost_aim = ghost_aim
 	rig.bodies = bodies # c8-fix F3: 클로즈업 대상 몸의 가까운 몸 깎기를 끔 (cam_rig.close_uncut)
-	for n in [scenery, grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, ghost_aim, marks, light_fx, shots, hook_fx, body_fx, rig, fx_root]:
+	for n in [scenery, grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, ghost_aim, marks, light_fx, shots, hook_fx, body_fx, bolt_fx, rig, fx_root]:
 		add_child(n)
 	fx_root.name = "Fx"
 	if ResourceLoader.exists(FX):
@@ -666,7 +673,7 @@ func _process(dt: float) -> void:
 	var st := Store.state
 	# 방 밖 (메뉴): 판 노드를 숨김 (크기 안 정한 바닥·절벽 상자가 원점 카메라 앞을 가르던 것). 하늘·빛 (G3Env)·효과는 그대로
 	var live: bool = not st.is_empty() and st.has("field")
-	for n in [scenery, grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, ghost_aim, marks, light_fx, shots, hook_fx, body_fx]:
+	for n in [scenery, grid_view, pieces_view, hazard_view, bodies, sky_aids, items_view, ghost_aim, marks, light_fx, shots, hook_fx, body_fx, bolt_fx]:
 		n.visible = live and ((_entered and (_tail >= 2 or Gate.no_split("tail"))) or not Gate.on()) and ((n != hazard_view and n != ghost_aim) or n.visible) and (n != scenery or dark == null) # 어두운 무대면 떠 있는 섬·먼 배경 숨김
 	if not live and vm != null:
 		vm.update(null, false, dt) # 방 밖: 1인칭 팔 끔

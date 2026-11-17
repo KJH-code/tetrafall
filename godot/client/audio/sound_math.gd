@@ -12,6 +12,15 @@ static func falloff(dist) -> float:
 	return maxf(0.2, 1.0 - float(dist) / C.SFX_HEAR_RANGE)
 
 
+# 돌발 이벤트가 시작할 때 알림음 (서버 이벤트 roundEvent 의 kind → 효과음 키): 보급은 줍는 소리, 나머지 (폭우·돌풍·저중력·빙판·번개) 는 경고음.
+# 종류가 비었으면 "" (안 냄)
+static func event_cue(kind) -> String:
+	var k := str(kind) if kind != null else ""
+	if k == "":
+		return ""
+	return "pickup" if k == "supply" else "danger"
+
+
 # 소리 하나의 크기·좌우 (sound.js bus): pos (게임 좌표 Vector3) 가 있고 내 소리(dist 0)가 아니면 내 귀(listener: Vector4 x,y,z,yaw) 기준
 # 돌려줌 Vector2(크기, 좌우 -1~1, 오른쪽 +)
 static func listen(dist, pos, listener) -> Vector2:

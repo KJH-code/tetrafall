@@ -117,7 +117,7 @@ public sealed class BotBrain
 
     sealed record Danger(List<int[]> cells, double eta, string key);
 
-    // 그림자가 보이는 떨어지는 블록들 (p 를 주면 발밑보다 낮은 하늘 블록은 뺌) + 놓인 폭탄 범위
+    // 그림자가 보이는 떨어지는 블록들 (p 를 주면 발밑보다 낮은 하늘 블록은 뺌) + 놓인 폭탄 범위 + 번개 예고 고리 (돌발 이벤트)
     List<Danger> VisibleDangers(Game g, Player? p = null)
     {
         var out_ = new List<Danger>();
@@ -137,6 +137,19 @@ public sealed class BotBrain
                 for (int dy = -R; dy <= R; dy++)
                     if (JsMath.Hypot(dx, dy) <= C.BOMB_BLAST_RANGE + C.BOT_BOMB_DANGER_PAD) cells.Add(new[] { b.x + dx, b.y + dy });
             out_.Add(new Danger(cells, Math.Max(0, b.explodeAt - g.time), $"bomb:{b.id}"));
+        }
+        // 번개 예고: 가운데에서 반지름 + 여유 안에 칸 가운데가 드는 칸들. 목록 맨 뒤 — dangers[0] 을 쓰는 곳 (Think·Attack) 은 블록·폭탄 먼저.
+        // 반응 시간은 블록 그림자와 같음 (특혜 없음)
+        double br = C.EVENT_BOLT_RADIUS + C.EVENT_BOLT_BOT_PAD;
+        int BR = (int)Math.Ceiling(br);
+        foreach (var w in g.ActiveBolts())
+        {
+            var cells = new List<int[]>();
+            int cx = (int)Math.Floor(w.x), cy = (int)Math.Floor(w.y);
+            for (int x = cx - BR; x <= cx + BR; x++)
+                for (int y = cy - BR; y <= cy + BR; y++)
+                    if (JsMath.Hypot(x + 0.5 - w.x, y + 0.5 - w.y) <= br) cells.Add(new[] { x, y });
+            out_.Add(new Danger(cells, Math.Max(0, w.at - g.time), $"bolt:{w.id}"));
         }
         return out_;
     }
