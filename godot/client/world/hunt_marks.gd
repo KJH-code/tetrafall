@@ -63,3 +63,9 @@ static func edge_level(n: float, mx: float = C.HUNTER_MARK_MAX, pop_age: float =
 # 사라지기 직전 깜빡 (left = 남은 ms)
 static func mark_blink(left: float, now: float) -> bool:
 	return left < C.MARK_BLINK_MS and int(floor(now / C.MARK_BLINK_PERIOD_MS)) % 2 == 1
+
+
+# c10 머리 위 표식 칸을 보일까 (world/body_fx.gd): 표식이 있고 깜빡 꺼진 때가 아니며, 내 몸이면 3인칭일 때만 (mine·third).
+# 하늘 시점 (sky — 블록 마스터·블록 조종) 에서는 내가 붙인 것 (by_me) 만 — 남의 표식 칸이 위에서 내려다본 생존자 몸을 덮던 것
+static func pips_shown(n: int, blink: bool, mine: bool, third: bool, sky: bool, by_me: bool) -> bool:
+	return n > 0 and not blink and not (mine and not third) and not (sky and not by_me)

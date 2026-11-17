@@ -640,7 +640,7 @@ func _hunt(d: Dictionary, p: Dictionary, s: Vector3, my_id, mine: bool, now: flo
 	var pp := HM.mark_pips(n)
 	var blink: bool = m != null and HM.mark_blink(float(m.get("left", 0)), now)
 	var g: Node3D = d.hunt.node
-	g.visible = n > 0 and not blink and not (mine and not third.call())
+	g.visible = HM.pips_shown(n, blink, mine, third.call(), str(View.mode) == "sky", by_me)
 	g.position = Co.gxyz(s.x, s.y, s.z + C.PLAYER_HEIGHT + C.LABEL_ABOVE_HEAD + 0.75)
 	var pop := HM.pop_scale(now - float(d.get("pop_at", -1e12)))
 	var breathe := 1 + 0.08 * sin(now / 120.0) if pp.full else 1.0

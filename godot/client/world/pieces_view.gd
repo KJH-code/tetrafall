@@ -8,6 +8,7 @@ const Cells := preload("res://world/cells.gd")
 const WC := preload("res://world/world_config.gd")
 const CellLod := preload("res://world/cell_lod.gd")
 const LandingRim := preload("res://world/landing_rim.gd")
+const SpecCam := preload("res://world/spec_cam.gd")
 
 var cells_mmi := MultiMeshInstance3D.new()
 var sky_mmi := MultiMeshInstance3D.new() # 하늘 계단 블록 (render.js skyPieceMat: 밝게·살짝 비침·하늘색 빛) — 늘 반투명 재질
@@ -24,6 +25,11 @@ var lod_far := 0 # 지난 갱신에서 먼 칸 수 (확인용)
 var piece_mat := StandardMaterial3D.new()
 var piece_colors: Dictionary = C.SHAPE_COLORS
 var mats = null # G3 툰 재질 [불투명, 반투명] (없으면 piece_mat 의 transparency 를 바꿈)
+# c10: 관전 (View.mode "spectate") 때 카메라 가까이 (SpecCam.SPEC.fade[1] 안) 있는 떨어지는 칸 — 렌즈 앞을 덮던 것. 반투명 재질 (mats[1]) + 인스턴스 색 알파 (SpecCam.cell_alpha) 로
+# 옅게 그림 (먼 칸부터 순서대로). 그 칸은 cells_mmi·far_mmi·하늘 블록 쪽에서 빠짐. 그림자 안 던짐 (그림자 상자 caster_mmi 는 그대로). 1·3인칭·하늘 시점에서는 늘 비어 있음
+var fade_mmi := MultiMeshInstance3D.new()
+var fade_n := 0 # 지난 갱신에서 옅게 그린 칸 수 (0 이 아니면 같은 스냅샷이어도 다시 씀 — 카메라가 움직이면 알파가 바뀜)
+var faded: Array = [] # 그 칸들 [카메라 거리, 자리 (Transform3D), 색 (알파 곱함)], 먼 칸부터 (확인용 — 헤드리스에서는 MultiMesh 값을 되읽을 수 없음)
 
 
 func _ready() -> void:
@@ -69,6 +75,15 @@ func _ready() -> void:
 	sky_far_mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	sky_far_mmi.visible = false
 	add_child(sky_far_mmi)
+	var dm := MultiMesh.new()
+	dm.transform_format = MultiMesh.TRANSFORM_3D
+	dm.use_colors = true
+	dm.mesh = box
+	dm.visible_instance_count = 0
+	fade_mmi.multimesh = dm
+	fade_mmi.material_override = piece_mat # 재질 [불투명, 반투명] 이 오면 (update) 반투명 쪽. 그 전엔 칸이 안 들어옴
+	fade_mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(fade_mmi)
 	var sm := MultiMesh.new()
 	sm.transform_format = MultiMesh.TRANSFORM_3D
 	sm.use_colors = true
@@ -113,6 +128,7 @@ func set_look(mesh: Mesh, materials: Array, colors: Dictionary, lod_mesh: Mesh =
 	# W39: 칸 모양이 낮은 모양보다 훨씬 무거울 때만 낮은 모양을 씀 (먼 칸·하늘 블록)
 	low_mesh = lod_mesh if lod_mesh != null and CellLod.worth(mesh_tris(mesh), mesh_tris(lod_mesh)) else null
 	sky_mmi.multimesh.mesh = mesh
+	fade_mmi.multimesh.mesh = mesh
 	far_mmi.multimesh.mesh = low_mesh if low_mesh != null else mesh
 	sky_far_mmi.multimesh.mesh = far_mmi.multimesh.mesh
 	far_mmi.visible = low_mesh != null
@@ -173,7 +189,11 @@ func piece_color(pc: Dictionary) -> Color:
 func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 	# 칸 자리·색은 스냅샷 값 그대로 → 같은 스냅샷·같은 시점·같은 색 표·하늘 블록 없음 (반짝임이 시간에 따라 바뀜) 이면 지난 프레임 그대로 (W15)
 	var sky_on := sky_blend > 0.5
-	if is_same(st, _key_st) and sky_on == _key_sky and is_same(piece_colors, _key_cols) and my_id == _key_me:
+	# c10: 관전이면 카메라 자리 (가까운 칸을 옅게). 가까운 칸이 있거나 지난번에 옅게 그린 칸이 있으면 아래 건너뛰기를 안 함
+	var spec_cam: Dictionary = CellLod.camera_of(self) if mats != null and str(View.mode) == "spectate" else {}
+	var fade_far: float = float(SpecCam.SPEC.fade[1])
+	var fading: bool = fade_n > 0 or (not spec_cam.is_empty() and near_any(st.get("pieces", []), spec_cam.pos, fade_far))
+	if not fading and is_same(st, _key_st) and sky_on == _key_sky and is_same(piece_colors, _key_cols) and my_id == _key_me:
 		if not _sky_base.is_empty() or not _sky_base_far.is_empty(): # 하늘 블록 반짝임만 (색 = 하얗게 섞은 모양 색 + 시간에 따라 하늘빛)
 			var g := Color(0.12, 0.22, 0.3, 0.0) * (0.55 + 0.45 * sin(Time.get_ticks_msec() / 500.0))
 			var km0 := sky_mmi.multimesh
@@ -208,6 +228,7 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 		qm.instance_count = n + 8
 		fm.instance_count = n + 8
 		sky_far_mmi.multimesh.instance_count = n + 8
+		fade_mmi.multimesh.instance_count = n + 8
 		mm.instance_count = n + 8
 		km.instance_count = n + 8
 		sm.instance_count = n + 8
@@ -218,6 +239,7 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 		far_mmi.material_override = cells_mmi.material_override
 		sky_mmi.material_override = mats[1]
 		sky_far_mmi.material_override = mats[1]
+		fade_mmi.material_override = mats[1]
 	else:
 		piece_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if alpha < 1.0 else BaseMaterial3D.TRANSPARENCY_DISABLED
 	# 하늘 계단 블록: 모양 색을 하얗게 섞고 하늘색으로 은은히 빛남 (render.js skyGlow), 살짝 비침 (하늘 시점이면 더)
@@ -237,6 +259,9 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 	var s := 0
 	var r := 0 # 테 띠 조각 수
 	var hot_n := 0
+	faded = [] # c10 옅게 그릴 칸: [카메라 거리, 자리, 색 (알파 곱함)]
+	var fade_on := not spec_cam.is_empty()
+	var fade_pos: Vector3 = spec_cam.get("pos", Vector3.ZERO)
 	for pc in pieces:
 		var col := piece_color(pc)
 		col.a = alpha
@@ -257,7 +282,15 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 		for i in pc.cells.size():
 			var c: Array = pc.cells[i]
 			var xf := Transform3D(Basis(), Co.gxyz(c[0] + 0.5, c[1] + 0.5, c[2] + 0.5))
-			if sky:
+			var cam_d: float = fade_pos.distance_to(xf.origin) if fade_on else fade_far
+			if cam_d < fade_far: # c10 관전 카메라 가까운 칸 (하늘 블록도): 옅게 — 아래에서 먼 칸부터 씀
+				var fc := col
+				fc.a *= SpecCam.cell_alpha(cam_d)
+				faded.append([cam_d, xf, fc])
+				if proxy_on and not sky:
+					qm.set_instance_transform(qi, xf)
+					qi += 1
+			elif sky:
 				if far_piece:
 					skf.set_instance_transform(qf, xf)
 					skf.set_instance_color(qf, col)
@@ -305,6 +338,14 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 				rm.set_instance_color(r, t[1])
 				hot_n += 1 if not hot.is_empty() and t[1] == red else 0
 				r += 1
+	if faded.size() > 1:
+		faded.sort_custom(func(a, b): return a[0] > b[0]) # 먼 칸부터 그려야 가까운 칸 너머로 비침
+	var dm := fade_mmi.multimesh
+	for i in faded.size():
+		dm.set_instance_transform(i, faded[i][1])
+		dm.set_instance_color(i, faded[i][2])
+	dm.visible_instance_count = faded.size()
+	fade_n = faded.size()
 	mm.visible_instance_count = k
 	fm.visible_instance_count = f
 	lod_far = f
@@ -314,6 +355,20 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 	sm.visible_instance_count = s
 	rm.visible_instance_count = r
 	rim_danger = hot_n
+
+
+# c10: 떨어지는 칸 가운데 하나라도 카메라 (고도 좌표 pos) 에서 far (m) 안인가
+static func near_any(pieces: Array, pos: Vector3, far: float) -> bool:
+	var g := Co.game(pos)
+	var f2 := far * far
+	for pc in pieces:
+		for c in pc.cells:
+			var dx: float = c[0] + 0.5 - g.x
+			var dy: float = c[1] + 0.5 - g.y
+			var dz: float = c[2] + 0.5 - g.z
+			if dx * dx + dy * dy + dz * dz < f2:
+				return true
+	return false
 
 
 var writes := 0 # 칸을 다 다시 쓴 번 수 (확인용)

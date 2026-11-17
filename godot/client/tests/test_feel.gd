@@ -235,18 +235,30 @@ func test_c7_edge_frame_keeps_center_clear() -> void:
 		check(absf(st[2][0] - (b.x + b.y * float(kn[0]))) < 1e-6 and absf(st[2][1] - float(kn[1])) < 1e-6, "%s 꺾임 자리·알파" % size)
 		# 계단 없음 (F6): 가장자리에서 띠 끝 너머까지 반 화소씩 걸으며 — 한 화소에 줄어드는 알파가 번지는 띠의 가장 가파른 기울기를 안 넘고, 다시 커지지 않음
 		var steep: float = maxf((1.0 - float(kn[1])) / (b.y * float(kn[0])), float(kn[1]) / (b.y * (1.0 - float(kn[0]))))
+		# c10: 옆변은 가로로 side 배 가늘어짐 — 옆변의 (d × side) 자리가 아랫변의 d 자리와 같은 알파, 가로로 걷는 기울기 한도는 세로 한도 ÷ side
+		var side: float = float(E.side)
 		var prev := 1.0
 		var worst := 0.0
 		var d := 0.0
 		while d <= b.x + b.y + 2.0:
-			var a: float = Edge.alpha_at(size, Vector2(d, mid.y), 1.0)
+			var a: float = Edge.alpha_at(size, Vector2(d * side, mid.y), 1.0)
 			check(a <= prev + 1e-6 and absf(a - Edge.alpha_at(size, Vector2(mid.x, size.y - d), 1.0)) < 1e-6, "%s d=%s 알파 %s (안 커짐, 위아래·좌우 같음)" % [size, d, a])
 			worst = maxf(worst, prev - a)
 			prev = a
 			d += 0.5
 		check(worst <= steep * 0.5 + 1e-6 and steep < 0.05, "%s 반 화소 걸음에 알파가 %.4f 넘게 떨어짐 (얻음 %.4f) — 띠 경계 계단" % [size, steep * 0.5, worst])
-		check(absf(Edge.alpha_at(size, Vector2(b.x + 0.01, mid.y), 1.0) - 1.0) < 1e-3, "%s 바깥 띠 바로 안쪽도 같은 알파 (예전엔 0.55배로 떨어짐)" % size)
-		check(Edge.alpha_at(size, Vector2(b.x + b.y + 0.5, mid.y), 1.0) == 0.0 and Edge.alpha_at(size, mid, 1.0) == 0.0, "띠 안쪽은 0")
+		var prev_x := 1.0
+		var worst_x := 0.0
+		var x := 0.0
+		while x <= (b.x + b.y) * side + 2.0:
+			var ax: float = Edge.alpha_at(size, Vector2(x, mid.y), 1.0)
+			check(ax <= prev_x + 1e-6, "%s 옆변 x=%s 알파 %s (안 커짐)" % [size, x, ax])
+			worst_x = maxf(worst_x, prev_x - ax)
+			prev_x = ax
+			x += 0.5
+		check(worst_x <= steep / side * 0.5 + 1e-6, "%s 옆변 가로 반 화소 걸음에 알파가 %.4f 넘게 떨어짐 (얻음 %.4f) — 띠 경계 계단" % [size, steep / side * 0.5, worst_x])
+		check(absf(Edge.alpha_at(size, Vector2(b.x * side + 0.01, mid.y), 1.0) - 1.0) < 1e-3, "%s 바깥 띠 바로 안쪽도 같은 알파 (예전엔 0.55배로 떨어짐)" % size)
+		check(Edge.alpha_at(size, Vector2((b.x + b.y) * side + 0.5, mid.y), 1.0) == 0.0 and Edge.alpha_at(size, mid, 1.0) == 0.0, "띠 안쪽은 0")
 		# 그리는 사다리꼴 12개 (변 넷 × 꺾임 점 사이 띠 셋): 가운데 사각형과 안 겹치고, 띠마다 꼭짓점 알파가 꺾임 점 값
 		var qs: Array = Edge.quads(size)
 		check(qs.size() == 12, "사다리꼴 12개 (변 넷 × 띠 셋)")
@@ -417,18 +429,23 @@ func test_c8_edge_top_dim() -> void:
 			check(v >= prev - 1e-6 and v <= a + 1e-6, "%s 옆 변 y=%s 알파 %s (내려올수록 안 줄어듦)" % [size, y0, v])
 			prev = v
 			y0 += 1.0
-		# 모서리에 계단 없음: 45도 선 (d, d) 근처에서 윗변 쪽·옆 변 쪽으로 반 화소 옮긴 값의 차가 번지는 띠의 가장 가파른 기울기 (반 화소 몫) 안 — 변마다 다른 배율이면 0.6a 가 한 번에 뜀
+		# 모서리에 계단 없음: 꺾임선 (c10: 축척 대각선 (d × side, d)) 근처에서 윗변 쪽·옆 변 쪽으로 반 화소 옮긴 값의 차가 번지는 띠의 가장 가파른 기울기 (반 화소 몫) 안 — 변마다 다른 배율이면 0.6a 가 한 번에 뜀.
+		# 가로로 옮긴 값이 낀 차의 한도는 ÷ side (옆변 띠는 가로로 side 배 가늘어 그만큼 가파름), 세로로만 옮긴 차는 예전 한도
+		var side: float = float(E.side)
 		var steep: float = maxf((1.0 - float(kn[1])) / (b.y * float(kn[0])), float(kn[1]) / (b.y * (1.0 - float(kn[0]))))
 		var worst := 0.0
+		var worst_h := 0.0
 		var d := 2.0
 		while d <= b.x + b.y:
-			for cx in [d, size.x - d]:
+			for cx in [d * side, size.x - d * side]:
 				var on: float = Edge.alpha_at(size, Vector2(cx, d), 1.0)
 				var to_top: float = Edge.alpha_at(size, Vector2(cx + (0.5 if cx < mid.x else -0.5), d), 1.0) # 윗변 쪽 (대각선 안쪽 가로로)
 				var to_side: float = Edge.alpha_at(size, Vector2(cx, d + 0.5), 1.0) # 옆 변 쪽 (세로로)
-				worst = maxf(worst, maxf(absf(to_top - to_side), maxf(absf(on - to_top), absf(on - to_side))))
+				worst = maxf(worst, absf(on - to_side))
+				worst_h = maxf(worst_h, maxf(absf(to_top - to_side), absf(on - to_top)))
 			d += 1.0
-		check(worst <= steep * 0.5 + 1e-6, "%s 모서리 45도 선에서 반 화소에 알파가 %.4f 넘게 뜀 (얻음 %.4f) — 계단" % [size, steep * 0.5, worst])
+		check(worst <= steep * 0.5 + 1e-6, "%s 모서리 꺾임선에서 세로 반 화소에 알파가 %.4f 넘게 뜀 (얻음 %.4f) — 계단" % [size, steep * 0.5, worst])
+		check(worst_h <= steep / side * 0.5 + 1e-6, "%s 모서리 꺾임선에서 가로 반 화소에 알파가 %.4f 넘게 뜀 (얻음 %.4f) — 계단" % [size, steep / side * 0.5, worst_h])
 		# 그리는 꼭짓점: 옆 변을 줄임 끝 높이에서 나눈 자리에 꼭짓점 (띠 경계 넷 × 좌우), 같은 자리 꼭짓점은 같은 알파 (변마다 다른 값이 아님)
 		var t: Array = Edge.tri_arrays(size)
 		var at_ramp := 0
@@ -470,3 +487,328 @@ func test_c8_stack_one_source() -> void:
 	check(src.contains("HudExtra.STACK.corner_x") and src.contains("HudExtra.STACK.corner_bottom"), "hud.gd 가 STACK.corner_x·corner_bottom 을 읽음")
 	var HudExtra := preload("res://ui/hud_extra.gd")
 	check(float(HudExtra.STACK.corner_x) == 22.0 and float(HudExtra.STACK.corner_bottom) == 18.0, "값은 예전 그대로 (22·18)")
+
+
+# ---- c10 관전 따라가기 카메라 (world/spec_cam.gd · cam_rig.gd) + 가까운 떨어지는 칸 옅게 (pieces_view.gd) ----
+const SpecCam := preload("res://world/spec_cam.gd")
+const CamM := preload("res://world/cam_math.gd")
+const Co := preload("res://core/coords.gd")
+const CellLod := preload("res://world/cell_lod.gd")
+const PV := preload("res://world/pieces_view.gd")
+const HM := preload("res://world/hunt_marks.gd")
+
+
+# 관전 판 하나를 차림: 나 (id 1) 는 죽었고 id 2·3 이 살아 있음. 돌려주는 값으로 _spec_restore
+func _spec_setup(pieces: Array) -> Array:
+	var keep := [Store.state, Store._players_by_id, Store.my_id, View.spectate_target, PlayerInput.yaw, PlayerInput.pitch, View.mode, CellLod.test_cam]
+	var me := {"id": 1, "slot": 0, "alive": false, "yaw": 0.0, "x": 1.0, "y": 1.0, "z": 0.0}
+	var a := {"id": 2, "slot": 1, "alive": true, "yaw": 0.0, "x": 5.5, "y": 5.5, "z": 0.0}
+	var b := {"id": 3, "slot": 2, "alive": true, "yaw": 0.0, "x": 5.5, "y": 8.5, "z": 0.0}
+	Store.my_id = 1
+	Store._players_by_id = {1: me, 2: a, 3: b}
+	Store.state = {"phase": "playing", "round": {"n": 1}, "field": {"w": 12, "d": 12}, "players": [me, a, b], "pieces": pieces}
+	View.spectate_target = 2
+	PlayerInput.yaw = 0.0
+	PlayerInput.pitch = 0.0
+	return keep
+
+
+func _spec_restore(keep: Array, rig) -> void:
+	if rig != null:
+		var cam: Camera3D = rig.cam
+		rig.free()
+		if is_instance_valid(cam) and cam.get_parent() == null:
+			cam.free() # 러너 동안엔 _ready 가 안 불려 카메라가 rig 의 자식이 아님 (test_cam_hook_runs_during_selfie 와 같음)
+	Store.state = keep[0]
+	Store._players_by_id = keep[1]
+	Store.my_id = keep[2]
+	View.spectate_target = keep[3]
+	PlayerInput.yaw = keep[4]
+	PlayerInput.pitch = keep[5]
+	View.mode = keep[6]
+	CellLod.test_cam = keep[7]
+
+
+const SPEC_SHOWN := {1: Vector3(1, 1, 0), 2: Vector3(5.5, 5.5, 0), 3: Vector3(5.5, 8.5, 0)}
+const SPEC_BLOCK := [{"shape": "O", "cells": [[3, 5, 2]]}] # 대상 (id 2) 에서 카메라로 가는 시선 (yaw 0, 내려다봄 0.45) 위의 떨어지는 칸
+
+
+func _no_grid(_x, _y, _z) -> bool:
+	return false
+
+
+# 기본 시선: 마우스 pitch 0 이 0.45 rad 내려다봄, 바로 위는 안 넘음. 수치 표
+func test_c10_spec_pitch() -> void:
+	var S: Dictionary = SpecCam.SPEC
+	check(absf(float(S.tilt) - 0.45) < 1e-9 and absf(float(S.look_up) - 1.4) < 1e-9 and absf(float(S.ease) - 4.0) < 1e-9, "tilt 0.45 · look_up 1.4 · ease 4 (%s)" % [S])
+	check(S.fade == [1.2, 2.6] and absf(float(S.fade_alpha) - 0.2) < 1e-9, "옅게 [1.2, 2.6] m · 알파 0.2")
+	check(absf(SpecCam.orbit_pitch(0.0) + 0.45) < 1e-9, "pitch 0 → -0.45 (%s)" % SpecCam.orbit_pitch(0.0))
+	check(absf(SpecCam.orbit_pitch(0.3) + 0.15) < 1e-9 and absf(SpecCam.orbit_pitch(-0.5) + 0.95) < 1e-9, "마우스 조작은 그대로 (pitch - tilt)")
+	check(absf(SpecCam.orbit_pitch(-1.4) - (-PI / 2 + 0.05)) < 1e-9 and absf(SpecCam.orbit_pitch(-9.0) - (-PI / 2 + 0.05)) < 1e-9, "바로 위 (-90도 + 0.05) 에서 멈춤")
+	# 트리 안 rig: 바라볼 점 = 대상 발 + 1.4, 카메라는 그 점에서 0.45 rad 위·SPECTATE_DIST 뒤
+	var keep := _spec_setup([])
+	var rig = CamRig.new()
+	root().add_child(rig)
+	rig.place(0.016, SPEC_SHOWN, _no_grid)
+	var e: Dictionary = CamM.orbit_eye({"x": 5.5, "y": 5.5, "z": 1.4}, 0.0, -0.45, C.SPECTATE_DIST)
+	check(absf(rig.eye.x - e.x) < 1e-6 and absf(rig.eye.y - e.y) < 1e-6 and absf(rig.eye.z - e.z) < 1e-6, "관전 카메라 자리 %s (기대 %s)" % [rig.eye, e])
+	check(rig.eye.z > 1.4 + 1.9 and rig.cam.position.distance_to(Co.gxyz(e.x, e.y, e.z)) < 1e-4, "대상 머리 위에서 내려다봄 (z %.2f)" % rig.eye.z)
+	var fwd: Vector3 = -rig.cam.transform.basis.z
+	check(fwd.distance_to((Co.gxyz(5.5, 5.5, 1.4) - Co.gxyz(e.x, e.y, e.z)).normalized()) < 1e-4, "대상 발 + 1.4 m 를 바라봄")
+	_spec_restore(keep, rig)
+
+
+# 시선 위에 떨어지는 칸이 있으면 그 칸 앞 (margin) 으로 당김, 없으면 SPECTATE_DIST 그대로
+func test_c10_spec_falling_cell_blocks() -> void:
+	var cells: Dictionary = SpecCam.cells_of(SPEC_BLOCK + [{"shape": "I", "cells": [[1.0, 2.0, 7.0], [1, 2, 8]]}])
+	check(cells.size() == 3 and cells.has(Vector3i(3, 5, 2)) and cells.has(Vector3i(1, 2, 7)) and cells.has(Vector3i(1, 2, 8)), "칸 모음 %s" % [cells])
+	check(SpecCam.cells_of(null).is_empty() and SpecCam.cells_of([]).is_empty(), "조각이 없으면 빈 모음")
+	var grid := func(_x, _y, z): return z < 0.0
+	var hit: Callable = SpecCam.blocked(grid, cells)
+	check(hit.call(3.5, 5.5, 2.5) and hit.call(3.01, 5.99, 2.01) and not hit.call(4.01, 5.5, 2.5) and not hit.call(3.5, 5.5, 3.01), "떨어지는 칸 안만 막힘")
+	check(hit.call(9.0, 9.0, -0.5) and not hit.call(9.0, 9.0, 0.5), "격자도 그대로 막힘")
+	var keep := _spec_setup([])
+	var rig = CamRig.new()
+	root().add_child(rig)
+	rig.place(0.016, SPEC_SHOWN, _no_grid)
+	check(rig.spec_dist != null and absf(float(rig.spec_dist) - 4.5) < 1e-9 and absf(C.SPECTATE_DIST - 4.5) < 1e-9, "막는 것이 없으면 4.5 (%s)" % [rig.spec_dist])
+	_spec_restore(keep, rig)
+	keep = _spec_setup(SPEC_BLOCK)
+	rig = CamRig.new()
+	root().add_child(rig)
+	rig.place(0.016, SPEC_SHOWN, _no_grid)
+	# 시선이 칸 [3,5,2] 에 들어가는 첫 걸음 = 1.7 m (x = 5.5 - cos(0.45) × t < 4) → 그 앞 margin 0.3
+	check(rig.spec_dist != null and float(rig.spec_dist) < 4.5 and absf(float(rig.spec_dist) - (1.7 - C.SPECTATE_CAM_MARGIN)) < 1e-6, "떨어지는 칸 앞 margin 으로 당김 (%s, 기대 1.4)" % [rig.spec_dist])
+	var e: Dictionary = CamM.orbit_eye({"x": 5.5, "y": 5.5, "z": 1.4}, 0.0, -0.45, float(rig.spec_dist))
+	check(absf(rig.eye.x - e.x) < 1e-6 and absf(rig.eye.z - e.z) < 1e-6 and not cells.has(Vector3i(floori(rig.eye.x), floori(rig.eye.y), floori(rig.eye.z))), "카메라가 칸 앞 (칸 속이 아님) %s" % [rig.eye])
+	_spec_restore(keep, rig)
+
+
+# 거리: 막히면 한 프레임에 당기고, 풀리면 ease 로 천천히. 대상·판이 바뀌거나 따라가기를 그만두면 처음부터
+func test_c10_spec_dist_eases() -> void:
+	var keep := _spec_setup([])
+	var rig = CamRig.new()
+	root().add_child(rig)
+	rig.spec.round = 1
+	rig.place(0.016, SPEC_SHOWN, _no_grid)
+	check(absf(float(rig.spec_dist) - 4.5) < 1e-9, "처음 4.5")
+	Store.state.pieces = SPEC_BLOCK
+	rig.place(0.016, SPEC_SHOWN, _no_grid)
+	var near: float = float(rig.spec_dist)
+	check(absf(near - 1.4) < 1e-6, "막히면 한 프레임에 당김 (%s)" % near)
+	Store.state.pieces = []
+	rig.place(0.1, SPEC_SHOWN, _no_grid)
+	var want: float = near + (4.5 - near) * (1.0 - exp(-float(SpecCam.SPEC.ease) * 0.1))
+	check(absf(float(rig.spec_dist) - want) < 1e-9 and float(rig.spec_dist) > near + 0.5 and float(rig.spec_dist) < 4.5 - 1.0, "풀리면 ease 4 로 천천히 (%s, 기대 %s)" % [rig.spec_dist, want])
+	var prev: float = float(rig.spec_dist)
+	for i in 40:
+		rig.place(0.1, SPEC_SHOWN, _no_grid)
+		check(float(rig.spec_dist) >= prev - 1e-9 and float(rig.spec_dist) <= 4.5 + 1e-9, "멀어지기만 하고 4.5 를 안 넘음")
+		prev = float(rig.spec_dist)
+	check(absf(prev - 4.5) < 1e-3, "4초 뒤엔 다시 4.5 (%s)" % prev)
+	# 대상이 바뀌면 지난 거리를 잊음 (당겨진 채에서 새 대상은 바로 4.5)
+	Store.state.pieces = SPEC_BLOCK
+	rig.place(0.016, SPEC_SHOWN, _no_grid)
+	check(absf(float(rig.spec_dist) - 1.4) < 1e-6, "다시 당김")
+	View.spectate_target = 3
+	rig.place(0.016, SPEC_SHOWN, _no_grid)
+	check(absf(float(rig.spec_dist) - 4.5) < 1e-9, "대상이 바뀌면 처음부터 (%s)" % [rig.spec_dist])
+	# 판이 바뀌어도
+	View.spectate_target = 2
+	rig.place(0.016, SPEC_SHOWN, _no_grid)
+	Store.state.pieces = []
+	rig.spec.round = 2
+	rig.place(0.016, SPEC_SHOWN, _no_grid)
+	check(absf(float(rig.spec_dist) - 4.5) < 1e-9, "판이 바뀌면 처음부터 (%s)" % [rig.spec_dist])
+	# 전체 보기 (따라가는 대상 없음) 로 가면 잊음
+	View.spectate_target = null
+	rig.place(0.016, SPEC_SHOWN, _no_grid)
+	check(rig.spec_dist == null, "따라가기가 아니면 거리를 잊음")
+	_spec_restore(keep, rig)
+
+
+# 가까운 칸 알파: 1.2 m 안 = 0.2, 2.6 m 밖 = 1, 사이는 안 줄어듦
+func test_c10_spec_cell_alpha() -> void:
+	check(absf(SpecCam.cell_alpha(0.0) - 0.2) < 1e-9 and absf(SpecCam.cell_alpha(1.2) - 0.2) < 1e-9, "1.2 m 안 = 0.2")
+	check(absf(SpecCam.cell_alpha(2.6) - 1.0) < 1e-9 and absf(SpecCam.cell_alpha(30.0) - 1.0) < 1e-9, "2.6 m 밖 = 1")
+	check(absf(SpecCam.cell_alpha(1.9) - 0.6) < 1e-9, "가운데 = 0.6 (%s)" % SpecCam.cell_alpha(1.9))
+	var prev := 0.0
+	var d := 0.0
+	while d <= 4.0:
+		var a: float = SpecCam.cell_alpha(d)
+		check(a >= prev - 1e-9 and a >= 0.2 - 1e-9 and a <= 1.0 + 1e-9, "d=%s 알파 %s (멀수록 안 옅어짐)" % [d, a])
+		prev = a
+		d += 0.05
+
+
+# 관전일 때: 카메라에서 2.6 m 안의 떨어지는 칸만 옅은 묶음으로 (먼 칸부터), 불투명 묶음에서 빠짐. 옅은 칸이 있는 동안은 같은 스냅샷도 다시 씀
+func test_c10_spec_fade_near_cells() -> void:
+	var keep := _spec_setup([])
+	var pv = PV.new()
+	pv._ready()
+	pv.mats = [StandardMaterial3D.new(), StandardMaterial3D.new()]
+	var st := {"pieces": [
+		{"shape": "T", "cells": [[2, 2, 2], [3, 2, 2], [4, 2, 2], [9, 2, 2]], "sky": false},
+		{"shape": "I", "cells": [[2, 3, 2]], "sky": true}]}
+	var at := Co.gxyz(2.5, 2.5, 3.5) # 칸 [2,2,2] 가운데에서 1 m 위
+	CellLod.test_cam = {"pos": at, "fov": 75.0}
+	View.mode = "spectate"
+	pv.update(st, 1, {}, 0.0)
+	# 거리: [2,2,2] 1.0 · [3,2,2] 1.414 · [2,3,2] 1.414 (하늘 블록) · [4,2,2] 2.236 · [9,2,2] 6.6 (멂)
+	var dm: MultiMesh = pv.fade_mmi.multimesh
+	check(pv.fade_n == 4 and dm.visible_instance_count == 4, "옅은 칸 4 (얻음 %d)" % pv.fade_n)
+	check(pv.cells_mmi.multimesh.visible_instance_count == 1 and pv.sky_mmi.multimesh.visible_instance_count == 0, "나머지 1칸만 불투명 묶음, 가까운 하늘 블록도 옅은 쪽 (%d·%d)" % [pv.cells_mmi.multimesh.visible_instance_count, pv.sky_mmi.multimesh.visible_instance_count])
+	check(pv.fade_mmi.material_override == pv.mats[1] and pv.fade_mmi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "반투명 재질 · 그림자 끔")
+	var last := INF
+	var seen_min := 1.0
+	check(pv.faded.size() == 4, "옅은 칸 목록 4")
+	for i in pv.faded.size(): # (헤드리스에서는 MultiMesh 에 쓴 값을 되읽을 수 없어 쓴 목록을 봄)
+		var origin: Vector3 = (pv.faded[i][1] as Transform3D).origin
+		var dist: float = at.distance_to(origin)
+		var a: float = (pv.faded[i][2] as Color).a
+		check(dist <= last + 1e-6 and absf(dist - float(pv.faded[i][0])) < 1e-5 and dist < 2.6, "먼 칸부터 (%d번 %.2f m)" % [i, dist])
+		last = dist
+		seen_min = minf(seen_min, a)
+		var base: float = C.SKY_PIECE_OPACITY if origin.distance_to(Co.gxyz(2.5, 3.5, 2.5)) < 1e-4 else 1.0
+		check(absf(a - base * SpecCam.cell_alpha(dist)) < 1e-4, "%d번 칸 알파 %.3f (거리 %.2f)" % [i, a, dist])
+	check(absf(last - 1.0) < 1e-5 and absf(seen_min - 0.2) < 1e-4, "가장 가까운 칸 (1 m) = 0.2 (%s)" % seen_min)
+	# 옅은 칸이 있으면 같은 스냅샷이어도 다시 씀 (카메라가 움직이면 알파가 바뀜)
+	var w: int = pv.writes
+	CellLod.test_cam = {"pos": at + Vector3(0, 1.0, 0), "fov": 75.0}
+	pv.update(st, 1, {}, 0.0)
+	check(pv.writes == w + 1 and pv.fade_n == 3, "카메라가 1 m 물러남: 다시 쓰고 옅은 칸 3 (%d)" % pv.fade_n)
+	check(absf((pv.faded[2][2] as Color).a - SpecCam.cell_alpha(2.0)) < 1e-4 and (pv.faded[2][2] as Color).a > 0.2 + 0.3, "가장 가까운 칸 (2 m) 은 덜 옅음")
+	# 카메라가 멀어지면 한 번 더 써서 되돌리고, 그 뒤엔 예전처럼 건너뜀
+	CellLod.test_cam = {"pos": at + Vector3(0, 30, 0), "fov": 75.0}
+	pv.update(st, 1, {}, 0.0)
+	check(pv.writes == w + 2 and pv.fade_n == 0 and dm.visible_instance_count == 0, "멀어지면 옅은 칸 0")
+	check(pv.cells_mmi.multimesh.visible_instance_count + pv.far_mmi.multimesh.visible_instance_count == 4 and pv.sky_mmi.multimesh.visible_instance_count + pv.sky_far_mmi.multimesh.visible_instance_count == 1, "칸이 제 묶음으로 돌아옴")
+	pv.update(st, 1, {}, 0.0)
+	check(pv.writes == w + 2, "가까운 칸이 없으면 같은 스냅샷은 건너뜀 (W15)")
+	check(PV.near_any(st.pieces, at, 2.6) and not PV.near_any(st.pieces, at + Vector3(0, 30, 0), 2.6) and not PV.near_any([], at, 2.6), "가까운 칸 있나")
+	pv.free()
+	_spec_restore(keep, null)
+
+
+# 관전이 아니면 그대로: 1·3인칭 카메라 자리는 예전 식 (떨어지는 칸에 안 당김), 옅은 칸 묶음은 늘 비어 있음
+func test_c10_spec_only_spectate() -> void:
+	var keep := _spec_setup(SPEC_BLOCK + [{"shape": "O", "cells": [[2, 1, 2], [3, 1, 2], [2, 0, 2], [1, 1, 2]]}]) # 3인칭 카메라 길 위에도 떨어지는 칸
+	Store._players_by_id[1].alive = true
+	var shown := SPEC_SHOWN.duplicate()
+	shown[1] = Vector3(5.5, 1.5, 0)
+	var s: Vector3 = shown[1]
+	for pitch in [0.0, -0.4]:
+		PlayerInput.pitch = pitch
+		var rig = CamRig.new()
+		root().add_child(rig)
+		rig.force = "third"
+		rig.place(0.016, shown, _no_grid)
+		# 예전 식 (cam_rig.gd 3인칭 갈래 그대로)
+		var pivot := {"x": s.x + sin(0.0) * C.TP_SIDE, "y": s.y - cos(0.0) * C.TP_SIDE, "z": s.z + C.TP_PIVOT_UP}
+		var orbit := maxf(-PI / 2 + 0.05, pitch - C.TP_TILT)
+		var e: Dictionary = CamM.orbit_eye(pivot, 0.0, orbit, C.TP_DIST)
+		check(absf(rig.eye.x - e.x) < 1e-9 and absf(rig.eye.y - e.y) < 1e-9 and absf(rig.eye.z - maxf(s.z + C.TP_MIN_Z, e.z)) < 1e-9, "3인칭 카메라 자리 %s (예전 식 %s)" % [rig.eye, e])
+		check(absf(float(rig.tp_dist) - C.TP_DIST) < 1e-9 and rig.spec_dist == null, "3인칭 거리 그대로 (떨어지는 칸에 안 당김), 관전 거리 없음")
+		var to3 := Co.gxyz(pivot.x + cos(pitch) * C.TP_LOOK_AHEAD, pivot.y, pivot.z + sin(pitch) * C.TP_LOOK_AHEAD)
+		check((-rig.cam.transform.basis.z).distance_to((to3 - rig.cam.position).normalized()) < 1e-4, "3인칭 바라보는 쪽")
+		rig.force = "first"
+		rig.place(0.016, shown, _no_grid)
+		check(absf(rig.eye.x - s.x) < 1e-9 and absf(rig.eye.y - s.y) < 1e-9 and absf(rig.eye.z - (s.z + C.EYE_HEIGHT)) < 1e-9 and rig.spec_dist == null, "1인칭 카메라 = 눈높이 %s" % [rig.eye])
+		check((-rig.cam.transform.basis.z).distance_to(Co.dir(0.0, pitch)) < 1e-4, "1인칭 바라보는 쪽")
+		var cam: Camera3D = rig.cam
+		rig.free()
+		if is_instance_valid(cam) and cam.get_parent() == null:
+			cam.free()
+	# 떨어지는 칸: 관전이 아니면 카메라가 칸 바로 옆이어도 옅은 묶음 0, 같은 스냅샷은 건너뜀
+	var pv = PV.new()
+	pv._ready()
+	pv.mats = [StandardMaterial3D.new(), StandardMaterial3D.new()]
+	var st := {"pieces": [{"shape": "T", "cells": [[2, 2, 2], [3, 2, 2]], "sky": false}, {"shape": "I", "cells": [[2, 3, 2]], "sky": true}]}
+	CellLod.test_cam = {"pos": Co.gxyz(2.5, 2.5, 3.5), "fov": 75.0}
+	for mode in ["first", "third", "sky"]:
+		View.mode = mode
+		var st2 := st.duplicate(true)
+		pv.update(st2, 1, {}, 1.0 if mode == "sky" else 0.0)
+		var w: int = pv.writes
+		check(pv.fade_n == 0 and pv.fade_mmi.multimesh.visible_instance_count == 0, "%s: 옅은 칸 0 (얻음 %d)" % [mode, pv.fade_n])
+		check(pv.cells_mmi.multimesh.visible_instance_count == 2 and pv.sky_mmi.multimesh.visible_instance_count == 1, "%s: 칸은 제 묶음" % mode)
+		pv.update(st2, 1, {}, 1.0 if mode == "sky" else 0.0)
+		check(pv.writes == w, "%s: 같은 스냅샷은 건너뜀" % mode)
+	# 재질 [불투명, 반투명] 이 없으면 (G3 없음) 관전이어도 안 함
+	pv.mats = null
+	View.mode = "spectate"
+	pv.update(st.duplicate(true), 1, {}, 0.0)
+	check(pv.fade_n == 0 and pv.cells_mmi.multimesh.visible_instance_count == 2, "재질 없으면 그대로")
+	pv.free()
+	_spec_restore(keep, null)
+
+
+# 맞음·경직 테 옆변: 가로 두께가 side 배 (0.55), 윗·아랫변 두께·알파는 그대로, 모서리 꺾임선 (축척 대각선) 에 계단 없음
+func test_c10_edge_side_thin() -> void:
+	var E: Dictionary = Edge.EDGE
+	var side: float = float(E.side)
+	check(absf(side - 0.55) < 1e-9 and side >= 0.5 and side <= 0.65, "옆변 배율 0.55 (%s)" % side)
+	var kn: Array = E.knee
+	for size in [Vector2(1280, 720), Vector2(960, 540)]:
+		var b: Vector2 = Edge.band_px(size)
+		var mid: Vector2 = size / 2.0
+		var a := 0.8
+		var thick: float = (float(E.outer) + float(E.inner)) * size.y # 윗·아랫변 띠 두께 (예전 값)
+		check(absf(b.x + b.y - thick) < 1e-3, "%s 띠 두께 합 %s" % [size, thick])
+		# 옆변: 바깥 띠 = a, 두께 × side 부터는 0 (예전 두께 자리는 이제 빈 곳)
+		check(absf(Edge.alpha_at(size, Vector2(1, mid.y), a) - a) < 1e-6 and absf(Edge.alpha_at(size, Vector2(size.x - 1, mid.y), a) - a) < 1e-6, "%s (1, mid.y) = a" % size)
+		for x in [thick * side, thick * side + 1.0, thick * 0.8, thick, mid.x]: # (띠 끝 자리는 부동소수 오차만큼만 남음)
+			check(Edge.alpha_at(size, Vector2(x, mid.y), a) < 1e-5 and Edge.alpha_at(size, Vector2(size.x - x, mid.y), a) < 1e-5, "%s 옆변 x=%.1f 은 0" % [size, x])
+		check(Edge.alpha_at(size, Vector2(thick * side + 0.01, mid.y), a) == 0.0 and Edge.alpha_at(size, Vector2(size.x - thick * side - 0.01, mid.y), a) == 0.0, "%s 옆변 띠 끝 밖은 딱 0" % size)
+		check(Edge.alpha_at(size, Vector2(thick * side - 1.0, mid.y), a) > 0.0 and Edge.alpha_at(size, Vector2(size.x - thick * side + 1.0, mid.y), a) > 0.0, "%s 옆변 띠 끝 바로 안은 아직 보임" % size)
+		check(absf(Edge.alpha_at(size, Vector2(b.x * side - 0.01, mid.y), a) - a) < 1e-3 and Edge.alpha_at(size, Vector2(b.x * side + 1.0, mid.y), a) < a, "%s 옆변 바깥 띠 두께 = %.2f 화소" % [size, b.x * side])
+		# 윗·아랫변 두께는 예전 값: 띠 끝 (thick) 바로 안은 보이고 그 밖은 0, 바깥 띠 두께 b.x
+		check(Edge.alpha_at(size, Vector2(mid.x, size.y - thick + 1.0), a) > 0.0 and Edge.alpha_at(size, Vector2(mid.x, size.y - thick - 0.01), a) == 0.0, "%s 아랫변 두께 그대로" % size)
+		check(Edge.alpha_at(size, Vector2(mid.x, thick - 1.0), a) > 0.0 and Edge.alpha_at(size, Vector2(mid.x, thick + 0.01), a) == 0.0, "%s 윗변 두께 그대로" % size)
+		check(absf(Edge.alpha_at(size, Vector2(mid.x, size.y - b.x + 0.01), a) - a) < 1e-3 and absf(Edge.alpha_at(size, Vector2(mid.x, size.y - 1), a) - a) < 1e-6, "%s 아랫변 바깥 띠 그대로" % size)
+		# 같은 깊이 (d) 면 옆변 (d × side) 과 아랫변 (d) 이 같은 알파
+		for d in [0.0, 2.0, b.x, b.x + b.y * 0.2, b.x + b.y * float(kn[0]), b.x + b.y * 0.7, thick]:
+			check(absf(Edge.alpha_at(size, Vector2(d * side, mid.y), a) - Edge.alpha_at(size, Vector2(mid.x, size.y - d), a)) < 1e-6, "%s d=%.1f 옆변·아랫변 같은 알파" % [size, d])
+		# 모서리 꺾임선 (d × side, d) 근처 반 화소 뜀: 세로 걸음은 예전 한도, 가로 걸음은 ÷ side (네 구석 모두, 안팎 양쪽으로)
+		var steep: float = maxf((1.0 - float(kn[1])) / (b.y * float(kn[0])), float(kn[1]) / (b.y * (1.0 - float(kn[0]))))
+		var worst_v := 0.0
+		var worst_h := 0.0
+		var d2 := 1.0
+		while d2 <= thick + 1.0:
+			for cx in [d2 * side, size.x - d2 * side]:
+				for cy in [d2, size.y - d2]:
+					var on: float = Edge.alpha_at(size, Vector2(cx, cy), 1.0)
+					for o in [-0.5, 0.5]:
+						worst_h = maxf(worst_h, absf(on - Edge.alpha_at(size, Vector2(cx + o, cy), 1.0)))
+						worst_v = maxf(worst_v, absf(on - Edge.alpha_at(size, Vector2(cx, cy + o), 1.0)))
+			d2 += 0.5
+		check(worst_v <= steep * 0.5 + 1e-6, "%s 꺾임선 세로 반 화소 뜀 %.4f (한도 %.4f)" % [size, worst_v, steep * 0.5])
+		check(worst_h <= steep / side * 0.5 + 1e-6, "%s 꺾임선 가로 반 화소 뜀 %.4f (한도 %.4f)" % [size, worst_h, steep / side * 0.5])
+		# 그리는 꼭짓점: 띠 사각형이 (d × side, d) 로 들어감, 삼각형 묶음 하나 (꼭짓점 72개) 그대로
+		var st: Array = Edge.stops(size)
+		for i in st.size():
+			var r: Array = Edge._rect(size, float(st[i][0]))
+			var dd: float = float(st[i][0])
+			check(r[0].is_equal_approx(Vector2(dd * side, dd)) and r[2].is_equal_approx(Vector2(size.x - dd * side, size.y - dd)), "%s 띠 사각형 %d %s" % [size, i, r])
+		var t: Array = Edge.tri_arrays(size)
+		check(t[0].size() == 108 and t[1].size() == 72, "삼각형 36개·꼭짓점 72개 그대로")
+		var max_in := 0.0
+		for v in t[1]:
+			max_in = maxf(max_in, minf(v.x, size.x - v.x))
+		check(absf(max_in - thick * side) < 1e-3, "%s 꼭짓점이 옆에서 들어온 깊이 %.2f (= 두께 × side %.2f)" % [size, max_in, thick * side])
+
+
+# 하늘 시점 (블록 마스터·블록 조종) 에서 남이 붙인 사냥꾼 표식 칸은 숨김, 그 밖은 예전 식 그대로
+func test_c10_hunt_sky_hide() -> void:
+	for n in [0, 1, 3]:
+		for blink in [false, true]:
+			for mine in [false, true]:
+				for third in [false, true]:
+					var old: bool = n > 0 and not blink and not (mine and not third)
+					for by_me in [false, true]:
+						check(HM.pips_shown(n, blink, mine, third, false, by_me) == old, "하늘 시점이 아니면 예전과 같음 (n %d · blink %s · mine %s · third %s)" % [n, blink, mine, third])
+					check(not HM.pips_shown(n, blink, mine, third, true, false), "하늘 + 내가 붙인 것 아님 → 숨김")
+					check(HM.pips_shown(n, blink, mine, third, true, true) == old, "하늘 + 내가 붙인 것 → 예전과 같음")
+	check(HM.pips_shown(2, false, false, false, false, false) and not HM.pips_shown(2, false, false, false, true, false) and HM.pips_shown(2, false, false, false, true, true), "보기: 남의 표식 2칸")
+	var src := FileAccess.get_file_as_string("res://world/body_fx.gd")
+	check(src.contains("g.visible = HM.pips_shown(n, blink, mine, third.call(), str(View.mode) == \"sky\", by_me)"), "body_fx.gd 가 pips_shown 을 씀")

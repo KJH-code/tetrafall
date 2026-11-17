@@ -10,12 +10,15 @@ const Cam := preload("res://world/cam_math.gd")
 const SkyV := preload("res://world/sky_view.gd")
 const WC := preload("res://world/world_config.gd")
 const Vic := preload("res://world/victory.gd")
+const SpecCam := preload("res://world/spec_cam.gd")
 
 var cam := Camera3D.new()
 var sky_blend := 0.0 # 0 = 1·3인칭, 1 = 하늘 (SKY_TRANSITION_MS 동안 섞임)
 var sky_yaw := 0.0 # 하늘 화면 위쪽 방향 (게임 yaw)
 var sky_yaw_shown = null
 var tp_dist = null # 3인칭 실제 거리 (막히면 줄어듦)
+var spec_dist = null # c10 관전 따라가기 실제 거리 (격자·떨어지는 칸에 막히면 바로 줄고, 풀리면 SpecCam.SPEC.ease 로 천천히)
+var _spec_key = null # 그 거리를 잰 [대상 id, 판 번호] — 바뀌면 처음부터
 var overview_z = null
 var spec := {"target": null, "overview": false, "round": null, "dist": C.SPECTATE_DIST, "overview_dist": C.SPECTATE_OVERVIEW_DIST}
 var eye := {"x": 0.0, "y": 0.0, "z": 0.0} # 이번 프레임 카메라 (게임 좌표) — 확인용
@@ -25,10 +28,7 @@ var vic_plan = null # Vic.plan (슬로모션이 이어지는 동안 클로즈업
 var vic_t := 0.0 # 바라볼 점 at 에서 카메라 자리 to 쪽으로 걸으며 처음 막히는 곳 (격자 칸·떨어지는 블록 칸) 앞에 카메라 (camera.js orbitEye 처럼)
 # — 승자가 벽·블록을 보고 서 있으면 카메라가 칸 속에 들어가 화면이 한 색이 되던 것
 func pull_in(at: Dictionary, to: Dictionary, solid: Callable) -> Dictionary:
-	var cells := {}
-	for pc in Store.state.get("pieces", []):
-		for c in pc.cells:
-			cells[Vector3i(int(c[0]), int(c[1]), int(c[2]))] = true
+	var cells := SpecCam.cells_of(Store.state.get("pieces", []))
 	var dv := Vector3(to.x - at.x, to.y - at.y, to.z - at.z)
 	var dist := dv.length()
 	if dist < 1e-6:
@@ -233,6 +233,7 @@ func place(dt: float, shown: Dictionary, solid: Callable) -> void:
 	var pitch := PlayerInput.pitch
 	var look := {}
 	var mine = shown.get(Store.my_id) if Store.my_id != null else null
+	var following := false # c10: 이번 프레임이 관전 따라가기 갈래인가 (아니면 spec_dist 를 잊음)
 	if force == "over":
 		me = {}
 		yaw = WC.OVER_POSE[0]
@@ -253,9 +254,18 @@ func place(dt: float, shown: Dictionary, solid: Callable) -> void:
 		var cp := cos(pitch)
 		look = {"x": eye.x + cp * cos(yaw), "y": eye.y + cp * sin(yaw), "z": eye.z + sin(pitch)}
 	elif force != "over" and View.spectate_target != null and shown.has(int(View.spectate_target)):
+		# c10: 조금 내려다보고 (SpecCam.orbit_pitch), 시선 위의 떨어지는 칸 앞으로도 당김. 거리는 3인칭처럼 당길 땐 바로·풀 땐 천천히 (world/spec_cam.gd)
 		var s: Vector3 = shown[int(View.spectate_target)]
-		look = {"x": s.x, "y": s.y, "z": s.z + C.SPECTATE_LOOK_UP}
-		eye = Cam.orbit_eye(look, yaw, pitch, spec.dist, solid, 0.1, C.SPECTATE_CAM_MARGIN)
+		following = true
+		var key := [int(View.spectate_target), spec.round]
+		if key != _spec_key:
+			_spec_key = key
+			spec_dist = null
+		look = {"x": s.x, "y": s.y, "z": s.z + float(SpecCam.SPEC.look_up)}
+		var orbit := SpecCam.orbit_pitch(pitch)
+		var want: float = Cam.orbit_eye(look, yaw, orbit, spec.dist, SpecCam.blocked(solid, SpecCam.cells_of(st.get("pieces", []))), 0.1, C.SPECTATE_CAM_MARGIN).dist
+		spec_dist = Cam.follow_dist(spec_dist, want, dt, float(SpecCam.SPEC.ease))
+		eye = Cam.orbit_eye(look, yaw, orbit, spec_dist)
 	else:
 		# 전체 보기: 필드 가운데, 살아 있는 사람들 높이로 천천히 따라 올라감
 		var sum := 0.0
@@ -273,6 +283,9 @@ func place(dt: float, shown: Dictionary, solid: Callable) -> void:
 		eye = {"x": e.x, "y": e.y, "z": maxf(0.5, e.z)}
 	if not (not me.is_empty() and me.alive and third()):
 		tp_dist = null
+	if not following:
+		_spec_key = null
+		spec_dist = null
 	victory_camera(dt, shown, look, solid)
 	var fov: float = float(View.settings.get("fov", C.FOV_DEFAULT))
 	var at := Co.gxyz(eye.x, eye.y, eye.z)
