@@ -1029,3 +1029,487 @@ func test_c8_smoke_capped() -> void:
 	check(fx._capped(full, Vector3(0, 0, -10.0)) == full, "12칸 앞 연기는 그대로")
 	fx.update(0.1, null)
 	fx.free()
+
+
+# ---------- c9-u3 돌발 이벤트 세계 연출 (fx/event_fx.gd · event_fx_math.gd · event_fx_config.gd) ----------
+const EFX := preload("res://fx/event_fx.gd")
+const EM := preload("res://fx/event_fx_math.gd")
+const EK := preload("res://fx/event_fx_config.gd")
+
+
+# 판 대신: 격자와 격자 버전만 (빙판이 칸 윗면을 찾을 때 씀)
+class FakeWorld extends RefCounted:
+	var built_version := 1
+	var g := PackedByteArray()
+
+	func grid() -> PackedByteArray:
+		return g
+
+
+func _ev_state(kind, left := 3000.0, dir = null, n := 19, items := []) -> Dictionary:
+	var st := {"phase": "playing", "field": {"w": n, "d": n, "h": 4}, "items": items, "lava": {"active": false, "z": -1.0}}
+	if kind != null:
+		st["roundEvent"] = {"kind": kind, "left": left, "dir": dir}
+	return st
+
+
+func _ev_shown(e) -> Dictionary: # 보이는 겹 → 인스턴스 수
+	var out := {}
+	for id in e.layers:
+		var n: MultiMeshInstance3D = e.layers[id]
+		if n.visible:
+			out[id] = n.multimesh.visible_instance_count
+	return out
+
+
+func _ev_world(n: int) -> FakeWorld:
+	var w := FakeWorld.new()
+	w.g.resize(n * n * 4)
+	return w
+
+
+# 표에 5종 모두 있고, 종류마다 그 겹만 보임. 모르는 종류 (다른 단위의 새 이벤트 포함)·판 중 아님·끝남·방향 없는 돌풍은 인스턴스 0
+func test_c9_event_fx_kinds() -> void:
+	for k in ["wind", "ice", "lowgrav", "rain", "supply", "common"]:
+		check(EK.EVENT_FX.has(k), "표에 %s" % k)
+	check(EK.RUNNING == ["wind", "ice", "lowgrav", "rain"], "스냅샷으로 도는 종류 넷 (보급은 게임 이벤트)")
+	var e = EFX.new()
+	e.keep = true
+	e.world = _ev_world(19)
+	var f := Vector3i(19, 19, 4)
+	check(_ev_shown(e).is_empty(), "처음엔 아무것도 안 보임 (평소 그리기 0)")
+	for k in ["bolt", "", "supply", "meteor"]:
+		e.update(0.1, null, _ev_state(k), false)
+		check(_ev_shown(e).is_empty(), "모르는 종류 '%s' 는 인스턴스 0 (%s)" % [k, _ev_shown(e)])
+	e.update(0.1, null, _ev_state("wind", 3000.0, {"x": 1, "y": 0}), false)
+	check(_ev_shown(e) == {"wind": EM.count("wind", f, false, EK.EVENT_FX)}, "돌풍 = 바람 줄만 (%s)" % _ev_shown(e))
+	e.update(0.1, null, _ev_state("lowgrav"), false)
+	check(_ev_shown(e) == {"lowgrav": EM.count("lowgrav", f, false, EK.EVENT_FX)}, "저중력 = 티끌만 (%s)" % _ev_shown(e))
+	e.update(0.1, null, _ev_state("rain"), false)
+	check(_ev_shown(e) == {"rain": EM.count("rain", f, false, EK.EVENT_FX)}, "폭우 = 세로 줄만 (%s)" % _ev_shown(e))
+	e.update(0.1, null, _ev_state("ice"), false)
+	e.update(1.0, null, _ev_state("ice", 2000.0), false)
+	var ice := _ev_shown(e)
+	check(ice.get("ice", 0) == 19 * 19 and ice.get("glint", 0) > 0 and ice.size() == 2, "빙판 = 칸마다 판 + 반짝 줄 (%s)" % ice)
+	e.update(0.1, null, _ev_state("wind", 3000.0, null), false)
+	check(_ev_shown(e).is_empty(), "방향 없는 돌풍은 안 그림")
+	e.update(0.1, null, _ev_state("rain", 0.0), false)
+	check(_ev_shown(e).is_empty(), "남은 시간 0 이면 안 그림")
+	var lobby := _ev_state("rain")
+	lobby["phase"] = "lobby"
+	e.update(0.1, null, lobby, false)
+	check(_ev_shown(e).is_empty(), "판 중이 아니면 안 그림")
+	e.update(0.1, null, _ev_state("rain"), false)
+	e.update(0.1, null, _ev_state(null), false)
+	check(_ev_shown(e).is_empty() and e.kind == "", "이벤트가 끝나면 (스냅샷에서 빠지면) 숨김")
+	e.update(0.1, null, {}, false)
+	check(_ev_shown(e).is_empty(), "방 밖 (빈 상태) 에서도 돎")
+	e.free()
+
+
+# 돌풍 줄은 시간이 흐르면 dir 쪽으로 감 (네 방향), 긴 축 = dir
+func test_c9_wind_follows_dir() -> void:
+	var w: Dictionary = EK.EVENT_FX.wind
+	var f := Vector3i(19, 19, 16)
+	var dt := 0.05
+	for d: Vector2 in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
+		var a := EM.wind_rows(48, f, 1.0, d, w, 1.0)
+		var b := EM.wind_rows(48, f, 1.0 + dt, d, w, 1.0)
+		var moved := 0
+		for i in a.size():
+			var dv: Vector3 = b[i][0] - a[i][0]
+			if dv.length() > 2.0: # 필드 밖으로 나가 반대편에서 다시 나옴
+				continue
+			var along := dv.x * d.x + dv.y * d.y
+			var side := absf(dv.x * d.y - dv.y * d.x)
+			if along > float(w.speed) * (1.0 - float(w.jitter)) * dt - 1e-4 and along < float(w.speed) * (1.0 + float(w.jitter)) * dt + 1e-4 and side < 1e-4 and absf(dv.z) < 1e-6:
+				moved += 1
+		check(moved >= 44, "방향 %s: %d/48 줄이 dir 쪽으로 %s칸/초" % [d, moved, w.speed])
+		# 그리는 노드: 줄 메시의 긴 축 (X) 이 dir (고도 좌표) 과 나란함
+		var e = EFX.new()
+		e.keep = true
+		e.update(1.0, null, _ev_state("wind", 3000.0, {"x": d.x, "y": d.y}), false)
+		var axis := Co.gxyz(d.x, d.y, 0.0)
+		var ok := true
+		for row in e.put.wind:
+			var x: Vector3 = row[0].basis.x
+			if x.normalized().dot(axis) < 0.999 or x.length() < float(w.len[0]) - 1e-3 or x.length() > float(w.len[1]) + 1e-3:
+				ok = false
+		check(ok and e.put.wind.size() == 72 and e.layers.wind.multimesh.visible_instance_count == 72, "방향 %s: 줄의 긴 축 = dir, 길이 %s~%s" % [d, w.len[0], w.len[1]])
+		e.free()
+	check(EM.wind_dir({"x": 0, "y": -3}) == Vector2(0, -1) and EM.wind_dir(null) == Vector2.ZERO and EM.wind_dir({"x": 0, "y": 0}) == Vector2.ZERO, "방향 읽기")
+	# 카메라 쪽으로 돌려 세움: 긴 축 그대로, 앞면 (+Z) 이 카메라 쪽, 축끼리 직각
+	for cam: Vector3 in [Vector3(3, 5, 9), Vector3(-4, 0.2, 1), Vector3(0, 30, 0)]:
+		var t := EM.streak_xform(Vector3(1, 2, 3), Vector3(1, 0, 0), 2.0, 0.05, cam)
+		check(near(t.basis.x.x, 2.0) and near(t.basis.y.length(), 0.05) and t.basis.z.dot(cam - Vector3(1, 2, 3)) > 0.0 and absf(t.basis.x.dot(t.basis.y)) < 1e-5 and absf(t.basis.z.dot(t.basis.x)) < 1e-5, "줄 돌려 세우기 (카메라 %s)" % cam)
+	check(is_finite(EM.streak_xform(Vector3.ZERO, Vector3(1, 0, 0), 2.0, 0.05, Vector3(5, 0, 0)).basis.y.x), "카메라가 긴 축 위여도 값이 깨지지 않음")
+
+
+# 줄·티끌은 판 10·19 에서 필드 + 1칸 안, 개수는 표의 상한 안
+func test_c9_streaks_in_field() -> void:
+	var cfg: Dictionary = EK.EVENT_FX
+	var w: Dictionary = cfg.wind
+	var m := float(cfg.common.margin)
+	check(EM.count("wind", Vector3i(10, 10, 16), false, cfg) == 40 and EM.count("wind", Vector3i(19, 19, 16), false, cfg) == 72, "돌풍 줄 수: 판 10 = 40, 판 19 = 72")
+	var mid := EM.count("wind", Vector3i(14, 14, 16), false, cfg)
+	check(mid > 40 and mid < 72 and EM.count("wind", Vector3i(40, 40, 16), false, cfg) == 72 and EM.count("wind", Vector3i(4, 4, 16), false, cfg) == 40, "사이는 선형 (판 14 = %d), 밖은 끝 값" % mid)
+	check(EM.count("lowgrav", Vector3i(19, 19, 16), false, cfg) == 80 and EM.count("lowgrav", Vector3i(10, 10, 16), false, cfg) == 40 and EM.count("lowgrav", Vector3i(15, 15, 16), false, cfg) == 50, "티끌 수: 판 19 = 80, 넓이에 비례, 최소 40")
+	check(EM.count("rain", Vector3i(10, 10, 16), false, cfg) == 40 and EM.count("rain", Vector3i(19, 19, 16), false, cfg) == 40, "세로 줄 40")
+	check(EM.count("wind", Vector3i.ZERO, false, cfg) == 0 and EM.count("bolt", Vector3i(19, 19, 16), false, cfg) == 0 and EM.count("supply", Vector3i(19, 19, 16), false, cfg) == 0, "판 없음·모르는 종류는 0")
+	for n: int in [10, 19]:
+		var f := Vector3i(n, n, 16)
+		for d: Vector2 in [Vector2(1, 0), Vector2(0, -1)]:
+			var bad := 0
+			var faded := 0
+			for ti in 40:
+				for r in EM.wind_rows(EM.count("wind", f, false, cfg), f, ti * 0.37, d, w, m):
+					var c: Vector3 = r[0]
+					var hx := absf(d.x) * float(r[1]) * 0.5
+					var hy := absf(d.y) * float(r[1]) * 0.5
+					if c.x - hx < -m - 1e-4 or c.x + hx > n + m + 1e-4 or c.y - hy < -m - 1e-4 or c.y + hy > n + m + 1e-4 or c.z < float(w.z[0]) or c.z > float(w.z[1]) or float(r[1]) < float(w.len[0]) or float(r[1]) > float(w.len[1]):
+						bad += 1
+					if float(r[2]) < 1.0:
+						faded += 1
+			check(bad == 0, "판 %d 방향 %s: 줄 전체가 필드 + %s칸 안, 높이 %s~%s (%d개 어김)" % [n, d, m, w.z[0], w.z[1], bad])
+			check(faded > 0, "판 %d: 가장자리에서 흐려지는 줄이 있음 (툭 나타나지 않음)" % n)
+		var g: Dictionary = cfg.lowgrav
+		var rn: Dictionary = cfg.rain
+		var out := 0
+		for ti in 40:
+			for e in EM.mote_rows(EM.count("lowgrav", f, false, cfg), f, ti * 0.9, g):
+				var p: Vector3 = e[0]
+				if p.x < 0.0 or p.x > n or p.y < 0.0 or p.y > n or p.z < float(g.z[0]) or p.z > float(g.z[1]) or not [0, 1].has(e[1]) or absf(float(e[3])) > float(g.sway[0]) + 1e-6:
+					out += 1
+			for e in EM.rain_rows(EM.count("rain", f, false, cfg), f, ti * 0.21, rn):
+				var p: Vector3 = e[0]
+				if p.x < 0.0 or p.x > n or p.y < 0.0 or p.y > n or p.z - float(rn.len) * 0.5 < float(rn.z[0]) - 1e-4 or p.z + float(rn.len) * 0.5 > float(rn.z[1]) + 1e-4:
+					out += 1
+		check(out == 0, "판 %d: 티끌·세로 줄이 필드 안 (%d개 어김)" % [n, out])
+	# 티끌은 오르고 세로 줄은 내려옴
+	var f19 := Vector3i(19, 19, 16)
+	var up := 0
+	var down := 0
+	var m0 := EM.mote_rows(80, f19, 2.0, cfg.lowgrav)
+	var m1 := EM.mote_rows(80, f19, 2.1, cfg.lowgrav)
+	var r0 := EM.rain_rows(40, f19, 2.0, cfg.rain)
+	var r1 := EM.rain_rows(40, f19, 2.02, cfg.rain)
+	for i in 80:
+		if m1[i][0].z > m0[i][0].z:
+			up += 1
+	for i in 40:
+		if r1[i][0].z < r0[i][0].z:
+			down += 1
+	check(up >= 74 and down >= 36, "티끌은 위로 (%d/80), 세로 줄은 아래로 (%d/40)" % [up, down])
+	# 높이는 그 자리 바닥 (기둥 꼭대기·위험 액체 표면) 위: 지형이 높은 맵·액체가 찬 판에서 묻히지 않음
+	var f4 := Vector3i(4, 4, 4)
+	var g4 := PackedByteArray()
+	g4.resize(4 * 4 * 4)
+	g4[(0 * 4 + 1) * 4 + 1] = 1
+	g4[(1 * 4 + 1) * 4 + 1] = 1
+	g4[(2 * 4 + 3) * 4 + 3] = 12 # 떠 있는 칸도 꼭대기
+	var tops := EM.column_tops(g4, f4)
+	check(tops.size() == 16 and tops[1 * 4 + 1] == 2 and tops[3 * 4 + 3] == 3 and tops[0] == 0, "기둥 꼭대기 표")
+	check(EM.column_tops(PackedByteArray(), f4).is_empty(), "격자가 없으면 빈 표")
+	check(EM.surface_at(tops, f4, 1.5, 1.2, false, 0.0) == 2.0 and EM.surface_at(tops, f4, 0.5, 0.5, false, 9.0) == 0.0 and EM.surface_at(tops, f4, 0.5, 0.5, true, 1.3) == 1.3 and EM.surface_at(tops, f4, 1.5, 1.5, true, 1.3) == 2.0, "바닥 높이 = 꼭대기, 액체가 더 높으면 그 표면")
+	check(EM.surface_at(tops, f4, 4.7, 5.0, false, 0.0) == 3.0 and EM.surface_at(tops, f4, -0.9, -0.2, false, 0.0) == 0.0 and EM.surface_at(PackedInt32Array(), f4, 1.5, 1.5, false, 0.0) == 0.0, "필드 밖은 가장 가까운 가장자리 칸, 표가 없으면 0")
+	check(near(EM.follow(0.0, 2.0, 0.05, 8.0), 0.8) and EM.follow(0.0, 2.0, 1.0, 8.0) == 2.0 and EM.follow(1.0, 1.0, 0.1, 8.0) == 1.0, "바닥 높이를 부드럽게 따라감")
+	var e = EFX.new()
+	e.keep = true
+	var wd := FakeWorld.new()
+	wd.g.resize(19 * 19 * 4)
+	for i in 19 * 19: # 판 전체가 높이 2
+		wd.g[i] = 1
+		wd.g[19 * 19 + i] = 1
+	e.world = wd
+	var st := _ev_state("lowgrav", 3000.0)
+	e.update(0.5, null, st, false)
+	var lo := INF
+	for row in e.put.lowgrav:
+		lo = minf(lo, row[0].origin.y)
+	check(lo >= 2.0, "티끌은 지형 꼭대기 위에서 오름 (가장 낮은 %s)" % lo)
+	st.lava = {"active": true, "z": 3.5}
+	e.update(0.1, null, st, false)
+	lo = INF
+	for row in e.put.lowgrav:
+		lo = minf(lo, row[0].origin.y)
+	check(lo >= 3.5, "액체가 차오르면 그 표면 위 (가장 낮은 %s)" % lo)
+	e.update(0.1, null, _ev_state("wind", 3000.0, {"x": 1, "y": 0}), false)
+	lo = INF
+	for row in e.put.wind:
+		lo = minf(lo, row[0].origin.y)
+	check(lo >= 2.0 + float(w.z[0]) - 1e-4, "바람 줄도 지형 위 (가장 낮은 %s)" % lo)
+	e.update(0.1, null, _ev_state("rain"), false)
+	lo = INF
+	for row in e.put.rain:
+		lo = minf(lo, row[0].origin.y)
+	check(lo >= 2.0 + float(cfg.rain.z[0]), "세로 줄도 지형 위 (가장 낮은 %s)" % lo)
+	e.free()
+
+
+# 들어올 때 0.4초·끝날 때 0.6초 동안 알파가 흐려짐. 길이는 게임 이벤트의 ms, 못 받았으면 처음 본 left
+func test_c9_event_fade() -> void:
+	var c: Dictionary = EK.EVENT_FX.common
+	check(near(float(c.fade_in), 0.4) and near(float(c.fade_out), 0.6), "들어올 때 0.4초, 끝날 때 0.6초")
+	check(EM.fade(5000.0, 5000.0, c) == 0.0 and near(EM.fade(4800.0, 5000.0, c), 0.5) and EM.fade(4600.0, 5000.0, c) == 1.0, "들어올 때 0 → 1")
+	check(EM.fade(3000.0, 5000.0, c) == 1.0 and EM.fade(600.0, 5000.0, c) == 1.0 and near(EM.fade(300.0, 5000.0, c), 0.5) and EM.fade(0.0, 5000.0, c) == 0.0 and EM.fade(-5.0, 5000.0, c) == 0.0, "끝날 때 1 → 0")
+	check(EM.fade(3000.0, 3000.0, c) == 0.0 and near(EM.fade(2900.0, 3000.0, c), 0.25), "도중에 들어옴 (길이 = 처음 본 left): 그때부터 들어옴")
+	# 노드: 게임 이벤트가 먼저 오면 그 ms, 안 오면 처음 본 left. 스냅샷 사이엔 프레임 dt 로 줄임
+	var e = EFX.new()
+	e.keep = true
+	e.on_round_event({"type": "roundEvent", "kind": "rain", "ms": 6000.0})
+	e.update(0.0, null, _ev_state("rain", 5900.0), false)
+	check(e.total == 6000.0 and e.left == 5900.0, "길이 = 게임 이벤트 ms (%s)" % e.total)
+	var a0: float = e.put.rain[0][1].a + e.put.rain[1][1].a
+	e.update(0.1, null, _ev_state("rain", 5900.0), false)
+	check(near(e.left, 5800.0), "같은 스냅샷이면 dt 로 줄임 (%s)" % e.left)
+	e.update(0.1, null, _ev_state("rain", 5600.0), false)
+	check(e.left == 5600.0, "새 스냅샷이면 그 값")
+	var a1: float = e.put.rain[0][1].a + e.put.rain[1][1].a
+	check(a1 > a0, "들어오며 진해짐 (%s → %s)" % [a0, a1])
+	e.update(0.1, null, _ev_state(null), false)
+	e.update(0.1, null, _ev_state("lowgrav", 2500.0), false)
+	check(e.total == 2500.0, "게임 이벤트를 못 받았으면 처음 본 left (%s)" % e.total)
+	e.on_round_event({"type": "roundEvent", "kind": "lowgrav", "ms": 6000.0})
+	check(e.total == 6000.0, "뒤늦게 온 게임 이벤트의 ms 로 고침")
+	e.free()
+
+
+# 빙판 판은 바닥 표시 아래: 띄움 < 그림자 칸 띄움, 그리는 순서 < 0 (그림자 칸 0·착지 테 1·발밑 고리 7 아래). 위험 액체에 잠긴 칸은 빠짐
+func test_c9_ice_below_ground_marks() -> void:
+	var WC := preload("res://world/world_config.gd")
+	var ic: Dictionary = EK.EVENT_FX.ice
+	var c: Dictionary = EK.EVENT_FX.common
+	check(float(ic.lift) > 0.0 and float(ic.lift) + float(ic.glint.lift) < float(WC.SHADOW_LIFT), "판·반짝 줄 띄움 %s < 그림자 칸 %s" % [float(ic.lift) + float(ic.glint.lift), WC.SHADOW_LIFT])
+	check(float(ic.lift) < float(WC.FOOT_RING.lift), "발밑 고리 띄움 %s 보다 아래" % WC.FOOT_RING.lift)
+	check(int(c.order_floor) == -2 and int(ic.glint.order) < 0 and int(ic.glint.order) > int(c.order_floor), "판 순서 −2, 반짝 줄은 그 위·0 아래")
+	check(int(c.order_air) == 3 and int(c.order_air) < int(WC.FOOT_RING.order), "줄·티끌·기둥 순서 3 (발밑 고리 %d 아래)" % WC.FOOT_RING.order)
+	# 4×4×4 판: (1, 1) 기둥 높이 2, (2, 0) 높이 1, 나머지 바닥 (0)
+	var f := Vector3i(4, 4, 4)
+	var g := PackedByteArray()
+	g.resize(4 * 4 * 4)
+	g[(0 * 4 + 1) * 4 + 1] = 1
+	g[(1 * 4 + 1) * 4 + 1] = 1
+	g[(0 * 4 + 0) * 4 + 2] = 10
+	var rows := EM.ice_cells(g, f, false, 0.0)
+	var top := {}
+	var sorted := true
+	for i in rows.size():
+		top[Vector2i(rows[i][0], rows[i][1])] = rows[i][2]
+		if i > 0 and rows[i][3] < rows[i - 1][3]:
+			sorted = false
+	check(rows.size() == 16 and top[Vector2i(1, 1)] == 2.0 and top[Vector2i(2, 0)] == 1.0 and top[Vector2i(3, 3)] == 0.0, "칸마다 윗면 (기둥 꼭대기) 하나")
+	check(sorted and near(rows[0][3], sqrt(0.5)) and near(rows.back()[3], sqrt(4.5)), "가운데에서 가까운 순서")
+	var wet := EM.ice_cells(g, f, true, 0.4)
+	check(wet.size() == 2, "액체 0.4: 바닥 칸 (높이 0) 은 잠겨 빠지고 단 둘만 (%d)" % wet.size())
+	check(EM.ice_cells(g, f, true, 1.0).size() == 1 and EM.ice_cells(g, f, true, 2.0).is_empty(), "액체 1 → 높이 2 기둥만, 2 → 없음")
+	check(EM.ice_cells(g, f, false, 5.0).size() == 16, "액체가 안 켜졌으면 높이 값은 안 봄")
+	var bumped := EM.ice_cells(g, f, false, 0.0, func(cx: int, cy: int, t: int) -> float: return 0.1 if t == 2 else 0.0)
+	var b_top := 0.0
+	for r in bumped:
+		if r[0] == 1 and r[1] == 1:
+			b_top = r[2]
+	check(near(b_top, 2.1), "윗면 들썩임을 따라감 (%s)" % b_top)
+	check(EM.ice_cells(PackedByteArray(), f, false, 0.0).is_empty(), "격자가 아직 없으면 빈 목록")
+	# 퍼짐: 0.5초에 가운데에서 바깥으로
+	var far: float = rows.back()[3]
+	check(EM.ice_shown(rows, EM.ice_radius(0.0, far, float(ic.spread))) == 0 and EM.ice_shown(rows, EM.ice_radius(0.25, far, float(ic.spread))) == 4 and EM.ice_shown(rows, EM.ice_radius(0.5, far, float(ic.spread))) == 16, "0초 0칸 → 0.25초 가운데 4칸 → 0.5초 전부")
+	check(near(float(ic.spread), 0.5), "퍼지는 시간 0.5초")
+	# 반짝 줄: 4칸 중 1칸꼴, 방향 두 가지
+	var gl := 0
+	var d0 := 0
+	for y in 40:
+		for x in 40:
+			if EM.glint_at(x, y, int(ic.glint.every)):
+				gl += 1
+				if EM.glint_dir(x, y) == 0:
+					d0 += 1
+	check(gl > 300 and gl < 500 and d0 > gl * 0.35 and d0 < gl * 0.65, "반짝 줄 1600칸 중 %d칸 (4칸 중 1칸꼴), 방향 반반 (%d)" % [gl, d0])
+	# 노드: 판 재질 순서·자리, 격자가 바뀌면 다시 깖
+	var e = EFX.new()
+	e.keep = true
+	var w := FakeWorld.new()
+	w.g = g
+	e.world = w
+	var st := {"phase": "playing", "field": {"w": 4, "d": 4, "h": 4}, "items": [], "lava": {"active": false, "z": -1.0}, "roundEvent": {"kind": "ice", "left": 5000.0, "dir": null}}
+	e.update(0.0, null, st, false)
+	check((e.layers.ice.material_override as StandardMaterial3D).render_priority == -2 and (e.layers.glint.material_override as StandardMaterial3D).render_priority == int(ic.glint.order), "판·반짝 줄 재질 순서")
+	check(e.layers.ice.multimesh.visible_instance_count == 0, "시작 순간엔 아직 안 퍼짐")
+	st.roundEvent.left = 4000.0
+	e.update(1.0, null, st, false)
+	var mm: MultiMesh = e.layers.ice.multimesh
+	check(mm.visible_instance_count == 16, "다 퍼지면 16칸")
+	var tall := false
+	var sized := true
+	for row in e.put.ice:
+		var t: Transform3D = row[0]
+		if near(t.origin.x, 1.5) and near(t.origin.z, -1.5) and near(t.origin.y, 2.0 + float(ic.lift)):
+			tall = true
+		if not near(t.basis.x.length(), 1.0 - float(ic.inset)) or not near(row[1].a, float(ic.alpha)):
+			sized = false
+	check(tall and sized and e.put.ice.size() == 16, "높이 2 기둥 위 판은 2 + 띄움, 크기 = 칸 − %s, 알파 %s" % [ic.inset, ic.alpha])
+	check(near((e.layers.ice.material_override as StandardMaterial3D).albedo_color.a, 1.0), "다 들어오면 재질 알파 1")
+	st.lava = {"active": true, "z": 0.5}
+	e.update(0.1, null, st, false)
+	check(mm.visible_instance_count == 2, "액체가 차오르면 잠긴 칸의 판이 빠짐 (%d)" % mm.visible_instance_count)
+	st.lava = {"active": false, "z": -1.0}
+	w.g[(2 * 4 + 1) * 4 + 1] = 1 # 블록이 쌓임 → 격자 버전이 오름
+	w.built_version = 2
+	e.update(0.1, null, st, false)
+	var up := false
+	for row in e.put.ice:
+		if near(row[0].origin.y, 3.0 + float(ic.lift)):
+			up = true
+	check(mm.visible_instance_count == 16 and up, "격자가 바뀌면 다시 깖 (쌓인 칸 위로)")
+	e.world = null
+	e.update(0.1, null, st, false)
+	check(_ev_shown(e).is_empty(), "판이 없으면 빙판은 안 그림")
+	e.free()
+
+
+# 보급: 이벤트 뒤 새로 나타난 아이템 자리만 빛 기둥, 먹히면 바로 지움, 수명이 다하면 사라짐
+func test_c9_supply_new_cells() -> void:
+	var s: Dictionary = EK.EVENT_FX.supply
+	var old := [{"type": "bomb", "x": 1, "y": 1, "z": 0}]
+	var prev := EM.item_cells(old)
+	var now := old + [{"type": "speed", "x": 2, "y": 3, "z": 1}, {"type": "bomb", "x": 2, "y": 3, "z": 1}, {"type": "brick", "x": 4, "y": 0, "z": 0}]
+	var fresh := EM.new_cells(prev, now)
+	check(fresh.size() == 2 and fresh[0][0] == 2 and fresh[0][1] == 3 and fresh[0][2] == 1.0 and fresh[1][0] == 4 and fresh[1][1] == 0, "앞 스냅샷에 없던 자리만, 같은 자리는 한 번 (%s)" % [fresh])
+	check(EM.new_cells(prev, old).is_empty() and EM.new_cells({}, null).is_empty() and EM.new_cells(prev, []).is_empty(), "새 자리가 없으면 빈 목록")
+	check(near(EM.pillar_k(0.0, 4.0), 1.0) and near(EM.pillar_k(2.0, 4.0), 0.5) and EM.pillar_k(4.0, 4.0) == 0.0 and near(float(s.life), 4.0) and near(float(s.h), 6.0), "기둥 알파: 4초에 0, 높이 6칸")
+	var r0: Array = EM.ring_at(0.0, s.ring)
+	var r1: Array = EM.ring_at(float(s.ring.ms) / 1000.0, s.ring)
+	check(near(r0[0], float(s.ring.r)) and near(r0[1], 1.0) and near(r1[0], float(s.ring.r) * float(s.ring.grow)) and r1[1] == 0.0, "고리 한 번: 커지며 사라짐")
+	var e = EFX.new()
+	e.keep = true
+	e.update(0.1, null, _ev_state(null, 0.0, null, 19, old), false)
+	e.update(0.1, null, _ev_state(null, 0.0, null, 19, now), false)
+	check(_ev_shown(e).is_empty(), "보급 이벤트가 아니면 새 아이템에 기둥 없음")
+	e.update(0.1, null, _ev_state(null, 0.0, null, 19, old), false)
+	e.on_round_event({"type": "roundEvent", "kind": "supply", "ms": 0})
+	e.update(0.0, null, _ev_state(null, 0.0, null, 19, now), false)
+	check(_ev_shown(e) == {"pillar": 2, "ring": 2}, "새 자리 둘에 빛 기둥 + 고리 (%s)" % _ev_shown(e))
+	var t: Transform3D = e.put.pillar[0][0]
+	check(near(t.origin.x, 2.5) and near(t.origin.z, -3.5) and near(t.origin.y, 1.0 + float(s.h) * 0.5) and near(t.basis.x.length(), float(s.h)) and t.basis.x.normalized().dot(Vector3.UP) > 0.999, "기둥은 아이템 칸 가운데에서 위로 %s칸" % s.h)
+	check(near(e.put.pillar[0][1].a, float(s.alpha)), "처음 알파 %s" % s.alpha)
+	e.update(1.0, null, _ev_state(null, 0.0, null, 19, now), false)
+	check(_ev_shown(e) == {"pillar": 2}, "고리는 한 번 (1초 뒤엔 기둥만): %s" % _ev_shown(e))
+	check(near(e.put.pillar[0][1].a, float(s.alpha) * 0.75), "기둥이 흐려짐 (%s)" % e.put.pillar[0][1].a)
+	e.update(0.1, null, _ev_state(null, 0.0, null, 19, old + [now[3]]), false)
+	check(_ev_shown(e) == {"pillar": 1} and near(e.put.pillar[0][0].origin.x, 4.5), "먹힌 아이템의 기둥은 바로 지움")
+	e.update(float(s.life), null, _ev_state(null, 0.0, null, 19, old + [now[3]]), false)
+	check(_ev_shown(e).is_empty(), "수명 %s초가 지나면 사라짐" % s.life)
+	# 이벤트 뒤 arm 초가 지나도록 새 아이템이 없으면 그 뒤 아이템은 보급품이 아님
+	e.on_round_event({"type": "roundEvent", "kind": "supply", "ms": 0})
+	e.update(float(s.arm) + 0.1, null, _ev_state(null, 0.0, null, 19, old + [now[3]]), false)
+	e.update(0.1, null, _ev_state(null, 0.0, null, 19, now), false)
+	check(_ev_shown(e).is_empty(), "기다리는 시간이 지난 뒤 나온 아이템엔 기둥 없음")
+	e.free()
+
+
+# 카메라에서 1.5 m 안의 줄·티끌·기둥은 알파 0 (눈앞을 가리지 않음)
+func test_c9_near_cam_hidden() -> void:
+	var c: Dictionary = EK.EVENT_FX.common
+	check(near(float(c.near), 1.5), "가까운 거리 1.5")
+	check(EM.near_k(0.0, c) == 0.0 and EM.near_k(1.49, c) == 0.0 and EM.near_k(1.5, c) == 0.0 and EM.near_k(1.5 + float(c.near_soft), c) == 1.0 and EM.near_k(30.0, c) == 1.0, "1.5 안은 0, 그 밖은 다시 진해짐")
+	check(near(EM.seg_dist(Vector3(0, 1, 0), Vector3(-2, 0, 0), Vector3(2, 0, 0)), 1.0) and near(EM.seg_dist(Vector3(5, 0, 0), Vector3(-2, 0, 0), Vector3(2, 0, 0)), 3.0) and near(EM.seg_dist(Vector3(1, 1, 1), Vector3.ZERO, Vector3.ZERO), sqrt(3.0)), "선분까지 거리")
+	check(near(EM.wide(0.05, 4.0, float(c.thin)), 0.05) and near(EM.wide(0.05, 30.0, float(c.thin)), 30.0 * float(c.thin)), "가까이선 표의 폭, 멀면 거리에 비례 (가늘어지지 않게)")
+	var cam := Camera3D.new()
+	for k in ["wind", "lowgrav", "rain"]:
+		var e = EFX.new()
+		e.keep = true
+		var st := _ev_state(k, 3000.0, {"x": 1, "y": 0})
+		e.on_round_event({"type": "roundEvent", "kind": k, "ms": 6000.0}) # 길이를 알려 줌 → 남은 3초는 다 들어온 뒤 (알파 1)
+		e.update(1.0, null, st, false)
+		var at: Vector3 = e.put[k][3][0].origin
+		cam.transform = Transform3D(Basis(), at + Vector3(0.3, 0.2, 0.4))
+		e.update(0.0, cam, st, false)
+		var hidden := 0
+		var shown := 0
+		var wrong := 0
+		for row in e.put[k]:
+			var a: float = row[1].a
+			var d := cam.transform.origin.distance_to(row[0].origin)
+			if a == 0.0:
+				hidden += 1
+			else:
+				shown += 1
+				if d < float(c.near) - 1.4: # 줄은 선분 거리라 가운데는 길이 절반까지 더 멀 수 있음
+					wrong += 1
+		check(e.put[k][3][1].a == 0.0 and hidden >= 1 and shown > hidden and wrong == 0, "%s: 카메라 앞 인스턴스는 알파 0 (숨김 %d · 보임 %d)" % [k, hidden, shown])
+		e.free()
+	# 보급 빛 기둥도
+	var e = EFX.new()
+	e.keep = true
+	var items := [{"type": "bomb", "x": 5, "y": 5, "z": 0}, {"type": "bomb", "x": 12, "y": 12, "z": 0}]
+	e.update(0.1, null, _ev_state(null), false)
+	e.on_round_event({"type": "roundEvent", "kind": "supply", "ms": 0})
+	cam.transform = Transform3D(Basis(), Co.gxyz(5.5, 6.2, 1.4))
+	e.update(0.0, cam, _ev_state(null, 0.0, null, 19, items), false)
+	check(e.put.pillar.size() == 2 and e.put.pillar[0][1].a == 0.0 and e.put.pillar[1][1].a > 0.5, "눈앞의 빛 기둥은 알파 0, 먼 기둥은 그대로")
+	e.free()
+	cam.free()
+
+
+# 그래픽 낮춤: 줄·티끌 수 × 0.4, 반짝 줄 끔. 빙판 판·빛 기둥은 그대로 (신호)
+func test_c9_low_counts() -> void:
+	var cfg: Dictionary = EK.EVENT_FX
+	var f := Vector3i(19, 19, 4)
+	check(near(float(cfg.common.low_k), 0.4), "낮춤 배율 0.4")
+	check(EM.count("wind", f, true, cfg) == 29 and EM.count("lowgrav", f, true, cfg) == 32 and EM.count("rain", f, true, cfg) == 16, "낮춤 수: 돌풍 29 · 티끌 32 · 세로 줄 16")
+	check(EM.count("wind", Vector3i(10, 10, 4), true, cfg) == 16 and EM.count("lowgrav", Vector3i(10, 10, 4), true, cfg) == 16, "판 10 낮춤: 돌풍 16 · 티끌 16")
+	var e = EFX.new()
+	e.keep = true
+	e.world = _ev_world(19)
+	for k in ["wind", "lowgrav", "rain"]:
+		e.update(0.5, null, _ev_state(k, 3000.0, {"x": 0, "y": 1}), true)
+		check(_ev_shown(e) == {k: EM.count(k, f, true, cfg)}, "낮춤 %s 인스턴스 %s" % [k, _ev_shown(e)])
+	e.update(0.1, null, _ev_state("ice"), true)
+	e.update(1.0, null, _ev_state("ice", 2000.0), true)
+	check(_ev_shown(e) == {"ice": 361}, "낮춤 빙판: 판은 그대로, 반짝 줄 끔 (%s)" % _ev_shown(e))
+	e.update(0.1, null, _ev_state("ice", 1900.0), false)
+	check(_ev_shown(e).get("glint", 0) > 0, "화질을 올리면 반짝 줄이 다시 깔림")
+	e.update(0.1, null, _ev_state(null), true)
+	e.on_round_event({"type": "roundEvent", "kind": "supply", "ms": 0})
+	e.update(0.0, null, _ev_state(null, 0.0, null, 19, [{"type": "bomb", "x": 3, "y": 3, "z": 0}]), true)
+	check(_ev_shown(e) == {"pillar": 1, "ring": 1}, "낮춤 보급: 빛 기둥·고리 그대로")
+	e.free()
+
+
+# 재질 모양은 판 들어올 때 미리 그려 두는 표 (warm_scan.gd STD_KEYS) 안 — 이벤트가 처음 올 때 셰이더를 안 만듦
+func test_c9_event_materials_std() -> void:
+	var WS := preload("res://world/warm_scan.gd")
+	var MF := preload("res://core/mat_first.gd")
+	var have := []
+	for k in WS.STD_KEYS:
+		have.append(MF.mat_key(WS.std_material(k)))
+	check(WS.STD_KEYS.has(EK.KEY) and EK.KEY == [0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0], "재질 열쇠가 표준 표의 줄 (정점 색 반투명)")
+	var want := MF.mat_key(WS.std_material(EK.KEY))
+	var e = EFX.new()
+	e.keep = true
+	check(e.layers.size() == 7, "겹 7개 (바람 줄·티끌·세로 줄·빙판 판·반짝 줄·빛 기둥·고리)")
+	for id in e.layers:
+		var n: MultiMeshInstance3D = e.layers[id]
+		var m := n.material_override as StandardMaterial3D
+		check(m != null and have.has(MF.mat_key(m)) and MF.mat_key(m) == want, "%s 재질 열쇠 %s 가 표준 표 안" % [id, MF.mat_key(m) if m != null else "없음"])
+		check(m != null and m.next_pass == null and not m.vertex_color_is_srgb and m.distance_fade_mode == BaseMaterial3D.DISTANCE_FADE_DISABLED, "%s: 열쇠에 안 잡히는 갈래 (덧패스·정점 색 sRGB·거리 흐림) 없음" % id)
+		check(n.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF and not n.visible and n.multimesh.use_colors, "%s: 그림자 없음·처음엔 숨김·인스턴스 색" % id)
+	# 줄 메시: 2단 (흰 심 + 바깥 색), 삼각형 수가 작음
+	var w: Dictionary = EK.EVENT_FX.wind
+	var wm: ArrayMesh = e.layers.wind.multimesh.mesh
+	var sky := Co.color(w.color)
+	check(_has_color(wm, Color(1, 1, 1, float(w.core_alpha))) and _has_color(wm, Color(sky.r, sky.g, sky.b, float(w.alpha))), "바람 줄 = 흰 심 + 연하늘")
+	var r: Dictionary = EK.EVENT_FX.rain
+	var G3C := preload("res://shaders/g3_config.gd")
+	check(_has_color(e.layers.rain.multimesh.mesh, Color(1, 1, 1, float(r.core_alpha))) and _has_color(e.layers.rain.multimesh.mesh, Color(G3C.OUTLINE_COLOR.r, G3C.OUTLINE_COLOR.g, G3C.OUTLINE_COLOR.b, float(r.alpha))), "세로 줄 = 잉크 + 흰 심")
+	check(e.layers.ring.multimesh.mesh == RL.mesh("aura", int(EK.EVENT_FX.supply.color)) and int(EK.EVENT_FX.supply.color) == int(C.GAME_LIGHT_ITEM), "보급 고리 = ring_look aura 메시 (아이템 빛 노랑)")
+	var tris := 0
+	for id in ["wind", "rain", "pillar", "lowgrav"]:
+		tris = maxi(tris, (e.layers[id].multimesh.mesh as ArrayMesh).surface_get_array_len(0) / 3)
+	check(tris <= 12, "줄·티끌 메시는 삼각형 12개 이하 (%d)" % tris)
+	# 티끌 = 위 끝 마름모 (가로세로 같은 크기) + 아래로 흐려지는 꼬리
+	var g: Dictionary = EK.EVENT_FX.lowgrav
+	var mv: PackedVector3Array = (e.layers.lowgrav.multimesh.mesh as ArrayMesh).surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var long := 1.0 + float(g.tail)
+	check(mv.size() == 9 and near((mv[1].x - mv[5].x) * long, 1.0) and near(mv[0].y - mv[2].y, 1.0) and near(mv[8].x, -0.5) and near(mv[1].x, 0.5), "티끌 메시: 마름모 높이 × (1 + tail) = 폭, 꼬리 끝이 맨 아래")
+	check(_has_color(e.layers.lowgrav.multimesh.mesh, Color(1, 1, 1, 0)) and _has_color(e.layers.lowgrav.multimesh.mesh, Color(1, 1, 1, float(g.tail_alpha))) and _has_color(e.layers.lowgrav.multimesh.mesh, Color.WHITE), "꼬리는 끝으로 갈수록 흐려짐")
+	e.free()

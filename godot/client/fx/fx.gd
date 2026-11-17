@@ -12,6 +12,7 @@ const Co := preload("res://core/coords.gd")
 const FM := preload("res://fx/fx_math.gd")
 const Effects := preload("res://fx/effects.gd")
 const KO := preload("res://fx/ko.gd")
+const EventFx := preload("res://fx/event_fx.gd")
 const Bodies := preload("res://world/bodies.gd")
 const FXC := preload("res://fx/fx_config.gd")
 const SM := preload("res://audio/sound_math.gd")
@@ -19,6 +20,7 @@ const WC := preload("res://world/world_config.gd")
 
 var effects: Node3D
 var ko: Node3D
+var event_fx: Node3D # c9-u3 돌발 이벤트 세계 연출 (바람 줄·빙판·티끌·세로 줄·보급 빛 기둥)
 var rig = null # world/cam_rig.gd
 var last_scale := 1.0
 var events := 0 # 효과를 낸 이벤트 수 (헤드리스 확인용)
@@ -36,8 +38,10 @@ func _init() -> void:
 	ko.field = func():
 		var f: Dictionary = Store.state.get("field", {})
 		return Vector2(float(f.get("w", C.GRID_W)), float(f.get("d", C.GRID_W)))
+	event_fx = EventFx.new()
 	add_child(effects)
 	add_child(ko)
+	add_child(event_fx)
 
 
 func _ready() -> void:
@@ -45,6 +49,7 @@ func _ready() -> void:
 	var w := get_parent().get_parent() if get_parent() != null else null
 	if w != null and w.has_method("solid_at"):
 		effects.solid = w.solid_at # 조각이 땅에 닿아 튐
+		event_fx.world = w # 빙판이 칸 윗면을 찾음
 	if Opts.args().has("--fx-demo"):
 		demo_next = 0.0
 	Store.game_event.connect(on_event)
@@ -76,6 +81,7 @@ func _prof_process(dt: float) -> void:
 	ko.cam = rig.cam if rig != null else get_viewport().get_camera_3d()
 	ko.update(sdt)
 	effects.update(sdt, rig.cam if rig != null else get_viewport().get_camera_3d())
+	event_fx.update(sdt, ko.cam, Store.state, bool(View.settings.get("lowGfx", false)))
 
 
 # 화질·움직임 줄이기 → 효과 수준 (프레임마다)
@@ -165,6 +171,8 @@ func _later(ms: float, f: Callable) -> void:
 # ---------- 이벤트 ----------
 func on_event(e: Dictionary) -> void:
 	var t := str(e.get("type", ""))
+	if t == "roundEvent": # 돌발 이벤트 시작 (길이 ms·보급) → 세계 연출
+		event_fx.on_round_event(e)
 	# 닌자 표창에 맞음: 판정은 즉시지만 맞는 효과는 표창이 날아가 닿을 때
 	if t == "hit" and e.get("star", false) and not e.get("late", false):
 		var late := e.duplicate()
