@@ -177,6 +177,31 @@ func test_create_defaults() -> void:
 	check(m.size() == 2 and m.get("type") == "roundEvents" and m.get("on") == true, "메시지 모양: %s" % str(m))
 
 
+# 메뉴로 만든 방의 필드 아이템: 기본 끔 — 방장이 지난번에 켰을 때만 (기억 true) 켬 메시지를 더함
+func test_create_defaults_field_items() -> void:
+	var ev := {"type": "roundEvents", "on": true}
+	var it := {"type": "fieldItems", "on": true}
+	check(U.create_defaults(null, {}, null) == [ev], "기억 없음 → 필드 아이템 메시지 없음: %s" % str(U.create_defaults(null, {}, null)))
+	check(U.create_defaults(null, {}, false) == [ev], "기억 끔 → 없음")
+	check(U.create_defaults(null, {}, true) == [ev, it], "기억 켬 → 돌발 이벤트 뒤에 필드 아이템: %s" % str(U.create_defaults(null, {}, true)))
+	check(U.create_defaults(false, {}, true) == [it], "돌발 이벤트 끔 기억 + 필드 아이템 켬 기억 → 필드 아이템만")
+	check(U.create_defaults(null, {"fieldItems": true}, true) == [ev], "이미 켜짐 → 안 보냄")
+	check(U.create_defaults(null, {"roundEvents": true, "fieldItems": true}, true).is_empty(), "둘 다 이미 켜짐 → 없음")
+	check(U.create_defaults(null, {"roundEvents": true, "fieldItems": false}, true) == [it], "꺼져 있음 → 켬")
+	check(U.create_defaults(false, {"mode": "master"}, true) == [it], "블록 마스터 방도 켬 (마스터 판에도 나옴)")
+	# 기억이 bool 이 아니면 (깨진 파일의 글자·숫자) 끈 채로
+	for bad in ["true", 1, 1.0, {}]:
+		check(U.create_defaults(false, {}, bad).is_empty(), "bool 아닌 기억 %s → 없음" % str(bad))
+	# 보낼 메시지는 서버 방 메시지 모양 그대로 (Rooms.cs fieldItems: {type, on})
+	var m: Dictionary = U.create_defaults(false, {}, true)[0]
+	check(m.size() == 2 and m.get("type") == "fieldItems" and m.get("on") == true, "메시지 모양: %s" % str(m))
+	# created_msgs: 재접속이면 필드 아이템도 안 보냄
+	check(U.created_msgs(false, null, {}, null) == [ev] and U.created_msgs(false, null, {}, false) == [ev], "새 방 · 기억 없음/끔 → 필드 아이템 없음")
+	check(U.created_msgs(false, null, {}, true) == [ev, it], "새 방 · 기억 켬: %s" % str(U.created_msgs(false, null, {}, true)))
+	check(U.created_msgs(false, false, {"fieldItems": true}, true).is_empty(), "새 방 · 이미 켜짐 → 없음")
+	check(U.created_msgs(true, null, {}, true).is_empty() and U.created_msgs(true, false, {}, true).is_empty(), "재접속이면 안 보냄")
+
+
 # ---------- 이벤트 연결 줄 (사이클 2 리뷰 F8: 줄을 지우거나 바꿔도 테스트가 그대로 통과하던 것) ----------
 # 아래 노드 테스트는 러너가 SceneTree._initialize 안에서 돌아 노드가 트리에 못 들어감 (뿌리가 아직 트리 밖) → _ready 를 직접 부르고
 # 처리기 (_on_event·_event_chip·_create·_on_created) 를 직접 부름. 화면 크기를 읽는 refresh (get_viewport_rect) 는 못 불러
@@ -268,7 +293,9 @@ func test_hud_extra_event_wiring() -> void:
 func test_menu_create_sends_room_defaults() -> void:
 	var keep_state = Store.state
 	var keep_pref = Prefs.get_value("roundEvents", null)
+	var keep_items = Prefs.get_value("fieldItems", null)
 	Prefs._load()["roundEvents"] = true # 기억 '켬' 으로 고정 (파일엔 안 씀 — 끝나면 되돌림)
+	Prefs._load().erase("fieldItems") # 필드 아이템 기억은 없음으로 (기본 끔)
 	Store.state = {}
 	var menu = Menu.new()
 	menu._ready()
@@ -301,6 +328,23 @@ func test_menu_create_sends_room_defaults() -> void:
 	call_created.call(false)
 	check(sent.is_empty(), "끔 기억: %s" % str(sent))
 	Prefs._load()["roundEvents"] = true
+	# 필드 아이템: 기억이 켬일 때만 돌발 이벤트 뒤에 한 줄 더 (끔 기억·이미 켜진 방·재접속이면 없음)
+	Prefs._load()["fieldItems"] = true
+	sent.clear()
+	call_created.call(false)
+	check(sent == [{"type": "roundEvents", "on": true}, {"type": "fieldItems", "on": true}], "필드 아이템 켬 기억 → 두 메시지: %s" % str(sent))
+	sent.clear()
+	Store.state = {"roundEvents": true, "fieldItems": true}
+	call_created.call(false)
+	check(sent.is_empty(), "필드 아이템이 이미 켜진 방: %s" % str(sent))
+	Store.state = {}
+	call_created.call(true)
+	check(sent.is_empty(), "재접속이면 필드 아이템도 안 보냄: %s" % str(sent))
+	Prefs._load()["fieldItems"] = false
+	call_created.call(false)
+	check(sent == [{"type": "roundEvents", "on": true}], "필드 아이템 끔 기억 → 돌발 이벤트만: %s" % str(sent))
+	sent.clear()
+	Prefs._load().erase("fieldItems")
 	# 다른 길로 들어가면 남은 연결을 걷음 (남의 방·연습 방에 옵션을 보내지 않게)
 	menu._join("WXYZ")
 	check(call_created.call(false) == 0 and sent.is_empty(), "코드로 들어가면 연결 걷음")
@@ -312,4 +356,8 @@ func test_menu_create_sends_room_defaults() -> void:
 		Prefs._load().erase("roundEvents")
 	else:
 		Prefs._load()["roundEvents"] = keep_pref
+	if keep_items == null:
+		Prefs._load().erase("fieldItems")
+	else:
+		Prefs._load()["fieldItems"] = keep_items
 	Store.state = keep_state

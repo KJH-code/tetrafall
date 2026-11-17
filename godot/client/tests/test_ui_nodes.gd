@@ -174,6 +174,12 @@ func test_lobby_sizes() -> void:
 	# 높이는 글꼴 줄 높이 (17) + 여백 — 트리 밖에선 글꼴 줄 높이가 달라 여백으로 봄 (화면에선 체크 21 · 이름 칸 26, out-W4 덤프)
 	check(_m(l.sky_box.get_theme_stylebox("normal")) == [4, 2, 0, 2] and l.sky_box.get_theme_icon("unchecked").get_size() == Vector2(15, 15), "체크 15px · margin 2 0 2 4 (높이 17 + 4 = JS 21)")
 	check(_m(_sb(l.name_edit)) == [6, 5, 6, 4], "이름 칸 padding %s (17 + 9 = JS 26)" % str(_m(_sb(l.name_edit))))
+	# 필드 아이템 체크 (c10): 다른 체크와 같은 모양·같은 줄 (방 설정 묶음 맨 끝), 글은 본문 글꼴
+	check(l.items_box is CheckBox and l.items_box.text == "필드 아이템", "필드 아이템 체크")
+	check(_m(l.items_box.get_theme_stylebox("normal")) == _m(l.sky_box.get_theme_stylebox("normal")) and l.items_box.get_theme_icon("unchecked").get_size() == l.sky_box.get_theme_icon("unchecked").get_size() and l.items_box.get_theme_icon("checked").get_size() == l.sky_box.get_theme_icon("checked").get_size(), "필드 아이템 체크 모양 = 하늘 계단 체크")
+	check(_fs(l.items_box) == _fs(l.sky_box) and l.items_box.get_theme_font("font") == l.sky_box.get_theme_font("font"), "필드 아이템 체크 글 = 하늘 계단 체크 글")
+	check(l.items_box.get_parent() == l.settings_box and l.items_box.get_index() == l.settings_box.get_child_count() - 1 and l.events_box.get_index() == l.items_box.get_index() - 1, "방 설정 묶음 끝 (돌발 이벤트 다음)")
+	check(not l.items_box.button_pressed, "처음엔 꺼짐")
 	l.free()
 
 

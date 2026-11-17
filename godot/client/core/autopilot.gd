@@ -15,6 +15,7 @@
 #   --act-freeze "<동작>/<단계>/<u>;…" (판 중 내 몸 동작을 그 단계에 차례로 --freeze-ms (기본 1500) 씩 멈춰 두고 끝에 --act-shots 폴더에 freeze_<번호>.png — JS 와 같은 순간 대조) ·
 #   --shot-round <N> (N판째 시작 뒤 --shot-after 초에 찍음) · --char2 <id> --char2-at <초> (연습: 판 중 캐릭터 바꾸기) · --tut-skip <초> (튜토리얼: 한 단계에 이만큼 머물면 넘기기 → 끝까지)
 # 돌발 이벤트: --events [on] (방장이 대기실 옵션 '돌발 이벤트' 를 켬 — 블록 폭우·돌풍·보급·저중력·빙판)
+# 필드 아이템: --items [on] (방장이 대기실 옵션 '필드 아이템' 을 켬 — 판마다 아이템 6종이 필드에 나옴)
 # 죽은 방 탈출 (tools/e2e_net.sh): 방 밖으로 나가지면 '방 밖: 이유' 로그, --expect-left 면 이유 있는 left_room 을 받아야 성공. 접속 상태 글이 바뀌면 '접속: …' 로그
 # 화면 범인 찾기: --hide ui|world|audio (그 묶음을 숨기고 찍음) · --dump (찍을 때 보이는 Control·CanvasItem·3D 노드를 화면 사각형과 함께 출력)
 extends Node
@@ -147,6 +148,8 @@ func _on_joined(room: Dictionary, again: bool) -> void:
 			Store.send_room({"type": "skyStairs", "on": true})
 		if args.has("events") and str(args["events"]) != "off":
 			Store.send_room({"type": "roundEvents", "on": true})
+		if args.has("items") and str(args["items"]) != "off":
+			Store.send_room({"type": "fieldItems", "on": true})
 		if args.has("map"): # 성능 비교 (G3): 같은 맵
 			Store.send_room({"type": "setMap", "map": str(args["map"])})
 		if str(args.get("view", "")) == "spectate": # 관전: 방장은 빠지고 봇만

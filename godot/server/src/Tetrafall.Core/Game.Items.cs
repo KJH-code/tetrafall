@@ -40,7 +40,7 @@ public sealed partial class Game
         int powerCount = items.Count(it => it.type != "control");
         return (
             !ControlItemOn() || ControlInPlay() ? null : Math.Max(0, controlItemNextAt - time),
-            !C.ITEMS_ENABLED || powerCount >= ItemMax() ? null : Math.Max(0, powerItemNextAt - time));
+            !FieldItemsRun() || powerCount >= ItemMax() ? null : Math.Max(0, powerItemNextAt - time));
     }
 
     public bool IsGhost(Player p) => time < p.ghostUntil;
@@ -64,6 +64,20 @@ public sealed partial class Game
 public sealed partial class Game
 {
     // ---------- 아이템 ----------
+    // 필드 아이템 켜고 끄기 (고도 판 전용 방 옵션 fieldItems, 기본 끔 — 판 사이에만, 연습 방은 안 됨. SetRoundEvents 와 같은 규칙).
+    // 켜면 판마다 ITEM_POOL 이 필드에 나옴 (첫 ITEM_FIRST_SPAWN_MS, 다음까지 ITEM_RESPAWN_MS, 동시에 ItemMax() 개 — JS ITEMS_ENABLED 길 그대로)
+    public bool SetFieldItems(bool on)
+    {
+        if (InRound() || mode == "practice" || fieldItems == on) return false;
+        fieldItems = on;
+        Log($"[호스트] 필드 아이템 {(on ? "켬" : "끔")}");
+        return true;
+    }
+
+    // 이 방 설정에서 필드 아이템이 실제로 나오는지: 연습·튜토리얼은 켜 둬도 안 나옴 (블록 마스터 판에는 나옴).
+    // 판 단계는 안 봄 — 대기실 스냅샷 itemsEnabled (아이템 키 안내) 도 이 값을 씀
+    public bool FieldItemsRun() => C.ITEMS_ENABLED || (fieldItems && mode != "practice" && tutorial == null);
+
     public bool SpawnItem(string type)
     {
         for (int i = 0; i < C.SPAWN_TRIES; i++)
@@ -92,7 +106,7 @@ public sealed partial class Game
             if (!SpawnItem("control")) controlItemNextAt = time + 1000;
         }
         int powerCount = items.Count(it => it.type != "control");
-        if (C.ITEMS_ENABLED && powerCount < ItemMax() && time >= powerItemNextAt)
+        if (FieldItemsRun() && powerCount < ItemMax() && time >= powerItemNextAt)
         {
             string type = C.ITEM_POOL[(int)Math.Floor(rng() * C.ITEM_POOL.Length)];
             powerItemNextAt = time + (SpawnItem(type) ? C.ITEM_RESPAWN_MS : 1000);

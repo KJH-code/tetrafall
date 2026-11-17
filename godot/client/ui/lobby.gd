@@ -41,6 +41,7 @@ var map_sel: OptionButton
 var sky_box: CheckBox
 var hp_box: CheckBox
 var events_box: CheckBox
+var items_box: CheckBox
 var mode_info: Label
 var map_info: Label # 방장 아닌 사람: 판 사이에 맵·모드 (JS #map-info)
 var team_note: Label # 팀전이면 색 칸 대신 '팀전은 팀 색' (JS #color-team-note)
@@ -268,6 +269,9 @@ func _ready() -> void:
 	events_box = _check("돌발 이벤트", func(on): # 고도 판 전용 (블록 폭우·돌풍·보급·저중력·빙판). 고른 값은 기억해 다음에 만드는 방에도 (menu.gd _create — 기억 없으면 켬)
 		Prefs.set_value("roundEvents", on)
 		Store.send_room({"type": "roundEvents", "on": on}))
+	items_box = _check("필드 아이템", func(on): # 고도 판 전용 (판마다 아이템 6종이 필드에 — 기본 끔). 고른 값은 기억해 다음에 만드는 방에도 (menu.gd _create — 기억 없으면 끔)
+		Prefs.set_value("fieldItems", on)
+		Store.send_room({"type": "fieldItems", "on": on}))
 	_add(settings_wrap, "settings")
 	map_info = S.body_label("", 13, Color("cdd5ee"))
 	map_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART # 옵션이 여럿 붙어도 판 폭 안에서 줄바꿈
@@ -526,6 +530,7 @@ func refresh(st: Dictionary) -> void:
 	sky_box.set_pressed_no_signal(bool(st.get("skyStairs", false)))
 	hp_box.set_pressed_no_signal(bool(st.get("hpMode", false)))
 	events_box.set_pressed_no_signal(bool(st.get("roundEvents", false)))
+	items_box.set_pressed_no_signal(bool(st.get("fieldItems", false)))
 	mode_info.text = _mode_desc(str(st.get("mode", "survival")))
 	mode_info.visible = not small # JS 작은 창: 모드 설명은 고르는 칸으로
 	room_link.text = _link()

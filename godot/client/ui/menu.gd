@@ -316,7 +316,7 @@ func _online_do(action: Callable) -> void:
 
 func _create() -> void:
 	_msg("")
-	# 만든 방에 들어가면 한 번만: 기본 방 옵션을 보냄 (돌발 이벤트 기본 켬 — U.create_defaults)
+	# 만든 방에 들어가면 한 번만: 기본 방 옵션을 보냄 (돌발 이벤트 기본 켬, 필드 아이템은 지난번에 켰으면 — U.create_defaults)
 	if not Store.joined.is_connected(_on_created):
 		Store.joined.connect(_on_created, CONNECT_ONE_SHOT)
 	Store.create_room(room_name.text, _nick())
@@ -324,7 +324,7 @@ func _create() -> void:
 
 # 내가 만든 방의 welcome: 재접속이 아니면 기본 방 옵션 메시지 (방장만 먹음 — 방금 만든 방은 내가 방장). 고르기는 U.created_msgs
 func _on_created(_room: Dictionary, rejoined: bool) -> void:
-	for m in U.created_msgs(rejoined, Prefs.get_value("roundEvents", null), Store.state):
+	for m in U.created_msgs(rejoined, Prefs.get_value("roundEvents", null), Store.state, Prefs.get_value("fieldItems", null)):
 		send_room.call(m)
 
 

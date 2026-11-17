@@ -25,6 +25,7 @@ public sealed class SimOptions
     public bool hp; // --hp on (체력전)
     public Dictionary<string, double>? hpMult; // --hp-mult (체력전 캐릭터 배율을 이 판들만 — 전역 C.HP_CHAR_MULT 는 안 고치고 GameTune 이 Tune.hpMult 로)
     public bool events; // --events on (돌발 이벤트 — 고도 판 전용, tools/sim.js 에 없음)
+    public bool items; // --items on (필드 아이템 방 옵션 — 고도 판 전용, tools/sim.js 에 없음)
     public Tune? tune; // --tune (판별 캐릭터 조정 Tune.cs — 고도 판 전용, tools/sim.js 에 없음)
     public bool balance; // --balance on (방 밸런스 표 ConfigBalance.cs 로 — 고도 판 전용, 기본 off)
 
@@ -77,6 +78,7 @@ public sealed class SimOptions
             o.EndObj();
         }
         if (events) o.P("events", true); // 켰을 때만 (끄면 summary.json 이 예전과 같게)
+        if (items) o.P("items", true); // 켰을 때만
         if (tune != null) tune.Write(o.Key("tune")); // --tune 을 줬을 때만
         if (balance) o.P("balance", true); // 켰을 때만 (끄면 summary.json 이 예전과 같게)
         o.EndObj();
@@ -120,7 +122,7 @@ public static class BotSim
         return outp;
     }
 
-    // on/off 옵션 (--sky·--hp·--events·--balance) 값: 둘만 받고 나머지 (true·ON·1·오타) 는 ArgumentException.
+    // on/off 옵션 (--sky·--hp·--events·--items·--balance) 값: 둘만 받고 나머지 (true·ON·1·오타) 는 ArgumentException.
     // 예전엔 "on" 이 아니면 조용히 off 라, 켰다고 생각한 측정이 실제로는 끈 채 돌 수 있었음
     public static bool OnOff(string opt, string v) => v switch
     {
@@ -155,6 +157,7 @@ public static class BotSim
                 case "--hp": o.hp = OnOff(a, V()); break;
                 case "--hp-mult": o.hpMult = ParseHpMult(V()); break;
                 case "--events": o.events = OnOff(a, V()); break;
+                case "--items": o.items = OnOff(a, V()); break;
                 case "--tune": o.tune = Tune.Parse(V()); break;
                 case "--balance": o.balance = OnOff(a, V()); break;
                 default: throw new ArgumentException($"모르는 옵션 {a}");
@@ -210,6 +213,7 @@ public static class BotSim
         if (o.mode != null) g.SetMode(o.mode);
         if (o.hp) g.SetHpMode(true);
         if (o.events) g.SetRoundEvents(true);
+        if (o.items) g.SetFieldItems(true);
         var bots = new List<Player>();
         for (int i = 0; i < job.n; i++) bots.Add(g.AddBot()!);
         for (int i = 0; i < bots.Count; i++) g.SetChar(bots[i].id, job.chars[i]);

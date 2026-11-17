@@ -52,7 +52,7 @@ public sealed partial class Game
         o.Key("lava").Obj().P("active", lava.active).P("z", lava.z).EndObj();
         var (tc, tp) = ItemTimers();
         o.Key("itemTimers").Obj().P("control", tc).P("power", tp).EndObj();
-        o.P("itemsEnabled", C.ITEMS_ENABLED || ControlItemOn() || RoundEventsRun()); // 필드에 아이템이 나오는 판인지 (돌발 이벤트 보급도 — 이벤트가 안 도는 블록 마스터는 아님)
+        o.P("itemsEnabled", C.ITEMS_ENABLED || ControlItemOn() || RoundEventsRun() || FieldItemsRun()); // 필드에 아이템이 나오는 판인지 (돌발 이벤트 보급도 — 이벤트가 안 도는 블록 마스터는 아님. 필드 아이템 옵션은 블록 마스터에도)
         o.P("botLevel", botLevel);
         o.P("teamMode", teamMode);
         o.Key("practice");
@@ -61,6 +61,7 @@ public sealed partial class Game
         if (tutorial != null) TutorialSnapshot(o); else o.Null(); // 튜토리얼 진행
         o.P("skyStairs", skyStairs);
         if (hpMode) o.P("hpMode", true).P("hpMax", HpMax()); // 체력전 (켰을 때만 — 끄면 스냅샷이 예전과 같게)
+        if (fieldItems) o.P("fieldItems", true); // 필드 아이템 (켰을 때만 — 끄면 스냅샷이 예전과 같게)
         if (roundEvents)
         {
             // 돌발 이벤트 (켰을 때만 — 끄면 스냅샷이 예전과 같게). roundEvent 는 진행 중일 때만: 남은 ms·돌풍 방향 (아니면 null)

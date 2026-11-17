@@ -125,8 +125,9 @@ const RESULTS_SCALE_MIN := 0.1 # 결과 판 줄임 배율 아래 끝 (0 으로 �
 # 예전 40 (위 점수 띠 아래) 은 칭호 줄로 길어진 판이 올라와 오른쪽 위 핑 칸을 판 모서리 안에 넣었음 (사이클 6 병합 리뷰 F3)
 const RESULTS_TOP := NET_TOP + NET_PING_H + NET_GAP
 const RESULTS_DROP := 22.0 # 결과 판: 세로 가운데에서 이만큼 아래
-# 방 옵션 표시: [키 (스냅샷·공개 목록 같음), 글, 켜도 안 먹는 모드]. 블록 마스터 판은 하늘 계단 (Game.Round.cs StartRound sky)·돌발 이벤트 (Game.Events.cs RoundEventsRun) 가 안 돎
-const ROOM_OPTS := [["skyStairs", "하늘 계단", ["master"]], ["hpMode", "체력전", []], ["roundEvents", "돌발 이벤트", ["master"]]]
+# 방 옵션 표시: [키 (스냅샷·공개 목록 같음), 글, 켜도 안 먹는 모드]. 블록 마스터 판은 하늘 계단 (Game.Round.cs StartRound sky)·돌발 이벤트 (Game.Events.cs RoundEventsRun) 가 안 돎.
+# 필드 아이템 (Game.Items.cs FieldItemsRun) 은 모든 모드에서 나옴
+const ROOM_OPTS := [["skyStairs", "하늘 계단", ["master"]], ["hpMode", "체력전", []], ["roundEvents", "돌발 이벤트", ["master"]], ["fieldItems", "필드 아이템", []]]
 
 
 const STATUS_POS := Vector2(16, 12) # 접속 상태 글 (연결 중·끊김 — ui.gd status) 자리: 메뉴·대기실·결과는 왼쪽 위
@@ -239,7 +240,7 @@ static func results_place(view: Vector2, content: Vector2) -> Dictionary:
 	return {"scale": s, "x": view.x - m - content.x * s, "y": maxf(y, RESULTS_TOP)} # 위는 핑 칸 아래까지만
 
 
-# 켠 방 옵션을 한 줄 꼬리로: " · 하늘 계단 · 체력전 · 돌발 이벤트" (손님 대기실 줄·공개 방 목록). d = 스냅샷 또는 공개 목록 한 줄.
+# 켠 방 옵션을 한 줄 꼬리로: " · 하늘 계단 · 체력전 · 돌발 이벤트 · 필드 아이템" (손님 대기실 줄·공개 방 목록). d = 스냅샷 또는 공개 목록 한 줄.
 # 방 모드 (d.mode) 에서 안 먹는 옵션은 켜져 있어도 뺌 (블록 마스터 방의 하늘 계단·돌발 이벤트). 모드가 없으면 켠 것 전부
 static func room_opts(d: Dictionary) -> String:
 	var mode := str(d.get("mode", ""))
@@ -274,19 +275,21 @@ static func pickup_toast(e: Dictionary, me_id, names: Dictionary) -> String:
 
 
 # 내가 만든 방의 welcome 을 받았을 때 보낼 방 메시지 (menu.gd _on_created): 재접속이면 (rejoined) 없음, 아니면 create_defaults
-static func created_msgs(rejoined: bool, pref, st: Dictionary) -> Array:
-	return [] if rejoined else create_defaults(pref, st)
+static func created_msgs(rejoined: bool, pref, st: Dictionary, pref_items = null) -> Array:
+	return [] if rejoined else create_defaults(pref, st, pref_items)
 
 
-# 메뉴에서 방을 만든 직후 보낼 방 옵션 메시지 목록 (menu.gd _create): 돌발 이벤트는 기본 켬.
+# 메뉴에서 방을 만든 직후 보낼 방 옵션 메시지 목록 (menu.gd _create): 돌발 이벤트는 기본 켬, 필드 아이템은 기본 끔.
 # pref = 기억해 둔 체크 (ui_prefs roundEvents: 없으면 null = 켬, false 면 끈 채로), st = 지금 스냅샷 (비었으면 꺼짐으로 봄 — 서버 기본값).
+# pref_items = 기억해 둔 필드 아이템 체크 (ui_prefs fieldItems: 방장이 한 번 켰으면 true → 다음 방도 켬, 없거나 (null) false 면 끈 채로).
 # 이미 켜져 있으면 안 보냄. 모드는 안 봄 (블록 마스터 방도 켜 둠 — 모드를 바꾸면 그때부터 돎)
-static func create_defaults(pref, st: Dictionary) -> Array:
-	if pref is bool and not pref:
-		return []
-	if st.get("roundEvents", false):
-		return []
-	return [{"type": "roundEvents", "on": true}]
+static func create_defaults(pref, st: Dictionary, pref_items = null) -> Array:
+	var out := []
+	if not (pref is bool and not pref) and not st.get("roundEvents", false):
+		out.append({"type": "roundEvents", "on": true})
+	if pref_items is bool and pref_items and not st.get("fieldItems", false):
+		out.append({"type": "fieldItems", "on": true})
+	return out
 
 
 # ---------- hud-layout.js (이어서) ----------

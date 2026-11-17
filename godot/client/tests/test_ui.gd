@@ -280,6 +280,14 @@ func test_room_opts() -> void:
 	check(master == " · 체력전", "마스터 전부 켬: '%s'" % master)
 	check(U.room_opts({"mode": "master", "roundEvents": true, "skyStairs": true}) == "", "마스터 하늘 계단 + 돌발 이벤트: '%s'" % U.room_opts({"mode": "master", "roundEvents": true, "skyStairs": true}))
 	check(U.room_opts({"mode": "master", "roundEvents": true, "skyStairs": false, "hpMode": false}) == "", "마스터 돌발 이벤트만")
+	# 필드 아이템: 켰을 때만 (스냅샷·공개 목록 둘 다 켰을 때만 키가 옴), 순서는 맨 끝. 블록 마스터 판에도 나오니 마스터 방에도 붙임
+	check(U.room_opts({"fieldItems": true}) == " · 필드 아이템", "필드 아이템: '%s'" % U.room_opts({"fieldItems": true}))
+	check(U.room_opts({"fieldItems": false}) == "", "필드 아이템 끔")
+	var every := U.room_opts({"mode": "kills", "fieldItems": true, "roundEvents": true, "hpMode": true, "skyStairs": true})
+	check(every == " · 하늘 계단 · 체력전 · 돌발 이벤트 · 필드 아이템", "넷 다: '%s'" % every)
+	var master_items := U.room_opts({"mode": "master", "fieldItems": true, "roundEvents": true, "skyStairs": true})
+	check(master_items == " · 필드 아이템", "마스터 방 필드 아이템: '%s'" % master_items)
+	check(U.ROOM_OPTS[-1][0] == "fieldItems" and (U.ROOM_OPTS[-1][2] as Array).is_empty(), "ROOM_OPTS 끝 = fieldItems, 안 먹는 모드 없음")
 	# 표의 안 먹는 모드는 실제 모드 id
 	for o in U.ROOM_OPTS:
 		for m in o[2]:

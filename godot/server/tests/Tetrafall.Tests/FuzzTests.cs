@@ -224,7 +224,7 @@ public class FuzzTests
     {
         "input", "input", "input", "input", "input", "input", "action", "action", "action", "action", "action", "action", "action", "action",
         "leave", "setPublic", "addBot", "addBot", "removeBot", "spectate", "kick", "setName", "setChar", "setColor", "teamMode", "setTeam", "shuffleTeams",
-        "botLevel", "setMap", "setMode", "skyStairs", "hpMode", "roundEvents", "ghostDrop", "ghostDrop", "tutorialSkip", "practiceSet", "dummyAdd", "dummyRemove", "dummySet",
+        "botLevel", "setMap", "setMode", "skyStairs", "hpMode", "roundEvents", "fieldItems", "ghostDrop", "ghostDrop", "tutorialSkip", "practiceSet", "dummyAdd", "dummyRemove", "dummySet",
         "start", "start", "start", "start", "ping", "create", "create", "join", "join", "rejoin", "practice", "tutorial", "zzz",
     };
     static readonly string[] MSG_FIELDS =

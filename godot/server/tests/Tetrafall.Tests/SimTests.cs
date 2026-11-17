@@ -66,12 +66,13 @@ public class SimTests
     [InlineData("--sky")]
     [InlineData("--hp")]
     [InlineData("--events")]
+    [InlineData("--items")]
     public void OnOff_options_reject_other_values(string opt)
     {
         foreach (var bad in new[] { "true", "ON", "1", "bogus", "", "off " })
             Assert.Throws<ArgumentException>(() => BotSim.ParseArgs(new[] { opt, bad }));
         Assert.Throws<ArgumentException>(() => BotSim.ParseArgs(new[] { opt })); // 값 없음
-        bool Get(SimOptions o) => opt switch { "--balance" => o.balance, "--sky" => o.sky, "--hp" => o.hp, _ => o.events };
+        bool Get(SimOptions o) => opt switch { "--balance" => o.balance, "--sky" => o.sky, "--hp" => o.hp, "--items" => o.items, _ => o.events };
         Assert.True(Get(BotSim.ParseArgs(new[] { opt, "on" })));
         Assert.False(Get(BotSim.ParseArgs(new[] { opt, "off" })));
         Assert.Equal(opt == "--sky" && Tetrafall.Core.C.SKY_STAIRS_DEFAULT, Get(BotSim.ParseArgs(Array.Empty<string>()))); // 안 주면 기본 (하늘 계단만 방 기본값, 나머지 off)
