@@ -184,7 +184,7 @@ func _build(char_id_: String, color: Color, merge: bool) -> void:
 	var baked_batch = null
 	# W14: 외부 모델이 있으면 안쪽 몸은 조각 몸 (merge 끔 — 관절 노드만 쓰고 안 그림), 그 위에 외부 모델 (3단: 외부 → 구운 → 코드 조립)
 	var third := merge
-	var want_ext: bool = use_ext and not dummy and External.has_char(char_id)
+	var want_ext: bool = use_ext and not dummy and External.has_char(char_id) and (third or not External.vm_code(char_id)) # vm_code: 1인칭 쌍둥이는 코드 몸 (c9 리뷰 F1 대포수)
 	if want_ext:
 		merge = false
 	if glb != null:

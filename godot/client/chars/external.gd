@@ -92,6 +92,12 @@ static func has_char(char_id: String) -> bool:
 	return load_char(char_id) != null
 
 
+# c9 리뷰 F1: 이 캐릭터의 1인칭 팔 쌍둥이는 외부 모델 대신 코드 몸을 쓰나 (json "vm_code" — chars_config.gd EXT_DEFAULTS). body.gd _build 가 물음
+static func vm_code(char_id: String) -> bool:
+	var info = load_char(char_id)
+	return info != null and bool(info.cfg.get("vm_code", false))
+
+
 # W30 미리 읽기: 메뉴에서 쉴 때 모든 외부 모델 .glb (+ 클립 파일) 을 스레드로 요청 — 몸이 처음 나올 때 메인 스레드에서 읽느라 멈추지 않게.
 # 파일 읽기·텍스처 올리기가 스레드에서 끝나 있어 load_char 는 장면 정보 셈 (수 ms) 만 함
 static func request_all() -> int:
@@ -573,7 +579,9 @@ static func model_info(scene: PackedScene, cfg: Dictionary):
 	var vm_node: String = str(cfg.get("vm_node", ""))
 	for sf in surfs:
 		# W20 vm_node: 1인칭 팔 = glb 안에 따로 만든 닫힌 팔 메시 (노드 이름) 통째로. 없으면 예전 (팔꿈치 아래 삼각형 가르기)
-		if vm_node != "":
+		if bool(cfg.get("vm_code", false)):
+			sf.vm_mesh = null # c9 리뷰 F1: 1인칭은 코드 몸 — 외부 팔 메시를 안 만듦
+		elif vm_node != "":
 			sf.vm_mesh = sf.mesh if str(sf.node) == vm_node else null
 		else:
 			sf.vm_mesh = _arm_mesh(sf, info.vm_bones)

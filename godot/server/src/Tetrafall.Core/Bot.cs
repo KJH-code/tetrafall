@@ -139,11 +139,12 @@ public sealed class BotBrain
             out_.Add(new Danger(cells, Math.Max(0, b.explodeAt - g.time), $"bomb:{b.id}"));
         }
         // 번개 예고: 가운데에서 반지름 + 여유 안에 칸 가운데가 드는 칸들. 목록 맨 뒤 — dangers[0] 을 쓰는 곳 (Think·Attack) 은 블록·폭탄 먼저.
-        // 반응 시간은 블록 그림자와 같음 (특혜 없음)
+        // 반응 시간은 블록 그림자와 같음 (특혜 없음). p 를 주면 발 높이 차가 판정 (Game.BoltStrike) 밖인 예고는 뺌 — 안 맞을 고리를 피해 다니지 않게
         double br = C.EVENT_BOLT_RADIUS + C.EVENT_BOLT_BOT_PAD;
         int BR = (int)Math.Ceiling(br);
         foreach (var w in g.ActiveBolts())
         {
+            if (p != null && Math.Abs(p.z - w.z) > C.EVENT_BOLT_HEIGHT) continue;
             var cells = new List<int[]>();
             int cx = (int)Math.Floor(w.x), cy = (int)Math.Floor(w.y);
             for (int x = cx - BR; x <= cx + BR; x++)

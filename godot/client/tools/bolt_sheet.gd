@@ -1,12 +1,15 @@
 # 번개 견본 (c9): 서버·봇 없이 돌발 이벤트 '번개' 의 예고 고리·번개 띠를 정해진 자리·시각·카메라로 찍음 (tools/fx_sheet.gd 와 같은 틀 — 찍을 때마다 같은 사진)
 #   xvfb-run -a godot --path godot/client --resolution 1280x720 --rendering-driver opengl3 -s res://tools/bolt_sheet.gd -- --out <폴더>
-# 나오는 파일 (6장):
+# 나오는 파일 (8장):
 #   bolt-warn-<meadow|volcano>-<eye|over>.png — 예고 고리 둘 (가운데 = 거의 다 참, 오른쪽 = 막 뜸) + 견줄 고리 둘:
 #     왼쪽 = F 준비 예고 고리 (world/ring_look.gd windup, 1번 사람 색 — 이어진 고리), 가운데 예고 안 = 발밑 스킬 고리 (aura, 3번 사람 색 — 예고가 덮지 않는지)
 #     eye = 눈높이 가까이, over = 비스듬히 위에서
 #   bolt-strike-meadow-eye.png — 가운데 예고에 번개가 떨어진 직후 (띠 3단 + 바닥 고리). '번개 사진 줄기 화면 높이 비 0.xx' 한 줄 (줄기 = 번개 띠 — 본문 글꼴에 있는 글자로): 그려진 띠 토막들의 화면 세로 길이 ÷ 화면 높이 (상한 bolt_fx_math STRIKE.cap)
 #   bolt-warn-low.png — 그래픽 낮춤 (초원, 눈높이)
-# 판 그리기 (world/world.tscn) 에 가짜 판 상태를 넣고 world.bolt_fx 에 가짜 서버 이벤트 (boltWarn·bolt) 를 넣음. 엔진 시간 배율 0, 번개 시계 (bolt_fx.clock) 는 이 도구가 정함.
+#   bolt-warn-meadow-fp.png · bolt-strike-meadow-fp.png — 1인칭 (c9 리뷰 F2): 내가 가운데 예고 한가운데에 서서 정면을 봄 (눈높이 EYE_HEIGHT, 고개 각 0 — 기본 시점).
+#     발밑 고리는 화면 아래 끝보다 더 아래라 안 보임 → 화면 신호 (ui/bolt_alert.gd: 가운데 아래 판 '번개! 고리 밖으로' + 남은 초·막대, 가장자리 연노랑 테) 가 보여야 함.
+#     strike = 내 자리에 떨어진 직후: 번개 띠는 화면 상한으로 안 그려지고 (줄기 비를 안 잼) 가장자리 테만 진하게, 판은 꺼짐
+# 판 그리기 (world/world.tscn) 에 가짜 판 상태를 넣고 world.bolt_fx (+ 화면 신호 ui/bolt_alert.gd) 에 가짜 서버 이벤트 (boltWarn·bolt) 를 넣음. 엔진 시간 배율 0, 번개 시계 (bolt_fx.clock) 는 이 도구가 정함.
 # 끝나면 저장한 파일 목록, 종료 코드 0 (못 만든 사진·스크립트 오류가 있으면 1, 그릴 수 없는 환경 (--headless) 이면 2)
 extends SceneTree
 
@@ -24,8 +27,11 @@ const JOBS := [
 	["bolt-warn-meadow-eye.png", "meadow", "warn", "eye", false], ["bolt-warn-meadow-over.png", "meadow", "warn", "over", false],
 	["bolt-warn-volcano-eye.png", "volcano", "warn", "eye", false], ["bolt-warn-volcano-over.png", "volcano", "warn", "over", false],
 	["bolt-strike-meadow-eye.png", "meadow", "strike", "eye", false], ["bolt-warn-low.png", "meadow", "warn", "eye", true],
+	["bolt-warn-meadow-fp.png", "meadow", "warn", "fp", false], ["bolt-strike-meadow-fp.png", "meadow", "strike", "fp", false],
 ]
 const VIEWS := {"eye": [6.5, 14.0, 0.5], "over": [8.5, 52.0, 0.0]} # 시점 → [카메라 거리 (칸), 내려다보는 각 (도), 보는 높이 (칸)]
+const FP := "fp" # 1인칭 시점: 가운데 예고 한가운데에 선 내 눈 (높이 C.EYE_HEIGHT, 고개 각 0) — VIEWS 밖 (_aim 이 따로)
+const ME_ID := 1
 const CAM_YAW := 90.0 # 보는 방향 (도, 게임 +y 쪽)
 const BOLT_R := 1.2 # 맞는 반지름 (서버 EVENT_BOLT_RADIUS)
 const WARN_MS := 1200.0 # 예고 시간 (서버 EVENT_BOLT_WARN_MS)
@@ -65,6 +71,8 @@ var view: Node
 var world: Node3D
 var bolt: Node3D # world.bolt_fx
 var bolt_script: GDScript # 끝날 때 끼워 둔 시계를 빼려고 쥐고 있음
+var alert: Control # ui/bolt_alert.gd (판에서는 ui/hud_extra.gd 가 만들어 넣음)
+var me := {} # 1인칭 장면의 나 (스냅샷 players[] 한 명 꼴) — 다른 시점은 {} (화면 신호 꺼짐)
 var clock_ms := 0.0
 var cam := Camera3D.new()
 var extras: Array = [] # 견줄 고리 노드
@@ -104,6 +112,8 @@ func _setup() -> void:
 	bolt = world.bolt_fx
 	bolt_script = bolt.get_script()
 	bolt_script.clock = func() -> float: return clock_ms
+	alert = load("res://ui/bolt_alert.gd").new()
+	root.add_child(alert)
 	cam.near = WC.CAM_CLIP[0]
 	cam.far = WC.CAM_CLIP[1]
 	cam.fov = C.FOV_DEFAULT
@@ -135,11 +145,12 @@ func _process(_dt: float) -> bool:
 	if world == null:
 		_setup()
 	if job_i >= 0:
+		alert.refresh(me, clock_ms, true)
 		wait -= 1
 		if wait > 0:
 			return false
 		_save(str(JOBS[job_i][0]))
-		if str(JOBS[job_i][2]) == "strike":
+		if str(JOBS[job_i][2]) == "strike" and str(JOBS[job_i][3]) != FP:
 			_span()
 	job_i += 1
 	if job_i >= JOBS.size():
@@ -241,8 +252,14 @@ func _stage(map_id: String) -> void:
 
 # 카메라: 필드 가운데를 dist 칸 떨어져서 pitch 도 내려다봄
 func _aim(view_id: String) -> void:
-	var v: Array = VIEWS[view_id]
 	var m := mid()
+	if view_id == FP: # 내 눈: 가운데 예고 한가운데, 정면 (고개 각 0)
+		me = {"id": ME_ID, "x": m.x, "y": m.y, "z": 0.0, "alive": true}
+		cam.fov = C.FOV_DEFAULT
+		cam.global_transform = Transform3D(Basis.looking_at(Co.dir(deg_to_rad(CAM_YAW), 0.0), Vector3.UP), Co.gxyz(m.x, m.y, C.EYE_HEIGHT))
+		return
+	me = {}
+	var v: Array = VIEWS[view_id]
 	var fwd := Co.dir(deg_to_rad(CAM_YAW), -deg_to_rad(float(v[1])))
 	var at := Co.gxyz(m.x, m.y, float(v[2]))
 	cam.fov = C.FOV_DEFAULT
@@ -253,23 +270,30 @@ func _aim(view_id: String) -> void:
 func _fire(kind: String) -> void:
 	var m := mid()
 	bolt.clear()
+	alert.clear()
 	for n in extras:
 		n.queue_free()
 	extras.clear()
 	clock_ms = 0.0
 	# 가운데 예고 (먼저 뜸) · 오른쪽 예고 (나중에 뜸) — 찍는 순간 흐른 비율이 WARN_U
-	bolt.on_event({"type": "boltWarn", "id": 1, "x": m.x, "y": m.y, "z": 0.0, "r": BOLT_R, "ms": WARN_MS})
+	_event({"type": "boltWarn", "id": 1, "x": m.x, "y": m.y, "z": 0.0, "r": BOLT_R, "ms": WARN_MS})
 	clock_ms = WARN_MS * (float(WARN_U[0]) - float(WARN_U[1]))
-	bolt.on_event({"type": "boltWarn", "id": 2, "x": m.x + SIDE_GAP, "y": m.y, "z": 0.0, "r": BOLT_R, "ms": WARN_MS})
+	_event({"type": "boltWarn", "id": 2, "x": m.x + SIDE_GAP, "y": m.y, "z": 0.0, "r": BOLT_R, "ms": WARN_MS})
 	clock_ms = WARN_MS * float(WARN_U[0])
 	if kind == "strike":
-		bolt.on_event({"type": "bolt", "id": 1, "x": m.x, "y": m.y, "z": 0.0, "r": BOLT_R, "hits": []})
+		_event({"type": "bolt", "id": 1, "x": m.x, "y": m.y, "z": 0.0, "r": BOLT_R, "hits": [ME_ID] if not me.is_empty() else []})
 		clock_ms += STRIKE_AT_MS
 	# 견줄 고리: 왼쪽 = F 준비 예고 고리 (1번 사람 색), 가운데 예고 안 = 발밑 스킬 고리 (3번 사람 색 — 2번 초록은 초원 바닥에 묻힘)
 	var wr := RL.windup_radius(WINDUP_U)
 	_ring(RL.mesh("windup", int(C.PLAYER_PALETTE[0])), RL.material(RL.windup_alpha(WINDUP_U), int(RL.WINDUP.priority)), Vector3(m.x - SIDE_GAP, m.y, float(RL.WINDUP.lift)), wr)
 	var ar := float(RL.AURA.r) * (1.0 + 1.8 * AURA_U)
 	_ring(RL.mesh("aura", int(C.PLAYER_PALETTE[2])), RL.material(float(RL.AURA.alpha) * (1.0 - AURA_U)), Vector3(m.x, m.y, float(RL.AURA.lift)), ar)
+
+
+# 가짜 서버 이벤트: 세계 그리기 + 화면 신호 둘 다 (판에서는 Store.game_event 가 둘에 알림)
+func _event(e: Dictionary) -> void:
+	bolt.on_event(e)
+	alert.on_event(e, me, clock_ms)
 
 
 func _ring(mesh: Mesh, mat: Material, at: Vector3, r: float) -> void:

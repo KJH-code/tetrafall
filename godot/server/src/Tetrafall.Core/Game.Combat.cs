@@ -505,7 +505,8 @@ public sealed partial class Game
         bool armorBroken = false;
         if (!teammate && t.@char == "tank" && (time < t.chargeUntil || Truthy(t.slamAt)))
         {
-            string name = GetPlayer(src?.by)?.name is { Length: > 0 } nm ? nm : "?";
+            // src 없음 = 번개 (돌발 이벤트 — src 없이 부르는 곳은 Game.BoltStrike 하나): 때린 쪽 이름을 '?' 대신 '번개' 로 (로그 '[아머] … ← 번개 버팀')
+            string name = src == null ? "번개" : GetPlayer(src.by)?.name is { Length: > 0 } nm ? nm : "?";
             if (!opts.finish && !(src != null && ULT_KINDS.Contains(src.kind)))
             {
                 if (src != null && src.by != t.id) t.lastHit = new LastHit { by = src.by, kind = src.kind, name = name };

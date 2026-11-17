@@ -166,12 +166,125 @@ func test_bolt_text_status() -> void:
 		check(T.status({"kind": "bolt"}, yaw) == "", "번개 left 없음")
 
 
-# 이벤트 시작 알림음: 보급은 줍는 소리, 나머지는 전부 경고음 (이미 있는 효과음 키), 종류가 비면 안 냄
+# 이벤트 시작 알림음: 보급은 줍는 소리, 나머지는 전부 시작 신호 "go" (이미 있는 효과음 키), 종류가 비면 안 냄.
+# c9 리뷰 F5: 압사 경고 "danger"·예고 째깍 "tick"·낙뢰 "crit" 과 다른 키여야 함 (같은 소리면 생존 신호가 흐려짐), 구운 소리 목록에 있어야 함 (없으면 소리 없이 넘어감)
 func test_bolt_event_cue() -> void:
 	check(SM.event_cue("supply") == "pickup", "보급: %s" % SM.event_cue("supply"))
+	var man = JSON.parse_string(FileAccess.get_file_as_string("res://audio/baked/manifest.json"))
+	var sfx: Dictionary = man.get("sfx", {}) if man is Dictionary else {}
+	check(not sfx.is_empty(), "audio/baked/manifest.json sfx 목록을 못 읽음")
 	for k in ["rain", "wind", "lowgrav", "ice", "bolt"]:
-		check(SM.event_cue(k) == "danger", "%s: %s" % [k, SM.event_cue(k)])
+		var cue := SM.event_cue(k)
+		check(cue == "go", "%s: %s" % [k, cue])
+		check(not (cue in ["danger", "tick", "crit", "pickup"]), "%s: 알림음 '%s' 가 압사 경고·예고·낙뢰·보급 소리와 겹침" % [k, cue])
+		check(sfx.has(cue), "%s: 알림음 '%s' 가 구운 소리 목록에 없음" % [k, cue])
+	check(sfx.has(SM.event_cue("supply")), "보급 알림음이 구운 소리 목록에 없음")
 	check(SM.event_cue("") == "" and SM.event_cue(null) == "", "빈 종류")
+
+
+# c9 리뷰 F2·F6 내가 예고 고리 안인가 (화면 신호 ui/bolt_alert.gd · 소리 audio.gd 가 같이 씀): 살아서 필드에 있고, 수평 반지름 안·발 높이 차 안 (서버 Game.BoltStrike 와 같은 식)
+func test_bolt_alert_in_ring() -> void:
+	var me := {"id": 2.0, "x": 5.0, "y": 5.0, "z": 2.0, "alive": true}
+	check(BM.in_ring(me, 5.0, 5.0, 2.0, 1.2), "한가운데")
+	check(BM.in_ring(me, 5.0 + 1.19, 5.0, 2.0, 1.2), "반지름 바로 안")
+	check(not BM.in_ring(me, 5.0 + 1.21, 5.0, 2.0, 1.2), "반지름 바로 밖")
+	check(BM.in_ring(me, 5.0, 5.0, 2.0 + float(BM.ALERT.height), 1.2) and BM.in_ring(me, 5.0, 5.0, 2.0 - float(BM.ALERT.height), 1.2), "높이 차 딱 %s: 맞는 높이" % BM.ALERT.height)
+	check(not BM.in_ring(me, 5.0, 5.0, 2.0 + float(BM.ALERT.height) + 0.1, 1.2) and not BM.in_ring(me, 5.0, 5.0, 2.0 - float(BM.ALERT.height) - 0.1, 1.2), "높이 차가 넘으면 아님")
+	check(is_equal_approx(float(BM.ALERT.height), 3.0), "서버 EVENT_BOLT_HEIGHT (ConfigEvents.cs) 와 같은 값: %s" % BM.ALERT.height)
+	# F6: 죽은 나 (서버는 죽은 자리도 스냅샷에 보냄 — 관전·부활 대기) · 블록 마스터 (살아 있지만 필드에 없음) · 나 없음 (관전자) 은 아님
+	var dead := me.duplicate()
+	dead["alive"] = false
+	check(not BM.in_ring(dead, 5.0, 5.0, 2.0, 1.2), "죽은 나 + 근처 예고: 내 고리 아님")
+	var master := me.duplicate()
+	master["master"] = true
+	check(not BM.in_ring(master, 5.0, 5.0, 2.0, 1.2), "블록 마스터: 내 고리 아님")
+	check(not BM.in_ring({}, 5.0, 5.0, 2.0, 1.2), "나 없음")
+	check(not BM.in_ring({"alive": true}, 5.0, 5.0, 2.0, 1.2), "자리 없는 나")
+
+
+# 화면 신호: 내가 안에 있는 예고 가운데 가장 먼저 떨어질 것의 남은 시간, 고리 밖으로 나가면 없음, 떨어진 번개가 내 자리인지, 초 글자, 가장자리 테 알파
+func test_bolt_alert_pick_edge() -> void:
+	var me := {"id": 2.0, "x": 5.0, "y": 5.0, "z": 0.0, "alive": true}
+	var list := []
+	BM.warn_add(list, {"type": "boltWarn", "id": 1.0, "x": 5.3, "y": 5.0, "z": 0.0, "r": 1.2, "ms": 1200.0}, 1000.0)
+	BM.warn_add(list, {"type": "boltWarn", "id": 2.0, "x": 9.0, "y": 5.0, "z": 0.0, "r": 1.2, "ms": 1200.0}, 1000.0) # 남의 고리
+	BM.warn_add(list, {"type": "boltWarn", "id": 3.0, "x": 4.6, "y": 5.2, "z": 0.0, "r": 1.2, "ms": 1200.0}, 700.0) # 먼저 뜬 내 고리
+	var w := BM.alert_pick(list, me, 1300.0)
+	check(not w.is_empty() and is_equal_approx(float(w.left), 600.0) and is_equal_approx(float(w.ms), 1200.0), "먼저 떨어질 내 고리: %s" % [w])
+	check(is_equal_approx(float(BM.alert_pick(list, me, 5000.0).left), 0.0), "예정 시각이 지나도 (떨어짐 이벤트 전) 0 아래로 안 감")
+	var away := me.duplicate()
+	away["x"] = 7.0 # 세 고리 모두 밖 (4.6·5.3 에서 1.2 넘음, 9.0 에서 2.0)
+	check(BM.alert_pick(list, away, 1300.0).is_empty(), "고리 밖으로 나가면 신호 없음")
+	var dead := me.duplicate()
+	dead["alive"] = false
+	check(BM.alert_pick(list, dead, 1300.0).is_empty(), "죽은 나: 신호 없음")
+	check(BM.alert_pick([], me, 1300.0).is_empty(), "예고 없음")
+	# 떨어진 번개
+	check(BM.struck(me, {"type": "bolt", "id": 1.0, "x": 5.3, "y": 5.0, "z": 0.0, "r": 1.2, "hits": [2.0]}), "맞은 사람 목록에 나")
+	check(BM.struck(me, {"type": "bolt", "id": 1.0, "x": 5.3, "y": 5.0, "z": 0.0, "r": 1.2, "hits": []}), "안 맞았어도 (무적) 내 자리")
+	check(BM.struck(me, {"type": "bolt", "id": 1.0, "x": 9.0, "y": 5.0, "z": 0.0, "r": 1.2, "hits": [1.0, 2.0]}), "hits 에 내 id")
+	check(not BM.struck(me, {"type": "bolt", "id": 2.0, "x": 9.0, "y": 5.0, "z": 0.0, "r": 1.2, "hits": [1.0]}), "남의 자리")
+	check(not BM.struck(dead, {"type": "bolt", "id": 1.0, "x": 5.3, "y": 5.0, "z": 0.0, "r": 1.2, "hits": []}), "죽은 나")
+	check(not BM.struck({}, {"type": "bolt", "id": 1.0, "x": 5.3, "y": 5.0, "z": 0.0, "r": 1.2, "hits": []}), "나 없음")
+	# 글자: 본문에 이미 있는 낱말로, 압사 경고 글과 다름
+	check(str(BM.ALERT.text) == "번개! 고리 밖으로", "글: %s" % BM.ALERT.text)
+	check(BM.alert_sec(600.0) == "0.6초" and BM.alert_sec(1200.0) == "1.2초" and BM.alert_sec(-5.0) == "0.0초", "초 글자: %s %s" % [BM.alert_sec(600.0), BM.alert_sec(-5.0)])
+	# 가장자리 테: 밖·안 맞음 = 0, 안 = edge 범위 안에서 깜빡, 떨어진 순간 hit_alpha → hit_ms 뒤 0
+	var e: Array = BM.ALERT.edge
+	check(BM.alert_edge(false, 1234.0, -1.0e9) == 0.0, "밖: 테 끔")
+	var lo := INF
+	var hi := -INF
+	for i in 48:
+		var k := BM.alert_edge(true, 1000.0 + i * 10.0, -1.0e9)
+		lo = minf(lo, k)
+		hi = maxf(hi, k)
+	check(lo >= float(e[0]) - 1e-6 and hi <= float(e[1]) + 1e-6 and hi - lo > 0.2, "안: %s~%s 사이 깜빡 (얻음 %s~%s)" % [e[0], e[1], lo, hi])
+	check(is_equal_approx(BM.alert_edge(false, 2000.0, 2000.0), float(BM.ALERT.hit_alpha)), "떨어진 순간")
+	var half := BM.alert_edge(false, 2000.0 + float(BM.ALERT.hit_ms) / 2.0, 2000.0)
+	check(is_equal_approx(half, float(BM.ALERT.hit_alpha) / 2.0), "절반 지남: %s" % half)
+	check(BM.alert_edge(false, 2000.0 + float(BM.ALERT.hit_ms), 2000.0) == 0.0, "hit_ms 뒤 끔")
+	check(float(e[1]) <= 0.75 and float(BM.ALERT.y) > 0.55 and float(BM.ALERT.y) < 0.8, "테는 경직 테 (0.75) 보다 진하지 않게, 판은 가운데 아래")
+	# 판 자리: 1인칭은 조준점 아래, 3인칭·하늘 시점은 조준점 위 (가운데 아래의 내 몸·발밑 고리를 안 덮게) — 어느 쪽이든 위 묶음 (압사 경고) 아래
+	check(BM.alert_y("first") == float(BM.ALERT.y) and BM.alert_y("third") == float(BM.ALERT.y_up) and BM.alert_y("sky") == float(BM.ALERT.y_up), "시점별 판 자리")
+	check(float(BM.ALERT.y_up) > 0.25 and float(BM.ALERT.y_up) < 0.45, "3인칭 판 자리 %s: 위 묶음 아래·조준점 위" % BM.ALERT.y_up)
+
+
+# 화면 신호 노드 (ui/bolt_alert.gd — 트리 밖에서 이벤트·프레임을 직접 넣어 봄): 내 고리면 판이 켜지고 글·초가 맞음, 남의 고리·죽은 나는 꺼짐, 내 자리에 떨어지면 테가 켜짐, 판 중이 아니면 다 비움
+func test_bolt_alert_node() -> void:
+	var A = load("res://ui/bolt_alert.gd")
+	var a = A.new()
+	var me := {"id": 2.0, "x": 5.0, "y": 5.0, "z": 0.0, "alive": true}
+	a.refresh(me, 0.0, true)
+	check(not a.plate.visible and not a.edge.visible, "예고 없음: 꺼짐")
+	a.on_event({"type": "boltWarn", "id": 7.0, "x": 5.2, "y": 5.0, "z": 0.0, "r": 1.2, "ms": 1200.0}, me, 1000.0)
+	a.refresh(me, 1300.0, true)
+	check(a.plate.visible and a.text.text == "번개! 고리 밖으로" and a.sec.text == "0.9초", "내 고리: 판 켜짐 '%s' %s" % [a.text.text, a.sec.text])
+	check(is_equal_approx(a.left01, 0.75) and a.edge.visible and a.edge.modulate.a > 0.0, "막대 %s · 테 %s" % [a.left01, a.edge.modulate.a])
+	var away := me.duplicate()
+	away["x"] = 8.0
+	a.refresh(away, 1400.0, true)
+	check(not a.plate.visible and not a.edge.visible, "고리 밖으로 나감: 꺼짐")
+	var dead := me.duplicate()
+	dead["alive"] = false
+	a.refresh(dead, 1400.0, true)
+	check(not a.plate.visible and not a.edge.visible, "죽은 나: 꺼짐")
+	# 내 자리에 떨어짐: 예고가 지워지고 판은 꺼지고 테만 한 번
+	a.on_event({"type": "bolt", "id": 7.0, "x": 5.2, "y": 5.0, "z": 0.0, "r": 1.2, "hits": [2.0]}, me, 2200.0)
+	a.refresh(me, 2250.0, true)
+	check(a.warns.is_empty() and not a.plate.visible and a.edge.visible and a.edge.modulate.a > 0.5, "떨어진 직후: 판 꺼짐·테 %s" % a.edge.modulate.a)
+	a.refresh(me, 2200.0 + float(BM.ALERT.hit_ms) + 1.0, true)
+	check(not a.edge.visible, "테 사라짐")
+	# 남의 자리에 떨어진 번개는 테 없음
+	a.on_event({"type": "bolt", "id": 9.0, "x": 12.0, "y": 5.0, "z": 0.0, "r": 1.2, "hits": [1.0]}, me, 5000.0)
+	a.refresh(me, 5010.0, true)
+	check(not a.edge.visible, "남의 자리 번개: 테 없음")
+	# 판 중이 아니면 비움
+	a.on_event({"type": "boltWarn", "id": 8.0, "x": 5.0, "y": 5.0, "z": 0.0, "r": 1.2, "ms": 1200.0}, me, 6000.0)
+	a.refresh(me, 6100.0, true)
+	check(a.plate.visible, "다시 내 고리")
+	a.refresh(me, 6200.0, false)
+	check(a.warns.is_empty() and not a.plate.visible and not a.edge.visible, "판 끝: 다 비움")
+	a.free()
 
 
 # 예고 고리: 처음에 조금 크게 떴다가 곧 맞는 반지름 그대로, 알파는 곧 1, 채운 원은 떨어지는 순간 고리 안쪽 끝에 닿음

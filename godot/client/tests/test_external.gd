@@ -1198,10 +1198,10 @@ func test_cannon_info() -> void:
 		check(st[1] >= 0.05 and st[1] < 0.3, "%s 몸 색 칸 넓이 %.1f%% (5~30%% — 빨간 두건·다이너마이트 띠)" % [k, st[1] * 100.0])
 		if k == "stage":
 			stage_sf = body_sf
-	check(info.cfg.tint == "mask" and str(info.cfg.get("vm_node", "")) == "cannon_vm" and info.cfg.get("grip", false) == true and not info.cfg.has("hold"), "cannon.json: mask·1인칭 닫힌 팔·두 손 묶음 grip (예전 hold 자세는 없앰)")
+	check(info.cfg.tint == "mask" and info.cfg.get("vm_code", false) == true and str(info.cfg.get("vm_node", "")) == "" and info.cfg.get("grip", false) == true and not info.cfg.has("hold"), "cannon.json: mask·1인칭은 코드 몸 (vm_code, c9 리뷰 F1)·두 손 묶음 grip (예전 hold 자세는 없앰)")
 	check(K.EXT_DEFAULTS.grip == false and Ext.read_cfg("tank").grip == false, "grip 기본 끔 (다른 모델은 안 묶음)")
 	var at: Array = info.cfg.get("attach", [])
-	check(at.size() == 1 and at[0].joint == "hand_R" and at[0].get("vm", false) == true and at[0].get("third", true) == false and ResourceLoader.exists(str(at[0].glb)), "손대포 소품 = 오른손 뼈 하나, 1인칭 전용 (third: false — 판 몸은 몸 메시 안의 대포)")
+	check(at.is_empty() and not ResourceLoader.exists("res://assets/models/ext/cannon_gun.glb"), "소품 없음 (c9 리뷰 F1: 1인칭 전용 손대포 소품은 구멍·가시가 보여 뺌 — 판 몸은 몸 메시 안의 대포, 1인칭은 코드 대포)")
 	if stage_sf != null:
 		# 손대포가 몸 메시에 붙은 채: 두 손 사이 ~ 포구 (glTF 축: 앞 x 0.15~0.46, 통 축 높이 0.58 ± 반지름 0.115, 미터 — rig_cannon.py GUN_AX) 에 대포 통 꼭짓점이 그대로 (떼어 낸 보관본은 그루터기 ~120 만 남았음)
 		var v: PackedVector3Array = stage_sf.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
@@ -1210,12 +1210,6 @@ func test_cannon_info() -> void:
 			if p.x > 0.15 and p.x < 0.46 and absf(p.z) < 0.115 and absf(p.y - 0.58) < 0.115:
 				left += 1
 		check(left >= 1000, "몸 메시에 손대포 통이 남음 (통 자리 %d 꼭짓점, 1000 이상)" % left)
-	var gun = load(str(at[0].glb)).instantiate()
-	var gtri := 0
-	for mi in gun.find_children("*", "MeshInstance3D", true, false):
-		gtri += _tris((mi as MeshInstance3D).mesh)
-	check(gtri > 800 and gtri < 2500, "손대포 소품 삼각형 %d" % gtri)
-	gun.free()
 
 
 # 묶인 뼈 (팔·손가락) 의 지역 자세가 쉬는 자세에서 벗어난 가장 큰 각 (도) 과 자리 차 (m)
@@ -1399,26 +1393,40 @@ func test_cannon_body() -> void:
 			o.free()
 
 
-# 1인칭 쌍둥이: glb 안의 닫힌 팔 cannon_vm (원본 팔·손은 대포에 녹아 있어 못 씀) + 손대포 (vm: true). 판 몸에는 안 그려짐
+# 1인칭 쌍둥이 (c9 리뷰 F1): 외부 모델을 안 붙임 (cannon.json vm_code) — 코드 몸의 팔 + 코드 대포 그대로 (chars/viewmodel.gd 가 팔꿈치 아래·대포만 그림).
+# 예전 (c9-u2): 닫힌 팔 cannon_vm + 떼어 낸 손대포 소품 cannon_gun.glb — 주먹이 감싸던 자리가 뚫려 포신 위에 보라 구멍·가시가 보였음. 판 몸 (3인칭) 은 외부 모델·두 손 묶음 그대로
 func test_cannon_first_person() -> void:
 	if not Ext.has_char("cannon"):
 		return
+	check(K.EXT_DEFAULTS.vm_code == false and Ext.vm_code("cannon"), "vm_code 기본 끔, 대포수만 켬")
 	var t = _body("cannon", false)
-	check(t.ext != null and not t.ext.third and t.ext.lod == "cannon_vm", "1인칭 쌍둥이 = cannon_vm (얻음 %s)" % (t.ext.lod if t.ext != null else "-"))
-	if t.ext != null:
-		var arm_tri := 0
-		for sf in t.ext.info.surfs:
-			if sf.vm_mesh != null:
-				arm_tri += _tris(sf.vm_mesh)
-		check(arm_tri > 100 and arm_tri < 400, "1인칭 팔 삼각형 %d (닫힌 소매·띠·주먹 두 팔)" % arm_tri)
-		check(t.ext.find_children("*", "BoneAttachment3D", true, false).size() == 1, "1인칭에는 손대포 소품 하나 (vm: true)")
-		check(t.ext.grip.is_empty(), "1인칭 쌍둥이는 안 묶음 (팔이 viewmodel 을 따라감)")
+	check(t.ext == null and t.ext_job == null, "1인칭 쌍둥이 = 코드 몸 (외부 모델 안 붙임)")
+	var gun = t._n(t.refs.get("cannon"))
+	check(gun != null and t.elbows.size() == 2, "코드 대포·팔이 있음")
+	var gun_mesh := 0
+	if gun != null:
+		gun_mesh = (gun as Node).find_children("*", "MeshInstance3D", true, false).size() + (1 if gun is MeshInstance3D else 0)
+	check(gun_mesh > 0, "코드 대포에 그릴 조각 %d" % gun_mesh)
+	var vm_surfs := 0
+	for sf in Ext.load_char("cannon").surfs:
+		if sf.vm_mesh != null:
+			vm_surfs += 1
+	check(vm_surfs == 0, "외부 모델에서 1인칭 팔 메시를 안 만듦 (%d)" % vm_surfs)
 	t.free()
+	# 다른 외부 모델 캐릭터의 1인칭은 예전처럼 외부 쌍둥이
+	for ch in EXT4:
+		if Ext.has_char(ch):
+			check(not Ext.vm_code(ch), "%s: vm_code 아님" % ch)
+			var o = _body(ch, false)
+			check(o.ext != null and not o.ext.third, "%s 1인칭 쌍둥이는 외부 모델 그대로" % ch)
+			o.free()
 	var b = _body("cannon")
+	check(b.ext != null and b.ext.third and not b.ext.grip.is_empty(), "판 몸은 외부 모델·두 손 묶음 그대로")
 	var seen := {}
 	for mi in b.ext.find_children("*", "MeshInstance3D", true, false):
 		seen[String(mi.name).split("_s")[0]] = true
 	check(not seen.has("cannon_vm") and not seen.has("cannon_lod0"), "판 몸에는 1인칭 팔·stage 메시 없음 (%s)" % [seen.keys()])
+	check(b.ext.find_children("*", "BoneAttachment3D", true, false).is_empty(), "판 몸에 소품 없음")
 	b.free()
 
 

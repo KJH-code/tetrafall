@@ -1,5 +1,5 @@
 {
- "_": "자동 리깅 대포수 '두 손 묶음' (tools/blender/tripo/ — rig_cannon_grip.py 손질 + lods.mjs LOD) — 다시 만들면 덮어씀. 키는 chars/chars_config.gd EXT_DEFAULTS",
+ "_": "자동 리깅 대포수 '두 손 묶음' (tools/blender/tripo/ — rig_cannon_grip.py 손질 + lods.mjs LOD) — 다시 만들면 덮어씀. 키는 chars/chars_config.gd EXT_DEFAULTS. vm_code: 1인칭 팔은 외부 모델 대신 코드 몸 (c9 리뷰 F1 — 떼어 낸 손대포 소품에 구멍·가시가 남아서. 다시 만들어도 이 키는 지킴)",
  "height": 1.0,
  "yaw": 0.0,
  "tint": "mask",
@@ -21,13 +21,7 @@
   4.0
  ],
  "rim_tint": [0.5, 1.0],
- "attach": [
-  {"glb": "res://assets/models/ext/cannon_gun.glb", "joint": "hand_R", "pos": [0, 0, 0], "rot": [0, 90, 0], "scale": 1.0, "vm": true, "third": false}
- ],
- "vm_snap": [
-  "elbow"
- ],
- "vm_node": "cannon_vm",
+ "vm_code": true,
  "portrait": {
   "half": 0.25,
   "up": 0.0,

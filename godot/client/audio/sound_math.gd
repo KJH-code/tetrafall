@@ -12,13 +12,15 @@ static func falloff(dist) -> float:
 	return maxf(0.2, 1.0 - float(dist) / C.SFX_HEAR_RANGE)
 
 
-# 돌발 이벤트가 시작할 때 알림음 (서버 이벤트 roundEvent 의 kind → 효과음 키): 보급은 줍는 소리, 나머지 (폭우·돌풍·저중력·빙판·번개) 는 경고음.
+# 돌발 이벤트가 시작할 때 알림음 (서버 이벤트 roundEvent 의 kind → 효과음 키): 보급은 줍는 소리, 나머지 (폭우·돌풍·저중력·빙판·번개) 는 '시작' 신호 "go".
+# 예전엔 "danger" 였는데 (c9 리뷰 F5) 압사 경고 (audio.gd — 머리 위 블록이 곧 깜) 와 같은 키·같은 파일이라 이벤트를 켠 판에선 25초마다 압사 경고와 똑같은 소리가 났음.
+# "go" = 판 시작·내 부활 때만 나는 소리 (경고 뜻 없음, 판 중간엔 안 겹침) — 예고 째깍 "tick"·낙뢰 "crit"·보급 "pickup"·압사 "danger" 와도 다른 키. 새 파일은 안 구움 (audio/baked/manifest.json 에 있는 키).
 # 종류가 비었으면 "" (안 냄)
 static func event_cue(kind) -> String:
 	var k := str(kind) if kind != null else ""
 	if k == "":
 		return ""
-	return "pickup" if k == "supply" else "danger"
+	return "pickup" if k == "supply" else "go"
 
 
 # 소리 하나의 크기·좌우 (sound.js bus): pos (게임 좌표 Vector3) 가 있고 내 소리(dist 0)가 아니면 내 귀(listener: Vector4 x,y,z,yaw) 기준

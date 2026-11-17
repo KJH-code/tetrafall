@@ -7,6 +7,7 @@ const Prof := preload("res://core/prof.gd")
 
 const C := preload("res://core/config.gd")
 const SM := preload("res://audio/sound_math.gd")
+const BM := preload("res://world/bolt_fx_math.gd") # 번개 '내 고리' 판정 (in_ring)
 const Co := preload("res://core/coords.gd")
 const Sfx := preload("res://audio/sfx.gd")
 const MusicNode := preload("res://audio/music.gd")
@@ -183,13 +184,12 @@ func _on_event(e: Dictionary) -> void:
 			sfx.play("tick", 0.0 if _mine(e) else _dist(e.x + 0.5, e.y + 0.5, e.z))
 		"boom":
 			sfx.play("boom", _dist(e.x, e.y, e.z), _pos(e))
-		"roundEvent": # 돌발 이벤트 시작 알림음 (보급 = 줍는 소리, 나머지 = 경고음 — sound_math.event_cue)
+		"roundEvent": # 돌발 이벤트 시작 알림음 (보급 = 줍는 소리, 나머지 = 시작 신호 — sound_math.event_cue)
 			var cue := SM.event_cue(e.get("kind"))
 			if cue != "":
 				sfx.play(cue)
-		"boltWarn": # 번개 예고 고리: 째깍 (내가 그 고리 안이면 = 내 발밑이면 바로 곁 소리)
-			var bm := _me()
-			var mine_ring: bool = not bm.is_empty() and Vector2(float(e.x) - bm.x, float(e.y) - bm.y).length() <= float(e.get("r", 0.0))
+		"boltWarn": # 번개 예고 고리: 째깍 (내가 그 고리 안이면 = 내 발밑이면 바로 곁 소리 — 살아서 필드에 있을 때만, 화면 신호 ui/bolt_alert.gd 와 같은 판정)
+			var mine_ring: bool = BM.in_ring(_me(), float(e.x), float(e.y), float(e.get("z", 0.0)), float(e.get("r", 0.0)))
 			sfx.play("tick", 0.0 if mine_ring else _dist(e.x, e.y, e.z))
 		"bolt": # 번개가 떨어짐
 			sfx.play("crit", _dist(e.x, e.y, e.z), _pos(e))

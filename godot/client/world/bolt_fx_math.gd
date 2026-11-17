@@ -46,6 +46,23 @@ const STRIKE := {
 	"max": 16, # 한 번에 그리는 번개 수
 }
 
+# 내가 예고 고리 안일 때 화면 신호 (ui/bolt_alert.gd — c9 리뷰 F2): 가운데 아래 판 '번개! 고리 밖으로' + 남은 초·막대, 화면 가장자리 테.
+# 1인칭 정면에서는 발밑 고리가 화면 밖 (눈높이 1.45 에서 반지름 1.2 고리는 수평선 아래 약 45°, 화면 아래 끝은 37.5°) 이라 고리만으론 내가 대상인지 모름
+const ALERT := {
+	"height": 3.0, # 맞는 발 높이 차 (칸) — 서버 EVENT_BOLT_HEIGHT (godot/server ConfigEvents.cs) 와 같은 값. 이벤트엔 반지름 r 만 와서 여기 둠
+	"text": "번개! 고리 밖으로",
+	"y": 0.66, # 1인칭: 판 가운데 ÷ 화면 높이 — 조준점·경직 글자 (가운데 + 30px) 아래, 아래 사람 판 위. 압사 경고는 위 묶음이라 안 겹침
+	"y_up": 0.34, # 3인칭·하늘 시점: 조준점 위 (위 묶음 아래) — 0.66 이면 화면 가운데 아래의 내 몸과 발밑 고리를 판이 덮음 (고리 밖으로 나가려면 내 몸·고리가 보여야 함)
+	"font": 24, "sec_font": 20, "sec_w": 56.0,
+	"glow": 0xfff0a0, # 번개 연노랑 (예고 채운 원·번개 띠와 같은 색)
+	"plate_alpha": 0.86, # 판 바탕 (잉크 남색) 알파
+	"border": 3, "corner": 4, # 테 굵기·모서리 (px) — 압사 경고 (기울인 평행사변형·줄무늬) 와 다른 모양
+	"bar_h": 5.0, "bar_dim": 0.25, # 남은 시간 막대 높이 (px)·빈 자리 알파
+	"edge": [0.35, 0.7], # 고리 안에 있는 동안 화면 가장자리 테 알파 (깜빡임 낮음 ↔ 높음)
+	"blink_ms": 240.0, # 깜빡임 한 번
+	"hit_alpha": 1.0, "hit_ms": 400.0, # 내 자리에 떨어진 순간 테 알파 → 0 까지 걸리는 시간 (화면 번쩍 EDGE.fade 와 같은 길이)
+}
+
 static var _warn_mesh: ArrayMesh = null
 static var _quad: ArrayMesh = null
 
@@ -243,6 +260,63 @@ static func warn_expire(list: Array, now: float) -> int:
 			list.remove_at(i)
 			n += 1
 	return n
+
+
+# ---------- 내가 대상인가 (화면 신호 ui/bolt_alert.gd · 소리 audio.gd) ----------
+# 나 (스냅샷 players[] 한 명) 가 (x, y, z) 반지름 r 고리 안인가 — 서버 Game.BoltStrike 판정과 같은 식: 수평 거리 ≤ r, 발 높이 차 ≤ ALERT.height.
+# 살아서 필드에 있을 때만 (c9 리뷰 F6): 서버는 죽은 사람의 마지막 자리도 스냅샷에 보내고, 블록 마스터는 살아 있지만 필드에 없음
+static func in_ring(me: Dictionary, x: float, y: float, z: float, r: float) -> bool:
+	if me.is_empty() or not bool(me.get("alive", false)) or bool(me.get("master", false)) or me.get("x") == null or me.get("y") == null:
+		return false
+	return Vector2(x - float(me.x), y - float(me.y)).length() <= r and absf(float(me.get("z", z)) - z) <= float(ALERT.height)
+
+
+# 내가 안에 있는 예고 가운데 가장 먼저 떨어질 것: {left (남은 ms, 0 이상), ms (예고 시간)}. 없으면 {}
+static func alert_pick(list: Array, me: Dictionary, now: float) -> Dictionary:
+	var out := {}
+	for w in list:
+		if not in_ring(me, float(w.x), float(w.y), float(w.z), float(w.r)):
+			continue
+		var left := maxf(0.0, float(w.t0) + float(w.ms) - now)
+		if out.is_empty() or left < float(out.left):
+			out = {"left": left, "ms": float(w.ms)}
+	return out
+
+
+# 떨어진 번개 (서버 이벤트 bolt) 가 내 자리인가: 맞은 사람 목록에 내가 있거나, 떨어진 고리 안에 내가 있음 (무적·경직이라 안 맞았어도 내 자리)
+static func struck(me: Dictionary, e: Dictionary) -> bool:
+	if me.is_empty():
+		return false
+	var hits = e.get("hits", [])
+	if hits is Array and me.get("id") != null:
+		for h in hits:
+			if int(h) == int(me.id):
+				return true
+	if e.get("x") == null or e.get("y") == null:
+		return false
+	return in_ring(me, float(e.x), float(e.y), float(e.get("z", 0.0)), float(e.get("r", 0.0)))
+
+
+# 판 가운데 높이 ÷ 화면 높이: 1인칭 (View.mode "first") 은 조준점 아래, 그 밖 (3인칭·하늘 시점) 은 조준점 위
+static func alert_y(view_mode: String) -> float:
+	return float(ALERT.y) if view_mode == "first" else float(ALERT.y_up)
+
+
+# 남은 초 글자 (0.1초 단위 — 압사 경고 초 칸과 같은 꼴)
+static func alert_sec(left_ms: float) -> String:
+	return "%.1f초" % (maxf(0.0, left_ms) / 1000.0)
+
+
+# 화면 가장자리 테 알파 (0 = 끔): 고리 안이면 edge[0] ↔ edge[1] 사이를 blink_ms 마다 깜빡, 내 자리에 떨어졌으면 (hit_t0) hit_alpha 에서 hit_ms 동안 0 으로 — 둘 중 큰 값
+static func alert_edge(inside: bool, now: float, hit_t0: float) -> float:
+	var k := 0.0
+	if inside:
+		var e: Array = ALERT.edge
+		k = lerpf(float(e[0]), float(e[1]), 0.5 - 0.5 * cos(TAU * now / float(ALERT.blink_ms)))
+	var t := now - hit_t0
+	if t >= 0.0 and t < float(ALERT.hit_ms):
+		k = maxf(k, float(ALERT.hit_alpha) * (1.0 - t / float(ALERT.hit_ms)))
+	return k
 
 
 # 판 중이 아니면 (판 끝·대기실·카운트다운) 예고·번개를 다 비움 — 서버도 판이 끝나면 남은 예고를 버림

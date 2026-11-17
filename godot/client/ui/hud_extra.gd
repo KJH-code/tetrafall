@@ -17,6 +17,7 @@ const ULT_FAIL_TEXT := {"noBlock": "블록 없음", "noSpace": "자리 없음", 
 const TIMER_LOOK := {"control": [Color("20e0e0"), "조종권"], "power": [Color("ffb040"), "아이템"]}
 const U := preload("res://ui/ui_calc.gd")
 const Edge := preload("res://ui/screen_edge.gd") # c7 화면 가장자리 테 (번쩍·경직)
+const BoltAlert := preload("res://ui/bolt_alert.gd") # c9 리뷰 F2: 번개 예고 고리 안이면 가운데 아래 판 + 가장자리 테
 # 압사 경고 줄무늬 (JS repeating-linear-gradient(-62deg, #ff4426 0 16px, #d92a0c 16px 32px)): 판 바탕 빨강 (#ff4426) 자리만 줄무늬로 바꿈 (글자·노랑 끝은 그대로)
 # + 판 전체 밝기 깜빡임 (danger-blink)
 const STRIPE_SHADER := "shader_type canvas_item;\nvoid fragment() {\n\tvec4 c = COLOR;\n\tif (distance(c.rgb, vec3(1.0, 0.267, 0.149)) < 0.02) {\n\t\tfloat k = mod(FRAGCOORD.x * 0.4695 + FRAGCOORD.y * 0.8829, 32.0);\n\t\tc.rgb = k < 16.0 ? vec3(1.0, 0.267, 0.149) : vec3(0.851, 0.165, 0.047);\n\t}\n\tc.rgb *= mod(TIME, 0.32) < 0.16 ? 1.18 : 0.9;\n\tCOLOR = c;\n}\n"
@@ -41,6 +42,7 @@ var hit_until := -1.0
 var stun: Label
 var vignette: Edge # 경직 붉은 테
 var flash: Edge # 화면 번쩍 (맞음·조준당함·노래·연습 초기화) 테
+var bolt_alert: BoltAlert # 번개 예고 '내가 대상' 신호 (돌발 이벤트 — ui/bolt_alert.gd)
 var center: Label
 var wheel: Control
 var wheel_items: Array[Label] = []
@@ -75,6 +77,8 @@ func _ready() -> void:
 	add_child(vignette)
 	flash = _edge_rect(Color(1, 1, 1, 0))
 	add_child(flash)
+	bolt_alert = BoltAlert.new()
+	add_child(bolt_alert)
 	# 위 묶음 (#top): 시계 · 배너 · 경고 · 알림 — 점수 띠 아래 가운데
 	top_box = VBoxContainer.new()
 	top_box.alignment = BoxContainer.ALIGNMENT_BEGIN
@@ -388,6 +392,7 @@ func show_hitmarker() -> void:
 
 func _on_event(e: Dictionary) -> void:
 	var me_id = Store.my_id
+	bolt_alert.on_event(e, Store.me(), Net.now_ms()) # boltWarn·bolt 만 봄
 	match str(e.get("type", "")):
 		"ultFail": # 내 R 을 못 씀: R 칸이 빨갛게 흔들림 + 짧은 이유
 			if e.get("who") == me_id:
@@ -581,6 +586,8 @@ func refresh(st: Dictionary) -> void:
 	drow.visible = dg != null
 	if dg != null:
 		danger_sec.text = "%.1f초" % (float(dg) / 1000.0)
+	# 번개 예고: 내가 고리 안이면 가운데 아래 판 + 가장자리 테 (압사 경고와 자리·모양이 달라 같이 떠도 갈림). 시각은 판 시계 (녹화 재연에서도 스냅샷과 같은 빠르기)
+	bolt_alert.refresh(p, Net.now_ms(), playing, str(View.mode))
 	# 승리 큰 글씨: 결과 표 전까지 (View.victory_stage — slow·closeup 동안)
 	var stage := str(View.victory_stage)
 	win_big.visible = st.get("phase") == "over" and win_until > 0 and (now < win_until or stage in ["slow", "closeup"])

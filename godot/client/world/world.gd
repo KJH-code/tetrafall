@@ -98,6 +98,7 @@ const VIEWMODEL := "res://chars/viewmodel.gd"
 
 
 # 트리에 안 들어간 채 버려지는 World (테스트가 World 만 만들어 씀): 선언에서 만든 bolt_fx 는 자식이 아니라 같이 안 지워짐 → 여기서 지움
+# (c9 리뷰 F11: 번개 스펙에 없던 함수지만 둠 — 지우면 그런 World 를 버릴 때마다 bolt_fx 노드가 새어 나감. 트리에 들어간 World 는 자식이라 여기 안 걸림)
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE and is_instance_valid(bolt_fx) and bolt_fx.get_parent() == null:
 		bolt_fx.free()

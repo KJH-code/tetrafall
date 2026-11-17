@@ -51,11 +51,12 @@ public class EventBoltTests
         p.grounded = dz == 0;
     }
 
-    // (x, y) 기둥 꼭대기에 예고를 넣고 그 자리에서 바로 떨어뜨림 (물리 없이 UpdateRoundEvents 만 → 자리가 틱에 안 흔들림). 돌려줌: bolt 이벤트
-    static JsonElement Strike(Game g, double x, double y, int target, int? z = null)
+    // (x, y) 에 예고를 넣고 그 자리에서 바로 떨어뜨림 (물리 없이 UpdateRoundEvents 만 → 자리가 틱에 안 흔들림). 돌려줌: bolt 이벤트.
+    // 예고 높이는 따로 안 주면 서버와 같이 대상 발 높이 (Game.BoltWarnZ)
+    static JsonElement Strike(Game g, double x, double y, int target, double? z = null)
     {
         g.DrainEvents();
-        g.bolts.Add(new BoltWarn { id = 900 + g.bolts.Count, x = x, y = y, z = z ?? g.ColumnTop((int)Math.Floor(x), (int)Math.Floor(y)), at = g.time, target = target });
+        g.bolts.Add(new BoltWarn { id = 900 + g.bolts.Count, x = x, y = y, z = z ?? g.BoltWarnZ(g.GetPlayer(target)!), at = g.time, target = target });
         g.UpdateRoundEvents(TICK);
         Assert.Empty(g.bolts);
         return Assert.Single(EventsOf(g, "bolt"));
@@ -378,7 +379,7 @@ public class EventBoltTests
     }
 
     // 봇 하나 (상대 없음 — 다른 한 명은 죽어 있음) 가 평지에 서 있음. warn: 발밑에 예고를 띄움. 돌려줌: EVENT_BOLT_WARN_MS 뒤 그 자리에서 수평 거리
-    static double BotDistAfterWarn(uint seed, bool warn)
+    static double BotDistAfterWarn(uint seed, bool warn, double dz = 0)
     {
         var g = new Game(null, characters: true);
         g.rng = new Mulberry32(seed).AsFunc();
@@ -394,7 +395,7 @@ public class EventBoltTests
         Assert.True(g.OnField(bot));
         double x = bot.x, y = bot.y;
         double at = g.time + C.EVENT_BOLT_WARN_MS;
-        if (warn) g.bolts.Add(new BoltWarn { id = 1, x = x, y = y, z = g.ColumnTop((int)Math.Floor(x), (int)Math.Floor(y)), at = at, target = bot.id });
+        if (warn) g.bolts.Add(new BoltWarn { id = 1, x = x, y = y, z = g.BoltWarnZ(bot) + dz, at = at, target = bot.id });
         while (g.time < at - TICK / 2) g.Tick(TICK); // 떨어지기 직전 틱까지 (떨어지는 틱의 물리는 판정 앞에 돎 — 한 틱 차이는 문턱에 안 걸림)
         return g.OnField(bot) ? JsMath.Hypot(bot.x - x, bot.y - y) : double.PositiveInfinity;
     }
@@ -415,6 +416,131 @@ public class EventBoltTests
         }
         Assert.True(out_ >= 14, $"예고 시각에 반경 밖 {out_}/20 (거리 {string.Join(" ", dists)})");
         Assert.True(idleOut <= 6, $"예고가 없는데도 자리를 뜬 판 {idleOut}/20 — 견줄 값이 뜻이 없음");
+    }
+
+    // (f) 봇은 발 높이 차가 판정 밖 (EVENT_BOLT_HEIGHT 넘음 — Game.BoltStrike 와 같은 '>') 인 예고는 안 피함 (c9 리뷰 F4):
+    // 그런 예고가 떠 있어도 예고가 없을 때와 한 치도 다르지 않게 움직임. 딱 EVENT_BOLT_HEIGHT 차 (맞는 높이) 는 피함
+    [Fact]
+    public void 봇은_높이가_안_닿는_예고는_안_피함()
+    {
+        int moved = 0;
+        for (uint seed = 1; seed <= 20; seed++)
+        {
+            double idle = BotDistAfterWarn(seed, warn: false);
+            foreach (double dz in new[] { C.EVENT_BOLT_HEIGHT + 0.5, -(C.EVENT_BOLT_HEIGHT + 0.5) })
+                Assert.Equal(idle, BotDistAfterWarn(seed, warn: true, dz: dz));
+            if (BotDistAfterWarn(seed, warn: true, dz: C.EVENT_BOLT_HEIGHT) > C.EVENT_BOLT_RADIUS) moved++;
+        }
+        Assert.True(moved >= 14, $"높이 차가 딱 EVENT_BOLT_HEIGHT 인 예고를 피한 판 {moved}/20");
+    }
+
+    // 필드 위 사람이 a 뿐일 때 번개 한 차례를 실제로 돌려 (BoltVolley) a 의 예고를 받고, 그 자리에서 바로 떨어뜨림. 돌려줌: (boltWarn, bolt)
+    static (JsonElement warn, JsonElement bolt) VolleyOn(Game g, Player a)
+    {
+        g.bolts.Clear();
+        g.StartRoundEvent("bolt");
+        g.DrainEvents();
+        g.UpdateRoundEvents(TICK);
+        var warn = Assert.Single(EventsOf(g, "boltWarn"));
+        var w = Assert.Single(g.bolts);
+        Assert.Equal(a.id, w.target);
+        w.at = g.time;
+        g.UpdateRoundEvents(TICK);
+        return (warn, Assert.Single(EventsOf(g, "bolt")));
+    }
+
+    // (h) 예고 높이는 대상 발 높이 (c9 리뷰 F3): 머리 위에 처마 (착지한 블록의 튀어나온 칸) 가 있어도 그 윗면이 아니라 발밑 —
+    // 가만히 서 있으면 맞고 로그는 '맞음'. 예전 (기둥 꼭대기) 에는 처마가 +3칸 이상이면 '피함', +2칸이면 고리가 머리 위 블록 윗면에 그려졌음
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(5)]
+    public void 처마_밑에_서_있어도_발밑에_예고되고_맞음(int up)
+    {
+        var (g, lines) = Humans(2, "kills");
+        var a = g.GetPlayer(1)!;
+        var b = g.GetPlayer(2)!;
+        g.Kill(b, "fall");
+        b.respawnAt = double.PositiveInfinity;
+        Put(g, a, 5.5, 5.5);
+        int feet = (int)a.z;
+        g.grid[g.Idx(5, 5, feet + up)] = 1; // 머리 위 처마: 발밑 기둥과 떨어진 칸
+        Assert.Equal(feet + up + 1, g.ColumnTop(5, 5));
+        lines.Clear();
+        var (warn, bolt) = VolleyOn(g, a);
+        Assert.Equal(feet, warn.GetProperty("z").GetDouble());
+        Assert.Equal(feet, bolt.GetProperty("z").GetDouble());
+        Assert.Equal(new[] { a.id }, Hits(bolt));
+        Assert.Equal(C.EVENT_BOLT_DAMAGE, a.damage);
+        Assert.Contains($"  [번개] {a.name} 맞음", lines);
+        Assert.DoesNotContain($"  [번개] {a.name} 피함", lines);
+    }
+
+    // 공중 (점프·띄워짐) 인 대상은 발밑에서 아래로 처음 만나는 블록 윗면에 예고: 머리 위 처마도, 발보다 높은 옆 칸도 아님. 발밑에 블록이 없으면 바닥 0
+    [Fact]
+    public void 공중이면_발밑_아래_첫_블록_윗면에_예고()
+    {
+        var (g, _) = Humans(2, "kills");
+        var a = g.GetPlayer(1)!;
+        var b = g.GetPlayer(2)!;
+        g.Kill(b, "fall");
+        b.respawnAt = double.PositiveInfinity;
+        Put(g, a, 5.5, 5.5);
+        int ground = (int)a.z;
+        g.grid[g.Idx(5, 5, ground + 6)] = 1; // 머리 위 처마
+        Put(g, a, 5.5, 5.5);
+        a.z = ground + 1.5; // 처마 밑 공중
+        a.grounded = false;
+        Assert.Equal(ground, g.BoltWarnZ(a));
+        var (warn, bolt) = VolleyOn(g, a);
+        Assert.Equal(ground, warn.GetProperty("z").GetDouble());
+        Assert.Equal(new[] { a.id }, Hits(bolt)); // 높이 차 1.5 — 맞음
+        // 처마 위 공중이면 처마 윗면
+        a.z = ground + 7.4;
+        Assert.Equal(ground + 7, g.BoltWarnZ(a));
+        // 서 있으면 발 높이 그대로 (칸 경계에 걸쳐 서서 가운데 기둥이 더 낮아도)
+        a.z = ground + 7;
+        a.grounded = true;
+        Assert.Equal(ground + 7, g.BoltWarnZ(a));
+        // 발밑에 블록이 하나도 없는 기둥: 바닥 0
+        for (int z = 0; z < g.H; z++) g.grid[g.Idx(5, 5, z)] = 0;
+        a.z = 2.3;
+        a.grounded = false;
+        Assert.Equal(0, g.BoltWarnZ(a));
+    }
+
+    // 탱크 아머 (F 돌진 중·R 떠오르는 동안) 가 번개를 버팀 (c9 리뷰 F7): 피해 % 만 들어가고 넉백·경직 없음, 로그의 때린 쪽은 '?' 가 아니라 '번개',
+    // armor 이벤트의 by 는 없음 (null), 번개 로그·hits 는 '맞음' 그대로
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void 탱크_아머는_번개를_버티고_로그는_번개(bool charge)
+    {
+        var (g, lines) = Humans(2, "kills");
+        var a = g.GetPlayer(1)!;
+        var b = g.GetPlayer(2)!;
+        Assert.Equal("tank", a.@char);
+        Put(g, b, 1.5, 1.5);
+        Put(g, a, 5.5, 5.5);
+        if (charge) a.chargeUntil = g.time + 10000;
+        else a.slamAt = g.time + 10000;
+        lines.Clear();
+        g.DrainEvents();
+        g.bolts.Add(new BoltWarn { id = 901, x = 5.2, y = 5.5, z = g.BoltWarnZ(a), at = g.time, target = a.id });
+        g.UpdateRoundEvents(TICK);
+        var evs = g.DrainEvents().Select(J).ToList();
+        var bolt = Assert.Single(evs, e => e.GetProperty("type").GetString() == "bolt");
+        var armor = Assert.Single(evs, e => e.GetProperty("type").GetString() == "armor");
+        Assert.Equal(new[] { a.id }, Hits(bolt));
+        Assert.Equal(a.id, armor.GetProperty("who").GetInt32());
+        Assert.Equal(JsonValueKind.Null, armor.GetProperty("by").ValueKind);
+        Assert.Equal(C.EVENT_BOLT_DAMAGE, a.damage);
+        Assert.Equal(0, a.stunUntil); // 경직·넉백 없음
+        Assert.Equal(0, a.kbx);
+        Assert.Null(a.lastHit);
+        Assert.Contains($"  [아머] {a.name} ← 번개 버팀 ({a.name} {JsNumber.ToJs(a.damage)}%)", lines);
+        Assert.DoesNotContain(lines, l => l.Contains("← ?"));
+        Assert.Contains($"  [번개] {a.name} 맞음", lines);
     }
 
     // (g) 번개만 나오는 봇 8명 판 (생존·킬 점수전, 시드 3개씩): 예외 없이 끝까지 가고, 번개가 실제로 사람을 맞힘

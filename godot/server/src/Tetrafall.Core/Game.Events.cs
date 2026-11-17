@@ -159,8 +159,23 @@ public sealed partial class Game
     // 지금 보이는 번개 예고 (봇 Bot.VisibleDangers 가 읽음): 판 중이고 이번 판 것일 때만 — 판이 끝난 틱 뒤로는 UpdateRoundEvents 가 안 돌아 목록이 남을 수 있음
     public IReadOnlyList<BoltWarn> ActiveBolts() => phase == "playing" && evRoundStart == roundStartTime ? bolts : Array.Empty<BoltWarn>();
 
+    // 번개 예고 높이 = 대상 발 높이: 서 있으면 발 높이 그대로, 공중이면 발밑에서 아래로 처음 만나는 블록 윗면 (없으면 바닥 0).
+    // 기둥 꼭대기 (ColumnTop) 로 잡으면 머리 위 처마 (착지한 블록의 튀어나온 칸) 윗면이 예고 높이가 돼,
+    // 가만히 서 있는 대상이 높이 차로 안 맞고 고리도 머리 위에 그려짐 (c9 리뷰 F3)
+    public double BoltWarnZ(Player t)
+    {
+        if (t.grounded) return t.z;
+        int cx = (int)Math.Floor(t.x), cy = (int)Math.Floor(t.y);
+        if (!InXY(cx, cy)) return 0;
+        for (int z = Math.Min(H, (int)Math.Floor(t.z + 1e-9)) - 1; z >= 0; z--)
+        {
+            if (grid[Idx(cx, cy, z)] != 0) return z + 1;
+        }
+        return 0;
+    }
+
     // 번개 한 차례: 필드 위 사람 (Players 순서) 중 rng 로 겹침 없이 ceil(사람 수 × EVENT_BOLT_SHARE) 명 (최소 1) 을 골라 발밑에 예고.
-    // 자리는 이 순간의 x·y 와 그 기둥 꼭대기에 고정 (따라가지 않음). 판 밖 공중 (밀려 떨어지는 중) 인 사람은 뽑혀도 예고 없이 건너뜀
+    // 자리는 이 순간의 x·y 와 발 높이 (BoltWarnZ) 에 고정 (따라가지 않음). 판 밖 공중 (밀려 떨어지는 중) 인 사람은 뽑혀도 예고 없이 건너뜀
     void BoltVolley()
     {
         var pool = Players().Where(OnField).ToList();
@@ -173,7 +188,7 @@ public sealed partial class Game
             pool.RemoveAt(j);
             int cx = (int)Math.Floor(t.x), cy = (int)Math.Floor(t.y);
             if (!InXY(cx, cy)) continue;
-            var w = new BoltWarn { id = ++boltCounter, x = t.x, y = t.y, z = ColumnTop(cx, cy), at = time + C.EVENT_BOLT_WARN_MS, target = t.id };
+            var w = new BoltWarn { id = ++boltCounter, x = t.x, y = t.y, z = BoltWarnZ(t), at = time + C.EVENT_BOLT_WARN_MS, target = t.id };
             bolts.Add(w);
             Emit(o => o.P("type", "boltWarn").P("id", w.id).P("x", w.x).P("y", w.y).P("z", w.z).P("r", C.EVENT_BOLT_RADIUS).P("ms", C.EVENT_BOLT_WARN_MS));
             Log($"  [번개] {t.name} 예고 ({cx},{cy})");
@@ -216,7 +231,9 @@ public sealed partial class Game
             foreach (int id in hits) o.Num(id);
             o.EndArr();
         });
-        // 로그: 대상은 맞음·피함 (고리 안에 있었는데 무적·경직이면 무시), 곁에서 맞은 사람은 '옆'. 대상이 그새 죽었거나 나갔으면 대상 줄 없음
+        // 로그: 대상은 맞음·피함 (고리 안에 있었는데 무적·경직이면 무시), 곁에서 맞은 사람은 '옆'. 대상이 그새 죽었거나 나갔으면 대상 줄 없음.
+        // '무시' 갈래를 '피함' 과 따로 두는 까닭 (c9 리뷰 F11 — 스펙은 맞음/피함 둘): 고리 안에 서 있었는데 무적·경직이라 안 맞은 것을 '피함' 으로 세면
+        // 통계 '맞음 ÷ (맞음 + 피함)' 의 '피함' 이 비킨 것과 섞임 → 그 비율은 무시 줄을 빼고 셈
         var target = GetPlayer(w.target);
         if (target != null && OnField(target))
             Log($"  [번개] {target.name} {(hits.Contains(target.id) ? "맞음" : ignored ?? "피함")}");
@@ -293,7 +310,7 @@ public sealed class BoltWarn
 {
     public int id;
     public double x, y;
-    public int z;
+    public double z; // 예고 바닥 = 예고 순간 대상 발 높이 (Game.BoltWarnZ)
     public double at;
     public int target;
 }
