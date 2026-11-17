@@ -981,6 +981,8 @@ class Ext extends Node3D:
 	var arm_delta := {} # W40: 클립이 코드 자세에서 벗어난 팔 뼈 (뼈 번호 → Quaternion: base⁻¹ · 클립 결과), 공격·스킬 클립 중에만 — 1인칭 쌍둥이가 읽어 감
 	var src_ext = null # W40 1인칭 쌍둥이만: 베끼는 3인칭 몸의 Ext
 	var clip_arm_k := 0.0
+	const Grip_ := preload("res://chars/ext_grip.gd")
+	var grip := {} # c9 두 손 묶음: 쉬는 자세로 묶는 뼈 번호 집합 (cfg.grip 인 판 몸만 — _bind 가 처음 한 번, 1인칭 쌍둥이·다른 모델은 빈 표)
 
 	func setup(b: Node3D, inf: Dictionary, third_: bool) -> bool:
 		if not setup_a(b, inf, third_):
@@ -1235,6 +1237,15 @@ class Ext extends Node3D:
 		for b3 in info.order:
 			if need.has(int(b3)):
 				need_order.append(int(b3))
+		# c9 두 손 묶음 (cfg.grip, chars/ext_grip.gd): 묶을 뼈 번호 집합 — 모델마다 처음 한 번만 만들어 info 에 두고 판 몸들이 같이 씀
+		if third and bool(info.cfg.get("grip", false)):
+			if not info.has("grip_set"):
+				info["grip_set"] = Grip_.bones(info.names)
+			grip = info.grip_set
+			# 묶인 뼈는 이 몸의 뼈대에서 자세를 끔 (Skeleton3D.set_bone_enabled: 꺼진 뼈는 늘 쉬는 자세로 그려짐) — _code_bones 뒤에 도는 가산 층
+			# (치명타 손 흔들림·방향 전환 팔 반동·일어나기 = 두 팔을 따로 돌림) 이 이 뼈에 회전을 써도 든 물건이 안 늘어남
+			for gb in grip:
+				sk.set_bone_enabled(int(gb), false)
 
 	# 표정 (cfg.faces): 경직·맞은 직후 = hit, 공격 동작 = attack, 나머지 idle
 	func expression() -> String:
@@ -1359,7 +1370,14 @@ class Ext extends Node3D:
 		var rl: Array = info.rest_local
 		for b in need_order:
 			var p := parents[b]
-			if mapped.has(b):
+			if grip.has(b): # c9 두 손 묶음: 맞춘 회전 대신 부모 아래 쉬는 자세 (팔·든 물건이 가슴 뼈에 단단히 — 한 팔만 움직여 물건이 늘어나지 않게)
+				var rest: Transform3D = rl[b]
+				glob[b] = (glob[p] * rest) if p >= 0 else rest
+				if mapped.has(b): # 안 맞춘 뼈는 아무도 안 써서 쉬는 자세 그대로
+					sk.set_bone_pose_position(b, rest.origin)
+					sk.set_bone_pose_rotation(b, rest.basis.get_rotation_quaternion())
+					sk.set_bone_pose_scale(b, rest.basis.get_scale())
+			elif mapped.has(b):
 				var g: Transform3D = glob[b]
 				if g.origin == Vector3.INF: # 자리 기준이 없음 → 부모 아래 쉬는 자리
 					g.origin = ((glob[p] if p >= 0 else Transform3D.IDENTITY) * (rl[b] as Transform3D)).origin

@@ -809,7 +809,7 @@ static func _push_of(o) -> float:
 func test_c7_baked_matches_ext_rim() -> void:
 	const K := preload("res://chars/chars_config.gd")
 	const E := preload("res://chars/external.gd")
-	for ch in ["tank", "ninja", "hunter", "hook"]:
+	for ch in ["tank", "ninja", "hunter", "hook", "cannon"]:
 		var ep := "res://assets/models/ext/%s.json" % ch
 		if not FileAccess.file_exists(ep):
 			continue

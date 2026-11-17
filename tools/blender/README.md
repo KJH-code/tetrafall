@@ -231,7 +231,7 @@ LOD_LOCK=1 node tools/blender/tripo/lods.mjs <폴더>/hook_rigged.glb <폴더>/h
 - 확인 그림: `tools/blender/move_shot.gd` 에 `SHOT_CHAR=hook` (동작 목록 `SHOT_MOVES`).
 - 알려진 한계: 오른 주먹 둘레 찢어진 조각 (위), 코트 치맛자락이 다리 사이에서 늘어나는 건 원본 그대로 (큰 다리 자세에서 약간), 모자 틈 (판 LOD 에서 금 테 사이 작은 구멍 몇 개), 코드 평타 '주먹'은 오른팔이 벨트에서 뻗는 모양이라 주먹이 모델과 길이가 다름.
 
-## 13. W26 — 자동 리깅 대포수 (2026-11-05, `tools/blender/tripo/rig_cannon.py`) — **품질 미달, 기본 켬 비권장 (아래 '한계')**
+## 13. W26 — 자동 리깅 대포수 (2026-11-05, `tools/blender/tripo/rig_cannon.py`) — **품질 미달, 기본 켬 비권장 (아래 '한계')** → c9 두 손 묶음으로 되살림 (절 끝)
 
 원본 `tripo/src/cannon_tripo_rigged.glb` (스킨 메시 하나 19,028 삼각형, **Tripo 뼈 이름 78개** — 접두어 없음 `BoneRoot·Hip·Pelvis·Waist·Spine01/02·NeckTwist01/02·Head·L_/R_Thigh·Calf·Foot·ToeBase·Clavicle·Upperarm·Forearm·Hand·손가락 1~3·트위스트·ShareBone`, 알베도 4096, 애니메이션 없음, 두 손으로 앞에 든 손대포가 몸 메시에 붙어 있음, 앞 = glTF +X).
 
@@ -249,6 +249,19 @@ LOD_LOCK=1 node tools/blender/tripo/lods.mjs <폴더>/cannon_rigged.glb <폴더>
 - **1인칭**: 원본 팔·손은 대포에 손가락이 녹아 있어 대포를 떼면 속이 빈 껍질이라 못 씀 → `make_vm` 이 닫힌 전용 팔 (소매 8각 통 + 가죽 띠 + 주먹, 152 삼각형, 뼈에 가중치 1, 색은 알베도 한 점) 을 `cannon_vm` 으로. 손대포는 `vm: true` 로 같은 소품을 쌍둥이 오른손에.
 - **한계 (캡처로 확인)**: ① 주먹에 녹은 나무 그루터기 (~120 꼭짓점) 와 대포를 뗀 자리의 속 면이 몸에 남아, 서서 있을 때 손 주변에 **어두운 보라 (외곽선 껍질) 면** 이 보이고 후려치기·반동·점프처럼 팔을 크게 쓰는 동작에서 그 면이 리본처럼 늘어남. ② 대포 소품 가장자리에 가는 가시. ③ 1인칭 팔은 상자꼴 (탱크 W20 과 같은 수준). 서 있기·걷기·포탄 쏘기 자세는 알아볼 만하지만 동작 전반이 쓸 만하지 않아 **기본으로 켜지 말 것** — 고치려면 원본을 대포가 따로 떨어진 모델로 다시 뽑거나 (손은 빈 주먹, 대포는 별도 메시) 손으로 메시 수선이 필요.
 - 확인 그림 (`stage_shot.gd`·`move_shot.gd` `SHOT_CHAR=cannon`, `vm_shots.gd <폴더> x cannon --ext`): 코드 어깨 자세 대신 두 손 자세인 것, 팀 색, 동작 contact sheet.
+
+**c9 (2026-11-17) 두 손 묶음으로 되살림 — `tripo/rig_cannon_grip.py`** (위 '손대포'·'자세'·'한계 ①' 을 대체, 지금 `ext/cannon.glb` 는 이 길로 만든 것):
+
+```
+<bpy 파이썬> tools/blender/tripo/rig_cannon_grip.py -- --out <폴더>   # → cannon_rigged.glb (대포가 붙은 cannon_lod0 19,028 + cannon_vm + 뼈대) + cannon_gun.glb (1인칭 전용 소품)
+LOD_ERR=0.01 node tools/blender/tripo/lods.mjs <폴더>/cannon_rigged.glb <폴더>/cannon.glb cannon 8000   # 판 LOD 하나 (8,379)
+```
+
+- `rig_cannon.py` 의 `build`·`make_vm` 을 그대로 쓰고 **몸에서는 `split_gun` 을 건너뜀** (몸 = 대포가 두 손에 붙은 채). 1인칭 소품 `cannon_gun.glb` 는 몸 복사본에서 `split_gun` 으로 떼어 예전과 같은 메시 (복사본은 버림). 몸 색 칸 넓이 8.6% 그대로.
+- 대포가 늘어나지 않게 하는 일은 메시가 아니라 로더가 함: `cannon.json` `"grip": true` → 판 몸에서 팔·손가락 뼈를 쉬는 자세로 묶음 (`godot/client/chars/ext_grip.gd`·`external.gd` `_code_bones`, `chars/EXTERNAL.md` 대포수 문단). `hold`·판 몸 `attach` 는 없앰 (`attach` 는 `"third": false` 로 1인칭만).
+- **LOD 오차**: 기본 오차 (0.05) 로 줄이면 UV 섬 사이 검은 바탕을 덮는 삼각형 12개 (넓이 1%) 가 생겨 다리·두건에 검은 삼각형이 보임 (가장자리 잠금 `LOD_LOCK=1` 로도 그대로, 양면 재질과도 무관) → `LOD_ERR=0.01` (8,379 삼각형, 검은 삼각형 0).
+- **ICC 구획**: bpy 5.x 가 JPEG 에 넣는 lcms ICC 프로필 (APP2) 을 고도 4.7 JPEG 읽기가 못 읽어 가져오기가 `Couldn't load image index '0'` 로 실패함 → 스크립트가 내보낸 glb 안 JPEG 에서 그 구획만 뗌 (`strip_icc`, 픽셀은 그대로). 다시 만들어도 glb 바이트가 같음.
+- 남은 한계: ② 대포 소품 가장자리 가시·주먹 자리 구멍, ③ 상자꼴 1인칭 팔은 그대로 (1인칭에서만 보임). 이음선 합치고 구멍 메우기를 시험했으나 큰 구멍이 한 고리가 아니라 안 메워져 넣지 않음 — 고치려면 대포가 따로 떨어진 모델이 필요.
 
 
 ## 14. W28 — 1인칭 팔이 이동·평타 때 공중에 떠 보임 (2026-11-06)

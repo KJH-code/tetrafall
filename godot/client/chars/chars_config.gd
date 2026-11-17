@@ -57,7 +57,8 @@ const EXT := true
 # label_lift 머리 위 이름표 올림 (m, 모델이 코드 몸보다 클 때) · face_glow 얼굴 재질이 제 색으로 빛남 (가림형: 투구 안 어둠의 눈) · outline 외곽선 굵기 배율 (C.OUTLINE_THICKNESS ×, 얼굴엔 안 그림) · rim [세기, 거듭제곱] 가장자리 빛 · tint "mask" 면 몸 색 칸 (UV2.x = 1) 만 플레이어 색을 곱함
 const EXT_DEFAULTS := {"bones": {}, "yaw": 90.0, "height": 1.0, "offset": [0, 0, 0], "tint": "band", "tint_k": 0.6, "band": [0.17, 0.035, 0.0], "band_joint": "waist",
 	"keep": [], "attach": [], "vm_from": "elbow", "vm_snap": ["elbow"], "vm_node": "", "clips": {}, "cloth": [], "lods": {}, "dash_wrist": {}, "vm_bone_scale": {}, "skin_mask": {}, "faces": {}, "outline": 1.0, "rim": [0.0, 3.0], "rope_bone": "",
-	"double": false, "outline_push": 0.0, "rim_tint": [0.0, 0.0], "rim_gate": [0.35, 0.65]}
+	"double": false, "outline_push": 0.0, "rim_tint": [0.0, 0.0], "rim_gate": [0.35, 0.65], "grip": false}
+# c9 (external.gd _code_bones·chars/ext_grip.gd): grip 두 손 묶음 — 판 몸에서 팔 (빗장 ~ 손가락) 뼈를 쉬는 자세로 묶음 (두 손에 든 물건이 몸 메시와 한 덩어리인 모델: 대포수)
 # c7-u1 (external.gd style·look): double 불투명 툰을 양면으로 (한 겹 천 안쪽이 외곽선 색으로 보이던 것 — 사냥꾼 망토·갈고리 코트) · outline_push 외곽선 껍질의 깊이만 눈에서 멀어지는 쪽으로 이만큼 (m — 뷰 공간 거리, 0~OUTLINE_PUSH_MAX, 0 = 예전. c7-fix F1: 예전 단위는 클립 깊이 × w 라 먼 몸의 선이 바닥·제 몸 뒤로 숨음) ·
 # rim_tint [림 색을 플레이어 색으로 섞는 양, 림 배율 더하기] (0, 0 = 예전 림) · rim_gate [다 걸림, 안 걸림] 림 틴트가 걸리는 면: 면 법선·눈 방향 내적 (0 = 옆으로 선 면, 1 = 눈을 마주 본 면) —
 # 실루엣 가장자리 면에만 걸리고 눈을 마주 본 면 (보간 법선이 엉킨 얇은 천 안쪽 겹) 은 예전 림 그대로 (toon_common.gdshaderinc rim_gate 기본값과 같음)

@@ -1116,12 +1116,59 @@ func test_hook_first_person() -> void:
 	b.free()
 
 
-# ---------- 대포수 (스킨 메시 하나 + Tripo 자동 리깅 뼈 78 — 접두어 없는 L_/R_ 이름, tools/blender/tripo/rig_cannon.py) ----------
+# ---------- 대포수 (스킨 메시 하나 + Tripo 자동 리깅 뼈 78 — 접두어 없는 L_/R_ 이름, tools/blender/tripo/rig_cannon_grip.py) ----------
+# c9 두 손 묶음: 손대포를 몸에서 떼지 않고 (몸 메시 안), 판 몸에서는 팔·손가락 뼈를 쉬는 자세로 묶음 (cannon.json "grip", chars/ext_grip.gd)
 
-# 뼈 매칭 (ALIASES 만으로 — cannon.json 에 bones 덮어쓰기 없음), LOD, 몸 색 칸 = 빨간 두건·다이너마이트 띠, 손대포는 몸에서 떼어 오른손 소품으로
+# Tripo 규격 뼈 이름 78개 (대포수 cannon.glb 의 뼈대 그대로)
+static func _tripo78() -> PackedStringArray:
+	var out := PackedStringArray(["BoneRoot", "Hip", "Pelvis", "Waist", "Spine01", "Spine02", "NeckTwist01", "NeckTwist02", "Head", "FacialBone"])
+	for sd in ["L_", "R_"]:
+		for n in ["Eye", "Thigh", "ThighTwist01", "ThighTwist02", "KneeShareBone", "Calf", "CalfTwist01", "CalfTwist02", "Foot", "ToeBase",
+				"Clavicle", "Upperarm", "UpperarmTwist01", "UpperarmTwist02", "ElbowShareBone", "Forearm", "ForearmTwist01", "ForearmTwist02", "Hand"]:
+			out.append(sd + n)
+		for f in ["Thumb", "Index", "Mid", "Ring", "Pinky"]:
+			for i in [1, 2, 3]:
+				out.append("%s%s%d" % [sd, f, i])
+	return out
+
+
+# 묶을 뼈 고르기 (순수 계산 chars/ext_grip.gd): 78뼈 중 팔 (빗장 ~ 손) 과 손가락만, 척추·목·머리·다리·눈은 아님. 이름 일부가 겹치는 뼈 (Mid 가 든 다른 이름) 는 안 걸림
+func test_grip_bones() -> void:
+	var G = load("res://chars/ext_grip.gd")
+	var names := _tripo78()
+	check(names.size() == 78, "Tripo 뼈 이름 %d개" % names.size())
+	var set: Dictionary = G.bones(names)
+	var got := {}
+	for i in set:
+		got[names[i]] = true
+	for sd in ["L_", "R_"]:
+		for n in ["Clavicle", "Upperarm", "Forearm", "Hand", "Thumb1", "Index2", "Mid3", "Ring1", "Pinky3", "UpperarmTwist02", "ForearmTwist01", "ElbowShareBone"]:
+			check(got.has(sd + n), "팔·손가락 %s%s 는 묶음" % [sd, n])
+		for n in ["Thigh", "ThighTwist01", "KneeShareBone", "Calf", "CalfTwist02", "Foot", "ToeBase", "Eye"]:
+			check(not got.has(sd + n), "다리·눈 %s%s 는 안 묶음" % [sd, n])
+	for n in ["BoneRoot", "Hip", "Pelvis", "Waist", "Spine01", "Spine02", "NeckTwist01", "NeckTwist02", "Head", "FacialBone"]:
+		check(not got.has(n), "척추·목·머리 %s 는 안 묶음" % n)
+	check(set.size() == 48, "묶는 뼈 48개 = 한쪽 (팔 9 + 손가락 15) × 2 (얻음 %d)" % set.size())
+	# 넓은 맞춤이 아님: 이름에 목록 낱말이 '들어 있기만' 한 뼈·좌우 접두가 없는 뼈·다른 규격 이름은 안 묶음
+	for n in ["MidSpine", "L_MidSpine", "L_Handle", "Hand", "Forearm", "L_ThumbRest", "mixamorig_LeftHand", "LeftForeArm", "L_", "L_1", ""]:
+		check(not G.is_grip(n), "'%s' 는 안 묶음" % n)
+	check(G.is_grip("L_Hand") and G.is_grip("R_Pinky12") and G.is_grip("R_UpperarmTwist01"), "끝 숫자는 빼고 견줌")
+	if Ext.has_char("cannon"):
+		var info = Ext.load_char("cannon")
+		var same: bool = info.names.size() == names.size()
+		for n in info.names:
+			same = same and names.has(n)
+		check(same, "진짜 대포수 뼈대 = 이 78개 (%d)" % info.names.size())
+		for j in ["shoulder_R", "elbow_R", "hand_R", "shoulder_L", "elbow_L", "hand_L"]:
+			check(G.is_grip(info.names[info.map[j]]), "맞춘 팔 뼈 %s (%s) 는 묶음" % [j, info.names[info.map[j]]])
+		for j in ["hips", "waist", "torso", "neck", "thigh_R", "knee_R", "foot_R", "thigh_L", "knee_L", "foot_L"]:
+			check(not G.is_grip(info.names[info.map[j]]), "맞춘 몸통·다리 뼈 %s (%s) 는 안 묶음" % [j, info.names[info.map[j]]])
+
+
+# 뼈 매칭 (ALIASES 만으로 — cannon.json 에 bones 덮어쓰기 없음), LOD, 몸 색 칸 = 빨간 두건·다이너마이트 띠, 손대포는 몸 메시에 붙은 채 (1인칭 전용 소품만 따로)
 func test_cannon_info() -> void:
-	if not Ext.has_char("cannon"): # W26 대포수 몸은 보관 중 (assets/models/ext_hold/) — ext/ 에 cannon.glb 가 없으면 건너뜀
-		print("      (건너뜀: ext/cannon.glb 없음 — 보관 중)")
+	if not Ext.has_char("cannon"):
+		print("      (건너뜀: ext/cannon.glb 없음)")
 		return
 	var info = Ext.load_char("cannon")
 	check(info != null, "대포수 cannon.glb 읽음")
@@ -1151,17 +1198,18 @@ func test_cannon_info() -> void:
 		check(st[1] >= 0.05 and st[1] < 0.3, "%s 몸 색 칸 넓이 %.1f%% (5~30%% — 빨간 두건·다이너마이트 띠)" % [k, st[1] * 100.0])
 		if k == "stage":
 			stage_sf = body_sf
-	check(info.cfg.tint == "mask" and str(info.cfg.get("vm_node", "")) == "cannon_vm" and (info.cfg.get("hold") is Dictionary), "cannon.json: mask·1인칭 닫힌 팔·두 손으로 든 자세 hold")
+	check(info.cfg.tint == "mask" and str(info.cfg.get("vm_node", "")) == "cannon_vm" and info.cfg.get("grip", false) == true and not info.cfg.has("hold"), "cannon.json: mask·1인칭 닫힌 팔·두 손 묶음 grip (예전 hold 자세는 없앰)")
+	check(K.EXT_DEFAULTS.grip == false and Ext.read_cfg("tank").grip == false, "grip 기본 끔 (다른 모델은 안 묶음)")
 	var at: Array = info.cfg.get("attach", [])
-	check(at.size() == 1 and at[0].joint == "hand_R" and at[0].get("vm", false) == true and ResourceLoader.exists(str(at[0].glb)), "손대포 소품 = 오른손 뼈 하나 (판 몸·1인칭 둘 다)")
+	check(at.size() == 1 and at[0].joint == "hand_R" and at[0].get("vm", false) == true and at[0].get("third", true) == false and ResourceLoader.exists(str(at[0].glb)), "손대포 소품 = 오른손 뼈 하나, 1인칭 전용 (third: false — 판 몸은 몸 메시 안의 대포)")
 	if stage_sf != null:
-		# 손대포가 몸 메시에 안 남음: 두 손 사이 앞 (glTF 축: 앞 x 0.15~0.46, 높이 y 0.52~0.65, |z| < 0.05, 미터) 에 꼭짓점이 거의 없어야 함 (남으면 한 팔만 들 때 대포가 늘어나 가시)
+		# 손대포가 몸 메시에 붙은 채: 두 손 사이 ~ 포구 (glTF 축: 앞 x 0.15~0.46, 통 축 높이 0.58 ± 반지름 0.115, 미터 — rig_cannon.py GUN_AX) 에 대포 통 꼭짓점이 그대로 (떼어 낸 보관본은 그루터기 ~120 만 남았음)
 		var v: PackedVector3Array = stage_sf.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
 		var left := 0
 		for p in v:
-			if p.x > 0.15 and p.x < 0.46 and absf(p.z) < 0.05 and p.y > 0.52 and p.y < 0.65:
+			if p.x > 0.15 and p.x < 0.46 and absf(p.z) < 0.115 and absf(p.y - 0.58) < 0.115:
 				left += 1
-		check(left < 200, "몸 메시에 손대포 통이 거의 안 남음 (앞 가운데 %d 꼭짓점 — 주먹에 녹은 나무 그루터기 ~120 은 남음, 원본 대포는 수천)" % left)
+		check(left >= 1000, "몸 메시에 손대포 통이 남음 (통 자리 %d 꼭짓점, 1000 이상)" % left)
 	var gun = load(str(at[0].glb)).instantiate()
 	var gtri := 0
 	for mi in gun.find_children("*", "MeshInstance3D", true, false):
@@ -1170,7 +1218,70 @@ func test_cannon_info() -> void:
 	gun.free()
 
 
-# 판 몸: 크기·발바닥, 뼈가 우리 관절을 따라감, 그리는 메시 = 몸 하나 + 손대포 하나, 손대포 = 오른손 뼈, 코드 대포 안 남김, 두 손으로 든 자세
+# 묶인 뼈 (팔·손가락) 의 지역 자세가 쉬는 자세에서 벗어난 가장 큰 각 (도) 과 자리 차 (m)
+static func _grip_err(b) -> Array:
+	var X = b.ext
+	var rl: Array = X.info.rest_local
+	var ang := 0.0
+	var off := 0.0
+	for bi in X.grip:
+		var rest: Transform3D = rl[bi]
+		ang = maxf(ang, rad_to_deg(X.sk.get_bone_pose_rotation(bi).angle_to(rest.basis.get_rotation_quaternion())))
+		off = maxf(off, (X.sk.get_bone_pose_position(bi) - rest.origin).length())
+	return [ang, off]
+
+
+# 가슴 뼈 기준 두 손뼈 자리 (몸통이 어떻게 돌든 같아야 함 = 든 대포가 안 늘어남·가슴에 단단히)
+static func _grip_hands(b) -> Array:
+	var X = b.ext
+	var ti: Transform3D = _global(X.sk, X.info.map.torso).affine_inverse()
+	return [ti * _global(X.sk, X.info.map.hand_R).origin, ti * _global(X.sk, X.info.map.hand_L).origin]
+
+
+# 뼈대가 실제로 그리는 전역 자세: 자세를 끈 뼈 (set_bone_enabled false) 는 쉬는 자세, 켠 뼈는 써진 자세 (Skeleton3D 규칙 — 트리 안 실제 뼈대로 확인함).
+# 러너에서는 몸이 트리에 못 들어가 get_bone_global_pose 가 안 갱신되므로 _global 처럼 직접 곱함
+static func _drawn(sk: Skeleton3D, bi: int) -> Transform3D:
+	var t := Transform3D.IDENTITY
+	var k := bi
+	while k >= 0:
+		t = (sk.get_bone_pose(k) if sk.is_bone_enabled(k) else sk.get_bone_rest(k)) * t
+		k = sk.get_bone_parent(k)
+	return t
+
+
+# 그려지는 자세에서 가슴 뼈 기준 두 손·가운데 손가락 끝 뼈 자리
+static func _grip_drawn(b) -> Array:
+	var X = b.ext
+	var ti: Transform3D = _drawn(X.sk, int(X.info.map.torso)).affine_inverse()
+	var out := []
+	for bi in [int(X.info.map.hand_R), int(X.info.map.hand_L), X.sk.find_bone("R_Mid3"), X.sk.find_bone("L_Mid3")]:
+		out.append(ti * _drawn(X.sk, bi).origin)
+	return out
+
+
+static func _grip_drawn_diff(b, d0: Array) -> float:
+	var d := _grip_drawn(b)
+	var worst := 0.0
+	for i in d.size():
+		worst = maxf(worst, ((d[i] as Vector3) - (d0[i] as Vector3)).length())
+	return worst
+
+
+# 두 손 묶음 한 자세 검사: 묶인 뼈 = 쉬는 자세 (1° 안), 다리 뼈 = 우리 관절 방향 (2° 안), 가슴 기준 두 손 자리 그대로 (1 mm 안)
+func _check_grip(b, what: String, hands0: Array) -> void:
+	var ge := _grip_err(b)
+	check(ge[0] < 1.0 and ge[1] < 1e-4, "대포수 %s: 묶인 팔·손가락 뼈 = 쉬는 자세 (%.3f° · %.5f m)" % [what, ge[0], ge[1]])
+	var leg := 0.0
+	for pair in [["thigh_R", "knee_R"], ["knee_R", "foot_R"], ["thigh_L", "knee_L"], ["knee_L", "foot_L"]]:
+		leg = maxf(leg, _dir_err(b, pair[0], pair[1]))
+	check(leg < 2.0, "대포수 %s: 다리 뼈는 우리 관절을 따라감 (%.2f°)" % [what, leg])
+	var h := _grip_hands(b)
+	var d: float = maxf(((h[0] as Vector3) - (hands0[0] as Vector3)).length(), ((h[1] as Vector3) - (hands0[1] as Vector3)).length())
+	check(d < 0.001, "대포수 %s: 가슴 기준 두 손 자리 그대로 (%.5f m — 대포가 안 늘어남)" % [what, d])
+
+
+# 판 몸: 크기·발바닥, 그리는 메시 = 몸 하나 (손대포는 몸 메시 안, 소품 없음), 코드 대포 안 남김,
+# 두 손 묶음 — 쉼·공격 (팔 들기)·공중·래그돌 자세 모두에서 팔·손가락 뼈는 쉬는 자세, 다리·몸통은 우리 관절을 따라감. 가산 층 (치명타 움찔·팔 반동) 이 써도 그려지는 자세는 그대로
 func test_cannon_body() -> void:
 	if not Ext.has_char("cannon"):
 		return
@@ -1183,30 +1294,109 @@ func test_cannon_body() -> void:
 	if b.ext == null:
 		b.free()
 		return
-	var sc: float = b.ext.transform.basis.get_scale().x
-	var hh: float = (b.ext.info.box as AABB).size.y * sc
-	var want_h: float = C.PLAYER_HEIGHT * C.FIGURE_SCALE * float(b.ext.info.cfg.height)
+	var X = b.ext
+	var sc: float = X.transform.basis.get_scale().x
+	var hh: float = (X.info.box as AABB).size.y * sc
+	var want_h: float = C.PLAYER_HEIGHT * C.FIGURE_SCALE * float(X.info.cfg.height)
 	check(absf(hh - want_h) < 0.01, "키 %.3f m = 예전 몸 키 %.3f m × height" % [hh, want_h])
 	for j in ["foot_R", "foot_L"]:
-		var dz: float = _bone_pos(b, b.ext.info.map[j]).y - _jpos(b, b.ext._joint(j)).y
+		var dz: float = _bone_pos(b, X.info.map[j]).y - _jpos(b, X._joint(j)).y
 		check(absf(dz) < 0.1, "발 뼈 높이 = 우리 발 (차이 %.3f m)" % dz)
-	_check_follow(b, "대포수")
-	var bas: Array = b.ext.find_children("*", "BoneAttachment3D", true, false)
-	check(bas.size() == 1 and String((bas[0] as BoneAttachment3D).bone_name) == "R_Hand", "손대포 = 오른손 뼈 소품 하나 (%d)" % bas.size())
+	check(X.find_children("*", "BoneAttachment3D", true, false).size() == 0, "판 몸에는 손대포 소품 없음 (몸 메시 안의 대포를 그림)")
 	var ext_n := 0
 	for dr in b.drawn:
 		ext_n += 1 if dr.get("ext", false) else 0
-	check(ext_n == 2 and b.drawn.size() == 2, "그리는 메시 2 (몸 + 손대포, 얻음 %d/%d)" % [ext_n, b.drawn.size()])
-	# 두 손으로 든 자세 (hold): 코드 몸의 어깨에 멘 자세 (오른팔 옆 1.75) 대신 팔꿈치를 굽혀 앞으로
-	var st := {"id": -1, "alive": true, "x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0, "emote": -1}
-	for i in 30:
-		b.pose(st, i * 16.0)
-	var el: float = -(b.elbows[0] as Node3D).rotation.y
-	var sh: float = absf((b.shoulders[0] as Node3D).rotation.x) + absf((b.shoulders[0] as Node3D).rotation.z)
-	check(absf(el - 1.4) < 0.2 and sh < 1.0, "쉬는 자세 = 두 손으로 앞에 듦 (오른 팔꿈치 %.2f, 어깨 %.2f)" % [el, sh])
-	var m: ShaderMaterial = b.ext.parts[0].mi.material_override
+	check(ext_n == 1 and b.drawn.size() == 1, "그리는 메시 1 (손대포는 몸 메시 안, 얻음 %d/%d)" % [ext_n, b.drawn.size()])
+	# 묶음 표: 판 몸은 48개 (모델마다 한 번 만들어 같이 씀), 맞춘 팔 뼈 여섯이 다 듦
+	check(X.grip.size() == 48 and is_same(X.grip, X.info.grip_set), "판 몸 묶음 표 48개 (얻음 %d), info 의 표를 같이 씀" % X.grip.size())
+	for j in ["shoulder_R", "elbow_R", "hand_R", "shoulder_L", "elbow_L", "hand_L"]:
+		check(X.grip.has(int(X.info.map[j])), "%s 뼈가 묶음 표에" % j)
+	# ① 쉼
+	var hands0 := _grip_hands(b)
+	var hr0: Vector3 = _bone_pos(b, X.info.map.hand_R)
+	check(((hands0[0] as Vector3) - (hands0[1] as Vector3)).length() > 0.05, "두 손뼈가 떨어져 있음 (대포를 사이에 쥠)")
+	_check_grip(b, "쉼", hands0)
+	# ② 공격: 한 팔만 앞으로 들고 무릎 굽힘 (figureAnim 이 하는 관절 회전) — 우리 손 관절은 움직이지만 모델 팔은 그대로
+	var jr0: Vector3 = _jpos(b, X._joint("hand_R"))
+	b.P.shFwd = [1.4, 0.3]
+	b.P.elbow = [1.2, 0.2]
+	b.P.thFwd = [0.9, 0.0]
+	b.P.knee = [1.3, 0.0]
+	b._apply(0.0)
+	X.sync()
+	check((_jpos(b, X._joint("hand_R")) - jr0).length() > 0.2, "우리 손 관절은 예전처럼 움직임 (판정·효과 자리 그대로)")
+	_check_grip(b, "공격 (한 팔 들기)", hands0)
+	# ③ 공중: 팔 벌리고 다리 앞뒤로
+	b.P.shFwd = [-0.4, 0.9]
+	b.P.shOut = [1.2, 1.3]
+	b.P.elbow = [0.3, 1.5]
+	b.P.thFwd = [0.7, -0.5]
+	b.P.knee = [0.9, 0.4]
+	b._apply(0.0)
+	X.sync()
+	_check_grip(b, "공중 (팔 벌림)", hands0)
+	# ④ 래그돌: 관절에 바로 넣은 쓰러진 자세 — 몸통이 돌면 팔·대포도 가슴에 붙어 같이 감
+	b.thighs[0].rotation = Vector3(0.4, -1.2, 0.2)
+	b.waist.rotation = Vector3(0.3, 0.8, 0.1)
+	b.shoulders[0].rotation = Vector3(0.9, -0.7, 0.4)
+	b.shoulders[1].rotation = Vector3(-0.6, 1.1, -0.3)
+	b.elbows[1].rotation = Vector3(0.0, -1.4, 0.0)
+	X.sync()
+	_check_grip(b, "래그돌", hands0)
+	check((_bone_pos(b, X.info.map.hand_R) - hr0).length() > 0.05, "허리를 돌리면 손뼈도 몸통과 같이 감 (%.3f m)" % (_bone_pos(b, X.info.map.hand_R) - hr0).length())
+	# ⑤ 가산 층: 치명타 움찔은 두 손 뼈를 따로 흔들고 (EXT_HIT_HAND_RAD), 방향 전환 팔 반동·일어나기는 두 어깨 뼈를 따로 돌림 — _code_bones 뒤에 뼈에 바로 씀.
+	# 묶인 뼈는 뼈대에서 자세를 꺼 둠 (Ext._bind: set_bone_enabled false) → 써진 값과 상관없이 그려지는 자세는 쉬는 자세 (_drawn)
+	var off := 0
+	for bi in X.grip:
+		off += 0 if X.sk.is_bone_enabled(int(bi)) else 1
+	check(off == 48, "묶인 뼈 48개 모두 뼈대에서 자세 끔 (얻음 %d)" % off)
+	for j in ["hips", "waist", "torso", "neck", "thigh_R", "knee_R", "foot_R", "thigh_L", "knee_L", "foot_L"]:
+		check(X.sk.is_bone_enabled(int(X.info.map[j])), "%s 뼈는 켜 둠" % j)
+	X.sync()
+	var d0 := _grip_drawn(b)
+	var st := {"air": false, "walking": false, "hs": 0.0, "walk": 0.0, "vz": 0.0, "t": 1.0, "stunned": false, "emote": -1, "victory": -1.0, "act": null,
+		"tumble": 0.0, "recover": 0.0, "land": 0.0, "flip": -1.0, "idle": 0.0, "airDash": 0.0, "dizzy": 0.0, "whirl": -1.0, "glide": false,
+		"hit": {"id": 1, "age": 0.04, "stop": 0.0, "dx": -1.0, "dy": 0.4, "pow": 2.0}}
+	check(Motion_.hit_react(st.hit).crit, "치명타 상태")
+	var hi: int = int(X.info.map.hand_L)
+	var hrest: Quaternion = (X.info.rest_local[hi] as Transform3D).basis.get_rotation_quaternion()
+	var turn := func() -> void: # 방향 전환 팔 반동 (Ext._move_layer ③) 이 하는 일 그대로: 두 어깨 뼈를 반대로
+		X.sync()
+		X._add_rot(int(X.info.map.shoulder_R), Quaternion(Vector3.BACK, K.EXT_TURN_ARM_RAD))
+		X._add_rot(int(X.info.map.shoulder_L), Quaternion(Vector3.BACK, -K.EXT_TURN_ARM_RAD))
+	X.sync(st)
+	check(X.sk.get_bone_pose_rotation(hi).angle_to(hrest) > 0.05, "치명타 움찔은 손 뼈에 회전을 쓰긴 함 (%.3f rad — 헛검사 아님)" % X.sk.get_bone_pose_rotation(hi).angle_to(hrest))
+	var dd := _grip_drawn_diff(b, d0)
+	check(dd < 0.001, "대포수 치명타 움찔: 그려지는 손·손가락 자리 그대로 (%.5f m)" % dd)
+	turn.call()
+	dd = _grip_drawn_diff(b, d0)
+	check(dd < 0.001, "대포수 방향 전환 팔 반동: 그려지는 손·손가락 자리 그대로 (%.5f m)" % dd)
+	# 대조: 뼈 자세를 켜면 (= 보호 없음) 같은 회전에 손가락·손이 움직여 대포가 늘어남 → 위 검사가 실제로 이 보호를 봄
+	for bi in X.grip:
+		X.sk.set_bone_enabled(int(bi), true)
+	X.sync(st)
+	var open_hit := _grip_drawn_diff(b, d0)
+	turn.call()
+	var open_turn := _grip_drawn_diff(b, d0)
+	check(open_hit > 0.003 and open_turn > 0.03, "보호가 없으면 움찔 %.4f m · 팔 반동 %.4f m 만큼 벌어짐" % [open_hit, open_turn])
+	for bi in X.grip:
+		X.sk.set_bone_enabled(int(bi), false)
+	X.sync()
+	dd = _grip_drawn_diff(b, d0)
+	check(dd < 0.001, "다시 끄고 맞추면 쉬는 자세로 (%.5f m)" % dd)
+	var ti: int = int(X.info.map.torso)
+	var t0: Quaternion = X.sk.get_bone_pose_rotation(ti)
+	X._add_rot(ti, Quaternion(Vector3.BACK, 0.5))
+	check(t0.angle_to(X.sk.get_bone_pose_rotation(ti)) > 0.4, "안 묶인 가슴 뼈는 예전처럼 돌림")
+	var m: ShaderMaterial = X.parts[0].mi.material_override
 	check(m.get_shader_parameter("use_vertex_color") == true and m.get_shader_parameter("skin_multiply") == true and (m.get_shader_parameter("skin_tint") as Color).is_equal_approx(Color(0.2, 0.5, 1.0, 1.0)), "몸 색 칸 = 플레이어 색 곱하기")
 	b.free()
+	# 묶음은 cfg.grip 인 모델만: 다른 외부 모델은 빈 표 (예전 그대로 팔이 관절을 따라감 — _check_follow 가 그쪽 테스트에서 봄)
+	for ch in EXT4:
+		if Ext.has_char(ch):
+			var o = _body(ch)
+			check(o.ext != null and o.ext.grip.is_empty(), "%s 는 안 묶음" % ch)
+			o.free()
 
 
 # 1인칭 쌍둥이: glb 안의 닫힌 팔 cannon_vm (원본 팔·손은 대포에 녹아 있어 못 씀) + 손대포 (vm: true). 판 몸에는 안 그려짐
@@ -1221,7 +1411,8 @@ func test_cannon_first_person() -> void:
 			if sf.vm_mesh != null:
 				arm_tri += _tris(sf.vm_mesh)
 		check(arm_tri > 100 and arm_tri < 400, "1인칭 팔 삼각형 %d (닫힌 소매·띠·주먹 두 팔)" % arm_tri)
-		check(t.ext.find_children("*", "BoneAttachment3D", true, false).size() == 1, "1인칭에도 손대포 하나")
+		check(t.ext.find_children("*", "BoneAttachment3D", true, false).size() == 1, "1인칭에는 손대포 소품 하나 (vm: true)")
+		check(t.ext.grip.is_empty(), "1인칭 쌍둥이는 안 묶음 (팔이 viewmodel 을 따라감)")
 	t.free()
 	var b = _body("cannon")
 	var seen := {}
@@ -1233,14 +1424,18 @@ func test_cannon_first_person() -> void:
 
 # ---------- W27 대기실 큰 캐릭터·초상 (ui/portrait.gd prime_idle·frame) ----------
 
-# 위팔 → 아래팔 뼈가 아래쪽을 향하는 정도 (1 = 똑바로 아래, 0 = 옆으로 쭉 = T 포즈). 뼈 이름은 Mixamo 식 (새 외부 모델 넷 모두)
+# 위팔 → 아래팔 뼈가 아래쪽을 향하는 정도 (1 = 똑바로 아래, 0 = 옆으로 쭉 = T 포즈). 뼈 이름은 Mixamo 식 (외부 모델 넷), 아니면 매칭된 뼈 (대포수)
 static func _arm_down(b) -> float:
 	var worst := 1.0
 	for side in ["Left", "Right"]:
 		var a = b.ext.bone_point(side + "Arm")
 		var f = b.ext.bone_point(side + "ForeArm")
-		if a == null or f == null:
-			return -2.0
+		if a == null or f == null: # Mixamo 이름이 아닌 뼈대 (대포수 = Tripo 규격): 이름 매칭이 고른 위팔·아래팔 뼈
+			var sd: String = "_L" if side == "Left" else "_R"
+			if not (b.ext.info.map.has("shoulder" + sd) and b.ext.info.map.has("elbow" + sd)):
+				return -2.0
+			a = _bone_pos(b, b.ext.info.map["shoulder" + sd])
+			f = _bone_pos(b, b.ext.info.map["elbow" + sd])
 		var d: Vector3 = ((f as Vector3) - (a as Vector3)).normalized()
 		worst = minf(worst, -d.y)
 	return worst
@@ -1258,7 +1453,7 @@ func _still(ch: String, ext := true):
 
 func _ext_ids() -> Array:
 	var out := []
-	for ch in ["tank", "ninja", "hunter", "hook"]:
+	for ch in ["tank", "ninja", "hunter", "hook", "cannon"]:
 		if Ext.has_char(ch):
 			out.append(ch)
 	return out
@@ -1291,8 +1486,14 @@ func test_stage_not_t_pose() -> void:
 func test_portrait_frame() -> void:
 	var P = load("res://ui/portrait.gd")
 	var root: Window = (Engine.get_main_loop() as SceneTree).root
-	for ch in _ext_ids() + ["bard", "berserker", "cannon", "builder"]:
-		var ext: bool = Ext.has_char(ch) and ch in ["tank", "ninja", "hunter", "hook"]
+	var list := []
+	for ch in _ext_ids(): # 외부 모델 다섯 (c9: 대포수 포함)
+		list.append([ch, true])
+	for ch in ["bard", "berserker", "cannon", "builder"]: # 구운·코드 몸 (대포수는 외부 모델을 끈 몸도 — 웹은 이 몸)
+		list.append([ch, false])
+	for e in list:
+		var ch: String = e[0]
+		var ext: bool = e[1]
 		var b = _still(ch, ext)
 		root.add_child(b)
 		P.prime_idle(b)
@@ -1350,7 +1551,7 @@ func test_c8_portrait_table() -> void:
 	for ch in PK.SIDE_EXT:
 		check(absf(float(PK.SIDE_EXT[ch])) == 1.0 and C.CHARACTERS.has(ch), "SIDE_EXT %s = %s (±1, 있는 캐릭터)" % [ch, PK.SIDE_EXT[ch]])
 		check(PK.side_of(ch, true) == float(PK.SIDE_EXT[ch]), "%s 외부 모델 카메라 쪽 = 표" % ch)
-	for ch in EXT4:
+	for ch in EXT4 + ["cannon"]:
 		check(PK.SIDE_EXT.has(ch), "외부 모델 %s 가 SIDE_EXT 에 없음" % ch)
 	# 예전 값이 남는 곳: 대포수는 반대쪽 (포신이 얼굴을 가림), 표에 없는 캐릭터·온몸 초상은 예전 그대로
 	check(float(PK.FACE.cannon.side) == 1.0 and PK.side_of("cannon", false) == 1.0, "대포수 = 반대쪽 (예전 LEFT_SIDE)")
@@ -1628,7 +1829,7 @@ func test_preload_and_warm() -> void:
 func test_atlas_vram_compressed() -> void:
 	var ps := FileAccess.get_file_as_string("res://project.godot")
 	check(ps.contains("textures/vram_compression/import_s3tc_bptc=true"), "project.godot 에 S3TC·BPTC 가져오기 켬")
-	for id in ["tank", "ninja", "hunter", "hook"]:
+	for id in ["tank", "ninja", "hunter", "hook", "cannon"]:
 		var p := "res://assets/models/ext/%s_%s_atlas.jpg.import" % [id, id]
 		check(FileAccess.get_file_as_string(p).contains("compress/mode=2"), "%s 아틀라스 VRAM 압축" % id)
 		var tex = load("res://assets/models/ext/%s_%s_atlas.jpg" % [id, id])
@@ -1771,15 +1972,15 @@ func test_c7_rim_tint_default_off() -> void:
 	check(Vector2(K.EXT_DEFAULTS.rim_tint[0], K.EXT_DEFAULTS.rim_tint[1]) == Vector2.ZERO and not K.EXT_DEFAULTS.double and float(K.EXT_DEFAULTS.outline_push) == 0.0, "EXT_DEFAULTS 는 전부 끔 (json 이 켬)")
 
 
-# json 넷: rim_tint 가 같고, 양면은 사냥꾼·갈고리만, 외곽선 밀기는 0~OUTLINE_PUSH_MAX m (c7-fix F1: 단위가 뷰 공간 거리 — 예전 클립 깊이 단위 값 0.0015 가 남아 있으면 안 됨)
+# json 다섯 (c9: 대포수 포함): rim_tint 가 같고, 양면은 사냥꾼·갈고리만, 외곽선 밀기는 0~OUTLINE_PUSH_MAX m (c7-fix F1: 단위가 뷰 공간 거리 — 예전 클립 깊이 단위 값 0.0015 가 남아 있으면 안 됨)
 func test_c7_ext_json_look_keys() -> void:
 	var first = null
-	for ch in EXT4:
+	for ch in EXT4 + ["cannon"]:
 		var j := _ext_json(ch)
 		check(j.has("rim_tint") and (j.rim_tint as Array).size() == 2, "%s rim_tint [섞는 양, 배율 더하기]" % ch)
 		if first == null:
 			first = j.rim_tint
-		check(j.rim_tint == first, "%s rim_tint 가 넷 다 같음 (%s vs %s)" % [ch, j.rim_tint, first])
+		check(j.rim_tint == first, "%s rim_tint 가 다 같음 (%s vs %s)" % [ch, j.rim_tint, first])
 		check(float(j.rim_tint[0]) > 0.0 and float(j.rim_tint[0]) <= 1.0 and float(j.rim_tint[1]) >= 0.0, "%s rim_tint 범위" % ch)
 		check(bool(j.get("double", false)) == (ch in ["hunter", "hook"]), "%s double 은 사냥꾼·갈고리만" % ch)
 		var push := float(j.get("outline_push", 0.0))

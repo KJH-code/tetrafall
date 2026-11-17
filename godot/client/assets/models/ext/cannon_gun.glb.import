@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://dsmnq66ekv6g3"
-path="res://.godot/imported/cannon.glb-03b0959630869e8e05f709b75d12e123.scn"
+uid="uid://cy5wmhkf7clqn"
+path="res://.godot/imported/cannon_gun.glb-cb97e506b28614e801c3a856ccc1dff7.scn"
 
 [deps]
 
-source_file="res://assets/models/ext_hold/cannon.glb"
-dest_files=["res://.godot/imported/cannon.glb-03b0959630869e8e05f709b75d12e123.scn"]
+source_file="res://assets/models/ext/cannon_gun.glb"
+dest_files=["res://.godot/imported/cannon_gun.glb-cb97e506b28614e801c3a856ccc1dff7.scn"]
 
 [params]
 

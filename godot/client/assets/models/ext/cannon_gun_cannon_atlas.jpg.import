@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://csyc1iuha1837"
-path="res://.godot/imported/cannon_gun_cannon_atlas.jpg-33b752d1dc60064e69f5418322c5b6f0.ctex"
+path.s3tc="res://.godot/imported/cannon_gun_cannon_atlas.jpg-ef44edc5cdc596f6b01c221dc32a995d.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "73de260c8f5feddc4a8a778c42e3218e"
@@ -13,12 +14,12 @@ generator_parameters={
 
 [deps]
 
-source_file="res://assets/models/ext_hold/cannon_gun_cannon_atlas.jpg"
-dest_files=["res://.godot/imported/cannon_gun_cannon_atlas.jpg-33b752d1dc60064e69f5418322c5b6f0.ctex"]
+source_file="res://assets/models/ext/cannon_gun_cannon_atlas.jpg"
+dest_files=["res://.godot/imported/cannon_gun_cannon_atlas.jpg-ef44edc5cdc596f6b01c221dc32a995d.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
