@@ -4,7 +4,9 @@
 #   · 놓인 폭탄 (스냅샷 bombs[], 모든 시점): 맞는 범위에 끊긴 고리 (번개 예고와 같은 메시) + 안에서 차오르는 주황 원 — 다 차면 터짐
 # world.gd 가 변수 선언에서 만들고 프레임마다 update 를 부름. 그리는 것은 트리에 들어갈 때 (_ready) 만듦 (world/bolt_fx.gd 와 같은 까닭).
 # 그리기: 상자·판 = MultiMesh 하나 (인스턴스 색), 테 = MultiMesh 하나, 조준 고리 = 메시 하나, 놓인 폭탄 고리·원 = MultiMesh 하나. 평소엔 다 숨김 (그리기 0), 그래픽 낮춤에서도 켬.
-# 재질은 ring_look.material (world/warm_scan.gd STD_KEYS 에 있는 모양 — 새 셰이더 없음). 순수 계산·수치는 world/hand_aim_math.gd
+# c11-fix F1: 3인칭에서 폭탄 조준 판·고리는 내 몸 뒤라 거의 다 가렸음 → 같은 판 묶음·고리 메시를 깊이 검사 없는 재질로 한 벌 더 옅게 (xray_mmi·ring_xray, 그리기 +2 — 3인칭에서 폭탄을 든 동안만),
+#   3인칭 고리는 가는 선 꼴 (ring_look "aim" — 발밑 고리와 모양으로 갈림). 1인칭·그래픽 낮춤 (1인칭) 모습은 예전 그대로
+# 재질은 ring_look.material·xray_material (world/warm_scan.gd STD_KEYS 에 있는 모양 — 판 들어올 때 미리 그려 둠). 순수 계산·수치는 world/hand_aim_math.gd
 extends Node3D
 
 const M := preload("res://world/hand_aim_math.gd")
@@ -19,6 +21,9 @@ var edge_mm: MultiMesh
 var edge_mmi: MultiMeshInstance3D
 var ring: MeshInstance3D
 var ring_color := -1 # 지금 고리 메시의 색 (바뀔 때만 메시를 다시 고름)
+var ring_kind := "" # 지금 고리 메시의 꼴 (ring_look.LOOKS 이름)
+var xray_mmi: MultiMeshInstance3D # c11-fix F1: 몸 너머로 비치는 판 (box_mm 을 같이 씀 — 깊이 검사 없는 옅은 재질)
+var ring_xray: MeshInstance3D # 몸 너머로 비치는 고리 (ring 과 같은 메시·자리)
 var bomb_mm: MultiMesh
 var bomb_mmi: MultiMeshInstance3D
 var hold_spin = null # 견본 도구 (tools/aim_sheet.gd) 가 놓인 폭탄 고리 각도를 고정 (rad). null = 판 시계로 돎
@@ -43,6 +48,18 @@ func _ready() -> void:
 	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	ring.visible = false
 	add_child(ring)
+	xray_mmi = MultiMeshInstance3D.new()
+	xray_mmi.multimesh = box_mm
+	xray_mmi.material_override = RL.xray_material(M.xray_alpha(1.0), pr) # 인스턴스 색의 알파 (면 알파) × xray
+	xray_mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	xray_mmi.extra_cull_margin = box_mmi.extra_cull_margin
+	xray_mmi.visible = false
+	add_child(xray_mmi)
+	ring_xray = MeshInstance3D.new()
+	ring_xray.material_override = RL.xray_material(M.xray_alpha(float(M.HAND_AIM.ring_alpha)), pr + 1)
+	ring_xray.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	ring_xray.visible = false
+	add_child(ring_xray)
 
 
 func _pool(mmi: MultiMeshInstance3D, mm: MultiMesh, mesh: Mesh, n: int, mat: Material) -> void:
@@ -95,18 +112,19 @@ func update(st: Dictionary, me: Dictionary, view_mode: String, spectating: bool,
 	var key = null
 	if M.aim_on(me, view_mode, spectating, playing):
 		var color := Bodies.player_color(me, st)
-		key = [me.aim.get("kind"), me.aim.get("ok"), me.aim.cells, color]
+		key = [me.aim.get("kind"), me.aim.get("ok"), me.aim.cells, color, view_mode] # 시점: 고리 꼴·몸 너머 한 벌이 시점마다 다름
 		if key != _aim_key:
-			_aim(M.aim_rows(me, view_mode, spectating, color, playing))
+			_aim(M.aim_rows(me, view_mode, spectating, color, playing), M.aim_xray(view_mode, str(me.aim.get("kind", ""))))
 	elif _aim_key != null:
-		_aim([])
+		_aim([], false)
 	_aim_key = key
 	var bombs: Array = st.get("bombs", [])
 	if not bombs.is_empty() or bomb_mmi.visible:
 		_bombs(M.bomb_ring_rows(bombs, now, playing))
 
 
-func _aim(rows: Array) -> void:
+# rows = hand_aim_math.aim_rows · xray = 판·고리를 몸 너머로 한 벌 더 (hand_aim_math.aim_xray)
+func _aim(rows: Array, xray: bool) -> void:
 	var nb := 0
 	var ne := 0
 	var has_ring := false
@@ -116,11 +134,15 @@ func _aim(rows: Array) -> void:
 		var col := Co.color(r.color)
 		if kind == "ring":
 			has_ring = true
-			if int(r.color) != ring_color:
+			var look := str(r.get("look", "windup"))
+			if int(r.color) != ring_color or look != ring_kind:
 				ring_color = int(r.color)
-				ring.mesh = RL.mesh("windup", ring_color)
+				ring_kind = look
+				ring.mesh = RL.mesh(look, ring_color)
+				ring_xray.mesh = ring.mesh
 			ring.position = at
 			ring.scale = Vector3(float(r.r), 1.0, float(r.r))
+			ring_xray.transform = ring.transform
 			continue
 		var size: Vector3 = r.size
 		var t := Transform3D(Basis.from_scale(Vector3(size.x, size.z, size.y)), at) # 게임 (x, y, z) 길이 → 고도 (x, z, y)
@@ -138,6 +160,8 @@ func _aim(rows: Array) -> void:
 	edge_mm.visible_instance_count = ne
 	edge_mmi.visible = ne > 0
 	ring.visible = has_ring
+	xray_mmi.visible = xray and nb > 0
+	ring_xray.visible = xray and has_ring
 
 
 func _bombs(rows: Array) -> void:

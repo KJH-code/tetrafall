@@ -289,6 +289,47 @@ func test_hud_extra_event_wiring() -> void:
 	Store.my_id = keep_me
 
 
+# c11-fix F11: 번개 판 → 폭탄 판 순서 + 번개 판이 떠 있으면 폭탄 판을 숨김 (같은 자리). ui/hud_extra.gd refresh 의 두 줄:
+#   bolt_alert.refresh(…) 가 먼저 돌아 판을 켜고·끄고, 그 값 (bolt_alert.plate.visible) 을 bomb_alert.refresh 의 마지막 인수로 넘김.
+# 순서가 바뀌면 폭탄 판이 지난 프레임의 번개 판 값을 봐서 한 프레임 겹치고, 인수가 빠지면 (기본 false) 두 판이 같은 자리에 겹쳐 뜸
+func test_c11_fix_bolt_then_bomb_order() -> void:
+	var src := FileAccess.get_file_as_string("res://ui/hud_extra.gd")
+	var at_bolt := src.find("\tbolt_alert.refresh(")
+	var at_bomb := src.find("\tbomb_alert.refresh(")
+	check(at_bolt >= 0 and at_bomb >= 0 and at_bolt < at_bomb, "번개 판 갱신이 폭탄 판 갱신보다 앞 (자리 %d · %d)" % [at_bolt, at_bomb])
+	check(src.count("\tbolt_alert.refresh(") == 1 and src.count("\tbomb_alert.refresh(") == 1, "갱신은 저마다 한 번")
+	var line := src.substr(at_bomb, src.find("\n", at_bomb) - at_bomb).strip_edges()
+	var code := line.substr(0, line.find(" #")) if line.find(" #") >= 0 else line
+	check(code.ends_with(", bolt_alert.plate.visible)"), "폭탄 판의 마지막 인수 = 방금 갱신한 번개 판이 떠 있는가: %s" % code)
+	var between := src.substr(at_bolt, at_bomb - at_bolt)
+	check(between.count("\n") == 1, "두 줄 사이에 다른 일 없음 (번개 판 값이 바뀔 틈 없음)")
+	# 동작 (두 판을 그 두 줄과 같은 차례·인수로 — hud_extra 는 트리 밖에서 화면 크기를 못 읽어 refresh 를 통째로 못 돌림): 번개 고리와 폭탄 범위에 같이 든 나
+	var bolt = load("res://ui/bolt_alert.gd").new()
+	var bomb = load("res://ui/bomb_alert.gd").new()
+	var me := {"id": 2.0, "x": 5.5, "y": 5.5, "z": 0.0, "alive": true, "team": null}
+	var st := {"phase": "playing", "teamMode": false, "players": [me], "bombs": [{"id": 7.0, "x": 5.0, "y": 6.0, "z": 0.0, "left": 900.0}]}
+	bolt.on_event({"type": "boltWarn", "id": 3.0, "x": 5.5, "y": 5.5, "z": 0.0, "r": 1.2, "ms": 1200.0}, me, 1000.0)
+	bomb.on_event({"type": "bombPlace", "who": 4.0, "x": 5.0, "y": 6.0, "z": 0.0}, 1000.0)
+	bolt.refresh(me, 1100.0, true, "first")
+	bomb.refresh(st, me, 1100.0, true, "first", bolt.plate.visible)
+	check(bolt.plate.visible and not bomb.plate.visible, "첫 프레임부터 번개 판만 (폭탄 판 숨김)")
+	# 거꾸로 돌리면 (폭탄 먼저) 첫 프레임에 둘 다 뜸 = 이 테스트가 막는 것
+	var bolt2 = load("res://ui/bolt_alert.gd").new()
+	var bomb2 = load("res://ui/bomb_alert.gd").new()
+	bolt2.on_event({"type": "boltWarn", "id": 3.0, "x": 5.5, "y": 5.5, "z": 0.0, "r": 1.2, "ms": 1200.0}, me, 1000.0)
+	bomb2.on_event({"type": "bombPlace", "who": 4.0, "x": 5.0, "y": 6.0, "z": 0.0}, 1000.0)
+	bomb2.refresh(st, me, 1100.0, true, "first", bolt2.plate.visible)
+	bolt2.refresh(me, 1100.0, true, "first")
+	check(bolt2.plate.visible and bomb2.plate.visible, "(대조) 순서가 바뀌면 한 프레임 겹침 — 그래서 소스 순서를 고정")
+	# 번개가 지나가면 (예고 없어짐) 다음 프레임에 폭탄 판이 뜸
+	bolt.on_event({"type": "bolt", "id": 3.0, "x": 5.5, "y": 5.5, "z": 0.0, "r": 1.2, "hits": []}, me, 1200.0)
+	bolt.refresh(me, 1210.0, true, "first")
+	bomb.refresh(st, me, 1210.0, true, "first", bolt.plate.visible)
+	check(not bolt.plate.visible and bomb.plate.visible, "번개 판이 꺼지면 폭탄 판")
+	for n in [bolt, bomb, bolt2, bomb2]:
+		n.free()
+
+
 # menu.gd: 방 만들기 → 그 방의 welcome 에 한 번만 기본 방 옵션을 보냄. 재접속·다른 길 (코드·연습) 로 들어가면 안 보냄
 func test_menu_create_sends_room_defaults() -> void:
 	var keep_state = Store.state

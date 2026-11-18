@@ -16,7 +16,8 @@
 #   held-4dir.png  폭탄을 든 탱크 넷: 왼쪽부터 앞·오른쪽·뒤·왼쪽에서 본 모습
 #   held-all-eye.png  5칸 앞에 캐릭터 8명이 한 줄로 (세 종류를 돌아가며 듦) — 몸이 넓은 캐릭터에서도 모델이 몸 밖에 보이는지
 #   held-fp3.png  기본 1인칭에서 3칸 앞 사람이 폭탄을 듦 (이름표 아래)
-#   held-third-me.png  3인칭 (판 카메라 world/cam_rig.gd) 에서 내가 설치 블록을 듦
+#   held-all-back.png  같은 여덟 명을 뒤에서 (3인칭 카메라가 보는 쪽 — 오른 어깨 옆에 붙어 보이는지)
+#   held-third-me.png  3인칭 (판 카메라 world/cam_rig.gd) 에서 내가 (건축가) 설치 블록을 듦 · held-third-tank.png  내가 탱크 (넓은 몸) 로 폭탄을 듦
 #   crate-eye-meadow.png · crate-eye-volcano.png  착지한 설치 블록 두 칸 (world/crate_look.gd 나무 상자) — 왼쪽에 견줄 설치 블록 아이템, 오른쪽에 쌓인 테마 모양 칸
 #   --low --only held 면 held-low.png (세 사람 줄을 그래픽 낮춤으로)
 # 판 그리기 (world/world.tscn) 를 이벤트 견본 (tools/event_sheet.gd) 처럼 띄우고 가짜 판 상태를 넣음: 지형 단 둘 · 사람 하나 (크기 견줌) · 아이템·투사체·폭탄.
@@ -51,7 +52,9 @@ const JOBS := [
 	["held-4dir.png", "meadow", "flat", "held:4dir", "eye"],
 	["held-all-eye.png", "meadow", "flat", "held:all", "eye"],
 	["held-fp3.png", "meadow", "flat", "held:fp3", "fp"],
+	["held-all-back.png", "meadow", "flat", "held:back", "eye"],
 	["held-third-me.png", "meadow", "flat", "held:me", "me"],
+	["held-third-tank.png", "meadow", "flat", "held:me-tank", "me"],
 	["crate-eye-meadow.png", "meadow", "flat", "crate", "eye"],
 	["crate-eye-volcano.png", "volcano", "bowl", "crate", "eye"],
 ]
@@ -78,8 +81,12 @@ const HELD_MEN := {
 	"held:all": [["tank", -5.6, 5.5, -PI / 2.0, "bomb"], ["ninja", -4.0, 5.5, -PI / 2.0, "knockback"], ["builder", -2.4, 5.5, -PI / 2.0, "brick"], ["hook", -0.8, 5.5, -PI / 2.0, "bomb"],
 		["hunter", 0.8, 5.5, -PI / 2.0, "knockback"], ["cannon", 2.4, 5.5, -PI / 2.0, "brick"], ["berserker", 4.0, 5.5, -PI / 2.0, "bomb"], ["bard", 5.6, 5.5, -PI / 2.0, "knockback"]],
 	"held:fp3": [["hunter", 0.0, 3.5, -PI / 2.0, "bomb"]],
+	"held:back": [["tank", -5.6, 5.5, PI / 2.0, "bomb"], ["ninja", -4.0, 5.5, PI / 2.0, "knockback"], ["builder", -2.4, 5.5, PI / 2.0, "brick"], ["hook", -0.8, 5.5, PI / 2.0, "bomb"],
+		["hunter", 0.8, 5.5, PI / 2.0, "knockback"], ["cannon", 2.4, 5.5, PI / 2.0, "brick"], ["berserker", 4.0, 5.5, PI / 2.0, "bomb"], ["bard", 5.6, 5.5, PI / 2.0, "knockback"]],
 	"held:me": [["builder", 0.0, 6.5, PI / 2.0, "brick"], ["ninja", 1.5, 9.5, -PI / 2.0, "bomb"]],
+	"held:me-tank": [["tank", 0.0, 6.5, PI / 2.0, "bomb"], ["ninja", 1.5, 9.5, -PI / 2.0, "brick"]],
 }
+const ME_SCENES := ["held:me", "held:me-tank"] # P1 이 나인 장면 (판 카메라 3인칭)
 const ME_PITCH := -0.1 # held:me 의 고개 (3인칭 카메라)
 # 착지 상자 장면 (가운데 x 기준 칸 [dx, y, z]): 상자 칸 (값 Cells.THROWN) · 옆에 쌓인 테마 모양 칸 [dx, y, z, 모양 번호] · 견줄 설치 블록 아이템 [dx, y]
 const CRATE_CELLS := [[-1, 3, 0], [0, 3, 0]]
@@ -299,8 +306,8 @@ func _people(st: Dictionary, scene: String) -> void:
 	for m in men:
 		by[int(m.id)] = m
 	store._players_by_id = by
-	store.my_id = 1 if scene == "held:me" else null
-	if scene == "held:me":
+	store.my_id = 1 if ME_SCENES.has(scene) else null
+	if ME_SCENES.has(scene):
 		input.set_yaw_pitch(float(men[0].yaw), ME_PITCH)
 
 

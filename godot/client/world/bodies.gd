@@ -38,6 +38,7 @@ var _last_now = null
 var sun_node: DirectionalLight3D = null # W32: 해 (몸 그림자가 떨어지는 쪽 계산) — World 아래 G3Env/Sun, 처음 쓸 때 찾음
 var foot_rings: FootRings = null # c7-u1 발밑 색 고리 (MultiMesh 하나, _ready 가 만듦 — 트리 밖 (테스트) 이면 없음)
 var held_view: HeldView = null # c11-u2 든 아이템 (어깨 옆 모델 — 종류마다 MultiMesh 하나, _ready 가 만듦)
+var held_thin := {} # c11-fix F7: 관전에서 시선을 막아 옅어진 몸 (world/cam_rig.gd spec_thin 이 넣음: id → {k, at}, 1·3인칭에서는 빔) — 그 사람의 든 아이템은 안 그림 (카메라를 놓은 뒤에 정해져 한 프레임 늦음)
 
 
 func _ready() -> void:
@@ -353,8 +354,8 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 			nodes.erase(id)
 	if foot_rings != null: # c7-u1: 발밑 색 고리 (판 중·살아 있는 사람, 1인칭의 나·하늘 시점은 안 그림 — world/foot_ring_math.gd)
 		foot_rings.update(get_parent(), st, my_id, hide_me, sky, shown, ring_cols)
-	if held_view != null: # c11-u2: 든 아이템을 어깨 옆에 (살아 있는 사람, 1인칭의 나는 안 그림 — world/held_math.gd)
-		held_view.update(st.get("players", []), my_id, hide_me, shown, now_ms)
+	if held_view != null: # c11-u2: 든 아이템을 어깨 옆에 (판 중·살아 있는 사람, 1인칭의 나·옅어진 몸은 안 그림 — world/held_math.gd)
+		held_view.update(st.get("players", []), my_id, hide_me, shown, now_ms, str(st.get("phase", "")), held_thin)
 
 
 # 카메라를 놓은 뒤: 크기·흐림 (labelSizes), 하늘 시점이면 작게 + 화면에서 겹치는 이름표는 먼저 놓인 것만 (render.js thinLabels)

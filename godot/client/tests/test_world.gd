@@ -321,12 +321,16 @@ func test_hook_chunk_materials() -> void:
 	var thrown: Dictionary = hf.chunk_look({"v": 3}, col)
 	var piece: Dictionary = hf.chunk_look({"v": 5}, col)
 	check(terr.mat.get_shader_parameter("use_tex") == true and terr.mat.get_shader_parameter("albedo_tex") == preload("res://world/chunk_tex.gd").stone(), "지형 덩어리 = 돌 그림")
-	check(thrown.mat.get_shader_parameter("albedo_tex") == preload("res://world/chunk_tex.gd").sand(), "설치 블록 덩어리 = 모래 그림")
+	# c11-fix F6: 설치 블록 덩어리 = 쌓였을 때·떨어질 때와 같은 나무 상자 (예전 모래 그림 상자 — 집어 올리는 순간 모습이 바뀌었음)
+	const CrateLook := preload("res://world/crate_look.gd")
+	check(thrown.mesh == CrateLook.mesh() and thrown.mat.get_shader_parameter("use_vertex_color") == true and thrown.mat.get_shader_parameter("use_tex") != true, "설치 블록 덩어리 = 나무 상자 메시 + 정점 색 툰 재질")
+	check(thrown.mat.next_pass != null or not hf.g3.outline_on, "설치 블록 덩어리: 떨어지는 칸처럼 외곽선")
 	check(build.mat.get_shader_parameter("albedo_tex") == preload("res://world/chunk_tex.gd").wood(), "건축가 덩어리 = 판자 그림")
 	check(piece.mesh is ArrayMesh and piece.mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR] is PackedColorArray, "테트리미노 덩어리 = 테마 칸 모양 + 꼭짓점 색")
 	check(piece.mat.get_shader_parameter("face_tex") != null, "테트리미노 덩어리 재질 = 테마 칸 재질 (면 그림)")
 	var sky: Dictionary = hf.chunk_look({"v": 3, "sky": true}, col)
 	check(absf(sky.mat.get_shader_parameter("albedo").a - float(C.SKY_PIECE_OPACITY)) < 0.001, "하늘 덩어리는 반투명")
+	check(sky.mat.get_shader_parameter("albedo_tex") == preload("res://world/chunk_tex.gd").sand() and sky.mesh is BoxMesh, "하늘 덩어리 (반투명) 는 예전 모래 그림 상자 그대로")
 	check(terr.mat.get_shader_parameter("albedo_tex").get_image().get_pixel(10, 10).r > 0.4, "돌 그림이 칠해짐")
 	hf.free()
 
@@ -1016,17 +1020,18 @@ func _c11_man(id: int, held, alive := true, master := false, yaw := 0.0) -> Dict
 # 누구 것을 그리나: 든 것 없음·죽음·블록 마스터·1인칭의 나는 0줄, 3인칭의 나는 1줄
 func test_c11_held_rows() -> void:
 	var shown := {1: Vector3(5.5, 5.5, 1.0), 2: Vector3(2.5, 3.5, 0.0)}
-	check(HM.rows([_c11_man(1, null)], null, false, shown).is_empty(), "든 것 없음 → 0줄")
-	check(HM.rows([_c11_man(1, "bomb", false)], null, false, shown).is_empty(), "죽음 → 0줄")
-	check(HM.rows([_c11_man(1, "bomb", true, true)], null, false, shown).is_empty(), "블록 마스터 → 0줄")
-	check(HM.rows([_c11_man(1, "bomb")], 1, true, shown).is_empty(), "1인칭의 나 → 0줄")
-	var mine: Array = HM.rows([_c11_man(1, "bomb")], 1, false, shown)
+	var P := "playing"
+	check(HM.rows([_c11_man(1, null)], null, false, shown, P).is_empty(), "든 것 없음 → 0줄")
+	check(HM.rows([_c11_man(1, "bomb", false)], null, false, shown, P).is_empty(), "죽음 → 0줄")
+	check(HM.rows([_c11_man(1, "bomb", true, true)], null, false, shown, P).is_empty(), "블록 마스터 → 0줄")
+	check(HM.rows([_c11_man(1, "bomb")], 1, true, shown, P).is_empty(), "1인칭의 나 → 0줄")
+	var mine: Array = HM.rows([_c11_man(1, "bomb")], 1, false, shown, P)
 	check(mine.size() == 1 and mine[0][0] == "bomb" and (mine[0][1] as Vector3).is_equal_approx(HM.slot(shown[1], 0.0)), "3인칭의 나 → 1줄 (어깨 옆 자리): %s" % str(mine))
-	check(HM.rows([_c11_man(2, "brick")], 1, true, shown).size() == 1, "1인칭이어도 남은 그림")
-	check(HM.rows([_c11_man(1, "control"), _c11_man(2, "zzz")], null, false, shown).is_empty(), "표에 없는 종류 → 0줄")
-	check(HM.rows([_c11_man(7, "bomb")], null, false, shown).is_empty(), "화면 자리가 없는 사람 → 0줄")
+	check(HM.rows([_c11_man(2, "brick")], 1, true, shown, P).size() == 1, "1인칭이어도 남은 그림")
+	check(HM.rows([_c11_man(1, "control"), _c11_man(2, "zzz")], null, false, shown, P).is_empty(), "표에 없는 종류 → 0줄")
+	check(HM.rows([_c11_man(7, "bomb")], null, false, shown, P).is_empty(), "화면 자리가 없는 사람 → 0줄")
 	check(IL.HELD.kinds == ["bomb", "knockback", "brick"] and (IL.HELD.kinds as Array).all(func(k): return IL.PARTS.has(k)), "그리는 종류 = 서버가 보내는 든 것 셋 (모델 있음)")
-	var both: Array = HM.rows([_c11_man(1, "knockback"), _c11_man(2, "bomb", true, false, 1.0), _c11_man(3, "bomb")], null, false, shown)
+	var both: Array = HM.rows([_c11_man(1, "knockback"), _c11_man(2, "bomb", true, false, 1.0), _c11_man(3, "bomb")], null, false, shown, P)
 	check(both.size() == 2 and both[0][0] == "knockback" and both[1][0] == "bomb" and (both[1][1] as Vector3).is_equal_approx(HM.slot(shown[2], 1.0)), "스냅샷 순서, 저마다 자기 자리·보는 쪽")
 	# 노드: 종류마다 묶음 하나, 아무도 안 들면 숨김, 그림자 없음, 재질 하나 (바닥 아이템과 같은 갈래)
 	var hv = HV.new()
@@ -1038,9 +1043,9 @@ func test_c11_held_rows() -> void:
 				out.append("%s%d" % [k, n.multimesh.visible_instance_count])
 		return out
 	check(vis.call() == [] and hv.models.size() == 3 and hv.get_child_count() == 3, "처음엔 전부 숨김 (묶음 셋)")
-	hv.update([_c11_man(1, "bomb"), _c11_man(2, "bomb"), _c11_man(3, "brick")], null, false, {1: Vector3.ZERO, 2: Vector3.ONE, 3: Vector3.ONE}, 1000.0)
+	hv.update([_c11_man(1, "bomb"), _c11_man(2, "bomb"), _c11_man(3, "brick")], null, false, {1: Vector3.ZERO, 2: Vector3.ONE, 3: Vector3.ONE}, 1000.0, "playing")
 	check(vis.call() == ["bomb2", "brick1"], "든 종류만 보임: %s" % str(vis.call()))
-	hv.update([_c11_man(1, "bomb"), _c11_man(2, null), _c11_man(3, "brick", false)], 1, true, {1: Vector3.ZERO, 2: Vector3.ONE, 3: Vector3.ONE}, 2000.0)
+	hv.update([_c11_man(1, "bomb"), _c11_man(2, null), _c11_man(3, "brick", false)], 1, true, {1: Vector3.ZERO, 2: Vector3.ONE, 3: Vector3.ONE}, 2000.0, "playing")
 	check(vis.call() == [], "아무도 안 들면 (1인칭의 나만 듦) 전부 숨김: %s" % str(vis.call()))
 	const G3 := preload("res://shaders/g3.gd")
 	const MF := preload("res://core/mat_first.gd")
@@ -1053,25 +1058,104 @@ func test_c11_held_rows() -> void:
 	hv.free()
 
 
-# 어깨 옆 자리: 보는 쪽을 90° 돌리면 옆 방향도 90° 돎, 높이 = HELD.h, 오른쪽에 뜸
+# c11-fix F3: 판 단계 — 발밑 고리와 같은 단계 (countdown·playing) 에서만. 판 끝 (over) 승자 클로즈업에서 얼굴 옆에 든 폭탄이 뜨지 않음 (서버는 든 것을 판 시작·부활 때만 비움)
+func test_c11_fix_held_phase() -> void:
+	var shown := {1: Vector3(5.5, 5.5, 1.0), 2: Vector3(2.5, 3.5, 0.0)}
+	var men := [_c11_man(1, "bomb"), _c11_man(2, "brick")]
+	for ph in ["countdown", "playing"]:
+		check(HM.rows(men, 1, false, shown, ph).size() == 2 and HM.wanted(men[0], true, false, ph), "%s: 그림" % ph)
+	for ph in ["over", "lobby", "results", ""]:
+		check(HM.rows(men, 1, false, shown, ph).is_empty() and not HM.wanted(men[0], false, false, ph), "%s: 0줄" % ph)
+	check((FWC.FOOT_RING.phases as Array) == ["countdown", "playing"], "발밑 고리와 같은 단계 표: %s" % [FWC.FOOT_RING.phases])
+	# 노드: 판 중에 보이던 것이 판 끝 스냅샷에서 숨음 (그리기 0)
+	var hv = HV.new()
+	hv.update(men, 1, false, shown, 1000.0, "playing")
+	check(hv.models["bomb"].visible and hv.models["brick"].visible, "판 중: 보임")
+	hv.update(men, 1, false, shown, 1033.0, "over")
+	check(not hv.models["bomb"].visible and not hv.models["brick"].visible and hv.models["bomb"].multimesh.visible_instance_count == 0, "판 끝: 전부 숨김")
+	hv.free()
+
+
+# c11-fix F7: 관전에서 시선을 막아 옅어진 몸 (world/cam_rig.gd thin: id → {k, at}) 의 든 아이템은 안 그림. 1·3인칭에서는 thin 이 비어 예전과 같음.
+# cam_rig.spec_thin 이 그 표를 bodies.held_thin 에 넣고 bodies.update 가 held_view.update 로 넘김
+func test_c11_fix_held_thin() -> void:
+	var shown := {1: Vector3(5.5, 5.5, 1.0), 2: Vector3(2.5, 3.5, 0.0), 3: Vector3(1.5, 1.5, 0.0)}
+	var men := [_c11_man(1, "bomb"), _c11_man(2, "brick"), _c11_man(3, "bomb")]
+	var all: Array = HM.rows(men, null, false, shown, "playing")
+	check(all.size() == 3 and HM.rows(men, null, false, shown, "playing", {}) == all, "thin 이 비면 (1·3인칭) 예전과 같음")
+	var thin := {2: {"k": 0.32, "at": 1000.0}}
+	var cut: Array = HM.rows(men, null, false, shown, "playing", thin)
+	check(cut.size() == 2 and cut[0] == all[0] and cut[1] == all[2], "옅어진 P2 것만 빠짐: %s" % str(cut))
+	check(HM.thinned(thin, 2) and not HM.thinned(thin, 1) and not HM.thinned({}, 2), "thinned 판정")
+	check(HM.thinned({2: {"k": 0.99, "at": 0.0}}, 2) and not HM.thinned({2: {"k": 1.0, "at": 0.0}}, 2), "되돌아오는 중 (k < 1) 에도 안 그림, 다 돌아오면 (1) 그림")
+	# 노드로 넘기는 길
+	var hv = HV.new()
+	hv.update(men, null, false, shown, 1000.0, "playing", thin)
+	check(hv.models["bomb"].multimesh.visible_instance_count == 2 and not hv.models["brick"].visible, "노드: 옅어진 사람의 설치 블록은 숨김")
+	hv.update(men, null, false, shown, 1033.0, "playing", {})
+	check(hv.models["brick"].visible, "노드: 시선에서 벗어나면 다시")
+	hv.free()
+	# 넘기는 길 (소스 고정 — 몸·카메라 노드는 트리 밖에서 못 돌림): 카메라가 옅게 한 표를 몸 묶음에 넣고, 몸 묶음이 든 아이템 갱신에 넘김
+	var rig_src := FileAccess.get_file_as_string("res://world/cam_rig.gd")
+	var bodies_src := FileAccess.get_file_as_string("res://world/bodies.gd")
+	check(rig_src.contains("bodies.held_thin = next"), "cam_rig.spec_thin → bodies.held_thin")
+	check(bodies_src.contains("held_view.update(st.get(\"players\", []), my_id, hide_me, shown, now_ms, str(st.get(\"phase\", \"\")), held_thin)"), "bodies.update → held_view.update (단계·옅어진 몸)")
+	# 표를 만드는 쪽 (순수 계산): 시선을 막는 몸은 k < 1 로 들어오고, 관전이 아니면 (막는 몸 없음·앞 표 없음) 비어 있음
+	const SC := preload("res://world/spec_cam.gd")
+	var step: Dictionary = SC.thin_step({}, [2], [2], 1000.0, 0.016)
+	check(step.has(2) and float(step[2].k) < 1.0 and HM.thinned(step, 2), "thin_step 이 낸 표를 그대로 읽음: %s" % [step])
+	check(SC.thin_step({}, [], [], 1000.0, 0.016).is_empty(), "막는 몸이 없으면 빈 표")
+
+
+# 어깨 옆 자리: 보는 쪽을 90° 돌리면 옆 방향도 90° 돎, 높이·옆 거리 = 그 캐릭터 값 (HELD.by_char, 없으면 HELD.side·h), 오른쪽에 뜸
 func test_c11_held_slot() -> void:
 	var pos := Vector3(4.0, 7.0, 2.0)
 	var a: Vector3 = HM.slot(pos, 0.0) - pos
 	check(near(a.z, IL.HELD.h) and near(a.y, -float(IL.HELD.side)) and near(a.x, IL.HELD.fwd), "+x 를 보면 오른쪽 = −y: 옆 %.2f·앞 %.2f·높이 %.2f" % [-a.y, a.x, a.z])
-	for yaw in [0.0, 0.7, PI / 2.0, 2.5, -1.2]:
-		var d0: Vector3 = HM.slot(pos, yaw) - pos
-		var d1: Vector3 = HM.slot(pos, yaw + PI / 2.0) - pos
-		check(near(d1.x, -d0.y, 1e-5) and near(d1.y, d0.x, 1e-5), "yaw %.1f: 90° 돌리면 옆 방향도 90° (반시계)" % yaw)
-		check(near(d0.z, IL.HELD.h) and near(d1.z, IL.HELD.h), "yaw %.1f: 높이 = HELD.h" % yaw)
-		check(near(Vector2(d0.x, d0.y).length(), Vector2(IL.HELD.side, IL.HELD.fwd).length(), 1e-5), "yaw %.1f: 몸에서 거리 그대로" % yaw)
-		var right := Vector2(sin(yaw), -cos(yaw)) # 보는 쪽의 오른쪽
-		check(near(Vector2(d0.x, d0.y).dot(right), IL.HELD.side, 1e-5), "yaw %.1f: 오른쪽으로 HELD.side" % yaw)
+	for ch in ["", "tank", "bard"]:
+		var pl: Array = HM.place(ch)
+		for yaw in [0.0, 0.7, PI / 2.0, 2.5, -1.2]:
+			var d0: Vector3 = HM.slot(pos, yaw, ch) - pos
+			var d1: Vector3 = HM.slot(pos, yaw + PI / 2.0, ch) - pos
+			check(near(d1.x, -d0.y, 1e-5) and near(d1.y, d0.x, 1e-5), "%s yaw %.1f: 90° 돌리면 옆 방향도 90° (반시계)" % [ch, yaw])
+			check(near(d0.z, pl[1]) and near(d1.z, pl[1]), "%s yaw %.1f: 높이 = 그 캐릭터 값" % [ch, yaw])
+			check(near(Vector2(d0.x, d0.y).length(), Vector2(pl[0], IL.HELD.fwd).length(), 1e-5), "%s yaw %.1f: 몸에서 거리 그대로" % [ch, yaw])
+			var right := Vector2(sin(yaw), -cos(yaw)) # 보는 쪽의 오른쪽
+			check(near(Vector2(d0.x, d0.y).dot(right), pl[0], 1e-5), "%s yaw %.1f: 오른쪽으로 그 캐릭터 옆 거리" % [ch, yaw])
 	# 고도 좌표 인스턴스 변환: 자리 = gpos(slot), 오른쪽 = 고도 +z (몸이 +x 를 볼 때)
 	var x: Transform3D = HM.xform(["bomb", HM.slot(pos, 0.0)], 0.0)
 	check(x.origin.is_equal_approx(Co.gpos(HM.slot(pos, 0.0))) and near(x.origin.z - Co.gpos(pos).z, IL.HELD.side), "인스턴스 자리 = 어깨 옆 (고도 좌표)")
-	# 이름표 (머리 위) 보다 아래: 모델 꼭대기 < 이름표 가운데 − 0.3칸
-	check(float(IL.HELD.h) + float(IL.HELD.size) * 0.5 <= C.PLAYER_HEIGHT + C.LABEL_ABOVE_HEAD + FWC.LABEL_LIFT - 0.3, "모델 꼭대기 %.2f 가 이름표 (%.2f) 아래" % [float(IL.HELD.h) + float(IL.HELD.size) * 0.5, C.PLAYER_HEIGHT + C.LABEL_ABOVE_HEAD + FWC.LABEL_LIFT])
 	check(near(HM.spin_at(1000.0), fmod(FWC.ITEM_BOB[3] * float(IL.HELD.spin), TAU)) and float(IL.HELD.spin) < 1.0, "도는 빠르기 = 바닥 아이템 × HELD.spin (더 느림)")
+
+
+# c11-fix F4: 자리는 캐릭터마다 (몸 폭·어깨 높이가 다름). 예전 한 값 (옆 0.55·높이 1.6 = 정수리) 은 좁은 몸에서 머리 옆 허공에 떠 바닥 아이템·남의 것처럼 읽혔음
+func test_c11_fix_held_by_char() -> void:
+	var t: Dictionary = IL.HELD.by_char
+	for ch in C.FIGURE_CHARS:
+		check(t.has(ch), "%s: 표에 있음" % ch)
+		var pl: Array = HM.place(ch)
+		var side := float(pl[0])
+		var h := float(pl[1])
+		# 어깨 높이: 모델 가운데가 정수리 (C.PLAYER_HEIGHT) 보다 아래, 가슴 (키의 0.7) 보다 위 — 머리 옆 허공도 허리춤도 아님
+		check(h <= C.PLAYER_HEIGHT - 0.15 and h >= C.PLAYER_HEIGHT * 0.7, "%s: 높이 %.2f 가 어깨 근처 (%.2f ~ %.2f)" % [ch, h, C.PLAYER_HEIGHT * 0.7, C.PLAYER_HEIGHT - 0.15])
+		# 몸 밖: 판정 상자 반 폭 + 모델 반 폭보다 멀리 (몸에 안 묻힘), 한 칸보다는 가까이 (그 사람 것으로 읽힘)
+		check(side >= C.PLAYER_HALF + float(IL.HELD.size) * 0.5 - 0.03 and side <= 0.8, "%s: 옆 %.2f (%.2f ~ 0.8)" % [ch, side, C.PLAYER_HALF + float(IL.HELD.size) * 0.5 - 0.03])
+		# 이름표 (머리 위) 보다 아래: 모델 꼭대기 < 이름표 가운데 − 0.3칸
+		check(h + float(IL.HELD.size) * 0.5 <= C.PLAYER_HEIGHT + C.LABEL_ABOVE_HEAD + FWC.LABEL_LIFT - 0.3, "%s: 모델 꼭대기 %.2f 가 이름표 (%.2f) 아래" % [ch, h + float(IL.HELD.size) * 0.5, C.PLAYER_HEIGHT + C.LABEL_ABOVE_HEAD + FWC.LABEL_LIFT])
+	# 넓은 몸 (탱크·광전사·대포수) 은 좁은 몸 (닌자·바드) 보다 멀리 — 어깨 갑옷에 안 묻히고, 좁은 몸에선 허공에 안 뜸
+	for wide in ["tank", "berserker", "cannon"]:
+		for slim in ["ninja", "bard"]:
+			check(float(HM.place(wide)[0]) >= float(HM.place(slim)[0]) + 0.1, "%s (%.2f) 가 %s (%.2f) 보다 0.1칸 넘게 멀리" % [wide, HM.place(wide)[0], slim, HM.place(slim)[0]])
+	# 표에 없는 캐릭터 (캐릭터 끔): 기본 값 — 같은 범위
+	var d: Array = HM.place("")
+	check(d == [IL.HELD.side, IL.HELD.h] and HM.place("zzz") == d and float(d[1]) <= C.PLAYER_HEIGHT - 0.15, "표에 없으면 HELD.side·h: %s" % [d])
+	check(float(d[1]) + float(IL.HELD.size) * 0.5 <= C.PLAYER_HEIGHT + C.LABEL_ABOVE_HEAD + FWC.LABEL_LIFT - 0.3, "기본 값도 이름표 아래")
+	# rows 가 캐릭터 값을 씀
+	var shown := {1: Vector3(5.5, 5.5, 1.0)}
+	var man := _c11_man(1, "bomb")
+	man["char"] = "tank"
+	var row: Array = HM.rows([man], null, false, shown, "playing")
+	check(row.size() == 1 and (row[0][1] as Vector3).is_equal_approx(HM.slot(shown[1], 0.0, "tank")) and not (row[0][1] as Vector3).is_equal_approx(HM.slot(shown[1], 0.0, "bard")), "rows: 그 사람 캐릭터의 자리")
 
 
 # 크기: 긴 변 = HELD.size (바닥 아이템보다 작음)

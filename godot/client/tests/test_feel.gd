@@ -727,6 +727,62 @@ func test_c10_spec_fade_near_cells() -> void:
 	_spec_restore(keep, null)
 
 
+# c11-fix F6: 떨어지는 설치 블록 (pc.thrown) 도 착지한 것과 같은 나무 상자 (world/crate_look.gd) — 예전엔 떨어질 땐 단색 칸·내려앉으면 상자라 착지 순간 모습이 바뀜.
+# 칸 모양이 테마 재질로 갈 때만 (mats), 설치 블록이 없으면 숨김 (그리기 0). 예전 단색 칸으로 남는 것: 하늘 시점 (칸이 다 반투명) · 관전 카메라 가까운 칸 (옅게)
+func test_c11_fix_thrown_falls_as_crate() -> void:
+	const CL := preload("res://world/crate_look.gd")
+	var keep := _spec_setup([])
+	View.mode = "third"
+	CellLod.test_cam = {"pos": Co.gxyz(2.5, 2.5, 40.0), "fov": 75.0} # 멀리 (칸 LOD·옅게와 상관없이)
+	var pv = PV.new()
+	pv._ready()
+	check(not pv.crate_mmi.visible and pv.crate_mmi.multimesh.visible_instance_count == 0 and pv.crate_mmi.multimesh.mesh == CL.mesh(), "처음엔 상자 묶음 숨김 (그리기 0) · 상자 메시")
+	var cmat := pv.crate_mmi.material_override as ShaderMaterial
+	check(cmat != null and cmat.get_shader_parameter("use_vertex_color") == true and cmat.get_shader_parameter("hz_tint") == true and float(cmat.get_shader_parameter("color_glow")) == 0.0, "상자 재질 = 착지 상자와 같은 툰 (정점 색·물듦·안 빛남)")
+	check(cmat.shader == CL.material().shader and (cmat.next_pass != null) == (CL.material(true).next_pass != null) and CL.material().next_pass == null, "착지 상자와 같은 셰이더 — 떨어지는 칸이라 외곽선만 더함")
+	var thrown := {"shape": "O", "thrown": true, "cells": [[2, 2, 5], [2, 2, 6]], "sky": false}
+	var tee := {"shape": "T", "cells": [[6, 2, 5], [7, 2, 5], [8, 2, 5], [7, 2, 6]], "sky": false}
+	# 모양 칸 모습 끔 (mats 없음): 예전 그대로 전부 단색 칸
+	pv.update({"pieces": [thrown, tee]}, 1, {}, 0.0)
+	check(pv.crate_n == 0 and not pv.crate_mmi.visible and pv.cells_mmi.multimesh.visible_instance_count == 6, "모습 끔: 상자 0 · 단색 6칸 (%d)" % pv.cells_mmi.multimesh.visible_instance_count)
+	# 모습 켬: 설치 블록 2칸은 상자 묶음, 나머지는 칸 묶음
+	pv.mats = [StandardMaterial3D.new(), StandardMaterial3D.new()]
+	pv.update({"pieces": [thrown, tee]}, 1, {}, 0.0)
+	check(pv.crate_n == 2 and pv.crate_mmi.visible and pv.crate_mmi.multimesh.visible_instance_count == 2, "모습 켬: 상자 2칸 (%d)" % pv.crate_n)
+	check(pv.cells_mmi.multimesh.visible_instance_count + pv.far_mmi.multimesh.visible_instance_count == 4, "칸 묶음엔 모양 칸 4칸만 (설치 블록 없음)")
+	check(pv.crate_mmi.cast_shadow == pv.cells_mmi.cast_shadow, "그림자는 떨어지는 칸과 같은 설정")
+	# 설치 블록이 없어지면 (착지) 숨김 — 아이템 없는 장면의 그리기 수는 그대로
+	pv.update({"pieces": [tee]}, 1, {}, 0.0)
+	check(pv.crate_n == 0 and not pv.crate_mmi.visible and pv.crate_mmi.multimesh.visible_instance_count == 0, "설치 블록 없음: 상자 묶음 숨김")
+	# 자리 수보다 많으면 늘림
+	var many := {"shape": "O", "thrown": true, "cells": [], "sky": false}
+	for i in int(PV.CRATE_POOL) + 3:
+		many.cells.append([i % 10, 3, 5 + i / 10])
+	pv.update({"pieces": [many]}, 1, {}, 0.0)
+	check(pv.crate_n == int(PV.CRATE_POOL) + 3 and pv.crate_mmi.multimesh.instance_count >= pv.crate_n, "자리보다 많은 칸: 늘림 (%d / %d)" % [pv.crate_n, pv.crate_mmi.multimesh.instance_count])
+	# 하늘 시점 (칸이 다 반투명): 상자 아님 — 예전 단색 반투명 칸
+	pv.update({"pieces": [thrown, tee]}, 1, {}, 1.0)
+	check(pv.crate_n == 0 and not pv.crate_mmi.visible and pv.cells_mmi.multimesh.visible_instance_count + pv.far_mmi.multimesh.visible_instance_count == 6, "하늘 시점: 상자 0 · 칸 6")
+	# 관전 카메라 가까운 설치 블록 칸: 옅은 칸 묶음으로 (대상을 불투명 상자로 가리지 않음), 먼 설치 블록 칸은 상자
+	View.mode = "spectate"
+	var far_thrown := {"shape": "O", "thrown": true, "cells": [[9, 9, 5]], "sky": false}
+	CellLod.test_cam = {"pos": Co.gxyz(2.5, 2.5, 6.5), "fov": 75.0} # [2,2,5] 가운데에서 1 m 위, [2,2,6] 안
+	pv.update({"pieces": [thrown, far_thrown]}, 1, {}, 0.0)
+	check(pv.fade_n == 2 and pv.crate_n == 1 and pv.fade_mmi.multimesh.visible_instance_count == 2, "관전 가까운 2칸은 옅은 칸 · 먼 1칸만 상자 (옅은 %d · 상자 %d)" % [pv.fade_n, pv.crate_n])
+	for e in pv.faded:
+		check((e[2] as Color).a < 1.0, "옅은 설치 블록 칸 알파 %.2f < 1" % (e[2] as Color).a)
+	# 순수 판정·깜빡임
+	check(PV.crate_cell(thrown, true, 1.0) and not PV.crate_cell(thrown, false, 1.0) and not PV.crate_cell(thrown, true, 0.5) and not PV.crate_cell(tee, true, 1.0), "상자로 그리나: 설치 블록 · 모습 켬 · 불투명일 때만")
+	var bms := int(C.THROWN_BLINK_MS)
+	check(not PV.thrown_blink(0) and PV.thrown_blink(bms) and not PV.thrown_blink(bms * 2) and PV.thrown_blink(bms + bms / 2), "깜빡임: THROWN_BLINK_MS 마다 번갈아")
+	var on_c: Color = CL.fall_color(true)
+	check(CL.fall_color(false) == Color.WHITE and on_c.r > 1.0 and on_c.g > 1.0 and on_c.r > on_c.g and on_c.g > on_c.b and on_c.b < 1.0, "켜진 반 주기: 밝고 노랗게 (%s), 꺼진 반 주기: 착지 상자 색 그대로" % on_c)
+	# 착지 상자와 같은 조건 (world/grid_view.gd: 모양 칸 모습이 켜졌을 때만)
+	check(FileAccess.get_file_as_string("res://world/grid_view.gd").contains("elif piece_look and grid[i] == Cells.THROWN:"), "착지 상자 조건 (모습 켬) 과 같은 갈래")
+	pv.free()
+	_spec_restore(keep, null)
+
+
 # c10-fix F2: 옅은 칸 재질 사본은 원본 (G3 가 제자리에서 바꾸는 반투명 재질) 의 셰이더·값을 옅게 그리기 시작할 때 다시 베낌, 재질이 바뀌면 (테마) 새로 뜸
 func test_c10_fix_fade_material_follows() -> void:
 	var G3 = load("res://shaders/g3.gd")

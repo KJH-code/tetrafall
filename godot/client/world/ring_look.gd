@@ -13,6 +13,9 @@ const G3C := preload("res://shaders/g3_config.gd")
 const LOOKS := {
 	"windup": {"seg": 48, "bands": [[0.76, 0.80, "clear", "core"], [0.80, 0.88, "core", "core"], [0.88, 0.97, "tint", "tint"], [0.97, 1.0, "ink", "ink"]]},
 	"aura": {"seg": 40, "bands": [[0.86, 0.93, "core", "core"], [0.93, 1.0, "tint", "tint"]]},
+	# c11-fix F1: 손에 든 폭탄의 조준 고리 (world/hand_aim.gd, 3인칭) — 가는 선 고리 (폭 = 반지름의 7%: 쓴 사람 색 선 + 잉크 테, 흰 심 없음). windup 을 키워 쓰면 발밑 고리·스킬 준비 고리와 같은 꼴 (굵은 흰 심 + 색 띠) 이라
+	# 크기·자리로만 갈렸음. 놓인 폭탄의 끊긴 흰 고리 (bolt_fx_math.warn_mesh) 와도 모양으로 갈림: 든 것 = 이어진 내 색 가는 선, 놓인 것 = 끊긴 흰 심 + 주황 원
+	"aim": {"seg": 64, "bands": [[0.93, 0.98, "tint", "tint"], [0.98, 1.0, "ink", "ink"]]},
 }
 const INK_ALPHA := 0.6
 # F 준비 예고 고리: 반지름 (칸) r0 → r1 로 ease-out, 수명의 hold 까지 알파 1 · 뒤는 0 으로, 발밑에서 lift 칸 위, 그리는 순서 (이름표 외곽선 10 아래)
@@ -107,6 +110,14 @@ static func material(alpha := 1.0, priority := 0) -> StandardMaterial3D:
 	m.vertex_color_use_as_albedo = true
 	m.albedo_color = Color(1, 1, 1, alpha)
 	m.render_priority = priority
+	return m
+
+
+# c11-fix F1: 몸·블록 너머로 비치는 고리·판 재질 — material 과 같되 깊이 검사를 끔 (늘 위에 그려짐 → 알파를 낮춰 옅게 씀, world/hand_aim.gd 3인칭 조준).
+# 셰이더 모양 = STD_KEYS [0, 1, 0, 2, 1, 0, 1, 0, 0, 0, 2] (world/warm_scan.gd 표에 넣어 판 들어올 때 미리 그려 둠)
+static func xray_material(alpha := 1.0, priority := 0) -> StandardMaterial3D:
+	var m := material(alpha, priority)
+	m.no_depth_test = true
 	return m
 
 

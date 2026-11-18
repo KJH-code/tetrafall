@@ -2,7 +2,9 @@
 # 내가 있는 동안 화면에 따로 알림. 기본 1인칭에서는 발밑 가까운 폭탄과 고리가 화면 아래 끝보다 더 아래라 안 보임 (번개 예고와 같은 까닭).
 #   · 번개 판과 같은 자리·모양의 어두운 판 + 주황 테: '폭탄! 고리 밖으로' + 남은 초 + 줄어드는 막대 (다 줄면 터짐). 범위 밖으로 나가면 바로 꺼짐
 #   · 화면 가장자리 주황 테 (ui/screen_edge.gd) 가 깜빡임
-# 내 폭탄·같은 팀 폭탄은 뺌 (서버가 안 맞게 함). 주인은 이벤트 bombPlace 로만 옴 → 놓인 칸으로 짝지어 폭탄 id 에 붙여 둠, 모르는 폭탄 (판 중에 들어옴) 은 위험으로 침.
+#   · c11-fix F8: 판 안 (글과 남은 초 사이) 에 빠질 방향 화살표 — 폭탄 가운데 → 나 방향을 카메라가 보는 쪽 기준으로 돌린 도형 (hand_aim_math.escape_dir). 위 = 앞으로, 아래 = 뒤로.
+#     폭탄과 겹쳐 서 있으면 (방향이 안 정해짐) 화살표만 비움 — 자리는 남겨 판 폭이 안 흔들림
+# 내 폭탄·같은 팀 폭탄은 뺌 (서버가 안 맞게 함). 주인은 이벤트 bombPlace 로만 옴 → 놓인 x·y 칸으로 짝지어 폭탄 id 에 붙여 둠 (도화선 시간이 지난 기억은 버림), 모르는 폭탄 (판 중에 들어옴) 은 위험으로 침.
 # 번개 판이 떠 있으면 숨김 (같은 자리). hud_extra.gd 가 만들어 넣고 이벤트·프레임마다 부름. 순수 계산·수치는 hand_aim_math.gd BOMB_ALERT (tests/test_round_events.gd test_c11_bomb_alert_*)
 extends Control
 
@@ -20,6 +22,9 @@ var text: Label
 var sec: Label
 var bar: Control
 var left01 := 0.0 # 남은 시간 ÷ 도화선 시간 (막대)
+var arrow: Control # 빠질 방향 화살표 칸 (도형으로 그림)
+var arrow_dir = null # 화면 기준 빠질 방향 (Vector2, hand_aim_math.escape_dir) — null 이면 안 그림
+var hold_yaw = null # 확인용 (테스트): 숫자를 넣으면 카메라 yaw 를 그 값으로 고정
 
 
 func _init() -> void:
@@ -54,6 +59,13 @@ func _init() -> void:
 	text = _label(int(A.font), glow)
 	text.text = str(M.BOMB_ALERT.text)
 	row.add_child(text)
+	arrow = Control.new()
+	arrow.custom_minimum_size = Vector2.ONE * float(M.BOMB_ALERT.arrow_px)
+	arrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	arrow.draw.connect(func():
+		if arrow_dir != null:
+			arrow.draw_colored_polygon(M.arrow_points(arrow_dir, float(M.BOMB_ALERT.arrow_px), arrow.size / 2.0), S.TEXT))
+	row.add_child(arrow)
 	sec = _label(int(A.sec_font), S.TEXT)
 	sec.custom_minimum_size.x = float(A.sec_w) # 숫자가 바뀌어도 판 폭이 안 흔들리게
 	sec.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -77,10 +89,10 @@ func _label(size: int, col: Color) -> Label:
 	return l
 
 
-# 서버 이벤트: bombPlace 만 봄 (누가 어느 칸에 놓았는지)
-func on_event(e: Dictionary) -> void:
+# 서버 이벤트: bombPlace 만 봄 (누가 어느 칸에 놓았는지). now = 판 시계 (ms, Net.now_ms — refresh 와 같은 시계)
+func on_event(e: Dictionary, now: float) -> void:
 	if str(e.get("type", "")) == "bombPlace":
-		M.owner_note(pending, e)
+		M.owner_note(pending, e, now)
 
 
 func clear() -> void:
@@ -99,7 +111,7 @@ func refresh(st: Dictionary, me: Dictionary, now: float, playing: bool, view_mod
 	var bombs: Array = st.get("bombs", [])
 	if bombs.is_empty() and owners.is_empty() and not plate.visible and not edge.visible: # 폭탄 없는 보통 프레임
 		return
-	M.owner_bind(owners, pending, bombs)
+	M.owner_bind(owners, pending, bombs, now)
 	var w := M.bomb_pick(bombs, owners, me, st)
 	var on := M.bomb_alert_show(bolt_on, w)
 	plate.visible = on
@@ -109,9 +121,24 @@ func refresh(st: Dictionary, me: Dictionary, now: float, playing: bool, view_mod
 		if k != left01:
 			left01 = k
 			bar.queue_redraw()
+		var dir = M.escape_dir(me, float(w.x), float(w.y), _cam_yaw(me))
+		if dir != arrow_dir:
+			arrow_dir = dir
+			arrow.queue_redraw()
 		if is_inside_tree(): # 트리 밖 (테스트) 이면 자리는 안 잡음
 			var vp := get_viewport_rect().size
 			var sz := plate.get_combined_minimum_size()
 			plate.size = sz
 			plate.position = Vector2((vp.x - sz.x) / 2.0, vp.y * BM.alert_y(view_mode) - sz.y / 2.0)
 	edge.set_level(BM.alert_edge(on, now, -1.0e9))
+
+
+# 카메라가 보는 쪽 (게임 yaw): 화면에 그리는 카메라 (1·3인칭 모두 내 시선 쪽 — 스냅샷 값보다 한 박자 빠름), 트리 밖 (테스트) 이면 스냅샷의 내 yaw
+func _cam_yaw(me: Dictionary) -> float:
+	if hold_yaw != null:
+		return float(hold_yaw)
+	if is_inside_tree():
+		var cam := get_viewport().get_camera_3d()
+		if cam != null:
+			return Co.yaw_of(cam)
+	return float(me.get("yaw", 0.0))

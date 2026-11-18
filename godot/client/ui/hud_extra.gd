@@ -397,7 +397,7 @@ func show_hitmarker() -> void:
 func _on_event(e: Dictionary) -> void:
 	var me_id = Store.my_id
 	bolt_alert.on_event(e, Store.me(), Net.now_ms()) # boltWarn·bolt 만 봄
-	bomb_alert.on_event(e) # bombPlace 만 봄
+	bomb_alert.on_event(e, Net.now_ms()) # bombPlace 만 봄 (시각 = 오래된 기억 버리기)
 	match str(e.get("type", "")):
 		"ultFail": # 내 R 을 못 씀: R 칸이 빨갛게 흔들림 + 짧은 이유
 			if e.get("who") == me_id:

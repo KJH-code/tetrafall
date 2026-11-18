@@ -119,6 +119,10 @@ const BOMB_GLOW_BODY := 0x701408
 
 # c11-u2 든 아이템 (world/held_view.gd — 순수 계산 world/held_math.gd): 손 아이템을 든 사람 (스냅샷 players[].held) 의 오른 어깨 옆에 그 종류 모델을 작게 띄움 — 누가 무엇을 들었는지.
 # 모델·재질은 바닥 아이템의 것 (item_models.mesh·material) 그대로, 받침 고리·그림자 없음. 몸 뼈에 안 붙임 (판정 자리 기준 — 몸이 쓰러져도 어깨 자리에 떠 있음).
-#   kinds 그리는 종류 (서버가 보내는 held 값, 묶음 순서) · size 긴 변 (칸 — 바닥 아이템 SIZE 의 약 0.6배) · side 몸 가운데에서 오른쪽으로 (칸) · h 발에서 모델 가운데까지 높이 · fwd 앞으로
+#   kinds 그리는 종류 (서버가 보내는 held 값, 묶음 순서) · size 긴 변 (칸 — 바닥 아이템 SIZE 의 약 0.6배) · fwd 앞으로
+#   by_char 캐릭터마다 [몸 가운데에서 오른쪽으로 (칸), 발에서 모델 가운데까지 높이] — c11-fix F4: 몸 폭·어깨 높이가 캐릭터마다 달라 한 값 (옆 0.55·높이 1.6 = 정수리 높이) 으로는
+#     좁은 몸에선 머리 옆 허공에 떠 바닥 아이템·남의 것처럼 읽혔고, 값을 줄이면 넓은 몸 (탱크 어깨 갑옷) 에 묻혔음 → 어깨 바깥 끝 + 모델 반 폭 + 틈, 어깨 높이 (견본 tools/item_sheet.gd held-* 로 맞춤)
+#   side·h 표에 없는 캐릭터 (캐릭터 끔 등) 의 옆 거리·높이
 #   spin 제자리 도는 빠르기 (바닥 아이템 도는 빠르기 WC.ITEM_BOB[3] 의 배수)
-const HELD := {"kinds": ["bomb", "knockback", "brick"], "size": 0.32, "side": 0.55, "h": 1.6, "fwd": 0.05, "spin": 0.6}
+const HELD := {"kinds": ["bomb", "knockback", "brick"], "size": 0.32, "side": 0.5, "h": 1.3, "fwd": 0.05, "spin": 0.6,
+	"by_char": {"tank": [0.72, 1.45], "ninja": [0.44, 1.3], "builder": [0.62, 1.2], "hook": [0.48, 1.25], "hunter": [0.6, 1.3], "cannon": [0.66, 1.25], "berserker": [0.62, 1.25], "bard": [0.46, 1.4]}}

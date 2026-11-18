@@ -9,6 +9,7 @@ const Co := preload("res://core/coords.gd")
 const WC := preload("res://world/world_config.gd")
 const Cells := preload("res://world/cells.gd")
 const Tex := preload("res://world/chunk_tex.gd")
+const CrateLook := preload("res://world/crate_look.gd")
 const FXC := preload("res://fx/fx_config.gd")
 
 var effects = null # G5 fx/effects.gd
@@ -225,7 +226,7 @@ var g3 = null # G3 (shaders/g3.gd), 없으면 색 상자
 var low := false
 
 
-# W35 덩어리 재질 (render.js blockGrab): 건축가 블록 = 판자 상자, 테트리미노 칸 = 맵 테마 칸 모양·재질, 지형 = 돌, 설치 블록 = 모래 (그림 world/chunk_tex.gd).
+# W35 덩어리 재질 (render.js blockGrab): 건축가 블록 = 판자 상자, 테트리미노 칸 = 맵 테마 칸 모양·재질, 지형 = 돌 (그림 world/chunk_tex.gd), 설치 블록 = 나무 상자 (c11-fix F6 — 예전 모래 그림).
 # 하늘 블록 (sky) 은 밝고 반투명 (SKY_PIECE_OPACITY). g3 가 없으면 예전처럼 색 상자
 func chunk_look(e: Dictionary, col: Color) -> Dictionary:
 	var v := int(e.get("v", 0))
@@ -247,6 +248,8 @@ func chunk_look(e: Dictionary, col: Color) -> Dictionary:
 		var cm := ArrayMesh.new()
 		cm.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 		return {"mesh": cm, "mat": g3.piece_material(theme_id, low, {"transparent": sky, "opacity": opacity})}
+	if v == Cells.THROWN and not builder and not sky: # c11-fix F6: 설치 블록 칸 = 쌓였을 때·떨어질 때와 같은 나무 상자 (world/crate_look.gd — 예전엔 모래 그림 상자). 하늘 덩어리 (반투명) 는 예전 그대로
+		return {"mesh": CrateLook.mesh(), "mat": CrateLook.material(true)}
 	var bm2 := BoxMesh.new()
 	bm2.size = Vector3.ONE * 0.98
 	var tex: Texture2D = Tex.stone()

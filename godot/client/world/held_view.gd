@@ -1,6 +1,6 @@
 # 든 아이템 (c11-u2): 손 아이템 (폭탄·넉백 글러브·설치 블록) 을 든 사람의 오른 어깨 옆에 그 종류 모델을 작게 띄움 — 누가 무엇을 들었는지 몸 옆 실루엣으로.
 # world/bodies.gd 의 자식 (발밑 고리 world/foot_rings.gd 와 같은 길 — 몸 뼈에 안 붙임), bodies.update 끝에서 한 번 갱신. 종류마다 MultiMesh 하나 (바닥 아이템 모델 world/item_models.gd·툰 재질 하나를 나눠 씀),
-# 아무도 안 들면 숨김 (그리기 0), 그림자·받침 고리 없음. 누구를·어디에·얼마나는 world/held_math.gd (순수 계산), 수치 world/item_look.gd HELD
+# 아무도 안 들면 숨김 (그리기 0), 그림자·받침 고리 없음. 판 중 (발밑 고리와 같은 단계) 에만 · 관전에서 시선을 막아 옅어진 몸의 것은 안 그림 (c11-fix F3·F7). 누구를·어디에·얼마나는 world/held_math.gd (순수 계산), 수치 world/item_look.gd HELD
 extends Node3D
 
 const C := preload("res://core/config.gd")
@@ -50,6 +50,6 @@ func show_rows(rows: Array, angle: float) -> void:
 			n.visible = cnt > 0
 
 
-# players = 스냅샷 players · shown = Bodies.shown (id → 화면 위치) · hide_me = 1인칭이라 내 몸을 숨김
-func update(players: Array, my_id, hide_me: bool, shown: Dictionary, now_ms: float) -> void:
-	show_rows(M.rows(players, my_id, hide_me, shown), float(hold_spin) if hold_spin != null else M.spin_at(now_ms))
+# players = 스냅샷 players · shown = Bodies.shown (id → 화면 위치) · hide_me = 1인칭이라 내 몸을 숨김 · phase = 판 단계 (판 중에만 그림) · thin = 관전에서 옅어진 몸 (그 사람 것은 안 그림)
+func update(players: Array, my_id, hide_me: bool, shown: Dictionary, now_ms: float, phase: String, thin: Dictionary = {}) -> void:
+	show_rows(M.rows(players, my_id, hide_me, shown, phase, thin), float(hold_spin) if hold_spin != null else M.spin_at(now_ms))

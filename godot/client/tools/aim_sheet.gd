@@ -220,6 +220,10 @@ func _save(job: Array) -> void:
 		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME), RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)])
 	if got != job[7]:
 		failed.append("%s (그린 수 %s, 기대 %s)" % [file, got, job[7]])
+	# c11-fix F1: 몸 너머로 비치는 한 벌은 3인칭에서 폭탄 조준일 때만 (1인칭·설치 블록·그래픽 낮춤 장면은 예전 그대로)
+	var want_xray: bool = str(job[4]) == "third" and str(job[3]) == "bomb"
+	if aim.xray_mmi.visible != want_xray or aim.ring_xray.visible != want_xray:
+		failed.append("%s (몸 너머 판 %s · 고리 %s, 기대 %s)" % [file, aim.xray_mmi.visible, aim.ring_xray.visible, want_xray])
 	if span > RING_CAP:
 		failed.append("%s (조준 고리가 화면 높이 %.2f — 상한 %.2f)" % [file, span, RING_CAP])
 	if (str(job[3]) == "alert") != alert.plate.visible:
@@ -332,7 +336,7 @@ func _fill(map_id: String, scene: String, v: String) -> void:
 				var bx := me_cell.x + int(ALERT_BOMB[0])
 				var by := me_cell.y + int(ALERT_BOMB[1])
 				bombs.append({"id": 1, "x": bx, "y": by, "z": 0, "left": float(ALERT_BOMB[2])})
-				alert.on_event({"type": "bombPlace", "who": FOE_ID, "x": bx, "y": by, "z": 0})
+				alert.on_event({"type": "bombPlace", "who": FOE_ID, "x": bx, "y": by, "z": 0}, ALERT_NOW)
 	grid_ver += 1
 	store.my_id = null if v == "eye" else ME_ID
 	store.grid = grid

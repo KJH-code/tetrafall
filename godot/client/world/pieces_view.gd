@@ -9,6 +9,7 @@ const WC := preload("res://world/world_config.gd")
 const CellLod := preload("res://world/cell_lod.gd")
 const LandingRim := preload("res://world/landing_rim.gd")
 const SpecCam := preload("res://world/spec_cam.gd")
+const CrateLook := preload("res://world/crate_look.gd")
 
 var cells_mmi := MultiMeshInstance3D.new()
 var sky_mmi := MultiMeshInstance3D.new() # 하늘 계단 블록 (render.js skyPieceMat: 밝게·살짝 비침·하늘색 빛) — 늘 반투명 재질
@@ -39,6 +40,10 @@ var _fade_src: Material = null # 사본을 뜬 원본 (set_look 이 재질을 �
 # 그림자 칸·착지 테까지 다 다시 쓰는 것 (writes) 은 스냅샷·시점·색 표·내 id 가 바뀔 때만 (W15 그대로)
 var refades := 0 # 옅은 칸만 다시 쓴 번 수 (확인용)
 var _fade_ids := PackedInt32Array()
+# c11-fix F6: 떨어지는 설치 블록 칸 (pc.thrown) — 착지한 것 (world/grid_view.gd crate_mmi) 과 같은 나무 상자 (world/crate_look.gd, 떨어지는 칸이라 외곽선 있음). 예전엔 떨어질 땐 단색 칸·내려앉으면 상자라 착지 순간 모습이 바뀜.
+# 칸 모양이 테마 재질로 갈 때만 (mats — 착지 상자와 같은 조건), 설치 블록이 없으면 숨김 (그리기 0). 예전 단색 칸으로 남는 것: 관전 카메라 가까운 칸 (옅게 — 상자는 불투명 재질뿐이라 대상을 가림) · 하늘 시점 (칸이 다 반투명)
+var crate_mmi := MultiMeshInstance3D.new()
+var crate_n := 0 # 지난 갱신에서 상자로 그린 칸 수 (확인용)
 
 
 func _ready() -> void:
@@ -93,6 +98,16 @@ func _ready() -> void:
 	fade_mmi.material_override = piece_mat # 재질 [불투명, 반투명] 이 오면 (update) 반투명 쪽. 그 전엔 칸이 안 들어옴
 	fade_mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(fade_mmi)
+	var xm := MultiMesh.new()
+	xm.transform_format = MultiMesh.TRANSFORM_3D
+	xm.use_colors = true
+	xm.mesh = CrateLook.mesh()
+	xm.instance_count = CRATE_POOL
+	xm.visible_instance_count = 0
+	crate_mmi.multimesh = xm
+	crate_mmi.material_override = CrateLook.material(true)
+	crate_mmi.visible = false
+	add_child(crate_mmi)
 	var sm := MultiMesh.new()
 	sm.transform_format = MultiMesh.TRANSFORM_3D
 	sm.use_colors = true
@@ -112,6 +127,19 @@ func _ready() -> void:
 	rim_mmi.material_override = _flat_mat(1) # 채움 위에 그림
 	rim_mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(rim_mmi)
+
+
+const CRATE_POOL := 16 # 떨어지는 설치 블록 상자 자리 (모자라면 늘림 — 설치 블록 하나 = 2칸)
+
+
+# c11-fix F6: 이 조각 칸을 나무 상자로 그리나 — 설치 블록 · 칸 모양이 테마 재질 (look) · 불투명하게 그리는 때 (alpha 1 — 하늘 시점 아님). 관전 카메라 가까운 칸은 부르는 쪽이 먼저 옅은 칸으로 보냄
+static func crate_cell(pc: Dictionary, look: bool, alpha: float) -> bool:
+	return look and alpha >= 1.0 and bool(pc.get("thrown", false))
+
+
+# 설치 블록 깜빡임의 켜진 반 주기인가 (render.js thrownMat — C.THROWN_BLINK_MS 마다 번갈아)
+static func thrown_blink(ticks_ms: int) -> bool:
+	return int(ticks_ms / C.THROWN_BLINK_MS) % 2 == 1
 
 
 # 그림자 칸·테의 재질: 빛 안 받는 반투명 + 인스턴스 색 (미리 그리기 표 world/warm_scan.gd STD_KEYS 에 있는 모양 — 순서 값은 셰이더 모양에 안 들어감)
@@ -167,6 +195,7 @@ func set_proxy(on: bool) -> void:
 	proxy_on = on
 	cells_mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if on else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	far_mmi.cast_shadow = cells_mmi.cast_shadow
+	crate_mmi.cast_shadow = cells_mmi.cast_shadow
 	if not on:
 		caster_mmi.multimesh.visible_instance_count = 0
 	_key_st = null # 상자 자리를 다음 갱신에서 다시 씀
@@ -186,7 +215,7 @@ func piece_color(pc: Dictionary) -> Color:
 		return Co.color(C.PLAYER_PALETTE[int(g if g != null else 0) % C.PLAYER_PALETTE.size()])
 	if pc.get("thrown", false):
 		var tc := Co.color(C.THROWN_COLOR)
-		if int(Time.get_ticks_msec() / C.THROWN_BLINK_MS) % 2: # render.js thrownMat 깜빡임 (emissive 0x806000)
+		if thrown_blink(Time.get_ticks_msec()): # render.js thrownMat 깜빡임 (emissive 0x806000)
 			tc += Color(0.5, 0.375, 0.0, 0.0)
 		return tc
 	if pc.get("controller") != null:
@@ -282,9 +311,13 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 	var cell_i := 0 # 조각·칸 순서로 센 번호 (near_ids 와 같은 순서)
 	var fade_on := not spec_cam.is_empty()
 	var fade_pos: Vector3 = spec_cam.get("pos", Vector3.ZERO)
+	var xm := crate_mmi.multimesh
+	var x := 0 # 상자로 그린 칸 수
+	var crate_col := CrateLook.fall_color(thrown_blink(Time.get_ticks_msec()))
 	for pc in pieces:
 		var col := piece_color(pc)
 		col.a = alpha
+		var crate := crate_cell(pc, mats != null, alpha)
 		var sky: bool = pc.get("sky", false) and str(pc.get("shape", "")) != "ghost" and not pc.get("thrown", false) and pc.get("controller") == null
 		var base := col
 		if sky:
@@ -323,6 +356,15 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 					km.set_instance_color(q, col)
 					_sky_base.append(base)
 					q += 1
+			elif crate: # c11-fix F6: 떨어지는 설치 블록 → 나무 상자 (멀어도 같은 모양 — 삼각형 CrateLook.MAX_TRIS 이하)
+				if x >= xm.instance_count:
+					xm.instance_count = x + CRATE_POOL
+				xm.set_instance_transform(x, xf)
+				xm.set_instance_color(x, crate_col)
+				if proxy_on:
+					qm.set_instance_transform(qi, xf)
+					qi += 1
+				x += 1
 			elif far_piece:
 				fm.set_instance_transform(f, xf)
 				fm.set_instance_color(f, col)
@@ -364,6 +406,9 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 		_sync_fade_material() # 옅게 그리기 시작: 원본 재질이 제자리에서 바뀐 값 (그래픽 낮춤·판 빛 테두리) 을 따라감
 	_write_faded()
 	mm.visible_instance_count = k
+	xm.visible_instance_count = x
+	crate_mmi.visible = x > 0
+	crate_n = x
 	fm.visible_instance_count = f
 	lod_far = f
 	qm.visible_instance_count = qi if proxy_on else 0

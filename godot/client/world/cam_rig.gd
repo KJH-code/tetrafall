@@ -341,6 +341,8 @@ func spec_thin(dt: float, shown: Dictionary, look: Dictionary, on: bool) -> void
 			_thin_bodies.erase(id)
 	if bodies == null:
 		return
+	if bodies.get("held_thin") != null: # c11-fix F7: 옅어진 몸의 든 아이템은 안 그림 (world/held_math.gd thinned). 테스트의 가짜 몸 묶음엔 이 값이 없음
+		bodies.held_thin = next
 	for id in next:
 		var n = bodies.nodes.get(id)
 		var body = n.body if n != null and n.get("body") != null and n.body.has_method("set_see_thru") else null

@@ -1,5 +1,6 @@
-# 착지한 설치 블록 칸 (c11-u2): 던져서 내려앉은 설치 블록 (격자 값 Cells.THROWN) 을 설치 블록 아이템 (world/item_look.gd PARTS.brick) 과 같은 나무 상자로 — 예전엔 단색 칸.
-# 코드 메시 하나 (world/item_models.gd build — 정점 색), 재질은 툰 (정점 색·외곽선 없음·위험 액체에 잠기면 물듦). world/grid_view.gd 가 MultiMesh 하나로 그림 (모양 칸이 테마 재질로 갈 때만)
+# 설치 블록 칸 (c11-u2): 던져서 내려앉은 설치 블록 (격자 값 Cells.THROWN) 을 설치 블록 아이템 (world/item_look.gd PARTS.brick) 과 같은 나무 상자로 — 예전엔 단색 칸.
+# c11-fix F6: 떨어지는 동안 (world/pieces_view.gd)·갈고리로 집어 올린 덩어리 (world/hook_fx.gd) 도 같은 상자 — 착지한 것만 상자면 내려앉는 순간 모습이 바뀜.
+# 코드 메시 하나 (world/item_models.gd build — 정점 색), 재질은 툰 (정점 색·외곽선 없음·위험 액체에 잠기면 물듦). world/grid_view.gd·pieces_view.gd 가 저마다 MultiMesh 하나로 그림 (모양 칸이 테마 재질로 갈 때만)
 extends RefCounted
 
 const IL := preload("res://world/item_look.gd")
@@ -33,8 +34,16 @@ static func mesh() -> ArrayMesh:
 	return _mesh
 
 
-# 상자 재질: 툰 + 정점 색, 외곽선 없음 (쌓인 칸은 외곽선 없음 — 모양 칸과 같음), 스스로 빛나지 않음, 위험 액체에 잠기면 물듦 (블록 재질)
-static func material() -> ShaderMaterial:
-	var m := IM.material({"outline": false, "hz_tint": true})
+# 상자 재질: 툰 + 정점 색, 스스로 빛나지 않음, 위험 액체에 잠기면 물듦 (블록 재질). outline: 쌓인 칸은 외곽선 없음 (모양 칸과 같음), 떨어지는 칸은 공용 잉크 외곽선 (떨어지는 모양 칸과 같음 — c11-fix F6)
+static func material(outline := false) -> ShaderMaterial:
+	var m := IM.material({"outline": outline, "hz_tint": true})
 	m.set_shader_parameter("color_glow", 0.0) # (IM.material 은 제 빛남 값을 안 덮어씀 — 아이템은 빛나고 쌓인 칸은 안 빛남)
 	return m
+
+
+# c11-fix F6: 떨어지는 설치 블록 칸의 인스턴스 색 (정점 색에 곱함). 깜빡임 (C.THROWN_BLINK_MS 마다 번갈아 — O 블록 노랑과 갈리게 하던 예전 단색 칸의 깜빡임 그대로) 의 켜진 반 주기엔 BLINK 만큼 밝고 노랗게
+const BLINK := [1.45, 1.3, 0.85]
+
+
+static func fall_color(blink_on: bool) -> Color:
+	return Color(float(BLINK[0]), float(BLINK[1]), float(BLINK[2])) if blink_on else Color.WHITE

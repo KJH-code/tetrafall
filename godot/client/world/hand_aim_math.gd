@@ -17,7 +17,13 @@ const HAND_AIM := {
 	"pad_inset": 0.03, # 판을 칸보다 이만큼 안으로 (칸 사이 틈이 보여 9칸으로 읽힘)
 	"pad_lift": 0.01, # 판 밑면을 바닥에서 띄움
 	"bad_color": 0xff2020, # 못 쓰는 자리 (ok = false): 상자·테·판 모두 빨강
-	"ring_alpha": 0.9, "ring_lift": 0.05, # 폭탄: 사람이 맞는 범위 고리 (반지름 C.BOMB_BLAST_RANGE, 내 색 이어진 고리 — ring_look windup)
+	"ring_alpha": 0.9, "ring_lift": 0.05, # 폭탄: 사람이 맞는 범위 고리 (반지름 C.BOMB_BLAST_RANGE, 내 색 이어진 고리)
+	# 고리 꼴 (world/ring_look.gd LOOKS 의 이름) — 시점마다. c11-fix F1: 3인칭은 가는 선 고리 ("aim") — 예전 windup (띠 폭 0.48칸) 은 바로 옆에 보이는 내 발밑 고리와 같은 꼴이었음.
+	# 1인칭은 내 발밑 고리가 안 보여 헷갈릴 것이 없고 눈높이에서 가는 선은 얇게 누워 안 읽힘 → 예전 그대로
+	"ring_look": {"first": "windup", "third": "aim"},
+	# c11-fix F1 몸 너머로 비침: 3인칭에서 폭탄 조준 판·고리는 카메라와 조준 칸 사이의 내 몸에 거의 다 가렸음 (주황 화소가 1인칭의 4%) → 같은 판·고리를 깊이 검사 없이 한 벌 더, 옅게.
+	#   xray_views 그 한 벌을 그리는 시점 · xray 그 한 벌의 알파 배율 (몸 뒤 부분 = 원래 알파 × 이 값 — 몸을 지우는 것처럼 안 보이게 원래의 절반 이하, 화풍 기준서: 몸 너머로 비치는 것은 옅게)
+	"xray_views": ["third"], "xray": 0.45,
 	"priority": 7, # 그리는 순서: 상자·판 7 · 테·고리 8 (이름표 외곽선 10·이름표 11 아래)
 	"max_cells": 16, # 상자·판 인스턴스 수 (설치 블록 2칸 · 폭탄 9칸)
 }
@@ -35,6 +41,11 @@ const BOMB_ALERT := {
 	"text": "폭탄! 고리 밖으로",
 	"glow": 0xff8a30, # 주황 (놓인 폭탄 채운 원과 같은 색)
 	"pending_max": 16, # 아직 짝 못 지은 bombPlace 기억 수
+	# c11-fix F8 빠질 방향 화살표 (판 안, 글과 남은 초 사이): 1인칭에서 폭탄이 옆·뒤면 고리·폭탄이 화면 밖이라 어느 쪽으로 빠져야 할지 몰랐음 → 폭탄 가운데 → 나 방향 (고리 밖으로 가장 짧은 쪽) 을 화면 기준으로.
+	#   arrow_px 화살표 칸 한 변 (px) · arrow_min 나와 폭탄 가운데의 수평 거리가 이보다 가까우면 (칸) 방향이 안 정해져 안 그림 (어느 쪽으로 가도 같음)
+	#   arrow 오른쪽 (+x) 을 가리키는 화살표 꼴 (칸 한 변 = 1, 가운데 0 — 글자가 아니라 도형으로 그림: 본문 글꼴에 화살표 글자가 없음)
+	"arrow_px": 30.0, "arrow_min": 0.2,
+	"arrow": [[-0.42, -0.15], [0.02, -0.15], [0.02, -0.42], [0.48, 0.0], [0.02, 0.42], [0.02, 0.15], [-0.42, 0.15]],
 }
 
 
@@ -47,7 +58,22 @@ static func aim_on(me: Dictionary, view_mode: String, spectating: bool, playing 
 	return aim is Dictionary and aim.get("cells") is Array and not (aim.cells as Array).is_empty()
 
 
-# 그릴 줄들. 한 줄 = {kind, at (게임 좌표 가운데 Vector3), color (0xRRGGBB), alpha} + 상자·판·테는 size (게임 좌표 x·y·z 길이), 고리는 r (반지름 칸).
+# c11-fix F1: 이 시점에서 폭탄 조준 판·고리를 몸 너머로 한 벌 더 그리나 (설치 블록 상자는 몸 위로 솟아 안 가림 → 폭탄만)
+static func aim_xray(view_mode: String, kind: String) -> bool:
+	return kind == "bomb" and (HAND_AIM.xray_views as Array).has(view_mode)
+
+
+# 몸 너머로 비치는 한 벌의 알파 (원래 알파 a 의 xray 배)
+static func xray_alpha(a: float) -> float:
+	return a * float(HAND_AIM.xray)
+
+
+# 이 시점의 조준 고리 꼴 (ring_look.LOOKS 이름)
+static func ring_look(view_mode: String) -> String:
+	return str((HAND_AIM.ring_look as Dictionary).get(view_mode, "windup"))
+
+
+# 그릴 줄들. 한 줄 = {kind, at (게임 좌표 가운데 Vector3), color (0xRRGGBB), alpha} + 상자·판·테는 size (게임 좌표 x·y·z 길이), 고리는 r (반지름 칸)·look (고리 꼴).
 #   설치 블록: 칸마다 "box" 하나 + "edge" 12개 (모서리 막대) · 폭탄: 칸마다 "pad" 하나 + 첫 칸 (폭탄 자리) 가운데에 "ring" 하나 (my_color)
 static func aim_rows(me: Dictionary, view_mode: String, spectating: bool, my_color: int, playing := true) -> Array:
 	var out := []
@@ -67,7 +93,7 @@ static func aim_rows(me: Dictionary, view_mode: String, spectating: bool, my_col
 				"color": int(HAND_AIM.pad_color) if ok else bad, "alpha": float(HAND_AIM.pad_alpha)})
 		var c0: Array = cells[0]
 		out.append({"kind": "ring", "at": Vector3(float(c0[0]) + 0.5, float(c0[1]) + 0.5, float(c0[2]) + float(HAND_AIM.ring_lift)), "r": float(C.BOMB_BLAST_RANGE),
-			"color": my_color, "alpha": float(HAND_AIM.ring_alpha)})
+			"color": my_color, "alpha": float(HAND_AIM.ring_alpha), "look": ring_look(view_mode)})
 		return out
 	var s := 1.0 - 2.0 * float(HAND_AIM.box_inset)
 	for i in n:
@@ -137,23 +163,37 @@ static func bomb_in_range(me: Dictionary, b: Dictionary) -> bool:
 	return flat <= r and absf(float(me.get("z", 0.0)) + float(C.PLAYER_HEIGHT) / 2.0 - (float(b.get("z", 0.0)) + 0.5)) <= r
 
 
-# 놓인 자리 → 주인을 짝짓는 열쇠 (이벤트 bombPlace 와 스냅샷 bombs[] 가 같은 칸)
-static func owner_key(x, y, z) -> String:
-	return "%d,%d,%d" % [int(x), int(y), int(z)]
+# 놓인 자리 → 주인을 짝짓는 열쇠 (이벤트 bombPlace 와 스냅샷 bombs[] 가 같은 x·y 칸).
+# c11-fix F2: 높이 z 는 안 넣음 — 서버는 이벤트를 낸 뒤 같은 틱에 폭탄 높이를 기둥 꼭대기로 다시 맞춤 (Game.Items.cs UpdateBombs) → 그 사이 기둥이 바뀌면 (앞 폭탄이 터짐·블록이 쌓임)
+# 이벤트 z 와 첫 스냅샷 z 가 달라 내 폭탄을 남의 것으로 봤음
+static func owner_key(x, y) -> String:
+	return "%d,%d" % [int(x), int(y)]
 
 
-# 이벤트 bombPlace {who, x, y, z} 를 기억 (pending 한 항목 = {key, who}). 값이 빠졌으면 무시
-static func owner_note(pending: Array, e: Dictionary) -> void:
-	if e.get("who") == null or e.get("x") == null or e.get("y") == null or e.get("z") == null:
+# 이벤트 bombPlace {who, x, y, z} 를 기억 (pending 한 항목 = {key, who, at}). now = 판 시계 (ms, Net.now_ms) — 오래된 기억을 버리는 데 씀. 값이 빠졌으면 무시
+static func owner_note(pending: Array, e: Dictionary, now: float) -> void:
+	if e.get("who") == null or e.get("x") == null or e.get("y") == null:
 		return
-	pending.append({"key": owner_key(e.x, e.y, e.z), "who": int(e.who)})
+	pending.append({"key": owner_key(e.x, e.y), "who": int(e.who), "at": now})
 	while pending.size() > int(BOMB_ALERT.pending_max):
 		pending.pop_front()
 
 
-# 스냅샷의 폭탄에 주인을 붙임 (owners: 폭탄 id → 주인 id). 새 폭탄은 같은 칸의 기억 (먼저 온 것부터) 과 짝짓고, 없어진 폭탄은 지움.
-# id 로 붙여 두는 까닭: 폭탄 높이 z 는 발밑 블록이 부서지거나 쌓이면 바뀜 → 자리로만 찾으면 내 폭탄을 남의 것으로 봄
-static func owner_bind(owners: Dictionary, pending: Array, bombs: Array) -> void:
+# 도화선 시간 (C.BOMB_FUSE_MS) 이 지난 기억을 버림: 폭탄은 도화선보다 오래 남지 않음 → 그때까지 짝 못 지은 기억은 이미 터진 폭탄의 것.
+# 남겨 두면 나중에 같은 칸에 놓인 남의 폭탄에 붙어 그 폭탄의 경고가 빠짐
+static func owner_expire(pending: Array, now: float) -> void:
+	var i := 0
+	while i < pending.size():
+		if now - float(pending[i].get("at", now)) > float(C.BOMB_FUSE_MS):
+			pending.remove_at(i)
+		else:
+			i += 1
+
+
+# 스냅샷의 폭탄에 주인을 붙임 (owners: 폭탄 id → 주인 id). 새 폭탄은 같은 x·y 칸의 기억 (먼저 온 것부터) 과 짝짓고, 없어진 폭탄은 지움. now = 판 시계 (ms) — 오래된 기억부터 버림.
+# id 로 붙여 두는 까닭: 한번 붙이면 그 뒤 자리 값과 상관없이 그 폭탄의 주인 (열쇠는 처음 짝지을 때만 씀)
+static func owner_bind(owners: Dictionary, pending: Array, bombs: Array, now: float) -> void:
+	owner_expire(pending, now)
 	var live := {}
 	for b in bombs:
 		if not (b is Dictionary) or b.get("id") == null:
@@ -162,7 +202,7 @@ static func owner_bind(owners: Dictionary, pending: Array, bombs: Array) -> void
 		live[id] = true
 		if owners.has(id):
 			continue
-		var key := owner_key(b.get("x", 0), b.get("y", 0), b.get("z", 0))
+		var key := owner_key(b.get("x", 0), b.get("y", 0))
 		for i in pending.size():
 			if str(pending[i].key) == key:
 				owners[id] = int(pending[i].who)
@@ -187,7 +227,7 @@ static func bomb_safe(owner, me: Dictionary, st: Dictionary) -> bool:
 	return false
 
 
-# 내가 맞을 폭탄 가운데 가장 먼저 터질 것: {left (남은 ms), ms (도화선 시간)}. 없으면 {}
+# 내가 맞을 폭탄 가운데 가장 먼저 터질 것: {left (남은 ms), ms (도화선 시간), x·y (폭탄 칸 가운데 — 빠질 방향 화살표)}. 없으면 {}
 static func bomb_pick(bombs: Array, owners: Dictionary, me: Dictionary, st: Dictionary) -> Dictionary:
 	var out := {}
 	for b in bombs:
@@ -197,7 +237,28 @@ static func bomb_pick(bombs: Array, owners: Dictionary, me: Dictionary, st: Dict
 			continue
 		var left := maxf(0.0, float(b.get("left", 0.0)))
 		if out.is_empty() or left < float(out.left):
-			out = {"left": left, "ms": float(C.BOMB_FUSE_MS)}
+			out = {"left": left, "ms": float(C.BOMB_FUSE_MS), "x": float(b.x) + 0.5, "y": float(b.y) + 0.5}
+	return out
+
+
+# c11-fix F8: 빠질 방향 (화면 기준 단위 벡터 — x 오른쪽 +, y 아래 +, 곧 카메라 앞쪽 = (0, −1)). 폭탄 가운데 (bx, by) → 나 = 고리 밖으로 가장 짧게 나가는 쪽.
+# cam_yaw = 카메라가 보는 쪽 (게임 yaw: 0 = +x, 반시계 — 앞 (cos, sin) · 오른쪽 (sin, −cos)). 나와 폭탄이 수평으로 arrow_min 보다 가까우면 null (방향이 안 정해짐 → 화살표 숨김)
+static func escape_dir(me: Dictionary, bx: float, by: float, cam_yaw: float):
+	if me.get("x") == null or me.get("y") == null:
+		return null
+	var d := Vector2(float(me.x) - bx, float(me.y) - by)
+	if d.length() < float(BOMB_ALERT.arrow_min):
+		return null
+	d = d.normalized()
+	return Vector2(d.dot(Vector2(sin(cam_yaw), -cos(cam_yaw))), -d.dot(Vector2(cos(cam_yaw), sin(cam_yaw))))
+
+
+# 화살표 도형의 꼭짓점 (화면 px): dir 쪽을 가리키게 돌리고 size (한 변 px) 로 키워 center 에
+static func arrow_points(dir: Vector2, size: float, center: Vector2) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var a := dir.angle()
+	for p in BOMB_ALERT.arrow:
+		out.append(center + Vector2(float(p[0]), float(p[1])).rotated(a) * size)
 	return out
 
 
