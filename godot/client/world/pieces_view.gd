@@ -312,6 +312,8 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 	var fade_on := not spec_cam.is_empty()
 	var fade_pos: Vector3 = spec_cam.get("pos", Vector3.ZERO)
 	var xm := crate_mmi.multimesh
+	if xm.instance_count < n: # 칸을 쓰는 중에 늘리면 앞서 쓴 칸이 지워짐 (늘릴 때 버퍼가 비워짐) — 다른 묶음처럼 쓰기 전에 늘림
+		xm.instance_count = n + CRATE_POOL
 	var x := 0 # 상자로 그린 칸 수
 	var crate_col := CrateLook.fall_color(thrown_blink(Time.get_ticks_msec()))
 	for pc in pieces:
@@ -357,8 +359,6 @@ func update(st: Dictionary, my_id, me: Dictionary, sky_blend: float) -> void:
 					_sky_base.append(base)
 					q += 1
 			elif crate: # c11-fix F6: 떨어지는 설치 블록 → 나무 상자 (멀어도 같은 모양 — 삼각형 CrateLook.MAX_TRIS 이하)
-				if x >= xm.instance_count:
-					xm.instance_count = x + CRATE_POOL
 				xm.set_instance_transform(x, xf)
 				xm.set_instance_color(x, crate_col)
 				if proxy_on:

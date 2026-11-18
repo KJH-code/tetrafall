@@ -760,6 +760,11 @@ func test_c11_fix_thrown_falls_as_crate() -> void:
 		many.cells.append([i % 10, 3, 5 + i / 10])
 	pv.update({"pieces": [many]}, 1, {}, 0.0)
 	check(pv.crate_n == int(PV.CRATE_POOL) + 3 and pv.crate_mmi.multimesh.instance_count >= pv.crate_n, "자리보다 많은 칸: 늘림 (%d / %d)" % [pv.crate_n, pv.crate_mmi.multimesh.instance_count])
+	# 자리는 칸을 쓰기 전에 늘림 — 쓰는 중에 늘리면 앞서 쓴 칸이 지워짐 (헤드리스에서는 자리를 되읽을 수 없어 코드 순서로 고정)
+	var pv_src := FileAccess.get_file_as_string("res://world/pieces_view.gd")
+	var loop_at := pv_src.find("for i in pc.cells.size()")
+	var grow_at := pv_src.find("xm.instance_count = n + CRATE_POOL")
+	check(loop_at > 0 and grow_at > 0 and grow_at < loop_at and pv_src.find("xm.instance_count =", loop_at) < 0, "상자 자리는 칸을 쓰기 전에 늘림 (%d < %d)" % [grow_at, loop_at])
 	# 하늘 시점 (칸이 다 반투명): 상자 아님 — 예전 단색 반투명 칸
 	pv.update({"pieces": [thrown, tee]}, 1, {}, 1.0)
 	check(pv.crate_n == 0 and not pv.crate_mmi.visible and pv.cells_mmi.multimesh.visible_instance_count + pv.far_mmi.multimesh.visible_instance_count == 6, "하늘 시점: 상자 0 · 칸 6")
