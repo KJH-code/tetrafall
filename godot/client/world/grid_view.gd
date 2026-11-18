@@ -8,6 +8,7 @@ const Cells := preload("res://world/cells.gd")
 const WC := preload("res://world/world_config.gd")
 const PiecesView := preload("res://world/pieces_view.gd")
 const CellLod := preload("res://world/cell_lod.gd")
+const CrateLook := preload("res://world/crate_look.gd")
 
 var mmi := MultiMeshInstance3D.new()
 var floor_mesh := MeshInstance3D.new()
@@ -31,6 +32,8 @@ var near_idx := PackedInt32Array() # 지난 나눔에서 가까운 칸 번호 (_
 var regroups := 0 # 가까움/멂을 다시 나눈 번 수 (확인용)
 var terrain_mmi := MultiMeshInstance3D.new() # 테마 지형 칸 (값 1) 만: G3 지형 셰이더 (칸 크기 1, 이웃·그늘 비트는 custom data)
 var terrain_custom = null # Callable(grid, w, d, h, skip) -> PackedColorArray (G3.terrain_custom), null 이면 지형도 칸 색 블록
+var crate_mmi := MultiMeshInstance3D.new() # c11-u2: 착지한 설치 블록 칸 (값 THROWN) — 나무 상자 (world/crate_look.gd). 모양 칸이 테마 재질로 갈 때만, 아니면 예전처럼 mmi 의 단색 칸
+var crate_cells := PackedInt32Array() # 지난 rebuild 에서 상자로 그린 칸 번호 (확인용 — 헤드리스는 MultiMesh 자리를 못 읽음)
 
 
 func _ready() -> void:
@@ -71,6 +74,14 @@ func _ready() -> void:
 	add_child(piece_far)
 	terrain_mmi.visible = false
 	add_child(terrain_mmi)
+	var cm := MultiMesh.new()
+	cm.transform_format = MultiMesh.TRANSFORM_3D
+	cm.use_colors = true
+	cm.mesh = CrateLook.mesh()
+	crate_mmi.multimesh = cm
+	crate_mmi.material_override = CrateLook.material()
+	crate_mmi.visible = false
+	add_child(crate_mmi)
 	for n in [floor_mesh, cliff]:
 		n.mesh = BoxMesh.new()
 		n.material_override = StandardMaterial3D.new() # 바닥 판 무늬는 G3 floor_material 이 오면
@@ -180,6 +191,7 @@ func rebuild(grid: PackedByteArray, w: int, d: int, h: int) -> void:
 	var cells := PackedInt32Array()
 	var terr := PackedInt32Array()
 	var pcs := PackedInt32Array()
+	var crates := PackedInt32Array()
 	var shader_terrain: bool = terrain_custom != null
 	var piece_look: bool = piece_mmi.visible
 	for i in grid.size():
@@ -188,6 +200,8 @@ func rebuild(grid: PackedByteArray, w: int, d: int, h: int) -> void:
 				terr.append(i)
 			elif piece_look and grid[i] > Cells.THROWN:
 				pcs.append(i) # 모양 칸 (render.js blockMeshes.shape)
+			elif piece_look and grid[i] == Cells.THROWN:
+				crates.append(i) # c11-u2: 착지한 설치 블록 → 나무 상자
 			else:
 				cells.append(i)
 	if shader_terrain:
@@ -220,6 +234,17 @@ func rebuild(grid: PackedByteArray, w: int, d: int, h: int) -> void:
 		_pcol[k] = c
 	_lod_cam = Vector3(INF, INF, INF)
 	regroup(true)
+	crate_cells = crates
+	var cm := crate_mmi.multimesh
+	cm.instance_count = crates.size()
+	crate_mmi.visible = not crates.is_empty()
+	for k in crates.size():
+		var i: int = crates[k]
+		var x := i % w
+		var y := (i / w) % d
+		var z := i / (w * d)
+		cm.set_instance_transform(k, Transform3D(Basis(), Co.gxyz(x + 0.5, y + 0.5, z + 0.5)))
+		cm.set_instance_color(k, Color(WC.CHECKER, WC.CHECKER, WC.CHECKER) if (x + y + z) % 2 else Color.WHITE) # 이웃 칸 체커 명암 (인스턴스 색 × 정점 색)
 	count = cells.size()
 	mm.instance_count = count
 	for k in count:

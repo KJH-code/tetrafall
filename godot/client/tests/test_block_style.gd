@@ -152,3 +152,90 @@ func test_c7_edge_band_math() -> void:
 		check(src.contains("smoothstep(%s.x + %s.y - aa, %s.x + %s.y + aa, de)" % [row[2], row[2], row[2], row[2]]), "%s: 어두운 선 문턱 = w + inner_w" % row[0])
 		check(src.contains("%s.z" % row[2]), "%s: 어두운 선 배율도 폭 묶음에서" % row[0])
 
+
+
+# ---------- c11-u2 착지한 설치 블록 = 나무 상자 (world/crate_look.gd · grid_view.gd) ----------
+const CL := preload("res://world/crate_look.gd")
+const IL := preload("res://world/item_look.gd")
+const IM := preload("res://world/item_models.gd")
+const Cells := preload("res://world/cells.gd")
+const GV := preload("res://world/grid_view.gd")
+
+
+func test_c11_crate_mesh() -> void:
+	var m = CL.mesh()
+	check(m is ArrayMesh and m.get_surface_count() == 1, "상자: ArrayMesh 표면 하나 (그리기 한 번)")
+	var tris: int = IM.tri_count(m)
+	check(tris > 0 and tris <= 160 and tris <= int(CL.MAX_TRIS), "삼각형 %d ≤ 160" % tris)
+	var box: AABB = m.get_aabb()
+	check(absf(box.get_longest_axis_size() - 1.0) <= 0.01, "긴 변 %.3f = 1.0 ±0.01" % box.get_longest_axis_size())
+	check(box.size.x <= 1.0 + 1e-4 and box.size.y <= 1.0 + 1e-4 and box.size.z <= 1.0 + 1e-4 and box.get_center().length() < 1e-4, "칸 하나 안 (가운데 0)")
+	check(CL.mesh() == m, "한 번 만들어 나눠 씀")
+	var a: Array = m.surface_get_arrays(0)
+	check(a[Mesh.ARRAY_COLOR] is PackedColorArray and (a[Mesh.ARRAY_COLOR] as PackedColorArray).size() == (a[Mesh.ARRAY_VERTEX] as PackedVector3Array).size(), "정점 색 배열")
+
+
+func test_c11_crate_color() -> void:
+	var wood: Color = Co.color(int(IL.MAIN.brick))
+	check(Co.color(CL.WOOD).is_equal_approx(wood), "몸통 = 설치 블록 아이템 주색")
+	# 가장 넓게 칠해진 색 = 몸통 색
+	var a: Array = CL.mesh().surface_get_arrays(0)
+	var vs: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+	var cs: PackedColorArray = a[Mesh.ARRAY_COLOR]
+	var ix: PackedInt32Array = a[Mesh.ARRAY_INDEX]
+	var area := {}
+	for i in range(0, ix.size(), 3):
+		var k := cs[ix[i]].to_html(false)
+		area[k] = float(area.get(k, 0.0)) + (vs[ix[i + 1]] - vs[ix[i]]).cross(vs[ix[i + 2]] - vs[ix[i]]).length() * 0.5
+	var top := ""
+	for k in area:
+		if top == "" or float(area[k]) > float(area[top]):
+			top = k
+	check(top == wood.to_html(false) and area.size() == 3, "가장 넓은 색 = 몸통 나무 (%s), 색 셋 (나무·띠·쇠): %s" % [top, str(area.keys())])
+	check(area.has(Co.color(CL.BAND).to_html(false)) and area.has(Co.color(CL.STEEL).to_html(false)), "어두운 띠·쇠 기둥이 칠해져 있음")
+	for pc in C.PLAYER_PALETTE:
+		var p: Color = Co.color(int(pc))
+		var dist := Vector3(wood.r - p.r, wood.g - p.g, wood.b - p.b).length()
+		check(dist >= 0.12, "몸통 색이 플레이어 색 %06x 과 RGB 거리 %.2f ≥ 0.12" % [int(pc), dist])
+	# 재질: 툰 (정점 색), 외곽선 없음, 스스로 안 빛남, 위험 액체에 잠기면 물듦
+	var mat: ShaderMaterial = CL.material()
+	check(mat.shader == G3.toon_material(Color.WHITE, {"outline": false}).shader and mat.next_pass == null, "툰 재질·외곽선 없음")
+	check(mat.get_shader_parameter("use_vertex_color") == true and mat.get_shader_parameter("hz_tint") == true and float(mat.get_shader_parameter("color_glow")) == 0.0, "정점 색·물듦 켬·빛남 0")
+
+
+# 격자 → 묶음 나누기: 착지한 설치 블록 (THROWN) 은 상자 묶음, 모양 칸은 모양 묶음, 단색 묶음엔 THROWN 없음. 모양 칸 모습이 꺼져 있으면 예전 그대로 (다 단색)
+func test_c11_thrown_split() -> void:
+	var w := 4
+	var d := 4
+	var grid := PackedByteArray()
+	grid.resize(w * d * 3)
+	for i in [0, 1, 2, 3]: # 지형 4칸 (맨 아래 줄)
+		grid[i] = Cells.TERRAIN
+	var thrown := [5, 21] # 착지한 설치 블록 2칸
+	for i in thrown:
+		grid[i] = Cells.THROWN
+	for i in [6, 7, 22]: # 쌓인 모양 칸 3칸
+		grid[i] = Cells.SHAPE_BASE + 2
+	var gv = GV.new()
+	gv._ready()
+	gv.set_piece_look(BoxMesh.new(), StandardMaterial3D.new(), C.SHAPE_COLORS)
+	gv.rebuild(grid, w, d, 3)
+	check(Array(gv.crate_cells) == thrown and gv.crate_mmi.visible and gv.crate_mmi.multimesh.instance_count == 2, "상자 2칸 (THROWN 칸 번호): %s" % str(gv.crate_cells))
+	check(gv._pxf.size() == 3 and gv.piece_mmi.multimesh.instance_count == 3, "모양 칸 3칸: %d" % gv._pxf.size())
+	check(gv.count == 4 and gv.mmi.multimesh.instance_count == 4, "단색 묶음엔 지형 4칸만 (THROWN 없음): %d" % gv.count)
+	check(gv.crate_mmi.multimesh.mesh == CL.mesh() and gv.crate_mmi.material_override is ShaderMaterial and gv.crate_mmi.multimesh.use_colors, "상자 묶음 = 상자 메시·툰 재질·칸 색 (체커 명암)")
+	gv.skip = {21: true} # 건너뛸 칸 (다른 쪽이 그림) 은 상자로도 안 그림
+	gv.rebuild(grid, w, d, 3)
+	check(Array(gv.crate_cells) == [5], "건너뛸 칸은 뺌: %s" % str(gv.crate_cells))
+	gv.skip = {}
+	grid[5] = 0
+	grid[21] = 0
+	gv.rebuild(grid, w, d, 3)
+	check(gv.crate_cells.is_empty() and not gv.crate_mmi.visible and gv.crate_mmi.multimesh.instance_count == 0, "THROWN 이 없으면 상자 묶음 숨김")
+	# 모양 칸 모습 끔 (테마 재질 없음): 예전 그대로 전부 단색 칸
+	grid[5] = Cells.THROWN
+	grid[21] = Cells.THROWN
+	gv.set_piece_look(null, null, C.SHAPE_COLORS)
+	gv.rebuild(grid, w, d, 3)
+	check(gv.crate_cells.is_empty() and not gv.crate_mmi.visible and gv.count == 9, "모습 끔: 상자 0 · 단색 9칸 (예전 그대로): %d" % gv.count)
+	gv.free()

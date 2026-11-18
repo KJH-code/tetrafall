@@ -1001,3 +1001,92 @@ func test_c10_fix_item_signal_view() -> void:
 	CellLod.test_cam = keep_cam
 	G3.low = keep_low
 
+
+
+# ---------- c11-u2 든 아이템 (world/item_look.gd HELD · held_math.gd · held_view.gd) ----------
+const HM := preload("res://world/held_math.gd")
+const HV := preload("res://world/held_view.gd")
+
+
+# 스냅샷 players 한 줄 (든 아이템 판단에 쓰는 값만)
+func _c11_man(id: int, held, alive := true, master := false, yaw := 0.0) -> Dictionary:
+	return {"id": id, "alive": alive, "master": master, "yaw": yaw, "held": held}
+
+
+# 누구 것을 그리나: 든 것 없음·죽음·블록 마스터·1인칭의 나는 0줄, 3인칭의 나는 1줄
+func test_c11_held_rows() -> void:
+	var shown := {1: Vector3(5.5, 5.5, 1.0), 2: Vector3(2.5, 3.5, 0.0)}
+	check(HM.rows([_c11_man(1, null)], null, false, shown).is_empty(), "든 것 없음 → 0줄")
+	check(HM.rows([_c11_man(1, "bomb", false)], null, false, shown).is_empty(), "죽음 → 0줄")
+	check(HM.rows([_c11_man(1, "bomb", true, true)], null, false, shown).is_empty(), "블록 마스터 → 0줄")
+	check(HM.rows([_c11_man(1, "bomb")], 1, true, shown).is_empty(), "1인칭의 나 → 0줄")
+	var mine: Array = HM.rows([_c11_man(1, "bomb")], 1, false, shown)
+	check(mine.size() == 1 and mine[0][0] == "bomb" and (mine[0][1] as Vector3).is_equal_approx(HM.slot(shown[1], 0.0)), "3인칭의 나 → 1줄 (어깨 옆 자리): %s" % str(mine))
+	check(HM.rows([_c11_man(2, "brick")], 1, true, shown).size() == 1, "1인칭이어도 남은 그림")
+	check(HM.rows([_c11_man(1, "control"), _c11_man(2, "zzz")], null, false, shown).is_empty(), "표에 없는 종류 → 0줄")
+	check(HM.rows([_c11_man(7, "bomb")], null, false, shown).is_empty(), "화면 자리가 없는 사람 → 0줄")
+	check(IL.HELD.kinds == ["bomb", "knockback", "brick"] and (IL.HELD.kinds as Array).all(func(k): return IL.PARTS.has(k)), "그리는 종류 = 서버가 보내는 든 것 셋 (모델 있음)")
+	var both: Array = HM.rows([_c11_man(1, "knockback"), _c11_man(2, "bomb", true, false, 1.0), _c11_man(3, "bomb")], null, false, shown)
+	check(both.size() == 2 and both[0][0] == "knockback" and both[1][0] == "bomb" and (both[1][1] as Vector3).is_equal_approx(HM.slot(shown[2], 1.0)), "스냅샷 순서, 저마다 자기 자리·보는 쪽")
+	# 노드: 종류마다 묶음 하나, 아무도 안 들면 숨김, 그림자 없음, 재질 하나 (바닥 아이템과 같은 갈래)
+	var hv = HV.new()
+	var vis := func() -> Array:
+		var out := []
+		for k in IL.HELD.kinds:
+			var n: MultiMeshInstance3D = hv.models[k]
+			if n.visible:
+				out.append("%s%d" % [k, n.multimesh.visible_instance_count])
+		return out
+	check(vis.call() == [] and hv.models.size() == 3 and hv.get_child_count() == 3, "처음엔 전부 숨김 (묶음 셋)")
+	hv.update([_c11_man(1, "bomb"), _c11_man(2, "bomb"), _c11_man(3, "brick")], null, false, {1: Vector3.ZERO, 2: Vector3.ONE, 3: Vector3.ONE}, 1000.0)
+	check(vis.call() == ["bomb2", "brick1"], "든 종류만 보임: %s" % str(vis.call()))
+	hv.update([_c11_man(1, "bomb"), _c11_man(2, null), _c11_man(3, "brick", false)], 1, true, {1: Vector3.ZERO, 2: Vector3.ONE, 3: Vector3.ONE}, 2000.0)
+	check(vis.call() == [], "아무도 안 들면 (1인칭의 나만 듦) 전부 숨김: %s" % str(vis.call()))
+	const G3 := preload("res://shaders/g3.gd")
+	const MF := preload("res://core/mat_first.gd")
+	for k in IL.HELD.kinds:
+		var n: MultiMeshInstance3D = hv.models[k]
+		check(n.multimesh.mesh == IM.mesh(k) and n.material_override == hv.mat, "%s: 바닥 아이템 모델·재질 하나를 나눠 씀" % k)
+		check(n.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s: 그림자 없음" % k)
+		check(n.multimesh.instance_count >= int(C.ROOM_MAX), "%s: 사람 수만큼 자리" % k)
+	check(MF.mat_key(hv.mat) == MF.mat_key(G3.toon_material(Color.WHITE)), "재질 = 바닥 아이템과 같은 툰 갈래 (새 셰이더 없음)")
+	hv.free()
+
+
+# 어깨 옆 자리: 보는 쪽을 90° 돌리면 옆 방향도 90° 돎, 높이 = HELD.h, 오른쪽에 뜸
+func test_c11_held_slot() -> void:
+	var pos := Vector3(4.0, 7.0, 2.0)
+	var a: Vector3 = HM.slot(pos, 0.0) - pos
+	check(near(a.z, IL.HELD.h) and near(a.y, -float(IL.HELD.side)) and near(a.x, IL.HELD.fwd), "+x 를 보면 오른쪽 = −y: 옆 %.2f·앞 %.2f·높이 %.2f" % [-a.y, a.x, a.z])
+	for yaw in [0.0, 0.7, PI / 2.0, 2.5, -1.2]:
+		var d0: Vector3 = HM.slot(pos, yaw) - pos
+		var d1: Vector3 = HM.slot(pos, yaw + PI / 2.0) - pos
+		check(near(d1.x, -d0.y, 1e-5) and near(d1.y, d0.x, 1e-5), "yaw %.1f: 90° 돌리면 옆 방향도 90° (반시계)" % yaw)
+		check(near(d0.z, IL.HELD.h) and near(d1.z, IL.HELD.h), "yaw %.1f: 높이 = HELD.h" % yaw)
+		check(near(Vector2(d0.x, d0.y).length(), Vector2(IL.HELD.side, IL.HELD.fwd).length(), 1e-5), "yaw %.1f: 몸에서 거리 그대로" % yaw)
+		var right := Vector2(sin(yaw), -cos(yaw)) # 보는 쪽의 오른쪽
+		check(near(Vector2(d0.x, d0.y).dot(right), IL.HELD.side, 1e-5), "yaw %.1f: 오른쪽으로 HELD.side" % yaw)
+	# 고도 좌표 인스턴스 변환: 자리 = gpos(slot), 오른쪽 = 고도 +z (몸이 +x 를 볼 때)
+	var x: Transform3D = HM.xform(["bomb", HM.slot(pos, 0.0)], 0.0)
+	check(x.origin.is_equal_approx(Co.gpos(HM.slot(pos, 0.0))) and near(x.origin.z - Co.gpos(pos).z, IL.HELD.side), "인스턴스 자리 = 어깨 옆 (고도 좌표)")
+	# 이름표 (머리 위) 보다 아래: 모델 꼭대기 < 이름표 가운데 − 0.3칸
+	check(float(IL.HELD.h) + float(IL.HELD.size) * 0.5 <= C.PLAYER_HEIGHT + C.LABEL_ABOVE_HEAD + FWC.LABEL_LIFT - 0.3, "모델 꼭대기 %.2f 가 이름표 (%.2f) 아래" % [float(IL.HELD.h) + float(IL.HELD.size) * 0.5, C.PLAYER_HEIGHT + C.LABEL_ABOVE_HEAD + FWC.LABEL_LIFT])
+	check(near(HM.spin_at(1000.0), fmod(FWC.ITEM_BOB[3] * float(IL.HELD.spin), TAU)) and float(IL.HELD.spin) < 1.0, "도는 빠르기 = 바닥 아이템 × HELD.spin (더 느림)")
+
+
+# 크기: 긴 변 = HELD.size (바닥 아이템보다 작음)
+func test_c11_held_size() -> void:
+	check(float(IL.HELD.size) < float(IL.SIZE), "바닥 아이템 (%.2f) 보다 작음" % IL.SIZE)
+	for k in IL.HELD.kinds:
+		for ang in [0.0, 1.3]:
+			var x: Transform3D = HM.xform([k, Vector3.ZERO], ang)
+			var long: float = (IM.mesh(k) as ArrayMesh).get_aabb().get_longest_axis_size() * x.basis.get_scale().x
+			check(absf(long - float(IL.HELD.size)) <= 0.01, "%s: 긴 변 %.3f = HELD.size ±0.01" % [k, long])
+			check(x.basis.get_scale().is_equal_approx(Vector3.ONE * HM.shrink()), "%s: 고르게 줄임" % k)
+
+
+# 화면 크기: 720p·시야 75° 에서 3칸 앞 ≥ 40px, 8칸 앞 ≥ 14px
+func test_c11_held_px() -> void:
+	var s := float(IL.HELD.size)
+	check(IVM.px(s, 3.0, 75.0, 720.0) >= 40.0, "3칸 앞 %.1fpx ≥ 40" % IVM.px(s, 3.0, 75.0, 720.0))
+	check(IVM.px(s, 8.0, 75.0, 720.0) >= 14.0, "8칸 앞 %.1fpx ≥ 14" % IVM.px(s, 8.0, 75.0, 720.0))

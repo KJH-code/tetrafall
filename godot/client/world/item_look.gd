@@ -116,3 +116,9 @@ const SHADOW_BOX := 0.34 # 해 그림자 전용 상자 한 변 (종류 상관없
 const BOMB_BLINK := [80.0, 320.0]
 const BOMB_GLOW := 0xff2000
 const BOMB_GLOW_BODY := 0x701408
+
+# c11-u2 든 아이템 (world/held_view.gd — 순수 계산 world/held_math.gd): 손 아이템을 든 사람 (스냅샷 players[].held) 의 오른 어깨 옆에 그 종류 모델을 작게 띄움 — 누가 무엇을 들었는지.
+# 모델·재질은 바닥 아이템의 것 (item_models.mesh·material) 그대로, 받침 고리·그림자 없음. 몸 뼈에 안 붙임 (판정 자리 기준 — 몸이 쓰러져도 어깨 자리에 떠 있음).
+#   kinds 그리는 종류 (서버가 보내는 held 값, 묶음 순서) · size 긴 변 (칸 — 바닥 아이템 SIZE 의 약 0.6배) · side 몸 가운데에서 오른쪽으로 (칸) · h 발에서 모델 가운데까지 높이 · fwd 앞으로
+#   spin 제자리 도는 빠르기 (바닥 아이템 도는 빠르기 WC.ITEM_BOB[3] 의 배수)
+const HELD := {"kinds": ["bomb", "knockback", "brick"], "size": 0.32, "side": 0.55, "h": 1.6, "fwd": 0.05, "spin": 0.6}

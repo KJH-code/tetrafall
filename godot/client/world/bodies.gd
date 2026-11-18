@@ -14,6 +14,7 @@ const Lod := preload("res://world/pose_lod.gd")
 const OutFar := preload("res://world/outline_far.gd")
 const Sh := preload("res://world/shadow_calc.gd")
 const FootRings := preload("res://world/foot_rings.gd")
+const HeldView := preload("res://world/held_view.gd")
 const EXT := "res://chars/external.gd" # 양면 툰 스텐실 (Ext.double_stencil) — 캐릭터 스크립트가 있을 때만 읽음
 const Opts_ := preload("res://core/opts.gd")
 static var NO_OUTLINE_FAR: bool = Opts_.args().has("--no-outline-far") # 확인용: 외곽선 거리 끔 (전후 비교)
@@ -36,6 +37,7 @@ var lod := WC.POSE_LOD # 확인용 --pose-lod-near <m> 로 near 만 바꿈
 var _last_now = null
 var sun_node: DirectionalLight3D = null # W32: 해 (몸 그림자가 떨어지는 쪽 계산) — World 아래 G3Env/Sun, 처음 쓸 때 찾음
 var foot_rings: FootRings = null # c7-u1 발밑 색 고리 (MultiMesh 하나, _ready 가 만듦 — 트리 밖 (테스트) 이면 없음)
+var held_view: HeldView = null # c11-u2 든 아이템 (어깨 옆 모델 — 종류마다 MultiMesh 하나, _ready 가 만듦)
 
 
 func _ready() -> void:
@@ -54,6 +56,9 @@ func _ready() -> void:
 	foot_rings = FootRings.new()
 	foot_rings.name = "FootRings"
 	add_child(foot_rings)
+	held_view = HeldView.new()
+	held_view.name = "HeldView"
+	add_child(held_view)
 
 
 func _exit_tree() -> void:
@@ -348,6 +353,8 @@ func update(st: Dictionary, my_id, hide_me: bool, sky: bool, now_ms: float) -> v
 			nodes.erase(id)
 	if foot_rings != null: # c7-u1: 발밑 색 고리 (판 중·살아 있는 사람, 1인칭의 나·하늘 시점은 안 그림 — world/foot_ring_math.gd)
 		foot_rings.update(get_parent(), st, my_id, hide_me, sky, shown, ring_cols)
+	if held_view != null: # c11-u2: 든 아이템을 어깨 옆에 (살아 있는 사람, 1인칭의 나는 안 그림 — world/held_math.gd)
+		held_view.update(st.get("players", []), my_id, hide_me, shown, now_ms)
 
 
 # 카메라를 놓은 뒤: 크기·흐림 (labelSizes), 하늘 시점이면 작게 + 화면에서 겹치는 이름표는 먼저 놓인 것만 (render.js thinLabels)
