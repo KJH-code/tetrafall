@@ -2247,66 +2247,6 @@ static func star_wait(e: Dictionary) -> bool:
 	return e.get("star", false) and not e.get("late", false)
 
 
-# W18 맞은 몸 번쩍: 단계별 ms (0 = 없음), 치명은 금빛 섞음. 스킬 빛·준비·아머 번쩍보다 앞 (짧음)
-func hit_flash(tier: String) -> void:
-	var ms := float(FXC.tier(tier).body)
-	if ms <= 0.0:
-		return
-	hit_flash_at = Motion_.now_ms() * 1.0
-	hit_flash_ms = ms
-	hit_flash_color = _hex(FXC.HIT_BODY_COLOR).lerp(_hex(FXC.HIT_FLASH_COLOR.crit), 0.5 if tier == "crit" else 0.0)
-
-
-# figureAnim 에 넘길 맞은 것 (몸 기준 밀린 방향). 오래되면 버림
-func _hit_for(p: Dictionary, _now_ms: float):
-	if hit == null:
-		return null
-	var now := Motion_.now_ms() / 1000.0
-	var age: float = now - hit.t0
-	if age > 2.0:
-		hit = null
-		return null
-	var dx := -1.0
-	var dy := 0.0
-	if hit.dir != null:
-		var yaw: float = p.get("yaw", 0.0)
-		dx = cos(yaw) * hit.dir.x + sin(yaw) * hit.dir.y
-		dy = -sin(yaw) * hit.dir.x + cos(yaw) * hit.dir.y
-	return {"id": hit.id, "age": age, "stop": hit.stop, "dx": dx, "dy": dy, "pow": hit.pow}
-
-
-# figureAnim 에 넘길 지금 공격 단계 (render.js actFor). 끝났으면 지움
-func _act_for(_now_ms: float):
-	if act == null:
-		return null
-	var now := Motion_.now_ms() / 1000.0
-	if act.rec <= 0.0 or now - act.t0 > C.FIGURE_ACT_MAX_S or not Moves.MOVES.has(act.move):
-		act = null
-		return null
-	if act.broken != null:
-		var ub: float = (now - act.broken) / C.FIGURE_BROKEN_S
-		if ub >= 1.0:
-			act = null
-			return null
-		return {"id": act.id, "move": act.move, "phase": "broken", "u": ub, "air": act.air}
-	if act.struck == null:
-		var age: float = now - act.t0
-		if age > act.windup + C.FIGURE_SWING_WAIT_S:
-			act = null
-			return null
-		return {"id": act.id, "move": act.move, "phase": "wind", "u": minf(1.0, age / act.windup) if act.windup > 0.0 else 1.0, "air": act.air}
-	if act.get("hold", false):
-		return {"id": act.id, "move": act.move, "phase": "strike", "u": 1.0, "air": act.air} # 기타 꽂기: 떨어지는 동안 타격 자세 그대로
-	var s: float = now - act.struck
-	if s < C.FIGURE_STRIKE_S:
-		return {"id": act.id, "move": act.move, "phase": "strike", "u": s / C.FIGURE_STRIKE_S, "air": act.air}
-	var r: float = (s - C.FIGURE_STRIKE_S) / act.rec
-	if r >= 1.0:
-		act = null
-		return null
-	return {"id": act.id, "move": act.move, "phase": "rec", "u": r, "air": act.air}
-
-
 # ---- c10-fix F1 몸 옅게 (world/cam_rig.gd 가 부름: 관전 따라가기에서 대상을 가리는 남의 몸 — 순수 계산 world/spec_cam.gd) ----
 # keep = 디더로 남길 화소 비율 (1 = 예전 그대로). 이 몸이 지금 그리는 셰이더 재질 (툰·눈·외부 모델 부품·소품, 반투명이면 안쪽 재질) 의 near_keep 에 넣음:
 # 가까운 몸 깎기 (near_cut) 와 같은 화소 난수에 상한만 얹어 (toon_common) 어느 화소도 예전보다 더 덮지 않음. 알파 섞기가 아니라 화소 버리기 → 해 그림자·깊이는 그대로.
@@ -2371,3 +2311,63 @@ func _thin_pass(o: Material) -> Material:
 		d.set_shader_parameter("near_keep", _thin)
 		_thin_ol[id] = d
 	return _thin_ol[id]
+
+
+# W18 맞은 몸 번쩍: 단계별 ms (0 = 없음), 치명은 금빛 섞음. 스킬 빛·준비·아머 번쩍보다 앞 (짧음)
+func hit_flash(tier: String) -> void:
+	var ms := float(FXC.tier(tier).body)
+	if ms <= 0.0:
+		return
+	hit_flash_at = Motion_.now_ms() * 1.0
+	hit_flash_ms = ms
+	hit_flash_color = _hex(FXC.HIT_BODY_COLOR).lerp(_hex(FXC.HIT_FLASH_COLOR.crit), 0.5 if tier == "crit" else 0.0)
+
+
+# figureAnim 에 넘길 맞은 것 (몸 기준 밀린 방향). 오래되면 버림
+func _hit_for(p: Dictionary, _now_ms: float):
+	if hit == null:
+		return null
+	var now := Motion_.now_ms() / 1000.0
+	var age: float = now - hit.t0
+	if age > 2.0:
+		hit = null
+		return null
+	var dx := -1.0
+	var dy := 0.0
+	if hit.dir != null:
+		var yaw: float = p.get("yaw", 0.0)
+		dx = cos(yaw) * hit.dir.x + sin(yaw) * hit.dir.y
+		dy = -sin(yaw) * hit.dir.x + cos(yaw) * hit.dir.y
+	return {"id": hit.id, "age": age, "stop": hit.stop, "dx": dx, "dy": dy, "pow": hit.pow}
+
+
+# figureAnim 에 넘길 지금 공격 단계 (render.js actFor). 끝났으면 지움
+func _act_for(_now_ms: float):
+	if act == null:
+		return null
+	var now := Motion_.now_ms() / 1000.0
+	if act.rec <= 0.0 or now - act.t0 > C.FIGURE_ACT_MAX_S or not Moves.MOVES.has(act.move):
+		act = null
+		return null
+	if act.broken != null:
+		var ub: float = (now - act.broken) / C.FIGURE_BROKEN_S
+		if ub >= 1.0:
+			act = null
+			return null
+		return {"id": act.id, "move": act.move, "phase": "broken", "u": ub, "air": act.air}
+	if act.struck == null:
+		var age: float = now - act.t0
+		if age > act.windup + C.FIGURE_SWING_WAIT_S:
+			act = null
+			return null
+		return {"id": act.id, "move": act.move, "phase": "wind", "u": minf(1.0, age / act.windup) if act.windup > 0.0 else 1.0, "air": act.air}
+	if act.get("hold", false):
+		return {"id": act.id, "move": act.move, "phase": "strike", "u": 1.0, "air": act.air} # 기타 꽂기: 떨어지는 동안 타격 자세 그대로
+	var s: float = now - act.struck
+	if s < C.FIGURE_STRIKE_S:
+		return {"id": act.id, "move": act.move, "phase": "strike", "u": s / C.FIGURE_STRIKE_S, "air": act.air}
+	var r: float = (s - C.FIGURE_STRIKE_S) / act.rec
+	if r >= 1.0:
+		act = null
+		return null
+	return {"id": act.id, "move": act.move, "phase": "rec", "u": r, "air": act.air}
