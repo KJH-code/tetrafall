@@ -286,6 +286,8 @@ func place(dt: float, shown: Dictionary, solid: Callable) -> void:
 	if not following:
 		_spec_key = null
 		spec_dist = null
+	if ghost_aim != null:
+		ghost_aim.follow = shown[int(View.spectate_target)] if following else null # c11: 조준 상자 면이 화면에서 이 대상을 덮으면 지움 (world/ghost_aim.gd)
 	spec_thin(dt, shown, look, following and close_id() == null) # c10-fix F1 (victory_camera 가 eye 를 바꾸기 전 — 관전 카메라 자리로 봄)
 	victory_camera(dt, shown, look, solid)
 	var fov: float = float(View.settings.get("fov", C.FOV_DEFAULT))

@@ -13,6 +13,7 @@ const Coords := preload("res://core/coords.gd")
 const Keys := preload("res://core/keys.gd")
 const HM := preload("res://world/hunt_marks.gd") # 사냥꾼 표식 계산 (B4, shared/hunt-marks.js)
 const HudExtra := preload("res://ui/hud_extra.gd") # c8: 3인칭 구석 자리 (STACK.corner_x·corner_bottom) 를 여기서 읽음
+const SpecCam := preload("res://world/spec_cam.gd") # c11: 관전 안내 띠 접기 (SPEC.hint_ms·hint_full)
 
 const CAUSE_KO := U.CAUSE_KO
 const TEAM_KO := {"red": "빨강", "blue": "파랑"}
@@ -55,6 +56,8 @@ var ring: Control
 var ghost_ring: Control # 유령 투하 조준 원 (JS #ghost-cd): 쿨이면 회색이 시계 방향으로 차오름, 안 되는 걸 누르면 흔들림
 var ghost_hint: Label # 처음 죽었을 때 한 번만 (JS #ghost-hint, GHOST_HINT_MS)
 var ghost_hint_until := -1.0 # -1 = 아직 안 보여 줌
+var spec_hint_at := 0.0 # c11: 관전 안내 띠의 조작 줄을 마지막으로 펼친 시각 (Net.now_ms — 관전 시작·대상 바뀜·전체 보기 토글·휠 거리)
+var spec_hint_key = null # 지난 프레임의 [대상 있음, 대상 id, 전체 보기, 거리, 전체 보기 거리] (관전이 아니면 null)
 var ghost_fill := 1.0
 var ghost_ready := true
 var my_marks: Label # 맞은 사람 화면 위 칸 ◆◆◇ (JS #my-marks)
@@ -950,6 +953,7 @@ func _spectate(st: Dictionary, me: Dictionary, vp: Vector2) -> void:
 		ghost_hint.visible = now < ghost_hint_until
 		ghost_hint.position = Vector2((vp.x - ghost_hint.size.x) / 2.0, vp.y * 0.38)
 	if not on:
+		spec_hint_key = null
 		return
 	# JS updateSpectate 문구: 사망 원인 — 킬러의 무기, 다음 판부터 참가, 부활까지 N초 (킬 점수전은 가운데 큰 숫자), 판이 없으면 살아 있는 사람
 	var head: String = "사망: %s" % CAUSE_KO.get(str(me.get("cause", "")), str(me.get("cause", "")))
@@ -973,10 +977,22 @@ func _spectate(st: Dictionary, me: Dictionary, vp: Vector2) -> void:
 		for x in (r.alive_others() if r != null else []):
 			names.append("%s%s %d%%" % ["▶ " if not overview and t != null and int(x.id) == int(t) else "", _name(x), int(x.get("damage", 0))])
 		alive_txt = "   ".join(names)
-	spec_label.text = "%s\n%s · 마우스 돌리기 · 휠 거리 · %s · 우클릭 %s%s" % [head, "%s 따라가는 중" % _name(target) if not target.is_empty() and not overview else "전체 보기", next, "따라가기" if overview else "전체 보기", "\n살아 있음: %s" % alive_txt if alive_txt != "" else ""]
+	# c11: 조작 줄은 관전 시작·조작 (대상 바뀜·전체 보기 토글·휠 거리 — 프레임 사이 값 비교) 뒤 SpecCam.SPEC.hint_ms 동안만. 지나면 한 줄로 접음 (대상 발밑이 보이게)
+	var key := [t != null, int(t) if t != null else 0, overview, float(r.spec.dist) if r != null else 0.0, float(r.spec.overview_dist) if r != null else 0.0] # 봇 id 는 음수라 '대상 없음' 을 따로 적음
+	var now_ms := Net.now_ms()
+	if key != spec_hint_key:
+		spec_hint_key = key
+		spec_hint_at = now_ms
+	spec_label.text = spec_text(head, "%s 따라가는 중" % _name(target) if not target.is_empty() and not overview else "전체 보기", "마우스 돌리기 · 휠 거리 · %s · 우클릭 %s" % [next, "따라가기" if overview else "전체 보기"], alive_txt, SpecCam.hint_full(now_ms, spec_hint_at))
 	var cards_h: float = cards_row.size.y + 22 if cards_row.visible else 18
 	spec_box.reset_size()
 	spec_box.position = Vector2((vp.x - spec_box.size.x) / 2.0, vp.y - cards_h - spec_box.size.y)
+
+
+# 관전 안내 띠 글 (순수 계산). full: 첫 줄 사망 원인, 둘째 줄 보는 대상 · 조작 안내 (예전 그대로). 접으면 (full 거짓) 조작 안내를 빼고 한 줄로. 셋째 줄 '살아 있음' 은 그대로
+static func spec_text(head: String, who: String, keys: String, alive_txt: String, full: bool) -> String:
+	var alive := "\n살아 있음: %s" % alive_txt if alive_txt != "" else ""
+	return "%s\n%s · %s%s" % [head, who, keys, alive] if full else "%s · %s%s" % [head, who, alive]
 
 
 # 조준 원: 흰 테두리 + 가운데 점, 쿨이면 회색 테두리 + 회색이 시계 방향으로 차오름 (JS #ghost-cd conic-gradient)

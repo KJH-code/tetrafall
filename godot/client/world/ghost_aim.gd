@@ -1,12 +1,16 @@
 # 유령 투하 조준 (render.js pickColumn·setGhostAim + main.js updateGhostAim·클릭): 죽은 사람이 관전 중에 시선이 닿는 기둥 꼭대기에 1칸 블록을 떨어뜨림.
 # 조준 = 마우스가 잡혀 있으면 화면 가운데, 아니면 마우스 자리. 기둥 꼭대기 칸 테두리 + 내 색 반투명 큐브 (쿨 중이면 회색). 쿨 원·안내 글은 G4 HUD
 # (snapshot me.ghostCd: null 못 함 · 0 가능 · ms 쿨). pick 은 순수 계산 (정답 자료 tests/fixtures/ghost.json)
+# c11: 관전 따라가기에서는 화면 가운데 시선이 대상 뒤 바닥에 닿아 반투명 큐브가 대상 머리·이름표 위에 겹침 → 화면 사각형이 겹치면 면을 지우고 테두리만 (SpecCam.ghost_fill)
 extends Node3D
 
 const C := preload("res://core/config.gd")
 const Co := preload("res://core/coords.gd")
+const WC := preload("res://world/world_config.gd")
+const SpecCam := preload("res://world/spec_cam.gd")
 
 var aim = null # {x, y, z} 조준한 기둥 (z = 꼭대기), 없으면 null
+var follow = null # c11: 관전 따라가기 대상의 화면 (보간) 자리 — 게임 좌표 Vector3, world/cam_rig.gd place 가 넣음 (전체 보기·살아 있음이면 null)
 var cube := MeshInstance3D.new()
 var cube_mat := StandardMaterial3D.new()
 var edges := MeshInstance3D.new()
@@ -87,6 +91,30 @@ func update(on: bool, cam: Camera3D, color: int, ready: bool, w: int, d: int, so
 	position = Co.gxyz(aim.x + 0.5, aim.y + 0.5, aim.z)
 	cube.position = Vector3(0, 0.5, 0)
 	var col := Co.color(color if ready else C.GHOST_AIM_COOLDOWN_COLOR)
-	col.a = C.GHOST_AIM_OPACITY * (0.8 + 0.2 * sin(now_ms / 150.0) if ready else 0.6)
+	col.a = C.GHOST_AIM_OPACITY * (0.8 + 0.2 * sin(now_ms / 150.0) if ready else 0.6) * face_fill(cam)
 	cube_mat.albedo_color = col
+	cube.visible = col.a > 0.0 # 면이 다 지워졌으면 안 그림 (테두리는 그대로 — 어디에 떨어지는지는 남김)
 	edge_mat.albedo_color = Co.color(color).lerp(Color.WHITE, 0.5) if ready else Co.color(C.GHOST_AIM_COOLDOWN_COLOR)
+
+
+# c11: 면 알파 배율. 따라가는 대상이 있으면 조준 칸 (z..z+1) 과 대상 (몸 상자 가로 ±C.PLAYER_HALF, 세로 0 ~ 이름표 높이 + ghost_label_up) 을 화면 사각형으로 바꿔 겹침을 봄
+func face_fill(cam: Camera3D) -> float:
+	if aim == null or follow == null:
+		return 1.0
+	var s: Vector3 = follow
+	var top: float = C.PLAYER_HEIGHT + C.LABEL_ABOVE_HEAD + WC.LABEL_LIFT + float(SpecCam.SPEC.ghost_label_up)
+	var box := on_screen(cam, Vector3(aim.x, aim.y, aim.z), Vector3(aim.x + 1, aim.y + 1, aim.z + 1))
+	var target := on_screen(cam, Vector3(s.x - C.PLAYER_HALF, s.y - C.PLAYER_HALF, s.z), Vector3(s.x + C.PLAYER_HALF, s.y + C.PLAYER_HALF, s.z + top))
+	if box.is_empty() or target.is_empty():
+		return 1.0
+	return SpecCam.ghost_fill(SpecCam.screen_rect(box), SpecCam.screen_rect(target), true)
+
+
+# 상자 [lo, hi] (게임 좌표) 의 8 꼭짓점이 화면에 찍히는 자리. 카메라 뒤 점은 뺌
+static func on_screen(cam: Camera3D, lo: Vector3, hi: Vector3) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for i in 8:
+		var p := Co.gxyz(hi.x if i & 1 else lo.x, hi.y if i & 2 else lo.y, hi.z if i & 4 else lo.z)
+		if not cam.is_position_behind(p):
+			out.append(cam.unproject_position(p))
+	return out

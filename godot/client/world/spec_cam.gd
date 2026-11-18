@@ -4,7 +4,9 @@
 # 그래도 렌즈 가까이 남는 떨어지는 칸은 옅게 그림 (cell_alpha — world/pieces_view.gd). C.SPECTATE_* (JS 에서 만든 값) 은 그대로 둠.
 # c10-fix F1: 대상을 가리는 남의 몸 (시선이 그 몸 상자를 지남) 은 디더로 옅게 (sight_blockers·thin_step — world/cam_rig.gd spec_thin → chars/body.gd set_see_thru).
 # 당기기로는 안 됨: 바로 옆 (0.6 m) 사람 앞으로 당기면 렌즈가 대상 몸에 닿음
-# 쓰는 곳: world/cam_rig.gd (관전 갈래·pull_in·몸 옅게), world/pieces_view.gd (가까운 칸 옅게)
+# c11: 유령 투하 조준 상자의 면이 화면에서 대상 몸·이름표를 덮으면 면을 지움 (screen_rect·ghost_fill — world/ghost_aim.gd, 테두리는 남김),
+# 아래 안내 띠의 조작 줄은 관전 시작·조작 뒤 hint_ms 동안만 (hint_full — ui/hud.gd _spectate)
+# 쓰는 곳: world/cam_rig.gd (관전 갈래·pull_in·몸 옅게), world/pieces_view.gd (가까운 칸 옅게), world/ghost_aim.gd (조준 상자 면), ui/hud.gd (안내 띠 접기)
 extends RefCounted
 
 const SPEC := {
@@ -17,6 +19,10 @@ const SPEC := {
 	"thin_pad": [0.12, 0.28], # 몸 상자 (가로 ±C.PLAYER_HALF, 세로 C.PLAYER_HEIGHT) 를 이만큼 키워 시선과 겹침을 봄 (m): [옅게 시작, 옅은 몸이 되돌아가는 문턱] — 그 사이에선 지난 상태 그대로 (깜빡임 막기)
 	"thin_hold_ms": 120, # 시선에서 벗어난 뒤에도 이만큼은 옅은 채 (ms, Net.now_ms). 길면 (250 이었음) 맞아서 날아가며 시선을 스친 몸이 화면 옆으로 간 뒤에도 옅은 채 남음
 	"thin_ease_s": 0.12, # 옅어지고 되돌아오는 데 걸리는 시간 (초)
+	"ghost_fill_hit": 0.0, # c11: 조준 상자가 화면에서 대상 (몸 + 이름표) 과 겹칠 때 면 알파 배율 (0 = 면 없음, 테두리만). 따라가기에서 화면 가운데 시선은 대상 뒤 약 2.9칸 바닥에 닿아 상자가 늘 대상 머리·이름표 위에 옴
+	"ghost_pad": 12.0, # 겹침을 볼 때 대상 화면 사각형을 이만큼 키움 (px — 이름표 글자가 몸 상자보다 넓음)
+	"ghost_label_up": 0.3, # 대상 사각형의 위 끝 = 이름표 높이 + 이만큼 (m, 이름·피해 % 두 줄 글자의 위쪽 절반)
+	"hint_ms": 8000.0, # 아래 안내 띠의 조작 줄을 보여 주는 시간 (ms, Net.now_ms — 관전 시작·대상 바뀜·전체 보기 토글·휠 거리 뒤부터). 지나면 한 줄로 접힘
 	"fade_order": 9, # c10-fix F2: 옅은 칸을 그리는 순서 (render_priority) — 착지 테·위험 표면 1, 판 빛 5, 발밑 고리 7, 표식 8 뒤 (칸 너머로 비침), 이름표 WC.LABEL_PRIORITY 11 앞
 }
 
@@ -110,3 +116,30 @@ static func thin_step(prev: Dictionary, hit: Array, near: Array, now_ms: float, 
 		if k < 1.0 or want < 1.0:
 			out[id] = {"k": k, "at": at}
 	return out
+
+
+# ---- c11 유령 조준 상자가 대상을 안 덮게 + 안내 띠 접기 ----
+
+# 화면 점들의 바깥 사각형 (점이 없으면 빈 Rect2)
+static func screen_rect(points: PackedVector2Array) -> Rect2:
+	if points.is_empty():
+		return Rect2()
+	var lo := points[0]
+	var hi := points[0]
+	for p in points:
+		lo = lo.min(p)
+		hi = hi.max(p)
+	return Rect2(lo, hi - lo)
+
+
+# 조준 상자 면의 알파 배율. box: 조준 칸의 화면 사각형, target: 대상 (몸 + 이름표) 의 화면 사각형, following: 관전 따라가기인가.
+# 따라가기에서 target 을 ghost_pad 만큼 키운 것과 box 가 겹치면 ghost_fill_hit, 아니면 1 (전체 보기는 늘 1 — 면 + 테두리 예전 그대로)
+static func ghost_fill(box: Rect2, target: Rect2, following: bool, cfg: Dictionary = SPEC) -> float:
+	if not following:
+		return 1.0
+	return float(cfg.ghost_fill_hit) if target.grow(float(cfg.ghost_pad)).intersects(box, true) else 1.0
+
+
+# 안내 띠에 조작 줄까지 보여 줄 때인가: 마지막 조작 (t_last_ms — 관전 시작 포함) 뒤 hint_ms 가 안 지났으면 참
+static func hint_full(now_ms: float, t_last_ms: float, cfg: Dictionary = SPEC) -> bool:
+	return now_ms - t_last_ms < float(cfg.hint_ms)

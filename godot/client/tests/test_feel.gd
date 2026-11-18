@@ -1084,3 +1084,84 @@ func test_c10_hunt_sky_hide() -> void:
 	check(HM.pips_shown(2, false, false, false, false, false) and not HM.pips_shown(2, false, false, false, true, false) and HM.pips_shown(2, false, false, false, true, true), "보기: 남의 표식 2칸")
 	var src := FileAccess.get_file_as_string("res://world/body_fx.gd")
 	check(src.contains("g.visible = HM.pips_shown(n, blink, mine, third.call(), str(View.mode) == \"sky\", by_me)"), "body_fx.gd 가 pips_shown 을 씀")
+
+
+# ---- c11 관전 화면 마감: 유령 조준 상자가 대상을 안 덮게 (world/ghost_aim.gd · spec_cam.gd) + 안내 띠 접기 (ui/hud.gd) ----
+const Hud := preload("res://ui/hud.gd")
+
+
+# 조준 상자 면 알파 배율: 화면에서 대상 (몸 + 이름표) 사각형과 겹치면 ghost_fill_hit, 12px 안도 겹침, 떨어지면 1, 따라가기가 아니면 늘 1
+func test_c11_spec_ghost_fill() -> void:
+	var S: Dictionary = SpecCam.SPEC
+	var hit := float(S.ghost_fill_hit)
+	check(hit <= 0.3 and hit >= 0.0 and absf(float(S.ghost_pad) - 12.0) < 1e-9, "겹칠 때 면 알파 배율 %s (0.3 이하) · 여유 12px" % hit)
+	var target := Rect2(600, 250, 70, 220) # 대상 몸 + 이름표
+	check(SpecCam.ghost_fill(Rect2(630, 300, 70, 70), target, true) == hit, "겹침 → %s" % hit)
+	check(SpecCam.ghost_fill(Rect2(610, 260, 20, 20), target, true) == hit and SpecCam.ghost_fill(Rect2(500, 100, 400, 500), target, true) == hit, "상자가 대상 안·대상이 상자 안도 겹침")
+	check(SpecCam.ghost_fill(Rect2(681, 300, 70, 70), target, true) == hit and SpecCam.ghost_fill(Rect2(682, 300, 70, 70), target, true) == hit, "옆으로 11·12px 떨어짐 → 겹침으로 침")
+	check(SpecCam.ghost_fill(Rect2(683, 300, 70, 70), target, true) == 1.0 and SpecCam.ghost_fill(Rect2(900, 300, 70, 70), target, true) == 1.0, "13px 넘게 떨어짐 → 1")
+	check(SpecCam.ghost_fill(Rect2(620, 168, 70, 70), target, true) == hit and SpecCam.ghost_fill(Rect2(620, 167, 70, 70), target, true) == 1.0, "위로도 12px 까지만")
+	check(SpecCam.ghost_fill(Rect2(630, 300, 70, 70), target, false) == 1.0 and SpecCam.ghost_fill(target, target, false) == 1.0, "따라가기가 아니면 (전체 보기) 늘 1 — 면 + 테두리 예전 그대로")
+	check(SpecCam.ghost_fill(Rect2(630, 300, 70, 70), target, true, {"ghost_fill_hit": 0.25, "ghost_pad": 0.0}) == 0.25 and SpecCam.ghost_fill(Rect2(671, 300, 70, 70), target, true, {"ghost_fill_hit": 0.25, "ghost_pad": 0.0}) == 1.0, "값은 표에서 읽음")
+	# 따라가기 갈래가 대상 자리를 넘기고, 그 밖 (전체 보기) 은 비움
+	var keep := _spec_setup([])
+	var rig = CamRig.new()
+	root().add_child(rig)
+	var ga = preload("res://world/ghost_aim.gd").new()
+	rig.ghost_aim = ga
+	rig.place(0.016, SPEC_SHOWN, _no_grid)
+	check(ga.follow == Vector3(5.5, 5.5, 0), "따라가기: 조준이 대상 화면 자리를 받음 (%s)" % [ga.follow])
+	View.spectate_target = null
+	rig.place(0.016, SPEC_SHOWN, _no_grid)
+	check(ga.follow == null, "전체 보기: 비움")
+	View.spectate_target = 3
+	rig.place(0.016, SPEC_SHOWN, _no_grid)
+	check(ga.follow == Vector3(5.5, 8.5, 0), "대상이 바뀌면 그 자리")
+	Store._players_by_id[1].alive = true
+	rig.place(0.016, SPEC_SHOWN, _no_grid)
+	check(ga.follow == null, "살아 있으면 비움")
+	check(ga.face_fill(rig.cam) == 1.0, "조준·대상이 없으면 면 그대로")
+	ga.free()
+	_spec_restore(keep, rig)
+
+
+# 화면 점들의 바깥 사각형
+func test_c11_spec_screen_rect() -> void:
+	var r: Rect2 = SpecCam.screen_rect(PackedVector2Array([Vector2(640, 300), Vector2(700, 360), Vector2(610, 372), Vector2(655, 290)]))
+	check(r.position.is_equal_approx(Vector2(610, 290)) and r.size.is_equal_approx(Vector2(90, 82)), "네 점의 바깥 사각형 %s" % r)
+	var one: Rect2 = SpecCam.screen_rect(PackedVector2Array([Vector2(12, -7)]))
+	check(one.position.is_equal_approx(Vector2(12, -7)) and one.size == Vector2.ZERO, "점 하나 → 크기 0 (화면 밖 자리도 그대로) %s" % one)
+	check(SpecCam.screen_rect(PackedVector2Array()) == Rect2(), "점이 없으면 빈 사각형")
+	var pts := PackedVector2Array([Vector2(5, 9), Vector2(-3, 2), Vector2(8, -1)])
+	var rr: Rect2 = SpecCam.screen_rect(pts)
+	for p in pts:
+		check(rr.grow(1e-6).has_point(p), "점 %s 이 사각형 %s 안" % [p, rr])
+	check(rr.position.is_equal_approx(Vector2(-3, -1)) and rr.end.is_equal_approx(Vector2(8, 9)), "꼭 맞는 사각형 %s" % rr)
+
+
+# 안내 띠: 관전 시작·조작 뒤 8초 동안은 두 줄 (사망 원인 / 대상 · 조작 안내), 지나면 한 줄 (사망 원인 · 대상), 조작하면 다시 두 줄
+func test_c11_spec_hint_collapse() -> void:
+	check(absf(float(SpecCam.SPEC.hint_ms) - 8000.0) < 1e-9, "조작 줄 8초")
+	var head := "사망: 낙사 — P5(봇)의 밀치기"
+	var who := "P2(봇) 따라가는 중"
+	var keys := "마우스 돌리기 · 휠 거리 · Space 다음 사람 · 클릭 블록 떨어뜨리기 · 우클릭 전체 보기"
+	var t_last := 1000.0
+	for now in [1000.0, 8999.0]:
+		check(SpecCam.hint_full(now, t_last), "%d ms 뒤 → 펼침" % int(now - t_last))
+		var txt: String = Hud.spec_text(head, who, keys, "", SpecCam.hint_full(now, t_last))
+		check(txt.split("\n").size() == 2 and txt == "%s\n%s · %s" % [head, who, keys], "두 줄 (예전 글 그대로): %s" % txt)
+	check(not SpecCam.hint_full(9000.0, t_last) and not SpecCam.hint_full(60000.0, t_last), "8000 ms 부터 접힘")
+	var one: String = Hud.spec_text(head, who, keys, "", SpecCam.hint_full(9000.0, t_last))
+	check(one.split("\n").size() == 1 and one == "%s · %s" % [head, who] and not one.contains("휠 거리"), "한 줄 (사망 원인 · 대상): %s" % one)
+	t_last = 9000.0 # 조작 (대상 바뀜·전체 보기 토글·휠 거리) → 그때부터 다시
+	check(SpecCam.hint_full(9000.0, t_last) and SpecCam.hint_full(16999.0, t_last) and not SpecCam.hint_full(17000.0, t_last), "t_last 가 바뀌면 다시 8초")
+	check(Hud.spec_text(head, who, keys, "", SpecCam.hint_full(9000.0, t_last)).split("\n").size() == 2, "다시 두 줄")
+	# 셋째 줄 '살아 있음' (아래 판이 없을 때) 은 접혀도 그대로
+	var alive := "▶ P2(봇) 61%   P3(봇) 46%"
+	var full3: String = Hud.spec_text(head, "전체 보기", keys, alive, true)
+	var fold3: String = Hud.spec_text(head, "전체 보기", keys, alive, false)
+	check(full3.split("\n").size() == 3 and full3.ends_with("\n살아 있음: %s" % alive), "펼침 + 살아 있음 = 세 줄")
+	check(fold3.split("\n").size() == 2 and fold3 == "%s · 전체 보기\n살아 있음: %s" % [head, alive], "접힘 + 살아 있음 = 두 줄: %s" % fold3)
+	check(not SpecCam.hint_full(8000.0, 0.0, {"hint_ms": 8000.0}) and SpecCam.hint_full(7999.0, 0.0, {"hint_ms": 8000.0}) and SpecCam.hint_full(0.0, 0.0, {"hint_ms": 8000.0}), "0·7999 → 펼침, 8000 → 접힘")
+	var src := FileAccess.get_file_as_string("res://ui/hud.gd")
+	check(src.contains("SpecCam.hint_full(now_ms, spec_hint_at)") and src.contains("if key != spec_hint_key:"), "hud.gd _spectate 가 hint_full·값 비교를 씀")
