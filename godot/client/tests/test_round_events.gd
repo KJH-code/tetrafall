@@ -5,6 +5,7 @@ extends RefCounted
 const T := preload("res://ui/round_event_text.gd")
 const SM := preload("res://audio/sound_math.gd")
 const BM := preload("res://world/bolt_fx_math.gd")
+const HM := preload("res://world/hand_aim_math.gd")
 const RL := preload("res://world/ring_look.gd")
 const FM := preload("res://fx/fx_math.gd")
 const C := preload("res://core/config.gd")
@@ -448,3 +449,255 @@ func test_bolt_warn_list() -> void:
 	check(BM.keep("playing") and not BM.keep("over") and not BM.keep("lobby") and not BM.keep("countdown") and not BM.keep(""), "판 중에만")
 	check(int(BM.WARN.max) >= 4 and int(BM.STRIKE.max) >= 4, "8명 판 한 차례 (4개) 를 다 그림")
 
+
+# ---------- c11-u1: 손 아이템 조준 미리보기 · 놓인 폭탄 고리 · '폭탄!' 화면 신호 (world/hand_aim_math.gd) ----------
+func _c11_me(aim) -> Dictionary:
+	return {"id": 2.0, "x": 5.5, "y": 2.5, "z": 0.0, "alive": true, "team": null, "aim": aim}
+
+
+func _c11_rows(rows: Array, kind: String) -> Array:
+	return rows.filter(func(r): return str(r.kind) == kind)
+
+
+# 설치 블록: 놓일 2칸에 흰 상자 (칸 가운데) + 칸마다 노란 모서리 막대 12개, 못 놓는 자리면 전부 빨강
+func test_c11_aim_brick_rows() -> void:
+	var A: Dictionary = HM.HAND_AIM
+	var aim := {"kind": "brick", "cells": [[5.0, 6.0, 1.0], [5.0, 7.0, 1.0]], "z": 1.0, "spawnZ": 4.0, "ok": true}
+	for mode in ["first", "third"]:
+		var rows := HM.aim_rows(_c11_me(aim), mode, false, 0x50c050)
+		var boxes := _c11_rows(rows, "box")
+		var edges := _c11_rows(rows, "edge")
+		check(boxes.size() == 2 and edges.size() == 24 and rows.size() == 26, "%s: 상자 2 · 테 24 (얻음 %d · %d · 모두 %d)" % [mode, boxes.size(), edges.size(), rows.size()])
+		check(boxes.size() == 2 and (boxes[0].at as Vector3).is_equal_approx(Vector3(5.5, 6.5, 1.5)) and (boxes[1].at as Vector3).is_equal_approx(Vector3(5.5, 7.5, 1.5)), "상자 자리 = 칸 + 0.5")
+		for b in boxes:
+			check(int(b.color) == 0xffffff and is_equal_approx(float(b.alpha), 0.28) and (b.size as Vector3).x < 1.0 and (b.size as Vector3).x > 0.95, "상자: 흰색 · 알파 0.28 · 칸보다 조금 작게 (%s %s %s)" % [b.color, b.alpha, b.size])
+		for e in edges:
+			var sz: Vector3 = e.size
+			var d: Vector3 = (e.at as Vector3) - Vector3(5.5, 6.5 if (e.at as Vector3).y < 7.0 else 7.5, 1.5)
+			check(int(e.color) == 0xf0d060 and is_equal_approx(sz[sz.max_axis_index()], 1.0) and is_equal_approx(sz[sz.min_axis_index()], 0.04), "테: 노랑 · 길이 1 · 굵기 0.04 (%s %s)" % [e.color, sz])
+			check(absf(d.x) <= 0.5 and absf(d.y) <= 0.5 and absf(d.z) <= 0.5, "테 막대는 칸 안쪽에 붙음 (%s)" % d)
+	check(int(A.edge_color) == 0xf0d060 and is_equal_approx(float(A.edge_w), 0.04) and is_equal_approx(float(A.box_alpha), 0.28), "표 값")
+	# 못 놓는 자리 (떨어지는 블록이 있음·내 머리 위): 상자·테 전부 빨강
+	var bad := aim.duplicate()
+	bad["ok"] = false
+	var rows_bad := HM.aim_rows(_c11_me(bad), "first", false, 0x50c050)
+	check(rows_bad.size() == 26, "못 놓는 자리도 같은 수 (%d)" % rows_bad.size())
+	for r in rows_bad:
+		check(int(r.color) == 0xff2020, "못 놓는 자리: %s 색 %x" % [r.kind, int(r.color)])
+	# 모서리 막대 12개: 축마다 넷, 서로 다른 자리
+	var bars := HM.edge_bars(Vector3(0.5, 0.5, 0.5))
+	var seen := {}
+	for b in bars:
+		seen[str(b[0])] = true
+	check(bars.size() == 12 and seen.size() == 12, "막대 12개 (서로 다른 자리 %d)" % seen.size())
+	# 양면 반투명 상자: 면 둘이 겹쳐 box_alpha
+	var fa := HM.face_alpha(0.28)
+	check(is_equal_approx(1.0 - (1.0 - fa) * (1.0 - fa), 0.28) and HM.face_alpha(0.0) == 0.0 and HM.face_alpha(1.0) == 1.0, "면 알파 %s" % fa)
+
+
+# 폭탄: 부서질 9칸에 주황 납작 판 + 폭탄 자리 (첫 칸) 가운데에 사람이 맞는 반지름의 내 색 고리
+func test_c11_aim_bomb_rows() -> void:
+	var cells := [[5.0, 6.0, 0.0]]
+	for dx in [-1, 0, 1]:
+		for dy in [-1, 0, 1]:
+			if dx != 0 or dy != 0:
+				cells.append([5.0 + dx, 6.0 + dy, 0.0])
+	var aim := {"kind": "bomb", "cells": cells, "ok": true}
+	var rows := HM.aim_rows(_c11_me(aim), "first", false, 0x50c050)
+	var pads := _c11_rows(rows, "pad")
+	var rings := _c11_rows(rows, "ring")
+	check(pads.size() == 9 and rings.size() == 1 and rows.size() == 10 and _c11_rows(rows, "edge").is_empty(), "판 9 · 고리 1 (얻음 %d · %d · 모두 %d)" % [pads.size(), rings.size(), rows.size()])
+	for i in pads.size():
+		var p: Dictionary = pads[i]
+		var at: Vector3 = p.at
+		var sz: Vector3 = p.size
+		check(is_equal_approx(at.x, float(cells[i][0]) + 0.5) and is_equal_approx(at.y, float(cells[i][1]) + 0.5), "판 %d 자리 = 칸 + 0.5" % i)
+		# 판은 얇게 (양면을 그려서 두꺼우면 비스듬히 볼 때 이웃 판과 겹친 띠가 줄무늬로 보임 — JS 판 0.12 보다 얇음)
+		check(int(p.color) == 0xff5030 and is_equal_approx(float(p.alpha), 0.35) and is_equal_approx(sz.z, float(HM.HAND_AIM.pad_h)) and sz.z <= 0.05 and sz.x < 1.0 and sz.x > 0.9, "판: 주황 · 알파 0.35 · 얇음 (%x %s %s)" % [int(p.color), p.alpha, sz])
+		check(at.z - sz.z / 2.0 > 0.0 and at.z + sz.z / 2.0 < 0.2, "판은 바닥 바로 위 (%s)" % at.z)
+	if rings.size() == 1:
+		var r: Dictionary = rings[0]
+		var at: Vector3 = r.at
+		check(is_equal_approx(float(r.r), float(C.BOMB_BLAST_RANGE)) and is_equal_approx(float(r.r), 2.0), "고리 반지름 = BOMB_BLAST_RANGE (%s)" % r.r)
+		check(is_equal_approx(at.x, 5.5) and is_equal_approx(at.y, 6.5) and at.z > 0.0 and at.z < 0.1, "고리 가운데 = 첫 칸 + 0.5 (%s)" % at)
+		check(int(r.color) == 0x50c050, "고리 = 내 색 (%x)" % int(r.color))
+	# 못 놓는 자리: 판은 빨강
+	var bad := aim.duplicate()
+	bad["ok"] = false
+	for p in _c11_rows(HM.aim_rows(_c11_me(bad), "third", false, 0x50c050), "pad"):
+		check(int(p.color) == 0xff2020, "못 놓는 자리 판 색 %x" % int(p.color))
+	# 필드 가장자리: 서버가 필드 밖 칸을 빼고 보냄 → 온 칸만
+	var edge_aim := {"kind": "bomb", "cells": cells.slice(0, 6), "ok": true}
+	check(_c11_rows(HM.aim_rows(_c11_me(edge_aim), "first", false, 0x50c050), "pad").size() == 6, "가장자리: 온 칸만")
+	check(int(HM.HAND_AIM.priority) + 1 < 10, "그리는 순서는 이름표 외곽선 (10) 아래")
+
+
+# 안 그리는 때: 죽음 · 하늘 시점 · 관전 · 조준 값 없음 (넉백 글러브·빈손) · 판 중이 아님 · 나 없음
+func test_c11_aim_off() -> void:
+	var aim := {"kind": "brick", "cells": [[5.0, 6.0, 0.0], [5.0, 7.0, 0.0]], "z": 0.0, "spawnZ": 3.0, "ok": true}
+	var me := _c11_me(aim)
+	check(HM.aim_on(me, "first", false) and HM.aim_on(me, "third", false), "1·3인칭: 켬")
+	var dead := me.duplicate()
+	dead["alive"] = false
+	check(HM.aim_rows(dead, "first", false, 0).is_empty(), "죽음: 0줄")
+	check(HM.aim_rows(me, "sky", false, 0).is_empty(), "하늘 시점: 0줄")
+	check(HM.aim_rows(me, "spectate", false, 0).is_empty() and HM.aim_rows(me, "first", true, 0).is_empty(), "관전: 0줄")
+	check(HM.aim_rows(_c11_me(null), "first", false, 0).is_empty(), "조준 값 null (넉백 글러브): 0줄")
+	var no_aim := me.duplicate()
+	no_aim.erase("aim")
+	check(HM.aim_rows(no_aim, "first", false, 0).is_empty(), "조준 값 없음: 0줄")
+	check(HM.aim_rows(_c11_me({"kind": "brick", "cells": [], "z": 0.0, "ok": false}), "first", false, 0).is_empty(), "칸 없음 (조준이 필드 밖): 0줄")
+	check(HM.aim_rows(me, "first", false, 0, false).is_empty(), "판 중이 아님: 0줄")
+	check(HM.aim_rows({}, "first", false, 0).is_empty(), "나 없음: 0줄")
+
+
+# 놓인 폭탄 고리: 채운 원은 놓은 순간 0 → 터지는 순간 1 (고리 안쪽 끝), 고리 반지름 = 사람이 맞는 범위, 자리 = 칸 가운데·칸 바닥 바로 위
+func test_c11_bomb_ring_fill() -> void:
+	check(is_equal_approx(float(C.BOMB_FUSE_MS), 1500.0), "도화선 %s" % C.BOMB_FUSE_MS)
+	check(HM.bomb_fill(1500.0) == 0.0 and is_equal_approx(HM.bomb_fill(750.0), 0.5) and HM.bomb_fill(0.0) == 1.0, "찬 비율: %s %s %s" % [HM.bomb_fill(1500.0), HM.bomb_fill(750.0), HM.bomb_fill(0.0)])
+	check(HM.bomb_fill(9999.0) == 0.0 and HM.bomb_fill(-5.0) == 1.0, "범위 밖 값은 0~1 로")
+	var bombs := [{"id": 3.0, "x": 4.0, "y": 7.0, "z": 2.0, "left": 750.0}, {"id": 4.0, "x": 9.0, "y": 1.0, "z": 0.0, "left": 0.0}]
+	var rows := HM.bomb_ring_rows(bombs, 2000.0)
+	check(rows.size() == 2, "폭탄마다 한 줄 (%d)" % rows.size())
+	if rows.size() == 2:
+		var inner := float(BM.WARN.bands[0][0])
+		var at: Vector3 = rows[0].at
+		check(is_equal_approx(at.x, 4.5) and is_equal_approx(at.y, 7.5) and is_equal_approx(at.z, 2.0 + float(HM.BOMB_RING.lift)) and is_equal_approx(float(HM.BOMB_RING.lift), 0.04), "자리 %s" % at)
+		check(is_equal_approx(float(rows[0].r), float(C.BOMB_BLAST_RANGE)), "고리 반지름 %s" % rows[0].r)
+		check(is_equal_approx(float(rows[0].fill_r), 2.0 * inner * 0.5) and is_equal_approx(float(rows[1].fill_r), 2.0 * inner), "채운 원 반지름: 반 %s · 다 참 %s (고리 안쪽 끝 %s)" % [rows[0].fill_r, rows[1].fill_r, 2.0 * inner])
+		check(is_equal_approx(float(rows[0].spin), float(HM.BOMB_RING.spin) * 2.0), "고리는 판 시계로 돎 (%s)" % rows[0].spin)
+	check(HM.bomb_ring_rows(bombs, 2000.0, false).is_empty() and HM.bomb_ring_rows([], 2000.0).is_empty(), "판 중이 아니거나 폭탄이 없으면 0줄")
+	var many := []
+	for i in 20:
+		many.append({"id": float(i), "x": float(i), "y": 0.0, "z": 0.0, "left": 100.0})
+	check(HM.bomb_ring_rows(many, 0.0).size() == int(HM.BOMB_RING.max), "한 번에 그리는 수 상한")
+	check(int(HM.BOMB_RING.fill) == 0xff8a30 and int(HM.BOMB_RING.fill) != int(BM.WARN.fill_color) and is_equal_approx(float(HM.BOMB_RING.fill_alpha), 0.4) and is_equal_approx(float(HM.BOMB_RING.ring_alpha), 0.9), "채운 원은 주황 (번개 연노랑과 다름)")
+
+
+# 맞는 자리 판정 = 서버 Game.ExplodeBomb: 폭탄 칸 가운데에서 수평 2.0 안, 몸 가운데 높이 차 2.0 안
+func test_c11_bomb_alert_range() -> void:
+	var b := {"id": 1.0, "x": 5.0, "y": 5.0, "z": 0.0, "left": 900.0} # 가운데 (5.5, 5.5, 0.5)
+	var half := float(C.PLAYER_HEIGHT) / 2.0
+	var me := {"id": 2.0, "x": 5.5 + 2.0, "y": 5.5, "z": 0.5 - half, "alive": true}
+	check(HM.bomb_in_range(me, b), "수평 2.0: 안")
+	me["x"] = 5.5 + 2.01
+	check(not HM.bomb_in_range(me, b), "수평 2.01: 밖")
+	me["x"] = 5.5 + 1.2
+	me["y"] = 5.5 + 1.6 # 빗변 2.0
+	check(HM.bomb_in_range(me, b), "빗변 2.0: 안")
+	me["y"] = 5.5 + 1.62
+	check(not HM.bomb_in_range(me, b), "빗변이 넘으면 밖")
+	me = {"id": 2.0, "x": 5.5, "y": 5.5, "z": 0.5 - half + 2.0, "alive": true}
+	check(HM.bomb_in_range(me, b), "높이 차 2.0 (위): 안")
+	me["z"] = 0.5 - half + 2.01
+	check(not HM.bomb_in_range(me, b), "높이 차 2.01 (위): 밖")
+	me["z"] = 0.5 - half - 2.0
+	check(HM.bomb_in_range(me, b), "높이 차 2.0 (아래): 안")
+	me["z"] = 0.5 - half - 2.01
+	check(not HM.bomb_in_range(me, b), "높이 차 2.01 (아래): 밖")
+	# 살아서 필드에 있을 때만
+	me = {"id": 2.0, "x": 5.5, "y": 5.5, "z": 0.0, "alive": false}
+	check(not HM.bomb_in_range(me, b), "죽은 나")
+	check(not HM.bomb_in_range({"id": 2.0, "x": 5.5, "y": 5.5, "z": 0.0, "alive": true, "master": true}, b), "블록 마스터")
+	check(not HM.bomb_in_range({}, b) and not HM.bomb_in_range({"alive": true}, b), "나 없음·자리 없음")
+
+
+# 내 폭탄·같은 팀 폭탄은 뺌 (서버가 안 맞게 함), 주인을 모르는 폭탄은 위험. 주인은 bombPlace 의 칸으로 짝지어 폭탄 id 에 붙임
+func test_c11_bomb_alert_skips_mine_team() -> void:
+	var me := {"id": 2.0, "x": 5.5, "y": 5.5, "z": 0.0, "alive": true, "team": "red"}
+	var st := {"teamMode": false, "players": [me, {"id": 3.0, "team": "red"}, {"id": 4.0, "team": "blue"}]}
+	var team_st := st.duplicate()
+	team_st["teamMode"] = true
+	var bomb := {"id": 7.0, "x": 5.0, "y": 6.0, "z": 0.0, "left": 900.0}
+	check(HM.owner_key(5.0, 6.0, 0.0) == "5,6,0" and HM.owner_key(5, 6, 0) == HM.owner_key(5.0, 6.0, 0.0), "열쇠 %s" % HM.owner_key(5.0, 6.0, 0.0))
+	# [주인, 팀전, 위험한가]
+	for row in [[2.0, false, false], [3.0, false, true], [3.0, true, false], [4.0, true, true], [4.0, false, true], [9.0, true, true]]:
+		var pending := []
+		var owners := {}
+		HM.owner_note(pending, {"type": "bombPlace", "who": row[0], "x": 5.0, "y": 6.0, "z": 0.0})
+		HM.owner_bind(owners, pending, [bomb])
+		check(owners.get(7) == int(row[0]) and pending.is_empty(), "주인 붙음: %s" % [owners])
+		var pick := HM.bomb_pick([bomb], owners, me, team_st if row[1] else st)
+		check(pick.is_empty() != bool(row[2]), "주인 %s 팀전 %s → 위험 %s (얻음 %s)" % [row[0], row[1], row[2], pick])
+	# 주인 모름 (판 중에 들어와 이벤트를 못 받음): 위험
+	check(not HM.bomb_pick([bomb], {}, me, st).is_empty() and not HM.bomb_safe(null, me, team_st), "주인 모름 = 위험")
+	# 다른 칸의 기억은 안 붙음, 같은 칸 둘은 온 차례대로
+	var pending := []
+	var owners := {}
+	HM.owner_note(pending, {"type": "bombPlace", "who": 2.0, "x": 1.0, "y": 1.0, "z": 0.0})
+	HM.owner_bind(owners, pending, [bomb])
+	check(owners.is_empty() and pending.size() == 1, "다른 칸: 안 붙음")
+	HM.owner_note(pending, {"type": "bombPlace", "who": 4.0, "x": 5.0, "y": 6.0, "z": 0.0})
+	HM.owner_note(pending, {"type": "bombPlace", "who": 2.0, "x": 5.0, "y": 6.0, "z": 0.0})
+	var twin := {"id": 8.0, "x": 5.0, "y": 6.0, "z": 0.0, "left": 1400.0}
+	HM.owner_bind(owners, pending, [bomb, twin])
+	check(owners.get(7) == 4 and owners.get(8) == 2, "같은 칸 둘: %s" % [owners])
+	# 붙은 뒤엔 높이가 바뀌어도 (발밑 블록이 부서짐·쌓임) 그대로, 없어진 폭탄은 지움
+	var moved := twin.duplicate()
+	moved["z"] = 3.0
+	HM.owner_bind(owners, pending, [moved])
+	check(owners.get(8) == 2 and not owners.has(7), "높이가 바뀐 내 폭탄은 그대로 내 것 · 터진 폭탄은 지움: %s" % [owners])
+	HM.owner_note(pending, {"type": "bombPlace", "who": null, "x": 1.0, "y": 1.0, "z": 0.0})
+	check(pending.size() == 1, "값이 빠진 이벤트는 무시")
+	for i in 40:
+		HM.owner_note(pending, {"type": "bombPlace", "who": 1.0, "x": float(i), "y": 0.0, "z": 0.0})
+	check(pending.size() == int(HM.BOMB_ALERT.pending_max), "기억 수 상한 (%d)" % pending.size())
+
+
+# 여러 개면 가장 먼저 터질 것
+func test_c11_bomb_alert_pick_soonest() -> void:
+	var me := {"id": 2.0, "x": 5.5, "y": 5.5, "z": 0.0, "alive": true, "team": null}
+	var st := {"teamMode": false, "players": [me]}
+	var bombs := [
+		{"id": 1.0, "x": 5.0, "y": 6.0, "z": 0.0, "left": 1200.0},
+		{"id": 2.0, "x": 6.0, "y": 5.0, "z": 0.0, "left": 400.0},
+		{"id": 3.0, "x": 12.0, "y": 5.0, "z": 0.0, "left": 100.0}, # 범위 밖
+		{"id": 4.0, "x": 5.0, "y": 5.0, "z": 0.0, "left": 50.0}, # 내 폭탄
+	]
+	var pick := HM.bomb_pick(bombs, {4: 2}, me, st)
+	check(not pick.is_empty() and is_equal_approx(float(pick.left), 400.0) and is_equal_approx(float(pick.ms), float(C.BOMB_FUSE_MS)), "가장 먼저 터질 남의 폭탄: %s" % [pick])
+	check(BM.alert_sec(float(pick.get("left", 0.0))) == "0.4초", "초 글자")
+	var away := me.duplicate()
+	away["x"] = 9.0
+	check(HM.bomb_pick(bombs, {4: 2}, away, st).is_empty(), "범위 밖으로 나가면 없음")
+	check(HM.bomb_pick([], {}, me, st).is_empty(), "폭탄 없음")
+	check(str(HM.BOMB_ALERT.text) == "폭탄! 고리 밖으로" and int(HM.BOMB_ALERT.glow) == 0xff8a30 and int(HM.BOMB_ALERT.glow) != int(BM.ALERT.glow), "글·색: 번개 판과 다름")
+
+
+# 번개 판이 떠 있으면 폭탄 판은 숨김 (같은 자리). 화면 신호 노드 (ui/bomb_alert.gd — 트리 밖에서 이벤트·프레임을 직접 넣어 봄)
+func test_c11_bomb_alert_hidden_under_bolt() -> void:
+	var pick := {"left": 900.0, "ms": 1500.0}
+	check(HM.bomb_alert_show(false, pick) and not HM.bomb_alert_show(true, pick) and not HM.bomb_alert_show(false, {}) and not HM.bomb_alert_show(true, {}), "판정")
+	var a = load("res://ui/bomb_alert.gd").new()
+	var me := {"id": 2.0, "x": 5.5, "y": 5.5, "z": 0.0, "alive": true, "team": null}
+	var st := {"phase": "playing", "teamMode": false, "players": [me], "bombs": [{"id": 7.0, "x": 5.0, "y": 6.0, "z": 0.0, "left": 900.0}]}
+	a.on_event({"type": "bombPlace", "who": 4.0, "x": 5.0, "y": 6.0, "z": 0.0})
+	a.refresh(st, me, 1000.0, true, "first", false)
+	check(a.plate.visible and a.text.text == "폭탄! 고리 밖으로" and a.sec.text == "0.9초" and is_equal_approx(a.left01, 0.6), "남의 폭탄 범위 안: 판 '%s' %s 막대 %s" % [a.text.text, a.sec.text, a.left01])
+	check(a.edge.visible and a.edge.modulate.a > 0.0 and a.owners.get(7) == 4, "가장자리 테 %s · 주인 %s" % [a.edge.modulate.a, a.owners])
+	a.refresh(st, me, 1010.0, true, "first", true)
+	check(not a.plate.visible and not a.edge.visible, "번개 판이 떠 있음: 폭탄 판·테 숨김")
+	a.refresh(st, me, 1020.0, true, "third", false)
+	check(a.plate.visible, "번개 판이 꺼지면 다시")
+	var dead := me.duplicate()
+	dead["alive"] = false
+	a.refresh(st, dead, 1030.0, true)
+	check(not a.plate.visible and not a.edge.visible, "죽은 나: 꺼짐")
+	# 내 폭탄이면 안 뜸
+	a.clear()
+	a.on_event({"type": "bombPlace", "who": 2.0, "x": 5.0, "y": 6.0, "z": 0.0})
+	a.refresh(st, me, 2000.0, true)
+	check(not a.plate.visible and not a.edge.visible, "내 폭탄: 안 뜸")
+	# 터져서 없어지면 꺼지고, 판 중이 아니면 다 비움
+	a.clear()
+	a.refresh(st, me, 3000.0, true)
+	check(a.plate.visible, "주인 모르는 폭탄: 뜸")
+	var gone := st.duplicate()
+	gone["bombs"] = []
+	a.refresh(gone, me, 3100.0, true)
+	check(not a.plate.visible and not a.edge.visible and a.owners.is_empty(), "폭탄이 없어짐: 꺼짐")
+	a.on_event({"type": "bombPlace", "who": 4.0, "x": 5.0, "y": 6.0, "z": 0.0})
+	a.refresh(st, me, 3200.0, true)
+	a.refresh(st, me, 3300.0, false)
+	check(not a.plate.visible and not a.edge.visible and a.owners.is_empty() and a.pending.is_empty(), "판 끝: 다 비움")
+	a.free()
