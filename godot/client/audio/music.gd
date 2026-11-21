@@ -145,6 +145,8 @@ func _fade_out(p: AudioStreamPlayer) -> void:
 
 func _ambient(theme, now: float) -> void:
 	if theme != amb_theme:
+		if theme != null and sfx.pack != null:
+			sfx.pack.want("t_" + str(theme)) # W53: 웹 효과음 묶음 (그 테마 타이틀·앰비언트 핑) 을 앞으로
 		amb_theme = theme
 		if amb.playing:
 			var old := amb # 사라지는 동안 새 것은 처음부터 천천히 (TITLE_SOUND.fadeIn)
@@ -167,7 +169,10 @@ func _ambient(theme, now: float) -> void:
 	amb_next_ping = now + randf_range(pe[0], pe[1])
 	var pings: Array = sfx.manifest.ambient[amb_theme].pings
 	var rec: Dictionary = pings[randi() % pings.size()]
-	amb_ping.stream = sfx.stream(rec.file)
+	var ping: AudioStream = sfx.stream(rec.file)
+	if ping == null: # W53: 웹 효과음 묶음이 아직 안 옴
+		return
+	amb_ping.stream = ping
 	amb_ping.volume_db = linear_to_db(float(rec.gain))
 	amb_ping.pitch_scale = 1.0 + randf_range(-0.04, 0.04)
 	amb_ping.play()
@@ -214,6 +219,8 @@ func _hazard(state: Dictionary, dt: float, ear_z) -> void:
 		hz.volume_db = hz_db
 	if randf() < float(C.SFX_HAZARD.pops.get(style, 0)) * dt and not hz_pop.playing:
 		var pop: Dictionary = rec.pops[randi() % rec.pops.size()]
-		hz_pop.stream = sfx.stream(pop.file)
-		hz_pop.volume_db = linear_to_db(maxf(0.00001, float(pop.gain) * hz_level))
-		hz_pop.play()
+		var pst: AudioStream = sfx.stream(pop.file)
+		if pst != null: # W53: 웹 효과음 묶음이 아직 안 옴이면 조용히
+			hz_pop.stream = pst
+			hz_pop.volume_db = linear_to_db(maxf(0.00001, float(pop.gain) * hz_level))
+			hz_pop.play()

@@ -22,6 +22,11 @@ func _ready() -> void:
 	sfx = Sfx.new()
 	sfx.name = "Sfx"
 	add_child(sfx)
+	var sp: Node = preload("res://audio/sfx_pack.gd").new() # W53: 웹 효과음 wav 묶음 따로 받기 (PC·쪼개지 않은 빌드면 아무 일 없음)
+	sp.name = "SfxPack"
+	sp.sfx = sfx
+	sfx.pack = sp
+	add_child(sp)
 	music = MusicNode.new()
 	music.name = "Music"
 	music.sfx = sfx

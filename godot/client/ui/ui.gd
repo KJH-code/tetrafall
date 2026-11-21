@@ -289,6 +289,8 @@ func _prof_process(_d: float) -> void:
 		_drawn_screen = shown
 		_drawn_at = tnow
 		_refresh_panels(st)
+	elif _panel_late: # W53: 문이 미룬 조각 (입장 첫 바퀴) 만 다음 프레임에
+		_refresh_panels(st, false)
 
 
 const REFRESH_MS := 100
@@ -308,7 +310,27 @@ func _pa(name: String, t0: int) -> void:
 		Prof.add(name, t0)
 
 
-func _refresh_panels(st: Dictionary) -> void:
+# W53: 대기실 판 첫 갱신을 둘로 나눠 (A = 점수 띠 + 대기실 판, B = 방장 판 + 얼굴 데우기 + HUD 카드 미리 만들기) 입장 첫 바퀴 (Gate.entered 거짓) 동안
+# 큰 일 문 (Gate) 을 거침 — 한 프레임에 월드 조각 (소품·몸 만들기 8~12ms) 과 HUD 첫 갱신 (A+B 11~13ms) 이 겹쳐 25ms 를 넘던 것. 못 돈 조각은 다음 프레임에 (_panel_late).
+# 첫 바퀴가 끝나면 (평소 100ms 갱신) 문 없이 한 번에. 끄기 --no-panel-split
+var _panel_a := true # 이번 갱신에서 A 가 아직 남음 (미룬 것)
+var _panel_b := true
+var _panel_late := false # 미룬 조각이 있어 다음 프레임에 다시
+
+
+func _panel_gate(name: String) -> bool:
+	return Gate.entered or not Gate.on() or Gate.no_split("panel") or Gate.ok(name)
+
+
+func _vp_size() -> Vector2: # 트리 밖 (테스트) 이면 기본 창
+	return get_viewport().get_visible_rect().size if is_inside_tree() else Vector2(1280, 720)
+
+
+func _refresh_panels(st: Dictionary, fresh := true) -> void:
+	if fresh:
+		_panel_a = true
+		_panel_b = true
+	_panel_late = false
 	var t := _pn() # W42: 화면 판마다 구간 (--hitch·--perf-log 일 때만)
 	if shown == "game" and not st.is_empty():
 		hud.refresh(st)
@@ -320,27 +342,44 @@ func _refresh_panels(st: Dictionary) -> void:
 		results.refresh(st)
 		_pa("panel ·results refresh", t)
 	t = _pn()
-	if (shown == "results" or shown == "lobby") and not st.is_empty():
-		hud.score_band(st, get_viewport().get_visible_rect().size, true) # 판 사이 위 점수 띠 (JS body.ui-dark #score)
+	if shown == "results" and not st.is_empty():
+		hud.score_band(st, _vp_size(), true) # 판 사이 위 점수 띠 (JS body.ui-dark #score)
 		_pa("panel ·score band", t)
 	if shown == "lobby" and not st.is_empty():
-		t = _pn()
-		lobby.refresh(st)
-		_pa("panel ·lobby refresh", t)
-		t = _pn()
-		hud.warm_faces(st)
-		_pa("panel ·lobby warm faces", t)
-		if Gate.ok("ui.hud") and not Opts.args().has("--no-hud-prebuild"): # W42: 판 HUD 카드 8장을 숨은 채 한 장씩 (판 시작 때 만들던 것)
-			var tp := Gate.t()
-			hud.prebuild_cards(st, get_viewport().get_visible_rect().size)
-			Gate.done("ui.hud", tp)
-			_pa("panel ·HUD card prebuild", tp)
-		var host: bool = st.get("hostId") == Store.my_id
-		host_players.visible = host
-		if host:
-			t = _pn()
-			host_players.refresh(st)
-			_pa("panel ·host players refresh", t)
+		if _panel_a:
+			if _panel_gate("ui.panel.a"):
+				var ta := Gate.t()
+				t = _pn()
+				hud.score_band(st, _vp_size(), true)
+				_pa("panel ·score band", t)
+				t = _pn()
+				lobby.refresh(st)
+				_pa("panel ·lobby refresh", t)
+				Gate.done("ui.panel.a", ta)
+				_panel_a = false
+			else:
+				_panel_late = true
+		if _panel_b and not _panel_late:
+			if _panel_gate("ui.panel.b"):
+				var tb := Gate.t()
+				t = _pn()
+				hud.warm_faces(st)
+				_pa("panel ·lobby warm faces", t)
+				if Gate.ok("ui.hud") and not Opts.args().has("--no-hud-prebuild"): # W42: 판 HUD 카드 8장을 숨은 채 한 장씩 (판 시작 때 만들던 것)
+					var tp := Gate.t()
+					hud.prebuild_cards(st, _vp_size())
+					Gate.done("ui.hud", tp)
+					_pa("panel ·HUD card prebuild", tp)
+				var host: bool = st.get("hostId") == Store.my_id
+				host_players.visible = host
+				if host:
+					t = _pn()
+					host_players.refresh(st)
+					_pa("panel ·host players refresh", t)
+				Gate.done("ui.panel.b", tb)
+				_panel_b = false
+			else:
+				_panel_late = true
 
 
 # Enter: 대기실·판 끝에 방장이면 시작 (판 중 Enter 는 블록 하드드롭이라 PlayerInput 이 가짐)

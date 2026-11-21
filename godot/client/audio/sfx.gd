@@ -11,6 +11,7 @@ const PAN_STEPS := 10 # 좌우 칸: -1 ~ 1 을 0.1 씩 (21 버스)
 const VOICES := 32 # 버스마다 동시에
 const BAKED := "res://audio/baked/"
 
+var pack = null # sfx_pack.gd (웹: 효과음 wav 를 따로 받음, 없으면 null)
 var manifest := {}
 var streams := {} # 파일 이름 -> AudioStream (처음 쓸 때 부름)
 var pan_players: Array = [] # 좌우 칸마다 폴리포닉 재생기 (가운데 = PAN_STEPS 번)
@@ -78,8 +79,15 @@ func _player(bus: String) -> AudioStreamPlayer:
 
 func stream(file: String) -> AudioStream:
 	if not streams.has(file):
+		if pack != null and not pack.has_file(file): # W53: 웹 효과음 묶음 (sfx_pack.gd) 이 아직 안 왔음 — 조용히 넘어감 (null 은 캐시 안 함)
+			return null
 		streams[file] = load(BAKED + file)
 	return streams[file]
+
+
+# 효과음 묶음이 붙여졌을 때 (sfx_pack.gd) — 아직 따로 할 일 없음 (null 은 캐시 안 해서 다음 소리부터 읽힘)
+func pack_ready() -> void:
+	pass
 
 
 # 설정의 효과음 크기 (0~1)
@@ -106,6 +114,8 @@ func play_list(list: Array, dist = null, pos = null, vol := 1.0, delay := 0.0, d
 	var lp := SM.listen(dist, pos, listener)
 	var p: AudioStreamPlayer = direct_player if direct else pan_players[clampi(roundi(lp.y * PAN_STEPS), -PAN_STEPS, PAN_STEPS) + PAN_STEPS]
 	var st := stream(rec.file)
+	if st == null: # 웹 효과음 묶음이 아직 안 옴 (W53)
+		return
 	var db := linear_to_db(maxf(0.00001, float(rec.gain) * lp.x * vol))
 	var pitch := (1.0 + randf_range(-1, 1) * C.SFX_DETUNE * 0.5) * (1.0 if direct else slow_rate)
 	played += 1

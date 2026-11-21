@@ -35,6 +35,7 @@ const LOGO_BLUR := [[18, "g", 0.6], [46, "g2", 0.5], [90, "g2", 0.45]]
 const LOGO_BLUR_LOW := [[14, "g", 1.0]]
 
 # 테마 빛 색을 쓴 것 기억 (판 테마가 바뀌면 restyle 이 그 자리에서 다시 칠함 — 타이틀·대기실 맵 테마 View.ui_theme). [WeakRef, 종류, 인자]
+const Opts_ := preload("res://core/opts.gd")
 static var _reg: Array = []
 # (W16) 구운 판 (ui/baked_panel.gd) 이 다시 굽는 때: 빛 색이 바뀐 횟수 · 등장 애니가 도는 동안 (ms 시각까지)
 static var style_gen := 0
@@ -49,10 +50,20 @@ static func _anim(sec: float) -> void:
 	anim_until = maxi(anim_until, Time.get_ticks_msec() + int(sec * 1000.0) + 40)
 
 
+# W53: 정리 한계를 살아 있는 수의 두 배 (최소 REG_MIN) 로 — 예전엔 4000 고정이라 방 입장마다 사라진 컨트롤의 WeakRef 가 ~17개씩 190번 입장 동안 쌓였음 (살아 있는 건 714 그대로, 객체 수만 +17/입장).
+# 4000 으로 되돌리기 = --no-reg-prune
+const REG_MIN := 1024
+static var _reg_limit := REG_MIN
+static var _reg_old = null # --no-reg-prune (처음 한 번만 읽음)
+
+
 static func _keep(o: Object, kind: String, arg = null) -> void:
 	_reg.append([weakref(o), kind, arg])
-	if _reg.size() > 4000: # 다시 만든 목록 (방 목록·색 칸 등) 이 쌓이면 사라진 것만 버림
+	if _reg_old == null:
+		_reg_old = Opts_.args().has("--no-reg-prune")
+	if _reg.size() > (4000 if _reg_old else _reg_limit): # 다시 만든 목록 (방 목록·색 칸 등) 이 쌓이면 사라진 것만 버림
 		_reg = _reg.filter(func(r): return r[0].get_ref() != null)
+		_reg_limit = maxi(REG_MIN, _reg.size() * 2)
 
 
 # View.ui_theme 가 바뀌면 (ui.gd 가 부름): 기억한 판·버튼·글자 빛·글자 칸·체크 상자를 새 테마 색으로
