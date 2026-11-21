@@ -11,6 +11,13 @@ const K := preload("res://chars/chars_config.gd")
 const MARKS := [0.30, 0.40, 0.80]
 
 
+# W54 타격 앞당김 길이 (초): 준비 시간 ws (초) 안에서. 0 = 안 함 (`--old-moves`·준비 시간 모름·너무 짧음)
+static func lead_s(ws: float, lf := 0.0) -> float:
+	if ws <= 0.0 or lf < 0.0 or K.old_moves():
+		return 0.0
+	return clampf(ws - K.W54_LEAD_KEEP_S, 0.0, K.W54_LEAD_S)
+
+
 # 클립 파일 (.glb 안 AnimationPlayer) → {이름: {anim, len, rot: {뼈 이름: 트랙}, pos: {뼈 이름: 트랙}}}. 뼈 이름은 고도가 바꾼 뒤 이름 (':' → '_')
 static func load_lib(path: String) -> Dictionary:
 	var out := {}
@@ -71,11 +78,21 @@ static func select(cc: Dictionary, st: Dictionary, air_t: float, prev_clip := ""
 			return none
 		var u: float = clampf(float(act.u), 0.0, 1.0)
 		var t := 0.0
+		var m0 := float(marks[0])
+		var m1 := float(marks[1])
+		var lf := float(act.get("lf", -1.0))
+		var lead := lead_s(float(act.get("ws", 0.0)), lf) # W54: 0 이면 예전 (끔·표에 없음·준비 시간 모름)
+		var tl := m0 + (m1 - m0) * lf # 판정 순간 클립 시각 (앞당김 켰을 때)
 		match str(act.phase):
 			"wind":
-				t = u * float(marks[0])
+				if lead > 0.0:
+					var ws: float = float(act.ws)
+					var el: float = u * ws # 준비 시작 후 초
+					t = m0 * el / (ws - lead) if el < ws - lead else lerpf(m0, tl, (el - (ws - lead)) / lead)
+				else:
+					t = u * m0
 			"strike":
-				t = float(marks[0]) + u * (float(marks[1]) - float(marks[0]))
+				t = (tl + u * (m1 - tl)) if lead > 0.0 else (m0 + u * (m1 - m0))
 			_:
 				t = float(marks[1]) + u * (float(marks[2]) - float(marks[1]))
 		return {"clip": str(nm), "t": t, "air": bool(act.get("air", false)), "kind": "act"}
